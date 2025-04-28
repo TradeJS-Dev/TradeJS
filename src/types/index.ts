@@ -11,6 +11,7 @@ export interface KlineChartItem {
   close: number;
   volume: number;
   turnover: number;
+  [key: string]: unknown;
 }
 
 export type KlineChartData = Array<KlineChartItem>;

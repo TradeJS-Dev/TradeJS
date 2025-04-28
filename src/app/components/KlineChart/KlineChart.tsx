@@ -6,25 +6,27 @@ import { init, Chart, dispose } from 'klinecharts';
 import { getUnixTime, subDays } from 'date-fns';
 import { kline } from '@src/actions/kline';
 import { KlineChartData } from '@src/types';
-import { MaIndicator } from './indicators/MA';
-import { EmaIndicator } from './indicators/EMA';
-import { WmaIndicator } from './indicators/WMA';
-import { VolIndicator } from './indicators/VOL';
-import { Backtest } from './indicators/Backtest';
-
-const SYMBOL = 'SEIUSDT';
-const INTERVAL = '5';
+import { SelectSymbol } from '@components/filters/Symbol';
+import {
+  MaIndicator,
+  EmaIndicator,
+  WmaIndicator,
+  VolIndicator,
+  Backtest,
+} from './indicators';
+import { config } from '@app/config';
+import { darkTheme } from './styles';
 
 export const KlineChart = () => {
   const [data, setData] = useState<KlineChartData>();
 
   const updateData = async () => {
-    const start = getUnixTime(subDays(new Date(), 30)) * 1000;
+    const start = getUnixTime(subDays(new Date(), 2)) * 1000;
     const end = getUnixTime(new Date()) * 1000;
 
     const newData = await kline({
-      symbol: SYMBOL,
-      interval: INTERVAL,
+      symbol: config.filters.symbol,
+      interval: config.filters.interval,
       start,
       end,
     });
@@ -34,6 +36,16 @@ export const KlineChart = () => {
 
   useEffect(() => {
     updateData();
+  }, []);
+
+  useEffect(() => {
+    const chartElement = document.getElementById('chart');
+    if (chartElement && chartElement.parentElement) {
+      const parent = chartElement.parentElement;
+      const parentStyles = window.getComputedStyle(parent);
+      chartElement.style.width = parentStyles.width;
+      chartElement.style.height = parentStyles.height;
+    }
   }, []);
 
   useEffect(() => {
@@ -47,11 +59,29 @@ export const KlineChart = () => {
     // add data to the chart
     chart.applyNewData(data);
 
-    VolIndicator(chart);
-    MaIndicator(chart, data, [2, 50]);
-    // EmaIndicator(chart, data, [3, 30]);
-    // WmaIndicator(chart, data, [3, 40]);
-    Backtest(chart, SYMBOL, '1');
+    const { indicators, backtest } = config;
+
+    if (indicators.vol.enabled) {
+      VolIndicator(chart);
+    }
+
+    if (indicators.ma.enabled) {
+      MaIndicator(chart, data, indicators.ma.periods);
+    }
+
+    if (indicators.ema.enabled) {
+      EmaIndicator(chart, data, indicators.ema.periods);
+    }
+
+    if (indicators.wma.enabled) {
+      WmaIndicator(chart, data, indicators.wma.periods);
+    }
+
+    if (backtest.enabled) {
+      Backtest(chart, backtest.symbol, backtest.id);
+    }
+
+    darkTheme(chart);
 
     // chart.createIndicator('SAR', true, { id: 'candle_pane' });
 
@@ -63,8 +93,12 @@ export const KlineChart = () => {
 
   return (
     <>
-      <h1>{SYMBOL}</h1>
-      <div id="chart" style={{ width: 1200, height: 800 }} />
+      <div className="p-2">
+        <SelectSymbol />
+      </div>
+      <div className="flex-1 w-full">
+        <div id="chart" />
+      </div>
     </>
   );
 };
