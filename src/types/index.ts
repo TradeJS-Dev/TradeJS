@@ -114,3 +114,34 @@ export interface TestConnector extends Connector {
   saveStat: (symbol: string, id: string) => void;
   checkTpl: (symbol: string, timestamp: number) => void;
 }
+
+export interface Indicators {
+  vol: {
+    enabled: boolean;
+  };
+  ma: {
+    enabled: boolean;
+    periods: Array<number>;
+  };
+  ema: {
+    enabled: boolean;
+    periods: Array<number>;
+  };
+  wma: {
+    enabled: boolean;
+    periods: Array<number>;
+  };
+};
+
+export interface BacktestConfig {
+  enabled: boolean;
+  symbol: string;
+  id: string;
+};
+
+export interface Filters {
+  symbol: string;
+  interval: KlineIntervalV3;
+  start: number;
+  end: number;
+};

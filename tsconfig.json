@@ -21,6 +21,9 @@
       "@/*": ["./*"],
       "@src/*": ["./src/*"],
       "@app/*": ["./src/app/*"],
+      "@atoms": ["./src/app/atoms/index"],
+      "@types": ["./src/types/index"],
+      "@UI": ["./src/app/components/UI/index"],
       "@components/*": ["./src/app/components/*"]
     }
   },

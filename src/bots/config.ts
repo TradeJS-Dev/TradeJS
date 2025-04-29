@@ -1,5 +1,5 @@
 import { MaStrategyCreator } from '@src/strategy/MA';
-import { BotConfig } from '@src/types';
+import { BotConfig } from '@types';
 
 export const config: BotConfig = [
   // {

@@ -3,10 +3,8 @@
 import React, { useEffect, useState } from 'react';
 import _ from 'lodash';
 import { init, Chart, dispose } from 'klinecharts';
-import { getUnixTime, subDays } from 'date-fns';
 import { kline } from '@src/actions/kline';
-import { KlineChartData } from '@src/types';
-import { SelectSymbol } from '@components/filters/Symbol';
+import { KlineChartData, Indicators, Filters, BacktestConfig } from '@types';
 import {
   MaIndicator,
   EmaIndicator,
@@ -14,19 +12,22 @@ import {
   VolIndicator,
   Backtest,
 } from './indicators';
-import { config } from '@app/config';
 import { darkTheme } from './styles';
 
-export const KlineChart = () => {
+interface KlineChartProps {
+  id: string;
+  filters: Filters;
+  indicators: Indicators;
+  backtest: BacktestConfig;
+}
+
+export const KlineChart = ({ id, filters, indicators, backtest }: KlineChartProps) => {
   const [data, setData] = useState<KlineChartData>();
 
-  const updateData = async () => {
-    const start = getUnixTime(subDays(new Date(), 2)) * 1000;
-    const end = getUnixTime(new Date()) * 1000;
-
+  const updateData = async ({ symbol, interval, start, end }: Filters) => {
     const newData = await kline({
-      symbol: config.filters.symbol,
-      interval: config.filters.interval,
+      symbol,
+      interval,
       start,
       end,
     });
@@ -35,11 +36,11 @@ export const KlineChart = () => {
   };
 
   useEffect(() => {
-    updateData();
-  }, []);
+    updateData(filters);
+  }, [filters]);
 
   useEffect(() => {
-    const chartElement = document.getElementById('chart');
+    const chartElement = document.getElementById(id);
     if (chartElement && chartElement.parentElement) {
       const parent = chartElement.parentElement;
       const parentStyles = window.getComputedStyle(parent);
@@ -49,17 +50,13 @@ export const KlineChart = () => {
   }, []);
 
   useEffect(() => {
-    // initialize the chart
     if (!data || _.isEmpty(data)) {
       return () => null;
     }
 
-    const chart = init('chart') as Chart;
+    const chart = init(id) as Chart;
 
-    // add data to the chart
     chart.applyNewData(data);
-
-    const { indicators, backtest } = config;
 
     if (indicators.vol.enabled) {
       VolIndicator(chart);
@@ -83,22 +80,10 @@ export const KlineChart = () => {
 
     darkTheme(chart);
 
-    // chart.createIndicator('SAR', true, { id: 'candle_pane' });
-
     return () => {
-      // destroy chart
-      dispose('chart');
+      dispose(id);
     };
   }, [data]);
 
-  return (
-    <>
-      <div className="p-2">
-        <SelectSymbol />
-      </div>
-      <div className="flex-1 w-full">
-        <div id="chart" />
-      </div>
-    </>
-  );
+  return <div id={id} />;
 };

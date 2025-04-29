@@ -12,7 +12,7 @@ import {
   OrderLogData,
   KlineChartData,
   Tpl,
-} from '@src/types';
+} from '@types';
 
 export const TestConnectorCreator: TCC = (config) => {
   let CURRENT_POSITION: Order | null = null;

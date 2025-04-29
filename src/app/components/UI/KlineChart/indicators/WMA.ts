@@ -1,8 +1,8 @@
-import { SMA } from 'technicalindicators';
+import { WMA } from 'technicalindicators';
 import { registerIndicator, Chart } from 'klinecharts';
-import { KlineChartData } from '@src/types';
+import { KlineChartData } from '@types';
 
-export const MaIndicator = (
+export const WmaIndicator = (
   chart: Chart,
   data: KlineChartData,
   periods: number[],
@@ -10,19 +10,19 @@ export const MaIndicator = (
   const closesPrices = data.map((item) => item.close);
 
   const values = periods.map((period) =>
-    SMA.calculate({
+    WMA.calculate({
       period,
       values: closesPrices,
     }),
   );
 
   registerIndicator({
-    name: 'MA',
-    shortName: 'MA',
+    name: 'WMA',
+    shortName: 'WMA',
     calcParams: periods,
     figures: periods.map((period) => ({
-      key: `MA${period}`,
-      title: `MA${period}: `,
+      key: `WMA${period}`,
+      title: `WMA${period}: `,
       type: 'line',
     })),
 
@@ -32,7 +32,7 @@ export const MaIndicator = (
         const ma: Record<string, number> = {};
         periods.forEach((period, j) => {
           if (i >= period - 1) {
-            ma[`MA${period}`] = values[j][i - (period - 1)];
+            ma[`WMA${period}`] = values[j][i - (period - 1)];
           }
         });
 
@@ -41,5 +41,5 @@ export const MaIndicator = (
     },
   });
 
-  chart.createIndicator('MA', true, { id: 'candle_pane' });
+  chart.createIndicator('WMA', true, { id: 'candle_pane' });
 };

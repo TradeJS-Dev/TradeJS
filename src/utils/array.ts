@@ -1,5 +1,5 @@
 import _ from 'lodash';
-import { KlineChartData } from '@src/types';
+import { KlineChartData } from '@types';
 
 export const mergeData = (a1: KlineChartData, a2: KlineChartData) => {
   const res = {

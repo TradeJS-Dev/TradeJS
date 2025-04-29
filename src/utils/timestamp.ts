@@ -1,5 +1,5 @@
 import { format } from 'date-fns';
-import { KlineChartItem, KlineChartData } from '@src/types';
+import { KlineChartItem, KlineChartData } from '@types';
 
 export const getItemTimestamp = (item: KlineChartItem) => item.timestamp;
 

@@ -2,7 +2,7 @@
 
 import 'dotenv/config';
 import { RestClientV5 } from 'bybit-api';
-import { ConnectorConfig } from '@src/types';
+import { ConnectorConfig } from '@types';
 
 const API_KEY = process.env.BYBIT_API_KEY;
 const API_SECRET = process.env.BYBIT_API_SECRET;

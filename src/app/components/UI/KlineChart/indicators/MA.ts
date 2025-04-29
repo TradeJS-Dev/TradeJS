@@ -1,8 +1,8 @@
-import { EMA } from 'technicalindicators';
+import { SMA } from 'technicalindicators';
 import { registerIndicator, Chart } from 'klinecharts';
-import { KlineChartData } from '@src/types';
+import { KlineChartData } from '@types';
 
-export const EmaIndicator = (
+export const MaIndicator = (
   chart: Chart,
   data: KlineChartData,
   periods: number[],
@@ -10,19 +10,19 @@ export const EmaIndicator = (
   const closesPrices = data.map((item) => item.close);
 
   const values = periods.map((period) =>
-    EMA.calculate({
+    SMA.calculate({
       period,
       values: closesPrices,
     }),
   );
 
   registerIndicator({
-    name: 'EMA',
-    shortName: 'EMA',
+    name: 'MA',
+    shortName: 'MA',
     calcParams: periods,
     figures: periods.map((period) => ({
-      key: `EMA${period}`,
-      title: `EMA${period}: `,
+      key: `MA${period}`,
+      title: `MA${period}: `,
       type: 'line',
     })),
 
@@ -32,7 +32,7 @@ export const EmaIndicator = (
         const ma: Record<string, number> = {};
         periods.forEach((period, j) => {
           if (i >= period - 1) {
-            ma[`EMA${period}`] = values[j][i - (period - 1)];
+            ma[`MA${period}`] = values[j][i - (period - 1)];
           }
         });
 
@@ -41,5 +41,5 @@ export const EmaIndicator = (
     },
   });
 
-  chart.createIndicator('EMA', true, { id: 'candle_pane' });
+  chart.createIndicator('MA', true, { id: 'candle_pane' });
 };

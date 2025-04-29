@@ -11,7 +11,7 @@ import {
 } from '@src/utils/timestamp';
 import { getCache, setCache } from '@src/utils/cache';
 import { mergeData } from '@src/utils/array';
-import { KlineChartData, KlineRequest, ConnectorCreator } from '@src/types';
+import { KlineChartData, KlineRequest, ConnectorCreator } from '@types';
 
 const LIMIT = 1000;
 

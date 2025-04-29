@@ -1,0 +1,15 @@
+export const List = [
+  'BTCUSDT',
+  'ETHUSDT',
+  'NEARUSDT',
+  'MATICUSDT',
+  'OPUSDT',
+  'APTUSDT',
+  'AVAXUSDT',
+  'SOLUSDT',
+  'SUIUSDT',
+  'SEIUSDT',
+  'TIAUSDT',
+  'DYDXUSDT',
+  'DYMUSDT',
+];

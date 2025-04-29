@@ -1,6 +1,6 @@
 import ProgressBar from 'progress';
 import chalk from 'chalk';
-import { TestingBox } from '@src/types';
+import { TestingBox } from '@types';
 import { formatUnix } from './timestamp';
 import { TestConnectorCreator } from '@src/connectors/Test';
 

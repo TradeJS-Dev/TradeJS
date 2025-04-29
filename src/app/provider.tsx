@@ -1,12 +1,13 @@
 'use client';
 
+import { RecoilRoot } from 'recoil';
 import {
   ChakraProvider,
   createSystem,
   defaultConfig,
   defineConfig,
 } from '@chakra-ui/react';
-import { ColorModeProvider } from '@components/ColorMode';
+import { ColorModeProvider } from '@UI';
 
 const config = defineConfig({
   theme: {
@@ -24,10 +25,10 @@ export default function Provider({
   children: React.ReactNode;
 }>) {
   return (
-    <ChakraProvider value={system}>
-      <ColorModeProvider forcedTheme="dark">
-      {children}
-      </ColorModeProvider>
-    </ChakraProvider>
+    <RecoilRoot>
+      <ChakraProvider value={system}>
+        <ColorModeProvider forcedTheme="dark">{children}</ColorModeProvider>
+      </ChakraProvider>
+    </RecoilRoot>
   );
 }

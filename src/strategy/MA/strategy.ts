@@ -1,7 +1,7 @@
 import _ from 'lodash';
 import { SMA } from 'technicalindicators';
 import { config as DEFAULT_CONFIG } from './config';
-import { Strategy, StrategyCreator, StrategyConfig } from '@src/types';
+import { Strategy, StrategyCreator, StrategyConfig } from '@types';
 
 export const MaStrategyCreator: StrategyCreator = (baseConfig) => {
   const config = {

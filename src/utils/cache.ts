@@ -1,19 +1,15 @@
 import fs from 'fs';
 import path from 'path';
-import { data } from './data';
+import chalk from 'chalk';
 
 const getCachePath = (dir: string, file: string) =>
   path.join(process.cwd(), 'src', dir, `${file}.json`);
 
 export const getCache = (dir: string, file: string): [] => {
-  if (dir !== 'backtest') {
-    return data[`${dir}_${file}`] || [];
-  }
-
   const fullPath = getCachePath(dir, file);
 
   if (!fs.existsSync(fullPath)) {
-    console.error(`${fullPath} not found`);
+    console.warn(chalk.gray(`${fullPath} not found`));
     return [];
   }
 

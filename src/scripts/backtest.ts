@@ -3,7 +3,7 @@ import chalk from 'chalk';
 import { getUnixTime, subDays } from 'date-fns';
 import { testing } from '@src/utils/testing';
 import { MaStrategyCreator, config } from '@src/strategy/MA';
-import { TestConfig } from '@src/types';
+import { TestConfig } from '@types';
 
 const start = getUnixTime(subDays(new Date(), 3)) * 1000;
 const end = getUnixTime(new Date()) * 1000;
