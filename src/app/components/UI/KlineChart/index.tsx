@@ -17,8 +17,8 @@ import { darkTheme } from './styles';
 interface KlineChartProps {
   id: string;
   filters: Filters;
-  indicators: Indicators;
-  backtest: BacktestConfig;
+  indicators?: Indicators;
+  backtest?: BacktestConfig;
 }
 
 export const KlineChart = ({ id, filters, indicators, backtest }: KlineChartProps) => {
@@ -58,23 +58,23 @@ export const KlineChart = ({ id, filters, indicators, backtest }: KlineChartProp
 
     chart.applyNewData(data);
 
-    if (indicators.vol.enabled) {
+    if (indicators?.vol.enabled) {
       VolIndicator(chart);
     }
 
-    if (indicators.ma.enabled) {
+    if (indicators?.ma.enabled) {
       MaIndicator(chart, data, indicators.ma.periods);
     }
 
-    if (indicators.ema.enabled) {
+    if (indicators?.ema.enabled) {
       EmaIndicator(chart, data, indicators.ema.periods);
     }
 
-    if (indicators.wma.enabled) {
+    if (indicators?.wma.enabled) {
       WmaIndicator(chart, data, indicators.wma.periods);
     }
 
-    if (backtest.enabled) {
+    if (backtest?.enabled) {
       Backtest(chart, backtest.symbol, backtest.id);
     }
 

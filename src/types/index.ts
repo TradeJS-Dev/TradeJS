@@ -141,7 +141,7 @@ export interface BacktestConfig {
 
 export interface Filters {
   symbol: string;
-  interval: KlineIntervalV3;
+  interval: Interval;
   start: number;
   end: number;
 };

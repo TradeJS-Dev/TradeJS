@@ -5,11 +5,6 @@ import { filtersState } from '@atoms';
 import { Select } from '@UI';
 import { List } from './list';
 
-const items = List.map((value) => ({
-  label: value,
-  value,
-}));
-
 export const SelectSymbol = () => {
   const [filters, setFilters] = useRecoilState(filtersState);
 
@@ -24,7 +19,7 @@ export const SelectSymbol = () => {
     <Select
       defaultValue={[filters.symbol]}
       onChange={onChange}
-      items={items}
+      items={List}
       width="160px"
     />
   );
