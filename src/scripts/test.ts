@@ -15,21 +15,21 @@ const client = new RestClientV5({
 
 const SYMBOL = 'SUIUSDT';
 
-const TPL = [
-  {
-    rate: 0.3,
-    profit: 0.07,
-  },
-  {
-    rate: 0.4,
-    profit: 0.11,
-  },
-];
-
-const LIMIT = 200;
-const PRICE = 1.67;
-
 const placeOrder = async () => {
+  const TPL = [
+    {
+      rate: 0.3,
+      profit: 0.07,
+    },
+    {
+      rate: 0.4,
+      profit: 0.11,
+    },
+  ];
+
+  const LIMIT = 200;
+  const PRICE = 1.67;
+
   const QTY = LIMIT / PRICE;
 
   console.log(QTY);
@@ -48,8 +48,6 @@ const placeOrder = async () => {
   if (!resMain.result?.orderId) {
     return;
   }
-
-  // return;
 
   for await (const tpl of TPL) {
     const qty = QTY * tpl.rate;

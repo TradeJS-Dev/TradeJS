@@ -17,7 +17,10 @@ export const Dashboard = () => {
         <SelectInterval />
         <SubchartEnable />
       </div>
-      <div key={subchart.enabled ? 'main-chart' : 'chart'} className="flex-1 w-full">
+      <div
+        key={subchart.enabled ? 'main-chart' : 'chart'}
+        className="flex-1 w-full"
+      >
         <MainChart />
       </div>
       {subchart.enabled && (

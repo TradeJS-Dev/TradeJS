@@ -131,17 +131,17 @@ export interface Indicators {
     enabled: boolean;
     periods: Array<number>;
   };
-};
+}
 
 export interface BacktestConfig {
   enabled: boolean;
   symbol: string;
   id: string;
-};
+}
 
 export interface Filters {
   symbol: string;
   interval: Interval;
   start: number;
   end: number;
-};
+}
