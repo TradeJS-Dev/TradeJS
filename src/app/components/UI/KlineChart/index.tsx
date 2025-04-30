@@ -21,7 +21,12 @@ interface KlineChartProps {
   backtest?: BacktestConfig;
 }
 
-export const KlineChart = ({ id, filters, indicators, backtest }: KlineChartProps) => {
+export const KlineChart = ({
+  id,
+  filters,
+  indicators,
+  backtest,
+}: KlineChartProps) => {
   const [data, setData] = useState<KlineChartData>();
 
   const updateData = async ({ symbol, interval, start, end }: Filters) => {
