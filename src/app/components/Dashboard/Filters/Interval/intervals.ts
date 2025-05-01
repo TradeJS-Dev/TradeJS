@@ -1,4 +1,4 @@
-export const List = [
+export const intervals = [
   { label: '5m', value: '5' },
   { label: '15m', value: '15' },
   { label: '1h', value: '60' },

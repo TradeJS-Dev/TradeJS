@@ -1,14 +1,34 @@
 'use client';
 
-import React from 'react';
-import { useRecoilValue } from 'recoil';
-import { subchartState } from '@atoms';
+import React, { useEffect } from 'react';
+import { useRecoilValue, useSetRecoilState } from 'recoil';
+import { subchartState, tickersState } from '@atoms';
+import { scanner } from '@src/actions/scanner';
 import { SelectSymbol, SelectInterval, SubchartEnable } from './Filters';
 import { MainChart } from './MainChart';
 import { SubChart } from './SubChart';
 
 export const Dashboard = () => {
   const subchart = useRecoilValue(subchartState);
+  const setTickers = useSetRecoilState(tickersState);
+
+  useEffect(() => {
+    (async () => {
+      const tickers = await scanner();
+
+      setTickers((oldList) => {
+        if (oldList.loaded) {
+          return oldList;
+        }
+
+        return {
+          ...oldList,
+          loaded: true,
+          list: [...oldList.list, ...tickers],
+        };
+      });
+    })();
+  }, []);
 
   return (
     <>

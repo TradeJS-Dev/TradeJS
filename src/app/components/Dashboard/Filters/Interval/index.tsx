@@ -4,7 +4,7 @@ import { useRecoilState } from 'recoil';
 import { filtersState } from '@atoms';
 import { Segment } from '@UI';
 import { Interval } from '@types';
-import { List } from './list';
+import { intervals } from './intervals';
 
 export const SelectInterval = () => {
   const [filters, setFilters] = useRecoilState(filtersState);
@@ -21,6 +21,6 @@ export const SelectInterval = () => {
   };
 
   return (
-    <Segment defaultValue={filters.interval} onChange={onChange} items={List} />
+    <Segment defaultValue={filters.interval} onChange={onChange} items={intervals} />
   );
 };

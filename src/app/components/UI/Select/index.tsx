@@ -3,18 +3,16 @@
 import { useMemo } from 'react';
 import {
   Portal,
+  Stack,
+  Span,
   Select as UISelect,
   createListCollection,
 } from '@chakra-ui/react';
-
-interface Item {
-  label: string;
-  value: string;
-}
+import { Items } from '@types';
 
 interface SelectProps {
   defaultValue: string[];
-  items: Item[];
+  items: Items;
   placeholder?: string;
   width?: string | number;
   size?: 'xs' | 'sm' | 'md' | 'lg';
@@ -34,7 +32,7 @@ export const Select = ({
       createListCollection({
         items,
       }),
-    [],
+    [items],
   );
 
   return (
@@ -59,7 +57,14 @@ export const Select = ({
           <UISelect.Content>
             {collection.items.map((item) => (
               <UISelect.Item item={item} key={item.value}>
-                {item.label}
+                <Stack gap="0">
+                  <UISelect.ItemText>{item.label}</UISelect.ItemText>
+                  {item.description && (
+                    <Span color="fg.muted" textStyle="xs">
+                      {item.description}
+                    </Span>
+                  )}
+                </Stack>
                 <UISelect.ItemIndicator />
               </UISelect.Item>
             ))}

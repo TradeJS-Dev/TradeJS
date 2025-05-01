@@ -1,15 +1,11 @@
 'use client';
 
 import { SegmentGroup } from '@chakra-ui/react';
-
-interface Item {
-  label: string;
-  value: string;
-}
+import { Items } from '@types';
 
 interface SegmentProps {
   defaultValue: string;
-  items: Item[];
+  items: Items;
   onChange?: (value: string | null) => void;
 }
 

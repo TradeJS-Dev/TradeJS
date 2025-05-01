@@ -10,6 +10,7 @@ import {
   formatUnix,
 } from '@src/utils/timestamp';
 import { getCache, setCache } from '@src/utils/cache';
+import { normalizeTickerData } from '@src/utils/tickers';
 import { mergeData } from '@src/utils/array';
 import { KlineChartData, KlineRequest, ConnectorCreator } from '@types';
 
@@ -185,5 +186,14 @@ export const ByBitConnectorCreator: ConnectorCreator = (config) => {
 
       return true;
     },
+    getTickers: async () => {
+      const client = getClient(config);
+
+      const data = await client.getTickers({
+        category: 'linear',
+      });
+
+      return data.result.list.map((item ) => normalizeTickerData(item as any));
+    }
   };
 };

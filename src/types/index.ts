@@ -100,6 +100,7 @@ export type BotConfig = Bot[];
 type GetPosition = (symbol: string) => Promise<Position | null>;
 type PlaceOrder = (order: Order, tpl: Tpl[]) => Promise<boolean>;
 type ClosePosition = (order: Omit<Order, 'qty'>) => Promise<boolean>;
+export type GetTickers = () => Promise<Ticker[]>;
 export type Kline = (options: KlineRequest) => Promise<KlineChartData>;
 
 export interface Connector {
@@ -107,6 +108,7 @@ export interface Connector {
   getPosition: GetPosition;
   placeOrder: PlaceOrder;
   closePosition: ClosePosition;
+  getTickers: GetTickers;
 }
 
 export interface TestConnector extends Connector {
@@ -145,3 +147,40 @@ export interface Filters {
   start: number;
   end: number;
 }
+
+export interface Ticker {
+  symbol: string;
+  lastPrice: number;
+  indexPrice: number;
+  markPrice: number;
+  prevPrice24h: number;
+  price24hPcnt: number;
+  highPrice24h: number;
+  lowPrice24h: number;
+  prevPrice1h: number;
+  openInterest: number;
+  openInterestValue: number;
+  turnover24h: number;
+  volume24h: number;
+  fundingRate: number;
+  nextFundingTime: number;
+  predictedDeliveryPrice: string;
+  basisRate: string;
+  deliveryFeeRate: string;
+  deliveryTime: number;
+  ask1Size: number;
+  bid1Price: number;
+  ask1Price: number;
+  bid1Size: number;
+  basis: string;
+  preOpenPrice: string;
+  preQty: string;
+}
+
+export interface Item {
+  label: string;
+  value: string;
+  description?: string;
+}
+
+export type Items = Item[];

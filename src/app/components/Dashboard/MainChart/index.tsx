@@ -4,7 +4,7 @@ import React from 'react';
 import _ from 'lodash';
 import { useRecoilValue } from 'recoil';
 import { filtersState, indicatorsState, backtestState } from '@atoms';
-import { KlineChart } from '@UI';
+import { KlineChart } from '../KlineChart';
 
 export const MainChart = () => {
   const filters = useRecoilValue(filtersState);

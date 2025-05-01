@@ -61,6 +61,8 @@ export const KlineChart = ({
 
     const chart = init(id) as Chart;
 
+    chart.setPrecision({ price: 3 });
+
     chart.applyNewData(data);
 
     if (indicators?.vol.enabled) {
