@@ -2,113 +2,23 @@ const ListIt = require('list-it');
 import chalk from 'chalk';
 import { getUnixTime, subDays } from 'date-fns';
 import { testing } from '@src/utils/testing';
-import { MaStrategyCreator, config } from '@src/strategy/MA';
+import { BreakoutStrategyCreator, config } from '@src/strategy/Breakout';
 import { TestConfig } from '@types';
 
-const start = getUnixTime(subDays(new Date(), 3)) * 1000;
+const start = getUnixTime(subDays(new Date(), 10)) * 1000;
 const end = getUnixTime(new Date()) * 1000;
 
 const TEST_CONFIG: TestConfig = [
   {
     options: {
-      symbol: 'SUIUSDT',
+      symbol: 'DOGSUSDT',
       start,
       end,
     },
     strategyConfig: {
       ...config,
-      PERIODS: [2, 50],
-      tpl: [
-        {
-          rate: 0.3,
-          profit: 0.04,
-        },
-        {
-          rate: 0.3,
-          profit: 0.08,
-        },
-        {
-          rate: 0.3,
-          profit: 0.16,
-        },
-      ],
     },
   },
-  // {
-  //   options: {
-  //     symbol: 'DYMUSDT',
-  //     start,
-  //     end,
-  //   },
-  //   strategyConfig: {
-  //     PERIODS: [2, 50],
-  //     LIMIT: 200,
-  //     tpl: [
-  //       {
-  //         rate: 0.3,
-  //         profit: 0.02,
-  //       },
-  //       {
-  //         rate: 0.3,
-  //         profit: 0.04,
-  //       },
-  //       {
-  //         rate: 0.3,
-  //         profit: 0.08,
-  //       },
-  //     ],
-  //   },
-  // },
-  // {
-  //   options: {
-  //     symbol: 'DYMUSDT',
-  //     start,
-  //     end,
-  //   },
-  //   strategyConfig: {
-  //     PERIODS: [2, 99],
-  //     LIMIT: 200,
-  //     tpl: [
-  //       {
-  //         rate: 0.3,
-  //         profit: 0.02,
-  //       },
-  //       {
-  //         rate: 0.3,
-  //         profit: 0.04,
-  //       },
-  //       {
-  //         rate: 0.3,
-  //         profit: 0.08,
-  //       },
-  //     ],
-  //   },
-  // },
-  // {
-  //   options: {
-  //     symbol: 'DYMUSDT',
-  //     start,
-  //     end,
-  //   },
-  //   strategyConfig: {
-  //     PERIODS: [2, 99],
-  //     LIMIT: 200,
-  //     tpl: [
-  //       {
-  //         rate: 0.3,
-  //         profit: 0.04,
-  //       },
-  //       {
-  //         rate: 0.3,
-  //         profit: 0.08,
-  //       },
-  //       {
-  //         rate: 0.3,
-  //         profit: 0.16,
-  //       },
-  //     ],
-  //   },
-  // },
 ];
 
 const HEADERS = [
@@ -126,7 +36,7 @@ const backtest = async () => {
   for await (const test of TEST_CONFIG) {
     const stat = await testing(
       num.toString(),
-      MaStrategyCreator,
+      BreakoutStrategyCreator,
       test.options,
       test.strategyConfig,
     );

@@ -1,3 +1,4 @@
+import _ from 'lodash';
 import { Ticker, Item } from '@types';
 
 type Category = 'volatility24h' | 'volatility1h' | 'volume';
@@ -70,6 +71,51 @@ export const getVolatilityTickers = (data: Ticker[]): Item[] => {
       value,
       description: category,
     }));
+};
+
+export const getTopTickers = (data: Ticker[], topN = 20): Item[] => {
+  const scores = data.map((coin) => {
+    const vol24h = Math.abs(coin.price24hPcnt);
+    const prev1h = coin.prevPrice1h;
+    const last = coin.lastPrice;
+    const vol1h = prev1h ? Math.abs((last - prev1h) / prev1h) * 100 : 0;
+
+    const volumeMln = coin.volume24h / 1_000_000;
+    const openInterestMln = coin.openInterestValue / 1_000_000;
+    const fundingRateAbs = Math.abs(coin.fundingRate * 100); // в %
+
+    const score =
+      vol24h * 0.4 +
+      vol1h * 0.2 +
+      volumeMln * 0.2 +
+      openInterestMln * 0.1 +
+      fundingRateAbs * 0.1;
+
+    return {
+      symbol: coin.symbol,
+      vol24h,
+      vol1h,
+      volumeMln,
+      openInterestMln,
+      fundingRateAbs,
+      score,
+    };
+  });
+
+  const top = scores
+    .sort((a, b) => b.score - a.score)
+    .slice(0, topN)
+    .map((item) => ({
+      label: item.symbol.replace(/(USDT)$/i, ''),
+      value: item.symbol,
+      description: `24h\u00A0vol: ${item.vol24h.toFixed(
+        2,
+      )}%, 1h\u00A0vol: ${item.vol1h.toFixed(2)}%, vol: ${item.volumeMln.toFixed(
+        1,
+      )}M, OI: ${item.openInterestMln.toFixed(1)}M, funding: ${item.fundingRateAbs.toFixed(4)}%`,
+    }));
+
+  return top;
 };
 
 export const normalizeTickerData = (raw: Record<string, string>): Ticker => ({

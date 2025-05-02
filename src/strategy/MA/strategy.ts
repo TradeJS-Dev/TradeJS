@@ -45,8 +45,6 @@ export const MaStrategyCreator: StrategyCreator = (baseConfig) => {
       return;
     }
 
-    // console.log('ma', Line1, Line2, positionExists);
-
     if (!positionExists && Line1 > Line2) {
       const qty = config.LIMIT / price;
 

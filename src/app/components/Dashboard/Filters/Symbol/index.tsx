@@ -1,11 +1,11 @@
 'use client';
 
 import { useRecoilState, useRecoilValue } from 'recoil';
-import { filtersState, tickersState } from '@atoms';
+import { filtersState, tickersListSelector } from '@atoms';
 import { Select } from '@UI';
 
 export const SelectSymbol = () => {
-  const tickers = useRecoilValue(tickersState);
+  const tickers = useRecoilValue(tickersListSelector);
   const [filters, setFilters] = useRecoilState(filtersState);
 
   const onChange = (value: string[]) => {
@@ -19,8 +19,8 @@ export const SelectSymbol = () => {
     <Select
       defaultValue={[filters.symbol]}
       onChange={onChange}
-      items={tickers.list}
-      width="200px"
+      items={tickers}
+      width="400px"
     />
   );
 };

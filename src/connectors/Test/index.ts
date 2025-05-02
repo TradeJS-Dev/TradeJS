@@ -60,7 +60,7 @@ export const TestConnectorCreator: TCC = (config) => {
       };
     },
     saveStat: (symbol: string, id: string) => {
-      setCache('backtest', `${symbol}_${id}`, ORDER_LOG);
+      setCache('data', `backtest_${symbol}_${id}`, ORDER_LOG);
     },
     getPosition: () => {
       return new Promise((resolve) => resolve(CURRENT_POSITION || null));
@@ -162,5 +162,6 @@ export const TestConnectorCreator: TCC = (config) => {
 
       return new Promise((resolve) => resolve(true));
     },
+    getTickers: async () => ([]),
   };
 };

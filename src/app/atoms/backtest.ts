@@ -4,8 +4,8 @@ import { BacktestConfig } from '@types';
 export const backtestState = atom({
   key: 'BacktestConfig',
   default: {
-    enabled: false,
-    symbol: 'BTCUSDT',
+    enabled: true,
+    symbol: 'DOGSUSDT',
     id: '1',
   } as BacktestConfig,
 });

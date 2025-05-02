@@ -16,17 +16,10 @@ export const Dashboard = () => {
     (async () => {
       const tickers = await scanner();
 
-      setTickers((oldList) => {
-        if (oldList.loaded) {
-          return oldList;
-        }
-
-        return {
-          ...oldList,
-          loaded: true,
-          list: [...oldList.list, ...tickers],
-        };
-      });
+      setTickers((oldState) => ({
+        ...oldState,
+        scanner: tickers,
+      }));
     })();
   }, []);
 

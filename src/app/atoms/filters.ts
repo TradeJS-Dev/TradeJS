@@ -5,7 +5,7 @@ import { Interval, Filters } from '@types';
 export const filtersState = atom({
   key: 'Filters',
   default: {
-    symbol: 'BTCUSDT',
+    symbol: 'DOGSUSDT',
     interval: '15' as Interval,
     start: getUnixTime(subDays(new Date(), 30)) * 1000,
     end: getUnixTime(new Date()) * 1000,

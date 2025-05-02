@@ -4,8 +4,8 @@ import { TestingBox } from '@types';
 import { formatUnix } from './timestamp';
 import { TestConnectorCreator } from '@src/connectors/Test';
 
-const _5m = 300000;
-const INC = _5m * 1;
+const _5m = 300_000;
+const INC = _5m * 3;
 
 export const testing: TestingBox = async (
   id,

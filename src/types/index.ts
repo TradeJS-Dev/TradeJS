@@ -100,8 +100,8 @@ export type BotConfig = Bot[];
 type GetPosition = (symbol: string) => Promise<Position | null>;
 type PlaceOrder = (order: Order, tpl: Tpl[]) => Promise<boolean>;
 type ClosePosition = (order: Omit<Order, 'qty'>) => Promise<boolean>;
-export type GetTickers = () => Promise<Ticker[]>;
 export type Kline = (options: KlineRequest) => Promise<KlineChartData>;
+export type GetTickers = () => Promise<Ticker[]>;
 
 export interface Connector {
   kline: Kline;

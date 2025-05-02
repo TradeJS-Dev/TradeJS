@@ -1,60 +1,91 @@
 'use client';
 
 import _ from 'lodash';
-import { registerIndicator, Chart } from 'klinecharts';
+import { registerFigure, registerOverlay, Chart } from 'klinecharts';
 import { backtest } from '@src/actions/backtest';
 
-export const Backtest = async (chart: Chart, symbol: string, id = '1') => {
+registerFigure({
+  name: 'diamond',
+  draw: (ctx, attrs, styles) => {
+    const { x, y, width, height } = attrs;
+    const { color } = styles;
+    ctx.beginPath();
+    ctx.moveTo(x - width / 2, y);
+    ctx.lineTo(x, y - height / 2);
+    ctx.lineTo(x + width / 2, y);
+    ctx.lineTo(x, y + height / 2);
+    ctx.closePath();
+    ctx.fillStyle = color;
+    ctx.fill();
+  },
+  checkEventOn: (coordinate, attrs) => {
+    const { x, y } = coordinate;
+    const { width, height } = attrs;
+    return Math.abs(x * height) + Math.abs(y * width) <= (width * height) / 2;
+  },
+});
+
+registerOverlay({
+  name: 'backtestOverlay-sell',
+  totalStep: 2,
+  createPointFigures: ({ coordinates }) => {
+    return coordinates.map(({ x, y }) => ({
+      type: 'diamond',
+      attrs: {
+        x,
+        y,
+        width: 10,
+        height: 10,
+      },
+      styles: { color: '#FF0000' },
+    }));
+  },
+});
+
+registerOverlay({
+  name: 'backtestOverlay-buy',
+  totalStep: 2,
+  createPointFigures: ({ coordinates }) => {
+    return coordinates.map(({ x, y }) => ({
+      type: 'diamond',
+      attrs: {
+        x,
+        y,
+        width: 10,
+        height: 10,
+      },
+      styles: { color: '#00FF00' },
+    }));
+  },
+});
+
+export const Backtest = async (
+  chartInstance: Chart,
+  symbol: string,
+  id = '1',
+) => {
   const backtestData = await backtest(id, symbol);
+  if (_.isEmpty(backtestData)) return;
 
-  if (_.isEmpty(backtestData)) {
-    return;
-  }
+  const pointsSell = backtestData.filter(({ type }) => type === 'SELL') .map(({ timestamp, price }, dataIndex) => ({
+    dataIndex,
+    timestamp,
+    value: price,
+  }));
 
-  registerIndicator({
-    name: 'Backtest',
-    figures: [{ key: 'backtest' }],
-    calc: (kLineDataList) => {
-      return kLineDataList.map((kLineData, ind) => {
-        const order = backtestData.find(
-          (item) =>
-            ind > 0 &&
-            item.timestamp > kLineDataList[ind - 1].timestamp &&
-            item.timestamp <= kLineData.timestamp,
-        );
-
-        if (!order) {
-          return {};
-        }
-
-        console.log('calc', order);
-
-        return {
-          text: order.type === 'BUY' ? '🍏' : '🍎',
-          backtest: order.price,
-        };
-      });
-    },
-    draw: ({ ctx, visibleRange, indicator, xAxis, yAxis }) => {
-      const { from, to } = visibleRange;
-
-      ctx.font = '14px' + ' Helvetica Neue';
-      ctx.textAlign = 'center';
-      const result = indicator.result;
-      for (let i = from; i < to; i++) {
-        const data = result[i];
-
-        console.log('draw', data?.backtest);
-
-        if (data?.backtest) {
-          const x = xAxis.convertToPixel(i);
-          const y = yAxis.convertToPixel(data.backtest);
-          ctx.fillText(data.text, x, y);
-        }
-      }
-      return false;
-    },
+  chartInstance.createOverlay({
+    name: 'backtestOverlay-sell',
+    points: pointsSell
   });
 
-  chart.createIndicator('Backtest', true, { id: 'candle_pane' });
+  const pointsBuy = backtestData.filter(({ type }) => type === 'BUY') .map(({ timestamp, price }, dataIndex) => ({
+    dataIndex,
+    timestamp,
+    value: price,
+  }));
+
+  chartInstance.createOverlay({
+    name: 'backtestOverlay-buy',
+    points: pointsBuy
+  });
 };
