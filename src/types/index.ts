@@ -71,7 +71,7 @@ export type Position = {
 };
 
 export type OrderLog = Order & {
-  type: 'BUY' | 'SELL';
+  type: 'OPEN_LONG' | 'OPEN_SHORT' | 'CLOSE_LONG' | 'CLOSE_SHORT';
 };
 
 export type OrderLogData = OrderLog[];

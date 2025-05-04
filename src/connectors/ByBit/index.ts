@@ -151,17 +151,31 @@ export const ByBitConnectorCreator: ConnectorCreator = (config) => {
       for await (const tpl of TPL) {
         const tplSize = qty * tpl.rate;
 
-        const tplRes = await client.setTradingStop({
-          category: 'linear',
-          symbol,
-          tpSize: tplSize.toFixed(0),
-          tpslMode: 'Partial',
-          takeProfit: `${price * (1 + tpl.profit)}`,
-          tpOrderType: 'Market',
-          positionIdx: 0,
-        });
+        if (tpl.profit > 0) {
+          const tplRes = await client.setTradingStop({
+            category: 'linear',
+            symbol,
+            tpSize: tplSize.toFixed(0),
+            tpslMode: 'Partial',
+            takeProfit: `${price * (1 + tpl.profit)}`,
+            tpOrderType: 'Market',
+            positionIdx: 0,
+          });
 
-        console.log('tpl', tpl, JSON.stringify(tplRes, null, 2));
+          console.log('tpl', tpl, JSON.stringify(tplRes, null, 2));
+        } else {
+          const slRes = await client.setTradingStop({
+            category: 'linear',
+            symbol,
+            slSize: tplSize.toFixed(0),
+            tpslMode: 'Partial',
+            stopLoss: `${price * (1 - tpl.profit)}`,
+            slOrderType: 'Market',
+            positionIdx: 0,
+          });
+
+          console.log('sl', tpl, JSON.stringify(slRes, null, 2));
+        }
       }
 
       return true;

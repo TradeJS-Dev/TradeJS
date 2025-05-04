@@ -67,18 +67,13 @@ export const Backtest = async (
   const backtestData = await backtest(id, symbol);
   if (_.isEmpty(backtestData)) return;
 
-  const pointsSell = backtestData.filter(({ type }) => type === 'SELL') .map(({ timestamp, price }, dataIndex) => ({
+  const pointsBuy = backtestData.filter(({ type }) => ['OPEN_LONG', 'CLOSE_SHORT'].includes(type)) .map(({ timestamp, price }, dataIndex) => ({
     dataIndex,
     timestamp,
     value: price,
   }));
 
-  chartInstance.createOverlay({
-    name: 'backtestOverlay-sell',
-    points: pointsSell
-  });
-
-  const pointsBuy = backtestData.filter(({ type }) => type === 'BUY') .map(({ timestamp, price }, dataIndex) => ({
+  const pointsSell = backtestData.filter(({ type }) => ['OPEN_SHORT', 'CLOSE_LONG'].includes(type)) .map(({ timestamp, price }, dataIndex) => ({
     dataIndex,
     timestamp,
     value: price,
@@ -87,5 +82,10 @@ export const Backtest = async (
   chartInstance.createOverlay({
     name: 'backtestOverlay-buy',
     points: pointsBuy
+  });
+
+  chartInstance.createOverlay({
+    name: 'backtestOverlay-sell',
+    points: pointsSell,
   });
 };

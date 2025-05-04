@@ -5,7 +5,7 @@ import { formatUnix } from './timestamp';
 import { TestConnectorCreator } from '@src/connectors/Test';
 
 const _5m = 300_000;
-const INC = _5m * 3;
+const INC = _5m * 1;
 
 export const testing: TestingBox = async (
   id,

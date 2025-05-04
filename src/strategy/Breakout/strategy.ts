@@ -1,5 +1,5 @@
 import _ from 'lodash';
-import { BollingerBands, OBV } from 'technicalindicators';
+import { SMA, ATR, BollingerBands, OBV } from 'technicalindicators';
 import { config as DEFAULT_CONFIG } from './config';
 import { Strategy, StrategyCreator, StrategyConfig } from '@types';
 
@@ -12,65 +12,96 @@ export const BreakoutStrategyCreator: StrategyCreator = (baseConfig) => {
   const strategy: Strategy = async (symbol, timestamp, connector) => {
     const data = await connector.kline({
       symbol,
-      interval: '15', // 15m таймфрейм
+      interval: '5',
       end: timestamp,
     });
   
     if (_.isEmpty(data)) return;
   
     const closes = data.map((d) => d.close);
+    const highs = data.map((d) => d.high);
+    const lows = data.map((d) => d.low);
     const volumes = data.map((d) => d.volume);
   
-    const bb = BollingerBands.calculate({
-      period: config.BB_PERIOD,
-      stdDev: config.BB_STDDEV,
-      values: closes,
-    }).pop();
-  
-    if (!bb) return;
-  
     const price = closes[closes.length - 1];
-  
-    // Рассчитаем OBV (на последней свече)
-    const obv = OBV.calculate({
-      close: closes,
-      volume: volumes,
-    });
-  
-    const obvSlope = obv[obv.length - 1] - obv[obv.length - 5]; // прирост за 5 свечей
-  
     const position = await connector.getPosition(symbol);
     const positionExists = !!position;
   
-    // Условие на пробой вверх
-    if (!positionExists && price > bb.upper && obvSlope > config.MIN_OBV_SLOPE) {
-      const qty = config.LIMIT / price;
-      const stopLoss = price * (1 - config.STOP_PERCENT);
-      const takeProfit = price + (price - stopLoss) * config.RISK_REWARD_RATIO;
+    const smaFast = SMA.calculate({ period: 9, values: closes }).pop();
+    const smaSlow = SMA.calculate({ period: 21, values: closes }).pop();
+    const atr = ATR.calculate({ period: 14, high: highs, low: lows, close: closes }).pop();
+    const bb = BollingerBands.calculate({
+      period: 20,
+      values: closes,
+      stdDev: 2,
+    }).pop();
+    const obv = OBV.calculate({ close: closes, volume: volumes }).pop();
   
-      await connector.placeOrder(
-        {
+    if (!smaFast || !smaSlow || !atr || !bb || !obv) return;
+  
+    // === Фильтры ===
+    const atrThreshold = atr * 0.5;
+    const isVolatile = Math.abs(closes[closes.length - 1] - closes[closes.length - 2]) > atrThreshold;
+  
+    const priceAboveUpperBB = price > bb.upper;
+    const priceBelowLowerBB = price < bb.lower;
+  
+    const obvChange = obv - (OBV.calculate({ close: closes.slice(0, -1), volume: volumes.slice(0, -1) }).pop() || 0);
+    const obvGrowing = obvChange > 0;
+    const obvFalling = obvChange < 0;
+  
+    const qty = config.LIMIT / price;
+  
+    if (!positionExists && isVolatile) {
+      // Лонг
+      if (smaFast > smaSlow && priceAboveUpperBB && obvGrowing) {
+        await connector.placeOrder({
           symbol,
           qty,
           price,
           timestamp,
-        },
-        [
-          // { profit: takeProfit, rate: config.RISK_REWARD_RATIO },
-          // { profit: stopLoss, rate: -1 },
-        ],
-      );
-      console.log(`[${symbol}] LONG entry at ${price}, TP: ${takeProfit}, SL: ${stopLoss}`);
+        }, [
+          { profit: 0.01, rate: 0.25 },
+          { profit: 0.02, rate: 0.5 },
+        ]);
+      }
+  
+      // // Шорт
+      // if (smaFast < smaSlow && priceBelowLowerBB && obvFalling) {
+      //   await connector.placeOrder({
+      //     symbol,
+      //     qty,
+      //     price,
+      //     timestamp,
+      //   }, [
+      //     { profit: 0.01, rate: 0.25 },
+      //     { profit: 0.02, rate: 0.5 },
+      //   ]);
+      // }
     }
   
-    // Условие выхода (если цена вернулась ниже средней линии Bollinger)
-    if (positionExists && price < bb.middle) {
-      await connector.closePosition({
-        symbol,
-        price,
-        timestamp,
-      });
-      console.log(`[${symbol}] Position closed at ${price}`);
+    if (positionExists) {
+      // Выход по обратному сигналу
+      if ((position.qty > 0 && smaFast < smaSlow) || (position.qty < 0 && smaFast > smaSlow)) {
+        await connector.closePosition({
+          symbol,
+          price,
+          timestamp,
+        });
+      }
+  
+      // Трейлинг-стоп (упрощённый)
+      const trailingStopDistance = atr * 1.5;
+      const isLong = position.qty > 0;
+      const isShort = position.qty < 0;
+  
+      if (isLong && price < position.price - trailingStopDistance) {
+        await connector.closePosition({ symbol, price, timestamp });
+      }
+  
+      // if (isShort && price > position.price + trailingStopDistance) {
+      //   await connector.closePosition({ symbol, price, timestamp });
+      // }
     }
   };
   

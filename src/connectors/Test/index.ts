@@ -60,7 +60,7 @@ export const TestConnectorCreator: TCC = (config) => {
       };
     },
     saveStat: (symbol: string, id: string) => {
-      setCache('data', `backtest_${symbol}_${id}`, ORDER_LOG);
+      setCache('data', `_backtest_${symbol}_${id}`, ORDER_LOG);
     },
     getPosition: () => {
       return new Promise((resolve) => resolve(CURRENT_POSITION || null));
@@ -113,7 +113,7 @@ export const TestConnectorCreator: TCC = (config) => {
           timestamp,
           qty,
           price,
-          type: 'SELL',
+          type: qty > 0 ? 'CLOSE_LONG' : 'CLOSE_SHORT',
         });
 
         return {
@@ -132,7 +132,7 @@ export const TestConnectorCreator: TCC = (config) => {
 
       ORDER_LOG.push({
         ...order,
-        type: 'BUY',
+        type: order.qty > 0 ? 'OPEN_LONG' : 'OPEN_SHORT',
       });
 
       return new Promise((resolve) => resolve(true));
@@ -153,7 +153,7 @@ export const TestConnectorCreator: TCC = (config) => {
       ORDER_LOG.push({
         ...CURRENT_POSITION,
         ...order,
-        type: 'SELL',
+        type: CURRENT_POSITION.qty > 0 ? 'CLOSE_LONG' : 'CLOSE_SHORT',
       });
 
       TPL = [];
