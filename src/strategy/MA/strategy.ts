@@ -54,6 +54,7 @@ export const MaStrategyCreator: StrategyCreator = (baseConfig) => {
           qty,
           price,
           timestamp,
+          direction: 'LONG',
         },
         config.TP,
       );

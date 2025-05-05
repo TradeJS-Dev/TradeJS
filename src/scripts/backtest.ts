@@ -11,7 +11,7 @@ const end = getUnixTime(new Date()) * 1000;
 const TEST_CONFIG: TestConfig = [
   {
     options: {
-      symbol: 'DOGSUSDT',
+      symbol: 'DOGEUSDT',
       start,
       end,
     },

@@ -2,6 +2,7 @@
 
 import _ from 'lodash';
 import chalk from 'chalk';
+import { getUnixTime, subDays } from 'date-fns';
 import { getClient } from './client';
 import { mapKlineToChartData } from './utils';
 import {
@@ -9,6 +10,7 @@ import {
   getDataTimestamp,
   formatUnix,
 } from '@src/utils/timestamp';
+
 import { getCache, setCache } from '@src/utils/cache';
 import { normalizeTickerData } from '@src/utils/tickers';
 import { mergeData } from '@src/utils/array';
@@ -25,7 +27,7 @@ export const ByBitConnectorCreator: ConnectorCreator = (config) => {
         category: 'linear',
         symbol,
         interval,
-        start,
+        start: start || getUnixTime(subDays(new Date(), 30)) * 1000,
         end,
         limit: LIMIT,
       });
@@ -128,7 +130,12 @@ export const ByBitConnectorCreator: ConnectorCreator = (config) => {
         return null;
       }
 
-      return positions[0];
+      const position = positions[0]
+
+      return {
+        ...position,
+        direction: position.qty > 0 ? 'LONG' : 'SHORT'
+      };
     },
     placeOrder: async ({ symbol, price, qty }, TP = []) => {
       const client = getClient(config);

@@ -8,7 +8,7 @@ import { setCache } from '@src/utils/cache';
 import {
   TestConnectorCreator as TCC,
   Kline,
-  Order,
+  OrderWithDirection,
   OrderLogData,
   KlineChartData,
   Sl,
@@ -16,7 +16,7 @@ import {
 } from '@types';
 
 export const TestConnectorCreator: TCC = (config) => {
-  let CURRENT_POSITION: Order | null = null; // Текущая открытая позиция
+  let CURRENT_POSITION: OrderWithDirection | null = null; // Текущая открытая позиция
   let ORIGINAL_QTY = 0; // Исходный объём позиции
   let AMOUNT = 100; // Текущий капитал в $
   let MIN_AMOUNT = AMOUNT; // Минимальный капитал за всё время
@@ -69,7 +69,7 @@ export const TestConnectorCreator: TCC = (config) => {
         return;
       }
 
-      const isLong = CURRENT_POSITION.qty > 0;
+      const isLong = CURRENT_POSITION.direction === 'LONG';
       const entryPrice = CURRENT_POSITION.price;
 
       for (const candle of data) {
@@ -103,6 +103,7 @@ export const TestConnectorCreator: TCC = (config) => {
               timestamp: candle.timestamp,
               qty,
               price: targetPrice,
+              profit,
               type: isLong ? 'TAKE_PROFIT_LONG' : 'TAKE_PROFIT_SHORT',
             });
 
@@ -128,7 +129,7 @@ export const TestConnectorCreator: TCC = (config) => {
         return;
       }
 
-      const isLong = CURRENT_POSITION.qty > 0;
+      const isLong = CURRENT_POSITION.direction === 'LONG';
 
       for (const candle of data) {
         const high = candle.high;
@@ -149,11 +150,16 @@ export const TestConnectorCreator: TCC = (config) => {
             ...CURRENT_POSITION,
             timestamp: candle.timestamp,
             qty,
+            profit,
             price: SL.price,
             type: isLong ? 'STOP_LOSS_LONG' : 'STOP_LOSS_SHORT',
           });
 
-          SL.done = true;
+          TP = [];
+          SL = null;
+          ORIGINAL_QTY = 0;
+          CURRENT_POSITION = null;
+    
           break;
         }
       }
@@ -167,7 +173,8 @@ export const TestConnectorCreator: TCC = (config) => {
 
       ORDER_LOG.push({
         ...order,
-        type: order.qty > 0 ? 'OPEN_LONG' : 'OPEN_SHORT',
+        profit: 0,
+        type: order.direction === 'LONG' ? 'OPEN_LONG' : 'OPEN_SHORT',
       });
 
       ORDERS++;
@@ -179,7 +186,7 @@ export const TestConnectorCreator: TCC = (config) => {
         return false;
       }
 
-      const isLong = CURRENT_POSITION.qty;
+      const isLong = CURRENT_POSITION.direction === 'LONG';
       const profit = isLong
         ? evaluate(
             `(${order.price} - ${CURRENT_POSITION.price}) * ${CURRENT_POSITION.qty}`,
@@ -194,6 +201,7 @@ export const TestConnectorCreator: TCC = (config) => {
       ORDER_LOG.push({
         ...CURRENT_POSITION,
         ...order,
+        profit,
         type: isLong ? 'CLOSE_LONG' : 'CLOSE_SHORT',
       });
 
@@ -202,7 +210,6 @@ export const TestConnectorCreator: TCC = (config) => {
       ORIGINAL_QTY = 0;
       CURRENT_POSITION = null;
 
-      ORDERS++;
       return true;
     },
 

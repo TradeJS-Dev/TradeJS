@@ -62,17 +62,24 @@ export type TestConfig = {
   strategyConfig: StrategyConfig;
 }[];
 
+type Direction = 'LONG' | 'SHORT';
+
 export type Order = {
   symbol: string;
   qty: number;
-  price: number;
+  price: number; 
   timestamp: number;
 };
+
+export interface OrderWithDirection extends Order {
+  direction: Direction;
+}
 
 export type Position = {
   symbol: string;
   qty: number;
   price: number;
+  direction: Direction;
 };
 
 export type OrderType =
@@ -87,6 +94,7 @@ export type OrderType =
 
 export type OrderLog = Order & {
   type: OrderType;
+  profit: number;
 };
 
 export type OrderLogData = OrderLog[];
@@ -113,7 +121,7 @@ interface Bot {
 export type BotConfig = Bot[];
 
 type GetPosition = (symbol: string) => Promise<Position | null>;
-type PlaceOrder = (order: Order, tp?: Tp[], sl?: Sl) => Promise<boolean>;
+type PlaceOrder = (order: OrderWithDirection, tp?: Tp[], sl?: Sl) => Promise<boolean>;
 type ClosePosition = (order: Omit<Order, 'qty'>) => Promise<boolean>;
 export type Kline = (options: KlineRequest) => Promise<KlineChartData>;
 export type GetTickers = () => Promise<Ticker[]>;

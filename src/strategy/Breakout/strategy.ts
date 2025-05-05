@@ -73,6 +73,7 @@ export const BreakoutStrategyCreator: StrategyCreator = (baseConfig) => {
             qty,
             price,
             timestamp,
+            direction: 'LONG',
           },
           [
             { profit: 0.1, rate: 0.25 },
@@ -86,9 +87,10 @@ export const BreakoutStrategyCreator: StrategyCreator = (baseConfig) => {
         await connector.placeOrder(
           {
             symbol,
-            qty: -qty,
+            qty,
             price,
             timestamp,
+            direction: 'SHORT',
           },
           [
             { profit: 0.1, rate: 0.25 },
@@ -99,10 +101,13 @@ export const BreakoutStrategyCreator: StrategyCreator = (baseConfig) => {
     }
 
     if (positionExists) {
+      const isLong = position.direction === 'LONG';
+      const isShort = position.direction === 'SHORT';
+
       // Выход по обратному сигналу
       if (
-        (position.qty > 0 && smaFast < smaSlow) ||
-        (position.qty < 0 && smaFast > smaSlow)
+        (isLong && smaFast < smaSlow) ||
+        (isShort && smaFast > smaSlow)
       ) {
         await connector.closePosition({
           symbol,
@@ -113,8 +118,6 @@ export const BreakoutStrategyCreator: StrategyCreator = (baseConfig) => {
 
       // Трейлинг-стоп (упрощённый)
       const trailingStopDistance = atr * 1.5;
-      const isLong = position.qty > 0;
-      const isShort = position.qty < 0;
 
       if (isLong && price < position.price - trailingStopDistance) {
         await connector.closePosition({ symbol, price, timestamp });
