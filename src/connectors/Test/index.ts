@@ -11,24 +11,25 @@ import {
   Order,
   OrderLogData,
   KlineChartData,
-  Tpl,
+  Sl,
+  Tp,
 } from '@types';
 
 export const TestConnectorCreator: TCC = (config) => {
-  let CURRENT_POSITION: Order | null = null;
-  let ORIGINAL_QTY = 0;
-  let AMOUNT = 100;
-  let MIN_AMOUT = AMOUNT;
-  let ORDERS = 0;
-  let TPL: Tpl[] = [];
-  const ORDER_LOG: OrderLogData = [];
-  let LOADED_DATA: KlineChartData = [];
+  let CURRENT_POSITION: Order | null = null; // Текущая открытая позиция
+  let ORIGINAL_QTY = 0; // Исходный объём позиции
+  let AMOUNT = 100; // Текущий капитал в $
+  let MIN_AMOUNT = AMOUNT; // Минимальный капитал за всё время
+  let ORDERS = 0; // Количество совершённых сделок
+  let TP: Tp[] = []; // Активные тейк-профиты
+  let SL: Sl | null = null; // Активные стоп-лоссы
+  const ORDER_LOG: OrderLogData = []; // Лог всех ордеров
+  let LOADED_DATA: KlineChartData = []; // Предзагруженные данные свечей
 
   const byBitConnector = ByBitConnectorCreator(config);
 
   const loadData: Kline = async (options) => {
     const end = getUnixTime(new Date()) * 1000;
-
     const data = await byBitConnector.kline({
       symbol: options.symbol,
       interval: options.interval,
@@ -36,7 +37,6 @@ export const TestConnectorCreator: TCC = (config) => {
     });
 
     LOADED_DATA = data;
-
     return LOADED_DATA;
   };
 
@@ -44,90 +44,125 @@ export const TestConnectorCreator: TCC = (config) => {
     if (_.isEmpty(LOADED_DATA)) {
       await loadData(options);
     }
-
-    const res = LOADED_DATA.filter((item) => item.timestamp <= options.end);
-
-    return res;
+    return LOADED_DATA.filter((item) => item.timestamp <= options.end);
   };
 
   return {
     kline,
-    getStat: () => {
-      return {
-        amount: AMOUNT,
-        minAmount: MIN_AMOUT,
-        orders: ORDERS,
-      };
-    },
+
+    getStat: () => ({
+      amount: AMOUNT,
+      minAmount: MIN_AMOUNT,
+      orders: ORDERS,
+    }),
+
     saveStat: (symbol: string, id: string) => {
       setCache('data', `_backtest_${symbol}_${id}`, ORDER_LOG);
     },
-    getPosition: () => {
-      return new Promise((resolve) => resolve(CURRENT_POSITION || null));
-    },
-    checkTpl: async (symbol: string, timestamp: number) => {
-      if (
-        _.isEmpty(TPL) ||
-        !ORIGINAL_QTY ||
-        !CURRENT_POSITION ||
-        _.isEmpty(CURRENT_POSITION)
-      ) {
+
+    getPosition: async () => CURRENT_POSITION || null,
+
+    checkTp: async (symbol: string, start: number, end: number) => {
+      const data = await kline({ symbol, interval: '5', start, end });
+
+      if (_.isEmpty(data) || !CURRENT_POSITION || !CURRENT_POSITION?.qty) {
         return;
       }
 
-      let data = await kline({
-        symbol,
-        interval: '5',
-        end: timestamp,
-      });
+      const isLong = CURRENT_POSITION.qty > 0;
+      const entryPrice = CURRENT_POSITION.price;
 
+      for (const candle of data) {
+        const high = candle.high;
+        const low = candle.low;
+
+        TP.forEach((tp) => {
+          if (!CURRENT_POSITION) {
+            return;
+          }
+
+          const targetPrice = isLong
+            ? evaluate(`${entryPrice} * (1 + ${tp.profit})`)
+            : evaluate(`${entryPrice} * (1 - ${tp.profit})`);
+
+          const reached = isLong
+            ? evaluate(`${high} >= ${targetPrice}`)
+            : evaluate(`${low} <= ${targetPrice}`);
+
+          if (reached) {
+            const qty = evaluate(`${ORIGINAL_QTY} * ${tp.rate}`);
+            const profit = isLong
+              ? evaluate(`(${targetPrice} - ${entryPrice}) * ${qty}`)
+              : evaluate(`(${entryPrice} - ${targetPrice}) * ${qty}`);
+
+            AMOUNT = evaluate(`${AMOUNT} + ${profit}`);
+            CURRENT_POSITION.qty = evaluate(`${CURRENT_POSITION.qty} - ${qty}`);
+
+            ORDER_LOG.push({
+              ...CURRENT_POSITION,
+              timestamp: candle.timestamp,
+              qty,
+              price: targetPrice,
+              type: isLong ? 'TAKE_PROFIT_LONG' : 'TAKE_PROFIT_SHORT',
+            });
+
+            tp.done = true;
+          }
+        });
+
+        TP = TP.filter(({ done }) => !done);
+
+        if (CURRENT_POSITION.qty == 0) {
+          break;
+        }
+      }
+    },
+
+    checkSl: async (symbol: string, start: number, end: number) => {
+      if (!SL || SL.done || !CURRENT_POSITION) {
+        return;
+      }
+
+      const data = await kline({ symbol, interval: '5', start, end });
       if (_.isEmpty(data)) {
         return;
       }
 
-      const price = data.pop()?.high;
+      const isLong = CURRENT_POSITION.qty > 0;
 
-      if (!price) {
-        return;
-      }
+      for (const candle of data) {
+        const high = candle.high;
+        const low = candle.low;
 
-      TPL = TPL.filter(({ done }) => !done).map((tpl, i) => {
-        if (
-          !CURRENT_POSITION ||
-          price < CURRENT_POSITION.price * (1 + tpl.profit)
-        ) {
-          return tpl;
+        const hitStop = isLong ? low <= SL.price : high >= SL.price;
+
+        if (hitStop) {
+          const qty = CURRENT_POSITION.qty;
+          const profit = isLong
+            ? evaluate(`(${SL.price} - ${CURRENT_POSITION.price}) * ${qty}`)
+            : evaluate(`(${CURRENT_POSITION.price} - ${SL.price}) * ${qty}`);
+
+          AMOUNT = evaluate(`${AMOUNT} + ${profit}`);
+          CURRENT_POSITION.qty = 0;
+
+          ORDER_LOG.push({
+            ...CURRENT_POSITION,
+            timestamp: candle.timestamp,
+            qty,
+            price: SL.price,
+            type: isLong ? 'STOP_LOSS_LONG' : 'STOP_LOSS_SHORT',
+          });
+
+          SL.done = true;
+          break;
         }
-
-        const qty = ORIGINAL_QTY * tpl.rate;
-
-        const summ = evaluate(
-          `(${price} - ${CURRENT_POSITION.price}) * ${qty}`,
-        );
-
-        AMOUNT = evaluate(`${AMOUNT} + ${summ}`);
-        CURRENT_POSITION.qty = evaluate(`${CURRENT_POSITION.qty} - ${qty}`);
-
-        ORDER_LOG.push({
-          ...CURRENT_POSITION,
-          timestamp,
-          qty,
-          price,
-          type: qty > 0 ? 'CLOSE_LONG' : 'CLOSE_SHORT',
-        });
-
-        return {
-          ...tpl,
-          done: true,
-        };
-      });
+      }
     },
-    placeOrder: (order, tpl) => {
-      TPL = tpl;
 
-      CURRENT_POSITION = {
-        ...order,
-      };
+    placeOrder: async (order, tp = [], sl) => {
+      TP = tp;
+      SL = sl || null;
+      CURRENT_POSITION = { ...order };
       ORIGINAL_QTY = order.qty;
 
       ORDER_LOG.push({
@@ -135,33 +170,42 @@ export const TestConnectorCreator: TCC = (config) => {
         type: order.qty > 0 ? 'OPEN_LONG' : 'OPEN_SHORT',
       });
 
-      return new Promise((resolve) => resolve(true));
+      ORDERS++;
+      return true;
     },
-    closePosition: (order) => {
-      if (!CURRENT_POSITION || _.isEmpty(CURRENT_POSITION)) {
-        return new Promise((resolve) => resolve(false));
+
+    closePosition: async (order) => {
+      if (!CURRENT_POSITION) {
+        return false;
       }
 
-      const summ = evaluate(
-        `(${order.price} - ${CURRENT_POSITION.price}) * ${CURRENT_POSITION.qty}`,
-      );
+      const isLong = CURRENT_POSITION.qty;
+      const profit = isLong
+        ? evaluate(
+            `(${order.price} - ${CURRENT_POSITION.price}) * ${CURRENT_POSITION.qty}`,
+          )
+        : evaluate(
+            `(${CURRENT_POSITION.price} - ${order.price}) * ${CURRENT_POSITION.qty}`,
+          );
 
-      AMOUNT = evaluate(`${AMOUNT} + ${summ}`);
+      AMOUNT = evaluate(`${AMOUNT} + ${profit}`);
+      MIN_AMOUNT = _.min([MIN_AMOUNT, AMOUNT]) || MIN_AMOUNT;
 
-      MIN_AMOUT = _.min([MIN_AMOUT, AMOUNT]) || MIN_AMOUT;
-      ORDERS++;
       ORDER_LOG.push({
         ...CURRENT_POSITION,
         ...order,
-        type: CURRENT_POSITION.qty > 0 ? 'CLOSE_LONG' : 'CLOSE_SHORT',
+        type: isLong ? 'CLOSE_LONG' : 'CLOSE_SHORT',
       });
 
-      TPL = [];
+      TP = [];
+      SL = null;
       ORIGINAL_QTY = 0;
       CURRENT_POSITION = null;
 
-      return new Promise((resolve) => resolve(true));
+      ORDERS++;
+      return true;
     },
-    getTickers: async () => ([]),
+
+    getTickers: async () => [],
   };
 };

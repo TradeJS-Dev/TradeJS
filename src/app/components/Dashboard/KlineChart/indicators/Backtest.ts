@@ -4,11 +4,22 @@ import _ from 'lodash';
 import { registerFigure, registerOverlay, Chart } from 'klinecharts';
 import { backtest } from '@src/actions/backtest';
 
+interface Attrs {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+interface Styles {
+  color: string;
+}
+
 registerFigure({
   name: 'diamond',
   draw: (ctx, attrs, styles) => {
-    const { x, y, width, height } = attrs;
-    const { color } = styles;
+    const { x, y, width, height } = attrs as Attrs;
+    const { color } = styles as Styles;
     ctx.beginPath();
     ctx.moveTo(x - width / 2, y);
     ctx.lineTo(x, y - height / 2);
@@ -20,7 +31,7 @@ registerFigure({
   },
   checkEventOn: (coordinate, attrs) => {
     const { x, y } = coordinate;
-    const { width, height } = attrs;
+    const { width, height } = attrs as Attrs;
     return Math.abs(x * height) + Math.abs(y * width) <= (width * height) / 2;
   },
 });
@@ -67,21 +78,25 @@ export const Backtest = async (
   const backtestData = await backtest(id, symbol);
   if (_.isEmpty(backtestData)) return;
 
-  const pointsBuy = backtestData.filter(({ type }) => ['OPEN_LONG', 'CLOSE_SHORT'].includes(type)) .map(({ timestamp, price }, dataIndex) => ({
-    dataIndex,
-    timestamp,
-    value: price,
-  }));
+  const pointsBuy = backtestData
+    .filter(({ type }) => ['OPEN_LONG', 'CLOSE_SHORT', 'TAKE_PROFIT_SHORT', 'STOP_LOSS_SHORT'].includes(type))
+    .map(({ timestamp, price }, dataIndex) => ({
+      dataIndex,
+      timestamp,
+      value: price,
+    }));
 
-  const pointsSell = backtestData.filter(({ type }) => ['OPEN_SHORT', 'CLOSE_LONG'].includes(type)) .map(({ timestamp, price }, dataIndex) => ({
-    dataIndex,
-    timestamp,
-    value: price,
-  }));
+  const pointsSell = backtestData
+    .filter(({ type }) => ['OPEN_SHORT', 'CLOSE_LONG', 'TAKE_PROFIT_LONG', 'STOP_LOSS_LONG'].includes(type))
+    .map(({ timestamp, price }, dataIndex) => ({
+      dataIndex,
+      timestamp,
+      value: price,
+    }));
 
   chartInstance.createOverlay({
     name: 'backtestOverlay-buy',
-    points: pointsBuy
+    points: pointsBuy,
   });
 
   chartInstance.createOverlay({

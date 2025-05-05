@@ -5,7 +5,7 @@ import { testing } from '@src/utils/testing';
 import { BreakoutStrategyCreator, config } from '@src/strategy/Breakout';
 import { TestConfig } from '@types';
 
-const start = getUnixTime(subDays(new Date(), 30)) * 1000;
+const start = getUnixTime(subDays(new Date(), 10)) * 1000;
 const end = getUnixTime(new Date()) * 1000;
 
 const TEST_CONFIG: TestConfig = [

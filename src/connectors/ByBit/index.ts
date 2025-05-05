@@ -130,7 +130,7 @@ export const ByBitConnectorCreator: ConnectorCreator = (config) => {
 
       return positions[0];
     },
-    placeOrder: async ({ symbol, price, qty }, TPL) => {
+    placeOrder: async ({ symbol, price, qty }, TP = []) => {
       const client = getClient(config);
 
       const orderRes = await client.submitOrder({
@@ -148,34 +148,20 @@ export const ByBitConnectorCreator: ConnectorCreator = (config) => {
         return false;
       }
 
-      for await (const tpl of TPL) {
-        const tplSize = qty * tpl.rate;
+      for await (const tp of TP) {
+        const tpSize = qty * tp.rate;
 
-        if (tpl.profit > 0) {
-          const tplRes = await client.setTradingStop({
-            category: 'linear',
-            symbol,
-            tpSize: tplSize.toFixed(0),
-            tpslMode: 'Partial',
-            takeProfit: `${price * (1 + tpl.profit)}`,
-            tpOrderType: 'Market',
-            positionIdx: 0,
-          });
+        const tpRes = await client.setTradingStop({
+          category: 'linear',
+          symbol,
+          tpSize: tpSize.toFixed(0),
+          tpslMode: 'Partial',
+          takeProfit: `${price * (1 + tp.profit)}`,
+          tpOrderType: 'Market',
+          positionIdx: 0,
+        });
 
-          console.log('tpl', tpl, JSON.stringify(tplRes, null, 2));
-        } else {
-          const slRes = await client.setTradingStop({
-            category: 'linear',
-            symbol,
-            slSize: tplSize.toFixed(0),
-            tpslMode: 'Partial',
-            stopLoss: `${price * (1 - tpl.profit)}`,
-            slOrderType: 'Market',
-            positionIdx: 0,
-          });
-
-          console.log('sl', tpl, JSON.stringify(slRes, null, 2));
-        }
+        console.log('tp', tp, JSON.stringify(tpRes, null, 2));
       }
 
       return true;
@@ -207,7 +193,7 @@ export const ByBitConnectorCreator: ConnectorCreator = (config) => {
         category: 'linear',
       });
 
-      return data.result.list.map((item ) => normalizeTickerData(item as any));
-    }
+      return data.result.list.map((item) => normalizeTickerData(item as any));
+    },
   };
 };

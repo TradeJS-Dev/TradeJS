@@ -7,7 +7,7 @@ export const config: BotConfig = [
   //   strategy: MaStrategyCreator({
   //     PERIODS: [2, 50],
   //     LIMIT: 300,
-  //     tpl: [
+  //     TP: [
   //       {
   //         rate: 0.3,
   //         profit: 0.02,
@@ -28,7 +28,7 @@ export const config: BotConfig = [
   //   strategy: MaStrategyCreator({
   //     PERIODS: [2, 99],
   //     LIMIT: 300,
-  //     tpl: [
+  //     TP: [
   //       {
   //         rate: 0.3,
   //         profit: 0.04,
@@ -49,7 +49,7 @@ export const config: BotConfig = [
   //   strategy: MaStrategyCreator({
   //     PERIODS: [2, 50],
   //     LIMIT: 300,
-  //     tpl: [
+  //     TP: [
   //       {
   //         rate: 0.3,
   //         profit: 0.02,
@@ -70,7 +70,7 @@ export const config: BotConfig = [
   //   strategy: MaStrategyCreator({
   //     PERIODS: [2, 50],
   //     LIMIT: 300,
-  //     tpl: [
+  //     TP: [
   //       {
   //         rate: 0.3,
   //         profit: 0.02,

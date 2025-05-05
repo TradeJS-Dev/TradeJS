@@ -19,6 +19,7 @@ export const testing: TestingBox = async (
     key: '',
     secret: '',
   });
+  let lastTimeStamp = start!;
 
   for (let timestamp = start!; timestamp <= end; timestamp += INC) {
     times.push(timestamp);
@@ -30,7 +31,9 @@ export const testing: TestingBox = async (
   });
 
   for await (const timestamp of times) {
-    testConnector.checkTpl(symbol, timestamp);
+    lastTimeStamp = timestamp;
+    testConnector.checkTp(symbol, lastTimeStamp, timestamp);
+    testConnector.checkSl(symbol, lastTimeStamp, timestamp);
 
     await strategy(symbol, timestamp, testConnector);
 

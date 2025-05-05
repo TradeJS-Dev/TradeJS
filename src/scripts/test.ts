@@ -16,7 +16,7 @@ const client = new RestClientV5({
 const SYMBOL = 'SUIUSDT';
 
 const placeOrder = async () => {
-  const TPL = [
+  const TP = [
     {
       rate: 0.3,
       profit: 0.07,
@@ -49,8 +49,8 @@ const placeOrder = async () => {
     return;
   }
 
-  for await (const tpl of TPL) {
-    const qty = QTY * tpl.rate;
+  for await (const tp of TP) {
+    const qty = QTY * tp.rate;
     const summ = qty * PRICE;
 
     const res = await client.setTradingStop({
@@ -58,7 +58,7 @@ const placeOrder = async () => {
       symbol: SYMBOL,
       tpSize: qty.toFixed(0),
       tpslMode: 'Partial',
-      takeProfit: `${PRICE * (1 + tpl.profit)}`,
+      takeProfit: `${PRICE * (1 + tp.profit)}`,
       tpOrderType: 'Market',
       positionIdx: 0,
       // orderFilter: 'tpslOrder',
@@ -130,7 +130,9 @@ type ResultItem = {
   category: 'volatility24h' | 'volatility1h' | 'volume';
 };
 
-export const getTopCoins = (data: Coin[]): { label: string; value: string }[] => {
+export const getTopCoins = (
+  data: Coin[],
+): { label: string; value: string }[] => {
   const result: ResultItem[] = [];
   const selected = new Set<string>();
 
@@ -138,14 +140,14 @@ export const getTopCoins = (data: Coin[]): { label: string; value: string }[] =>
     symbol.replace(/(USDT|USD|PERP)$/i, '');
 
   const byVol24h = [...data]
-    .map(coin => ({
+    .map((coin) => ({
       ...coin,
       volatility24h: Math.abs(parseFloat(coin.price24hPcnt)),
     }))
     .sort((a, b) => b.volatility24h - a.volatility24h);
 
   const byVol1h = [...data]
-    .map(coin => {
+    .map((coin) => {
       const prev1h = parseFloat(coin.prevPrice1h);
       const last = parseFloat(coin.lastPrice);
       const volatility1h = prev1h ? Math.abs((last - prev1h) / prev1h) : 0;
@@ -157,7 +159,7 @@ export const getTopCoins = (data: Coin[]): { label: string; value: string }[] =>
     .sort((a, b) => b.volatility1h - a.volatility1h);
 
   const byVolume = [...data]
-    .map(coin => ({
+    .map((coin) => ({
       ...coin,
       volume24hNum: parseFloat(coin.volume24h),
     }))
@@ -166,7 +168,7 @@ export const getTopCoins = (data: Coin[]): { label: string; value: string }[] =>
   const addTop = (
     list: Coin[],
     category: ResultItem['category'],
-    limit: number
+    limit: number,
   ) => {
     for (const coin of list) {
       if (!selected.has(coin.symbol)) {
@@ -190,19 +192,18 @@ export const getTopCoins = (data: Coin[]): { label: string; value: string }[] =>
     .sort((a, b) =>
       a.category === b.category
         ? a.value.localeCompare(b.value)
-        : a.category.localeCompare(b.category)
+        : a.category.localeCompare(b.category),
     )
     .map(({ label, value }) => ({ label, value }));
 };
 
 const getTickers = async () => {
-  const data = await client
-    .getTickers({
-        category: 'linear',
-    });
+  const data = await client.getTickers({
+    category: 'linear',
+  });
 
   console.log(getTopCoins(data.result.list));
-}
+};
 
 // cancelOrder();
 // getOrders();

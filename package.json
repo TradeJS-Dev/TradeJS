@@ -7,6 +7,7 @@
     "bot": "time yarn ts-node ./src/scripts/bot",
     "build": "next build",
     "dev": "next dev",
+    "dev-tsc": "npx tsc --noEmit",
     "lint": "next lint",
     "prettify": "yarn prettier -c -w ./src",
     "start": "next start",

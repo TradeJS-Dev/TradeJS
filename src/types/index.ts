@@ -33,17 +33,22 @@ export type StrategyCreator = (config: StrategyConfig) => Strategy;
 
 export type TestingOptions = Omit<KlineRequest, 'interval'>;
 
-export interface Tpl {
+export interface Tp {
   profit: number;
   rate: number;
   done?: boolean;
 }
 
-type TplConfig = {
-  tpl: Tpl[];
+type TpConfig = {
+  TP: Tp[];
 };
 
-export type StrategyConfig = Record<string, any> & TplConfig;
+export interface Sl {
+  price: number;
+  done?: boolean;
+}
+
+export type StrategyConfig = Record<string, any> & TpConfig;
 
 export type TestingBox = (
   id: string,
@@ -70,8 +75,18 @@ export type Position = {
   price: number;
 };
 
+export type OrderType =
+  | 'OPEN_LONG'
+  | 'OPEN_SHORT'
+  | 'CLOSE_LONG'
+  | 'CLOSE_SHORT'
+  | 'TAKE_PROFIT_LONG'
+  | 'TAKE_PROFIT_SHORT'
+  | 'STOP_LOSS_LONG'
+  | 'STOP_LOSS_SHORT';
+
 export type OrderLog = Order & {
-  type: 'OPEN_LONG' | 'OPEN_SHORT' | 'CLOSE_LONG' | 'CLOSE_SHORT';
+  type: OrderType;
 };
 
 export type OrderLogData = OrderLog[];
@@ -98,7 +113,7 @@ interface Bot {
 export type BotConfig = Bot[];
 
 type GetPosition = (symbol: string) => Promise<Position | null>;
-type PlaceOrder = (order: Order, tpl: Tpl[]) => Promise<boolean>;
+type PlaceOrder = (order: Order, tp?: Tp[], sl?: Sl) => Promise<boolean>;
 type ClosePosition = (order: Omit<Order, 'qty'>) => Promise<boolean>;
 export type Kline = (options: KlineRequest) => Promise<KlineChartData>;
 export type GetTickers = () => Promise<Ticker[]>;
@@ -114,7 +129,8 @@ export interface Connector {
 export interface TestConnector extends Connector {
   getStat: () => ConnectorStat;
   saveStat: (symbol: string, id: string) => void;
-  checkTpl: (symbol: string, timestamp: number) => void;
+  checkTp: (symbol: string, start: number, end: number) => void;
+  checkSl: (symbol: string, start: number, end: number) => void;
 }
 
 export interface Indicators {

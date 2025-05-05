@@ -10,6 +10,7 @@ const base = [
 const favorites = [
   { label: 'SOL', value: 'SOLUSDT', description: 'favorites' },
   { label: 'SUI', value: 'SUIUSDT', description: 'favorites' },
+  { label: 'DOGS', value: 'DOGSUSDT', description: 'favorites' },
 ] as Items;
 
 export const tickersState = atom({

@@ -1,7 +1,7 @@
 export const config = {
   PERIODS: [3, 99],
   LIMIT: 100,
-  tpl: [
+  TP: [
     {
       rate: 0.3,
       profit: 0.05,

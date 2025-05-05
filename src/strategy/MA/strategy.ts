@@ -55,7 +55,7 @@ export const MaStrategyCreator: StrategyCreator = (baseConfig) => {
           price,
           timestamp,
         },
-        config.tpl,
+        config.TP,
       );
     }
 
