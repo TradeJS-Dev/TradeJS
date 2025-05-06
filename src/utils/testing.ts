@@ -32,8 +32,8 @@ export const testing: TestingBox = async (
 
   for await (const timestamp of times) {
     lastTimeStamp = timestamp;
-    testConnector.checkTp(symbol, lastTimeStamp, timestamp);
-    testConnector.checkSl(symbol, lastTimeStamp, timestamp);
+    await testConnector.checkSl(symbol, lastTimeStamp, timestamp);
+    await testConnector.checkTp(symbol, lastTimeStamp, timestamp);
 
     await strategy(symbol, timestamp, testConnector);
 

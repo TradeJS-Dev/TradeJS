@@ -137,8 +137,8 @@ export interface Connector {
 export interface TestConnector extends Connector {
   getStat: () => ConnectorStat;
   saveStat: (symbol: string, id: string) => void;
-  checkTp: (symbol: string, start: number, end: number) => void;
-  checkSl: (symbol: string, start: number, end: number) => void;
+  checkTp: (symbol: string, start: number, end: number) => Promise<void>;
+  checkSl: (symbol: string, start: number, end: number) => Promise<void>;
 }
 
 export interface Indicators {
@@ -208,3 +208,17 @@ export interface Item {
 }
 
 export type Items = Item[];
+
+export interface FigureCoordinates {
+  x: number;
+  y: number;
+}
+
+export interface FigureAttrs extends FigureCoordinates {
+  width: number;
+  height: number;
+}
+
+export interface FigureStyles {
+  color: string;
+}

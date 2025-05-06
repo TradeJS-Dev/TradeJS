@@ -12,6 +12,7 @@ import {
   VolIndicator,
   Backtest,
 } from './indicators';
+import './figures';
 import { darkTheme } from './styles';
 
 interface KlineChartProps {
