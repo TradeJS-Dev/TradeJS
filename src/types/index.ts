@@ -58,6 +58,7 @@ export type TestingBox = (
 ) => Promise<ConnectorStat>;
 
 export type TestConfig = {
+  name: string;
   strategy: StrategyCreator;
   options: TestingOptions;
   strategyConfig: StrategyConfig;
