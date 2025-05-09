@@ -1,5 +1,5 @@
 import { OHLCVKlineV5 } from 'bybit-api';
-import { formatUnix } from '@src/utils/timestamp';
+import { formatUnix } from '@utils/timestamp';
 import { KlineChartItem } from '@types';
 
 const parseKlineItem = (item: OHLCVKlineV5): KlineChartItem => ({

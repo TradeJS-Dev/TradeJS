@@ -27,8 +27,8 @@ export const BreakoutStrategyCreator: StrategyCreator = (baseConfig) => {
     const position = await connector.getPosition(symbol);
     const positionExists = !!position;
 
-    const smaFast = SMA.calculate({ period: 9, values: closes }).pop();
-    const smaSlow = SMA.calculate({ period: 21, values: closes }).pop();
+    const smaFast = SMA.calculate({ period: 18, values: closes }).pop();
+    const smaSlow = SMA.calculate({ period: 42, values: closes }).pop();
     const atr = ATR.calculate({
       period: 14,
       high: highs,
@@ -36,9 +36,9 @@ export const BreakoutStrategyCreator: StrategyCreator = (baseConfig) => {
       close: closes,
     }).pop();
     const bb = BollingerBands.calculate({
-      period: 20,
+      period: config.BB_PERIOD,
       values: closes,
-      stdDev: 2,
+      stdDev: config.BB_STDDEV,
     }).pop();
     const obv = OBV.calculate({ close: closes, volume: volumes }).pop();
 
@@ -93,8 +93,8 @@ export const BreakoutStrategyCreator: StrategyCreator = (baseConfig) => {
             direction: 'SHORT',
           },
           [
-            { profit: 0.1, rate: 0.25 },
-            { profit: 0.2, rate: 0.5 },
+            { profit: 0.05, rate: 0.25 },
+            { profit: 0.1, rate: 0.5 },
           ],
         );
       }
@@ -105,10 +105,7 @@ export const BreakoutStrategyCreator: StrategyCreator = (baseConfig) => {
       const isShort = position.direction === 'SHORT';
 
       // Выход по обратному сигналу
-      if (
-        (isLong && smaFast < smaSlow) ||
-        (isShort && smaFast > smaSlow)
-      ) {
+      if ((isLong && smaFast < smaSlow) || (isShort && smaFast > smaSlow)) {
         await connector.closePosition({
           symbol,
           price,

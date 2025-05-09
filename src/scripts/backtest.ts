@@ -1,17 +1,19 @@
 const ListIt = require('list-it');
 import chalk from 'chalk';
-import { getUnixTime, subDays } from 'date-fns';
-import { testing } from '@src/utils/testing';
+import { testing } from '@utils/testing';
+import { getTimestamp } from '@utils/timestamp';
 import { BreakoutStrategyCreator, config } from '@src/strategy/Breakout';
 import { TestConfig } from '@types';
 
-const start = getUnixTime(subDays(new Date(), 10)) * 1000;
-const end = getUnixTime(new Date()) * 1000;
+const start = getTimestamp(30);
+const end = getTimestamp();
 
 const TEST_CONFIG: TestConfig = [
   {
+    name: 'breakout',
+    strategy: BreakoutStrategyCreator,
     options: {
-      symbol: 'DOGEUSDT',
+      symbol: 'DOGSUSDT',
       start,
       end,
     },
@@ -35,8 +37,8 @@ const backtest = async () => {
 
   for await (const test of TEST_CONFIG) {
     const stat = await testing(
-      num.toString(),
-      BreakoutStrategyCreator,
+      `${num}`,
+      test.strategy,
       test.options,
       test.strategyConfig,
     );

@@ -1,108 +1,166 @@
 'use client';
 
 import _ from 'lodash';
-import { registerOverlay, Chart } from 'klinecharts';
+import { registerIndicator, Chart } from 'klinecharts';
 import { backtest } from '@src/actions/backtest';
+import { KlineChartItem } from '@types';
+import { dimond, star, circle, rectangle } from '../figures';
 
-const addOverlay = (name: string, figure: string, color: string) => {
-  registerOverlay({
-    name,
-    totalStep: 2,
-    createPointFigures: ({ coordinates, bounding }) => {
-      return coordinates.map(({ x, y }) => ({
-        type: figure,
-        attrs: {
-          x,
-          y,
-          width: 10,
-          height: 10,
-        },
-        styles: { color },
-      }));
-    },
-  });
-};
+const green = '#84cc16';
+const red = '#dc2626';
+const darkRed = '#7f1d1d';
+const darkGreen = '#365314';
 
-registerOverlay({
-  name: 'backtestOverlay-sell',
-  totalStep: 2,
-  createPointFigures: ({ coordinates, ...rest }) => {
-    console.log('>>> coordinates', rest);
-    return coordinates.map(({ x, y }) => ({
-      type: 'diamond',
-      attrs: {
-        x,
-        y,
-        width: 10,
-        height: 10,
-      },
-      styles: { color: '#00FF00' },
-    }));
-  },
-});
+interface Legend {
+  title: string;
+  value: {
+    text: string;
+    color: string;
+  };
+}
 
-registerOverlay({
-  name: 'backtestOverlay-buy',
-  totalStep: 2,
-  createPointFigures: ({ coordinates }) => {
-    return coordinates.map(({ x, y }) => ({
-      type: 'diamond',
-      attrs: {
-        x,
-        y,
-        width: 10,
-        height: 10,
-      },
-      styles: { color: '#00FF00' },
-    }));
-  },
-});
-
-export const Backtest = async (
-  chartInstance: Chart,
-  symbol: string,
-  id = '1',
-) => {
+export const Backtest = async (chart: Chart, symbol: string, id = '1') => {
   const backtestData = await backtest(id, symbol);
-  if (_.isEmpty(backtestData)) return;
+  if (_.isEmpty(backtestData)) {
+    return;
+  }
 
-  const pointsBuy = backtestData
-    .filter(({ type }) =>
-      [
-        'OPEN_LONG',
-        'CLOSE_SHORT',
-        'TAKE_PROFIT_SHORT',
-        'STOP_LOSS_SHORT',
-      ].includes(type),
-    )
-    .map(({ timestamp, price }, dataIndex) => ({
-      dataIndex,
-      timestamp,
-      value: price,
-    }));
+  registerIndicator({
+    name: 'Backtest',
+    shortName: 'Backtest',
 
-  const pointsSell = backtestData
-    .filter(({ type }) =>
-      [
-        'OPEN_SHORT',
-        'CLOSE_LONG',
-        'TAKE_PROFIT_LONG',
-        'STOP_LOSS_LONG',
-      ].includes(type),
-    )
-    .map(({ timestamp, price }, dataIndex) => ({
-      dataIndex,
-      timestamp,
-      value: price,
-    }));
+    createTooltipDataSource: ({ indicator, crosshair }) => {
+      const legends = new Array<Legend>();
 
-  chartInstance.createOverlay({
-    name: 'backtestOverlay-buy',
-    points: pointsBuy,
+      const getLegents = () => {
+        const result = indicator.result;
+        const i = crosshair.dataIndex!;
+        const start = (result[i - 1] as KlineChartItem)?.timestamp;
+        const end = (result[i] as KlineChartItem)?.timestamp;
+
+        if (!start || !end) {
+          return;
+        }
+
+        const data = backtestData.filter(
+          (log) => log.timestamp > start && log.timestamp <= end,
+        );
+
+        if (!data) {
+          return;
+        }
+
+        data.forEach(({ type, profit, index }) => {
+          legends.push({
+            title: `${index}:type: `,
+            value: { text: type, color: 'white' },
+          });
+          legends.push({
+            title: `${index}:profit: `,
+            value: {
+              text: profit.toFixed(2),
+              color: profit >= 0 ? green : red,
+            },
+          });
+        });
+      };
+
+      getLegents();
+
+      return {
+        name: 'BackTest',
+        calcParamsText: '',
+        features: [],
+        legends,
+      };
+    },
+
+    draw: ({ ctx, indicator, xAxis, yAxis }) => {
+      const { realFrom, realTo } = chart.getVisibleRange();
+      const { result } = indicator;
+
+      for (let i = realFrom + 1; i < realTo; i++) {
+        const start = (result[i - 1] as KlineChartItem)?.timestamp;
+        const end = (result[i] as KlineChartItem)?.timestamp;
+
+        if (!start || !end) {
+          continue;
+        }
+
+        const data = backtestData.filter(
+          (log) => log.timestamp > start && log.timestamp <= end,
+        );
+
+        if (!data) {
+          continue;
+        }
+
+        data.forEach(({ type, price }) => {
+          const x = xAxis.convertToPixel(i);
+          const y = yAxis.convertToPixel(price);
+          const width = 10;
+          const height = 10;
+
+          if (type === 'OPEN_LONG') {
+            rectangle({ ctx, x, y, width, height, color: green });
+          }
+          if (type === 'TAKE_PROFIT_LONG') {
+            star({
+              ctx,
+              x,
+              y,
+              width,
+              height,
+              color: red,
+            });
+          }
+          if (type === 'CLOSE_LONG') {
+            dimond({
+              ctx,
+              x,
+              y,
+              width,
+              height,
+              color: darkRed,
+            });
+          }
+          if (type === 'STOP_LOSS_LONG') {
+            circle({ ctx, x, y, width, height, color: darkRed });
+          }
+          if (type === 'OPEN_SHORT') {
+            rectangle({ ctx, x, y, width, height, color: red });
+          }
+          if (type === 'TAKE_PROFIT_SHORT') {
+            star({
+              ctx,
+              x,
+              y,
+              width,
+              height,
+              color: green,
+            });
+          }
+          if (type === 'CLOSE_SHORT') {
+            dimond({
+              ctx,
+              x,
+              y,
+              width,
+              height,
+              color: darkGreen,
+            });
+          }
+          if (type === 'STOP_LOSS_SHORT') {
+            circle({ ctx, x, y, width, height, color: darkGreen });
+          }
+        });
+      }
+
+      return true;
+    },
+
+    calc: (kLineDataList) => kLineDataList,
   });
 
-  chartInstance.createOverlay({
-    name: 'backtestOverlay-sell',
-    points: pointsSell,
-  });
+  chart.createIndicator('Backtest', true, { id: 'candle_pane' });
 };

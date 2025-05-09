@@ -2,18 +2,18 @@
 
 import _ from 'lodash';
 import chalk from 'chalk';
-import { getUnixTime, subDays } from 'date-fns';
 import { getClient } from './client';
 import { mapKlineToChartData } from './utils';
 import {
+  getTimestamp,
   getItemTimestamp,
   getDataTimestamp,
   formatUnix,
-} from '@src/utils/timestamp';
+} from '@utils/timestamp';
+import { getCache, setCache } from '@utils/cache';
+import { normalizeTickerData } from '@utils/tickers';
+import { mergeData } from '@utils/array';
 
-import { getCache, setCache } from '@src/utils/cache';
-import { normalizeTickerData } from '@src/utils/tickers';
-import { mergeData } from '@src/utils/array';
 import { KlineChartData, KlineRequest, ConnectorCreator } from '@types';
 
 const LIMIT = 1000;
@@ -27,7 +27,7 @@ export const ByBitConnectorCreator: ConnectorCreator = (config) => {
         category: 'linear',
         symbol,
         interval,
-        start: start || getUnixTime(subDays(new Date(), 30)) * 1000,
+        start: start || getTimestamp(30),
         end,
         limit: LIMIT,
       });
@@ -35,6 +35,7 @@ export const ByBitConnectorCreator: ConnectorCreator = (config) => {
       console.log(
         chalk.yellow(formatUnix(end)),
         chalk.cyan(symbol),
+        chalk.cyan(interval),
         chalk.yellow(kline.result.list.length),
       );
 
@@ -89,7 +90,7 @@ export const ByBitConnectorCreator: ConnectorCreator = (config) => {
 
       data = mergeData(data, loadedData);
 
-      if (process.env.FREEZE_CACHE !== '1') {
+      if (!_.isEmpty(loadedData)) {
         setCache('data', `${symbol}_${interval}`, data);
       }
 
@@ -130,11 +131,11 @@ export const ByBitConnectorCreator: ConnectorCreator = (config) => {
         return null;
       }
 
-      const position = positions[0]
+      const position = positions[0];
 
       return {
         ...position,
-        direction: position.qty > 0 ? 'LONG' : 'SHORT'
+        direction: position.qty > 0 ? 'LONG' : 'SHORT',
       };
     },
     placeOrder: async ({ symbol, price, qty }, TP = []) => {

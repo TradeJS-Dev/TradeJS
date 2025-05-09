@@ -1,14 +1,13 @@
-import { registerFigure } from 'klinecharts';
-import { FigureAttrs, FigureStyles } from '@types';
-import { checkEventOn } from '../utils/checkEventOn';
+import { Figure } from '@types';
 
-registerFigure({
-  name: 'custom-rectangle',
-  draw: (ctx, attrs, styles) => {
-    const { x, y, width, height } = attrs as FigureAttrs;
-    const { color } = styles as FigureStyles;
-    ctx.fillStyle = color;
-    ctx.fillRect(x, y, width, height);
-  },
-  checkEventOn,
-});
+export const rectangle = ({ ctx, x: baseX, y: baseY, width, height, color }: Figure) => {
+  const x = baseX - width/2;
+  const y = baseY - height/2;
+
+  ctx.fillStyle = color;
+  ctx.fillRect(x, y, width, height);
+
+  ctx.lineWidth = 1;
+  ctx.strokeStyle = 'white';
+  ctx.strokeRect(x, y, width, height);
+};

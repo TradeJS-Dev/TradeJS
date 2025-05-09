@@ -58,6 +58,7 @@ export type TestingBox = (
 ) => Promise<ConnectorStat>;
 
 export type TestConfig = {
+  strategy: StrategyCreator;
   options: TestingOptions;
   strategyConfig: StrategyConfig;
 }[];
@@ -67,7 +68,7 @@ type Direction = 'LONG' | 'SHORT';
 export type Order = {
   symbol: string;
   qty: number;
-  price: number; 
+  price: number;
   timestamp: number;
 };
 
@@ -95,6 +96,7 @@ export type OrderType =
 export type OrderLog = Order & {
   type: OrderType;
   profit: number;
+  index: number;
 };
 
 export type OrderLogData = OrderLog[];
@@ -121,7 +123,11 @@ interface Bot {
 export type BotConfig = Bot[];
 
 type GetPosition = (symbol: string) => Promise<Position | null>;
-type PlaceOrder = (order: OrderWithDirection, tp?: Tp[], sl?: Sl) => Promise<boolean>;
+type PlaceOrder = (
+  order: OrderWithDirection,
+  tp?: Tp[],
+  sl?: Sl,
+) => Promise<boolean>;
 type ClosePosition = (order: Omit<Order, 'qty'>) => Promise<boolean>;
 export type Kline = (options: KlineRequest) => Promise<KlineChartData>;
 export type GetTickers = () => Promise<Ticker[]>;
@@ -209,16 +215,11 @@ export interface Item {
 
 export type Items = Item[];
 
-export interface FigureCoordinates {
+export interface Figure {
+  ctx: CanvasRenderingContext2D;
   x: number;
   y: number;
-}
-
-export interface FigureAttrs extends FigureCoordinates {
+  color: string;
   width: number;
   height: number;
-}
-
-export interface FigureStyles {
-  color: string;
 }

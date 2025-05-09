@@ -3,6 +3,7 @@ import chalk from 'chalk';
 import { TestingBox } from '@types';
 import { formatUnix } from './timestamp';
 import { TestConnectorCreator } from '@src/connectors/Test';
+import { getTimestamp } from '@utils/timestamp';
 
 const _5m = 300_000;
 const INC = _5m * 1;
@@ -21,9 +22,24 @@ export const testing: TestingBox = async (
   });
   let lastTimeStamp = start!;
 
-  for (let timestamp = start!; timestamp <= end; timestamp += INC) {
+  for (let timestamp = start!; timestamp <= end - INC * 4; timestamp += INC) {
     times.push(timestamp);
   }
+
+  const preloadStart = getTimestamp(60);
+
+  await testConnector.kline({
+    symbol,
+    start: preloadStart,
+    end,
+    interval: '5',
+  });
+  await testConnector.kline({
+    symbol,
+    start: preloadStart,
+    end,
+    interval: '15',
+  });
 
   const bar = new ProgressBar(':bar :id :date :amount :minamount :orders', {
     total: times.length,
@@ -31,11 +47,11 @@ export const testing: TestingBox = async (
   });
 
   for await (const timestamp of times) {
-    lastTimeStamp = timestamp;
     await testConnector.checkSl(symbol, lastTimeStamp, timestamp);
     await testConnector.checkTp(symbol, lastTimeStamp, timestamp);
-
     await strategy(symbol, timestamp, testConnector);
+
+    lastTimeStamp = timestamp;
 
     const stat = testConnector.getStat();
 

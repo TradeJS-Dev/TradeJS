@@ -1,5 +1,5 @@
 import { atom } from 'recoil';
-import { getUnixTime, subDays } from 'date-fns';
+import { getTimestamp } from '@utils/timestamp';
 import { Interval, Filters } from '@types';
 
 export const filtersState = atom({
@@ -7,7 +7,7 @@ export const filtersState = atom({
   default: {
     symbol: 'BTCUSDT',
     interval: '15' as Interval,
-    start: getUnixTime(subDays(new Date(), 30)) * 1000,
-    end: getUnixTime(new Date()) * 1000,
+    start: getTimestamp(30),
+    end: getTimestamp(),
   } as Filters,
 });

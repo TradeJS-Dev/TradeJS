@@ -2,13 +2,13 @@ import ejs from 'ejs';
 import fs from 'fs';
 import path from 'path';
 import prettier from 'prettier';
-import { getUnixTime, subDays } from 'date-fns';
 import { ByBitConnectorCreator } from '@src/connectors/ByBit';
+import { getTimestamp } from '@utils/timestamp';
 
 const DAYS = 90;
 
-const start = getUnixTime(subDays(new Date(), DAYS)) * 1000;
-const end = getUnixTime(new Date()) * 1000;
+const start = getTimestamp(DAYS);
+const end = getTimestamp();
 const INTERVAL = '5';
 
 const LIST = [

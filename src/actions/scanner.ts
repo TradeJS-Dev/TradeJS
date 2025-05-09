@@ -1,7 +1,7 @@
 'use server';
 
 import { ByBitConnectorCreator } from '@src/connectors/ByBit';
-import { getTopTickers } from '@src/utils/tickers';
+import { getTopTickers } from '@utils/tickers';
 
 export const scanner = async () => {
   const byBitConnector = ByBitConnectorCreator({

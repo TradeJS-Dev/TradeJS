@@ -5,7 +5,7 @@ export const backtestState = atom({
   key: 'BacktestConfig',
   default: {
     enabled: true,
-    symbol: 'DOGEUSDT',
+    symbol: 'DOGSUSDT',
     id: '1',
   } as BacktestConfig,
 });

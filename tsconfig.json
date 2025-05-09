@@ -23,6 +23,7 @@
       "@app/*": ["./src/app/*"],
       "@atoms": ["./src/app/atoms/index"],
       "@types": ["./src/types/index"],
+      "@utils/*": ["./src/utils/*"],
       "@UI": ["./src/app/components/UI/index"],
       "@components/*": ["./src/app/components/*"]
     }

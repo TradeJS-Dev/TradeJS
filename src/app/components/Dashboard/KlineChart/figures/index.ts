@@ -1,4 +1,4 @@
-import './dimond';
-import './rectangle';
-import './circle';
-import './star';
+export { dimond } from './dimond';
+export { rectangle } from './rectangle';
+export { circle } from './circle';
+export { star } from './star';

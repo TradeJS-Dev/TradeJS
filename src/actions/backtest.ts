@@ -1,7 +1,7 @@
 'use server';
 
 import { OrderLogData } from '@types';
-import { getCache } from '@src/utils/cache';
+import { getCache } from '@utils/cache';
 
 export const backtest = async (
   id: string,
