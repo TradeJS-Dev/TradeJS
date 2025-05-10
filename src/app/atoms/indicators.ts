@@ -7,6 +7,10 @@ export const indicatorsState = atom({
     vol: {
       enabled: true,
     },
+    atr: {
+      enabled: true,
+      periods: [14],
+    },
     ma: {
       enabled: true,
       periods: [49, 99],

@@ -145,6 +145,10 @@ export interface Indicators {
   vol: {
     enabled: boolean;
   };
+  atr: {
+    enabled: boolean;
+    periods: Array<number>;
+  };
   ma: {
     enabled: boolean;
     periods: Array<number>;
