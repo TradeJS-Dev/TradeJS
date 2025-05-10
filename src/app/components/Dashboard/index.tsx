@@ -2,15 +2,16 @@
 
 import React, { useEffect } from 'react';
 import { useRecoilValue, useSetRecoilState } from 'recoil';
-import { subchartState, tickersState } from '@atoms';
+import { filtersState, tickersState, backtestState } from '@atoms';
 import { scanner } from '@src/actions/scanner';
-import { SelectSymbol, SelectInterval, SubchartEnable } from './Filters';
+import { getBacktestFiles } from '@src/actions/backtest';
+import { SelectSymbol, SelectInterval, SelectBacktest } from './Filters';
 import { MainChart } from './MainChart';
-import { SubChart } from './SubChart';
 
 export const Dashboard = () => {
-  const subchart = useRecoilValue(subchartState);
+  const { symbol } = useRecoilValue(filtersState);
   const setTickers = useSetRecoilState(tickersState);
+  const setBacktest = useSetRecoilState(backtestState);
 
   useEffect(() => {
     (async () => {
@@ -23,24 +24,27 @@ export const Dashboard = () => {
     })();
   }, []);
 
+  useEffect(() => {
+    (async () => {
+      const files = await getBacktestFiles(symbol);
+
+      setBacktest((oldState) => ({
+        ...oldState,
+        files,
+      }));
+    })();
+  }, [symbol]);
+
   return (
     <>
       <div className="p-2 flex flex-row gap-8">
         <SelectSymbol />
         <SelectInterval />
-        <SubchartEnable />
+        <SelectBacktest />
       </div>
-      <div
-        key={subchart.enabled ? 'main-chart' : 'chart'}
-        className="flex-1 w-full"
-      >
+      <div className="flex-1 w-full">
         <MainChart />
       </div>
-      {subchart.enabled && (
-        <div className="flex-1 w-full">
-          <SubChart />
-        </div>
-      )}
     </>
   );
 };

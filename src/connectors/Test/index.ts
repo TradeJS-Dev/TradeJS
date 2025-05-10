@@ -20,7 +20,7 @@ export const TestConnectorCreator: TCC = (config) => {
   const FEE = 0.005; 
   let ORDERS = 0;
   let TP: Tp[] = [];
-  let SL: Sl | null = null;
+  let SL: Sl = null;
   const ORDER_LOG: OrderLogData = [];
 
   const byBitConnector = ByBitConnectorCreator(config);
@@ -108,7 +108,7 @@ export const TestConnectorCreator: TCC = (config) => {
     },
 
     checkSl: async (symbol: string, start: number, end: number) => {
-      if (!SL || SL.done || !CURRENT_POSITION) {
+      if (!SL || !CURRENT_POSITION) {
         return;
       }
 
@@ -123,13 +123,13 @@ export const TestConnectorCreator: TCC = (config) => {
         const high = candle.high;
         const low = candle.low;
 
-        const hitStop = isLong ? low <= SL.price : high >= SL.price;
+        const hitStop = isLong ? low <= SL : high >= SL;
 
         if (hitStop) {
           const qty = CURRENT_POSITION.qty;
           const profit = isLong
-            ? (SL.price - CURRENT_POSITION.price) * qty
-            : (CURRENT_POSITION.price - SL.price) * qty;
+            ? (SL - CURRENT_POSITION.price) * qty
+            : (CURRENT_POSITION.price - SL) * qty;
 
           AMOUNT += profit;
           updateMinAmount();
@@ -139,7 +139,7 @@ export const TestConnectorCreator: TCC = (config) => {
             timestamp: candle.timestamp,
             qty,
             profit,
-            price: SL.price,
+            price: SL,
             type: isLong ? 'STOP_LOSS_LONG' : 'STOP_LOSS_SHORT',
             index: ORDER_LOG.length,
           });
@@ -149,16 +149,26 @@ export const TestConnectorCreator: TCC = (config) => {
           ORIGINAL_QTY = 0;
           CURRENT_POSITION = null;
 
-          break;
+          return;
         }
       }
     },
 
     placeOrder: async (order, tp = [], sl) => {
-      if (CURRENT_POSITION) throw new Error('Position already open');
+      if (CURRENT_POSITION) {
+        return false;
+      }
 
-      TP = tp;
-      SL = sl || null;
+      const isLong = order.direction === 'LONG';
+
+      let slPrice = null;
+
+      if (sl) {
+        slPrice = isLong ? order.price * (1 - sl) : order.price * (1 + sl);
+      }
+
+      TP = _.cloneDeep(tp);
+      SL = slPrice || null;
       CURRENT_POSITION = { ...order };
       ORIGINAL_QTY = order.qty;
 
@@ -170,7 +180,7 @@ export const TestConnectorCreator: TCC = (config) => {
       ORDER_LOG.push({
         ...order,
         profit,
-        type: order.direction === 'LONG' ? 'OPEN_LONG' : 'OPEN_SHORT',
+        type: isLong ? 'OPEN_LONG' : 'OPEN_SHORT',
         index: ORDER_LOG.length,
       });
 

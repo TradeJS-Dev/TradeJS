@@ -1,11 +1,15 @@
 import { atom } from 'recoil';
-import { BacktestConfig } from '@types';
+import { Items } from '@types';
+
+interface BacktestState {
+  id: null | string;
+  files: Items;
+}
 
 export const backtestState = atom({
-  key: 'BacktestConfig',
+  key: 'Backtest',
   default: {
-    enabled: true,
-    symbol: 'DOGSUSDT',
-    id: '1',
-  } as BacktestConfig,
+    id: null,
+    files: [],
+  } as BacktestState,
 });

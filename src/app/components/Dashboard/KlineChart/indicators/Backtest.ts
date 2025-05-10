@@ -19,8 +19,8 @@ interface Legend {
   };
 }
 
-export const Backtest = async (chart: Chart, symbol: string, id = '1') => {
-  const backtestData = await backtest(id, symbol);
+export const Backtest = async (chart: Chart, id: string) => {
+  const backtestData = await backtest(id);
   if (_.isEmpty(backtestData)) {
     return;
   }

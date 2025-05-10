@@ -20,7 +20,7 @@ export const SelectSymbol = () => {
       defaultValue={[filters.symbol]}
       onChange={onChange}
       items={tickers}
-      width="400px"
+      width="240px"
     />
   );
 };

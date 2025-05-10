@@ -1,6 +1,7 @@
 const ListIt = require('list-it');
 import chalk from 'chalk';
 import { testing } from '@utils/testing';
+import { format } from 'date-fns';
 import { getTimestamp } from '@utils/timestamp';
 import { BreakoutStrategyCreator, config } from '@src/strategy/Breakout';
 import { TestConfig } from '@types';
@@ -36,15 +37,17 @@ const backtest = async () => {
   const results: string[][] = [];
 
   for await (const test of TEST_CONFIG) {
+    const id = `${test.name}-${format(new Date(), 'mm:HH-dd.MM')}`;
+
     const stat = await testing(
-      `${num}`,
+      id,
       test.strategy,
       test.options,
       test.strategyConfig,
     );
 
     results.push([
-      chalk.blue(`#${num.toString()}`),
+      chalk.blue(`#${num.toString()} ${id}`),
       chalk.yellow(test.options.symbol),
       chalk.green(`${stat.amount.toFixed(2)}$`),
       chalk.red(`${stat.minAmount.toFixed(2)}$`),

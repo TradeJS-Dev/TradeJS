@@ -93,11 +93,6 @@ export const getTopTickers = (data: Ticker[], topN = 50): Item[] => {
 
     return {
       symbol: coin.symbol,
-      vol24h,
-      vol1h,
-      volumeMln,
-      openInterestMln,
-      fundingRateAbs,
       score,
     };
   });
@@ -105,14 +100,10 @@ export const getTopTickers = (data: Ticker[], topN = 50): Item[] => {
   const top = scores
     .sort((a, b) => b.score - a.score)
     .slice(0, topN)
-    .map((item) => ({
+    .map((item, i) => ({
       label: item.symbol.replace(/(USDT)$/i, ''),
       value: item.symbol,
-      description: `24h\u00A0vol: ${item.vol24h.toFixed(
-        2,
-      )}%, 1h\u00A0vol: ${item.vol1h.toFixed(2)}%, vol: ${item.volumeMln.toFixed(
-        1,
-      )}M, OI: ${item.openInterestMln.toFixed(1)}M, funding: ${item.fundingRateAbs.toFixed(4)}%`,
+      description: `score #${i+1}`,
     }));
 
   return top;

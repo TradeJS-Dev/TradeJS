@@ -12,7 +12,7 @@ export const BreakoutStrategyCreator: StrategyCreator = (baseConfig) => {
   const strategy: Strategy = async (symbol, timestamp, connector) => {
     const data = await connector.kline({
       symbol,
-      interval: '15',
+      interval: config.INTERVAL,
       end: timestamp,
     });
 
@@ -27,10 +27,16 @@ export const BreakoutStrategyCreator: StrategyCreator = (baseConfig) => {
     const position = await connector.getPosition(symbol);
     const positionExists = !!position;
 
-    const smaFast = SMA.calculate({ period: 18, values: closes }).pop();
-    const smaSlow = SMA.calculate({ period: 42, values: closes }).pop();
+    const smaFast = SMA.calculate({
+      period: config.MA_FAST,
+      values: closes,
+    }).pop();
+    const smaSlow = SMA.calculate({
+      period: config.MA_SLOW,
+      values: closes,
+    }).pop();
     const atr = ATR.calculate({
-      period: 14,
+      period: config.ATR_PERIOD,
       high: highs,
       low: lows,
       close: closes,
@@ -45,7 +51,7 @@ export const BreakoutStrategyCreator: StrategyCreator = (baseConfig) => {
     if (!smaFast || !smaSlow || !atr || !bb || !obv) return;
 
     // === Фильтры ===
-    const atrThreshold = atr * 0.5;
+    const atrThreshold = atr * config.ATR_OPEN;
     const isVolatile =
       Math.abs(closes[closes.length - 1] - closes[closes.length - 2]) >
       atrThreshold;
@@ -75,10 +81,8 @@ export const BreakoutStrategyCreator: StrategyCreator = (baseConfig) => {
             timestamp,
             direction: 'LONG',
           },
-          [
-            { profit: 0.1, rate: 0.25 },
-            { profit: 0.2, rate: 0.5 },
-          ],
+          config.TP_LONG,
+          config.Sl,
         );
       }
 
@@ -92,10 +96,8 @@ export const BreakoutStrategyCreator: StrategyCreator = (baseConfig) => {
             timestamp,
             direction: 'SHORT',
           },
-          [
-            { profit: 0.05, rate: 0.25 },
-            { profit: 0.1, rate: 0.5 },
-          ],
+          config.TP_SHORT,
+          config.Sl,
         );
       }
     }
@@ -114,7 +116,7 @@ export const BreakoutStrategyCreator: StrategyCreator = (baseConfig) => {
       }
 
       // Трейлинг-стоп (упрощённый)
-      const trailingStopDistance = atr * 1.5;
+      const trailingStopDistance = atr * config.ATR_CLOSE;
 
       if (isLong && price < position.price - trailingStopDistance) {
         await connector.closePosition({ symbol, price, timestamp });

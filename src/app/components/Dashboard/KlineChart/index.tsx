@@ -4,7 +4,7 @@ import React, { useEffect, useState } from 'react';
 import _ from 'lodash';
 import { init, Chart, dispose } from 'klinecharts';
 import { kline } from '@src/actions/kline';
-import { KlineChartData, Indicators, Filters, BacktestConfig } from '@types';
+import { KlineChartData, Indicators, Filters } from '@types';
 import {
   MaIndicator,
   EmaIndicator,
@@ -18,14 +18,14 @@ interface KlineChartProps {
   id: string;
   filters: Filters;
   indicators?: Indicators;
-  backtest?: BacktestConfig;
+  backtestId?: string;
 }
 
 export const KlineChart = ({
   id,
   filters,
   indicators,
-  backtest,
+  backtestId,
 }: KlineChartProps) => {
   const [data, setData] = useState<KlineChartData>();
 
@@ -81,8 +81,8 @@ export const KlineChart = ({
       WmaIndicator(chart, data, indicators.wma.periods);
     }
 
-    if (backtest?.enabled) {
-      Backtest(chart, backtest.symbol, backtest.id);
+    if (backtestId) {
+      Backtest(chart, backtestId);
     }
 
     darkTheme(chart);
@@ -90,7 +90,7 @@ export const KlineChart = ({
     return () => {
       dispose(id);
     };
-  }, [data]);
+  }, [backtestId, data]);
 
   return <div id={id} />;
 };

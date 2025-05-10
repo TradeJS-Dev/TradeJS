@@ -15,7 +15,7 @@ export const MainChart = () => {
     <KlineChart
       id="main-chart"
       filters={filters}
-      backtest={backtest}
+      backtestId={backtest.id || undefined}
       indicators={indicators}
     />
   );

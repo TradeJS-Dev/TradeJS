@@ -9,7 +9,7 @@ export const indicatorsState = atom({
     },
     ma: {
       enabled: true,
-      periods: [2, 99],
+      periods: [49, 99],
     },
     ema: {
       enabled: false,

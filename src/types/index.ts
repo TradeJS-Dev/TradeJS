@@ -39,16 +39,9 @@ export interface Tp {
   done?: boolean;
 }
 
-type TpConfig = {
-  TP: Tp[];
-};
+export type Sl = number | null;
 
-export interface Sl {
-  price: number;
-  done?: boolean;
-}
-
-export type StrategyConfig = Record<string, any> & TpConfig;
+export type StrategyConfig = Record<string, any>;
 
 export type TestingBox = (
   id: string,
@@ -164,12 +157,6 @@ export interface Indicators {
     enabled: boolean;
     periods: Array<number>;
   };
-}
-
-export interface BacktestConfig {
-  enabled: boolean;
-  symbol: string;
-  id: string;
 }
 
 export interface Filters {

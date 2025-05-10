@@ -4,6 +4,7 @@ import { TestingBox } from '@types';
 import { formatUnix } from './timestamp';
 import { TestConnectorCreator } from '@src/connectors/Test';
 import { getTimestamp } from '@utils/timestamp';
+import { setCache } from '@utils/cache';
 
 const _5m = 300_000;
 const INC = _5m * 1;
@@ -65,6 +66,7 @@ export const testing: TestingBox = async (
   }
 
   testConnector.saveStat(symbol, id);
+  setCache('data', `_backtest_${symbol}_${id}.info`, config);
 
   return testConnector.getStat();
 };
