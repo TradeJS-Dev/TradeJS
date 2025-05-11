@@ -18,10 +18,17 @@ export const BreakoutStrategyCreator: StrategyCreator = (baseConfig) => {
 
     if (_.isEmpty(data)) return;
 
-    const closes = data.map((d) => d.close);
-    const highs = data.map((d) => d.high);
-    const lows = data.map((d) => d.low);
-    const volumes = data.map((d) => d.volume);
+    let closes = [] as number[];
+    let highs = [] as number[];
+    let lows = [] as number[];
+    let volumes = [] as number[];
+
+    data.forEach((item) => {
+      closes.push(item.close);
+      highs.push(item.high);
+      lows.push(item.low);
+      volumes.push(item.volume);
+    });
 
     const price = closes[closes.length - 1];
     const position = await connector.getPosition(symbol);
@@ -71,7 +78,6 @@ export const BreakoutStrategyCreator: StrategyCreator = (baseConfig) => {
     const qty = config.LIMIT / price;
 
     if (!positionExists && isVolatile) {
-      // Лонг
       if (smaFast > smaSlow && priceAboveUpperBB && obvGrowing) {
         await connector.placeOrder(
           {
@@ -86,7 +92,6 @@ export const BreakoutStrategyCreator: StrategyCreator = (baseConfig) => {
         );
       }
 
-      // // Шорт
       if (smaFast < smaSlow && priceBelowLowerBB && obvFalling) {
         await connector.placeOrder(
           {

@@ -6,6 +6,7 @@ import { init, Chart, dispose } from 'klinecharts';
 import { kline } from '@src/actions/kline';
 import { KlineChartData, Indicators, Filters } from '@types';
 import {
+  BBIndicator,
   AtrIndicator,
   MaIndicator,
   EmaIndicator,
@@ -72,6 +73,10 @@ export const KlineChart = ({
 
     if (indicators?.atr.enabled) {
       AtrIndicator(chart, data, indicators.atr.periods);
+    }
+
+    if (indicators?.bb.enabled) {
+      BBIndicator(chart, data, indicators.bb.periods);
     }
 
     if (indicators?.ma.enabled) {

@@ -7,9 +7,15 @@ export const AtrIndicator = (
   data: KlineChartData,
   periods: number[],
 ) => {
-  const highs = data.map((item) => item.high);
-  const lows = data.map((item) => item.low);
-  const closes = data.map((item) => item.close);
+  let closes = [] as number[];
+  let highs = [] as number[];
+  let lows = [] as number[];
+
+  data.forEach((item) => {
+    closes.push(item.close);
+    highs.push(item.high);
+    lows.push(item.low);
+  });
 
   const values = periods.map((period) =>
     ATR.calculate({
@@ -26,26 +32,11 @@ export const AtrIndicator = (
     calcParams: periods,
     figures: [
       ...periods.map((period) => ({
-      key: `ATR${period}`,
-      title: `ATR ${period}: `,
-      type: 'line',
-    })),
-    ...periods.map((period) => ({
-      key: `ATROpen${period}`,
-      title: `ATR Open ${period}: `,
-      type: 'line',
-    })),
-    ...periods.map((period) => ({
-      key: `ATRClose${period}`,
-      title: `ATR Close ${period}: `,
-      type: 'line',
-    })),
-    ...periods.map((period) => ({
-      key: `Volotile${period}`,
-      title: `Volotile ${period}: `,
-      type: 'line',
-    })),
-  ],
+        key: `Volotile${period}`,
+        title: `Volotile ${period}: `,
+        type: 'line',
+      })),
+    ],
 
     // Calculation results
     calc: (kLineDataList) => {
@@ -53,10 +44,14 @@ export const AtrIndicator = (
         const atr: Record<string, number> = {};
         periods.forEach((period, j) => {
           if (i >= period - 1) {
-            atr[`ATR${period}`] = values[j][i - (period - 1)];
-            atr[`ATROpen${period}`] = values[j][i - (period - 1)]*0.5;
-            atr[`ATRClose${period}`] = values[j][i - (period - 1)]*1.5;
-            atr[`Volotile${period}`] = closes[i] - closes[i -1];
+            const atrValue = values[j][i - (period - 1)];
+            const atrThreshold = atrValue * 0.5;
+
+            atr[`Volotile${period}`] =
+              Math.abs(closes[closes.length - 1] - closes[closes.length - 2]) >
+              atrThreshold
+                ? 1
+                : 0;
           }
         });
 
@@ -65,5 +60,5 @@ export const AtrIndicator = (
     },
   });
 
-  chart.createIndicator('ATR', false, { id: 'atr', height: 500});
+  chart.createIndicator('ATR', false, { id: 'atr' });
 };

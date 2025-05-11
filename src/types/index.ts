@@ -149,6 +149,10 @@ export interface Indicators {
     enabled: boolean;
     periods: Array<number>;
   };
+  bb: {
+    enabled: boolean;
+    periods: Array<number>;
+  };
   ma: {
     enabled: boolean;
     periods: Array<number>;

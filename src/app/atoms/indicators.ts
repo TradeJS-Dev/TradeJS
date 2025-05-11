@@ -8,11 +8,15 @@ export const indicatorsState = atom({
       enabled: true,
     },
     atr: {
-      enabled: true,
+      enabled: false,
       periods: [14],
     },
+    bb: {
+      enabled: false,
+      periods: [20],
+    },
     ma: {
-      enabled: true,
+      enabled: false,
       periods: [49, 99],
     },
     ema: {
