@@ -1,31 +1,62 @@
-import { atom } from 'recoil';
-import { Indicators } from '@types';
+import { atom, selector } from 'recoil';
+import { Indicators, Items } from '@types';
 
 export const indicatorsState = atom({
   key: 'Indicators',
-  default: {
-    vol: {
+  default: [
+    {
+      id: 'vol',
+      label: 'Vol',
       enabled: true,
     },
-    atr: {
+    {
+      id: 'atr',
+      label: 'ATR',
       enabled: false,
       periods: [14],
     },
-    bb: {
+    {
+      id: 'bb',
+      label: 'BB',
       enabled: false,
       periods: [20],
     },
-    ma: {
+    {
+      id: 'ma',
+      label: 'MA',
       enabled: false,
       periods: [49, 99],
     },
-    ema: {
+    {
+      id: 'ema',
+      label: 'EMA',
       enabled: false,
       periods: [2, 30],
     },
-    wma: {
+    {
+      id: 'wma',
+      label: 'WMA',
       enabled: false,
       periods: [2, 40],
     },
-  } as Indicators,
+  ] as Indicators,
+});
+
+export const selectedIndicatorsSelector = selector({
+  key: 'SelectedIndicators',
+  get: ({ get }) => {
+    const indicators = get(indicatorsState);
+    return indicators.filter((ind) => ind.enabled).map(({ id }) => id);
+  },
+});
+
+export const indicatorsItemsSelector = selector({
+  key: 'IndicatorsItems',
+  get: ({ get }) => {
+    const indicators = get(indicatorsState);
+    return indicators.map(({ id, label }) => ({
+      value: id,
+      label,
+    })) as Items;
+  },
 });

@@ -141,31 +141,14 @@ export interface TestConnector extends Connector {
   checkSl: (symbol: string, start: number, end: number) => Promise<void>;
 }
 
-export interface Indicators {
-  vol: {
-    enabled: boolean;
-  };
-  atr: {
-    enabled: boolean;
-    periods: Array<number>;
-  };
-  bb: {
-    enabled: boolean;
-    periods: Array<number>;
-  };
-  ma: {
-    enabled: boolean;
-    periods: Array<number>;
-  };
-  ema: {
-    enabled: boolean;
-    periods: Array<number>;
-  };
-  wma: {
-    enabled: boolean;
-    periods: Array<number>;
-  };
+export interface Indicator {
+  id: string;
+  label: string;
+  enabled: boolean;
+  periods?: Array<number>;
 }
+
+export type Indicators = Indicator[]
 
 export interface Filters {
   symbol: string;

@@ -15,6 +15,7 @@ interface SelectProps {
   items: Items;
   placeholder?: string;
   width?: string | number;
+  multiple?: boolean;
   size?: 'xs' | 'sm' | 'md' | 'lg';
   onChange?: (value: string[]) => void;
 }
@@ -22,6 +23,7 @@ interface SelectProps {
 export const Select = ({
   defaultValue,
   items,
+  multiple = false,
   placeholder = 'Select',
   width = '320px',
   size = 'sm',
@@ -41,6 +43,7 @@ export const Select = ({
       defaultValue={defaultValue}
       onValueChange={(details) => onChange?.(details.value)}
       size={size}
+      multiple={multiple}
       width={width}
     >
       <UISelect.HiddenSelect />

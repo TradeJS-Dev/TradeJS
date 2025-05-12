@@ -67,29 +67,35 @@ export const KlineChart = ({
 
     chart.applyNewData(data);
 
-    if (indicators?.vol.enabled) {
-      VolIndicator(chart);
-    }
+    indicators?.forEach((indicator) => {
+      if (!indicator.enabled) {
+        return;
+      }
 
-    if (indicators?.atr.enabled) {
-      AtrIndicator(chart, data, indicators.atr.periods);
-    }
+      if (indicator.id === 'vol') {
+        VolIndicator(chart);
+      }
 
-    if (indicators?.bb.enabled) {
-      BBIndicator(chart, data, indicators.bb.periods);
-    }
+      if (indicator.id === 'atr') {
+        AtrIndicator(chart, data, indicator.periods!);
+      }
 
-    if (indicators?.ma.enabled) {
-      MaIndicator(chart, data, indicators.ma.periods);
-    }
+      if (indicator.id === 'bb') {
+        BBIndicator(chart, data, indicator.periods!);
+      }
 
-    if (indicators?.ema.enabled) {
-      EmaIndicator(chart, data, indicators.ema.periods);
-    }
+      if (indicator.id === 'ma') {
+        MaIndicator(chart, data, indicator.periods!);
+      }
 
-    if (indicators?.wma.enabled) {
-      WmaIndicator(chart, data, indicators.wma.periods);
-    }
+      if (indicator.id === 'ema') {
+        EmaIndicator(chart, data, indicator.periods!);
+      }
+
+      if (indicator.id === 'wma') {
+        WmaIndicator(chart, data, indicator.periods!);
+      }
+    })
 
     if (backtestId) {
       Backtest(chart, backtestId);
@@ -100,7 +106,7 @@ export const KlineChart = ({
     return () => {
       dispose(id);
     };
-  }, [backtestId, data]);
+  }, [indicators, backtestId, data]);
 
   return <div id={id} />;
 };
