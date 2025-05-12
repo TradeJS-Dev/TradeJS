@@ -32,7 +32,6 @@ export const BBIndicator = (
         title: `BollingerBands Upper ${period}: `,
         type: 'line',
       })),
-
     ],
 
     // Calculation results

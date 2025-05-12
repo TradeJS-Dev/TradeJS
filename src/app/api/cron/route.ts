@@ -1,12 +1,6 @@
 import { getUnixTime } from 'date-fns';
 import { ByBitConnectorCreator } from '@src/connectors/ByBit';
-import { config } from '@src/bots/config';
-
-export const runtime = 'nodejs';
-export const preferredRegion = ['arn1'];
-export const dynamic = 'force-dynamic';
-export const maxDuration = 300;
-export const generateStaticParams = () => [];
+import botConfig from '@/bot.config';
 
 export async function GET() {
   const byBitConnector = ByBitConnectorCreator({
@@ -14,10 +8,12 @@ export async function GET() {
     secret: '',
   });
 
-  for await (const bot of config) {
+  for await (const bot of botConfig) {
     const timestamp = getUnixTime(new Date()) * 1000;
 
-    const { symbol, strategy } = bot;
+    const { symbol, strategy: strategyCreator, strategyConfig } = bot;
+
+    const strategy = strategyCreator(strategyConfig);
 
     await strategy(symbol, timestamp, byBitConnector);
   }

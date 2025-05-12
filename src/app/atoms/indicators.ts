@@ -31,13 +31,13 @@ export const indicatorsState = atom({
       id: 'ema',
       label: 'EMA',
       enabled: false,
-      periods: [2, 30],
+      periods: [49, 99],
     },
     {
       id: 'wma',
       label: 'WMA',
       enabled: false,
-      periods: [2, 40],
+      periods: [49, 99],
     },
   ] as Indicators,
 });

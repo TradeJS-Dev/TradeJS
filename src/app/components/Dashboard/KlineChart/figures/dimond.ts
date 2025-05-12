@@ -1,6 +1,13 @@
 import { Figure } from '@types';
 
-export const dimond = ({ ctx, x, y, width: baseWidth, height: baseHeight, color }: Figure) => {
+export const dimond = ({
+  ctx,
+  x,
+  y,
+  width: baseWidth,
+  height: baseHeight,
+  color,
+}: Figure) => {
   const width = baseWidth * 1.5;
   const height = baseHeight * 1.5;
   ctx.beginPath();

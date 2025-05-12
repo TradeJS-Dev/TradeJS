@@ -7,7 +7,7 @@ import { Item } from '@types';
 import fs from 'fs';
 const path = require('path');
 
-const dataDir = path.join(process.cwd(), 'src', 'data');
+const dataDir = path.join(process.cwd(), 'data');
 
 export const getBacktestFiles = async (symbol: string) => {
   const files = fs.readdirSync(dataDir);

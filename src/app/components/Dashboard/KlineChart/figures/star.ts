@@ -1,6 +1,13 @@
 import { Figure } from '@types';
 
-export const star = ({ ctx, x: baseX, y: baseY, width: baseWidth, height: baseHeight, color }: Figure) => {
+export const star = ({
+  ctx,
+  x: baseX,
+  y: baseY,
+  width: baseWidth,
+  height: baseHeight,
+  color,
+}: Figure) => {
   const x = baseX - 10;
   const y = baseY - 10;
   const width = baseWidth + 10;

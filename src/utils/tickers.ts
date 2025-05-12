@@ -103,7 +103,7 @@ export const getTopTickers = (data: Ticker[], topN = 50): Item[] => {
     .map((item, i) => ({
       label: item.symbol.replace(/(USDT)$/i, ''),
       value: item.symbol,
-      description: `score #${i+1}`,
+      description: `score #${i + 1}`,
     }));
 
   return top;

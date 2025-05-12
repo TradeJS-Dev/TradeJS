@@ -5,7 +5,7 @@ import chalk from 'chalk';
 const hash: { [key: string]: Array<any> } = {};
 
 const getCachePath = (dir: string, file: string) =>
-  path.join(process.cwd(), 'src', dir, `${file}.json`);
+  path.join(process.cwd(), dir, `${file}.json`);
 
 export const getCache = (dir: string, file: string): Array<any> => {
   const fullPath = getCachePath(dir, file);

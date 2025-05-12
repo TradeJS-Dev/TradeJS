@@ -7,8 +7,8 @@ export const getTimestamp = (days: number = 0) => {
     return getUnixTime(subDays(new Date(), days)) * 1000;
   }
 
-  return getUnixTime(new Date()) * 1000
-}
+  return getUnixTime(new Date()) * 1000;
+};
 
 export const getItemTimestamp = (item: KlineChartItem) => item.timestamp;
 

@@ -17,7 +17,7 @@ export const TestConnectorCreator: TCC = (config) => {
   let ORIGINAL_QTY = 0;
   let AMOUNT = 100;
   let MIN_AMOUNT = AMOUNT;
-  const FEE = 0.005; 
+  const FEE = 0.005;
   let ORDERS = 0;
   let TP: Tp[] = [];
   let SL: Sl = null;
@@ -172,7 +172,7 @@ export const TestConnectorCreator: TCC = (config) => {
       CURRENT_POSITION = { ...order };
       ORIGINAL_QTY = order.qty;
 
-      const profit = order.price * order.qty * FEE * (-1);
+      const profit = order.price * order.qty * FEE * -1;
 
       AMOUNT += profit;
       updateMinAmount();

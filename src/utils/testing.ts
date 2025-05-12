@@ -11,8 +11,9 @@ const INC = _5m * 1;
 
 export const testing: TestingBox = async (
   id,
+  symbol,
   strategyCreator,
-  { symbol, start, end },
+  { start, end },
   config,
 ) => {
   const times = new Array<number>();

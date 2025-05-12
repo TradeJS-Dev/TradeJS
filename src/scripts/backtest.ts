@@ -2,27 +2,7 @@ const ListIt = require('list-it');
 import chalk from 'chalk';
 import { testing } from '@utils/testing';
 import { format } from 'date-fns';
-import { getTimestamp } from '@utils/timestamp';
-import { BreakoutStrategyCreator, config } from '@src/strategy/Breakout';
-import { TestConfig } from '@types';
-
-const start = getTimestamp(30);
-const end = getTimestamp();
-
-const TEST_CONFIG: TestConfig = [
-  {
-    name: 'breakout',
-    strategy: BreakoutStrategyCreator,
-    options: {
-      symbol: 'DOGSUSDT',
-      start,
-      end,
-    },
-    strategyConfig: {
-      ...config,
-    },
-  },
-];
+import TEST_CONFIG from '@/backtest.config';
 
 const HEADERS = [
   chalk.blue('id'),
@@ -37,10 +17,11 @@ const backtest = async () => {
   const results: string[][] = [];
 
   for await (const test of TEST_CONFIG) {
-    const id = `${test.name}-${format(new Date(), 'mm:HH-dd.MM')}`;
+    const id = `${test.name}-${format(new Date(), 'dd.MM-HH:mm')}`;
 
     const stat = await testing(
       id,
+      test.symbol,
       test.strategy,
       test.options,
       test.strategyConfig,
@@ -48,7 +29,7 @@ const backtest = async () => {
 
     results.push([
       chalk.blue(`#${num.toString()} ${id}`),
-      chalk.yellow(test.options.symbol),
+      chalk.yellow(test.symbol),
       chalk.green(`${stat.amount.toFixed(2)}$`),
       chalk.red(`${stat.minAmount.toFixed(2)}$`),
       chalk.cyan(stat.orders),

@@ -2,11 +2,15 @@
 
 import _ from 'lodash';
 import { useRecoilValue, useSetRecoilState } from 'recoil';
-import { indicatorsState, selectedIndicatorsSelector, indicatorsItemsSelector } from '@atoms';
+import {
+  indicatorsState,
+  selectedIndicatorsSelector,
+  indicatorsItemsSelector,
+} from '@atoms';
 import { Select } from '@UI';
 
 export const SelectIndicator = () => {
-  const setIndicators = useSetRecoilState(indicatorsState)
+  const setIndicators = useSetRecoilState(indicatorsState);
   const selected = useRecoilValue(selectedIndicatorsSelector);
   const items = useRecoilValue(indicatorsItemsSelector);
 
@@ -14,8 +18,8 @@ export const SelectIndicator = () => {
     setIndicators((oldState) => {
       const clonedState = _.cloneDeep(oldState);
 
-      clonedState.forEach(( indicator, i ) => {
-        clonedState[i].enabled = values.includes(indicator.id)
+      clonedState.forEach((indicator, i) => {
+        clonedState[i].enabled = values.includes(indicator.id);
       });
 
       return clonedState;
@@ -26,6 +30,7 @@ export const SelectIndicator = () => {
     <Select
       defaultValue={selected}
       onChange={onChange}
+      placeholder='Indicators'
       items={items}
       multiple={true}
       width="240px"

@@ -31,7 +31,7 @@ export type Strategy = (
 
 export type StrategyCreator = (config: StrategyConfig) => Strategy;
 
-export type TestingOptions = Omit<KlineRequest, 'interval'>;
+export type TestingOptions = Omit<KlineRequest, 'interval' | 'symbol'>;
 
 export interface Tp {
   profit: number;
@@ -45,6 +45,7 @@ export type StrategyConfig = Record<string, any>;
 
 export type TestingBox = (
   id: string,
+  symbol: string,
   strategyCreator: StrategyCreator,
   options: TestingOptions,
   config: StrategyConfig,
@@ -52,6 +53,7 @@ export type TestingBox = (
 
 export type TestConfig = {
   name: string;
+  symbol: string;
   strategy: StrategyCreator;
   options: TestingOptions;
   strategyConfig: StrategyConfig;
@@ -111,7 +113,8 @@ export interface ConnectorConfig {
 
 interface Bot {
   symbol: string;
-  strategy: Strategy;
+  strategy: StrategyCreator;
+  strategyConfig: StrategyConfig;
 }
 
 export type BotConfig = Bot[];
@@ -148,7 +151,7 @@ export interface Indicator {
   periods?: Array<number>;
 }
 
-export type Indicators = Indicator[]
+export type Indicators = Indicator[];
 
 export interface Filters {
   symbol: string;

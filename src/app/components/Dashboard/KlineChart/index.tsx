@@ -95,7 +95,7 @@ export const KlineChart = ({
       if (indicator.id === 'wma') {
         WmaIndicator(chart, data, indicator.periods!);
       }
-    })
+    });
 
     if (backtestId) {
       Backtest(chart, backtestId);
