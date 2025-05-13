@@ -1,11 +1,16 @@
 'use client';
 
-import { Dashboard } from '@components/Dashboard';
+import { useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 
 export default function Home() {
+  const router = useRouter();
+
+  useEffect(() => {
+    router.replace('/dashboard');
+  }, []);
+
   return (
-    <main className="min-h-screen flex flex-col items-start justify-between p-12 bg-zinc-900">
-      <Dashboard />
-    </main>
+    <main></main>
   );
 }

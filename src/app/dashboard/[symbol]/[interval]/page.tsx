@@ -1,7 +1,8 @@
 'use client';
 
 import React, { useEffect } from 'react';
-import { useRecoilValue, useSetRecoilState } from 'recoil';
+import { useParams } from 'next/navigation';
+import { useSetRecoilState } from 'recoil';
 import { filtersState, tickersState, backtestState } from '@atoms';
 import { scanner } from '@src/actions/scanner';
 import { getBacktestFiles } from '@src/actions/backtest';
@@ -10,13 +11,29 @@ import {
   SelectInterval,
   SelectBacktest,
   SelectIndicator,
-} from './Filters';
-import { MainChart } from './MainChart';
+} from '@app/components/Dashboard/Filters';
+import { MainChart } from '@app/components/Dashboard/MainChart';
+import { useIsClient } from '@app/hooks/isClient';
+import { Interval } from '@types';
+import { getTimestamp } from '@utils/timestamp';
 
-export const Dashboard = () => {
-  const { symbol } = useRecoilValue(filtersState);
+const Dashboard = () => {
+  const isClient = useIsClient();
+  const { symbol, interval } = useParams();
+  const setFilters = useSetRecoilState(filtersState);
   const setTickers = useSetRecoilState(tickersState);
   const setBacktest = useSetRecoilState(backtestState);
+
+  useEffect(() => {
+    if (typeof symbol === 'string' && typeof interval === 'string') {
+      setFilters({
+        symbol,
+        interval: interval as Interval,
+        start: getTimestamp(30),
+        end: getTimestamp(),
+      });
+    }
+  }, [symbol, interval]);
 
   useEffect(() => {
     (async () => {
@@ -31,7 +48,7 @@ export const Dashboard = () => {
 
   useEffect(() => {
     (async () => {
-      const files = await getBacktestFiles(symbol);
+      const files = await getBacktestFiles(symbol as string);
 
       setBacktest((oldState) => ({
         ...oldState,
@@ -40,8 +57,12 @@ export const Dashboard = () => {
     })();
   }, [symbol]);
 
+  if (!isClient) {
+    return null;
+  }
+
   return (
-    <>
+    <main className="min-h-screen flex flex-col items-start justify-between p-4 bg-zinc-900">
       <div className="p-2 flex flex-row gap-8">
         <SelectSymbol />
         <SelectInterval />
@@ -51,6 +72,8 @@ export const Dashboard = () => {
       <div className="flex-1 w-full">
         <MainChart />
       </div>
-    </>
+    </main>
   );
 };
+
+export default Dashboard;

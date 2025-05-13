@@ -1,10 +1,12 @@
 'use client';
 
+import { useRouter } from 'next/navigation';
 import { useRecoilState, useRecoilValue } from 'recoil';
 import { filtersState, tickersListSelector } from '@atoms';
 import { Select } from '@UI';
 
 export const SelectSymbol = () => {
+  const router = useRouter();
   const tickers = useRecoilValue(tickersListSelector);
   const [filters, setFilters] = useRecoilState(filtersState);
 
@@ -13,6 +15,8 @@ export const SelectSymbol = () => {
       ...oldFilters,
       symbol: value[0],
     }));
+
+    router.replace(`/dashboard/${value[0]}/${filters.interval}`);
   };
 
   return (

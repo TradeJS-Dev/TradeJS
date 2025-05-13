@@ -6,10 +6,10 @@ interface BacktestState {
   files: Items;
 }
 
-export const backtestState = atom({
+export const backtestState = atom<BacktestState>({
   key: 'Backtest',
   default: {
     id: null,
     files: [],
-  } as BacktestState,
+  },
 });

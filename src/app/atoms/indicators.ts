@@ -1,7 +1,9 @@
 import { atom, selector } from 'recoil';
 import { Indicators, Items } from '@types';
 
-export const indicatorsState = atom({
+const LOCAL_STORAGE_KEY = 'indicators';
+
+export const indicatorsState = atom<Indicators>({
   key: 'Indicators',
   default: [
     {
@@ -39,7 +41,29 @@ export const indicatorsState = atom({
       enabled: false,
       periods: [49, 99],
     },
-  ] as Indicators,
+  ],
+  effects: [
+    ({ setSelf, onSet }) => {
+      if (typeof window !== 'undefined') {
+        const saved = localStorage.getItem(LOCAL_STORAGE_KEY);
+        if (saved != null) {
+          try {
+            setSelf(JSON.parse(saved));
+          } catch (err) {
+            console.error('Failed to parse indicators from localStorage:', err);
+          }
+        }
+
+        onSet((newValue, _, isReset) => {
+          if (isReset) {
+            localStorage.removeItem(LOCAL_STORAGE_KEY);
+          } else {
+            localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(newValue));
+          }
+        });
+      }
+    },
+  ],
 });
 
 export const selectedIndicatorsSelector = selector({
