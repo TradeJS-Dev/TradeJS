@@ -10,7 +10,5 @@ export default function Home() {
     router.replace('/dashboard');
   }, []);
 
-  return (
-    <main></main>
-  );
+  return <main></main>;
 }

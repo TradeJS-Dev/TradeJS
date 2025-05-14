@@ -30,7 +30,7 @@ export const SelectIndicator = () => {
     <Select
       defaultValue={selected}
       onChange={onChange}
-      placeholder='Indicators'
+      placeholder="Indicators"
       items={items}
       multiple={true}
       width="240px"

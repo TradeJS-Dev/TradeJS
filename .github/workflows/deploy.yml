@@ -1,0 +1,64 @@
+name: Deploy
+on:
+  push:
+    branches:
+      - stable
+    tags:
+      - v**
+  workflow_dispatch:
+
+jobs:
+  selectel:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Install Docker Compose
+        run: |
+          sudo curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+          sudo chmod +x /usr/local/bin/docker-compose
+
+      - name: Env file
+        run: |
+          echo "
+          PORT=3000
+          BYBIT_API_KEY=${{ secrets.BYBIT_API_KEY }}
+          BYBIT_API_SECRET=${{ secrets.BYBIT_API_SECRET }}
+          " > .env
+
+      - name: Test env
+        run: |
+          cat .env
+  
+      - name: Docker login to Docker Hub
+        run: |
+          echo "${{ secrets.DOCKERHUB_TOKEN }}" | docker login --username ${{ secrets.DOCKERHUB_USERNAME }} --password-stdin
+
+      - name: Build Docker images
+        run: docker-compose build
+  
+      - name: Push Docker images
+        run: docker-compose push
+
+      - name: Copy compose and configs to server
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          source: ".env,docker-compose.yml,nginx,certbot,init-cert.sh"
+          target: ~/
+
+      - name: Deploy on server
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          script: |
+            cd ~/
+            docker compose pull
+            docker compose up -d
+            docker restart nginx

@@ -1,0 +1,84 @@
+# version: '3.9'
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: app
+    restart: always
+    image: aleksnick/inv-app:latest
+    expose:
+      - "3000"
+    env_file:
+      - .env
+    volumes:
+      - .:/app
+      - ./data:/app/data
+      - ./backtest.config.ts:/app/backtest.config.ts
+      - ./bot.config.ts:/app/bot.config.ts
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  nginx:
+    image: nginx:stable-alpine
+    container_name: nginx
+    restart: always
+    volumes:
+      - ./nginx/nginx.conf.ssl:/etc/nginx/nginx.conf.ssl:ro
+      - ./nginx/nginx.conf.nossl:/etc/nginx/nginx.conf.nossl:ro
+      - ./certbot/conf:/etc/letsencrypt:ro
+      - ./certbot/www:/var/www/certbot:ro
+    entrypoint: >
+      sh -c "[ -f /etc/letsencrypt/live/bff.sndsy.ru/fullchain.pem ]
+      && cp /etc/nginx/nginx.conf.ssl /etc/nginx/nginx.conf 
+      || cp /etc/nginx/nginx.conf.nossl /etc/nginx/nginx.conf;
+      nginx -g 'daemon off;'"
+    ports:
+      - "80:80"
+      - "443:443"
+    depends_on:
+      - app
+    networks:
+      - web
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  certbot:
+    image: certbot/certbot
+    container_name: certbot
+    volumes:
+      - ./certbot/conf:/etc/letsencrypt
+      - ./certbot/www:/var/www/certbot
+    entrypoint: >
+      sh -c "certbot certonly --webroot --webroot-path=/var/www/certbot
+      --email aleksnick01@gmail.com --agree-tos --no-eff-email
+      -d bff.sndsy.ru || true"
+    networks:
+      - web
+
+  certbot-cron:
+    image: certbot/certbot
+    container_name: certbot-cron
+    restart: always
+    volumes:
+      - ./certbot/conf:/etc/letsencrypt
+      - ./certbot/www:/var/www/certbot
+    entrypoint: sh -c "while true; do certbot renew --webroot -w /var/www/certbot && sleep 12h; done"
+    networks:
+      - web
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  web:
+    driver: bridge
