@@ -13,7 +13,6 @@ services:
     env_file:
       - .env
     volumes:
-      - .:/app
       - ./data:/app/data
       - ./backtest.config.ts:/app/backtest.config.ts
       - ./bot.config.ts:/app/bot.config.ts
