@@ -13,6 +13,7 @@ RUN yarn build
 COPY cronjob /etc/crontabs/root
 
 RUN chmod +x ./entrypoint.sh
+RUN chmod u+w ./data
 
 EXPOSE 3000
 

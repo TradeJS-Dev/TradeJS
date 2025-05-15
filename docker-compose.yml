@@ -16,6 +16,8 @@ services:
       - ./data:/app/data
       - ./backtest.config.ts:/app/backtest.config.ts
       - ./bot.config.ts:/app/bot.config.ts
+    networks:
+      - web
     logging:
       driver: "json-file"
       options:
@@ -65,7 +67,9 @@ services:
   certbot-cron:
     image: certbot/certbot
     container_name: certbot-cron
-    restart: always
+    restart: failure
+    depends_on:
+      - certbot
     volumes:
       - ./certbot/conf:/etc/letsencrypt
       - ./certbot/www:/var/www/certbot

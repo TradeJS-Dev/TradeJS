@@ -1,9 +1,0 @@
-{
-  "regions": ["arn1"],
-  "crons": [
-    {
-      "path": "/api/cron",
-      "schedule": "* * * * *"
-    }
-  ]
-}
