@@ -1,5 +1,4 @@
 node_modules
-dist
 .git
 .github
 *.log
@@ -7,7 +6,6 @@ Dockerfile
 docker-compose.yml
 .env
 .next
-.yarn
 .vscode
 certbot
 nginx
