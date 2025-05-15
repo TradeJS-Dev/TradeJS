@@ -9,4 +9,3 @@ docker-compose.yml
 .vscode
 certbot
 nginx
-data
