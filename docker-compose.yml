@@ -32,7 +32,7 @@ services:
       - ./certbot/conf:/etc/letsencrypt:ro
       - ./certbot/www:/var/www/certbot:ro
     entrypoint: >
-      sh -c "[ -f /etc/letsencrypt/live/bff.sndsy.ru/fullchain.pem ]
+      sh -c "[ -f /etc/letsencrypt/live/aleksnick01inv.fvds.ru/fullchain.pem ]
       && cp /etc/nginx/nginx.conf.ssl /etc/nginx/nginx.conf 
       || cp /etc/nginx/nginx.conf.nossl /etc/nginx/nginx.conf;
       nginx -g 'daemon off;'"
@@ -58,7 +58,7 @@ services:
     entrypoint: >
       sh -c "certbot certonly --webroot --webroot-path=/var/www/certbot
       --email aleksnick01@gmail.com --agree-tos --no-eff-email
-      -d bff.sndsy.ru || true"
+      -d aleksnick01inv.fvds.ru || true"
     networks:
       - web
 
