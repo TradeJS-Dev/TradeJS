@@ -62,3 +62,4 @@ jobs:
             docker compose pull
             docker compose up -d
             docker restart nginx
+            chmod 777 ./data
