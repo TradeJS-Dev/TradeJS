@@ -61,9 +61,9 @@ jobs:
             cd ~/
             docker compose down
             docker system prune -a --volumes -f
-            sudo systemctl stop nginx
-            sudo systemctl disable nginx
             docker compose pull
+            systemctl stop nginx
+            systemctl disable nginx
             docker compose up -d
             docker restart nginx
             chmod 777 ./data

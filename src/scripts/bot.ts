@@ -1,3 +1,5 @@
 import { runBot } from '@utils/bot';
 
-runBot();
+runBot().then((results) => {
+  console.log(results);
+});

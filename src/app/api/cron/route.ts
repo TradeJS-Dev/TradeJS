@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { runBot } from '@utils/bot';
 import { BotResults } from '@types';
 
+export const dynamic = 'force-dynamic';
+
 const runBotLogic = async (): Promise<BotResults> => {
   return await runBot();
 };
