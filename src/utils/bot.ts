@@ -1,5 +1,7 @@
 import { getUnixTime } from 'date-fns';
 import botConfig from '@/bot.config';
+import { logger } from '@utils/logger';
+import { stringify } from '@utils/stringify';
 
 export const runBot = async () => {
   const botResults = [];
@@ -23,6 +25,8 @@ export const runBot = async () => {
       status,
     });
   }
+
+  logger.log('info', 'botResults: %s', stringify(botResults));
 
   return botResults;
 };

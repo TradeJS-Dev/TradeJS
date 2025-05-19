@@ -14,6 +14,7 @@ import { getCache, setCache } from '@utils/cache';
 import { normalizeTickerData } from '@utils/tickers';
 import { mergeData } from '@utils/array';
 import { logger } from '@utils/logger';
+import { stringify } from '@utils/stringify';
 import {
   KlineChartData,
   KlineRequest,
@@ -22,6 +23,8 @@ import {
 } from '@types';
 
 const LIMIT = 1000;
+
+const getLogLevel = (res: any) => (res.retCode === 0 ? 'info' : 'error');
 
 export const ByBitConnectorCreator: ConnectorCreator = (config) => {
   const request = async ({ symbol, interval, start, end }: KlineRequest) => {
@@ -120,7 +123,12 @@ export const ByBitConnectorCreator: ConnectorCreator = (config) => {
         category: 'linear',
       });
 
-      logger.log('info', 'position: %s', JSON.stringify(positionRes, null, 2));
+      logger.log(
+        getLogLevel(positionRes),
+        'position: %s, %s',
+        symbol,
+        stringify(positionRes),
+      );
 
       if (positionRes.retCode !== 0) {
         return null;
@@ -156,6 +164,12 @@ export const ByBitConnectorCreator: ConnectorCreator = (config) => {
         slPrice = isLong ? price * (1 - sl) : price * (1 + sl);
       }
 
+      logger.log(
+        'info',
+        'placeOrder: %s',
+        stringify({ symbol, price, qty, direction, TP, sl }),
+      );
+
       await client.setLeverage({
         category: 'linear',
         symbol,
@@ -173,7 +187,11 @@ export const ByBitConnectorCreator: ConnectorCreator = (config) => {
         orderFilter: 'Order',
       });
 
-      logger.log('info', 'placeOrder: %s', JSON.stringify(orderRes, null, 2));
+      logger.log(
+        getLogLevel(orderRes),
+        'placeOrder:response: %s',
+        stringify(orderRes),
+      );
 
       if (orderRes.retCode !== 0) {
         return false;
@@ -196,10 +214,10 @@ export const ByBitConnectorCreator: ConnectorCreator = (config) => {
         });
 
         logger.log(
-          'info',
+          getLogLevel(tpRes),
           'tp: %s %s',
-          JSON.stringify(tp, null, 2),
-          JSON.stringify(tpRes, null, 2),
+          stringify(tp),
+          stringify(tpRes),
         );
       }
 
@@ -217,7 +235,13 @@ export const ByBitConnectorCreator: ConnectorCreator = (config) => {
         reduceOnly: true,
       });
 
-      logger.log('info', 'closePosition: %s', closeRes);
+      logger.log(
+        getLogLevel(closeRes),
+        'closePosition: %s, %s, %s',
+        symbol,
+        direction,
+        stringify(closeRes),
+      );
 
       if (closeRes.retCode !== 0) {
         return false;

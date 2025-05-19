@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import chalk from 'chalk';
 import { logger } from '@utils/logger';
+import { stringify } from '@utils/stringify';
 
 const hash: { [key: string]: Array<any> } = {};
 
@@ -38,5 +39,5 @@ export const setCache = <T>(dir: string, file: string, data: T) => {
 
   hash[fullPath] = data as Array<any>;
 
-  fs.writeFileSync(fullPath, JSON.stringify(data, null, 2));
+  fs.writeFileSync(fullPath, stringify(data));
 };

@@ -1,5 +1,6 @@
 import { atom, selector } from 'recoil';
 import { Indicators, Items } from '@types';
+import { stringify } from '@utils/stringify';
 
 const LOCAL_STORAGE_KEY = 'indicators';
 
@@ -58,7 +59,7 @@ export const indicatorsState = atom<Indicators>({
           if (isReset) {
             localStorage.removeItem(LOCAL_STORAGE_KEY);
           } else {
-            localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(newValue));
+            localStorage.setItem(LOCAL_STORAGE_KEY, stringify(newValue));
           }
         });
       }
