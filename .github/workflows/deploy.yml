@@ -59,6 +59,10 @@ jobs:
           key: ${{ secrets.SSH_KEY }}
           script: |
             cd ~/
+            docker compose down
+            docker system prune -a --volumes -f
+            sudo systemctl stop nginx
+            sudo systemctl disable nginx
             docker compose pull
             docker compose up -d
             docker restart nginx
