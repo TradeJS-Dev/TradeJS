@@ -41,9 +41,6 @@ http {
         ssl_protocols TLSv1.2 TLSv1.3;
         ssl_ciphers HIGH:!aNULL:!MD5;
 
-                limit_conn conn_limit_per_ip 10;
-        limit_req zone=req_limit_per_ip burst=10 nodelay;
-
         if ($request_uri ~* "(think\\\\app\\\\invokefunction|call_user_func_array|pearcmd|md5|<\?php|<\?echo|\.\./\.\./|phpunit|eval-stdin|autodiscover|wp-login|xmlrpc|\.env|\.git|composer\.json|passwd)") {
             return 403;
         }
