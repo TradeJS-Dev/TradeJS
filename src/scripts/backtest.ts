@@ -1,8 +1,8 @@
 const ListIt = require('list-it');
 import chalk from 'chalk';
-import { testing } from '@utils/testing';
 import { format } from 'date-fns';
-import TEST_CONFIG from '@/backtest.config';
+import { testing } from '@utils/testing';
+import createTestConfig from '@/backtest.config';
 
 const HEADERS = [
   chalk.blue('id'),
@@ -16,7 +16,9 @@ const backtest = async () => {
   let num = 1;
   const results: string[][] = [];
 
-  for await (const test of TEST_CONFIG) {
+  const testConfig = await createTestConfig();
+
+  for await (const test of testConfig) {
     const id = `${test.name}-${format(new Date(), 'dd.MM-HH:mm')}`;
 
     const stat = await testing(
@@ -25,6 +27,7 @@ const backtest = async () => {
       test.strategy,
       test.options,
       test.strategyConfig,
+      test.connector,
     );
 
     results.push([

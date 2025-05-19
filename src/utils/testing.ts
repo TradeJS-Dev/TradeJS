@@ -15,13 +15,11 @@ export const testing: TestingBox = async (
   strategyCreator,
   { start, end },
   config,
+  connector,
 ) => {
   const times = new Array<number>();
   const strategy = strategyCreator(config);
-  const testConnector = TestConnectorCreator({
-    key: '',
-    secret: '',
-  });
+  const testConnector = TestConnectorCreator(connector);
   let lastTimeStamp = start!;
 
   for (let timestamp = start!; timestamp <= end - INC * 4; timestamp += INC) {

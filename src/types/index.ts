@@ -49,6 +49,7 @@ export type TestingBox = (
   strategyCreator: StrategyCreator,
   options: TestingOptions,
   config: StrategyConfig,
+  connector: Connector,
 ) => Promise<ConnectorStat>;
 
 export type TestConfig = {
@@ -57,6 +58,7 @@ export type TestConfig = {
   strategy: StrategyCreator;
   options: TestingOptions;
   strategyConfig: StrategyConfig;
+  connector: Connector;
 }[];
 
 export type Direction = 'LONG' | 'SHORT';
@@ -101,7 +103,7 @@ export interface ConnectorStat {
 }
 
 export type ConnectorCreator = (config: ConnectorConfig) => Connector;
-export type TestConnectorCreator = (config: ConnectorConfig) => TestConnector;
+export type TestConnectorCreator = (connector: Connector) => TestConnector;
 
 export interface ConnectorConfig {
   key: string;
@@ -112,6 +114,7 @@ interface Bot {
   symbol: string;
   strategy: StrategyCreator;
   strategyConfig: StrategyConfig;
+  connector: Connector;
 }
 
 export type BotConfig = Bot[];

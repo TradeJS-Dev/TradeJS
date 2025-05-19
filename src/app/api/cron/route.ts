@@ -9,7 +9,7 @@ const runBotLogic = async (): Promise<void> => {
 export const GET = async () => {
   try {
     await runBotLogic();
-    return NextResponse.json({ status: 'ok' });
+    return NextResponse.json({ status: 'ok', dt: new Date() });
   } catch (error) {
     console.error('Cron error:', error);
     return NextResponse.json(

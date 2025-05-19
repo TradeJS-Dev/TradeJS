@@ -6,6 +6,7 @@ const securityHeaders = [
     value: `
       default-src 'self';
       style-src 'self' 'unsafe-inline';
+      script-src 'self' 'unsafe-inline';
     `.replace(/\s{2,}/g, ' ').trim(),
   },
 ];

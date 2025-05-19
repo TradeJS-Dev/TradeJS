@@ -12,7 +12,7 @@ import {
   Tp,
 } from '@types';
 
-export const TestConnectorCreator: TCC = (config) => {
+export const TestConnectorCreator: TCC = (connector) => {
   let CURRENT_POSITION: Order | null = null; // Текущая открытая позиция
   let ORIGINAL_QTY = 0;
   let AMOUNT = 100;
@@ -23,10 +23,8 @@ export const TestConnectorCreator: TCC = (config) => {
   let SL: Sl = null;
   const ORDER_LOG: OrderLogData = [];
 
-  const byBitConnector = ByBitConnectorCreator(config);
-
   const kline: Kline = async (options) => {
-    return await byBitConnector.kline(options);
+    return await connector.kline(options);
   };
 
   const updateMinAmount = () => {
