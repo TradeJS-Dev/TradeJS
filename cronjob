@@ -1,1 +1,1 @@
-*/1 * * * * /app/run-bot.sh
+*/1 * * * * curl -s http://0.0.0.0:3000/api/cron >> /var/log/cron.log 2>&1

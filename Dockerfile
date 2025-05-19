@@ -1,6 +1,6 @@
 FROM node:18-alpine
 
-RUN apk add --no-cache curl bash tzdata dumb-init cronie
+RUN apk add --no-cache curl bash tzdata dumb-init cronie nano
 
 WORKDIR /app
 
