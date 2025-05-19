@@ -37,7 +37,9 @@ export const ByBitConnectorCreator: ConnectorCreator = (config) => {
         limit: LIMIT,
       });
 
-      logger.log('info', '%s %s %s %s',
+      logger.log(
+        'info',
+        '%s %s %s %s',
         chalk.yellow(formatUnix(end)),
         chalk.cyan(symbol),
         chalk.cyan(interval),

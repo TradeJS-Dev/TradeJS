@@ -1,7 +1,6 @@
 'use server';
 
 import _ from 'lodash';
-import { ByBitConnectorCreator } from '@src/connectors/ByBit';
 import { setCache } from '@utils/cache';
 import {
   TestConnectorCreator as TCC,
