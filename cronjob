@@ -1,1 +1,1 @@
-*/5 * * * * cd /app && /usr/local/bin/yarn bot >> /var/log/cron.log 2>&1
+*/1 * * * * cd /app && /usr/local/bin/yarn bot >> /var/log/cron.log 2>&1

@@ -7,6 +7,16 @@ const botConfig: BotConfig = [
     strategy: BreakoutStrategyCreator,
     strategyConfig: {
       ...config,
+      LIMIT: 100,
+      TP_LONG: [
+        { profit: 0.1, rate: 0.5 },
+        { profit: 0.2, rate: 0.5 },
+      ],
+      TP_SHORT: [
+        { profit: 0.05, rate: 0.5 },
+        { profit: 0.1, rate: 0.5 },
+      ],
+      Sl: 0.1,    
     },
   },
 ];
