@@ -16,12 +16,12 @@ export const BreakoutStrategyCreator: StrategyCreator = (baseConfig) => {
       end: timestamp,
     });
 
-    if (_.isEmpty(data)) return;
+    if (_.isEmpty(data)) return 'NO_DATA';
 
-    let closes = [] as number[];
-    let highs = [] as number[];
-    let lows = [] as number[];
-    let volumes = [] as number[];
+    const closes: number[] = [];
+    const highs: number[] = [];
+    const lows: number[] = [];
+    const volumes: number[] = [];
 
     data.forEach((item) => {
       closes.push(item.close);
@@ -55,7 +55,7 @@ export const BreakoutStrategyCreator: StrategyCreator = (baseConfig) => {
     }).pop();
     const obv = OBV.calculate({ close: closes, volume: volumes }).pop();
 
-    if (!smaFast || !smaSlow || !atr || !bb || !obv) return;
+    if (!smaFast || !smaSlow || !atr || !bb || !obv) return 'NO_INDICATORS';
 
     // === Фильтры ===
     const atrThreshold = atr * config.ATR_OPEN;
@@ -90,6 +90,7 @@ export const BreakoutStrategyCreator: StrategyCreator = (baseConfig) => {
           config.TP_LONG,
           config.Sl,
         );
+        return 'OPEN_LONG';
       }
 
       if (smaFast < smaSlow && priceBelowLowerBB && obvFalling) {
@@ -104,7 +105,10 @@ export const BreakoutStrategyCreator: StrategyCreator = (baseConfig) => {
           config.TP_SHORT,
           config.Sl,
         );
+        return 'OPEN_SHORT';
       }
+
+      return 'NO_SIGNAL';
     }
 
     if (positionExists) {
@@ -120,6 +124,7 @@ export const BreakoutStrategyCreator: StrategyCreator = (baseConfig) => {
           timestamp,
           direction,
         });
+        return 'CLOSE_POSITION';
       }
 
       // Трейлинг-стоп (упрощённый)
@@ -127,12 +132,18 @@ export const BreakoutStrategyCreator: StrategyCreator = (baseConfig) => {
 
       if (isLong && price < position.price - trailingStopDistance) {
         await connector.closePosition({ symbol, price, timestamp, direction });
+        return 'TRAILING_STOP';
       }
 
       if (isShort && price > position.price + trailingStopDistance) {
         await connector.closePosition({ symbol, price, timestamp, direction });
+        return 'TRAILING_STOP';
       }
+
+      return 'POSITION_HELD';
     }
+
+    return 'NO_SIGNAL';
   };
 
   return strategy;

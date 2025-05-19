@@ -10,20 +10,20 @@ export const MaStrategyCreator: StrategyCreator = (baseConfig) => {
   } as StrategyConfig & typeof DEFAULT_CONFIG;
 
   const strategy: Strategy = async (symbol, timestamp, connector) => {
-    let data = await connector.kline({
+    const data = await connector.kline({
       symbol,
       interval: '5',
       end: timestamp,
     });
 
     if (_.isEmpty(data)) {
-      return;
+      return 'NO_DATA';
     }
 
     const price = data[data.length - 1].close;
 
     if (!price) {
-      return;
+      return 'NO_PRICE';
     }
 
     const position = await connector.getPosition(symbol);
@@ -42,7 +42,7 @@ export const MaStrategyCreator: StrategyCreator = (baseConfig) => {
     }).pop();
 
     if (!Line1 || !Line2) {
-      return;
+      return 'NO_INDICATORS';
     }
 
     if (!positionExists && Line1 > Line2) {
@@ -58,6 +58,8 @@ export const MaStrategyCreator: StrategyCreator = (baseConfig) => {
         },
         config.TP,
       );
+
+      return 'OPEN_LONG';
     }
 
     if (positionExists && Line1 < Line2) {
@@ -67,7 +69,11 @@ export const MaStrategyCreator: StrategyCreator = (baseConfig) => {
         timestamp,
         direction: 'LONG',
       });
+
+      return 'CLOSE_LONG';
     }
+
+    return 'NO_SIGNAL';
   };
 
   return strategy;

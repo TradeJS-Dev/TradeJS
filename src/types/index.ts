@@ -27,7 +27,7 @@ export type Strategy = (
   symbol: string,
   timestamp: number,
   connector: Connector,
-) => Promise<void>;
+) => Promise<string>;
 
 export type StrategyCreator = (config: StrategyConfig) => Strategy;
 
@@ -116,6 +116,13 @@ interface Bot {
   strategyConfig: StrategyConfig;
   connector: Connector;
 }
+
+export interface BotStatus {
+  symbol: string;
+  status: string;
+}
+
+export type BotResults = Array<BotStatus>;
 
 export type BotConfig = Bot[];
 
