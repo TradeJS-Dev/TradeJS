@@ -21,7 +21,7 @@ export const runBot = async () => {
     botResults.push({
       symbol,
       status,
-    })
+    });
   }
 
   return botResults;

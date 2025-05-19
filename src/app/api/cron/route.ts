@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { runBot } from '@utils/bot';
 import { BotResults } from '@types';
+import { logger } from '@utils/logger';
 
 export const dynamic = 'force-dynamic';
 
@@ -13,7 +14,7 @@ export const GET = async () => {
     const results = await runBotLogic();
     return NextResponse.json({ status: 'ok', dt: new Date(), results });
   } catch (error) {
-    console.error('Cron error:', error);
+    logger.log('error', `Cron error: %s`, error);
     return NextResponse.json(
       { error: 'Internal Server Error' },
       { status: 500 },

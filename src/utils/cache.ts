@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import chalk from 'chalk';
+import { logger } from '@utils/logger';
 
 const hash: { [key: string]: Array<any> } = {};
 
@@ -15,7 +16,7 @@ export const getCache = (dir: string, file: string): Array<any> => {
   }
 
   if (!fs.existsSync(fullPath)) {
-    console.warn(chalk.gray(`${fullPath} not found`));
+    logger.log('warn', chalk.gray(`${fullPath} not found`));
     return [];
   }
 
@@ -27,7 +28,7 @@ export const getCache = (dir: string, file: string): Array<any> => {
 
     return parsedFile;
   } catch (e) {
-    console.error('failed file cache', e);
+    logger.log('error', 'failed file cache: %s', e);
     return [];
   }
 };

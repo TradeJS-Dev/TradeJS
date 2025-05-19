@@ -13,7 +13,7 @@ import {
 import { getCache, setCache } from '@utils/cache';
 import { normalizeTickerData } from '@utils/tickers';
 import { mergeData } from '@utils/array';
-
+import { logger } from '@utils/logger';
 import {
   KlineChartData,
   KlineRequest,
@@ -37,7 +37,7 @@ export const ByBitConnectorCreator: ConnectorCreator = (config) => {
         limit: LIMIT,
       });
 
-      console.log(
+      logger.log('info', '%s %s %s %s',
         chalk.yellow(formatUnix(end)),
         chalk.cyan(symbol),
         chalk.cyan(interval),
@@ -46,7 +46,7 @@ export const ByBitConnectorCreator: ConnectorCreator = (config) => {
 
       return mapKlineToChartData(kline.result.list.reverse());
     } catch (error) {
-      console.error('request kline: ', error);
+      logger.log('error', 'request kline: %s', error);
 
       return [];
     }
@@ -118,7 +118,7 @@ export const ByBitConnectorCreator: ConnectorCreator = (config) => {
         category: 'linear',
       });
 
-      console.log('position', JSON.stringify(positionRes, null, 2));
+      logger.log('info', 'position: %s', JSON.stringify(positionRes, null, 2));
 
       if (positionRes.retCode !== 0) {
         return null;
@@ -171,7 +171,7 @@ export const ByBitConnectorCreator: ConnectorCreator = (config) => {
         orderFilter: 'Order',
       });
 
-      console.log('placeOrder', JSON.stringify(orderRes, null, 2));
+      logger.log('info', 'placeOrder: %s', JSON.stringify(orderRes, null, 2));
 
       if (orderRes.retCode !== 0) {
         return false;
@@ -193,7 +193,12 @@ export const ByBitConnectorCreator: ConnectorCreator = (config) => {
           positionIdx: 0,
         });
 
-        console.log('tp', tp, JSON.stringify(tpRes, null, 2));
+        logger.log(
+          'info',
+          'tp: %s %s',
+          JSON.stringify(tp, null, 2),
+          JSON.stringify(tpRes, null, 2),
+        );
       }
 
       return true;
@@ -210,7 +215,7 @@ export const ByBitConnectorCreator: ConnectorCreator = (config) => {
         reduceOnly: true,
       });
 
-      console.log('closePosition', closeRes);
+      logger.log('info', 'closePosition: %s', closeRes);
 
       if (closeRes.retCode !== 0) {
         return false;
