@@ -65,6 +65,7 @@ export const MaStrategyCreator: StrategyCreator = (baseConfig) => {
         symbol,
         price,
         timestamp,
+        direction: 'LONG',
       });
     }
   };

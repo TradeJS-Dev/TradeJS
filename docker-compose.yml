@@ -67,7 +67,7 @@ services:
   certbot-cron:
     image: certbot/certbot
     container_name: certbot-cron
-    restart: failure
+    restart: on-failure
     depends_on:
       - certbot
     volumes:

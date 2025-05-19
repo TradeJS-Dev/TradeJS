@@ -14,7 +14,12 @@ import { getCache, setCache } from '@utils/cache';
 import { normalizeTickerData } from '@utils/tickers';
 import { mergeData } from '@utils/array';
 
-import { KlineChartData, KlineRequest, ConnectorCreator } from '@types';
+import {
+  KlineChartData,
+  KlineRequest,
+  ConnectorCreator,
+  Direction,
+} from '@types';
 
 const LIMIT = 1000;
 
@@ -125,6 +130,7 @@ export const ByBitConnectorCreator: ConnectorCreator = (config) => {
           symbol: item.symbol,
           price: Number.parseFloat(item.avgPrice),
           qty: Number.parseFloat(item.size),
+          direction: (item.side === 'Buy' ? 'LONG' : 'SHORT') as Direction,
         }));
 
       if (!positions || _.isEmpty(positions)) {
@@ -135,18 +141,33 @@ export const ByBitConnectorCreator: ConnectorCreator = (config) => {
 
       return {
         ...position,
-        direction: position.qty > 0 ? 'LONG' : 'SHORT',
       };
     },
-    placeOrder: async ({ symbol, price, qty }, TP = []) => {
+    placeOrder: async ({ symbol, price, qty, direction }, TP = [], sl) => {
       const client = getClient(config);
+
+      const isLong = direction === 'LONG';
+
+      let slPrice = null;
+
+      if (sl) {
+        slPrice = isLong ? price * (1 - sl) : price * (1 + sl);
+      }
+
+      await client.setLeverage({
+        category: 'linear',
+        symbol,
+        buyLeverage: '10',
+        sellLeverage: '10',
+      });
 
       const orderRes = await client.submitOrder({
         category: 'linear',
         symbol,
-        side: 'Buy',
+        stopLoss: slPrice ? slPrice.toString() : undefined,
+        side: isLong ? 'Buy' : 'Sell',
         orderType: 'Market',
-        qty: qty.toFixed(0),
+        qty: qty.toFixed(1),
         orderFilter: 'Order',
       });
 
@@ -158,13 +179,16 @@ export const ByBitConnectorCreator: ConnectorCreator = (config) => {
 
       for await (const tp of TP) {
         const tpSize = qty * tp.rate;
+        const tpPrice = isLong
+          ? `${price * (1 + tp.profit)}`
+          : `${price * (1 - tp.profit)}`;
 
         const tpRes = await client.setTradingStop({
           category: 'linear',
           symbol,
-          tpSize: tpSize.toFixed(0),
+          tpSize: tpSize.toFixed(1),
           tpslMode: 'Partial',
-          takeProfit: `${price * (1 + tp.profit)}`,
+          takeProfit: tpPrice,
           tpOrderType: 'Market',
           positionIdx: 0,
         });
@@ -174,13 +198,13 @@ export const ByBitConnectorCreator: ConnectorCreator = (config) => {
 
       return true;
     },
-    closePosition: async ({ symbol }) => {
+    closePosition: async ({ symbol, direction }) => {
       const client = getClient(config);
 
       const closeRes = await client.submitOrder({
         category: 'linear',
         symbol,
-        side: 'Sell',
+        side: direction === 'LONG' ? 'Sell' : 'Buy',
         orderType: 'Market',
         qty: '0',
         reduceOnly: true,

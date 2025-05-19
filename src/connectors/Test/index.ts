@@ -6,14 +6,14 @@ import { setCache } from '@utils/cache';
 import {
   TestConnectorCreator as TCC,
   Kline,
-  OrderWithDirection,
+  Order,
   OrderLogData,
   Sl,
   Tp,
 } from '@types';
 
 export const TestConnectorCreator: TCC = (config) => {
-  let CURRENT_POSITION: OrderWithDirection | null = null; // Текущая открытая позиция
+  let CURRENT_POSITION: Order | null = null; // Текущая открытая позиция
   let ORIGINAL_QTY = 0;
   let AMOUNT = 100;
   let MIN_AMOUNT = AMOUNT;

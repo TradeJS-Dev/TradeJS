@@ -110,6 +110,7 @@ export const BreakoutStrategyCreator: StrategyCreator = (baseConfig) => {
     if (positionExists) {
       const isLong = position.direction === 'LONG';
       const isShort = position.direction === 'SHORT';
+      const direction = isLong ? 'LONG' : 'SHORT';
 
       // Выход по обратному сигналу
       if ((isLong && smaFast < smaSlow) || (isShort && smaFast > smaSlow)) {
@@ -117,6 +118,7 @@ export const BreakoutStrategyCreator: StrategyCreator = (baseConfig) => {
           symbol,
           price,
           timestamp,
+          direction,
         });
       }
 
@@ -124,11 +126,11 @@ export const BreakoutStrategyCreator: StrategyCreator = (baseConfig) => {
       const trailingStopDistance = atr * config.ATR_CLOSE;
 
       if (isLong && price < position.price - trailingStopDistance) {
-        await connector.closePosition({ symbol, price, timestamp });
+        await connector.closePosition({ symbol, price, timestamp, direction });
       }
 
       if (isShort && price > position.price + trailingStopDistance) {
-        await connector.closePosition({ symbol, price, timestamp });
+        await connector.closePosition({ symbol, price, timestamp, direction });
       }
     }
   };

@@ -4,9 +4,11 @@ RUN apk add --no-cache curl bash tzdata dumb-init cronie
 
 WORKDIR /app
 
-COPY . .
+COPY package.json yarn.lock .yarn ./
 
 RUN yarn
+
+COPY . .
 
 RUN yarn build
 
