@@ -183,7 +183,7 @@ export const ByBitConnectorCreator: ConnectorCreator = (config) => {
         stopLoss: slPrice ? slPrice.toString() : undefined,
         side: isLong ? 'Buy' : 'Sell',
         orderType: 'Market',
-        qty: qty.toFixed(1),
+        qty: qty.toFixed(0),
         orderFilter: 'Order',
       });
 
@@ -206,7 +206,7 @@ export const ByBitConnectorCreator: ConnectorCreator = (config) => {
         const tpRes = await client.setTradingStop({
           category: 'linear',
           symbol,
-          tpSize: tpSize.toFixed(1),
+          tpSize: tpSize.toFixed(0),
           tpslMode: 'Partial',
           takeProfit: tpPrice,
           tpOrderType: 'Market',
