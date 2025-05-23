@@ -6,52 +6,42 @@ import { TestConnectorCreator } from '@src/connectors/Test';
 import { getTimestamp } from '@utils/timestamp';
 import { setCache } from '@utils/cache';
 
-const _5m = 300_000;
-const INC = _5m * 1;
+const preloadStart = getTimestamp(90);
 
 export const testing: TestingBox = async (
   id,
   symbol,
-  strategyCreator,
   { start, end },
-  config,
+  strategyCreator,
+  strategyConfig,
   connector,
 ) => {
-  const times = new Array<number>();
-  const strategy = strategyCreator(config);
-  const testConnector = TestConnectorCreator(connector);
-  let lastTimeStamp = start!;
-
-  for (let timestamp = start!; timestamp <= end - INC * 4; timestamp += INC) {
-    times.push(timestamp);
+  if (!start) {
+    throw new Error('no start');
   }
 
-  const preloadStart = getTimestamp(60);
-
-  await testConnector.kline({
-    symbol,
-    start: preloadStart,
-    end,
-    interval: '5',
-  });
-  await testConnector.kline({
+  const data = await connector.kline({
     symbol,
     start: preloadStart,
     end,
     interval: '15',
   });
 
+  const prevData = data.filter((candle) => candle.timestamp < start);
+  const testData = data.filter((candle) => candle.timestamp >= start);
+
+  const strategy = strategyCreator(strategyConfig, prevData);
+  const testConnector = TestConnectorCreator(connector);
+
   const bar = new ProgressBar(':bar :id :date :amount :minamount :orders', {
-    total: times.length,
+    total: testData.length,
     width: 20,
   });
 
-  for await (const timestamp of times) {
-    await testConnector.checkSl(symbol, lastTimeStamp, timestamp);
-    await testConnector.checkTp(symbol, lastTimeStamp, timestamp);
-    await strategy(symbol, timestamp, testConnector);
-
-    lastTimeStamp = timestamp;
+  for await (const candle of testData) {
+    await strategy(symbol, candle, testConnector);
+    testConnector.checkSl(candle);
+    testConnector.checkTp(candle);
 
     const stat = testConnector.getStat();
 
@@ -60,12 +50,12 @@ export const testing: TestingBox = async (
       orders: chalk.cyan(stat.orders),
       amount: chalk.green(`${stat.amount.toFixed(2)}$`),
       minamount: chalk.red(`${stat.minAmount.toFixed(2)}$`),
-      date: chalk.yellow(formatUnix(timestamp)),
+      date: chalk.yellow(formatUnix(candle.timestamp)),
     });
   }
 
   testConnector.saveStat(symbol, id);
-  setCache('data', `_backtest_${symbol}_${id}.info`, config);
+  setCache('data', `_backtest_${symbol}_${id}.info`, strategyConfig);
 
   return testConnector.getStat();
 };

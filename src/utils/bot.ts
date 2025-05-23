@@ -2,23 +2,28 @@ import { getUnixTime } from 'date-fns';
 import botConfig from '@/bot.config';
 import { logger } from '@utils/logger';
 import { stringify } from '@utils/stringify';
+import { getTimestamp } from '@utils/timestamp';
 
 export const runBot = async () => {
   const botResults = [];
+  const preloadStart = getTimestamp(30);
+  const end = getUnixTime(new Date()) * 1000;
 
   for await (const bot of botConfig) {
-    const timestamp = getUnixTime(new Date()) * 1000;
+    const { symbol, strategyCreator, strategyConfig, connector } = bot;
 
-    const {
+    const data = await connector.kline({
       symbol,
-      strategy: strategyCreator,
-      strategyConfig,
-      connector,
-    } = bot;
+      start: preloadStart,
+      end,
+      interval: '15',
+    });
 
-    const strategy = strategyCreator(strategyConfig);
+    const candle = data.pop();
 
-    const status = await strategy(symbol, timestamp, connector);
+    const strategy = strategyCreator(strategyConfig, data);
+
+    const status = await strategy(symbol, candle!, connector);
 
     botResults.push({
       symbol,

@@ -1,4 +1,4 @@
-import { BreakoutStrategyCreator, config } from '@src/strategy/Breakout';
+import * as strategies from '@src/strategy';
 import { ByBitConnectorCreator } from '@src/connectors/ByBit';
 import { BotConfig } from '@types';
 
@@ -10,9 +10,8 @@ const byBitConnector = ByBitConnectorCreator({
 const botConfig: BotConfig = [
   {
     symbol: 'DOGSUSDT',
-    strategy: BreakoutStrategyCreator,
+    strategyCreator: strategies.BreakoutStrategyCreator,
     strategyConfig: {
-      ...config,
       LIMIT: 100,
       TP_LONG: [
         { profit: 0.1, rate: 0.5 },
@@ -28,9 +27,8 @@ const botConfig: BotConfig = [
   },
   {
     symbol: '10000SATSUSDT',
-    strategy: BreakoutStrategyCreator,
+    strategyCreator: strategies.BreakoutStrategyCreator,
     strategyConfig: {
-      ...config,
       LIMIT: 100,
       TP_LONG: [
         { profit: 0.1, rate: 0.5 },

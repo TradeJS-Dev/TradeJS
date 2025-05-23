@@ -24,8 +24,8 @@ const backtest = async () => {
     const stat = await testing(
       id,
       test.symbol,
-      test.strategy,
       test.options,
+      test.strategyCreator,
       test.strategyConfig,
       test.connector,
     );

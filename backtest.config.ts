@@ -1,10 +1,11 @@
-import { BreakoutStrategyCreator, config } from '@src/strategy/Breakout';
+import * as strategies from '@src/strategy';
 import { ByBitConnectorCreator } from '@src/connectors/ByBit';
 import { getTimestamp } from '@utils/timestamp';
 import { getTopTickers } from '@utils/tickers';
+import { generateParamGrid, generateName } from '@utils/grid';
 import { TestConfig } from '@types';
 
-const start = getTimestamp(30);
+const start = getTimestamp(60);
 const end = getTimestamp();
 const TICKERS_LIMIT = 10;
 
@@ -22,21 +23,23 @@ export const scanner = async () => {
 
 const createConfig = async (): Promise<TestConfig> => {
   // const tickers = await scanner();
-  const tickers = ['APTUSDT', 'SUIUSDT', 'HYPEUSDT'];
+  const tickers = ['DOGSUSDT'];
+  const paramGrid = generateParamGrid({
+    MA_FAST: [20, 50],
+    MA_SLOW: [100, 150],
+    Sl: [0.1, 0.2],
+  });
 
-  return tickers.map((symbol) => ({
-    name: 'breakout',
-    symbol,
-    strategy: BreakoutStrategyCreator,
-    strategyConfig: {
-      ...config,
-    },
-    options: {
-      start,
-      end,
-    },
-    connector: byBitConnector,
-  }));
+  return tickers.flatMap(symbol =>
+    paramGrid.map(params => ({
+      name: generateName('rev', params),
+      symbol,
+      options: { start, end },
+      strategyCreator: strategies.BreakoutStrategyCreator,
+      strategyConfig: params,
+      connector: byBitConnector,
+    }))
+  );
 };
 
 export default createConfig;

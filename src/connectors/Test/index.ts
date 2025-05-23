@@ -9,6 +9,7 @@ import {
   OrderLogData,
   Sl,
   Tp,
+  Candle,
 } from '@types';
 
 export const TestConnectorCreator: TCC = (connector) => {
@@ -30,6 +31,13 @@ export const TestConnectorCreator: TCC = (connector) => {
     MIN_AMOUNT = Math.min(MIN_AMOUNT, AMOUNT);
   };
 
+  const clearPosition = () => {
+    TP = [];
+    SL = null;
+    ORIGINAL_QTY = 0;
+    CURRENT_POSITION = null;
+  };
+
   return {
     kline,
 
@@ -45,109 +53,92 @@ export const TestConnectorCreator: TCC = (connector) => {
 
     getPosition: async () => CURRENT_POSITION || null,
 
-    checkTp: async (symbol: string, start: number, end: number) => {
-      const data = await kline({ symbol, interval: '5', start, end });
-      if (_.isEmpty(data) || !CURRENT_POSITION || !CURRENT_POSITION.qty) {
+    checkTp: (candle: Candle) => {
+      if (_.isEmpty(candle) || !CURRENT_POSITION || !CURRENT_POSITION.qty) {
         return;
       }
 
       const isLong = CURRENT_POSITION.direction === 'LONG';
       const entryPrice = CURRENT_POSITION.price;
 
-      for (const candle of data) {
-        const high = candle.high;
-        const low = candle.low;
+      const high = candle.high;
+      const low = candle.low;
 
-        for (const tp of TP) {
-          if (!CURRENT_POSITION || CURRENT_POSITION.qty <= 0) break;
+      for (const tp of TP) {
+        if (!CURRENT_POSITION || CURRENT_POSITION.qty <= 0) break;
 
-          const targetPrice = isLong
-            ? entryPrice * (1 + tp.profit)
-            : entryPrice * (1 - tp.profit);
+        const targetPrice = isLong
+          ? entryPrice * (1 + tp.profit)
+          : entryPrice * (1 - tp.profit);
 
-          const reached = isLong ? high >= targetPrice : low <= targetPrice;
+        const reached = isLong ? high >= targetPrice : low <= targetPrice;
 
-          if (reached) {
-            const qty = ORIGINAL_QTY * tp.rate;
-            const profit = isLong
-              ? (targetPrice - entryPrice) * qty
-              : (entryPrice - targetPrice) * qty;
-
-            AMOUNT += profit;
-            updateMinAmount();
-
-            CURRENT_POSITION.qty = Math.max(0, CURRENT_POSITION.qty - qty);
-
-            ORDER_LOG.push({
-              ...CURRENT_POSITION,
-              timestamp: candle.timestamp,
-              qty,
-              price: targetPrice,
-              profit,
-              type: isLong ? 'TAKE_PROFIT_LONG' : 'TAKE_PROFIT_SHORT',
-              index: ORDER_LOG.length,
-            });
-
-            tp.done = true;
-          }
-        }
-
-        TP = TP.filter(({ done }) => !done);
-
-        if (CURRENT_POSITION && CURRENT_POSITION.qty <= 0) {
-          TP = [];
-          SL = null;
-          ORIGINAL_QTY = 0;
-          CURRENT_POSITION = null;
-          break;
-        }
-      }
-    },
-
-    checkSl: async (symbol: string, start: number, end: number) => {
-      if (!SL || !CURRENT_POSITION) {
-        return;
-      }
-
-      const data = await kline({ symbol, interval: '5', start, end });
-      if (_.isEmpty(data)) {
-        return;
-      }
-
-      const isLong = CURRENT_POSITION.direction === 'LONG';
-
-      for (const candle of data) {
-        const high = candle.high;
-        const low = candle.low;
-
-        const hitStop = isLong ? low <= SL : high >= SL;
-
-        if (hitStop) {
-          const qty = CURRENT_POSITION.qty;
+        if (reached) {
+          const qty = ORIGINAL_QTY * tp.rate;
           const profit = isLong
-            ? (SL - CURRENT_POSITION.price) * qty
-            : (CURRENT_POSITION.price - SL) * qty;
+            ? (targetPrice - entryPrice) * qty
+            : (entryPrice - targetPrice) * qty;
 
           AMOUNT += profit;
           updateMinAmount();
+
+          CURRENT_POSITION.qty = Math.max(0, CURRENT_POSITION.qty - qty);
 
           ORDER_LOG.push({
             ...CURRENT_POSITION,
             timestamp: candle.timestamp,
             qty,
+            price: targetPrice,
             profit,
-            price: SL,
-            type: isLong ? 'STOP_LOSS_LONG' : 'STOP_LOSS_SHORT',
+            type: isLong ? 'TAKE_PROFIT_LONG' : 'TAKE_PROFIT_SHORT',
             index: ORDER_LOG.length,
           });
 
-          TP = [];
-          SL = null;
-          ORIGINAL_QTY = 0;
-          CURRENT_POSITION = null;
-
-          return;
+          tp.done = true;
         }
+      }
+
+      TP = TP.filter(({ done }) => !done);
+
+      if (CURRENT_POSITION && CURRENT_POSITION.qty <= 0) {
+        clearPosition();
+      }
+    },
+
+    checkSl: (candle: Candle) => {
+      if (!SL || !CURRENT_POSITION || _.isEmpty(candle)) {
+        return;
+      }
+
+      const isLong = CURRENT_POSITION.direction === 'LONG';
+
+      const high = candle.high;
+      const low = candle.low;
+
+      const hitStop = isLong ? low <= SL : high >= SL;
+
+      if (hitStop) {
+        const qty = CURRENT_POSITION.qty;
+        const profit = isLong
+          ? (SL - CURRENT_POSITION.price) * qty
+          : (CURRENT_POSITION.price - SL) * qty;
+
+        AMOUNT += profit;
+        updateMinAmount();
+
+        ORDER_LOG.push({
+          ...CURRENT_POSITION,
+          timestamp: candle.timestamp,
+          qty,
+          profit,
+          price: SL,
+          type: isLong ? 'STOP_LOSS_LONG' : 'STOP_LOSS_SHORT',
+          index: ORDER_LOG.length,
+        });
+
+        clearPosition();
+
+        return;
       }
     },
 
@@ -207,10 +198,7 @@ export const TestConnectorCreator: TCC = (connector) => {
         index: ORDER_LOG.length,
       });
 
-      TP = [];
-      SL = null;
-      ORIGINAL_QTY = 0;
-      CURRENT_POSITION = null;
+      clearPosition();
 
       return true;
     },

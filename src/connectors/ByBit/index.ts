@@ -65,6 +65,11 @@ export const ByBitConnectorCreator: ConnectorCreator = (config) => {
       end: defaultEnd,
     }: KlineRequest) => {
       let data = getCache('data', `${symbol}_${interval}`) as KlineChartData;
+
+      // if (defaultStart && data[0].timestamp > defaultStart) {
+      //   data = [];
+      // }
+
       let loadedData = [] as KlineChartData;
       const cacheTimestamp = getDataTimestamp(data);
 

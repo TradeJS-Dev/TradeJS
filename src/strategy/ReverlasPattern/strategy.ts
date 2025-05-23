@@ -1,20 +1,39 @@
 import _ from 'lodash';
-import { SMA, ATR, BollingerBands, OBV } from 'technicalindicators';
+import {
+  SMA,
+  ATR,
+  OBV,
+  bullishengulfingpattern,
+  bearishengulfingpattern,
+  morningstar,
+  eveningstar,
+  threewhitesoldiers,
+  threeblackcrows,
+  piercingline,
+  darkcloudcover,
+  hammerpattern,
+  shootingstar,
+} from 'technicalindicators';
 import { config as DEFAULT_CONFIG } from './config';
 import { Strategy, StrategyCreator, StrategyConfig } from '@types';
 
-export const BreakoutStrategyCreator: StrategyCreator = (baseConfig, data) => {
+export const ReversalPatternStrategyCreator: StrategyCreator = (
+  baseConfig,
+  data,
+) => {
   const config = {
     ...DEFAULT_CONFIG,
     ...baseConfig,
   } as StrategyConfig & typeof DEFAULT_CONFIG;
 
+  const opens: number[] = [];
   const closes: number[] = [];
   const highs: number[] = [];
   const lows: number[] = [];
   const volumes: number[] = [];
 
   data.forEach((item) => {
+    opens.push(item.open);
     closes.push(item.close);
     highs.push(item.high);
     lows.push(item.low);
@@ -35,11 +54,6 @@ export const BreakoutStrategyCreator: StrategyCreator = (baseConfig, data) => {
     low: lows,
     close: closes,
   });
-  const bbInstance = new BollingerBands({
-    period: config.BB_PERIOD,
-    values: closes,
-    stdDev: config.BB_STDDEV,
-  });
 
   const obvInstance = new OBV({ close: closes, volume: volumes });
 
@@ -50,6 +64,9 @@ export const BreakoutStrategyCreator: StrategyCreator = (baseConfig, data) => {
     const position = await connector.getPosition(symbol);
     const positionExists = !!position;
 
+    opens.push(candle.open);
+    highs.push(candle.high);
+    lows.push(candle.low);
     closes.push(candle.close);
     volumes.push(candle.volume);
 
@@ -57,19 +74,36 @@ export const BreakoutStrategyCreator: StrategyCreator = (baseConfig, data) => {
     const smaFast = smaFastInstance.nextValue(candle.close);
     const smaSlow = smaSlowInstance.nextValue(candle.close);
     const atr = atrInstance.nextValue(candle);
-    const bb = bbInstance.nextValue(candle.close);
     const obv = obvInstance.nextValue(candle);
 
-    if (!smaFast || !smaSlow || !atr || !bb || !obv) return 'NO_INDICATORS';
+    if (!smaFast || !smaSlow || !atr || !obv) return 'NO_INDICATORS';
 
-    // === Фильтры ===
+    const patternInput = {
+      open: opens.slice(-5),
+      high: highs.slice(-5),
+      low: lows.slice(-5),
+      close: closes.slice(-5),
+    };
+
+    // Проверка паттернов
+    const isBullish =
+      bullishengulfingpattern(patternInput) ||
+      morningstar(patternInput) ||
+      threewhitesoldiers(patternInput) ||
+      piercingline(patternInput) ||
+      hammerpattern(patternInput);
+
+    const isBearish =
+      bearishengulfingpattern(patternInput) ||
+      eveningstar(patternInput) ||
+      threeblackcrows(patternInput) ||
+      darkcloudcover(patternInput) ||
+      shootingstar(patternInput);
+
     const atrThreshold = atr * config.ATR_OPEN;
     const isVolatile =
       Math.abs(closes[closes.length - 1] - closes[closes.length - 2]) >
       atrThreshold;
-
-    const priceAboveUpperBB = price > bb.upper;
-    const priceBelowLowerBB = price < bb.lower;
 
     const obvChange =
       obv -
@@ -83,7 +117,7 @@ export const BreakoutStrategyCreator: StrategyCreator = (baseConfig, data) => {
     const qty = config.LIMIT / price;
 
     if (!positionExists && isVolatile) {
-      if (smaFast > smaSlow && priceAboveUpperBB && obvGrowing) {
+      if (isBullish && smaFast > smaSlow && obvGrowing) {
         await connector.placeOrder(
           {
             symbol,
@@ -98,7 +132,7 @@ export const BreakoutStrategyCreator: StrategyCreator = (baseConfig, data) => {
         return 'OPEN_LONG';
       }
 
-      if (smaFast < smaSlow && priceBelowLowerBB && obvFalling) {
+      if (isBearish && smaFast < smaSlow && obvFalling) {
         await connector.placeOrder(
           {
             symbol,
@@ -121,18 +155,11 @@ export const BreakoutStrategyCreator: StrategyCreator = (baseConfig, data) => {
       const isShort = position.direction === 'SHORT';
       const direction = isLong ? 'LONG' : 'SHORT';
 
-      // Выход по обратному сигналу
       if ((isLong && smaFast < smaSlow) || (isShort && smaFast > smaSlow)) {
-        await connector.closePosition({
-          symbol,
-          price,
-          timestamp,
-          direction,
-        });
+        await connector.closePosition({ symbol, price, timestamp, direction });
         return 'CLOSE_POSITION';
       }
 
-      // Трейлинг-стоп (упрощённый)
       const trailingStopDistance = atr * config.ATR_CLOSE;
 
       if (isLong && price < position.price - trailingStopDistance) {

@@ -2,15 +2,18 @@ import { KlineIntervalV3 } from 'bybit-api';
 
 export type Interval = KlineIntervalV3;
 
-export interface KlineChartItem {
-  dt: string;
-  timestamp: number;
+export interface Candle {
   open: number;
   high: number;
   low: number;
   close: number;
   volume: number;
+  timestamp: number;
   turnover: number;
+}
+
+export interface KlineChartItem extends Candle {
+  dt: string;
   [key: string]: unknown;
 }
 
@@ -25,11 +28,14 @@ export interface KlineRequest {
 
 export type Strategy = (
   symbol: string,
-  timestamp: number,
+  cancle: Candle,
   connector: Connector,
 ) => Promise<string>;
 
-export type StrategyCreator = (config: StrategyConfig) => Strategy;
+export type StrategyCreator = (
+  config: StrategyConfig,
+  data: KlineChartData,
+) => Strategy;
 
 export type TestingOptions = Omit<KlineRequest, 'interval' | 'symbol'>;
 
@@ -46,17 +52,17 @@ export type StrategyConfig = Record<string, any>;
 export type TestingBox = (
   id: string,
   symbol: string,
-  strategyCreator: StrategyCreator,
   options: TestingOptions,
-  config: StrategyConfig,
+  strategyCreator: StrategyCreator,
+  strategyConfig: StrategyConfig,
   connector: Connector,
 ) => Promise<ConnectorStat>;
 
 export type TestConfig = {
   name: string;
   symbol: string;
-  strategy: StrategyCreator;
   options: TestingOptions;
+  strategyCreator: StrategyCreator;
   strategyConfig: StrategyConfig;
   connector: Connector;
 }[];
@@ -112,7 +118,7 @@ export interface ConnectorConfig {
 
 interface Bot {
   symbol: string;
-  strategy: StrategyCreator;
+  strategyCreator: StrategyCreator;
   strategyConfig: StrategyConfig;
   connector: Connector;
 }
@@ -143,8 +149,8 @@ export interface Connector {
 export interface TestConnector extends Connector {
   getStat: () => ConnectorStat;
   saveStat: (symbol: string, id: string) => void;
-  checkTp: (symbol: string, start: number, end: number) => Promise<void>;
-  checkSl: (symbol: string, start: number, end: number) => Promise<void>;
+  checkTp: (candle: Candle) => void;
+  checkSl: (candle: Candle) => void;
 }
 
 export interface Indicator {

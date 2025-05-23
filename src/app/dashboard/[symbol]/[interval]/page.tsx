@@ -66,8 +66,8 @@ const Dashboard = () => {
       <div className="p-2 flex flex-row gap-8">
         <SelectSymbol />
         <SelectInterval />
-        <SelectBacktest />
         <SelectIndicator />
+        <SelectBacktest />
       </div>
       <div className="flex-1 w-full">
         <MainChart />

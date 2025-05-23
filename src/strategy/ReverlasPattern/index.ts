@@ -1,0 +1,1 @@
+export { ReversalPatternStrategyCreator } from './strategy';
