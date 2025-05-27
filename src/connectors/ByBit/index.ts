@@ -88,27 +88,32 @@ export const ByBitConnectorCreator: ConnectorCreator = (config) => {
       let fulfilled = start && end && end <= start;
 
       const getPartData = async () => {
-        const partData = await request({
-          symbol,
-          interval,
-          start,
-          end,
-          silent,
-          cacheOnly
-        });
+        try {
+          const partData = await request({
+            symbol,
+            interval,
+            start,
+            end,
+            silent,
+            cacheOnly,
+          });
 
-        if (_.isEmpty(partData)) {
+          if (_.isEmpty(partData)) {
+            fulfilled = true;
+            return;
+          }
+
+          loadedData = mergeData(partData, loadedData);
+
+          if (partData.length < LIMIT) {
+            fulfilled = true;
+          }
+
+          end = getItemTimestamp(partData[0]);
+        } catch (err) {
+          console.error(chalk.red('Error on load data:', err));
           fulfilled = true;
-          return;
         }
-
-        loadedData = mergeData(partData, loadedData);
-
-        if (partData.length < LIMIT) {
-          fulfilled = true;
-        }
-
-        end = getItemTimestamp(partData[0]);
       };
 
       while (!fulfilled && !cacheOnly) {

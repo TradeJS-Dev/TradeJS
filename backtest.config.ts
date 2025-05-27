@@ -5,7 +5,7 @@ import { getTopTickers } from '@utils/tickers';
 import { generateParamGrid, generateName } from '@utils/grid';
 import { TestConfig } from '@types';
 
-const start = getTimestamp(90);
+const start = getTimestamp(60);
 const end = getTimestamp();
 const TICKERS_LIMIT = 10;
 
@@ -22,22 +22,18 @@ export const scanner = async () => {
 };
 
 const createConfig = async (): Promise<TestConfig> => {
-  // const tickers = await scanner();
   const tickers = ['DOGSUSDT'];
+  // const tickers = ['DOGSUSDT'];
   const paramGrid = generateParamGrid({
-    MA_FAST: [28, 29, 30, 31, 32],
-    MA_SLOW: [ 106, 107, 108, 109, 110 ],
-    Sl: [0.04, 0.05, 0.06],
+    MA_FAST: [30],
+    MA_SLOW: [ 110 ],
+    Sl: [0.05, 0.07],
     ATR_PERIOD: [14],
-    ATR_OPEN: [0.7],
-    ATR_CLOSE: [2],
-    BB_PERIOD: [15],
+    ATR_OPEN: [0.7, 0.9],
+    ATR_CLOSE: [2, 2.5],
+    BB_PERIOD: [14, 15, 16],
     BB_STDDEV: [2],
     TP_LONG: [
-      [
-        { profit: 0.1, rate: 0.5 },
-        { profit: 0.2, rate: 0.5 },
-      ],
       [
         { profit: 0.2, rate: 0.5 },
         { profit: 0.4, rate: 0.5 },
@@ -45,16 +41,9 @@ const createConfig = async (): Promise<TestConfig> => {
     ],
     TP_SHORT: [
       [
-        { profit: 0.04, rate: 0.5 },
-        { profit: 0.08, rate: 0.5 },
-      ],
-      [
-        { profit: 0.05, rate: 0.5 },
-        { profit: 0.1, rate: 0.5 },
-      ],
-      [
-        { profit: 0.1, rate: 0.5 },
-        { profit: 0.2, rate: 0.5 },
+        { profit: 0.05, rate: 0.3 },
+        { profit: 0.1, rate: 0.3 },
+        { profit: 0.2, rate: 0.3 },
       ],
     ],
   });

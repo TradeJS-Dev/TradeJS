@@ -3,7 +3,7 @@ import _ from 'lodash';
 
 type GenericConfig = Record<string, any>;
 
-const MIN_AMOUNT_WEIGHT = 10;
+const MIN_AMOUNT_WEIGHT = 24;
 const PROFIT_WEIGHT = 8;
 const ORDERS_WEIGHT = 1;
 

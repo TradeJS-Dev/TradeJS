@@ -12,33 +12,38 @@ const botConfig: BotConfig = [
     symbol: 'DOGSUSDT',
     strategyCreator: strategies.BreakoutStrategyCreator,
     strategyConfig: {
-      LIMIT: 100,
+      MA_FAST: 30,
+      MA_SLOW: 110,
+      Sl: 0.05,
+      ATR_PERIOD: 14,
+      ATR_OPEN: 0.7,
+      ATR_CLOSE: 2,
+      BB_PERIOD: 15,
+      BB_STDDEV: 2,
       TP_LONG: [
-        { profit: 0.1, rate: 0.5 },
-        { profit: 0.2, rate: 0.5 },
+        {
+          profit: 0.2,
+          rate: 0.5,
+        },
+        {
+          profit: 0.4,
+          rate: 0.5,
+        },
       ],
       TP_SHORT: [
-        { profit: 0.05, rate: 0.5 },
-        { profit: 0.1, rate: 0.5 },
+        {
+          profit: 0.05,
+          rate: 0.3,
+        },
+        {
+          profit: 0.1,
+          rate: 0.3,
+        },
+        {
+          profit: 0.2,
+          rate: 0.3,
+        },
       ],
-      Sl: 0.1,
-    },
-    connector: byBitConnector,
-  },
-  {
-    symbol: '10000SATSUSDT',
-    strategyCreator: strategies.BreakoutStrategyCreator,
-    strategyConfig: {
-      LIMIT: 100,
-      TP_LONG: [
-        { profit: 0.1, rate: 0.5 },
-        { profit: 0.2, rate: 0.5 },
-      ],
-      TP_SHORT: [
-        { profit: 0.05, rate: 0.5 },
-        { profit: 0.1, rate: 0.5 },
-      ],
-      Sl: 0.1,
     },
     connector: byBitConnector,
   },
