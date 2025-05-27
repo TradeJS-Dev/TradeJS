@@ -46,6 +46,11 @@ export const ByBitConnectorCreator: ConnectorCreator = (config) => {
         limit: LIMIT,
       });
 
+      if (!kline.result.list) {
+        console.error('kline.result', symbol, kline);
+        return [];
+      }
+
       if (!silent) {
         logger.log(
           'info',
@@ -65,6 +70,60 @@ export const ByBitConnectorCreator: ConnectorCreator = (config) => {
     }
   };
 
+  const loadData = async (
+    direction: 'older' | 'newer',
+    pointer: number | undefined,
+    limitBoundary: number | undefined,
+    requestParams: KlineRequest,
+    requestFn: (args: KlineRequest) => Promise<KlineChartData>,
+  ): Promise<KlineChartData> => {
+    if (pointer === undefined) return [];
+
+    let accumulated: KlineChartData = [];
+    let fulfilled = false;
+
+    while (!fulfilled && !requestParams.cacheOnly) {
+      const params: KlineRequest = {
+        symbol: requestParams.symbol,
+        interval: requestParams.interval,
+        silent: requestParams.silent,
+        cacheOnly: requestParams.cacheOnly,
+      } as KlineRequest;
+
+      if (direction === 'older') {
+        params.end = pointer;
+        if (limitBoundary !== undefined) params.start = limitBoundary;
+      } else {
+        params.start = pointer;
+        if (limitBoundary !== undefined) params.end = limitBoundary;
+      }
+
+      const partData = await requestFn(params);
+
+      if (_.isEmpty(partData)) {
+        fulfilled = true;
+        break;
+      }
+
+      accumulated =
+        direction === 'older'
+          ? mergeData(partData, accumulated)
+          : mergeData(accumulated, partData);
+
+      if (partData.length < LIMIT) {
+        fulfilled = true;
+        break;
+      }
+
+      pointer =
+        direction === 'older'
+          ? getItemTimestamp(partData[0])
+          : getItemTimestamp(partData[partData.length - 1]);
+    }
+
+    return accumulated;
+  };
+
   return {
     kline: async ({
       symbol,
@@ -74,68 +133,68 @@ export const ByBitConnectorCreator: ConnectorCreator = (config) => {
       silent = false,
       cacheOnly = false,
     }: KlineRequest) => {
-      let data = getCache('data', `${symbol}_${interval}`) as KlineChartData;
+      let data =
+        (getCache('data', `${symbol}_${interval}`) as KlineChartData) || [];
 
-      // if (defaultStart && data[0].timestamp > defaultStart) {
-      //   data = [];
-      // }
+      const dataStart = data.length ? getItemTimestamp(data[0]) : undefined;
+      const dataEnd = data.length
+        ? getItemTimestamp(data[data.length - 1])
+        : undefined;
 
-      let loadedData = [] as KlineChartData;
-      const cacheTimestamp = getDataTimestamp(data);
+      const needOlderData =
+        defaultStart !== undefined &&
+        (data.length === 0 ||
+          (dataStart !== undefined && defaultStart < dataStart));
+      const needNewerData =
+        defaultEnd !== undefined &&
+        (data.length === 0 || (dataEnd !== undefined && defaultEnd > dataEnd));
 
-      let end = defaultEnd;
-      const start = cacheTimestamp || defaultStart;
-      let fulfilled = start && end && end <= start;
-
-      const getPartData = async () => {
-        try {
-          const partData = await request({
+      if (needOlderData) {
+        const pointerForOlder = dataStart ?? defaultEnd ?? Date.now();
+        const olderData = await loadData(
+          'older',
+          pointerForOlder,
+          defaultStart,
+          {
             symbol,
             interval,
-            start,
-            end,
             silent,
             cacheOnly,
-          });
-
-          if (_.isEmpty(partData)) {
-            fulfilled = true;
-            return;
-          }
-
-          loadedData = mergeData(partData, loadedData);
-
-          if (partData.length < LIMIT) {
-            fulfilled = true;
-          }
-
-          end = getItemTimestamp(partData[0]);
-        } catch (err) {
-          console.error(chalk.red('Error on load data:', err));
-          fulfilled = true;
-        }
-      };
-
-      while (!fulfilled && !cacheOnly) {
-        await getPartData();
+            start: defaultStart ?? 0,
+            end: pointerForOlder,
+          },
+          request,
+        );
+        data = mergeData(olderData, data);
       }
 
-      data = mergeData(data, loadedData);
+      if (needNewerData) {
+        const pointerForNewer = dataEnd ?? defaultStart ?? 0;
+        const newerData = await loadData(
+          'newer',
+          pointerForNewer,
+          defaultEnd,
+          {
+            symbol,
+            interval,
+            silent,
+            cacheOnly,
+            start: pointerForNewer,
+            end: defaultEnd ?? Date.now(),
+          },
+          request,
+        );
+        data = mergeData(data, newerData);
+      }
 
-      if (!_.isEmpty(loadedData)) {
+      if (!_.isEmpty(data)) {
         setCache('data', `${symbol}_${interval}`, data);
       }
 
-      data = data.filter((item) => {
-        const currentTimestamp = getItemTimestamp(item);
-
-        return (
-          currentTimestamp >= (defaultStart || 0) &&
-          currentTimestamp <= (defaultEnd || Infinity)
-        );
+      return data.filter((item) => {
+        const ts = getItemTimestamp(item);
+        return ts >= (defaultStart || 0) && ts <= (defaultEnd || Infinity);
       });
-
-      return data;
     },
     getPosition: async (symbol) => {
       const client = getClient(config);

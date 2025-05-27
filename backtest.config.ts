@@ -1,3 +1,4 @@
+import _ from 'lodash';
 import * as strategies from '@src/strategy';
 import { ByBitConnectorCreator } from '@src/connectors/ByBit';
 import { getTimestamp } from '@utils/timestamp';
@@ -22,8 +23,8 @@ export const scanner = async () => {
 };
 
 const createConfig = async (): Promise<TestConfig> => {
-  const tickers = ['DOGSUSDT'];
-  // const tickers = ['DOGSUSDT'];
+  const volatilityTicers = await scanner();
+  const tickers = _.uniq([...volatilityTicers]);
   const paramGrid = generateParamGrid({
     MA_FAST: [30],
     MA_SLOW: [ 110 ],

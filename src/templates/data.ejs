@@ -1,7 +1,0 @@
-<% dataFiles.forEach((file) => { %>
-  const data_<%- file %> = require('../data/<%- file %>') as [];<% }); %>
-
-export const data: Record<string, [] | null> = {
-  <% dataFiles.forEach((file) => { %>
-    data_<%- file %>,<% }); %>
-};

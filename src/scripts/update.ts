@@ -1,69 +1,38 @@
-import ejs from 'ejs';
-import fs from 'fs';
-import path from 'path';
-import prettier from 'prettier';
+import _ from 'lodash';
 import { ByBitConnectorCreator } from '@src/connectors/ByBit';
 import { getTimestamp } from '@utils/timestamp';
+import { getTopTickers } from '@utils/tickers';
 
-const DAYS = 90;
-
-const start = getTimestamp(DAYS);
+const preloadStart = getTimestamp(120);
 const end = getTimestamp();
-const INTERVAL = '5';
+const TICKERS_LIMIT = 10;
+const LIST = ['BTCUSDT', 'DOGSUSDT'];
 
-const LIST = [
-  'BTCUSDT',
-  'ETHUSDT',
-  'NEARUSDT',
-  'MATICUSDT',
-  'OPUSDT',
-  'APTUSDT',
-  'AVAXUSDT',
-  'SOLUSDT',
-  'SUIUSDT',
-  'SEIUSDT',
-  'TIAUSDT',
-  'DYDXUSDT',
-  'DYMUSDT',
-];
+const byBitConnector = ByBitConnectorCreator({
+  key: '',
+  secret: '',
+});
 
-const render = async () => {
-  const content = await ejs.renderFile(
-    path.resolve(process.cwd(), 'src/templates/data.ejs'),
-    {
-      dataFiles: LIST.map((symbol) => `${symbol}_${INTERVAL}`),
-    },
-  );
+export const scanner = async () => {
+  const data = await byBitConnector.getTickers();
 
-  const formatted = await prettier.format(content, {
-    singleQuote: true,
-    trailingComma: 'all',
-    parser: 'typescript',
-  });
-
-  fs.writeFileSync(
-    path.resolve(process.cwd(), 'src/utils/data.ts'),
-    formatted,
-    'utf-8',
-  );
+  const tickers = getTopTickers(data, TICKERS_LIMIT);
+  return tickers.map(({ value }) => value);
 };
 
 const update = async () => {
-  const byBitConnector = ByBitConnectorCreator({
-    key: '',
-    secret: '',
-  });
+  const volatilityTicers = await scanner();
+  const tickers = _.uniq([...volatilityTicers, ...LIST]);
 
-  for await (const symbol of LIST) {
+  for await (const symbol of tickers) {
     await byBitConnector.kline({
       symbol,
-      interval: INTERVAL,
-      start,
+      start: preloadStart,
       end,
+      interval: '15',
+      silent: false,
     });
   }
-
-  await render();
 };
 
 update();

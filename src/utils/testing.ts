@@ -22,7 +22,7 @@ export const testing: TestingBox = async (
     start: preloadStart,
     end,
     interval: '15',
-    silent: false,
+    silent: true,
     cacheOnly: uploadedCoins.includes(symbol),
   });
 
