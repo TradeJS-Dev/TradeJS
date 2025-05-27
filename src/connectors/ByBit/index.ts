@@ -27,7 +27,13 @@ const LIMIT = 1000;
 const getLogLevel = (res: any) => (res.retCode === 0 ? 'info' : 'error');
 
 export const ByBitConnectorCreator: ConnectorCreator = (config) => {
-  const request = async ({ symbol, interval, start, end }: KlineRequest) => {
+  const request = async ({
+    symbol,
+    interval,
+    start,
+    end,
+    silent,
+  }: KlineRequest) => {
     try {
       const client = getClient(config);
 
@@ -40,14 +46,16 @@ export const ByBitConnectorCreator: ConnectorCreator = (config) => {
         limit: LIMIT,
       });
 
-      logger.log(
-        'info',
-        '%s %s %s %s',
-        chalk.yellow(formatUnix(end)),
-        chalk.cyan(symbol),
-        chalk.cyan(interval),
-        chalk.yellow(kline.result.list.length),
-      );
+      if (!silent) {
+        logger.log(
+          'info',
+          '%s %s %s %s',
+          chalk.yellow(formatUnix(end)),
+          chalk.cyan(symbol),
+          chalk.cyan(interval),
+          chalk.yellow(kline.result.list.length),
+        );
+      }
 
       return mapKlineToChartData(kline.result.list.reverse());
     } catch (error) {
@@ -63,6 +71,8 @@ export const ByBitConnectorCreator: ConnectorCreator = (config) => {
       interval,
       start: defaultStart,
       end: defaultEnd,
+      silent = false,
+      cacheOnly = false,
     }: KlineRequest) => {
       let data = getCache('data', `${symbol}_${interval}`) as KlineChartData;
 
@@ -83,6 +93,8 @@ export const ByBitConnectorCreator: ConnectorCreator = (config) => {
           interval,
           start,
           end,
+          silent,
+          cacheOnly
         });
 
         if (_.isEmpty(partData)) {
@@ -99,7 +111,7 @@ export const ByBitConnectorCreator: ConnectorCreator = (config) => {
         end = getItemTimestamp(partData[0]);
       };
 
-      while (!fulfilled) {
+      while (!fulfilled && !cacheOnly) {
         await getPartData();
       }
 

@@ -24,6 +24,8 @@ export interface KlineRequest {
   interval: Interval;
   start?: number;
   end: number;
+  silent?: boolean;
+  cacheOnly?: boolean;
 }
 
 export type Strategy = (
@@ -50,7 +52,6 @@ export type Sl = number | null;
 export type StrategyConfig = Record<string, any>;
 
 export type TestingBox = (
-  id: string,
   symbol: string,
   options: TestingOptions,
   strategyCreator: StrategyCreator,
@@ -106,6 +107,14 @@ export interface ConnectorStat {
   amount: number;
   orders: number;
   minAmount: number;
+  orderLog: OrderLogData;
+}
+
+export interface BacktestStat extends ConnectorStat {
+  ind: number;
+  id: string;
+  symbol: string;
+  config: StrategyConfig;
 }
 
 export type ConnectorCreator = (config: ConnectorConfig) => Connector;
@@ -148,7 +157,6 @@ export interface Connector {
 
 export interface TestConnector extends Connector {
   getStat: () => ConnectorStat;
-  saveStat: (symbol: string, id: string) => void;
   checkTp: (candle: Candle) => void;
   checkSl: (candle: Candle) => void;
 }

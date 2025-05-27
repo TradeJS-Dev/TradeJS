@@ -45,11 +45,8 @@ export const TestConnectorCreator: TCC = (connector) => {
       amount: AMOUNT,
       minAmount: MIN_AMOUNT,
       orders: ORDERS,
+      orderLog: ORDER_LOG,
     }),
-
-    saveStat: (symbol: string, id: string) => {
-      setCache('data', `_backtest_${symbol}_${id}`, ORDER_LOG);
-    },
 
     getPosition: async () => CURRENT_POSITION || null,
 

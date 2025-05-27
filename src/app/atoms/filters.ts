@@ -7,7 +7,7 @@ export const filtersState = atom<Filters>({
   default: {
     symbol: 'BTCUSDT',
     interval: '15' as Interval,
-    start: getTimestamp(30),
+    start: getTimestamp(60),
     end: getTimestamp(),
   },
 });

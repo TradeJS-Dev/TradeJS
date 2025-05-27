@@ -1,3 +1,6 @@
+import { v4 as uuidv4 } from 'uuid';
+import { format } from 'date-fns';
+
 export const generateParamGrid = <T extends Record<string, any>>(
   paramOptions: Record<keyof T, T[keyof T][]>,
 ): T[] => {
@@ -21,10 +24,9 @@ export const generateParamGrid = <T extends Record<string, any>>(
   return combinations;
 };
 
-export const generateName = (
-  prefix: string,
-  params: Record<string, any>,
-): string => {
-  const parts = Object.entries(params).map(([key, value]) => `${key}_${value}`);
-  return `${prefix}_${parts.join('_')}`;
+export const generateName = (prefix: string): string => {
+  const uuid = uuidv4();
+  const lastSix = uuid.slice(-6);
+
+  return `${prefix}_${lastSix}_${format(new Date(), 'dd.MM-HH:mm')}`;
 };

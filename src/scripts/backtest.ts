@@ -1,10 +1,17 @@
 const ListIt = require('list-it');
+import ProgressBar from 'progress';
 import chalk from 'chalk';
-import { format } from 'date-fns';
 import { testing } from '@utils/testing';
 import createTestConfig from '@/backtest.config';
+import { getTopResults, mergeConfigs } from '@utils/results';
+import { setCache } from '@utils/cache';
+import { stringify } from '@utils/stringify';
+import { BacktestStat } from '@types';
+
+const TOP_LIMIT = 10;
 
 const HEADERS = [
+  chalk.gray('#'),
   chalk.blue('id'),
   chalk.yellow('symbol'),
   chalk.green('profit'),
@@ -13,16 +20,22 @@ const HEADERS = [
 ];
 
 const backtest = async () => {
-  let num = 1;
-  const results: string[][] = [];
+  let num = 0;
+  let results: BacktestStat[] = [];
 
   const testConfig = await createTestConfig();
 
-  for await (const test of testConfig) {
-    const id = `${test.name}-${format(new Date(), 'dd.MM-HH:mm')}`;
+  console.log('');
+  const bar = new ProgressBar(
+    ':current/:total [:bar][:percent] :ind :id :symbol :amount :minamount :orders :eta(s)',
+    {
+      total: testConfig.length,
+      width: 40,
+    },
+  );
 
-    const stat = await testing(
-      id,
+  for await (const test of testConfig) {
+    const testStat = await testing(
       test.symbol,
       test.options,
       test.strategyCreator,
@@ -30,13 +43,26 @@ const backtest = async () => {
       test.connector,
     );
 
-    results.push([
-      chalk.blue(`#${num.toString()} ${id}`),
-      chalk.yellow(test.symbol),
-      chalk.green(`${stat.amount.toFixed(2)}$`),
-      chalk.red(`${stat.minAmount.toFixed(2)}$`),
-      chalk.cyan(stat.orders),
-    ]);
+    results.push({
+      ind: num,
+      id: test.name,
+      symbol: test.symbol,
+      config: test.strategyConfig,
+      ...testStat,
+    });
+
+    results = getTopResults(results, TOP_LIMIT);
+
+    const { symbol, id, ind, orders, amount, minAmount } = results[0];
+
+    bar.tick({
+      ind: chalk.gray(ind),
+      id: chalk.blue(`#${id}`),
+      symbol: chalk.yellow(symbol),
+      amount: chalk.green(`${amount.toFixed(2)}$`),
+      minamount: chalk.red(`${minAmount.toFixed(2)}$`),
+      orders: chalk.cyan(orders),
+    });
 
     num++;
   }
@@ -46,7 +72,35 @@ const backtest = async () => {
     headerUnderline: true,
   });
 
-  console.log(listit.setHeaderRow(HEADERS).d(results).toString());
+  results.forEach(({ symbol, id, orderLog, config }) => {
+    setCache('data', `_backtest_${symbol}_${id}`, orderLog);
+    setCache('data', `_backtest_${symbol}_${id}.info`, config);
+  });
+
+  const colorizedResults = results.map(
+    ({ ind, id, symbol, amount, minAmount, orders }) => [
+      chalk.gray(ind),
+      chalk.blue(id),
+      chalk.yellow(symbol),
+      chalk.green(`${amount.toFixed(2)}$`),
+      chalk.red(`${minAmount.toFixed(2)}$`),
+      chalk.cyan(orders),
+    ],
+  );
+
+  console.log('');
+  console.log(listit.setHeaderRow(HEADERS).d(colorizedResults).toString());
+  console.log('');
+
+  const bestConfig = results[0].config;
+  console.log(chalk.gray('best config:'));
+  console.log(chalk.green(stringify(bestConfig)));
+  console.log('');
+
+  const mergedConfig = mergeConfigs(results.map(({ config }) => config));
+  console.log(chalk.gray('merged config:'));
+  console.log(chalk.blue(stringify(mergedConfig)));
+  console.log('');
 };
 
 backtest();
