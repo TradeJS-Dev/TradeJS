@@ -13,6 +13,7 @@ export const BreakoutStrategyCreator: StrategyCreator = (baseConfig, data) => {
   const highs: number[] = [];
   const lows: number[] = [];
   const volumes: number[] = [];
+  const obvHistory: number[] = [];
 
   data.forEach((item) => {
     closes.push(item.close);
@@ -40,8 +41,9 @@ export const BreakoutStrategyCreator: StrategyCreator = (baseConfig, data) => {
     values: closes,
     stdDev: config.BB_STDDEV,
   });
-
   const obvInstance = new OBV({ close: closes, volume: volumes });
+
+  const smaOBVInstance = new SMA({ period: config.OBV_SMA_PERIOD, values: [] });
 
   const strategy: Strategy = async (symbol, candle, connector) => {
     if (_.isEmpty(candle)) return 'NO_DATA';
@@ -50,63 +52,53 @@ export const BreakoutStrategyCreator: StrategyCreator = (baseConfig, data) => {
     const position = await connector.getPosition(symbol);
     const positionExists = !!position;
 
-    closes.push(candle.close);
+    closes.push(price);
+    highs.push(candle.high);
+    lows.push(candle.low);
     volumes.push(candle.volume);
 
     const { timestamp } = candle;
-    const smaFast = smaFastInstance.nextValue(candle.close);
-    const smaSlow = smaSlowInstance.nextValue(candle.close);
+
+    const smaFast = smaFastInstance.nextValue(price);
+    const smaSlow = smaSlowInstance.nextValue(price);
     const atr = atrInstance.nextValue(candle);
-    const bb = bbInstance.nextValue(candle.close);
+    const bb = bbInstance.nextValue(price);
     const obv = obvInstance.nextValue(candle);
 
     if (!smaFast || !smaSlow || !atr || !bb || !obv) return 'NO_INDICATORS';
 
-    // === Фильтры ===
+    obvHistory.push(obv);
+    const obvSMA = smaOBVInstance.nextValue(obv);
+
     const atrThreshold = atr * config.ATR_OPEN;
     const isVolatile =
       Math.abs(closes[closes.length - 1] - closes[closes.length - 2]) >
       atrThreshold;
 
-    const priceAboveUpperBB = price > bb.upper;
-    const priceBelowLowerBB = price < bb.lower;
+    const highestHigh = Math.max(...highs.slice(-config.BREAKOUT_LOOKBACK));
+    const lowestLow = Math.min(...lows.slice(-config.BREAKOUT_LOOKBACK));
 
-    const obvChange =
-      obv -
-      (OBV.calculate({
-        close: closes.slice(0, -1),
-        volume: volumes.slice(0, -1),
-      }).pop() || 0);
-    const obvGrowing = obvChange > 0;
-    const obvFalling = obvChange < 0;
+    const breakoutHigh = price >= highestHigh;
+    const breakoutLow = price <= lowestLow;
+
+    const obvGrowing = obvSMA !== undefined && obv >= obvSMA;
+    const obvFalling = obvSMA !== undefined && obv <= obvSMA;
 
     const qty = config.LIMIT / price;
 
     if (!positionExists && isVolatile) {
-      if (smaFast > smaSlow && priceAboveUpperBB && obvGrowing) {
+      if (smaFast > smaSlow && breakoutHigh && obvGrowing) {
         await connector.placeOrder(
-          {
-            symbol,
-            qty,
-            price,
-            timestamp,
-            direction: 'LONG',
-          },
+          { symbol, qty, price, timestamp, direction: 'LONG' },
           config.TP_LONG,
           config.Sl,
         );
         return 'OPEN_LONG';
       }
 
-      if (smaFast < smaSlow && priceBelowLowerBB && obvFalling) {
+      if (smaFast < smaSlow && breakoutLow && obvFalling) {
         await connector.placeOrder(
-          {
-            symbol,
-            qty,
-            price,
-            timestamp,
-            direction: 'SHORT',
-          },
+          { symbol, qty, price, timestamp, direction: 'SHORT' },
           config.TP_SHORT,
           config.Sl,
         );
@@ -121,18 +113,11 @@ export const BreakoutStrategyCreator: StrategyCreator = (baseConfig, data) => {
       const isShort = position.direction === 'SHORT';
       const direction = isLong ? 'LONG' : 'SHORT';
 
-      // Выход по обратному сигналу
       if ((isLong && smaFast < smaSlow) || (isShort && smaFast > smaSlow)) {
-        await connector.closePosition({
-          symbol,
-          price,
-          timestamp,
-          direction,
-        });
+        await connector.closePosition({ symbol, price, timestamp, direction });
         return 'CLOSE_POSITION';
       }
 
-      // Трейлинг-стоп (упрощённый)
       const trailingStopDistance = atr * config.ATR_CLOSE;
 
       if (isLong && price < position.price - trailingStopDistance) {

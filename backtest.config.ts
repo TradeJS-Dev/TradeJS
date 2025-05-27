@@ -6,7 +6,7 @@ import { getTopTickers } from '@utils/tickers';
 import { generateParamGrid, generateName } from '@utils/grid';
 import { TestConfig } from '@types';
 
-const start = getTimestamp(60);
+const start = getTimestamp(90);
 const end = getTimestamp();
 const TICKERS_LIMIT = 10;
 
@@ -24,16 +24,19 @@ export const scanner = async () => {
 
 const createConfig = async (): Promise<TestConfig> => {
   const volatilityTicers = await scanner();
-  const tickers = _.uniq([...volatilityTicers]);
+  const tickers = _.uniq(['DOGSUSDT']);
   const paramGrid = generateParamGrid({
     MA_FAST: [30],
-    MA_SLOW: [ 110 ],
+    MA_SLOW: [100, 110],
     Sl: [0.05, 0.07],
     ATR_PERIOD: [14],
     ATR_OPEN: [0.7, 0.9],
     ATR_CLOSE: [2, 2.5],
     BB_PERIOD: [14, 15, 16],
     BB_STDDEV: [2],
+    OBV_SMA_PERIOD: [8, 10, 20],
+    BREAKOUT_LOOKBACK: [5, 10, 20],
+
     TP_LONG: [
       [
         { profit: 0.2, rate: 0.5 },

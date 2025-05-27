@@ -11,6 +11,8 @@ export const config = {
   LIMIT: 100,
   ATR_OPEN: 0.5,
   ATR_CLOSE: 1.5,
+  OBV_SMA_PERIOD: 10,
+  BREAKOUT_LOOKBACK: 20,
   TP_LONG: [
     { profit: 0.1, rate: 0.25 },
     { profit: 0.2, rate: 0.5 },

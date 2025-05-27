@@ -26,12 +26,12 @@ const Dashboard = () => {
 
   useEffect(() => {
     if (typeof symbol === 'string' && typeof interval === 'string') {
-      setFilters({
+      setFilters((oldState) => ({
+        ...oldState,
         symbol,
         interval: interval as Interval,
-        start: getTimestamp(30),
         end: getTimestamp(),
-      });
+      }));
     }
   }, [symbol, interval]);
 

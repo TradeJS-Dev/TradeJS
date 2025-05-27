@@ -20,7 +20,7 @@ const HEADERS = [
 ];
 
 const backtest = async () => {
-  let num = 0;
+  let num = 1;
   let results: BacktestStat[] = [];
 
   const testConfig = await createTestConfig();

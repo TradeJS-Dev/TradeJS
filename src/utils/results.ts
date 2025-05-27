@@ -10,6 +10,10 @@ const ORDERS_WEIGHT = 1;
 const score = (result: BacktestStat): number => {
   const { amount, minAmount, orders } = result;
 
+  if (orders === 0) {
+    return -2;
+  }
+
   const minAmountScore =
     minAmount >= 100 ? 1 : minAmount >= 85 ? (minAmount - 85) / 15 : -1;
 
