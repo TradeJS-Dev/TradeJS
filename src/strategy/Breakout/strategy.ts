@@ -1,7 +1,7 @@
 import _ from 'lodash';
 import { SMA, ATR, BollingerBands, OBV } from 'technicalindicators';
 import { config as DEFAULT_CONFIG } from './config';
-import { Strategy, StrategyCreator, StrategyConfig } from '@types';
+import { Strategy, StrategyCreator, StrategyConfig, Candle } from '@types';
 
 export const BreakoutStrategyCreator: StrategyCreator = (baseConfig, data) => {
   const config = {
@@ -13,23 +13,18 @@ export const BreakoutStrategyCreator: StrategyCreator = (baseConfig, data) => {
   const highs: number[] = [];
   const lows: number[] = [];
   const volumes: number[] = [];
-  const obvHistory: number[] = [];
+  const candles: Candle[] = [];
 
   data.forEach((item) => {
     closes.push(item.close);
     highs.push(item.high);
     lows.push(item.low);
     volumes.push(item.volume);
+    candles.push(item);
   });
 
-  const smaFastInstance = new SMA({
-    period: config.MA_FAST,
-    values: closes,
-  });
-  const smaSlowInstance = new SMA({
-    period: config.MA_SLOW,
-    values: closes,
-  });
+  const smaFastInstance = new SMA({ period: config.MA_FAST, values: closes });
+  const smaSlowInstance = new SMA({ period: config.MA_SLOW, values: closes });
   const atrInstance = new ATR({
     period: config.ATR_PERIOD,
     high: highs,
@@ -48,16 +43,17 @@ export const BreakoutStrategyCreator: StrategyCreator = (baseConfig, data) => {
   const strategy: Strategy = async (symbol, candle, connector) => {
     if (_.isEmpty(candle)) return 'NO_DATA';
 
-    const price = candle.close;
-    const position = await connector.getPosition(symbol);
-    const positionExists = !!position;
-
-    closes.push(price);
+    candles.push(candle);
+    closes.push(candle.close);
     highs.push(candle.high);
     lows.push(candle.low);
     volumes.push(candle.volume);
 
+    const price = candle.close;
     const { timestamp } = candle;
+
+    const position = await connector.getPosition(symbol);
+    const positionExists = !_.isEmpty(position);
 
     const smaFast = smaFastInstance.nextValue(price);
     const smaSlow = smaSlowInstance.nextValue(price);
@@ -67,40 +63,62 @@ export const BreakoutStrategyCreator: StrategyCreator = (baseConfig, data) => {
 
     if (!smaFast || !smaSlow || !atr || !bb || !obv) return 'NO_INDICATORS';
 
-    obvHistory.push(obv);
-    const obvSMA = smaOBVInstance.nextValue(obv);
+    const smaObv = smaOBVInstance.nextValue(obv);
+    const obvGrowing = smaObv ? obv > smaObv : true;
+    const obvFalling = smaObv ? obv < smaObv : true;
 
     const atrThreshold = atr * config.ATR_OPEN;
     const isVolatile =
       Math.abs(closes[closes.length - 1] - closes[closes.length - 2]) >
       atrThreshold;
 
-    const highestHigh = Math.max(...highs.slice(-config.BREAKOUT_LOOKBACK));
-    const lowestLow = Math.min(...lows.slice(-config.BREAKOUT_LOOKBACK));
-
-    const breakoutHigh = price >= highestHigh;
-    const breakoutLow = price <= lowestLow;
-
-    const obvGrowing = obvSMA !== undefined && obv >= obvSMA;
-    const obvFalling = obvSMA !== undefined && obv <= obvSMA;
-
     const qty = config.LIMIT / price;
 
+    const len = candles.length;
+    if (len < config.BREAKOUT_LOOKBACK + 2) return 'WAIT_DATA';
+
+    const highLevel = Math.max(
+      ...candles
+        .slice(len - config.BREAKOUT_LOOKBACK - 2, len - 2)
+        .map((c) => c.high),
+    );
+    const lowLevel = Math.min(
+      ...candles
+        .slice(len - config.BREAKOUT_LOOKBACK - 2, len - 2)
+        .map((c) => c.low),
+    );
+
+    const prevCandle = candles[len - 2];
+
+    const breakoutUp =
+      prevCandle.high > highLevel &&
+      smaFast > smaSlow &&
+      obvGrowing &&
+      candle.close > prevCandle.close &&
+      candle.close > highLevel;
+
+    const breakoutDown =
+      prevCandle.low < lowLevel &&
+      smaFast < smaSlow &&
+      obvFalling &&
+      candle.close < prevCandle.close &&
+      candle.close < lowLevel;
+
     if (!positionExists && isVolatile) {
-      if (smaFast > smaSlow && breakoutHigh && obvGrowing) {
+      if (breakoutUp) {
         await connector.placeOrder(
           { symbol, qty, price, timestamp, direction: 'LONG' },
           config.TP_LONG,
-          config.Sl,
+          config.SL_LONG,
         );
         return 'OPEN_LONG';
       }
 
-      if (smaFast < smaSlow && breakoutLow && obvFalling) {
+      if (breakoutDown) {
         await connector.placeOrder(
           { symbol, qty, price, timestamp, direction: 'SHORT' },
           config.TP_SHORT,
-          config.Sl,
+          config.SL_SHORT,
         );
         return 'OPEN_SHORT';
       }
@@ -108,32 +126,29 @@ export const BreakoutStrategyCreator: StrategyCreator = (baseConfig, data) => {
       return 'NO_SIGNAL';
     }
 
-    if (positionExists) {
-      const isLong = position.direction === 'LONG';
-      const isShort = position.direction === 'SHORT';
-      const direction = isLong ? 'LONG' : 'SHORT';
+    // Закрытие по развороту тренда или трейлинг-стопу (как раньше)
+    const isLong = position?.direction === 'LONG';
+    const isShort = position?.direction === 'SHORT';
+    const direction = isLong ? 'LONG' : 'SHORT';
 
-      if ((isLong && smaFast < smaSlow) || (isShort && smaFast > smaSlow)) {
-        await connector.closePosition({ symbol, price, timestamp, direction });
-        return 'CLOSE_POSITION';
-      }
-
-      const trailingStopDistance = atr * config.ATR_CLOSE;
-
-      if (isLong && price < position.price - trailingStopDistance) {
-        await connector.closePosition({ symbol, price, timestamp, direction });
-        return 'TRAILING_STOP';
-      }
-
-      if (isShort && price > position.price + trailingStopDistance) {
-        await connector.closePosition({ symbol, price, timestamp, direction });
-        return 'TRAILING_STOP';
-      }
-
-      return 'POSITION_HELD';
+    if ((isLong && smaFast < smaSlow) || (isShort && smaFast > smaSlow)) {
+      await connector.closePosition({ symbol, price, timestamp, direction });
+      return 'CLOSE_POSITION';
     }
 
-    return 'NO_SIGNAL';
+    const trailingStopDistance = atr * config.ATR_CLOSE;
+
+    if (isLong && price < position.price - trailingStopDistance) {
+      await connector.closePosition({ symbol, price, timestamp, direction });
+      return 'TRAILING_STOP';
+    }
+
+    if (isShort && price > position.price + trailingStopDistance) {
+      await connector.closePosition({ symbol, price, timestamp, direction });
+      return 'TRAILING_STOP';
+    }
+
+    return 'POSITION_HELD';
   };
 
   return strategy;

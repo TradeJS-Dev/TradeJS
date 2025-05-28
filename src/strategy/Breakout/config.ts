@@ -21,5 +21,6 @@ export const config = {
     { profit: 0.05, rate: 0.25 },
     { profit: 0.1, rate: 0.5 },
   ],
-  Sl: 0.1,
+  SL_LONG: 0.06,
+  SL_SHORT: 0.03,
 };

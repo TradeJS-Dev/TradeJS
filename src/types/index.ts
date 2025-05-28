@@ -106,6 +106,9 @@ export type OrderLogData = OrderLog[];
 export interface ConnectorStat {
   amount: number;
   orders: number;
+  wins: number;
+  losses: number;
+  ws: number;
   minAmount: number;
   orderLog: OrderLogData;
 }

@@ -1,7 +1,6 @@
 'use server';
 
 import _ from 'lodash';
-import { setCache } from '@utils/cache';
 import {
   TestConnectorCreator as TCC,
   Kline,
@@ -19,6 +18,9 @@ export const TestConnectorCreator: TCC = (connector) => {
   let MIN_AMOUNT = AMOUNT;
   const FEE = 0.005;
   let ORDERS = 0;
+  let DEAL_AMOUNT = 0;
+  let WINS = 0;
+  let LOSSES = 0;
   let TP: Tp[] = [];
   let SL: Sl = null;
   const ORDER_LOG: OrderLogData = [];
@@ -32,8 +34,15 @@ export const TestConnectorCreator: TCC = (connector) => {
   };
 
   const clearPosition = () => {
+    if (DEAL_AMOUNT > 0) {
+      WINS++;
+    } else {
+      LOSSES++;
+    }
+
     TP = [];
     SL = null;
+    DEAL_AMOUNT = 0;
     ORIGINAL_QTY = 0;
     CURRENT_POSITION = null;
   };
@@ -44,6 +53,9 @@ export const TestConnectorCreator: TCC = (connector) => {
     getStat: () => ({
       amount: AMOUNT,
       minAmount: MIN_AMOUNT,
+      wins: WINS,
+      losses: LOSSES,
+      ws: (WINS / LOSSES) * 100,
       orders: ORDERS,
       orderLog: ORDER_LOG,
     }),
@@ -77,9 +89,12 @@ export const TestConnectorCreator: TCC = (connector) => {
             : (entryPrice - targetPrice) * qty;
 
           AMOUNT += profit;
+          DEAL_AMOUNT += profit;
           updateMinAmount();
 
-          CURRENT_POSITION.qty = Math.max(0, CURRENT_POSITION.qty - qty);
+          CURRENT_POSITION.qty = parseFloat(
+            (CURRENT_POSITION.qty - qty).toFixed(8),
+          );
 
           ORDER_LOG.push({
             ...CURRENT_POSITION,
@@ -121,6 +136,7 @@ export const TestConnectorCreator: TCC = (connector) => {
           : (CURRENT_POSITION.price - SL) * qty;
 
         AMOUNT += profit;
+        DEAL_AMOUNT += profit;
         updateMinAmount();
 
         ORDER_LOG.push({
@@ -160,6 +176,7 @@ export const TestConnectorCreator: TCC = (connector) => {
       const profit = order.price * order.qty * FEE * -1;
 
       AMOUNT += profit;
+      DEAL_AMOUNT += profit;
       updateMinAmount();
 
       ORDER_LOG.push({
@@ -184,6 +201,7 @@ export const TestConnectorCreator: TCC = (connector) => {
         : (CURRENT_POSITION.price - order.price) * CURRENT_POSITION.qty;
 
       AMOUNT += profit;
+      DEAL_AMOUNT += profit;
       updateMinAmount();
 
       ORDER_LOG.push({

@@ -12,11 +12,14 @@ const TOP_LIMIT = 10;
 
 const HEADERS = [
   chalk.gray('#'),
-  chalk.blue('id'),
-  chalk.yellow('symbol'),
-  chalk.green('profit'),
-  chalk.red('low'),
-  chalk.cyan('orders'),
+  chalk.blue('ID'),
+  chalk.yellow('SYMBOL'),
+  chalk.green('PROFIT'),
+  chalk.red('LOW'),
+  chalk.green('WINS'),
+  chalk.green('LOSSES'),
+  chalk.cyan('ORDERS'),
+  chalk.green('WIN/LOSS (%)'),
 ];
 
 const backtest = async () => {
@@ -27,7 +30,7 @@ const backtest = async () => {
 
   console.log('');
   const bar = new ProgressBar(
-    ':current/:total [:bar][:percent] :ind :id :symbol :amount :minamount :orders :eta(s)',
+    ':current/:total [:bar][:percent] :ind :id :symbol :amount :minamount :wins/:losses/:orders :ws  :eta(s)',
     {
       total: testConfig.length,
       width: 40,
@@ -53,7 +56,7 @@ const backtest = async () => {
 
     results = getTopResults(results, TOP_LIMIT);
 
-    const { symbol, id, ind, orders, amount, minAmount } = results[0];
+    const { symbol, id, ind, orders, amount, minAmount, wins, losses, ws } = results[0];
 
     bar.tick({
       ind: chalk.gray(ind),
@@ -61,6 +64,9 @@ const backtest = async () => {
       symbol: chalk.yellow(symbol),
       amount: chalk.green(`${amount.toFixed(2)}$`),
       minamount: chalk.red(`${minAmount.toFixed(2)}$`),
+      wins: chalk.green(wins),
+      losses: chalk.red(losses),
+      ws: chalk.yellow(`${ws.toFixed(0)}%`),
       orders: chalk.cyan(orders),
     });
 
@@ -78,13 +84,16 @@ const backtest = async () => {
   });
 
   const colorizedResults = results.map(
-    ({ ind, id, symbol, amount, minAmount, orders }) => [
+    ({ ind, id, symbol, amount, minAmount, wins, losses, ws, orders }) => [
       chalk.gray(ind),
       chalk.blue(id),
       chalk.yellow(symbol),
       chalk.green(`${amount.toFixed(2)}$`),
       chalk.red(`${minAmount.toFixed(2)}$`),
+      chalk.green(wins),
+      chalk.red(losses),
       chalk.cyan(orders),
+      chalk.yellow(`${ws.toFixed(0)}%`),
     ],
   );
 
