@@ -1,4 +1,4 @@
-import { ConnectorStat } from '@types';
+import { BacktestStat } from '@types';
 import _ from 'lodash';
 
 type GenericConfig = Record<string, any>;
@@ -8,7 +8,7 @@ const MIN_AMOUNT_WEIGHT = 16;
 const PROFIT_WEIGHT = 8;
 const ORDERS_WEIGHT = 1;
 
-const score = (result: ConnectorStat): number => {
+const score = (result: BacktestStat): number => {
   const { amount, minAmount, ws, orders } = result;
 
   if (orders === 0) {
@@ -33,9 +33,9 @@ const score = (result: ConnectorStat): number => {
 };
 
 export const getTopResults = (
-  results: ConnectorStat[],
+  results: BacktestStat[],
   limit: number = 5,
-): ConnectorStat[] =>
+): BacktestStat[] =>
   results
     .slice()
     .sort((a, b) => score(b) - score(a))
