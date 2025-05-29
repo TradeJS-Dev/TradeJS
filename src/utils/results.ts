@@ -3,8 +3,8 @@ import _ from 'lodash';
 
 type GenericConfig = Record<string, any>;
 
-const WS_WIEGHT = 8;
-const MIN_AMOUNT_WEIGHT = 12;
+const WS_WIEGHT = 12;
+const MIN_AMOUNT_WEIGHT = 8;
 const PROFIT_WEIGHT = 4;
 const ORDERS_WEIGHT = 1;
 
@@ -15,12 +15,12 @@ const score = <T extends ConnectorStat>(result: T): number => {
     return -2;
   }
 
-  if (minAmount < 85) {
-    return -1;
-  }
+  // if (minAmount < 85) {
+  //   return -1;
+  // }
 
   const wsScore = ws / 100;
-  const minAmountScore = (minAmount - 85) / 100;
+  const minAmountScore = minAmount / 100;
   const profitScore = (amount - 100) / 100;
   const ordersScore = 100 / orders;
 

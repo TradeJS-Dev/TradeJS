@@ -2,7 +2,7 @@ import { TestingBox } from '@types';
 import { TestConnectorCreator } from '@src/connectors/Test';
 import { getTimestamp } from '@utils/timestamp';
 
-const preloadStart = getTimestamp(120);
+const preloadStart = getTimestamp(210);
 
 const uploadedCoins = new Array<string>();
 

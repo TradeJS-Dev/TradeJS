@@ -3,7 +3,7 @@ import { ByBitConnectorCreator } from '@src/connectors/ByBit';
 import { getTimestamp } from '@utils/timestamp';
 import { getTopTickers } from '@utils/tickers';
 
-const preloadStart = getTimestamp(120);
+const preloadStart = getTimestamp(210);
 const end = getTimestamp();
 const TICKERS_LIMIT = 10;
 const LIST = ['BTCUSDT', 'DOGSUSDT'];

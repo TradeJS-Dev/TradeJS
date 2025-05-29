@@ -12,16 +12,16 @@ const botConfig: BotConfig = [
     symbol: 'DOGSUSDT',
     strategyCreator: strategies.BreakoutStrategyCreator,
     strategyConfig: {
-      MA_FAST: 16,
-      MA_SLOW: 80,
+      MA_FAST: 14,
+      MA_SLOW: 85,
       ATR_PERIOD: 15,
       ATR_OPEN: 0.6,
       ATR_CLOSE: 1.3,
       BB_PERIOD: 13,
       BB_STDDEV: 2,
-      OBV_SMA_PERIOD: 65,
-      BREAKOUT_LOOKBACK: 25,
-      SL_LONG: 0.08,
+      OBV_SMA_PERIOD: 75,
+      BREAKOUT_LOOKBACK: 20,
+      SL_LONG: 0.05,
       SL_SHORT: 0.08,
       TP_LONG: [
         {
