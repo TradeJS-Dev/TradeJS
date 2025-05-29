@@ -17,9 +17,9 @@ const HEADERS = [
   chalk.green('PROFIT'),
   chalk.red('LOW'),
   chalk.green('WINS'),
-  chalk.green('LOSSES'),
+  chalk.red('LOSSES'),
   chalk.cyan('ORDERS'),
-  chalk.green('WIN/LOSS (%)'),
+  chalk.yellow('WIN/LOSS (%)'),
 ];
 
 const backtest = async () => {

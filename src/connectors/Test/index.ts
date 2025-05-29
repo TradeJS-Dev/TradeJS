@@ -55,7 +55,7 @@ export const TestConnectorCreator: TCC = (connector) => {
       minAmount: MIN_AMOUNT,
       wins: WINS,
       losses: LOSSES,
-      ws: (WINS / LOSSES) * 100,
+      ws: (WINS / ORDERS) * 100,
       orders: ORDERS,
       orderLog: ORDER_LOG,
     }),

@@ -14,15 +14,15 @@ const botConfig: BotConfig = [
     strategyConfig: {
       MA_FAST: 16,
       MA_SLOW: 80,
-      ATR_PERIOD: 16,
+      ATR_PERIOD: 15,
       ATR_OPEN: 0.6,
       ATR_CLOSE: 1.3,
       BB_PERIOD: 13,
       BB_STDDEV: 2,
       OBV_SMA_PERIOD: 65,
       BREAKOUT_LOOKBACK: 25,
-      SL_LONG: 0.06,
-      SL_SHORT: 0.06,
+      SL_LONG: 0.08,
+      SL_SHORT: 0.08,
       TP_LONG: [
         {
           profit: 0.2,
