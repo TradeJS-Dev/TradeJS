@@ -53,7 +53,7 @@ export const BreakoutStrategyCreator: StrategyCreator = (baseConfig, data) => {
     const { timestamp } = candle;
 
     const position = await connector.getPosition(symbol);
-    const positionExists = !_.isEmpty(position);
+    const positionExists = !_.isEmpty(position) && position.qty >= 0;
 
     const smaFast = smaFastInstance.nextValue(price);
     const smaSlow = smaSlowInstance.nextValue(price);
@@ -104,8 +104,8 @@ export const BreakoutStrategyCreator: StrategyCreator = (baseConfig, data) => {
       candle.close < prevCandle.close &&
       candle.close < lowLevel;
 
-    if (!positionExists && isVolatile) {
-      if (breakoutUp) {
+    if (!positionExists) {
+      if (breakoutUp && isVolatile) {
         await connector.placeOrder(
           { symbol, qty, price, timestamp, direction: 'LONG' },
           config.TP_LONG,
@@ -114,7 +114,7 @@ export const BreakoutStrategyCreator: StrategyCreator = (baseConfig, data) => {
         return 'OPEN_LONG';
       }
 
-      if (breakoutDown) {
+      if (breakoutDown && isVolatile) {
         await connector.placeOrder(
           { symbol, qty, price, timestamp, direction: 'SHORT' },
           config.TP_SHORT,
