@@ -4,15 +4,13 @@ import { getTimestamp } from '@utils/timestamp';
 
 const preloadStart = getTimestamp(210);
 
-const uploadedCoins = new Array<string>();
-
-export const testing: TestingBox = async (
+export const testing: TestingBox = async ({
   symbol,
-  { start, end },
+  options: { start, end },
   strategyCreator,
   strategyConfig,
   connector,
-) => {
+}) => {
   if (!start) {
     throw new Error('no start');
   }
@@ -23,10 +21,8 @@ export const testing: TestingBox = async (
     end,
     interval: '15',
     silent: true,
-    cacheOnly: uploadedCoins.includes(symbol),
+    cacheOnly: true,
   });
-
-  uploadedCoins.push(symbol);
 
   const prevData = data.filter((candle) => candle.timestamp < start);
   const testData = data.filter((candle) => candle.timestamp >= start);

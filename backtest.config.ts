@@ -1,16 +1,17 @@
 import _ from 'lodash';
-import * as strategies from '@src/strategy';
-import { ByBitConnectorCreator } from '@src/connectors/ByBit';
+import { StrategyNames } from '@src/strategy';
+import { ConnectorNames, connectors } from '@src/connectors';
 import { getTimestamp } from '@utils/timestamp';
 import { getTopTickers } from '@utils/tickers';
 import { generateParamGrid, generateName } from '@utils/grid';
+import { uuid } from '@utils/uuid';
 import { TestConfig } from '@types';
 
 const start = getTimestamp(180);
 const end = getTimestamp();
 const TICKERS_LIMIT = 10;
 
-const byBitConnector = ByBitConnectorCreator({
+const byBitConnector = connectors.bybit({
   key: '',
   secret: '',
 });
@@ -23,6 +24,7 @@ export const scanner = async () => {
 };
 
 const createConfig = async (): Promise<TestConfig> => {
+  const testId = uuid(6);
   const volatilityTicers = await scanner();
   const tickers = _.uniq(['DOGSUSDT']);
   const paramGrid = generateParamGrid({
@@ -65,12 +67,12 @@ const createConfig = async (): Promise<TestConfig> => {
 
   return tickers.flatMap((symbol) =>
     paramGrid.map((params) => ({
-      name: generateName('rev'),
+      name: generateName(testId),
       symbol,
       options: { start, end },
-      strategyCreator: strategies.BreakoutStrategyCreator,
+      strategyName: StrategyNames.breakout,
       strategyConfig: params,
-      connector: byBitConnector,
+      connectorName: ConnectorNames.bybit,
     })),
   );
 };

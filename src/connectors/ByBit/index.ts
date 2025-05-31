@@ -10,7 +10,7 @@ import {
   getDataTimestamp,
   formatUnix,
 } from '@utils/timestamp';
-import { getCache, setCache } from '@utils/cache';
+import { getData, setData } from '@/src/utils/data';
 import { normalizeTickerData } from '@utils/tickers';
 import { mergeData } from '@utils/array';
 import { logger } from '@utils/logger';
@@ -134,7 +134,7 @@ export const ByBitConnectorCreator: ConnectorCreator = (config) => {
       cacheOnly = false,
     }: KlineRequest) => {
       let data =
-        (getCache('data', `${symbol}_${interval}`) as KlineChartData) || [];
+        (getData('data/history', `${symbol}_${interval}`) as KlineChartData) || [];
 
       const dataStart = data.length ? getItemTimestamp(data[0]) : undefined;
       const dataEnd = data.length
@@ -188,7 +188,7 @@ export const ByBitConnectorCreator: ConnectorCreator = (config) => {
       }
 
       if (!_.isEmpty(data)) {
-        setCache('data', `${symbol}_${interval}`, data);
+        setData('data/history', `${symbol}_${interval}`, data);
       }
 
       return data.filter((item) => {

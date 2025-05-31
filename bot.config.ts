@@ -1,4 +1,4 @@
-import * as strategies from '@src/strategy';
+import { strategies, StrategyNames } from '@src/strategy';
 import { ByBitConnectorCreator } from '@src/connectors/ByBit';
 import { BotConfig } from '@types';
 
@@ -10,7 +10,7 @@ const byBitConnector = ByBitConnectorCreator({
 const botConfig: BotConfig = [
   {
     symbol: 'DOGSUSDT',
-    strategyCreator: strategies.BreakoutStrategyCreator,
+    strategyCreator: strategies.breakout,
     strategyConfig: {
       MA_FAST: 14,
       MA_SLOW: 85,

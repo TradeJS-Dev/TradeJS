@@ -51,22 +51,27 @@ export type Sl = number | null;
 
 export type StrategyConfig = Record<string, any>;
 
-export type TestingBox = (
-  symbol: string,
-  options: TestingOptions,
-  strategyCreator: StrategyCreator,
-  strategyConfig: StrategyConfig,
-  connector: Connector,
-) => Promise<ConnectorStat>;
-
-export type TestConfig = {
+export interface Test {
   name: string;
   symbol: string;
   options: TestingOptions;
   strategyCreator: StrategyCreator;
   strategyConfig: StrategyConfig;
   connector: Connector;
-}[];
+}
+
+export type TestingBox = (test: Test) => Promise<ConnectorStat>;
+
+export type TestItem = {
+  name: string;
+  symbol: string;
+  options: TestingOptions;
+  strategyName: string;
+  strategyConfig: StrategyConfig;
+  connectorName: string;
+};
+
+export type TestConfig = TestItem[];
 
 export type Direction = 'LONG' | 'SHORT';
 
@@ -110,7 +115,7 @@ export interface ConnectorStat {
   losses: number;
   ws: number;
   minAmount: number;
-  orderLog: OrderLogData;
+  orderLog: OrderLogData | string;
 }
 
 export interface BacktestStat extends ConnectorStat {
