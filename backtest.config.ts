@@ -10,6 +10,8 @@ import { TestConfig } from '@types';
 const start = getTimestamp(180);
 const end = getTimestamp();
 const TICKERS_LIMIT = 10;
+const LIST = ['DOGSUSDT'];
+const EXCLUDE_TICKERS = ['DOGSUSDT'];
 
 const byBitConnector = connectors.bybit({
   key: '',
@@ -26,8 +28,11 @@ export const scanner = async () => {
 const createConfig = async (): Promise<TestConfig> => {
   const testId = uuid(6);
   const volatilityTicers = await scanner();
-  const tickers = _.uniq(['DOGSUSDT']);
+  const tickers = _.uniq([...volatilityTicers, ...LIST]).filter(
+    (ticker) => !EXCLUDE_TICKERS.includes(ticker),
+  );
   const paramGrid = generateParamGrid({
+    LIMIT: [100],
     MA_FAST: [12, 14, 16],
     MA_SLOW: [80, 85, 90],
     ATR_PERIOD: [15, 16],

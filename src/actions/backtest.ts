@@ -13,15 +13,10 @@ export const getBacktestFiles = async (symbol: string) => {
   const files = fs.readdirSync(dataDir);
 
   const result = files
-    .filter(
-      (file) =>
-        file.endsWith('.json') &&
-        !file.includes('.info'),
-    )
+    .filter((file) => file.endsWith('.json') && !file.includes('.info'))
     .map((file) => {
       const fileName = file.replace('.json', '');
-      const label = fileName
-        .replace(`${symbol}_`, '')
+      const label = fileName.replace(`${symbol}_`, '');
 
       return {
         value: fileName,

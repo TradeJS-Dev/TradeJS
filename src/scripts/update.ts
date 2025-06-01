@@ -22,8 +22,8 @@ export const scanner = async () => {
 
 const update = async () => {
   const volatilityTicers = await scanner();
-  //const tickers = _.uniq([...volatilityTicers, ...LIST]);
-  const tickers = ['DOGSUSDT'];
+  const tickers = _.uniq([...volatilityTicers, ...LIST]);
+  // const tickers = ['DOGSUSDT'];
 
   for await (const symbol of tickers) {
     await byBitConnector.kline({

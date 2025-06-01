@@ -13,7 +13,7 @@ import { uuid } from '@utils/uuid';
 import { BacktestStat } from '@types';
 
 const TOP_LIMIT = 10;
-const MAX_PARALLEL = Math.min(os.cpus().length, 4);
+const MAX_PARALLEL = Math.min(os.cpus().length, 6);
 
 const HEADERS = [
   chalk.blue('ID'),
@@ -32,7 +32,7 @@ let betResults: any = {
 };
 
 const backtest = async () => {
-  const testConfig = (await createTestConfig()).slice(-1000);
+  const testConfig = await createTestConfig();
 
   const chunkSize = Math.ceil(testConfig.length / MAX_PARALLEL);
   const chunks = _.chunk(testConfig, chunkSize);

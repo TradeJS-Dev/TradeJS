@@ -9,9 +9,9 @@ export const config = {
   CHANNEL_LOOKBACK: 30,
 
   CCI_PERIOD: 20,
-  CCI_LOW: -100,   // перепроданность
-  CCI_HIGH: 100,   // перекупленность
-  MOM_PERIOD: 10,  // импульс
+  CCI_LOW: -100, // перепроданность
+  CCI_HIGH: 100, // перекупленность
+  MOM_PERIOD: 10, // импульс
 
   TP_LONG: [
     { profit: 0.05, rate: 0.5 },

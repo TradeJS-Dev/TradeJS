@@ -135,9 +135,9 @@ export interface ConnectorConfig {
 
 interface Bot {
   symbol: string;
-  strategyCreator: StrategyCreator;
+  strategyName: string;
   strategyConfig: StrategyConfig;
-  connector: Connector;
+  connectorName: string;
 }
 
 export interface BotStatus {

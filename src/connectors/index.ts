@@ -4,7 +4,7 @@ import { TestConnectorCreator } from './Test';
 export enum ConnectorNames {
   bybit = 'bybit',
   test = 'test',
-};
+}
 
 export const connectors = {
   [ConnectorNames.bybit]: ByBitConnectorCreator,

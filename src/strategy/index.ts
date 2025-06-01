@@ -5,7 +5,7 @@ import { ChannelStrategyCreator } from './ChannelStrategy';
 export enum StrategyNames {
   breakout = 'breakout',
   reversal = 'reversal',
-  channel = 'channel'
+  channel = 'channel',
 }
 
 export const strategies = {

@@ -10,7 +10,7 @@ describe('generateParamGrid', () => {
     expect(grid.length).toBe(2 * 3); // 6 combinations
 
     // Проверка что каждая комбинация уникальна
-    const seen = new Set(grid.map(g => JSON.stringify(g)));
+    const seen = new Set(grid.map((g) => JSON.stringify(g)));
     expect(seen.size).toBe(6);
   });
 
@@ -29,10 +29,7 @@ describe('generateParamGrid', () => {
 
   it('handles nested values (e.g. arrays of objects)', () => {
     const grid = generateParamGrid({
-      TP: [
-        [{ profit: 0.1, rate: 0.5 }],
-        [{ profit: 0.2, rate: 0.5 }],
-      ],
+      TP: [[{ profit: 0.1, rate: 0.5 }], [{ profit: 0.2, rate: 0.5 }]],
       SL: [0.05, 0.1],
     });
 
@@ -79,8 +76,7 @@ describe('generateParamGrid', () => {
     });
 
     // Умножаем количество вариантов для каждого параметра
-    const expectedCount =
-      3 * 4 * 2 * 1 * 2 * 3 * 1 * 3 * 4 * 4 * 4 * 1 * 2;
+    const expectedCount = 3 * 4 * 2 * 1 * 2 * 3 * 1 * 3 * 4 * 4 * 4 * 1 * 2;
 
     expect(paramGrid.length).toBe(expectedCount);
   });
