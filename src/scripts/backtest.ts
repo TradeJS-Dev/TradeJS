@@ -13,7 +13,7 @@ import { uuid } from '@utils/uuid';
 import { BacktestStat } from '@types';
 
 const TOP_LIMIT = 10;
-const MAX_PARALLEL = Math.min(os.cpus().length, 6);
+const MAX_PARALLEL = Math.min(os.cpus().length, 4);
 
 const HEADERS = [
   chalk.blue('ID'),
@@ -26,12 +26,16 @@ const HEADERS = [
   chalk.yellow('WIN/LOSS (%)'),
 ];
 
+let betResults: any = {
+  amount: 0,
+  ws: 0,
+};
+
 const backtest = async () => {
-  const testConfig = (await createTestConfig());
+  const testConfig = (await createTestConfig()).slice(-1000);
 
   const chunkSize = Math.ceil(testConfig.length / MAX_PARALLEL);
   const chunks = _.chunk(testConfig, chunkSize);
-  const workers: ChildProcess[] = [];
   let results: BacktestStat[] = [];
   let completedWorkers = 0;
   let completedTests = 0;
@@ -46,12 +50,15 @@ const backtest = async () => {
   );
 
   for (const chunk of chunks) {
-    const worker = fork(path.resolve(__dirname, '../workers', 'tester.ts'), [], {
-      execArgv: ['-r', 'ts-node/register'],
-    });
-    workers.push(worker);
+    const tester = fork(
+      path.resolve(__dirname, '../workers', 'tester.ts'),
+      [],
+      {
+        execArgv: ['-r', 'ts-node/register'],
+      },
+    );
 
-    worker.on('message', async (msg: any) => {
+    tester.on('message', async (msg: any) => {
       if (msg.done) {
         completedWorkers++;
         if (completedWorkers === chunks.length) {
@@ -76,30 +83,42 @@ const backtest = async () => {
         ...stat,
       });
 
+      results.forEach(({ amount, ws }) => {
+        if (amount > betResults.amount) {
+          betResults.amount = amount;
+        }
+        if (ws > betResults.ws) {
+          betResults.ws = ws;
+        }
+      });
+
       if (completedTests % 100 === 0 || completedTests === testConfig.length) {
         results = getTopResults(results, TOP_LIMIT);
 
         const { symbol, id, orders, amount, minAmount, wins, losses, ws } =
           results[0];
-  
-        bar.tick(100, {
-          id: chalk.blue(`#${id}`),
-          symbol: chalk.yellow(symbol),
-          amount: chalk.green(`${amount.toFixed(2)}$`),
-          minamount: chalk.red(`${minAmount.toFixed(2)}$`),
-          wins: chalk.green(wins),
-          losses: chalk.red(losses),
-          ws: chalk.yellow(`${ws.toFixed(0)}%`),
-          orders: chalk.cyan(orders),
-        });
+
+        bar.tick(
+          completedTests === testConfig.length ? completedTests % 100 : 100,
+          {
+            id: chalk.blue(`#${id}`),
+            symbol: chalk.yellow(symbol),
+            amount: chalk.green(`${amount.toFixed(2)}$`),
+            minamount: chalk.red(`${minAmount.toFixed(2)}$`),
+            wins: chalk.green(wins),
+            losses: chalk.red(losses),
+            ws: chalk.yellow(`${ws.toFixed(0)}%`),
+            orders: chalk.cyan(orders),
+          },
+        );
       }
     });
 
-    worker.on('error', (err) => {
+    tester.on('error', (err) => {
       console.error(chalk.red(`Worker error: ${err.message}`));
     });
 
-    worker.on('exit', (code) => {
+    tester.on('exit', (code) => {
       if (code !== 0)
         console.error(chalk.red(`Worker exited with code ${code}`));
     });
@@ -107,7 +126,7 @@ const backtest = async () => {
     const chunkId = uuid();
     setData('data/cache', chunkId, chunk, false);
 
-    worker.send({ chunkId });
+    tester.send({ chunkId });
   }
 };
 
@@ -148,6 +167,16 @@ const finish = (results: BacktestStat[]) => {
   const mergedConfig = mergeConfigs(results.map(({ config }) => config));
   console.log(chalk.gray('merged config:'));
   console.log(chalk.blue(stringify(mergedConfig)));
+  console.log('');
+
+  console.log(
+    chalk.yellow(
+      JSON.stringify({
+        amount: `${betResults.amount.toFixed(2)}$`,
+        ws: `${betResults.ws.toFixed(0)}%`,
+      }),
+    ),
+  );
   console.log('');
 
   process.exit();

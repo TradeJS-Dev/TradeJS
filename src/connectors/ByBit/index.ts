@@ -187,7 +187,7 @@ export const ByBitConnectorCreator: ConnectorCreator = (config) => {
         data = mergeData(data, newerData);
       }
 
-      if (!_.isEmpty(data)) {
+      if (!_.isEmpty(data) && !cacheOnly) {
         setData('data/history', `${symbol}_${interval}`, data);
       }
 
