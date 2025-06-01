@@ -82,12 +82,11 @@ export const ByBitConnectorCreator: ConnectorCreator = (config) => {
     let accumulated: KlineChartData = [];
     let fulfilled = false;
 
-    while (!fulfilled && !requestParams.cacheOnly) {
+    while (!fulfilled) {
       const params: KlineRequest = {
         symbol: requestParams.symbol,
         interval: requestParams.interval,
         silent: requestParams.silent,
-        cacheOnly: requestParams.cacheOnly,
       } as KlineRequest;
 
       if (direction === 'older') {
@@ -134,7 +133,12 @@ export const ByBitConnectorCreator: ConnectorCreator = (config) => {
       cacheOnly = false,
     }: KlineRequest) => {
       let data =
-        (getData('data/history', `${symbol}_${interval}`) as KlineChartData) || [];
+        (getData('data/history', `${symbol}_${interval}`) as KlineChartData) ||
+        [];
+
+      if (cacheOnly) {
+        return data;
+      }
 
       const dataStart = data.length ? getItemTimestamp(data[0]) : undefined;
       const dataEnd = data.length
@@ -159,7 +163,6 @@ export const ByBitConnectorCreator: ConnectorCreator = (config) => {
             symbol,
             interval,
             silent,
-            cacheOnly,
             start: defaultStart ?? 0,
             end: pointerForOlder,
           },
@@ -178,7 +181,6 @@ export const ByBitConnectorCreator: ConnectorCreator = (config) => {
             symbol,
             interval,
             silent,
-            cacheOnly,
             start: pointerForNewer,
             end: defaultEnd ?? Date.now(),
           },
@@ -187,7 +189,7 @@ export const ByBitConnectorCreator: ConnectorCreator = (config) => {
         data = mergeData(data, newerData);
       }
 
-      if (!_.isEmpty(data) && !cacheOnly) {
+      if (!_.isEmpty(data)) {
         setData('data/history', `${symbol}_${interval}`, data);
       }
 
