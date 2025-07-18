@@ -1,4 +1,5 @@
 import { generateParamGrid } from '../grid';
+import { toJson } from '@utils/toJson';
 
 describe('generateParamGrid', () => {
   it('returns correct number of combinations for 2 parameters', () => {
@@ -10,7 +11,7 @@ describe('generateParamGrid', () => {
     expect(grid.length).toBe(2 * 3); // 6 combinations
 
     // Проверка что каждая комбинация уникальна
-    const seen = new Set(grid.map((g) => JSON.stringify(g)));
+    const seen = new Set(grid.map((g) => toJson(g)));
     expect(seen.size).toBe(6);
   });
 

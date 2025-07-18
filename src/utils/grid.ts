@@ -5,7 +5,6 @@ export const generateParamGrid = <T extends Record<string, any>>(
   paramOptions: Record<keyof T, T[keyof T][]>,
 ): T[] => {
   const keys = Object.keys(paramOptions) as (keyof T)[];
-
   const combinations: T[] = [];
 
   const helper = (index = 0, current: Partial<T> = {}) => {
@@ -16,7 +15,11 @@ export const generateParamGrid = <T extends Record<string, any>>(
 
     const key = keys[index];
     for (const value of paramOptions[key]) {
-      helper(index + 1, { ...current, [key]: value });
+      const copiedValue =
+        typeof value === 'object' && value !== null
+          ? structuredClone(value)
+          : value;
+      helper(index + 1, { ...current, [key]: copiedValue });
     }
   };
 

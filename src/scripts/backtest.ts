@@ -1,19 +1,19 @@
 const ListIt = require('list-it');
 import ProgressBar from 'progress';
-import { fork, ChildProcess } from 'child_process';
+import { fork } from 'child_process';
 import path from 'path';
 import os from 'os';
 import chalk from 'chalk';
 import _ from 'lodash';
 import createTestConfig from '@/backtest.config';
 import { getTopResults, mergeConfigs } from '@utils/results';
-import { setData } from '@/src/utils/data';
-import { stringify } from '@utils/stringify';
+import { setData, getData } from '@/src/utils/data';
+import { toJson } from '@/src/utils/toJson';
 import { uuid } from '@utils/uuid';
 import { BacktestStat } from '@types';
 
 const TOP_LIMIT = 10;
-const MAX_PARALLEL = Math.min(os.cpus().length, 6);
+const MAX_PARALLEL = Math.min(os.cpus().length, 4);
 
 const HEADERS = [
   chalk.blue('ID'),
@@ -39,6 +39,7 @@ const backtest = async () => {
   let results: BacktestStat[] = [];
   let completedWorkers = 0;
   let completedTests = 0;
+  console.log(testConfig.length);
 
   console.log('');
   const bar = new ProgressBar(
@@ -54,7 +55,7 @@ const backtest = async () => {
       path.resolve(__dirname, '../workers', 'tester.ts'),
       [],
       {
-        execArgv: ['-r', 'ts-node/register'],
+        execArgv: ['--max-old-space-size=8192', '-r', 'ts-node/register'],
       },
     );
 
@@ -62,7 +63,7 @@ const backtest = async () => {
       if (msg.done) {
         completedWorkers++;
         if (completedWorkers === chunks.length) {
-          finish(results);
+          await finish(results);
         }
         return;
       }
@@ -103,11 +104,11 @@ const backtest = async () => {
           {
             id: chalk.blue(`#${id}`),
             symbol: chalk.yellow(symbol),
-            amount: chalk.green(`${amount.toFixed(2)}$`),
-            minamount: chalk.red(`${minAmount.toFixed(2)}$`),
+            amount: chalk.green(`${(amount || 0).toFixed(2)}$`),
+            minamount: chalk.red(`${(minAmount || 0).toFixed(2)}$`),
             wins: chalk.green(wins),
             losses: chalk.red(losses),
-            ws: chalk.yellow(`${ws.toFixed(0)}%`),
+            ws: chalk.yellow(`${(ws || 0).toFixed(0)}%`),
             orders: chalk.cyan(orders),
           },
         );
@@ -124,33 +125,35 @@ const backtest = async () => {
     });
 
     const chunkId = uuid();
-    setData('data/cache', chunkId, chunk, false);
+    await setData('data/cache', chunkId, chunk, { useCache: false });
 
     tester.send({ chunkId });
   }
 };
 
-const finish = (results: BacktestStat[]) => {
+const finish = async (results: BacktestStat[]) => {
   const listit = new ListIt({
     autoAlign: true,
     headerUnderline: true,
   });
 
-  results.forEach(({ symbol, id, orderLog, config }) => {
-    setData('data/tests', `${symbol}_${id}`, orderLog, false);
-    setData('data/tests', `${symbol}_${id}.info`, config, false);
-  });
+  for await (const result of results) {
+    const { symbol, id, orderLogId, config } = result;
+    const orderLog = await getData('data/cache', orderLogId);
+    await setData('data/tests', `${symbol}_${id}`, orderLog, { useCache: false, stringify: true});
+    await setData('data/tests', `${symbol}_${id}.info`, config, { useCache: false, stringify: true});
+  }
 
   const colorizedResults = results.map(
     ({ id, symbol, amount, minAmount, wins, losses, ws, orders }) => [
       chalk.blue(id),
       chalk.yellow(symbol),
-      chalk.green(`${amount.toFixed(2)}$`),
-      chalk.red(`${minAmount.toFixed(2)}$`),
+      chalk.green(`${(amount || 0).toFixed(2)}$`),
+      chalk.red(`${(minAmount || 0).toFixed(2)}$`),
       chalk.green(wins),
       chalk.red(losses),
       chalk.cyan(orders),
-      chalk.yellow(`${ws.toFixed(0)}%`),
+      chalk.yellow(`${(ws || 0).toFixed(0)}%`),
     ],
   );
 
@@ -161,20 +164,23 @@ const finish = (results: BacktestStat[]) => {
 
   const bestConfig = results[0].config;
   console.log(chalk.gray('best config:'));
-  console.log(chalk.green(stringify(bestConfig)));
+  console.log(chalk.green(toJson(bestConfig, true)));
   console.log('');
 
   const mergedConfig = mergeConfigs(results.map(({ config }) => config));
   console.log(chalk.gray('merged config:'));
-  console.log(chalk.blue(stringify(mergedConfig)));
+  console.log(chalk.blue(toJson(mergedConfig, true)));
   console.log('');
 
   console.log(
     chalk.yellow(
-      JSON.stringify({
-        amount: `${betResults.amount.toFixed(2)}$`,
-        ws: `${betResults.ws.toFixed(0)}%`,
-      }),
+      toJson(
+        {
+          amount: `${betResults.amount.toFixed(2)}$`,
+          ws: `${betResults.ws.toFixed(0)}%`,
+        },
+        true,
+      ),
     ),
   );
   console.log('');

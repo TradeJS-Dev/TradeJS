@@ -1,5 +1,5 @@
 import { TestingBox } from '@types';
-import { TestConnectorCreator } from '@src/connectors/Test';
+import { connectors } from '@src/connectors';
 import { getTimestamp } from '@utils/timestamp';
 
 const preloadStart = getTimestamp(210);
@@ -24,11 +24,13 @@ export const testing: TestingBox = async ({
     cacheOnly: true,
   });
 
-  const prevData = data.filter((candle) => candle.timestamp < start);
+  const prevData = data.filter(
+    (candle) => candle.timestamp >= preloadStart && candle.timestamp < start,
+  );
   const testData = data.filter((candle) => candle.timestamp >= start);
 
   const strategy = strategyCreator(strategyConfig, prevData);
-  const testConnector = TestConnectorCreator(connector);
+  const testConnector = connectors.Test(connector);
 
   for await (const candle of testData) {
     await strategy(symbol, candle, testConnector);

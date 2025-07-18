@@ -1,20 +1,23 @@
 'use client';
 
 import _ from 'lodash';
-import { useRecoilState } from 'recoil';
-import { backtestState } from '@atoms';
+import { useRecoilState, useRecoilValue } from 'recoil';
+import { filtersState, backtestState } from '@atoms';
 import { Select } from '@UI';
 
 export const SelectBacktest = () => {
+  const filters = useRecoilValue(filtersState);
   const [backtest, setBacktest] = useRecoilState(backtestState);
 
-  if (_.isEmpty(backtest.files)) {
+  const tests = backtest.files.filter((file) => file.value.startsWith(filters.symbol));
+
+  if (_.isEmpty(tests)) {
     return null;
   }
 
   const onChange = (value: string[]) => {
-    setBacktest((oldState) => ({
-      ...oldState,
+    setBacktest((state) => ({
+      ...state,
       id: value[0],
     }));
   };
@@ -24,7 +27,7 @@ export const SelectBacktest = () => {
       placeholder='Backtest'
       defaultValue={[backtest.id || '']}
       onChange={onChange}
-      items={backtest.files}
+      items={tests}
       width="240px"
     />
   );

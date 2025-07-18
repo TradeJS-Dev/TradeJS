@@ -5,7 +5,8 @@ import { BotConfig } from '@types';
 const botConfig: BotConfig = [
   {
     symbol: 'DOGSUSDT',
-    strategyName: StrategyNames.breakout,
+    disabled: true,
+    strategyName: StrategyNames.BreakoutWeights,
     strategyConfig: {
       LIMIT: 100,
       MA_FAST: 14,
@@ -48,11 +49,12 @@ const botConfig: BotConfig = [
         },
       ],
     },
-    connectorName: ConnectorNames.bybit,
+    connectorName: ConnectorNames.Bybit,
   },
   {
     symbol: 'DEGENUSDT',
-    strategyName: StrategyNames.breakout,
+    disabled: true,
+    strategyName: StrategyNames.BreakoutWeights,
     strategyConfig: {
       LIMIT: 100,
       MA_FAST: 16,
@@ -95,7 +97,7 @@ const botConfig: BotConfig = [
         },
       ],
     },
-    connectorName: ConnectorNames.bybit,
+    connectorName: ConnectorNames.Bybit,
   },
 ];
 

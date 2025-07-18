@@ -16,8 +16,8 @@ export const SelectInterval = () => {
       return;
     }
 
-    setFilters((oldFilters) => ({
-      ...oldFilters,
+    setFilters((state) => ({
+      ...state,
       interval: value as Interval,
     }));
 

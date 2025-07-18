@@ -1,6 +1,6 @@
 'use client';
 
-import _ from 'lodash';
+import _, { result } from 'lodash';
 import { registerIndicator, Chart } from 'klinecharts';
 import { backtest } from '@src/actions/backtest';
 import { KlineChartItem } from '@types';
@@ -25,6 +25,21 @@ export const Backtest = async (chart: Chart, id: string) => {
     return;
   }
 
+  const getDataFromInterval = (result: unknown[], startCandleIndex: number, endCandleIndex: number) => {
+    const start = (result[startCandleIndex] as KlineChartItem)?.timestamp;
+    const end = (result[endCandleIndex] as KlineChartItem)?.timestamp;
+  
+    if (!start || !end) {
+      return;
+    }
+  
+    const data = backtestData.filter(
+      (log) => log.timestamp > start && log.timestamp <= end,
+    );
+  
+    return data;
+  };
+  
   registerIndicator({
     name: 'Backtest',
     shortName: 'Backtest',
@@ -34,17 +49,9 @@ export const Backtest = async (chart: Chart, id: string) => {
 
       const getLegents = () => {
         const result = indicator.result;
-        const i = crosshair.dataIndex!;
-        const start = (result[i - 1] as KlineChartItem)?.timestamp;
-        const end = (result[i] as KlineChartItem)?.timestamp;
+        const candleIndex = crosshair.dataIndex!;
 
-        if (!start || !end) {
-          return;
-        }
-
-        const data = backtestData.filter(
-          (log) => log.timestamp > start && log.timestamp <= end,
-        );
+        const data = getDataFromInterval(result, candleIndex -1, candleIndex);
 
         if (!data) {
           return;
@@ -79,24 +86,15 @@ export const Backtest = async (chart: Chart, id: string) => {
       const { realFrom, realTo } = chart.getVisibleRange();
       const { result } = indicator;
 
-      for (let i = realFrom + 1; i < realTo; i++) {
-        const start = (result[i - 1] as KlineChartItem)?.timestamp;
-        const end = (result[i] as KlineChartItem)?.timestamp;
-
-        if (!start || !end) {
-          continue;
-        }
-
-        const data = backtestData.filter(
-          (log) => log.timestamp > start && log.timestamp <= end,
-        );
+      for (let candleIndex = realFrom + 1; candleIndex < realTo; candleIndex++) {
+        const data = getDataFromInterval(result, candleIndex-1, candleIndex);
 
         if (!data) {
           continue;
         }
 
         data.forEach(({ type, price }) => {
-          const x = xAxis.convertToPixel(i);
+          const x = xAxis.convertToPixel(candleIndex);
           const y = yAxis.convertToPixel(price);
           const width = 10;
           const height = 10;
@@ -162,5 +160,40 @@ export const Backtest = async (chart: Chart, id: string) => {
     calc: (kLineDataList) => kLineDataList,
   });
 
+  registerIndicator({
+    name: 'Profit',
+    shortName: 'Profit',
+    calcParams: ['profit'],
+    figures: [{
+      key: `profit`,
+      title: `Profit: `,
+      type: 'line',
+    }],
+
+    // Calculation results
+    calc: (kLineDataList) => {
+      return kLineDataList.map((_, candleIndex) => {
+        if (candleIndex < 1) {
+          return undefined;
+        }
+
+        const data = getDataFromInterval(kLineDataList, 0, candleIndex);
+
+        if (!data || data.length < 1) {
+          return undefined;
+        }
+
+        const item = data.pop();
+
+        console.log('>>> item', item);
+
+        return {
+          profit: item?.profit
+        };
+      });
+    },
+  });
+
   chart.createIndicator('Backtest', true, { id: 'candle_pane' });
+  chart.createIndicator('Profit');
 };

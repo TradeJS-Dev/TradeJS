@@ -1,118 +1,7 @@
 import _ from 'lodash';
-import { SMA, ATR, BollingerBands, OBV, RSI } from 'technicalindicators';
-import { MOM } from '@src/indicators/mom';
+import { SMA, ATR, BollingerBands, OBV } from 'technicalindicators';
 import { config as DEFAULT_CONFIG } from './config';
 import { Strategy, StrategyCreator, StrategyConfig, Candle } from '@types';
-
-type IndicatorsContext = {
-  smaFast: number;
-  smaSlow: number;
-  obv: number;
-  smaObv: number | undefined;
-  price: number;
-  bb: { upper: number; lower: number };
-  mom: number;
-  rsi: number;
-  hadSqueeze: boolean;
-  highLevel: number;
-  lowLevel: number;
-};
-
-type WeightKey =
-  | 'smaTrend'
-  | 'obvTrend'
-  | 'bbBreakout'
-  | 'momDirection'
-  | 'rsiInRange'
-  | 'hadSqueeze'
-  | 'priceBreakout';
-
-type ConditionResult = {
-  score: number;
-  conditions: Record<string, boolean>;
-};
-
-const calculateLongScore = (
-  candle: Candle,
-  prevCandle: Candle,
-  indicators: IndicatorsContext,
-  config: StrategyConfig & typeof DEFAULT_CONFIG,
-): ConditionResult => {
-  const {
-    smaFast,
-    smaSlow,
-    obv,
-    smaObv,
-    price,
-    bb,
-    mom,
-    rsi,
-    hadSqueeze,
-    highLevel,
-  } = indicators;
-  const weights = config.CONDITION_WEIGHTS;
-  let score = 0;
-
-  const conditions: Record<WeightKey, boolean> = {
-    smaTrend: smaFast > smaSlow,
-    obvTrend: smaObv ? obv > smaObv : true,
-    bbBreakout: price > bb.upper,
-    momDirection: mom > 0,
-    rsiInRange: rsi < config.RSI_CHANNEL[1],
-    hadSqueeze: !config.REQUIRE_SQUEEZE_BEFORE_BREAKOUT || hadSqueeze,
-    priceBreakout:
-      candle.close > prevCandle.close &&
-      candle.close > highLevel &&
-      prevCandle.high > highLevel,
-  };
-
-  for (const [key, passed] of Object.entries(conditions)) {
-    if (passed) score += weights[key as WeightKey] ?? 0;
-  }
-
-  return { score, conditions };
-};
-
-const calculateShortScore = (
-  candle: Candle,
-  prevCandle: Candle,
-  indicators: IndicatorsContext,
-  config: StrategyConfig & typeof DEFAULT_CONFIG,
-): ConditionResult => {
-  const {
-    smaFast,
-    smaSlow,
-    obv,
-    smaObv,
-    price,
-    bb,
-    mom,
-    rsi,
-    hadSqueeze,
-    lowLevel,
-  } = indicators;
-  const weights = config.CONDITION_WEIGHTS;
-  let score = 0;
-
-  const conditions: Record<WeightKey, boolean> = {
-    smaTrend: smaFast < smaSlow,
-    obvTrend: smaObv ? obv < smaObv : true,
-    bbBreakout: price < bb.lower,
-    momDirection: mom < 0,
-    rsiInRange: rsi > config.RSI_CHANNEL[0],
-    hadSqueeze: !config.REQUIRE_SQUEEZE_BEFORE_BREAKOUT || hadSqueeze,
-    priceBreakout:
-      candle.close < prevCandle.close &&
-      candle.close < lowLevel &&
-      prevCandle.low < lowLevel,
-  };
-
-  for (const [key, passed] of Object.entries(conditions)) {
-    if (passed) score += weights[key as WeightKey] ?? 0;
-  }
-
-  return { score, conditions };
-};
 
 export const BreakoutStrategyCreator: StrategyCreator = (baseConfig, data) => {
   const config = {
@@ -125,7 +14,6 @@ export const BreakoutStrategyCreator: StrategyCreator = (baseConfig, data) => {
   const lows: number[] = [];
   const volumes: number[] = [];
   const candles: Candle[] = [];
-  const squeezeHistory: boolean[] = [];
 
   data.forEach((item) => {
     closes.push(item.close);
@@ -152,9 +40,6 @@ export const BreakoutStrategyCreator: StrategyCreator = (baseConfig, data) => {
 
   const smaOBVInstance = new SMA({ period: config.OBV_SMA_PERIOD, values: [] });
 
-  const rsiInstance = new RSI({ period: config.RSI_PERIOD, values: closes });
-  const momInstance = new MOM({ period: config.MOM_PERIOD, values: closes });
-
   const strategy: Strategy = async (symbol, candle, connector) => {
     if (_.isEmpty(candle)) return 'NO_DATA';
 
@@ -175,84 +60,52 @@ export const BreakoutStrategyCreator: StrategyCreator = (baseConfig, data) => {
     const atr = atrInstance.nextValue(candle);
     const bb = bbInstance.nextValue(price);
     const obv = obvInstance.nextValue(candle);
-    const rsi = rsiInstance.nextValue(price);
-    const mom = momInstance.nextValue(price);
 
-    if (!smaFast || !smaSlow || !atr || !bb || !obv || !rsi || !mom)
-      return 'NO_INDICATORS';
+    if (!smaFast || !smaSlow || !atr || !bb || !obv) return 'NO_INDICATORS';
+
+    const smaObv = smaOBVInstance.nextValue(obv);
+    const obvGrowing = smaObv ? obv > smaObv : true;
+    const obvFalling = smaObv ? obv < smaObv : true;
+
+    const atrThreshold = atr * config.ATR_OPEN;
+    const isVolatile =
+      Math.abs(closes[closes.length - 1] - closes[closes.length - 2]) >
+      atrThreshold;
+
+    const qty = config.LIMIT / price;
 
     const len = candles.length;
     if (len < config.BREAKOUT_LOOKBACK + 2) return 'WAIT_DATA';
 
+    const highLevel = Math.max(
+      ...candles
+        .slice(len - config.BREAKOUT_LOOKBACK - 2, len - 2)
+        .map((c) => c.high),
+    );
+    const lowLevel = Math.min(
+      ...candles
+        .slice(len - config.BREAKOUT_LOOKBACK - 2, len - 2)
+        .map((c) => c.low),
+    );
+
+    const prevCandle = candles[len - 2];
+
+    const breakoutUp =
+      prevCandle.high > highLevel &&
+      smaFast > smaSlow &&
+      obvGrowing &&
+      candle.close > prevCandle.close &&
+      candle.close > highLevel;
+
+    const breakoutDown =
+      prevCandle.low < lowLevel &&
+      smaFast < smaSlow &&
+      obvFalling &&
+      candle.close < prevCandle.close &&
+      candle.close < lowLevel;
+
     if (!positionExists) {
-      const smaObv = smaOBVInstance.nextValue(obv);
-
-      const bbWidth = bb.upper - bb.lower;
-      const squeezeThreshold = atr * config.BB_SQUEEZE_THRESHOLD;
-      const isCurrentSqueeze = bbWidth < squeezeThreshold;
-
-      squeezeHistory.push(isCurrentSqueeze);
-      if (squeezeHistory.length > config.BB_SQUEEZE_LOOKBACK + 1) {
-        squeezeHistory.shift();
-      }
-
-      const hadSqueeze = squeezeHistory
-        .slice(-config.BB_SQUEEZE_LOOKBACK)
-        .some((s) => s);
-
-      const atrThreshold = atr * config.ATR_OPEN;
-      const isVolatile =
-        Math.abs(closes[closes.length - 1] - closes[closes.length - 2]) >
-        atrThreshold;
-
-      const qty = config.LIMIT / price;
-
-      const highLevel = Math.max(
-        ...candles
-          .slice(len - config.BREAKOUT_LOOKBACK - 2, len - 2)
-          .map((c) => c.high),
-      );
-      const lowLevel = Math.min(
-        ...candles
-          .slice(len - config.BREAKOUT_LOOKBACK - 2, len - 2)
-          .map((c) => c.low),
-      );
-
-      const prevCandle = candles[len - 2];
-
-      const indicators = {
-        smaFast,
-        smaSlow,
-        obv,
-        smaObv,
-        price,
-        bb,
-        mom,
-        rsi,
-        hadSqueeze,
-        highLevel,
-        lowLevel,
-      };
-
-      const longResult = calculateLongScore(
-        candle,
-        prevCandle,
-        indicators,
-        config,
-      );
-      const shortResult = calculateShortScore(
-        candle,
-        prevCandle,
-        indicators,
-        config,
-      );
-
-      const breakoutUp =
-        isVolatile && longResult.score >= config.REQUIRED_SCORE_LONG;
-      const breakoutDown =
-        isVolatile && shortResult.score >= config.REQUIRED_SCORE_SHORT;
-
-      if (breakoutUp) {
+      if (breakoutUp && isVolatile) {
         await connector.placeOrder(
           { symbol, qty, price, timestamp, direction: 'LONG' },
           config.TP_LONG,
@@ -261,7 +114,7 @@ export const BreakoutStrategyCreator: StrategyCreator = (baseConfig, data) => {
         return 'OPEN_LONG';
       }
 
-      if (breakoutDown) {
+      if (breakoutDown && isVolatile) {
         await connector.placeOrder(
           { symbol, qty, price, timestamp, direction: 'SHORT' },
           config.TP_SHORT,

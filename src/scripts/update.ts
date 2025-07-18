@@ -21,8 +21,8 @@ export const scanner = async () => {
 };
 
 const update = async () => {
-  const volatilityTicers = await scanner();
-  const tickers = _.uniq([...volatilityTicers, ...LIST]);
+  const volatilityTickers = await scanner();
+  const tickers = _.uniq([...volatilityTickers, ...LIST]);
   // const tickers = ['DOGSUSDT'];
 
   for await (const symbol of tickers) {

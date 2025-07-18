@@ -3,7 +3,7 @@ import { strategies, StrategyNames } from '@src/strategy';
 import { connectors, ConnectorNames } from '@src/connectors';
 import botConfig from '@/bot.config';
 import { logger } from '@utils/logger';
-import { stringify } from '@utils/stringify';
+import { toJson } from '@/src/utils/toJson';
 import { getTimestamp } from '@utils/timestamp';
 import { ConnectorCreator } from '@types';
 
@@ -13,7 +13,12 @@ export const runBot = async () => {
   const end = getUnixTime(new Date()) * 1000;
 
   for await (const bot of botConfig) {
-    const { symbol, strategyName, strategyConfig, connectorName } = bot;
+    const { symbol, strategyName, strategyConfig, connectorName, disabled } =
+      bot;
+
+    if (disabled) {
+      continue;
+    }
 
     const strategyCreator = strategies[strategyName as StrategyNames];
     const connector = (
@@ -42,7 +47,7 @@ export const runBot = async () => {
     });
   }
 
-  logger.log('info', 'botResults: %s', stringify(botResults));
+  logger.log('info', 'botResults: %s', toJson(botResults, true));
 
   return botResults;
 };

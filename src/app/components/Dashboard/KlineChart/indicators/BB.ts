@@ -36,12 +36,12 @@ export const BBIndicator = (
 
     // Calculation results
     calc: (kLineDataList) => {
-      return kLineDataList.map((_, i) => {
+      return kLineDataList.map((_, candleIndex) => {
         const bb: Record<string, number> = {};
-        periods.forEach((period, j) => {
-          if (i >= period - 1) {
-            bb[`BBUpper${period}`] = values[j][i - (period - 1)].upper;
-            bb[`BBLower${period}`] = values[j][i - (period - 1)].lower;
+        periods.forEach((period, periodIndex) => {
+          if (candleIndex >= period - 1) {
+            bb[`BBUpper${period}`] = values[periodIndex][candleIndex - (period - 1)].upper;
+            bb[`BBLower${period}`] = values[periodIndex][candleIndex - (period - 1)].lower;
           }
         });
 

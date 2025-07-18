@@ -6,7 +6,9 @@ import { setData, getData } from '@utils/data';
 import { uuid } from '@utils/uuid';
 
 process.on('message', async ({ chunkId }: { chunkId: string }) => {
-  const tests = getData('data/cache', chunkId, false, []) as TestConfig;
+  const tests = (await getData('data/cache', chunkId, {
+    useCache: false,
+  })) as TestConfig;
 
   for await (const test of tests) {
     try {
@@ -38,12 +40,12 @@ process.on('message', async ({ chunkId }: { chunkId: string }) => {
 
       const orderLogId = uuid();
 
-      setData('data/cache', orderLogId, orderLog, false);
+      await setData('data/cache', orderLogId, orderLog, { useCache: false });
 
       process.send?.({
         stat: {
           ...stat,
-          orderLog: orderLogId,
+          orderLogId,
         },
         test,
       });

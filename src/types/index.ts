@@ -30,7 +30,7 @@ export interface KlineRequest {
 
 export type Strategy = (
   symbol: string,
-  cancle: Candle,
+  candle: Candle,
   connector: Connector,
 ) => Promise<string>;
 
@@ -122,6 +122,7 @@ export interface BacktestStat extends ConnectorStat {
   ind: number;
   id: string;
   symbol: string;
+  orderLogId: string;
   config: StrategyConfig;
 }
 
@@ -135,6 +136,7 @@ export interface ConnectorConfig {
 
 interface Bot {
   symbol: string;
+  disabled?: boolean;
   strategyName: string;
   strategyConfig: StrategyConfig;
   connectorName: string;

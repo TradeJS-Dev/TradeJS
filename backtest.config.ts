@@ -13,7 +13,7 @@ const TICKERS_LIMIT = 10;
 const LIST = ['DOGSUSDT'];
 const EXCLUDE_TICKERS = ['DOGSUSDT'];
 
-const byBitConnector = connectors.bybit({
+const byBitConnector = connectors.Bybit({
   key: '',
   secret: '',
 });
@@ -27,45 +27,54 @@ export const scanner = async () => {
 
 const createConfig = async (): Promise<TestConfig> => {
   const testId = uuid(6);
-  const volatilityTicers = await scanner();
-  const tickers = _.uniq([...volatilityTicers, ...LIST]).filter(
-    (ticker) => !EXCLUDE_TICKERS.includes(ticker),
-  );
+  const volatilityTickers = await scanner();
+  // const tickers = _.uniq([...volatilityTickers, ...LIST]).filter(
+  //   (ticker) => !EXCLUDE_TICKERS.includes(ticker),
+  // );
+  const tickers = [...LIST];
   const paramGrid = generateParamGrid({
     LIMIT: [100],
-    MA_FAST: [12, 14, 16],
-    MA_SLOW: [80, 85, 90],
-    ATR_PERIOD: [15, 16],
-    ATR_OPEN: [0.5, 0.6],
-    ATR_CLOSE: [1.2, 1.3],
+    MA_FAST: [16],
+    MA_SLOW: [90],
+    ATR_PERIOD: [15],
+    ATR_OPEN: [0.6],
+    ATR_CLOSE: [1.2],
     BB_PERIOD: [13],
     BB_STDDEV: [2],
-    OBV_SMA_PERIOD: [70, 75, 80],
-    BREAKOUT_LOOKBACK: [15, 20, 25],
-    SL_LONG: [0.08, 0.1],
-    SL_SHORT: [0.08, 0.1],
+    OBV_SMA_PERIOD: [70],
+    BREAKOUT_LOOKBACK: [20],
+    SL_LONG: [0.08],
+    SL_SHORT: [0.08],
     TP_LONG: [
       [
-        { profit: 0.1, rate: 0.5 },
-        { profit: 0.2, rate: 0.5 },
-      ],
-      [
-        { profit: 0.2, rate: 0.5 },
-        { profit: 0.4, rate: 0.5 },
+        {
+          profit: 0.2,
+          rate: 0.5,
+        },
+        {
+          profit: 0.4,
+          rate: 0.5,
+        },
       ],
     ],
     TP_SHORT: [
       [
-        { profit: 0.03, rate: 0.25 },
-        { profit: 0.07, rate: 0.25 },
-        { profit: 0.1, rate: 0.25 },
-        { profit: 0.15, rate: 0.25 },
-      ],
-      [
-        { profit: 0.06, rate: 0.25 },
-        { profit: 0.1, rate: 0.25 },
-        { profit: 0.15, rate: 0.25 },
-        { profit: 0.2, rate: 0.25 },
+        {
+          profit: 0.06,
+          rate: 0.25,
+        },
+        {
+          profit: 0.1,
+          rate: 0.25,
+        },
+        {
+          profit: 0.15,
+          rate: 0.25,
+        },
+        {
+          profit: 0.2,
+          rate: 0.25,
+        },
       ],
     ],
   });
@@ -75,9 +84,9 @@ const createConfig = async (): Promise<TestConfig> => {
       name: generateName(testId),
       symbol,
       options: { start, end },
-      strategyName: StrategyNames.breakout,
+      strategyName: StrategyNames.Breakout,
       strategyConfig: params,
-      connectorName: ConnectorNames.bybit,
+      connectorName: ConnectorNames.Bybit,
     })),
   );
 };

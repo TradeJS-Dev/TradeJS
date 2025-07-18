@@ -52,16 +52,17 @@ export const mergeConfigs = (
         result[key] = [];
       }
 
-      if (_.isArray(value)) {
-        const valueStr = JSON.stringify(value);
-        const existingStrs = result[key].map((v) => JSON.stringify(v));
-        if (!existingStrs.includes(valueStr)) {
-          result[key].push(value);
-        }
-      } else {
-        if (!result[key].includes(value)) {
-          result[key].push(value);
-        }
+      const clonedValue =
+        typeof value === 'object' && value !== null
+          ? _.cloneDeep(value)
+          : value;
+
+      const isDuplicate = result[key].some((existing) =>
+        _.isEqual(existing, value),
+      );
+
+      if (!isDuplicate) {
+        result[key].push(clonedValue);
       }
     }
   }

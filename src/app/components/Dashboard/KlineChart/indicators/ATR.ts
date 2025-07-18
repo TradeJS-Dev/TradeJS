@@ -40,11 +40,11 @@ export const AtrIndicator = (
 
     // Calculation results
     calc: (kLineDataList) => {
-      return kLineDataList.map((_, i) => {
+      return kLineDataList.map((_, candleIndex) => {
         const atr: Record<string, number> = {};
-        periods.forEach((period, j) => {
-          if (i >= period - 1) {
-            const atrValue = values[j][i - (period - 1)];
+        periods.forEach((period, periodIndex) => {
+          if (candleIndex >= period - 1) {
+            const atrValue = values[periodIndex][candleIndex - (period - 1)];
             const atrThreshold = atrValue * 0.5;
 
             atr[`Volotile${period}`] =

@@ -39,7 +39,7 @@ export const KlineChart = ({
       end,
     });
 
-    setData(newData);
+    await setData(newData);
   };
 
   useEffect(() => {

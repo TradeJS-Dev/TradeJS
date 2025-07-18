@@ -1,15 +1,18 @@
 import { BreakoutStrategyCreator } from './Breakout';
-import { ReversalPatternStrategyCreator } from './ReverlasPattern';
+import { BreakoutWeightsStrategyCreator } from './BreakoutWeights';
+import { ReversalPatternStrategyCreator } from './ReversalPattern';
 import { ChannelStrategyCreator } from './ChannelStrategy';
 
 export enum StrategyNames {
-  breakout = 'breakout',
-  reversal = 'reversal',
-  channel = 'channel',
+  Breakout = 'Breakout',
+  BreakoutWeights = 'BreakoutWeights',
+  Reversal = 'Reversal',
+  Channel = 'Channel',
 }
 
 export const strategies = {
-  [StrategyNames.breakout]: BreakoutStrategyCreator,
-  [StrategyNames.reversal]: ReversalPatternStrategyCreator,
-  [StrategyNames.channel]: ChannelStrategyCreator,
+  [StrategyNames.Breakout]: BreakoutStrategyCreator,
+  [StrategyNames.BreakoutWeights]: BreakoutWeightsStrategyCreator,
+  [StrategyNames.Reversal]: ReversalPatternStrategyCreator,
+  [StrategyNames.Channel]: ChannelStrategyCreator,
 } as const;

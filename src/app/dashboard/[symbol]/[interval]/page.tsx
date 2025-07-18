@@ -26,8 +26,8 @@ const Dashboard = () => {
 
   useEffect(() => {
     if (typeof symbol === 'string' && typeof interval === 'string') {
-      setFilters((oldState) => ({
-        ...oldState,
+      setFilters((state) => ({
+        ...state,
         symbol,
         interval: interval as Interval,
         end: getTimestamp(),
@@ -39,8 +39,8 @@ const Dashboard = () => {
     (async () => {
       const tickers = await scanner();
 
-      setTickers((oldState) => ({
-        ...oldState,
+      setTickers((state) => ({
+        ...state,
         scanner: tickers,
       }));
     })();
@@ -50,8 +50,8 @@ const Dashboard = () => {
     (async () => {
       const files = await getBacktestFiles(symbol as string);
 
-      setBacktest((oldState) => ({
-        ...oldState,
+      setBacktest((state) => ({
+        ...state,
         files,
       }));
     })();

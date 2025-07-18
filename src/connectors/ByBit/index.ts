@@ -4,17 +4,12 @@ import _ from 'lodash';
 import chalk from 'chalk';
 import { getClient } from './client';
 import { mapKlineToChartData } from './utils';
-import {
-  getTimestamp,
-  getItemTimestamp,
-  getDataTimestamp,
-  formatUnix,
-} from '@utils/timestamp';
+import { getTimestamp, getItemTimestamp, formatUnix } from '@utils/timestamp';
 import { getData, setData } from '@/src/utils/data';
 import { normalizeTickerData } from '@utils/tickers';
 import { mergeData } from '@utils/array';
 import { logger } from '@utils/logger';
-import { stringify } from '@utils/stringify';
+import { toJson } from '@/src/utils/toJson';
 import {
   KlineChartData,
   KlineRequest,
@@ -133,8 +128,10 @@ export const ByBitConnectorCreator: ConnectorCreator = (config) => {
       cacheOnly = false,
     }: KlineRequest) => {
       let data =
-        (getData('data/history', `${symbol}_${interval}`) as KlineChartData) ||
-        [];
+        ((await getData(
+          'data/history',
+          `${symbol}_${interval}`,
+        )) as KlineChartData) || [];
 
       if (cacheOnly) {
         return data;
@@ -190,7 +187,7 @@ export const ByBitConnectorCreator: ConnectorCreator = (config) => {
       }
 
       if (!_.isEmpty(data)) {
-        setData('data/history', `${symbol}_${interval}`, data);
+        await setData('data/history', `${symbol}_${interval}`, data);
       }
 
       return data.filter((item) => {
@@ -210,7 +207,7 @@ export const ByBitConnectorCreator: ConnectorCreator = (config) => {
         getLogLevel(positionRes),
         'position: %s, %s',
         symbol,
-        stringify(positionRes),
+        toJson(positionRes, true),
       );
 
       if (positionRes.retCode !== 0) {
@@ -250,7 +247,7 @@ export const ByBitConnectorCreator: ConnectorCreator = (config) => {
       logger.log(
         'info',
         'placeOrder: %s',
-        stringify({ symbol, price, qty, direction, TP, sl }),
+        toJson({ symbol, price, qty, direction, TP, sl }, true),
       );
 
       await client.setLeverage({
@@ -273,7 +270,7 @@ export const ByBitConnectorCreator: ConnectorCreator = (config) => {
       logger.log(
         getLogLevel(orderRes),
         'placeOrder:response: %s',
-        stringify(orderRes),
+        toJson(orderRes, true),
       );
 
       if (orderRes.retCode !== 0) {
@@ -299,8 +296,8 @@ export const ByBitConnectorCreator: ConnectorCreator = (config) => {
         logger.log(
           getLogLevel(tpRes),
           'tp: %s %s',
-          stringify(tp),
-          stringify(tpRes),
+          toJson(tp, true),
+          toJson(tpRes, true),
         );
       }
 
@@ -323,7 +320,7 @@ export const ByBitConnectorCreator: ConnectorCreator = (config) => {
         'closePosition: %s, %s, %s',
         symbol,
         direction,
-        stringify(closeRes),
+        toJson(closeRes, true),
       );
 
       if (closeRes.retCode !== 0) {
