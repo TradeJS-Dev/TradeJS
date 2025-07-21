@@ -140,8 +140,14 @@ const finish = async (results: BacktestStat[]) => {
   for await (const result of results) {
     const { symbol, id, orderLogId, config } = result;
     const orderLog = await getData('data/cache', orderLogId);
-    await setData('data/tests', `${symbol}_${id}`, orderLog, { useCache: false, stringify: true});
-    await setData('data/tests', `${symbol}_${id}.info`, config, { useCache: false, stringify: true});
+    await setData('data/tests', `${symbol}_${id}`, orderLog, {
+      useCache: false,
+      stringify: true,
+    });
+    await setData('data/tests', `${symbol}_${id}.info`, config, {
+      useCache: false,
+      stringify: true,
+    });
   }
 
   const colorizedResults = results.map(

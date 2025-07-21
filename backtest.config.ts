@@ -1,4 +1,5 @@
 import _ from 'lodash';
+import { BACKTEST_DAYS } from '@constants';
 import { StrategyNames } from '@src/strategy';
 import { ConnectorNames, connectors } from '@src/connectors';
 import { getTimestamp } from '@utils/timestamp';
@@ -7,7 +8,7 @@ import { generateParamGrid, generateName } from '@utils/grid';
 import { uuid } from '@utils/uuid';
 import { TestConfig } from '@types';
 
-const start = getTimestamp(180);
+const start = getTimestamp(BACKTEST_DAYS);
 const end = getTimestamp();
 const TICKERS_LIMIT = 10;
 const LIST = ['DOGSUSDT'];

@@ -27,7 +27,13 @@ export const getBacktestFiles = async (symbol: string) => {
   return result;
 };
 
-export const backtest = async (id: string): Promise<OrderLogData> => {
+export const backtest = async (
+  id: string | undefined,
+): Promise<OrderLogData> => {
+  if (!id) {
+    return [];
+  }
+
   const data = (await getData('data/tests', id)) as OrderLogData;
 
   return data;

@@ -102,6 +102,7 @@ export const TestConnectorCreator: TCC = (connector) => {
             qty,
             price: targetPrice,
             profit,
+            amount: AMOUNT,
             type: isLong ? 'TAKE_PROFIT_LONG' : 'TAKE_PROFIT_SHORT',
             index: ORDER_LOG.length,
           });
@@ -144,6 +145,7 @@ export const TestConnectorCreator: TCC = (connector) => {
           timestamp: candle.timestamp,
           qty,
           profit,
+          amount: AMOUNT,
           price: SL,
           type: isLong ? 'STOP_LOSS_LONG' : 'STOP_LOSS_SHORT',
           index: ORDER_LOG.length,
@@ -182,6 +184,7 @@ export const TestConnectorCreator: TCC = (connector) => {
       ORDER_LOG.push({
         ...order,
         profit,
+        amount: AMOUNT,
         type: isLong ? 'OPEN_LONG' : 'OPEN_SHORT',
         index: ORDER_LOG.length,
       });
@@ -209,6 +212,7 @@ export const TestConnectorCreator: TCC = (connector) => {
         ...order,
         qty: CURRENT_POSITION.qty,
         profit,
+        amount: AMOUNT,
         type: isLong ? 'CLOSE_LONG' : 'CLOSE_SHORT',
         index: ORDER_LOG.length,
       });

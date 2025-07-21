@@ -12,7 +12,9 @@ import { ColorModeProvider } from '@UI';
 const config = defineConfig({
   theme: {
     tokens: {
-      colors: {},
+      cursor: {
+        button: { value: 'pointer' },
+      },
     },
   },
 });

@@ -27,7 +27,13 @@ export const SelectBacktest = () => {
       placeholder='Backtest'
       defaultValue={[backtest.id || '']}
       onChange={onChange}
-      items={tests}
+      items={[
+        {
+          label: 'Not selected',
+          value: '',
+        },
+        ...tests
+      ]}
       width="240px"
     />
   );

@@ -1,8 +1,9 @@
 import { TestingBox } from '@types';
+import { PRELOAD_DAYS } from '@constants';
 import { connectors } from '@src/connectors';
 import { getTimestamp } from '@utils/timestamp';
 
-const preloadStart = getTimestamp(210);
+const preloadStart = getTimestamp(PRELOAD_DAYS);
 
 export const testing: TestingBox = async ({
   symbol,

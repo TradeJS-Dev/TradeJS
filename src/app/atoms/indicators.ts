@@ -1,3 +1,4 @@
+import _ from 'lodash';
 import { atom, selector } from 'recoil';
 import { Indicators, Items } from '@types';
 import { toJson } from '@/src/utils/toJson';
@@ -7,6 +8,11 @@ const LOCAL_STORAGE_KEY = 'indicators';
 export const indicatorsState = atom<Indicators>({
   key: 'Indicators',
   default: [
+    {
+      id: 'btc',
+      label: 'BTC',
+      enabled: true,
+    },
     {
       id: 'vol',
       label: 'Vol',
@@ -83,5 +89,13 @@ export const indicatorsItemsSelector = selector({
       value: id,
       label,
     })) as Items;
+  },
+});
+
+export const indicatorsByKeySelector = selector({
+  key: 'IndicatorsByKey',
+  get: ({ get }) => {
+    const indicators = get(indicatorsState);
+    return _.keyBy(indicators, 'id');
   },
 });

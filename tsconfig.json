@@ -23,6 +23,7 @@
       "@src/*": ["./src/*"],
       "@app/*": ["./src/app/*"],
       "@atoms": ["./src/app/atoms/index"],
+      "@constants": ["./src/constants/index"],
       "@types": ["./src/types/index"],
       "@utils/*": ["./src/utils/*"],
       "@UI": ["./src/app/components/UI/index"],

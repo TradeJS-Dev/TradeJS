@@ -12,17 +12,21 @@ export const SelectSymbol = () => {
   const setBacktest = useSetRecoilState(backtestState);
 
   const onChange = (value: string[]) => {
-    setFilters((oldFilters) => ({
-      ...oldFilters,
+    setFilters((state) => ({
+      ...state,
       symbol: value[0],
     }));
 
-    setBacktest((oldState) => ({
-      ...oldState,
+    setBacktest((state) => ({
+      ...state,
       id: null,
     }));
 
-    router.replace(`/dashboard/${value[0]}/${filters.interval}`);
+    window.history.replaceState(
+      null,
+      '',
+      `/dashboard/${value[0]}/${filters.interval}`,
+    );
   };
 
   return (

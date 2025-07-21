@@ -1,4 +1,4 @@
-import { getUnixTime } from 'date-fns';
+import { BOT_PRELOAS_DAYS } from '@constants';
 import { strategies, StrategyNames } from '@src/strategy';
 import { connectors, ConnectorNames } from '@src/connectors';
 import botConfig from '@/bot.config';
@@ -9,8 +9,8 @@ import { ConnectorCreator } from '@types';
 
 export const runBot = async () => {
   const botResults = [];
-  const preloadStart = getTimestamp(30);
-  const end = getUnixTime(new Date()) * 1000;
+  const preloadStart = getTimestamp(BOT_PRELOAS_DAYS);
+  const end = getTimestamp();
 
   for await (const bot of botConfig) {
     const { symbol, strategyName, strategyConfig, connectorName, disabled } =

@@ -21,7 +21,11 @@ export const SelectInterval = () => {
       interval: value as Interval,
     }));
 
-    router.replace(`/dashboard/${filters.symbol}/${value}`);
+    window.history.replaceState(
+      null,
+      '',
+      `/dashboard/${filters.symbol}/${value}`,
+    );
   };
 
   return (

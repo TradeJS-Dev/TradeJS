@@ -2,12 +2,13 @@
 
 import _ from 'lodash';
 import chalk from 'chalk';
+import { PRELOAD_FALLBACK_DAYS } from '@constants';
 import { getClient } from './client';
 import { mapKlineToChartData } from './utils';
 import { getTimestamp, getItemTimestamp, formatUnix } from '@utils/timestamp';
 import { getData, setData } from '@/src/utils/data';
 import { normalizeTickerData } from '@utils/tickers';
-import { mergeData } from '@utils/array';
+import { mergeData, isWrongData } from '@utils/array';
 import { logger } from '@utils/logger';
 import { toJson } from '@/src/utils/toJson';
 import {
@@ -36,7 +37,7 @@ export const ByBitConnectorCreator: ConnectorCreator = (config) => {
         category: 'linear',
         symbol,
         interval,
-        start: start || getTimestamp(30),
+        start: start || getTimestamp(PRELOAD_FALLBACK_DAYS),
         end,
         limit: LIMIT,
       });
@@ -127,11 +128,13 @@ export const ByBitConnectorCreator: ConnectorCreator = (config) => {
       silent = false,
       cacheOnly = false,
     }: KlineRequest) => {
+      const cache = (await getData(
+        'data/history',
+        `${symbol}_${interval}`,
+      )) as KlineChartData;
+
       let data =
-        ((await getData(
-          'data/history',
-          `${symbol}_${interval}`,
-        )) as KlineChartData) || [];
+        !cache || _.isEmpty(cache) || isWrongData(interval, cache) ? [] : cache;
 
       if (cacheOnly) {
         return data;

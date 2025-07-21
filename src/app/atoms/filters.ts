@@ -1,4 +1,5 @@
 import { atom } from 'recoil';
+import { DASHBOARD_DAYS } from '@constants';
 import { getTimestamp } from '@utils/timestamp';
 import { Interval, Filters } from '@types';
 
@@ -7,7 +8,7 @@ export const filtersState = atom<Filters>({
   default: {
     symbol: 'BTCUSDT',
     interval: '15' as Interval,
-    start: getTimestamp(60),
+    start: getTimestamp(DASHBOARD_DAYS),
     end: getTimestamp(),
   },
 });

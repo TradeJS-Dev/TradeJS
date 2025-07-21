@@ -103,6 +103,7 @@ export type OrderType =
 export type OrderLog = Order & {
   type: OrderType;
   profit: number;
+  amount: number;
   index: number;
 };
 

@@ -1,9 +1,10 @@
 import _ from 'lodash';
+import { PRELOAD_DAYS } from '@constants';
 import { ByBitConnectorCreator } from '@src/connectors/ByBit';
 import { getTimestamp } from '@utils/timestamp';
 import { getTopTickers } from '@utils/tickers';
 
-const preloadStart = getTimestamp(210);
+const preloadStart = getTimestamp(PRELOAD_DAYS);
 const end = getTimestamp();
 const TICKERS_LIMIT = 10;
 const LIST = ['BTCUSDT', 'DOGSUSDT'];
@@ -22,8 +23,8 @@ export const scanner = async () => {
 
 const update = async () => {
   const volatilityTickers = await scanner();
-  const tickers = _.uniq([...volatilityTickers, ...LIST]);
-  // const tickers = ['DOGSUSDT'];
+  // const tickers = _.uniq([...volatilityTickers, ...LIST]);
+  const tickers = ['DOGSUSDT'];
 
   for await (const symbol of tickers) {
     await byBitConnector.kline({
