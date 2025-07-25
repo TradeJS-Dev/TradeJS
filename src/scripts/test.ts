@@ -1,7 +1,7 @@
 import 'dotenv/config';
-import { ByBitConnectorCreator } from '@src/connectors/ByBit';
+import { connectors } from '@src/connectors';
 
-const byBitConnector = ByBitConnectorCreator({
+const byBitConnector = connectors.ByBit({
   key: '',
   secret: '',
 });

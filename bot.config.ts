@@ -49,7 +49,7 @@ const botConfig: BotConfig = [
         },
       ],
     },
-    connectorName: ConnectorNames.Bybit,
+    connectorName: ConnectorNames.ByBit,
   },
   {
     symbol: 'DEGENUSDT',
@@ -97,7 +97,7 @@ const botConfig: BotConfig = [
         },
       ],
     },
-    connectorName: ConnectorNames.Bybit,
+    connectorName: ConnectorNames.ByBit,
   },
 ];
 

@@ -73,7 +73,7 @@ export const getVolatilityTickers = (data: Ticker[]): Item[] => {
     }));
 };
 
-export const getTopTickers = (data: Ticker[], topN = 50): Item[] => {
+export const getTopTickers = (data: Ticker[], topN = 100): Item[] => {
   const scores = data.map((coin) => {
     const vol24h = Math.abs(coin.price24hPcnt);
     const prev1h = coin.prevPrice1h;

@@ -1,5 +1,6 @@
 'use client';
 
+import { useState, useEffect } from 'react';
 import {
   Button,
   CloseButton,
@@ -9,33 +10,76 @@ import {
   Textarea,
   Timeline,
   HStack,
-  Box,
   Text,
 } from '@chakra-ui/react';
+import { useRecoilValue } from 'recoil';
+import { AIChatMessage, AIChatHistory } from '@types';
 import { GiArtificialHive } from 'react-icons/gi';
-import { PiRobotFill, PiUserFill } from 'react-icons/pi';
-import { useState } from 'react';
+import { filtersState } from '@atoms';
+import { sendMessage, getHistory } from '@src/actions/ai';
+import { Message } from './Message';
 
 export const AiDrawer = () => {
   const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [input, setInput] = useState('');
-  const [messages, setMessages] = useState<
-    { from: 'user' | 'ai'; text: string }[]
-  >([]);
+  const [messages, setMessages] = useState<AIChatHistory>([]);
+  const filters = useRecoilValue(filtersState);
 
-  const handleSend = () => {
+  const loadHistory = async () => {
+    setLoading(true);
+
+    const history = await getHistory(filters.symbol);
+
+    setMessages(history);
+
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    loadHistory();
+  }, [filters.symbol]);
+
+  const handleSend = async () => {
     if (!input.trim()) return;
 
-    setMessages((prev) => [
-      ...prev,
-      { from: 'user', text: input },
-      { from: 'ai', text: `AI ответ на: ${input}` },
-    ]);
+    const message = {
+      from: 'user',
+      text: input,
+      command: 'prompt',
+    } as AIChatMessage;
+
+    setMessages((state) => [...state, message]);
+
+    const response = await sendMessage({ message, filters });
+
+    setMessages((state) => [...state, response]);
+
     setInput('');
   };
 
-  const handleQuick = (cmd: string) => {
-    setInput(cmd);
+  const handleQuick = async (command: string) => {
+    let message: AIChatMessage | null = null;
+
+    if (command === '/line') {
+      message = {
+        from: 'user',
+        text: 'Какие наклонные линии можно построить на данном графике',
+        command,
+      };
+    }
+
+    if (!message) {
+      return;
+    }
+
+    setMessages((state) => [...state, message]);
+
+    const response = await sendMessage({ message, filters });
+
+    setMessages((state) => [...state, response]);
+
+    console.log('>>> res', response.text);
   };
 
   return (
@@ -43,6 +87,7 @@ export const AiDrawer = () => {
       <Drawer.Trigger asChild>
         <Button size="sm" variant="outline">
           <Icon as={GiArtificialHive} boxSize={6} color="teal.500" />
+          <Text color="teal.500">AI</Text>
         </Button>
       </Drawer.Trigger>
       <Portal>
@@ -58,34 +103,8 @@ export const AiDrawer = () => {
 
             <Drawer.Body overflowY="auto" flex="1">
               <Timeline.Root>
-                {messages.map((msg, idx) => (
-                  <Timeline.Item key={idx}>
-                    <Timeline.Connector>
-                      <Timeline.Separator />
-                      <Timeline.Indicator>
-                        {msg.from === 'user' ? <PiUserFill /> : <PiRobotFill />}
-                      </Timeline.Indicator>
-                    </Timeline.Connector>
-
-                    <Timeline.Content>
-                      <Timeline.Title fontSize="sm" fontWeight="bold">
-                        {msg.from === 'user' ? 'Пользователь' : 'AI'}
-                      </Timeline.Title>
-                      <Timeline.Description fontSize="xs" color="gray.500">
-                        {/* В будущем сюда можно вставить timestamp */}
-                        Сообщение #{idx + 1}
-                      </Timeline.Description>
-                      <Box
-                        mt={1}
-                        py={2}
-                        borderRadius="lg"
-                        w="fit-content"
-                        maxW="full"
-                      >
-                        <Text fontSize="sm">{msg.text}</Text>
-                      </Box>
-                    </Timeline.Content>
-                  </Timeline.Item>
+                {messages.map((message, index) => (
+                  <Message key={index} message={message} index={index} />
                 ))}
               </Timeline.Root>
             </Drawer.Body>
@@ -122,9 +141,10 @@ export const AiDrawer = () => {
                 colorScheme="teal"
                 mt={2}
                 size={'sm'}
+                variant="subtle"
                 onClick={handleSend}
               >
-                Отправить
+                Send
               </Button>
             </Drawer.Footer>
           </Drawer.Content>

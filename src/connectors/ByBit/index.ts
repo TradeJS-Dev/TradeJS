@@ -140,6 +140,10 @@ export const ByBitConnectorCreator: ConnectorCreator = (config) => {
         return data;
       }
 
+      if (data.length > 1) {
+        data.pop();
+      }
+
       const dataStart = data.length ? getItemTimestamp(data[0]) : undefined;
       const dataEnd = data.length
         ? getItemTimestamp(data[data.length - 1])

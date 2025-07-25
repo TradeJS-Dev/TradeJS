@@ -1,6 +1,6 @@
 import _ from 'lodash';
 import { PRELOAD_DAYS } from '@constants';
-import { ByBitConnectorCreator } from '@src/connectors/ByBit';
+import { connectors } from '@src/connectors';
 import { getTimestamp } from '@utils/timestamp';
 import { getTopTickers } from '@utils/tickers';
 
@@ -9,7 +9,7 @@ const end = getTimestamp();
 const TICKERS_LIMIT = 10;
 const LIST = ['BTCUSDT', 'DOGSUSDT'];
 
-const byBitConnector = ByBitConnectorCreator({
+const byBitConnector = connectors.ByBit({
   key: '',
   secret: '',
 });

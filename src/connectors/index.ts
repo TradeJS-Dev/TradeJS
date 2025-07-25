@@ -2,11 +2,11 @@ import { ByBitConnectorCreator } from './ByBit';
 import { TestConnectorCreator } from './Test';
 
 export enum ConnectorNames {
-  Bybit = 'Bybit',
+  ByBit = 'ByBit',
   Test = 'Test',
 }
 
 export const connectors = {
-  [ConnectorNames.Bybit]: ByBitConnectorCreator,
+  [ConnectorNames.ByBit]: ByBitConnectorCreator,
   [ConnectorNames.Test]: TestConnectorCreator,
 } as const;

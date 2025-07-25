@@ -13,6 +13,7 @@ import {
   useWmaIndicator,
   useVolIndicator,
   useBtcIndicator,
+  useTrendLine,
   useBacktest,
   useData,
   useResize,
@@ -65,6 +66,7 @@ export const KlineChart = ({
   useVolIndicator(chart, indicators.vol.enabled);
   useBtcIndicator(chart, indicators.btc.enabled, filters);
   useBacktest(chart, backtestId);
+  useTrendLine(chart, true, filters);
 
   useEffect(() => {
     if (!data || !chartRef.current) return;

@@ -1,10 +1,10 @@
 'use server';
 
-import { ByBitConnectorCreator } from '@src/connectors/ByBit';
+import { connectors } from '@src/connectors';
 import { getTopTickers } from '@utils/tickers';
 
 export const scanner = async () => {
-  const byBitConnector = ByBitConnectorCreator({
+  const byBitConnector = connectors.ByBit({
     key: '',
     secret: '',
   });

@@ -14,7 +14,7 @@ const TICKERS_LIMIT = 10;
 const LIST = ['DOGSUSDT'];
 const EXCLUDE_TICKERS = ['DOGSUSDT'];
 
-const byBitConnector = connectors.Bybit({
+const byBitConnector = connectors.ByBit({
   key: '',
   secret: '',
 });
@@ -87,7 +87,7 @@ const createConfig = async (): Promise<TestConfig> => {
       options: { start, end },
       strategyName: StrategyNames.Breakout,
       strategyConfig: params,
-      connectorName: ConnectorNames.Bybit,
+      connectorName: ConnectorNames.ByBit,
     })),
   );
 };
