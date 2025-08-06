@@ -9,7 +9,9 @@ export const SelectBacktest = () => {
   const filters = useRecoilValue(filtersState);
   const [backtest, setBacktest] = useRecoilState(backtestState);
 
-  const tests = backtest.files.filter((file) => file.value.startsWith(filters.symbol));
+  const tests = backtest.files.filter((file) =>
+    file.value.startsWith(filters.symbol),
+  );
 
   if (_.isEmpty(tests)) {
     return null;
@@ -24,7 +26,7 @@ export const SelectBacktest = () => {
 
   return (
     <Select
-      placeholder='Backtest'
+      placeholder="Backtest"
       defaultValue={[backtest.id || '']}
       onChange={onChange}
       items={[
@@ -32,7 +34,7 @@ export const SelectBacktest = () => {
           label: 'Not selected',
           value: '',
         },
-        ...tests
+        ...tests,
       ]}
       width="240px"
     />

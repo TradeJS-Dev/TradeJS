@@ -12,11 +12,11 @@ import {
   SelectInterval,
   SelectBacktest,
   SelectIndicator,
-} from '@app/components/Dashboard/Filters';
+} from '@app/components/Shared/Filters';
 import { MainChart } from '@app/components/Dashboard/MainChart';
 import { AiDrawer } from '@app/components/Dashboard/AiDrawer';
 import { useIsClient } from '@app/hooks/isClient';
-import { Interval } from '@types';
+import { Interval, Filters } from '@types';
 import { getTimestamp } from '@utils/timestamp';
 
 const Dashboard = () => {
@@ -63,6 +63,14 @@ const Dashboard = () => {
     return null;
   }
 
+  const onChangeFilters = (filters: Filters) => {
+    window.history.replaceState(
+      null,
+      '',
+      `/routes/dashboard/${filters.symbol}/${filters.interval}`,
+    );
+  };
+
   return (
     <Box
       as="main"
@@ -74,13 +82,13 @@ const Dashboard = () => {
       justifyContent="space-between"
       alignItems="flex-start"
     >
-      <Flex p={2} gap={8} flexDirection="row">
-        <SelectSymbol />
-        <SelectInterval />
+      <Flex mb={2} gap={8} flexDirection="row">
+        <SelectSymbol onSelect={onChangeFilters} />
+        <SelectInterval onSelect={onChangeFilters} />
         <SelectIndicator />
         <AiDrawer />
       </Flex>
-      <Flex p={2} gap={8} flexDirection="row">
+      <Flex mb={4} gap={8} flexDirection="row">
         <SelectBacktest />
       </Flex>
       <Box position="relative" flex="1" w="full">

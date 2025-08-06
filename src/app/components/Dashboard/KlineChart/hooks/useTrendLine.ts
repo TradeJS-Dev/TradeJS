@@ -4,7 +4,6 @@ import { registerIndicator, Chart, registerOverlay } from 'klinecharts';
 import { Filters, KlineChartData } from '@types';
 import { useData } from './useData';
 
-
 type Point = { x: number; y: number; timestamp: number };
 
 export function findTrendlinesByLows(
@@ -12,20 +11,23 @@ export function findTrendlinesByLows(
   maxLines = 10,
   range = 10,
   epsilon = 0.0001,
-  minTouches = 3
+  minTouches = 3,
 ): Array<{ id: string; points: { timestamp: number; value: number }[] }> {
   const lows: Point[] = [];
 
   for (let i = range; i < candles.length - range; i++) {
     const segment = candles.slice(i - range, i + range + 1);
-    const minLow = Math.min(...segment.map(c => c.close));
+    const minLow = Math.min(...segment.map((c) => c.close));
     if (candles[i].close === minLow) {
       lows.push({ x: i, y: candles[i].close, timestamp: candles[i].timestamp });
     }
   }
 
   const used = new Set<number>();
-  const foundLines: Array<{ id: string; points: { timestamp: number; value: number }[] }> = [];
+  const foundLines: Array<{
+    id: string;
+    points: { timestamp: number; value: number }[];
+  }> = [];
 
   for (let i = lows.length - 1; i >= 0; i--) {
     for (let j = i - 1; j >= 0; j--) {
@@ -43,7 +45,7 @@ export function findTrendlinesByLows(
 
       const intercept = p1.y - slope * p1.x;
 
-      const touches = lows.filter(p => {
+      const touches = lows.filter((p) => {
         const expectedY = slope * p.x + intercept;
         return Math.abs(p.y - expectedY) <= epsilon;
       });
@@ -57,8 +59,8 @@ export function findTrendlinesByLows(
           id,
           points: [
             { timestamp: first.timestamp, value: first.y },
-            { timestamp: last.timestamp, value: last.y }
-          ]
+            { timestamp: last.timestamp, value: last.y },
+          ],
         });
 
         // Запоминаем, какие индексы были использованы
@@ -76,8 +78,6 @@ export function findTrendlinesByLows(
   return foundLines;
 }
 
-
-
 export const useTrendLine = (
   chart: Chart | null,
   enabled: boolean,
@@ -94,21 +94,21 @@ export const useTrendLine = (
       needDefaultYAxisFigure: false,
       createPointFigures: ({ coordinates }) => {
         if (coordinates.length < 2) return [];
-    
+
         return [
           {
             type: 'line',
             attrs: {
-              coordinates: [coordinates[0], coordinates[1]]
+              coordinates: [coordinates[0], coordinates[1]],
             },
             styles: {
               color: '#FFA500',
               size: 2,
-              style: 'solid'
-            }
-          }
+              style: 'solid',
+            },
+          },
         ];
-      }
+      },
     });
   }, []);
 
@@ -123,7 +123,7 @@ export const useTrendLine = (
       chart.createOverlay({
         name: 'TrendLine',
         id: line.id,
-        points: line.points
+        points: line.points,
       });
     }
 

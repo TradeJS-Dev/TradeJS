@@ -1,5 +1,8 @@
 import { format } from 'date-fns';
 import { uuid } from '@utils/uuid';
+import _ from 'lodash';
+
+type GenericConfig = Record<string, any>;
 
 export const generateParamGrid = <T extends Record<string, any>>(
   paramOptions: Record<keyof T, T[keyof T][]>,
@@ -29,3 +32,38 @@ export const generateParamGrid = <T extends Record<string, any>>(
 
 export const generateName = (prefix: string): string =>
   `${prefix}_${uuid(6)}_${format(new Date(), 'dd.MM-HH:mm')}`;
+
+export const mergeConfigs = (
+  configs: GenericConfig[],
+): Record<string, any[]> => {
+  const result: Record<string, any[]> = {};
+
+  for (const config of configs) {
+    for (const [key, value] of Object.entries(config)) {
+      if (!result[key]) {
+        result[key] = [];
+      }
+
+      const clonedValue =
+        typeof value === 'object' && value !== null
+          ? _.cloneDeep(value)
+          : value;
+
+      const isDuplicate = result[key].some((existing) =>
+        _.isEqual(existing, value),
+      );
+
+      if (!isDuplicate) {
+        result[key].push(clonedValue);
+      }
+    }
+  }
+
+  for (const key in result) {
+    if (result[key].every((v) => typeof v === 'number')) {
+      result[key] = _.sortBy(result[key]);
+    }
+  }
+
+  return result;
+};

@@ -6,11 +6,17 @@ import os from 'os';
 import chalk from 'chalk';
 import _ from 'lodash';
 import createTestConfig from '@/backtest.config';
-import { getTopResults, mergeConfigs } from '@utils/results';
+import { mergeConfigs } from '@utils/grid';
+import { rankBacktests, getFormatted } from '@utils/stat';
 import { setData, getData } from '@/src/utils/data';
 import { toJson } from '@/src/utils/toJson';
 import { uuid } from '@utils/uuid';
-import { BacktestStat } from '@types';
+import {
+  WorkerResult,
+  ThresholdLevel,
+  BacktestStat,
+  BacktestThresholds,
+} from '@types';
 
 const TOP_LIMIT = 10;
 const MAX_PARALLEL = Math.min(os.cpus().length, 4);
@@ -18,17 +24,43 @@ const MAX_PARALLEL = Math.min(os.cpus().length, 4);
 const HEADERS = [
   chalk.blue('ID'),
   chalk.yellow('SYMBOL'),
-  chalk.green('PROFIT'),
-  chalk.red('LOW'),
-  chalk.green('WINS'),
-  chalk.red('LOSSES'),
+  chalk.cyan('PROFIT'),
   chalk.cyan('ORDERS'),
-  chalk.yellow('WIN/LOSS (%)'),
+  chalk.cyan('WIN/LOSS (%)'),
+  chalk.cyan('RISK'),
+  chalk.cyan('SHARPE'),
+  chalk.cyan('SORTINO'),
+  chalk.cyan('EXPOSURE (%)'),
+  chalk.cyan('MAX DRAWDOWN (%)'),
 ];
 
-let betResults: any = {
+let bestResults = {
   amount: 0,
-  ws: 0,
+  winRate: 0,
+};
+
+const getCLILevelColor = (level: ThresholdLevel) => {
+  switch (level) {
+    case 'success':
+      return chalk.green;
+    case 'warning':
+      return chalk.yellow;
+    case 'error':
+      return chalk.red;
+  }
+};
+
+export const drawInCLI = (
+  stat: BacktestStat,
+  keys: (keyof BacktestThresholds)[],
+): string[] => {
+  return keys.map((key) => {
+    const { formatted, level } = getFormatted(stat, key);
+
+    const color = getCLILevelColor(level);
+
+    return color(formatted);
+  });
 };
 
 const backtest = async () => {
@@ -36,14 +68,14 @@ const backtest = async () => {
 
   const chunkSize = Math.ceil(testConfig.length / MAX_PARALLEL);
   const chunks = _.chunk(testConfig, chunkSize);
-  let results: BacktestStat[] = [];
+  let results: WorkerResult[] = [];
   let completedWorkers = 0;
   let completedTests = 0;
   console.log(testConfig.length);
 
   console.log('');
   const bar = new ProgressBar(
-    ':current/:total [:bar][:percent] :id :symbol :amount :minamount :wins/:losses/:orders :ws :eta(s)',
+    ':current/:total [:bar][:percent] :id :symbol :amount :minamount :wins/:losses/:orders :winrate :eta(s)',
     {
       total: testConfig.length,
       width: 40,
@@ -63,52 +95,50 @@ const backtest = async () => {
       if (msg.done) {
         completedWorkers++;
         if (completedWorkers === chunks.length) {
+          results = rankBacktests(results, TOP_LIMIT);
           await finish(results);
         }
         return;
       }
 
       if (msg.error) {
-        console.error(chalk.red(`Error in test #${msg.id}: ${msg.error}`));
+        console.error(
+          chalk.red(`Error in test #${msg.id}: ${JSON.stringify(msg)}`),
+        );
         return;
       }
 
       completedTests++;
 
-      const { stat, test } = msg;
+      results.push(msg as WorkerResult);
 
-      results.push({
-        id: test.name,
-        symbol: test.symbol,
-        config: test.strategyConfig,
-        ...stat,
-      });
-
-      results.forEach(({ amount, ws }) => {
-        if (amount > betResults.amount) {
-          betResults.amount = amount;
+      results.forEach(({ stat: { amount, winRate } }) => {
+        if (amount > bestResults.amount) {
+          bestResults.amount = amount;
         }
-        if (ws > betResults.ws) {
-          betResults.ws = ws;
+        if (winRate > bestResults.winRate) {
+          bestResults.winRate = winRate;
         }
       });
 
       if (completedTests % 100 === 0 || completedTests === testConfig.length) {
-        results = getTopResults(results, TOP_LIMIT);
+        results = rankBacktests(results, TOP_LIMIT);
 
-        const { symbol, id, orders, amount, minAmount, wins, losses, ws } =
-          results[0];
+        const {
+          test: { symbol, name },
+          stat: { orders, amount, minAmount, wins, losses, winRate },
+        } = results[0];
 
         bar.tick(
           completedTests === testConfig.length ? completedTests % 100 : 100,
           {
-            id: chalk.blue(`#${id}`),
+            id: chalk.blue(`#${name}`),
             symbol: chalk.yellow(symbol),
             amount: chalk.green(`${(amount || 0).toFixed(2)}$`),
             minamount: chalk.red(`${(minAmount || 0).toFixed(2)}$`),
             wins: chalk.green(wins),
             losses: chalk.red(losses),
-            ws: chalk.yellow(`${(ws || 0).toFixed(0)}%`),
+            winrate: chalk.yellow(`${(winRate || 0).toFixed(0)}%`),
             orders: chalk.cyan(orders),
           },
         );
@@ -131,59 +161,72 @@ const backtest = async () => {
   }
 };
 
-const finish = async (results: BacktestStat[]) => {
+const finish = async (results: WorkerResult[]) => {
   const listit = new ListIt({
     autoAlign: true,
     headerUnderline: true,
   });
 
   for await (const result of results) {
-    const { symbol, id, orderLogId, config } = result;
+    const {
+      test: { symbol, name, strategyConfig },
+      stat,
+      orderLogId,
+    } = result;
     const orderLog = await getData('data/cache', orderLogId);
-    await setData('data/tests', `${symbol}_${id}`, orderLog, {
+    await setData('data/tests', `${symbol}_${name}.orders`, orderLog, {
       useCache: false,
       stringify: true,
     });
-    await setData('data/tests', `${symbol}_${id}.info`, config, {
+    await setData('data/tests', `${symbol}_${name}.config`, strategyConfig, {
+      useCache: false,
+      stringify: true,
+    });
+    await setData('data/tests', `${symbol}_${name}.stat`, stat, {
       useCache: false,
       stringify: true,
     });
   }
 
-  const colorizedResults = results.map(
-    ({ id, symbol, amount, minAmount, wins, losses, ws, orders }) => [
-      chalk.blue(id),
-      chalk.yellow(symbol),
-      chalk.green(`${(amount || 0).toFixed(2)}$`),
-      chalk.red(`${(minAmount || 0).toFixed(2)}$`),
-      chalk.green(wins),
-      chalk.red(losses),
-      chalk.cyan(orders),
-      chalk.yellow(`${(ws || 0).toFixed(0)}%`),
-    ],
-  );
+  const colorizedResults = results.map(({ test: { symbol, name }, stat }) => [
+    chalk.blue(name),
+    chalk.yellow(symbol),
+    ...drawInCLI(stat, [
+      'netProfit',
+      'orders',
+      'winRate',
+      'riskRewardRatio',
+      'sharpeRatio',
+      'sortinoRatio',
+      'exposure',
+      'maxDrawdown',
+    ]),
+  ]);
 
   console.log('');
   console.log('');
   console.log(listit.setHeaderRow(HEADERS).d(colorizedResults).toString());
   console.log('');
 
-  const bestConfig = results[0].config;
+  const bestConfig = results[0].test.strategyConfig;
   console.log(chalk.gray('best config:'));
   console.log(chalk.green(toJson(bestConfig, true)));
   console.log('');
 
-  const mergedConfig = mergeConfigs(results.map(({ config }) => config));
+  const mergedConfig = mergeConfigs(
+    results.map(({ test: { strategyConfig } }) => strategyConfig),
+  );
   console.log(chalk.gray('merged config:'));
   console.log(chalk.blue(toJson(mergedConfig, true)));
   console.log('');
 
+  console.log(chalk.gray('best result:'));
   console.log(
     chalk.yellow(
       toJson(
         {
-          amount: `${betResults.amount.toFixed(2)}$`,
-          ws: `${betResults.ws.toFixed(0)}%`,
+          amount: `${bestResults.amount.toFixed(2)}$`,
+          ws: `${bestResults.winRate.toFixed(0)}%`,
         },
         true,
       ),

@@ -38,5 +38,4 @@ error.log*
 next-env.d.ts
 
 # app
-backtest
-data
+/data

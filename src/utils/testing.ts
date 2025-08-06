@@ -39,5 +39,5 @@ export const testing: TestingBox = async ({
     testConnector.checkTp(candle);
   }
 
-  return testConnector.getStat();
+  return testConnector.getResult();
 };

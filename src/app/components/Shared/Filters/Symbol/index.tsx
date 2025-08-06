@@ -1,32 +1,35 @@
 'use client';
 
-import { useRouter } from 'next/navigation';
 import { useRecoilState, useRecoilValue, useSetRecoilState } from 'recoil';
+import { usePathname } from 'next/navigation';
 import { filtersState, tickersListSelector, backtestState } from '@atoms';
 import { Select } from '@UI';
+import { Filters } from '@types';
 
-export const SelectSymbol = () => {
-  const router = useRouter();
+interface SelectSymbolProps {
+  onSelect?: (filters: Filters) => void;
+}
+
+export const SelectSymbol = ({ onSelect }: SelectSymbolProps) => {
+  const pathname = usePathname();
   const tickers = useRecoilValue(tickersListSelector);
   const [filters, setFilters] = useRecoilState(filtersState);
   const setBacktest = useSetRecoilState(backtestState);
 
   const onChange = (value: string[]) => {
-    setFilters((state) => ({
-      ...state,
+    const newFilters = {
+      ...filters,
       symbol: value[0],
-    }));
+    };
+
+    setFilters(newFilters);
 
     setBacktest((state) => ({
       ...state,
       id: null,
     }));
 
-    window.history.replaceState(
-      null,
-      '',
-      `/dashboard/${value[0]}/${filters.interval}`,
-    );
+    onSelect?.(newFilters);
   };
 
   return (

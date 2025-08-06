@@ -73,7 +73,7 @@ export const AiDrawer = () => {
       return;
     }
 
-    setMessages((state) => [...state, message]);
+    setMessages((state) => [...state, message as AIChatMessage]);
 
     const response = await sendMessage({ message, filters });
 
@@ -137,13 +137,7 @@ export const AiDrawer = () => {
                 onChange={(e) => setInput(e.target.value)}
               />
 
-              <Button
-                colorScheme="teal"
-                mt={2}
-                size={'sm'}
-                variant="subtle"
-                onClick={handleSend}
-              >
+              <Button mt={2} size={'sm'} variant="subtle" onClick={handleSend}>
                 Send
               </Button>
             </Drawer.Footer>

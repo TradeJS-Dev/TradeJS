@@ -1,5 +1,7 @@
 import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
+import { Box } from '@chakra-ui/react';
+import { Sidebar } from '@app/components/Shared/Sidebar';
 import Provider from './provider';
 import './globals.css';
 
@@ -18,7 +20,10 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={inter.className}>
-        <Provider>{children}</Provider>
+        <Provider>
+          <Sidebar />
+          <Box ml="60px">{children}</Box>
+        </Provider>
       </body>
     </html>
   );

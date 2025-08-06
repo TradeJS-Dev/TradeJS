@@ -35,17 +35,17 @@ const createConfig = async (): Promise<TestConfig> => {
   const tickers = [...LIST];
   const paramGrid = generateParamGrid({
     LIMIT: [100],
-    MA_FAST: [16],
-    MA_SLOW: [90],
-    ATR_PERIOD: [15],
-    ATR_OPEN: [0.6],
-    ATR_CLOSE: [1.2],
-    BB_PERIOD: [13],
-    BB_STDDEV: [2],
-    OBV_SMA_PERIOD: [70],
-    BREAKOUT_LOOKBACK: [20],
-    SL_LONG: [0.08],
-    SL_SHORT: [0.08],
+    MA_FAST: [12, 16, 20],
+    MA_SLOW: [80, 90, 100],
+    ATR_PERIOD: [12, 15, 18],
+    ATR_OPEN: [0.5, 0.6],
+    ATR_CLOSE: [1, 1.2, 1.4],
+    BB_PERIOD: [10, 13, 15],
+    BB_STDDEV: [1.5, 2],
+    OBV_SMA_PERIOD: [60, 70, 80],
+    BREAKOUT_LOOKBACK: [10, 15, 20, 24],
+    SL_LONG: [0.06, 0.08],
+    SL_SHORT: [0.06, 0.08],
     TP_LONG: [
       [
         {

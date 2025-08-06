@@ -29,7 +29,7 @@ process.on('message', async ({ chunkId }: { chunkId: string }) => {
         secret: '',
       });
 
-      const { orderLog, ...stat } = await testing({
+      const { orderLog, stat } = await testing({
         name,
         symbol,
         options,
@@ -43,10 +43,8 @@ process.on('message', async ({ chunkId }: { chunkId: string }) => {
       await setData('data/cache', orderLogId, orderLog, { useCache: false });
 
       process.send?.({
-        stat: {
-          ...stat,
-          orderLogId,
-        },
+        stat,
+        orderLogId,
         test,
       });
     } catch (error) {

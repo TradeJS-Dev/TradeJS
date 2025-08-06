@@ -90,19 +90,24 @@ export const BreakoutStrategyCreator: StrategyCreator = (baseConfig, data) => {
 
     const prevCandle = candles[len - 2];
 
+    const priceBreaksUpperBB = bb && candle.close > bb.upper;
+    const priceBreaksLowerBB = bb && candle.close < bb.lower;
+
     const breakoutUp =
       prevCandle.high > highLevel &&
       smaFast > smaSlow &&
       obvGrowing &&
       candle.close > prevCandle.close &&
-      candle.close > highLevel;
+      candle.close > highLevel &&
+      priceBreaksUpperBB;
 
     const breakoutDown =
       prevCandle.low < lowLevel &&
       smaFast < smaSlow &&
       obvFalling &&
       candle.close < prevCandle.close &&
-      candle.close < lowLevel;
+      candle.close < lowLevel &&
+      priceBreaksLowerBB;
 
     if (!positionExists) {
       if (breakoutUp && isVolatile) {

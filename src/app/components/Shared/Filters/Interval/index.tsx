@@ -1,14 +1,18 @@
 'use client';
 
-import { useRouter } from 'next/navigation';
 import { useRecoilState } from 'recoil';
+import { usePathname } from 'next/navigation';
 import { filtersState } from '@atoms';
 import { Segment } from '@UI';
-import { Interval } from '@types';
+import { Interval, Filters } from '@types';
 import { intervals } from './intervals';
 
-export const SelectInterval = () => {
-  const router = useRouter();
+interface SelectIntervalProps {
+  onSelect?: (filters: Filters) => void;
+}
+
+export const SelectInterval = ({ onSelect }: SelectIntervalProps) => {
+  const pathname = usePathname();
   const [filters, setFilters] = useRecoilState(filtersState);
 
   const onChange = (value: string | null) => {
@@ -16,16 +20,14 @@ export const SelectInterval = () => {
       return;
     }
 
-    setFilters((state) => ({
-      ...state,
+    const newFilters = {
+      ...filters,
       interval: value as Interval,
-    }));
+    };
 
-    window.history.replaceState(
-      null,
-      '',
-      `/dashboard/${filters.symbol}/${value}`,
-    );
+    setFilters(newFilters);
+
+    onSelect?.(newFilters);
   };
 
   return (

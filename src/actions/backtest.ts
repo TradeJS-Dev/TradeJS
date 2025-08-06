@@ -1,8 +1,13 @@
 'use server';
 
-import { OrderLogData } from '@types';
+import {
+  OrderLogData,
+  StrategyConfig,
+  BacktestStat,
+  BacktestHistory,
+  Item,
+} from '@types';
 import { getData } from '@/src/utils/data';
-import { Item } from '@types';
 
 import fs from 'fs';
 const path = require('path');
@@ -10,31 +15,53 @@ const path = require('path');
 const dataDir = path.join(process.cwd(), 'data', 'tests');
 
 export const getBacktestFiles = async (symbol: string) => {
+  const result = new Array<Item>();
   const files = fs.readdirSync(dataDir);
+  const orderFiles = files.filter(
+    (file) => file.endsWith('.orders.json') && file.startsWith(symbol),
+  );
 
-  const result = files
-    .filter((file) => file.endsWith('.json') && !file.includes('.info'))
-    .map((file) => {
-      const fileName = file.replace('.json', '');
-      const label = fileName.replace(`${symbol}_`, '');
+  for await (const file of orderFiles) {
+    const id = file.replace('.orders.json', '');
 
-      return {
-        value: fileName,
-        label: label,
-      } as Item;
+    const stat = (await getData('data/tests', `${id}.stat`)) as BacktestStat;
+
+    const label = id.replace(`${symbol}_`, '');
+
+    result.push({
+      value: id,
+      label: label,
+      data: {
+        score: stat.score || 0,
+      },
     });
+  }
+
+  result.sort((a, b) => (b.data?.score as number) - (a.data?.score as number));
 
   return result;
 };
 
-export const backtest = async (
+export const getBacktest = async (
   id: string | undefined,
-): Promise<OrderLogData> => {
+): Promise<BacktestHistory | null> => {
   if (!id) {
-    return [];
+    return null;
   }
 
-  const data = (await getData('data/tests', id)) as OrderLogData;
+  const orderLog = (await getData(
+    'data/tests',
+    `${id}.orders`,
+  )) as OrderLogData;
+  const strategyConfig = (await getData(
+    'data/tests',
+    `${id}.orders`,
+  )) as StrategyConfig;
+  const stat = (await getData('data/tests', `${id}.stat`)) as BacktestStat;
 
-  return data;
+  return {
+    orderLog,
+    strategyConfig,
+    stat,
+  };
 };

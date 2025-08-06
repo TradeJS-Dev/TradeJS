@@ -5,44 +5,40 @@ import {
   TestConnectorCreator as TCC,
   Kline,
   Order,
+  OrderLog,
   OrderLogData,
   Sl,
   Tp,
   Candle,
 } from '@types';
+import { buildPositionLogFromOrderLog, calculateStatsFull } from '@utils/stat';
+
+const FEE = 0.005;
 
 export const TestConnectorCreator: TCC = (connector) => {
+  const ORDER_LOG: OrderLogData = [];
   let CURRENT_POSITION: Order | null = null; // Текущая открытая позиция
-  let ORIGINAL_QTY = 0;
   let AMOUNT = 100;
-  let MIN_AMOUNT = AMOUNT;
-  const FEE = 0.005;
-  let ORDERS = 0;
-  let DEAL_AMOUNT = 0;
-  let WINS = 0;
-  let LOSSES = 0;
+  let ORIGINAL_QTY = 0;
   let TP: Tp[] = [];
   let SL: Sl = null;
-  const ORDER_LOG: OrderLogData = [];
 
   const kline: Kline = async (options) => {
     return await connector.kline(options);
   };
 
-  const updateMinAmount = () => {
-    MIN_AMOUNT = Math.min(MIN_AMOUNT, AMOUNT);
+  const log = (data: Partial<OrderLog>) => {
+    ORDER_LOG.push({
+      ...(CURRENT_POSITION || {}),
+      ...data,
+      amount: AMOUNT,
+      index: ORDER_LOG.length,
+    } as OrderLog);
   };
 
   const clearPosition = () => {
-    if (DEAL_AMOUNT > 0) {
-      WINS++;
-    } else {
-      LOSSES++;
-    }
-
     TP = [];
     SL = null;
-    DEAL_AMOUNT = 0;
     ORIGINAL_QTY = 0;
     CURRENT_POSITION = null;
   };
@@ -50,15 +46,15 @@ export const TestConnectorCreator: TCC = (connector) => {
   return {
     kline,
 
-    getStat: () => ({
-      amount: AMOUNT,
-      minAmount: MIN_AMOUNT,
-      wins: WINS,
-      losses: LOSSES,
-      ws: (WINS / ORDERS) * 100,
-      orders: ORDERS,
-      orderLog: ORDER_LOG,
-    }),
+    getResult: () => {
+      const positionLog = buildPositionLogFromOrderLog(ORDER_LOG);
+      const stat = calculateStatsFull(positionLog);
+
+      return {
+        stat,
+        orderLog: ORDER_LOG,
+      };
+    },
 
     getPosition: async () => CURRENT_POSITION || null,
 
@@ -89,22 +85,17 @@ export const TestConnectorCreator: TCC = (connector) => {
             : (entryPrice - targetPrice) * qty;
 
           AMOUNT += profit;
-          DEAL_AMOUNT += profit;
-          updateMinAmount();
 
           CURRENT_POSITION.qty = parseFloat(
             (CURRENT_POSITION.qty - qty).toFixed(8),
           );
 
-          ORDER_LOG.push({
-            ...CURRENT_POSITION,
+          log({
             timestamp: candle.timestamp,
             qty,
             price: targetPrice,
             profit,
-            amount: AMOUNT,
             type: isLong ? 'TAKE_PROFIT_LONG' : 'TAKE_PROFIT_SHORT',
-            index: ORDER_LOG.length,
           });
 
           tp.done = true;
@@ -137,18 +128,13 @@ export const TestConnectorCreator: TCC = (connector) => {
           : (CURRENT_POSITION.price - SL) * qty;
 
         AMOUNT += profit;
-        DEAL_AMOUNT += profit;
-        updateMinAmount();
 
-        ORDER_LOG.push({
-          ...CURRENT_POSITION,
+        log({
           timestamp: candle.timestamp,
           qty,
           profit,
-          amount: AMOUNT,
           price: SL,
           type: isLong ? 'STOP_LOSS_LONG' : 'STOP_LOSS_SHORT',
-          index: ORDER_LOG.length,
         });
 
         clearPosition();
@@ -174,22 +160,19 @@ export const TestConnectorCreator: TCC = (connector) => {
       SL = slPrice || null;
       CURRENT_POSITION = { ...order };
       ORIGINAL_QTY = order.qty;
+      const fee = order.price * order.qty * FEE;
 
-      const profit = order.price * order.qty * FEE * -1;
+      const profit = fee * -1;
 
       AMOUNT += profit;
-      DEAL_AMOUNT += profit;
-      updateMinAmount();
 
-      ORDER_LOG.push({
+      log({
         ...order,
         profit,
-        amount: AMOUNT,
+        fee,
         type: isLong ? 'OPEN_LONG' : 'OPEN_SHORT',
-        index: ORDER_LOG.length,
       });
 
-      ORDERS++;
       return true;
     },
 
@@ -204,17 +187,12 @@ export const TestConnectorCreator: TCC = (connector) => {
         : (CURRENT_POSITION.price - order.price) * CURRENT_POSITION.qty;
 
       AMOUNT += profit;
-      DEAL_AMOUNT += profit;
-      updateMinAmount();
 
-      ORDER_LOG.push({
-        ...CURRENT_POSITION,
+      log({
         ...order,
         qty: CURRENT_POSITION.qty,
         profit,
-        amount: AMOUNT,
         type: isLong ? 'CLOSE_LONG' : 'CLOSE_SHORT',
-        index: ORDER_LOG.length,
       });
 
       clearPosition();
