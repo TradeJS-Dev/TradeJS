@@ -1,4 +1,13 @@
-export { SelectInterval } from './Interval';
-export { SelectSymbol } from './Symbol';
-export { SelectBacktest } from './Backtest';
-export { SelectIndicator } from './Indicators';
+import { Root } from './Root';
+import { SelectInterval } from './Interval';
+import { SelectSymbol } from './Symbol';
+import { SelectBacktest } from './Backtest';
+import { SelectIndicator } from './Indicators';
+
+export const Filters = {
+  Root,
+  SelectInterval,
+  SelectSymbol,
+  SelectBacktest,
+  SelectIndicator,
+};

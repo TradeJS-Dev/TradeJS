@@ -4,7 +4,7 @@ import React, { useEffect, useRef } from 'react';
 import _ from 'lodash';
 import { init, Chart, dispose } from 'klinecharts';
 import { OverlaySpinner } from '@UI';
-import { Indicator, Filters } from '@types';
+import { Indicator, UIFIlters } from '@types';
 import {
   useBbIndicator,
   useAtrIndicator,
@@ -22,19 +22,12 @@ import { darkTheme } from './styles';
 
 interface KlineChartProps {
   id: string;
-  filters: Filters;
+  filters: UIFIlters;
   indicators: Record<string, Indicator>;
-  backtestId?: string;
 }
 
-export const KlineChart = ({
-  id,
-  filters,
-  indicators,
-  backtestId,
-}: KlineChartProps) => {
+export const KlineChart = ({ id, filters, indicators }: KlineChartProps) => {
   const chartRef = useRef<Chart | null>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
   const { data, loading } = useData(filters);
 
   useEffect(() => {
@@ -65,7 +58,7 @@ export const KlineChart = ({
   useWmaIndicator(chart, indicators.wma.enabled, indicators.wma.periods || []);
   useVolIndicator(chart, indicators.vol.enabled);
   useBtcIndicator(chart, indicators.btc.enabled, filters);
-  useBacktest(chart, backtestId);
+  useBacktest(chart, filters.backtestId || undefined);
   useTrendLine(chart, true, filters);
 
   useEffect(() => {

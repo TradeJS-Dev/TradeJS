@@ -12,59 +12,54 @@ export const levelScore = {
   error: 1,
 };
 
-export const rankedMetrics: (keyof BacktestStat)[] = [
-  'profitFactor',
-  'winRate',
-  'riskRewardRatio',
-  'expectancy',
-  'averageReturn',
-  'sharpeRatio',
-  'sortinoRatio',
-  'exposure',
-  'maxDrawdown',
-];
-
 export const backtestThresholds: BacktestThresholds = {
   winRate: {
     thresholds: [35, 55],
     direction: 'higher',
     weight: 0.9,
     isPercent: true,
+    isScored: true,
     precision: 1,
   },
   profitFactor: {
     thresholds: [1.2, 2.0],
     direction: 'higher',
+    isScored: true,
     weight: 0.8,
     precision: 2,
   },
   riskRewardRatio: {
     thresholds: [1.5, 3.0],
     direction: 'higher',
+    isScored: true,
     weight: 0.7,
     precision: 2,
   },
   expectancy: {
     thresholds: [0.2, 0.5],
     direction: 'higher',
+    isScored: true,
     weight: 0.8,
     precision: 2,
   },
   sharpeRatio: {
     thresholds: [0.1, 0.5],
     direction: 'higher',
+    isScored: true,
     weight: 0.7,
     precision: 2,
   },
   sortinoRatio: {
     thresholds: [0.2, 1.0],
     direction: 'higher',
+    isScored: true,
     weight: 0.6,
     precision: 2,
   },
   exposure: {
     thresholds: [30, 70],
     direction: 'higher',
+    isScored: true,
     weight: 0.4,
     isPercent: true,
     precision: 1,
@@ -78,6 +73,7 @@ export const backtestThresholds: BacktestThresholds = {
   maxDrawdown: {
     thresholds: [40, 20],
     direction: 'lower',
+    isScored: true,
     weight: 0.8,
     isPercent: true,
     precision: 1,
@@ -128,21 +124,24 @@ export const backtestThresholds: BacktestThresholds = {
     thresholds: [20, 50],
     direction: 'higher',
     weight: 0.3,
-    isPercent: false,
     precision: 0,
   },
   losses: {
     thresholds: [60, 30],
     direction: 'lower',
     weight: 0.2,
-    isPercent: false,
     precision: 0,
   },
   orders: {
     thresholds: [30, 100],
     direction: 'higher',
     weight: 0.2,
-    isPercent: false,
+    precision: 0,
+  },
+  score: {
+    thresholds: [10, 100],
+    direction: 'higher',
+    weight: 0.2,
     precision: 0,
   },
 };

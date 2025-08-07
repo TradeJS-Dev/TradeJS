@@ -1,15 +1,13 @@
 'use client';
 
 import _ from 'lodash';
-import { useRecoilState, useRecoilValue } from 'recoil';
-import { filtersState, backtestState } from '@atoms';
 import { Select } from '@UI';
+import { useFilters } from '../context';
 
 export const SelectBacktest = () => {
-  const filters = useRecoilValue(filtersState);
-  const [backtest, setBacktest] = useRecoilState(backtestState);
+  const { filters, backtestFiles, onChangeFilters } = useFilters();
 
-  const tests = backtest.files.filter((file) =>
+  const tests = backtestFiles.filter((file) =>
     file.value.startsWith(filters.symbol),
   );
 
@@ -18,16 +16,18 @@ export const SelectBacktest = () => {
   }
 
   const onChange = (value: string[]) => {
-    setBacktest((state) => ({
-      ...state,
-      id: value[0],
-    }));
+    const newFilters = {
+      ...filters,
+      backtestId: value[0],
+    };
+
+    onChangeFilters?.(newFilters);
   };
 
   return (
     <Select
       placeholder="Backtest"
-      defaultValue={[backtest.id || '']}
+      defaultValue={[filters.backtestId || '']}
       onChange={onChange}
       items={[
         {

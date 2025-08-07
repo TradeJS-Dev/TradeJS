@@ -1,4 +1,4 @@
-import { createContext } from 'react';
+import { createContext, useContext } from 'react';
 import { BacktestHistory } from '@types';
 
 interface TestContextProps {
@@ -9,3 +9,7 @@ interface TestContextProps {
 export const TestContext = createContext<TestContextProps>(
   {} as TestContextProps,
 );
+
+export const useTest = () => {
+  return useContext(TestContext);
+};

@@ -1,3 +1,5 @@
+import { Filters } from './trade';
+
 export interface Item {
   label: string;
   value: string;
@@ -14,4 +16,8 @@ export interface Figure {
   color: string;
   width: number;
   height: number;
+}
+
+export interface UIFIlters extends Filters {
+  backtestId: string | null;
 }

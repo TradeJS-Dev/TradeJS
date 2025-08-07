@@ -18,7 +18,7 @@ import {
   BacktestThresholds,
 } from '@types';
 
-const TOP_LIMIT = 10;
+const TOP_LIMIT = 40;
 const MAX_PARALLEL = Math.min(os.cpus().length, 4);
 
 const HEADERS = [
@@ -32,10 +32,11 @@ const HEADERS = [
   chalk.cyan('SORTINO'),
   chalk.cyan('EXPOSURE (%)'),
   chalk.cyan('MAX DRAWDOWN (%)'),
+  chalk.cyan('SCORE'),
 ];
 
 let bestResults = {
-  amount: 0,
+  netProfit: -1000,
   winRate: 0,
 };
 
@@ -112,9 +113,9 @@ const backtest = async () => {
 
       results.push(msg as WorkerResult);
 
-      results.forEach(({ stat: { amount, winRate } }) => {
-        if (amount > bestResults.amount) {
-          bestResults.amount = amount;
+      results.forEach(({ stat: { netProfit, winRate } }) => {
+        if (netProfit > bestResults.netProfit) {
+          bestResults.netProfit = netProfit;
         }
         if (winRate > bestResults.winRate) {
           bestResults.winRate = winRate;
@@ -173,7 +174,9 @@ const finish = async (results: WorkerResult[]) => {
       stat,
       orderLogId,
     } = result;
-    const orderLog = await getData('data/cache', orderLogId);
+    const orderLog = await getData('data/cache', orderLogId, {
+      useCache: false,
+    });
     await setData('data/tests', `${symbol}_${name}.orders`, orderLog, {
       useCache: false,
       stringify: true,
@@ -200,6 +203,7 @@ const finish = async (results: WorkerResult[]) => {
       'sortinoRatio',
       'exposure',
       'maxDrawdown',
+      'score',
     ]),
   ]);
 
@@ -225,7 +229,7 @@ const finish = async (results: WorkerResult[]) => {
     chalk.yellow(
       toJson(
         {
-          amount: `${bestResults.amount.toFixed(2)}$`,
+          amount: `${bestResults.netProfit.toFixed(2)}$`,
           ws: `${bestResults.winRate.toFixed(0)}%`,
         },
         true,

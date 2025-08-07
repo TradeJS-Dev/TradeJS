@@ -1,19 +1,12 @@
 'use client';
 
-import { useRecoilState } from 'recoil';
-import { usePathname } from 'next/navigation';
-import { filtersState } from '@atoms';
 import { Segment } from '@UI';
-import { Interval, Filters } from '@types';
+import { Interval } from '@types';
 import { intervals } from './intervals';
+import { useFilters } from '../context';
 
-interface SelectIntervalProps {
-  onSelect?: (filters: Filters) => void;
-}
-
-export const SelectInterval = ({ onSelect }: SelectIntervalProps) => {
-  const pathname = usePathname();
-  const [filters, setFilters] = useRecoilState(filtersState);
+export const SelectInterval = () => {
+  const { filters, onChangeFilters } = useFilters();
 
   const onChange = (value: string | null) => {
     if (!value) {
@@ -25,9 +18,7 @@ export const SelectInterval = ({ onSelect }: SelectIntervalProps) => {
       interval: value as Interval,
     };
 
-    setFilters(newFilters);
-
-    onSelect?.(newFilters);
+    onChangeFilters?.(newFilters);
   };
 
   return (

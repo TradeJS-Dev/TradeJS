@@ -8,7 +8,7 @@ import {
   BacktestThresholds,
   WorkerResult,
 } from '@types';
-import { backtestThresholds, levelScore, rankedMetrics } from '@constants';
+import { backtestThresholds, levelScore } from '@constants';
 
 export const buildPositionLogFromOrderLog = (
   orderLogData: OrderLogData,
@@ -179,21 +179,20 @@ export const getBacktestScore = (stat: Partial<BacktestStat>): number => {
   for (const metricName in backtestThresholds) {
     const key = metricName as keyof BacktestThresholds;
 
-    if (!rankedMetrics.includes(key)) {
-      continue;
-    }
-
     const config = backtestThresholds[key];
     const value = stat[key];
 
-    if (!config || value == null || Number.isNaN(value)) {
+    if (!config || !config.isScored || value == null || Number.isNaN(value)) {
       continue;
     }
 
     const level = classifyMetric(key, value);
     const score = levelScore[level];
 
-    totalWeightedScore += score * config.weight;
+    const points = score * config.weight;
+
+    totalWeightedScore +=
+      config.direction === 'higher' ? points * value : points * (1 / value);
     totalWeight += config.weight;
 
     breakdown[key] = {

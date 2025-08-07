@@ -20,10 +20,7 @@ interface Legend {
   };
 }
 
-export const useBacktest = async (
-  chart: Chart | null,
-  id: string | undefined,
-) => {
+export const useBacktest = (chart: Chart | null, id: string | undefined) => {
   const [registered, setRegistered] = useState(false);
   const [backtestData, setBacktestData] = useState<OrderLogData>([]);
   const enabled = Boolean(id);

@@ -27,6 +27,7 @@ export interface MetricThreshold {
   weight: number;
   isPercent?: boolean;
   isAmount?: boolean;
+  isScored?: boolean;
   precision: number;
 }
 

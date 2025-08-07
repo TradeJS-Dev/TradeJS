@@ -5,7 +5,7 @@ import { Box, Flex } from '@chakra-ui/react';
 import { useRecoilValue } from 'recoil';
 import { filtersState } from '@atoms';
 import { getBacktestFiles } from '@src/actions/backtest';
-import { SelectSymbol } from '@app/components/Shared/Filters';
+// import { SelectSymbol } from '@app/components/Shared/Filters';
 import { List } from '@app/components/Backtest/List';
 import { useIsClient } from '@app/hooks/isClient';
 import { Items } from '@types';
@@ -35,7 +35,7 @@ const Dashboard = () => {
       alignItems="flex-start"
     >
       <Flex mb={4} gap={8} flexDirection="row">
-        <SelectSymbol />
+        {/* <SelectSymbol /> */}
       </Flex>
       <Box position="relative" flex="1" w="full">
         <List files={files} />

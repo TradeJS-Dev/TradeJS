@@ -75,10 +75,7 @@ export interface BacktestStat extends Metrics {
   score?: number;
 }
 
-export type BacktestThresholds = Record<
-  keyof Omit<BacktestStat, 'score'>,
-  MetricThreshold
->;
+export type BacktestThresholds = Record<keyof BacktestStat, MetricThreshold>;
 
 export interface WorkerResult {
   test: TestItem;

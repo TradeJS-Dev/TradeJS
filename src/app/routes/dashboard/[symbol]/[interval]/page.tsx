@@ -1,30 +1,26 @@
 'use client';
 
-import React, { useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams } from 'next/navigation';
 import { Box, Flex } from '@chakra-ui/react';
-import { useSetRecoilState } from 'recoil';
-import { filtersState, tickersState, backtestState } from '@atoms';
+import { useSetRecoilState, useRecoilState, useRecoilValue } from 'recoil';
+import { filtersState, tickersState, tickersListSelector } from '@atoms';
 import { scanner } from '@src/actions/scanner';
 import { getBacktestFiles } from '@src/actions/backtest';
-import {
-  SelectSymbol,
-  SelectInterval,
-  SelectBacktest,
-  SelectIndicator,
-} from '@app/components/Shared/Filters';
+import { Filters } from '@app/components/Shared/Filters';
 import { MainChart } from '@app/components/Dashboard/MainChart';
 import { AiDrawer } from '@app/components/Dashboard/AiDrawer';
 import { useIsClient } from '@app/hooks/isClient';
-import { Interval, Filters } from '@types';
+import { Interval, UIFIlters, Items } from '@types';
 import { getTimestamp } from '@utils/timestamp';
 
 const Dashboard = () => {
   const isClient = useIsClient();
   const { symbol, interval } = useParams();
-  const setFilters = useSetRecoilState(filtersState);
+  const [filters, setFilters] = useRecoilState(filtersState);
+  const tickers = useRecoilValue(tickersListSelector);
   const setTickers = useSetRecoilState(tickersState);
-  const setBacktest = useSetRecoilState(backtestState);
+  const [backtestFiles, setBacktestFiles] = useState<Items>([]);
 
   useEffect(() => {
     if (typeof symbol === 'string' && typeof interval === 'string') {
@@ -38,36 +34,34 @@ const Dashboard = () => {
   }, [symbol, interval]);
 
   useEffect(() => {
-    (async () => {
-      const tickers = await scanner();
-
+    scanner().then((coins) => {
       setTickers((state) => ({
         ...state,
-        scanner: tickers,
+        scanner: coins,
       }));
-    })();
+    });
   }, []);
 
   useEffect(() => {
-    (async () => {
-      const files = await getBacktestFiles(symbol as string);
-
-      setBacktest((state) => ({
-        ...state,
-        files,
-      }));
-    })();
+    getBacktestFiles(symbol as string).then((files) => {
+      setBacktestFiles(files);
+    });
   }, [symbol]);
 
   if (!isClient) {
     return null;
   }
 
-  const onChangeFilters = (filters: Filters) => {
+  const onChangeFilters = (newFilters: UIFIlters) => {
+    setFilters((state) => ({
+      ...state,
+      ...newFilters,
+    }));
+
     window.history.replaceState(
       null,
       '',
-      `/routes/dashboard/${filters.symbol}/${filters.interval}`,
+      `/routes/dashboard/${newFilters.symbol}/${newFilters.interval}`,
     );
   };
 
@@ -82,15 +76,22 @@ const Dashboard = () => {
       justifyContent="space-between"
       alignItems="flex-start"
     >
-      <Flex mb={2} gap={8} flexDirection="row">
-        <SelectSymbol onSelect={onChangeFilters} />
-        <SelectInterval onSelect={onChangeFilters} />
-        <SelectIndicator />
-        <AiDrawer />
-      </Flex>
-      <Flex mb={4} gap={8} flexDirection="row">
-        <SelectBacktest />
-      </Flex>
+      <Filters.Root
+        filters={filters}
+        tickers={tickers}
+        backtestFiles={backtestFiles}
+        onChangeFilters={onChangeFilters}
+      >
+        <Flex mb={2} gap={8} flexDirection="row">
+          <Filters.SelectSymbol />
+          <Filters.SelectInterval />
+          <Filters.SelectIndicator />
+          <AiDrawer />
+        </Flex>
+        <Flex mb={4} gap={8} flexDirection="row">
+          <Filters.SelectBacktest />
+        </Flex>
+      </Filters.Root>
       <Box position="relative" flex="1" w="full">
         <MainChart />
       </Box>

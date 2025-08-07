@@ -1,6 +1,5 @@
 'use client';
 
-import { useContext } from 'react';
 import { Box } from '@chakra-ui/react';
 import { Chart, useChart } from '@chakra-ui/charts';
 import { format } from 'date-fns';
@@ -14,11 +13,11 @@ import {
   ReferenceLine,
   ResponsiveContainer,
 } from 'recharts';
-import { TestContext } from './TestContext';
+import { useTest } from './TestContext';
 import { getFormatted } from '@utils/stat';
 
 export const TestChart = () => {
-  const { test } = useContext(TestContext);
+  const { test } = useTest();
 
   const chart = useChart({
     data: test.orderLog.map((item) => ({

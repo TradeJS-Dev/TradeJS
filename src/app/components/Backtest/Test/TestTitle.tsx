@@ -1,11 +1,10 @@
 'use client';
 
-import { useContext } from 'react';
 import { Text, Flex } from '@chakra-ui/react';
-import { TestContext } from './TestContext';
+import { useTest } from './TestContext';
 
 export const TestTitle = () => {
-  const { id, test } = useContext(TestContext);
+  const { id, test } = useTest();
 
   if (!test || !test.stat) {
     return null;

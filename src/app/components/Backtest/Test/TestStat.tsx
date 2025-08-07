@@ -1,9 +1,8 @@
 'use client';
 
-import { useContext } from 'react';
 import { SimpleGrid, Stat } from '@chakra-ui/react';
 import { getFormatted } from '@utils/stat';
-import { TestContext } from './TestContext';
+import { useTest } from './TestContext';
 import { BacktestStat, ThresholdLevel, BacktestThresholds } from '@types';
 
 const getColorByLevel = (level: ThresholdLevel) => {
@@ -38,7 +37,7 @@ const StatItem = ({ id, stat, description }: StatItemProps) => {
 };
 
 export const TestStat = () => {
-  const { test } = useContext(TestContext);
+  const { test } = useTest();
 
   if (!test || !test.stat) {
     return null;
