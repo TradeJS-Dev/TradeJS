@@ -1,9 +1,9 @@
 'use client';
 
-import { TestChart } from './TestChart';
-import { TestRoot } from './TestRoot';
-import { TestStat } from './TestStat';
-import { TestTitle } from './TestTitle';
+import { TestChart } from './Chart';
+import { TestRoot } from './Root';
+import { TestStat } from './Stat';
+import { TestTitle } from './Title';
 
 export const Test = {
   Root: TestRoot,

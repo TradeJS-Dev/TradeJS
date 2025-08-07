@@ -13,7 +13,7 @@ import {
   ReferenceLine,
   ResponsiveContainer,
 } from 'recharts';
-import { useTest } from './TestContext';
+import { useTest } from '../context';
 import { getFormatted } from '@utils/stat';
 
 export const TestChart = () => {

@@ -1,7 +1,7 @@
 'use client';
 
 import { Text, Flex } from '@chakra-ui/react';
-import { useTest } from './TestContext';
+import { useTest } from '../context';
 
 export const TestTitle = () => {
   const { id, test } = useTest();

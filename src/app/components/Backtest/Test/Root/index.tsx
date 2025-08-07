@@ -3,7 +3,7 @@
 import { PropsWithChildren, useEffect, useState } from 'react';
 import _ from 'lodash';
 import { Box } from '@chakra-ui/react';
-import { TestContext } from './TestContext';
+import { TestContext } from '../context';
 import { getBacktest } from '@src/actions/backtest';
 import { BacktestHistory } from '@types';
 

@@ -2,7 +2,7 @@
 
 import { SimpleGrid, Stat } from '@chakra-ui/react';
 import { getFormatted } from '@utils/stat';
-import { useTest } from './TestContext';
+import { useTest } from '../context';
 import { BacktestStat, ThresholdLevel, BacktestThresholds } from '@types';
 
 const getColorByLevel = (level: ThresholdLevel) => {
@@ -27,7 +27,7 @@ const StatItem = ({ id, stat, description }: StatItemProps) => {
   const { formatted, level } = getFormatted(stat, id);
 
   return (
-    <Stat.Root>
+    <Stat.Root size={'md'}>
       <Stat.Label>{description}</Stat.Label>
       <Stat.ValueText color={getColorByLevel(level)}>
         {formatted}
