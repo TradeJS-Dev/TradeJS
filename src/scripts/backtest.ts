@@ -5,17 +5,17 @@ import path from 'path';
 import os from 'os';
 import chalk from 'chalk';
 import _ from 'lodash';
-import createTestConfig from '@/backtest.config';
+import createTestSuite from '@/backtest.config';
 import { mergeConfigs } from '@utils/grid';
 import { rankBacktests, getFormatted } from '@utils/stat';
 import { setData, getData } from '@/src/utils/data';
 import { toJson } from '@/src/utils/toJson';
 import { uuid } from '@utils/uuid';
 import {
-  WorkerResult,
+  TestWorkerResult,
   ThresholdLevel,
-  BacktestStat,
-  BacktestThresholds,
+  TestStat,
+  TestThresholdsKey,
 } from '@types';
 
 const TOP_LIMIT = 40;
@@ -52,8 +52,8 @@ const getCLILevelColor = (level: ThresholdLevel) => {
 };
 
 export const drawInCLI = (
-  stat: BacktestStat,
-  keys: (keyof BacktestThresholds)[],
+  stat: TestStat,
+  keys: TestThresholdsKey[],
 ): string[] => {
   return keys.map((key) => {
     const { formatted, level } = getFormatted(stat, key);
@@ -65,20 +65,22 @@ export const drawInCLI = (
 };
 
 const backtest = async () => {
-  const testConfig = await createTestConfig();
+  let testSuite = await createTestSuite();
 
-  const chunkSize = Math.ceil(testConfig.length / MAX_PARALLEL);
-  const chunks = _.chunk(testConfig, chunkSize);
-  let results: WorkerResult[] = [];
+  testSuite = testSuite.slice(-100);
+
+  const chunkSize = Math.ceil(testSuite.length / MAX_PARALLEL);
+  const chunks = _.chunk(testSuite, chunkSize);
+  let results: TestWorkerResult[] = [];
   let completedWorkers = 0;
   let completedTests = 0;
-  console.log(testConfig.length);
+  console.log(testSuite.length);
 
   console.log('');
   const bar = new ProgressBar(
     ':current/:total [:bar][:percent] :id :symbol :amount :minamount :wins/:losses/:orders :winrate :eta(s)',
     {
-      total: testConfig.length,
+      total: testSuite.length,
       width: 40,
     },
   );
@@ -111,7 +113,7 @@ const backtest = async () => {
 
       completedTests++;
 
-      results.push(msg as WorkerResult);
+      results.push(msg as TestWorkerResult);
 
       results.forEach(({ stat: { netProfit, winRate } }) => {
         if (netProfit > bestResults.netProfit) {
@@ -122,7 +124,7 @@ const backtest = async () => {
         }
       });
 
-      if (completedTests % 100 === 0 || completedTests === testConfig.length) {
+      if (completedTests % 100 === 0 || completedTests === testSuite.length) {
         results = rankBacktests(results, TOP_LIMIT);
 
         const {
@@ -131,7 +133,7 @@ const backtest = async () => {
         } = results[0];
 
         bar.tick(
-          completedTests === testConfig.length ? completedTests % 100 : 100,
+          completedTests === testSuite.length ? completedTests % 100 : 100,
           {
             id: chalk.blue(`#${name}`),
             symbol: chalk.yellow(symbol),
@@ -162,30 +164,32 @@ const backtest = async () => {
   }
 };
 
-const finish = async (results: WorkerResult[]) => {
+const finish = async (results: TestWorkerResult[]) => {
   const listit = new ListIt({
     autoAlign: true,
     headerUnderline: true,
   });
 
   for await (const result of results) {
-    const {
-      test: { symbol, name, strategyConfig },
-      stat,
-      orderLogId,
-    } = result;
+    const { test, stat, orderLogId } = result;
+
+    const { name } = test;
+
     const orderLog = await getData('data/cache', orderLogId, {
       useCache: false,
     });
-    await setData('data/tests', `${symbol}_${name}.orders`, orderLog, {
+
+    await setData('data/tests', `${name}.orders`, orderLog, {
       useCache: false,
       stringify: true,
     });
-    await setData('data/tests', `${symbol}_${name}.config`, strategyConfig, {
+
+    await setData('data/tests', `${name}.config`, test, {
       useCache: false,
       stringify: true,
     });
-    await setData('data/tests', `${symbol}_${name}.stat`, stat, {
+
+    await setData('data/tests', `${name}.stat`, stat, {
       useCache: false,
       stringify: true,
     });

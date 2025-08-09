@@ -2,13 +2,13 @@ import {
   OrderLogData,
   OrderLog,
   PositionLogData,
-  BacktestStat,
+  TestStat,
   MetricScore,
   ThresholdLevel,
-  BacktestThresholds,
-  WorkerResult,
+  TestThresholdsKey,
+  TestWorkerResult,
 } from '@types';
-import { backtestThresholds, levelScore } from '@constants';
+import { TestThresholdsConfig, levelScore } from '@constants';
 
 export const buildPositionLogFromOrderLog = (
   orderLogData: OrderLogData,
@@ -71,7 +71,7 @@ export const calculateMaxDrawdown = (amounts: number[]): number => {
 
 export const calculateStatsFull = (
   positionLogData: PositionLogData,
-): BacktestStat | null => {
+): TestStat | null => {
   if (!positionLogData.length) return null;
 
   const returns = positionLogData.map((p) => p.close.amount - p.open.amount);
@@ -150,10 +150,10 @@ export const calculateStatsFull = (
 };
 
 export const classifyMetric = (
-  name: keyof typeof backtestThresholds,
+  name: TestThresholdsKey,
   value: number,
 ): ThresholdLevel => {
-  const { thresholds, direction } = backtestThresholds[name];
+  const { thresholds, direction } = TestThresholdsConfig[name];
 
   if (direction === 'higher') {
     if (value >= thresholds[1]) return 'success';
@@ -166,7 +166,7 @@ export const classifyMetric = (
   }
 };
 
-export const getBacktestScore = (stat: Partial<BacktestStat>): number => {
+export const getBacktestScore = (stat: Partial<TestStat>): number => {
   if (stat.score) {
     return stat.score;
   }
@@ -176,10 +176,10 @@ export const getBacktestScore = (stat: Partial<BacktestStat>): number => {
 
   const breakdown: Record<string, MetricScore> = {};
 
-  for (const metricName in backtestThresholds) {
-    const key = metricName as keyof BacktestThresholds;
+  for (const metricName in TestThresholdsConfig) {
+    const key = metricName as TestThresholdsKey;
 
-    const config = backtestThresholds[key];
+    const config = TestThresholdsConfig[key];
     const value = stat[key];
 
     if (!config || !config.isScored || value == null || Number.isNaN(value)) {
@@ -209,9 +209,9 @@ export const getBacktestScore = (stat: Partial<BacktestStat>): number => {
 };
 
 export const rankBacktests = (
-  results: WorkerResult[],
+  results: TestWorkerResult[],
   limit: number = 5,
-): WorkerResult[] => {
+): TestWorkerResult[] => {
   return results
     .map((item) => {
       const score = getBacktestScore(item.stat);
@@ -227,10 +227,7 @@ export const rankBacktests = (
     .slice(0, limit);
 };
 
-export const getFormatted = (
-  stat: BacktestStat,
-  key: keyof BacktestThresholds,
-) => {
+export const getFormatted = (stat: TestStat, key: TestThresholdsKey) => {
   const raw = stat[key];
 
   if (raw == null || typeof raw === 'string') {
@@ -240,10 +237,10 @@ export const getFormatted = (
     };
   }
 
-  const config = backtestThresholds[key as keyof typeof backtestThresholds];
+  const config = TestThresholdsConfig[key as TestThresholdsKey];
 
   const level = config
-    ? classifyMetric(key as keyof typeof backtestThresholds, raw)
+    ? classifyMetric(key as TestThresholdsKey, raw)
     : 'success';
 
   const formatted = config

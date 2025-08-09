@@ -1,6 +1,6 @@
 import { StrategyConfig } from './backtest';
 
-interface Bot {
+export interface Bot {
   symbol: string;
   disabled?: boolean;
   strategyName: string;

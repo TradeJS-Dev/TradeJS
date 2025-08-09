@@ -30,8 +30,7 @@ export const generateParamGrid = <T extends Record<string, any>>(
   return combinations;
 };
 
-export const generateName = (prefix: string): string =>
-  `${prefix}_${uuid(6)}_${format(new Date(), 'dd.MM-HH:mm')}`;
+export const generateName = (prefix: string): string => `${prefix}_${uuid(6)}`;
 
 export const mergeConfigs = (
   configs: GenericConfig[],

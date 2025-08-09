@@ -1,46 +1,21 @@
 import { testing } from '@utils/testing';
-import { strategies, StrategyNames } from '@src/strategy';
-import { connectors, ConnectorNames } from '@src/connectors';
-import { TestConfig, ConnectorCreator } from '@types';
-import { setData, getData } from '@utils/data';
-import { uuid } from '@utils/uuid';
+import { TestSuite } from '@types';
+import { getData } from '@utils/data';
 
 process.on('message', async ({ chunkId }: { chunkId: string }) => {
-  const tests = (await getData('data/cache', chunkId, {
+  const testSuite = (await getData('data/cache', chunkId, {
     useCache: false,
-  })) as TestConfig;
+  })) as TestSuite;
 
-  for await (const test of tests) {
+  for await (const test of testSuite) {
     try {
-      const {
-        name,
-        symbol,
-        options,
-        strategyName,
-        strategyConfig,
-        connectorName,
-      } = test;
+      const testResult = await testing(test);
 
-      const strategyCreator = strategies[strategyName as StrategyNames];
-      const connector = (
-        connectors[connectorName as ConnectorNames] as ConnectorCreator
-      )({
-        key: '',
-        secret: '',
-      });
+      if (!testResult) {
+        throw new Error('No result');
+      }
 
-      const { orderLog, stat } = await testing({
-        name,
-        symbol,
-        options,
-        strategyCreator,
-        strategyConfig,
-        connector,
-      });
-
-      const orderLogId = uuid();
-
-      await setData('data/cache', orderLogId, orderLog, { useCache: false });
+      const { stat, orderLogId } = testResult;
 
       process.send?.({
         stat,

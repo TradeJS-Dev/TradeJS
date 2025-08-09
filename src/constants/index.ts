@@ -1,4 +1,4 @@
-import { BacktestThresholds, BacktestStat } from '@types';
+import type { TestThresholds, TestStat } from '@types';
 
 export const BACKTEST_DAYS = 180;
 export const DASHBOARD_DAYS = 60;
@@ -12,7 +12,7 @@ export const levelScore = {
   error: 1,
 };
 
-export const backtestThresholds: BacktestThresholds = {
+export const TestThresholdsConfig: TestThresholds = {
   winRate: {
     thresholds: [35, 55],
     direction: 'higher',

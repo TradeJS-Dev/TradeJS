@@ -1,38 +1,45 @@
 'use server';
 
-import {
-  OrderLogData,
-  StrategyConfig,
-  BacktestStat,
-  BacktestHistory,
-  Item,
-} from '@types';
+import { OrderLogData, TestStat, TestResult, Item, Test } from '@types';
 import { getData } from '@/src/utils/data';
-
 import fs from 'fs';
 const path = require('path');
 
+interface GetBacktestFilesProps {
+  symbol?: string;
+}
+
 const dataDir = path.join(process.cwd(), 'data', 'tests');
 
-export const getBacktestFiles = async (symbol: string) => {
+const splitName = (name: string) => {
+  const [symbol, testSuiteId, testId] = name.split('_');
+  return { symbol, testSuiteId, testId };
+};
+
+export const getBacktestFiles = async (filters: GetBacktestFilesProps) => {
   const result = new Array<Item>();
   const files = fs.readdirSync(dataDir);
-  const orderFiles = files.filter(
-    (file) => file.endsWith('.orders.json') && file.startsWith(symbol),
-  );
+  const orderFiles = files.filter((file) => file.endsWith('.orders.json'));
 
   for await (const file of orderFiles) {
-    const id = file.replace('.orders.json', '');
+    const name = file.replace('.orders.json', '');
 
-    const stat = (await getData('data/tests', `${id}.stat`)) as BacktestStat;
+    const { symbol, testSuiteId, testId } = splitName(name);
 
-    const label = id.replace(`${symbol}_`, '');
+    const stat = (await getData('data/tests', `${name}.stat`)) as TestStat;
+
+    if (filters.symbol && symbol !== filters.symbol) {
+      continue;
+    }
 
     result.push({
-      value: id,
-      label: label,
+      value: name,
+      label: testId,
       data: {
         score: stat.score || 0,
+        symbol,
+        testSuiteId,
+        testId,
       },
     });
   }
@@ -43,25 +50,22 @@ export const getBacktestFiles = async (symbol: string) => {
 };
 
 export const getBacktest = async (
-  id: string | undefined,
-): Promise<BacktestHistory | null> => {
-  if (!id) {
+  name: string | undefined,
+): Promise<TestResult | null> => {
+  if (!name) {
     return null;
   }
 
   const orderLog = (await getData(
     'data/tests',
-    `${id}.orders`,
+    `${name}.orders`,
   )) as OrderLogData;
-  const strategyConfig = (await getData(
-    'data/tests',
-    `${id}.orders`,
-  )) as StrategyConfig;
-  const stat = (await getData('data/tests', `${id}.stat`)) as BacktestStat;
+  const test = (await getData('data/tests', `${name}.config`)) as Test;
+  const stat = (await getData('data/tests', `${name}.stat`)) as TestStat;
 
   return {
+    test,
     orderLog,
-    strategyConfig,
     stat,
   };
 };

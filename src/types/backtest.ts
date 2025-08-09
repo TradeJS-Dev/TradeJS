@@ -21,21 +21,12 @@ export type StrategyCreator = (
   data: KlineChartData,
 ) => Strategy;
 
-export type TestingOptions = Omit<KlineRequest, 'interval' | 'symbol'>;
+export type TestingOptions = Pick<KlineRequest, 'start' | 'end'>;
 
-interface Test {
+export interface Test {
   name: string;
-  symbol: string;
-  options: TestingOptions;
-  strategyCreator: StrategyCreator;
-  strategyConfig: StrategyConfig;
-  connector: Connector;
-}
-
-export type TestingBox = (test: Test) => Promise<BacktestResult>;
-
-export interface TestItem {
-  name: string;
+  testId: string;
+  testSuiteId: string;
   symbol: string;
   options: TestingOptions;
   strategyName: string;
@@ -43,7 +34,22 @@ export interface TestItem {
   connectorName: string;
 }
 
-export type TestConfig = TestItem[];
+export type TestSuite = Test[];
+
+export interface TestStat extends Metrics {
+  score?: number;
+}
+
+export interface TestingBoxResult {
+  orderLogId: string;
+  stat: TestStat;
+}
+
+export type TestingBox = (test: Test) => Promise<TestingBoxResult | null>;
+
+export interface TestWorkerResult extends TestingBoxResult {
+  test: Test;
+}
 
 export type OrderLog = Order & {
   type: OrderType;
@@ -55,6 +61,10 @@ export type OrderLog = Order & {
 
 export type OrderLogData = OrderLog[];
 
+export interface TestResult extends Omit<TestWorkerResult, 'orderLogId'> {
+  orderLog: OrderLogData;
+}
+
 export interface PositionLog {
   open: { amount: number; timestamp: number };
   close: { amount: number; timestamp: number };
@@ -62,29 +72,12 @@ export interface PositionLog {
 
 export type PositionLogData = PositionLog[];
 
-export interface BacktestResult {
-  orderLog: OrderLogData;
-  stat: BacktestStat | null;
-}
+export type TestThresholds = Record<keyof TestStat, MetricThreshold>;
 
-export interface BacktestHistory extends BacktestResult {
-  strategyConfig: StrategyConfig;
-}
-
-export interface BacktestStat extends Metrics {
-  score?: number;
-}
-
-export type BacktestThresholds = Record<keyof BacktestStat, MetricThreshold>;
-
-export interface WorkerResult {
-  test: TestItem;
-  orderLogId: string;
-  stat: BacktestStat;
-}
+export type TestThresholdsKey = keyof TestThresholds;
 
 export interface TestConnector extends Connector {
-  getResult: () => BacktestResult;
+  getResult: () => Promise<TestingBoxResult | null>;
   checkTp: (candle: Candle) => void;
   checkSl: (candle: Candle) => void;
 }

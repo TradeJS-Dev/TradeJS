@@ -79,8 +79,6 @@ export const sendMessage = async ({
 
   const response = await model.invoke(messages);
 
-  console.log('>>> res', response);
-
   const responseMessage = {
     from: 'ai',
     text: response.content,

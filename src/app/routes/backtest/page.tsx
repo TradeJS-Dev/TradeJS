@@ -16,7 +16,7 @@ const Dashboard = () => {
   const { symbol } = useRecoilValue(filtersState);
 
   useEffect(() => {
-    getBacktestFiles(symbol).then(setFiles);
+    getBacktestFiles({}).then(setFiles);
   }, [symbol]);
 
   if (!isClient) {
@@ -24,21 +24,25 @@ const Dashboard = () => {
   }
 
   return (
-    <Box
-      as="main"
-      minH="100vh"
-      p={4}
-      bg="gray.900"
-      display="flex"
-      flexDirection="column"
-      justifyContent="space-between"
-      alignItems="flex-start"
-    >
-      <Flex mb={4} gap={8} flexDirection="row">
-        {/* <SelectSymbol /> */}
-      </Flex>
-      <Box position="relative" flex="1" w="full">
-        <List files={files} />
+    <Box minH="100vh" bg="gray.900">
+      <Box
+        as="main"
+        minH="100vh"
+        maxW="1400px"
+        minW="1200px"
+        p={4}
+        bg="gray.900"
+        display="flex"
+        flexDirection="column"
+        justifyContent="space-between"
+        alignItems="flex-start"
+      >
+        <Flex mb={4} gap={8} flexDirection="row">
+          {/* <SelectSymbol /> */}
+        </Flex>
+        <Box position="relative" flex="1" w="full">
+          <List files={files} />
+        </Box>
       </Box>
     </Box>
   );

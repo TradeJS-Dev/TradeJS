@@ -43,10 +43,10 @@ const Dashboard = () => {
   }, []);
 
   useEffect(() => {
-    getBacktestFiles(symbol as string).then((files) => {
+    getBacktestFiles({ symbol: filters.symbol }).then((files) => {
       setBacktestFiles(files);
     });
-  }, [symbol]);
+  }, [filters.symbol]);
 
   if (!isClient) {
     return null;

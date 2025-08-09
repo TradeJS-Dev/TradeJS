@@ -5,7 +5,6 @@ export const config = {
   ATR_PERIOD: 14,
   BB_PERIOD: 20,
   BB_STDDEV: 2,
-  MIN_OBV_SLOPE: 0,
   MA_FAST: 49,
   MA_SLOW: 99,
   LIMIT: 100,

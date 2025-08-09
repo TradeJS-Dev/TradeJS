@@ -6,7 +6,7 @@ import { getTimestamp } from '@utils/timestamp';
 import { getTopTickers } from '@utils/tickers';
 import { generateParamGrid, generateName } from '@utils/grid';
 import { uuid } from '@utils/uuid';
-import { TestConfig } from '@types';
+import { TestSuite } from '@types';
 
 const start = getTimestamp(BACKTEST_DAYS);
 const end = getTimestamp();
@@ -26,8 +26,8 @@ export const scanner = async () => {
   return tickers.map(({ value }) => value);
 };
 
-const createConfig = async (): Promise<TestConfig> => {
-  const testId = uuid(6);
+const createTestSuite = async (): Promise<TestSuite> => {
+  const testSuiteId = uuid(6);
   const volatilityTickers = await scanner();
   // const tickers = _.uniq([...volatilityTickers, ...LIST]).filter(
   //   (ticker) => !EXCLUDE_TICKERS.includes(ticker),
@@ -81,15 +81,20 @@ const createConfig = async (): Promise<TestConfig> => {
   });
 
   return tickers.flatMap((symbol) =>
-    paramGrid.map((params) => ({
-      name: generateName(testId),
+    paramGrid.map((params) => {
+      const testId = uuid(6);
+      return {
+      name: `${symbol}_${testSuiteId}_${testId}`,
+      testId,
+      testSuiteId,
       symbol,
       options: { start, end },
       strategyName: StrategyNames.Breakout,
       strategyConfig: params,
       connectorName: ConnectorNames.ByBit,
-    })),
+      };
+    }),
   );
 };
 
-export default createConfig;
+export default createTestSuite;

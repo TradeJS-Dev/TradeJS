@@ -1,6 +1,6 @@
 'use client';
 
-import { Test } from '@app/components/Backtest/Test';
+import { TestCard } from '@/src/app/components/Backtest/TestCard';
 import { Items } from '@types';
 
 interface ListProps {
@@ -11,11 +11,11 @@ export const List = ({ files }: ListProps) => {
   return (
     <>
       {files.map((item, index) => (
-        <Test.Root key={index} id={item.value}>
-          <Test.Title />
-          <Test.Chart />
-          <Test.Stat />
-        </Test.Root>
+        <TestCard.Root key={index} id={item.value}>
+          <TestCard.Title />
+          <TestCard.Chart />
+          <TestCard.Stat />
+        </TestCard.Root>
       ))}
     </>
   );

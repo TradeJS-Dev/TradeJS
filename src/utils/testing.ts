@@ -1,6 +1,7 @@
-import { TestingBox } from '@types';
+import { strategies, StrategyNames } from '@src/strategy';
+import { connectors, ConnectorNames } from '@src/connectors';
+import { ConnectorCreator, TestingBox } from '@types';
 import { PRELOAD_DAYS } from '@constants';
-import { connectors } from '@src/connectors';
 import { getTimestamp } from '@utils/timestamp';
 
 const preloadStart = getTimestamp(PRELOAD_DAYS);
@@ -8,13 +9,21 @@ const preloadStart = getTimestamp(PRELOAD_DAYS);
 export const testing: TestingBox = async ({
   symbol,
   options: { start, end },
-  strategyCreator,
+  strategyName,
   strategyConfig,
-  connector,
+  connectorName,
 }) => {
   if (!start) {
     throw new Error('no start');
   }
+
+  const connector = (
+    connectors[connectorName as ConnectorNames] as ConnectorCreator
+  )({
+    key: '',
+    secret: '',
+  });
+  const strategyCreator = strategies[strategyName as StrategyNames];
 
   const data = await connector.kline({
     symbol,

@@ -13,37 +13,39 @@ import {
   ReferenceLine,
   ResponsiveContainer,
 } from 'recharts';
-import { useTest } from '../context';
+import { useTestResult } from '../context';
+import { OrderLogData } from '@types';
 import { getFormatted } from '@utils/stat';
 
-export const TestChart = () => {
-  const { test } = useTest();
+interface TestChartProps {
+  onAddToCompare: (testId: string, orderLog: OrderLogData) => void;
+  onRemoveFromCompare: () => void;
+}
+
+export const TestCardChart = () => {
+  const { testResult } = useTestResult();
 
   const chart = useChart({
-    data: test.orderLog.map((item) => ({
-      timestamp: format(item.timestamp, 'HH:mm.dd.MM.yyyy'),
-      amount: item.amount,
+    data: testResult.orderLog.map((item) => ({
+      timestamp: format(item.timestamp, 'dd.MM'),
+      [testResult.test.testId]: item.amount,
     })),
-    series: [{ name: 'amount', color: 'teal.solid' }],
+    series: [{ name: testResult.test.testId, color: 'teal.solid' }],
   });
 
-  if (!test || !test.stat) {
-    return null;
-  }
-
-  const { formatted: maxAmount } = getFormatted(test.stat, 'maxAmount');
-  const { formatted: minAmount } = getFormatted(test.stat, 'minAmount');
+  const { formatted: maxAmount } = getFormatted(testResult.stat, 'maxAmount');
+  const { formatted: minAmount } = getFormatted(testResult.stat, 'minAmount');
 
   return (
-    <Box w="100%" minW="600px" h="250px">
+    <Box w="100%" minW="600px" h="450px" pr={2}>
       <ResponsiveContainer width="100%" height="100%">
-        <Chart.Root maxH="sm" chart={chart}>
+        <Chart.Root maxH="md" chart={chart}>
           <LineChart data={chart.data}>
             <CartesianGrid stroke={chart.color('border')} vertical={false} />
             <ReferenceLine
               stroke={chart.color('gray.600')}
               strokeDasharray="5 5"
-              y={test.stat.maxAmount}
+              y={testResult.stat.maxAmount}
               label={{
                 value: `Max: ${maxAmount}`,
                 offset: 10,
@@ -59,7 +61,7 @@ export const TestChart = () => {
             <ReferenceLine
               stroke={chart.color('gray.600')}
               strokeDasharray="5 5"
-              y={test.stat.minAmount}
+              y={testResult.stat.minAmount}
               label={{
                 value: `Min: ${minAmount}`,
                 offset: 10,
@@ -68,7 +70,10 @@ export const TestChart = () => {
               }}
             />
             <XAxis dataKey="timestamp" />
-            <YAxis />
+            <YAxis
+              tickCount={10}
+              domain={[testResult.stat.minAmount - 10, 'auto']}
+            />
             <Tooltip
               animationDuration={100}
               cursor={false}

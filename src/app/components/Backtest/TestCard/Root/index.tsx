@@ -3,32 +3,32 @@
 import { PropsWithChildren, useEffect, useState } from 'react';
 import _ from 'lodash';
 import { Box } from '@chakra-ui/react';
-import { TestContext } from '../context';
+import { TestResultContext } from '../context';
 import { getBacktest } from '@src/actions/backtest';
-import { BacktestHistory } from '@types';
+import { TestResult } from '@types';
 
 interface TestRootProps {
   id: string;
 }
 
-export const TestRoot = ({
+export const TestCardRoot = ({
   id,
   children,
 }: PropsWithChildren<TestRootProps>) => {
-  const [history, setHistory] = useState<BacktestHistory | null>(null);
+  const [result, setResult] = useState<TestResult | null>(null);
 
   useEffect(() => {
-    getBacktest(id).then(setHistory);
+    getBacktest(id).then(setResult);
   }, [id]);
 
-  if (_.isEmpty(history)) {
+  if (_.isEmpty(result)) {
     return null;
   }
 
   return (
-    <TestContext.Provider value={{ id, test: history }}>
+    <TestResultContext.Provider value={{ id, testResult: result }}>
       <Box
-        p={6}
+        p={2}
         mb={4}
         borderRadius="md"
         shadow="sm"
@@ -37,6 +37,6 @@ export const TestRoot = ({
       >
         {children}
       </Box>
-    </TestContext.Provider>
+    </TestResultContext.Provider>
   );
 };

@@ -12,6 +12,8 @@ import {
   Candle,
 } from '@types';
 import { buildPositionLogFromOrderLog, calculateStatsFull } from '@utils/stat';
+import { setData } from '@utils/data';
+import { uuid } from '@utils/uuid';
 
 const FEE = 0.005;
 
@@ -46,13 +48,21 @@ export const TestConnectorCreator: TCC = (connector) => {
   return {
     kline,
 
-    getResult: () => {
+    getResult: async () => {
       const positionLog = buildPositionLogFromOrderLog(ORDER_LOG);
       const stat = calculateStatsFull(positionLog);
 
+      if (!stat) {
+        return null;
+      }
+
+      const orderLogId = uuid();
+
+      await setData('data/cache', orderLogId, ORDER_LOG, { useCache: false });
+
       return {
         stat,
-        orderLog: ORDER_LOG,
+        orderLogId,
       };
     },
 
