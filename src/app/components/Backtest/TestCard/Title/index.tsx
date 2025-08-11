@@ -1,15 +1,25 @@
 'use client';
 
-import { Text, Flex } from '@chakra-ui/react';
+import { Text, Flex, IconButton } from '@chakra-ui/react';
+import { TbArrowsLeftRight } from 'react-icons/tb';
 import { useTestResult } from '../context';
+import { TaskCardConfigDrawer } from '../ConfigDrawer';
 
 export const TestCardTitle = () => {
-  const { testResult } = useTestResult();
+  const {
+    testResult: { stat, test, orderLog },
+    compareList,
+    onChangeCompare,
+  } = useTestResult();
+
+  const isCompared = compareList.some(
+    (compare) => compare.testId === test.testId,
+  );
 
   return (
-    <Flex gap="4" p={4}>
-      <Text fontSize="lg" fontWeight="bold" color={'gray.200'} mb={4}>
-        {testResult.test.symbol}
+    <Flex gap="4" p={4} mb={3}>
+      <Text fontSize="lg" fontWeight="bold" color={'gray.200'}>
+        {test.symbol}
       </Text>
 
       <Flex gap="1">
@@ -17,8 +27,8 @@ export const TestCardTitle = () => {
           score:
         </Text>
 
-        <Text fontSize="lg" fontWeight="bold" color={'teal.500'} mb={4}>
-          {testResult.stat.score}
+        <Text fontSize="lg" fontWeight="bold" color={'teal.500'}>
+          {stat.score}
         </Text>
       </Flex>
 
@@ -27,8 +37,8 @@ export const TestCardTitle = () => {
           strategy:
         </Text>
 
-        <Text fontSize="lg" fontWeight="bold" color={'gray.200'} mb={4}>
-          {testResult.test.strategyName}
+        <Text fontSize="lg" fontWeight="bold" color={'gray.200'}>
+          {test.strategyName}
         </Text>
       </Flex>
 
@@ -37,8 +47,8 @@ export const TestCardTitle = () => {
           connector:
         </Text>
 
-        <Text fontSize="lg" fontWeight="bold" color={'gray.200'} mb={4}>
-          {testResult.test.connectorName}
+        <Text fontSize="lg" fontWeight="bold" color={'gray.200'}>
+          {test.connectorName}
         </Text>
       </Flex>
 
@@ -47,8 +57,8 @@ export const TestCardTitle = () => {
           suite Id:
         </Text>
 
-        <Text fontSize="lg" fontWeight="bold" color={'gray.200'} mb={4}>
-          {testResult.test.testSuiteId}
+        <Text fontSize="lg" fontWeight="bold" color={'gray.200'}>
+          {test.testSuiteId}
         </Text>
       </Flex>
 
@@ -57,9 +67,25 @@ export const TestCardTitle = () => {
           test Id:
         </Text>
 
-        <Text fontSize="lg" fontWeight="bold" color={'gray.200'} mb={4}>
-          {testResult.test.testId}
+        <Text fontSize="lg" fontWeight="bold" color={'gray.200'}>
+          {test.testId}
         </Text>
+      </Flex>
+
+      <Flex gap="2" mt={-1}>
+        <IconButton
+          size="xs"
+          colorPalette="teal"
+          variant={isCompared ? 'solid' : 'outline'}
+          onClick={() =>
+            isCompared
+              ? onChangeCompare(test.testId, null)
+              : onChangeCompare(test.testId, orderLog)
+          }
+        >
+          <TbArrowsLeftRight />
+        </IconButton>
+        <TaskCardConfigDrawer />
       </Flex>
     </Flex>
   );

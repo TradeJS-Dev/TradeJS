@@ -22,7 +22,7 @@
   },
   "dependencies": {
     "@chakra-ui/charts": "^3.24.0",
-    "@chakra-ui/react": "^3.16.1",
+    "@chakra-ui/react": "^3.24.2",
     "@ef-carbon/tspm": "^2.2.5",
     "@emotion/react": "^11.14.0",
     "@langchain/core": "^0.3.66",
@@ -43,6 +43,7 @@
     "react-infinite-scroll-component": "^6.1.0",
     "recharts": "^3.1.1",
     "recoil": "^0.7.7",
+    "shiki": "^3.9.2",
     "technicalindicators": "^3.1.0",
     "tsconfig-paths": "^4.2.0",
     "uuid": "11.1.0",

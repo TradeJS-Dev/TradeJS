@@ -38,6 +38,8 @@ const HEADERS = [
 let bestResults = {
   netProfit: -1000,
   winRate: 0,
+  minAmount: 0,
+  sharpeRatio: 0,
 };
 
 const getCLILevelColor = (level: ThresholdLevel) => {
@@ -66,9 +68,6 @@ export const drawInCLI = (
 
 const backtest = async () => {
   let testSuite = await createTestSuite();
-
-  testSuite = testSuite.slice(-100);
-
   const chunkSize = Math.ceil(testSuite.length / MAX_PARALLEL);
   const chunks = _.chunk(testSuite, chunkSize);
   let results: TestWorkerResult[] = [];
@@ -78,7 +77,7 @@ const backtest = async () => {
 
   console.log('');
   const bar = new ProgressBar(
-    ':current/:total [:bar][:percent] :id :symbol :amount :minamount :wins/:losses/:orders :winrate :eta(s)',
+    ':current/:total [:bar][:percent] :id :symbol :amount :minamount :wins/:losses/:orders :winrate :sharpeRatio :eta(s)',
     {
       total: testSuite.length,
       width: 40,
@@ -115,12 +114,18 @@ const backtest = async () => {
 
       results.push(msg as TestWorkerResult);
 
-      results.forEach(({ stat: { netProfit, winRate } }) => {
+      results.forEach(({ stat: { netProfit, winRate, sharpeRatio, minAmount } }) => {
         if (netProfit > bestResults.netProfit) {
           bestResults.netProfit = netProfit;
         }
         if (winRate > bestResults.winRate) {
           bestResults.winRate = winRate;
+        }
+        if (minAmount > bestResults.minAmount) {
+          bestResults.minAmount = minAmount;
+        }
+        if (sharpeRatio && sharpeRatio > bestResults.sharpeRatio) {
+          bestResults.sharpeRatio = sharpeRatio;
         }
       });
 
@@ -129,7 +134,7 @@ const backtest = async () => {
 
         const {
           test: { symbol, name },
-          stat: { orders, amount, minAmount, wins, losses, winRate },
+          stat: { orders, amount, minAmount, wins, losses, winRate, sharpeRatio },
         } = results[0];
 
         bar.tick(
@@ -143,6 +148,7 @@ const backtest = async () => {
             losses: chalk.red(losses),
             winrate: chalk.yellow(`${(winRate || 0).toFixed(0)}%`),
             orders: chalk.cyan(orders),
+            sharpeRatio: chalk.magenta(`${(sharpeRatio || 0).toFixed(2)}`),
           },
         );
       }
@@ -235,6 +241,8 @@ const finish = async (results: TestWorkerResult[]) => {
         {
           amount: `${bestResults.netProfit.toFixed(2)}$`,
           ws: `${bestResults.winRate.toFixed(0)}%`,
+          minAmount: `${bestResults.minAmount.toFixed(2)}$`,
+          sharpeRatio: `${bestResults.sharpeRatio.toFixed(2)}`,
         },
         true,
       ),

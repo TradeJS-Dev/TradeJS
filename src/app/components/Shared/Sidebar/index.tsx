@@ -1,6 +1,6 @@
 'use client';
 
-import { Box, IconButton, VStack, Icon } from '@chakra-ui/react';
+import { Box, IconButton, VStack } from '@chakra-ui/react';
 import { useRouter, usePathname } from 'next/navigation';
 import { FiBarChart2, FiPlay } from 'react-icons/fi';
 

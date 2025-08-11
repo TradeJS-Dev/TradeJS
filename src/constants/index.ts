@@ -1,4 +1,4 @@
-import type { TestThresholds, TestStat } from '@types';
+import type { TestThresholds } from '@types';
 
 export const BACKTEST_DAYS = 180;
 export const DASHBOARD_DAYS = 60;
@@ -7,9 +7,9 @@ export const BOT_PRELOAS_DAYS = 60;
 export const PRELOAD_FALLBACK_DAYS = 180;
 
 export const levelScore = {
-  success: 1.2,
-  warning: 1.1,
-  error: 1,
+  success: 1,
+  warning: 0.9,
+  error: 0.8,
 };
 
 export const TestThresholdsConfig: TestThresholds = {
@@ -39,21 +39,21 @@ export const TestThresholdsConfig: TestThresholds = {
     thresholds: [0.2, 0.5],
     direction: 'higher',
     isScored: true,
-    weight: 0.8,
+    weight: 80,
     precision: 2,
   },
   sharpeRatio: {
     thresholds: [0.1, 0.5],
     direction: 'higher',
     isScored: true,
-    weight: 0.7,
+    weight: 70,
     precision: 2,
   },
   sortinoRatio: {
     thresholds: [0.2, 1.0],
     direction: 'higher',
     isScored: true,
-    weight: 0.6,
+    weight: 60,
     precision: 2,
   },
   exposure: {
@@ -67,14 +67,15 @@ export const TestThresholdsConfig: TestThresholds = {
   averageReturn: {
     thresholds: [0.2, 0.6],
     direction: 'higher',
-    weight: 0.6,
+    weight: 60,
+    isScored: true,
     precision: 2,
   },
   maxDrawdown: {
     thresholds: [40, 20],
     direction: 'lower',
     isScored: true,
-    weight: 0.8,
+    weight: 80,
     isPercent: true,
     precision: 1,
   },

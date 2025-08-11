@@ -3,7 +3,7 @@
 import { SimpleGrid, Stat } from '@chakra-ui/react';
 import { getFormatted } from '@utils/stat';
 import { useTestResult } from '../context';
-import { TestStat, ThresholdLevel, TestThresholdsKey } from '@types';
+import { ThresholdLevel, TestThresholdsKey } from '@types';
 
 const getColorByLevel = (level: ThresholdLevel) => {
   switch (level) {
@@ -24,7 +24,7 @@ interface StatItemProps {
 
 export const TestCardStat = () => {
   const {
-    testResult: { stat },
+    testResult: { stat, test, orderLog },
   } = useTestResult();
 
   const StatItem = ({ id, description }: StatItemProps) => {

@@ -35,17 +35,17 @@ const createTestSuite = async (): Promise<TestSuite> => {
   const tickers = [...LIST];
   const paramGrid = generateParamGrid({
     LIMIT: [100],
-    MA_FAST: [10, 12, 14],
-    MA_SLOW: [70, 80, 85],
-    ATR_PERIOD: [10, 12, 14],
-    ATR_OPEN: [0.6, 0.7, 0.8],
-    ATR_CLOSE: [0.8, 1],
-    BB_PERIOD: [10, 13],
-    BB_STDDEV: [1.3, 1.5, 1.7],
-    OBV_SMA_PERIOD: [70, 75, 80],
-    BREAKOUT_LOOKBACK: [15, 17, 20],
-    SL_LONG: [0.06, 0.08],
-    SL_SHORT: [0.06, 0.08],
+    MA_FAST: [10],
+    MA_SLOW: [80],
+    ATR_PERIOD: [9, 15],
+    ATR_OPEN: [0.6],
+    ATR_CLOSE: [1, 1.2],
+    BB_PERIOD: [10, 11],
+    BB_STDDEV: [1.3, 1.7],
+    OBV_SMA_PERIOD: [75],
+    BREAKOUT_LOOKBACK: [15, 20, 25],
+    SL_LONG: [0.07],
+    SL_SHORT: [0.07],
     TP_LONG: [
       [
         {

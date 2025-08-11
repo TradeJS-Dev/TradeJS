@@ -82,13 +82,13 @@ const Dashboard = () => {
         backtestFiles={backtestFiles}
         onChangeFilters={onChangeFilters}
       >
-        <Flex mb={2} gap={8} flexDirection="row">
+        <Flex mb={2} gap={4} flexDirection="row">
           <Filters.SelectSymbol />
           <Filters.SelectInterval />
           <Filters.SelectIndicator />
           <AiDrawer />
         </Flex>
-        <Flex mb={4} gap={8} flexDirection="row">
+        <Flex mb={4} gap={4} flexDirection="row">
           <Filters.SelectBacktest />
         </Flex>
       </Filters.Root>

@@ -85,9 +85,9 @@ export const AiDrawer = () => {
   return (
     <Drawer.Root open={open} onOpenChange={(e) => setOpen(e.open)} size={'lg'}>
       <Drawer.Trigger asChild>
-        <Button size="sm" variant="outline">
-          <Icon as={GiArtificialHive} boxSize={6} color="teal.500" />
-          <Text color="teal.500">AI</Text>
+        <Button colorPalette="teal" size="sm" variant={open ? 'surface' : 'outline'}>
+          <Icon as={GiArtificialHive} boxSize={6} />
+          <Text>AI</Text>
         </Button>
       </Drawer.Trigger>
       <Portal>
