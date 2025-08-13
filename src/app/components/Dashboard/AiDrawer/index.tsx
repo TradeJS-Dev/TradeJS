@@ -78,8 +78,6 @@ export const AiDrawer = () => {
     const response = await sendMessage({ message, filters });
 
     setMessages((state) => [...state, response]);
-
-    console.log('>>> res', response.text);
   };
 
   return (

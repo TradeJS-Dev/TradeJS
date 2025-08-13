@@ -8,42 +8,33 @@ import {
   Drawer,
   Portal,
   Tabs,
-  CodeBlock,
-  createShikiAdapter,
 } from '@chakra-ui/react';
-import type { HighlighterGeneric } from 'shiki';
+import dynamic from 'next/dynamic';
 import { FiSettings } from 'react-icons/fi';
 import { useTestResult } from '../context';
 
-type TabType = 'test' | 'bot';
+const JsonCodeBlock = dynamic(() => import('./JsonCodeBlock'), { ssr: false });
 
-const shikiAdapter = createShikiAdapter<HighlighterGeneric<any, any>>({
-  async load() {
-    const { createHighlighter } = await import('shiki');
-    return createHighlighter({
-      langs: ['json'],
-      themes: ['github-dark'],
-    });
-  },
-});
+type TabType = 'test' | 'bot';
 
 export const TaskCardConfigDrawer = () => {
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState<TabType>('test');
   const { testResult } = useTestResult();
 
-  const testConf = JSON.stringify(testResult.test, null, 2);
-  const botConf = JSON.stringify(
-    _.omit(
-      { ...testResult.test, disabled: false },
-      'name',
-      'testId',
-      'testSuiteId',
-      'options',
-    ),
-    null,
-    2,
-  );
+  const getTestConf = () => JSON.stringify(testResult.test, null, 2);
+  const getBotConf = () =>
+    JSON.stringify(
+      _.omit(
+        { ...testResult.test, disabled: false },
+        'name',
+        'testId',
+        'testSuiteId',
+        'options',
+      ),
+      null,
+      2,
+    );
 
   return (
     <Tabs.Root
@@ -70,11 +61,16 @@ export const TaskCardConfigDrawer = () => {
           <Drawer.Positioner>
             <Drawer.Content display="flex" flexDirection="column">
               <Drawer.Header>
-                <Drawer.Title>Configuration
-                <Tabs.List mt={2}>
-                  <Tabs.Trigger value="test">Test</Tabs.Trigger>
-                  <Tabs.Trigger value="bot">Bot</Tabs.Trigger>
-                </Tabs.List>
+                <Drawer.Title>
+                  Configuration
+                  <Tabs.List mt={2}>
+                    <Tabs.Trigger colorPalette={'teal'} value="test">
+                      Test
+                    </Tabs.Trigger>
+                    <Tabs.Trigger colorPalette={'teal'} value="bot">
+                      Bot
+                    </Tabs.Trigger>
+                  </Tabs.List>
                 </Drawer.Title>
 
                 <Drawer.CloseTrigger asChild>
@@ -84,42 +80,10 @@ export const TaskCardConfigDrawer = () => {
 
               <Drawer.Body overflowY="auto" flex="1">
                 <Tabs.Content value="test">
-                  <CodeBlock.AdapterProvider value={shikiAdapter}>
-                    <CodeBlock.Root code={testConf} language={'json'}>
-                      <CodeBlock.Header>
-                        <CodeBlock.Title>{tab}</CodeBlock.Title>
-                        <CodeBlock.CopyTrigger asChild>
-                          <IconButton variant="ghost" size="2xs">
-                            <CodeBlock.CopyIndicator />
-                          </IconButton>
-                        </CodeBlock.CopyTrigger>
-                      </CodeBlock.Header>
-                      <CodeBlock.Content>
-                        <CodeBlock.Code>
-                          <CodeBlock.CodeText />
-                        </CodeBlock.Code>
-                      </CodeBlock.Content>
-                    </CodeBlock.Root>
-                  </CodeBlock.AdapterProvider>
+                  <JsonCodeBlock tab={tab} code={getTestConf()} />
                 </Tabs.Content>
                 <Tabs.Content value="bot">
-                  <CodeBlock.AdapterProvider value={shikiAdapter}>
-                    <CodeBlock.Root code={botConf} language={'json'}>
-                      <CodeBlock.Header>
-                        <CodeBlock.Title>{tab}</CodeBlock.Title>
-                        <CodeBlock.CopyTrigger asChild>
-                          <IconButton variant="ghost" size="2xs">
-                            <CodeBlock.CopyIndicator />
-                          </IconButton>
-                        </CodeBlock.CopyTrigger>
-                      </CodeBlock.Header>
-                      <CodeBlock.Content>
-                        <CodeBlock.Code>
-                          <CodeBlock.CodeText />
-                        </CodeBlock.Code>
-                      </CodeBlock.Content>
-                    </CodeBlock.Root>
-                  </CodeBlock.AdapterProvider>
+                  <JsonCodeBlock tab={tab} code={getBotConf()} />
                 </Tabs.Content>
               </Drawer.Body>
             </Drawer.Content>

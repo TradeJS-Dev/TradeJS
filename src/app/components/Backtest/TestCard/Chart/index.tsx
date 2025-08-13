@@ -1,5 +1,6 @@
 'use client';
 
+import { useMemo } from 'react';
 import { Box } from '@chakra-ui/react';
 import { Chart, useChart } from '@chakra-ui/charts';
 import { format } from 'date-fns';
@@ -15,7 +16,7 @@ import {
 } from 'recharts';
 import { useTestResult } from '../context';
 import { OrderLogData, Test } from '@types';
-import { TestCompareList } from '../types';
+import { TestCompareList, ChartColor } from '../types';
 import { getFormatted } from '@utils/stat';
 
 const inc = 6300_000;
@@ -91,18 +92,24 @@ export const TestCardChart = () => {
     compareList,
   } = useTestResult();
 
-  const timeline = getTimeline(test);
+  const chartData = useMemo(() => {
+    const timeline = getTimeline(test);
 
-  const testList: TestCompareList = [
-    ...compareList.filter((testCompare) => testCompare.testId !== test.testId),
-    {
-      testId: test.testId,
-      orderLog,
-      color: 'teal.solid',
-    },
-  ];
+    const testList: TestCompareList = [
+      ...compareList.filter(
+        (testCompare) => testCompare.testId !== test.testId,
+      ),
+      {
+        testId: test.testId,
+        orderLog,
+        color: 'teal.solid',
+      },
+    ];
 
-  const chart = useChart(getChartData(testList, timeline) as any);
+    return getChartData(testList, timeline);
+  }, [compareList]);
+
+  const chart = useChart(chartData as any);
 
   const { formatted: maxAmount } = getFormatted(stat, 'maxAmount');
   const { formatted: minAmount } = getFormatted(stat, 'minAmount');

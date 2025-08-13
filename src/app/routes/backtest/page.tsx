@@ -1,17 +1,15 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { Box, Flex } from '@chakra-ui/react';
+import { Box, Flex, ClientOnly } from '@chakra-ui/react';
 import { useRecoilValue } from 'recoil';
 import { filtersState } from '@atoms';
 import { getBacktestFiles } from '@src/actions/backtest';
 // import { SelectSymbol } from '@app/components/Shared/Filters';
 import { List } from '@app/components/Backtest/List';
-import { useIsClient } from '@app/hooks/isClient';
 import { Items } from '@types';
 
-const Dashboard = () => {
-  const isClient = useIsClient();
+const Backtest = () => {
   const [files, setFiles] = useState<Items>([]);
   const { symbol } = useRecoilValue(filtersState);
 
@@ -19,33 +17,30 @@ const Dashboard = () => {
     getBacktestFiles({}).then(setFiles);
   }, [symbol]);
 
-  if (!isClient) {
-    return null;
-  }
-
   return (
-    <Box minH="100vh" bg="gray.900">
-      <Box
-        as="main"
-        minH="100vh"
-        maxW="1400px"
-        minW="1200px"
-        p={4}
-        bg="gray.900"
-        display="flex"
-        flexDirection="column"
-        justifyContent="space-between"
-        alignItems="flex-start"
-      >
-        <Flex mb={4} gap={8} flexDirection="row">
-          {/* <SelectSymbol /> */}
-        </Flex>
-        <Box position="relative" flex="1" w="full">
-          <List files={files} />
+    <ClientOnly>
+      <Box minH="100vh" bg="gray.900">
+        <Box
+          as="main"
+          minH="100vh"
+          minW="1200px"
+          pl={2}
+          bg="gray.900"
+          display="flex"
+          flexDirection="column"
+          justifyContent="space-between"
+          alignItems="flex-start"
+        >
+          <Flex mb={4} gap={8} flexDirection="row">
+            {/* <SelectSymbol /> */}
+          </Flex>
+          <Box flex="1" h="full" w="full">
+            <List files={files} />
+          </Box>
         </Box>
       </Box>
-    </Box>
+    </ClientOnly>
   );
 };
 
-export default Dashboard;
+export default Backtest;

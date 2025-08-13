@@ -26,7 +26,9 @@ export const getBacktestFiles = async (filters: GetBacktestFilesProps) => {
 
     const { symbol, testSuiteId, testId } = splitName(name);
 
-    const stat = (await getData('data/tests', `${name}.stat`)) as TestStat;
+    const stat = (await getData('data/tests', `${name}.stat`, {
+      useCache: false,
+    })) as TestStat;
 
     if (filters.symbol && symbol !== filters.symbol) {
       continue;
@@ -56,12 +58,15 @@ export const getBacktest = async (
     return null;
   }
 
-  const orderLog = (await getData(
-    'data/tests',
-    `${name}.orders`,
-  )) as OrderLogData;
-  const test = (await getData('data/tests', `${name}.config`)) as Test;
-  const stat = (await getData('data/tests', `${name}.stat`)) as TestStat;
+  const orderLog = (await getData('data/tests', `${name}.orders`, {
+    useCache: false,
+  })) as OrderLogData;
+  const test = (await getData('data/tests', `${name}.config`, {
+    useCache: false,
+  })) as Test;
+  const stat = (await getData('data/tests', `${name}.stat`, {
+    useCache: false,
+  })) as TestStat;
 
   return {
     test,

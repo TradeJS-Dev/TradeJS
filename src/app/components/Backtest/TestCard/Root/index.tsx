@@ -1,8 +1,8 @@
 'use client';
 
 import { PropsWithChildren, useEffect, useState } from 'react';
-import _ from 'lodash';
-import { Box } from '@chakra-ui/react';
+import _, { isNull } from 'lodash';
+import { Box, SkeletonText, Skeleton, Stack } from '@chakra-ui/react';
 import { TestResultContext } from '../context';
 import { getBacktest } from '@src/actions/backtest';
 import { TestResult } from '@types';
@@ -10,24 +10,61 @@ import { TestCompareList, OnChangeCompare } from '../types';
 
 interface TestRootProps {
   id: string;
-  onChangeCompare: OnChangeCompare;
+  cache: TestResult | null;
   compareList: TestCompareList;
+  onChangeCompare: OnChangeCompare;
+  onLoadData?: (testResult: TestResult) => void;
 }
 
 export const TestCardRoot = ({
   id,
   children,
   compareList,
+  cache,
+  onLoadData,
   onChangeCompare,
 }: PropsWithChildren<TestRootProps>) => {
-  const [result, setResult] = useState<TestResult | null>(null);
+  const [result, setResult] = useState<TestResult | null>(cache);
+
+  const loadData = async () => {
+    if (!_.isEmpty(result)) {
+      return;
+    }
+
+    const testResult = await getBacktest(id);
+
+    if (!testResult) {
+      return;
+    }
+
+    setResult(testResult);
+    onLoadData?.(testResult);
+  };
 
   useEffect(() => {
-    getBacktest(id).then(setResult);
+    loadData();
   }, [id]);
 
   if (_.isEmpty(result)) {
-    return null;
+    return (
+      <Box
+        p={2}
+        mb={4}
+        width="1400px"
+        height="628px"
+        bg="gray.900"
+        borderRadius="md"
+        shadow="sm"
+        borderWidth="1px"
+        overflowX="auto"
+      >
+        <Stack gap="6">
+        <SkeletonText noOfLines={2} gap="6" />
+        <Skeleton height="400px" />
+        <SkeletonText noOfLines={3} gap="6" />
+        </Stack>
+      </Box>
+    );
   }
 
   return (
@@ -37,6 +74,7 @@ export const TestCardRoot = ({
       <Box
         p={2}
         mb={4}
+        maxW="1400px"
         borderRadius="md"
         shadow="sm"
         borderWidth="1px"

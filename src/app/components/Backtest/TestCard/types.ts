@@ -1,7 +1,7 @@
 import { Tokens } from '@chakra-ui/react';
 import { OrderLogData, Test } from '@types';
 
-type ChartColor = Tokens['colors'] | React.CSSProperties['color'];
+export type ChartColor = Tokens['colors'] | React.CSSProperties['color'];
 
 type ItemDataKey<T> = keyof T;
 
