@@ -2,10 +2,10 @@
 
 import _ from 'lodash';
 import { Select } from '@UI';
-import { useFilters } from '../context';
+import { useFiltersContext } from '../context';
 
 export const SelectBacktest = () => {
-  const { filters, backtestFiles, onChangeFilters } = useFilters();
+  const { filters, backtestFiles, onChangeFilters } = useFiltersContext();
 
   const tests = backtestFiles.filter((file) =>
     file.value.startsWith(filters.symbol),

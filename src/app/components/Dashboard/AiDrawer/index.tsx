@@ -12,10 +12,9 @@ import {
   HStack,
   Text,
 } from '@chakra-ui/react';
-import { useRecoilValue } from 'recoil';
 import { AIChatMessage, AIChatHistory } from '@types';
 import { GiArtificialHive } from 'react-icons/gi';
-import { filtersState } from '@atoms';
+import { useFilters } from '@store';
 import { sendMessage, getHistory } from '@src/actions/ai';
 import { Message } from './Message';
 
@@ -24,7 +23,7 @@ export const AiDrawer = () => {
   const [loading, setLoading] = useState(true);
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState<AIChatHistory>([]);
-  const filters = useRecoilValue(filtersState);
+  const { filters } = useFilters();
 
   const loadHistory = async () => {
     setLoading(true);

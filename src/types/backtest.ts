@@ -61,8 +61,10 @@ export type OrderLog = Order & {
 
 export type OrderLogData = OrderLog[];
 
+export type SimpleOrderLogData = [number, number][];
+
 export interface TestResult extends Omit<TestWorkerResult, 'orderLogId'> {
-  orderLog: OrderLogData;
+  orderLog: SimpleOrderLogData;
 }
 
 export interface PositionLog {

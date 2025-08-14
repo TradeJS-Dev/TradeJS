@@ -2,8 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { Box, Flex, ClientOnly } from '@chakra-ui/react';
-import { useRecoilValue } from 'recoil';
-import { filtersState } from '@atoms';
+import { useFilters } from '@store';
 import { getBacktestFiles } from '@src/actions/backtest';
 // import { SelectSymbol } from '@app/components/Shared/Filters';
 import { List } from '@app/components/Backtest/List';
@@ -11,11 +10,11 @@ import { Items } from '@types';
 
 const Backtest = () => {
   const [files, setFiles] = useState<Items>([]);
-  const { symbol } = useRecoilValue(filtersState);
+  const { filters } = useFilters();
 
   useEffect(() => {
     getBacktestFiles({}).then(setFiles);
-  }, [symbol]);
+  }, [filters.symbol]);
 
   return (
     <ClientOnly>

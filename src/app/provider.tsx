@@ -1,6 +1,5 @@
 'use client';
 
-import { RecoilRoot } from 'recoil';
 import {
   ChakraProvider,
   createSystem,
@@ -27,10 +26,8 @@ export default function Provider({
   children: React.ReactNode;
 }>) {
   return (
-    <RecoilRoot>
-      <ChakraProvider value={system}>
-        <ColorModeProvider forcedTheme="dark">{children}</ColorModeProvider>
-      </ChakraProvider>
-    </RecoilRoot>
+    <ChakraProvider value={system}>
+      <ColorModeProvider forcedTheme="dark">{children}</ColorModeProvider>
+    </ChakraProvider>
   );
 }

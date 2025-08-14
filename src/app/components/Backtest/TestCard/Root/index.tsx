@@ -10,21 +10,17 @@ import { TestCompareList, OnChangeCompare } from '../types';
 
 interface TestRootProps {
   id: string;
-  cache: TestResult | null;
   compareList: TestCompareList;
   onChangeCompare: OnChangeCompare;
-  onLoadData?: (testResult: TestResult) => void;
 }
 
 export const TestCardRoot = ({
   id,
   children,
   compareList,
-  cache,
-  onLoadData,
   onChangeCompare,
 }: PropsWithChildren<TestRootProps>) => {
-  const [result, setResult] = useState<TestResult | null>(cache);
+  const [result, setResult] = useState<TestResult | null>(null);
 
   const loadData = async () => {
     if (!_.isEmpty(result)) {
@@ -38,7 +34,6 @@ export const TestCardRoot = ({
     }
 
     setResult(testResult);
-    onLoadData?.(testResult);
   };
 
   useEffect(() => {

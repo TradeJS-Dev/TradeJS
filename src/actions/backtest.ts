@@ -51,6 +51,20 @@ export const getBacktestFiles = async (filters: GetBacktestFilesProps) => {
   return result;
 };
 
+export const getOrderLog = async (
+  name: string | undefined,
+): Promise<OrderLogData | null> => {
+  if (!name) {
+    return null;
+  }
+
+  const orderLog = (await getData('data/tests', `${name}.orders`, {
+    useCache: false,
+  })) as OrderLogData;
+
+  return orderLog;
+};
+
 export const getBacktest = async (
   name: string | undefined,
 ): Promise<TestResult | null> => {
@@ -70,7 +84,7 @@ export const getBacktest = async (
 
   return {
     test,
-    orderLog,
+    orderLog: orderLog.map(({ timestamp, amount }) => ([timestamp, Math.round(amount * 100) / 100 ])),
     stat,
   };
 };

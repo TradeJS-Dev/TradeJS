@@ -2,11 +2,10 @@
 
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { useRecoilValue } from 'recoil';
-import { filtersState } from '@atoms';
+import { useFilters } from '@store';
 
 const DashboardIndex = () => {
-  const filters = useRecoilValue(filtersState);
+  const { filters } = useFilters();
   const router = useRouter();
 
   useEffect(() => {

@@ -1,12 +1,12 @@
 'use client';
 
 import { Select } from '@UI';
-import { useFilters } from '../context';
+import { useFiltersContext } from '../context';
 
 interface SelectSymbolProps {}
 
 export const SelectSymbol = ({}: SelectSymbolProps) => {
-  const { filters, tickers, onChangeFilters } = useFilters();
+  const { filters, tickers, onChangeFilters } = useFiltersContext();
 
   const onChange = (value: string[]) => {
     const newFilters = {

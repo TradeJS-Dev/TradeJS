@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import _ from 'lodash';
 import { registerIndicator, Chart } from 'klinecharts';
-import { getBacktest } from '@src/actions/backtest';
+import { getOrderLog } from '@src/actions/backtest';
 import { KlineChartItem, OrderLogData } from '@types';
 import { dimond, star, circle, rectangle } from '../figures';
 
@@ -29,7 +29,7 @@ export const useBacktest = (chart: Chart | null, id: string | undefined) => {
     if (!id) {
       return;
     }
-    getBacktest(id).then((res) => setBacktestData(res?.orderLog!));
+    getOrderLog(id).then((res) => setBacktestData(res!));
   }, [id]);
 
   const getDataFromInterval = (

@@ -2,13 +2,13 @@
 
 import { PropsWithChildren } from 'react';
 import { FiltersContext } from '../context';
-import { UIFIlters, Items } from '@types';
+import { UIFilters, Items, OnChangeFilters } from '@types';
 
 interface RootProps {
   tickers: Items;
   backtestFiles: Items;
-  filters: UIFIlters;
-  onChangeFilters?: (filters: UIFIlters) => void;
+  filters: UIFilters;
+  onChangeFilters?: OnChangeFilters;
 }
 
 export const Root = ({

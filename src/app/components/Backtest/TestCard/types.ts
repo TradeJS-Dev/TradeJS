@@ -1,5 +1,5 @@
 import { Tokens } from '@chakra-ui/react';
-import { OrderLogData, Test } from '@types';
+import { SimpleOrderLogData } from '@types';
 
 export type ChartColor = Tokens['colors'] | React.CSSProperties['color'];
 
@@ -27,7 +27,7 @@ interface UseChartProps<T> {
 
 interface TestCompare {
   testId: string;
-  orderLog: OrderLogData;
+  orderLog: SimpleOrderLogData;
   color: ChartColor;
 }
 
@@ -35,5 +35,5 @@ export type TestCompareList = TestCompare[];
 
 export type OnChangeCompare = (
   testId: string,
-  orderLog: OrderLogData | null,
+  orderLog: SimpleOrderLogData | null,
 ) => void;

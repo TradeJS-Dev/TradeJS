@@ -18,6 +18,8 @@ export interface Figure {
   height: number;
 }
 
-export interface UIFIlters extends Filters {
+export interface UIFilters extends Filters {
   backtestId: string | null;
 }
+
+export type OnChangeFilters = (filters: UIFilters) => void;

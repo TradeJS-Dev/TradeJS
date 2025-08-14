@@ -15,8 +15,8 @@ import {
   ResponsiveContainer,
 } from 'recharts';
 import { useTestResult } from '../context';
-import { OrderLogData, Test } from '@types';
-import { TestCompareList, ChartColor } from '../types';
+import { SimpleOrderLogData, Test } from '@types';
+import { TestCompareList } from '../types';
 import { getFormatted } from '@utils/stat';
 
 const inc = 6300_000;
@@ -35,7 +35,7 @@ const getTimeline = (test: Test) => {
 const getAmountFromOrderLog = (
   ind: number,
   timeline: number[],
-  orderLog: OrderLogData,
+  orderLog: SimpleOrderLogData,
   fallback: number,
 ) => {
   if (ind < 1) {
@@ -44,18 +44,20 @@ const getAmountFromOrderLog = (
 
   const order = orderLog.find(
     (log) =>
-      log.timestamp <= timeline[ind] && log.timestamp > timeline[ind - 1],
+      log[0] <= timeline[ind] && log[0] > timeline[ind - 1],
   );
 
   if (!order) {
     return fallback;
   }
 
-  return order.amount;
+  return order[1];
 };
 
 const getChartData = (testList: TestCompareList, timeline: number[]) => {
   const values: Record<string, number> = {};
+
+  console.log('>>> timeline length', timeline.length);
 
   const data = timeline.map((timestamp, ind) => {
     const formattedTimestamp = format(timestamp, 'dd.MM');

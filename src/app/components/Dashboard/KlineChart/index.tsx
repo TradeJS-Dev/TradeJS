@@ -4,7 +4,7 @@ import React, { useEffect, useRef } from 'react';
 import _ from 'lodash';
 import { init, Chart, dispose } from 'klinecharts';
 import { OverlaySpinner } from '@UI';
-import { Indicator, UIFIlters } from '@types';
+import { Indicator, UIFilters } from '@types';
 import {
   useBbIndicator,
   useAtrIndicator,
@@ -22,7 +22,7 @@ import { darkTheme } from './styles';
 
 interface KlineChartProps {
   id: string;
-  filters: UIFIlters;
+  filters: UIFilters;
   indicators: Record<string, Indicator>;
 }
 

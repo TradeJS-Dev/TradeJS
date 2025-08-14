@@ -3,7 +3,7 @@
 import { connectors } from '@src/connectors';
 import { getTopTickers } from '@utils/tickers';
 
-export const scanner = async () => {
+export const scan = async () => {
   const byBitConnector = connectors.ByBit({
     key: '',
     secret: '',

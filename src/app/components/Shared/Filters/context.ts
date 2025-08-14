@@ -1,17 +1,17 @@
 import { createContext, useContext } from 'react';
-import { UIFIlters, Items } from '@types';
+import { UIFilters, Items, OnChangeFilters } from '@types';
 
 interface FiltersContextProps {
-  filters: UIFIlters;
+  filters: UIFilters;
   tickers: Items;
   backtestFiles: Items;
-  onChangeFilters?: (filters: UIFIlters) => void;
+  onChangeFilters?: OnChangeFilters;
 }
 
 export const FiltersContext = createContext<FiltersContextProps>(
   {} as FiltersContextProps,
 );
 
-export const useFilters = () => {
+export const useFiltersContext = () => {
   return useContext(FiltersContext);
 };

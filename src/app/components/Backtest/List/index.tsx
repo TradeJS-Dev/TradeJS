@@ -4,12 +4,12 @@ import { useState, useCallback, useRef } from 'react';
 import AutoSizer from 'react-virtualized-auto-sizer';
 import { FixedSizeList, ListChildComponentProps } from 'react-window';
 import { Box } from '@chakra-ui/react';
-
 import {
   TestCard,
   TestCompareList,
   OnChangeCompare,
 } from '@/src/app/components/Backtest/TestCard';
+import { CompareList } from './CompareList';
 import { Items, TestResult } from '@types';
 
 interface ListProps {
@@ -31,12 +31,7 @@ const colors = [
 ];
 
 export const List = ({ files, overscan = 2 }: ListProps) => {
-  const cache = useRef<Record<string, TestResult>>({});
   const [compareList, setCompareList] = useState<TestCompareList>([]);
-
-  const onLoadData = (testResult: TestResult) => {
-    cache.current[testResult.test.testId] = testResult;
-  };
 
   const onChangeCompare: OnChangeCompare = (testId, orderLog) => {
     setCompareList((state) => {
@@ -61,17 +56,11 @@ export const List = ({ files, overscan = 2 }: ListProps) => {
     ({ index, style }: ListChildComponentProps) => {
       const item = files[index];
       return (
-        <Box style={style} px={4}>
+        <Box style={style} px={2}>
           <TestCard.Root
             key={item.value}
             id={item.value}
-            cache={
-              typeof item.data?.testId === 'string'
-                ? (cache.current[item.data.testId] as TestResult)
-                : null
-            }
             compareList={compareList}
-            onLoadData={onLoadData}
             onChangeCompare={onChangeCompare}
           >
             <TestCard.Title />
@@ -85,19 +74,25 @@ export const List = ({ files, overscan = 2 }: ListProps) => {
   );
 
   return (
-    <AutoSizer>
-      {({ height: h, width }) => (
-        <FixedSizeList
-          height={h}
-          width={width}
-          itemCount={files.length}
-          itemSize={ITEM_HEIGHT}
-          overscanCount={overscan}
-          itemKey={itemKey}
-        >
-          {Row}
-        </FixedSizeList>
-      )}
-    </AutoSizer>
+    <>
+      <CompareList
+        compareList={compareList}
+        onChangeCompare={onChangeCompare}
+      />
+      <AutoSizer>
+        {({ height: h, width }) => (
+          <FixedSizeList
+            height={h}
+            width={width}
+            itemCount={files.length}
+            itemSize={ITEM_HEIGHT}
+            overscanCount={overscan}
+            itemKey={itemKey}
+          >
+            {Row}
+          </FixedSizeList>
+        )}
+      </AutoSizer>
+    </>
   );
 };

@@ -3,54 +3,36 @@
 import React, { useState, useEffect } from 'react';
 import { useParams } from 'next/navigation';
 import { Box, Flex, ClientOnly } from '@chakra-ui/react';
-import { useSetRecoilState, useRecoilState, useRecoilValue } from 'recoil';
-import { filtersState, tickersState, tickersListSelector } from '@atoms';
-import { scanner } from '@src/actions/scanner';
+import { useFilters, useTickers } from '@store';
 import { getBacktestFiles } from '@src/actions/backtest';
 import { Filters } from '@app/components/Shared/Filters';
 import { MainChart } from '@app/components/Dashboard/MainChart';
 import { AiDrawer } from '@app/components/Dashboard/AiDrawer';
-import { Interval, UIFIlters, Items } from '@types';
-import { getTimestamp } from '@utils/timestamp';
+import { Interval, OnChangeFilters, Items } from '@types';
 
 const Dashboard = () => {
   const { symbol, interval } = useParams();
-  const [filters, setFilters] = useRecoilState(filtersState);
-  const tickers = useRecoilValue(tickersListSelector);
-  const setTickers = useSetRecoilState(tickersState);
+  const { filters, setFilters } = useFilters();
+  const { tickers } = useTickers();
   const [backtestFiles, setBacktestFiles] = useState<Items>([]);
 
   useEffect(() => {
     if (typeof symbol === 'string' && typeof interval === 'string') {
-      setFilters((state) => ({
-        ...state,
+      setFilters({
         symbol,
         interval: interval as Interval,
-        end: getTimestamp(),
-      }));
+      });
     }
   }, [symbol, interval]);
-
-  useEffect(() => {
-    scanner().then((coins) => {
-      setTickers((state) => ({
-        ...state,
-        scanner: coins,
-      }));
-    });
-  }, []);
 
   useEffect(() => {
     getBacktestFiles({ symbol: filters.symbol }).then((files) => {
       setBacktestFiles(files);
     });
-  }, []);
+  }, [filters.symbol]);
 
-  const onChangeFilters = (newFilters: UIFIlters) => {
-    setFilters((state) => ({
-      ...state,
-      ...newFilters,
-    }));
+  const onChangeFilters: OnChangeFilters = (newFilters) => {
+    setFilters(newFilters);
 
     window.history.replaceState(
       null,

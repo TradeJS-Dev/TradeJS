@@ -3,10 +3,10 @@
 import { Segment } from '@UI';
 import { Interval } from '@types';
 import { intervals } from './intervals';
-import { useFilters } from '../context';
+import { useFiltersContext } from '../context';
 
 export const SelectInterval = () => {
-  const { filters, onChangeFilters } = useFilters();
+  const { filters, onChangeFilters } = useFiltersContext();
 
   const onChange = (value: string | null) => {
     if (!value) {

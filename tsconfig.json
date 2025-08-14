@@ -22,7 +22,7 @@
       "@/*": ["./*"],
       "@src/*": ["./src/*"],
       "@app/*": ["./src/app/*"],
-      "@atoms": ["./src/app/atoms/index"],
+      "@store": ["./src/app/store/index"],
       "@constants": ["./src/constants/index"],
       "@types": ["./src/types/index"],
       "@utils/*": ["./src/utils/*"],
