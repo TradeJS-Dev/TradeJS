@@ -10,6 +10,10 @@ export const MainChart = () => {
   const { indicatorsByKey } = useIndicators();
 
   return (
-    <KlineChart id="main-chart" filters={filters} indicators={indicatorsByKey} />
+    <KlineChart
+      id="main-chart"
+      filters={filters}
+      indicators={indicatorsByKey}
+    />
   );
 };

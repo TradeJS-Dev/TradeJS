@@ -114,27 +114,37 @@ const backtest = async () => {
 
       results.push(msg as TestWorkerResult);
 
-      results.forEach(({ stat: { netProfit, winRate, sharpeRatio, minAmount } }) => {
-        if (netProfit > bestResults.netProfit) {
-          bestResults.netProfit = netProfit;
-        }
-        if (winRate > bestResults.winRate) {
-          bestResults.winRate = winRate;
-        }
-        if (minAmount > bestResults.minAmount) {
-          bestResults.minAmount = minAmount;
-        }
-        if (sharpeRatio && sharpeRatio > bestResults.sharpeRatio) {
-          bestResults.sharpeRatio = sharpeRatio;
-        }
-      });
+      results.forEach(
+        ({ stat: { netProfit, winRate, sharpeRatio, minAmount } }) => {
+          if (netProfit > bestResults.netProfit) {
+            bestResults.netProfit = netProfit;
+          }
+          if (winRate > bestResults.winRate) {
+            bestResults.winRate = winRate;
+          }
+          if (minAmount > bestResults.minAmount) {
+            bestResults.minAmount = minAmount;
+          }
+          if (sharpeRatio && sharpeRatio > bestResults.sharpeRatio) {
+            bestResults.sharpeRatio = sharpeRatio;
+          }
+        },
+      );
 
       if (completedTests % 100 === 0 || completedTests === testSuite.length) {
         results = rankBacktests(results, TOP_LIMIT);
 
         const {
           test: { symbol, name },
-          stat: { orders, amount, minAmount, wins, losses, winRate, sharpeRatio },
+          stat: {
+            orders,
+            amount,
+            minAmount,
+            wins,
+            losses,
+            winRate,
+            sharpeRatio,
+          },
         } = results[0];
 
         bar.tick(

@@ -43,8 +43,7 @@ const getAmountFromOrderLog = (
   }
 
   const order = orderLog.find(
-    (log) =>
-      log[0] <= timeline[ind] && log[0] > timeline[ind - 1],
+    (log) => log[0] <= timeline[ind] && log[0] > timeline[ind - 1],
   );
 
   if (!order) {

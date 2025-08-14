@@ -54,9 +54,9 @@ export const TestCardRoot = ({
         overflowX="auto"
       >
         <Stack gap="6">
-        <SkeletonText noOfLines={2} gap="6" />
-        <Skeleton height="400px" />
-        <SkeletonText noOfLines={3} gap="6" />
+          <SkeletonText noOfLines={2} gap="6" />
+          <Skeleton height="400px" />
+          <SkeletonText noOfLines={3} gap="6" />
         </Stack>
       </Box>
     );

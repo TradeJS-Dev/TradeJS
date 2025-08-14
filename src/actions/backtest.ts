@@ -84,7 +84,10 @@ export const getBacktest = async (
 
   return {
     test,
-    orderLog: orderLog.map(({ timestamp, amount }) => ([timestamp, Math.round(amount * 100) / 100 ])),
+    orderLog: orderLog.map(({ timestamp, amount }) => [
+      timestamp,
+      Math.round(amount * 100) / 100,
+    ]),
     stat,
   };
 };

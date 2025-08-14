@@ -7,7 +7,7 @@ const LOCAL_STORAGE_KEY = 'indicators';
 
 interface IndicatorsState {
   indicators: Indicators;
-  setIndicators: (values: string[]) => void;
+  setEnabledIndicators: (values: string[]) => void;
 }
 
 const useStore = create<IndicatorsState>()(
@@ -55,7 +55,7 @@ const useStore = create<IndicatorsState>()(
           periods: [49, 99],
         },
       ] as Indicators,
-      setIndicators: (values: string[]) =>
+      setEnabledIndicators: (values: string[]) =>
         set((state) => {
           const clonedState = _.cloneDeep(state.indicators);
 
@@ -74,7 +74,7 @@ const useStore = create<IndicatorsState>()(
 
 export const useIndicators = () => {
   const indicators = useStore((s) => s.indicators);
-  const setIndicators = useStore((s) => s.setIndicators);
+  const setEnabledIndicators = useStore((s) => s.setEnabledIndicators);
 
   const selectedIndicators = indicators
     .filter((ind) => ind.enabled)
@@ -90,6 +90,6 @@ export const useIndicators = () => {
     selectedIndicators,
     indicatorsItems,
     indicatorsByKey,
-    setIndicators,
+    setEnabledIndicators,
   };
 };

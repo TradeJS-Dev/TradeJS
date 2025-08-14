@@ -5,13 +5,13 @@ import { useIndicators } from '@store';
 import { Select } from '@UI';
 
 export const SelectIndicator = () => {
-  const { selectedIndicators, indicatorsItems, setIndicators } =
+  const { selectedIndicators, indicatorsItems, setEnabledIndicators } =
     useIndicators();
 
   return (
     <Select
       defaultValue={selectedIndicators}
-      onChange={setIndicators}
+      onChange={setEnabledIndicators}
       placeholder="Indicators"
       items={indicatorsItems}
       multiple={true}

@@ -10,20 +10,17 @@ interface JsonCodeBlockProps {
 }
 
 const JsonCodeBlock = ({ code, tab }: JsonCodeBlockProps) => {
-  const adapter = useMemo(
-    () => {
-      return createShikiAdapter<HighlighterGeneric<any, any>>({
-        async load() {
-          const { createHighlighter } = await import('shiki');
-          return createHighlighter({
-            langs: ['json'],
-            themes: ['github-dark'],
-          });
-        },
-      });
-    },
-    [],
-  );
+  const adapter = useMemo(() => {
+    return createShikiAdapter<HighlighterGeneric<any, any>>({
+      async load() {
+        const { createHighlighter } = await import('shiki');
+        return createHighlighter({
+          langs: ['json'],
+          themes: ['github-dark'],
+        });
+      },
+    });
+  }, []);
 
   return (
     <CodeBlock.AdapterProvider value={adapter}>
