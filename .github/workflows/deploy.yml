@@ -26,6 +26,8 @@ jobs:
           PORT=3000
           BYBIT_API_KEY=${{ secrets.BYBIT_API_KEY }}
           BYBIT_API_SECRET=${{ secrets.BYBIT_API_SECRET }}
+          OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}
+          OPENAI_API_ENDPOINT=${{ secrets.OPENAI_API_ENDPOINT }}
           " > .env
 
       - name: Test env

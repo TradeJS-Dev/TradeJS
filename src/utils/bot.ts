@@ -12,6 +12,8 @@ export const runBot = async () => {
   const preloadStart = getTimestamp(BOT_PRELOAS_DAYS);
   const end = getTimestamp();
 
+  logger.log('info', 'runBots: %s', botResults.length);
+
   for await (const bot of botConfig) {
     const { symbol, strategyName, strategyConfig, connectorName, disabled } =
       bot;
