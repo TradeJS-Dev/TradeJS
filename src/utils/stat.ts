@@ -227,7 +227,17 @@ export const rankBacktests = (
     .slice(0, limit);
 };
 
-export const getFormatted = (stat: TestStat, key: TestThresholdsKey) => {
+export const getFormatted = (
+  stat: TestStat | undefined,
+  key: TestThresholdsKey,
+) => {
+  if (!stat) {
+    return {
+      formatted: '0',
+      level: 'error' as ThresholdLevel,
+    };
+  }
+
   const raw = stat[key];
 
   if (raw == null || typeof raw === 'string') {

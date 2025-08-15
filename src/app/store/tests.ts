@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { create } from 'zustand';
 import _ from 'lodash';
+import { get, set } from 'idb-keyval';
 import { getBacktest } from '@src/actions/backtest';
 import { TestResult, TestCompareList, OnChangeCompare } from '@types';
 
@@ -54,6 +55,16 @@ export const useTest = (testName: string) => {
       return;
     }
 
+    const key = `test-${testName}`;
+
+    const cachedResult = (await get(key)) as TestResult | null;
+
+    if (!_.isEmpty(cachedResult)) {
+      setTest(cachedResult);
+
+      return;
+    }
+
     const test = await getBacktest(testName);
 
     if (!test) {
@@ -61,6 +72,8 @@ export const useTest = (testName: string) => {
     }
 
     setTest(test);
+
+    await set(key, test);
   };
 
   useEffect(() => {
