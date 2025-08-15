@@ -1,6 +1,13 @@
 'use server';
 
-import { OrderLogData, TestStat, TestResult, Item, Test, SimpleOrderLogData } from '@types';
+import {
+  OrderLogData,
+  TestStat,
+  TestResult,
+  Item,
+  Test,
+  SimpleOrderLogData,
+} from '@types';
 import { getData } from '@utils/data';
 import { getTimeline, compactOrderLog } from '@utils/timestamp';
 import fs from 'fs';
@@ -73,15 +80,15 @@ export const getBacktest = async (
     return null;
   }
 
-  const orderLog: OrderLogData = (await getData('data/tests', `${name}.orders`, {
+  const orderLog: OrderLogData = await getData('data/tests', `${name}.orders`, {
     useCache: false,
-  }));
-  const test: Test = (await getData('data/tests', `${name}.config`, {
+  });
+  const test: Test = await getData('data/tests', `${name}.config`, {
     useCache: false,
-  }));
-  const stat: TestStat = (await getData('data/tests', `${name}.stat`, {
+  });
+  const stat: TestStat = await getData('data/tests', `${name}.stat`, {
     useCache: false,
-  }));
+  });
 
   const timeline = getTimeline(test.options.start, test.options.end);
 

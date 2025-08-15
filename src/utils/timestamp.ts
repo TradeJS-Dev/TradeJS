@@ -1,7 +1,12 @@
 import { format } from 'date-fns';
 import { getUnixTime, subDays } from 'date-fns';
 import { BACKTEST_DAYS } from '@constants';
-import { KlineChartItem, KlineChartData, OrderLogData, SimpleOrderLogData } from '@types';
+import {
+  KlineChartItem,
+  KlineChartData,
+  OrderLogData,
+  SimpleOrderLogData,
+} from '@types';
 
 const TIMELINE_STEP = 86_400_000;
 
@@ -27,7 +32,11 @@ export const formatUnix = (dt: number) => {
   return format(new Date(dt), 'd MMM u HH:mm:ss');
 };
 
-export const getTimeline = (start = getTimestamp(BACKTEST_DAYS), end = getTimestamp(), step = TIMELINE_STEP) => {
+export const getTimeline = (
+  start = getTimestamp(BACKTEST_DAYS),
+  end = getTimestamp(),
+  step = TIMELINE_STEP,
+) => {
   const res = new Array<number>();
 
   for (let ind = start; ind <= end; ind += step) {
@@ -37,16 +46,20 @@ export const getTimeline = (start = getTimestamp(BACKTEST_DAYS), end = getTimest
   return res;
 };
 
-export const compactOrderLog = (timeline: number[], orderLog: OrderLogData): SimpleOrderLogData => {
+export const compactOrderLog = (
+  timeline: number[],
+  orderLog: OrderLogData,
+): SimpleOrderLogData => {
   let prevValue = orderLog[0].amount || 100;
 
   return timeline.map((timestamp, ind) => {
     if (ind < 1) {
       return [timestamp, prevValue];
     }
-  
+
     const order = orderLog.findLast(
-      (log) => log.timestamp <= timeline[ind] && log.timestamp > timeline[ind - 1],
+      (log) =>
+        log.timestamp <= timeline[ind] && log.timestamp > timeline[ind - 1],
     );
 
     if (!order) {
@@ -57,4 +70,4 @@ export const compactOrderLog = (timeline: number[], orderLog: OrderLogData): Sim
 
     return [timestamp, prevValue];
   });
-}
+};
