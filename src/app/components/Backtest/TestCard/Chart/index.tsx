@@ -15,22 +15,10 @@ import {
   ResponsiveContainer,
 } from 'recharts';
 import { useTestResult } from '../context';
-import { SimpleOrderLogData, Test } from '@types';
+import { SimpleOrderLogData } from '@types';
 import { TestCompareList } from '../types';
 import { getFormatted } from '@utils/stat';
-
-const inc = 6300_000;
-
-const getTimeline = (test: Test) => {
-  const { start, end } = test.options;
-  const res = new Array<number>();
-
-  for (let ind = start!; ind <= end; ind += inc) {
-    res.push(ind);
-  }
-
-  return res;
-};
+import { getTimeline } from '@utils/timestamp';
 
 const getAmountFromOrderLog = (
   ind: number,
@@ -42,7 +30,7 @@ const getAmountFromOrderLog = (
     return fallback;
   }
 
-  const order = orderLog.find(
+  const order = orderLog.findLast(
     (log) => log[0] <= timeline[ind] && log[0] > timeline[ind - 1],
   );
 
@@ -55,8 +43,6 @@ const getAmountFromOrderLog = (
 
 const getChartData = (testList: TestCompareList, timeline: number[]) => {
   const values: Record<string, number> = {};
-
-  console.log('>>> timeline length', timeline.length);
 
   const data = timeline.map((timestamp, ind) => {
     const formattedTimestamp = format(timestamp, 'dd.MM');
@@ -94,7 +80,7 @@ export const TestCardChart = () => {
   } = useTestResult();
 
   const chartData = useMemo(() => {
-    const timeline = getTimeline(test);
+    const timeline = getTimeline(test.options.start, test.options.end);
 
     const testList: TestCompareList = [
       ...compareList.filter(

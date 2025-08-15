@@ -1,7 +1,8 @@
 'use server';
 
-import { OrderLogData, TestStat, TestResult, Item, Test } from '@types';
-import { getData } from '@/src/utils/data';
+import { OrderLogData, TestStat, TestResult, Item, Test, SimpleOrderLogData } from '@types';
+import { getData } from '@utils/data';
+import { getTimeline, compactOrderLog } from '@utils/timestamp';
 import fs from 'fs';
 const path = require('path');
 
@@ -72,22 +73,21 @@ export const getBacktest = async (
     return null;
   }
 
-  const orderLog = (await getData('data/tests', `${name}.orders`, {
+  const orderLog: OrderLogData = (await getData('data/tests', `${name}.orders`, {
     useCache: false,
-  })) as OrderLogData;
-  const test = (await getData('data/tests', `${name}.config`, {
+  }));
+  const test: Test = (await getData('data/tests', `${name}.config`, {
     useCache: false,
-  })) as Test;
-  const stat = (await getData('data/tests', `${name}.stat`, {
+  }));
+  const stat: TestStat = (await getData('data/tests', `${name}.stat`, {
     useCache: false,
-  })) as TestStat;
+  }));
+
+  const timeline = getTimeline(test.options.start, test.options.end);
 
   return {
     test,
-    orderLog: orderLog.map(({ timestamp, amount }) => [
-      timestamp,
-      Math.round(amount * 100) / 100,
-    ]),
+    orderLog: compactOrderLog(timeline, orderLog),
     stat,
   };
 };

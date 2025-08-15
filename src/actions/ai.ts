@@ -21,7 +21,7 @@ export const getHistory = async (symbol: string): Promise<AIChatHistory> => {
   return history;
 };
 
-export const saveMessagesToHistory = async (
+const saveMessagesToHistory = async (
   symbol: string,
   messages: AIChatHistory,
 ): Promise<void> => {
