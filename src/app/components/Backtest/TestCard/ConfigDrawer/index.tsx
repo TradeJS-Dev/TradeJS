@@ -11,7 +11,7 @@ import {
 } from '@chakra-ui/react';
 import dynamic from 'next/dynamic';
 import { FiSettings } from 'react-icons/fi';
-import { useTestResult } from '../context';
+import { useTestContext } from '../context';
 
 const JsonCodeBlock = dynamic(() => import('./JsonCodeBlock'), { ssr: false });
 
@@ -20,7 +20,7 @@ type TabType = 'test' | 'bot';
 export const TaskCardConfigDrawer = () => {
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState<TabType>('test');
-  const { testResult } = useTestResult();
+  const { testResult } = useTestContext();
 
   const getTestConf = () => JSON.stringify(testResult.test, null, 2);
   const getBotConf = () =>

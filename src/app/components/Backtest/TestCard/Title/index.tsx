@@ -2,15 +2,15 @@
 
 import { Text, Flex, IconButton } from '@chakra-ui/react';
 import { TbArrowsLeftRight } from 'react-icons/tb';
-import { useTestResult } from '../context';
+import { useTestsCompare } from '@store';
+import { useTestContext } from '../context';
 import { TaskCardConfigDrawer } from '../ConfigDrawer';
 
 export const TestCardTitle = () => {
   const {
     testResult: { stat, test, orderLog },
-    compareList,
-    onChangeCompare,
-  } = useTestResult();
+  } = useTestContext();
+  const { compareList, onChangeCompare } = useTestsCompare();
 
   const isCompared = compareList.some(
     (compare) => compare.testId === test.testId,

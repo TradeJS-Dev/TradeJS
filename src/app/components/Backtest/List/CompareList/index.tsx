@@ -1,19 +1,10 @@
 import { For, Tag, HStack } from '@chakra-ui/react';
 import _ from 'lodash';
-import {
-  TestCompareList,
-  OnChangeCompare,
-} from '@/src/app/components/Backtest/TestCard';
+import { useTestsCompare } from '@store';
 
-interface CompareListProps {
-  compareList: TestCompareList;
-  onChangeCompare: OnChangeCompare;
-}
+export const CompareList = () => {
+  const { compareList, onChangeCompare } = useTestsCompare();
 
-export const CompareList = ({
-  compareList,
-  onChangeCompare,
-}: CompareListProps) => {
   if (_.isEmpty(compareList)) {
     return null;
   }

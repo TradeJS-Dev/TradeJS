@@ -65,7 +65,7 @@ export const KlineChart = ({ id, filters, indicators }: KlineChartProps) => {
     if (!data || !chartRef.current) return;
 
     chartRef.current.applyNewData(data);
-  }, [data]);
+  }, [loading]);
 
   return (
     <>

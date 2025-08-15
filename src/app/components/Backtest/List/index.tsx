@@ -1,16 +1,12 @@
 'use client';
 
-import { useState, useCallback, useRef } from 'react';
+import { useCallback } from 'react';
 import AutoSizer from 'react-virtualized-auto-sizer';
 import { FixedSizeList, ListChildComponentProps } from 'react-window';
 import { Box } from '@chakra-ui/react';
-import {
-  TestCard,
-  TestCompareList,
-  OnChangeCompare,
-} from '@/src/app/components/Backtest/TestCard';
+import { TestCard } from '@/src/app/components/Backtest/TestCard';
 import { CompareList } from './CompareList';
-import { Items, TestResult } from '@types';
+import { Items } from '@types';
 
 interface ListProps {
   files: Items;
@@ -19,34 +15,7 @@ interface ListProps {
 
 const ITEM_HEIGHT = 648;
 
-const colors = [
-  'purple',
-  'pink',
-  'red',
-  'cyan',
-  'orange',
-  'yellow',
-  'blue',
-  'green',
-];
-
 export const List = ({ files, overscan = 2 }: ListProps) => {
-  const [compareList, setCompareList] = useState<TestCompareList>([]);
-
-  const onChangeCompare: OnChangeCompare = (testId, orderLog) => {
-    setCompareList((state) => {
-      if (orderLog) {
-        const newState = [
-          ...state,
-          { testId, orderLog, color: colors[state.length] },
-        ];
-        if (newState.length > colors.length) newState.shift();
-        return newState;
-      }
-      return state.filter((t) => t.testId !== testId);
-    });
-  };
-
   const itemKey = useCallback(
     (index: number) => files[index]?.value ?? String(index),
     [files],
@@ -57,12 +26,7 @@ export const List = ({ files, overscan = 2 }: ListProps) => {
       const item = files[index];
       return (
         <Box style={style} px={2}>
-          <TestCard.Root
-            key={item.value}
-            id={item.value}
-            compareList={compareList}
-            onChangeCompare={onChangeCompare}
-          >
+          <TestCard.Root key={item.value} id={item.value}>
             <TestCard.Title />
             <TestCard.Chart />
             <TestCard.Stat />
@@ -70,15 +34,12 @@ export const List = ({ files, overscan = 2 }: ListProps) => {
         </Box>
       );
     },
-    [files, compareList],
+    [files],
   );
 
   return (
     <>
-      <CompareList
-        compareList={compareList}
-        onChangeCompare={onChangeCompare}
-      />
+      <CompareList />
       <AutoSizer>
         {({ height: h, width }) => (
           <FixedSizeList

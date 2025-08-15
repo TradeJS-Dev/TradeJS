@@ -1,46 +1,22 @@
 'use client';
 
-import { PropsWithChildren, useEffect, useState } from 'react';
-import _, { isNull } from 'lodash';
+import { PropsWithChildren } from 'react';
+import _ from 'lodash';
 import { Box, SkeletonText, Skeleton, Stack } from '@chakra-ui/react';
 import { TestResultContext } from '../context';
-import { getBacktest } from '@src/actions/backtest';
-import { TestResult } from '@types';
-import { TestCompareList, OnChangeCompare } from '../types';
+import { useTest } from '@store';
 
 interface TestRootProps {
   id: string;
-  compareList: TestCompareList;
-  onChangeCompare: OnChangeCompare;
 }
 
 export const TestCardRoot = ({
   id,
   children,
-  compareList,
-  onChangeCompare,
 }: PropsWithChildren<TestRootProps>) => {
-  const [result, setResult] = useState<TestResult | null>(null);
+  const testResult = useTest(id);
 
-  const loadData = async () => {
-    if (!_.isEmpty(result)) {
-      return;
-    }
-
-    const testResult = await getBacktest(id);
-
-    if (!testResult) {
-      return;
-    }
-
-    setResult(testResult);
-  };
-
-  useEffect(() => {
-    loadData();
-  }, [id]);
-
-  if (_.isEmpty(result)) {
+  if (_.isEmpty(testResult)) {
     return (
       <Box
         p={2}
@@ -63,9 +39,7 @@ export const TestCardRoot = ({
   }
 
   return (
-    <TestResultContext.Provider
-      value={{ id, testResult: result, compareList, onChangeCompare }}
-    >
+    <TestResultContext.Provider value={{ id, testResult: testResult }}>
       <Box
         p={2}
         mb={4}

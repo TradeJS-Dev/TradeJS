@@ -1,3 +1,4 @@
+import { Tokens } from '@chakra-ui/react';
 import { Metrics, MetricThreshold } from './metrics';
 import {
   Candle,
@@ -85,3 +86,17 @@ export interface TestConnector extends Connector {
 }
 
 export type TestConnectorCreator = (connector: Connector) => TestConnector;
+
+export type ChartColor = Tokens['colors'] | React.CSSProperties['color'];
+export interface TestCompare {
+  testId: string;
+  orderLog: SimpleOrderLogData;
+  color: ChartColor;
+}
+
+export type TestCompareList = TestCompare[];
+
+export type OnChangeCompare = (
+  testId: string,
+  orderLog: SimpleOrderLogData | null,
+) => void;

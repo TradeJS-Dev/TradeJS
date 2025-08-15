@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import _ from 'lodash';
 import { registerIndicator, Chart } from 'klinecharts';
 import { getOrderLog } from '@src/actions/backtest';
@@ -22,14 +22,18 @@ interface Legend {
 
 export const useBacktest = (chart: Chart | null, id: string | undefined) => {
   const [registered, setRegistered] = useState(false);
-  const [backtestData, setBacktestData] = useState<OrderLogData>([]);
+  const backtestDataRef = useRef<OrderLogData>([]);
+  const [signal, setSignal] = useState(0);
   const enabled = Boolean(id);
 
   useEffect(() => {
     if (!id) {
       return;
     }
-    getOrderLog(id).then((res) => setBacktestData(res!));
+    getOrderLog(id).then((res) => {
+      backtestDataRef.current = res!;
+      setSignal((signal) => signal + 1);
+    });
   }, [id]);
 
   const getDataFromInterval = (
@@ -44,7 +48,7 @@ export const useBacktest = (chart: Chart | null, id: string | undefined) => {
       return;
     }
 
-    const data = backtestData.filter(
+    const data = backtestDataRef.current.filter(
       (log) => log.timestamp > start && log.timestamp <= end,
     );
 
@@ -52,7 +56,7 @@ export const useBacktest = (chart: Chart | null, id: string | undefined) => {
   };
 
   useEffect(() => {
-    if (!chart || _.isEmpty(backtestData)) {
+    if (!chart || _.isEmpty(backtestDataRef.current)) {
       return;
     }
 
@@ -223,7 +227,7 @@ export const useBacktest = (chart: Chart | null, id: string | undefined) => {
     });
 
     setRegistered(true);
-  }, [chart, backtestData]);
+  }, [chart, signal]);
 
   useEffect(() => {
     if (!chart || !enabled || !registered) {

@@ -3,7 +3,6 @@
 import { useMemo } from 'react';
 import { Box } from '@chakra-ui/react';
 import { Chart, useChart } from '@chakra-ui/charts';
-import { format } from 'date-fns';
 import {
   LineChart,
   CartesianGrid,
@@ -14,72 +13,24 @@ import {
   ReferenceLine,
   ResponsiveContainer,
 } from 'recharts';
-import { useTestResult } from '../context';
-import { SimpleOrderLogData } from '@types';
-import { TestCompareList } from '../types';
+import { useTestsCompare } from '@store';
+import { useTestContext } from '../context';
+import { TestCompareList } from '@types';
+import { mapOrderLogToChartData, getChartData } from './utils';
 import { getFormatted } from '@utils/stat';
 import { getTimeline } from '@utils/timestamp';
-
-const getAmountFromOrderLog = (
-  ind: number,
-  timeline: number[],
-  orderLog: SimpleOrderLogData,
-  fallback: number,
-) => {
-  if (ind < 1) {
-    return fallback;
-  }
-
-  const order = orderLog.findLast(
-    (log) => log[0] <= timeline[ind] && log[0] > timeline[ind - 1],
-  );
-
-  if (!order) {
-    return fallback;
-  }
-
-  return order[1];
-};
-
-const getChartData = (testList: TestCompareList, timeline: number[]) => {
-  const values: Record<string, number> = {};
-
-  const data = timeline.map((timestamp, ind) => {
-    const formattedTimestamp = format(timestamp, 'dd.MM');
-
-    testList.forEach(({ testId, orderLog }) => {
-      values[testId] = getAmountFromOrderLog(
-        ind,
-        timeline,
-        orderLog,
-        values[testId] || 100,
-      );
-    });
-
-    return {
-      ...values,
-      timestamp: formattedTimestamp,
-    };
-  });
-
-  const series = testList.map(({ testId, color }) => ({
-    name: testId,
-    color,
-  }));
-
-  return {
-    data,
-    series,
-  };
-};
 
 export const TestCardChart = () => {
   const {
     testResult: { test, stat, orderLog },
-    compareList,
-  } = useTestResult();
+  } = useTestContext();
+  const { compareList } = useTestsCompare();
 
   const chartData = useMemo(() => {
+    if (!compareList.length) {
+      return mapOrderLogToChartData(test.testId, orderLog);
+    }
+
     const timeline = getTimeline(test.options.start, test.options.end);
 
     const testList: TestCompareList = [

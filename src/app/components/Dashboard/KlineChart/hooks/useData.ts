@@ -1,10 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { KlineChartData, Filters } from '@types';
 import { kline } from '@src/actions/kline';
 
 export const useData = (filters: Filters) => {
   const [loading, setLoading] = useState(false);
-  const [data, setData] = useState<KlineChartData>();
+  const dataRef = useRef<KlineChartData | null>(null);
 
   const updateData = async ({ symbol, interval, start, end }: Filters) => {
     setLoading(true);
@@ -15,7 +15,7 @@ export const useData = (filters: Filters) => {
       end,
     });
 
-    setData(newData);
+    dataRef.current = newData;
     setLoading(false);
   };
 
@@ -24,7 +24,7 @@ export const useData = (filters: Filters) => {
   }, [filters]);
 
   return {
-    data,
+    data: dataRef.current,
     loading,
   };
 };
