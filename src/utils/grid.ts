@@ -1,6 +1,8 @@
-import { format } from 'date-fns';
-import { uuid } from '@utils/uuid';
 import _ from 'lodash';
+import { BACKTEST_DAYS } from '@constants';
+import { TestSuite, BacktestConfig } from '@types';
+import { getTimestamp } from '@utils/timestamp';
+import { uuid } from '@utils/uuid';
 
 type GenericConfig = Record<string, any>;
 
@@ -65,4 +67,30 @@ export const mergeConfigs = (
   }
 
   return result;
+};
+
+export const createTestSuite = (
+  tickers: string[],
+  backtestConfig: BacktestConfig,
+): TestSuite => {
+  const start = getTimestamp(BACKTEST_DAYS);
+  const end = getTimestamp();
+  const testSuiteId = uuid(6);
+  const paramGrid = generateParamGrid(backtestConfig.strategyConfig);
+
+  return tickers.flatMap((symbol) =>
+    paramGrid.map((params) => {
+      const testId = uuid(6);
+      return {
+        name: `${symbol}_${testSuiteId}_${testId}`,
+        testId,
+        testSuiteId,
+        symbol,
+        options: { start, end },
+        strategyName: backtestConfig.strategyName,
+        strategyConfig: params,
+        connectorName: backtestConfig.connectorName,
+      };
+    }),
+  );
 };

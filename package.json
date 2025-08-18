@@ -3,11 +3,11 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "backtest": "NODE_OPTIONS=\"--max-old-space-size=8192\" time yarn ts-node ./src/scripts/backtest",
+    "backtest": "yarn clean-cache && NODE_OPTIONS=\"--max-old-space-size=8192\" time yarn ts-node ./src/scripts/backtest",
     "bot": "time yarn ts-node ./src/scripts/bot",
     "build": "next build",
-    "clean-cache": "rimraf ./data/cache/*.json",
-    "clean-tests": "rimraf ./data/tests/*.json",
+    "clean-cache": "time yarn ts-node ./src/scripts/clean --dir cache",
+    "clean-tests": "time yarn ts-node ./src/scripts/clean --dir tests",
     "dev": "next dev",
     "dev-tsc": "npx tsc --noEmit",
     "docker-build": "docker compose build",
@@ -18,7 +18,7 @@
     "start": "next start -H 0.0.0.0",
     "test": "time yarn ts-node ./src/scripts/test",
     "unit": "jest",
-    "update-history": "time yarn ts-node ./src/scripts/update"
+    "update-history": "yarn backtest --updateOnly"
   },
   "dependencies": {
     "@chakra-ui/charts": "^3.24.0",

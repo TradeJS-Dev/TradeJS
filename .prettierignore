@@ -1,2 +1,4 @@
-data/*
+data/cache
+data/history
+data/tests
 backtest/*

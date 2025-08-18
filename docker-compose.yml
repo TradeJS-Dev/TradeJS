@@ -15,7 +15,6 @@ services:
     volumes:
       - ./data:/app/data
       - ./backtest.config.ts:/app/backtest.config.ts
-      - ./bot.config.ts:/app/bot.config.ts
     networks:
       - web
     logging:

@@ -31,7 +31,11 @@ export const ByBitConnectorCreator: ConnectorCreator = (config) => {
     silent,
   }: KlineRequest) => {
     try {
-      const client = getClient(config);
+      const client = await getClient(config);
+
+      if (!client) {
+        return [];
+      }
 
       const kline = await client.getKline({
         category: 'linear',
@@ -203,7 +207,11 @@ export const ByBitConnectorCreator: ConnectorCreator = (config) => {
       });
     },
     getPosition: async (symbol) => {
-      const client = getClient(config);
+      const client = await getClient(config);
+
+      if (!client) {
+        return null;
+      }
 
       const positionRes = await client.getPositionInfo({
         symbol,
@@ -241,7 +249,11 @@ export const ByBitConnectorCreator: ConnectorCreator = (config) => {
       };
     },
     placeOrder: async ({ symbol, price, qty, direction }, TP = [], sl) => {
-      const client = getClient(config);
+      const client = await getClient(config);
+
+      if (!client) {
+        return false;
+      }
 
       const isLong = direction === 'LONG';
 
@@ -311,7 +323,11 @@ export const ByBitConnectorCreator: ConnectorCreator = (config) => {
       return true;
     },
     closePosition: async ({ symbol, direction }) => {
-      const client = getClient(config);
+      const client = await getClient(config);
+
+      if (!client) {
+        return false;
+      }
 
       const closeRes = await client.submitOrder({
         category: 'linear',
@@ -337,7 +353,11 @@ export const ByBitConnectorCreator: ConnectorCreator = (config) => {
       return true;
     },
     getTickers: async () => {
-      const client = getClient(config);
+      const client = await getClient(config);
+
+      if (!client) {
+        return [];
+      }
 
       const data = await client.getTickers({
         category: 'linear',

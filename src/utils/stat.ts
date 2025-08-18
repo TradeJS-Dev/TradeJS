@@ -8,7 +8,11 @@ import {
   TestThresholdsKey,
   TestWorkerResult,
 } from '@types';
-import { TestThresholdsConfig, levelScore } from '@constants';
+import {
+  TestThresholdsConfig,
+  levelScore,
+  TESTS_ORDERS_MIN_LIMIT,
+} from '@constants';
 
 export const buildPositionLogFromOrderLog = (
   orderLogData: OrderLogData,
@@ -167,8 +171,12 @@ export const classifyMetric = (
 };
 
 export const getBacktestScore = (stat: Partial<TestStat>): number => {
-  if (stat.score) {
+  if (stat.score !== undefined) {
     return stat.score;
+  }
+
+  if (stat.orders && stat.orders < TESTS_ORDERS_MIN_LIMIT) {
+    return 0;
   }
 
   let totalWeightedScore = 0;

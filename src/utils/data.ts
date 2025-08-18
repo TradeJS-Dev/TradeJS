@@ -1,9 +1,7 @@
 import fs from 'fs/promises';
 import path from 'path';
-import chalk from 'chalk';
 import { logger } from '@utils/logger';
 import { toJson } from '@/src/utils/toJson';
-import { stringify } from 'querystring';
 
 interface Options {
   useCache?: boolean;
@@ -19,6 +17,12 @@ const hash: { [key: string]: any } = {};
 
 const getPath = (dir: string, file: string) =>
   path.join(process.cwd(), dir, `${file}.json`);
+
+const getDir = (dir: string) => path.join(process.cwd(), dir);
+
+export const getFiles = async (dir: string) => {
+  return await fs.readdir(getDir(dir));
+}
 
 export const getData = async (
   dir: string,
@@ -39,7 +43,6 @@ export const getData = async (
   try {
     await fs.access(fullPath);
   } catch {
-    logger.log('warn', chalk.gray(`${fullPath} not found`));
     return fallback;
   }
 

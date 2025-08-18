@@ -1,23 +1,14 @@
 'use server';
 
-import {
-  OrderLogData,
-  TestStat,
-  TestResult,
-  Item,
-  Test,
-  SimpleOrderLogData,
-} from '@types';
-import { getData } from '@utils/data';
+import { OrderLogData, TestStat, TestResult, Item, Test } from '@types';
+import { getFiles, getData } from '@utils/data';
 import { getTimeline, compactOrderLog } from '@utils/timestamp';
-import fs from 'fs';
-const path = require('path');
 
 interface GetBacktestFilesProps {
   symbol?: string;
 }
 
-const dataDir = path.join(process.cwd(), 'data', 'tests');
+const DIR = 'data/tests';
 
 const splitName = (name: string) => {
   const [symbol, testSuiteId, testId] = name.split('_');
@@ -26,7 +17,7 @@ const splitName = (name: string) => {
 
 export const getBacktestFiles = async (filters: GetBacktestFilesProps) => {
   const result = new Array<Item>();
-  const files = fs.readdirSync(dataDir);
+  const files = await getFiles(DIR);
   const orderFiles = files.filter((file) => file.endsWith('.orders.json'));
 
   for await (const file of orderFiles) {
@@ -66,7 +57,7 @@ export const getOrderLog = async (
     return null;
   }
 
-  const orderLog = (await getData('data/tests', `${name}.orders`, {
+  const orderLog = (await getData(DIR, `${name}.orders`, {
     useCache: false,
   })) as OrderLogData;
 
@@ -80,13 +71,13 @@ export const getBacktest = async (
     return null;
   }
 
-  const orderLog: OrderLogData = await getData('data/tests', `${name}.orders`, {
+  const orderLog: OrderLogData = await getData(DIR, `${name}.orders`, {
     useCache: false,
   });
-  const test: Test = await getData('data/tests', `${name}.config`, {
+  const test: Test = await getData(DIR, `${name}.config`, {
     useCache: false,
   });
-  const stat: TestStat = await getData('data/tests', `${name}.stat`, {
+  const stat: TestStat = await getData(DIR, `${name}.stat`, {
     useCache: false,
   });
 

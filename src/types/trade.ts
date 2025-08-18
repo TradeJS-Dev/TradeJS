@@ -66,8 +66,7 @@ export type OrderType =
 export type ConnectorCreator = (config: ConnectorConfig) => Connector;
 
 export interface ConnectorConfig {
-  key: string;
-  secret: string;
+  userName: string;
 }
 
 type GetPosition = (symbol: string) => Promise<Position | null>;

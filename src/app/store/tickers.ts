@@ -27,7 +27,7 @@ const useStore = create<TickersState>((set) => ({
   base,
   favorites,
   scanner: [] as Items,
-  setTickers: (coins) => set(() => ({ scanner: coins })),
+  setTickers: (coins) => set(() => ({ scanner: _.sortBy(coins, 'label') })),
 }));
 
 export const useTickers = () => {

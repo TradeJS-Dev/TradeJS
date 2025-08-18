@@ -3,15 +3,20 @@
 import 'dotenv/config';
 import { RestClientV5 } from 'bybit-api';
 import { ConnectorConfig } from '@types';
+import { getData } from '@utils/data';
 
-const API_KEY = process.env.BYBIT_API_KEY;
-const API_SECRET = process.env.BYBIT_API_SECRET;
 const useTestnet = false;
 
-export const getClient = (config: ConnectorConfig) => {
+export const getClient = async ({ userName }: ConnectorConfig) => {
+  const user = await getData('data/users', userName, { useCache: false });
+
+  if (!user) {
+    return null;
+  }
+  
   const client = new RestClientV5({
-    key: API_KEY,
-    secret: API_SECRET,
+    key: user.API_KEY,
+    secret: user.API_SECRET,
     testnet: useTestnet,
   });
 

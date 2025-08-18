@@ -1,16 +1,23 @@
 const ListIt = require('list-it');
+import args from 'args';
 import ProgressBar from 'progress';
 import { fork } from 'child_process';
 import path from 'path';
 import os from 'os';
 import chalk from 'chalk';
 import _ from 'lodash';
-import createTestSuite from '@/backtest.config';
+import { backtestConfig } from '@/backtest.config';
+import { TESTS_TOP_LIMIT, TESTS_LIMIT, TICKERS_LIMIT } from '@constants';
+import { connectors } from '@src/connectors';
+import { PRELOAD_DAYS } from '@constants';
 import { mergeConfigs } from '@utils/grid';
 import { rankBacktests, getFormatted } from '@utils/stat';
 import { setData, getData } from '@/src/utils/data';
 import { toJson } from '@/src/utils/toJson';
 import { uuid } from '@utils/uuid';
+import { createTestSuite } from '@utils/grid';
+import { getTimestamp } from '@utils/timestamp';
+import { getTopTickers } from '@utils/tickers';
 import {
   TestWorkerResult,
   ThresholdLevel,
@@ -18,8 +25,26 @@ import {
   TestThresholdsKey,
 } from '@types';
 
-const TOP_LIMIT = 40;
+const PRELOAD_START = getTimestamp(PRELOAD_DAYS);
+const PRELOAS_END = getTimestamp();
 const MAX_PARALLEL = Math.min(os.cpus().length, 4);
+
+args.example(
+  ' yarn backtest -t 400 --cacheOnly',
+  'Run tests on uploaded data for 400 tickers',
+);
+
+args.option(['s', 'symbol'], 'Selected symbols');
+args.option(['e', 'exclude'], 'Exclude tickers from tests');
+args.option(['t', 'tickers'], 'Tickers limit', TICKERS_LIMIT);
+args.option(['n', 'tests'], 'Tests limit', TESTS_LIMIT);
+args.option(['p', 'parallel'], 'Parallel tasks', MAX_PARALLEL);
+args.option(['T', 'top'], 'Return N best tests', TESTS_TOP_LIMIT);
+args.option(['u', 'updateOnly'], 'Only update tickers history', false);
+args.option(['c', 'cacheOnly'], 'Do not update tickers history', false);
+args.option(['S', 'showTickersList'], 'Just show only ticker list', false);
+
+const flags = args.parse(process.argv);
 
 const HEADERS = [
   chalk.blue('ID'),
@@ -42,6 +67,53 @@ let bestResults = {
   sharpeRatio: 0,
 };
 
+let successTests = 0;
+let errorTests = 0;
+
+const byBitConnector = connectors.ByBit({
+  userName: 'root',
+});
+
+const update = async (tickers: string[]) => {
+  const bar = new ProgressBar(':current/:total [:bar][:percent] :eta(s)', {
+    total: tickers.length,
+    width: 100,
+  });
+
+  let completed = 0;
+
+  console.log(chalk.yellow('update tickers'));
+
+  for await (const symbol of tickers) {
+    await byBitConnector.kline({
+      symbol,
+      start: PRELOAD_START,
+      end: PRELOAS_END,
+      interval: '15',
+      silent: true,
+    });
+
+    completed++;
+
+    bar.tick(1);
+  }
+};
+
+const scanner = async (skip = false) => {
+  if (skip) {
+    return [];
+  }
+
+  const data = await byBitConnector.getTickers();
+
+  const tickers = getTopTickers(data, flags.tickers || TICKERS_LIMIT);
+  return tickers.map(({ value }) => value);
+};
+
+const parseSymbolsFromCLI = (symbol = '') => {
+  return symbol.split(',').map((s) => (s.endsWith('USDT') ? s : `${s}USDT`));
+};
+
 const getCLILevelColor = (level: ThresholdLevel) => {
   switch (level) {
     case 'success':
@@ -53,10 +125,7 @@ const getCLILevelColor = (level: ThresholdLevel) => {
   }
 };
 
-export const drawInCLI = (
-  stat: TestStat,
-  keys: TestThresholdsKey[],
-): string[] => {
+const drawInCLI = (stat: TestStat, keys: TestThresholdsKey[]): string[] => {
   return keys.map((key) => {
     const { formatted, level } = getFormatted(stat, key);
 
@@ -67,8 +136,31 @@ export const drawInCLI = (
 };
 
 const backtest = async () => {
-  let testSuite = await createTestSuite();
-  const chunkSize = Math.ceil(testSuite.length / MAX_PARALLEL);
+  const volatilityTickers = await scanner(!!flags.symbol);
+  const tickers = (
+    flags.symbol ? parseSymbolsFromCLI(flags.symbol) : volatilityTickers
+  ).filter((t) => !parseSymbolsFromCLI(flags.exclude).includes(t));
+
+  if (flags.tickersList) {
+    console.log(chalk.gray(JSON.stringify(tickers.sort(), null, 2)));
+
+    return;
+  }
+
+  if (!flags.cacheOnly) {
+    await update(tickers);
+  }
+
+  if (flags.updateOnly) {
+    return;
+  }
+
+  let testSuite = createTestSuite(tickers, backtestConfig).slice(
+    0,
+    parseInt(flags.tests),
+  );
+
+  const chunkSize = Math.ceil(testSuite.length / parseInt(flags.parallel));
   const chunks = _.chunk(testSuite, chunkSize);
   let results: TestWorkerResult[] = [];
   let completedWorkers = 0;
@@ -94,23 +186,30 @@ const backtest = async () => {
     );
 
     tester.on('message', async (msg: any) => {
+      completedTests++;
+
       if (msg.done) {
         completedWorkers++;
+
         if (completedWorkers === chunks.length) {
-          results = rankBacktests(results, TOP_LIMIT);
+          results = rankBacktests(results, flags.top);
           await finish(results);
         }
+
         return;
       }
 
       if (msg.error) {
+        errorTests++;
+
         console.error(
           chalk.red(`Error in test #${msg.id}: ${JSON.stringify(msg)}`),
         );
-        return;
-      }
 
-      completedTests++;
+        return;
+      } else {
+        successTests++;
+      }
 
       results.push(msg as TestWorkerResult);
 
@@ -132,7 +231,7 @@ const backtest = async () => {
       );
 
       if (completedTests % 100 === 0 || completedTests === testSuite.length) {
-        results = rankBacktests(results, TOP_LIMIT);
+        results = rankBacktests(results, flags.top);
 
         const {
           test: { symbol, name },
@@ -232,7 +331,7 @@ const finish = async (results: TestWorkerResult[]) => {
   console.log(listit.setHeaderRow(HEADERS).d(colorizedResults).toString());
   console.log('');
 
-  const bestConfig = results[0].test.strategyConfig;
+  const bestConfig = results[0]?.test.strategyConfig;
   console.log(chalk.gray('best config:'));
   console.log(chalk.green(toJson(bestConfig, true)));
   console.log('');
@@ -249,7 +348,7 @@ const finish = async (results: TestWorkerResult[]) => {
     chalk.yellow(
       toJson(
         {
-          amount: `${bestResults.netProfit.toFixed(2)}$`,
+          profit: `${bestResults.netProfit.toFixed(2)}$`,
           ws: `${bestResults.winRate.toFixed(0)}%`,
           minAmount: `${bestResults.minAmount.toFixed(2)}$`,
           sharpeRatio: `${bestResults.sharpeRatio.toFixed(2)}`,
@@ -258,6 +357,9 @@ const finish = async (results: TestWorkerResult[]) => {
       ),
     ),
   );
+  console.log('');
+  console.log(`${chalk.green('success')}: ${successTests}`);
+  console.log(`${chalk.red('errors')}: ${errorTests}`);
   console.log('');
 
   process.exit();

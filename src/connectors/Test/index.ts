@@ -49,6 +49,10 @@ export const TestConnectorCreator: TCC = (connector) => {
     kline,
 
     getResult: async () => {
+      if (ORDER_LOG.length < 1) {
+        return null;
+      }
+
       const positionLog = buildPositionLogFromOrderLog(ORDER_LOG);
       const stat = calculateStatsFull(positionLog);
 

@@ -24,15 +24,18 @@ export type StrategyCreator = (
 
 export type TestingOptions = Pick<KlineRequest, 'start' | 'end'>;
 
-export interface Test {
+export interface BacktestConfig {
+  strategyName: string;
+  strategyConfig: StrategyConfig;
+  connectorName: string;
+}
+
+export interface Test extends BacktestConfig {
   name: string;
   testId: string;
   testSuiteId: string;
   symbol: string;
   options: TestingOptions;
-  strategyName: string;
-  strategyConfig: StrategyConfig;
-  connectorName: string;
 }
 
 export type TestSuite = Test[];

@@ -2,8 +2,7 @@ import 'dotenv/config';
 import { connectors } from '@src/connectors';
 
 const byBitConnector = connectors.ByBit({
-  key: '',
-  secret: '',
+  userName: 'root',
 });
 
 const SYMBOL = 'SUIUSDT';

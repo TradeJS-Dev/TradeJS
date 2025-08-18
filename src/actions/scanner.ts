@@ -5,11 +5,10 @@ import { getTopTickers } from '@utils/tickers';
 
 export const scan = async () => {
   const byBitConnector = connectors.ByBit({
-    key: '',
-    secret: '',
+    userName: 'root',
   });
 
   const data = await byBitConnector.getTickers();
 
-  return await getTopTickers(data);
+  return getTopTickers(data);
 };

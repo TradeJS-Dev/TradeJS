@@ -20,8 +20,7 @@ export const testing: TestingBox = async ({
   const connector = (
     connectors[connectorName as ConnectorNames] as ConnectorCreator
   )({
-    key: '',
-    secret: '',
+    userName: 'root',
   });
   const strategyCreator = strategies[strategyName as StrategyNames];
 
@@ -48,5 +47,5 @@ export const testing: TestingBox = async ({
     testConnector.checkTp(candle);
   }
 
-  return testConnector.getResult();
+  return await testConnector.getResult();
 };

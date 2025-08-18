@@ -37,8 +37,7 @@ export const sendMessage = async ({
   await saveMessagesToHistory(filters.symbol, [message]);
 
   const byBitConnector = connectors.ByBit({
-    key: '',
-    secret: '',
+    userName: 'root',
   });
 
   const data = await byBitConnector.kline({

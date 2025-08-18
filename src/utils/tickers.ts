@@ -73,7 +73,7 @@ export const getVolatilityTickers = (data: Ticker[]): Item[] => {
     }));
 };
 
-export const getTopTickers = (data: Ticker[], topN = 100): Item[] => {
+export const getTopTickers = (data: Ticker[], topN = 50): Item[] => {
   const scores = data.map((coin) => {
     const vol24h = Math.abs(coin.price24hPcnt);
     const prev1h = coin.prevPrice1h;
@@ -98,8 +98,9 @@ export const getTopTickers = (data: Ticker[], topN = 100): Item[] => {
   });
 
   const top = scores
+    .sort((a, b) => a.score - b.score)
+    .slice(-topN)
     .sort((a, b) => b.score - a.score)
-    .slice(0, topN)
     .map((item, i) => ({
       label: item.symbol.replace(/(USDT)$/i, ''),
       value: item.symbol,

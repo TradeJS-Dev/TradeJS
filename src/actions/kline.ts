@@ -5,8 +5,7 @@ import { Kline } from '@types';
 
 export const kline: Kline = async (options) => {
   const byBitConnector = connectors.ByBit({
-    key: '',
-    secret: '',
+    userName: 'root',
   });
 
   return await byBitConnector.kline(options);
