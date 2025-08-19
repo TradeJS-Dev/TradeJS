@@ -6,7 +6,6 @@ import path from 'path';
 import os from 'os';
 import chalk from 'chalk';
 import _ from 'lodash';
-import { backtestConfig } from '@/backtest.config';
 import { TESTS_TOP_LIMIT, TESTS_LIMIT, TICKERS_LIMIT } from '@constants';
 import { connectors } from '@src/connectors';
 import { PRELOAD_DAYS } from '@constants';
@@ -43,6 +42,7 @@ args.option(['T', 'top'], 'Return N best tests', TESTS_TOP_LIMIT);
 args.option(['u', 'updateOnly'], 'Only update tickers history', false);
 args.option(['c', 'cacheOnly'], 'Do not update tickers history', false);
 args.option(['S', 'showTickersList'], 'Just show only ticker list', false);
+args.option(['U', 'user'], 'Use user confg', 'root');
 
 const flags = args.parse(process.argv);
 
@@ -71,7 +71,7 @@ let successTests = 0;
 let errorTests = 0;
 
 const byBitConnector = connectors.ByBit({
-  userName: 'root',
+  userName: flags.user,
 });
 
 const update = async (tickers: string[]) => {
@@ -136,6 +136,8 @@ const drawInCLI = (stat: TestStat, keys: TestThresholdsKey[]): string[] => {
 };
 
 const backtest = async () => {
+  const backtestConfig = await getData('data/backtest', flags.user);
+
   const volatilityTickers = await scanner(!!flags.symbol);
   const tickers = (
     flags.symbol ? parseSymbolsFromCLI(flags.symbol) : volatilityTickers
@@ -155,7 +157,7 @@ const backtest = async () => {
     return;
   }
 
-  let testSuite = createTestSuite(tickers, backtestConfig).slice(
+  let testSuite = createTestSuite(flags.user, tickers, backtestConfig).slice(
     0,
     parseInt(flags.tests),
   );
@@ -165,7 +167,8 @@ const backtest = async () => {
   let results: TestWorkerResult[] = [];
   let completedWorkers = 0;
   let completedTests = 0;
-  console.log(testSuite.length);
+
+  console.log(chalk.yellow(`tests: ${testSuite.length}`));
 
   console.log('');
   const bar = new ProgressBar(

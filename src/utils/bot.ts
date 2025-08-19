@@ -18,6 +18,12 @@ export const runBot = async () => {
   for await (const userName of bots) {
     const botConfig = (await getData('data/bots', userName)) as BotConfig;
 
+    if (!botConfig) {
+      logger.log('error', 'botConfig not found: %s', userName);
+
+      continue;
+    }
+
     for await (const bot of botConfig) {
       const { symbol, strategyName, strategyConfig, connectorName, disabled } =
         bot;

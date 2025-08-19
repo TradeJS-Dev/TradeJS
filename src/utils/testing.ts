@@ -7,6 +7,7 @@ import { getTimestamp } from '@utils/timestamp';
 const preloadStart = getTimestamp(PRELOAD_DAYS);
 
 export const testing: TestingBox = async ({
+  userName,
   symbol,
   options: { start, end },
   strategyName,
@@ -20,7 +21,7 @@ export const testing: TestingBox = async ({
   const connector = (
     connectors[connectorName as ConnectorNames] as ConnectorCreator
   )({
-    userName: 'root',
+    userName,
   });
   const strategyCreator = strategies[strategyName as StrategyNames];
 

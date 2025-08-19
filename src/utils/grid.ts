@@ -70,6 +70,7 @@ export const mergeConfigs = (
 };
 
 export const createTestSuite = (
+  userName: string,
   tickers: string[],
   backtestConfig: BacktestConfig,
 ): TestSuite => {
@@ -82,6 +83,7 @@ export const createTestSuite = (
     paramGrid.map((params) => {
       const testId = uuid(6);
       return {
+        userName,
         name: `${symbol}_${testSuiteId}_${testId}`,
         testId,
         testSuiteId,

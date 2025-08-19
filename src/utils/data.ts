@@ -22,7 +22,7 @@ const getDir = (dir: string) => path.join(process.cwd(), dir);
 
 export const getFiles = async (dir: string) => {
   return await fs.readdir(getDir(dir));
-}
+};
 
 export const getData = async (
   dir: string,

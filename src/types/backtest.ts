@@ -31,6 +31,7 @@ export interface BacktestConfig {
 }
 
 export interface Test extends BacktestConfig {
+  userName: string;
   name: string;
   testId: string;
   testSuiteId: string;
