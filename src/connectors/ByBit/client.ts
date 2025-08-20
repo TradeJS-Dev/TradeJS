@@ -18,8 +18,8 @@ export const getClient = async ({ userName }: ConnectorConfig) => {
   }
 
   const client = new RestClientV5({
-    key: user.API_KEY,
-    secret: user.API_SECRET,
+    key: user.BYBIT_API_KEY,
+    secret: user.BYBIT_API_SECRET,
     testnet: useTestnet,
   });
 

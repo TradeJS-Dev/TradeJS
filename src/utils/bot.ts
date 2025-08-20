@@ -58,9 +58,13 @@ export const runBot = async () => {
           interval: '15',
         });
 
+        logger.log('info', 'data downloaded: %s', data.length);
+
         const candle = data.pop();
 
         const strategy = strategyCreator(strategyConfig, data);
+
+        logger.log('info', 'strategy created');
 
         const status = await strategy(symbol, candle!, connector);
 
@@ -69,7 +73,7 @@ export const runBot = async () => {
           status,
         });
       } catch (err) {
-        logger.log('error', 'bot %s error:', bot.symbol, toJson(err, false));
+        logger.log('error', 'bot %s error: %s', bot.symbol, toJson(err, false));
       }
     }
   }

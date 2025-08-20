@@ -53,6 +53,7 @@ export const BreakoutStrategyCreator: StrategyCreator = (baseConfig, data) => {
     const { timestamp } = candle;
 
     const position = await connector.getPosition(symbol);
+
     const positionExists = !_.isEmpty(position) && position.qty >= 0;
 
     const smaFast = smaFastInstance.nextValue(price);

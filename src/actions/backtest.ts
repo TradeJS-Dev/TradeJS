@@ -47,7 +47,9 @@ export const getBacktestFiles = async (filters: GetBacktestFilesProps) => {
     });
   }
 
-  result.sort((a, b) => (b.data?.netProfit as number) - (a.data?.netProfit as number));
+  result.sort(
+    (a, b) => (b.data?.netProfit as number) - (a.data?.netProfit as number),
+  );
 
   return result;
 };
