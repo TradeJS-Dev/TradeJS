@@ -1,3 +1,4 @@
+import _ from 'lodash';
 import { BOT_PRELOAS_DAYS } from '@constants';
 import { strategies, StrategyNames } from '@src/strategy';
 import { connectors, ConnectorNames } from '@src/connectors';
@@ -11,17 +12,19 @@ export const runBot = async () => {
   const botResults = [];
   const preloadStart = getTimestamp(BOT_PRELOAS_DAYS);
   const end = getTimestamp();
-  const configs = await getFiles('data/bots');
+  const files = await getFiles('data/bots');
 
-  logger.log('info', 'users count: %s', configs.length);
+  logger.log('info', 'files count: %s', files.length);
 
-  for await (const userName of configs) {
+  for await (const file of files) {
+    const userName = file.replace('.json', '');
+
     logger.log('info', 'user: %s', userName);
 
     const botConfig = (await getData('data/bots', userName)) as BotConfig;
 
-    if (!botConfig) {
-      logger.log('error', 'botConfig not found: %s', userName);
+    if (_.isEmpty(botConfig)) {
+      logger.log('error', 'botConfig is empty: %s', userName);
 
       continue;
     }
@@ -36,6 +39,7 @@ export const runBot = async () => {
 
       if (disabled) {
         logger.log('error', 'bot %s disabled', symbol);
+
         continue;
       }
 
