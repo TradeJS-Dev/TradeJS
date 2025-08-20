@@ -35,9 +35,11 @@ export const getBacktestFiles = async (filters: GetBacktestFilesProps) => {
 
     result.push({
       value: name,
-      label: testId,
+      label: `${symbol}_${testId}`,
+      description: `${stat.netProfit}$`,
       data: {
         score: stat.score || 0,
+        netProfit: stat.netProfit || 0,
         symbol,
         testSuiteId,
         testId,
@@ -45,7 +47,7 @@ export const getBacktestFiles = async (filters: GetBacktestFilesProps) => {
     });
   }
 
-  result.sort((a, b) => (b.data?.score as number) - (a.data?.score as number));
+  result.sort((a, b) => (b.data?.netProfit as number) - (a.data?.netProfit as number));
 
   return result;
 };

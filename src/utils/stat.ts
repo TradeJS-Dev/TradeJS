@@ -231,7 +231,7 @@ export const rankBacktests = (
         },
       };
     })
-    .sort((a, b) => (b.stat.score ?? 0) - (a.stat.score ?? 0))
+    .sort((a, b) => (b.stat.netProfit ?? 0) - (a.stat.netProfit ?? 0))
     .slice(0, limit);
 };
 

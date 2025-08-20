@@ -6,7 +6,7 @@ import path from 'path';
 import os from 'os';
 import chalk from 'chalk';
 import _ from 'lodash';
-import { TESTS_TOP_LIMIT, TESTS_LIMIT, TICKERS_LIMIT } from '@constants';
+import { TESTS_TOP_LIMIT, TESTS_LIMIT } from '@constants';
 import { connectors } from '@src/connectors';
 import { PRELOAD_DAYS } from '@constants';
 import { mergeConfigs } from '@utils/grid';
@@ -35,7 +35,7 @@ args.example(
 
 args.option(['s', 'symbol'], 'Selected symbols');
 args.option(['e', 'exclude'], 'Exclude tickers from tests');
-args.option(['t', 'tickers'], 'Tickers limit', TICKERS_LIMIT);
+args.option(['t', 'tickers'], 'Tickers limit');
 args.option(['n', 'tests'], 'Tests limit', TESTS_LIMIT);
 args.option(['p', 'parallel'], 'Parallel tasks', MAX_PARALLEL);
 args.option(['T', 'top'], 'Return N best tests', TESTS_TOP_LIMIT);
@@ -106,7 +106,7 @@ const scanner = async (skip = false) => {
 
   const data = await byBitConnector.getTickers();
 
-  const tickers = getTopTickers(data, flags.tickers || TICKERS_LIMIT);
+  const tickers = getTopTickers(data, flags.tickers);
   return tickers.map(({ value }) => value);
 };
 
@@ -172,7 +172,7 @@ const backtest = async () => {
 
   console.log('');
   const bar = new ProgressBar(
-    ':current/:total [:bar][:percent] :id :symbol :amount :minamount :wins/:losses/:orders :winrate :sharpeRatio :eta(s)',
+    ':current/:total [:bar][:percent] :id :symbol :profit :minamount :wins/:losses/:orders :winrate :sharpeRatio :eta(s)',
     {
       total: testSuite.length,
       width: 40,
@@ -240,7 +240,7 @@ const backtest = async () => {
           test: { symbol, name },
           stat: {
             orders,
-            amount,
+            netProfit,
             minAmount,
             wins,
             losses,
@@ -254,7 +254,7 @@ const backtest = async () => {
           {
             id: chalk.blue(`#${name}`),
             symbol: chalk.yellow(symbol),
-            amount: chalk.green(`${(amount || 0).toFixed(2)}$`),
+            profit: chalk.green(`${(netProfit || 0).toFixed(2)}$`),
             minamount: chalk.red(`${(minAmount || 0).toFixed(2)}$`),
             wins: chalk.green(wins),
             losses: chalk.red(losses),

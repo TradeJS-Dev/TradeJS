@@ -6,7 +6,6 @@ export const PRELOAD_DAYS = 210;
 export const BOT_PRELOAS_DAYS = 60;
 export const PRELOAD_FALLBACK_DAYS = 180;
 
-export const TICKERS_LIMIT = 50;
 export const TESTS_TOP_LIMIT = 40;
 export const TESTS_LIMIT = 100_000;
 export const TESTS_ORDERS_MIN_LIMIT = 40;

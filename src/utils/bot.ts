@@ -13,9 +13,11 @@ export const runBot = async () => {
   const end = getTimestamp();
   const bots = await getFiles('data/bots');
 
-  logger.log('info', 'runBots: %s', bots.length);
+  logger.log('info', 'users count: %s', bots.length);
 
   for await (const userName of bots) {
+    logger.log('info', 'user: %s', userName);
+
     const botConfig = (await getData('data/bots', userName)) as BotConfig;
 
     if (!botConfig) {
@@ -29,33 +31,38 @@ export const runBot = async () => {
         bot;
 
       if (disabled) {
+        logger.log('error', 'bot %s disabled', bot.symbol);
         continue;
       }
 
-      const strategyCreator = strategies[strategyName as StrategyNames];
-      const connector = (
-        connectors[connectorName as ConnectorNames] as ConnectorCreator
-      )({
-        userName,
-      });
+      try {
+        const strategyCreator = strategies[strategyName as StrategyNames];
+        const connector = (
+          connectors[connectorName as ConnectorNames] as ConnectorCreator
+        )({
+          userName,
+        });
 
-      const data = await connector.kline({
-        symbol,
-        start: preloadStart,
-        end,
-        interval: '15',
-      });
+        const data = await connector.kline({
+          symbol,
+          start: preloadStart,
+          end,
+          interval: '15',
+        });
 
-      const candle = data.pop();
+        const candle = data.pop();
 
-      const strategy = strategyCreator(strategyConfig, data);
+        const strategy = strategyCreator(strategyConfig, data);
 
-      const status = await strategy(symbol, candle!, connector);
+        const status = await strategy(symbol, candle!, connector);
 
-      botResults.push({
-        symbol,
-        status,
-      });
+        botResults.push({
+          symbol,
+          status,
+        });
+      } catch (err) {
+        logger.log('error', 'bot %s error:', bot.symbol, toJson(err, false));
+      }
     }
   }
 
