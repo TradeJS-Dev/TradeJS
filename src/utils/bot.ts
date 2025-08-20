@@ -11,11 +11,11 @@ export const runBot = async () => {
   const botResults = [];
   const preloadStart = getTimestamp(BOT_PRELOAS_DAYS);
   const end = getTimestamp();
-  const bots = await getFiles('data/bots');
+  const configs = await getFiles('data/bots');
 
-  logger.log('info', 'users count: %s', bots.length);
+  logger.log('info', 'users count: %s', configs.length);
 
-  for await (const userName of bots) {
+  for await (const userName of configs) {
     logger.log('info', 'user: %s', userName);
 
     const botConfig = (await getData('data/bots', userName)) as BotConfig;
@@ -26,12 +26,16 @@ export const runBot = async () => {
       continue;
     }
 
+    logger.log('info', 'bots count: %s', botConfig.length);
+
     for await (const bot of botConfig) {
       const { symbol, strategyName, strategyConfig, connectorName, disabled } =
         bot;
 
+      logger.log('info', 'bot %s', symbol);
+
       if (disabled) {
-        logger.log('error', 'bot %s disabled', bot.symbol);
+        logger.log('error', 'bot %s disabled', symbol);
         continue;
       }
 

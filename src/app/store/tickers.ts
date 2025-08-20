@@ -1,40 +1,66 @@
 import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
 import _ from 'lodash';
 import { useEffect } from 'react';
 import { scan } from '@src/actions/scanner';
 import { Items } from '@types';
 
-const base = [
-  { label: 'BTC', value: 'BTCUSDT' },
-  { label: 'ETH', value: 'ETHUSDT' },
-] as Items;
+const LOCAL_STORAGE_KEY = 'tickers';
 
-const favorites = [
-  { label: 'SOL', value: 'SOLUSDT', description: 'favorites' },
-  { label: 'SUI', value: 'SUIUSDT', description: 'favorites' },
-  { label: 'DOGS', value: 'DOGSUSDT', description: 'favorites' },
-  { label: 'DOGE', value: 'DOGEUSDT', description: 'favorites' },
-] as Items;
-
-interface TickersState {
-  base: Items;
+interface TickersFavoritesState {
   favorites: Items;
+  setFavorite: (ticker: string) => void;
+}
+
+const useFavoritesStore = create<TickersFavoritesState>()(
+  persist(
+    (set) => ({
+      favorites: [
+        { label: 'BTC', value: 'BTCUSDT', description: 'favorites' },
+        { label: 'ETH', value: 'ETHUSDT', description: 'favorites' },
+      ] as Items,
+      setFavorite: (ticker: string) =>
+        set(({ favorites }) => {
+          if (favorites.some((favorite) => favorite.value === ticker)) {
+            return {
+              favorites: favorites.filter(
+                (favorite) => favorite.value !== ticker,
+              ),
+            };
+          }
+          return {
+            favorites: [
+              ...favorites,
+              {
+                label: ticker.replace('USDT', ''),
+                value: ticker,
+                description: 'favorites',
+              },
+            ],
+          };
+        }),
+    }),
+    {
+      name: LOCAL_STORAGE_KEY,
+    },
+  ),
+);
+
+interface TickersScannerState {
   scanner: Items;
   setTickers: (tickers: Items) => void;
 }
 
-const useStore = create<TickersState>((set) => ({
-  base,
-  favorites,
+const useScannerStore = create<TickersScannerState>((set) => ({
   scanner: [] as Items,
   setTickers: (coins) => set(() => ({ scanner: _.sortBy(coins, 'label') })),
 }));
 
 export const useTickers = () => {
-  const base = useStore((s) => s.base);
-  const favorites = useStore((s) => s.favorites);
-  const scanner = useStore((s) => s.scanner);
-  const setTickers = useStore((s) => s.setTickers);
+  const favorites = useFavoritesStore((s) => s.favorites);
+  const scanner = useScannerStore((s) => s.scanner);
+  const setFavorite = useFavoritesStore((s) => s.setFavorite);
+  const setTickers = useScannerStore((s) => s.setTickers);
 
   useEffect(() => {
     if (scanner.length) {
@@ -46,13 +72,12 @@ export const useTickers = () => {
     });
   }, []);
 
-  const tickers = _.uniqBy(
-    [...base, ...favorites, ...scanner],
-    (item) => item.value,
-  );
+  const tickers = _.uniqBy([...favorites, ...scanner], (item) => item.value);
 
   return {
     tickers,
+    favorites: favorites.map(({ value }) => value),
+    setFavorite,
     setTickers,
   };
 };

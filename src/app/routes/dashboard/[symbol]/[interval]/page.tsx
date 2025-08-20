@@ -61,6 +61,7 @@ const Dashboard = () => {
         >
           <Flex mb={2} gap={4} flexDirection="row">
             <Filters.SelectSymbol />
+            <Filters.FavoriteButton />
             <Filters.SelectInterval />
             <Filters.SelectIndicator />
             <AiDrawer />
