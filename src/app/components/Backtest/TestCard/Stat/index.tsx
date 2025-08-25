@@ -41,7 +41,7 @@ export const TestCardStat = () => {
   };
 
   return (
-    <SimpleGrid columns={{ base: 3, md: 9 }} p={4}>
+    <SimpleGrid columns={{ base: 4, md: 8 }} p={4}>
       <StatItem id="netProfit" description="Net Profit" />
       <StatItem id="minAmount" description="Min Amount" />
       <StatItem id="maxDrawdown" description="Drawdown" />
@@ -49,7 +49,6 @@ export const TestCardStat = () => {
       <StatItem id="winRate" description="Win Rate" />
       <StatItem id="riskRewardRatio" description="Risk Ratio" />
       <StatItem id="sharpeRatio" description="Sharpe" />
-      <StatItem id="sortinoRatio" description="Sortino" />
       <StatItem id="exposure" description="Exposure" />
     </SimpleGrid>
   );

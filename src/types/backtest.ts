@@ -93,14 +93,10 @@ export type TestConnectorCreator = (connector: Connector) => TestConnector;
 
 export type ChartColor = Tokens['colors'] | React.CSSProperties['color'];
 export interface TestCompare {
-  testId: string;
-  orderLog: SimpleOrderLogData;
+  testResult: TestResult;
   color: ChartColor;
 }
 
 export type TestCompareList = TestCompare[];
 
-export type OnChangeCompare = (
-  testId: string,
-  orderLog: SimpleOrderLogData | null,
-) => void;
+export type OnChangeCompare = (testId: string) => void;

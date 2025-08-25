@@ -38,11 +38,7 @@ export const getBacktestFiles = async (filters: GetBacktestFilesProps) => {
       label: `${symbol}_${testId}`,
       description: `${stat.netProfit}$`,
       data: {
-        score: stat.score || 0,
         netProfit: stat.netProfit || 0,
-        symbol,
-        testSuiteId,
-        testId,
       },
     });
   }

@@ -21,26 +21,24 @@ import { getFormatted } from '@utils/stat';
 import { getTimeline } from '@utils/timestamp';
 
 export const TestCardChart = () => {
-  const {
-    testResult: { test, stat, orderLog },
-  } = useTestContext();
+  const { testResult } = useTestContext();
+  const { test, stat } = testResult;
   const { compareList } = useTestsCompare();
 
   const chartData = useMemo(() => {
     if (!compareList.length) {
-      return mapOrderLogToChartData(test.testId, orderLog);
+      return mapOrderLogToChartData(testResult);
     }
 
     const timeline = getTimeline(test.options.start, test.options.end);
 
     const testList: TestCompareList = [
       ...compareList.filter(
-        (testCompare) => testCompare.testId !== test.testId,
+        ({ testResult }) => testResult.test.testId !== test.testId,
       ),
       {
-        testId: test.testId,
-        orderLog,
-        color: 'teal.solid',
+        testResult,
+        color: 'teal',
       },
     ];
 
@@ -53,7 +51,7 @@ export const TestCardChart = () => {
   const { formatted: minAmount } = getFormatted(stat, 'minAmount');
 
   return (
-    <Box w="100%" minW="600px" h="450px" pr={2}>
+    <Box w="100%" minW="600px" h="350px" pr={2}>
       <ResponsiveContainer width="100%" height="100%">
         <Chart.Root maxH="md" chart={chart}>
           <LineChart data={chart.data}>

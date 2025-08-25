@@ -12,6 +12,7 @@ interface SegmentProps {
 export const Segment = ({ defaultValue, items, onChange }: SegmentProps) => {
   return (
     <SegmentGroup.Root
+      size="md"
       defaultValue={defaultValue}
       onValueChange={(e) => onChange?.(e.value)}
     >

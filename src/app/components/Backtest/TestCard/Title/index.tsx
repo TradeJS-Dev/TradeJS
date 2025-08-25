@@ -8,13 +8,10 @@ import { TaskCardConfigDrawer } from '../ConfigDrawer';
 
 export const TestCardTitle = () => {
   const {
-    testResult: { stat, test, orderLog },
+    testResult: { stat, test },
   } = useTestContext();
-  const { compareList, onChangeCompare } = useTestsCompare();
-
-  const isCompared = compareList.some(
-    (compare) => compare.testId === test.testId,
-  );
+  const { checkIsCompared, onChangeCompare } = useTestsCompare();
+  const isCompared = checkIsCompared(test.name);
 
   return (
     <Flex gap="4" p={4} mb={3}>
@@ -77,11 +74,7 @@ export const TestCardTitle = () => {
           size="xs"
           colorPalette="teal"
           variant={isCompared ? 'solid' : 'outline'}
-          onClick={() =>
-            isCompared
-              ? onChangeCompare(test.testId, null)
-              : onChangeCompare(test.testId, orderLog)
-          }
+          onClick={() => onChangeCompare(test.name)}
         >
           <TbArrowsLeftRight />
         </IconButton>

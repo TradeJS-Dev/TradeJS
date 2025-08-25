@@ -58,8 +58,6 @@ export const runBot = async () => {
           interval: '15',
         });
 
-        logger.log('info', 'data downloaded: %s', data.length);
-
         const candle = data.pop();
 
         const strategy = strategyCreator(strategyConfig, data);

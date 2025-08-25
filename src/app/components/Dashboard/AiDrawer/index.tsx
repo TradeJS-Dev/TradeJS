@@ -10,7 +10,11 @@ import {
   Textarea,
   Timeline,
   HStack,
+  Stack,
   Text,
+  Skeleton,
+  SkeletonCircle,
+  SkeletonText,
 } from '@chakra-ui/react';
 import { AIChatMessage, AIChatHistory } from '@types';
 import { GiArtificialHive } from 'react-icons/gi';
@@ -108,6 +112,13 @@ export const AiDrawer = () => {
                   <Message key={index} message={message} index={index} />
                 ))}
               </Timeline.Root>
+              <Stack gap="4" maxW="xs">
+                <HStack width="full">
+                  <SkeletonCircle size="6" />
+                  <SkeletonText noOfLines={2} />
+                </HStack>
+                <SkeletonText ml="8" noOfLines={3} />
+              </Stack>
             </Drawer.Body>
 
             <Drawer.Footer flexDirection="column" alignItems="stretch" gap={3}>

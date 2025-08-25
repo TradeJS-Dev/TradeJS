@@ -3,7 +3,7 @@ import { SelectInterval } from './Interval';
 import { SelectSymbol } from './Symbol';
 import { SelectBacktest } from './Backtest';
 import { SelectIndicator } from './Indicators';
-import { FavoriteButton } from './FavoriteButton';
+import { FavoriteIndicator } from './FavoriteIndicator';
 
 export const Filters = {
   Root,
@@ -11,5 +11,5 @@ export const Filters = {
   SelectSymbol,
   SelectBacktest,
   SelectIndicator,
-  FavoriteButton,
+  FavoriteIndicator,
 };

@@ -25,6 +25,7 @@
       "@store": ["./src/app/store/index"],
       "@constants": ["./src/constants/index"],
       "@types": ["./src/types/index"],
+      "@shared/*": ["./src/app/components/Shared/*"],
       "@utils/*": ["./src/utils/*"],
       "@UI": ["./src/app/components/UI/index"],
       "@components/*": ["./src/app/components/*"]

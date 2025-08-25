@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
 import { Box } from '@chakra-ui/react';
-import { Sidebar } from '@app/components/Shared/Sidebar';
+import { Sidebar } from '@shared/Sidebar';
 import Provider from './provider';
 import './globals.css';
 

@@ -1,18 +1,18 @@
 import { format } from 'date-fns';
-import { SimpleOrderLogData, TestCompareList } from '@types';
+import { SimpleOrderLogData, TestResult, TestCompareList } from '@types';
 
-export const mapOrderLogToChartData = (
-  testId: string,
-  orderLog: SimpleOrderLogData,
-) => {
-  const data = orderLog.map(([timestamp, amount]) => ({
-    [testId]: amount,
+const getLineName = (testResult: TestResult) =>
+  `${testResult.test.symbol}-${testResult.test.testId}`;
+
+export const mapOrderLogToChartData = (testResult: TestResult) => {
+  const data = testResult.orderLog.map(([timestamp, amount]) => ({
+    [getLineName(testResult)]: amount,
     timestamp: format(timestamp, 'dd.MM'),
   }));
 
   const series = [
     {
-      name: testId,
+      name: getLineName(testResult),
       color: 'teal.solid',
     },
   ];
@@ -50,12 +50,12 @@ export const getChartData = (testList: TestCompareList, timeline: number[]) => {
   const data = timeline.map((timestamp, ind) => {
     const formattedTimestamp = format(timestamp, 'dd.MM');
 
-    testList.forEach(({ testId, orderLog }) => {
-      values[testId] = getAmountFromOrderLog(
+    testList.forEach(({ testResult }) => {
+      values[getLineName(testResult)] = getAmountFromOrderLog(
         ind,
         timeline,
-        orderLog,
-        values[testId] || 100,
+        testResult.orderLog,
+        values[getLineName(testResult)] || 100,
       );
     });
 
@@ -65,9 +65,9 @@ export const getChartData = (testList: TestCompareList, timeline: number[]) => {
     };
   });
 
-  const series = testList.map(({ testId, color }) => ({
-    name: testId,
-    color,
+  const series = testList.map(({ testResult, color }) => ({
+    name: getLineName(testResult),
+    color: `${color}.solid`,
   }));
 
   return {

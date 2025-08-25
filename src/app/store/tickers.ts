@@ -8,35 +8,23 @@ import { Items } from '@types';
 const LOCAL_STORAGE_KEY = 'tickers';
 
 interface TickersFavoritesState {
-  favorites: Items;
+  favorites: string[];
   setFavorite: (ticker: string) => void;
 }
 
 const useFavoritesStore = create<TickersFavoritesState>()(
   persist(
     (set) => ({
-      favorites: [
-        { label: 'BTC', value: 'BTCUSDT', description: 'favorites' },
-        { label: 'ETH', value: 'ETHUSDT', description: 'favorites' },
-      ] as Items,
+      favorites: ['BTCUSDT', 'ETHUSDT'],
       setFavorite: (ticker: string) =>
         set(({ favorites }) => {
-          if (favorites.some((favorite) => favorite.value === ticker)) {
+          if (favorites.includes(ticker)) {
             return {
-              favorites: favorites.filter(
-                (favorite) => favorite.value !== ticker,
-              ),
+              favorites: favorites.filter((favorite) => favorite !== ticker),
             };
           }
           return {
-            favorites: [
-              ...favorites,
-              {
-                label: ticker.replace('USDT', ''),
-                value: ticker,
-                description: 'favorites',
-              },
-            ],
+            favorites: [...favorites, ticker],
           };
         }),
     }),
@@ -72,11 +60,24 @@ export const useTickers = () => {
     });
   }, []);
 
-  const tickers = _.uniqBy([...favorites, ...scanner], (item) => item.value);
+  const checkIsFavorite = (ticker: string) => favorites.includes(ticker);
+
+  const favoriteItems = scanner
+    .filter((s) => checkIsFavorite(s.value))
+    .map((s) => ({
+      ...s,
+      description: 'favorite',
+    }));
+
+  const tickers = _.uniqBy(
+    [...favoriteItems, ...scanner],
+    (item) => item.value,
+  );
 
   return {
     tickers,
-    favorites: favorites.map(({ value }) => value),
+    favorites,
+    checkIsFavorite,
     setFavorite,
     setTickers,
   };

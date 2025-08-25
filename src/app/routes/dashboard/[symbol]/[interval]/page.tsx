@@ -5,7 +5,7 @@ import { useParams } from 'next/navigation';
 import { Box, Flex, ClientOnly } from '@chakra-ui/react';
 import { useFilters, useTickers } from '@store';
 import { getBacktestFiles } from '@src/actions/backtest';
-import { Filters } from '@app/components/Shared/Filters';
+import { Filters } from '@shared/Filters';
 import { MainChart } from '@app/components/Dashboard/MainChart';
 import { AiDrawer } from '@app/components/Dashboard/AiDrawer';
 import { Interval, OnChangeFilters, Items } from '@types';
@@ -59,9 +59,9 @@ const Dashboard = () => {
           backtestFiles={backtestFiles}
           onChangeFilters={onChangeFilters}
         >
-          <Flex mb={2} gap={4} flexDirection="row">
+          <Flex mb={2} gap={4} alignItems="center" flexDirection="row">
             <Filters.SelectSymbol />
-            <Filters.FavoriteButton />
+            <Filters.FavoriteIndicator />
             <Filters.SelectInterval />
             <Filters.SelectIndicator />
             <AiDrawer />
