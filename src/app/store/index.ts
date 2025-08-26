@@ -1,4 +1,9 @@
 export { useFilters } from './filters';
 export { useTickers } from './tickers';
 export { useIndicators } from './indicators';
-export { useTest, useTestsCompare, useTestList, useFavoriteTests } from './tests';
+export {
+  useTest,
+  useTestsCompare,
+  useTestList,
+  useFavoriteTests,
+} from './tests';

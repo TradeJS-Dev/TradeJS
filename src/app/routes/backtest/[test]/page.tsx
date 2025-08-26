@@ -15,11 +15,7 @@ const BacktestReport = () => {
   return (
     <ClientOnly>
       <Box minH="100vh" bg="gray.900">
-        <Box
-          minW="1200px"
-          pl={4}
-          pt={4}
-        >
+        <Box minW="1200px" pl={4} pt={4}>
           <TestCard.Root testName={testName} noWrapper={true}>
             <TestCard.Title>
               <TestCard.ConfigDrawer />

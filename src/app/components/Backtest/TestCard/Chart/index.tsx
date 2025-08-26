@@ -24,7 +24,7 @@ interface TestCardChartProps {
   height?: string | number;
 }
 
-export const TestCardChart = ({height = "350px"} : TestCardChartProps) => {
+export const TestCardChart = ({ height = '350px' }: TestCardChartProps) => {
   const { testResult } = useTestContext();
   const { test, stat } = testResult;
   const { compareList } = useTestsCompare();

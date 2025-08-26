@@ -34,7 +34,7 @@ export const TestCardRoot = ({
       return 'yellow.800';
     }
     return 'gray.800';
-  }
+  };
 
   return (
     <TestResultContext.Provider value={{ testResult: testResult }}>

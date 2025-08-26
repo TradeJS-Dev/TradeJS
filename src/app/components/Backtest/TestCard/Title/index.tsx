@@ -65,7 +65,7 @@ export const TestCardTitle = ({ children }: PropsWithChildren<{}>) => {
         </Text>
       </Flex>
 
-      <Flex gap="2" ml={"auto"} mt={-1}>
+      <Flex gap="2" ml={'auto'} mt={-1}>
         {children}
       </Flex>
     </Flex>
