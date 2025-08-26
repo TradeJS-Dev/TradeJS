@@ -33,15 +33,15 @@ args.example(
   'Run tests on uploaded data for 400 tickers',
 );
 
-args.option(['s', 'symbol'], 'Selected symbols');
+args.option(['t', 'tickers'], 'Selected tickers');
 args.option(['e', 'exclude'], 'Exclude tickers from tests');
-args.option(['t', 'tickers'], 'Tickers limit');
+args.option(['l', 'tickers'], 'Tickers limit');
 args.option(['n', 'tests'], 'Tests limit', TESTS_LIMIT);
 args.option(['p', 'parallel'], 'Parallel tasks', MAX_PARALLEL);
 args.option(['T', 'top'], 'Return N best tests', TESTS_TOP_LIMIT);
 args.option(['u', 'updateOnly'], 'Only update tickers history', false);
 args.option(['c', 'cacheOnly'], 'Do not update tickers history', false);
-args.option(['S', 'showTickersList'], 'Just show only ticker list', false);
+args.option(['L', 'showTickersList'], 'Just show only ticker list', false);
 args.option(['U', 'user'], 'Use user confg', 'root');
 
 const flags = args.parse(process.argv);

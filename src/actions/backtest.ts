@@ -2,39 +2,27 @@
 
 import { OrderLogData, TestStat, TestResult, Item, Test } from '@types';
 import { getFiles, getData } from '@utils/data';
+import { parseTestName } from '@utils/tests';
 import { getTimeline, compactOrderLog } from '@utils/timestamp';
-
-interface GetBacktestFilesProps {
-  symbol?: string;
-}
 
 const DIR = 'data/tests';
 
-const splitName = (name: string) => {
-  const [symbol, testSuiteId, testId] = name.split('_');
-  return { symbol, testSuiteId, testId };
-};
-
-export const getBacktestFiles = async (filters: GetBacktestFilesProps) => {
+export const getBacktestFiles = async () => {
   const result = new Array<Item>();
   const files = await getFiles(DIR);
   const orderFiles = files.filter((file) => file.endsWith('.orders.json'));
 
   for await (const file of orderFiles) {
-    const name = file.replace('.orders.json', '');
+    const testName = file.replace('.orders.json', '');
 
-    const { symbol, testSuiteId, testId } = splitName(name);
+    const { symbol, testId } = parseTestName(testName);
 
-    const stat = (await getData('data/tests', `${name}.stat`, {
+    const stat: TestStat = await getData('data/tests', `${testName}.stat`, {
       useCache: false,
-    })) as TestStat;
-
-    if (filters.symbol && symbol !== filters.symbol) {
-      continue;
-    }
+    });
 
     result.push({
-      value: name,
+      value: testName,
       label: `${symbol}_${testId}`,
       description: `${stat.netProfit}$`,
       data: {
@@ -42,10 +30,6 @@ export const getBacktestFiles = async (filters: GetBacktestFilesProps) => {
       },
     });
   }
-
-  result.sort(
-    (a, b) => (b.data?.netProfit as number) - (a.data?.netProfit as number),
-  );
 
   return result;
 };
@@ -57,9 +41,9 @@ export const getOrderLog = async (
     return null;
   }
 
-  const orderLog = (await getData(DIR, `${name}.orders`, {
+  const orderLog: OrderLogData = await getData(DIR, `${name}.orders`, {
     useCache: false,
-  })) as OrderLogData;
+  });
 
   return orderLog;
 };

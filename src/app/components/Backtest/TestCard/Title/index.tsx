@@ -1,17 +1,13 @@
 'use client';
 
-import { Text, Flex, IconButton } from '@chakra-ui/react';
-import { TbArrowsLeftRight } from 'react-icons/tb';
-import { useTestsCompare } from '@store';
+import { PropsWithChildren } from 'react';
+import { Text, Flex } from '@chakra-ui/react';
 import { useTestContext } from '../context';
-import { TaskCardConfigDrawer } from '../ConfigDrawer';
 
-export const TestCardTitle = () => {
+export const TestCardTitle = ({ children }: PropsWithChildren<{}>) => {
   const {
     testResult: { stat, test },
   } = useTestContext();
-  const { checkIsCompared, onChangeCompare } = useTestsCompare();
-  const isCompared = checkIsCompared(test.name);
 
   return (
     <Flex gap="4" p={4} mb={3}>
@@ -69,16 +65,8 @@ export const TestCardTitle = () => {
         </Text>
       </Flex>
 
-      <Flex gap="2" mt={-1}>
-        <IconButton
-          size="xs"
-          colorPalette="teal"
-          variant={isCompared ? 'solid' : 'outline'}
-          onClick={() => onChangeCompare(test.name)}
-        >
-          <TbArrowsLeftRight />
-        </IconButton>
-        <TaskCardConfigDrawer />
+      <Flex gap="2" ml={"auto"} mt={-1}>
+        {children}
       </Flex>
     </Flex>
   );

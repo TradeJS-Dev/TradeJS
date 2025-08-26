@@ -7,16 +7,16 @@ import { Items } from '@types';
 
 const LOCAL_STORAGE_KEY = 'tickers';
 
-interface TickersFavoritesState {
+interface FavoriteTickersState {
   favorites: string[];
-  setFavorite: (ticker: string) => void;
+  toggleFavorite: (ticker: string) => void;
 }
 
-const useFavoritesStore = create<TickersFavoritesState>()(
+const useFavoriteTickersStore = create<FavoriteTickersState>()(
   persist(
     (set) => ({
       favorites: ['BTCUSDT', 'ETHUSDT'],
-      setFavorite: (ticker: string) =>
+      toggleFavorite: (ticker: string) =>
         set(({ favorites }) => {
           if (favorites.includes(ticker)) {
             return {
@@ -45,10 +45,11 @@ const useScannerStore = create<TickersScannerState>((set) => ({
 }));
 
 export const useTickers = () => {
-  const favorites = useFavoritesStore((s) => s.favorites);
+  const favorites = useFavoriteTickersStore((s) => s.favorites);
   const scanner = useScannerStore((s) => s.scanner);
-  const setFavorite = useFavoritesStore((s) => s.setFavorite);
+  const toggleFavorite = useFavoriteTickersStore((s) => s.toggleFavorite);
   const setTickers = useScannerStore((s) => s.setTickers);
+  const checkIsFavorite = (ticker: string) => favorites.includes(ticker);
 
   useEffect(() => {
     if (scanner.length) {
@@ -59,8 +60,6 @@ export const useTickers = () => {
       setTickers(coins);
     });
   }, []);
-
-  const checkIsFavorite = (ticker: string) => favorites.includes(ticker);
 
   const favoriteItems = scanner
     .filter((s) => checkIsFavorite(s.value))
@@ -78,7 +77,7 @@ export const useTickers = () => {
     tickers,
     favorites,
     checkIsFavorite,
-    setFavorite,
+    toggleFavorite,
     setTickers,
   };
 };

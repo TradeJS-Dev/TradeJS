@@ -4,7 +4,7 @@ import React from 'react';
 import { Box, Flex, ClientOnly } from '@chakra-ui/react';
 // import { SelectSymbol } from '@shared/Filters';
 import { CompareList } from '@components/Backtest/CompareList';
-import { TestsList } from '@components/Backtest/TestsList';
+import { TestList } from '@components/Backtest/TestList';
 
 const Backtest = () => {
   return (
@@ -18,14 +18,13 @@ const Backtest = () => {
           bg="gray.900"
           display="flex"
           flexDirection="column"
-          justifyContent="sspace-between"
           alignItems="flex-start"
         >
           <Flex mb={4} gap={8} flexDirection="row">
             <CompareList />
           </Flex>
           <Box flex="1" h="full" w="full">
-            <TestsList />
+            <TestList />
           </Box>
         </Box>
       </Box>

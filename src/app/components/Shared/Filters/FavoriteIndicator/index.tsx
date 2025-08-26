@@ -6,13 +6,13 @@ export const FavoriteIndicator = () => {
   const {
     filters: { symbol },
   } = useFiltersContext();
-  const { checkIsFavorite, setFavorite } = useTickers();
+  const { checkIsFavorite, toggleFavorite } = useTickers();
   const isFavorite = checkIsFavorite(symbol);
 
   return (
     <FavoriteButton
       isFavorite={isFavorite}
-      onChangeFavorite={() => setFavorite(symbol)}
+      onChangeFavorite={() => toggleFavorite(symbol)}
     />
   );
 };

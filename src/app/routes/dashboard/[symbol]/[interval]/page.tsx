@@ -1,10 +1,9 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useEffect } from 'react';
 import { useParams } from 'next/navigation';
 import { Box, Flex, ClientOnly } from '@chakra-ui/react';
-import { useFilters, useTickers } from '@store';
-import { getBacktestFiles } from '@src/actions/backtest';
+import { useFilters, useTickers, useTestList } from '@store';
 import { Filters } from '@shared/Filters';
 import { MainChart } from '@app/components/Dashboard/MainChart';
 import { AiDrawer } from '@app/components/Dashboard/AiDrawer';
@@ -14,7 +13,7 @@ const Dashboard = () => {
   const { symbol, interval } = useParams();
   const { filters, setFilters } = useFilters();
   const { tickers } = useTickers();
-  const [backtestFiles, setBacktestFiles] = useState<Items>([]);
+  const { tests } = useTestList({ symbol: filters.symbol });
 
   useEffect(() => {
     if (typeof symbol === 'string' && typeof interval === 'string') {
@@ -24,12 +23,6 @@ const Dashboard = () => {
       });
     }
   }, [symbol, interval]);
-
-  useEffect(() => {
-    getBacktestFiles({ symbol: filters.symbol }).then((files) => {
-      setBacktestFiles(files);
-    });
-  }, [filters.symbol]);
 
   const onChangeFilters: OnChangeFilters = (newFilters) => {
     setFilters(newFilters);
@@ -56,7 +49,7 @@ const Dashboard = () => {
         <Filters.Root
           filters={filters}
           tickers={tickers}
-          backtestFiles={backtestFiles}
+          backtestFiles={tests}
           onChangeFilters={onChangeFilters}
         >
           <Flex mb={2} gap={4} alignItems="center" flexDirection="row">

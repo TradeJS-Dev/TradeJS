@@ -17,7 +17,7 @@ const JsonCodeBlock = dynamic(() => import('./JsonCodeBlock'), { ssr: false });
 
 type TabType = 'test' | 'bot';
 
-export const TaskCardConfigDrawer = () => {
+export const TestCardConfigDrawer = () => {
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState<TabType>('test');
   const { testResult } = useTestContext();

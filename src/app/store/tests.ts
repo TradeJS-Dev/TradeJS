@@ -6,8 +6,10 @@ import { get, set } from 'idb-keyval';
 import { getBacktest, getBacktestFiles } from '@src/actions/backtest';
 import { TestResult, TestCompareList, OnChangeCompare, Items } from '@types';
 import { delay } from '@utils/delay';
+import { parseTestName } from '@utils/tests';
 
-const LOCAL_STORAGE_KEY = 'compare';
+const COMPARE_LOCAL_STORAGE_KEY = 'compare';
+const FAVORITE_LOCAL_STORAGE_KEY = 'favorite';
 
 const COLORS = [
   'purple',
@@ -20,12 +22,49 @@ const COLORS = [
   'green',
 ];
 
-interface TestsListState {
+interface FavotiteTestsState {
+  tests: {
+    testName: string;
+    netProfit: number;
+  }[];
+  toggleFavorite: (testName: string, netProfit: number) => void;
+}
+
+const useFavoriteTetstsStore = create<FavotiteTestsState>()(
+  persist(
+    (set) => ({
+      tests: [],
+      toggleFavorite: (testName, netProfit) =>
+        set(({ tests }) => {
+          if (tests.some((t) => t.testName === testName)) {
+            return {
+              tests: tests.filter((t) => t.testName !== testName),
+            };
+          }
+
+          return {
+            tests: [
+              ...tests,
+              {
+                testName,
+                netProfit,
+              },
+            ],
+          };
+        }),
+    }),
+    {
+      name: FAVORITE_LOCAL_STORAGE_KEY,
+    },
+  ),
+);
+
+interface TestListState {
   tests: Items;
   setTest: (tests: Items) => void;
 }
 
-const useTestsListStore = create<TestsListState>((set) => ({
+const useTestListStore = create<TestListState>((set) => ({
   tests: [],
   setTest: (tests) =>
     set(() => ({
@@ -63,7 +102,7 @@ const useTestsCompareStore = create<TestsCompareState>()(
         }),
     }),
     {
-      name: LOCAL_STORAGE_KEY,
+      name: COMPARE_LOCAL_STORAGE_KEY,
     },
   ),
 );
@@ -81,20 +120,66 @@ const useTestsStore = create<TestsState>((set) => ({
     })),
 }));
 
-export const useTestsList = () => {
+export const useFavoriteTests = () => {
+  const favotites = useFavoriteTetstsStore((s) => s.tests);
+  const toggleFavorite = useFavoriteTetstsStore((s) => s.toggleFavorite);
+  const checkIsFavorite = (testName: string) =>
+    favotites.some((t) => t.testName === testName);
+
+  const favoriteItems: Items = favotites.map((t) => {
+    const { symbol, testId } = parseTestName(t.testName);
+
+    return {
+      value: t.testName,
+      label: `${symbol}_${testId}`,
+      description: `${t.netProfit}$`,
+      data: {
+        netProfit: t.netProfit || 0,
+      },
+    };
+  });
+
+  return {
+    favotites,
+    favoriteItems,
+    toggleFavorite,
+    checkIsFavorite,
+  };
+};
+
+interface TestListProps {
+  symbol?: string;
+}
+
+export const useTestList = (filters: TestListProps = {}) => {
   const [loadding, setLoading] = useState(false);
   const [fulFilled, setFulfilled] = useState(false);
   const [error, setError] = useState<unknown>(null);
-  const tests = useTestsListStore((s) => s.tests);
-  const setTest = useTestsListStore((s) => s.setTest);
+  const tests = useTestListStore((s) => s.tests);
+  const setTest = useTestListStore((s) => s.setTest);
+  const { favoriteItems } = useFavoriteTests();
 
-  const noData = _.isEmpty(tests);
+  const testItems: Items = _.chain([...favoriteItems, ...tests])
+    .filter((t) => {
+      const { symbol } = parseTestName(t.value);
+
+      if (filters.symbol && filters.symbol !== symbol) {
+        return false;
+      }
+
+      return true;
+    })
+    .sortBy((t) => -t.data?.netProfit! || 0)
+    .unionBy((t) => t.value)
+    .value();
+
+  const noData = _.isEmpty(testItems);
 
   const loadData = async () => {
     try {
       setLoading(true);
       await delay();
-      const newTests = await getBacktestFiles({});
+      const newTests = await getBacktestFiles();
       setLoading(false);
       setFulfilled(true);
 
@@ -113,7 +198,7 @@ export const useTestsList = () => {
     fulFilled,
     error,
     noData,
-    tests,
+    tests: testItems,
   };
 };
 

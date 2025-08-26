@@ -20,7 +20,11 @@ import { mapOrderLogToChartData, getChartData } from './utils';
 import { getFormatted } from '@utils/stat';
 import { getTimeline } from '@utils/timestamp';
 
-export const TestCardChart = () => {
+interface TestCardChartProps {
+  height?: string | number;
+}
+
+export const TestCardChart = ({height = "350px"} : TestCardChartProps) => {
   const { testResult } = useTestContext();
   const { test, stat } = testResult;
   const { compareList } = useTestsCompare();
@@ -51,7 +55,7 @@ export const TestCardChart = () => {
   const { formatted: minAmount } = getFormatted(stat, 'minAmount');
 
   return (
-    <Box w="100%" minW="600px" h="350px" pr={2}>
+    <Box w="100%" minW="600px" h={height} pr={2}>
       <ResponsiveContainer width="100%" height="100%">
         <Chart.Root maxH="md" chart={chart}>
           <LineChart data={chart.data}>
