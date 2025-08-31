@@ -62,11 +62,20 @@ export const runBot = async () => {
 
         const candle = data.pop();
 
-        const strategy = strategyCreator(strategyConfig, data);
+        const strategy = strategyCreator({
+          config: strategyConfig,
+          symbol,
+          data,
+          connector,
+        });
 
         logger.log('info', 'strategy created');
 
-        const status = await strategy(symbol, candle!, connector);
+        if (!candle) {
+          throw new Error('Candle is empty');
+        }
+
+        const status = await strategy(candle);
 
         botResults.push({
           symbol,

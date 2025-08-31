@@ -4,7 +4,12 @@ import { MOM } from '@src/indicators/mom';
 import { config as DEFAULT_CONFIG } from './config';
 import { Strategy, StrategyCreator, StrategyConfig, Candle } from '@types';
 
-export const ChannelStrategyCreator: StrategyCreator = (baseConfig, data) => {
+export const ChannelStrategyCreator: StrategyCreator = ({
+  config: baseConfig,
+  symbol,
+  data,
+  connector,
+}) => {
   const config = {
     ...DEFAULT_CONFIG,
     ...baseConfig,
@@ -41,7 +46,7 @@ export const ChannelStrategyCreator: StrategyCreator = (baseConfig, data) => {
     values: closes,
   });
 
-  const strategy: Strategy = async (symbol, candle, connector) => {
+  const strategy: Strategy = async (candle) => {
     if (_.isEmpty(candle)) return 'NO_DATA';
 
     candles.push(candle);

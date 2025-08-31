@@ -19,20 +19,20 @@ const getColorByLevel = (level: ThresholdLevel) => {
 
 interface StatItemProps {
   id: TestThresholdsKey;
-  description: string;
+  title: string;
 }
 
 export const TestCardStat = () => {
   const {
-    testResult: { stat, test, orderLog },
+    testResult: { stat },
   } = useTestContext();
 
-  const StatItem = ({ id, description }: StatItemProps) => {
+  const StatItem = ({ id, title }: StatItemProps) => {
     const { formatted, level } = getFormatted(stat, id);
 
     return (
       <Stat.Root size={'md'}>
-        <Stat.Label>{description}</Stat.Label>
+        <Stat.Label>{title}</Stat.Label>
         <Stat.ValueText color={getColorByLevel(level)}>
           {formatted}
         </Stat.ValueText>
@@ -42,14 +42,14 @@ export const TestCardStat = () => {
 
   return (
     <SimpleGrid columns={{ base: 4, md: 8 }} p={4}>
-      <StatItem id="netProfit" description="Net Profit" />
-      <StatItem id="minAmount" description="Min Amount" />
-      <StatItem id="maxDrawdown" description="Drawdown" />
-      <StatItem id="orders" description="Orders" />
-      <StatItem id="winRate" description="Win Rate" />
-      <StatItem id="riskRewardRatio" description="Risk Ratio" />
-      <StatItem id="sharpeRatio" description="Sharpe" />
-      <StatItem id="exposure" description="Exposure" />
+      <StatItem id="netProfit" title="P&L" />
+      <StatItem id="minAmount" title="Min Amount" />
+      <StatItem id="maxDrawdown" title="Drawdown" />
+      <StatItem id="orders" title="Orders" />
+      <StatItem id="winRate" title="Win Rate" />
+      <StatItem id="riskRewardRatio" title="Risk Ratio" />
+      <StatItem id="sharpeRatio" title="Sharpe" />
+      <StatItem id="exposure" title="Exposure" />
     </SimpleGrid>
   );
 };

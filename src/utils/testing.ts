@@ -39,11 +39,17 @@ export const testing: TestingBox = async ({
   );
   const testData = data.filter((candle) => candle.timestamp >= start);
 
-  const strategy = strategyCreator(strategyConfig, prevData);
   const testConnector = connectors.Test(connector);
 
+  const strategy = strategyCreator({
+    config: strategyConfig,
+    symbol,
+    data: prevData,
+    connector: testConnector,
+  });
+
   for await (const candle of testData) {
-    await strategy(symbol, candle, testConnector);
+    await strategy(candle);
     testConnector.checkSl(candle);
     testConnector.checkTp(candle);
   }

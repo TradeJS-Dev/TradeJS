@@ -50,10 +50,12 @@ const calculateScore = (
   return { score, conditions: scoreConditions };
 };
 
-export const BreakoutWeightsStrategyCreator: StrategyCreator = (
-  baseConfig,
+export const BreakoutWeightsStrategyCreator: StrategyCreator = ({
+  config: baseConfig,
+  symbol,
   data,
-) => {
+  connector,
+}) => {
   const config = {
     ...DEFAULT_CONFIG,
     ...baseConfig,
@@ -93,7 +95,7 @@ export const BreakoutWeightsStrategyCreator: StrategyCreator = (
 
   const momInstance = new MOM({ period: config.MOM_PERIOD, values: closes });
 
-  const strategy: Strategy = async (symbol, candle, connector) => {
+  const strategy: Strategy = async (candle) => {
     if (_.isEmpty(candle)) return 'NO_DATA';
 
     candles.push(candle);

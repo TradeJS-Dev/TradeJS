@@ -35,7 +35,7 @@ args.example(
 
 args.option(['t', 'tickers'], 'Selected tickers');
 args.option(['e', 'exclude'], 'Exclude tickers from tests');
-args.option(['l', 'tickers'], 'Tickers limit');
+args.option(['l', 'tickersLimit'], 'Tickers limit');
 args.option(['n', 'tests'], 'Tests limit', TESTS_LIMIT);
 args.option(['p', 'parallel'], 'Parallel tasks', MAX_PARALLEL);
 args.option(['T', 'top'], 'Return N best tests', TESTS_TOP_LIMIT);
@@ -106,7 +106,7 @@ const scanner = async (skip = false) => {
 
   const data = await byBitConnector.getTickers();
 
-  const tickers = getTopTickers(data, flags.tickers);
+  const tickers = getTopTickers(data, flags.tickersLimit);
   return tickers.map(({ value }) => value);
 };
 
@@ -138,12 +138,12 @@ const drawInCLI = (stat: TestStat, keys: TestThresholdsKey[]): string[] => {
 const backtest = async () => {
   const backtestConfig = await getData('data/backtest', flags.user);
 
-  const volatilityTickers = await scanner(!!flags.symbol);
+  const volatilityTickers = await scanner(!!flags.tickers);
   const tickers = (
-    flags.symbol ? parseSymbolsFromCLI(flags.symbol) : volatilityTickers
+    flags.tickers ? parseSymbolsFromCLI(flags.tickers) : volatilityTickers
   ).filter((t) => !parseSymbolsFromCLI(flags.exclude).includes(t));
 
-  if (flags.tickersList) {
+  if (flags.showTickersList) {
     console.log(chalk.gray(JSON.stringify(tickers.sort(), null, 2)));
 
     return;

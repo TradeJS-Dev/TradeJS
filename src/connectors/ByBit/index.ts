@@ -23,6 +23,8 @@ const LIMIT = 1000;
 const getLogLevel = (res: any) => (res.retCode === 0 ? 'info' : 'error');
 
 export const ByBitConnectorCreator: ConnectorCreator = (config) => {
+  let state = {};
+
   const request = async ({
     symbol,
     interval,
@@ -124,6 +126,16 @@ export const ByBitConnectorCreator: ConnectorCreator = (config) => {
   };
 
   return {
+    getState: async () => {
+      return state;
+    },
+    setState: async (newState: object) => {
+      state = {
+        ...state,
+        ...newState,
+      };
+    },
+
     kline: async ({
       symbol,
       interval,

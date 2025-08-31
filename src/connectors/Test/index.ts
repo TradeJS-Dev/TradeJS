@@ -18,6 +18,7 @@ import { uuid } from '@utils/uuid';
 const FEE = 0.005;
 
 export const TestConnectorCreator: TCC = (connector) => {
+  let state = {};
   const ORDER_LOG: OrderLogData = [];
   let CURRENT_POSITION: Order | null = null; // Текущая открытая позиция
   let AMOUNT = 100;
@@ -46,18 +47,28 @@ export const TestConnectorCreator: TCC = (connector) => {
   };
 
   return {
+    getState: async () => {
+      return state;
+    },
+    setState: async (newState: object) => {
+      state = {
+        ...state,
+        ...newState,
+      };
+    },
+
     kline,
 
     getResult: async () => {
       if (ORDER_LOG.length < 1) {
-        return null;
+        throw Error('Order log is empty');
       }
 
       const positionLog = buildPositionLogFromOrderLog(ORDER_LOG);
       const stat = calculateStatsFull(positionLog);
 
       if (!stat) {
-        return null;
+        throw Error('Statistics is empty');
       }
 
       const orderLogId = uuid();

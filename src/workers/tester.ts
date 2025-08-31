@@ -23,7 +23,8 @@ process.on('message', async ({ chunkId }: { chunkId: string }) => {
         test,
       });
     } catch (error) {
-      process.send?.({ error, id: test.name });
+      console.error(error);
+      process.send?.({ error: true, id: test.name });
     }
   }
 

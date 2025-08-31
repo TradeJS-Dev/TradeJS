@@ -77,6 +77,8 @@ export type GetTickers = () => Promise<Ticker[]>;
 
 export interface Connector {
   kline: Kline;
+  getState: () => Promise<object>;
+  setState: (state: object) => Promise<void>;
   getPosition: GetPosition;
   placeOrder: PlaceOrder;
   closePosition: ClosePosition;

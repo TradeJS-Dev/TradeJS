@@ -9,18 +9,18 @@ import {
   OrderType,
 } from './trade';
 
-export type Strategy = (
-  symbol: string,
-  candle: Candle,
-  connector: Connector,
-) => Promise<string>;
+export type Strategy = (candle: Candle) => Promise<string>;
 
 export type StrategyConfig = Record<string, any>;
 
-export type StrategyCreator = (
-  config: StrategyConfig,
-  data: KlineChartData,
-) => Strategy;
+export interface StrategyCreatorParams {
+  symbol: string;
+  config: StrategyConfig;
+  connector: Connector;
+  data: KlineChartData;
+}
+
+export type StrategyCreator = (params: StrategyCreatorParams) => Strategy;
 
 export type TestingOptions = Pick<KlineRequest, 'start' | 'end'>;
 
@@ -84,7 +84,7 @@ export type TestThresholds = Record<keyof TestStat, MetricThreshold>;
 export type TestThresholdsKey = keyof TestThresholds;
 
 export interface TestConnector extends Connector {
-  getResult: () => Promise<TestingBoxResult | null>;
+  getResult: () => Promise<TestingBoxResult>;
   checkTp: (candle: Candle) => void;
   checkSl: (candle: Candle) => void;
 }
