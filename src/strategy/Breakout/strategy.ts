@@ -128,16 +128,23 @@ const createIndicators = (
     }
 
     const len = candles.length;
-    if (len < config.BREAKOUT_LOOKBACK + 2) return 'WAIT_DATA';
+    if (len < config.BREAKOUT_LOOKBACK + config.BREAKOUT_LOOKBACK_DELAY)
+      return 'WAIT_DATA';
 
     const highLevel = Math.max(
       ...candles
-        .slice(len - config.BREAKOUT_LOOKBACK - 2, len - 2)
+        .slice(
+          len - config.BREAKOUT_LOOKBACK - config.BREAKOUT_LOOKBACK_DELAY,
+          len - config.BREAKOUT_LOOKBACK_DELAY,
+        )
         .map((c) => c.high),
     );
     const lowLevel = Math.min(
       ...candles
-        .slice(len - config.BREAKOUT_LOOKBACK - 2, len - 2)
+        .slice(
+          len - config.BREAKOUT_LOOKBACK - config.BREAKOUT_LOOKBACK_DELAY,
+          len - config.BREAKOUT_LOOKBACK_DELAY,
+        )
         .map((c) => c.low),
     );
 
@@ -317,18 +324,6 @@ export const BreakoutStrategyCreator: StrategyCreator = ({
     if ((isLong && signals.SMA_DOWNTREND) || (isShort && signals.SMA_UPTREND)) {
       await connector.closePosition({ symbol, price, timestamp, direction });
       return 'CLOSE_POSITION_BY_SMA';
-    }
-
-    const trailingStopDistance = indicators.atr * config.ATR_CLOSE;
-
-    if (isLong && price < position.price - trailingStopDistance) {
-      await connector.closePosition({ symbol, price, timestamp, direction });
-      return 'TRAILING_STOP';
-    }
-
-    if (isShort && price > position.price + trailingStopDistance) {
-      await connector.closePosition({ symbol, price, timestamp, direction });
-      return 'TRAILING_STOP';
     }
 
     return 'POSITION_HELD';

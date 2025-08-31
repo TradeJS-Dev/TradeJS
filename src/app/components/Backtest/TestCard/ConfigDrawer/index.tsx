@@ -28,7 +28,6 @@ export const TestCardConfigDrawer = () => {
       _.omit(
         { ...testResult.test, disabled: false },
         'name',
-        'testId',
         'testSuiteId',
         'options',
       ),
