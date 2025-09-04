@@ -1,1 +1,1 @@
-14,29,44,59 * * * * (curl -s http://0.0.0.0:3000/api/cron; echo) >> /var/log/cron.log 2>&1
+0,15,30,45 * * * * (curl -s http://0.0.0.0:3000/api/cron; echo) >> /var/log/cron.log 2>&1

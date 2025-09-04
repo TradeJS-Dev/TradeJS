@@ -6,6 +6,7 @@ import { logger } from '@utils/logger';
 import { getFiles, getData } from '@utils/data';
 import { toJson } from '@/src/utils/toJson';
 import { getTimestamp } from '@utils/timestamp';
+import { delay } from '@utils/delay';
 import { ConnectorCreator, BotConfig } from '@types';
 
 export const runBot = async () => {
@@ -13,6 +14,8 @@ export const runBot = async () => {
   const preloadStart = getTimestamp(BOT_PRELOAS_DAYS);
   const end = getTimestamp();
   const files = await getFiles('data/bots');
+
+  await delay(5000);
 
   logger.log('info', 'files count: %s', files.length);
 
@@ -59,6 +62,8 @@ export const runBot = async () => {
           end,
           interval: '15',
         });
+
+        data.pop();
 
         const candle = data.pop();
 
