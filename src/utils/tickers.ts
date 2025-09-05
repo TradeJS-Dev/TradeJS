@@ -75,11 +75,13 @@ export const getVolatilityTickers = (data: Ticker[]): Item[] => {
 
 export const getTopTickers = (data: Ticker[], topN?: number): Item[] => {
   const scores = data
-    .filter(
-      (t) =>
-        (!t.symbol.includes('BTC') || t.symbol === 'BTC') &&
-        !t.symbol.includes('1000'),
-    )
+    .filter(({ symbol }) => {
+      if (symbol.includes('BTC') && symbol !== 'BTCUSDT') {
+        return false;
+      }
+
+      return true;
+    })
     .map((coin) => {
       const vol24h = Math.abs(coin.price24hPcnt);
       const prev1h = coin.prevPrice1h;
