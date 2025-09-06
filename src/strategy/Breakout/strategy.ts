@@ -188,17 +188,17 @@ export const BreakoutStrategyCreator: StrategyCreator = ({
       return 'CLOSE_POSITION_BY_SMA';
     }
 
-    const trailingStopDistance = indicators.atr * config.ATR_CLOSE;
+    // const trailingStopDistance = indicators.atr * config.ATR_CLOSE;
 
-    if (isLong && price < position.price - trailingStopDistance) {
-      await connector.closePosition({ symbol, price, timestamp, direction });
-      return 'TRAILING_STOP';
-    }
+    // if (isLong && price < position.price - trailingStopDistance) {
+    //   await connector.closePosition({ symbol, price, timestamp, direction });
+    //   return 'TRAILING_STOP';
+    // }
 
-    if (isShort && price > position.price + trailingStopDistance) {
-      await connector.closePosition({ symbol, price, timestamp, direction });
-      return 'TRAILING_STOP';
-    }
+    // if (isShort && price > position.price + trailingStopDistance) {
+    //   await connector.closePosition({ symbol, price, timestamp, direction });
+    //   return 'TRAILING_STOP';
+    // }
 
     return 'POSITION_HELD';
   };
