@@ -232,9 +232,9 @@ export const ByBitConnectorCreator: ConnectorCreator = (config) => {
 
       logger.log(
         getLogLevel(positionRes),
-        'position: %s, %s',
+        'position retCode: %s, %s',
         symbol,
-        toJson(positionRes, true),
+        positionRes.retCode,
       );
 
       if (positionRes.retCode !== 0) {
@@ -255,6 +255,13 @@ export const ByBitConnectorCreator: ConnectorCreator = (config) => {
       }
 
       const position = positions[0];
+
+      logger.log(
+        getLogLevel(positionRes),
+        'position: %s, %s',
+        symbol,
+        toJson(positionRes, true),
+      );
 
       return {
         ...position,

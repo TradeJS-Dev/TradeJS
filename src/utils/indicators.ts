@@ -29,12 +29,22 @@ export const createIndicators = (
   const volumes: number[] = [];
   const candles: Candle[] = [];
 
+  const obvInstance = new OBV({ close: [], volume: [] });
+
+  const smaOBVInstance = new SMA({ period: config.OBV_SMA_PERIOD, values: [] });
+
   data.forEach((item) => {
     closes.push(item.close);
     highs.push(item.high);
     lows.push(item.low);
     volumes.push(item.volume);
     candles.push(item);
+
+    const obv = obvInstance.nextValue(item);
+
+    if (obv) {
+      smaOBVInstance.nextValue(obv);
+    }
   });
 
   const smaFastInstance = new SMA({ period: config.MA_FAST, values: closes });
@@ -50,9 +60,6 @@ export const createIndicators = (
     values: closes,
     stdDev: config.BB_STDDEV,
   });
-  const obvInstance = new OBV({ close: closes, volume: volumes });
-
-  const smaOBVInstance = new SMA({ period: config.OBV_SMA_PERIOD, values: [] });
 
   return (candle: Candle) => {
     if (_.isEmpty(candle)) return 'NO_DATA';
