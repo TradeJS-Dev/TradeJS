@@ -2,6 +2,7 @@ import { Tokens } from '@chakra-ui/react';
 import { Metrics, MetricThreshold } from './metrics';
 import {
   Candle,
+  Direction,
   Connector,
   KlineRequest,
   KlineChartData,
@@ -73,6 +74,7 @@ export interface TestResult extends Omit<TestWorkerResult, 'orderLogId'> {
 }
 
 export interface PositionLog {
+  direction: Direction,
   open: { amount: number; timestamp: number };
   close: { amount: number; timestamp: number };
 }

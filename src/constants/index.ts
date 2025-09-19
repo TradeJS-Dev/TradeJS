@@ -111,6 +111,20 @@ export const TestThresholdsConfig: TestThresholds = {
     isAmount: true,
     precision: 2,
   },
+  netProfitByLong: {
+    thresholds: [5, 20],
+    direction: 'higher',
+    weight: 0.5,
+    isAmount: true,
+    precision: 2,
+  },
+  netProfitByShort: {
+    thresholds: [5, 20],
+    direction: 'higher',
+    weight: 0.5,
+    isAmount: true,
+    precision: 2,
+  },
   grossProfit: {
     thresholds: [20, 50],
     direction: 'higher',
@@ -146,6 +160,18 @@ export const TestThresholdsConfig: TestThresholds = {
   score: {
     thresholds: [10, 100],
     direction: 'higher',
+    weight: 0.2,
+    precision: 0,
+  },
+   maxConsecutiveWins: {
+    thresholds: [2, 5],
+    direction: 'higher',
+    weight: 0.2,
+    precision: 0,
+  },
+  maxConsecutiveLosses: {
+    thresholds: [2, 5],
+    direction: 'lower',
     weight: 0.2,
     precision: 0,
   },

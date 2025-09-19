@@ -53,6 +53,7 @@ export const TestConnectorCreator: TCC = (connector) => {
     }
 
     POSITION_LOG.push({
+      direction: CURRENT_POSITION.direction,
       open: {
         timestamp: CURRENT_POSITION.timestamp,
         amount: round(CURRENT_POSITION.amount),

@@ -15,8 +15,12 @@ export interface Metrics {
   losses: number;
   orders: number;
   netProfit: number;
+  netProfitByLong: number;
+  netProfitByShort: number;
   grossProfit: number;
   grossLoss: number;
+  maxConsecutiveWins: number;
+  maxConsecutiveLosses: number;
 }
 
 export type ThresholdLevel = 'error' | 'warning' | 'success';

@@ -36,6 +36,9 @@ export const calculateStatsFull = (
   if (!positionLogData.length) return null;
 
   const returns = positionLogData.map((p) => p.close.amount - p.open.amount);
+  const returnsByLong = positionLogData.filter((p) => p.direction === 'LONG').map((p) => p.close.amount - p.open.amount);
+  const returnsByShort = positionLogData.filter((p) => p.direction === 'SHORT').map((p) => p.close.amount - p.open.amount);
+
   const durations = positionLogData.map(
     (p) => p.close.timestamp - p.open.timestamp,
   );
@@ -45,6 +48,8 @@ export const calculateStatsFull = (
     returns.filter((p) => p < 0).reduce((a, b) => a + b, 0),
   );
   const netProfit = returns.reduce((a, b) => a + b, 0);
+  const netProfitByLong = returnsByLong.reduce((a, b) => a + b, 0);
+  const netProfitByShort = returnsByShort.reduce((a, b) => a + b, 0);
 
   const wins = returns.filter((p) => p > 0);
   const losses = returns.filter((p) => p < 0);
@@ -88,6 +93,30 @@ export const calculateStatsFull = (
 
   const maxDrawdown = calculateMaxDrawdown(allAmounts);
 
+  let maxConsecutiveLosses = 0;
+  let maxConsecutiveWins = 0;
+  let currentLossStreak = 0;
+  let currentWinStreak = 0;
+
+  for (const r of returns) {
+    if (r < 0) {
+      currentLossStreak += 1;
+      currentWinStreak = 0;
+      if (currentLossStreak > maxConsecutiveLosses) {
+        maxConsecutiveLosses = currentLossStreak;
+      }
+    } else if (r > 0) {
+      currentWinStreak += 1;
+      currentLossStreak = 0;
+      if (currentWinStreak > maxConsecutiveWins) {
+        maxConsecutiveWins = currentWinStreak;
+      }
+    } else {
+      currentLossStreak = 0;
+      currentWinStreak = 0;
+    }
+  }
+
   return {
     amount: round(positionLogData[positionLogData.length - 1].close.amount),
     maxAmount: round(Math.max(...allAmounts)),
@@ -96,6 +125,8 @@ export const calculateStatsFull = (
     losses: losses.length,
     orders: positionLogData.length,
     netProfit: round(netProfit),
+    netProfitByLong: round(netProfitByLong),
+    netProfitByShort: round(netProfitByShort),
     grossProfit: round(grossProfit),
     grossLoss: round(grossLoss),
     profitFactor: grossLoss > 0 ? round(grossProfit / grossLoss) : Infinity,
@@ -107,6 +138,8 @@ export const calculateStatsFull = (
     sortinoRatio: sortinoRatio === null ? null : round(sortinoRatio),
     exposure: round(exposure),
     maxDrawdown: round(maxDrawdown),
+    maxConsecutiveWins,
+    maxConsecutiveLosses,
   };
 };
 
