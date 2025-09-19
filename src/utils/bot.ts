@@ -4,7 +4,7 @@ import { strategies, StrategyNames } from '@src/strategy';
 import { connectors, ConnectorNames } from '@src/connectors';
 import { logger } from '@utils/logger';
 import { getFiles, getData } from '@utils/data';
-import { toJson } from '@/src/utils/toJson';
+import { toJson } from '@utils/toJson';
 import { getTimestamp } from '@utils/timestamp';
 import { delay } from '@utils/delay';
 import { ConnectorCreator, BotConfig } from '@types';

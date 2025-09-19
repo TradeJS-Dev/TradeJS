@@ -6,7 +6,7 @@ export const config = {
   MA_SLOW: 99,
   LIMIT: 100,
   ATR_OPEN: 0.5,
-  ATR_CLOSE: 2.5,
+  ATR_CLOSE: 1.5,
   OBV_SMA_PERIOD: 10,
   BREAKOUT_LOOKBACK_DELAY: 2,
   BREAKOUT_LOOKBACK: 20,

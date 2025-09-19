@@ -6,11 +6,11 @@ import { PRELOAD_FALLBACK_DAYS } from '@constants';
 import { getClient } from './client';
 import { mapKlineToChartData } from './utils';
 import { getTimestamp, getItemTimestamp, formatUnix } from '@utils/timestamp';
-import { getData, setData } from '@/src/utils/data';
+import { getData, setData } from '@utils/data';
 import { normalizeTickerData } from '@utils/tickers';
 import { mergeData, isWrongData } from '@utils/array';
 import { logger } from '@utils/logger';
-import { toJson } from '@/src/utils/toJson';
+import { toJson } from '@utils/toJson';
 import {
   KlineChartData,
   KlineRequest,

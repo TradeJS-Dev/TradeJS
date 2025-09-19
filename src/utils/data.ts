@@ -1,7 +1,7 @@
 import fs from 'fs/promises';
 import path from 'path';
 import { logger } from '@utils/logger';
-import { toJson } from '@/src/utils/toJson';
+import { toJson } from '@utils/toJson';
 
 interface Options {
   useCache?: boolean;

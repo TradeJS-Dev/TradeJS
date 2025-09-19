@@ -6,13 +6,12 @@ import path from 'path';
 import os from 'os';
 import chalk from 'chalk';
 import _ from 'lodash';
-import { TESTS_TOP_LIMIT, TESTS_LIMIT } from '@constants';
+import { TESTS_TOP_LIMIT, TESTS_LIMIT, PRELOAD_DAYS } from '@constants';
 import { connectors } from '@src/connectors';
-import { PRELOAD_DAYS } from '@constants';
 import { mergeConfigs } from '@utils/grid';
 import { rankBacktests, getFormatted } from '@utils/stat';
-import { setData, getData } from '@/src/utils/data';
-import { toJson } from '@/src/utils/toJson';
+import { setData, getData } from '@utils/data';
+import { toJson } from '@utils/toJson';
 import { uuid } from '@utils/uuid';
 import { createTestSuite } from '@utils/grid';
 import { getTimestamp } from '@utils/timestamp';
@@ -110,9 +109,11 @@ const scanner = async (skip = false) => {
   return tickers.map(({ value }) => value);
 };
 
-const parseSymbolsFromCLI = (symbol = '') => {
-  return symbol.split(',').map((s) => (s.endsWith('USDT') ? s : `${s}USDT`));
-};
+const parseSymbolsFromCLI = (symbol = '') =>
+  symbol.split(',').map((s) => {
+    const ticker = s.toUpperCase();
+    return ticker.endsWith('USDT') ? ticker : `${ticker}USDT`;
+  });
 
 const getCLILevelColor = (level: ThresholdLevel) => {
   switch (level) {
