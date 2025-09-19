@@ -7,20 +7,23 @@ import {
   Order,
   OrderLog,
   OrderLogData,
+  PositionLogData,
   Sl,
   Tp,
   Candle,
 } from '@types';
-import { buildPositionLogFromOrderLog, calculateStatsFull } from '@utils/stat';
+import { calculateStatsFull } from '@utils/stat';
 import { setData } from '@utils/data';
 import { uuid } from '@utils/uuid';
+import { round } from '@utils/math';
 
 const FEE = 0.005;
 
 export const TestConnectorCreator: TCC = (connector) => {
   let state = {};
   const ORDER_LOG: OrderLogData = [];
-  let CURRENT_POSITION: Order | null = null; // Текущая открытая позиция
+  const POSITION_LOG: PositionLogData = [];
+  let CURRENT_POSITION: Order & { amount: number} | null = null;
   let AMOUNT = 100;
   let ORIGINAL_QTY = 0;
   let TP: Tp[] = [];
@@ -34,15 +37,32 @@ export const TestConnectorCreator: TCC = (connector) => {
     ORDER_LOG.push({
       ...(CURRENT_POSITION || {}),
       ...data,
-      amount: AMOUNT,
+      amount: round(AMOUNT),
+      profit: round(data.profit || 0),
       index: ORDER_LOG.length,
     } as OrderLog);
   };
 
-  const clearPosition = () => {
+  const clearPosition = (timestamp: number) => {
     TP = [];
     SL = null;
     ORIGINAL_QTY = 0;
+
+    if (!CURRENT_POSITION) {
+      return;
+    }
+
+    POSITION_LOG.push({
+      open: {
+        timestamp: CURRENT_POSITION.timestamp,
+        amount: round(CURRENT_POSITION.amount),
+       },
+      close: {
+        timestamp,
+        amount: round(AMOUNT),
+      },
+    });
+
     CURRENT_POSITION = null;
   };
 
@@ -64,8 +84,8 @@ export const TestConnectorCreator: TCC = (connector) => {
         throw Error('Order log is empty');
       }
 
-      const positionLog = buildPositionLogFromOrderLog(ORDER_LOG);
-      const stat = calculateStatsFull(positionLog);
+      // const positionLog = buildPositionLogFromOrderLog(ORDER_LOG);
+      const stat = calculateStatsFull(POSITION_LOG);
 
       if (!stat) {
         throw Error('Statistics is empty');
@@ -130,7 +150,7 @@ export const TestConnectorCreator: TCC = (connector) => {
       TP = TP.filter(({ done }) => !done);
 
       if (CURRENT_POSITION && CURRENT_POSITION.qty <= 0) {
-        clearPosition();
+        clearPosition(candle.timestamp);
       }
     },
 
@@ -162,7 +182,7 @@ export const TestConnectorCreator: TCC = (connector) => {
           type: isLong ? 'STOP_LOSS_LONG' : 'STOP_LOSS_SHORT',
         });
 
-        clearPosition();
+        clearPosition(candle.timestamp);
 
         return;
       }
@@ -183,10 +203,10 @@ export const TestConnectorCreator: TCC = (connector) => {
 
       TP = _.cloneDeep(tp);
       SL = slPrice || null;
-      CURRENT_POSITION = { ...order };
+      CURRENT_POSITION = { ...order, amount: AMOUNT };
       ORIGINAL_QTY = order.qty;
-      const fee = order.price * order.qty * FEE;
 
+      const fee = order.price * order.qty * FEE;
       const profit = fee * -1;
 
       AMOUNT += profit;
@@ -220,7 +240,7 @@ export const TestConnectorCreator: TCC = (connector) => {
         type: isLong ? 'CLOSE_LONG' : 'CLOSE_SHORT',
       });
 
-      clearPosition();
+      clearPosition(order.timestamp);
 
       return true;
     },

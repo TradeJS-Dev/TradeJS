@@ -1,6 +1,4 @@
 import {
-  OrderLogData,
-  OrderLog,
   PositionLogData,
   TestStat,
   MetricScore,
@@ -13,48 +11,7 @@ import {
   levelScore,
   TESTS_ORDERS_MIN_LIMIT,
 } from '@constants';
-
-export const buildPositionLogFromOrderLog = (
-  orderLogData: OrderLogData,
-): PositionLogData => {
-  const result: PositionLogData = [];
-  let currentOpen: OrderLog | null = null;
-  let currentQty = 0;
-
-  for (const order of orderLogData) {
-    if (order.type.startsWith('OPEN')) {
-      currentOpen = order;
-      currentQty = order.qty;
-    } else if (currentOpen) {
-      // Вычитаем закрытую часть
-      currentQty = parseFloat((currentQty - order.qty).toFixed(8));
-
-      // Если позиция полностью закрыта (последний TP / SL / CLOSE)
-      if (
-        currentQty <= 0 &&
-        (order.type.startsWith('CLOSE') ||
-          order.type.startsWith('STOP_LOSS') ||
-          order.type.startsWith('TAKE_PROFIT'))
-      ) {
-        result.push({
-          open: {
-            amount: currentOpen.amount + currentOpen.fee!,
-            timestamp: currentOpen.timestamp,
-          },
-          close: {
-            amount: order.amount,
-            timestamp: order.timestamp,
-          },
-        });
-
-        currentOpen = null;
-        currentQty = 0;
-      }
-    }
-  }
-
-  return result;
-};
+import { round } from '@utils/math';
 
 export const calculateMaxDrawdown = (amounts: number[]): number => {
   let max = amounts[0];
@@ -132,24 +89,24 @@ export const calculateStatsFull = (
   const maxDrawdown = calculateMaxDrawdown(allAmounts);
 
   return {
-    amount: positionLogData[positionLogData.length - 1].close.amount,
-    maxAmount: Math.max(...allAmounts),
-    minAmount: Math.min(...allAmounts),
+    amount: round(positionLogData[positionLogData.length - 1].close.amount),
+    maxAmount: round(Math.max(...allAmounts)),
+    minAmount: round(Math.min(...allAmounts)),
     wins: wins.length,
     losses: losses.length,
     orders: positionLogData.length,
-    netProfit,
-    grossProfit,
-    grossLoss,
-    profitFactor: grossLoss > 0 ? grossProfit / grossLoss : Infinity,
-    riskRewardRatio: avgLoss > 0 ? avgWin / avgLoss : null,
-    expectancy,
-    winRate,
-    averageReturn: mean,
-    sharpeRatio,
-    sortinoRatio,
-    exposure,
-    maxDrawdown,
+    netProfit: round(netProfit),
+    grossProfit: round(grossProfit),
+    grossLoss: round(grossLoss),
+    profitFactor: grossLoss > 0 ? round(grossProfit / grossLoss) : Infinity,
+    riskRewardRatio: avgLoss > 0 ? round(avgWin / avgLoss) : null,
+    expectancy: round(expectancy),
+    winRate: round(winRate),
+    averageReturn: round(mean),
+    sharpeRatio: sharpeRatio === null ? null : round(sharpeRatio),
+    sortinoRatio: sortinoRatio === null ? null : round(sortinoRatio),
+    exposure: round(exposure),
+    maxDrawdown: round(maxDrawdown),
   };
 };
 
@@ -213,7 +170,7 @@ export const getBacktestScore = (stat: Partial<TestStat>): number => {
   const normalizedScore =
     totalWeight > 0 ? (totalWeightedScore / totalWeight) * 100 : 0;
 
-  return Math.round(normalizedScore * 10) / 10;
+  return round(normalizedScore, 1);
 };
 
 export const rankBacktests = (
