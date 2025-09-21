@@ -53,7 +53,7 @@ const HEADERS = [
   chalk.cyan('WIN/LOSS (%)'),
   chalk.cyan('RISK'),
   chalk.cyan('SHARPE'),
-  chalk.cyan('SORTINO'),
+  chalk.cyan('CAGR'),
   chalk.cyan('EXPOSURE (%)'),
   chalk.cyan('MAX DRAWDOWN (%)'),
   chalk.cyan('SCORE'),
