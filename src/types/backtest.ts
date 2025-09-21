@@ -74,7 +74,7 @@ export interface TestResult extends Omit<TestWorkerResult, 'orderLogId'> {
 }
 
 export interface PositionLog {
-  direction: Direction,
+  direction: Direction;
   open: { amount: number; timestamp: number };
   close: { amount: number; timestamp: number };
 }

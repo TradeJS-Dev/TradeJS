@@ -18,10 +18,11 @@ const BacktestReport = () => {
         <Box minW="1200px" pl={4} pt={4}>
           <TestCard.Root testName={testName} noWrapper={true}>
             <TestCard.Title>
+              <TestCard.FavoriteIndicator />
               <TestCard.ConfigDrawer />
             </TestCard.Title>
             <TestCard.Chart height="500px" />
-            <TestCard.Stat />
+            <TestCard.StatTable />
           </TestCard.Root>
         </Box>
       </Box>

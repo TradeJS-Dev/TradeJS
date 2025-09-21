@@ -23,7 +23,7 @@ export const TestConnectorCreator: TCC = (connector) => {
   let state = {};
   const ORDER_LOG: OrderLogData = [];
   const POSITION_LOG: PositionLogData = [];
-  let CURRENT_POSITION: Order & { amount: number} | null = null;
+  let CURRENT_POSITION: (Order & { amount: number }) | null = null;
   let AMOUNT = 100;
   let ORIGINAL_QTY = 0;
   let TP: Tp[] = [];
@@ -57,7 +57,7 @@ export const TestConnectorCreator: TCC = (connector) => {
       open: {
         timestamp: CURRENT_POSITION.timestamp,
         amount: round(CURRENT_POSITION.amount),
-       },
+      },
       close: {
         timestamp,
         amount: round(AMOUNT),

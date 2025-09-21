@@ -35,7 +35,7 @@ export const TestList = ({ overscan = 2 }: ListProps) => {
               <TestCard.OpenReportButton />
             </TestCard.Title>
             <TestCard.Chart />
-            <TestCard.Stat />
+            <TestCard.StatLine />
           </TestCard.Root>
         </Box>
       );

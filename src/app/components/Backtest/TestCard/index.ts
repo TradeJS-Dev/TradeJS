@@ -2,7 +2,7 @@
 
 import { TestCardChart } from './Chart';
 import { TestCardRoot } from './Root';
-import { TestCardStat } from './Stat';
+import { TestCardStatLine, TestCardStatTable } from './Stat';
 import { TestCardTitle } from './Title';
 import { TestCardSkeleton } from './Skeleton';
 import { TestCardConfigDrawer } from './ConfigDrawer';
@@ -13,7 +13,8 @@ import { TestCardOpenReportButton } from './OpenReportButton';
 export const TestCard = {
   Root: TestCardRoot,
   Title: TestCardTitle,
-  Stat: TestCardStat,
+  StatLine: TestCardStatLine,
+  StatTable: TestCardStatTable,
   Chart: TestCardChart,
   Skeleton: TestCardSkeleton,
   ConfigDrawer: TestCardConfigDrawer,

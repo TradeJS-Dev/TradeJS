@@ -323,7 +323,7 @@ const finish = async (results: TestWorkerResult[]) => {
       'winRate',
       'riskRewardRatio',
       'sharpeRatio',
-      'sortinoRatio',
+      'cagr',
       'exposure',
       'maxDrawdown',
       'score',

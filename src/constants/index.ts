@@ -16,163 +16,151 @@ export const levelScore = {
   error: 0.8,
 };
 
+// Мини-подсказка по порогам (thresholds):
+// - Для direction: 'higher' — больше лучше, 'lower' — меньше лучше.
+// - thresholds: [нижняя_граница, верхняя_граница] для выбранного направления.
+//   Например, для 'lower': [плохо, хорошо] = [25, 12] (% MaxDD).
+// - weight можно ставить 0, чтобы метрика не влияла на общий скоринг
+//   (но при этом сохранялась в отчёте).
+
 export const TestThresholdsConfig: TestThresholds = {
-  winRate: {
-    thresholds: [35, 55],
+  // Период и частота — используем как требования к качеству теста, в скоринг не влияют
+  periodDays: {
+    thresholds: [30, 120],
     direction: 'higher',
-    weight: 1.5,
-    isPercent: true,
-    isScored: true,
-    precision: 1,
+    precision: 0,
   },
-  profitFactor: {
-    thresholds: [1.2, 2.0],
+  periodMonths: {
+    thresholds: [1, 6],
     direction: 'higher',
-    isScored: true,
-    weight: 0.8,
     precision: 2,
   },
-  riskRewardRatio: {
-    thresholds: [1.5, 3.0],
+  orders: {
+    thresholds: [30, 200],
     direction: 'higher',
-    isScored: true,
-    weight: 0.7,
-    precision: 2,
+    precision: 0,
   },
-  expectancy: {
-    thresholds: [0.2, 0.5],
+  wins: {
+    thresholds: [30, 100],
     direction: 'higher',
-    isScored: true,
-    weight: 40,
-    precision: 2,
+    precision: 0,
   },
-  sharpeRatio: {
-    thresholds: [0.1, 0.5],
-    direction: 'higher',
-    isScored: true,
-    weight: 70,
-    precision: 2,
+  losses: {
+    thresholds: [20, 50],
+    direction: 'lower',
+    precision: 0,
   },
-  sortinoRatio: {
-    thresholds: [0.2, 1.0],
+  ordersPerMonth: {
+    thresholds: [4, 20],
     direction: 'higher',
-    isScored: true,
-    weight: 60,
     precision: 2,
   },
   exposure: {
-    thresholds: [30, 70],
+    thresholds: [20, 60],
     direction: 'higher',
-    isScored: true,
-    weight: 0.4,
     isPercent: true,
     precision: 1,
   },
-  averageReturn: {
-    thresholds: [0.2, 0.6],
-    direction: 'higher',
-    weight: 60,
-    isScored: false,
-    precision: 2,
-  },
-  maxDrawdown: {
-    thresholds: [40, 20],
-    direction: 'lower',
-    isScored: true,
-    weight: 100,
-    isPercent: true,
-    precision: 1,
-  },
+
+  // Доходность
   amount: {
     thresholds: [105, 120],
     direction: 'higher',
-    weight: 0.5,
     isAmount: true,
     precision: 2,
   },
   maxAmount: {
-    thresholds: [110, 130],
+    thresholds: [140, 180],
     direction: 'higher',
-    weight: 0.4,
     isAmount: true,
     precision: 2,
   },
   minAmount: {
-    thresholds: [90, 100],
+    thresholds: [80, 90],
     direction: 'higher',
-    weight: 0.3,
     isAmount: true,
     precision: 2,
   },
   netProfit: {
     thresholds: [5, 20],
     direction: 'higher',
-    weight: 0.5,
     isAmount: true,
     precision: 2,
   },
-  netProfitByLong: {
-    thresholds: [5, 20],
+  totalReturn: {
+    thresholds: [10, 50],
     direction: 'higher',
-    weight: 0.5,
-    isAmount: true,
-    precision: 2,
+    weight: 10,
+    isPercent: true,
+    precision: 1,
   },
-  netProfitByShort: {
-    thresholds: [5, 20],
+  cagr: {
+    thresholds: [15, 40],
     direction: 'higher',
-    weight: 0.5,
-    isAmount: true,
-    precision: 2,
+    weight: 35,
+    isPercent: true,
+    precision: 1,
   },
-  grossProfit: {
-    thresholds: [20, 50],
-    direction: 'higher',
-    weight: 0.3,
-    isAmount: true,
-    precision: 2,
-  },
-  grossLoss: {
-    thresholds: [30, 15],
+
+  // Риск и риск/доходность
+  maxDrawdown: {
+    thresholds: [25, 12],
     direction: 'lower',
-    weight: 0.3,
-    isAmount: true,
+    weight: 40,
+    isPercent: true,
+    precision: 1,
+  },
+  calmar: {
+    thresholds: [0.5, 2.0],
+    direction: 'higher',
+    weight: 35,
     precision: 2,
   },
-  wins: {
-    thresholds: [20, 50],
+
+  // Качество сделок
+  winRate: {
+    thresholds: [40, 60],
     direction: 'higher',
-    weight: 0.3,
-    precision: 0,
+    weight: 10,
+    isPercent: true,
+    precision: 1,
   },
-  losses: {
-    thresholds: [60, 30],
-    direction: 'lower',
-    weight: 0.2,
-    precision: 0,
-  },
-  orders: {
-    thresholds: [30, 100],
+  riskRewardRatio: {
+    thresholds: [1.5, 2.5],
     direction: 'higher',
-    weight: 0.2,
-    precision: 0,
+    weight: 10,
+    precision: 2,
   },
-  score: {
-    thresholds: [10, 100],
+  expectancy: {
+    thresholds: [0.3, 1.0],
     direction: 'higher',
-    weight: 0.2,
-    precision: 0,
+    weight: 25,
+    isPercent: true,
+    precision: 2,
   },
-   maxConsecutiveWins: {
-    thresholds: [2, 5],
+  maxConsecutiveWins: {
+    thresholds: [2, 6],
     direction: 'higher',
-    weight: 0.2,
+    weight: 2,
     precision: 0,
   },
   maxConsecutiveLosses: {
-    thresholds: [2, 5],
+    thresholds: [5, 2],
     direction: 'lower',
-    weight: 0.2,
+    precision: 0,
+  },
+
+  // Sharpe (годовой, по месячным ретернам equity)
+  sharpeRatio: {
+    thresholds: [0.5, 1.5],
+    direction: 'higher',
+    weight: 45,
+    precision: 2,
+  },
+
+  score: {
+    thresholds: [10, 100],
+    direction: 'higher',
     precision: 0,
   },
 };
