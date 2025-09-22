@@ -44,7 +44,7 @@ export const useTrendLine = (
       return () => null;
     }
 
-    const trendlines = findTrendlinesByLows(data, 3);
+    const trendlines = findTrendlinesByLows(data, { minTouches: 3});
 
     for (const line of trendlines) {
       chart.createOverlay({

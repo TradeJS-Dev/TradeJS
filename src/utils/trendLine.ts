@@ -9,10 +9,31 @@ export type TrendLine = {
   points: { timestamp: number; value: number }[];
 };
 
+export interface TrendLineOptions {
+  /** режим: по минимумам (поддержка) или по максимумам (сопротивление) */
+  mode: Mode;
+  /** ограничение перебора кандидатов (чтобы не взрывать сложность) */
+  maxLines?: number;
+  /** окно для поиска локальных экстремумов (в барах) */
+  range?: number;
+  /** допуск в долях от цены (0.01 = 1%) */
+  epsilon?: number;
+  /** мин. число касаний по телам между опорами (с учётом minTouchGap) */
+  minTouches?: number;
+  /** мин. расстояние между опорами (в барах) */
+  minDistanceBars?: number;
+  /** «сила» первой опоры: окно для проверки сильного экстремума (в барах) */
+  firstRange?: number;
+  /** сколько последних баров можно игнорировать при проверке продления */
+  offset?: number;
+  /** минимальный зазор между касаниями (в барах) */
+  minTouchGap?: number;
+}
+
 // авто-детект секунд/миллисекунд
 const toMs = (ts: number) => (ts < 1e12 ? ts * 1000 : ts);
 
-// body/fitil helpers
+// body/wick helpers
 const getOpen  = (c: any) => (typeof c.open  === 'number' ? c.open  : c.o ?? c.openPrice ?? c.close);
 const getClose = (c: any) => (typeof c.close === 'number' ? c.close : c.price ?? c.open ?? 0);
 
@@ -22,139 +43,152 @@ const getBodyHigh = (c: any) => Math.max(getOpen(c), getClose(c));
 const getLow  = (c: any) => (typeof c.low  === 'number' ? c.low  : Math.min(getOpen(c), getClose(c)));
 const getHigh = (c: any) => (typeof c.high === 'number' ? c.high : Math.max(getOpen(c), getClose(c)));
 
+// процентный допуск от уровня линии
+const tolAt = (lineY: number, epsilonPct: number) =>
+  Math.max(0, Math.abs(lineY) * epsilonPct);
+
 const isStrongExtremum = (
-  candles: KlineChartData,
+  data: KlineChartData,
   idx: number,
   mode: Mode,
   firstRange: number,
 ): boolean => {
   const start = Math.max(0, idx - firstRange);
-  const end   = Math.min(candles.length - 1, idx + firstRange);
-  const slice = candles.slice(start, end + 1);
+  const end   = Math.min(data.length - 1, idx + firstRange);
+  const slice = data.slice(start, end + 1);
   if (mode === 'lows') {
     const target = Math.min(...slice.map(getBodyLow));
-    return getBodyLow(candles[idx]) === target;
+    return getBodyLow(data[idx]) === target;
   } else {
     const target = Math.max(...slice.map(getBodyHigh));
-    return getBodyHigh(candles[idx]) === target;
+    return getBodyHigh(data[idx]) === target;
   }
 };
 
+/** ядро */
 const findTrendlines = (
-  candles: KlineChartData,
-  mode: Mode,
-  maxLines = 10,          // не влияет на отбор (возвращаем лучшую), но ограничит перебор кандидатов
-  range = 10,
-  epsilon = 0.0001,
-  minTouches = 3,
-  minDistanceBars = 5,    // МИНИМАЛЬНАЯ дистанция между опорами
-  firstRange = 10,        // «сила» первой опоры
-  offset = 3,             // последние N баров можно игнорировать на ПРОДЛЕНИИ
+  data: KlineChartData,
+  {
+    mode,
+    maxLines = 10,
+    range = 10,
+    epsilon = 0.01,      // 1%
+    minTouches = 3,
+    minDistanceBars = 5,
+    firstRange = 10,
+    offset = 3,
+    minTouchGap = 2,
+  }: TrendLineOptions,
 ): TrendLine[] => {
-  if (!candles?.length) return [];
+  if (!data?.length) return [];
 
-  // какие значения берем для ОПОР и КАСАНИЙ (по телам)
+  // значения для ОПОР/КАСАНИЙ (по телам)
   const pickExt   = mode === 'lows' ? getBodyLow  : getBodyHigh;
   const pickTouch = mode === 'lows' ? getBodyLow  : getBodyHigh;
 
-  // 1) Опорные точки: локальные экстремумы тел (min(open,close) / max(open,close))
+  // 1) Опорные точки: локальные экстремумы тел
   const exts: Point[] = [];
-  for (let i = range; i < candles.length - range; i++) {
-    const segment = candles.slice(i - range, i + range + 1);
+  for (let i = range; i < data.length - range; i++) {
+    const segment = data.slice(i - range, i + range + 1);
     const target =
       mode === 'lows' ? Math.min(...segment.map(pickExt)) : Math.max(...segment.map(pickExt));
-    if (pickExt(candles[i]) === target) {
-      exts.push({ x: i, y: pickExt(candles[i]), t: toMs(candles[i].timestamp) });
+    if (pickExt(data[i]) === target) {
+      exts.push({ x: i, y: pickExt(data[i]), t: toMs(data[i].timestamp) });
     }
   }
   if (exts.length < minTouches) return [];
 
-  const lastIdx = candles.length - 1;
-  const tEnd = toMs(candles[lastIdx].timestamp);
+  const lastIdx = data.length - 1;
+  const tEnd = toMs(data[lastIdx].timestamp);
 
   let bestLine: TrendLine | null = null;
-  let bestLenBars = -1;
-
+  let bestLenBars = -1; // длина кандидата в барах (между крайними опорами)
   let produced = 0;
 
   // 2) Перебор пар опор
   for (let a = exts.length - 1; a >= 0; a--) {
     for (let b = a - 1; b >= 0; b--) {
-      if (produced >= maxLines) break; // ограничение перебора кандидатов
+      if (produced >= maxLines) break;
 
       const p1 = exts[b];
       const p2 = exts[a];
 
       if (p2.x === p1.x || p2.t === p1.t) continue;
 
-      // Минимальная дистанция между опорами
-      const spanBars = p2.x - p1.x;
+      // минимум расстояния между опорами
+      const firstX = p1.x;
+      const lastX  = p2.x;
+      const spanBars = lastX - firstX;
       if (spanBars < minDistanceBars) continue;
 
-      // Для первой точки требуем «сильный» экстремум на окне firstRange
-      if (!isStrongExtremum(candles, p1.x, mode, firstRange)) continue;
+      // требуем «сильную» первую опору
+      if (!isStrongExtremum(data, firstX, mode, firstRange)) continue;
 
-      // Направление: support — вверх, resistance — вниз (по индексам)
+      // направление: support — вверх, resistance — вниз (по индексам)
       const slopeIdx = (p2.y - p1.y) / (p2.x - p1.x);
       if (mode === 'lows' && slopeIdx <= 0) continue;
       if (mode === 'highs' && slopeIdx >= 0) continue;
 
-      // 3) Линия — отрезок по времени (t1,y1)->(t2,y2) + ПРОДЛЕНИЕ вправо
+      // 3) Отрезок по времени (p1 -> p2) + продление вправо
       const t1 = p1.t, y1 = p1.y;
       const t2 = p2.t, y2 = p2.y;
       const yAt = (tMs: number) => y1 + (y2 - y1) * ((tMs - t1) / (t2 - t1));
 
-      // 4) КАСАНИЯ: по всем барам между p1..p2 (по телу)
-      const firstX = p1.x;
-      const lastX  = p2.x;
-
+      // 4) КАСАНИЯ по телу, с процентным допуском и GAP
       let touches = 0;
       for (let k = firstX; k <= lastX; k++) {
-        const tMs = toMs(candles[k].timestamp);
+        const tMs = toMs(data[k].timestamp);
         const lineY = yAt(tMs);
-        const bodyVal = pickTouch(candles[k]);
-        if (Math.abs(bodyVal - lineY) <= epsilon) {
+        const tol = tolAt(lineY, epsilon);
+        const bodyVal = pickTouch(data[k]);
+
+        if (Math.abs(bodyVal - lineY) <= tol) {
           touches++;
+          k += Math.max(0, minTouchGap); // пропускаем N баров после касания
         }
       }
       if (touches < minTouches) continue;
 
-      // 5) Проверка «нет пересечений» фитилём между p1..p2
+      // 5) Проверка: нет пересечений фитилём между p1..p2 (с процентным допуском)
       let invalid = false;
       for (let k = firstX; k <= lastX; k++) {
-        const tMs = toMs(candles[k].timestamp);
+        const tMs = toMs(data[k].timestamp);
         const lineY = yAt(tMs);
+        const tol = tolAt(lineY, epsilon);
         if (mode === 'lows') {
-          if (getLow(candles[k]) < lineY - epsilon) { invalid = true; break; }   // вниз нельзя
+          if (getLow(data[k]) < lineY - tol) { invalid = true; break; }   // вниз нельзя
         } else {
-          if (getHigh(candles[k]) > lineY + epsilon) { invalid = true; break; }  // вверх нельзя
+          if (getHigh(data[k]) > lineY + tol) { invalid = true; break; }  // вверх нельзя
         }
       }
       if (invalid) continue;
 
-      // 6) ПРОДЛЕНИЕ: до конца, но игнорируем последние `offset` баров
-      const lastToCheck = Math.max(lastX + 1, lastIdx - offset);
-      for (let k = lastX + 1; k <= lastToCheck; k++) {
-        const tMs = toMs(candles[k].timestamp);
-        const lineY = yAt(tMs);
-        if (mode === 'lows') {
-          if (getLow(candles[k]) < lineY - epsilon) { invalid = true; break; }
-        } else {
-          if (getHigh(candles[k]) > lineY + epsilon) { invalid = true; break; }
+      // 6) ПРОДЛЕНИЕ до конца, игнорируя последние `offset` баров
+      const checkEnd = lastIdx - offset; // индекс последнего бара, который ещё проверяем
+      if (checkEnd >= lastX + 1) {
+        for (let k = lastX + 1; k <= checkEnd; k++) {
+          const tMs = toMs(data[k].timestamp);
+          const lineY = yAt(tMs);
+          const tol = tolAt(lineY, epsilon);
+          if (mode === 'lows') {
+            if (getLow(data[k]) < lineY - tol) { invalid = true; break; }
+          } else {
+            if (getHigh(data[k]) > lineY + tol) { invalid = true; break; }
+          }
         }
       }
       if (invalid) continue;
 
       produced++;
 
-      // 7) Кандидат валиден — оценим длину и, если он лучший, запоминаем
+      // 7) выбираем самую длинную по расстоянию МЕЖДУ КРАЙНИМИ ТОЧКАМИ (в барах)
       if (spanBars > bestLenBars) {
         bestLenBars = spanBars;
         bestLine = {
           id: `TrendLine-1`,
           points: [
-            { timestamp: p1.t, value: yAt(p1.t) },
-            { timestamp: tEnd, value: yAt(tEnd) }, // продление до конца графика
+            { timestamp: p1.t, value: yAt(p1.t) },  // начало = первая опора
+            { timestamp: tEnd, value: yAt(tEnd) },  // конец = продление к последней свече
           ],
         };
       }
@@ -164,46 +198,14 @@ const findTrendlines = (
   return bestLine ? [bestLine] : [];
 };
 
+/** Обёртки с объектом настроек вторым параметром */
+
 export const findTrendlinesByLows = (
-  candles: KlineChartData,
-  maxLines = 10,
-  range = 10,
-  epsilon = 0.0001,
-  minTouches = 3,
-  minDistanceBars = 5,
-  firstRange = 10,
-  offset = 3,
-): TrendLine[] =>
-  findTrendlines(
-    candles,
-    'lows',
-    maxLines,
-    range,
-    epsilon,
-    minTouches,
-    minDistanceBars,
-    firstRange,
-    offset,
-  );
+  data: KlineChartData,
+  options: Omit<TrendLineOptions, 'mode'> = {},
+): TrendLine[] => findTrendlines(data, { mode: 'lows', ...options });
 
 export const findTrendlinesByHighs = (
-  candles: KlineChartData,
-  maxLines = 10,
-  range = 10,
-  epsilon = 0.0001,
-  minTouches = 3,
-  minDistanceBars = 5,
-  firstRange = 10,
-  offset = 3,
-): TrendLine[] =>
-  findTrendlines(
-    candles,
-    'highs',
-    maxLines,
-    range,
-    epsilon,
-    minTouches,
-    minDistanceBars,
-    firstRange,
-    offset,
-  );
+  data: KlineChartData,
+  options: Omit<TrendLineOptions, 'mode'> = {},
+): TrendLine[] => findTrendlines(data, { mode: 'highs', ...options });
