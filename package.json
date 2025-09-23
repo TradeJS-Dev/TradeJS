@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "backtest": "yarn clean-cache && NODE_OPTIONS=\"--max-old-space-size=8192\" time yarn ts-node ./src/scripts/backtest",
+    "backtest": "NODE_OPTIONS=\"--max-old-space-size=8192\" time yarn ts-node ./src/scripts/backtest",
     "bot": "time yarn ts-node ./src/scripts/bot",
     "build": "next build",
     "clean-cache": "time yarn ts-node ./src/scripts/clean --dir cache",
@@ -17,6 +17,7 @@
     "prettify": "yarn prettier -c -w ./src",
     "start": "next start -H 0.0.0.0",
     "test": "time yarn ts-node ./src/scripts/test",
+    "signals": "NODE_OPTIONS=\"--max-old-space-size=8192\" time yarn ts-node ./src/scripts/signals",
     "unit": "jest",
     "update-history": "yarn backtest --updateOnly"
   },

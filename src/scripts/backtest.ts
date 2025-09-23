@@ -6,25 +6,17 @@ import path from 'path';
 import os from 'os';
 import chalk from 'chalk';
 import _ from 'lodash';
-import { TESTS_TOP_LIMIT, TESTS_LIMIT, PRELOAD_DAYS } from '@constants';
+import { TESTS_TOP_LIMIT, TESTS_LIMIT } from '@constants';
 import { connectors } from '@src/connectors';
 import { mergeConfigs } from '@utils/grid';
-import { rankBacktests, getFormatted } from '@utils/stat';
+import { rankBacktests } from '@utils/stat';
 import { setData, getData } from '@utils/data';
 import { toJson } from '@utils/toJson';
 import { uuid } from '@utils/uuid';
 import { createTestSuite } from '@utils/grid';
-import { getTimestamp } from '@utils/timestamp';
-import { getTopTickers } from '@utils/tickers';
-import {
-  TestWorkerResult,
-  ThresholdLevel,
-  TestStat,
-  TestThresholdsKey,
-} from '@types';
+import { cleanFiles, update, drawStatInCLI, getTickers } from '@utils/cli';
+import { Interval, TestWorkerResult } from '@types';
 
-const PRELOAD_START = getTimestamp(PRELOAD_DAYS);
-const PRELOAS_END = getTimestamp();
 const MAX_PARALLEL = Math.min(os.cpus().length, 4);
 
 args.example(
@@ -37,13 +29,16 @@ args.option(['e', 'exclude'], 'Exclude tickers from tests');
 args.option(['l', 'tickersLimit'], 'Tickers limit');
 args.option(['n', 'tests'], 'Tests limit', TESTS_LIMIT);
 args.option(['p', 'parallel'], 'Parallel tasks', MAX_PARALLEL);
+args.option(['f', 'timeframe'], 'Timeframe', 15);
 args.option(['T', 'top'], 'Return N best tests', TESTS_TOP_LIMIT);
 args.option(['u', 'updateOnly'], 'Only update tickers history', false);
-args.option(['c', 'cacheOnly'], 'Do not update tickers history', false);
+args.option(['C', 'cacheOnly'], 'Do not update tickers history', false);
+args.option(['c', 'config'], 'Backtest config', 'breakout');
 args.option(['L', 'showTickersList'], 'Just show only ticker list', false);
 args.option(['U', 'user'], 'Use user confg', 'root');
 
 const flags = args.parse(process.argv);
+const interval = flags.timeframe.toString() as Interval;
 
 const HEADERS = [
   chalk.blue('ID'),
@@ -73,76 +68,15 @@ const byBitConnector = connectors.ByBit({
   userName: flags.user,
 });
 
-const update = async (tickers: string[]) => {
-  const bar = new ProgressBar(':current/:total [:bar][:percent] :eta(s)', {
-    total: tickers.length,
-    width: 100,
-  });
-
-  let completed = 0;
-
-  console.log(chalk.yellow('update tickers'));
-
-  for await (const symbol of tickers) {
-    await byBitConnector.kline({
-      symbol,
-      start: PRELOAD_START,
-      end: PRELOAS_END,
-      interval: '15',
-      silent: true,
-    });
-
-    completed++;
-
-    bar.tick(1);
-  }
-};
-
-const scanner = async (skip = false) => {
-  if (skip) {
-    return [];
-  }
-
-  const data = await byBitConnector.getTickers();
-
-  const tickers = getTopTickers(data, flags.tickersLimit);
-  return tickers.map(({ value }) => value);
-};
-
-const parseSymbolsFromCLI = (symbol = '') =>
-  symbol.split(',').map((s) => {
-    const ticker = s.toUpperCase();
-    return ticker.endsWith('USDT') ? ticker : `${ticker}USDT`;
-  });
-
-const getCLILevelColor = (level: ThresholdLevel) => {
-  switch (level) {
-    case 'success':
-      return chalk.green;
-    case 'warning':
-      return chalk.yellow;
-    case 'error':
-      return chalk.red;
-  }
-};
-
-const drawInCLI = (stat: TestStat, keys: TestThresholdsKey[]): string[] => {
-  return keys.map((key) => {
-    const { formatted, level } = getFormatted(stat, key);
-
-    const color = getCLILevelColor(level);
-
-    return color(formatted);
-  });
-};
-
 const backtest = async () => {
-  const backtestConfig = await getData('data/backtest', flags.user);
+  await cleanFiles('data/cache');
 
-  const volatilityTickers = await scanner(!!flags.tickers);
-  const tickers = (
-    flags.tickers ? parseSymbolsFromCLI(flags.tickers) : volatilityTickers
-  ).filter((t) => !parseSymbolsFromCLI(flags.exclude).includes(t));
+  const tickers = await getTickers(
+    byBitConnector,
+    flags.tickers,
+    flags.exclude,
+    flags.tickersLimit,
+  );
 
   if (flags.showTickersList) {
     console.log(chalk.gray(JSON.stringify(tickers.sort(), null, 2)));
@@ -151,12 +85,14 @@ const backtest = async () => {
   }
 
   if (!flags.cacheOnly) {
-    await update(tickers);
+    await update(byBitConnector, interval, tickers);
   }
 
   if (flags.updateOnly) {
     return;
   }
+
+  const backtestConfig = await getData('data/backtest', flags.config);
 
   let testSuite = createTestSuite(flags.user, tickers, backtestConfig).slice(
     0,
@@ -317,7 +253,7 @@ const finish = async (results: TestWorkerResult[]) => {
   const colorizedResults = results.map(({ test: { symbol, name }, stat }) => [
     chalk.blue(name),
     chalk.yellow(symbol),
-    ...drawInCLI(stat, [
+    ...drawStatInCLI(stat, [
       'netProfit',
       'orders',
       'winRate',

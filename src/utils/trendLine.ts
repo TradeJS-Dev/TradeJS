@@ -34,14 +34,18 @@ export interface TrendLineOptions {
 const toMs = (ts: number) => (ts < 1e12 ? ts * 1000 : ts);
 
 // body/wick helpers
-const getOpen  = (c: any) => (typeof c.open  === 'number' ? c.open  : c.o ?? c.openPrice ?? c.close);
-const getClose = (c: any) => (typeof c.close === 'number' ? c.close : c.price ?? c.open ?? 0);
+const getOpen = (c: any) =>
+  typeof c.open === 'number' ? c.open : c.o ?? c.openPrice ?? c.close;
+const getClose = (c: any) =>
+  typeof c.close === 'number' ? c.close : c.price ?? c.open ?? 0;
 
-const getBodyLow  = (c: any) => Math.min(getOpen(c), getClose(c));
+const getBodyLow = (c: any) => Math.min(getOpen(c), getClose(c));
 const getBodyHigh = (c: any) => Math.max(getOpen(c), getClose(c));
 
-const getLow  = (c: any) => (typeof c.low  === 'number' ? c.low  : Math.min(getOpen(c), getClose(c)));
-const getHigh = (c: any) => (typeof c.high === 'number' ? c.high : Math.max(getOpen(c), getClose(c)));
+const getLow = (c: any) =>
+  typeof c.low === 'number' ? c.low : Math.min(getOpen(c), getClose(c));
+const getHigh = (c: any) =>
+  typeof c.high === 'number' ? c.high : Math.max(getOpen(c), getClose(c));
 
 // процентный допуск от уровня линии
 const tolAt = (lineY: number, epsilonPct: number) =>
@@ -54,7 +58,7 @@ const isStrongExtremum = (
   firstRange: number,
 ): boolean => {
   const start = Math.max(0, idx - firstRange);
-  const end   = Math.min(data.length - 1, idx + firstRange);
+  const end = Math.min(data.length - 1, idx + firstRange);
   const slice = data.slice(start, end + 1);
   if (mode === 'lows') {
     const target = Math.min(...slice.map(getBodyLow));
@@ -72,7 +76,7 @@ const findTrendlines = (
     mode,
     maxLines = 10,
     range = 10,
-    epsilon = 0.01,      // 1%
+    epsilon = 0.01, // 1%
     minTouches = 3,
     minDistanceBars = 5,
     firstRange = 10,
@@ -83,15 +87,17 @@ const findTrendlines = (
   if (!data?.length) return [];
 
   // значения для ОПОР/КАСАНИЙ (по телам)
-  const pickExt   = mode === 'lows' ? getBodyLow  : getBodyHigh;
-  const pickTouch = mode === 'lows' ? getBodyLow  : getBodyHigh;
+  const pickExt = mode === 'lows' ? getBodyLow : getBodyHigh;
+  const pickTouch = mode === 'lows' ? getBodyLow : getBodyHigh;
 
   // 1) Опорные точки: локальные экстремумы тел
   const exts: Point[] = [];
   for (let i = range; i < data.length - range; i++) {
     const segment = data.slice(i - range, i + range + 1);
     const target =
-      mode === 'lows' ? Math.min(...segment.map(pickExt)) : Math.max(...segment.map(pickExt));
+      mode === 'lows'
+        ? Math.min(...segment.map(pickExt))
+        : Math.max(...segment.map(pickExt));
     if (pickExt(data[i]) === target) {
       exts.push({ x: i, y: pickExt(data[i]), t: toMs(data[i].timestamp) });
     }
@@ -117,7 +123,7 @@ const findTrendlines = (
 
       // минимум расстояния между опорами
       const firstX = p1.x;
-      const lastX  = p2.x;
+      const lastX = p2.x;
       const spanBars = lastX - firstX;
       if (spanBars < minDistanceBars) continue;
 
@@ -130,8 +136,10 @@ const findTrendlines = (
       if (mode === 'highs' && slopeIdx >= 0) continue;
 
       // 3) Отрезок по времени (p1 -> p2) + продление вправо
-      const t1 = p1.t, y1 = p1.y;
-      const t2 = p2.t, y2 = p2.y;
+      const t1 = p1.t,
+        y1 = p1.y;
+      const t2 = p2.t,
+        y2 = p2.y;
       const yAt = (tMs: number) => y1 + (y2 - y1) * ((tMs - t1) / (t2 - t1));
 
       // 4) КАСАНИЯ по телу, с процентным допуском и GAP
@@ -156,9 +164,15 @@ const findTrendlines = (
         const lineY = yAt(tMs);
         const tol = tolAt(lineY, epsilon);
         if (mode === 'lows') {
-          if (getLow(data[k]) < lineY - tol) { invalid = true; break; }   // вниз нельзя
+          if (getLow(data[k]) < lineY - tol) {
+            invalid = true;
+            break;
+          } // вниз нельзя
         } else {
-          if (getHigh(data[k]) > lineY + tol) { invalid = true; break; }  // вверх нельзя
+          if (getHigh(data[k]) > lineY + tol) {
+            invalid = true;
+            break;
+          } // вверх нельзя
         }
       }
       if (invalid) continue;
@@ -171,9 +185,15 @@ const findTrendlines = (
           const lineY = yAt(tMs);
           const tol = tolAt(lineY, epsilon);
           if (mode === 'lows') {
-            if (getLow(data[k]) < lineY - tol) { invalid = true; break; }
+            if (getLow(data[k]) < lineY - tol) {
+              invalid = true;
+              break;
+            }
           } else {
-            if (getHigh(data[k]) > lineY + tol) { invalid = true; break; }
+            if (getHigh(data[k]) > lineY + tol) {
+              invalid = true;
+              break;
+            }
           }
         }
       }
@@ -187,8 +207,8 @@ const findTrendlines = (
         bestLine = {
           id: `TrendLine-1`,
           points: [
-            { timestamp: p1.t, value: yAt(p1.t) },  // начало = первая опора
-            { timestamp: tEnd, value: yAt(tEnd) },  // конец = продление к последней свече
+            { timestamp: p1.t, value: yAt(p1.t) }, // начало = первая опора
+            { timestamp: tEnd, value: yAt(tEnd) }, // конец = продление к последней свече
           ],
         };
       }
