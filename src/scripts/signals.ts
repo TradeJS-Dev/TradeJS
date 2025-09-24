@@ -1,4 +1,5 @@
 import args from 'args';
+import ProgressBar from 'progress';
 import { connectors } from '@src/connectors';
 import chalk from 'chalk';
 import { PRELOAD_DAYS } from '@constants';
@@ -35,14 +36,21 @@ const checkSignals = async (symbol: string) => {
     interval,
   });
 
-  const trendlines = findTrendlinesByLows(data, { minTouches: 3 });
+  const trendlines = findTrendlinesByLows(data, {
+    minTouches: 3,
+    capture: true,
+  });
 
   if (trendlines.length > 0) {
-    console.log(symbol);
+    return true;
   }
+
+  return false;
 };
 
 const signals = async () => {
+  const signalsFound = new Array<string>();
+
   const tickers = await getTickers(
     byBitConnector,
     flags.tickers,
@@ -64,9 +72,30 @@ const signals = async () => {
     return;
   }
 
+  const bar = new ProgressBar(
+    ':current/:total [:bar][:percent] :found :eta(s) :symbol',
+    {
+      total: tickers.length,
+      width: 30,
+    },
+  );
+
+  console.log(chalk.yellow(`tickers: ${tickers.length}`));
+
   for await (const ticker of tickers) {
-    await checkSignals(ticker);
+    const res = await checkSignals(ticker);
+
+    if (res) {
+      signalsFound.push(ticker);
+    }
+
+    bar.tick(1, {
+      found: chalk.cyan(signalsFound.length),
+      symbol: chalk.gray(ticker),
+    });
   }
+
+  console.log(JSON.stringify(signalsFound, null, 2));
 };
 
 signals();

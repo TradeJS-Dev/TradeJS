@@ -1,6 +1,7 @@
 'use client';
 
-import { Select } from '@UI';
+import _ from 'lodash';
+import { SelectWithSearch } from '@UI';
 import { useFiltersContext } from '../context';
 
 interface SelectSymbolProps {}
@@ -9,6 +10,10 @@ export const SelectSymbol = ({}: SelectSymbolProps) => {
   const { filters, tickers, onChangeFilters } = useFiltersContext();
 
   const onChange = (value: string[]) => {
+    if (_.isEmpty(value)) {
+      return;
+    }
+
     const newFilters = {
       ...filters,
       symbol: value[0],
@@ -19,7 +24,7 @@ export const SelectSymbol = ({}: SelectSymbolProps) => {
   };
 
   return (
-    <Select
+    <SelectWithSearch
       defaultValue={[filters.symbol]}
       onChange={onChange}
       items={tickers}

@@ -24,7 +24,7 @@ export const cleanFiles = async (dir: string) => {
 
   const bar = new ProgressBar(':current/:total [:bar][:percent] :eta(s)', {
     total: files.length,
-    width: 100,
+    width: 30,
   });
 
   console.log(chalk.yellow(`clean ${dir}`));
@@ -47,10 +47,13 @@ export const update = async (
   interval: Interval,
   tickers: string[],
 ) => {
-  const bar = new ProgressBar(':current/:total [:bar][:percent] :eta(s)', {
-    total: tickers.length,
-    width: 100,
-  });
+  const bar = new ProgressBar(
+    ':current/:total [:bar][:percent] :eta(s) :symbol',
+    {
+      total: tickers.length,
+      width: 30,
+    },
+  );
 
   let completed = 0;
 
@@ -67,7 +70,9 @@ export const update = async (
 
     completed++;
 
-    bar.tick(1);
+    bar.tick(1, {
+      symbol: chalk.gray(symbol),
+    });
   }
 
   console.log('');

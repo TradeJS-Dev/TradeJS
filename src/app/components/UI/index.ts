@@ -1,4 +1,5 @@
 export { Select } from './Select';
+export { SelectWithSearch } from './SelectWithSearch';
 export { Segment } from './Segment';
 export { Switcher } from './Switcher';
 export { ColorModeProvider } from './ColorMode';
