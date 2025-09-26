@@ -1,3 +1,3 @@
 #!/bin/sh
 
-exec yarn run bot
+exec /usr/local/bin/yarn run bot

@@ -1,3 +1,3 @@
 #!/bin/sh
 
-exec yarn run signals --timeframe 15
+exec /usr/local/bin/yarn run signals --timeframe 15
