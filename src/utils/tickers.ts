@@ -9,6 +9,8 @@ type ResultItem = {
   category: Category;
 };
 
+const EXCLUDE_TICKERS = ['USDEUSDT', 'USDCUSDT', 'USDTUSDT'];
+
 export const getVolatilityTickers = (data: Ticker[]): Item[] => {
   const result: ResultItem[] = [];
   const selected = new Set<string>();
@@ -77,6 +79,14 @@ export const getTopTickers = (data: Ticker[], topN?: number): Item[] => {
   const scores = data
     .filter(({ symbol }) => {
       if (symbol.includes('BTC') && symbol !== 'BTCUSDT') {
+        return false;
+      }
+
+      if (!symbol.endsWith('USDT')) {
+        return false;
+      }
+
+      if (EXCLUDE_TICKERS.includes(symbol)) {
         return false;
       }
 

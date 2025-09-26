@@ -3,7 +3,7 @@ import _ from 'lodash';
 import { Chart, registerOverlay } from 'klinecharts';
 import { Filters } from '@types';
 import { useData } from './useData';
-import { findTrendlinesByLows } from '@utils/trendLine';
+import { findTrendlinesByLows, findTrendlinesByHighs } from '@utils/trendLine';
 
 export const useTrendLine = (
   chart: Chart | null,
@@ -14,7 +14,7 @@ export const useTrendLine = (
 
   useEffect(() => {
     registerOverlay({
-      name: 'TrendLine',
+      name: 'LowTrendLine',
       totalStep: 2,
       needDefaultPointFigure: false,
       needDefaultXAxisFigure: false,
@@ -29,7 +29,32 @@ export const useTrendLine = (
               coordinates: [coordinates[0], coordinates[1]],
             },
             styles: {
-              color: '#FFA500',
+              color: '#facc15',
+              size: 2,
+              style: 'solid',
+            },
+          },
+        ];
+      },
+    });
+
+    registerOverlay({
+      name: 'HighTrendLine',
+      totalStep: 2,
+      needDefaultPointFigure: false,
+      needDefaultXAxisFigure: false,
+      needDefaultYAxisFigure: false,
+      createPointFigures: ({ coordinates }) => {
+        if (coordinates.length < 2) return [];
+
+        return [
+          {
+            type: 'line',
+            attrs: {
+              coordinates: [coordinates[0], coordinates[1]],
+            },
+            styles: {
+              color: '#fb923c',
               size: 2,
               style: 'solid',
             },
@@ -41,23 +66,37 @@ export const useTrendLine = (
 
   useEffect(() => {
     if (!chart || !enabled || loading || !data || _.isEmpty(data)) {
-      return () => null;
+      return;
     }
 
-    const trendlines = findTrendlinesByLows(data, { minTouches: 3 });
+    const lowsTrendlines = findTrendlinesByLows(data, { minTouches: 3 });
 
-    for (const line of trendlines) {
+    for (const line of lowsTrendlines) {
       chart.createOverlay({
-        name: 'TrendLine',
+        name: 'LowTrendLine',
+        id: line.id,
+        points: line.points,
+      });
+    }
+
+    const highsTrendlines = findTrendlinesByHighs(data, { minTouches: 3 });
+
+    for (const line of highsTrendlines) {
+      chart.createOverlay({
+        name: 'HighTrendLine',
         id: line.id,
         points: line.points,
       });
     }
 
     return () => {
-      for (const line of trendlines) {
-        chart.removeOverlay({ name: 'TrendLine' });
+      for (const line of lowsTrendlines) {
+        chart.removeOverlay({ name: 'LowTrendLine' });
       }
-    };
+
+      for (const line of highsTrendlines) {
+        chart.removeOverlay({ name: 'HighTrendLine' });
+      }
+    }
   }, [chart, enabled, loading, data]);
 };

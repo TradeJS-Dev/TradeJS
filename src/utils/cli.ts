@@ -15,7 +15,8 @@ import {
 } from '@types';
 
 const PRELOAD_START = getTimestamp(PRELOAD_DAYS);
-const PRELOAS_END = getTimestamp();
+const PRELOAD_END = getTimestamp();
+const CONCURRENCY = 10;
 
 export const cleanFiles = async (dir: string) => {
   let completed = 0;
@@ -42,41 +43,46 @@ export const cleanFiles = async (dir: string) => {
   console.log('');
 };
 
+
 export const update = async (
   connector: Connector,
   interval: Interval,
   tickers: string[],
 ) => {
-  const bar = new ProgressBar(
-    ':current/:total [:bar][:percent] :eta(s) :symbol',
-    {
-      total: tickers.length,
-      width: 30,
-    },
-  );
-
-  let completed = 0;
+  const bar = new ProgressBar(':current/:total [:bar][:percent] :eta(s) :symbol', {
+    total: tickers.length,
+    width: 30,
+  });
 
   console.log(chalk.yellow('update tickers'));
 
-  for await (const symbol of tickers) {
-    await connector.kline({
-      symbol,
-      start: PRELOAD_START,
-      end: PRELOAS_END,
-      interval: interval,
-      silent: true,
-    });
+  const queue = tickers.slice();
 
-    completed++;
+  const worker = async () => {
+    while (queue.length > 0) {
+      const symbol = queue.shift()!;
+      try {
+        await connector.kline({
+          symbol,
+          start: PRELOAD_START,
+          end: PRELOAD_END,
+          interval,
+          silent: true,
+        });
+       } catch {
+        console.error('Failed loading', symbol);
+      } finally {
+        bar.tick(1, { symbol: chalk.gray(symbol) });
+      }
+    }
+  };
 
-    bar.tick(1, {
-      symbol: chalk.gray(symbol),
-    });
-  }
+  const workers = Array.from({ length: CONCURRENCY }, () => worker());
+  await Promise.all(workers);
 
   console.log('');
 };
+
 
 const parseSymbolsFromCLI = (symbol = '') =>
   symbol.split(',').map((s) => {

@@ -1,12 +1,19 @@
+import 'dotenv/config';
 import puppeteer from 'puppeteer';
+import { delay } from '@utils/delay';
 import { Interval } from '@types';
 
-interface ScreenParams {
+interface ScreenDashboardParams {
   symbol: string;
   interval: Interval;
 }
 
-export const screen = async ({ symbol, interval }: ScreenParams) => {
+const APP_URL = process.env.APP_URL;
+
+export const screenDashboard = async ({
+  symbol,
+  interval,
+}: ScreenDashboardParams) => {
   const browser = await puppeteer.launch({
     headless: true,
     executablePath: process.env.PUPPETEER_EXECUTABLE_PATH!,
@@ -16,8 +23,20 @@ export const screen = async ({ symbol, interval }: ScreenParams) => {
       '--font-render-hinting=medium',
     ],
   });
+
   const page = await browser.newPage();
-  await page.goto(
-    `http://localhost:3000/routes/dashboard/${symbol}/${interval}`,
-  );
+
+  await page.setViewport({
+    width: 1400,
+    height: 960,
+    deviceScaleFactor: 2,
+  });
+
+  await page.goto(`${APP_URL}/routes/dashboard/${symbol}/${interval}`);
+
+  await delay(10000);
+
+  await page.screenshot({
+    path: `data/screenshots/${symbol}_${interval}.png`,
+  });
 };

@@ -1,8 +1,11 @@
 'use client';
 
+import _ from 'lodash';
+import { useEffect, useState } from 'react';
 import {
   Portal,
   Stack,
+  HStack,
   Span,
   Combobox,
   useFilter,
@@ -31,19 +34,28 @@ export const SelectWithSearch = ({
   size = 'sm',
   onChange,
 }: SelectWithSearchProps) => {
-  const { contains } = useFilter({ sensitivity: 'base' });
+  const { startsWith } = useFilter({ sensitivity: 'base' });
+  const [inputValue, setInputValue] = useState(defaultValue?.[0]);
 
-  const { collection, filter } = useListCollection({
+  const { collection, filter, set } = useListCollection({
     initialItems: items,
-    filter: contains,
+    filter: startsWith,
   });
+
+  useEffect(() => {
+    set(items);
+  }, [items]);
 
   return (
     <Combobox.Root
       collection={collection}
       defaultValue={defaultValue}
+      inputValue={inputValue}
       onValueChange={(details) => onChange?.(details.value)}
-      onInputValueChange={(e) => filter(e.inputValue)}
+      onInputValueChange={(e) => {
+        filter(e.inputValue);
+        setInputValue(e.inputValue);
+      }}
       width={width}
       multiple={multiple}
       size={size}
@@ -62,15 +74,17 @@ export const SelectWithSearch = ({
             <Combobox.Empty>{emptyState}</Combobox.Empty>
             {collection.items.map((item) => (
               <Combobox.Item item={item} key={item.value}>
-                <Stack gap="0">
-                  {item.label}
-                  {item.description && (
-                    <Span color="fg.muted" textStyle="xs">
-                      {item.description}
-                    </Span>
-                  )}
+                <HStack gap={2}>
+                  <Stack gap="0">
+                    {item.label}
+                    {item.description && (
+                      <Span color="fg.muted" textStyle="xs">
+                        {item.description}
+                      </Span>
+                    )}
+                  </Stack>
                   <Combobox.ItemIndicator />
-                </Stack>
+                </HStack>
               </Combobox.Item>
             ))}
           </Combobox.Content>

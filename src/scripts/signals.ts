@@ -2,22 +2,24 @@ import args from 'args';
 import ProgressBar from 'progress';
 import { connectors } from '@src/connectors';
 import chalk from 'chalk';
-import { PRELOAD_DAYS } from '@constants';
+import { DASHBOARD_DAYS } from '@constants';
 import { update, getTickers } from '@utils/cli';
-import { findTrendlinesByLows } from '@utils/trendLine';
+import { findTrendlinesByLows, findTrendlinesByHighs } from '@utils/trendLine';
 import { getTimestamp } from '@utils/timestamp';
+import { screenDashboard } from '@utils/screen';
 import { Interval } from '@types';
 
 args.option(['t', 'tickers'], 'Selected tickers');
 args.option(['e', 'exclude'], 'Exclude tickers from tests');
 args.option(['l', 'tickersLimit'], 'Tickers limit');
 args.option(['f', 'timeframe'], 'Timeframe', 15);
+args.option(['o', 'offset'], 'Offset', 3);
 args.option(['u', 'updateOnly'], 'Only update tickers history', false);
 args.option(['C', 'cacheOnly'], 'Do not update tickers history', false);
 args.option(['L', 'showTickersList'], 'Just show only ticker list', false);
 args.option(['U', 'user'], 'Use user confg', 'root');
 
-const PRELOAD_START = getTimestamp(PRELOAD_DAYS);
+const PRELOAD_START = getTimestamp(DASHBOARD_DAYS);
 const PRELOAS_END = getTimestamp();
 
 const flags = args.parse(process.argv);
@@ -36,12 +38,20 @@ const checkSignals = async (symbol: string) => {
     interval,
   });
 
-  const trendlines = findTrendlinesByLows(data, {
-    minTouches: 3,
+  const lowsTrendlines = findTrendlinesByLows(data, {
+    minTouches: 2,
+    offset: parseInt(flags.offset),
     capture: true,
   });
 
-  if (trendlines.length > 0) {
+  const highsTrendlines = findTrendlinesByHighs(data, {
+    minTouches: 2,
+    offset: parseInt(flags.offset),
+    capture: true,
+  });
+
+  if (lowsTrendlines.length > 0 || highsTrendlines.length > 0) {
+    // console.log(symbol, { lowsTrendlines, highsTrendlines });
     return true;
   }
 
@@ -82,16 +92,20 @@ const signals = async () => {
 
   console.log(chalk.yellow(`tickers: ${tickers.length}`));
 
-  for await (const ticker of tickers) {
-    const res = await checkSignals(ticker);
+  for await (const symbol of tickers) {
+    const res = await checkSignals(symbol);
 
     if (res) {
-      signalsFound.push(ticker);
+      signalsFound.push(symbol);
+      await screenDashboard({
+        symbol,
+        interval,
+      });
     }
 
     bar.tick(1, {
       found: chalk.cyan(signalsFound.length),
-      symbol: chalk.gray(ticker),
+      symbol: chalk.gray(symbol),
     });
   }
 

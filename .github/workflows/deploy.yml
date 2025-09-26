@@ -26,6 +26,7 @@ jobs:
           PORT=3000
           OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}
           OPENAI_API_ENDPOINT=${{ secrets.OPENAI_API_ENDPOINT }}
+          APP_URL=https://aleksnick01inv.fvds.ru
           " > .env
 
       - name: Test env
