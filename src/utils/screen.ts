@@ -37,6 +37,6 @@ export const screenDashboard = async ({
   await delay(10000);
 
   await page.screenshot({
-    path: `data/screenshots/${symbol}_${interval}.png`,
+    path: `public/screenshots/${symbol}_${interval}.png`,
   });
 };

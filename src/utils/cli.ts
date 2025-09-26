@@ -43,16 +43,18 @@ export const cleanFiles = async (dir: string) => {
   console.log('');
 };
 
-
 export const update = async (
   connector: Connector,
   interval: Interval,
   tickers: string[],
 ) => {
-  const bar = new ProgressBar(':current/:total [:bar][:percent] :eta(s) :symbol', {
-    total: tickers.length,
-    width: 30,
-  });
+  const bar = new ProgressBar(
+    ':current/:total [:bar][:percent] :eta(s) :symbol',
+    {
+      total: tickers.length,
+      width: 30,
+    },
+  );
 
   console.log(chalk.yellow('update tickers'));
 
@@ -69,7 +71,7 @@ export const update = async (
           interval,
           silent: true,
         });
-       } catch {
+      } catch {
         console.error('Failed loading', symbol);
       } finally {
         bar.tick(1, { symbol: chalk.gray(symbol) });
@@ -82,7 +84,6 @@ export const update = async (
 
   console.log('');
 };
-
 
 const parseSymbolsFromCLI = (symbol = '') =>
   symbol.split(',').map((s) => {

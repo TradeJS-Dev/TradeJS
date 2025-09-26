@@ -223,15 +223,15 @@ const hasRequiredCaptureInWindow = (
   if (capStart > capEnd) return false;
 
   for (let k = capStart; k <= capEnd; k++) {
-    const t   = toMs(data[k].timestamp);
-    const y   = yAt(t);
+    const t = toMs(data[k].timestamp);
+    const y = yAt(t);
     const tol = tolAt(y, epsilon);
     const open = data[k].open;
 
     if (mode === 'lows') {
-      if (open < y - tol) return true;   // начало ниже линии
+      if (open < y - tol) return true; // начало ниже линии
     } else {
-      if (open > y + tol) return true;   // начало выше линии
+      if (open > y + tol) return true; // начало выше линии
     }
   }
   return false;

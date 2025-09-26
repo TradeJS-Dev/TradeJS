@@ -97,6 +97,6 @@ export const useTrendLine = (
       for (const line of highsTrendlines) {
         chart.removeOverlay({ name: 'HighTrendLine' });
       }
-    }
+    };
   }, [chart, enabled, loading, data]);
 };

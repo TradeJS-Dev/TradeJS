@@ -110,6 +110,8 @@ const signals = async () => {
   }
 
   console.log(JSON.stringify(signalsFound, null, 2));
+
+  process.exit();
 };
 
 signals();
