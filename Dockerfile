@@ -1,10 +1,13 @@
 FROM node:20-alpine
 
-RUN apk add --no-cache curl bash tzdata dumb-init cronie nano
-
-WORKDIR /app
-
-RUN apk add --no-cache htop
+RUN apk add --no-cache \
+    curl \
+    bash \
+    tzdata \
+    dumb-init \
+    cronie \
+    nano \
+    htop
 
 RUN apk add --no-cache \
     chromium \
@@ -12,7 +15,11 @@ RUN apk add --no-cache \
     freetype \
     harfbuzz \
     ttf-dejavu \
+    ttf-freefont \
+    htop \
     ca-certificates
+
+WORKDIR /app
 
 COPY . .
 
@@ -30,6 +37,8 @@ RUN chmod +x ./entrypoint.sh
 RUN chmod +x ./entrypoint.bot.sh
 RUN chmod +x ./entrypoint.signals.15.sh
 RUN chmod +x ./entrypoint.signals.60.sh
+
+RUN mkdir -p /app/public/screenshots
 
 EXPOSE 3000
 

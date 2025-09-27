@@ -1,5 +1,5 @@
 import _ from 'lodash';
-import { BOT_PRELOAS_DAYS } from '@constants';
+import { BOT_PRELOAD_DAYS } from '@constants';
 import { strategies, StrategyNames } from '@src/strategy';
 import { connectors, ConnectorNames } from '@src/connectors';
 import { logger } from '@utils/logger';
@@ -11,7 +11,7 @@ import { ConnectorCreator, BotConfig } from '@types';
 
 export const runBot = async () => {
   const botResults = [];
-  const preloadStart = getTimestamp(BOT_PRELOAS_DAYS);
+  const preloadStart = getTimestamp(BOT_PRELOAD_DAYS);
   const end = getTimestamp();
   const files = await getFiles('data/bots');
 

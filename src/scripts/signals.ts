@@ -20,7 +20,7 @@ args.option(['L', 'showTickersList'], 'Just show only ticker list', false);
 args.option(['U', 'user'], 'Use user confg', 'root');
 
 const PRELOAD_START = getTimestamp(DASHBOARD_DAYS);
-const PRELOAS_END = getTimestamp();
+const PRELOAD_END = getTimestamp();
 
 const flags = args.parse(process.argv);
 const interval = flags.timeframe.toString() as Interval;
@@ -33,7 +33,7 @@ const checkSignals = async (symbol: string) => {
   const data = await byBitConnector.kline({
     symbol,
     start: PRELOAD_START,
-    end: PRELOAS_END,
+    end: PRELOAD_END,
     cacheOnly: true,
     interval,
   });

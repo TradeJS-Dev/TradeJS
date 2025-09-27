@@ -1,7 +1,7 @@
-#!/bin/sh
+#!/usr/bin/env sh
 
-# Запускаем cron в фоне
-crond
+set -e
 
-# Запускаем основное приложение
+crond -f -L /var/log/cron.log &
+
 exec yarn run start
