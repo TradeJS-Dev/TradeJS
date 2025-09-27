@@ -14,9 +14,6 @@ RUN apk add --no-cache \
     ttf-dejavu \
     ca-certificates
 
-ENV PUPPETEER_SKIP_DOWNLOAD=true
-ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
-
 COPY . .
 
 # COPY package.json yarn.lock .yarn .yarnrc.yml ./
