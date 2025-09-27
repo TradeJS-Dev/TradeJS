@@ -1,8 +1,10 @@
-FROM node:18-alpine
+FROM node:20-alpine
 
 RUN apk add --no-cache curl bash tzdata dumb-init cronie nano
 
 WORKDIR /app
+
+RUN apk add --no-cache htop
 
 RUN apk add --no-cache \
     chromium \
