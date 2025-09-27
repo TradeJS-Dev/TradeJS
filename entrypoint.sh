@@ -2,6 +2,6 @@
 
 set -e
 
-crond -f -L /var/log/cron.log &
+crond -f -P -l 8 &
 
 exec yarn run start
