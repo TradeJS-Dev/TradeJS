@@ -4,6 +4,17 @@ RUN apk add --no-cache curl bash tzdata dumb-init cronie nano
 
 WORKDIR /app
 
+RUN apk add --no-cache \
+    chromium \
+    nss \
+    freetype \
+    harfbuzz \
+    ttf-dejavu \
+    ca-certificates
+
+ENV PUPPETEER_SKIP_DOWNLOAD=true
+ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
+
 COPY . .
 
 # COPY package.json yarn.lock .yarn .yarnrc.yml ./
