@@ -1,4 +1,3 @@
-import _ from 'lodash';
 import { KlineChartData, Candle } from '@types';
 
 /* ========================= Types & Options ========================= */
@@ -12,226 +11,309 @@ export type TrendLine = {
 
 export interface TrendLineOptions {
   mode: Mode;
-  maxLines?: number; // ограничение перебора пар опор (кандидатов)
-  range?: number; // окно для локальных экстремумов
-  epsilon?: number; // допуск как доля цены (0.01 = 1%)
-  minTouches?: number; // минимум касаний по телу (с учётом minTouchGap)
-  minDistanceBars?: number; // минимум баров между опорами/крайними касаниями
-  firstRange?: number; // «сила» первой опоры (окно сильного экстремума)
-  offset?: number; // размер capture-окна в конце
-  minTouchGap?: number; // минимум баров между касаниями
-  capture?: boolean; // пробой ТЕЛОМ обязателен (true) или опционален (false) в offset-окне
+  maxLines?: number;           // ограничение перебора пар опор (кандидатов)
+  range?: number;              // окно для локальных экстремумов (в барах)
+  epsilon?: number;            // допуск как доля цены (0.01 = 1%)
+  minTouches?: number;         // минимум касаний по телу (с учётом minTouchGap)
+  minDistanceBars?: number;    // минимум баров между опорами/крайними касаниями
+  firstRange?: number;         // «сила» первой опоры (окно сильного экстремума)
+  offset?: number;             // размер capture-окна в конце (в барах)
+  minTouchGap?: number;        // минимум баров между касаниями
+  capture?: boolean;           // true: обязателен «старт за линией» в offset-окне
 }
 
 /* ============================ Helpers ============================= */
 
 const toMs = (ts: number) => (ts < 1e12 ? ts * 1000 : ts);
-
-const getBodyLow = (c: Candle) => Math.min(c.open, c.close);
-const getBodyHigh = (c: Candle) => Math.max(c.open, c.close);
-const getLow = (c: Candle) => c.low;
-const getHigh = (c: Candle) => c.high;
-
-const tolAt = (lineY: number, epsilonPct: number) =>
+const toleranceAt = (lineY: number, epsilonPct: number) =>
   Math.max(0, Math.abs(lineY) * epsilonPct);
+
+const getBodyLow  = (c: Candle) => Math.min(c.open, c.close);
+const getBodyHigh = (c: Candle) => Math.max(c.open, c.close);
 
 type Point = { x: number; y: number; t: number };
 
-const pickExtremumFn = (mode: Mode) =>
-  mode === 'lows' ? getBodyLow : getBodyHigh;
-const pickTouchFn = (mode: Mode) =>
-  mode === 'lows' ? getBodyLow : getBodyHigh;
-const pickWickFn = (mode: Mode) => (mode === 'lows' ? getLow : getHigh);
+/* ====================== Fast precomputation ======================= */
+
+const buildScalarArrays = (data: KlineChartData) => {
+  const length = data.length;
+
+  const tsMs: number[] = new Array(length);
+  const openArr: number[] = new Array(length);
+  const closeArr: number[] = new Array(length);
+  const lowArr: number[] = new Array(length);
+  const highArr: number[] = new Array(length);
+  const bodyLowArr: number[] = new Array(length);
+  const bodyHighArr: number[] = new Array(length);
+
+  for (let index = 0; index < length; index++) {
+    const c = data[index];
+    const ts = toMs(c.timestamp);
+    const bodyLow = c.open < c.close ? c.open : c.close;
+    const bodyHigh = c.open > c.close ? c.open : c.close;
+
+    tsMs[index] = ts;
+    openArr[index] = c.open;
+    closeArr[index] = c.close;
+    lowArr[index] = c.low;
+    highArr[index] = c.high;
+    bodyLowArr[index] = bodyLow;
+    bodyHighArr[index] = bodyHigh;
+  }
+
+  return { tsMs, openArr, closeArr, lowArr, highArr, bodyLowArr, bodyHighArr };
+};
+
+/* ========== Sliding Window Extrema (O(N)) aligned to window center ========== */
+
+const computeEndAlignedWindowExtrema = (
+  values: number[],
+  windowSize: number,
+  findMin: boolean,
+): number[] => {
+  const length = values.length;
+  const result: number[] = new Array(length).fill(Number.NaN);
+  if (windowSize <= 0 || windowSize > length) return result;
+
+  const deque: number[] = [];
+  const isBetter = findMin
+    ? (a: number, b: number) => a <= b
+    : (a: number, b: number) => a >= b;
+
+  for (let endIndex = 0; endIndex < length; endIndex++) {
+    while (deque.length && !isBetter(values[deque[deque.length - 1]], values[endIndex])) {
+      deque.pop();
+    }
+    deque.push(endIndex);
+
+    const startIndex = endIndex - windowSize + 1;
+    while (deque.length && deque[0] < startIndex) deque.shift();
+
+    if (startIndex >= 0) {
+      result[endIndex] = values[deque[0]];
+    }
+  }
+
+  return result;
+};
+
+const computeCenterWindowExtrema = (
+  values: number[],
+  range: number,
+  findMin: boolean,
+): number[] => {
+  const length = values.length;
+  const windowSize = 2 * range + 1;
+  const endAligned = computeEndAlignedWindowExtrema(values, windowSize, findMin);
+  const centerExtrema: number[] = new Array(length).fill(Number.NaN);
+
+  for (let centerIndex = range; centerIndex <= length - range - 1; centerIndex++) {
+    const endIndex = centerIndex + range;
+    centerExtrema[centerIndex] = endAligned[endIndex];
+  }
+  return centerExtrema;
+};
 
 /* ====================== Pipeline (pure functions) ===================== */
 
-/** 1) Сырые локальные экстремумы по телам в окне `range` */
 const collectRawExtrema = (
-  data: KlineChartData,
-  mode: Mode,
+  bodySeries: number[],
+  timestampMs: number[],
   range: number,
+  mode: Mode,
 ): Point[] => {
-  const pickExt = pickExtremumFn(mode);
-  const out: Point[] = [];
-  for (let i = range; i < data.length - range; i++) {
-    const seg = data.slice(i - range, i + range + 1);
-    const target =
-      mode === 'lows'
-        ? Math.min(...seg.map(pickExt))
-        : Math.max(...seg.map(pickExt));
-    if (pickExt(data[i]) === target) {
-      out.push({ x: i, y: pickExt(data[i]), t: toMs(data[i].timestamp) });
+  const findMin = mode === 'lows';
+  const centerExtrema = computeCenterWindowExtrema(bodySeries, range, findMin);
+
+  const result: Point[] = [];
+  for (let index = range; index <= bodySeries.length - range - 1; index++) {
+    const level = centerExtrema[index];
+    if (!Number.isNaN(level) && bodySeries[index] === level) {
+      result.push({ x: index, y: bodySeries[index], t: timestampMs[index] });
     }
   }
-  return out;
+  return result;
 };
 
-/** 2) Кластеризация экстремумов: в кластере (< minDistanceBars между соседями) оставляем «самый сильный». */
+/** Кластеризация «цепочкой»: пока соседний экстремум ближе чем minDistanceBars к
+ *  предыдущему в *сыром* ряду — он в том же кластере. Внутри кластера берём лучший. */
 const clusterExtrema = (
-  raw: Point[],
+  rawExtrema: Point[],
   mode: Mode,
   minDistanceBars: number,
 ): Point[] => {
-  if (!raw.length) return [];
-  const exts: Point[] = [];
-  let idx = 0;
-  while (idx < raw.length) {
-    let cs = idx;
-    let ce = idx;
-    while (ce + 1 < raw.length && raw[ce + 1].x - raw[ce].x < minDistanceBars)
-      ce++;
-    let best = raw[cs];
-    for (let k = cs + 1; k <= ce; k++) {
-      const cand = raw[k];
-      const better = mode === 'lows' ? cand.y < best.y : cand.y > best.y;
-      if (better) best = cand;
+  if (rawExtrema.length === 0) return [];
+
+  const clustered: Point[] = [];
+  let clusterStart = 0;
+
+  while (clusterStart < rawExtrema.length) {
+    let clusterEnd = clusterStart;
+
+    // расширяем кластер по соседям (цепочкой)
+    while (
+      clusterEnd + 1 < rawExtrema.length &&
+      rawExtrema[clusterEnd + 1].x - rawExtrema[clusterEnd].x < minDistanceBars
+    ) {
+      clusterEnd++;
     }
-    exts.push(best);
-    idx = ce + 1;
+
+    // выбираем лучший внутри [clusterStart..clusterEnd]
+    let best = rawExtrema[clusterStart];
+    for (let i = clusterStart + 1; i <= clusterEnd; i++) {
+      const candidate = rawExtrema[i];
+      const better = mode === 'lows' ? candidate.y < best.y : candidate.y > best.y;
+      if (better) best = candidate;
+    }
+    clustered.push(best);
+
+    clusterStart = clusterEnd + 1;
   }
-  return exts;
+
+  return clustered;
 };
 
-/** 3) Проверка «сильной» первой опоры */
-const isStrongExtremum = (
-  data: KlineChartData,
-  idx: number,
+const isStrongFirstAnchor = (
+  bodyLowSeries: number[],
+  bodyHighSeries: number[],
+  index: number,
   mode: Mode,
   firstRange: number,
 ): boolean => {
-  const start = Math.max(0, idx - firstRange);
-  const end = Math.min(data.length - 1, idx + firstRange);
-  const slice = data.slice(start, end + 1);
+  const startIndex = Math.max(0, index - firstRange);
+  const endIndex = Math.min(bodyLowSeries.length - 1, index + firstRange);
+
   if (mode === 'lows') {
-    const target = Math.min(...slice.map(getBodyLow));
-    return getBodyLow(data[idx]) === target;
+    let windowMin = Number.POSITIVE_INFINITY;
+    for (let i = startIndex; i <= endIndex; i++) {
+      if (bodyLowSeries[i] < windowMin) windowMin = bodyLowSeries[i];
+    }
+    return bodyLowSeries[index] === windowMin;
   } else {
-    const target = Math.max(...slice.map(getBodyHigh));
-    return getBodyHigh(data[idx]) === target;
+    let windowMax = Number.NEGATIVE_INFINITY;
+    for (let i = startIndex; i <= endIndex; i++) {
+      if (bodyHighSeries[i] > windowMax) windowMax = bodyHighSeries[i];
+    }
+    return bodyHighSeries[index] === windowMax;
   }
 };
 
-/** 4) Строим модель прямой по двум точкам во времени, возвращаем y(t) */
-const buildLineY = (
+const buildLineEvaluator = (
   t1: number,
   y1: number,
   t2: number,
   y2: number,
-): ((tMs: number) => number) => {
-  const dt = t2 - t1;
-  if (dt === 0) {
-    const y = y1;
-    return () => y;
+) => {
+  const deltaTime = t2 - t1;
+  if (deltaTime === 0) {
+    const constantY = y1;
+    return (_t: number) => constantY;
   }
-  const dy = y2 - y1;
-  return (tMs: number) => y1 + dy * ((tMs - t1) / dt);
+  const slope = (y2 - y1) / deltaTime;
+  return (timeMs: number) => y1 + slope * (timeMs - t1);
 };
 
-/** 5) Посчитать касания по телу с GAP */
 const collectTouchIndices = (
-  data: KlineChartData,
-  fromX: number,
-  toX: number,
-  yAt: (t: number) => number,
+  bodySeriesForTouches: number[],
+  timestampMs: number[],
+  startIndex: number,
+  endIndex: number,
+  evaluateY: (t: number) => number,
   epsilon: number,
-  mode: Mode,
   minTouchGap: number,
 ): number[] => {
-  const touches: number[] = [];
-  const pickTouch = pickTouchFn(mode);
-  let lastTouchAt = -Infinity;
-  for (let k = fromX; k <= toX; k++) {
-    const t = toMs(data[k].timestamp);
-    const y = yAt(t);
-    const tol = tolAt(y, epsilon);
-    const body = pickTouch(data[k]);
-    if (Math.abs(body - y) <= tol) {
-      if (touches.length === 0 || k - lastTouchAt >= minTouchGap) {
-        touches.push(k);
-        lastTouchAt = k;
+  const touchIndices: number[] = [];
+  let lastTouchIndex = -Infinity;
+
+  for (let barIndex = startIndex; barIndex <= endIndex; barIndex++) {
+    const lineY = evaluateY(timestampMs[barIndex]);
+    const tolerance = toleranceAt(lineY, epsilon);
+    const bodyValue = bodySeriesForTouches[barIndex];
+
+    if (Math.abs(bodyValue - lineY) <= tolerance) {
+      if (touchIndices.length === 0 || barIndex - lastTouchIndex >= minTouchGap) {
+        touchIndices.push(barIndex);
+        lastTouchIndex = barIndex;
       }
     }
   }
-  return touches;
+  return touchIndices;
 };
 
-/** 6) Проверка отсутствия пробоя фитилём на участке [fromX..toX] */
 const hasWickBreachOnSegment = (
-  data: KlineChartData,
-  fromX: number,
-  toX: number,
-  yAt: (t: number) => number,
+  lowSeries: number[],
+  highSeries: number[],
+  timestampMs: number[],
+  startIndex: number,
+  endIndex: number,
+  evaluateY: (t: number) => number,
   epsilon: number,
   mode: Mode,
 ): boolean => {
-  const pickWick = pickWickFn(mode);
-  for (let k = fromX; k <= toX; k++) {
-    const t = toMs(data[k].timestamp);
-    const y = yAt(t);
-    const tol = tolAt(y, epsilon);
-    const wick = pickWick(data[k]);
+  for (let barIndex = startIndex; barIndex <= endIndex; barIndex++) {
+    const lineY = evaluateY(timestampMs[barIndex]);
+    const tolerance = toleranceAt(lineY, epsilon);
+
     if (mode === 'lows') {
-      if (wick < y - tol) return true; // вниз нельзя
+      if (lowSeries[barIndex] < lineY - tolerance) return true;
     } else {
-      if (wick > y + tol) return true; // вверх нельзя
+      if (highSeries[barIndex] > lineY + tolerance) return true;
     }
   }
   return false;
 };
 
-/** 7) Проверка отсутствия пробоя ТЕЛОМ до capture-окна */
 const hasCloseBreachBeforeWindow = (
-  data: KlineChartData,
-  fromX: number, // lastX + 1
-  lastIdx: number,
+  closeSeries: number[],
+  timestampMs: number[],
+  fromIndex: number,    // lastAnchorIndex + 1
+  lastIndex: number,
   offset: number,
-  yAt: (t: number) => number,
+  evaluateY: (t: number) => number,
   epsilon: number,
   mode: Mode,
 ): boolean => {
-  const preCapEnd = Math.max(fromX, lastIdx - Math.max(0, offset));
-  if (fromX > preCapEnd) return false;
-  for (let k = fromX; k <= preCapEnd; k++) {
-    const t = toMs(data[k].timestamp);
-    const y = yAt(t);
-    const tol = tolAt(y, epsilon);
+  const preCaptureEndIndex = lastIndex - Math.max(0, offset); // <-- фикс: строго ДО offset
+  if (fromIndex > preCaptureEndIndex) return false;
+
+  for (let barIndex = fromIndex; barIndex <= preCaptureEndIndex; barIndex++) {
+    const lineY = evaluateY(timestampMs[barIndex]);
+    const tolerance = toleranceAt(lineY, epsilon);
+
     if (mode === 'lows') {
-      if (data[k].close < y - tol) return true; // пробой телом вниз
+      if (closeSeries[barIndex] < lineY - tolerance) return true;
     } else {
-      if (data[k].close > y + tol) return true; // пробой телом вверх
+      if (closeSeries[barIndex] > lineY + tolerance) return true;
     }
   }
   return false;
 };
 
-/** 8) Проверка ОБЯЗАТЕЛЬНОГО "capture" по ОТКРЫТИЮ свечи в offset-окне
- * lows:  open < lineY - tol  (свеча началась ниже трендовой)
- * highs: open > lineY + tol  (свеча началась выше трендовой)
- */
 const hasRequiredCaptureInWindow = (
-  data: KlineChartData,
-  lastX: number,
-  lastIdx: number,
+  openSeries: number[],
+  timestampMs: number[],
+  lastAnchorIndex: number,
+  lastIndex: number,
   offset: number,
-  yAt: (t: number) => number,
+  evaluateY: (t: number) => number,
   epsilon: number,
   mode: Mode,
 ): boolean => {
   if (offset <= 0) return false;
-  const capStart = Math.max(lastX + 1, lastIdx - offset + 1);
-  const capEnd = lastIdx;
-  if (capStart > capEnd) return false;
 
-  for (let k = capStart; k <= capEnd; k++) {
-    const t = toMs(data[k].timestamp);
-    const y = yAt(t);
-    const tol = tolAt(y, epsilon);
-    const open = data[k].open;
+  const captureStartIndex = Math.max(lastAnchorIndex + 1, lastIndex - offset + 1);
+  const captureEndIndex = lastIndex;
+  if (captureStartIndex > captureEndIndex) return false;
+
+  for (let barIndex = captureStartIndex; barIndex <= captureEndIndex; barIndex++) {
+    const lineY = evaluateY(timestampMs[barIndex]);
+    const tolerance = toleranceAt(lineY, epsilon);
+    const openPrice = openSeries[barIndex];
 
     if (mode === 'lows') {
-      if (open < y - tol) return true; // начало ниже линии
+      if (openPrice < lineY - tolerance) return true; // свеча началась ниже
     } else {
-      if (open > y + tol) return true; // начало выше линии
+      if (openPrice > lineY + tolerance) return true; // свеча началась выше
     }
   }
   return false;
@@ -241,122 +323,125 @@ const hasRequiredCaptureInWindow = (
 
 const findTrendlinesCore = (
   data: KlineChartData,
-  opts: TrendLineOptions,
+  options: TrendLineOptions,
 ): TrendLine[] => {
   const {
     mode,
     maxLines = 10,
     range = 10,
     firstRange = 50,
-    epsilon = 0.005, // 0.5%
+    epsilon = 0.005,      // 0.5%
     minTouches = 3,
     minDistanceBars = 10,
     minTouchGap = 10,
     offset = 10,
     capture = false,
-  } = opts;
+  } = options;
 
   if (!data?.length) return [];
 
-  const raw = collectRawExtrema(data, mode, range);
-  if (raw.length < minTouches) return [];
+  // Предподсчёты
+  const {
+    tsMs,
+    openArr,
+    closeArr,
+    lowArr,
+    highArr,
+    bodyLowArr,
+    bodyHighArr,
+  } = buildScalarArrays(data);
 
-  const exts = clusterExtrema(raw, mode, minDistanceBars);
-  if (exts.length < minTouches) return [];
+  const bodySeriesForExtrema = mode === 'lows' ? bodyLowArr : bodyHighArr;
+  const bodySeriesForTouches = mode === 'lows' ? bodyLowArr : bodyHighArr;
 
-  const lastIdx = data.length - 1;
-  const tEnd = toMs(data[lastIdx].timestamp);
+  // 1) Сырые локальные экстремумы за O(N)
+  const rawExtrema = collectRawExtrema(bodySeriesForExtrema, tsMs, range, mode);
+  if (rawExtrema.length < minTouches) return [];
 
-  let best: TrendLine | null = null;
-  let bestSpan = -1;
-  let produced = 0;
+  // 2) Разрежение (кластеризация)
+  const anchors = clusterExtrema(rawExtrema, mode, minDistanceBars);
+  if (anchors.length < minTouches) return [];
 
-  for (let a = exts.length - 1; a >= 0; a--) {
-    for (let b = a - 1; b >= 0; b--) {
-      if (produced >= maxLines) break;
+  const lastBarIndex = data.length - 1;
+  const lastTimestampMs = tsMs[lastBarIndex];
 
-      const p1 = exts[b],
-        p2 = exts[a];
-      if (p2.x === p1.x || p2.t === p1.t) continue;
+  let bestTrendLine: TrendLine | null = null;
+  let bestSpanInBars = -1;
+  let validCandidatesCount = 0;
 
-      const firstX = p1.x,
-        lastX = p2.x;
-      const spanBarsExt = lastX - firstX;
-      if (spanBarsExt < minDistanceBars) continue;
+  for (let rightAnchorIdx = anchors.length - 1; rightAnchorIdx >= 0; rightAnchorIdx--) {
+    const rightAnchor = anchors[rightAnchorIdx];
 
-      if (!isStrongExtremum(data, firstX, mode, firstRange)) continue;
+    // ранний отсев по достижимому максимуму
+    const maxPossibleSpan = rightAnchor.x - anchors[0].x;
+    if (maxPossibleSpan <= bestSpanInBars) break;
 
-      const slopeIdx = (p2.y - p1.y) / (p2.x - p1.x);
-      if (mode === 'lows' && slopeIdx <= 0) continue;
-      if (mode === 'highs' && slopeIdx >= 0) continue;
+    for (let leftAnchorIdx = rightAnchorIdx - 1; leftAnchorIdx >= 0; leftAnchorIdx--) {
+      if (validCandidatesCount >= maxLines) break;
 
-      const yAt = buildLineY(p1.t, p1.y, p2.t, p2.y);
+      const leftAnchor = anchors[leftAnchorIdx];
+      if (rightAnchor.x === leftAnchor.x || rightAnchor.t === leftAnchor.t) continue;
 
-      const touchIdxs = collectTouchIndices(
-        data,
-        firstX,
-        lastX,
-        yAt,
+      const firstIndex = leftAnchor.x;
+      const lastIndex = rightAnchor.x;
+      const spanBarsByAnchors = lastIndex - firstIndex;
+      if (spanBarsByAnchors < minDistanceBars) continue;
+
+      if (!isStrongFirstAnchor(bodyLowArr, bodyHighArr, firstIndex, mode, firstRange)) continue;
+
+      const slopeByIndex = (rightAnchor.y - leftAnchor.y) / (rightAnchor.x - leftAnchor.x);
+      if (mode === 'lows' && slopeByIndex <= 0) continue;
+      if (mode === 'highs' && slopeByIndex >= 0) continue;
+
+      const evaluateY = buildLineEvaluator(leftAnchor.t, leftAnchor.y, rightAnchor.t, rightAnchor.y);
+
+      const touchIndices = collectTouchIndices(
+        bodySeriesForTouches,
+        tsMs,
+        firstIndex,
+        lastIndex,
+        evaluateY,
         epsilon,
-        mode,
         minTouchGap,
       );
-      if (touchIdxs.length < minTouches) continue;
+      if (touchIndices.length < minTouches) continue;
 
-      const spanBarsTouch = touchIdxs[touchIdxs.length - 1] - touchIdxs[0];
-      if (spanBarsTouch < minDistanceBars) continue;
+      const spanBarsByTouches = touchIndices[touchIndices.length - 1] - touchIndices[0];
+      if (spanBarsByTouches < minDistanceBars) continue;
 
-      if (hasWickBreachOnSegment(data, firstX, lastX, yAt, epsilon, mode))
+      if (hasWickBreachOnSegment(lowArr, highArr, tsMs, firstIndex, lastIndex, evaluateY, epsilon, mode)) {
         continue;
+      }
 
-      const preCapStart = lastX + 1;
-      if (
-        hasCloseBreachBeforeWindow(
-          data,
-          preCapStart,
-          lastIdx,
-          offset,
-          yAt,
-          epsilon,
-          mode,
-        )
-      ) {
+      const preCaptureStart = lastIndex + 1;
+      if (hasCloseBreachBeforeWindow(closeArr, tsMs, preCaptureStart, lastBarIndex, offset, evaluateY, epsilon, mode)) {
         continue;
       }
 
       if (capture) {
         if (offset <= 0) continue;
-        if (
-          !hasRequiredCaptureInWindow(
-            data,
-            lastX,
-            lastIdx,
-            offset,
-            yAt,
-            epsilon,
-            mode,
-          )
-        ) {
-          continue;
-        }
+        const captured = hasRequiredCaptureInWindow(openArr, tsMs, lastIndex, lastBarIndex, offset, evaluateY, epsilon, mode);
+        if (!captured) continue;
       }
 
-      produced++;
+      validCandidatesCount++;
 
-      if (spanBarsExt > bestSpan) {
-        bestSpan = spanBarsExt;
-        best = {
+      if (spanBarsByAnchors > bestSpanInBars) {
+        bestSpanInBars = spanBarsByAnchors;
+        bestTrendLine = {
           id: `${mode}TrendLine-1`,
           points: [
-            { timestamp: p1.t, value: yAt(p1.t) },
-            { timestamp: tEnd, value: yAt(tEnd) },
+            { timestamp: leftAnchor.t, value: evaluateY(leftAnchor.t) },
+            { timestamp: lastTimestampMs, value: evaluateY(lastTimestampMs) },
           ],
         };
       }
     }
+
+    if (validCandidatesCount >= maxLines) break; // ранний выход и из внешнего цикла
   }
 
-  return best ? [best] : [];
+  return bestTrendLine ? [bestTrendLine] : [];
 };
 
 /* =========================== Public API =========================== */

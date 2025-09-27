@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { DASHBOARD_DAYS } from '@constants';
+import { DASHBOARD_PRELOAD_DAYS } from '@constants';
 import { getTimestamp } from '@utils/timestamp';
 import { Interval, UIFilters } from '@types';
 
@@ -12,7 +12,7 @@ const useStore = create<FiltersState>((set) => ({
   filters: {
     symbol: 'BTCUSDT',
     interval: '15' as Interval,
-    start: getTimestamp(DASHBOARD_DAYS),
+    start: getTimestamp(DASHBOARD_PRELOAD_DAYS),
     end: getTimestamp(),
     backtestId: null,
   } as UIFilters,

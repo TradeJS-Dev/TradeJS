@@ -1,8 +1,9 @@
 import type { TestThresholds } from '@types';
 
-export const BACKTEST_DAYS = 180;
-export const DASHBOARD_DAYS = 120;
 export const PRELOAD_DAYS = 210;
+export const SIGNALS_PRELOAD_DAYS = 60;
+export const BACKTEST_PRELOAD_DAYS = 180;
+export const DASHBOARD_PRELOAD_DAYS = 120;
 export const BOT_PRELOAD_DAYS = 180;
 export const PRELOAD_FALLBACK_DAYS = 180;
 
@@ -19,7 +20,7 @@ export const levelScore = {
 // Мини-подсказка по порогам (thresholds):
 // - Для direction: 'higher' — больше лучше, 'lower' — меньше лучше.
 // - thresholds: [нижняя_граница, верхняя_граница] для выбранного направления.
-//   Например, для 'lower': [плохо, хорошо] = [25, 12] (% MaxDD).
+//   Например, для 'lower': [плохо, хорош о] = [25, 12] (% MaxDD).
 // - weight можно ставить 0, чтобы метрика не влияла на общий скоринг
 //   (но при этом сохранялась в отчёте).
 

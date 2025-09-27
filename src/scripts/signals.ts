@@ -2,7 +2,7 @@ import args from 'args';
 import ProgressBar from 'progress';
 import { connectors } from '@src/connectors';
 import chalk from 'chalk';
-import { DASHBOARD_DAYS } from '@constants';
+import { SIGNALS_PRELOAD_DAYS } from '@constants';
 import { update, getTickers } from '@utils/cli';
 import { findTrendlinesByLows, findTrendlinesByHighs } from '@utils/trendLine';
 import { getTimestamp } from '@utils/timestamp';
@@ -19,7 +19,7 @@ args.option(['C', 'cacheOnly'], 'Do not update tickers history', false);
 args.option(['L', 'showTickersList'], 'Just show only ticker list', false);
 args.option(['U', 'user'], 'Use user confg', 'root');
 
-const PRELOAD_START = getTimestamp(DASHBOARD_DAYS);
+const PRELOAD_START = getTimestamp(SIGNALS_PRELOAD_DAYS);
 const PRELOAD_END = getTimestamp();
 
 const flags = args.parse(process.argv);
@@ -97,10 +97,6 @@ const signals = async () => {
 
     if (res) {
       signalsFound.push(symbol);
-      await screenDashboard({
-        symbol,
-        interval,
-      });
     }
 
     bar.tick(1, {
@@ -108,6 +104,35 @@ const signals = async () => {
       symbol: chalk.gray(symbol),
     });
   }
+
+  console.log('');
+
+  console.log(chalk.yellow(`found: ${signalsFound.length}`));
+
+  const bar2 = new ProgressBar(
+    ':current/:total [:bar][:percent] :eta(s) :symbol',
+    {
+      total: signalsFound.length,
+      width: 30,
+    },
+  );
+
+  for await (const symbol of signalsFound) {
+    const res = await checkSignals(symbol);
+
+    if (res) {
+      await screenDashboard({
+        symbol,
+        interval,
+      });
+    }
+
+    bar2.tick(1, {
+      symbol: chalk.gray(symbol),
+    });
+  }
+
+  console.log('');
 
   console.log(JSON.stringify(signalsFound, null, 2));
 
