@@ -2,6 +2,6 @@
 
 set -e
 
-crond -f -P &
+crond -P
 
 exec yarn run start
