@@ -3,10 +3,9 @@ import ProgressBar from 'progress';
 import { connectors } from '@src/connectors';
 import chalk from 'chalk';
 import { SIGNALS_PRELOAD_DAYS } from '@constants';
-import { update, getTickers } from '@utils/cli';
+import { update, getTickers, cleanFiles, makeScreenshots } from '@utils/cli';
 import { findTrendlinesByLows, findTrendlinesByHighs } from '@utils/trendLine';
 import { getTimestamp } from '@utils/timestamp';
-import { screenDashboard } from '@utils/screen';
 import { Interval } from '@types';
 
 args.option(['t', 'tickers'], 'Selected tickers');
@@ -39,13 +38,13 @@ const checkSignals = async (symbol: string) => {
   });
 
   const lowsTrendlines = findTrendlinesByLows(data, {
-    minTouches: 2,
+    minTouches: 3,
     offset: parseInt(flags.offset),
     capture: true,
   });
 
   const highsTrendlines = findTrendlinesByHighs(data, {
-    minTouches: 2,
+    minTouches: 3,
     offset: parseInt(flags.offset),
     capture: true,
   });
@@ -60,6 +59,9 @@ const checkSignals = async (symbol: string) => {
 
 const signals = async () => {
   const signalsFound = new Array<string>();
+
+  await cleanFiles('data/cache');
+  await cleanFiles('data/screenshots');
 
   const tickers = await getTickers(
     byBitConnector,
@@ -107,32 +109,7 @@ const signals = async () => {
 
   console.log('');
 
-  console.log(chalk.yellow(`found: ${signalsFound.length}`));
-
-  const bar2 = new ProgressBar(
-    ':current/:total [:bar][:percent] :eta(s) :symbol',
-    {
-      total: signalsFound.length,
-      width: 30,
-    },
-  );
-
-  for await (const symbol of signalsFound) {
-    const res = await checkSignals(symbol);
-
-    if (res) {
-      await screenDashboard({
-        symbol,
-        interval,
-      });
-    }
-
-    bar2.tick(1, {
-      symbol: chalk.gray(symbol),
-    });
-  }
-
-  console.log('');
+  await makeScreenshots(interval, signalsFound);
 
   console.log(JSON.stringify(signalsFound, null, 2));
 

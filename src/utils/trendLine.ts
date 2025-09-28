@@ -11,15 +11,15 @@ export type TrendLine = {
 
 export interface TrendLineOptions {
   mode: Mode;
-  maxLines?: number;           // ограничение перебора пар опор (кандидатов)
-  range?: number;              // окно для локальных экстремумов (в барах)
-  epsilon?: number;            // допуск как доля цены (0.01 = 1%)
-  minTouches?: number;         // минимум касаний по телу (с учётом minTouchGap)
-  minDistanceBars?: number;    // минимум баров между опорами/крайними касаниями
-  firstRange?: number;         // «сила» первой опоры (окно сильного экстремума)
-  offset?: number;             // размер capture-окна в конце (в барах)
-  minTouchGap?: number;        // минимум баров между касаниями
-  capture?: boolean;           // true: обязателен «старт за линией» в offset-окне
+  maxLines?: number; // ограничение перебора пар опор (кандидатов)
+  range?: number; // окно для локальных экстремумов (в барах)
+  epsilon?: number; // допуск как доля цены (0.01 = 1%) — применяется для касаний, фитилей между опорами и close-пробоев ДО offset
+  minTouches?: number; // минимум касаний по телу (с учётом minTouchGap)
+  minDistanceBars?: number; // минимум баров между опорами/крайними касаниями
+  firstRange?: number; // «сила» первой опоры (окно сильного экстремума)
+  offset?: number; // размер окна в конце (в барах)
+  minTouchGap?: number; // минимум баров между касаниями
+  capture?: boolean; // true: в окне offset обязателен «старт за линией» и цвет свечи (строго, без допуска)
 }
 
 /* ============================ Helpers ============================= */
@@ -28,8 +28,8 @@ const toMs = (ts: number) => (ts < 1e12 ? ts * 1000 : ts);
 const toleranceAt = (lineY: number, epsilonPct: number) =>
   Math.max(0, Math.abs(lineY) * epsilonPct);
 
-const getBodyLow  = (c: Candle) => Math.min(c.open, c.close);
-const getBodyHigh = (c: Candle) => Math.max(c.open, c.close);
+const getBodyLow = (candle: Candle) => Math.min(candle.open, candle.close);
+const getBodyHigh = (candle: Candle) => Math.max(candle.open, candle.close);
 
 type Point = { x: number; y: number; t: number };
 
@@ -38,39 +38,46 @@ type Point = { x: number; y: number; t: number };
 const buildScalarArrays = (data: KlineChartData) => {
   const length = data.length;
 
-  const tsMs: number[] = new Array(length);
-  const openArr: number[] = new Array(length);
-  const closeArr: number[] = new Array(length);
-  const lowArr: number[] = new Array(length);
-  const highArr: number[] = new Array(length);
-  const bodyLowArr: number[] = new Array(length);
-  const bodyHighArr: number[] = new Array(length);
+  const timestampsMs: number[] = new Array(length);
+  const openSeries: number[] = new Array(length);
+  const closeSeries: number[] = new Array(length);
+  const lowSeries: number[] = new Array(length);
+  const highSeries: number[] = new Array(length);
+  const bodyLowSeries: number[] = new Array(length);
+  const bodyHighSeries: number[] = new Array(length);
 
   for (let index = 0; index < length; index++) {
-    const c = data[index];
-    const ts = toMs(c.timestamp);
-    const bodyLow = c.open < c.close ? c.open : c.close;
-    const bodyHigh = c.open > c.close ? c.open : c.close;
+    const candle = data[index];
+    const ts = toMs(candle.timestamp);
 
-    tsMs[index] = ts;
-    openArr[index] = c.open;
-    closeArr[index] = c.close;
-    lowArr[index] = c.low;
-    highArr[index] = c.high;
-    bodyLowArr[index] = bodyLow;
-    bodyHighArr[index] = bodyHigh;
+    timestampsMs[index] = ts;
+    openSeries[index] = candle.open;
+    closeSeries[index] = candle.close;
+    lowSeries[index] = candle.low;
+    highSeries[index] = candle.high;
+    bodyLowSeries[index] = getBodyLow(candle);
+    bodyHighSeries[index] = getBodyHigh(candle);
   }
 
-  return { tsMs, openArr, closeArr, lowArr, highArr, bodyLowArr, bodyHighArr };
+  return {
+    timestampsMs,
+    openSeries,
+    closeSeries,
+    lowSeries,
+    highSeries,
+    bodyLowSeries,
+    bodyHighSeries,
+  };
 };
 
 /* ========== Sliding Window Extrema (O(N)) aligned to window center ========== */
 
-const computeEndAlignedWindowExtrema = (
-  values: number[],
-  windowSize: number,
-  findMin: boolean,
-): number[] => {
+const computeEndAlignedWindowExtrema = (params: {
+  values: number[];
+  windowSize: number;
+  findMin: boolean;
+}): number[] => {
+  const { values, windowSize, findMin } = params;
   const length = values.length;
   const result: number[] = new Array(length).fill(Number.NaN);
   if (windowSize <= 0 || windowSize > length) return result;
@@ -81,7 +88,10 @@ const computeEndAlignedWindowExtrema = (
     : (a: number, b: number) => a >= b;
 
   for (let endIndex = 0; endIndex < length; endIndex++) {
-    while (deque.length && !isBetter(values[deque[deque.length - 1]], values[endIndex])) {
+    while (
+      deque.length &&
+      !isBetter(values[deque[deque.length - 1]], values[endIndex])
+    ) {
       deque.pop();
     }
     deque.push(endIndex);
@@ -97,17 +107,26 @@ const computeEndAlignedWindowExtrema = (
   return result;
 };
 
-const computeCenterWindowExtrema = (
-  values: number[],
-  range: number,
-  findMin: boolean,
-): number[] => {
+const computeCenterWindowExtrema = (params: {
+  values: number[];
+  range: number;
+  findMin: boolean;
+}): number[] => {
+  const { values, range, findMin } = params;
   const length = values.length;
   const windowSize = 2 * range + 1;
-  const endAligned = computeEndAlignedWindowExtrema(values, windowSize, findMin);
+  const endAligned = computeEndAlignedWindowExtrema({
+    values,
+    windowSize,
+    findMin,
+  });
   const centerExtrema: number[] = new Array(length).fill(Number.NaN);
 
-  for (let centerIndex = range; centerIndex <= length - range - 1; centerIndex++) {
+  for (
+    let centerIndex = range;
+    centerIndex <= length - range - 1;
+    centerIndex++
+  ) {
     const endIndex = centerIndex + range;
     centerExtrema[centerIndex] = endAligned[endIndex];
   }
@@ -116,32 +135,37 @@ const computeCenterWindowExtrema = (
 
 /* ====================== Pipeline (pure functions) ===================== */
 
-const collectRawExtrema = (
-  bodySeries: number[],
-  timestampMs: number[],
-  range: number,
-  mode: Mode,
-): Point[] => {
+const collectRawExtrema = (params: {
+  bodySeries: number[];
+  timestampsMs: number[];
+  range: number;
+  mode: Mode;
+}): Point[] => {
+  const { bodySeries, timestampsMs, range, mode } = params;
   const findMin = mode === 'lows';
-  const centerExtrema = computeCenterWindowExtrema(bodySeries, range, findMin);
+  const centerExtrema = computeCenterWindowExtrema({
+    values: bodySeries,
+    range,
+    findMin,
+  });
 
   const result: Point[] = [];
   for (let index = range; index <= bodySeries.length - range - 1; index++) {
     const level = centerExtrema[index];
     if (!Number.isNaN(level) && bodySeries[index] === level) {
-      result.push({ x: index, y: bodySeries[index], t: timestampMs[index] });
+      result.push({ x: index, y: bodySeries[index], t: timestampsMs[index] });
     }
   }
   return result;
 };
 
-/** Кластеризация «цепочкой»: пока соседний экстремум ближе чем minDistanceBars к
- *  предыдущему в *сыром* ряду — он в том же кластере. Внутри кластера берём лучший. */
-const clusterExtrema = (
-  rawExtrema: Point[],
-  mode: Mode,
-  minDistanceBars: number,
-): Point[] => {
+const clusterExtrema = (params: {
+  rawExtrema: Point[];
+  mode: Mode;
+  minDistanceBars: number;
+}): Point[] => {
+  const { rawExtrema, mode, minDistanceBars } = params;
+
   if (rawExtrema.length === 0) return [];
 
   const clustered: Point[] = [];
@@ -150,7 +174,6 @@ const clusterExtrema = (
   while (clusterStart < rawExtrema.length) {
     let clusterEnd = clusterStart;
 
-    // расширяем кластер по соседям (цепочкой)
     while (
       clusterEnd + 1 < rawExtrema.length &&
       rawExtrema[clusterEnd + 1].x - rawExtrema[clusterEnd].x < minDistanceBars
@@ -158,11 +181,11 @@ const clusterExtrema = (
       clusterEnd++;
     }
 
-    // выбираем лучший внутри [clusterStart..clusterEnd]
     let best = rawExtrema[clusterStart];
     for (let i = clusterStart + 1; i <= clusterEnd; i++) {
       const candidate = rawExtrema[i];
-      const better = mode === 'lows' ? candidate.y < best.y : candidate.y > best.y;
+      const better =
+        mode === 'lows' ? candidate.y < best.y : candidate.y > best.y;
       if (better) best = candidate;
     }
     clustered.push(best);
@@ -173,13 +196,15 @@ const clusterExtrema = (
   return clustered;
 };
 
-const isStrongFirstAnchor = (
-  bodyLowSeries: number[],
-  bodyHighSeries: number[],
-  index: number,
-  mode: Mode,
-  firstRange: number,
-): boolean => {
+const isStrongFirstAnchor = (params: {
+  bodyLowSeries: number[];
+  bodyHighSeries: number[];
+  index: number;
+  mode: Mode;
+  firstRange: number;
+}): boolean => {
+  const { bodyLowSeries, bodyHighSeries, index, mode, firstRange } = params;
+
   const startIndex = Math.max(0, index - firstRange);
   const endIndex = Math.min(bodyLowSeries.length - 1, index + firstRange);
 
@@ -198,12 +223,13 @@ const isStrongFirstAnchor = (
   }
 };
 
-const buildLineEvaluator = (
-  t1: number,
-  y1: number,
-  t2: number,
-  y2: number,
-) => {
+const buildLineEvaluator = (params: {
+  t1: number;
+  y1: number;
+  t2: number;
+  y2: number;
+}) => {
+  const { t1, y1, t2, y2 } = params;
   const deltaTime = t2 - t1;
   if (deltaTime === 0) {
     const constantY = y1;
@@ -213,25 +239,41 @@ const buildLineEvaluator = (
   return (timeMs: number) => y1 + slope * (timeMs - t1);
 };
 
-const collectTouchIndices = (
-  bodySeriesForTouches: number[],
-  timestampMs: number[],
-  startIndex: number,
-  endIndex: number,
-  evaluateY: (t: number) => number,
-  epsilon: number,
-  minTouchGap: number,
-): number[] => {
+/* ====================== Breach / Touch checks ===================== */
+
+/** Касания считаем с допуском epsilon (только здесь!) */
+const collectTouchIndices = (params: {
+  bodySeriesForTouches: number[];
+  timestampsMs: number[];
+  startIndex: number;
+  endIndex: number;
+  evaluateY: (t: number) => number;
+  epsilon: number;
+  minTouchGap: number;
+}): number[] => {
+  const {
+    bodySeriesForTouches,
+    timestampsMs,
+    startIndex,
+    endIndex,
+    evaluateY,
+    epsilon,
+    minTouchGap,
+  } = params;
+
   const touchIndices: number[] = [];
   let lastTouchIndex = -Infinity;
 
   for (let barIndex = startIndex; barIndex <= endIndex; barIndex++) {
-    const lineY = evaluateY(timestampMs[barIndex]);
+    const lineY = evaluateY(timestampsMs[barIndex]);
     const tolerance = toleranceAt(lineY, epsilon);
     const bodyValue = bodySeriesForTouches[barIndex];
 
     if (Math.abs(bodyValue - lineY) <= tolerance) {
-      if (touchIndices.length === 0 || barIndex - lastTouchIndex >= minTouchGap) {
+      if (
+        touchIndices.length === 0 ||
+        barIndex - lastTouchIndex >= minTouchGap
+      ) {
         touchIndices.push(barIndex);
         lastTouchIndex = barIndex;
       }
@@ -240,80 +282,131 @@ const collectTouchIndices = (
   return touchIndices;
 };
 
-const hasWickBreachOnSegment = (
-  lowSeries: number[],
-  highSeries: number[],
-  timestampMs: number[],
-  startIndex: number,
-  endIndex: number,
-  evaluateY: (t: number) => number,
-  epsilon: number,
-  mode: Mode,
-): boolean => {
+/** ПРОБОЙ фитилём между опорами — С ДОПУСКОМ epsilon */
+const hasWickBreachOnSegment = (params: {
+  lowSeries: number[];
+  highSeries: number[];
+  timestampsMs: number[];
+  startIndex: number;
+  endIndex: number;
+  evaluateY: (t: number) => number;
+  epsilon: number;
+  mode: Mode;
+}): boolean => {
+  const {
+    lowSeries,
+    highSeries,
+    timestampsMs,
+    startIndex,
+    endIndex,
+    evaluateY,
+    epsilon,
+    mode,
+  } = params;
+
   for (let barIndex = startIndex; barIndex <= endIndex; barIndex++) {
-    const lineY = evaluateY(timestampMs[barIndex]);
+    const lineY = evaluateY(timestampsMs[barIndex]);
     const tolerance = toleranceAt(lineY, epsilon);
 
     if (mode === 'lows') {
-      if (lowSeries[barIndex] < lineY - tolerance) return true;
+      if (lowSeries[barIndex] < lineY - tolerance) return true; // вниз нельзя (с допуском)
     } else {
-      if (highSeries[barIndex] > lineY + tolerance) return true;
+      if (highSeries[barIndex] > lineY + tolerance) return true; // вверх нельзя (с допуском)
     }
   }
   return false;
 };
 
-const hasCloseBreachBeforeWindow = (
-  closeSeries: number[],
-  timestampMs: number[],
-  fromIndex: number,    // lastAnchorIndex + 1
-  lastIndex: number,
-  offset: number,
-  evaluateY: (t: number) => number,
-  epsilon: number,
-  mode: Mode,
-): boolean => {
-  const preCaptureEndIndex = lastIndex - Math.max(0, offset); // <-- фикс: строго ДО offset
+/** ПРОБОЙ ТЕЛОМ до окна offset — с epsilon */
+const hasCloseBreachBeforeWindow = (params: {
+  closeSeries: number[];
+  timestampsMs: number[];
+  fromIndex: number; // rightAnchorIndex + 1
+  lastIndex: number;
+  offset: number;
+  evaluateY: (t: number) => number;
+  epsilon: number;
+  mode: Mode;
+}): boolean => {
+  const {
+    closeSeries,
+    timestampsMs,
+    fromIndex,
+    lastIndex,
+    offset,
+    evaluateY,
+    epsilon,
+    mode,
+  } = params;
+
+  const preCaptureEndIndex = lastIndex - Math.max(0, offset); // строго ДО offset
   if (fromIndex > preCaptureEndIndex) return false;
 
   for (let barIndex = fromIndex; barIndex <= preCaptureEndIndex; barIndex++) {
-    const lineY = evaluateY(timestampMs[barIndex]);
+    const lineY = evaluateY(timestampsMs[barIndex]);
     const tolerance = toleranceAt(lineY, epsilon);
+    const closePrice = closeSeries[barIndex];
 
     if (mode === 'lows') {
-      if (closeSeries[barIndex] < lineY - tolerance) return true;
+      if (closePrice < lineY - tolerance) return true; // тело ниже линии (с допуском)
     } else {
-      if (closeSeries[barIndex] > lineY + tolerance) return true;
+      if (closePrice > lineY + tolerance) return true; // тело выше линии (с допуском)
     }
   }
   return false;
 };
 
-const hasRequiredCaptureInWindow = (
-  openSeries: number[],
-  timestampMs: number[],
-  lastAnchorIndex: number,
-  lastIndex: number,
-  offset: number,
-  evaluateY: (t: number) => number,
-  epsilon: number,
-  mode: Mode,
-): boolean => {
+/** capture-условие: в окне offset ДОЛЖНА быть свеча, которая
+ *  1) НАЧАЛАСЬ за линией (строго, без допуска)
+ *  2) и её цвет соответствует режиму:
+ *     - lows: красная (close < open)
+ *     - highs: зелёная (close > open)
+ */
+const hasRequiredCaptureInWindow = (params: {
+  openSeries: number[];
+  closeSeries: number[];
+  timestampsMs: number[];
+  rightAnchorIndex: number;
+  lastIndex: number;
+  offset: number;
+  evaluateY: (t: number) => number;
+  mode: Mode;
+}): boolean => {
+  const {
+    openSeries,
+    closeSeries,
+    timestampsMs,
+    rightAnchorIndex,
+    lastIndex,
+    offset,
+    evaluateY,
+    mode,
+  } = params;
+
   if (offset <= 0) return false;
 
-  const captureStartIndex = Math.max(lastAnchorIndex + 1, lastIndex - offset + 1);
+  const captureStartIndex = Math.max(
+    rightAnchorIndex + 1,
+    lastIndex - offset + 1,
+  );
   const captureEndIndex = lastIndex;
   if (captureStartIndex > captureEndIndex) return false;
 
-  for (let barIndex = captureStartIndex; barIndex <= captureEndIndex; barIndex++) {
-    const lineY = evaluateY(timestampMs[barIndex]);
-    const tolerance = toleranceAt(lineY, epsilon);
+  for (
+    let barIndex = captureStartIndex;
+    barIndex <= captureEndIndex;
+    barIndex++
+  ) {
+    const lineY = evaluateY(timestampsMs[barIndex]);
     const openPrice = openSeries[barIndex];
+    const closePrice = closeSeries[barIndex];
 
     if (mode === 'lows') {
-      if (openPrice < lineY - tolerance) return true; // свеча началась ниже
+      // началась ниже линии И красная
+      if (openPrice < lineY && closePrice < openPrice) return true;
     } else {
-      if (openPrice > lineY + tolerance) return true; // свеча началась выше
+      // началась выше линии И зелёная
+      if (openPrice > lineY && closePrice > openPrice) return true;
     }
   }
   return false;
@@ -329,12 +422,12 @@ const findTrendlinesCore = (
     mode,
     maxLines = 10,
     range = 10,
-    firstRange = 50,
-    epsilon = 0.005,      // 0.5%
+    firstRange = 80,
+    epsilon = 0.002, // 0.2% (для касаний, фитилей между опорами и close-пробегов до offset)
     minTouches = 3,
-    minDistanceBars = 10,
-    minTouchGap = 10,
-    offset = 10,
+    minDistanceBars = 100,
+    minTouchGap = 40,
+    offset = 3,
     capture = false,
   } = options;
 
@@ -342,85 +435,155 @@ const findTrendlinesCore = (
 
   // Предподсчёты
   const {
-    tsMs,
-    openArr,
-    closeArr,
-    lowArr,
-    highArr,
-    bodyLowArr,
-    bodyHighArr,
+    timestampsMs,
+    openSeries,
+    closeSeries,
+    lowSeries,
+    highSeries,
+    bodyLowSeries,
+    bodyHighSeries,
   } = buildScalarArrays(data);
 
-  const bodySeriesForExtrema = mode === 'lows' ? bodyLowArr : bodyHighArr;
-  const bodySeriesForTouches = mode === 'lows' ? bodyLowArr : bodyHighArr;
+  const bodySeriesForExtrema = mode === 'lows' ? bodyLowSeries : bodyHighSeries;
+  const bodySeriesForTouches = bodySeriesForExtrema;
 
   // 1) Сырые локальные экстремумы за O(N)
-  const rawExtrema = collectRawExtrema(bodySeriesForExtrema, tsMs, range, mode);
+  const rawExtrema = collectRawExtrema({
+    bodySeries: bodySeriesForExtrema,
+    timestampsMs,
+    range,
+    mode,
+  });
   if (rawExtrema.length < minTouches) return [];
 
   // 2) Разрежение (кластеризация)
-  const anchors = clusterExtrema(rawExtrema, mode, minDistanceBars);
+  const anchors = clusterExtrema({
+    rawExtrema,
+    mode,
+    minDistanceBars,
+  });
   if (anchors.length < minTouches) return [];
 
   const lastBarIndex = data.length - 1;
-  const lastTimestampMs = tsMs[lastBarIndex];
+  const lastTimestampMs = timestampsMs[lastBarIndex];
 
   let bestTrendLine: TrendLine | null = null;
   let bestSpanInBars = -1;
   let validCandidatesCount = 0;
 
-  for (let rightAnchorIdx = anchors.length - 1; rightAnchorIdx >= 0; rightAnchorIdx--) {
+  for (
+    let rightAnchorIdx = anchors.length - 1;
+    rightAnchorIdx >= 0;
+    rightAnchorIdx--
+  ) {
     const rightAnchor = anchors[rightAnchorIdx];
 
     // ранний отсев по достижимому максимуму
     const maxPossibleSpan = rightAnchor.x - anchors[0].x;
     if (maxPossibleSpan <= bestSpanInBars) break;
 
-    for (let leftAnchorIdx = rightAnchorIdx - 1; leftAnchorIdx >= 0; leftAnchorIdx--) {
+    for (
+      let leftAnchorIdx = rightAnchorIdx - 1;
+      leftAnchorIdx >= 0;
+      leftAnchorIdx--
+    ) {
       if (validCandidatesCount >= maxLines) break;
 
       const leftAnchor = anchors[leftAnchorIdx];
-      if (rightAnchor.x === leftAnchor.x || rightAnchor.t === leftAnchor.t) continue;
+      if (rightAnchor.x === leftAnchor.x || rightAnchor.t === leftAnchor.t)
+        continue;
 
       const firstIndex = leftAnchor.x;
       const lastIndex = rightAnchor.x;
       const spanBarsByAnchors = lastIndex - firstIndex;
       if (spanBarsByAnchors < minDistanceBars) continue;
 
-      if (!isStrongFirstAnchor(bodyLowArr, bodyHighArr, firstIndex, mode, firstRange)) continue;
+      if (
+        !isStrongFirstAnchor({
+          bodyLowSeries,
+          bodyHighSeries,
+          index: firstIndex,
+          mode,
+          firstRange,
+        })
+      )
+        continue;
 
-      const slopeByIndex = (rightAnchor.y - leftAnchor.y) / (rightAnchor.x - leftAnchor.x);
+      // проверка направления: lows — восходящая, highs — нисходящая
+      const slopeByIndex =
+        (rightAnchor.y - leftAnchor.y) / (rightAnchor.x - leftAnchor.x);
       if (mode === 'lows' && slopeByIndex <= 0) continue;
       if (mode === 'highs' && slopeByIndex >= 0) continue;
 
-      const evaluateY = buildLineEvaluator(leftAnchor.t, leftAnchor.y, rightAnchor.t, rightAnchor.y);
+      const evaluateY = buildLineEvaluator({
+        t1: leftAnchor.t,
+        y1: leftAnchor.y,
+        t2: rightAnchor.t,
+        y2: rightAnchor.y,
+      });
 
-      const touchIndices = collectTouchIndices(
+      // касания (с epsilon)
+      const touchIndices = collectTouchIndices({
         bodySeriesForTouches,
-        tsMs,
-        firstIndex,
-        lastIndex,
+        timestampsMs,
+        startIndex: firstIndex,
+        endIndex: lastIndex,
         evaluateY,
         epsilon,
         minTouchGap,
-      );
+      });
       if (touchIndices.length < minTouches) continue;
 
-      const spanBarsByTouches = touchIndices[touchIndices.length - 1] - touchIndices[0];
+      const spanBarsByTouches =
+        touchIndices[touchIndices.length - 1] - touchIndices[0];
       if (spanBarsByTouches < minDistanceBars) continue;
 
-      if (hasWickBreachOnSegment(lowArr, highArr, tsMs, firstIndex, lastIndex, evaluateY, epsilon, mode)) {
+      // пробой фитилём между опорами — С ДОПУСКОМ epsilon
+      if (
+        hasWickBreachOnSegment({
+          lowSeries,
+          highSeries,
+          timestampsMs,
+          startIndex: firstIndex,
+          endIndex: lastIndex,
+          evaluateY,
+          epsilon,
+          mode,
+        })
+      ) {
         continue;
       }
 
+      // пробой телом до окна — с epsilon
       const preCaptureStart = lastIndex + 1;
-      if (hasCloseBreachBeforeWindow(closeArr, tsMs, preCaptureStart, lastBarIndex, offset, evaluateY, epsilon, mode)) {
+      if (
+        hasCloseBreachBeforeWindow({
+          closeSeries,
+          timestampsMs,
+          fromIndex: preCaptureStart,
+          lastIndex: lastBarIndex,
+          offset,
+          evaluateY,
+          epsilon,
+          mode,
+        })
+      ) {
         continue;
       }
 
+      // capture: внутри offset обязателен «старт за линией» и корректный цвет свечи — СТРОГО без epsilon
       if (capture) {
         if (offset <= 0) continue;
-        const captured = hasRequiredCaptureInWindow(openArr, tsMs, lastIndex, lastBarIndex, offset, evaluateY, epsilon, mode);
+        const captured = hasRequiredCaptureInWindow({
+          openSeries,
+          closeSeries,
+          timestampsMs,
+          rightAnchorIndex: lastIndex,
+          lastIndex: lastBarIndex,
+          offset,
+          evaluateY,
+          mode,
+        });
         if (!captured) continue;
       }
 

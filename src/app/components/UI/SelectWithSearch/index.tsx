@@ -34,12 +34,12 @@ export const SelectWithSearch = ({
   size = 'sm',
   onChange,
 }: SelectWithSearchProps) => {
-  const { startsWith } = useFilter({ sensitivity: 'base' });
+  const { contains } = useFilter({ sensitivity: 'base' });
   const [inputValue, setInputValue] = useState(defaultValue?.[0]);
 
   const { collection, filter, set } = useListCollection({
     initialItems: items,
-    filter: startsWith,
+    filter: contains,
   });
 
   useEffect(() => {

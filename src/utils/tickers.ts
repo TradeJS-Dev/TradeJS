@@ -82,7 +82,7 @@ export const getTopTickers = (data: Ticker[], topN?: number): Item[] => {
         return false;
       }
 
-      if (!symbol.endsWith('USDT')) {
+      if (symbol.startsWith('USD') || !symbol.endsWith('USDT')) {
         return false;
       }
 

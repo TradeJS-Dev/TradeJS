@@ -6,6 +6,7 @@ import { getFiles } from '@utils/data';
 import { getTimestamp } from '@utils/timestamp';
 import { getFormatted } from '@utils/stat';
 import { getTopTickers } from '@utils/tickers';
+import { screenDashboard } from '@utils/screen';
 import {
   Connector,
   Interval,
@@ -28,7 +29,7 @@ export const cleanFiles = async (dir: string) => {
     width: 30,
   });
 
-  console.log(chalk.yellow(`clean ${dir}`));
+  console.log(chalk.yellow('clean:', dir));
 
   for await (const file of files) {
     completed++;
@@ -56,7 +57,7 @@ export const update = async (
     },
   );
 
-  console.log(chalk.yellow('update tickers'));
+  console.log(chalk.yellow('update:', tickers.length));
 
   const queue = tickers.slice();
 
@@ -139,4 +140,42 @@ export const getTickers = async (
   }
 
   return tickers.filter((t) => !excludeTickers.includes(t));
+};
+
+export const makeScreenshots = async (
+  interval: Interval,
+  tickers: string[],
+) => {
+  const bar = new ProgressBar(
+    ':current/:total [:bar][:percent] :eta(s) :symbol',
+    {
+      total: tickers.length,
+      width: 30,
+    },
+  );
+
+  console.log(chalk.yellow('screenshots:', tickers.length));
+
+  const queue = tickers.slice();
+
+  const worker = async () => {
+    while (queue.length > 0) {
+      const symbol = queue.shift()!;
+      try {
+        await screenDashboard({
+          symbol,
+          interval,
+        });
+      } catch {
+        console.error('Failed screenshot', symbol);
+      } finally {
+        bar.tick(1, { symbol: chalk.gray(symbol) });
+      }
+    }
+  };
+
+  const workers = Array.from({ length: CONCURRENCY }, () => worker());
+  await Promise.all(workers);
+
+  console.log('');
 };

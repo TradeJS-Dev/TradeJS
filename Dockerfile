@@ -38,8 +38,6 @@ RUN chmod +x ./entrypoint.bot.sh
 RUN chmod +x ./entrypoint.signals.15.sh
 RUN chmod +x ./entrypoint.signals.60.sh
 
-RUN mkdir -p /app/public/screenshots
-
 EXPOSE 3000
 
 CMD ["./entrypoint.sh"]

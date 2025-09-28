@@ -34,9 +34,9 @@ export const screenDashboard = async ({
 
   await page.goto(`${APP_URL}/routes/dashboard/${symbol}/${interval}`);
 
-  await delay(10000);
+  await delay(30_000);
 
   await page.screenshot({
-    path: `public/screenshots/${symbol}_${interval}.png`,
+    path: `data/screenshots/${symbol}_${interval}.png`,
   });
 };
