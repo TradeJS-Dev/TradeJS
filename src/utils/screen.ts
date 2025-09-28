@@ -20,6 +20,7 @@ export const screenDashboard = async ({
     args: [
       '--no-sandbox',
       '--disable-setuid-sandbox',
+      '--disable-dev-shm-usage',
       '--font-render-hinting=medium',
     ],
   });
@@ -39,4 +40,8 @@ export const screenDashboard = async ({
   await page.screenshot({
     path: `data/screenshots/${symbol}_${interval}.png`,
   });
+
+  await page.close();
+
+  await browser.close();
 };

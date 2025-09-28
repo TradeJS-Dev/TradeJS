@@ -61,7 +61,6 @@ const signals = async () => {
   const signalsFound = new Array<string>();
 
   await cleanFiles('data/cache');
-  await cleanFiles('data/screenshots');
 
   const tickers = await getTickers(
     byBitConnector,
