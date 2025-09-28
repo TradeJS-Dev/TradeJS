@@ -57,6 +57,8 @@ export const getData = async (
     return parsedFile;
   } catch (e) {
     logger.log('error', 'failed data file: %s', e);
+    await fs.unlink(fullPath);
+
     return fallback;
   }
 };
