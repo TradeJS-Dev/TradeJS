@@ -132,7 +132,7 @@ export const getTickers = async (
   limit?: number,
   chunk?: string,
 ) => {
-  let tickers = new Array<string>();
+  let tickers: Array<string>;
 
   const excludeTickers = parseSymbolsFromCLI(exclude);
 
@@ -150,11 +150,11 @@ export const getTickers = async (
     console.log('chunks', currentChunk, chunksCount);
     const chunkSize = Math.ceil(tickers.length / chunksCount);
     const chunks = _.chunk(tickers, chunkSize);
-    tickers = chunks[currentChunk];
+    tickers = chunks[currentChunk - 1];
   }
 
   if (!tickers.includes('BTCUSDT')) {
-    tickers.push('BTCUSDT');
+    tickers = ['BTCUSDT', ...tickers];
   }
 
   return tickers.filter((t) => !excludeTickers.includes(t));
