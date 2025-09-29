@@ -1,9 +1,12 @@
+'use client';
+
 import { useEffect } from 'react';
+import { useSearchParams } from 'next/navigation';
 import _ from 'lodash';
 import { Chart, registerOverlay } from 'klinecharts';
-import { Filters } from '@types';
 import { useData } from './useData';
 import { findTrendlinesByLows, findTrendlinesByHighs } from '@utils/trendLine';
+import { Filters } from '@types';
 
 export const useTrendLine = (
   chart: Chart | null,
@@ -11,6 +14,8 @@ export const useTrendLine = (
   filters: Filters,
 ) => {
   const { data, loading } = useData(filters);
+  const searchParams = useSearchParams();
+  const signal = searchParams.get('signal');
 
   useEffect(() => {
     registerOverlay({

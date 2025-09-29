@@ -5,6 +5,7 @@ import { Interval } from '@types';
 
 interface ScreenDashboardParams {
   symbol: string;
+  signalId: string;
   interval: Interval;
 }
 
@@ -12,6 +13,7 @@ const APP_URL = process.env.APP_URL;
 
 export const screenDashboard = async ({
   symbol,
+  signalId,
   interval,
 }: ScreenDashboardParams) => {
   const browser = await puppeteer.launch({
@@ -33,7 +35,9 @@ export const screenDashboard = async ({
     deviceScaleFactor: 2,
   });
 
-  await page.goto(`${APP_URL}/routes/dashboard/${symbol}/${interval}`);
+  await page.goto(
+    `${APP_URL}/routes/dashboard/${symbol}/${interval}/?cacheOnly=true&signalId=${signalId}`,
+  );
 
   await delay(15_000);
 

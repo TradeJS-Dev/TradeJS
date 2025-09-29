@@ -4,3 +4,4 @@ export * from './backtest';
 export * from './bot';
 export * from './ui';
 export * from './ai';
+export * from './signals';

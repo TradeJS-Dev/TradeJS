@@ -1,4 +1,5 @@
 import fs from 'fs/promises';
+import _ from 'lodash';
 import ProgressBar from 'progress';
 import chalk from 'chalk';
 import { PRELOAD_DAYS } from '@constants';
@@ -13,6 +14,7 @@ import {
   TestStat,
   ThresholdLevel,
   TestThresholdsKey,
+  Signal,
 } from '@types';
 
 const PRELOAD_START = getTimestamp(PRELOAD_DAYS);
@@ -128,6 +130,7 @@ export const getTickers = async (
   include = '',
   exclude = '',
   limit?: number,
+  chunk?: string,
 ) => {
   let tickers = new Array<string>();
 
@@ -139,32 +142,41 @@ export const getTickers = async (
     tickers = await scanner(connector, limit);
   }
 
+  if (chunk) {
+    const [currentChunk, chunksCount] = chunk
+      .split('/')
+      .map((c) => parseInt(c));
+
+    console.log('chunks', currentChunk, chunksCount);
+    const chunkSize = Math.ceil(tickers.length / chunksCount);
+    const chunks = _.chunk(tickers, chunkSize);
+    tickers = chunks[currentChunk];
+  }
+
   return tickers.filter((t) => !excludeTickers.includes(t));
 };
 
-export const makeScreenshots = async (
-  interval: Interval,
-  tickers: string[],
-) => {
+export const makeScreenshots = async (signals: Signal[]) => {
   const bar = new ProgressBar(
     ':current/:total [:bar][:percent] :eta(s) :symbol',
     {
-      total: tickers.length,
+      total: signals.length,
       width: 30,
     },
   );
 
-  console.log(chalk.yellow('screenshots:', tickers.length));
+  console.log(chalk.yellow('screenshots:', signals.length));
 
-  const queue = tickers.slice();
+  const queue = signals.slice();
 
   const worker = async () => {
     while (queue.length > 0) {
-      const symbol = queue.shift()!;
+      const { symbol, interval, signalId } = queue.shift()!;
       try {
         await screenDashboard({
           symbol,
           interval,
+          signalId,
         });
       } catch {
         console.error('Failed screenshot', symbol);

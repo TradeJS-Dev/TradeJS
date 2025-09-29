@@ -1,4 +1,7 @@
+'use client';
+
 import { useEffect, useState, useRef } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { KlineChartData, Filters } from '@types';
 import { kline } from '@src/actions/kline';
 
@@ -6,6 +9,9 @@ export const useData = (filters: Filters) => {
   const [loading, setLoading] = useState(false);
   const [signal, setSignal] = useState(0);
   const dataRef = useRef<KlineChartData | null>(null);
+
+  const searchParams = useSearchParams();
+  const cacheOnly = Boolean(searchParams.get('cacheOnly')) ?? false;
 
   const updateData = async (
     { symbol, interval, start, end }: Filters,
@@ -21,6 +27,7 @@ export const useData = (filters: Filters) => {
       start,
       end,
       silent,
+      cacheOnly,
     });
 
     dataRef.current = newData;

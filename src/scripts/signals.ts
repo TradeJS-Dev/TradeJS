@@ -6,7 +6,9 @@ import { SIGNALS_PRELOAD_DAYS } from '@constants';
 import { update, getTickers, cleanFiles, makeScreenshots } from '@utils/cli';
 import { findTrendlinesByLows, findTrendlinesByHighs } from '@utils/trendLine';
 import { getTimestamp } from '@utils/timestamp';
-import { Interval } from '@types';
+import { uuid } from '@utils/uuid';
+import { setData } from '@utils/data';
+import { Interval, Signal } from '@types';
 
 args.option(['t', 'tickers'], 'Selected tickers');
 args.option(['e', 'exclude'], 'Exclude tickers from tests');
@@ -16,6 +18,7 @@ args.option(['o', 'offset'], 'Offset', 3);
 args.option(['u', 'updateOnly'], 'Only update tickers history', false);
 args.option(['C', 'cacheOnly'], 'Do not update tickers history', false);
 args.option(['L', 'showTickersList'], 'Just show only ticker list', false);
+args.option(['c', 'chunk'], 'Split by chunks, ex. 1/3');
 args.option(['U', 'user'], 'Use user confg', 'root');
 
 const PRELOAD_START = getTimestamp(SIGNALS_PRELOAD_DAYS);
@@ -51,14 +54,29 @@ const checkSignals = async (symbol: string) => {
 
   if (lowsTrendlines.length > 0 || highsTrendlines.length > 0) {
     // console.log(symbol, { lowsTrendlines, highsTrendlines });
-    return true;
+
+    const signalId = uuid();
+
+    const signal: Signal = {
+      signalId,
+      symbol,
+      interval,
+      trendLines: {
+        lows: lowsTrendlines,
+        highs: highsTrendlines,
+      },
+    };
+
+    await setData('data/signals', signalId, signal, { useCache: false });
+
+    return signal;
   }
 
-  return false;
+  return null;
 };
 
 const signals = async () => {
-  const signalsFound = new Array<string>();
+  const signals = new Array<Signal>();
 
   await cleanFiles('data/cache');
 
@@ -67,6 +85,7 @@ const signals = async () => {
     flags.tickers,
     flags.exclude,
     flags.tickersLimit,
+    flags.chunk,
   );
 
   if (flags.showTickersList) {
@@ -94,23 +113,23 @@ const signals = async () => {
   console.log(chalk.yellow(`tickers: ${tickers.length}`));
 
   for await (const symbol of tickers) {
-    const res = await checkSignals(symbol);
+    const signal = await checkSignals(symbol);
 
-    if (res) {
-      signalsFound.push(symbol);
+    if (signal) {
+      signals.push(signal);
     }
 
     bar.tick(1, {
-      found: chalk.cyan(signalsFound.length),
+      found: chalk.cyan(signals.length),
       symbol: chalk.gray(symbol),
     });
   }
 
   console.log('');
 
-  await makeScreenshots(interval, signalsFound);
+  await makeScreenshots(signals);
 
-  console.log(JSON.stringify(signalsFound, null, 2));
+  console.log(JSON.stringify(signals, null, 2));
 
   process.exit();
 };

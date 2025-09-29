@@ -1,26 +1,10 @@
-import { KlineChartData, Candle } from '@types';
-
-/* ========================= Types & Options ========================= */
-
-type Mode = 'lows' | 'highs';
-
-export type TrendLine = {
-  id: string;
-  points: { timestamp: number; value: number }[];
-};
-
-export interface TrendLineOptions {
-  mode: Mode;
-  maxLines?: number; // ограничение перебора пар опор (кандидатов)
-  range?: number; // окно для локальных экстремумов (в барах)
-  epsilon?: number; // допуск как доля цены (0.01 = 1%) — применяется для касаний, фитилей между опорами и close-пробоев ДО offset
-  minTouches?: number; // минимум касаний по телу (с учётом minTouchGap)
-  minDistanceBars?: number; // минимум баров между опорами/крайними касаниями
-  firstRange?: number; // «сила» первой опоры (окно сильного экстремума)
-  offset?: number; // размер окна в конце (в барах)
-  minTouchGap?: number; // минимум баров между касаниями
-  capture?: boolean; // true: в окне offset обязателен «старт за линией» и цвет свечи (строго, без допуска)
-}
+import {
+  KlineChartData,
+  Candle,
+  TrendLineMode,
+  TrendLine,
+  TrendLineOptions,
+} from '@types';
 
 /* ============================ Helpers ============================= */
 
@@ -139,7 +123,7 @@ const collectRawExtrema = (params: {
   bodySeries: number[];
   timestampsMs: number[];
   range: number;
-  mode: Mode;
+  mode: TrendLineMode;
 }): Point[] => {
   const { bodySeries, timestampsMs, range, mode } = params;
   const findMin = mode === 'lows';
@@ -161,7 +145,7 @@ const collectRawExtrema = (params: {
 
 const clusterExtrema = (params: {
   rawExtrema: Point[];
-  mode: Mode;
+  mode: TrendLineMode;
   minDistanceBars: number;
 }): Point[] => {
   const { rawExtrema, mode, minDistanceBars } = params;
@@ -200,7 +184,7 @@ const isStrongFirstAnchor = (params: {
   bodyLowSeries: number[];
   bodyHighSeries: number[];
   index: number;
-  mode: Mode;
+  mode: TrendLineMode;
   firstRange: number;
 }): boolean => {
   const { bodyLowSeries, bodyHighSeries, index, mode, firstRange } = params;
@@ -291,7 +275,7 @@ const hasWickBreachOnSegment = (params: {
   endIndex: number;
   evaluateY: (t: number) => number;
   epsilon: number;
-  mode: Mode;
+  mode: TrendLineMode;
 }): boolean => {
   const {
     lowSeries,
@@ -326,7 +310,7 @@ const hasCloseBreachBeforeWindow = (params: {
   offset: number;
   evaluateY: (t: number) => number;
   epsilon: number;
-  mode: Mode;
+  mode: TrendLineMode;
 }): boolean => {
   const {
     closeSeries,
@@ -370,7 +354,7 @@ const hasRequiredCaptureInWindow = (params: {
   lastIndex: number;
   offset: number;
   evaluateY: (t: number) => number;
-  mode: Mode;
+  mode: TrendLineMode;
 }): boolean => {
   const {
     openSeries,
