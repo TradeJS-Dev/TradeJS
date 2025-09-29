@@ -153,6 +153,10 @@ export const getTickers = async (
     tickers = chunks[currentChunk];
   }
 
+  if (!tickers.includes('BTCUSDT')) {
+    tickers.push('BTCUSDT');
+  }
+
   return tickers.filter((t) => !excludeTickers.includes(t));
 };
 
