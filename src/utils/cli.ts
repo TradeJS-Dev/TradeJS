@@ -147,7 +147,7 @@ export const getTickers = async (
       .split('/')
       .map((c) => parseInt(c));
 
-    console.log('chunks', currentChunk, chunksCount);
+    console.log('chunk:', currentChunk, '/', chunksCount);
     const chunkSize = Math.ceil(tickers.length / chunksCount);
     const chunks = _.chunk(tickers, chunkSize);
     tickers = chunks[currentChunk - 1];

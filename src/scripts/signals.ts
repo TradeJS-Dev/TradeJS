@@ -15,6 +15,7 @@ args.option(['e', 'exclude'], 'Exclude tickers from tests');
 args.option(['l', 'tickersLimit'], 'Tickers limit');
 args.option(['f', 'timeframe'], 'Timeframe', 15);
 args.option(['o', 'offset'], 'Offset', 3);
+args.option(['p', 'points'], 'Points', 3);
 args.option(['u', 'updateOnly'], 'Only update tickers history', false);
 args.option(['C', 'cacheOnly'], 'Do not update tickers history', false);
 args.option(['L', 'showTickersList'], 'Just show only ticker list', false);
@@ -25,6 +26,8 @@ const PRELOAD_START = getTimestamp(SIGNALS_PRELOAD_DAYS);
 const PRELOAD_END = getTimestamp();
 
 const flags = args.parse(process.argv);
+const minTouches = parseInt(flags.points);
+const offset = parseInt(flags.offset);
 const interval = flags.timeframe.toString() as Interval;
 
 const byBitConnector = connectors.ByBit({
@@ -41,14 +44,14 @@ const checkSignals = async (symbol: string) => {
   });
 
   const lowsTrendlines = findTrendlinesByLows(data, {
-    minTouches: 3,
-    offset: parseInt(flags.offset),
+    minTouches,
+    offset,
     capture: true,
   });
 
   const highsTrendlines = findTrendlinesByHighs(data, {
-    minTouches: 3,
-    offset: parseInt(flags.offset),
+    minTouches,
+    offset,
     capture: true,
   });
 
