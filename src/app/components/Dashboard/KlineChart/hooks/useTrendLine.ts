@@ -1,12 +1,13 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import _ from 'lodash';
 import { Chart, registerOverlay } from 'klinecharts';
+import { getSignal } from '@src/actions/signal';
 import { useData } from './useData';
 import { findTrendlinesByLows, findTrendlinesByHighs } from '@utils/trendLine';
-import { Filters } from '@types';
+import { Filters, Signal } from '@types';
 
 export const useTrendLine = (
   chart: Chart | null,
@@ -14,8 +15,19 @@ export const useTrendLine = (
   filters: Filters,
 ) => {
   const { data, loading } = useData(filters);
+  const [signal, setSignal] = useState<Signal | null>(null);
   const searchParams = useSearchParams();
-  const signal = searchParams.get('signal');
+  const signalId = searchParams.get('signalId');
+
+  useEffect(() => {
+    if (!signalId) {
+      return;
+    }
+
+    getSignal(signalId).then((res) => {
+      setSignal(res);
+    });
+  }, []);
 
   useEffect(() => {
     registerOverlay({
@@ -74,7 +86,9 @@ export const useTrendLine = (
       return;
     }
 
-    const lowsTrendlines = findTrendlinesByLows(data, { minTouches: 3 });
+    const lowsTrendlines = signalId
+      ? signal?.trendLines?.lows || []
+      : findTrendlinesByLows(data, { minTouches: 3 });
 
     for (const line of lowsTrendlines) {
       chart.createOverlay({
@@ -84,7 +98,9 @@ export const useTrendLine = (
       });
     }
 
-    const highsTrendlines = findTrendlinesByHighs(data, { minTouches: 3 });
+    const highsTrendlines = signalId
+      ? signal?.trendLines?.highs || []
+      : findTrendlinesByHighs(data, { minTouches: 3 });
 
     for (const line of highsTrendlines) {
       chart.createOverlay({
@@ -103,5 +119,5 @@ export const useTrendLine = (
         chart.removeOverlay({ name: 'HighTrendLine' });
       }
     };
-  }, [chart, enabled, loading, data]);
+  }, [chart, enabled, loading, data, signal, signalId]);
 };
