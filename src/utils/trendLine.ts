@@ -341,8 +341,7 @@ const hasCloseBreachBeforeWindow = (params: {
 };
 
 /** capture-условие: в окне offset ДОЛЖНА быть свеча, которая
- *  1) НАЧАЛАСЬ за линией (строго, без допуска)
- *  2) и её цвет соответствует режиму:
+ *  1) и её цвет соответствует режиму:
  *     - lows: красная (close < open)
  *     - highs: зелёная (close > open)
  */
@@ -386,11 +385,11 @@ const hasRequiredCaptureInWindow = (params: {
     const closePrice = closeSeries[barIndex];
 
     if (mode === 'lows') {
-      // началась ниже линии И красная
-      if (openPrice < lineY && closePrice < openPrice) return true;
+      // закрылась ниже линии И красная
+      if (closePrice < lineY && closePrice < openPrice) return true;
     } else {
-      // началась выше линии И зелёная
-      if (openPrice > lineY && closePrice > openPrice) return true;
+      // закрылась выше линии И зелёная
+      if (closePrice > lineY && closePrice > openPrice) return true;
     }
   }
   return false;

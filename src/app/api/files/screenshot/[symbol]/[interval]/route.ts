@@ -25,7 +25,7 @@ export async function GET(_req: Request, { params }: { params: Params }) {
       headers: {
         'Content-Type': 'image/png',
         'Content-Length': String(file.byteLength),
-        'Cache-Control': 'public, max-age=3600, immutable',
+        'Cache-Control': 'public, max-age=60',
       },
     });
   } catch {
