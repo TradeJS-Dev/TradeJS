@@ -210,7 +210,10 @@ export const ByBitConnectorCreator: ConnectorCreator = (config) => {
       }
 
       if (!_.isEmpty(data)) {
-        await setData('data/history', `${symbol}_${interval}`, data);
+        await setData('data/history', `${symbol}_${interval}`, data, {
+          lock: true,
+          useCache: false,
+        });
       }
 
       return data.filter((item) => {

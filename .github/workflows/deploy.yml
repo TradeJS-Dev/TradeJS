@@ -27,6 +27,8 @@ jobs:
           OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}
           OPENAI_API_ENDPOINT=${{ secrets.OPENAI_API_ENDPOINT }}
           APP_URL=https://aleksnick01inv.fvds.ru
+          TG_BOT_TOKEN=${{ secrets.TG_BOT_TOKEN }}
+          TG_CHAT_ID=207660648
           PUPPETEER_SKIP_DOWNLOAD=true
           PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
           " > .env

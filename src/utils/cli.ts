@@ -7,7 +7,7 @@ import { getFiles } from '@utils/data';
 import { getTimestamp } from '@utils/timestamp';
 import { getFormatted } from '@utils/stat';
 import { getTopTickers } from '@utils/tickers';
-import { screenDashboard } from '@utils/screen';
+import { screenDashboard, sendSignal } from '@utils/screen';
 import {
   Connector,
   Interval,
@@ -75,7 +75,7 @@ export const update = async (
           silent: true,
         });
       } catch {
-        console.error('Failed loading', symbol);
+        console.error('Failed loading:', symbol);
       } finally {
         bar.tick(1, { symbol: chalk.gray(symbol) });
       }
@@ -175,23 +175,43 @@ export const makeScreenshots = async (signals: Signal[]) => {
 
   const worker = async () => {
     while (queue.length > 0) {
-      const { symbol, interval, signalId } = queue.shift()!;
+      const signal = queue.shift()!;
       try {
-        await screenDashboard({
-          symbol,
-          interval,
-          signalId,
-        });
+        await screenDashboard(signal);
       } catch {
-        console.error('Failed screenshot', symbol);
+        console.error('Failed screenshot:', signal.symbol);
       } finally {
-        bar.tick(1, { symbol: chalk.gray(symbol) });
+        bar.tick(1, { symbol: chalk.gray(signal.symbol) });
       }
     }
   };
 
   const workers = Array.from({ length: CONCURRENCY }, () => worker());
   await Promise.all(workers);
+
+  console.log('');
+};
+
+export const sendMessages = async (signals: Signal[]) => {
+  const bar = new ProgressBar(
+    ':current/:total [:bar][:percent] :eta(s) :symbol',
+    {
+      total: signals.length,
+      width: 30,
+    },
+  );
+
+  console.log(chalk.yellow('messages:', signals.length));
+
+  for await (const signal of signals) {
+    try {
+      await sendSignal(signal);
+    } catch {
+      console.error('Failed sent:', signal.symbol);
+    } finally {
+      bar.tick(1, { symbol: chalk.gray(signal.symbol) });
+    }
+  }
 
   console.log('');
 };

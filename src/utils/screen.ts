@@ -1,21 +1,17 @@
 import 'dotenv/config';
 import puppeteer from 'puppeteer';
 import { delay } from '@utils/delay';
-import { Interval } from '@types';
-
-interface ScreenDashboardParams {
-  symbol: string;
-  signalId: string;
-  interval: Interval;
-}
+import { Signal } from '@types';
 
 const APP_URL = process.env.APP_URL;
+const token = process.env.TG_BOT_TOKEN;
+const chatId = process.env.TG_CHAT_ID;
 
 export const screenDashboard = async ({
   symbol,
   signalId,
   interval,
-}: ScreenDashboardParams) => {
+}: Signal) => {
   const browser = await puppeteer.launch({
     headless: true,
     executablePath: process.env.PUPPETEER_EXECUTABLE_PATH!,
@@ -48,4 +44,36 @@ export const screenDashboard = async ({
   await page.close();
 
   await browser.close();
+};
+
+export const sendSignal = async ({
+  symbol,
+  signalId,
+  direction,
+  interval,
+}: Signal) => {
+  const imageUrl = `${APP_URL}/api/files/screenshot/${symbol}/${interval}`;
+
+  const res = await fetch(`https://api.telegram.org/bot${token}/sendPhoto`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      chat_id: chatId,
+      photo: imageUrl,
+      caption: `${direction} ${symbol}, TF: ${interval}m (${signalId})`,
+      reply_markup: {
+        inline_keyboard: [
+          [
+            {
+              text: 'Dashboard',
+              url: `${APP_URL}/routes/dashboard/${symbol}/${interval}/?signalId=${signalId}`,
+            },
+          ],
+        ],
+      },
+      parse_mode: 'HTML',
+    }),
+  });
+
+  const data = await res.json();
 };

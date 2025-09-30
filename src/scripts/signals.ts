@@ -3,7 +3,13 @@ import ProgressBar from 'progress';
 import { connectors } from '@src/connectors';
 import chalk from 'chalk';
 import { SIGNALS_PRELOAD_DAYS } from '@constants';
-import { update, getTickers, cleanFiles, makeScreenshots } from '@utils/cli';
+import {
+  update,
+  getTickers,
+  cleanFiles,
+  makeScreenshots,
+  sendMessages,
+} from '@utils/cli';
 import { findTrendlinesByLows, findTrendlinesByHighs } from '@utils/trendLine';
 import { getTimestamp } from '@utils/timestamp';
 import { uuid } from '@utils/uuid';
@@ -16,6 +22,7 @@ args.option(['l', 'tickersLimit'], 'Tickers limit');
 args.option(['f', 'timeframe'], 'Timeframe', 15);
 args.option(['o', 'offset'], 'Offset', 3);
 args.option(['p', 'points'], 'Points', 3);
+args.option(['N', 'notify'], 'Send message in Telegram', false);
 args.option(['u', 'updateOnly'], 'Only update tickers history', false);
 args.option(['C', 'cacheOnly'], 'Do not update tickers history', false);
 args.option(['L', 'showTickersList'], 'Just show only ticker list', false);
@@ -64,6 +71,7 @@ const checkSignals = async (symbol: string) => {
       signalId,
       symbol,
       interval,
+      direction: lowsTrendlines.length > 0 ? 'LONG' : 'SHORT',
       trendLines: {
         lows: lowsTrendlines,
         highs: highsTrendlines,
@@ -132,7 +140,17 @@ const signals = async () => {
 
   await makeScreenshots(signals);
 
-  console.log(JSON.stringify(signals, null, 2));
+  if (flags.notify) {
+    await sendMessages(signals);
+  }
+
+  console.log(
+    JSON.stringify(
+      signals.map((s) => s.symbol),
+      null,
+      2,
+    ),
+  );
 
   process.exit();
 };
