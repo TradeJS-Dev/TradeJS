@@ -71,7 +71,7 @@ const checkSignals = async (symbol: string) => {
       signalId,
       symbol,
       interval,
-      direction: lowsTrendlines.length > 0 ? 'LONG' : 'SHORT',
+      direction: lowsTrendlines.length > 0 ? 'SHORT' : 'LONG',
       trendLines: {
         lows: lowsTrendlines,
         highs: highsTrendlines,

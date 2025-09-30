@@ -60,7 +60,7 @@ export const sendSignal = async ({
     body: JSON.stringify({
       chat_id: chatId,
       photo: imageUrl,
-      caption: `${direction} ${symbol}, TF: ${interval}m (${signalId})`,
+      caption: `${direction} ${symbol}\ntimeframe: ${interval}m\nid: <code>${signalId}</code>`,
       reply_markup: {
         inline_keyboard: [
           [
