@@ -35,7 +35,7 @@ export const screenDashboard = async ({
     `${APP_URL}/routes/dashboard/${symbol}/${interval}/?cacheOnly=true&signalId=${signalId}`,
   );
 
-  await delay(15_000);
+  await delay(30_000);
 
   await page.screenshot({
     path: `data/screenshots/${symbol}_${interval}.png`,

@@ -19,7 +19,6 @@ import {
 
 const PRELOAD_START = getTimestamp(PRELOAD_DAYS);
 const PRELOAD_END = getTimestamp();
-const CONCURRENCY = 10;
 
 export const cleanFiles = async (dir: string) => {
   let completed = 0;
@@ -82,7 +81,7 @@ export const update = async (
     }
   };
 
-  const workers = Array.from({ length: CONCURRENCY }, () => worker());
+  const workers = Array.from({ length: 10 }, () => worker());
   await Promise.all(workers);
 
   console.log('');
@@ -186,7 +185,7 @@ export const makeScreenshots = async (signals: Signal[]) => {
     }
   };
 
-  const workers = Array.from({ length: CONCURRENCY }, () => worker());
+  const workers = Array.from({ length: 3 }, () => worker());
   await Promise.all(workers);
 
   console.log('');
