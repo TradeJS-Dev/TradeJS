@@ -3,9 +3,7 @@ import { TestSuite } from '@types';
 import { getData } from '@utils/data';
 
 process.on('message', async ({ chunkId }: { chunkId: string }) => {
-  const testSuite = (await getData('data/cache', chunkId, {
-    useCache: false,
-  })) as TestSuite;
+  const testSuite = (await getData('data/cache', chunkId)) as TestSuite;
 
   for await (const test of testSuite) {
     try {

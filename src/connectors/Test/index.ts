@@ -94,7 +94,7 @@ export const TestConnectorCreator: TCC = (connector) => {
 
       const orderLogId = uuid();
 
-      await setData('data/cache', orderLogId, ORDER_LOG, { useCache: false });
+      await setData('data/cache', orderLogId, ORDER_LOG);
 
       return {
         stat,

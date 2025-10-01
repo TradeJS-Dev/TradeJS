@@ -5,18 +5,14 @@ import { toJson } from '@utils/toJson';
 import { uuid } from '@utils/uuid';
 
 interface Options {
-  useCache?: boolean;
   stringify?: boolean;
   lock?: boolean;
 }
 
 const DEFAULT_OPTIONS: Options = {
-  useCache: true,
   stringify: false,
   lock: false,
 };
-
-const hash: { [key: string]: any } = {};
 
 const getPath = (dir: string, file: string, lock = false) => {
   if (!lock) {
@@ -42,18 +38,9 @@ export const getFiles = async (dir: string) => {
 export const getData = async (
   dir: string,
   file: string,
-  options: Options = {},
   fallback = [],
 ): Promise<any> => {
-  const { useCache } = {
-    ...DEFAULT_OPTIONS,
-    ...options,
-  };
   const fullPath = getPath(dir, file);
-
-  if (useCache && hash[fullPath]) {
-    return hash[fullPath];
-  }
 
   try {
     await fs.access(fullPath);
@@ -64,10 +51,6 @@ export const getData = async (
   try {
     const fileContents = await fs.readFile(fullPath, 'utf8');
     const parsedFile = JSON.parse(fileContents);
-
-    if (useCache) {
-      hash[fullPath] = parsedFile;
-    }
 
     return parsedFile;
   } catch (e) {
@@ -84,16 +67,12 @@ export const setData = async <T>(
   data: T,
   options: Options = {},
 ): Promise<void> => {
-  const { useCache, stringify, lock } = {
+  const { stringify, lock } = {
     ...DEFAULT_OPTIONS,
     ...options,
   };
   const fullPath = getPath(dir, file);
   const lockFullPath = getPath(dir, file, true);
-
-  if (useCache) {
-    hash[fullPath] = data;
-  }
 
   try {
     if (!lock) {

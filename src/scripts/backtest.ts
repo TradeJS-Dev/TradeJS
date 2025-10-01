@@ -213,7 +213,7 @@ const backtest = async () => {
     });
 
     const chunkId = uuid();
-    await setData('data/cache', chunkId, chunk, { useCache: false });
+    await setData('data/cache', chunkId, chunk);
 
     tester.send({ chunkId });
   }
@@ -230,22 +230,17 @@ const finish = async (results: TestWorkerResult[]) => {
 
     const { name } = test;
 
-    const orderLog = await getData('data/cache', orderLogId, {
-      useCache: false,
-    });
+    const orderLog = await getData('data/cache', orderLogId);
 
     await setData('data/tests', `${name}.orders`, orderLog, {
-      useCache: false,
       stringify: true,
     });
 
     await setData('data/tests', `${name}.config`, test, {
-      useCache: false,
       stringify: true,
     });
 
     await setData('data/tests', `${name}.stat`, stat, {
-      useCache: false,
       stringify: true,
     });
   }

@@ -13,9 +13,7 @@ export const getSignal = async (
     return null;
   }
 
-  const signal: Signal = await getData(DIR, `${symbol}_${signalId}`, {
-    useCache: false,
-  });
+  const signal: Signal = await getData(DIR, `${symbol}_${signalId}`);
 
   return signal;
 };

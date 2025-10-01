@@ -17,9 +17,7 @@ export const getBacktestFiles = async () => {
 
     const { symbol, testId } = parseTestName(testName);
 
-    const stat: TestStat = await getData('data/tests', `${testName}.stat`, {
-      useCache: false,
-    });
+    const stat: TestStat = await getData('data/tests', `${testName}.stat`);
 
     result.push({
       value: testName,
@@ -41,9 +39,7 @@ export const getOrderLog = async (
     return null;
   }
 
-  const orderLog: OrderLogData = await getData(DIR, `${name}.orders`, {
-    useCache: false,
-  });
+  const orderLog: OrderLogData = await getData(DIR, `${name}.orders`);
 
   return orderLog;
 };
@@ -55,15 +51,9 @@ export const getBacktest = async (
     return null;
   }
 
-  const orderLog: OrderLogData = await getData(DIR, `${name}.orders`, {
-    useCache: false,
-  });
-  const test: Test = await getData(DIR, `${name}.config`, {
-    useCache: false,
-  });
-  const stat: TestStat = await getData(DIR, `${name}.stat`, {
-    useCache: false,
-  });
+  const orderLog: OrderLogData = await getData(DIR, `${name}.orders`);
+  const test: Test = await getData(DIR, `${name}.config`);
+  const stat: TestStat = await getData(DIR, `${name}.stat`);
 
   const timeline = getTimeline(test.options.start, test.options.end);
 

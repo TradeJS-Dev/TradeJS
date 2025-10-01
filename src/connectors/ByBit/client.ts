@@ -9,7 +9,7 @@ import { logger } from '@utils/logger';
 const useTestnet = false;
 
 export const getClient = async ({ userName }: ConnectorConfig) => {
-  const user = await getData('data/users', userName, { useCache: false });
+  const user = await getData('data/users', userName);
 
   if (!user) {
     logger.log('error', 'connection config not found: %s', userName);

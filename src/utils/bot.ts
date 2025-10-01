@@ -24,9 +24,7 @@ export const runBot = async () => {
 
     logger.log('info', 'user: %s', userName);
 
-    const botConfig: BotConfig = await getData('data/bots', userName, {
-      useCache: false,
-    });
+    const botConfig: BotConfig = await getData('data/bots', userName);
 
     if (_.isEmpty(botConfig)) {
       logger.log('error', 'botConfig is empty: %s', userName);
