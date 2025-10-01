@@ -6,7 +6,7 @@ export const runtime = 'nodejs';
 
 interface Params {
   symbol: string;
-  interval: string;
+  signalId: string;
 }
 
 export async function GET(_req: Request, { params }: { params: Params }) {
@@ -15,7 +15,7 @@ export async function GET(_req: Request, { params }: { params: Params }) {
       process.cwd(),
       'data',
       'screenshots',
-      `${params.symbol}_${params.interval}.png`,
+      `${params.symbol}_${params.signalId}.png`,
     );
     const file = await fs.readFile(filePath);
 
@@ -25,7 +25,7 @@ export async function GET(_req: Request, { params }: { params: Params }) {
       headers: {
         'Content-Type': 'image/png',
         'Content-Length': String(file.byteLength),
-        'Cache-Control': 'public, max-age=60',
+        'Cache-Control': 'public, max-age=60, immutable',
       },
     });
   } catch {

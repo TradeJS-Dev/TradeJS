@@ -8,6 +8,7 @@
     "build": "next build",
     "clean-cache": "time yarn ts-node ./src/scripts/clean --dir cache",
     "clean-screenshots": "time yarn ts-node ./src/scripts/clean --dir screenshots",
+    "clean-signals": "time yarn ts-node ./src/scripts/clean --dir signals",
     "clean-tests": "time yarn ts-node ./src/scripts/clean --dir tests",
     "dev": "next dev",
     "dev-tsc": "npx tsc --noEmit",

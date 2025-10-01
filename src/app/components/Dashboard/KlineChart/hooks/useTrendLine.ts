@@ -24,7 +24,7 @@ export const useTrendLine = (
       return;
     }
 
-    getSignal(signalId).then((res) => {
+    getSignal(filters.symbol, signalId).then((res) => {
       setSignal(res);
     });
   }, []);

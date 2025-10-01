@@ -62,6 +62,10 @@ export const update = async (
 
   const queue = tickers.slice();
 
+  if (!tickers.includes('BTCUSDT')) {
+    queue.unshift('BTCUSDT');
+  }
+
   const worker = async () => {
     while (queue.length > 0) {
       const symbol = queue.shift()!;
@@ -150,10 +154,6 @@ export const getTickers = async (
     const chunkSize = Math.ceil(tickers.length / chunksCount);
     const chunks = _.chunk(tickers, chunkSize);
     tickers = chunks[currentChunk - 1];
-  }
-
-  if (!tickers.includes('BTCUSDT')) {
-    tickers = ['BTCUSDT', ...tickers];
   }
 
   return tickers.filter((t) => !excludeTickers.includes(t));

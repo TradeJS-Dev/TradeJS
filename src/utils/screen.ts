@@ -38,7 +38,7 @@ export const screenDashboard = async ({
   await delay(30_000);
 
   await page.screenshot({
-    path: `data/screenshots/${symbol}_${interval}.png`,
+    path: `data/screenshots/${symbol}_${signalId}.png`,
   });
 
   await page.close();
@@ -52,7 +52,7 @@ export const sendSignal = async ({
   direction,
   interval,
 }: Signal) => {
-  const imageUrl = `${APP_URL}/api/files/screenshot/${symbol}/${interval}`;
+  const imageUrl = `${APP_URL}/api/files/screenshot/${symbol}/${signalId}`;
 
   const res = await fetch(`https://api.telegram.org/bot${token}/sendPhoto`, {
     method: 'POST',
