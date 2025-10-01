@@ -25,7 +25,12 @@ const getPath = (dir: string, file: string, lock = false) => {
 
   const lockId = uuid();
 
-  return path.join(process.cwd(), 'data', 'cache', `${file}.lock.${lockId}.json`);
+  return path.join(
+    process.cwd(),
+    'data',
+    'cache',
+    `${file}.lock.${lockId}.json`,
+  );
 };
 
 const getDir = (dir: string) => path.join(process.cwd(), dir);

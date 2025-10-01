@@ -8,6 +8,7 @@ import { getTimestamp } from '@utils/timestamp';
 import { getFormatted } from '@utils/stat';
 import { getTopTickers } from '@utils/tickers';
 import { screenDashboard, sendSignal } from '@utils/screen';
+import { runWithConcurrency } from '@utils/async';
 import {
   Connector,
   Interval,
@@ -16,9 +17,6 @@ import {
   TestThresholdsKey,
   Signal,
 } from '@types';
-
-const PRELOAD_START = getTimestamp(PRELOAD_DAYS);
-const PRELOAD_END = getTimestamp();
 
 export const cleanFiles = async (dir: string) => {
   let completed = 0;
@@ -50,6 +48,9 @@ export const update = async (
   interval: Interval,
   tickers: string[],
 ) => {
+  const PRELOAD_START = getTimestamp(PRELOAD_DAYS);
+  const PRELOAD_END = getTimestamp();
+
   const bar = new ProgressBar(
     ':current/:total [:bar][:percent] :eta(s) :symbol',
     {
@@ -62,31 +63,25 @@ export const update = async (
 
   const queue = tickers.slice();
 
-  if (!tickers.includes('BTCUSDT')) {
+  if (!queue.includes('BTCUSDT')) {
     queue.unshift('BTCUSDT');
   }
 
-  const worker = async () => {
-    while (queue.length > 0) {
-      const symbol = queue.shift()!;
-      try {
-        await connector.kline({
-          symbol,
-          start: PRELOAD_START,
-          end: PRELOAD_END,
-          interval,
-          silent: true,
-        });
-      } catch {
-        console.error('Failed loading:', symbol);
-      } finally {
-        bar.tick(1, { symbol: chalk.gray(symbol) });
-      }
+  await runWithConcurrency(queue, 10, async (symbol) => {
+    try {
+      await connector.kline({
+        symbol,
+        start: PRELOAD_START,
+        end: PRELOAD_END,
+        interval,
+        silent: true,
+      });
+    } catch {
+      console.error('Failed loading:', symbol);
+    } finally {
+      bar.tick(1, { symbol: chalk.gray(symbol) });
     }
-  };
-
-  const workers = Array.from({ length: 10 }, () => worker());
-  await Promise.all(workers);
+  });
 
   console.log('');
 };
@@ -170,23 +165,15 @@ export const makeScreenshots = async (signals: Signal[]) => {
 
   console.log(chalk.yellow('screenshots:', signals.length));
 
-  const queue = signals.slice();
-
-  const worker = async () => {
-    while (queue.length > 0) {
-      const signal = queue.shift()!;
-      try {
-        await screenDashboard(signal);
-      } catch {
-        console.error('Failed screenshot:', signal.symbol);
-      } finally {
-        bar.tick(1, { symbol: chalk.gray(signal.symbol) });
-      }
+  await runWithConcurrency(signals, 3, async (signal) => {
+    try {
+      await screenDashboard(signal);
+    } catch {
+      console.error('Failed screenshot:', signal.symbol);
+    } finally {
+      bar.tick(1, { symbol: chalk.gray(signal.symbol) });
     }
-  };
-
-  const workers = Array.from({ length: 3 }, () => worker());
-  await Promise.all(workers);
+  });
 
   console.log('');
 };
@@ -202,7 +189,7 @@ export const sendMessages = async (signals: Signal[]) => {
 
   console.log(chalk.yellow('messages:', signals.length));
 
-  for await (const signal of signals) {
+  await runWithConcurrency(signals, 3, async (signal) => {
     try {
       await sendSignal(signal);
     } catch {
@@ -210,7 +197,7 @@ export const sendMessages = async (signals: Signal[]) => {
     } finally {
       bar.tick(1, { symbol: chalk.gray(signal.symbol) });
     }
-  }
+  });
 
   console.log('');
 };

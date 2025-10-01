@@ -16,7 +16,11 @@ type TrendLine = { id: string; points: TrendPoint[] };
 const toMs = (ts: number) => (ts < 1e12 ? ts * 1000 : ts);
 
 /** Держим правый край, добавляем отступ справа и слева, подбираем зум так, чтобы было видно начало линий */
-const fitKeepRightZoom = (chart: Chart, lines: TrendLine[], lastDataTsMs: number) => {
+const fitKeepRightZoom = (
+  chart: Chart,
+  lines: TrendLine[],
+  lastDataTsMs: number,
+) => {
   if (!lines.length) return;
 
   // 1) самый ранний ts точек линий
@@ -33,15 +37,18 @@ const fitKeepRightZoom = (chart: Chart, lines: TrendLine[], lastDataTsMs: number
   const width = size?.width ?? 0;
 
   const MAX_STEPS = 20;
-  const SCALE = 0.85;              // < 1 => zoom-out
-  const LEFT_MARGIN_RATIO = 0.05;  // 5% слева
+  const SCALE = 0.85; // < 1 => zoom-out
+  const LEFT_MARGIN_RATIO = 0.05; // 5% слева
   const RIGHT_MARGIN_RATIO = 0.05; // 5% справа
 
   // начально прокручиваемся к концу
   chart.scrollToTimestamp(lastDataTsMs);
 
   for (let i = 0; i < MAX_STEPS; i++) {
-    const edges = chart.convertFromPixel([{ x: 0 }, { x: width }]) as Array<any>;
+    const edges = chart.convertFromPixel([
+      { x: 0 },
+      { x: width },
+    ]) as Array<any>;
     const leftTsRaw = edges?.[0]?.timestamp;
     const rightTsRaw = edges?.[1]?.timestamp;
 
@@ -73,7 +80,6 @@ const fitKeepRightZoom = (chart: Chart, lines: TrendLine[], lastDataTsMs: number
       chart.scrollToTimestamp(desiredRightTs);
       continue;
     }
-
 
     // 3) оба условия выполнены — готово
     break;

@@ -78,7 +78,9 @@ const checkSignals = async (symbol: string) => {
       },
     };
 
-    await setData('data/signals', `${symbol}_${signalId}`, signal, { useCache: false });
+    await setData('data/signals', `${symbol}_${signalId}`, signal, {
+      useCache: false,
+    });
 
     return signal;
   }
