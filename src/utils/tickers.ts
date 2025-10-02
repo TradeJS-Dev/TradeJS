@@ -115,13 +115,14 @@ export const getTopTickers = (data: Ticker[], topN?: number): Item[] => {
       };
     });
 
-  const top = scores
-    .sort((a, b) => b.score - a.score)
-    .map((item, i) => ({
+  const top = _.sortBy(
+    scores.map((item, i) => ({
       label: item.symbol.replace(/(USDT)$/i, ''),
       value: item.symbol,
       description: `score #${i + 1}`,
-    }));
+    })),
+    'label',
+  );
 
   if (topN) {
     return top.slice(0, topN);
