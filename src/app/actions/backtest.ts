@@ -1,15 +1,7 @@
+import { handleResponse } from '@utils/api';
 import { Item, OrderLogData, TestResult } from '@types';
 
 const API_BASE = '/api/backtest';
-
-const handleResponse = async <T>(response: Response): Promise<T> => {
-  if (!response.ok) {
-    const text = await response.text();
-    throw new Error(text || 'Backtest API request failed');
-  }
-
-  return response.json();
-};
 
 export const getBacktestFiles = async (): Promise<Item[]> => {
   const response = await fetch(`${API_BASE}/files`, {
