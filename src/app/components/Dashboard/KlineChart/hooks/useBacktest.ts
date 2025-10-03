@@ -5,7 +5,7 @@ import _ from 'lodash';
 import { registerIndicator, Chart } from 'klinecharts';
 import { getOrderLog } from '@actions/backtest';
 import { KlineChartItem, OrderLogData } from '@types';
-import { dimond, star, circle, rectangle } from '../figures';
+import { diamond, star, circle, rectangle } from '../figures';
 
 const green = '#84cc16';
 const red = '#dc2626';
@@ -67,7 +67,7 @@ export const useBacktest = (chart: Chart | null, id: string | undefined) => {
       createTooltipDataSource: ({ indicator, crosshair }) => {
         const legends = new Array<Legend>();
 
-        const getLegents = () => {
+        const getLegends = () => {
           const result = indicator.result;
           const candleIndex = crosshair.dataIndex!;
 
@@ -96,10 +96,10 @@ export const useBacktest = (chart: Chart | null, id: string | undefined) => {
           });
         };
 
-        getLegents();
+        getLegends();
 
         return {
-          name: 'BackTest',
+          name: 'Backtest',
           calcParamsText: '',
           features: [],
           legends,
@@ -145,7 +145,7 @@ export const useBacktest = (chart: Chart | null, id: string | undefined) => {
               });
             }
             if (type === 'CLOSE_LONG') {
-              dimond({
+              diamond({
                 ctx,
                 x,
                 y,
@@ -171,7 +171,7 @@ export const useBacktest = (chart: Chart | null, id: string | undefined) => {
               });
             }
             if (type === 'CLOSE_SHORT') {
-              dimond({
+              diamond({
                 ctx,
                 x,
                 y,

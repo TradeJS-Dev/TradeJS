@@ -1,6 +1,6 @@
 import { Figure } from '@types';
 
-export const dimond = ({
+export const diamond = ({
   ctx,
   x,
   y,
