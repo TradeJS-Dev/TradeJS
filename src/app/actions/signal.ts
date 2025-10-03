@@ -1,4 +1,4 @@
-import { handleResponse } from '@utils/api';
+import { API } from '@utils/api';
 import { Signal } from '@types';
 
 const API_PATH = '/api/signal';
@@ -11,12 +11,9 @@ export const getSignal = async (
     return null;
   }
 
-  const response = await fetch(`${API_PATH}/${symbol}/${signalId}`, {
-    method: 'GET',
-    cache: 'no-store',
-  });
-
-  const data = await handleResponse<{ signal?: Signal }>(response);
+  const data = await API.get<{ signal?: Signal }>(
+    `${API_PATH}/${symbol}/${signalId}`,
+  );
 
   return data.signal ?? null;
 };

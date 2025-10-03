@@ -1,4 +1,4 @@
-import { handleResponse } from '@utils/api';
+import { API } from '@utils/api';
 import { Kline, KlineChartData, KlineRequest } from '@types';
 
 const API_PATH = '/api/kline';
@@ -8,15 +8,10 @@ export const kline: Kline = async ({
   interval,
   ...options
 }: KlineRequest) => {
-  const response = await fetch(`${API_PATH}/${symbol}/${interval}`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(options),
-  });
-
-  const data = await handleResponse<{ data?: KlineChartData }>(response);
+  const data = await API.post<{ data?: KlineChartData }>(
+    `${API_PATH}/${symbol}/${interval}`,
+    options,
+  );
 
   return data.data ?? [];
 };

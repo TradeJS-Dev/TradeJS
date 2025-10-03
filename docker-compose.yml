@@ -24,24 +24,6 @@ services:
         max-size: "10m"
         max-file: "3"
 
-  timescale:
-    image: timescale/timescaledb:pg16-latest
-    container_name: inv-timescale
-    environment:
-      - POSTGRES_USER=app
-      - POSTGRES_PASSWORD=app
-      - POSTGRES_DB=app
-    ports:
-      - "5432:5432"
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U app -d app"]
-      interval: 5s
-      timeout: 3s
-      retries: 10
-    networks: [web]
-
   nginx:
     image: nginx:stable-alpine
     container_name: nginx
@@ -61,7 +43,6 @@ services:
       - "443:443"
     depends_on:
       - app
-      - timescale
     networks:
       - web
     logging:

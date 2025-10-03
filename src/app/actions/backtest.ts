@@ -1,15 +1,10 @@
-import { handleResponse } from '@utils/api';
+import { API } from '@utils/api';
 import { Item, OrderLogData, TestResult } from '@types';
 
 const API_BASE = '/api/backtest';
 
 export const getBacktestFiles = async (): Promise<Item[]> => {
-  const response = await fetch(`${API_BASE}/files`, {
-    method: 'GET',
-    cache: 'no-store',
-  });
-
-  const data = await handleResponse<{ items?: Item[] }>(response);
+  const data = await API.get<{ items?: Item[] }>(`${API_BASE}/files`);
 
   return data.items ?? [];
 };
@@ -21,11 +16,9 @@ export const getOrderLog = async (
     return null;
   }
 
-  const response = await fetch(`${API_BASE}/order-log/${name}`, {
-    method: 'GET',
-  });
-
-  const data = await handleResponse<{ orderLog?: OrderLogData }>(response);
+  const data = await API.get<{ orderLog?: OrderLogData }>(
+    `${API_BASE}/order-log/${name}`,
+  );
 
   return data.orderLog ?? null;
 };
@@ -37,11 +30,9 @@ export const getBacktest = async (
     return null;
   }
 
-  const response = await fetch(`${API_BASE}/result/${name}`, {
-    method: 'GET',
-  });
-
-  const data = await handleResponse<{ result?: TestResult }>(response);
+  const data = await API.get<{ result?: TestResult }>(
+    `${API_BASE}/result/${name}`,
+  );
 
   return data.result ?? null;
 };

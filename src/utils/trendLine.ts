@@ -405,12 +405,12 @@ const findTrendlinesCore = (
   const {
     mode,
     maxLines = 10,
-    range = 40,
-    firstRange = 80,
+    range = 20,
+    firstRange = 40,
     epsilon = 0.002, // 0.2% (для касаний, фитилей между опорами и close-пробегов до offset)
     minTouches = 3,
-    minDistanceBars = 100,
-    minTouchGap = 40,
+    minDistanceBars = 60,
+    minTouchGap = 20,
     offset = 3,
     capture = false,
   } = options;
