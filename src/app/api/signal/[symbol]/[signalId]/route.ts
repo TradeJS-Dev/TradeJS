@@ -1,0 +1,36 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { getData } from '@utils/data';
+import { logger } from '@utils/logger';
+import { Signal } from '@types';
+
+const DIR = 'data/signals';
+
+export const dynamic = 'force-dynamic';
+
+interface Params {
+  symbol: string;
+  signalId: string;
+}
+
+export const GET = async (_req: Request, { params }: { params: Params }) => {
+  try {
+    const { symbol, signalId } = params;
+
+    if (!symbol || !signalId) {
+      return NextResponse.json(
+        { error: 'Missing required parameters: symbol, signalId' },
+        { status: 400 },
+      );
+    }
+
+    const signal: Signal = await getData(DIR, `${symbol}_${signalId}`);
+
+    return NextResponse.json({ signal });
+  } catch (error) {
+    logger.log('error', `Signal load error: %o`, error);
+    return NextResponse.json(
+      { error: 'Internal Server Error' },
+      { status: 500 },
+    );
+  }
+};

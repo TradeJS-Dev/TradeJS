@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { KlineChartData, Filters } from '@types';
-import { kline } from '@src/actions/kline';
+import { kline } from '@actions/kline';
 
 export const useData = (filters: Filters) => {
   const [loading, setLoading] = useState(false);

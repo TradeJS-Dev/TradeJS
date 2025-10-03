@@ -19,7 +19,7 @@ import {
 import { AIChatMessage, AIChatHistory } from '@types';
 import { GiArtificialHive } from 'react-icons/gi';
 import { useFilters } from '@store';
-import { sendMessage, getHistory } from '@src/actions/ai';
+import { sendMessage, getHistory } from '@actions/ai';
 import { Message } from './Message';
 
 export const AiDrawer = () => {

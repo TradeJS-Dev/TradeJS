@@ -32,7 +32,7 @@ export const screenDashboard = async ({
   });
 
   await page.goto(
-    `${APP_URL}/routes/dashboard/${symbol}/${interval}/?signalId=${signalId}`,
+    `${APP_URL}/routes/dashboard/${symbol}/${interval}/?signalId=${signalId}&autoZoom=true`,
   );
 
   await delay(30_000);

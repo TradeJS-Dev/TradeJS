@@ -3,7 +3,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import _ from 'lodash';
 import { get, set } from 'idb-keyval';
-import { getBacktest, getBacktestFiles } from '@src/actions/backtest';
+import { getBacktest, getBacktestFiles } from '@actions/backtest';
 import { TestResult, TestCompareList, OnChangeCompare, Items } from '@types';
 import { delay } from '@utils/delay';
 import { parseTestName } from '@utils/tests';

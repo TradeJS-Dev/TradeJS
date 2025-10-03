@@ -59,7 +59,7 @@ export const KlineChart = ({ id, filters, indicators }: KlineChartProps) => {
   useVolIndicator(chart, indicators.vol.enabled);
   useBtcIndicator(chart, indicators.btc.enabled, filters);
   useBacktest(chart, filters.backtestId || undefined);
-  useTrendLine(chart, true, filters);
+  useTrendLine(chart, true, data, filters);
 
   useEffect(() => {
     if (!data || !chartRef.current) return;

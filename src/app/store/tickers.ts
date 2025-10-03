@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import _ from 'lodash';
 import { useEffect } from 'react';
-import { scan } from '@src/actions/scanner';
+import { scan } from '@actions/scanner';
 import { Items } from '@types';
 
 const LOCAL_STORAGE_KEY = 'tickers';

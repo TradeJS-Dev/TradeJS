@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef } from 'react';
 import _ from 'lodash';
 import { registerIndicator, Chart } from 'klinecharts';
-import { getOrderLog } from '@src/actions/backtest';
+import { getOrderLog } from '@actions/backtest';
 import { KlineChartItem, OrderLogData } from '@types';
 import { dimond, star, circle, rectangle } from '../figures';
 

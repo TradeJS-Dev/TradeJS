@@ -4,10 +4,9 @@ import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import _ from 'lodash';
 import { Chart, registerOverlay } from 'klinecharts';
-import { getSignal } from '@src/actions/signal';
-import { useData } from './useData';
+import { getSignal } from '@actions/signal';
 import { findTrendlinesByLows, findTrendlinesByHighs } from '@utils/trendLine';
-import { Filters, Signal } from '@types';
+import { Filters, Signal, KlineChartData } from '@types';
 
 type TrendPoint = { timestamp: number; value: number };
 type TrendLine = { id: string; points: TrendPoint[] };
@@ -77,7 +76,6 @@ const fitKeepRightZoom = (
     // 2) если левый край ещё не «накрыл» начало линий с запасом — отдаляем вокруг правого края
     if (leftTsMs > desiredLeftTs) {
       chart.zoomAtTimestamp(SCALE, desiredRightTs);
-      chart.scrollToTimestamp(desiredRightTs);
       continue;
     }
 
@@ -89,12 +87,13 @@ const fitKeepRightZoom = (
 export const useTrendLine = (
   chart: Chart | null,
   enabled: boolean,
+  data: KlineChartData | null,
   filters: Filters,
 ) => {
-  const { data, loading } = useData(filters);
   const [signal, setSignal] = useState<Signal | null>(null);
   const searchParams = useSearchParams();
   const signalId = searchParams.get('signalId');
+  const autoZoom = Boolean(searchParams.get('autoZoom')) ?? false;
 
   useEffect(() => {
     if (!signalId) return;
@@ -148,7 +147,7 @@ export const useTrendLine = (
   }, [data]);
 
   useEffect(() => {
-    if (!chart || !enabled || loading || !data || _.isEmpty(data)) return;
+    if (!chart || !enabled || !data || _.isEmpty(data)) return;
 
     const lowLines: TrendLine[] = signalId
       ? signal?.trendLines?.lows || []
@@ -176,11 +175,15 @@ export const useTrendLine = (
 
     // держим скролл в конце, затем зумим так, чтобы был виден старт линий
     const allLines = [...lowLines, ...highLines];
-    if (allLines.length > 0 && Number.isFinite(lastDataTsMs)) {
-      // сначала гарантированно прокручиваемся к концу
-      chart.scrollToTimestamp(lastDataTsMs);
-      // затем подбираем зум, сохраняя правую привязку
-      fitKeepRightZoom(chart, allLines, lastDataTsMs);
+    if (autoZoom && allLines.length > 0 && Number.isFinite(lastDataTsMs)) {
+      try {
+        // сначала гарантированно прокручиваемся к концу
+        chart.scrollToTimestamp(lastDataTsMs);
+        // затем подбираем зум, сохраняя правую привязку
+        fitKeepRightZoom(chart, allLines, lastDataTsMs);
+      } catch (err) {
+        console.error('Failed to zoom chart', err);
+      }
     }
 
     // cleanup
@@ -189,5 +192,5 @@ export const useTrendLine = (
       if (highLines.length) chart.removeOverlay({ name: 'HighTrendLine' });
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chart, enabled, loading, data, signal, signalId, lastDataTsMs]);
+  }, [chart, enabled, data, signal, lastDataTsMs]);
 };

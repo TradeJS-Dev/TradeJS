@@ -22,6 +22,7 @@
       "@/*": ["./*"],
       "@src/*": ["./src/*"],
       "@app/*": ["./src/app/*"],
+      "@actions/*": ["./src/app/actions/*"],
       "@store": ["./src/app/store/index"],
       "@constants": ["./src/constants/index"],
       "@types": ["./src/types/index"],
