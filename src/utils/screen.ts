@@ -1,6 +1,6 @@
 import 'dotenv/config';
 import puppeteer from 'puppeteer';
-import { delay } from '@utils/delay';
+import { delay } from '@utils/async';
 import { Signal } from '@types';
 
 const APP_URL = process.env.APP_URL;

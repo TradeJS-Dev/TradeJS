@@ -6,11 +6,16 @@ import { PRELOAD_FALLBACK_DAYS } from '@constants';
 import { getClient } from './client';
 import { mapKlineToChartData } from './utils';
 import { getTimestamp, getItemTimestamp, formatUnix } from '@utils/timestamp';
-import { getData, setData } from '@utils/data';
 import { normalizeTickerData } from '@utils/tickers';
-import { mergeData, isWrongData } from '@utils/array';
+import { mergeData } from '@utils/array';
 import { logger } from '@utils/logger';
 import { toJson } from '@utils/toJson';
+import {
+  getCandlesRange,
+  getDataEdges,
+  upsertCandles,
+  toRows,
+} from '@utils/timescale';
 import {
   KlineChartData,
   KlineRequest,
@@ -144,34 +149,28 @@ export const ByBitConnectorCreator: ConnectorCreator = (config) => {
       silent = false,
       cacheOnly = false,
     }: KlineRequest) => {
-      const cache = (await getData(
-        'data/history',
-        `${symbol}_${interval}`,
-      )) as KlineChartData;
-
-      let data =
-        !cache || _.isEmpty(cache) || isWrongData(interval, cache) ? [] : cache;
+      const intMinutes = Number(interval);
+      const edges = await getDataEdges(symbol, intMinutes);
+      let dataStart = edges.min;
+      let dataEnd = edges.max;
 
       if (cacheOnly) {
-        return data;
+        const s = defaultStart ?? (edges.max ?? 0) - 1000 * intMinutes * 60_000;
+        const e = defaultEnd ?? edges.max ?? Date.now();
+        const dbData = await getCandlesRange(symbol, intMinutes, s, e);
+        return dbData.map(({ ts, ...data}) => ({
+          timestamp: new Date(ts).getTime(),
+          ...data
+        })) as KlineChartData;
       }
-
-      if (data.length > 1) {
-        data.pop();
-      }
-
-      const dataStart = data.length ? getItemTimestamp(data[0]) : undefined;
-      const dataEnd = data.length
-        ? getItemTimestamp(data[data.length - 1])
-        : undefined;
 
       const needOlderData =
         defaultStart !== undefined &&
-        (data.length === 0 ||
-          (dataStart !== undefined && defaultStart < dataStart));
+        (dataStart === undefined || defaultStart < dataStart);
+
       const needNewerData =
         defaultEnd !== undefined &&
-        (data.length === 0 || (dataEnd !== undefined && defaultEnd > dataEnd));
+        (dataEnd === undefined || defaultEnd > dataEnd);
 
       if (needOlderData) {
         const pointerForOlder = dataStart ?? defaultEnd ?? Date.now();
@@ -188,7 +187,10 @@ export const ByBitConnectorCreator: ConnectorCreator = (config) => {
           },
           request,
         );
-        data = mergeData(olderData, data);
+        if (olderData.length) {
+          await upsertCandles(toRows(symbol, intMinutes, olderData));
+          dataStart = defaultStart;
+        }
       }
 
       if (needNewerData) {
@@ -206,19 +208,27 @@ export const ByBitConnectorCreator: ConnectorCreator = (config) => {
           },
           request,
         );
-        data = mergeData(data, newerData);
+        if (newerData.length) {
+          await upsertCandles(toRows(symbol, intMinutes, newerData));
+          dataEnd = defaultEnd;
+        }
       }
 
-      if (!_.isEmpty(data)) {
-        await setData('data/history', `${symbol}_${interval}`, data, {
-          lock: true,
-        });
-      }
+      const rangeStart = defaultStart ?? dataStart ?? 0;
+      const rangeEnd = defaultEnd ?? dataEnd ?? Date.now();
 
-      return data.filter((item) => {
-        const ts = getItemTimestamp(item);
-        return ts >= (defaultStart || 0) && ts <= (defaultEnd || Infinity);
-      });
+      const dbData = await getCandlesRange(
+        symbol,
+        intMinutes,
+        rangeStart,
+        rangeEnd,
+      );
+      const res = dbData.map(({ts, ...data}) => ({
+        timestamp: new Date(ts).getTime(),
+        ...data
+      })) as KlineChartData;
+
+      return res;
     },
     getPosition: async (symbol) => {
       const client = await getClient(config);

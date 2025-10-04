@@ -17,3 +17,7 @@ export const runWithConcurrency = async <T>(
   const workers = Array.from({ length: concurrency }, worker);
   await Promise.all(workers);
 };
+
+export const delay = async (delayMs = 1_000) => {
+  await new Promise((resolve) => setTimeout(resolve, delayMs));
+};

@@ -5,7 +5,7 @@ import _ from 'lodash';
 import { get, set } from 'idb-keyval';
 import { getBacktest, getBacktestFiles } from '@actions/backtest';
 import { TestResult, TestCompareList, OnChangeCompare, Items } from '@types';
-import { delay } from '@utils/delay';
+import { delay } from '@utils/async';
 import { parseTestName } from '@utils/tests';
 
 const COMPARE_LOCAL_STORAGE_KEY = 'compare';

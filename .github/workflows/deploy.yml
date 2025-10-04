@@ -31,6 +31,11 @@ jobs:
           TG_CHAT_ID=207660648
           PUPPETEER_SKIP_DOWNLOAD=true
           PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
+          PG_HOST=timescale
+          PG_PORT=5432
+          PG_USER=app
+          PG_PASSWORD=app
+          PG_DATABASE=app
           " > .env
 
       - name: Test env
