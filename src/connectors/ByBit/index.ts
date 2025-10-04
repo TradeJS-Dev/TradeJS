@@ -338,11 +338,8 @@ export const ByBitConnectorCreator: ConnectorCreator = (config) => {
       // 8) финальный SELECT из БД — источник истины
       const rangeStart = defaultStart ?? dataStart ?? 0;
       const rangeEnd = defaultEnd ?? dataEnd ?? Date.now();
-      const { normStart: finalStart, normEnd: finalEnd } = normalizeRangeToClosed(
-        intervalMs,
-        rangeStart,
-        rangeEnd,
-      );
+      const { normStart: finalStart, normEnd: finalEnd } =
+        normalizeRangeToClosed(intervalMs, rangeStart, rangeEnd);
 
       const dbData = await getCandlesRange(
         symbol,

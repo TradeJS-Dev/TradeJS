@@ -36,8 +36,12 @@ const getPool = () => {
   return global.__pgPool__;
 };
 
-export const toRows = (symbol: string, interval: number, data: KlineChartData): CandleRow[] =>
-  data.map(i => ({
+export const toRows = (
+  symbol: string,
+  interval: number,
+  data: KlineChartData,
+): CandleRow[] =>
+  data.map((i) => ({
     symbol,
     interval,
     ts: new Date(i.timestamp), // ms -> Date

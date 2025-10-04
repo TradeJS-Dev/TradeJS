@@ -6,7 +6,7 @@ import { logger } from '@utils/logger';
 import { getFiles, getData } from '@utils/data';
 import { toJson } from '@utils/toJson';
 import { getTimestamp } from '@utils/timestamp';
-import { delay } from '@utils/delay';
+import { delay } from '@utils/async';
 import { ConnectorCreator, BotConfig } from '@types';
 
 export const runBot = async () => {
