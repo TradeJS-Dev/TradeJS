@@ -7,6 +7,9 @@ services:
       dockerfile: Dockerfile
     container_name: app
     restart: always
+    depends_on:
+      timescale:
+        condition: service_healthy
     image: aleksnick/inv-app:latest
     expose:
       - "3000"
@@ -23,6 +26,23 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+
+  timescale:
+    container_name: inv-timescale
+    image: timescale/timescaledb:latest-pg16
+    environment:
+      - POSTGRES_USER=app
+      - POSTGRES_PASSWORD=app
+      - POSTGRES_DB=app
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./sql/create.sql:/docker-entrypoint-initdb.d/01-create.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U app -d app"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks: [web]
 
   nginx:
     image: nginx:stable-alpine

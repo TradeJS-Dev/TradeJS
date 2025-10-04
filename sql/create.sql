@@ -1,4 +1,4 @@
--- 00_init_timescale.sql
+-- src/sql/create.sql
 CREATE EXTENSION IF NOT EXISTS timescaledb;
 
 CREATE TABLE IF NOT EXISTS candles (
@@ -25,6 +25,5 @@ ALTER TABLE candles SET (
   timescaledb.compress,
   timescaledb.compress_segmentby = 'symbol, interval'
 );
-SELECT add_compression_policy('candles', INTERVAL '30 days');
--- пример ретенции (если нужно чистить)
--- SELECT add_retention_policy('candles', INTERVAL '365 days');
+
+SELECT add_retention_policy('candles', INTERVAL '365 days');

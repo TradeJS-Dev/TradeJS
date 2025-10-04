@@ -1,3 +1,5 @@
+# .github/workflows/deploy.yml
+
 name: Deploy
 on:
   push:
@@ -58,7 +60,7 @@ jobs:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_KEY }}
-          source: ".env,docker-compose.yml,nginx,certbot,init-cert.sh"
+          source: ".env,docker-compose.yml,nginx,sql,certbot,init-cert.sh"
           target: ~/
 
       - name: Deploy on server
@@ -69,11 +71,10 @@ jobs:
           key: ${{ secrets.SSH_KEY }}
           script: |
             cd ~/
-            docker compose down
-            docker system prune -a --volumes -f
+            docker image prune -a -f
             docker compose pull
             systemctl stop nginx
             systemctl disable nginx
-            docker compose up -d
+            docker compose up -d --remove-orphans
             docker restart nginx
             chmod 777 ./data
