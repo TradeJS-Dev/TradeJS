@@ -3,8 +3,6 @@
 import _ from 'lodash';
 import chalk from 'chalk';
 import { PRELOAD_FALLBACK_DAYS } from '@constants';
-import { getClient } from './client';
-import { mapKlineToChartData } from './utils';
 import { getTimestamp, getItemTimestamp, formatUnix } from '@utils/timestamp';
 import { normalizeTickerData } from '@utils/tickers';
 import { mergeData } from '@utils/array';
@@ -23,8 +21,12 @@ import {
   Direction,
   Interval,
 } from '@types';
+import { getClient } from './client';
+import { mapKlineToChartData } from './utils';
 
 const LIMIT = 1000;
+const MARKET_CATEGORY = 'linear';
+const CACHE_FALLBACK_WINDOW = 1_000; // ~1k свечей для устойчивого cacheOnly диапазона
 
 const getLogLevel = (res: any) => (res.retCode === 0 ? 'info' : 'error');
 
@@ -43,17 +45,25 @@ export const ByBitConnectorCreator: ConnectorCreator = (config) => {
       const client = await getClient(config);
       if (!client) return [];
 
+      // Fallback к PRELOAD_FALLBACK_DAYS, если не передали явный старт
+      const normalizedStart = start ?? getTimestamp(PRELOAD_FALLBACK_DAYS);
+      const normalizedEnd = end ?? Date.now();
+
+      if (normalizedEnd <= normalizedStart) {
+        return [];
+      }
+
       const kline = await client.getKline({
-        category: 'linear',
+        category: MARKET_CATEGORY,
         symbol,
         interval,
-        start: start || getTimestamp(PRELOAD_FALLBACK_DAYS),
-        end,
+        start: normalizedStart,
+        end: normalizedEnd,
         limit: LIMIT,
       });
 
       if (!kline?.result?.list) {
-        console.error('kline.result', symbol, kline);
+        logger.log('error', 'empty kline.list for %s %s', symbol, interval);
         return [];
       }
 
@@ -61,7 +71,7 @@ export const ByBitConnectorCreator: ConnectorCreator = (config) => {
         logger.log(
           'info',
           '%s %s %s %s',
-          chalk.yellow(formatUnix(end)),
+          chalk.yellow(formatUnix(normalizedEnd)),
           chalk.cyan(symbol),
           chalk.cyan(interval),
           chalk.yellow(kline.result.list.length),
@@ -82,6 +92,7 @@ export const ByBitConnectorCreator: ConnectorCreator = (config) => {
     pointer: number | undefined,
     limitBoundary: number | undefined,
     requestParams: KlineRequest,
+    intervalMs: number,
   ): Promise<KlineChartData> => {
     if (pointer === undefined) return [];
 
@@ -89,6 +100,7 @@ export const ByBitConnectorCreator: ConnectorCreator = (config) => {
     let fulfilled = false;
 
     while (!fulfilled) {
+      const currentPointer: number = pointer;
       const params: KlineRequest = {
         symbol: requestParams.symbol,
         interval: requestParams.interval,
@@ -115,15 +127,28 @@ export const ByBitConnectorCreator: ConnectorCreator = (config) => {
           ? mergeData(partData, accumulated)
           : mergeData(accumulated, partData);
 
-      if (partData.length < LIMIT) {
+      const boundaryReached =
+        limitBoundary !== undefined &&
+        ((direction === 'older' && currentPointer <= limitBoundary) ||
+          (direction === 'newer' && currentPointer >= limitBoundary));
+
+      if (partData.length < LIMIT || boundaryReached) {
         fulfilled = true;
         break;
       }
 
-      pointer =
+      // Смещаем курсор на шаг интервала, чтобы не зациклиться на границах LIMIT
+      const nextPointer =
         direction === 'older'
-          ? getItemTimestamp(partData[0])
-          : getItemTimestamp(partData[partData.length - 1]);
+          ? getItemTimestamp(partData[0]) - intervalMs
+          : getItemTimestamp(partData[partData.length - 1]) + intervalMs;
+
+      if (!Number.isFinite(nextPointer) || nextPointer === currentPointer) {
+        fulfilled = true;
+        break;
+      }
+
+      pointer = nextPointer;
     }
 
     return accumulated;
@@ -132,6 +157,9 @@ export const ByBitConnectorCreator: ConnectorCreator = (config) => {
   /** -------------------- small helpers -------------------- */
   const intervalMsOf = (interval: number) => interval * 60_000;
 
+  const clampToClosedCandle = (value: number, intervalMs: number) =>
+    Math.floor(value / intervalMs) * intervalMs;
+
   // clamp end к последней закрытой свече, чтобы не перефетчить «текущую» бесконечно
   const normalizeRangeToClosed = (
     intervalMs: number,
@@ -139,9 +167,11 @@ export const ByBitConnectorCreator: ConnectorCreator = (config) => {
     end?: number,
   ) => {
     const lastClosed = Math.floor(Date.now() / intervalMs) * intervalMs;
-    const s = start ?? 0;
-    const e = Math.min(end ?? Date.now(), lastClosed);
-    return { s, e, lastClosed };
+    const normStart =
+      start !== undefined ? clampToClosedCandle(start, intervalMs) : 0;
+    const cappedEnd = Math.min(end ?? Date.now(), lastClosed);
+    const normEnd = clampToClosedCandle(cappedEnd, intervalMs);
+    return { normStart, normEnd, lastClosed };
   };
 
   const rowsToKline = (rows: Array<{ ts: Date } & any>) =>
@@ -163,6 +193,10 @@ export const ByBitConnectorCreator: ConnectorCreator = (config) => {
     tailCount?: number;
   }) => {
     const intMinutes = Number(interval);
+    if (!Number.isFinite(intMinutes) || intMinutes <= 0) {
+      logger.log('error', 'refreshTail: invalid interval %s', interval);
+      return;
+    }
     const intervalMs = intervalMsOf(intMinutes);
 
     const lastClosed = Math.floor(Date.now() / intervalMs) * intervalMs;
@@ -199,6 +233,18 @@ export const ByBitConnectorCreator: ConnectorCreator = (config) => {
       cacheOnly = false,
     }: KlineRequest) => {
       const intMinutes = Number(interval);
+      if (!Number.isFinite(intMinutes) || intMinutes <= 0) {
+        logger.log('error', 'kline: invalid interval %s', interval);
+        return [];
+      }
+
+      if (
+        defaultStart !== undefined &&
+        defaultEnd !== undefined &&
+        defaultEnd <= defaultStart
+      ) {
+        return [];
+      }
       const intervalMs = intervalMsOf(intMinutes);
 
       // 1) что уже есть в БД
@@ -207,7 +253,7 @@ export const ByBitConnectorCreator: ConnectorCreator = (config) => {
       let dataEnd = edges.max; // ms | undefined
 
       // 2) нормализуем требуемый диапазон к закрытым свечам
-      const { s: normStart, e: normEnd } = normalizeRangeToClosed(
+      const { normStart, normEnd } = normalizeRangeToClosed(
         intervalMs,
         defaultStart,
         defaultEnd,
@@ -215,8 +261,12 @@ export const ByBitConnectorCreator: ConnectorCreator = (config) => {
 
       // 3) cacheOnly — только из БД
       if (cacheOnly) {
-        const s = defaultStart ?? (edges.max ?? 0) - 1000 * intervalMs;
-        const e = defaultEnd ?? edges.max ?? Date.now();
+        const base = edges.max ?? Date.now();
+        const s = Math.max(
+          defaultStart ?? base - CACHE_FALLBACK_WINDOW * intervalMs,
+          0,
+        );
+        const e = defaultEnd ?? base;
         const dbData = await getCandlesRange(symbol, intMinutes, s, e);
         return rowsToKline(dbData);
       }
@@ -233,13 +283,19 @@ export const ByBitConnectorCreator: ConnectorCreator = (config) => {
       // 5) дозагрузка старого хвоста (батчами по 1000, через loadData/while)
       if (needOlderData) {
         const pointerForOlder = dataStart ?? normEnd ?? Date.now();
-        const olderData = await loadData('older', pointerForOlder, normStart, {
-          symbol,
-          interval,
-          silent,
-          start: normStart,
-          end: pointerForOlder,
-        });
+        const olderData = await loadData(
+          'older',
+          pointerForOlder,
+          normStart,
+          {
+            symbol,
+            interval,
+            silent,
+            start: normStart,
+            end: pointerForOlder,
+          },
+          intervalMs,
+        );
 
         if (olderData.length) {
           await upsertCandles(toRows(symbol, intMinutes, olderData));
@@ -250,13 +306,19 @@ export const ByBitConnectorCreator: ConnectorCreator = (config) => {
       // 6) дозагрузка нового хвоста (батчами по 1000)
       if (needNewerData) {
         const pointerForNewer = dataEnd ?? normStart ?? 0;
-        const newerData = await loadData('newer', pointerForNewer, normEnd, {
-          symbol,
-          interval,
-          silent,
-          start: pointerForNewer,
-          end: normEnd,
-        });
+        const newerData = await loadData(
+          'newer',
+          pointerForNewer,
+          normEnd,
+          {
+            symbol,
+            interval,
+            silent,
+            start: pointerForNewer,
+            end: normEnd,
+          },
+          intervalMs,
+        );
 
         if (newerData.length) {
           await upsertCandles(toRows(symbol, intMinutes, newerData));
@@ -276,7 +338,7 @@ export const ByBitConnectorCreator: ConnectorCreator = (config) => {
       // 8) финальный SELECT из БД — источник истины
       const rangeStart = defaultStart ?? dataStart ?? 0;
       const rangeEnd = defaultEnd ?? dataEnd ?? Date.now();
-      const { s: finalStart, e: finalEnd } = normalizeRangeToClosed(
+      const { normStart: finalStart, normEnd: finalEnd } = normalizeRangeToClosed(
         intervalMs,
         rangeStart,
         rangeEnd,
@@ -300,7 +362,7 @@ export const ByBitConnectorCreator: ConnectorCreator = (config) => {
 
       const positionRes = await client.getPositionInfo({
         symbol,
-        category: 'linear',
+        category: MARKET_CATEGORY,
       });
 
       logger.log(
@@ -362,14 +424,14 @@ export const ByBitConnectorCreator: ConnectorCreator = (config) => {
       );
 
       await client.setLeverage({
-        category: 'linear',
+        category: MARKET_CATEGORY,
         symbol,
         buyLeverage: '10',
         sellLeverage: '10',
       });
 
       const orderRes = await client.submitOrder({
-        category: 'linear',
+        category: MARKET_CATEGORY,
         symbol,
         stopLoss: slPrice ? slPrice.toString() : undefined,
         side: isLong ? 'Buy' : 'Sell',
@@ -388,14 +450,14 @@ export const ByBitConnectorCreator: ConnectorCreator = (config) => {
         return false;
       }
 
-      for await (const tp of TP) {
+      for (const tp of TP) {
         const tpSize = qty * tp.rate;
         const tpPrice = isLong
           ? `${price * (1 + tp.profit)}`
           : `${price * (1 - tp.profit)}`;
 
         const tpRes = await client.setTradingStop({
-          category: 'linear',
+          category: MARKET_CATEGORY,
           symbol,
           tpSize: tpSize.toFixed(0),
           tpslMode: 'Partial',
@@ -422,7 +484,7 @@ export const ByBitConnectorCreator: ConnectorCreator = (config) => {
       }
 
       const closeRes = await client.submitOrder({
-        category: 'linear',
+        category: MARKET_CATEGORY,
         symbol,
         side: direction === 'LONG' ? 'Sell' : 'Buy',
         orderType: 'Market',
@@ -452,7 +514,7 @@ export const ByBitConnectorCreator: ConnectorCreator = (config) => {
       }
 
       const data = await client.getTickers({
-        category: 'linear',
+        category: MARKET_CATEGORY,
       });
 
       return data.result.list.map((item) => normalizeTickerData(item as any));
