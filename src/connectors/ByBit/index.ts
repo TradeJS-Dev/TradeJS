@@ -21,6 +21,7 @@ import {
   KlineRequest,
   ConnectorCreator,
   Direction,
+  Interval,
 } from '@types';
 
 const LIMIT = 1000;
@@ -28,8 +29,9 @@ const LIMIT = 1000;
 const getLogLevel = (res: any) => (res.retCode === 0 ? 'info' : 'error');
 
 export const ByBitConnectorCreator: ConnectorCreator = (config) => {
-  let state = {};
+  let state: Record<string, unknown> = {};
 
+  /** -------------------- low-level fetch from exchange -------------------- */
   const request = async ({
     symbol,
     interval,
@@ -39,10 +41,7 @@ export const ByBitConnectorCreator: ConnectorCreator = (config) => {
   }: KlineRequest) => {
     try {
       const client = await getClient(config);
-
-      if (!client) {
-        return [];
-      }
+      if (!client) return [];
 
       const kline = await client.getKline({
         category: 'linear',
@@ -53,7 +52,7 @@ export const ByBitConnectorCreator: ConnectorCreator = (config) => {
         limit: LIMIT,
       });
 
-      if (!kline.result.list) {
+      if (!kline?.result?.list) {
         console.error('kline.result', symbol, kline);
         return [];
       }
@@ -69,20 +68,20 @@ export const ByBitConnectorCreator: ConnectorCreator = (config) => {
         );
       }
 
+      // reverse() -> по возрастанию времени
       return mapKlineToChartData(kline.result.list.reverse());
     } catch (error) {
       logger.log('error', 'request kline: %s', error);
-
       return [];
     }
   };
 
+  /** -------------------- batched loader (keeps your while) -------------------- */
   const loadData = async (
     direction: 'older' | 'newer',
     pointer: number | undefined,
     limitBoundary: number | undefined,
     requestParams: KlineRequest,
-    requestFn: (args: KlineRequest) => Promise<KlineChartData>,
   ): Promise<KlineChartData> => {
     if (pointer === undefined) return [];
 
@@ -104,7 +103,7 @@ export const ByBitConnectorCreator: ConnectorCreator = (config) => {
         if (limitBoundary !== undefined) params.end = limitBoundary;
       }
 
-      const partData = await requestFn(params);
+      const partData = await request(params);
 
       if (_.isEmpty(partData)) {
         fulfilled = true;
@@ -130,15 +129,65 @@ export const ByBitConnectorCreator: ConnectorCreator = (config) => {
     return accumulated;
   };
 
+  /** -------------------- small helpers -------------------- */
+  const intervalMsOf = (interval: number) => interval * 60_000;
+
+  // clamp end к последней закрытой свече, чтобы не перефетчить «текущую» бесконечно
+  const normalizeRangeToClosed = (
+    intervalMs: number,
+    start?: number,
+    end?: number,
+  ) => {
+    const lastClosed = Math.floor(Date.now() / intervalMs) * intervalMs;
+    const s = start ?? 0;
+    const e = Math.min(end ?? Date.now(), lastClosed);
+    return { s, e, lastClosed };
+  };
+
+  const rowsToKline = (rows: Array<{ ts: Date } & any>) =>
+    rows.map(({ ts, ...data }) => ({
+      timestamp: new Date(ts).getTime(),
+      ...data,
+    })) as KlineChartData;
+
+  // Обновляем хвост из двух свечей (последняя закрытая + текущая формирующаяся)
+  const refreshTail = async ({
+    symbol,
+    interval,
+    silent,
+    tailCount = 2,
+  }: {
+    symbol: string;
+    interval: Interval;
+    silent: boolean;
+    tailCount?: number;
+  }) => {
+    const intMinutes = Number(interval);
+    const intervalMs = intervalMsOf(intMinutes);
+
+    const lastClosed = Math.floor(Date.now() / intervalMs) * intervalMs;
+    const tailEnd = lastClosed + intervalMs; // захватываем и текущую формирующуюся
+    const tailStart = tailEnd - tailCount * intervalMs;
+
+    const part = await request({
+      symbol,
+      interval,
+      start: tailStart,
+      end: tailEnd,
+      silent,
+    });
+
+    if (part.length) {
+      await upsertCandles(toRows(symbol, intMinutes, part));
+    }
+  };
+
+  /** -------------------- public API -------------------- */
   return {
-    getState: async () => {
-      return state;
-    },
+    getState: async () => state,
+
     setState: async (newState: object) => {
-      state = {
-        ...state,
-        ...newState,
-      };
+      state = { ...state, ...newState };
     },
 
     kline: async ({
@@ -150,86 +199,98 @@ export const ByBitConnectorCreator: ConnectorCreator = (config) => {
       cacheOnly = false,
     }: KlineRequest) => {
       const intMinutes = Number(interval);
-      const edges = await getDataEdges(symbol, intMinutes);
-      let dataStart = edges.min;
-      let dataEnd = edges.max;
+      const intervalMs = intervalMsOf(intMinutes);
 
+      // 1) что уже есть в БД
+      const edges = await getDataEdges(symbol, intMinutes);
+      let dataStart = edges.min; // ms | undefined
+      let dataEnd = edges.max; // ms | undefined
+
+      // 2) нормализуем требуемый диапазон к закрытым свечам
+      const { s: normStart, e: normEnd } = normalizeRangeToClosed(
+        intervalMs,
+        defaultStart,
+        defaultEnd,
+      );
+
+      // 3) cacheOnly — только из БД
       if (cacheOnly) {
-        const s = defaultStart ?? (edges.max ?? 0) - 1000 * intMinutes * 60_000;
+        const s = defaultStart ?? (edges.max ?? 0) - 1000 * intervalMs;
         const e = defaultEnd ?? edges.max ?? Date.now();
         const dbData = await getCandlesRange(symbol, intMinutes, s, e);
-        return dbData.map(({ ts, ...data}) => ({
-          timestamp: new Date(ts).getTime(),
-          ...data
-        })) as KlineChartData;
+        return rowsToKline(dbData);
       }
 
+      // 4) решаем, надо ли дозагружать
       const needOlderData =
         defaultStart !== undefined &&
-        (dataStart === undefined || defaultStart < dataStart);
+        (dataStart === undefined || normStart < dataStart);
 
       const needNewerData =
         defaultEnd !== undefined &&
-        (dataEnd === undefined || defaultEnd > dataEnd);
+        (dataEnd === undefined || normEnd > dataEnd);
 
+      // 5) дозагрузка старого хвоста (батчами по 1000, через loadData/while)
       if (needOlderData) {
-        const pointerForOlder = dataStart ?? defaultEnd ?? Date.now();
-        const olderData = await loadData(
-          'older',
-          pointerForOlder,
-          defaultStart,
-          {
-            symbol,
-            interval,
-            silent,
-            start: defaultStart ?? 0,
-            end: pointerForOlder,
-          },
-          request,
-        );
+        const pointerForOlder = dataStart ?? normEnd ?? Date.now();
+        const olderData = await loadData('older', pointerForOlder, normStart, {
+          symbol,
+          interval,
+          silent,
+          start: normStart,
+          end: pointerForOlder,
+        });
+
         if (olderData.length) {
           await upsertCandles(toRows(symbol, intMinutes, olderData));
-          dataStart = defaultStart;
+          dataStart = normStart;
         }
       }
 
+      // 6) дозагрузка нового хвоста (батчами по 1000)
       if (needNewerData) {
-        const pointerForNewer = dataEnd ?? defaultStart ?? 0;
-        const newerData = await loadData(
-          'newer',
-          pointerForNewer,
-          defaultEnd,
-          {
-            symbol,
-            interval,
-            silent,
-            start: pointerForNewer,
-            end: defaultEnd ?? Date.now(),
-          },
-          request,
-        );
+        const pointerForNewer = dataEnd ?? normStart ?? 0;
+        const newerData = await loadData('newer', pointerForNewer, normEnd, {
+          symbol,
+          interval,
+          silent,
+          start: pointerForNewer,
+          end: normEnd,
+        });
+
         if (newerData.length) {
           await upsertCandles(toRows(symbol, intMinutes, newerData));
-          dataEnd = defaultEnd;
+          dataEnd = normEnd;
         }
       }
 
+      // 7) точечное «освежение хвоста» из 2 свечей, если мы запрашиваем «правый край»
+      const isRightEdgeQuery =
+        defaultEnd === undefined ||
+        (defaultEnd && defaultEnd >= Date.now() - intervalMs);
+
+      if (!cacheOnly && isRightEdgeQuery) {
+        await refreshTail({ symbol, interval, silent });
+      }
+
+      // 8) финальный SELECT из БД — источник истины
       const rangeStart = defaultStart ?? dataStart ?? 0;
       const rangeEnd = defaultEnd ?? dataEnd ?? Date.now();
+      const { s: finalStart, e: finalEnd } = normalizeRangeToClosed(
+        intervalMs,
+        rangeStart,
+        rangeEnd,
+      );
 
       const dbData = await getCandlesRange(
         symbol,
         intMinutes,
-        rangeStart,
-        rangeEnd,
+        finalStart,
+        finalEnd,
       );
-      const res = dbData.map(({ts, ...data}) => ({
-        timestamp: new Date(ts).getTime(),
-        ...data
-      })) as KlineChartData;
-
-      return res;
+      return rowsToKline(dbData);
     },
+
     getPosition: async (symbol) => {
       const client = await getClient(config);
 
