@@ -9,6 +9,7 @@ services:
     restart: always
     depends_on:
       redis:
+        condition: service_healthy
       timescale:
         condition: service_healthy
     image: aleksnick/inv-app:latest
@@ -51,6 +52,11 @@ services:
     image: redis:alpine
     container_name: inv-redis
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
     networks:
       - web
 
