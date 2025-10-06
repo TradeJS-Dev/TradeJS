@@ -60,6 +60,22 @@ services:
     networks:
       - web
 
+  redisinsight:
+    image: redis/redisinsight:latest
+    container_name: inv-redisinsight
+    restart: unless-stopped
+    depends_on:
+      - redis
+    expose:
+      - "5540"
+    environment:
+      - RI_USER_EMAIL=${REDISINSIGHT_USER_EMAIL:-admin@example.com}
+      - RI_USER_PASSWORD=${REDISINSIGHT_USER_PASSWORD:-admin}
+    volumes:
+      - redisinsight_data:/data
+    networks:
+      - web
+
   nginx:
     image: nginx:stable-alpine
     container_name: nginx
@@ -79,6 +95,7 @@ services:
       - "443:443"
     depends_on:
       - app
+      - redisinsight
     networks:
       - web
     logging:
@@ -124,3 +141,4 @@ networks:
 
 volumes:
   pgdata:
+  redisinsight_data:

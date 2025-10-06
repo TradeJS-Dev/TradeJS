@@ -23,7 +23,7 @@ services:
       - web
 
   redis:
-    image: mirror.gcr.io/library/redis:7.4-alpine   # обходим Docker Hub
+    image: mirror.gcr.io/library/redis:7.4-alpine
     container_name: inv-redis
     ports:
       - "6379:6379"
@@ -52,6 +52,9 @@ services:
   redisinsight:
     image: redis/redisinsight:latest
     container_name: inv-redisinsight
+    environment:
+      - RI_USER_EMAIL=${REDISINSIGHT_USER_EMAIL:-admin@example.com}
+      - RI_USER_PASSWORD=${REDISINSIGHT_USER_PASSWORD:-admin}
     ports:
       - "5540:5540"   # v2 UI
     volumes:
