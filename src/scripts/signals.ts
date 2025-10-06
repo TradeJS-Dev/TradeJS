@@ -3,17 +3,11 @@ import ProgressBar from 'progress';
 import { connectors } from '@src/connectors';
 import chalk from 'chalk';
 import { SIGNALS_PRELOAD_DAYS } from '@constants';
-import {
-  update,
-  getTickers,
-  cleanFiles,
-  makeScreenshots,
-  sendMessages,
-} from '@utils/cli';
+import { update, getTickers, makeScreenshots, sendMessages } from '@utils/cli';
 import { findTrendlinesByLows, findTrendlinesByHighs } from '@utils/trendLine';
 import { getTimestamp } from '@utils/timestamp';
 import { uuid } from '@utils/uuid';
-import { setData } from '@utils/data';
+import { getKeys, setData } from '@utils/redis';
 import { Interval, Signal } from '@types';
 
 args.option(['t', 'tickers'], 'Selected tickers');
@@ -42,6 +36,12 @@ const byBitConnector = connectors.ByBit({
 });
 
 const checkSignals = async (symbol: string) => {
+  const prevSignals = await getKeys(`signal:${symbol}:`);
+
+  if (prevSignals.length) {
+    return null;
+  }
+
   const data = await byBitConnector.kline({
     symbol,
     start: PRELOAD_START,
@@ -78,7 +78,9 @@ const checkSignals = async (symbol: string) => {
       },
     };
 
-    await setData('data/signals', `${symbol}_${signalId}`, signal);
+    await setData(`signal:${symbol}:${signalId}`, signal, {
+      stringify: true,
+    });
 
     return signal;
   }
@@ -88,8 +90,6 @@ const checkSignals = async (symbol: string) => {
 
 const signals = async () => {
   const signals = new Array<Signal>();
-
-  await cleanFiles('data/cache');
 
   const tickers = await getTickers(
     byBitConnector,

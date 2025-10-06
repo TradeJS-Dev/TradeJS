@@ -1,23 +1,23 @@
 import { NextResponse } from 'next/server';
 import { Item, TestStat } from '@types';
-import { getData, getFiles } from '@utils/data';
+import { getData, getKeys } from '@utils/redis';
 import { parseTestName } from '@utils/tests';
 import { logger } from '@utils/logger';
 
-const DIR = 'data/tests';
+const AREA = 'tests';
 
 export const dynamic = 'force-dynamic';
 
 export const GET = async () => {
   try {
     const result = new Array<Item>();
-    const files = await getFiles(DIR);
-    const orderFiles = files.filter((file) => file.endsWith('.orders.json'));
+    const keys = await getKeys(`${AREA}:`);
+    const orderKeys = keys.filter((file) => file.endsWith(':orders'));
 
-    for await (const file of orderFiles) {
-      const testName = file.replace('.orders.json', '');
+    for await (const key of orderKeys) {
+      const testName = key.replace('tests:', '').replace(':orders', '');
       const { symbol, testId } = parseTestName(testName);
-      const stat: TestStat = await getData(DIR, `${testName}.stat`);
+      const stat: TestStat = await getData(`${AREA}:${testName}:stat`);
 
       result.push({
         value: testName,

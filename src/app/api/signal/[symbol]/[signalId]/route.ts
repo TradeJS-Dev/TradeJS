@@ -1,9 +1,7 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { getData } from '@utils/data';
+import { NextResponse } from 'next/server';
+import { getData } from '@utils/redis';
 import { logger } from '@utils/logger';
 import { Signal } from '@types';
-
-const DIR = 'data/signals';
 
 export const dynamic = 'force-dynamic';
 
@@ -23,7 +21,7 @@ export const GET = async (_req: Request, { params }: { params: Params }) => {
       );
     }
 
-    const signal: Signal = await getData(DIR, `${symbol}_${signalId}`);
+    const signal: Signal = await getData(`signal:${symbol}:${signalId}`);
 
     return NextResponse.json({ signal });
   } catch (error) {

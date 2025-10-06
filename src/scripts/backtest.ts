@@ -10,11 +10,12 @@ import { TESTS_TOP_LIMIT, TESTS_LIMIT } from '@constants';
 import { connectors } from '@src/connectors';
 import { mergeConfigs } from '@utils/grid';
 import { rankBacktests } from '@utils/stat';
-import { setData, getData } from '@utils/data';
+import { setData, getData } from '@utils/redis';
+import { getFile } from '@utils/files';
 import { toJson } from '@utils/toJson';
 import { uuid } from '@utils/uuid';
 import { createTestSuite } from '@utils/grid';
-import { cleanFiles, update, drawStatInCLI, getTickers } from '@utils/cli';
+import { update, drawStatInCLI, getTickers } from '@utils/cli';
 import { Interval, TestWorkerResult } from '@types';
 
 const MAX_PARALLEL = Math.min(os.cpus().length, 4);
@@ -69,8 +70,6 @@ const byBitConnector = connectors.ByBit({
 });
 
 const backtest = async () => {
-  await cleanFiles('data/cache');
-
   const tickers = await getTickers(
     byBitConnector,
     flags.tickers,
@@ -92,7 +91,7 @@ const backtest = async () => {
     return;
   }
 
-  const backtestConfig = await getData('data/backtest', flags.config);
+  const backtestConfig = await getFile('data/backtest', flags.config);
 
   let testSuite = createTestSuite(flags.user, tickers, backtestConfig).slice(
     0,
@@ -213,7 +212,7 @@ const backtest = async () => {
     });
 
     const chunkId = uuid();
-    await setData('data/cache', chunkId, chunk);
+    await setData(`cache:tests:chunk:${chunkId}`, chunk);
 
     tester.send({ chunkId });
   }
@@ -230,17 +229,17 @@ const finish = async (results: TestWorkerResult[]) => {
 
     const { name } = test;
 
-    const orderLog = await getData('data/cache', orderLogId);
+    const orderLog = await getData(`cache:tests:orderLog:${orderLogId}`);
 
-    await setData('data/tests', `${name}.orders`, orderLog, {
+    await setData(`tests:${name}:orders`, orderLog, {
+      stringify: false,
+    });
+
+    await setData(`tests:${name}:config`, test, {
       stringify: true,
     });
 
-    await setData('data/tests', `${name}.config`, test, {
-      stringify: true,
-    });
-
-    await setData('data/tests', `${name}.stat`, stat, {
+    await setData(`tests:${name}:stat`, stat, {
       stringify: true,
     });
   }

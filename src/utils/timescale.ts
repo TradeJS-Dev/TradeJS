@@ -8,18 +8,6 @@ declare global {
   var __pgPool__: Pool | undefined;
 }
 
-export type CandleRow = {
-  symbol: string;
-  interval: number;
-  ts: Date;
-  open: number;
-  high: number;
-  low: number;
-  close: number;
-  volume?: number | null;
-  turnover?: number | null;
-};
-
 const getPool = () => {
   if (!global.__pgPool__) {
     global.__pgPool__ = new Pool({
@@ -34,6 +22,18 @@ const getPool = () => {
     });
   }
   return global.__pgPool__;
+};
+
+export type CandleRow = {
+  symbol: string;
+  interval: number;
+  ts: Date;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume?: number | null;
+  turnover?: number | null;
 };
 
 export const toRows = (

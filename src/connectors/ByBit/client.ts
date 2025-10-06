@@ -3,13 +3,13 @@
 import 'dotenv/config';
 import { RestClientV5 } from 'bybit-api';
 import { ConnectorConfig } from '@types';
-import { getData } from '@utils/data';
+import { getFile } from '@utils/files';
 import { logger } from '@utils/logger';
 
 const useTestnet = false;
 
 export const getClient = async ({ userName }: ConnectorConfig) => {
-  const user = await getData('data/users', userName);
+  const user = await getFile('data/users', userName);
 
   if (!user) {
     logger.log('error', 'connection config not found: %s', userName);

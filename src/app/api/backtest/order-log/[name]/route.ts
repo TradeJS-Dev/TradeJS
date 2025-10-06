@@ -1,9 +1,9 @@
 import { NextResponse } from 'next/server';
 import { OrderLogData } from '@types';
-import { getData } from '@utils/data';
+import { getData } from '@utils/redis';
 import { logger } from '@utils/logger';
 
-const DIR = 'data/tests';
+const AREA = 'tests';
 
 interface Params {
   name: string;
@@ -20,7 +20,7 @@ export const GET = async (_req: Request, { params }: { params: Params }) => {
       );
     }
 
-    const orderLog: OrderLogData = await getData(DIR, `${name}.orders`);
+    const orderLog: OrderLogData = await getData(`${AREA}:${name}:orders`);
 
     return NextResponse.json({ orderLog });
   } catch (error) {

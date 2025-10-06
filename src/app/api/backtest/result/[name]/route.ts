@@ -1,10 +1,10 @@
 import { NextResponse } from 'next/server';
 import { OrderLogData, Test, TestResult, TestStat } from '@types';
-import { getData } from '@utils/data';
+import { getData } from '@utils/redis';
 import { compactOrderLog, getTimeline } from '@utils/timestamp';
 import { logger } from '@utils/logger';
 
-const DIR = 'data/tests';
+const AREA = 'tests';
 
 interface Params {
   name: string;
@@ -21,9 +21,9 @@ export const GET = async (_req: Request, { params }: { params: Params }) => {
       );
     }
 
-    const orderLog: OrderLogData = await getData(DIR, `${name}.orders`);
-    const test: Test = await getData(DIR, `${name}.config`);
-    const stat: TestStat = await getData(DIR, `${name}.stat`);
+    const orderLog: OrderLogData = await getData(`${AREA}:${name}:orders`);
+    const test: Test = await getData(`${AREA}:${name}:config`);
+    const stat: TestStat = await getData(`${AREA}:${name}:stat`);
 
     const timeline = getTimeline(test.options.start, test.options.end);
 

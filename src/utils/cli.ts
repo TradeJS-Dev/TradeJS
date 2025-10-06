@@ -3,7 +3,7 @@ import _ from 'lodash';
 import ProgressBar from 'progress';
 import chalk from 'chalk';
 import { PRELOAD_DAYS } from '@constants';
-import { getFiles } from '@utils/data';
+import { getFiles } from '@utils/files';
 import { getTimestamp } from '@utils/timestamp';
 import { getFormatted } from '@utils/stat';
 import { getTopTickers } from '@utils/tickers';

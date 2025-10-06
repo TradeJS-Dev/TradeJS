@@ -7,6 +7,10 @@ export const DASHBOARD_PRELOAD_DAYS = 90;
 export const BOT_PRELOAD_DAYS = 180;
 export const PRELOAD_FALLBACK_DAYS = 180;
 
+export const TTL_1H = 3_600;
+export const TTL_1D = 86_400;
+export const TTL_1M = 2_600_000;
+
 export const TESTS_TOP_LIMIT = 40;
 export const TESTS_LIMIT = 100_000;
 export const TESTS_ORDERS_MIN_LIMIT = 40;

@@ -1,4 +1,4 @@
-# docker-compose.db.yml
+version: "3.9"
 
 services:
   timescale:
@@ -6,19 +6,61 @@ services:
     image: timescale/timescaledb:latest-pg16
     platform: linux/amd64   # на Mac M1/M2/M3/M4
     environment:
-      - POSTGRES_USER=app
-      - POSTGRES_PASSWORD=app
-      - POSTGRES_DB=app
+      - POSTGRES_USER=${PG_USER:-app}
+      - POSTGRES_PASSWORD=${PG_PASSWORD:-app}
+      - POSTGRES_DB=${PG_DB:-app}
     ports:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U app -d app"]
+      test: ["CMD-SHELL", "pg_isready -U ${PG_USER:-app} -d ${PG_DB:-app}"]
       interval: 5s
       timeout: 3s
       retries: 10
-    networks: [web]
+    restart: unless-stopped
+    networks:
+      - web
+
+  redis:
+    image: mirror.gcr.io/library/redis:7.4-alpine   # обходим Docker Hub
+    container_name: inv-redis
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
+    networks:
+      - web
+
+  # ---------- ВЕБ-АДМИНКИ ----------
+  pgadmin:
+    image: dpage/pgadmin4
+    container_name: inv-pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@example.com}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-admin}
+      PGADMIN_LISTEN_PORT: "5050"
+    ports:
+      - "5050:5050"
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    depends_on:
+      - timescale
+    restart: unless-stopped
+    networks:
+      - web
+
+  redisinsight:
+    image: redis/redisinsight:latest
+    container_name: inv-redisinsight
+    ports:
+      - "5540:5540"   # v2 UI
+    volumes:
+      - redisinsight_data:/data
+    depends_on:
+      - redis
+    restart: unless-stopped
+    networks:
+      - web
 
 networks:
   web:
@@ -26,3 +68,5 @@ networks:
 
 volumes:
   pgdata:
+  pgadmin_data:
+  redisinsight_data:

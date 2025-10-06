@@ -33,6 +33,8 @@ jobs:
           TG_CHAT_ID=207660648
           PUPPETEER_SKIP_DOWNLOAD=true
           PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
+          REDIS_HOST=redis
+          REDIS_PORT=6379
           PG_HOST=timescale
           PG_PORT=5432
           PG_USER=app

@@ -35,7 +35,7 @@ export const getFiles = async (dir: string) => {
   return await fs.readdir(getDir(dir));
 };
 
-export const getData = async (
+export const getFile = async (
   dir: string,
   file: string,
   fallback = [],
@@ -61,7 +61,7 @@ export const getData = async (
   }
 };
 
-export const setData = async <T>(
+export const setFile = async <T>(
   dir: string,
   file: string,
   data: T,

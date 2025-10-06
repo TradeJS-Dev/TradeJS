@@ -1,7 +1,7 @@
 import ProgressBar from 'progress';
 import chalk from 'chalk';
 import { toRows, upsertCandles } from '@utils/timescale';
-import { getData, getFiles } from '@utils/data';
+import { getFile, getFiles } from '@utils/files';
 import { KlineChartData } from '@types';
 
 const DIR = 'data/history';
@@ -14,7 +14,7 @@ const migrateFile = async (file: string) => {
   const symbol = m[1];
   const interval = Number(m[2]);
 
-  const data = (await getData(DIR, `${symbol}_${interval}`)) as KlineChartData;
+  const data = (await getFile(DIR, `${symbol}_${interval}`)) as KlineChartData;
 
   const rows = toRows(symbol, interval, data);
 

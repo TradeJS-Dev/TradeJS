@@ -7,7 +7,7 @@ import {
 } from '@langchain/core/messages';
 import { connectors } from '@src/connectors';
 import { AIChatHistory, AIChatMessage, Filters } from '@types';
-import { getData, setData } from '@utils/data';
+import { getFile, setFile } from '@utils/files';
 import { toJson } from '@utils/toJson';
 import { logger } from '@utils/logger';
 
@@ -16,7 +16,7 @@ export const dynamic = 'force-dynamic';
 const HISTORY_DIR = 'data/chats';
 
 const getHistory = async (symbol: string): Promise<AIChatHistory> => {
-  const history = await getData(HISTORY_DIR, symbol);
+  const history = await getFile(HISTORY_DIR, symbol);
   return history;
 };
 
@@ -25,7 +25,7 @@ const appendMessagesToHistory = async (
   messages: AIChatHistory,
 ): Promise<void> => {
   const history = await getHistory(symbol);
-  await setData(HISTORY_DIR, symbol, [...history, ...messages]);
+  await setFile(HISTORY_DIR, symbol, [...history, ...messages]);
 };
 
 const buildMessages = (

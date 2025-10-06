@@ -3,7 +3,7 @@ import { BOT_PRELOAD_DAYS } from '@constants';
 import { strategies, StrategyNames } from '@src/strategy';
 import { connectors, ConnectorNames } from '@src/connectors';
 import { logger } from '@utils/logger';
-import { getFiles, getData } from '@utils/data';
+import { getFiles, getFile } from '@utils/files';
 import { toJson } from '@utils/toJson';
 import { getTimestamp } from '@utils/timestamp';
 import { delay } from '@utils/async';
@@ -24,7 +24,7 @@ export const runBot = async () => {
 
     logger.log('info', 'user: %s', userName);
 
-    const botConfig: BotConfig = await getData('data/bots', userName);
+    const botConfig: BotConfig = await getFile('data/bots', userName);
 
     if (_.isEmpty(botConfig)) {
       logger.log('error', 'botConfig is empty: %s', userName);
