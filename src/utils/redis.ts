@@ -2,6 +2,7 @@ import Redis from 'ioredis';
 import { logger } from '@utils/logger';
 import { toJson } from '@utils/toJson';
 import { TTL_1D } from '@constants';
+import { chunk } from 'lodash';
 
 declare global {
   // предотвращаем множественные коннекты при HMR в Next.js
@@ -94,4 +95,15 @@ export const setData = async <T>(
   } catch (e) {
     logger.log('error', 'failed SET %s: %s', key, String(e));
   }
+};
+
+export const redisKeys = {
+  tests: (testName: string) => `tests:${testName}:`,
+  testOrders: (testName: string) => `tests:${testName}:orders`,
+  testConfig: (testName: string) => `tests:${testName}:config`,
+  testStat: (testName: string) => `tests:${testName}:config`,
+  testChunk: (chunkId: string) => `cache:tests:chunks:${chunkId}`,
+  testOrderLog: (orderLogId: string) => `cache:tests:orderLog:${orderLogId}`,
+  signal: (symbol: string, signalId: string) => `signals:${symbol}:${signalId}`,
+  signals: (symbol: string) => `signals:${symbol}:`,
 };

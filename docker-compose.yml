@@ -71,7 +71,6 @@ services:
     environment:
       - RI_USER_EMAIL=${REDISINSIGHT_USER_EMAIL:-admin@example.com}
       - RI_USER_PASSWORD=${REDISINSIGHT_USER_PASSWORD:-admin}
-      - RI_PROXY_PATH=/redisinsight
     volumes:
       - redisinsight_data:/data
     networks:
@@ -114,7 +113,7 @@ services:
     entrypoint: >
       sh -c "certbot certonly --webroot --webroot-path=/var/www/certbot
       --email aleksnick01@gmail.com --agree-tos --no-eff-email
-      -d aleksnick01inv.fvds.ru || true"
+      -d aleksnick01inv.fvds.ru -d redisinsight.aleksnick01inv.fvds.ru || true"
     networks:
       - web
 

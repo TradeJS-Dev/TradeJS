@@ -37,7 +37,6 @@ jobs:
           REDIS_PORT=6379
           REDISINSIGHT_USER_EMAIL=${{ secrets.REDISINSIGHT_USER_EMAIL }}
           REDISINSIGHT_USER_PASSWORD=${{ secrets.REDISINSIGHT_USER_PASSWORD }}
-          REDISINSIGHT_BASE_URL=https://aleksnick01inv.fvds.ru/redisinsight
           PG_HOST=timescale
           PG_PORT=5432
           PG_USER=app

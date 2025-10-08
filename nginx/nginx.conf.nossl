@@ -23,4 +23,17 @@ http {
             return 503 "SSL certificate not yet installed.";
         }
     }
+
+    server {
+        listen 80;
+        server_name redisinsight.aleksnick01inv.fvds.ru;
+
+        location /.well-known/acme-challenge/ {
+            root /var/www/certbot;
+        }
+
+        location / {
+            return 503 "SSL certificate not yet installed.";
+        }
+    }
 }
