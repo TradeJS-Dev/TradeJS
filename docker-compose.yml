@@ -76,21 +76,6 @@ services:
     networks:
       - web
 
-  authelia:
-    image: authelia/authelia:latest
-    container_name: authelia
-    restart: unless-stopped
-    depends_on:
-      - redis
-    volumes:
-      - ./authelia/configuration.yml:/config/configuration.yml:ro
-      - ./authelia/users.yml:/config/users.yml:ro
-      - ./authelia/db:/config/db
-    environment:
-      - TZ=Etc/UTC
-    networks:
-      - web
-
   nginx:
     image: nginx:stable-alpine
     container_name: nginx
@@ -100,6 +85,7 @@ services:
       - ./nginx/nginx.conf.nossl:/etc/nginx/nginx.conf.nossl:ro
       - ./certbot/conf:/etc/letsencrypt:ro
       - ./certbot/www:/var/www/certbot:ro
+      - ./nginx/.htpasswd:/etc/nginx/.htpasswd:ro
     entrypoint: >
       sh -c "[ -f /etc/letsencrypt/live/aleksnick01inv.fvds.ru/fullchain.pem ]
       && cp /etc/nginx/nginx.conf.ssl /etc/nginx/nginx.conf 
@@ -111,7 +97,6 @@ services:
     depends_on:
       - app
       - redisinsight
-      - authelia
     networks:
       - web
     logging:
