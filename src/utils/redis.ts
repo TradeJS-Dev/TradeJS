@@ -44,9 +44,9 @@ export const getKeys = async (prefix: string): Promise<string[]> => {
       '200',
     );
     cursor = nextCursor;
-    for (const k of batch) {
-      if (k.startsWith(prefix)) {
-        keys.push(k.slice(prefix.length));
+    for (const key of batch) {
+      if (key.startsWith(prefix)) {
+        keys.push(key);
       }
     }
   } while (cursor !== '0');
@@ -77,6 +77,23 @@ export const getData = async (
   }
 };
 
+export const deleteData = async (key: string): Promise<boolean> => {
+  const redis = getRedis();
+
+  try {
+    const result = await redis.del(key);
+
+    if (result === 1) {
+      return true;
+    }
+
+    return false;
+  } catch (e) {
+    logger.log('error', 'failed DEL %s: %s', key, String(e));
+    return false;
+  }
+};
+
 export const setData = async <T>(
   key: string,
   data: T,
@@ -98,12 +115,18 @@ export const setData = async <T>(
 };
 
 export const redisKeys = {
-  tests: (testName: string) => `tests:${testName}:`,
+  bots: () => 'bots:',
+  bot: (name: string) => `bots:${name}`,
+  backtests: () => 'backtests:',
+  backtest: (name: string) => `backtests:${name}`,
+  users: () => 'users:',
+  user: (name: string) => `users:${name}`,
+  tests: () => 'tests:',
   testOrders: (testName: string) => `tests:${testName}:orders`,
   testConfig: (testName: string) => `tests:${testName}:config`,
-  testStat: (testName: string) => `tests:${testName}:config`,
-  testChunk: (chunkId: string) => `cache:tests:chunks:${chunkId}`,
-  testOrderLog: (orderLogId: string) => `cache:tests:orderLog:${orderLogId}`,
+  testStat: (testName: string) => `tests:${testName}:stat`,
+  cacheChunk: (chunkId: string) => `cache:tests:chunks:${chunkId}`,
+  cacheOrders: (orderLogId: string) => `cache:tests:orders:${orderLogId}`,
   signal: (symbol: string, signalId: string) => `signals:${symbol}:${signalId}`,
-  signals: (symbol: string) => `signals:${symbol}:`,
+  signalsBySymbol: (symbol: string) => `signals:${symbol}:`,
 };

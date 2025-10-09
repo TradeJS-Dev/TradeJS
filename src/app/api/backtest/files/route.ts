@@ -1,23 +1,21 @@
 import { NextResponse } from 'next/server';
 import { Item, TestStat } from '@types';
-import { getData, getKeys } from '@utils/redis';
+import { getData, getKeys, redisKeys } from '@utils/redis';
 import { parseTestName } from '@utils/tests';
 import { logger } from '@utils/logger';
-
-const AREA = 'tests';
 
 export const dynamic = 'force-dynamic';
 
 export const GET = async () => {
   try {
     const result = new Array<Item>();
-    const keys = await getKeys(`${AREA}:`);
-    const orderKeys = keys.filter((file) => file.endsWith(':orders'));
+    const keys = await getKeys(redisKeys.tests());
+    const orderKeys = keys.filter((key) => key.endsWith(':orders'));
 
     for await (const key of orderKeys) {
-      const testName = key.replace('tests:', '').replace(':orders', '');
+      const testName = key.split(':')[1];
       const { symbol, testId } = parseTestName(testName);
-      const stat: TestStat = await getData(`${AREA}:${testName}:stat`);
+      const stat: TestStat = await getData(redisKeys.testStat(testName));
 
       result.push({
         value: testName,

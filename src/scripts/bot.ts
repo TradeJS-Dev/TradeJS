@@ -1,3 +1,9 @@
 import { runBot } from '@utils/bot';
 
-runBot();
+const run = async () => {
+  await runBot();
+
+  process.exit();
+};
+
+run();

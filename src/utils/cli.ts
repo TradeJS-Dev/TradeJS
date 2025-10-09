@@ -4,6 +4,7 @@ import ProgressBar from 'progress';
 import chalk from 'chalk';
 import { PRELOAD_DAYS } from '@constants';
 import { getFiles } from '@utils/files';
+import { getKeys, deleteData } from '@utils/redis';
 import { getTimestamp } from '@utils/timestamp';
 import { getFormatted } from '@utils/stat';
 import { getTopTickers } from '@utils/tickers';
@@ -37,6 +38,31 @@ export const cleanFiles = async (dir: string) => {
 
     if (completed % 100 === 0 || completed === files.length) {
       bar.tick(completed === files.length ? completed % 100 : 100);
+    }
+  }
+
+  console.log('');
+};
+
+export const cleanRedis = async (area: string) => {
+  let completed = 0;
+
+  const keys = await getKeys(area);
+
+  const bar = new ProgressBar(':current/:total [:bar][:percent] :eta(s)', {
+    total: keys.length,
+    width: 30,
+  });
+
+  console.log(chalk.yellow('clean:', area));
+
+  for await (const key of keys) {
+    completed++;
+
+    await deleteData(key);
+
+    if (completed % 100 === 0 || completed === keys.length) {
+      bar.tick(completed === keys.length ? completed % 100 : 100);
     }
   }
 

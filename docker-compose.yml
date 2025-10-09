@@ -68,9 +68,6 @@ services:
       - redis
     expose:
       - "5540"
-    environment:
-      - RI_REDIS_USERNAME=${REDISINSIGHT_USER_EMAIL:-admin@example.com}
-      - RI_REDIS_PASSWORD=${REDISINSIGHT_USER_PASSWORD:-admin}
     volumes:
       - redisinsight_data:/data
     networks:

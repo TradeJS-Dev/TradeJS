@@ -7,7 +7,7 @@ import { update, getTickers, makeScreenshots, sendMessages } from '@utils/cli';
 import { findTrendlinesByLows, findTrendlinesByHighs } from '@utils/trendLine';
 import { getTimestamp } from '@utils/timestamp';
 import { uuid } from '@utils/uuid';
-import { getKeys, setData } from '@utils/redis';
+import { getKeys, setData, redisKeys } from '@utils/redis';
 import { Interval, Signal } from '@types';
 
 args.option(['t', 'tickers'], 'Selected tickers');
@@ -36,7 +36,7 @@ const byBitConnector = connectors.ByBit({
 });
 
 const checkSignals = async (symbol: string) => {
-  const prevSignals = await getKeys(`signal:${symbol}:`);
+  const prevSignals = await getKeys(redisKeys.signalsBySymbol(symbol));
 
   if (prevSignals.length) {
     return null;
@@ -78,7 +78,7 @@ const checkSignals = async (symbol: string) => {
       },
     };
 
-    await setData(`signal:${symbol}:${signalId}`, signal, {
+    await setData(redisKeys.signal(symbol, signalId), signal, {
       stringify: true,
     });
 

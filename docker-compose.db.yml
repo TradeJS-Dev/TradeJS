@@ -52,9 +52,6 @@ services:
   redisinsight:
     image: redis/redisinsight:latest
     container_name: inv-redisinsight
-    environment:
-      - RI_USER_EMAIL=${REDISINSIGHT_USER_EMAIL:-admin@example.com}
-      - RI_USER_PASSWORD=${REDISINSIGHT_USER_PASSWORD:-admin}
     ports:
       - "5540:5540"
     volumes:

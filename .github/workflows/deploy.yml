@@ -35,8 +35,6 @@ jobs:
           PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
           REDIS_HOST=redis
           REDIS_PORT=6379
-          REDISINSIGHT_USER_EMAIL=${{ secrets.REDISINSIGHT_USER_EMAIL }}
-          REDISINSIGHT_USER_PASSWORD=${{ secrets.REDISINSIGHT_USER_PASSWORD }}
           PG_HOST=timescale
           PG_PORT=5432
           PG_USER=app

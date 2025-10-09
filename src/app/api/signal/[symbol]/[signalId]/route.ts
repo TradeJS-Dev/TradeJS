@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getData } from '@utils/redis';
+import { getData, redisKeys } from '@utils/redis';
 import { logger } from '@utils/logger';
 import { Signal } from '@types';
 
@@ -21,7 +21,7 @@ export const GET = async (_req: Request, { params }: { params: Params }) => {
       );
     }
 
-    const signal: Signal = await getData(`signal:${symbol}:${signalId}`);
+    const signal: Signal = await getData(redisKeys.signal(symbol, signalId));
 
     return NextResponse.json({ signal });
   } catch (error) {

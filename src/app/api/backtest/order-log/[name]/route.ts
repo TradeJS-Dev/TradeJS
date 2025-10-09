@@ -1,9 +1,7 @@
 import { NextResponse } from 'next/server';
 import { OrderLogData } from '@types';
-import { getData } from '@utils/redis';
+import { getData, redisKeys } from '@utils/redis';
 import { logger } from '@utils/logger';
-
-const AREA = 'tests';
 
 interface Params {
   name: string;
@@ -20,7 +18,7 @@ export const GET = async (_req: Request, { params }: { params: Params }) => {
       );
     }
 
-    const orderLog: OrderLogData = await getData(`${AREA}:${name}:orders`);
+    const orderLog: OrderLogData = await getData(redisKeys.testOrders(name));
 
     return NextResponse.json({ orderLog });
   } catch (error) {

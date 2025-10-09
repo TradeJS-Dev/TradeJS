@@ -1,11 +1,9 @@
 import { testing } from '@utils/testing';
 import { TestSuite } from '@types';
-import { getData } from '@utils/redis';
+import { getData, redisKeys } from '@utils/redis';
 
 process.on('message', async ({ chunkId }: { chunkId: string }) => {
-  const testSuite = (await getData(
-    `cache:tests:chunk:${chunkId}`,
-  )) as TestSuite;
+  const testSuite = (await getData(redisKeys.cacheChunk(chunkId))) as TestSuite;
 
   for await (const test of testSuite) {
     try {

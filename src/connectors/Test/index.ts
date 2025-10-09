@@ -13,7 +13,7 @@ import {
   Candle,
 } from '@types';
 import { calculateStatsFull } from '@utils/stat';
-import { setData } from '@utils/redis';
+import { redisKeys, setData } from '@utils/redis';
 import { uuid } from '@utils/uuid';
 import { round } from '@utils/math';
 
@@ -94,7 +94,7 @@ export const TestConnectorCreator: TCC = (connector) => {
 
       const orderLogId = uuid();
 
-      await setData(`cache:tests:orderLog:${orderLogId}`, ORDER_LOG);
+      await setData(redisKeys.cacheOrders(orderLogId), ORDER_LOG);
 
       return {
         stat,

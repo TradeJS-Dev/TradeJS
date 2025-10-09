@@ -3,7 +3,7 @@ import { BOT_PRELOAD_DAYS } from '@constants';
 import { strategies, StrategyNames } from '@src/strategy';
 import { connectors, ConnectorNames } from '@src/connectors';
 import { logger } from '@utils/logger';
-import { getFiles, getFile } from '@utils/files';
+import { getData, redisKeys, getKeys } from '@utils/redis';
 import { toJson } from '@utils/toJson';
 import { getTimestamp } from '@utils/timestamp';
 import { delay } from '@utils/async';
@@ -13,18 +13,18 @@ export const runBot = async () => {
   const botResults = [];
   const preloadStart = getTimestamp(BOT_PRELOAD_DAYS);
   const end = getTimestamp();
-  const files = await getFiles('data/bots');
+  const keys = await getKeys(redisKeys.bots());
 
   await delay(5000);
 
-  logger.log('info', 'files count: %s', files.length);
+  logger.log('info', 'files count: %s', keys.length);
 
-  for await (const file of files) {
-    const userName = file.replace('.json', '');
+  for await (const key of keys) {
+    const userName = key.split(':')[1];
 
     logger.log('info', 'user: %s', userName);
 
-    const botConfig: BotConfig = await getFile('data/bots', userName);
+    const botConfig: BotConfig = await getData(redisKeys.bot(userName));
 
     if (_.isEmpty(botConfig)) {
       logger.log('error', 'botConfig is empty: %s', userName);

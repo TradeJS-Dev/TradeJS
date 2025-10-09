@@ -10,8 +10,7 @@ import { TESTS_TOP_LIMIT, TESTS_LIMIT } from '@constants';
 import { connectors } from '@src/connectors';
 import { mergeConfigs } from '@utils/grid';
 import { rankBacktests } from '@utils/stat';
-import { setData, getData } from '@utils/redis';
-import { getFile } from '@utils/files';
+import { setData, getData, redisKeys } from '@utils/redis';
 import { toJson } from '@utils/toJson';
 import { uuid } from '@utils/uuid';
 import { createTestSuite } from '@utils/grid';
@@ -91,7 +90,7 @@ const backtest = async () => {
     return;
   }
 
-  const backtestConfig = await getFile('data/backtest', flags.config);
+  const backtestConfig = await getData(redisKeys.backtest(flags.config));
 
   let testSuite = createTestSuite(flags.user, tickers, backtestConfig).slice(
     0,
@@ -212,7 +211,7 @@ const backtest = async () => {
     });
 
     const chunkId = uuid();
-    await setData(`cache:tests:chunk:${chunkId}`, chunk);
+    await setData(redisKeys.cacheChunk(chunkId), chunk);
 
     tester.send({ chunkId });
   }
@@ -229,17 +228,17 @@ const finish = async (results: TestWorkerResult[]) => {
 
     const { name } = test;
 
-    const orderLog = await getData(`cache:tests:orderLog:${orderLogId}`);
+    const orderLog = await getData(redisKeys.cacheOrders(orderLogId));
 
-    await setData(`tests:${name}:orders`, orderLog, {
+    await setData(redisKeys.testOrders(name), orderLog, {
       stringify: false,
     });
 
-    await setData(`tests:${name}:config`, test, {
+    await setData(redisKeys.testConfig(name), test, {
       stringify: true,
     });
 
-    await setData(`tests:${name}:stat`, stat, {
+    await setData(redisKeys.testStat(name), stat, {
       stringify: true,
     });
   }
