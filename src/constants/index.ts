@@ -8,6 +8,7 @@ export const BOT_PRELOAD_DAYS = 180;
 export const PRELOAD_FALLBACK_DAYS = 180;
 
 export const TTL_1H = 3_600;
+export const TTL_12H = 43_300;
 export const TTL_1D = 86_400;
 export const TTL_1M = 2_600_000;
 

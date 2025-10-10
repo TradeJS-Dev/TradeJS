@@ -132,4 +132,5 @@ export const redisKeys = {
   cachePositions: (orderLogId: string) => `cache:tests:positions:${orderLogId}`,
   signal: (symbol: string, signalId: string) => `signals:${symbol}:${signalId}`,
   signalsBySymbol: (symbol: string) => `signals:${symbol}:`,
+  storeSignal: (symbol: string, signalId: string) => `store:signals:${symbol}:${signalId}`,
 };

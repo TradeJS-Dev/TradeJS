@@ -2,7 +2,7 @@ import args from 'args';
 import ProgressBar from 'progress';
 import { connectors } from '@src/connectors';
 import chalk from 'chalk';
-import { SIGNALS_PRELOAD_DAYS } from '@constants';
+import { SIGNALS_PRELOAD_DAYS, TTL_12H, TTL_1M } from '@constants';
 import { update, getTickers, makeScreenshots, sendMessages } from '@utils/cli';
 import { findTrendlinesByLows, findTrendlinesByHighs } from '@utils/trendLine';
 import { getTimestamp } from '@utils/timestamp';
@@ -80,6 +80,12 @@ const checkSignals = async (symbol: string) => {
 
     await setData(redisKeys.signal(symbol, signalId), signal, {
       stringify: true,
+      expire: TTL_12H,
+    });
+
+    await setData(redisKeys.storeSignal(symbol, signalId), signal, {
+      stringify: true,
+      expire: TTL_1M,
     });
 
     return signal;

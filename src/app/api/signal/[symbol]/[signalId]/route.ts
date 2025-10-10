@@ -1,3 +1,4 @@
+import _ from 'lodash';
 import { NextResponse } from 'next/server';
 import { getData, redisKeys } from '@utils/redis';
 import { logger } from '@utils/logger';
@@ -21,7 +22,11 @@ export const GET = async (_req: Request, { params }: { params: Params }) => {
       );
     }
 
-    const signal: Signal = await getData(redisKeys.signal(symbol, signalId));
+    let signal: Signal = await getData(redisKeys.signal(symbol, signalId));
+
+    if (!signal || _.isEmpty(signal)) {
+      signal = await getData(redisKeys.storeSignal(symbol, signalId));
+    }
 
     return NextResponse.json({ signal });
   } catch (error) {
