@@ -90,12 +90,12 @@ export const TestThresholdsConfig: TestThresholds = {
     thresholds: [5, 20],
     direction: 'higher',
     isAmount: true,
+    weight: 10,
     precision: 2,
   },
   totalReturn: {
     thresholds: [10, 50],
     direction: 'higher',
-    weight: 10,
     isPercent: true,
     precision: 1,
   },

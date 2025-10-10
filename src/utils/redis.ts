@@ -2,7 +2,6 @@ import Redis from 'ioredis';
 import { logger } from '@utils/logger';
 import { toJson } from '@utils/toJson';
 import { TTL_1D } from '@constants';
-import { chunk } from 'lodash';
 
 declare global {
   // предотвращаем множественные коннекты при HMR в Next.js
@@ -116,17 +115,21 @@ export const setData = async <T>(
 
 export const redisKeys = {
   bots: () => 'bots:',
-  bot: (name: string) => `bots:${name}`,
+  bot: (userName: string) => `bots:${userName}`,
   backtests: () => 'backtests:',
-  backtest: (name: string) => `backtests:${name}`,
+  backtest: (userName: string) => `backtests:${userName}`,
   users: () => 'users:',
-  user: (name: string) => `users:${name}`,
+  user: (userName: string) => `users:${userName}`,
   tests: () => 'tests:',
-  testOrders: (testName: string) => `tests:${testName}:orders`,
-  testConfig: (testName: string) => `tests:${testName}:config`,
-  testStat: (testName: string) => `tests:${testName}:stat`,
+  testOrders: (userName: string, testName: string) =>
+    `tests:${userName}:${testName}:orders`,
+  testConfig: (userName: string, testName: string) =>
+    `tests:${userName}:${testName}:config`,
+  testStat: (userName: string, testName: string) =>
+    `tests:${userName}:${testName}:stat`,
   cacheChunk: (chunkId: string) => `cache:tests:chunks:${chunkId}`,
   cacheOrders: (orderLogId: string) => `cache:tests:orders:${orderLogId}`,
+  cachePositions: (orderLogId: string) => `cache:tests:positions:${orderLogId}`,
   signal: (symbol: string, signalId: string) => `signals:${symbol}:${signalId}`,
   signalsBySymbol: (symbol: string) => `signals:${symbol}:`,
 };

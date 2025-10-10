@@ -46,15 +46,23 @@ export interface TestStat extends Metrics {
   score?: number;
 }
 
+export interface MinimalStat {
+  amount: number;
+}
+
 export interface TestingBoxResult {
   orderLogId: string;
-  stat: TestStat;
+  stat: MinimalStat;
 }
 
 export type TestingBox = (test: Test) => Promise<TestingBoxResult | null>;
 
 export interface TestWorkerResult extends TestingBoxResult {
   test: Test;
+}
+
+export interface CompletedTest extends Omit<TestWorkerResult, 'stat'> {
+  stat: TestStat;
 }
 
 export type OrderLog = Order & {
@@ -69,7 +77,7 @@ export type OrderLogData = OrderLog[];
 
 export type SimpleOrderLogData = [number, number][];
 
-export interface TestResult extends Omit<TestWorkerResult, 'orderLogId'> {
+export interface TestResult extends Omit<CompletedTest, 'orderLogId'> {
   orderLog: SimpleOrderLogData;
 }
 

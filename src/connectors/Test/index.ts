@@ -12,7 +12,6 @@ import {
   Tp,
   Candle,
 } from '@types';
-import { calculateStatsFull } from '@utils/stat';
 import { redisKeys, setData } from '@utils/redis';
 import { uuid } from '@utils/uuid';
 import { round } from '@utils/math';
@@ -85,19 +84,15 @@ export const TestConnectorCreator: TCC = (connector) => {
         throw Error('Order log is empty');
       }
 
-      // const positionLog = buildPositionLogFromOrderLog(ORDER_LOG);
-      const stat = calculateStatsFull(POSITION_LOG);
-
-      if (!stat) {
-        throw Error('Statistics is empty');
-      }
-
       const orderLogId = uuid();
 
       await setData(redisKeys.cacheOrders(orderLogId), ORDER_LOG);
+      await setData(redisKeys.cachePositions(orderLogId), POSITION_LOG);
 
       return {
-        stat,
+        stat: {
+          amount: AMOUNT,
+        },
         orderLogId,
       };
     },

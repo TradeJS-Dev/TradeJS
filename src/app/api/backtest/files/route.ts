@@ -13,9 +13,11 @@ export const GET = async () => {
     const orderKeys = keys.filter((key) => key.endsWith(':orders'));
 
     for await (const key of orderKeys) {
-      const testName = key.split(':')[1];
+      const testName = key.split(':')[2];
       const { symbol, testId } = parseTestName(testName);
-      const stat: TestStat = await getData(redisKeys.testStat(testName));
+      const stat: TestStat = await getData(
+        redisKeys.testStat('root', testName),
+      );
 
       result.push({
         value: testName,

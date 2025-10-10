@@ -9,13 +9,17 @@ import _ from 'lodash';
 import { TESTS_TOP_LIMIT, TESTS_LIMIT } from '@constants';
 import { connectors } from '@src/connectors';
 import { mergeConfigs } from '@utils/grid';
-import { rankBacktests } from '@utils/stat';
+import {
+  getBacktestScore,
+  calculateStatsFull,
+  sortBestTests,
+} from '@utils/stat';
 import { setData, getData, redisKeys } from '@utils/redis';
 import { toJson } from '@utils/toJson';
 import { uuid } from '@utils/uuid';
 import { createTestSuite } from '@utils/grid';
 import { update, drawStatInCLI, getTickers } from '@utils/cli';
-import { Interval, TestWorkerResult } from '@types';
+import { Interval, TestStat, TestWorkerResult } from '@types';
 
 const MAX_PARALLEL = Math.min(os.cpus().length, 4);
 
@@ -54,15 +58,10 @@ const HEADERS = [
   chalk.cyan('SCORE'),
 ];
 
-let bestResults = {
-  netProfit: -1000,
-  winRate: 0,
-  minAmount: 0,
-  sharpeRatio: 0,
-};
-
 let successTests = 0;
 let errorTests = 0;
+
+const userName = flags.user;
 
 const byBitConnector = connectors.ByBit({
   userName: flags.user,
@@ -92,7 +91,7 @@ const backtest = async () => {
 
   const backtestConfig = await getData(redisKeys.backtest(flags.config));
 
-  let testSuite = createTestSuite(flags.user, tickers, backtestConfig).slice(
+  let testSuite = createTestSuite(userName, tickers, backtestConfig).slice(
     0,
     parseInt(flags.tests),
   );
@@ -107,7 +106,7 @@ const backtest = async () => {
 
   console.log('');
   const bar = new ProgressBar(
-    ':current/:total [:bar][:percent] :id :symbol :profit :minamount :wins/:losses/:orders :winrate :sharpeRatio :eta(s)',
+    ':current/:total [:bar][:percent] :id :symbol :amount :eta(s)',
     {
       total: testSuite.length,
       width: 40,
@@ -130,7 +129,7 @@ const backtest = async () => {
         completedWorkers++;
 
         if (completedWorkers === chunks.length) {
-          results = rankBacktests(results, flags.top);
+          results = sortBestTests(results, flags.top);
           await finish(results);
         }
 
@@ -151,37 +150,12 @@ const backtest = async () => {
 
       results.push(msg as TestWorkerResult);
 
-      results.forEach(
-        ({ stat: { netProfit, winRate, sharpeRatio, minAmount } }) => {
-          if (netProfit > bestResults.netProfit) {
-            bestResults.netProfit = netProfit;
-          }
-          if (winRate > bestResults.winRate) {
-            bestResults.winRate = winRate;
-          }
-          if (minAmount > bestResults.minAmount) {
-            bestResults.minAmount = minAmount;
-          }
-          if (sharpeRatio && sharpeRatio > bestResults.sharpeRatio) {
-            bestResults.sharpeRatio = sharpeRatio;
-          }
-        },
-      );
-
       if (completedTests % 100 === 0 || completedTests === testSuite.length) {
-        results = rankBacktests(results, flags.top);
+        results = sortBestTests(results, flags.top);
 
         const {
           test: { symbol, name },
-          stat: {
-            orders,
-            netProfit,
-            minAmount,
-            wins,
-            losses,
-            winRate,
-            sharpeRatio,
-          },
+          stat: { amount },
         } = results[0];
 
         bar.tick(
@@ -189,13 +163,7 @@ const backtest = async () => {
           {
             id: chalk.blue(`#${name}`),
             symbol: chalk.yellow(symbol),
-            profit: chalk.green(`${(netProfit || 0).toFixed(2)}$`),
-            minamount: chalk.red(`${(minAmount || 0).toFixed(2)}$`),
-            wins: chalk.green(wins),
-            losses: chalk.red(losses),
-            winrate: chalk.yellow(`${(winRate || 0).toFixed(0)}%`),
-            orders: chalk.cyan(orders),
-            sharpeRatio: chalk.magenta(`${(sharpeRatio || 0).toFixed(2)}`),
+            amount: chalk.green(`${(amount || 0).toFixed(2)}$`),
           },
         );
       }
@@ -223,41 +191,48 @@ const finish = async (results: TestWorkerResult[]) => {
     headerUnderline: true,
   });
 
-  for await (const result of results) {
-    const { test, stat, orderLogId } = result;
+  const colorizedResults = new Array<string[]>();
 
-    const { name } = test;
+  for await (const result of results) {
+    const { test, orderLogId } = result;
+
+    const { symbol, name } = test;
 
     const orderLog = await getData(redisKeys.cacheOrders(orderLogId));
+    const positionLog = await getData(redisKeys.cachePositions(orderLogId));
 
-    await setData(redisKeys.testOrders(name), orderLog, {
+    const stat = calculateStatsFull(positionLog) as TestStat;
+
+    stat.score = getBacktestScore(stat);
+
+    await setData(redisKeys.testOrders(userName, name), orderLog, {
       stringify: false,
     });
 
-    await setData(redisKeys.testConfig(name), test, {
+    await setData(redisKeys.testConfig(userName, name), test, {
       stringify: true,
     });
 
-    await setData(redisKeys.testStat(name), stat, {
+    await setData(redisKeys.testStat(userName, name), stat, {
       stringify: true,
     });
+
+    colorizedResults.push([
+      chalk.blue(name),
+      chalk.yellow(symbol),
+      ...drawStatInCLI(stat, [
+        'netProfit',
+        'orders',
+        'winRate',
+        'riskRewardRatio',
+        'sharpeRatio',
+        'cagr',
+        'exposure',
+        'maxDrawdown',
+        'score',
+      ]),
+    ]);
   }
-
-  const colorizedResults = results.map(({ test: { symbol, name }, stat }) => [
-    chalk.blue(name),
-    chalk.yellow(symbol),
-    ...drawStatInCLI(stat, [
-      'netProfit',
-      'orders',
-      'winRate',
-      'riskRewardRatio',
-      'sharpeRatio',
-      'cagr',
-      'exposure',
-      'maxDrawdown',
-      'score',
-    ]),
-  ]);
 
   console.log('');
   console.log('');
@@ -276,21 +251,6 @@ const finish = async (results: TestWorkerResult[]) => {
   console.log(chalk.blue(toJson(mergedConfig, true)));
   console.log('');
 
-  console.log(chalk.gray('best result:'));
-  console.log(
-    chalk.yellow(
-      toJson(
-        {
-          profit: `${bestResults.netProfit.toFixed(2)}$`,
-          ws: `${bestResults.winRate.toFixed(0)}%`,
-          minAmount: `${bestResults.minAmount.toFixed(2)}$`,
-          sharpeRatio: `${bestResults.sharpeRatio.toFixed(2)}`,
-        },
-        true,
-      ),
-    ),
-  );
-  console.log('');
   console.log(`${chalk.green('success')}: ${successTests}`);
   console.log(`${chalk.red('errors')}: ${errorTests}`);
   console.log('');

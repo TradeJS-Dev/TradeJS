@@ -18,7 +18,9 @@ export const GET = async (_req: Request, { params }: { params: Params }) => {
       );
     }
 
-    const orderLog: OrderLogData = await getData(redisKeys.testOrders(name));
+    const orderLog: OrderLogData = await getData(
+      redisKeys.testOrders('root', name),
+    );
 
     return NextResponse.json({ orderLog });
   } catch (error) {

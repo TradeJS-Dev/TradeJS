@@ -119,6 +119,11 @@ const computeCenterWindowExtrema = (params: {
 
 /* ====================== Pipeline (pure functions) ===================== */
 
+/**
+ * collectRawExtrema
+ * range — половина окна локального экстремума (по телам). Чем больше, тем «крупнее» опоры.
+ * minTouchGap (ниже) — минимальный зазор между касаниями ЛИНИИ; это про другое.
+ */
 const collectRawExtrema = (params: {
   bodySeries: number[];
   timestampsMs: number[];
@@ -146,9 +151,9 @@ const collectRawExtrema = (params: {
 const clusterExtrema = (params: {
   rawExtrema: Point[];
   mode: TrendLineMode;
-  minDistanceBars: number;
+  minDistance: number;
 }): Point[] => {
-  const { rawExtrema, mode, minDistanceBars } = params;
+  const { rawExtrema, mode, minDistance } = params;
 
   if (rawExtrema.length === 0) return [];
 
@@ -160,7 +165,7 @@ const clusterExtrema = (params: {
 
     while (
       clusterEnd + 1 < rawExtrema.length &&
-      rawExtrema[clusterEnd + 1].x - rawExtrema[clusterEnd].x < minDistanceBars
+      rawExtrema[clusterEnd + 1].x - rawExtrema[clusterEnd].x < minDistance
     ) {
       clusterEnd++;
     }
@@ -223,7 +228,7 @@ const buildLineEvaluator = (params: {
   return (timeMs: number) => y1 + slope * (timeMs - t1);
 };
 
-/* ====================== Breach / Touch checks ===================== */
+/* ====================== Touch / Breach checks ===================== */
 
 /** Касания считаем с допуском epsilon (только здесь!) */
 const collectTouchIndices = (params: {
@@ -340,30 +345,34 @@ const hasCloseBreachBeforeWindow = (params: {
   return false;
 };
 
-/** capture-условие: в окне offset ДОЛЖНА быть свеча, которая
- *  1) НАЧАЛАСЬ за линией (строго, без допуска)
- *  2) и её цвет соответствует режиму:
- *     - lows: красная (close < open)
- *     - highs: зелёная (close > open)
+/**
+ * capture-условие внутри offset:
+ * Требуется, чтобы в окне offset произошёл пробой линии на величину epsilonOffset
+ * по фитилю (ранний сигнал), независимо от открытия/закрытия свечи.
+ *  - lows:  low <= lineY - tolOffset
+ *  - highs: high >= lineY + tolOffset
+ * Здесь tolOffset = |lineY| * epsilonOffset.
  */
-const hasRequiredCaptureInWindow = (params: {
-  openSeries: number[];
-  closeSeries: number[];
+const hasCaptureByOffsetWick = (params: {
+  lowSeries: number[];
+  highSeries: number[];
   timestampsMs: number[];
   rightAnchorIndex: number;
   lastIndex: number;
   offset: number;
   evaluateY: (t: number) => number;
+  epsilonOffset: number;
   mode: TrendLineMode;
 }): boolean => {
   const {
-    openSeries,
-    closeSeries,
+    lowSeries,
+    highSeries,
     timestampsMs,
     rightAnchorIndex,
     lastIndex,
     offset,
     evaluateY,
+    epsilonOffset,
     mode,
   } = params;
 
@@ -382,15 +391,12 @@ const hasRequiredCaptureInWindow = (params: {
     barIndex++
   ) {
     const lineY = evaluateY(timestampsMs[barIndex]);
-    const openPrice = openSeries[barIndex];
-    const closePrice = closeSeries[barIndex];
+    const tolOffset = toleranceAt(lineY, epsilonOffset);
 
     if (mode === 'lows') {
-      // началась ниже линии И красная
-      if (openPrice < lineY && closePrice < openPrice) return true;
+      if (lowSeries[barIndex] <= lineY - tolOffset) return true;
     } else {
-      // началась выше линии И зелёная
-      if (openPrice > lineY && closePrice > openPrice) return true;
+      if (highSeries[barIndex] >= lineY + tolOffset) return true;
     }
   }
   return false;
@@ -407,20 +413,24 @@ const findTrendlinesCore = (
     maxLines = 10,
     range = 20,
     firstRange = 40,
-    epsilon = 0.002, // 0.2% (для касаний, фитилей между опорами и close-пробегов до offset)
+    epsilon = 0.002,
+    epsilonOffset = 0.004,
     minTouches = 3,
-    minDistanceBars = 60,
+    minDistance = 60,
     minTouchGap = 20,
     offset = 3,
     capture = false,
-  } = options;
+  } = options as TrendLineOptions & {
+    minDistance?: number;
+    minDistanceBars?: number;
+    epsilonOffset?: number;
+  };
 
   if (!data?.length) return [];
 
   // Предподсчёты
   const {
     timestampsMs,
-    openSeries,
     closeSeries,
     lowSeries,
     highSeries,
@@ -444,7 +454,7 @@ const findTrendlinesCore = (
   const anchors = clusterExtrema({
     rawExtrema,
     mode,
-    minDistanceBars,
+    minDistance,
   });
   if (anchors.length < minTouches) return [];
 
@@ -480,7 +490,7 @@ const findTrendlinesCore = (
       const firstIndex = leftAnchor.x;
       const lastIndex = rightAnchor.x;
       const spanBarsByAnchors = lastIndex - firstIndex;
-      if (spanBarsByAnchors < minDistanceBars) continue;
+      if (spanBarsByAnchors < minDistance) continue;
 
       if (
         !isStrongFirstAnchor({
@@ -493,7 +503,7 @@ const findTrendlinesCore = (
       )
         continue;
 
-      // проверка направления: lows — восходящая, highs — нисходящая
+      // направление: lows — восходящая; highs — нисходящая
       const slopeByIndex =
         (rightAnchor.y - leftAnchor.y) / (rightAnchor.x - leftAnchor.x);
       if (mode === 'lows' && slopeByIndex <= 0) continue;
@@ -520,7 +530,7 @@ const findTrendlinesCore = (
 
       const spanBarsByTouches =
         touchIndices[touchIndices.length - 1] - touchIndices[0];
-      if (spanBarsByTouches < minDistanceBars) continue;
+      if (spanBarsByTouches < minDistance) continue;
 
       // пробой фитилём между опорами — С ДОПУСКОМ epsilon
       if (
@@ -555,20 +565,21 @@ const findTrendlinesCore = (
         continue;
       }
 
-      // capture: внутри offset обязателен «старт за линией» и корректный цвет свечи — СТРОГО без epsilon
+      // capture: в offset должен случиться пробой линии на epsilonOffset по фитилю (ранний сигнал)
       if (capture) {
         if (offset <= 0) continue;
-        const captured = hasRequiredCaptureInWindow({
-          openSeries,
-          closeSeries,
+        const capturedEarly = hasCaptureByOffsetWick({
+          lowSeries,
+          highSeries,
           timestampsMs,
           rightAnchorIndex: lastIndex,
           lastIndex: lastBarIndex,
           offset,
           evaluateY,
+          epsilonOffset,
           mode,
         });
-        if (!captured) continue;
+        if (!capturedEarly) continue;
       }
 
       validCandidatesCount++;
@@ -596,9 +607,17 @@ const findTrendlinesCore = (
 export const findTrendlinesByLows = (
   data: KlineChartData,
   options: Omit<TrendLineOptions, 'mode'> = {},
-): TrendLine[] => findTrendlinesCore(data, { mode: 'lows', ...options });
+): TrendLine[] =>
+  findTrendlinesCore(data, {
+    mode: 'lows',
+    ...options,
+  } as TrendLineOptions);
 
 export const findTrendlinesByHighs = (
   data: KlineChartData,
   options: Omit<TrendLineOptions, 'mode'> = {},
-): TrendLine[] => findTrendlinesCore(data, { mode: 'highs', ...options });
+): TrendLine[] =>
+  findTrendlinesCore(data, {
+    mode: 'highs',
+    ...options,
+  } as TrendLineOptions);

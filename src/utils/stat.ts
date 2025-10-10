@@ -411,22 +411,12 @@ export const getBacktestScore = (stat: Partial<TestStat>): number => {
   return round(normalizedScore, 1);
 };
 
-export const rankBacktests = (
+export const sortBestTests = (
   results: TestWorkerResult[],
   limit: number = 5,
 ): TestWorkerResult[] => {
   return results
-    .map((item) => {
-      const score = getBacktestScore(item.stat);
-      return {
-        ...item,
-        stat: {
-          ...item.stat,
-          score,
-        },
-      };
-    })
-    .sort((a, b) => (b.stat.netProfit ?? 0) - (a.stat.netProfit ?? 0))
+    .sort((a, b) => (b.stat.amount ?? 0) - (a.stat.amount ?? 0))
     .slice(0, limit);
 };
 

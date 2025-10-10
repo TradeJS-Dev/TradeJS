@@ -19,9 +19,11 @@ export const GET = async (_req: Request, { params }: { params: Params }) => {
       );
     }
 
-    const orderLog: OrderLogData = await getData(redisKeys.testOrders(name));
-    const test: Test = await getData(redisKeys.testConfig(name));
-    const stat: TestStat = await getData(redisKeys.testStat(name));
+    const orderLog: OrderLogData = await getData(
+      redisKeys.testOrders('root', name),
+    );
+    const test: Test = await getData(redisKeys.testConfig('root', name));
+    const stat: TestStat = await getData(redisKeys.testStat('root', name));
 
     const timeline = getTimeline(test.options.start, test.options.end);
 
