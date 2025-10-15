@@ -6,6 +6,7 @@ import { registerIndicator, Chart } from 'klinecharts';
 import { getOrderLog } from '@actions/backtest';
 import { KlineChartItem, OrderLogData } from '@types';
 import { diamond, star, circle, rectangle } from '../figures';
+import { useBacktest as useBacktestStore} from '@store'
 
 const green = '#84cc16';
 const red = '#dc2626';
@@ -22,19 +23,8 @@ interface Legend {
 
 export const useBacktest = (chart: Chart | null, id: string | undefined) => {
   const [registered, setRegistered] = useState(false);
-  const backtestDataRef = useRef<OrderLogData>([]);
-  const [signal, setSignal] = useState(0);
+  const {backtest} = useBacktestStore(id);
   const enabled = Boolean(id);
-
-  useEffect(() => {
-    if (!id) {
-      return;
-    }
-    getOrderLog(id).then((res) => {
-      backtestDataRef.current = res!;
-      setSignal((signal) => signal + 1);
-    });
-  }, [id]);
 
   const getDataFromInterval = (
     result: unknown[],
@@ -48,7 +38,7 @@ export const useBacktest = (chart: Chart | null, id: string | undefined) => {
       return;
     }
 
-    const data = backtestDataRef.current.filter(
+    const data = backtest.filter(
       (log) => log.timestamp > start && log.timestamp <= end,
     );
 
@@ -56,7 +46,7 @@ export const useBacktest = (chart: Chart | null, id: string | undefined) => {
   };
 
   useEffect(() => {
-    if (!chart || _.isEmpty(backtestDataRef.current)) {
+    if (!chart || _.isEmpty(backtest)) {
       return;
     }
 
@@ -227,7 +217,7 @@ export const useBacktest = (chart: Chart | null, id: string | undefined) => {
     });
 
     setRegistered(true);
-  }, [chart, signal]);
+  }, [chart, backtest]);
 
   useEffect(() => {
     if (!chart || !enabled || !registered) {

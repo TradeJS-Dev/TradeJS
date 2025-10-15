@@ -3,8 +3,14 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import _ from 'lodash';
 import { get, set } from 'idb-keyval';
-import { getBacktest, getBacktestFiles } from '@actions/backtest';
-import { TestResult, TestCompareList, OnChangeCompare, Items } from '@types';
+import { getBacktest, getBacktestFiles, getOrderLog } from '@actions/backtest';
+import {
+  TestResult,
+  TestCompareList,
+  OrderLogData,
+  OnChangeCompare,
+  Items,
+} from '@types';
 import { delay } from '@utils/async';
 import { parseTestName } from '@utils/tests';
 
@@ -21,6 +27,24 @@ const COLORS = [
   'blue',
   'green',
 ];
+
+interface BacktestState {
+  backtests: Map<string, OrderLogData | null>;
+  setBacktest: (id: string, backtest: OrderLogData) => void;
+}
+
+const useDataStore = create<BacktestState>((set) => ({
+  backtests: new Map<string, OrderLogData | null>(),
+  setBacktest: (id, backtest) =>
+    set(({ backtests }) => {
+      const next = new Map(backtests);
+      next.set(id, backtest);
+
+      return {
+        backtests: next,
+      };
+    }),
+}));
 
 interface FavotiteTestsState {
   tests: {
@@ -108,16 +132,21 @@ const useTestsCompareStore = create<TestsCompareState>()(
 );
 
 interface TestsState {
-  tests: Record<string, TestResult | null>;
+  tests: Map<string, TestResult | null>;
   setTest: (test: TestResult) => void;
 }
 
 const useTestsStore = create<TestsState>((set) => ({
-  tests: {},
+  tests: new Map<string, TestResult | null>(),
   setTest: (testResult) =>
-    set(({ tests }) => ({
-      tests: { ...tests, [testResult.test.name]: testResult },
-    })),
+    set(({ tests }) => {
+      const next = new Map(tests);
+      next.set(testResult.test.name, testResult);
+
+      return {
+        tests: next,
+      };
+    }),
 }));
 
 export const useFavoriteTests = () => {
@@ -203,7 +232,7 @@ export const useTestList = (filters: TestListProps = {}) => {
 };
 
 export const useTest = (testName: string) => {
-  const testResult = useTestsStore((s) => s.tests[testName]);
+  const testResult = useTestsStore((s) => s.tests.get(testName));
   const setTest = useTestsStore((s) => s.setTest);
 
   const loadData = async () => {
@@ -257,7 +286,7 @@ export const useTestsCompare = () => {
 
   useEffect(() => {
     compareList.forEach(({ testName }) => {
-      if (!tests[testName]) {
+      if (!tests.has(testName)) {
         loadData(testName);
       }
     });
@@ -269,7 +298,7 @@ export const useTestsCompare = () => {
   return {
     compareList: compareList
       .map(({ testName, color }) => {
-        const testResult = tests[testName];
+        const testResult = tests.get(testName);
         return {
           testResult,
           color,
@@ -278,5 +307,48 @@ export const useTestsCompare = () => {
       .filter((c) => !!c.testResult) as TestCompareList,
     checkIsCompared,
     onChangeCompare,
+  };
+};
+
+export const useBacktest = (id: string | undefined) => {
+  const backtest = useDataStore((s) => s.backtests.get(id || 'empty'));
+  const setBacktest = useDataStore((s) => s.setBacktest);
+  const [loading, setLoading] = useState(false);
+
+  const updateBacktest = async () => {
+    if (!id) {
+      return;
+    }
+
+    const key = `backtest-${id}`;
+
+    setLoading(true);
+
+    const cachedResult = (await get(key)) as OrderLogData | null;
+
+    if (cachedResult && !_.isEmpty(cachedResult)) {
+      setBacktest(id, cachedResult);
+      setLoading(false);
+
+      return;
+    }
+
+    const backtestData = await getOrderLog(id);
+
+    if (backtestData && !_.isEmpty(backtestData)) {
+      setBacktest(id, backtestData);
+      await set(key, backtestData);
+    }
+
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    updateBacktest();
+  }, [id]);
+
+  return {
+    backtest: backtest || [],
+    loading,
   };
 };

@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import _ from 'lodash';
 import { registerIndicator, Chart } from 'klinecharts';
 import { Filters } from '@types';
-import { useData } from './useData';
+import { useData } from '@store';
 
 export const useBtcIndicator = (
   chart: Chart | null,
@@ -11,12 +11,10 @@ export const useBtcIndicator = (
 ) => {
   const [registered, setRegistered] = useState(false);
 
-  const btcFilter = useMemo(() => {
-    return {
+  const btcFilter = {
       ...filters,
       symbol: 'BTCUSDT',
-    };
-  }, [filters]);
+  };
 
   const { data, loading } = useData(btcFilter);
 

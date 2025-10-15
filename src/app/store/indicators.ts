@@ -57,7 +57,7 @@ const useStore = create<IndicatorsState>()(
       ] as Indicators,
       setEnabledIndicators: (values: string[]) =>
         set((state) => {
-          const clonedState = _.cloneDeep(state.indicators);
+          const clonedState = structuredClone(state.indicators);
 
           clonedState.forEach((indicator, i) => {
             clonedState[i].enabled = values.includes(indicator.id);

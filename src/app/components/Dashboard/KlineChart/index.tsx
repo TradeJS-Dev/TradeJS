@@ -15,10 +15,10 @@ import {
   useBtcIndicator,
   useTrendLine,
   useBacktest,
-  useData,
   useResize,
 } from './hooks';
 import { darkTheme } from './styles';
+import { useData } from '@store';
 
 interface KlineChartProps {
   id: string;
@@ -28,7 +28,7 @@ interface KlineChartProps {
 
 export const KlineChart = ({ id, filters, indicators }: KlineChartProps) => {
   const chartRef = useRef<Chart | null>(null);
-  const { data, loading, signal } = useData(filters);
+  const { data, loading } = useData(filters);
 
   useEffect(() => {
     const chart = init(id) as Chart;
@@ -65,7 +65,7 @@ export const KlineChart = ({ id, filters, indicators }: KlineChartProps) => {
     if (!data || !chartRef.current) return;
 
     chartRef.current.applyNewData(data);
-  }, [signal]);
+  }, [data]);
 
   return (
     <>
