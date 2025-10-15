@@ -12,8 +12,8 @@ export const useBtcIndicator = (
   const [registered, setRegistered] = useState(false);
 
   const btcFilter = {
-      ...filters,
-      symbol: 'BTCUSDT',
+    ...filters,
+    symbol: 'BTCUSDT',
   };
 
   const { data, loading } = useData(btcFilter);

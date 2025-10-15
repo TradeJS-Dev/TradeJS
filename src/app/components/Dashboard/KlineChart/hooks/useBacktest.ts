@@ -6,7 +6,7 @@ import { registerIndicator, Chart } from 'klinecharts';
 import { getOrderLog } from '@actions/backtest';
 import { KlineChartItem, OrderLogData } from '@types';
 import { diamond, star, circle, rectangle } from '../figures';
-import { useBacktest as useBacktestStore} from '@store'
+import { useBacktest as useBacktestStore } from '@store';
 
 const green = '#84cc16';
 const red = '#dc2626';
@@ -23,7 +23,7 @@ interface Legend {
 
 export const useBacktest = (chart: Chart | null, id: string | undefined) => {
   const [registered, setRegistered] = useState(false);
-  const {backtest} = useBacktestStore(id);
+  const { backtest } = useBacktestStore(id);
   const enabled = Boolean(id);
 
   const getDataFromInterval = (

@@ -12,7 +12,8 @@ interface DataState {
   setData: (symbol: string, interval: Interval, data: KlineChartData) => void;
 }
 
-const getKey = (filters: Pick<Filters, 'symbol' | 'interval'>) => `${filters.symbol}_${filters.interval}`;
+const getKey = (filters: Pick<Filters, 'symbol' | 'interval'>) =>
+  `${filters.symbol}_${filters.interval}`;
 
 const useDataStore = create<DataState>((set) => ({
   data: new Map<string, KlineChartData | null>(),
@@ -26,7 +27,7 @@ const useDataStore = create<DataState>((set) => ({
 
       return {
         data: next,
-      }
+      };
     }),
 }));
 
@@ -39,11 +40,10 @@ export const useData = (filters: Filters, silent = false) => {
   const searchParams = useSearchParams();
   const cacheOnly = Boolean(searchParams.get('cacheOnly')) ?? false;
 
-  const updateData = async (
-  ) => {
-    const {symbol, interval, start, end} = filters;
+  const updateData = async () => {
+    const { symbol, interval, start, end } = filters;
 
-    const cachedResult = await get(key) as KlineChartData | null;
+    const cachedResult = (await get(key)) as KlineChartData | null;
 
     if (!silent) {
       setLoading(true);
@@ -52,11 +52,15 @@ export const useData = (filters: Filters, silent = false) => {
     if (cachedResult && !_.isEmpty(cachedResult)) {
       setData(filters.symbol, filters.interval, cachedResult);
     }
-    
+
     const newData = await kline({
       symbol,
       interval,
-      start: Math.max(start, data?.[0]?.timestamp || 0, cachedResult?.[0]?.timestamp || 0),
+      start: Math.max(
+        start,
+        data?.[0]?.timestamp || 0,
+        cachedResult?.[0]?.timestamp || 0,
+      ),
       end,
       silent,
       cacheOnly,
@@ -87,7 +91,7 @@ export const useData = (filters: Filters, silent = false) => {
     if (data && !_.isEmpty(data)) {
       set(key, data);
     }
-  }, [data, key])
+  }, [data, key]);
 
   return {
     data: data || [],
