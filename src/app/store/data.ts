@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { create } from 'zustand';
 import _ from 'lodash';
 import { get, set } from 'idb-keyval';
@@ -31,11 +31,11 @@ const useDataStore = create<DataState>((set) => ({
     }),
 }));
 
-export const useData = (filters: Filters, silent = false) => {
+export const useData = (filters: Filters) => {
   const key = getKey(filters);
   const data = useDataStore((s) => s.data.get(key));
   const setData = useDataStore((s) => s.setData);
-  const [loading, setLoading] = useState(false);
+  const [fulfilled, setFulfilled] = useState(false);
 
   const searchParams = useSearchParams();
   const cacheOnly = Boolean(searchParams.get('cacheOnly')) ?? false;
@@ -45,47 +45,42 @@ export const useData = (filters: Filters, silent = false) => {
 
     const cachedResult = (await get(key)) as KlineChartData | null;
 
-    if (!silent) {
-      setLoading(true);
-    }
-
     if (cachedResult && !_.isEmpty(cachedResult)) {
       setData(filters.symbol, filters.interval, cachedResult);
+    }
+
+    let normStart = start;
+
+    if (data && data?.length > 2) {
+      normStart = Math.max(normStart, data[data.length - 2]?.timestamp || 0);
+    }
+
+    if (cachedResult && cachedResult?.length > 2) {
+      normStart = Math.max(
+        normStart,
+        cachedResult[cachedResult.length - 2]?.timestamp || 0,
+      );
     }
 
     const newData = await kline({
       symbol,
       interval,
-      start: Math.max(
-        start,
-        data?.[0]?.timestamp || 0,
-        cachedResult?.[0]?.timestamp || 0,
-      ),
+      start: normStart,
       end,
-      silent,
       cacheOnly,
     });
 
     setData(symbol, interval, newData);
 
-    if (!silent) {
-      setLoading(false);
-    }
+    setFulfilled(true);
 
-    await set(key, newData);
+    return newData;
   };
 
   useEffect(() => {
+    setFulfilled(false);
     updateData();
-
-    // const id = setInterval(() => {
-    //   updateData(filters, true);
-    // }, 2000);
-
-    // return () => {
-    //   clearInterval(id);
-    // }
-  }, [key, silent]);
+  }, [key]);
 
   useEffect(() => {
     if (data && !_.isEmpty(data)) {
@@ -95,7 +90,8 @@ export const useData = (filters: Filters, silent = false) => {
 
   return {
     data: data || [],
+    key,
     updateData,
-    loading,
+    fulfilled,
   };
 };

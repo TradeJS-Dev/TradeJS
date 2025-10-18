@@ -1,10 +1,9 @@
 'use client';
 
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import _ from 'lodash';
 import { registerIndicator, Chart } from 'klinecharts';
-import { getOrderLog } from '@actions/backtest';
-import { KlineChartItem, OrderLogData } from '@types';
+import { KlineChartItem } from '@types';
 import { diamond, star, circle, rectangle } from '../figures';
 import { useBacktest as useBacktestStore } from '@store';
 

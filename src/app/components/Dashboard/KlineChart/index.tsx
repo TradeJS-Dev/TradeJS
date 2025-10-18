@@ -16,9 +16,9 @@ import {
   useTrendLine,
   useBacktest,
   useResize,
+  useData,
 } from './hooks';
 import { darkTheme } from './styles';
-import { useData } from '@store';
 
 interface KlineChartProps {
   id: string;
@@ -28,7 +28,7 @@ interface KlineChartProps {
 
 export const KlineChart = ({ id, filters, indicators }: KlineChartProps) => {
   const chartRef = useRef<Chart | null>(null);
-  const { data, loading } = useData(filters);
+  const { data, fulfilled } = useData(chartRef.current, filters);
 
   useEffect(() => {
     const chart = init(id) as Chart;
@@ -61,16 +61,10 @@ export const KlineChart = ({ id, filters, indicators }: KlineChartProps) => {
   useBacktest(chart, filters.backtestId || undefined);
   useTrendLine(chart, true, data, filters);
 
-  useEffect(() => {
-    if (!data || !chartRef.current) return;
-
-    chartRef.current.applyNewData(data);
-  }, [data]);
-
   return (
     <>
       <div id={id} />
-      {loading && <OverlaySpinner />}
+      {!fulfilled && <OverlaySpinner />}
     </>
   );
 };
