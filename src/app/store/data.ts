@@ -45,7 +45,7 @@ export const useData = (filters: Filters) => {
 
     const cachedResult = (await get(key)) as KlineChartData | null;
 
-    if (cachedResult && !_.isEmpty(cachedResult)) {
+    if (!fulfilled && cachedResult && !_.isEmpty(cachedResult)) {
       setData(filters.symbol, filters.interval, cachedResult);
     }
 
@@ -55,7 +55,7 @@ export const useData = (filters: Filters) => {
       normStart = Math.max(normStart, data[data.length - 2]?.timestamp || 0);
     }
 
-    if (cachedResult && cachedResult?.length > 2) {
+    if (!fulfilled && cachedResult && cachedResult?.length > 2) {
       normStart = Math.max(
         normStart,
         cachedResult[cachedResult.length - 2]?.timestamp || 0,
@@ -72,21 +72,20 @@ export const useData = (filters: Filters) => {
 
     setData(symbol, interval, newData);
 
+    set(key, newData);
+
     setFulfilled(true);
 
-    return newData;
+    return {
+      key,
+      data: newData,
+    }
   };
 
   useEffect(() => {
     setFulfilled(false);
     updateData();
   }, [key]);
-
-  useEffect(() => {
-    if (data && !_.isEmpty(data)) {
-      set(key, data);
-    }
-  }, [data, key]);
 
   return {
     data: data || [],

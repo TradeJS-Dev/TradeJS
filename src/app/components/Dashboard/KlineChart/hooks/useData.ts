@@ -5,7 +5,7 @@ import { useData as useDataStore } from '@store';
 import { Filters } from '@types';
 
 export const useData = (chart: Chart | null, filters: Filters) => {
-  const { data, updateData, fulfilled } = useDataStore(filters);
+  const { data, updateData, fulfilled, key } = useDataStore(filters);
 
   useEffect(() => {
     if (!fulfilled || !chart) {
@@ -17,9 +17,9 @@ export const useData = (chart: Chart | null, filters: Filters) => {
     const intervalId = setInterval(async () => {
       const dataList = chart.getDataList();
 
-      const newData = await updateData();
+      const { data: newData, key: currentKey } = await updateData();
 
-      if (_.isEmpty(dataList)) {
+      if (_.isEmpty(dataList) || key !== currentKey) {
         return;
       }
 
@@ -74,9 +74,7 @@ export const useData = (chart: Chart | null, filters: Filters) => {
     }, 2000);
 
     return () => {
-      if (intervalId) {
-        clearInterval(intervalId);
-      }
+      clearInterval(intervalId);
     };
   }, [fulfilled]);
 
