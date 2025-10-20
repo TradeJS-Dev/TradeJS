@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import { create } from 'zustand';
 import _ from 'lodash';
 import { get, set } from 'idb-keyval';
@@ -43,6 +43,8 @@ export const useData = (filters: Filters) => {
   const updateData = async () => {
     const { symbol, interval, start, end } = filters;
 
+    console.info('kline end', end);
+
     const cachedResult = (await get(key)) as KlineChartData | null;
 
     if (!fulfilled && cachedResult && !_.isEmpty(cachedResult)) {
@@ -77,9 +79,8 @@ export const useData = (filters: Filters) => {
     setFulfilled(true);
 
     return {
-      key,
       data: newData,
-    }
+    };
   };
 
   useEffect(() => {

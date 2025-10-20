@@ -15,7 +15,7 @@ export const MainChart = () => {
       setFilters({
         end: getTimestamp(),
       });
-    }, 1000);
+    }, 30_000);
 
     return () => {
       clearInterval(intervalId);

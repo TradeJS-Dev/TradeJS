@@ -37,10 +37,6 @@ export const KlineChart = ({ id, filters, indicators }: KlineChartProps) => {
     chart.setPrecision({ price: 9 });
     darkTheme(chart);
 
-    chartRef.current.setLoadMoreDataCallback(() => {
-      console.log('need to load more');
-    });
-
     return () => {
       dispose(id);
       chartRef.current = null;

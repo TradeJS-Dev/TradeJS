@@ -1,11 +1,16 @@
 import _ from 'lodash';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { Chart } from 'klinecharts';
 import { useData as useDataStore } from '@store';
 import { Filters } from '@types';
 
 export const useData = (chart: Chart | null, filters: Filters) => {
-  const { data, updateData, fulfilled, key } = useDataStore(filters);
+  const { data, updateData, fulfilled } = useDataStore(filters);
+  const updateFnRef = useRef(updateData);
+
+  useEffect(() => {
+    updateFnRef.current = updateData;
+  }, [updateData]);
 
   useEffect(() => {
     if (!fulfilled || !chart) {
@@ -17,13 +22,17 @@ export const useData = (chart: Chart | null, filters: Filters) => {
     const intervalId = setInterval(async () => {
       const dataList = chart.getDataList();
 
-      const { data: newData, key: currentKey } = await updateData();
+      const { data: newData } = await updateFnRef.current?.();
 
-      if (_.isEmpty(dataList) || key !== currentKey) {
+      if (_.isEmpty(dataList)) {
         return;
       }
 
       const dataByTimestamp = _.keyBy(dataList, 'timestamp');
+
+      if (newData.length > 0) {
+        console.info('last candle ts', newData[newData.length - 1]?.timestamp);
+      }
 
       const updatedCandles = newData.filter((c) => {
         const prevCandle = dataByTimestamp[c.timestamp];
@@ -68,10 +77,14 @@ export const useData = (chart: Chart | null, filters: Filters) => {
         return false;
       });
 
+      console.info('>>> new candles', newCandles);
+
       if (!_.isEmpty(newCandles)) {
-        chart.applyNewData(newCandles, true);
+        chart.applyNewData([...dataList, ...newCandles], {
+          forward: true,
+        });
       }
-    }, 2000);
+    }, 5000);
 
     return () => {
       clearInterval(intervalId);
