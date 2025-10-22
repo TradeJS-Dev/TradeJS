@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { create } from 'zustand';
 import _ from 'lodash';
 import { get, set } from 'idb-keyval';
@@ -20,10 +20,8 @@ const useDataStore = create<DataState>((set) => ({
   setData: (symbol, interval, newData) =>
     set(({ data }) => {
       const next = new Map(data);
-      const prevData = next.get(getKey({ symbol, interval })) || [];
-      const compareData = mergeData(prevData, newData);
 
-      next.set(getKey({ symbol, interval }), compareData);
+      next.set(getKey({ symbol, interval }), newData);
 
       return {
         data: next,
@@ -33,36 +31,34 @@ const useDataStore = create<DataState>((set) => ({
 
 export const useData = (filters: Filters) => {
   const key = getKey(filters);
-  const data = useDataStore((s) => s.data.get(key));
-  const setData = useDataStore((s) => s.setData);
+  const prevKey = useRef(key);
   const [fulfilled, setFulfilled] = useState(false);
+  const data = useDataStore((s) => s.data.get(key)) || [];
+  const setData = useDataStore((s) => s.setData);
 
   const searchParams = useSearchParams();
   const cacheOnly = Boolean(searchParams.get('cacheOnly')) ?? false;
 
   const updateData = async () => {
     const { symbol, interval, start, end } = filters;
+    let currentData = [...data];
 
-    console.info('kline end', end);
+    if (!currentData || currentData.length < 2) {
+      const cachedResult = (await get(key)) as KlineChartData | null;
 
-    const cachedResult = (await get(key)) as KlineChartData | null;
+      if (cachedResult && cachedResult.length > 2) {
+        currentData = [...cachedResult];
 
-    if (!fulfilled && cachedResult && !_.isEmpty(cachedResult)) {
-      setData(filters.symbol, filters.interval, cachedResult);
+        setData(symbol, interval, cachedResult);
+      }
     }
 
-    let normStart = start;
-
-    if (data && data?.length > 2) {
-      normStart = Math.max(normStart, data[data.length - 2]?.timestamp || 0);
-    }
-
-    if (!fulfilled && cachedResult && cachedResult?.length > 2) {
-      normStart = Math.max(
-        normStart,
-        cachedResult[cachedResult.length - 2]?.timestamp || 0,
-      );
-    }
+    const normStart = Math.max(
+      start,
+      currentData?.length > 2
+        ? currentData[currentData.length - 2]?.timestamp || 0
+        : 0,
+    );
 
     const newData = await kline({
       symbol,
@@ -72,26 +68,29 @@ export const useData = (filters: Filters) => {
       cacheOnly,
     });
 
-    setData(symbol, interval, newData);
+    const finalData = mergeData(currentData, newData);
 
-    set(key, newData);
+    setData(symbol, interval, finalData);
 
-    setFulfilled(true);
+    if (!fulfilled) {
+      setFulfilled(true);
+    }
 
-    return {
-      data: newData,
-    };
+    set(key, finalData);
   };
 
   useEffect(() => {
-    setFulfilled(false);
+    if (key !== prevKey.current) {
+      setFulfilled(false);
+      prevKey.current = key;
+    }
+
     updateData();
-  }, [key]);
+  }, [key, filters.end]);
 
   return {
-    data: data || [],
     key,
-    updateData,
+    data,
     fulfilled,
   };
 };

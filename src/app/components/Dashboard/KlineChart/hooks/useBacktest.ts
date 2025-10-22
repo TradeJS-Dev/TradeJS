@@ -60,29 +60,31 @@ export const useBacktest = (chart: Chart | null, id: string | undefined) => {
           const result = indicator.result;
           const candleIndex = crosshair.dataIndex!;
 
-          const data = getDataFromInterval(
-            result,
-            candleIndex - 1,
-            candleIndex,
-          );
+          console.info('>>> result', result);
 
-          if (!data) {
-            return;
-          }
+          // const data = getDataFromInterval(
+          //   result,
+          //   candleIndex - 1,
+          //   candleIndex,
+          // );
 
-          data.forEach(({ type, profit, index }) => {
-            legends.push({
-              title: `${index}:type: `,
-              value: { text: type, color: 'white' },
-            });
-            legends.push({
-              title: `${index}:profit: `,
-              value: {
-                text: profit.toFixed(2),
-                color: profit >= 0 ? green : red,
-              },
-            });
-          });
+          // if (!data) {
+          //   return;
+          // }
+
+          // data.forEach(({ type, profit, index }) => {
+          //   legends.push({
+          //     title: `${index}:type: `,
+          //     value: { text: type, color: 'white' },
+          //   });
+          //   legends.push({
+          //     title: `${index}:profit: `,
+          //     value: {
+          //       text: profit.toFixed(2),
+          //       color: profit >= 0 ? green : red,
+          //     },
+          //   });
+          // });
         };
 
         getLegends();
@@ -104,75 +106,77 @@ export const useBacktest = (chart: Chart | null, id: string | undefined) => {
           candleIndex < realTo;
           candleIndex++
         ) {
-          const data = getDataFromInterval(
-            result,
-            candleIndex - 1,
-            candleIndex,
-          );
+          console.info('>>> result', result);
 
-          if (!data) {
-            continue;
-          }
+          // const data = getDataFromInterval(
+          //   result,
+          //   candleIndex - 1,
+          //   candleIndex,
+          // );
 
-          data.forEach(({ type, price }) => {
-            const x = xAxis.convertToPixel(candleIndex);
-            const y = yAxis.convertToPixel(price);
-            const width = 10;
-            const height = 10;
+          // if (!data) {
+          //   continue;
+          // }
 
-            if (type === 'OPEN_LONG') {
-              rectangle({ ctx, x, y, width, height, color: green });
-            }
-            if (type === 'TAKE_PROFIT_LONG') {
-              star({
-                ctx,
-                x,
-                y,
-                width,
-                height,
-                color: red,
-              });
-            }
-            if (type === 'CLOSE_LONG') {
-              diamond({
-                ctx,
-                x,
-                y,
-                width,
-                height,
-                color: darkRed,
-              });
-            }
-            if (type === 'STOP_LOSS_LONG') {
-              circle({ ctx, x, y, width, height, color: darkRed });
-            }
-            if (type === 'OPEN_SHORT') {
-              rectangle({ ctx, x, y, width, height, color: red });
-            }
-            if (type === 'TAKE_PROFIT_SHORT') {
-              star({
-                ctx,
-                x,
-                y,
-                width,
-                height,
-                color: green,
-              });
-            }
-            if (type === 'CLOSE_SHORT') {
-              diamond({
-                ctx,
-                x,
-                y,
-                width,
-                height,
-                color: darkGreen,
-              });
-            }
-            if (type === 'STOP_LOSS_SHORT') {
-              circle({ ctx, x, y, width, height, color: darkGreen });
-            }
-          });
+          // data.forEach(({ type, price }) => {
+          //   const x = xAxis.convertToPixel(candleIndex);
+          //   const y = yAxis.convertToPixel(price);
+          //   const width = 10;
+          //   const height = 10;
+
+          //   if (type === 'OPEN_LONG') {
+          //     rectangle({ ctx, x, y, width, height, color: green });
+          //   }
+          //   if (type === 'TAKE_PROFIT_LONG') {
+          //     star({
+          //       ctx,
+          //       x,
+          //       y,
+          //       width,
+          //       height,
+          //       color: red,
+          //     });
+          //   }
+          //   if (type === 'CLOSE_LONG') {
+          //     diamond({
+          //       ctx,
+          //       x,
+          //       y,
+          //       width,
+          //       height,
+          //       color: darkRed,
+          //     });
+          //   }
+          //   if (type === 'STOP_LOSS_LONG') {
+          //     circle({ ctx, x, y, width, height, color: darkRed });
+          //   }
+          //   if (type === 'OPEN_SHORT') {
+          //     rectangle({ ctx, x, y, width, height, color: red });
+          //   }
+          //   if (type === 'TAKE_PROFIT_SHORT') {
+          //     star({
+          //       ctx,
+          //       x,
+          //       y,
+          //       width,
+          //       height,
+          //       color: green,
+          //     });
+          //   }
+          //   if (type === 'CLOSE_SHORT') {
+          //     diamond({
+          //       ctx,
+          //       x,
+          //       y,
+          //       width,
+          //       height,
+          //       color: darkGreen,
+          //     });
+          //   }
+          //   if (type === 'STOP_LOSS_SHORT') {
+          //     circle({ ctx, x, y, width, height, color: darkGreen });
+          //   }
+          // });
         }
 
         return true;

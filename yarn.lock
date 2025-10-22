@@ -4201,7 +4201,7 @@ __metadata:
     ioredis: "npm:5.8.0"
     jest: "npm:^29.7.0"
     jest-environment-jsdom: "npm:30.0.0-beta.3"
-    klinecharts: "npm:10.0.0-alpha5"
+    klinecharts: "npm:10.0.0-alpha9"
     langchain: "npm:^0.3.30"
     list-it: "npm:^1.3.12"
     lodash: "npm:^4.17.21"
@@ -8190,10 +8190,10 @@ __metadata:
   languageName: node
   linkType: hard
 
-"klinecharts@npm:10.0.0-alpha5":
-  version: 10.0.0-alpha5
-  resolution: "klinecharts@npm:10.0.0-alpha5"
-  checksum: 10c0/42479c624cd8ee80a0e2258a7b580d2de01d77b08c63862879af95a8b8ab4970fb7d894d3da2a59dbd9ecf93d1826aef29dbb5625fb3ab7eb05c2032b1e2b4a3
+"klinecharts@npm:10.0.0-alpha9":
+  version: 10.0.0-alpha9
+  resolution: "klinecharts@npm:10.0.0-alpha9"
+  checksum: 10c0/99850fec1f6ddd566da299edb15c2346e9313f747017e033887ccdd4526a31eaff06b490b077aac6903cb84206e1d4e96bb2f6e0160191a928b1fef1139eb27a
   languageName: node
   linkType: hard
 

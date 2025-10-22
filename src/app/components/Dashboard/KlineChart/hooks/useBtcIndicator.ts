@@ -16,10 +16,10 @@ export const useBtcIndicator = (
     symbol: 'BTCUSDT',
   };
 
-  const { data, fulfilled } = useData(btcFilter);
+  const { data } = useData(btcFilter);
 
   useEffect(() => {
-    if (!fulfilled || _.isEmpty(data)) {
+    if (_.isEmpty(data)) {
       return;
     }
 
@@ -50,10 +50,10 @@ export const useBtcIndicator = (
     });
 
     setRegistered(true);
-  }, [data, fulfilled]);
+  }, [data]);
 
   useEffect(() => {
-    if (!registered || !chart || !enabled || !fulfilled) {
+    if (!registered || !chart || !enabled) {
       return;
     }
 
@@ -62,5 +62,5 @@ export const useBtcIndicator = (
     return () => {
       chart.removeIndicator({ name: 'BTC' });
     };
-  }, [chart, enabled, fulfilled, registered]);
+  }, [chart, enabled, registered]);
 };

@@ -2,7 +2,12 @@
 
 import React, { useEffect, useRef } from 'react';
 import _ from 'lodash';
-import { init, Chart, dispose } from 'klinecharts';
+import {
+  init,
+  Chart,
+  dispose,
+  DataLoaderSubscribeBarParams,
+} from 'klinecharts';
 import { OverlaySpinner } from '@UI';
 import { Indicator, UIFilters } from '@types';
 import {
@@ -16,8 +21,8 @@ import {
   useTrendLine,
   useBacktest,
   useResize,
-  useData,
 } from './hooks';
+import { useData } from '@store';
 import { darkTheme } from './styles';
 
 interface KlineChartProps {
@@ -28,13 +33,15 @@ interface KlineChartProps {
 
 export const KlineChart = ({ id, filters, indicators }: KlineChartProps) => {
   const chartRef = useRef<Chart | null>(null);
-  const { data, fulfilled } = useData(chartRef.current, filters);
+  const { data, key, fulfilled } = useData(filters);
+  const updateDataCallback = useRef<
+    DataLoaderSubscribeBarParams['callback'] | null
+  >(null);
 
   useEffect(() => {
     const chart = init(id) as Chart;
     chartRef.current = chart;
 
-    chart.setPrecision({ price: 9 });
     darkTheme(chart);
 
     return () => {
@@ -42,6 +49,66 @@ export const KlineChart = ({ id, filters, indicators }: KlineChartProps) => {
       chartRef.current = null;
     };
   }, []);
+
+  useEffect(() => {
+    if (!chartRef.current || _.isEmpty(data)) {
+      return;
+    }
+
+    const chart = chartRef.current;
+    const currentSymbol = chart.getSymbol()?.ticker;
+    const currenInterval = chart.getPeriod()?.span;
+
+    if (`${currentSymbol}_${currenInterval}` !== key) {
+      chartRef.current.setSymbol({ ticker: filters.symbol, pricePrecision: 9 });
+      chartRef.current.setPeriod({
+        span: Number.parseInt(filters.interval),
+        type: 'minute',
+      });
+
+      chartRef.current.setDataLoader({
+        getBars: ({ callback }) => {
+          callback(data);
+        },
+        subscribeBar: ({ callback }) => {
+          updateDataCallback.current = callback;
+        },
+      });
+
+      return;
+    }
+
+    if (!fulfilled || !updateDataCallback.current) {
+      return;
+    }
+
+    const currentData = chart.getDataList();
+    const dataByTimestamp = _.keyBy(currentData, 'timestamp');
+
+    const updatedCandles = data.filter((c) => {
+      const prevCandle = dataByTimestamp[c.timestamp];
+
+      if (!prevCandle) {
+        return true;
+      }
+
+      if (
+        prevCandle.close !== c.close ||
+        prevCandle.open !== c.open ||
+        prevCandle.high !== c.high ||
+        prevCandle.low !== c.low ||
+        prevCandle.volume !== c.volume
+      ) {
+        return true;
+      }
+
+      return false;
+    });
+
+    updatedCandles.forEach((candle) => {
+      updateDataCallback.current?.(candle);
+    });
+  }, [key, data, fulfilled]);
 
   useResize(chartRef, id);
 

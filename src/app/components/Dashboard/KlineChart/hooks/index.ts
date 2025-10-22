@@ -8,4 +8,3 @@ export { useBtcIndicator } from './useBtcIndicator';
 export { useTrendLine } from './useTrendLine';
 export { useBacktest } from './useBacktest';
 export { useResize } from './useResize';
-export { useData } from './useData';
