@@ -56,6 +56,12 @@ export const SelectWithSearch = ({
         filter(e.inputValue);
         setInputValue(e.inputValue);
       }}
+      onOpenChange={(details) => {
+        if (details.open) {
+          filter('');
+          setInputValue('');  
+        }
+      }}
       width={width}
       multiple={multiple}
       size={size}
