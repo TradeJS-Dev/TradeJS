@@ -48,8 +48,6 @@ export const useData = (filters: Filters) => {
 
       if (cachedResult && cachedResult.length > 2) {
         currentData = [...cachedResult];
-
-        setData(symbol, interval, cachedResult);
       }
     }
 

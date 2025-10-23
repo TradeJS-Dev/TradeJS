@@ -1,3 +1,4 @@
+import _ from 'lodash';
 import { useEffect } from 'react';
 import { BollingerBands } from 'technicalindicators';
 import { registerIndicator, Chart } from 'klinecharts';
@@ -37,19 +38,24 @@ export const useBbIndicator = (
           }),
         );
 
-        return kLineDataList.map((_, candleIndex) => {
-          const bb: Record<string, number> = {};
-          periods.forEach((period, periodIndex) => {
-            if (candleIndex >= period - 1) {
-              bb[`BBUpper${period}`] =
-                values[periodIndex][candleIndex - (period - 1)].upper;
-              bb[`BBLower${period}`] =
-                values[periodIndex][candleIndex - (period - 1)].lower;
-            }
-          });
+        return kLineDataList.reduce<Record<number, Record<string, number>>>(
+          (acc, { timestamp }, candleIndex) => {
+            const bb: Record<string, number> = {};
+            periods.forEach((period, periodIndex) => {
+              if (candleIndex >= period - 1) {
+                bb[`BBUpper${period}`] =
+                  values[periodIndex][candleIndex - (period - 1)].upper;
+                bb[`BBLower${period}`] =
+                  values[periodIndex][candleIndex - (period - 1)].lower;
+              }
+            });
 
-          return bb;
-        });
+            acc[timestamp] = bb;
+
+            return acc;
+          },
+          {},
+        );
       },
     });
   }, [periods]);

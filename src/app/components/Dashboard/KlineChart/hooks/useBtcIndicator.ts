@@ -37,15 +37,19 @@ export const useBtcIndicator = (
 
       // Calculation results
       calc: (kLineDataList) => {
-        return kLineDataList.map(({ timestamp }) => {
+        return kLineDataList.reduce<
+          Record<number, Record<string, number | undefined>>
+        >((acc, { timestamp }) => {
           const value = data?.find(
             (candle) => candle.timestamp === timestamp,
           )?.close;
 
-          return {
+          acc[timestamp] = {
             BTC: value,
           };
-        });
+
+          return acc;
+        }, {});
       },
     });
 

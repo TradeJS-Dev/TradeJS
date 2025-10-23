@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import _ from 'lodash';
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
@@ -76,14 +77,24 @@ export const useIndicators = () => {
   const indicators = useStore((s) => s.indicators);
   const setEnabledIndicators = useStore((s) => s.setEnabledIndicators);
 
-  const selectedIndicators = indicators
-    .filter((ind) => ind.enabled)
-    .map(({ id }) => id);
-  const indicatorsItems = indicators.map(({ id, label }) => ({
-    value: id,
-    label,
-  })) as Items;
-  const indicatorsByKey = _.keyBy(indicators, 'id');
+  const selectedIndicators = useMemo(
+    () => indicators.filter((ind) => ind.enabled).map(({ id }) => id),
+    [indicators],
+  );
+
+  const indicatorsItems = useMemo(
+    () =>
+      indicators.map(({ id, label }) => ({
+        value: id,
+        label,
+      })),
+    [indicators],
+  ) as Items;
+
+  const indicatorsByKey = useMemo(
+    () => _.keyBy(indicators, 'id'),
+    [indicators],
+  );
 
   return {
     indicators,

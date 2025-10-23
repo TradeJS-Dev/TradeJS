@@ -29,16 +29,21 @@ export const useEmaIndicator = (
           }),
         );
 
-        return kLineDataList.map((_, i) => {
-          const ma: Record<string, number> = {};
-          periods.forEach((period, j) => {
-            if (i >= period - 1) {
-              ma[`EMA${period}`] = values[j][i - (period - 1)];
-            }
-          });
+        return kLineDataList.reduce<Record<number, Record<string, number>>>(
+          (acc, { timestamp }, candleIndex) => {
+            const ema: Record<string, number> = {};
+            periods.forEach((period, j) => {
+              if (candleIndex >= period - 1) {
+                ema[`EMA${period}`] = values[j][candleIndex - (period - 1)];
+              }
+            });
 
-          return ma;
-        });
+            acc[timestamp] = ema;
+
+            return acc;
+          },
+          {},
+        );
       },
     });
   }, [periods]);

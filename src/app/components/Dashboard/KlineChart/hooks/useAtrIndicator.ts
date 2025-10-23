@@ -41,24 +41,30 @@ export const useAtrIndicator = (
           }),
         );
 
-        return kLineDataList.map((_, candleIndex) => {
-          const atr: Record<string, number> = {};
-          periods.forEach((period, periodIndex) => {
-            if (candleIndex >= period - 1) {
-              const atrValue = values[periodIndex][candleIndex - (period - 1)];
-              const atrThreshold = atrValue * 0.5;
+        return kLineDataList.reduce<Record<number, Record<string, number>>>(
+          (acc, { timestamp }, candleIndex) => {
+            const atr: Record<string, number> = {};
+            periods.forEach((period, periodIndex) => {
+              if (candleIndex >= period - 1) {
+                const atrValue =
+                  values[periodIndex][candleIndex - (period - 1)];
+                const atrThreshold = atrValue * 0.5;
 
-              atr[`Volotile${period}`] =
-                Math.abs(
-                  closes[closes.length - 1] - closes[closes.length - 2],
-                ) > atrThreshold
-                  ? 1
-                  : 0;
-            }
-          });
+                atr[`Volotile${period}`] =
+                  Math.abs(
+                    closes[closes.length - 1] - closes[closes.length - 2],
+                  ) > atrThreshold
+                    ? 1
+                    : 0;
+              }
+            });
 
-          return atr;
-        });
+            acc[timestamp] = atr;
+
+            return acc;
+          },
+          {},
+        );
       },
     });
   }, [periods]);

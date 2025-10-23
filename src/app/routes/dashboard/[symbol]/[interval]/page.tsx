@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect } from 'react';
+import React, { useEffect, useCallback } from 'react';
 import { useParams } from 'next/navigation';
 import { Box, Flex, ClientOnly } from '@chakra-ui/react';
 import { useFilters, useTickers, useTestList } from '@store';
@@ -24,15 +24,18 @@ const Dashboard = () => {
     }
   }, [symbol, interval]);
 
-  const onChangeFilters: OnChangeFilters = (newFilters) => {
-    setFilters(newFilters);
+  const onChangeFilters: OnChangeFilters = useCallback(
+    (newFilters) => {
+      setFilters(newFilters);
 
-    window.history.replaceState(
-      null,
-      '',
-      `/routes/dashboard/${newFilters.symbol}/${newFilters.interval}`,
-    );
-  };
+      window.history.replaceState(
+        null,
+        '',
+        `/routes/dashboard/${newFilters.symbol || filters.symbol}/${newFilters.interval || filters.interval}`,
+      );
+    },
+    [filters.symbol, filters.interval],
+  );
 
   return (
     <ClientOnly>

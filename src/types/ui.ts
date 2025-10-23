@@ -22,4 +22,4 @@ export interface UIFilters extends Filters {
   backtestId: string | null;
 }
 
-export type OnChangeFilters = (filters: UIFilters) => void;
+export type OnChangeFilters = (filters: Partial<UIFilters>) => void;

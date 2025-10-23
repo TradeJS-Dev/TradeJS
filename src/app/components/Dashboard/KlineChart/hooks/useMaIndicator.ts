@@ -29,16 +29,21 @@ export const useMaIndicator = (
           }),
         );
 
-        return kLineDataList.map((_, i) => {
-          const ma: Record<string, number> = {};
-          periods.forEach((period, j) => {
-            if (i >= period - 1) {
-              ma[`MA${period}`] = values[j][i - (period - 1)];
-            }
-          });
+        return kLineDataList.reduce<Record<number, Record<string, number>>>(
+          (acc, { timestamp }, candleIndex) => {
+            const ma: Record<string, number> = {};
+            periods.forEach((period, j) => {
+              if (candleIndex >= period - 1) {
+                ma[`MA${period}`] = values[j][candleIndex - (period - 1)];
+              }
+            }, {});
 
-          return ma;
-        });
+            acc[timestamp] = ma;
+
+            return acc;
+          },
+          {},
+        );
       },
     });
   }, [periods]);

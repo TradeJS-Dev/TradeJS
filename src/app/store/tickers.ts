@@ -1,7 +1,7 @@
+import { useEffect, useMemo, useCallback } from 'react';
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import _ from 'lodash';
-import { useEffect } from 'react';
 import { scan } from '@actions/scanner';
 import { Items } from '@types';
 
@@ -35,24 +35,24 @@ const useFavoriteTickersStore = create<FavoriteTickersState>()(
 );
 
 interface TickersScannerState {
-  scanner: Items;
+  tickers: Items;
   setTickers: (tickers: Items) => void;
 }
 
 const useScannerStore = create<TickersScannerState>((set) => ({
-  scanner: [] as Items,
-  setTickers: (coins) => set(() => ({ scanner: _.sortBy(coins, 'label') })),
+  tickers: [] as Items,
+  setTickers: (coins) => set(() => ({ tickers: _.sortBy(coins, 'label') })),
 }));
 
 export const useTickers = () => {
   const favorites = useFavoriteTickersStore((s) => s.favorites);
-  const scanner = useScannerStore((s) => s.scanner);
+  const tickers = useScannerStore((s) => s.tickers);
   const toggleFavorite = useFavoriteTickersStore((s) => s.toggleFavorite);
   const setTickers = useScannerStore((s) => s.setTickers);
-  const checkIsFavorite = (ticker: string) => favorites.includes(ticker);
+  const checkIsFavorite = useCallback((ticker: string) => favorites.includes(ticker), [favorites]);
 
   useEffect(() => {
-    if (scanner.length) {
+    if (tickers.length) {
       return;
     }
 
@@ -61,20 +61,19 @@ export const useTickers = () => {
     });
   }, []);
 
-  const favoriteItems = scanner
-    .filter((s) => checkIsFavorite(s.value))
-    .map((s) => ({
-      ...s,
-      description: 'favorite',
-    }));
+  const items = useMemo(() => {
+    const favoriteItems = tickers
+      .filter((s) => checkIsFavorite(s.value))
+      .map((s) => ({
+        ...s,
+        description: 'favorite',
+      }));
 
-  const tickers = _.uniqBy(
-    [...favoriteItems, ...scanner],
-    (item) => item.value,
-  );
+    return _.uniqBy([...favoriteItems, ...tickers], (item) => item.value);
+  }, [favorites, tickers, checkIsFavorite]);
 
   return {
-    tickers,
+    tickers: items,
     favorites,
     checkIsFavorite,
     toggleFavorite,
