@@ -15,6 +15,7 @@ import { Items } from '@types';
 
 interface SelectWithSearchProps {
   defaultValue: string[];
+  defaultInputValue?: string;
   items: Items;
   placeholder?: string;
   emptyState?: string;
@@ -26,6 +27,7 @@ interface SelectWithSearchProps {
 
 export const SelectWithSearch = ({
   defaultValue,
+  defaultInputValue,
   items,
   multiple = false,
   placeholder = 'Select',
@@ -35,7 +37,7 @@ export const SelectWithSearch = ({
   onChange,
 }: SelectWithSearchProps) => {
   const { contains } = useFilter({ sensitivity: 'base' });
-  const [inputValue, setInputValue] = useState(defaultValue?.[0]);
+  const [inputValue, setInputValue] = useState(defaultInputValue ?? defaultValue?.[0]);
 
   const { collection, filter, set } = useListCollection({
     initialItems: items,
@@ -70,7 +72,6 @@ export const SelectWithSearch = ({
       <Combobox.Control>
         <Combobox.Input placeholder={placeholder} />
         <Combobox.IndicatorGroup>
-          <Combobox.ClearTrigger />
           <Combobox.Trigger />
         </Combobox.IndicatorGroup>
       </Combobox.Control>
