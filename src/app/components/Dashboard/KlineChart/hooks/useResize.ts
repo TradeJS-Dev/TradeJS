@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 import { Chart } from 'klinecharts';
 
 export const useResize = (
-  chartRef: React.MutableRefObject<Chart | null>,
+  chart: Chart | null,
   id: string,
 ) => {
   useEffect(() => {
@@ -18,7 +18,7 @@ export const useResize = (
       const parentStyles = window.getComputedStyle(parent);
       chartElement.style.width = parentStyles.width;
       chartElement.style.height = parentStyles.height;
-      chartRef.current?.resize();
+      chart?.resize();
     };
 
     const resizeObserver = new ResizeObserver(resize);
@@ -28,5 +28,5 @@ export const useResize = (
     return () => {
       resizeObserver.disconnect();
     };
-  }, []);
+  }, [chart]);
 };

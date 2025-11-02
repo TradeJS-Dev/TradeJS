@@ -16,6 +16,7 @@ export interface Figure {
   color: string;
   width: number;
   height: number;
+  text?: string;
 }
 
 export interface UIFilters extends Filters {

@@ -50,24 +50,54 @@ export const compactOrderLog = (
   timeline: number[],
   orderLog: OrderLogData,
 ): SimpleOrderLogData => {
-  let prevValue = orderLog[0].amount || 100;
+  const result: SimpleOrderLogData = [];
 
-  return timeline.map((timestamp, ind) => {
-    if (ind < 1) {
-      return [timestamp, prevValue];
+  // Стартовое значение, как в исходнике
+  let currentAmount =
+    orderLog.length > 0 && orderLog[0].amount != null
+      ? orderLog[0].amount
+      : 100;
+
+  // Курсор в orderLog (глобальный)
+  let orderLogCursor = 0;
+
+  for (let timelineIndex = 0; timelineIndex < timeline.length; timelineIndex++) {
+    const currentTimestamp = timeline[timelineIndex];
+
+    // Мы будем проходить orderLog начиная с текущего курсора,
+    // собирать все ордера с timestamp <= currentTimestamp
+    // и запоминать последний из них.
+    let lastApplicableOrderIndex = -1;
+
+    // Локальная позиция, с которой мы начнём следующий цикл timeline.
+    // То есть "докуда мы реально дошли"
+    let nextCursor = orderLogCursor;
+
+    for (
+      let checkIndex = orderLogCursor;
+      checkIndex < orderLog.length;
+      checkIndex++
+    ) {
+      const checkOrder = orderLog[checkIndex];
+
+      if (checkOrder.timestamp <= currentTimestamp) {
+        // этот ордер уже вступил в силу к currentTimestamp
+        lastApplicableOrderIndex = checkIndex;
+        nextCursor = checkIndex + 1;
+      } else {
+        // дальше все timestamps будут только больше (массив отсортирован),
+        // можно остановиться
+        break;
+      }
     }
 
-    const order = orderLog.findLast(
-      (log) =>
-        log.timestamp <= timeline[ind] && log.timestamp > timeline[ind - 1],
-    );
-
-    if (!order) {
-      return [timestamp, prevValue];
+    if (lastApplicableOrderIndex !== -1) {
+      currentAmount = orderLog[lastApplicableOrderIndex].amount;
+      orderLogCursor = nextCursor;
     }
 
-    prevValue = order.amount;
+    result.push([currentTimestamp, currentAmount]);
+  }
 
-    return [timestamp, prevValue];
-  });
+  return result;
 };

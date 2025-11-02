@@ -2,237 +2,358 @@
 
 import { useEffect, useState } from 'react';
 import _ from 'lodash';
-import { registerIndicator, Chart } from 'klinecharts';
-import { KlineChartItem } from '@types';
-import { diamond, star, circle, rectangle } from '../figures';
+import { registerOverlay, registerIndicator, Chart } from 'klinecharts';
+import { KlineChartItem, OrderLogData } from '@types';
 import { useBacktest as useBacktestStore } from '@store';
+import '../figures';
 
 const green = '#84cc16';
 const red = '#dc2626';
 const darkRed = '#7f1d1d';
 const darkGreen = '#365314';
+const orange = '#fb923c';
 
-interface Legend {
-  title: string;
-  value: {
-    text: string;
-    color: string;
-  };
+type MarkerShape = 'RECT' | 'DIAMOND' | 'STAR' | 'CIRCLE';
+
+interface MarkerMeta {
+  shape: MarkerShape;
+  color: string;
+  timestamp: number;
+  value: number;
+  type: string;
+  profit: number;
+  amount: number;
+  tradeIndex: number;
 }
 
-export const useBacktest = (chart: Chart | null, id: string | undefined) => {
-  const [registered, setRegistered] = useState(false);
-  const { backtest } = useBacktestStore(id);
-  const enabled = Boolean(id);
+const resolveShapeAndColor = (
+  eventType: string,
+): {
+  shape: MarkerShape;
+  color: string;
+} => {
+  switch (eventType) {
+    case 'OPEN_LONG':
+      return { shape: 'RECT', color: green };
+    case 'TAKE_PROFIT_LONG':
+      return { shape: 'STAR', color: red };
+    case 'CLOSE_LONG':
+      return { shape: 'DIAMOND', color: darkRed };
+    case 'STOP_LOSS_LONG':
+      return { shape: 'CIRCLE', color: darkRed };
 
-  const getDataFromInterval = (
-    result: unknown[],
-    startCandleIndex: number,
-    endCandleIndex: number,
-  ) => {
-    const start = (result[startCandleIndex] as KlineChartItem)?.timestamp;
-    const end = (result[endCandleIndex] as KlineChartItem)?.timestamp;
+    case 'OPEN_SHORT':
+      return { shape: 'RECT', color: red };
+    case 'TAKE_PROFIT_SHORT':
+      return { shape: 'STAR', color: green };
+    case 'CLOSE_SHORT':
+      return { shape: 'DIAMOND', color: darkRed };
+    case 'STOP_LOSS_SHORT':
+      return { shape: 'CIRCLE', color: darkGreen };
 
-    if (!start || !end) {
-      return;
-    }
+    default:
+      return { shape: 'CIRCLE', color: '#ffffff' };
+  }
+};
 
-    const data = backtest.filter(
-      (log) => log.timestamp > start && log.timestamp <= end,
-    );
+const walkCandlesAndEvents = (
+  candles: KlineChartItem[],
+  rawEvents: OrderLogData,
+): {
+  markersFlat: MarkerMeta[];
+  markersByTs: Record<number, MarkerMeta[]>;
+  profitByIndex: Array<number | undefined>;
+} => {
+  const events = [...rawEvents].sort((a, b) => a.timestamp - b.timestamp);
 
-    return data;
-  };
+  const markersFlat: MarkerMeta[] = [];
+  const markersByTs: Record<number, MarkerMeta[]> = {};
+  const profitByIndex: Array<number | undefined> = new Array(
+    candles.length,
+  ).fill(undefined);
 
-  useEffect(() => {
-    if (!chart || _.isEmpty(backtest)) {
-      return;
-    }
+  let eventCursor = 0;
+  let currentAmount: number | undefined = undefined;
 
-    registerIndicator({
-      name: 'Backtest',
-      shortName: 'Backtest',
+  for (let candleIndex = 0; candleIndex < candles.length; candleIndex++) {
+    const candle = candles[candleIndex];
+    const currTs = candle.timestamp;
+    const prevTs =
+      candleIndex > 0 ? candles[candleIndex - 1].timestamp : -Infinity;
 
-      createTooltipDataSource: ({ indicator, crosshair }) => {
-        const legends = new Array<Legend>();
+    for (; eventCursor < events.length; eventCursor++) {
+      const evt = events[eventCursor];
 
-        const getLegends = () => {
-          const result = indicator.result;
-          const candleIndex = crosshair.dataIndex!;
+      if (evt.timestamp > currTs) {
+        break;
+      }
 
-          console.info('>>> result', result);
+      if (evt.timestamp > prevTs && evt.timestamp <= currTs) {
+        const { shape, color } = resolveShapeAndColor(evt.type);
 
-          // const data = getDataFromInterval(
-          //   result,
-          //   candleIndex - 1,
-          //   candleIndex,
-          // );
-
-          // if (!data) {
-          //   return;
-          // }
-
-          // data.forEach(({ type, profit, index }) => {
-          //   legends.push({
-          //     title: `${index}:type: `,
-          //     value: { text: type, color: 'white' },
-          //   });
-          //   legends.push({
-          //     title: `${index}:profit: `,
-          //     value: {
-          //       text: profit.toFixed(2),
-          //       color: profit >= 0 ? green : red,
-          //     },
-          //   });
-          // });
+        const marker: MarkerMeta = {
+          shape,
+          color,
+          timestamp: currTs,
+          value: evt.price,
+          type: evt.type,
+          profit: evt.profit,
+          amount: evt.amount,
+          tradeIndex: evt.index,
         };
 
-        getLegends();
+        markersFlat.push(marker);
 
-        return {
-          name: 'Backtest',
-          calcParamsText: '',
-          features: [],
-          legends,
-        };
-      },
+        if (!markersByTs[currTs]) {
+          markersByTs[currTs] = [];
+        }
+        markersByTs[currTs].push(marker);
 
-      draw: ({ ctx, indicator, xAxis, yAxis }) => {
-        const { realFrom, realTo } = chart.getVisibleRange();
-        const { result } = indicator;
+        currentAmount = evt.amount;
+        continue;
+      }
 
-        for (
-          let candleIndex = realFrom + 1;
-          candleIndex < realTo;
-          candleIndex++
-        ) {
-          console.info('>>> result', result);
+      if (evt.timestamp <= prevTs) {
+        currentAmount = evt.amount;
+        continue;
+      }
+    }
 
-          // const data = getDataFromInterval(
-          //   result,
-          //   candleIndex - 1,
-          //   candleIndex,
-          // );
+    profitByIndex[candleIndex] = currentAmount;
+  }
 
-          // if (!data) {
-          //   continue;
-          // }
+  return { markersFlat, markersByTs, profitByIndex };
+};
 
-          // data.forEach(({ type, price }) => {
-          //   const x = xAxis.convertToPixel(candleIndex);
-          //   const y = yAxis.convertToPixel(price);
-          //   const width = 10;
-          //   const height = 10;
+const groupMarkersForOverlay = (
+  markers: MarkerMeta[],
+): {
+  points: Array<{ timestamp: number; value: number }>;
+  groupedExtendData: MarkerMeta[][];
+} => {
+  const byKey: Record<
+    string,
+    { timestamp: number; value: number; items: MarkerMeta[] }
+  > = {};
 
-          //   if (type === 'OPEN_LONG') {
-          //     rectangle({ ctx, x, y, width, height, color: green });
-          //   }
-          //   if (type === 'TAKE_PROFIT_LONG') {
-          //     star({
-          //       ctx,
-          //       x,
-          //       y,
-          //       width,
-          //       height,
-          //       color: red,
-          //     });
-          //   }
-          //   if (type === 'CLOSE_LONG') {
-          //     diamond({
-          //       ctx,
-          //       x,
-          //       y,
-          //       width,
-          //       height,
-          //       color: darkRed,
-          //     });
-          //   }
-          //   if (type === 'STOP_LOSS_LONG') {
-          //     circle({ ctx, x, y, width, height, color: darkRed });
-          //   }
-          //   if (type === 'OPEN_SHORT') {
-          //     rectangle({ ctx, x, y, width, height, color: red });
-          //   }
-          //   if (type === 'TAKE_PROFIT_SHORT') {
-          //     star({
-          //       ctx,
-          //       x,
-          //       y,
-          //       width,
-          //       height,
-          //       color: green,
-          //     });
-          //   }
-          //   if (type === 'CLOSE_SHORT') {
-          //     diamond({
-          //       ctx,
-          //       x,
-          //       y,
-          //       width,
-          //       height,
-          //       color: darkGreen,
-          //     });
-          //   }
-          //   if (type === 'STOP_LOSS_SHORT') {
-          //     circle({ ctx, x, y, width, height, color: darkGreen });
-          //   }
-          // });
+  for (const marker of markers) {
+    const key = `${marker.timestamp}__${marker.value}`;
+    if (!byKey[key]) {
+      byKey[key] = {
+        timestamp: marker.timestamp,
+        value: marker.value,
+        items: [],
+      };
+    }
+    byKey[key].items.push(marker);
+  }
+
+  const points: Array<{ timestamp: number; value: number }> = [];
+  const groupedExtendData: MarkerMeta[][] = [];
+
+  for (const { timestamp, value, items } of Object.values(byKey)) {
+    points.push({ timestamp, value });
+    groupedExtendData.push(items);
+  }
+
+  return { points, groupedExtendData };
+};
+
+const buildIndicatorData = (
+  candles: KlineChartItem[],
+  markersByTs: Record<number, MarkerMeta[]>,
+  profitByIndex: Array<number | undefined>,
+): Record<number, { profit?: number; markers: MarkerMeta[] }> => {
+  const result: Record<number, { profit?: number; markers: MarkerMeta[] }> = {};
+
+  for (let i = 0; i < candles.length; i++) {
+    const ts = candles[i].timestamp;
+    result[ts] = {
+      profit: profitByIndex[i],
+      markers: markersByTs[ts] ?? [],
+    };
+  }
+
+  return result;
+};
+
+registerOverlay({
+  name: 'backtestMarkers',
+  totalStep: 1,
+  createPointFigures: ({ coordinates, overlay }) => {
+    const markerGroups = (overlay.extendData as MarkerMeta[][]) ?? [];
+    const figures: any[] = [];
+
+    for (let coordIndex = 0; coordIndex < coordinates.length; coordIndex++) {
+      const coord = coordinates[coordIndex];
+      const group = markerGroups[coordIndex];
+      if (!coord || !group) continue;
+
+      group.forEach((meta, localIdx) => {
+        const { shape, color, type, profit } = meta;
+
+        const baseX = coord.x;
+        const baseY = coord.y - localIdx * 14;
+
+        const width = 10;
+        const height = 10;
+
+        let figureType: string;
+        switch (shape) {
+          case 'RECT':
+            figureType = 'btRect';
+            break;
+          case 'DIAMOND':
+            figureType = 'btDiamond';
+            break;
+          case 'STAR':
+            figureType = 'btStar';
+            break;
+          case 'CIRCLE':
+          default:
+            figureType = 'btCircle';
+            break;
         }
 
-        return true;
-      },
-
-      calc: (kLineDataList) => kLineDataList,
-    });
-
-    registerIndicator({
-      name: 'Profit',
-      shortName: 'Profit',
-      calcParams: ['profit'],
-      figures: [
-        {
-          key: `profit`,
-          title: `Profit: `,
-          type: 'line',
-        },
-      ],
-
-      // Calculation results
-      calc: (kLineDataList) => {
-        return kLineDataList.map((_, candleIndex) => {
-          if (candleIndex < 1) {
-            return undefined;
-          }
-
-          const data = getDataFromInterval(kLineDataList, 0, candleIndex);
-
-          if (!data || data.length < 1) {
-            return undefined;
-          }
-
-          const item = data.pop();
-
-          return {
-            profit: item?.amount,
-          };
+        figures.push({
+          type: figureType,
+          attrs: { x: baseX, y: baseY, width, height, color },
         });
-      },
-    });
 
-    setRegistered(true);
-  }, [chart, backtest]);
-
-  useEffect(() => {
-    if (!chart || !enabled || !registered) {
-      return () => null;
+        const labelText = `${type} ${profit.toFixed(2)}`;
+        figures.push({
+          type: 'btLabel',
+          attrs: {
+            x: baseX + 8,
+            y: baseY,
+            text: labelText,
+            color: profit >= 0 ? green : red,
+          },
+        });
+      });
     }
 
-    chart.createIndicator('Backtest', true, { id: 'candle_pane' });
-    chart.createIndicator('Profit');
+    return figures;
+  },
+});
+
+const createBacktestProfit = (
+  chart: Chart,
+  latestByTs: Record<number, { profit?: number; markers: MarkerMeta[] }> = {},
+) => {
+  registerIndicator({
+    name: 'BacktestProfit',
+    shortName: 'Backtest',
+    series: 'price',
+    figures: [
+      {
+        key: 'profit',
+        title: 'Profit',
+        type: 'line',
+      },
+    ],
+
+    calc: () => latestByTs,
+
+    createTooltipDataSource: ({ indicator, crosshair }) => {
+      const result = indicator.result as typeof latestByTs;
+      const ts = crosshair.kLineData?.timestamp;
+      const bucket = ts ? result[ts] : undefined;
+
+      const legends: Array<{
+        title: string;
+        value: { text: string; color: string };
+      }> = [];
+
+      if (bucket && bucket.profit !== undefined) {
+        legends.push({
+          title: 'amount: ',
+          value: {
+            text: bucket.profit.toFixed(2),
+            color: orange,
+          },
+        });
+      }
+
+      if (bucket && bucket.markers.length > 0) {
+        for (const meta of bucket.markers) {
+          legends.push({
+            title: `${meta.tradeIndex}:type: `,
+            value: { text: meta.type, color: 'white' },
+          });
+
+          legends.push({
+            title: `${meta.tradeIndex}:profit: `,
+            value: {
+              text: meta.profit.toFixed(2),
+              color: meta.profit >= 0 ? green : red,
+            },
+          });
+        }
+      }
+
+      return {
+        name: 'Backtest',
+        calcParamsText: '',
+        features: [],
+        legends,
+      };
+    },
+  });
+
+  chart.createIndicator('BacktestProfit', false);
+};
+
+export const useBacktest = (chart: Chart | null, id: string | undefined) => {
+  const { backtest } = useBacktestStore(id);
+  const [key, setKey] = useState('BTCUSDT_15');
+  const enabled = Boolean(id);
+
+  useEffect(() => {
+    if (!chart) {
+      return;
+    }
+
+    const currentSymbol = chart.getSymbol()?.ticker;
+    const currenInterval = chart.getPeriod()?.span;
+
+    setKey(`${currentSymbol}_${currenInterval}`);
+  }, [chart])
+
+  useEffect(() => {
+    if (!chart || !enabled || _.isEmpty(backtest)) {
+      return;
+    }
+
+    const candles = chart.getDataList() as KlineChartItem[];
+    if (!candles || candles.length === 0) {
+      return;
+    }
+
+    const { markersFlat, markersByTs, profitByIndex } = walkCandlesAndEvents(
+      candles,
+      backtest,
+    );
+
+    const { points, groupedExtendData } = groupMarkersForOverlay(markersFlat);
+
+    if (points.length > 0) {
+      chart.createOverlay({
+        name: 'backtestMarkers',
+        points,
+        extendData: groupedExtendData,
+      });
+    }
+
+    const latestByTs = buildIndicatorData(candles, markersByTs, profitByIndex);
+
+    createBacktestProfit(chart, latestByTs);
 
     return () => {
-      chart.removeIndicator({ name: 'Backtest' });
-      chart.removeIndicator({ name: 'Profit' });
+      chart.removeOverlay({ name: 'backtestMarkers' });
+      chart.removeIndicator({ name: 'BacktestProfit' });
     };
-  }, [chart, enabled, registered]);
+  }, [chart, enabled, backtest, id, key]);
+
+  return null;
 };

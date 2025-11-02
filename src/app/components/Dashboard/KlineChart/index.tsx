@@ -110,10 +110,9 @@ export const KlineChart = ({ id, filters, indicators }: KlineChartProps) => {
     });
   }, [key, data, fulfilled]);
 
-  useResize(chartRef, id);
-
   const chart = chartRef.current;
 
+  useResize(chart, id);
   useAtrIndicator(chart, indicators.atr.enabled, indicators.atr.periods || []);
   useBbIndicator(chart, indicators.bb.enabled, indicators.bb.periods || []);
   useMaIndicator(chart, indicators.ma.enabled, indicators.ma.periods || []);
