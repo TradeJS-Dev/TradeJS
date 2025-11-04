@@ -1,10 +1,7 @@
 import { useEffect } from 'react';
 import { Chart } from 'klinecharts';
 
-export const useResize = (
-  chart: Chart | null,
-  id: string,
-) => {
+export const useResize = (chart: Chart | null, id: string) => {
   useEffect(() => {
     const chartElement = document.getElementById(id);
 

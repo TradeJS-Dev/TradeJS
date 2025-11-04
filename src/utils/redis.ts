@@ -134,4 +134,6 @@ export const redisKeys = {
   signalsBySymbol: (symbol: string) => `signals:${symbol}:`,
   storeSignal: (symbol: string, signalId: string) =>
     `store:signals:${symbol}:${signalId}`,
+  analysis: (symbol: string, signalId: string) =>
+    `analysis:${symbol}:${signalId}`,
 };

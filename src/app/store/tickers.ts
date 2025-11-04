@@ -49,7 +49,10 @@ export const useTickers = () => {
   const tickers = useScannerStore((s) => s.tickers);
   const toggleFavorite = useFavoriteTickersStore((s) => s.toggleFavorite);
   const setTickers = useScannerStore((s) => s.setTickers);
-  const checkIsFavorite = useCallback((ticker: string) => favorites.includes(ticker), [favorites]);
+  const checkIsFavorite = useCallback(
+    (ticker: string) => favorites.includes(ticker),
+    [favorites],
+  );
 
   useEffect(() => {
     if (tickers.length) {

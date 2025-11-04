@@ -26,6 +26,11 @@ const useStore = create<IndicatorsState>()(
           enabled: true,
         },
         {
+          id: 'resistant',
+          label: 'resistant',
+          enabled: true,
+        },
+        {
           id: 'atr',
           label: 'ATR',
           enabled: false,

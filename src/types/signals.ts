@@ -31,3 +31,16 @@ export interface Signal {
     lows: TrendLine[];
   };
 }
+
+export interface Analysis {
+  isBreakout: boolean;
+  isTrendLine: boolean;
+  isShouldTrade: boolean;
+  quality: number;
+  direction: 'LONG' | 'SHORT' | null;
+  entryPrice: number | null;
+  takeProfitPrice: number | null;
+  stopLossPrice: number | null;
+  riskRewardRatio: number | null;
+  comment: string;
+}

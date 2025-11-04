@@ -61,7 +61,11 @@ export const compactOrderLog = (
   // Курсор в orderLog (глобальный)
   let orderLogCursor = 0;
 
-  for (let timelineIndex = 0; timelineIndex < timeline.length; timelineIndex++) {
+  for (
+    let timelineIndex = 0;
+    timelineIndex < timeline.length;
+    timelineIndex++
+  ) {
     const currentTimestamp = timeline[timelineIndex];
 
     // Мы будем проходить orderLog начиная с текущего курсора,

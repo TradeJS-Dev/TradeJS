@@ -61,7 +61,7 @@ export const useBtcIndicator = (
       return;
     }
 
-    chart.createIndicator('BTC');
+    chart.createIndicator('BTC', true, { minHeight: 100 });
 
     return () => {
       chart.removeIndicator({ name: 'BTC' });

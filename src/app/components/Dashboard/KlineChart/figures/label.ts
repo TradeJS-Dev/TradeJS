@@ -1,12 +1,6 @@
 import { Figure } from '@types';
 
-export const label = ({
-  ctx,
-  x,
-  y,
-  text = '',
-  color,
-}: Figure) => {
+export const label = ({ ctx, x, y, text = '', color }: Figure) => {
   ctx.save();
 
   ctx.font = '10px sans-serif';

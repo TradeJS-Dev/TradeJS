@@ -8,7 +8,7 @@ import { getKeys, deleteData } from '@utils/redis';
 import { getTimestamp } from '@utils/timestamp';
 import { getFormatted } from '@utils/stat';
 import { getTopTickers } from '@utils/tickers';
-import { screenDashboard, sendSignal } from '@utils/screen';
+import { askAI, screenDashboard, sendSignal } from '@utils/signals';
 import { runWithConcurrency } from '@utils/async';
 import {
   Connector,
@@ -180,7 +180,7 @@ export const getTickers = async (
   return tickers.filter((t) => !excludeTickers.includes(t));
 };
 
-export const makeScreenshots = async (signals: Signal[]) => {
+export const makeScreenshots = async (signals: Signal[], title = '') => {
   const bar = new ProgressBar(
     ':current/:total [:bar][:percent] :eta(s) :symbol',
     {
@@ -189,7 +189,7 @@ export const makeScreenshots = async (signals: Signal[]) => {
     },
   );
 
-  console.log(chalk.yellow('screenshots:', signals.length));
+  console.log(chalk.yellow('screenshots:', title, signals.length));
 
   await runWithConcurrency(signals, 3, async (signal) => {
     try {
@@ -204,7 +204,31 @@ export const makeScreenshots = async (signals: Signal[]) => {
   console.log('');
 };
 
-export const sendMessages = async (signals: Signal[]) => {
+export const sendToAI = async (signals: Signal[]) => {
+  const bar = new ProgressBar(
+    ':current/:total [:bar][:percent] :eta(s) :symbol',
+    {
+      total: signals.length,
+      width: 30,
+    },
+  );
+
+  console.log(chalk.yellow('AI:', signals.length));
+
+  await runWithConcurrency(signals, 3, async (signal) => {
+    try {
+      await askAI(signal);
+    } catch {
+      console.error('Failed ask:', signal.symbol);
+    } finally {
+      bar.tick(1, { symbol: chalk.gray(signal.symbol) });
+    }
+  });
+
+  console.log('');
+};
+
+export const sendToTG = async (signals: Signal[]) => {
   const bar = new ProgressBar(
     ':current/:total [:bar][:percent] :eta(s) :symbol',
     {

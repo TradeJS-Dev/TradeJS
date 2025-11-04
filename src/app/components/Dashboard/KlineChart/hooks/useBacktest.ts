@@ -318,7 +318,7 @@ export const useBacktest = (chart: Chart | null, id: string | undefined) => {
     const currenInterval = chart.getPeriod()?.span;
 
     setKey(`${currentSymbol}_${currenInterval}`);
-  }, [chart])
+  }, [chart]);
 
   useEffect(() => {
     if (!chart || !enabled || _.isEmpty(backtest)) {

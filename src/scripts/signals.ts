@@ -3,7 +3,13 @@ import ProgressBar from 'progress';
 import { connectors } from '@src/connectors';
 import chalk from 'chalk';
 import { SIGNALS_PRELOAD_DAYS, TTL_12H, TTL_1M } from '@constants';
-import { update, getTickers, makeScreenshots, sendMessages } from '@utils/cli';
+import {
+  update,
+  getTickers,
+  makeScreenshots,
+  sendToAI,
+  sendToTG,
+} from '@utils/cli';
 import { findTrendlinesByLows, findTrendlinesByHighs } from '@utils/trendLine';
 import { getTimestamp } from '@utils/timestamp';
 import { uuid } from '@utils/uuid';
@@ -144,10 +150,20 @@ const signals = async () => {
 
   console.log('');
 
-  await makeScreenshots(signals);
+  await makeScreenshots(signals, '15m');
+
+  await makeScreenshots(
+    signals.map((signal) => ({
+      ...signal,
+      interval: '60',
+    })),
+    '1h',
+  );
+
+  await sendToAI(signals);
 
   if (flags.notify) {
-    await sendMessages(signals);
+    await sendToTG(signals);
   }
 
   console.log(

@@ -20,6 +20,7 @@ import {
   useBtcIndicator,
   useTrendLine,
   useBacktest,
+  useSupportResistanceLines,
   useResize,
 } from './hooks';
 import { useData } from '@store';
@@ -121,6 +122,7 @@ export const KlineChart = ({ id, filters, indicators }: KlineChartProps) => {
   useVolIndicator(chart, indicators.vol.enabled);
   useBtcIndicator(chart, indicators.btc.enabled, filters);
   useBacktest(chart, filters.backtestId || undefined);
+  useSupportResistanceLines(chart, indicators.resistant?.enabled, data);
   useTrendLine(chart, true, data, filters);
 
   return (

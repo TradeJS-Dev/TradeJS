@@ -418,7 +418,7 @@ const findTrendlinesCore = (
     minTouches = 3,
     minDistance = 60,
     minTouchGap = 20,
-    offset = 3,
+    offset = 40,
     capture = false,
   } = options as TrendLineOptions & {
     minDistance?: number;

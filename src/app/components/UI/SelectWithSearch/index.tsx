@@ -37,7 +37,9 @@ export const SelectWithSearch = ({
   onChange,
 }: SelectWithSearchProps) => {
   const { contains } = useFilter({ sensitivity: 'base' });
-  const [inputValue, setInputValue] = useState(defaultInputValue ?? defaultValue?.[0]);
+  const [inputValue, setInputValue] = useState(
+    defaultInputValue ?? defaultValue?.[0],
+  );
 
   const { collection, filter, set } = useListCollection({
     initialItems: items,
@@ -61,7 +63,7 @@ export const SelectWithSearch = ({
       onOpenChange={(details) => {
         if (details.open) {
           filter('');
-          setInputValue('');  
+          setInputValue('');
         }
       }}
       width={width}

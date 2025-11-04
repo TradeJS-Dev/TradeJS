@@ -7,7 +7,9 @@ export const useVolIndicator = (chart: Chart | null, enabled: boolean) => {
       return () => null;
     }
 
-    chart.createIndicator('VOL');
+    setTimeout(() => {
+      chart.createIndicator('VOL', true, { minHeight: 80 });
+    }, 100);
 
     return () => {
       chart.removeIndicator({ name: 'VOL' });
