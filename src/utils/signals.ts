@@ -57,8 +57,9 @@ export const askAI = async (signal: Signal) => {
   const messages = new Array<BaseMessage>();
 
   const model = new ChatOpenAI({
-    temperature: 0.7,
+    temperature: 0.9,
     modelName: 'anthropic/claude-sonnet-4.5',
+    // modelName: 'x-ai/grok-4-fast',
     openAIApiKey: process.env.OPENAI_API_KEY,
     configuration: {
       baseURL: process.env.OPENAI_API_ENDPOINT || 'https://api.openai.com/v1',
