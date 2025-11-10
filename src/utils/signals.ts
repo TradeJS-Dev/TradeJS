@@ -58,7 +58,7 @@ export const askAI = async (signal: Signal) => {
 
   const model = new ChatOpenAI({
     temperature: 0.7,
-    modelName: 'openai/gpt-5',
+    modelName: 'anthropic/claude-sonnet-4.5',
     openAIApiKey: process.env.OPENAI_API_KEY,
     configuration: {
       baseURL: process.env.OPENAI_API_ENDPOINT || 'https://api.openai.com/v1',
@@ -182,7 +182,7 @@ const escapeHtml = (s?: string | null) => {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 };
 
-const fmtNum = (n?: number | null, digits = 2) => {
+const fmtNum = (n?: number | null, digits = 6) => {
   if (n === null || n === undefined || !Number.isFinite(n)) return null;
   const useDigits = Math.abs(n) >= 1000 ? 0 : digits;
   return n.toFixed(useDigits);
