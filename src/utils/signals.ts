@@ -3,7 +3,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import puppeteer from 'puppeteer';
 import { delay } from '@utils/async';
-import { setData, getData, redisKeys } from '@utils/redis';
+import { setData, getData, redisKeys, delKey } from '@utils/redis';
 import { Signal, Analysis } from '@types';
 import { ChatOpenAI } from '@langchain/openai';
 import {
@@ -58,7 +58,7 @@ export const askAI = async (signal: Signal) => {
 
   const model = new ChatOpenAI({
     temperature: 0.7,
-    modelName: 'gpt-4o',
+    modelName: 'openai/gpt-5',
     openAIApiKey: process.env.OPENAI_API_KEY,
     configuration: {
       baseURL: process.env.OPENAI_API_ENDPOINT || 'https://api.openai.com/v1',
@@ -88,7 +88,7 @@ export const askAI = async (signal: Signal) => {
 
         Пояснения к полям:
         - **isBreakout** — виден ли пробой наклонной линии?
-        - **isTrendLine** — действительно ли желтая линия построена по экстремумам?
+        - **isTrendLine** — действительно ли желтая линия построена по экстремумам и является линией  тренда?
         - **isShouldTrade** — стоит ли входить в сделку?
         - **quality** — качество сетапа от 0 до 10 (0 — не стоит входить, 10 — идеальный вход)
         - **direction** — направление сделки ('LONG', 'SHORT' или null)
@@ -97,6 +97,10 @@ export const askAI = async (signal: Signal) => {
         - **stopLossPrice** — цена стоп-лосса или null
         - **riskRewardRatio** — соотношение риск/прибыль или null
         - **comment** — текстовый анализ (до 1024 символов)
+
+        Цены бери на правой оси Y главного графика. Текущая цена отображается белым шрифтом на зеленом или красном фоне.
+        Горизонтальные красные пунктирные линии – это линии сопротивления.
+        Горизонтальные зеленые пунктирные линии – это линии поддержки.
       `,
     ),
   );
@@ -125,11 +129,15 @@ export const askAI = async (signal: Signal) => {
 
   const response = await model.invoke(messages);
 
-  const content = parseAIResponse(response.content);
+  const content = parseAIResponse(response.content) as Analysis;
 
   await setData(redisKeys.analysis(symbol, signal.signalId), content);
 
-  console.log(symbol, formatMessage(signal, content as Analysis));
+  if (!content.isBreakout || !content.isShouldTrade) {
+    await delKey(redisKeys.signal(symbol, signal.signalId));
+  }
+
+  console.log(symbol, formatMessage(signal, content));
 };
 
 export const screenDashboard = async (signal: Signal) => {
@@ -169,44 +177,103 @@ export const screenDashboard = async (signal: Signal) => {
   await browser.close();
 };
 
-const formatMessage = ({ symbol, signalId }: Signal, analysis: Analysis) => {
-  const emojiDir =
-    analysis.direction === 'LONG'
-      ? '🟢 LONG'
-      : analysis.direction === 'SHORT'
-        ? '🔴 SHORT'
-        : '⚪️ NO TRADE';
+const escapeHtml = (s?: string | null) => {
+  if (!s) return '';
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+};
 
-  const breakout = analysis.isBreakout ? '✅ Пробой' : '❌ Без пробоя';
-  const trend = analysis.isTrendLine ? '📈 Тренд подтверждён' : '⚠️ Не тренд';
-  const shouldTrade = analysis.isShouldTrade
-    ? '💰 Возможна сделка'
-    : '🚫 Не входить';
+const fmtNum = (n?: number | null, digits = 2) => {
+  if (n === null || n === undefined || !Number.isFinite(n)) return null;
+  const useDigits = Math.abs(n) >= 1000 ? 0 : digits;
+  return n.toFixed(useDigits);
+};
 
-  const rr =
-    analysis.riskRewardRatio !== null
-      ? `R:R = <b>${analysis.riskRewardRatio.toFixed(2)}</b>`
-      : 'R:R = —';
+export const formatMessage = (
+  { symbol }: Signal,
+  analysis: Partial<Analysis> | null | undefined,
+): string => {
+  try {
+    if (!analysis || Object.keys(analysis).length === 0) {
+      return `<b>⚠️ Анализ недоступен для ${symbol}</b>\nПопробуйте обновить график или повторить запрос позже.`;
+    }
 
-  const quality = `⭐ Качество: <b>${analysis.quality}/10</b>`;
+    const {
+      direction,
+      isBreakout,
+      isTrendLine,
+      isShouldTrade,
+      quality,
+      riskRewardRatio,
+      entryPrice,
+      takeProfitPrice,
+      stopLossPrice,
+      comment,
+    } = analysis;
 
-  const prices = [
-    analysis.entryPrice && `Вход: <b>${analysis.entryPrice}</b>`,
-    analysis.takeProfitPrice && `TP: <b>${analysis.takeProfitPrice}</b>`,
-    analysis.stopLossPrice && `SL: <b>${analysis.stopLossPrice}</b>`,
-  ]
-    .filter(Boolean)
-    .join(' · ');
+    const emojiDir =
+      direction === 'LONG'
+        ? '🟢 LONG'
+        : direction === 'SHORT'
+          ? '🔴 SHORT'
+          : '⚪️ NO TRADE';
 
-  return `
-    <b>${emojiDir} ${symbol}</b>
-    ${breakout} · ${trend}
-    ${shouldTrade}
-    ${quality}
-    ${rr}
-    ${prices || ''}
-    📝 ${analysis.comment}
-    `.trim();
+    const lines: string[] = [];
+
+    lines.push(`<b>${emojiDir} ${symbol}</b>`);
+
+    const flags: string[] = [];
+    if (typeof isBreakout === 'boolean') {
+      flags.push(isBreakout ? '✅ Пробой' : '❌ Без пробоя');
+    }
+    if (typeof isTrendLine === 'boolean') {
+      flags.push(isTrendLine ? '📈 Тренд подтверждён' : '⚠️ Не тренд');
+    }
+    if (flags.length) lines.push(flags.join(' · '));
+
+    const qualityLine =
+      typeof quality === 'number' ? `⭐ Качество: <b>${quality}/10</b>` : null;
+    const rrVal =
+      typeof riskRewardRatio === 'number'
+        ? `R:R = <b>${fmtNum(riskRewardRatio, 2)}</b>`
+        : null;
+
+    if (isShouldTrade === true) {
+      lines.push('💰 Возможна сделка');
+
+      if (qualityLine || rrVal) {
+        lines.push([qualityLine, rrVal].filter(Boolean).join(' · '));
+      }
+
+      const prices = [
+        fmtNum(entryPrice) && `Вход: <b>${fmtNum(entryPrice)}</b>`,
+        fmtNum(takeProfitPrice) && `TP: <b>${fmtNum(takeProfitPrice)}</b>`,
+        fmtNum(stopLossPrice) && `SL: <b>${fmtNum(stopLossPrice)}</b>`,
+      ]
+        .filter(Boolean)
+        .join(' · ');
+      if (prices) {
+        lines.push(prices);
+      }
+    }
+
+    if (isShouldTrade === false) {
+      lines.push('🚫 Не входить');
+      if (qualityLine || rrVal) {
+        lines.push([qualityLine, rrVal].filter(Boolean).join(' · '));
+      }
+    }
+
+    if (typeof isShouldTrade !== 'boolean' && (qualityLine || rrVal)) {
+      lines.push([qualityLine, rrVal].filter(Boolean).join(' · '));
+    }
+
+    const safeComment = escapeHtml(comment)?.trim();
+    if (safeComment) lines.push(`📝 ${safeComment}`);
+
+    return lines.filter(Boolean).join('\n').trim();
+  } catch (err) {
+    return `<b>⚠️ Ошибка форматирования сообщения</b>\nДетали: ${(err as Error).message || String(err)}`;
+  }
 };
 
 export const sendSignal = async (signal: Signal) => {

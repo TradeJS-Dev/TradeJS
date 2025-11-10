@@ -76,7 +76,7 @@ export const getData = async (
   }
 };
 
-export const deleteData = async (key: string): Promise<boolean> => {
+export const delKey = async (key: string): Promise<boolean> => {
   const redis = getRedis();
 
   try {

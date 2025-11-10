@@ -4,7 +4,7 @@ import ProgressBar from 'progress';
 import chalk from 'chalk';
 import { PRELOAD_DAYS } from '@constants';
 import { getFiles } from '@utils/files';
-import { getKeys, deleteData } from '@utils/redis';
+import { getKeys, delKey } from '@utils/redis';
 import { getTimestamp } from '@utils/timestamp';
 import { getFormatted } from '@utils/stat';
 import { getTopTickers } from '@utils/tickers';
@@ -59,7 +59,7 @@ export const cleanRedis = async (area: string) => {
   for await (const key of keys) {
     completed++;
 
-    await deleteData(key);
+    await delKey(key);
 
     if (completed % 100 === 0 || completed === keys.length) {
       bar.tick(completed === keys.length ? completed % 100 : 100);
