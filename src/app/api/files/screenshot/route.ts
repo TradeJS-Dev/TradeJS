@@ -5,9 +5,7 @@ import path from 'path';
 export const runtime = 'nodejs';
 
 interface Params {
-  symbol: string;
-  signalId: string;
-  interval: string;
+  name: string;
 }
 
 export async function GET(_req: Request, { params }: { params: Params }) {
@@ -16,7 +14,7 @@ export async function GET(_req: Request, { params }: { params: Params }) {
       process.cwd(),
       'data',
       'screenshots',
-      `${params.symbol}_${params.signalId}_${params.interval}.png`,
+      `${params.name}.png`,
     );
     const file = await fs.readFile(filePath);
 

@@ -2,7 +2,13 @@ import fs from 'fs/promises';
 import _ from 'lodash';
 import ProgressBar from 'progress';
 import chalk from 'chalk';
-import { PRELOAD_DAYS } from '@constants';
+import {
+  PRELOAD_DAYS,
+  KLINE_CONCURRENCY_LIMIT,
+  AI_CONCURRENCY_LIMIT,
+  TG_CONCURRENCY_LIMIT,
+  SCREENSHOT_CONCURRENCY_LIMIT,
+} from '@constants';
 import { getFiles } from '@utils/files';
 import { getKeys, delKey } from '@utils/redis';
 import { getTimestamp } from '@utils/timestamp';
@@ -93,7 +99,7 @@ export const update = async (
     queue.unshift('BTCUSDT');
   }
 
-  await runWithConcurrency(queue, 10, async (symbol) => {
+  await runWithConcurrency(queue, KLINE_CONCURRENCY_LIMIT, async (symbol) => {
     try {
       await connector.kline({
         symbol,
@@ -191,15 +197,19 @@ export const makeScreenshots = async (signals: Signal[], title = '') => {
 
   console.log(chalk.yellow('screenshots:', title, signals.length));
 
-  await runWithConcurrency(signals, 3, async (signal) => {
-    try {
-      await screenDashboard(signal);
-    } catch {
-      console.error('Failed screenshot:', signal.symbol);
-    } finally {
-      bar.tick(1, { symbol: chalk.gray(signal.symbol) });
-    }
-  });
+  await runWithConcurrency(
+    signals,
+    SCREENSHOT_CONCURRENCY_LIMIT,
+    async (signal) => {
+      try {
+        await screenDashboard(signal);
+      } catch {
+        console.error('Failed screenshot:', signal.symbol);
+      } finally {
+        bar.tick(1, { symbol: chalk.gray(signal.symbol) });
+      }
+    },
+  );
 
   console.log('');
 };
@@ -215,7 +225,7 @@ export const sendToAI = async (signals: Signal[]) => {
 
   console.log(chalk.yellow('AI:', signals.length));
 
-  await runWithConcurrency(signals, 3, async (signal) => {
+  await runWithConcurrency(signals, AI_CONCURRENCY_LIMIT, async (signal) => {
     try {
       await askAI(signal);
     } catch {
@@ -239,7 +249,7 @@ export const sendToTG = async (signals: Signal[]) => {
 
   console.log(chalk.yellow('messages:', signals.length));
 
-  await runWithConcurrency(signals, 3, async (signal) => {
+  await runWithConcurrency(signals, TG_CONCURRENCY_LIMIT, async (signal) => {
     try {
       await sendSignal(signal);
     } catch {

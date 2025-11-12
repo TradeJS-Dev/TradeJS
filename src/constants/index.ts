@@ -1,4 +1,7 @@
+import 'dotenv/config';
 import type { TestThresholds } from '@types';
+
+const { NODE_ENV } = process.env;
 
 export const PRELOAD_DAYS = 210;
 export const SIGNALS_PRELOAD_DAYS = 60;
@@ -15,6 +18,11 @@ export const TTL_1M = 2_600_000;
 export const TESTS_TOP_LIMIT = 40;
 export const TESTS_LIMIT = 100_000;
 export const TESTS_ORDERS_MIN_LIMIT = 40;
+
+export const KLINE_CONCURRENCY_LIMIT = 10;
+export const TG_CONCURRENCY_LIMIT = 3;
+export const AI_CONCURRENCY_LIMIT = 3;
+export const SCREENSHOT_CONCURRENCY_LIMIT = NODE_ENV === 'production' ? 1 : 3;
 
 export const levelScore = {
   success: 1,

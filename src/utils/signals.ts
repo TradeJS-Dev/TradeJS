@@ -2,19 +2,22 @@ import 'dotenv/config';
 import fs from 'fs/promises';
 import path from 'path';
 import puppeteer from 'puppeteer';
-import { delay } from '@utils/async';
-import { setData, getData, redisKeys, delKey } from '@utils/redis';
-import { Signal, Analysis } from '@types';
 import { ChatOpenAI } from '@langchain/openai';
 import {
   BaseMessage,
   HumanMessage,
   SystemMessage,
 } from '@langchain/core/messages';
+import { PRELOAD_DAYS } from '@constants';
+import { connectors } from '@src/connectors';
+import { Signal, Analysis } from '@types';
+import { setData, getData, redisKeys, delKey } from '@utils/redis';
+import { toJson } from '@utils/toJson';
+import { getTimestamp } from '@utils/timestamp';
+import { delay } from '@utils/async';
+import { getSupportResistanceLevels } from '@utils/supportResistance';
 
-const APP_URL = process.env.APP_URL;
-const token = process.env.TG_BOT_TOKEN;
-const chatId = process.env.TG_CHAT_ID;
+const { APP_URL, TG_BOT_TOKEN: token, TG_CHAT_ID: chatId } = process.env;
 
 const getScreenshotPath = ({ symbol, signalId, interval }: Signal) => {
   return path.join(
@@ -53,11 +56,11 @@ const parseAIResponse = (input: string | object): object => {
 };
 
 export const askAI = async (signal: Signal) => {
-  const { symbol } = signal;
+  const { symbol, direction } = signal;
   const messages = new Array<BaseMessage>();
 
   const model = new ChatOpenAI({
-    temperature: 0.9,
+    temperature: 0.2,
     modelName: 'anthropic/claude-sonnet-4.5',
     // modelName: 'x-ai/grok-4-fast',
     openAIApiKey: process.env.OPENAI_API_KEY,
@@ -66,42 +69,65 @@ export const askAI = async (signal: Signal) => {
     },
   });
 
+  const PRELOAD_START = getTimestamp(PRELOAD_DAYS);
+  const PRELOAD_END = getTimestamp();
+
+  const connector = connectors.ByBit({
+    userName: 'root',
+  });
+
+  const data15 = await connector.kline({
+    symbol,
+    start: PRELOAD_START,
+    end: PRELOAD_END,
+    interval: '15',
+    silent: true,
+  });
+
+  const data60 = await connector.kline({
+    symbol,
+    start: PRELOAD_START,
+    end: PRELOAD_END,
+    interval: '60',
+    silent: true,
+  });
+
+  const { supportLevels, resistanceLevels } =
+    getSupportResistanceLevels(data15);
+
   messages.push(
     new SystemMessage(
       `
-        Ты — помощник крипто-трейдера. Отвечай на русском языке.
-        Проанализируй график и оцени перспективность сделки.
+Ты — помощник крипто-трейдера. Отвечай на русском языке. Твоя задача — проанализировать присланные ИЗОБРАЖЕНИЯ графиков (для геометрии: пробой наклонной линии, трендовость) и ЧИСЛОВЫЕ ДАННЫЕ свечей (для всех ценовых расчётов).
+ВЕРНИ СТРОГО ОДИН JSON-ОБЪЕКТ БЕЗ ПРЕАМБУЛ И ТЕКСТА ВОКРУГ. Никаких комментариев вне JSON, никаких Markdown. Только валидный JSON без завершающей запятой. Числа — десятичные, максимум 8 знаков после запятой.
 
-        Ответ должен быть строго в JSON-формате следующей структуры:
+Формат ответа:
+{
+  "isBreakout": boolean,
+  "isTrendLine": boolean,
+  "isShouldTrade": boolean,
+  "needRetest": boolean,
+  "quality": number,               // целое от 0 до 10
+  "direction": "LONG" | "SHORT" | null,
+  "entryPrice": number | null,     // БРАТЬ ТОЛЬКО ИЗ МАССИВОВ ДАННЫХ СВЕЧЕЙ
+  "takeProfitPrice": number | null,// БРАТЬ ТОЛЬКО ИЗ МАССИВОВ ДАННЫХ СВЕЧЕЙ
+  "stopLossPrice": number | null,  // БРАТЬ ТОЛЬКО ИЗ МАССИВОВ ДАННЫХ СВЕЧЕЙ
+  "riskRewardRatio": number | null,// (takeProfitPrice - entryPrice) / (entryPrice - stopLossPrice) для LONG;
+                                   // (entryPrice - takeProfitPrice) / (stopLossPrice - entryPrice) для SHORT.
+  "comment": string                // до 1024 символов, без переносов строк внутри JSON
+}
 
-        {
-          "isBreakout": boolean,
-          "isTrendLine": boolean,
-          "isShouldTrade": boolean,
-          "quality": number,
-          "direction": "LONG" | "SHORT" | null,
-          "entryPrice": number | null,
-          "takeProfitPrice": number | null,
-          "stopLossPrice": number | null,
-          "riskRewardRatio": number | null,
-          "comment": string
-        }
+Правила интерпретации:
+- Пробой наклонной линии ("isBreakout") и факт корректной трендовой линии ("isTrendLine") определяй ПО ИЗОБРАЖЕНИЮ.
+- Любые ЧИСЛЕННЫЕ уровни (entryPrice/takeProfitPrice/stopLossPrice) и вычисления (riskRewardRatio) определяй ТОЛЬКО ПО ПРИСЛАННЫМ МАССИВАМ СВЕЧЕЙ. НЕ считывай цены с картинки.
+- Горизонтальные красные пунктирные линии на изображениях — сопротивления, зелёные — поддержки. Используй их как визуальные подсказки, но ЦЕНЫ всё равно бери из данных свечей.
+- Если визуальные подсказки противоречат данным, для факта пробоя/тренда доверяй изображению, а для значений цен и уровней — исключительно данным свечей.
+- "quality" оцени от 0 до 10; если данных недостаточно или сетап слабый — ставь низкое значение и "isShouldTrade": false.
+- "direction" выбери по сути сетапа (может отличаться от ожидаемого направления во входе; допустимо null).
+- Если корректные уровни/цены вычислить невозможно — верни null в соответствующих полях и "isShouldTrade": false с пояснением в "comment".
+- Округляй цены до количества знаков, привычного для инструмента, НО не более 6 знаков после запятой.
 
-        Пояснения к полям:
-        - **isBreakout** — виден ли пробой наклонной линии?
-        - **isTrendLine** — действительно ли желтая линия построена по экстремумам и является линией  тренда?
-        - **isShouldTrade** — стоит ли входить в сделку?
-        - **quality** — качество сетапа от 0 до 10 (0 — не стоит входить, 10 — идеальный вход)
-        - **direction** — направление сделки ('LONG', 'SHORT' или null)
-        - **entryPrice** — цена входа или null
-        - **takeProfitPrice** — цена тейк-профита или null
-        - **stopLossPrice** — цена стоп-лосса или null
-        - **riskRewardRatio** — соотношение риск/прибыль или null
-        - **comment** — текстовый анализ (до 1024 символов)
-
-        Цены бери на правой оси Y главного графика. Текущая цена отображается белым шрифтом на зеленом или красном фоне.
-        Горизонтальные красные пунктирные линии – это линии сопротивления.
-        Горизонтальные зеленые пунктирные линии – это линии поддержки.
+Верни только JSON-объект, без лишних символов.
       `,
     ),
   );
@@ -114,7 +140,30 @@ export const askAI = async (signal: Signal) => {
       content: [
         {
           type: 'text',
-          text: `Проанализируй графики монеты ${symbol} (на 15m и 60m таймфреймах) и верни результат в указанном JSON-формате.`,
+          text: `
+Проанализируй графики и данные монеты ${symbol} (на 15m и 60m таймфреймах) как ${direction} сетап сделки
+и верни результат в указанном JSON-формате.
+Данные последних 100 свечей на 15m графике:
+${toJson(data15.slice(-100))}
+
+Данные последних 100 свечей на 60m графике:
+${toJson(data60.slice(-100))}
+
+Данные свечей это массив, где каждый элемент (свеча) имеет поля:
+  - **open**: number;
+  - **high**: number;
+  - **low**: number;
+  - **close**: number;
+  - **volume**: number;
+  - **timestamp**: number;
+  - **turnover**: number;
+
+Линии поддержки:
+${toJson(supportLevels)}
+
+Линии сопротивления:
+${toJson(resistanceLevels)}
+`,
         },
         {
           type: 'image_url',
@@ -151,6 +200,7 @@ export const screenDashboard = async (signal: Signal) => {
       '--no-sandbox',
       '--disable-setuid-sandbox',
       '--disable-dev-shm-usage',
+      '--disable-gpu',
       '--font-render-hinting=medium',
     ],
   });
@@ -203,6 +253,7 @@ export const formatMessage = (
       isBreakout,
       isTrendLine,
       isShouldTrade,
+      needRetest,
       quality,
       riskRewardRatio,
       entryPrice,
@@ -228,6 +279,13 @@ export const formatMessage = (
     }
     if (typeof isTrendLine === 'boolean') {
       flags.push(isTrendLine ? '📈 Тренд подтверждён' : '⚠️ Не тренд');
+    }
+    if (typeof needRetest === 'boolean') {
+      flags.push(
+        !needRetest
+          ? '✅ Можно входить в сделку'
+          : '❌ Нужно дождаться ретеста',
+      );
     }
     if (flags.length) lines.push(flags.join(' · '));
 
@@ -286,7 +344,7 @@ export const sendSignal = async (signal: Signal) => {
 
   const caption = formatMessage(signal, analysis);
 
-  const imageUrl = `${APP_URL}/api/files/screenshot/${symbol}/${signalId}/${interval}`;
+  const imageUrl = `${APP_URL}/api/files/screenshot/${symbol}_${signalId}_${interval}`;
 
   const res = await fetch(`https://api.telegram.org/bot${token}/sendPhoto`, {
     method: 'POST',

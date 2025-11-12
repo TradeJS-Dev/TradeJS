@@ -36,6 +36,7 @@ export interface Analysis {
   isBreakout: boolean;
   isTrendLine: boolean;
   isShouldTrade: boolean;
+  needRetest: boolean;
   quality: number;
   direction: 'LONG' | 'SHORT' | null;
   entryPrice: number | null;
