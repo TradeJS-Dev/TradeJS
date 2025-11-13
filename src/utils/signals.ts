@@ -144,7 +144,7 @@ export const askAI = async (signal: Signal) => {
         {
           type: 'text',
           text: `
-Проанализируй графики и данные монеты ${symbol} (на 15m и 60m таймфреймах) как ${direction} сетап сделки
+Проанализируй графики и данные монеты ${symbol} (на 15m и 60m таймфреймах) как ${direction} сетап краткосрочной сделки
 и верни результат в указанном JSON-формате.
 Данные последних 40 свечей на 15m графике:
 ${toJson(data15.slice(-40))}
@@ -161,11 +161,9 @@ ${toJson(data60.slice(-40))}
   - **timestamp**: number;
   - **turnover**: number;
 
-Линии поддержки:
-${toJson(supportLevels)}
+${supportLevels ? `Линии поддержки: ${toJson(supportLevels)}` : ''}
 
-Линии сопротивления:
-${toJson(resistanceLevels)}
+${resistanceLevels ? `Линии сопротивления: ${toJson(resistanceLevels)}` : ''}
 `,
         },
         {
@@ -286,8 +284,8 @@ export const formatMessage = (
     if (typeof needRetest === 'boolean') {
       flags.push(
         !needRetest
-          ? '✅ Ретест не нужен'
-          : '❌ Нужно дождаться ретеста',
+          ? '🛫 Ретест не нужен'
+          : '🕘 Нужно дождаться ретеста',
       );
     }
     if (flags.length) lines.push(flags.join(' · '));
@@ -300,7 +298,7 @@ export const formatMessage = (
         : null;
 
     if (isShouldTrade === true) {
-      lines.push('💰 Возможна сделка');
+      lines.push('🚀 Возможна сделка');
 
       if (qualityLine || rrVal) {
         lines.push([qualityLine, rrVal].filter(Boolean).join(' · '));

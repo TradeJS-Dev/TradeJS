@@ -412,7 +412,7 @@ const findTrendlinesCore = (
     mode,
     maxLines = 10,
     range = 15,
-    firstRange = 30,
+    firstRange = 50,
     epsilon = 0.004,
     epsilonOffset = 0.008,
     minTouches = 3,
