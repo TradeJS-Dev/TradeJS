@@ -19,6 +19,7 @@ export interface TrendLineOptions {
   offset?: number; // размер окна в конце (в барах)
   minTouchGap?: number; // минимум баров между касаниями
   capture?: boolean; // true: в окне offset обязателен «старт за линией» и цвет свечи (строго, без допуска)
+  bestLines?: number;
 }
 
 export interface Signal {

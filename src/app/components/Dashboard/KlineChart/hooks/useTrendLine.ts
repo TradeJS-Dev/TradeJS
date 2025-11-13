@@ -14,74 +14,31 @@ type TrendLine = { id: string; points: TrendPoint[] };
 /** нормализация таймстампа к ms */
 const toMs = (ts: number) => (ts < 1e12 ? ts * 1000 : ts);
 
-/** Держим правый край, добавляем отступ справа и слева, подбираем зум так, чтобы было видно начало линий */
-const fitKeepRightZoom = (
-  chart: Chart,
-  lines: TrendLine[],
-  lastDataTsMs: number,
-) => {
-  if (!lines.length) return;
-
-  // 1) самый ранний ts точек линий
-  let minStartTsMs = Number.POSITIVE_INFINITY;
-  for (const line of lines) {
-    for (const pt of line.points) {
-      const t = toMs(pt.timestamp);
-      if (t < minStartTsMs) minStartTsMs = t;
-    }
-  }
-  if (!isFinite(minStartTsMs)) return;
+/** Максимально отдаляем график и добавляем отступ справа от последней свечи */
+const fitKeepRightZoom = (chart: Chart, lastDataTsMs: number) => {
+  if (!Number.isFinite(lastDataTsMs)) return;
 
   const size = chart.getSize?.();
   const width = size?.width ?? 0;
+  if (!width) return;
 
-  const MAX_STEPS = 20;
-  const SCALE = 0.85; // < 1 => zoom-out
-  const LEFT_MARGIN_RATIO = 0.05; // 5% слева
-  const RIGHT_MARGIN_RATIO = 0.05; // 5% справа
+  const MAX_STEPS = 15; // количество шагов отдаления
+  const SCALE = 0.85; // коэффициент zoom-out (<1 — отдаляемся)
+  const RIGHT_MARGIN_RATIO = 0.1; // 10% ширины экрана справа
 
-  // начально прокручиваемся к концу
+  // 1) прокрутка к последней свече (правый край)
   chart.scrollToTimestamp(lastDataTsMs);
 
+  // 2) максимальный zoom-out вокруг правого края
   for (let i = 0; i < MAX_STEPS; i++) {
-    const edges = chart.convertFromPixel([
-      { x: 0 },
-      { x: width },
-    ]) as Array<any>;
-    const leftTsRaw = edges?.[0]?.timestamp;
-    const rightTsRaw = edges?.[1]?.timestamp;
-
-    const leftTsMs = typeof leftTsRaw === 'number' ? toMs(leftTsRaw) : NaN;
-    const rightTsMs = typeof rightTsRaw === 'number' ? toMs(rightTsRaw) : NaN;
-
-    if (Number.isNaN(leftTsMs) || Number.isNaN(rightTsMs) || !width) {
-      // fallback: чуть отдалимся вокруг конца и попробуем ещё раз
-      chart.zoomAtTimestamp(SCALE, lastDataTsMs);
-      continue;
-    }
-
-    const visibleSpan = rightTsMs - leftTsMs;
-    const leftMargin = visibleSpan * LEFT_MARGIN_RATIO;
-    const rightMargin = visibleSpan * RIGHT_MARGIN_RATIO;
-
-    const desiredLeftTs = minStartTsMs - leftMargin;
-    const desiredRightTs = lastDataTsMs + rightMargin;
-
-    // 1) если правого отступа нет — сначала создаём его, прокрутив правый край правее последней свечи
-    if (rightTsMs < desiredRightTs) {
-      chart.scrollToTimestamp(desiredRightTs);
-      continue; // пересчитать края на следующей итерации
-    }
-
-    // 2) если левый край ещё не «накрыл» начало линий с запасом — отдаляем вокруг правого края
-    if (leftTsMs > desiredLeftTs) {
-      chart.zoomAtTimestamp(SCALE, desiredRightTs);
-      continue;
-    }
-
-    // 3) оба условия выполнены — готово
-    break;
+    chart.zoomAtTimestamp(SCALE, lastDataTsMs);
   }
+
+  // 3) добавляем отступ справа в пикселях
+  const rightOffsetPx = width * RIGHT_MARGIN_RATIO;
+
+  // В типах Chart может не быть этого метода, поэтому через any + optional chaining
+  (chart as any).setOffsetRightDistance?.(rightOffsetPx);
 };
 
 export const useTrendLine = (
@@ -173,17 +130,8 @@ export const useTrendLine = (
       });
     }
 
-    // держим скролл в конце, затем зумим так, чтобы был виден старт линий
-    const allLines = [...lowLines, ...highLines];
-    if (autoZoom && allLines.length > 0 && Number.isFinite(lastDataTsMs)) {
-      try {
-        // сначала гарантированно прокручиваемся к концу
-        chart.scrollToTimestamp(lastDataTsMs);
-        // затем подбираем зум, сохраняя правую привязку
-        fitKeepRightZoom(chart, allLines, lastDataTsMs);
-      } catch (err) {
-        console.error('Failed to zoom chart', err);
-      }
+    if (autoZoom && Number.isFinite(lastDataTsMs)) {
+      fitKeepRightZoom(chart, lastDataTsMs);
     }
 
     // cleanup

@@ -413,22 +413,18 @@ const findTrendlinesCore = (
     maxLines = 10,
     range = 15,
     firstRange = 30,
-    epsilon = 0.002,
-    epsilonOffset = 0.004,
+    epsilon = 0.004,
+    epsilonOffset = 0.008,
     minTouches = 3,
     minDistance = 50,
     minTouchGap = 15,
     offset = 40,
     capture = false,
-  } = options as TrendLineOptions & {
-    minDistance?: number;
-    minDistanceBars?: number;
-    epsilonOffset?: number;
-  };
+    bestLines = 2,
+  } = options as TrendLineOptions;
 
   if (!data?.length) return [];
 
-  // Предподсчёты
   const {
     timestampsMs,
     closeSeries,
@@ -441,7 +437,7 @@ const findTrendlinesCore = (
   const bodySeriesForExtrema = mode === 'lows' ? bodyLowSeries : bodyHighSeries;
   const bodySeriesForTouches = bodySeriesForExtrema;
 
-  // 1) Сырые локальные экстремумы за O(N)
+  // 1) Сырые локальные экстремумы
   const rawExtrema = collectRawExtrema({
     bodySeries: bodySeriesForExtrema,
     timestampsMs,
@@ -450,7 +446,7 @@ const findTrendlinesCore = (
   });
   if (rawExtrema.length < minTouches) return [];
 
-  // 2) Разрежение (кластеризация)
+  // 2) Кластеризация (разрежение)
   const anchors = clusterExtrema({
     rawExtrema,
     mode,
@@ -461,9 +457,14 @@ const findTrendlinesCore = (
   const lastBarIndex = data.length - 1;
   const lastTimestampMs = timestampsMs[lastBarIndex];
 
-  let bestTrendLine: TrendLine | null = null;
-  let bestSpanInBars = -1;
-  let validCandidatesCount = 0;
+  type Candidate = {
+    firstIndex: number;
+    lastIndex: number;
+    leftAnchor: Point;
+    rightAnchor: Point;
+  };
+
+  const candidates: Candidate[] = [];
 
   for (
     let rightAnchorIdx = anchors.length - 1;
@@ -472,16 +473,12 @@ const findTrendlinesCore = (
   ) {
     const rightAnchor = anchors[rightAnchorIdx];
 
-    // ранний отсев по достижимому максимуму
-    const maxPossibleSpan = rightAnchor.x - anchors[0].x;
-    if (maxPossibleSpan <= bestSpanInBars) break;
-
     for (
       let leftAnchorIdx = rightAnchorIdx - 1;
       leftAnchorIdx >= 0;
       leftAnchorIdx--
     ) {
-      if (validCandidatesCount >= maxLines) break;
+      if (candidates.length >= maxLines) break;
 
       const leftAnchor = anchors[leftAnchorIdx];
       if (rightAnchor.x === leftAnchor.x || rightAnchor.t === leftAnchor.t)
@@ -532,7 +529,7 @@ const findTrendlinesCore = (
         touchIndices[touchIndices.length - 1] - touchIndices[0];
       if (spanBarsByTouches < minDistance) continue;
 
-      // пробой фитилём между опорами — С ДОПУСКОМ epsilon
+      // пробой фитилём между опорами
       if (
         hasWickBreachOnSegment({
           lowSeries,
@@ -548,7 +545,7 @@ const findTrendlinesCore = (
         continue;
       }
 
-      // пробой телом до окна — с epsilon
+      // пробой телом до offset
       const preCaptureStart = lastIndex + 1;
       if (
         hasCloseBreachBeforeWindow({
@@ -565,7 +562,7 @@ const findTrendlinesCore = (
         continue;
       }
 
-      // capture: в offset должен случиться пробой линии на epsilonOffset по фитилю (ранний сигнал)
+      // capture: в offset должен быть пробой по фитилю на epsilonOffset
       if (capture) {
         if (offset <= 0) continue;
         const capturedEarly = hasCaptureByOffsetWick({
@@ -582,24 +579,50 @@ const findTrendlinesCore = (
         if (!capturedEarly) continue;
       }
 
-      validCandidatesCount++;
-
-      if (spanBarsByAnchors > bestSpanInBars) {
-        bestSpanInBars = spanBarsByAnchors;
-        bestTrendLine = {
-          id: `${mode}TrendLine-1`,
-          points: [
-            { timestamp: leftAnchor.t, value: evaluateY(leftAnchor.t) },
-            { timestamp: lastTimestampMs, value: evaluateY(lastTimestampMs) },
-          ],
-        };
-      }
+      candidates.push({
+        firstIndex,
+        lastIndex,
+        leftAnchor,
+        rightAnchor,
+      });
     }
 
-    if (validCandidatesCount >= maxLines) break; // ранний выход и из внешнего цикла
+    if (candidates.length >= maxLines) break;
   }
 
-  return bestTrendLine ? [bestTrendLine] : [];
+  if (!candidates.length) return [];
+
+  // Берём только лучшие по "близости к правому краю"
+  // (чем больше firstIndex, тем правее начинается линия)
+  candidates.sort((a, b) => b.firstIndex - a.firstIndex);
+
+  const effectiveBestLines = Math.max(
+    1,
+    Math.min(bestLines, maxLines, candidates.length),
+  );
+
+  const trendlines: TrendLine[] = [];
+
+  for (let i = 0; i < effectiveBestLines; i++) {
+    const { leftAnchor, rightAnchor } = candidates[i];
+
+    const evaluateY = buildLineEvaluator({
+      t1: leftAnchor.t,
+      y1: leftAnchor.y,
+      t2: rightAnchor.t,
+      y2: rightAnchor.y,
+    });
+
+    trendlines.push({
+      id: `${mode}TrendLine-${i + 1}`,
+      points: [
+        { timestamp: leftAnchor.t, value: evaluateY(leftAnchor.t) },
+        { timestamp: lastTimestampMs, value: evaluateY(lastTimestampMs) },
+      ],
+    });
+  }
+
+  return trendlines;
 };
 
 /* =========================== Public API =========================== */
