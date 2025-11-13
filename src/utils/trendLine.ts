@@ -411,13 +411,13 @@ const findTrendlinesCore = (
   const {
     mode,
     maxLines = 10,
-    range = 20,
-    firstRange = 40,
+    range = 15,
+    firstRange = 30,
     epsilon = 0.002,
     epsilonOffset = 0.004,
     minTouches = 3,
-    minDistance = 60,
-    minTouchGap = 20,
+    minDistance = 50,
+    minTouchGap = 15,
     offset = 40,
     capture = false,
   } = options as TrendLineOptions & {
