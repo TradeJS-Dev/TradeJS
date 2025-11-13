@@ -274,21 +274,19 @@ export const formatMessage = (
 
     lines.push(`<b>${emojiDir} ${symbol}</b>`);
 
-    const flags: string[] = [];
     if (typeof isBreakout === 'boolean') {
-      flags.push(isBreakout ? '✅ Пробой' : '❌ Без пробоя');
+      lines.push(isBreakout ? '✅ Пробой' : '❌ Без пробоя');
     }
     if (typeof isTrendLine === 'boolean') {
-      flags.push(isTrendLine ? '📈 Тренд подтверждён' : '⚠️ Не тренд');
+      lines.push(isTrendLine ? '📈 Тренд подтверждён' : '⚠️ Не тренд');
     }
     if (typeof needRetest === 'boolean') {
-      flags.push(
+      lines.push(
         !needRetest
           ? '🛫 Ретест не нужен'
           : '🕘 Нужно дождаться ретеста',
       );
     }
-    if (flags.length) lines.push(flags.join(' · '));
 
     const qualityLine =
       typeof quality === 'number' ? `⭐ Качество: <b>${quality}/10</b>` : null;
