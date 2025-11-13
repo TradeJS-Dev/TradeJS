@@ -19,7 +19,7 @@ export const TESTS_TOP_LIMIT = 40;
 export const TESTS_LIMIT = 100_000;
 export const TESTS_ORDERS_MIN_LIMIT = 40;
 
-export const KLINE_CONCURRENCY_LIMIT = 10;
+export const KLINE_CONCURRENCY_LIMIT = NODE_ENV === 'production' ? 5 : 10;
 export const TG_CONCURRENCY_LIMIT = 3;
 export const AI_CONCURRENCY_LIMIT = 3;
 export const SCREENSHOT_CONCURRENCY_LIMIT = NODE_ENV === 'production' ? 1 : 3;

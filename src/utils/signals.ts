@@ -124,6 +124,8 @@ export const askAI = async (signal: Signal) => {
 - Если визуальные подсказки противоречат данным, для факта пробоя/тренда доверяй изображению, а для значений цен и уровней — исключительно данным свечей.
 - "quality" оцени от 0 до 10; если данных недостаточно или сетап слабый — ставь низкое значение и "isShouldTrade": false.
 - "direction" выбери по сути сетапа (может отличаться от ожидаемого направления во входе; допустимо null).
+- При пробое нисходящей наклонной трендовой линии вверх анализируй сетап в направлении LONG.
+- При пробое восходящей наклонной трендовой линии вниз анализируй сетап в направлении SHORT.
 - Если корректные уровни/цены вычислить невозможно — верни null в соответствующих полях и "isShouldTrade": false с пояснением в "comment".
 - Округляй цены до количества знаков, привычного для инструмента, НО не более 6 знаков после запятой.
 
@@ -143,11 +145,11 @@ export const askAI = async (signal: Signal) => {
           text: `
 Проанализируй графики и данные монеты ${symbol} (на 15m и 60m таймфреймах) как ${direction} сетап сделки
 и верни результат в указанном JSON-формате.
-Данные последних 100 свечей на 15m графике:
-${toJson(data15.slice(-100))}
+Данные последних 40 свечей на 15m графике:
+${toJson(data15.slice(-40))}
 
-Данные последних 100 свечей на 60m графике:
-${toJson(data60.slice(-100))}
+Данные последних 40 свечей на 60m графике:
+${toJson(data60.slice(-40))}
 
 Данные свечей это массив, где каждый элемент (свеча) имеет поля:
   - **open**: number;
@@ -336,7 +338,7 @@ export const formatMessage = (
 };
 
 export const sendSignal = async (signal: Signal) => {
-  const { symbol, signalId, direction, interval } = signal;
+  const { symbol, signalId, interval } = signal;
 
   const analysis = (await getData(
     redisKeys.analysis(symbol, signalId),
@@ -367,5 +369,7 @@ export const sendSignal = async (signal: Signal) => {
     }),
   });
 
-  await res.json();
+  const data = await res.json();
+
+  console.log('tg response:', data);
 };
