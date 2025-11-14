@@ -9,7 +9,14 @@ type ResultItem = {
   category: Category;
 };
 
-const EXCLUDE_TICKERS = ['USDEUSDT', 'USDCUSDT', 'USDTUSDT', 'RLUSDUSDT'];
+const EXCLUDE_TICKERS = [
+  'USDEUSDT',
+  'USDCUSDT',
+  'USDTUSDT',
+  'RLUSDUSDT',
+  'PAXGUSDT',
+  'XAUTUSDT',
+];
 
 export const getVolatilityTickers = (data: Ticker[]): Item[] => {
   const result: ResultItem[] = [];

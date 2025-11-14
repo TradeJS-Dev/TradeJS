@@ -15,7 +15,6 @@ import { setData, getData, redisKeys, delKey } from '@utils/redis';
 import { toJson } from '@utils/toJson';
 import { getTimestamp } from '@utils/timestamp';
 import { delay } from '@utils/async';
-import { getSupportResistanceLevels } from '@utils/supportResistance';
 
 const { APP_URL, TG_BOT_TOKEN: token, TG_CHAT_ID: chatId } = process.env;
 
@@ -66,6 +65,10 @@ export const askAI = async (signal: Signal) => {
     openAIApiKey: process.env.OPENAI_API_KEY,
     configuration: {
       baseURL: process.env.OPENAI_API_ENDPOINT || 'https://api.openai.com/v1',
+      defaultHeaders: {
+        'HTTP-Referer': 'https://aleksnick01inv.fvds.ru',
+        'X-Title': 'Inv',
+      },
     },
   });
 
@@ -92,9 +95,6 @@ export const askAI = async (signal: Signal) => {
     silent: true,
   });
 
-  const { supportLevels, resistanceLevels } =
-    getSupportResistanceLevels(data15);
-
   messages.push(
     new SystemMessage(
       `
@@ -120,7 +120,6 @@ export const askAI = async (signal: Signal) => {
 Правила интерпретации:
 - Пробой наклонной линии ("isBreakout") и факт корректной трендовой линии ("isTrendLine") определяй ПО ИЗОБРАЖЕНИЮ.
 - Любые ЧИСЛЕННЫЕ уровни (entryPrice/takeProfitPrice/stopLossPrice) и вычисления (riskRewardRatio) определяй ТОЛЬКО ПО ПРИСЛАННЫМ МАССИВАМ СВЕЧЕЙ. НЕ считывай цены с картинки.
-- Горизонтальные красные пунктирные линии на изображениях — сопротивления, зелёные — поддержки. Используй их как визуальные подсказки, но ЦЕНЫ всё равно бери из данных свечей.
 - Если визуальные подсказки противоречат данным, для факта пробоя/тренда доверяй изображению, а для значений цен и уровней — исключительно данным свечей.
 - "quality" оцени от 0 до 10; если данных недостаточно или сетап слабый — ставь низкое значение и "isShouldTrade": false.
 - "direction" выбери по сути сетапа (может отличаться от ожидаемого направления во входе; допустимо null).
@@ -128,7 +127,6 @@ export const askAI = async (signal: Signal) => {
 - При пробое наклонной трендовой линии вниз анализируй сетап в направлении SHORT.
 - Если корректные уровни/цены вычислить невозможно — верни null в соответствующих полях и "isShouldTrade": false с пояснением в "comment".
 - Округляй цены до количества знаков, привычного для инструмента, НО не более 8 знаков после запятой.
-- Если предложенные уровни поддержки и сопротивления далеки от текущей цены, то расчитай их самостоятельно исходя из данных.
 
 Верни только JSON-объект, без лишних символов.
       `,
@@ -160,10 +158,6 @@ ${toJson(data60.slice(-40))}
   - **volume**: number;
   - **timestamp**: number;
   - **turnover**: number;
-
-${supportLevels ? `Линии поддержки: ${toJson(supportLevels)}` : ''}
-
-${resistanceLevels ? `Линии сопротивления: ${toJson(resistanceLevels)}` : ''}
 `,
         },
         {
@@ -277,15 +271,13 @@ export const formatMessage = (
     if (typeof isBreakout === 'boolean') {
       lines.push(isBreakout ? '✅ Пробой' : '❌ Без пробоя');
     }
-    if (typeof isTrendLine === 'boolean') {
-      lines.push(isTrendLine ? '📈 Тренд подтверждён' : '⚠️ Не тренд');
-    }
     if (typeof needRetest === 'boolean') {
       lines.push(
-        !needRetest
-          ? '🛫 Ретест не нужен'
-          : '🕘 Нужно дождаться ретеста',
+        !needRetest ? '🛫 Ретест не нужен' : '🕘 Нужно дождаться ретеста',
       );
+    }
+    if (typeof isTrendLine === 'boolean') {
+      lines.push(isTrendLine ? '📈 Тренд подтверждён' : '⚠️ Не тренд');
     }
 
     const qualityLine =
