@@ -200,27 +200,31 @@ export const screenDashboard = async (signal: Signal) => {
     ],
   });
 
-  const page = await browser.newPage();
+  try {
+    const page = await browser.newPage();
 
-  await page.setViewport({
-    width: 1400,
-    height: 960,
-    deviceScaleFactor: 2,
-  });
+    try {
+      await page.setViewport({
+        width: 1400,
+        height: 960,
+        deviceScaleFactor: 2,
+      });
 
-  await page.goto(
-    `${APP_URL}/routes/dashboard/${symbol}/${interval}/?signalId=${signalId}&autoZoom=true`,
-  );
+      await page.goto(
+        `${APP_URL}/routes/dashboard/${symbol}/${interval}/?signalId=${signalId}&autoZoom=true`,
+      );
 
-  await delay(10_000);
+      await delay(10_000);
 
-  await page.screenshot({
-    path: getScreenshotPath(signal),
-  });
-
-  await page.close();
-
-  await browser.close();
+      await page.screenshot({
+        path: getScreenshotPath(signal),
+      });
+    } finally {
+      await page.close();
+    }
+  } finally {
+    await browser.close();
+  }
 };
 
 const escapeHtml = (s?: string | null) => {
