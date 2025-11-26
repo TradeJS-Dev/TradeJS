@@ -308,6 +308,7 @@ const escapeHtml = (s?: string | null) => {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 };
 
+
 export const formatMessage = (
   { symbol }: Signal,
   analysis: Partial<Analysis> | null | undefined,
@@ -331,16 +332,6 @@ export const formatMessage = (
       stopLossPrice,
       comment,
     } = analysis;
-
-    const safeComment = escapeHtml(comment)?.trim();
-
-    if (!['LONG', 'SHORT'].includes(direction ?? '')) {
-      return `<b>⚠️ Сетап для ${symbol}</b> не получился\n\n📝 ${safeComment}`;
-    }
-
-    if (!['UP', 'DOWN'].includes(currentTrend ?? '')) {
-      return `<b>⚠️ Не получилось определить текущий тренд для ${symbol}</b>\n\n📝 ${safeComment}`;
-    }
 
     const lines: string[] = [];
     let score = 1;
@@ -375,18 +366,23 @@ export const formatMessage = (
         current && `Price: <b>${formatNumber(current)}</b>`,
         tp && `TP: <b>${formatNumber(tp)}</b> (${tpPercent})`,
         sl && `SL: <b>${formatNumber(sl)}</b> (${slPercent})`,
+        rr && `R:R = <b>${rr.toFixed(2)}</b>`,
       ]
         .filter(Boolean)
-        .join(' · ');
-
-      if (rr) {
-        return `${prices}\nR:R = <b>${rr.toFixed(2)}</b>`;
-      }
+        .join('\n');
 
       return prices;
     };
 
     const checkAnalys = () => {
+      if (!['LONG', 'SHORT'].includes(direction ?? '')) {
+        return `<b>⚠️ Сетап для ${symbol}</b> не получился`;
+      }
+  
+      if (!['UP', 'DOWN'].includes(currentTrend ?? '')) {
+        return `<b>⚠️ Не получилось определить текущий тренд для ${symbol}</b>`;
+      }
+
       const emojiDir =
         direction === 'LONG'
           ? '🟢 LONG'
@@ -465,21 +461,22 @@ export const formatMessage = (
 
       lines.push(`${emojiScore} Качество сетапа <b>${score}</b> из 5`);
 
-      lines.push('');
-
       const prices = getPrices();
 
       if (prices) {
-        lines.push(prices);
         lines.push('');
-      }
-
-      if (safeComment) {
-        lines.push(`📝 ${safeComment}`);
+        lines.push(prices);
       }
     };
 
     checkAnalys();
+
+    const safeComment = escapeHtml(comment)?.trim();
+
+    if (safeComment) {
+      lines.push('');
+      lines.push(`📝 ${safeComment}`);
+    }
 
     return lines.join('\n').trim();
   } catch (err) {
@@ -537,5 +534,5 @@ export const sendSignal = async (signal: Signal) => {
 
   const data = await res.json();
 
-  console.log('tg sendPhoto:', data);
+  console.log('tg sendPhoto:', data?.ok);
 };
