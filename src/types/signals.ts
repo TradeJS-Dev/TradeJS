@@ -36,13 +36,20 @@ export interface Signal {
 export interface Analysis {
   isBreakout: boolean;
   isTrendLine: boolean;
-  isShouldTrade: boolean;
+  isTrendLineFromExtremum: boolean;
+  isWellTradedLevel: boolean;
   needRetest: boolean;
-  quality: number;
+
   direction: 'LONG' | 'SHORT' | null;
+  currentTrend: 'UP' | 'DOWN' | null;
+  btcTrend: 'UP' | 'DOWN' | null;
+  isBitcoinCorrelation: boolean;
+
+  currentPrice: number;
   entryPrice: number | null;
   takeProfitPrice: number | null;
   stopLossPrice: number | null;
-  riskRewardRatio: number | null;
   comment: string;
+
+  timestamp: number;
 }

@@ -46,8 +46,8 @@ export const ByBitConnectorCreator: ConnectorCreator = (config) => {
       if (!client) return [];
 
       // Fallback к PRELOAD_FALLBACK_DAYS, если не передали явный старт
-      const normalizedStart = start ?? getTimestamp(PRELOAD_FALLBACK_DAYS);
-      const normalizedEnd = end ?? Date.now();
+      const normalizedStart = start || getTimestamp(PRELOAD_FALLBACK_DAYS);
+      const normalizedEnd = end || Date.now();
 
       if (normalizedEnd <= normalizedStart) {
         return [];

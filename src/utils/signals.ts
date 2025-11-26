@@ -15,8 +15,12 @@ import { setData, getData, redisKeys, delKey } from '@utils/redis';
 import { toJson } from '@utils/toJson';
 import { getTimestamp } from '@utils/timestamp';
 import { delay } from '@utils/async';
+import { formatNumber } from '@utils/math';
 
 const { APP_URL, TG_BOT_TOKEN: token, TG_CHAT_ID: chatId } = process.env;
+
+const getImageUrl = ({ symbol, signalId, interval }: Signal) =>
+  `${APP_URL}/api/files/screenshot/${symbol}_${signalId}_${interval}`;
 
 const getScreenshotPath = ({ symbol, signalId, interval }: Signal) => {
   return path.join(
@@ -60,7 +64,8 @@ export const askAI = async (signal: Signal) => {
 
   const model = new ChatOpenAI({
     temperature: 0.2,
-    modelName: 'anthropic/claude-sonnet-4.5',
+    modelName: 'anthropic/claude-opus-4.5',
+    // modelName: 'anthropic/claude-sonnet-4.5',
     // modelName: 'x-ai/grok-4-fast',
     openAIApiKey: process.env.OPENAI_API_KEY,
     configuration: {
@@ -98,100 +103,92 @@ export const askAI = async (signal: Signal) => {
   messages.push(
     new SystemMessage(
       `
-  Ты — помощник крипто-трейдера. Отвечай на русском языке. Твоя задача — проанализировать присланные ИЗОБРАЖЕНИЯ графиков (для геометрии: пробой наклонной линии, трендовость, корреляция с BTC) и ЧИСЛОВЫЕ ДАННЫЕ свечей (для всех ценовых расчётов).
-  ВЕРНИ СТРОГО ОДИН JSON-ОБЪЕКТ БЕЗ ПРЕАМБУЛ И ТЕКСТА ВОКРУГ. Никаких комментариев вне JSON, никаких Markdown. Только валидный JSON без завершающей запятой. Числа — десятичные, максимум 8 знаков после запятой.
-  
-  Формат ответа:
-  {
-    "isBreakout": boolean,
-    "isTrendLine": boolean,
-    "isShouldTrade": boolean,
-    "needRetest": boolean,
-    "quality": number,               // целое от 0 до 10
-    "direction": "LONG" | "SHORT" | null,
-    "entryPrice": number | null,     // БРАТЬ ТОЛЬКО ИЗ МАССИВОВ ДАННЫХ СВЕЧЕЙ
-    "takeProfitPrice": number | null,// БРАТЬ ТОЛЬКО ИЗ МАССИВОВ ДАННЫХ СВЕЧЕЙ
-    "stopLossPrice": number | null,  // БРАТЬ ТОЛЬКО ИЗ МАССИВОВ ДАННЫХ СВЕЧЕЙ
-    "riskRewardRatio": number | null,// (takeProfitPrice - entryPrice) / (entryPrice - stopLossPrice) для LONG;
-                                     // (entryPrice - takeProfitPrice) / (stopLossPrice - entryPrice) для SHORT.
-    "comment": string                // до 1024 символов, без переносов строк внутри JSON
-  }
-  
-  Правила интерпретации:
-  - Пробой наклонной линии ("isBreakout") и факт корректной трендовой линии ("isTrendLine") определяй ПО ИЗОБРАЖЕНИЮ.
-  - Любые ЧИСЛЕННЫЕ уровни (entryPrice/takeProfitPrice/stopLossPrice) и вычисления (riskRewardRatio) определяй ТОЛЬКО ПО ПРИСЛАННЫМ МАССИВАМ СВЕЧЕЙ. НЕ считывай цены с картинки.
-  - Если визуальные подсказки противоречат данным, для факта пробоя/тренда доверяй изображению, а для значений цен и уровней — исключительно данным свечей.
-  - "quality" оцени от 0 до 10; если данных недостаточно или сетап слабый — ставь низкое значение и "isShouldTrade": false.
-  - "direction" выбери по сути сетапа (может отличаться от ожидаемого направления во входе; допустимо null).
-  - При пробое наклонной трендовой линии вверх анализируй сетап в направлении LONG.
-  - При пробое наклонной трендовой линии вниз анализируй сетап в направлении SHORT.
-  - Если корректные уровни/цены вычислить невозможно — верни null в соответствующих полях и "isShouldTrade": false с пояснением в "comment".
-  - Округляй цены до количества знаков, привычного для инструмента, НО не более 8 знаков после запятой.
-  
-  Описание стратегии работы с наклонными уровнями:
-  - Рассматриваем сетапы только ПО ТРЕНДУ. Основное направление тренда определяй по более старшему ТФ (60m) и общему движению цены на изображении.
-  - Входы против основного тренда считаются некачественными: для таких ситуаций уменьши "quality" и, как правило, ставь "isShouldTrade": false.
-  
-  Критерии качества наклонного уровня:
-  1) Тренд. Должно быть очевидное трендовое движение (вверх или вниз), а не флэт.
-  2) Минимум 3 касания. Наклонная линия уровня должна быть построена по 3 и более касаниям (шипам или телам свечей). Линия с 1–2 касаниями считается слабой.
-  3) Наторгованный уровень. Вдоль уровня должно быть заметное количество касаний/движения цены, а не одиночный прокол. Уровень, по которому мало торговли, считается слабым.
-  4) Основание уровня — значимый экстремум. Строим наклонный уровень от ярко выраженного локального экстремума:
-     - для восходящей поддержки — от заметного минимума;
-     - для нисходящего сопротивления — от заметного максимума.
-  
-  Оценка корреляции с BTC по изображению:
-  - В нижней части изображения обычно показан график BTC.
-  - Сравни структуру движения монеты и BTC: совпадают ли основные импульсы и откаты по времени и направлению.
-  - Если монета ЯВНО «ходит за BTC» (большинство движений повторяет BTC по времени и направлению), считай, что она сильно коррелирована с BTC.
-  - Для стратегии приоритетны монеты, которые НЕ ходят за BTC (движение более независимое).
-  - Если по картинке видно сильную корреляцию с BTC:
-    - снижай "quality";
-    - чаще устанавливай "isShouldTrade": false, даже при выполнении остальных критериев;
-    - в "comment" явно укажи, что монета ходит за BTC и сетап хуже из-за высокой корреляции.
-  
-  Оценка сетапа:
-  - Сначала оцени критерии наклонного уровня:
-    - тренд;
-    - 3 и более касаний;
-    - наторгованный уровень;
-    - основание является экстремумом.
-  - Если одновременно выполняются как минимум 3 из 4 критериев (тренд, 3 касания, наторгованный уровень, основание-экстремум), считай, что перед тобой СИЛЬНЫЙ СЕТАП по геометрии:
-    - при отсутствии других проблем можно рассматривать "isShouldTrade": true,
-    - "quality" обычно 7–10 в зависимости от аккуратности отработки.
-  - Если выполняется меньше 3 критериев, сетап считаем слабым:
-    - "isShouldTrade": false,
-    - "quality" обычно 0–4.
-  - При наличии сильной корреляции с BTC, вход против тренда или слабого уровня даже формальный пробой не делает сетап хорошим: уменьшай "quality" и склоняйся к "isShouldTrade": false.
-  
-  Рекомендации по уровням для сделки:
-  - "entryPrice" примерно соответствует цене входа по сетапу:
-    - либо от ретеста пробитой наклонной линии по направлению тренда,
-    - либо от отскока от наклонной линии по тренду (если пробоя ещё нет).
-  - "takeProfitPrice" выбирай в сторону развития тренда:
-    - ориентируйся на ближайший значимый экстремум или область, связанную с основанием наклонного уровня на картинке, но численное значение бери только из данных свечей.
-  - "stopLossPrice" ставь за ближайшую важную наторговку/область консолидации перед уровнем в сторону, противоположную направлению сделки.
-  
-  Дополнительный фильтр по соотношению риск/прибыль:
-  - После определения entryPrice, takeProfitPrice и stopLossPrice ОБЯЗАТЕЛЬНО посчитай "riskRewardRatio" по формуле из описания.
-  - Если riskRewardRatio < 3 (соотношение хуже, чем 1:3), сделку по стратегии открывать НЕ следует:
-    - устанавливай "isShouldTrade": false,
-    - "quality" не выше 6, даже если геометрия уровня хорошая,
-    - в "comment" явно укажи, что сетап не подходит из-за недостаточного соотношения риск/прибыль.
-  - Если корректно посчитать riskRewardRatio невозможно (нет адекватного TP/SL) — ставь riskRewardRatio: null и тоже "isShouldTrade": false.
-  
-  Итоговая логика:
-  - Заходить по стратегии можно только:
-    - по тренду,
-    - при наличии наклонного уровня с минимум 3 касаниями и хорошей наторговкой,
-    - когда основание уровня является экстремумом,
-    - монета не ходит за BTC (движение достаточно независимое),
-    - и соотношение риск/прибыль не хуже 1:3 (riskRewardRatio >= 3).
-  - Если хотя бы 3 критерия из 4 по уровню выполняются и одновременно riskRewardRatio >= 3 и нет сильной корреляции с BTC, допускай "isShouldTrade": true.
-  - Если критериев меньше, соотношение риск/прибыль хуже 1:3 или монета явно повторяет BTC, лучше пропустить: устанавливай "isShouldTrade": false и объясняй в "comment", какие условия нарушены.
-  
-  Верни только JSON-объект, без лишних символов.
-      `,
+Ты — помощник крипто-трейдера. Анализируй ТОЛЬКО:
+— присланные ИЗОБРАЖЕНИЯ (геометрия, пробой, тренд, корреляция с BTC),
+— данные свечей (только для расчёта TakeProfit / StopLoss).
+
+Отвечай строго ОДНИМ JSON-объектом без текста вокруг:
+
+{
+  "isBreakout": boolean,
+  "isTrendLine": boolean,
+  "isTrendLineFromExtremum": boolean,
+  "isWellTradedLevel": boolean,
+  "needRetest": boolean,
+
+  "direction": "LONG" | "SHORT" | null,
+  "currentTrend": "UP" | "DOWN" | null,
+  "btcTrend": "UP" | "DOWN" | null,
+  "isBitcoinCorrelation": boolean,
+
+  "entryPrice": number | null,
+  "takeProfitPrice": number | null,
+  "stopLossPrice": number | null,
+
+  "comment": string
+}
+
+=== ОПРЕДЕЛЕНИЯ ПОЛЕЙ ===
+- "isBreakout" — есть ли пробой наклонной линии (свеча закрылась телом за линией; один прокол тенью ≠ пробой).
+- "isTrendLine" — корректна ли трендовая линия (касается нескольких значимых экстремумов, логична по структуре).
+- "isTrendLineFromExtremum" — начинается ли линия от значимого экстремума.
+- "isWellTradedLevel" — является ли текущий уровень наторгованным (цена там задерживалась).
+
+- "needRetest" — после пробоя сейчас нужен ретест линии (идёт откат к линии).
+
+- "direction" — направление сделки по сетапу:
+  "LONG" при пробое вверх, "SHORT" при пробое вниз, иначе null.
+- "currentTrend" — общее направление цены монеты:
+  "UP" если движение в целом вверх, "DOWN" если в целом вниз, иначе null.
+- "btcTrend" — то же самое для BTC-графика снизу.
+- "isBitcoinCorrelation" — true, если импульсы и откаты монеты в основном совпадают с BTC по времени и направлению; несколько случайных совпадений ≠ корреляция.
+
+- "entryPrice" — цена входа после пробоя:
+ставь её на ретесте пробитой наклонной линии в направлении сделки
+(цена должна вернуться к линии, коснуться её и возобновить движение).
+
+- "takeProfitPrice" — цель сделки:
+установи её на сильной наторгованной зоне по направлению сделки,
+в области основания/корня трендовой линии (с небольшим безопасным запасом выше/ниже).
+
+- "stopLossPrice" — защитный стоп:
+ставь его за наторгованной зоной, от которой началось движение,
+приведшее к пробою линии, немного дальше границы этой зоны
+(в противоположную сторону от сделки).
+
+- "comment" — краткое текстовое пояснение (до 1024 символов, без переносов строк).
+
+=== КРАТКИЕ ТЕРМИНЫ ===
+Значимый экстремум (используется в "isTrendLineFromExtremum"):
+— локальный максимум/минимум, который явно выделяется,
+— крупнее соседних колебаний,
+— от него был заметный импульс.
+
+Касание трендовой (для "isTrendLine"):
+— тень свечи касается или слегка пробивает линию,
+— есть реакция (отскок/замедление),
+— просто «рядом» без реакции ≠ касание.
+
+Наторгованный уровень (для "isWellTradedLevel"):
+— зона, где цена задерживалась,
+— несколько касаний или боковое движение вдоль линии,
+— 1–2 быстрых касания без задержки ≠ наторговка.
+
+Пробой (для "isBreakout"):
+— свеча закрылась телом за наклонной линией; прокол тенью без закрытия ≠ пробой.
+
+Ретест (для "needRetest"):
+— цена возвращается к пробитой линии,
+— касается её тенью,
+— затем снова движется в сторону пробоя.
+
+ПРАВИЛА ДЛЯ ЦЕН:
+- Все численные значения ("entryPrice", "takeProfitPrice", "stopLossPrice") бери ТОЛЬКО из массивов свечей, не с изображений.
+- Округляй до формата инструмента (но не более 8 знаков).
+- Если уровни определить нельзя — ставь null и кратко объясни причину в "comment".
+
+Верни только JSON-объект, без лишних символов.
+`,
     ),
   );
 
@@ -224,11 +221,15 @@ ${toJson(data60.slice(-40))}
         },
         {
           type: 'image_url',
-          image_url: image15m,
+          image_url: APP_URL?.startsWith('https')
+            ? getImageUrl(signal)
+            : image15m,
         },
         {
           type: 'image_url',
-          image_url: image60m,
+          image_url: APP_URL?.startsWith('https')
+            ? getImageUrl({ ...signal, interval: '60' })
+            : image60m,
         },
       ],
     }),
@@ -238,13 +239,26 @@ ${toJson(data60.slice(-40))}
 
   const content = parseAIResponse(response.content) as Analysis;
 
-  await setData(redisKeys.analysis(symbol, signal.signalId), content);
-
-  if (!content.isBreakout || !content.isShouldTrade) {
+  if (
+    !content.isBreakout ||
+    !content.isTrendLine ||
+    !['LONG', 'SHORT'].includes(content.direction ?? '') ||
+    content.needRetest
+  ) {
     await delKey(redisKeys.signal(symbol, signal.signalId));
   }
 
-  console.log(symbol, formatMessage(signal, content));
+  const lastCandle = data15.pop();
+
+  if (!lastCandle) {
+    return;
+  }
+
+  await setData(redisKeys.analysis(symbol, signal.signalId), {
+    ...content,
+    timestamp: lastCandle.timestamp,
+    currentPrice: lastCandle.close,
+  });
 };
 
 export const screenDashboard = async (signal: Signal) => {
@@ -294,12 +308,6 @@ const escapeHtml = (s?: string | null) => {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 };
 
-const fmtNum = (n?: number | null, digits = 6) => {
-  if (n === null || n === undefined || !Number.isFinite(n)) return null;
-  const useDigits = Math.abs(n) >= 1000 ? 0 : digits;
-  return n.toFixed(useDigits);
-};
-
 export const formatMessage = (
   { symbol }: Signal,
   analysis: Partial<Analysis> | null | undefined,
@@ -311,82 +319,169 @@ export const formatMessage = (
 
     const {
       direction,
+      currentTrend,
       isBreakout,
       isTrendLine,
-      isShouldTrade,
+      isWellTradedLevel,
+      isTrendLineFromExtremum,
+      isBitcoinCorrelation,
       needRetest,
-      quality,
-      riskRewardRatio,
-      entryPrice,
+      currentPrice,
       takeProfitPrice,
       stopLossPrice,
       comment,
     } = analysis;
 
-    const emojiDir =
-      direction === 'LONG'
-        ? '🟢 LONG'
-        : direction === 'SHORT'
-          ? '🔴 SHORT'
-          : '⚪️ NO TRADE';
+    const safeComment = escapeHtml(comment)?.trim();
+
+    if (!['LONG', 'SHORT'].includes(direction ?? '')) {
+      return `<b>⚠️ Сетап для ${symbol}</b> не получился\n\n📝 ${safeComment}`;
+    }
+
+    if (!['UP', 'DOWN'].includes(currentTrend ?? '')) {
+      return `<b>⚠️ Не получилось определить текущий тренд для ${symbol}</b>\n\n📝 ${safeComment}`;
+    }
 
     const lines: string[] = [];
+    let score = 1;
 
-    lines.push(`<b>${emojiDir} ${symbol}</b>`);
+    const getPrices = () => {
+      const current = currentPrice ? Number(currentPrice) : null;
+      const tp = takeProfitPrice ? Number(takeProfitPrice) : null;
+      const sl = stopLossPrice ? Number(stopLossPrice) : null;
 
-    if (typeof isBreakout === 'boolean') {
-      lines.push(isBreakout ? '✅ Пробой' : '❌ Без пробоя');
-    }
-    if (typeof needRetest === 'boolean') {
-      lines.push(
-        !needRetest ? '🛫 Ретест не нужен' : '🕘 Нужно дождаться ретеста',
-      );
-    }
-    if (typeof isTrendLine === 'boolean') {
-      lines.push(isTrendLine ? '📈 Тренд подтверждён' : '⚠️ Не тренд');
-    }
+      // Risk–Reward
+      let rr: number | null = null;
+      if (current && tp && sl) {
+        const risk = current > sl ? current - sl : sl - current;
+        const reward = tp > current ? tp - current : current - tp;
 
-    const qualityLine =
-      typeof quality === 'number' ? `⭐ Качество: <b>${quality}/10</b>` : null;
-    const rrVal =
-      typeof riskRewardRatio === 'number'
-        ? `R:R = <b>${fmtNum(riskRewardRatio, 2)}</b>`
-        : null;
-
-    if (isShouldTrade === true) {
-      lines.push('🚀 Возможна сделка');
-
-      if (qualityLine || rrVal) {
-        lines.push([qualityLine, rrVal].filter(Boolean).join(' · '));
+        if (risk > 0) {
+          rr = reward / risk;
+        }
       }
 
+      const tpPercent =
+        current && tp
+          ? (((tp - current) / current) * 100).toFixed(2) + '%'
+          : null;
+
+      const slPercent =
+        current && sl
+          ? (((sl - current) / current) * 100).toFixed(2) + '%'
+          : null;
+
       const prices = [
-        fmtNum(entryPrice) && `Вход: <b>${fmtNum(entryPrice)}</b>`,
-        fmtNum(takeProfitPrice) && `TP: <b>${fmtNum(takeProfitPrice)}</b>`,
-        fmtNum(stopLossPrice) && `SL: <b>${fmtNum(stopLossPrice)}</b>`,
+        current && `Price: <b>${formatNumber(current)}</b>`,
+        tp && `TP: <b>${formatNumber(tp)}</b> (${tpPercent})`,
+        sl && `SL: <b>${formatNumber(sl)}</b> (${slPercent})`,
       ]
         .filter(Boolean)
         .join(' · ');
+
+      if (rr) {
+        return `${prices}\nR:R = <b>${rr.toFixed(2)}</b>`;
+      }
+
+      return prices;
+    };
+
+    const checkAnalys = () => {
+      const emojiDir =
+        direction === 'LONG'
+          ? '🟢 LONG'
+          : direction === 'SHORT'
+            ? '🔴 SHORT'
+            : '⚪️ NO TRADE';
+
+      lines.push(`<b>${emojiDir} ${symbol}</b>`);
+      lines.push('');
+
+      if (typeof isTrendLine === 'boolean' && isTrendLine) {
+        lines.push('✅ Тренд подтверждён');
+      } else {
+        lines.push('❌ Не тренд');
+
+        return;
+      }
+
+      if (typeof isBreakout === 'boolean' && isBreakout) {
+        lines.push('✅ Пробой');
+      } else {
+        lines.push('❌ Без пробоя');
+
+        return;
+      }
+
+      if (typeof needRetest === 'boolean' && !needRetest) {
+        lines.push('✅ Ретест не нужен');
+      } else {
+        lines.push('❌ Нужно дождаться ретеста');
+
+        return;
+      }
+
+      lines.push('');
+
+      lines.push('✅ Есть 3 касания');
+
+      if (
+        typeof isTrendLineFromExtremum === 'boolean' &&
+        isTrendLineFromExtremum
+      ) {
+        lines.push('✅ Основа – экстремум');
+        score++;
+      } else {
+        lines.push('❌ Основа не явный экстремум');
+      }
+
+      if (typeof isWellTradedLevel === 'boolean' && isWellTradedLevel) {
+        lines.push('✅ Наторгованный уровень');
+        score++;
+      } else {
+        lines.push('❌ Уровень не наторгован');
+      }
+
+      if (typeof isBitcoinCorrelation === 'boolean' && isBitcoinCorrelation) {
+        lines.push('✅ Не следует за BTC');
+        score++;
+      } else {
+        lines.push('❌ Повторяет BTC');
+      }
+
+      if (
+        (direction === 'LONG' && currentTrend === 'UP') ||
+        (direction === 'SHORT' && currentTrend === 'DOWN')
+      ) {
+        lines.push('✅ Направление сетапа соответствует тренду');
+        score++;
+      } else {
+        lines.push('❌ Ceтап против тренда');
+      }
+
+      lines.push('');
+
+      const emojiScore = score >= 4 ? '🟢' : score >= 3 ? '🟡' : '🔴';
+
+      lines.push(`${emojiScore} Качество сетапа <b>${score}</b> из 5`);
+
+      lines.push('');
+
+      const prices = getPrices();
+
       if (prices) {
         lines.push(prices);
+        lines.push('');
       }
-    }
 
-    if (isShouldTrade === false) {
-      lines.push('🚫 Не входить');
-      if (qualityLine || rrVal) {
-        lines.push([qualityLine, rrVal].filter(Boolean).join(' · '));
+      if (safeComment) {
+        lines.push(`📝 ${safeComment}`);
       }
-    }
+    };
 
-    if (typeof isShouldTrade !== 'boolean' && (qualityLine || rrVal)) {
-      lines.push([qualityLine, rrVal].filter(Boolean).join(' · '));
-    }
+    checkAnalys();
 
-    const safeComment = escapeHtml(comment)?.trim();
-    if (safeComment) lines.push(`📝 ${safeComment}`);
-
-    return lines.filter(Boolean).join('\n').trim();
+    return lines.join('\n').trim();
   } catch (err) {
     return `<b>⚠️ Ошибка форматирования сообщения</b>\nДетали: ${(err as Error).message || String(err)}`;
   }
@@ -399,9 +494,34 @@ export const sendSignal = async (signal: Signal) => {
     redisKeys.analysis(symbol, signalId),
   )) as Analysis;
 
-  const caption = formatMessage(signal, analysis);
+  const message = formatMessage(signal, analysis);
 
-  const imageUrl = `${APP_URL}/api/files/screenshot/${symbol}_${signalId}_${interval}`;
+  const markup = {
+    inline_keyboard: [
+      [
+        {
+          text: 'Dashboard',
+          url: `${APP_URL}/routes/dashboard/${symbol}/${interval}/?signalId=${signalId}`,
+        },
+      ],
+    ],
+  };
+
+  if (!APP_URL?.startsWith('https')) {
+    await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: chatId,
+        text: message,
+        parse_mode: 'HTML',
+      }),
+    });
+
+    return;
+  }
+
+  const imageUrl = getImageUrl(signal);
 
   const res = await fetch(`https://api.telegram.org/bot${token}/sendPhoto`, {
     method: 'POST',
@@ -409,22 +529,13 @@ export const sendSignal = async (signal: Signal) => {
     body: JSON.stringify({
       chat_id: chatId,
       photo: imageUrl,
-      caption,
-      reply_markup: {
-        inline_keyboard: [
-          [
-            {
-              text: 'Dashboard',
-              url: `${APP_URL}/routes/dashboard/${symbol}/${interval}/?signalId=${signalId}`,
-            },
-          ],
-        ],
-      },
+      caption: message,
+      reply_markup: markup,
       parse_mode: 'HTML',
     }),
   });
 
   const data = await res.json();
 
-  console.log('tg response:', data);
+  console.log('tg sendPhoto:', data);
 };

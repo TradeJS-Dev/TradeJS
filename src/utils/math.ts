@@ -49,3 +49,9 @@ export const equityPoints = (data: PositionLogData) =>
       { ts: p.close.timestamp, amount: p.close.amount },
     ])
     .sort((a, b) => a.ts - b.ts);
+
+export const formatNumber = (n?: number | null, digits = 6) => {
+  if (n === null || n === undefined || !Number.isFinite(n)) return null;
+  const useDigits = Math.abs(n) >= 1000 ? 0 : digits;
+  return n.toFixed(useDigits);
+};
