@@ -103,7 +103,7 @@ export const askAI = async (signal: Signal) => {
 
 === ОПРЕДЕЛЕНИЯ ПОЛЕЙ ===
 
-- "isTrendLine" — является ли желтая линия на графике корректной трендовой линией:
+- "isTrendLine" — является ли оранжевая линия на графике корректной трендовой линией:
   true ТОЛЬКО если линия:
   • для нисходящей — проходит по локальным максимумам,
     для восходящей — по локальным минимумам;
@@ -335,10 +335,10 @@ export const formatMessage = (
 
       const emojiDir =
         direction === 'LONG'
-          ? '🟢 LONG'
+          ? '🟩 LONG'
           : direction === 'SHORT'
-            ? '🔴 SHORT'
-            : '⚪️ NO TRADE';
+            ? '🟥 SHORT'
+            : '⬜️ NO TRADE';
 
       lines.push(`<b>${emojiDir} ${symbol}</b>`);
       lines.push('');
@@ -542,8 +542,8 @@ export const calcTargetsFromTrendLine = (
 
   const stopLossPrice =
     direction === 'LONG'
-      ? entryPrice * (1 - SL_PERCENT / 100)
-      : entryPrice * (1 + SL_PERCENT / 100);
+      ? breakPrice * (1 - SL_PERCENT / 100)
+      : breakPrice * (1 + SL_PERCENT / 100);
 
   let riskRatio: number;
 
