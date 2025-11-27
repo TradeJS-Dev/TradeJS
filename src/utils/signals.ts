@@ -66,8 +66,8 @@ export const askAI = async (signal: Signal) => {
 
   const model = new ChatOpenAI({
     temperature: 0.2,
-    modelName: 'anthropic/claude-opus-4.5',
-    // modelName: 'anthropic/claude-sonnet-4.5',
+    // modelName: 'anthropic/claude-opus-4.5',
+    modelName: 'anthropic/claude-sonnet-4.5',
     // modelName: 'x-ai/grok-4-fast',
     openAIApiKey: process.env.OPENAI_API_KEY,
     configuration: {
@@ -88,7 +88,6 @@ export const askAI = async (signal: Signal) => {
 Отвечай строго ОДНИМ JSON-объектом без текста вокруг:
 
 {
-  "isBreakout": boolean,
   "isTrendLine": boolean,
   "isTrendLineFromExtremum": boolean,
   "isWellTradedLevel": boolean,
@@ -103,9 +102,6 @@ export const askAI = async (signal: Signal) => {
 }
 
 === ОПРЕДЕЛЕНИЯ ПОЛЕЙ ===
-
-- "isBreakout" — есть ли пробой наклонной линии:
-  свеча закрылась телом за линией; прокол только тенью ≠ пробой.
 
 - "isTrendLine" — является ли желтая линия на графике корректной трендовой линией:
   true ТОЛЬКО если линия:
@@ -211,7 +207,6 @@ export const askAI = async (signal: Signal) => {
   const content = parseAIResponse(response.content) as Analysis;
 
   if (
-    !content.isBreakout ||
     !content.isTrendLine ||
     !['LONG', 'SHORT'].includes(content.direction ?? '') ||
     content.needRetest
@@ -284,7 +279,6 @@ export const formatMessage = (
     const {
       direction,
       currentTrend,
-      isBreakout,
       isTrendLine,
       isWellTradedLevel,
       isTrendLineFromExtremum,
@@ -353,14 +347,6 @@ export const formatMessage = (
         lines.push('✅ Тренд подтверждён');
       } else {
         lines.push('❌ Не тренд');
-
-        return;
-      }
-
-      if (typeof isBreakout === 'boolean' && isBreakout) {
-        lines.push('✅ Пробой');
-      } else {
-        lines.push('❌ Без пробоя');
 
         return;
       }

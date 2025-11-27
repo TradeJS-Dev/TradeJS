@@ -186,29 +186,29 @@ const clusterExtrema = (params: {
 };
 
 const isStrongFirstAnchor = (params: {
-  bodyLowSeries: number[];
-  bodyHighSeries: number[];
+  lowSeries: number[];
+  highSeries: number[];
   index: number;
   mode: TrendLineMode;
   firstRange: number;
 }): boolean => {
-  const { bodyLowSeries, bodyHighSeries, index, mode, firstRange } = params;
+  const { lowSeries, highSeries, index, mode, firstRange } = params;
 
   const startIndex = Math.max(0, index - firstRange);
-  const endIndex = Math.min(bodyLowSeries.length - 1, index + firstRange);
+  const endIndex = Math.min(lowSeries.length - 1, index + firstRange);
 
   if (mode === 'lows') {
     let windowMin = Number.POSITIVE_INFINITY;
     for (let i = startIndex; i <= endIndex; i++) {
-      if (bodyLowSeries[i] < windowMin) windowMin = bodyLowSeries[i];
+      if (lowSeries[i] < windowMin) windowMin = lowSeries[i];
     }
-    return bodyLowSeries[index] === windowMin;
+    return lowSeries[index] === windowMin;
   } else {
     let windowMax = Number.NEGATIVE_INFINITY;
     for (let i = startIndex; i <= endIndex; i++) {
-      if (bodyHighSeries[i] > windowMax) windowMax = bodyHighSeries[i];
+      if (highSeries[i] > windowMax) windowMax = highSeries[i];
     }
-    return bodyHighSeries[index] === windowMax;
+    return highSeries[index] === windowMax;
   }
 };
 
@@ -421,32 +421,27 @@ const findTrendlinesCore = (
     offset = 40,
     capture = false,
     bestLines = 2,
-  } = options as TrendLineOptions;
+  } = options;
 
   if (!data?.length) return [];
 
-  const {
-    timestampsMs,
-    closeSeries,
-    lowSeries,
-    highSeries,
-    bodyLowSeries,
-    bodyHighSeries,
-  } = buildScalarArrays(data);
+  const { timestampsMs, closeSeries, lowSeries, highSeries } =
+    buildScalarArrays(data);
 
-  const bodySeriesForExtrema = mode === 'lows' ? bodyLowSeries : bodyHighSeries;
-  const bodySeriesForTouches = bodySeriesForExtrema;
+  // ✅ ИСПОЛЬЗУЕМ ТЕНИ ДЛЯ ЭКСТРЕМУМОВ И КАСАНИЙ
+  const shadowSeriesForExtrema = mode === 'lows' ? lowSeries : highSeries;
+  const shadowSeriesForTouches = shadowSeriesForExtrema;
 
-  // 1) Сырые локальные экстремумы
+  // 1) Сырые локальные экстремумы (по ТЕНЯМ)
   const rawExtrema = collectRawExtrema({
-    bodySeries: bodySeriesForExtrema,
+    bodySeries: shadowSeriesForExtrema,
     timestampsMs,
     range,
     mode,
   });
   if (rawExtrema.length < minTouches) return [];
 
-  // 2) Кластеризация (разрежение)
+  // 2) Кластеризация
   const anchors = clusterExtrema({
     rawExtrema,
     mode,
@@ -466,33 +461,24 @@ const findTrendlinesCore = (
 
   const candidates: Candidate[] = [];
 
-  for (
-    let rightAnchorIdx = anchors.length - 1;
-    rightAnchorIdx >= 0;
-    rightAnchorIdx--
-  ) {
-    const rightAnchor = anchors[rightAnchorIdx];
+  for (let r = anchors.length - 1; r >= 0; r--) {
+    const rightAnchor = anchors[r];
 
-    for (
-      let leftAnchorIdx = rightAnchorIdx - 1;
-      leftAnchorIdx >= 0;
-      leftAnchorIdx--
-    ) {
+    for (let l = r - 1; l >= 0; l--) {
       if (candidates.length >= maxLines) break;
 
-      const leftAnchor = anchors[leftAnchorIdx];
-      if (rightAnchor.x === leftAnchor.x || rightAnchor.t === leftAnchor.t)
-        continue;
+      const leftAnchor = anchors[l];
+      if (rightAnchor.x === leftAnchor.x) continue;
 
       const firstIndex = leftAnchor.x;
       const lastIndex = rightAnchor.x;
-      const spanBarsByAnchors = lastIndex - firstIndex;
-      if (spanBarsByAnchors < minDistance) continue;
+
+      if (lastIndex - firstIndex < minDistance) continue;
 
       if (
         !isStrongFirstAnchor({
-          bodyLowSeries,
-          bodyHighSeries,
+          lowSeries,
+          highSeries,
           index: firstIndex,
           mode,
           firstRange,
@@ -500,11 +486,11 @@ const findTrendlinesCore = (
       )
         continue;
 
-      // направление: lows — восходящая; highs — нисходящая
-      const slopeByIndex =
+      const slope =
         (rightAnchor.y - leftAnchor.y) / (rightAnchor.x - leftAnchor.x);
-      if (mode === 'lows' && slopeByIndex <= 0) continue;
-      if (mode === 'highs' && slopeByIndex >= 0) continue;
+
+      if (mode === 'lows' && slope <= 0) continue;
+      if (mode === 'highs' && slope >= 0) continue;
 
       const evaluateY = buildLineEvaluator({
         t1: leftAnchor.t,
@@ -513,9 +499,9 @@ const findTrendlinesCore = (
         y2: rightAnchor.y,
       });
 
-      // касания (с epsilon)
-      const touchIndices = collectTouchIndices({
-        bodySeriesForTouches,
+      // ✅ КАСАНИЯ ПО ТЕНЯМ
+      const touches = collectTouchIndices({
+        bodySeriesForTouches: shadowSeriesForTouches,
         timestampsMs,
         startIndex: firstIndex,
         endIndex: lastIndex,
@@ -523,13 +509,11 @@ const findTrendlinesCore = (
         epsilon,
         minTouchGap,
       });
-      if (touchIndices.length < minTouches) continue;
+      if (touches.length < minTouches) continue;
 
-      const spanBarsByTouches =
-        touchIndices[touchIndices.length - 1] - touchIndices[0];
-      if (spanBarsByTouches < minDistance) continue;
+      if (touches[touches.length - 1] - touches[0] < minDistance) continue;
 
-      // пробой фитилём между опорами
+      // ✅ ФИТИЛЬ НЕ ДОЛЖЕН ПРОБОИТЬ ЛИНИЮ МЕЖДУ ОПОРАМИ
       if (
         hasWickBreachOnSegment({
           lowSeries,
@@ -545,13 +529,12 @@ const findTrendlinesCore = (
         continue;
       }
 
-      // пробой телом до offset
-      const preCaptureStart = lastIndex + 1;
+      // ✅ НЕ ДОЛЖНО БЫТЬ ПРОБОЯ ТЕЛОМ ДО OFFSET
       if (
         hasCloseBreachBeforeWindow({
           closeSeries,
           timestampsMs,
-          fromIndex: preCaptureStart,
+          fromIndex: lastIndex + 1,
           lastIndex: lastBarIndex,
           offset,
           evaluateY,
@@ -562,21 +545,22 @@ const findTrendlinesCore = (
         continue;
       }
 
-      // capture: в offset должен быть пробой по фитилю на epsilonOffset
+      // ✅ CAPTURE (опционально)
       if (capture) {
-        if (offset <= 0) continue;
-        const capturedEarly = hasCaptureByOffsetWick({
-          lowSeries,
-          highSeries,
-          timestampsMs,
-          rightAnchorIndex: lastIndex,
-          lastIndex: lastBarIndex,
-          offset,
-          evaluateY,
-          epsilonOffset,
-          mode,
-        });
-        if (!capturedEarly) continue;
+        if (
+          !hasCaptureByOffsetWick({
+            lowSeries,
+            highSeries,
+            timestampsMs,
+            rightAnchorIndex: lastIndex,
+            lastIndex: lastBarIndex,
+            offset,
+            evaluateY,
+            epsilonOffset,
+            mode,
+          })
+        )
+          continue;
       }
 
       candidates.push({
@@ -592,8 +576,6 @@ const findTrendlinesCore = (
 
   if (!candidates.length) return [];
 
-  // Берём только лучшие по "близости к правому краю"
-  // (чем больше firstIndex, тем правее начинается линия)
   candidates.sort((a, b) => b.firstIndex - a.firstIndex);
 
   const effectiveBestLines = Math.max(

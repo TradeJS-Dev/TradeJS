@@ -37,7 +37,6 @@ export interface Signal {
 }
 
 export interface Analysis {
-  isBreakout: boolean;
   isTrendLine: boolean;
   isTrendLineFromExtremum: boolean;
   isWellTradedLevel: boolean;
