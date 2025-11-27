@@ -476,7 +476,19 @@ export const sendSignal = async (signal: Signal) => {
 
   const data = await res.json();
 
-  console.log('tg sendPhoto:', data?.ok);
+  if (!data?.ok) {
+    await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: chatId,
+        text: JSON.stringify(data),
+        parse_mode: 'HTML',
+      }),
+    });
+  }
+
+  console.log('tg sendPhoto:', data?.ok ? 'sent' : JSON.stringify(data));
 };
 
 type Targets = {
