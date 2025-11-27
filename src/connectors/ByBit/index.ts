@@ -41,13 +41,13 @@ export const ByBitConnectorCreator: ConnectorCreator = (config) => {
     end,
     silent,
   }: KlineRequest) => {
+    // Fallback к PRELOAD_FALLBACK_DAYS, если не передали явный старт
+    const normalizedStart = start || getTimestamp(PRELOAD_FALLBACK_DAYS);
+    const normalizedEnd = end || Date.now();
+
     try {
       const client = await getClient(config);
       if (!client) return [];
-
-      // Fallback к PRELOAD_FALLBACK_DAYS, если не передали явный старт
-      const normalizedStart = start || getTimestamp(PRELOAD_FALLBACK_DAYS);
-      const normalizedEnd = end || Date.now();
 
       if (normalizedEnd <= normalizedStart) {
         return [];
@@ -81,7 +81,7 @@ export const ByBitConnectorCreator: ConnectorCreator = (config) => {
       // reverse() -> по возрастанию времени
       return mapKlineToChartData(kline.result.list.reverse());
     } catch (error) {
-      logger.log('error', 'request kline: %s', error);
+      logger.log('error', 'request kline: %s %s %s', normalizedStart, normalizedEnd, error);
       return [];
     }
   };

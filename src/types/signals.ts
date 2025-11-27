@@ -46,7 +46,6 @@ export interface Analysis {
   isBitcoinCorrelation: boolean;
 
   currentPrice: number;
-  entryPrice: number | null;
   takeProfitPrice: number | null;
   stopLossPrice: number | null;
   comment: string;
