@@ -4,16 +4,18 @@ import path from 'path';
 import puppeteer from 'puppeteer';
 import { ChatOpenAI } from '@langchain/openai';
 import {
+  MIN_TRENDLINE_MOVE_PERCENT,
+  TP_MAX_PERCENT,
+  TP_MIN_PERCENT,
+  SL_PERCENT,
+} from '@constants';
+import {
   BaseMessage,
   HumanMessage,
   SystemMessage,
 } from '@langchain/core/messages';
-import { PRELOAD_DAYS } from '@constants';
-import { connectors } from '@src/connectors';
-import { Signal, Analysis } from '@types';
+import { Signal, Analysis, TrendLine } from '@types';
 import { setData, getData, redisKeys, delKey } from '@utils/redis';
-import { toJson } from '@utils/toJson';
-import { getTimestamp } from '@utils/timestamp';
 import { delay } from '@utils/async';
 import { formatNumber } from '@utils/math';
 
@@ -59,13 +61,12 @@ const parseAIResponse = (input: string | object): object => {
 };
 
 export const askAI = async (signal: Signal) => {
-  const { symbol, direction, trendLines } = signal;
+  const { symbol, direction } = signal;
   const messages = new Array<BaseMessage>();
 
   const model = new ChatOpenAI({
     temperature: 0.2,
-    modelName: 'google/gemini-2.5-flash',
-    // modelName: 'anthropic/claude-opus-4.5',
+    modelName: 'anthropic/claude-opus-4.5',
     // modelName: 'anthropic/claude-sonnet-4.5',
     // modelName: 'x-ai/grok-4-fast',
     openAIApiKey: process.env.OPENAI_API_KEY,
@@ -78,35 +79,11 @@ export const askAI = async (signal: Signal) => {
     },
   });
 
-  const PRELOAD_START = getTimestamp(PRELOAD_DAYS);
-  const PRELOAD_END = getTimestamp();
-
-  const connector = connectors.ByBit({
-    userName: 'root',
-  });
-
-  const data15 = await connector.kline({
-    symbol,
-    start: PRELOAD_START,
-    end: PRELOAD_END,
-    interval: '15',
-    silent: true,
-  });
-
-  const data60 = await connector.kline({
-    symbol,
-    start: PRELOAD_START,
-    end: PRELOAD_END,
-    interval: '60',
-    silent: true,
-  });
-
   messages.push(
     new SystemMessage(
       `
-Ты — помощник крипто-трейдера. Анализируй ТОЛЬКО:
-— присланные ИЗОБРАЖЕНИЯ (геометрия, пробой, тренд, корреляция с BTC),
-— данные свечей (только для расчёта TakeProfit / StopLoss).
+Ты — помощник крипто-трейдера.
+Анализируй ТОЛЬКО присланные изображения (геометрия, пробой, тренд, корреляция с BTC).
 
 Отвечай строго ОДНИМ JSON-объектом без текста вокруг:
 
@@ -122,71 +99,78 @@ export const askAI = async (signal: Signal) => {
   "btcTrend": "UP" | "DOWN" | null,
   "isBitcoinCorrelation": boolean,
 
-  "takeProfitPrice": number | null,
-  "stopLossPrice": number | null,
-
   "comment": string
 }
 
 === ОПРЕДЕЛЕНИЯ ПОЛЕЙ ===
-- "isBreakout" — есть ли пробой наклонной линии (свеча закрылась телом за линией; один прокол тенью ≠ пробой).
-- "isTrendLine" — корректна ли трендовая линия (касается нескольких значимых экстремумов, логична по структуре).
-- "isTrendLineFromExtremum" — начинается ли линия от значимого экстремума.
-- "isWellTradedLevel" — является ли текущий уровень наторгованным (цена там задерживалась).
-- "needRetest" — после пробоя сейчас нужен ретест линии (если идёт откат к линии).
+
+- "isBreakout" — есть ли пробой наклонной линии:
+  свеча закрылась телом за линией; прокол только тенью ≠ пробой.
+
+- "isTrendLine" — является ли желтая линия на графике корректной трендовой линией:
+  true ТОЛЬКО если линия:
+  • для нисходящей — проходит по локальным максимумам,
+    для восходящей — по локальным минимумам;
+  • соединяет как минимум два заметных экстремума;
+  • между точками цена в основном остаётся
+    ниже линии (для сопротивления) или выше линии (для поддержки).
+
+  Если линия:
+  – проходит через середину свечей,
+  – не опирается на вершины/впадины,
+  – пересекает много тел свечей,
+  – игнорирует более очевидные экстремумы рядом,
+  считай её построенной по случайным точкам и ставь "isTrendLine": false.
+
+- "isTrendLineFromExtremum" — начинается ли линия от значимого экстремума:
+  true ТОЛЬКО если старт линии визуально совпадает
+  с самой яркой вершиной или впадиной участка;
+  если линия начинается «из середины движения» — false.
+
+- "isWellTradedLevel" — является ли уровень наторгованным:
+  цена в этой зоне неоднократно задерживалась,
+  было множество касаний или боковое движение;
+  1–2 быстрых касания без удержания цены ≠ наторговка.
+
+- "needRetest" — нужен ли ретест после пробоя:
+  цена откатывается к пробитой линии,
+  касается её тенью и затем возобновляет движение в сторону пробоя.
 
 - "direction" — направление сделки по сетапу:
-  "LONG" при пробое вверх, "SHORT" при пробое вниз, иначе null.
-- "currentTrend" — общее направление цены монеты:
-  "UP" если движение в целом вверх, "DOWN" если в целом вниз, иначе null.
-- "btcTrend" — то же самое для BTC-графика снизу.
-- "isBitcoinCorrelation" — true, если импульсы и откаты монеты на 60m графике в основном совпадают с BTC по времени и направлению; несколько случайных совпадений ≠ корреляция.
+  "LONG" при пробое вверх,
+  "SHORT" при пробое вниз,
+  иначе null.
 
-- "takeProfitPrice" — цель сделки:
-  поставь её на сильной наторгованной зоне по направлению сделки,
-  примерно на 2/3 пути от текущей цены (или зоны пробоя) к основанию трендовой линии,
-  с небольшим безопасным запасом внутри этой зоны (не впритык к краю).
+- "currentTrend" — общее направление движения монеты:
+  "UP", если структура движения в целом восходящая,
+  "DOWN", если структура в целом нисходящая,
+  иначе null.
 
-- "stopLossPrice" — защитный стоп:
-  поставь его ПЕРЕД пробоем — за наторгованной зоной/консолидацией,
-  от которой началось движение, приведшее к пробою линии,
-  чуть дальше границы этой зоны в противоположную сторону от сделки,
-  так, чтобы стоп стоял внутри логичной защитной области до пробоя.
+- "btcTrend" — то же самое, но для BTC-графика снизу.
 
-- "comment" — краткое текстовое пояснение (до 1024 символов, без переносов строк).
+- "isBitcoinCorrelation" — true, если импульсы и откаты монеты
+  на 60m в основном совпадают с BTC по направлению и времени;
+  отдельные совпадения ≠ корреляция.
 
-=== КРАТКИЕ ТЕРМИНЫ ===
-Значимый экстремум (используется в "isTrendLineFromExtremum"):
-— локальный максимум/минимум, который явно выделяется,
-— крупнее соседних колебаний,
-— лучшая вершина/дно для основания наклонной линии,
-— от него был заметный импульс.
+- "comment" — краткое пояснение решения (до 1024 символов, без переносов строк).
 
-Касание трендовой (для "isTrendLine"):
+=== БАЗОВЫЕ ТЕРМИНЫ ===
+
+Значимый экстремум:
+— локальный максимум или минимум,
+— заметно выделяется среди соседних колебаний,
+— от него был выраженный импульс.
+
+Касание трендовой:
 — тень свечи касается или слегка пробивает линию,
-— есть реакция (отскок/замедление),
-— просто «рядом» без реакции ≠ касание.
+— после касания есть реакция (отскок или замедление),
+— простое прохождение рядом без реакции ≠ касание.
 
-Наторгованный уровень (для "isWellTradedLevel"):
-— зона, откуда прошел пробой цена неоднократно задерживалась,
-— множество касаний или боковое движение вдоль уровня,
-— 1–2 быстрых касания без задержки ≠ наторговка.
+Пробой:
+— свеча закрылась телом за линией.
 
-Пробой (для "isBreakout"):
-— свеча закрылась телом за наклонной линией; прокол тенью без закрытия ≠ пробой.
-
-Ретест (для "needRetest"):
-— цена возвращается к пробитой линии,
-— касается её тенью,
-— затем снова движется в сторону пробоя.
-
-ПРАВИЛА ДЛЯ ЦЕН:
-- Все численные значения ("takeProfitPrice", "stopLossPrice") бери ТОЛЬКО из массивов свечей, не с изображений.
-- При выборе "takeProfitPrice" и "stopLossPrice" стремись к тому, чтобы расстояние до цели
-  примерно в 3 раза превышало расстояние до стопа (соотношение риск/прибыль ≈ 1:3),
-  но не нарушай логику уровней и наторгованных зон.
-- Округляй цены до формата инструмента (но не более 8 знаков).
-- Если уровни определить нельзя — ставь null и кратко объясни причину в "comment".
+Ретест:
+— возврат цены к пробитой линии с последующим продолжением движения.
 
 Верни только JSON-объект, без лишних символов.
 `,
@@ -204,68 +188,6 @@ export const askAI = async (signal: Signal) => {
           text: `
 Проанализируй графики и данные монеты ${symbol} (на 15m и 60m таймфреймах) как ${direction} сетап краткосрочной сделки
 и верни результат в указанном JSON-формате.
-Данные последних 100 свечей на 15m графике:
-${toJson(data15.slice(-100))}
-
-Данные последних 40 свечей на 60m графике:
-${toJson(data60.slice(-40))}
-
-Данные свечей это массив, где каждый элемент (свеча) имеет поля:
-  - **open**: number;
-  - **high**: number;
-  - **low**: number;
-  - **close**: number;
-  - **volume**: number;
-  - **timestamp**: number;
-  - **turnover**: number;
-
-Дополнительно я передаю наклонные линии как ВСПОМОГАТЕЛЬНЫЙ КОНТЕКСТ
-ИСКЛЮЧИТЕЛЬНО для более точного определения TakeProfit и StopLoss.
-
-${toJson(trendLines)}
-
-ВАЖНО:
-- Эти линии НЕ используются для определения:
-  — пробоя ("isBreakout"),
-  — корректности трендовой ("isTrendLine", "isTrendLineFromExtremum"),
-  — направления сделки ("direction").
-- Они служат ТОЛЬКО ориентиром для логичного расположения TP и SL
-  относительно структуры движения и наторгованных зон.
-
-Формат данных наклонных линий (JSON):
-
-{
-  "lows": [...],
-  "highs": [...]
-}
-
-Где:
-- "lows" — массив восходящих наклонных линий (поддержки, построенные по минимумам).
-- "highs" — массив нисходящих наклонных линий (сопротивления, построенные по максимумам).
-
-Каждая линия имеет формат:
-
-{
-  "id": string,
-  "points": [
-    {
-      "timestamp": number, // начало линии (мс)
-      "value": number      // цена в этой точке
-    },
-    {
-      "timestamp": number, // конец линии (мс)
-      "value": number      // цена в этой точке
-    }
-  ]
-}
-
-Правила использования этих линий для TP / SL:
-- Используй их только как ориентир:
-  — где логично искать наторгованные зоны,
-  — где находится основание/корень движения,
-  — откуда начинался импульс к пробою.
-- НЕ делай на их основе выводы о наличии пробоя или тренда.
-- Если эти линии противоречат данным свечей — приоритет всегда у данных свечей.
 `,
         },
         {
@@ -297,17 +219,7 @@ ${toJson(trendLines)}
     await delKey(redisKeys.signal(symbol, signal.signalId));
   }
 
-  const lastCandle = data15.pop();
-
-  if (!lastCandle) {
-    return;
-  }
-
-  await setData(redisKeys.analysis(symbol, signal.signalId), {
-    ...content,
-    timestamp: lastCandle.timestamp,
-    currentPrice: lastCandle.close,
-  });
+  await setData(redisKeys.analysis(symbol, signal.signalId), content);
 };
 
 export const screenDashboard = async (signal: Signal) => {
@@ -358,9 +270,12 @@ const escapeHtml = (s?: string | null) => {
 };
 
 export const formatMessage = (
-  { symbol, direction: signalDirection }: Signal,
+  signal: Signal,
   analysis: Partial<Analysis> | null | undefined,
 ): string => {
+  const { symbol, currentPrice, takeProfitPrice, stopLossPrice, riskRatio } =
+    signal;
+
   try {
     if (!analysis || Object.keys(analysis).length === 0) {
       return `<b>⚠️ Анализ недоступен для ${symbol}</b>\nПопробуйте обновить график или повторить запрос позже.`;
@@ -375,46 +290,28 @@ export const formatMessage = (
       isTrendLineFromExtremum,
       isBitcoinCorrelation,
       needRetest,
-      currentPrice,
-      takeProfitPrice,
-      stopLossPrice,
       comment,
     } = analysis;
 
     const lines: string[] = [];
     let score = 1;
 
-    const getPrices = () => {
-      const current = currentPrice ? Number(currentPrice) : null;
-      const tp = takeProfitPrice ? Number(takeProfitPrice) : null;
-      const sl = stopLossPrice ? Number(stopLossPrice) : null;
-
-      // Risk–Reward
-      let rr: number | null = null;
-      if (current && tp && sl) {
-        const risk = current > sl ? current - sl : sl - current;
-        const reward = tp > current ? tp - current : current - tp;
-
-        if (risk > 0) {
-          rr = reward / risk;
-        }
-      }
-
+    const formatPrices = () => {
       const tpPercent =
-        current && tp
-          ? (((tp - current) / current) * 100).toFixed(2) + '%'
-          : null;
+        Math.abs(
+          ((takeProfitPrice - currentPrice) / currentPrice) * 100,
+        ).toFixed(2) + '%';
 
       const slPercent =
-        current && sl
-          ? (((sl - current) / current) * 100).toFixed(2) + '%'
-          : null;
+        Math.abs(((stopLossPrice - currentPrice) / currentPrice) * 100).toFixed(
+          2,
+        ) + '%';
 
       const prices = [
-        current && `Price: <b>${formatNumber(current)}</b>`,
-        tp && `TP: <b>${formatNumber(tp)}</b> (${tpPercent})`,
-        sl && `SL: <b>${formatNumber(sl)}</b> (${slPercent})`,
-        rr && `R:R = <b>${rr.toFixed(2)}</b>`,
+        `Price: <b>${formatNumber(currentPrice)}</b>`,
+        `TP: <b>${formatNumber(takeProfitPrice)}</b> (${tpPercent})`,
+        `SL: <b>${formatNumber(stopLossPrice)}</b> (${slPercent})`,
+        `R:R = <b>${riskRatio.toFixed(2)}</b>`,
       ]
         .filter(Boolean)
         .join('\n');
@@ -428,13 +325,17 @@ export const formatMessage = (
         return;
       }
 
-      if (direction !== signalDirection) {
-        lines.push(`<b>⚠️ Сетап для ${symbol} не соответствует трендовой линии</b>`);
+      if (direction !== signal.direction) {
+        lines.push(
+          `<b>⚠️ Сетап для ${symbol} не соответствует трендовой линии</b>`,
+        );
         return;
       }
 
       if (!['UP', 'DOWN'].includes(currentTrend ?? '')) {
-        lines.push(`<b>⚠️ Не получилось определить текущий тренд для ${symbol}</b>`);
+        lines.push(
+          `<b>⚠️ Не получилось определить текущий тренд для ${symbol}</b>`,
+        );
         return;
       }
 
@@ -516,7 +417,7 @@ export const formatMessage = (
 
       lines.push(`${emojiScore} Качество сетапа <b>${score}</b> из 5`);
 
-      const prices = getPrices();
+      const prices = formatPrices();
 
       if (prices) {
         lines.push('');
@@ -590,4 +491,77 @@ export const sendSignal = async (signal: Signal) => {
   const data = await res.json();
 
   console.log('tg sendPhoto:', data?.ok);
+};
+
+type Targets = {
+  takeProfitPrice: number;
+  stopLossPrice: number;
+  riskRatio: number;
+};
+
+export const calcTargetsFromTrendLine = (
+  trendLine: TrendLine,
+  entryPrice: number,
+): Targets | null => {
+  const { direction, points } = trendLine;
+  const [start, end] = points;
+
+  const basePrice = start.value;
+  const breakPrice = end.value;
+
+  if (direction === 'LONG' && entryPrice < breakPrice) {
+    return null;
+  }
+
+  if (direction === 'SHORT' && entryPrice > breakPrice) {
+    return null;
+  }
+
+  const movePercent = Math.abs((breakPrice - basePrice) / basePrice) * 100;
+
+  if (movePercent < MIN_TRENDLINE_MOVE_PERCENT) {
+    return null;
+  }
+
+  const rawTakeProfit = breakPrice + (basePrice - breakPrice) * (2 / 3);
+
+  const minTpMove = entryPrice * (TP_MIN_PERCENT / 100);
+  const maxTpMove = entryPrice * (TP_MAX_PERCENT / 100);
+
+  let tpDistance =
+    direction === 'LONG'
+      ? rawTakeProfit - entryPrice
+      : entryPrice - rawTakeProfit;
+
+  if (tpDistance <= 0) {
+    tpDistance = minTpMove;
+  }
+
+  tpDistance = Math.max(minTpMove, Math.min(tpDistance, maxTpMove));
+
+  const takeProfitPrice =
+    direction === 'LONG' ? entryPrice + tpDistance : entryPrice - tpDistance;
+
+  const stopLossPrice =
+    direction === 'LONG'
+      ? entryPrice * (1 - SL_PERCENT / 100)
+      : entryPrice * (1 + SL_PERCENT / 100);
+
+  let riskRatio: number;
+
+  if (direction === 'LONG') {
+    const reward = takeProfitPrice - entryPrice;
+    const risk = entryPrice - stopLossPrice;
+    riskRatio = risk > 0 ? reward / risk : 0;
+  } else {
+    const reward = entryPrice - takeProfitPrice;
+    const risk = stopLossPrice - entryPrice;
+    riskRatio = risk > 0 ? reward / risk : 0;
+  }
+
+  return {
+    takeProfitPrice,
+    stopLossPrice,
+    riskRatio,
+  };
 };

@@ -4,6 +4,7 @@ export type TrendLineMode = 'lows' | 'highs';
 
 export type TrendLine = {
   id: string;
+  direction: Direction;
   points: { timestamp: number; value: number }[];
 };
 
@@ -27,10 +28,12 @@ export interface Signal {
   symbol: string;
   interval: Interval;
   direction: Direction;
-  trendLines: {
-    highs: TrendLine[];
-    lows: TrendLine[];
-  };
+  trendLine: TrendLine;
+  currentPrice: number;
+  takeProfitPrice: number;
+  stopLossPrice: number;
+  riskRatio: number;
+  timestamp: number;
 }
 
 export interface Analysis {
@@ -40,15 +43,10 @@ export interface Analysis {
   isWellTradedLevel: boolean;
   needRetest: boolean;
 
-  direction: 'LONG' | 'SHORT' | null;
+  direction: Direction | null;
   currentTrend: 'UP' | 'DOWN' | null;
   btcTrend: 'UP' | 'DOWN' | null;
   isBitcoinCorrelation: boolean;
 
-  currentPrice: number;
-  takeProfitPrice: number | null;
-  stopLossPrice: number | null;
   comment: string;
-
-  timestamp: number;
 }

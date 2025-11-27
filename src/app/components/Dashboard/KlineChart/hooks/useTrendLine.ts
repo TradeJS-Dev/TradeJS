@@ -107,11 +107,15 @@ export const useTrendLine = (
     if (!chart || !enabled || !data || _.isEmpty(data)) return;
 
     const lowLines: TrendLine[] = signalId
-      ? signal?.trendLines?.lows || []
+      ? signal?.trendLine?.direction === 'SHORT'
+        ? [signal.trendLine]
+        : []
       : findTrendlinesByLows(data, { minTouches: 3 });
 
     const highLines: TrendLine[] = signalId
-      ? signal?.trendLines?.highs || []
+      ? signal?.trendLine?.direction === 'LONG'
+        ? [signal.trendLine]
+        : []
       : findTrendlinesByHighs(data, { minTouches: 3 });
 
     // отрисовываем

@@ -15,6 +15,7 @@ import { getTimestamp } from '@utils/timestamp';
 import { uuid } from '@utils/uuid';
 import { getKeys, setData, redisKeys } from '@utils/redis';
 import { Interval, Signal } from '@types';
+import { calcTargetsFromTrendLine } from '@utils/signals';
 
 args.option(['t', 'tickers'], 'Selected tickers');
 args.option(['e', 'exclude'], 'Exclude tickers from tests');
@@ -59,17 +60,32 @@ const checkSignals = async (symbol: string) => {
   const lowsTrendlines = findTrendlinesByLows(data, {
     minTouches,
     offset,
+    bestLines: 1,
     capture: true,
   });
 
   const highsTrendlines = findTrendlinesByHighs(data, {
     minTouches,
     offset,
+    bestLines: 1,
     capture: true,
   });
 
-  if (lowsTrendlines.length > 0 || highsTrendlines.length > 0) {
-    // console.log(symbol, { lowsTrendlines, highsTrendlines });
+  const lastCandle = data.pop();
+
+  if (!lastCandle) {
+    return null;
+  }
+
+  const bestLine =
+    lowsTrendlines.length > 0 ? lowsTrendlines[0] : highsTrendlines[0];
+
+  if (bestLine) {
+    const targets = calcTargetsFromTrendLine(bestLine, lastCandle.close);
+
+    if (!targets) {
+      return null;
+    }
 
     const signalId = uuid();
 
@@ -77,11 +93,13 @@ const checkSignals = async (symbol: string) => {
       signalId,
       symbol,
       interval,
-      direction: lowsTrendlines.length > 0 ? 'SHORT' : 'LONG',
-      trendLines: {
-        lows: lowsTrendlines,
-        highs: highsTrendlines,
-      },
+      direction: bestLine.direction,
+      trendLine: bestLine,
+      timestamp: lastCandle.timestamp,
+      currentPrice: lastCandle.close,
+      takeProfitPrice: targets.takeProfitPrice,
+      stopLossPrice: targets.stopLossPrice,
+      riskRatio: targets.riskRatio,
     };
 
     await setData(redisKeys.signal(symbol, signalId), signal, {

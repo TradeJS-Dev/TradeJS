@@ -81,7 +81,13 @@ export const ByBitConnectorCreator: ConnectorCreator = (config) => {
       // reverse() -> по возрастанию времени
       return mapKlineToChartData(kline.result.list.reverse());
     } catch (error) {
-      logger.log('error', 'request kline: %s %s %s', normalizedStart, normalizedEnd, error);
+      logger.log(
+        'error',
+        'request kline: %s %s %s',
+        normalizedStart,
+        normalizedEnd,
+        error,
+      );
       return [];
     }
   };
