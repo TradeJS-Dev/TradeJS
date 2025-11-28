@@ -344,10 +344,6 @@ export const formatMessage = (
         return;
       }
 
-      lines.push('');
-
-      lines.push('✅ Есть 4 касания');
-
       if (typeof needRetest === 'boolean' && !needRetest) {
         lines.push('✅ Ретест пройден');
         score++;
