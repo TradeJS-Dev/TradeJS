@@ -208,8 +208,7 @@ export const askAI = async (signal: Signal) => {
 
   if (
     !content.isTrendLine ||
-    !['LONG', 'SHORT'].includes(content.direction ?? '') ||
-    content.needRetest
+    !['LONG', 'SHORT'].includes(content.direction ?? '')
   ) {
     await delKey(redisKeys.signal(symbol, signal.signalId));
   }
@@ -259,11 +258,6 @@ export const screenDashboard = async (signal: Signal) => {
   }
 };
 
-const escapeHtml = (s?: string | null) => {
-  if (!s) return '';
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-};
-
 export const formatMessage = (
   signal: Signal,
   analysis: Partial<Analysis> | null | undefined,
@@ -284,11 +278,10 @@ export const formatMessage = (
       isTrendLineFromExtremum,
       isBitcoinCorrelation,
       needRetest,
-      comment,
     } = analysis;
 
     const lines: string[] = [];
-    let score = 1;
+    let score = 0;
 
     const formatPrices = () => {
       const tpPercent =
@@ -344,24 +337,23 @@ export const formatMessage = (
       lines.push('');
 
       if (typeof isTrendLine === 'boolean' && isTrendLine) {
-        lines.push('✅ Тренд подтверждён');
+        lines.push('✅ Линия построена корректно');
       } else {
-        lines.push('❌ Не тренд');
-
-        return;
-      }
-
-      if (typeof needRetest === 'boolean' && !needRetest) {
-        lines.push('✅ Ретест не нужен');
-      } else {
-        lines.push('❌ Нужно дождаться ретеста');
+        lines.push('❌ Линия не трендовая');
 
         return;
       }
 
       lines.push('');
 
-      lines.push('✅ Есть 3 касания');
+      lines.push('✅ Есть 4 касания');
+
+      if (typeof needRetest === 'boolean' && !needRetest) {
+        lines.push('✅ Ретест пройден');
+        score++;
+      } else {
+        lines.push('❌ Нужно дождаться ретеста');
+      }
 
       if (
         typeof isTrendLineFromExtremum === 'boolean' &&
@@ -413,17 +405,15 @@ export const formatMessage = (
 
     checkAnalys();
 
-    const safeComment = escapeHtml(comment)?.trim();
-
-    if (safeComment) {
-      lines.push('');
-      lines.push(`📝 ${safeComment}`);
-    }
-
     return lines.join('\n').trim();
   } catch (err) {
     return `<b>⚠️ Ошибка форматирования сообщения для ${symbol}</b>\nДетали: ${(err as Error).message || String(err)}`;
   }
+};
+
+const escapeHtml = (s?: string | null) => {
+  if (!s) return '';
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 };
 
 export const sendSignal = async (signal: Signal) => {
@@ -434,6 +424,7 @@ export const sendSignal = async (signal: Signal) => {
   )) as Analysis;
 
   const message = formatMessage(signal, analysis);
+  const safeComment = escapeHtml(analysis?.comment)?.trim();
 
   const markup = {
     inline_keyboard: [
@@ -452,7 +443,7 @@ export const sendSignal = async (signal: Signal) => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         chat_id: chatId,
-        text: message,
+        text: `${message}\n\n📝 ${safeComment}`,
         parse_mode: 'HTML',
       }),
     });
@@ -483,6 +474,18 @@ export const sendSignal = async (signal: Signal) => {
       body: JSON.stringify({
         chat_id: chatId,
         text: JSON.stringify(data),
+        parse_mode: 'HTML',
+      }),
+    });
+  }
+
+  if (safeComment) {
+    await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: chatId,
+        text: `📝 ${safeComment}`,
         parse_mode: 'HTML',
       }),
     });
