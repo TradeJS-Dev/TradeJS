@@ -2,7 +2,7 @@ import args from 'args';
 import ProgressBar from 'progress';
 import { connectors } from '@src/connectors';
 import chalk from 'chalk';
-import { SIGNALS_PRELOAD_DAYS, TTL_12H, TTL_1M } from '@constants';
+import { SIGNALS_PRELOAD_DAYS, TTL_3H, TTL_1M } from '@constants';
 import {
   update,
   getTickers,
@@ -104,7 +104,7 @@ const checkSignals = async (symbol: string) => {
 
     await setData(redisKeys.signal(symbol, signalId), signal, {
       stringify: true,
-      expire: TTL_12H,
+      expire: TTL_3H,
     });
 
     await setData(redisKeys.storeSignal(symbol, signalId), signal, {

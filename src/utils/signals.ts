@@ -42,6 +42,48 @@ const getScreenshotBase64 = async (signal: Signal) => {
   return dataUrl;
 };
 
+export const screenDashboard = async (signal: Signal) => {
+  const { symbol, signalId, interval } = signal;
+
+  const browser = await puppeteer.launch({
+    headless: true,
+    executablePath: process.env.PUPPETEER_EXECUTABLE_PATH!,
+    args: [
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--disable-dev-shm-usage',
+      '--disable-gpu',
+      '--font-render-hinting=medium',
+    ],
+  });
+
+  try {
+    const page = await browser.newPage();
+
+    try {
+      await page.setViewport({
+        width: 1400,
+        height: 960,
+        deviceScaleFactor: 2,
+      });
+
+      await page.goto(
+        `${APP_URL}/routes/dashboard/${symbol}/${interval}/?signalId=${signalId}&autoZoom=true`,
+      );
+
+      await delay(10_000);
+
+      await page.screenshot({
+        path: getScreenshotPath(signal),
+      });
+    } finally {
+      await page.close();
+    }
+  } finally {
+    await browser.close();
+  }
+};
+
 const parseAIResponse = (input: string | object): object => {
   try {
     // если уже объект — просто вернуть
@@ -214,48 +256,6 @@ export const askAI = async (signal: Signal) => {
   }
 
   await setData(redisKeys.analysis(symbol, signal.signalId), content);
-};
-
-export const screenDashboard = async (signal: Signal) => {
-  const { symbol, signalId, interval } = signal;
-
-  const browser = await puppeteer.launch({
-    headless: true,
-    executablePath: process.env.PUPPETEER_EXECUTABLE_PATH!,
-    args: [
-      '--no-sandbox',
-      '--disable-setuid-sandbox',
-      '--disable-dev-shm-usage',
-      '--disable-gpu',
-      '--font-render-hinting=medium',
-    ],
-  });
-
-  try {
-    const page = await browser.newPage();
-
-    try {
-      await page.setViewport({
-        width: 1400,
-        height: 960,
-        deviceScaleFactor: 2,
-      });
-
-      await page.goto(
-        `${APP_URL}/routes/dashboard/${symbol}/${interval}/?signalId=${signalId}&autoZoom=true`,
-      );
-
-      await delay(10_000);
-
-      await page.screenshot({
-        path: getScreenshotPath(signal),
-      });
-    } finally {
-      await page.close();
-    }
-  } finally {
-    await browser.close();
-  }
 };
 
 export const formatMessage = (
