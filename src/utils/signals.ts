@@ -338,6 +338,7 @@ export const formatMessage = (
 
       if (typeof isTrendLine === 'boolean' && isTrendLine) {
         lines.push('✅ Линия построена корректно');
+        score++;
       } else {
         lines.push('❌ Линия не трендовая');
 
@@ -387,9 +388,9 @@ export const formatMessage = (
 
       lines.push('');
 
-      const emojiScore = score >= 4 ? '🟢' : score >= 3 ? '🟡' : '🔴';
+      const emojiScore = score >= 5 ? '🟢' : score >= 4 ? '🟡' : '🔴';
 
-      lines.push(`${emojiScore} Качество сетапа <b>${score}</b> из 5`);
+      lines.push(`${emojiScore} Качество сетапа <b>${score}</b> / 6`);
 
       const prices = formatPrices();
 
