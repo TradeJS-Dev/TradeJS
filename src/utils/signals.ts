@@ -556,6 +556,10 @@ export const calcTargetsFromTrendLine = (
     riskRatio = risk > 0 ? reward / risk : 0;
   }
 
+  if (riskRatio <= 1) {
+    return null;
+  }
+
   return {
     takeProfitPrice,
     stopLossPrice,
