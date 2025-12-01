@@ -119,11 +119,6 @@ const computeCenterWindowExtrema = (params: {
 
 /* ====================== Pipeline (pure functions) ===================== */
 
-/**
- * collectRawExtrema
- * range — половина окна локального экстремума (по телам). Чем больше, тем «крупнее» опоры.
- * minTouchGap (ниже) — минимальный зазор между касаниями ЛИНИИ; это про другое.
- */
 const collectRawExtrema = (params: {
   bodySeries: number[];
   timestampsMs: number[];
@@ -230,7 +225,6 @@ const buildLineEvaluator = (params: {
 
 /* ====================== Touch / Breach checks ===================== */
 
-/** Касания считаем с допуском epsilon (только здесь!) */
 const collectTouchIndices = (params: {
   bodySeriesForTouches: number[];
   timestampsMs: number[];
@@ -271,7 +265,6 @@ const collectTouchIndices = (params: {
   return touchIndices;
 };
 
-/** ПРОБОЙ фитилём между опорами — С ДОПУСКОМ epsilon */
 const hasWickBreachOnSegment = (params: {
   lowSeries: number[];
   highSeries: number[];
@@ -298,19 +291,18 @@ const hasWickBreachOnSegment = (params: {
     const tolerance = toleranceAt(lineY, epsilon);
 
     if (mode === 'lows') {
-      if (lowSeries[barIndex] < lineY - tolerance) return true; // вниз нельзя (с допуском)
+      if (lowSeries[barIndex] < lineY - tolerance) return true;
     } else {
-      if (highSeries[barIndex] > lineY + tolerance) return true; // вверх нельзя (с допуском)
+      if (highSeries[barIndex] > lineY + tolerance) return true;
     }
   }
   return false;
 };
 
-/** ПРОБОЙ ТЕЛОМ до окна offset — с epsilon */
 const hasCloseBreachBeforeWindow = (params: {
   closeSeries: number[];
   timestampsMs: number[];
-  fromIndex: number; // rightAnchorIndex + 1
+  fromIndex: number;
   lastIndex: number;
   offset: number;
   evaluateY: (t: number) => number;
@@ -328,7 +320,7 @@ const hasCloseBreachBeforeWindow = (params: {
     mode,
   } = params;
 
-  const preCaptureEndIndex = lastIndex - Math.max(0, offset); // строго ДО offset
+  const preCaptureEndIndex = lastIndex - Math.max(0, offset);
   if (fromIndex > preCaptureEndIndex) return false;
 
   for (let barIndex = fromIndex; barIndex <= preCaptureEndIndex; barIndex++) {
@@ -337,9 +329,9 @@ const hasCloseBreachBeforeWindow = (params: {
     const closePrice = closeSeries[barIndex];
 
     if (mode === 'lows') {
-      if (closePrice < lineY - tolerance) return true; // тело ниже линии (с допуском)
+      if (closePrice < lineY - tolerance) return true;
     } else {
-      if (closePrice > lineY + tolerance) return true; // тело выше линии (с допуском)
+      if (closePrice > lineY + tolerance) return true;
     }
   }
   return false;
@@ -412,16 +404,16 @@ const findTrendlinesCore = (
     mode,
     maxLines = 10,
     range = 15,
-    firstRange = 50,
+    firstRange = 40,
     epsilon = 0.003,
-    epsilonOffset = 0.005,
+    epsilonOffset = 0.004,
     minTouches = 3,
     minDistance = 50,
     minTouchGap = 15,
     offset = 40,
     capture = false,
     bestLines = 2,
-    maxDistance = 300,
+    maxDistance = 400,
   } = options;
 
   if (!data?.length) return [];
@@ -429,11 +421,9 @@ const findTrendlinesCore = (
   const { timestampsMs, closeSeries, lowSeries, highSeries } =
     buildScalarArrays(data);
 
-  // ✅ ИСПОЛЬЗУЕМ ТЕНИ ДЛЯ ЭКСТРЕМУМОВ И КАСАНИЙ
   const shadowSeriesForExtrema = mode === 'lows' ? lowSeries : highSeries;
   const shadowSeriesForTouches = shadowSeriesForExtrema;
 
-  // 1) Сырые локальные экстремумы (по ТЕНЯМ)
   const rawExtrema = collectRawExtrema({
     bodySeries: shadowSeriesForExtrema,
     timestampsMs,
@@ -442,7 +432,6 @@ const findTrendlinesCore = (
   });
   if (rawExtrema.length < minTouches) return [];
 
-  // 2) Кластеризация
   const anchors = clusterExtrema({
     rawExtrema,
     mode,
@@ -458,7 +447,7 @@ const findTrendlinesCore = (
     lastIndex: number;
     leftAnchor: Point;
     rightAnchor: Point;
-    touchIndices: number[]; // 👈 сохраняем индексы касаний
+    touchIndices: number[];
   };
 
   const candidates: Candidate[] = [];
@@ -476,7 +465,6 @@ const findTrendlinesCore = (
       const lastIndex = rightAnchor.x;
       const lengthBetweenAnchors = lastIndex - firstIndex;
 
-      // 🔽 ограничение по длине линии
       if (lengthBetweenAnchors < minDistance) continue;
       if (lengthBetweenAnchors > maxDistance) continue;
 
@@ -504,7 +492,6 @@ const findTrendlinesCore = (
         y2: rightAnchor.y,
       });
 
-      // ✅ КАСАНИЯ ПО ТЕНЯМ
       const touches = collectTouchIndices({
         bodySeriesForTouches: shadowSeriesForTouches,
         timestampsMs,
@@ -518,7 +505,6 @@ const findTrendlinesCore = (
 
       if (touches[touches.length - 1] - touches[0] < minDistance) continue;
 
-      // ✅ ФИТИЛЬ НЕ ДОЛЖЕН ПРОБОИТЬ ЛИНИЮ МЕЖДУ ОПОРАМИ
       if (
         hasWickBreachOnSegment({
           lowSeries,
@@ -534,7 +520,6 @@ const findTrendlinesCore = (
         continue;
       }
 
-      // ✅ НЕ ДОЛЖНО БЫТЬ ПРОБОЯ ТЕЛОМ ДО OFFSET
       if (
         hasCloseBreachBeforeWindow({
           closeSeries,
@@ -550,7 +535,6 @@ const findTrendlinesCore = (
         continue;
       }
 
-      // ✅ CAPTURE (опционально)
       if (capture) {
         if (
           !hasCaptureByOffsetWick({
@@ -573,7 +557,7 @@ const findTrendlinesCore = (
         lastIndex,
         leftAnchor,
         rightAnchor,
-        touchIndices: touches, // 👈 сохраняем касания
+        touchIndices: touches,
       });
     }
 
@@ -601,7 +585,6 @@ const findTrendlinesCore = (
       y2: rightAnchor.y,
     });
 
-    // 🧷 промежуточные касания (без самих опор)
     const touches = touchIndices
       .filter((idx) => idx !== leftAnchor.x && idx !== rightAnchor.x)
       .map((idx) => {
@@ -619,7 +602,6 @@ const findTrendlinesCore = (
         { timestamp: leftAnchor.t, value: evaluateY(leftAnchor.t) },
         { timestamp: lastTimestampMs, value: evaluateY(lastTimestampMs) },
       ],
-      // 👇 новое поле
       touches,
     } as TrendLine & {
       touches: { timestamp: number; value: number }[];
