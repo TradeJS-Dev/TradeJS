@@ -4,9 +4,8 @@ import type { TestThresholds } from '@types';
 const { NODE_ENV } = process.env;
 
 // Минимальное допустимое движение между точками линии
-export const MIN_TRENDLINE_MOVE_PERCENT = 3; // %
-export const TP_MIN_PERCENT = 2;
-export const TP_MAX_PERCENT = 3;
+export const TP_MIN_PERCENT = 3;
+export const TP_MAX_PERCENT = 5;
 export const SL_PERCENT = 1;
 
 export const PRELOAD_DAYS = 210;

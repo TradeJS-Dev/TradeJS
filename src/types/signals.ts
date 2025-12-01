@@ -5,6 +5,7 @@ export type TrendLineMode = 'lows' | 'highs';
 export type TrendLine = {
   id: string;
   direction: Direction;
+  touches: { timestamp: number; value: number }[];
   points: { timestamp: number; value: number }[];
 };
 
@@ -21,6 +22,7 @@ export interface TrendLineOptions {
   minTouchGap?: number; // минимум баров между касаниями
   capture?: boolean; // true: в окне offset обязателен «старт за линией» и цвет свечи (строго, без допуска)
   bestLines?: number;
+  maxDistance?: number;
 }
 
 export interface Signal {
@@ -34,18 +36,6 @@ export interface Signal {
   stopLossPrice: number;
   riskRatio: number;
   timestamp: number;
-}
-
-export interface Analysis {
-  isTrendLine: boolean;
-  isTrendLineFromExtremum: boolean;
-  isWellTradedLevel: boolean;
-  needRetest: boolean;
-
-  direction: Direction | null;
-  currentTrend: 'UP' | 'DOWN' | null;
-  btcTrend: 'UP' | 'DOWN' | null;
-  isBitcoinCorrelation: boolean;
-
-  comment: string;
+  correlation: number;
+  trend: 'BULL' | 'BEAR' | 'RANGE';
 }

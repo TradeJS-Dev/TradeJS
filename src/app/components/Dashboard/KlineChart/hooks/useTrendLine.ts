@@ -6,13 +6,8 @@ import _ from 'lodash';
 import { Chart, registerOverlay } from 'klinecharts';
 import { getSignal } from '@actions/signal';
 import { findTrendlinesByLows, findTrendlinesByHighs } from '@utils/trendLine';
-import { Filters, Signal, KlineChartData } from '@types';
-
-type TrendPoint = { timestamp: number; value: number };
-type TrendLine = { id: string; points: TrendPoint[] };
-
-/** нормализация таймстампа к ms */
-const toMs = (ts: number) => (ts < 1e12 ? ts * 1000 : ts);
+import { toMs } from '@utils/timestamp';
+import { Filters, Signal, KlineChartData, TrendLine } from '@types';
 
 /** Максимально отдаляем график и добавляем отступ справа от последней свечи */
 const fitKeepRightZoom = (chart: Chart, lastDataTsMs: number) => {

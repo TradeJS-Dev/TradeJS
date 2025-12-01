@@ -120,7 +120,7 @@ export const KlineChart = ({ id, filters, indicators }: KlineChartProps) => {
   useEmaIndicator(chart, indicators.ema.enabled, indicators.ema.periods || []);
   useWmaIndicator(chart, indicators.wma.enabled, indicators.wma.periods || []);
   useVolIndicator(chart, indicators.vol.enabled);
-  useBtcIndicator(chart, indicators.btc.enabled, filters);
+  useBtcIndicator(chart, indicators.btc.enabled, data, filters);
   useBacktest(chart, filters.backtestId || undefined);
   useSupportResistanceLines(chart, indicators.resistant?.enabled, data);
   useTrendLine(chart, true, data, filters);

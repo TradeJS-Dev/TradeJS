@@ -10,6 +10,8 @@ import {
 
 const TIMELINE_STEP = 86_400_000;
 
+export const toMs = (ts: number) => (ts < 1e12 ? ts * 1000 : ts);
+
 export const getTimestamp = (days: number = 0) => {
   if (days > 0) {
     return getUnixTime(subDays(new Date(), days)) * 1000;

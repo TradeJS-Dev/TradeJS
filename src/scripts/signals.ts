@@ -16,6 +16,8 @@ import { uuid } from '@utils/uuid';
 import { getKeys, setData, redisKeys } from '@utils/redis';
 import { Interval, Signal } from '@types';
 import { calcTargetsFromTrendLine } from '@utils/signals';
+import { calculateCoinBtcCorrelation } from '@utils/correlation';
+import { detectMarketStructure } from '@utils/trend';
 
 args.option(['t', 'tickers'], 'Selected tickers');
 args.option(['e', 'exclude'], 'Exclude tickers from tests');
@@ -57,6 +59,12 @@ const checkSignals = async (symbol: string) => {
     interval,
   });
 
+  const lastCandle = data.slice(-1)?.[0];
+
+  if (!lastCandle) {
+    return null;
+  }
+
   const lowsTrendlines = findTrendlinesByLows(data, {
     minTouches,
     offset,
@@ -71,51 +79,92 @@ const checkSignals = async (symbol: string) => {
     capture: true,
   });
 
-  const lastCandle = data.pop();
-
-  if (!lastCandle) {
-    return null;
-  }
-
   const bestLine =
     lowsTrendlines.length > 0 ? lowsTrendlines[0] : highsTrendlines[0];
 
-  if (bestLine) {
-    const targets = calcTargetsFromTrendLine(bestLine, lastCandle.close);
-
-    if (!targets) {
-      return null;
-    }
-
-    const signalId = uuid();
-
-    const signal: Signal = {
-      signalId,
-      symbol,
-      interval,
-      direction: bestLine.direction,
-      trendLine: bestLine,
-      timestamp: lastCandle.timestamp,
-      currentPrice: lastCandle.close,
-      takeProfitPrice: targets.takeProfitPrice,
-      stopLossPrice: targets.stopLossPrice,
-      riskRatio: targets.riskRatio,
-    };
-
-    await setData(redisKeys.signal(symbol, signalId), signal, {
-      stringify: true,
-      expire: TTL_3H,
-    });
-
-    await setData(redisKeys.storeSignal(symbol, signalId), signal, {
-      stringify: true,
-      expire: TTL_1M,
-    });
-
-    return signal;
+  if (!bestLine) {
+    return null;
   }
 
-  return null;
+  console.log('');
+  console.log('');
+
+  console.log('>>> line', symbol, bestLine);
+
+  const btcData = await byBitConnector.kline({
+    symbol: 'BTCUSDT',
+    start: PRELOAD_START,
+    end: PRELOAD_END,
+    cacheOnly: true,
+    interval,
+  });
+
+  const { correlation } = calculateCoinBtcCorrelation(
+    data.slice(-300),
+    btcData.slice(-300),
+  );
+
+  console.log('>>> correlation', symbol, correlation);
+
+  if (!correlation || correlation > 0.6) {
+    return null;
+  }
+
+  const data4H = await byBitConnector.kline({
+    symbol,
+    start: PRELOAD_START,
+    end: PRELOAD_END,
+    cacheOnly: false,
+    interval: '240',
+  });
+
+  const { trend } = detectMarketStructure(data4H, 'hard');
+
+  console.log('>>> trend', symbol, trend);
+
+  if (
+    (bestLine.direction === 'SHORT' && trend === 'BULL') ||
+    (bestLine.direction === 'LONG' && trend === 'BEAR')
+  ) {
+    return null;
+  }
+
+  const targets = calcTargetsFromTrendLine(bestLine, lastCandle.close);
+
+  console.log('>>> targets', symbol, targets);
+
+  if (!targets) {
+    return null;
+  }
+
+  const signalId = uuid();
+
+  const signal: Signal = {
+    signalId,
+    symbol,
+    interval,
+    direction: bestLine.direction,
+    trendLine: bestLine,
+    timestamp: lastCandle.timestamp,
+    currentPrice: lastCandle.close,
+    takeProfitPrice: targets.takeProfitPrice,
+    stopLossPrice: targets.stopLossPrice,
+    riskRatio: targets.riskRatio,
+    correlation,
+    trend,
+  };
+
+  await setData(redisKeys.signal(symbol, signalId), signal, {
+    stringify: true,
+    expire: TTL_3H,
+  });
+
+  await setData(redisKeys.storeSignal(symbol, signalId), signal, {
+    stringify: true,
+    expire: TTL_1M,
+  });
+
+  return signal;
 };
 
 const signals = async () => {
@@ -169,16 +218,6 @@ const signals = async () => {
   console.log('');
 
   await makeScreenshots(signals, '15m');
-
-  await makeScreenshots(
-    signals.map((signal) => ({
-      ...signal,
-      interval: '60',
-    })),
-    '1h',
-  );
-
-  await sendToAI(signals);
 
   if (flags.notify) {
     await sendToTG(signals);

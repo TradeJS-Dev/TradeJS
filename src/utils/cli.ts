@@ -14,7 +14,9 @@ import { getKeys, delKey } from '@utils/redis';
 import { getTimestamp } from '@utils/timestamp';
 import { getFormatted } from '@utils/stat';
 import { getTopTickers } from '@utils/tickers';
-import { askAI, screenDashboard, sendSignal } from '@utils/signals';
+import { askAI } from '@utils/ai';
+import { sendSignal } from '@utils/signals';
+import { screenDashboard } from '@utils/screenshot';
 import { runWithConcurrency } from '@utils/async';
 import {
   Connector,

@@ -5,10 +5,10 @@ import {
   TrendLine,
   TrendLineOptions,
 } from '@types';
+import { toMs } from '@utils/timestamp';
 
 /* ============================ Helpers ============================= */
 
-const toMs = (ts: number) => (ts < 1e12 ? ts * 1000 : ts);
 const toleranceAt = (lineY: number, epsilonPct: number) =>
   Math.max(0, Math.abs(lineY) * epsilonPct);
 
@@ -411,16 +411,17 @@ const findTrendlinesCore = (
   const {
     mode,
     maxLines = 10,
-    range = 30,
+    range = 15,
     firstRange = 50,
     epsilon = 0.003,
-    epsilonOffset = 0.004,
+    epsilonOffset = 0.005,
     minTouches = 3,
     minDistance = 50,
-    minTouchGap = 30,
+    minTouchGap = 15,
     offset = 40,
     capture = false,
     bestLines = 2,
+    maxDistance = 300,
   } = options;
 
   if (!data?.length) return [];
@@ -457,6 +458,7 @@ const findTrendlinesCore = (
     lastIndex: number;
     leftAnchor: Point;
     rightAnchor: Point;
+    touchIndices: number[]; // 👈 сохраняем индексы касаний
   };
 
   const candidates: Candidate[] = [];
@@ -472,8 +474,11 @@ const findTrendlinesCore = (
 
       const firstIndex = leftAnchor.x;
       const lastIndex = rightAnchor.x;
+      const lengthBetweenAnchors = lastIndex - firstIndex;
 
-      if (lastIndex - firstIndex < minDistance) continue;
+      // 🔽 ограничение по длине линии
+      if (lengthBetweenAnchors < minDistance) continue;
+      if (lengthBetweenAnchors > maxDistance) continue;
 
       if (
         !isStrongFirstAnchor({
@@ -568,6 +573,7 @@ const findTrendlinesCore = (
         lastIndex,
         leftAnchor,
         rightAnchor,
+        touchIndices: touches, // 👈 сохраняем касания
       });
     }
 
@@ -586,7 +592,7 @@ const findTrendlinesCore = (
   const trendlines: TrendLine[] = [];
 
   for (let i = 0; i < effectiveBestLines; i++) {
-    const { leftAnchor, rightAnchor } = candidates[i];
+    const { leftAnchor, rightAnchor, touchIndices } = candidates[i];
 
     const evaluateY = buildLineEvaluator({
       t1: leftAnchor.t,
@@ -595,6 +601,17 @@ const findTrendlinesCore = (
       y2: rightAnchor.y,
     });
 
+    // 🧷 промежуточные касания (без самих опор)
+    const touches = touchIndices
+      .filter((idx) => idx !== leftAnchor.x && idx !== rightAnchor.x)
+      .map((idx) => {
+        const ts = timestampsMs[idx];
+        return {
+          timestamp: ts,
+          value: evaluateY(ts),
+        };
+      });
+
     trendlines.push({
       id: `${mode}TrendLine-${i + 1}`,
       direction: mode === 'lows' ? 'SHORT' : 'LONG',
@@ -602,6 +619,10 @@ const findTrendlinesCore = (
         { timestamp: leftAnchor.t, value: evaluateY(leftAnchor.t) },
         { timestamp: lastTimestampMs, value: evaluateY(lastTimestampMs) },
       ],
+      // 👇 новое поле
+      touches,
+    } as TrendLine & {
+      touches: { timestamp: number; value: number }[];
     });
   }
 

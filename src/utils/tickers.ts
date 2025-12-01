@@ -122,20 +122,15 @@ export const getTopTickers = (data: Ticker[], topN?: number): Item[] => {
       };
     });
 
-  const top = _.sortBy(
-    scores.map((item, i) => ({
-      label: item.symbol.replace(/(USDT)$/i, ''),
-      value: item.symbol,
-      description: `score #${i + 1}`,
-    })),
-    'label',
-  );
+  const sortedByScore = _.sortBy(scores, (item) => -item.score);
 
-  if (topN) {
-    return top.slice(0, topN);
-  }
+  const items = sortedByScore.map((item, i) => ({
+    label: item.symbol.replace(/(USDT)$/i, ''),
+    value: item.symbol,
+    description: `score #${i + 1}`,
+  }));
 
-  return top;
+  return _.sortBy(topN ? items.slice(0, topN) : items, 'label');
 };
 
 export const normalizeTickerData = (raw: Record<string, string>): Ticker => ({
