@@ -3,13 +3,7 @@ import ProgressBar from 'progress';
 import { connectors } from '@src/connectors';
 import chalk from 'chalk';
 import { SIGNALS_PRELOAD_DAYS, TTL_3H, TTL_1M } from '@constants';
-import {
-  update,
-  getTickers,
-  makeScreenshots,
-  sendToAI,
-  sendToTG,
-} from '@utils/cli';
+import { update, getTickers, makeScreenshots, sendToTG } from '@utils/cli';
 import { findTrendlinesByLows, findTrendlinesByHighs } from '@utils/trendLine';
 import { getTimestamp } from '@utils/timestamp';
 import { uuid } from '@utils/uuid';

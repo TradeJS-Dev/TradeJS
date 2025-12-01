@@ -380,11 +380,11 @@ export const ByBitConnectorCreator: ConnectorCreator = (config) => {
       }
 
       const positions = positionRes.result.list
-        .filter((item) => Number.parseFloat(item.size) > 0)
+        .filter((item) => parseFloat(item.size) > 0)
         .map((item) => ({
           symbol: item.symbol,
-          price: Number.parseFloat(item.avgPrice),
-          qty: Number.parseFloat(item.size),
+          price: parseFloat(item.avgPrice),
+          qty: parseFloat(item.size),
           direction: (item.side === 'Buy' ? 'LONG' : 'SHORT') as Direction,
         }));
 

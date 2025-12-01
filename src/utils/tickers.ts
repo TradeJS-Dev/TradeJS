@@ -122,7 +122,7 @@ export const getTopTickers = (data: Ticker[], topN?: number): Item[] => {
       };
     });
 
-  const sortedByScore = _.sortBy(scores, (item) => -item.score);
+  const sortedByScore = _.sortBy(scores, 'score');
 
   const items = sortedByScore.map((item, i) => ({
     label: item.symbol.replace(/(USDT)$/i, ''),

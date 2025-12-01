@@ -63,7 +63,7 @@ export const KlineChart = ({ id, filters, indicators }: KlineChartProps) => {
     if (`${currentSymbol}_${currenInterval}` !== key) {
       chartRef.current.setSymbol({ ticker: filters.symbol, pricePrecision: 9 });
       chartRef.current.setPeriod({
-        span: Number.parseInt(filters.interval),
+        span: parseInt(filters.interval),
         type: 'minute',
       });
 
