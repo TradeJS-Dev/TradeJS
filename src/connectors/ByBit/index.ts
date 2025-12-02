@@ -8,6 +8,7 @@ import { normalizeTickerData } from '@utils/tickers';
 import { mergeData } from '@utils/array';
 import { logger } from '@utils/logger';
 import { toJson } from '@utils/toJson';
+import { round } from '@utils/math';
 import {
   getCandlesRange,
   getDataEdges,
@@ -42,8 +43,11 @@ export const ByBitConnectorCreator: ConnectorCreator = (config) => {
     silent,
   }: KlineRequest) => {
     // Fallback к PRELOAD_FALLBACK_DAYS, если не передали явный старт
-    const normalizedStart = start || getTimestamp(PRELOAD_FALLBACK_DAYS);
-    const normalizedEnd = end || Date.now();
+    const normalizedStart = round(
+      start || getTimestamp(PRELOAD_FALLBACK_DAYS),
+      0,
+    );
+    const normalizedEnd = round(end || Date.now());
 
     try {
       const client = await getClient(config);

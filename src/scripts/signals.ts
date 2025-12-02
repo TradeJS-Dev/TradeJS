@@ -1,6 +1,7 @@
 import args from 'args';
 import ProgressBar from 'progress';
 import { connectors } from '@src/connectors';
+import { SMA } from 'technicalindicators';
 import chalk from 'chalk';
 import { SIGNALS_PRELOAD_DAYS, TTL_3H, TTL_1M } from '@constants';
 import { update, getTickers, makeScreenshots, sendToTG } from '@utils/cli';
@@ -59,6 +60,8 @@ const checkSignals = async (symbol: string) => {
     return null;
   }
 
+  const currentPrice = lastCandle.close;
+
   const lowsTrendlines = findTrendlinesByLows(data, {
     minTouches,
     offset,
@@ -112,20 +115,32 @@ const checkSignals = async (symbol: string) => {
     interval: '240',
   });
 
-  const { trend } = detectMarketStructure(data4H, 'hard');
+  let { trend } = detectMarketStructure(data4H, 'hard');
 
   console.log('>>> trend', symbol, trend);
 
+  if (trend === 'RANGE') {
+    const sma = new SMA({
+      period: 200,
+      values: data.map((candle) => candle.close),
+    });
+
+    const currentSma = sma.getResult().slice(-1)?.[0];
+
+    trend = currentSma > currentPrice ? 'BEAR' : 'BULL';
+    console.log('>>> trend by sma', symbol, trend, currentSma, currentPrice);
+  }
+
   if (
-    (bestLine.direction === 'SHORT' && trend === 'BULL') ||
-    (bestLine.direction === 'LONG' && trend === 'BEAR')
+    (bestLine.direction === 'SHORT' && trend !== 'BEAR') ||
+    (bestLine.direction === 'LONG' && trend !== 'BULL')
   ) {
     return null;
   }
 
-  const targets = calcTargetsFromTrendLine(bestLine, lastCandle.close);
+  const targets = calcTargetsFromTrendLine(bestLine, currentPrice);
 
-  console.log('>>> targets', symbol, targets);
+  console.log('>>> targets', symbol, targets, currentPrice);
 
   if (!targets) {
     return null;
@@ -140,7 +155,7 @@ const checkSignals = async (symbol: string) => {
     direction: bestLine.direction,
     trendLine: bestLine,
     timestamp: lastCandle.timestamp,
-    currentPrice: lastCandle.close,
+    currentPrice,
     takeProfitPrice: targets.takeProfitPrice,
     stopLossPrice: targets.stopLossPrice,
     riskRatio: targets.riskRatio,

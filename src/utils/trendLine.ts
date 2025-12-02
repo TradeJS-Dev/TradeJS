@@ -413,7 +413,7 @@ const findTrendlinesCore = (
     offset = 40,
     capture = false,
     bestLines = 2,
-    maxDistance = 500,
+    maxDistance = 2000,
   } = options;
 
   if (!data?.length) return [];

@@ -1,5 +1,6 @@
 import _ from 'lodash';
 import { Ticker, Item } from '@types';
+import { round } from '@utils/math';
 
 type Category = 'volatility24h' | 'volatility1h' | 'volume';
 
@@ -111,16 +112,16 @@ export const getTopTickers = (data: Ticker[], topN?: number): Item[] => {
 
       return {
         symbol: coin.symbol,
-        score: 1 / volumeMln,
+        volume24h: 1 / volumeMln,
       };
     });
 
-  const sortedByScore = _.sortBy(scores, 'score');
+  const sortedByVlolume = _.sortBy(scores, (item) => -item.volume24h);
 
-  const items = sortedByScore.map((item, i) => ({
+  const items = sortedByVlolume.map((item, i) => ({
     label: item.symbol.replace(/(USDT)$/i, ''),
     value: item.symbol,
-    description: `score #${i + 1}`,
+    description: `volume: ${round(item.volume24h, 2)}m (#${i + 1})`,
   }));
 
   return _.sortBy(topN ? items.slice(0, topN) : items, 'label');

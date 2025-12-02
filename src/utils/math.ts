@@ -13,7 +13,9 @@ export const diffRel = (a: number, b: number) => {
 };
 
 export const round = (value: number, precision = 2) =>
-  Math.round(value * 10 ** precision) / 10 ** precision;
+  precision > 0
+    ? Math.round(value * 10 ** precision) / 10 ** precision
+    : Math.round(value);
 
 /** Сумма чисел массива. */
 export const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0);
