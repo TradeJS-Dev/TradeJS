@@ -97,8 +97,8 @@ const checkSignals = async (symbol: string) => {
   });
 
   const { correlation } = calculateCoinBtcCorrelation(
-    data.slice(-300),
-    btcData.slice(-300),
+    data.slice(-1000),
+    btcData.slice(-1000),
   );
 
   console.log('>>> correlation', symbol, correlation);
