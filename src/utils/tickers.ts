@@ -100,25 +100,18 @@ export const getTopTickers = (data: Ticker[], topN?: number): Item[] => {
       return true;
     })
     .map((coin) => {
-      const vol24h = Math.abs(coin.price24hPcnt);
-      const prev1h = coin.prevPrice1h;
-      const last = coin.lastPrice;
-      const vol1h = prev1h ? Math.abs((last - prev1h) / prev1h) * 100 : 0;
+      // const vol24h = Math.abs(coin.price24hPcnt);
+      // const prev1h = coin.prevPrice1h;
+      // const last = coin.lastPrice;
+      // const vol1h = prev1h ? Math.abs((last - prev1h) / prev1h) * 100 : 0;
 
       const volumeMln = coin.volume24h / 1_000_000;
-      const openInterestMln = coin.openInterestValue / 1_000_000;
-      const fundingRateAbs = Math.abs(coin.fundingRate * 100); // в %
-
-      const score =
-        vol24h * 0.4 +
-        vol1h * 0.2 +
-        volumeMln * 0.2 +
-        openInterestMln * 0.1 +
-        fundingRateAbs * 0.1;
+      // const openInterestMln = coin.openInterestValue / 1_000_000;
+      // const fundingRateAbs = Math.abs(coin.fundingRate * 100); // в %
 
       return {
         symbol: coin.symbol,
-        score,
+        score: 1 / volumeMln,
       };
     });
 
