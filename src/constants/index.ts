@@ -7,7 +7,7 @@ const { NODE_ENV } = process.env;
 export const TP_MIN_PERCENT = 3;
 export const TP_MAX_PERCENT = 5;
 export const SL_PERCENT = 1;
-export const ORDER_VALUE = 20;
+export const MAX_LOSS_VALUE = 2;
 
 export const PRELOAD_DAYS = 210;
 export const SIGNALS_PRELOAD_DAYS = 60;

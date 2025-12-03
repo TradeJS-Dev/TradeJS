@@ -146,13 +146,18 @@ interface TargetsOptions {
   TP_MAX_PERCENT: number;
   TP_MIN_PERCENT: number;
   SL_PERCENT: number;
-  ORDER_VALUE: number;
+  MAX_LOSS_VALUE: number;
 }
 
 export const calcTargetsFromTrendLine = (
   trendLine: TrendLine,
   entryPrice: number,
-  { TP_MIN_PERCENT, TP_MAX_PERCENT, SL_PERCENT, ORDER_VALUE }: TargetsOptions,
+  {
+    TP_MIN_PERCENT,
+    TP_MAX_PERCENT,
+    SL_PERCENT,
+    MAX_LOSS_VALUE,
+  }: TargetsOptions,
 ): Targets | null => {
   const { direction, points } = trendLine;
   const [start, end] = points;
@@ -208,7 +213,7 @@ export const calcTargetsFromTrendLine = (
     return null;
   }
 
-  const qty = ORDER_VALUE / stopLossPrice;
+  const qty = MAX_LOSS_VALUE / ((entryPrice * SL_PERCENT) / 100);
 
   return {
     qty,

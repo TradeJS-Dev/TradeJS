@@ -10,7 +10,7 @@ import {
   TP_MAX_PERCENT,
   TP_MIN_PERCENT,
   SL_PERCENT,
-  ORDER_VALUE,
+  MAX_LOSS_VALUE,
 } from '@constants';
 import { update, getTickers, makeScreenshots, sendToTG } from '@utils/cli';
 import { findTrendlinesByLows, findTrendlinesByHighs } from '@utils/trendLine';
@@ -151,7 +151,7 @@ const checkSignals = async (symbol: string) => {
     TP_MAX_PERCENT,
     TP_MIN_PERCENT,
     SL_PERCENT,
-    ORDER_VALUE,
+    MAX_LOSS_VALUE,
   });
 
   console.log('>>> targets', symbol, targets, currentPrice);
@@ -178,11 +178,11 @@ const checkSignals = async (symbol: string) => {
         ],
         targets.stopLossPrice,
       );
-  
+
       console.log('>>> order', symbol, order);
     } catch (err) {
       console.error('>>> order error:', symbol, err);
-    }  
+    }
   }
 
   const signalId = uuid();
