@@ -152,11 +152,15 @@ export const BreakoutStrategyCreator: StrategyCreator = ({
     );
 
     if (!positionExists) {
+      const slPrice = shouldOpenLong
+        ? price * (1 - config.SL_LONG)
+        : price * (1 + config.SL_SHORT);
+
       if (shouldOpenLong) {
         await connector.placeOrder(
           { symbol, qty, price, timestamp, direction: 'LONG' },
           config.TP_LONG,
-          config.SL_LONG,
+          slPrice,
         );
         return 'OPEN_LONG';
       }
@@ -165,7 +169,7 @@ export const BreakoutStrategyCreator: StrategyCreator = ({
         await connector.placeOrder(
           { symbol, qty, price, timestamp, direction: 'SHORT' },
           config.TP_SHORT,
-          config.SL_SHORT,
+          slPrice,
         );
         return 'OPEN_SHORT';
       }

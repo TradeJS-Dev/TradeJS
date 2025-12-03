@@ -20,7 +20,7 @@ const placeOrder = async () => {
       { profit: 0.1, rate: 0.5 },
       { profit: 0.2, rate: 0.5 },
     ],
-    0.1,
+    3.8,
   );
 
   console.log('res', res);

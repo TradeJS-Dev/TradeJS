@@ -1,7 +1,5 @@
 import 'dotenv/config';
 
-import { TP_MAX_PERCENT, TP_MIN_PERCENT, SL_PERCENT } from '@constants';
-
 import { Signal, TrendLine } from '@types';
 import { getImageUrl } from '@utils/screenshot';
 import { formatNumber } from '@utils/math';
@@ -141,11 +139,20 @@ type Targets = {
   takeProfitPrice: number;
   stopLossPrice: number;
   riskRatio: number;
+  qty: number;
 };
+
+interface TargetsOptions {
+  TP_MAX_PERCENT: number;
+  TP_MIN_PERCENT: number;
+  SL_PERCENT: number;
+  ORDER_VALUE: number;
+}
 
 export const calcTargetsFromTrendLine = (
   trendLine: TrendLine,
   entryPrice: number,
+  { TP_MIN_PERCENT, TP_MAX_PERCENT, SL_PERCENT, ORDER_VALUE }: TargetsOptions,
 ): Targets | null => {
   const { direction, points } = trendLine;
   const [start, end] = points;
@@ -201,7 +208,10 @@ export const calcTargetsFromTrendLine = (
     return null;
   }
 
+  const qty = ORDER_VALUE / stopLossPrice;
+
   return {
+    qty,
     takeProfitPrice,
     stopLossPrice,
     riskRatio,

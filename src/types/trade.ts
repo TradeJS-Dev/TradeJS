@@ -29,7 +29,8 @@ export interface KlineRequest {
 }
 
 export interface Tp {
-  profit: number;
+  profit?: number;
+  price?: number;
   rate: number;
   done?: boolean;
 }
@@ -70,7 +71,7 @@ export interface ConnectorConfig {
 }
 
 type GetPosition = (symbol: string) => Promise<Position | null>;
-type PlaceOrder = (order: Order, tp?: Tp[], sl?: Sl) => Promise<boolean>;
+type PlaceOrder = (order: Order, tp?: Tp[], slPrice?: Sl) => Promise<boolean>;
 type ClosePosition = (order: Omit<Order, 'qty'>) => Promise<boolean>;
 export type Kline = (options: KlineRequest) => Promise<KlineChartData>;
 export type GetTickers = () => Promise<Ticker[]>;

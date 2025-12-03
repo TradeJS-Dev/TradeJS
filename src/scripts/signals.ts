@@ -3,7 +3,15 @@ import ProgressBar from 'progress';
 import { connectors } from '@src/connectors';
 import { SMA } from 'technicalindicators';
 import chalk from 'chalk';
-import { SIGNALS_PRELOAD_DAYS, TTL_3H, TTL_1M } from '@constants';
+import {
+  SIGNALS_PRELOAD_DAYS,
+  TTL_3H,
+  TTL_1M,
+  TP_MAX_PERCENT,
+  TP_MIN_PERCENT,
+  SL_PERCENT,
+  ORDER_VALUE,
+} from '@constants';
 import { update, getTickers, makeScreenshots, sendToTG } from '@utils/cli';
 import { findTrendlinesByLows, findTrendlinesByHighs } from '@utils/trendLine';
 import { getTimestamp } from '@utils/timestamp';
@@ -20,6 +28,7 @@ args.option(['l', 'tickersLimit'], 'Tickers limit');
 args.option(['f', 'timeframe'], 'Timeframe', 15);
 args.option(['o', 'offset'], 'Offset', 3);
 args.option(['p', 'points'], 'Points', 3);
+args.option(['m', 'makeOrders'], 'Make orders', false);
 args.option(['N', 'notify'], 'Send message in Telegram', false);
 args.option(['u', 'updateOnly'], 'Only update tickers history', false);
 args.option(['C', 'cacheOnly'], 'Do not update tickers history', false);
@@ -138,12 +147,42 @@ const checkSignals = async (symbol: string) => {
     return null;
   }
 
-  const targets = calcTargetsFromTrendLine(bestLine, currentPrice);
+  const targets = calcTargetsFromTrendLine(bestLine, currentPrice, {
+    TP_MAX_PERCENT,
+    TP_MIN_PERCENT,
+    SL_PERCENT,
+    ORDER_VALUE,
+  });
 
   console.log('>>> targets', symbol, targets, currentPrice);
 
   if (!targets) {
     return null;
+  }
+
+  if (flags.makeOrders) {
+    try {
+      const order = await byBitConnector.placeOrder(
+        {
+          symbol,
+          qty: targets.qty,
+          price: currentPrice,
+          timestamp: lastCandle.timestamp,
+          direction: bestLine.direction,
+        },
+        [
+          {
+            rate: 1,
+            price: targets.takeProfitPrice,
+          },
+        ],
+        targets.stopLossPrice,
+      );
+  
+      console.log('>>> order', symbol, order);
+    } catch (err) {
+      console.error('>>> order error:', symbol, err);
+    }  
   }
 
   const signalId = uuid();

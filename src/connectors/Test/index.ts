@@ -113,9 +113,17 @@ export const TestConnectorCreator: TCC = (connector) => {
       for (const tp of TP) {
         if (!CURRENT_POSITION || CURRENT_POSITION.qty <= 0) break;
 
-        const targetPrice = isLong
-          ? entryPrice * (1 + tp.profit)
-          : entryPrice * (1 - tp.profit);
+        let targetPrice = tp.price;
+
+        if (!targetPrice) {
+          if (!tp.profit) {
+            continue;
+          }
+
+          targetPrice = isLong
+            ? entryPrice * (1 + tp.profit)
+            : entryPrice * (1 - tp.profit);
+        }
 
         const reached = isLong ? high >= targetPrice : low <= targetPrice;
 
@@ -184,18 +192,12 @@ export const TestConnectorCreator: TCC = (connector) => {
       }
     },
 
-    placeOrder: async (order, tp = [], sl) => {
+    placeOrder: async (order, tp = [], slPrice) => {
       if (CURRENT_POSITION) {
         return false;
       }
 
       const isLong = order.direction === 'LONG';
-
-      let slPrice = null;
-
-      if (sl) {
-        slPrice = isLong ? order.price * (1 - sl) : order.price * (1 + sl);
-      }
 
       TP = _.cloneDeep(tp);
       SL = slPrice || null;

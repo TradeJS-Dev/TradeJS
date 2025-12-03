@@ -409,7 +409,7 @@ export const ByBitConnectorCreator: ConnectorCreator = (config) => {
         ...position,
       };
     },
-    placeOrder: async ({ symbol, price, qty, direction }, TP = [], sl) => {
+    placeOrder: async ({ symbol, price, qty, direction }, TP = [], slPrice) => {
       const client = await getClient(config);
 
       if (!client) {
@@ -418,16 +418,10 @@ export const ByBitConnectorCreator: ConnectorCreator = (config) => {
 
       const isLong = direction === 'LONG';
 
-      let slPrice = null;
-
-      if (sl) {
-        slPrice = isLong ? price * (1 - sl) : price * (1 + sl);
-      }
-
       logger.log(
         'info',
         'placeOrder: %s',
-        toJson({ symbol, price, qty, direction, TP, sl }, true),
+        toJson({ symbol, price, qty, direction, TP, slPrice }, true),
       );
 
       await client.setLeverage({
@@ -459,9 +453,18 @@ export const ByBitConnectorCreator: ConnectorCreator = (config) => {
 
       for (const tp of TP) {
         const tpSize = qty * tp.rate;
-        const tpPrice = isLong
-          ? `${price * (1 + tp.profit)}`
-          : `${price * (1 - tp.profit)}`;
+
+        let tpPrice = `${tp.price}`;
+
+        if (!tpPrice) {
+          if (!tp.profit) {
+            continue;
+          }
+
+          tpPrice = isLong
+            ? `${price * (1 + tp.profit)}`
+            : `${price * (1 - tp.profit)}`;
+        }
 
         const tpRes = await client.setTradingStop({
           category: MARKET_CATEGORY,
