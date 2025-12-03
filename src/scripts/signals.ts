@@ -11,6 +11,7 @@ import {
   TP_MIN_PERCENT,
   SL_PERCENT,
   MAX_LOSS_VALUE,
+  MIN_RISK_RATIO,
 } from '@constants';
 import { update, getTickers, makeScreenshots, sendToTG } from '@utils/cli';
 import { findTrendlinesByLows, findTrendlinesByHighs } from '@utils/trendLine';
@@ -152,6 +153,7 @@ const checkSignals = async (symbol: string) => {
     TP_MIN_PERCENT,
     SL_PERCENT,
     MAX_LOSS_VALUE,
+    MIN_RISK_RATIO,
   });
 
   console.log('>>> targets', symbol, targets, currentPrice);

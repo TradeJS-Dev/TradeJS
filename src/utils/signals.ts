@@ -147,6 +147,7 @@ interface TargetsOptions {
   TP_MIN_PERCENT: number;
   SL_PERCENT: number;
   MAX_LOSS_VALUE: number;
+  MIN_RISK_RATIO: number;
 }
 
 export const calcTargetsFromTrendLine = (
@@ -157,6 +158,7 @@ export const calcTargetsFromTrendLine = (
     TP_MAX_PERCENT,
     SL_PERCENT,
     MAX_LOSS_VALUE,
+    MIN_RISK_RATIO,
   }: TargetsOptions,
 ): Targets | null => {
   const { direction, points } = trendLine;
@@ -173,7 +175,7 @@ export const calcTargetsFromTrendLine = (
     return null;
   }
 
-  const rawTakeProfit = breakPrice + (basePrice - breakPrice) * (2 / 3);
+  const rawTakeProfit = breakPrice + (basePrice - breakPrice) * (1 / 2);
 
   const minTpMove = entryPrice * (TP_MIN_PERCENT / 100);
   const maxTpMove = entryPrice * (TP_MAX_PERCENT / 100);
@@ -209,7 +211,7 @@ export const calcTargetsFromTrendLine = (
     riskRatio = risk > 0 ? reward / risk : 0;
   }
 
-  if (riskRatio <= 1) {
+  if (riskRatio <= MIN_RISK_RATIO) {
     return null;
   }
 
