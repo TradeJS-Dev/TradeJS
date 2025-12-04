@@ -76,6 +76,7 @@ const checkSignals = async (symbol: string) => {
     minTouches,
     offset,
     bestLines: 1,
+    maxDistance: 1600,
     capture: true,
   });
 
@@ -83,6 +84,7 @@ const checkSignals = async (symbol: string) => {
     minTouches,
     offset,
     bestLines: 1,
+    maxDistance: 1400,
     capture: true,
   });
 

@@ -437,7 +437,7 @@ export const ByBitConnectorCreator: ConnectorCreator = (config) => {
         stopLoss: slPrice ? slPrice.toString() : undefined,
         side: isLong ? 'Buy' : 'Sell',
         orderType: 'Market',
-        qty: qty.toFixed(0),
+        qty: `${round(qty, 2)}`,
         orderFilter: 'Order',
       });
 
