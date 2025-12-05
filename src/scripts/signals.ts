@@ -1,5 +1,6 @@
 import args from 'args';
 import ProgressBar from 'progress';
+import _ from 'lodash';
 import { connectors } from '@src/connectors';
 import { SMA } from 'technicalindicators';
 import chalk from 'chalk';
@@ -49,7 +50,7 @@ const byBitConnector = connectors.ByBit({
   userName: flags.user,
 });
 
-const checkSignals = async (symbol: string) => {
+const findSignals = async (symbol: string) => {
   const prevSignals = await getKeys(redisKeys.signalsBySymbol(symbol));
 
   if (prevSignals.length) {
@@ -70,7 +71,7 @@ const checkSignals = async (symbol: string) => {
     return null;
   }
 
-  const currentPrice = lastCandle.close;
+  let currentPrice = lastCandle.close;
 
   const lowsTrendlines = findTrendlinesByLows(data, {
     minTouches,
@@ -100,6 +101,15 @@ const checkSignals = async (symbol: string) => {
 
   console.log('>>> line', symbol, bestLine);
 
+  const position = await byBitConnector.getPosition(symbol);
+  const positionExists = !_.isEmpty(position) && position.qty > 0;
+
+  if (positionExists) {
+    console.log('>>> exit by position exists', symbol, position);
+
+    return null;
+  }
+  
   const btcData = await byBitConnector.kline({
     symbol: 'BTCUSDT',
     start: PRELOAD_START,
@@ -113,9 +123,9 @@ const checkSignals = async (symbol: string) => {
     btcData.slice(-1000),
   );
 
-  console.log('>>> correlation', symbol, correlation);
-
   if (!correlation || correlation > 0.6) {
+    console.log('>>> exit by correlation', symbol, correlation);
+
     return null;
   }
 
@@ -132,21 +142,36 @@ const checkSignals = async (symbol: string) => {
   console.log('>>> trend', symbol, trend);
 
   if (trend === 'RANGE') {
-    const sma = new SMA({
+    const sma200 = new SMA({
       period: 200,
       values: data.map((candle) => candle.close),
     });
 
-    const currentSma = sma.getResult().slice(-1)?.[0];
+    const currentSma200 = sma200.getResult().slice(-1)?.[0];
 
-    trend = currentSma > currentPrice ? 'BEAR' : 'BULL';
-    console.log('>>> trend by sma', symbol, trend, currentSma, currentPrice);
+    trend = currentSma200 > currentPrice ? 'BEAR' : 'BULL';
+    console.log('>>> trend by sma', symbol, trend, currentSma200, currentPrice);
   }
 
   if (
     (bestLine.direction === 'SHORT' && trend !== 'BEAR') ||
     (bestLine.direction === 'LONG' && trend !== 'BULL')
   ) {
+    console.log('>>> exit by trend', symbol, bestLine.direction, trend);
+
+    return null;
+  }
+
+  const sma49 = new SMA({
+    period: 49,
+    values: data.map((candle) => candle.close),
+  });
+
+  const currentSma49 = sma49.getResult().slice(-1)?.[0];
+
+  if ((currentSma49 < currentPrice && bestLine.direction === 'SHORT') || (currentSma49 > currentPrice && bestLine.direction === 'LONG')) {
+    console.log('>>> exit by sma49', symbol, bestLine.direction, currentSma49, currentPrice);
+
     return null;
   }
 
@@ -158,9 +183,9 @@ const checkSignals = async (symbol: string) => {
     MIN_RISK_RATIO,
   });
 
-  console.log('>>> targets', symbol, targets, currentPrice);
-
   if (!targets) {
+    console.log('>>> exit by targets', symbol, targets, currentPrice);
+
     return null;
   }
 
@@ -184,6 +209,15 @@ const checkSignals = async (symbol: string) => {
       );
 
       console.log('>>> order', symbol, order);
+
+      const currentPosition = await byBitConnector.getPosition(symbol);
+
+      console.log('>>> position', symbol, currentPosition);
+
+      if (currentPosition?.price) {
+        currentPrice = currentPosition?.price;
+      }
+
     } catch (err) {
       console.error('>>> order error:', symbol, err);
     }
@@ -255,7 +289,7 @@ const signals = async () => {
   console.log(chalk.yellow(`tickers: ${tickers.length}`));
 
   for await (const symbol of tickers) {
-    const signal = await checkSignals(symbol);
+    const signal = await findSignals(symbol);
 
     if (signal) {
       signals.push(signal);

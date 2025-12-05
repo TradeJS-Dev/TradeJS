@@ -5,22 +5,21 @@ const byBitConnector = connectors.ByBit({
   userName: 'root',
 });
 
-const SYMBOL = 'SUIUSDT';
+const SYMBOL = 'AIOUSDT';
 
 const placeOrder = async () => {
   const res = await byBitConnector.placeOrder(
     {
       symbol: SYMBOL,
-      qty: 30,
-      price: 3.79,
+      qty: 1092.4186148131964,
+      price: 0.09166,
       timestamp: 0,
-      direction: 'SHORT',
+      direction: 'LONG',
     },
     [
-      { profit: 0.1, rate: 0.5 },
-      { profit: 0.2, rate: 0.5 },
+      { price: 0.0979478, rate: 1 },
     ],
-    3.8,
+    0.08972483230293661,
   );
 
   console.log('res', res);

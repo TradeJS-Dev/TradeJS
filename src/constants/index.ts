@@ -4,11 +4,11 @@ import type { TestThresholds } from '@types';
 const { NODE_ENV } = process.env;
 
 // Минимальное допустимое движение между точками линии
-export const TP_MIN_PERCENT = 3;
-export const TP_MAX_PERCENT = 7;
+export const TP_MIN_PERCENT = 2;
+export const TP_MAX_PERCENT = 5;
 export const SL_PERCENT = 1;
 export const MAX_LOSS_VALUE = 1;
-export const MIN_RISK_RATIO = 1.5;
+export const MIN_RISK_RATIO = 1;
 
 export const PRELOAD_DAYS = 210;
 export const SIGNALS_PRELOAD_DAYS = 60;
@@ -27,6 +27,7 @@ export const TESTS_TOP_LIMIT = 40;
 export const TESTS_LIMIT = 100_000;
 export const TESTS_ORDERS_MIN_LIMIT = 40;
 
+export const MARKET_CATEGORY = 'linear';
 export const KLINE_CONCURRENCY_LIMIT = NODE_ENV === 'production' ? 5 : 10;
 export const TG_CONCURRENCY_LIMIT = 3;
 export const AI_CONCURRENCY_LIMIT = 3;

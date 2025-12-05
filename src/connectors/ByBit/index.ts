@@ -2,7 +2,7 @@
 
 import _ from 'lodash';
 import chalk from 'chalk';
-import { PRELOAD_FALLBACK_DAYS } from '@constants';
+import { PRELOAD_FALLBACK_DAYS, MARKET_CATEGORY } from '@constants';
 import { getTimestamp, getItemTimestamp, formatUnix } from '@utils/timestamp';
 import { normalizeTickerData } from '@utils/tickers';
 import { mergeData } from '@utils/array';
@@ -23,11 +23,15 @@ import {
   Interval,
 } from '@types';
 import { getClient } from './client';
-import { mapKlineToChartData } from './utils';
+import {
+  mapKlineToChartData,
+  normalizePrice,
+  normalizeQty,
+  getSymbolMeta,
+} from './utils';
 
 const LIMIT = 1000;
-const MARKET_CATEGORY = 'linear';
-const CACHE_FALLBACK_WINDOW = 1_000; // ~1k свечей для устойчивого cacheOnly диапазона
+const CACHE_FALLBACK_WINDOW = 1_000;
 
 const getLogLevel = (res: any) => (res.retCode === 0 ? 'info' : 'error');
 
@@ -418,10 +422,46 @@ export const ByBitConnectorCreator: ConnectorCreator = (config) => {
 
       const isLong = direction === 'LONG';
 
+      const meta = await getSymbolMeta(client, symbol);
+
+      // --- нормализуем объём ордера ---
+      const { qtyNum: orderQty, qtyStr: orderQtyStr } = normalizeQty(qty, meta);
+
+      if (orderQty < meta.minOrderQty) {
+        logger.log(
+          'warn',
+          'placeOrder: qty too small: %s',
+          toJson(
+            { symbol, qty, orderQty, minOrderQty: meta.minOrderQty },
+            true,
+          ),
+        );
+        return false;
+      }
+
+      // --- нормализуем SL ---
+      const slNormalized =
+        slPrice
+          ? normalizePrice(slPrice, isLong ? 'SL_LONG' : 'SL_SHORT', meta)
+          : undefined;
+
       logger.log(
         'info',
         'placeOrder: %s',
-        toJson({ symbol, price, qty, direction, TP, slPrice }, true),
+        toJson(
+          {
+            symbol,
+            price,
+            qty,
+            direction,
+            orderQty,
+            orderQtyStr,
+            slPrice,
+            slPriceNorm: slNormalized?.priceStr,
+            TP,
+          },
+          true,
+        ),
       );
 
       await client.setLeverage({
@@ -434,10 +474,10 @@ export const ByBitConnectorCreator: ConnectorCreator = (config) => {
       const orderRes = await client.submitOrder({
         category: MARKET_CATEGORY,
         symbol,
-        stopLoss: slPrice ? slPrice.toString() : undefined,
+        stopLoss: slNormalized?.priceStr,
         side: isLong ? 'Buy' : 'Sell',
         orderType: 'Market',
-        qty: `${round(qty, 2)}`,
+        qty: orderQtyStr,
         orderFilter: 'Order',
       });
 
@@ -451,31 +491,55 @@ export const ByBitConnectorCreator: ConnectorCreator = (config) => {
         return false;
       }
 
+      // --- Partial TP ---
       for (const tp of TP) {
-        const tpSize = qty * tp.rate;
-
-        let tpPrice = `${tp.price}`;
-
-        if (!tpPrice) {
-          if (!tp.profit) {
+        const tpSizeRaw = orderQty * tp.rate;
+        const { qtyNum: tpSizeNum, qtyStr: tpSizeStr } = normalizeQty(tpSizeRaw, meta);
+      
+        if (!tpSizeNum || tpSizeNum < meta.minOrderQty) {
+          logger.log(
+            'warn',
+            'tp skipped: size too small %s',
+            toJson({ symbol, tp, tpSizeNum, minOrderQty: meta.minOrderQty }, true),
+          );
+          continue;
+        }
+      
+        let rawTpPrice: number;
+      
+        if (tp.price) {
+          rawTpPrice = tp.price;
+        } else {
+          if (tp.profit == null) {
+            logger.log(
+              'warn',
+              'tp skipped: no price and no profit %s',
+              toJson(tp, true),
+            );
             continue;
           }
-
-          tpPrice = isLong
-            ? `${price * (1 + tp.profit)}`
-            : `${price * (1 - tp.profit)}`;
+      
+          rawTpPrice = isLong
+            ? price * (1 + tp.profit)
+            : price * (1 - tp.profit);
         }
-
+      
+        const tpPriceNorm = normalizePrice(
+          rawTpPrice,
+          isLong ? 'TP_LONG' : 'TP_SHORT',
+          meta,
+        );
+      
         const tpRes = await client.setTradingStop({
           category: MARKET_CATEGORY,
           symbol,
-          tpSize: tpSize.toFixed(0),
+          tpSize: tpSizeStr,
           tpslMode: 'Partial',
-          takeProfit: tpPrice,
+          takeProfit: tpPriceNorm.priceStr,
           tpOrderType: 'Market',
           positionIdx: 0,
         });
-
+      
         logger.log(
           getLogLevel(tpRes),
           'tp: %s %s',
