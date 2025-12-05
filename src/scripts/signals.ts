@@ -6,7 +6,7 @@ import { SMA } from 'technicalindicators';
 import chalk from 'chalk';
 import {
   SIGNALS_PRELOAD_DAYS,
-  TTL_3H,
+  TTL_1H,
   TTL_1M,
   TP_MAX_SHORT_PERCENT,
   TP_MAX_LONG_PERCENT,
@@ -237,7 +237,7 @@ const findSignals = async (symbol: string) => {
 
   await setData(redisKeys.signal(symbol, signalId), signal, {
     stringify: true,
-    expire: TTL_3H,
+    expire: TTL_1H,
   });
 
   await setData(redisKeys.storeSignal(symbol, signalId), signal, {
