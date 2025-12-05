@@ -5,10 +5,12 @@ const { NODE_ENV } = process.env;
 
 // Минимальное допустимое движение между точками линии
 export const TP_MIN_PERCENT = 2;
-export const TP_MAX_PERCENT = 5;
-export const SL_PERCENT = 1;
+export const TP_MAX_LONG_PERCENT = 4.5;
+export const TP_MAX_SHORT_PERCENT = 3.5;
+export const TP_DISTANCE = 1 / 3;
+export const SL_PERCENT = 0.8;
 export const MAX_LOSS_VALUE = 1;
-export const MIN_RISK_RATIO = 1;
+export const MIN_RISK_RATIO = 1.2;
 
 export const PRELOAD_DAYS = 210;
 export const SIGNALS_PRELOAD_DAYS = 60;

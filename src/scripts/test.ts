@@ -16,9 +16,7 @@ const placeOrder = async () => {
       timestamp: 0,
       direction: 'LONG',
     },
-    [
-      { price: 0.0979478, rate: 1 },
-    ],
+    [{ price: 0.0979478, rate: 1 }],
     0.08972483230293661,
   );
 

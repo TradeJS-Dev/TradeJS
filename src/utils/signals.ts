@@ -143,8 +143,10 @@ type Targets = {
 };
 
 interface TargetsOptions {
-  TP_MAX_PERCENT: number;
+  TP_MAX_SHORT_PERCENT: number;
+  TP_MAX_LONG_PERCENT: number;
   TP_MIN_PERCENT: number;
+  TP_DISTANCE: number;
   SL_PERCENT: number;
   MAX_LOSS_VALUE: number;
   MIN_RISK_RATIO: number;
@@ -155,10 +157,12 @@ export const calcTargetsFromTrendLine = (
   entryPrice: number,
   {
     TP_MIN_PERCENT,
-    TP_MAX_PERCENT,
+    TP_MAX_SHORT_PERCENT,
+    TP_MAX_LONG_PERCENT,
     SL_PERCENT,
     MAX_LOSS_VALUE,
     MIN_RISK_RATIO,
+    TP_DISTANCE,
   }: TargetsOptions,
 ): Targets | null => {
   const { direction, points } = trendLine;
@@ -167,23 +171,26 @@ export const calcTargetsFromTrendLine = (
   const basePrice = start.value;
   const breakPrice = end.value;
 
-  if (direction === 'LONG' && entryPrice < breakPrice) {
+  const isLong = direction === 'LONG';
+
+  if (isLong && entryPrice < breakPrice) {
     return null;
   }
 
-  if (direction === 'SHORT' && entryPrice > breakPrice) {
+  if (!isLong && entryPrice > breakPrice) {
     return null;
   }
 
-  const rawTakeProfit = breakPrice + (basePrice - breakPrice) * (1 / 2);
+  const rawTakeProfit = breakPrice + (basePrice - breakPrice) * TP_DISTANCE;
+
+  const TP_MAX_PERCENT = isLong ? TP_MAX_LONG_PERCENT : TP_MAX_SHORT_PERCENT;
 
   const minTpMove = entryPrice * (TP_MIN_PERCENT / 100);
   const maxTpMove = entryPrice * (TP_MAX_PERCENT / 100);
 
-  let tpDistance =
-    direction === 'LONG'
-      ? rawTakeProfit - entryPrice
-      : entryPrice - rawTakeProfit;
+  let tpDistance = isLong
+    ? rawTakeProfit - entryPrice
+    : entryPrice - rawTakeProfit;
 
   if (tpDistance <= 0) {
     tpDistance = minTpMove;
@@ -191,17 +198,17 @@ export const calcTargetsFromTrendLine = (
 
   tpDistance = Math.max(minTpMove, Math.min(tpDistance, maxTpMove));
 
-  const takeProfitPrice =
-    direction === 'LONG' ? entryPrice + tpDistance : entryPrice - tpDistance;
+  const takeProfitPrice = isLong
+    ? entryPrice + tpDistance
+    : entryPrice - tpDistance;
 
-  const stopLossPrice =
-    direction === 'LONG'
-      ? breakPrice * (1 - SL_PERCENT / 100)
-      : breakPrice * (1 + SL_PERCENT / 100);
+  const stopLossPrice = isLong
+    ? breakPrice * (1 - SL_PERCENT / 100)
+    : breakPrice * (1 + SL_PERCENT / 100);
 
   let riskRatio: number;
 
-  if (direction === 'LONG') {
+  if (isLong) {
     const reward = takeProfitPrice - entryPrice;
     const risk = entryPrice - stopLossPrice;
     riskRatio = risk > 0 ? reward / risk : 0;

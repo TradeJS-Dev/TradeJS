@@ -8,8 +8,10 @@ import {
   SIGNALS_PRELOAD_DAYS,
   TTL_3H,
   TTL_1M,
-  TP_MAX_PERCENT,
+  TP_MAX_SHORT_PERCENT,
+  TP_MAX_LONG_PERCENT,
   TP_MIN_PERCENT,
+  TP_DISTANCE,
   SL_PERCENT,
   MAX_LOSS_VALUE,
   MIN_RISK_RATIO,
@@ -22,7 +24,6 @@ import { getKeys, setData, redisKeys } from '@utils/redis';
 import { Interval, Signal } from '@types';
 import { calcTargetsFromTrendLine } from '@utils/signals';
 import { calculateCoinBtcCorrelation } from '@utils/correlation';
-import { detectMarketStructure } from '@utils/trend';
 
 args.option(['t', 'tickers'], 'Selected tickers');
 args.option(['e', 'exclude'], 'Exclude tickers from tests');
@@ -40,6 +41,9 @@ args.option(['U', 'user'], 'Use user confg', 'root');
 
 const PRELOAD_START = getTimestamp(SIGNALS_PRELOAD_DAYS);
 const PRELOAD_END = getTimestamp();
+const SMA_FAST = 49;
+const SMA_SLOW = 200;
+const MAX_CORRELATION = 0.6;
 
 const flags = args.parse(process.argv);
 const minTouches = parseInt(flags.points);
@@ -109,7 +113,7 @@ const findSignals = async (symbol: string) => {
 
     return null;
   }
-  
+
   const btcData = await byBitConnector.kline({
     symbol: 'BTCUSDT',
     start: PRELOAD_START,
@@ -123,35 +127,20 @@ const findSignals = async (symbol: string) => {
     btcData.slice(-1000),
   );
 
-  if (!correlation || correlation > 0.6) {
+  if (!correlation || correlation > MAX_CORRELATION) {
     console.log('>>> exit by correlation', symbol, correlation);
 
     return null;
   }
 
-  const data4H = await byBitConnector.kline({
-    symbol,
-    start: PRELOAD_START,
-    end: PRELOAD_END,
-    cacheOnly: false,
-    interval: '240',
+  const smaSlow = new SMA({
+    period: SMA_SLOW,
+    values: data.map((candle) => candle.close),
   });
 
-  let { trend } = detectMarketStructure(data4H, 'hard');
+  const currentSmaSlow = smaSlow.getResult().slice(-1)?.[0];
 
-  console.log('>>> trend', symbol, trend);
-
-  if (trend === 'RANGE') {
-    const sma200 = new SMA({
-      period: 200,
-      values: data.map((candle) => candle.close),
-    });
-
-    const currentSma200 = sma200.getResult().slice(-1)?.[0];
-
-    trend = currentSma200 > currentPrice ? 'BEAR' : 'BULL';
-    console.log('>>> trend by sma', symbol, trend, currentSma200, currentPrice);
-  }
+  const trend = currentSmaSlow > currentPrice ? 'BEAR' : 'BULL';
 
   if (
     (bestLine.direction === 'SHORT' && trend !== 'BEAR') ||
@@ -162,22 +151,33 @@ const findSignals = async (symbol: string) => {
     return null;
   }
 
-  const sma49 = new SMA({
-    period: 49,
+  const smaFast = new SMA({
+    period: SMA_FAST,
     values: data.map((candle) => candle.close),
   });
 
-  const currentSma49 = sma49.getResult().slice(-1)?.[0];
+  const currentSmaFast = smaFast.getResult().slice(-1)?.[0];
 
-  if ((currentSma49 < currentPrice && bestLine.direction === 'SHORT') || (currentSma49 > currentPrice && bestLine.direction === 'LONG')) {
-    console.log('>>> exit by sma49', symbol, bestLine.direction, currentSma49, currentPrice);
+  if (
+    (currentSmaFast < currentPrice && bestLine.direction === 'SHORT') ||
+    (currentSmaFast > currentPrice && bestLine.direction === 'LONG')
+  ) {
+    console.log(
+      '>>> exit by smaFast',
+      symbol,
+      bestLine.direction,
+      currentSmaFast,
+      currentPrice,
+    );
 
     return null;
   }
 
   const targets = calcTargetsFromTrendLine(bestLine, currentPrice, {
-    TP_MAX_PERCENT,
+    TP_MAX_SHORT_PERCENT,
+    TP_MAX_LONG_PERCENT,
     TP_MIN_PERCENT,
+    TP_DISTANCE,
     SL_PERCENT,
     MAX_LOSS_VALUE,
     MIN_RISK_RATIO,
@@ -208,16 +208,11 @@ const findSignals = async (symbol: string) => {
         targets.stopLossPrice,
       );
 
-      console.log('>>> order', symbol, order);
-
       const currentPosition = await byBitConnector.getPosition(symbol);
-
-      console.log('>>> position', symbol, currentPosition);
 
       if (currentPosition?.price) {
         currentPrice = currentPosition?.price;
       }
-
     } catch (err) {
       console.error('>>> order error:', symbol, err);
     }

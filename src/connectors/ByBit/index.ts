@@ -440,10 +440,9 @@ export const ByBitConnectorCreator: ConnectorCreator = (config) => {
       }
 
       // --- нормализуем SL ---
-      const slNormalized =
-        slPrice
-          ? normalizePrice(slPrice, isLong ? 'SL_LONG' : 'SL_SHORT', meta)
-          : undefined;
+      const slNormalized = slPrice
+        ? normalizePrice(slPrice, isLong ? 'SL_LONG' : 'SL_SHORT', meta)
+        : undefined;
 
       logger.log(
         'info',
@@ -494,19 +493,25 @@ export const ByBitConnectorCreator: ConnectorCreator = (config) => {
       // --- Partial TP ---
       for (const tp of TP) {
         const tpSizeRaw = orderQty * tp.rate;
-        const { qtyNum: tpSizeNum, qtyStr: tpSizeStr } = normalizeQty(tpSizeRaw, meta);
-      
+        const { qtyNum: tpSizeNum, qtyStr: tpSizeStr } = normalizeQty(
+          tpSizeRaw,
+          meta,
+        );
+
         if (!tpSizeNum || tpSizeNum < meta.minOrderQty) {
           logger.log(
             'warn',
             'tp skipped: size too small %s',
-            toJson({ symbol, tp, tpSizeNum, minOrderQty: meta.minOrderQty }, true),
+            toJson(
+              { symbol, tp, tpSizeNum, minOrderQty: meta.minOrderQty },
+              true,
+            ),
           );
           continue;
         }
-      
+
         let rawTpPrice: number;
-      
+
         if (tp.price) {
           rawTpPrice = tp.price;
         } else {
@@ -518,18 +523,18 @@ export const ByBitConnectorCreator: ConnectorCreator = (config) => {
             );
             continue;
           }
-      
+
           rawTpPrice = isLong
             ? price * (1 + tp.profit)
             : price * (1 - tp.profit);
         }
-      
+
         const tpPriceNorm = normalizePrice(
           rawTpPrice,
           isLong ? 'TP_LONG' : 'TP_SHORT',
           meta,
         );
-      
+
         const tpRes = await client.setTradingStop({
           category: MARKET_CATEGORY,
           symbol,
@@ -539,7 +544,7 @@ export const ByBitConnectorCreator: ConnectorCreator = (config) => {
           tpOrderType: 'Market',
           positionIdx: 0,
         });
-      
+
         logger.log(
           getLogLevel(tpRes),
           'tp: %s %s',
