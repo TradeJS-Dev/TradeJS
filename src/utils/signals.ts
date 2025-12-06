@@ -143,8 +143,7 @@ type Targets = {
 };
 
 interface TargetsOptions {
-  TP_MAX_SHORT_PERCENT: number;
-  TP_MAX_LONG_PERCENT: number;
+  TP_MAX_PERCENT: number;
   TP_MIN_PERCENT: number;
   TP_DISTANCE: number;
   SL_PERCENT: number;
@@ -157,8 +156,7 @@ export const calcTargetsFromTrendLine = (
   entryPrice: number,
   {
     TP_MIN_PERCENT,
-    TP_MAX_SHORT_PERCENT,
-    TP_MAX_LONG_PERCENT,
+    TP_MAX_PERCENT,
     SL_PERCENT,
     MAX_LOSS_VALUE,
     MIN_RISK_RATIO,
@@ -182,8 +180,6 @@ export const calcTargetsFromTrendLine = (
   }
 
   const rawTakeProfit = breakPrice + (basePrice - breakPrice) * TP_DISTANCE;
-
-  const TP_MAX_PERCENT = isLong ? TP_MAX_LONG_PERCENT : TP_MAX_SHORT_PERCENT;
 
   const minTpMove = entryPrice * (TP_MIN_PERCENT / 100);
   const maxTpMove = entryPrice * (TP_MAX_PERCENT / 100);

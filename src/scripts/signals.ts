@@ -10,9 +10,11 @@ import {
   TTL_1M,
   TP_MAX_SHORT_PERCENT,
   TP_MAX_LONG_PERCENT,
-  TP_MIN_PERCENT,
+  TP_MIN_SHORT_PERCENT,
+  TP_MIN_LONG_PERCENT,
   TP_DISTANCE,
-  SL_PERCENT,
+  SL_LONG_PERCENT,
+  SL_SHORT_PERCENT,
   MAX_LOSS_VALUE,
   MIN_RISK_RATIO,
 } from '@constants';
@@ -199,11 +201,10 @@ const findSignals = async (symbol: string) => {
   }
 
   const targets = calcTargetsFromTrendLine(bestLine, currentPrice, {
-    TP_MAX_SHORT_PERCENT,
-    TP_MAX_LONG_PERCENT,
-    TP_MIN_PERCENT,
+    TP_MAX_PERCENT: isLong ? TP_MAX_LONG_PERCENT : TP_MAX_SHORT_PERCENT,
+    TP_MIN_PERCENT: isLong ? TP_MIN_LONG_PERCENT : TP_MIN_SHORT_PERCENT,
     TP_DISTANCE,
-    SL_PERCENT,
+    SL_PERCENT: isLong ? SL_LONG_PERCENT : SL_SHORT_PERCENT,
     MAX_LOSS_VALUE,
     MIN_RISK_RATIO,
   });
