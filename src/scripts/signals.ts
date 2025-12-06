@@ -69,6 +69,7 @@ const findSignals = async (symbol: string) => {
   });
 
   const lowsTrendlines = findTrendlinesByLows(cachedData, {
+    firstRange: 80,
     minTouches,
     offset,
     bestLines: 1,
@@ -77,6 +78,7 @@ const findSignals = async (symbol: string) => {
   });
 
   const highsTrendlines = findTrendlinesByHighs(cachedData, {
+    firstRange: 100,
     minTouches,
     offset,
     bestLines: 1,
@@ -139,20 +141,22 @@ const findSignals = async (symbol: string) => {
 
   if (
     (isLong &&
-      (lastCandle.close < lastCandle.open ||
+      (lastCandle.close < prevCandle.open ||
         prevCandle.close < prevCandle.open)) ||
     (!isLong &&
-      (lastCandle.close > lastCandle.open ||
+      (lastCandle.close > prevCandle.open ||
         prevCandle.close > prevCandle.open))
   ) {
-    return console.log(
-      '>>> exit by revert',
+    console.log(
+      '>>> exit candle filter',
       symbol,
       prevCandle.open,
       prevCandle.close,
       lastCandle.open,
       lastCandle.close,
     );
+
+    return null;
   }
 
   let currentPrice = lastCandle.close;
