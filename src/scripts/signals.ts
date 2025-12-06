@@ -40,7 +40,6 @@ args.option(['c', 'chunk'], 'Split by chunks, ex. 1/3');
 args.option(['U', 'user'], 'Use user confg', 'root');
 
 const PRELOAD_START = getTimestamp(SIGNALS_PRELOAD_DAYS);
-const PRELOAD_END = getTimestamp();
 const SMA_FAST = 49;
 const SMA_SLOW = 200;
 const MAX_CORRELATION = 0.6;
@@ -61,23 +60,15 @@ const findSignals = async (symbol: string) => {
     return null;
   }
 
-  const data = await byBitConnector.kline({
+  const cachedData = await byBitConnector.kline({
     symbol,
     start: PRELOAD_START,
-    end: PRELOAD_END,
+    end: getTimestamp(),
     cacheOnly: true,
     interval,
   });
 
-  const lastCandle = data.slice(-1)?.[0];
-
-  if (!lastCandle) {
-    return null;
-  }
-
-  let currentPrice = lastCandle.close;
-
-  const lowsTrendlines = findTrendlinesByLows(data, {
+  const lowsTrendlines = findTrendlinesByLows(cachedData, {
     minTouches,
     offset,
     bestLines: 1,
@@ -85,7 +76,7 @@ const findSignals = async (symbol: string) => {
     capture: true,
   });
 
-  const highsTrendlines = findTrendlinesByHighs(data, {
+  const highsTrendlines = findTrendlinesByHighs(cachedData, {
     minTouches,
     offset,
     bestLines: 1,
@@ -105,6 +96,8 @@ const findSignals = async (symbol: string) => {
 
   console.log('>>> line', symbol, bestLine);
 
+  const isLong = bestLine.direction === 'LONG';
+
   const position = await byBitConnector.getPosition(symbol);
   const positionExists = !_.isEmpty(position) && position.qty > 0;
 
@@ -117,13 +110,13 @@ const findSignals = async (symbol: string) => {
   const btcData = await byBitConnector.kline({
     symbol: 'BTCUSDT',
     start: PRELOAD_START,
-    end: PRELOAD_END,
+    end: getTimestamp(),
     cacheOnly: true,
     interval,
   });
 
   const { correlation } = calculateCoinBtcCorrelation(
-    data.slice(-1000),
+    cachedData.slice(-1000),
     btcData.slice(-1000),
   );
 
@@ -133,34 +126,62 @@ const findSignals = async (symbol: string) => {
     return null;
   }
 
+  const data = await byBitConnector.kline({
+    symbol,
+    start: PRELOAD_START,
+    end: getTimestamp(),
+    cacheOnly: false,
+    interval,
+  });
+
+  const prevCandle = data[data.length - 2];
+  const lastCandle = data[data.length - 1];
+
+  if (
+    (isLong &&
+      (lastCandle.close < lastCandle.open ||
+        prevCandle.close < prevCandle.open)) ||
+    (!isLong &&
+      (lastCandle.close > lastCandle.open ||
+        prevCandle.close > prevCandle.open))
+  ) {
+    return console.log(
+      '>>> exit by revert',
+      symbol,
+      prevCandle.open,
+      prevCandle.close,
+      lastCandle.open,
+      lastCandle.close,
+    );
+  }
+
+  let currentPrice = lastCandle.close;
+
+  const smaFast = new SMA({
+    period: SMA_FAST,
+    values: data.map((candle) => candle.close),
+  }).getResult();
+
+  const currentSmaFast = smaFast[smaFast.length - 1];
+
   const smaSlow = new SMA({
     period: SMA_SLOW,
     values: data.map((candle) => candle.close),
-  });
+  }).getResult();
 
-  const currentSmaSlow = smaSlow.getResult().slice(-1)?.[0];
+  const currentSmaSlow = smaSlow[smaSlow.length - 1];
 
   const trend = currentSmaSlow > currentPrice ? 'BEAR' : 'BULL';
 
-  if (
-    (bestLine.direction === 'SHORT' && trend !== 'BEAR') ||
-    (bestLine.direction === 'LONG' && trend !== 'BULL')
-  ) {
+  if ((!isLong && trend !== 'BEAR') || (isLong && trend !== 'BULL')) {
     console.log('>>> exit by trend', symbol, bestLine.direction, trend);
 
     return null;
   }
 
-  const smaFast = new SMA({
-    period: SMA_FAST,
-    values: data.map((candle) => candle.close),
-  });
-
-  const currentSmaFast = smaFast.getResult().slice(-1)?.[0];
-
   if (
-    (currentSmaFast < currentPrice && bestLine.direction === 'SHORT') ||
-    (currentSmaFast > currentPrice && bestLine.direction === 'LONG')
+    (currentSmaFast < currentPrice && !isLong) ||
+    (currentSmaFast > currentPrice && isLong)
   ) {
     console.log(
       '>>> exit by smaFast',

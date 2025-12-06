@@ -71,6 +71,7 @@ export interface ConnectorConfig {
 }
 
 type GetPosition = (symbol: string) => Promise<Position | null>;
+type GetPositions = () => Promise<Position[]>;
 type PlaceOrder = (order: Order, tp?: Tp[], slPrice?: Sl) => Promise<boolean>;
 type ClosePosition = (order: Omit<Order, 'qty'>) => Promise<boolean>;
 export type Kline = (options: KlineRequest) => Promise<KlineChartData>;
@@ -81,6 +82,7 @@ export interface Connector {
   getState: () => Promise<object>;
   setState: (state: object) => Promise<void>;
   getPosition: GetPosition;
+  getPositions: GetPositions;
   placeOrder: PlaceOrder;
   closePosition: ClosePosition;
   getTickers: GetTickers;

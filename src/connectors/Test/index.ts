@@ -243,6 +243,7 @@ export const TestConnectorCreator: TCC = (connector) => {
       return true;
     },
 
-    getTickers: async () => [],
+    getTickers: connector.getTickers,
+    getPositions: connector.getPositions,
   };
 };

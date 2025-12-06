@@ -1,7 +1,7 @@
-import { OHLCVKlineV5, RestClientV5 } from 'bybit-api';
+import { OHLCVKlineV5, RestClientV5, PositionV5 } from 'bybit-api';
 import { MARKET_CATEGORY } from '@constants';
 import { formatUnix } from '@utils/timestamp';
-import { KlineChartItem } from '@types';
+import { KlineChartItem, Position, Direction } from '@types';
 
 const parseKlineItem = (item: OHLCVKlineV5): KlineChartItem => ({
   dt: formatUnix(parseInt(item[0])),
@@ -125,4 +125,20 @@ export const normalizePrice = (
   const priceStr = priceNum.toFixed(meta.pricePrecision);
 
   return { priceNum, priceStr };
+};
+
+export const mapPositionData = (data: PositionV5[]): Position[] => {
+  if (!data) {
+    return [];
+  }
+
+  return data
+    .filter((item) => parseFloat(item.size) > 0)
+    .map((item) => ({
+      symbol: item.symbol,
+      price: parseFloat(item.avgPrice),
+      slPrice: parseFloat(item.stopLoss || ''),
+      qty: parseFloat(item.size),
+      direction: (item.side === 'Buy' ? 'LONG' : 'SHORT') as Direction,
+    }));
 };

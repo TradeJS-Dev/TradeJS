@@ -28,6 +28,7 @@ import {
   normalizePrice,
   normalizeQty,
   getSymbolMeta,
+  mapPositionData,
 } from './utils';
 
 const LIMIT = 1000;
@@ -387,14 +388,7 @@ export const ByBitConnectorCreator: ConnectorCreator = (config) => {
         return null;
       }
 
-      const positions = positionRes.result.list
-        .filter((item) => parseFloat(item.size) > 0)
-        .map((item) => ({
-          symbol: item.symbol,
-          price: parseFloat(item.avgPrice),
-          qty: parseFloat(item.size),
-          direction: (item.side === 'Buy' ? 'LONG' : 'SHORT') as Direction,
-        }));
+      const positions = mapPositionData(positionRes.result.list);
 
       if (!positions || _.isEmpty(positions)) {
         return null;
@@ -413,6 +407,37 @@ export const ByBitConnectorCreator: ConnectorCreator = (config) => {
         ...position,
       };
     },
+
+    getPositions: async () => {
+      const client = await getClient(config);
+
+      if (!client) {
+        return [];
+      }
+
+      const positionRes = await client.getPositionInfo({
+        category: MARKET_CATEGORY,
+      });
+
+      logger.log(
+        getLogLevel(positionRes),
+        'positions retCode: %s, %s',
+        positionRes.retCode,
+      );
+
+      if (positionRes.retCode !== 0) {
+        return [];
+      }
+
+      const positions = mapPositionData(positionRes.result.list);
+
+      if (!positions || _.isEmpty(positions)) {
+        return [];
+      }
+
+      return positions;
+    },
+
     placeOrder: async ({ symbol, price, qty, direction }, TP = [], slPrice) => {
       const client = await getClient(config);
 
@@ -535,11 +560,13 @@ export const ByBitConnectorCreator: ConnectorCreator = (config) => {
           meta,
         );
 
+        const isFullMode = TP.length === 1 && tp.rate === 1;
+
         const tpRes = await client.setTradingStop({
           category: MARKET_CATEGORY,
           symbol,
-          tpSize: tpSizeStr,
-          tpslMode: 'Partial',
+          tpSize: isFullMode ? undefined : tpSizeStr,
+          tpslMode: isFullMode ? 'Full' : 'Partial',
           takeProfit: tpPriceNorm.priceStr,
           tpOrderType: 'Market',
           positionIdx: 0,
@@ -555,6 +582,7 @@ export const ByBitConnectorCreator: ConnectorCreator = (config) => {
 
       return true;
     },
+
     closePosition: async ({ symbol, direction }) => {
       const client = await getClient(config);
 
@@ -585,6 +613,7 @@ export const ByBitConnectorCreator: ConnectorCreator = (config) => {
 
       return true;
     },
+
     getTickers: async () => {
       const client = await getClient(config);
 

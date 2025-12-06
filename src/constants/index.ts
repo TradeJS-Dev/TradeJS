@@ -4,13 +4,13 @@ import type { TestThresholds } from '@types';
 const { NODE_ENV } = process.env;
 
 // Минимальное допустимое движение между точками линии
-export const TP_MIN_PERCENT = 2;
 export const TP_MAX_LONG_PERCENT = 3.5;
 export const TP_MAX_SHORT_PERCENT = 2.5;
+export const TP_MIN_PERCENT = 2;
 export const TP_DISTANCE = 1 / 3;
 export const SL_PERCENT = 0.7;
 export const MAX_LOSS_VALUE = 0.5;
-export const MIN_RISK_RATIO = 1.2;
+export const MIN_RISK_RATIO = 1.5;
 
 export const PRELOAD_DAYS = 210;
 export const SIGNALS_PRELOAD_DAYS = 60;
