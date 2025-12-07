@@ -46,19 +46,19 @@ const useStore = create<IndicatorsState>()(
           id: 'ma',
           label: 'MA',
           enabled: false,
-          periods: [49, 99],
+          periods: [49, 200],
         },
         {
           id: 'ema',
           label: 'EMA',
           enabled: false,
-          periods: [49, 99],
+          periods: [49, 200],
         },
         {
           id: 'wma',
           label: 'WMA',
           enabled: false,
-          periods: [49, 99],
+          periods: [49, 200],
         },
       ] as Indicators,
       setEnabledIndicators: (values: string[]) =>
