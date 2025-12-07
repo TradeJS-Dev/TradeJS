@@ -32,10 +32,10 @@ const SMA_FAST = 49;
 const SMA_SLOW = 200;
 const MAX_CORRELATION = 0.6;
 
-const TP_MIN_LONG_PERCENT = 1.6;
-const TP_MIN_SHORT_PERCENT = 1.4;
-const SL_LONG_PERCENT = 1.2;
-const SL_SHORT_PERCENT = 1.0;
+const TP_MIN_LONG_PERCENT = 1.8;
+const TP_MIN_SHORT_PERCENT = 1.6;
+const SL_LONG_PERCENT = 1.4;
+const SL_SHORT_PERCENT = 1.2;
 const MAX_LOSS_VALUE = 0.2;
 const MIN_RISK_RATIO = 1;
 
@@ -159,16 +159,18 @@ const findSignals = async (symbol: string) => {
   //   return null;
   // }
 
+  const closes = data.map((candle) => candle.close);
+
   const smaFast = new SMA({
     period: SMA_FAST,
-    values: data.map((candle) => candle.close),
+    values: closes,
   }).getResult();
 
   const currentSmaFast = smaFast[smaFast.length - 1];
 
   const smaSlow = new SMA({
     period: SMA_SLOW,
-    values: data.map((candle) => candle.close),
+    values: closes,
   }).getResult();
 
   const currentSmaSlow = smaSlow[smaSlow.length - 1];
@@ -206,6 +208,11 @@ const findSignals = async (symbol: string) => {
   // });
 
   const SL_PERCENT = isLong ? SL_LONG_PERCENT : SL_SHORT_PERCENT;
+  const TP_PERCENT = isLong ? TP_MIN_LONG_PERCENT : TP_MIN_SHORT_PERCENT;
+
+  const rawTakeProfitPrice = isLong
+    ? currentPrice * (1 + TP_PERCENT / 100)
+    : currentPrice * (1 - TP_PERCENT / 100);
 
   const stopLossPrice = isLong
     ? currentPrice * (1 - SL_PERCENT / 100)
@@ -214,12 +221,12 @@ const findSignals = async (symbol: string) => {
   const qty = MAX_LOSS_VALUE / ((currentPrice * SL_PERCENT) / 100);
 
   const firstTakeProfitPrice = isLong
-    ? Math.min(currentSmaFast, TP_MIN_LONG_PERCENT)
-    : Math.max(currentSmaFast, TP_MIN_SHORT_PERCENT);
+    ? Math.max(currentSmaFast, rawTakeProfitPrice)
+    : Math.min(currentSmaFast, rawTakeProfitPrice);
 
   const secondTakeProfitPrice = isLong
-    ? Math.max(currentSmaSlow, TP_MIN_LONG_PERCENT)
-    : Math.min(currentSmaSlow, TP_MIN_SHORT_PERCENT);
+    ? Math.max(currentSmaSlow, rawTakeProfitPrice)
+    : Math.min(currentSmaSlow, rawTakeProfitPrice);
 
   const avgTakeProfitPrice = (firstTakeProfitPrice + secondTakeProfitPrice) / 2;
 
@@ -246,6 +253,7 @@ const findSignals = async (symbol: string) => {
     firstTakeProfitPrice,
     secondTakeProfitPrice,
     avgTakeProfitPrice,
+    rawTakeProfitPrice,
     currentSmaFast,
     currentSmaSlow,
     stopLossPrice,
@@ -314,6 +322,14 @@ const findSignals = async (symbol: string) => {
 
   return signal;
 };
+
+const checkSignals = async () => {
+  const posiions = await byBitConnector.getPositions();
+
+  for await (const posiion of posiions) {
+    const { symbol,  } = posiion
+  }
+}
 
 const signals = async () => {
   const signals = new Array<Signal>();
