@@ -327,9 +327,9 @@ const checkSignals = async () => {
   const posiions = await byBitConnector.getPositions();
 
   for await (const posiion of posiions) {
-    const { symbol,  } = posiion
+    const { symbol } = posiion;
   }
-}
+};
 
 const signals = async () => {
   const signals = new Array<Signal>();
