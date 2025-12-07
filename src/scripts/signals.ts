@@ -4,11 +4,7 @@ import _ from 'lodash';
 import { connectors } from '@src/connectors';
 import { SMA } from 'technicalindicators';
 import chalk from 'chalk';
-import {
-  SIGNALS_PRELOAD_DAYS,
-  TTL_1H,
-  TTL_1M,
-} from '@constants';
+import { SIGNALS_PRELOAD_DAYS, TTL_1H, TTL_1M } from '@constants';
 import { update, getTickers, makeScreenshots, sendToTG } from '@utils/cli';
 import { findTrendlinesByLows, findTrendlinesByHighs } from '@utils/trendLine';
 import { getTimestamp } from '@utils/timestamp';
@@ -99,7 +95,8 @@ const findSignals = async (symbol: string) => {
 
   console.log('>>> line', symbol, bestLine);
 
-  const direction = bestLine.direction === 'LONG' ? 'SHORT' : 'LONG' as Direction;
+  const direction =
+    bestLine.direction === 'LONG' ? 'SHORT' : ('LONG' as Direction);
   const isLong = direction === 'LONG';
 
   const position = await byBitConnector.getPosition(symbol);
@@ -211,18 +208,18 @@ const findSignals = async (symbol: string) => {
   const SL_PERCENT = isLong ? SL_LONG_PERCENT : SL_SHORT_PERCENT;
 
   const stopLossPrice = isLong
-  ? currentPrice * (1 - SL_PERCENT / 100)
-  : currentPrice * (1 + SL_PERCENT / 100);
+    ? currentPrice * (1 - SL_PERCENT / 100)
+    : currentPrice * (1 + SL_PERCENT / 100);
 
   const qty = MAX_LOSS_VALUE / ((currentPrice * SL_PERCENT) / 100);
 
   const firstTakeProfitPrice = isLong
     ? Math.min(currentSmaFast, TP_MIN_LONG_PERCENT)
-    : Math.max(currentSmaFast, TP_MIN_SHORT_PERCENT)
+    : Math.max(currentSmaFast, TP_MIN_SHORT_PERCENT);
 
   const secondTakeProfitPrice = isLong
     ? Math.max(currentSmaSlow, TP_MIN_LONG_PERCENT)
-    : Math.min(currentSmaSlow, TP_MIN_SHORT_PERCENT)
+    : Math.min(currentSmaSlow, TP_MIN_SHORT_PERCENT);
 
   const avgTakeProfitPrice = (firstTakeProfitPrice + secondTakeProfitPrice) / 2;
 
@@ -252,9 +249,9 @@ const findSignals = async (symbol: string) => {
     currentSmaFast,
     currentSmaSlow,
     stopLossPrice,
-    riskRatio
+    riskRatio,
   });
-  
+
   if (flags.makeOrders) {
     try {
       await byBitConnector.placeOrder(

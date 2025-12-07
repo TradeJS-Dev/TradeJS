@@ -568,7 +568,8 @@ export const ByBitConnectorCreator: ConnectorCreator = (config) => {
           tpSize: isFullMode ? undefined : tpSizeStr,
           tpslMode: isFullMode ? 'Full' : 'Partial',
           takeProfit: tpPriceNorm.priceStr,
-          stopLoss: isFullMode && slNormalized ? slNormalized.priceStr : undefined,
+          stopLoss:
+            isFullMode && slNormalized ? slNormalized.priceStr : undefined,
           tpOrderType: 'Market',
           positionIdx: 0,
         });
