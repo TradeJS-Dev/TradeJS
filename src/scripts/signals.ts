@@ -30,7 +30,7 @@ args.option(['U', 'user'], 'Use user confg', 'root');
 const PRELOAD_START = getTimestamp(SIGNALS_PRELOAD_DAYS);
 const SMA_FAST = 49;
 const SMA_SLOW = 200;
-const MAX_CORRELATION = 0.6;
+const MAX_CORRELATION = 0.7;
 
 // const TP_MIN_LONG_PERCENT = 1.8;
 // const TP_MIN_SHORT_PERCENT = 1.6;
@@ -95,8 +95,7 @@ const findSignals = async (symbol: string) => {
 
   console.log('>>> line', symbol, bestLine);
 
-  const direction =
-    bestLine.direction === 'LONG' ? 'SHORT' : 'LONG';
+  const direction = bestLine.direction === 'LONG' ? 'SHORT' : 'LONG';
   const isLong = direction === 'LONG';
 
   const position = await byBitConnector.getPosition(symbol);
@@ -121,7 +120,7 @@ const findSignals = async (symbol: string) => {
     btcData.slice(-1000),
   );
 
-  if (!correlation || correlation > MAX_CORRELATION) {
+  if (!correlation || correlation <= 0.3 || correlation > MAX_CORRELATION) {
     console.log('>>> exit by correlation', symbol, correlation);
 
     return null;
@@ -178,8 +177,10 @@ const findSignals = async (symbol: string) => {
   const trend = currentSmaSlow > currentPrice ? 'BEAR' : 'BULL';
 
   if (
-    (isLong && (currentSmaFast < currentPrice || currentSmaFast > currentSmaSlow)) ||
-    (!isLong && (currentSmaFast > currentPrice || currentSmaFast < currentSmaSlow))
+    (isLong &&
+      (currentSmaFast < currentPrice || currentSmaFast > currentSmaSlow)) ||
+    (!isLong &&
+      (currentSmaFast > currentPrice || currentSmaFast < currentSmaSlow))
   ) {
     console.log(
       '>>> exit by trend',
