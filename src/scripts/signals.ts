@@ -10,7 +10,7 @@ import { findTrendlinesByLows, findTrendlinesByHighs } from '@utils/trendLine';
 import { getTimestamp } from '@utils/timestamp';
 import { uuid } from '@utils/uuid';
 import { getKeys, setData, redisKeys } from '@utils/redis';
-import { Interval, Signal, Direction } from '@types';
+import { Interval, Signal } from '@types';
 import { calculateCoinBtcCorrelation } from '@utils/correlation';
 
 args.option(['t', 'tickers'], 'Selected tickers');
@@ -32,12 +32,12 @@ const SMA_FAST = 49;
 const SMA_SLOW = 200;
 const MAX_CORRELATION = 0.6;
 
-const TP_MIN_LONG_PERCENT = 1.8;
-const TP_MIN_SHORT_PERCENT = 1.6;
-const SL_LONG_PERCENT = 1.4;
-const SL_SHORT_PERCENT = 1.2;
+// const TP_MIN_LONG_PERCENT = 1.8;
+// const TP_MIN_SHORT_PERCENT = 1.6;
+const SL_LONG_PERCENT = 1.2;
+const SL_SHORT_PERCENT = 1;
 const MAX_LOSS_VALUE = 0.2;
-const MIN_RISK_RATIO = 1;
+const MIN_RISK_RATIO = 1.5;
 
 const flags = args.parse(process.argv);
 const minTouches = parseInt(flags.points);
@@ -96,7 +96,7 @@ const findSignals = async (symbol: string) => {
   console.log('>>> line', symbol, bestLine);
 
   const direction =
-    bestLine.direction === 'LONG' ? 'SHORT' : ('LONG' as Direction);
+    bestLine.direction === 'LONG' ? 'SHORT' : 'LONG';
   const isLong = direction === 'LONG';
 
   const position = await byBitConnector.getPosition(symbol);
@@ -177,18 +177,12 @@ const findSignals = async (symbol: string) => {
 
   const trend = currentSmaSlow > currentPrice ? 'BEAR' : 'BULL';
 
-  if ((isLong && trend !== 'BEAR') || (!isLong && trend !== 'BULL')) {
-    console.log('>>> exit by trend', symbol, direction, trend);
-
-    return null;
-  }
-
   if (
-    (currentSmaFast < currentPrice && isLong) ||
-    (currentSmaFast > currentPrice && !isLong)
+    (isLong && (currentSmaFast < currentPrice || currentSmaFast > currentSmaSlow)) ||
+    (!isLong && (currentSmaFast > currentPrice || currentSmaFast < currentSmaSlow))
   ) {
     console.log(
-      '>>> exit by smaFast',
+      '>>> exit by trend',
       symbol,
       direction,
       currentSmaFast,
@@ -208,11 +202,6 @@ const findSignals = async (symbol: string) => {
   // });
 
   const SL_PERCENT = isLong ? SL_LONG_PERCENT : SL_SHORT_PERCENT;
-  const TP_PERCENT = isLong ? TP_MIN_LONG_PERCENT : TP_MIN_SHORT_PERCENT;
-
-  const rawTakeProfitPrice = isLong
-    ? currentPrice * (1 + TP_PERCENT / 100)
-    : currentPrice * (1 - TP_PERCENT / 100);
 
   const stopLossPrice = isLong
     ? currentPrice * (1 - SL_PERCENT / 100)
@@ -220,13 +209,9 @@ const findSignals = async (symbol: string) => {
 
   const qty = MAX_LOSS_VALUE / ((currentPrice * SL_PERCENT) / 100);
 
-  const firstTakeProfitPrice = isLong
-    ? Math.max(currentSmaFast, rawTakeProfitPrice)
-    : Math.min(currentSmaFast, rawTakeProfitPrice);
+  const firstTakeProfitPrice = currentSmaFast;
 
-  const secondTakeProfitPrice = isLong
-    ? Math.max(currentSmaSlow, rawTakeProfitPrice)
-    : Math.min(currentSmaSlow, rawTakeProfitPrice);
+  const secondTakeProfitPrice = currentSmaSlow;
 
   const avgTakeProfitPrice = (firstTakeProfitPrice + secondTakeProfitPrice) / 2;
 
@@ -253,7 +238,6 @@ const findSignals = async (symbol: string) => {
     firstTakeProfitPrice,
     secondTakeProfitPrice,
     avgTakeProfitPrice,
-    rawTakeProfitPrice,
     currentSmaFast,
     currentSmaSlow,
     stopLossPrice,
