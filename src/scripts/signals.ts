@@ -30,10 +30,8 @@ args.option(['U', 'user'], 'Use user confg', 'root');
 const PRELOAD_START = getTimestamp(SIGNALS_PRELOAD_DAYS);
 const SMA_FAST = 49;
 const SMA_SLOW = 200;
-const MAX_CORRELATION = 0.7;
+const MAX_CORRELATION = 0.6;
 
-// const TP_MIN_LONG_PERCENT = 1.8;
-// const TP_MIN_SHORT_PERCENT = 1.6;
 const SL_LONG_PERCENT = 1.2;
 const SL_SHORT_PERCENT = 1;
 const MAX_LOSS_VALUE = 0.2;
@@ -134,29 +132,8 @@ const findSignals = async (symbol: string) => {
     interval,
   });
 
-  // const prevCandle = data[data.length - 2];
   const lastCandle = data[data.length - 1];
   let currentPrice = lastCandle.close;
-
-  // if (
-  //   (!isLong &&
-  //     (lastCandle.close < prevCandle.open ||
-  //       prevCandle.close < prevCandle.open)) ||
-  //   (isLong &&
-  //     (lastCandle.close > prevCandle.open ||
-  //       prevCandle.close > prevCandle.open))
-  // ) {
-  //   console.log(
-  //     '>>> exit candle filter',
-  //     symbol,
-  //     prevCandle.open,
-  //     prevCandle.close,
-  //     lastCandle.open,
-  //     lastCandle.close,
-  //   );
-
-  //   return null;
-  // }
 
   const closes = data.map((candle) => candle.close);
 
@@ -178,29 +155,21 @@ const findSignals = async (symbol: string) => {
 
   if (
     (isLong &&
-      (currentSmaFast < currentPrice || currentSmaFast > currentSmaSlow)) ||
+      (currentSmaFast < currentPrice || currentSmaSlow < currentPrice)) ||
     (!isLong &&
-      (currentSmaFast > currentPrice || currentSmaFast < currentSmaSlow))
+      (currentSmaFast > currentPrice || currentSmaSlow > currentPrice))
   ) {
     console.log(
       '>>> exit by trend',
       symbol,
       direction,
       currentSmaFast,
+      currentSmaSlow,
       currentPrice,
     );
 
     return null;
   }
-
-  // const targets = calcTargetsFromTrendLine(bestLine, currentPrice, {
-  //   TP_MAX_PERCENT: isLong ? TP_MAX_LONG_PERCENT : TP_MAX_SHORT_PERCENT,
-  //   TP_MIN_PERCENT: isLong ? TP_MIN_LONG_PERCENT : TP_MIN_SHORT_PERCENT,
-  //   TP_DISTANCE,
-  //   SL_PERCENT: isLong ? SL_LONG_PERCENT : SL_SHORT_PERCENT,
-  //   MAX_LOSS_VALUE,
-  //   MIN_RISK_RATIO,
-  // });
 
   const SL_PERCENT = isLong ? SL_LONG_PERCENT : SL_SHORT_PERCENT;
 
