@@ -404,7 +404,7 @@ const findTrendlinesCore = (
     mode,
     maxLines = 10,
     range = 15,
-    firstRange = 40,
+    firstRange = 100,
     epsilon = 0.003,
     epsilonOffset = 0.004,
     minTouches = 3,
@@ -597,7 +597,7 @@ const findTrendlinesCore = (
 
     trendlines.push({
       id: `${mode}TrendLine-${i + 1}`,
-      direction: mode === 'lows' ? 'SHORT' : 'LONG',
+      trend: mode === 'lows' ? 'BEAR' : 'BULL',
       points: [
         { timestamp: leftAnchor.t, value: evaluateY(leftAnchor.t) },
         { timestamp: lastTimestampMs, value: evaluateY(lastTimestampMs) },

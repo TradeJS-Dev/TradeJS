@@ -38,6 +38,7 @@ export interface Tp {
 export type Sl = number | null;
 
 export type Direction = 'LONG' | 'SHORT';
+export type Trend = 'BULL' | 'BEAR';
 
 export type Order = {
   symbol: string;

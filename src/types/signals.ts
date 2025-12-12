@@ -1,10 +1,10 @@
-import { Interval, Direction } from './trade';
+import { Interval, Trend, Direction } from './trade';
 
 export type TrendLineMode = 'lows' | 'highs';
 
 export type TrendLine = {
   id: string;
-  direction: Direction;
+  trend: Trend;
   touches: { timestamp: number; value: number }[];
   points: { timestamp: number; value: number }[];
 };

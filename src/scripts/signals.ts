@@ -2,16 +2,12 @@ import args from 'args';
 import ProgressBar from 'progress';
 import _ from 'lodash';
 import { connectors } from '@src/connectors';
-import { SMA } from 'technicalindicators';
 import chalk from 'chalk';
-import { SIGNALS_PRELOAD_DAYS, TTL_1H, TTL_1M } from '@constants';
+import { TTL_1D, TTL_1M } from '@constants';
 import { update, getTickers, makeScreenshots, sendToTG } from '@utils/cli';
-import { findTrendlinesByLows, findTrendlinesByHighs } from '@utils/trendLine';
-import { getTimestamp } from '@utils/timestamp';
-import { uuid } from '@utils/uuid';
 import { getKeys, setData, redisKeys } from '@utils/redis';
 import { Interval, Signal } from '@types';
-import { calculateCoinBtcCorrelation } from '@utils/correlation';
+import { TrendlineStrategy } from '@src/strategy/TrendLine/strategy';
 
 args.option(['t', 'tickers'], 'Selected tickers');
 args.option(['e', 'exclude'], 'Exclude tickers from tests');
@@ -26,16 +22,6 @@ args.option(['C', 'cacheOnly'], 'Do not update tickers history', false);
 args.option(['L', 'showTickersList'], 'Just show only ticker list', false);
 args.option(['c', 'chunk'], 'Split by chunks, ex. 1/3');
 args.option(['U', 'user'], 'Use user confg', 'root');
-
-const PRELOAD_START = getTimestamp(SIGNALS_PRELOAD_DAYS);
-const SMA_FAST = 49;
-const SMA_SLOW = 200;
-const MAX_CORRELATION = 0.6;
-
-const SL_LONG_PERCENT = 1.2;
-const SL_SHORT_PERCENT = 1;
-const MAX_LOSS_VALUE = 0.2;
-const MIN_RISK_RATIO = 1.5;
 
 const flags = args.parse(process.argv);
 const minTouches = parseInt(flags.points);
@@ -55,221 +41,24 @@ const findSignals = async (symbol: string) => {
     return null;
   }
 
-  const cachedData = await byBitConnector.kline({
+  const signal = await TrendlineStrategy(byBitConnector, {
     symbol,
-    start: PRELOAD_START,
-    end: getTimestamp(),
-    cacheOnly: true,
     interval,
-  });
-
-  const lowsTrendlines = findTrendlinesByLows(cachedData, {
-    firstRange: 80,
     minTouches,
     offset,
-    bestLines: 1,
-    maxDistance: 1600,
-    capture: true,
+    makeOrders: flags.makeOrders,
   });
 
-  const highsTrendlines = findTrendlinesByHighs(cachedData, {
-    firstRange: 100,
-    minTouches,
-    offset,
-    bestLines: 1,
-    maxDistance: 1400,
-    capture: true,
-  });
-
-  const bestLine =
-    lowsTrendlines.length > 0 ? lowsTrendlines[0] : highsTrendlines[0];
-
-  if (!bestLine) {
-    return null;
+  if (!signal) {
+    return;
   }
 
-  console.log('');
-  console.log('');
-
-  console.log('>>> line', symbol, bestLine);
-
-  const direction = bestLine.direction === 'LONG' ? 'SHORT' : 'LONG';
-  const isLong = direction === 'LONG';
-
-  const position = await byBitConnector.getPosition(symbol);
-  const positionExists = !_.isEmpty(position) && position.qty > 0;
-
-  if (positionExists) {
-    console.log('>>> exit by position exists', symbol, position);
-
-    return null;
-  }
-
-  const btcData = await byBitConnector.kline({
-    symbol: 'BTCUSDT',
-    start: PRELOAD_START,
-    end: getTimestamp(),
-    cacheOnly: true,
-    interval,
-  });
-
-  const { correlation } = calculateCoinBtcCorrelation(
-    cachedData.slice(-1000),
-    btcData.slice(-1000),
-  );
-
-  if (!correlation || correlation <= 0.3 || correlation > MAX_CORRELATION) {
-    console.log('>>> exit by correlation', symbol, correlation);
-
-    return null;
-  }
-
-  const data = await byBitConnector.kline({
-    symbol,
-    start: PRELOAD_START,
-    end: getTimestamp(),
-    cacheOnly: false,
-    interval,
-  });
-
-  const lastCandle = data[data.length - 1];
-  let currentPrice = lastCandle.close;
-
-  const closes = data.map((candle) => candle.close);
-
-  const smaFast = new SMA({
-    period: SMA_FAST,
-    values: closes,
-  }).getResult();
-
-  const currentSmaFast = smaFast[smaFast.length - 1];
-
-  const smaSlow = new SMA({
-    period: SMA_SLOW,
-    values: closes,
-  }).getResult();
-
-  const currentSmaSlow = smaSlow[smaSlow.length - 1];
-
-  const trend = currentSmaSlow > currentPrice ? 'BEAR' : 'BULL';
-
-  if (
-    (isLong &&
-      (currentSmaFast < currentPrice || currentSmaSlow < currentPrice)) ||
-    (!isLong &&
-      (currentSmaFast > currentPrice || currentSmaSlow > currentPrice))
-  ) {
-    console.log(
-      '>>> exit by trend',
-      symbol,
-      direction,
-      currentSmaFast,
-      currentSmaSlow,
-      currentPrice,
-    );
-
-    return null;
-  }
-
-  const SL_PERCENT = isLong ? SL_LONG_PERCENT : SL_SHORT_PERCENT;
-
-  const stopLossPrice = isLong
-    ? currentPrice * (1 - SL_PERCENT / 100)
-    : currentPrice * (1 + SL_PERCENT / 100);
-
-  const qty = MAX_LOSS_VALUE / ((currentPrice * SL_PERCENT) / 100);
-
-  const firstTakeProfitPrice = currentSmaFast;
-
-  const secondTakeProfitPrice = currentSmaSlow;
-
-  const avgTakeProfitPrice = (firstTakeProfitPrice + secondTakeProfitPrice) / 2;
-
-  let riskRatio: number;
-
-  if (isLong) {
-    const reward = avgTakeProfitPrice - currentPrice;
-    const risk = currentPrice - stopLossPrice;
-    riskRatio = risk > 0 ? reward / risk : 0;
-  } else {
-    const reward = currentPrice - avgTakeProfitPrice;
-    const risk = stopLossPrice - currentPrice;
-    riskRatio = risk > 0 ? reward / risk : 0;
-  }
-
-  if (riskRatio <= MIN_RISK_RATIO) {
-    console.log('>>> exit by riskRatio', symbol, riskRatio);
-
-    return null;
-  }
-
-  console.log('>>> prices', symbol, {
-    currentPrice,
-    firstTakeProfitPrice,
-    secondTakeProfitPrice,
-    avgTakeProfitPrice,
-    currentSmaFast,
-    currentSmaSlow,
-    stopLossPrice,
-    riskRatio,
-  });
-
-  if (flags.makeOrders) {
-    try {
-      await byBitConnector.placeOrder(
-        {
-          symbol,
-          qty,
-          price: currentPrice,
-          timestamp: lastCandle.timestamp,
-          direction,
-        },
-        [
-          {
-            rate: 0.5,
-            price: firstTakeProfitPrice,
-          },
-          {
-            rate: 0.5,
-            price: secondTakeProfitPrice,
-          },
-        ],
-        stopLossPrice,
-      );
-
-      const currentPosition = await byBitConnector.getPosition(symbol);
-
-      if (currentPosition?.price) {
-        currentPrice = currentPosition?.price;
-      }
-    } catch (err) {
-      console.error('>>> order error:', symbol, err);
-    }
-  }
-
-  const signalId = uuid();
-
-  const signal: Signal = {
-    signalId,
-    symbol,
-    interval,
-    direction,
-    trendLine: bestLine,
-    timestamp: lastCandle.timestamp,
-    currentPrice,
-    takeProfitPrice: avgTakeProfitPrice,
-    stopLossPrice: stopLossPrice,
-    riskRatio: riskRatio,
-    correlation,
-    trend,
-  };
-
-  await setData(redisKeys.signal(symbol, signalId), signal, {
+  await setData(redisKeys.signal(symbol, signal.signalId), signal, {
     stringify: true,
-    expire: TTL_1H,
+    expire: TTL_1D,
   });
 
-  await setData(redisKeys.storeSignal(symbol, signalId), signal, {
+  await setData(redisKeys.storeSignal(symbol, signal.signalId), signal, {
     stringify: true,
     expire: TTL_1M,
   });
@@ -277,13 +66,13 @@ const findSignals = async (symbol: string) => {
   return signal;
 };
 
-const checkSignals = async () => {
-  const posiions = await byBitConnector.getPositions();
+// const checkSignals = async () => {
+//   const posiions = await byBitConnector.getPositions();
 
-  for await (const posiion of posiions) {
-    const { symbol } = posiion;
-  }
-};
+//   for await (const posiion of posiions) {
+//     const { symbol } = posiion;
+//   }
+// };
 
 const signals = async () => {
   const signals = new Array<Signal>();
