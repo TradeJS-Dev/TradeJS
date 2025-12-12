@@ -116,7 +116,7 @@ export const TrendlineStrategy = async (
     start: PRELOAD_START,
     end: getTimestamp(),
     cacheOnly: false,
-    interval: 'D',
+    interval: '720',
   });
 
   const { last: currentGlobalSmaFast } = getSma(SMA_FAST, globalData);
@@ -132,7 +132,7 @@ export const TrendlineStrategy = async (
 
   const hasSupportLevel1 = hasSupportLevel(
     trend,
-    data,
+    data.slice(-20),
     makeRelPrice(currentPrice, trend === 'BULL' ? 1 : -1),
     currentPrice,
   );

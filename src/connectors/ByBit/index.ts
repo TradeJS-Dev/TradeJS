@@ -19,7 +19,6 @@ import {
   KlineChartData,
   KlineRequest,
   ConnectorCreator,
-  Direction,
   Interval,
 } from '@types';
 import { getClient } from './client';

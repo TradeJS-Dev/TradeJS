@@ -6,7 +6,6 @@ import { Box, Flex, ClientOnly } from '@chakra-ui/react';
 import { useFilters, useTickers, useTestList } from '@store';
 import { Filters } from '@shared/Filters';
 import { MainChart } from '@app/components/Dashboard/MainChart';
-import { AiDrawer } from '@app/components/Dashboard/AiDrawer';
 import { Interval, OnChangeFilters, Items } from '@types';
 
 const Dashboard = () => {
@@ -60,7 +59,6 @@ const Dashboard = () => {
             <Filters.FavoriteIndicator />
             <Filters.SelectInterval />
             <Filters.SelectIndicator />
-            <AiDrawer />
           </Flex>
           <Flex mb={4} gap={4} flexDirection="row">
             <Filters.SelectBacktest />

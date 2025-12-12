@@ -27,15 +27,13 @@ export const hasSupportLevel = (
 
   if (trend === 'BULL') {
     return values.some(
-      ({ close, high }, i) =>
-        i < values.length - 1 && high > min && high < max && close < min,
+      ({ low, high }, i) => i < values.length - 1 && high < max && low < min,
     );
   }
 
   if (trend === 'BEAR') {
     return values.some(
-      ({ close, low }, i) =>
-        i < values.length - 1 && low > min && low < max && close < min,
+      ({ high, low }, i) => i < values.length - 1 && low < max && high < min,
     );
   }
 
