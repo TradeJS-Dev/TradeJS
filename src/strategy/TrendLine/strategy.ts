@@ -43,8 +43,6 @@ const TPSL = {
 
 const MAX_LOSS_VALUE = 0.2;
 const MIN_RISK_RATIO = 2.5;
-
-const MIN_CORRELATION = 0.03;
 const MAX_CORRELATION = 0.5;
 
 export const TrendlineStrategy = async (
@@ -113,11 +111,7 @@ export const TrendlineStrategy = async (
     btcData.slice(-1000),
   );
 
-  if (
-    !correlation ||
-    correlation <= MIN_CORRELATION ||
-    correlation > MAX_CORRELATION
-  ) {
+  if (correlation && correlation > MAX_CORRELATION) {
     console.log('>>> exit by correlation', symbol, correlation);
 
     return null;
@@ -149,7 +143,7 @@ export const TrendlineStrategy = async (
 
   const hasSupportLevel1 = hasSupportLevel(
     mode,
-    data.slice(-20),
+    data.slice(-14),
     makeRelPrice(currentPrice, mode === 'highs' ? 1 : -1),
     currentPrice,
   );
@@ -263,7 +257,7 @@ export const TrendlineStrategy = async (
     takeProfitPrice,
     stopLossPrice,
     riskRatio: riskRatio,
-    correlation,
+    correlation: correlation || 0,
     touches: bestLine.touches.length + 2,
     trend: globalTrend,
   };
