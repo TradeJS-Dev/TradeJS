@@ -1,10 +1,10 @@
-import { Interval, Trend, Direction } from './trade';
+import { Interval, Direction, Trend } from './trade';
 
 export type TrendLineMode = 'lows' | 'highs';
 
 export type TrendLine = {
   id: string;
-  trend: Trend;
+  mode: TrendLineMode;
   touches: { timestamp: number; value: number }[];
   points: { timestamp: number; value: number }[];
 };
@@ -29,6 +29,7 @@ export interface Signal {
   signalId: string;
   symbol: string;
   interval: Interval;
+  strategy: string;
   direction: Direction;
   trendLine: TrendLine;
   currentPrice: number;
@@ -37,5 +38,6 @@ export interface Signal {
   riskRatio: number;
   timestamp: number;
   correlation: number;
-  trend: 'BULL' | 'BEAR' | 'RANGE';
+  touches: number;
+  trend: Trend;
 }

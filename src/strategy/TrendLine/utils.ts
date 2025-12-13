@@ -1,5 +1,5 @@
 import { SMA } from 'technicalindicators';
-import { Trend, KlineChartData } from '@types';
+import { KlineChartData, TrendLineMode } from '@types';
 
 export const getSma = (period: number, data: KlineChartData) => {
   const values = new SMA({
@@ -16,7 +16,7 @@ export const makeRelPrice = (price: number, percent: number) =>
   (price * (100 + percent)) / 100;
 
 export const hasSupportLevel = (
-  trend: Trend,
+  mode: TrendLineMode,
   values: KlineChartData,
   max: number,
   min: number,
@@ -25,13 +25,13 @@ export const hasSupportLevel = (
     return;
   }
 
-  if (trend === 'BULL') {
+  if (mode === 'highs') {
     return values.some(
       ({ low, high }, i) => i < values.length - 1 && high < max && low < min,
     );
   }
 
-  if (trend === 'BEAR') {
+  if (mode === 'lows') {
     return values.some(
       ({ high, low }, i) => i < values.length - 1 && low < max && high < min,
     );

@@ -102,13 +102,13 @@ export const useTrendLine = (
     if (!chart || !enabled || !data || _.isEmpty(data)) return;
 
     const lowLines: TrendLine[] = signalId
-      ? signal?.trendLine?.trend === 'BEAR'
+      ? signal?.trendLine?.mode === 'lows'
         ? [signal.trendLine]
         : []
       : findTrendlinesByLows(data, { minTouches: 3 });
 
     const highLines: TrendLine[] = signalId
-      ? signal?.trendLine?.trend === 'BULL'
+      ? signal?.trendLine?.mode === 'highs'
         ? [signal.trendLine]
         : []
       : findTrendlinesByHighs(data, { minTouches: 3 });

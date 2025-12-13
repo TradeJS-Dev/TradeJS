@@ -597,7 +597,7 @@ const findTrendlinesCore = (
 
     trendlines.push({
       id: `${mode}TrendLine-${i + 1}`,
-      trend: mode === 'lows' ? 'BEAR' : 'BULL',
+      mode,
       points: [
         { timestamp: leftAnchor.t, value: evaluateY(leftAnchor.t) },
         { timestamp: lastTimestampMs, value: evaluateY(lastTimestampMs) },

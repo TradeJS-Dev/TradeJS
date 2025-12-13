@@ -17,10 +17,30 @@ interface TrenlineStrategyOptions {
 
 const PRELOAD_START = getTimestamp(SIGNALS_PRELOAD_DAYS);
 const SMA_FAST = 49;
-const SMA_SLOW = 200;
 
-const SL_LONG_PERCENT = 1.7;
-const SL_SHORT_PERCENT = 1.5;
+const TPSL = {
+  BREAKOUT: {
+    LONG: {
+      TP: 7.5,
+      SL: 2.5,
+    },
+    SHORT: {
+      TP: 7.5,
+      SL: 2.5,
+    },
+  },
+  REVERSAL: {
+    LONG: {
+      TP: 3.5,
+      SL: 1.5,
+    },
+    SHORT: {
+      TP: 3.5,
+      SL: 1.5,
+    },
+  },
+};
+
 const MAX_LOSS_VALUE = 0.2;
 const MIN_RISK_RATIO = 2.5;
 
@@ -120,83 +140,76 @@ export const TrendlineStrategy = async (
   });
 
   const { last: currentGlobalSmaFast } = getSma(SMA_FAST, globalData);
-  const { last: currentSmaFast } = getSma(SMA_FAST, data);
-  const { last: currentSmaSlow } = getSma(SMA_SLOW, data);
 
   const lastCandle = data[data.length - 1];
   let currentPrice = lastCandle.close;
 
-  const { trend } = bestLine;
-  const localTrend = currentSmaSlow > currentPrice ? 'BEAR' : 'BULL';
-  const globalTrend = currentPrice < currentGlobalSmaFast ? 'BEAR' : 'BULL';
+  const { mode } = bestLine;
+  const globalTrend = currentGlobalSmaFast > currentPrice ? 'BEAR' : 'BULL';
 
   const hasSupportLevel1 = hasSupportLevel(
-    trend,
+    mode,
     data.slice(-20),
-    makeRelPrice(currentPrice, trend === 'BULL' ? 1 : -1),
+    makeRelPrice(currentPrice, mode === 'highs' ? 1 : -1),
     currentPrice,
   );
 
   const shouldReversal =
-    (trend === 'BEAR' &&
-      localTrend === 'BEAR' &&
-      globalTrend === 'BULL' &&
-      hasSupportLevel1) ||
-    (trend === 'BULL' &&
-      localTrend === 'BULL' &&
-      globalTrend === 'BEAR' &&
-      hasSupportLevel1);
+    (mode === 'lows' && globalTrend === 'BULL' && hasSupportLevel1) ||
+    (mode === 'highs' && globalTrend === 'BEAR' && hasSupportLevel1);
 
-  if (!shouldReversal) {
-    console.log('>>> exit by shouldReversal', {
+  const shouldBreakout =
+    (mode === 'lows' && globalTrend === 'BEAR' && !hasSupportLevel1) ||
+    (mode === 'highs' && globalTrend === 'BULL' && !hasSupportLevel1);
+
+  if (!shouldReversal && !shouldBreakout) {
+    console.log('>>> exit by strategy', {
       symbol,
-      trend,
-      localTrend,
+      mode,
       globalTrend,
       currentPrice,
       hasSupportLevel1,
+      shouldReversal,
+      shouldBreakout,
     });
 
     return null;
   }
 
-  const direction = trend === 'BEAR' ? 'LONG' : 'SHORT';
+  const strategy = shouldBreakout ? 'BREAKOUT' : 'REVERSAL';
+  const direction = mode === 'lows' && shouldBreakout ? 'SHORT' : 'LONG';
   const isLong = direction === 'LONG';
 
-  const SL_PERCENT = isLong ? SL_LONG_PERCENT : SL_SHORT_PERCENT;
+  const { TP, SL } = TPSL[strategy][direction];
 
   const stopLossPrice = isLong
-    ? currentPrice * (100 - SL_PERCENT / 100)
-    : currentPrice * (100 + SL_PERCENT / 100);
+    ? currentPrice * (100 - SL / 100)
+    : currentPrice * (100 + SL / 100);
 
-  const qty = MAX_LOSS_VALUE / ((currentPrice * SL_PERCENT) / 100);
+  const takeProfitPrice = isLong
+    ? currentPrice * (100 - TP / 100)
+    : currentPrice * (100 + TP / 100);
 
-  const firstTakeProfitPrice = currentSmaFast;
-
-  const secondTakeProfitPrice = currentSmaSlow;
-
-  const avgTakeProfitPrice = (firstTakeProfitPrice + secondTakeProfitPrice) / 2;
+  const qty = MAX_LOSS_VALUE / ((currentPrice * SL) / 100);
 
   let riskRatio: number;
 
   if (isLong) {
-    const reward = avgTakeProfitPrice - currentPrice;
+    const reward = takeProfitPrice - currentPrice;
     const risk = currentPrice - stopLossPrice;
     riskRatio = risk > 0 ? reward / risk : 0;
   } else {
-    const reward = currentPrice - avgTakeProfitPrice;
+    const reward = currentPrice - takeProfitPrice;
     const risk = stopLossPrice - currentPrice;
     riskRatio = risk > 0 ? reward / risk : 0;
   }
 
   console.log('>>> prices', symbol, {
+    strategy,
+    direction,
     qty,
     currentPrice,
-    firstTakeProfitPrice,
-    secondTakeProfitPrice,
-    avgTakeProfitPrice,
-    currentSmaFast,
-    currentSmaSlow,
+    takeProfitPrice,
     stopLossPrice,
     riskRatio,
   });
@@ -220,7 +233,7 @@ export const TrendlineStrategy = async (
         [
           {
             rate: 1,
-            price: avgTakeProfitPrice,
+            price: takeProfitPrice,
           },
         ],
         stopLossPrice,
@@ -240,17 +253,19 @@ export const TrendlineStrategy = async (
 
   const signal: Signal = {
     signalId,
+    strategy,
     symbol,
     interval,
     direction,
     trendLine: bestLine,
     timestamp: lastCandle.timestamp,
     currentPrice,
-    takeProfitPrice: avgTakeProfitPrice,
-    stopLossPrice: stopLossPrice,
+    takeProfitPrice,
+    stopLossPrice,
     riskRatio: riskRatio,
     correlation,
-    trend,
+    touches: bestLine.touches.length + 2,
+    trend: globalTrend,
   };
 
   return signal;
