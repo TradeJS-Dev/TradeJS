@@ -177,12 +177,12 @@ export const TrendlineStrategy = async (
   const { TP, SL } = TPSL[strategy][direction];
 
   const stopLossPrice = isLong
-    ? currentPrice * (100 - SL / 100)
-    : currentPrice * (100 + SL / 100);
+    ? currentPrice * (1 - SL / 100)
+    : currentPrice * (1 + SL / 100);
 
   const takeProfitPrice = isLong
-    ? currentPrice * (100 - TP / 100)
-    : currentPrice * (100 + TP / 100);
+    ? currentPrice * (1 + TP / 100)
+    : currentPrice * (1 - TP / 100);
 
   const qty = MAX_LOSS_VALUE / ((currentPrice * SL) / 100);
 
