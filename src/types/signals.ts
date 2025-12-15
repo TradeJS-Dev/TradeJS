@@ -39,5 +39,6 @@ export interface Signal {
   timestamp: number;
   correlation: number;
   touches: number;
+  support: number;
   trend: Trend;
 }

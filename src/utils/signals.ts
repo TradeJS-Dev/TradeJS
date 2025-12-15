@@ -18,6 +18,7 @@ export const formatMessage = (signal: Signal): string => {
     strategy,
     touches,
     trend,
+    support,
   } = signal;
 
   try {
@@ -60,6 +61,7 @@ export const formatMessage = (signal: Signal): string => {
       lines.push(`Strategy: ${strategy}`);
       lines.push(`Trend: ${trend}`);
       lines.push(`Points: ${touches}`);
+      lines.push(`Support: ${support}`);
       lines.push(`BTC correlation: ${correlation}`);
 
       const prices = formatPrices();

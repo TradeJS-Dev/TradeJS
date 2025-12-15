@@ -15,27 +15,29 @@ export const getSma = (period: number, data: KlineChartData) => {
 export const makeRelPrice = (price: number, percent: number) =>
   (price * (100 + percent)) / 100;
 
-export const hasSupportLevel = (
+export const countSupportCandles = (
   mode: TrendLineMode,
   values: KlineChartData,
   max: number,
   min: number,
 ) => {
   if (!values || values.length < 2) {
-    return;
+    return 0;
   }
 
   if (mode === 'highs') {
-    return values.some(
-      ({ low, high }, i) => i < values.length - 1 && high < max && low < min,
-    );
+    return values.filter(
+      ({ low, high }, i) =>
+        i < values.length - 1 && high < max && high > min && low < min,
+    ).length;
   }
 
   if (mode === 'lows') {
-    return values.some(
-      ({ high, low }, i) => i < values.length - 1 && low < max && high < min,
-    );
+    return values.filter(
+      ({ high, low }, i) =>
+        i < values.length - 1 && low > max && low < min && high > min,
+    ).length;
   }
 
-  return false;
+  return 0;
 };

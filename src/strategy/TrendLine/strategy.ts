@@ -4,7 +4,7 @@ import { findTrendlinesByLows, findTrendlinesByHighs } from '@utils/trendLine';
 import { getTimestamp } from '@utils/timestamp';
 import { calculateCoinBtcCorrelation } from '@utils/correlation';
 import { uuid } from '@utils/uuid';
-import { getSma, makeRelPrice, hasSupportLevel } from './utils';
+import { getSma, makeRelPrice, countSupportCandles } from './utils';
 import { Interval, Signal, Connector } from '@types';
 
 interface TrenlineStrategyOptions {
@@ -140,7 +140,7 @@ export const TrendlineStrategy = async (
   const { mode } = bestLine;
   const globalTrend = currentGlobalSmaFast > currentPrice ? 'BEAR' : 'BULL';
 
-  const hasSupportLevel1 = hasSupportLevel(
+  const supportCandles = countSupportCandles(
     mode,
     data.slice(-14),
     makeRelPrice(currentPrice, mode === 'highs' ? 1 : -1),
@@ -148,12 +148,12 @@ export const TrendlineStrategy = async (
   );
 
   const shouldReversal =
-    (mode === 'lows' && globalTrend === 'BULL' && hasSupportLevel1) ||
-    (mode === 'highs' && globalTrend === 'BEAR' && hasSupportLevel1);
+    (mode === 'lows' && globalTrend === 'BULL') ||
+    (mode === 'highs' && globalTrend === 'BEAR');
 
   const shouldBreakout =
-    (mode === 'lows' && globalTrend === 'BEAR' && !hasSupportLevel1) ||
-    (mode === 'highs' && globalTrend === 'BULL' && !hasSupportLevel1);
+    (mode === 'lows' && globalTrend === 'BEAR') ||
+    (mode === 'highs' && globalTrend === 'BULL');
 
   if (!shouldReversal && !shouldBreakout) {
     console.log('>>> exit by strategy', {
@@ -161,7 +161,7 @@ export const TrendlineStrategy = async (
       mode,
       globalTrend,
       currentPrice,
-      hasSupportLevel1,
+      supportCandles,
       shouldReversal,
       shouldBreakout,
     });
@@ -259,6 +259,7 @@ export const TrendlineStrategy = async (
     correlation: correlation || 0,
     touches: bestLine.touches.length + 2,
     trend: globalTrend,
+    support: supportCandles,
   };
 
   return signal;
