@@ -17,16 +17,19 @@ interface TrenlineStrategyOptions {
 
 const PRELOAD_START = getTimestamp(SIGNALS_PRELOAD_DAYS);
 const SMA_FAST = 49;
+const MAX_LOSS_VALUE = 0.4;
+const MIN_RISK_RATIO = 2.5;
+const MAX_CORRELATION = 0.5;
 
 const TPSL = {
   BREAKOUT: {
     LONG: {
       TP: 7.5,
-      SL: 2.5,
+      SL: 2.2,
     },
     SHORT: {
       TP: 7.5,
-      SL: 2.5,
+      SL: 2.2,
     },
   },
   REVERSAL: {
@@ -40,10 +43,6 @@ const TPSL = {
     },
   },
 };
-
-const MAX_LOSS_VALUE = 0.2;
-const MIN_RISK_RATIO = 2.5;
-const MAX_CORRELATION = 0.5;
 
 export const TrendlineStrategy = async (
   connector: Connector,
@@ -60,7 +59,7 @@ export const TrendlineStrategy = async (
   });
 
   const lowsTrendlines = findTrendlinesByLows(cachedData, {
-    firstRange: 80,
+    firstRange: 100,
     minTouches,
     offset,
     bestLines: 1,

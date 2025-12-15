@@ -28,7 +28,7 @@ const useStore = create<IndicatorsState>()(
         {
           id: 'resistant',
           label: 'resistant',
-          enabled: true,
+          enabled: false,
         },
         {
           id: 'atr',
@@ -45,7 +45,7 @@ const useStore = create<IndicatorsState>()(
         {
           id: 'ma',
           label: 'MA',
-          enabled: false,
+          enabled: true,
           periods: [49, 200],
         },
         {
