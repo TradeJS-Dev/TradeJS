@@ -15,13 +15,8 @@ export const useAtrIndicator = (
 
       figures: periods.flatMap((period) => [
         {
-          key: `ATR_S${period}`,
-          title: `ATR% S(${period}): `,
-          type: 'line',
-        },
-        {
-          key: `ATR_L${period}`,
-          title: `ATR% L(${period}): `,
+          key: `ATR_SL${period}`,
+          title: `ATR% SL(${period}): `,
           type: 'line',
         },
       ]),
@@ -93,10 +88,14 @@ export const useAtrIndicator = (
               const s = seriesByPeriod[pIdx].shortLine[i];
               const l = seriesByPeriod[pIdx].longLine[i];
 
-              if (typeof s === 'number' && Number.isFinite(s))
-                out[`ATR_S${period}`] = s;
-              if (typeof l === 'number' && Number.isFinite(l))
-                out[`ATR_L${period}`] = l;
+              if (
+                typeof s === 'number' &&
+                Number.isFinite(s) &&
+                typeof l === 'number' &&
+                Number.isFinite(l)
+              ) {
+                out[`ATR_SL${period}`] = s / l;
+              }
             });
 
             acc[timestamp] = out;

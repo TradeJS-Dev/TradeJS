@@ -5,7 +5,7 @@ import { getTimestamp } from '@utils/timestamp';
 import { calculateCoinBtcCorrelation } from '@utils/correlation';
 import { uuid } from '@utils/uuid';
 import { getSma, makeRelPrice, countSupportCandles } from './utils';
-import { Interval, Signal, Connector } from '@types';
+import { Interval, Signal, Connector, TrendLineOptions } from '@types';
 
 interface TrenlineStrategyOptions {
   symbol: string;
@@ -44,6 +44,13 @@ const TPSL = {
   },
 };
 
+const TRENDLINE_OPTIONS: Partial<TrendLineOptions> = {
+  firstRange: 100,
+  bestLines: 1,
+  maxDistance: 1600,
+  capture: true,
+};
+
 export const TrendlineStrategy = async (
   connector: Connector,
   { symbol, interval, minTouches, offset, makeOrders }: TrenlineStrategyOptions,
@@ -58,29 +65,48 @@ export const TrendlineStrategy = async (
     interval,
   });
 
-  const lowsTrendlines = findTrendlinesByLows(cachedData, {
-    firstRange: 100,
+  let epsilon = 0.002;
+
+  let lowsTrendlines = findTrendlinesByLows(cachedData, {
+    ...TRENDLINE_OPTIONS,
     minTouches,
     offset,
-    bestLines: 1,
-    maxDistance: 1600,
-    capture: true,
+    epsilon,
   });
 
-  const highsTrendlines = findTrendlinesByHighs(cachedData, {
-    firstRange: 100,
+  let highsTrendlines = findTrendlinesByHighs(cachedData, {
+    ...TRENDLINE_OPTIONS,
     minTouches,
     offset,
-    bestLines: 1,
-    maxDistance: 1400,
-    capture: true,
+    epsilon,
   });
 
-  const bestLine =
+  let bestLine =
     lowsTrendlines.length > 0 ? lowsTrendlines[0] : highsTrendlines[0];
 
   if (!bestLine) {
-    return null;
+    epsilon = 0.003;
+
+    lowsTrendlines = findTrendlinesByLows(cachedData, {
+      ...TRENDLINE_OPTIONS,
+      minTouches,
+      offset,
+      epsilon,
+    });
+
+    highsTrendlines = findTrendlinesByHighs(cachedData, {
+      ...TRENDLINE_OPTIONS,
+      minTouches,
+      offset,
+      epsilon,
+    });
+
+    bestLine =
+      lowsTrendlines.length > 0 ? lowsTrendlines[0] : highsTrendlines[0];
+
+    if (!bestLine) {
+      return null;
+    }
   }
 
   console.log('');
@@ -260,6 +286,7 @@ export const TrendlineStrategy = async (
     touches: bestLine.touches.length + 2,
     trend: globalTrend,
     support: supportCandles,
+    epsilon,
   };
 
   return signal;
