@@ -5,7 +5,6 @@ import { getTimestamp } from '@utils/timestamp';
 import { calculateCoinBtcCorrelation } from '@utils/correlation';
 import { uuid } from '@utils/uuid';
 import { ATR_PCT } from '@utils/indicators';
-import { formatNumber } from '@utils/math';
 import { getSma, makeRelPrice, getSupportLevels } from './utils';
 import { Interval, Signal, Connector, TrendLineOptions } from '@types';
 
@@ -27,11 +26,11 @@ const TPSL = {
   BREAKOUT: {
     LONG: {
       TP: 7.5,
-      SL: 2.5,
+      SL: 2.2,
     },
     SHORT: {
       TP: 7.5,
-      SL: 2.5,
+      SL: 2.2,
     },
   },
   REVERSAL: {
