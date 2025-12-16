@@ -27,11 +27,11 @@ const TPSL = {
   BREAKOUT: {
     LONG: {
       TP: 7.5,
-      SL: 2.2,
+      SL: 2.5,
     },
     SHORT: {
       TP: 7.5,
-      SL: 2.2,
+      SL: 2.5,
     },
   },
   REVERSAL: {
@@ -173,9 +173,7 @@ export const TrendlineStrategy = async (
     data.slice(-14),
     makeRelPrice(currentPrice, mode === 'highs' ? 2 : -2),
     currentPrice,
-  )
-    .map(formatNumber)
-    .join(',');
+  );
 
   const { value: atr } = ATR_PCT(data, 14, 7, 30);
 

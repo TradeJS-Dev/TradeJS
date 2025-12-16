@@ -63,7 +63,9 @@ export const formatMessage = (signal: Signal): string => {
       lines.push(`Strategy: ${strategy}`);
       lines.push(`Trend: ${trend}`);
       lines.push(`Points: ${touches}`);
-      lines.push(`Support: ${support}`);
+      lines.push(
+        `Support: ${support.map((x) => formatNumber(x, 2)).join(',')}`,
+      );
       lines.push(`ATR: ${atr}`);
       lines.push(`Epsilon: ${epsilon}`);
       lines.push(`BTC correlation: ${correlation}`);
