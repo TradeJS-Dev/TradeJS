@@ -4,7 +4,9 @@ import { findTrendlinesByLows, findTrendlinesByHighs } from '@utils/trendLine';
 import { getTimestamp } from '@utils/timestamp';
 import { calculateCoinBtcCorrelation } from '@utils/correlation';
 import { uuid } from '@utils/uuid';
-import { getSma, makeRelPrice, countSupportCandles } from './utils';
+import { ATR_PCT } from '@utils/indicators';
+import { formatNumber } from '@utils/math';
+import { getSma, makeRelPrice, getSupportLevels } from './utils';
 import { Interval, Signal, Connector, TrendLineOptions } from '@types';
 
 interface TrenlineStrategyOptions {
@@ -166,12 +168,16 @@ export const TrendlineStrategy = async (
   const { mode } = bestLine;
   const globalTrend = currentGlobalSmaFast > currentPrice ? 'BEAR' : 'BULL';
 
-  const supportCandles = countSupportCandles(
+  const supportLevels = getSupportLevels(
     mode,
     data.slice(-14),
-    makeRelPrice(currentPrice, mode === 'highs' ? 1 : -1),
+    makeRelPrice(currentPrice, mode === 'highs' ? 2 : -2),
     currentPrice,
-  );
+  )
+    .map(formatNumber)
+    .join(',');
+
+  const { value: atr } = ATR_PCT(data, 14, 7, 30);
 
   const shouldReversal =
     (mode === 'lows' && globalTrend === 'BULL') ||
@@ -187,7 +193,7 @@ export const TrendlineStrategy = async (
       mode,
       globalTrend,
       currentPrice,
-      supportCandles,
+      supportLevels,
       shouldReversal,
       shouldBreakout,
     });
@@ -285,7 +291,8 @@ export const TrendlineStrategy = async (
     correlation: correlation || 0,
     touches: bestLine.touches.length + 2,
     trend: globalTrend,
-    support: supportCandles,
+    support: supportLevels,
+    atr,
     epsilon,
   };
 

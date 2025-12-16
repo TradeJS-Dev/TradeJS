@@ -27,10 +27,12 @@ const Dashboard = () => {
     (newFilters) => {
       setFilters(newFilters);
 
+      const search = window.location.search;
+
       window.history.replaceState(
         null,
         '',
-        `/routes/dashboard/${newFilters.symbol || filters.symbol}/${newFilters.interval || filters.interval}`,
+        `/routes/dashboard/${newFilters.symbol || filters.symbol}/${newFilters.interval || filters.interval}${search}`,
       );
     },
     [filters.symbol, filters.interval],

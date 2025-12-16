@@ -101,17 +101,21 @@ export const useTrendLine = (
   useEffect(() => {
     if (!chart || !enabled || !data || _.isEmpty(data)) return;
 
-    const lowLines: TrendLine[] = signalId
-      ? signal?.trendLine?.mode === 'lows'
-        ? [signal.trendLine]
-        : []
-      : findTrendlinesByLows(data, { minTouches: 3 });
+    const currentSymbol = chart.getSymbol()?.ticker;
 
-    const highLines: TrendLine[] = signalId
-      ? signal?.trendLine?.mode === 'highs'
-        ? [signal.trendLine]
-        : []
-      : findTrendlinesByHighs(data, { minTouches: 3 });
+    const lowLines: TrendLine[] =
+      signalId && signal?.symbol === currentSymbol
+        ? signal?.trendLine?.mode === 'lows'
+          ? [signal.trendLine]
+          : []
+        : findTrendlinesByLows(data, { minTouches: 3 });
+
+    const highLines: TrendLine[] =
+      signalId && signal?.symbol === currentSymbol
+        ? signal?.trendLine?.mode === 'highs'
+          ? [signal.trendLine]
+          : []
+        : findTrendlinesByHighs(data, { minTouches: 3 });
 
     // отрисовываем
     for (const line of lowLines) {

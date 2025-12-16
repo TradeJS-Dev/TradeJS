@@ -39,7 +39,8 @@ export interface Signal {
   timestamp: number;
   correlation: number;
   touches: number;
-  support: number;
+  support: string;
+  atr: number;
   epsilon: number;
   trend: Trend;
 }

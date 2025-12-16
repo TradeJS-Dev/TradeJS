@@ -1,6 +1,7 @@
-import { ATR, SMA } from 'technicalindicators';
+import { ATR } from 'technicalindicators';
 import { useEffect } from 'react';
 import { registerIndicator, Chart } from 'klinecharts';
+import { ATR_PCT } from '@utils/indicators';
 
 export const useAtrIndicator = (
   chart: Chart | null,
@@ -22,60 +23,16 @@ export const useAtrIndicator = (
       ]),
 
       calc: (kLineDataList) => {
-        const closes = kLineDataList.map((x) => x.close);
-        const highs = kLineDataList.map((x) => x.high);
-        const lows = kLineDataList.map((x) => x.low);
-
-        // короткое/длинное сглаживание режима
         const SMA_SHORT = 7;
         const SMA_LONG = 50;
 
         const seriesByPeriod = periods.map((period) => {
-          // 1) ATR (укороченный массив)
-          const atrRaw = ATR.calculate({
+          const { shortLine, longLine } = ATR_PCT(
+            kLineDataList,
             period,
-            high: highs,
-            low: lows,
-            close: closes,
-          });
-          const atrAligned: (number | undefined)[] = Array(period - 1)
-            .fill(undefined)
-            .concat(atrRaw);
-
-          // 2) ATR% по каждой свече (приводим к цене)
-          const atrPctAligned: (number | undefined)[] = atrAligned.map(
-            (v, i) => {
-              const c = closes[i];
-              if (typeof v !== 'number' || !Number.isFinite(v) || !c)
-                return undefined;
-              return (v / c) * 100;
-            },
+            SMA_SHORT,
+            SMA_LONG,
           );
-
-          // helper: SMA по массиву с undefined, с выравниванием длины
-          const smaAligned = (values: (number | undefined)[], len: number) => {
-            const numeric = values.filter(
-              (x): x is number => typeof x === 'number' && Number.isFinite(x),
-            );
-            const sma = SMA.calculate({ period: len, values: numeric });
-
-            // сколько undefined было до первого числа + (len-1)
-            const firstNumIdx = values.findIndex(
-              (x) => typeof x === 'number' && Number.isFinite(x),
-            );
-            const prefix =
-              (firstNumIdx === -1 ? values.length : firstNumIdx) + (len - 1);
-
-            const out: (number | undefined)[] = Array(prefix)
-              .fill(undefined)
-              .concat(sma);
-            if (out.length > values.length) out.length = values.length;
-            while (out.length < values.length) out.push(undefined);
-            return out;
-          };
-
-          const shortLine = smaAligned(atrPctAligned, SMA_SHORT);
-          const longLine = smaAligned(atrPctAligned, SMA_LONG);
 
           return { shortLine, longLine };
         });
