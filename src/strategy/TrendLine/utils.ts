@@ -3,7 +3,7 @@ import { KlineChartData, TrendLineMode } from '@types';
 
 export const getSma = (period: number, data: KlineChartData) => {
   const values = new SMA({
-    period,
+    period: Math.min(period, data.length - 1),
     values: data.map((candle) => candle.close),
   }).getResult() as number[];
 
