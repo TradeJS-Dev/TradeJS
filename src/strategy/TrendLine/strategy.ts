@@ -6,6 +6,7 @@ import { calculateCoinBtcCorrelation } from '@utils/correlation';
 import { uuid } from '@utils/uuid';
 import { ATR_PCT } from '@utils/indicators';
 import { getSma, makeRelPrice, getSupportLevels } from './utils';
+import {logger} from '@utils/logger';
 import { Interval, Signal, Connector, TrendLineOptions } from '@types';
 
 interface TrenlineStrategyOptions {
@@ -110,16 +111,13 @@ export const TrendlineStrategy = async (
     }
   }
 
-  console.log('');
-  console.log('');
-
-  console.log('>>> line', symbol, bestLine);
+  logger.info('line %s %j', symbol, bestLine);
 
   const position = await connector.getPosition(symbol);
   const positionExists = !_.isEmpty(position) && position.qty > 0;
 
   if (positionExists) {
-    console.log('>>> exit by position exists', symbol, position);
+    logger.warn('exit by position exists: %s %j', symbol, position);
 
     return null;
   }
@@ -138,7 +136,7 @@ export const TrendlineStrategy = async (
   );
 
   if (correlation && correlation > MAX_CORRELATION) {
-    console.log('>>> exit by correlation', symbol, correlation);
+    logger.warn('exit by correlation: %s %d', symbol, correlation);
 
     return null;
   }
@@ -185,8 +183,7 @@ export const TrendlineStrategy = async (
     (mode === 'highs' && globalTrend === 'BULL');
 
   if (!shouldReversal && !shouldBreakout) {
-    console.log('>>> exit by strategy', {
-      symbol,
+    logger.warn('exit by strategy: %s %j', symbol, {
       mode,
       globalTrend,
       currentPrice,
@@ -226,7 +223,7 @@ export const TrendlineStrategy = async (
     riskRatio = risk > 0 ? reward / risk : 0;
   }
 
-  console.log('>>> prices', symbol, {
+  logger.info('prices: %s %j', symbol, {
     strategy,
     direction,
     qty,
@@ -237,7 +234,7 @@ export const TrendlineStrategy = async (
   });
 
   if (riskRatio <= MIN_RISK_RATIO) {
-    console.log('>>> exit by riskRatio', symbol, riskRatio);
+    logger.warn('exit by riskRatio: %s %d', symbol, riskRatio);
 
     return null;
   }
@@ -267,7 +264,7 @@ export const TrendlineStrategy = async (
         currentPrice = currentPosition?.price;
       }
     } catch (err) {
-      console.error('>>> order error:', symbol, err);
+      logger.error('order error: %s %s', symbol, err);
     }
   }
 

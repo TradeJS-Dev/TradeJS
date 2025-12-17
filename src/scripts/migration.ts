@@ -3,6 +3,7 @@ import chalk from 'chalk';
 import { toRows, upsertCandles } from '@utils/timescale';
 import { getFile, getFiles } from '@utils/files';
 import { KlineChartData } from '@types';
+import { logger } from '@utils/logger';
 
 const DIR = 'data/history';
 const re = /^(.+?)_(\d+)\.json$/; // SYMBOL_INTERVAL.json
@@ -38,7 +39,7 @@ const migration = async () => {
     try {
       await migrateFile(file);
     } catch (e) {
-      console.error('Failed:', file, e);
+      logger.error('Failed: %s %s', file, e);
     } finally {
       bar.tick(1, {
         file: chalk.gray(file),

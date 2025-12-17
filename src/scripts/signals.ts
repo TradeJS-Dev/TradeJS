@@ -8,6 +8,7 @@ import { update, getTickers, makeScreenshots, sendToTG } from '@utils/cli';
 import { getKeys, setData, redisKeys } from '@utils/redis';
 import { Interval, Signal } from '@types';
 import { TrendlineStrategy } from '@src/strategy/TrendLine/strategy';
+import { logger } from '@utils/logger';
 
 args.option(['t', 'tickers'], 'Selected tickers');
 args.option(['e', 'exclude'], 'Exclude tickers from tests');
@@ -36,8 +37,6 @@ const findSignals = async (symbol: string) => {
   const prevSignals = await getKeys(redisKeys.signalsBySymbol(symbol));
 
   if (prevSignals.length) {
-    console.log('>>> exit by signal exists', symbol);
-
     return null;
   }
 
@@ -107,7 +106,7 @@ const signals = async () => {
     },
   );
 
-  console.log(chalk.yellow(`tickers: ${tickers.length}`));
+  logger.info(chalk.yellow(`tickers: ${tickers.length}`));
 
   for await (const symbol of tickers) {
     const signal = await findSignals(symbol);
@@ -122,15 +121,13 @@ const signals = async () => {
     });
   }
 
-  console.log('');
-
   await makeScreenshots(signals, '15m');
 
   if (flags.notify) {
     await sendToTG(signals);
   }
 
-  console.log(
+  logger.info(
     JSON.stringify(
       signals.map((s) => s.symbol),
       null,

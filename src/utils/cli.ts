@@ -18,6 +18,7 @@ import { askAI } from '@utils/ai';
 import { sendSignal } from '@utils/signals';
 import { screenDashboard } from '@utils/screenshot';
 import { runWithConcurrency } from '@utils/async';
+import { logger } from '@utils/logger';
 import {
   Connector,
   Interval,
@@ -37,7 +38,7 @@ export const cleanFiles = async (dir: string) => {
     width: 30,
   });
 
-  console.log(chalk.yellow('clean:', dir));
+  logger.info(chalk.yellow('clean:', dir));
 
   for await (const file of files) {
     completed++;
@@ -49,7 +50,7 @@ export const cleanFiles = async (dir: string) => {
     }
   }
 
-  console.log('');
+  logger.info('');
 };
 
 export const cleanRedis = async (area: string) => {
@@ -62,7 +63,7 @@ export const cleanRedis = async (area: string) => {
     width: 30,
   });
 
-  console.log(chalk.yellow('clean:', area));
+  logger.info(chalk.yellow('clean:', area));
 
   for await (const key of keys) {
     completed++;
@@ -74,7 +75,7 @@ export const cleanRedis = async (area: string) => {
     }
   }
 
-  console.log('');
+  logger.info('');
 };
 
 export const update = async (
@@ -93,7 +94,7 @@ export const update = async (
     },
   );
 
-  console.log(chalk.yellow('update:', tickers.length));
+  logger.info(chalk.yellow('update:', tickers.length));
 
   const queue = tickers.slice();
 
@@ -111,13 +112,13 @@ export const update = async (
         silent: true,
       });
     } catch {
-      console.error('Failed loading:', symbol);
+      logger.error('Failed loading: %s', symbol);
     } finally {
       bar.tick(1, { symbol: chalk.gray(symbol) });
     }
   });
 
-  console.log('');
+  logger.info('');
 };
 
 const parseSymbolsFromCLI = (symbol = '') =>
@@ -179,7 +180,7 @@ export const getTickers = async (
       .split('/')
       .map((c) => parseInt(c));
 
-    console.log('chunk:', currentChunk, '/', chunksCount);
+    logger.info('chunk: %d / %d', currentChunk, chunksCount);
     const chunkSize = Math.ceil(tickers.length / chunksCount);
     const chunks = _.chunk(tickers, chunkSize);
     tickers = chunks[currentChunk - 1];
@@ -197,7 +198,7 @@ export const makeScreenshots = async (signals: Signal[], title = '') => {
     },
   );
 
-  console.log(chalk.yellow('screenshots:', title, signals.length));
+  logger.info(chalk.yellow('screenshots:', title, signals.length));
 
   await runWithConcurrency(
     signals,
@@ -206,14 +207,14 @@ export const makeScreenshots = async (signals: Signal[], title = '') => {
       try {
         await screenDashboard(signal);
       } catch {
-        console.error('Failed screenshot:', signal.symbol);
+        logger.error('Failed screenshot: %s', signal.symbol);
       } finally {
         bar.tick(1, { symbol: chalk.gray(signal.symbol) });
       }
     },
   );
 
-  console.log('');
+  logger.info('');
 };
 
 export const sendToAI = async (signals: Signal[]) => {
@@ -225,19 +226,19 @@ export const sendToAI = async (signals: Signal[]) => {
     },
   );
 
-  console.log(chalk.yellow('AI:', signals.length));
+  logger.info(chalk.yellow('AI:', signals.length));
 
   await runWithConcurrency(signals, AI_CONCURRENCY_LIMIT, async (signal) => {
     try {
       await askAI(signal);
     } catch {
-      console.error('Failed ask:', signal.symbol);
+      logger.error('Failed ask: %s', signal.symbol);
     } finally {
       bar.tick(1, { symbol: chalk.gray(signal.symbol) });
     }
   });
 
-  console.log('');
+  logger.info('');
 };
 
 export const sendToTG = async (signals: Signal[]) => {
@@ -249,17 +250,17 @@ export const sendToTG = async (signals: Signal[]) => {
     },
   );
 
-  console.log(chalk.yellow('messages:', signals.length));
+  logger.info(chalk.yellow('messages:', signals.length));
 
   await runWithConcurrency(signals, TG_CONCURRENCY_LIMIT, async (signal) => {
     try {
       await sendSignal(signal);
     } catch {
-      console.error('Failed sent:', signal.symbol);
+      logger.error('Failed sent: %s', signal.symbol);
     } finally {
       bar.tick(1, { symbol: chalk.gray(signal.symbol) });
     }
   });
 
-  console.log('');
+  logger.info('');
 };

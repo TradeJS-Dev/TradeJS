@@ -1,6 +1,7 @@
 import { testing } from '@utils/testing';
 import { TestSuite } from '@types';
 import { getData, redisKeys } from '@utils/redis';
+import { logger } from '@utils/logger';
 
 process.on('message', async ({ chunkId }: { chunkId: string }) => {
   const testSuite = (await getData(redisKeys.cacheChunk(chunkId))) as TestSuite;
@@ -21,7 +22,7 @@ process.on('message', async ({ chunkId }: { chunkId: string }) => {
         test,
       });
     } catch (error) {
-      console.error(error);
+      logger.error(error);
       process.send?.({ error: true, id: test.name });
     }
   }

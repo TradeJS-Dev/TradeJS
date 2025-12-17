@@ -3,6 +3,7 @@ import 'dotenv/config';
 import { Signal } from '@types';
 import { getImageUrl } from '@utils/screenshot';
 import { formatNumber } from '@utils/math';
+import { logger } from '@utils/logger';
 
 const { APP_URL, TG_BOT_TOKEN: token, TG_CHAT_ID: chatId } = process.env;
 
@@ -144,5 +145,5 @@ export const sendSignal = async (signal: Signal) => {
     });
   }
 
-  console.log('tg sendPhoto:', data?.ok ? 'sent' : JSON.stringify(data));
+  logger.info('tg sendPhoto: %s', data?.ok ? 'sent' : JSON.stringify(data));
 };
