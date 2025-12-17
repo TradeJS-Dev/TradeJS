@@ -19,7 +19,7 @@ interface TrenlineStrategyOptions {
 
 const PRELOAD_START = getTimestamp(SIGNALS_PRELOAD_DAYS);
 const SMA_FAST = 49;
-const MAX_LOSS_VALUE = 0.4;
+const MAX_LOSS_VALUE = 1;
 const MIN_RISK_RATIO = 2.5;
 const MAX_CORRELATION = 0.5;
 
