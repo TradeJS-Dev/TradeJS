@@ -6,7 +6,7 @@ import { calculateCoinBtcCorrelation } from '@utils/correlation';
 import { uuid } from '@utils/uuid';
 import { ATR_PCT } from '@utils/indicators';
 import { getSma, makeRelPrice, getSupportLevels } from './utils';
-import {logger} from '@utils/logger';
+import { logger } from '@utils/logger';
 import { Interval, Signal, Connector, TrendLineOptions } from '@types';
 
 interface TrenlineStrategyOptions {

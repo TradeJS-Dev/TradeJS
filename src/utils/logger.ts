@@ -12,7 +12,10 @@ export const logger = createLogger({
     new transports.Console({
       format: format.combine(
         format.colorize({ all: true }),
-        format.printf(({ level, timestamp, message }) => `${level}: ${chalk.gray(timestamp)}: ${message}`),
+        format.printf(
+          ({ level, timestamp, message }) =>
+            `${level}: ${chalk.gray(timestamp)}: ${message}`,
+        ),
       ),
     }),
 
@@ -20,7 +23,10 @@ export const logger = createLogger({
       filename: 'service.log',
       format: format.combine(
         format.uncolorize(),
-        format.printf(({ level, timestamp, message }) => `${level}: ${timestamp}: ${message}`),
+        format.printf(
+          ({ level, timestamp, message }) =>
+            `${level}: ${timestamp}: ${message}`,
+        ),
       ),
     }),
 
@@ -28,7 +34,10 @@ export const logger = createLogger({
       filename: 'error.log',
       format: format.combine(
         format.uncolorize(),
-        format.printf(({ level, timestamp, message }) => `${level}: ${timestamp}: ${message}`),
+        format.printf(
+          ({ level, timestamp, message }) =>
+            `${level}: ${timestamp}: ${message}`,
+        ),
       ),
       level: 'error',
     }),
