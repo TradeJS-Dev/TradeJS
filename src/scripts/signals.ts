@@ -3,7 +3,7 @@ import ProgressBar from 'progress';
 import _ from 'lodash';
 import { connectors } from '@src/connectors';
 import chalk from 'chalk';
-import { TTL_1D, TTL_1M } from '@constants';
+import { TTL_1D, TTL_3M } from '@constants';
 import { update, getTickers, makeScreenshots, sendToTG } from '@utils/cli';
 import { getKeys, setData, redisKeys } from '@utils/redis';
 import { Interval, Signal } from '@types';
@@ -59,7 +59,7 @@ const findSignals = async (symbol: string) => {
 
   await setData(redisKeys.storeSignal(symbol, signal.signalId), signal, {
     stringify: true,
-    expire: TTL_1M,
+    expire: TTL_3M,
   });
 
   return signal;

@@ -15,6 +15,7 @@ export const TTL_3H = 10_800;
 export const TTL_12H = 43_300;
 export const TTL_1D = 86_400;
 export const TTL_1M = 2_600_000;
+export const TTL_3M = 7_800_000;
 
 export const TESTS_TOP_LIMIT = 40;
 export const TESTS_LIMIT = 100_000;
