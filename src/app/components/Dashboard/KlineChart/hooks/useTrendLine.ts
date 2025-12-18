@@ -7,7 +7,7 @@ import { Chart, registerOverlay } from 'klinecharts';
 import { getSignal } from '@actions/signal';
 import { findTrendlinesByLows, findTrendlinesByHighs } from '@utils/trendLine';
 import { toMs } from '@utils/timestamp';
-import { Filters, Signal, KlineChartData, TrendLine } from '@types';
+import { Signal, TrendLine } from '@types';
 
 /** Максимально отдаляем график и добавляем отступ справа от последней свечи */
 const fitKeepRightZoom = (chart: Chart, lastDataTsMs: number) => {
@@ -36,22 +36,19 @@ const fitKeepRightZoom = (chart: Chart, lastDataTsMs: number) => {
   (chart as any).setOffsetRightDistance?.(rightOffsetPx);
 };
 
-export const useTrendLine = (
-  chart: Chart | null,
-  enabled: boolean,
-  data: KlineChartData | null,
-  filters: Filters,
-) => {
+export const useTrendLine = (chart: Chart | null, enabled: boolean) => {
   const [signal, setSignal] = useState<Signal | null>(null);
   const searchParams = useSearchParams();
   const signalId = searchParams.get('signalId');
   const autoZoom = Boolean(searchParams.get('autoZoom')) ?? false;
 
+  const data = chart?.getDataList() || [];
+  const symbol = chart?.getSymbol()?.ticker || '';
+
   useEffect(() => {
     if (!signalId) return;
-    getSignal(filters.symbol, signalId).then(setSignal);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [signalId]);
+    getSignal(symbol, signalId).then(setSignal);
+  }, [signalId, symbol]);
 
   useEffect(() => {
     registerOverlay({
@@ -91,15 +88,10 @@ export const useTrendLine = (
     });
   }, []);
 
-  // последний ts данных в ms (для привязки к правому краю)
-  const lastDataTsMs = useMemo(() => {
-    if (!data?.length) return NaN;
-    const lastTs = data[data.length - 1].timestamp;
-    return toMs(lastTs);
-  }, [data]);
-
   useEffect(() => {
     if (!chart || !enabled || !data || _.isEmpty(data)) return;
+
+    const lastDataTsMs = toMs(data[data.length - 1].timestamp);
 
     const currentSymbol = chart.getSymbol()?.ticker;
 
@@ -143,5 +135,5 @@ export const useTrendLine = (
       if (highLines.length) chart.removeOverlay({ name: 'HighTrendLine' });
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chart, enabled, data, signal, lastDataTsMs]);
+  }, [chart, enabled, data.length, signal]);
 };

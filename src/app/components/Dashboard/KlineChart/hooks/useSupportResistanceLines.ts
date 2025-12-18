@@ -14,8 +14,9 @@ type SupportResistanceOverlayPoint = {
 export const useSupportResistanceLines = (
   chart: Chart | null,
   enabled: boolean,
-  data: KlineChartData | null,
 ) => {
+  const data = chart?.getDataList() || [];
+
   // регистрируем оверлеи один раз
   useEffect(() => {
     registerOverlay({

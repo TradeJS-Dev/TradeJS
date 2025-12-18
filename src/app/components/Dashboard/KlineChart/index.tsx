@@ -22,6 +22,7 @@ import {
   useBacktest,
   useSupportResistanceLines,
   useResize,
+  useSetup,
 } from './hooks';
 import { useData } from '@store';
 import { darkTheme } from './styles';
@@ -120,10 +121,11 @@ export const KlineChart = ({ id, filters, indicators }: KlineChartProps) => {
   useEmaIndicator(chart, indicators.ema.enabled, indicators.ema.periods || []);
   useWmaIndicator(chart, indicators.wma.enabled, indicators.wma.periods || []);
   useVolIndicator(chart, indicators.vol.enabled);
-  useBtcIndicator(chart, indicators.btc.enabled, data, filters);
+  useBtcIndicator(chart, indicators.btc.enabled, filters);
   useBacktest(chart, filters.backtestId || undefined);
-  useSupportResistanceLines(chart, indicators.resistant?.enabled, data);
-  useTrendLine(chart, true, data, filters);
+  useSupportResistanceLines(chart, indicators.resistant?.enabled);
+  useTrendLine(chart, true);
+  useSetup(chart, true);
 
   return (
     <>

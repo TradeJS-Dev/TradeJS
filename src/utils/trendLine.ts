@@ -1,10 +1,5 @@
-import {
-  KlineChartData,
-  Candle,
-  TrendLineMode,
-  TrendLine,
-  TrendLineOptions,
-} from '@types';
+import { KLineData } from 'klinecharts';
+import { TrendLineMode, TrendLine, TrendLineOptions } from '@types';
 import { toMs } from '@utils/timestamp';
 
 /* ============================ Helpers ============================= */
@@ -12,14 +7,14 @@ import { toMs } from '@utils/timestamp';
 const toleranceAt = (lineY: number, epsilonPct: number) =>
   Math.max(0, Math.abs(lineY) * epsilonPct);
 
-const getBodyLow = (candle: Candle) => Math.min(candle.open, candle.close);
-const getBodyHigh = (candle: Candle) => Math.max(candle.open, candle.close);
+const getBodyLow = (candle: KLineData) => Math.min(candle.open, candle.close);
+const getBodyHigh = (candle: KLineData) => Math.max(candle.open, candle.close);
 
 type Point = { x: number; y: number; t: number };
 
 /* ====================== Fast precomputation ======================= */
 
-const buildScalarArrays = (data: KlineChartData) => {
+const buildScalarArrays = (data: KLineData[]) => {
   const length = data.length;
 
   const timestampsMs: number[] = new Array(length);
@@ -397,7 +392,7 @@ const hasCaptureByOffsetWick = (params: {
 /* ============================ Core ============================= */
 
 const findTrendlinesCore = (
-  data: KlineChartData,
+  data: KLineData[],
   options: TrendLineOptions,
 ): TrendLine[] => {
   const {
@@ -614,7 +609,7 @@ const findTrendlinesCore = (
 /* =========================== Public API =========================== */
 
 export const findTrendlinesByLows = (
-  data: KlineChartData,
+  data: KLineData[],
   options: Omit<TrendLineOptions, 'mode'> = {},
 ): TrendLine[] =>
   findTrendlinesCore(data, {
@@ -623,7 +618,7 @@ export const findTrendlinesByLows = (
   } as TrendLineOptions);
 
 export const findTrendlinesByHighs = (
-  data: KlineChartData,
+  data: KLineData[],
   options: Omit<TrendLineOptions, 'mode'> = {},
 ): TrendLine[] =>
   findTrendlinesCore(data, {

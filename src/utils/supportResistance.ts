@@ -1,5 +1,4 @@
-// supportResistance.ts
-import { KlineChartData } from '@types'; // предполагаю что каждый элемент data это { timestamp, open, high, low, close, volume }
+import { KLineData } from 'klinecharts';
 
 const MERGE_THRESHOLD_PCT = 0.01;
 const WINDOW_SIZE = 500;
@@ -11,7 +10,7 @@ type Level = {
 
 /** находим локальные минимумы (поддержка) и максимумы (сопротивление) */
 export const detectRawSupportResistance = (
-  data: KlineChartData,
+  data: KLineData[],
   lookAround = 2, // сколько свечей слева/справа сравнивать
 ) => {
   const supports: number[] = [];
@@ -74,7 +73,7 @@ const mergeCloseLevels = (levels: number[]): number[] => {
 };
 
 /** итоговый вывод (поддержка/сопротивление) с id */
-export const getSupportResistanceLevels = (data: KlineChartData) => {
+export const getSupportResistanceLevels = (data: KLineData[]) => {
   if (!data || data.length === 0) {
     return { supportLevels: [] as Level[], resistanceLevels: [] as Level[] };
   }

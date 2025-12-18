@@ -5,8 +5,9 @@ import { getTimestamp } from '@utils/timestamp';
 import { calculateCoinBtcCorrelation } from '@utils/correlation';
 import { uuid } from '@utils/uuid';
 import { ATR_PCT } from '@utils/indicators';
-import { getSma, makeRelPrice, getSupportLevels } from './utils';
 import { logger } from '@utils/logger';
+import { round } from '@utils/math';
+import { getSma, makeRelPrice, getSupportLevels } from './utils';
 import { Interval, Signal, Connector, TrendLineOptions } from '@types';
 
 interface TrenlineStrategyOptions {
@@ -136,7 +137,7 @@ export const TrendlineStrategy = async (
   );
 
   if (correlation && correlation > MAX_CORRELATION) {
-    logger.warn('exit by correlation: %s %d', symbol, correlation);
+    logger.warn('exit by correlation: %s %d', symbol, round(correlation, 2));
 
     return null;
   }
@@ -234,7 +235,7 @@ export const TrendlineStrategy = async (
   });
 
   if (riskRatio <= MIN_RISK_RATIO) {
-    logger.warn('exit by riskRatio: %s %d', symbol, riskRatio);
+    logger.warn('exit by riskRatio: %s %d', symbol, round(riskRatio, 2));
 
     return null;
   }

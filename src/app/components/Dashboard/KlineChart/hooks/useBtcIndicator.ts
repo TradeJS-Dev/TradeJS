@@ -1,14 +1,12 @@
 import { useEffect, useState } from 'react';
 import _ from 'lodash';
 import { registerIndicator, Chart } from 'klinecharts';
-import { Filters, KlineChartData } from '@types';
+import { Filters } from '@types';
 import { useData } from '@store';
-import { calculateCoinBtcCorrelation } from '@utils/correlation';
 
 export const useBtcIndicator = (
   chart: Chart | null,
   enabled: boolean,
-  coinData: KlineChartData | null,
   filters: Filters,
 ) => {
   const [registered, setRegistered] = useState(false);
@@ -19,11 +17,6 @@ export const useBtcIndicator = (
   };
 
   const { data } = useData(btcFilter);
-
-  const { correlation } = calculateCoinBtcCorrelation(
-    coinData?.slice(-300) || [],
-    data?.slice(-300),
-  );
 
   useEffect(() => {
     if (_.isEmpty(data)) {
@@ -37,7 +30,7 @@ export const useBtcIndicator = (
       figures: [
         {
           key: `BTC`,
-          title: `BTC correlation: ${correlation || 0} value: `,
+          title: `BTC value: `,
           type: 'line',
         },
       ],
