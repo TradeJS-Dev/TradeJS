@@ -37,20 +37,31 @@ const TPSL = {
   },
   REVERSAL: {
     LONG: {
-      TP: 3.5,
-      SL: 1.5,
+      TP: 6.8,
+      SL: 2.1,
     },
     SHORT: {
-      TP: 3.5,
-      SL: 1.5,
+      TP: 6.8,
+      SL: 2.1,
     },
   },
 };
 
+const DIRECTION = {
+  highs: {
+    BREAKOUT: 'LONG',
+    REVERSAL: 'SHORT',
+  },
+  lows: {
+    BREAKOUT: 'SHORT',
+    REVERSAL: 'LONG',
+  },
+} as const;
+
 const TRENDLINE_OPTIONS: Partial<TrendLineOptions> = {
   firstRange: 100,
   bestLines: 1,
-  maxDistance: 1600,
+  maxDistance: 2500,
   capture: true,
 };
 
@@ -197,7 +208,8 @@ export const TrendlineStrategy = async (
   }
 
   const strategy = shouldBreakout ? 'BREAKOUT' : 'REVERSAL';
-  const direction = mode === 'lows' && shouldBreakout ? 'SHORT' : 'LONG';
+  const direction = DIRECTION[mode][strategy];
+
   const isLong = direction === 'LONG';
 
   const { TP, SL } = TPSL[strategy][direction];

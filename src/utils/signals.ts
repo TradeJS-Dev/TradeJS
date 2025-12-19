@@ -1,6 +1,6 @@
 import 'dotenv/config';
 
-import { Signal } from '@types';
+import { Signal, Interval } from '@types';
 import { getImageUrl } from '@utils/screenshot';
 import { formatNumber } from '@utils/math';
 import { logger } from '@utils/logger';
@@ -87,7 +87,7 @@ export const formatMessage = (signal: Signal): string => {
   }
 };
 
-export const sendSignal = async (signal: Signal) => {
+export const sendSignal = async (signal: Signal, imgInterval: Interval) => {
   const { symbol, signalId, interval } = signal;
 
   const message = formatMessage(signal);
@@ -117,7 +117,7 @@ export const sendSignal = async (signal: Signal) => {
     return;
   }
 
-  const imageUrl = getImageUrl(signal);
+  const imageUrl = getImageUrl({ ...signal, interval: imgInterval });
 
   const res = await fetch(`https://api.telegram.org/bot${token}/sendPhoto`, {
     method: 'POST',

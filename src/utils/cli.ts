@@ -189,7 +189,10 @@ export const getTickers = async (
   return tickers.filter((t) => !excludeTickers.includes(t));
 };
 
-export const makeScreenshots = async (signals: Signal[], title = '') => {
+export const makeScreenshots = async (
+  signals: Signal[],
+  interval: Interval,
+) => {
   const bar = new ProgressBar(
     ':current/:total [:bar][:percent] :eta(s) :symbol',
     {
@@ -198,14 +201,14 @@ export const makeScreenshots = async (signals: Signal[], title = '') => {
     },
   );
 
-  logger.info(chalk.yellow('screenshots:', title, signals.length));
+  logger.info(chalk.yellow('screenshots:', `${interval}m`, signals.length));
 
   await runWithConcurrency(
     signals,
     SCREENSHOT_CONCURRENCY_LIMIT,
     async (signal) => {
       try {
-        await screenDashboard(signal);
+        await screenDashboard({ ...signal, interval });
       } catch {
         logger.error('Failed screenshot: %s', signal.symbol);
       } finally {
@@ -241,7 +244,7 @@ export const sendToAI = async (signals: Signal[]) => {
   logger.info('');
 };
 
-export const sendToTG = async (signals: Signal[]) => {
+export const sendToTG = async (signals: Signal[], imgInterval: Interval) => {
   const bar = new ProgressBar(
     ':current/:total [:bar][:percent] :eta(s) :symbol',
     {
@@ -254,7 +257,7 @@ export const sendToTG = async (signals: Signal[]) => {
 
   await runWithConcurrency(signals, TG_CONCURRENCY_LIMIT, async (signal) => {
     try {
-      await sendSignal(signal);
+      await sendSignal(signal, imgInterval);
     } catch {
       logger.error('Failed sent: %s', signal.symbol);
     } finally {
