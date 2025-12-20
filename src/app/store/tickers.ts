@@ -69,11 +69,11 @@ export const useTickers = () => {
       .filter((s) => checkIsFavorite(s.value))
       .map((s) => ({
         ...s,
-        description: 'favorite',
+        description: `${s.description} ⭐️`,
       }));
 
     return _.uniqBy([...favoriteItems, ...tickers], (item) => item.value);
-  }, [favorites, tickers, checkIsFavorite]);
+  }, [tickers, checkIsFavorite]);
 
   return {
     tickers: items,

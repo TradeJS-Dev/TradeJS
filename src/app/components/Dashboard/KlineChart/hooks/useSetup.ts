@@ -91,7 +91,7 @@ export const useSetup = (chart: Chart | null, enabled: boolean) => {
     const slEnd: Point = { timestamp: endTsMs, value: signal.stopLossPrice };
 
     return { start, tpEnd, slEnd };
-  }, [signal, data]);
+  }, [signal, data.length]);
 
   useEffect(() => {
     if (!chart || !enabled || !signalId || !signal || !setupPoints) return;
