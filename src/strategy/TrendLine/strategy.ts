@@ -63,9 +63,7 @@ export const TrendlineStrategy = async (
   { symbol, interval, minTouches, offset, makeOrders }: TrenlineStrategyOptions,
 ): Promise<Signal | null> => {
   const TRENDLINE_OPTIONS: Partial<TrendLineOptions> = {
-    firstRange: 80,
     bestLines: 1,
-    maxDistance: 1500,
     capture: true,
     minTouches,
     offset,
@@ -141,8 +139,8 @@ export const TrendlineStrategy = async (
   });
 
   const { correlation } = calculateCoinBtcCorrelation(
-    cachedData.slice(-1000),
-    btcData.slice(-1000),
+    cachedData.slice(-500),
+    btcData.slice(-500),
   );
 
   if (correlation && correlation > MAX_CORRELATION) {
