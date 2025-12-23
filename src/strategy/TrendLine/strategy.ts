@@ -139,8 +139,8 @@ export const TrendlineStrategy = async (
   });
 
   const { correlation } = calculateCoinBtcCorrelation(
-    cachedData.slice(-500),
-    btcData.slice(-500),
+    cachedData.slice(-2000),
+    btcData.slice(-2000),
   );
 
   if (correlation && correlation > MAX_CORRELATION) {
