@@ -21,28 +21,28 @@ interface TrenlineStrategyOptions {
 const PRELOAD_START = getTimestamp(SIGNALS_PRELOAD_DAYS);
 const SMA_FAST = 49;
 const MAX_LOSS_VALUE = 1;
-const MIN_RISK_RATIO = 2.5;
+const MIN_RISK_RATIO = 1.5;
 const MAX_CORRELATION = 0.6;
 
 const TPSL = {
   BREAKOUT: {
     LONG: {
-      TP: 7.4,
-      SL: 2.2,
+      TP: 4.2,
+      SL: 1.8,
     },
     SHORT: {
-      TP: 7.4,
-      SL: 2.2,
+      TP: 4.2,
+      SL: 1.8,
     },
   },
   BREAKOUT_NO_TREND: {
     LONG: {
-      TP: 6.8,
-      SL: 2.1,
+      TP: 3.5,
+      SL: 1.7,
     },
     SHORT: {
-      TP: 6.8,
-      SL: 2.1,
+      TP: 3.5,
+      SL: 1.7,
     },
   },
 };
