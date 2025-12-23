@@ -20,6 +20,7 @@ export interface TrendLineOptions {
   firstRange?: number; // «сила» первой опоры (окно сильного экстремума)
   offset?: number; // размер окна в конце (в барах)
   minTouchGap?: number; // минимум баров между касаниями
+  maxTouchGap?: number; // максимум баров между касаниями
   capture?: boolean; // true: в окне offset обязателен «старт за линией» и цвет свечи (строго, без допуска)
   bestLines?: number;
   maxDistance?: number;

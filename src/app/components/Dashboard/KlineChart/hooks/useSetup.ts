@@ -3,30 +3,18 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import _ from 'lodash';
-import { Chart, registerOverlay, KLineData } from 'klinecharts';
+import { Chart, registerOverlay } from 'klinecharts';
 import { getSignal } from '@actions/signal';
 import { toMs } from '@utils/timestamp';
 import { Signal } from '@types';
 
 const SETUP_TP = 'SetupTPRect';
 const SETUP_SL = 'SetupSLRect';
-const SETUP_BARS_WIDTH = 100;
+
+// если данных на графике нет — рисуем прямоугольник “в будущее” на фикс. ширину по времени
+const FALLBACK_WIDTH_MS = 24 * 60 * 60_000; // 24 часа (можешь поставить 6ч/12ч/48ч)
 
 type Point = { timestamp: number; value: number };
-
-const getEndTimestampByBars = (
-  data: KLineData[],
-  startTsMs: number,
-  bars: number,
-) => {
-  if (!data?.length) return startTsMs;
-
-  const startIdx = _.findIndex(data, (c) => toMs(c.timestamp) >= startTsMs);
-  const safeStartIdx = startIdx === -1 ? data.length - 1 : startIdx;
-
-  const endIdx = Math.min(data.length - 1, safeStartIdx + bars);
-  return toMs(data[endIdx].timestamp);
-};
 
 export const useSetup = (chart: Chart | null, enabled: boolean) => {
   const [signal, setSignal] = useState<Signal | null>(null);
@@ -37,7 +25,7 @@ export const useSetup = (chart: Chart | null, enabled: boolean) => {
   const symbol = chart?.getSymbol()?.ticker || '';
 
   useEffect(() => {
-    if (!signalId) {
+    if (!signalId || !symbol) {
       setSignal(null);
       return;
     }
@@ -65,28 +53,23 @@ export const useSetup = (chart: Chart | null, enabled: boolean) => {
             {
               type: 'rect',
               attrs: { x, y, width: w, height: h },
-              styles: {
-                color: fill, // fill
-                borderColor: stroke,
-                size: 1,
-              },
+              styles: { color: fill, borderColor: stroke, size: 1 },
             },
           ];
         },
       });
 
-    makeRectOverlay(SETUP_TP, 'rgba(34,197,94,0.22)', 'rgba(34,197,94,0.7)'); // green
-    makeRectOverlay(SETUP_SL, 'rgba(239,68,68,0.22)', 'rgba(239,68,68,0.7)'); // red
+    makeRectOverlay(SETUP_TP, 'rgba(34,197,94,0.22)', 'rgba(34,197,94,0.7)');
+    makeRectOverlay(SETUP_SL, 'rgba(239,68,68,0.22)', 'rgba(239,68,68,0.7)');
   }, []);
 
   const setupPoints = useMemo(() => {
-    if (!signal || !data?.length) return null;
+    if (!signal) return null;
 
     const startTsMs = toMs(signal.timestamp);
-    const endTsMs = getEndTimestampByBars(data, startTsMs, SETUP_BARS_WIDTH);
+    const endTsMs = startTsMs + FALLBACK_WIDTH_MS;
 
     const start: Point = { timestamp: startTsMs, value: signal.currentPrice };
-
     const tpEnd: Point = { timestamp: endTsMs, value: signal.takeProfitPrice };
     const slEnd: Point = { timestamp: endTsMs, value: signal.stopLossPrice };
 

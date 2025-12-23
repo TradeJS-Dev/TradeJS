@@ -83,7 +83,10 @@ export const getVolatilityTickers = (data: Ticker[]): Item[] => {
     }));
 };
 
-export const getTopTickers = (data: Ticker[], topN?: number): Item[] => {
+export const getTopTickers = (
+  data: Ticker[],
+  topN?: number,
+): Item<Ticker>[] => {
   const scores = data
     .filter(({ symbol }) => {
       if (symbol.includes('BTC') && symbol !== 'BTCUSDT') {
@@ -119,10 +122,15 @@ export const getTopTickers = (data: Ticker[], topN?: number): Item[] => {
 
   const sortedByVlolume = _.sortBy(scores, (item) => -item.volume24h);
 
-  const items = sortedByVlolume.map((item, i) => ({
-    label: item.symbol.replace(/(USDT)$/i, ''),
-    value: item.symbol,
-    description: `volume: ${round(item.volume24h, 2)}m (#${i + 1})`,
+  const items = sortedByVlolume.map(({ symbol, volume24h, ...coin }, i) => ({
+    label: symbol.replace(/(USDT)$/i, ''),
+    value: symbol,
+    description: `volume: ${round(volume24h, 2)}m (#${i + 1})`,
+    data: {
+      ...coin,
+      symbol,
+      volume24h,
+    },
   }));
 
   return _.sortBy(topN ? items.slice(0, topN) : items, 'label');

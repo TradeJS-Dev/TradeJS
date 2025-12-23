@@ -35,7 +35,7 @@ const TPSL = {
       SL: 2.2,
     },
   },
-  REVERSAL: {
+  BREAKOUT_NO_TREND: {
     LONG: {
       TP: 6.8,
       SL: 2.1,
@@ -50,25 +50,27 @@ const TPSL = {
 const DIRECTION = {
   highs: {
     BREAKOUT: 'LONG',
-    REVERSAL: 'SHORT',
+    BREAKOUT_NO_TREND: 'LONG',
   },
   lows: {
     BREAKOUT: 'SHORT',
-    REVERSAL: 'LONG',
+    BREAKOUT_NO_TREND: 'SHORT',
   },
 } as const;
-
-const TRENDLINE_OPTIONS: Partial<TrendLineOptions> = {
-  firstRange: 100,
-  bestLines: 1,
-  maxDistance: 2500,
-  capture: true,
-};
 
 export const TrendlineStrategy = async (
   connector: Connector,
   { symbol, interval, minTouches, offset, makeOrders }: TrenlineStrategyOptions,
 ): Promise<Signal | null> => {
+  const TRENDLINE_OPTIONS: Partial<TrendLineOptions> = {
+    firstRange: 80,
+    bestLines: 1,
+    maxDistance: 1500,
+    capture: true,
+    minTouches,
+    offset,
+  };
+
   const currentTimestamp = getTimestamp();
 
   const cachedData = await connector.kline({
@@ -83,15 +85,11 @@ export const TrendlineStrategy = async (
 
   let lowsTrendlines = findTrendlinesByLows(cachedData, {
     ...TRENDLINE_OPTIONS,
-    minTouches,
-    offset,
     epsilon,
   });
 
   let highsTrendlines = findTrendlinesByHighs(cachedData, {
     ...TRENDLINE_OPTIONS,
-    minTouches,
-    offset,
     epsilon,
   });
 
@@ -143,8 +141,8 @@ export const TrendlineStrategy = async (
   });
 
   const { correlation } = calculateCoinBtcCorrelation(
-    cachedData.slice(-2000),
-    btcData.slice(-2000),
+    cachedData.slice(-1000),
+    btcData.slice(-1000),
   );
 
   if (correlation && correlation > MAX_CORRELATION) {
@@ -186,7 +184,7 @@ export const TrendlineStrategy = async (
 
   const { value: atr } = ATR_PCT(data, 14, 7, 30);
 
-  const shouldReversal =
+  const shouldBreakoutNoTrend =
     (mode === 'lows' && globalTrend === 'BULL') ||
     (mode === 'highs' && globalTrend === 'BEAR');
 
@@ -194,20 +192,20 @@ export const TrendlineStrategy = async (
     (mode === 'lows' && globalTrend === 'BEAR') ||
     (mode === 'highs' && globalTrend === 'BULL');
 
-  if (!shouldReversal && !shouldBreakout) {
+  if (!shouldBreakoutNoTrend && !shouldBreakout) {
     logger.warn('exit by strategy: %s %j', symbol, {
       mode,
       globalTrend,
       currentPrice,
       supportLevels,
-      shouldReversal,
+      shouldBreakoutNoTrend,
       shouldBreakout,
     });
 
     return null;
   }
 
-  const strategy = shouldBreakout ? 'BREAKOUT' : 'REVERSAL';
+  const strategy = shouldBreakout ? 'BREAKOUT' : 'BREAKOUT_NO_TREND';
   const direction = DIRECTION[mode][strategy];
 
   const isLong = direction === 'LONG';
@@ -236,7 +234,7 @@ export const TrendlineStrategy = async (
     riskRatio = risk > 0 ? reward / risk : 0;
   }
 
-  logger.info('prices: %s %j', symbol, {
+  logger.info('result: %s %j', symbol, {
     strategy,
     direction,
     qty,

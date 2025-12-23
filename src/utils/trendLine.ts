@@ -260,6 +260,16 @@ const collectTouchIndices = (params: {
   return touchIndices;
 };
 
+const hasTooLargeTouchGaps = (touchIndices: number[], maxTouchGap: number) => {
+  if (!Number.isFinite(maxTouchGap) || maxTouchGap <= 0) return false;
+  if (touchIndices.length < 2) return true; // на всякий случай
+
+  for (let i = 1; i < touchIndices.length; i++) {
+    if (touchIndices[i] - touchIndices[i - 1] > maxTouchGap) return true;
+  }
+  return false;
+};
+
 const hasWickBreachOnSegment = (params: {
   lowSeries: number[];
   highSeries: number[];
@@ -397,18 +407,19 @@ const findTrendlinesCore = (
 ): TrendLine[] => {
   const {
     mode,
-    maxLines = 10,
+    maxLines = 20,
     range = 20,
     firstRange = 100,
     epsilon = 0.002,
     epsilonOffset = 0.004,
-    minTouches = 3,
+    minTouches = 5,
     minDistance = 100,
-    minTouchGap = 20,
+    minTouchGap = 10,
+    maxTouchGap = 150,
     offset = 40,
     capture = false,
     bestLines = 2,
-    maxDistance = 2000,
+    maxDistance = 1000,
   } = options;
 
   if (!data?.length) return [];
@@ -497,6 +508,8 @@ const findTrendlinesCore = (
         minTouchGap,
       });
       if (touches.length < minTouches) continue;
+
+      if (hasTooLargeTouchGaps(touches, maxTouchGap)) continue;
 
       if (touches[touches.length - 1] - touches[0] < minDistance) continue;
 

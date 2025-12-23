@@ -37,6 +37,7 @@ const findSignals = async (symbol: string) => {
   const prevSignals = await getKeys(redisKeys.signalsBySymbol(symbol));
 
   if (prevSignals.length) {
+    logger.warn('Exit by signal exists %s', symbol);
     return null;
   }
 
