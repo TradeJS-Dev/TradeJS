@@ -412,13 +412,13 @@ const findTrendlinesCore = (
     firstRange = 60,
     epsilon = 0.002,
     epsilonOffset = 0.004,
-    minTouches = 5,
+    minTouches = 3,
     minDistance = 50,
     minTouchGap = 15,
     maxTouchGap = 250,
     offset = 40,
     capture = false,
-    bestLines = 2,
+    bestLines = 4,
     maxDistance = 2000,
   } = options;
 
