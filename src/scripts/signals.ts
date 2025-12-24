@@ -122,10 +122,10 @@ const signals = async () => {
     });
   }
 
-  await makeScreenshots(signals, '60');
+  await makeScreenshots(signals, '15');
 
   if (flags.notify) {
-    await sendToTG(signals, '60');
+    await sendToTG(signals, '15');
   }
 
   logger.info(
