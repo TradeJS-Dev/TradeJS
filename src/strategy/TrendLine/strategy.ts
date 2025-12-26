@@ -23,6 +23,7 @@ const SMA_FAST = 49;
 const MAX_LOSS_VALUE = 1;
 const MIN_RISK_RATIO = 1.5;
 const MAX_CORRELATION = 0.6;
+const MIN_ATR = 0.94;
 
 const TPSL = {
   BREAKOUT: {
@@ -79,44 +80,19 @@ export const TrendlineStrategy = async (
     interval,
   });
 
-  let epsilon = 0.002;
-
   let lowsTrendlines = findTrendlinesByLows(cachedData, {
     ...TRENDLINE_OPTIONS,
-    epsilon,
   });
 
   let highsTrendlines = findTrendlinesByHighs(cachedData, {
     ...TRENDLINE_OPTIONS,
-    epsilon,
   });
 
-  let bestLine =
+  const bestLine =
     lowsTrendlines.length > 0 ? lowsTrendlines[0] : highsTrendlines[0];
 
   if (!bestLine) {
-    epsilon = 0.003;
-
-    lowsTrendlines = findTrendlinesByLows(cachedData, {
-      ...TRENDLINE_OPTIONS,
-      minTouches,
-      offset,
-      epsilon,
-    });
-
-    highsTrendlines = findTrendlinesByHighs(cachedData, {
-      ...TRENDLINE_OPTIONS,
-      minTouches,
-      offset,
-      epsilon,
-    });
-
-    bestLine =
-      lowsTrendlines.length > 0 ? lowsTrendlines[0] : highsTrendlines[0];
-
-    if (!bestLine) {
-      return null;
-    }
+    return null;
   }
 
   logger.info('line %s %j', symbol, bestLine);
@@ -170,7 +146,8 @@ export const TrendlineStrategy = async (
   const lastCandle = data[data.length - 1];
   let currentPrice = lastCandle.close;
 
-  const { mode } = bestLine;
+  const { mode, points } = bestLine;
+  const [, lineEnd] = points;
   const globalTrend = currentGlobalSmaFast > currentPrice ? 'BEAR' : 'BULL';
 
   const supportLevels = getSupportLevels(
@@ -182,12 +159,19 @@ export const TrendlineStrategy = async (
 
   const { value: atr } = ATR_PCT(data, 14, 7, 30);
 
+  const priceIsBreakable =
+    (mode === 'highs' && currentPrice > lineEnd.value) ||
+    (mode === 'lows' && currentPrice < lineEnd.value);
+
   const shouldBreakoutNoTrend =
-    (mode === 'lows' && globalTrend === 'BULL') ||
+    (priceIsBreakable &&
+      atr > MIN_ATR &&
+      mode === 'lows' &&
+      globalTrend === 'BULL') ||
     (mode === 'highs' && globalTrend === 'BEAR');
 
   const shouldBreakout =
-    (mode === 'lows' && globalTrend === 'BEAR') ||
+    (priceIsBreakable && mode === 'lows' && globalTrend === 'BEAR') ||
     (mode === 'highs' && globalTrend === 'BULL');
 
   if (!shouldBreakoutNoTrend && !shouldBreakout) {
@@ -296,7 +280,6 @@ export const TrendlineStrategy = async (
     trend: globalTrend,
     support: supportLevels,
     atr,
-    epsilon,
   };
 
   return signal;

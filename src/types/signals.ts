@@ -42,6 +42,5 @@ export interface Signal {
   touches: number;
   support: number[];
   atr: number;
-  epsilon: number;
   trend: Trend;
 }

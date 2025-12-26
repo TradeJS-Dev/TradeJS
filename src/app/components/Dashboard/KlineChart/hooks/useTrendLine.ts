@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import _ from 'lodash';
 import { Chart, registerOverlay } from 'klinecharts';
@@ -8,6 +8,10 @@ import { getSignal } from '@actions/signal';
 import { findTrendlinesByLows, findTrendlinesByHighs } from '@utils/trendLine';
 import { toMs } from '@utils/timestamp';
 import { Signal, TrendLine } from '@types';
+
+interface ExtendData {
+  mode: TrendLine['mode'];
+}
 
 /** Максимально отдаляем график и добавляем отступ справа от последней свечи */
 const fitKeepRightZoom = (chart: Chart, lastDataTsMs: number) => {
@@ -52,38 +56,52 @@ export const useTrendLine = (chart: Chart | null, enabled: boolean) => {
 
   useEffect(() => {
     registerOverlay({
-      name: 'LowTrendLine',
+      name: 'TrendLine',
       totalStep: 2,
       needDefaultPointFigure: false,
       needDefaultXAxisFigure: false,
       needDefaultYAxisFigure: false,
-      createPointFigures: ({ coordinates }) => {
-        if (coordinates.length < 2) return [];
-        return [
-          {
+      createPointFigures: ({ coordinates, overlay }) => {
+        const { mode } = overlay.extendData as ExtendData;
+        const figures: any[] = [];
+        const color = mode === 'lows' ? '#facc15' : '#fb923c';
+
+        if (coordinates.length === 2) {
+          figures.push({
             type: 'line',
             attrs: { coordinates: [coordinates[0], coordinates[1]] },
-            styles: { color: '#facc15', size: 2, style: 'solid' },
-          },
-        ];
+            styles: { color, size: 2, style: 'solid' },
+          });
+        }
+
+        return figures;
       },
     });
 
     registerOverlay({
-      name: 'HighTrendLine',
-      totalStep: 2,
-      needDefaultPointFigure: false,
+      name: 'TrendLinePoints',
+      needDefaultPointFigure: true,
       needDefaultXAxisFigure: false,
       needDefaultYAxisFigure: false,
       createPointFigures: ({ coordinates }) => {
-        if (coordinates.length < 2) return [];
-        return [
-          {
-            type: 'line',
-            attrs: { coordinates: [coordinates[0], coordinates[1]] },
-            styles: { color: '#fb923c', size: 2, style: 'solid' },
-          },
-        ];
+        const figures: any[] = [];
+
+        coordinates.forEach(({ x, y }, i) => {
+          figures.push({
+            type: 'circle',
+            key: `pt_${i}`,
+            attrs: { x, y, r: 4 },
+            styles: {
+              style: 'fill',
+              color: '#ef4444',
+              borderSize: 1,
+              borderColor: '#ef4444',
+            },
+            ignoreEvent: true,
+          });
+        });
+
+        return figures;
       },
     });
   }, []);
@@ -100,28 +118,37 @@ export const useTrendLine = (chart: Chart | null, enabled: boolean) => {
         ? signal?.trendLine?.mode === 'lows'
           ? [signal.trendLine]
           : []
-        : findTrendlinesByLows(data, { minTouches: 3 });
+        : findTrendlinesByLows(data, { minTouches: 4 });
 
     const highLines: TrendLine[] =
       signalId && signal?.symbol === currentSymbol
         ? signal?.trendLine?.mode === 'highs'
           ? [signal.trendLine]
           : []
-        : findTrendlinesByHighs(data, { minTouches: 3 });
+        : findTrendlinesByHighs(data, { minTouches: 4 });
 
-    // отрисовываем
-    for (const line of lowLines) {
+    const lines = [...lowLines, ...highLines];
+
+    for (const line of lines) {
+      const points = [...line.points, ...line.touches];
+
+      const extendData: ExtendData = {
+        mode: line.mode,
+      };
+
       chart.createOverlay({
-        name: 'LowTrendLine',
+        name: 'TrendLine',
         id: line.id,
         points: line.points,
+        zLevel: 10,
+        extendData,
       });
-    }
-    for (const line of highLines) {
+
       chart.createOverlay({
-        name: 'HighTrendLine',
-        id: line.id,
-        points: line.points,
+        name: 'TrendLinePoints',
+        id: `${line.id}-points`,
+        points: points,
+        zLevel: 12,
       });
     }
 
@@ -131,8 +158,8 @@ export const useTrendLine = (chart: Chart | null, enabled: boolean) => {
 
     // cleanup
     return () => {
-      if (lowLines.length) chart.removeOverlay({ name: 'LowTrendLine' });
-      if (highLines.length) chart.removeOverlay({ name: 'HighTrendLine' });
+      chart.removeOverlay({ name: 'TrendLine' });
+      chart.removeOverlay({ name: 'TrendLinePoints' });
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chart, enabled, data.length, signal]);
