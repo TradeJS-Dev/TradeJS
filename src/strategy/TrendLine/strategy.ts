@@ -22,7 +22,7 @@ const PRELOAD_START = getTimestamp(SIGNALS_PRELOAD_DAYS);
 const SMA_FAST = 49;
 const MAX_LOSS_VALUE = 1;
 const MIN_RISK_RATIO = 1.5;
-const MAX_CORRELATION = 0.6;
+const MAX_CORRELATION = 0.65;
 const MIN_ATR = 0.94;
 
 const TPSL = {
@@ -115,8 +115,8 @@ export const TrendlineStrategy = async (
   });
 
   const { correlation } = calculateCoinBtcCorrelation(
-    cachedData.slice(-2000),
-    btcData.slice(-2000),
+    cachedData.slice(-100),
+    btcData.slice(-100),
   );
 
   if (correlation && correlation > MAX_CORRELATION) {
