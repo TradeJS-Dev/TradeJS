@@ -6,7 +6,7 @@ import { calculateCoinBtcCorrelation } from '@utils/correlation';
 import { uuid } from '@utils/uuid';
 import { ATR_PCT } from '@utils/indicators';
 import { logger } from '@utils/logger';
-import { round } from '@utils/math';
+import { round, diffRel } from '@utils/math';
 import { getSma, makeRelPrice, getSupportLevels } from './utils';
 import { Interval, Signal, Connector, TrendLineOptions } from '@types';
 
@@ -20,11 +20,14 @@ interface TrenlineStrategyOptions {
 
 const PRELOAD_START = getTimestamp(SIGNALS_PRELOAD_DAYS);
 const SMA_FAST = 49;
+const SMA_SLOW = 200;
 const MAX_LOSS_VALUE = 1;
 const MIN_RISK_RATIO = 1.5;
 const MAX_CORRELATION = 0.55;
 const MIN_ATR = 0.94;
 const MIN_BREAKOUT_PRICE = 0.004;
+const MAX_CANDLE_VOLATILITY = 0.02;
+const MIN_DISTANCE_LOCAL_SMA_SLOW = 0.02;
 
 const BREAKOUT = 'BREAKOUT';
 const BREAKOUT_NO_TREND = 'BREAKOUT_NO_TREND';
@@ -145,10 +148,30 @@ export const TrendlineStrategy = async (
     interval: '720',
   });
 
+  const lastCandle = data[data.length - 1];
+  const prevCandle = data[data.length - 2];
+  let currentPrice = lastCandle.close;
+
+  const isVeryVolatility =
+    diffRel(lastCandle.low, lastCandle.high) > MAX_CANDLE_VOLATILITY ||
+    diffRel(prevCandle.low, prevCandle.high) > MAX_CANDLE_VOLATILITY;
+
+  if (isVeryVolatility) {
+    logger.warn('exit by very volatility: %s', symbol);
+
+    return null;
+  }
+
+  const { last: currentLocalSmaSlow } = getSma(SMA_SLOW, data);
   const { last: currentGlobalSmaFast } = getSma(SMA_FAST, globalData);
 
-  const lastCandle = data[data.length - 1];
-  let currentPrice = lastCandle.close;
+  if (
+    diffRel(lastCandle.close, currentLocalSmaSlow) < MIN_DISTANCE_LOCAL_SMA_SLOW
+  ) {
+    logger.warn('exit by local SMA SLOW is nearest: %s', symbol);
+
+    return null;
+  }
 
   const { mode, points } = bestLine;
   const [, lineEnd] = points;
