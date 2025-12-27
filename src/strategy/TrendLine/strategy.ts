@@ -24,6 +24,7 @@ const MAX_LOSS_VALUE = 1;
 const MIN_RISK_RATIO = 1.5;
 const MAX_CORRELATION = 0.55;
 const MIN_ATR = 0.94;
+const MIN_BREAKOUT_PRICE = 0.004;
 
 const BREAKOUT = 'BREAKOUT';
 const BREAKOUT_NO_TREND = 'BREAKOUT_NO_TREND';
@@ -189,8 +190,8 @@ export const TrendlineStrategy = async (
   const isLong = direction === 'LONG';
 
   const priceIsBreakable =
-    (isLong && currentPrice > lineEnd.value) ||
-    (!isLong && currentPrice < lineEnd.value);
+    (isLong && currentPrice > lineEnd.value * (1 + MIN_BREAKOUT_PRICE)) ||
+    (!isLong && currentPrice < lineEnd.value * (1 - MIN_BREAKOUT_PRICE));
 
   if ([BREAKOUT, BREAKOUT_NO_TREND].includes(strategy) && !priceIsBreakable) {
     logger.warn('exit by price no breakable: %s %s', symbol, strategy);

@@ -45,8 +45,10 @@ export const useSetup = (chart: Chart | null, enabled: boolean) => {
       createPointFigures: ({ coordinates, overlay }) => {
         const { mode } = overlay.extendData as ExtendData;
 
-        const color = mode === 'TP' ? 'rgba(34,197,94,0.22)' : 'rgba(239,68,68,0.22)';
-        const borderColor = mode === 'TP' ? 'rgba(34,197,94,0.7)' : 'rgba(239,68,68,0.7)';
+        const color =
+          mode === 'TP' ? 'rgba(34,197,94,0.22)' : 'rgba(239,68,68,0.22)';
+        const borderColor =
+          mode === 'TP' ? 'rgba(34,197,94,0.7)' : 'rgba(239,68,68,0.7)';
 
         if (coordinates.length < 2) return [];
         const [p1, p2] = coordinates;
@@ -88,7 +90,6 @@ export const useSetup = (chart: Chart | null, enabled: boolean) => {
         ];
       },
     });
-
   }, []);
 
   const setupPoints = useMemo(() => {
