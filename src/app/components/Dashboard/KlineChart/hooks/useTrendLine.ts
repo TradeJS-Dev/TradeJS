@@ -94,8 +94,6 @@ export const useTrendLine = (chart: Chart | null, enabled: boolean) => {
             styles: {
               style: 'fill',
               color: '#ef4444',
-              borderSize: 1,
-              borderColor: '#ef4444',
             },
             ignoreEvent: true,
           });

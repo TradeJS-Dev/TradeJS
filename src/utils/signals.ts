@@ -65,7 +65,7 @@ export const formatMessage = (signal: Signal): string => {
       lines.push(`Points: ${touches}`);
 
       if (support) {
-        lines.push(`Support: ${support.map((x) => formatNumber(x)).join(',')}`);
+        lines.push(`Support: ${support.map((x) => formatNumber(x)).join(', ')}`);
       }
 
       lines.push(`ATR: ${atr}`);

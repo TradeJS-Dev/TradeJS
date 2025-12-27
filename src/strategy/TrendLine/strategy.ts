@@ -22,27 +22,30 @@ const PRELOAD_START = getTimestamp(SIGNALS_PRELOAD_DAYS);
 const SMA_FAST = 49;
 const MAX_LOSS_VALUE = 1;
 const MIN_RISK_RATIO = 1.5;
-const MAX_CORRELATION = 0.65;
+const MAX_CORRELATION = 0.55;
 const MIN_ATR = 0.94;
 
+const BREAKOUT = 'BREAKOUT';
+const BREAKOUT_NO_TREND = 'BREAKOUT_NO_TREND';
+
 const TPSL = {
-  BREAKOUT: {
+  [BREAKOUT]: {
     LONG: {
-      TP: 4.2,
+      TP: 5.4,
       SL: 1.8,
     },
     SHORT: {
-      TP: 4.2,
+      TP: 5.4,
       SL: 1.8,
     },
   },
-  BREAKOUT_NO_TREND: {
+  [BREAKOUT_NO_TREND]: {
     LONG: {
-      TP: 3.5,
+      TP: 5.1,
       SL: 1.7,
     },
     SHORT: {
-      TP: 3.5,
+      TP: 5.1,
       SL: 1.7,
     },
   },
@@ -50,12 +53,12 @@ const TPSL = {
 
 const DIRECTION = {
   highs: {
-    BREAKOUT: 'LONG',
-    BREAKOUT_NO_TREND: 'LONG',
+    [BREAKOUT]: 'LONG',
+    [BREAKOUT_NO_TREND]: 'LONG',
   },
   lows: {
-    BREAKOUT: 'SHORT',
-    BREAKOUT_NO_TREND: 'SHORT',
+    [BREAKOUT]: 'SHORT',
+    [BREAKOUT_NO_TREND]: 'SHORT',
   },
 } as const;
 
@@ -159,19 +162,12 @@ export const TrendlineStrategy = async (
 
   const { value: atr } = ATR_PCT(data, 14, 7, 30);
 
-  const priceIsBreakable =
-    (mode === 'highs' && currentPrice > lineEnd.value) ||
-    (mode === 'lows' && currentPrice < lineEnd.value);
-
   const shouldBreakoutNoTrend =
-    (priceIsBreakable &&
-      atr > MIN_ATR &&
-      mode === 'lows' &&
-      globalTrend === 'BULL') ||
+    (mode === 'lows' && globalTrend === 'BULL') ||
     (mode === 'highs' && globalTrend === 'BEAR');
 
   const shouldBreakout =
-    (priceIsBreakable && mode === 'lows' && globalTrend === 'BEAR') ||
+    (mode === 'lows' && globalTrend === 'BEAR') ||
     (mode === 'highs' && globalTrend === 'BULL');
 
   if (!shouldBreakoutNoTrend && !shouldBreakout) {
@@ -187,10 +183,26 @@ export const TrendlineStrategy = async (
     return null;
   }
 
-  const strategy = shouldBreakout ? 'BREAKOUT' : 'BREAKOUT_NO_TREND';
+  const strategy = shouldBreakout ? BREAKOUT : BREAKOUT_NO_TREND;
   const direction = DIRECTION[mode][strategy];
 
   const isLong = direction === 'LONG';
+
+  const priceIsBreakable =
+    (isLong && currentPrice > lineEnd.value) ||
+    (!isLong && currentPrice < lineEnd.value);
+
+  if ([BREAKOUT, BREAKOUT_NO_TREND].includes(strategy) && !priceIsBreakable) {
+    logger.warn('exit by price no breakable: %s %s', symbol, strategy);
+
+    return null;
+  }
+
+  if ([BREAKOUT_NO_TREND].includes(strategy) && atr < MIN_ATR) {
+    logger.warn('exit by ATR: %s %s', symbol, strategy);
+
+    return null;
+  }
 
   const { TP, SL } = TPSL[strategy][direction];
 

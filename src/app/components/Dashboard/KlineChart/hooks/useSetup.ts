@@ -8,11 +8,14 @@ import { getSignal } from '@actions/signal';
 import { toMs } from '@utils/timestamp';
 import { Signal } from '@types';
 
-const SETUP_TP = 'SetupTPRect';
-const SETUP_SL = 'SetupSLRect';
+const SETUP = 'Setup';
+const SETUP_START = 'Setup-start';
 
-// если данных на графике нет — рисуем прямоугольник “в будущее” на фикс. ширину по времени
-const FALLBACK_WIDTH_MS = 24 * 60 * 60_000; // 24 часа (можешь поставить 6ч/12ч/48ч)
+const FALLBACK_WIDTH_MS = 24 * 60 * 60_000;
+
+interface ExtendData {
+  mode: 'TP' | 'SL';
+}
 
 type Point = { timestamp: number; value: number };
 
@@ -33,34 +36,59 @@ export const useSetup = (chart: Chart | null, enabled: boolean) => {
   }, [symbol, signalId]);
 
   useEffect(() => {
-    const makeRectOverlay = (name: string, fill: string, stroke: string) =>
-      registerOverlay({
-        name,
-        totalStep: 2,
-        needDefaultPointFigure: false,
-        needDefaultXAxisFigure: false,
-        needDefaultYAxisFigure: false,
-        createPointFigures: ({ coordinates }) => {
-          if (coordinates.length < 2) return [];
-          const [p1, p2] = coordinates;
+    registerOverlay({
+      name: SETUP,
+      totalStep: 2,
+      needDefaultPointFigure: false,
+      needDefaultXAxisFigure: false,
+      needDefaultYAxisFigure: false,
+      createPointFigures: ({ coordinates, overlay }) => {
+        const { mode } = overlay.extendData as ExtendData;
 
-          const x = Math.min(p1.x, p2.x);
-          const y = Math.min(p1.y, p2.y);
-          const w = Math.abs(p2.x - p1.x);
-          const h = Math.abs(p2.y - p1.y);
+        const color = mode === 'TP' ? 'rgba(34,197,94,0.22)' : 'rgba(239,68,68,0.22)';
+        const borderColor = mode === 'TP' ? 'rgba(34,197,94,0.7)' : 'rgba(239,68,68,0.7)';
 
-          return [
-            {
-              type: 'rect',
-              attrs: { x, y, width: w, height: h },
-              styles: { color: fill, borderColor: stroke, size: 1 },
+        if (coordinates.length < 2) return [];
+        const [p1, p2] = coordinates;
+
+        const x = Math.min(p1.x, p2.x);
+        const y = Math.min(p1.y, p2.y);
+        const w = Math.abs(p2.x - p1.x);
+        const h = Math.abs(p2.y - p1.y);
+
+        return [
+          {
+            type: 'rect',
+            attrs: { x, y, width: w, height: h },
+            styles: { color, borderColor, size: 1 },
+          },
+        ];
+      },
+    });
+
+    registerOverlay({
+      name: SETUP_START,
+      totalStep: 1,
+      needDefaultPointFigure: true,
+      needDefaultXAxisFigure: false,
+      needDefaultYAxisFigure: false,
+      createPointFigures: ({ coordinates }) => {
+        const { x, y } = coordinates[0];
+
+        return [
+          {
+            type: 'circle',
+            attrs: { x, y, r: 5 },
+            styles: {
+              style: 'fill',
+              color: '#9333ea',
             },
-          ];
-        },
-      });
+            ignoreEvent: true,
+          },
+        ];
+      },
+    });
 
-    makeRectOverlay(SETUP_TP, 'rgba(34,197,94,0.22)', 'rgba(34,197,94,0.7)');
-    makeRectOverlay(SETUP_SL, 'rgba(239,68,68,0.22)', 'rgba(239,68,68,0.7)');
   }, []);
 
   const setupPoints = useMemo(() => {
@@ -86,20 +114,32 @@ export const useSetup = (chart: Chart | null, enabled: boolean) => {
     const slId = `${signal.signalId}-sl`;
 
     chart.createOverlay({
-      name: SETUP_TP,
+      name: SETUP,
       id: tpId,
       points: [setupPoints.start, setupPoints.tpEnd],
+      extendData: {
+        mode: 'TP',
+      },
     });
 
     chart.createOverlay({
-      name: SETUP_SL,
+      name: SETUP,
       id: slId,
       points: [setupPoints.start, setupPoints.slEnd],
+      extendData: {
+        mode: 'SL',
+      },
+    });
+
+    chart.createOverlay({
+      name: SETUP_START,
+      points: [setupPoints.start],
     });
 
     return () => {
-      chart.removeOverlay({ id: tpId, name: SETUP_TP });
-      chart.removeOverlay({ id: slId, name: SETUP_SL });
+      chart.removeOverlay({ id: tpId, name: SETUP });
+      chart.removeOverlay({ id: slId, name: SETUP });
+      chart.removeOverlay({ name: SETUP_START });
     };
   }, [chart, enabled, signalId, signal, setupPoints]);
 
