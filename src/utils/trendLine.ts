@@ -262,7 +262,7 @@ const collectTouchIndices = (params: {
 
 const hasTooLargeTouchGaps = (touchIndices: number[], maxTouchGap: number) => {
   if (!Number.isFinite(maxTouchGap) || maxTouchGap <= 0) return false;
-  if (touchIndices.length < 2) return true; // на всякий случай
+  if (touchIndices.length < 2) return true;
 
   for (let i = 1; i < touchIndices.length; i++) {
     if (touchIndices[i] - touchIndices[i - 1] > maxTouchGap) return true;
@@ -419,7 +419,7 @@ const findTrendlinesCore = (
     offset = 1000,
     capture = false,
     bestLines = 4,
-    maxDistance = 2000,
+    maxDistance = 1200,
   } = options;
 
   if (!data?.length) return [];
@@ -509,7 +509,7 @@ const findTrendlinesCore = (
       });
       if (touches.length < minTouches) continue;
 
-      if (hasTooLargeTouchGaps(touches, maxTouchGap)) continue;
+      if (hasTooLargeTouchGaps([...touches, lastIndex], maxTouchGap)) continue;
 
       if (touches[touches.length - 1] - touches[0] < minDistance) continue;
 
