@@ -5,6 +5,7 @@ export type TrendLineMode = 'lows' | 'highs';
 export type TrendLine = {
   id: string;
   mode: TrendLineMode;
+  distance: number;
   touches: { timestamp: number; value: number }[];
   points: { timestamp: number; value: number }[];
 };
@@ -40,6 +41,7 @@ export interface Signal {
   timestamp: number;
   correlation: number;
   touches: number;
+  distance: number;
   support: number[];
   atr: number;
   trend: Trend;

@@ -1,5 +1,5 @@
 import { KLineData } from 'klinecharts';
-import { TrendLineMode, TrendLine, TrendLineOptions } from '@types';
+import { TrendLine, TrendLineOptions } from '@types';
 import { toMs } from '@utils/timestamp';
 
 /* ============================ Helpers ============================= */
@@ -118,7 +118,7 @@ const collectRawExtrema = (params: {
   bodySeries: number[];
   timestampsMs: number[];
   range: number;
-  mode: TrendLineMode;
+  mode: TrendLine['mode'];
 }): Point[] => {
   const { bodySeries, timestampsMs, range, mode } = params;
   const findMin = mode === 'lows';
@@ -140,7 +140,7 @@ const collectRawExtrema = (params: {
 
 const clusterExtrema = (params: {
   rawExtrema: Point[];
-  mode: TrendLineMode;
+  mode: TrendLine['mode'];
   minDistance: number;
 }): Point[] => {
   const { rawExtrema, mode, minDistance } = params;
@@ -179,7 +179,7 @@ const isStrongFirstAnchor = (params: {
   lowSeries: number[];
   highSeries: number[];
   index: number;
-  mode: TrendLineMode;
+  mode: TrendLine['mode'];
   firstRange: number;
 }): boolean => {
   const { lowSeries, highSeries, index, mode, firstRange } = params;
@@ -278,7 +278,7 @@ const hasWickBreachOnSegment = (params: {
   endIndex: number;
   evaluateY: (t: number) => number;
   epsilon: number;
-  mode: TrendLineMode;
+  mode: TrendLine['mode'];
 }): boolean => {
   const {
     lowSeries,
@@ -312,7 +312,7 @@ const hasCloseBreachBeforeWindow = (params: {
   offset: number;
   evaluateY: (t: number) => number;
   epsilon: number;
-  mode: TrendLineMode;
+  mode: TrendLine['mode'];
 }): boolean => {
   const {
     closeSeries,
@@ -359,7 +359,7 @@ const hasCaptureByOffsetWick = (params: {
   offset: number;
   evaluateY: (t: number) => number;
   epsilonOffset: number;
-  mode: TrendLineMode;
+  mode: TrendLine['mode'];
 }): boolean => {
   const {
     lowSeries,
@@ -454,6 +454,7 @@ const findTrendlinesCore = (
     leftAnchor: Point;
     rightAnchor: Point;
     touchIndices: number[];
+    distance: number;
   };
 
   const candidates: Candidate[] = [];
@@ -469,10 +470,10 @@ const findTrendlinesCore = (
 
       const firstIndex = leftAnchor.x;
       const lastIndex = rightAnchor.x;
-      const lengthBetweenAnchors = lastIndex - firstIndex;
+      const distance = lastIndex - firstIndex;
 
-      if (lengthBetweenAnchors < minDistance) continue;
-      if (lengthBetweenAnchors > maxDistance) continue;
+      if (distance < minDistance) continue;
+      if (distance > maxDistance) continue;
 
       if (
         !isStrongFirstAnchor({
@@ -568,6 +569,7 @@ const findTrendlinesCore = (
         lastIndex,
         leftAnchor,
         rightAnchor,
+        distance,
         touchIndices: touches,
       });
     }
@@ -587,7 +589,7 @@ const findTrendlinesCore = (
   const trendlines: TrendLine[] = [];
 
   for (let i = 0; i < effectiveBestLines; i++) {
-    const { leftAnchor, rightAnchor, touchIndices } = candidates[i];
+    const { leftAnchor, rightAnchor, touchIndices, distance } = candidates[i];
 
     const evaluateY = buildLineEvaluator({
       t1: leftAnchor.t,
@@ -609,13 +611,12 @@ const findTrendlinesCore = (
     trendlines.push({
       id: `${mode}TrendLine-${i + 1}`,
       mode,
+      distance,
       points: [
         { timestamp: leftAnchor.t, value: evaluateY(leftAnchor.t) },
         { timestamp: lastTimestampMs, value: evaluateY(lastTimestampMs) },
       ],
       touches,
-    } as TrendLine & {
-      touches: { timestamp: number; value: number }[];
     });
   }
 

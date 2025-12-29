@@ -14,6 +14,7 @@ export const formatMessage = (signal: Signal): string => {
     currentPrice,
     takeProfitPrice,
     stopLossPrice,
+    distance,
     riskRatio,
     correlation,
     strategy,
@@ -71,6 +72,7 @@ export const formatMessage = (signal: Signal): string => {
       }
 
       lines.push(`ATR: ${atr}`);
+      lines.push(`Distance: ${distance}`);
       lines.push(`BTC correlation: ${correlation}`);
 
       const prices = formatPrices();

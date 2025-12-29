@@ -21,13 +21,14 @@ interface TrenlineStrategyOptions {
 const PRELOAD_START = getTimestamp(SIGNALS_PRELOAD_DAYS);
 const SMA_FAST = 49;
 const SMA_SLOW = 200;
-const MAX_LOSS_VALUE = 1;
+const MAX_LOSS_VALUE = 0.5;
 const MIN_RISK_RATIO = 1.5;
-const MAX_CORRELATION = 0.49;
+const MAX_CORRELATION = 0.45;
 const MIN_ATR = 0.94;
 const MIN_BREAKOUT_PRICE = 0.004;
 const MAX_CANDLE_VOLATILITY = 0.02;
 const MIN_DISTANCE_LOCAL_SMA_SLOW = 0.01;
+const MAX_DISTANCE_LAST_ANCHOR = 0.02;
 
 const BREAKOUT = 'BREAKOUT';
 const BREAKOUT_NO_TREND = 'BREAKOUT_NO_TREND';
@@ -35,21 +36,21 @@ const BREAKOUT_NO_TREND = 'BREAKOUT_NO_TREND';
 const TPSL = {
   [BREAKOUT]: {
     LONG: {
-      TP: 5.4,
+      TP: 5.6,
       SL: 1.8,
     },
     SHORT: {
-      TP: 5.4,
+      TP: 5.6,
       SL: 1.8,
     },
   },
   [BREAKOUT_NO_TREND]: {
     LONG: {
-      TP: 5.1,
+      TP: 5.3,
       SL: 1.7,
     },
     SHORT: {
-      TP: 5.1,
+      TP: 5.3,
       SL: 1.7,
     },
   },
@@ -122,8 +123,8 @@ export const TrendlineStrategy = async (
   });
 
   const { correlation } = calculateCoinBtcCorrelation(
-    cachedData.slice(-100),
-    btcData.slice(-100),
+    cachedData.slice(-1000),
+    btcData.slice(-1000),
   );
 
   if (correlation && correlation > MAX_CORRELATION) {
@@ -174,8 +175,6 @@ export const TrendlineStrategy = async (
   }
 
   const { mode, points } = bestLine;
-  const [, lineEnd] = points;
-  const globalTrend = currentGlobalSmaFast > currentPrice ? 'BEAR' : 'BULL';
 
   const supportLevels = getSupportLevels(
     mode,
@@ -184,7 +183,7 @@ export const TrendlineStrategy = async (
     currentPrice,
   );
 
-  const { value: atr } = ATR_PCT(data, 14, 7, 30);
+  const globalTrend = currentGlobalSmaFast > currentPrice ? 'BEAR' : 'BULL';
 
   const shouldBreakoutNoTrend =
     (mode === 'lows' && globalTrend === 'BULL') ||
@@ -212,6 +211,18 @@ export const TrendlineStrategy = async (
 
   const isLong = direction === 'LONG';
 
+  const [lineStart, lineEnd] = points;
+
+  if (
+    diffRel(lineStart.value, currentPrice) <
+      diffRel(lineEnd.value, currentPrice) ||
+    diffRel(lineEnd.value, currentPrice) > MAX_DISTANCE_LAST_ANCHOR
+  ) {
+    logger.warn('exit by is too late: %s %s', symbol);
+
+    return null;
+  }
+
   const priceIsBreakable =
     (isLong && currentPrice > lineEnd.value * (1 + MIN_BREAKOUT_PRICE)) ||
     (!isLong && currentPrice < lineEnd.value * (1 - MIN_BREAKOUT_PRICE));
@@ -221,6 +232,8 @@ export const TrendlineStrategy = async (
 
     return null;
   }
+
+  const { value: atr } = ATR_PCT(data, 14, 7, 30);
 
   if ([BREAKOUT_NO_TREND].includes(strategy) && atr < MIN_ATR) {
     logger.warn('exit by ATR: %s %s', symbol, strategy);
@@ -313,6 +326,7 @@ export const TrendlineStrategy = async (
     riskRatio: riskRatio,
     correlation: correlation || 0,
     touches: bestLine.touches.length + 2,
+    distance: bestLine.distance,
     trend: globalTrend,
     support: supportLevels,
     atr,
