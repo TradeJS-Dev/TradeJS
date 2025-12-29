@@ -415,7 +415,7 @@ const findTrendlinesCore = (
     minTouches = 4,
     minDistance = 50,
     minTouchGap = 15,
-    maxTouchGap = 150,
+    maxTouchGap = 60,
     offset = 1000,
     capture = false,
     bestLines = 4,
@@ -511,7 +511,8 @@ const findTrendlinesCore = (
 
       const lastTouches = touches.length > 2 ? touches.slice(-2) : touches;
 
-      if (hasTooLargeTouchGaps([...lastTouches, lastIndex], maxTouchGap)) continue;
+      if (hasTooLargeTouchGaps([...lastTouches, lastIndex], maxTouchGap))
+        continue;
 
       if (touches[touches.length - 1] - touches[0] < minDistance) continue;
 
