@@ -36,22 +36,22 @@ const BREAKOUT_NO_TREND = 'BREAKOUT_NO_TREND';
 const TPSL = {
   [BREAKOUT]: {
     LONG: {
-      TP: 5.6,
-      SL: 1.8,
+      TP: 15,
+      SL: 4,
     },
     SHORT: {
-      TP: 5.6,
-      SL: 1.8,
+      TP: 15,
+      SL: 4,
     },
   },
   [BREAKOUT_NO_TREND]: {
     LONG: {
-      TP: 5.3,
-      SL: 1.7,
+      TP: 15,
+      SL: 4,
     },
     SHORT: {
-      TP: 5.3,
-      SL: 1.7,
+      TP: 15,
+      SL: 4,
     },
   },
 };
@@ -59,11 +59,11 @@ const TPSL = {
 const DIRECTION = {
   highs: {
     [BREAKOUT]: 'LONG',
-    [BREAKOUT_NO_TREND]: 'LONG',
+    [BREAKOUT_NO_TREND]: 'SHORT',
   },
   lows: {
     [BREAKOUT]: 'SHORT',
-    [BREAKOUT_NO_TREND]: 'SHORT',
+    [BREAKOUT_NO_TREND]: 'LONG',
   },
 } as const;
 

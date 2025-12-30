@@ -123,10 +123,6 @@ export const detectMarketStructure = (
   if (isBull) trend = 'BULL';
   if (isBear) trend = 'BEAR';
 
-  /* =========================
-     ✅ Импульс vs коррекция
-     ========================= */
-
   const impulse =
     trend === 'BULL'
       ? Math.abs(prev.price - prev2.price)

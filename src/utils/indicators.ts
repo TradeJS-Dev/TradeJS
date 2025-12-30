@@ -74,18 +74,6 @@ export const createIndicators = (
   config: StrategyConfig,
   data: KlineChartData,
 ): ((candle: Candle) => TechnicalIndicators | string) => {
-  const MAX_WINDOW =
-    Math.max(
-      config.MA_SLOW,
-      config.BB_PERIOD,
-      config.OBV_SMA_PERIOD,
-      config.BREAKOUT_LOOKBACK,
-    ) + 5;
-
-  const trim = (arr: unknown[]) => {
-    if (arr.length > MAX_WINDOW) arr.splice(0, arr.length - MAX_WINDOW);
-  };
-
   const closes: number[] = [];
   const highs: number[] = [];
   const lows: number[] = [];
@@ -132,12 +120,6 @@ export const createIndicators = (
     highs.push(candle.high);
     lows.push(candle.low);
     volumes.push(candle.volume);
-
-    // trim(closes);
-    // trim(highs);
-    // trim(lows);
-    // trim(volumes);
-    // trim(candles);
 
     const price = candle.close;
 
