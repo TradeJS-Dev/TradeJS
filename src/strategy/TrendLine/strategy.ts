@@ -33,37 +33,30 @@ const MAX_DISTANCE_LAST_ANCHOR = 0.02;
 const BREAKOUT = 'BREAKOUT';
 const BREAKOUT_NO_TREND = 'BREAKOUT_NO_TREND';
 
-const TPSL = {
-  [BREAKOUT]: {
-    LONG: {
-      TP: 15,
-      SL: 4,
-    },
-    SHORT: {
-      TP: 15,
-      SL: 4,
-    },
-  },
-  [BREAKOUT_NO_TREND]: {
-    LONG: {
-      TP: 15,
-      SL: 4,
-    },
-    SHORT: {
-      TP: 15,
-      SL: 4,
-    },
-  },
-};
-
-const DIRECTION = {
+const STRATEGY_CONFIG = {
   highs: {
-    [BREAKOUT]: 'LONG',
-    [BREAKOUT_NO_TREND]: 'SHORT',
+    [BREAKOUT]: {
+      direction: 'LONG',
+      TP: 5.7,
+      SL: 1.6,
+    },
+    [BREAKOUT_NO_TREND]: {
+      direction: 'LONG',
+      TP: 4.4,
+      SL: 1.6,
+    },
   },
   lows: {
-    [BREAKOUT]: 'SHORT',
-    [BREAKOUT_NO_TREND]: 'LONG',
+    [BREAKOUT]: {
+      direction: 'LONG',
+      TP: 2.9,
+      SL: 0.9,
+    },
+    [BREAKOUT_NO_TREND]: {
+      direction: 'LONG',
+      TP: 2.9,
+      SL: 0.9,
+    },
   },
 } as const;
 
@@ -207,7 +200,7 @@ export const TrendlineStrategy = async (
   }
 
   const strategy = shouldBreakout ? BREAKOUT : BREAKOUT_NO_TREND;
-  const direction = DIRECTION[mode][strategy];
+  const { direction, TP, SL } = STRATEGY_CONFIG[mode][strategy];
 
   const isLong = direction === 'LONG';
 
@@ -240,8 +233,6 @@ export const TrendlineStrategy = async (
 
     return null;
   }
-
-  const { TP, SL } = TPSL[strategy][direction];
 
   const stopLossPrice = isLong
     ? currentPrice * (1 - SL / 100)
