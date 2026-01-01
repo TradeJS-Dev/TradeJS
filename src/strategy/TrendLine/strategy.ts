@@ -20,15 +20,15 @@ interface TrenlineStrategyOptions {
 
 const PRELOAD_START = getTimestamp(SIGNALS_PRELOAD_DAYS);
 const SMA_FAST = 49;
-const SMA_SLOW = 200;
+// const SMA_SLOW = 200;
 const MAX_LOSS_VALUE = 0.5;
 const MIN_RISK_RATIO = 1.5;
 const MAX_CORRELATION = 0.45;
 const MIN_ATR = 0.94;
 const MIN_BREAKOUT_PRICE = 0.002;
 const MAX_CANDLE_VOLATILITY = 0.025;
-const MIN_DISTANCE_LOCAL_SMA_SLOW = 0.005;
-const MAX_DISTANCE_LAST_ANCHOR = 0.02;
+// const MIN_DISTANCE_LOCAL_SMA_SLOW = 0.005;
+// const MAX_DISTANCE_LAST_ANCHOR = 0.02;
 
 const BREAKOUT = 'BREAKOUT';
 const BREAKOUT_NO_TREND = 'BREAKOUT_NO_TREND';
@@ -156,16 +156,16 @@ export const TrendlineStrategy = async (
     return null;
   }
 
-  const { last: currentLocalSmaSlow } = getSma(SMA_SLOW, data);
+  // const { last: currentLocalSmaSlow } = getSma(SMA_SLOW, data);
   const { last: currentGlobalSmaFast } = getSma(SMA_FAST, globalData);
 
-  if (
-    diffRel(lastCandle.close, currentLocalSmaSlow) < MIN_DISTANCE_LOCAL_SMA_SLOW
-  ) {
-    logger.warn('exit by local SMA SLOW is nearest: %s', symbol);
+  // if (
+  //   diffRel(lastCandle.close, currentLocalSmaSlow) < MIN_DISTANCE_LOCAL_SMA_SLOW
+  // ) {
+  //   logger.warn('exit by local SMA SLOW is nearest: %s', symbol);
 
-    return null;
-  }
+  //   return null;
+  // }
 
   const { mode, points } = bestLine;
 
@@ -204,17 +204,17 @@ export const TrendlineStrategy = async (
 
   const isLong = direction === 'LONG';
 
-  const [lineStart, lineEnd] = points;
+  const [, lineEnd] = points;
 
-  if (
-    diffRel(lineStart.value, currentPrice) <
-      diffRel(lineEnd.value, currentPrice) ||
-    diffRel(lineEnd.value, currentPrice) > MAX_DISTANCE_LAST_ANCHOR
-  ) {
-    logger.warn('exit by is too late: %s %s', symbol);
+  // if (
+  //   diffRel(lineStart.value, currentPrice) <
+  //     diffRel(lineEnd.value, currentPrice) ||
+  //   diffRel(lineEnd.value, currentPrice) > MAX_DISTANCE_LAST_ANCHOR
+  // ) {
+  //   logger.warn('exit by is too late: %s', symbol);
 
-    return null;
-  }
+  //   return null;
+  // }
 
   const priceIsBreakable =
     (isLong && currentPrice > lineEnd.value * (1 + MIN_BREAKOUT_PRICE)) ||
