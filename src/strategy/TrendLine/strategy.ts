@@ -216,19 +216,19 @@ export const TrendlineStrategy = async (
   //   return null;
   // }
 
-  const priceIsBreakable =
-    (isLong &&
-      mode === 'highs' &&
-      currentPrice > lineEnd.value * (1 + MIN_BREAKOUT_PRICE)) ||
-    (isShort &&
-      mode === 'lows' &&
-      currentPrice < lineEnd.value * (1 - MIN_BREAKOUT_PRICE));
+  // const priceIsBreakable =
+  //   (isLong &&
+  //     mode === 'highs' &&
+  //     currentPrice > lineEnd.value * (1 + MIN_BREAKOUT_PRICE)) ||
+  //   (isShort &&
+  //     mode === 'lows' &&
+  //     currentPrice < lineEnd.value * (1 - MIN_BREAKOUT_PRICE));
 
-  if ([BREAKOUT, BREAKOUT_NO_TREND].includes(strategy) && !priceIsBreakable) {
-    logger.warn('exit by price no breakable: %s %s', symbol, strategy);
+  // if ([BREAKOUT, BREAKOUT_NO_TREND].includes(strategy) && !priceIsBreakable) {
+  //   logger.warn('exit by price no breakable: %s %s', symbol, strategy);
 
-    return null;
-  }
+  //   return null;
+  // }
 
   const { value: atr } = ATR_PCT(data, 14, 7, 30);
 
