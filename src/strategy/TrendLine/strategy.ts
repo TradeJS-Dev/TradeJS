@@ -1,13 +1,14 @@
 import _ from 'lodash';
 import { SIGNALS_PRELOAD_DAYS } from '@constants';
-import { findTrendlinesByLows, findTrendlinesByHighs } from '@utils/trendLine';
+import { findTrendlinesByLows } from '@utils/trendLine';
 import { getTimestamp } from '@utils/timestamp';
 import { calculateCoinBtcCorrelation } from '@utils/correlation';
 import { uuid } from '@utils/uuid';
 import { ATR_PCT } from '@utils/indicators';
 import { logger } from '@utils/logger';
-import { round, diffRel } from '@utils/math';
+import { round } from '@utils/math';
 import { getSma, makeRelPrice, getSupportLevels } from './utils';
+import { filterByATR, filterByVeryVolatility } from './filters';
 import { Interval, Signal, Connector, TrendLineOptions } from '@types';
 
 interface TrenlineStrategyOptions {
@@ -20,15 +21,9 @@ interface TrenlineStrategyOptions {
 
 const PRELOAD_START = getTimestamp(SIGNALS_PRELOAD_DAYS);
 const SMA_FAST = 49;
-// const SMA_SLOW = 200;
 const MAX_LOSS_VALUE = 1;
 const MIN_RISK_RATIO = 1.5;
 const MAX_CORRELATION = 0.45;
-const MIN_ATR = 0.94;
-const MIN_BREAKOUT_PRICE = 0.002;
-const MAX_CANDLE_VOLATILITY = 0.025;
-// const MIN_DISTANCE_LOCAL_SMA_SLOW = 0.005;
-// const MAX_DISTANCE_LAST_ANCHOR = 0.02;
 
 const BREAKOUT = 'BREAKOUT';
 const BREAKOUT_NO_TREND = 'BREAKOUT_NO_TREND';
@@ -54,7 +49,7 @@ const STRATEGY_CONFIG = {
     },
     [BREAKOUT_NO_TREND]: {
       direction: 'LONG',
-      TP: 2.9,
+      TP: 3.2,
       SL: 0.9,
     },
   },
@@ -85,12 +80,12 @@ export const TrendlineStrategy = async (
     ...TRENDLINE_OPTIONS,
   });
 
-  let highsTrendlines = findTrendlinesByHighs(cachedData, {
-    ...TRENDLINE_OPTIONS,
-  });
+  // let highsTrendlines = findTrendlinesByHighs(cachedData, {
+  //   ...TRENDLINE_OPTIONS,
+  // });
 
-  const bestLine =
-    lowsTrendlines.length > 0 ? lowsTrendlines[0] : highsTrendlines[0];
+  const bestLine = lowsTrendlines?.[0];
+  //  lowsTrendlines.length > 0 ? lowsTrendlines[0] : highsTrendlines[0];
 
   if (!bestLine) {
     return null;
@@ -143,31 +138,14 @@ export const TrendlineStrategy = async (
   });
 
   const lastCandle = data[data.length - 1];
-  const prevCandle = data[data.length - 2];
   let currentPrice = lastCandle.close;
 
-  const isVeryVolatility =
-    diffRel(lastCandle.low, lastCandle.high) > MAX_CANDLE_VOLATILITY ||
-    diffRel(prevCandle.low, prevCandle.high) > MAX_CANDLE_VOLATILITY;
-
-  if (isVeryVolatility) {
-    logger.warn('exit by very volatility: %s', symbol);
-
+  if (!filterByVeryVolatility(symbol, data)) {
     return null;
   }
 
-  // const { last: currentLocalSmaSlow } = getSma(SMA_SLOW, data);
   const { last: currentGlobalSmaFast } = getSma(SMA_FAST, globalData);
-
-  // if (
-  //   diffRel(lastCandle.close, currentLocalSmaSlow) < MIN_DISTANCE_LOCAL_SMA_SLOW
-  // ) {
-  //   logger.warn('exit by local SMA SLOW is nearest: %s', symbol);
-
-  //   return null;
-  // }
-
-  const { mode, points } = bestLine;
+  const { mode } = bestLine;
 
   const supportLevels = getSupportLevels(
     mode,
@@ -201,40 +179,10 @@ export const TrendlineStrategy = async (
 
   const strategy = shouldBreakout ? BREAKOUT : BREAKOUT_NO_TREND;
   const { direction, TP, SL } = STRATEGY_CONFIG[mode][strategy];
-
   const isLong = direction === 'LONG';
-  const isShort = !isLong;
-  const [, lineEnd] = points;
-
-  // if (
-  //   diffRel(lineStart.value, currentPrice) <
-  //     diffRel(lineEnd.value, currentPrice) ||
-  //   diffRel(lineEnd.value, currentPrice) > MAX_DISTANCE_LAST_ANCHOR
-  // ) {
-  //   logger.warn('exit by is too late: %s', symbol);
-
-  //   return null;
-  // }
-
-  // const priceIsBreakable =
-  //   (isLong &&
-  //     mode === 'highs' &&
-  //     currentPrice > lineEnd.value * (1 + MIN_BREAKOUT_PRICE)) ||
-  //   (isShort &&
-  //     mode === 'lows' &&
-  //     currentPrice < lineEnd.value * (1 - MIN_BREAKOUT_PRICE));
-
-  // if ([BREAKOUT, BREAKOUT_NO_TREND].includes(strategy) && !priceIsBreakable) {
-  //   logger.warn('exit by price no breakable: %s %s', symbol, strategy);
-
-  //   return null;
-  // }
-
   const { value: atr } = ATR_PCT(data, 14, 7, 30);
 
-  if ([BREAKOUT_NO_TREND].includes(strategy) && atr < MIN_ATR) {
-    logger.warn('exit by ATR: %s %s', symbol, strategy);
-
+  if ([BREAKOUT_NO_TREND].includes(strategy) && !filterByATR(symbol, data)) {
     return null;
   }
 
