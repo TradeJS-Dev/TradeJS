@@ -1,7 +1,7 @@
 import _ from 'lodash';
 import { config as DEFAULT_CONFIG } from './config';
-import { StrategyCreator, StrategyConfig, TechnicalIndicators } from '@types';
-import { createIndicators } from '@utils/indicators';
+import { StrategyCreator, StrategyConfig } from '@types';
+import { createIndicators, TechnicalIndicators } from './indicators';
 
 interface SignalConfig {
   weight: number;
@@ -33,7 +33,6 @@ const getSignals = (
   indicators: TechnicalIndicators,
 ): Signals => {
   const {
-    closes,
     candle,
     prevCandle,
     highLevel,

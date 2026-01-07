@@ -1,5 +1,4 @@
 import { diffRel } from '@utils/math';
-import { logger } from '@utils/logger';
 import { ATR_PCT } from '@utils/indicators';
 import { getSma } from './utils';
 import { KlineChartData } from '@types';
@@ -11,14 +10,14 @@ const MAX_DISTANCE_LAST_ANCHOR = 0.02;
 const MIN_BREAKOUT_PRICE = 0.002;
 const MAX_CANDLE_VOLATILITY = 0.025;
 
-export const filterByLocalSmaSlow = (symbol: string, data: KlineChartData) => {
+export const filterByLocalSmaSlow = (data: KlineChartData) => {
   const { last: currentLocalSmaSlow } = getSma(SMA_SLOW, data);
   const lastCandle = data[data.length - 1];
 
   if (
     diffRel(lastCandle.close, currentLocalSmaSlow) < MIN_DISTANCE_LOCAL_SMA_SLOW
   ) {
-    logger.warn('exit by local SMA SLOW is nearest: %s', symbol);
+    // logger.warn('exit by local SMA SLOW is nearest: %s', symbol);
 
     return false;
   }
@@ -27,7 +26,6 @@ export const filterByLocalSmaSlow = (symbol: string, data: KlineChartData) => {
 };
 
 export const filterByTooLate = (
-  symbol: string,
   price: number,
   lineStart: number,
   lineEnd: number,
@@ -36,7 +34,7 @@ export const filterByTooLate = (
     diffRel(lineStart, price) < diffRel(lineEnd, price) ||
     diffRel(lineEnd, price) > MAX_DISTANCE_LAST_ANCHOR
   ) {
-    logger.warn('exit by is too late: %s', symbol);
+    // logger.warn('exit by is too late: %s', symbol);
 
     return false;
   }
@@ -45,7 +43,6 @@ export const filterByTooLate = (
 };
 
 export const filterByBreakablePrice = (
-  symbol: string,
   isLong: boolean,
   price: number,
   lineEnd: number,
@@ -55,7 +52,7 @@ export const filterByBreakablePrice = (
     (!isLong && price < lineEnd * (1 - MIN_BREAKOUT_PRICE));
 
   if (!priceIsBreakable) {
-    logger.warn('exit by price no breakable: %s %s', symbol);
+    // logger.warn('exit by price no breakable: %s %s', symbol);
 
     return false;
   }
@@ -63,11 +60,11 @@ export const filterByBreakablePrice = (
   return true;
 };
 
-export const filterByATR = (symbol: string, data: KlineChartData) => {
+export const filterByATR = (data: KlineChartData) => {
   const { value: atr } = ATR_PCT(data, 14, 7, 30);
 
   if (atr < MIN_ATR) {
-    logger.warn('exit by ATR: %s %s', symbol);
+    // logger.warn('exit by ATR: %s %s', symbol, atr);
 
     return false;
   }
@@ -75,10 +72,7 @@ export const filterByATR = (symbol: string, data: KlineChartData) => {
   return true;
 };
 
-export const filterByVeryVolatility = (
-  symbol: string,
-  data: KlineChartData,
-) => {
+export const filterByVeryVolatility = (data: KlineChartData) => {
   const lastCandle = data[data.length - 1];
   const prevCandle = data[data.length - 2];
 
@@ -87,8 +81,6 @@ export const filterByVeryVolatility = (
     diffRel(prevCandle.low, prevCandle.high) > MAX_CANDLE_VOLATILITY;
 
   if (isVeryVolatility) {
-    logger.warn('exit by very volatility: %s', symbol);
-
     return false;
   }
 

@@ -1,14 +1,13 @@
 import _ from 'lodash';
 import { SIGNALS_PRELOAD_DAYS } from '@constants';
-import { findTrendlinesByLows } from '@utils/trendLine';
+import { findTrendlinesByLows, findTrendlinesByHighs } from '@utils/trendLine';
 import { getTimestamp } from '@utils/timestamp';
 import { calculateCoinBtcCorrelation } from '@utils/correlation';
 import { uuid } from '@utils/uuid';
 import { ATR_PCT } from '@utils/indicators';
 import { logger } from '@utils/logger';
 import { round } from '@utils/math';
-import { getSma, makeRelPrice, getSupportLevels } from './utils';
-import { filterByATR, filterByVeryVolatility } from './filters';
+import { filterByVeryVolatility } from './filters';
 import { Interval, Signal, Connector, TrendLineOptions } from '@types';
 
 interface TrenlineStrategyOptions {
@@ -20,37 +19,28 @@ interface TrenlineStrategyOptions {
 }
 
 const PRELOAD_START = getTimestamp(SIGNALS_PRELOAD_DAYS);
-const SMA_FAST = 49;
 const MAX_LOSS_VALUE = 1;
-const MIN_RISK_RATIO = 1.5;
 const MAX_CORRELATION = 0.45;
 
-const BREAKOUT = 'BREAKOUT';
-const BREAKOUT_NO_TREND = 'BREAKOUT_NO_TREND';
+const TRENDLINE = 'TRENDLINE';
 
 const STRATEGY_CONFIG = {
   highs: {
-    [BREAKOUT]: {
-      direction: 'LONG',
-      TP: 5.7,
-      SL: 1.6,
-    },
-    [BREAKOUT_NO_TREND]: {
+    [TRENDLINE]: {
+      enable: false,
       direction: 'LONG',
       TP: 4.4,
       SL: 1.6,
+      minRiskRatio: 2,
     },
   },
   lows: {
-    [BREAKOUT]: {
-      direction: 'LONG',
-      TP: 2.9,
-      SL: 0.9,
-    },
-    [BREAKOUT_NO_TREND]: {
+    [TRENDLINE]: {
+      enable: true,
       direction: 'LONG',
       TP: 3.2,
       SL: 0.9,
+      minRiskRatio: 2,
     },
   },
 } as const;
@@ -58,7 +48,7 @@ const STRATEGY_CONFIG = {
 export const TrendlineStrategy = async (
   connector: Connector,
   { symbol, interval, minTouches, offset, makeOrders }: TrenlineStrategyOptions,
-): Promise<Signal | null> => {
+): Promise<Signal | string> => {
   const TRENDLINE_OPTIONS: Partial<TrendLineOptions> = {
     bestLines: 1,
     capture: true,
@@ -80,26 +70,22 @@ export const TrendlineStrategy = async (
     ...TRENDLINE_OPTIONS,
   });
 
-  // let highsTrendlines = findTrendlinesByHighs(cachedData, {
-  //   ...TRENDLINE_OPTIONS,
-  // });
+  let highsTrendlines = findTrendlinesByHighs(cachedData, {
+    ...TRENDLINE_OPTIONS,
+  });
 
-  const bestLine = lowsTrendlines?.[0];
-  //  lowsTrendlines.length > 0 ? lowsTrendlines[0] : highsTrendlines[0];
+  const bestLine =
+    lowsTrendlines.length > 0 ? lowsTrendlines[0] : highsTrendlines[0];
 
   if (!bestLine) {
-    return null;
+    return 'NO_TRENDLINE';
   }
-
-  logger.info('line %s %j', symbol, bestLine);
 
   const position = await connector.getPosition(symbol);
   const positionExists = !_.isEmpty(position) && position.qty > 0;
 
   if (positionExists) {
-    logger.warn('exit by position exists: %s %j', symbol, position);
-
-    return null;
+    return 'POSITION_EXISTS';
   }
 
   const btcData = await connector.kline({
@@ -116,9 +102,7 @@ export const TrendlineStrategy = async (
   );
 
   if (correlation && correlation > MAX_CORRELATION) {
-    logger.warn('exit by correlation: %s %d', symbol, round(correlation, 2));
-
-    return null;
+    return `BTC_CORRELATION:${round(correlation)}`;
   }
 
   const data = await connector.kline({
@@ -129,62 +113,25 @@ export const TrendlineStrategy = async (
     interval,
   });
 
-  const globalData = await connector.kline({
-    symbol,
-    start: PRELOAD_START,
-    end: getTimestamp(),
-    cacheOnly: false,
-    interval: '720',
-  });
-
   const lastCandle = data[data.length - 1];
   let currentPrice = lastCandle.close;
 
-  if (!filterByVeryVolatility(symbol, data)) {
-    return null;
+  if (!filterByVeryVolatility(data)) {
+    return 'VERY_VOLATILITY';
   }
 
-  const { last: currentGlobalSmaFast } = getSma(SMA_FAST, globalData);
   const { mode } = bestLine;
 
-  const supportLevels = getSupportLevels(
-    mode,
-    data.slice(-14),
-    makeRelPrice(currentPrice, mode === 'highs' ? 2 : -2),
-    currentPrice,
-  );
+  const strategy = TRENDLINE;
+  const { direction, TP, SL, minRiskRatio, enable } =
+    STRATEGY_CONFIG[mode][strategy];
 
-  const globalTrend = currentGlobalSmaFast > currentPrice ? 'BEAR' : 'BULL';
-
-  const shouldBreakoutNoTrend =
-    (mode === 'lows' && globalTrend === 'BULL') ||
-    (mode === 'highs' && globalTrend === 'BEAR');
-
-  const shouldBreakout =
-    (mode === 'lows' && globalTrend === 'BEAR') ||
-    (mode === 'highs' && globalTrend === 'BULL');
-
-  if (!shouldBreakoutNoTrend && !shouldBreakout) {
-    logger.warn('exit by strategy: %s %j', symbol, {
-      mode,
-      globalTrend,
-      currentPrice,
-      supportLevels,
-      shouldBreakoutNoTrend,
-      shouldBreakout,
-    });
-
-    return null;
+  if (!enable) {
+    return 'STRATEGY_DISABLED';
   }
 
-  const strategy = shouldBreakout ? BREAKOUT : BREAKOUT_NO_TREND;
-  const { direction, TP, SL } = STRATEGY_CONFIG[mode][strategy];
   const isLong = direction === 'LONG';
   const { value: atr } = ATR_PCT(data, 14, 7, 30);
-
-  if ([BREAKOUT_NO_TREND].includes(strategy) && !filterByATR(symbol, data)) {
-    return null;
-  }
 
   const stopLossPrice = isLong
     ? currentPrice * (1 - SL / 100)
@@ -208,20 +155,8 @@ export const TrendlineStrategy = async (
     riskRatio = risk > 0 ? reward / risk : 0;
   }
 
-  logger.info('result: %s %j', symbol, {
-    strategy,
-    direction,
-    qty,
-    currentPrice,
-    takeProfitPrice,
-    stopLossPrice,
-    riskRatio,
-  });
-
-  if (riskRatio <= MIN_RISK_RATIO) {
-    logger.warn('exit by riskRatio: %s %d', symbol, round(riskRatio, 2));
-
-    return null;
+  if (riskRatio <= minRiskRatio) {
+    return `RISK_RATIO:${round(riskRatio)}`;
   }
 
   if (makeOrders) {
@@ -270,8 +205,6 @@ export const TrendlineStrategy = async (
     correlation: correlation || 0,
     touches: bestLine.touches.length + 2,
     distance: bestLine.distance,
-    trend: globalTrend,
-    support: supportLevels,
     atr,
   };
 

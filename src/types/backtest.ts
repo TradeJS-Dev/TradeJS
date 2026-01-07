@@ -110,20 +110,3 @@ export interface TestCompare {
 export type TestCompareList = TestCompare[];
 
 export type OnChangeCompare = (testId: string) => void;
-
-export interface TechnicalIndicators {
-  closes: number[];
-  candle: Candle;
-  prevCandle: Candle;
-  highLevel: number;
-  lowLevel: number;
-  smaFast: number;
-  smaSlow: number;
-  smaObv: number;
-  obv: number;
-  bb: {
-    upper: number;
-    lower: number;
-  };
-  atr: number;
-}

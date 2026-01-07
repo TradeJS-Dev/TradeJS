@@ -53,6 +53,14 @@ const findSignals = async (symbol: string) => {
     return;
   }
 
+  if (typeof signal === 'string') {
+    if (signal !== 'NO_TRENDLINE') {
+      logger.warn('exit %s by %s', symbol, signal);
+    }
+
+    return;
+  }
+
   await setData(redisKeys.signal(symbol, signal.signalId), signal, {
     stringify: true,
     expire: TTL_1D,

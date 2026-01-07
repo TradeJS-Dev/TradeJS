@@ -19,9 +19,7 @@ export const formatMessage = (signal: Signal): string => {
     correlation,
     strategy,
     touches,
-    trend,
     atr,
-    support,
   } = signal;
 
   try {
@@ -62,14 +60,7 @@ export const formatMessage = (signal: Signal): string => {
       lines.push('');
 
       lines.push(`Strategy: ${strategy}`);
-      lines.push(`Trend: ${trend}`);
       lines.push(`Points: ${touches}`);
-
-      if (support) {
-        lines.push(
-          `Support: ${support.map((x) => formatNumber(x)).join(', ')}`,
-        );
-      }
 
       lines.push(`ATR: ${atr}`);
       lines.push(`Distance: ${distance}`);

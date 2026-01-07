@@ -1,4 +1,4 @@
-import { Interval, Direction, Trend } from './trade';
+import { Interval, Direction } from './trade';
 
 export type TrendLineMode = 'lows' | 'highs';
 
@@ -42,7 +42,5 @@ export interface Signal {
   correlation: number;
   touches: number;
   distance: number;
-  support: number[];
   atr: number;
-  trend: Trend;
 }
