@@ -42,6 +42,7 @@ export type Trend = 'BULL' | 'BEAR';
 
 export type Order = {
   symbol: string;
+  isLimit?: boolean;
   qty: number;
   price: number;
   timestamp: number;

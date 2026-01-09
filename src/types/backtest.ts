@@ -2,6 +2,7 @@ import { Tokens } from '@chakra-ui/react';
 import { Metrics, MetricThreshold } from './metrics';
 import {
   Candle,
+  KlineChartItem,
   Direction,
   Connector,
   KlineRequest,
@@ -9,8 +10,12 @@ import {
   Order,
   OrderType,
 } from './trade';
+import { Signal } from './signals';
 
-export type Strategy = (candle: Candle) => Promise<string>;
+export type Strategy = (
+  candle: KlineChartItem,
+  btcCandle: KlineChartItem,
+) => Promise<string | Signal>;
 
 export type StrategyConfig = Record<string, any>;
 
@@ -19,6 +24,7 @@ export interface StrategyCreatorParams {
   config: StrategyConfig;
   connector: Connector;
   data: KlineChartData;
+  btcData: KlineChartData;
 }
 
 export type StrategyCreator = (params: StrategyCreatorParams) => Strategy;

@@ -34,10 +34,23 @@ export const testing: TestingBox = async ({
     cacheOnly: true,
   });
 
+  const btcData = await connector.kline({
+    symbol: 'BTCUSDT',
+    start: preloadStart,
+    end,
+    interval: '15',
+    silent: true,
+    cacheOnly: true,
+  });
+
   const prevData = data.filter(
     (candle) => candle.timestamp >= preloadStart && candle.timestamp < start,
   );
+  const btcPrevData = btcData.filter(
+    (candle) => candle.timestamp >= preloadStart && candle.timestamp < start,
+  );
   const testData = data.filter((candle) => candle.timestamp >= start);
+  const btcTestData = btcData.filter((candle) => candle.timestamp >= start);
 
   const testConnector = connectors.Test(connector);
 
@@ -45,13 +58,14 @@ export const testing: TestingBox = async ({
     config: strategyConfig,
     symbol,
     data: prevData,
+    btcData: btcPrevData,
     connector: testConnector,
   });
 
-  for await (const candle of testData) {
-    await strategy(candle);
-    testConnector.checkSl(candle);
-    testConnector.checkTp(candle);
+  for (let candleIndex = 0; candleIndex < testData.length; candleIndex++) {
+    await strategy(testData[candleIndex], btcTestData[candleIndex]);
+    testConnector.checkSl(testData[candleIndex]);
+    testConnector.checkTp(testData[candleIndex]);
   }
 
   return await testConnector.getResult();

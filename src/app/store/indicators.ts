@@ -45,7 +45,7 @@ const useStore = create<IndicatorsState>()(
         {
           id: 'ma',
           label: 'MA',
-          enabled: true,
+          enabled: false,
           periods: [49, 200],
         },
         {

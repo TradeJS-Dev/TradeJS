@@ -437,7 +437,11 @@ export const ByBitConnectorCreator: ConnectorCreator = (config) => {
       return positions;
     },
 
-    placeOrder: async ({ symbol, price, qty, direction }, TP = [], slPrice) => {
+    placeOrder: async (
+      { symbol, price, qty, direction, isLimit },
+      TP = [],
+      slPrice,
+    ) => {
       const client = await getClient(config);
 
       if (!client) {
@@ -448,7 +452,6 @@ export const ByBitConnectorCreator: ConnectorCreator = (config) => {
 
       const meta = await getSymbolMeta(client, symbol);
 
-      // --- нормализуем объём ордера ---
       const { qtyNum: orderQty, qtyStr: orderQtyStr } = normalizeQty(qty, meta);
 
       if (orderQty < meta.minOrderQty) {
@@ -463,10 +466,32 @@ export const ByBitConnectorCreator: ConnectorCreator = (config) => {
         return false;
       }
 
-      // --- нормализуем SL ---
+      const entryNormalized = isLimit
+        ? normalizePrice(price, 'ENTRY', meta)
+        : undefined;
+
       const slNormalized = slPrice
         ? normalizePrice(slPrice, isLong ? 'SL_LONG' : 'SL_SHORT', meta)
         : undefined;
+
+      const firstTP = TP?.[0];
+
+      let tpNormalized =
+        firstTP && firstTP.rate === 1 && firstTP.price
+          ? normalizePrice(firstTP.price, isLong ? 'TP_LONG' : 'TP_SHORT', meta)
+          : undefined;
+
+      if (!tpNormalized && firstTP && firstTP.rate === 1 && firstTP.profit) {
+        const firstRawTpPrice = isLong
+          ? price * (1 + firstTP.profit)
+          : price * (1 - firstTP.profit);
+
+        tpNormalized = normalizePrice(
+          firstRawTpPrice,
+          isLong ? 'TP_LONG' : 'TP_SHORT',
+          meta,
+        );
+      }
 
       logger.log(
         'info',
@@ -497,9 +522,13 @@ export const ByBitConnectorCreator: ConnectorCreator = (config) => {
       const orderRes = await client.submitOrder({
         category: MARKET_CATEGORY,
         symbol,
-        stopLoss: slNormalized?.priceStr,
+        price: entryNormalized?.priceStr || undefined,
+        takeProfit: tpNormalized?.priceStr || undefined,
+        tpTriggerBy: 'MarkPrice',
+        stopLoss: slNormalized?.priceStr || undefined,
+        slTriggerBy: 'LastPrice',
         side: isLong ? 'Buy' : 'Sell',
-        orderType: 'Market',
+        orderType: isLimit ? 'Limit' : 'Limit',
         qty: orderQtyStr,
         orderFilter: 'Order',
       });
@@ -515,70 +544,73 @@ export const ByBitConnectorCreator: ConnectorCreator = (config) => {
       }
 
       // --- Partial TP ---
-      for (const tp of TP) {
-        const tpSizeRaw = orderQty * tp.rate;
-        const { qtyNum: tpSizeNum, qtyStr: tpSizeStr } = normalizeQty(
-          tpSizeRaw,
-          meta,
-        );
-
-        if (!tpSizeNum || tpSizeNum < meta.minOrderQty) {
-          logger.log(
-            'warn',
-            'tp skipped: size too small %s',
-            toJson(
-              { symbol, tp, tpSizeNum, minOrderQty: meta.minOrderQty },
-              true,
-            ),
+      if (!isLimit) {
+        for (const tp of TP) {
+          const tpSizeRaw = orderQty * tp.rate;
+          const { qtyNum: tpSizeNum, qtyStr: tpSizeStr } = normalizeQty(
+            tpSizeRaw,
+            meta,
           );
-          continue;
-        }
 
-        let rawTpPrice: number;
-
-        if (tp.price) {
-          rawTpPrice = tp.price;
-        } else {
-          if (tp.profit == null) {
+          if (!tpSizeNum || tpSizeNum < meta.minOrderQty) {
             logger.log(
               'warn',
-              'tp skipped: no price and no profit %s',
-              toJson(tp, true),
+              'tp skipped: size too small %s',
+              toJson(
+                { symbol, tp, tpSizeNum, minOrderQty: meta.minOrderQty },
+                true,
+              ),
             );
             continue;
           }
 
-          rawTpPrice = isLong
-            ? price * (1 + tp.profit)
-            : price * (1 - tp.profit);
+          let rawTpPrice: number;
+
+          if (tp.price) {
+            rawTpPrice = tp.price;
+          } else {
+            if (tp.profit == null) {
+              logger.log(
+                'warn',
+                'tp skipped: no price and no profit %s',
+                toJson(tp, true),
+              );
+              continue;
+            }
+
+            rawTpPrice = isLong
+              ? price * (1 + tp.profit)
+              : price * (1 - tp.profit);
+          }
+
+          const tpPriceNorm = normalizePrice(
+            rawTpPrice,
+            isLong ? 'TP_LONG' : 'TP_SHORT',
+            meta,
+          );
+
+          const isFullMode = TP.length === 1 && tp.rate === 1;
+
+          const tpRes = await client.setTradingStop({
+            category: MARKET_CATEGORY,
+            symbol,
+            tpSize: isFullMode ? undefined : tpSizeStr,
+            tpslMode: isFullMode ? 'Full' : 'Partial',
+            takeProfit: tpPriceNorm.priceStr,
+            stopLoss:
+              isFullMode && slNormalized ? slNormalized.priceStr : undefined,
+            slTriggerBy: 'LastPrice',
+            tpOrderType: 'Market',
+            positionIdx: 0,
+          });
+
+          logger.log(
+            getLogLevel(tpRes),
+            'tp: %s %s',
+            toJson(tp, true),
+            toJson(tpRes, true),
+          );
         }
-
-        const tpPriceNorm = normalizePrice(
-          rawTpPrice,
-          isLong ? 'TP_LONG' : 'TP_SHORT',
-          meta,
-        );
-
-        const isFullMode = TP.length === 1 && tp.rate === 1;
-
-        const tpRes = await client.setTradingStop({
-          category: MARKET_CATEGORY,
-          symbol,
-          tpSize: isFullMode ? undefined : tpSizeStr,
-          tpslMode: isFullMode ? 'Full' : 'Partial',
-          takeProfit: tpPriceNorm.priceStr,
-          stopLoss:
-            isFullMode && slNormalized ? slNormalized.priceStr : undefined,
-          tpOrderType: 'Market',
-          positionIdx: 0,
-        });
-
-        logger.log(
-          getLogLevel(tpRes),
-          'tp: %s %s',
-          toJson(tp, true),
-          toJson(tpRes, true),
-        );
       }
 
       return true;

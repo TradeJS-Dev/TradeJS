@@ -5,19 +5,22 @@ const byBitConnector = connectors.ByBit({
   userName: 'root',
 });
 
-const SYMBOL = 'AIOUSDT';
+const SYMBOL = 'TACUSDT';
 
 const placeOrder = async () => {
+  const price = 0.0041;
+
   const res = await byBitConnector.placeOrder(
     {
       symbol: SYMBOL,
-      qty: 1092.4186148131964,
-      price: 0.09166,
+      qty: 100 / price,
+      price,
       timestamp: 0,
       direction: 'LONG',
+      isLimit: true,
     },
-    [{ price: 0.0979478, rate: 1 }],
-    0.08972483230293661,
+    [{ price: 0.0047, rate: 1 }],
+    0.004,
   );
 
   console.log('res', res);
@@ -40,6 +43,6 @@ const closeOrder = async () => {
   console.log('res', res);
 };
 
-// placeOrder();
+placeOrder();
 // closeOrder();
-getPosition();
+// getPosition();

@@ -61,28 +61,38 @@ export const runBot = async () => {
           interval: '15',
         });
 
+        const btcData = await connector.kline({
+          symbol: 'BTCUSDT',
+          start: preloadStart,
+          end,
+          interval: '15',
+        });
+
         data.pop();
+        btcData.pop();
 
         const candle = data.pop();
+        const btcCandle = btcData.pop();
 
         const strategy = strategyCreator({
           config: strategyConfig,
           symbol,
           data,
+          btcData,
           connector,
         });
 
         logger.log('info', 'strategy created');
 
-        if (!candle) {
+        if (!candle || !btcCandle) {
           throw new Error('Candle is empty');
         }
 
-        const status = await strategy(candle);
+        const status = await strategy(candle, btcCandle);
 
         botResults.push({
           symbol,
-          status,
+          status: JSON.stringify(status),
         });
       } catch (err) {
         logger.log('error', 'bot %s error: %s', bot.symbol, toJson(err, false));

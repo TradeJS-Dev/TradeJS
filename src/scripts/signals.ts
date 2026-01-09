@@ -3,11 +3,12 @@ import ProgressBar from 'progress';
 import _ from 'lodash';
 import { connectors } from '@src/connectors';
 import chalk from 'chalk';
-import { TTL_1D, TTL_3M } from '@constants';
+import { TTL_1D, TTL_3M, SIGNALS_PRELOAD_DAYS } from '@constants';
 import { update, getTickers, makeScreenshots, sendToTG } from '@utils/cli';
 import { getKeys, setData, redisKeys } from '@utils/redis';
+import { getTimestamp } from '@utils/timestamp';
 import { Interval, Signal } from '@types';
-import { TrendlineStrategy } from '@src/strategy/TrendLine/strategy';
+import { TrendlineStrategyCreator } from '@src/strategy/TrendLine/strategy';
 import { logger } from '@utils/logger';
 
 args.option(['t', 'tickers'], 'Selected tickers');
@@ -23,6 +24,8 @@ args.option(['C', 'cacheOnly'], 'Do not update tickers history', false);
 args.option(['L', 'showTickersList'], 'Just show only ticker list', false);
 args.option(['c', 'chunk'], 'Split by chunks, ex. 1/3');
 args.option(['U', 'user'], 'Use user confg', 'root');
+
+const PRELOAD_START = getTimestamp(SIGNALS_PRELOAD_DAYS);
 
 const flags = args.parse(process.argv);
 const minTouches = parseInt(flags.points);
@@ -41,13 +44,46 @@ const findSignals = async (symbol: string) => {
     return null;
   }
 
-  const signal = await TrendlineStrategy(byBitConnector, {
+  const currentTimestamp = getTimestamp();
+
+  const cachedData = await byBitConnector.kline({
     symbol,
+    start: PRELOAD_START,
+    end: currentTimestamp,
+    cacheOnly: true,
     interval,
-    minTouches,
-    offset,
-    makeOrders: flags.makeOrders,
   });
+
+  const btcCachedData = await byBitConnector.kline({
+    symbol: 'BTCUSDT',
+    start: PRELOAD_START,
+    end: currentTimestamp,
+    cacheOnly: true,
+    interval,
+  });
+
+  const lastCandle = cachedData.pop();
+  const btcLastCandle = btcCachedData.pop();
+
+  if (!lastCandle || !btcLastCandle) {
+    return;
+  }
+
+  const strategy = await TrendlineStrategyCreator({
+    connector: byBitConnector,
+    symbol,
+    data: cachedData,
+    btcData: btcCachedData,
+    config: {
+      env: 'production',
+      interval,
+      minTouches,
+      offset,
+      makeOrders: flags.makeOrders,
+    },
+  });
+
+  const signal = await strategy(lastCandle, btcLastCandle);
 
   if (!signal) {
     return;
@@ -73,14 +109,6 @@ const findSignals = async (symbol: string) => {
 
   return signal;
 };
-
-// const checkSignals = async () => {
-//   const posiions = await byBitConnector.getPositions();
-
-//   for await (const posiion of posiions) {
-//     const { symbol } = posiion;
-//   }
-// };
 
 const signals = async () => {
   const signals = new Array<Signal>();
