@@ -17,7 +17,7 @@ import {
 } from '@types';
 
 const PRELOAD_START = getTimestamp(SIGNALS_PRELOAD_DAYS);
-const LIMIT_PRICE_STEP = 0.001;
+const FEE = 0.02;
 
 export const TrendlineStrategyCreator: StrategyCreator = ({
   config: baseConfig,
@@ -95,8 +95,9 @@ export const TrendlineStrategyCreator: StrategyCreator = ({
             interval,
           });
 
-    const lastCandle = data[data.length - 1];
     const prevCandle = data[data.length - 2];
+    const lastCandle = data[data.length - 1];
+    const currentPrice = lastCandle.close;
 
     if (!filterByVeryVolatility(data)) {
       return 'VERY_VOLATILITY';
@@ -116,16 +117,12 @@ export const TrendlineStrategyCreator: StrategyCreator = ({
     const { value: atr } = ATR_PCT(data, 14, 7, 30);
 
     const limitPrice = isLong
-      ? Math.min(
-          prevCandle.close,
-          prevCandle.open,
-          lastCandle.low * (1 - LIMIT_PRICE_STEP),
-        )
-      : Math.max(
-          prevCandle.close,
-          prevCandle.open,
-          lastCandle.high * (1 + LIMIT_PRICE_STEP),
-        );
+      ? (Math.min(prevCandle.close, prevCandle.open, lastCandle.low) +
+          currentPrice) /
+        2
+      : (Math.max(prevCandle.close, prevCandle.open, lastCandle.high) +
+          currentPrice) /
+        2;
 
     const stopLossPrice = isLong
       ? limitPrice * (1 - SL / 100)
@@ -135,7 +132,7 @@ export const TrendlineStrategyCreator: StrategyCreator = ({
       ? limitPrice * (1 + TP / 100)
       : limitPrice * (1 - TP / 100);
 
-    const qty = MAX_LOSS_VALUE / ((limitPrice * SL) / 100);
+    const qty = MAX_LOSS_VALUE / ((limitPrice * (SL + FEE)) / 100);
 
     let riskRatio: number;
 

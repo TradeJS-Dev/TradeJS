@@ -1,6 +1,6 @@
 {
-  "name": "bb",
-  "version": "0.1.0",
+  "name": "investing",
+  "version": "1.0.0",
   "private": true,
   "scripts": {
     "backtest": "NODE_OPTIONS=\"--max-old-space-size=8192\" time yarn ts-node ./src/scripts/backtest",
@@ -87,5 +87,5 @@
     "ts-node": "^10.9.2",
     "typescript": "^5"
   },
-  "packageManager": "yarn@4.1.0"
+  "packageManager": "yarn@4.12.0"
 }

@@ -24,7 +24,7 @@ export const config = {
       [TRENDLINE]: {
         enable: true,
         direction: 'LONG',
-        TP: 3.2,
+        TP: 2.9,
         SL: 0.9,
         minRiskRatio: 2,
       },
