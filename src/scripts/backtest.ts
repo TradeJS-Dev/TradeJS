@@ -63,11 +63,11 @@ let errorTests = 0;
 
 const userName = flags.user;
 
-const byBitConnector = connectors.ByBit({
-  userName: flags.user,
-});
-
 const backtest = async () => {
+  const byBitConnector = await connectors.ByBit({
+    userName: flags.user,
+  });
+
   const tickers = await getTickers(
     byBitConnector,
     flags.tickers,

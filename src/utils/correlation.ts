@@ -1,16 +1,19 @@
 import { round } from '@utils/math';
-import { Candle } from '@types';
+import { KlineChartItem } from '@types';
 
 /**
  * Выравнивает два отсортированных массива свечей по timestamp.
  * Оставляет только те свечи, которые есть в обоих массивах.
  */
 export const alignSortedCandlesByTimestamp = (
-  coinCandles: Candle[],
-  btcCandles: Candle[],
-): { alignedCoinCandles: Candle[]; alignedBtcCandles: Candle[] } => {
-  const alignedCoinCandles: Candle[] = [];
-  const alignedBtcCandles: Candle[] = [];
+  coinCandles: KlineChartItem[],
+  btcCandles: KlineChartItem[],
+): {
+  alignedCoinCandles: KlineChartItem[];
+  alignedBtcCandles: KlineChartItem[];
+} => {
+  const alignedCoinCandles: KlineChartItem[] = [];
+  const alignedBtcCandles: KlineChartItem[] = [];
 
   let coinIndex = 0;
   let btcIndex = 0;
@@ -40,7 +43,9 @@ export const alignSortedCandlesByTimestamp = (
 };
 
 /** Строим массив доходностей по close: (close[i] - close[i-1]) / close[i-1] */
-export const buildReturnsFromCandles = (candles: Candle[]): number[] => {
+export const buildReturnsFromCandles = (
+  candles: KlineChartItem[],
+): number[] => {
   const returns: number[] = [];
 
   for (let candleIndex = 1; candleIndex < candles.length; candleIndex += 1) {
@@ -107,12 +112,12 @@ export const calculatePearsonCorrelation = (
  * 3) считаем корреляцию доходностей
  */
 export const calculateCoinBtcCorrelation = (
-  coinCandles: Candle[],
-  btcCandles: Candle[],
+  coinCandles: KlineChartItem[],
+  btcCandles: KlineChartItem[],
 ): {
   correlation: number | null;
-  alignedCoinCandles: Candle[];
-  alignedBtcCandles: Candle[];
+  alignedCoinCandles: KlineChartItem[];
+  alignedBtcCandles: KlineChartItem[];
   coinReturns: number[];
   btcReturns: number[];
 } => {

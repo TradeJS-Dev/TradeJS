@@ -7,7 +7,7 @@ export const dynamic = 'force-dynamic';
 
 export const GET = async () => {
   try {
-    const byBitConnector = connectors.ByBit({
+    const byBitConnector = await connectors.ByBit({
       userName: 'root',
     });
 

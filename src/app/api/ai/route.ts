@@ -37,7 +37,7 @@ const buildMessages = (
 
   messages.push(
     new SystemMessage(
-      'Ты – помощник крипто трейдера. Отвечай на русском языке',
+      'Ты – помощник крипто-трейдера. Отвечай на русском языке',
     ),
   );
 
@@ -110,7 +110,7 @@ export const POST = async (request: NextRequest) => {
 
     await appendMessagesToHistory(filters.symbol, [message]);
 
-    const byBitConnector = connectors.ByBit({
+    const byBitConnector = await connectors.ByBit({
       userName: 'root',
     });
 

@@ -66,7 +66,7 @@ export type OrderType =
   | 'STOP_LOSS_LONG'
   | 'STOP_LOSS_SHORT';
 
-export type ConnectorCreator = (config: ConnectorConfig) => Connector;
+export type ConnectorCreator = (config: ConnectorConfig) => Promise<Connector>;
 
 export interface ConnectorConfig {
   userName: string;

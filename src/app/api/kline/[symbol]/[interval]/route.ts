@@ -7,15 +7,15 @@ export const dynamic = 'force-dynamic';
 
 interface Params {
   symbol: string;
-  interval: Interval;
+  interval: string;
 }
 
 export const POST = async (
   request: NextRequest,
-  { params }: { params: Params },
+  { params }: { params: Promise<Params> },
 ) => {
   try {
-    const { symbol, interval } = params;
+    const { symbol, interval } = await params;
     const body = await request.json();
     const options = body as
       | Omit<KlineRequest, 'symbol' | 'interval'>
@@ -28,13 +28,13 @@ export const POST = async (
       );
     }
 
-    const byBitConnector = connectors.ByBit({
+    const byBitConnector = await connectors.ByBit({
       userName: 'root',
     });
 
     const data = await byBitConnector.kline({
       symbol,
-      interval,
+      interval: interval as Interval,
       ...options,
     });
 

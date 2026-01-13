@@ -23,7 +23,7 @@ process.on('message', async ({ chunkId }: { chunkId: string }) => {
       });
     } catch (error) {
       logger.error(error);
-      process.send?.({ error: true, id: test.name });
+      process.send?.({ error: true, id: test.name, msg: error });
     }
   }
 

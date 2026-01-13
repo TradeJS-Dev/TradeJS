@@ -1,0 +1,1 @@
+export { TrendlineStrategyCreator } from './strategy';

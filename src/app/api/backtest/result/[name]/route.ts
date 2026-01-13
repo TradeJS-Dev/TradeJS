@@ -8,9 +8,12 @@ interface Params {
   name: string;
 }
 
-export const GET = async (_req: Request, { params }: { params: Params }) => {
+export const GET = async (
+  _req: Request,
+  { params }: { params: Promise<Params> },
+) => {
   try {
-    const { name } = params;
+    const { name } = await params;
 
     if (!name) {
       return NextResponse.json(

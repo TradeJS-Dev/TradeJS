@@ -35,7 +35,7 @@ const CACHE_FALLBACK_WINDOW = 1_000;
 
 const getLogLevel = (res: any) => (res.retCode === 0 ? 'info' : 'error');
 
-export const ByBitConnectorCreator: ConnectorCreator = (config) => {
+export const ByBitConnectorCreator: ConnectorCreator = async (config) => {
   let state: Record<string, unknown> = {};
 
   /** -------------------- low-level fetch from exchange -------------------- */

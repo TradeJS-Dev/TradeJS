@@ -7,7 +7,7 @@ import { TTL_1D, TTL_3M, SIGNALS_PRELOAD_DAYS } from '@constants';
 import { update, getTickers, makeScreenshots, sendToTG } from '@utils/cli';
 import { getKeys, setData, redisKeys } from '@utils/redis';
 import { getTimestamp } from '@utils/timestamp';
-import { Interval, Signal } from '@types';
+import { Connector, Interval, Signal } from '@types';
 import { TrendlineStrategyCreator } from '@src/strategy/TrendLine/strategy';
 import { logger } from '@utils/logger';
 
@@ -32,11 +32,7 @@ const minTouches = parseInt(flags.points);
 const offset = parseInt(flags.offset);
 const interval = flags.timeframe.toString() as Interval;
 
-const byBitConnector = connectors.ByBit({
-  userName: flags.user,
-});
-
-const findSignals = async (symbol: string) => {
+const findSignals = async (symbol: string, connector: Connector) => {
   const prevSignals = await getKeys(redisKeys.signalsBySymbol(symbol));
 
   if (prevSignals.length) {
@@ -46,7 +42,7 @@ const findSignals = async (symbol: string) => {
 
   const currentTimestamp = getTimestamp();
 
-  const cachedData = await byBitConnector.kline({
+  const cachedData = await connector.kline({
     symbol,
     start: PRELOAD_START,
     end: currentTimestamp,
@@ -54,7 +50,7 @@ const findSignals = async (symbol: string) => {
     interval,
   });
 
-  const btcCachedData = await byBitConnector.kline({
+  const btcCachedData = await connector.kline({
     symbol: 'BTCUSDT',
     start: PRELOAD_START,
     end: currentTimestamp,
@@ -70,7 +66,7 @@ const findSignals = async (symbol: string) => {
   }
 
   const strategy = await TrendlineStrategyCreator({
-    connector: byBitConnector,
+    connector,
     symbol,
     data: cachedData,
     btcData: btcCachedData,
@@ -113,6 +109,10 @@ const findSignals = async (symbol: string) => {
 const signals = async () => {
   const signals = new Array<Signal>();
 
+  const byBitConnector = await connectors.ByBit({
+    userName: flags.user,
+  });
+
   const tickers = await getTickers(
     byBitConnector,
     flags.tickers,
@@ -146,7 +146,7 @@ const signals = async () => {
   logger.info(chalk.yellow(`tickers: ${tickers.length}`));
 
   for await (const symbol of tickers) {
-    const signal = await findSignals(symbol);
+    const signal = await findSignals(symbol, byBitConnector);
 
     if (signal) {
       signals.push(signal);

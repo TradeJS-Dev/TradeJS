@@ -8,13 +8,17 @@ interface Params {
   name: string;
 }
 
-export async function GET(_req: Request, { params }: { params: Params }) {
+export async function GET(
+  _req: Request,
+  { params }: { params: Promise<Params> },
+) {
   try {
+    const { name } = await params;
     const filePath = path.join(
       process.cwd(),
       'data',
       'screenshots',
-      `${params.name}.png`,
+      `${name}.png`,
     );
     const file = await fs.readFile(filePath);
 

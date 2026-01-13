@@ -11,9 +11,12 @@ interface Params {
   signalId: string;
 }
 
-export const GET = async (_req: Request, { params }: { params: Params }) => {
+export const GET = async (
+  _req: Request,
+  { params }: { params: Promise<Params> },
+) => {
   try {
-    const { symbol, signalId } = params;
+    const { symbol, signalId } = await params;
 
     if (!symbol || !signalId) {
       return NextResponse.json(

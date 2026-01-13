@@ -1,5 +1,3 @@
-'use server';
-
 import _ from 'lodash';
 import {
   TestConnectorCreator as TCC,

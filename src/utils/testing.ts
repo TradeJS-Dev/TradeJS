@@ -1,8 +1,9 @@
 import { strategies, StrategyNames } from '@src/strategy';
 import { connectors, ConnectorNames } from '@src/connectors';
-import { ConnectorCreator, TestingBox } from '@types';
+import { Candle, ConnectorCreator, TestingBox } from '@types';
 import { PRELOAD_DAYS } from '@constants';
 import { getTimestamp } from '@utils/timestamp';
+import { alignSortedCandlesByTimestamp } from '@utils/correlation';
 
 const preloadStart = getTimestamp(PRELOAD_DAYS);
 
@@ -18,7 +19,7 @@ export const testing: TestingBox = async ({
     throw new Error('no start');
   }
 
-  const connector = (
+  const connector = await (
     connectors[connectorName as ConnectorNames] as ConnectorCreator
   )({
     userName,
@@ -43,14 +44,25 @@ export const testing: TestingBox = async ({
     cacheOnly: true,
   });
 
-  const prevData = data.filter(
-    (candle) => candle.timestamp >= preloadStart && candle.timestamp < start,
+  const prevDataRaw = data.filter(
+    (candle: Candle) =>
+      candle.timestamp >= preloadStart && candle.timestamp < start,
   );
-  const btcPrevData = btcData.filter(
-    (candle) => candle.timestamp >= preloadStart && candle.timestamp < start,
+  const btcPrevDataRaw = btcData.filter(
+    (candle: Candle) =>
+      candle.timestamp >= preloadStart && candle.timestamp < start,
   );
-  const testData = data.filter((candle) => candle.timestamp >= start);
-  const btcTestData = btcData.filter((candle) => candle.timestamp >= start);
+  const testDataRaw = data.filter(
+    (candle: Candle) => candle.timestamp >= start,
+  );
+  const btcTestDataRaw = btcData.filter(
+    (candle: Candle) => candle.timestamp >= start,
+  );
+
+  const { alignedCoinCandles: prevData, alignedBtcCandles: btcPrevData } =
+    alignSortedCandlesByTimestamp(prevDataRaw, btcPrevDataRaw);
+  const { alignedCoinCandles: testData, alignedBtcCandles: btcTestData } =
+    alignSortedCandlesByTimestamp(testDataRaw, btcTestDataRaw);
 
   const testConnector = connectors.Test(connector);
 

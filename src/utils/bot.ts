@@ -48,7 +48,7 @@ export const runBot = async () => {
 
       try {
         const strategyCreator = strategies[strategyName as StrategyNames];
-        const connector = (
+        const connector = await (
           connectors[connectorName as ConnectorNames] as ConnectorCreator
         )({
           userName,

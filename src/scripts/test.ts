@@ -1,16 +1,13 @@
 import 'dotenv/config';
 import { connectors } from '@src/connectors';
-
-const byBitConnector = connectors.ByBit({
-  userName: 'root',
-});
+import { Connector } from '@types';
 
 const SYMBOL = 'TACUSDT';
 
-const placeOrder = async () => {
+const placeOrder = async (connector: Connector) => {
   const price = 0.0041;
 
-  const res = await byBitConnector.placeOrder(
+  const res = await connector.placeOrder(
     {
       symbol: SYMBOL,
       qty: 100 / price,
@@ -26,14 +23,14 @@ const placeOrder = async () => {
   console.log('res', res);
 };
 
-const getPosition = async () => {
-  const res = await byBitConnector.getPosition(SYMBOL);
+const getPosition = async (connector: Connector) => {
+  const res = await connector.getPosition(SYMBOL);
 
   console.log('res', res);
 };
 
-const closeOrder = async () => {
-  const res = await byBitConnector.closePosition({
+const closeOrder = async (connector: Connector) => {
+  const res = await connector.closePosition({
     symbol: SYMBOL,
     price: 3.379,
     timestamp: 0,
@@ -43,6 +40,14 @@ const closeOrder = async () => {
   console.log('res', res);
 };
 
-placeOrder();
-// closeOrder();
-// getPosition();
+const main = async () => {
+  const byBitConnector = await connectors.ByBit({
+    userName: 'root',
+  });
+
+  await placeOrder(byBitConnector);
+  // await closeOrder(byBitConnector);
+  // await getPosition(byBitConnector);
+};
+
+main();
