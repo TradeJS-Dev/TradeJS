@@ -152,7 +152,7 @@ export const TrendlineStrategyCreator: StrategyCreator = ({
             symbol,
             qty,
             price: currentPrice,
-            isLimit: true,
+            isLimit: false,
             timestamp: lastCandle.timestamp,
             direction,
           },
