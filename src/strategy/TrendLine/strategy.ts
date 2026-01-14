@@ -75,13 +75,17 @@ export const TrendlineStrategyCreator: StrategyCreator = ({
       return 'POSITION_EXISTS';
     }
 
-    const { correlation } = calculateCoinBtcCorrelation(
-      cachedData.slice(-1000),
-      btcCachedData.slice(-1000),
-    );
+    let correlation = null;
 
-    if (correlation && correlation > MAX_CORRELATION) {
-      return `BTC_CORRELATION:${round(correlation)}`;
+    if (env !== 'development') {
+      correlation = calculateCoinBtcCorrelation(
+        cachedData.slice(-100),
+        btcCachedData.slice(-100),
+      ).correlation;
+
+      if (correlation && correlation > MAX_CORRELATION) {
+        return `BTC_CORRELATION:${round(correlation)}`;
+      }
     }
 
     const data =
@@ -95,9 +99,8 @@ export const TrendlineStrategyCreator: StrategyCreator = ({
             interval,
           });
 
-    const prevCandle = data[data.length - 2];
     const lastCandle = data[data.length - 1];
-    const currentPrice = lastCandle.close;
+    let currentPrice = lastCandle.close;
 
     if (!filterByVeryVolatility(data)) {
       return 'VERY_VOLATILITY';
@@ -116,33 +119,25 @@ export const TrendlineStrategyCreator: StrategyCreator = ({
     const isLong = direction === 'LONG';
     const { value: atr } = ATR_PCT(data, 14, 7, 30);
 
-    const limitPrice = isLong
-      ? (Math.min(prevCandle.close, prevCandle.open, lastCandle.low) +
-          currentPrice) /
-        2
-      : (Math.max(prevCandle.close, prevCandle.open, lastCandle.high) +
-          currentPrice) /
-        2;
-
     const stopLossPrice = isLong
-      ? limitPrice * (1 - SL / 100)
-      : limitPrice * (1 + SL / 100);
+      ? currentPrice * (1 - SL / 100)
+      : currentPrice * (1 + SL / 100);
 
     const takeProfitPrice = isLong
-      ? limitPrice * (1 + TP / 100)
-      : limitPrice * (1 - TP / 100);
+      ? currentPrice * (1 + TP / 100)
+      : currentPrice * (1 - TP / 100);
 
-    const qty = MAX_LOSS_VALUE / ((limitPrice * (SL + FEE)) / 100);
+    const qty = MAX_LOSS_VALUE / ((currentPrice * (SL + FEE)) / 100);
 
     let riskRatio: number;
 
     if (isLong) {
-      const reward = takeProfitPrice - limitPrice;
-      const risk = limitPrice - stopLossPrice;
+      const reward = takeProfitPrice - currentPrice;
+      const risk = currentPrice - stopLossPrice;
       riskRatio = risk > 0 ? reward / risk : 0;
     } else {
-      const reward = limitPrice - takeProfitPrice;
-      const risk = stopLossPrice - limitPrice;
+      const reward = currentPrice - takeProfitPrice;
+      const risk = stopLossPrice - currentPrice;
       riskRatio = risk > 0 ? reward / risk : 0;
     }
 
@@ -156,7 +151,7 @@ export const TrendlineStrategyCreator: StrategyCreator = ({
           {
             symbol,
             qty,
-            price: limitPrice,
+            price: currentPrice,
             isLimit: true,
             timestamp: lastCandle.timestamp,
             direction,
@@ -170,11 +165,11 @@ export const TrendlineStrategyCreator: StrategyCreator = ({
           stopLossPrice,
         );
 
-        // const currentPosition = await connector.getPosition(symbol);
+        const currentPosition = await connector.getPosition(symbol);
 
-        // if (currentPosition?.price) {
-        //   currentPrice = currentPosition?.price;
-        // }
+        if (currentPosition?.price) {
+          currentPrice = currentPosition?.price;
+        }
       } catch (err) {
         logger.error('order error: %s %s', symbol, err);
       }
@@ -190,7 +185,7 @@ export const TrendlineStrategyCreator: StrategyCreator = ({
       direction,
       trendLine: bestLine,
       timestamp: lastCandle.timestamp,
-      currentPrice: limitPrice,
+      currentPrice,
       takeProfitPrice,
       stopLossPrice,
       riskRatio: riskRatio,

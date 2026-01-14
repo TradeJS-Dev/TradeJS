@@ -78,10 +78,6 @@ export const TestConnectorCreator: TCC = (connector) => {
     kline,
 
     getResult: async () => {
-      if (ORDER_LOG.length < 1) {
-        throw Error('Order log is empty');
-      }
-
       const orderLogId = uuid();
 
       await setData(redisKeys.cacheOrders(orderLogId), ORDER_LOG);

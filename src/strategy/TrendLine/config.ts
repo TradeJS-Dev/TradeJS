@@ -25,7 +25,7 @@ export const config = {
         enable: true,
         direction: 'LONG',
         TP: 2.9,
-        SL: 0.9,
+        SL: 0.95,
         minRiskRatio: 2,
       },
     },

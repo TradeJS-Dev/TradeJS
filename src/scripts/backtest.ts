@@ -22,6 +22,7 @@ import { update, drawStatInCLI, getTickers } from '@utils/cli';
 import { Interval, TestStat, TestWorkerResult } from '@types';
 
 const MAX_PARALLEL = Math.min(os.cpus().length, 4);
+const COMPLETED_STEP = 10;
 
 args.example(
   ' yarn backtest -t 400 --cacheOnly',
@@ -150,7 +151,10 @@ const backtest = async () => {
 
       results.push(msg as TestWorkerResult);
 
-      if (completedTests % 100 === 0 || completedTests === testSuite.length) {
+      if (
+        completedTests % COMPLETED_STEP === 0 ||
+        completedTests === testSuite.length
+      ) {
         results = sortBestTests(results, flags.top);
 
         const {
@@ -159,7 +163,9 @@ const backtest = async () => {
         } = results[0];
 
         bar.tick(
-          completedTests === testSuite.length ? completedTests % 100 : 100,
+          completedTests === testSuite.length
+            ? completedTests % COMPLETED_STEP
+            : COMPLETED_STEP,
           {
             id: chalk.blue(`#${name}`),
             symbol: chalk.yellow(symbol),
@@ -202,6 +208,10 @@ const finish = async (results: TestWorkerResult[]) => {
     const positionLog = await getData(redisKeys.cachePositions(orderLogId));
 
     const stat = calculateStatsFull(positionLog) as TestStat;
+
+    if (!stat) {
+      continue;
+    }
 
     stat.score = getBacktestScore(stat);
 

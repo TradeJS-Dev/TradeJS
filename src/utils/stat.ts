@@ -366,6 +366,10 @@ export const classifyMetric = (
 };
 
 export const getBacktestScore = (stat: Partial<TestStat>): number => {
+  if (!stat) {
+    return 0;
+  }
+
   if (stat.score !== undefined) {
     return stat.score;
   }
