@@ -29,8 +29,7 @@ export interface KlineRequest {
 }
 
 export interface Tp {
-  profit?: number;
-  price?: number;
+  price: number;
   rate: number;
   done?: boolean;
 }

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useCallback } from 'react';
+import { useEffect, useCallback } from 'react';
 import { useParams } from 'next/navigation';
 import { Box, Flex, ClientOnly } from '@chakra-ui/react';
 import { useFilters, useTickers, useTestList } from '@store';

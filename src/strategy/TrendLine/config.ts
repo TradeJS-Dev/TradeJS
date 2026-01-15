@@ -1,33 +1,33 @@
-import { Interval } from '@types';
+import { Interval, TrendLineOptions } from '@types';
 
 export const TRENDLINE = 'TRENDLINE';
 
 export const config = {
   env: 'development',
   interval: '15' as Interval,
-  minTouches: 4,
-  offset: 3,
   makeOrders: true,
   MAX_LOSS_VALUE: 1,
   MAX_CORRELATION: 0.45,
-  STRATEGY_CONFIG: {
-    highs: {
-      [TRENDLINE]: {
-        enable: false,
-        direction: 'LONG',
-        TP: 4.4,
-        SL: 1.6,
-        minRiskRatio: 2,
-      },
+  TRENDLINE_CONFIG: {
+    minTouches: 4,
+    offset: 3,
+  } as Partial<TrendLineOptions>,
+  HIGHS_CONFIG: {
+    [TRENDLINE]: {
+      enable: false,
+      direction: 'LONG',
+      TP: 4.4,
+      SL: 1.6,
+      minRiskRatio: 2,
     },
-    lows: {
-      [TRENDLINE]: {
-        enable: true,
-        direction: 'LONG',
-        TP: 2.9,
-        SL: 0.95,
-        minRiskRatio: 2,
-      },
+  },
+  LOWS_CONFIG: {
+    [TRENDLINE]: {
+      enable: true,
+      direction: 'LONG',
+      TP: 2.9,
+      SL: 0.95,
+      minRiskRatio: 2,
     },
   },
 } as const;

@@ -476,22 +476,10 @@ export const ByBitConnectorCreator: ConnectorCreator = async (config) => {
 
       const firstTP = TP?.[0];
 
-      let tpNormalized =
-        firstTP && firstTP.rate === 1 && firstTP.price
+      const tpNormalized =
+        firstTP && firstTP.rate === 1
           ? normalizePrice(firstTP.price, isLong ? 'TP_LONG' : 'TP_SHORT', meta)
           : undefined;
-
-      if (!tpNormalized && firstTP && firstTP.rate === 1 && firstTP.profit) {
-        const firstRawTpPrice = isLong
-          ? price * (1 + firstTP.profit)
-          : price * (1 - firstTP.profit);
-
-        tpNormalized = normalizePrice(
-          firstRawTpPrice,
-          isLong ? 'TP_LONG' : 'TP_SHORT',
-          meta,
-        );
-      }
 
       logger.log(
         'info',
@@ -528,7 +516,7 @@ export const ByBitConnectorCreator: ConnectorCreator = async (config) => {
         stopLoss: slNormalized?.priceStr || undefined,
         slTriggerBy: 'LastPrice',
         side: isLong ? 'Buy' : 'Sell',
-        orderType: isLimit ? 'Limit' : 'Limit',
+        orderType: isLimit ? 'Limit' : 'Market',
         qty: orderQtyStr,
         orderFilter: 'Order',
       });
@@ -564,27 +552,8 @@ export const ByBitConnectorCreator: ConnectorCreator = async (config) => {
             continue;
           }
 
-          let rawTpPrice: number;
-
-          if (tp.price) {
-            rawTpPrice = tp.price;
-          } else {
-            if (tp.profit == null) {
-              logger.log(
-                'warn',
-                'tp skipped: no price and no profit %s',
-                toJson(tp, true),
-              );
-              continue;
-            }
-
-            rawTpPrice = isLong
-              ? price * (1 + tp.profit)
-              : price * (1 - tp.profit);
-          }
-
           const tpPriceNorm = normalizePrice(
-            rawTpPrice,
+            tp.price,
             isLong ? 'TP_LONG' : 'TP_SHORT',
             meta,
           );

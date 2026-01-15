@@ -19,7 +19,7 @@ export const TTL_3M = 7_800_000;
 
 export const TESTS_TOP_LIMIT = 40;
 export const TESTS_LIMIT = 100_000;
-export const TESTS_ORDERS_MIN_LIMIT = 40;
+export const TESTS_ORDERS_MIN_LIMIT = 3;
 
 export const MARKET_CATEGORY = 'linear';
 export const KLINE_CONCURRENCY_LIMIT = NODE_ENV === 'production' ? 5 : 10;

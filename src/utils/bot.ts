@@ -68,9 +68,6 @@ export const runBot = async () => {
           interval: '15',
         });
 
-        data.pop();
-        btcData.pop();
-
         const candle = data.pop();
         const btcCandle = btcData.pop();
 

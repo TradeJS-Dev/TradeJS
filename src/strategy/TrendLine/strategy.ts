@@ -1,12 +1,12 @@
 import _ from 'lodash';
 import { SIGNALS_PRELOAD_DAYS } from '@constants';
-import { findTrendlinesByLows, findTrendlinesByHighs } from '@utils/trendLine';
 import { getTimestamp } from '@utils/timestamp';
 import { calculateCoinBtcCorrelation } from '@utils/correlation';
 import { uuid } from '@utils/uuid';
 import { ATR_PCT } from '@utils/indicators';
 import { logger } from '@utils/logger';
 import { round } from '@utils/math';
+import { createTrendlineEngine } from '@utils/trendLineEngine';
 import { filterByVeryVolatility } from './filters';
 import { config as DEFAULT_CONFIG, TRENDLINE } from './config';
 import {
@@ -29,37 +29,41 @@ export const TrendlineStrategyCreator: StrategyCreator = ({
   const config = {
     ...DEFAULT_CONFIG,
     ...baseConfig,
-  } as StrategyConfig & typeof DEFAULT_CONFIG;
+  } as typeof DEFAULT_CONFIG;
 
   const {
     env,
-    offset,
-    minTouches,
     interval,
     makeOrders,
+    TRENDLINE_CONFIG,
     MAX_CORRELATION,
     MAX_LOSS_VALUE,
-    STRATEGY_CONFIG,
+    HIGHS_CONFIG,
+    LOWS_CONFIG,
   } = config;
+
+  const TRENDLINE_OPTIONS: Partial<TrendLineOptions> = {
+    bestLines: 1,
+    capture: true,
+    ...TRENDLINE_CONFIG,
+  };
+
+  const getLowsTrendlines = createTrendlineEngine(cachedData, {
+    mode: 'lows',
+    ...TRENDLINE_OPTIONS,
+  });
+
+  const getHighsTrendlines = createTrendlineEngine(cachedData, {
+    mode: 'lows',
+    ...TRENDLINE_OPTIONS,
+  });
 
   return async (candle, btcCandle) => {
     cachedData.push(candle);
     btcCachedData.push(btcCandle);
 
-    const TRENDLINE_OPTIONS: Partial<TrendLineOptions> = {
-      bestLines: 1,
-      capture: true,
-      minTouches,
-      offset,
-    };
-
-    let lowsTrendlines = findTrendlinesByLows(cachedData, {
-      ...TRENDLINE_OPTIONS,
-    });
-
-    let highsTrendlines = findTrendlinesByHighs(cachedData, {
-      ...TRENDLINE_OPTIONS,
-    });
+    const lowsTrendlines = getLowsTrendlines.next(candle);
+    const highsTrendlines = getHighsTrendlines.next(candle);
 
     const bestLine =
       lowsTrendlines.length > 0 ? lowsTrendlines[0] : highsTrendlines[0];
@@ -100,7 +104,8 @@ export const TrendlineStrategyCreator: StrategyCreator = ({
           });
 
     const lastCandle = data[data.length - 1];
-    let currentPrice = lastCandle.close;
+    let currentPrice =
+      env === 'development' ? lastCandle.open : lastCandle.close;
 
     if (!filterByVeryVolatility(data)) {
       return 'VERY_VOLATILITY';
@@ -110,7 +115,7 @@ export const TrendlineStrategyCreator: StrategyCreator = ({
 
     const strategy = TRENDLINE;
     const { direction, TP, SL, minRiskRatio, enable } =
-      STRATEGY_CONFIG[mode][strategy];
+      mode === 'highs' ? HIGHS_CONFIG[strategy] : LOWS_CONFIG[strategy];
 
     if (!enable) {
       return 'STRATEGY_DISABLED';

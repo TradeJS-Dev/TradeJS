@@ -22,7 +22,6 @@ import { update, drawStatInCLI, getTickers } from '@utils/cli';
 import { Interval, TestStat, TestWorkerResult } from '@types';
 
 const MAX_PARALLEL = Math.min(os.cpus().length, 4);
-const COMPLETED_STEP = 10;
 
 args.example(
   ' yarn backtest -t 400 --cacheOnly',
@@ -40,10 +39,12 @@ args.option(['u', 'updateOnly'], 'Only update tickers history', false);
 args.option(['C', 'cacheOnly'], 'Do not update tickers history', false);
 args.option(['c', 'config'], 'Backtest config', 'breakout');
 args.option(['L', 'showTickersList'], 'Just show only ticker list', false);
+args.option(['S', 'progressStep'], 'Progress step', 100);
 args.option(['U', 'user'], 'Use user confg', 'root');
 
 const flags = args.parse(process.argv);
 const interval = flags.timeframe.toString() as Interval;
+const progressStep = flags.progressStep;
 
 const HEADERS = [
   chalk.blue('ID'),
@@ -53,10 +54,8 @@ const HEADERS = [
   chalk.cyan('WIN/LOSS (%)'),
   chalk.cyan('RISK'),
   chalk.cyan('SHARPE'),
-  chalk.cyan('CAGR'),
   chalk.cyan('EXPOSURE (%)'),
   chalk.cyan('MAX DRAWDOWN (%)'),
-  chalk.cyan('SCORE'),
 ];
 
 let successTests = 0;
@@ -152,7 +151,7 @@ const backtest = async () => {
       results.push(msg as TestWorkerResult);
 
       if (
-        completedTests % COMPLETED_STEP === 0 ||
+        completedTests % progressStep === 0 ||
         completedTests === testSuite.length
       ) {
         results = sortBestTests(results, flags.top);
@@ -162,14 +161,17 @@ const backtest = async () => {
           stat: { amount },
         } = results[0];
 
+        const amountStr = `${(amount || 0).toFixed(2)}$`;
+
         bar.tick(
           completedTests === testSuite.length
-            ? completedTests % COMPLETED_STEP
-            : COMPLETED_STEP,
+            ? completedTests % progressStep
+            : progressStep,
           {
             id: chalk.blue(`#${name}`),
             symbol: chalk.yellow(symbol),
-            amount: chalk.green(`${(amount || 0).toFixed(2)}$`),
+            amount:
+              amount > 100 ? chalk.green(amountStr) : chalk.red(amountStr),
           },
         );
       }
@@ -236,10 +238,8 @@ const finish = async (results: TestWorkerResult[]) => {
         'winRate',
         'riskRewardRatio',
         'sharpeRatio',
-        'cagr',
         'exposure',
         'maxDrawdown',
-        'score',
       ]),
     ]);
   }

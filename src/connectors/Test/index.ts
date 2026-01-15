@@ -109,16 +109,6 @@ export const TestConnectorCreator: TCC = (connector) => {
 
         let targetPrice = tp.price;
 
-        if (!targetPrice) {
-          if (!tp.profit) {
-            continue;
-          }
-
-          targetPrice = isLong
-            ? entryPrice * (1 + tp.profit)
-            : entryPrice * (1 - tp.profit);
-        }
-
         const reached = isLong ? high >= targetPrice : low <= targetPrice;
 
         if (reached) {

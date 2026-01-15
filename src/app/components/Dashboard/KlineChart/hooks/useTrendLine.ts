@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
 import _ from 'lodash';
 import { Chart, registerOverlay } from 'klinecharts';
@@ -13,35 +13,32 @@ interface ExtendData {
   mode: TrendLine['mode'];
 }
 
-/** Максимально отдаляем график и добавляем отступ справа от последней свечи */
 const fitKeepRightZoom = (chart: Chart, lastDataTsMs: number) => {
   if (!Number.isFinite(lastDataTsMs)) return;
 
   const size = chart.getSize?.();
   const width = size?.width ?? 0;
+
   if (!width) return;
 
-  const MAX_STEPS = 15; // количество шагов отдаления
-  const SCALE = 0.85; // коэффициент zoom-out (<1 — отдаляемся)
-  const RIGHT_MARGIN_RATIO = 0.1; // 10% ширины экрана справа
+  const MAX_STEPS = 15;
+  const SCALE = 0.85;
+  const RIGHT_MARGIN_RATIO = 0.1;
 
-  // 1) прокрутка к последней свече (правый край)
   chart.scrollToTimestamp(lastDataTsMs);
 
-  // 2) максимальный zoom-out вокруг правого края
   for (let i = 0; i < MAX_STEPS; i++) {
     chart.zoomAtTimestamp(SCALE, lastDataTsMs);
   }
 
-  // 3) добавляем отступ справа в пикселях
   const rightOffsetPx = width * RIGHT_MARGIN_RATIO;
 
-  // В типах Chart может не быть этого метода, поэтому через any + optional chaining
-  (chart as any).setOffsetRightDistance?.(rightOffsetPx);
+  chart.setOffsetRightDistance?.(rightOffsetPx);
 };
 
 export const useTrendLine = (chart: Chart | null, enabled: boolean) => {
   const [signal, setSignal] = useState<Signal | null>(null);
+  const drawedRef = useRef(false);
   const searchParams = useSearchParams();
   const signalId = searchParams.get('signalId');
   const autoZoom = Boolean(searchParams.get('autoZoom')) ?? false;
@@ -105,7 +102,8 @@ export const useTrendLine = (chart: Chart | null, enabled: boolean) => {
   }, []);
 
   useEffect(() => {
-    if (!chart || !enabled || !data || _.isEmpty(data)) return;
+    if (!chart || !enabled || !data || _.isEmpty(data) || drawedRef.current)
+      return;
 
     const lastDataTsMs = toMs(data[data.length - 1].timestamp);
 
@@ -126,6 +124,10 @@ export const useTrendLine = (chart: Chart | null, enabled: boolean) => {
         : findTrendlinesByHighs(data, { minTouches: 4 });
 
     const lines = [...lowLines, ...highLines];
+
+    if (!lines) {
+      return;
+    }
 
     for (const line of lines) {
       const points = [...line.points, ...line.touches];
@@ -148,13 +150,14 @@ export const useTrendLine = (chart: Chart | null, enabled: boolean) => {
         points: points,
         zLevel: 12,
       });
+
+      drawedRef.current = true;
     }
 
     if (autoZoom && Number.isFinite(lastDataTsMs)) {
       fitKeepRightZoom(chart, lastDataTsMs);
     }
 
-    // cleanup
     return () => {
       chart.removeOverlay({ name: 'TrendLine' });
       chart.removeOverlay({ name: 'TrendLinePoints' });

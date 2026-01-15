@@ -158,7 +158,10 @@ export const BreakoutStrategyCreator: StrategyCreator = ({
       if (shouldOpenLong) {
         await connector.placeOrder(
           { symbol, qty, price, timestamp, direction: 'LONG' },
-          config.TP_LONG,
+          config.TP_LONG.map(({ rate, profit }) => ({
+            rate,
+            price: price * (1 + profit),
+          })),
           slPrice,
         );
         return 'OPEN_LONG';
@@ -167,7 +170,10 @@ export const BreakoutStrategyCreator: StrategyCreator = ({
       if (shouldOpenShort) {
         await connector.placeOrder(
           { symbol, qty, price, timestamp, direction: 'SHORT' },
-          config.TP_SHORT,
+          config.TP_SHORT.map(({ rate, profit }) => ({
+            rate,
+            price: price * (1 - profit),
+          })),
           slPrice,
         );
         return 'OPEN_SHORT';
