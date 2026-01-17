@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import _ from 'lodash';
 import { Chart, registerOverlay } from 'klinecharts';
@@ -38,7 +38,6 @@ const fitKeepRightZoom = (chart: Chart, lastDataTsMs: number) => {
 
 export const useTrendLine = (chart: Chart | null, enabled: boolean) => {
   const [signal, setSignal] = useState<Signal | null>(null);
-  const drawedRef = useRef(false);
   const searchParams = useSearchParams();
   const signalId = searchParams.get('signalId');
   const autoZoom = Boolean(searchParams.get('autoZoom')) ?? false;
@@ -102,8 +101,7 @@ export const useTrendLine = (chart: Chart | null, enabled: boolean) => {
   }, []);
 
   useEffect(() => {
-    if (!chart || !enabled || !data || _.isEmpty(data) || drawedRef.current)
-      return;
+    if (!chart || !enabled || !data || _.isEmpty(data)) return;
 
     const lastDataTsMs = toMs(data[data.length - 1].timestamp);
 
@@ -150,8 +148,6 @@ export const useTrendLine = (chart: Chart | null, enabled: boolean) => {
         points: points,
         zLevel: 12,
       });
-
-      drawedRef.current = true;
     }
 
     if (autoZoom && Number.isFinite(lastDataTsMs)) {
