@@ -15,6 +15,7 @@ import { uuid } from '@utils/uuid';
 import { round } from '@utils/math';
 
 const FEE = 0.005;
+const INITIAL_AMOUNT = 100;
 
 export const TestConnectorCreator: TCC = (connector) => {
   let state = {};
@@ -86,6 +87,8 @@ export const TestConnectorCreator: TCC = (connector) => {
       return {
         stat: {
           amount: AMOUNT,
+          profit: AMOUNT - INITIAL_AMOUNT,
+          orders: POSITION_LOG.length,
         },
         orderLogId,
       };

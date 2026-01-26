@@ -33,6 +33,30 @@ export interface Signal {
   interval: Interval;
   strategy: string;
   direction: Direction;
+  timestamp: number;
+  figures: {
+    trendLine?: TrendLine;
+  };
+  prices: {
+    currentPrice: number;
+    takeProfitPrice: number;
+    stopLossPrice: number;
+    riskRatio: number;
+  };
+  indicators: {
+    touches?: number;
+    distance?: number;
+    atr?: number;
+    correlation?: number;
+  };
+}
+
+export interface DeprecatedSignal {
+  signalId: string;
+  symbol: string;
+  interval: Interval;
+  strategy: string;
+  direction: Direction;
   trendLine: TrendLine;
   currentPrice: number;
   takeProfitPrice: number;

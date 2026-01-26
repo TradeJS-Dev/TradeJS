@@ -19,6 +19,7 @@ import { toJson } from '@utils/toJson';
 import { uuid } from '@utils/uuid';
 import { createTestSuite } from '@utils/grid';
 import { update, drawStatInCLI, getTickers } from '@utils/cli';
+import { filterGoodTests } from '@utils/tests';
 import { Interval, TestStat, TestWorkerResult } from '@types';
 
 const MAX_PARALLEL = Math.min(os.cpus().length, 4);
@@ -46,7 +47,7 @@ const flags = args.parse(process.argv);
 const interval = flags.timeframe.toString() as Interval;
 const progressStep = flags.progressStep;
 
-const HEADERS = [
+const HEADERS_RESULTS = [
   chalk.blue('ID'),
   chalk.yellow('SYMBOL'),
   chalk.cyan('PROFIT'),
@@ -58,10 +59,31 @@ const HEADERS = [
   chalk.cyan('MAX DRAWDOWN (%)'),
 ];
 
+const HEADERS_RESULTS_BY_TICKERS = [
+  chalk.blue('ID'),
+  chalk.yellow('SYMBOL'),
+  chalk.cyan('PROFIT'),
+  chalk.cyan('ORDERS'),
+];
+
 let successTests = 0;
 let errorTests = 0;
+const resultsByTickers = new Map<
+  string,
+  {
+    testName: string;
+    profit: number;
+    orders: number;
+  }
+>();
 
 const userName = flags.user;
+
+const createListIt = () =>
+  new ListIt({
+    autoAlign: true,
+    headerUnderline: true,
+  });
 
 const backtest = async () => {
   const byBitConnector = await connectors.ByBit({
@@ -149,6 +171,19 @@ const backtest = async () => {
       }
 
       results.push(msg as TestWorkerResult);
+      const goodResults = filterGoodTests(results);
+
+      goodResults.forEach((res) => {
+        const prevValue = resultsByTickers.get(res.test.symbol);
+
+        if (!prevValue || prevValue.profit < res.stat.profit) {
+          resultsByTickers.set(res.test.symbol, {
+            orders: res.stat.orders,
+            profit: res.stat.profit,
+            testName: res.test.name,
+          });
+        }
+      });
 
       if (
         completedTests % progressStep === 0 ||
@@ -158,10 +193,10 @@ const backtest = async () => {
 
         const {
           test: { symbol, name },
-          stat: { amount },
+          stat: { profit },
         } = results[0];
 
-        const amountStr = `${(amount || 0).toFixed(2)}$`;
+        const profitStr = `${(profit || 0).toFixed(2)}$`;
 
         bar.tick(
           completedTests === testSuite.length
@@ -170,8 +205,7 @@ const backtest = async () => {
           {
             id: chalk.blue(`#${name}`),
             symbol: chalk.yellow(symbol),
-            amount:
-              amount > 100 ? chalk.green(amountStr) : chalk.red(amountStr),
+            amount: profit > 0 ? chalk.green(profitStr) : chalk.red(profitStr),
           },
         );
       }
@@ -194,11 +228,6 @@ const backtest = async () => {
 };
 
 const finish = async (results: TestWorkerResult[]) => {
-  const listit = new ListIt({
-    autoAlign: true,
-    headerUnderline: true,
-  });
-
   const colorizedResults = new Array<string[]>();
 
   for await (const result of results) {
@@ -245,24 +274,43 @@ const finish = async (results: TestWorkerResult[]) => {
   }
 
   console.log('');
+  console.log('RESULTS:');
+  console.log(
+    createListIt().setHeaderRow(HEADERS_RESULTS).d(colorizedResults).toString(),
+  );
   console.log('');
-  console.log(listit.setHeaderRow(HEADERS).d(colorizedResults).toString());
+
+  console.log('');
+  console.log('RESULTS BY TICKERS:');
+  console.log(
+    createListIt()
+      .setHeaderRow(HEADERS_RESULTS_BY_TICKERS)
+      .d(
+        [...resultsByTickers].map(([symbol, value]) => [
+          value.testName,
+          symbol,
+          value.profit,
+          value.orders,
+        ]),
+      )
+      .toString(),
+  );
   console.log('');
 
   const bestConfig = results[0]?.test.strategyConfig;
-  console.log(chalk.gray('best config:'));
+  console.log(chalk.gray('BEST CONFIG:'));
   console.log(chalk.green(toJson(bestConfig, true)));
   console.log('');
 
   const mergedConfig = mergeConfigs(
     results.map(({ test: { strategyConfig } }) => strategyConfig),
   );
-  console.log(chalk.gray('merged config:'));
+  console.log(chalk.gray('MERGED CONFIG:'));
   console.log(chalk.blue(toJson(mergedConfig, true)));
   console.log('');
 
-  console.log(`${chalk.green('success')}: ${successTests}`);
-  console.log(`${chalk.red('errors')}: ${errorTests}`);
+  console.log(`${chalk.green('SUCCESS TESTS')}: ${successTests}`);
+  console.log(`${chalk.red('ERRORS')}: ${errorTests}`);
   console.log('');
 
   process.exit();

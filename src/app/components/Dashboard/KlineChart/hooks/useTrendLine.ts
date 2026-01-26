@@ -5,7 +5,7 @@ import { useSearchParams } from 'next/navigation';
 import _ from 'lodash';
 import { Chart, registerOverlay } from 'klinecharts';
 import { getSignal } from '@actions/signal';
-import { findTrendlinesByLows, findTrendlinesByHighs } from '@utils/trendLine';
+import { createTrendlineEngine } from '@utils/trendLineEngine';
 import { toMs } from '@utils/timestamp';
 import { Signal, TrendLine } from '@types';
 
@@ -107,19 +107,22 @@ export const useTrendLine = (chart: Chart | null, enabled: boolean) => {
 
     const currentSymbol = chart.getSymbol()?.ticker;
 
+    const buildLinesForMode = (mode: TrendLine['mode']) =>
+      createTrendlineEngine(data, { mode, minTouches: 4 }).getLines();
+
     const lowLines: TrendLine[] =
       signalId && signal?.symbol === currentSymbol
-        ? signal?.trendLine?.mode === 'lows'
-          ? [signal.trendLine]
+        ? signal?.figures?.trendLine?.mode === 'lows'
+          ? [signal.figures.trendLine]
           : []
-        : findTrendlinesByLows(data, { minTouches: 4 });
+        : buildLinesForMode('lows');
 
     const highLines: TrendLine[] =
       signalId && signal?.symbol === currentSymbol
-        ? signal?.trendLine?.mode === 'highs'
-          ? [signal.trendLine]
+        ? signal?.figures?.trendLine?.mode === 'highs'
+          ? [signal.figures.trendLine]
           : []
-        : findTrendlinesByHighs(data, { minTouches: 4 });
+        : buildLinesForMode('highs');
 
     const lines = [...lowLines, ...highLines];
 

@@ -11,15 +11,9 @@ export const formatMessage = (signal: Signal): string => {
   const {
     symbol,
     direction,
-    currentPrice,
-    takeProfitPrice,
-    stopLossPrice,
-    distance,
-    riskRatio,
-    correlation,
     strategy,
-    touches,
-    atr,
+    prices: { currentPrice, takeProfitPrice, stopLossPrice, riskRatio },
+    indicators: { distance, correlation, touches, atr },
   } = signal;
 
   try {
@@ -60,11 +54,22 @@ export const formatMessage = (signal: Signal): string => {
       lines.push('');
 
       lines.push(`Strategy: ${strategy}`);
-      lines.push(`Points: ${touches}`);
 
-      lines.push(`ATR: ${atr}`);
-      lines.push(`Distance: ${distance}`);
-      lines.push(`BTC correlation: ${correlation}`);
+      if (touches) {
+        lines.push(`Points: ${touches}`);
+      }
+
+      if (atr) {
+        lines.push(`ATR: ${atr}`);
+      }
+
+      if (distance) {
+        lines.push(`Distance: ${distance}`);
+      }
+
+      if (correlation) {
+        lines.push(`BTC correlation: ${correlation}`);
+      }
 
       const prices = formatPrices();
 

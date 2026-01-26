@@ -54,6 +54,8 @@ export interface TestStat extends Metrics {
 
 export interface MinimalStat {
   amount: number;
+  profit: number;
+  orders: number;
 }
 
 export interface TestingBoxResult {

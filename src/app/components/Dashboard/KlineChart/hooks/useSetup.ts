@@ -95,12 +95,14 @@ export const useSetup = (chart: Chart | null, enabled: boolean) => {
   const setupPoints = useMemo(() => {
     if (!signal) return null;
 
-    const startTsMs = toMs(signal.timestamp);
+    const { timestamp, prices } = signal;
+
+    const startTsMs = toMs(timestamp);
     const endTsMs = startTsMs + FALLBACK_WIDTH_MS;
 
-    const start: Point = { timestamp: startTsMs, value: signal.currentPrice };
-    const tpEnd: Point = { timestamp: endTsMs, value: signal.takeProfitPrice };
-    const slEnd: Point = { timestamp: endTsMs, value: signal.stopLossPrice };
+    const start: Point = { timestamp: startTsMs, value: prices.currentPrice };
+    const tpEnd: Point = { timestamp: endTsMs, value: prices.takeProfitPrice };
+    const slEnd: Point = { timestamp: endTsMs, value: prices.stopLossPrice };
 
     return { start, tpEnd, slEnd };
   }, [signal, data.length]);

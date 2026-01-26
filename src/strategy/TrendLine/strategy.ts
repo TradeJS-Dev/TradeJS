@@ -9,12 +9,7 @@ import { round } from '@utils/math';
 import { createTrendlineEngine } from '@utils/trendLineEngine';
 import { filterByVeryVolatility } from './filters';
 import { config as DEFAULT_CONFIG, TRENDLINE } from './config';
-import {
-  Signal,
-  TrendLineOptions,
-  StrategyCreator,
-  StrategyConfig,
-} from '@types';
+import { Signal, TrendLineOptions, StrategyCreator } from '@types';
 
 const PRELOAD_START = getTimestamp(SIGNALS_PRELOAD_DAYS);
 const FEE = 0.02;
@@ -188,16 +183,22 @@ export const TrendlineStrategyCreator: StrategyCreator = ({
       symbol,
       interval,
       direction,
-      trendLine: bestLine,
       timestamp: lastCandle.timestamp,
-      currentPrice,
-      takeProfitPrice,
-      stopLossPrice,
-      riskRatio: riskRatio,
-      correlation: correlation || 0,
-      touches: bestLine.touches.length + 2,
-      distance: bestLine.distance,
-      atr,
+      figures: {
+        trendLine: bestLine,
+      },
+      prices: {
+        currentPrice,
+        takeProfitPrice,
+        stopLossPrice,
+        riskRatio: riskRatio,
+      },
+      indicators: {
+        correlation: correlation || 0,
+        touches: bestLine.touches.length + 2,
+        distance: bestLine.distance,
+        atr,
+      },
     };
 
     return signal;
