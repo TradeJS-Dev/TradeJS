@@ -10,7 +10,7 @@ import {
   Order,
   OrderType,
 } from './trade';
-import { Signal } from './signals';
+import { Signal } from './trade';
 
 export type Strategy = (
   candle: KlineChartItem,

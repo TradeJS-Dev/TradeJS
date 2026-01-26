@@ -3,9 +3,9 @@ import { Interval, TrendLineOptions } from '@types';
 export const TRENDLINE = 'TRENDLINE';
 
 export const config = {
-  env: 'development',
-  interval: '15' as Interval,
-  makeOrders: true,
+  ENV: 'development',
+  INTERVAL: '15' as Interval,
+  MAKE_ORDERS: true,
   MAX_LOSS_VALUE: 1,
   MAX_CORRELATION: 0.45,
   TRENDLINE_CONFIG: {

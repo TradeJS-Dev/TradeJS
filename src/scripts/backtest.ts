@@ -128,10 +128,10 @@ const backtest = async () => {
 
   console.log('');
   const bar = new ProgressBar(
-    ':current/:total [:bar][:percent] :id :symbol :amount :eta(s)',
+    ':current/:total [:bar][:percent] :symbol :amount :eta(s)',
     {
       total: testSuite.length,
-      width: 40,
+      width: 20,
     },
   );
 
@@ -203,7 +203,6 @@ const backtest = async () => {
             ? completedTests % progressStep
             : progressStep,
           {
-            id: chalk.blue(`#${name}`),
             symbol: chalk.yellow(symbol),
             amount: profit > 0 ? chalk.green(profitStr) : chalk.red(profitStr),
           },

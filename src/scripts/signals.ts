@@ -71,9 +71,9 @@ const findSignals = async (symbol: string, connector: Connector) => {
     data: cachedData,
     btcData: btcCachedData,
     config: {
-      env: 'production',
-      interval,
-      makeOrders: flags.makeOrders,
+      ENV: 'production',
+      INTERVAL: interval,
+      MAKE_ORDERS: flags.makeOrders,
       TRENDLINE_CONFIG: {
         minTouches,
         offset,

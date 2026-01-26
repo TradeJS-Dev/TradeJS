@@ -6,7 +6,7 @@ const { NODE_ENV } = process.env;
 export const PRELOAD_DAYS = 210;
 export const SIGNALS_PRELOAD_DAYS = 60;
 export const BACKTEST_PRELOAD_DAYS = 180;
-export const DASHBOARD_PRELOAD_DAYS = 90;
+export const DASHBOARD_PRELOAD_DAYS = 180;
 export const BOT_PRELOAD_DAYS = 180;
 export const PRELOAD_FALLBACK_DAYS = 180;
 

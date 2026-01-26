@@ -27,9 +27,9 @@ export const TrendlineStrategyCreator: StrategyCreator = ({
   } as typeof DEFAULT_CONFIG;
 
   const {
-    env,
-    interval,
-    makeOrders,
+    ENV,
+    INTERVAL,
+    MAKE_ORDERS,
     TRENDLINE_CONFIG,
     MAX_CORRELATION,
     MAX_LOSS_VALUE,
@@ -53,6 +53,9 @@ export const TrendlineStrategyCreator: StrategyCreator = ({
     ...TRENDLINE_OPTIONS,
   });
 
+  const ONE_DAY_MS = 86_400_000;
+  let lastTradeTimestamp: number | null = null;
+
   return async (candle, btcCandle) => {
     cachedData.push(candle);
     btcCachedData.push(btcCandle);
@@ -74,9 +77,17 @@ export const TrendlineStrategyCreator: StrategyCreator = ({
       return 'POSITION_EXISTS';
     }
 
+    if (
+      ENV === 'development' &&
+      lastTradeTimestamp &&
+      candle.timestamp <= lastTradeTimestamp + ONE_DAY_MS
+    ) {
+      return 'DEV_TRADE_COOLDOWN';
+    }
+
     let correlation = null;
 
-    if (env !== 'development') {
+    if (ENV !== 'development') {
       correlation = calculateCoinBtcCorrelation(
         cachedData.slice(-100),
         btcCachedData.slice(-100),
@@ -88,19 +99,19 @@ export const TrendlineStrategyCreator: StrategyCreator = ({
     }
 
     const data =
-      env === 'development'
+      ENV === 'development'
         ? cachedData
         : await connector.kline({
             symbol,
             start: PRELOAD_START,
             end: getTimestamp(),
             cacheOnly: false,
-            interval,
+            interval: INTERVAL,
           });
 
     const lastCandle = data[data.length - 1];
     let currentPrice =
-      env === 'development' ? lastCandle.open : lastCandle.close;
+      ENV === 'development' ? lastCandle.open : lastCandle.close;
 
     if (!filterByVeryVolatility(data)) {
       return 'VERY_VOLATILITY';
@@ -145,43 +156,13 @@ export const TrendlineStrategyCreator: StrategyCreator = ({
       return `RISK_RATIO:${round(riskRatio)}`;
     }
 
-    if (makeOrders) {
-      try {
-        await connector.placeOrder(
-          {
-            symbol,
-            qty,
-            price: currentPrice,
-            isLimit: false,
-            timestamp: lastCandle.timestamp,
-            direction,
-          },
-          [
-            {
-              rate: 1,
-              price: takeProfitPrice,
-            },
-          ],
-          stopLossPrice,
-        );
-
-        const currentPosition = await connector.getPosition(symbol);
-
-        if (currentPosition?.price) {
-          currentPrice = currentPosition?.price;
-        }
-      } catch (err) {
-        logger.error('order error: %s %s', symbol, err);
-      }
-    }
-
     const signalId = uuid();
 
     const signal: Signal = {
       signalId,
       strategy,
       symbol,
-      interval,
+      interval: INTERVAL,
       direction,
       timestamp: lastCandle.timestamp,
       figures: {
@@ -200,6 +181,42 @@ export const TrendlineStrategyCreator: StrategyCreator = ({
         atr,
       },
     };
+
+    if (MAKE_ORDERS) {
+      try {
+        await connector.placeOrder(
+          {
+            symbol,
+            qty,
+            price: currentPrice,
+            isLimit: false,
+            timestamp: lastCandle.timestamp,
+            direction,
+            signal,
+          },
+          [
+            {
+              rate: 1,
+              price: takeProfitPrice,
+            },
+          ],
+          stopLossPrice,
+        );
+
+        const currentPosition = await connector.getPosition(symbol);
+
+        if (currentPosition?.price) {
+          currentPrice = currentPosition?.price;
+          signal.prices.currentPrice = currentPrice;
+        }
+      } catch (err) {
+        logger.error('order error: %s %s', symbol, err);
+      }
+    }
+
+    if (ENV === 'development') {
+      lastTradeTimestamp = lastCandle.timestamp;
+    }
 
     return signal;
   };
