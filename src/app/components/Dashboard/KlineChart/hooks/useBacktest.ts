@@ -3,7 +3,13 @@
 import { useEffect, useState } from 'react';
 import _ from 'lodash';
 import { registerOverlay, registerIndicator, Chart } from 'klinecharts';
-import { KlineChartItem, OrderLogData } from '@types';
+import {
+  KlineChartItem,
+  OrderLogData,
+  Signal,
+  DeprecatedSignal,
+  TrendLine,
+} from '@types';
 import { useBacktest as useBacktestStore } from '@store';
 import '../figures';
 
@@ -14,6 +20,10 @@ const darkGreen = '#365314';
 const orange = '#fb923c';
 
 type MarkerShape = 'RECT' | 'DIAMOND' | 'STAR' | 'CIRCLE';
+
+interface TrendLineExtendData {
+  mode: TrendLine['mode'];
+}
 
 interface MarkerMeta {
   shape: MarkerShape;
@@ -172,6 +182,100 @@ const buildIndicatorData = (
       profit: profitByIndex[i],
       markers: markersByTs[ts] ?? [],
     };
+  }
+
+  return result;
+};
+
+let trendLineOverlaysRegistered = false;
+
+const ensureTrendLineOverlaysRegistered = () => {
+  if (trendLineOverlaysRegistered) return;
+
+  registerOverlay({
+    name: 'TrendLine',
+    totalStep: 2,
+    needDefaultPointFigure: false,
+    needDefaultXAxisFigure: false,
+    needDefaultYAxisFigure: false,
+    createPointFigures: ({ coordinates, overlay }) => {
+      const { mode } = overlay.extendData as TrendLineExtendData;
+      const figures: any[] = [];
+      const color = mode === 'lows' ? '#facc15' : '#fb923c';
+
+      if (coordinates.length === 2) {
+        figures.push({
+          type: 'line',
+          attrs: { coordinates: [coordinates[0], coordinates[1]] },
+          styles: { color, size: 2, style: 'solid' },
+        });
+      }
+
+      return figures;
+    },
+  });
+
+  registerOverlay({
+    name: 'TrendLinePoints',
+    needDefaultPointFigure: true,
+    needDefaultXAxisFigure: false,
+    needDefaultYAxisFigure: false,
+    createPointFigures: ({ coordinates }) => {
+      const figures: any[] = [];
+
+      coordinates.forEach(({ x, y }, i) => {
+        figures.push({
+          type: 'circle',
+          key: `pt_${i}`,
+          attrs: { x, y, r: 4 },
+          styles: {
+            style: 'fill',
+            color: '#ef4444',
+          },
+          ignoreEvent: true,
+        });
+      });
+
+      return figures;
+    },
+  });
+
+  trendLineOverlaysRegistered = true;
+};
+
+const collectTrendLinesFromOrderLog = (
+  events: OrderLogData,
+): Array<{ trendLine: TrendLine; signalId?: string; index: number }> => {
+  const result: Array<{
+    trendLine: TrendLine;
+    signalId?: string;
+    index: number;
+  }> = [];
+  const seenSignalIds = new Set<string>();
+
+  for (let index = 0; index < events.length; index++) {
+    const event = events[index];
+    if (!event.type?.startsWith('OPEN_')) continue;
+    const signal = event.signal as Signal | DeprecatedSignal | undefined;
+    if (!signal) continue;
+
+    const trendLine =
+      (signal as DeprecatedSignal | undefined)?.trendLine ||
+      (signal as Signal | undefined)?.figures?.trendLine;
+
+    if (!trendLine || !trendLine.points || trendLine.points.length < 2) {
+      continue;
+    }
+
+    const signalId = (signal as Signal | DeprecatedSignal | undefined)
+      ?.signalId;
+
+    if (signalId) {
+      if (seenSignalIds.has(signalId)) continue;
+      seenSignalIds.add(signalId);
+    }
+
+    result.push({ trendLine, signalId, index });
   }
 
   return result;
@@ -336,6 +440,8 @@ export const useBacktest = (chart: Chart | null, id: string | undefined) => {
     );
 
     const { points, groupedExtendData } = groupMarkersForOverlay(markersFlat);
+    const trendLines = collectTrendLinesFromOrderLog(backtest);
+    const trendLineOverlayIds: string[] = [];
 
     if (points.length > 0) {
       chart.createOverlay({
@@ -345,6 +451,53 @@ export const useBacktest = (chart: Chart | null, id: string | undefined) => {
       });
     }
 
+    if (trendLines.length > 0) {
+      ensureTrendLineOverlaysRegistered();
+
+      for (let index = 0; index < trendLines.length; index++) {
+        const { trendLine, signalId, index: eventIndex } = trendLines[index];
+        const overlayId = `backtest-trendline-${
+          signalId ?? `idx-${eventIndex}`
+        }-${trendLine.id}`;
+        trendLineOverlayIds.push(overlayId);
+
+        const pointsSorted = [...(trendLine.points || [])].sort(
+          (left, right) => left.timestamp - right.timestamp,
+        );
+        const touchesSorted = [...(trendLine.touches || [])].sort(
+          (left, right) => left.timestamp - right.timestamp,
+        );
+
+        if (pointsSorted.length < 2) {
+          continue;
+        }
+
+        const linePoints = [
+          pointsSorted[0],
+          pointsSorted[pointsSorted.length - 1],
+        ];
+
+        const extendData: TrendLineExtendData = {
+          mode: trendLine.mode,
+        };
+
+        chart.createOverlay({
+          name: 'TrendLine',
+          id: overlayId,
+          points: linePoints,
+          zLevel: 10,
+          extendData,
+        });
+
+        chart.createOverlay({
+          name: 'TrendLinePoints',
+          id: `${overlayId}-points`,
+          points: [...pointsSorted, ...touchesSorted],
+          zLevel: 12,
+        });
+      }
+    }
+
     const latestByTs = buildIndicatorData(candles, markersByTs, profitByIndex);
 
     createBacktestProfit(chart, latestByTs);
@@ -352,6 +505,15 @@ export const useBacktest = (chart: Chart | null, id: string | undefined) => {
     return () => {
       chart.removeOverlay({ name: 'backtestMarkers' });
       chart.removeIndicator({ name: 'BacktestProfit' });
+      if (trendLineOverlayIds.length > 0) {
+        for (const overlayId of trendLineOverlayIds) {
+          chart.removeOverlay({ name: 'TrendLine', id: overlayId });
+          chart.removeOverlay({
+            name: 'TrendLinePoints',
+            id: `${overlayId}-points`,
+          });
+        }
+      }
     };
   }, [chart, enabled, backtest, id, key]);
 

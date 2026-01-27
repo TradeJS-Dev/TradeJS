@@ -1,24 +1,27 @@
 import { KLineData } from 'klinecharts';
 import { TrendLine, TrendLineOptions } from '@types';
 import { toMs } from '@utils/timestamp';
+import { logger } from '@utils/logger';
 
 type Point = { x: number; y: number; t: number };
-
-type LineRuntime = {
-  leftAnchor: Point;
-  rightAnchor: Point;
-  distance: number;
-  evaluateY: (t: number) => number;
-  touchIndices: number[];
-  captureHit: boolean;
-  invalid: boolean;
-};
 
 export type TrendlineEngine = {
   next: (candle: KLineData) => TrendLine[];
   nextMany: (candles: KLineData[]) => TrendLine[];
   reset: () => void;
   getLines: () => TrendLine[];
+};
+
+type LineRuntime = {
+  leftAnchor: Point;
+  rightAnchor: Point;
+  distance: number;
+  evaluateY: (t: number) => number;
+
+  touchIndices: number[];
+
+  captureHitIndices: number[];
+  invalid: boolean;
 };
 
 const DEFAULTS = {
@@ -177,7 +180,7 @@ const hasCaptureInRange = (params: {
   return false;
 };
 
-/* ================= Segment Trees for O(logN) range queries ================= */
+/* ================= Segment Trees for O(logN) window queries ================= */
 
 class SegmentTreeMin {
   private sizePowerOfTwo = 1;
@@ -200,12 +203,12 @@ class SegmentTreeMin {
   public query(startIndex: number, endIndex: number) {
     if (this.length === 0) return Number.NaN;
 
-    const left = Math.max(0, Math.min(startIndex, this.length - 1));
-    const right = Math.max(0, Math.min(endIndex, this.length - 1));
-    if (left > right) return Number.NaN;
+    const clampedStart = Math.max(0, Math.min(startIndex, this.length - 1));
+    const clampedEnd = Math.max(0, Math.min(endIndex, this.length - 1));
+    if (clampedStart > clampedEnd) return Number.NaN;
 
-    let leftPointer = this.sizePowerOfTwo + left;
-    let rightPointer = this.sizePowerOfTwo + right;
+    let leftPointer = this.sizePowerOfTwo + clampedStart;
+    let rightPointer = this.sizePowerOfTwo + clampedEnd;
 
     let result = Number.POSITIVE_INFINITY;
 
@@ -274,12 +277,12 @@ class SegmentTreeMax {
   public query(startIndex: number, endIndex: number) {
     if (this.length === 0) return Number.NaN;
 
-    const left = Math.max(0, Math.min(startIndex, this.length - 1));
-    const right = Math.max(0, Math.min(endIndex, this.length - 1));
-    if (left > right) return Number.NaN;
+    const clampedStart = Math.max(0, Math.min(startIndex, this.length - 1));
+    const clampedEnd = Math.max(0, Math.min(endIndex, this.length - 1));
+    if (clampedStart > clampedEnd) return Number.NaN;
 
-    let leftPointer = this.sizePowerOfTwo + left;
-    let rightPointer = this.sizePowerOfTwo + right;
+    let leftPointer = this.sizePowerOfTwo + clampedStart;
+    let rightPointer = this.sizePowerOfTwo + clampedEnd;
 
     let result = Number.NEGATIVE_INFINITY;
 
@@ -330,7 +333,6 @@ class SegmentTreeMax {
 /* ================= Block min/max for wick breach (two-phase) ================= */
 
 const BLOCK_SIZE = 64;
-
 const getBlockIndex = (barIndex: number) => Math.floor(barIndex / BLOCK_SIZE);
 
 type BlockStats = {
@@ -409,9 +411,8 @@ const hasWickBreachOnSegmentFast = (params: {
   const startBlockIndex = getBlockIndex(startIndex);
   const endBlockIndex = getBlockIndex(endIndex);
 
-  if (startBlockIndex === endBlockIndex) {
+  if (startBlockIndex === endBlockIndex)
     return scanBarsPrecisely(startIndex, endIndex);
-  }
 
   const firstBlockEndIndex = (startBlockIndex + 1) * BLOCK_SIZE - 1;
   if (scanBarsPrecisely(startIndex, Math.min(firstBlockEndIndex, endIndex)))
@@ -429,32 +430,29 @@ const hasWickBreachOnSegmentFast = (params: {
     const blockStartIndex = blockIndex * BLOCK_SIZE;
     const blockEndIndex = blockStartIndex + BLOCK_SIZE - 1;
 
-    const blockStartTime = timestampsMs[blockStartIndex];
-    const blockEndTime = timestampsMs[blockEndIndex];
+    const startTimestamp = timestampsMs[blockStartIndex];
+    const endTimestamp = timestampsMs[blockEndIndex];
 
-    const thresholdAtStart =
-      mode === 'lows'
-        ? evaluateY(blockStartTime) -
-          toleranceAt(evaluateY(blockStartTime), epsilon)
-        : evaluateY(blockStartTime) +
-          toleranceAt(evaluateY(blockStartTime), epsilon);
-
-    const thresholdAtEnd =
-      mode === 'lows'
-        ? evaluateY(blockEndTime) -
-          toleranceAt(evaluateY(blockEndTime), epsilon)
-        : evaluateY(blockEndTime) +
-          toleranceAt(evaluateY(blockEndTime), epsilon);
+    const startLineY = evaluateY(startTimestamp);
+    const endLineY = evaluateY(endTimestamp);
 
     if (mode === 'lows') {
-      const maxThresholdInBlock = Math.max(thresholdAtStart, thresholdAtEnd);
+      const startThreshold = startLineY - toleranceAt(startLineY, epsilon);
+      const endThreshold = endLineY - toleranceAt(endLineY, epsilon);
+      const maxThresholdInBlock = Math.max(startThreshold, endThreshold);
+
       const blockLowMin = blockStats.lowBlockMins[blockIndex];
       if (blockLowMin >= maxThresholdInBlock) continue;
+
       if (scanBarsPrecisely(blockStartIndex, blockEndIndex)) return true;
     } else {
-      const minThresholdInBlock = Math.min(thresholdAtStart, thresholdAtEnd);
+      const startThreshold = startLineY + toleranceAt(startLineY, epsilon);
+      const endThreshold = endLineY + toleranceAt(endLineY, epsilon);
+      const minThresholdInBlock = Math.min(startThreshold, endThreshold);
+
       const blockHighMax = blockStats.highBlockMaxs[blockIndex];
       if (blockHighMax <= minThresholdInBlock) continue;
+
       if (scanBarsPrecisely(blockStartIndex, blockEndIndex)) return true;
     }
   }
@@ -468,6 +466,8 @@ export const createTrendlineEngine = (
   initialCandles: KLineData[],
   options: TrendLineOptions,
 ): TrendlineEngine => {
+  const debugEnabled = process.env.DEBUG_TRENDLINE_ENGINE === '1';
+  const debugVerbose = process.env.DEBUG_TRENDLINE_ENGINE_VERBOSE === '1';
   const opts: Required<TrendLineOptions> = {
     mode: options.mode,
     maxLines: options.maxLines ?? DEFAULTS.maxLines,
@@ -562,20 +562,30 @@ export const createTrendlineEngine = (
     );
 
     if (opts.mode === 'lows') {
-      const windowMin = lowMinTree.query(startIndex, endIndex);
+      let windowMin = Number.POSITIVE_INFINITY;
+      for (let i = startIndex; i <= endIndex; i++) {
+        if (lowSeries[i] < windowMin) windowMin = lowSeries[i];
+      }
       return lowSeries[anchorIndex] === windowMin;
     }
 
-    const windowMax = highMaxTree.query(startIndex, endIndex);
+    let windowMax = Number.NEGATIVE_INFINITY;
+    for (let i = startIndex; i <= endIndex; i++) {
+      if (highSeries[i] > windowMax) windowMax = highSeries[i];
+    }
     return highSeries[anchorIndex] === windowMax;
   };
 
   const buildAllAnchorsIncludingOpenCluster = (): Point[] => {
-    if (!currentClusterBest) return [...clusteredAnchors];
-    return [...clusteredAnchors, currentClusterBest];
+    return currentClusterBest
+      ? [...clusteredAnchors, currentClusterBest]
+      : [...clusteredAnchors];
   };
 
-  const seedLineBatchExact = (line: LineRuntime, lastBarIndex: number) => {
+  const seedLineBatchExact = (
+    line: LineRuntime,
+    lastBarIndex: number,
+  ): string | null => {
     const leftIndex = line.leftAnchor.x;
     const rightIndex = line.rightAnchor.x;
 
@@ -591,14 +601,14 @@ export const createTrendlineEngine = (
 
     if (touchIndices.length < opts.minTouches) {
       line.invalid = true;
-      return;
+      return 'touches';
     }
 
     const lastTouches =
       touchIndices.length > 2 ? touchIndices.slice(-2) : touchIndices;
     if (hasTooLargeTouchGaps([...lastTouches, rightIndex], opts.maxTouchGap)) {
       line.invalid = true;
-      return;
+      return 'touchGap';
     }
 
     if (
@@ -606,7 +616,7 @@ export const createTrendlineEngine = (
       opts.minDistance
     ) {
       line.invalid = true;
-      return;
+      return 'touchSpan';
     }
 
     const wickBreached = hasWickBreachOnSegmentFast({
@@ -623,7 +633,7 @@ export const createTrendlineEngine = (
 
     if (wickBreached) {
       line.invalid = true;
-      return;
+      return 'wickBreach';
     }
 
     const closeBreachEndIndex = lastBarIndex - Math.max(0, opts.offset);
@@ -642,9 +652,11 @@ export const createTrendlineEngine = (
 
       if (closeBreached) {
         line.invalid = true;
-        return;
+        return 'closeBreach';
       }
     }
+
+    line.captureHitIndices = [];
 
     if (opts.capture) {
       const captureStartIndex = Math.max(
@@ -653,7 +665,7 @@ export const createTrendlineEngine = (
       );
       const captureEndIndex = lastBarIndex;
 
-      const captureHit = hasCaptureInRange({
+      const hasHit = hasCaptureInRange({
         mode: opts.mode,
         lowSeries,
         highSeries,
@@ -664,15 +676,35 @@ export const createTrendlineEngine = (
         epsilonOffset: opts.epsilonOffset,
       });
 
-      if (!captureHit) {
+      if (!hasHit) {
         line.invalid = true;
-        return;
+        return 'captureMiss';
       }
 
-      line.captureHit = true;
+      for (
+        let barIndex = captureStartIndex;
+        barIndex <= captureEndIndex;
+        barIndex++
+      ) {
+        const lineY = line.evaluateY(timestampsMs[barIndex]);
+        const offsetTolerance = toleranceAt(lineY, opts.epsilonOffset);
+
+        const hit =
+          opts.mode === 'lows'
+            ? lowSeries[barIndex] <= lineY - offsetTolerance
+            : highSeries[barIndex] >= lineY + offsetTolerance;
+
+        if (hit) line.captureHitIndices.push(barIndex);
+      }
+
+      if (line.captureHitIndices.length === 0) {
+        line.invalid = true;
+        return 'captureEmpty';
+      }
     }
 
     line.touchIndices = touchIndices;
+    return null;
   };
 
   const rebuildCandidatesLikeBatch = () => {
@@ -693,6 +725,23 @@ export const createTrendlineEngine = (
     }
 
     const candidates: LineRuntime[] = [];
+    const rejectionStats = debugEnabled
+      ? {
+          distanceTooSmall: 0,
+          distanceTooLarge: 0,
+          weakFirstAnchor: 0,
+          badSlope: 0,
+          seed: {
+            touches: 0,
+            touchGap: 0,
+            touchSpan: 0,
+            wickBreach: 0,
+            closeBreach: 0,
+            captureMiss: 0,
+            captureEmpty: 0,
+          },
+        }
+      : null;
 
     for (
       let rightAnchorIndex = allAnchors.length - 1;
@@ -711,16 +760,30 @@ export const createTrendlineEngine = (
         const leftAnchor = allAnchors[leftAnchorIndex];
         const distance = rightAnchor.x - leftAnchor.x;
 
-        if (distance < opts.minDistance) continue;
-        if (distance > opts.maxDistance) continue;
+        if (distance < opts.minDistance) {
+          if (rejectionStats) rejectionStats.distanceTooSmall++;
+          continue;
+        }
+        if (distance > opts.maxDistance) {
+          if (rejectionStats) rejectionStats.distanceTooLarge++;
+          continue;
+        }
 
-        if (!isStrongFirstAnchorFast(leftAnchor.x)) continue;
+        if (!isStrongFirstAnchorFast(leftAnchor.x)) {
+          if (rejectionStats) rejectionStats.weakFirstAnchor++;
+          continue;
+        }
 
         const slope =
           (rightAnchor.y - leftAnchor.y) / (rightAnchor.x - leftAnchor.x);
-
-        if (opts.mode === 'lows' && slope <= 0) continue;
-        if (opts.mode === 'highs' && slope >= 0) continue;
+        if (opts.mode === 'lows' && slope <= 0) {
+          if (rejectionStats) rejectionStats.badSlope++;
+          continue;
+        }
+        if (opts.mode === 'highs' && slope >= 0) {
+          if (rejectionStats) rejectionStats.badSlope++;
+          continue;
+        }
 
         const evaluateY = buildLineEvaluator({
           t1: leftAnchor.t,
@@ -735,40 +798,119 @@ export const createTrendlineEngine = (
           distance,
           evaluateY,
           touchIndices: [],
-          captureHit: false,
+          captureHitIndices: [],
           invalid: false,
         };
 
-        seedLineBatchExact(runtime, lastBarIndex);
-        if (!runtime.invalid) candidates.push(runtime);
+        const invalidReason = seedLineBatchExact(runtime, lastBarIndex);
+        if (!runtime.invalid) {
+          candidates.push(runtime);
+        } else if (rejectionStats && invalidReason) {
+          if (invalidReason in rejectionStats.seed) {
+            rejectionStats.seed[invalidReason as keyof typeof rejectionStats.seed] +=
+              1;
+          }
+        }
       }
 
       if (candidates.length >= opts.maxLines) break;
     }
 
     activeLines = candidates;
+
+    if (
+      debugVerbose &&
+      candidates.length === 0 &&
+      allAnchors.length >= opts.minTouches
+    ) {
+      const tailAnchors = allAnchors.slice(-3).map((pt) => ({
+        x: pt.x,
+        y: pt.y,
+        t: pt.t,
+      }));
+      logger.info(
+        'trendlineEngine: rebuild empty %j',
+        {
+          mode: opts.mode,
+          lastBarIndex,
+          rawExtremaPoints: rawExtremaPoints.length,
+          clusteredAnchors: clusteredAnchors.length,
+          hasOpenCluster: Boolean(currentClusterBest),
+          tailAnchors,
+          rejectionStats,
+        },
+      );
+    }
+
+    if (debugEnabled && process.env.DEBUG_TRENDLINE_ANCHOR_INDEX) {
+      const debugIndex = Number(process.env.DEBUG_TRENDLINE_ANCHOR_INDEX);
+      if (Number.isFinite(debugIndex)) {
+        const anchor = allAnchors.find((pt) => pt.x === debugIndex);
+        let treeValue: number | null = null;
+        let bruteValue: number | null = null;
+        let anchorValue: number | null = null;
+        if (anchor) {
+          const startIndex = Math.max(0, anchor.x - opts.firstRange);
+          const endIndex = Math.min(lowSeries.length - 1, anchor.x + opts.firstRange);
+          if (opts.mode === 'lows') {
+            treeValue = lowMinTree.query(startIndex, endIndex);
+            anchorValue = lowSeries[anchor.x];
+            let windowMin = Number.POSITIVE_INFINITY;
+            for (let i = startIndex; i <= endIndex; i++) {
+              if (lowSeries[i] < windowMin) windowMin = lowSeries[i];
+            }
+            bruteValue = windowMin;
+          } else {
+            treeValue = highMaxTree.query(startIndex, endIndex);
+            anchorValue = highSeries[anchor.x];
+            let windowMax = Number.NEGATIVE_INFINITY;
+            for (let i = startIndex; i <= endIndex; i++) {
+              if (highSeries[i] > windowMax) windowMax = highSeries[i];
+            }
+            bruteValue = windowMax;
+          }
+        }
+        logger.info(
+          'trendlineEngine: debug anchor %j',
+          {
+            mode: opts.mode,
+            lastBarIndex,
+            debugIndex,
+            inAnchors: Boolean(anchor),
+            anchor,
+            strong: anchor ? isStrongFirstAnchorFast(anchor.x) : false,
+            anchorValue,
+            treeValue,
+            bruteValue,
+          },
+        );
+      }
+    }
   };
 
   const maybeFinalizeClusterAndRebuild = (rawPoint: Point) => {
     if (!currentClusterBest) {
       currentClusterBest = rawPoint;
       lastRawExtremum = rawPoint;
+      rebuildCandidatesLikeBatch();
       return;
     }
 
     if (rawPoint.x - lastRawExtremum!.x < opts.minDistance) {
-      const isBetter =
+      const better =
         opts.mode === 'lows'
           ? rawPoint.y < currentClusterBest.y
           : rawPoint.y > currentClusterBest.y;
 
-      if (isBetter) currentClusterBest = rawPoint;
+      if (better) {
+        currentClusterBest = rawPoint;
+        rebuildCandidatesLikeBatch();
+      }
       lastRawExtremum = rawPoint;
       return;
     }
 
     clusteredAnchors.push(currentClusterBest);
-
     currentClusterBest = rawPoint;
     lastRawExtremum = rawPoint;
 
@@ -794,6 +936,72 @@ export const createTrendlineEngine = (
     maybeFinalizeClusterAndRebuild(rawPoint);
   };
 
+  const updateCloseBreachDeferred = (
+    line: LineRuntime,
+    lastBarIndex: number,
+  ) => {
+    if (line.invalid) return;
+    if (opts.offset <= 0) return;
+
+    const checkIndex = lastBarIndex - opts.offset;
+    if (checkIndex <= line.rightAnchor.x) return;
+    if (checkIndex < 0 || checkIndex >= timestampsMs.length) return;
+
+    const timestamp = timestampsMs[checkIndex];
+    const lineY = line.evaluateY(timestamp);
+    const tolerance = toleranceAt(lineY, opts.epsilon);
+    const closePrice = closeSeries[checkIndex];
+
+    if (opts.mode === 'lows') {
+      if (closePrice < lineY - tolerance) line.invalid = true;
+    } else {
+      if (closePrice > lineY + tolerance) line.invalid = true;
+    }
+  };
+
+  const updateCaptureSlidingWindow = (
+    line: LineRuntime,
+    lastBarIndex: number,
+  ) => {
+    if (line.invalid) return;
+    if (!opts.capture) return;
+    if (opts.offset <= 0) return;
+
+    const windowStartIndex = Math.max(
+      line.rightAnchor.x + 1,
+      lastBarIndex - opts.offset + 1,
+    );
+
+    if (lastBarIndex >= windowStartIndex) {
+      const timestamp = timestampsMs[lastBarIndex];
+      const lineY = line.evaluateY(timestamp);
+      const offsetTolerance = toleranceAt(lineY, opts.epsilonOffset);
+
+      const hit =
+        opts.mode === 'lows'
+          ? lowSeries[lastBarIndex] <= lineY - offsetTolerance
+          : highSeries[lastBarIndex] >= lineY + offsetTolerance;
+
+      if (hit) line.captureHitIndices.push(lastBarIndex);
+    }
+
+    while (
+      line.captureHitIndices.length > 0 &&
+      line.captureHitIndices[0] < windowStartIndex
+    ) {
+      line.captureHitIndices.shift();
+    }
+
+    if (line.captureHitIndices.length === 0) {
+      line.invalid = true;
+      return;
+    }
+  };
+
+  const gcInvalidLines = () => {
+    activeLines = activeLines.filter((line) => !line.invalid);
+  };
+
   const buildResult = (): TrendLine[] => {
     if (!timestampsMs.length) return [];
 
@@ -804,9 +1012,9 @@ export const createTrendlineEngine = (
       if (line.invalid) return false;
       if (line.touchIndices.length < opts.minTouches) return false;
 
-      const span =
+      const touchSpan =
         line.touchIndices[line.touchIndices.length - 1] - line.touchIndices[0];
-      if (span < opts.minDistance) return false;
+      if (touchSpan < opts.minDistance) return false;
 
       const lastTouches =
         line.touchIndices.length > 2
@@ -820,20 +1028,42 @@ export const createTrendlineEngine = (
       )
         return false;
 
-      if (opts.capture && !line.captureHit) return false;
+      if (opts.capture) {
+        const windowStartIndex = Math.max(
+          line.rightAnchor.x + 1,
+          lastBarIndex - opts.offset + 1,
+        );
+        while (
+          line.captureHitIndices.length > 0 &&
+          line.captureHitIndices[0] < windowStartIndex
+        ) {
+          line.captureHitIndices.shift();
+        }
+        if (line.captureHitIndices.length === 0) return false;
+      }
 
       return true;
     });
 
-    filtered.sort(
-      (leftLine, rightLine) => rightLine.leftAnchor.x - leftLine.leftAnchor.x,
-    );
+    if (debugVerbose && filtered.length === 0 && activeLines.length === 0) {
+      logger.info(
+        'trendlineEngine: no lines %j',
+        {
+          mode: opts.mode,
+          lastBarIndex,
+          rawExtremaPoints: rawExtremaPoints.length,
+          clusteredAnchors: clusteredAnchors.length,
+          hasOpenCluster: Boolean(currentClusterBest),
+        },
+      );
+    }
+
+    filtered.sort((a, b) => b.leftAnchor.x - a.leftAnchor.x);
 
     const takeCount = Math.max(
       1,
       Math.min(opts.bestLines, opts.maxLines, filtered.length),
     );
-
     const best = filtered.slice(0, takeCount);
 
     return best.map((line, index) => ({
@@ -879,11 +1109,37 @@ export const createTrendlineEngine = (
 
     updateExtremaDeque(barIndex);
     maybeAddRawExtremum(barIndex);
+
+    if (debugEnabled && process.env.DEBUG_TRENDLINE_FORCE_REBUILD === '1') {
+      rebuildCandidatesLikeBatch();
+    }
+
+    let invalidatedByOffsetLogic = false;
+
+    for (const line of activeLines) {
+      const wasInvalid = line.invalid;
+
+      updateCloseBreachDeferred(line, barIndex);
+      updateCaptureSlidingWindow(line, barIndex);
+
+      if (!wasInvalid && line.invalid) invalidatedByOffsetLogic = true;
+    }
+
+    gcInvalidLines();
+
+    if (invalidatedByOffsetLogic) {
+      rebuildCandidatesLikeBatch();
+    }
   };
 
   const next = (candle: KLineData) => {
     appendCandle(candle);
-    return buildResult();
+    let result = buildResult();
+    if (opts.capture && result.length === 0 && rawExtremaPoints.length) {
+      rebuildCandidatesLikeBatch();
+      result = buildResult();
+    }
+    return result;
   };
 
   const nextMany = (candles: KLineData[]) => {

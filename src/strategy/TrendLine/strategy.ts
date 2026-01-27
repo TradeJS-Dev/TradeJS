@@ -7,6 +7,7 @@ import { ATR_PCT } from '@utils/indicators';
 import { logger } from '@utils/logger';
 import { round } from '@utils/math';
 import { createTrendlineEngine } from '@utils/trendLineEngine';
+import { findTrendlinesByHighs, findTrendlinesByLows } from '@utils/trendLine';
 import { filterByVeryVolatility } from './filters';
 import { config as DEFAULT_CONFIG, TRENDLINE } from './config';
 import { Signal, TrendLineOptions, StrategyCreator } from '@types';
@@ -43,13 +44,15 @@ export const TrendlineStrategyCreator: StrategyCreator = ({
     ...TRENDLINE_CONFIG,
   };
 
+  const debugTrendline = process.env.DEBUG_TRENDLINE_ENGINE === '1';
+
   const getLowsTrendlines = createTrendlineEngine(cachedData, {
     mode: 'lows',
     ...TRENDLINE_OPTIONS,
   });
 
   const getHighsTrendlines = createTrendlineEngine(cachedData, {
-    mode: 'lows',
+    mode: 'highs',
     ...TRENDLINE_OPTIONS,
   });
 
@@ -63,8 +66,54 @@ export const TrendlineStrategyCreator: StrategyCreator = ({
     const lowsTrendlines = getLowsTrendlines.next(candle);
     const highsTrendlines = getHighsTrendlines.next(candle);
 
+    const oldLowsTrendlines = debugTrendline
+      ? findTrendlinesByLows(cachedData, {
+          mode: 'lows',
+          ...TRENDLINE_OPTIONS,
+        })
+      : [];
+    const oldHighsTrendlines = debugTrendline
+      ? findTrendlinesByHighs(cachedData, {
+          mode: 'highs',
+          ...TRENDLINE_OPTIONS,
+        })
+      : [];
+
     const bestLine =
       lowsTrendlines.length > 0 ? lowsTrendlines[0] : highsTrendlines[0];
+
+    const oldBestLine =
+      oldLowsTrendlines.length > 0
+        ? oldLowsTrendlines[0]
+        : oldHighsTrendlines[0];
+
+    if (debugTrendline && !_.isEqual(bestLine, oldBestLine)) {
+      const leftAnchorIndex =
+        oldBestLine?.points?.[0]?.timestamp != null
+          ? cachedData.findIndex(
+              (item) => item.timestamp === oldBestLine.points[0].timestamp,
+            )
+          : null;
+
+      logger.info(
+        'trendline mismatch %j',
+        {
+          timestamp: candle.timestamp,
+          bestLine: bestLine ? JSON.stringify(bestLine) : 'undefined',
+          oldBestLine: oldBestLine ? JSON.stringify(oldBestLine) : 'undefined',
+          engineCounts: {
+            lows: lowsTrendlines.length,
+            highs: highsTrendlines.length,
+          },
+          batchCounts: {
+            lows: oldLowsTrendlines.length,
+            highs: oldHighsTrendlines.length,
+          },
+          cachedLength: cachedData.length,
+          leftAnchorIndex,
+        },
+      );
+    }
 
     if (!bestLine) {
       return 'NO_TRENDLINE';
