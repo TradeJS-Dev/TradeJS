@@ -23,6 +23,16 @@ type LineRuntime = {
   invalid: boolean;
 };
 
+type PairCache = {
+  distance: number;
+  evaluateY: (t: number) => number;
+  touchIndices: number[];
+  touchCount: number;
+  touchSpan: number;
+  hasTouchGap: boolean;
+  wickBreached: boolean;
+};
+
 const DEFAULTS = {
   maxLines: 20,
   range: 15,
@@ -354,6 +364,8 @@ export const createTrendlineEngine = (
   let lastRawExtremum: Point | null = null;
 
   let activeLines: LineRuntime[] = [];
+  let pairCache = new Map<string, PairCache>();
+  const MAX_PAIR_CACHE = 5000;
 
   const resetState = () => {
     timestampsMs = [];
@@ -378,6 +390,7 @@ export const createTrendlineEngine = (
     lastRawExtremum = null;
 
     activeLines = [];
+    pairCache.clear();
   };
 
   const updateExtremaDeque = (barIndex: number) => {
@@ -469,139 +482,76 @@ export const createTrendlineEngine = (
     }
   };
 
-  const buildAllAnchorsIncludingOpenCluster = (): Point[] => {
-    return currentClusterBest
-      ? [...clusteredAnchors, currentClusterBest]
-      : [...clusteredAnchors];
-  };
+  const getPairCache = (leftAnchor: Point, rightAnchor: Point): PairCache => {
+    const key = `${leftAnchor.x}|${rightAnchor.x}`;
+    const cached = pairCache.get(key);
+    if (cached) return cached;
 
-  const seedLineBatchExact = (
-    line: LineRuntime,
-    lastBarIndex: number,
-  ): string | null => {
-    const leftIndex = line.leftAnchor.x;
-    const rightIndex = line.rightAnchor.x;
+    const evaluateY = buildLineEvaluator({
+      t1: leftAnchor.t,
+      y1: leftAnchor.y,
+      t2: rightAnchor.t,
+      y2: rightAnchor.y,
+    });
 
     const touchIndices = collectTouchIndices({
       bodySeriesForTouches: shadowSeries,
       timestampsMs,
-      startIndex: leftIndex,
-      endIndex: rightIndex,
-      evaluateY: line.evaluateY,
+      startIndex: leftAnchor.x,
+      endIndex: rightAnchor.x,
+      evaluateY,
       epsilon: opts.epsilon,
       minTouchGap: opts.minTouchGap,
     });
 
-    if (touchIndices.length < opts.minTouches) {
-      line.invalid = true;
-      return 'touches';
-    }
+    const touchCount = touchIndices.length;
+    const touchSpan =
+      touchCount > 1
+        ? touchIndices[touchCount - 1] - touchIndices[0]
+        : 0;
 
     const lastTouches =
-      touchIndices.length > 2 ? touchIndices.slice(-2) : touchIndices;
-    if (hasTooLargeTouchGaps([...lastTouches, rightIndex], opts.maxTouchGap)) {
-      line.invalid = true;
-      return 'touchGap';
-    }
-
-    if (
-      touchIndices[touchIndices.length - 1] - touchIndices[0] <
-      opts.minDistance
-    ) {
-      line.invalid = true;
-      return 'touchSpan';
-    }
+      touchCount > 2 ? touchIndices.slice(-2) : touchIndices;
+    const hasTouchGap = hasTooLargeTouchGaps(
+      [...lastTouches, rightAnchor.x],
+      opts.maxTouchGap,
+    );
 
     const wickBreached = hasWickBreachOnSegmentFast({
       mode: opts.mode,
       lowSeries,
       highSeries,
       timestampsMs,
-      startIndex: leftIndex,
-      endIndex: rightIndex,
-      evaluateY: line.evaluateY,
+      startIndex: leftAnchor.x,
+      endIndex: rightAnchor.x,
+      evaluateY,
       epsilon: opts.epsilon,
       blockStats,
     });
 
-    if (wickBreached) {
-      line.invalid = true;
-      return 'wickBreach';
+    const entry: PairCache = {
+      distance: rightAnchor.x - leftAnchor.x,
+      evaluateY,
+      touchIndices,
+      touchCount,
+      touchSpan,
+      hasTouchGap,
+      wickBreached,
+    };
+
+    if (pairCache.size > MAX_PAIR_CACHE) {
+      pairCache.clear();
     }
-
-    const closeBreachEndIndex = lastBarIndex - Math.max(0, opts.offset);
-    const closeBreachStartIndex = rightIndex + 1;
-
-    if (closeBreachStartIndex <= closeBreachEndIndex) {
-      const closeBreached = hasCloseBreachInRange({
-        mode: opts.mode,
-        closeSeries,
-        timestampsMs,
-        startIndex: closeBreachStartIndex,
-        endIndex: closeBreachEndIndex,
-        evaluateY: line.evaluateY,
-        epsilon: opts.epsilon,
-      });
-
-      if (closeBreached) {
-        line.invalid = true;
-        return 'closeBreach';
-      }
-    }
-
-    line.captureHitIndices = [];
-
-    if (opts.capture) {
-      const captureStartIndex = Math.max(
-        rightIndex + 1,
-        lastBarIndex - opts.offset + 1,
-      );
-      const captureEndIndex = lastBarIndex;
-
-      const hasHit = hasCaptureInRange({
-        mode: opts.mode,
-        lowSeries,
-        highSeries,
-        timestampsMs,
-        startIndex: captureStartIndex,
-        endIndex: captureEndIndex,
-        evaluateY: line.evaluateY,
-        epsilonOffset: opts.epsilonOffset,
-      });
-
-      if (!hasHit) {
-        line.invalid = true;
-        return 'captureMiss';
-      }
-
-      for (
-        let barIndex = captureStartIndex;
-        barIndex <= captureEndIndex;
-        barIndex++
-      ) {
-        const lineY = line.evaluateY(timestampsMs[barIndex]);
-        const offsetTolerance = toleranceAt(lineY, opts.epsilonOffset);
-
-        const hit =
-          opts.mode === 'lows'
-            ? lowSeries[barIndex] <= lineY - offsetTolerance
-            : highSeries[barIndex] >= lineY + offsetTolerance;
-
-        if (hit) line.captureHitIndices.push(barIndex);
-      }
-
-      if (line.captureHitIndices.length === 0) {
-        line.invalid = true;
-        return 'captureEmpty';
-      }
-    }
-
-    line.touchIndices = touchIndices;
-    return null;
+    pairCache.set(key, entry);
+    return entry;
   };
 
   const rebuildCandidatesLikeBatch = () => {
-    const allAnchors = buildAllAnchorsIncludingOpenCluster();
+    const anchors =
+      currentClusterBest != null
+        ? [...clusteredAnchors, currentClusterBest]
+        : clusteredAnchors;
+    const anchorsLength = anchors.length;
     const lastBarIndex = timestampsMs.length - 1;
 
     if (lastBarIndex < 0) {
@@ -611,29 +561,57 @@ export const createTrendlineEngine = (
 
     if (
       rawExtremaPoints.length < opts.minTouches ||
-      allAnchors.length < opts.minTouches
+      anchorsLength < opts.minTouches
     ) {
       activeLines = [];
       return;
     }
 
     const candidates: LineRuntime[] = [];
+    const anchorXs = anchors.map((pt) => pt.x);
+
+    const lowerBound = (arr: number[], value: number) => {
+      let left = 0;
+      let right = arr.length;
+      while (left < right) {
+        const mid = (left + right) >> 1;
+        if (arr[mid] < value) left = mid + 1;
+        else right = mid;
+      }
+      return left;
+    };
+
+    const upperBound = (arr: number[], value: number) => {
+      let left = 0;
+      let right = arr.length;
+      while (left < right) {
+        const mid = (left + right) >> 1;
+        if (arr[mid] <= value) left = mid + 1;
+        else right = mid;
+      }
+      return left - 1;
+    };
 
     for (
-      let rightAnchorIndex = allAnchors.length - 1;
+      let rightAnchorIndex = anchorsLength - 1;
       rightAnchorIndex >= 0;
       rightAnchorIndex--
     ) {
-      const rightAnchor = allAnchors[rightAnchorIndex];
+      const rightAnchor = anchors[rightAnchorIndex];
+      const rightX = rightAnchor.x;
+      const leftMinX = rightX - opts.maxDistance;
+      const leftMaxX = rightX - opts.minDistance;
 
-      for (
-        let leftAnchorIndex = rightAnchorIndex - 1;
-        leftAnchorIndex >= 0;
-        leftAnchorIndex--
-      ) {
+      let leftStart = lowerBound(anchorXs, leftMinX);
+      let leftEnd = upperBound(anchorXs, leftMaxX);
+
+      if (leftEnd >= rightAnchorIndex) leftEnd = rightAnchorIndex - 1;
+      if (leftStart > leftEnd) continue;
+
+      for (let leftAnchorIndex = leftEnd; leftAnchorIndex >= leftStart; leftAnchorIndex--) {
         if (candidates.length >= opts.maxLines) break;
 
-        const leftAnchor = allAnchors[leftAnchorIndex];
+        const leftAnchor = anchors[leftAnchorIndex];
         const distance = rightAnchor.x - leftAnchor.x;
 
         if (distance < opts.minDistance) continue;
@@ -646,25 +624,82 @@ export const createTrendlineEngine = (
         if (opts.mode === 'lows' && slope <= 0) continue;
         if (opts.mode === 'highs' && slope >= 0) continue;
 
-        const evaluateY = buildLineEvaluator({
-          t1: leftAnchor.t,
-          y1: leftAnchor.y,
-          t2: rightAnchor.t,
-          y2: rightAnchor.y,
-        });
+        const cached = getPairCache(leftAnchor, rightAnchor);
+
+        if (cached.touchCount < opts.minTouches) continue;
+        if (cached.hasTouchGap) continue;
+        if (cached.touchSpan < opts.minDistance) continue;
+        if (cached.wickBreached) continue;
+
+        const closeBreachEndIndex = lastBarIndex - Math.max(0, opts.offset);
+        const closeBreachStartIndex = rightAnchor.x + 1;
+
+        if (closeBreachStartIndex <= closeBreachEndIndex) {
+          const closeBreached = hasCloseBreachInRange({
+            mode: opts.mode,
+            closeSeries,
+            timestampsMs,
+            startIndex: closeBreachStartIndex,
+            endIndex: closeBreachEndIndex,
+            evaluateY: cached.evaluateY,
+            epsilon: opts.epsilon,
+          });
+
+          if (closeBreached) continue;
+        }
+
+        const captureHitIndices: number[] = [];
+
+        if (opts.capture) {
+          const captureStartIndex = Math.max(
+            rightAnchor.x + 1,
+            lastBarIndex - opts.offset + 1,
+          );
+          const captureEndIndex = lastBarIndex;
+
+          const hasHit = hasCaptureInRange({
+            mode: opts.mode,
+            lowSeries,
+            highSeries,
+            timestampsMs,
+            startIndex: captureStartIndex,
+            endIndex: captureEndIndex,
+            evaluateY: cached.evaluateY,
+            epsilonOffset: opts.epsilonOffset,
+          });
+
+          if (!hasHit) continue;
+
+          for (
+            let barIndex = captureStartIndex;
+            barIndex <= captureEndIndex;
+            barIndex++
+          ) {
+            const lineY = cached.evaluateY(timestampsMs[barIndex]);
+            const offsetTolerance = toleranceAt(lineY, opts.epsilonOffset);
+
+            const hit =
+              opts.mode === 'lows'
+                ? lowSeries[barIndex] <= lineY - offsetTolerance
+                : highSeries[barIndex] >= lineY + offsetTolerance;
+
+            if (hit) captureHitIndices.push(barIndex);
+          }
+
+          if (captureHitIndices.length === 0) continue;
+        }
 
         const runtime: LineRuntime = {
           leftAnchor,
           rightAnchor,
-          distance,
-          evaluateY,
-          touchIndices: [],
-          captureHitIndices: [],
+          distance: cached.distance,
+          evaluateY: cached.evaluateY,
+          touchIndices: cached.touchIndices,
+          captureHitIndices,
           invalid: false,
         };
 
-        seedLineBatchExact(runtime, lastBarIndex);
-        if (!runtime.invalid) candidates.push(runtime);
+        candidates.push(runtime);
       }
 
       if (candidates.length >= opts.maxLines) break;
