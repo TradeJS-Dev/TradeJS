@@ -1,7 +1,7 @@
 import { KLineData } from 'klinecharts';
 import { TrendLine, TrendLineOptions } from '@types';
 import { toMs } from '@utils/timestamp';
-import { logger } from '@utils/logger';
+// import { logger } from '@utils/logger';
 
 type Point = { x: number; y: number; t: number };
 
@@ -180,156 +180,6 @@ const hasCaptureInRange = (params: {
   return false;
 };
 
-/* ================= Segment Trees for O(logN) window queries ================= */
-
-class SegmentTreeMin {
-  private sizePowerOfTwo = 1;
-  private tree: number[] = [Number.POSITIVE_INFINITY];
-  private length = 0;
-
-  public clear() {
-    this.sizePowerOfTwo = 1;
-    this.tree = [Number.POSITIVE_INFINITY];
-    this.length = 0;
-  }
-
-  public append(value: number) {
-    this.length += 1;
-    while (this.sizePowerOfTwo < this.length) this.grow();
-    this.tree[this.sizePowerOfTwo + this.length - 1] = value;
-    this.rebuildUpFromLeaf(this.sizePowerOfTwo + this.length - 1);
-  }
-
-  public query(startIndex: number, endIndex: number) {
-    if (this.length === 0) return Number.NaN;
-
-    const clampedStart = Math.max(0, Math.min(startIndex, this.length - 1));
-    const clampedEnd = Math.max(0, Math.min(endIndex, this.length - 1));
-    if (clampedStart > clampedEnd) return Number.NaN;
-
-    let leftPointer = this.sizePowerOfTwo + clampedStart;
-    let rightPointer = this.sizePowerOfTwo + clampedEnd;
-
-    let result = Number.POSITIVE_INFINITY;
-
-    while (leftPointer <= rightPointer) {
-      if ((leftPointer & 1) === 1)
-        result = Math.min(result, this.tree[leftPointer++]);
-      if ((rightPointer & 1) === 0)
-        result = Math.min(result, this.tree[rightPointer--]);
-      leftPointer >>= 1;
-      rightPointer >>= 1;
-    }
-
-    return result;
-  }
-
-  private grow() {
-    const oldSize = this.sizePowerOfTwo;
-    const newSize = oldSize * 2;
-    const newTree = new Array(newSize * 2).fill(Number.POSITIVE_INFINITY);
-
-    for (let index = 0; index < oldSize * 2; index++) {
-      newTree[index] = this.tree[index] ?? Number.POSITIVE_INFINITY;
-    }
-
-    this.sizePowerOfTwo = newSize;
-    this.tree = newTree;
-
-    for (let nodeIndex = this.sizePowerOfTwo - 1; nodeIndex >= 1; nodeIndex--) {
-      this.tree[nodeIndex] = Math.min(
-        this.tree[nodeIndex * 2],
-        this.tree[nodeIndex * 2 + 1],
-      );
-    }
-  }
-
-  private rebuildUpFromLeaf(leafIndex: number) {
-    let nodeIndex = leafIndex >> 1;
-    while (nodeIndex >= 1) {
-      this.tree[nodeIndex] = Math.min(
-        this.tree[nodeIndex * 2],
-        this.tree[nodeIndex * 2 + 1],
-      );
-      nodeIndex >>= 1;
-    }
-  }
-}
-
-class SegmentTreeMax {
-  private sizePowerOfTwo = 1;
-  private tree: number[] = [Number.NEGATIVE_INFINITY];
-  private length = 0;
-
-  public clear() {
-    this.sizePowerOfTwo = 1;
-    this.tree = [Number.NEGATIVE_INFINITY];
-    this.length = 0;
-  }
-
-  public append(value: number) {
-    this.length += 1;
-    while (this.sizePowerOfTwo < this.length) this.grow();
-    this.tree[this.sizePowerOfTwo + this.length - 1] = value;
-    this.rebuildUpFromLeaf(this.sizePowerOfTwo + this.length - 1);
-  }
-
-  public query(startIndex: number, endIndex: number) {
-    if (this.length === 0) return Number.NaN;
-
-    const clampedStart = Math.max(0, Math.min(startIndex, this.length - 1));
-    const clampedEnd = Math.max(0, Math.min(endIndex, this.length - 1));
-    if (clampedStart > clampedEnd) return Number.NaN;
-
-    let leftPointer = this.sizePowerOfTwo + clampedStart;
-    let rightPointer = this.sizePowerOfTwo + clampedEnd;
-
-    let result = Number.NEGATIVE_INFINITY;
-
-    while (leftPointer <= rightPointer) {
-      if ((leftPointer & 1) === 1)
-        result = Math.max(result, this.tree[leftPointer++]);
-      if ((rightPointer & 1) === 0)
-        result = Math.max(result, this.tree[rightPointer--]);
-      leftPointer >>= 1;
-      rightPointer >>= 1;
-    }
-
-    return result;
-  }
-
-  private grow() {
-    const oldSize = this.sizePowerOfTwo;
-    const newSize = oldSize * 2;
-    const newTree = new Array(newSize * 2).fill(Number.NEGATIVE_INFINITY);
-
-    for (let index = 0; index < oldSize * 2; index++) {
-      newTree[index] = this.tree[index] ?? Number.NEGATIVE_INFINITY;
-    }
-
-    this.sizePowerOfTwo = newSize;
-    this.tree = newTree;
-
-    for (let nodeIndex = this.sizePowerOfTwo - 1; nodeIndex >= 1; nodeIndex--) {
-      this.tree[nodeIndex] = Math.max(
-        this.tree[nodeIndex * 2],
-        this.tree[nodeIndex * 2 + 1],
-      );
-    }
-  }
-
-  private rebuildUpFromLeaf(leafIndex: number) {
-    let nodeIndex = leafIndex >> 1;
-    while (nodeIndex >= 1) {
-      this.tree[nodeIndex] = Math.max(
-        this.tree[nodeIndex * 2],
-        this.tree[nodeIndex * 2 + 1],
-      );
-      nodeIndex >>= 1;
-    }
-  }
-}
-
 /* ================= Block min/max for wick breach (two-phase) ================= */
 
 const BLOCK_SIZE = 64;
@@ -491,8 +341,11 @@ export const createTrendlineEngine = (
   let highSeries: number[] = [];
   let shadowSeries: number[] = [];
 
-  const lowMinTree = new SegmentTreeMin();
-  const highMaxTree = new SegmentTreeMax();
+  const firstRangeWindowSize = 2 * opts.firstRange + 1;
+  let lowFirstDeque: number[] = [];
+  let highFirstDeque: number[] = [];
+  let lowFirstCenter: number[] = [];
+  let highFirstCenter: number[] = [];
 
   const blockStats: BlockStats = { lowBlockMins: [], highBlockMaxs: [] };
 
@@ -512,14 +365,16 @@ export const createTrendlineEngine = (
     highSeries = [];
     shadowSeries = [];
 
-    lowMinTree.clear();
-    highMaxTree.clear();
-
     blockStats.lowBlockMins = [];
     blockStats.highBlockMaxs = [];
 
     extremaDeque = [];
     rawExtremaPoints = [];
+
+    lowFirstDeque = [];
+    highFirstDeque = [];
+    lowFirstCenter = [];
+    highFirstCenter = [];
 
     clusteredAnchors = [];
     currentClusterBest = null;
@@ -555,13 +410,16 @@ export const createTrendlineEngine = (
   };
 
   const isStrongFirstAnchorFast = (anchorIndex: number) => {
+    const lastBarIndex = lowSeries.length - 1;
     const startIndex = Math.max(0, anchorIndex - opts.firstRange);
-    const endIndex = Math.min(
-      lowSeries.length - 1,
-      anchorIndex + opts.firstRange,
-    );
+    const endIndex = Math.min(lastBarIndex, anchorIndex + opts.firstRange);
+    const canUseCenter =
+      anchorIndex - opts.firstRange >= 0 && anchorIndex + opts.firstRange <= lastBarIndex;
 
     if (opts.mode === 'lows') {
+      if (canUseCenter && Number.isFinite(lowFirstCenter[anchorIndex])) {
+        return lowSeries[anchorIndex] === lowFirstCenter[anchorIndex];
+      }
       let windowMin = Number.POSITIVE_INFINITY;
       for (let i = startIndex; i <= endIndex; i++) {
         if (lowSeries[i] < windowMin) windowMin = lowSeries[i];
@@ -569,11 +427,49 @@ export const createTrendlineEngine = (
       return lowSeries[anchorIndex] === windowMin;
     }
 
+    if (canUseCenter && Number.isFinite(highFirstCenter[anchorIndex])) {
+      return highSeries[anchorIndex] === highFirstCenter[anchorIndex];
+    }
     let windowMax = Number.NEGATIVE_INFINITY;
     for (let i = startIndex; i <= endIndex; i++) {
       if (highSeries[i] > windowMax) windowMax = highSeries[i];
     }
     return highSeries[anchorIndex] === windowMax;
+  };
+
+  const updateFirstRangeExtrema = (barIndex: number) => {
+    if (firstRangeWindowSize <= 1) return;
+
+    while (
+      lowFirstDeque.length > 0 &&
+      lowSeries[lowFirstDeque[lowFirstDeque.length - 1]] >= lowSeries[barIndex]
+    ) {
+      lowFirstDeque.pop();
+    }
+    lowFirstDeque.push(barIndex);
+
+    while (
+      highFirstDeque.length > 0 &&
+      highSeries[highFirstDeque[highFirstDeque.length - 1]] <=
+        highSeries[barIndex]
+    ) {
+      highFirstDeque.pop();
+    }
+    highFirstDeque.push(barIndex);
+
+    const startIndex = barIndex - firstRangeWindowSize + 1;
+    while (lowFirstDeque.length > 0 && lowFirstDeque[0] < startIndex) {
+      lowFirstDeque.shift();
+    }
+    while (highFirstDeque.length > 0 && highFirstDeque[0] < startIndex) {
+      highFirstDeque.shift();
+    }
+
+    if (startIndex >= 0) {
+      const centerIndex = barIndex - opts.firstRange;
+      lowFirstCenter[centerIndex] = lowSeries[lowFirstDeque[0]];
+      highFirstCenter[centerIndex] = highSeries[highFirstDeque[0]];
+    }
   };
 
   const buildAllAnchorsIncludingOpenCluster = (): Point[] => {
@@ -828,32 +724,38 @@ export const createTrendlineEngine = (
         y: pt.y,
         t: pt.t,
       }));
-      logger.info(
-        'trendlineEngine: rebuild empty %j',
-        {
-          mode: opts.mode,
-          lastBarIndex,
-          rawExtremaPoints: rawExtremaPoints.length,
-          clusteredAnchors: clusteredAnchors.length,
-          hasOpenCluster: Boolean(currentClusterBest),
-          tailAnchors,
-          rejectionStats,
-        },
-      );
+      // logger.info(
+      //   'trendlineEngine: rebuild empty %j',
+      //   {
+      //     mode: opts.mode,
+      //     lastBarIndex,
+      //     rawExtremaPoints: rawExtremaPoints.length,
+      //     clusteredAnchors: clusteredAnchors.length,
+      //     hasOpenCluster: Boolean(currentClusterBest),
+      //     tailAnchors,
+      //     rejectionStats,
+      //   },
+      // );
     }
 
     if (debugEnabled && process.env.DEBUG_TRENDLINE_ANCHOR_INDEX) {
       const debugIndex = Number(process.env.DEBUG_TRENDLINE_ANCHOR_INDEX);
       if (Number.isFinite(debugIndex)) {
         const anchor = allAnchors.find((pt) => pt.x === debugIndex);
-        let treeValue: number | null = null;
+        let windowValue: number | null = null;
         let bruteValue: number | null = null;
         let anchorValue: number | null = null;
         if (anchor) {
           const startIndex = Math.max(0, anchor.x - opts.firstRange);
           const endIndex = Math.min(lowSeries.length - 1, anchor.x + opts.firstRange);
           if (opts.mode === 'lows') {
-            treeValue = lowMinTree.query(startIndex, endIndex);
+            if (
+              anchor.x - opts.firstRange >= 0 &&
+              anchor.x + opts.firstRange <= lowSeries.length - 1 &&
+              Number.isFinite(lowFirstCenter[anchor.x])
+            ) {
+              windowValue = lowFirstCenter[anchor.x];
+            }
             anchorValue = lowSeries[anchor.x];
             let windowMin = Number.POSITIVE_INFINITY;
             for (let i = startIndex; i <= endIndex; i++) {
@@ -861,7 +763,13 @@ export const createTrendlineEngine = (
             }
             bruteValue = windowMin;
           } else {
-            treeValue = highMaxTree.query(startIndex, endIndex);
+            if (
+              anchor.x - opts.firstRange >= 0 &&
+              anchor.x + opts.firstRange <= highSeries.length - 1 &&
+              Number.isFinite(highFirstCenter[anchor.x])
+            ) {
+              windowValue = highFirstCenter[anchor.x];
+            }
             anchorValue = highSeries[anchor.x];
             let windowMax = Number.NEGATIVE_INFINITY;
             for (let i = startIndex; i <= endIndex; i++) {
@@ -870,20 +778,20 @@ export const createTrendlineEngine = (
             bruteValue = windowMax;
           }
         }
-        logger.info(
-          'trendlineEngine: debug anchor %j',
-          {
-            mode: opts.mode,
-            lastBarIndex,
-            debugIndex,
-            inAnchors: Boolean(anchor),
-            anchor,
-            strong: anchor ? isStrongFirstAnchorFast(anchor.x) : false,
-            anchorValue,
-            treeValue,
-            bruteValue,
-          },
-        );
+        // logger.info(
+        //   'trendlineEngine: debug anchor %j',
+        //   {
+        //     mode: opts.mode,
+        //     lastBarIndex,
+        //     debugIndex,
+        //     inAnchors: Boolean(anchor),
+        //     anchor,
+        //     strong: anchor ? isStrongFirstAnchorFast(anchor.x) : false,
+        //     anchorValue,
+        //     windowValue,
+        //     bruteValue,
+        //   },
+        // );
       }
     }
   };
@@ -923,8 +831,28 @@ export const createTrendlineEngine = (
 
     const centerIndex = endIndex - range;
     const extremaValue = shadowSeries[extremaDeque[0]];
+    const debugExtremumIndex = debugEnabled
+      ? Number(process.env.DEBUG_TRENDLINE_EXTREMUM_INDEX)
+      : Number.NaN;
 
-    if (shadowSeries[centerIndex] !== extremaValue) return;
+    if (shadowSeries[centerIndex] !== extremaValue) {
+      if (debugEnabled && Number.isFinite(debugExtremumIndex)) {
+        if (centerIndex === debugExtremumIndex) {
+          // logger.info(
+          //   'trendlineEngine: extremum miss %j',
+          //   {
+          //     mode: opts.mode,
+          //     centerIndex,
+          //     endIndex,
+          //     shadowValue: shadowSeries[centerIndex],
+          //     extremaValue,
+          //     extremaIndex: extremaDeque[0],
+          //   },
+          // );
+        }
+      }
+      return;
+    }
 
     const rawPoint: Point = {
       x: centerIndex,
@@ -934,6 +862,22 @@ export const createTrendlineEngine = (
 
     rawExtremaPoints.push(rawPoint);
     maybeFinalizeClusterAndRebuild(rawPoint);
+
+    if (debugEnabled && Number.isFinite(debugExtremumIndex)) {
+      if (centerIndex === debugExtremumIndex) {
+        // logger.info(
+        //   'trendlineEngine: extremum hit %j',
+        //   {
+        //     mode: opts.mode,
+        //     centerIndex,
+        //     endIndex,
+        //     shadowValue: shadowSeries[centerIndex],
+        //     extremaValue,
+        //     extremaIndex: extremaDeque[0],
+        //   },
+        // );
+      }
+    }
   };
 
   const updateCloseBreachDeferred = (
@@ -1046,16 +990,16 @@ export const createTrendlineEngine = (
     });
 
     if (debugVerbose && filtered.length === 0 && activeLines.length === 0) {
-      logger.info(
-        'trendlineEngine: no lines %j',
-        {
-          mode: opts.mode,
-          lastBarIndex,
-          rawExtremaPoints: rawExtremaPoints.length,
-          clusteredAnchors: clusteredAnchors.length,
-          hasOpenCluster: Boolean(currentClusterBest),
-        },
-      );
+      // logger.info(
+      //   'trendlineEngine: no lines %j',
+      //   {
+      //     mode: opts.mode,
+      //     lastBarIndex,
+      //     rawExtremaPoints: rawExtremaPoints.length,
+      //     clusteredAnchors: clusteredAnchors.length,
+      //     hasOpenCluster: Boolean(currentClusterBest),
+      //   },
+      // );
     }
 
     filtered.sort((a, b) => b.leftAnchor.x - a.leftAnchor.x);
@@ -1102,11 +1046,9 @@ export const createTrendlineEngine = (
     const shadowValue = opts.mode === 'lows' ? candle.low : candle.high;
     shadowSeries.push(shadowValue);
 
-    lowMinTree.append(candle.low);
-    highMaxTree.append(candle.high);
-
     updateBlockStats(blockStats, barIndex, candle.low, candle.high);
 
+    updateFirstRangeExtrema(barIndex);
     updateExtremaDeque(barIndex);
     maybeAddRawExtremum(barIndex);
 

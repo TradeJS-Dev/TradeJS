@@ -4,7 +4,7 @@ import { getTimestamp } from '@utils/timestamp';
 import { calculateCoinBtcCorrelation } from '@utils/correlation';
 import { uuid } from '@utils/uuid';
 import { ATR_PCT } from '@utils/indicators';
-import { logger } from '@utils/logger';
+// import { logger } from '@utils/logger';
 import { round } from '@utils/math';
 import { createTrendlineEngine } from '@utils/trendLineEngine';
 import { findTrendlinesByHighs, findTrendlinesByLows } from '@utils/trendLine';
@@ -46,15 +46,22 @@ export const TrendlineStrategyCreator: StrategyCreator = ({
 
   const debugTrendline = process.env.DEBUG_TRENDLINE_ENGINE === '1';
 
-  const getLowsTrendlines = createTrendlineEngine(cachedData, {
-    mode: 'lows',
-    ...TRENDLINE_OPTIONS,
-  });
+  const impl = process.env.TRENDLINE_IMPL ?? 'engine';
+  const useEngine = impl !== 'batch';
 
-  const getHighsTrendlines = createTrendlineEngine(cachedData, {
-    mode: 'highs',
-    ...TRENDLINE_OPTIONS,
-  });
+  const getLowsTrendlines = useEngine
+    ? createTrendlineEngine(cachedData, {
+        mode: 'lows',
+        ...TRENDLINE_OPTIONS,
+      })
+    : null;
+
+  const getHighsTrendlines = useEngine
+    ? createTrendlineEngine(cachedData, {
+        mode: 'highs',
+        ...TRENDLINE_OPTIONS,
+      })
+    : null;
 
   const ONE_DAY_MS = 86_400_000;
   let lastTradeTimestamp: number | null = null;
@@ -63,8 +70,18 @@ export const TrendlineStrategyCreator: StrategyCreator = ({
     cachedData.push(candle);
     btcCachedData.push(btcCandle);
 
-    const lowsTrendlines = getLowsTrendlines.next(candle);
-    const highsTrendlines = getHighsTrendlines.next(candle);
+    const lowsTrendlines = useEngine
+      ? getLowsTrendlines!.next(candle)
+      : findTrendlinesByLows(cachedData, {
+          mode: 'lows',
+          ...TRENDLINE_OPTIONS,
+        });
+    const highsTrendlines = useEngine
+      ? getHighsTrendlines!.next(candle)
+      : findTrendlinesByHighs(cachedData, {
+          mode: 'highs',
+          ...TRENDLINE_OPTIONS,
+        });
 
     const oldLowsTrendlines = debugTrendline
       ? findTrendlinesByLows(cachedData, {
@@ -94,25 +111,30 @@ export const TrendlineStrategyCreator: StrategyCreator = ({
               (item) => item.timestamp === oldBestLine.points[0].timestamp,
             )
           : null;
+      const anchorCandle =
+        leftAnchorIndex != null && leftAnchorIndex >= 0
+          ? cachedData[leftAnchorIndex]
+          : null;
 
-      logger.info(
-        'trendline mismatch %j',
-        {
-          timestamp: candle.timestamp,
-          bestLine: bestLine ? JSON.stringify(bestLine) : 'undefined',
-          oldBestLine: oldBestLine ? JSON.stringify(oldBestLine) : 'undefined',
-          engineCounts: {
-            lows: lowsTrendlines.length,
-            highs: highsTrendlines.length,
-          },
-          batchCounts: {
-            lows: oldLowsTrendlines.length,
-            highs: oldHighsTrendlines.length,
-          },
-          cachedLength: cachedData.length,
-          leftAnchorIndex,
-        },
-      );
+      // logger.info(
+      //   'trendline mismatch %j',
+      //   {
+      //     timestamp: candle.timestamp,
+      //     bestLine: bestLine ? JSON.stringify(bestLine) : 'undefined',
+      //     oldBestLine: oldBestLine ? JSON.stringify(oldBestLine) : 'undefined',
+      //     engineCounts: {
+      //       lows: lowsTrendlines.length,
+      //       highs: highsTrendlines.length,
+      //     },
+      //     batchCounts: {
+      //       lows: oldLowsTrendlines.length,
+      //       highs: oldHighsTrendlines.length,
+      //     },
+      //     cachedLength: cachedData.length,
+      //     leftAnchorIndex,
+      //     anchorCandle,
+      //   },
+      // );
     }
 
     if (!bestLine) {
@@ -259,7 +281,7 @@ export const TrendlineStrategyCreator: StrategyCreator = ({
           signal.prices.currentPrice = currentPrice;
         }
       } catch (err) {
-        logger.error('order error: %s %s', symbol, err);
+        // logger.error('order error: %s %s', symbol, err);
       }
     }
 
