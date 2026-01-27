@@ -1,7 +1,6 @@
 import { KLineData } from 'klinecharts';
 import { TrendLine, TrendLineOptions } from '@types';
 import { toMs } from '@utils/timestamp';
-// import { logger } from '@utils/logger';
 
 type Point = { x: number; y: number; t: number };
 
@@ -316,8 +315,6 @@ export const createTrendlineEngine = (
   initialCandles: KLineData[],
   options: TrendLineOptions,
 ): TrendlineEngine => {
-  const debugEnabled = process.env.DEBUG_TRENDLINE_ENGINE === '1';
-  const debugVerbose = process.env.DEBUG_TRENDLINE_ENGINE_VERBOSE === '1';
   const opts: Required<TrendLineOptions> = {
     mode: options.mode,
     maxLines: options.maxLines ?? DEFAULTS.maxLines,
@@ -621,23 +618,6 @@ export const createTrendlineEngine = (
     }
 
     const candidates: LineRuntime[] = [];
-    const rejectionStats = debugEnabled
-      ? {
-          distanceTooSmall: 0,
-          distanceTooLarge: 0,
-          weakFirstAnchor: 0,
-          badSlope: 0,
-          seed: {
-            touches: 0,
-            touchGap: 0,
-            touchSpan: 0,
-            wickBreach: 0,
-            closeBreach: 0,
-            captureMiss: 0,
-            captureEmpty: 0,
-          },
-        }
-      : null;
 
     for (
       let rightAnchorIndex = allAnchors.length - 1;
@@ -656,30 +636,15 @@ export const createTrendlineEngine = (
         const leftAnchor = allAnchors[leftAnchorIndex];
         const distance = rightAnchor.x - leftAnchor.x;
 
-        if (distance < opts.minDistance) {
-          if (rejectionStats) rejectionStats.distanceTooSmall++;
-          continue;
-        }
-        if (distance > opts.maxDistance) {
-          if (rejectionStats) rejectionStats.distanceTooLarge++;
-          continue;
-        }
+        if (distance < opts.minDistance) continue;
+        if (distance > opts.maxDistance) break;
 
-        if (!isStrongFirstAnchorFast(leftAnchor.x)) {
-          if (rejectionStats) rejectionStats.weakFirstAnchor++;
-          continue;
-        }
+        if (!isStrongFirstAnchorFast(leftAnchor.x)) continue;
 
         const slope =
           (rightAnchor.y - leftAnchor.y) / (rightAnchor.x - leftAnchor.x);
-        if (opts.mode === 'lows' && slope <= 0) {
-          if (rejectionStats) rejectionStats.badSlope++;
-          continue;
-        }
-        if (opts.mode === 'highs' && slope >= 0) {
-          if (rejectionStats) rejectionStats.badSlope++;
-          continue;
-        }
+        if (opts.mode === 'lows' && slope <= 0) continue;
+        if (opts.mode === 'highs' && slope >= 0) continue;
 
         const evaluateY = buildLineEvaluator({
           t1: leftAnchor.t,
@@ -698,15 +663,8 @@ export const createTrendlineEngine = (
           invalid: false,
         };
 
-        const invalidReason = seedLineBatchExact(runtime, lastBarIndex);
-        if (!runtime.invalid) {
-          candidates.push(runtime);
-        } else if (rejectionStats && invalidReason) {
-          if (invalidReason in rejectionStats.seed) {
-            rejectionStats.seed[invalidReason as keyof typeof rejectionStats.seed] +=
-              1;
-          }
-        }
+        seedLineBatchExact(runtime, lastBarIndex);
+        if (!runtime.invalid) candidates.push(runtime);
       }
 
       if (candidates.length >= opts.maxLines) break;
@@ -714,86 +672,6 @@ export const createTrendlineEngine = (
 
     activeLines = candidates;
 
-    if (
-      debugVerbose &&
-      candidates.length === 0 &&
-      allAnchors.length >= opts.minTouches
-    ) {
-      const tailAnchors = allAnchors.slice(-3).map((pt) => ({
-        x: pt.x,
-        y: pt.y,
-        t: pt.t,
-      }));
-      // logger.info(
-      //   'trendlineEngine: rebuild empty %j',
-      //   {
-      //     mode: opts.mode,
-      //     lastBarIndex,
-      //     rawExtremaPoints: rawExtremaPoints.length,
-      //     clusteredAnchors: clusteredAnchors.length,
-      //     hasOpenCluster: Boolean(currentClusterBest),
-      //     tailAnchors,
-      //     rejectionStats,
-      //   },
-      // );
-    }
-
-    if (debugEnabled && process.env.DEBUG_TRENDLINE_ANCHOR_INDEX) {
-      const debugIndex = Number(process.env.DEBUG_TRENDLINE_ANCHOR_INDEX);
-      if (Number.isFinite(debugIndex)) {
-        const anchor = allAnchors.find((pt) => pt.x === debugIndex);
-        let windowValue: number | null = null;
-        let bruteValue: number | null = null;
-        let anchorValue: number | null = null;
-        if (anchor) {
-          const startIndex = Math.max(0, anchor.x - opts.firstRange);
-          const endIndex = Math.min(lowSeries.length - 1, anchor.x + opts.firstRange);
-          if (opts.mode === 'lows') {
-            if (
-              anchor.x - opts.firstRange >= 0 &&
-              anchor.x + opts.firstRange <= lowSeries.length - 1 &&
-              Number.isFinite(lowFirstCenter[anchor.x])
-            ) {
-              windowValue = lowFirstCenter[anchor.x];
-            }
-            anchorValue = lowSeries[anchor.x];
-            let windowMin = Number.POSITIVE_INFINITY;
-            for (let i = startIndex; i <= endIndex; i++) {
-              if (lowSeries[i] < windowMin) windowMin = lowSeries[i];
-            }
-            bruteValue = windowMin;
-          } else {
-            if (
-              anchor.x - opts.firstRange >= 0 &&
-              anchor.x + opts.firstRange <= highSeries.length - 1 &&
-              Number.isFinite(highFirstCenter[anchor.x])
-            ) {
-              windowValue = highFirstCenter[anchor.x];
-            }
-            anchorValue = highSeries[anchor.x];
-            let windowMax = Number.NEGATIVE_INFINITY;
-            for (let i = startIndex; i <= endIndex; i++) {
-              if (highSeries[i] > windowMax) windowMax = highSeries[i];
-            }
-            bruteValue = windowMax;
-          }
-        }
-        // logger.info(
-        //   'trendlineEngine: debug anchor %j',
-        //   {
-        //     mode: opts.mode,
-        //     lastBarIndex,
-        //     debugIndex,
-        //     inAnchors: Boolean(anchor),
-        //     anchor,
-        //     strong: anchor ? isStrongFirstAnchorFast(anchor.x) : false,
-        //     anchorValue,
-        //     windowValue,
-        //     bruteValue,
-        //   },
-        // );
-      }
-    }
   };
 
   const maybeFinalizeClusterAndRebuild = (rawPoint: Point) => {
@@ -831,28 +709,8 @@ export const createTrendlineEngine = (
 
     const centerIndex = endIndex - range;
     const extremaValue = shadowSeries[extremaDeque[0]];
-    const debugExtremumIndex = debugEnabled
-      ? Number(process.env.DEBUG_TRENDLINE_EXTREMUM_INDEX)
-      : Number.NaN;
 
-    if (shadowSeries[centerIndex] !== extremaValue) {
-      if (debugEnabled && Number.isFinite(debugExtremumIndex)) {
-        if (centerIndex === debugExtremumIndex) {
-          // logger.info(
-          //   'trendlineEngine: extremum miss %j',
-          //   {
-          //     mode: opts.mode,
-          //     centerIndex,
-          //     endIndex,
-          //     shadowValue: shadowSeries[centerIndex],
-          //     extremaValue,
-          //     extremaIndex: extremaDeque[0],
-          //   },
-          // );
-        }
-      }
-      return;
-    }
+    if (shadowSeries[centerIndex] !== extremaValue) return;
 
     const rawPoint: Point = {
       x: centerIndex,
@@ -862,22 +720,6 @@ export const createTrendlineEngine = (
 
     rawExtremaPoints.push(rawPoint);
     maybeFinalizeClusterAndRebuild(rawPoint);
-
-    if (debugEnabled && Number.isFinite(debugExtremumIndex)) {
-      if (centerIndex === debugExtremumIndex) {
-        // logger.info(
-        //   'trendlineEngine: extremum hit %j',
-        //   {
-        //     mode: opts.mode,
-        //     centerIndex,
-        //     endIndex,
-        //     shadowValue: shadowSeries[centerIndex],
-        //     extremaValue,
-        //     extremaIndex: extremaDeque[0],
-        //   },
-        // );
-      }
-    }
   };
 
   const updateCloseBreachDeferred = (
@@ -989,19 +831,6 @@ export const createTrendlineEngine = (
       return true;
     });
 
-    if (debugVerbose && filtered.length === 0 && activeLines.length === 0) {
-      // logger.info(
-      //   'trendlineEngine: no lines %j',
-      //   {
-      //     mode: opts.mode,
-      //     lastBarIndex,
-      //     rawExtremaPoints: rawExtremaPoints.length,
-      //     clusteredAnchors: clusteredAnchors.length,
-      //     hasOpenCluster: Boolean(currentClusterBest),
-      //   },
-      // );
-    }
-
     filtered.sort((a, b) => b.leftAnchor.x - a.leftAnchor.x);
 
     const takeCount = Math.max(
@@ -1051,10 +880,6 @@ export const createTrendlineEngine = (
     updateFirstRangeExtrema(barIndex);
     updateExtremaDeque(barIndex);
     maybeAddRawExtremum(barIndex);
-
-    if (debugEnabled && process.env.DEBUG_TRENDLINE_FORCE_REBUILD === '1') {
-      rebuildCandidatesLikeBatch();
-    }
 
     let invalidatedByOffsetLogic = false;
 
