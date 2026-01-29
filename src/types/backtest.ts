@@ -103,8 +103,8 @@ export type TestThresholdsKey = keyof TestThresholds;
 
 export interface TestConnector extends Connector {
   getResult: () => Promise<TestingBoxResult>;
-  checkTp: (candle: Candle) => void;
-  checkSl: (candle: Candle) => void;
+  checkTp: (candle: Candle) => Promise<void>;
+  checkSl: (candle: Candle) => Promise<void>;
 }
 
 export type TestConnectorCreator = (connector: Connector) => TestConnector;

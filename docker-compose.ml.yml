@@ -1,0 +1,10 @@
+services:
+  ml:
+    build:
+      context: .
+      dockerfile: Dockerfile.ml
+    volumes:
+      - ./ml:/app/ml
+      - ./data:/app/data
+    working_dir: /app
+    command: ["python", "/app/ml/train.py", "--help"]

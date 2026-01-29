@@ -11,6 +11,7 @@ import {
   Candle,
 } from '@types';
 import { redisKeys, setData } from '@utils/redis';
+import { TTL_3M } from '@constants';
 import { uuid } from '@utils/uuid';
 import { round } from '@utils/math';
 
@@ -39,6 +40,35 @@ export const TestConnectorCreator: TCC = (connector) => {
       profit: round(data.profit || 0),
       index: ORDER_LOG.length,
     } as OrderLog);
+  };
+
+  const saveMlResult = async (data: {
+    outcome: 'TAKE_PROFIT' | 'STOP_LOSS' | 'CLOSE';
+    timestamp: number;
+    price: number;
+  }) => {
+    const signalId = CURRENT_POSITION?.signal?.signalId;
+    if (!signalId || !CURRENT_POSITION) {
+      return;
+    }
+
+    await setData(
+      redisKeys.mlResult(signalId),
+      {
+        signalId,
+        symbol: CURRENT_POSITION.symbol,
+        direction: CURRENT_POSITION.direction,
+        entryTimestamp: CURRENT_POSITION.timestamp,
+        entryPrice: CURRENT_POSITION.price,
+        closeTimestamp: data.timestamp,
+        closePrice: data.price,
+        outcome: data.outcome,
+      },
+      {
+        stringify: true,
+        expire: TTL_3M,
+      },
+    );
   };
 
   const clearPosition = (timestamp: number) => {
@@ -96,13 +126,14 @@ export const TestConnectorCreator: TCC = (connector) => {
 
     getPosition: async () => CURRENT_POSITION || null,
 
-    checkTp: (candle: Candle) => {
+    checkTp: async (candle: Candle) => {
       if (_.isEmpty(candle) || !CURRENT_POSITION || !CURRENT_POSITION.qty) {
         return;
       }
 
       const isLong = CURRENT_POSITION.direction === 'LONG';
       const entryPrice = CURRENT_POSITION.price;
+      let lastTpPrice: number | null = null;
 
       const high = candle.high;
       const low = candle.low;
@@ -110,7 +141,7 @@ export const TestConnectorCreator: TCC = (connector) => {
       for (const tp of TP) {
         if (!CURRENT_POSITION || CURRENT_POSITION.qty <= 0) break;
 
-        let targetPrice = tp.price;
+        const targetPrice = tp.price;
 
         const reached = isLong ? high >= targetPrice : low <= targetPrice;
 
@@ -135,17 +166,23 @@ export const TestConnectorCreator: TCC = (connector) => {
           });
 
           tp.done = true;
+          lastTpPrice = targetPrice;
         }
       }
 
       TP = TP.filter(({ done }) => !done);
 
       if (CURRENT_POSITION && CURRENT_POSITION.qty <= 0) {
+        await saveMlResult({
+          outcome: 'TAKE_PROFIT',
+          timestamp: candle.timestamp,
+          price: lastTpPrice ?? entryPrice,
+        });
         clearPosition(candle.timestamp);
       }
     },
 
-    checkSl: (candle: Candle) => {
+    checkSl: async (candle: Candle) => {
       if (!SL || !CURRENT_POSITION || _.isEmpty(candle)) {
         return;
       }
@@ -173,6 +210,11 @@ export const TestConnectorCreator: TCC = (connector) => {
           type: isLong ? 'STOP_LOSS_LONG' : 'STOP_LOSS_SHORT',
         });
 
+        await saveMlResult({
+          outcome: 'STOP_LOSS',
+          timestamp: candle.timestamp,
+          price: SL,
+        });
         clearPosition(candle.timestamp);
 
         return;
@@ -225,6 +267,11 @@ export const TestConnectorCreator: TCC = (connector) => {
         type: isLong ? 'CLOSE_LONG' : 'CLOSE_SHORT',
       });
 
+      await saveMlResult({
+        outcome: 'CLOSE',
+        timestamp: order.timestamp,
+        price: order.price,
+      });
       clearPosition(order.timestamp);
 
       return true;

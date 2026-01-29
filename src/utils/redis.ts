@@ -178,4 +178,8 @@ export const redisKeys = {
   analysis: (symbol: string, signalId: string) =>
     `analysis:${symbol}:${signalId}`,
   results: (strategyName: string) => `results:${strategyName}`,
+  mlSignals: () => 'ml:signals:',
+  mlSignal: (signalId: string) => `ml:signals:${signalId}`,
+  mlResults: () => 'ml:results:',
+  mlResult: (signalId: string) => `ml:results:${signalId}`,
 };
