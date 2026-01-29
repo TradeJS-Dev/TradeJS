@@ -87,7 +87,7 @@ http {
             auth_basic "Restricted";
             auth_basic_user_file /etc/nginx/.htpasswd;
 
-            proxy_pass http://redisinsight:5540;
+            proxy_pass http://redis:8001;
             proxy_set_header Host $host;
             proxy_set_header X-Real-IP $remote_addr;
             proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -104,4 +104,5 @@ http {
             return 403;
         }
     }
+
 }

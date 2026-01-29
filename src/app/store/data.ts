@@ -5,7 +5,7 @@ import { get, set } from 'idb-keyval';
 import { useSearchParams } from 'next/navigation';
 import { KlineChartData, Interval, Filters } from '@types';
 import { kline } from '@actions/kline';
-import { mergeData } from '@utils/array';
+import { mergeData, isWrongData } from '@utils/array';
 
 interface DataState {
   data: Map<string, KlineChartData | null>;
@@ -32,6 +32,7 @@ const useDataStore = create<DataState>((set) => ({
 export const useData = (filters: Filters) => {
   const key = getKey(filters);
   const prevKey = useRef(key);
+  const retried = useRef(false);
   const [fulfilled, setFulfilled] = useState(false);
   const data = useDataStore((s) => s.data.get(key)) || [];
   const setData = useDataStore((s) => s.setData);
@@ -51,6 +52,12 @@ export const useData = (filters: Filters) => {
       }
     }
 
+    if (currentData?.length > 2 && isWrongData(interval, currentData)) {
+      console.warn('Wrong kline continuity, drop cache', symbol, interval);
+      currentData = [];
+      set(key, []);
+    }
+
     const normStart = Math.max(
       start,
       currentData?.length > 2
@@ -68,6 +75,35 @@ export const useData = (filters: Filters) => {
 
     const finalData = mergeData(currentData, newData);
 
+    if (
+      !cacheOnly &&
+      !retried.current &&
+      finalData.length > 2 &&
+      isWrongData(interval, finalData)
+    ) {
+      console.warn(
+        'Wrong kline continuity after merge, refetch full',
+        symbol,
+        interval,
+      );
+      retried.current = true;
+      set(key, []);
+      const refetchData = await kline({
+        symbol,
+        interval,
+        start,
+        end,
+        cacheOnly,
+      });
+      const cleaned = mergeData([], refetchData);
+      setData(symbol, interval, cleaned);
+      if (!fulfilled) {
+        setFulfilled(true);
+      }
+      set(key, cleaned);
+      return;
+    }
+
     setData(symbol, interval, finalData);
 
     if (!fulfilled) {
@@ -81,6 +117,7 @@ export const useData = (filters: Filters) => {
     if (key !== prevKey.current) {
       setFulfilled(false);
       prevKey.current = key;
+      retried.current = false;
     }
 
     updateData();

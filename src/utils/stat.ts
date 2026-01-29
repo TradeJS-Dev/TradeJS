@@ -425,7 +425,7 @@ export const sortBestTests = (
 };
 
 export const getFormatted = (
-  stat: TestStat | undefined,
+  stat: Partial<TestStat> | undefined,
   key: TestThresholdsKey,
 ) => {
   if (!stat) {

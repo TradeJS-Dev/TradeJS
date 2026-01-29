@@ -285,12 +285,19 @@ const finish = async (results: TestWorkerResult[]) => {
     createListIt()
       .setHeaderRow(HEADERS_RESULTS_BY_TICKERS)
       .d(
-        [...resultsByTickers].map(([symbol, value]) => [
-          value.testName,
-          symbol,
-          value.profit,
-          value.orders,
-        ]),
+        [...resultsByTickers]
+          .sort(([symbolA], [symbolB]) => symbolA.localeCompare(symbolB))
+          .map(([symbol, value]) => [
+            chalk.blue(value.testName),
+            chalk.yellow(symbol),
+            ...drawStatInCLI(
+              {
+                netProfit: value.profit,
+                orders: value.orders,
+              },
+              ['netProfit', 'orders'],
+            ),
+          ]),
       )
       .toString(),
   );

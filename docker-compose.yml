@@ -49,27 +49,18 @@ services:
       - web
 
   redis:
-    image: redis:alpine
+    image: redis/redis-stack:latest
     container_name: inv-redis
     restart: unless-stopped
+    expose:
+      - "8001"
+    volumes:
+      - redisdata:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       timeout: 3s
       retries: 10
-    networks:
-      - web
-
-  redisinsight:
-    image: redis/redisinsight:latest
-    container_name: inv-redisinsight
-    restart: unless-stopped
-    depends_on:
-      - redis
-    expose:
-      - "5540"
-    volumes:
-      - redisinsight_data:/data
     networks:
       - web
 
@@ -93,7 +84,7 @@ services:
       - "443:443"
     depends_on:
       - app
-      - redisinsight
+      - redis
     networks:
       - web
     logging:
@@ -139,4 +130,4 @@ networks:
 
 volumes:
   pgdata:
-  redisinsight_data:
+  redisdata:

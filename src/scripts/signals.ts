@@ -74,7 +74,7 @@ const findSignals = async (symbol: string, connector: Connector) => {
       ENV: 'production',
       INTERVAL: interval,
       MAKE_ORDERS: flags.makeOrders,
-      TRENDLINE_CONFIG: {
+      TRENDLINE: {
         minTouches,
         offset,
       },

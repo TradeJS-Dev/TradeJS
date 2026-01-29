@@ -19,6 +19,13 @@ const getRedis = () => {
   return global.__redis__;
 };
 
+const toResultString = (result: unknown): string | null => {
+  if (result == null) return null;
+  if (typeof result === 'string') return result;
+  if (Buffer.isBuffer(result)) return result.toString('utf8');
+  return String(result);
+};
+
 interface Options {
   stringify?: boolean; // форматированный JSON
   expire?: number; // TTL в секундах
@@ -58,6 +65,27 @@ export const getData = async (
   fallback: any = [],
 ): Promise<any> => {
   const redis = getRedis();
+
+  try {
+    const rawJson = await redis.call('JSON.GET', key);
+    const raw = toResultString(rawJson);
+    if (raw == null) return fallback;
+
+    try {
+      return JSON.parse(raw);
+    } catch (e) {
+      logger.log('error', 'failed JSON.parse(%s): %s', key, String(e));
+      await redis.del(key);
+      return fallback;
+    }
+  } catch (e) {
+    logger.log(
+      'error',
+      'failed JSON.GET %s: %s (fallback to GET)',
+      key,
+      String(e),
+    );
+  }
 
   try {
     const raw = await redis.get(key);
@@ -103,13 +131,26 @@ export const setData = async <T>(
   const value = toJson(data, stringify);
 
   try {
+    await redis.call('JSON.SET', key, '$', value);
     if (expire) {
-      await redis.set(key, value, 'EX', expire);
-    } else {
-      await redis.set(key, value);
+      await redis.expire(key, expire);
     }
   } catch (e) {
-    logger.log('error', 'failed SET %s: %s', key, String(e));
+    logger.log(
+      'error',
+      'failed JSON.SET %s: %s (fallback to SET)',
+      key,
+      String(e),
+    );
+    try {
+      if (expire) {
+        await redis.set(key, value, 'EX', expire);
+      } else {
+        await redis.set(key, value);
+      }
+    } catch (e2) {
+      logger.log('error', 'failed SET %s: %s', key, String(e2));
+    }
   }
 };
 
@@ -136,4 +177,5 @@ export const redisKeys = {
     `store:signals:${symbol}:${signalId}`,
   analysis: (symbol: string, signalId: string) =>
     `analysis:${symbol}:${signalId}`,
+  results: (strategyName: string) => `results:${strategyName}`,
 };

@@ -1,5 +1,3 @@
-version: "3.9"
-
 services:
   timescale:
     container_name: inv-timescale
@@ -23,10 +21,13 @@ services:
       - web
 
   redis:
-    image: mirror.gcr.io/library/redis:7.4-alpine
+    image: redis/redis-stack:latest
     container_name: inv-redis
     ports:
       - "6379:6379"
+      - "5540:8001"
+    volumes:
+      - redisdata:/data
     restart: unless-stopped
     networks:
       - web
@@ -49,18 +50,6 @@ services:
     networks:
       - web
 
-  redisinsight:
-    image: redis/redisinsight:latest
-    container_name: inv-redisinsight
-    ports:
-      - "5540:5540"
-    volumes:
-      - redisinsight_data:/data
-    depends_on:
-      - redis
-    restart: unless-stopped
-    networks:
-      - web
 
 networks:
   web:
@@ -69,4 +58,4 @@ networks:
 volumes:
   pgdata:
   pgadmin_data:
-  redisinsight_data:
+  redisdata:

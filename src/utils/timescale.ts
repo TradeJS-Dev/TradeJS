@@ -68,6 +68,14 @@ export async function upsertCandles(rows: CandleRow[]) {
     'volume',
     'turnover',
   ] as const;
+  const maxRows = Math.floor(65_535 / cols.length);
+  if (rows.length > maxRows) {
+    for (let i = 0; i < rows.length; i += maxRows) {
+      await upsertCandles(rows.slice(i, i + maxRows));
+    }
+    return;
+  }
+
   const valuesSql = rows
     .map(
       (_, i) =>
@@ -155,4 +163,64 @@ export async function getDataEdges(symbol: string, interval: number) {
   const min = minQ.rows[0]?.ms as number | undefined;
   const max = maxQ.rows[0]?.ms as number | undefined;
   return { min, max };
+}
+
+export async function waitForDbReady(
+  attempts = 20,
+  delayMs = 1_000,
+): Promise<void> {
+  const pool = getPool();
+  let lastError: unknown;
+
+  for (let i = 0; i < attempts; i++) {
+    try {
+      await pool.query('SELECT 1');
+      return;
+    } catch (e) {
+      lastError = e;
+      await new Promise((r) => setTimeout(r, delayMs));
+    }
+  }
+
+  throw lastError;
+}
+
+export async function deleteCandles(symbol: string, interval: number) {
+  const pool = getPool();
+  const sql = `
+    DELETE FROM candles
+    WHERE symbol = $1 AND interval = $2
+  `;
+  await pool.query(sql, [symbol, interval]);
+}
+
+export async function findContinuityGap(symbol: string, interval: number) {
+  const pool = getPool();
+  const expectedSeconds = interval * 60;
+  const sql = `
+    WITH ordered AS (
+      SELECT
+        ts,
+        LAG(ts) OVER (ORDER BY ts) AS prev_ts
+      FROM candles
+      WHERE symbol = $1 AND interval = $2
+    )
+    SELECT
+      ts,
+      prev_ts,
+      EXTRACT(EPOCH FROM (ts - prev_ts))::int AS diff_seconds
+    FROM ordered
+    WHERE prev_ts IS NOT NULL
+      AND EXTRACT(EPOCH FROM (ts - prev_ts))::int <> $3
+    ORDER BY ts ASC
+    LIMIT 1
+  `;
+  const res = await pool.query(sql, [symbol, interval, expectedSeconds]);
+  const row = res.rows[0];
+  if (!row) return null;
+  return {
+    ts: new Date(row.ts).getTime(),
+    prevTs: new Date(row.prev_ts).getTime(),
+    diffSeconds: row.diff_seconds as number,
+  };
 }

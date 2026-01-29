@@ -424,7 +424,8 @@ export const createTrendlineEngine = (
     const startIndex = Math.max(0, anchorIndex - opts.firstRange);
     const endIndex = Math.min(lastBarIndex, anchorIndex + opts.firstRange);
     const canUseCenter =
-      anchorIndex - opts.firstRange >= 0 && anchorIndex + opts.firstRange <= lastBarIndex;
+      anchorIndex - opts.firstRange >= 0 &&
+      anchorIndex + opts.firstRange <= lastBarIndex;
 
     if (opts.mode === 'lows') {
       if (canUseCenter && Number.isFinite(lowFirstCenter[anchorIndex])) {
@@ -506,12 +507,9 @@ export const createTrendlineEngine = (
 
     const touchCount = touchIndices.length;
     const touchSpan =
-      touchCount > 1
-        ? touchIndices[touchCount - 1] - touchIndices[0]
-        : 0;
+      touchCount > 1 ? touchIndices[touchCount - 1] - touchIndices[0] : 0;
 
-    const lastTouches =
-      touchCount > 2 ? touchIndices.slice(-2) : touchIndices;
+    const lastTouches = touchCount > 2 ? touchIndices.slice(-2) : touchIndices;
     const hasTouchGap = hasTooLargeTouchGaps(
       [...lastTouches, rightAnchor.x],
       opts.maxTouchGap,
@@ -608,7 +606,11 @@ export const createTrendlineEngine = (
       if (leftEnd >= rightAnchorIndex) leftEnd = rightAnchorIndex - 1;
       if (leftStart > leftEnd) continue;
 
-      for (let leftAnchorIndex = leftEnd; leftAnchorIndex >= leftStart; leftAnchorIndex--) {
+      for (
+        let leftAnchorIndex = leftEnd;
+        leftAnchorIndex >= leftStart;
+        leftAnchorIndex--
+      ) {
         if (candidates.length >= opts.maxLines) break;
 
         const leftAnchor = anchors[leftAnchorIndex];
@@ -706,7 +708,6 @@ export const createTrendlineEngine = (
     }
 
     activeLines = candidates;
-
   };
 
   const maybeFinalizeClusterAndRebuild = (rawPoint: Point) => {

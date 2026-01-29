@@ -5,10 +5,10 @@ import { calculateCoinBtcCorrelation } from '@utils/correlation';
 import { uuid } from '@utils/uuid';
 import { ATR_PCT } from '@utils/indicators';
 import { round } from '@utils/math';
+import { logger } from '@utils/logger';
 import { createTrendlineEngine } from '@utils/trendLineEngine';
-import { findTrendlinesByHighs, findTrendlinesByLows } from '@utils/trendLine';
 import { filterByVeryVolatility } from './filters';
-import { config as DEFAULT_CONFIG, TRENDLINE } from './config';
+import { config as DEFAULT_CONFIG } from './config';
 import { Signal, TrendLineOptions, StrategyCreator } from '@types';
 
 const PRELOAD_START = getTimestamp(SIGNALS_PRELOAD_DAYS);
@@ -30,35 +30,28 @@ export const TrendlineStrategyCreator: StrategyCreator = ({
     ENV,
     INTERVAL,
     MAKE_ORDERS,
-    TRENDLINE_CONFIG,
+    TRENDLINE,
     MAX_CORRELATION,
     MAX_LOSS_VALUE,
-    HIGHS_CONFIG,
-    LOWS_CONFIG,
+    HIGHS,
+    LOWS,
   } = config;
 
   const TRENDLINE_OPTIONS: Partial<TrendLineOptions> = {
     bestLines: 1,
     capture: true,
-    ...TRENDLINE_CONFIG,
+    ...TRENDLINE,
   };
 
-  const impl = process.env.TRENDLINE_IMPL ?? 'engine';
-  const useEngine = impl !== 'batch';
+  const getLowsTrendlines = createTrendlineEngine(cachedData, {
+    mode: 'lows',
+    ...TRENDLINE_OPTIONS,
+  });
 
-  const getLowsTrendlines = useEngine
-    ? createTrendlineEngine(cachedData, {
-        mode: 'lows',
-        ...TRENDLINE_OPTIONS,
-      })
-    : null;
-
-  const getHighsTrendlines = useEngine
-    ? createTrendlineEngine(cachedData, {
-        mode: 'highs',
-        ...TRENDLINE_OPTIONS,
-      })
-    : null;
+  const getHighsTrendlines = createTrendlineEngine(cachedData, {
+    mode: 'highs',
+    ...TRENDLINE_OPTIONS,
+  });
 
   const ONE_DAY_MS = 86_400_000;
   let lastTradeTimestamp: number | null = null;
@@ -67,18 +60,8 @@ export const TrendlineStrategyCreator: StrategyCreator = ({
     cachedData.push(candle);
     btcCachedData.push(btcCandle);
 
-    const lowsTrendlines = useEngine
-      ? getLowsTrendlines!.next(candle)
-      : findTrendlinesByLows(cachedData, {
-          mode: 'lows',
-          ...TRENDLINE_OPTIONS,
-        });
-    const highsTrendlines = useEngine
-      ? getHighsTrendlines!.next(candle)
-      : findTrendlinesByHighs(cachedData, {
-          mode: 'highs',
-          ...TRENDLINE_OPTIONS,
-        });
+    const lowsTrendlines = getLowsTrendlines.next(candle);
+    const highsTrendlines = getHighsTrendlines.next(candle);
 
     const bestLine =
       lowsTrendlines.length > 0 ? lowsTrendlines[0] : highsTrendlines[0];
@@ -136,9 +119,9 @@ export const TrendlineStrategyCreator: StrategyCreator = ({
 
     const { mode } = bestLine;
 
-    const strategy = TRENDLINE;
+    const strategy = 'TRENDLINE';
     const { direction, TP, SL, minRiskRatio, enable } =
-      mode === 'highs' ? HIGHS_CONFIG[strategy] : LOWS_CONFIG[strategy];
+      mode === 'highs' ? HIGHS : LOWS;
 
     if (!enable) {
       return 'STRATEGY_DISABLED';
@@ -227,7 +210,7 @@ export const TrendlineStrategyCreator: StrategyCreator = ({
           signal.prices.currentPrice = currentPrice;
         }
       } catch (err) {
-        // logger.error('order error: %s %s', symbol, err);
+        logger.error('order error: %s %s', symbol, err);
       }
     }
 

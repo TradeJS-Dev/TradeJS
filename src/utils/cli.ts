@@ -139,7 +139,7 @@ const getCLILevelColor = (level: ThresholdLevel) => {
 };
 
 export const drawStatInCLI = (
-  stat: TestStat,
+  stat: Partial<TestStat> | undefined,
   keys: TestThresholdsKey[],
 ): string[] => {
   return keys.map((key) => {
