@@ -4,7 +4,7 @@ export const config = {
   ENV: 'development',
   INTERVAL: '15' as Interval,
   MAKE_ORDERS: true,
-  MAX_LOSS_VALUE: 1,
+  MAX_LOSS_VALUE: 10,
   MAX_CORRELATION: 0.45,
   TRENDLINE: {
     minTouches: 4,

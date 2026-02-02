@@ -3,13 +3,7 @@
 import { useEffect, useState } from 'react';
 import _ from 'lodash';
 import { registerOverlay, registerIndicator, Chart } from 'klinecharts';
-import {
-  KlineChartItem,
-  OrderLogData,
-  Signal,
-  DeprecatedSignal,
-  TrendLine,
-} from '@types';
+import { KlineChartItem, OrderLogData, Signal, TrendLine } from '@types';
 import { useBacktest as useBacktestStore } from '@store';
 import '../figures';
 
@@ -256,19 +250,16 @@ const collectTrendLinesFromOrderLog = (
   for (let index = 0; index < events.length; index++) {
     const event = events[index];
     if (!event.type?.startsWith('OPEN_')) continue;
-    const signal = event.signal as Signal | DeprecatedSignal | undefined;
+    const signal = event.signal as Signal | undefined;
     if (!signal) continue;
 
-    const trendLine =
-      (signal as DeprecatedSignal | undefined)?.trendLine ||
-      (signal as Signal | undefined)?.figures?.trendLine;
+    const trendLine = signal?.figures?.trendLine;
 
     if (!trendLine || !trendLine.points || trendLine.points.length < 2) {
       continue;
     }
 
-    const signalId = (signal as Signal | DeprecatedSignal | undefined)
-      ?.signalId;
+    const signalId = signal?.signalId;
 
     if (signalId) {
       if (seenSignalIds.has(signalId)) continue;

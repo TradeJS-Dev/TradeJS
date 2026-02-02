@@ -314,7 +314,7 @@ export const calculateStatsFull = (
       : null;
 
   // -------- Результат --------
-  return {
+  const res = {
     // Период и частота
     periodDays: round(periodDays),
     periodMonths: round(periodMonths),
@@ -345,6 +345,13 @@ export const calculateStatsFull = (
 
     // Sharpe (годовой) по месячным ретёрнам equity
     sharpeRatio: sharpe === null ? null : round(sharpe),
+  };
+
+  const score = getBacktestScore(res);
+
+  return {
+    ...res,
+    score,
   };
 };
 

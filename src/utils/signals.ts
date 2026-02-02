@@ -13,11 +13,18 @@ export const formatMessage = (signal: Signal): string => {
     direction,
     strategy,
     prices: { currentPrice, takeProfitPrice, stopLossPrice, riskRatio },
-    indicators: { distance, correlation, touches, atr },
+    indicators,
   } = signal;
 
   try {
     const lines: string[] = [];
+    const distance = indicators.distance as number | undefined;
+    const correlation = indicators.correlation as number | undefined;
+    const touches = indicators.touches as number | undefined;
+    const atrValue = indicators.atr;
+    const atr = Array.isArray(atrValue)
+      ? atrValue[atrValue.length - 1]
+      : (atrValue as number | undefined);
 
     const formatPrices = () => {
       const tpPercent =

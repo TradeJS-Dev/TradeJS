@@ -178,28 +178,5 @@ export interface Signal {
     stopLossPrice: number;
     riskRatio: number;
   };
-  indicators: {
-    touches?: number;
-    distance?: number;
-    atr?: number;
-    correlation?: number;
-  };
-}
-
-export interface DeprecatedSignal {
-  signalId: string;
-  symbol: string;
-  interval: Interval;
-  strategy: string;
-  direction: Direction;
-  trendLine: TrendLine;
-  currentPrice: number;
-  takeProfitPrice: number;
-  stopLossPrice: number;
-  riskRatio: number;
-  timestamp: number;
-  correlation: number;
-  touches: number;
-  distance: number;
-  atr: number;
+  indicators: Record<string, number | number[]>;
 }

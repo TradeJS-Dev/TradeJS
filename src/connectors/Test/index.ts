@@ -46,6 +46,7 @@ export const TestConnectorCreator: TCC = (connector) => {
     outcome: 'TAKE_PROFIT' | 'STOP_LOSS' | 'CLOSE';
     timestamp: number;
     price: number;
+    profit: number;
   }) => {
     const signalId = CURRENT_POSITION?.signal?.signalId;
     if (!signalId || !CURRENT_POSITION) {
@@ -63,6 +64,8 @@ export const TestConnectorCreator: TCC = (connector) => {
         closeTimestamp: data.timestamp,
         closePrice: data.price,
         outcome: data.outcome,
+        profit: data.profit,
+        result: data.profit >= 0 ? 'WIN' : 'LOSS',
       },
       {
         stringify: true,
@@ -134,6 +137,7 @@ export const TestConnectorCreator: TCC = (connector) => {
       const isLong = CURRENT_POSITION.direction === 'LONG';
       const entryPrice = CURRENT_POSITION.price;
       let lastTpPrice: number | null = null;
+      let lastTpProfit = 0;
 
       const high = candle.high;
       const low = candle.low;
@@ -167,6 +171,7 @@ export const TestConnectorCreator: TCC = (connector) => {
 
           tp.done = true;
           lastTpPrice = targetPrice;
+          lastTpProfit = profit;
         }
       }
 
@@ -177,6 +182,7 @@ export const TestConnectorCreator: TCC = (connector) => {
           outcome: 'TAKE_PROFIT',
           timestamp: candle.timestamp,
           price: lastTpPrice ?? entryPrice,
+          profit: lastTpProfit,
         });
         clearPosition(candle.timestamp);
       }
@@ -214,6 +220,7 @@ export const TestConnectorCreator: TCC = (connector) => {
           outcome: 'STOP_LOSS',
           timestamp: candle.timestamp,
           price: SL,
+          profit,
         });
         clearPosition(candle.timestamp);
 
@@ -271,6 +278,7 @@ export const TestConnectorCreator: TCC = (connector) => {
         outcome: 'CLOSE',
         timestamp: order.timestamp,
         price: order.price,
+        profit,
       });
       clearPosition(order.timestamp);
 

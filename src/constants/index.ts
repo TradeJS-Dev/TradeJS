@@ -17,7 +17,7 @@ export const TTL_1D = 86_400;
 export const TTL_1M = 2_600_000;
 export const TTL_3M = 7_800_000;
 
-export const TESTS_TOP_LIMIT = 40;
+export const TESTS_TOP_LIMIT = 20;
 export const TESTS_LIMIT = 100_000;
 export const TESTS_ORDERS_MIN_LIMIT = 3;
 

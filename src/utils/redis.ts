@@ -157,11 +157,10 @@ export const setData = async <T>(
 export const redisKeys = {
   bots: () => 'bots:',
   bot: (userName: string) => `bots:${userName}`,
-  backtests: () => 'backtests:',
-  backtest: (userName: string) => `backtests:${userName}`,
+  backtestConfig: (config: string) => `backtests:configs:${config}`,
   users: () => 'users:',
   user: (userName: string) => `users:${userName}`,
-  tests: () => 'tests:',
+  tests: (userName: string) => `tests:${userName}`,
   testOrders: (userName: string, testName: string) =>
     `tests:${userName}:${testName}:orders`,
   testConfig: (userName: string, testName: string) =>
@@ -177,7 +176,10 @@ export const redisKeys = {
     `store:signals:${symbol}:${signalId}`,
   analysis: (symbol: string, signalId: string) =>
     `analysis:${symbol}:${signalId}`,
-  results: (strategyName: string) => `results:${strategyName}`,
+  strategyResults: (strategyName: string) =>
+    `strategies:results:${strategyName}`,
+  backtestResults: (config: string, timestamp: string) =>
+    `backtests:results:${config}:${timestamp}`,
   mlSignals: () => 'ml:signals:',
   mlSignal: (signalId: string) => `ml:signals:${signalId}`,
   mlResults: () => 'ml:results:',

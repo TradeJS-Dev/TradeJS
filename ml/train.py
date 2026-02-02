@@ -13,8 +13,6 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder
 from sklearn.ensemble import RandomForestClassifier
 
-from ml.features import expand_features, drop_raw_columns
-
 
 def load_dataset(path: str) -> pd.DataFrame:
     if path.endswith('.jsonl'):
@@ -39,10 +37,7 @@ def prepare_features(df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.Series]:
     df['label'] = df['label'].astype('Int64')
     df = df[df['label'].notna()]
 
-    df = expand_features(df)
-
     y = df['label'].astype(int)
-    df = drop_raw_columns(df)
     X = df.drop(columns=[c for c in ['label', 'signalId'] if c in df.columns])
 
     return X, y
@@ -92,13 +87,43 @@ def main() -> None:
     if X.empty:
         raise SystemExit('No training rows found. Check labels or input file.')
 
-    X_train, X_test, y_train, y_test = train_test_split(
-        X,
-        y,
-        test_size=args.test_size,
-        random_state=args.seed,
-        stratify=y,
-    )
+    total = len(y)
+    pos = int((y == 1).sum())
+    neg = int((y == 0).sum())
+    pos_rate = pos / total if total else 0.0
+
+    if total < 500:
+        print(f"Warning: very small dataset ({total}). Expect unstable model.")
+    elif total < 1000:
+        print(f"Warning: small dataset ({total}). Results may be noisy.")
+
+    if pos == 0 or neg == 0:
+        raise SystemExit("Only one class present. Need both positive and negative outcomes.")
+
+    if pos_rate < 0.2 or pos_rate > 0.8:
+        print(
+            f"Warning: class imbalance (pos_rate={pos_rate:.2%}). Consider more data or balancing."
+        )
+
+    # Avoid identical feature rows leaking across train/test.
+    groups = pd.util.hash_pandas_object(X, index=False)
+    unique_groups = groups.unique()
+    rng = np.random.RandomState(args.seed)
+    rng.shuffle(unique_groups)
+    test_group_count = int(len(unique_groups) * args.test_size)
+    if test_group_count <= 0 or test_group_count >= len(unique_groups):
+        X_train, X_test, y_train, y_test = train_test_split(
+            X,
+            y,
+            test_size=args.test_size,
+            random_state=args.seed,
+            stratify=y,
+        )
+    else:
+        test_groups = set(unique_groups[:test_group_count])
+        test_mask = groups.isin(test_groups)
+        X_train, X_test = X[~test_mask], X[test_mask]
+        y_train, y_test = y[~test_mask], y[test_mask]
 
     pipeline = build_pipeline(X)
     pipeline.fit(X_train, y_train)

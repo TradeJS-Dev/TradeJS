@@ -5,8 +5,6 @@ import joblib
 import pandas as pd
 from fastapi import FastAPI, HTTPException
 
-from ml.features import expand_features, drop_raw_columns
-
 app = FastAPI(title="ML Inference Service")
 
 MODEL_DIR = os.getenv("MODEL_DIR", "/app/data/ml/models")
@@ -44,8 +42,6 @@ def predict(payload: Dict[str, Any]):
         raise HTTPException(status_code=404, detail=f"Model not found: {strategy}")
 
     df = pd.DataFrame([payload])
-    df = expand_features(df)
-    df = drop_raw_columns(df)
     X = df.drop(columns=[c for c in ["label", "signalId"] if c in df.columns])
 
     try:

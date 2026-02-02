@@ -7,7 +7,7 @@ import { Chart, registerOverlay } from 'klinecharts';
 import { getSignal } from '@actions/signal';
 import { createTrendlineEngine } from '@utils/trendLineEngine';
 import { toMs } from '@utils/timestamp';
-import { Signal, DeprecatedSignal, TrendLine } from '@types';
+import { Signal, TrendLine } from '@types';
 
 interface ExtendData {
   mode: TrendLine['mode'];
@@ -37,7 +37,7 @@ const fitKeepRightZoom = (chart: Chart, lastDataTsMs: number) => {
 };
 
 export const useTrendLine = (chart: Chart | null, enabled: boolean) => {
-  const [signal, setSignal] = useState<Signal | DeprecatedSignal | null>(null);
+  const [signal, setSignal] = useState<Signal | null>(null);
   const searchParams = useSearchParams();
   const signalId = searchParams.get('signalId');
   const autoZoom = Boolean(searchParams.get('autoZoom')) ?? false;
@@ -110,9 +110,7 @@ export const useTrendLine = (chart: Chart | null, enabled: boolean) => {
     const buildLinesForMode = (mode: TrendLine['mode']) =>
       createTrendlineEngine(data, { mode, minTouches: 4 }).getLines();
 
-    const trendLine =
-      (signal as DeprecatedSignal)?.trendLine ||
-      (signal as Signal)?.figures.trendLine;
+    const trendLine = signal?.figures.trendLine;
 
     if (!trendLine) {
       return;

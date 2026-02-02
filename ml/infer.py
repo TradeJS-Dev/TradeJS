@@ -6,8 +6,6 @@ import joblib
 import numpy as np
 import pandas as pd
 
-from ml.features import expand_features, drop_raw_columns
-
 
 def load_dataset(path: str) -> pd.DataFrame:
     if path.endswith('.jsonl'):
@@ -35,9 +33,6 @@ def main() -> None:
     args = parser.parse_args()
 
     df = load_dataset(args.input)
-    df = expand_features(df)
-
-    df = drop_raw_columns(df)
     X = df.drop(columns=[c for c in ['label', 'signalId'] if c in df.columns])
 
     model_path = args.model or f'data/ml/models/{args.strategy}.joblib'

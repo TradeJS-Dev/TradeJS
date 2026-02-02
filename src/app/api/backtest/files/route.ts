@@ -9,7 +9,7 @@ export const dynamic = 'force-dynamic';
 export const GET = async () => {
   try {
     const result = new Array<Item>();
-    const keys = await getKeys(redisKeys.tests());
+    const keys = await getKeys(redisKeys.tests('root'));
     const orderKeys = keys.filter((key) => key.endsWith(':orders'));
 
     for await (const key of orderKeys) {

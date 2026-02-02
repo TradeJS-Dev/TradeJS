@@ -6,21 +6,23 @@ import path from 'path';
 import os from 'os';
 import chalk from 'chalk';
 import _ from 'lodash';
+import { format } from 'date-fns';
 import { TESTS_TOP_LIMIT, TESTS_LIMIT } from '@constants';
 import { connectors } from '@src/connectors';
-import { mergeConfigs } from '@utils/grid';
-import {
-  getBacktestScore,
-  calculateStatsFull,
-  sortBestTests,
-} from '@utils/stat';
+import { mergeConfigs, createTestSuite } from '@utils/grid';
+import { calculateStatsFull, sortBestTests } from '@utils/stat';
 import { setData, getData, redisKeys } from '@utils/redis';
 import { toJson } from '@utils/toJson';
 import { uuid } from '@utils/uuid';
-import { createTestSuite } from '@utils/grid';
 import { update, drawStatInCLI, getTickers } from '@utils/cli';
-import { filterGoodTests } from '@utils/tests';
-import { Interval, TestStat, TestWorkerResult } from '@types';
+import {
+  Interval,
+  OrderLog,
+  PositionLogData,
+  TestStat,
+  Test,
+  TestWorkerResult,
+} from '@types';
 
 const MAX_PARALLEL = Math.min(os.cpus().length, 4);
 
@@ -54,8 +56,6 @@ const HEADERS_RESULTS = [
   chalk.cyan('ORDERS'),
   chalk.cyan('WIN/LOSS (%)'),
   chalk.cyan('RISK'),
-  chalk.cyan('SHARPE'),
-  chalk.cyan('EXPOSURE (%)'),
   chalk.cyan('MAX DRAWDOWN (%)'),
 ];
 
@@ -64,26 +64,63 @@ const HEADERS_RESULTS_BY_TICKERS = [
   chalk.yellow('SYMBOL'),
   chalk.cyan('PROFIT'),
   chalk.cyan('ORDERS'),
+  chalk.cyan('WIN/LOSS (%)'),
+  chalk.cyan('RISK'),
+  chalk.cyan('MAX DRAWDOWN (%)'),
 ];
+
+type ErrorMessage = { id?: number; error?: unknown; payload?: any };
 
 let successTests = 0;
 let errorTests = 0;
-const resultsByTickers = new Map<
-  string,
-  {
-    testName: string;
-    profit: number;
-    orders: number;
-  }
->();
+const errorMessages: ErrorMessage[] = [];
+const resultsByTickers = new Map<string, TestWorkerResult>();
 
 const userName = flags.user;
+const runStartedAt = Date.now();
 
 const createListIt = () =>
   new ListIt({
     autoAlign: true,
     headerUnderline: true,
   });
+
+const createTable = (headers: string[], rows: string[][]) =>
+  createListIt().setHeaderRow(headers).d(rows).toString();
+
+const createTimestamp = (date: Date) => format(date, 'yyyyMMddHHmm');
+
+const filterGoodTests = (tests: TestWorkerResult[]) =>
+  tests.filter((res) => res.stat?.orders > 5 && res.stat?.profit > 10);
+
+const recordError = (error: ErrorMessage) => {
+  errorMessages.push(error);
+};
+
+const getLogsById = async (orderLogId: string) => {
+  const orderLog = (await getData(
+    redisKeys.cacheOrders(orderLogId),
+  )) as OrderLog;
+  const positionLog = (await getData(
+    redisKeys.cachePositions(orderLogId),
+  )) as PositionLogData;
+
+  return { orderLog, positionLog };
+};
+
+const setTestData = async (test: Test, stat: TestStat, orderLog: OrderLog) => {
+  await setData(redisKeys.testOrders(test.userName, test.name), orderLog, {
+    stringify: false,
+  });
+
+  await setData(redisKeys.testConfig(test.userName, test.name), test, {
+    stringify: true,
+  });
+
+  await setData(redisKeys.testStat(test.userName, test.name), stat, {
+    stringify: true,
+  });
+};
 
 const backtest = async () => {
   const byBitConnector = await connectors.ByBit({
@@ -111,7 +148,7 @@ const backtest = async () => {
     return;
   }
 
-  const backtestConfig = await getData(redisKeys.backtest(flags.config));
+  const backtestConfig = await getData(redisKeys.backtestConfig(flags.config));
 
   let testSuite = createTestSuite(userName, tickers, backtestConfig).slice(
     0,
@@ -160,6 +197,11 @@ const backtest = async () => {
 
       if (msg.error) {
         errorTests++;
+        recordError({
+          id: msg.id,
+          error: msg.error,
+          payload: msg,
+        });
 
         console.error(
           chalk.red(`Error in test #${msg.id}: ${JSON.stringify(msg)}`),
@@ -176,12 +218,8 @@ const backtest = async () => {
       goodResults.forEach((res) => {
         const prevValue = resultsByTickers.get(res.test.symbol);
 
-        if (!prevValue || prevValue.profit < res.stat.profit) {
-          resultsByTickers.set(res.test.symbol, {
-            orders: res.stat.orders,
-            profit: res.stat.profit,
-            testName: res.test.name,
-          });
+        if (!prevValue || prevValue.stat.profit < res.stat.profit) {
+          resultsByTickers.set(res.test.symbol, res);
         }
       });
 
@@ -211,12 +249,15 @@ const backtest = async () => {
     });
 
     tester.on('error', (err) => {
+      recordError({ error: err?.message ?? err });
       console.error(chalk.red(`Worker error: ${err.message}`));
     });
 
     tester.on('exit', (code) => {
-      if (code !== 0)
+      if (code !== 0) {
+        recordError({ error: `Worker exited with code ${code}` });
         console.error(chalk.red(`Worker exited with code ${code}`));
+      }
     });
 
     const chunkId = uuid();
@@ -227,37 +268,21 @@ const backtest = async () => {
 };
 
 const finish = async (results: TestWorkerResult[]) => {
-  const colorizedResults = new Array<string[]>();
+  const colorizedResults: string[][] = [];
+  const colorizedResultsByTickers: string[][] = [];
 
   for await (const result of results) {
     const { test, orderLogId } = result;
 
     const { symbol, name } = test;
 
-    const orderLog = await getData(redisKeys.cacheOrders(orderLogId));
-    const positionLog = await getData(redisKeys.cachePositions(orderLogId));
+    const { orderLog, positionLog } = await getLogsById(orderLogId);
 
     const stat = calculateStatsFull(positionLog) as TestStat;
 
-    if (!stat) {
-      continue;
-    }
+    await setTestData(test, stat, orderLog);
 
-    stat.score = getBacktestScore(stat);
-
-    await setData(redisKeys.testOrders(userName, name), orderLog, {
-      stringify: false,
-    });
-
-    await setData(redisKeys.testConfig(userName, name), test, {
-      stringify: true,
-    });
-
-    await setData(redisKeys.testStat(userName, name), stat, {
-      stringify: true,
-    });
-
-    colorizedResults.push([
+    const statRow = [
       chalk.blue(name),
       chalk.yellow(symbol),
       ...drawStatInCLI(stat, [
@@ -265,41 +290,48 @@ const finish = async (results: TestWorkerResult[]) => {
         'orders',
         'winRate',
         'riskRewardRatio',
-        'sharpeRatio',
-        'exposure',
         'maxDrawdown',
       ]),
-    ]);
+    ];
+
+    colorizedResults.push(statRow);
   }
 
   console.log('');
   console.log('RESULTS:');
-  console.log(
-    createListIt().setHeaderRow(HEADERS_RESULTS).d(colorizedResults).toString(),
-  );
+  console.log(createTable(HEADERS_RESULTS, colorizedResults));
   console.log('');
+
+  for await (const result of resultsByTickers.values()) {
+    const { test, orderLogId } = result;
+
+    const { symbol, name } = test;
+
+    const { orderLog, positionLog } = await getLogsById(orderLogId);
+
+    const stat = calculateStatsFull(positionLog) as TestStat;
+
+    await setTestData(test, stat, orderLog);
+
+    const statRow = [
+      chalk.blue(name),
+      chalk.yellow(symbol),
+      ...drawStatInCLI(stat, [
+        'netProfit',
+        'orders',
+        'winRate',
+        'riskRewardRatio',
+        'maxDrawdown',
+      ]),
+    ];
+
+    colorizedResultsByTickers.push(statRow);
+  }
 
   console.log('');
   console.log('RESULTS BY TICKERS:');
   console.log(
-    createListIt()
-      .setHeaderRow(HEADERS_RESULTS_BY_TICKERS)
-      .d(
-        [...resultsByTickers]
-          .sort(([symbolA], [symbolB]) => symbolA.localeCompare(symbolB))
-          .map(([symbol, value]) => [
-            chalk.blue(value.testName),
-            chalk.yellow(symbol),
-            ...drawStatInCLI(
-              {
-                netProfit: value.profit,
-                orders: value.orders,
-              },
-              ['netProfit', 'orders'],
-            ),
-          ]),
-      )
-      .toString(),
+    createTable(HEADERS_RESULTS_BY_TICKERS, colorizedResultsByTickers),
   );
   console.log('');
 
@@ -318,6 +350,34 @@ const finish = async (results: TestWorkerResult[]) => {
   console.log(`${chalk.green('SUCCESS TESTS')}: ${successTests}`);
   console.log(`${chalk.red('ERRORS')}: ${errorTests}`);
   console.log('');
+
+  const finishedAt = new Date();
+  const durationSeconds = Number(
+    ((Date.now() - runStartedAt) / 1000).toFixed(2),
+  );
+  const timestamp = createTimestamp(finishedAt);
+
+  await setData(
+    redisKeys.backtestResults(flags.config, timestamp),
+    {
+      config: flags.config,
+      user: userName,
+      startedAt: new Date(runStartedAt).toISOString(),
+      finishedAt: finishedAt.toISOString(),
+      durationSeconds,
+      results,
+      resultsByTickers: resultsByTickers.values(),
+      bestConfig,
+      mergedConfig,
+      successTests,
+      errors: errorMessages,
+      errorTests,
+    },
+    {
+      stringify: true,
+      expire: 0,
+    },
+  );
 
   process.exit();
 };

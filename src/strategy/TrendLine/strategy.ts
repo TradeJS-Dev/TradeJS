@@ -3,17 +3,20 @@ import { SIGNALS_PRELOAD_DAYS } from '@constants';
 import { getTimestamp } from '@utils/timestamp';
 import { calculateCoinBtcCorrelation } from '@utils/correlation';
 import { uuid } from '@utils/uuid';
-import { ATR_PCT } from '@utils/indicators';
 import { round } from '@utils/math';
 import { logger } from '@utils/logger';
 import { createTrendlineEngine } from '@utils/trendLineEngine';
 import { filterByVeryVolatility } from './filters';
 import { config as DEFAULT_CONFIG } from './config';
-import { Signal, TrendLineOptions, StrategyCreator } from '@types';
+import { applyIndicatorsToHistory, createIndicators } from './indicators';
+import {
+  Signal,
+  TrendLineOptions,
+  StrategyCreator,
+} from '@types';
 
 const PRELOAD_START = getTimestamp(SIGNALS_PRELOAD_DAYS);
 const FEE = 0.02;
-
 export const TrendlineStrategyCreator: StrategyCreator = ({
   config: baseConfig,
   symbol,
@@ -53,6 +56,21 @@ export const TrendlineStrategyCreator: StrategyCreator = ({
     ...TRENDLINE_OPTIONS,
   });
 
+  const getIndicators = createIndicators(cachedData);
+  const indicatorHistory: Record<string, number[]> = {};
+  const pushIndicator = (key: string, value: number | null | undefined) => {
+    if (value == null) {
+      return;
+    }
+    if (!indicatorHistory[key]) {
+      indicatorHistory[key] = [];
+    }
+    indicatorHistory[key].push(value);
+    if (indicatorHistory[key].length > 10) {
+      indicatorHistory[key].splice(0, indicatorHistory[key].length - 10);
+    }
+  };
+
   const ONE_DAY_MS = 86_400_000;
   let lastTradeTimestamp: number | null = null;
 
@@ -85,17 +103,13 @@ export const TrendlineStrategyCreator: StrategyCreator = ({
       return 'DEV_TRADE_COOLDOWN';
     }
 
-    let correlation = null;
+    const correlation = calculateCoinBtcCorrelation(
+      cachedData.slice(-100),
+      btcCachedData.slice(-100),
+    ).correlation;
 
-    if (ENV !== 'development') {
-      correlation = calculateCoinBtcCorrelation(
-        cachedData.slice(-100),
-        btcCachedData.slice(-100),
-      ).correlation;
-
-      if (correlation && correlation > MAX_CORRELATION) {
-        return `BTC_CORRELATION:${round(correlation)}`;
-      }
+    if (ENV !== 'development' && correlation && correlation > MAX_CORRELATION) {
+      return `BTC_CORRELATION:${round(correlation)}`;
     }
 
     const data =
@@ -111,7 +125,9 @@ export const TrendlineStrategyCreator: StrategyCreator = ({
 
     const lastCandle = data[data.length - 1];
     let currentPrice =
-      ENV === 'development' ? lastCandle.open : lastCandle.close;
+      ENV === 'development'
+        ? (lastCandle.open + lastCandle.close) / 2
+        : lastCandle.close;
 
     if (!filterByVeryVolatility(data)) {
       return 'VERY_VOLATILITY';
@@ -128,8 +144,6 @@ export const TrendlineStrategyCreator: StrategyCreator = ({
     }
 
     const isLong = direction === 'LONG';
-    const { value: atr } = ATR_PCT(data, 14, 7, 30);
-
     const stopLossPrice = isLong
       ? currentPrice * (1 - SL / 100)
       : currentPrice * (1 + SL / 100);
@@ -158,6 +172,11 @@ export const TrendlineStrategyCreator: StrategyCreator = ({
 
     const signalId = uuid();
 
+    const technicalIndicators = getIndicators(candle);
+    if (technicalIndicators) {
+      applyIndicatorsToHistory(technicalIndicators, pushIndicator);
+    }
+
     const signal: Signal = {
       signalId,
       strategy,
@@ -178,7 +197,7 @@ export const TrendlineStrategyCreator: StrategyCreator = ({
         correlation: correlation || 0,
         touches: bestLine.touches.length + 2,
         distance: bestLine.distance,
-        atr,
+        ...indicatorHistory,
       },
     };
 

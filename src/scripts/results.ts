@@ -16,16 +16,12 @@ args.option(['C', 'coverage'], 'Show coverage table', false);
 args.option(['u', 'update'], 'Update results config in redis', false);
 args.option(['m', 'merge'], 'Merge results config in redis', false);
 args.option(['U', 'user'], 'Use user config', 'root');
-args.option(['t', 'tickers'], 'Selected tickers');
-args.option(['e', 'exclude'], 'Exclude tickers from tests');
-args.option(['l', 'tickersLimit'], 'Tickers limit');
-args.option(['c', 'chunk'], 'Split by chunks, ex. 1/3');
 
 const flags = args.parse(process.argv);
 
-const MIN_PROFIT = 1;
+const MIN_PROFIT = 5;
 const MIN_WIN_RATE = 40;
-const MIN_ORDERS_PER_MONTH = 3;
+const MIN_ORDERS_PER_MONTH = 1;
 
 type BestResult = {
   symbol: string;
@@ -57,7 +53,7 @@ const getMonthlyReturn = (totalReturn: number, periodMonths: number) => {
 };
 
 const getTestNames = async (userName: string) => {
-  const testsPrefix = `${redisKeys.tests()}${userName}:`;
+  const testsPrefix = redisKeys.tests(userName);
   const keys = await getKeys(testsPrefix);
   const configKeys = keys.filter((key) => key.endsWith(':config'));
   return configKeys.map((key) => key.split(':')[2]);
@@ -125,7 +121,7 @@ const getCoverageRow = async (
   goodSymbols: Set<string>,
 ) => {
   const currentResults = (await getData(
-    redisKeys.results(strategyName),
+    redisKeys.strategyResults(strategyName),
     {},
   )) as Record<string, Test['strategyConfig']>;
 
@@ -147,10 +143,6 @@ const getCoverageRow = async (
 
   const tickers = await getTickers(
     byBitConnector,
-    flags.tickers,
-    flags.exclude,
-    flags.tickersLimit,
-    flags.chunk,
   );
 
   const total = tickers.length;
@@ -226,7 +218,7 @@ const results = async () => {
       }
 
       const current = (await getData(
-        redisKeys.results(strategyName),
+        redisKeys.strategyResults(strategyName),
         {},
       )) as Record<string, Test['strategyConfig']>;
 
@@ -235,7 +227,7 @@ const results = async () => {
         ...resultsConfig,
       };
 
-      await setData(redisKeys.results(strategyName), merged, {
+      await setData(redisKeys.strategyResults(strategyName), merged, {
         stringify: true,
         expire: 0,
       });
@@ -249,7 +241,7 @@ const results = async () => {
       return;
     }
 
-    await setData(redisKeys.results(strategyName), resultsConfig, {
+    await setData(redisKeys.strategyResults(strategyName), resultsConfig, {
       stringify: true,
       expire: 0,
     });

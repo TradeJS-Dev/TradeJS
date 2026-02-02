@@ -1,35 +1,17 @@
 import args from 'args';
 import chalk from 'chalk';
+import ProgressBar from 'progress';
+import { once } from 'events';
+import { createReadStream, createWriteStream } from 'fs';
 import fs from 'fs/promises';
 import path from 'path';
+import readline from 'readline';
 import { getData, getKeys, redisKeys } from '@utils/redis';
-
-type MlSignalRecord = {
-  signal: any;
-  context?: {
-    userName?: string;
-    testId?: string;
-    testSuiteId?: string;
-    testName?: string;
-    symbol?: string;
-    strategyName?: string;
-    strategyConfig?: any;
-    connectorName?: string;
-  };
-  candles?: any[];
-  btcCandles?: any[];
-};
-
-type MlResultRecord = {
-  signalId: string;
-  symbol: string;
-  direction: 'LONG' | 'SHORT';
-  entryTimestamp: number;
-  entryPrice: number;
-  closeTimestamp: number;
-  closePrice: number;
-  outcome: 'TAKE_PROFIT' | 'STOP_LOSS' | 'CLOSE';
-};
+import {
+  buildMlTrainingRow,
+  MlResultRecord,
+  MlSignalRecord,
+} from '@utils/mlTrainingTransform';
 
 args.example(
   'yarn ts-node ./src/scripts/mlExport --format both',
@@ -39,7 +21,6 @@ args.example(
 args.option(['o', 'outDir'], 'Output directory', 'data/ml');
 args.option(['f', 'format'], 'csv | jsonl | both', 'both');
 args.option(['i', 'includeOpen'], 'Include signals without result', false);
-args.option(['n', 'noCandles'], 'Do not export candles arrays', false);
 args.option(['l', 'limit'], 'Limit number of signals', 0);
 args.option(['s', 'strategy'], 'Filter by strategy/strategyName');
 
@@ -57,74 +38,106 @@ const csvEscape = (value: unknown): string => {
   return raw;
 };
 
-const formatPct = (value: number | null): number | null => {
-  if (value == null || Number.isNaN(value)) return null;
-  return Math.round(value * 10000) / 10000;
+const hashSymbolDigit = (symbol: string): number => {
+  let hash = 0;
+  for (let i = 0; i < symbol.length; i += 1) {
+    hash = (hash * 31 + symbol.charCodeAt(i)) | 0;
+  }
+  return Math.abs(hash) % 10;
 };
 
 const buildRow = (
   signalRecord: MlSignalRecord,
   resultRecord: MlResultRecord | null,
-  includeCandles: boolean,
+) => buildMlTrainingRow(signalRecord, resultRecord);
+
+const CHUNK_SIZE = 1000;
+
+const addHeaders = (row: Record<string, any>, headers: string[], headerSet: Set<string>) => {
+  for (const key of Object.keys(row)) {
+    if (row[key] === undefined || headerSet.has(key)) continue;
+    headerSet.add(key);
+    headers.push(key);
+  }
+};
+
+const writeJsonlChunk = async (
+  filePath: string,
+  rows: Array<Record<string, any>>,
 ) => {
-  const { signal, context, candles, btcCandles } = signalRecord;
+  if (!rows.length) return;
+  const stream = createWriteStream(filePath, { encoding: 'utf8' });
+  const done = new Promise<void>((resolve, reject) => {
+    stream.once('error', reject);
+    stream.once('finish', resolve);
+  });
+  for (const row of rows) {
+    if (!stream.write(`${JSON.stringify(row)}\n`)) {
+      await once(stream, 'drain');
+    }
+  }
+  stream.end();
+  await done;
+};
 
-  const signalId = signal?.signalId ?? '';
-  const direction = signal?.direction ?? resultRecord?.direction ?? '';
-  const entryPrice = resultRecord?.entryPrice ?? null;
-  const closePrice = resultRecord?.closePrice ?? null;
+const appendJsonlChunks = async (targetPath: string, chunkPaths: string[]) => {
+  const stream = createWriteStream(targetPath, { encoding: 'utf8' });
+  const done = new Promise<void>((resolve, reject) => {
+    stream.once('error', reject);
+    stream.once('finish', resolve);
+  });
 
-  let returnPct: number | null = null;
-  if (entryPrice != null && closePrice != null && entryPrice > 0) {
-    const raw = (closePrice - entryPrice) / entryPrice;
-    returnPct = direction === 'SHORT' ? -raw * 100 : raw * 100;
+  for (const chunkPath of chunkPaths) {
+    const reader = createReadStream(chunkPath, { encoding: 'utf8' });
+    for await (const chunk of reader) {
+      if (!stream.write(chunk)) {
+        await once(stream, 'drain');
+      }
+    }
   }
 
-  const label = returnPct == null ? null : returnPct > 0 ? 1 : 0;
+  stream.end();
+  await done;
+};
 
-  return {
-    signalId,
-    symbol: signal?.symbol ?? context?.symbol ?? resultRecord?.symbol ?? '',
-    interval: signal?.interval ?? '',
-    strategy: signal?.strategy ?? '',
-    direction,
-    timestamp: signal?.timestamp ?? null,
-    currentPrice: signal?.prices?.currentPrice ?? null,
-    takeProfitPrice: signal?.prices?.takeProfitPrice ?? null,
-    stopLossPrice: signal?.prices?.stopLossPrice ?? null,
-    riskRatio: signal?.prices?.riskRatio ?? null,
-    touches: signal?.indicators?.touches ?? null,
-    distance: signal?.indicators?.distance ?? null,
-    atr: signal?.indicators?.atr ?? null,
-    correlation: signal?.indicators?.correlation ?? null,
-    trendLine: signal?.figures?.trendLine
-      ? JSON.stringify(signal?.figures?.trendLine)
-      : '',
-    userName: context?.userName ?? '',
-    testId: context?.testId ?? '',
-    testSuiteId: context?.testSuiteId ?? '',
-    testName: context?.testName ?? '',
-    strategyName: context?.strategyName ?? '',
-    connectorName: context?.connectorName ?? '',
-    strategyConfig: context?.strategyConfig
-      ? JSON.stringify(context?.strategyConfig)
-      : '',
-    entryTimestamp: resultRecord?.entryTimestamp ?? null,
-    entryPrice,
-    closeTimestamp: resultRecord?.closeTimestamp ?? null,
-    closePrice,
-    outcome: resultRecord?.outcome ?? '',
-    returnPct: formatPct(returnPct),
-    label,
-    candles: includeCandles ? JSON.stringify(candles ?? []) : undefined,
-    btcCandles: includeCandles ? JSON.stringify(btcCandles ?? []) : undefined,
-  };
+const writeCsvFromJsonlChunks = async (
+  targetPath: string,
+  headers: string[],
+  chunkPaths: string[],
+) => {
+  const stream = createWriteStream(targetPath, { encoding: 'utf8' });
+  const done = new Promise<void>((resolve, reject) => {
+    stream.once('error', reject);
+    stream.once('finish', resolve);
+  });
+
+  if (!stream.write(`${headers.join(',')}\n`)) {
+    await once(stream, 'drain');
+  }
+
+  for (const chunkPath of chunkPaths) {
+    const rl = readline.createInterface({
+      input: createReadStream(chunkPath, { encoding: 'utf8' }),
+      crlfDelay: Infinity,
+    });
+    for await (const line of rl) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+      const row = JSON.parse(trimmed) as Record<string, any>;
+      const lineOut = `${headers.map((h) => csvEscape(row[h])).join(',')}\n`;
+      if (!stream.write(lineOut)) {
+        await once(stream, 'drain');
+      }
+    }
+  }
+
+  stream.end();
+  await done;
 };
 
 const mlExport = async () => {
   const outDir = flags.outDir as string;
   const includeOpen = Boolean(flags.includeOpen);
-  const includeCandles = !Boolean(flags.noCandles);
   const format = String(flags.format || 'both').toLowerCase();
   const strategyFilter = flags.strategy ? String(flags.strategy) : '';
 
@@ -139,70 +152,135 @@ const mlExport = async () => {
     process.exit(0);
   }
 
-  const rows: Array<Record<string, any>> = [];
+  const rows80: Array<Record<string, any>> = [];
+  const rows20: Array<Record<string, any>> = [];
 
-  for await (const key of keys) {
-    const signalRecord = (await getData(key, null)) as MlSignalRecord | null;
+  const headers80: string[] = [];
+  const headers20: string[] = [];
+  const headerSet80 = new Set<string>();
+  const headerSet20 = new Set<string>();
 
-    if (!signalRecord?.signal?.signalId) {
-      continue;
-    }
+  const tempDir = path.join(outDir, `ml-export-chunks-${Date.now()}`);
+  await fs.mkdir(tempDir, { recursive: true });
 
-    const signalId = signalRecord.signal.signalId as string;
-    const resultRecord = (await getData(
-      redisKeys.mlResult(signalId),
-      null,
-    )) as MlResultRecord | null;
+  const chunkFiles80: string[] = [];
+  const chunkFiles20: string[] = [];
+  let totalRows = 0;
 
-    if (!resultRecord && !includeOpen) {
-      continue;
-    }
+  const totalChunks = Math.ceil(keys.length / CHUNK_SIZE) || 1;
+  const bar = new ProgressBar(
+    ':current/:total [:bar][:percent] :eta(s) :rows +:pos -:neg',
+    {
+      total: totalChunks,
+      width: 30,
+    },
+  );
+  let posCount = 0;
+  let negCount = 0;
 
-    const row = buildRow(signalRecord, resultRecord, includeCandles);
+  for (let start = 0; start < keys.length; start += CHUNK_SIZE) {
+    const batch = keys.slice(start, start + CHUNK_SIZE);
+    rows80.length = 0;
+    rows20.length = 0;
 
-    if (strategyFilter) {
-      const rowStrategy = String(
-        row.strategy || row.strategyName || '',
-      ).toLowerCase();
-      if (rowStrategy !== strategyFilter.toLowerCase()) {
+    for await (const key of batch) {
+      const signalRecord = (await getData(key, null)) as MlSignalRecord | null;
+
+      if (!signalRecord?.signal?.signalId) {
         continue;
+      }
+
+      const signalId = signalRecord.signal.signalId as string;
+      const resultRecord = (await getData(
+        redisKeys.mlResult(signalId),
+        null,
+      )) as MlResultRecord | null;
+
+      if (!resultRecord && !includeOpen) {
+        continue;
+      }
+
+      if (strategyFilter) {
+        const rowStrategy = String(
+          signalRecord.signal?.strategy ||
+            signalRecord.context?.strategyName ||
+            '',
+        ).toLowerCase();
+        if (rowStrategy !== strategyFilter.toLowerCase()) {
+          continue;
+        }
+      }
+
+      const row = buildRow(signalRecord, resultRecord);
+      if (row.label === 1) posCount += 1;
+      if (row.label === 0) negCount += 1;
+
+      const symbol = String(
+        signalRecord.signal?.symbol ||
+          signalRecord.context?.symbol ||
+          resultRecord?.symbol ||
+          '',
+      );
+      const digit = hashSymbolDigit(symbol);
+      if (digit % 5 === 0) {
+        rows20.push(row);
+        addHeaders(row, headers20, headerSet20);
+      } else {
+        rows80.push(row);
+        addHeaders(row, headers80, headerSet80);
       }
     }
 
-    rows.push(row);
+    if (rows80.length) {
+      const chunkPath80 = path.join(tempDir, `chunk-80-${start}.jsonl`);
+      await writeJsonlChunk(chunkPath80, rows80);
+      chunkFiles80.push(chunkPath80);
+      totalRows += rows80.length;
+    }
+    if (rows20.length) {
+      const chunkPath20 = path.join(tempDir, `chunk-20-${start}.jsonl`);
+      await writeJsonlChunk(chunkPath20, rows20);
+      chunkFiles20.push(chunkPath20);
+      totalRows += rows20.length;
+    }
+
+    bar.tick(1, { rows: totalRows, pos: posCount, neg: negCount });
   }
 
-  if (!rows.length) {
+  if (totalRows === 0) {
+    await fs.rm(tempDir, { recursive: true, force: true });
     console.log(chalk.yellow('No rows to export.'));
     process.exit(0);
   }
 
   const baseName = `ml-dataset-${Date.now()}`;
-  const jsonlPath = path.join(outDir, `${baseName}.jsonl`);
-  const csvPath = path.join(outDir, `${baseName}.csv`);
+  const jsonlPath80 = path.join(outDir, `${baseName}.80.jsonl`);
+  const csvPath80 = path.join(outDir, `${baseName}.80.csv`);
+  const jsonlPath20 = path.join(outDir, `${baseName}.20.jsonl`);
+  const csvPath20 = path.join(outDir, `${baseName}.20.csv`);
 
   if (format === 'jsonl' || format === 'both') {
-    const jsonl = rows.map((row) => JSON.stringify(row)).join('\n') + '\n';
-    await fs.writeFile(jsonlPath, jsonl, 'utf8');
-    console.log(chalk.green(`JSONL saved: ${jsonlPath}`));
+    await appendJsonlChunks(jsonlPath80, chunkFiles80);
+    await appendJsonlChunks(jsonlPath20, chunkFiles20);
+    console.log(chalk.green(`JSONL saved: ${jsonlPath80}`));
+    console.log(chalk.green(`JSONL saved: ${jsonlPath20}`));
   }
 
   if (format === 'csv' || format === 'both') {
-    const headers = Object.keys(rows[0]).filter(
-      (key) => rows[0][key] !== undefined,
-    );
-    const csvLines = [headers.join(',')];
-    for (const row of rows) {
-      const line = headers.map((h) => csvEscape(row[h])).join(',');
-      csvLines.push(line);
-    }
-    await fs.writeFile(csvPath, csvLines.join('\n') + '\n', 'utf8');
-    console.log(chalk.green(`CSV saved: ${csvPath}`));
+    await writeCsvFromJsonlChunks(csvPath80, headers80, chunkFiles80);
+    await writeCsvFromJsonlChunks(csvPath20, headers20, chunkFiles20);
+    console.log(chalk.green(`CSV saved: ${csvPath80}`));
+    console.log(chalk.green(`CSV saved: ${csvPath20}`));
   }
+
+  for (const filePath of [...chunkFiles80, ...chunkFiles20]) {
+    await fs.rm(filePath, { force: true });
+  }
+  await fs.rm(tempDir, { recursive: true, force: true });
 
   console.log(
     chalk.gray(
-      `rows: ${rows.length}, includeOpen: ${includeOpen}, includeCandles: ${includeCandles}, strategy: ${strategyFilter || 'any'}`,
+      `rows: ${totalRows} (chunks: ${chunkFiles80.length + chunkFiles20.length}), includeOpen: ${includeOpen}, strategy: ${strategyFilter || 'any'}`,
     ),
   );
 
