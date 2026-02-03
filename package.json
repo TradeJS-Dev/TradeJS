@@ -22,6 +22,7 @@
     "ml-infer-build": "docker compose -f docker-compose.infer.yml build",
     "ml-infer-up": "docker compose -f docker-compose.infer.yml up",
     "ml-infer-down": "docker compose -f docker-compose.infer.yml down",
+    "ml-upload:prod": "bash ./bin/upload-models.sh",
     "lint": "next lint",
     "migration": "NODE_OPTIONS=\"--max-old-space-size=8192\" time yarn ts-node ./src/scripts/migration",
     "ml-export": "time yarn ts-node ./src/scripts/mlExport",

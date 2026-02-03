@@ -23,6 +23,9 @@ export const TrendlineStrategyCreator: StrategyCreator = async ({
   btcData: btcCachedData,
   connector,
 }) => {
+  const ONE_DAY_MS = 86_400_000;
+  let lastTradeTimestamp: number | null = null;
+
   let config = {
     ...DEFAULT_CONFIG,
     ...baseConfig,
@@ -41,26 +44,22 @@ export const TrendlineStrategyCreator: StrategyCreator = async ({
       config = {
         ...config,
         ...backtestConfig,
-      } as typeof DEFAULT_CONFIG;
+      };
       configFromBacktest = true;
     }
   }
 
-  const trendlineOptions: Partial<TrendLineOptions> = {
-    bestLines: 1,
-    capture: true,
-    ...config.TRENDLINE,
-  };
-
-  const getLowsTrendlines = createTrendlineEngine(cachedData, {
-    mode: 'lows',
-    ...trendlineOptions,
-  });
-
-  const getHighsTrendlines = createTrendlineEngine(cachedData, {
-    mode: 'highs',
-    ...trendlineOptions,
-  });
+  const {
+    ENV,
+    INTERVAL,
+    MAKE_ORDERS,
+    TRENDLINE,
+    ML_THRESHOLD,
+    MAX_CORRELATION,
+    MAX_LOSS_VALUE,
+    HIGHS,
+    LOWS,
+  } = config;
 
   const getIndicators = createIndicators(cachedData);
   const indicatorHistory: Record<string, number[]> = {};
@@ -77,22 +76,23 @@ export const TrendlineStrategyCreator: StrategyCreator = async ({
     }
   };
 
-  const ONE_DAY_MS = 86_400_000;
-  let lastTradeTimestamp: number | null = null;
+  const trendlineOptions: Partial<TrendLineOptions> = {
+    bestLines: 1,
+    capture: true,
+    ...TRENDLINE,
+  };
+
+  const getLowsTrendlines = createTrendlineEngine(cachedData, {
+    mode: 'lows',
+    ...trendlineOptions,
+  });
+
+  const getHighsTrendlines = createTrendlineEngine(cachedData, {
+    mode: 'highs',
+    ...trendlineOptions,
+  });
 
   return async (candle, btcCandle) => {
-    const {
-      ENV,
-      INTERVAL,
-      MAKE_ORDERS,
-      TRENDLINE,
-      ML_THRESHOLD,
-      MAX_CORRELATION,
-      MAX_LOSS_VALUE,
-      HIGHS,
-      LOWS,
-    } = config;
-
     cachedData.push(candle);
     btcCachedData.push(btcCandle);
 
@@ -126,7 +126,12 @@ export const TrendlineStrategyCreator: StrategyCreator = async ({
       btcCachedData.slice(-100),
     ).correlation;
 
-    if (ENV !== 'development' && correlation && correlation > MAX_CORRELATION) {
+    if (
+      ENV !== 'development' &&
+      !configFromBacktest &&
+      correlation &&
+      correlation > MAX_CORRELATION
+    ) {
       return `BTC_CORRELATION:${round(correlation)}`;
     }
 

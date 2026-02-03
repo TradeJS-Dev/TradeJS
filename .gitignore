@@ -39,8 +39,5 @@ next-env.d.ts
 
 # app
 /data
-!/data/ml
-!/data/ml/models
-!/data/ml/models/*.joblib
 /public/screenshots
 .ai

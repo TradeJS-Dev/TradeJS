@@ -7,31 +7,29 @@ RUN apk add --no-cache \
     dumb-init \
     cronie \
     nano \
-    htop
-
-RUN apk add --no-cache \
+    htop \
     chromium \
     nss \
     freetype \
     harfbuzz \
     ttf-dejavu \
     ttf-freefont \
-    htop \
     ca-certificates
 
 WORKDIR /app
 
-COPY . .
-
-# COPY package.json yarn.lock .yarn .yarnrc.yml ./
+COPY package.json yarn.lock .yarn .yarnrc.yml ./
 
 RUN yarn
 
-# COPY . .
+COPY next.config.mjs tsconfig.json next-env.d.ts postcss.config.js ./
+COPY src ./src
+COPY public ./public
+COPY proto ./proto
+COPY entrypoint.sh ./entrypoint.sh
+COPY cronjob /etc/crontabs/root
 
 RUN yarn build
-
-COPY cronjob /etc/crontabs/root
 
 RUN chmod +x ./entrypoint.sh
 

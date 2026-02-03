@@ -8,6 +8,17 @@ jest.mock('@utils/trendLineEngine', () => ({
   createTrendlineEngine: jest.fn(),
 }));
 
+jest.mock('@utils/redis', () => ({
+  getData: jest.fn(async () => ({})),
+  redisKeys: {
+    strategyResults: jest.fn(() => 'strategy:results:TrendLine'),
+  },
+}));
+
+jest.mock('@utils/mlGrpc', () => ({
+  fetchMlThreshold: jest.fn(async () => null),
+}));
+
 jest.mock('@utils/correlation', () => ({
   calculateCoinBtcCorrelation: jest.fn(() => ({ correlation: 0 })),
 }));
