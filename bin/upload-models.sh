@@ -26,6 +26,12 @@ fi
 
 SSH_PORT="${SSH_PORT:-22}"
 REMOTE_DIR="${REMOTE_DIR:-~/data/ml/models}"
+MODELS_DIR="${MODELS_DIR:-$(pwd)/data/ml/models}"
+
+if [[ ! -d "$MODELS_DIR" ]]; then
+  echo "Models directory not found: $MODELS_DIR" >&2
+  exit 1
+fi
 
 ssh -i "$SSH_KEY" -p "$SSH_PORT" -o StrictHostKeyChecking=no "$SSH_USER@$SSH_HOST" "mkdir -p \"$REMOTE_DIR\""
-scp -i "$SSH_KEY" -P "$SSH_PORT" -o StrictHostKeyChecking=no -r data/ml/models/. "$SSH_USER@$SSH_HOST:$REMOTE_DIR/"
+scp -i "$SSH_KEY" -P "$SSH_PORT" -o StrictHostKeyChecking=no -r "$MODELS_DIR/." "$SSH_USER@$SSH_HOST:$REMOTE_DIR/"
