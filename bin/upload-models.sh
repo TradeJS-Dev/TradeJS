@@ -26,12 +26,25 @@ fi
 
 SSH_PORT="${SSH_PORT:-22}"
 REMOTE_DIR="${REMOTE_DIR:-~/data/ml/models}"
-MODELS_DIR="${MODELS_DIR:-$(pwd)/data/ml/models}"
+
+if [[ -n "${MODELS_DIR:-}" ]]; then
+  if [[ "${MODELS_DIR}" != /* ]]; then
+    MODELS_DIR="$(pwd)/${MODELS_DIR}"
+  fi
+else
+  MODELS_DIR="$(pwd)/data/ml/models"
+fi
+
+MODELS_DIR="$(cd "$MODELS_DIR" && pwd -P)"
 
 if [[ ! -d "$MODELS_DIR" ]]; then
   echo "Models directory not found: $MODELS_DIR" >&2
   exit 1
 fi
 
-ssh -i "$SSH_KEY" -p "$SSH_PORT" -o StrictHostKeyChecking=no "$SSH_USER@$SSH_HOST" "mkdir -p \"$REMOTE_DIR\""
-scp -i "$SSH_KEY" -P "$SSH_PORT" -o StrictHostKeyChecking=no -r "$MODELS_DIR/." "$SSH_USER@$SSH_HOST:$REMOTE_DIR/"
+ssh -i "$SSH_KEY" -p "$SSH_PORT" -o StrictHostKeyChecking=no "$SSH_USER@$SSH_HOST" "mkdir -p $REMOTE_DIR"
+
+# Stream a sorted archive so uploads happen in alphabetical order.
+(cd "$MODELS_DIR" && tar --sort=name -cf - .) | \
+  ssh -i "$SSH_KEY" -p "$SSH_PORT" -o StrictHostKeyChecking=no "$SSH_USER@$SSH_HOST" \
+  "tar -xpf - -C $REMOTE_DIR"
