@@ -13,7 +13,8 @@ COPY ml/requirements.txt /app/ml/requirements.txt
 RUN pip install --no-cache-dir -r /app/ml/requirements.txt
 
 COPY ml /app/ml
+COPY proto /app/proto
 
-EXPOSE 8000
+EXPOSE 50051
 
-CMD ["uvicorn", "ml.api:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["python", "/app/ml/api.py"]

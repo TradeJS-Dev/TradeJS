@@ -141,9 +141,7 @@ const getCoverageRow = async (
     userName,
   });
 
-  const tickers = await getTickers(
-    byBitConnector,
-  );
+  const tickers = await getTickers(byBitConnector);
 
   const total = tickers.length;
   const coverage = total ? ((goodMissing + goodExisting) / total) * 100 : 0;

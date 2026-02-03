@@ -53,7 +53,11 @@ const buildRow = (
 
 const CHUNK_SIZE = 1000;
 
-const addHeaders = (row: Record<string, any>, headers: string[], headerSet: Set<string>) => {
+const addHeaders = (
+  row: Record<string, any>,
+  headers: string[],
+  headerSet: Set<string>,
+) => {
   for (const key of Object.keys(row)) {
     if (row[key] === undefined || headerSet.has(key)) continue;
     headerSet.add(key);
@@ -140,6 +144,9 @@ const mlExport = async () => {
   const includeOpen = Boolean(flags.includeOpen);
   const format = String(flags.format || 'both').toLowerCase();
   const strategyFilter = flags.strategy ? String(flags.strategy) : '';
+  const trainBuckets = 9;
+  const trainLabel = 'train';
+  const testLabel = 'test';
 
   await fs.mkdir(outDir, { recursive: true });
 
@@ -152,24 +159,24 @@ const mlExport = async () => {
     process.exit(0);
   }
 
-  const rows80: Array<Record<string, any>> = [];
-  const rows20: Array<Record<string, any>> = [];
+  const rowsTrain: Array<Record<string, any>> = [];
+  const rowsTest: Array<Record<string, any>> = [];
 
-  const headers80: string[] = [];
-  const headers20: string[] = [];
-  const headerSet80 = new Set<string>();
-  const headerSet20 = new Set<string>();
+  const headersTrain: string[] = [];
+  const headersTest: string[] = [];
+  const headerSetTrain = new Set<string>();
+  const headerSetTest = new Set<string>();
 
   const tempDir = path.join(outDir, `ml-export-chunks-${Date.now()}`);
   await fs.mkdir(tempDir, { recursive: true });
 
-  const chunkFiles80: string[] = [];
-  const chunkFiles20: string[] = [];
+  const chunkFilesTrain: string[] = [];
+  const chunkFilesTest: string[] = [];
   let totalRows = 0;
 
   const totalChunks = Math.ceil(keys.length / CHUNK_SIZE) || 1;
   const bar = new ProgressBar(
-    ':current/:total [:bar][:percent] :eta(s) :rows +:pos -:neg',
+    ':current/:total [:bar][:percent] :eta(s) :rows :pos :neg',
     {
       total: totalChunks,
       width: 30,
@@ -180,8 +187,8 @@ const mlExport = async () => {
 
   for (let start = 0; start < keys.length; start += CHUNK_SIZE) {
     const batch = keys.slice(start, start + CHUNK_SIZE);
-    rows80.length = 0;
-    rows20.length = 0;
+    rowsTrain.length = 0;
+    rowsTest.length = 0;
 
     for await (const key of batch) {
       const signalRecord = (await getData(key, null)) as MlSignalRecord | null;
@@ -222,29 +229,39 @@ const mlExport = async () => {
           '',
       );
       const digit = hashSymbolDigit(symbol);
-      if (digit % 5 === 0) {
-        rows20.push(row);
-        addHeaders(row, headers20, headerSet20);
+      if (digit < trainBuckets) {
+        rowsTrain.push(row);
+        addHeaders(row, headersTrain, headerSetTrain);
       } else {
-        rows80.push(row);
-        addHeaders(row, headers80, headerSet80);
+        rowsTest.push(row);
+        addHeaders(row, headersTest, headerSetTest);
       }
     }
 
-    if (rows80.length) {
-      const chunkPath80 = path.join(tempDir, `chunk-80-${start}.jsonl`);
-      await writeJsonlChunk(chunkPath80, rows80);
-      chunkFiles80.push(chunkPath80);
-      totalRows += rows80.length;
+    if (rowsTrain.length) {
+      const chunkPathTrain = path.join(
+        tempDir,
+        `chunk-${trainLabel}-${start}.jsonl`,
+      );
+      await writeJsonlChunk(chunkPathTrain, rowsTrain);
+      chunkFilesTrain.push(chunkPathTrain);
+      totalRows += rowsTrain.length;
     }
-    if (rows20.length) {
-      const chunkPath20 = path.join(tempDir, `chunk-20-${start}.jsonl`);
-      await writeJsonlChunk(chunkPath20, rows20);
-      chunkFiles20.push(chunkPath20);
-      totalRows += rows20.length;
+    if (rowsTest.length) {
+      const chunkPathTest = path.join(
+        tempDir,
+        `chunk-${testLabel}-${start}.jsonl`,
+      );
+      await writeJsonlChunk(chunkPathTest, rowsTest);
+      chunkFilesTest.push(chunkPathTest);
+      totalRows += rowsTest.length;
     }
 
-    bar.tick(1, { rows: totalRows, pos: posCount, neg: negCount });
+    bar.tick(1, {
+      rows: chalk.yellow(totalRows),
+      pos: chalk.green(posCount),
+      neg: chalk.red(negCount),
+    });
   }
 
   if (totalRows === 0) {
@@ -254,33 +271,33 @@ const mlExport = async () => {
   }
 
   const baseName = `ml-dataset-${Date.now()}`;
-  const jsonlPath80 = path.join(outDir, `${baseName}.80.jsonl`);
-  const csvPath80 = path.join(outDir, `${baseName}.80.csv`);
-  const jsonlPath20 = path.join(outDir, `${baseName}.20.jsonl`);
-  const csvPath20 = path.join(outDir, `${baseName}.20.csv`);
+  const jsonlPathTrain = path.join(outDir, `${baseName}.${trainLabel}.jsonl`);
+  const csvPathTrain = path.join(outDir, `${baseName}.${trainLabel}.csv`);
+  const jsonlPathTest = path.join(outDir, `${baseName}.${testLabel}.jsonl`);
+  const csvPathTest = path.join(outDir, `${baseName}.${testLabel}.csv`);
 
   if (format === 'jsonl' || format === 'both') {
-    await appendJsonlChunks(jsonlPath80, chunkFiles80);
-    await appendJsonlChunks(jsonlPath20, chunkFiles20);
-    console.log(chalk.green(`JSONL saved: ${jsonlPath80}`));
-    console.log(chalk.green(`JSONL saved: ${jsonlPath20}`));
+    await appendJsonlChunks(jsonlPathTrain, chunkFilesTrain);
+    await appendJsonlChunks(jsonlPathTest, chunkFilesTest);
+    console.log(chalk.green(`JSONL saved: ${jsonlPathTrain}`));
+    console.log(chalk.green(`JSONL saved: ${jsonlPathTest}`));
   }
 
   if (format === 'csv' || format === 'both') {
-    await writeCsvFromJsonlChunks(csvPath80, headers80, chunkFiles80);
-    await writeCsvFromJsonlChunks(csvPath20, headers20, chunkFiles20);
-    console.log(chalk.green(`CSV saved: ${csvPath80}`));
-    console.log(chalk.green(`CSV saved: ${csvPath20}`));
+    await writeCsvFromJsonlChunks(csvPathTrain, headersTrain, chunkFilesTrain);
+    await writeCsvFromJsonlChunks(csvPathTest, headersTest, chunkFilesTest);
+    console.log(chalk.green(`CSV saved: ${csvPathTrain}`));
+    console.log(chalk.green(`CSV saved: ${csvPathTest}`));
   }
 
-  for (const filePath of [...chunkFiles80, ...chunkFiles20]) {
+  for (const filePath of [...chunkFilesTrain, ...chunkFilesTest]) {
     await fs.rm(filePath, { force: true });
   }
   await fs.rm(tempDir, { recursive: true, force: true });
 
   console.log(
     chalk.gray(
-      `rows: ${totalRows} (chunks: ${chunkFiles80.length + chunkFiles20.length}), includeOpen: ${includeOpen}, strategy: ${strategyFilter || 'any'}`,
+      `rows: ${totalRows} (chunks: ${chunkFilesTrain.length + chunkFilesTest.length}), split: 90/10, includeOpen: ${includeOpen}, strategy: ${strategyFilter || 'any'}`,
     ),
   );
 

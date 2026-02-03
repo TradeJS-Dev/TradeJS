@@ -17,7 +17,11 @@ const ONE_HOUR_MS = 3_600_000;
 const ONE_DAY_MS = 86_400_000;
 
 const percentChange = (current: number, previous: number): number | null => {
-  if (!Number.isFinite(current) || !Number.isFinite(previous) || previous === 0) {
+  if (
+    !Number.isFinite(current) ||
+    !Number.isFinite(previous) ||
+    previous === 0
+  ) {
     return null;
   }
   return ((current - previous) / previous) * 100;
@@ -148,7 +152,11 @@ export const createIndicators = (data: KlineChartData) => {
     volume24h?: number | null;
   } = {};
 
-  const computeWindow = (currentTimestamp: number, windowMs: number, startIdx: number) => {
+  const computeWindow = (
+    currentTimestamp: number,
+    windowMs: number,
+    startIdx: number,
+  ) => {
     const windowStart = currentTimestamp - windowMs;
     if (timestamps.length === 0 || timestamps[0] > windowStart) {
       return {
@@ -213,9 +221,17 @@ export const createIndicators = (data: KlineChartData) => {
     }
 
     const currentTimestamp = candle.timestamp;
-    const window1h = computeWindow(currentTimestamp, ONE_HOUR_MS, window1hStart);
+    const window1h = computeWindow(
+      currentTimestamp,
+      ONE_HOUR_MS,
+      window1hStart,
+    );
     window1hStart = window1h.startIdx;
-    const window24h = computeWindow(currentTimestamp, ONE_DAY_MS, window24hStart);
+    const window24h = computeWindow(
+      currentTimestamp,
+      ONE_DAY_MS,
+      window24hStart,
+    );
     window24hStart = window24h.startIdx;
 
     const price1hPcnt =

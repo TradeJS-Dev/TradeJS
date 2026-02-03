@@ -27,7 +27,7 @@ export interface StrategyCreatorParams {
   btcData: KlineChartData;
 }
 
-export type StrategyCreator = (params: StrategyCreatorParams) => Strategy;
+export type StrategyCreator = (params: StrategyCreatorParams) => Promise<Strategy>;
 
 export type TestingOptions = Pick<KlineRequest, 'start' | 'end'>;
 

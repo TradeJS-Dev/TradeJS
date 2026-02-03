@@ -12,6 +12,8 @@ export const formatMessage = (signal: Signal): string => {
     symbol,
     direction,
     strategy,
+    configFromBacktest,
+    ml,
     prices: { currentPrice, takeProfitPrice, stopLossPrice, riskRatio },
     indicators,
   } = signal;
@@ -62,6 +64,10 @@ export const formatMessage = (signal: Signal): string => {
 
       lines.push(`Strategy: ${strategy}`);
 
+      if (configFromBacktest) {
+        lines.push('Config from backtest');
+      }
+
       if (touches) {
         lines.push(`Points: ${touches}`);
       }
@@ -76,6 +82,12 @@ export const formatMessage = (signal: Signal): string => {
 
       if (correlation) {
         lines.push(`BTC correlation: ${correlation}`);
+      }
+
+      if (ml) {
+        lines.push(
+          `ML: ${ml.passed ? 'PASS' : 'FAIL'} (${ml.probability.toFixed(3)} / ${ml.threshold.toFixed(3)})`,
+        );
       }
 
       const prices = formatPrices();

@@ -40,12 +40,6 @@ const safeLog1p = (value: number): number => {
   return Math.log1p(Math.max(0, value));
 };
 
-const computeMean = (values: number[]): number => {
-  if (values.length === 0) return 0;
-  const sum = values.reduce((acc, value) => acc + value, 0);
-  return sum / values.length;
-};
-
 const computeMedian = (values: number[]): number => {
   if (values.length === 0) return 0;
   const sorted = [...values].sort((a, b) => a - b);
@@ -56,7 +50,45 @@ const computeMedian = (values: number[]): number => {
   return sorted[mid];
 };
 
-const sliceWindow = (values: number[], endIndex: number, windowSize: number): number[] => {
+const computeMean = (values: number[]): number => {
+  if (values.length === 0) return 0;
+  const sum = values.reduce((acc, value) => acc + value, 0);
+  return sum / values.length;
+};
+
+const computeStd = (values: number[]): number => {
+  if (values.length === 0) return 0;
+  const mean = computeMean(values);
+  const variance =
+    values.reduce((acc, value) => acc + (value - mean) ** 2, 0) / values.length;
+  return Math.sqrt(variance);
+};
+
+const computeSkew = (values: number[]): number => {
+  if (values.length === 0) return 0;
+  const mean = computeMean(values);
+  const std = computeStd(values);
+  if (std === 0) return 0;
+  const m3 =
+    values.reduce((acc, value) => acc + (value - mean) ** 3, 0) / values.length;
+  return m3 / std ** 3;
+};
+
+const computeKurtosis = (values: number[]): number => {
+  if (values.length === 0) return 0;
+  const mean = computeMean(values);
+  const std = computeStd(values);
+  if (std === 0) return 0;
+  const m4 =
+    values.reduce((acc, value) => acc + (value - mean) ** 4, 0) / values.length;
+  return m4 / std ** 4;
+};
+
+const sliceWindow = (
+  values: number[],
+  endIndex: number,
+  windowSize: number,
+): number[] => {
   if (values.length === 0) return [];
   const start = Math.max(0, endIndex - windowSize + 1);
   return values.slice(start, endIndex + 1);
@@ -70,10 +102,6 @@ export const buildMlTrainingRow = (
 ): Record<string, number | null> => {
   const { signal, context, candles, btcCandles } = signalRecord;
 
-  // ВАЖНО: currentPrice используется как общий якорь нормализации для множества фич.
-  // Это корректно только если индикаторы в абсолютных ценовых единицах.
-  // Если индикатор уже нормализован (например, MA/close или проценты),
-  // деление на currentPrice ломает масштаб и вредит модели. См. ниже.
   const currentPrice = toNumber(signal?.prices?.currentPrice, 0);
   const candleList = asArray(candles);
   const btcList = asArray(btcCandles);
@@ -88,14 +116,19 @@ export const buildMlTrainingRow = (
   const lastBtcClose = toNumber(lastBtcCandle?.close, 0);
   const lastAltToBtcRatio = safeDiv(lastAltClose, lastBtcClose);
 
-  // Базовые скалярные фичи. Часть нормализуется на currentPrice,
-  // чтобы сделать масштабы сопоставимыми между активами.
   const row: Record<string, number | null> = {
     direction: signal?.direction === 'LONG' ? 1 : 0,
     interval: intervalMinutes,
     currentPrice,
-    takeProfitPrice: safeDiv(toNumber(signal?.prices?.takeProfitPrice, 0), currentPrice),
-    stopLossPrice: safeDiv(toNumber(signal?.prices?.stopLossPrice, 0), currentPrice),
+    entryTimestamp: lastTimestamp,
+    takeProfitPrice: safeDiv(
+      toNumber(signal?.prices?.takeProfitPrice, 0),
+      currentPrice,
+    ),
+    stopLossPrice: safeDiv(
+      toNumber(signal?.prices?.stopLossPrice, 0),
+      currentPrice,
+    ),
     riskRatio: toNumber(signal?.prices?.riskRatio, 0),
     Correlation: toNumber(signal?.indicators?.correlation, 0),
     Touches: toNumber(signal?.indicators?.touches, 0),
@@ -116,6 +149,18 @@ export const buildMlTrainingRow = (
     }
   };
 
+  const addSeriesRelTo = (
+    prefix: string,
+    values: unknown[],
+    denomSeries: unknown[],
+  ) => {
+    for (let i = 0; i < INDICATOR_WINDOW; i += 1) {
+      const value = toNumber(values[i], 0);
+      const denom = toNumber(denomSeries[i], 0);
+      row[`${prefix}_${i + 1}`] = safeDiv(value, denom);
+    }
+  };
+
   const addSeriesLogVolume = (prefix: string, values: unknown[]) => {
     for (let i = 0; i < INDICATOR_WINDOW; i += 1) {
       const value = toNumber(values[i], 0);
@@ -123,89 +168,75 @@ export const buildMlTrainingRow = (
     }
   };
 
-  const addSeriesVolumeNormalized = (prefix: string, values: unknown[]) => {
+  const addSeriesVolumeMedianNormalized = (
+    prefix: string,
+    values: unknown[],
+  ) => {
     const numericValues = values.map((value) => toNumber(value, 0));
     const windowSize = Math.min(20, numericValues.length);
     for (let i = 0; i < INDICATOR_WINDOW; i += 1) {
       const value = toNumber(values[i], 0);
       const window = sliceWindow(numericValues, i, windowSize);
       const median = computeMedian(window);
-      const mean = computeMean(window);
       row[`${prefix}_${i + 1}_MedianNorm`] = safeDiv(value, median);
-      row[`${prefix}_${i + 1}_MeanNorm`] = safeDiv(value, mean);
     }
   };
 
   const indicators = signal?.indicators ?? {};
-  // ВНИМАНИЕ: Эти индикаторы нормализуются на currentPrice.
-  // Это корректно только если значения в абсолютных ценовых единицах.
-  // Если они уже нормализованы (отношения/проценты), деление ломает масштаб
-  // (пример: MA уже как MA/close).
-  addSeries('ATR', asArray(indicators.atr));
-  addSeries('MA_Fast', asArray(indicators.maFast));
-  addSeries('MA_Medium', asArray(indicators.maMedium));
-  addSeries('MA_Slow', asArray(indicators.maSlow));
-  addSeries('BB_Upper', asArray(indicators.bbUpper));
-  addSeries('BB_Middle', asArray(indicators.bbMiddle));
-  addSeries('BB_Lower', asArray(indicators.bbLower));
-  addSeries('OBV', asArray(indicators.obv));
-  addSeries('MACD', asArray(indicators.macd));
-  addSeries('MACD_Signal', asArray(indicators.macdSignal));
-  addSeries('MACD_Histogram', asArray(indicators.macdHistogram));
-  // Эти серии предполагаются уже нормализованными (проценты/дельты), оставляем как есть.
+  const maMediumSeries = asArray(indicators.maMedium);
+  addSeriesRelTo('ATR', asArray(indicators.atr), maMediumSeries);
+  addSeriesRelTo('MA_Fast', asArray(indicators.maFast), maMediumSeries);
+  addSeriesRelTo('MA_Medium', maMediumSeries, maMediumSeries);
+  addSeriesRelTo('MA_Slow', asArray(indicators.maSlow), maMediumSeries);
+  addSeriesRelTo('BB_Upper', asArray(indicators.bbUpper), maMediumSeries);
+  addSeriesRelTo('BB_Middle', asArray(indicators.bbMiddle), maMediumSeries);
+  addSeriesRelTo('BB_Lower', asArray(indicators.bbLower), maMediumSeries);
+  addSeriesLogVolume('OBV_Log1p', asArray(indicators.obv));
+  const atrSeries = asArray(indicators.atr);
+  addSeriesRelTo('MACD', asArray(indicators.macd), atrSeries);
+  addSeriesRelTo('MACD_Signal', asArray(indicators.macdSignal), atrSeries);
+  addSeriesRelTo(
+    'MACD_Histogram',
+    asArray(indicators.macdHistogram),
+    atrSeries,
+  );
   addSeriesRaw('Price24hPcnt', asArray(indicators.price24hPcnt));
   addSeriesRaw('Price1hPcnt', asArray(indicators.price1hPcnt));
   addSeriesRaw('PrevPrice24hPcnt', asArray(indicators.prevPrice24hPcnt));
   addSeriesRaw('PrevPrice1hPcnt', asArray(indicators.prevPrice1hPcnt));
   addSeries('HighPrice1h', asArray(indicators.highPrice1h));
   addSeries('LowPrice1h', asArray(indicators.lowPrice1h));
-  // ВАЖНО: Деление на lastVolume нестабильно при маленьком/аномальном объеме.
-  // Используем log1p и дополнительно нормализацию по rolling median/mean.
   addSeriesLogVolume('Volume1h', asArray(indicators.volume1h));
-  addSeriesVolumeNormalized('Volume1h', asArray(indicators.volume1h));
+  addSeriesVolumeMedianNormalized('Volume1h', asArray(indicators.volume1h));
   addSeries('HighPrice24h', asArray(indicators.highPrice24h));
   addSeries('LowPrice24h', asArray(indicators.lowPrice24h));
   addSeriesLogVolume('Volume24h', asArray(indicators.volume24h));
-  addSeriesVolumeNormalized('Volume24h', asArray(indicators.volume24h));
+  addSeriesVolumeMedianNormalized('Volume24h', asArray(indicators.volume24h));
   addSeries('PrevHighPrice1h', asArray(indicators.prevHighPrice1h));
   addSeries('PrevLowPrice1h', asArray(indicators.prevLowPrice1h));
   addSeriesLogVolume('PrevVolume1h', asArray(indicators.prevVolume1h));
-  addSeriesVolumeNormalized('PrevVolume1h', asArray(indicators.prevVolume1h));
+  addSeriesVolumeMedianNormalized(
+    'PrevVolume1h',
+    asArray(indicators.prevVolume1h),
+  );
   addSeries('PrevHighPrice24h', asArray(indicators.prevHighPrice24h));
   addSeries('PrevLowPrice24h', asArray(indicators.prevLowPrice24h));
   addSeriesLogVolume('PrevVolume24h', asArray(indicators.prevVolume24h));
-  addSeriesVolumeNormalized('PrevVolume24h', asArray(indicators.prevVolume24h));
+  addSeriesVolumeMedianNormalized(
+    'PrevVolume24h',
+    asArray(indicators.prevVolume24h),
+  );
 
   const candleVolumes = candleList.map((candle) => toNumber(candle?.volume, 0));
   const btcVolumes = btcList.map((candle) => toNumber(candle?.volume, 0));
+  const altReturns: number[] = [];
+  const btcReturns: number[] = [];
+  const relReturns: number[] = [];
 
   for (let i = 0; i < CANDLE_WINDOW; i += 1) {
-    // ВАЖНО: Свечи должны быть строго до entryTimestamp, иначе будет leakage.
-    // Если есть свеча, начавшаяся после входа, это утечка будущей информации.
     const candle = candleList[i] ?? {};
     const btcCandle = btcList[i] ?? {};
 
-    const candleOpen = safeDiv(toNumber(candle?.open, 0), currentPrice);
-    const candleClose = safeDiv(toNumber(candle?.close, 0), currentPrice);
-    const candleHigh = safeDiv(toNumber(candle?.high, 0), currentPrice);
-    const candleLow = safeDiv(toNumber(candle?.low, 0), currentPrice);
-
-    const btcOpen = safeDiv(toNumber(btcCandle?.open, 0), btcPrice);
-    const btcClose = safeDiv(toNumber(btcCandle?.close, 0), btcPrice);
-    const btcHigh = safeDiv(toNumber(btcCandle?.high, 0), btcPrice);
-    const btcLow = safeDiv(toNumber(btcCandle?.low, 0), btcPrice);
-
-    row[`Candle_Open_${i + 1}`] = candleOpen;
-    row[`Candle_Close_${i + 1}`] = candleClose;
-    row[`Candle_High_${i + 1}`] = candleHigh;
-    row[`Candle_Low_${i + 1}`] = candleLow;
-
-    row[`BTC_Candle_Open_${i + 1}`] = btcOpen;
-    row[`BTC_Candle_Close_${i + 1}`] = btcClose;
-    row[`BTC_Candle_High_${i + 1}`] = btcHigh;
-    row[`BTC_Candle_Low_${i + 1}`] = btcLow;
-
-    // Относительные доходности более устойчивы, чем отношение нормализованных OHLC.
     const altOpenRaw = toNumber(candle?.open, 0);
     const altCloseRaw = toNumber(candle?.close, 0);
     const altHighRaw = toNumber(candle?.high, 0);
@@ -219,8 +250,10 @@ export const buildMlTrainingRow = (
     row[`AltRet_${i + 1}`] = altRet;
     row[`BtcRet_${i + 1}`] = btcRet;
     row[`RelRet_${i + 1}`] = altRet - btcRet;
+    altReturns.push(altRet);
+    btcReturns.push(btcRet);
+    relReturns.push(altRet - btcRet);
 
-    // Альтернативный alt/btc ratio ряд (уровни), плюс нормализация на последний ratio.
     const altToBtcOpen = safeDiv(altOpenRaw, btcOpenRaw);
     const altToBtcClose = safeDiv(altCloseRaw, btcCloseRaw);
     const altToBtcHigh = safeDiv(altHighRaw, btcHighRaw);
@@ -229,33 +262,86 @@ export const buildMlTrainingRow = (
     row[`AltToBtc_Close_${i + 1}`] = altToBtcClose;
     row[`AltToBtc_High_${i + 1}`] = altToBtcHigh;
     row[`AltToBtc_Low_${i + 1}`] = altToBtcLow;
-    row[`AltToBtc_CloseRel_${i + 1}`] = safeDiv(altToBtcClose, lastAltToBtcRatio);
+    row[`AltToBtc_CloseRel_${i + 1}`] = safeDiv(
+      altToBtcClose,
+      lastAltToBtcRatio,
+    );
 
-    // Derived-фичи свечи: body/range/wicks/direction (нормализованы на currentPrice).
     const candleMax = Math.max(altOpenRaw, altCloseRaw);
     const candleMin = Math.min(altOpenRaw, altCloseRaw);
-    row[`Candle_Body_${i + 1}`] = safeDiv(altCloseRaw - altOpenRaw, currentPrice);
-    row[`Candle_Range_${i + 1}`] = safeDiv(altHighRaw - altLowRaw, currentPrice);
-    row[`Candle_UpperWick_${i + 1}`] = safeDiv(altHighRaw - candleMax, currentPrice);
-    row[`Candle_LowerWick_${i + 1}`] = safeDiv(candleMin - altLowRaw, currentPrice);
+    row[`Candle_Body_${i + 1}`] = safeDiv(
+      altCloseRaw - altOpenRaw,
+      currentPrice,
+    );
+    row[`Candle_Range_${i + 1}`] = safeDiv(
+      altHighRaw - altLowRaw,
+      currentPrice,
+    );
+    row[`Candle_UpperWick_${i + 1}`] = safeDiv(
+      altHighRaw - candleMax,
+      currentPrice,
+    );
+    row[`Candle_LowerWick_${i + 1}`] = safeDiv(
+      candleMin - altLowRaw,
+      currentPrice,
+    );
     row[`Candle_Direction_${i + 1}`] = altCloseRaw >= altOpenRaw ? 1 : 0;
 
-    // Объем — log1p плюс нормализация по rolling median/mean.
+    const btcCandleMax = Math.max(btcOpenRaw, btcCloseRaw);
+    const btcCandleMin = Math.min(btcOpenRaw, btcCloseRaw);
+    row[`BTC_Candle_Body_${i + 1}`] = safeDiv(
+      btcCloseRaw - btcOpenRaw,
+      btcPrice,
+    );
+    row[`BTC_Candle_Range_${i + 1}`] = safeDiv(
+      btcHighRaw - btcLowRaw,
+      btcPrice,
+    );
+    row[`BTC_Candle_UpperWick_${i + 1}`] = safeDiv(
+      btcHighRaw - btcCandleMax,
+      btcPrice,
+    );
+    row[`BTC_Candle_LowerWick_${i + 1}`] = safeDiv(
+      btcCandleMin - btcLowRaw,
+      btcPrice,
+    );
+    row[`BTC_Candle_Direction_${i + 1}`] = btcCloseRaw >= btcOpenRaw ? 1 : 0;
+
     const candleVol = toNumber(candle?.volume, 0);
     const btcVol = toNumber(btcCandle?.volume, 0);
-    const candleWindow = sliceWindow(candleVolumes, i, Math.min(20, candleVolumes.length));
-    const btcWindow = sliceWindow(btcVolumes, i, Math.min(20, btcVolumes.length));
+    const candleWindow = sliceWindow(
+      candleVolumes,
+      i,
+      Math.min(20, candleVolumes.length),
+    );
+    const btcWindow = sliceWindow(
+      btcVolumes,
+      i,
+      Math.min(20, btcVolumes.length),
+    );
     const candleMedian = computeMedian(candleWindow);
-    const candleMean = computeMean(candleWindow);
     const btcMedian = computeMedian(btcWindow);
-    const btcMean = computeMean(btcWindow);
     row[`Candle_Volume_${i + 1}`] = safeLog1p(candleVol);
     row[`Candle_Volume_${i + 1}_MedianNorm`] = safeDiv(candleVol, candleMedian);
-    row[`Candle_Volume_${i + 1}_MeanNorm`] = safeDiv(candleVol, candleMean);
     row[`BTC_Candle_Volume_${i + 1}`] = safeLog1p(btcVol);
     row[`BTC_Candle_Volume_${i + 1}_MedianNorm`] = safeDiv(btcVol, btcMedian);
-    row[`BTC_Candle_Volume_${i + 1}_MeanNorm`] = safeDiv(btcVol, btcMean);
   }
+
+  const window10Alt = sliceWindow(altReturns, altReturns.length - 1, 10);
+  const window10Btc = sliceWindow(btcReturns, btcReturns.length - 1, 10);
+  const window10Rel = sliceWindow(relReturns, relReturns.length - 1, 10);
+  row.AltRet_Mean10 = computeMean(window10Alt);
+  row.AltRet_Std10 = computeStd(window10Alt);
+  row.AltRet_Skew10 = computeSkew(window10Alt);
+  row.AltRet_Kurt10 = computeKurtosis(window10Alt);
+  row.BtcRet_Mean10 = computeMean(window10Btc);
+  row.BtcRet_Std10 = computeStd(window10Btc);
+  row.BtcRet_Skew10 = computeSkew(window10Btc);
+  row.BtcRet_Kurt10 = computeKurtosis(window10Btc);
+  row.RelRet_Mean10 = computeMean(window10Rel);
+  row.RelRet_Std10 = computeStd(window10Rel);
+  row.RelRet_Skew10 = computeSkew(window10Rel);
+  row.RelRet_Kurt10 = computeKurtosis(window10Rel);
 
   const trendLine = signal?.figures?.trendLine;
   row.TrendLine_Mode = trendLine?.mode === 'highs' ? 1 : 0;
@@ -264,24 +350,67 @@ export const buildMlTrainingRow = (
   const points = asArray(trendLine?.points);
   for (let i = 0; i < points.length; i += 1) {
     const point = points[i] ?? {};
-    // ВАЖНО: Значение нормализуется на currentPrice (ценовые единицы).
-    // Переводим временные дельты в бары (или в минуты, если interval неизвестен).
-    row[`POINTS_VALUE_${i + 1}`] = safeDiv(toNumber(point?.value, 0), currentPrice);
+    row[`POINTS_VALUE_${i + 1}`] = safeDiv(
+      toNumber(point?.value, 0),
+      currentPrice,
+    );
     const pointDeltaMs = lastTimestamp - toNumber(point?.timestamp, 0);
     const pointDeltaMin = safeDiv(pointDeltaMs, 60_000);
     row[`POINTS_TS_${i + 1}`] =
-      intervalMinutes > 0 ? safeDiv(pointDeltaMin, intervalMinutes) : pointDeltaMin;
+      intervalMinutes > 0
+        ? safeDiv(pointDeltaMin, intervalMinutes)
+        : pointDeltaMin;
   }
 
   const touches = asArray(trendLine?.touches);
   for (let i = 0; i < touches.length; i += 1) {
     const touch = touches[i] ?? {};
-    // Та же нормализация времени, что и для points.
-    row[`TOUCHES_VALUE_${i + 1}`] = safeDiv(toNumber(touch?.value, 0), currentPrice);
+    row[`TOUCHES_VALUE_${i + 1}`] = safeDiv(
+      toNumber(touch?.value, 0),
+      currentPrice,
+    );
     const touchDeltaMs = lastTimestamp - toNumber(touch?.timestamp, 0);
     const touchDeltaMin = safeDiv(touchDeltaMs, 60_000);
     row[`TOUCHES_TS_${i + 1}`] =
-      intervalMinutes > 0 ? safeDiv(touchDeltaMin, intervalMinutes) : touchDeltaMin;
+      intervalMinutes > 0
+        ? safeDiv(touchDeltaMin, intervalMinutes)
+        : touchDeltaMin;
+  }
+
+  const normalizedPoints = points
+    .map((point) => ({
+      value: toNumber(point?.value, NaN),
+      timestamp: toNumber(point?.timestamp, NaN),
+    }))
+    .filter(
+      (point) =>
+        Number.isFinite(point.value) && Number.isFinite(point.timestamp),
+    )
+    .sort((a, b) => a.timestamp - b.timestamp);
+  if (normalizedPoints.length >= 2) {
+    const p1 = normalizedPoints[normalizedPoints.length - 2];
+    const p2 = normalizedPoints[normalizedPoints.length - 1];
+    const dtMs = p2.timestamp - p1.timestamp;
+    if (dtMs !== 0) {
+      const slopePerMs = (p2.value - p1.value) / dtMs;
+      const tlAtEntry = p1.value + slopePerMs * (lastTimestamp - p1.timestamp);
+      const slopePerBar =
+        intervalMinutes > 0 ? slopePerMs * intervalMinutes * 60_000 : null;
+      row.TrendLine_Value_AtEntry = tlAtEntry;
+      row.TrendLine_Delta_To_Price = safeDiv(
+        currentPrice - tlAtEntry,
+        currentPrice,
+      );
+      row.TrendLine_Slope = slopePerBar ?? null;
+    } else {
+      row.TrendLine_Value_AtEntry = null;
+      row.TrendLine_Delta_To_Price = null;
+      row.TrendLine_Slope = null;
+    }
+  } else {
+    row.TrendLine_Value_AtEntry = null;
+    row.TrendLine_Delta_To_Price = null;
+    row.TrendLine_Slope = null;
   }
 
   const strategyConfig = context?.strategyConfig ?? {};
@@ -305,10 +434,9 @@ export const buildMlTrainingRow = (
   row.LOWS_SL = toNumber(lowsCfg.SL, 0);
   row.LOWS_minRiskRatio = toNumber(lowsCfg.minRiskRatio, 0);
 
-  // Лейбл сейчас бинарный (profit > 0). Если нужна более богатая супервизия,
-  // храните еще и непрерывный target (profit) для регрессии/гибридной модели.
   const profit = toNumber(resultRecord?.profit, NaN);
   row.label = Number.isFinite(profit) ? (profit > 0 ? 1 : 0) : null;
+  row.profit = Number.isFinite(profit) ? profit : null;
 
   return row;
 };

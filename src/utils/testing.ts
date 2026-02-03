@@ -74,7 +74,7 @@ export const testing: TestingBox = async ({
 
   const testConnector = connectors.Test(connector);
 
-  const strategy = strategyCreator({
+  const strategy = await strategyCreator({
     config: strategyConfig,
     symbol,
     data: prevData,

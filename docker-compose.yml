@@ -12,6 +12,8 @@ services:
         condition: service_healthy
       timescale:
         condition: service_healthy
+      ml-infer:
+        condition: service_started
     image: aleksnick/inv-app:latest
     expose:
       - "3000"
@@ -61,6 +63,26 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
+    networks:
+      - web
+
+  ml-infer:
+    build:
+      context: .
+      dockerfile: Dockerfile.infer
+    container_name: ml-infer
+    restart: unless-stopped
+    environment:
+      MODEL_DIR: /app/data/ml/models
+      DEFAULT_STRATEGY: TrendLine
+      ML_GRPC_HOST: 0.0.0.0
+      ML_GRPC_PORT: 50051
+    volumes:
+      - ./ml:/app/ml
+      - ./data:/app/data
+      - ./proto:/app/proto
+    expose:
+      - "50051"
     networks:
       - web
 

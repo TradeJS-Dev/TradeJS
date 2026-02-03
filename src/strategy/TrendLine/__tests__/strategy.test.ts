@@ -41,18 +41,20 @@ describe('TrendlineStrategyCreator', () => {
   });
 
   it('stores 10 indicator values and exposes them in signal', async () => {
-    (createTrendlineEngine as jest.Mock).mockImplementation((_data, options) => {
-      const line = {
-        id: 'line-1',
-        mode: options.mode ?? 'lows',
-        distance: 1,
-        touches: [{ timestamp: 1, value: 1 }],
-        points: [{ timestamp: 1, value: 1 }],
-      };
-      return {
-        next: jest.fn(() => [line]),
-      };
-    });
+    (createTrendlineEngine as jest.Mock).mockImplementation(
+      (_data, options) => {
+        const line = {
+          id: 'line-1',
+          mode: options.mode ?? 'lows',
+          distance: 1,
+          touches: [{ timestamp: 1, value: 1 }],
+          points: [{ timestamp: 1, value: 1 }],
+        };
+        return {
+          next: jest.fn(() => [line]),
+        };
+      },
+    );
 
     let counter = 0;
     (createIndicators as jest.Mock).mockImplementation(() => () => {
@@ -96,7 +98,7 @@ describe('TrendlineStrategyCreator', () => {
       kline: jest.fn(async () => cachedData),
     };
 
-    const strategy = TrendlineStrategyCreator({
+    const strategy = await TrendlineStrategyCreator({
       config: {
         ENV: 'test',
         INTERVAL: '15',
@@ -142,18 +144,20 @@ describe('TrendlineStrategyCreator', () => {
 
   it('returns VERY_VOLATILITY when filter fails', async () => {
     (filterByVeryVolatility as jest.Mock).mockReturnValue(false);
-    (createTrendlineEngine as jest.Mock).mockImplementation((_data, options) => {
-      const line = {
-        id: 'line-1',
-        mode: options.mode ?? 'lows',
-        distance: 1,
-        touches: [{ timestamp: 1, value: 1 }],
-        points: [{ timestamp: 1, value: 1 }],
-      };
-      return {
-        next: jest.fn(() => [line]),
-      };
-    });
+    (createTrendlineEngine as jest.Mock).mockImplementation(
+      (_data, options) => {
+        const line = {
+          id: 'line-1',
+          mode: options.mode ?? 'lows',
+          distance: 1,
+          touches: [{ timestamp: 1, value: 1 }],
+          points: [{ timestamp: 1, value: 1 }],
+        };
+        return {
+          next: jest.fn(() => [line]),
+        };
+      },
+    );
 
     (createIndicators as jest.Mock).mockImplementation(() => () => ({
       maFast: 1,
@@ -192,7 +196,7 @@ describe('TrendlineStrategyCreator', () => {
       kline: jest.fn(async () => cachedData),
     };
 
-    const strategy = TrendlineStrategyCreator({
+    const strategy = await TrendlineStrategyCreator({
       config: {
         ENV: 'test',
         INTERVAL: '15',

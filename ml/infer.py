@@ -33,10 +33,20 @@ def main() -> None:
     args = parser.parse_args()
 
     df = load_dataset(args.input)
-    X = df.drop(columns=[c for c in ['label', 'signalId'] if c in df.columns])
+    X = df.drop(columns=[c for c in ['label', 'signalId', 'profit', 'entryTimestamp'] if c in df.columns])
 
     model_path = args.model or f'data/ml/models/{args.strategy}.joblib'
     model = joblib.load(model_path)
+    preprocess = model.named_steps.get('preprocess')
+    expected = list(getattr(preprocess, 'feature_names_in_', [])) if preprocess is not None else []
+    if expected:
+        missing = [c for c in expected if c not in X.columns]
+        for col in missing:
+            X[col] = 0
+        extra = [c for c in X.columns if c not in expected]
+        if extra:
+            X = X.drop(columns=extra)
+        X = X[expected]
     prob = model.predict_proba(X)[:, 1]
 
     with open(args.out, 'w', encoding='utf-8') as f:

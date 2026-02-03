@@ -5,55 +5,61 @@ import { calculateCoinBtcCorrelation } from '@utils/correlation';
 import { uuid } from '@utils/uuid';
 import { round } from '@utils/math';
 import { logger } from '@utils/logger';
+import { getData, redisKeys } from '@utils/redis';
 import { createTrendlineEngine } from '@utils/trendLineEngine';
+import { fetchMlThreshold } from '@utils/mlGrpc';
 import { filterByVeryVolatility } from './filters';
 import { config as DEFAULT_CONFIG } from './config';
 import { applyIndicatorsToHistory, createIndicators } from './indicators';
-import {
-  Signal,
-  TrendLineOptions,
-  StrategyCreator,
-} from '@types';
+import { Signal, TrendLineOptions, StrategyCreator } from '@types';
 
 const PRELOAD_START = getTimestamp(SIGNALS_PRELOAD_DAYS);
 const FEE = 0.02;
-export const TrendlineStrategyCreator: StrategyCreator = ({
+
+export const TrendlineStrategyCreator: StrategyCreator = async ({
   config: baseConfig,
   symbol,
   data: cachedData,
   btcData: btcCachedData,
   connector,
 }) => {
-  const config = {
+  let config = {
     ...DEFAULT_CONFIG,
     ...baseConfig,
   } as typeof DEFAULT_CONFIG;
 
-  const {
-    ENV,
-    INTERVAL,
-    MAKE_ORDERS,
-    TRENDLINE,
-    MAX_CORRELATION,
-    MAX_LOSS_VALUE,
-    HIGHS,
-    LOWS,
-  } = config;
+  let configFromBacktest = false;
 
-  const TRENDLINE_OPTIONS: Partial<TrendLineOptions> = {
+  if (config.ENV !== 'development') {
+    const results = (await getData(
+      redisKeys.strategyResults('TrendLine'),
+      {},
+    )) as Record<string, typeof config>;
+
+    const backtestConfig = results?.[symbol];
+    if (backtestConfig && !_.isEmpty(backtestConfig)) {
+      config = {
+        ...config,
+        ...backtestConfig,
+      } as typeof DEFAULT_CONFIG;
+      configFromBacktest = true;
+    }
+  }
+
+  const trendlineOptions: Partial<TrendLineOptions> = {
     bestLines: 1,
     capture: true,
-    ...TRENDLINE,
+    ...config.TRENDLINE,
   };
 
   const getLowsTrendlines = createTrendlineEngine(cachedData, {
     mode: 'lows',
-    ...TRENDLINE_OPTIONS,
+    ...trendlineOptions,
   });
 
   const getHighsTrendlines = createTrendlineEngine(cachedData, {
     mode: 'highs',
-    ...TRENDLINE_OPTIONS,
+    ...trendlineOptions,
   });
 
   const getIndicators = createIndicators(cachedData);
@@ -75,6 +81,18 @@ export const TrendlineStrategyCreator: StrategyCreator = ({
   let lastTradeTimestamp: number | null = null;
 
   return async (candle, btcCandle) => {
+    const {
+      ENV,
+      INTERVAL,
+      MAKE_ORDERS,
+      TRENDLINE,
+      ML_THRESHOLD,
+      MAX_CORRELATION,
+      MAX_LOSS_VALUE,
+      HIGHS,
+      LOWS,
+    } = config;
+
     cachedData.push(candle);
     btcCachedData.push(btcCandle);
 
@@ -199,7 +217,26 @@ export const TrendlineStrategyCreator: StrategyCreator = ({
         distance: bestLine.distance,
         ...indicatorHistory,
       },
+      configFromBacktest,
     };
+
+    if (ENV !== 'development') {
+      const mlResult = await fetchMlThreshold(signal, {
+        strategyName: strategy,
+        strategyConfig: {
+          TRENDLINE_CONFIG: TRENDLINE,
+          HIGHS,
+          LOWS,
+        },
+        symbol,
+        candles: cachedData.slice(-50),
+        btcCandles: btcCachedData.slice(-50),
+        ML_THRESHOLD,
+      });
+      if (mlResult) {
+        signal.ml = mlResult;
+      }
+    }
 
     if (MAKE_ORDERS) {
       try {

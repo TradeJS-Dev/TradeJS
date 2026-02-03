@@ -108,7 +108,7 @@ const checkSignals = (
   return score >= minScore;
 };
 
-export const BreakoutStrategyCreator: StrategyCreator = ({
+export const BreakoutStrategyCreator: StrategyCreator = async ({
   config: baseConfig,
   symbol,
   data,

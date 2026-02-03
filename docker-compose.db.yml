@@ -32,6 +32,26 @@ services:
     networks:
       - web
 
+  ml-infer:
+    build:
+      context: .
+      dockerfile: Dockerfile.infer
+    container_name: ml-infer
+    restart: unless-stopped
+    environment:
+      MODEL_DIR: /app/data/ml/models
+      DEFAULT_STRATEGY: TrendLine
+      ML_GRPC_HOST: 0.0.0.0
+      ML_GRPC_PORT: 50051
+    ports:
+      - "50051:50051"
+    volumes:
+      - ./ml:/app/ml
+      - ./data:/app/data
+      - ./proto:/app/proto
+    networks:
+      - web
+
   # ---------- ВЕБ-АДМИНКИ ----------
   pgadmin:
     image: dpage/pgadmin4

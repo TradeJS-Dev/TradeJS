@@ -71,7 +71,7 @@ export const runBot = async () => {
         const candle = data.pop();
         const btcCandle = btcData.pop();
 
-        const strategy = strategyCreator({
+        const strategy = await strategyCreator({
           config: strategyConfig,
           symbol,
           data,

@@ -169,6 +169,12 @@ export interface Signal {
   strategy: string;
   direction: Direction;
   timestamp: number;
+  configFromBacktest?: boolean;
+  ml?: {
+    probability: number;
+    threshold: number;
+    passed: boolean;
+  };
   figures: {
     trendLine?: TrendLine;
   };

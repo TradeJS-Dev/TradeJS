@@ -4,7 +4,7 @@ services:
       context: .
       dockerfile: Dockerfile.infer
     ports:
-      - "8000:8000"
+      - "50051:50051"
     environment:
       MODEL_DIR: /app/data/ml/models
       DEFAULT_STRATEGY: default
