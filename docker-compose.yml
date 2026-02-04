@@ -71,6 +71,7 @@ services:
       context: .
       dockerfile: Dockerfile.infer
     container_name: ml-infer
+    image: aleksnick/inv-ml-infer:latest
     restart: unless-stopped
     environment:
       MODEL_DIR: /app/data/ml/models
