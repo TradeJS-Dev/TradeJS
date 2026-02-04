@@ -79,9 +79,7 @@ services:
       ML_GRPC_HOST: 0.0.0.0
       ML_GRPC_PORT: 50051
     volumes:
-      - ./ml:/app/ml
       - ./data:/app/data
-      - ./proto:/app/proto
     expose:
       - "50051"
     networks:
