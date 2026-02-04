@@ -4,4 +4,4 @@ set -e
 
 crond -P
 
-exec yarn run start
+exec env YARN_IGNORE_PATH=1 yarn run start
