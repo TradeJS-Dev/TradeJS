@@ -46,11 +46,7 @@ const Signin = () => {
   };
 
   return (
-    <Flex
-      minH="100vh"
-      direction={{ base: 'column', lg: 'row' }}
-      bg="gray.950"
-    >
+    <Flex minH="100vh" direction={{ base: 'column', lg: 'row' }} bg="gray.950">
       <Flex
         w={{ base: 'full', lg: '33.333%' }}
         px={{ base: 6, md: 10, lg: 12 }}
@@ -68,43 +64,43 @@ const Signin = () => {
             flexDirection="column"
             gap="6"
           >
-          <Stack gap="4">
-            <Text fontSize="sm" opacity={0.7} letterSpacing="0.2em">
-              SIGN IN
-            </Text>
-            <Text fontSize="2xl" fontWeight="600">
-              Investing
-            </Text>
-          </Stack>
+            <Stack gap="4">
+              <Text fontSize="sm" opacity={0.7} letterSpacing="0.2em">
+                SIGN IN
+              </Text>
+              <Text fontSize="2xl" fontWeight="600">
+                Investing
+              </Text>
+            </Stack>
 
-          <Stack gap="4">
-            <Field.Root>
-              <Field.Label>Username</Field.Label>
-              <Input
-                value={username}
-                onChange={(event) => setUsername(event.target.value)}
-                autoComplete="username"
-                placeholder="Username"
-              />
-            </Field.Root>
+            <Stack gap="4">
+              <Field.Root>
+                <Field.Label>Username</Field.Label>
+                <Input
+                  value={username}
+                  onChange={(event) => setUsername(event.target.value)}
+                  autoComplete="username"
+                  placeholder="Username"
+                />
+              </Field.Root>
 
-            <Field.Root>
-              <Field.Label>Password</Field.Label>
-              <Input
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-                type="password"
-                autoComplete="current-password"
-                placeholder="Password"
-              />
-            </Field.Root>
-          </Stack>
+              <Field.Root>
+                <Field.Label>Password</Field.Label>
+                <Input
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                  type="password"
+                  autoComplete="current-password"
+                  placeholder="Password"
+                />
+              </Field.Root>
+            </Stack>
 
-          {error ? (
-            <Text fontSize="sm" color="red.300">
-              {error}
-            </Text>
-          ) : null}
+            {error ? (
+              <Text fontSize="sm" color="red.300">
+                {error}
+              </Text>
+            ) : null}
 
             <Button
               type="submit"

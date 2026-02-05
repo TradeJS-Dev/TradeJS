@@ -5,6 +5,7 @@ import path from 'path';
 import puppeteer from 'puppeteer';
 import { delay } from '@utils/async';
 import { Signal } from '@types';
+import { getData, redisKeys } from '@utils/redis';
 
 const { APP_URL } = process.env;
 
@@ -31,6 +32,15 @@ export const getScreenshotPath = ({ symbol, signalId, interval }: Signal) => {
 
 export const screenDashboard = async (signal: Signal) => {
   const { symbol, signalId, interval } = signal;
+  const rootUser = await getData(redisKeys.user('root'), null);
+  const token =
+    rootUser && typeof rootUser === 'object'
+      ? (rootUser as Record<string, unknown>).token
+      : null;
+  const tokenParam =
+    typeof token === 'string' && token.length > 0
+      ? `&token=${encodeURIComponent(token)}`
+      : '';
 
   const browser = await puppeteer.launch({
     headless: true,
@@ -55,7 +65,7 @@ export const screenDashboard = async (signal: Signal) => {
       });
 
       await page.goto(
-        `${APP_URL}/routes/dashboard/${symbol}/${interval}/?signalId=${signalId}&autoZoom=true`,
+        `${APP_URL}/routes/dashboard/${symbol}/${interval}/?signalId=${signalId}&autoZoom=true${tokenParam}`,
       );
 
       await delay(10_000);
