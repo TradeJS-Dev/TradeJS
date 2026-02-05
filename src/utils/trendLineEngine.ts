@@ -659,19 +659,6 @@ export const createTrendlineEngine = (
           );
           const captureEndIndex = lastBarIndex;
 
-          const hasHit = hasCaptureInRange({
-            mode: opts.mode,
-            lowSeries,
-            highSeries,
-            timestampsMs,
-            startIndex: captureStartIndex,
-            endIndex: captureEndIndex,
-            evaluateY: cached.evaluateY,
-            epsilonOffset: opts.epsilonOffset,
-          });
-
-          if (!hasHit) continue;
-
           for (
             let barIndex = captureStartIndex;
             barIndex <= captureEndIndex;
@@ -687,8 +674,6 @@ export const createTrendlineEngine = (
 
             if (hit) captureHitIndices.push(barIndex);
           }
-
-          if (captureHitIndices.length === 0) continue;
         }
 
         const runtime: LineRuntime = {
@@ -815,7 +800,6 @@ export const createTrendlineEngine = (
     }
 
     if (line.captureHitIndices.length === 0) {
-      line.invalid = true;
       return;
     }
   };
