@@ -1,14 +1,16 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Image from 'next/image';
 import { signIn } from 'next-auth/react';
+import { useSession } from 'next-auth/react';
 import { Box, Button, Field, Flex, Input, Stack, Text } from '@chakra-ui/react';
 
 const Signin = () => {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { status } = useSession();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -18,6 +20,12 @@ const Signin = () => {
     () => searchParams.get('callbackUrl') ?? '/routes/dashboard',
     [searchParams],
   );
+
+  useEffect(() => {
+    if (status === 'authenticated') {
+      router.replace('/routes/dashboard');
+    }
+  }, [status, router]);
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -125,7 +133,7 @@ const Signin = () => {
         overflow="hidden"
       >
         <Image
-          src="/auth-bg-0.jpg"
+          src="/auth-bg.jpg"
           alt="Market chart background"
           fill
           priority

@@ -23,6 +23,7 @@ const getPasswordHash = (user: unknown): string | null => {
 };
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
+  trustHost: true,
   providers: [
     Credentials({
       name: 'Credentials',
