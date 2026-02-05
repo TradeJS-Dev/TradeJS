@@ -1,8 +1,9 @@
 'use client';
 
-import { Box, IconButton, VStack } from '@chakra-ui/react';
+import { Box, Flex, IconButton, VStack } from '@chakra-ui/react';
 import { useRouter, usePathname } from 'next/navigation';
-import { FiBarChart2, FiPlay } from 'react-icons/fi';
+import { signOut } from 'next-auth/react';
+import { FiBarChart2, FiLogOut, FiPlay } from 'react-icons/fi';
 
 export const Sidebar = () => {
   const router = useRouter();
@@ -34,21 +35,33 @@ export const Sidebar = () => {
       px={3}
       zIndex={1000}
     >
-      <VStack>
-        {navItems.map(({ icon: Icon, label, path }) => (
-          <IconButton
-            key={path}
-            mb={2}
-            aria-label={label}
-            size="md"
-            colorPalette="teal"
-            variant={pathname.includes(path) ? 'solid' : 'outline'}
-            onClick={() => router.push(path)}
-          >
-            <Icon />
-          </IconButton>
-        ))}
-      </VStack>
+      <Flex direction="column" h="100%" justify="space-between">
+        <VStack>
+          {navItems.map(({ icon: Icon, label, path }) => (
+            <IconButton
+              key={path}
+              mb={2}
+              aria-label={label}
+              size="md"
+              colorPalette="teal"
+              variant={pathname.includes(path) ? 'solid' : 'outline'}
+              onClick={() => router.push(path)}
+            >
+              <Icon />
+            </IconButton>
+          ))}
+        </VStack>
+
+        <IconButton
+          aria-label="Sign out"
+          size="md"
+          colorPalette="teal"
+          variant="outline"
+          onClick={() => signOut({ callbackUrl: '/routes/signin' })}
+        >
+          <FiLogOut />
+        </IconButton>
+      </Flex>
     </Box>
   );
 };

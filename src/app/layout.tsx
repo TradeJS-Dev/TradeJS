@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
-import { Box, ClientOnly } from '@chakra-ui/react';
-import { Sidebar } from '@shared/Sidebar';
+import { ClientOnly } from '@chakra-ui/react';
+import { AppShell } from '@shared/AppShell';
 import Provider from './provider';
 import './globals.css';
 
@@ -22,8 +22,7 @@ export default function RootLayout({
       <body className={inter.className}>
         <ClientOnly>
           <Provider>
-            <Sidebar />
-            <Box ml="60px">{children}</Box>
+            <AppShell>{children}</AppShell>
           </Provider>
         </ClientOnly>
       </body>
