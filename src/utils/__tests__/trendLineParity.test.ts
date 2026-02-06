@@ -82,6 +82,26 @@ const expectParityForMode = (
   expect(normalizeLines(engineLines)).toEqual(normalizeLines(batchLines));
 };
 
+const expectParityForModeStreaming = (
+  mode: 'lows' | 'highs',
+  data: KLineData[],
+  options: any,
+) => {
+  const engine = createTrendlineEngine([], { mode, ...options });
+  for (const candle of data) {
+    engine.next(candle);
+  }
+  const engineLines = engine.getLines();
+
+  const batchLines =
+    mode === 'lows'
+      ? findTrendlinesByLows(data, options)
+      : findTrendlinesByHighs(data, options);
+
+  expect(engineLines.length).toBeGreaterThan(0);
+  expect(normalizeLines(engineLines)).toEqual(normalizeLines(batchLines));
+};
+
 describe('trendLine vs trendLineEngine parity', () => {
   const lowsData = buildCandles(80, 'up');
   const highsData = buildCandles(80, 'down');
@@ -105,6 +125,27 @@ describe('trendLine vs trendLineEngine parity', () => {
 
     expectParityForMode('lows', lowsData, options);
     expectParityForMode('highs', highsData, options);
+  });
+
+  it('matches results when streaming candles via next()', () => {
+    const options = {
+      range: 2,
+      firstRange: 2,
+      minTouches: 2,
+      minDistance: 8,
+      minTouchGap: 2,
+      maxTouchGap: 50,
+      offset: 5,
+      capture: false,
+      bestLines: 5,
+      maxLines: 50,
+      maxDistance: 200,
+      epsilon: 0.001,
+      epsilonOffset: 0.001,
+    };
+
+    expectParityForModeStreaming('lows', lowsData, options);
+    expectParityForModeStreaming('highs', highsData, options);
   });
 
   it('matches results for capture=true', () => {

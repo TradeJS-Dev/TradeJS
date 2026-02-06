@@ -13,6 +13,7 @@ export const formatMessage = (signal: Signal): string => {
     direction,
     strategy,
     configFromBacktest,
+    trendlineFrom,
     ml,
     prices: { currentPrice, takeProfitPrice, stopLossPrice, riskRatio },
     indicators,
@@ -66,6 +67,14 @@ export const formatMessage = (signal: Signal): string => {
 
       if (configFromBacktest) {
         lines.push('Config from backtest');
+      }
+
+      if (trendlineFrom) {
+        lines.push(
+          trendlineFrom === 'batch'
+            ? 'Line found by batch'
+            : 'Line found by engine',
+        );
       }
 
       if (touches) {

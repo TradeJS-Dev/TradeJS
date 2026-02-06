@@ -1,5 +1,6 @@
 import { KLineData } from 'klinecharts';
 import { TrendLine, TrendLineOptions } from '@types';
+import { TRENDLINE_DEFAULTS } from '@constants';
 import { toMs } from '@utils/timestamp';
 
 type Point = { x: number; y: number; t: number };
@@ -33,21 +34,7 @@ type PairCache = {
   wickBreached: boolean;
 };
 
-const DEFAULTS = {
-  maxLines: 20,
-  range: 15,
-  firstRange: 80,
-  epsilon: 0.003,
-  epsilonOffset: 0.005,
-  minTouches: 4,
-  minDistance: 50,
-  minTouchGap: 15,
-  maxTouchGap: 60,
-  offset: 1000,
-  capture: false,
-  bestLines: 4,
-  maxDistance: 2000,
-};
+const DEFAULTS = TRENDLINE_DEFAULTS;
 
 const toleranceAt = (lineY: number, epsilonPct: number) =>
   Math.max(0, Math.abs(lineY) * epsilonPct);

@@ -1,5 +1,6 @@
 import { KLineData } from 'klinecharts';
 import { TrendLine, TrendLineOptions } from '@types';
+import { TRENDLINE_DEFAULTS } from '@constants';
 import { toMs } from '@utils/timestamp';
 
 /* ============================ Helpers ============================= */
@@ -407,19 +408,19 @@ const findTrendlinesCore = (
 ): TrendLine[] => {
   const {
     mode,
-    maxLines = 20,
-    range = 15,
-    firstRange = 80,
-    epsilon = 0.003,
-    epsilonOffset = 0.005,
-    minTouches = 4,
-    minDistance = 50,
-    minTouchGap = 15,
-    maxTouchGap = 60,
-    offset = 1000,
-    capture = false,
-    bestLines = 4,
-    maxDistance = 2000,
+    maxLines = TRENDLINE_DEFAULTS.maxLines,
+    range = TRENDLINE_DEFAULTS.range,
+    firstRange = TRENDLINE_DEFAULTS.firstRange,
+    epsilon = TRENDLINE_DEFAULTS.epsilon,
+    epsilonOffset = TRENDLINE_DEFAULTS.epsilonOffset,
+    minTouches = TRENDLINE_DEFAULTS.minTouches,
+    minDistance = TRENDLINE_DEFAULTS.minDistance,
+    minTouchGap = TRENDLINE_DEFAULTS.minTouchGap,
+    maxTouchGap = TRENDLINE_DEFAULTS.maxTouchGap,
+    offset = TRENDLINE_DEFAULTS.offset,
+    capture = TRENDLINE_DEFAULTS.capture,
+    bestLines = TRENDLINE_DEFAULTS.bestLines,
+    maxDistance = TRENDLINE_DEFAULTS.maxDistance,
   } = options;
 
   if (!data?.length) return [];

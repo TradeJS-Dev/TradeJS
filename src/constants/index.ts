@@ -27,6 +27,22 @@ export const TG_CONCURRENCY_LIMIT = 3;
 export const AI_CONCURRENCY_LIMIT = 3;
 export const SCREENSHOT_CONCURRENCY_LIMIT = NODE_ENV === 'production' ? 1 : 2;
 
+export const TRENDLINE_DEFAULTS = {
+  maxLines: 20,
+  range: 15,
+  firstRange: 80,
+  epsilon: 0.003,
+  epsilonOffset: 0.005,
+  minTouches: 4,
+  minDistance: 50,
+  minTouchGap: 15,
+  maxTouchGap: 60,
+  offset: 1000,
+  capture: false,
+  bestLines: 4,
+  maxDistance: 2000,
+};
+
 export const levelScore = {
   success: 1,
   warning: 0.9,
