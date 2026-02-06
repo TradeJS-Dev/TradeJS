@@ -18,7 +18,8 @@ import { round } from '@utils/math';
 const FEE = 0.005;
 const INITIAL_AMOUNT = 100;
 
-export const TestConnectorCreator: TCC = (connector) => {
+export const TestConnectorCreator: TCC = (connector, context) => {
+  const userName = context?.userName;
   let state = {};
   const ORDER_LOG: OrderLogData = [];
   const POSITION_LOG: PositionLogData = [];
@@ -49,12 +50,16 @@ export const TestConnectorCreator: TCC = (connector) => {
     profit: number;
   }) => {
     const signalId = CURRENT_POSITION?.signal?.signalId;
+    const strategyName = CURRENT_POSITION?.signal?.strategy;
     if (!signalId || !CURRENT_POSITION) {
+      return;
+    }
+    if (!strategyName) {
       return;
     }
 
     await setData(
-      redisKeys.mlResult(signalId),
+      redisKeys.mlResult(strategyName, signalId),
       {
         signalId,
         symbol: CURRENT_POSITION.symbol,
@@ -114,8 +119,15 @@ export const TestConnectorCreator: TCC = (connector) => {
     getResult: async () => {
       const orderLogId = uuid();
 
-      await setData(redisKeys.cacheOrders(orderLogId), ORDER_LOG);
-      await setData(redisKeys.cachePositions(orderLogId), POSITION_LOG);
+      if (!userName) {
+        throw new Error('Missing userName for test cache');
+      }
+
+      await setData(redisKeys.cacheOrders(userName, orderLogId), ORDER_LOG);
+      await setData(
+        redisKeys.cachePositions(userName, orderLogId),
+        POSITION_LOG,
+      );
 
       return {
         stat: {

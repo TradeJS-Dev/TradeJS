@@ -3,21 +3,40 @@ import { Item, TestStat } from '@types';
 import { getData, getKeys, redisKeys } from '@utils/redis';
 import { parseTestName } from '@utils/tests';
 import { logger } from '@utils/logger';
+import { auth } from '@app/auth';
 
 export const dynamic = 'force-dynamic';
 
 export const GET = async () => {
   try {
-    const result = new Array<Item>();
-    const keys = await getKeys(redisKeys.tests('root'));
-    const orderKeys = keys.filter((key) => key.endsWith(':orders'));
+    const session = await auth();
+    const userName = session?.user?.id || session?.user?.name;
 
-    for await (const key of orderKeys) {
-      const testName = key.split(':')[2];
+    if (!userName) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const result = new Array<Item>();
+    const testsPrefix = redisKeys.tests(userName);
+    const keys = await getKeys(testsPrefix);
+    const configKeys = keys.filter((key) => key.endsWith(':config'));
+
+    for await (const key of configKeys) {
+      const parts = key.split(':');
+      if (parts.length < 5) {
+        continue;
+      }
+      const strategyName = parts[3];
+      const testName = parts[4];
       const { symbol, testId } = parseTestName(testName);
+
       const stat: TestStat = await getData(
-        redisKeys.testStat('root', testName),
+        redisKeys.testStat(userName, strategyName, testName),
       );
+
+      if (!stat) {
+        continue;
+      }
 
       result.push({
         value: testName,
@@ -25,6 +44,7 @@ export const GET = async () => {
         description: `${stat.netProfit}$`,
         data: {
           netProfit: stat.netProfit || 0,
+          strategyName,
         },
       });
     }

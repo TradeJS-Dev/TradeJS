@@ -6,6 +6,7 @@ test('buildMlTrainingRow: key normalizations and removals', () => {
   const makeArr = (value: number) => Array.from({ length: 10 }, () => value);
   const indicators: IndicatorMap = {
     atr: makeArr(2),
+    atrPct: makeArr(1.5),
     maFast: makeArr(5),
     maMedium: makeArr(10),
     maSlow: makeArr(15),
@@ -112,6 +113,7 @@ test('buildMlTrainingRow: key normalizations and removals', () => {
   expect(row.OBV_Log1p_1).toBeCloseTo(Math.log1p(1000));
 
   expect(row.ATR_1).toBeCloseTo(2 / 10);
+  expect(row.ATR_PCT_1).toBeCloseTo(1.5);
   expect(row.MA_Fast_1).toBeCloseTo(5 / 10);
   expect(row.BB_Upper_1).toBeCloseTo(12 / 10);
 
@@ -131,6 +133,16 @@ test('buildMlTrainingRow: key normalizations and removals', () => {
   expect(row.RelRet_1).toBeCloseTo(101 / 100 - 1);
 
   expect(row.AltToBtc_CloseRel_1).toBeCloseTo(101 / 200 / (101 / 200));
+
+  expect(row.HighPrice1h_1).toBeCloseTo(120 / 10);
+  expect(row.LowPrice1h_1).toBeCloseTo(80 / 10);
+  expect(row.HighPrice24h_1).toBeCloseTo(140 / 10);
+  expect(row.LowPrice24h_1).toBeCloseTo(60 / 10);
+
+  expect(row.Candle_Body_1).toBeCloseTo((101 - 100) / 10);
+  expect(row.Candle_Range_1).toBeCloseTo((102 - 99) / 10);
+  expect(row.Candle_UpperWick_1).toBeCloseTo((102 - 101) / 10);
+  expect(row.Candle_LowerWick_1).toBeCloseTo((100 - 99) / 10);
 
   expect(row.AltRet_Mean10).toBeCloseTo(1.01);
   expect(row.AltRet_Std10).toBeCloseTo(0);

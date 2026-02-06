@@ -68,37 +68,61 @@ describe('TrendlineStrategyCreator', () => {
     );
 
     let counter = 0;
-    (createIndicators as jest.Mock).mockImplementation(() => () => {
-      counter += 1;
-      const value = counter;
+    (createIndicators as jest.Mock).mockImplementation(() => {
+      const indicatorHistory: Record<string, number[]> = {};
+      const pushIndicator = (key: string, value: number) => {
+        if (!indicatorHistory[key]) {
+          indicatorHistory[key] = [];
+        }
+        indicatorHistory[key].push(value);
+        if (indicatorHistory[key].length > 10) {
+          indicatorHistory[key].splice(0, indicatorHistory[key].length - 10);
+        }
+      };
+      const next = () => {
+        counter += 1;
+        const value = counter;
+        const indicators = {
+          maFast: value,
+          maMedium: value,
+          maSlow: value,
+          atr: value,
+          atrPct: value,
+          bbUpper: value,
+          bbMiddle: value,
+          bbLower: value,
+          obv: value,
+          macd: value,
+          macdSignal: value,
+          macdHistogram: value,
+          price24hPcnt: value,
+          price1hPcnt: value,
+          prevPrice24hPcnt: value,
+          prevPrice1hPcnt: value,
+          highPrice1h: value,
+          lowPrice1h: value,
+          volume1h: value,
+          highPrice24h: value,
+          lowPrice24h: value,
+          volume24h: value,
+          prevHighPrice1h: value,
+          prevLowPrice1h: value,
+          prevVolume1h: value,
+          prevHighPrice24h: value,
+          prevLowPrice24h: value,
+          prevVolume24h: value,
+        };
+
+        Object.entries(indicators).forEach(([key, val]) => {
+          pushIndicator(key, val);
+        });
+
+        return indicators;
+      };
+
       return {
-        maFast: value,
-        maMedium: value,
-        maSlow: value,
-        atr: value,
-        bbUpper: value,
-        bbMiddle: value,
-        bbLower: value,
-        obv: value,
-        macd: value,
-        macdSignal: value,
-        macdHistogram: value,
-        price24hPcnt: value,
-        price1hPcnt: value,
-        prevPrice24hPcnt: value,
-        prevPrice1hPcnt: value,
-        highPrice1h: value,
-        lowPrice1h: value,
-        volume1h: value,
-        highPrice24h: value,
-        lowPrice24h: value,
-        volume24h: value,
-        prevHighPrice1h: value,
-        prevLowPrice1h: value,
-        prevVolume1h: value,
-        prevHighPrice24h: value,
-        prevLowPrice24h: value,
-        prevVolume24h: value,
+        next,
+        result: () => indicatorHistory,
       };
     });
 
@@ -110,6 +134,7 @@ describe('TrendlineStrategyCreator', () => {
     };
 
     const strategy = await TrendlineStrategyCreator({
+      userName: 'test',
       config: {
         ENV: 'test',
         INTERVAL: '15',
@@ -149,6 +174,7 @@ describe('TrendlineStrategyCreator', () => {
     expect(result).toBeTruthy();
     expect(typeof result).toBe('object');
     expect(result.indicators.maFast).toHaveLength(10);
+    expect(result.indicators.atrPct).toHaveLength(10);
     expect(result.indicators.price24hPcnt).toHaveLength(10);
     expect(result.indicators.volume24h).toHaveLength(10);
   });
@@ -170,35 +196,62 @@ describe('TrendlineStrategyCreator', () => {
       },
     );
 
-    (createIndicators as jest.Mock).mockImplementation(() => () => ({
-      maFast: 1,
-      maMedium: 1,
-      maSlow: 1,
-      atr: 1,
-      bbUpper: 1,
-      bbMiddle: 1,
-      bbLower: 1,
-      obv: 1,
-      macd: 1,
-      macdSignal: 1,
-      macdHistogram: 1,
-      price24hPcnt: 1,
-      price1hPcnt: 1,
-      prevPrice24hPcnt: 1,
-      prevPrice1hPcnt: 1,
-      highPrice1h: 1,
-      lowPrice1h: 1,
-      volume1h: 1,
-      highPrice24h: 1,
-      lowPrice24h: 1,
-      volume24h: 1,
-      prevHighPrice1h: 1,
-      prevLowPrice1h: 1,
-      prevVolume1h: 1,
-      prevHighPrice24h: 1,
-      prevLowPrice24h: 1,
-      prevVolume24h: 1,
-    }));
+    (createIndicators as jest.Mock).mockImplementation(() => {
+      const indicatorHistory: Record<string, number[]> = {};
+      const pushIndicator = (key: string, value: number) => {
+        if (!indicatorHistory[key]) {
+          indicatorHistory[key] = [];
+        }
+        indicatorHistory[key].push(value);
+        if (indicatorHistory[key].length > 10) {
+          indicatorHistory[key].splice(0, indicatorHistory[key].length - 10);
+        }
+      };
+
+      const next = () => {
+        const indicators = {
+          maFast: 1,
+          maMedium: 1,
+          maSlow: 1,
+          atr: 1,
+          atrPct: 1,
+          bbUpper: 1,
+          bbMiddle: 1,
+          bbLower: 1,
+          obv: 1,
+          macd: 1,
+          macdSignal: 1,
+          macdHistogram: 1,
+          price24hPcnt: 1,
+          price1hPcnt: 1,
+          prevPrice24hPcnt: 1,
+          prevPrice1hPcnt: 1,
+          highPrice1h: 1,
+          lowPrice1h: 1,
+          volume1h: 1,
+          highPrice24h: 1,
+          lowPrice24h: 1,
+          volume24h: 1,
+          prevHighPrice1h: 1,
+          prevLowPrice1h: 1,
+          prevVolume1h: 1,
+          prevHighPrice24h: 1,
+          prevLowPrice24h: 1,
+          prevVolume24h: 1,
+        };
+
+        Object.entries(indicators).forEach(([key, val]) => {
+          pushIndicator(key, val);
+        });
+
+        return indicators;
+      };
+
+      return {
+        next,
+        result: () => indicatorHistory,
+      };
+    });
 
     const cachedData: any[] = [makeCandle(1, 100)];
     const btcCachedData: any[] = [makeCandle(1, 20000)];
@@ -208,6 +261,7 @@ describe('TrendlineStrategyCreator', () => {
     };
 
     const strategy = await TrendlineStrategyCreator({
+      userName: 'test',
       config: {
         ENV: 'test',
         INTERVAL: '15',

@@ -109,6 +109,7 @@ const checkSignals = (
 };
 
 export const BreakoutStrategyCreator: StrategyCreator = async ({
+  userName,
   config: baseConfig,
   symbol,
   data,

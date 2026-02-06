@@ -4,17 +4,7 @@ import * as protoLoader from '@grpc/proto-loader';
 import { buildMlTrainingRow } from '@utils/mlTrainingTransform';
 import { logger } from '@utils/logger';
 import { Signal } from '@types';
-
-type MlTestConfig = {
-  strategyName?: string;
-  strategyConfig?: Record<string, any>;
-  symbol?: string;
-  candles?: any[];
-  btcCandles?: any[];
-  threshold?: number;
-  ML_THRESHOLD?: number;
-  grpcAddress?: string;
-};
+import { buildMlPayload, MlTestConfig } from '@utils/mlPayload';
 
 type MlPredictResponse = {
   probability: number;
@@ -62,24 +52,17 @@ export const fetchMlThreshold = async (
       toFiniteNumber(testConfig.ML_THRESHOLD) ??
       0;
 
-    const strategyConfig = {
-      ...testConfig.strategyConfig,
-      TRENDLINE_CONFIG:
-        testConfig.strategyConfig?.TRENDLINE_CONFIG ??
-        testConfig.strategyConfig?.TRENDLINE,
-    };
-
     const row = buildMlTrainingRow(
-      {
+      buildMlPayload({
         signal,
         context: {
-          strategyConfig,
+          strategyConfig: testConfig.strategyConfig,
           strategyName,
           symbol: testConfig.symbol || signal.symbol,
         },
         candles: testConfig.candles,
         btcCandles: testConfig.btcCandles,
-      },
+      }),
       null,
     );
 

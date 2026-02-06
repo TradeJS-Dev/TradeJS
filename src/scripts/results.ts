@@ -3,7 +3,7 @@ import chalk from 'chalk';
 const ListIt = require('list-it');
 import { connectors } from '@src/connectors';
 import { getTickers } from '@utils/cli';
-import { getData, getKeys, setData, redisKeys } from '@utils/redis';
+import { getData, getKeys, setData, delKey, redisKeys } from '@utils/redis';
 import { Test, TestStat } from '@types';
 
 args.example(
@@ -15,6 +15,7 @@ args.option(['s', 'strategy'], 'Strategy name');
 args.option(['C', 'coverage'], 'Show coverage table', false);
 args.option(['u', 'update'], 'Update results config in redis', false);
 args.option(['m', 'merge'], 'Merge results config in redis', false);
+args.option(['c', 'clear'], 'Clear results config in redis', false);
 args.option(['U', 'user'], 'Use user config', 'root');
 
 const flags = args.parse(process.argv);
@@ -52,23 +53,37 @@ const getMonthlyReturn = (totalReturn: number, periodMonths: number) => {
   return (Math.pow(base, 1 / periodMonths) - 1) * 100;
 };
 
-const getTestNames = async (userName: string) => {
+const getTestConfigs = async (userName: string) => {
   const testsPrefix = redisKeys.tests(userName);
   const keys = await getKeys(testsPrefix);
   const configKeys = keys.filter((key) => key.endsWith(':config'));
-  return configKeys.map((key) => key.split(':')[2]);
+
+  return configKeys
+    .map((key) => {
+      const parts = key.split(':');
+      if (parts.length < 5) {
+        return null;
+      }
+      const strategyName = parts[3];
+      const testName = parts[4];
+      return { strategyName, testName };
+    })
+    .filter(Boolean) as Array<{ strategyName: string; testName: string }>;
 };
 
 const buildBestResults = async (
   userName: string,
   strategyName: string,
 ): Promise<Map<string, BestResult>> => {
-  const testNames = await getTestNames(userName);
+  const testConfigs = await getTestConfigs(userName);
   const bestBySymbol = new Map<string, BestResult>();
 
-  for await (const testName of testNames) {
+  for await (const {
+    testName,
+    strategyName: strategyFromIndex,
+  } of testConfigs) {
     const config = (await getData(
-      redisKeys.testConfig(userName, testName),
+      redisKeys.testConfig(userName, strategyFromIndex, testName),
       null,
     )) as Test | null;
 
@@ -77,7 +92,7 @@ const buildBestResults = async (
     }
 
     const stat = (await getData(
-      redisKeys.testStat(userName, testName),
+      redisKeys.testStat(userName, strategyFromIndex, testName),
       null,
     )) as TestStat | null;
 
@@ -121,7 +136,7 @@ const getCoverageRow = async (
   goodSymbols: Set<string>,
 ) => {
   const currentResults = (await getData(
-    redisKeys.strategyResults(strategyName),
+    redisKeys.strategyResults(userName, strategyName),
     {},
   )) as Record<string, Test['strategyConfig']>;
 
@@ -162,6 +177,22 @@ const results = async () => {
 
   const strategyName = flags.strategy;
   const userName = flags.user;
+
+  if (flags.clear) {
+    const cleared = await delKey(
+      redisKeys.strategyResults(userName, strategyName),
+    );
+    console.log(
+      cleared
+        ? chalk.green(`Cleared results:${strategyName}`)
+        : chalk.yellow(`No results to clear for ${strategyName}`),
+    );
+
+    if (!flags.coverage && !flags.update && !flags.merge) {
+      process.exit();
+    }
+  }
+
   const bestBySymbol = await buildBestResults(userName, strategyName);
 
   if (flags.coverage) {
@@ -216,7 +247,7 @@ const results = async () => {
       }
 
       const current = (await getData(
-        redisKeys.strategyResults(strategyName),
+        redisKeys.strategyResults(userName, strategyName),
         {},
       )) as Record<string, Test['strategyConfig']>;
 
@@ -225,7 +256,7 @@ const results = async () => {
         ...resultsConfig,
       };
 
-      await setData(redisKeys.strategyResults(strategyName), merged, {
+      await setData(redisKeys.strategyResults(userName, strategyName), merged, {
         stringify: true,
         expire: 0,
       });
@@ -239,10 +270,14 @@ const results = async () => {
       return;
     }
 
-    await setData(redisKeys.strategyResults(strategyName), resultsConfig, {
-      stringify: true,
-      expire: 0,
-    });
+    await setData(
+      redisKeys.strategyResults(userName, strategyName),
+      resultsConfig,
+      {
+        stringify: true,
+        expire: 0,
+      },
+    );
 
     console.log(
       chalk.green(

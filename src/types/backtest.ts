@@ -20,6 +20,7 @@ export type Strategy = (
 export type StrategyConfig = Record<string, any>;
 
 export interface StrategyCreatorParams {
+  userName: string;
   symbol: string;
   config: StrategyConfig;
   connector: Connector;
@@ -109,7 +110,14 @@ export interface TestConnector extends Connector {
   checkSl: (candle: Candle) => Promise<void>;
 }
 
-export type TestConnectorCreator = (connector: Connector) => TestConnector;
+export interface TestConnectorContext {
+  userName?: string;
+}
+
+export type TestConnectorCreator = (
+  connector: Connector,
+  context?: TestConnectorContext,
+) => TestConnector;
 
 export type ChartColor = Tokens['colors'] | React.CSSProperties['color'];
 export interface TestCompare {

@@ -38,13 +38,18 @@ const csvEscape = (value: unknown): string => {
   return raw;
 };
 
-const hashSymbolDigit = (symbol: string): number => {
-  let hash = 0;
-  for (let i = 0; i < symbol.length; i += 1) {
-    hash = (hash * 31 + symbol.charCodeAt(i)) | 0;
-  }
-  return Math.abs(hash) % 10;
+const normalizeTimestamp = (value: unknown): number | null => {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return null;
+  return num < 1_000_000_000_000 ? num * 1000 : num;
 };
+
+const getSignalTimestamp = (record: MlSignalRecord): number | null =>
+  normalizeTimestamp(
+    record?.signal?.timestamp ??
+      record?.signal?.entryTimestamp ??
+      record?.context?.entryTimestamp,
+  );
 
 const buildRow = (
   signalRecord: MlSignalRecord,
@@ -144,13 +149,17 @@ const mlExport = async () => {
   const includeOpen = Boolean(flags.includeOpen);
   const format = String(flags.format || 'both').toLowerCase();
   const strategyFilter = flags.strategy ? String(flags.strategy) : '';
-  const trainBuckets = 9;
   const trainLabel = 'train';
   const testLabel = 'test';
 
   await fs.mkdir(outDir, { recursive: true });
 
-  const signalKeys = await getKeys(redisKeys.mlSignals());
+  const rawSignalKeys = flags.strategy
+    ? await getKeys(redisKeys.mlSignalsByStrategy(flags.strategy))
+    : await getKeys(redisKeys.mlSignals());
+  const signalKeys = flags.strategy
+    ? rawSignalKeys
+    : rawSignalKeys.filter((key) => key.includes(':signals:'));
   const limit = parseInt(flags.limit || '0', 10);
   const keys = limit > 0 ? signalKeys.slice(0, limit) : signalKeys;
 
@@ -173,6 +182,7 @@ const mlExport = async () => {
   const chunkFilesTrain: string[] = [];
   const chunkFilesTest: string[] = [];
   let totalRows = 0;
+  let maxTimestamp = 0;
 
   const totalChunks = Math.ceil(keys.length / CHUNK_SIZE) || 1;
   const bar = new ProgressBar(
@@ -187,6 +197,39 @@ const mlExport = async () => {
 
   for (let start = 0; start < keys.length; start += CHUNK_SIZE) {
     const batch = keys.slice(start, start + CHUNK_SIZE);
+    for await (const key of batch) {
+      const signalRecord = (await getData(key, null)) as MlSignalRecord | null;
+      if (!signalRecord?.signal) continue;
+
+      if (strategyFilter) {
+        const rowStrategy = String(
+          signalRecord.signal?.strategy ||
+            signalRecord.context?.strategyName ||
+            '',
+        ).toLowerCase();
+        if (rowStrategy !== strategyFilter.toLowerCase()) {
+          continue;
+        }
+      }
+
+      const ts = getSignalTimestamp(signalRecord);
+      if (ts && ts > maxTimestamp) {
+        maxTimestamp = ts;
+      }
+    }
+  }
+
+  if (!maxTimestamp) {
+    await fs.rm(tempDir, { recursive: true, force: true });
+    console.log(chalk.yellow('No signals with timestamp found.'));
+    process.exit(0);
+  }
+
+  const testWindowMs = 30 * 24 * 60 * 60 * 1000;
+  const testStart = maxTimestamp - testWindowMs;
+
+  for (let start = 0; start < keys.length; start += CHUNK_SIZE) {
+    const batch = keys.slice(start, start + CHUNK_SIZE);
     rowsTrain.length = 0;
     rowsTest.length = 0;
 
@@ -198,10 +241,20 @@ const mlExport = async () => {
       }
 
       const signalId = signalRecord.signal.signalId as string;
-      const resultRecord = (await getData(
-        redisKeys.mlResult(signalId),
-        null,
-      )) as MlResultRecord | null;
+      const keyParts = key.split(':');
+      const strategyNameFromKey =
+        keyParts.length >= 4 ? keyParts[1] : undefined;
+      const strategyName =
+        strategyNameFromKey ||
+        signalRecord?.context?.strategyName ||
+        signalRecord?.signal?.strategy;
+
+      const resultRecord = strategyName
+        ? ((await getData(
+            redisKeys.mlResult(strategyName, signalId),
+            null,
+          )) as MlResultRecord | null)
+        : null;
 
       if (!resultRecord && !includeOpen) {
         continue;
@@ -218,23 +271,21 @@ const mlExport = async () => {
         }
       }
 
+      const ts = getSignalTimestamp(signalRecord);
+      if (!ts) {
+        continue;
+      }
+
       const row = buildRow(signalRecord, resultRecord);
       if (row.label === 1) posCount += 1;
       if (row.label === 0) negCount += 1;
 
-      const symbol = String(
-        signalRecord.signal?.symbol ||
-          signalRecord.context?.symbol ||
-          resultRecord?.symbol ||
-          '',
-      );
-      const digit = hashSymbolDigit(symbol);
-      if (digit < trainBuckets) {
-        rowsTrain.push(row);
-        addHeaders(row, headersTrain, headerSetTrain);
-      } else {
+      if (ts >= testStart) {
         rowsTest.push(row);
         addHeaders(row, headersTest, headerSetTest);
+      } else {
+        rowsTrain.push(row);
+        addHeaders(row, headersTrain, headerSetTrain);
       }
     }
 
@@ -297,7 +348,7 @@ const mlExport = async () => {
 
   console.log(
     chalk.gray(
-      `rows: ${totalRows} (chunks: ${chunkFilesTrain.length + chunkFilesTest.length}), split: 90/10, includeOpen: ${includeOpen}, strategy: ${strategyFilter || 'any'}`,
+      `rows: ${totalRows} (chunks: ${chunkFilesTrain.length + chunkFilesTest.length}), split: time(last 30d), includeOpen: ${includeOpen}, strategy: ${strategyFilter || 'any'}`,
     ),
   );
 

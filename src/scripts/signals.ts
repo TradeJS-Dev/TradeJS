@@ -66,6 +66,7 @@ const findSignals = async (symbol: string, connector: Connector) => {
   }
 
   const strategy = await TrendlineStrategyCreator({
+    userName: flags.user,
     connector,
     symbol,
     data: cachedData,

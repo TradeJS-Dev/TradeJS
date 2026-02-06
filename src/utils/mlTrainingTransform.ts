@@ -1,23 +1,30 @@
+// Builds a flat numeric feature row for ML training from a Signal + context.
+// The output is a fixed schema with derived indicator series, candle features,
+// BTC-relative features, trendline geometry, and strategy config params.
 type MlSignalRecord = {
   signal: any;
   context?: {
     strategyConfig?: any;
     strategyName?: string;
     symbol?: string;
+    entryTimestamp?: number;
   };
   candles?: any[];
   btcCandles?: any[];
 };
 
+// Result record from Redis (label/profit).
 type MlResultRecord = {
   profit?: number;
   direction?: 'LONG' | 'SHORT';
   symbol?: string;
 };
 
+// Fixed windows for features.
 const CANDLE_WINDOW = 50;
 const INDICATOR_WINDOW = 10;
 
+// Defensive numeric helpers.
 const toNumber = (value: unknown, fallback = 0): number => {
   if (typeof value === 'number') {
     return Number.isFinite(value) ? value : fallback;
@@ -33,6 +40,7 @@ const safeDiv = (num: number, denom: number): number => {
   return num / denom;
 };
 
+// Log(1 + x) with clamping to keep volumes non-negative.
 const safeLog1p = (value: number): number => {
   if (!Number.isFinite(value)) {
     return 0;
@@ -40,6 +48,7 @@ const safeLog1p = (value: number): number => {
   return Math.log1p(Math.max(0, value));
 };
 
+// Basic stats for return windows.
 const computeMedian = (values: number[]): number => {
   if (values.length === 0) return 0;
   const sorted = [...values].sort((a, b) => a - b);
@@ -56,6 +65,7 @@ const computeMean = (values: number[]): number => {
   return sum / values.length;
 };
 
+// Population std/ skew / kurtosis.
 const computeStd = (values: number[]): number => {
   if (values.length === 0) return 0;
   const mean = computeMean(values);
@@ -84,6 +94,7 @@ const computeKurtosis = (values: number[]): number => {
   return m4 / std ** 4;
 };
 
+// Slice an inclusive window ending at endIndex.
 const sliceWindow = (
   values: number[],
   endIndex: number,
@@ -94,7 +105,31 @@ const sliceWindow = (
   return values.slice(start, endIndex + 1);
 };
 
+// Normalize any "maybe series" value into an array.
 const asArray = (value: unknown): any[] => (Array.isArray(value) ? value : []);
+
+// Convert to numeric series; accepts arrays or scalars.
+const normalizeSeries = (value: unknown): number[] => {
+  if (Array.isArray(value)) {
+    return value.map((item) => toNumber(item, 0));
+  }
+  if (typeof value === 'number') {
+    return [toNumber(value, 0)];
+  }
+  return [];
+};
+
+// Pad or trim series to INDICATOR_WINDOW.
+const padSeries = (values: number[]): number[] => {
+  if (values.length >= INDICATOR_WINDOW) {
+    return values.slice(0, INDICATOR_WINDOW);
+  }
+  const padded = values.slice();
+  while (padded.length < INDICATOR_WINDOW) {
+    padded.push(0);
+  }
+  return padded;
+};
 
 export const buildMlTrainingRow = (
   signalRecord: MlSignalRecord,
@@ -102,6 +137,7 @@ export const buildMlTrainingRow = (
 ): Record<string, number | null> => {
   const { signal, context, candles, btcCandles } = signalRecord;
 
+  // Core prices and context extracted from signal/candles.
   const currentPrice = toNumber(signal?.prices?.currentPrice, 0);
   const candleList = asArray(candles);
   const btcList = asArray(btcCandles);
@@ -116,6 +152,7 @@ export const buildMlTrainingRow = (
   const lastBtcClose = toNumber(lastBtcCandle?.close, 0);
   const lastAltToBtcRatio = safeDiv(lastAltClose, lastBtcClose);
 
+  // Base row fields. Most numeric features are normalized vs currentPrice.
   const row: Record<string, number | null> = {
     direction: signal?.direction === 'LONG' ? 1 : 0,
     interval: intervalMinutes,
@@ -135,17 +172,24 @@ export const buildMlTrainingRow = (
     Distance: toNumber(signal?.indicators?.distance, 0),
   };
 
+  // Indicator helpers:
+  // - addSeries: divide by currentPrice (price-relative)
+  // - addSeriesRaw: keep as-is
+  // - addSeriesRelTo: divide by matching denominator series
+  // - addSeriesLogVolume: log1p volumes
+  // - addSeriesVolumeMedianNormalized: volume / rolling median
   const addSeries = (prefix: string, values: unknown[]) => {
+    const series = padSeries(normalizeSeries(values));
     for (let i = 0; i < INDICATOR_WINDOW; i += 1) {
-      const value = toNumber(values[i], 0);
+      const value = series[i];
       row[`${prefix}_${i + 1}`] = safeDiv(value, currentPrice);
     }
   };
 
   const addSeriesRaw = (prefix: string, values: unknown[]) => {
+    const series = padSeries(normalizeSeries(values));
     for (let i = 0; i < INDICATOR_WINDOW; i += 1) {
-      const value = toNumber(values[i], 0);
-      row[`${prefix}_${i + 1}`] = value;
+      row[`${prefix}_${i + 1}`] = series[i];
     }
   };
 
@@ -154,16 +198,19 @@ export const buildMlTrainingRow = (
     values: unknown[],
     denomSeries: unknown[],
   ) => {
+    const series = padSeries(normalizeSeries(values));
+    const denomSeriesSafe = padSeries(normalizeSeries(denomSeries));
     for (let i = 0; i < INDICATOR_WINDOW; i += 1) {
-      const value = toNumber(values[i], 0);
-      const denom = toNumber(denomSeries[i], 0);
+      const value = series[i];
+      const denom = denomSeriesSafe[i];
       row[`${prefix}_${i + 1}`] = safeDiv(value, denom);
     }
   };
 
   const addSeriesLogVolume = (prefix: string, values: unknown[]) => {
+    const series = padSeries(normalizeSeries(values));
     for (let i = 0; i < INDICATOR_WINDOW; i += 1) {
-      const value = toNumber(values[i], 0);
+      const value = series[i];
       row[`${prefix}_${i + 1}`] = safeLog1p(value);
     }
   };
@@ -172,18 +219,23 @@ export const buildMlTrainingRow = (
     prefix: string,
     values: unknown[],
   ) => {
-    const numericValues = values.map((value) => toNumber(value, 0));
+    const numericValues = padSeries(normalizeSeries(values));
     const windowSize = Math.min(20, numericValues.length);
     for (let i = 0; i < INDICATOR_WINDOW; i += 1) {
-      const value = toNumber(values[i], 0);
+      const value = numericValues[i];
       const window = sliceWindow(numericValues, i, windowSize);
       const median = computeMedian(window);
       row[`${prefix}_${i + 1}_MedianNorm`] = safeDiv(value, median);
     }
   };
 
+  // Indicator series from the signal.
   const indicators = signal?.indicators ?? {};
   const maMediumSeries = asArray(indicators.maMedium);
+  const touchesSeries = padSeries(normalizeSeries(indicators.touches));
+  const addSeriesRelToMa = (prefix: string, values: unknown[]) => {
+    addSeriesRelTo(prefix, values, maMediumSeries);
+  };
   addSeriesRelTo('ATR', asArray(indicators.atr), maMediumSeries);
   addSeriesRelTo('MA_Fast', asArray(indicators.maFast), maMediumSeries);
   addSeriesRelTo('MA_Medium', maMediumSeries, maMediumSeries);
@@ -193,6 +245,7 @@ export const buildMlTrainingRow = (
   addSeriesRelTo('BB_Lower', asArray(indicators.bbLower), maMediumSeries);
   addSeriesLogVolume('OBV_Log1p', asArray(indicators.obv));
   const atrSeries = asArray(indicators.atr);
+  addSeriesRaw('ATR_PCT', asArray(indicators.atrPct));
   addSeriesRelTo('MACD', asArray(indicators.macd), atrSeries);
   addSeriesRelTo('MACD_Signal', asArray(indicators.macdSignal), atrSeries);
   addSeriesRelTo(
@@ -204,12 +257,13 @@ export const buildMlTrainingRow = (
   addSeriesRaw('Price1hPcnt', asArray(indicators.price1hPcnt));
   addSeriesRaw('PrevPrice24hPcnt', asArray(indicators.prevPrice24hPcnt));
   addSeriesRaw('PrevPrice1hPcnt', asArray(indicators.prevPrice1hPcnt));
-  addSeries('HighPrice1h', asArray(indicators.highPrice1h));
-  addSeries('LowPrice1h', asArray(indicators.lowPrice1h));
+  addSeriesRaw('Touches', touchesSeries);
+  addSeriesRelToMa('HighPrice1h', asArray(indicators.highPrice1h));
+  addSeriesRelToMa('LowPrice1h', asArray(indicators.lowPrice1h));
   addSeriesLogVolume('Volume1h', asArray(indicators.volume1h));
   addSeriesVolumeMedianNormalized('Volume1h', asArray(indicators.volume1h));
-  addSeries('HighPrice24h', asArray(indicators.highPrice24h));
-  addSeries('LowPrice24h', asArray(indicators.lowPrice24h));
+  addSeriesRelToMa('HighPrice24h', asArray(indicators.highPrice24h));
+  addSeriesRelToMa('LowPrice24h', asArray(indicators.lowPrice24h));
   addSeriesLogVolume('Volume24h', asArray(indicators.volume24h));
   addSeriesVolumeMedianNormalized('Volume24h', asArray(indicators.volume24h));
   addSeries('PrevHighPrice1h', asArray(indicators.prevHighPrice1h));
@@ -227,6 +281,7 @@ export const buildMlTrainingRow = (
     asArray(indicators.prevVolume24h),
   );
 
+  // Candle-level features for both the altcoin and BTC windows.
   const candleVolumes = candleList.map((candle) => toNumber(candle?.volume, 0));
   const btcVolumes = btcList.map((candle) => toNumber(candle?.volume, 0));
   const altReturns: number[] = [];
@@ -267,23 +322,24 @@ export const buildMlTrainingRow = (
       lastAltToBtcRatio,
     );
 
+    // Candle geometry normalized by currentPrice / btcPrice.
     const candleMax = Math.max(altOpenRaw, altCloseRaw);
     const candleMin = Math.min(altOpenRaw, altCloseRaw);
     row[`Candle_Body_${i + 1}`] = safeDiv(
       altCloseRaw - altOpenRaw,
-      currentPrice,
+      toNumber(maMediumSeries[i], currentPrice),
     );
     row[`Candle_Range_${i + 1}`] = safeDiv(
       altHighRaw - altLowRaw,
-      currentPrice,
+      toNumber(maMediumSeries[i], currentPrice),
     );
     row[`Candle_UpperWick_${i + 1}`] = safeDiv(
       altHighRaw - candleMax,
-      currentPrice,
+      toNumber(maMediumSeries[i], currentPrice),
     );
     row[`Candle_LowerWick_${i + 1}`] = safeDiv(
       candleMin - altLowRaw,
-      currentPrice,
+      toNumber(maMediumSeries[i], currentPrice),
     );
     row[`Candle_Direction_${i + 1}`] = altCloseRaw >= altOpenRaw ? 1 : 0;
 
@@ -307,6 +363,7 @@ export const buildMlTrainingRow = (
     );
     row[`BTC_Candle_Direction_${i + 1}`] = btcCloseRaw >= btcOpenRaw ? 1 : 0;
 
+    // Volume features with log scale and median normalization.
     const candleVol = toNumber(candle?.volume, 0);
     const btcVol = toNumber(btcCandle?.volume, 0);
     const candleWindow = sliceWindow(
@@ -327,6 +384,7 @@ export const buildMlTrainingRow = (
     row[`BTC_Candle_Volume_${i + 1}_MedianNorm`] = safeDiv(btcVol, btcMedian);
   }
 
+  // Aggregate return stats for the last 10 candles.
   const window10Alt = sliceWindow(altReturns, altReturns.length - 1, 10);
   const window10Btc = sliceWindow(btcReturns, btcReturns.length - 1, 10);
   const window10Rel = sliceWindow(relReturns, relReturns.length - 1, 10);
@@ -343,12 +401,15 @@ export const buildMlTrainingRow = (
   row.RelRet_Skew10 = computeSkew(window10Rel);
   row.RelRet_Kurt10 = computeKurtosis(window10Rel);
 
+  // Trendline geometry features.
   const trendLine = signal?.figures?.trendLine;
   row.TrendLine_Mode = trendLine?.mode === 'highs' ? 1 : 0;
   row.TrendLine_Distance = toNumber(trendLine?.distance, 0);
 
+  // Trendline points (always 2, padded with zeros if missing).
   const points = asArray(trendLine?.points);
-  for (let i = 0; i < points.length; i += 1) {
+  const maxPoints = 2;
+  for (let i = 0; i < maxPoints; i += 1) {
     const point = points[i] ?? {};
     row[`POINTS_VALUE_${i + 1}`] = safeDiv(
       toNumber(point?.value, 0),
@@ -362,6 +423,7 @@ export const buildMlTrainingRow = (
         : pointDeltaMin;
   }
 
+  // Touches: variable length, each touch value and time delta.
   const touches = asArray(trendLine?.touches);
   for (let i = 0; i < touches.length; i += 1) {
     const touch = touches[i] ?? {};
@@ -377,6 +439,7 @@ export const buildMlTrainingRow = (
         : touchDeltaMin;
   }
 
+  // Trendline slope and value at entry computed from last two valid points.
   const normalizedPoints = points
     .map((point) => ({
       value: toNumber(point?.value, NaN),
@@ -413,6 +476,7 @@ export const buildMlTrainingRow = (
     row.TrendLine_Slope = null;
   }
 
+  // Strategy config features (one row per signal).
   const strategyConfig = context?.strategyConfig ?? {};
   const trendCfg = strategyConfig.TRENDLINE_CONFIG ?? {};
   row.TRENDLINE_minTouches = toNumber(trendCfg.minTouches, 0);
@@ -434,6 +498,7 @@ export const buildMlTrainingRow = (
   row.LOWS_SL = toNumber(lowsCfg.SL, 0);
   row.LOWS_minRiskRatio = toNumber(lowsCfg.minRiskRatio, 0);
 
+  // Label/profit from result record.
   const profit = toNumber(resultRecord?.profit, NaN);
   row.label = Number.isFinite(profit) ? (profit > 0 ? 1 : 0) : null;
   row.profit = Number.isFinite(profit) ? profit : null;

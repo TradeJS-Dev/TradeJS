@@ -24,10 +24,10 @@ export const formatMessage = (signal: Signal): string => {
     const distance = indicators.distance as number | undefined;
     const correlation = indicators.correlation as number | undefined;
     const touches = indicators.touches as number | undefined;
-    const atrValue = indicators.atr;
-    const atr = Array.isArray(atrValue)
-      ? atrValue[atrValue.length - 1]
-      : (atrValue as number | undefined);
+    const atrPctValue = indicators.atrPct;
+    const atrPct = Array.isArray(atrPctValue)
+      ? atrPctValue[atrPctValue.length - 1]
+      : (atrPctValue as number | undefined);
 
     const formatPrices = () => {
       const tpPercent =
@@ -81,8 +81,8 @@ export const formatMessage = (signal: Signal): string => {
         lines.push(`Points: ${touches}`);
       }
 
-      if (atr) {
-        lines.push(`ATR: ${atr}`);
+      if (atrPct != null && Number.isFinite(atrPct)) {
+        lines.push(`ATR: ${atrPct.toFixed(2)}`);
       }
 
       if (distance) {

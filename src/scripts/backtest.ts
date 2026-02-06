@@ -99,27 +99,39 @@ const recordError = (error: ErrorMessage) => {
 
 const getLogsById = async (orderLogId: string) => {
   const orderLog = (await getData(
-    redisKeys.cacheOrders(orderLogId),
+    redisKeys.cacheOrders(userName, orderLogId),
   )) as OrderLog;
   const positionLog = (await getData(
-    redisKeys.cachePositions(orderLogId),
+    redisKeys.cachePositions(userName, orderLogId),
   )) as PositionLogData;
 
   return { orderLog, positionLog };
 };
 
 const setTestData = async (test: Test, stat: TestStat, orderLog: OrderLog) => {
-  await setData(redisKeys.testOrders(test.userName, test.name), orderLog, {
-    stringify: false,
-  });
+  await setData(
+    redisKeys.testOrders(test.userName, test.strategyName, test.name),
+    orderLog,
+    {
+      stringify: false,
+    },
+  );
 
-  await setData(redisKeys.testConfig(test.userName, test.name), test, {
-    stringify: true,
-  });
+  await setData(
+    redisKeys.testConfig(test.userName, test.strategyName, test.name),
+    test,
+    {
+      stringify: true,
+    },
+  );
 
-  await setData(redisKeys.testStat(test.userName, test.name), stat, {
-    stringify: true,
-  });
+  await setData(
+    redisKeys.testStat(test.userName, test.strategyName, test.name),
+    stat,
+    {
+      stringify: true,
+    },
+  );
 };
 
 const backtest = async () => {
@@ -148,7 +160,9 @@ const backtest = async () => {
     return;
   }
 
-  const backtestConfig = await getData(redisKeys.backtestConfig(flags.config));
+  const backtestConfig = await getData(
+    redisKeys.backtestConfig(userName, flags.config),
+  );
 
   let testSuite = createTestSuite(userName, tickers, backtestConfig).slice(
     0,
@@ -261,9 +275,9 @@ const backtest = async () => {
     });
 
     const chunkId = uuid();
-    await setData(redisKeys.cacheChunk(chunkId), chunk);
+    await setData(redisKeys.cacheChunk(userName, chunkId), chunk);
 
-    tester.send({ chunkId });
+    tester.send({ chunkId, userName });
   }
 };
 
@@ -358,7 +372,7 @@ const finish = async (results: TestWorkerResult[]) => {
   const timestamp = createTimestamp(finishedAt);
 
   await setData(
-    redisKeys.backtestResults(flags.config, timestamp),
+    redisKeys.backtestResults(userName, flags.config, timestamp),
     {
       config: flags.config,
       user: userName,

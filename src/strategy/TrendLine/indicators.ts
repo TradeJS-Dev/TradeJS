@@ -6,6 +6,8 @@ const INDICATOR_PERIODS = {
   maMedium: 49,
   maSlow: 50,
   atr: 14,
+  atrPctShort: 7,
+  atrPctLong: 30,
   bb: 20,
   bbStd: 2,
   macdFast: 12,
@@ -39,6 +41,7 @@ type TrendlineIndicators = {
   maMedium: IndicatorValue;
   maSlow: IndicatorValue;
   atr: IndicatorValue;
+  atrPct: IndicatorValue;
   bbUpper: IndicatorValue;
   bbMiddle: IndicatorValue;
   bbLower: IndicatorValue;
@@ -72,6 +75,7 @@ export const applyIndicatorsToHistory = (
   pushIndicator('maMedium', indicators.maMedium);
   pushIndicator('maSlow', indicators.maSlow);
   pushIndicator('atr', indicators.atr);
+  pushIndicator('atrPct', indicators.atrPct);
   pushIndicator('bbUpper', indicators.bbUpper);
   pushIndicator('bbMiddle', indicators.bbMiddle);
   pushIndicator('bbLower', indicators.bbLower);
@@ -105,38 +109,50 @@ export const createIndicators = (data: KlineChartData) => {
   const timestamps: number[] = [];
 
   const obv = new OBV({ close: [], volume: [] });
-
-  data.forEach((candle) => {
-    closes.push(candle.close);
-    highs.push(candle.high);
-    lows.push(candle.low);
-    volumes.push(candle.volume);
-    timestamps.push(candle.timestamp);
-    obv.nextValue(candle);
-  });
-
-  const ma14 = new SMA({ period: INDICATOR_PERIODS.maFast, values: closes });
-  const ma49 = new SMA({ period: INDICATOR_PERIODS.maMedium, values: closes });
-  const ma50 = new SMA({ period: INDICATOR_PERIODS.maSlow, values: closes });
+  const ma14 = new SMA({ period: INDICATOR_PERIODS.maFast, values: [] });
+  const ma49 = new SMA({ period: INDICATOR_PERIODS.maMedium, values: [] });
+  const ma50 = new SMA({ period: INDICATOR_PERIODS.maSlow, values: [] });
   const atr = new ATR({
     period: INDICATOR_PERIODS.atr,
-    high: highs,
-    low: lows,
-    close: closes,
+    high: [],
+    low: [],
+    close: [],
+  });
+  const atrPctShort = new SMA({
+    period: INDICATOR_PERIODS.atrPctShort,
+    values: [],
+  });
+  const atrPctLong = new SMA({
+    period: INDICATOR_PERIODS.atrPctLong,
+    values: [],
   });
   const bb = new BollingerBands({
     period: INDICATOR_PERIODS.bb,
-    values: closes,
+    values: [],
     stdDev: INDICATOR_PERIODS.bbStd,
   });
   const macd = new MACD({
     fastPeriod: INDICATOR_PERIODS.macdFast,
     slowPeriod: INDICATOR_PERIODS.macdSlow,
     signalPeriod: INDICATOR_PERIODS.macdSignal,
-    values: closes,
+    values: [],
     SimpleMAOscillator: false,
     SimpleMASignal: false,
   });
+
+  const indicatorHistory: Record<string, number[]> = {};
+  const pushIndicator = (key: string, value: number | null | undefined) => {
+    if (value == null) {
+      return;
+    }
+    if (!indicatorHistory[key]) {
+      indicatorHistory[key] = [];
+    }
+    indicatorHistory[key].push(value);
+    if (indicatorHistory[key].length > 10) {
+      indicatorHistory[key].splice(0, indicatorHistory[key].length - 10);
+    }
+  };
 
   let window1hStart = 0;
   let window24hStart = 0;
@@ -193,7 +209,33 @@ export const createIndicators = (data: KlineChartData) => {
     };
   };
 
-  return (candle: Candle) => {
+  const findNearestStartClose = (
+    currentTimestamp: number,
+    windowMs: number,
+  ) => {
+    if (timestamps.length === 0) {
+      return { startClose: null, startIdx: 0 };
+    }
+    const windowStart = currentTimestamp - windowMs;
+    let idx = 0;
+    while (idx < timestamps.length && timestamps[idx] < windowStart) {
+      idx += 1;
+    }
+    if (idx <= 0) {
+      return { startClose: closes[0], startIdx: 0 };
+    }
+    if (idx >= timestamps.length) {
+      const lastIdx = timestamps.length - 1;
+      return { startClose: closes[lastIdx], startIdx: lastIdx };
+    }
+    const prevIdx = idx - 1;
+    const prevDiff = windowStart - timestamps[prevIdx];
+    const nextDiff = timestamps[idx] - windowStart;
+    const chosenIdx = prevDiff <= nextDiff ? prevIdx : idx;
+    return { startClose: closes[chosenIdx], startIdx: chosenIdx };
+  };
+
+  const next = (candle: Candle) => {
     closes.push(candle.close);
     highs.push(candle.high);
     lows.push(candle.low);
@@ -204,6 +246,22 @@ export const createIndicators = (data: KlineChartData) => {
     const ma49Value = ma49.nextValue(candle.close);
     const ma50Value = ma50.nextValue(candle.close);
     const atrValue = atr.nextValue(candle);
+    const atrPctValue =
+      atrValue != null && Number.isFinite(atrValue) && candle.close
+        ? (atrValue / candle.close) * 100
+        : null;
+    const atrPctShortValue =
+      atrPctValue == null ? null : atrPctShort.nextValue(atrPctValue);
+    const atrPctLongValue =
+      atrPctValue == null ? null : atrPctLong.nextValue(atrPctValue);
+    const atrPctRatio =
+      typeof atrPctShortValue === 'number' &&
+      Number.isFinite(atrPctShortValue) &&
+      typeof atrPctLongValue === 'number' &&
+      Number.isFinite(atrPctLongValue) &&
+      atrPctLongValue !== 0
+        ? atrPctShortValue / atrPctLongValue
+        : null;
     const bbValue = bb.nextValue(candle.close);
     const obvValue = obv.nextValue(candle);
     const macdValue = macd.nextValue(candle.close);
@@ -234,13 +292,15 @@ export const createIndicators = (data: KlineChartData) => {
     );
     window24hStart = window24h.startIdx;
 
+    const price1hStart = findNearestStartClose(currentTimestamp, ONE_HOUR_MS);
+    const price24hStart = findNearestStartClose(currentTimestamp, ONE_DAY_MS);
     const price1hPcnt =
-      window1h.hasFullWindow && window1h.startClose != null
-        ? percentChange(candle.close, window1h.startClose)
+      window1h.hasFullWindow && price1hStart.startClose != null
+        ? percentChange(candle.close, price1hStart.startClose)
         : null;
     const price24hPcnt =
-      window24h.hasFullWindow && window24h.startClose != null
-        ? percentChange(candle.close, window24h.startClose)
+      window24h.hasFullWindow && price24hStart.startClose != null
+        ? percentChange(candle.close, price24hStart.startClose)
         : null;
 
     const highPrice1h = window1h.hasFullWindow ? window1h.high : null;
@@ -255,6 +315,7 @@ export const createIndicators = (data: KlineChartData) => {
       maMedium: ma49Value,
       maSlow: ma50Value,
       atr: atrValue,
+      atrPct: atrPctRatio,
       bbUpper: bbValue.upper,
       bbMiddle: bbValue.middle,
       bbLower: bbValue.lower,
@@ -291,6 +352,17 @@ export const createIndicators = (data: KlineChartData) => {
       volume24h,
     };
 
+    applyIndicatorsToHistory(result, pushIndicator);
+
     return result;
+  };
+
+  data.forEach((candle) => {
+    next(candle);
+  });
+
+  return {
+    next,
+    result: () => indicatorHistory,
   };
 };

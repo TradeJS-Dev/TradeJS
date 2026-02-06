@@ -13,18 +13,19 @@ export const runBot = async () => {
   const botResults = [];
   const preloadStart = getTimestamp(BOT_PRELOAD_DAYS);
   const end = getTimestamp();
-  const keys = await getKeys(redisKeys.bots());
+  const keys = await getKeys(redisKeys.botsPrefix());
+  const botKeys = keys.filter((key) => key.endsWith(':bots'));
 
   await delay(5000);
 
-  logger.log('info', 'files count: %s', keys.length);
+  logger.log('info', 'files count: %s', botKeys.length);
 
-  for await (const key of keys) {
+  for await (const key of botKeys) {
     const userName = key.split(':')[1];
 
     logger.log('info', 'user: %s', userName);
 
-    const botConfig: BotConfig = await getData(redisKeys.bot(userName));
+    const botConfig: BotConfig = await getData(redisKeys.bots(userName));
 
     if (_.isEmpty(botConfig)) {
       logger.log('error', 'botConfig is empty: %s', userName);
@@ -72,6 +73,7 @@ export const runBot = async () => {
         const btcCandle = btcData.pop();
 
         const strategy = await strategyCreator({
+          userName,
           config: strategyConfig,
           symbol,
           data,

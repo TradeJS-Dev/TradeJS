@@ -15,6 +15,7 @@ const useStore = create<FiltersState>((set) => ({
     start: getTimestamp(DASHBOARD_PRELOAD_DAYS),
     end: getTimestamp(),
     backtestId: null,
+    backtestStrategy: null,
   } as UIFilters,
   setFilters: (newFilters) =>
     set(({ filters }) => ({ filters: { ...filters, ...newFilters } })),

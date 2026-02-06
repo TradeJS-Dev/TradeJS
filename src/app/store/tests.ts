@@ -234,6 +234,10 @@ export const useTestList = (filters: TestListProps = {}) => {
 export const useTest = (testName: string) => {
   const testResult = useTestsStore((s) => s.tests.get(testName));
   const setTest = useTestsStore((s) => s.setTest);
+  const tests = useTestListStore((s) => s.tests);
+  const setTestList = useTestListStore((s) => s.setTest);
+  const testItem = tests.find((item) => item.value === testName);
+  const strategyName = testItem?.data?.strategyName as string | undefined;
 
   const loadData = async () => {
     if (!_.isEmpty(testResult)) {
@@ -250,7 +254,15 @@ export const useTest = (testName: string) => {
       return;
     }
 
-    const test = await getBacktest(testName);
+    let resolvedStrategy = strategyName;
+    if (!resolvedStrategy) {
+      const newTests = await getBacktestFiles();
+      setTestList(newTests);
+      resolvedStrategy = newTests.find((item) => item.value === testName)?.data
+        ?.strategyName as string | undefined;
+    }
+
+    const test = await getBacktest(testName, resolvedStrategy);
 
     if (!test) {
       return;
@@ -314,6 +326,10 @@ export const useBacktest = (id: string | undefined) => {
   const backtest = useDataStore((s) => s.backtests.get(id || 'empty'));
   const setBacktest = useDataStore((s) => s.setBacktest);
   const [loading, setLoading] = useState(false);
+  const tests = useTestListStore((s) => s.tests);
+  const setTestList = useTestListStore((s) => s.setTest);
+  const testItem = tests.find((item) => item.value === id);
+  const strategyName = testItem?.data?.strategyName as string | undefined;
 
   const updateBacktest = async () => {
     if (!id) {
@@ -333,7 +349,15 @@ export const useBacktest = (id: string | undefined) => {
       return;
     }
 
-    const backtestData = await getOrderLog(id);
+    let resolvedStrategy = strategyName;
+    if (!resolvedStrategy) {
+      const newTests = await getBacktestFiles();
+      setTestList(newTests);
+      resolvedStrategy = newTests.find((item) => item.value === id)?.data
+        ?.strategyName as string | undefined;
+    }
+
+    const backtestData = await getOrderLog(id, resolvedStrategy);
 
     if (backtestData && !_.isEmpty(backtestData)) {
       setBacktest(id, backtestData);

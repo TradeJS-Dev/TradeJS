@@ -11,13 +11,14 @@ export const getBacktestFiles = async (): Promise<Item[]> => {
 
 export const getOrderLog = async (
   name: string | undefined,
+  strategyName: string | undefined,
 ): Promise<OrderLogData | null> => {
-  if (!name) {
+  if (!name || !strategyName) {
     return null;
   }
 
   const data = await API.get<{ orderLog?: OrderLogData }>(
-    `${API_BASE}/order-log/${name}`,
+    `${API_BASE}/order-log/${strategyName}/${name}`,
   );
 
   return data.orderLog ?? null;
@@ -25,13 +26,14 @@ export const getOrderLog = async (
 
 export const getBacktest = async (
   name: string | undefined,
+  strategyName: string | undefined,
 ): Promise<TestResult | null> => {
-  if (!name) {
+  if (!name || !strategyName) {
     return null;
   }
 
   const data = await API.get<{ result?: TestResult }>(
-    `${API_BASE}/result/${name}`,
+    `${API_BASE}/result/${strategyName}/${name}`,
   );
 
   return data.result ?? null;

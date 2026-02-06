@@ -22,6 +22,7 @@ export const SelectSymbol = ({}: SelectSymbolProps) => {
     const newFilters = {
       symbol: value[0],
       backtestId: null,
+      backtestStrategy: null,
     };
 
     onChangeFilters?.(newFilters);

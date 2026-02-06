@@ -155,33 +155,48 @@ export const setData = async <T>(
 };
 
 export const redisKeys = {
-  bots: () => 'bots:',
-  bot: (userName: string) => `bots:${userName}`,
-  backtestConfig: (config: string) => `backtests:configs:${config}`,
-  users: () => 'users:',
-  user: (userName: string) => `users:${userName}`,
-  tests: (userName: string) => `tests:${userName}`,
-  testOrders: (userName: string, testName: string) =>
-    `tests:${userName}:${testName}:orders`,
-  testConfig: (userName: string, testName: string) =>
-    `tests:${userName}:${testName}:config`,
-  testStat: (userName: string, testName: string) =>
-    `tests:${userName}:${testName}:stat`,
-  cacheChunk: (chunkId: string) => `cache:tests:chunks:${chunkId}`,
-  cacheOrders: (orderLogId: string) => `cache:tests:orders:${orderLogId}`,
-  cachePositions: (orderLogId: string) => `cache:tests:positions:${orderLogId}`,
+  users: () => 'users:index:',
+  user: (userName: string) => `users:index:${userName}`,
+  bots: (userName: string) => `users:${userName}:bots`,
+  botsPrefix: () => 'users:',
+  bot: (userName: string, botId: string) => `users:${userName}:bots:${botId}`,
+  backtestConfig: (userName: string, config: string) =>
+    `users:${userName}:backtests:configs:${config}`,
+  strategies: (userName: string) => `users:${userName}:strategies`,
+  strategyConfig: (userName: string, strategyName: string) =>
+    `users:${userName}:strategies:${strategyName}:config`,
+  strategyResults: (userName: string, strategyName: string) =>
+    `users:${userName}:strategies:${strategyName}:results`,
+  tests: (userName: string, strategyName?: string) =>
+    strategyName
+      ? `users:${userName}:tests:${strategyName}`
+      : `users:${userName}:tests:`,
+  testOrders: (userName: string, strategyName: string, testName: string) =>
+    `users:${userName}:tests:${strategyName}:${testName}:orders`,
+  testConfig: (userName: string, strategyName: string, testName: string) =>
+    `users:${userName}:tests:${strategyName}:${testName}:config`,
+  testStat: (userName: string, strategyName: string, testName: string) =>
+    `users:${userName}:tests:${strategyName}:${testName}:stat`,
+  cacheChunk: (userName: string, chunkId: string) =>
+    `users:${userName}:cache:tests:chunks:${chunkId}`,
+  cacheOrders: (userName: string, orderLogId: string) =>
+    `users:${userName}:cache:tests:orders:${orderLogId}`,
+  cachePositions: (userName: string, orderLogId: string) =>
+    `users:${userName}:cache:tests:positions:${orderLogId}`,
   signal: (symbol: string, signalId: string) => `signals:${symbol}:${signalId}`,
   signalsBySymbol: (symbol: string) => `signals:${symbol}:`,
   storeSignal: (symbol: string, signalId: string) =>
     `store:signals:${symbol}:${signalId}`,
   analysis: (symbol: string, signalId: string) =>
     `analysis:${symbol}:${signalId}`,
-  strategyResults: (strategyName: string) =>
-    `strategies:results:${strategyName}`,
-  backtestResults: (config: string, timestamp: string) =>
-    `backtests:results:${config}:${timestamp}`,
-  mlSignals: () => 'ml:signals:',
-  mlSignal: (signalId: string) => `ml:signals:${signalId}`,
-  mlResults: () => 'ml:results:',
-  mlResult: (signalId: string) => `ml:results:${signalId}`,
+  backtestResults: (userName: string, config: string, timestamp: string) =>
+    `users:${userName}:backtests:results:${config}:${timestamp}`,
+  mlSignalsByStrategy: (strategyName: string) => `ml:${strategyName}:signals:`,
+  mlSignals: () => 'ml:',
+  mlSignal: (strategyName: string, signalId: string) =>
+    `ml:${strategyName}:signals:${signalId}`,
+  mlResultsByStrategy: (strategyName: string) => `ml:${strategyName}:results:`,
+  mlResults: () => 'ml:',
+  mlResult: (strategyName: string, signalId: string) =>
+    `ml:${strategyName}:results:${signalId}`,
 };

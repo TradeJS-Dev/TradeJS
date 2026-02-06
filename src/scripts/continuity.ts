@@ -8,6 +8,7 @@ import {
   findContinuityGap,
   deleteCandles,
   waitForDbReady,
+  getDataEdges,
 } from '@utils/timescale';
 import { getTickers } from '@utils/cli';
 import { Interval } from '@types';
@@ -48,6 +49,26 @@ const continuity = async () => {
   let fixed = 0;
 
   for await (const symbol of tickers) {
+    const { min } = await getDataEdges(symbol, interval);
+    if (!min || min > reloadStart) {
+      const backfillEnd = min && min > reloadStart ? min : reloadEnd;
+      logger.warn(
+        'backfill %s %s: %s -> %s',
+        symbol,
+        interval,
+        formatUnix(reloadStart),
+        formatUnix(backfillEnd),
+      );
+
+      await byBitConnector.kline({
+        symbol,
+        interval: intervalKey,
+        start: reloadStart,
+        end: backfillEnd,
+        silent: true,
+      });
+    }
+
     const gap = await findContinuityGap(symbol, interval);
 
     if (gap) {

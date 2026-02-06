@@ -160,8 +160,10 @@ export async function getDataEdges(symbol: string, interval: number) {
     pool.query(sqlMin, [symbol, interval]),
     pool.query(sqlMax, [symbol, interval]),
   ]);
-  const min = minQ.rows[0]?.ms as number | undefined;
-  const max = maxQ.rows[0]?.ms as number | undefined;
+  const minRaw = minQ.rows[0]?.ms as number | string | undefined;
+  const maxRaw = maxQ.rows[0]?.ms as number | string | undefined;
+  const min = Number.isFinite(Number(minRaw)) ? Number(minRaw) : undefined;
+  const max = Number.isFinite(Number(maxRaw)) ? Number(maxRaw) : undefined;
   return { min, max };
 }
 

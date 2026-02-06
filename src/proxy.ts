@@ -20,14 +20,15 @@ const getRootToken = async (): Promise<string | null> => {
 const findUserByToken = async (token: string): Promise<string | null> => {
   const keys = await getKeys(redisKeys.users());
   for (const key of keys) {
-    const user = await getData(key, null);
+    const userNameFromKey = key.slice(redisKeys.users().length);
+    if (!userNameFromKey) continue;
+
+    const user = await getData(redisKeys.user(userNameFromKey), null);
     if (!user || typeof user !== 'object') continue;
     const record = user as Record<string, unknown>;
     if (record.token !== token) continue;
     const userName =
-      typeof record.userName === 'string'
-        ? record.userName
-        : key.slice(redisKeys.users().length);
+      typeof record.userName === 'string' ? record.userName : userNameFromKey;
     if (userName) return userName;
   }
   return null;
@@ -108,7 +109,15 @@ export const proxy = async (req: NextRequest) => {
     }
 
     const signInUrl = new URL(SIGNIN_PATH, req.url);
-    signInUrl.searchParams.set('callbackUrl', req.url);
+    const nextAuthBase = process.env.NEXTAUTH_URL;
+    const currentUrl = new URL(req.url);
+    const callbackUrl = nextAuthBase
+      ? new URL(
+          `${currentUrl.pathname}${currentUrl.search}`,
+          nextAuthBase,
+        ).toString()
+      : req.url;
+    signInUrl.searchParams.set('callbackUrl', callbackUrl);
     return NextResponse.redirect(signInUrl);
   }
 

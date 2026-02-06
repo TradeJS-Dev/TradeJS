@@ -21,6 +21,7 @@ export interface Figure {
 
 export interface UIFilters extends Filters {
   backtestId: string | null;
+  backtestStrategy: string | null;
 }
 
 export type OnChangeFilters = (filters: Partial<UIFilters>) => void;

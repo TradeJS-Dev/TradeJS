@@ -11,13 +11,14 @@ import { findTrendlinesByHighs, findTrendlinesByLows } from '@utils/trendLine';
 import { fetchMlThreshold } from '@utils/mlGrpc';
 import { filterByVeryVolatility } from './filters';
 import { config as DEFAULT_CONFIG } from './config';
-import { applyIndicatorsToHistory, createIndicators } from './indicators';
+import { createIndicators } from './indicators';
 import { Signal, TrendLineOptions, StrategyCreator } from '@types';
 
 const PRELOAD_START = getTimestamp(SIGNALS_PRELOAD_DAYS);
-const FEE = 0.02;
+const FEE = 0.005;
 
 export const TrendlineStrategyCreator: StrategyCreator = async ({
+  userName,
   config: baseConfig,
   symbol,
   data: cachedData,
@@ -36,7 +37,7 @@ export const TrendlineStrategyCreator: StrategyCreator = async ({
 
   if (config.ENV !== 'development') {
     const results = (await getData(
-      redisKeys.strategyResults('TrendLine'),
+      redisKeys.strategyResults(userName, 'TrendLine'),
       {},
     )) as Record<string, typeof config>;
 
@@ -62,20 +63,8 @@ export const TrendlineStrategyCreator: StrategyCreator = async ({
     LOWS,
   } = config;
 
-  const getIndicators = createIndicators(cachedData);
-  const indicatorHistory: Record<string, number[]> = {};
-  const pushIndicator = (key: string, value: number | null | undefined) => {
-    if (value == null) {
-      return;
-    }
-    if (!indicatorHistory[key]) {
-      indicatorHistory[key] = [];
-    }
-    indicatorHistory[key].push(value);
-    if (indicatorHistory[key].length > 10) {
-      indicatorHistory[key].splice(0, indicatorHistory[key].length - 10);
-    }
-  };
+  let indicatorsController =
+    config.ENV !== 'development' ? null : createIndicators(cachedData);
 
   const trendlineOptions: Partial<TrendLineOptions> = {
     bestLines: 1,
@@ -169,7 +158,7 @@ export const TrendlineStrategyCreator: StrategyCreator = async ({
 
     const { mode } = bestLine;
 
-    const strategy = 'TRENDLINE';
+    const strategy = 'TrendLine';
     const { direction, TP, SL, minRiskRatio, enable } =
       mode === 'highs' ? HIGHS : LOWS;
 
@@ -204,12 +193,14 @@ export const TrendlineStrategyCreator: StrategyCreator = async ({
       return `RISK_RATIO:${round(riskRatio)}`;
     }
 
-    const signalId = uuid();
-
-    const technicalIndicators = getIndicators(candle);
-    if (technicalIndicators) {
-      applyIndicatorsToHistory(technicalIndicators, pushIndicator);
+    if (!indicatorsController) {
+      indicatorsController = createIndicators(cachedData);
     }
+
+    indicatorsController.next(candle);
+    const indicatorHistory = indicatorsController.result();
+
+    const signalId = uuid();
 
     const signal: Signal = {
       signalId,

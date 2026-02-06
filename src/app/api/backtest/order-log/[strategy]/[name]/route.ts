@@ -1,9 +1,13 @@
+'use server';
+
 import { NextResponse } from 'next/server';
 import { OrderLogData } from '@types';
 import { getData, redisKeys } from '@utils/redis';
 import { logger } from '@utils/logger';
+import { auth } from '@app/auth';
 
 interface Params {
+  strategy: string;
   name: string;
 }
 
@@ -12,17 +16,24 @@ export const GET = async (
   { params }: { params: Promise<Params> },
 ) => {
   try {
-    const { name } = await params;
+    const { name, strategy } = await params;
 
-    if (!name) {
+    if (!name || !strategy) {
       return NextResponse.json(
-        { error: 'Missing required parameter: name' },
+        { error: 'Missing required parameter: name/strategy' },
         { status: 400 },
       );
     }
 
+    const session = await auth();
+    const userName = session?.user?.id || session?.user?.name;
+
+    if (!userName) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     const orderLog: OrderLogData = await getData(
-      redisKeys.testOrders('root', name),
+      redisKeys.testOrders(userName, strategy, name),
     );
 
     return NextResponse.json({ orderLog });
