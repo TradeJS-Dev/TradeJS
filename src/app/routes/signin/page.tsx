@@ -23,9 +23,9 @@ const Signin = () => {
 
   useEffect(() => {
     if (status === 'authenticated') {
-      router.replace('/routes/dashboard');
+      router.replace(callbackUrl);
     }
-  }, [status, router]);
+  }, [status, router, callbackUrl]);
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();

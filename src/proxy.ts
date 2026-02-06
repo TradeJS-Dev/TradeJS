@@ -6,6 +6,7 @@ import { getData, getKeys, redisKeys } from '@utils/redis';
 const SIGNIN_PATH = '/routes/signin';
 const SCREENSHOT_API_PREFIX = '/api/files/screenshot';
 const SESSION_COOKIE_NAME = 'authjs.session-token';
+const SECURE_SESSION_COOKIE_NAME = '__Secure-authjs.session-token';
 const SESSION_MAX_AGE = 30 * 24 * 60 * 60;
 const PUBLIC_FILE_RE = /\.(?:png|jpg|jpeg|webp|gif|svg|ico|txt|xml|json|map)$/i;
 
@@ -34,6 +35,14 @@ const findUserByToken = async (token: string): Promise<string | null> => {
   return null;
 };
 
+const isSecureRequest = (req: NextRequest) => {
+  if (req.nextUrl.protocol === 'https:') return true;
+  const forwarded = req.headers.get('x-forwarded-proto');
+  if (forwarded) return forwarded.split(',')[0].trim() === 'https';
+  const nextAuthUrl = process.env.NEXTAUTH_URL;
+  return typeof nextAuthUrl === 'string' && nextAuthUrl.startsWith('https://');
+};
+
 const issueSession = async (
   req: NextRequest,
   userName: string,
@@ -42,15 +51,16 @@ const issueSession = async (
   const secret = process.env.AUTH_SECRET ?? process.env.NEXTAUTH_SECRET;
   if (!secret) return response;
 
-  const secure = req.nextUrl.protocol === 'https:';
+  const secure = isSecureRequest(req);
+  const cookieName = secure ? SECURE_SESSION_COOKIE_NAME : SESSION_COOKIE_NAME;
   const jwt = await encode({
     token: { id: userName, name: userName },
     secret,
-    salt: SESSION_COOKIE_NAME,
+    salt: cookieName,
     maxAge: SESSION_MAX_AGE,
   });
 
-  response.cookies.set(SESSION_COOKIE_NAME, jwt, {
+  response.cookies.set(cookieName, jwt, {
     httpOnly: true,
     sameSite: 'lax',
     path: '/',
@@ -101,7 +111,11 @@ export const proxy = async (req: NextRequest) => {
   }
 
   const secret = process.env.AUTH_SECRET ?? process.env.NEXTAUTH_SECRET;
-  const token = await getToken({ req, secret });
+  const token = await getToken({
+    req,
+    secret,
+    secureCookie: isSecureRequest(req),
+  });
 
   if (!token) {
     if (pathname.startsWith('/api')) {
