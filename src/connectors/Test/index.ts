@@ -118,14 +118,14 @@ export const TestConnectorCreator: TCC = (connector, context) => {
 
     getResult: async () => {
       const orderLogId = uuid();
+      const cacheUserName = userName || 'root';
 
-      if (!userName) {
-        throw new Error('Missing userName for test cache');
-      }
-
-      await setData(redisKeys.cacheOrders(userName, orderLogId), ORDER_LOG);
       await setData(
-        redisKeys.cachePositions(userName, orderLogId),
+        redisKeys.cacheOrders(cacheUserName, orderLogId),
+        ORDER_LOG,
+      );
+      await setData(
+        redisKeys.cachePositions(cacheUserName, orderLogId),
         POSITION_LOG,
       );
 

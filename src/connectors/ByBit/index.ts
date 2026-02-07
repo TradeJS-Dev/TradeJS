@@ -32,6 +32,21 @@ import {
 
 const LIMIT = 1000;
 const CACHE_FALLBACK_WINDOW = 1_000;
+const INTERVAL_TO_MINUTES: Record<string, number> = {
+  '1': 1,
+  '3': 3,
+  '5': 5,
+  '15': 15,
+  '30': 30,
+  '60': 60,
+  '120': 120,
+  '240': 240,
+  '360': 360,
+  '720': 720,
+  D: 1_440,
+  W: 10_080,
+  M: 43_200,
+};
 
 const getLogLevel = (res: any) => (res.retCode === 0 ? 'info' : 'error');
 
@@ -170,6 +185,9 @@ export const ByBitConnectorCreator: ConnectorCreator = async (config) => {
 
   /** -------------------- small helpers -------------------- */
   const intervalMsOf = (interval: number) => interval * 60_000;
+  const intervalToMinutes = (interval: Interval): number | null => {
+    return INTERVAL_TO_MINUTES[String(interval)] ?? null;
+  };
 
   const clampToClosedCandle = (value: number, intervalMs: number) =>
     Math.floor(value / intervalMs) * intervalMs;
@@ -206,8 +224,8 @@ export const ByBitConnectorCreator: ConnectorCreator = async (config) => {
     silent: boolean;
     tailCount?: number;
   }) => {
-    const intMinutes = Number(interval);
-    if (!Number.isFinite(intMinutes) || intMinutes <= 0) {
+    const intMinutes = intervalToMinutes(interval);
+    if (!intMinutes) {
       logger.log('error', 'refreshTail: invalid interval %s', interval);
       return;
     }
@@ -246,8 +264,8 @@ export const ByBitConnectorCreator: ConnectorCreator = async (config) => {
       silent = false,
       cacheOnly = false,
     }: KlineRequest) => {
-      const intMinutes = Number(interval);
-      if (!Number.isFinite(intMinutes) || intMinutes <= 0) {
+      const intMinutes = intervalToMinutes(interval);
+      if (!intMinutes) {
         logger.log('error', 'kline: invalid interval %s', interval);
         return [];
       }
