@@ -27,6 +27,7 @@ process.on(
         });
       } catch (error) {
         logger.error(error);
+        // TODO: Serialize error payload ({ message, stack }) before process.send for safer IPC transport.
         process.send?.({ error: true, id: test.name, msg: error });
       }
     }

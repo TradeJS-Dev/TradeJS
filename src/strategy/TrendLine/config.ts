@@ -1,7 +1,7 @@
 import { Interval, TrendLineOptions } from '@types';
 
 export const config = {
-  ENV: 'development',
+  ENV: 'BACKTEST',
   INTERVAL: '15' as Interval,
   MAKE_ORDERS: true,
   ML_THRESHOLD: 0.25,

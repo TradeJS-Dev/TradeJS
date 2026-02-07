@@ -35,7 +35,7 @@ export const TrendlineStrategyCreator: StrategyCreator = async ({
 
   let configFromBacktest = false;
 
-  if (config.ENV !== 'development') {
+  if (config.ENV !== 'BACKTEST') {
     const results = (await getData(
       redisKeys.strategyResults(userName, 'TrendLine'),
       {},
@@ -64,7 +64,7 @@ export const TrendlineStrategyCreator: StrategyCreator = async ({
   } = config;
 
   let indicatorsController =
-    config.ENV !== 'development' ? null : createIndicators(cachedData);
+    ENV !== 'BACKTEST' ? null : createIndicators(cachedData);
 
   const trendlineOptions: Partial<TrendLineOptions> = {
     bestLines: 1,
@@ -93,7 +93,7 @@ export const TrendlineStrategyCreator: StrategyCreator = async ({
       lowsTrendlines.length > 0 ? lowsTrendlines[0] : highsTrendlines[0];
     let trendlineFrom: 'engine' | 'batch' = 'engine';
 
-    if (!bestLine && ENV !== 'development') {
+    if (!bestLine && ENV !== 'BACKTEST') {
       const batchLows = findTrendlinesByLows(cachedData, trendlineOptions);
       const batchHighs = findTrendlinesByHighs(cachedData, trendlineOptions);
       bestLine = batchLows.length > 0 ? batchLows[0] : batchHighs[0];
@@ -114,7 +114,7 @@ export const TrendlineStrategyCreator: StrategyCreator = async ({
     }
 
     if (
-      ENV === 'development' &&
+      ENV === 'BACKTEST' &&
       lastTradeTimestamp &&
       candle.timestamp <= lastTradeTimestamp + ONE_DAY_MS
     ) {
@@ -127,7 +127,7 @@ export const TrendlineStrategyCreator: StrategyCreator = async ({
     ).correlation;
 
     if (
-      ENV !== 'development' &&
+      ENV !== 'BACKTEST' &&
       !configFromBacktest &&
       correlation &&
       correlation > MAX_CORRELATION
@@ -136,7 +136,7 @@ export const TrendlineStrategyCreator: StrategyCreator = async ({
     }
 
     const data =
-      ENV === 'development'
+      ENV === 'BACKTEST'
         ? cachedData
         : await connector.kline({
             symbol,
@@ -148,7 +148,7 @@ export const TrendlineStrategyCreator: StrategyCreator = async ({
 
     const lastCandle = data[data.length - 1];
     let currentPrice =
-      ENV === 'development'
+      ENV === 'BACKTEST'
         ? (lastCandle.open + lastCandle.close) / 2
         : lastCandle.close;
 
@@ -194,7 +194,9 @@ export const TrendlineStrategyCreator: StrategyCreator = async ({
     }
 
     if (!indicatorsController) {
-      indicatorsController = createIndicators(cachedData);
+      indicatorsController = createIndicators(
+        cachedData.slice(0, cachedData.length - 1),
+      );
     }
 
     indicatorsController.next(candle);
@@ -228,7 +230,7 @@ export const TrendlineStrategyCreator: StrategyCreator = async ({
       configFromBacktest,
     };
 
-    if (ENV !== 'development') {
+    if (ENV !== 'BACKTEST') {
       const mlResult = await fetchMlThreshold(signal, {
         strategyName: strategy,
         strategyConfig: {
@@ -278,7 +280,7 @@ export const TrendlineStrategyCreator: StrategyCreator = async ({
       }
     }
 
-    if (ENV === 'development') {
+    if (ENV === 'BACKTEST') {
       lastTradeTimestamp = lastCandle.timestamp;
     }
 

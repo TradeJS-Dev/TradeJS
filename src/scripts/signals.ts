@@ -72,7 +72,7 @@ const findSignals = async (symbol: string, connector: Connector) => {
     data: cachedData,
     btcData: btcCachedData,
     config: {
-      ENV: 'production',
+      ENV: 'CRON',
       INTERVAL: interval,
       MAX_LOSS_VALUE: 1,
       MAKE_ORDERS: flags.makeOrders,

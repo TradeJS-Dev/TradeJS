@@ -43,6 +43,7 @@ export const GET = async (
       redisKeys.testStat(userName, strategy, name),
     );
 
+    // TODO: Validate test/test.options payload and return 404/422 instead of falling into 500 on malformed cache data.
     const timeline = getTimeline(test.options.start, test.options.end);
 
     const payload: TestResult = {

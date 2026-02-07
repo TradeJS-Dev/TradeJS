@@ -405,6 +405,7 @@ export const getBacktestScore = (stat: Partial<TestStat>): number => {
 
     const points = score * config.weight;
 
+    // TODO: Guard lower-direction scoring for value <= 0 to avoid Infinity/unstable scores (1 / value).
     totalWeightedScore +=
       config.direction === 'higher' ? points * value : points * (1 / value);
     totalWeight += config.weight;

@@ -24,6 +24,7 @@ export const testing: TestingBox = async ({
   if (!start) {
     throw new Error('no start');
   }
+  // TODO: Add explicit end validation (and consistent error handling) similar to start validation.
 
   const connector = await (
     connectors[connectorName as ConnectorNames] as ConnectorCreator
