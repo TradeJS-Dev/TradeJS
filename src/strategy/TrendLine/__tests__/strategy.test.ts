@@ -97,20 +97,12 @@ describe('TrendlineStrategyCreator', () => {
           macdHistogram: value,
           price24hPcnt: value,
           price1hPcnt: value,
-          prevPrice24hPcnt: value,
-          prevPrice1hPcnt: value,
           highPrice1h: value,
           lowPrice1h: value,
           volume1h: value,
           highPrice24h: value,
           lowPrice24h: value,
           volume24h: value,
-          prevHighPrice1h: value,
-          prevLowPrice1h: value,
-          prevVolume1h: value,
-          prevHighPrice24h: value,
-          prevLowPrice24h: value,
-          prevVolume24h: value,
         };
 
         Object.entries(indicators).forEach(([key, val]) => {
@@ -224,20 +216,12 @@ describe('TrendlineStrategyCreator', () => {
           macdHistogram: 1,
           price24hPcnt: 1,
           price1hPcnt: 1,
-          prevPrice24hPcnt: 1,
-          prevPrice1hPcnt: 1,
           highPrice1h: 1,
           lowPrice1h: 1,
           volume1h: 1,
           highPrice24h: 1,
           lowPrice24h: 1,
           volume24h: 1,
-          prevHighPrice1h: 1,
-          prevLowPrice1h: 1,
-          prevVolume1h: 1,
-          prevHighPrice24h: 1,
-          prevLowPrice24h: 1,
-          prevVolume24h: 1,
         };
 
         Object.entries(indicators).forEach(([key, val]) => {

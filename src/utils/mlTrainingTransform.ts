@@ -255,8 +255,6 @@ export const buildMlTrainingRow = (
   );
   addSeriesRaw('Price24hPcnt', asArray(indicators.price24hPcnt));
   addSeriesRaw('Price1hPcnt', asArray(indicators.price1hPcnt));
-  addSeriesRaw('PrevPrice24hPcnt', asArray(indicators.prevPrice24hPcnt));
-  addSeriesRaw('PrevPrice1hPcnt', asArray(indicators.prevPrice1hPcnt));
   addSeriesRaw('Touches', touchesSeries);
   addSeriesRelToMa('HighPrice1h', asArray(indicators.highPrice1h));
   addSeriesRelToMa('LowPrice1h', asArray(indicators.lowPrice1h));
@@ -266,20 +264,6 @@ export const buildMlTrainingRow = (
   addSeriesRelToMa('LowPrice24h', asArray(indicators.lowPrice24h));
   addSeriesLogVolume('Volume24h', asArray(indicators.volume24h));
   addSeriesVolumeMedianNormalized('Volume24h', asArray(indicators.volume24h));
-  addSeries('PrevHighPrice1h', asArray(indicators.prevHighPrice1h));
-  addSeries('PrevLowPrice1h', asArray(indicators.prevLowPrice1h));
-  addSeriesLogVolume('PrevVolume1h', asArray(indicators.prevVolume1h));
-  addSeriesVolumeMedianNormalized(
-    'PrevVolume1h',
-    asArray(indicators.prevVolume1h),
-  );
-  addSeries('PrevHighPrice24h', asArray(indicators.prevHighPrice24h));
-  addSeries('PrevLowPrice24h', asArray(indicators.prevLowPrice24h));
-  addSeriesLogVolume('PrevVolume24h', asArray(indicators.prevVolume24h));
-  addSeriesVolumeMedianNormalized(
-    'PrevVolume24h',
-    asArray(indicators.prevVolume24h),
-  );
 
   // Candle-level features for both the altcoin and BTC windows.
   const candleVolumes = candleList.map((candle) => toNumber(candle?.volume, 0));

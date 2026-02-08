@@ -51,20 +51,12 @@ type TrendlineIndicators = {
   macdHistogram: IndicatorValue;
   price24hPcnt: IndicatorValue;
   price1hPcnt: IndicatorValue;
-  prevPrice24hPcnt: IndicatorValue;
-  prevPrice1hPcnt: IndicatorValue;
   highPrice1h: IndicatorValue;
   lowPrice1h: IndicatorValue;
   volume1h: IndicatorValue;
   highPrice24h: IndicatorValue;
   lowPrice24h: IndicatorValue;
   volume24h: IndicatorValue;
-  prevHighPrice1h: IndicatorValue;
-  prevLowPrice1h: IndicatorValue;
-  prevVolume1h: IndicatorValue;
-  prevHighPrice24h: IndicatorValue;
-  prevLowPrice24h: IndicatorValue;
-  prevVolume24h: IndicatorValue;
 };
 
 export const applyIndicatorsToHistory = (
@@ -85,20 +77,12 @@ export const applyIndicatorsToHistory = (
   pushIndicator('macdHistogram', indicators.macdHistogram);
   pushIndicator('price24hPcnt', indicators.price24hPcnt ?? undefined);
   pushIndicator('price1hPcnt', indicators.price1hPcnt ?? undefined);
-  pushIndicator('prevPrice24hPcnt', indicators.prevPrice24hPcnt ?? undefined);
-  pushIndicator('prevPrice1hPcnt', indicators.prevPrice1hPcnt ?? undefined);
   pushIndicator('highPrice1h', indicators.highPrice1h ?? undefined);
   pushIndicator('lowPrice1h', indicators.lowPrice1h ?? undefined);
   pushIndicator('volume1h', indicators.volume1h ?? undefined);
   pushIndicator('highPrice24h', indicators.highPrice24h ?? undefined);
   pushIndicator('lowPrice24h', indicators.lowPrice24h ?? undefined);
   pushIndicator('volume24h', indicators.volume24h ?? undefined);
-  pushIndicator('prevHighPrice1h', indicators.prevHighPrice1h ?? undefined);
-  pushIndicator('prevLowPrice1h', indicators.prevLowPrice1h ?? undefined);
-  pushIndicator('prevVolume1h', indicators.prevVolume1h ?? undefined);
-  pushIndicator('prevHighPrice24h', indicators.prevHighPrice24h ?? undefined);
-  pushIndicator('prevLowPrice24h', indicators.prevLowPrice24h ?? undefined);
-  pushIndicator('prevVolume24h', indicators.prevVolume24h ?? undefined);
 };
 
 export const createIndicators = (data: KlineChartData) => {
@@ -156,17 +140,6 @@ export const createIndicators = (data: KlineChartData) => {
 
   let window1hStart = 0;
   let window24hStart = 0;
-
-  let prevMetrics: {
-    price24hPcnt?: number | null;
-    price1hPcnt?: number | null;
-    highPrice1h?: number | null;
-    lowPrice1h?: number | null;
-    volume1h?: number | null;
-    highPrice24h?: number | null;
-    lowPrice24h?: number | null;
-    volume24h?: number | null;
-  } = {};
 
   const computeWindow = (
     currentTimestamp: number,
@@ -294,14 +267,16 @@ export const createIndicators = (data: KlineChartData) => {
 
     const price1hStart = findNearestStartClose(currentTimestamp, ONE_HOUR_MS);
     const price24hStart = findNearestStartClose(currentTimestamp, ONE_DAY_MS);
-    const price1hPcnt =
-      window1h.hasFullWindow && price1hStart.startClose != null
+    const price1hPcntRaw =
+      price1hStart.startClose != null
         ? percentChange(candle.close, price1hStart.startClose)
         : null;
-    const price24hPcnt =
-      window24h.hasFullWindow && price24hStart.startClose != null
+    const price24hPcntRaw =
+      price24hStart.startClose != null
         ? percentChange(candle.close, price24hStart.startClose)
         : null;
+    const price1hPcnt = price1hPcntRaw ?? 0;
+    const price24hPcnt = price24hPcntRaw ?? 0;
 
     const highPrice1h = window1h.hasFullWindow ? window1h.high : null;
     const lowPrice1h = window1h.hasFullWindow ? window1h.low : null;
@@ -323,25 +298,6 @@ export const createIndicators = (data: KlineChartData) => {
       macd: macdValue.MACD,
       macdSignal: macdValue.signal,
       macdHistogram: macdValue.histogram,
-      price24hPcnt,
-      price1hPcnt,
-      prevPrice24hPcnt: prevMetrics.price24hPcnt ?? null,
-      prevPrice1hPcnt: prevMetrics.price1hPcnt ?? null,
-      highPrice1h,
-      lowPrice1h,
-      volume1h,
-      highPrice24h,
-      lowPrice24h,
-      volume24h,
-      prevHighPrice1h: prevMetrics.highPrice1h ?? null,
-      prevLowPrice1h: prevMetrics.lowPrice1h ?? null,
-      prevVolume1h: prevMetrics.volume1h ?? null,
-      prevHighPrice24h: prevMetrics.highPrice24h ?? null,
-      prevLowPrice24h: prevMetrics.lowPrice24h ?? null,
-      prevVolume24h: prevMetrics.volume24h ?? null,
-    };
-
-    prevMetrics = {
       price24hPcnt,
       price1hPcnt,
       highPrice1h,

@@ -42,7 +42,7 @@ describe('TrendLine indicators pct windows', () => {
     expect(res24h?.price1hPcnt).toBeCloseTo(expectedPrice1h, 6);
   });
 
-  it('keeps price24hPcnt null before the 24h window is complete', () => {
+  it('computes price24hPcnt before the 24h window is complete', () => {
     const indicators = createIndicators([]);
     const results: Array<ReturnType<typeof indicators.next> | null> = [];
 
@@ -55,26 +55,7 @@ describe('TrendLine indicators pct windows', () => {
     const idx = 80;
     const res = results[idx];
     expect(res).toBeTruthy();
-    expect(res?.price24hPcnt).toBeNull();
+    expect(res?.price24hPcnt).not.toBeNull();
   });
 
-  it('sets prevPrice24hPcnt to the last computed value', () => {
-    const indicators = createIndicators([]);
-    const results: Array<ReturnType<typeof indicators.next> | null> = [];
-
-    const baseClose = 100;
-    for (let i = 0; i < 98; i += 1) {
-      const candle = makeCandle(i * INTERVAL_MS, baseClose + i);
-      results.push(indicators.next(candle));
-    }
-
-    const resPrev = results[96];
-    const resNext = results[97];
-    expect(resPrev).toBeTruthy();
-    expect(resNext).toBeTruthy();
-    expect(resNext?.prevPrice24hPcnt).toBeCloseTo(
-      resPrev?.price24hPcnt as number,
-      6,
-    );
-  });
 });

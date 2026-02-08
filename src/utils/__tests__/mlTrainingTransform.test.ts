@@ -19,20 +19,12 @@ test('buildMlTrainingRow: key normalizations and removals', () => {
     macdHistogram: makeArr(1),
     price24hPcnt: makeArr(1),
     price1hPcnt: makeArr(2),
-    prevPrice24hPcnt: makeArr(3),
-    prevPrice1hPcnt: makeArr(4),
     highPrice1h: makeArr(120),
     lowPrice1h: makeArr(80),
     volume1h: [10, 20, 30, 40, 50, 60, 70, 80, 90, 100],
     highPrice24h: makeArr(140),
     lowPrice24h: makeArr(60),
     volume24h: [5, 10, 15, 20, 25, 30, 35, 40, 45, 50],
-    prevHighPrice1h: makeArr(110),
-    prevLowPrice1h: makeArr(70),
-    prevVolume1h: [2, 4, 6, 8, 10, 12, 14, 16, 18, 20],
-    prevHighPrice24h: makeArr(130),
-    prevLowPrice24h: makeArr(50),
-    prevVolume24h: [3, 6, 9, 12, 15, 18, 21, 24, 27, 30],
   };
 
   const candles = Array.from({ length: 50 }, (_, i) => ({
