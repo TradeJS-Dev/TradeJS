@@ -11,7 +11,7 @@ import {
   Candle,
 } from '@types';
 import { redisKeys, setData } from '@utils/redis';
-import { TTL_3M } from '@constants';
+import { TTL_1M, TTL_1D } from '@constants';
 import { uuid } from '@utils/uuid';
 import { round } from '@utils/math';
 
@@ -20,6 +20,7 @@ const INITIAL_AMOUNT = 100;
 
 export const TestConnectorCreator: TCC = (connector, context) => {
   const userName = context?.userName;
+  const mlEnabled = Boolean(context?.mlEnabled);
   let state = {};
   const ORDER_LOG: OrderLogData = [];
   const POSITION_LOG: PositionLogData = [];
@@ -49,6 +50,9 @@ export const TestConnectorCreator: TCC = (connector, context) => {
     price: number;
     profit: number;
   }) => {
+    if (!mlEnabled) {
+      return;
+    }
     const signalId = CURRENT_POSITION?.signal?.signalId;
     const strategyName = CURRENT_POSITION?.signal?.strategy;
     if (!signalId || !CURRENT_POSITION) {
@@ -73,8 +77,7 @@ export const TestConnectorCreator: TCC = (connector, context) => {
         result: data.profit >= 0 ? 'WIN' : 'LOSS',
       },
       {
-        stringify: true,
-        expire: TTL_3M,
+        expire: TTL_1M,
       },
     );
   };
@@ -123,10 +126,16 @@ export const TestConnectorCreator: TCC = (connector, context) => {
       await setData(
         redisKeys.cacheOrders(cacheUserName, orderLogId),
         ORDER_LOG,
+        {
+          expire: TTL_1D,
+        },
       );
       await setData(
         redisKeys.cachePositions(cacheUserName, orderLogId),
         POSITION_LOG,
+        {
+          expire: TTL_1D,
+        },
       );
 
       return {

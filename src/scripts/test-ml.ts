@@ -1,12 +1,13 @@
 import 'dotenv/config';
 
+import { ML_BASE_CANDLES_WINDOW } from '@constants';
 import { fetchMlThreshold } from '@utils/mlGrpc';
 import { Signal, TrendLine } from '@types';
 import { config as DEFAULT_CONFIG } from '@src/strategy/TrendLine/config';
 
 const now = Date.now();
 const INTERVAL_MIN = 15;
-const CANDLES = 50;
+const CANDLES = ML_BASE_CANDLES_WINDOW;
 
 const makeSeries = (len: number, base: number, step = 0.1) =>
   Array.from({ length: len }, (_, i) => base + i * step);
@@ -99,6 +100,7 @@ const main = async () => {
       bbMiddle: makeSeries(10, currentPrice, 0.005),
       bbLower: makeSeries(10, currentPrice * 0.98, 0.01),
       obv: makeSeries(10, 2000, 50),
+      smaObv: makeSeries(10, 1950, 45),
       macd: makeSeries(10, 0.2, 0.01),
       macdSignal: makeSeries(10, 0.18, 0.01),
       macdHistogram: makeSeries(10, 0.02, 0.005),
@@ -123,8 +125,8 @@ const main = async () => {
       LOWS,
     },
     symbol: signal.symbol,
-    candles: candles.slice(-50),
-    btcCandles: btcCandles.slice(-50),
+    candles: candles.slice(-ML_BASE_CANDLES_WINDOW),
+    btcCandles: btcCandles.slice(-ML_BASE_CANDLES_WINDOW),
     ML_THRESHOLD,
   });
 

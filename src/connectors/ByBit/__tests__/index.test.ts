@@ -20,7 +20,10 @@ jest.mock('../client', () => ({
 
 jest.mock('../utils', () => ({
   mapKlineToChartData: jest.fn((data) => data),
-  normalizePrice: jest.fn((price) => ({ priceNum: price, priceStr: `${price}` })),
+  normalizePrice: jest.fn((price) => ({
+    priceNum: price,
+    priceStr: `${price}`,
+  })),
   normalizeQty: jest.fn((qty) => ({ qtyNum: qty, qtyStr: qty.toFixed(3) })),
   getSymbolMeta: jest.fn(),
   mapPositionData: jest.fn(),
@@ -102,7 +105,12 @@ describe('ByBitConnectorCreator', () => {
         close: 1.5,
       }),
     ]);
-    expect(mockedGetCandlesRange).toHaveBeenCalledWith('BTCUSDT', 1, 1000, 2000);
+    expect(mockedGetCandlesRange).toHaveBeenCalledWith(
+      'BTCUSDT',
+      1,
+      1000,
+      2000,
+    );
   });
 
   it('returns null from getPosition when client is missing', async () => {

@@ -43,7 +43,9 @@ describe('backtest actions', () => {
     await expect(getOrderLog('t1', 'TrendLine')).resolves.toEqual([
       { amount: 100 },
     ]);
-    expect(mockedGet).toHaveBeenCalledWith('/api/backtest/order-log/TrendLine/t1');
+    expect(mockedGet).toHaveBeenCalledWith(
+      '/api/backtest/order-log/TrendLine/t1',
+    );
   });
 
   it('getBacktest returns null when args are missing', async () => {

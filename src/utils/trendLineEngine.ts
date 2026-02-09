@@ -52,6 +52,28 @@ const buildLineEvaluator = (params: {
   return (timeMs: number) => y1 + slope * (timeMs - t1);
 };
 
+const buildAlphaSeries = (params: {
+  timestampsMs: number[];
+  closeSeries: number[];
+  evaluateY: (t: number) => number;
+  window: number;
+}): number[] => {
+  const { timestampsMs, closeSeries, evaluateY, window } = params;
+  if (!timestampsMs.length || !closeSeries.length) return [];
+  const startIndex = Math.max(0, timestampsMs.length - window);
+  const result: number[] = [];
+  for (let i = startIndex; i < timestampsMs.length; i++) {
+    const close = closeSeries[i];
+    if (!Number.isFinite(close) || close == 0) {
+      result.push(0);
+      continue;
+    }
+    const lineY = evaluateY(timestampsMs[i]);
+    result.push(lineY / close);
+  }
+  return result;
+};
+
 const hasTooLargeTouchGaps = (touchIndices: number[], maxTouchGap: number) => {
   if (!Number.isFinite(maxTouchGap) || maxTouchGap <= 0) return false;
   if (touchIndices.length < 2) return true;
@@ -866,6 +888,12 @@ export const createTrendlineEngine = (
           const timestamp = timestampsMs[barIndex];
           return { timestamp, value: line.evaluateY(timestamp) };
         }),
+      alpha: buildAlphaSeries({
+        timestampsMs,
+        closeSeries,
+        evaluateY: line.evaluateY,
+        window: 10,
+      }),
     }));
   };
 

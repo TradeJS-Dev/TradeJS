@@ -219,6 +219,28 @@ const buildLineEvaluator = (params: {
   return (timeMs: number) => y1 + slope * (timeMs - t1);
 };
 
+const buildAlphaSeries = (params: {
+  timestampsMs: number[];
+  closeSeries: number[];
+  evaluateY: (t: number) => number;
+  window: number;
+}): number[] => {
+  const { timestampsMs, closeSeries, evaluateY, window } = params;
+  if (!timestampsMs.length || !closeSeries.length) return [];
+  const startIndex = Math.max(0, timestampsMs.length - window);
+  const result: number[] = [];
+  for (let i = startIndex; i < timestampsMs.length; i++) {
+    const close = closeSeries[i];
+    if (!Number.isFinite(close) || close === 0) {
+      result.push(0);
+      continue;
+    }
+    const lineY = evaluateY(timestampsMs[i]);
+    result.push(lineY / close);
+  }
+  return result;
+};
+
 /* ====================== Touch / Breach checks ===================== */
 
 const collectTouchIndices = (params: {
@@ -618,6 +640,12 @@ const findTrendlinesCore = (
         { timestamp: lastTimestampMs, value: evaluateY(lastTimestampMs) },
       ],
       touches,
+      alpha: buildAlphaSeries({
+        timestampsMs,
+        closeSeries,
+        evaluateY,
+        window: 10,
+      }),
     });
   }
 

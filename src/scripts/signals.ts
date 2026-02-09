@@ -98,12 +98,10 @@ const findSignals = async (symbol: string, connector: Connector) => {
   }
 
   await setData(redisKeys.signal(symbol, signal.signalId), signal, {
-    stringify: true,
     expire: TTL_1D,
   });
 
   await setData(redisKeys.storeSignal(symbol, signal.signalId), signal, {
-    stringify: true,
     expire: TTL_3M,
   });
 

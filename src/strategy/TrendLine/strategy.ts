@@ -1,5 +1,5 @@
 import _ from 'lodash';
-import { SIGNALS_PRELOAD_DAYS } from '@constants';
+import { ML_BASE_CANDLES_WINDOW, SIGNALS_PRELOAD_DAYS } from '@constants';
 import { getTimestamp } from '@utils/timestamp';
 import { calculateCoinBtcCorrelation } from '@utils/correlation';
 import { uuid } from '@utils/uuid';
@@ -12,10 +12,58 @@ import { fetchMlThreshold } from '@utils/mlGrpc';
 import { filterByVeryVolatility } from './filters';
 import { config as DEFAULT_CONFIG } from './config';
 import { createIndicators } from './indicators';
-import { Signal, TrendLineOptions, StrategyCreator } from '@types';
+import { Candle, Signal, TrendLineOptions, StrategyCreator } from '@types';
 
 const PRELOAD_START = getTimestamp(SIGNALS_PRELOAD_DAYS);
 const FEE = 0.005;
+const CANDLE_WINDOW = 10;
+const BASE_INTERVAL_MINUTES = 15;
+
+const toMlCandle = (candle: Candle): Candle => ({
+  open: Number(candle.open) || 0,
+  high: Number(candle.high) || 0,
+  low: Number(candle.low) || 0,
+  close: Number(candle.close) || 0,
+  volume: Number(candle.volume) || 0,
+  turnover: Number(candle.turnover) || 0,
+  timestamp: Number(candle.timestamp) || 0,
+});
+
+const resampleCandles = (candles: Candle[], targetMinutes: number): Candle[] => {
+  if (targetMinutes <= BASE_INTERVAL_MINUTES) return candles.map(toMlCandle);
+  const bucketMs = targetMinutes * 60_000;
+  const buckets = new Map<number, Candle>();
+  for (const raw of candles) {
+    const candle = toMlCandle(raw);
+    const ts = candle.timestamp;
+    if (!Number.isFinite(ts) || ts <= 0) continue;
+    const bucket = Math.floor(ts / bucketMs) * bucketMs;
+    const current = buckets.get(bucket);
+    if (!current) {
+      buckets.set(bucket, { ...candle, timestamp: bucket });
+      continue;
+    }
+    current.high = Math.max(current.high, candle.high);
+    current.low = Math.min(current.low, candle.low);
+    current.close = candle.close;
+    current.volume += candle.volume;
+    current.turnover += candle.turnover;
+  }
+  return [...buckets.entries()]
+    .sort((a, b) => a[0] - b[0])
+    .map(([, candle]) => candle);
+};
+
+const buildMlCandleIndicators = (candles: Candle[], btcCandles: Candle[]) => ({
+  candles15m: candles.slice(-CANDLE_WINDOW).map(toMlCandle),
+  candles1h: resampleCandles(candles, 60).slice(-CANDLE_WINDOW),
+  candles4h: resampleCandles(candles, 240).slice(-CANDLE_WINDOW),
+  candles1d: resampleCandles(candles, 1440).slice(-CANDLE_WINDOW),
+  btcCandles15m: btcCandles.slice(-CANDLE_WINDOW).map(toMlCandle),
+  btcCandles1h: resampleCandles(btcCandles, 60).slice(-CANDLE_WINDOW),
+  btcCandles4h: resampleCandles(btcCandles, 240).slice(-CANDLE_WINDOW),
+  btcCandles1d: resampleCandles(btcCandles, 1440).slice(-CANDLE_WINDOW),
+});
 
 export const TrendlineStrategyCreator: StrategyCreator = async ({
   userName,
@@ -88,6 +136,10 @@ export const TrendlineStrategyCreator: StrategyCreator = async ({
 
     const lowsTrendlines = getLowsTrendlines.next(candle);
     const highsTrendlines = getHighsTrendlines.next(candle);
+
+    if (indicatorsController) {
+      indicatorsController.next(candle);
+    }
 
     let bestLine =
       lowsTrendlines.length > 0 ? lowsTrendlines[0] : highsTrendlines[0];
@@ -197,9 +249,10 @@ export const TrendlineStrategyCreator: StrategyCreator = async ({
       indicatorsController = createIndicators(
         cachedData.slice(0, cachedData.length - 1),
       );
+
+      indicatorsController.next(cachedData[cachedData.length - 1]);
     }
 
-    indicatorsController.next(candle);
     const indicatorHistory = indicatorsController.result();
 
     const signalId = uuid();
@@ -226,6 +279,7 @@ export const TrendlineStrategyCreator: StrategyCreator = async ({
         touches: bestLine.touches.length + 2,
         distance: bestLine.distance,
         ...indicatorHistory,
+        ...buildMlCandleIndicators(cachedData as Candle[], btcCachedData as Candle[]),
       },
       configFromBacktest,
     };
@@ -239,8 +293,8 @@ export const TrendlineStrategyCreator: StrategyCreator = async ({
           LOWS,
         },
         symbol,
-        candles: cachedData.slice(-50),
-        btcCandles: btcCachedData.slice(-50),
+        candles: cachedData.slice(-ML_BASE_CANDLES_WINDOW),
+        btcCandles: btcCachedData.slice(-ML_BASE_CANDLES_WINDOW),
         ML_THRESHOLD,
       });
       if (mlResult) {

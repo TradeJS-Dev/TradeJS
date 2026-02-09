@@ -10,7 +10,11 @@ import {
   SCREENSHOT_CONCURRENCY_LIMIT,
 } from '@constants';
 import { getFiles } from '@utils/files';
-import { getKeys, delKey } from '@utils/redis';
+import {
+  RedisWriteBlockedError,
+  delKeyWithOptions,
+  getKeys,
+} from '@utils/redis';
 import { getTimestamp } from '@utils/timestamp';
 import { getFormatted } from '@utils/stat';
 import { getTopTickers } from '@utils/tickers';
@@ -65,14 +69,28 @@ export const cleanRedis = async (area: string) => {
 
   logger.info(chalk.yellow('clean:', area));
 
-  for await (const key of keys) {
-    completed++;
+  try {
+    for await (const key of keys) {
+      completed++;
 
-    await delKey(key);
+      await delKeyWithOptions(key, { raiseOnMisconf: true });
 
-    if (completed % 100 === 0 || completed === keys.length) {
-      bar.tick(completed === keys.length ? completed % 100 : 100);
+      if (completed % 100 === 0 || completed === keys.length) {
+        bar.tick(completed === keys.length ? completed % 100 : 100);
+      }
     }
+  } catch (e) {
+    if (e instanceof RedisWriteBlockedError || String(e).includes('MISCONF')) {
+      logger.error(
+        'Redis write is blocked by MISCONF (RDB save failure). Cleanup stopped early.',
+      );
+      logger.error(
+        'Check Redis logs and fix persistence/memory pressure before retry.',
+      );
+      logger.info('');
+      return;
+    }
+    throw e;
   }
 
   logger.info('');

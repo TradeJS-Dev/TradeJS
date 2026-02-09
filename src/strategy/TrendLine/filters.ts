@@ -1,5 +1,5 @@
 import { diffRel } from '@utils/math';
-import { ATR_PCT } from '@utils/indicators';
+import { ATR_PCT } from '@src/indicators';
 import { getSma } from './utils';
 import { KlineChartData } from '@types';
 

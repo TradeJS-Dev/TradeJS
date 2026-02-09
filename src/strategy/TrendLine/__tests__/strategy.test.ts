@@ -49,6 +49,7 @@ const makeCandle = (timestamp: number, price: number) => ({
 describe('TrendlineStrategyCreator', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    (filterByVeryVolatility as jest.Mock).mockReturnValue(true);
   });
 
   it('stores 10 indicator values and exposes them in signal', async () => {
@@ -92,6 +93,7 @@ describe('TrendlineStrategyCreator', () => {
           bbMiddle: value,
           bbLower: value,
           obv: value,
+          smaObv: value,
           macd: value,
           macdSignal: value,
           macdHistogram: value,
@@ -167,6 +169,7 @@ describe('TrendlineStrategyCreator', () => {
     expect(typeof result).toBe('object');
     expect(result.indicators.maFast).toHaveLength(10);
     expect(result.indicators.atrPct).toHaveLength(10);
+    expect(result.indicators.smaObv).toHaveLength(10);
     expect(result.indicators.price24hPcnt).toHaveLength(10);
     expect(result.indicators.volume24h).toHaveLength(10);
   });
@@ -211,6 +214,7 @@ describe('TrendlineStrategyCreator', () => {
           bbMiddle: 1,
           bbLower: 1,
           obv: 1,
+          smaObv: 1,
           macd: 1,
           macdSignal: 1,
           macdHistogram: 1,
@@ -279,5 +283,89 @@ describe('TrendlineStrategyCreator', () => {
     const result = await strategy(candle, btcCandle);
 
     expect(result).toBe('VERY_VOLATILITY');
+  });
+
+  it('updates indicators on every candle even before first signal', async () => {
+    let lowsCandlesSeen = 0;
+    (createTrendlineEngine as jest.Mock).mockImplementation(
+      (_data, options) => {
+        const line = {
+          id: 'line-1',
+          mode: options.mode ?? 'lows',
+          distance: 1,
+          touches: [{ timestamp: 1, value: 1 }],
+          points: [{ timestamp: 1, value: 1 }],
+        };
+        return {
+          next: jest.fn(() => {
+            if (options.mode === 'lows') {
+              lowsCandlesSeen += 1;
+              if (lowsCandlesSeen > 120) {
+                return [line];
+              }
+            }
+            return [];
+          }),
+        };
+      },
+    );
+
+    const { createIndicators: createIndicatorsReal } =
+      jest.requireActual('../indicators');
+    (createIndicators as jest.Mock).mockImplementation((data) =>
+      createIndicatorsReal(data),
+    );
+
+    const cachedData: any[] = [];
+    const btcCachedData: any[] = [];
+    const connector: any = {
+      getPosition: jest.fn(async () => ({ qty: 0 })),
+      kline: jest.fn(async () => cachedData),
+    };
+
+    const strategy = await TrendlineStrategyCreator({
+      userName: 'test',
+      config: {
+        ENV: 'BACKTEST',
+        INTERVAL: '15',
+        MAKE_ORDERS: false,
+        MAX_LOSS_VALUE: 10,
+        MAX_CORRELATION: 1,
+        TRENDLINE: {},
+        HIGHS: {
+          enable: false,
+          direction: 'LONG',
+          TP: 2,
+          SL: 1,
+          minRiskRatio: 0,
+        },
+        LOWS: {
+          enable: true,
+          direction: 'LONG',
+          TP: 2,
+          SL: 1,
+          minRiskRatio: 0,
+        },
+      },
+      symbol: 'TESTUSDT',
+      data: cachedData,
+      btcData: btcCachedData,
+      connector,
+    });
+
+    let firstSignal: any = null;
+    const start = 1_700_000_000_000;
+    for (let i = 0; i < 140; i += 1) {
+      const candle = makeCandle(start + i * 900_000, 100 + i);
+      const btcCandle = makeCandle(start + i * 900_000, 20000 + i);
+      const result = await strategy(candle, btcCandle);
+      if (!firstSignal && typeof result === 'object') {
+        firstSignal = result;
+      }
+    }
+
+    expect(firstSignal).toBeTruthy();
+    expect(firstSignal.indicators.price24hPcnt).toHaveLength(10);
+    expect(firstSignal.indicators.price1hPcnt).toHaveLength(10);
   });
 });

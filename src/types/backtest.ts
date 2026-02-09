@@ -47,6 +47,7 @@ export interface Test extends BacktestConfig {
   testSuiteId: string;
   symbol: string;
   options: TestingOptions;
+  ml?: boolean;
 }
 
 export type TestSuite = Test[];
@@ -112,6 +113,7 @@ export interface TestConnector extends Connector {
 
 export interface TestConnectorContext {
   userName?: string;
+  mlEnabled?: boolean;
 }
 
 export type TestConnectorCreator = (

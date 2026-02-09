@@ -46,24 +46,33 @@ def _ensure_proto() -> None:
         raise RuntimeError("Failed to generate gRPC stubs")
 
 
-def _load_models(strategy: str) -> List[Any]:
-    cached = _model_cache.get(strategy)
+def _load_models(strategy: str, side: str | None = None) -> List[Any]:
+    cache_key = f'{strategy}:{side or "legacy"}'
+    cached = _model_cache.get(cache_key)
     if cached is not None:
         return cached
 
-    pattern = os.path.join(MODEL_DIR, f"{strategy}.model*.joblib")
+    if side:
+        pattern = os.path.join(MODEL_DIR, f"{strategy}.{side}.model*.joblib")
+        model_path = os.path.join(MODEL_DIR, f"{strategy}.{side}.joblib")
+    else:
+        pattern = os.path.join(MODEL_DIR, f"{strategy}.model*.joblib")
+        model_path = os.path.join(MODEL_DIR, f"{strategy}.joblib")
+
     model_paths = sorted(glob.glob(pattern))
     if model_paths:
         models = [joblib.load(path) for path in model_paths]
-        _model_cache[strategy] = models
+        _model_cache[cache_key] = models
         return models
 
-    model_path = os.path.join(MODEL_DIR, f"{strategy}.joblib")
     if not os.path.exists(model_path):
+        if side:
+            # Backward compatibility with pre-directional model artifacts.
+            return _load_models(strategy, None)
         raise FileNotFoundError(model_path)
 
     model = joblib.load(model_path)
-    _model_cache[strategy] = [model]
+    _model_cache[cache_key] = [model]
     return [model]
 
 
@@ -102,12 +111,14 @@ def serve() -> None:
             strategy = request.strategy or DEFAULT_STRATEGY
             threshold = request.threshold or DEFAULT_THRESHOLD
             features = dict(request.features)
+            direction = float(features.get('direction', 1.0))
+            side = 'long' if direction >= 0.5 else 'short'
 
             try:
-                models = _load_models(strategy)
+                models = _load_models(strategy, side)
             except FileNotFoundError:
                 context.set_code(grpc.StatusCode.NOT_FOUND)
-                context.set_details(f"Model not found: {strategy}")
+                context.set_details(f"Model not found: {strategy} ({side})")
                 return PredictResponse(probability=0.0, threshold=threshold, passed=False)
 
             prob = _predict_proba(models, features)

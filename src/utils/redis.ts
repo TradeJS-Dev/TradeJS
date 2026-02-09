@@ -27,12 +27,14 @@ const toResultString = (result: unknown): string | null => {
 };
 
 interface Options {
-  stringify?: boolean; // форматированный JSON
   expire?: number; // TTL в секундах
 }
 
+interface DelKeyOptions {
+  raiseOnMisconf?: boolean;
+}
+
 const DEFAULT_OPTIONS: Options = {
-  stringify: false,
   expire: TTL_1D,
 };
 
@@ -105,6 +107,21 @@ export const getData = async (
 };
 
 export const delKey = async (key: string): Promise<boolean> => {
+  return delKeyWithOptions(key);
+};
+
+export class RedisWriteBlockedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'RedisWriteBlockedError';
+  }
+}
+
+export const delKeyWithOptions = async (
+  key: string,
+  options: DelKeyOptions = {},
+): Promise<boolean> => {
+  const { raiseOnMisconf = false } = options;
   const redis = getRedis();
 
   try {
@@ -116,6 +133,10 @@ export const delKey = async (key: string): Promise<boolean> => {
 
     return false;
   } catch (e) {
+    const msg = String(e);
+    if (raiseOnMisconf && msg.includes('MISCONF')) {
+      throw new RedisWriteBlockedError(msg);
+    }
     logger.log('error', 'failed DEL %s: %s', key, String(e));
     return false;
   }
@@ -126,9 +147,9 @@ export const setData = async <T>(
   data: T,
   options: Options = {},
 ): Promise<void> => {
-  const { stringify, expire } = { ...DEFAULT_OPTIONS, ...options };
+  const { expire } = { ...DEFAULT_OPTIONS, ...options };
   const redis = getRedis();
-  const value = toJson(data, stringify);
+  const value = toJson(data);
 
   try {
     await redis.call('JSON.SET', key, '$', value);

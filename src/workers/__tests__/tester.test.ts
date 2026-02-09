@@ -1,7 +1,8 @@
 describe('worker tester', () => {
   const originalSend = process.send;
-  let messageHandler: ((msg: { chunkId: string; userName: string }) => void) | null =
-    null;
+  let messageHandler:
+    | ((msg: { chunkId: string; userName: string }) => void)
+    | null = null;
 
   const setup = async ({
     suite,
@@ -29,12 +30,14 @@ describe('worker tester', () => {
       logger: { error: jest.fn() },
     }));
 
-    jest.spyOn(process, 'on').mockImplementation((event: any, listener: any) => {
-      if (event === 'message') {
-        messageHandler = listener;
-      }
-      return process;
-    });
+    jest
+      .spyOn(process, 'on')
+      .mockImplementation((event: any, listener: any) => {
+        if (event === 'message') {
+          messageHandler = listener;
+        }
+        return process;
+      });
 
     await import('../tester');
   };

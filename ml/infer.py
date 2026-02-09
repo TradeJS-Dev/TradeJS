@@ -1,5 +1,7 @@
 import argparse
+import glob
 import json
+import os
 from typing import Any
 
 import joblib
@@ -35,19 +37,55 @@ def main() -> None:
     df = load_dataset(args.input)
     X = df.drop(columns=[c for c in ['label', 'signalId', 'profit', 'entryTimestamp'] if c in df.columns])
 
-    model_path = args.model or f'data/ml/models/{args.strategy}.joblib'
-    model = joblib.load(model_path)
-    preprocess = model.named_steps.get('preprocess')
-    expected = list(getattr(preprocess, 'feature_names_in_', [])) if preprocess is not None else []
-    if expected:
-        missing = [c for c in expected if c not in X.columns]
-        for col in missing:
-            X[col] = 0
-        extra = [c for c in X.columns if c not in expected]
-        if extra:
-            X = X.drop(columns=extra)
-        X = X[expected]
-    prob = model.predict_proba(X)[:, 1]
+    base = args.model[:-7] if args.model.endswith('.joblib') else (args.model or f'data/ml/models/{args.strategy}')
+    long_paths = sorted(glob.glob(f'{base}.long.model*.joblib'))
+    short_paths = sorted(glob.glob(f'{base}.short.model*.joblib'))
+    long_single = f'{base}.long.joblib'
+    short_single = f'{base}.short.joblib'
+
+    directional = bool(long_paths or short_paths or os.path.exists(long_single) or os.path.exists(short_single))
+    if directional:
+        long_models = [joblib.load(p) for p in long_paths] if long_paths else [joblib.load(long_single)]
+        short_models = [joblib.load(p) for p in short_paths] if short_paths else [joblib.load(short_single)]
+        probs: list[float] = []
+        for idx in range(len(X)):
+            row = X.iloc[[idx]].copy()
+            direction = float(row.get('direction', pd.Series([1.0])).iloc[0])
+            models = long_models if direction >= 0.5 else short_models
+            model_probs = []
+            for model in models:
+                preprocess = model.named_steps.get('preprocess')
+                expected = (
+                    list(getattr(preprocess, 'feature_names_in_', []))
+                    if preprocess is not None
+                    else []
+                )
+                X_row = row.copy()
+                if expected:
+                    missing = [c for c in expected if c not in X_row.columns]
+                    for col in missing:
+                        X_row[col] = 0
+                    extra = [c for c in X_row.columns if c not in expected]
+                    if extra:
+                        X_row = X_row.drop(columns=extra)
+                    X_row = X_row[expected]
+                model_probs.append(float(model.predict_proba(X_row)[:, 1][0]))
+            probs.append(float(np.mean(model_probs)))
+        prob = np.array(probs, dtype=float)
+    else:
+        model_path = args.model or f'data/ml/models/{args.strategy}.joblib'
+        model = joblib.load(model_path)
+        preprocess = model.named_steps.get('preprocess')
+        expected = list(getattr(preprocess, 'feature_names_in_', [])) if preprocess is not None else []
+        if expected:
+            missing = [c for c in expected if c not in X.columns]
+            for col in missing:
+                X[col] = 0
+            extra = [c for c in X.columns if c not in expected]
+            if extra:
+                X = X.drop(columns=extra)
+            X = X[expected]
+        prob = model.predict_proba(X)[:, 1]
 
     with open(args.out, 'w', encoding='utf-8') as f:
         for idx, p in enumerate(prob):

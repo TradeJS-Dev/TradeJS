@@ -21,7 +21,7 @@ args.option(['U', 'user'], 'Use user config', 'root');
 const flags = args.parse(process.argv);
 
 const MIN_PROFIT = 2;
-const MIN_WIN_RATE = 35;
+const MIN_WIN_RATE = 40;
 const MIN_ORDERS_PER_MONTH = 1;
 
 type BestResult = {
@@ -142,12 +142,10 @@ const getCoverageRow = async (
 
   const existingSymbols = new Set(Object.keys(currentResults));
   let goodMissing = 0;
-  let goodExisting = 0;
+  let goodExisting = existingSymbols.size;
 
   for (const symbol of goodSymbols) {
-    if (existingSymbols.has(symbol)) {
-      goodExisting += 1;
-    } else {
+    if (!existingSymbols.has(symbol)) {
       goodMissing += 1;
     }
   }
@@ -257,7 +255,6 @@ const results = async () => {
       };
 
       await setData(redisKeys.strategyResults(userName, strategyName), merged, {
-        stringify: true,
         expire: 0,
       });
 
@@ -274,7 +271,6 @@ const results = async () => {
       redisKeys.strategyResults(userName, strategyName),
       resultsConfig,
       {
-        stringify: true,
         expire: 0,
       },
     );

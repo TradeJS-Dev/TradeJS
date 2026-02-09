@@ -6,6 +6,7 @@ import { createReadStream, createWriteStream } from 'fs';
 import fs from 'fs/promises';
 import path from 'path';
 import readline from 'readline';
+import { cleanRedis } from '@utils/cli';
 import { getData, getKeys, redisKeys } from '@utils/redis';
 import {
   buildMlTrainingRow,
@@ -23,8 +24,20 @@ args.option(['f', 'format'], 'csv | jsonl | both', 'both');
 args.option(['i', 'includeOpen'], 'Include signals without result', false);
 args.option(['l', 'limit'], 'Limit number of signals', 0);
 args.option(['s', 'strategy'], 'Filter by strategy/strategyName');
+args.option(
+  ['c', 'clearRedis'],
+  'Clear ml:* keys after successful export',
+  false,
+);
 
 const flags = args.parse(process.argv);
+
+const toFileToken = (value: string) =>
+  value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, '_')
+    .replace(/^_+|_+$/g, '') || 'any';
 
 const csvEscape = (value: unknown): string => {
   if (value == null) return '';
@@ -321,7 +334,8 @@ const mlExport = async () => {
     process.exit(0);
   }
 
-  const baseName = `ml-dataset-${Date.now()}`;
+  const strategyToken = toFileToken(strategyFilter || 'any');
+  const baseName = `ml-dataset-${strategyToken}-${Date.now()}`;
   const jsonlPathTrain = path.join(outDir, `${baseName}.${trainLabel}.jsonl`);
   const csvPathTrain = path.join(outDir, `${baseName}.${trainLabel}.csv`);
   const jsonlPathTest = path.join(outDir, `${baseName}.${testLabel}.jsonl`);
@@ -351,6 +365,20 @@ const mlExport = async () => {
       `rows: ${totalRows} (chunks: ${chunkFilesTrain.length + chunkFilesTest.length}), split: time(last 30d), includeOpen: ${includeOpen}, strategy: ${strategyFilter || 'any'}`,
     ),
   );
+
+  if (flags.clearRedis) {
+    if (!strategyFilter) {
+      console.log(
+        chalk.yellow(
+          'Skipping Redis cleanup: --clearRedis requires --strategy to avoid deleting all ml:* keys.',
+        ),
+      );
+    } else {
+      const strategyPrefix = `ml:${strategyFilter}:`;
+      console.log(chalk.gray(`Clearing Redis keys: ${strategyPrefix}*`));
+      await cleanRedis(strategyPrefix);
+    }
+  }
 
   process.exit(0);
 };

@@ -57,5 +57,4 @@ describe('TrendLine indicators pct windows', () => {
     expect(res).toBeTruthy();
     expect(res?.price24hPcnt).not.toBeNull();
   });
-
 });

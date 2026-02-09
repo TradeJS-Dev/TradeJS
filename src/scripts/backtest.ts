@@ -7,7 +7,7 @@ import os from 'os';
 import chalk from 'chalk';
 import _ from 'lodash';
 import { format } from 'date-fns';
-import { TESTS_TOP_LIMIT, TESTS_LIMIT } from '@constants';
+import { TESTS_TOP_LIMIT, TESTS_LIMIT, TTL_1M, TTL_1D } from '@constants';
 import { connectors } from '@src/connectors';
 import { mergeConfigs, createTestSuite } from '@utils/grid';
 import { calculateStatsFull, sortBestTests } from '@utils/stat';
@@ -44,6 +44,7 @@ args.option(['c', 'config'], 'Backtest config', 'breakout');
 args.option(['L', 'showTickersList'], 'Just show only ticker list', false);
 args.option(['S', 'progressStep'], 'Progress step', 100);
 args.option(['U', 'user'], 'Use user confg', 'root');
+args.option(['m', 'ml'], 'Save ML signals/results to redis ml:*', false);
 
 const flags = args.parse(process.argv);
 const interval = flags.timeframe.toString() as Interval;
@@ -113,7 +114,7 @@ const setTestData = async (test: Test, stat: TestStat, orderLog: OrderLog) => {
     redisKeys.testOrders(test.userName, test.strategyName, test.name),
     orderLog,
     {
-      stringify: false,
+      expire: TTL_1M,
     },
   );
 
@@ -121,7 +122,7 @@ const setTestData = async (test: Test, stat: TestStat, orderLog: OrderLog) => {
     redisKeys.testConfig(test.userName, test.strategyName, test.name),
     test,
     {
-      stringify: true,
+      expire: TTL_1M,
     },
   );
 
@@ -129,7 +130,7 @@ const setTestData = async (test: Test, stat: TestStat, orderLog: OrderLog) => {
     redisKeys.testStat(test.userName, test.strategyName, test.name),
     stat,
     {
-      stringify: true,
+      expire: TTL_1M,
     },
   );
 };
@@ -168,6 +169,8 @@ const backtest = async () => {
     0,
     parseInt(flags.tests),
   );
+  const mlEnabled = Boolean(flags.ml);
+  testSuite = testSuite.map((test) => ({ ...test, ml: mlEnabled }));
 
   const chunkSize = Math.ceil(testSuite.length / parseInt(flags.parallel));
   const chunks = _.chunk(testSuite, chunkSize);
@@ -275,7 +278,9 @@ const backtest = async () => {
     });
 
     const chunkId = uuid();
-    await setData(redisKeys.cacheChunk(userName, chunkId), chunk);
+    await setData(redisKeys.cacheChunk(userName, chunkId), chunk, {
+      expire: TTL_1D,
+    });
 
     tester.send({ chunkId, userName });
   }
@@ -388,7 +393,6 @@ const finish = async (results: TestWorkerResult[]) => {
       errorTests,
     },
     {
-      stringify: true,
       expire: 0,
     },
   );

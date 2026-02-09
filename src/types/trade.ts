@@ -143,6 +143,7 @@ export type TrendLine = {
   distance: number;
   touches: { timestamp: number; value: number }[];
   points: { timestamp: number; value: number }[];
+  alpha?: number[];
 };
 
 export interface TrendLineOptions {
@@ -185,5 +186,5 @@ export interface Signal {
     stopLossPrice: number;
     riskRatio: number;
   };
-  indicators: Record<string, number | number[]>;
+  indicators: Record<string, any>;
 }

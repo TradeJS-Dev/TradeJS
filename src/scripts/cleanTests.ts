@@ -4,6 +4,7 @@ import { cleanRedis } from '@utils/cli';
 import { getKeys, redisKeys } from '@utils/redis';
 
 args.option(['U', 'user'], 'Clean tests for user', '');
+args.option(['C', 'cache'], 'Clean only cache keys', false);
 
 const flags = args.parse(process.argv);
 
@@ -39,12 +40,17 @@ const getUsersToClean = async (): Promise<string[]> => {
 
 const cleanUserTests = async (userName: string) => {
   const testsPrefix = `users:${userName}:tests:`;
-  const cachePrefix = `users:${userName}:cache:tests:`;
+  const cachePrefix = `users:${userName}:cache:`;
+
+  if (flags.cache) {
+    console.log(chalk.yellow(`clean user cache: ${userName}`));
+    await cleanRedis(cachePrefix);
+    return;
+  }
 
   console.log(chalk.yellow(`clean user tests: ${userName}`));
-
   await cleanRedis(testsPrefix);
-  await cleanRedis(cachePrefix);
+  await cleanRedis(`users:${userName}:cache:tests:`);
 };
 
 const run = async () => {

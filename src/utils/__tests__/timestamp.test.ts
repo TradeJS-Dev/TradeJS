@@ -50,7 +50,11 @@ describe('timestamp utils', () => {
   describe('getItemTimestamp and getDataTimestamp', () => {
     it('reads timestamp from item and last item in data', () => {
       const first = createCandle(1_000);
-      const data: KlineChartData = [first, createCandle(2_000), createCandle(3_000)];
+      const data: KlineChartData = [
+        first,
+        createCandle(2_000),
+        createCandle(3_000),
+      ];
 
       expect(getItemTimestamp(first)).toBe(1_000);
       expect(getDataTimestamp(data)).toBe(3_000);

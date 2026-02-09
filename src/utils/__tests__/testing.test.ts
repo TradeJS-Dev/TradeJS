@@ -1,4 +1,5 @@
 import { Test } from '@types';
+import { ML_BASE_CANDLES_WINDOW } from '@constants';
 
 const mockByBitConnector = {
   kline: jest.fn(),
@@ -14,7 +15,7 @@ const mockTestConnector = {
 };
 
 const mockStrategy = jest.fn();
-const mockStrategyCreator = jest.fn(async () => mockStrategy);
+const mockStrategyCreator = jest.fn(async (_config?: unknown) => mockStrategy);
 const mockSetData = jest.fn();
 const mockBuildMlPayload = jest.fn((data) => data);
 
@@ -31,7 +32,7 @@ jest.mock('@src/connectors', () => ({
 
 jest.mock('@src/strategy', () => ({
   strategies: {
-    TrendLine: (...args: unknown[]) => mockStrategyCreator(...args),
+    TrendLine: (config: unknown) => mockStrategyCreator(config),
   },
   StrategyNames: {
     TrendLine: 'TrendLine',
@@ -54,7 +55,7 @@ jest.mock('@utils/redis', () => ({
 }));
 
 jest.mock('@utils/mlPayload', () => ({
-  buildMlPayload: (...args: unknown[]) => mockBuildMlPayload(...args),
+  buildMlPayload: (payload: unknown) => mockBuildMlPayload(payload),
 }));
 
 jest.mock('@utils/timestamp', () => ({
@@ -113,7 +114,7 @@ describe('testing backtest flow', () => {
     mockByBitConnector.kline.mockResolvedValue(data);
     mockStrategy.mockResolvedValue('HOLD');
 
-    await testing(createTest());
+    await testing(createTest({ ml: true }));
 
     expect(mockByBitConnector.kline).toHaveBeenCalledTimes(2);
     expect(mockTestConnector.checkSl).toHaveBeenCalledTimes(2);
@@ -130,13 +131,13 @@ describe('testing backtest flow', () => {
       })
       .mockResolvedValueOnce('HOLD');
 
-    await testing(createTest());
+    await testing(createTest({ ml: true }));
 
     expect(mockSetData).toHaveBeenCalledTimes(1);
     expect(mockSetData).toHaveBeenCalledWith(
       'ml:TrendLine:signals:s1',
       expect.anything(),
-      expect.objectContaining({ stringify: true }),
+      expect.objectContaining({ expire: expect.any(Number) }),
     );
   });
 
@@ -150,20 +151,28 @@ describe('testing backtest flow', () => {
     expect(mockSetData).not.toHaveBeenCalled();
   });
 
-  it('limits ml payload candle history to last 50 items', async () => {
-    const prev = Array.from({ length: 60 }, (_, i) => candle(1_000_000 + i));
-    const testPart = [candle(1_000_200)];
+  it('limits ml payload candle history to configured ML window', async () => {
+    const prev = Array.from(
+      { length: ML_BASE_CANDLES_WINDOW + 10 },
+      (_, i) => candle(1_000_000 + i),
+    );
+    const testPart = [candle(2_000_200)];
     mockByBitConnector.kline.mockResolvedValue([...prev, ...testPart]);
     mockStrategy.mockResolvedValue({
       signalId: 's1',
       symbol: 'ETHUSDT',
     });
 
-    await testing(createTest({ options: { start: 1_000_200, end: 1_000_500 } }));
+    await testing(
+      createTest({
+        options: { start: 2_000_200, end: 2_000_500 },
+        ml: true,
+      }),
+    );
 
     expect(mockBuildMlPayload).toHaveBeenCalledTimes(1);
     const payloadArg = mockBuildMlPayload.mock.calls[0][0];
-    expect(payloadArg.candles).toHaveLength(50);
-    expect(payloadArg.btcCandles).toHaveLength(50);
+    expect(payloadArg.candles).toHaveLength(ML_BASE_CANDLES_WINDOW);
+    expect(payloadArg.btcCandles).toHaveLength(ML_BASE_CANDLES_WINDOW);
   });
 });

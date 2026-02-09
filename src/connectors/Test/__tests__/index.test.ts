@@ -50,6 +50,7 @@ describe('TestConnectorCreator', () => {
   it('opens position, blocks second open, takes full TP and stores result', async () => {
     const connector = TestConnectorCreator(createBaseConnector(), {
       userName: 'alice',
+      mlEnabled: true,
     });
 
     const order = {
@@ -94,15 +95,17 @@ describe('TestConnectorCreator', () => {
         outcome: 'TAKE_PROFIT',
         result: 'WIN',
       }),
-      expect.objectContaining({ stringify: true }),
+      expect.objectContaining({ expire: expect.any(Number) }),
     );
     expect(mockedSetData).toHaveBeenCalledWith(
       'users:alice:cache:tests:orders:order-log-id',
       expect.any(Array),
+      expect.objectContaining({ expire: expect.any(Number) }),
     );
     expect(mockedSetData).toHaveBeenCalledWith(
       'users:alice:cache:tests:positions:order-log-id',
       expect.any(Array),
+      expect.objectContaining({ expire: expect.any(Number) }),
     );
   });
 
@@ -149,10 +152,12 @@ describe('TestConnectorCreator', () => {
     expect(mockedSetData).toHaveBeenCalledWith(
       'users:root:cache:tests:orders:order-log-id',
       expect.any(Array),
+      expect.objectContaining({ expire: expect.any(Number) }),
     );
     expect(mockedSetData).toHaveBeenCalledWith(
       'users:root:cache:tests:positions:order-log-id',
       expect.any(Array),
+      expect.objectContaining({ expire: expect.any(Number) }),
     );
   });
 });

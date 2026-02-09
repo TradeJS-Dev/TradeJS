@@ -5,6 +5,7 @@ const INDICATOR_PERIODS = {
   maFast: 14,
   maMedium: 49,
   maSlow: 50,
+  obvSma: 10,
   atr: 14,
   atrPctShort: 7,
   atrPctLong: 30,
@@ -46,6 +47,7 @@ type TrendlineIndicators = {
   bbMiddle: IndicatorValue;
   bbLower: IndicatorValue;
   obv: IndicatorValue;
+  smaObv: IndicatorValue;
   macd: IndicatorValue;
   macdSignal: IndicatorValue;
   macdHistogram: IndicatorValue;
@@ -72,6 +74,7 @@ export const applyIndicatorsToHistory = (
   pushIndicator('bbMiddle', indicators.bbMiddle);
   pushIndicator('bbLower', indicators.bbLower);
   pushIndicator('obv', indicators.obv);
+  pushIndicator('smaObv', indicators.smaObv);
   pushIndicator('macd', indicators.macd);
   pushIndicator('macdSignal', indicators.macdSignal);
   pushIndicator('macdHistogram', indicators.macdHistogram);
@@ -93,6 +96,7 @@ export const createIndicators = (data: KlineChartData) => {
   const timestamps: number[] = [];
 
   const obv = new OBV({ close: [], volume: [] });
+  const smaObv = new SMA({ period: INDICATOR_PERIODS.obvSma, values: [] });
   const ma14 = new SMA({ period: INDICATOR_PERIODS.maFast, values: [] });
   const ma49 = new SMA({ period: INDICATOR_PERIODS.maMedium, values: [] });
   const ma50 = new SMA({ period: INDICATOR_PERIODS.maSlow, values: [] });
@@ -237,6 +241,7 @@ export const createIndicators = (data: KlineChartData) => {
         : null;
     const bbValue = bb.nextValue(candle.close);
     const obvValue = obv.nextValue(candle);
+    const smaObvValue = obvValue == null ? null : smaObv.nextValue(obvValue);
     const macdValue = macd.nextValue(candle.close);
 
     if (
@@ -246,6 +251,7 @@ export const createIndicators = (data: KlineChartData) => {
       atrValue == null ||
       !bbValue ||
       obvValue == null ||
+      smaObvValue == null ||
       !macdValue
     ) {
       return null;
@@ -295,6 +301,7 @@ export const createIndicators = (data: KlineChartData) => {
       bbMiddle: bbValue.middle,
       bbLower: bbValue.lower,
       obv: obvValue,
+      smaObv: smaObvValue,
       macd: macdValue.MACD,
       macdSignal: macdValue.signal,
       macdHistogram: macdValue.histogram,

@@ -1,32 +1,7 @@
 import { buildMlTrainingRow } from '../mlTrainingTransform';
 
-type IndicatorMap = Record<string, number[]>;
-
 test('buildMlTrainingRow: key normalizations and removals', () => {
   const makeArr = (value: number) => Array.from({ length: 10 }, () => value);
-  const indicators: IndicatorMap = {
-    atr: makeArr(2),
-    atrPct: makeArr(1.5),
-    maFast: makeArr(5),
-    maMedium: makeArr(10),
-    maSlow: makeArr(15),
-    bbUpper: makeArr(12),
-    bbMiddle: makeArr(10),
-    bbLower: makeArr(8),
-    obv: makeArr(1000),
-    macd: makeArr(4),
-    macdSignal: makeArr(2),
-    macdHistogram: makeArr(1),
-    price24hPcnt: makeArr(1),
-    price1hPcnt: makeArr(2),
-    highPrice1h: makeArr(120),
-    lowPrice1h: makeArr(80),
-    volume1h: [10, 20, 30, 40, 50, 60, 70, 80, 90, 100],
-    highPrice24h: makeArr(140),
-    lowPrice24h: makeArr(60),
-    volume24h: [5, 10, 15, 20, 25, 30, 35, 40, 45, 50],
-  };
-
   const candles = Array.from({ length: 50 }, (_, i) => ({
     open: 100,
     close: 101,
@@ -45,7 +20,40 @@ test('buildMlTrainingRow: key normalizations and removals', () => {
     timestamp: i * 60_000,
   }));
 
+  const indicators: Record<string, any> = {
+    atr: makeArr(2),
+    atrPct: makeArr(1.5),
+    maFast: makeArr(5),
+    maMedium: makeArr(10),
+    maSlow: makeArr(15),
+    bbUpper: makeArr(12),
+    bbMiddle: makeArr(10),
+    bbLower: makeArr(8),
+    obv: makeArr(-1000),
+    smaObv: makeArr(-900),
+    macd: makeArr(4),
+    macdSignal: makeArr(2),
+    macdHistogram: makeArr(1),
+    price24hPcnt: makeArr(1),
+    price1hPcnt: makeArr(2),
+    highPrice1h: makeArr(120),
+    lowPrice1h: makeArr(80),
+    volume1h: [10, 20, 30, 40, 50, 60, 70, 80, 90, 100],
+    highPrice24h: makeArr(140),
+    lowPrice24h: makeArr(60),
+    volume24h: [5, 10, 15, 20, 25, 30, 35, 40, 45, 50],
+    candles15m: candles as unknown as number[],
+    btcCandles15m: btcCandles as unknown as number[],
+    candles1h: candles.slice(-10) as unknown as number[],
+    btcCandles1h: btcCandles.slice(-10) as unknown as number[],
+    candles4h: candles.slice(-10) as unknown as number[],
+    btcCandles4h: btcCandles.slice(-10) as unknown as number[],
+    candles1d: candles.slice(-10) as unknown as number[],
+    btcCandles1d: btcCandles.slice(-10) as unknown as number[],
+  };
+
   const signal = {
+    symbol: 'ethusdt',
     direction: 'LONG',
     interval: 1,
     prices: {
@@ -63,6 +71,7 @@ test('buildMlTrainingRow: key normalizations and removals', () => {
           { value: 100, timestamp: 0 },
           { value: 110, timestamp: 60_000 },
         ],
+        alpha: [1, 0.99, 1.01],
         touches: [
           { value: 98, timestamp: 30_000 },
           { value: 105, timestamp: 90_000 },
@@ -102,11 +111,13 @@ test('buildMlTrainingRow: key normalizations and removals', () => {
   );
 
   expect(row.OBV_1).toBeUndefined();
-  expect(row.OBV_Log1p_1).toBeCloseTo(Math.log1p(1000));
+  expect(row.OBV_Log1p_1).toBeCloseTo(-Math.log1p(1000));
+  expect(row.SMA_OBV_Log1p_1).toBeCloseTo(-Math.log1p(900));
 
   expect(row.ATR_1).toBeCloseTo(2 / 10);
   expect(row.ATR_PCT_1).toBeCloseTo(1.5);
   expect(row.MA_Fast_1).toBeCloseTo(5 / 10);
+  expect(row.MA_Medium_1).toBeCloseTo(10 / 101);
   expect(row.BB_Upper_1).toBeCloseTo(12 / 10);
 
   expect(row.MACD_1).toBeCloseTo(4 / 2);
@@ -123,13 +134,22 @@ test('buildMlTrainingRow: key normalizations and removals', () => {
   expect(row.AltRet_1).toBeCloseTo(101 / 100);
   expect(row.BtcRet_1).toBeCloseTo(200 / 200);
   expect(row.RelRet_1).toBeCloseTo(101 / 100 - 1);
+  expect(row.TF1H_AltRet_1).toBeDefined();
+  expect(row.TF4H_AltRet_1).toBeDefined();
+  expect(row.TF1D_AltRet_1).toBeDefined();
 
   expect(row.AltToBtc_CloseRel_1).toBeCloseTo(101 / 200 / (101 / 200));
+  expect(row.takeProfitPrice).toBeCloseTo(101 / 105);
+  expect(row.stopLossPrice).toBeCloseTo(101 / 99);
 
   expect(row.HighPrice1h_1).toBeCloseTo(120 / 10);
   expect(row.LowPrice1h_1).toBeCloseTo(80 / 10);
   expect(row.HighPrice24h_1).toBeCloseTo(140 / 10);
   expect(row.LowPrice24h_1).toBeCloseTo(60 / 10);
+  expect(row.HIGHS_riskRatio).toBeUndefined();
+  expect(row.LOWS_riskRatio).toBeUndefined();
+  expect(row.HIGHS_minRiskRatio).toBeUndefined();
+  expect(row.LOWS_minRiskRatio).toBeUndefined();
 
   expect(row.Candle_Body_1).toBeCloseTo((101 - 100) / 10);
   expect(row.Candle_Range_1).toBeCloseTo((102 - 99) / 10);
@@ -147,5 +167,12 @@ test('buildMlTrainingRow: key normalizations and removals', () => {
   expect(row.TrendLine_Value_AtEntry).toBeCloseTo(590);
   expect(row.TrendLine_Slope).toBeCloseTo(10);
   expect(row.TrendLine_Delta_To_Price).toBeCloseTo((101 - 590) / 101);
+  expect(row.TrendLine_Alpha_1).toBeCloseTo(1);
+  expect(row.TrendLine_Alpha_2).toBeCloseTo(0.99);
+  expect(row.TrendLine_Alpha_4).toBe(0);
+  expect(row.TOUCHES_VALUE_3).toBe(0);
+  expect(row.TOUCHES_TS_10).toBe(0);
+  expect(row.Touches_1).toBeUndefined();
   expect(row.profit).toBe(1);
+  expect(row.symbol).toBe('ETHUSDT');
 });

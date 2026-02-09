@@ -45,7 +45,6 @@ const run = async () => {
   };
 
   await setData(redisKeys.user(userName), next, {
-    stringify: true,
     expire: 0,
   });
 
