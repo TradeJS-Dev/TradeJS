@@ -18,6 +18,11 @@ const PRELOAD_START = getTimestamp(SIGNALS_PRELOAD_DAYS);
 const FEE = 0.005;
 const CANDLE_WINDOW = 10;
 const BASE_INTERVAL_MINUTES = 15;
+const INDICATOR_TIMEFRAMES = [
+  { minutes: 60, suffix: '1h' },
+  { minutes: 240, suffix: '4h' },
+  { minutes: 1440, suffix: '1d' },
+] as const;
 
 const toMlCandle = (candle: Candle): Candle => ({
   open: Number(candle.open) || 0,
@@ -64,6 +69,24 @@ const buildMlCandleIndicators = (candles: Candle[], btcCandles: Candle[]) => ({
   btcCandles4h: resampleCandles(btcCandles, 240).slice(-CANDLE_WINDOW),
   btcCandles1d: resampleCandles(btcCandles, 1440).slice(-CANDLE_WINDOW),
 });
+
+const buildMlTimeframeIndicators = (
+  candles: Candle[],
+): Record<string, number[]> => {
+  const result: Record<string, number[]> = {};
+
+  for (const timeframe of INDICATOR_TIMEFRAMES) {
+    const tfCandles = resampleCandles(candles, timeframe.minutes);
+    if (tfCandles.length === 0) continue;
+
+    const history = createIndicators(tfCandles).result();
+    for (const [key, values] of Object.entries(history)) {
+      result[`${key}${timeframe.suffix}`] = values.slice();
+    }
+  }
+
+  return result;
+};
 
 export const TrendlineStrategyCreator: StrategyCreator = async ({
   userName,
@@ -254,6 +277,9 @@ export const TrendlineStrategyCreator: StrategyCreator = async ({
     }
 
     const indicatorHistory = indicatorsController.result();
+    const timeframeIndicatorHistory = buildMlTimeframeIndicators(
+      cachedData as Candle[],
+    );
 
     const signalId = uuid();
 
@@ -279,6 +305,7 @@ export const TrendlineStrategyCreator: StrategyCreator = async ({
         touches: bestLine.touches.length + 2,
         distance: bestLine.distance,
         ...indicatorHistory,
+        ...timeframeIndicatorHistory,
         ...buildMlCandleIndicators(cachedData as Candle[], btcCachedData as Candle[]),
       },
       configFromBacktest,

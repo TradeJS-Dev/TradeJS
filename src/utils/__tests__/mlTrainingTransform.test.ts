@@ -42,6 +42,11 @@ test('buildMlTrainingRow: key normalizations and removals', () => {
     highPrice24h: makeArr(140),
     lowPrice24h: makeArr(60),
     volume24h: [5, 10, 15, 20, 25, 30, 35, 40, 45, 50],
+    maFast1h: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+    price1hPcnt1h: [11, 12, 13, 14, 15, 16, 17, 18, 19, 20],
+    maFast4h: [2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
+    price1hPcnt4h: [21, 22, 23, 24, 25, 26, 27, 28, 29, 30],
+    maFast1d: [3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
     candles15m: candles as unknown as number[],
     btcCandles15m: btcCandles as unknown as number[],
     candles1h: candles.slice(-10) as unknown as number[],
@@ -81,6 +86,7 @@ test('buildMlTrainingRow: key normalizations and removals', () => {
   };
 
   const context = {
+    strategyName: 'TrendLine',
     strategyConfig: {
       TRENDLINE_CONFIG: {
         minTouches: 2,
@@ -105,74 +111,177 @@ test('buildMlTrainingRow: key normalizations and removals', () => {
     },
   };
 
-  const row = buildMlTrainingRow(
-    { signal, context, candles, btcCandles },
-    { profit: 1 },
-  );
+  const row = buildMlTrainingRow({ signal, context }, { profit: 1 });
 
   expect(row.OBV_1).toBeUndefined();
-  expect(row.OBV_Log1p_1).toBeCloseTo(-Math.log1p(1000));
-  expect(row.SMA_OBV_Log1p_1).toBeCloseTo(-Math.log1p(900));
+  expect(row.TF15M_OBV_LogRet_1).toBeUndefined();
+  expect(row.TF15M_OBV_LogRet_2).toBe(0);
+  expect(row.TF15M_OBV_LogRet_10).toBe(0);
+  expect(row.TF15M_SMA_OBV_LogRet_1).toBeUndefined();
 
-  expect(row.ATR_1).toBeCloseTo(2 / 10);
-  expect(row.ATR_PCT_1).toBeCloseTo(1.5);
-  expect(row.MA_Fast_1).toBeCloseTo(5 / 10);
-  expect(row.MA_Medium_1).toBeCloseTo(10 / 101);
-  expect(row.BB_Upper_1).toBeCloseTo(12 / 10);
+  expect(row.TF15M_ATR_1).toBeCloseTo(2 / 101);
+  expect(row.TF15M_ATR_10).toBeCloseTo(2 / 101);
+  expect(row.TF15M_ATR_PCT_1).toBeCloseTo(1.5);
+  expect(row.TF15M_MA_Fast_1).toBeUndefined();
+  expect(row.TF15M_MA_Fast_2).toBe(0);
+  expect(row.TF15M_MA_Medium_1).toBeUndefined();
+  expect(row.TF15M_MA_Medium_2).toBe(0);
+  expect(row.TF15M_MA_Medium_10).toBe(0);
+  expect(row.TF15M_BB_Upper_1).toBeUndefined();
+  expect(row.TF15M_BB_Upper_2).toBe(0);
 
-  expect(row.MACD_1).toBeCloseTo(4 / 2);
-  expect(row.MACD_Signal_1).toBeCloseTo(2 / 2);
-  expect(row.MACD_Histogram_1).toBeCloseTo(1 / 2);
+  expect(row.TF15M_MACD_1).toBe(0);
+  expect(row.TF15M_MACD_2).toBe(0);
+  expect(row.TF15M_MACD_Signal_1).toBe(0);
+  expect(row.TF15M_MACD_Signal_2).toBe(0);
+  expect(row.TF15M_MACD_Histogram_1).toBe(0);
+  expect(row.TF15M_MACD_Histogram_2).toBe(0);
 
-  expect(row.Volume1h_1_MedianNorm).toBeCloseTo(1);
-  expect(row.Volume1h_2_MedianNorm).toBeCloseTo(20 / 15);
+  expect(row.TF15M_Volume1h_1_MedianNorm).toBeUndefined();
+  expect(row.TF15M_Volume1h_2_MedianNorm).toBeCloseTo(20 / 15);
 
   expect(row.Candle_Open_1).toBeUndefined();
   expect(row.Alt_OpenRel_1).toBeUndefined();
   expect(row.BTC_CloseRel_1).toBeUndefined();
 
-  expect(row.AltRet_1).toBeCloseTo(101 / 100);
-  expect(row.BtcRet_1).toBeCloseTo(200 / 200);
-  expect(row.RelRet_1).toBeCloseTo(101 / 100 - 1);
+  expect(row.TF15M_AltRet_1).toBeCloseTo(101 / 100);
+  expect(row.TF15M_BtcRet_1).toBeCloseTo(200 / 200);
+  expect(row.TF15M_RelRet_1).toBeCloseTo(101 / 100 - 1);
   expect(row.TF1H_AltRet_1).toBeDefined();
   expect(row.TF4H_AltRet_1).toBeDefined();
   expect(row.TF1D_AltRet_1).toBeDefined();
 
-  expect(row.AltToBtc_CloseRel_1).toBeCloseTo(101 / 200 / (101 / 200));
+  expect(row.TF15M_AltToBtc_Open_1).toBeUndefined();
+  expect(row.TF15M_AltToBtc_Open_2).toBe(0);
+  expect(row.TF15M_AltToBtc_Close_1).toBeUndefined();
+  expect(row.TF15M_AltToBtc_Close_2).toBe(0);
+  expect(row.TF15M_AltToBtc_Close_10).toBe(0);
+  expect(row.AltToBtc_CloseRel_1).toBeUndefined();
   expect(row.takeProfitPrice).toBeCloseTo(101 / 105);
   expect(row.stopLossPrice).toBeCloseTo(101 / 99);
 
-  expect(row.HighPrice1h_1).toBeCloseTo(120 / 10);
-  expect(row.LowPrice1h_1).toBeCloseTo(80 / 10);
-  expect(row.HighPrice24h_1).toBeCloseTo(140 / 10);
-  expect(row.LowPrice24h_1).toBeCloseTo(60 / 10);
+  expect(typeof row.TF15M_HighPrice1h_1).toBe('number');
+  expect(typeof row.TF15M_LowPrice1h_1).toBe('number');
+  expect(typeof row.TF15M_HighPrice24h_1).toBe('number');
+  expect(typeof row.TF15M_LowPrice24h_1).toBe('number');
   expect(row.HIGHS_riskRatio).toBeUndefined();
   expect(row.LOWS_riskRatio).toBeUndefined();
   expect(row.HIGHS_minRiskRatio).toBeUndefined();
   expect(row.LOWS_minRiskRatio).toBeUndefined();
 
-  expect(row.Candle_Body_1).toBeCloseTo((101 - 100) / 10);
-  expect(row.Candle_Range_1).toBeCloseTo((102 - 99) / 10);
-  expect(row.Candle_UpperWick_1).toBeCloseTo((102 - 101) / 10);
-  expect(row.Candle_LowerWick_1).toBeCloseTo((100 - 99) / 10);
+  expect(typeof row.TF15M_Candle_Body_1).toBe('number');
+  expect(Number.isFinite(row.TF15M_Candle_Body_1 as number)).toBe(true);
+  expect(row.TF15M_Candle_Body_1).not.toBeCloseTo((101 - 100) / 10);
+  expect(row.TF15M_Candle_Range_1).toBeCloseTo((102 - 99) / 10);
+  expect(row.TF15M_Candle_UpperWick_1).toBeCloseTo((102 - 101) / 10);
+  expect(row.TF15M_Candle_LowerWick_1).toBeCloseTo((100 - 99) / 10);
 
-  expect(row.AltRet_Mean10).toBeCloseTo(1.01);
-  expect(row.AltRet_Std10).toBeCloseTo(0);
-  expect(row.AltRet_Skew10).toBeCloseTo(0);
-  expect(row.AltRet_Kurt10).toBeCloseTo(0);
+  expect(row.TF15M_AltRet_Mean10).toBeCloseTo(1.01);
+  expect(row.TF15M_AltRet_Std10).toBeCloseTo(0);
+  expect(row.TF15M_AltRet_Skew10).toBeCloseTo(0);
+  expect(row.TF15M_AltRet_Kurt10).toBeCloseTo(0);
 
-  expect(row.BtcRet_Mean10).toBeCloseTo(1);
-  expect(row.BtcRet_Std10).toBeCloseTo(0);
+  expect(row.TF15M_BtcRet_Mean10).toBeCloseTo(1);
+  expect(row.TF15M_BtcRet_Std10).toBeCloseTo(0);
+  expect(row.TF15M_Price1hPcnt_1).toBeCloseTo(Math.tanh(2 / 10));
+  expect(row.TF1H_MA_Fast_2).toBeCloseTo(1);
+  expect(row.TF1H_Price1hPcnt_1).toBeCloseTo(Math.tanh(11 / 10));
+  expect(row.TF4H_MA_Fast_2).toBeCloseTo(0.5);
+  expect(row.TF4H_Price1hPcnt_1).toBeCloseTo(Math.tanh(21 / 10));
+  expect(row.TF1D_MA_Fast_2).toBeCloseTo(1 / 3);
 
-  expect(row.TrendLine_Value_AtEntry).toBeCloseTo(590);
-  expect(row.TrendLine_Slope).toBeCloseTo(10);
+  expect(row.currentPrice).toBeUndefined();
+  expect(row.TrendLine_Value_AtEntry).toBeUndefined();
+  expect(row.TrendLine_Slope).toBeCloseTo(Math.log1p(10));
   expect(row.TrendLine_Delta_To_Price).toBeCloseTo((101 - 590) / 101);
   expect(row.TrendLine_Alpha_1).toBeCloseTo(1);
-  expect(row.TrendLine_Alpha_2).toBeCloseTo(0.99);
-  expect(row.TrendLine_Alpha_4).toBe(0);
+  expect(typeof row.TrendLine_Alpha_2).toBe('number');
+  expect(Number.isFinite(row.TrendLine_Alpha_2 as number)).toBe(true);
+  expect(typeof row.TrendLine_Alpha_4).toBe('number');
+  expect(Number.isFinite(row.TrendLine_Alpha_4 as number)).toBe(true);
   expect(row.TOUCHES_VALUE_3).toBe(0);
-  expect(row.TOUCHES_TS_10).toBe(0);
+  expect(row.TOUCHES_TS_3).toBe(0);
+  expect(row.TOUCHES_TS_10).toBeUndefined();
+  expect(row.POINTS_TS_2).toBeUndefined();
   expect(row.Touches_1).toBeUndefined();
+  expect(row.TRENDLINE_minTouches).toBeUndefined();
   expect(row.profit).toBe(1);
   expect(row.symbol).toBe('ETHUSDT');
+  expect(row.strategy).toBe('TRENDLINE');
+});
+
+test('buildMlTrainingRow: normalization is finite on cross-zero oscillators', () => {
+  const oscillating = [-2, -1, -0.5, 0, 0.25, 0.5, 1, 2, -1, 1];
+  const candles = Array.from({ length: 10 }, (_, i) => ({
+    open: 100 + i,
+    close: 100 + i,
+    high: 101 + i,
+    low: 99 + i,
+    volume: 1000 + i,
+    timestamp: (i + 1) * 60_000,
+  }));
+  const signal = {
+    symbol: 'BTCUSDT',
+    strategy: 'TrendLine',
+    direction: 'SHORT',
+    interval: 15,
+    prices: {
+      currentPrice: 100,
+      takeProfitPrice: 95,
+      stopLossPrice: 102,
+      riskRatio: 2,
+    },
+    indicators: {
+      maFast: Array(10).fill(100),
+      maMedium: Array(10).fill(100),
+      maSlow: Array(10).fill(100),
+      atr: Array(10).fill(2),
+      atrPct: Array(10).fill(1),
+      bbUpper: Array(10).fill(101),
+      bbMiddle: Array(10).fill(100),
+      bbLower: Array(10).fill(99),
+      obv: oscillating,
+      smaObv: oscillating,
+      macd: oscillating,
+      macdSignal: oscillating,
+      macdHistogram: oscillating,
+      price24hPcnt: oscillating,
+      price1hPcnt: oscillating,
+      highPrice1h: Array(10).fill(101),
+      lowPrice1h: Array(10).fill(99),
+      volume1h: Array(10).fill(1000),
+      highPrice24h: Array(10).fill(102),
+      lowPrice24h: Array(10).fill(98),
+      volume24h: Array(10).fill(1500),
+      candles15m: candles,
+      btcCandles15m: candles,
+      candles1h: candles,
+      btcCandles1h: candles,
+      candles4h: candles,
+      btcCandles4h: candles,
+      candles1d: candles,
+      btcCandles1d: candles,
+    },
+    figures: {
+      trendLine: {
+        mode: 'lows',
+        distance: 0.1,
+        alpha: [1],
+        points: [
+          { value: 99, timestamp: 60_000 },
+          { value: 100, timestamp: 120_000 },
+        ],
+        touches: [{ value: 99.5, timestamp: 90_000 }],
+      },
+    },
+  };
+  const row = buildMlTrainingRow({ signal }, { profit: -1 });
+  const numericValues = Object.entries(row)
+    .filter(([key]) => key !== 'entryTimestamp')
+    .map(([, value]) => value)
+    .filter((value): value is number => typeof value === 'number');
+  expect(numericValues.length).toBeGreaterThan(100);
+  expect(numericValues.every((value) => Number.isFinite(value))).toBe(true);
+  expect(Math.max(...numericValues)).toBeLessThan(50);
+  expect(Math.min(...numericValues)).toBeGreaterThan(-50);
 });

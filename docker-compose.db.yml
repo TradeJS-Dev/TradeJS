@@ -23,6 +23,7 @@ services:
   redis:
     image: redis/redis-stack:latest
     container_name: inv-redis
+    stop_grace_period: 2m
     ports:
       - "6379:6379"
       - "5540:8001"

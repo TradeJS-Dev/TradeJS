@@ -8,6 +8,10 @@ const defaultStrategy = StrategyNames.TrendLine;
 export const selectStrategy = async (
   promptLabel = 'Select strategy',
 ): Promise<string> => {
+  if (!process.stdin.isTTY) {
+    return defaultStrategy;
+  }
+
   console.log(chalk.cyan('Available strategies:'));
   strategies.forEach((name, index) => {
     const isDefault = name === defaultStrategy;

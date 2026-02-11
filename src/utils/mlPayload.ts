@@ -39,15 +39,30 @@ export const normalizeStrategyConfig = (
 };
 
 export const buildMlPayload = (payload: MlSignalPayload): MlSignalPayload => {
-  if (!payload.context?.strategyConfig) {
-    return payload;
-  }
+  const candles = Array.isArray(payload.candles) ? payload.candles : undefined;
+  const btcCandles = Array.isArray(payload.btcCandles)
+    ? payload.btcCandles
+    : undefined;
+  const nextIndicators = {
+    ...(payload.signal?.indicators ?? {}),
+    ...(candles ? { candles } : {}),
+    ...(btcCandles ? { btcCandles } : {}),
+    ...(candles ? { candles15m: candles } : {}),
+    ...(btcCandles ? { btcCandles15m: btcCandles } : {}),
+  };
+  const nextSignal = {
+    ...payload.signal,
+    indicators: nextIndicators,
+  };
+  const nextContext = payload.context
+    ? {
+        ...payload.context,
+        strategyConfig: normalizeStrategyConfig(payload.context.strategyConfig),
+      }
+    : undefined;
 
   return {
-    ...payload,
-    context: {
-      ...payload.context,
-      strategyConfig: normalizeStrategyConfig(payload.context.strategyConfig),
-    },
+    signal: nextSignal,
+    context: nextContext,
   };
 };

@@ -7,8 +7,10 @@ import { createReadStream } from 'fs';
 import path from 'path';
 import readline from 'readline';
 import { Dirent } from 'fs';
+import { spawnSync } from 'child_process';
 
 type Mode = 'head' | 'tail' | 'sample';
+type InspectTool = 'quick' | 'ydata';
 
 type NumericStats = {
   field: string;
@@ -38,14 +40,18 @@ args.example(
   'Inspect the latest ML dataset chunk and highlight problematic features',
 );
 
-args.option(['d', 'dir'], 'Dataset directory', 'data/ml');
+args.option(['d', 'dir'], 'Dataset directory', 'data/ml/export');
 args.option(['s', 'split'], 'train | test', 'train');
 args.option(['r', 'rows'], 'Rows to inspect', 10000);
 args.option(['m', 'mode'], 'head | tail | sample', 'sample');
 args.option(['S', 'strategy'], 'Strategy token in dataset filename', '');
-args.option(['f', 'file'], 'Explicit dataset file path (overrides auto-select)');
+args.option(
+  ['f', 'file'],
+  'Explicit dataset file path (overrides auto-select)',
+);
 args.option(['L', 'limitIssues'], 'How many fields to print in report', 25);
 args.option(['M', 'minFieldValues'], 'Min valid values per numeric field', 50);
+args.option(['T', 'tool'], 'quick | ydata', '');
 
 const flags = args.parse(process.argv);
 
@@ -55,6 +61,61 @@ const toMode = (value: unknown): Mode => {
     return mode;
   }
   return 'sample';
+};
+
+const toInspectTool = (value: unknown): InspectTool | null => {
+  const raw = String(value || '')
+    .trim()
+    .toLowerCase();
+  if (!raw) return null;
+  if (raw === 'quick' || raw === 'ydata') return raw;
+  return null;
+};
+
+const selectInspectTool = async (
+  defaultTool: InspectTool = 'quick',
+): Promise<InspectTool> => {
+  if (!process.stdin.isTTY) {
+    return defaultTool;
+  }
+
+  const options: InspectTool[] = ['quick', 'ydata'];
+  console.log(chalk.cyan('Available inspect tools:'));
+  options.forEach((name, index) => {
+    const isDefault = name === defaultTool;
+    const label = isDefault ? chalk.green(name) : name;
+    const suffix = isDefault ? chalk.gray(' (default)') : '';
+    console.log(`  ${chalk.yellow(String(index + 1))}) ${label}${suffix}`);
+  });
+
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+  });
+  const question = (text: string) =>
+    new Promise<string>((resolve) => rl.question(text, resolve));
+  const answer = await question(
+    `Select inspect tool [${chalk.green(defaultTool)}]: `,
+  );
+  rl.close();
+
+  const trimmed = answer.trim().toLowerCase();
+  if (!trimmed) return defaultTool;
+  const asNumber = Number(trimmed);
+  if (
+    Number.isFinite(asNumber) &&
+    asNumber >= 1 &&
+    asNumber <= options.length
+  ) {
+    return options[asNumber - 1];
+  }
+  if (options.includes(trimmed as InspectTool)) {
+    return trimmed as InspectTool;
+  }
+  console.warn(
+    `Unknown inspect tool "${answer.trim()}", using ${defaultTool}.`,
+  );
+  return defaultTool;
 };
 
 const asPositiveInt = (value: unknown, fallback: number) => {
@@ -301,6 +362,8 @@ const buildNumericStats = (
     const absP99 = Math.abs(stat.p99);
     const p99ToMedian = absP99 / Math.max(absMedian, 1e-12);
     const scaleRatio = absMedian / globalMedianAbs;
+    const hasStableMedian = absMedian >= 1e-4;
+    const isBinary = stat.uniqueCount <= 2;
     stat.scaleRatio = scaleRatio;
 
     if (stat.nonFiniteRate > 0) {
@@ -311,7 +374,9 @@ const buildNumericStats = (
       issues.push(`high missing rate ${(stat.missingRate * 100).toFixed(1)}%`);
       score += 4;
     } else if (stat.missingRate > 0.05) {
-      issues.push(`noticeable missing rate ${(stat.missingRate * 100).toFixed(1)}%`);
+      issues.push(
+        `noticeable missing rate ${(stat.missingRate * 100).toFixed(1)}%`,
+      );
       score += 2;
     }
     if (stat.validCount > 0 && stat.uniqueCount <= 1) {
@@ -325,21 +390,27 @@ const buildNumericStats = (
       issues.push(`mostly zero ${(stat.zeroRate * 100).toFixed(1)}%`);
       score += 2;
     }
-    if (p99ToMedian > 1_000) {
-      issues.push(`extreme scale spread p99/median=${p99ToMedian.toFixed(0)}`);
-      score += 5;
-    } else if (p99ToMedian > 100) {
-      issues.push(`large scale spread p99/median=${p99ToMedian.toFixed(0)}`);
-      score += 3;
+    if (hasStableMedian) {
+      if (p99ToMedian > 1_000) {
+        issues.push(
+          `extreme scale spread p99/median=${p99ToMedian.toFixed(0)}`,
+        );
+        score += 5;
+      } else if (p99ToMedian > 100) {
+        issues.push(`large scale spread p99/median=${p99ToMedian.toFixed(0)}`);
+        score += 3;
+      }
     }
     if (stat.outlierRate > 0.1) {
-      issues.push(`very high outlier rate ${(stat.outlierRate * 100).toFixed(1)}%`);
+      issues.push(
+        `very high outlier rate ${(stat.outlierRate * 100).toFixed(1)}%`,
+      );
       score += 4;
     } else if (stat.outlierRate > 0.03) {
       issues.push(`high outlier rate ${(stat.outlierRate * 100).toFixed(1)}%`);
       score += 2;
     }
-    if (scaleRatio > 1_000 || scaleRatio < 0.001) {
+    if (!isBinary && (scaleRatio > 1_000 || scaleRatio < 0.001)) {
       issues.push(
         `feature scale differs from dataset median by x${scaleRatio.toExponential(2)}`,
       );
@@ -367,38 +438,15 @@ const formatNumber = (value: number) => {
   return value.toFixed(6);
 };
 
-const main = async () => {
-  const dir = String(flags.dir || 'data/ml');
-  const split = String(flags.split || 'train').toLowerCase();
-  const rowsToInspect = asPositiveInt(flags.rows, 10000);
-  const mode = toMode(flags.mode);
-  const strategy = String(flags.strategy || '');
-  const limitIssues = asPositiveInt(flags.limitIssues, 25);
-  const minFieldValues = asPositiveInt(flags.minFieldValues, 50);
-
-  if (split !== 'train' && split !== 'test') {
-    console.error(chalk.red('Invalid --split. Use train or test.'));
-    process.exit(1);
-  }
-
-  const explicitFile = flags.file ? String(flags.file) : '';
-  const datasetPath =
-    explicitFile ||
-    (await findLatestDataset({
-      dir,
-      split,
-      strategy,
-    }));
-
-  if (!datasetPath) {
-    console.error(
-      chalk.red(
-        `No dataset found. Expected ml-dataset-*.${split}.jsonl in ${dir}`,
-      ),
-    );
-    process.exit(1);
-  }
-
+const runQuickInspect = async (params: {
+  datasetPath: string;
+  mode: Mode;
+  rowsToInspect: number;
+  limitIssues: number;
+  minFieldValues: number;
+}) => {
+  const { datasetPath, mode, rowsToInspect, limitIssues, minFieldValues } =
+    params;
   let rows: Array<Record<string, unknown>> = [];
   if (mode === 'head') {
     rows = await readRowsHead(datasetPath, rowsToInspect);
@@ -416,24 +464,26 @@ const main = async () => {
   const numericStats = buildNumericStats(rows, minFieldValues);
   if (!numericStats.length) {
     console.error(
-      chalk.red('No numeric fields with enough values were found in sampled rows.'),
+      chalk.red(
+        'No numeric fields with enough values were found in sampled rows.',
+      ),
     );
     process.exit(1);
   }
 
   const problematic = numericStats.filter((item) => item.score > 0);
-  console.log(chalk.gray('ML dataset inspection'));
+  console.log(chalk.gray('ML dataset inspection (quick)'));
   console.log(chalk.gray(`file: ${datasetPath}`));
   console.log(chalk.gray(`mode: ${mode}`));
   console.log(chalk.gray(`rows inspected: ${rows.length}`));
   console.log(chalk.gray(`numeric fields analyzed: ${numericStats.length}`));
-  console.log(
-    chalk.gray(`fields with recommendations: ${problematic.length}`),
-  );
+  console.log(chalk.gray(`fields with recommendations: ${problematic.length}`));
   console.log('');
 
   if (!problematic.length) {
-    console.log(chalk.green('No problematic fields detected by current rules.'));
+    console.log(
+      chalk.green('No problematic fields detected by current rules.'),
+    );
     process.exit(0);
   }
 
@@ -462,10 +512,146 @@ const main = async () => {
 
   console.log('');
   console.log(chalk.cyan('How to fix common issues:'));
-  console.log('  - Large scale spread: normalize feature (log1p / relative to price / robust scaling).');
-  console.log('  - High outliers: winsorize/clip or rebuild the source transform.');
+  console.log(
+    '  - Large scale spread: normalize feature (log1p / relative to price / robust scaling).',
+  );
+  console.log(
+    '  - High outliers: winsorize/clip or rebuild the source transform.',
+  );
   console.log('  - Missing values: fill consistently or remove the feature.');
-  console.log('  - Constant/mostly zero: drop the feature or redefine its window.');
+  console.log(
+    '  - Constant/mostly zero: drop the feature or redefine its window.',
+  );
+};
+
+const runYDataInspect = async (params: {
+  datasetPath: string;
+  mode: Mode;
+  rowsToInspect: number;
+}) => {
+  const { datasetPath, mode, rowsToInspect } = params;
+  const cwd = process.cwd();
+  const absDatasetPath = path.resolve(datasetPath);
+  const dataRoot = path.resolve(cwd, 'data');
+
+  if (!absDatasetPath.startsWith(dataRoot)) {
+    console.error(
+      chalk.red(
+        `ydata mode supports only files under ${dataRoot}. Use --file inside data/`,
+      ),
+    );
+    process.exit(1);
+  }
+
+  const relToData = path.relative(dataRoot, absDatasetPath);
+  const inputInContainer = `/app/data/${relToData}`;
+  const reportDir = path.resolve(cwd, 'data', 'ml', 'export', 'reports');
+  await fs.mkdir(reportDir, { recursive: true });
+  const reportPath = path.join(
+    reportDir,
+    `${path.basename(datasetPath, path.extname(datasetPath))}.profile.html`,
+  );
+  const reportRelToData = path.relative(dataRoot, reportPath);
+  const reportInContainer = `/app/data/${reportRelToData}`;
+
+  console.log(
+    chalk.gray(
+      'Running ydata-profiling report via docker ml-profile service...',
+    ),
+  );
+  const result = spawnSync(
+    'docker',
+    [
+      'compose',
+      '-f',
+      'docker-compose.ml.yml',
+      'run',
+      '--rm',
+      'ml-profile',
+      'python',
+      '/app/ml/profile.py',
+      '--input',
+      inputInContainer,
+      '--rows',
+      String(rowsToInspect),
+      '--mode',
+      mode,
+      '--output',
+      reportInContainer,
+      '--title',
+      `ML Profile: ${path.basename(datasetPath)}`,
+    ],
+    {
+      stdio: 'inherit',
+      env: {
+        ...process.env,
+        PYTHONUNBUFFERED: '1',
+      },
+    },
+  );
+
+  if ((result.status ?? 1) !== 0) {
+    console.error(
+      chalk.red(
+        'ydata-profiling failed. Build profile image first: docker compose -f docker-compose.ml.yml build ml-profile',
+      ),
+    );
+    process.exit(result.status ?? 1);
+  }
+
+  console.log(chalk.green(`Profile report saved: ${reportPath}`));
+};
+
+const main = async () => {
+  const dir = String(flags.dir || 'data/ml/export');
+  const split = String(flags.split || 'train').toLowerCase();
+  const rowsToInspect = asPositiveInt(flags.rows, 10000);
+  const mode = toMode(flags.mode);
+  const strategy = String(flags.strategy || '');
+  const limitIssues = asPositiveInt(flags.limitIssues, 25);
+  const minFieldValues = asPositiveInt(flags.minFieldValues, 50);
+  const toolFromFlags = toInspectTool(flags.tool);
+
+  if (split !== 'train' && split !== 'test') {
+    console.error(chalk.red('Invalid --split. Use train or test.'));
+    process.exit(1);
+  }
+
+  const explicitFile = flags.file ? String(flags.file) : '';
+  const datasetPath =
+    explicitFile ||
+    (await findLatestDataset({
+      dir,
+      split,
+      strategy,
+    }));
+
+  if (!datasetPath) {
+    console.error(
+      chalk.red(
+        `No dataset found. Expected ml-dataset-*.${split}.jsonl in ${dir}`,
+      ),
+    );
+    process.exit(1);
+  }
+
+  const tool = toolFromFlags ?? (await selectInspectTool('quick'));
+  if (tool === 'ydata') {
+    await runYDataInspect({
+      datasetPath,
+      mode,
+      rowsToInspect,
+    });
+    return;
+  }
+
+  await runQuickInspect({
+    datasetPath,
+    mode,
+    rowsToInspect,
+    limitIssues,
+    minFieldValues,
+  });
 };
 
 main().catch((err) => {

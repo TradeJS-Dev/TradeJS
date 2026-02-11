@@ -1,5 +1,6 @@
 import args from 'args';
 import chalk from 'chalk';
+import _ from 'lodash';
 const ListIt = require('list-it');
 import { connectors } from '@src/connectors';
 import { getTickers } from '@utils/cli';
@@ -16,6 +17,7 @@ args.option(['C', 'coverage'], 'Show coverage table', false);
 args.option(['u', 'update'], 'Update results config in redis', false);
 args.option(['m', 'merge'], 'Merge results config in redis', false);
 args.option(['c', 'clear'], 'Clear results config in redis', false);
+args.option(['V', 'verbose'], 'Verbose output', false);
 args.option(['U', 'user'], 'Use user config', 'root');
 
 const flags = args.parse(process.argv);
@@ -128,6 +130,55 @@ const buildBestResults = async (
   }
 
   return bestBySymbol;
+};
+
+const getSavedProfitsBySymbol = async (
+  userName: string,
+  strategyName: string,
+  currentResults: Record<string, Test['strategyConfig']>,
+): Promise<Map<string, number>> => {
+  const testConfigs = await getTestConfigs(userName);
+  const savedProfitBySymbol = new Map<string, number>();
+
+  for await (const {
+    testName,
+    strategyName: strategyFromIndex,
+  } of testConfigs) {
+    const config = (await getData(
+      redisKeys.testConfig(userName, strategyFromIndex, testName),
+      null,
+    )) as Test | null;
+
+    if (!config || config.strategyName !== strategyName) {
+      continue;
+    }
+
+    const savedConfig = currentResults[config.symbol];
+    if (!savedConfig || !_.isEqual(savedConfig, config.strategyConfig)) {
+      continue;
+    }
+
+    const stat = (await getData(
+      redisKeys.testStat(userName, strategyFromIndex, testName),
+      null,
+    )) as TestStat | null;
+
+    if (!stat) {
+      continue;
+    }
+
+    const profit = getMonthlyReturn(
+      stat.totalReturn ?? 0,
+      stat.periodMonths ?? 0,
+    );
+
+    const prevProfit = savedProfitBySymbol.get(config.symbol);
+    if (prevProfit === undefined || profit > prevProfit) {
+      savedProfitBySymbol.set(config.symbol, profit);
+    }
+  }
+
+  return savedProfitBySymbol;
 };
 
 const getCoverageRow = async (
@@ -249,18 +300,79 @@ const results = async () => {
         {},
       )) as Record<string, Test['strategyConfig']>;
 
+      const savedProfitBySymbol = await getSavedProfitsBySymbol(
+        userName,
+        strategyName,
+        current,
+      );
+
+      const updates = [...bestBySymbol.values()].filter(
+        ({ symbol, profit }) => {
+          const savedProfit = savedProfitBySymbol.get(symbol);
+          return savedProfit === undefined || profit > savedProfit;
+        },
+      );
+
+      if (updates.length === 0) {
+        console.log(
+          chalk.yellow(
+            `No symbols with higher profit than saved results:${strategyName}`,
+          ),
+        );
+        return;
+      }
+
       const merged = {
         ...current,
-        ...resultsConfig,
+        ...Object.fromEntries(updates.map((row) => [row.symbol, row.config])),
       };
 
       await setData(redisKeys.strategyResults(userName, strategyName), merged, {
         expire: 0,
       });
 
+      if (flags.verbose) {
+        const updateRows = updates
+          .sort((a, b) => {
+            const prevA = savedProfitBySymbol.get(a.symbol) ?? -Infinity;
+            const prevB = savedProfitBySymbol.get(b.symbol) ?? -Infinity;
+            return b.profit - prevB - (a.profit - prevA);
+          })
+          .map((row) => {
+            const prevProfit = savedProfitBySymbol.get(row.symbol);
+            const delta = row.profit - (prevProfit ?? 0);
+
+            return [
+              chalk.yellow(row.symbol),
+              chalk.gray(
+                prevProfit === undefined ? 'N/A' : formatPercent(prevProfit),
+              ),
+              chalk.green(formatPercent(row.profit)),
+              chalk.blue(
+                `${delta >= 0 ? '+' : ''}${formatPercent(delta).replace('+', '')}`,
+              ),
+            ];
+          });
+
+        console.log('');
+        console.log(chalk.gray('MERGE UPDATES:'));
+        console.log(
+          createListIt()
+            .setHeaderRow([
+              chalk.yellow('SYMBOL'),
+              chalk.gray('PREV_PROFIT'),
+              chalk.green('NEW_PROFIT'),
+              chalk.blue('DELTA'),
+            ])
+            .d(updateRows)
+            .toString(),
+        );
+        console.log('');
+      }
+
       console.log(
         chalk.green(
-          `Merged ${Object.keys(resultsConfig).length} symbols into results:${strategyName}`,
+          `Merged ${updates.length} symbols into results:${strategyName} (only higher profit)`,
         ),
       );
 

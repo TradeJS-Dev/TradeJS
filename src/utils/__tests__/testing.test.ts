@@ -152,9 +152,8 @@ describe('testing backtest flow', () => {
   });
 
   it('limits ml payload candle history to configured ML window', async () => {
-    const prev = Array.from(
-      { length: ML_BASE_CANDLES_WINDOW + 10 },
-      (_, i) => candle(1_000_000 + i),
+    const prev = Array.from({ length: ML_BASE_CANDLES_WINDOW + 10 }, (_, i) =>
+      candle(1_000_000 + i),
     );
     const testPart = [candle(2_000_200)];
     mockByBitConnector.kline.mockResolvedValue([...prev, ...testPart]);

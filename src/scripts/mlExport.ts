@@ -16,14 +16,19 @@ import {
 
 args.example(
   'yarn ts-node ./src/scripts/mlExport --format both',
-  'Export ML dataset from Redis to data/ml',
+  'Export ML dataset from Redis to data/ml/export',
 );
 
-args.option(['o', 'outDir'], 'Output directory', 'data/ml');
+args.option(['o', 'outDir'], 'Output directory', 'data/ml/export');
 args.option(['f', 'format'], 'csv | jsonl | both', 'both');
 args.option(['i', 'includeOpen'], 'Include signals without result', false);
 args.option(['l', 'limit'], 'Limit number of signals', 0);
 args.option(['s', 'strategy'], 'Filter by strategy/strategyName');
+args.option(
+  ['t', 'testWindowDays'],
+  'Test window size in days for time split',
+  30,
+);
 args.option(
   ['c', 'clearRedis'],
   'Clear ml:* keys after successful export',
@@ -162,6 +167,11 @@ const mlExport = async () => {
   const includeOpen = Boolean(flags.includeOpen);
   const format = String(flags.format || 'both').toLowerCase();
   const strategyFilter = flags.strategy ? String(flags.strategy) : '';
+  const testWindowDaysRaw = Number.parseInt(String(flags.testWindowDays), 10);
+  const testWindowDays =
+    Number.isFinite(testWindowDaysRaw) && testWindowDaysRaw > 0
+      ? testWindowDaysRaw
+      : 30;
   const trainLabel = 'train';
   const testLabel = 'test';
 
@@ -189,7 +199,12 @@ const mlExport = async () => {
   const headerSetTrain = new Set<string>();
   const headerSetTest = new Set<string>();
 
-  const tempDir = path.join(outDir, `ml-export-chunks-${Date.now()}`);
+  const tempDir = path.join(
+    outDir,
+    `ml-export-chunks-${Date.now()}-${process.pid}-${Math.random()
+      .toString(36)
+      .slice(2, 8)}`,
+  );
   await fs.mkdir(tempDir, { recursive: true });
 
   const chunkFilesTrain: string[] = [];
@@ -238,7 +253,7 @@ const mlExport = async () => {
     process.exit(0);
   }
 
-  const testWindowMs = 30 * 24 * 60 * 60 * 1000;
+  const testWindowMs = testWindowDays * 24 * 60 * 60 * 1000;
   const testStart = maxTimestamp - testWindowMs;
 
   for (let start = 0; start < keys.length; start += CHUNK_SIZE) {
@@ -362,7 +377,7 @@ const mlExport = async () => {
 
   console.log(
     chalk.gray(
-      `rows: ${totalRows} (chunks: ${chunkFilesTrain.length + chunkFilesTest.length}), split: time(last 30d), includeOpen: ${includeOpen}, strategy: ${strategyFilter || 'any'}`,
+      `rows: ${totalRows} (chunks: ${chunkFilesTrain.length + chunkFilesTest.length}), split: time(last ${testWindowDays}d), includeOpen: ${includeOpen}, strategy: ${strategyFilter || 'any'}`,
     ),
   );
 

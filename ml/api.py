@@ -46,18 +46,14 @@ def _ensure_proto() -> None:
         raise RuntimeError("Failed to generate gRPC stubs")
 
 
-def _load_models(strategy: str, side: str | None = None) -> List[Any]:
-    cache_key = f'{strategy}:{side or "legacy"}'
+def _load_models(strategy: str) -> List[Any]:
+    cache_key = strategy
     cached = _model_cache.get(cache_key)
     if cached is not None:
         return cached
 
-    if side:
-        pattern = os.path.join(MODEL_DIR, f"{strategy}.{side}.model*.joblib")
-        model_path = os.path.join(MODEL_DIR, f"{strategy}.{side}.joblib")
-    else:
-        pattern = os.path.join(MODEL_DIR, f"{strategy}.model*.joblib")
-        model_path = os.path.join(MODEL_DIR, f"{strategy}.joblib")
+    pattern = os.path.join(MODEL_DIR, f"{strategy}.model*.joblib")
+    model_path = os.path.join(MODEL_DIR, f"{strategy}.joblib")
 
     model_paths = sorted(glob.glob(pattern))
     if model_paths:
@@ -66,9 +62,6 @@ def _load_models(strategy: str, side: str | None = None) -> List[Any]:
         return models
 
     if not os.path.exists(model_path):
-        if side:
-            # Backward compatibility with pre-directional model artifacts.
-            return _load_models(strategy, None)
         raise FileNotFoundError(model_path)
 
     model = joblib.load(model_path)
@@ -79,13 +72,7 @@ def _load_models(strategy: str, side: str | None = None) -> List[Any]:
 def _align_features(X: pd.DataFrame, expected: List[str]) -> pd.DataFrame:
     if not expected:
         return X
-    missing = [c for c in expected if c not in X.columns]
-    for col in missing:
-        X[col] = 0
-    extra = [c for c in X.columns if c not in expected]
-    if extra:
-        X = X.drop(columns=extra)
-    return X[expected]
+    return X.reindex(columns=expected, fill_value=0)
 
 
 def _predict_proba(models: List[Any], features: Dict[str, float]) -> float:
@@ -111,14 +98,12 @@ def serve() -> None:
             strategy = request.strategy or DEFAULT_STRATEGY
             threshold = request.threshold or DEFAULT_THRESHOLD
             features = dict(request.features)
-            direction = float(features.get('direction', 1.0))
-            side = 'long' if direction >= 0.5 else 'short'
 
             try:
-                models = _load_models(strategy, side)
+                models = _load_models(strategy)
             except FileNotFoundError:
                 context.set_code(grpc.StatusCode.NOT_FOUND)
-                context.set_details(f"Model not found: {strategy} ({side})")
+                context.set_details(f"Model not found: {strategy}")
                 return PredictResponse(probability=0.0, threshold=threshold, passed=False)
 
             prob = _predict_proba(models, features)

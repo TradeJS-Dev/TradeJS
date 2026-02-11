@@ -4,6 +4,7 @@ import { createReadStream, createWriteStream } from 'fs';
 import { spawnSync } from 'child_process';
 import { once } from 'events';
 import readline from 'readline';
+import args from 'args';
 import chalk from 'chalk';
 import { selectStrategy } from './selectStrategy';
 
@@ -22,8 +23,39 @@ const asInt = (value: string | undefined, fallback: number) => {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 };
 
+const asNonNegativeInt = (value: string | undefined, fallback: number) => {
+  const parsed = Number.parseInt((value ?? '').trim(), 10);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
+};
+
 type ModelType = 'catboost' | 'random_forest';
 const MODEL_TYPES: ModelType[] = ['catboost', 'random_forest'];
+const STRATEGIES = ['Breakout', 'TrendLine', 'any'] as const;
+type StrategyType = (typeof STRATEGIES)[number];
+
+args.option(['s', 'strategy'], 'Strategy name (e.g. TrendLine)');
+args.option(['m', 'model'], 'Model type: catboost | random_forest');
+args.option(
+  ['L', 'latestOnly'],
+  'Use only latest dataset pair (overrides ML_TRAIN_USE_LATEST_ONLY)',
+  false,
+);
+const flags = args.parse(process.argv);
+
+const parseStrategy = (value: unknown): StrategyType | null => {
+  const raw = String(value ?? '').trim();
+  if (!raw) return null;
+  const byName = STRATEGIES.find(
+    (name) => name.toLowerCase() === raw.toLowerCase(),
+  );
+  return byName ?? null;
+};
+
+const parseModelType = (value: unknown): ModelType | null => {
+  const raw = String(value ?? '').trim().toLowerCase();
+  if (!raw) return null;
+  return MODEL_TYPES.includes(raw as ModelType) ? (raw as ModelType) : null;
+};
 
 const selectModelType = async (defaultModel: ModelType): Promise<ModelType> => {
   if (!process.stdin.isTTY) {
@@ -157,18 +189,26 @@ const listLatestTrainCsv = async (
 };
 
 const run = async () => {
-  const selected = await selectStrategy();
+  const selectedFromCli = parseStrategy(flags.strategy);
+  const selected =
+    selectedFromCli ??
+    (await selectStrategy());
   const envModelType = (process.env.ML_MODEL_TYPE ?? 'catboost')
     .trim()
     .toLowerCase();
-  const defaultModelType: ModelType =
-    MODEL_TYPES.includes(envModelType as ModelType)
-      ? (envModelType as ModelType)
-      : 'catboost';
-  const modelType = await selectModelType(defaultModelType);
-  const useLatestOnly = asBool(process.env.ML_TRAIN_USE_LATEST_ONLY);
-  const dataDir = path.join(process.cwd(), 'data', 'ml');
-  const bases = await listDatasetBases(dataDir, selected);
+  const defaultModelType: ModelType = MODEL_TYPES.includes(
+    envModelType as ModelType,
+  )
+    ? (envModelType as ModelType)
+    : 'catboost';
+  const modelFromCli = parseModelType(flags.model);
+  const modelType =
+    modelFromCli ?? (await selectModelType(defaultModelType));
+  const useLatestOnly =
+    Boolean(flags.latestOnly) || asBool(process.env.ML_TRAIN_USE_LATEST_ONLY);
+  const exportDir = path.join(process.cwd(), 'data', 'ml', 'export');
+  const modelDirRoot = path.join(process.cwd(), 'data', 'ml');
+  const bases = await listDatasetBases(exportDir, selected);
 
   let trainInputPath: string;
   let testInputPath: string;
@@ -176,42 +216,42 @@ const run = async () => {
 
   if (bases.length && useLatestOnly) {
     const latestBase = bases[bases.length - 1];
-    trainInputPath = path.join(dataDir, `${latestBase}.train.jsonl`);
-    testInputPath = path.join(dataDir, `${latestBase}.test.jsonl`);
+    trainInputPath = path.join(exportDir, `${latestBase}.train.jsonl`);
+    testInputPath = path.join(exportDir, `${latestBase}.test.jsonl`);
     console.log(
       `Using latest JSONL dataset pair: ${path.basename(trainInputPath)}`,
     );
   } else if (bases.length) {
     const trainFiles = bases.map((base) =>
-      path.join(dataDir, `${base}.train.jsonl`),
+      path.join(exportDir, `${base}.train.jsonl`),
     );
     const testFiles = bases.map((base) =>
-      path.join(dataDir, `${base}.test.jsonl`),
+      path.join(exportDir, `${base}.test.jsonl`),
     );
     const mergedPrefix = `ml-dataset-merged-${Date.now()}`;
-    trainInputPath = path.join(dataDir, `${mergedPrefix}.train.jsonl`);
-    testInputPath = path.join(dataDir, `${mergedPrefix}.test.jsonl`);
+    trainInputPath = path.join(exportDir, `${mergedPrefix}.train.jsonl`);
+    testInputPath = path.join(exportDir, `${mergedPrefix}.test.jsonl`);
     await concatFiles(trainFiles, trainInputPath);
     await concatFiles(testFiles, testInputPath);
     cleanupFiles = [trainInputPath, testInputPath];
     console.log(`Merged datasets: ${bases.length} exports`);
   } else {
-    const trainFile = await listLatestTrainCsv(dataDir, selected);
+    const trainFile = await listLatestTrainCsv(exportDir, selected);
     if (!trainFile) {
       console.error(
-        'No ml-dataset-*.train.jsonl or .train.csv found in data/ml',
+        'No ml-dataset-*.train.jsonl or .train.csv found in data/ml/export',
       );
       process.exit(1);
     }
     const testFile = trainFile.replace('.train.csv', '.test.csv');
-    const testPath = path.join(dataDir, testFile);
+    const testPath = path.join(exportDir, testFile);
     try {
       await fs.access(testPath);
     } catch {
-      console.error('No paired test dataset found in data/ml');
+      console.error('No paired test dataset found in data/ml/export');
       process.exit(1);
     }
-    trainInputPath = path.join(dataDir, trainFile);
+    trainInputPath = path.join(exportDir, trainFile);
     testInputPath = testPath;
     console.log(`Using latest CSV dataset pair: ${trainFile}`);
   }
@@ -231,13 +271,20 @@ const run = async () => {
     const useIncremental =
       !disableIncremental &&
       (forceIncremental || totalInputBytes >= autoIncrementalThresholdBytes);
-    const chunkSize = asInt(process.env.ML_TRAIN_CHUNK_SIZE, 50_000);
+    const chunkSize = asInt(process.env.ML_TRAIN_CHUNK_SIZE, 20_000);
     const incrementalIterations = asInt(
       process.env.ML_TRAIN_INCREMENTAL_ITERATIONS,
       30,
     );
+    const trainRecentDays = asNonNegativeInt(
+      process.env.ML_TRAIN_RECENT_DAYS,
+      60,
+    );
+    const enableEnsemble = asBool(process.env.ML_TRAIN_ENSEMBLE);
     const forceEnsemble = asBool(process.env.ML_TRAIN_FORCE_ENSEMBLE);
-    const useEnsemble = modelType === 'catboost' || forceEnsemble;
+    const disableEnsemble = asBool(process.env.ML_TRAIN_NO_ENSEMBLE);
+    const useEnsemble =
+      (forceEnsemble || enableEnsemble) && !disableEnsemble;
 
     if (useIncremental && modelType === 'catboost') {
       console.log(
@@ -245,10 +292,9 @@ const run = async () => {
       );
     }
     if (!useEnsemble) {
-      console.log(
-        'Using single-model mode for random_forest (outer ensemble disabled to reduce memory).',
-      );
+      console.log('Using single-model mode (outer ensemble disabled).');
     }
+    console.log(`Train recent days: ${trainRecentDays}`);
 
     const result = spawnSync(
       'docker',
@@ -262,13 +308,15 @@ const run = async () => {
         'python',
         '/app/ml/train.py',
         '--input',
-        `/app/data/ml/${path.basename(trainInputPath)}`,
+        `/app/data/ml/export/${path.basename(trainInputPath)}`,
         '--test-input',
-        `/app/data/ml/${path.basename(testInputPath)}`,
+        `/app/data/ml/export/${path.basename(testInputPath)}`,
         '--strategy',
         selected,
         '--model-type',
         modelType,
+        '--train-recent-days',
+        String(trainRecentDays),
         ...(useEnsemble ? ['--ensemble'] : []),
         ...(useIncremental && modelType === 'catboost'
           ? [
@@ -296,7 +344,7 @@ const run = async () => {
       );
     }
     if (code === 0) {
-      const modelDir = path.join(dataDir, 'models');
+      const modelDir = path.join(modelDirRoot, 'models');
       let savedModels: string[] = [];
       try {
         const entries = await fs.readdir(modelDir, { withFileTypes: true });
@@ -306,8 +354,6 @@ const run = async () => {
           .filter(
             (name) =>
               name === `${selected}.joblib` ||
-              name === `${selected}.long.joblib` ||
-              name === `${selected}.short.joblib` ||
               /^.+\.model\d+\.joblib$/.test(name),
           )
           .filter((name) => name.startsWith(`${selected}.`))

@@ -57,4 +57,20 @@ describe('TrendLine indicators pct windows', () => {
     expect(res).toBeTruthy();
     expect(res?.price24hPcnt).not.toBeNull();
   });
+
+  it('does not anchor price1hPcnt to current candle on coarse timeframe', () => {
+    const indicators = createIndicators([]);
+    const results: Array<ReturnType<typeof indicators.next> | null> = [];
+
+    const FOUR_HOURS_MS = 4 * 60 * 60_000;
+    const baseClose = 100;
+    for (let i = 0; i < 80; i += 1) {
+      const candle = makeCandle(i * FOUR_HOURS_MS, baseClose + i);
+      results.push(indicators.next(candle));
+    }
+
+    const last = results[results.length - 1];
+    expect(last).toBeTruthy();
+    expect(last?.price1hPcnt).not.toBe(0);
+  });
 });

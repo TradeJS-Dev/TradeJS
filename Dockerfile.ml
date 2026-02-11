@@ -10,7 +10,11 @@ RUN apt-get update \
   && rm -rf /var/lib/apt/lists/*
 
 COPY ml/requirements.txt /app/ml/requirements.txt
-RUN pip install --no-cache-dir -r /app/ml/requirements.txt
+RUN pip install \
+  --no-cache-dir \
+  --default-timeout=120 \
+  --retries=10 \
+  -r /app/ml/requirements.txt
 
 COPY ml /app/ml
 

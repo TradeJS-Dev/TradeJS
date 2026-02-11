@@ -1,5 +1,5 @@
 import { SMA, ATR, BollingerBands, OBV, MACD } from 'technicalindicators';
-import { Candle, KlineChartData } from '@types';
+import { Candle } from '@types';
 
 const INDICATOR_PERIODS = {
   maFast: 14,
@@ -88,7 +88,7 @@ export const applyIndicatorsToHistory = (
   pushIndicator('volume24h', indicators.volume24h ?? undefined);
 };
 
-export const createIndicators = (data: KlineChartData) => {
+export const createIndicators = (data: Candle[]) => {
   const closes: number[] = [];
   const highs: number[] = [];
   const lows: number[] = [];
@@ -206,6 +206,12 @@ export const createIndicators = (data: KlineChartData) => {
       return { startClose: closes[lastIdx], startIdx: lastIdx };
     }
     const prevIdx = idx - 1;
+    const currentIdx = timestamps.length - 1;
+    // For coarse timeframes (e.g. 4h/1d), prevent anchoring to the current bar
+    // when the target window is shorter than a single candle.
+    if (idx === currentIdx && timestamps[idx] > windowStart) {
+      return { startClose: closes[prevIdx], startIdx: prevIdx };
+    }
     const prevDiff = windowStart - timestamps[prevIdx];
     const nextDiff = timestamps[idx] - windowStart;
     const chosenIdx = prevDiff <= nextDiff ? prevIdx : idx;

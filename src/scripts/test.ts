@@ -45,9 +45,9 @@ const main = async () => {
     userName: 'root',
   });
 
-  await placeOrder(byBitConnector);
+  // await placeOrder(byBitConnector);
   // await closeOrder(byBitConnector);
-  // await getPosition(byBitConnector);
+  await getPosition(byBitConnector);
 };
 
 main();
