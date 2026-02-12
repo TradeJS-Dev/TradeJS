@@ -1,5 +1,7 @@
 describe('worker tester', () => {
   const originalSend = process.send;
+  const originalExit = process.exit;
+  const originalDisconnect = process.disconnect;
   let messageHandler:
     | ((msg: { chunkId: string; userName: string }) => void)
     | null = null;
@@ -45,11 +47,15 @@ describe('worker tester', () => {
   afterEach(() => {
     jest.restoreAllMocks();
     process.send = originalSend;
+    process.exit = originalExit;
+    process.disconnect = originalDisconnect;
   });
 
   it('sends test result and done message for successful test', async () => {
     const send = jest.fn();
     process.send = send as any;
+    process.disconnect = jest.fn() as any;
+    process.exit = jest.fn() as any;
 
     const test = { name: 't1' };
     const testingImpl = jest.fn(async () => ({
@@ -67,11 +73,15 @@ describe('worker tester', () => {
       test,
     });
     expect(send).toHaveBeenCalledWith({ done: true });
+    expect(process.disconnect).toHaveBeenCalled();
+    expect(process.exit).toHaveBeenCalledWith(0);
   });
 
   it('sends error payload and done message when testing throws', async () => {
     const send = jest.fn();
     process.send = send as any;
+    process.disconnect = jest.fn() as any;
+    process.exit = jest.fn() as any;
 
     const test = { name: 't2' };
     const testingImpl = jest.fn(async () => {
@@ -89,5 +99,7 @@ describe('worker tester', () => {
       }),
     );
     expect(send).toHaveBeenCalledWith({ done: true });
+    expect(process.disconnect).toHaveBeenCalled();
+    expect(process.exit).toHaveBeenCalledWith(0);
   });
 });

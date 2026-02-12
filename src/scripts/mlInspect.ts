@@ -41,7 +41,6 @@ args.example(
 );
 
 args.option(['d', 'dir'], 'Dataset directory', 'data/ml/export');
-args.option(['s', 'split'], 'train | test', 'train');
 args.option(['r', 'rows'], 'Rows to inspect', 10000);
 args.option(['m', 'mode'], 'head | tail | sample', 'sample');
 args.option(['S', 'strategy'], 'Strategy token in dataset filename', '');
@@ -236,17 +235,16 @@ const std = (values: number[], valuesMean: number) => {
 
 const findLatestDataset = async (params: {
   dir: string;
-  split: string;
   strategy: string;
 }) => {
-  const { dir, split, strategy } = params;
+  const { dir, strategy } = params;
   const entries = await fs.readdir(dir, { withFileTypes: true });
   const strategyToken = strategy.trim().toLowerCase();
-  const suffix = `.${split}.jsonl`;
   const files = entries
     .filter((entry: Dirent) => entry.isFile())
     .map((entry: Dirent) => entry.name)
-    .filter((name: string) => name.endsWith(suffix))
+    .filter((name: string) => name.endsWith('.jsonl'))
+    .filter((name: string) => !name.includes('.train.') && !name.includes('.test.'))
     .filter((name: string) =>
       strategyToken
         ? name.toLowerCase().includes(`ml-dataset-${strategyToken}-`)
@@ -545,7 +543,7 @@ const runYDataInspect = async (params: {
 
   const relToData = path.relative(dataRoot, absDatasetPath);
   const inputInContainer = `/app/data/${relToData}`;
-  const reportDir = path.resolve(cwd, 'data', 'ml', 'export', 'reports');
+  const reportDir = path.dirname(absDatasetPath);
   await fs.mkdir(reportDir, { recursive: true });
   const reportPath = path.join(
     reportDir,
@@ -604,7 +602,6 @@ const runYDataInspect = async (params: {
 
 const main = async () => {
   const dir = String(flags.dir || 'data/ml/export');
-  const split = String(flags.split || 'train').toLowerCase();
   const rowsToInspect = asPositiveInt(flags.rows, 10000);
   const mode = toMode(flags.mode);
   const strategy = String(flags.strategy || '');
@@ -612,24 +609,18 @@ const main = async () => {
   const minFieldValues = asPositiveInt(flags.minFieldValues, 50);
   const toolFromFlags = toInspectTool(flags.tool);
 
-  if (split !== 'train' && split !== 'test') {
-    console.error(chalk.red('Invalid --split. Use train or test.'));
-    process.exit(1);
-  }
-
   const explicitFile = flags.file ? String(flags.file) : '';
   const datasetPath =
     explicitFile ||
     (await findLatestDataset({
       dir,
-      split,
       strategy,
     }));
 
   if (!datasetPath) {
     console.error(
       chalk.red(
-        `No dataset found. Expected ml-dataset-*.${split}.jsonl in ${dir}`,
+        `No dataset found. Expected ml-dataset-*.jsonl in ${dir}`,
       ),
     );
     process.exit(1);

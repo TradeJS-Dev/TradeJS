@@ -1,6 +1,14 @@
 import { SMA, ATR, BollingerBands, OBV, MACD } from 'technicalindicators';
 import { Candle } from '@types';
 
+const CANDLE_WINDOW = 10;
+const BASE_INTERVAL_MINUTES = 15;
+const INDICATOR_TIMEFRAMES = [
+  { minutes: 60, suffix: '1h' },
+  { minutes: 240, suffix: '4h' },
+  { minutes: 1440, suffix: '1d' },
+] as const;
+
 const INDICATOR_PERIODS = {
   maFast: 14,
   maMedium: 49,
@@ -18,6 +26,59 @@ const INDICATOR_PERIODS = {
 
 const ONE_HOUR_MS = 3_600_000;
 const ONE_DAY_MS = 86_400_000;
+
+const toMlCandle = (candle: Candle): Candle => ({
+  open: Number(candle.open) || 0,
+  high: Number(candle.high) || 0,
+  low: Number(candle.low) || 0,
+  close: Number(candle.close) || 0,
+  volume: Number(candle.volume) || 0,
+  turnover: Number(candle.turnover) || 0,
+  timestamp: Number(candle.timestamp) || 0,
+});
+
+const resampleCandles = (candles: Candle[], targetMinutes: number): Candle[] => {
+  if (targetMinutes <= BASE_INTERVAL_MINUTES) return candles.map(toMlCandle);
+
+  const bucketMs = targetMinutes * 60_000;
+  const buckets = new Map<number, Candle>();
+  for (const raw of candles) {
+    const candle = toMlCandle(raw);
+    const ts = candle.timestamp;
+    if (!Number.isFinite(ts) || ts <= 0) continue;
+
+    const bucket = Math.floor(ts / bucketMs) * bucketMs;
+    const current = buckets.get(bucket);
+    if (!current) {
+      buckets.set(bucket, { ...candle, timestamp: bucket });
+      continue;
+    }
+
+    current.high = Math.max(current.high, candle.high);
+    current.low = Math.min(current.low, candle.low);
+    current.close = candle.close;
+    current.volume += candle.volume;
+    current.turnover += candle.turnover;
+  }
+
+  return [...buckets.entries()]
+    .sort((a, b) => a[0] - b[0])
+    .map(([, candle]) => candle);
+};
+
+export const buildMlCandleIndicators = (
+  candles: Candle[],
+  btcCandles: Candle[],
+) => ({
+  candles15m: candles.slice(-CANDLE_WINDOW).map(toMlCandle),
+  candles1h: resampleCandles(candles, 60).slice(-CANDLE_WINDOW),
+  candles4h: resampleCandles(candles, 240).slice(-CANDLE_WINDOW),
+  candles1d: resampleCandles(candles, 1440).slice(-CANDLE_WINDOW),
+  btcCandles15m: btcCandles.slice(-CANDLE_WINDOW).map(toMlCandle),
+  btcCandles1h: resampleCandles(btcCandles, 60).slice(-CANDLE_WINDOW),
+  btcCandles4h: resampleCandles(btcCandles, 240).slice(-CANDLE_WINDOW),
+  btcCandles1d: resampleCandles(btcCandles, 1440).slice(-CANDLE_WINDOW),
+});
 
 const percentChange = (current: number, previous: number): number | null => {
   if (
@@ -61,6 +122,10 @@ type TrendlineIndicators = {
   volume24h: IndicatorValue;
 };
 
+type CreateIndicatorsOptions = {
+  includeMlPayload?: boolean;
+};
+
 export const applyIndicatorsToHistory = (
   indicators: TrendlineIndicators,
   pushIndicator: TrendlineIndicatorHistoryPush,
@@ -88,12 +153,19 @@ export const applyIndicatorsToHistory = (
   pushIndicator('volume24h', indicators.volume24h ?? undefined);
 };
 
-export const createIndicators = (data: Candle[]) => {
+export const createIndicators = (
+  data: Candle[],
+  btcData: Candle[] = [],
+  options: CreateIndicatorsOptions = {},
+) => {
+  const includeMlPayload = options.includeMlPayload !== false;
   const closes: number[] = [];
   const highs: number[] = [];
   const lows: number[] = [];
   const volumes: number[] = [];
   const timestamps: number[] = [];
+  const candlesHistory: Candle[] = [];
+  const btcCandlesHistory: Candle[] = [];
 
   const obv = new OBV({ close: [], volume: [] });
   const smaObv = new SMA({ period: INDICATOR_PERIODS.obvSma, values: [] });
@@ -218,7 +290,12 @@ export const createIndicators = (data: Candle[]) => {
     return { startClose: closes[chosenIdx], startIdx: chosenIdx };
   };
 
-  const next = (candle: Candle) => {
+  const next = (candle: Candle, btcCandle?: Candle) => {
+    candlesHistory.push(candle);
+    if (btcCandle) {
+      btcCandlesHistory.push(btcCandle);
+    }
+
     closes.push(candle.close);
     highs.push(candle.high);
     lows.push(candle.low);
@@ -326,12 +403,42 @@ export const createIndicators = (data: Candle[]) => {
     return result;
   };
 
-  data.forEach((candle) => {
-    next(candle);
+  data.forEach((candle, index) => {
+    next(candle, btcData[index]);
   });
 
   return {
     next,
-    result: () => indicatorHistory,
+    result: () => {
+      if (!includeMlPayload) {
+        return indicatorHistory;
+      }
+
+      return {
+        ...indicatorHistory,
+        ...buildMlTimeframeIndicators(candlesHistory),
+        ...buildMlCandleIndicators(candlesHistory, btcCandlesHistory),
+      };
+    },
   };
+};
+
+export const buildMlTimeframeIndicators = (
+  candles: Candle[],
+): Record<string, number[]> => {
+  const result: Record<string, number[]> = {};
+
+  for (const timeframe of INDICATOR_TIMEFRAMES) {
+    const tfCandles = resampleCandles(candles, timeframe.minutes);
+    if (tfCandles.length === 0) continue;
+
+    const history = createIndicators(tfCandles, [], {
+      includeMlPayload: false,
+    }).result();
+    for (const [key, values] of Object.entries(history)) {
+      result[`${key}${timeframe.suffix}`] = values.slice();
+    }
+  }
+
+  return result;
 };

@@ -1,6 +1,7 @@
 import { KlineIntervalV3 } from 'bybit-api';
 
 export type Interval = KlineIntervalV3;
+export type Provider = 'bybit' | 'binance' | 'coinbase';
 
 export interface Candle {
   open: number;
@@ -100,6 +101,7 @@ export interface Indicator {
 export type Indicators = Indicator[];
 
 export interface Filters {
+  provider?: Provider;
   symbol: string;
   interval: Interval;
   start: number;

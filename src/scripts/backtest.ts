@@ -8,7 +8,7 @@ import chalk from 'chalk';
 import _ from 'lodash';
 import { format } from 'date-fns';
 import { TESTS_TOP_LIMIT, TESTS_LIMIT, TTL_1M, TTL_1D } from '@constants';
-import { connectors } from '@src/connectors';
+import { connectors, ConnectorNames } from '@src/connectors';
 import { mergeConfigs, createTestSuite } from '@utils/grid';
 import { calculateStatsFull, sortBestTests } from '@utils/stat';
 import { setData, getData, redisKeys } from '@utils/redis';
@@ -22,6 +22,7 @@ import {
   TestStat,
   Test,
   TestWorkerResult,
+  ConnectorCreator,
 } from '@types';
 
 const MAX_PARALLEL = Math.min(os.cpus().length, 4);
@@ -136,12 +137,27 @@ const setTestData = async (test: Test, stat: TestStat, orderLog: OrderLog) => {
 };
 
 const backtest = async () => {
-  const byBitConnector = await connectors.ByBit({
+  const backtestConfig = await getData(
+    redisKeys.backtestConfig(userName, flags.config),
+  );
+  const connectorNameRaw = String(backtestConfig?.connectorName || '');
+  const connectorName =
+    connectorNameRaw === 'binance'
+      ? ConnectorNames.Binance
+      : connectorNameRaw === 'coinbase'
+        ? ConnectorNames.Coinbase
+        : connectorNameRaw === 'bybit'
+          ? ConnectorNames.ByBit
+          : ((backtestConfig?.connectorName as ConnectorNames | undefined) ||
+            ConnectorNames.ByBit);
+  const connectorFactory =
+    connectors[connectorName] || connectors[ConnectorNames.ByBit];
+  const marketConnector = await (connectorFactory as ConnectorCreator)({
     userName: flags.user,
   });
 
   const tickers = await getTickers(
-    byBitConnector,
+    marketConnector,
     flags.tickers,
     flags.exclude,
     flags.tickersLimit,
@@ -154,16 +170,12 @@ const backtest = async () => {
   }
 
   if (!flags.cacheOnly) {
-    await update(byBitConnector, interval, tickers);
+    await update(marketConnector, interval, tickers);
   }
 
   if (flags.updateOnly) {
     return;
   }
-
-  const backtestConfig = await getData(
-    redisKeys.backtestConfig(userName, flags.config),
-  );
 
   let testSuite = createTestSuite(userName, tickers, backtestConfig).slice(
     0,
@@ -177,6 +189,25 @@ const backtest = async () => {
   let results: TestWorkerResult[] = [];
   let completedWorkers = 0;
   let completedTests = 0;
+  let isFinishing = false;
+  const workers = new Set<ReturnType<typeof fork>>();
+
+  const stopWorkers = () => {
+    for (const worker of workers) {
+      if (!worker.killed) {
+        worker.kill('SIGTERM');
+      }
+    }
+  };
+
+  process.once('SIGINT', () => {
+    stopWorkers();
+    process.exit(130);
+  });
+  process.once('SIGTERM', () => {
+    stopWorkers();
+    process.exit(143);
+  });
 
   console.log(chalk.yellow(`tests: ${testSuite.length}`));
 
@@ -197,20 +228,23 @@ const backtest = async () => {
         execArgv: ['--max-old-space-size=8192', '-r', 'ts-node/register'],
       },
     );
+    workers.add(tester);
 
     tester.on('message', async (msg: any) => {
-      completedTests++;
-
       if (msg.done) {
         completedWorkers++;
+        workers.delete(tester);
 
-        if (completedWorkers === chunks.length) {
+        if (completedWorkers === chunks.length && !isFinishing) {
+          isFinishing = true;
           results = sortBestTests(results, flags.top);
           await finish(results);
         }
 
         return;
       }
+
+      completedTests++;
 
       if (msg.error) {
         errorTests++;
@@ -271,6 +305,7 @@ const backtest = async () => {
     });
 
     tester.on('exit', (code) => {
+      workers.delete(tester);
       if (code !== 0) {
         recordError({ error: `Worker exited with code ${code}` });
         console.error(chalk.red(`Worker exited with code ${code}`));

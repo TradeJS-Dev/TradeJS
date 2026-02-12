@@ -12,81 +12,15 @@ import { fetchMlThreshold } from '@utils/mlGrpc';
 import { filterByVeryVolatility } from './filters';
 import { config as DEFAULT_CONFIG } from './config';
 import { createIndicators } from './indicators';
-import { Candle, Signal, TrendLineOptions, StrategyCreator } from '@types';
+import {
+  Signal,
+  TrendLineOptions,
+  StrategyCreator,
+  StrategyResults,
+} from '@types';
 
 const PRELOAD_START = getTimestamp(SIGNALS_PRELOAD_DAYS);
 const FEE = 0.005;
-const CANDLE_WINDOW = 10;
-const BASE_INTERVAL_MINUTES = 15;
-const INDICATOR_TIMEFRAMES = [
-  { minutes: 60, suffix: '1h' },
-  { minutes: 240, suffix: '4h' },
-  { minutes: 1440, suffix: '1d' },
-] as const;
-
-const toMlCandle = (candle: Candle): Candle => ({
-  open: Number(candle.open) || 0,
-  high: Number(candle.high) || 0,
-  low: Number(candle.low) || 0,
-  close: Number(candle.close) || 0,
-  volume: Number(candle.volume) || 0,
-  turnover: Number(candle.turnover) || 0,
-  timestamp: Number(candle.timestamp) || 0,
-});
-
-const resampleCandles = (candles: Candle[], targetMinutes: number): Candle[] => {
-  if (targetMinutes <= BASE_INTERVAL_MINUTES) return candles.map(toMlCandle);
-  const bucketMs = targetMinutes * 60_000;
-  const buckets = new Map<number, Candle>();
-  for (const raw of candles) {
-    const candle = toMlCandle(raw);
-    const ts = candle.timestamp;
-    if (!Number.isFinite(ts) || ts <= 0) continue;
-    const bucket = Math.floor(ts / bucketMs) * bucketMs;
-    const current = buckets.get(bucket);
-    if (!current) {
-      buckets.set(bucket, { ...candle, timestamp: bucket });
-      continue;
-    }
-    current.high = Math.max(current.high, candle.high);
-    current.low = Math.min(current.low, candle.low);
-    current.close = candle.close;
-    current.volume += candle.volume;
-    current.turnover += candle.turnover;
-  }
-  return [...buckets.entries()]
-    .sort((a, b) => a[0] - b[0])
-    .map(([, candle]) => candle);
-};
-
-const buildMlCandleIndicators = (candles: Candle[], btcCandles: Candle[]) => ({
-  candles15m: candles.slice(-CANDLE_WINDOW).map(toMlCandle),
-  candles1h: resampleCandles(candles, 60).slice(-CANDLE_WINDOW),
-  candles4h: resampleCandles(candles, 240).slice(-CANDLE_WINDOW),
-  candles1d: resampleCandles(candles, 1440).slice(-CANDLE_WINDOW),
-  btcCandles15m: btcCandles.slice(-CANDLE_WINDOW).map(toMlCandle),
-  btcCandles1h: resampleCandles(btcCandles, 60).slice(-CANDLE_WINDOW),
-  btcCandles4h: resampleCandles(btcCandles, 240).slice(-CANDLE_WINDOW),
-  btcCandles1d: resampleCandles(btcCandles, 1440).slice(-CANDLE_WINDOW),
-});
-
-const buildMlTimeframeIndicators = (
-  candles: Candle[],
-): Record<string, number[]> => {
-  const result: Record<string, number[]> = {};
-
-  for (const timeframe of INDICATOR_TIMEFRAMES) {
-    const tfCandles = resampleCandles(candles, timeframe.minutes);
-    if (tfCandles.length === 0) continue;
-
-    const history = createIndicators(tfCandles).result();
-    for (const [key, values] of Object.entries(history)) {
-      result[`${key}${timeframe.suffix}`] = values.slice();
-    }
-  }
-
-  return result;
-};
 
 export const TrendlineStrategyCreator: StrategyCreator = async ({
   userName,
@@ -110,13 +44,13 @@ export const TrendlineStrategyCreator: StrategyCreator = async ({
     const results = (await getData(
       redisKeys.strategyResults(userName, 'TrendLine'),
       {},
-    )) as Record<string, typeof config>;
+    )) as StrategyResults;
 
-    const backtestConfig = results?.[symbol];
-    if (backtestConfig && !_.isEmpty(backtestConfig)) {
+    const backtestResult = results?.[symbol];
+    if (backtestResult && !_.isEmpty(backtestResult.config)) {
       config = {
         ...config,
-        ...backtestConfig,
+        ...backtestResult.config,
       };
       configFromBacktest = true;
     }
@@ -135,7 +69,7 @@ export const TrendlineStrategyCreator: StrategyCreator = async ({
   } = config;
 
   let indicatorsController =
-    ENV !== 'BACKTEST' ? null : createIndicators(cachedData);
+    ENV !== 'BACKTEST' ? null : createIndicators(cachedData, btcCachedData);
 
   const trendlineOptions: Partial<TrendLineOptions> = {
     bestLines: 1,
@@ -153,6 +87,91 @@ export const TrendlineStrategyCreator: StrategyCreator = async ({
     ...trendlineOptions,
   });
 
+  const closeOppositePositionsBeforeOpen = async ({
+    currentSymbol,
+    currentDirection,
+    price,
+    timestamp,
+  }: {
+    currentSymbol: string;
+    currentDirection: 'LONG' | 'SHORT';
+    price: number;
+    timestamp: number;
+  }) => {
+    try {
+      logger.log(
+        'info',
+        '[TrendLine] checking open positions before open: %s %s',
+        currentSymbol,
+        currentDirection,
+      );
+
+      const positions = await connector.getPositions();
+      const openPositions = (positions || []).filter(
+        (item) => item && Number(item.qty) > 0,
+      );
+
+      logger.log(
+        'info',
+        '[TrendLine] open positions found: %s',
+        openPositions.length,
+      );
+
+      const oppositePositions = openPositions.filter(
+        (item) =>
+          item.symbol !== currentSymbol && item.direction !== currentDirection,
+      );
+
+      if (_.isEmpty(oppositePositions)) {
+        logger.log(
+          'info',
+          '[TrendLine] no opposite positions to close before open: %s',
+          currentSymbol,
+        );
+        return;
+      }
+
+      for (const position of oppositePositions) {
+        logger.log(
+          'info',
+          '[TrendLine] closing opposite position: %s %s qty=%s',
+          position.symbol,
+          position.direction,
+          position.qty,
+        );
+
+        try {
+          await connector.closePosition({
+            symbol: position.symbol,
+            price,
+            timestamp,
+            direction: position.direction,
+          });
+
+          logger.log(
+            'info',
+            '[TrendLine] opposite position closed: %s',
+            position.symbol,
+          );
+        } catch (err) {
+          logger.log(
+            'error',
+            '[TrendLine] failed to close opposite position: %s %s',
+            position.symbol,
+            err,
+          );
+        }
+      }
+    } catch (err) {
+      logger.log(
+        'error',
+        '[TrendLine] failed to load open positions before open: %s %s',
+        currentSymbol,
+        err,
+      );
+    }
+  };
+
   return async (candle, btcCandle) => {
     cachedData.push(candle);
     btcCachedData.push(btcCandle);
@@ -161,7 +180,7 @@ export const TrendlineStrategyCreator: StrategyCreator = async ({
     const highsTrendlines = getHighsTrendlines.next(candle);
 
     if (indicatorsController) {
-      indicatorsController.next(candle);
+      indicatorsController.next(candle, btcCandle);
     }
 
     let bestLine =
@@ -271,15 +290,16 @@ export const TrendlineStrategyCreator: StrategyCreator = async ({
     if (!indicatorsController) {
       indicatorsController = createIndicators(
         cachedData.slice(0, cachedData.length - 1),
+        btcCachedData.slice(0, btcCachedData.length - 1),
       );
 
-      indicatorsController.next(cachedData[cachedData.length - 1]);
+      indicatorsController.next(
+        cachedData[cachedData.length - 1],
+        btcCachedData[btcCachedData.length - 1],
+      );
     }
 
     const indicatorHistory = indicatorsController.result();
-    const timeframeIndicatorHistory = buildMlTimeframeIndicators(
-      cachedData as Candle[],
-    );
 
     const signalId = uuid();
 
@@ -305,8 +325,6 @@ export const TrendlineStrategyCreator: StrategyCreator = async ({
         touches: bestLine.touches.length + 2,
         distance: bestLine.distance,
         ...indicatorHistory,
-        ...timeframeIndicatorHistory,
-        ...buildMlCandleIndicators(cachedData as Candle[], btcCachedData as Candle[]),
       },
       configFromBacktest,
     };
@@ -331,6 +349,15 @@ export const TrendlineStrategyCreator: StrategyCreator = async ({
 
     if (MAKE_ORDERS) {
       try {
+        if (ENV !== 'BACKTEST') {
+          await closeOppositePositionsBeforeOpen({
+            currentSymbol: symbol,
+            currentDirection: direction,
+            price: currentPrice,
+            timestamp: lastCandle.timestamp,
+          });
+        }
+
         await connector.placeOrder(
           {
             symbol,

@@ -21,6 +21,11 @@ const useStore = create<IndicatorsState>()(
           enabled: true,
         },
         {
+          id: 'spread',
+          label: 'Spread',
+          enabled: true,
+        },
+        {
           id: 'vol',
           label: 'Vol',
           enabled: true,

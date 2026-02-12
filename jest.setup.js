@@ -17,3 +17,10 @@ if (typeof global.structuredClone !== 'function') {
 if (typeof global.structuredClone !== 'function') {
   global.structuredClone = (value) => JSON.parse(JSON.stringify(value));
 }
+
+if (typeof global.TextEncoder === 'undefined') {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { TextEncoder, TextDecoder } = require('node:util');
+  global.TextEncoder = TextEncoder;
+  global.TextDecoder = TextDecoder;
+}

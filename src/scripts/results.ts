@@ -1,11 +1,10 @@
 import args from 'args';
 import chalk from 'chalk';
-import _ from 'lodash';
 const ListIt = require('list-it');
 import { connectors } from '@src/connectors';
 import { getTickers } from '@utils/cli';
 import { getData, getKeys, setData, delKey, redisKeys } from '@utils/redis';
-import { Test, TestStat } from '@types';
+import { Test, TestStat, StrategyResults } from '@types';
 
 args.example(
   'yarn results --strategy TrendLine --coverage',
@@ -32,7 +31,10 @@ type BestResult = {
   winRate: number;
   orders: number;
   config: Test['strategyConfig'];
+  stats: TestStat;
 };
+
+type StrategyResultEntry = StrategyResults[string];
 
 const createListIt = () =>
   new ListIt({
@@ -54,6 +56,20 @@ const getMonthlyReturn = (totalReturn: number, periodMonths: number) => {
 
   return (Math.pow(base, 1 / periodMonths) - 1) * 100;
 };
+
+const toStrategyResultEntry = (
+  row: Pick<BestResult, 'config' | 'stats'>,
+): StrategyResultEntry => ({
+  config: row.config,
+  stats: row.stats,
+});
+
+const toStrategyResults = (
+  rows: Iterable<BestResult>,
+): StrategyResults =>
+  Object.fromEntries(
+    [...rows].map((row) => [row.symbol, toStrategyResultEntry(row)]),
+  );
 
 const getTestConfigs = async (userName: string) => {
   const testsPrefix = redisKeys.tests(userName);
@@ -125,6 +141,7 @@ const buildBestResults = async (
         winRate,
         orders: stat.orders ?? 0,
         config: config.strategyConfig,
+        stats: stat,
       });
     }
   }
@@ -133,48 +150,19 @@ const buildBestResults = async (
 };
 
 const getSavedProfitsBySymbol = async (
-  userName: string,
-  strategyName: string,
-  currentResults: Record<string, Test['strategyConfig']>,
+  currentResults: StrategyResults,
 ): Promise<Map<string, number>> => {
-  const testConfigs = await getTestConfigs(userName);
   const savedProfitBySymbol = new Map<string, number>();
 
-  for await (const {
-    testName,
-    strategyName: strategyFromIndex,
-  } of testConfigs) {
-    const config = (await getData(
-      redisKeys.testConfig(userName, strategyFromIndex, testName),
-      null,
-    )) as Test | null;
-
-    if (!config || config.strategyName !== strategyName) {
-      continue;
-    }
-
-    const savedConfig = currentResults[config.symbol];
-    if (!savedConfig || !_.isEqual(savedConfig, config.strategyConfig)) {
-      continue;
-    }
-
-    const stat = (await getData(
-      redisKeys.testStat(userName, strategyFromIndex, testName),
-      null,
-    )) as TestStat | null;
-
-    if (!stat) {
-      continue;
-    }
-
+  for (const [symbol, result] of Object.entries(currentResults)) {
+    const stat = result.stats;
     const profit = getMonthlyReturn(
       stat.totalReturn ?? 0,
       stat.periodMonths ?? 0,
     );
-
-    const prevProfit = savedProfitBySymbol.get(config.symbol);
+    const prevProfit = savedProfitBySymbol.get(symbol);
     if (prevProfit === undefined || profit > prevProfit) {
-      savedProfitBySymbol.set(config.symbol, profit);
+      savedProfitBySymbol.set(symbol, profit);
     }
   }
 
@@ -189,14 +177,16 @@ const getCoverageRow = async (
   const currentResults = (await getData(
     redisKeys.strategyResults(userName, strategyName),
     {},
-  )) as Record<string, Test['strategyConfig']>;
+  )) as StrategyResults;
 
   const existingSymbols = new Set(Object.keys(currentResults));
   let goodMissing = 0;
-  let goodExisting = existingSymbols.size;
+  let goodExisting = 0;
 
   for (const symbol of goodSymbols) {
-    if (!existingSymbols.has(symbol)) {
+    if (existingSymbols.has(symbol)) {
+      goodExisting += 1;
+    } else {
       goodMissing += 1;
     }
   }
@@ -218,7 +208,7 @@ const getCoverageRow = async (
   };
 };
 
-const results = async () => {
+export const results = async () => {
   if (!flags.strategy) {
     console.error(chalk.red('Missing --strategy'));
     process.exit(1);
@@ -285,9 +275,7 @@ const results = async () => {
   }
 
   if (flags.update || flags.merge) {
-    const resultsConfig = Object.fromEntries(
-      [...bestBySymbol.values()].map((row) => [row.symbol, row.config]),
-    );
+    const resultsConfig = toStrategyResults(bestBySymbol.values());
 
     if (flags.merge) {
       if (Object.keys(resultsConfig).length === 0) {
@@ -298,13 +286,9 @@ const results = async () => {
       const current = (await getData(
         redisKeys.strategyResults(userName, strategyName),
         {},
-      )) as Record<string, Test['strategyConfig']>;
+      )) as StrategyResults;
 
-      const savedProfitBySymbol = await getSavedProfitsBySymbol(
-        userName,
-        strategyName,
-        current,
-      );
+      const savedProfitBySymbol = await getSavedProfitsBySymbol(current);
 
       const updates = [...bestBySymbol.values()].filter(
         ({ symbol, profit }) => {
@@ -324,7 +308,7 @@ const results = async () => {
 
       const merged = {
         ...current,
-        ...Object.fromEntries(updates.map((row) => [row.symbol, row.config])),
+        ...toStrategyResults(updates),
       };
 
       await setData(redisKeys.strategyResults(userName, strategyName), merged, {
@@ -397,4 +381,6 @@ const results = async () => {
   process.exit();
 };
 
-results();
+if (process.env.NODE_ENV !== 'test') {
+  void results();
+}

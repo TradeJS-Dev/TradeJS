@@ -46,8 +46,13 @@ export const cleanFiles = async (dir: string) => {
 
   for await (const file of files) {
     completed++;
-
-    await fs.unlink(`${dir}/${file}`);
+    const fullPath = `${dir}/${file}`;
+    const stat = await fs.lstat(fullPath);
+    if (stat.isDirectory()) {
+      await fs.rm(fullPath, { recursive: true, force: true });
+    } else {
+      await fs.unlink(fullPath);
+    }
 
     if (completed % 100 === 0 || completed === files.length) {
       bar.tick(completed === files.length ? completed % 100 : 100);

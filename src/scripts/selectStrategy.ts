@@ -1,9 +1,10 @@
 import readline from 'readline';
 import chalk from 'chalk';
-import { StrategyNames } from '@src/strategy';
 
-const strategies = Object.values(StrategyNames);
-const defaultStrategy = StrategyNames.TrendLine;
+// Keep this script dependency-free from runtime strategy modules.
+// Importing @src/strategy can trigger unrelated side-effects (e.g. Redis clients).
+const strategies = ['Breakout', 'TrendLine'] as const;
+const defaultStrategy = 'TrendLine';
 
 export const selectStrategy = async (
   promptLabel = 'Select strategy',

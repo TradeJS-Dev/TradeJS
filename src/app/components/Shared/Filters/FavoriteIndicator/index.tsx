@@ -4,9 +4,9 @@ import { useTickers } from '@store';
 
 export const FavoriteIndicator = () => {
   const {
-    filters: { symbol },
+    filters: { symbol, provider },
   } = useFiltersContext();
-  const { checkIsFavorite, toggleFavorite } = useTickers();
+  const { checkIsFavorite, toggleFavorite } = useTickers(provider || 'bybit');
   const isFavorite = checkIsFavorite(symbol);
 
   return (

@@ -14,7 +14,6 @@ RUN pip install \
   --no-cache-dir \
   --default-timeout=120 \
   --retries=10 \
-  --no-build-isolation \
   -r /app/ml/requirements.profile.txt
 
 COPY ml /app/ml

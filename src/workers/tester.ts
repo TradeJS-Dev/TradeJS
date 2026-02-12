@@ -3,9 +3,16 @@ import { TestSuite } from '@types';
 import { getData, redisKeys } from '@utils/redis';
 import { logger } from '@utils/logger';
 
+let isProcessing = false;
+
 process.on(
   'message',
   async ({ chunkId, userName }: { chunkId: string; userName: string }) => {
+    if (isProcessing) {
+      return;
+    }
+    isProcessing = true;
+
     const testSuite = (await getData(
       redisKeys.cacheChunk(userName, chunkId),
     )) as TestSuite;
@@ -33,5 +40,7 @@ process.on(
     }
 
     process.send?.({ done: true });
+    process.disconnect?.();
+    process.exit(0);
   },
 );

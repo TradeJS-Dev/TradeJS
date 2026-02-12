@@ -5,6 +5,7 @@ export { useEmaIndicator } from './useEmaIndicator';
 export { useWmaIndicator } from './useWmaIndicator';
 export { useVolIndicator } from './useVolIndicator';
 export { useBtcIndicator } from './useBtcIndicator';
+export { useSpreadIndicator } from './useSpreadIndicator';
 export { useTrendLine } from './useTrendLine';
 export { useBacktest } from './useBacktest';
 export { useSupportResistanceLines } from './useSupportResistanceLines';

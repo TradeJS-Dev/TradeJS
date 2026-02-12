@@ -9,7 +9,9 @@ const DashboardIndex = () => {
   const router = useRouter();
 
   useEffect(() => {
-    router.replace(`/routes/dashboard/${filters.symbol}/${filters.interval}`);
+    router.replace(
+      `/routes/dashboard/${filters.provider || 'bybit'}/${filters.symbol}/${filters.interval}`,
+    );
   }, []);
 
   return null;

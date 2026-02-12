@@ -18,6 +18,7 @@ import {
   useWmaIndicator,
   useVolIndicator,
   useBtcIndicator,
+  useSpreadIndicator,
   useTrendLine,
   useBacktest,
   useSupportResistanceLines,
@@ -122,6 +123,7 @@ export const KlineChart = ({ id, filters, indicators }: KlineChartProps) => {
   useWmaIndicator(chart, indicators.wma.enabled, indicators.wma.periods || []);
   useVolIndicator(chart, indicators.vol.enabled);
   useBtcIndicator(chart, indicators.btc.enabled, filters);
+  useSpreadIndicator(chart, indicators.spread?.enabled, filters);
   useBacktest(chart, filters.backtestId || undefined);
   useSupportResistanceLines(chart, indicators.resistant?.enabled);
   useTrendLine(chart, true);

@@ -1,15 +1,16 @@
 import { API } from '@utils/api';
-import { Kline, KlineChartData, KlineRequest } from '@types';
+import { KlineChartData, KlineRequest, Provider } from '@types';
 
 const API_PATH = '/api/kline';
 
-export const kline: Kline = async ({
+export const kline = async ({
+  provider = 'bybit',
   symbol,
   interval,
   ...options
-}: KlineRequest) => {
+}: KlineRequest & { provider?: Provider }) => {
   const data = await API.post<{ data?: KlineChartData }>(
-    `${API_PATH}/${symbol}/${interval}`,
+    `${API_PATH}/${provider}/${symbol}/${interval}`,
     options,
   );
 

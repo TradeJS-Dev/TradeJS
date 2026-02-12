@@ -35,17 +35,21 @@ const useFavoriteTickersStore = create<FavoriteTickersState>()(
 );
 
 interface TickersScannerState {
+  provider: string;
   tickers: Items;
-  setTickers: (tickers: Items) => void;
+  setTickers: (provider: string, tickers: Items) => void;
 }
 
 const useScannerStore = create<TickersScannerState>((set) => ({
+  provider: 'bybit',
   tickers: [] as Items,
-  setTickers: (coins) => set(() => ({ tickers: _.sortBy(coins, 'label') })),
+  setTickers: (provider, coins) =>
+    set(() => ({ provider, tickers: _.sortBy(coins, 'label') })),
 }));
 
-export const useTickers = () => {
+export const useTickers = (provider = 'bybit') => {
   const favorites = useFavoriteTickersStore((s) => s.favorites);
+  const loadedProvider = useScannerStore((s) => s.provider);
   const tickers = useScannerStore((s) => s.tickers);
   const toggleFavorite = useFavoriteTickersStore((s) => s.toggleFavorite);
   const setTickers = useScannerStore((s) => s.setTickers);
@@ -55,14 +59,14 @@ export const useTickers = () => {
   );
 
   useEffect(() => {
-    if (tickers.length) {
+    if (tickers.length && loadedProvider === provider) {
       return;
     }
 
-    scan().then((coins) => {
-      setTickers(coins);
+    scan(provider).then((coins) => {
+      setTickers(provider, coins);
     });
-  }, []);
+  }, [provider, loadedProvider]);
 
   const items = useMemo(() => {
     const favoriteItems = tickers

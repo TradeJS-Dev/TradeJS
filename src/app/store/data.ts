@@ -3,25 +3,30 @@ import { create } from 'zustand';
 import _ from 'lodash';
 import { get, set } from 'idb-keyval';
 import { useSearchParams } from 'next/navigation';
-import { KlineChartData, Interval, Filters } from '@types';
+import { KlineChartData, Interval, Filters, Provider } from '@types';
 import { kline } from '@actions/kline';
 import { mergeData, isWrongData } from '@utils/array';
 
 interface DataState {
   data: Map<string, KlineChartData | null>;
-  setData: (symbol: string, interval: Interval, data: KlineChartData) => void;
+  setData: (
+    provider: Provider,
+    symbol: string,
+    interval: Interval,
+    data: KlineChartData,
+  ) => void;
 }
 
-const getKey = (filters: Pick<Filters, 'symbol' | 'interval'>) =>
-  `${filters.symbol}_${filters.interval}`;
+const getKey = (filters: Pick<Filters, 'provider' | 'symbol' | 'interval'>) =>
+  `${filters.provider || 'bybit'}_${filters.symbol}_${filters.interval}`;
 
 const useDataStore = create<DataState>((set) => ({
   data: new Map<string, KlineChartData | null>(),
-  setData: (symbol, interval, newData) =>
+  setData: (provider, symbol, interval, newData) =>
     set(({ data }) => {
       const next = new Map(data);
 
-      next.set(getKey({ symbol, interval }), newData);
+      next.set(getKey({ provider, symbol, interval }), newData);
 
       return {
         data: next,
@@ -41,7 +46,7 @@ export const useData = (filters: Filters) => {
   const cacheOnly = Boolean(searchParams.get('cacheOnly')) ?? false;
 
   const updateData = async () => {
-    const { symbol, interval, start, end } = filters;
+    const { provider = 'bybit', symbol, interval, start, end } = filters;
     let currentData = [...data];
 
     if (!currentData || currentData.length < 2) {
@@ -66,6 +71,7 @@ export const useData = (filters: Filters) => {
     );
 
     const newData = await kline({
+      provider,
       symbol,
       interval,
       start: normStart,
@@ -89,6 +95,7 @@ export const useData = (filters: Filters) => {
       retried.current = true;
       set(key, []);
       const refetchData = await kline({
+        provider,
         symbol,
         interval,
         start,
@@ -96,7 +103,7 @@ export const useData = (filters: Filters) => {
         cacheOnly,
       });
       const cleaned = mergeData([], refetchData);
-      setData(symbol, interval, cleaned);
+      setData(provider as Provider, symbol, interval, cleaned);
       if (!fulfilled) {
         setFulfilled(true);
       }
@@ -104,7 +111,7 @@ export const useData = (filters: Filters) => {
       return;
     }
 
-    setData(symbol, interval, finalData);
+    setData(provider as Provider, symbol, interval, finalData);
 
     if (!fulfilled) {
       setFulfilled(true);

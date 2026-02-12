@@ -143,6 +143,20 @@ const computeKurtosis = (values: number[]): number => {
   return m4 / std ** 4;
 };
 
+const percentileRank = (values: number[], target: number): number => {
+  if (!values.length || !Number.isFinite(target)) return 0.5;
+  let less = 0;
+  let equal = 0;
+  for (const value of values) {
+    if (!Number.isFinite(value)) continue;
+    if (value < target) less += 1;
+    else if (value === target) equal += 1;
+  }
+  const n = values.length;
+  if (n === 0) return 0.5;
+  return clamp((less + equal * 0.5) / n, 0, 1);
+};
+
 const standardizeSeries = (values: number[]): number[] => {
   if (!values.length) return [];
   const valuesMean = computeMean(values);
@@ -416,6 +430,9 @@ export const buildMlTrainingRow = (
 
   const lastTimestamp = toNumber(lastCandle?.timestamp, 0);
   const intervalMinutes = toNumber(signal?.interval, 0);
+  const entryDate = lastTimestamp > 0 ? new Date(lastTimestamp) : null;
+  const entryHour = entryDate ? entryDate.getUTCHours() : 0;
+  const entryDayOfWeek = entryDate ? entryDate.getUTCDay() : 0;
 
   // Base row fields. Most numeric features are normalized vs currentPrice.
   const row: Record<string, number | string | null> = {
@@ -437,7 +454,21 @@ export const buildMlTrainingRow = (
     Correlation: toNumber(signal?.indicators?.correlation, 0),
     Touches: toNumber(signal?.indicators?.touches, 0),
     Distance: toNumber(signal?.indicators?.distance, 0),
+    Ctx_EntryHour: entryHour,
+    Ctx_EntryDayOfWeek: entryDayOfWeek,
+    Ctx_EntryHourSin: Math.sin((2 * Math.PI * entryHour) / 24),
+    Ctx_EntryHourCos: Math.cos((2 * Math.PI * entryHour) / 24),
+    Ctx_StopDistance: clamp(1 - safeDiv(currentPrice, toNumber(signal?.prices?.stopLossPrice, 0)), -5, 5),
+    Ctx_TakeDistance: clamp(safeDiv(currentPrice, toNumber(signal?.prices?.takeProfitPrice, 0)) - 1, -5, 5),
   };
+  row.Ctx_RiskAsymmetry = clamp(
+    safeDiv(
+      toNumber(row.Ctx_TakeDistance, 0),
+      Math.abs(toNumber(row.Ctx_StopDistance, 0)),
+    ),
+    -10,
+    10,
+  );
 
   // Indicator helpers:
   // - addSeries: divide by currentPrice (price-relative)
@@ -622,6 +653,11 @@ export const buildMlTrainingRow = (
   };
 
   const maMediumSeries = asArray(indicators.maMedium);
+  const atrPctSeries = padSeries(normalizeSeries(indicators.atrPct));
+  const price1hPctSeries = padSeries(normalizeSeries(indicators.price1hPcnt));
+  const tf15mReturns = backwardReturns(
+    candleList.slice(-INDICATOR_WINDOW).map((candle) => toNumber(candle.close, 0)),
+  );
   for (const timeframe of INDICATOR_TIMEFRAMES) {
     addIndicatorFeatures(timeframe.label, timeframe.suffix);
   }
@@ -651,6 +687,31 @@ export const buildMlTrainingRow = (
       priceScaleSeries,
     });
   }
+
+  const atrPctLast = atrPctSeries[atrPctSeries.length - 1] ?? 0;
+  const atrPctMean = computeMean(atrPctSeries);
+  const atrPctStd = computeStd(atrPctSeries);
+  const atrPctZ = atrPctStd > 0 ? (atrPctLast - atrPctMean) / atrPctStd : 0;
+  const atrPctRank = percentileRank(atrPctSeries, atrPctLast);
+  const realizedVol = computeStd(tf15mReturns);
+  const realizedVolRank = percentileRank(
+    tf15mReturns.length ? tf15mReturns : [0],
+    tf15mReturns.length ? tf15mReturns[tf15mReturns.length - 1] : 0,
+  );
+  const trendStrength = Math.abs(computeMean(price1hPctSeries));
+
+  row.Regime_ATR_PCT_Last = atrPctLast;
+  row.Regime_ATR_PCT_Z = clamp(atrPctZ, -8, 8);
+  row.Regime_ATR_PCT_Rank = atrPctRank;
+  row.Regime_RealizedVol_10 = realizedVol;
+  row.Regime_RealizedVol_Rank = realizedVolRank;
+  row.Regime_TrendStrength = trendStrength;
+  row.Regime_IsHighVol = atrPctRank >= 0.7 || realizedVolRank >= 0.7 ? 1 : 0;
+  row.Ctx_DistanceTo24hRange = clamp(
+    toNumber(row.TF15M_HighPrice24h_10, 0) - toNumber(row.TF15M_LowPrice24h_10, 0),
+    -10,
+    10,
+  );
 
   // Trendline geometry features.
   const trendLine = signal?.figures?.trendLine;

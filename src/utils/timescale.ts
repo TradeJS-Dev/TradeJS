@@ -36,6 +36,33 @@ export type CandleRow = {
   turnover?: number | null;
 };
 
+export type DerivativesInterval = '15m' | '1h';
+
+export type DerivativesRow = {
+  symbol: string;
+  interval: DerivativesInterval;
+  ts: Date;
+  openInterest?: number | null;
+  fundingRate?: number | null;
+  liqLong?: number | null;
+  liqShort?: number | null;
+  liqTotal?: number | null;
+  source?: string | null;
+};
+
+export type SpreadRow = {
+  symbol: string;
+  interval: DerivativesInterval;
+  ts: Date;
+  binancePrice?: number | null;
+  coinbasePrice?: number | null;
+  spread?: number | null;
+  source?: string | null;
+};
+
+let derivativesSchemaReady = false;
+let spreadSchemaReady = false;
+
 export const toRows = (
   symbol: string,
   interval: number,
@@ -118,6 +145,333 @@ export async function upsertCandles(rows: CandleRow[]) {
   } finally {
     client.release();
   }
+}
+
+const ensureDerivativesSchema = async () => {
+  if (derivativesSchemaReady) return;
+  const pool = getPool();
+  await pool.query('CREATE EXTENSION IF NOT EXISTS timescaledb');
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS derivatives_market (
+      symbol text NOT NULL,
+      interval text NOT NULL,
+      ts timestamptz NOT NULL,
+      open_interest double precision,
+      funding_rate double precision,
+      liq_long double precision,
+      liq_short double precision,
+      liq_total double precision,
+      source text,
+      ingested_at timestamptz NOT NULL DEFAULT now(),
+      PRIMARY KEY (symbol, interval, ts)
+    )
+  `);
+  await pool.query(`
+    SELECT create_hypertable(
+      'derivatives_market',
+      'ts',
+      if_not_exists => TRUE,
+      chunk_time_interval => interval '14 days'
+    )
+  `);
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS derivatives_market_symbol_tf_ts_idx
+    ON derivatives_market (symbol, interval, ts DESC)
+  `);
+  derivativesSchemaReady = true;
+};
+
+const ensureSpreadSchema = async () => {
+  if (spreadSchemaReady) return;
+  const pool = getPool();
+  await pool.query('CREATE EXTENSION IF NOT EXISTS timescaledb');
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS market_spread (
+      symbol text NOT NULL,
+      interval text NOT NULL,
+      ts timestamptz NOT NULL,
+      binance_price double precision,
+      coinbase_price double precision,
+      spread double precision,
+      source text,
+      ingested_at timestamptz NOT NULL DEFAULT now(),
+      PRIMARY KEY (symbol, interval, ts)
+    )
+  `);
+  await pool.query(`
+    SELECT create_hypertable(
+      'market_spread',
+      'ts',
+      if_not_exists => TRUE,
+      chunk_time_interval => interval '14 days'
+    )
+  `);
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS market_spread_symbol_tf_ts_idx
+    ON market_spread (symbol, interval, ts DESC)
+  `);
+  spreadSchemaReady = true;
+};
+
+export async function upsertDerivatives(rows: DerivativesRow[]) {
+  if (!rows.length) return;
+  await ensureDerivativesSchema();
+
+  const pool = getPool();
+  const cols = [
+    'symbol',
+    'interval',
+    'ts',
+    'open_interest',
+    'funding_rate',
+    'liq_long',
+    'liq_short',
+    'liq_total',
+    'source',
+  ] as const;
+
+  const maxRows = Math.floor(65_535 / cols.length);
+  if (rows.length > maxRows) {
+    for (let i = 0; i < rows.length; i += maxRows) {
+      await upsertDerivatives(rows.slice(i, i + maxRows));
+    }
+    return;
+  }
+
+  const valuesSql = rows
+    .map(
+      (_, i) =>
+        `(${cols.map((__, j) => `$${i * cols.length + j + 1}`).join(',')})`,
+    )
+    .join(',');
+
+  const flat = rows.flatMap((row) => [
+    row.symbol,
+    row.interval,
+    row.ts,
+    row.openInterest ?? null,
+    row.fundingRate ?? null,
+    row.liqLong ?? null,
+    row.liqShort ?? null,
+    row.liqTotal ?? null,
+    row.source ?? null,
+  ]);
+
+  const sql = `
+    INSERT INTO derivatives_market (${cols.join(',')})
+    VALUES ${valuesSql}
+    ON CONFLICT (symbol, interval, ts) DO UPDATE SET
+      open_interest = COALESCE(EXCLUDED.open_interest, derivatives_market.open_interest),
+      funding_rate = COALESCE(EXCLUDED.funding_rate, derivatives_market.funding_rate),
+      liq_long = COALESCE(EXCLUDED.liq_long, derivatives_market.liq_long),
+      liq_short = COALESCE(EXCLUDED.liq_short, derivatives_market.liq_short),
+      liq_total = COALESCE(EXCLUDED.liq_total, derivatives_market.liq_total),
+      source = COALESCE(EXCLUDED.source, derivatives_market.source),
+      ingested_at = now()
+  `;
+
+  await pool.query(sql, flat);
+}
+
+export async function getDerivativesRangeForSymbols(
+  symbols: string[],
+  interval: DerivativesInterval,
+  startMs: number,
+  endMs: number,
+) {
+  if (!symbols.length) return [] as Array<{
+    symbol: string;
+    interval: DerivativesInterval;
+    ts: Date;
+    open_interest: number | null;
+    funding_rate: number | null;
+    liq_long: number | null;
+    liq_short: number | null;
+    liq_total: number | null;
+  }>;
+  await ensureDerivativesSchema();
+  const pool = getPool();
+  const sql = `
+    SELECT symbol, interval, ts, open_interest, funding_rate, liq_long, liq_short, liq_total
+    FROM derivatives_market
+    WHERE symbol = ANY($1)
+      AND interval = $2
+      AND ts >= to_timestamp($3/1000.0)
+      AND ts <= to_timestamp($4/1000.0)
+    ORDER BY symbol ASC, ts ASC
+  `;
+  const res = await pool.query(sql, [symbols, interval, startMs, endMs]);
+  return res.rows;
+}
+
+export async function getDerivativesSummary(hours = 24, limit = 500) {
+  await ensureDerivativesSchema();
+  const pool = getPool();
+  const cappedHours = Math.max(1, Math.min(24 * 30, hours));
+  const cappedLimit = Math.max(50, Math.min(5000, limit));
+
+  const rowsQ = await pool.query(
+    `
+      SELECT symbol, interval, ts, open_interest, funding_rate, liq_long, liq_short, liq_total
+      FROM derivatives_market
+      WHERE ts >= now() - ($1 || ' hours')::interval
+      ORDER BY ts DESC
+      LIMIT $2
+    `,
+    [String(cappedHours), cappedLimit],
+  );
+
+  const aggQ = await pool.query(
+    `
+      SELECT
+        symbol,
+        interval,
+        COUNT(*)::int AS points,
+        MAX(ts) AS last_ts,
+        AVG(open_interest) AS avg_open_interest,
+        AVG(funding_rate) AS avg_funding_rate,
+        SUM(COALESCE(liq_total, 0)) AS sum_liq_total
+      FROM derivatives_market
+      WHERE ts >= now() - ($1 || ' hours')::interval
+      GROUP BY symbol, interval
+      ORDER BY points DESC, symbol ASC
+      LIMIT 500
+    `,
+    [String(cappedHours)],
+  );
+
+  return {
+    rows: rowsQ.rows,
+    aggregates: aggQ.rows,
+    hours: cappedHours,
+  };
+}
+
+export async function upsertSpreadRows(rows: SpreadRow[]) {
+  if (!rows.length) return;
+  await ensureSpreadSchema();
+
+  const pool = getPool();
+  const cols = [
+    'symbol',
+    'interval',
+    'ts',
+    'binance_price',
+    'coinbase_price',
+    'spread',
+    'source',
+  ] as const;
+
+  const maxRows = Math.floor(65_535 / cols.length);
+  if (rows.length > maxRows) {
+    for (let i = 0; i < rows.length; i += maxRows) {
+      await upsertSpreadRows(rows.slice(i, i + maxRows));
+    }
+    return;
+  }
+
+  const valuesSql = rows
+    .map(
+      (_, i) =>
+        `(${cols.map((__, j) => `$${i * cols.length + j + 1}`).join(',')})`,
+    )
+    .join(',');
+
+  const flat = rows.flatMap((row) => [
+    row.symbol,
+    row.interval,
+    row.ts,
+    row.binancePrice ?? null,
+    row.coinbasePrice ?? null,
+    row.spread ?? null,
+    row.source ?? null,
+  ]);
+
+  const sql = `
+    INSERT INTO market_spread (${cols.join(',')})
+    VALUES ${valuesSql}
+    ON CONFLICT (symbol, interval, ts) DO UPDATE SET
+      binance_price = COALESCE(EXCLUDED.binance_price, market_spread.binance_price),
+      coinbase_price = COALESCE(EXCLUDED.coinbase_price, market_spread.coinbase_price),
+      spread = COALESCE(EXCLUDED.spread, market_spread.spread),
+      source = COALESCE(EXCLUDED.source, market_spread.source),
+      ingested_at = now()
+  `;
+
+  await pool.query(sql, flat);
+}
+
+export async function getSpreadRangeForSymbols(
+  symbols: string[],
+  interval: DerivativesInterval,
+  startMs: number,
+  endMs: number,
+) {
+  if (!symbols.length) {
+    return [] as Array<{
+      symbol: string;
+      interval: DerivativesInterval;
+      ts: Date;
+      binance_price: number | null;
+      coinbase_price: number | null;
+      spread: number | null;
+    }>;
+  }
+  await ensureSpreadSchema();
+  const pool = getPool();
+  const sql = `
+    SELECT symbol, interval, ts, binance_price, coinbase_price, spread
+    FROM market_spread
+    WHERE symbol = ANY($1)
+      AND interval = $2
+      AND ts >= to_timestamp($3/1000.0)
+      AND ts <= to_timestamp($4/1000.0)
+    ORDER BY symbol ASC, ts ASC
+  `;
+  const res = await pool.query(sql, [symbols, interval, startMs, endMs]);
+  return res.rows;
+}
+
+export async function getSpreadSummary(hours = 24, limit = 500) {
+  await ensureSpreadSchema();
+  const pool = getPool();
+  const cappedHours = Math.max(1, Math.min(24 * 30, hours));
+  const cappedLimit = Math.max(50, Math.min(5000, limit));
+
+  const rowsQ = await pool.query(
+    `
+      SELECT symbol, interval, ts, binance_price, coinbase_price, spread
+      FROM market_spread
+      WHERE ts >= now() - ($1 || ' hours')::interval
+      ORDER BY ts DESC
+      LIMIT $2
+    `,
+    [String(cappedHours), cappedLimit],
+  );
+
+  const aggQ = await pool.query(
+    `
+      SELECT
+        symbol,
+        interval,
+        COUNT(*)::int AS points,
+        MAX(ts) AS last_ts,
+        AVG(spread) AS avg_spread,
+        STDDEV_POP(spread) AS std_spread
+      FROM market_spread
+      WHERE ts >= now() - ($1 || ' hours')::interval
+      GROUP BY symbol, interval
+      ORDER BY points DESC, symbol ASC
+      LIMIT 500
+    `,
+    [String(cappedHours)],
+  );
+
+  return {
+    rows: rowsQ.rows,
+    aggregates: aggQ.rows,
+    hours: cappedHours,
+  };
 }
 
 export async function getCandlesRange(

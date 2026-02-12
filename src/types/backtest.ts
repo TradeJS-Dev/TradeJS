@@ -18,6 +18,7 @@ export type Strategy = (
 ) => Promise<string | Signal>;
 
 export type StrategyConfig = Record<string, any>;
+export type StrategyResultConfig = StrategyConfig;
 
 export interface StrategyCreatorParams {
   userName: string;
@@ -55,6 +56,13 @@ export type TestSuite = Test[];
 export interface TestStat extends Metrics {
   score?: number;
 }
+
+export interface StrategyResultEntry {
+  config: StrategyResultConfig;
+  stats: TestStat;
+}
+
+export type StrategyResults = Record<string, StrategyResultEntry>;
 
 export interface MinimalStat {
   amount: number;
