@@ -105,7 +105,11 @@ const createTestData = (userName: string, tests: Array<any>) => {
       test.strategyName,
       test.testName,
     );
-    const statKey = redisKeys.testStat(userName, test.strategyName, test.testName);
+    const statKey = redisKeys.testStat(
+      userName,
+      test.strategyName,
+      test.testName,
+    );
     configKeys.push(configKey);
     testConfigs[configKey] = {
       strategyName: test.strategyName,
@@ -143,7 +147,13 @@ describe('results script', () => {
         testName: 't1',
         symbol: 'BTCUSDT',
         strategyConfig: { TP: 2, SL: 1 },
-        stat: { totalReturn: 10, periodMonths: 1, winRate: 60, ordersPerMonth: 2, orders: 12 },
+        stat: {
+          totalReturn: 10,
+          periodMonths: 1,
+          winRate: 60,
+          ordersPerMonth: 2,
+          orders: 12,
+        },
       },
     ]);
 
@@ -189,25 +199,49 @@ describe('results script', () => {
         testName: 't1',
         symbol: 'BTCUSDT',
         strategyConfig: { TP: 3, SL: 1 },
-        stat: { totalReturn: 7, periodMonths: 1, winRate: 65, ordersPerMonth: 2, orders: 9 },
+        stat: {
+          totalReturn: 7,
+          periodMonths: 1,
+          winRate: 65,
+          ordersPerMonth: 2,
+          orders: 9,
+        },
       },
       {
         strategyName: 'TrendLine',
         testName: 't2',
         symbol: 'ETHUSDT',
         strategyConfig: { TP: 2, SL: 1 },
-        stat: { totalReturn: 6, periodMonths: 1, winRate: 61, ordersPerMonth: 2, orders: 10 },
+        stat: {
+          totalReturn: 6,
+          periodMonths: 1,
+          winRate: 61,
+          ordersPerMonth: 2,
+          orders: 10,
+        },
       },
     ]);
 
     const currentResults = {
       BTCUSDT: {
         config: { TP: 2, SL: 1 },
-        stats: { totalReturn: 5, periodMonths: 1, winRate: 55, ordersPerMonth: 2, orders: 8 },
+        stats: {
+          totalReturn: 5,
+          periodMonths: 1,
+          winRate: 55,
+          ordersPerMonth: 2,
+          orders: 8,
+        },
       },
       XRPUSDT: {
         config: { TP: 1.5, SL: 1 },
-        stats: { totalReturn: 9, periodMonths: 1, winRate: 58, ordersPerMonth: 2, orders: 7 },
+        stats: {
+          totalReturn: 9,
+          periodMonths: 1,
+          winRate: 58,
+          ordersPerMonth: 2,
+          orders: 7,
+        },
       },
     };
 
@@ -264,14 +298,26 @@ describe('results script', () => {
         testName: 't1',
         symbol: 'BTCUSDT',
         strategyConfig: { TP: 2.5, SL: 1 },
-        stat: { totalReturn: 7, periodMonths: 1, winRate: 55, ordersPerMonth: 2, orders: 8 },
+        stat: {
+          totalReturn: 7,
+          periodMonths: 1,
+          winRate: 55,
+          ordersPerMonth: 2,
+          orders: 8,
+        },
       },
       {
         strategyName: 'TrendLine',
         testName: 't2',
         symbol: 'ETHUSDT',
         strategyConfig: { TP: 2, SL: 1 },
-        stat: { totalReturn: 8, periodMonths: 1, winRate: 62, ordersPerMonth: 2, orders: 9 },
+        stat: {
+          totalReturn: 8,
+          periodMonths: 1,
+          winRate: 62,
+          ordersPerMonth: 2,
+          orders: 9,
+        },
       },
     ]);
 
@@ -289,11 +335,23 @@ describe('results script', () => {
       currentResults: {
         BTCUSDT: {
           config: { TP: 2, SL: 1 },
-          stats: { totalReturn: 4, periodMonths: 1, winRate: 52, ordersPerMonth: 2, orders: 7 },
+          stats: {
+            totalReturn: 4,
+            periodMonths: 1,
+            winRate: 52,
+            ordersPerMonth: 2,
+            orders: 7,
+          },
         },
         XRPUSDT: {
           config: { TP: 1.2, SL: 1 },
-          stats: { totalReturn: 3, periodMonths: 1, winRate: 45, ordersPerMonth: 2, orders: 6 },
+          stats: {
+            totalReturn: 3,
+            periodMonths: 1,
+            winRate: 45,
+            ordersPerMonth: 2,
+            orders: 6,
+          },
         },
       },
       tickers: ['BTCUSDT', 'ETHUSDT', 'XRPUSDT', 'SOLUSDT'],

@@ -1,7 +1,11 @@
 import _ from 'lodash';
 import { config as DEFAULT_CONFIG } from './config';
-import { StrategyCreator, StrategyConfig } from '@types';
-import { createIndicators, TechnicalIndicators } from './indicators';
+import { Candle, StrategyCreator, StrategyConfig } from '@types';
+import {
+  createIndicators,
+  IndicatorPeriods,
+  IndicatorSnapshot,
+} from '@utils/indicators';
 
 interface SignalConfig {
   weight: number;
@@ -28,17 +32,27 @@ export enum Signal {
   CLOSE_BELOW_PREV_CLOSE = 'CLOSE_BELOW_PREV_CLOSE',
 }
 
+type BreakoutSignalIndicators = Omit<
+  IndicatorSnapshot,
+  'prevCandle' | 'highLevel' | 'lowLevel'
+> & {
+  prevCandle: Candle;
+  highLevel: number;
+  lowLevel: number;
+  bb: { upper: number; lower: number };
+};
+
 const getSignals = (
   config: StrategyConfig,
-  indicators: TechnicalIndicators,
+  indicators: BreakoutSignalIndicators,
 ): Signals => {
   const {
     candle,
     prevCandle,
     highLevel,
     lowLevel,
-    smaFast,
-    smaSlow,
+    maFast,
+    maSlow,
     smaObv,
     obv,
     bb,
@@ -48,8 +62,8 @@ const getSignals = (
   const obvAboveSma = obv > smaObv;
   const obvBelowSma = obv < smaObv;
 
-  const smaUptrend = smaFast > smaSlow;
-  const smaDowntrend = smaFast < smaSlow;
+  const smaUptrend = maFast > maSlow;
+  const smaDowntrend = maFast < maSlow;
 
   const prevHighBreakout = prevCandle.high > highLevel;
   const closeAboveUpperBB = candle.close > bb.upper;
@@ -120,15 +134,41 @@ export const BreakoutStrategyCreator: StrategyCreator = async ({
     ...baseConfig,
   } as StrategyConfig & typeof DEFAULT_CONFIG;
 
-  const getIndicators = createIndicators(config, data);
+  const indicatorPeriods: Partial<IndicatorPeriods> = {
+    maFast: config.MA_FAST,
+    maMedium: config.MA_MEDIUM,
+    maSlow: config.MA_SLOW,
+    obvSma: config.OBV_SMA,
+    atr: config.ATR,
+    atrPctShort: config.ATR_PCT_SHORT,
+    atrPctLong: config.ATR_PCT_LONG,
+    bb: config.BB,
+    bbStd: config.BB_STD,
+    macdFast: config.MACD_FAST,
+    macdSlow: config.MACD_SLOW,
+    macdSignal: config.MACD_SIGNAL,
+    levelLookback: config.LEVEL_LOOKBACK,
+    levelDelay: config.LEVEL_DELAY,
+  };
+
+  const indicatorsController = createIndicators(data, [], {
+    periods: indicatorPeriods,
+  });
 
   return async (candle) => {
     if (_.isEmpty(candle)) return 'NO_DATA';
 
-    const indicators = getIndicators(candle);
+    const indicatorValues = indicatorsController.next(candle);
+    if (!indicatorValues) {
+      return 'NO_INDICATORS';
+    }
 
-    if (typeof indicators === 'string') {
-      return indicators;
+    if (
+      !indicatorValues.prevCandle ||
+      indicatorValues.highLevel == null ||
+      indicatorValues.lowLevel == null
+    ) {
+      return 'WAIT_DATA';
     }
 
     const { close: price, timestamp } = candle;
@@ -138,7 +178,16 @@ export const BreakoutStrategyCreator: StrategyCreator = async ({
 
     const qty = config.LIMIT / price;
 
-    const signals = getSignals(config, indicators);
+    const signals = getSignals(config, {
+      ...indicatorValues,
+      prevCandle: indicatorValues.prevCandle,
+      highLevel: indicatorValues.highLevel,
+      lowLevel: indicatorValues.lowLevel,
+      bb: {
+        upper: indicatorValues.bbUpper,
+        lower: indicatorValues.bbLower,
+      },
+    });
 
     const shouldOpenLong = checkSignals(
       config.SIGNALS_LONG,

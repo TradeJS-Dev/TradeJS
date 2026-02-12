@@ -9,9 +9,9 @@ import { getData, redisKeys } from '@utils/redis';
 import { createTrendlineEngine } from '@utils/trendLineEngine';
 import { findTrendlinesByHighs, findTrendlinesByLows } from '@utils/trendLine';
 import { fetchMlThreshold } from '@utils/mlGrpc';
+import { createIndicators, IndicatorPeriods } from '@utils/indicators';
 import { filterByVeryVolatility } from './filters';
 import { config as DEFAULT_CONFIG } from './config';
-import { createIndicators } from './indicators';
 import {
   Signal,
   TrendLineOptions,
@@ -64,12 +64,47 @@ export const TrendlineStrategyCreator: StrategyCreator = async ({
     ML_THRESHOLD,
     MAX_CORRELATION,
     MAX_LOSS_VALUE,
+    MA_FAST,
+    MA_MEDIUM,
+    MA_SLOW,
+    OBV_SMA,
+    ATR,
+    ATR_PCT_SHORT,
+    ATR_PCT_LONG,
+    BB,
+    BB_STD,
+    MACD_FAST,
+    MACD_SLOW,
+    MACD_SIGNAL,
+    LEVEL_LOOKBACK,
+    LEVEL_DELAY,
     HIGHS,
     LOWS,
   } = config;
 
+  const indicatorPeriods: Partial<IndicatorPeriods> = {
+    maFast: MA_FAST,
+    maMedium: MA_MEDIUM,
+    maSlow: MA_SLOW,
+    obvSma: OBV_SMA,
+    atr: ATR,
+    atrPctShort: ATR_PCT_SHORT,
+    atrPctLong: ATR_PCT_LONG,
+    bb: BB,
+    bbStd: BB_STD,
+    macdFast: MACD_FAST,
+    macdSlow: MACD_SLOW,
+    macdSignal: MACD_SIGNAL,
+    levelLookback: LEVEL_LOOKBACK,
+    levelDelay: LEVEL_DELAY,
+  };
+
   let indicatorsController =
-    ENV !== 'BACKTEST' ? null : createIndicators(cachedData, btcCachedData);
+    ENV !== 'BACKTEST'
+      ? null
+      : createIndicators(cachedData, btcCachedData, {
+          periods: indicatorPeriods,
+        });
 
   const trendlineOptions: Partial<TrendLineOptions> = {
     bestLines: 1,
@@ -291,6 +326,9 @@ export const TrendlineStrategyCreator: StrategyCreator = async ({
       indicatorsController = createIndicators(
         cachedData.slice(0, cachedData.length - 1),
         btcCachedData.slice(0, btcCachedData.length - 1),
+        {
+          periods: indicatorPeriods,
+        },
       );
 
       indicatorsController.next(

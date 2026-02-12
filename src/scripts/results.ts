@@ -64,9 +64,7 @@ const toStrategyResultEntry = (
   stats: row.stats,
 });
 
-const toStrategyResults = (
-  rows: Iterable<BestResult>,
-): StrategyResults =>
+const toStrategyResults = (rows: Iterable<BestResult>): StrategyResults =>
   Object.fromEntries(
     [...rows].map((row) => [row.symbol, toStrategyResultEntry(row)]),
   );

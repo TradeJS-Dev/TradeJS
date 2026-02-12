@@ -64,7 +64,9 @@ export const mergeCoinalyzeMetrics = (params: {
   };
 
   for (const item of toArrayData<Record<string, unknown>>(oiRaw)) {
-    const ts = toCoinalyzeTimestampMs(item.t ?? item.ts ?? item.time ?? item.timestamp);
+    const ts = toCoinalyzeTimestampMs(
+      item.t ?? item.ts ?? item.time ?? item.timestamp,
+    );
     if (!ts) continue;
     const point = upsertPoint(ts);
     point.openInterest = toFiniteNumber(
@@ -73,7 +75,9 @@ export const mergeCoinalyzeMetrics = (params: {
   }
 
   for (const item of toArrayData<Record<string, unknown>>(fundingRaw)) {
-    const ts = toCoinalyzeTimestampMs(item.t ?? item.ts ?? item.time ?? item.timestamp);
+    const ts = toCoinalyzeTimestampMs(
+      item.t ?? item.ts ?? item.time ?? item.timestamp,
+    );
     if (!ts) continue;
     const point = upsertPoint(ts);
     point.fundingRate = toFiniteNumber(
@@ -82,7 +86,9 @@ export const mergeCoinalyzeMetrics = (params: {
   }
 
   for (const item of toArrayData<Record<string, unknown>>(liqRaw)) {
-    const ts = toCoinalyzeTimestampMs(item.t ?? item.ts ?? item.time ?? item.timestamp);
+    const ts = toCoinalyzeTimestampMs(
+      item.t ?? item.ts ?? item.time ?? item.timestamp,
+    );
     if (!ts) continue;
     const point = upsertPoint(ts);
     point.liqLong = toFiniteNumber(
@@ -92,8 +98,9 @@ export const mergeCoinalyzeMetrics = (params: {
       item.liq_short ?? item.short_liq ?? item.shortLiquidations ?? item.short,
     );
     point.liqTotal =
-      toFiniteNumber(item.liq_total ?? item.total_liq ?? item.totalLiquidations) ??
-      ((point.liqLong ?? 0) + (point.liqShort ?? 0));
+      toFiniteNumber(
+        item.liq_total ?? item.total_liq ?? item.totalLiquidations,
+      ) ?? (point.liqLong ?? 0) + (point.liqShort ?? 0);
   }
 
   return [...points.values()].sort((a, b) => a.ts - b.ts);

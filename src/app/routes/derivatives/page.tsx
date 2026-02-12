@@ -71,7 +71,10 @@ const DerivativesPage = () => {
     const aggregates = data?.aggregates ?? [];
     return {
       pairs: aggregates.length,
-      points: aggregates.reduce((acc, item) => acc + Number(item.points || 0), 0),
+      points: aggregates.reduce(
+        (acc, item) => acc + Number(item.points || 0),
+        0,
+      ),
       liq: aggregates.reduce(
         (acc, item) => acc + Number(item.sum_liq_total || 0),
         0,
@@ -81,7 +84,9 @@ const DerivativesPage = () => {
 
   return (
     <Box p={6}>
-      <Heading size="lg" mb={2}>Derivatives Dashboard</Heading>
+      <Heading size="lg" mb={2}>
+        Derivatives Dashboard
+      </Heading>
       <Text color="gray.500" mb={4}>
         OI / Funding / Liquidations from Timescale (TF 15m, 1h)
       </Text>
@@ -119,10 +124,13 @@ const DerivativesPage = () => {
       )}
 
       <Text mb={4}>
-        Symbols/TF: {totals.pairs} | Points: {totals.points} | Sum liquidation: {fmt(totals.liq, 2)}
+        Symbols/TF: {totals.pairs} | Points: {totals.points} | Sum liquidation:{' '}
+        {fmt(totals.liq, 2)}
       </Text>
 
-      <Heading size="md" mb={2}>Aggregates</Heading>
+      <Heading size="md" mb={2}>
+        Aggregates
+      </Heading>
       <Box overflowX="auto" mb={8}>
         <Table.Root size="sm">
           <Table.Header>
@@ -142,7 +150,9 @@ const DerivativesPage = () => {
                 <Table.Cell>{row.symbol}</Table.Cell>
                 <Table.Cell>{row.interval}</Table.Cell>
                 <Table.Cell>{row.points}</Table.Cell>
-                <Table.Cell>{row.last_ts ? new Date(row.last_ts).toISOString() : 'n/a'}</Table.Cell>
+                <Table.Cell>
+                  {row.last_ts ? new Date(row.last_ts).toISOString() : 'n/a'}
+                </Table.Cell>
                 <Table.Cell>{fmt(row.avg_open_interest, 2)}</Table.Cell>
                 <Table.Cell>{fmt(row.avg_funding_rate, 6)}</Table.Cell>
                 <Table.Cell>{fmt(row.sum_liq_total, 2)}</Table.Cell>
@@ -152,7 +162,9 @@ const DerivativesPage = () => {
         </Table.Root>
       </Box>
 
-      <Heading size="md" mb={2}>Latest Points</Heading>
+      <Heading size="md" mb={2}>
+        Latest Points
+      </Heading>
       <Box overflowX="auto">
         <Table.Root size="sm">
           <Table.Header>

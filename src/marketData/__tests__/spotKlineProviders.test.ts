@@ -20,9 +20,7 @@ describe('spotKlineProviders mapping', () => {
   });
 
   test('mapCoinbaseKline maps payload to unified kline shape', () => {
-    const rows = mapCoinbaseKline([
-      [1700000000, 90, 110, 100, 105, 12],
-    ]);
+    const rows = mapCoinbaseKline([[1700000000, 90, 110, 100, 105, 12]]);
     expect(rows).toHaveLength(1);
     expect(rows[0]).toEqual(
       expect.objectContaining({

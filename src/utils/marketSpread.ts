@@ -40,7 +40,11 @@ export const alignSpreadRows = (params: {
 
   const rows: SpreadRow[] = [];
   for (const row of binance) {
-    if (!Number.isFinite(row.ts) || !Number.isFinite(row.close) || row.close <= 0) {
+    if (
+      !Number.isFinite(row.ts) ||
+      !Number.isFinite(row.close) ||
+      row.close <= 0
+    ) {
       continue;
     }
     const cb = coinbaseByTs.get(row.ts);

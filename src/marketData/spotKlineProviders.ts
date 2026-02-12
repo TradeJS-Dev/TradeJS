@@ -25,7 +25,8 @@ export const mapBinanceKline = (payload: unknown[]): KlineChartData =>
       const low = Number(item[3]);
       const close = Number(item[4]);
       const volume = Number(item[5]);
-      if (![ts, open, high, low, close, volume].every(Number.isFinite)) return null;
+      if (![ts, open, high, low, close, volume].every(Number.isFinite))
+        return null;
       return {
         timestamp: ts,
         open,
@@ -51,7 +52,8 @@ export const mapCoinbaseKline = (payload: unknown[]): KlineChartData =>
       const close = Number(item[4]);
       const volume = Number(item[5]);
       const ts = tsSec * 1000;
-      if (![ts, open, high, low, close, volume].every(Number.isFinite)) return null;
+      if (![ts, open, high, low, close, volume].every(Number.isFinite))
+        return null;
       return {
         timestamp: ts,
         open,
@@ -85,7 +87,9 @@ export const spotKlineProviders: {
         headers: { 'User-Agent': 'investing/market-data-ingest' },
       });
       if (!response.ok) {
-        throw new Error(`Binance kline ${response.status}: ${await response.text()}`);
+        throw new Error(
+          `Binance kline ${response.status}: ${await response.text()}`,
+        );
       }
       const payload = (await response.json()) as unknown[];
       return Array.isArray(payload) ? mapBinanceKline(payload) : [];
@@ -94,7 +98,8 @@ export const spotKlineProviders: {
   coinbase: {
     kline: async ({ symbol, interval, start, end }) => {
       const baseUrl =
-        process.env.COINBASE_BASE_URL?.trim() || 'https://api.exchange.coinbase.com';
+        process.env.COINBASE_BASE_URL?.trim() ||
+        'https://api.exchange.coinbase.com';
       const granularity = interval === '1h' ? 3600 : 900;
       const url = new URL(`${baseUrl}/products/${symbol}/candles`);
       url.searchParams.set('granularity', String(granularity));
@@ -108,7 +113,9 @@ export const spotKlineProviders: {
       });
       if (response.status === 404) return [];
       if (!response.ok) {
-        throw new Error(`Coinbase kline ${response.status}: ${await response.text()}`);
+        throw new Error(
+          `Coinbase kline ${response.status}: ${await response.text()}`,
+        );
       }
       const payload = (await response.json()) as unknown[];
       return Array.isArray(payload) ? mapCoinbaseKline(payload) : [];

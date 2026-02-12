@@ -82,10 +82,12 @@ export const CoinbaseConnectorCreator: ConnectorCreator = async () => {
       if (!product) return [];
 
       const baseUrl =
-        process.env.COINBASE_BASE_URL?.trim() || 'https://api.exchange.coinbase.com';
+        process.env.COINBASE_BASE_URL?.trim() ||
+        'https://api.exchange.coinbase.com';
 
       const stepMs = granularity * 1000 * 250;
-      let cursor = start ?? Math.max(0, end - INTERVAL_MS[String(interval)] * 1000);
+      let cursor =
+        start ?? Math.max(0, end - INTERVAL_MS[String(interval)] * 1000);
       const rows: KlineChartData = [];
 
       while (cursor <= end) {
@@ -133,7 +135,8 @@ export const CoinbaseConnectorCreator: ConnectorCreator = async () => {
 
     getTickers: async () => {
       const baseUrl =
-        process.env.COINBASE_BASE_URL?.trim() || 'https://api.exchange.coinbase.com';
+        process.env.COINBASE_BASE_URL?.trim() ||
+        'https://api.exchange.coinbase.com';
 
       const entries = await Promise.all(
         MAJOR_PRODUCTS.map(async (product) => {

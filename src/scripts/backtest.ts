@@ -148,8 +148,8 @@ const backtest = async () => {
         ? ConnectorNames.Coinbase
         : connectorNameRaw === 'bybit'
           ? ConnectorNames.ByBit
-          : ((backtestConfig?.connectorName as ConnectorNames | undefined) ||
-            ConnectorNames.ByBit);
+          : (backtestConfig?.connectorName as ConnectorNames | undefined) ||
+            ConnectorNames.ByBit;
   const connectorFactory =
     connectors[connectorName] || connectors[ConnectorNames.ByBit];
   const marketConnector = await (connectorFactory as ConnectorCreator)({

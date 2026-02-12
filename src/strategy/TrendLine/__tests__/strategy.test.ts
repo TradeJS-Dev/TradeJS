@@ -1,5 +1,5 @@
 import { TrendlineStrategyCreator } from '../strategy';
-import { createIndicators } from '../indicators';
+import { createIndicators } from '@utils/indicators';
 import { createTrendlineEngine } from '@utils/trendLineEngine';
 import { calculateCoinBtcCorrelation } from '@utils/correlation';
 import { filterByVeryVolatility } from '../filters';
@@ -28,8 +28,8 @@ jest.mock('../filters', () => ({
   filterByVeryVolatility: jest.fn(() => true),
 }));
 
-jest.mock('../indicators', () => {
-  const actual = jest.requireActual('../indicators');
+jest.mock('@utils/indicators', () => {
+  const actual = jest.requireActual('@utils/indicators');
   return {
     ...actual,
     createIndicators: jest.fn(),
@@ -321,7 +321,7 @@ describe('TrendlineStrategyCreator', () => {
     );
 
     const { createIndicators: createIndicatorsReal } =
-      jest.requireActual('../indicators');
+      jest.requireActual('@utils/indicators');
     (createIndicators as jest.Mock).mockImplementation((data) =>
       createIndicatorsReal(data),
     );

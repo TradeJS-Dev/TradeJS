@@ -1,5 +1,9 @@
 import { NextResponse } from 'next/server';
-import { connectors, providerToConnectorName, ConnectorProviders } from '@src/connectors';
+import {
+  connectors,
+  providerToConnectorName,
+  ConnectorProviders,
+} from '@src/connectors';
 import { ConnectorCreator } from '@types';
 import { getTopTickers } from '@utils/tickers';
 import { logger } from '@utils/logger';

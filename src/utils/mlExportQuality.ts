@@ -52,7 +52,9 @@ const isWhitelisted = (column: string, whitelist: string[]) =>
 
 const asFiniteNumber = (
   value: unknown,
-): { finite: true; value: number } | { finite: false; reason: 'skip' | 'nan_or_inf' } => {
+):
+  | { finite: true; value: number }
+  | { finite: false; reason: 'skip' | 'nan_or_inf' } => {
   if (value == null || value === '') {
     return { finite: false, reason: 'skip' };
   }
@@ -86,10 +88,11 @@ const updateColumnStats = (stats: ColumnStats, value: number) => {
   }
 };
 
-export const createMlExportQualityAccumulator = (): MlExportQualityAccumulator => ({
-  rowCount: 0,
-  columnStats: new Map<string, ColumnStats>(),
-});
+export const createMlExportQualityAccumulator =
+  (): MlExportQualityAccumulator => ({
+    rowCount: 0,
+    columnStats: new Map<string, ColumnStats>(),
+  });
 
 export const ingestMlExportQualityRow = (
   acc: MlExportQualityAccumulator,
@@ -170,7 +173,10 @@ export const summarizeMlExportQuality = (
     }
 
     const zeroRate = stats.zeroCount / stats.finiteCount;
-    if (stats.zeroCount === stats.finiteCount && !isWhitelisted(column, whitelist)) {
+    if (
+      stats.zeroCount === stats.finiteCount &&
+      !isWhitelisted(column, whitelist)
+    ) {
       allZeroColumns.push(column);
       issues.push({
         code: 'all_zero',
@@ -189,7 +195,8 @@ export const summarizeMlExportQuality = (
       });
     }
 
-    const variance = stats.finiteCount > 1 ? stats.m2 / (stats.finiteCount - 1) : 0;
+    const variance =
+      stats.finiteCount > 1 ? stats.m2 / (stats.finiteCount - 1) : 0;
     const continuous = !isBinaryLike(stats);
     if (continuous && variance === 0) {
       zeroVarianceContinuousColumns.push(column);
@@ -228,7 +235,9 @@ export const formatMlExportQualityIssues = (
     return lines;
   }
 
-  lines.push(`${datasetName}: issues (first ${Math.min(limit, summary.issues.length)}):`);
+  lines.push(
+    `${datasetName}: issues (first ${Math.min(limit, summary.issues.length)}):`,
+  );
   for (const issue of summary.issues.slice(0, limit)) {
     lines.push(`  - [${issue.code}] ${issue.column} (${issue.details})`);
   }

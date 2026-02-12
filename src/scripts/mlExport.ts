@@ -270,9 +270,7 @@ const erfApprox = (x: number) => {
   const a5 = 1.061405429;
   const t = 1 / (1 + p * ax);
   const y =
-    1 -
-    (((((a5 * t + a4) * t + a3) * t + a2) * t + a1) * t *
-      Math.exp(-ax * ax));
+    1 - ((((a5 * t + a4) * t + a3) * t + a2) * t + a1) * t * Math.exp(-ax * ax);
   return sign * y;
 };
 
@@ -479,7 +477,9 @@ const normalizeIntervals = (value: unknown): DerivativesInterval[] => {
   return parsed.length ? parsed : ['15m', '1h'];
 };
 
-const toDerivativePoint = (row: Record<string, unknown>): DerivativesPoint | null => {
+const toDerivativePoint = (
+  row: Record<string, unknown>,
+): DerivativesPoint | null => {
   const ts = toTimestampMs(row.ts);
   if (ts == null || !Number.isFinite(ts)) return null;
   return {
@@ -526,7 +526,9 @@ const loadDerivativesFeatureStore = async (params: {
     );
     const bySymbol: DerivativesBySymbol = new Map();
     for (const row of rows as Array<Record<string, unknown>>) {
-      const symbol = String(row.symbol ?? '').trim().toUpperCase();
+      const symbol = String(row.symbol ?? '')
+        .trim()
+        .toUpperCase();
       if (!symbol) continue;
       const point = toDerivativePoint(row);
       if (!point) continue;
@@ -560,10 +562,17 @@ const loadSpreadFeatureStore = async (params: {
     minTs - DERIVATIVES_SNAPSHOT_LOOKBACK_DAYS * 24 * 60 * 60 * 1000,
   );
   for (const interval of intervals) {
-    const rows = await getSpreadRangeForSymbols(symbols, interval, startTs, maxTs);
+    const rows = await getSpreadRangeForSymbols(
+      symbols,
+      interval,
+      startTs,
+      maxTs,
+    );
     const bySymbol: SpreadBySymbol = new Map();
     for (const row of rows as Array<Record<string, unknown>>) {
-      const symbol = String(row.symbol ?? '').trim().toUpperCase();
+      const symbol = String(row.symbol ?? '')
+        .trim()
+        .toUpperCase();
       if (!symbol) continue;
       const point = toSpreadPoint(row);
       if (!point) continue;
@@ -587,7 +596,9 @@ const attachDerivativesFeatures = (
   featureStore: DerivativesFeatureStore,
   signalTs: number,
 ) => {
-  const symbol = String(row.symbol ?? '').trim().toUpperCase();
+  const symbol = String(row.symbol ?? '')
+    .trim()
+    .toUpperCase();
   if (!symbol || !signalTs || !Number.isFinite(signalTs)) return;
 
   for (const [interval, bySymbol] of featureStore.entries()) {
@@ -628,7 +639,9 @@ const attachSpreadFeatures = (
   featureStore: SpreadFeatureStore,
   signalTs: number,
 ) => {
-  const symbol = String(row.symbol ?? '').trim().toUpperCase();
+  const symbol = String(row.symbol ?? '')
+    .trim()
+    .toUpperCase();
   if (!symbol || !signalTs || !Number.isFinite(signalTs)) return;
 
   for (const [interval, bySymbol] of featureStore.entries()) {
@@ -770,7 +783,9 @@ const mlExport = async () => {
         symbols: [...derivativeSymbols],
         intervals: derivativesIntervals,
         minTs:
-          minTimestampScan === Number.MAX_SAFE_INTEGER ? maxTimestamp : minTimestampScan,
+          minTimestampScan === Number.MAX_SAFE_INTEGER
+            ? maxTimestamp
+            : minTimestampScan,
         maxTs: maxTimestamp,
       });
       console.log(
@@ -793,7 +808,9 @@ const mlExport = async () => {
         symbols: [...spreadSymbols],
         intervals: spreadIntervals,
         minTs:
-          minTimestampScan === Number.MAX_SAFE_INTEGER ? maxTimestamp : minTimestampScan,
+          minTimestampScan === Number.MAX_SAFE_INTEGER
+            ? maxTimestamp
+            : minTimestampScan,
         maxTs: maxTimestamp,
       });
       console.log(
@@ -867,7 +884,9 @@ const mlExport = async () => {
       }
       if (row.label === 1) posCount += 1;
       if (row.label === 0) negCount += 1;
-      const symbol = String(row.symbol ?? '').trim().toUpperCase();
+      const symbol = String(row.symbol ?? '')
+        .trim()
+        .toUpperCase();
       if (symbol) {
         symbolCounts.set(symbol, (symbolCounts.get(symbol) ?? 0) + 1);
       }
@@ -939,9 +958,7 @@ const mlExport = async () => {
   console.log(
     `  labeled=${labeledRows} (pos=${posCount}, neg=${negCount}, pos_rate=${pct(posCount, labeledRows)})`,
   );
-  console.log(
-    `  symbols=${symbolCounts.size}, top10=[${topSymbols || 'n/a'}]`,
-  );
+  console.log(`  symbols=${symbolCounts.size}, top10=[${topSymbols || 'n/a'}]`);
   console.log(`  time_range=${minIso} .. ${maxIso}`);
 
   if (!(format === 'jsonl' || format === 'both')) {

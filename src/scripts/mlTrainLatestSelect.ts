@@ -110,7 +110,9 @@ const parseStrategy = (value: unknown): StrategyType | null => {
 };
 
 const parseModelType = (value: unknown): ModelType | null => {
-  const raw = String(value ?? '').trim().toLowerCase();
+  const raw = String(value ?? '')
+    .trim()
+    .toLowerCase();
   if (!raw) return null;
   return MODEL_TYPES.includes(raw as ModelType) ? (raw as ModelType) : null;
 };
@@ -171,7 +173,9 @@ const listDatasetFiles = async (
   const hasScopedFiles = fileNames.some((name) => name.startsWith(prefix));
   const acceptedPrefix = hasScopedFiles ? prefix : legacyPrefix;
   const jsonlFiles = fileNames
-    .filter((name) => name.startsWith(acceptedPrefix) && name.endsWith('.jsonl'))
+    .filter(
+      (name) => name.startsWith(acceptedPrefix) && name.endsWith('.jsonl'),
+    )
     .filter((name) => !name.includes('.train.') && !name.includes('.test.'))
     .filter((name) => !name.includes('.holdout-train.'))
     .filter((name) => !name.includes('.holdout-test.'))
@@ -239,7 +243,9 @@ const parseTimestampMs = (value: unknown): number | null => {
   return numeric < 1e12 ? Math.trunc(numeric * 1000) : Math.trunc(numeric);
 };
 
-const scanMaxLabeledTimestampMs = async (inputPath: string): Promise<number> => {
+const scanMaxLabeledTimestampMs = async (
+  inputPath: string,
+): Promise<number> => {
   const rl = readline.createInterface({
     input: createReadStream(inputPath, { encoding: 'utf8' }),
     crlfDelay: Infinity,
@@ -258,7 +264,10 @@ const scanMaxLabeledTimestampMs = async (inputPath: string): Promise<number> => 
       );
     }
     try {
-      const row = JSON.parse(trimmed) as { label?: unknown; entryTimestamp?: unknown };
+      const row = JSON.parse(trimmed) as {
+        label?: unknown;
+        entryTimestamp?: unknown;
+      };
       if (row.label === null || row.label === undefined) continue;
       const ts = parseTimestampMs(row.entryTimestamp);
       if (ts && ts > maxTs) maxTs = ts;
@@ -295,7 +304,10 @@ const scanMaxTrainTimestampMs = async (
       );
     }
     try {
-      const row = JSON.parse(trimmed) as { label?: unknown; entryTimestamp?: unknown };
+      const row = JSON.parse(trimmed) as {
+        label?: unknown;
+        entryTimestamp?: unknown;
+      };
       if (row.label === null || row.label === undefined) continue;
       const ts = parseTimestampMs(row.entryTimestamp);
       if (ts && ts <= holdoutCutoffMs && ts > maxTrainTs) {
@@ -307,7 +319,9 @@ const scanMaxTrainTimestampMs = async (
   }
   rl.close();
   if (!maxTrainTs) {
-    throw new Error('No train rows found after holdout cutoff. Adjust test window.');
+    throw new Error(
+      'No train rows found after holdout cutoff. Adjust test window.',
+    );
   }
   return maxTrainTs;
 };
@@ -418,16 +432,25 @@ const prepareTrainWindowFiles = async ({
   const maxTrainTs = await scanMaxTrainTimestampMs(inputPath, holdoutCutoffMs);
 
   const holdoutTrainStartMs =
-    trainRecentDays > 0 ? maxTrainTs - trainRecentDays * DAY_MS : Number.NEGATIVE_INFINITY;
+    trainRecentDays > 0
+      ? maxTrainTs - trainRecentDays * DAY_MS
+      : Number.NEGATIVE_INFINITY;
   const wfStartMs =
     trainRecentDays > 0
-      ? maxTrainTs - (trainRecentDays + Math.max(walkForwardFolds, 0) * testDays) * DAY_MS
+      ? maxTrainTs -
+        (trainRecentDays + Math.max(walkForwardFolds, 0) * testDays) * DAY_MS
       : Number.NEGATIVE_INFINITY;
 
   console.log('[split] phase 3/3: writing holdout/walk-forward files...');
-  const holdoutTrainWriter = createWriteStream(holdoutTrainPath, { encoding: 'utf8' });
-  const holdoutTestWriter = createWriteStream(holdoutTestPath, { encoding: 'utf8' });
-  const walkForwardWriter = createWriteStream(walkForwardPath, { encoding: 'utf8' });
+  const holdoutTrainWriter = createWriteStream(holdoutTrainPath, {
+    encoding: 'utf8',
+  });
+  const holdoutTestWriter = createWriteStream(holdoutTestPath, {
+    encoding: 'utf8',
+  });
+  const walkForwardWriter = createWriteStream(walkForwardPath, {
+    encoding: 'utf8',
+  });
 
   let holdoutTrainRows = 0;
   let holdoutTestRows = 0;
@@ -452,11 +475,15 @@ const prepareTrainWindowFiles = async ({
     }
     let parsedRow: { label?: unknown; entryTimestamp?: unknown } | null = null;
     try {
-      parsedRow = JSON.parse(trimmed) as { label?: unknown; entryTimestamp?: unknown };
+      parsedRow = JSON.parse(trimmed) as {
+        label?: unknown;
+        entryTimestamp?: unknown;
+      };
     } catch {
       continue;
     }
-    if (!parsedRow || parsedRow.label === null || parsedRow.label === undefined) continue;
+    if (!parsedRow || parsedRow.label === null || parsedRow.label === undefined)
+      continue;
     const ts = parseTimestampMs(parsedRow.entryTimestamp);
     if (!ts) continue;
 
@@ -540,9 +567,7 @@ const prepareTrainWindowFiles = async ({
 
 const run = async () => {
   const selectedFromCli = parseStrategy(flags.strategy);
-  const selected =
-    selectedFromCli ??
-    (await selectStrategy());
+  const selected = selectedFromCli ?? (await selectStrategy());
   const envModelType = (process.env.ML_MODEL_TYPE ?? 'random_forest')
     .trim()
     .toLowerCase();
@@ -552,8 +577,7 @@ const run = async () => {
     ? (envModelType as ModelType)
     : 'random_forest';
   const modelFromCli = parseModelType(flags.model);
-  const modelType =
-    modelFromCli ?? (await selectModelType(defaultModelType));
+  const modelType = modelFromCli ?? (await selectModelType(defaultModelType));
   const useLatestOnly =
     Boolean(flags.latestOnly) || asBool(process.env.ML_TRAIN_USE_LATEST_ONLY);
   const exportDir = path.join(process.cwd(), 'data', 'ml', 'export');
@@ -605,8 +629,7 @@ const run = async () => {
     const enableEnsemble = asBool(process.env.ML_TRAIN_ENSEMBLE);
     const forceEnsemble = asBool(process.env.ML_TRAIN_FORCE_ENSEMBLE);
     const disableEnsemble = asBool(process.env.ML_TRAIN_NO_ENSEMBLE);
-    const useEnsemble =
-      (forceEnsemble || enableEnsemble) && !disableEnsemble;
+    const useEnsemble = (forceEnsemble || enableEnsemble) && !disableEnsemble;
     const walkForwardFolds = asNonNegativeInt(
       process.env.ML_TRAIN_WALK_FORWARD_FOLDS,
       2,
@@ -617,7 +640,9 @@ const run = async () => {
     const featureSet = (process.env.ML_TRAIN_FEATURE_SET ?? 'legacy')
       .trim()
       .toLowerCase();
-    const reportDir = (process.env.ML_TRAIN_REPORT_DIR ?? 'data/ml/models').trim();
+    const reportDir = (
+      process.env.ML_TRAIN_REPORT_DIR ?? 'data/ml/models'
+    ).trim();
     const testDays = asInt(process.env.ML_TRAIN_TEST_DAYS, 30);
 
     if (useIncremental && modelType === 'catboost') {
@@ -712,11 +737,12 @@ const run = async () => {
       );
     }, 30_000);
 
-    const result = await new Promise<{ code: number | null; signal: NodeJS.Signals | null }>(
-      (resolve) => {
-        child.on('exit', (code, signal) => resolve({ code, signal }));
-      },
-    );
+    const result = await new Promise<{
+      code: number | null;
+      signal: NodeJS.Signals | null;
+    }>((resolve) => {
+      child.on('exit', (code, signal) => resolve({ code, signal }));
+    });
     clearInterval(heartbeat);
     stopStdoutPipe();
     stopStderrPipe();

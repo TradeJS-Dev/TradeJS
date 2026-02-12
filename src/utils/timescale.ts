@@ -279,16 +279,17 @@ export async function getDerivativesRangeForSymbols(
   startMs: number,
   endMs: number,
 ) {
-  if (!symbols.length) return [] as Array<{
-    symbol: string;
-    interval: DerivativesInterval;
-    ts: Date;
-    open_interest: number | null;
-    funding_rate: number | null;
-    liq_long: number | null;
-    liq_short: number | null;
-    liq_total: number | null;
-  }>;
+  if (!symbols.length)
+    return [] as Array<{
+      symbol: string;
+      interval: DerivativesInterval;
+      ts: Date;
+      open_interest: number | null;
+      funding_rate: number | null;
+      liq_long: number | null;
+      liq_short: number | null;
+      liq_total: number | null;
+    }>;
   await ensureDerivativesSchema();
   const pool = getPool();
   const sql = `

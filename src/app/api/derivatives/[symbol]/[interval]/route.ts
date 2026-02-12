@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getDerivativesRangeForSymbols, DerivativesInterval } from '@utils/timescale';
+import {
+  getDerivativesRangeForSymbols,
+  DerivativesInterval,
+} from '@utils/timescale';
 import { logger } from '@utils/logger';
 
 export const dynamic = 'force-dynamic';
@@ -27,7 +30,10 @@ export const GET = async (
 
     const fromRaw = Number(request.nextUrl.searchParams.get('from') ?? 0);
     const toRaw = Number(request.nextUrl.searchParams.get('to') ?? Date.now());
-    const startMs = Number.isFinite(fromRaw) && fromRaw > 0 ? fromRaw : Date.now() - 7 * 24 * 60 * 60 * 1000;
+    const startMs =
+      Number.isFinite(fromRaw) && fromRaw > 0
+        ? fromRaw
+        : Date.now() - 7 * 24 * 60 * 60 * 1000;
     const endMs = Number.isFinite(toRaw) ? toRaw : Date.now();
 
     const rows = await getDerivativesRangeForSymbols(
@@ -36,7 +42,11 @@ export const GET = async (
       startMs,
       endMs,
     );
-    return NextResponse.json({ rows, symbol: String(symbol).toUpperCase(), interval: tf });
+    return NextResponse.json({
+      rows,
+      symbol: String(symbol).toUpperCase(),
+      interval: tf,
+    });
   } catch (error) {
     logger.log('error', 'Derivatives range error: %o', error);
     return NextResponse.json(

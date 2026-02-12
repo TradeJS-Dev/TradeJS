@@ -233,10 +233,7 @@ const std = (values: number[], valuesMean: number) => {
   return Math.sqrt(total / values.length);
 };
 
-const findLatestDataset = async (params: {
-  dir: string;
-  strategy: string;
-}) => {
+const findLatestDataset = async (params: { dir: string; strategy: string }) => {
   const { dir, strategy } = params;
   const entries = await fs.readdir(dir, { withFileTypes: true });
   const strategyToken = strategy.trim().toLowerCase();
@@ -244,7 +241,9 @@ const findLatestDataset = async (params: {
     .filter((entry: Dirent) => entry.isFile())
     .map((entry: Dirent) => entry.name)
     .filter((name: string) => name.endsWith('.jsonl'))
-    .filter((name: string) => !name.includes('.train.') && !name.includes('.test.'))
+    .filter(
+      (name: string) => !name.includes('.train.') && !name.includes('.test.'),
+    )
     .filter((name: string) =>
       strategyToken
         ? name.toLowerCase().includes(`ml-dataset-${strategyToken}-`)
@@ -619,9 +618,7 @@ const main = async () => {
 
   if (!datasetPath) {
     console.error(
-      chalk.red(
-        `No dataset found. Expected ml-dataset-*.jsonl in ${dir}`,
-      ),
+      chalk.red(`No dataset found. Expected ml-dataset-*.jsonl in ${dir}`),
     );
     process.exit(1);
   }

@@ -50,7 +50,13 @@ export const coinalyzeProvider: MarketDataProvider = {
       process.env.COINALYZE_LIQ_PATH?.trim() || '/liquidation-history';
 
     const [oiRaw, fundingRaw, liqRaw] = await Promise.all([
-      fetchCoinalyzeSeries({ endpoint: oiPath, symbol, interval, fromMs, toMs }),
+      fetchCoinalyzeSeries({
+        endpoint: oiPath,
+        symbol,
+        interval,
+        fromMs,
+        toMs,
+      }),
       fetchCoinalyzeSeries({
         endpoint: fundingPath,
         symbol,
@@ -58,7 +64,13 @@ export const coinalyzeProvider: MarketDataProvider = {
         fromMs,
         toMs,
       }),
-      fetchCoinalyzeSeries({ endpoint: liqPath, symbol, interval, fromMs, toMs }),
+      fetchCoinalyzeSeries({
+        endpoint: liqPath,
+        symbol,
+        interval,
+        fromMs,
+        toMs,
+      }),
     ]);
 
     const points = mergeCoinalyzeMetrics({

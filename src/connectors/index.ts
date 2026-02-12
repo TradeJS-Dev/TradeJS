@@ -16,7 +16,10 @@ export enum ConnectorProviders {
   coinbase = 'coinbase',
 }
 
-export const providerToConnectorName: Record<ConnectorProviders, ConnectorNames> = {
+export const providerToConnectorName: Record<
+  ConnectorProviders,
+  ConnectorNames
+> = {
   [ConnectorProviders.bybit]: ConnectorNames.ByBit,
   [ConnectorProviders.binance]: ConnectorNames.Binance,
   [ConnectorProviders.coinbase]: ConnectorNames.Coinbase,

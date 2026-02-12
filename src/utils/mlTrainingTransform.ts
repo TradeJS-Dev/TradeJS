@@ -458,8 +458,16 @@ export const buildMlTrainingRow = (
     Ctx_EntryDayOfWeek: entryDayOfWeek,
     Ctx_EntryHourSin: Math.sin((2 * Math.PI * entryHour) / 24),
     Ctx_EntryHourCos: Math.cos((2 * Math.PI * entryHour) / 24),
-    Ctx_StopDistance: clamp(1 - safeDiv(currentPrice, toNumber(signal?.prices?.stopLossPrice, 0)), -5, 5),
-    Ctx_TakeDistance: clamp(safeDiv(currentPrice, toNumber(signal?.prices?.takeProfitPrice, 0)) - 1, -5, 5),
+    Ctx_StopDistance: clamp(
+      1 - safeDiv(currentPrice, toNumber(signal?.prices?.stopLossPrice, 0)),
+      -5,
+      5,
+    ),
+    Ctx_TakeDistance: clamp(
+      safeDiv(currentPrice, toNumber(signal?.prices?.takeProfitPrice, 0)) - 1,
+      -5,
+      5,
+    ),
   };
   row.Ctx_RiskAsymmetry = clamp(
     safeDiv(
@@ -476,11 +484,15 @@ export const buildMlTrainingRow = (
   // - addSeriesRelTo: divide by matching denominator series
   // - addSeriesLogVolume: log1p volumes
   // - addSeriesVolumeMedianNormalized: volume / rolling median
-  const addSeries = (prefix: string, values: unknown[]) => {
+  const addSeries = (
+    prefix: string,
+    values: unknown[],
+    priceBase = currentPrice,
+  ) => {
     const series = padSeries(normalizeSeries(values));
     for (let i = 0; i < INDICATOR_WINDOW; i += 1) {
       const value = series[i];
-      row[`${prefix}_${i + 1}`] = safeDiv(value, currentPrice);
+      row[`${prefix}_${i + 1}`] = safeDiv(value, priceBase);
     }
   };
 
@@ -579,31 +591,48 @@ export const buildMlTrainingRow = (
   };
 
   // Indicator series from the signal: TF15M + TF1H/TF4H/TF1D.
-  const keyWithSourceSuffix = (key: string, sourceSuffix?: string) =>
-    sourceSuffix ? `${key}${sourceSuffix}` : key;
+  const keyWithSourceSuffix = (
+    key: string,
+    sourceSuffix?: string,
+    sourcePrefix?: string,
+  ) => {
+    const baseKey = sourcePrefix
+      ? `${sourcePrefix}${key[0].toUpperCase()}${key.slice(1)}`
+      : key;
+    return sourceSuffix ? `${baseKey}${sourceSuffix}` : baseKey;
+  };
   const keyWithFeaturePrefix = (key: string, featurePrefix?: string) =>
     featurePrefix ? `${featurePrefix}_${key}` : key;
   const addIndicatorFeatures = (
-    featurePrefix?: IndicatorTimeframe['label'],
+    featurePrefix?: string,
     sourceSuffix?: IndicatorTimeframe['suffix'],
+    sourcePrefix?: string,
+    priceBase?: number,
   ) => {
     const indicatorSeries = (key: string) =>
-      asArray(indicators[keyWithSourceSuffix(key, sourceSuffix)]);
-    const featureKey = (key: string) => keyWithFeaturePrefix(key, featurePrefix);
+      asArray(indicators[keyWithSourceSuffix(key, sourceSuffix, sourcePrefix)]);
+    const featureKey = (key: string) =>
+      keyWithFeaturePrefix(key, featurePrefix);
 
-    addSeries(featureKey('ATR'), indicatorSeries('atr'));
+    addSeries(featureKey('ATR'), indicatorSeries('atr'), priceBase);
     addSeriesBackwardReturns(featureKey('MA_Fast'), indicatorSeries('maFast'));
     addSeriesBackwardReturns(
       featureKey('MA_Medium'),
       indicatorSeries('maMedium'),
     );
     addSeriesBackwardReturns(featureKey('MA_Slow'), indicatorSeries('maSlow'));
-    addSeriesBackwardReturns(featureKey('BB_Upper'), indicatorSeries('bbUpper'));
+    addSeriesBackwardReturns(
+      featureKey('BB_Upper'),
+      indicatorSeries('bbUpper'),
+    );
     addSeriesBackwardReturns(
       featureKey('BB_Middle'),
       indicatorSeries('bbMiddle'),
     );
-    addSeriesBackwardReturns(featureKey('BB_Lower'), indicatorSeries('bbLower'));
+    addSeriesBackwardReturns(
+      featureKey('BB_Lower'),
+      indicatorSeries('bbLower'),
+    );
     addSeriesLogVolumeBackwardReturns(
       featureKey('OBV_LogRet'),
       indicatorSeries('obv'),
@@ -617,7 +646,10 @@ export const buildMlTrainingRow = (
     // than ratio-returns for such oscillators.
     addSeriesStd(featureKey('MACD'), indicatorSeries('macd'));
     addSeriesStd(featureKey('MACD_Signal'), indicatorSeries('macdSignal'));
-    addSeriesStd(featureKey('MACD_Histogram'), indicatorSeries('macdHistogram'));
+    addSeriesStd(
+      featureKey('MACD_Histogram'),
+      indicatorSeries('macdHistogram'),
+    );
     addSeriesPct(featureKey('Price24hPcnt'), indicatorSeries('price24hPcnt'));
     addSeriesPct(featureKey('Price1hPcnt'), indicatorSeries('price1hPcnt'));
     addSeriesRelTo(
@@ -650,16 +682,68 @@ export const buildMlTrainingRow = (
       featureKey('Volume24h'),
       indicatorSeries('volume24h'),
     );
+    addSeriesRelTo(
+      featureKey('HighLevel'),
+      indicatorSeries('highLevel'),
+      indicatorSeries('maMedium'),
+    );
+    addSeriesRelTo(
+      featureKey('LowLevel'),
+      indicatorSeries('lowLevel'),
+      indicatorSeries('maMedium'),
+    );
+    addSeriesRelTo(
+      featureKey('PrevClose'),
+      indicatorSeries('prevClose'),
+      indicatorSeries('maMedium'),
+    );
   };
 
   const maMediumSeries = asArray(indicators.maMedium);
   const atrPctSeries = padSeries(normalizeSeries(indicators.atrPct));
   const price1hPctSeries = padSeries(normalizeSeries(indicators.price1hPcnt));
   const tf15mReturns = backwardReturns(
-    candleList.slice(-INDICATOR_WINDOW).map((candle) => toNumber(candle.close, 0)),
+    candleList
+      .slice(-INDICATOR_WINDOW)
+      .map((candle) => toNumber(candle.close, 0)),
   );
+  const btcCandlesByTimeframe: Record<
+    IndicatorTimeframe['label'],
+    CandleLike[]
+  > = {
+    TF15M: btcList,
+    TF1H: normalizeCandles(indicators.btcCandles1h),
+    TF4H: normalizeCandles(indicators.btcCandles4h),
+    TF1D: normalizeCandles(indicators.btcCandles1d),
+  };
+  const btcPriceByTimeframe: Record<IndicatorTimeframe['label'], number> = {
+    TF15M: toNumber(
+      btcCandlesByTimeframe.TF15M[btcCandlesByTimeframe.TF15M.length - 1]
+        ?.close,
+      currentPrice,
+    ),
+    TF1H: toNumber(
+      btcCandlesByTimeframe.TF1H[btcCandlesByTimeframe.TF1H.length - 1]?.close,
+      currentPrice,
+    ),
+    TF4H: toNumber(
+      btcCandlesByTimeframe.TF4H[btcCandlesByTimeframe.TF4H.length - 1]?.close,
+      currentPrice,
+    ),
+    TF1D: toNumber(
+      btcCandlesByTimeframe.TF1D[btcCandlesByTimeframe.TF1D.length - 1]?.close,
+      currentPrice,
+    ),
+  };
+
   for (const timeframe of INDICATOR_TIMEFRAMES) {
     addIndicatorFeatures(timeframe.label, timeframe.suffix);
+    addIndicatorFeatures(
+      `BTC_${timeframe.label}`,
+      timeframe.suffix,
+      'btc',
+      btcPriceByTimeframe[timeframe.label],
+    );
   }
 
   // Candle-level features for TF15M + TF1H/TF4H/TF1D windows.
@@ -708,7 +792,8 @@ export const buildMlTrainingRow = (
   row.Regime_TrendStrength = trendStrength;
   row.Regime_IsHighVol = atrPctRank >= 0.7 || realizedVolRank >= 0.7 ? 1 : 0;
   row.Ctx_DistanceTo24hRange = clamp(
-    toNumber(row.TF15M_HighPrice24h_10, 0) - toNumber(row.TF15M_LowPrice24h_10, 0),
+    toNumber(row.TF15M_HighPrice24h_10, 0) -
+      toNumber(row.TF15M_LowPrice24h_10, 0),
     -10,
     10,
   );
@@ -799,8 +884,7 @@ export const buildMlTrainingRow = (
         currentPrice - tlAtEntry,
         currentPrice,
       );
-      row.TrendLine_Slope =
-        slopePerBar == null ? null : safeLog1p(slopePerBar);
+      row.TrendLine_Slope = slopePerBar == null ? null : safeLog1p(slopePerBar);
     } else {
       row.TrendLine_Delta_To_Price = null;
       row.TrendLine_Slope = null;

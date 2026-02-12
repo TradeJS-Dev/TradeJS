@@ -27,7 +27,9 @@ describe('derivativesCoinalyze utils', () => {
   test('toCoinalyzeTimestampMs supports seconds, milliseconds and microseconds', () => {
     expect(toCoinalyzeTimestampMs(1_700_000_000)).toBe(1_700_000_000_000);
     expect(toCoinalyzeTimestampMs(1_700_000_000_123)).toBe(1_700_000_000_123);
-    expect(toCoinalyzeTimestampMs(1_700_000_000_123_000)).toBe(1_700_000_000_123);
+    expect(toCoinalyzeTimestampMs(1_700_000_000_123_000)).toBe(
+      1_700_000_000_123,
+    );
     expect(toCoinalyzeTimestampMs('abc')).toBeNull();
   });
 

@@ -3,12 +3,7 @@
 import { Box, Flex, IconButton, VStack } from '@chakra-ui/react';
 import { useRouter, usePathname } from 'next/navigation';
 import { signOut } from 'next-auth/react';
-import {
-  FiActivity,
-  FiBarChart2,
-  FiLogOut,
-  FiPlay,
-} from 'react-icons/fi';
+import { FiActivity, FiBarChart2, FiLogOut, FiPlay } from 'react-icons/fi';
 
 export const Sidebar = () => {
   const router = useRouter();

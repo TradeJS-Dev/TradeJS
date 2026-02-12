@@ -1,9 +1,16 @@
 import { DerivativesInterval } from './timescale';
 
-export const SUPPORTED_DERIVATIVE_INTERVALS: DerivativesInterval[] = ['15m', '1h'];
+export const SUPPORTED_DERIVATIVE_INTERVALS: DerivativesInterval[] = [
+  '15m',
+  '1h',
+];
 
-export const parseDerivativesIntervals = (value: unknown): DerivativesInterval[] => {
-  const supported = new Set<DerivativesInterval>(SUPPORTED_DERIVATIVE_INTERVALS);
+export const parseDerivativesIntervals = (
+  value: unknown,
+): DerivativesInterval[] => {
+  const supported = new Set<DerivativesInterval>(
+    SUPPORTED_DERIVATIVE_INTERVALS,
+  );
   const values = String(value ?? '')
     .split(',')
     .map((item) => item.trim().toLowerCase())

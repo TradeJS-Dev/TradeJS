@@ -203,8 +203,8 @@ test('buildMlTrainingRow: key normalizations and removals', () => {
   expect(typeof row.Regime_RealizedVol_10).toBe('number');
   expect(typeof row.Regime_IsHighVol).toBe('number');
   expect(Number.isFinite(row.Regime_ATR_PCT_Rank as number)).toBe(true);
-  expect((row.Regime_ATR_PCT_Rank as number)).toBeGreaterThanOrEqual(0);
-  expect((row.Regime_ATR_PCT_Rank as number)).toBeLessThanOrEqual(1);
+  expect(row.Regime_ATR_PCT_Rank as number).toBeGreaterThanOrEqual(0);
+  expect(row.Regime_ATR_PCT_Rank as number).toBeLessThanOrEqual(1);
   expect(row.TrendLine_Value_AtEntry).toBeUndefined();
   expect(row.TrendLine_Slope).toBeCloseTo(Math.log1p(10));
   expect(row.TrendLine_Delta_To_Price).toBeCloseTo((101 - 590) / 101);

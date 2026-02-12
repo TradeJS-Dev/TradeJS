@@ -64,16 +64,15 @@ export const useSpreadIndicator = (
           })),
           'ts',
         );
-        return kLineDataList.reduce<Record<number, Record<string, number | undefined>>>(
-          (acc, { timestamp }) => {
-            const value = spreadByTs[timestamp]?.spread;
-            acc[timestamp] = {
-              SPREAD: Number.isFinite(Number(value)) ? Number(value) : undefined,
-            };
-            return acc;
-          },
-          {},
-        );
+        return kLineDataList.reduce<
+          Record<number, Record<string, number | undefined>>
+        >((acc, { timestamp }) => {
+          const value = spreadByTs[timestamp]?.spread;
+          acc[timestamp] = {
+            SPREAD: Number.isFinite(Number(value)) ? Number(value) : undefined,
+          };
+          return acc;
+        }, {});
       },
     });
 

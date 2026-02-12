@@ -8,7 +8,14 @@ import {
 
 describe('mlExport quality', () => {
   it('detects all-zero and high-zero numeric feature columns', () => {
-    const headers = ['label', 'profit', 'signalId', 'f_all_zero', 'f_high_zero', 'f_ok'];
+    const headers = [
+      'label',
+      'profit',
+      'signalId',
+      'f_all_zero',
+      'f_high_zero',
+      'f_ok',
+    ];
     const features = deriveTrainFeatureColumns(headers);
     const acc = createMlExportQualityAccumulator();
 
@@ -29,8 +36,12 @@ describe('mlExport quality', () => {
 
     expect(summary.allZeroColumns).toContain('f_all_zero');
     expect(summary.highZeroColumns).toContain('f_high_zero');
-    expect(summary.issues.some((issue) => issue.code === 'all_zero')).toBe(true);
-    expect(summary.issues.some((issue) => issue.code === 'high_zero')).toBe(true);
+    expect(summary.issues.some((issue) => issue.code === 'all_zero')).toBe(
+      true,
+    );
+    expect(summary.issues.some((issue) => issue.code === 'high_zero')).toBe(
+      true,
+    );
   });
 
   it('respects high-zero whitelist', () => {
@@ -57,7 +68,15 @@ describe('mlExport quality', () => {
   });
 
   it('flags NaN/inf and zero-variance continuous columns', () => {
-    const headers = ['label', 'profit', 'signalId', 'f_nan', 'f_inf', 'f_flat', 'f_binary'];
+    const headers = [
+      'label',
+      'profit',
+      'signalId',
+      'f_nan',
+      'f_inf',
+      'f_flat',
+      'f_binary',
+    ];
     const features = deriveTrainFeatureColumns(headers);
     const acc = createMlExportQualityAccumulator();
 
@@ -91,13 +110,21 @@ describe('mlExport quality', () => {
 
     const summary = summarizeMlExportQuality(acc, features);
 
-    expect(summary.nanOrInfColumns).toEqual(expect.arrayContaining(['f_nan', 'f_inf']));
+    expect(summary.nanOrInfColumns).toEqual(
+      expect.arrayContaining(['f_nan', 'f_inf']),
+    );
     expect(summary.zeroVarianceContinuousColumns).toContain('f_flat');
     expect(summary.zeroVarianceContinuousColumns).not.toContain('f_binary');
   });
 
   it('excludes label/profit/signalId from train features', () => {
-    const headers = ['label', 'profit', 'signalId', 'entryTimestamp', 'featureA'];
+    const headers = [
+      'label',
+      'profit',
+      'signalId',
+      'entryTimestamp',
+      'featureA',
+    ];
     const features = deriveTrainFeatureColumns(headers);
 
     expect(features).toEqual(['featureA']);
@@ -118,6 +145,8 @@ describe('mlExport quality', () => {
     const lines = formatMlExportQualityIssues('train', summary, 5);
 
     expect(lines[0]).toContain('train: features=1');
-    expect(lines.some((line) => line.includes('[all_zero] f_all_zero'))).toBe(true);
+    expect(lines.some((line) => line.includes('[all_zero] f_all_zero'))).toBe(
+      true,
+    );
   });
 });
