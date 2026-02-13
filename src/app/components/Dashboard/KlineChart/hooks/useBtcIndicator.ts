@@ -36,28 +36,27 @@ const buildBtcValues = (
   binanceCandles: Array<{ timestamp: number; close: number }>,
   coinbaseCandles: Array<{ timestamp: number; close: number }>,
 ) => {
-  return kLineDataList.reduce<Record<number, Record<string, number | undefined>>>(
-    (acc, { timestamp }) => {
-      const bybitValue =
-        bybitByTs[timestamp]?.close ??
-        getCloseAtOrBefore(bybitCandles, timestamp);
-      const binanceValue =
-        binanceByTs[timestamp]?.close ??
-        getCloseAtOrBefore(binanceCandles, timestamp);
-      const coinbaseValue =
-        coinbaseByTs[timestamp]?.close ??
-        getCloseAtOrBefore(coinbaseCandles, timestamp);
+  return kLineDataList.reduce<
+    Record<number, Record<string, number | undefined>>
+  >((acc, { timestamp }) => {
+    const bybitValue =
+      bybitByTs[timestamp]?.close ??
+      getCloseAtOrBefore(bybitCandles, timestamp);
+    const binanceValue =
+      binanceByTs[timestamp]?.close ??
+      getCloseAtOrBefore(binanceCandles, timestamp);
+    const coinbaseValue =
+      coinbaseByTs[timestamp]?.close ??
+      getCloseAtOrBefore(coinbaseCandles, timestamp);
 
-      acc[timestamp] = {
-        BTC_BYBIT: bybitValue,
-        BTC_BINANCE: binanceValue,
-        BTC_COINBASE: coinbaseValue,
-      };
+    acc[timestamp] = {
+      BTC_BYBIT: bybitValue,
+      BTC_BINANCE: binanceValue,
+      BTC_COINBASE: coinbaseValue,
+    };
 
-      return acc;
-    },
-    {},
-  );
+    return acc;
+  }, {});
 };
 
 export const useBtcIndicator = (

@@ -47,7 +47,9 @@ export const fetchWithRetry = async (
         return response;
       }
 
-      const retryAfterMs = parseRetryAfterMs(response.headers.get('retry-after'));
+      const retryAfterMs = parseRetryAfterMs(
+        response.headers.get('retry-after'),
+      );
       const backoffMs = Math.min(maxDelayMs, baseDelayMs * 2 ** i);
       await sleep(Math.max(retryAfterMs, backoffMs));
     } catch (error) {
