@@ -1,5 +1,6 @@
 import { DerivativesInterval } from '@utils/timescale';
 import { KlineChartData } from '@types';
+import { fetchWithRetry } from '@utils/http';
 
 export type SpotKlineRequest = {
   symbol: string;
@@ -83,7 +84,7 @@ export const spotKlineProviders: {
       url.searchParams.set('startTime', String(start));
       url.searchParams.set('endTime', String(end));
       url.searchParams.set('limit', '1000');
-      const response = await fetch(url.toString(), {
+      const response = await fetchWithRetry(url.toString(), {
         headers: { 'User-Agent': 'investing/market-data-ingest' },
       });
       if (!response.ok) {
@@ -105,7 +106,7 @@ export const spotKlineProviders: {
       url.searchParams.set('granularity', String(granularity));
       url.searchParams.set('start', new Date(start).toISOString());
       url.searchParams.set('end', new Date(end).toISOString());
-      const response = await fetch(url.toString(), {
+      const response = await fetchWithRetry(url.toString(), {
         headers: {
           'User-Agent': 'investing/market-data-ingest',
           Accept: 'application/json',

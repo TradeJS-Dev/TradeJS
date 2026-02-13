@@ -4,14 +4,9 @@ import chalk from 'chalk';
 import { connectors } from '@src/connectors';
 import { PRELOAD_DAYS } from '@constants';
 import { getTimestamp, formatUnix } from '@utils/timestamp';
-import {
-  findContinuityGap,
-  deleteCandles,
-  waitForDbReady,
-  getDataEdges,
-} from '@utils/timescale';
+import { deleteCandles, waitForDbReady } from '@utils/timescale';
 import { getTickers } from '@utils/cli';
-import { Interval } from '@types';
+import { Interval, KlineChartData } from '@types';
 import { logger } from '@utils/logger';
 
 args.option(['t', 'tickers'], 'Selected tickers');
@@ -22,68 +17,72 @@ const flags = args.parse(process.argv);
 const interval = Number(flags.timeframe);
 const intervalKey = flags.timeframe.toString() as Interval;
 
+const providers = [
+  {
+    id: 'bybit',
+    name: 'ByBit',
+    create: connectors.ByBit,
+  },
+  {
+    id: 'binance',
+    name: 'Binance',
+    create: connectors.Binance,
+  },
+  {
+    id: 'coinbase',
+    name: 'Coinbase',
+    create: connectors.Coinbase,
+  },
+] as const;
+
+const findGapInData = (data: KlineChartData, expectedMs: number) => {
+  for (let i = 1; i < data.length; i++) {
+    const prev = data[i - 1];
+    const current = data[i];
+    const diff = current.timestamp - prev.timestamp;
+
+    if (diff !== expectedMs) {
+      return {
+        prevTs: prev.timestamp,
+        ts: current.timestamp,
+        diffSeconds: Math.floor(diff / 1000),
+      };
+    }
+  }
+
+  return null;
+};
+
 const continuity = async () => {
   if (!Number.isFinite(interval) || interval <= 0) {
     logger.error('Invalid timeframe: %s', flags.timeframe);
     process.exit(1);
   }
 
-  const byBitConnector = await connectors.ByBit({
-    userName: flags.user,
-  });
-
   await waitForDbReady();
-
-  const tickers = await getTickers(byBitConnector, flags.tickers);
-
-  const bar = new ProgressBar(
-    ':current/:total [:bar][:percent] :fixed :eta(s) :symbol',
-    {
-      total: tickers.length,
-      width: 30,
-    },
-  );
-
   const reloadStart = getTimestamp(PRELOAD_DAYS);
   const reloadEnd = getTimestamp();
-  let fixed = 0;
 
-  for await (const symbol of tickers) {
-    const { min } = await getDataEdges(symbol, interval);
-    if (!min || min > reloadStart) {
-      const backfillEnd = min && min > reloadStart ? min : reloadEnd;
-      logger.warn(
-        'backfill %s %s: %s -> %s',
-        symbol,
-        interval,
-        formatUnix(reloadStart),
-        formatUnix(backfillEnd),
-      );
+  for await (const provider of providers) {
+    const connector = await provider.create({
+      userName: flags.user,
+    });
+    const tickers = await getTickers(connector, flags.tickers);
+    const bar = new ProgressBar(
+      ':current/:total [:bar][:percent] broken::broken fixed::fixed :eta(s) :symbol',
+      {
+        total: tickers.length,
+        width: 30,
+      },
+    );
+    let broken = 0;
+    let fixed = 0;
+    const expectedMs = interval * 60 * 1000;
 
-      await byBitConnector.kline({
-        symbol,
-        interval: intervalKey,
-        start: reloadStart,
-        end: backfillEnd,
-        silent: true,
-      });
-    }
+    logger.info(chalk.yellow(`continuity ${provider.name}: ${tickers.length}`));
 
-    const gap = await findContinuityGap(symbol, interval);
-
-    if (gap) {
-      logger.warn(
-        'gap %s %s: %s -> %s (%ss)',
-        symbol,
-        interval,
-        formatUnix(gap.prevTs),
-        formatUnix(gap.ts),
-        gap.diffSeconds,
-      );
-
-      await deleteCandles(symbol, interval);
-
-      await byBitConnector.kline({
+    for await (const symbol of tickers) {
+      const data = await connector.kline({
         symbol,
         interval: intervalKey,
         start: reloadStart,
@@ -91,16 +90,49 @@ const continuity = async () => {
         silent: true,
       });
 
-      fixed++;
+      let gap = findGapInData(data, expectedMs);
+      if (gap) {
+        broken++;
+        logger.warn(
+          '[%s] gap %s %s: %s -> %s (%ss)',
+          provider.id,
+          symbol,
+          interval,
+          formatUnix(gap.prevTs),
+          formatUnix(gap.ts),
+          gap.diffSeconds,
+        );
+
+        await deleteCandles(symbol, interval);
+
+        const reloaded = await connector.kline({
+          symbol,
+          interval: intervalKey,
+          start: reloadStart,
+          end: reloadEnd,
+          silent: true,
+        });
+        gap = findGapInData(reloaded, expectedMs);
+
+        if (!gap) {
+          fixed++;
+        }
+      }
+
+      bar.tick(1, {
+        broken: chalk.yellow(broken),
+        fixed: chalk.cyan(fixed),
+        symbol: chalk.gray(symbol),
+      });
     }
 
-    bar.tick(1, {
-      fixed: chalk.cyan(fixed),
-      symbol: chalk.gray(symbol),
-    });
+    logger.info(
+      chalk.yellow(
+        `[${provider.id}] broken: ${broken}/${tickers.length}, fixed: ${fixed}`,
+      ),
+    );
   }
 
-  logger.info(chalk.yellow(`fixed: ${fixed}/${tickers.length}`));
   process.exit();
 };
 

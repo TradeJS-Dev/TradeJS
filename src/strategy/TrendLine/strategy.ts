@@ -7,7 +7,6 @@ import { round } from '@utils/math';
 import { logger } from '@utils/logger';
 import { getData, redisKeys } from '@utils/redis';
 import { createTrendlineEngine } from '@utils/trendLineEngine';
-import { findTrendlinesByHighs, findTrendlinesByLows } from '@utils/trendLine';
 import { fetchMlThreshold } from '@utils/mlGrpc';
 import { createIndicators, IndicatorPeriods } from '@utils/indicators';
 import { filterByVeryVolatility } from './filters';
@@ -218,18 +217,8 @@ export const TrendlineStrategyCreator: StrategyCreator = async ({
       indicatorsController.next(candle, btcCandle);
     }
 
-    let bestLine =
+    const bestLine =
       lowsTrendlines.length > 0 ? lowsTrendlines[0] : highsTrendlines[0];
-    let trendlineFrom: 'engine' | 'batch' = 'engine';
-
-    if (!bestLine && ENV !== 'BACKTEST') {
-      const batchLows = findTrendlinesByLows(cachedData, trendlineOptions);
-      const batchHighs = findTrendlinesByHighs(cachedData, trendlineOptions);
-      bestLine = batchLows.length > 0 ? batchLows[0] : batchHighs[0];
-      if (bestLine) {
-        trendlineFrom = 'batch';
-      }
-    }
 
     if (!bestLine) {
       return 'NO_TRENDLINE';
@@ -348,7 +337,6 @@ export const TrendlineStrategyCreator: StrategyCreator = async ({
       interval: INTERVAL,
       direction,
       timestamp: lastCandle.timestamp,
-      trendlineFrom,
       figures: {
         trendLine: bestLine,
       },

@@ -172,7 +172,6 @@ export interface Signal {
   strategy: string;
   direction: Direction;
   timestamp: number;
-  trendlineFrom?: 'engine' | 'batch';
   configFromBacktest?: boolean;
   ml?: {
     probability: number;

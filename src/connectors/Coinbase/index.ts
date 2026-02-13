@@ -1,6 +1,7 @@
 'use server';
 
 import { ConnectorCreator, Interval, KlineChartData, Ticker } from '@types';
+import { fetchWithRetry } from '@utils/http';
 
 const INTERVAL_MS: Record<string, number> = {
   '1': 60_000,
@@ -85,19 +86,20 @@ export const CoinbaseConnectorCreator: ConnectorCreator = async () => {
         process.env.COINBASE_BASE_URL?.trim() ||
         'https://api.exchange.coinbase.com';
 
-      const stepMs = granularity * 1000 * 250;
-      let cursor =
+      const stepMs = granularity * 1000 * 300;
+      const fromMs =
         start ?? Math.max(0, end - INTERVAL_MS[String(interval)] * 1000);
+      let cursorEnd = end;
       const rows: KlineChartData = [];
 
-      while (cursor <= end) {
-        const chunkEnd = Math.min(end, cursor + stepMs);
+      while (cursorEnd >= fromMs) {
+        const chunkStart = Math.max(fromMs, cursorEnd - stepMs);
         const url = new URL(`${baseUrl}/products/${product}/candles`);
         url.searchParams.set('granularity', String(granularity));
-        url.searchParams.set('start', new Date(cursor).toISOString());
-        url.searchParams.set('end', new Date(chunkEnd).toISOString());
+        url.searchParams.set('start', new Date(chunkStart).toISOString());
+        url.searchParams.set('end', new Date(cursorEnd).toISOString());
 
-        const response = await fetch(url.toString(), {
+        const response = await fetchWithRetry(url.toString(), {
           headers: { 'User-Agent': 'investing/coinbase-connector' },
         });
         if (!response.ok) break;
@@ -118,7 +120,7 @@ export const CoinbaseConnectorCreator: ConnectorCreator = async () => {
             });
           }
         }
-        cursor = chunkEnd + 1;
+        cursorEnd = chunkStart - 1;
       }
 
       const dedup = new Map<number, KlineChartData[number]>();
@@ -141,10 +143,10 @@ export const CoinbaseConnectorCreator: ConnectorCreator = async () => {
       const entries = await Promise.all(
         MAJOR_PRODUCTS.map(async (product) => {
           const [tickerRes, statsRes] = await Promise.all([
-            fetch(`${baseUrl}/products/${product}/ticker`, {
+            fetchWithRetry(`${baseUrl}/products/${product}/ticker`, {
               headers: { 'User-Agent': 'investing/coinbase-connector' },
             }),
-            fetch(`${baseUrl}/products/${product}/stats`, {
+            fetchWithRetry(`${baseUrl}/products/${product}/stats`, {
               headers: { 'User-Agent': 'investing/coinbase-connector' },
             }),
           ]);

@@ -1,6 +1,7 @@
 'use server';
 
 import { ConnectorCreator, Interval, KlineChartData, Ticker } from '@types';
+import { fetchWithRetry } from '@utils/http';
 
 const INTERVAL_MAP: Record<string, string> = {
   '1': '1m',
@@ -67,7 +68,7 @@ export const BinanceConnectorCreator: ConnectorCreator = async () => {
         url.searchParams.set('endTime', String(end));
         url.searchParams.set('limit', '1000');
 
-        const response = await fetch(url.toString(), {
+        const response = await fetchWithRetry(url.toString(), {
           headers: { 'User-Agent': 'investing/binance-connector' },
         });
         if (!response.ok) break;
@@ -107,7 +108,7 @@ export const BinanceConnectorCreator: ConnectorCreator = async () => {
     getTickers: async () => {
       const baseUrl =
         process.env.BINANCE_BASE_URL?.trim() || 'https://api.binance.com';
-      const response = await fetch(`${baseUrl}/api/v3/ticker/24hr`, {
+      const response = await fetchWithRetry(`${baseUrl}/api/v3/ticker/24hr`, {
         headers: { 'User-Agent': 'investing/binance-connector' },
       });
       if (!response.ok) return [];

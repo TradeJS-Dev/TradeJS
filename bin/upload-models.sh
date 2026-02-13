@@ -44,7 +44,38 @@ fi
 
 ssh -i "$SSH_KEY" -p "$SSH_PORT" -o StrictHostKeyChecking=no "$SSH_USER@$SSH_HOST" "mkdir -p $REMOTE_DIR"
 
-# Stream a sorted archive so uploads happen in alphabetical order.
-(cd "$MODELS_DIR" && tar --sort=name -cf - .) | \
-  ssh -i "$SSH_KEY" -p "$SSH_PORT" -o StrictHostKeyChecking=no "$SSH_USER@$SSH_HOST" \
-  "tar -xpf - -C $REMOTE_DIR"
+# Upload only production model artifacts and skip archive files.
+FILE_LIST="$(mktemp)"
+trap 'rm -f "$FILE_LIST"' EXIT
+
+(
+  cd "$MODELS_DIR"
+  find . -mindepth 1 \( -type f -o -type l \) \
+    -name "*.prod.*" \
+    ! -name "*.tar" \
+    ! -name "*.tgz" \
+    ! -name "*.tar.gz" \
+    ! -name "*.tar.bz2" \
+    ! -name "*.tar.xz" \
+    ! -name "*.zip" \
+    ! -name "*.7z" \
+    | LC_ALL=C sort > "$FILE_LIST"
+)
+
+if [[ ! -s "$FILE_LIST" ]]; then
+  echo "No production artifacts found in: $MODELS_DIR" >&2
+  exit 1
+fi
+
+echo "Files to upload:"
+sed 's#^\./##' "$FILE_LIST"
+
+if tar --version 2>/dev/null | grep -qi "gnu tar"; then
+  (cd "$MODELS_DIR" && tar -cf - -T "$FILE_LIST") | \
+    ssh -i "$SSH_KEY" -p "$SSH_PORT" -o StrictHostKeyChecking=no "$SSH_USER@$SSH_HOST" \
+    "tar -xpf - -C $REMOTE_DIR"
+else
+  (cd "$MODELS_DIR" && tar --no-xattrs -cf - -T "$FILE_LIST") | \
+    ssh -i "$SSH_KEY" -p "$SSH_PORT" -o StrictHostKeyChecking=no "$SSH_USER@$SSH_HOST" \
+    "tar -xpf - -C $REMOTE_DIR"
+fi
