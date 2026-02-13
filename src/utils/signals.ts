@@ -125,7 +125,7 @@ export const sendSignal = async (signal: Signal, imgInterval: Interval) => {
       [
         {
           text: 'Dashboard',
-          url: `${APP_URL}/routes/dashboard/${symbol}/${interval}/?signalId=${signalId}`,
+          url: `${APP_URL}/routes/dashboard/bybit/${symbol}/${interval}/?signalId=${signalId}`,
         },
       ],
     ],

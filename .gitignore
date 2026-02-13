@@ -25,6 +25,7 @@ yarn-debug.log*
 yarn-error.log*
 service.log*
 error.log*
+/logs
 
 # local env files
 .env*.local

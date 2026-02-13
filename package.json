@@ -14,6 +14,7 @@
     "clean-up": "yarn clean-tests && yarn clean-ml && yarn clean-ml-export",
     "continuity": "time yarn ts-node ./src/scripts/continuity",
     "derivatives:ingest": "time yarn ts-node ./src/scripts/derivativesIngest --provider coinalyze",
+    "derivatives:ingest:coinalyze:all": "time yarn ts-node ./src/scripts/derivativesIngestCoinalyzeAll",
     "dev": "next dev",
     "dev-tsc": "npx tsc --noEmit",
     "docker-build": "docker compose build",

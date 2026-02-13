@@ -65,7 +65,7 @@ export const screenDashboard = async (signal: Signal) => {
       });
 
       await page.goto(
-        `${APP_URL}/routes/dashboard/${symbol}/${interval}/?signalId=${signalId}&autoZoom=true${tokenParam}`,
+        `${APP_URL}/routes/dashboard/bybit/${symbol}/${interval}/?signalId=${signalId}&autoZoom=true${tokenParam}`,
       );
 
       await delay(10_000);
