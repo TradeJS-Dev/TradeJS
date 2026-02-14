@@ -55,7 +55,9 @@ jobs:
           echo "${{ secrets.DOCKERHUB_TOKEN }}" | docker login --username ${{ secrets.DOCKERHUB_USERNAME }} --password-stdin
 
       - name: Build Docker images
-        run: docker-compose build
+        run: |
+          docker-compose build
+          docker-compose build --no-cache ml-infer
   
       - name: Push Docker images
         run: docker-compose push
@@ -82,5 +84,6 @@ jobs:
             systemctl stop nginx
             systemctl disable nginx
             docker compose up -d --remove-orphans
+            docker compose up -d --force-recreate ml-infer
             docker restart nginx
             chmod 777 ./data
