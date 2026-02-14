@@ -10,7 +10,13 @@ These instructions apply to this repository (`/Users/aleksnick/dev/investing`).
   - Redis is restored on exit (success/error/interrupt).
 
 ## Dataset Handling
-- Training uses the latest base export file (`ml-dataset-*.jsonl`) only.
+- Backtest workers write ML rows directly to per-worker chunk files:
+  - `ml-dataset-[strategyName]-[chunkId].jsonl`
+- ML rows are transformed immediately on signal creation (no `ml:*` Redis keys).
+- `yarn ml-export` merges chunk files into one dataset:
+  - `ml-dataset-[strategyName]-merged-[timestamp].jsonl`
+- CSV export is disabled; only JSONL is generated.
+- Training uses the latest merged/base export file (`ml-dataset-*.jsonl`) only.
 - Derived split files are generated automatically:
   - `*.holdout-train.<key>.jsonl`
   - `*.holdout-test.<key>.jsonl`
@@ -57,6 +63,7 @@ These instructions apply to this repository (`/Users/aleksnick/dev/investing`).
 
 ## Testing
 - Run unit tests with `yarn unit`.
+- Run type checks with `yarn dev-tsc`.
 - Keep Jest focused on unit suites (ignore temp artifacts and non-unit script entrypoints).
 
 ## Indicator Architecture

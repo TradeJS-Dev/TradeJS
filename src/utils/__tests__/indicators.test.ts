@@ -135,9 +135,9 @@ describe('utils indicators', () => {
 
     const result = indicators.result() as Record<string, any>;
     expect(Array.isArray(result.candles15m)).toBe(true);
-    expect(result.candles15m).toHaveLength(10);
+    expect(result.candles15m).toHaveLength(50);
     expect(Array.isArray(result.btcCandles1h)).toBe(true);
-    expect(result.btcCandles1h.length).toBeLessThanOrEqual(10);
+    expect(result.btcCandles1h.length).toBeLessThanOrEqual(50);
     expect(Array.isArray(result.maFast1h)).toBe(true);
     expect(result.maFast1h.length).toBeGreaterThan(0);
     expect(Array.isArray(result.btcMaFast)).toBe(true);

@@ -4,8 +4,6 @@ import { setData } from '@utils/redis';
 jest.mock('@utils/redis', () => ({
   setData: jest.fn(),
   redisKeys: {
-    mlResult: (strategy: string, signalId: string) =>
-      `ml:${strategy}:results:${signalId}`,
     cacheOrders: (userName: string, orderLogId: string) =>
       `users:${userName}:cache:tests:orders:${orderLogId}`,
     cachePositions: (userName: string, orderLogId: string) =>
@@ -47,7 +45,7 @@ describe('TestConnectorCreator', () => {
     expect(await connector.getState()).toEqual({ a: 1, b: 2 });
   });
 
-  it('opens position, blocks second open, takes full TP and stores result', async () => {
+  it('opens position, blocks second open and takes full TP', async () => {
     const connector = TestConnectorCreator(createBaseConnector(), {
       userName: 'alice',
       mlEnabled: true,
@@ -89,14 +87,6 @@ describe('TestConnectorCreator', () => {
     expect(result.stat.amount).toBe(119);
     expect(result.stat.profit).toBe(19);
 
-    expect(mockedSetData).toHaveBeenCalledWith(
-      'ml:TrendLine:results:sig-1',
-      expect.objectContaining({
-        outcome: 'TAKE_PROFIT',
-        result: 'WIN',
-      }),
-      expect.objectContaining({ expire: expect.any(Number) }),
-    );
     expect(mockedSetData).toHaveBeenCalledWith(
       'users:alice:cache:tests:orders:order-log-id',
       expect.any(Array),

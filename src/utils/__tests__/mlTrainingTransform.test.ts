@@ -1,7 +1,10 @@
-import { buildMlTrainingRow } from '../mlTrainingTransform';
+import {
+  buildMlTrainingRow,
+  trimMlTrainingRowWindows,
+} from '../mlTrainingTransform';
 
 test('buildMlTrainingRow: key normalizations and removals', () => {
-  const makeArr = (value: number) => Array.from({ length: 10 }, () => value);
+  const makeArr = (value: number) => Array.from({ length: 5 }, () => value);
   const candles = Array.from({ length: 50 }, (_, i) => ({
     open: 100,
     close: 101,
@@ -38,23 +41,23 @@ test('buildMlTrainingRow: key normalizations and removals', () => {
     price1hPcnt: makeArr(2),
     highPrice1h: makeArr(120),
     lowPrice1h: makeArr(80),
-    volume1h: [10, 20, 30, 40, 50, 60, 70, 80, 90, 100],
+    volume1h: [10, 20, 30, 40, 50],
     highPrice24h: makeArr(140),
     lowPrice24h: makeArr(60),
-    volume24h: [5, 10, 15, 20, 25, 30, 35, 40, 45, 50],
-    maFast1h: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
-    price1hPcnt1h: [11, 12, 13, 14, 15, 16, 17, 18, 19, 20],
-    maFast4h: [2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
-    price1hPcnt4h: [21, 22, 23, 24, 25, 26, 27, 28, 29, 30],
-    maFast1d: [3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+    volume24h: [5, 10, 15, 20, 25],
+    maFast1h: [1, 2, 3, 4, 5],
+    price1hPcnt1h: [11, 12, 13, 14, 15],
+    maFast4h: [2, 3, 4, 5, 6],
+    price1hPcnt4h: [21, 22, 23, 24, 25],
+    maFast1d: [3, 4, 5, 6, 7],
     candles15m: candles as unknown as number[],
     btcCandles15m: btcCandles as unknown as number[],
-    candles1h: candles.slice(-10) as unknown as number[],
-    btcCandles1h: btcCandles.slice(-10) as unknown as number[],
-    candles4h: candles.slice(-10) as unknown as number[],
-    btcCandles4h: btcCandles.slice(-10) as unknown as number[],
-    candles1d: candles.slice(-10) as unknown as number[],
-    btcCandles1d: btcCandles.slice(-10) as unknown as number[],
+    candles1h: candles.slice(-5) as unknown as number[],
+    btcCandles1h: btcCandles.slice(-5) as unknown as number[],
+    candles4h: candles.slice(-5) as unknown as number[],
+    btcCandles4h: btcCandles.slice(-5) as unknown as number[],
+    candles1d: candles.slice(-5) as unknown as number[],
+    btcCandles1d: btcCandles.slice(-5) as unknown as number[],
   };
 
   const signal = {
@@ -116,17 +119,17 @@ test('buildMlTrainingRow: key normalizations and removals', () => {
   expect(row.OBV_1).toBeUndefined();
   expect(row.TF15M_OBV_LogRet_1).toBeUndefined();
   expect(row.TF15M_OBV_LogRet_2).toBe(0);
-  expect(row.TF15M_OBV_LogRet_10).toBe(0);
+  expect(row.TF15M_OBV_LogRet_5).toBe(0);
   expect(row.TF15M_SMA_OBV_LogRet_1).toBeUndefined();
 
   expect(row.TF15M_ATR_1).toBeCloseTo(2 / 101);
-  expect(row.TF15M_ATR_10).toBeCloseTo(2 / 101);
+  expect(row.TF15M_ATR_5).toBeCloseTo(2 / 101);
   expect(row.TF15M_ATR_PCT_1).toBeCloseTo(1.5);
   expect(row.TF15M_MA_Fast_1).toBeUndefined();
   expect(row.TF15M_MA_Fast_2).toBe(0);
   expect(row.TF15M_MA_Medium_1).toBeUndefined();
   expect(row.TF15M_MA_Medium_2).toBe(0);
-  expect(row.TF15M_MA_Medium_10).toBe(0);
+  expect(row.TF15M_MA_Medium_5).toBe(0);
   expect(row.TF15M_BB_Upper_1).toBeUndefined();
   expect(row.TF15M_BB_Upper_2).toBe(0);
 
@@ -138,7 +141,7 @@ test('buildMlTrainingRow: key normalizations and removals', () => {
   expect(row.TF15M_MACD_Histogram_2).toBe(0);
 
   expect(row.TF15M_Volume1h_1_MedianNorm).toBeUndefined();
-  expect(row.TF15M_Volume1h_2_MedianNorm).toBeCloseTo(20 / 15);
+  expect(row.TF15M_Volume1h_2_MedianNorm).toBeCloseTo(1);
 
   expect(row.Candle_Open_1).toBeUndefined();
   expect(row.Alt_OpenRel_1).toBeUndefined();
@@ -155,7 +158,7 @@ test('buildMlTrainingRow: key normalizations and removals', () => {
   expect(row.TF15M_AltToBtc_Open_2).toBe(0);
   expect(row.TF15M_AltToBtc_Close_1).toBeUndefined();
   expect(row.TF15M_AltToBtc_Close_2).toBe(0);
-  expect(row.TF15M_AltToBtc_Close_10).toBe(0);
+  expect(row.TF15M_AltToBtc_Close_5).toBe(0);
   expect(row.AltToBtc_CloseRel_1).toBeUndefined();
   expect(row.takeProfitPrice).toBeCloseTo(101 / 105);
   expect(row.stopLossPrice).toBeCloseTo(101 / 99);
@@ -176,19 +179,19 @@ test('buildMlTrainingRow: key normalizations and removals', () => {
   expect(row.TF15M_Candle_UpperWick_1).toBeCloseTo((102 - 101) / 10);
   expect(row.TF15M_Candle_LowerWick_1).toBeCloseTo((100 - 99) / 10);
 
-  expect(row.TF15M_AltRet_Mean10).toBeCloseTo(1.01);
-  expect(row.TF15M_AltRet_Std10).toBeCloseTo(0);
-  expect(row.TF15M_AltRet_Skew10).toBeCloseTo(0);
-  expect(row.TF15M_AltRet_Kurt10).toBeCloseTo(0);
+  expect(row.TF15M_AltRet_Mean50).toBeCloseTo(0.9898);
+  expect(row.TF15M_AltRet_Std50).toBeCloseTo(0.1414);
+  expect(row.TF15M_AltRet_Skew50).toBeCloseTo(-6.857142857142852);
+  expect(row.TF15M_AltRet_Kurt50).toBeCloseTo(48.020408163265266);
 
-  expect(row.TF15M_BtcRet_Mean10).toBeCloseTo(1);
-  expect(row.TF15M_BtcRet_Std10).toBeCloseTo(0);
+  expect(row.TF15M_BtcRet_Mean50).toBeCloseTo(0.98);
+  expect(row.TF15M_BtcRet_Std50).toBeCloseTo(0.14);
   expect(row.TF15M_Price1hPcnt_1).toBeCloseTo(Math.tanh(2 / 10));
-  expect(row.TF1H_MA_Fast_2).toBeCloseTo(1);
+  expect(row.TF1H_MA_Fast_2).toBeCloseTo(0);
   expect(row.TF1H_Price1hPcnt_1).toBeCloseTo(Math.tanh(11 / 10));
-  expect(row.TF4H_MA_Fast_2).toBeCloseTo(0.5);
+  expect(row.TF4H_MA_Fast_2).toBeCloseTo(0);
   expect(row.TF4H_Price1hPcnt_1).toBeCloseTo(Math.tanh(21 / 10));
-  expect(row.TF1D_MA_Fast_2).toBeCloseTo(1 / 3);
+  expect(row.TF1D_MA_Fast_2).toBeCloseTo(0);
 
   expect(row.currentPrice).toBeUndefined();
   expect(typeof row.Ctx_EntryHour).toBe('number');
@@ -200,7 +203,7 @@ test('buildMlTrainingRow: key normalizations and removals', () => {
   expect(typeof row.Regime_ATR_PCT_Last).toBe('number');
   expect(typeof row.Regime_ATR_PCT_Z).toBe('number');
   expect(typeof row.Regime_ATR_PCT_Rank).toBe('number');
-  expect(typeof row.Regime_RealizedVol_10).toBe('number');
+  expect(typeof row.Regime_RealizedVol_50).toBe('number');
   expect(typeof row.Regime_IsHighVol).toBe('number');
   expect(Number.isFinite(row.Regime_ATR_PCT_Rank as number)).toBe(true);
   expect(row.Regime_ATR_PCT_Rank as number).toBeGreaterThanOrEqual(0);
@@ -222,6 +225,35 @@ test('buildMlTrainingRow: key normalizations and removals', () => {
   expect(row.profit).toBe(1);
   expect(row.symbol).toBe('ETHUSDT');
   expect(row.strategy).toBe('TRENDLINE');
+});
+
+test('trimMlTrainingRowWindows keeps only last 5 indexed values', () => {
+  const source: Record<string, number | string | null> = {
+    TF15M_ATR_1: 1,
+    TF15M_ATR_2: 2,
+    TF15M_ATR_3: 3,
+    TF15M_ATR_4: 4,
+    TF15M_ATR_5: 5,
+    TF15M_ATR_6: 6,
+    TF15M_ATR_7: 7,
+    TF15M_ATR_8: 8,
+    TF15M_ATR_9: 9,
+    TF15M_ATR_10: 10,
+    TOUCHES_TS_1: 11,
+    TOUCHES_TS_2: 12,
+    TOUCHES_TS_3: 13,
+    Regime_RealizedVol_50: 0.123,
+    symbol: 'ETHUSDT',
+  };
+
+  const row = trimMlTrainingRowWindows(source, 5);
+  expect(row.TF15M_ATR_1).toBe(6);
+  expect(row.TF15M_ATR_5).toBe(10);
+  expect(row.TF15M_ATR_6).toBeUndefined();
+  expect(row.TOUCHES_TS_3).toBe(13);
+  expect(row.Regime_RealizedVol_50).toBe(0.123);
+  expect(row.Regime_RealizedVol_5).toBeUndefined();
+  expect(row.symbol).toBe('ETHUSDT');
 });
 
 test('buildMlTrainingRow: normalization is finite on cross-zero oscillators', () => {

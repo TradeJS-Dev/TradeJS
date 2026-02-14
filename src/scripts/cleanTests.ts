@@ -40,17 +40,17 @@ const getUsersToClean = async (): Promise<string[]> => {
 
 const cleanUserTests = async (userName: string) => {
   const testsPrefix = `users:${userName}:tests:`;
-  const cachePrefix = `users:${userName}:cache:`;
+  const testsCachePrefix = `users:${userName}:cache:tests:`;
 
   if (flags.cache) {
     console.log(chalk.yellow(`clean user cache: ${userName}`));
-    await cleanRedis(cachePrefix);
+    await cleanRedis(testsCachePrefix);
     return;
   }
 
   console.log(chalk.yellow(`clean user tests: ${userName}`));
   await cleanRedis(testsPrefix);
-  await cleanRedis(`users:${userName}:cache:tests:`);
+  await cleanRedis(testsCachePrefix);
 };
 
 const run = async () => {

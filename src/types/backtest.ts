@@ -49,6 +49,7 @@ export interface Test extends BacktestConfig {
   symbol: string;
   options: TestingOptions;
   ml?: boolean;
+  chunkId?: string;
 }
 
 export type TestSuite = Test[];

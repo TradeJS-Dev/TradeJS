@@ -45,7 +45,7 @@ args.option(['c', 'config'], 'Backtest config', 'breakout');
 args.option(['L', 'showTickersList'], 'Just show only ticker list', false);
 args.option(['S', 'progressStep'], 'Progress step', 100);
 args.option(['U', 'user'], 'Use user confg', 'root');
-args.option(['m', 'ml'], 'Save ML signals/results to redis ml:*', false);
+args.option(['m', 'ml'], 'Write ML dataset rows to per-worker JSONL chunks', false);
 
 const flags = args.parse(process.argv);
 const interval = flags.timeframe.toString() as Interval;
@@ -221,6 +221,8 @@ const backtest = async () => {
   );
 
   for (const chunk of chunks) {
+    const chunkId = uuid();
+    const chunkWithId = chunk.map((test) => ({ ...test, chunkId }));
     const tester = fork(
       path.resolve(__dirname, '../workers', 'tester.ts'),
       [],
@@ -312,8 +314,7 @@ const backtest = async () => {
       }
     });
 
-    const chunkId = uuid();
-    await setData(redisKeys.cacheChunk(userName, chunkId), chunk, {
+    await setData(redisKeys.cacheChunk(userName, chunkId), chunkWithId, {
       expire: TTL_1D,
     });
 

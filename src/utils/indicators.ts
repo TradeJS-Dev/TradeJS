@@ -1,7 +1,8 @@
 import { SMA, ATR, BollingerBands, OBV, MACD } from 'technicalindicators';
 import { Candle } from '@types';
+import { ML_BASE_CANDLES_WINDOW } from '@constants';
 
-const CANDLE_WINDOW = 10;
+const CANDLE_WINDOW = ML_BASE_CANDLES_WINDOW;
 const BASE_INTERVAL_MINUTES = 15;
 const INDICATOR_TIMEFRAMES = [
   { minutes: 60, suffix: '1h' },
@@ -271,8 +272,11 @@ export const createIndicators = (
       indicatorHistory[key] = [];
     }
     indicatorHistory[key].push(value);
-    if (indicatorHistory[key].length > 10) {
-      indicatorHistory[key].splice(0, indicatorHistory[key].length - 10);
+    if (indicatorHistory[key].length > ML_BASE_CANDLES_WINDOW) {
+      indicatorHistory[key].splice(
+        0,
+        indicatorHistory[key].length - ML_BASE_CANDLES_WINDOW,
+      );
     }
   };
 

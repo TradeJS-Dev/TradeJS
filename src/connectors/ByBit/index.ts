@@ -434,6 +434,7 @@ export const ByBitConnectorCreator: ConnectorCreator = async (config) => {
 
       const positionRes = await client.getPositionInfo({
         category: MARKET_CATEGORY,
+        settleCoin: 'USDT',
       });
 
       logger.log(

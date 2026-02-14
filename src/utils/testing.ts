@@ -1,11 +1,15 @@
 import { strategies, StrategyNames } from '@src/strategy';
 import { connectors, ConnectorNames } from '@src/connectors';
 import { Candle, ConnectorCreator, TestingBox } from '@types';
-import { ML_BASE_CANDLES_WINDOW, PRELOAD_DAYS, TTL_3M } from '@constants';
+import { ML_BASE_CANDLES_WINDOW, PRELOAD_DAYS } from '@constants';
 import { getTimestamp } from '@utils/timestamp';
 import { alignSortedCandlesByTimestamp } from '@utils/correlation';
-import { redisKeys, setData } from '@utils/redis';
 import { buildMlPayload } from '@utils/mlPayload';
+import {
+  buildMlTrainingRow,
+  trimMlTrainingRowWindows,
+} from '@utils/mlTrainingTransform';
+import { appendMlDatasetRow } from '@utils/mlDatasetFile';
 
 const preloadStart = getTimestamp(PRELOAD_DAYS);
 export const testing: TestingBox = async ({
@@ -19,6 +23,7 @@ export const testing: TestingBox = async ({
   strategyConfig,
   connectorName,
   ml = false,
+  chunkId = 'single',
 }) => {
   if (!start) {
     throw new Error('no start');
@@ -99,27 +104,28 @@ export const testing: TestingBox = async ({
     await testConnector.checkTp(candle);
 
     if (ml && signal && typeof signal !== 'string') {
-      await setData(
-        redisKeys.mlSignal(strategyName, signal.signalId),
-        buildMlPayload({
-          signal,
-          context: {
-            userName,
-            testId,
-            testSuiteId,
-            testName: name,
-            symbol,
-            strategyName,
-            strategyConfig,
-            connectorName,
-          },
-          candles: candlesHistory.slice(-ML_BASE_CANDLES_WINDOW),
-          btcCandles: btcCandlesHistory.slice(-ML_BASE_CANDLES_WINDOW),
-        }),
-        {
-          expire: TTL_3M,
+      const payload = buildMlPayload({
+        signal,
+        context: {
+          userName,
+          testId,
+          testSuiteId,
+          testName: name,
+          symbol,
+          strategyName,
+          strategyConfig,
+          connectorName,
         },
-      );
+        candles: candlesHistory.slice(-ML_BASE_CANDLES_WINDOW),
+        btcCandles: btcCandlesHistory.slice(-ML_BASE_CANDLES_WINDOW),
+      });
+      const fullRow = buildMlTrainingRow(payload, null);
+      const row = trimMlTrainingRowWindows(fullRow, 5);
+      await appendMlDatasetRow({
+        strategyName,
+        chunkId,
+        row,
+      });
     }
   }
 

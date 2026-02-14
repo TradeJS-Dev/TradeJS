@@ -29,6 +29,12 @@ const getPosition = async (connector: Connector) => {
   console.log('res', res);
 };
 
+const getPositions = async (connector: Connector) => {
+  const res = await connector.getPositions();
+
+  console.log('res', res);
+};
+
 const closeOrder = async (connector: Connector) => {
   const res = await connector.closePosition({
     symbol: SYMBOL,
@@ -47,7 +53,7 @@ const main = async () => {
 
   // await placeOrder(byBitConnector);
   // await closeOrder(byBitConnector);
-  await getPosition(byBitConnector);
+  await getPositions(byBitConnector);
 };
 
 main();

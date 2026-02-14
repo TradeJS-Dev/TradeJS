@@ -11,7 +11,7 @@ import {
   Candle,
 } from '@types';
 import { redisKeys, setData } from '@utils/redis';
-import { TTL_1M, TTL_1D } from '@constants';
+import { TTL_1D } from '@constants';
 import { uuid } from '@utils/uuid';
 import { round } from '@utils/math';
 
@@ -20,7 +20,6 @@ const INITIAL_AMOUNT = 100;
 
 export const TestConnectorCreator: TCC = (connector, context) => {
   const userName = context?.userName;
-  const mlEnabled = Boolean(context?.mlEnabled);
   let state = {};
   const ORDER_LOG: OrderLogData = [];
   const POSITION_LOG: PositionLogData = [];
@@ -42,44 +41,6 @@ export const TestConnectorCreator: TCC = (connector, context) => {
       profit: round(data.profit || 0),
       index: ORDER_LOG.length,
     } as OrderLog);
-  };
-
-  const saveMlResult = async (data: {
-    outcome: 'TAKE_PROFIT' | 'STOP_LOSS' | 'CLOSE';
-    timestamp: number;
-    price: number;
-    profit: number;
-  }) => {
-    if (!mlEnabled) {
-      return;
-    }
-    const signalId = CURRENT_POSITION?.signal?.signalId;
-    const strategyName = CURRENT_POSITION?.signal?.strategy;
-    if (!signalId || !CURRENT_POSITION) {
-      return;
-    }
-    if (!strategyName) {
-      return;
-    }
-
-    await setData(
-      redisKeys.mlResult(strategyName, signalId),
-      {
-        signalId,
-        symbol: CURRENT_POSITION.symbol,
-        direction: CURRENT_POSITION.direction,
-        entryTimestamp: CURRENT_POSITION.timestamp,
-        entryPrice: CURRENT_POSITION.price,
-        closeTimestamp: data.timestamp,
-        closePrice: data.price,
-        outcome: data.outcome,
-        profit: data.profit,
-        result: data.profit >= 0 ? 'WIN' : 'LOSS',
-      },
-      {
-        expire: TTL_1M,
-      },
-    );
   };
 
   const clearPosition = (timestamp: number) => {
@@ -199,12 +160,6 @@ export const TestConnectorCreator: TCC = (connector, context) => {
       TP = TP.filter(({ done }) => !done);
 
       if (CURRENT_POSITION && CURRENT_POSITION.qty <= 0) {
-        await saveMlResult({
-          outcome: 'TAKE_PROFIT',
-          timestamp: candle.timestamp,
-          price: lastTpPrice ?? entryPrice,
-          profit: lastTpProfit,
-        });
         clearPosition(candle.timestamp);
       }
     },
@@ -237,12 +192,6 @@ export const TestConnectorCreator: TCC = (connector, context) => {
           type: isLong ? 'STOP_LOSS_LONG' : 'STOP_LOSS_SHORT',
         });
 
-        await saveMlResult({
-          outcome: 'STOP_LOSS',
-          timestamp: candle.timestamp,
-          price: SL,
-          profit,
-        });
         clearPosition(candle.timestamp);
 
         return;
@@ -295,12 +244,6 @@ export const TestConnectorCreator: TCC = (connector, context) => {
         type: isLong ? 'CLOSE_LONG' : 'CLOSE_SHORT',
       });
 
-      await saveMlResult({
-        outcome: 'CLOSE',
-        timestamp: order.timestamp,
-        price: order.price,
-        profit,
-      });
       clearPosition(order.timestamp);
 
       return true;

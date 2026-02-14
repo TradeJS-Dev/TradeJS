@@ -1,4 +1,4 @@
-import { ML_CANDLE_FEATURE_WINDOW } from '@constants';
+import { ML_BASE_CANDLES_WINDOW, ML_CANDLE_FEATURE_WINDOW } from '@constants';
 
 // Builds a flat numeric feature row for ML training from a Signal + context.
 // The output is a fixed schema with derived indicator series, candle features,
@@ -22,7 +22,8 @@ type MlResultRecord = {
 
 // Fixed windows for features.
 const CANDLE_WINDOW = ML_CANDLE_FEATURE_WINDOW;
-const INDICATOR_WINDOW = 10;
+const INDICATOR_WINDOW = ML_BASE_CANDLES_WINDOW;
+const ML_OUTPUT_WINDOW = 5;
 const CANDLE_TIMEFRAMES = [
   { label: 'TF15M', key: 'candles15m', btcKey: 'btcCandles15m' },
   { label: 'TF1H', key: 'candles1h', btcKey: 'btcCandles1h' },
@@ -400,18 +401,18 @@ const addCandleFeatures = (
     relReturns.length - 1,
     CANDLE_WINDOW,
   );
-  row[key('AltRet_Mean10')] = computeMean(windowAlt);
-  row[key('AltRet_Std10')] = computeStd(windowAlt);
-  row[key('AltRet_Skew10')] = computeSkew(windowAlt);
-  row[key('AltRet_Kurt10')] = computeKurtosis(windowAlt);
-  row[key('BtcRet_Mean10')] = computeMean(windowBtc);
-  row[key('BtcRet_Std10')] = computeStd(windowBtc);
-  row[key('BtcRet_Skew10')] = computeSkew(windowBtc);
-  row[key('BtcRet_Kurt10')] = computeKurtosis(windowBtc);
-  row[key('RelRet_Mean10')] = computeMean(windowRel);
-  row[key('RelRet_Std10')] = computeStd(windowRel);
-  row[key('RelRet_Skew10')] = computeSkew(windowRel);
-  row[key('RelRet_Kurt10')] = computeKurtosis(windowRel);
+  row[key('AltRet_Mean50')] = computeMean(windowAlt);
+  row[key('AltRet_Std50')] = computeStd(windowAlt);
+  row[key('AltRet_Skew50')] = computeSkew(windowAlt);
+  row[key('AltRet_Kurt50')] = computeKurtosis(windowAlt);
+  row[key('BtcRet_Mean50')] = computeMean(windowBtc);
+  row[key('BtcRet_Std50')] = computeStd(windowBtc);
+  row[key('BtcRet_Skew50')] = computeSkew(windowBtc);
+  row[key('BtcRet_Kurt50')] = computeKurtosis(windowBtc);
+  row[key('RelRet_Mean50')] = computeMean(windowRel);
+  row[key('RelRet_Std50')] = computeStd(windowRel);
+  row[key('RelRet_Skew50')] = computeSkew(windowRel);
+  row[key('RelRet_Kurt50')] = computeKurtosis(windowRel);
 };
 
 export const buildMlTrainingRow = (
@@ -516,6 +517,14 @@ export const buildMlTrainingRow = (
       // limits outliers while preserving ordering around zero.
       row[`${prefix}_${i + 1}`] = squash(series[i], 10);
     }
+  };
+
+  const addSeriesMoments = (prefix: string, values: unknown[]) => {
+    const series = padSeries(normalizeSeries(values));
+    row[`${prefix}_Mean50`] = computeMean(series);
+    row[`${prefix}_Std50`] = computeStd(series);
+    row[`${prefix}_Skew50`] = computeSkew(series);
+    row[`${prefix}_Kurt50`] = computeKurtosis(series);
   };
 
   const addSeriesStd = (prefix: string, values: unknown[]) => {
@@ -642,6 +651,7 @@ export const buildMlTrainingRow = (
       indicatorSeries('smaObv'),
     );
     addSeriesRaw(featureKey('ATR_PCT'), indicatorSeries('atrPct'));
+    addSeriesMoments(featureKey('ATR_PCT'), indicatorSeries('atrPct'));
     // MACD family crosses zero frequently; standardized levels are more stable
     // than ratio-returns for such oscillators.
     addSeriesStd(featureKey('MACD'), indicatorSeries('macd'));
@@ -650,8 +660,20 @@ export const buildMlTrainingRow = (
       featureKey('MACD_Histogram'),
       indicatorSeries('macdHistogram'),
     );
+    addSeriesMoments(
+      featureKey('MACD_Histogram'),
+      indicatorSeries('macdHistogram'),
+    );
     addSeriesPct(featureKey('Price24hPcnt'), indicatorSeries('price24hPcnt'));
     addSeriesPct(featureKey('Price1hPcnt'), indicatorSeries('price1hPcnt'));
+    addSeriesMoments(
+      featureKey('Price24hPcnt'),
+      indicatorSeries('price24hPcnt'),
+    );
+    addSeriesMoments(
+      featureKey('Price1hPcnt'),
+      indicatorSeries('price1hPcnt'),
+    );
     addSeriesRelTo(
       featureKey('HighPrice1h'),
       indicatorSeries('highPrice1h'),
@@ -787,13 +809,13 @@ export const buildMlTrainingRow = (
   row.Regime_ATR_PCT_Last = atrPctLast;
   row.Regime_ATR_PCT_Z = clamp(atrPctZ, -8, 8);
   row.Regime_ATR_PCT_Rank = atrPctRank;
-  row.Regime_RealizedVol_10 = realizedVol;
+  row.Regime_RealizedVol_50 = realizedVol;
   row.Regime_RealizedVol_Rank = realizedVolRank;
   row.Regime_TrendStrength = trendStrength;
   row.Regime_IsHighVol = atrPctRank >= 0.7 || realizedVolRank >= 0.7 ? 1 : 0;
   row.Ctx_DistanceTo24hRange = clamp(
-    toNumber(row.TF15M_HighPrice24h_10, 0) -
-      toNumber(row.TF15M_LowPrice24h_10, 0),
+    toNumber(row.TF15M_HighPrice24h_50, 0) -
+      toNumber(row.TF15M_LowPrice24h_50, 0),
     -10,
     10,
   );
@@ -900,6 +922,58 @@ export const buildMlTrainingRow = (
   row.profit = Number.isFinite(profit) ? profit : null;
 
   return row;
+};
+
+export const trimMlTrainingRowWindows = (
+  row: Record<string, number | string | null>,
+  keep = ML_OUTPUT_WINDOW,
+): Record<string, number | string | null> => {
+  const indexedKeyPattern = /^(.*_)(\d+)(?:(_.*))?$/;
+  const groupMaxIndex = new Map<string, number>();
+  const groupKeyCount = new Map<string, number>();
+
+  for (const key of Object.keys(row)) {
+    const match = key.match(indexedKeyPattern);
+    if (!match) continue;
+    const index = Number(match[2]);
+    if (!Number.isFinite(index)) continue;
+    const signature = `${match[1]}|${match[3] ?? ''}`;
+    const prev = groupMaxIndex.get(signature) ?? 0;
+    if (index > prev) {
+      groupMaxIndex.set(signature, index);
+    }
+    groupKeyCount.set(signature, (groupKeyCount.get(signature) ?? 0) + 1);
+  }
+
+  const next: Record<string, number | string | null> = {};
+  for (const [key, value] of Object.entries(row)) {
+    const match = key.match(indexedKeyPattern);
+    if (!match) {
+      next[key] = value;
+      continue;
+    }
+
+    const prefix = match[1];
+    const suffix = match[3] ?? '';
+    const signature = `${prefix}|${suffix}`;
+    const maxIndex = groupMaxIndex.get(signature) ?? 0;
+    const keyCount = groupKeyCount.get(signature) ?? 0;
+    if (maxIndex <= keep || keyCount <= keep) {
+      next[key] = value;
+      continue;
+    }
+
+    const index = Number(match[2]);
+    const firstKeptIndex = maxIndex - keep + 1;
+    if (index < firstKeptIndex || index > maxIndex) {
+      continue;
+    }
+
+    const newIndex = index - firstKeptIndex + 1;
+    next[`${prefix}${newIndex}${suffix}`] = value;
+  }
+
+  return next;
 };
 
 export type { MlSignalRecord, MlResultRecord };

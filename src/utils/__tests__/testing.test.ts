@@ -16,8 +16,11 @@ const mockTestConnector = {
 
 const mockStrategy = jest.fn();
 const mockStrategyCreator = jest.fn(async (_config?: unknown) => mockStrategy);
-const mockSetData = jest.fn();
 const mockBuildMlPayload = jest.fn((data) => data);
+const mockBuildMlTrainingRow = jest.fn(
+  (_signalRecord?: unknown, _resultRecord?: unknown) => ({ featureA: 1 }),
+);
+const mockAppendMlDatasetRow = jest.fn((_params?: unknown) => undefined);
 
 jest.mock('@src/connectors', () => ({
   connectors: {
@@ -46,16 +49,18 @@ jest.mock('@utils/correlation', () => ({
   }),
 }));
 
-jest.mock('@utils/redis', () => ({
-  setData: (...args: unknown[]) => mockSetData(...args),
-  redisKeys: {
-    mlSignal: (strategyName: string, signalId: string) =>
-      `ml:${strategyName}:signals:${signalId}`,
-  },
-}));
-
 jest.mock('@utils/mlPayload', () => ({
   buildMlPayload: (payload: unknown) => mockBuildMlPayload(payload),
+}));
+
+jest.mock('@utils/mlTrainingTransform', () => ({
+  buildMlTrainingRow: (signalRecord: unknown, resultRecord: unknown) =>
+    mockBuildMlTrainingRow(signalRecord, resultRecord),
+  trimMlTrainingRowWindows: (row: unknown) => row,
+}));
+
+jest.mock('@utils/mlDatasetFile', () => ({
+  appendMlDatasetRow: (params: unknown) => mockAppendMlDatasetRow(params),
 }));
 
 jest.mock('@utils/timestamp', () => ({
@@ -121,7 +126,7 @@ describe('testing backtest flow', () => {
     expect(mockTestConnector.checkTp).toHaveBeenCalledTimes(2);
   });
 
-  it('stores ml signal when strategy returns signal object', async () => {
+  it('writes transformed ml row when strategy returns signal object', async () => {
     const data = [candle(1_000_050), candle(1_000_150), candle(1_000_250)];
     mockByBitConnector.kline.mockResolvedValue(data);
     mockStrategy
@@ -133,22 +138,25 @@ describe('testing backtest flow', () => {
 
     await testing(createTest({ ml: true }));
 
-    expect(mockSetData).toHaveBeenCalledTimes(1);
-    expect(mockSetData).toHaveBeenCalledWith(
-      'ml:TrendLine:signals:s1',
-      expect.anything(),
-      expect.objectContaining({ expire: expect.any(Number) }),
+    expect(mockBuildMlPayload).toHaveBeenCalledTimes(1);
+    expect(mockBuildMlTrainingRow).toHaveBeenCalledTimes(1);
+    expect(mockAppendMlDatasetRow).toHaveBeenCalledWith(
+      expect.objectContaining({
+        strategyName: 'TrendLine',
+        chunkId: 'single',
+        row: { featureA: 1 },
+      }),
     );
   });
 
-  it('does not store ml signal when strategy returns string', async () => {
+  it('does not write ml row when strategy returns string', async () => {
     const data = [candle(1_000_050), candle(1_000_150), candle(1_000_250)];
     mockByBitConnector.kline.mockResolvedValue(data);
     mockStrategy.mockResolvedValue('NO_SIGNAL');
 
     await testing(createTest());
 
-    expect(mockSetData).not.toHaveBeenCalled();
+    expect(mockAppendMlDatasetRow).not.toHaveBeenCalled();
   });
 
   it('limits ml payload candle history to configured ML window', async () => {
@@ -166,6 +174,7 @@ describe('testing backtest flow', () => {
       createTest({
         options: { start: 2_000_200, end: 2_000_500 },
         ml: true,
+        chunkId: 'worker-2',
       }),
     );
 
@@ -173,5 +182,10 @@ describe('testing backtest flow', () => {
     const payloadArg = mockBuildMlPayload.mock.calls[0][0];
     expect(payloadArg.candles).toHaveLength(ML_BASE_CANDLES_WINDOW);
     expect(payloadArg.btcCandles).toHaveLength(ML_BASE_CANDLES_WINDOW);
+    expect(mockAppendMlDatasetRow).toHaveBeenCalledWith(
+      expect.objectContaining({ chunkId: 'worker-2' }),
+    );
   });
 });
+    mockBuildMlTrainingRow.mockClear();
+    mockAppendMlDatasetRow.mockClear();

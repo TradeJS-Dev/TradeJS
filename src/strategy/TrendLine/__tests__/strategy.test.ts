@@ -375,8 +375,8 @@ describe('TrendlineStrategyCreator', () => {
     }
 
     expect(firstSignal).toBeTruthy();
-    expect(firstSignal.indicators.price24hPcnt).toHaveLength(10);
-    expect(firstSignal.indicators.price1hPcnt).toHaveLength(10);
+    expect(firstSignal.indicators.price24hPcnt).toHaveLength(50);
+    expect(firstSignal.indicators.price1hPcnt).toHaveLength(50);
   });
 
   it('closes opposite positions on other symbols before opening in non-BACKTEST', async () => {
