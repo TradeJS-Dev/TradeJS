@@ -670,10 +670,7 @@ export const buildMlTrainingRow = (
       featureKey('Price24hPcnt'),
       indicatorSeries('price24hPcnt'),
     );
-    addSeriesMoments(
-      featureKey('Price1hPcnt'),
-      indicatorSeries('price1hPcnt'),
-    );
+    addSeriesMoments(featureKey('Price1hPcnt'), indicatorSeries('price1hPcnt'));
     addSeriesRelTo(
       featureKey('HighPrice1h'),
       indicatorSeries('highPrice1h'),

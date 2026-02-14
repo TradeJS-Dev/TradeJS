@@ -187,5 +187,5 @@ describe('testing backtest flow', () => {
     );
   });
 });
-    mockBuildMlTrainingRow.mockClear();
-    mockAppendMlDatasetRow.mockClear();
+mockBuildMlTrainingRow.mockClear();
+mockAppendMlDatasetRow.mockClear();

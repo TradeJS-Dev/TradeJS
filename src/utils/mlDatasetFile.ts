@@ -95,7 +95,10 @@ const closeState = async (state: WriterState) => {
   await flushState(state);
   state.closed = true;
   state.stream.end();
-  await Promise.all([once(state.stream, 'finish'), once(state.stream, 'close')]);
+  await Promise.all([
+    once(state.stream, 'finish'),
+    once(state.stream, 'close'),
+  ]);
 };
 
 export const closeMlDatasetWriter = async (filePath: string) => {

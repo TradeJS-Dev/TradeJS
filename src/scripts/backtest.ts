@@ -45,7 +45,11 @@ args.option(['c', 'config'], 'Backtest config', 'breakout');
 args.option(['L', 'showTickersList'], 'Just show only ticker list', false);
 args.option(['S', 'progressStep'], 'Progress step', 100);
 args.option(['U', 'user'], 'Use user confg', 'root');
-args.option(['m', 'ml'], 'Write ML dataset rows to per-worker JSONL chunks', false);
+args.option(
+  ['m', 'ml'],
+  'Write ML dataset rows to per-worker JSONL chunks',
+  false,
+);
 
 const flags = args.parse(process.argv);
 const interval = flags.timeframe.toString() as Interval;
