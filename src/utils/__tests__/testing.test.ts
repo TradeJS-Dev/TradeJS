@@ -8,6 +8,7 @@ const mockByBitConnector = {
 const mockTestConnector = {
   checkSl: jest.fn().mockResolvedValue(undefined),
   checkTp: jest.fn().mockResolvedValue(undefined),
+  drainMlResultsBatch: jest.fn().mockResolvedValue([]),
   getResult: jest.fn().mockResolvedValue({
     orderLogId: 'log-1',
     stat: { amount: 110, profit: 10, orders: 1 },
@@ -102,6 +103,8 @@ describe('testing backtest flow', () => {
     mockStrategy.mockReset();
     mockTestConnector.checkSl.mockClear();
     mockTestConnector.checkTp.mockClear();
+    mockTestConnector.drainMlResultsBatch.mockReset();
+    mockTestConnector.drainMlResultsBatch.mockResolvedValue([]);
     mockTestConnector.getResult.mockResolvedValue({
       orderLogId: 'log-1',
       stat: { amount: 110, profit: 10, orders: 1 },
@@ -135,6 +138,10 @@ describe('testing backtest flow', () => {
         symbol: 'ETHUSDT',
       })
       .mockResolvedValueOnce('HOLD');
+    mockTestConnector.drainMlResultsBatch
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ signalId: 's1', profit: 2.5 }])
+      .mockResolvedValue([]);
 
     await testing(createTest({ ml: true }));
 
@@ -169,6 +176,9 @@ describe('testing backtest flow', () => {
       signalId: 's1',
       symbol: 'ETHUSDT',
     });
+    mockTestConnector.drainMlResultsBatch
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ signalId: 's1', profit: 1.1 }]);
 
     await testing(
       createTest({

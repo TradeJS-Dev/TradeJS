@@ -25,7 +25,7 @@ import {
   ConnectorCreator,
 } from '@types';
 
-const MAX_PARALLEL = Math.min(os.cpus().length, 4);
+const MAX_PARALLEL = Math.min(os.cpus().length, 6);
 
 args.example(
   ' yarn backtest -t 400 --cacheOnly',

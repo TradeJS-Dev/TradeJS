@@ -60,6 +60,9 @@ describe('TestConnectorCreator', () => {
       signal: {
         signalId: 'sig-1',
         strategy: 'TrendLine',
+        indicators: {
+          maFast: [1, 2, 3],
+        },
       },
     } as any;
 
@@ -77,6 +80,11 @@ describe('TestConnectorCreator', () => {
       turnover: 1,
       timestamp: 2_000,
     });
+
+    await expect(connector.drainMlResultsBatch()).resolves.toEqual([
+      { signalId: 'sig-1', profit: 19 },
+    ]);
+    await expect(connector.drainMlResultsBatch()).resolves.toEqual([]);
 
     expect(await connector.getPosition('BTCUSDT')).toBeNull();
 
@@ -97,6 +105,13 @@ describe('TestConnectorCreator', () => {
       expect.any(Array),
       expect.objectContaining({ expire: expect.any(Number) }),
     );
+
+    const orderLogWriteCall = mockedSetData.mock.calls.find(
+      ([key]) => key === 'users:alice:cache:tests:orders:order-log-id',
+    );
+    expect(orderLogWriteCall).toBeDefined();
+    const orderLogPayload = orderLogWriteCall?.[1] as Array<any>;
+    expect(orderLogPayload[0]?.signal?.indicators).toBeUndefined();
   });
 
   it('applies stop loss for short position and updates final stats', async () => {

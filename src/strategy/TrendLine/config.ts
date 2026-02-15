@@ -4,7 +4,7 @@ export const config = {
   ENV: 'BACKTEST',
   INTERVAL: '15' as Interval,
   MAKE_ORDERS: true,
-  ML_THRESHOLD: 0.25,
+  ML_THRESHOLD: 0.15,
   MAX_LOSS_VALUE: 10,
   MAX_CORRELATION: 0.45,
   MA_FAST: 14,

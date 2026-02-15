@@ -278,7 +278,7 @@ export const results = async () => {
     if (flags.merge) {
       if (Object.keys(resultsConfig).length === 0) {
         console.log(chalk.yellow('No good results to merge.'));
-        return;
+        process.exit(0);
       }
 
       const current = (await getData(
@@ -301,7 +301,7 @@ export const results = async () => {
             `No symbols with higher profit than saved results:${strategyName}`,
           ),
         );
-        return;
+        process.exit(0);
       }
 
       const merged = {
@@ -358,7 +358,7 @@ export const results = async () => {
         ),
       );
 
-      return;
+      process.exit(0);
     }
 
     await setData(

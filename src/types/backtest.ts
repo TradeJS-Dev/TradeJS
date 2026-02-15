@@ -118,6 +118,9 @@ export interface TestConnector extends Connector {
   getResult: () => Promise<TestingBoxResult>;
   checkTp: (candle: Candle) => Promise<void>;
   checkSl: (candle: Candle) => Promise<void>;
+  drainMlResultsBatch: () => Promise<
+    Array<{ signalId: string; profit: number }>
+  >;
 }
 
 export interface TestConnectorContext {

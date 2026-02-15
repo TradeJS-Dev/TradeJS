@@ -92,6 +92,33 @@ export const testing: TestingBox = async ({
     connector: testConnector,
   });
 
+  const pendingMlPayloadBySignalId = new Map<
+    string,
+    ReturnType<typeof buildMlPayload>
+  >();
+
+  const flushMlResultsBatch = async () => {
+    if (!ml) return;
+    const batch = await testConnector.drainMlResultsBatch();
+    if (!batch.length) return;
+
+    for (const resultRecord of batch) {
+      const payload = pendingMlPayloadBySignalId.get(resultRecord.signalId);
+      if (!payload) continue;
+      pendingMlPayloadBySignalId.delete(resultRecord.signalId);
+
+      const fullRow = buildMlTrainingRow(payload, {
+        profit: resultRecord.profit,
+      });
+      const row = trimMlTrainingRowWindows(fullRow, 5);
+      await appendMlDatasetRow({
+        strategyName,
+        chunkId,
+        row,
+      });
+    }
+  };
+
   for (let candleIndex = 0; candleIndex < testData.length; candleIndex++) {
     const candle = testData[candleIndex];
     const btcCandle = btcTestData[candleIndex];
@@ -102,6 +129,7 @@ export const testing: TestingBox = async ({
     const signal = await strategy(candle, btcCandle);
     await testConnector.checkSl(candle);
     await testConnector.checkTp(candle);
+    await flushMlResultsBatch();
 
     if (ml && signal && typeof signal !== 'string') {
       const payload = buildMlPayload({
@@ -119,15 +147,13 @@ export const testing: TestingBox = async ({
         candles: candlesHistory.slice(-ML_BASE_CANDLES_WINDOW),
         btcCandles: btcCandlesHistory.slice(-ML_BASE_CANDLES_WINDOW),
       });
-      const fullRow = buildMlTrainingRow(payload, null);
-      const row = trimMlTrainingRowWindows(fullRow, 5);
-      await appendMlDatasetRow({
-        strategyName,
-        chunkId,
-        row,
-      });
+      if (signal.signalId) {
+        pendingMlPayloadBySignalId.set(signal.signalId, payload);
+      }
     }
   }
+
+  await flushMlResultsBatch();
 
   return await testConnector.getResult();
 };

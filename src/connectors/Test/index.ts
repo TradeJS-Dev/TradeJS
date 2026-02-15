@@ -26,21 +26,29 @@ export const TestConnectorCreator: TCC = (connector, context) => {
   let CURRENT_POSITION: (Order & { amount: number }) | null = null;
   let AMOUNT = 100;
   let ORIGINAL_QTY = 0;
+  let CURRENT_POSITION_PROFIT = 0;
   let TP: Tp[] = [];
   let SL: Sl = null;
+  const CLOSED_ML_RESULTS: Array<{ signalId: string; profit: number }> = [];
 
   const kline: Kline = async (options) => {
     return await connector.kline(options);
   };
 
   const log = (data: Partial<OrderLog>) => {
-    ORDER_LOG.push({
+    const nextEntry = {
       ...(CURRENT_POSITION || {}),
       ...data,
       amount: round(AMOUNT),
       profit: round(data.profit || 0),
       index: ORDER_LOG.length,
-    } as OrderLog);
+    } as OrderLog;
+
+    if (nextEntry.signal) {
+      nextEntry.signal = _.omit(nextEntry.signal, 'indicators') as any;
+    }
+
+    ORDER_LOG.push(nextEntry);
   };
 
   const clearPosition = (timestamp: number) => {
@@ -50,6 +58,16 @@ export const TestConnectorCreator: TCC = (connector, context) => {
 
     if (!CURRENT_POSITION) {
       return;
+    }
+
+    if (context?.mlEnabled) {
+      const signalId = CURRENT_POSITION.signal?.signalId;
+      if (signalId) {
+        CLOSED_ML_RESULTS.push({
+          signalId,
+          profit: CURRENT_POSITION_PROFIT,
+        });
+      }
     }
 
     POSITION_LOG.push({
@@ -65,6 +83,7 @@ export const TestConnectorCreator: TCC = (connector, context) => {
     });
 
     CURRENT_POSITION = null;
+    CURRENT_POSITION_PROFIT = 0;
   };
 
   return {
@@ -138,6 +157,7 @@ export const TestConnectorCreator: TCC = (connector, context) => {
             : (entryPrice - targetPrice) * qty;
 
           AMOUNT += profit;
+          CURRENT_POSITION_PROFIT += profit;
 
           CURRENT_POSITION.qty = parseFloat(
             (CURRENT_POSITION.qty - qty).toFixed(8),
@@ -183,6 +203,7 @@ export const TestConnectorCreator: TCC = (connector, context) => {
           : (CURRENT_POSITION.price - SL) * qty;
 
         AMOUNT += profit;
+        CURRENT_POSITION_PROFIT += profit;
 
         log({
           timestamp: candle.timestamp,
@@ -214,6 +235,7 @@ export const TestConnectorCreator: TCC = (connector, context) => {
       const profit = fee * -1;
 
       AMOUNT += profit;
+      CURRENT_POSITION_PROFIT = profit;
 
       log({
         ...order,
@@ -236,6 +258,7 @@ export const TestConnectorCreator: TCC = (connector, context) => {
         : (CURRENT_POSITION.price - order.price) * CURRENT_POSITION.qty;
 
       AMOUNT += profit;
+      CURRENT_POSITION_PROFIT += profit;
 
       log({
         ...order,
@@ -251,5 +274,6 @@ export const TestConnectorCreator: TCC = (connector, context) => {
 
     getTickers: connector.getTickers,
     getPositions: connector.getPositions,
+    drainMlResultsBatch: async () => CLOSED_ML_RESULTS.splice(0),
   };
 };

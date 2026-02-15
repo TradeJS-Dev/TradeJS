@@ -18,12 +18,12 @@ const useStore = create<IndicatorsState>()(
         {
           id: 'btc',
           label: 'BTC',
-          enabled: true,
+          enabled: false,
         },
         {
           id: 'spread',
           label: 'Spread',
-          enabled: true,
+          enabled: false,
         },
         {
           id: 'vol',
