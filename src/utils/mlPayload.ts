@@ -4,8 +4,6 @@ export type MlTestConfig = {
   strategyName?: string;
   strategyConfig?: Record<string, any>;
   symbol?: string;
-  candles?: any[];
-  btcCandles?: any[];
   threshold?: number;
   ML_THRESHOLD?: number;
   grpcAddress?: string;
@@ -23,8 +21,6 @@ export type MlSignalPayload = {
     testName?: string;
     connectorName?: string;
   };
-  candles?: any[];
-  btcCandles?: any[];
 };
 
 export const normalizeStrategyConfig = (
@@ -39,20 +35,11 @@ export const normalizeStrategyConfig = (
 };
 
 export const buildMlPayload = (payload: MlSignalPayload): MlSignalPayload => {
-  const candles = Array.isArray(payload.candles) ? payload.candles : undefined;
-  const btcCandles = Array.isArray(payload.btcCandles)
-    ? payload.btcCandles
-    : undefined;
-  const nextIndicators = {
-    ...(payload.signal?.indicators ?? {}),
-    ...(candles ? { candles } : {}),
-    ...(btcCandles ? { btcCandles } : {}),
-    ...(candles ? { candles15m: candles } : {}),
-    ...(btcCandles ? { btcCandles15m: btcCandles } : {}),
-  };
   const nextSignal = {
     ...payload.signal,
-    indicators: nextIndicators,
+    indicators: {
+      ...(payload.signal?.indicators ?? {}),
+    },
   };
   const nextContext = payload.context
     ? {

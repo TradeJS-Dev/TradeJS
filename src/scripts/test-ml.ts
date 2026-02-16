@@ -91,6 +91,8 @@ const main = async () => {
       correlation: 0.18,
       touches: 6,
       distance: 0.7,
+      candles15m: candles.slice(-ML_BASE_CANDLES_WINDOW),
+      btcCandles15m: btcCandles.slice(-ML_BASE_CANDLES_WINDOW),
       atr: makeSeries(10, 1.2, 0.02),
       atrPct: makeSeries(10, 1.05, 0.005),
       maFast: makeSeries(10, currentPrice * 0.995, 0.01),
@@ -125,8 +127,6 @@ const main = async () => {
       LOWS,
     },
     symbol: signal.symbol,
-    candles: candles.slice(-ML_BASE_CANDLES_WINDOW),
-    btcCandles: btcCandles.slice(-ML_BASE_CANDLES_WINDOW),
     ML_THRESHOLD,
   });
 

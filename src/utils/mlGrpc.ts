@@ -60,8 +60,6 @@ export const fetchMlThreshold = async (
           strategyName,
           symbol: testConfig.symbol || signal.symbol,
         },
-        candles: testConfig.candles,
-        btcCandles: testConfig.btcCandles,
       }),
       null,
     );

@@ -1,5 +1,4 @@
 import { Test } from '@types';
-import { ML_BASE_CANDLES_WINDOW } from '@constants';
 
 const mockByBitConnector = {
   kline: jest.fn(),
@@ -166,10 +165,8 @@ describe('testing backtest flow', () => {
     expect(mockAppendMlDatasetRow).not.toHaveBeenCalled();
   });
 
-  it('limits ml payload candle history to configured ML window', async () => {
-    const prev = Array.from({ length: ML_BASE_CANDLES_WINDOW + 10 }, (_, i) =>
-      candle(1_000_000 + i),
-    );
+  it('does not pass legacy candle arrays into ml payload builder', async () => {
+    const prev = Array.from({ length: 60 }, (_, i) => candle(1_000_000 + i));
     const testPart = [candle(2_000_200)];
     mockByBitConnector.kline.mockResolvedValue([...prev, ...testPart]);
     mockStrategy.mockResolvedValue({
@@ -190,8 +187,8 @@ describe('testing backtest flow', () => {
 
     expect(mockBuildMlPayload).toHaveBeenCalledTimes(1);
     const payloadArg = mockBuildMlPayload.mock.calls[0][0];
-    expect(payloadArg.candles).toHaveLength(ML_BASE_CANDLES_WINDOW);
-    expect(payloadArg.btcCandles).toHaveLength(ML_BASE_CANDLES_WINDOW);
+    expect(payloadArg.candles).toBeUndefined();
+    expect(payloadArg.btcCandles).toBeUndefined();
     expect(mockAppendMlDatasetRow).toHaveBeenCalledWith(
       expect.objectContaining({ chunkId: 'worker-2' }),
     );

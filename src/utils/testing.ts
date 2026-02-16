@@ -1,7 +1,7 @@
 import { strategies, StrategyNames } from '@src/strategy';
 import { connectors, ConnectorNames } from '@src/connectors';
 import { Candle, ConnectorCreator, TestingBox } from '@types';
-import { ML_BASE_CANDLES_WINDOW, PRELOAD_DAYS } from '@constants';
+import { PRELOAD_DAYS } from '@constants';
 import { getTimestamp } from '@utils/timestamp';
 import { alignSortedCandlesByTimestamp } from '@utils/correlation';
 import { buildMlPayload } from '@utils/mlPayload';
@@ -75,9 +75,6 @@ export const testing: TestingBox = async ({
   const { alignedCoinCandles: testData, alignedBtcCandles: btcTestData } =
     alignSortedCandlesByTimestamp(testDataRaw, btcTestDataRaw);
 
-  const candlesHistory = [...prevData];
-  const btcCandlesHistory = [...btcPrevData];
-
   const testConnector = connectors.Test(connector, {
     userName,
     mlEnabled: ml,
@@ -123,9 +120,6 @@ export const testing: TestingBox = async ({
     const candle = testData[candleIndex];
     const btcCandle = btcTestData[candleIndex];
 
-    candlesHistory.push(candle);
-    btcCandlesHistory.push(btcCandle);
-
     const signal = await strategy(candle, btcCandle);
     await testConnector.checkSl(candle);
     await testConnector.checkTp(candle);
@@ -144,8 +138,6 @@ export const testing: TestingBox = async ({
           strategyConfig,
           connectorName,
         },
-        candles: candlesHistory.slice(-ML_BASE_CANDLES_WINDOW),
-        btcCandles: btcCandlesHistory.slice(-ML_BASE_CANDLES_WINDOW),
       });
       if (signal.signalId) {
         pendingMlPayloadBySignalId.set(signal.signalId, payload);

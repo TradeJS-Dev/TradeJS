@@ -11,9 +11,9 @@ const makeCandle = (timestamp: number) => ({
 });
 
 describe('buildMlPayload', () => {
-  it('moves candles and btcCandles into signal.indicators', () => {
-    const candles = [makeCandle(1), makeCandle(2)];
-    const btcCandles = [makeCandle(1), makeCandle(2)];
+  it('keeps signal.indicators as source of truth for candles', () => {
+    const candles15m = [makeCandle(1), makeCandle(2)];
+    const btcCandles15m = [makeCandle(1), makeCandle(2)];
     const payload = buildMlPayload({
       signal: {
         signalId: 's1',
@@ -29,23 +29,21 @@ describe('buildMlPayload', () => {
           stopLossPrice: 1,
           riskRatio: 1,
         },
-        indicators: { maFast: [1, 2] },
+        indicators: {
+          maFast: [1, 2],
+          candles15m,
+          btcCandles15m,
+        },
       } as any,
       context: {
         strategyConfig: {
           TRENDLINE: { minTouches: 4 },
         },
       },
-      candles,
-      btcCandles,
     });
 
-    expect(payload.candles).toBeUndefined();
-    expect(payload.btcCandles).toBeUndefined();
-    expect(payload.signal.indicators.candles).toEqual(candles);
-    expect(payload.signal.indicators.btcCandles).toEqual(btcCandles);
-    expect(payload.signal.indicators.candles15m).toEqual(candles);
-    expect(payload.signal.indicators.btcCandles15m).toEqual(btcCandles);
+    expect(payload.signal.indicators.candles15m).toEqual(candles15m);
+    expect(payload.signal.indicators.btcCandles15m).toEqual(btcCandles15m);
     expect(payload.context?.strategyConfig?.TRENDLINE_CONFIG).toEqual({
       minTouches: 4,
     });
