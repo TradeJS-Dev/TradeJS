@@ -41,3 +41,7 @@ error.log*
 /data
 /public/screenshots
 .ai
+
+# python cache
+__pycache__/
+*.py[cod]

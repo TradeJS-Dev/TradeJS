@@ -1093,6 +1093,122 @@ def run_walk_forward_validation(
     return valid, fold_rows, spec_path
 
 
+def run_walk_forward_validation_from_files(
+    train_inputs: list[str],
+    test_inputs: list[str],
+    model_type: str,
+    train_recent_days: int,
+    selected_features: list[str] | None = None,
+    ensemble: bool = False,
+    ensemble_members: int = 2,
+) -> tuple[list[float], list[dict[str, object]], str]:
+    if not train_inputs and not test_inputs:
+        return [], [], 'external-fold-files'
+    if len(train_inputs) != len(test_inputs):
+        raise SystemExit(
+            'Walk-forward fold inputs mismatch: '
+            f'train={len(train_inputs)} test={len(test_inputs)}'
+        )
+
+    fold_scores: list[float] = []
+    fold_rows: list[dict[str, object]] = []
+    total_folds = len(train_inputs)
+    for idx, (train_path, test_path) in enumerate(zip(train_inputs, test_inputs), start=1):
+        fold = idx
+        fold_train = load_dataset(train_path)
+        fold_train = fold_train[fold_train['label'].notna()].copy()
+        fold_val = load_dataset(test_path)
+        fold_val = fold_val[fold_val['label'].notna()].copy()
+
+        if train_recent_days > 0:
+            fold_train = keep_recent_days(fold_train, train_recent_days)
+        if fold_train.empty or fold_val.empty:
+            continue
+
+        X_tr, y_tr = prepare_features(fold_train)
+        X_val, y_val = prepare_features(fold_val)
+        if X_tr.empty or X_val.empty:
+            continue
+        if selected_features:
+            X_tr = align_features(X_tr, selected_features)
+            X_val = align_features(X_val, selected_features)
+
+        if ensemble:
+            ts_fold = fold_train['entryTimestamp'].astype('Int64')
+            cutoffs = compute_ensemble_cutoffs(fold_train, members=ensemble_members)
+            probs_per_model: list[np.ndarray] = []
+            used_members = 0
+            for cutoff in cutoffs:
+                member_mask = ts_fold <= cutoff
+                member_df = fold_train.loc[member_mask].copy()
+                if member_df.empty:
+                    continue
+                X_member, y_member = prepare_features(member_df)
+                if X_member.empty:
+                    continue
+                if y_member.nunique() < 2:
+                    continue
+                if selected_features:
+                    X_member = align_features(X_member, selected_features)
+                member_pipeline = build_pipeline(X_member, model_type)
+                fit_pipeline(member_pipeline, X_member, y_member, model_type)
+                preprocess = member_pipeline.named_steps.get('preprocess')
+                expected = list(getattr(preprocess, 'feature_names_in_', []))
+                X_eval = align_features(X_val, expected) if expected else X_val
+                probs_per_model.append(member_pipeline.predict_proba(X_eval)[:, 1])
+                used_members += 1
+
+            if not probs_per_model:
+                continue
+            y_prob = np.mean(np.vstack(probs_per_model), axis=0)
+        else:
+            pipeline = build_pipeline(X_tr, model_type)
+            fit_pipeline(pipeline, X_tr, y_tr, model_type)
+            preprocess = pipeline.named_steps.get('preprocess')
+            expected = list(getattr(preprocess, 'feature_names_in_', []))
+            X_eval = align_features(X_val, expected) if expected else X_val
+            y_prob = pipeline.predict_proba(X_eval)[:, 1]
+            used_members = 1
+
+        fold_thresholds = threshold_rows(y_val.to_numpy(), y_prob)
+        try:
+            auc = float(roc_auc_score(y_val, y_prob))
+        except ValueError:
+            auc = float('nan')
+        fold_scores.append(auc)
+        tr_ts = _to_epoch_ms(_to_entry_timestamp(fold_train))
+        te_ts = _to_epoch_ms(_to_entry_timestamp(fold_val))
+        fold_row = {
+            'fold': float(fold),
+            'train_rows': float(len(y_tr)),
+            'test_rows': float(len(y_val)),
+            'auc': auc,
+            'start_ts': float(te_ts.min()) if not te_ts.empty else float('nan'),
+            'end_ts': float(te_ts.max()) if not te_ts.empty else float('nan'),
+            'train_start_ts': float(tr_ts.min()) if not tr_ts.empty else float('nan'),
+            'train_end_ts': float(tr_ts.max()) if not tr_ts.empty else float('nan'),
+            'test_start_ts': float(te_ts.min()) if not te_ts.empty else float('nan'),
+            'test_end_ts': float(te_ts.max()) if not te_ts.empty else float('nan'),
+            'threshold_rows': fold_thresholds,
+            'ensemble_members': float(used_members),
+        }
+        fold_rows.append(fold_row)
+        print(
+            f'Walk-forward holdout {fold}/{total_folds}: '
+            f'train={len(y_tr)} val={len(y_val)} auc={auc:.4f} members={used_members}'
+        )
+        print(f'Walk-forward fold {fold}/{total_folds} threshold table:')
+        print_threshold_table(y_val.to_numpy(), y_prob)
+
+    valid = [score for score in fold_scores if np.isfinite(score)]
+    if valid:
+        print(
+            f'Walk-forward AUC mean={np.mean(valid):.4f} std={np.std(valid):.4f} '
+            f'({len(valid)} folds)'
+        )
+    return valid, fold_rows, 'external-fold-files'
+
+
 def extract_profit_array(df: pd.DataFrame) -> np.ndarray | None:
     if 'profit' not in df.columns or 'label' not in df.columns:
         return None
@@ -1370,6 +1486,18 @@ def main() -> None:
     parser.add_argument('--model', default='')
     parser.add_argument('--test-input', default='', help='Optional test CSV or JSONL')
     parser.add_argument('--walk-forward-input', default='', help='Optional walk-forward CSV or JSONL')
+    parser.add_argument(
+        '--walk-forward-fold-train-input',
+        action='append',
+        default=[],
+        help='Optional walk-forward fold train CSV or JSONL (repeat per fold)',
+    )
+    parser.add_argument(
+        '--walk-forward-fold-test-input',
+        action='append',
+        default=[],
+        help='Optional walk-forward fold test CSV or JSONL (repeat per fold)',
+    )
     parser.add_argument('--test-days', type=int, default=30, help='Hold out last N days for test')
     parser.add_argument(
         '--ensemble',
@@ -1530,47 +1658,80 @@ def main() -> None:
     model_base = model_base_from_arg(args.model, args.strategy)
     eval_profit = extract_profit_array(test_df)
     eval_regime = extract_regime_array(X_test)
-    # Build walk-forward windows on a dedicated source file when provided.
-    # Otherwise use the full pre-holdout training side, then apply
-    # --train-recent-days per fold inside walk-forward fitting.
-    if args.walk_forward_input:
-        walk_forward_source_df = load_dataset(args.walk_forward_input)
-        walk_forward_source_df = walk_forward_source_df[
-            walk_forward_source_df['label'].notna()
-        ].copy()
+    fold_train_inputs = [
+        str(item).strip() for item in args.walk_forward_fold_train_input if str(item).strip()
+    ]
+    fold_test_inputs = [
+        str(item).strip() for item in args.walk_forward_fold_test_input if str(item).strip()
+    ]
+    if fold_train_inputs or fold_test_inputs:
+        if len(fold_train_inputs) != len(fold_test_inputs):
+            raise SystemExit(
+                'Walk-forward fold file count mismatch '
+                f'(train={len(fold_train_inputs)}, test={len(fold_test_inputs)}).'
+            )
+        if args.walk_forward_folds > 0 and len(fold_train_inputs) != args.walk_forward_folds:
+            raise SystemExit(
+                'Walk-forward fold files count does not match --walk-forward-folds '
+                f'({len(fold_train_inputs)} != {args.walk_forward_folds}).'
+            )
         print(
-            'Walk-forward source: external file '
-            f'(--walk-forward-input, rows={len(walk_forward_source_df)})'
+            'Walk-forward source: explicit fold files '
+            f'(folds={len(fold_train_inputs)})'
+        )
+        walk_forward_scores, walk_forward_rows, walk_forward_spec_path = (
+            run_walk_forward_validation_from_files(
+                train_inputs=fold_train_inputs,
+                test_inputs=fold_test_inputs,
+                model_type=args.model_type,
+                train_recent_days=args.train_recent_days,
+                selected_features=selected_features,
+                ensemble=args.ensemble,
+                ensemble_members=args.ensemble_members,
+            )
         )
     else:
-        walk_forward_source_df = (
-            train_df_for_walk_forward.copy()
-            if train_df_for_walk_forward is not None
-            else train_df.copy()
+        # Build walk-forward windows on a dedicated source file when provided.
+        # Otherwise use the full pre-holdout training side, then apply
+        # --train-recent-days per fold inside walk-forward fitting.
+        if args.walk_forward_input:
+            walk_forward_source_df = load_dataset(args.walk_forward_input)
+            walk_forward_source_df = walk_forward_source_df[
+                walk_forward_source_df['label'].notna()
+            ].copy()
+            print(
+                'Walk-forward source: external file '
+                f'(--walk-forward-input, rows={len(walk_forward_source_df)})'
+            )
+        else:
+            walk_forward_source_df = (
+                train_df_for_walk_forward.copy()
+                if train_df_for_walk_forward is not None
+                else train_df.copy()
+            )
+        walk_forward_spec_path = (
+            args.walk_forward_spec.strip()
+            if args.walk_forward_spec.strip()
+            else _default_walk_forward_spec_path(
+                report_dir=args.report_dir,
+                strategy=args.strategy,
+                input_path=args.input,
+                test_input_path=args.test_input,
+                folds=args.walk_forward_folds,
+                test_days=args.test_days,
+            )
         )
-    walk_forward_spec_path = (
-        args.walk_forward_spec.strip()
-        if args.walk_forward_spec.strip()
-        else _default_walk_forward_spec_path(
-            report_dir=args.report_dir,
-            strategy=args.strategy,
-            input_path=args.input,
-            test_input_path=args.test_input,
+        walk_forward_scores, walk_forward_rows, walk_forward_spec_path = run_walk_forward_validation(
+            source_df=walk_forward_source_df,
+            model_type=args.model_type,
             folds=args.walk_forward_folds,
             test_days=args.test_days,
+            train_recent_days=args.train_recent_days,
+            spec_path=walk_forward_spec_path,
+            selected_features=selected_features,
+            ensemble=args.ensemble,
+            ensemble_members=args.ensemble_members,
         )
-    )
-    walk_forward_scores, walk_forward_rows, walk_forward_spec_path = run_walk_forward_validation(
-        source_df=walk_forward_source_df,
-        model_type=args.model_type,
-        folds=args.walk_forward_folds,
-        test_days=args.test_days,
-        train_recent_days=args.train_recent_days,
-        spec_path=walk_forward_spec_path,
-        selected_features=selected_features,
-        ensemble=args.ensemble,
-        ensemble_members=args.ensemble_members,
-    )
     print_evaluation_windows_summary(
         train_df=train_df,
         test_df=test_df,

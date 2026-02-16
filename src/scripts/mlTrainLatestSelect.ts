@@ -329,7 +329,15 @@ const scanMaxTrainTimestampMs = async (
 type PreparedSplitFiles = {
   holdoutTrainPath: string;
   holdoutTestPath: string;
-  walkForwardPath: string;
+  walkForwardFolds: Array<{
+    fold: number;
+    startTs: number;
+    endTs: number;
+    trainPath: string;
+    testPath: string;
+    trainRows: number;
+    testRows: number;
+  }>;
   cleanup: string[];
   reused: boolean;
   key: string;
@@ -337,7 +345,7 @@ type PreparedSplitFiles = {
   counts: {
     holdoutTrainRows: number;
     holdoutTestRows: number;
-    walkForwardRows: number;
+    walkForwardSourceRows: number;
   };
 };
 
@@ -384,9 +392,23 @@ const prepareTrainWindowFiles = async ({
     dir,
     `${parsed.name}.holdout-test.${key}.jsonl`,
   );
-  const walkForwardPath = path.join(
-    dir,
-    `${parsed.name}.walk-forward.${key}.jsonl`,
+  const walkForwardFoldDefs = Array.from(
+    { length: Math.max(walkForwardFolds, 0) },
+    (_, idx) => {
+      const fold = idx + 1;
+      const foldToken = `fold-${fold}`;
+      return {
+        fold,
+        trainPath: path.join(
+          dir,
+          `${parsed.name}.walk-forward-${foldToken}.train.${key}.jsonl`,
+        ),
+        testPath: path.join(
+          dir,
+          `${parsed.name}.walk-forward-${foldToken}.test.${key}.jsonl`,
+        ),
+      };
+    },
   );
   const metaPath = path.join(dir, `${parsed.name}.windows.${key}.meta.json`);
 
@@ -395,21 +417,88 @@ const prepareTrainWindowFiles = async ({
       fs.readFile(metaPath, 'utf8'),
       fs.access(holdoutTrainPath),
       fs.access(holdoutTestPath),
-      fs.access(walkForwardPath),
+      ...walkForwardFoldDefs.flatMap((entry) => [
+        fs.access(entry.trainPath),
+        fs.access(entry.testPath),
+      ]),
     ]);
     const meta = JSON.parse(metaRaw) as {
       exportHash?: string;
       counts?: {
         holdoutTrainRows?: number;
         holdoutTestRows?: number;
-        walkForwardRows?: number;
+        walkForwardSourceRows?: number;
       };
+      files?: {
+        walkForwardFolds?: Array<{
+          fold?: number;
+          startTs?: number;
+          endTs?: number;
+          train?: string;
+          test?: string;
+        }>;
+      };
+      foldCounts?: Array<{
+        fold?: number;
+        trainRows?: number;
+        testRows?: number;
+      }>;
     };
     if (meta.exportHash === exportHash) {
+      const foldMetaByFold = new Map<
+        number,
+        {
+          startTs: number;
+          endTs: number;
+          trainRows: number;
+          testRows: number;
+        }
+      >();
+      const fileFolds = Array.isArray(meta.files?.walkForwardFolds)
+        ? meta.files?.walkForwardFolds ?? []
+        : [];
+      for (const foldFile of fileFolds) {
+        const fold = Number(foldFile.fold);
+        if (!Number.isFinite(fold) || fold <= 0) continue;
+        foldMetaByFold.set(fold, {
+          startTs: Number(foldFile.startTs ?? 0),
+          endTs: Number(foldFile.endTs ?? 0),
+          trainRows: 0,
+          testRows: 0,
+        });
+      }
+      if (Array.isArray(meta.foldCounts)) {
+        for (const row of meta.foldCounts) {
+          const fold = Number(row.fold);
+          if (!Number.isFinite(fold) || fold <= 0) continue;
+          const prev = foldMetaByFold.get(fold) ?? {
+            startTs: 0,
+            endTs: 0,
+            trainRows: 0,
+            testRows: 0,
+          };
+          foldMetaByFold.set(fold, {
+            ...prev,
+            trainRows: Number(row.trainRows ?? 0),
+            testRows: Number(row.testRows ?? 0),
+          });
+        }
+      }
       return {
         holdoutTrainPath,
         holdoutTestPath,
-        walkForwardPath,
+        walkForwardFolds: walkForwardFoldDefs.map((entry) => {
+          const metaRow = foldMetaByFold.get(entry.fold);
+          return {
+            fold: entry.fold,
+            startTs: Number(metaRow?.startTs ?? 0),
+            endTs: Number(metaRow?.endTs ?? 0),
+            trainPath: entry.trainPath,
+            testPath: entry.testPath,
+            trainRows: Number(metaRow?.trainRows ?? 0),
+            testRows: Number(metaRow?.testRows ?? 0),
+          };
+        }),
         cleanup: [],
         reused: true,
         key,
@@ -417,7 +506,7 @@ const prepareTrainWindowFiles = async ({
         counts: {
           holdoutTrainRows: Number(meta.counts?.holdoutTrainRows || 0),
           holdoutTestRows: Number(meta.counts?.holdoutTestRows || 0),
-          walkForwardRows: Number(meta.counts?.walkForwardRows || 0),
+          walkForwardSourceRows: Number(meta.counts?.walkForwardSourceRows || 0),
         },
       };
     }
@@ -440,6 +529,17 @@ const prepareTrainWindowFiles = async ({
       ? maxTrainTs -
         (trainRecentDays + Math.max(walkForwardFolds, 0) * testDays) * DAY_MS
       : Number.NEGATIVE_INFINITY;
+  const walkForwardFoldsWithWindows = walkForwardFoldDefs.map((entry) => {
+    const endTs = maxTrainTs - (entry.fold - 1) * testDays * DAY_MS;
+    const startTs = endTs - testDays * DAY_MS;
+    return {
+      ...entry,
+      startTs,
+      endTs,
+      trainRows: 0,
+      testRows: 0,
+    };
+  });
 
   console.log('[split] phase 3/3: writing holdout/walk-forward files...');
   const holdoutTrainWriter = createWriteStream(holdoutTrainPath, {
@@ -448,13 +548,24 @@ const prepareTrainWindowFiles = async ({
   const holdoutTestWriter = createWriteStream(holdoutTestPath, {
     encoding: 'utf8',
   });
-  const walkForwardWriter = createWriteStream(walkForwardPath, {
-    encoding: 'utf8',
-  });
+  const walkForwardWriters = walkForwardFoldsWithWindows.map((entry) => ({
+    ...entry,
+    trainWriter: createWriteStream(entry.trainPath, {
+      encoding: 'utf8',
+    }),
+    testWriter: createWriteStream(entry.testPath, {
+      encoding: 'utf8',
+    }),
+  }));
 
   let holdoutTrainRows = 0;
   let holdoutTestRows = 0;
-  let walkForwardRows = 0;
+  let walkForwardSourceRows = 0;
+  let holdoutTrainMinTs = Number.POSITIVE_INFINITY;
+  let holdoutTrainMaxTs = 0;
+  let holdoutTestMinTs = Number.POSITIVE_INFINITY;
+  let holdoutTestMaxTs = 0;
+  let holdoutTrainOutOfRangeRows = 0;
   let scanned = 0;
   const writeStartedAt = Date.now();
 
@@ -470,7 +581,7 @@ const prepareTrainWindowFiles = async ({
     if (scanned % SPLIT_PROGRESS_EVERY === 0) {
       const elapsed = Math.floor((Date.now() - writeStartedAt) / 1000);
       console.log(
-        `[split] writing: lines=${scanned} train=${holdoutTrainRows} test=${holdoutTestRows} wf=${walkForwardRows} elapsed=${elapsed}s`,
+        `[split] writing: lines=${scanned} train=${holdoutTrainRows} test=${holdoutTestRows} wf_source=${walkForwardSourceRows} elapsed=${elapsed}s`,
       );
     }
     let parsedRow: { label?: unknown; entryTimestamp?: unknown } | null = null;
@@ -492,18 +603,35 @@ const prepareTrainWindowFiles = async ({
         await once(holdoutTestWriter, 'drain');
       }
       holdoutTestRows++;
+      if (ts < holdoutTestMinTs) holdoutTestMinTs = ts;
+      if (ts > holdoutTestMaxTs) holdoutTestMaxTs = ts;
     } else {
       if (ts >= holdoutTrainStartMs) {
         if (!holdoutTrainWriter.write(`${trimmed}\n`)) {
           await once(holdoutTrainWriter, 'drain');
         }
         holdoutTrainRows++;
+        if (ts < holdoutTrainStartMs || ts > holdoutCutoffMs) {
+          holdoutTrainOutOfRangeRows++;
+        }
+        if (ts < holdoutTrainMinTs) holdoutTrainMinTs = ts;
+        if (ts > holdoutTrainMaxTs) holdoutTrainMaxTs = ts;
       }
       if (ts >= wfStartMs && ts <= maxTrainTs) {
-        if (!walkForwardWriter.write(`${trimmed}\n`)) {
-          await once(walkForwardWriter, 'drain');
+        walkForwardSourceRows++;
+        for (const foldWriter of walkForwardWriters) {
+          if (ts > foldWriter.startTs && ts <= foldWriter.endTs) {
+            if (!foldWriter.testWriter.write(`${trimmed}\n`)) {
+              await once(foldWriter.testWriter, 'drain');
+            }
+            foldWriter.testRows++;
+          } else if (ts <= foldWriter.startTs) {
+            if (!foldWriter.trainWriter.write(`${trimmed}\n`)) {
+              await once(foldWriter.trainWriter, 'drain');
+            }
+            foldWriter.trainRows++;
+          }
         }
-        walkForwardRows++;
       }
     }
   }
@@ -511,20 +639,49 @@ const prepareTrainWindowFiles = async ({
   rl.close();
   holdoutTrainWriter.end();
   holdoutTestWriter.end();
-  walkForwardWriter.end();
-  await Promise.all([
+  for (const foldWriter of walkForwardWriters) {
+    foldWriter.trainWriter.end();
+    foldWriter.testWriter.end();
+  }
+  const finishPromises = [
     once(holdoutTrainWriter, 'finish'),
     once(holdoutTestWriter, 'finish'),
-    once(walkForwardWriter, 'finish'),
-  ]);
+    ...walkForwardWriters.flatMap((foldWriter) => [
+      once(foldWriter.trainWriter, 'finish'),
+      once(foldWriter.testWriter, 'finish'),
+    ]),
+  ];
+  await Promise.all(finishPromises);
 
   if (!holdoutTrainRows || !holdoutTestRows) {
     throw new Error(
       `Window split produced empty holdout set (train=${holdoutTrainRows}, test=${holdoutTestRows}).`,
     );
   }
-  if (!walkForwardRows) {
-    throw new Error('Window split produced empty walk-forward dataset.');
+  if (holdoutTrainOutOfRangeRows > 0) {
+    throw new Error(
+      `Holdout split validation failed (train_out_of_range=${holdoutTrainOutOfRangeRows}).`,
+    );
+  }
+  if (holdoutTrainMaxTs > holdoutCutoffMs) {
+    throw new Error(
+      `Holdout train contains rows newer than cutoff (${holdoutTrainMaxTs} > ${holdoutCutoffMs}).`,
+    );
+  }
+  if (holdoutTestMinTs <= holdoutCutoffMs) {
+    throw new Error(
+      `Holdout test contains rows older/equal cutoff (${holdoutTestMinTs} <= ${holdoutCutoffMs}).`,
+    );
+  }
+  if (walkForwardFolds > 0 && !walkForwardSourceRows) {
+    throw new Error('Window split produced empty walk-forward source dataset.');
+  }
+  for (const foldWriter of walkForwardWriters) {
+    if (!foldWriter.trainRows || !foldWriter.testRows) {
+      throw new Error(
+        `Walk-forward fold ${foldWriter.fold} is empty (train=${foldWriter.trainRows}, test=${foldWriter.testRows}).`,
+      );
+    }
   }
 
   const meta = {
@@ -538,12 +695,31 @@ const prepareTrainWindowFiles = async ({
     counts: {
       holdoutTrainRows,
       holdoutTestRows,
-      walkForwardRows,
+      walkForwardSourceRows,
     },
     files: {
       holdoutTrain: path.basename(holdoutTrainPath),
       holdoutTest: path.basename(holdoutTestPath),
-      walkForward: path.basename(walkForwardPath),
+      walkForwardFolds: walkForwardWriters.map((entry) => ({
+        fold: entry.fold,
+        startTs: entry.startTs,
+        endTs: entry.endTs,
+        train: path.basename(entry.trainPath),
+        test: path.basename(entry.testPath),
+      })),
+    },
+    foldCounts: walkForwardWriters.map((entry) => ({
+      fold: entry.fold,
+      trainRows: entry.trainRows,
+      testRows: entry.testRows,
+    })),
+    holdoutIntervals: {
+      holdoutCutoffMs,
+      holdoutTrainStartMs,
+      holdoutTrainMinTs: holdoutTrainRows > 0 ? holdoutTrainMinTs : null,
+      holdoutTrainMaxTs: holdoutTrainRows > 0 ? holdoutTrainMaxTs : 0,
+      holdoutTestMinTs: holdoutTestRows > 0 ? holdoutTestMinTs : null,
+      holdoutTestMaxTs: holdoutTestRows > 0 ? holdoutTestMaxTs : 0,
     },
     createdAt: new Date().toISOString(),
   };
@@ -552,7 +728,15 @@ const prepareTrainWindowFiles = async ({
   return {
     holdoutTrainPath,
     holdoutTestPath,
-    walkForwardPath,
+    walkForwardFolds: walkForwardWriters.map((entry) => ({
+      fold: entry.fold,
+      startTs: entry.startTs,
+      endTs: entry.endTs,
+      trainPath: entry.trainPath,
+      testPath: entry.testPath,
+      trainRows: entry.trainRows,
+      testRows: entry.testRows,
+    })),
     cleanup: [],
     reused: false,
     key,
@@ -560,7 +744,7 @@ const prepareTrainWindowFiles = async ({
     counts: {
       holdoutTrainRows,
       holdoutTestRows,
-      walkForwardRows,
+      walkForwardSourceRows,
     },
   };
 };
@@ -672,9 +856,18 @@ const run = async () => {
     console.log(
       `${splitMode} holdout files: train=${path.basename(splitFiles.holdoutTrainPath)} (${splitFiles.counts.holdoutTrainRows} rows), test=${path.basename(splitFiles.holdoutTestPath)} (${splitFiles.counts.holdoutTestRows} rows)`,
     );
-    console.log(
-      `${splitMode} walk-forward file: ${path.basename(splitFiles.walkForwardPath)} (${splitFiles.counts.walkForwardRows} rows)`,
-    );
+    if (splitFiles.walkForwardFolds.length) {
+      console.log(
+        `${splitMode} walk-forward source rows: ${splitFiles.counts.walkForwardSourceRows}`,
+      );
+      for (const foldEntry of splitFiles.walkForwardFolds) {
+        console.log(
+          `${splitMode} walk-forward fold ${foldEntry.fold}: train=${path.basename(foldEntry.trainPath)} (${foldEntry.trainRows} rows), test=${path.basename(foldEntry.testPath)} (${foldEntry.testRows} rows)`,
+        );
+      }
+    } else {
+      console.log(`${splitMode} walk-forward folds disabled.`);
+    }
 
     const trainArgs = [
       'compose',
@@ -689,8 +882,6 @@ const run = async () => {
       `/app/data/ml/export/${path.basename(splitFiles.holdoutTrainPath)}`,
       '--test-input',
       `/app/data/ml/export/${path.basename(splitFiles.holdoutTestPath)}`,
-      '--walk-forward-input',
-      `/app/data/ml/export/${path.basename(splitFiles.walkForwardPath)}`,
       '--strategy',
       selected,
       '--model-type',
@@ -708,6 +899,12 @@ const run = async () => {
       '--report-dir',
       reportDir,
       ...(useEnsemble ? ['--ensemble'] : []),
+      ...splitFiles.walkForwardFolds.flatMap((foldEntry) => [
+        '--walk-forward-fold-train-input',
+        `/app/data/ml/export/${path.basename(foldEntry.trainPath)}`,
+        '--walk-forward-fold-test-input',
+        `/app/data/ml/export/${path.basename(foldEntry.testPath)}`,
+      ]),
     ];
 
     const startedAt = Date.now();

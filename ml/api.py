@@ -75,6 +75,35 @@ def _align_features(X: pd.DataFrame, expected: List[str]) -> pd.DataFrame:
     return X.reindex(columns=expected, fill_value=0)
 
 
+def _extract_categorical_columns(preprocess: Any) -> set[str]:
+    if preprocess is None or preprocess == "passthrough":
+        return set()
+
+    for attr in ("transformers_", "transformers"):
+        transformers = getattr(preprocess, attr, None)
+        if not transformers:
+            continue
+        for name, _transformer, columns in transformers:
+            if name != "cat":
+                continue
+            if columns is None:
+                return set()
+            if isinstance(columns, (list, tuple, pd.Index, np.ndarray)):
+                return {str(col) for col in columns}
+            return {str(columns)}
+    return set()
+
+
+def _prepare_infer_frame(X: pd.DataFrame, categorical_cols: set[str]) -> pd.DataFrame:
+    out = X.copy()
+    for col in out.columns:
+        if col in categorical_cols:
+            out[col] = out[col].astype("string").fillna("0")
+            continue
+        out[col] = pd.to_numeric(out[col], errors="coerce").fillna(0.0)
+    return out
+
+
 def _predict_proba(models: List[Any], features: Dict[str, float]) -> float:
     df = pd.DataFrame([features])
     probs = []
@@ -82,6 +111,8 @@ def _predict_proba(models: List[Any], features: Dict[str, float]) -> float:
         preprocess = model.named_steps.get("preprocess")
         expected = list(getattr(preprocess, "feature_names_in_", [])) if preprocess is not None else []
         X = _align_features(df.copy(), expected)
+        categorical_cols = _extract_categorical_columns(preprocess)
+        X = _prepare_infer_frame(X, categorical_cols)
         prob = float(model.predict_proba(X)[:, 1][0])
         probs.append(prob)
     return float(np.mean(probs)) if probs else 0.0
@@ -106,7 +137,12 @@ def serve() -> None:
                 context.set_details(f"Model not found: {strategy}")
                 return PredictResponse(probability=0.0, threshold=threshold, passed=False)
 
-            prob = _predict_proba(models, features)
+            try:
+                prob = _predict_proba(models, features)
+            except Exception as exc:  # noqa: BLE001
+                context.set_code(grpc.StatusCode.INTERNAL)
+                context.set_details(f"Predict failed: {exc}")
+                return PredictResponse(probability=0.0, threshold=threshold, passed=False)
             passed = prob >= threshold
             return PredictResponse(probability=prob, threshold=threshold, passed=passed)
 

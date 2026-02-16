@@ -56,8 +56,8 @@ jobs:
 
       - name: Build Docker images
         run: |
-          docker-compose build
-          docker-compose build --no-cache ml-infer
+          docker-compose build --pull app
+          docker-compose build --pull --no-cache ml-infer
   
       - name: Push Docker images
         run: docker-compose push
