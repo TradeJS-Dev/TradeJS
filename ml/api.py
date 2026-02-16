@@ -1,5 +1,6 @@
 import glob
 import os
+import re
 import sys
 from concurrent import futures
 from typing import Any, Dict, List
@@ -55,7 +56,15 @@ def _load_models(strategy: str) -> List[Any]:
     pattern = os.path.join(MODEL_DIR, f"{strategy}.model*.joblib")
     model_path = os.path.join(MODEL_DIR, f"{strategy}.joblib")
 
-    model_paths = sorted(glob.glob(pattern))
+    ensemble_re = re.compile(rf'^{re.escape(strategy)}\.model(\d+)\.joblib$')
+    model_entries = []
+    for path in glob.glob(pattern):
+        name = os.path.basename(path)
+        match = ensemble_re.match(name)
+        if match:
+            model_entries.append((int(match.group(1)), path))
+    model_entries.sort(key=lambda item: item[0])
+    model_paths = [path for _idx, path in model_entries]
     if model_paths:
         models = [joblib.load(path) for path in model_paths]
         _model_cache[cache_key] = models

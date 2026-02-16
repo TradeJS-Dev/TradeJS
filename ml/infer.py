@@ -2,6 +2,7 @@ import argparse
 import glob
 import json
 import os
+import re
 from typing import Any
 
 import joblib
@@ -38,7 +39,16 @@ def main() -> None:
     X = df.drop(columns=[c for c in ['label', 'signalId', 'profit', 'entryTimestamp'] if c in df.columns])
 
     base = args.model[:-7] if args.model.endswith('.joblib') else (args.model or f'data/ml/models/{args.strategy}')
-    model_paths = sorted(glob.glob(f'{base}.model*.joblib'))
+    strategy_base = os.path.basename(base)
+    ensemble_re = re.compile(rf'^{re.escape(strategy_base)}\.model(\d+)\.joblib$')
+    model_paths = []
+    for path in glob.glob(f'{base}.model*.joblib'):
+        name = os.path.basename(path)
+        match = ensemble_re.match(name)
+        if match:
+            model_paths.append((int(match.group(1)), path))
+    model_paths.sort(key=lambda item: item[0])
+    model_paths = [path for _idx, path in model_paths]
     if model_paths:
         models = [joblib.load(p) for p in model_paths]
     else:

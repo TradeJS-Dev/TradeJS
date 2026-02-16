@@ -30,6 +30,7 @@
     "ml-inspect": "time yarn ts-node ./src/scripts/mlInspect",
     "ml-train": "bash ./bin/ml-train-with-redis.sh docker compose -f docker-compose.ml.yml run --rm ml",
     "ml-train:latest": "time bash ./bin/ml-train-with-redis.sh yarn ts-node ./src/scripts/mlTrainLatestSelect",
+    "ml-train:sota": "ML_TRAIN_RECENT_DAYS=60 ML_TRAIN_TEST_DAYS=30 ML_TRAIN_WALK_FORWARD_FOLDS=2 ML_TRAIN_ENSEMBLE=1 ML_TRAIN_ENSEMBLE_MEMBERS=2 yarn ml-train:trendline:xgboost",
     "ml-train:trendline:catboost": "time bash ./bin/ml-train-with-redis.sh yarn ts-node ./src/scripts/mlTrainLatestSelect --strategy TrendLine --model catboost --latestOnly",
     "ml-train:trendline:extra-trees": "time bash ./bin/ml-train-with-redis.sh yarn ts-node ./src/scripts/mlTrainLatestSelect --strategy TrendLine --model extra_trees --latestOnly",
     "ml-train:trendline:lightgbm": "time bash ./bin/ml-train-with-redis.sh yarn ts-node ./src/scripts/mlTrainLatestSelect --strategy TrendLine --model lightgbm --latestOnly",

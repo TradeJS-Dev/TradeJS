@@ -20,7 +20,12 @@ These instructions apply to this repository (`/Users/aleksnick/dev/investing`).
 - Derived split files are generated automatically:
   - `*.holdout-train.<key>.jsonl`
   - `*.holdout-test.<key>.jsonl`
-  - `*.walk-forward.<key>.jsonl`
+  - `*.prod.<key>.jsonl`
+  - `*.walk-forward-fold-<N>.train.<key>.jsonl`
+  - `*.walk-forward-fold-<N>.test.<key>.jsonl`
+- Split metadata is stored in:
+  - `*.windows.<key>.meta.json`
+  - contains `files.holdout`, `files.prod`, `files.walkForwardFolds`
 - Derived files are cached and reused when:
   - same export filename hash
   - same `ML_TRAIN_TEST_DAYS`
@@ -45,6 +50,7 @@ These instructions apply to this repository (`/Users/aleksnick/dev/investing`).
 - Ensemble is applied to main holdout when enabled.
 - Ensemble is also applied inside walk-forward folds when enabled.
 - Reports include `ensemble_members_used` per fold.
+- Prod ensemble is trained from `--prod-input` / `*.prod.<key>.jsonl` when provided.
 
 ## Logging Conventions
 - Training logs include heartbeat every 30s with:
@@ -60,6 +66,13 @@ These instructions apply to this repository (`/Users/aleksnick/dev/investing`).
   - main holdout metrics and threshold table
   - walk-forward windows
   - walk-forward threshold tables per fold
+- One `md` and one `html` report are produced per run (final file includes eval + prod summary).
+
+## Upload / Infer Artifacts
+- Stable inference aliases:
+  - single: `<Strategy>.joblib`
+  - ensemble: `<Strategy>.modelN.joblib`
+- `ml-upload:prod` uploads alias inference artifacts only (not archived `*.eval.*` / `*.prod.*` snapshots).
 
 ## Testing
 - Run unit tests with `yarn unit`.

@@ -1485,6 +1485,7 @@ def main() -> None:
     parser.add_argument('--strategy', default='default')
     parser.add_argument('--model', default='')
     parser.add_argument('--test-input', default='', help='Optional test CSV or JSONL')
+    parser.add_argument('--prod-input', default='', help='Optional prod CSV or JSONL')
     parser.add_argument('--walk-forward-input', default='', help='Optional walk-forward CSV or JSONL')
     parser.add_argument(
         '--walk-forward-fold-train-input',
@@ -1658,6 +1659,16 @@ def main() -> None:
     model_base = model_base_from_arg(args.model, args.strategy)
     eval_profit = extract_profit_array(test_df)
     eval_regime = extract_regime_array(X_test)
+    if args.prod_input:
+        prod_source_df = load_dataset(args.prod_input)
+        prod_source_df = prod_source_df[prod_source_df['label'].notna()].copy()
+        print(
+            'Prod source: external file '
+            f'(--prod-input, rows={len(prod_source_df)})'
+        )
+    else:
+        prod_source_df = pd.concat([train_df, test_df], ignore_index=True)
+        prod_source_df = prod_source_df[prod_source_df['label'].notna()].copy()
     fold_train_inputs = [
         str(item).strip() for item in args.walk_forward_fold_train_input if str(item).strip()
     ]
@@ -1819,9 +1830,11 @@ def main() -> None:
         except ValueError:
             pass
 
+        eval_model_paths: list[str] = []
         for idx, (model, _cutoff) in enumerate(eval_models, start=1):
             eval_member_path = f'{model_base}.model{idx}.eval.{artifact_stamp}.joblib'
             joblib.dump(model, eval_member_path)
+            eval_model_paths.append(eval_member_path)
             print('Eval model saved:', eval_member_path)
         eval_md_path = f'{model_base}.ensemble.eval.{artifact_stamp}.md'
         eval_lines = [
@@ -1870,8 +1883,8 @@ def main() -> None:
         write_training_notes(eval_md_path, eval_lines)
         print('Eval notes saved:', eval_md_path)
 
-        # Phase 2: Train prod ensemble on all labeled data (train + test).
-        full_df = pd.concat([train_df, test_df], ignore_index=True)
+        # Phase 2: Train prod ensemble on dedicated prod source.
+        full_df = prod_source_df.copy()
         prod_cutoffs = compute_ensemble_cutoffs(full_df, members=args.ensemble_members)
         prod_models = []
         total_models = len(prod_cutoffs)
@@ -1904,51 +1917,28 @@ def main() -> None:
             alias = f'{model_base}.model{idx}.joblib'
             shutil.copy2(path, alias)
             print('Prod alias updated:', alias)
-        prod_md_path = f'{model_base}.ensemble.prod.{artifact_stamp}.md'
-        prod_lines = [
-            f'# Model Notes: {args.strategy} ensemble prod',
+        eval_lines += [
             '',
-            f'- timestamp_utc: {artifact_stamp}',
-            '- mode: prod',
-            f'- model_type: {args.model_type}',
-            f'- feature_profile: {args.feature_profile}',
-            f'- feature_set: {args.feature_set}',
-            f'- train_recent_days: {args.train_recent_days}',
-            f'- walk_forward_folds: {args.walk_forward_folds}',
-            f'- walk_forward_test_days: {args.test_days}',
-            f'- walk_forward_spec: {walk_forward_spec_path}',
-            (
-                f'- walk_forward_auc_mean: {walk_forward_mean:.6f}'
-                if np.isfinite(walk_forward_mean)
-                else '- walk_forward_auc_mean: n/a'
-            ),
-            (
-                f'- walk_forward_auc_std: {walk_forward_std:.6f}'
-                if np.isfinite(walk_forward_std)
-                else '- walk_forward_auc_std: n/a'
-            ),
-            f'- ensemble_members: {args.ensemble_members}',
+            '## Prod Build',
+            '',
             f'- full_rows: {len(full_df)}',
-            f'- roc_auc_ref_holdout: {eval_auc:.6f}' if np.isfinite(eval_auc) else '- roc_auc_ref_holdout: n/a',
             f'- members: {len(prod_models)}',
+            f'- roc_auc_ref_holdout: {eval_auc:.6f}' if np.isfinite(eval_auc) else '- roc_auc_ref_holdout: n/a',
+            '- prod_model_files:',
         ]
-        prod_lines += [
-            '',
-            *evaluation_windows_markdown_lines(
-                train_df=train_df,
-                test_df=test_df,
-                train_rows=len(y_train),
-                test_rows=len(y_test),
-                walk_forward_rows=walk_forward_rows,
-            ),
-        ]
-        prod_lines += ['', *threshold_markdown_lines(y_test.to_numpy(), avg_prob, profit=eval_profit)]
-        prod_lines += ['', *gain_markdown_lines(y_test.to_numpy(), avg_prob, profit=eval_profit)]
-        prod_lines += ['', *policy_markdown_lines(y_test.to_numpy(), avg_prob, regime_high_vol=eval_regime, profit=eval_profit)]
-        prod_lines += ['', *walk_forward_markdown_lines(walk_forward_rows)]
-        prod_lines += ['', *walk_forward_threshold_markdown_lines(walk_forward_rows)]
-        write_training_notes(prod_md_path, prod_lines)
-        print('Prod notes saved:', prod_md_path)
+        for idx in range(1, len(prod_models) + 1):
+            eval_lines.append(
+                f'  - {os.path.basename(f"{model_base}.model{idx}.prod.{artifact_stamp}.joblib")}'
+            )
+        write_training_notes(eval_md_path, eval_lines)
+        print('Notes saved:', eval_md_path)
+
+        for path in eval_model_paths:
+            try:
+                os.remove(path)
+                print('Eval model removed:', path)
+            except OSError:
+                pass
     else:
         # Eval single model on holdout.
         pipeline = build_pipeline(X_train, args.model_type)
@@ -1970,9 +1960,9 @@ def main() -> None:
         print_threshold_table(y_test.to_numpy(), y_prob)
 
         artifact_stamp = utc_stamp()
-        eval_model_path = f'{model_base}.eval.{artifact_stamp}.joblib'
         eval_report_path = f'{model_base}.eval.{artifact_stamp}.report.html'
         eval_md_path = f'{model_base}.eval.{artifact_stamp}.md'
+        eval_model_path = f'{model_base}.eval.{artifact_stamp}.joblib'
         joblib.dump(pipeline, eval_model_path)
         print('Eval model saved:', eval_model_path)
         eval_report_saved = create_training_html_report(
@@ -2017,7 +2007,6 @@ def main() -> None:
             f'- train_rows: {len(y_train)}',
             f'- test_rows: {len(y_test)}',
             f'- roc_auc: {eval_auc:.6f}' if np.isfinite(eval_auc) else '- roc_auc: n/a',
-            f'- model_file: {os.path.basename(eval_model_path)}',
             f'- report_file: {os.path.basename(eval_report_saved or eval_report_path)}',
             '',
             '## Train Command',
@@ -2040,10 +2029,10 @@ def main() -> None:
         eval_lines += ['', *walk_forward_markdown_lines(walk_forward_rows)]
         eval_lines += ['', *walk_forward_threshold_markdown_lines(walk_forward_rows)]
         write_training_notes(eval_md_path, eval_lines)
-        print('Eval notes saved:', eval_md_path)
+        print('Notes saved:', eval_md_path)
 
-        # Prod single model on all labeled data.
-        full_df = pd.concat([train_df, test_df], ignore_index=True)
+        # Prod single model on dedicated prod source.
+        full_df = prod_source_df.copy()
         X_full, y_full = prepare_features(full_df)
         X_full = apply_feature_set(X_full, args.feature_set)
         if selected_features:
@@ -2052,72 +2041,24 @@ def main() -> None:
         fit_pipeline(prod_pipeline, X_full, y_full, args.model_type)
 
         prod_model_path = f'{model_base}.prod.{artifact_stamp}.joblib'
-        prod_report_path = f'{model_base}.prod.{artifact_stamp}.report.html'
-        prod_md_path = f'{model_base}.prod.{artifact_stamp}.md'
         joblib.dump(prod_pipeline, prod_model_path)
         print('Prod model saved:', prod_model_path)
-        prod_report_saved = create_training_html_report(
-            report_dir=args.report_dir,
-            strategy=args.strategy,
-            model_type=args.model_type,
-            y_true=y_test.to_numpy(),
-            y_prob=y_prob,
-            X_eval=X_test,
-            extra={'mode': 'single_prod_ref_eval'},
-            out_path=prod_report_path,
-            profit=eval_profit,
-            regime_high_vol=eval_regime,
-        )
-        prod_lines = [
-            f'# Model Notes: {args.strategy} prod',
+        eval_lines += [
             '',
-            f'- timestamp_utc: {artifact_stamp}',
-            f'- mode: prod',
-            f'- model_type: {args.model_type}',
-            f'- feature_profile: {args.feature_profile}',
-            f'- feature_set: {args.feature_set}',
-            f'- train_recent_days: {args.train_recent_days}',
-            f'- walk_forward_folds: {args.walk_forward_folds}',
-            f'- walk_forward_test_days: {args.test_days}',
-            f'- walk_forward_spec: {walk_forward_spec_path}',
-            (
-                f'- walk_forward_auc_mean: {walk_forward_mean:.6f}'
-                if np.isfinite(walk_forward_mean)
-                else '- walk_forward_auc_mean: n/a'
-            ),
-            (
-                f'- walk_forward_auc_std: {walk_forward_std:.6f}'
-                if np.isfinite(walk_forward_std)
-                else '- walk_forward_auc_std: n/a'
-            ),
-            f'- train_rows: {len(y_train)}',
-            f'- test_rows: {len(y_test)}',
+            '## Prod Build',
+            '',
             f'- full_rows: {len(y_full)}',
             f'- roc_auc_ref_holdout: {eval_auc:.6f}' if np.isfinite(eval_auc) else '- roc_auc_ref_holdout: n/a',
-            f'- model_file: {os.path.basename(prod_model_path)}',
-            f'- report_file: {os.path.basename(prod_report_saved or prod_report_path)}',
-            '',
-            '## Train Command',
-            '',
-            f'`python /app/ml/train.py --input {args.input} --test-input {args.test_input} --strategy {args.strategy} --model-type {args.model_type} --feature-set {args.feature_set}`',
+            f'- prod_model_file: {os.path.basename(prod_model_path)}',
         ]
-        prod_lines += [
-            '',
-            *evaluation_windows_markdown_lines(
-                train_df=train_df,
-                test_df=test_df,
-                train_rows=len(y_train),
-                test_rows=len(y_test),
-                walk_forward_rows=walk_forward_rows,
-            ),
-        ]
-        prod_lines += ['', *threshold_markdown_lines(y_test.to_numpy(), y_prob, profit=eval_profit)]
-        prod_lines += ['', *gain_markdown_lines(y_test.to_numpy(), y_prob, profit=eval_profit)]
-        prod_lines += ['', *policy_markdown_lines(y_test.to_numpy(), y_prob, regime_high_vol=eval_regime, profit=eval_profit)]
-        prod_lines += ['', *walk_forward_markdown_lines(walk_forward_rows)]
-        prod_lines += ['', *walk_forward_threshold_markdown_lines(walk_forward_rows)]
-        write_training_notes(prod_md_path, prod_lines)
-        print('Prod notes saved:', prod_md_path)
+        write_training_notes(eval_md_path, eval_lines)
+        print('Notes updated:', eval_md_path)
+
+        try:
+            os.remove(eval_model_path)
+            print('Eval model removed:', eval_model_path)
+        except OSError:
+            pass
 
         # Stable alias for inference path compatibility.
         alias_model_path = f'{model_base}.joblib'

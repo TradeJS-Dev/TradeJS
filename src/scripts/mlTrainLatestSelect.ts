@@ -8,6 +8,11 @@ import readline from 'readline';
 import args from 'args';
 import chalk from 'chalk';
 import { selectStrategy } from './selectStrategy';
+import {
+  computeWindowBoundaries,
+  isDerivedDatasetFileName,
+  toIsoUtcOrNull,
+} from '@utils/mlWindowing';
 
 const toFileToken = (value: string) =>
   value
@@ -179,7 +184,8 @@ const listDatasetFiles = async (
     .filter((name) => !name.includes('.train.') && !name.includes('.test.'))
     .filter((name) => !name.includes('.holdout-train.'))
     .filter((name) => !name.includes('.holdout-test.'))
-    .filter((name) => !name.includes('.walk-forward.'));
+    .filter((name) => !name.includes('.walk-forward.'))
+    .filter((name) => !name.includes('.prod.'));
 
   const withMtime = await Promise.all(
     jsonlFiles.map(async (name) => {
@@ -329,6 +335,7 @@ const scanMaxTrainTimestampMs = async (
 type PreparedSplitFiles = {
   holdoutTrainPath: string;
   holdoutTestPath: string;
+  prodPath: string;
   walkForwardFolds: Array<{
     fold: number;
     startTs: number;
@@ -346,6 +353,7 @@ type PreparedSplitFiles = {
     holdoutTrainRows: number;
     holdoutTestRows: number;
     walkForwardSourceRows: number;
+    prodRows: number;
   };
 };
 
@@ -364,11 +372,7 @@ const prepareTrainWindowFiles = async ({
   walkForwardFolds: number;
 }): Promise<PreparedSplitFiles> => {
   const inputBaseName = path.basename(inputPath);
-  if (
-    inputBaseName.includes('.holdout-train.') ||
-    inputBaseName.includes('.holdout-test.') ||
-    inputBaseName.includes('.walk-forward.')
-  ) {
+  if (isDerivedDatasetFileName(inputBaseName)) {
     throw new Error(
       `Refusing to split derived dataset file: ${inputBaseName}. Expected base export file.`,
     );
@@ -392,6 +396,7 @@ const prepareTrainWindowFiles = async ({
     dir,
     `${parsed.name}.holdout-test.${key}.jsonl`,
   );
+  const prodPath = path.join(dir, `${parsed.name}.prod.${key}.jsonl`);
   const walkForwardFoldDefs = Array.from(
     { length: Math.max(walkForwardFolds, 0) },
     (_, idx) => {
@@ -417,6 +422,7 @@ const prepareTrainWindowFiles = async ({
       fs.readFile(metaPath, 'utf8'),
       fs.access(holdoutTrainPath),
       fs.access(holdoutTestPath),
+      fs.access(prodPath),
       ...walkForwardFoldDefs.flatMap((entry) => [
         fs.access(entry.trainPath),
         fs.access(entry.testPath),
@@ -428,12 +434,35 @@ const prepareTrainWindowFiles = async ({
         holdoutTrainRows?: number;
         holdoutTestRows?: number;
         walkForwardSourceRows?: number;
+        prodRows?: number;
       };
       files?: {
+        holdout?: {
+          holdoutTrainRows?: number;
+          holdoutTestRows?: number;
+          holdoutTrain?: string;
+          holdoutTest?: string;
+          holdoutCutoffMs?: number;
+          holdoutTrainStartMs?: number;
+          holdoutTrainMinTs?: number;
+          holdoutTrainMaxTs?: number;
+          holdoutTestMinTs?: number;
+          holdoutTestMaxTs?: number;
+        };
+        prod?: {
+          prodRows?: number;
+          prodStartMs?: number;
+          prodMinTs?: number;
+          prodMaxTs?: number;
+          prod?: string;
+        };
         walkForwardFolds?: Array<{
           fold?: number;
+          walkForwardSourceRows?: number;
           startTs?: number;
           endTs?: number;
+          trainRows?: number;
+          testRows?: number;
           train?: string;
           test?: string;
         }>;
@@ -457,14 +486,22 @@ const prepareTrainWindowFiles = async ({
       const fileFolds = Array.isArray(meta.files?.walkForwardFolds)
         ? meta.files?.walkForwardFolds ?? []
         : [];
+      const hasExtendedFoldTiming =
+        fileFolds.length === 0 || 'trainMinTs' in (fileFolds[0] as object);
+      if (!hasExtendedFoldTiming) {
+        throw new Error('Legacy meta format cache miss');
+      }
+      if (!meta.files?.prod?.prod) {
+        throw new Error('Legacy meta format cache miss (prod block missing)');
+      }
       for (const foldFile of fileFolds) {
         const fold = Number(foldFile.fold);
         if (!Number.isFinite(fold) || fold <= 0) continue;
         foldMetaByFold.set(fold, {
           startTs: Number(foldFile.startTs ?? 0),
           endTs: Number(foldFile.endTs ?? 0),
-          trainRows: 0,
-          testRows: 0,
+          trainRows: Number(foldFile.trainRows ?? 0),
+          testRows: Number(foldFile.testRows ?? 0),
         });
       }
       if (Array.isArray(meta.foldCounts)) {
@@ -487,6 +524,7 @@ const prepareTrainWindowFiles = async ({
       return {
         holdoutTrainPath,
         holdoutTestPath,
+        prodPath,
         walkForwardFolds: walkForwardFoldDefs.map((entry) => {
           const metaRow = foldMetaByFold.get(entry.fold);
           return {
@@ -504,9 +542,24 @@ const prepareTrainWindowFiles = async ({
         key,
         exportHash,
         counts: {
-          holdoutTrainRows: Number(meta.counts?.holdoutTrainRows || 0),
-          holdoutTestRows: Number(meta.counts?.holdoutTestRows || 0),
-          walkForwardSourceRows: Number(meta.counts?.walkForwardSourceRows || 0),
+          holdoutTrainRows: Number(
+            meta.files?.holdout?.holdoutTrainRows ??
+              meta.counts?.holdoutTrainRows ??
+              0,
+          ),
+          holdoutTestRows: Number(
+            meta.files?.holdout?.holdoutTestRows ??
+              meta.counts?.holdoutTestRows ??
+              0,
+          ),
+          walkForwardSourceRows: Number(
+            meta.files?.walkForwardFolds?.[0]?.walkForwardSourceRows ??
+              meta.counts?.walkForwardSourceRows ??
+              0,
+          ),
+          prodRows: Number(
+            meta.files?.prod?.prodRows ?? meta.counts?.prodRows ?? 0,
+          ),
         },
       };
     }
@@ -519,23 +572,28 @@ const prepareTrainWindowFiles = async ({
   const holdoutCutoffMs = maxLabeledTs - testDays * DAY_MS;
   console.log('[split] phase 2/3: scanning max train timestamp...');
   const maxTrainTs = await scanMaxTrainTimestampMs(inputPath, holdoutCutoffMs);
-
-  const holdoutTrainStartMs =
-    trainRecentDays > 0
-      ? maxTrainTs - trainRecentDays * DAY_MS
-      : Number.NEGATIVE_INFINITY;
-  const wfStartMs =
-    trainRecentDays > 0
-      ? maxTrainTs -
-        (trainRecentDays + Math.max(walkForwardFolds, 0) * testDays) * DAY_MS
-      : Number.NEGATIVE_INFINITY;
+  const {
+    holdoutCutoffMs: derivedHoldoutCutoffMs,
+    holdoutTrainStartMs,
+    wfStartMs,
+    prodStartMs,
+    folds,
+  } = computeWindowBoundaries({
+    maxLabeledTs,
+    maxTrainTs,
+    testDays,
+    trainRecentDays,
+    walkForwardFolds,
+  });
+  if (derivedHoldoutCutoffMs !== holdoutCutoffMs) {
+    throw new Error('Internal split boundary mismatch for holdout cutoff.');
+  }
   const walkForwardFoldsWithWindows = walkForwardFoldDefs.map((entry) => {
-    const endTs = maxTrainTs - (entry.fold - 1) * testDays * DAY_MS;
-    const startTs = endTs - testDays * DAY_MS;
+    const foldWindow = folds.find((row) => row.fold === entry.fold);
     return {
       ...entry,
-      startTs,
-      endTs,
+      startTs: Number(foldWindow?.startTs ?? 0),
+      endTs: Number(foldWindow?.endTs ?? 0),
       trainRows: 0,
       testRows: 0,
     };
@@ -548,6 +606,9 @@ const prepareTrainWindowFiles = async ({
   const holdoutTestWriter = createWriteStream(holdoutTestPath, {
     encoding: 'utf8',
   });
+  const prodWriter = createWriteStream(prodPath, {
+    encoding: 'utf8',
+  });
   const walkForwardWriters = walkForwardFoldsWithWindows.map((entry) => ({
     ...entry,
     trainWriter: createWriteStream(entry.trainPath, {
@@ -556,6 +617,10 @@ const prepareTrainWindowFiles = async ({
     testWriter: createWriteStream(entry.testPath, {
       encoding: 'utf8',
     }),
+    trainMinTs: Number.POSITIVE_INFINITY,
+    trainMaxTs: 0,
+    testMinTs: Number.POSITIVE_INFINITY,
+    testMaxTs: 0,
   }));
 
   let holdoutTrainRows = 0;
@@ -566,6 +631,9 @@ const prepareTrainWindowFiles = async ({
   let holdoutTestMinTs = Number.POSITIVE_INFINITY;
   let holdoutTestMaxTs = 0;
   let holdoutTrainOutOfRangeRows = 0;
+  let prodRows = 0;
+  let prodMinTs = Number.POSITIVE_INFINITY;
+  let prodMaxTs = 0;
   let scanned = 0;
   const writeStartedAt = Date.now();
 
@@ -625,20 +693,33 @@ const prepareTrainWindowFiles = async ({
               await once(foldWriter.testWriter, 'drain');
             }
             foldWriter.testRows++;
+            if (ts < foldWriter.testMinTs) foldWriter.testMinTs = ts;
+            if (ts > foldWriter.testMaxTs) foldWriter.testMaxTs = ts;
           } else if (ts <= foldWriter.startTs) {
             if (!foldWriter.trainWriter.write(`${trimmed}\n`)) {
               await once(foldWriter.trainWriter, 'drain');
             }
             foldWriter.trainRows++;
+            if (ts < foldWriter.trainMinTs) foldWriter.trainMinTs = ts;
+            if (ts > foldWriter.trainMaxTs) foldWriter.trainMaxTs = ts;
           }
         }
       }
+    }
+    if (ts >= prodStartMs) {
+      if (!prodWriter.write(`${trimmed}\n`)) {
+        await once(prodWriter, 'drain');
+      }
+      prodRows++;
+      if (ts < prodMinTs) prodMinTs = ts;
+      if (ts > prodMaxTs) prodMaxTs = ts;
     }
   }
 
   rl.close();
   holdoutTrainWriter.end();
   holdoutTestWriter.end();
+  prodWriter.end();
   for (const foldWriter of walkForwardWriters) {
     foldWriter.trainWriter.end();
     foldWriter.testWriter.end();
@@ -646,6 +727,7 @@ const prepareTrainWindowFiles = async ({
   const finishPromises = [
     once(holdoutTrainWriter, 'finish'),
     once(holdoutTestWriter, 'finish'),
+    once(prodWriter, 'finish'),
     ...walkForwardWriters.flatMap((foldWriter) => [
       once(foldWriter.trainWriter, 'finish'),
       once(foldWriter.testWriter, 'finish'),
@@ -676,6 +758,9 @@ const prepareTrainWindowFiles = async ({
   if (walkForwardFolds > 0 && !walkForwardSourceRows) {
     throw new Error('Window split produced empty walk-forward source dataset.');
   }
+  if (!prodRows) {
+    throw new Error('Window split produced empty prod dataset.');
+  }
   for (const foldWriter of walkForwardWriters) {
     if (!foldWriter.trainRows || !foldWriter.testRows) {
       throw new Error(
@@ -692,34 +777,73 @@ const prepareTrainWindowFiles = async ({
       trainRecentDays,
       walkForwardFolds,
     },
-    counts: {
-      holdoutTrainRows,
-      holdoutTestRows,
-      walkForwardSourceRows,
-    },
     files: {
-      holdoutTrain: path.basename(holdoutTrainPath),
-      holdoutTest: path.basename(holdoutTestPath),
+      holdout: {
+        holdoutTrainRows,
+        holdoutTestRows,
+        holdoutCutoffMs,
+        holdoutCutoffDt: toIsoUtcOrNull(holdoutCutoffMs),
+        holdoutTrainStartMs,
+        holdoutTrainStartDt: toIsoUtcOrNull(holdoutTrainStartMs),
+        holdoutTrainMinTs: holdoutTrainRows > 0 ? holdoutTrainMinTs : null,
+        holdoutTrainMinDt: toIsoUtcOrNull(
+          holdoutTrainRows > 0 ? holdoutTrainMinTs : null,
+        ),
+        holdoutTrainMaxTs: holdoutTrainRows > 0 ? holdoutTrainMaxTs : null,
+        holdoutTrainMaxDt: toIsoUtcOrNull(
+          holdoutTrainRows > 0 ? holdoutTrainMaxTs : null,
+        ),
+        holdoutTestMinTs: holdoutTestRows > 0 ? holdoutTestMinTs : null,
+        holdoutTestMinDt: toIsoUtcOrNull(
+          holdoutTestRows > 0 ? holdoutTestMinTs : null,
+        ),
+        holdoutTestMaxTs: holdoutTestRows > 0 ? holdoutTestMaxTs : null,
+        holdoutTestMaxDt: toIsoUtcOrNull(
+          holdoutTestRows > 0 ? holdoutTestMaxTs : null,
+        ),
+        holdoutTrain: path.basename(holdoutTrainPath),
+        holdoutTest: path.basename(holdoutTestPath),
+      },
+      prod: {
+        prodRows,
+        prodStartMs: Number.isFinite(prodStartMs) ? prodStartMs : null,
+        prodStartDt: toIsoUtcOrNull(
+          Number.isFinite(prodStartMs) ? prodStartMs : null,
+        ),
+        prodMinTs: prodRows > 0 ? prodMinTs : null,
+        prodMinDt: toIsoUtcOrNull(prodRows > 0 ? prodMinTs : null),
+        prodMaxTs: prodRows > 0 ? prodMaxTs : null,
+        prodMaxDt: toIsoUtcOrNull(prodRows > 0 ? prodMaxTs : null),
+        prod: path.basename(prodPath),
+      },
       walkForwardFolds: walkForwardWriters.map((entry) => ({
         fold: entry.fold,
+        walkForwardSourceRows,
         startTs: entry.startTs,
+        startDt: toIsoUtcOrNull(entry.startTs),
         endTs: entry.endTs,
+        endDt: toIsoUtcOrNull(entry.endTs),
+        trainStartMs: Number.isFinite(wfStartMs) ? wfStartMs : null,
+        trainStartDt: toIsoUtcOrNull(
+          Number.isFinite(wfStartMs) ? wfStartMs : null,
+        ),
+        trainMinTs: entry.trainRows > 0 ? entry.trainMinTs : null,
+        trainMinDt: toIsoUtcOrNull(
+          entry.trainRows > 0 ? entry.trainMinTs : null,
+        ),
+        trainMaxTs: entry.trainRows > 0 ? entry.trainMaxTs : null,
+        trainMaxDt: toIsoUtcOrNull(
+          entry.trainRows > 0 ? entry.trainMaxTs : null,
+        ),
+        testMinTs: entry.testRows > 0 ? entry.testMinTs : null,
+        testMinDt: toIsoUtcOrNull(entry.testRows > 0 ? entry.testMinTs : null),
+        testMaxTs: entry.testRows > 0 ? entry.testMaxTs : null,
+        testMaxDt: toIsoUtcOrNull(entry.testRows > 0 ? entry.testMaxTs : null),
+        trainRows: entry.trainRows,
+        testRows: entry.testRows,
         train: path.basename(entry.trainPath),
         test: path.basename(entry.testPath),
       })),
-    },
-    foldCounts: walkForwardWriters.map((entry) => ({
-      fold: entry.fold,
-      trainRows: entry.trainRows,
-      testRows: entry.testRows,
-    })),
-    holdoutIntervals: {
-      holdoutCutoffMs,
-      holdoutTrainStartMs,
-      holdoutTrainMinTs: holdoutTrainRows > 0 ? holdoutTrainMinTs : null,
-      holdoutTrainMaxTs: holdoutTrainRows > 0 ? holdoutTrainMaxTs : 0,
-      holdoutTestMinTs: holdoutTestRows > 0 ? holdoutTestMinTs : null,
-      holdoutTestMaxTs: holdoutTestRows > 0 ? holdoutTestMaxTs : 0,
     },
     createdAt: new Date().toISOString(),
   };
@@ -728,6 +852,7 @@ const prepareTrainWindowFiles = async ({
   return {
     holdoutTrainPath,
     holdoutTestPath,
+    prodPath,
     walkForwardFolds: walkForwardWriters.map((entry) => ({
       fold: entry.fold,
       startTs: entry.startTs,
@@ -745,6 +870,7 @@ const prepareTrainWindowFiles = async ({
       holdoutTrainRows,
       holdoutTestRows,
       walkForwardSourceRows,
+      prodRows,
     },
   };
 };
@@ -856,6 +982,9 @@ const run = async () => {
     console.log(
       `${splitMode} holdout files: train=${path.basename(splitFiles.holdoutTrainPath)} (${splitFiles.counts.holdoutTrainRows} rows), test=${path.basename(splitFiles.holdoutTestPath)} (${splitFiles.counts.holdoutTestRows} rows)`,
     );
+    console.log(
+      `${splitMode} prod file: ${path.basename(splitFiles.prodPath)} (${splitFiles.counts.prodRows} rows)`,
+    );
     if (splitFiles.walkForwardFolds.length) {
       console.log(
         `${splitMode} walk-forward source rows: ${splitFiles.counts.walkForwardSourceRows}`,
@@ -882,6 +1011,8 @@ const run = async () => {
       `/app/data/ml/export/${path.basename(splitFiles.holdoutTrainPath)}`,
       '--test-input',
       `/app/data/ml/export/${path.basename(splitFiles.holdoutTestPath)}`,
+      '--prod-input',
+      `/app/data/ml/export/${path.basename(splitFiles.prodPath)}`,
       '--strategy',
       selected,
       '--model-type',
@@ -908,6 +1039,13 @@ const run = async () => {
     ];
 
     const startedAt = Date.now();
+    let lastOutputAt = startedAt;
+    let sawDockerOutput = false;
+    const heartbeatSec = asInt(process.env.ML_TRAIN_HEARTBEAT_SEC, 10);
+    const noOutputTimeoutSec = asInt(
+      process.env.ML_TRAIN_DOCKER_NO_OUTPUT_TIMEOUT_SEC,
+      90,
+    );
     console.log(`Starting train command: docker ${trainArgs.join(' ')}`);
 
     const child = spawn('docker', trainArgs, {
@@ -919,25 +1057,50 @@ const run = async () => {
       },
     });
     const stopStdoutPipe = pipeNormalized(child.stdout, (line) => {
+      sawDockerOutput = true;
+      lastOutputAt = Date.now();
       process.stdout.write(`${line}\n`);
     });
     const stopStderrPipe = pipeNormalized(child.stderr, (line) => {
+      sawDockerOutput = true;
+      lastOutputAt = Date.now();
       process.stderr.write(`${line}\n`);
     });
 
-    const heartbeat = setInterval(() => {
-      const elapsedSec = Math.floor((Date.now() - startedAt) / 1000);
-      const nodeMem = formatBytes(process.memoryUsage().rss);
-      const mlMem = getMlContainerMemUsage();
-      process.stdout.write(
-        `\n[train] still running... elapsed ${elapsedSec}s (model=${modelType}, strategy=${selected}, node_rss=${nodeMem}, ml_mem=${mlMem})\n`,
-      );
-    }, 30_000);
+    const heartbeat = setInterval(
+      () => {
+        const elapsedSec = Math.floor((Date.now() - startedAt) / 1000);
+        const silenceSec = Math.floor((Date.now() - lastOutputAt) / 1000);
+        const nodeMem = formatBytes(process.memoryUsage().rss);
+        const mlMem = getMlContainerMemUsage();
+        process.stdout.write(
+          `\n[train] still running... elapsed ${elapsedSec}s, silence=${silenceSec}s (model=${modelType}, strategy=${selected}, node_rss=${nodeMem}, ml_mem=${mlMem})\n`,
+        );
+        if (
+          noOutputTimeoutSec > 0 &&
+          !sawDockerOutput &&
+          silenceSec >= noOutputTimeoutSec
+        ) {
+          process.stderr.write(
+            `[train] docker produced no output for ${silenceSec}s; terminating process. Check Docker Desktop/daemon health.\n`,
+          );
+          child.kill('SIGTERM');
+          setTimeout(() => {
+            if (child.exitCode === null && child.signalCode === null) {
+              child.kill('SIGKILL');
+            }
+          }, 5_000).unref();
+        }
+      },
+      Math.max(heartbeatSec, 1) * 1000,
+    );
 
     const result = await new Promise<{
       code: number | null;
       signal: NodeJS.Signals | null;
+      error?: Error;
     }>((resolve) => {
+      child.on('error', (error) => resolve({ code: 1, signal: null, error }));
       child.on('exit', (code, signal) => resolve({ code, signal }));
     });
     clearInterval(heartbeat);
@@ -946,6 +1109,9 @@ const run = async () => {
 
     const code = result.code ?? 1;
     let finalCode = code;
+    if (result.error) {
+      console.error(`Failed to start docker process: ${result.error.message}`);
+    }
     if (result.signal === 'SIGKILL' || code === 137) {
       console.error(
         'Training was killed (exit 137). Most likely out-of-memory. Try ML_TRAIN_USE_LATEST_ONLY=1, random_forest/extra_trees, or a smaller export.',

@@ -44,26 +44,22 @@ fi
 
 ssh -i "$SSH_KEY" -p "$SSH_PORT" -o StrictHostKeyChecking=no "$SSH_USER@$SSH_HOST" "mkdir -p $REMOTE_DIR"
 
-# Upload only production model artifacts and skip archive files.
+# Upload stable inference aliases only:
+# - single model: <Strategy>.joblib
+# - ensemble models: <Strategy>.modelN.joblib
 FILE_LIST="$(mktemp)"
 trap 'rm -f "$FILE_LIST"' EXIT
 
 (
   cd "$MODELS_DIR"
-  find . -mindepth 1 \( -type f -o -type l \) \
-    -name "*.prod.*" \
-    ! -name "*.tar" \
-    ! -name "*.tgz" \
-    ! -name "*.tar.gz" \
-    ! -name "*.tar.bz2" \
-    ! -name "*.tar.xz" \
-    ! -name "*.zip" \
-    ! -name "*.7z" \
+  find . -mindepth 1 \( -type f -o -type l \) -name "*.joblib" \
+    | sed 's#^\./##' \
+    | grep -E '^[^.\/]+\.joblib$|^[^.\/]+\.model[0-9]+\.joblib$' \
     | LC_ALL=C sort > "$FILE_LIST"
 )
 
 if [[ ! -s "$FILE_LIST" ]]; then
-  echo "No production artifacts found in: $MODELS_DIR" >&2
+  echo "No inference model aliases found in: $MODELS_DIR" >&2
   exit 1
 fi
 
