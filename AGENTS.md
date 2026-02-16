@@ -53,10 +53,11 @@ These instructions apply to this repository (`/Users/aleksnick/dev/investing`).
 - Prod ensemble is trained from `--prod-input` / `*.prod.<key>.jsonl` when provided.
 
 ## Logging Conventions
-- Training logs include heartbeat every 30s with:
+- Training logs can include heartbeat with:
   - elapsed time
   - Node RSS
   - ML container memory usage
+- Heartbeat is printed only when `ML_TRAIN_DEBUG=1`.
 - Console output is normalized line-by-line (no carriage-return drift).
 - `COMPOSE_IGNORE_ORPHANS=1` is used for cleaner train logs.
 
@@ -67,12 +68,20 @@ These instructions apply to this repository (`/Users/aleksnick/dev/investing`).
   - walk-forward windows
   - walk-forward threshold tables per fold
 - One `md` and one `html` report are produced per run (final file includes eval + prod summary).
+- Console no longer prints threshold tables; they stay in `md/html`.
 
 ## Upload / Infer Artifacts
 - Stable inference aliases:
   - single: `<Strategy>.joblib`
   - ensemble: `<Strategy>.modelN.joblib`
+- Each prod model (`*.prod.*.joblib` and alias `*.joblib`) has a sidecar metrics JSON with holdout/fold AUC summary.
+- Before each new train, previous strategy artifacts (`.joblib`, sidecar `.json`, `.md`, `.report.html`) are moved to `data/ml/models/archived/`.
 - `ml-upload:prod` uploads alias inference artifacts only (not archived `*.eval.*` / `*.prod.*` snapshots).
+
+## Causality Guard
+- Train step enforces no-lookahead checks for timestamp-like features (`*Ts`, `*Timestamp`, `*AtMs`) against `entryTimestamp`.
+- Guard runs during split generation and Python train stages.
+- Disable only for debugging with `ML_TRAIN_DISABLE_CAUSALITY_GUARD=1`.
 
 ## Testing
 - Run unit tests with `yarn unit`.

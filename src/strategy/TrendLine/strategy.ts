@@ -9,6 +9,7 @@ import { getData, redisKeys } from '@utils/redis';
 import { createTrendlineEngine } from '@utils/trendLineEngine';
 import { fetchMlThreshold } from '@utils/mlGrpc';
 import { createIndicators, IndicatorPeriods } from '@utils/indicators';
+import { closeOppositePositionsBeforeOpen } from '@utils/closeOppositePositionsBeforeOpen';
 import { filterByVeryVolatility } from './filters';
 import { config as DEFAULT_CONFIG } from './config';
 import {
@@ -59,6 +60,7 @@ export const TrendlineStrategyCreator: StrategyCreator = async ({
     ENV,
     INTERVAL,
     MAKE_ORDERS,
+    CLOSE_OPPOSITE_POSITIONS,
     TRENDLINE,
     ML_THRESHOLD,
     MAX_CORRELATION,
@@ -120,91 +122,6 @@ export const TrendlineStrategyCreator: StrategyCreator = async ({
     mode: 'highs',
     ...trendlineOptions,
   });
-
-  const closeOppositePositionsBeforeOpen = async ({
-    currentSymbol,
-    currentDirection,
-    price,
-    timestamp,
-  }: {
-    currentSymbol: string;
-    currentDirection: 'LONG' | 'SHORT';
-    price: number;
-    timestamp: number;
-  }) => {
-    try {
-      logger.log(
-        'info',
-        '[TrendLine] checking open positions before open: %s %s',
-        currentSymbol,
-        currentDirection,
-      );
-
-      const positions = await connector.getPositions();
-      const openPositions = (positions || []).filter(
-        (item) => item && Number(item.qty) > 0,
-      );
-
-      logger.log(
-        'info',
-        '[TrendLine] open positions found: %s',
-        openPositions.length,
-      );
-
-      const oppositePositions = openPositions.filter(
-        (item) =>
-          item.symbol !== currentSymbol && item.direction !== currentDirection,
-      );
-
-      if (_.isEmpty(oppositePositions)) {
-        logger.log(
-          'info',
-          '[TrendLine] no opposite positions to close before open: %s',
-          currentSymbol,
-        );
-        return;
-      }
-
-      for (const position of oppositePositions) {
-        logger.log(
-          'info',
-          '[TrendLine] closing opposite position: %s %s qty=%s',
-          position.symbol,
-          position.direction,
-          position.qty,
-        );
-
-        try {
-          await connector.closePosition({
-            symbol: position.symbol,
-            price,
-            timestamp,
-            direction: position.direction,
-          });
-
-          logger.log(
-            'info',
-            '[TrendLine] opposite position closed: %s',
-            position.symbol,
-          );
-        } catch (err) {
-          logger.log(
-            'error',
-            '[TrendLine] failed to close opposite position: %s %s',
-            position.symbol,
-            err,
-          );
-        }
-      }
-    } catch (err) {
-      logger.log(
-        'error',
-        '[TrendLine] failed to load open positions before open: %s %s',
-        currentSymbol,
-        err,
-      );
-    }
-  };
 
   return async (candle, btcCandle) => {
     cachedData.push(candle);
@@ -351,6 +268,10 @@ export const TrendlineStrategyCreator: StrategyCreator = async ({
         touches: bestLine.touches.length + 2,
         distance: bestLine.distance,
         ...indicatorHistory,
+        candles: cachedData.slice(-ML_BASE_CANDLES_WINDOW),
+        btcCandles: btcCachedData.slice(-ML_BASE_CANDLES_WINDOW),
+        candles15m: cachedData.slice(-ML_BASE_CANDLES_WINDOW),
+        btcCandles15m: btcCachedData.slice(-ML_BASE_CANDLES_WINDOW),
       },
       configFromBacktest,
     };
@@ -364,8 +285,6 @@ export const TrendlineStrategyCreator: StrategyCreator = async ({
           LOWS,
         },
         symbol,
-        candles: cachedData.slice(-ML_BASE_CANDLES_WINDOW),
-        btcCandles: btcCachedData.slice(-ML_BASE_CANDLES_WINDOW),
         ML_THRESHOLD,
       });
       if (mlResult) {
@@ -373,18 +292,28 @@ export const TrendlineStrategyCreator: StrategyCreator = async ({
       }
     }
 
-    if (MAKE_ORDERS) {
+    const shouldMakeOrder =
+      MAKE_ORDERS &&
+      (configFromBacktest ||
+        signal.ml?.passed ||
+        (correlation || 0) <= MAX_CORRELATION);
+
+    signal.orderStatus = 'canceled';
+
+    if (shouldMakeOrder) {
       try {
-        if (ENV !== 'BACKTEST') {
+        if (CLOSE_OPPOSITE_POSITIONS) {
           await closeOppositePositionsBeforeOpen({
+            connector,
             currentSymbol: symbol,
             currentDirection: direction,
             price: currentPrice,
             timestamp: lastCandle.timestamp,
+            strategyName: strategy,
           });
         }
 
-        await connector.placeOrder(
+        const orderPlaced = await connector.placeOrder(
           {
             symbol,
             qty,
@@ -403,6 +332,8 @@ export const TrendlineStrategyCreator: StrategyCreator = async ({
           stopLossPrice,
         );
 
+        signal.orderStatus = orderPlaced ? 'completed' : 'failed';
+
         const currentPosition = await connector.getPosition(symbol);
 
         if (currentPosition?.price) {
@@ -410,6 +341,7 @@ export const TrendlineStrategyCreator: StrategyCreator = async ({
           signal.prices.currentPrice = currentPrice;
         }
       } catch (err) {
+        signal.orderStatus = 'failed';
         logger.error('order error: %s %s', symbol, err);
       }
     }

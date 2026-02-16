@@ -13,6 +13,7 @@ import {
   isDerivedDatasetFileName,
   toIsoUtcOrNull,
 } from '@utils/mlWindowing';
+import { findLookaheadViolations } from '@utils/mlCausalityGuard';
 
 const toFileToken = (value: string) =>
   value
@@ -365,11 +366,13 @@ const prepareTrainWindowFiles = async ({
   testDays,
   trainRecentDays,
   walkForwardFolds,
+  enforceCausalityGuard,
 }: {
   inputPath: string;
   testDays: number;
   trainRecentDays: number;
   walkForwardFolds: number;
+  enforceCausalityGuard: boolean;
 }): Promise<PreparedSplitFiles> => {
   const inputBaseName = path.basename(inputPath);
   if (isDerivedDatasetFileName(inputBaseName)) {
@@ -384,6 +387,7 @@ const prepareTrainWindowFiles = async ({
     testDays,
     trainRecentDays,
     walkForwardFolds,
+    causalityGuardVersion: enforceCausalityGuard ? 1 : 0,
   });
   const key = createHash('sha1').update(keyPayload).digest('hex').slice(0, 12);
   const dir = path.dirname(inputPath);
@@ -665,6 +669,23 @@ const prepareTrainWindowFiles = async ({
       continue;
     const ts = parseTimestampMs(parsedRow.entryTimestamp);
     if (!ts) continue;
+    if (enforceCausalityGuard) {
+      const violations = findLookaheadViolations(
+        parsedRow as Record<string, unknown>,
+      );
+      if (violations.length) {
+        const sample = violations
+          .slice(0, 3)
+          .map(
+            (row) =>
+              `${row.key}: ${row.featureTimestampMs} > ${row.entryTimestampMs}`,
+          )
+          .join(', ');
+        throw new Error(
+          `Lookahead validation failed: feature timestamp is newer than entryTimestamp. ${sample}`,
+        );
+      }
+    }
 
     if (ts > holdoutCutoffMs) {
       if (!holdoutTestWriter.write(`${trimmed}\n`)) {
@@ -776,6 +797,7 @@ const prepareTrainWindowFiles = async ({
       testDays,
       trainRecentDays,
       walkForwardFolds,
+      causalityGuard: enforceCausalityGuard,
     },
     files: {
       holdout: {
@@ -973,6 +995,9 @@ const run = async () => {
       testDays,
       trainRecentDays,
       walkForwardFolds,
+      enforceCausalityGuard: !asBool(
+        process.env.ML_TRAIN_DISABLE_CAUSALITY_GUARD,
+      ),
     });
     cleanupFiles.push(...splitFiles.cleanup);
     const splitMode = splitFiles.reused ? 'Reusing' : 'Prepared';
@@ -1042,6 +1067,7 @@ const run = async () => {
     let lastOutputAt = startedAt;
     let sawDockerOutput = false;
     const heartbeatSec = asInt(process.env.ML_TRAIN_HEARTBEAT_SEC, 10);
+    const trainDebug = asBool(process.env.ML_TRAIN_DEBUG);
     const noOutputTimeoutSec = asInt(
       process.env.ML_TRAIN_DOCKER_NO_OUTPUT_TIMEOUT_SEC,
       90,
@@ -1071,11 +1097,13 @@ const run = async () => {
       () => {
         const elapsedSec = Math.floor((Date.now() - startedAt) / 1000);
         const silenceSec = Math.floor((Date.now() - lastOutputAt) / 1000);
-        const nodeMem = formatBytes(process.memoryUsage().rss);
-        const mlMem = getMlContainerMemUsage();
-        process.stdout.write(
-          `\n[train] still running... elapsed ${elapsedSec}s, silence=${silenceSec}s (model=${modelType}, strategy=${selected}, node_rss=${nodeMem}, ml_mem=${mlMem})\n`,
-        );
+        if (trainDebug) {
+          const nodeMem = formatBytes(process.memoryUsage().rss);
+          const mlMem = getMlContainerMemUsage();
+          process.stdout.write(
+            `\n[train] still running... elapsed ${elapsedSec}s, silence=${silenceSec}s (model=${modelType}, strategy=${selected}, node_rss=${nodeMem}, ml_mem=${mlMem})\n`,
+          );
+        }
         if (
           noOutputTimeoutSec > 0 &&
           !sawDockerOutput &&

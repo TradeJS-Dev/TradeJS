@@ -7,7 +7,7 @@ import re
 import shutil
 import sys
 from datetime import datetime, timezone
-from typing import Iterable, Tuple
+from typing import Any, Iterable, Tuple
 
 import joblib
 import numpy as np
@@ -18,7 +18,6 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OrdinalEncoder
 from sklearn.ensemble import ExtraTreesClassifier, RandomForestClassifier
 from pathlib import Path
-
 
 def load_dataset(path: str) -> pd.DataFrame:
     if path.endswith('.jsonl'):
@@ -69,7 +68,7 @@ def align_features(X: pd.DataFrame, expected: list[str]) -> pd.DataFrame:
 
 
 def print_threshold_table(y_true: np.ndarray, y_prob: np.ndarray) -> None:
-    thresholds = np.round(np.linspace(0.05, 0.95, 19), 2)
+    thresholds = threshold_grid()
     base_rate = float((y_true == 1).mean()) if len(y_true) else 0.0
     pos = int((y_true == 1).sum())
     neg = int((y_true == 0).sum())
@@ -90,7 +89,7 @@ def threshold_rows(
     thresholds: np.ndarray | None = None,
     profit: np.ndarray | None = None,
 ) -> list[dict[str, float]]:
-    points = thresholds if thresholds is not None else np.round(np.linspace(0.05, 0.95, 19), 2)
+    points = thresholds if thresholds is not None else threshold_grid()
     base_rate = float((y_true == 1).mean()) if len(y_true) else 0.0
     profit_arr = None
     if profit is not None and len(profit) == len(y_true):
@@ -122,6 +121,13 @@ def threshold_rows(
             'gain_per_100': float(gain_per_100),
         })
     return rows
+
+
+def threshold_grid() -> np.ndarray:
+    low = np.arange(0.01, 0.051, 0.01)
+    high = np.arange(0.10, 0.951, 0.05)
+    points = np.concatenate([low, high])
+    return np.round(points, 2)
 
 
 def threshold_markdown_lines(
@@ -659,45 +665,53 @@ def compute_ensemble_cutoffs(source_df: pd.DataFrame, members: int = 2) -> list[
     return [int(q) for q in quantiles]
 
 
-def archive_with_date_suffix(path: str, date_suffix: str) -> str:
-    root, ext = os.path.splitext(path)
-    candidate = f'{root}.{date_suffix}{ext}'
-    if not os.path.exists(candidate):
-        os.replace(path, candidate)
-        return candidate
-
+def _move_to_archive(path: str, archive_dir: str) -> str:
+    os.makedirs(archive_dir, exist_ok=True)
+    name = os.path.basename(path)
+    dst = os.path.join(archive_dir, name)
+    if not os.path.exists(dst):
+        shutil.move(path, dst)
+        return dst
+    root, ext = os.path.splitext(name)
     idx = 1
     while True:
-        candidate = f'{root}.{date_suffix}.{idx}{ext}'
+        candidate = os.path.join(archive_dir, f'{root}.{idx}{ext}')
         if not os.path.exists(candidate):
-            os.replace(path, candidate)
+            shutil.move(path, candidate)
             return candidate
         idx += 1
 
 
-def clear_strategy_models(model_base: str) -> None:
-    date_suffix = datetime.now(timezone.utc).strftime('%Y%m%d')
-    archived: list[str] = []
-    existing_paths: set[str] = set()
+def clear_strategy_models(model_base: str, report_dir: str) -> None:
     parent = os.path.dirname(model_base) or '.'
     base = os.path.basename(model_base)
-    active_patterns = [
-        re.compile(rf'^{re.escape(base)}\.joblib$'),
-        re.compile(rf'^{re.escape(base)}\.model\d+\.joblib$'),
-    ]
+    archive_dir = os.path.join(report_dir, 'archived')
+    archived: list[str] = []
+
     try:
-        for name in os.listdir(parent):
-            if any(pattern.match(name) for pattern in active_patterns):
-                existing_paths.add(os.path.join(parent, name))
+        names = os.listdir(parent)
     except FileNotFoundError:
-        pass
+        names = []
 
-    for path in sorted(existing_paths):
-        archived_path = archive_with_date_suffix(path, date_suffix)
-        archived.append(archived_path)
+    for name in sorted(names):
+        if not name.startswith(f'{base}.'):
+            continue
+        if not (
+            name.endswith('.joblib')
+            or name.endswith('.json')
+            or name.endswith('.md')
+            or name.endswith('.report.html')
+        ):
+            continue
+        src = os.path.join(parent, name)
+        if not os.path.isfile(src):
+            continue
+        archived.append(_move_to_archive(src, archive_dir))
 
-    for path in archived:
-        print('Archived previous model:', path)
+    if archived:
+        print(f'Archived previous artifacts to: {archive_dir}')
+        for path in archived:
+            print('Archived:', path)
 
 
 def model_base_from_arg(model_arg: str, strategy: str) -> str:
@@ -718,6 +732,101 @@ def write_training_notes(path: str, lines: list[str]) -> None:
     ensure_parent_dir(path)
     with open(path, 'w', encoding='utf-8') as f:
         f.write('\n'.join(lines).rstrip() + '\n')
+
+
+def write_json_file(path: str, payload: dict[str, Any]) -> None:
+    ensure_parent_dir(path)
+    with open(path, 'w', encoding='utf-8') as f:
+        json.dump(payload, f, ensure_ascii=False, indent=2)
+        f.write('\n')
+
+
+def sidecar_json_path(model_path: str) -> str:
+    if model_path.endswith('.joblib'):
+        return f'{model_path[:-7]}.json'
+    return f'{model_path}.json'
+
+
+def build_prod_metrics_payload(
+    *,
+    strategy: str,
+    model_type: str,
+    artifact_stamp: str,
+    ensemble: bool,
+    eval_auc: float,
+    y_true: np.ndarray,
+    y_pred: np.ndarray,
+    walk_forward_scores: list[float],
+    walk_forward_rows: list[dict[str, object]],
+    train_recent_days: int,
+    test_days: int,
+    prod_rows: int,
+    prod_model_files: list[str],
+) -> dict[str, Any]:
+    metrics = compute_binary_metrics(y_true, y_pred)
+    valid_folds = [score for score in walk_forward_scores if np.isfinite(score)]
+    fold_items: list[dict[str, Any]] = []
+    for row in walk_forward_rows:
+        fold_auc = float(row.get('auc', float('nan')))
+        test_start_raw = row.get('test_start_ts', float('nan'))
+        test_end_raw = row.get('test_end_ts', float('nan'))
+        try:
+            test_start = float(test_start_raw)
+        except (TypeError, ValueError):
+            test_start = float('nan')
+        try:
+            test_end = float(test_end_raw)
+        except (TypeError, ValueError):
+            test_end = float('nan')
+        fold_items.append(
+            {
+                'fold': int(float(row.get('fold', 0))),
+                'auc': fold_auc if np.isfinite(fold_auc) else None,
+                'train_rows': int(float(row.get('train_rows', 0))),
+                'test_rows': int(float(row.get('test_rows', 0))),
+                'test_start_ts': int(test_start) if np.isfinite(test_start) else None,
+                'test_end_ts': int(test_end) if np.isfinite(test_end) else None,
+            }
+        )
+
+    return {
+        'strategy': strategy,
+        'model_type': model_type,
+        'timestamp_utc': artifact_stamp,
+        'ensemble': bool(ensemble),
+        'train_recent_days': int(train_recent_days),
+        'test_days': int(test_days),
+        'prod_rows': int(prod_rows),
+        'prod_model_files': prod_model_files,
+        'holdout': {
+            'rows': int(len(y_true)),
+            'roc_auc': eval_auc if np.isfinite(eval_auc) else None,
+            'accuracy': float(metrics['accuracy']),
+            'precision': float(metrics['precision']),
+            'recall': float(metrics['recall']),
+            'f1': float(metrics['f1']),
+            'tp': int(metrics['tp']),
+            'tn': int(metrics['tn']),
+            'fp': int(metrics['fp']),
+            'fn': int(metrics['fn']),
+        },
+        'walk_forward': {
+            'fold_count': int(len(fold_items)),
+            'auc_mean': float(np.mean(valid_folds)) if valid_folds else None,
+            'auc_std': float(np.std(valid_folds)) if valid_folds else None,
+            'folds': fold_items,
+        },
+    }
+
+
+def write_prod_metrics_sidecars(
+    model_paths: list[str],
+    payload: dict[str, Any],
+) -> None:
+    for model_path in model_paths:
+        json_path = sidecar_json_path(model_path)
+        write_json_file(json_path, payload)
+        print('Prod metrics saved:', json_path)
 
 
 def compute_binary_metrics(y_true: np.ndarray, y_pred: np.ndarray) -> dict[str, float]:
@@ -902,6 +1011,50 @@ def _to_epoch_ms(ts: pd.Series) -> pd.Series:
     return cleaned * 1000
 
 
+def _parse_ts_ms_scalar(value: Any) -> int | None:
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError):
+        return None
+    if not np.isfinite(numeric) or numeric <= 0:
+        return None
+    return int(numeric * 1000) if numeric < 1e12 else int(numeric)
+
+
+def validate_no_lookahead(df: pd.DataFrame, stage: str) -> None:
+    if 'entryTimestamp' not in df.columns or df.empty:
+        return
+    entry_ms = pd.to_numeric(df['entryTimestamp'], errors='coerce')
+    if entry_ms.isna().all():
+        return
+    entry_ms = entry_ms.apply(_parse_ts_ms_scalar)
+    ts_like_cols = [
+        col
+        for col in df.columns
+        if col != 'entryTimestamp' and re.search(r'(timestamp|ts|atms)$', col, re.IGNORECASE)
+    ]
+    if not ts_like_cols:
+        return
+
+    violations: list[str] = []
+    for col in ts_like_cols:
+        feat_ms = pd.to_numeric(df[col], errors='coerce').apply(_parse_ts_ms_scalar)
+        mask = feat_ms.notna() & entry_ms.notna() & (feat_ms > entry_ms)
+        if bool(mask.any()):
+            idx = int(mask[mask].index[0])
+            violations.append(
+                f'{col}@row{idx}: feature_ts={int(feat_ms.iloc[idx])} > entry_ts={int(entry_ms.iloc[idx])}'
+            )
+            if len(violations) >= 5:
+                break
+
+    if violations:
+        raise SystemExit(
+            f'Lookahead validation failed for {stage}. '
+            f'Timestamp feature exceeds entryTimestamp. Examples: {"; ".join(violations)}'
+        )
+
+
 def _build_or_load_walk_forward_windows(
     source_df: pd.DataFrame,
     folds: int,
@@ -1009,6 +1162,8 @@ def run_walk_forward_validation(
             fold_train = keep_recent_days(fold_train, train_recent_days)
         if fold_train.empty or fold_val.empty:
             continue
+        validate_no_lookahead(fold_train, f'walk-forward fold {fold} train')
+        validate_no_lookahead(fold_val, f'walk-forward fold {fold} test')
 
         X_tr, y_tr = prepare_features(fold_train)
         X_val, y_val = prepare_features(fold_val)
@@ -1081,8 +1236,6 @@ def run_walk_forward_validation(
             f'Walk-forward holdout {fold}/{folds}: '
             f'train={len(y_tr)} val={len(y_val)} auc={auc:.4f} members={used_members}'
         )
-        print(f'Walk-forward fold {fold}/{folds} threshold table:')
-        print_threshold_table(y_val.to_numpy(), y_prob)
 
     valid = [score for score in fold_scores if np.isfinite(score)]
     if valid:
@@ -1124,6 +1277,8 @@ def run_walk_forward_validation_from_files(
             fold_train = keep_recent_days(fold_train, train_recent_days)
         if fold_train.empty or fold_val.empty:
             continue
+        validate_no_lookahead(fold_train, f'walk-forward fold {fold} train')
+        validate_no_lookahead(fold_val, f'walk-forward fold {fold} test')
 
         X_tr, y_tr = prepare_features(fold_train)
         X_val, y_val = prepare_features(fold_val)
@@ -1197,8 +1352,6 @@ def run_walk_forward_validation_from_files(
             f'Walk-forward holdout {fold}/{total_folds}: '
             f'train={len(y_tr)} val={len(y_val)} auc={auc:.4f} members={used_members}'
         )
-        print(f'Walk-forward fold {fold}/{total_folds} threshold table:')
-        print_threshold_table(y_val.to_numpy(), y_prob)
 
     valid = [score for score in fold_scores if np.isfinite(score)]
     if valid:
@@ -1371,7 +1524,6 @@ def train_incremental_catboost(
         print('ROC AUC:', roc_auc_score(y_true, y_prob))
     except ValueError:
         print('ROC AUC: n/a')
-    print_threshold_table(y_true, y_prob)
     eval_report_path = f'{model_base}.eval.{artifact_stamp}.report.html'
     eval_report_saved = create_training_html_report(
         report_dir=report_dir,
@@ -1408,6 +1560,8 @@ def train_incremental_catboost(
         )
         prod_models.append(updated_model)
 
+    prod_model_paths: list[str] = []
+    prod_alias_paths: list[str] = []
     if ensemble:
         for idx, model in enumerate(prod_models, start=1):
             path = f'{model_base}.model{idx}.prod.{artifact_stamp}.joblib'
@@ -1422,6 +1576,8 @@ def train_incremental_catboost(
             alias = f'{model_base}.model{idx}.joblib'
             shutil.copy2(path, alias)
             print('Prod alias updated:', alias)
+            prod_model_paths.append(path)
+            prod_alias_paths.append(alias)
     else:
         model_path = f'{model_base}.prod.{artifact_stamp}.joblib'
         pipeline = Pipeline(
@@ -1435,6 +1591,28 @@ def train_incremental_catboost(
         alias = f'{model_base}.joblib'
         shutil.copy2(model_path, alias)
         print('Prod alias updated:', alias)
+        prod_model_paths.append(model_path)
+        prod_alias_paths.append(alias)
+
+    prod_metrics = build_prod_metrics_payload(
+        strategy=strategy,
+        model_type='catboost',
+        artifact_stamp=artifact_stamp,
+        ensemble=ensemble,
+        eval_auc=eval_auc,
+        y_true=y_true,
+        y_pred=y_pred,
+        walk_forward_scores=[],
+        walk_forward_rows=[],
+        train_recent_days=0,
+        test_days=0,
+        prod_rows=len(y_true),
+        prod_model_files=[os.path.basename(path) for path in prod_model_paths],
+    )
+    write_prod_metrics_sidecars(
+        [*prod_model_paths, *prod_alias_paths],
+        prod_metrics,
+    )
 
     eval_md_path = f'{model_base}.eval.{artifact_stamp}.md'
     eval_lines = [
@@ -1457,26 +1635,19 @@ def train_incremental_catboost(
     write_training_notes(eval_md_path, eval_lines)
     print('Eval notes saved:', eval_md_path)
 
-    if not ensemble:
-        prod_md_path = f'{model_base}.prod.{artifact_stamp}.md'
-        prod_lines = [
-            f'# Model Notes: {strategy} prod',
-            '',
-            f'- timestamp_utc: {artifact_stamp}',
-            '- mode: prod',
-            '- model_type: catboost',
-            '- training_mode: incremental',
-            f'- ensemble: {ensemble}',
-            f'- chunk_size: {chunk_size}',
-            f'- incremental_iterations: {incremental_iterations}',
-            f'- roc_auc_ref_holdout: {eval_auc:.6f}' if np.isfinite(eval_auc) else '- roc_auc_ref_holdout: n/a',
-            f'- model_file: {os.path.basename(model_path)}',
-        ]
-        prod_lines += ['', *threshold_markdown_lines(y_true, y_prob, profit=eval_profit)]
-        prod_lines += ['', *gain_markdown_lines(y_true, y_prob, profit=eval_profit)]
-        prod_lines += ['', *policy_markdown_lines(y_true, y_prob, regime_high_vol=eval_regime, profit=eval_profit)]
-        write_training_notes(prod_md_path, prod_lines)
-        print('Prod notes saved:', prod_md_path)
+    eval_lines += [
+        '',
+        '## Prod Build',
+        '',
+        f'- full_rows: {len(y_true)}',
+        f'- members: {len(prod_models)}',
+        f'- roc_auc_ref_holdout: {eval_auc:.6f}' if np.isfinite(eval_auc) else '- roc_auc_ref_holdout: n/a',
+        '- prod_model_files:',
+    ]
+    for path in prod_model_paths:
+        eval_lines.append(f'  - {os.path.basename(path)}')
+    write_training_notes(eval_md_path, eval_lines)
+    print('Eval notes updated with prod section:', eval_md_path)
 
 
 def main() -> None:
@@ -1569,7 +1740,7 @@ def main() -> None:
             raise SystemExit('--incremental requires --test-input.')
         model_base = model_base_from_arg(args.model, args.strategy)
         ensure_parent_dir(model_base)
-        clear_strategy_models(model_base)
+        clear_strategy_models(model_base, args.report_dir)
         train_incremental_catboost(
             train_input=args.input,
             test_input=args.test_input,
@@ -1623,6 +1794,8 @@ def main() -> None:
             )
         if train_df.empty:
             raise SystemExit('No training rows found in --input.')
+        validate_no_lookahead(train_df, 'holdout train')
+        validate_no_lookahead(test_df, 'holdout test')
         X_train, y_train = prepare_features(train_df)
         X_test, y_test = prepare_features(test_df)
         X_train = apply_feature_set(X_train, args.feature_set)
@@ -1647,6 +1820,8 @@ def main() -> None:
             )
         if train_df.empty:
             raise SystemExit('No training rows found after --train-recent-days filter.')
+        validate_no_lookahead(train_df, 'holdout train')
+        validate_no_lookahead(test_df, 'holdout test')
         X_train, y_train = prepare_features(train_df)
         X_test, y_test = prepare_features(test_df)
         X_train = apply_feature_set(X_train, args.feature_set)
@@ -1669,6 +1844,7 @@ def main() -> None:
     else:
         prod_source_df = pd.concat([train_df, test_df], ignore_index=True)
         prod_source_df = prod_source_df[prod_source_df['label'].notna()].copy()
+    validate_no_lookahead(prod_source_df, 'prod source')
     fold_train_inputs = [
         str(item).strip() for item in args.walk_forward_fold_train_input if str(item).strip()
     ]
@@ -1752,7 +1928,7 @@ def main() -> None:
     )
 
     ensure_parent_dir(model_base)
-    clear_strategy_models(model_base)
+    clear_strategy_models(model_base, args.report_dir)
     artifact_stamp = utc_stamp()
     walk_forward_mean = float(np.mean(walk_forward_scores)) if walk_forward_scores else float('nan')
     walk_forward_std = float(np.std(walk_forward_scores)) if walk_forward_scores else float('nan')
@@ -1810,7 +1986,6 @@ def main() -> None:
             print('ROC AUC:', roc_auc_score(y_test, avg_prob))
         except ValueError:
             print('ROC AUC: n/a')
-        print_threshold_table(y_test.to_numpy(), avg_prob)
         eval_report_path = f'{model_base}.ensemble.eval.{artifact_stamp}.report.html'
         eval_report_saved = create_training_html_report(
             report_dir=args.report_dir,
@@ -1910,6 +2085,8 @@ def main() -> None:
         )
         sys.stdout.flush()
 
+        prod_model_paths: list[str] = []
+        prod_alias_paths: list[str] = []
         for idx, model in enumerate(prod_models, start=1):
             path = f'{model_base}.model{idx}.prod.{artifact_stamp}.joblib'
             joblib.dump(model, path)
@@ -1917,6 +2094,27 @@ def main() -> None:
             alias = f'{model_base}.model{idx}.joblib'
             shutil.copy2(path, alias)
             print('Prod alias updated:', alias)
+            prod_model_paths.append(path)
+            prod_alias_paths.append(alias)
+        prod_metrics = build_prod_metrics_payload(
+            strategy=args.strategy,
+            model_type=args.model_type,
+            artifact_stamp=artifact_stamp,
+            ensemble=True,
+            eval_auc=eval_auc,
+            y_true=y_test.to_numpy(),
+            y_pred=y_pred,
+            walk_forward_scores=walk_forward_scores,
+            walk_forward_rows=walk_forward_rows,
+            train_recent_days=args.train_recent_days,
+            test_days=args.test_days,
+            prod_rows=len(full_df),
+            prod_model_files=[os.path.basename(path) for path in prod_model_paths],
+        )
+        write_prod_metrics_sidecars(
+            [*prod_model_paths, *prod_alias_paths],
+            prod_metrics,
+        )
         eval_lines += [
             '',
             '## Prod Build',
@@ -1957,7 +2155,6 @@ def main() -> None:
             print('ROC AUC:', roc_auc_score(y_test, y_prob))
         except ValueError:
             print('ROC AUC: n/a')
-        print_threshold_table(y_test.to_numpy(), y_prob)
 
         artifact_stamp = utc_stamp()
         eval_report_path = f'{model_base}.eval.{artifact_stamp}.report.html'
@@ -2064,6 +2261,25 @@ def main() -> None:
         alias_model_path = f'{model_base}.joblib'
         shutil.copy2(prod_model_path, alias_model_path)
         print('Prod alias updated:', alias_model_path)
+        prod_metrics = build_prod_metrics_payload(
+            strategy=args.strategy,
+            model_type=args.model_type,
+            artifact_stamp=artifact_stamp,
+            ensemble=False,
+            eval_auc=eval_auc,
+            y_true=y_test.to_numpy(),
+            y_pred=y_pred,
+            walk_forward_scores=walk_forward_scores,
+            walk_forward_rows=walk_forward_rows,
+            train_recent_days=args.train_recent_days,
+            test_days=args.test_days,
+            prod_rows=len(y_full),
+            prod_model_files=[os.path.basename(prod_model_path)],
+        )
+        write_prod_metrics_sidecars(
+            [prod_model_path, alias_model_path],
+            prod_metrics,
+        )
 
 
 if __name__ == '__main__':

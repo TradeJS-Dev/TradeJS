@@ -50,4 +50,30 @@ describe('buildMlPayload', () => {
       minTouches: 4,
     });
   });
+
+  it('keeps candles from signal.indicators when explicit arrays are not passed', () => {
+    const candles = [makeCandle(1), makeCandle(2)];
+    const btcCandles = [makeCandle(1), makeCandle(2)];
+    const payload = buildMlPayload({
+      signal: {
+        signalId: 's1',
+        symbol: 'ETHUSDT',
+        strategy: 'TrendLine',
+        interval: '15' as any,
+        direction: 'LONG',
+        timestamp: 2,
+        figures: {},
+        prices: {
+          currentPrice: 1,
+          takeProfitPrice: 1,
+          stopLossPrice: 1,
+          riskRatio: 1,
+        },
+        indicators: { candles15m: candles, btcCandles15m: btcCandles },
+      } as any,
+    });
+
+    expect(payload.signal.indicators.candles15m).toEqual(candles);
+    expect(payload.signal.indicators.btcCandles15m).toEqual(btcCandles);
+  });
 });

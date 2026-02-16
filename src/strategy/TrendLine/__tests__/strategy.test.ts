@@ -4,6 +4,7 @@ import { createTrendlineEngine } from '@utils/trendLineEngine';
 import { calculateCoinBtcCorrelation } from '@utils/correlation';
 import { filterByVeryVolatility } from '../filters';
 import { logger } from '@utils/logger';
+import { fetchMlThreshold } from '@utils/mlGrpc';
 
 jest.mock('@utils/trendLineEngine', () => ({
   createTrendlineEngine: jest.fn(),
@@ -295,6 +296,75 @@ describe('TrendlineStrategyCreator', () => {
     expect(result).toBe('VERY_VOLATILITY');
   });
 
+  it('passes ML signal via signal.indicators without raw candles config fields', async () => {
+    (createTrendlineEngine as jest.Mock).mockImplementation(
+      (_data, options) => {
+        const line = {
+          id: 'line-1',
+          mode: options.mode ?? 'lows',
+          distance: 1,
+          touches: [{ timestamp: 1, value: 1 }],
+          points: [{ timestamp: 1, value: 1 }],
+        };
+        return {
+          next: jest.fn(() => [line]),
+        };
+      },
+    );
+    (createIndicators as jest.Mock).mockImplementation(() => ({
+      next: jest.fn(() => ({ maFast: 1 })),
+      result: () => ({ maFast: [1] }),
+    }));
+
+    const cachedData: any[] = [makeCandle(1, 100)];
+    const btcCachedData: any[] = [makeCandle(1, 20000)];
+    const connector: any = {
+      getPosition: jest.fn(async () => ({ qty: 0 })),
+      kline: jest.fn(async () => cachedData),
+    };
+    const strategy = await TrendlineStrategyCreator({
+      userName: 'test',
+      config: {
+        ENV: 'test',
+        INTERVAL: '15',
+        MAKE_ORDERS: false,
+        MAX_LOSS_VALUE: 10,
+        MAX_CORRELATION: 1,
+        TRENDLINE: {},
+        HIGHS: {
+          enable: false,
+          direction: 'LONG',
+          TP: 2,
+          SL: 1,
+          minRiskRatio: 0,
+        },
+        LOWS: {
+          enable: true,
+          direction: 'LONG',
+          TP: 2,
+          SL: 1,
+          minRiskRatio: 0,
+        },
+      },
+      symbol: 'TESTUSDT',
+      data: cachedData,
+      btcData: btcCachedData,
+      connector,
+    });
+
+    const candle = makeCandle(2, 101);
+    const btcCandle = makeCandle(2, 20001);
+    await strategy(candle, btcCandle);
+
+    expect(fetchMlThreshold).toHaveBeenCalled();
+    const [signalArg, configArg] = (fetchMlThreshold as jest.Mock).mock
+      .calls[0] as any[];
+    expect(configArg.candles).toBeUndefined();
+    expect(configArg.btcCandles).toBeUndefined();
+    expect(Array.isArray(signalArg.indicators?.candles15m)).toBe(true);
+    expect(Array.isArray(signalArg.indicators?.btcCandles15m)).toBe(true);
+  });
+
   it('updates indicators on every candle even before first signal', async () => {
     let lowsCandlesSeen = 0;
     (createTrendlineEngine as jest.Mock).mockImplementation(
@@ -435,6 +505,7 @@ describe('TrendlineStrategyCreator', () => {
         ENV: 'test',
         INTERVAL: '15',
         MAKE_ORDERS: true,
+        CLOSE_OPPOSITE_POSITIONS: true,
         MAX_LOSS_VALUE: 10,
         MAX_CORRELATION: 1,
         TRENDLINE: {},
@@ -474,7 +545,8 @@ describe('TrendlineStrategyCreator', () => {
     expect(connector.placeOrder).toHaveBeenCalledTimes(1);
     expect(logger.log).toHaveBeenCalledWith(
       'info',
-      '[TrendLine] closing opposite position: %s %s qty=%s',
+      '[%s] closing opposite position: %s %s qty=%s',
+      'TrendLine',
       'FARTCOINUSDT',
       'SHORT',
       2,

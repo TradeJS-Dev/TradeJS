@@ -12,6 +12,7 @@ export const formatMessage = (signal: Signal): string => {
     symbol,
     direction,
     strategy,
+    orderStatus,
     configFromBacktest,
     ml,
     prices: { currentPrice, takeProfitPrice, stopLossPrice, riskRatio },
@@ -63,6 +64,16 @@ export const formatMessage = (signal: Signal): string => {
       lines.push('');
 
       lines.push(`Strategy: ${strategy}`);
+
+      if (orderStatus) {
+        let orderStatusText = 'Order canceled';
+        if (orderStatus === 'completed') {
+          orderStatusText = 'Order completed';
+        } else if (orderStatus === 'failed') {
+          orderStatusText = 'Order failed';
+        }
+        lines.push(orderStatusText);
+      }
 
       if (configFromBacktest) {
         lines.push('Config from backtest');
