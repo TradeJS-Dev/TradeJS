@@ -1,5 +1,5 @@
 import _ from 'lodash';
-import { ML_BASE_CANDLES_WINDOW, SIGNALS_PRELOAD_DAYS } from '@constants';
+import { SIGNALS_PRELOAD_DAYS } from '@constants';
 import { getTimestamp } from '@utils/timestamp';
 import { calculateCoinBtcCorrelation } from '@utils/correlation';
 import { uuid } from '@utils/uuid';
@@ -161,14 +161,14 @@ export const TrendlineStrategyCreator: StrategyCreator = async ({
       btcCachedData.slice(-100),
     ).correlation;
 
-    if (
-      ENV !== 'BACKTEST' &&
-      !configFromBacktest &&
-      correlation &&
-      correlation > MAX_CORRELATION
-    ) {
-      return `BTC_CORRELATION:${round(correlation)}`;
-    }
+    // if (
+    //   ENV !== 'BACKTEST' &&
+    //   !configFromBacktest &&
+    //   correlation &&
+    //   correlation > MAX_CORRELATION
+    // ) {
+    //   return `BTC_CORRELATION:${round(correlation)}`;
+    // }
 
     const data =
       ENV === 'BACKTEST'
@@ -268,10 +268,6 @@ export const TrendlineStrategyCreator: StrategyCreator = async ({
         touches: bestLine.touches.length + 2,
         distance: bestLine.distance,
         ...indicatorHistory,
-        candles: cachedData.slice(-ML_BASE_CANDLES_WINDOW),
-        btcCandles: btcCachedData.slice(-ML_BASE_CANDLES_WINDOW),
-        candles15m: cachedData.slice(-ML_BASE_CANDLES_WINDOW),
-        btcCandles15m: btcCachedData.slice(-ML_BASE_CANDLES_WINDOW),
       },
       configFromBacktest,
     };

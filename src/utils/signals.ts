@@ -61,23 +61,33 @@ export const formatMessage = (signal: Signal): string => {
             : '⬜️ NO TRADE';
 
       lines.push(`<b>${emojiDir} ${symbol}</b>`);
-      lines.push('');
-
       lines.push(`Strategy: ${strategy}`);
 
+      lines.push('');
+
       if (orderStatus) {
-        let orderStatusText = 'Order canceled';
+        let orderStatusText = '⚪️ Order canceled';
         if (orderStatus === 'completed') {
-          orderStatusText = 'Order completed';
+          orderStatusText = '🟢 Order completed';
         } else if (orderStatus === 'failed') {
-          orderStatusText = 'Order failed';
+          orderStatusText = '🔴 Order failed';
         }
         lines.push(orderStatusText);
       }
 
       if (configFromBacktest) {
-        lines.push('Config from backtest');
+        lines.push('🔵 Using config from backtest');
+      } else {
+        lines.push('🟡 Using base config');
       }
+
+      if (ml) {
+        lines.push(
+          `${ml.passed ? '✅ ML: PASS' : '🚫 ML: FAIL'} (${ml.probability.toFixed(3)} / ${ml.threshold.toFixed(2)})`,
+        );
+      }
+
+      lines.push('');
 
       if (touches) {
         lines.push(`Points: ${touches}`);
@@ -93,12 +103,6 @@ export const formatMessage = (signal: Signal): string => {
 
       if (correlation) {
         lines.push(`BTC correlation: ${correlation}`);
-      }
-
-      if (ml) {
-        lines.push(
-          `ML: ${ml.passed ? 'PASS' : 'FAIL'} (${ml.probability.toFixed(3)} / ${ml.threshold.toFixed(3)})`,
-        );
       }
 
       const prices = formatPrices();

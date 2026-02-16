@@ -313,7 +313,11 @@ describe('TrendlineStrategyCreator', () => {
     );
     (createIndicators as jest.Mock).mockImplementation(() => ({
       next: jest.fn(() => ({ maFast: 1 })),
-      result: () => ({ maFast: [1] }),
+      result: () => ({
+        maFast: [1],
+        candles15m: [makeCandle(1, 100)],
+        btcCandles15m: [makeCandle(1, 20000)],
+      }),
     }));
 
     const cachedData: any[] = [makeCandle(1, 100)];
