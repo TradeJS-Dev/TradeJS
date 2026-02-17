@@ -67,7 +67,7 @@ jest.mock('@utils/timestamp', () => ({
   getTimestamp: () => 1_000_000,
 }));
 
-import { testing } from '@utils/testing';
+import { testing, resetTestingKlineCache } from '@utils/testing';
 
 const candle = (timestamp: number) => ({
   timestamp,
@@ -96,6 +96,7 @@ const createTest = (overrides: Partial<Test> = {}): Test =>
 
 describe('testing backtest flow', () => {
   beforeEach(() => {
+    resetTestingKlineCache();
     jest.clearAllMocks();
     mockByBitConnector.kline.mockReset();
     mockStrategyCreator.mockClear();

@@ -18,6 +18,7 @@ describe('worker tester', () => {
 
     jest.doMock('@utils/testing', () => ({
       testing: testingImpl,
+      resetTestingKlineCache: jest.fn(),
     }));
 
     jest.doMock('@utils/redis', () => ({

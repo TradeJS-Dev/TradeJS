@@ -1,4 +1,4 @@
-import { testing } from '@utils/testing';
+import { testing, resetTestingKlineCache } from '@utils/testing';
 import { TestSuite } from '@types';
 import { getData, redisKeys } from '@utils/redis';
 import { logger } from '@utils/logger';
@@ -42,6 +42,7 @@ process.on(
       }
     } finally {
       await closeAllMlDatasetWriters();
+      resetTestingKlineCache();
     }
 
     process.send?.({ done: true });
