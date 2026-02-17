@@ -290,7 +290,8 @@ export const TrendlineStrategyCreator: StrategyCreator = async ({
 
     const shouldMakeOrder =
       MAKE_ORDERS &&
-      (configFromBacktest ||
+      (ENV === 'BACKTEST' ||
+        configFromBacktest ||
         signal.ml?.passed ||
         (correlation || 0) <= MAX_CORRELATION);
 

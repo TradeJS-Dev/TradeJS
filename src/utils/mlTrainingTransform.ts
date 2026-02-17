@@ -429,9 +429,9 @@ export const buildMlTrainingRow = (
 
   const lastCandle = candleList[candleList.length - 1] ?? {};
 
-  const lastTimestamp = toNumber(lastCandle?.timestamp, 0);
+  const entryTimestamp = toNumber(signal?.timestamp, 0);
   const intervalMinutes = toNumber(signal?.interval, 0);
-  const entryDate = lastTimestamp > 0 ? new Date(lastTimestamp) : null;
+  const entryDate = entryTimestamp > 0 ? new Date(entryTimestamp) : null;
   const entryHour = entryDate ? entryDate.getUTCHours() : 0;
   const entryDayOfWeek = entryDate ? entryDate.getUTCDay() : 0;
 
@@ -442,7 +442,7 @@ export const buildMlTrainingRow = (
     ),
     strategy: normalizeSymbol(signal?.strategy ?? context?.strategyName ?? ''),
     direction: signal?.direction === 'LONG' ? 1 : 0,
-    entryTimestamp: lastTimestamp,
+    entryTimestamp,
     takeProfitPrice: safeDiv(
       currentPrice,
       toNumber(signal?.prices?.takeProfitPrice, 0),
@@ -835,7 +835,7 @@ export const buildMlTrainingRow = (
       toNumber(point?.value, 0),
       currentPrice,
     );
-    const pointDeltaMs = lastTimestamp - toNumber(point?.timestamp, 0);
+    const pointDeltaMs = entryTimestamp - toNumber(point?.timestamp, 0);
     const pointDeltaMin = safeDiv(pointDeltaMs, 60_000);
     if (i === 0) {
       const pointDeltaBars =
@@ -870,7 +870,7 @@ export const buildMlTrainingRow = (
       toNumber(touch?.value, 0),
       currentPrice,
     );
-    const touchDeltaMs = lastTimestamp - toNumber(touch?.timestamp, 0);
+    const touchDeltaMs = entryTimestamp - toNumber(touch?.timestamp, 0);
     const touchDeltaMin = safeDiv(touchDeltaMs, 60_000);
     const touchDeltaBars =
       intervalMinutes > 0
@@ -896,7 +896,7 @@ export const buildMlTrainingRow = (
     const dtMs = p2.timestamp - p1.timestamp;
     if (dtMs !== 0) {
       const slopePerMs = (p2.value - p1.value) / dtMs;
-      const tlAtEntry = p1.value + slopePerMs * (lastTimestamp - p1.timestamp);
+      const tlAtEntry = p1.value + slopePerMs * (entryTimestamp - p1.timestamp);
       const slopePerBar =
         intervalMinutes > 0 ? slopePerMs * intervalMinutes * 60_000 : null;
       row.TrendLine_Delta_To_Price = safeDiv(

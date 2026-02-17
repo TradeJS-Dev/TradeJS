@@ -62,6 +62,7 @@ test('buildMlTrainingRow: key normalizations and removals', () => {
 
   const signal = {
     symbol: 'ethusdt',
+    timestamp: candles[candles.length - 1].timestamp,
     direction: 'LONG',
     interval: 1,
     prices: {
@@ -330,4 +331,58 @@ test('buildMlTrainingRow: normalization is finite on cross-zero oscillators', ()
   expect(numericValues.every((value) => Number.isFinite(value))).toBe(true);
   expect(Math.max(...numericValues)).toBeLessThan(50);
   expect(Math.min(...numericValues)).toBeGreaterThan(-50);
+});
+
+test('buildMlTrainingRow: entryTimestamp is sourced only from signal.timestamp', () => {
+  const candles = Array.from({ length: 10 }, (_, i) => ({
+    open: 100 + i,
+    close: 100 + i,
+    high: 101 + i,
+    low: 99 + i,
+    volume: 1000 + i,
+    timestamp: (i + 1) * 60_000,
+  }));
+
+  const baseSignal = {
+    symbol: 'BTCUSDT',
+    strategy: 'TrendLine',
+    direction: 'LONG',
+    interval: 15,
+    prices: {
+      currentPrice: 100,
+      takeProfitPrice: 102,
+      stopLossPrice: 99,
+      riskRatio: 1.5,
+    },
+    indicators: {
+      candles15m: candles,
+      btcCandles15m: candles,
+      candles1h: candles,
+      btcCandles1h: candles,
+      candles4h: candles,
+      btcCandles4h: candles,
+      candles1d: candles,
+      btcCandles1d: candles,
+    },
+    figures: {},
+  };
+
+  const withoutSignalTimestamp = buildMlTrainingRow(
+    { signal: baseSignal },
+    { profit: 1 },
+  );
+  expect(withoutSignalTimestamp.entryTimestamp).toBe(0);
+
+  const explicitTimestamp = Date.UTC(2025, 0, 2, 3, 0, 0);
+  const withSignalTimestamp = buildMlTrainingRow(
+    {
+      signal: {
+        ...baseSignal,
+        timestamp: explicitTimestamp,
+      },
+    },
+    { profit: 1 },
+  );
+  expect(withSignalTimestamp.entryTimestamp).toBe(explicitTimestamp);
+  expect(withSignalTimestamp.Ctx_EntryHour).toBe(3);
 });
