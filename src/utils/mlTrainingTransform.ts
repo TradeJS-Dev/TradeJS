@@ -748,205 +748,218 @@ export const buildMlTrainingRow = (
     );
   };
 
-  const maMediumSeries = asArray(indicators.maMedium);
-  const atrPctSeries = padSeries(normalizeSeries(indicators.atrPct));
-  const price1hPctSeries = padSeries(normalizeSeries(indicators.price1hPcnt));
-  const tf15mReturns = backwardReturns(
-    candleList
-      .slice(-INDICATOR_WINDOW)
-      .map((candle) => toNumber(candle.close, 0)),
-  );
-  const btcCandlesByTimeframe: Record<
-    IndicatorTimeframe['label'],
-    CandleLike[]
-  > = {
-    TF15M: btcList,
-    TF1H: normalizeCandles(indicators.btcCandles1h),
-    TF4H: normalizeCandles(indicators.btcCandles4h),
-    TF1D: normalizeCandles(indicators.btcCandles1d),
-  };
-  const btcPriceByTimeframe: Record<IndicatorTimeframe['label'], number> = {
-    TF15M: toNumber(
-      btcCandlesByTimeframe.TF15M[btcCandlesByTimeframe.TF15M.length - 1]
-        ?.close,
-      currentPrice,
-    ),
-    TF1H: toNumber(
-      btcCandlesByTimeframe.TF1H[btcCandlesByTimeframe.TF1H.length - 1]?.close,
-      currentPrice,
-    ),
-    TF4H: toNumber(
-      btcCandlesByTimeframe.TF4H[btcCandlesByTimeframe.TF4H.length - 1]?.close,
-      currentPrice,
-    ),
-    TF1D: toNumber(
-      btcCandlesByTimeframe.TF1D[btcCandlesByTimeframe.TF1D.length - 1]?.close,
-      currentPrice,
-    ),
-  };
+  const applyIndicatorAndCandlePhases = () => {
+    const maMediumSeries = asArray(indicators.maMedium);
+    const btcCandlesByTimeframe: Record<
+      IndicatorTimeframe['label'],
+      CandleLike[]
+    > = {
+      TF15M: btcList,
+      TF1H: normalizeCandles(indicators.btcCandles1h),
+      TF4H: normalizeCandles(indicators.btcCandles4h),
+      TF1D: normalizeCandles(indicators.btcCandles1d),
+    };
+    const btcPriceByTimeframe: Record<IndicatorTimeframe['label'], number> = {
+      TF15M: toNumber(
+        btcCandlesByTimeframe.TF15M[btcCandlesByTimeframe.TF15M.length - 1]
+          ?.close,
+        currentPrice,
+      ),
+      TF1H: toNumber(
+        btcCandlesByTimeframe.TF1H[btcCandlesByTimeframe.TF1H.length - 1]
+          ?.close,
+        currentPrice,
+      ),
+      TF4H: toNumber(
+        btcCandlesByTimeframe.TF4H[btcCandlesByTimeframe.TF4H.length - 1]
+          ?.close,
+        currentPrice,
+      ),
+      TF1D: toNumber(
+        btcCandlesByTimeframe.TF1D[btcCandlesByTimeframe.TF1D.length - 1]
+          ?.close,
+        currentPrice,
+      ),
+    };
 
-  for (const timeframe of INDICATOR_TIMEFRAMES) {
-    addIndicatorFeatures(timeframe.label, timeframe.suffix);
-    addIndicatorFeatures(
-      `BTC_${timeframe.label}`,
-      timeframe.suffix,
-      'btc',
-      btcPriceByTimeframe[timeframe.label],
-    );
-  }
-
-  // Candle-level features for TF15M + TF1H/TF4H/TF1D windows.
-  const basePriceScale = padSeries(normalizeSeries(maMediumSeries));
-  for (const timeframe of CANDLE_TIMEFRAMES) {
-    const tfCandlesFromIndicators =
-      timeframe.key === 'candles15m'
-        ? candleList
-        : normalizeCandles(indicators[timeframe.key]);
-    const tfBtcCandlesFromIndicators =
-      timeframe.btcKey === 'btcCandles15m'
-        ? btcList
-        : normalizeCandles(indicators[timeframe.btcKey]);
-    const tfCandles = tfCandlesFromIndicators.slice(-CANDLE_WINDOW);
-    const tfBtcCandles = tfBtcCandlesFromIndicators.slice(-CANDLE_WINDOW);
-    const priceScaleSeries =
-      timeframe.label === 'TF15M'
-        ? basePriceScale
-        : tfCandles.map((candle) => candle.close);
-    addCandleFeatures(row, {
-      featurePrefix: timeframe.label,
-      candles: tfCandles,
-      btcCandles: tfBtcCandles,
-      currentPrice,
-      priceScaleSeries,
-    });
-  }
-
-  const atrPctLast = atrPctSeries[atrPctSeries.length - 1] ?? 0;
-  const atrPctMean = computeMean(atrPctSeries);
-  const atrPctStd = computeStd(atrPctSeries);
-  const atrPctZ = atrPctStd > 0 ? (atrPctLast - atrPctMean) / atrPctStd : 0;
-  const atrPctRank = percentileRank(atrPctSeries, atrPctLast);
-  const realizedVol = computeStd(tf15mReturns);
-  const realizedVolRank = percentileRank(
-    tf15mReturns.length ? tf15mReturns : [0],
-    tf15mReturns.length ? tf15mReturns[tf15mReturns.length - 1] : 0,
-  );
-  const trendStrength = Math.abs(computeMean(price1hPctSeries));
-
-  row.Regime_ATR_PCT_Last = atrPctLast;
-  row.Regime_ATR_PCT_Z = clamp(atrPctZ, -8, 8);
-  row.Regime_ATR_PCT_Rank = atrPctRank;
-  row.Regime_RealizedVol = realizedVol;
-  row.Regime_RealizedVol_Rank = realizedVolRank;
-  row.Regime_TrendStrength = trendStrength;
-  row.Regime_IsHighVol = atrPctRank >= 0.7 || realizedVolRank >= 0.7 ? 1 : 0;
-  row.Ctx_DistanceTo24hRange = clamp(
-    toNumber(row.TF15M_HighPrice24h_5, 0) -
-      toNumber(row.TF15M_LowPrice24h_5, 0),
-    -10,
-    10,
-  );
-
-  // Trendline geometry features.
-  const trendLine = signal?.figures?.trendLine;
-  row.TrendLine_Mode = trendLine?.mode === 'highs' ? 1 : 0;
-  row.TrendLine_Distance = toNumber(trendLine?.distance, 0);
-  const trendAlpha = padSeries(normalizeSeries(trendLine?.alpha));
-  for (let i = 0; i < INDICATOR_WINDOW; i += 1) {
-    row[`TrendLine_Alpha_${i + 1}`] = trendAlpha[i];
-  }
-
-  // Trendline points (always 2, padded with zeros if missing).
-  const points = asArray(trendLine?.points);
-  const maxPoints = 2;
-  for (let i = 0; i < maxPoints; i += 1) {
-    const point = points[i] ?? {};
-    row[`POINTS_VALUE_${i + 1}`] = safeDiv(
-      toNumber(point?.value, 0),
-      currentPrice,
-    );
-    const pointDeltaMs = entryTimestamp - toNumber(point?.timestamp, 0);
-    const pointDeltaMin = safeDiv(pointDeltaMs, 60_000);
-    if (i === 0) {
-      const pointDeltaBars =
-        intervalMinutes > 0
-          ? safeDiv(pointDeltaMin, intervalMinutes)
-          : pointDeltaMin;
-      row[`POINTS_TS_${i + 1}`] = safeLog1pPositive(pointDeltaBars);
+    for (const timeframe of INDICATOR_TIMEFRAMES) {
+      addIndicatorFeatures(timeframe.label, timeframe.suffix);
+      addIndicatorFeatures(
+        `BTC_${timeframe.label}`,
+        timeframe.suffix,
+        'btc',
+        btcPriceByTimeframe[timeframe.label],
+      );
     }
-  }
 
-  // Touches: keep latest 3 points only, with zero padding.
-  const touches = asArray(trendLine?.touches)
-    .map((touch) => ({
-      value: toNumber(touch?.value, NaN),
-      timestamp: toNumber(touch?.timestamp, NaN),
-    }))
-    .filter(
-      (touch) =>
-        Number.isFinite(touch.value) && Number.isFinite(touch.timestamp),
-    )
-    .sort((a, b) => a.timestamp - b.timestamp)
-    .slice(-3);
-  const maxTouches = 3;
-  for (let i = 0; i < maxTouches; i += 1) {
-    const touch = touches[i];
-    if (!touch) {
-      row[`TOUCHES_VALUE_${i + 1}`] = 0;
-      row[`TOUCHES_TS_${i + 1}`] = 0;
-      continue;
+    const basePriceScale = padSeries(normalizeSeries(maMediumSeries));
+    for (const timeframe of CANDLE_TIMEFRAMES) {
+      const tfCandlesFromIndicators =
+        timeframe.key === 'candles15m'
+          ? candleList
+          : normalizeCandles(indicators[timeframe.key]);
+      const tfBtcCandlesFromIndicators =
+        timeframe.btcKey === 'btcCandles15m'
+          ? btcList
+          : normalizeCandles(indicators[timeframe.btcKey]);
+      const tfCandles = tfCandlesFromIndicators.slice(-CANDLE_WINDOW);
+      const tfBtcCandles = tfBtcCandlesFromIndicators.slice(-CANDLE_WINDOW);
+      const priceScaleSeries =
+        timeframe.label === 'TF15M'
+          ? basePriceScale
+          : tfCandles.map((candle) => candle.close);
+      addCandleFeatures(row, {
+        featurePrefix: timeframe.label,
+        candles: tfCandles,
+        btcCandles: tfBtcCandles,
+        currentPrice,
+        priceScaleSeries,
+      });
     }
-    row[`TOUCHES_VALUE_${i + 1}`] = safeDiv(
-      toNumber(touch?.value, 0),
-      currentPrice,
-    );
-    const touchDeltaMs = entryTimestamp - toNumber(touch?.timestamp, 0);
-    const touchDeltaMin = safeDiv(touchDeltaMs, 60_000);
-    const touchDeltaBars =
-      intervalMinutes > 0
-        ? safeDiv(touchDeltaMin, intervalMinutes)
-        : touchDeltaMin;
-    row[`TOUCHES_TS_${i + 1}`] = safeLog1pPositive(touchDeltaBars);
-  }
+  };
 
-  // Trendline slope and value at entry computed from last two valid points.
-  const normalizedPoints = points
-    .map((point) => ({
-      value: toNumber(point?.value, NaN),
-      timestamp: toNumber(point?.timestamp, NaN),
-    }))
-    .filter(
-      (point) =>
-        Number.isFinite(point.value) && Number.isFinite(point.timestamp),
-    )
-    .sort((a, b) => a.timestamp - b.timestamp);
-  if (normalizedPoints.length >= 2) {
-    const p1 = normalizedPoints[normalizedPoints.length - 2];
-    const p2 = normalizedPoints[normalizedPoints.length - 1];
-    const dtMs = p2.timestamp - p1.timestamp;
-    if (dtMs !== 0) {
-      const slopePerMs = (p2.value - p1.value) / dtMs;
-      const tlAtEntry = p1.value + slopePerMs * (entryTimestamp - p1.timestamp);
-      const slopePerBar =
-        intervalMinutes > 0 ? slopePerMs * intervalMinutes * 60_000 : null;
-      row.TrendLine_Delta_To_Price = safeDiv(
-        currentPrice - tlAtEntry,
+  const applyRegimePhase = () => {
+    const atrPctSeries = padSeries(normalizeSeries(indicators.atrPct));
+    const price1hPctSeries = padSeries(normalizeSeries(indicators.price1hPcnt));
+    const tf15mReturns = backwardReturns(
+      candleList
+        .slice(-INDICATOR_WINDOW)
+        .map((candle) => toNumber(candle.close, 0)),
+    );
+    const atrPctLast = atrPctSeries[atrPctSeries.length - 1] ?? 0;
+    const atrPctMean = computeMean(atrPctSeries);
+    const atrPctStd = computeStd(atrPctSeries);
+    const atrPctZ = atrPctStd > 0 ? (atrPctLast - atrPctMean) / atrPctStd : 0;
+    const atrPctRank = percentileRank(atrPctSeries, atrPctLast);
+    const realizedVol = computeStd(tf15mReturns);
+    const realizedVolRank = percentileRank(
+      tf15mReturns.length ? tf15mReturns : [0],
+      tf15mReturns.length ? tf15mReturns[tf15mReturns.length - 1] : 0,
+    );
+    const trendStrength = Math.abs(computeMean(price1hPctSeries));
+
+    row.Regime_ATR_PCT_Last = atrPctLast;
+    row.Regime_ATR_PCT_Z = clamp(atrPctZ, -8, 8);
+    row.Regime_ATR_PCT_Rank = atrPctRank;
+    row.Regime_RealizedVol = realizedVol;
+    row.Regime_RealizedVol_Rank = realizedVolRank;
+    row.Regime_TrendStrength = trendStrength;
+    row.Regime_IsHighVol =
+      atrPctRank >= 0.7 || realizedVolRank >= 0.7 ? 1 : 0;
+    row.Ctx_DistanceTo24hRange = clamp(
+      toNumber(row.TF15M_HighPrice24h_5, 0) -
+        toNumber(row.TF15M_LowPrice24h_5, 0),
+      -10,
+      10,
+    );
+  };
+
+  const applyTrendlinePhase = () => {
+    const trendLine = signal?.figures?.trendLine;
+    row.TrendLine_Mode = trendLine?.mode === 'highs' ? 1 : 0;
+    row.TrendLine_Distance = toNumber(trendLine?.distance, 0);
+    const trendAlpha = padSeries(normalizeSeries(trendLine?.alpha));
+    for (let i = 0; i < INDICATOR_WINDOW; i += 1) {
+      row[`TrendLine_Alpha_${i + 1}`] = trendAlpha[i];
+    }
+
+    const points = asArray(trendLine?.points);
+    const maxPoints = 2;
+    for (let i = 0; i < maxPoints; i += 1) {
+      const point = points[i] ?? {};
+      row[`POINTS_VALUE_${i + 1}`] = safeDiv(
+        toNumber(point?.value, 0),
         currentPrice,
       );
-      row.TrendLine_Slope = slopePerBar == null ? null : safeLog1p(slopePerBar);
+      const pointDeltaMs = entryTimestamp - toNumber(point?.timestamp, 0);
+      const pointDeltaMin = safeDiv(pointDeltaMs, 60_000);
+      if (i === 0) {
+        const pointDeltaBars =
+          intervalMinutes > 0
+            ? safeDiv(pointDeltaMin, intervalMinutes)
+            : pointDeltaMin;
+        row[`POINTS_TS_${i + 1}`] = safeLog1pPositive(pointDeltaBars);
+      }
+    }
+
+    const touches = asArray(trendLine?.touches)
+      .map((touch) => ({
+        value: toNumber(touch?.value, NaN),
+        timestamp: toNumber(touch?.timestamp, NaN),
+      }))
+      .filter(
+        (touch) =>
+          Number.isFinite(touch.value) && Number.isFinite(touch.timestamp),
+      )
+      .sort((a, b) => a.timestamp - b.timestamp)
+      .slice(-3);
+    const maxTouches = 3;
+    for (let i = 0; i < maxTouches; i += 1) {
+      const touch = touches[i];
+      if (!touch) {
+        row[`TOUCHES_VALUE_${i + 1}`] = 0;
+        row[`TOUCHES_TS_${i + 1}`] = 0;
+        continue;
+      }
+      row[`TOUCHES_VALUE_${i + 1}`] = safeDiv(
+        toNumber(touch?.value, 0),
+        currentPrice,
+      );
+      const touchDeltaMs = entryTimestamp - toNumber(touch?.timestamp, 0);
+      const touchDeltaMin = safeDiv(touchDeltaMs, 60_000);
+      const touchDeltaBars =
+        intervalMinutes > 0
+          ? safeDiv(touchDeltaMin, intervalMinutes)
+          : touchDeltaMin;
+      row[`TOUCHES_TS_${i + 1}`] = safeLog1pPositive(touchDeltaBars);
+    }
+
+    const normalizedPoints = points
+      .map((point) => ({
+        value: toNumber(point?.value, NaN),
+        timestamp: toNumber(point?.timestamp, NaN),
+      }))
+      .filter(
+        (point) =>
+          Number.isFinite(point.value) && Number.isFinite(point.timestamp),
+      )
+      .sort((a, b) => a.timestamp - b.timestamp);
+    if (normalizedPoints.length >= 2) {
+      const p1 = normalizedPoints[normalizedPoints.length - 2];
+      const p2 = normalizedPoints[normalizedPoints.length - 1];
+      const dtMs = p2.timestamp - p1.timestamp;
+      if (dtMs !== 0) {
+        const slopePerMs = (p2.value - p1.value) / dtMs;
+        const tlAtEntry =
+          p1.value + slopePerMs * (entryTimestamp - p1.timestamp);
+        const slopePerBar =
+          intervalMinutes > 0 ? slopePerMs * intervalMinutes * 60_000 : null;
+        row.TrendLine_Delta_To_Price = safeDiv(
+          currentPrice - tlAtEntry,
+          currentPrice,
+        );
+        row.TrendLine_Slope =
+          slopePerBar == null ? null : safeLog1p(slopePerBar);
+      } else {
+        row.TrendLine_Delta_To_Price = null;
+        row.TrendLine_Slope = null;
+      }
     } else {
       row.TrendLine_Delta_To_Price = null;
       row.TrendLine_Slope = null;
     }
-  } else {
-    row.TrendLine_Delta_To_Price = null;
-    row.TrendLine_Slope = null;
-  }
+  };
 
-  // Label/profit from result record.
-  const profit = toNumber(resultRecord?.profit, NaN);
-  row.label = Number.isFinite(profit) ? (profit > 0 ? 1 : 0) : null;
-  row.profit = Number.isFinite(profit) ? profit : null;
+  const applyLabelPhase = () => {
+    const profit = toNumber(resultRecord?.profit, NaN);
+    row.label = Number.isFinite(profit) ? (profit > 0 ? 1 : 0) : null;
+    row.profit = Number.isFinite(profit) ? profit : null;
+  };
+
+  applyIndicatorAndCandlePhases();
+  applyRegimePhase();
+  applyTrendlinePhase();
+  applyLabelPhase();
 
   return row;
 };
