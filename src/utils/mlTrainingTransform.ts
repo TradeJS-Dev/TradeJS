@@ -473,8 +473,6 @@ export const buildMlTrainingRow = (
   const candleList = normalizeCandles(indicators.candles15m);
   const btcList = normalizeCandles(indicators.btcCandles15m);
 
-  const lastCandle = candleList[candleList.length - 1] ?? {};
-
   const entryTimestamp = toNumber(signal?.timestamp, 0);
   const intervalMinutes = toNumber(signal?.interval, 0);
   const entryDate = entryTimestamp > 0 ? new Date(entryTimestamp) : null;
