@@ -32,6 +32,14 @@ These instructions apply to this repository (`/Users/aleksnick/dev/investing`).
   - same `ML_TRAIN_RECENT_DAYS`
   - same `ML_TRAIN_WALK_FORWARD_FOLDS`
 - Never treat derived split files as source exports.
+- Keep feature-window parity across stages:
+  - backtest dataset write path uses trimmed windows (`trimMlTrainingRowWindows(..., 5)`),
+  - inference path must use the same trim policy before grpc predict.
+- In ML transform, last element of candle/indicator arrays is dropped before feature generation to avoid closed-vs-open candle mismatch.
+- Feature naming convention:
+  - use `TF*_ALT_*` for current-asset features,
+  - use `TF*_BTC_*` for BTC features.
+- Training reports include holdout TOP feature table (single-feature threshold) in both `md` and `html`.
 
 ## Train Parameters
 - `ML_TRAIN_RECENT_DAYS`: train window size (days).

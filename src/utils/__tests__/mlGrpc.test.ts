@@ -54,16 +54,16 @@ describe('mlGrpc', () => {
 
   test('fetchMlThreshold trims feature windows before grpc predict', async () => {
     const fullRow = {
-      TF15M_Price1hPcnt_49: 1.23,
-      TF15M_Price1hPcnt_50: 4.56,
+      TF15M_ALT_Price1hPcnt_49: 1.23,
+      TF15M_ALT_Price1hPcnt_50: 4.56,
       label: 1,
       profit: 2,
       entryTimestamp: 123,
       strategy: 'TRENDLINE',
     };
     const trimmedRow = {
-      TF15M_Price1hPcnt_1: 0.11,
-      TF15M_Price1hPcnt_5: 0.22,
+      TF15M_ALT_Price1hPcnt_1: 0.11,
+      TF15M_ALT_Price1hPcnt_5: 0.22,
       label: 1,
       profit: 2,
       entryTimestamp: 123,
@@ -97,10 +97,10 @@ describe('mlGrpc', () => {
     expect(predictRequest.strategy).toBe('TrendLine');
     expect(predictRequest.threshold).toBe(0.4);
     expect(predictRequest.features).toEqual({
-      TF15M_Price1hPcnt_1: 0.11,
-      TF15M_Price1hPcnt_5: 0.22,
+      TF15M_ALT_Price1hPcnt_1: 0.11,
+      TF15M_ALT_Price1hPcnt_5: 0.22,
     });
-    expect(predictRequest.features.TF15M_Price1hPcnt_49).toBeUndefined();
+    expect(predictRequest.features.TF15M_ALT_Price1hPcnt_49).toBeUndefined();
     expect(predictRequest.features.entryTimestamp).toBeUndefined();
     expect(predictRequest.features.label).toBeUndefined();
     expect(predictRequest.features.profit).toBeUndefined();

@@ -337,6 +337,8 @@ const addCandleFeatures = (
   const priceScaleSeries = padNumberWindow(rawPriceScaleSeries, currentPrice);
   const key = (name: string) =>
     featurePrefix ? `${featurePrefix}_${name}` : name;
+  const altKey = (name: string) => key(`ALT_${name}`);
+  const btcKey = (name: string) => key(`BTC_${name}`);
   const candleVolumes = candles.map((candle) => candle.volume);
   const btcVolumes = btcCandles.map((candle) => candle.volume);
   const altReturns: number[] = [];
@@ -365,8 +367,8 @@ const addCandleFeatures = (
     const btcLowRaw = toNumber(btcCandle?.low, 0);
     const altRet = safeDiv(altCloseRaw, altOpenRaw);
     const btcRet = safeDiv(btcCloseRaw, btcOpenRaw);
-    row[key(`AltRet_${i + 1}`)] = altRet;
-    row[key(`BtcRet_${i + 1}`)] = btcRet;
+    row[altKey(`Ret_${i + 1}`)] = altRet;
+    row[btcKey(`Ret_${i + 1}`)] = btcRet;
     row[key(`RelRet_${i + 1}`)] = altRet - btcRet;
     altReturns.push(altRet);
     btcReturns.push(btcRet);
@@ -385,39 +387,40 @@ const addCandleFeatures = (
     const candleMax = Math.max(altOpenRaw, altCloseRaw);
     const candleMin = Math.min(altOpenRaw, altCloseRaw);
     candleBodyRaw.push(safeDiv(altCloseRaw - altOpenRaw, priceScale));
-    row[key(`Candle_Range_${i + 1}`)] = safeDiv(
+    row[altKey(`Candle_Range_${i + 1}`)] = safeDiv(
       altHighRaw - altLowRaw,
       priceScale,
     );
-    row[key(`Candle_UpperWick_${i + 1}`)] = safeDiv(
+    row[altKey(`Candle_UpperWick_${i + 1}`)] = safeDiv(
       altHighRaw - candleMax,
       priceScale,
     );
-    row[key(`Candle_LowerWick_${i + 1}`)] = safeDiv(
+    row[altKey(`Candle_LowerWick_${i + 1}`)] = safeDiv(
       candleMin - altLowRaw,
       priceScale,
     );
-    row[key(`Candle_Direction_${i + 1}`)] = altCloseRaw >= altOpenRaw ? 1 : 0;
+    row[altKey(`Candle_Direction_${i + 1}`)] =
+      altCloseRaw >= altOpenRaw ? 1 : 0;
 
     const btcCandleMax = Math.max(btcOpenRaw, btcCloseRaw);
     const btcCandleMin = Math.min(btcOpenRaw, btcCloseRaw);
-    row[key(`BTC_Candle_Body_${i + 1}`)] = safeDiv(
+    row[btcKey(`Candle_Body_${i + 1}`)] = safeDiv(
       btcCloseRaw - btcOpenRaw,
       btcPrice,
     );
-    row[key(`BTC_Candle_Range_${i + 1}`)] = safeDiv(
+    row[btcKey(`Candle_Range_${i + 1}`)] = safeDiv(
       btcHighRaw - btcLowRaw,
       btcPrice,
     );
-    row[key(`BTC_Candle_UpperWick_${i + 1}`)] = safeDiv(
+    row[btcKey(`Candle_UpperWick_${i + 1}`)] = safeDiv(
       btcHighRaw - btcCandleMax,
       btcPrice,
     );
-    row[key(`BTC_Candle_LowerWick_${i + 1}`)] = safeDiv(
+    row[btcKey(`Candle_LowerWick_${i + 1}`)] = safeDiv(
       btcCandleMin - btcLowRaw,
       btcPrice,
     );
-    row[key(`BTC_Candle_Direction_${i + 1}`)] =
+    row[btcKey(`Candle_Direction_${i + 1}`)] =
       btcCloseRaw >= btcOpenRaw ? 1 : 0;
 
     const candleVol = toNumber(candle?.volume, 0);
@@ -434,16 +437,16 @@ const addCandleFeatures = (
     );
     const candleMedian = computeMedian(candleWindow);
     const btcMedian = computeMedian(btcWindow);
-    row[key(`Candle_Volume_${i + 1}`)] = safeLog1p(candleVol);
+    row[altKey(`Candle_Volume_${i + 1}`)] = safeLog1p(candleVol);
     if (i > 0) {
-      row[key(`Candle_Volume_${i + 1}_MedianNorm`)] = safeDiv(
+      row[altKey(`Candle_Volume_${i + 1}_MedianNorm`)] = safeDiv(
         candleVol,
         candleMedian,
       );
     }
-    row[key(`BTC_Candle_Volume_${i + 1}`)] = safeLog1p(btcVol);
+    row[btcKey(`Candle_Volume_${i + 1}`)] = safeLog1p(btcVol);
     if (i > 0) {
-      row[key(`BTC_Candle_Volume_${i + 1}_MedianNorm`)] = safeDiv(
+      row[btcKey(`Candle_Volume_${i + 1}_MedianNorm`)] = safeDiv(
         btcVol,
         btcMedian,
       );
@@ -456,7 +459,7 @@ const addCandleFeatures = (
   const altToBtcHighRet = backwardReturns(altToBtcHighRaw);
   const altToBtcLowRet = backwardReturns(altToBtcLowRaw);
   for (let i = 0; i < CANDLE_WINDOW; i += 1) {
-    row[key(`Candle_Body_${i + 1}`)] = candleBodyStd[i] ?? 0;
+    row[altKey(`Candle_Body_${i + 1}`)] = candleBodyStd[i] ?? 0;
   }
   assignBackwardReturns(row, key('AltToBtc_Open'), altToBtcOpenRet);
   assignBackwardReturns(row, key('AltToBtc_Close'), altToBtcCloseRet);
@@ -478,14 +481,14 @@ const addCandleFeatures = (
     relReturns.length - 1,
     CANDLE_WINDOW,
   );
-  row[key('AltRet_Mean')] = computeMean(windowAlt);
-  row[key('AltRet_Std')] = computeStd(windowAlt);
-  row[key('AltRet_Skew')] = computeSkew(windowAlt);
-  row[key('AltRet_Kurt')] = computeKurtosis(windowAlt);
-  row[key('BtcRet_Mean')] = computeMean(windowBtc);
-  row[key('BtcRet_Std')] = computeStd(windowBtc);
-  row[key('BtcRet_Skew')] = computeSkew(windowBtc);
-  row[key('BtcRet_Kurt')] = computeKurtosis(windowBtc);
+  row[altKey('Ret_Mean')] = computeMean(windowAlt);
+  row[altKey('Ret_Std')] = computeStd(windowAlt);
+  row[altKey('Ret_Skew')] = computeSkew(windowAlt);
+  row[altKey('Ret_Kurt')] = computeKurtosis(windowAlt);
+  row[btcKey('Ret_Mean')] = computeMean(windowBtc);
+  row[btcKey('Ret_Std')] = computeStd(windowBtc);
+  row[btcKey('Ret_Skew')] = computeSkew(windowBtc);
+  row[btcKey('Ret_Kurt')] = computeKurtosis(windowBtc);
   row[key('RelRet_Mean')] = computeMean(windowRel);
   row[key('RelRet_Std')] = computeStd(windowRel);
   row[key('RelRet_Skew')] = computeSkew(windowRel);
@@ -680,11 +683,12 @@ export const buildMlTrainingRow = (
     sourceSuffix?: IndicatorTimeframe['suffix'],
     sourcePrefix?: string,
     priceBase?: number,
+    assetPrefix: 'ALT' | 'BTC' = 'ALT',
   ) => {
     const indicatorSeries = (key: string) =>
       asArray(indicators[keyWithSourceSuffix(key, sourceSuffix, sourcePrefix)]);
     const featureKey = (key: string) =>
-      keyWithFeaturePrefix(key, featurePrefix);
+      keyWithFeaturePrefix(`${assetPrefix}_${key}`, featurePrefix);
     const backwardReturnSeries: Array<[string, string]> = [
       ['MA_Fast', 'maFast'],
       ['MA_Medium', 'maMedium'],
@@ -699,9 +703,25 @@ export const buildMlTrainingRow = (
     ];
     const momentsSeries: Array<[string, string]> = [
       ['ATR_PCT', 'atrPct'],
+      ['BB_Upper', 'bbUpper'],
+      ['BB_Middle', 'bbMiddle'],
+      ['BB_Lower', 'bbLower'],
       ['MACD_Histogram', 'macdHistogram'],
       ['Price24hPcnt', 'price24hPcnt'],
       ['Price1hPcnt', 'price1hPcnt'],
+    ];
+    const stdSeries: Array<[string, string]> = [
+      ['MACD', 'macd'],
+      ['MACD_Signal', 'macdSignal'],
+      ['MACD_Histogram', 'macdHistogram'],
+    ];
+    const pctSeries: Array<[string, string]> = [
+      ['Price24hPcnt', 'price24hPcnt'],
+      ['Price1hPcnt', 'price1hPcnt'],
+    ];
+    const volumeSeries: Array<[string, string]> = [
+      ['Volume1h', 'volume1h'],
+      ['Volume24h', 'volume24h'],
     ];
     const relToSeries: Array<[string, string, string]> = [
       ['HighPrice1h', 'highPrice1h', 'maMedium'],
@@ -732,14 +752,12 @@ export const buildMlTrainingRow = (
     }
     // MACD family crosses zero frequently; standardized levels are more stable
     // than ratio-returns for such oscillators.
-    addSeriesStd(featureKey('MACD'), indicatorSeries('macd'));
-    addSeriesStd(featureKey('MACD_Signal'), indicatorSeries('macdSignal'));
-    addSeriesStd(
-      featureKey('MACD_Histogram'),
-      indicatorSeries('macdHistogram'),
-    );
-    addSeriesPct(featureKey('Price24hPcnt'), indicatorSeries('price24hPcnt'));
-    addSeriesPct(featureKey('Price1hPcnt'), indicatorSeries('price1hPcnt'));
+    for (const [featureName, sourceName] of stdSeries) {
+      addSeriesStd(featureKey(featureName), indicatorSeries(sourceName));
+    }
+    for (const [featureName, sourceName] of pctSeries) {
+      addSeriesPct(featureKey(featureName), indicatorSeries(sourceName));
+    }
     for (const [featureName, sourceName, denomName] of relToSeries) {
       addSeriesRelTo(
         featureKey(featureName),
@@ -747,16 +765,11 @@ export const buildMlTrainingRow = (
         indicatorSeries(denomName),
       );
     }
-    addSeriesLogVolume(featureKey('Volume1h'), indicatorSeries('volume1h'));
-    addSeriesVolumeMedianNormalized(
-      featureKey('Volume1h'),
-      indicatorSeries('volume1h'),
-    );
-    addSeriesLogVolume(featureKey('Volume24h'), indicatorSeries('volume24h'));
-    addSeriesVolumeMedianNormalized(
-      featureKey('Volume24h'),
-      indicatorSeries('volume24h'),
-    );
+    for (const [featureName, sourceName] of volumeSeries) {
+      const series = indicatorSeries(sourceName);
+      addSeriesLogVolume(featureKey(featureName), series);
+      addSeriesVolumeMedianNormalized(featureKey(featureName), series);
+    }
   };
 
   const applyIndicatorAndCandlePhases = () => {
@@ -794,12 +807,19 @@ export const buildMlTrainingRow = (
     };
 
     for (const timeframe of INDICATOR_TIMEFRAMES) {
-      addIndicatorFeatures(timeframe.label, timeframe.suffix);
       addIndicatorFeatures(
-        `BTC_${timeframe.label}`,
+        timeframe.label,
+        timeframe.suffix,
+        undefined,
+        undefined,
+        'ALT',
+      );
+      addIndicatorFeatures(
+        timeframe.label,
         timeframe.suffix,
         'btc',
         btcPriceByTimeframe[timeframe.label],
+        'BTC',
       );
     }
 
@@ -858,8 +878,8 @@ export const buildMlTrainingRow = (
     row.Regime_IsHighVol = atrPctRank >= 0.7 || realizedVolRank >= 0.7 ? 1 : 0;
     const latestIdx = INDICATOR_WINDOW;
     row.Ctx_DistanceTo24hRange = clamp(
-      toNumber(row[`TF15M_HighPrice24h_${latestIdx}`], 0) -
-        toNumber(row[`TF15M_LowPrice24h_${latestIdx}`], 0),
+      toNumber(row[`TF15M_ALT_HighPrice24h_${latestIdx}`], 0) -
+        toNumber(row[`TF15M_ALT_LowPrice24h_${latestIdx}`], 0),
       -10,
       10,
     );

@@ -99,4 +99,28 @@ Node-скрипты для автоматизации:
 
 ---
 
+## 🧠 ML Pipeline (обновлено 2026-02-18)
+
+- `yarn backtest` пишет ML-строки в chunk-файлы:
+  - `ml-dataset-[strategy]-[chunkId].jsonl`
+- `yarn ml-export` только объединяет chunk -> merged JSONL.
+- Train режет merged-файл на:
+  - `holdout-train`, `holdout-test`, `prod`, `walk-forward fold train/test`.
+- Обучение идет только по `*.train.*`, оценка только по `*.test.*`.
+- В `mlTrainingTransform`:
+  - последний элемент всех массивов индикаторов/свечей удаляется перед фичами,
+  - рабочее окно строится как `ML_BASE_CANDLES_WINDOW - 1`,
+  - финальный output всегда режется до последних 5 значений (`trimMlTrainingRowWindows`).
+- Нейминг фич унифицирован:
+  - `TF*_ALT_*` для текущей монеты,
+  - `TF*_BTC_*` для BTC.
+- Для Bollinger Bands добавлены моменты по каждому TF и для обоих ассетов:
+  - `_Mean`, `_Std`, `_Skew`, `_Kurt`.
+- Тот же `trim(..., 5)` применяется и в inference (`mlGrpc`), чтобы train/backtest/prod использовали одинаковую схему фичей.
+- В отчетах train теперь есть TOP-10 holdout признаков (single-feature threshold):
+  - и в `*.md`,
+  - и в `*.report.html`.
+
+---
+
 **📌 Happy Trading & Backtesting!**

@@ -1,62 +1,60 @@
 # ML Transform (RU)
 
-Актуально для:
+Актуально на 2026-02-18.
+
+Применимо к:
 - `src/utils/testing.ts`
-- `src/utils/indicators.ts`
 - `src/utils/mlTrainingTransform.ts`
+- `src/utils/mlGrpc.ts`
 - `src/utils/mlDatasetFile.ts`
 
-## 1. Новый поток ML-данных
+## 1. Поток данных
 
-1. Во время backtest сигнал сразу преобразуется в ML-строку.
-2. Строка сразу дописывается в JSONL-файл чанка воркера:
-   - `ml-dataset-[strategyName]-[chunkId].jsonl`
-3. Redis `ml:*` для сигналов/результатов больше не используется.
-4. `yarn ml-export` теперь объединяет chunk-файлы в единый dataset JSONL.
-5. CSV больше не генерируется.
+1. `yarn backtest` формирует ML payload по сигналам и пишет строки в chunk JSONL.
+2. `yarn ml-export` только объединяет chunk-файлы в merged JSONL.
+3. Train режет merged JSONL на `holdout`, `prod` и `walk-forward` окна.
+4. Обучение использует только `*.train.*`, тестирование только `*.test.*`.
 
-## 2. Окна
+## 2. Окна и causality
 
-- Окно сбора индикаторов/свечей в сигнале: `50` (`ML_BASE_CANDLES_WINDOW`).
-- В `mlTrainingTransform` ряды считаются по широкому окну `50`:
-  - `INDICATOR_WINDOW = 50`
-  - `ML_CANDLE_FEATURE_WINDOW = 50`
-- Перед записью в файл строка обрезается до последних `5` значений:
-  - `trimMlTrainingRowWindows(row, 5)`.
+- Перед построением фич из `signal.indicators` удаляется последний элемент у всех массивов.
+- Базовое окно после этого:
+  - `indicatorWindow = max(1, ML_BASE_CANDLES_WINDOW - 1)`
+  - `candleWindow = max(1, ML_CANDLE_FEATURE_WINDOW - 1)`
+- Финальный шаг: `trimMlTrainingRowWindows(row, 5)`.
+- В итоге в dataset/infer уходят только хвосты `_1.._5` (без `_49/_50`).
 
-## 3. Базовые преобразования
+## 3. Нейминг фич
 
-- `toNumber`, `safeDiv`, `safeLog1p`, `clamp`, `squash`.
-- Backward-returns:
-  - `prefix_1` не создается,
-  - `prefix_2..prefix_5` идут от старого к новому return.
-- Лейбл:
-  - `label=1` при `profit>0`,
-  - `label=0` при `profit<=0`,
-  - `label=null`, если `profit` отсутствует/невалиден.
+- Для всех TF используется единый порядок:
+  - `TF*_ALT_*` — признаки текущей монеты,
+  - `TF*_BTC_*` — признаки BTC.
+- Для mixed-признаков без отдельного asset-prefix (например, `RelRet`, `AltToBtc`) сохраняются отдельные имена.
 
-## 4. Статистические дубли (Mean/Std/Skew/Kurt)
+## 4. Что важно для parity train/prod
 
-Добавлены моменты по окну 50 (`*_Mean50`, `*_Std50`, `*_Skew50`, `*_Kurt50`) для:
-- `ATR_PCT`
-- `Price24hPcnt`
-- `Price1hPcnt`
-- `MACD_Histogram`
+- В backtest: `buildMlTrainingRow` -> `trimMlTrainingRowWindows(..., 5)` -> запись в JSONL.
+- В inference (`mlGrpc`): `buildMlTrainingRow` -> `trimMlTrainingRowWindows(..., 5)` -> gRPC `Predict`.
+- Это фиксирует одинаковую форму фич между train/backtest/prod.
 
-Также свечные агрегаты считаются по окну 50:
-- `AltRet_Mean50/Std50/Skew50/Kurt50`
-- `BtcRet_Mean50/Std50/Skew50/Kurt50`
-- `RelRet_Mean50/Std50/Skew50/Kurt50`
+## 5. BB moments
 
-## 5. Важные переименования
+- Для `BB_Upper`, `BB_Middle`, `BB_Lower` добавлены статистики:
+  - `_Mean`, `_Std`, `_Skew`, `_Kurt`.
+- Считаются для всех TF и для обоих ассетов (`ALT`/`BTC`).
 
-- `Regime_RealizedVol_10` -> `Regime_RealizedVol_50`
-- Использование диапазона 24h в контексте:
-  - `TF15M_HighPrice24h_50`
-  - `TF15M_LowPrice24h_50`
+## 6. Исключения
 
-## 6. Что не пишется
+- `POINTS_*` / `TOUCHES_*` не являются индикаторными candle-series и не должны удаляться как "последняя свеча".
+- `entryTimestamp` остается в row для guard/аудита, но исключается из инференс-фичей.
 
-- `currentPrice` (в output-строку не попадает)
-- CSV-версии датасета
-- Redis ключи `ml:*` для ML-export pipeline
+## 7. Отчеты и проверки
+
+- В итоговые train-отчеты добавляется TOP-10 признаков holdout:
+  - markdown (`*.md`)
+  - html (`*.report.html`)
+- Unit-тесты:
+  - `src/utils/__tests__/mlTrainingTransform.test.ts`
+  - `src/utils/__tests__/mlGrpc.test.ts`
+- Линт на неиспользуемые переменные/функции:
+  - включен через `@typescript-eslint/no-unused-vars` в `.eslintrc.json`.

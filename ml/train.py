@@ -149,6 +149,104 @@ def threshold_markdown_lines(
     return lines
 
 
+def top_feature_threshold_rows(
+    X: pd.DataFrame,
+    y_true: np.ndarray,
+    limit: int = 10,
+    min_rows: int = 100,
+) -> list[dict[str, Any]]:
+    if X is None or X.empty or len(y_true) == 0:
+        return []
+    y_arr = np.asarray(y_true, dtype=float)
+    results: list[dict[str, Any]] = []
+    for col in X.columns:
+        series = X[col]
+        if not pd.api.types.is_numeric_dtype(series):
+            continue
+        values = pd.to_numeric(series, errors='coerce').to_numpy(dtype=float)
+        mask = np.isfinite(values) & np.isfinite(y_arr)
+        n = int(mask.sum())
+        if n < min_rows:
+            continue
+        x = values[mask]
+        y = y_arr[mask].astype(int)
+        if np.unique(y).size < 2:
+            continue
+        if float(np.nanstd(x)) == 0.0:
+            continue
+
+        # Quantile thresholds are stable and cheap even for large holdout files.
+        thresholds = np.unique(np.quantile(x, np.linspace(0.01, 0.99, 99)))
+        if thresholds.size == 0:
+            continue
+
+        x2 = x[:, None]
+        t2 = thresholds[None, :]
+        y2 = y[:, None]
+
+        pred_ge = x2 >= t2
+        acc_ge = (pred_ge == y2).mean(axis=0)
+        cov_ge = pred_ge.mean(axis=0)
+
+        pred_le = x2 <= t2
+        acc_le = (pred_le == y2).mean(axis=0)
+        cov_le = pred_le.mean(axis=0)
+
+        best_ge_idx = int(np.argmax(acc_ge))
+        best_le_idx = int(np.argmax(acc_le))
+        best_ge_acc = float(acc_ge[best_ge_idx])
+        best_le_acc = float(acc_le[best_le_idx])
+
+        if best_ge_acc >= best_le_acc:
+            results.append({
+                'feature': col,
+                'direction': '>=',
+                'threshold': float(thresholds[best_ge_idx]),
+                'accuracy': best_ge_acc,
+                'coverage': float(cov_ge[best_ge_idx]),
+                'rows': n,
+            })
+        else:
+            results.append({
+                'feature': col,
+                'direction': '<=',
+                'threshold': float(thresholds[best_le_idx]),
+                'accuracy': best_le_acc,
+                'coverage': float(cov_le[best_le_idx]),
+                'rows': n,
+            })
+
+    results.sort(
+        key=lambda row: (float(row['accuracy']), float(row['coverage']), int(row['rows'])),
+        reverse=True,
+    )
+    return results[:limit]
+
+
+def top_feature_threshold_markdown_lines(
+    X: pd.DataFrame,
+    y_true: np.ndarray,
+    limit: int = 10,
+) -> list[str]:
+    rows = top_feature_threshold_rows(X=X, y_true=y_true, limit=limit)
+    lines = [
+        '## Holdout Top Features (Single-Feature Threshold)',
+        '',
+        '| rank | feature | direction | threshold | accuracy | coverage | rows |',
+        '|---:|---|---:|---:|---:|---:|---:|',
+    ]
+    if not rows:
+        lines.append('| n/a | n/a | n/a | n/a | n/a | n/a | n/a |')
+        return lines
+    for idx, row in enumerate(rows, start=1):
+        lines.append(
+            f"| {idx} | {row['feature']} | {row['direction']} | "
+            f"{float(row['threshold']):.6g} | {float(row['accuracy']):.3f} | "
+            f"{float(row['coverage']):.3f} | {int(row['rows'])} |"
+        )
+    return lines
+
+
 def gain_markdown_lines(
     y_true: np.ndarray,
     y_prob: np.ndarray,
@@ -921,6 +1019,38 @@ def threshold_policy_html(
     return '\n'.join(lines)
 
 
+def top_feature_threshold_html(
+    X_eval: pd.DataFrame | None,
+    y_true: np.ndarray,
+    limit: int = 10,
+) -> str:
+    lines = [
+        '<section style="padding: 20px 24px; font-family: -apple-system, sans-serif;">',
+        '<h2>Holdout Top Features (Single-Feature Threshold)</h2>',
+        '<table border="1" cellspacing="0" cellpadding="6">',
+        '<tr><th>rank</th><th>feature</th><th>direction</th><th>threshold</th><th>accuracy</th><th>coverage</th><th>rows</th></tr>',
+    ]
+    if X_eval is None or X_eval.empty:
+        lines.append('<tr><td colspan="7">n/a</td></tr>')
+        lines.append('</table>')
+        lines.append('</section>')
+        return '\n'.join(lines)
+
+    rows = top_feature_threshold_rows(X=X_eval, y_true=y_true, limit=limit)
+    if not rows:
+        lines.append('<tr><td colspan="7">n/a</td></tr>')
+    else:
+        for idx, row in enumerate(rows, start=1):
+            lines.append(
+                f"<tr><td>{idx}</td><td>{row['feature']}</td><td>{row['direction']}</td>"
+                f"<td>{float(row['threshold']):.6g}</td><td>{float(row['accuracy']):.3f}</td>"
+                f"<td>{float(row['coverage']):.3f}</td><td>{int(row['rows'])}</td></tr>"
+            )
+    lines.append('</table>')
+    lines.append('</section>')
+    return '\n'.join(lines)
+
+
 def create_training_html_report(
     report_dir: str,
     strategy: str,
@@ -971,6 +1101,14 @@ def create_training_html_report(
                 y_prob=y_prob,
                 profit=profit,
                 regime_high_vol=regime_high_vol,
+            ),
+        )
+        append_html_section(
+            out_path,
+            top_feature_threshold_html(
+                X_eval=X_eval,
+                y_true=y_true,
+                limit=10,
             ),
         )
         print(f'Training HTML report saved: {out_path}')
@@ -1632,6 +1770,12 @@ def train_incremental_catboost(
     eval_lines += ['', *threshold_markdown_lines(y_true, y_prob, profit=eval_profit)]
     eval_lines += ['', *gain_markdown_lines(y_true, y_prob, profit=eval_profit)]
     eval_lines += ['', *policy_markdown_lines(y_true, y_prob, regime_high_vol=eval_regime, profit=eval_profit)]
+    try:
+        holdout_top_df = load_dataset(test_input)
+        holdout_top_X, holdout_top_y = prepare_features(holdout_top_df)
+        eval_lines += ['', *top_feature_threshold_markdown_lines(holdout_top_X, holdout_top_y.to_numpy(), limit=10)]
+    except Exception as exc:  # noqa: BLE001
+        eval_lines += ['', '## Holdout Top Features (Single-Feature Threshold)', '', f'- unavailable: {exc}']
     write_training_notes(eval_md_path, eval_lines)
     print('Eval notes saved:', eval_md_path)
 
@@ -2053,6 +2197,7 @@ def main() -> None:
         eval_lines += ['', *threshold_markdown_lines(y_test.to_numpy(), avg_prob, profit=eval_profit)]
         eval_lines += ['', *gain_markdown_lines(y_test.to_numpy(), avg_prob, profit=eval_profit)]
         eval_lines += ['', *policy_markdown_lines(y_test.to_numpy(), avg_prob, regime_high_vol=eval_regime, profit=eval_profit)]
+        eval_lines += ['', *top_feature_threshold_markdown_lines(X_test, y_test.to_numpy(), limit=10)]
         eval_lines += ['', *walk_forward_markdown_lines(walk_forward_rows)]
         eval_lines += ['', *walk_forward_threshold_markdown_lines(walk_forward_rows)]
         write_training_notes(eval_md_path, eval_lines)
@@ -2223,6 +2368,7 @@ def main() -> None:
         eval_lines += ['', *threshold_markdown_lines(y_test.to_numpy(), y_prob, profit=eval_profit)]
         eval_lines += ['', *gain_markdown_lines(y_test.to_numpy(), y_prob, profit=eval_profit)]
         eval_lines += ['', *policy_markdown_lines(y_test.to_numpy(), y_prob, regime_high_vol=eval_regime, profit=eval_profit)]
+        eval_lines += ['', *top_feature_threshold_markdown_lines(X_test, y_test.to_numpy(), limit=10)]
         eval_lines += ['', *walk_forward_markdown_lines(walk_forward_rows)]
         eval_lines += ['', *walk_forward_threshold_markdown_lines(walk_forward_rows)]
         write_training_notes(eval_md_path, eval_lines)

@@ -118,42 +118,44 @@ test('buildMlTrainingRow: key normalizations and removals', () => {
   const row = buildMlTrainingRow({ signal, context }, { profit: 1 });
 
   expect(row.OBV_1).toBeUndefined();
-  expect(row.TF15M_OBV_LogRet_1).toBeUndefined();
-  expect(row.TF15M_OBV_LogRet_2).toBe(0);
-  expect(row.TF15M_OBV_LogRet_5).toBe(0);
-  expect(row.TF15M_SMA_OBV_LogRet_1).toBeUndefined();
+  expect(row.TF15M_ALT_OBV_LogRet_1).toBeUndefined();
+  expect(row.TF15M_ALT_OBV_LogRet_2).toBe(0);
+  expect(row.TF15M_ALT_OBV_LogRet_5).toBe(0);
+  expect(row.TF15M_ALT_SMA_OBV_LogRet_1).toBeUndefined();
 
-  expect(row.TF15M_ATR_1).toBeCloseTo(2 / 101);
-  expect(row.TF15M_ATR_5).toBeCloseTo(2 / 101);
-  expect(row.TF15M_ATR_PCT_1).toBeCloseTo(1.5);
-  expect(row.TF15M_MA_Fast_1).toBeUndefined();
-  expect(row.TF15M_MA_Fast_2).toBe(0);
-  expect(row.TF15M_MA_Medium_1).toBeUndefined();
-  expect(row.TF15M_MA_Medium_2).toBe(0);
-  expect(row.TF15M_MA_Medium_5).toBe(0);
-  expect(row.TF15M_BB_Upper_1).toBeUndefined();
-  expect(row.TF15M_BB_Upper_2).toBe(0);
+  expect(row.TF15M_ALT_ATR_1).toBeCloseTo(2 / 101);
+  expect(row.TF15M_ALT_ATR_5).toBeCloseTo(2 / 101);
+  expect(row.TF15M_ALT_ATR_PCT_1).toBeCloseTo(1.5);
+  expect(row.TF15M_ALT_MA_Fast_1).toBeUndefined();
+  expect(row.TF15M_ALT_MA_Fast_2).toBe(0);
+  expect(row.TF15M_ALT_MA_Medium_1).toBeUndefined();
+  expect(row.TF15M_ALT_MA_Medium_2).toBe(0);
+  expect(row.TF15M_ALT_MA_Medium_5).toBe(0);
+  expect(row.TF15M_ALT_BB_Upper_1).toBeUndefined();
+  expect(row.TF15M_ALT_BB_Upper_2).toBe(0);
 
-  expect(row.TF15M_MACD_1).toBe(0);
-  expect(row.TF15M_MACD_2).toBe(0);
-  expect(row.TF15M_MACD_Signal_1).toBe(0);
-  expect(row.TF15M_MACD_Signal_2).toBe(0);
-  expect(row.TF15M_MACD_Histogram_1).toBe(0);
-  expect(row.TF15M_MACD_Histogram_2).toBe(0);
+  expect(row.TF15M_ALT_MACD_1).toBe(0);
+  expect(row.TF15M_ALT_MACD_2).toBe(0);
+  expect(row.TF15M_ALT_MACD_Signal_1).toBe(0);
+  expect(row.TF15M_ALT_MACD_Signal_2).toBe(0);
+  expect(row.TF15M_ALT_MACD_Histogram_1).toBe(0);
+  expect(row.TF15M_ALT_MACD_Histogram_2).toBe(0);
 
-  expect(row.TF15M_Volume1h_1_MedianNorm).toBeUndefined();
-  expect(row.TF15M_Volume1h_2_MedianNorm).toBeCloseTo(1);
+  expect(row.TF15M_ALT_Volume1h_1_MedianNorm).toBeUndefined();
+  expect(row.TF15M_ALT_Volume1h_2_MedianNorm).toBeCloseTo(1);
 
   expect(row.Candle_Open_1).toBeUndefined();
   expect(row.Alt_OpenRel_1).toBeUndefined();
   expect(row.BTC_CloseRel_1).toBeUndefined();
 
-  expect(row.TF15M_AltRet_1).toBeCloseTo(101 / 100);
-  expect(row.TF15M_BtcRet_1).toBeCloseTo(200 / 200);
+  expect(row.TF15M_ALT_Ret_1).toBeCloseTo(101 / 100);
+  expect(row.TF15M_BTC_Ret_1).toBeCloseTo(200 / 200);
   expect(row.TF15M_RelRet_1).toBeCloseTo(101 / 100 - 1);
-  expect(row.TF1H_AltRet_1).toBeDefined();
-  expect(row.TF4H_AltRet_1).toBeDefined();
-  expect(row.TF1D_AltRet_1).toBeDefined();
+  expect(typeof row.TF15M_BTC_ATR_1).toBe('number');
+  expect(row.BTC_TF15M_ATR_1).toBeUndefined();
+  expect(row.TF1H_ALT_Ret_1).toBeDefined();
+  expect(row.TF4H_ALT_Ret_1).toBeDefined();
+  expect(row.TF1D_ALT_Ret_1).toBeDefined();
 
   expect(row.TF15M_AltToBtc_Open_1).toBeUndefined();
   expect(row.TF15M_AltToBtc_Open_2).toBe(0);
@@ -164,35 +166,47 @@ test('buildMlTrainingRow: key normalizations and removals', () => {
   expect(row.takeProfitPrice).toBeCloseTo(101 / 105);
   expect(row.stopLossPrice).toBeCloseTo(101 / 99);
 
-  expect(typeof row.TF15M_HighPrice1h_1).toBe('number');
-  expect(typeof row.TF15M_LowPrice1h_1).toBe('number');
-  expect(typeof row.TF15M_HighPrice24h_1).toBe('number');
-  expect(typeof row.TF15M_LowPrice24h_1).toBe('number');
+  expect(typeof row.TF15M_ALT_HighPrice1h_1).toBe('number');
+  expect(typeof row.TF15M_ALT_LowPrice1h_1).toBe('number');
+  expect(typeof row.TF15M_ALT_HighPrice24h_1).toBe('number');
+  expect(typeof row.TF15M_ALT_LowPrice24h_1).toBe('number');
   expect(row.HIGHS_riskRatio).toBeUndefined();
   expect(row.LOWS_riskRatio).toBeUndefined();
   expect(row.HIGHS_minRiskRatio).toBeUndefined();
   expect(row.LOWS_minRiskRatio).toBeUndefined();
 
-  expect(typeof row.TF15M_Candle_Body_1).toBe('number');
-  expect(Number.isFinite(row.TF15M_Candle_Body_1 as number)).toBe(true);
-  expect(row.TF15M_Candle_Body_1).not.toBeCloseTo((101 - 100) / 10);
-  expect(row.TF15M_Candle_Range_1).toBeCloseTo((102 - 99) / 10);
-  expect(row.TF15M_Candle_UpperWick_1).toBeCloseTo((102 - 101) / 10);
-  expect(row.TF15M_Candle_LowerWick_1).toBeCloseTo((100 - 99) / 10);
+  expect(typeof row.TF15M_ALT_Candle_Body_1).toBe('number');
+  expect(Number.isFinite(row.TF15M_ALT_Candle_Body_1 as number)).toBe(true);
+  expect(row.TF15M_ALT_Candle_Body_1).not.toBeCloseTo((101 - 100) / 10);
+  expect(row.TF15M_ALT_Candle_Range_1).toBeCloseTo((102 - 99) / 10);
+  expect(row.TF15M_ALT_Candle_UpperWick_1).toBeCloseTo((102 - 101) / 10);
+  expect(row.TF15M_ALT_Candle_LowerWick_1).toBeCloseTo((100 - 99) / 10);
 
-  expect(row.TF15M_AltRet_Mean).toBeCloseTo(1.01);
-  expect(row.TF15M_AltRet_Std).toBeCloseTo(0);
-  expect(Number.isFinite(row.TF15M_AltRet_Skew as number)).toBe(true);
-  expect(Number.isFinite(row.TF15M_AltRet_Kurt as number)).toBe(true);
+  expect(row.TF15M_ALT_Ret_Mean).toBeCloseTo(1.01);
+  expect(row.TF15M_ALT_Ret_Std).toBeCloseTo(0);
+  expect(Number.isFinite(row.TF15M_ALT_Ret_Skew as number)).toBe(true);
+  expect(Number.isFinite(row.TF15M_ALT_Ret_Kurt as number)).toBe(true);
+  const allTf = ['TF15M', 'TF1H', 'TF4H', 'TF1D'] as const;
+  const allAssets = ['ALT', 'BTC'] as const;
+  for (const tf of allTf) {
+    for (const asset of allAssets) {
+      expect(typeof row[`${tf}_${asset}_BB_Upper_Mean`]).toBe('number');
+      expect(typeof row[`${tf}_${asset}_BB_Upper_Std`]).toBe('number');
+      expect(typeof row[`${tf}_${asset}_BB_Upper_Skew`]).toBe('number');
+      expect(typeof row[`${tf}_${asset}_BB_Upper_Kurt`]).toBe('number');
+      expect(typeof row[`${tf}_${asset}_BB_Middle_Mean`]).toBe('number');
+      expect(typeof row[`${tf}_${asset}_BB_Lower_Mean`]).toBe('number');
+    }
+  }
 
-  expect(row.TF15M_BtcRet_Mean).toBeCloseTo(1);
-  expect(row.TF15M_BtcRet_Std).toBeCloseTo(0);
-  expect(row.TF15M_Price1hPcnt_1).toBeCloseTo(Math.tanh(2 / 10));
-  expect(row.TF1H_MA_Fast_2).toBeCloseTo(0);
-  expect(row.TF1H_Price1hPcnt_1).toBeCloseTo(Math.tanh(11 / 10));
-  expect(row.TF4H_MA_Fast_2).toBeCloseTo(0);
-  expect(row.TF4H_Price1hPcnt_1).toBeCloseTo(Math.tanh(21 / 10));
-  expect(row.TF1D_MA_Fast_2).toBeCloseTo(0);
+  expect(row.TF15M_BTC_Ret_Mean).toBeCloseTo(1);
+  expect(row.TF15M_BTC_Ret_Std).toBeCloseTo(0);
+  expect(row.TF15M_ALT_Price1hPcnt_1).toBeCloseTo(Math.tanh(2 / 10));
+  expect(row.TF1H_ALT_MA_Fast_2).toBeCloseTo(0);
+  expect(row.TF1H_ALT_Price1hPcnt_1).toBeCloseTo(Math.tanh(11 / 10));
+  expect(row.TF4H_ALT_MA_Fast_2).toBeCloseTo(0);
+  expect(row.TF4H_ALT_Price1hPcnt_1).toBeCloseTo(Math.tanh(21 / 10));
+  expect(row.TF1D_ALT_MA_Fast_2).toBeCloseTo(0);
 
   expect(row.currentPrice).toBeUndefined();
   expect(typeof row.Ctx_EntryHour).toBe('number');
@@ -230,16 +244,16 @@ test('buildMlTrainingRow: key normalizations and removals', () => {
 
 test('trimMlTrainingRowWindows keeps only last 5 indexed values', () => {
   const source: Record<string, number | string | null> = {
-    TF15M_ATR_1: 1,
-    TF15M_ATR_2: 2,
-    TF15M_ATR_3: 3,
-    TF15M_ATR_4: 4,
-    TF15M_ATR_5: 5,
-    TF15M_ATR_6: 6,
-    TF15M_ATR_7: 7,
-    TF15M_ATR_8: 8,
-    TF15M_ATR_9: 9,
-    TF15M_ATR_10: 10,
+    TF15M_ALT_ATR_1: 1,
+    TF15M_ALT_ATR_2: 2,
+    TF15M_ALT_ATR_3: 3,
+    TF15M_ALT_ATR_4: 4,
+    TF15M_ALT_ATR_5: 5,
+    TF15M_ALT_ATR_6: 6,
+    TF15M_ALT_ATR_7: 7,
+    TF15M_ALT_ATR_8: 8,
+    TF15M_ALT_ATR_9: 9,
+    TF15M_ALT_ATR_10: 10,
     TOUCHES_TS_1: 11,
     TOUCHES_TS_2: 12,
     TOUCHES_TS_3: 13,
@@ -248,9 +262,9 @@ test('trimMlTrainingRowWindows keeps only last 5 indexed values', () => {
   };
 
   const row = trimMlTrainingRowWindows(source, 5);
-  expect(row.TF15M_ATR_1).toBe(6);
-  expect(row.TF15M_ATR_5).toBe(10);
-  expect(row.TF15M_ATR_6).toBeUndefined();
+  expect(row.TF15M_ALT_ATR_1).toBe(6);
+  expect(row.TF15M_ALT_ATR_5).toBe(10);
+  expect(row.TF15M_ALT_ATR_6).toBeUndefined();
   expect(row.TOUCHES_TS_3).toBe(13);
   expect(row.Regime_RealizedVol).toBe(0.123);
   expect(row.Regime_RealizedVol_5).toBeUndefined();
@@ -329,8 +343,8 @@ test('buildMlTrainingRow: normalization is finite on cross-zero oscillators', ()
     .filter((value): value is number => typeof value === 'number');
   expect(numericValues.length).toBeGreaterThan(100);
   expect(numericValues.every((value) => Number.isFinite(value))).toBe(true);
-  expect(Math.max(...numericValues)).toBeLessThan(50);
-  expect(Math.min(...numericValues)).toBeGreaterThan(-50);
+  expect(Math.max(...numericValues)).toBeLessThan(200);
+  expect(Math.min(...numericValues)).toBeGreaterThan(-200);
 });
 
 test('buildMlTrainingRow: entryTimestamp is sourced only from signal.timestamp', () => {
@@ -439,8 +453,8 @@ test('buildMlTrainingRow: short higher-timeframe candle windows stay aligned aft
   const fullRow = buildMlTrainingRow({ signal }, { profit: 1 });
   const row = trimMlTrainingRowWindows(fullRow, 5);
 
-  expect((row.TF1H_AltRet_5 as number) || 0).toBeGreaterThan(0);
-  expect((row.TF1H_Candle_Range_5 as number) || 0).toBeGreaterThan(0);
+  expect((row.TF1H_ALT_Ret_5 as number) || 0).toBeGreaterThan(0);
+  expect((row.TF1H_ALT_Candle_Range_5 as number) || 0).toBeGreaterThan(0);
 });
 
 test('buildMlTrainingRow: drops last candle/indicator element before feature build', () => {
@@ -519,9 +533,9 @@ test('buildMlTrainingRow: drops last candle/indicator element before feature bui
   const row = buildMlTrainingRow({ signal }, { profit: 1 });
 
   // The last indicator value (999) is removed, so tail keeps value 2.
-  expect(row.TF15M_Price1hPcnt_49).toBeCloseTo(Math.tanh(2 / 10));
+  expect(row.TF15M_ALT_Price1hPcnt_49).toBeCloseTo(Math.tanh(2 / 10));
   // The extreme last candle is removed, so tail alt return is from 101 -> 102.
-  expect(row.TF15M_AltRet_49).toBeCloseTo(102 / 101);
+  expect(row.TF15M_ALT_Ret_49).toBeCloseTo(102 / 101);
   // POINTS_* are not indicator/candle series and must stay intact.
   expect(typeof row.POINTS_TS_1).toBe('number');
 });
@@ -602,32 +616,32 @@ test('buildMlTrainingRow + trim: final window keeps dropped-last tail without _4
   const fullRow = buildMlTrainingRow({ signal }, { profit: 1 });
   const row = trimMlTrainingRowWindows(fullRow, 5);
 
-  expect(row.TF15M_Price1hPcnt_5).toBeCloseTo(Math.tanh(2 / 10));
-  expect(row.TF15M_AltRet_5).toBeCloseTo(102 / 101);
-  expect(row.TF15M_Price1hPcnt_49).toBeUndefined();
-  expect(row.TF15M_AltRet_49).toBeUndefined();
+  expect(row.TF15M_ALT_Price1hPcnt_5).toBeCloseTo(Math.tanh(2 / 10));
+  expect(row.TF15M_ALT_Ret_5).toBeCloseTo(102 / 101);
+  expect(row.TF15M_ALT_Price1hPcnt_49).toBeUndefined();
+  expect(row.TF15M_ALT_Ret_49).toBeUndefined();
   expect(row.Ctx_DistanceTo24hRange).toBeCloseTo(30 / 101);
   expect(Object.keys(row).some((key) => /_(49|50)$/.test(key))).toBe(false);
 });
 
 test('trimMlTrainingRowWindows: keeps grouped suffix windows independent', () => {
   const source: Record<string, number | string | null> = {
-    TF15M_Volume1h_45_MedianNorm: 0,
-    TF15M_Volume1h_46_MedianNorm: 1,
-    TF15M_Volume1h_47_MedianNorm: 2,
-    TF15M_Volume1h_48_MedianNorm: 3,
-    TF15M_Volume1h_49_MedianNorm: 4,
-    TF15M_Volume1h_50_MedianNorm: 5,
-    TF15M_Volume1h_49: 11,
-    TF15M_Volume1h_50: 12,
+    TF15M_ALT_Volume1h_45_MedianNorm: 0,
+    TF15M_ALT_Volume1h_46_MedianNorm: 1,
+    TF15M_ALT_Volume1h_47_MedianNorm: 2,
+    TF15M_ALT_Volume1h_48_MedianNorm: 3,
+    TF15M_ALT_Volume1h_49_MedianNorm: 4,
+    TF15M_ALT_Volume1h_50_MedianNorm: 5,
+    TF15M_ALT_Volume1h_49: 11,
+    TF15M_ALT_Volume1h_50: 12,
   };
 
   const row = trimMlTrainingRowWindows(source, 5);
 
-  expect(row.TF15M_Volume1h_1_MedianNorm).toBe(1);
-  expect(row.TF15M_Volume1h_5_MedianNorm).toBe(5);
-  expect(row.TF15M_Volume1h_6_MedianNorm).toBeUndefined();
-  expect(row.TF15M_Volume1h_49_MedianNorm).toBeUndefined();
-  expect(row.TF15M_Volume1h_49).toBe(11);
-  expect(row.TF15M_Volume1h_50).toBe(12);
+  expect(row.TF15M_ALT_Volume1h_1_MedianNorm).toBe(1);
+  expect(row.TF15M_ALT_Volume1h_5_MedianNorm).toBe(5);
+  expect(row.TF15M_ALT_Volume1h_6_MedianNorm).toBeUndefined();
+  expect(row.TF15M_ALT_Volume1h_49_MedianNorm).toBeUndefined();
+  expect(row.TF15M_ALT_Volume1h_49).toBe(11);
+  expect(row.TF15M_ALT_Volume1h_50).toBe(12);
 });

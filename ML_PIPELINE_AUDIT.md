@@ -11,6 +11,22 @@
 - Ensemble and single-model modes are both supported.
 - Inference now correctly resolves ensemble aliases (`<Strategy>.modelN.joblib`) vs single alias (`<Strategy>.joblib`).
 - Upload now ships inference aliases only (not historical eval/prod snapshots).
+- Feature pipeline parity is enforced:
+  - `buildMlTrainingRow` + `trimMlTrainingRowWindows(..., 5)` in backtest dataset writes.
+  - `buildMlTrainingRow` + `trimMlTrainingRowWindows(..., 5)` in grpc inference path.
+- Last candle/indicator element is dropped before feature construction to align backtest with live signal timing.
+
+## Status Update (2026-02-18)
+- Closed:
+  - Inference/train feature window mismatch risk (`_49/_50` tails leaking into infer payloads) is closed.
+  - Same-bar backtest close/open lookahead risk is reduced by processing SL/TP checks before new signal open on the same candle.
+  - Report transparency gap reduced: TOP-10 holdout single-feature thresholds are now included in both `md` and `html` training reports.
+- Implemented:
+  - feature naming normalized to `TF*_ALT_*` / `TF*_BTC_*`,
+  - BB moments (`_Mean/_Std/_Skew/_Kurt`) for ALT/BTC on all TF.
+- Still monitor:
+  - dataset duplication ratio and effective sample diversity,
+  - threshold over-tuning on a single holdout window.
 
 ## Key Risks
 1. Data leakage risk from feature construction and timestamp alignment.
@@ -115,4 +131,3 @@ Use these as hard gates before production promotion.
 1. Add leakage-focused tests for transformed features in `mlTrainingTransform`.
 2. Add gate-evaluator script to parse report + meta and return pass/fail.
 3. Add deploy manifest and rollback command using alias snapshots.
-
