@@ -47,8 +47,8 @@ type MlResultRecord = {
 
 // Single source of truth for all feature windows.
 const ML_WINDOW_POLICY = {
-  indicatorWindow: ML_BASE_CANDLES_WINDOW,
-  candleWindow: ML_CANDLE_FEATURE_WINDOW,
+  indicatorWindow: Math.max(1, ML_BASE_CANDLES_WINDOW - 1),
+  candleWindow: Math.max(1, ML_CANDLE_FEATURE_WINDOW - 1),
   outputWindow: 5,
   dropLastIndicatorElement: true,
 } as const;
@@ -858,9 +858,10 @@ export const buildMlTrainingRow = (
     row.Regime_TrendStrength = trendStrength;
     row.Regime_IsHighVol =
       atrPctRank >= 0.7 || realizedVolRank >= 0.7 ? 1 : 0;
+    const latestIdx = INDICATOR_WINDOW;
     row.Ctx_DistanceTo24hRange = clamp(
-      toNumber(row.TF15M_HighPrice24h_5, 0) -
-        toNumber(row.TF15M_LowPrice24h_5, 0),
+      toNumber(row[`TF15M_HighPrice24h_${latestIdx}`], 0) -
+        toNumber(row[`TF15M_LowPrice24h_${latestIdx}`], 0),
       -10,
       10,
     );

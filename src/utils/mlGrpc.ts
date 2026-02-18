@@ -1,7 +1,10 @@
 import path from 'path';
 import * as grpc from '@grpc/grpc-js';
 import * as protoLoader from '@grpc/proto-loader';
-import { buildMlTrainingRow } from '@utils/mlTrainingTransform';
+import {
+  buildMlTrainingRow,
+  trimMlTrainingRowWindows,
+} from '@utils/mlTrainingTransform';
 import { logger } from '@utils/logger';
 import { Signal } from '@types';
 import { buildMlPayload, MlTestConfig } from '@utils/mlPayload';
@@ -52,7 +55,7 @@ export const fetchMlThreshold = async (
       toFiniteNumber(testConfig.ML_THRESHOLD) ??
       0;
 
-    const row = buildMlTrainingRow(
+    const fullRow = buildMlTrainingRow(
       buildMlPayload({
         signal,
         context: {
@@ -63,6 +66,7 @@ export const fetchMlThreshold = async (
       }),
       null,
     );
+    const row = trimMlTrainingRowWindows(fullRow, 5);
 
     const features: Record<string, number> = {};
     for (const [key, value] of Object.entries(row)) {

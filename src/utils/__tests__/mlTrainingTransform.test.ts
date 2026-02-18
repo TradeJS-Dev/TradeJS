@@ -519,9 +519,115 @@ test('buildMlTrainingRow: drops last candle/indicator element before feature bui
   const row = buildMlTrainingRow({ signal }, { profit: 1 });
 
   // The last indicator value (999) is removed, so tail keeps value 2.
-  expect(row.TF15M_Price1hPcnt_50).toBeCloseTo(Math.tanh(2 / 10));
+  expect(row.TF15M_Price1hPcnt_49).toBeCloseTo(Math.tanh(2 / 10));
   // The extreme last candle is removed, so tail alt return is from 101 -> 102.
-  expect(row.TF15M_AltRet_50).toBeCloseTo(102 / 101);
+  expect(row.TF15M_AltRet_49).toBeCloseTo(102 / 101);
   // POINTS_* are not indicator/candle series and must stay intact.
   expect(typeof row.POINTS_TS_1).toBe('number');
+});
+
+test('buildMlTrainingRow + trim: final window keeps dropped-last tail without _49/_50 keys', () => {
+  const candle = (timestamp: number, open: number, close: number) => ({
+    open,
+    close,
+    high: Math.max(open, close) + 1,
+    low: Math.min(open, close) - 1,
+    volume: 100,
+    timestamp,
+  });
+
+  const candles15m = [
+    candle(1_700_000_000_000, 100, 101),
+    candle(1_700_000_900_000, 101, 102),
+    candle(1_700_001_800_000, 1, 10), // extreme last bar; should be ignored
+  ];
+  const btcCandles15m = [
+    candle(1_700_000_000_000, 200, 201),
+    candle(1_700_000_900_000, 201, 202),
+    candle(1_700_001_800_000, 2, 20), // extreme last bar; should be ignored
+  ];
+
+  const signal = {
+    signalId: 'drop-last-trimmed',
+    strategy: 'TrendLine',
+    symbol: 'ETHUSDT',
+    direction: 'LONG',
+    interval: '15',
+    timestamp: candles15m[candles15m.length - 1].timestamp,
+    prices: {
+      currentPrice: 150,
+      takeProfitPrice: 160,
+      stopLossPrice: 140,
+      riskRatio: 1.2,
+    },
+    indicators: {
+      candles15m,
+      btcCandles15m,
+      price1hPcnt: [1, 2, 999], // extreme last value; should be ignored
+      maFast: [100, 101, 102],
+      maMedium: [100, 101, 102],
+      maSlow: [100, 101, 102],
+      atr: [1, 1, 1],
+      atrPct: [1, 1, 1],
+      bbUpper: [1, 1, 1],
+      bbMiddle: [1, 1, 1],
+      bbLower: [1, 1, 1],
+      obv: [1, 2, 3],
+      smaObv: [1, 2, 3],
+      macd: [1, 2, 3],
+      macdSignal: [1, 2, 3],
+      macdHistogram: [1, 2, 3],
+      price24hPcnt: [1, 2, 3],
+      highPrice1h: [100, 101, 102],
+      lowPrice1h: [90, 91, 92],
+      volume1h: [100, 110, 120],
+      highPrice24h: [110, 111, 999],
+      lowPrice24h: [80, 81, 1],
+      volume24h: [200, 210, 220],
+    },
+    figures: {
+      trendLine: {
+        mode: 'lows',
+        distance: 0.1,
+        alpha: [1, 2, 3],
+        points: [
+          { value: 99, timestamp: 1_700_000_000_000 },
+          { value: 100, timestamp: 1_700_000_900_000 },
+        ],
+        touches: [{ value: 99.5, timestamp: 1_700_000_450_000 }],
+      },
+    },
+  };
+
+  const fullRow = buildMlTrainingRow({ signal }, { profit: 1 });
+  const row = trimMlTrainingRowWindows(fullRow, 5);
+
+  expect(row.TF15M_Price1hPcnt_5).toBeCloseTo(Math.tanh(2 / 10));
+  expect(row.TF15M_AltRet_5).toBeCloseTo(102 / 101);
+  expect(row.TF15M_Price1hPcnt_49).toBeUndefined();
+  expect(row.TF15M_AltRet_49).toBeUndefined();
+  expect(row.Ctx_DistanceTo24hRange).toBeCloseTo(30 / 101);
+  expect(Object.keys(row).some((key) => /_(49|50)$/.test(key))).toBe(false);
+});
+
+test('trimMlTrainingRowWindows: keeps grouped suffix windows independent', () => {
+  const source: Record<string, number | string | null> = {
+    TF15M_Volume1h_45_MedianNorm: 0,
+    TF15M_Volume1h_46_MedianNorm: 1,
+    TF15M_Volume1h_47_MedianNorm: 2,
+    TF15M_Volume1h_48_MedianNorm: 3,
+    TF15M_Volume1h_49_MedianNorm: 4,
+    TF15M_Volume1h_50_MedianNorm: 5,
+    TF15M_Volume1h_49: 11,
+    TF15M_Volume1h_50: 12,
+  };
+
+  const row = trimMlTrainingRowWindows(source, 5);
+
+  expect(row.TF15M_Volume1h_1_MedianNorm).toBe(1);
+  expect(row.TF15M_Volume1h_5_MedianNorm).toBe(5);
+  expect(row.TF15M_Volume1h_6_MedianNorm).toBeUndefined();
+  expect(row.TF15M_Volume1h_49_MedianNorm).toBeUndefined();
+  expect(row.TF15M_Volume1h_49).toBe(11);
+  expect(row.TF15M_Volume1h_50).toBe(12);
 });
