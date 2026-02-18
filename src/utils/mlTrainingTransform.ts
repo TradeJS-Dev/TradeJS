@@ -4,12 +4,37 @@ import { ML_BASE_CANDLES_WINDOW, ML_CANDLE_FEATURE_WINDOW } from '@constants';
 // The output is a fixed schema with derived indicator series, candle features,
 // BTC-relative features, trendline geometry, and strategy config params.
 type MlSignalRecord = {
-  signal: any;
+  signal: MlSignalPayload;
   context?: {
-    strategyConfig?: any;
+    strategyConfig?: Record<string, unknown>;
     strategyName?: string;
     symbol?: string;
     entryTimestamp?: number;
+  };
+};
+
+type MlSignalPayload = {
+  signalId?: string;
+  strategy?: string;
+  symbol?: string;
+  direction?: string;
+  timestamp?: number;
+  interval?: number | string;
+  prices?: {
+    currentPrice?: number;
+    takeProfitPrice?: number;
+    stopLossPrice?: number;
+    riskRatio?: number;
+  };
+  indicators?: Record<string, unknown>;
+  figures?: {
+    trendLine?: {
+      mode?: 'highs' | 'lows' | string;
+      distance?: number;
+      alpha?: unknown[];
+      points?: Array<{ value?: number; timestamp?: number }>;
+      touches?: Array<{ value?: number; timestamp?: number }>;
+    };
   };
 };
 
@@ -201,7 +226,8 @@ const sliceWindow = (
 };
 
 // Normalize any "maybe series" value into an array.
-const asArray = (value: unknown): any[] => (Array.isArray(value) ? value : []);
+const asArray = <T = unknown>(value: unknown): T[] =>
+  Array.isArray(value) ? (value as T[]) : [];
 
 const dropLastFromIndicatorSeries = (
   indicators: Record<string, unknown>,
@@ -841,7 +867,9 @@ export const buildMlTrainingRow = (
       row[`TrendLine_Alpha_${i + 1}`] = trendAlpha[i];
     }
 
-    const points = asArray(trendLine?.points);
+    const points = asArray<{ value?: number; timestamp?: number }>(
+      trendLine?.points,
+    );
     const maxPoints = 2;
     for (let i = 0; i < maxPoints; i += 1) {
       const point = points[i] ?? {};
@@ -860,7 +888,9 @@ export const buildMlTrainingRow = (
       }
     }
 
-    const touches = asArray(trendLine?.touches)
+    const touches = asArray<{ value?: number; timestamp?: number }>(
+      trendLine?.touches,
+    )
       .map((touch) => ({
         value: toNumber(touch?.value, NaN),
         timestamp: toNumber(touch?.timestamp, NaN),
