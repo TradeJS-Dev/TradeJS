@@ -45,10 +45,15 @@ type MlResultRecord = {
   symbol?: string;
 };
 
-// Fixed windows for features.
-const CANDLE_WINDOW = ML_CANDLE_FEATURE_WINDOW;
-const INDICATOR_WINDOW = ML_BASE_CANDLES_WINDOW;
-const ML_OUTPUT_WINDOW = 5;
+// Single source of truth for all feature windows.
+const ML_WINDOW_POLICY = {
+  indicatorWindow: ML_BASE_CANDLES_WINDOW,
+  candleWindow: ML_CANDLE_FEATURE_WINDOW,
+  outputWindow: 5,
+  dropLastIndicatorElement: true,
+} as const;
+const CANDLE_WINDOW = ML_WINDOW_POLICY.candleWindow;
+const INDICATOR_WINDOW = ML_WINDOW_POLICY.indicatorWindow;
 const CANDLE_TIMEFRAMES = [
   { label: 'TF15M', key: 'candles15m', btcKey: 'btcCandles15m' },
   { label: 'TF1H', key: 'candles1h', btcKey: 'btcCandles1h' },
@@ -232,6 +237,9 @@ const asArray = <T = unknown>(value: unknown): T[] =>
 const dropLastFromIndicatorSeries = (
   indicators: Record<string, unknown>,
 ): Record<string, unknown> => {
+  if (!ML_WINDOW_POLICY.dropLastIndicatorElement) {
+    return indicators;
+  }
   const next: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(indicators)) {
     if (Array.isArray(value)) {
@@ -974,7 +982,7 @@ export const buildMlTrainingRow = (
 
 export const trimMlTrainingRowWindows = (
   row: Record<string, number | string | null>,
-  keep = ML_OUTPUT_WINDOW,
+  keep = ML_WINDOW_POLICY.outputWindow,
 ): Record<string, number | string | null> => {
   const indexedKeyPattern = /^(.*_)(\d+)(?:(_.*))?$/;
   const groupMaxIndex = new Map<string, number>();
