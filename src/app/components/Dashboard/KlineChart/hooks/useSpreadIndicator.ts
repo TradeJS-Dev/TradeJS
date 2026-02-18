@@ -46,7 +46,8 @@ const buildSpreadValues = (
     Record<number, Record<string, number | undefined>>
   >((acc, { timestamp }) => {
     const value =
-      spreadByTs[timestamp]?.spread ?? getSpreadAtOrBefore(sortedSpread, timestamp);
+      spreadByTs[timestamp]?.spread ??
+      getSpreadAtOrBefore(sortedSpread, timestamp);
 
     acc[timestamp] = {
       SPREAD: Number.isFinite(Number(value)) ? Number(value) : undefined,
@@ -64,7 +65,9 @@ export const useSpreadIndicator = (
   const [registered, setRegistered] = useState(false);
   const [rows, setRows] = useState<SpreadPoint[]>([]);
   const spreadByTsRef = useRef<Record<number, { spread: number | null }>>({});
-  const sortedSpreadRef = useRef<Array<{ timestamp: number; spread: number | null }>>([]);
+  const sortedSpreadRef = useRef<
+    Array<{ timestamp: number; spread: number | null }>
+  >([]);
 
   const spreadInterval = useMemo(
     () => toSpreadInterval(String(filters.interval)),

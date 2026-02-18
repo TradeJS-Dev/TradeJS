@@ -855,8 +855,7 @@ export const buildMlTrainingRow = (
     row.Regime_RealizedVol = realizedVol;
     row.Regime_RealizedVol_Rank = realizedVolRank;
     row.Regime_TrendStrength = trendStrength;
-    row.Regime_IsHighVol =
-      atrPctRank >= 0.7 || realizedVolRank >= 0.7 ? 1 : 0;
+    row.Regime_IsHighVol = atrPctRank >= 0.7 || realizedVolRank >= 0.7 ? 1 : 0;
     const latestIdx = INDICATOR_WINDOW;
     row.Ctx_DistanceTo24hRange = clamp(
       toNumber(row[`TF15M_HighPrice24h_${latestIdx}`], 0) -
