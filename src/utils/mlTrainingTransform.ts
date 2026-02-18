@@ -348,7 +348,6 @@ const addCandleFeatures = (
   const altToBtcHighRaw: number[] = [];
   const altToBtcLowRaw: number[] = [];
 
-  const lastAltClose = toNumber(candles[candles.length - 1]?.close, 0);
   const lastBtcClose = toNumber(btcCandles[btcCandles.length - 1]?.close, 0);
   const btcPrice = lastBtcClose;
 
