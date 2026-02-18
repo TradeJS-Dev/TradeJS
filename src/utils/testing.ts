@@ -185,12 +185,14 @@ export const testing: TestingBox = async ({
     const candle = testData[candleIndex];
     const btcCandle = btcTestData[candleIndex];
 
-    const signal = await strategy(candle, btcCandle);
+    // Process exits on the current candle first. Any position opened below
+    // can only be closed starting from the next candle to avoid same-bar lookahead.
     await testConnector.checkSl(candle);
     await testConnector.checkTp(candle);
     await flushMlResultsBatch();
 
-    if (ml && signal && typeof signal !== 'string') {
+    const signal = await strategy(candle, btcCandle);
+    if (ml && signal && typeof signal !== 'string' && signal.signalId) {
       const payload = buildMlPayload({
         signal,
         context: {
@@ -204,9 +206,7 @@ export const testing: TestingBox = async ({
           connectorName,
         },
       });
-      if (signal.signalId) {
-        pendingMlPayloadBySignalId.set(signal.signalId, payload);
-      }
+      pendingMlPayloadBySignalId.set(signal.signalId, payload);
     }
   }
 

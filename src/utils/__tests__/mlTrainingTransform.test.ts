@@ -180,13 +180,13 @@ test('buildMlTrainingRow: key normalizations and removals', () => {
   expect(row.TF15M_Candle_UpperWick_1).toBeCloseTo((102 - 101) / 10);
   expect(row.TF15M_Candle_LowerWick_1).toBeCloseTo((100 - 99) / 10);
 
-  expect(row.TF15M_AltRet_Mean50).toBeCloseTo(0.9898);
-  expect(row.TF15M_AltRet_Std50).toBeCloseTo(0.1414);
-  expect(row.TF15M_AltRet_Skew50).toBeCloseTo(-6.857142857142852);
-  expect(row.TF15M_AltRet_Kurt50).toBeCloseTo(48.020408163265266);
+  expect(row.TF15M_AltRet_Mean).toBeCloseTo(1.01);
+  expect(row.TF15M_AltRet_Std).toBeCloseTo(0);
+  expect(Number.isFinite(row.TF15M_AltRet_Skew as number)).toBe(true);
+  expect(Number.isFinite(row.TF15M_AltRet_Kurt as number)).toBe(true);
 
-  expect(row.TF15M_BtcRet_Mean50).toBeCloseTo(0.98);
-  expect(row.TF15M_BtcRet_Std50).toBeCloseTo(0.14);
+  expect(row.TF15M_BtcRet_Mean).toBeCloseTo(1);
+  expect(row.TF15M_BtcRet_Std).toBeCloseTo(0);
   expect(row.TF15M_Price1hPcnt_1).toBeCloseTo(Math.tanh(2 / 10));
   expect(row.TF1H_MA_Fast_2).toBeCloseTo(0);
   expect(row.TF1H_Price1hPcnt_1).toBeCloseTo(Math.tanh(11 / 10));
@@ -204,7 +204,7 @@ test('buildMlTrainingRow: key normalizations and removals', () => {
   expect(typeof row.Regime_ATR_PCT_Last).toBe('number');
   expect(typeof row.Regime_ATR_PCT_Z).toBe('number');
   expect(typeof row.Regime_ATR_PCT_Rank).toBe('number');
-  expect(typeof row.Regime_RealizedVol_50).toBe('number');
+  expect(typeof row.Regime_RealizedVol).toBe('number');
   expect(typeof row.Regime_IsHighVol).toBe('number');
   expect(Number.isFinite(row.Regime_ATR_PCT_Rank as number)).toBe(true);
   expect(row.Regime_ATR_PCT_Rank as number).toBeGreaterThanOrEqual(0);
@@ -243,7 +243,7 @@ test('trimMlTrainingRowWindows keeps only last 5 indexed values', () => {
     TOUCHES_TS_1: 11,
     TOUCHES_TS_2: 12,
     TOUCHES_TS_3: 13,
-    Regime_RealizedVol_50: 0.123,
+    Regime_RealizedVol: 0.123,
     symbol: 'ETHUSDT',
   };
 
@@ -252,7 +252,7 @@ test('trimMlTrainingRowWindows keeps only last 5 indexed values', () => {
   expect(row.TF15M_ATR_5).toBe(10);
   expect(row.TF15M_ATR_6).toBeUndefined();
   expect(row.TOUCHES_TS_3).toBe(13);
-  expect(row.Regime_RealizedVol_50).toBe(0.123);
+  expect(row.Regime_RealizedVol).toBe(0.123);
   expect(row.Regime_RealizedVol_5).toBeUndefined();
   expect(row.symbol).toBe('ETHUSDT');
 });
@@ -385,4 +385,143 @@ test('buildMlTrainingRow: entryTimestamp is sourced only from signal.timestamp',
   );
   expect(withSignalTimestamp.entryTimestamp).toBe(explicitTimestamp);
   expect(withSignalTimestamp.Ctx_EntryHour).toBe(3);
+});
+
+test('buildMlTrainingRow: short higher-timeframe candle windows stay aligned after trim', () => {
+  const candle = (timestamp: number, open: number, close: number) => ({
+    open,
+    close,
+    high: Math.max(open, close) + 1,
+    low: Math.min(open, close) - 1,
+    volume: 100,
+    timestamp,
+  });
+
+  const candles15m = Array.from({ length: 50 }, (_, i) =>
+    candle(1_700_000_000_000 + i * 900_000, 100 + i, 101 + i),
+  );
+  const btcCandles15m = Array.from({ length: 50 }, (_, i) =>
+    candle(1_700_000_000_000 + i * 900_000, 200 + i, 201 + i),
+  );
+  const candles1h = [
+    candle(1_700_000_000_000, 10, 11),
+    candle(1_700_003_600_000, 11, 12),
+    candle(1_700_007_200_000, 12, 13),
+  ];
+  const btcCandles1h = [
+    candle(1_700_000_000_000, 20, 21),
+    candle(1_700_003_600_000, 21, 22),
+    candle(1_700_007_200_000, 22, 23),
+  ];
+
+  const signal = {
+    signalId: 'short-tf',
+    strategy: 'TrendLine',
+    symbol: 'ETHUSDT',
+    direction: 'LONG',
+    interval: '15',
+    timestamp: candles15m[candles15m.length - 1].timestamp,
+    prices: {
+      currentPrice: 150,
+      takeProfitPrice: 160,
+      stopLossPrice: 140,
+      riskRatio: 1.2,
+    },
+    indicators: {
+      candles15m,
+      btcCandles15m,
+      candles1h,
+      btcCandles1h,
+    },
+    figures: {},
+  };
+
+  const fullRow = buildMlTrainingRow({ signal }, { profit: 1 });
+  const row = trimMlTrainingRowWindows(fullRow, 5);
+
+  expect((row.TF1H_AltRet_5 as number) || 0).toBeGreaterThan(0);
+  expect((row.TF1H_Candle_Range_5 as number) || 0).toBeGreaterThan(0);
+});
+
+test('buildMlTrainingRow: drops last candle/indicator element before feature build', () => {
+  const candle = (timestamp: number, open: number, close: number) => ({
+    open,
+    close,
+    high: Math.max(open, close) + 1,
+    low: Math.min(open, close) - 1,
+    volume: 100,
+    timestamp,
+  });
+
+  const candles15m = [
+    candle(1_700_000_000_000, 100, 101),
+    candle(1_700_000_900_000, 101, 102),
+    candle(1_700_001_800_000, 1, 10), // extreme last bar; should be ignored
+  ];
+  const btcCandles15m = [
+    candle(1_700_000_000_000, 200, 201),
+    candle(1_700_000_900_000, 201, 202),
+    candle(1_700_001_800_000, 2, 20), // extreme last bar; should be ignored
+  ];
+
+  const signal = {
+    signalId: 'drop-last',
+    strategy: 'TrendLine',
+    symbol: 'ETHUSDT',
+    direction: 'LONG',
+    interval: '15',
+    timestamp: candles15m[candles15m.length - 1].timestamp,
+    prices: {
+      currentPrice: 150,
+      takeProfitPrice: 160,
+      stopLossPrice: 140,
+      riskRatio: 1.2,
+    },
+    indicators: {
+      candles15m,
+      btcCandles15m,
+      price1hPcnt: [1, 2, 999], // extreme last value; should be ignored
+      maFast: [100, 101, 102],
+      maMedium: [100, 101, 102],
+      maSlow: [100, 101, 102],
+      atr: [1, 1, 1],
+      atrPct: [1, 1, 1],
+      bbUpper: [1, 1, 1],
+      bbMiddle: [1, 1, 1],
+      bbLower: [1, 1, 1],
+      obv: [1, 2, 3],
+      smaObv: [1, 2, 3],
+      macd: [1, 2, 3],
+      macdSignal: [1, 2, 3],
+      macdHistogram: [1, 2, 3],
+      price24hPcnt: [1, 2, 3],
+      highPrice1h: [100, 101, 102],
+      lowPrice1h: [90, 91, 92],
+      volume1h: [100, 110, 120],
+      highPrice24h: [110, 111, 112],
+      lowPrice24h: [80, 81, 82],
+      volume24h: [200, 210, 220],
+    },
+    figures: {
+      trendLine: {
+        mode: 'lows',
+        distance: 0.1,
+        alpha: [1, 2, 3],
+        points: [
+          { value: 99, timestamp: 1_700_000_000_000 },
+          { value: 100, timestamp: 1_700_000_900_000 },
+        ],
+        touches: [{ value: 99.5, timestamp: 1_700_000_450_000 }],
+      },
+    },
+  };
+
+  const row = buildMlTrainingRow({ signal }, { profit: 1 });
+
+  // The last indicator value (999) is removed, so tail keeps value 2.
+  expect(row.TF15M_Price1hPcnt_50).toBeCloseTo(Math.tanh(2 / 10));
+  // The extreme last candle is removed, so tail alt return is from 101 -> 102.
+  expect(row.TF15M_AltRet_50).toBeCloseTo(102 / 101);
+  // POINTS_* are not indicator/candle series and must stay intact.
+  expect(typeof row.POINTS_TS_1).toBe('number');
 });

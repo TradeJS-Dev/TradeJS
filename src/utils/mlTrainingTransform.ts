@@ -203,6 +203,20 @@ const sliceWindow = (
 // Normalize any "maybe series" value into an array.
 const asArray = (value: unknown): any[] => (Array.isArray(value) ? value : []);
 
+const dropLastFromIndicatorSeries = (
+  indicators: Record<string, unknown>,
+): Record<string, unknown> => {
+  const next: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(indicators)) {
+    if (Array.isArray(value)) {
+      next[key] = value.slice(0, Math.max(0, value.length - 1));
+    } else {
+      next[key] = value;
+    }
+  }
+  return next;
+};
+
 // Convert to numeric series; accepts arrays or scalars.
 const normalizeSeries = (value: unknown): number[] => {
   if (Array.isArray(value)) {
@@ -240,6 +254,33 @@ const normalizeCandles = (value: unknown): CandleLike[] => {
   return normalized;
 };
 
+const padCandles = (candles: CandleLike[]): CandleLike[] => {
+  if (candles.length >= CANDLE_WINDOW) {
+    return candles.slice(-CANDLE_WINDOW);
+  }
+  const fill =
+    candles[0] ??
+    ({
+      open: 0,
+      high: 0,
+      low: 0,
+      close: 0,
+      volume: 0,
+      timestamp: 0,
+    } as CandleLike);
+  const missing = CANDLE_WINDOW - candles.length;
+  return Array.from({ length: missing }, () => ({ ...fill })).concat(candles);
+};
+
+const padNumberWindow = (values: number[], fallback: number): number[] => {
+  if (values.length >= CANDLE_WINDOW) {
+    return values.slice(-CANDLE_WINDOW);
+  }
+  const fill = values.length ? values[0] : fallback;
+  const missing = CANDLE_WINDOW - values.length;
+  return Array.from({ length: missing }, () => fill).concat(values);
+};
+
 const addCandleFeatures = (
   row: Record<string, number | string | null>,
   params: {
@@ -252,11 +293,14 @@ const addCandleFeatures = (
 ) => {
   const {
     featurePrefix = '',
-    candles,
-    btcCandles,
+    candles: rawCandles,
+    btcCandles: rawBtcCandles,
     currentPrice,
-    priceScaleSeries,
+    priceScaleSeries: rawPriceScaleSeries,
   } = params;
+  const candles = padCandles(rawCandles);
+  const btcCandles = padCandles(rawBtcCandles);
+  const priceScaleSeries = padNumberWindow(rawPriceScaleSeries, currentPrice);
   const key = (name: string) =>
     featurePrefix ? `${featurePrefix}_${name}` : name;
   const candleVolumes = candles.map((candle) => candle.volume);
@@ -401,18 +445,18 @@ const addCandleFeatures = (
     relReturns.length - 1,
     CANDLE_WINDOW,
   );
-  row[key('AltRet_Mean50')] = computeMean(windowAlt);
-  row[key('AltRet_Std50')] = computeStd(windowAlt);
-  row[key('AltRet_Skew50')] = computeSkew(windowAlt);
-  row[key('AltRet_Kurt50')] = computeKurtosis(windowAlt);
-  row[key('BtcRet_Mean50')] = computeMean(windowBtc);
-  row[key('BtcRet_Std50')] = computeStd(windowBtc);
-  row[key('BtcRet_Skew50')] = computeSkew(windowBtc);
-  row[key('BtcRet_Kurt50')] = computeKurtosis(windowBtc);
-  row[key('RelRet_Mean50')] = computeMean(windowRel);
-  row[key('RelRet_Std50')] = computeStd(windowRel);
-  row[key('RelRet_Skew50')] = computeSkew(windowRel);
-  row[key('RelRet_Kurt50')] = computeKurtosis(windowRel);
+  row[key('AltRet_Mean')] = computeMean(windowAlt);
+  row[key('AltRet_Std')] = computeStd(windowAlt);
+  row[key('AltRet_Skew')] = computeSkew(windowAlt);
+  row[key('AltRet_Kurt')] = computeKurtosis(windowAlt);
+  row[key('BtcRet_Mean')] = computeMean(windowBtc);
+  row[key('BtcRet_Std')] = computeStd(windowBtc);
+  row[key('BtcRet_Skew')] = computeSkew(windowBtc);
+  row[key('BtcRet_Kurt')] = computeKurtosis(windowBtc);
+  row[key('RelRet_Mean')] = computeMean(windowRel);
+  row[key('RelRet_Std')] = computeStd(windowRel);
+  row[key('RelRet_Skew')] = computeSkew(windowRel);
+  row[key('RelRet_Kurt')] = computeKurtosis(windowRel);
 };
 
 export const buildMlTrainingRow = (
@@ -420,7 +464,9 @@ export const buildMlTrainingRow = (
   resultRecord: MlResultRecord | null,
 ): Record<string, number | string | null> => {
   const { signal, context } = signalRecord;
-  const indicators = signal?.indicators ?? {};
+  const indicators = dropLastFromIndicatorSeries(
+    (signal?.indicators ?? {}) as Record<string, unknown>,
+  );
 
   // Core prices and context extracted from signal/candles.
   const currentPrice = toNumber(signal?.prices?.currentPrice, 0);
@@ -521,10 +567,10 @@ export const buildMlTrainingRow = (
 
   const addSeriesMoments = (prefix: string, values: unknown[]) => {
     const series = padSeries(normalizeSeries(values));
-    row[`${prefix}_Mean50`] = computeMean(series);
-    row[`${prefix}_Std50`] = computeStd(series);
-    row[`${prefix}_Skew50`] = computeSkew(series);
-    row[`${prefix}_Kurt50`] = computeKurtosis(series);
+    row[`${prefix}_Mean`] = computeMean(series);
+    row[`${prefix}_Std`] = computeStd(series);
+    row[`${prefix}_Skew`] = computeSkew(series);
+    row[`${prefix}_Kurt`] = computeKurtosis(series);
   };
 
   const addSeriesStd = (prefix: string, values: unknown[]) => {
@@ -547,20 +593,6 @@ export const buildMlTrainingRow = (
       const denom = denomSeriesSafe[i];
       row[`${prefix}_${i + 1}`] = safeDiv(value, denom);
     }
-  };
-
-  const addSeriesRelToBackwardReturns = (
-    prefix: string,
-    values: unknown[],
-    denomSeries: unknown[],
-  ) => {
-    const series = padSeries(normalizeSeries(values));
-    const denomSeriesSafe = padSeries(normalizeSeries(denomSeries));
-    const relSeries = series.map((value, i) =>
-      safeDiv(value, denomSeriesSafe[i]),
-    );
-    const returns = backwardReturns(relSeries);
-    assignBackwardReturns(row, prefix, returns);
   };
 
   const addSeriesLogVolume = (prefix: string, values: unknown[]) => {
@@ -806,13 +838,13 @@ export const buildMlTrainingRow = (
   row.Regime_ATR_PCT_Last = atrPctLast;
   row.Regime_ATR_PCT_Z = clamp(atrPctZ, -8, 8);
   row.Regime_ATR_PCT_Rank = atrPctRank;
-  row.Regime_RealizedVol_50 = realizedVol;
+  row.Regime_RealizedVol = realizedVol;
   row.Regime_RealizedVol_Rank = realizedVolRank;
   row.Regime_TrendStrength = trendStrength;
   row.Regime_IsHighVol = atrPctRank >= 0.7 || realizedVolRank >= 0.7 ? 1 : 0;
   row.Ctx_DistanceTo24hRange = clamp(
-    toNumber(row.TF15M_HighPrice24h_50, 0) -
-      toNumber(row.TF15M_LowPrice24h_50, 0),
+    toNumber(row.TF15M_HighPrice24h_5, 0) -
+      toNumber(row.TF15M_LowPrice24h_5, 0),
     -10,
     10,
   );
