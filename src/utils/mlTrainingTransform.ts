@@ -652,36 +652,51 @@ export const buildMlTrainingRow = (
       asArray(indicators[keyWithSourceSuffix(key, sourceSuffix, sourcePrefix)]);
     const featureKey = (key: string) =>
       keyWithFeaturePrefix(key, featurePrefix);
+    const backwardReturnSeries: Array<[string, string]> = [
+      ['MA_Fast', 'maFast'],
+      ['MA_Medium', 'maMedium'],
+      ['MA_Slow', 'maSlow'],
+      ['BB_Upper', 'bbUpper'],
+      ['BB_Middle', 'bbMiddle'],
+      ['BB_Lower', 'bbLower'],
+    ];
+    const logVolumeBackwardReturnSeries: Array<[string, string]> = [
+      ['OBV_LogRet', 'obv'],
+      ['SMA_OBV_LogRet', 'smaObv'],
+    ];
+    const momentsSeries: Array<[string, string]> = [
+      ['ATR_PCT', 'atrPct'],
+      ['MACD_Histogram', 'macdHistogram'],
+      ['Price24hPcnt', 'price24hPcnt'],
+      ['Price1hPcnt', 'price1hPcnt'],
+    ];
+    const relToSeries: Array<[string, string, string]> = [
+      ['HighPrice1h', 'highPrice1h', 'maMedium'],
+      ['LowPrice1h', 'lowPrice1h', 'maMedium'],
+      ['HighPrice24h', 'highPrice24h', 'maMedium'],
+      ['LowPrice24h', 'lowPrice24h', 'maMedium'],
+      ['HighLevel', 'highLevel', 'maMedium'],
+      ['LowLevel', 'lowLevel', 'maMedium'],
+      ['PrevClose', 'prevClose', 'maMedium'],
+    ];
 
     addSeries(featureKey('ATR'), indicatorSeries('atr'), priceBase);
-    addSeriesBackwardReturns(featureKey('MA_Fast'), indicatorSeries('maFast'));
-    addSeriesBackwardReturns(
-      featureKey('MA_Medium'),
-      indicatorSeries('maMedium'),
-    );
-    addSeriesBackwardReturns(featureKey('MA_Slow'), indicatorSeries('maSlow'));
-    addSeriesBackwardReturns(
-      featureKey('BB_Upper'),
-      indicatorSeries('bbUpper'),
-    );
-    addSeriesBackwardReturns(
-      featureKey('BB_Middle'),
-      indicatorSeries('bbMiddle'),
-    );
-    addSeriesBackwardReturns(
-      featureKey('BB_Lower'),
-      indicatorSeries('bbLower'),
-    );
-    addSeriesLogVolumeBackwardReturns(
-      featureKey('OBV_LogRet'),
-      indicatorSeries('obv'),
-    );
-    addSeriesLogVolumeBackwardReturns(
-      featureKey('SMA_OBV_LogRet'),
-      indicatorSeries('smaObv'),
-    );
+    for (const [featureName, sourceName] of backwardReturnSeries) {
+      addSeriesBackwardReturns(
+        featureKey(featureName),
+        indicatorSeries(sourceName),
+      );
+    }
+    for (const [featureName, sourceName] of logVolumeBackwardReturnSeries) {
+      addSeriesLogVolumeBackwardReturns(
+        featureKey(featureName),
+        indicatorSeries(sourceName),
+      );
+    }
     addSeriesRaw(featureKey('ATR_PCT'), indicatorSeries('atrPct'));
-    addSeriesMoments(featureKey('ATR_PCT'), indicatorSeries('atrPct'));
+    for (const [featureName, sourceName] of momentsSeries) {
+      addSeriesMoments(featureKey(featureName), indicatorSeries(sourceName));
+    }
     // MACD family crosses zero frequently; standardized levels are more stable
     // than ratio-returns for such oscillators.
     addSeriesStd(featureKey('MACD'), indicatorSeries('macd'));
@@ -690,61 +705,24 @@ export const buildMlTrainingRow = (
       featureKey('MACD_Histogram'),
       indicatorSeries('macdHistogram'),
     );
-    addSeriesMoments(
-      featureKey('MACD_Histogram'),
-      indicatorSeries('macdHistogram'),
-    );
     addSeriesPct(featureKey('Price24hPcnt'), indicatorSeries('price24hPcnt'));
     addSeriesPct(featureKey('Price1hPcnt'), indicatorSeries('price1hPcnt'));
-    addSeriesMoments(
-      featureKey('Price24hPcnt'),
-      indicatorSeries('price24hPcnt'),
-    );
-    addSeriesMoments(featureKey('Price1hPcnt'), indicatorSeries('price1hPcnt'));
-    addSeriesRelTo(
-      featureKey('HighPrice1h'),
-      indicatorSeries('highPrice1h'),
-      indicatorSeries('maMedium'),
-    );
-    addSeriesRelTo(
-      featureKey('LowPrice1h'),
-      indicatorSeries('lowPrice1h'),
-      indicatorSeries('maMedium'),
-    );
+    for (const [featureName, sourceName, denomName] of relToSeries) {
+      addSeriesRelTo(
+        featureKey(featureName),
+        indicatorSeries(sourceName),
+        indicatorSeries(denomName),
+      );
+    }
     addSeriesLogVolume(featureKey('Volume1h'), indicatorSeries('volume1h'));
     addSeriesVolumeMedianNormalized(
       featureKey('Volume1h'),
       indicatorSeries('volume1h'),
     );
-    addSeriesRelTo(
-      featureKey('HighPrice24h'),
-      indicatorSeries('highPrice24h'),
-      indicatorSeries('maMedium'),
-    );
-    addSeriesRelTo(
-      featureKey('LowPrice24h'),
-      indicatorSeries('lowPrice24h'),
-      indicatorSeries('maMedium'),
-    );
     addSeriesLogVolume(featureKey('Volume24h'), indicatorSeries('volume24h'));
     addSeriesVolumeMedianNormalized(
       featureKey('Volume24h'),
       indicatorSeries('volume24h'),
-    );
-    addSeriesRelTo(
-      featureKey('HighLevel'),
-      indicatorSeries('highLevel'),
-      indicatorSeries('maMedium'),
-    );
-    addSeriesRelTo(
-      featureKey('LowLevel'),
-      indicatorSeries('lowLevel'),
-      indicatorSeries('maMedium'),
-    );
-    addSeriesRelTo(
-      featureKey('PrevClose'),
-      indicatorSeries('prevClose'),
-      indicatorSeries('maMedium'),
     );
   };
 
