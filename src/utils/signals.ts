@@ -76,14 +76,14 @@ export const formatMessage = (signal: Signal): string => {
       }
 
       if (configFromBacktest) {
-        lines.push('🔵 Using config from backtest');
+        lines.push('🟢 Using config from backtest');
       } else {
         lines.push('🟡 Using base config');
       }
 
       if (ml) {
         lines.push(
-          `${ml.passed ? '✅ ML: PASS' : '🚫 ML: FAIL'} (${ml.probability.toFixed(3)} / ${ml.threshold.toFixed(2)})`,
+          `${ml.passed ? '🟢 ML: PASS' : '🔴 ML: FAIL'} (${ml.probability.toFixed(3)} / ${ml.threshold.toFixed(2)})`,
         );
       }
 
