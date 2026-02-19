@@ -1,6 +1,6 @@
 'use client';
 
-import { Segment } from '@UI';
+import { Select } from '@UI';
 import { useFiltersContext } from '../context';
 
 const items = [
@@ -12,20 +12,21 @@ const items = [
 export const SelectProvider = () => {
   const { filters, onChangeFilters } = useFiltersContext();
 
-  const onChange = (value: string | null) => {
-    if (!value) return;
+  const onChange = (value: string[]) => {
+    if (!value[0]) return;
     onChangeFilters?.({
-      provider: value as 'bybit' | 'binance' | 'coinbase',
+      provider: value[0] as 'bybit' | 'binance' | 'coinbase',
       backtestId: null,
       backtestStrategy: null,
     });
   };
 
   return (
-    <Segment
-      defaultValue={filters.provider || 'bybit'}
+    <Select
+      defaultValue={[filters.provider || 'bybit']}
       onChange={onChange}
       items={items}
+      width="140px"
     />
   );
 };

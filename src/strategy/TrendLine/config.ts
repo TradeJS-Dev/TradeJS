@@ -5,7 +5,7 @@ export const config = {
   INTERVAL: '15' as Interval,
   MAKE_ORDERS: true,
   CLOSE_OPPOSITE_POSITIONS: false,
-  ML_THRESHOLD: 0.04,
+  ML_THRESHOLD: 0.1,
   MAX_LOSS_VALUE: 10,
   MAX_CORRELATION: 0.45,
   MA_FAST: 14,

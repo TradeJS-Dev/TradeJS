@@ -41,6 +41,18 @@ export const TrendlineStrategyCreator: StrategyCreator = async ({
   let configFromBacktest = false;
 
   if (config.ENV !== 'BACKTEST') {
+    const userConfig = (await getData(
+      redisKeys.strategyConfig(userName, 'TrendLine'),
+      {},
+    )) as typeof config;
+
+    if (!_.isEmpty(userConfig)) {
+      config = {
+        ...config,
+        ...userConfig,
+      };
+    }
+
     const results = (await getData(
       redisKeys.strategyResults(userName, 'TrendLine'),
       {},
@@ -289,11 +301,7 @@ export const TrendlineStrategyCreator: StrategyCreator = async ({
     }
 
     const shouldMakeOrder =
-      MAKE_ORDERS &&
-      (ENV === 'BACKTEST' ||
-        configFromBacktest ||
-        signal.ml?.passed ||
-        (correlation || 0) <= MAX_CORRELATION);
+      MAKE_ORDERS && (ENV === 'BACKTEST' || signal.ml?.passed);
 
     signal.orderStatus = 'canceled';
 
