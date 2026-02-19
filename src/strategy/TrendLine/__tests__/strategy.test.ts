@@ -5,6 +5,7 @@ import { calculateCoinBtcCorrelation } from '@utils/correlation';
 import { filterByVeryVolatility } from '../filters';
 import { logger } from '@utils/logger';
 import { fetchMlThreshold } from '@utils/mlGrpc';
+import { getData, redisKeys } from '@utils/redis';
 
 jest.mock('@utils/trendLineEngine', () => ({
   createTrendlineEngine: jest.fn(),
@@ -13,6 +14,7 @@ jest.mock('@utils/trendLineEngine', () => ({
 jest.mock('@utils/redis', () => ({
   getData: jest.fn(async () => ({})),
   redisKeys: {
+    strategyConfig: jest.fn(() => 'strategy:config:TrendLine'),
     strategyResults: jest.fn(() => 'strategy:results:TrendLine'),
   },
 }));
@@ -61,6 +63,7 @@ describe('TrendlineStrategyCreator', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     (filterByVeryVolatility as jest.Mock).mockReturnValue(true);
+    (getData as jest.Mock).mockImplementation(async () => ({}));
   });
 
   it('stores 10 indicator values and exposes them in signal', async () => {
@@ -183,6 +186,84 @@ describe('TrendlineStrategyCreator', () => {
     expect(result.indicators.smaObv).toHaveLength(10);
     expect(result.indicators.price24hPcnt).toHaveLength(10);
     expect(result.indicators.volume24h).toHaveLength(10);
+  });
+
+  it('merges user strategy config from redis in non-BACKTEST mode', async () => {
+    (getData as jest.Mock).mockImplementation(async (key: string) => {
+      if (key === 'strategy:config:TrendLine') {
+        return {
+          LOWS: {
+            enable: false,
+          },
+        };
+      }
+      return {};
+    });
+
+    (createTrendlineEngine as jest.Mock).mockImplementation(
+      (_data, options) => {
+        const line = {
+          id: 'line-1',
+          mode: options.mode ?? 'lows',
+          distance: 1,
+          touches: [{ timestamp: 1, value: 1 }],
+          points: [{ timestamp: 1, value: 1 }],
+        };
+        return {
+          next: jest.fn(() => [line]),
+        };
+      },
+    );
+
+    (createIndicators as jest.Mock).mockImplementation(() => ({
+      next: jest.fn(() => ({})),
+      result: jest.fn(() => ({})),
+    }));
+
+    const cachedData: any[] = [makeCandle(1, 100)];
+    const btcCachedData: any[] = [makeCandle(1, 20000)];
+    const connector: any = {
+      getPosition: jest.fn(async () => ({ qty: 0 })),
+      kline: jest.fn(async () => cachedData),
+    };
+
+    const strategy = await TrendlineStrategyCreator({
+      userName: 'test',
+      config: {
+        ENV: 'test',
+        INTERVAL: '15',
+        MAKE_ORDERS: false,
+        MAX_LOSS_VALUE: 10,
+        MAX_CORRELATION: 1,
+        TRENDLINE: {},
+        HIGHS: {
+          enable: false,
+          direction: 'LONG',
+          TP: 2,
+          SL: 1,
+          minRiskRatio: 0,
+        },
+        LOWS: {
+          enable: true,
+          direction: 'LONG',
+          TP: 2,
+          SL: 1,
+          minRiskRatio: 0,
+        },
+      },
+      symbol: 'TESTUSDT',
+      data: cachedData,
+      btcData: btcCachedData,
+      connector,
+    });
+
+    const result = await strategy(
+      makeCandle(1_700_000_000_000, 100),
+      makeCandle(1_700_000_000_000, 20000),
+    );
+
+    expect(redisKeys.strategyConfig).toHaveBeenCalledWith('test', 'TrendLine');
+    expect(result).toBe('STRATEGY_DISABLED');
   });
 
   it('returns VERY_VOLATILITY when filter fails', async () => {
@@ -454,6 +535,12 @@ describe('TrendlineStrategyCreator', () => {
   });
 
   it('closes opposite positions on other symbols before opening in non-BACKTEST', async () => {
+    (fetchMlThreshold as jest.Mock).mockResolvedValue({
+      passed: true,
+      threshold: 0.1,
+      score: 0.2,
+    });
+
     (createTrendlineEngine as jest.Mock).mockImplementation(
       (_data, options) => {
         const line = {
