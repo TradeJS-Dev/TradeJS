@@ -40,6 +40,7 @@ export const KlineChart = ({ id, filters, indicators }: KlineChartProps) => {
   const updateDataCallback = useRef<
     DataLoaderSubscribeBarParams['callback'] | null
   >(null);
+  const RIGHT_EDGE_EPSILON_BARS = 1;
 
   useEffect(() => {
     const chart = init(id) as Chart;
@@ -60,12 +61,15 @@ export const KlineChart = ({ id, filters, indicators }: KlineChartProps) => {
 
     const chart = chartRef.current;
     const currentSymbol = chart.getSymbol()?.ticker;
-    const currenInterval = chart.getPeriod()?.span;
+    const currentInterval = chart.getPeriod()?.span;
+    const nextInterval = parseInt(filters.interval, 10);
+    const symbolChanged = currentSymbol !== filters.symbol;
+    const intervalChanged = currentInterval !== nextInterval;
 
-    if (`${currentSymbol}_${currenInterval}` !== key) {
+    if (symbolChanged || intervalChanged) {
       chartRef.current.setSymbol({ ticker: filters.symbol, pricePrecision: 9 });
       chartRef.current.setPeriod({
-        span: parseInt(filters.interval),
+        span: nextInterval,
         type: 'minute',
       });
 
@@ -86,6 +90,19 @@ export const KlineChart = ({ id, filters, indicators }: KlineChartProps) => {
     }
 
     const currentData = chart.getDataList();
+    const visibleRangeBeforeUpdate = chart.getVisibleRange();
+    const maxVisibleDataIndex = currentData.length - 1;
+    const wasPinnedToRightEdge =
+      maxVisibleDataIndex <= 0 ||
+      maxVisibleDataIndex - visibleRangeBeforeUpdate.realTo <=
+        RIGHT_EDGE_EPSILON_BARS;
+    const dataIndexToKeepVisible = Math.max(
+      0,
+      Math.min(
+        maxVisibleDataIndex,
+        Math.floor(visibleRangeBeforeUpdate.realTo),
+      ),
+    );
     const dataByTimestamp = _.keyBy(currentData, 'timestamp');
 
     const updatedCandles = data.filter((c) => {
@@ -111,6 +128,10 @@ export const KlineChart = ({ id, filters, indicators }: KlineChartProps) => {
     updatedCandles.forEach((candle) => {
       updateDataCallback.current?.(candle);
     });
+
+    if (!wasPinnedToRightEdge) {
+      chart.scrollToDataIndex(dataIndexToKeepVisible);
+    }
   }, [key, data, fulfilled]);
 
   const chart = chartRef.current;

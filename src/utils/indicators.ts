@@ -1,6 +1,7 @@
 import { SMA, ATR, BollingerBands, OBV, MACD } from 'technicalindicators';
 import { Candle } from '@types';
 import { ML_BASE_CANDLES_WINDOW } from '@constants';
+import { cloneArrayValues } from '@utils/array';
 
 const CANDLE_WINDOW = ML_BASE_CANDLES_WINDOW;
 const BASE_INTERVAL_MINUTES = 15;
@@ -264,6 +265,7 @@ export const createIndicators = (
   });
 
   const indicatorHistory: Record<string, number[]> = {};
+
   const pushIndicator = (key: string, value: number | null | undefined) => {
     if (value == null) {
       return;
@@ -504,12 +506,13 @@ export const createIndicators = (
   return {
     next,
     result: () => {
+      const baseHistory = cloneArrayValues(indicatorHistory);
       if (!includeMlPayload) {
-        return indicatorHistory;
+        return baseHistory;
       }
 
-      return {
-        ...indicatorHistory,
+      const fullHistory = {
+        ...baseHistory,
         ...buildMlTimeframeIndicators(candlesHistory, indicatorPeriods),
         ...buildMlCandleIndicators(candlesHistory, btcCandlesHistory),
         ...buildIndicatorSeriesByTimeframes(
@@ -518,6 +521,8 @@ export const createIndicators = (
           'btc',
         ),
       };
+
+      return fullHistory;
     },
   };
 };
@@ -541,11 +546,11 @@ export const buildMlTimeframeIndicators = (
       periods: indicatorPeriods,
     }).result();
     for (const [key, values] of Object.entries(history)) {
-      result[`${key}${timeframe.suffix}`] = values.slice();
+      result[`${key}${timeframe.suffix}`] = values;
     }
   }
 
-  return result;
+  return cloneArrayValues(result);
 };
 
 const withSourcePrefix = (key: string, sourcePrefix = '') => {
@@ -566,13 +571,13 @@ const buildIndicatorSeriesByTimeframes = (
     periods,
   }).result();
   for (const [key, values] of Object.entries(baseHistory)) {
-    result[withSourcePrefix(key, sourcePrefix)] = values.slice();
+    result[withSourcePrefix(key, sourcePrefix)] = values;
   }
 
   const timeframeHistory = buildMlTimeframeIndicators(candles, periods);
   for (const [key, values] of Object.entries(timeframeHistory)) {
-    result[withSourcePrefix(key, sourcePrefix)] = values.slice();
+    result[withSourcePrefix(key, sourcePrefix)] = values;
   }
 
-  return result;
+  return cloneArrayValues(result);
 };

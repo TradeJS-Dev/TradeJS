@@ -74,4 +74,32 @@ describe('buildMlPayload', () => {
     expect(payload.signal.indicators.candles15m).toEqual(candles);
     expect(payload.signal.indicators.btcCandles15m).toEqual(btcCandles);
   });
+
+  it('keeps indicator arrays by reference and only clones indicators container', () => {
+    const maFast = [1, 2];
+    const candles15m = [makeCandle(1), makeCandle(2)];
+    const signal = {
+      signalId: 's2',
+      symbol: 'ETHUSDT',
+      strategy: 'TrendLine',
+      interval: '15' as any,
+      direction: 'LONG',
+      timestamp: 2,
+      figures: {},
+      prices: {
+        currentPrice: 1,
+        takeProfitPrice: 1,
+        stopLossPrice: 1,
+        riskRatio: 1,
+      },
+      indicators: { maFast, candles15m },
+    };
+    const payload = buildMlPayload({
+      signal: signal as any,
+    });
+
+    expect(payload.signal.indicators).not.toBe(signal.indicators);
+    expect(payload.signal.indicators.maFast).toBe(maFast);
+    expect(payload.signal.indicators.candles15m).toBe(candles15m);
+  });
 });

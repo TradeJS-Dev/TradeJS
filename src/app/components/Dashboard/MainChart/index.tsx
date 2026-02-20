@@ -6,6 +6,8 @@ import { useFilters, useIndicators } from '@store';
 import { getTimestamp } from '@utils/timestamp';
 import { KlineChart } from '../KlineChart';
 
+const DASHBOARD_REFRESH_DELAY = 5_000;
+
 export const MainChart = () => {
   const { filters, setFilters } = useFilters();
   const { indicatorsByKey } = useIndicators();
@@ -15,7 +17,7 @@ export const MainChart = () => {
       setFilters({
         end: getTimestamp(),
       });
-    }, 10_000);
+    }, DASHBOARD_REFRESH_DELAY);
 
     return () => {
       clearInterval(intervalId);

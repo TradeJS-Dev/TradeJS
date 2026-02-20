@@ -188,6 +188,92 @@ describe('TrendlineStrategyCreator', () => {
     expect(result.indicators.volume24h).toHaveLength(10);
   });
 
+  it('keeps indicator history isolated between sequential signals', async () => {
+    (createTrendlineEngine as jest.Mock).mockImplementation(
+      (_data, options) => {
+        const line = {
+          id: 'line-1',
+          mode: options.mode ?? 'lows',
+          distance: 1,
+          touches: [{ timestamp: 1, value: 1 }],
+          points: [{ timestamp: 1, value: 1 }],
+        };
+        return {
+          next: jest.fn(() => [line]),
+        };
+      },
+    );
+
+    let value = 0;
+    (createIndicators as jest.Mock).mockImplementation(() => {
+      const indicatorHistory: Record<string, number[]> = { maFast: [] };
+      return {
+        next: jest.fn(() => {
+          value += 1;
+          indicatorHistory.maFast.push(value);
+          return { maFast: value };
+        }),
+        result: jest.fn(() => ({
+          maFast: indicatorHistory.maFast.slice(),
+        })),
+      };
+    });
+
+    const cachedData: any[] = [makeCandle(1, 100)];
+    const btcCachedData: any[] = [makeCandle(1, 20000)];
+    const connector: any = {
+      getPosition: jest.fn(async () => ({ qty: 0 })),
+      kline: jest.fn(async () => cachedData),
+    };
+
+    const strategy = await TrendlineStrategyCreator({
+      userName: 'test',
+      config: {
+        ENV: 'test',
+        INTERVAL: '15',
+        MAKE_ORDERS: false,
+        MAX_LOSS_VALUE: 10,
+        MAX_CORRELATION: 1,
+        TRENDLINE: {},
+        HIGHS: {
+          enable: false,
+          direction: 'LONG',
+          TP: 2,
+          SL: 1,
+          minRiskRatio: 0,
+        },
+        LOWS: {
+          enable: true,
+          direction: 'LONG',
+          TP: 2,
+          SL: 1,
+          minRiskRatio: 0,
+        },
+      },
+      symbol: 'TESTUSDT',
+      data: cachedData,
+      btcData: btcCachedData,
+      connector,
+    });
+
+    const signalA = await strategy(
+      makeCandle(1_700_000_000_000, 100),
+      makeCandle(1_700_000_000_000, 20000),
+    );
+    const signalB = await strategy(
+      makeCandle(1_700_000_900_000, 101),
+      makeCandle(1_700_000_900_000, 20001),
+    );
+
+    expect(typeof signalA).toBe('object');
+    expect(typeof signalB).toBe('object');
+    expect((signalA as any).indicators.maFast).toEqual([1]);
+    expect((signalB as any).indicators.maFast).toEqual([1, 2]);
+    expect((signalA as any).indicators.maFast).not.toBe(
+      (signalB as any).indicators.maFast,
+    );
+  });
+
   it('merges user strategy config from redis in non-BACKTEST mode', async () => {
     (getData as jest.Mock).mockImplementation(async (key: string) => {
       if (key === 'strategy:config:TrendLine') {

@@ -194,6 +194,65 @@ describe('testing backtest flow', () => {
       expect.objectContaining({ chunkId: 'worker-2' }),
     );
   });
+
+  it('matches ml results to pending payload by signalId for batched exits', async () => {
+    const data = [
+      candle(1_000_050),
+      candle(1_000_150),
+      candle(1_000_250),
+      candle(1_000_350),
+    ];
+    mockByBitConnector.kline.mockResolvedValue(data);
+    mockStrategy
+      .mockResolvedValueOnce({ signalId: 's1', symbol: 'ETHUSDT' })
+      .mockResolvedValueOnce({ signalId: 's2', symbol: 'ETHUSDT' })
+      .mockResolvedValueOnce('HOLD');
+    mockTestConnector.drainMlResultsBatch
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([
+        { signalId: 's2', profit: 2.2 },
+        { signalId: 's1', profit: -1.1 },
+      ])
+      .mockResolvedValue([]);
+    mockBuildMlTrainingRow.mockImplementation(
+      (signalRecord: any, resultRecord: any) => ({
+        signalId: signalRecord?.signal?.signalId,
+        profit: resultRecord?.profit,
+      }),
+    );
+
+    await testing(createTest({ ml: true }));
+
+    expect(mockBuildMlPayload).toHaveBeenCalledTimes(2);
+    expect(mockBuildMlTrainingRow).toHaveBeenCalledTimes(2);
+    expect(mockBuildMlTrainingRow).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        signal: expect.objectContaining({ signalId: 's2' }),
+      }),
+      expect.objectContaining({ profit: 2.2 }),
+    );
+    expect(mockBuildMlTrainingRow).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        signal: expect.objectContaining({ signalId: 's1' }),
+      }),
+      expect.objectContaining({ profit: -1.1 }),
+    );
+    expect(mockAppendMlDatasetRow).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        row: expect.objectContaining({ signalId: 's2', profit: 2.2 }),
+      }),
+    );
+    expect(mockAppendMlDatasetRow).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        row: expect.objectContaining({ signalId: 's1', profit: -1.1 }),
+      }),
+    );
+  });
 });
 mockBuildMlTrainingRow.mockClear();
 mockAppendMlDatasetRow.mockClear();

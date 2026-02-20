@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import _ from 'lodash';
 import { registerOverlay, registerIndicator, Chart } from 'klinecharts';
 import { KlineChartItem, OrderLogData, Signal, TrendLine } from '@types';
@@ -401,19 +401,8 @@ const createBacktestProfit = (
 
 export const useBacktest = (chart: Chart | null, id: string | undefined) => {
   const { backtest } = useBacktestStore(id);
-  const [key, setKey] = useState('BTCUSDT_15');
   const enabled = Boolean(id);
-
-  useEffect(() => {
-    if (!chart) {
-      return;
-    }
-
-    const currentSymbol = chart.getSymbol()?.ticker;
-    const currenInterval = chart.getPeriod()?.span;
-
-    setKey(`${currentSymbol}_${currenInterval}`);
-  }, [chart]);
+  const candlesLength = chart?.getDataList()?.length || 0;
 
   useEffect(() => {
     if (!chart || !enabled || _.isEmpty(backtest)) {
@@ -506,7 +495,7 @@ export const useBacktest = (chart: Chart | null, id: string | undefined) => {
         }
       }
     };
-  }, [chart, enabled, backtest, id, key]);
+  }, [chart, enabled, backtest, id, candlesLength]);
 
   return null;
 };

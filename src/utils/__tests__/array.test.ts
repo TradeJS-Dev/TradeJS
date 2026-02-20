@@ -1,4 +1,9 @@
-import { intervalToMs, isWrongData, mergeData } from '@utils/array';
+import {
+  cloneArrayValues,
+  intervalToMs,
+  isWrongData,
+  mergeData,
+} from '@utils/array';
 import { Interval, KlineChartItem } from '@types';
 
 const createCandle = (timestamp: number, close: number): KlineChartItem => ({
@@ -66,6 +71,21 @@ describe('array utils', () => {
       ];
 
       expect(isWrongData('1', data)).toBe(true);
+    });
+  });
+
+  describe('cloneArrayValues', () => {
+    it('clones array values and keeps scalar values as-is', () => {
+      const src = {
+        arr: [1, 2],
+        value: 7,
+      };
+
+      const cloned = cloneArrayValues(src);
+
+      expect(cloned).toEqual(src);
+      expect(cloned.arr).not.toBe(src.arr);
+      expect(cloned.value).toBe(src.value);
     });
   });
 });

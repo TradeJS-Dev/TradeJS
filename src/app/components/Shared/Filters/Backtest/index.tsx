@@ -40,10 +40,16 @@ export const SelectBacktest = () => {
       typeof window !== 'undefined'
         ? window.localStorage.getItem(STORAGE_KEY)
         : null;
+    const fromFilters =
+      filters.backtestStrategy &&
+      strategyItems.some((item) => item.value === filters.backtestStrategy)
+        ? filters.backtestStrategy
+        : null;
     const defaultStrategy =
-      saved && strategyItems.some((item) => item.value === saved)
+      fromFilters ||
+      (saved && strategyItems.some((item) => item.value === saved)
         ? saved
-        : strategyItems[0]?.value || '';
+        : strategyItems[0]?.value || '');
 
     if (defaultStrategy) {
       setSelectedStrategy(defaultStrategy);
@@ -51,7 +57,24 @@ export const SelectBacktest = () => {
       setSelectedStrategy(strategyItems[0].value);
     }
     setHydrated(true);
-  }, [hydrated, strategyItems]);
+  }, [hydrated, strategyItems, filters.backtestStrategy]);
+
+  useEffect(() => {
+    if (!filters.backtestId) return;
+
+    const selectedTest = tests.find(
+      (test) => test.value === filters.backtestId,
+    );
+    const strategyName = selectedTest?.data?.strategyName;
+
+    if (
+      typeof strategyName === 'string' &&
+      strategyName &&
+      selectedStrategy !== strategyName
+    ) {
+      setSelectedStrategy(strategyName);
+    }
+  }, [filters.backtestId, tests, selectedStrategy]);
 
   useEffect(() => {
     if (!hydrated) return;

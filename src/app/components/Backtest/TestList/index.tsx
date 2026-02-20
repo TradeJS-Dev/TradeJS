@@ -32,6 +32,7 @@ export const TestList = ({ overscan = 2 }: ListProps) => {
               <TestCard.CompareButton />
               <TestCard.FavoriteIndicator />
               <TestCard.ConfigDrawer />
+              <TestCard.OpenDashboardButton />
               <TestCard.OpenReportButton />
             </TestCard.Title>
             <TestCard.Chart />

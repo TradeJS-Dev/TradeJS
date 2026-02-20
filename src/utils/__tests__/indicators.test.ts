@@ -144,4 +144,45 @@ describe('utils indicators', () => {
     expect(Array.isArray(result.btcMaFast1h)).toBe(true);
     expect(Array.isArray(result.btcAtrPct4h)).toBe(true);
   });
+
+  it('returns snapshot result that is not mutated by subsequent next() calls', () => {
+    const indicators = createIndicators([], [], {
+      periods: {
+        maFast: 3,
+        maMedium: 3,
+        maSlow: 3,
+        obvSma: 3,
+        atr: 3,
+        atrPctShort: 3,
+        atrPctLong: 3,
+        bb: 3,
+        bbStd: 2,
+        macdFast: 3,
+        macdSlow: 4,
+        macdSignal: 2,
+      },
+    });
+
+    for (let i = 0; i < 120; i += 1) {
+      const ts = i * INTERVAL_15M_MS;
+      indicators.next(makeCandle(ts, 100 + i), makeCandle(ts, 20000 + i));
+    }
+
+    const first = indicators.result() as Record<string, any>;
+    const firstMaFastLen = first.maFast.length;
+    const firstCandlesLen = first.candles15m.length;
+    const firstMaFastTail = first.maFast[first.maFast.length - 1];
+
+    indicators.next(
+      makeCandle(120 * INTERVAL_15M_MS, 221),
+      makeCandle(120 * INTERVAL_15M_MS, 20221),
+    );
+
+    const second = indicators.result() as Record<string, any>;
+    expect(first.maFast).not.toBe(second.maFast);
+    expect(first.candles15m).not.toBe(second.candles15m);
+    expect(first.maFast.length).toBe(firstMaFastLen);
+    expect(first.candles15m.length).toBe(firstCandlesLen);
+    expect(second.maFast[second.maFast.length - 1]).not.toBe(firstMaFastTail);
+  });
 });

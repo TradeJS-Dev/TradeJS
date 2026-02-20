@@ -9,6 +9,7 @@ import { TestCardConfigDrawer } from './ConfigDrawer';
 import { TestCardCompareButton } from './CompareButton';
 import { TestCardFavoriteIndicator } from './FavoriteIndicator';
 import { TestCardOpenReportButton } from './OpenReportButton';
+import { TestCardOpenDashboardButton } from './OpenDashboardButton';
 
 export const TestCard = {
   Root: TestCardRoot,
@@ -20,5 +21,6 @@ export const TestCard = {
   ConfigDrawer: TestCardConfigDrawer,
   CompareButton: TestCardCompareButton,
   FavoriteIndicator: TestCardFavoriteIndicator,
+  OpenDashboardButton: TestCardOpenDashboardButton,
   OpenReportButton: TestCardOpenReportButton,
 };
