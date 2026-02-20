@@ -189,7 +189,6 @@ export const testing: TestingBox = async ({
     // can only be closed starting from the next candle to avoid same-bar lookahead.
     await testConnector.checkSl(candle);
     await testConnector.checkTp(candle);
-    await flushMlResultsBatch();
 
     const signal = await strategy(candle, btcCandle);
     if (ml && signal && typeof signal !== 'string' && signal.signalId) {

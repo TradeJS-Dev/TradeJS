@@ -80,6 +80,7 @@ type ErrorMessage = { id?: number; error?: unknown; payload?: any };
 let successTests = 0;
 let errorTests = 0;
 const errorMessages: ErrorMessage[] = [];
+let results: TestWorkerResult[] = [];
 const resultsByTickers = new Map<string, TestWorkerResult>();
 
 const userName = flags.user;
@@ -190,7 +191,6 @@ const backtest = async () => {
 
   const chunkSize = Math.ceil(testSuite.length / parseInt(flags.parallel));
   const chunks = _.chunk(testSuite, chunkSize);
-  let results: TestWorkerResult[] = [];
   let completedWorkers = 0;
   let completedTests = 0;
   let isFinishing = false;
@@ -244,7 +244,7 @@ const backtest = async () => {
         if (completedWorkers === chunks.length && !isFinishing) {
           isFinishing = true;
           results = sortBestTests(results, flags.top);
-          await finish(results);
+          await finish();
         }
 
         return;
@@ -326,10 +326,8 @@ const backtest = async () => {
   }
 };
 
-const finish = async (results: TestWorkerResult[]) => {
+const saveAndPrintResults = async () => {
   const colorizedResults: string[][] = [];
-  const colorizedResultsByTickers: string[][] = [];
-
   for await (const result of results) {
     const { test, orderLogId } = result;
 
@@ -360,7 +358,10 @@ const finish = async (results: TestWorkerResult[]) => {
   console.log('RESULTS:');
   console.log(createTable(HEADERS_RESULTS, colorizedResults));
   console.log('');
+};
 
+const saveAndPrintResultsByTickers = async () => {
+  const colorizedResultsByTickers: string[][] = [];
   for await (const result of resultsByTickers.values()) {
     const { test, orderLogId } = result;
 
@@ -393,6 +394,14 @@ const finish = async (results: TestWorkerResult[]) => {
     createTable(HEADERS_RESULTS_BY_TICKERS, colorizedResultsByTickers),
   );
   console.log('');
+};
+
+const finish = async () => {
+  if (flags.tickers) {
+    await saveAndPrintResults();
+  } else {
+    await saveAndPrintResultsByTickers();
+  }
 
   const bestConfig = results[0]?.test.strategyConfig;
   console.log(chalk.gray('BEST CONFIG:'));

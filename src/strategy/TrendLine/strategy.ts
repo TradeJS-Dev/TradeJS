@@ -301,7 +301,7 @@ export const TrendlineStrategyCreator: StrategyCreator = async ({
     }
 
     const shouldMakeOrder =
-      MAKE_ORDERS && (ENV === 'BACKTEST' || signal.ml?.passed);
+      MAKE_ORDERS && (ENV === 'BACKTEST' || configFromBacktest);
 
     signal.orderStatus = 'canceled';
 
