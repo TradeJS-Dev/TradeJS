@@ -15,6 +15,10 @@
   - `buildMlTrainingRow` + `trimMlTrainingRowWindows(..., 5)` in backtest dataset writes.
   - `buildMlTrainingRow` + `trimMlTrainingRowWindows(..., 5)` in grpc inference path.
 - Last candle/indicator element is dropped before feature construction to align backtest with live signal timing.
+- Runtime (non-ML) AI signal review for live TrendLine execution is a separate layer:
+  - evaluates current signal payload + trendline,
+  - writes Redis `analysis:*`,
+  - gates live order placement by AI-confirmed direction + quality.
 
 ## Status Update (2026-02-18)
 - Closed:
@@ -34,6 +38,7 @@
 3. PnL realism gap (fees/slippage/capacity not fully enforced in model selection loop).
 4. Regime shift risk (drift not explicitly gated before/after deploy).
 5. Operational risk (no strict promotion registry/rollback policy artifact).
+6. Runtime AI gating risk (LLM false negatives/positives affecting live order frequency/quality if prompt/validation drifts).
 
 ## Target Quality Gates
 Use these as hard gates before production promotion.
@@ -131,3 +136,4 @@ Use these as hard gates before production promotion.
 1. Add leakage-focused tests for transformed features in `mlTrainingTransform`.
 2. Add gate-evaluator script to parse report + meta and return pass/fail.
 3. Add deploy manifest and rollback command using alias snapshots.
+4. Track runtime AI gating metrics separately from ML metrics (approval rate, quality distribution, retest-required rate, disagreement with strategy direction).

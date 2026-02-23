@@ -37,6 +37,15 @@
 - В inference (`mlGrpc`): `buildMlTrainingRow` -> `trimMlTrainingRowWindows(..., 5)` -> gRPC `Predict`.
 - Это фиксирует одинаковую форму фич между train/backtest/prod.
 
+### Важно: не путать с runtime AI-анализом сигналов
+
+- Этот документ описывает ML feature pipeline (`buildMlTrainingRow`, `trimMlTrainingRowWindows`, gRPC inference).
+- Runtime AI-анализ сигналов (`src/utils/ai.ts`) использует другой payload:
+  - текущий `signal`,
+  - `signal.indicators` с runtime-именами (`maFast`, `btcMaFast1h`, `candles15m` и т.п.),
+  - `figures.trendLine` (без trim).
+- Для LLM ряды в runtime payload тоже режутся до последних 5 значений, но это не `TF*_ALT_* / TF*_BTC_*` naming из ML transform.
+
 ## 5. BB moments
 
 - Для `BB_Upper`, `BB_Middle`, `BB_Lower` добавлены статистики:

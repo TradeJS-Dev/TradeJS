@@ -138,10 +138,9 @@ describe('testing backtest flow', () => {
         symbol: 'ETHUSDT',
       })
       .mockResolvedValueOnce('HOLD');
-    mockTestConnector.drainMlResultsBatch
-      .mockResolvedValueOnce([])
-      .mockResolvedValueOnce([{ signalId: 's1', profit: 2.5 }])
-      .mockResolvedValue([]);
+    mockTestConnector.drainMlResultsBatch.mockResolvedValueOnce([
+      { signalId: 's1', profit: 2.5 },
+    ]);
 
     await testing(createTest({ ml: true }));
 
@@ -174,9 +173,9 @@ describe('testing backtest flow', () => {
       signalId: 's1',
       symbol: 'ETHUSDT',
     });
-    mockTestConnector.drainMlResultsBatch
-      .mockResolvedValueOnce([])
-      .mockResolvedValueOnce([{ signalId: 's1', profit: 1.1 }]);
+    mockTestConnector.drainMlResultsBatch.mockResolvedValueOnce([
+      { signalId: 's1', profit: 1.1 },
+    ]);
 
     await testing(
       createTest({
@@ -207,14 +206,10 @@ describe('testing backtest flow', () => {
       .mockResolvedValueOnce({ signalId: 's1', symbol: 'ETHUSDT' })
       .mockResolvedValueOnce({ signalId: 's2', symbol: 'ETHUSDT' })
       .mockResolvedValueOnce('HOLD');
-    mockTestConnector.drainMlResultsBatch
-      .mockResolvedValueOnce([])
-      .mockResolvedValueOnce([])
-      .mockResolvedValueOnce([
-        { signalId: 's2', profit: 2.2 },
-        { signalId: 's1', profit: -1.1 },
-      ])
-      .mockResolvedValue([]);
+    mockTestConnector.drainMlResultsBatch.mockResolvedValueOnce([
+      { signalId: 's2', profit: 2.2 },
+      { signalId: 's1', profit: -1.1 },
+    ]);
     mockBuildMlTrainingRow.mockImplementation(
       (signalRecord: any, resultRecord: any) => ({
         signalId: signalRecord?.signal?.signalId,

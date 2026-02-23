@@ -95,6 +95,19 @@ These instructions apply to this repository (`/Users/aleksnick/dev/investing`).
 - Run unit tests with `yarn unit`.
 - Run type checks with `yarn dev-tsc`.
 - Keep Jest focused on unit suites (ignore temp artifacts and non-unit script entrypoints).
+- For changes in `src/utils/ai.ts`, `src/strategy/*`, signal generation, or ML/testing helpers, re-run both `yarn unit` and `yarn dev-tsc` before commit.
+
+## Runtime AI Signal Review (TrendLine)
+- Runtime AI analysis for live TrendLine signals is triggered inside `src/strategy/TrendLine/strategy.ts` after `signal` is assembled.
+- AI writes analysis to Redis key `analysis:${symbol}:${signalId}`.
+- Telegram sending reads Redis `analysis` and posts AI analysis as a separate follow-up message after the main signal message.
+- In non-BACKTEST mode, order placement is gated by AI only if AI confirms the current signal direction (`analysis.direction === signal.direction`) and `analysis.quality` is `4` or `5`.
+- AI prompt analyzes the current strategy signal only (it must not invent an opposite trade direction).
+- AI response includes retest guidance:
+  - `needRetest`
+  - `retestPrice`
+  - plus `quality`, `takeProfitPrice`, `stopLossPrice`, `comment`.
+- LLM payload uses runtime indicator keys (`maFast`, `btcMaFast1h`, `candles15m`, etc.) and trims indicator/candle arrays to the last 5 values; `figures.trendLine` is sent untrimmed.
 
 ## Indicator Architecture
 - Keep shared strategy indicators in `src/utils/indicators.ts`.
