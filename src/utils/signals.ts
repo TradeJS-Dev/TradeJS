@@ -206,6 +206,14 @@ export const formatAnalysisMessage = (
     lines.push(`Quality: <b>${quality}/5</b>`);
   }
 
+  if (typeof analysis.needRetest === 'boolean') {
+    lines.push(`Need retest: <b>${analysis.needRetest ? 'YES' : 'NO'}</b>`);
+  }
+
+  if (typeof analysis.retestPrice === 'number') {
+    lines.push(`Retest price: <b>${formatNumber(analysis.retestPrice)}</b>`);
+  }
+
   if (typeof analysis.takeProfitPrice === 'number') {
     lines.push(`AI TP: <b>${formatNumber(analysis.takeProfitPrice)}</b>`);
   }

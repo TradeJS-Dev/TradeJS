@@ -8,6 +8,7 @@ import { logger } from '@utils/logger';
 import { getData, redisKeys } from '@utils/redis';
 import { createTrendlineEngine } from '@utils/trendLineEngine';
 import { fetchMlThreshold } from '@utils/mlGrpc';
+import { askAI } from '@utils/ai';
 import { createIndicators, IndicatorPeriods } from '@utils/indicators';
 import { closeOppositePositionsBeforeOpen } from '@utils/closeOppositePositionsBeforeOpen';
 import { filterByVeryVolatility } from './filters';
@@ -75,7 +76,6 @@ export const TrendlineStrategyCreator: StrategyCreator = async ({
     CLOSE_OPPOSITE_POSITIONS,
     TRENDLINE,
     ML_THRESHOLD,
-    MAX_CORRELATION,
     MAX_LOSS_VALUE,
     MA_FAST,
     MA_MEDIUM,
@@ -300,8 +300,23 @@ export const TrendlineStrategyCreator: StrategyCreator = async ({
       }
     }
 
+    let quality: number | undefined;
+
+    if (ENV !== 'BACKTEST') {
+      try {
+        const analysis = await askAI(signal);
+        const aiApprovedCurrentTrade = analysis?.direction === direction;
+        quality =
+          aiApprovedCurrentTrade && typeof analysis?.quality === 'number'
+            ? Math.round(analysis.quality)
+            : undefined;
+      } catch (err) {
+        logger.error('AI analysis error: %s %s', symbol, err);
+      }
+    }
+
     const shouldMakeOrder =
-      MAKE_ORDERS && (ENV === 'BACKTEST' || configFromBacktest);
+      MAKE_ORDERS && (ENV === 'BACKTEST' || [4, 5].includes(quality ?? -1));
 
     signal.orderStatus = 'canceled';
 

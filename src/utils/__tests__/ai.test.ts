@@ -145,7 +145,9 @@ describe('ai helpers', () => {
 
       expect(prompt).toContain('Пиши comment по-русски');
       expect(prompt).toContain('quality" — качество ВХОДА ИМЕННО СЕЙЧАС');
-      expect(prompt).toContain('AI direction != payload.signal.direction');
+      expect(prompt).toContain('Никогда не предлагай противоположное направление');
+      expect(prompt).toContain('"needRetest": boolean');
+      expect(prompt).toContain('"retestPrice": number | null');
       expect(prompt).toContain('reward/risk >= 0.33');
       expect(prompt).toContain('Одна строка по шаблону');
       expect(prompt).toContain('Короткие примеры (few-shot');
@@ -160,7 +162,7 @@ describe('ai helpers', () => {
 
       expect(prompt).toContain('Проанализируй сделку по ETHUSDT');
       expect(prompt).toContain('Исходный сигнал имеет направление LONG');
-      expect(prompt).toContain('строго в заданном JSON-формате');
+      expect(prompt).toContain('без предложения противоположного направления');
       expect(prompt).toContain('"symbol":"ETHUSDT"');
       expect(prompt).toContain('"trendline"');
       expect(prompt).toContain('"maFast":[3,4,5,6,7]');

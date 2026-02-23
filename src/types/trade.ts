@@ -194,6 +194,8 @@ export interface Signal {
 export interface SignalAnalysis {
   direction: Direction | null;
   quality: 1 | 2 | 3 | 4 | 5 | number;
+  needRetest: boolean;
+  retestPrice: number | null;
   takeProfitPrice: number | null;
   stopLossPrice: number | null;
   comment: string;

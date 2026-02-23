@@ -5,6 +5,7 @@ import { calculateCoinBtcCorrelation } from '@utils/correlation';
 import { filterByVeryVolatility } from '../filters';
 import { logger } from '@utils/logger';
 import { fetchMlThreshold } from '@utils/mlGrpc';
+import { askAI } from '@utils/ai';
 import { getData, redisKeys } from '@utils/redis';
 
 jest.mock('@utils/trendLineEngine', () => ({
@@ -21,6 +22,18 @@ jest.mock('@utils/redis', () => ({
 
 jest.mock('@utils/mlGrpc', () => ({
   fetchMlThreshold: jest.fn(async () => null),
+}));
+
+jest.mock('@utils/ai', () => ({
+  askAI: jest.fn(async () => ({
+    direction: 'LONG',
+    quality: 5,
+    needRetest: false,
+    retestPrice: null,
+    takeProfitPrice: null,
+    stopLossPrice: null,
+    comment: 'ok',
+  })),
 }));
 
 jest.mock('@utils/correlation', () => ({
@@ -64,6 +77,15 @@ describe('TrendlineStrategyCreator', () => {
     jest.clearAllMocks();
     (filterByVeryVolatility as jest.Mock).mockReturnValue(true);
     (getData as jest.Mock).mockImplementation(async () => ({}));
+    (askAI as jest.Mock).mockResolvedValue({
+      direction: 'LONG',
+      quality: 5,
+      needRetest: false,
+      retestPrice: null,
+      takeProfitPrice: null,
+      stopLossPrice: null,
+      comment: 'ok',
+    });
   });
 
   it('stores 10 indicator values and exposes them in signal', async () => {
