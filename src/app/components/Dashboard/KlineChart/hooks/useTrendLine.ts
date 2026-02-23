@@ -110,7 +110,7 @@ export const useTrendLine = (chart: Chart | null, enabled: boolean) => {
     const buildLinesForMode = (mode: TrendLine['mode']) =>
       createTrendlineEngine(data, { mode, minTouches: 4 }).getLines();
 
-    const trendLine = signal?.figures.trendLine;
+    const trendLine = signal?.figures?.trendLine;
 
     if (!trendLine) {
       return;
