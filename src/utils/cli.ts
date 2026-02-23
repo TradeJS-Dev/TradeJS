@@ -14,12 +14,14 @@ import {
   RedisWriteBlockedError,
   delKeyWithOptions,
   getKeys,
+  getData,
+  redisKeys,
 } from '@utils/redis';
 import { getTimestamp } from '@utils/timestamp';
 import { getFormatted } from '@utils/stat';
 import { getTopTickers } from '@utils/tickers';
 import { askAI } from '@utils/ai';
-import { sendSignal } from '@utils/signals';
+import { sendSignal, sendSignalAnalysis } from '@utils/signals';
 import { screenDashboard } from '@utils/screenshot';
 import { runWithConcurrency } from '@utils/async';
 import { logger } from '@utils/logger';
@@ -281,6 +283,19 @@ export const sendToTG = async (signals: Signal[], imgInterval: Interval) => {
   await runWithConcurrency(signals, TG_CONCURRENCY_LIMIT, async (signal) => {
     try {
       await sendSignal(signal, imgInterval);
+
+      const analysis = await getData(
+        redisKeys.analysis(signal.symbol, signal.signalId),
+        null,
+      );
+
+      if (
+        analysis &&
+        typeof analysis === 'object' &&
+        Object.keys(analysis).length > 0
+      ) {
+        await sendSignalAnalysis(signal, analysis);
+      }
     } catch {
       logger.error('Failed sent: %s', signal.symbol);
     } finally {

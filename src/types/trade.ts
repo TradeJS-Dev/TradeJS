@@ -190,3 +190,11 @@ export interface Signal {
   };
   indicators: Record<string, any>;
 }
+
+export interface SignalAnalysis {
+  direction: Direction | null;
+  quality: 1 | 2 | 3 | 4 | 5 | number;
+  takeProfitPrice: number | null;
+  stopLossPrice: number | null;
+  comment: string;
+}

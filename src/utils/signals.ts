@@ -1,11 +1,17 @@
 import 'dotenv/config';
 
-import { Signal, Interval } from '@types';
+import { Signal, Interval, SignalAnalysis } from '@types';
 import { getImageUrl } from '@utils/screenshot';
 import { formatNumber } from '@utils/math';
 import { logger } from '@utils/logger';
 
 const { APP_URL, TG_BOT_TOKEN: token, TG_CHAT_ID: chatId } = process.env;
+
+const escapeHtml = (value: string) =>
+  value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
 
 export const formatMessage = (signal: Signal): string => {
   const {
@@ -180,4 +186,61 @@ export const sendSignal = async (signal: Signal, imgInterval: Interval) => {
   }
 
   logger.info('tg sendPhoto: %s', data?.ok ? 'sent' : JSON.stringify(data));
+};
+
+export const formatAnalysisMessage = (
+  signal: Signal,
+  analysis: Partial<SignalAnalysis>,
+): string => {
+  const lines: string[] = [];
+  const quality =
+    typeof analysis.quality === 'number'
+      ? Math.max(1, Math.min(5, Math.round(analysis.quality)))
+      : null;
+
+  lines.push(`<b>AI analysis ${signal.symbol}</b>`);
+  lines.push(`Signal direction: <b>${signal.direction}</b>`);
+  lines.push(`AI direction: <b>${analysis.direction ?? 'NO TRADE'}</b>`);
+
+  if (quality) {
+    lines.push(`Quality: <b>${quality}/5</b>`);
+  }
+
+  if (typeof analysis.takeProfitPrice === 'number') {
+    lines.push(`AI TP: <b>${formatNumber(analysis.takeProfitPrice)}</b>`);
+  }
+
+  if (typeof analysis.stopLossPrice === 'number') {
+    lines.push(`AI SL: <b>${formatNumber(analysis.stopLossPrice)}</b>`);
+  }
+
+  if (analysis.comment) {
+    lines.push('');
+    lines.push(escapeHtml(analysis.comment));
+  }
+
+  return lines.join('\n');
+};
+
+export const sendSignalAnalysis = async (
+  signal: Signal,
+  analysis: Partial<SignalAnalysis>,
+) => {
+  const message = formatAnalysisMessage(signal, analysis);
+
+  const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      chat_id: chatId,
+      text: message,
+      parse_mode: 'HTML',
+    }),
+  });
+
+  const data = await res.json();
+  logger.info(
+    'tg sendMessage (analysis): %s',
+    data?.ok ? 'sent' : JSON.stringify(data),
+  );
 };

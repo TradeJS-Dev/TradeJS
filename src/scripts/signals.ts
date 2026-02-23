@@ -4,7 +4,7 @@ import _ from 'lodash';
 import { connectors } from '@src/connectors';
 import chalk from 'chalk';
 import { TTL_1D, TTL_3M, SIGNALS_PRELOAD_DAYS } from '@constants';
-import { update, getTickers, makeScreenshots, sendToTG } from '@utils/cli';
+import { update, getTickers, makeScreenshots, sendToAI, sendToTG } from '@utils/cli';
 import { getKeys, setData, redisKeys } from '@utils/redis';
 import { getTimestamp } from '@utils/timestamp';
 import { Connector, Interval, Signal } from '@types';
@@ -162,7 +162,10 @@ const signals = async () => {
 
   await makeScreenshots(signals, '15');
 
+  await makeScreenshots(signals, '60');
+
   if (flags.notify) {
+    await sendToAI(signals);
     await sendToTG(signals, '15');
   }
 

@@ -17,7 +17,7 @@ const mockTestConnector = {
 const mockStrategy = jest.fn();
 const mockStrategyCreator = jest.fn(async (_config?: unknown) => mockStrategy);
 const mockBuildMlPayload = jest.fn((data) => data);
-const mockBuildMlTrainingRow = jest.fn(
+const mockBuildMlTrainingRow: jest.Mock = jest.fn(
   (_signalRecord?: unknown, _resultRecord?: unknown) => ({ featureA: 1 }),
 );
 const mockAppendMlDatasetRow = jest.fn((_params?: unknown) => undefined);
