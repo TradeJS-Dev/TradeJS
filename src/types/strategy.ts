@@ -1,4 +1,12 @@
-import { Direction, Interval, Signal, Tp } from './trade';
+import {
+  Connector,
+  Direction,
+  Interval,
+  KlineChartData,
+  KlineChartItem,
+  Signal,
+  Tp,
+} from './trade';
 import { StrategyConfig } from './backtest';
 
 export interface StrategySignalMetaParams {
@@ -77,3 +85,65 @@ export interface BuildMlRuntimeOptionsParams {
   symbol: string;
   mlThreshold: number;
 }
+
+export interface StrategyRuntimeMlOptions {
+  strategyName: string;
+  strategyConfig: StrategyConfig;
+  symbol: string;
+  mlThreshold: number;
+}
+
+export interface StrategyEntryRuntimeOptions {
+  ml?: StrategyRuntimeMlOptions;
+  aiEnabled?: boolean;
+  minAiQuality?: number;
+  beforePlaceOrder?: () => Promise<void>;
+}
+
+export interface StrategyEntryOrderPlan {
+  qty: number;
+  price: number;
+  timestamp: number;
+  direction: Direction;
+  takeProfits?: Tp[];
+  stopLossPrice?: number | null;
+}
+
+export interface StrategyClosePlan {
+  price: number;
+  timestamp: number;
+  direction: Direction;
+}
+
+export type StrategyDecision =
+  | {
+      kind: 'skip';
+      code: string;
+    }
+  | {
+      kind: 'entry';
+      code: string;
+      orderPlan: StrategyEntryOrderPlan;
+      signal?: Signal;
+      runtime?: StrategyEntryRuntimeOptions;
+    }
+  | {
+      kind: 'exit';
+      code: string;
+      closePlan: StrategyClosePlan;
+    };
+
+export interface CreateStrategyCoreParams<TConfig extends StrategyConfig> {
+  userName: string;
+  symbol: string;
+  config: TConfig;
+  configFromBacktest: boolean;
+  connector: Connector;
+  data: KlineChartData;
+  btcData: KlineChartData;
+}
+
+export type StrategyCoreRunner = (
+  candle: KlineChartItem,
+  btcCandle: KlineChartItem,
+) => Promise<StrategyDecision> | StrategyDecision;

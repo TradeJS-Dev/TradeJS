@@ -19,6 +19,7 @@
   - evaluates current signal payload + trendline,
   - writes Redis `analysis:*`,
   - gates live order placement by AI-confirmed direction + quality.
+- Strategy runtime is now shared across strategies (`src/utils/strategyRuntime.ts`), while strategy-specific logic stays in per-strategy `core.ts`.
 
 ## Status Update (2026-02-18)
 - Closed:

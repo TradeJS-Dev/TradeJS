@@ -24,7 +24,11 @@
 ### **`strategy/`**
 Папки с торговыми стратегиями:
 - `Breakout`, `Channel`, `ReversalPattern` и др.
-- Каждая стратегия вычисляет индикаторы (SMA, ATR, Bollinger Bands) и управляет позициями.
+- Стратегии приведены к более унифицированному формату:
+  - `strategy.ts` — thin-wrapper,
+  - `core.ts` — логика стратегии (`skip/entry/exit` decisions),
+  - `coreHelpers.ts` — strategy-specific сборка signal/runtime policy.
+- Исполнение ордеров/AI/ML/runtime orchestration вынесено в общий слой (`src/utils/strategyRuntime.ts` + `src/utils/strategyHelpers/*`).
 - Для `TrendLine` в live-режиме добавлен runtime AI-анализ сигнала:
   - анализируется уже собранный сигнал (индикаторы + BTC + трендовая линия),
   - AI сохраняет результат в Redis (`analysis:*`),
@@ -52,6 +56,9 @@ Node-скрипты для автоматизации:
 - Логирование (`logger.ts`) — на базе Winston.
 - Работа с файлами (`data.ts`).
 - Генерация параметров (`generateParamGrid`).
+- Общие helper'ы стратегий:
+  - `strategyRuntime.ts` — общий runtime для стратегий,
+  - `strategyHelpers/` — config/indicator/market/signal-builder/runtime helper'ы.
 - Подсчет результатов и другие вспомогательные функции.
 
 ---

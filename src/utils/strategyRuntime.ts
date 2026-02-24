@@ -5,77 +5,12 @@ import {
   resolveStrategyConfig,
 } from '@utils/strategyHelpers';
 import {
-  Connector,
-  Direction,
-  KlineChartData,
-  KlineChartItem,
-  Signal,
+  CreateStrategyCoreParams,
+  StrategyCoreRunner,
   StrategyConfig,
   StrategyCreator,
-  Tp,
+  StrategyDecision,
 } from '@types';
-
-export interface StrategyRuntimeMlOptions {
-  strategyName: string;
-  strategyConfig: StrategyConfig;
-  symbol: string;
-  mlThreshold: number;
-}
-
-export interface StrategyEntryRuntimeOptions {
-  ml?: StrategyRuntimeMlOptions;
-  aiEnabled?: boolean;
-  minAiQuality?: number;
-  beforePlaceOrder?: () => Promise<void>;
-}
-
-export interface StrategyEntryOrderPlan {
-  qty: number;
-  price: number;
-  timestamp: number;
-  direction: Direction;
-  takeProfits?: Tp[];
-  stopLossPrice?: number | null;
-}
-
-export interface StrategyClosePlan {
-  price: number;
-  timestamp: number;
-  direction: Direction;
-}
-
-export type StrategyDecision =
-  | {
-      kind: 'skip';
-      code: string;
-    }
-  | {
-      kind: 'entry';
-      code: string;
-      orderPlan: StrategyEntryOrderPlan;
-      signal?: Signal;
-      runtime?: StrategyEntryRuntimeOptions;
-    }
-  | {
-      kind: 'exit';
-      code: string;
-      closePlan: StrategyClosePlan;
-    };
-
-export interface CreateStrategyCoreParams<TConfig extends StrategyConfig> {
-  userName: string;
-  symbol: string;
-  config: TConfig;
-  configFromBacktest: boolean;
-  connector: Connector;
-  data: KlineChartData;
-  btcData: KlineChartData;
-}
-
-export type StrategyCoreRunner = (
-  candle: KlineChartItem,
-  btcCandle: KlineChartItem,
-) => Promise<StrategyDecision> | StrategyDecision;
 
 interface CreateStrategyRuntimeParams<TConfig extends StrategyConfig> {
   strategyName: string;

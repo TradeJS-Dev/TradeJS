@@ -1,8 +1,7 @@
 import { askAI } from '@utils/ai';
 import { logger } from '@utils/logger';
 import { fetchMlThreshold } from '@utils/mlGrpc';
-import { Connector, Direction, Signal, Tp } from '@types';
-import type { StrategyRuntimeMlOptions } from '@utils/strategyRuntime';
+import { Connector, Direction, Signal, StrategyRuntimeMlOptions, Tp } from '@types';
 
 interface EnrichSignalWithMlAiParams {
   signal: Signal;

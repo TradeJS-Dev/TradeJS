@@ -11,10 +11,11 @@ import {
 } from '@utils/strategyHelpers';
 import {
   CreateStrategyCoreParams,
+  KlineChartItem,
   StrategyCoreRunner,
   StrategyDecision,
-} from '@utils/strategyRuntime';
-import { KlineChartItem, TrendLineOptions } from '@types';
+  TrendLineOptions,
+} from '@types';
 import { filterByVeryVolatility } from './filters';
 import {
   buildTrendlineEntrySignalDecision,

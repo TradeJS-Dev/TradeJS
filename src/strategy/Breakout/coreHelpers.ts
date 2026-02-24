@@ -1,4 +1,5 @@
 import {
+  StrategyDecision,
   StrategyEntryRuntimeBuilderParams,
   StrategyEntryTakeProfitsParams,
   StrategyEntrySignalDecisionBuilderParams,
@@ -9,8 +10,6 @@ import {
   buildEntryRuntimePolicy,
   buildEntrySignalDecision,
 } from '@utils/strategyHelpers';
-import { StrategyDecision } from '@utils/strategyRuntime';
-
 type BreakoutSignalIndicators = {
   maFast: number;
   maSlow: number;

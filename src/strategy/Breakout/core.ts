@@ -1,10 +1,12 @@
 import _ from 'lodash';
-import { Candle, KlineChartItem, StrategyConfig } from '@types';
 import {
+  Candle,
+  KlineChartItem,
   CreateStrategyCoreParams,
-  StrategyCoreRunner,
+  StrategyConfig,
   StrategyDecision,
-} from '@utils/strategyRuntime';
+  StrategyCoreRunner,
+} from '@types';
 import {
   createIndicators,
   IndicatorSnapshot,

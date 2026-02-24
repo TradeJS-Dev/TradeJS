@@ -1,8 +1,8 @@
 import { closeOppositePositionsBeforeOpen } from '@utils/closeOppositePositionsBeforeOpen';
-import { StrategyDecision } from '@utils/strategyRuntime';
 import {
   Connector,
   Direction,
+  StrategyDecision,
   StrategyEntryBaseParams,
   StrategyEntryRuntimeBuilderParams,
   StrategyEntrySignalDecisionBuilderParams,

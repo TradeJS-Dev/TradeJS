@@ -4,13 +4,11 @@ import {
   BuildStrategySignalDraft,
   BuildStrategySignalParams,
   Signal,
-} from '@types';
-import type {
   StrategyDecision,
   StrategyEntryOrderPlan,
   StrategyEntryRuntimeOptions,
-} from '@utils/strategyRuntime';
-import type { StrategyRuntimeMlOptions } from '@utils/strategyRuntime';
+  StrategyRuntimeMlOptions,
+} from '@types';
 import { uuid } from '@utils/uuid';
 
 export const buildStrategySignal = ({
