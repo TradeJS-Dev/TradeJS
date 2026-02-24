@@ -198,5 +198,12 @@ export interface SignalAnalysis {
   retestPrice: number | null;
   takeProfitPrice: number | null;
   stopLossPrice: number | null;
+  setup?: string;
+  confirmations?: string;
+  btcContext?: string;
+  retestPlan?: string;
+  riskLevels?: string;
+  qualityReason?: string;
+  triggerInvalidation?: string;
   comment: string;
 }

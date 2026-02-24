@@ -90,6 +90,9 @@ const normalizeAnalysis = (raw: any): Partial<SignalAnalysis> => {
     return null;
   };
 
+  const toText = (value: unknown) =>
+    typeof value === 'string' ? value.slice(0, 400) : undefined;
+
   return {
     direction,
     quality: qualityNum,
@@ -97,6 +100,13 @@ const normalizeAnalysis = (raw: any): Partial<SignalAnalysis> => {
     retestPrice: toNumberOrNull(raw?.retestPrice),
     takeProfitPrice: toNumberOrNull(raw?.takeProfitPrice),
     stopLossPrice: toNumberOrNull(raw?.stopLossPrice),
+    setup: toText(raw?.setup),
+    confirmations: toText(raw?.confirmations),
+    btcContext: toText(raw?.btcContext),
+    retestPlan: toText(raw?.retestPlan),
+    riskLevels: toText(raw?.riskLevels),
+    qualityReason: toText(raw?.qualityReason),
+    triggerInvalidation: toText(raw?.triggerInvalidation),
     comment: typeof raw?.comment === 'string' ? raw.comment.slice(0, 1024) : '',
   };
 };
@@ -125,18 +135,32 @@ export const buildAiSystemPrompt = (): string => `
   "retestPrice": number | null,
   "takeProfitPrice": number | null,
   "stopLossPrice": number | null,
-  "comment": string
+  "setup": string,
+  "confirmations": string,
+  "btcContext": string,
+  "retestPlan": string,
+  "riskLevels": string,
+  "qualityReason": string,
+  "triggerInvalidation": string
 }
 
 - Не добавляй другие поля.
 - Все числа должны быть конечными (finite), без NaN/Infinity.
-- "comment" — одна строка (без переносов, без markdown-списков).
+- Все текстовые поля — короткие строки (без переносов, без markdown-списков).
 - "direction" — подтверждение текущей сделки: либо РОВНО payload.signal.direction, либо null (если сделку сейчас не одобряешь). Никогда не предлагай противоположное направление.
 - "quality" — качество ВХОДА ИМЕННО СЕЙЧАС (timing + подтверждения), а не общая идея сетапа.
 - "needRetest" — нужно ли дождаться ретеста перед входом по текущему направлению.
 - "retestPrice" — цена/уровень, по которому будем оценивать ретест (или null, если ретест не нужен / уровень не определён).
 - "takeProfitPrice" и "stopLossPrice" — твои уровни для выбранного направления. Если сделки нет, оба null.
-- "comment" — краткий, но полезный анализ сделки и обоснование (до 1024 символов, без переносов строк), с учётом трендовой линии, контекста BTC и индикаторов.
+- Разбивай анализ на поля:
+  - "setup" — что за сетап по структуре/трендовой линии сейчас.
+  - "confirmations" — 2-4 подтверждения/конфликта по индикаторам монеты.
+  - "btcContext" — поддерживает ли BTC идею или конфликтует.
+  - "retestPlan" — что ждать по ретесту (или почему ретест не нужен).
+  - "riskLevels" — кратко про TP/SL и риск-профиль.
+  - "qualityReason" — почему quality именно такой.
+  - "triggerInvalidation" — что должно подтвердить вход / что отменяет идею.
+- "comment" не обязателен. Если указываешь, не дублируй структурные поля.
 
 Если данных недостаточно или сетап слабый — верни "direction": null, quality <= 2 и объясни почему.
 
@@ -165,6 +189,7 @@ export const buildAiSystemPrompt = (): string => `
 - Если trendline/структура цены невалидны или сомнительны, индикаторы не должны "спасать" сетап.
 - Если структура ок, но BTC и/или ключевые индикаторы заметно конфликтуют, обычно quality <= 3.
 - Если не одобряешь текущую сделку (direction=null), в comment обязательно кратко назови главную причину.
+  Если используешь структурные поля, укажи главную причину в "qualityReason" и/или "triggerInvalidation".
 
 Правила для direction / TP / SL:
 - direction = LONG только если ожидаемое движение вверх обосновано; SHORT — вниз; иначе null.
@@ -184,14 +209,13 @@ export const buildAiSystemPrompt = (): string => `
 - 4: хороший сетап, несколько подтверждений, риски понятны
 - 5: очень сильный сетап, чистая структура + подтверждения + адекватный риск
 
-Требования к полезному comment (без воды):
-- Одна строка по шаблону:
-  "Setup: ...; Confirmations: ...; BTC: ...; Retest: needRetest=... @ ...; Risk/Levels: ...; Why quality=X: ...; Trigger/Invalidation: ..."
-- Укажи 2-4 конкретных фактора "за" или "против" сделку.
+Требования к полезному структурированному анализу (без воды):
+- Укажи 2-4 конкретных фактора "за" или "против" сделку в "confirmations".
 - Обязательно упомяни роль trendline (пробой/ретест/ложный пробой/касание/нет подтверждения).
 - Обязательно упомяни BTC-контекст (поддерживает, нейтрален или конфликтует).
 - Объясни, почему quality именно такой.
 - Если не входишь (direction=null), прямо укажи что должно измениться для входа.
+- В "retestPlan" не пиши технический шаблон вроде "needRetest=false @ null"; пиши человеческое объяснение.
 - Не повторяй просто поля JSON; дай смысл и решение.
 
 Правила использования обрезанных рядов (last 5 values):
@@ -200,8 +224,8 @@ export const buildAiSystemPrompt = (): string => `
 - Если данных мало для уверенного вывода, снижай quality и формулируй вывод осторожно.
 
 Короткие примеры (few-shot, формат ответа):
-{"direction":"LONG","quality":4,"needRetest":true,"retestPrice":100.2,"takeProfitPrice":101.5,"stopLossPrice":98.9,"comment":"Setup: вероятный пробой трендовой вверх, но вход сейчас лучше после проверки уровня; Confirmations: часть индикаторов по монете поддерживает импульс без явного перегрева; BTC: нейтрально-поддерживающий контекст; Retest: needRetest=true @ 100.2 как зона проверки удержания пробоя; Risk/Levels: TP/SL по правильные стороны от текущей цены, риск контролируемый; Why quality=4: структура хорошая, но нужен ретест для более чистого timing; Trigger/Invalidation: вход после ретеста и удержания уровня, отмена при возврате под линию."}
-{"direction":null,"quality":2,"needRetest":false,"retestPrice":null,"takeProfitPrice":null,"stopLossPrice":null,"comment":"Setup: касание/шум у трендовой без уверенного пробоя; Confirmations: индикаторы смешанные и не дают сильного преимущества; BTC: скорее конфликтует/не поддерживает; Retest: needRetest=false @ null, так как сначала нужен сам факт качественного пробоя; Risk/Levels: сейчас нет качественного соотношения для входа; Why quality=2: идея есть, но timing слабый и подтверждений мало; Trigger/Invalidation: ждать явный пробой и подтверждение по монете и BTC."}
+{"direction":"LONG","quality":4,"needRetest":true,"retestPrice":100.2,"takeProfitPrice":101.5,"stopLossPrice":98.9,"setup":"Вероятный пробой трендовой вверх, но вход сейчас лучше после проверки уровня.","confirmations":"По монете есть поддержка импульса без явного перегрева, но подтверждение еще не идеальное.","btcContext":"BTC нейтрально поддерживает идею и не мешает LONG.","retestPlan":"Ждать ретест зоны 100.2 и удержание выше нее перед входом.","riskLevels":"TP/SL по правильные стороны от текущей цены, риск контролируемый.","qualityReason":"Quality=4: структура хорошая, но нужен ретест для более чистого timing.","triggerInvalidation":"Вход после ретеста и удержания уровня; отмена при возврате под линию."}
+{"direction":null,"quality":2,"needRetest":false,"retestPrice":null,"takeProfitPrice":null,"stopLossPrice":null,"setup":"Касание/шум у трендовой без уверенного пробоя.","confirmations":"Индикаторы смешанные и не дают сильного преимущества.","btcContext":"BTC скорее конфликтует или не поддерживает идею.","retestPlan":"Ретест пока не оцениваем, потому что сначала нужен сам факт качественного пробоя.","riskLevels":"Сейчас нет качественного соотношения для входа.","qualityReason":"Quality=2: timing слабый и подтверждений мало.","triggerInvalidation":"Ждать явный пробой и подтверждение по монете и BTC."}
 
 Верни только JSON-объект, без лишних символов.
 `;
@@ -241,9 +265,8 @@ export const askAI = async (signal: Signal) => {
 
   const model = new ChatOpenAI({
     temperature: 0.2,
-    // modelName: 'anthropic/claude-opus-4.5',
-    modelName: 'anthropic/claude-sonnet-4.5',
-    // modelName: 'x-ai/grok-4-fast',
+    //modelName: 'anthropic/claude-sonnet-4.5',
+    modelName: 'google/gemini-3.1-pro-preview',
     openAIApiKey: process.env.OPENAI_API_KEY,
     configuration: {
       baseURL: process.env.OPENAI_API_ENDPOINT || 'https://api.openai.com/v1',

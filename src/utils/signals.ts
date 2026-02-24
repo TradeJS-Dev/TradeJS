@@ -13,7 +13,33 @@ const escapeHtml = (value: string) =>
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;');
 
-export const formatMessage = (signal: Signal): string => {
+const normalizeQuality = (value?: number) =>
+  typeof value === 'number'
+    ? Math.max(1, Math.min(5, Math.round(value)))
+    : null;
+
+const getAiQualityLine = (analysis?: Partial<SignalAnalysis> | null) => {
+  const quality = normalizeQuality(analysis?.quality);
+  if (!quality) return null;
+
+  const approvedCurrentDirection =
+    analysis?.direction != null && analysis.direction !== null;
+
+  if (quality >= 4 && approvedCurrentDirection) {
+    return `🟢 AI Quality: ${quality}/5`;
+  }
+
+  if (quality === 3 && approvedCurrentDirection) {
+    return `🟡 AI Quality: ${quality}/5`;
+  }
+
+  return `🔴 AI Quality: ${quality}/5`;
+};
+
+export const formatMessage = (
+  signal: Signal,
+  analysis?: Partial<SignalAnalysis> | null,
+): string => {
   const {
     symbol,
     direction,
@@ -93,6 +119,11 @@ export const formatMessage = (signal: Signal): string => {
         );
       }
 
+      const aiQualityLine = getAiQualityLine(analysis);
+      if (aiQualityLine) {
+        lines.push(aiQualityLine);
+      }
+
       lines.push('');
 
       if (touches) {
@@ -127,10 +158,14 @@ export const formatMessage = (signal: Signal): string => {
   }
 };
 
-export const sendSignal = async (signal: Signal, imgInterval: Interval) => {
+export const sendSignal = async (
+  signal: Signal,
+  imgInterval: Interval,
+  analysis?: Partial<SignalAnalysis> | null,
+) => {
   const { symbol, signalId, interval } = signal;
 
-  const message = formatMessage(signal);
+  const message = formatMessage(signal, analysis);
 
   const markup = {
     inline_keyboard: [
@@ -193,10 +228,9 @@ export const formatAnalysisMessage = (
   analysis: Partial<SignalAnalysis>,
 ): string => {
   const lines: string[] = [];
+  const blocks: string[] = [];
   const quality =
-    typeof analysis.quality === 'number'
-      ? Math.max(1, Math.min(5, Math.round(analysis.quality)))
-      : null;
+    normalizeQuality(analysis.quality);
 
   lines.push(`<b>AI analysis ${signal.symbol}</b>`);
   lines.push(`Signal direction: <b>${signal.direction}</b>`);
@@ -222,9 +256,24 @@ export const formatAnalysisMessage = (
     lines.push(`AI SL: <b>${formatNumber(analysis.stopLossPrice)}</b>`);
   }
 
-  if (analysis.comment) {
+  const pushBlock = (title: string, value?: string) => {
+    if (!value) return;
+    const clean = value.trim();
+    if (!clean) return;
+    blocks.push(`<b>${title}:</b>\n${escapeHtml(clean)}`);
+  };
+
+  pushBlock('Setup', analysis.setup);
+  pushBlock('Confirmations', analysis.confirmations);
+  pushBlock('BTC', analysis.btcContext);
+  pushBlock('Retest', analysis.retestPlan);
+  pushBlock('Risk/Levels', analysis.riskLevels);
+  pushBlock('Why Quality', analysis.qualityReason);
+  pushBlock('Trigger/Invalidation', analysis.triggerInvalidation);
+
+  if (blocks.length > 0) {
     lines.push('');
-    lines.push(escapeHtml(analysis.comment));
+    lines.push(blocks.join('\n\n'));
   }
 
   return lines.join('\n');

@@ -282,12 +282,12 @@ export const sendToTG = async (signals: Signal[], imgInterval: Interval) => {
 
   await runWithConcurrency(signals, TG_CONCURRENCY_LIMIT, async (signal) => {
     try {
-      await sendSignal(signal, imgInterval);
-
       const analysis = await getData(
         redisKeys.analysis(signal.symbol, signal.signalId),
         null,
       );
+
+      await sendSignal(signal, imgInterval, analysis);
 
       if (
         analysis &&

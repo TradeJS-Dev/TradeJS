@@ -148,8 +148,11 @@ describe('ai helpers', () => {
       expect(prompt).toContain('Никогда не предлагай противоположное направление');
       expect(prompt).toContain('"needRetest": boolean');
       expect(prompt).toContain('"retestPrice": number | null');
+      expect(prompt).toContain('"setup": string');
+      expect(prompt).toContain('"triggerInvalidation": string');
       expect(prompt).toContain('reward/risk >= 0.33');
-      expect(prompt).toContain('Одна строка по шаблону');
+      expect(prompt).toContain('структурированному анализу');
+      expect(prompt).toContain('не пиши технический шаблон вроде "needRetest=false @ null"');
       expect(prompt).toContain('Короткие примеры (few-shot');
       expect(prompt).toContain('Не добавляй другие поля');
       expect(prompt).not.toContain('runtime-нейминг');
