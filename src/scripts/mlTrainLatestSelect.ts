@@ -969,9 +969,6 @@ const run = async () => {
     const featureProfile = (process.env.ML_TRAIN_FEATURE_PROFILE ?? 'all')
       .trim()
       .toLowerCase();
-    const featureSet = (process.env.ML_TRAIN_FEATURE_SET ?? 'legacy')
-      .trim()
-      .toLowerCase();
     const reportDir = (
       process.env.ML_TRAIN_REPORT_DIR ?? 'data/ml/models'
     ).trim();
@@ -988,8 +985,6 @@ const run = async () => {
     console.log(`Train recent days: ${trainRecentDays}`);
     console.log(`Walk-forward folds: ${walkForwardFolds}`);
     console.log(`Feature profile: ${featureProfile}`);
-    console.log(`Feature set: ${featureSet}`);
-
     const splitFiles = await prepareTrainWindowFiles({
       inputPath,
       testDays,
@@ -1044,8 +1039,6 @@ const run = async () => {
       modelType,
       '--feature-profile',
       featureProfile,
-      '--feature-set',
-      featureSet,
       '--train-recent-days',
       String(trainRecentDays),
       '--walk-forward-folds',

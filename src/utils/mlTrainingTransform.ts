@@ -1,4 +1,8 @@
 import { ML_BASE_CANDLES_WINDOW, ML_CANDLE_FEATURE_WINDOW } from '@constants';
+import {
+  analyzeMlSeriesWindow,
+  buildMlSeriesAlignment,
+} from './mlSeriesAnalysis';
 
 // Builds a flat numeric feature row for ML training from a Signal + context.
 // The output is a fixed schema with derived indicator series, candle features,
@@ -849,6 +853,131 @@ export const buildMlTrainingRow = (
     }
   };
 
+  const applySeriesAnalysisPhase = () => {
+    const tfConfigByLabel: Record<
+      IndicatorTimeframe['label'],
+      {
+        indicatorSuffix: IndicatorTimeframe['suffix'];
+        candleKey: (typeof CANDLE_TIMEFRAMES)[number]['key'];
+        btcCandleKey: (typeof CANDLE_TIMEFRAMES)[number]['btcKey'];
+      }
+    > = {
+      TF15M: {
+        indicatorSuffix: '',
+        candleKey: 'candles15m',
+        btcCandleKey: 'btcCandles15m',
+      },
+      TF1H: {
+        indicatorSuffix: '1h',
+        candleKey: 'candles1h',
+        btcCandleKey: 'btcCandles1h',
+      },
+      TF4H: {
+        indicatorSuffix: '4h',
+        candleKey: 'candles4h',
+        btcCandleKey: 'btcCandles4h',
+      },
+      TF1D: {
+        indicatorSuffix: '1d',
+        candleKey: 'candles1d',
+        btcCandleKey: 'btcCandles1d',
+      },
+    };
+
+    const keyWithSuffix = (baseKey: string, suffix: IndicatorTimeframe['suffix']) =>
+      suffix ? `${baseKey}${suffix}` : baseKey;
+    const keyWithBtcPrefix = (
+      baseKey: string,
+      suffix: IndicatorTimeframe['suffix'],
+    ) => {
+      const withSuffix = keyWithSuffix(baseKey, suffix);
+      return `btc${withSuffix[0].toUpperCase()}${withSuffix.slice(1)}`;
+    };
+
+    const altSummaries: Partial<Record<IndicatorTimeframe['label'], Record<string, number>>> =
+      {};
+
+    for (const tf of INDICATOR_TIMEFRAMES) {
+      const cfg = tfConfigByLabel[tf.label];
+      const altCandles =
+        cfg.candleKey === 'candles15m'
+          ? candleList
+          : normalizeCandles(indicators[cfg.candleKey]);
+      const btcCandles =
+        cfg.btcCandleKey === 'btcCandles15m'
+          ? btcList
+          : normalizeCandles(indicators[cfg.btcCandleKey]);
+
+      const altSummary = analyzeMlSeriesWindow({
+        candles: altCandles.slice(-CANDLE_WINDOW),
+        benchmarkCandles: btcCandles.slice(-CANDLE_WINDOW),
+        indicators: {
+          atrPct: normalizeSeries(indicators[keyWithSuffix('atrPct', cfg.indicatorSuffix)]),
+          price1hPcnt: normalizeSeries(
+            indicators[keyWithSuffix('price1hPcnt', cfg.indicatorSuffix)],
+          ),
+          price24hPcnt: normalizeSeries(
+            indicators[keyWithSuffix('price24hPcnt', cfg.indicatorSuffix)],
+          ),
+          macdHistogram: normalizeSeries(
+            indicators[keyWithSuffix('macdHistogram', cfg.indicatorSuffix)],
+          ),
+          maFast: normalizeSeries(indicators[keyWithSuffix('maFast', cfg.indicatorSuffix)]),
+          maSlow: normalizeSeries(indicators[keyWithSuffix('maSlow', cfg.indicatorSuffix)]),
+        },
+      });
+      altSummaries[tf.label] = altSummary;
+      for (const [featureName, value] of Object.entries(altSummary)) {
+        row[`${tf.label}_ALT_ANALYSIS_${featureName}`] = value;
+      }
+
+      const btcSummary = analyzeMlSeriesWindow({
+        candles: btcCandles.slice(-CANDLE_WINDOW),
+        indicators: {
+          atrPct: normalizeSeries(
+            indicators[keyWithBtcPrefix('atrPct', cfg.indicatorSuffix)],
+          ),
+          price1hPcnt: normalizeSeries(
+            indicators[keyWithBtcPrefix('price1hPcnt', cfg.indicatorSuffix)],
+          ),
+          price24hPcnt: normalizeSeries(
+            indicators[keyWithBtcPrefix('price24hPcnt', cfg.indicatorSuffix)],
+          ),
+          macdHistogram: normalizeSeries(
+            indicators[keyWithBtcPrefix('macdHistogram', cfg.indicatorSuffix)],
+          ),
+          maFast: normalizeSeries(
+            indicators[keyWithBtcPrefix('maFast', cfg.indicatorSuffix)],
+          ),
+          maSlow: normalizeSeries(
+            indicators[keyWithBtcPrefix('maSlow', cfg.indicatorSuffix)],
+          ),
+        },
+      });
+      for (const [featureName, value] of Object.entries(btcSummary)) {
+        row[`${tf.label}_BTC_ANALYSIS_${featureName}`] = value;
+      }
+    }
+
+    const alignmentPairs: Array<
+      [IndicatorTimeframe['label'], IndicatorTimeframe['label']]
+    > = [
+      ['TF15M', 'TF1H'],
+      ['TF1H', 'TF4H'],
+      ['TF4H', 'TF1D'],
+      ['TF15M', 'TF4H'],
+    ];
+    for (const [leftTf, rightTf] of alignmentPairs) {
+      const alignment = buildMlSeriesAlignment(
+        altSummaries[leftTf],
+        altSummaries[rightTf],
+      );
+      for (const [featureName, value] of Object.entries(alignment)) {
+        row[`MTF_ALT_${leftTf}_${rightTf}_ANALYSIS_${featureName}`] = value;
+      }
+    }
+  };
+
   const applyRegimePhase = () => {
     const atrPctSeries = padSeries(normalizeSeries(indicators.atrPct));
     const price1hPctSeries = padSeries(normalizeSeries(indicators.price1hPcnt));
@@ -993,6 +1122,7 @@ export const buildMlTrainingRow = (
 
   applyIndicatorAndCandlePhases();
   applyRegimePhase();
+  applySeriesAnalysisPhase();
   applyTrendlinePhase();
   applyLabelPhase();
 

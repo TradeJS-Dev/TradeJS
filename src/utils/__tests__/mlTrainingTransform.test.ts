@@ -220,6 +220,19 @@ test('buildMlTrainingRow: key normalizations and removals', () => {
   expect(typeof row.Regime_ATR_PCT_Rank).toBe('number');
   expect(typeof row.Regime_RealizedVol).toBe('number');
   expect(typeof row.Regime_IsHighVol).toBe('number');
+  expect(typeof row.TF15M_ALT_ANALYSIS_CLOSE_SLOPE_NORM).toBe('number');
+  expect(typeof row.TF1H_ALT_ANALYSIS_CLOSE_SLOPE_NORM).toBe('number');
+  expect(typeof row.TF15M_ALT_ANALYSIS_REL_BENCH_NET_RET).toBe('number');
+  expect(typeof row.TF15M_BTC_ANALYSIS_CLOSE_NET_RET).toBe('number');
+  expect(
+    typeof row.MTF_ALT_TF15M_TF1H_ANALYSIS_TREND_ALIGN_SIGN,
+  ).toBe('number');
+  expect(
+    row.MTF_ALT_TF15M_TF1H_ANALYSIS_TREND_ALIGN_SIGN as number,
+  ).toBeGreaterThanOrEqual(-1);
+  expect(
+    row.MTF_ALT_TF15M_TF1H_ANALYSIS_TREND_ALIGN_SIGN as number,
+  ).toBeLessThanOrEqual(1);
   expect(Number.isFinite(row.Regime_ATR_PCT_Rank as number)).toBe(true);
   expect(row.Regime_ATR_PCT_Rank as number).toBeGreaterThanOrEqual(0);
   expect(row.Regime_ATR_PCT_Rank as number).toBeLessThanOrEqual(1);

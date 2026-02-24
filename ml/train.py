@@ -563,17 +563,6 @@ def keep_recent_days(df: pd.DataFrame, days: int) -> pd.DataFrame:
     return df.loc[ts_dt >= cutoff].copy()
 
 
-def apply_feature_set(X: pd.DataFrame, feature_set: str) -> pd.DataFrame:
-    if feature_set != 'legacy':
-        return X
-    drop_prefixes = ('Ctx_', 'Regime_', 'XS_')
-    keep_cols = [col for col in X.columns if not col.startswith(drop_prefixes)]
-    dropped = len(X.columns) - len(keep_cols)
-    if dropped > 0:
-        print(f'Feature set=legacy: dropped {dropped} enriched columns')
-    return X[keep_cols].copy()
-
-
 def select_robust_feature_columns(X_train: pd.DataFrame) -> list[str]:
     selected: list[str] = []
     dropped_noisy = 0
@@ -1852,12 +1841,6 @@ def main() -> None:
         help='Feature selection profile before fitting',
     )
     parser.add_argument(
-        '--feature-set',
-        choices=['enriched', 'legacy'],
-        default='legacy',
-        help='Feature families: enriched (all) or legacy (without Ctx/Regime/XS)',
-    )
-    parser.add_argument(
         '--walk-forward-folds',
         type=int,
         default=2,
@@ -1942,8 +1925,6 @@ def main() -> None:
         validate_no_lookahead(test_df, 'holdout test')
         X_train, y_train = prepare_features(train_df)
         X_test, y_test = prepare_features(test_df)
-        X_train = apply_feature_set(X_train, args.feature_set)
-        X_test = apply_feature_set(X_test, args.feature_set)
         if args.feature_profile == 'robust':
             selected_features = select_robust_feature_columns(X_train)
             X_train = align_features(X_train, selected_features)
@@ -1968,8 +1949,6 @@ def main() -> None:
         validate_no_lookahead(test_df, 'holdout test')
         X_train, y_train = prepare_features(train_df)
         X_test, y_test = prepare_features(test_df)
-        X_train = apply_feature_set(X_train, args.feature_set)
-        X_test = apply_feature_set(X_test, args.feature_set)
         if args.feature_profile == 'robust':
             selected_features = select_robust_feature_columns(X_train)
             X_train = align_features(X_train, selected_features)
@@ -2163,7 +2142,6 @@ def main() -> None:
             '- mode: eval',
             f'- model_type: {args.model_type}',
             f'- feature_profile: {args.feature_profile}',
-            f'- feature_set: {args.feature_set}',
             f'- train_recent_days: {args.train_recent_days}',
             f'- walk_forward_folds: {args.walk_forward_folds}',
             f'- walk_forward_test_days: {args.test_days}',
@@ -2331,7 +2309,6 @@ def main() -> None:
             f'- mode: eval',
             f'- model_type: {args.model_type}',
             f'- feature_profile: {args.feature_profile}',
-            f'- feature_set: {args.feature_set}',
             f'- train_recent_days: {args.train_recent_days}',
             f'- walk_forward_folds: {args.walk_forward_folds}',
             f'- walk_forward_test_days: {args.test_days}',
@@ -2353,7 +2330,7 @@ def main() -> None:
             '',
             '## Train Command',
             '',
-            f'`python /app/ml/train.py --input {args.input} --test-input {args.test_input} --strategy {args.strategy} --model-type {args.model_type} --feature-set {args.feature_set}`',
+            f'`python /app/ml/train.py --input {args.input} --test-input {args.test_input} --strategy {args.strategy} --model-type {args.model_type}`',
         ]
         eval_lines += [
             '',
@@ -2377,7 +2354,6 @@ def main() -> None:
         # Prod single model on dedicated prod source.
         full_df = prod_source_df.copy()
         X_full, y_full = prepare_features(full_df)
-        X_full = apply_feature_set(X_full, args.feature_set)
         if selected_features:
             X_full = align_features(X_full, selected_features)
         prod_pipeline = build_pipeline(X_full, args.model_type)
