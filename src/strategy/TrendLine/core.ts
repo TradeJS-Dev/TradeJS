@@ -1,7 +1,6 @@
 import _ from 'lodash';
 import { SIGNALS_PRELOAD_DAYS } from '@constants';
 import { getTimestamp } from '@utils/timestamp';
-import { uuid } from '@utils/uuid';
 import { round } from '@utils/math';
 import { createTrendlineEngine } from '@utils/trendLineEngine';
 import {
@@ -15,12 +14,12 @@ import {
   StrategyCoreRunner,
   StrategyDecision,
 } from '@utils/strategyRuntime';
-import { KlineChartItem, StrategyConfig, TrendLineOptions } from '@types';
+import { KlineChartItem, TrendLineOptions } from '@types';
 import { filterByVeryVolatility } from './filters';
 import {
-  buildTrendlineEntryDecision,
-  buildTrendlineSignal,
+  buildTrendlineEntrySignalDecision,
 } from './coreHelpers';
+import { TrendLineConfig } from './config';
 
 const PRELOAD_START = getTimestamp(SIGNALS_PRELOAD_DAYS);
 
@@ -31,7 +30,7 @@ export const createTrendLineCore = async ({
   connector,
   data: cachedData,
   btcData: btcCachedData,
-}: CreateStrategyCoreParams<StrategyConfig>): Promise<StrategyCoreRunner> => {
+}: CreateStrategyCoreParams<TrendLineConfig>): Promise<StrategyCoreRunner> => {
   const ONE_DAY_MS = 86_400_000;
   let lastTradeTimestamp: number | null = null;
 
@@ -151,35 +150,24 @@ export const createTrendLineCore = async ({
     const indicatorsController = indicatorsState.ensureInitializedWithCurrentBar();
     const indicatorHistory = indicatorsController.result();
 
-    const signal = buildTrendlineSignal({
-      signalId: uuid(),
+    if (ENV === 'BACKTEST') {
+      lastTradeTimestamp = lastCandle.timestamp;
+    }
+
+    return buildTrendlineEntrySignalDecision({
       symbol,
       interval: INTERVAL,
       direction,
       timestamp: lastCandle.timestamp,
       bestLine,
+      qty,
       currentPrice,
       takeProfitPrice,
       stopLossPrice,
       riskRatio,
       indicatorHistory,
       configFromBacktest,
-    });
-
-    if (ENV === 'BACKTEST') {
-      lastTradeTimestamp = lastCandle.timestamp;
-    }
-
-    return buildTrendlineEntryDecision({
-      signal,
-      qty,
-      currentPrice,
-      takeProfitPrice,
-      stopLossPrice,
-      direction,
-      timestamp: lastCandle.timestamp,
       connector,
-      symbol,
       config,
     });
   };

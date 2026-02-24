@@ -1,6 +1,5 @@
 import _ from 'lodash';
 import { Candle, KlineChartItem, StrategyConfig } from '@types';
-import { uuid } from '@utils/uuid';
 import {
   CreateStrategyCoreParams,
   StrategyCoreRunner,
@@ -12,10 +11,10 @@ import {
 } from '@utils/indicators';
 import {
   buildDefaultIndicatorPeriods,
-  buildStrategySignal,
   getDirectionalTpSlPrices,
 } from '@utils/strategyHelpers';
 import { config as DEFAULT_CONFIG } from './config';
+import { buildBreakoutEntrySignalDecision } from './coreHelpers';
 
 interface SignalConfig {
   weight: number;
@@ -204,20 +203,20 @@ export const createBreakoutCore = async ({
             unit: 'ratio',
           });
 
-        const signal = buildStrategySignal({
-          signalId: uuid(),
-          strategy: 'Breakout',
+        return buildBreakoutEntrySignalDecision({
+          code: 'OPEN_LONG',
           symbol,
           interval: config.INTERVAL ?? '15',
           direction: 'LONG',
           timestamp,
-          figures: {},
-          prices: {
-            currentPrice: price,
-            takeProfitPrice,
-            stopLossPrice: slPrice,
-            riskRatio: 0,
-          },
+          currentPrice: price,
+          qty,
+          takeProfitPrice,
+          stopLossPrice: slPrice,
+          takeProfits: config.TP_LONG.map(({ rate, profit }) => ({
+            rate,
+            price: price * (1 + profit),
+          })),
           indicators: {
             maFast: indicatorValues.maFast,
             maSlow: indicatorValues.maSlow,
@@ -227,34 +226,12 @@ export const createBreakoutCore = async ({
             bbUpper: indicatorValues.bbUpper,
             bbLower: indicatorValues.bbLower,
             correlation: indicatorValues.correlation,
-          },
-          additionalIndicators: {
             highLevel: indicatorValues.highLevel,
             lowLevel: indicatorValues.lowLevel,
-            signals,
           },
+          signals,
           configFromBacktest: Boolean(configFromBacktest),
         });
-
-        return {
-          kind: 'entry',
-          code: 'OPEN_LONG',
-          signal,
-          orderPlan: {
-            qty,
-            price,
-            timestamp,
-            direction: 'LONG',
-            takeProfits: config.TP_LONG.map(({ rate, profit }) => ({
-              rate,
-              price: price * (1 + profit),
-            })),
-            stopLossPrice: slPrice,
-          },
-          runtime: {
-            aiEnabled: false,
-          },
-        };
       }
 
       if (shouldOpenShort) {
@@ -267,20 +244,20 @@ export const createBreakoutCore = async ({
             unit: 'ratio',
           });
 
-        const signal = buildStrategySignal({
-          signalId: uuid(),
-          strategy: 'Breakout',
+        return buildBreakoutEntrySignalDecision({
+          code: 'OPEN_SHORT',
           symbol,
           interval: config.INTERVAL ?? '15',
           direction: 'SHORT',
           timestamp,
-          figures: {},
-          prices: {
-            currentPrice: price,
-            takeProfitPrice,
-            stopLossPrice: slPrice,
-            riskRatio: 0,
-          },
+          currentPrice: price,
+          qty,
+          takeProfitPrice,
+          stopLossPrice: slPrice,
+          takeProfits: config.TP_SHORT.map(({ rate, profit }) => ({
+            rate,
+            price: price * (1 - profit),
+          })),
           indicators: {
             maFast: indicatorValues.maFast,
             maSlow: indicatorValues.maSlow,
@@ -290,34 +267,12 @@ export const createBreakoutCore = async ({
             bbUpper: indicatorValues.bbUpper,
             bbLower: indicatorValues.bbLower,
             correlation: indicatorValues.correlation,
-          },
-          additionalIndicators: {
             highLevel: indicatorValues.highLevel,
             lowLevel: indicatorValues.lowLevel,
-            signals,
           },
+          signals,
           configFromBacktest: Boolean(configFromBacktest),
         });
-
-        return {
-          kind: 'entry',
-          code: 'OPEN_SHORT',
-          signal,
-          orderPlan: {
-            qty,
-            price,
-            timestamp,
-            direction: 'SHORT',
-            takeProfits: config.TP_SHORT.map(({ rate, profit }) => ({
-              rate,
-              price: price * (1 - profit),
-            })),
-            stopLossPrice: slPrice,
-          },
-          runtime: {
-            aiEnabled: false,
-          },
-        };
       }
 
       return { kind: 'skip', code: 'NO_SIGNAL' };

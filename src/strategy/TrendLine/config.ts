@@ -1,4 +1,12 @@
-import { Interval, TrendLineOptions } from '@types';
+import { Direction, Interval, StrategyConfig, TrendLineOptions } from '@types';
+
+export interface TrendLineModeConfig {
+  enable: boolean;
+  direction: Direction;
+  TP: number;
+  SL: number;
+  minRiskRatio: number;
+}
 
 export const config = {
   ENV: 'BACKTEST',
@@ -45,3 +53,11 @@ export const config = {
     minRiskRatio: 2,
   },
 } as const;
+
+export type TrendLineConfig = StrategyConfig &
+  Omit<typeof config, 'BACKTEST_PRICE_MODE' | 'TRENDLINE' | 'HIGHS' | 'LOWS'> & {
+    BACKTEST_PRICE_MODE: 'mid' | 'close';
+    TRENDLINE: Partial<TrendLineOptions>;
+    HIGHS: TrendLineModeConfig;
+    LOWS: TrendLineModeConfig;
+  };

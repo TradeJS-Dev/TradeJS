@@ -33,6 +33,27 @@ jest.mock('@utils/strategyHelpers', () => ({
     additionalIndicators: params.additionalIndicators,
     configFromBacktest: params.configFromBacktest,
   })),
+  buildEntrySignalDecision: jest.fn(({ code, signal, orderPlan, runtime }) => ({
+    kind: 'entry',
+    code,
+    signal: {
+      signalId: signal.signalId ?? 'test-signal-id',
+      strategy: signal.strategy,
+      symbol: signal.symbol,
+      interval: signal.interval,
+      direction: signal.direction,
+      timestamp: signal.timestamp,
+      figures: signal.figures ?? {},
+      prices: signal.prices,
+      indicators: signal.indicators ?? {},
+      additionalIndicators: signal.additionalIndicators,
+      configFromBacktest: signal.configFromBacktest,
+    },
+    orderPlan,
+    runtime,
+  })),
+  buildEntryOrderPlan: jest.fn((params) => params),
+  buildEntryRuntimePolicy: jest.fn((params) => params),
 }));
 
 import { createBreakoutCore } from '../core';
