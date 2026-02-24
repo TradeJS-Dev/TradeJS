@@ -374,6 +374,101 @@ describe('TrendlineStrategyCreator', () => {
     expect(result).toBe('STRATEGY_DISABLED');
   });
 
+  it('applies backtest result config after user config and marks signal configFromBacktest', async () => {
+    (getData as jest.Mock).mockImplementation(async (key: string) => {
+      if (key === 'strategy:config:TrendLine') {
+        return {
+          LOWS: {
+            enable: false,
+          },
+        };
+      }
+
+      if (key === 'strategy:results:TrendLine') {
+        return {
+          TESTUSDT: {
+            config: {
+              LOWS: {
+                enable: true,
+                direction: 'LONG',
+                TP: 2,
+                SL: 1,
+                minRiskRatio: 0,
+              },
+            },
+            stats: {},
+          },
+        };
+      }
+
+      return {};
+    });
+
+    (createTrendlineEngine as jest.Mock).mockImplementation((_data, options) => {
+      const line = {
+        id: 'line-1',
+        mode: options.mode ?? 'lows',
+        distance: 1,
+        touches: [{ timestamp: 1, value: 1 }],
+        points: [{ timestamp: 1, value: 1 }],
+      };
+      return {
+        next: jest.fn(() => [line]),
+      };
+    });
+
+    (createIndicators as jest.Mock).mockImplementation(() => ({
+      next: jest.fn(() => ({})),
+      result: jest.fn(() => ({})),
+    }));
+
+    const cachedData: any[] = [makeCandle(1, 100)];
+    const btcCachedData: any[] = [makeCandle(1, 20000)];
+    const connector: any = {
+      getPosition: jest.fn(async () => ({ qty: 0 })),
+      kline: jest.fn(async () => cachedData),
+    };
+
+    const strategy = await TrendlineStrategyCreator({
+      userName: 'test',
+      config: {
+        ENV: 'test',
+        INTERVAL: '15',
+        MAKE_ORDERS: false,
+        MAX_LOSS_VALUE: 10,
+        MAX_CORRELATION: 1,
+        TRENDLINE: {},
+        HIGHS: {
+          enable: false,
+          direction: 'LONG',
+          TP: 2,
+          SL: 1,
+          minRiskRatio: 0,
+        },
+        LOWS: {
+          enable: true,
+          direction: 'LONG',
+          TP: 2,
+          SL: 1,
+          minRiskRatio: 0,
+        },
+      },
+      symbol: 'TESTUSDT',
+      data: cachedData,
+      btcData: btcCachedData,
+      connector,
+    });
+
+    const result = await strategy(
+      makeCandle(1_700_000_000_000, 100),
+      makeCandle(1_700_000_000_000, 20000),
+    );
+
+    expect(typeof result).toBe('object');
+    expect((result as any).configFromBacktest).toBe(true);
+    expect(redisKeys.strategyResults).toHaveBeenCalledWith('test', 'TrendLine');
+  });
+
   it('returns VERY_VOLATILITY when filter fails', async () => {
     (filterByVeryVolatility as jest.Mock).mockReturnValue(false);
     (createTrendlineEngine as jest.Mock).mockImplementation(
@@ -820,5 +915,88 @@ describe('TrendlineStrategyCreator', () => {
     expect(connector.getPositions).not.toHaveBeenCalled();
     expect(connector.closePosition).not.toHaveBeenCalled();
     expect(connector.placeOrder).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not place order in non-BACKTEST when AI does not confirm current direction', async () => {
+    (askAI as jest.Mock).mockResolvedValue({
+      direction: null,
+      quality: 5,
+      needRetest: false,
+      retestPrice: null,
+      takeProfitPrice: null,
+      stopLossPrice: null,
+      comment: 'skip',
+    });
+
+    (fetchMlThreshold as jest.Mock).mockResolvedValue({
+      passed: true,
+      threshold: 0.1,
+      probability: 0.9,
+    });
+
+    (createTrendlineEngine as jest.Mock).mockImplementation((_data, options) => {
+      const line = {
+        id: 'line-1',
+        mode: options.mode ?? 'lows',
+        distance: 1,
+        touches: [{ timestamp: 1, value: 1 }],
+        points: [{ timestamp: 1, value: 1 }],
+      };
+      return {
+        next: jest.fn(() => [line]),
+      };
+    });
+
+    (createIndicators as jest.Mock).mockImplementation(() => ({
+      next: jest.fn(() => ({})),
+      result: jest.fn(() => ({})),
+    }));
+
+    const cachedData: any[] = [makeCandle(1, 100)];
+    const btcCachedData: any[] = [makeCandle(1, 20000)];
+    const connector: any = {
+      getPosition: jest.fn(async () => ({ qty: 0 })),
+      placeOrder: jest.fn(async () => true),
+      kline: jest.fn(async () => cachedData),
+    };
+
+    const strategy = await TrendlineStrategyCreator({
+      userName: 'test',
+      config: {
+        ENV: 'test',
+        INTERVAL: '15',
+        MAKE_ORDERS: true,
+        MAX_LOSS_VALUE: 10,
+        MAX_CORRELATION: 1,
+        TRENDLINE: {},
+        HIGHS: {
+          enable: false,
+          direction: 'LONG',
+          TP: 2,
+          SL: 1,
+          minRiskRatio: 0,
+        },
+        LOWS: {
+          enable: true,
+          direction: 'LONG',
+          TP: 2,
+          SL: 1,
+          minRiskRatio: 0,
+        },
+      },
+      symbol: 'TESTUSDT',
+      data: cachedData,
+      btcData: btcCachedData,
+      connector,
+    });
+
+    const result = await strategy(
+      makeCandle(1_700_000_000_000, 100),
+      makeCandle(1_700_000_000_000, 20000),
+    );
+
+    expect(typeof result).toBe('object');
+    expect((result as any).orderStatus).toBe('canceled');
+    expect(connector.placeOrder).not.toHaveBeenCalled();
   });
 });

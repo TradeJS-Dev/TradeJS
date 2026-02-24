@@ -181,6 +181,7 @@ export interface Signal {
   };
   figures: {
     trendLine?: TrendLine;
+    [key: string]: any;
   };
   prices: {
     currentPrice: number;
@@ -189,6 +190,7 @@ export interface Signal {
     riskRatio: number;
   };
   indicators: Record<string, any>;
+  additionalIndicators?: Record<string, any>;
 }
 
 export interface SignalAnalysis {

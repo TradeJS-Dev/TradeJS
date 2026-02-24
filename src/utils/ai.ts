@@ -248,6 +248,7 @@ export const buildAiPayload = (signal: Signal) => ({
     trendline: signal.figures?.trendLine ?? null,
   },
   indicators: trimSeriesDeep(signal.indicators),
+  additionalIndicators: trimSeriesDeep(signal.additionalIndicators ?? {}),
 });
 
 export const buildAiHumanPrompt = (signal: Signal, payload = buildAiPayload(signal)) =>

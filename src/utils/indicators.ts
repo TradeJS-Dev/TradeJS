@@ -2,6 +2,7 @@ import { SMA, ATR, BollingerBands, OBV, MACD } from 'technicalindicators';
 import { Candle } from '@types';
 import { ML_BASE_CANDLES_WINDOW } from '@constants';
 import { cloneArrayValues } from '@utils/array';
+import { calculateCoinBtcCorrelation } from '@utils/correlation';
 
 const CANDLE_WINDOW = ML_BASE_CANDLES_WINDOW;
 const BASE_INTERVAL_MINUTES = 15;
@@ -130,6 +131,7 @@ type TrendlineIndicators = {
   highLevel: IndicatorValue;
   lowLevel: IndicatorValue;
   prevClose: IndicatorValue;
+  correlation: IndicatorValue;
 };
 
 type CreateIndicatorsOptions = {
@@ -179,6 +181,7 @@ export type IndicatorSnapshot = {
   prevCandle: Candle | null;
   highLevel: number | null;
   lowLevel: number | null;
+  correlation: number;
 };
 
 export const applyIndicatorsToHistory = (
@@ -209,6 +212,7 @@ export const applyIndicatorsToHistory = (
   pushIndicator('highLevel', indicators.highLevel ?? undefined);
   pushIndicator('lowLevel', indicators.lowLevel ?? undefined);
   pushIndicator('prevClose', indicators.prevClose ?? undefined);
+  pushIndicator('correlation', indicators.correlation ?? undefined);
 };
 
 export const createIndicators = (
@@ -447,6 +451,13 @@ export const createIndicators = (
 
     const len = candlesHistory.length;
     const prevCandle = len > 1 ? candlesHistory[len - 2] : null;
+    const correlation =
+      btcCandlesHistory.length > 0
+        ? (calculateCoinBtcCorrelation(
+            candlesHistory.slice(-100) as any,
+            btcCandlesHistory.slice(-100) as any,
+          ).correlation ?? 0)
+        : 0;
 
     let highLevel: number | null = null;
     let lowLevel: number | null = null;
@@ -484,6 +495,7 @@ export const createIndicators = (
       highLevel,
       lowLevel,
       prevClose: prevCandle?.close ?? null,
+      correlation,
     };
 
     applyIndicatorsToHistory(baseResult, pushIndicator);
@@ -494,6 +506,7 @@ export const createIndicators = (
       prevCandle,
       highLevel,
       lowLevel,
+      correlation,
     };
 
     return result;

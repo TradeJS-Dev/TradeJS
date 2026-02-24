@@ -49,13 +49,18 @@ export const formatMessage = (
     ml,
     prices: { currentPrice, takeProfitPrice, stopLossPrice, riskRatio },
     indicators,
+    additionalIndicators,
   } = signal;
 
   try {
     const lines: string[] = [];
-    const distance = indicators.distance as number | undefined;
+    const distance =
+      (additionalIndicators?.distance as number | undefined) ??
+      (indicators.distance as number | undefined);
     const correlation = indicators.correlation as number | undefined;
-    const touches = indicators.touches as number | undefined;
+    const touches =
+      (additionalIndicators?.touches as number | undefined) ??
+      (indicators.touches as number | undefined);
     const atrPctValue = indicators.atrPct;
     const atrPct = Array.isArray(atrPctValue)
       ? atrPctValue[atrPctValue.length - 1]
