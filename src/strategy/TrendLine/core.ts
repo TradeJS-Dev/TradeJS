@@ -123,20 +123,16 @@ export const createTrendLineCore = async ({
       return { kind: 'skip', code: 'STRATEGY_DISABLED' };
     }
 
-    const {
-      stopLossPrice,
-      takeProfitPrice,
-      riskRatio,
-      qty,
-    } = getDirectionalTpSlPrices({
-      price: currentPrice,
-      direction,
-      takeProfitDelta: TP,
-      stopLossDelta: SL,
-      unit: 'percent',
-      maxLossValue: MAX_LOSS_VALUE,
-      feePercent: Number(FEE_PERCENT ?? 0),
-    });
+    const { stopLossPrice, takeProfitPrice, riskRatio, qty } =
+      getDirectionalTpSlPrices({
+        price: currentPrice,
+        direction,
+        takeProfitDelta: TP,
+        stopLossDelta: SL,
+        unit: 'percent',
+        maxLossValue: MAX_LOSS_VALUE,
+        feePercent: Number(FEE_PERCENT ?? 0),
+      });
 
     if (!qty || !Number.isFinite(qty) || qty <= 0) {
       return { kind: 'skip', code: 'INVALID_QTY' };
@@ -146,7 +142,8 @@ export const createTrendLineCore = async ({
       return { kind: 'skip', code: `RISK_RATIO:${round(riskRatio)}` };
     }
 
-    const indicatorsController = indicatorsState.ensureInitializedWithCurrentBar();
+    const indicatorsController =
+      indicatorsState.ensureInitializedWithCurrentBar();
     const indicatorHistory = indicatorsController.result();
 
     if (ENV === 'BACKTEST') {

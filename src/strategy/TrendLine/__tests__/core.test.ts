@@ -97,7 +97,9 @@ describe('createTrendLineCore', () => {
         result: () => ({ maFast: [1], correlation: [0.1] }),
       })),
     };
-    (createStrategyIndicatorsState as jest.Mock).mockReturnValue(indicatorState);
+    (createStrategyIndicatorsState as jest.Mock).mockReturnValue(
+      indicatorState,
+    );
 
     (getStrategyMarketSnapshot as jest.Mock).mockResolvedValue({
       fullData: [candle],

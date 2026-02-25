@@ -16,7 +16,10 @@ export const trimSeriesDeep = (value: any): any => {
 
   if (value && typeof value === 'object') {
     return Object.fromEntries(
-      Object.entries(value).map(([key, nested]) => [key, trimSeriesDeep(nested)]),
+      Object.entries(value).map(([key, nested]) => [
+        key,
+        trimSeriesDeep(nested),
+      ]),
     );
   }
 

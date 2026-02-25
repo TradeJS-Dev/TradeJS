@@ -87,7 +87,10 @@ const makeConfig = (overrides: Record<string, any> = {}) => ({
   ...overrides,
 });
 
-const makeIndicatorSnapshot = (candle: any, overrides: Record<string, any> = {}) => ({
+const makeIndicatorSnapshot = (
+  candle: any,
+  overrides: Record<string, any> = {},
+) => ({
   candle,
   prevCandle: makeCandle(candle.timestamp - 60_000, candle.close - 1),
   highLevel: candle.close - 2,

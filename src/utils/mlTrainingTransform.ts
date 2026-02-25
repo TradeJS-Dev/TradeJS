@@ -891,8 +891,10 @@ export const buildMlTrainingRow = (
       },
     };
 
-    const keyWithSuffix = (baseKey: string, suffix: IndicatorTimeframe['suffix']) =>
-      suffix ? `${baseKey}${suffix}` : baseKey;
+    const keyWithSuffix = (
+      baseKey: string,
+      suffix: IndicatorTimeframe['suffix'],
+    ) => (suffix ? `${baseKey}${suffix}` : baseKey);
     const keyWithBtcPrefix = (
       baseKey: string,
       suffix: IndicatorTimeframe['suffix'],
@@ -901,8 +903,9 @@ export const buildMlTrainingRow = (
       return `btc${withSuffix[0].toUpperCase()}${withSuffix.slice(1)}`;
     };
 
-    const altSummaries: Partial<Record<IndicatorTimeframe['label'], Record<string, number>>> =
-      {};
+    const altSummaries: Partial<
+      Record<IndicatorTimeframe['label'], Record<string, number>>
+    > = {};
 
     for (const tf of INDICATOR_TIMEFRAMES) {
       const cfg = tfConfigByLabel[tf.label];
@@ -919,7 +922,9 @@ export const buildMlTrainingRow = (
         candles: altCandles.slice(-CANDLE_WINDOW),
         benchmarkCandles: btcCandles.slice(-CANDLE_WINDOW),
         indicators: {
-          atrPct: normalizeSeries(indicators[keyWithSuffix('atrPct', cfg.indicatorSuffix)]),
+          atrPct: normalizeSeries(
+            indicators[keyWithSuffix('atrPct', cfg.indicatorSuffix)],
+          ),
           price1hPcnt: normalizeSeries(
             indicators[keyWithSuffix('price1hPcnt', cfg.indicatorSuffix)],
           ),
@@ -929,8 +934,12 @@ export const buildMlTrainingRow = (
           macdHistogram: normalizeSeries(
             indicators[keyWithSuffix('macdHistogram', cfg.indicatorSuffix)],
           ),
-          maFast: normalizeSeries(indicators[keyWithSuffix('maFast', cfg.indicatorSuffix)]),
-          maSlow: normalizeSeries(indicators[keyWithSuffix('maSlow', cfg.indicatorSuffix)]),
+          maFast: normalizeSeries(
+            indicators[keyWithSuffix('maFast', cfg.indicatorSuffix)],
+          ),
+          maSlow: normalizeSeries(
+            indicators[keyWithSuffix('maSlow', cfg.indicatorSuffix)],
+          ),
         },
       });
       altSummaries[tf.label] = altSummary;

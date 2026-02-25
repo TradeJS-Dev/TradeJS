@@ -214,7 +214,10 @@ ${signal ? buildAiSystemPromptAddonByStrategy(signal) : ''}
 export const buildAiPayload = (signal: Signal): AiPayload =>
   buildAiPayloadByStrategy(signal);
 
-export const buildAiHumanPrompt = (signal: Signal, payload = buildAiPayload(signal)) =>
+export const buildAiHumanPrompt = (
+  signal: Signal,
+  payload = buildAiPayload(signal),
+) =>
   `
 Проанализируй сделку по ${signal.symbol}. Исходный сигнал имеет направление ${signal.direction}.
 Оцени текущую сделку (без предложения противоположного направления): одобряешь ли вход сейчас, качество входа сейчас, нужен ли ретест и по какой цене его оценивать, а также дай TP/SL и комментарий строго в заданном JSON-формате.
@@ -242,11 +245,7 @@ export const askAI = async (signal: Signal) => {
     },
   });
 
-  messages.push(
-    new SystemMessage(
-      buildAiSystemPrompt(signal),
-    ),
-  );
+  messages.push(new SystemMessage(buildAiSystemPrompt(signal)));
   const payload = buildAiPayload(signal);
 
   messages.push(
@@ -261,7 +260,9 @@ export const askAI = async (signal: Signal) => {
   );
 
   const response = await model.invoke(messages);
-  const parsed = parseAIResponse(normalizeResponseContent(response.content)) as any;
+  const parsed = parseAIResponse(
+    normalizeResponseContent(response.content),
+  ) as any;
   const content = normalizeAnalysis(parsed);
 
   await setData(redisKeys.analysis(symbol, signal.signalId), content);

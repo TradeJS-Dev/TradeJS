@@ -27,9 +27,15 @@ export interface AiPayload {
 }
 
 export interface StrategyAiAdapter {
-  buildPayload?: (params: { signal: Signal; basePayload: AiPayload }) => AiPayload;
+  buildPayload?: (params: {
+    signal: Signal;
+    basePayload: AiPayload;
+  }) => AiPayload;
   buildSystemPromptAddon?: (params: { signal: Signal }) => string;
-  buildHumanPromptAddon?: (params: { signal: Signal; payload: AiPayload }) => string;
+  buildHumanPromptAddon?: (params: {
+    signal: Signal;
+    payload: AiPayload;
+  }) => string;
   mapEntryRuntimeFromConfig?: (
     config: StrategyConfig,
   ) => StrategyRuntimeAiOptions | undefined;

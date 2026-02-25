@@ -73,7 +73,9 @@ const shouldExecuteEntryDecision = ({
   minAiQuality: number;
 }) =>
   makeOrdersEnabled &&
-  (!signal || env === 'BACKTEST' || (quality != null && quality >= minAiQuality));
+  (!signal ||
+    env === 'BACKTEST' ||
+    (quality != null && quality >= minAiQuality));
 
 const handleExitDecision = async ({
   connector,
@@ -142,8 +144,9 @@ const executeEntryDecision = async ({
   runtime: ReturnType<typeof resolveEntryRuntimePolicy>;
 }) => {
   const signal = decision.signal;
-  const manifestBeforePlaceOrder =
-    getStrategyManifest(decision.entryContext.strategy)?.hooks?.beforePlaceOrder;
+  const manifestBeforePlaceOrder = getStrategyManifest(
+    decision.entryContext.strategy,
+  )?.hooks?.beforePlaceOrder;
   const beforePlaceOrder = async () => {
     await manifestBeforePlaceOrder?.({
       connector,

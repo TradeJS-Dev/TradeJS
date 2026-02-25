@@ -404,18 +404,20 @@ describe('TrendlineStrategyCreator', () => {
       return {};
     });
 
-    (createTrendlineEngine as jest.Mock).mockImplementation((_data, options) => {
-      const line = {
-        id: 'line-1',
-        mode: options.mode ?? 'lows',
-        distance: 1,
-        touches: [{ timestamp: 1, value: 1 }],
-        points: [{ timestamp: 1, value: 1 }],
-      };
-      return {
-        next: jest.fn(() => [line]),
-      };
-    });
+    (createTrendlineEngine as jest.Mock).mockImplementation(
+      (_data, options) => {
+        const line = {
+          id: 'line-1',
+          mode: options.mode ?? 'lows',
+          distance: 1,
+          touches: [{ timestamp: 1, value: 1 }],
+          points: [{ timestamp: 1, value: 1 }],
+        };
+        return {
+          next: jest.fn(() => [line]),
+        };
+      },
+    );
 
     (createIndicators as jest.Mock).mockImplementation(() => ({
       next: jest.fn(() => ({})),
@@ -934,18 +936,20 @@ describe('TrendlineStrategyCreator', () => {
       probability: 0.9,
     });
 
-    (createTrendlineEngine as jest.Mock).mockImplementation((_data, options) => {
-      const line = {
-        id: 'line-1',
-        mode: options.mode ?? 'lows',
-        distance: 1,
-        touches: [{ timestamp: 1, value: 1 }],
-        points: [{ timestamp: 1, value: 1 }],
-      };
-      return {
-        next: jest.fn(() => [line]),
-      };
-    });
+    (createTrendlineEngine as jest.Mock).mockImplementation(
+      (_data, options) => {
+        const line = {
+          id: 'line-1',
+          mode: options.mode ?? 'lows',
+          distance: 1,
+          touches: [{ timestamp: 1, value: 1 }],
+          points: [{ timestamp: 1, value: 1 }],
+        };
+        return {
+          next: jest.fn(() => [line]),
+        };
+      },
+    );
 
     (createIndicators as jest.Mock).mockImplementation(() => ({
       next: jest.fn(() => ({})),

@@ -20,7 +20,10 @@ export const resolveStrategyConfig = async <TConfig extends StrategyConfig>({
   config: TConfig;
   configFromBacktest: boolean;
 }> => {
-  const mergeIfNotEmpty = <T extends object>(target: T, patch?: Partial<T> | null): T =>
+  const mergeIfNotEmpty = <T extends object>(
+    target: T,
+    patch?: Partial<T> | null,
+  ): T =>
     patch && !_.isEmpty(patch)
       ? ({
           ...target,
@@ -49,7 +52,10 @@ export const resolveStrategyConfig = async <TConfig extends StrategyConfig>({
 
     const backtestResult = results?.[symbol];
     if (backtestResult && !_.isEmpty(backtestResult.config)) {
-      config = mergeIfNotEmpty(config, backtestResult.config as Partial<TConfig>);
+      config = mergeIfNotEmpty(
+        config,
+        backtestResult.config as Partial<TConfig>,
+      );
       configFromBacktest = true;
     }
   }

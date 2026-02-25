@@ -33,7 +33,8 @@ export const buildAiPayloadByStrategy = (signal: Signal): AiPayload => {
 };
 
 export const buildAiSystemPromptAddonByStrategy = (signal: Signal): string =>
-  getStrategyAiAdapter(signal.strategy).buildSystemPromptAddon?.({ signal }) ?? '';
+  getStrategyAiAdapter(signal.strategy).buildSystemPromptAddon?.({ signal }) ??
+  '';
 
 export const buildAiHumanPromptAddonByStrategy = (
   signal: Signal,

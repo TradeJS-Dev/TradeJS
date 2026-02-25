@@ -50,12 +50,9 @@ export const trendLineMlAdapter: StrategyMlAdapter = {
     return toTrendLineMlStrategyConfig(strategyConfig);
   },
   mapEntryRuntimeFromConfig: (config) =>
-    mapMlRuntimeFromConfig(
-      config as TrendLineMlRuntimeConfig,
-      {
-        strategyConfig: toTrendLineMlStrategyConfig(
-          config as TrendLineMlRuntimeConfig,
-        ),
-      },
-    ),
+    mapMlRuntimeFromConfig(config as TrendLineMlRuntimeConfig, {
+      strategyConfig: toTrendLineMlStrategyConfig(
+        config as TrendLineMlRuntimeConfig,
+      ),
+    }),
 };

@@ -453,10 +453,10 @@ export const createIndicators = (
     const prevCandle = len > 1 ? candlesHistory[len - 2] : null;
     const correlation =
       btcCandlesHistory.length > 0
-        ? (calculateCoinBtcCorrelation(
+        ? calculateCoinBtcCorrelation(
             candlesHistory.slice(-100) as any,
             btcCandlesHistory.slice(-100) as any,
-          ).correlation ?? 0)
+          ).correlation ?? 0
         : 0;
 
     let highLevel: number | null = null;

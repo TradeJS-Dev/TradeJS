@@ -224,9 +224,9 @@ test('buildMlTrainingRow: key normalizations and removals', () => {
   expect(typeof row.TF1H_ALT_ANALYSIS_CLOSE_SLOPE_NORM).toBe('number');
   expect(typeof row.TF15M_ALT_ANALYSIS_REL_BENCH_NET_RET).toBe('number');
   expect(typeof row.TF15M_BTC_ANALYSIS_CLOSE_NET_RET).toBe('number');
-  expect(
-    typeof row.MTF_ALT_TF15M_TF1H_ANALYSIS_TREND_ALIGN_SIGN,
-  ).toBe('number');
+  expect(typeof row.MTF_ALT_TF15M_TF1H_ANALYSIS_TREND_ALIGN_SIGN).toBe(
+    'number',
+  );
   expect(
     row.MTF_ALT_TF15M_TF1H_ANALYSIS_TREND_ALIGN_SIGN as number,
   ).toBeGreaterThanOrEqual(-1);

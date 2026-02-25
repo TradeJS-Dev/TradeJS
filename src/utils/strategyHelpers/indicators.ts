@@ -51,7 +51,10 @@ export interface StrategyIndicatorsStateParams {
 
 export interface StrategyIndicatorsState {
   isInitialized: () => boolean;
-  onBar: (candle: KlineChartData[number], btcCandle: KlineChartData[number]) => void;
+  onBar: (
+    candle: KlineChartData[number],
+    btcCandle: KlineChartData[number],
+  ) => void;
   ensureInitializedWithCurrentBar: () => IndicatorsController;
   result: () => ReturnType<IndicatorsController['result']> | undefined;
 }

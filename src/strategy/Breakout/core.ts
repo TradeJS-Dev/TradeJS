@@ -7,10 +7,7 @@ import {
   StrategyDecision,
   StrategyCoreRunner,
 } from '@types';
-import {
-  createIndicators,
-  IndicatorSnapshot,
-} from '@utils/indicators';
+import { createIndicators, IndicatorSnapshot } from '@utils/indicators';
 import {
   buildEntrySignalDecision,
   buildDefaultIndicatorPeriods,

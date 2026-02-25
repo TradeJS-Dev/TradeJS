@@ -8,10 +8,7 @@ import { logger } from '@utils/logger';
 const { APP_URL, TG_BOT_TOKEN: token, TG_CHAT_ID: chatId } = process.env;
 
 const escapeHtml = (value: string) =>
-  value
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
+  value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
 const normalizeQuality = (value?: number) =>
   typeof value === 'number'
@@ -234,8 +231,7 @@ export const formatAnalysisMessage = (
 ): string => {
   const lines: string[] = [];
   const blocks: string[] = [];
-  const quality =
-    normalizeQuality(analysis.quality);
+  const quality = normalizeQuality(analysis.quality);
 
   lines.push(`<b>AI analysis ${signal.symbol}</b>`);
   lines.push(`Signal direction: <b>${signal.direction}</b>`);

@@ -77,9 +77,12 @@ interface BuildEntrySignalDecisionParams {
 }
 
 export const buildEntrySignalDecision = <
-  TFigures extends BuildStrategySignalDraft['figures'] = BuildStrategySignalDraft['figures'],
-  TIndicators extends BuildStrategySignalDraft['indicators'] = BuildStrategySignalDraft['indicators'],
-  TAdditional extends BuildStrategySignalDraft['additionalIndicators'] = BuildStrategySignalDraft['additionalIndicators'],
+  TFigures extends
+    BuildStrategySignalDraft['figures'] = BuildStrategySignalDraft['figures'],
+  TIndicators extends
+    BuildStrategySignalDraft['indicators'] = BuildStrategySignalDraft['indicators'],
+  TAdditional extends
+    BuildStrategySignalDraft['additionalIndicators'] = BuildStrategySignalDraft['additionalIndicators'],
 >({
   code,
   entryContext,
@@ -89,7 +92,10 @@ export const buildEntrySignalDecision = <
   signalId,
   orderPlan,
   runtime,
-}: Omit<BuildEntrySignalDecisionParams, 'figures' | 'indicators' | 'additionalIndicators'> & {
+}: Omit<
+  BuildEntrySignalDecisionParams,
+  'figures' | 'indicators' | 'additionalIndicators'
+> & {
   figures?: TFigures;
   indicators?: TIndicators;
   additionalIndicators?: TAdditional;

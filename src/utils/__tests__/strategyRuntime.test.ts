@@ -3,8 +3,10 @@ const mockEnrichSignalWithMlAi = jest.fn();
 const mockExecuteEntryOrder = jest.fn();
 
 jest.mock('@utils/strategyHelpers', () => ({
-  resolveStrategyConfig: (...args: unknown[]) => mockResolveStrategyConfig(...args),
-  enrichSignalWithMlAi: (...args: unknown[]) => mockEnrichSignalWithMlAi(...args),
+  resolveStrategyConfig: (...args: unknown[]) =>
+    mockResolveStrategyConfig(...args),
+  enrichSignalWithMlAi: (...args: unknown[]) =>
+    mockEnrichSignalWithMlAi(...args),
   executeEntryOrder: (...args: unknown[]) => mockExecuteEntryOrder(...args),
 }));
 
@@ -63,7 +65,10 @@ const makeDecisionEntry = (overrides: Record<string, any> = {}) => ({
   ...overrides,
 });
 
-const makeRuntime = async (decisionFactory: () => any, configOverrides: Record<string, any> = {}) => {
+const makeRuntime = async (
+  decisionFactory: () => any,
+  configOverrides: Record<string, any> = {},
+) => {
   mockResolveStrategyConfig.mockResolvedValue({
     config: {
       ENV: 'LIVE',
@@ -105,9 +110,14 @@ describe('strategyRuntime', () => {
 
   it('gates entry by runtime.ai.minQuality', async () => {
     mockEnrichSignalWithMlAi.mockResolvedValue(4);
-    const { strategy, connector } = await makeRuntime(() => makeDecisionEntry());
+    const { strategy, connector } = await makeRuntime(() =>
+      makeDecisionEntry(),
+    );
 
-    const result = await strategy({ timestamp: 1 } as any, { timestamp: 1 } as any);
+    const result = await strategy(
+      { timestamp: 1 } as any,
+      { timestamp: 1 } as any,
+    );
 
     expect(mockEnrichSignalWithMlAi).toHaveBeenCalledTimes(1);
     expect(mockExecuteEntryOrder).not.toHaveBeenCalled();
@@ -129,7 +139,9 @@ describe('strategyRuntime', () => {
         },
       },
     });
-    const { strategy } = await makeRuntime(() => decision, { ML_ENABLED: false });
+    const { strategy } = await makeRuntime(() => decision, {
+      ML_ENABLED: false,
+    });
 
     await strategy({ timestamp: 1 } as any, { timestamp: 1 } as any);
 
@@ -152,7 +164,10 @@ describe('strategyRuntime', () => {
       }),
     );
 
-    const result = await strategy({ timestamp: 1 } as any, { timestamp: 1 } as any);
+    const result = await strategy(
+      { timestamp: 1 } as any,
+      { timestamp: 1 } as any,
+    );
 
     expect(mockEnrichSignalWithMlAi).not.toHaveBeenCalled();
     expect(beforePlaceOrder).toHaveBeenCalledTimes(1);
@@ -181,7 +196,9 @@ describe('strategyRuntime', () => {
       },
       runtime: undefined,
     });
-    const { strategy } = await makeRuntime(() => decision, { ML_ENABLED: false });
+    const { strategy } = await makeRuntime(() => decision, {
+      ML_ENABLED: false,
+    });
 
     await strategy({ timestamp: 1 } as any, { timestamp: 1 } as any);
 

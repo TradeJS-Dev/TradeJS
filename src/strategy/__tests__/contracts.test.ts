@@ -106,7 +106,11 @@ describe('strategy decision contracts', () => {
         highLevel: 120,
         lowLevel: 90,
       },
-      additionalIndicators: { highLevel: 120, lowLevel: 90, signals: { trend: true } },
+      additionalIndicators: {
+        highLevel: 120,
+        lowLevel: 90,
+        signals: { trend: true },
+      },
     });
 
     expect(decision.kind).toBe('entry');

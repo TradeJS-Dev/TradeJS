@@ -157,6 +157,8 @@ describe('buildMlPayload', () => {
     });
 
     expect(payload.context?.strategyConfig?.TRENDLINE_CONFIG).toBeUndefined();
-    expect(payload.context?.strategyConfig?.BREAKOUT).toEqual({ enabled: true });
+    expect(payload.context?.strategyConfig?.BREAKOUT).toEqual({
+      enabled: true,
+    });
   });
 });

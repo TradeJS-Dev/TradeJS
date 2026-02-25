@@ -161,12 +161,20 @@ const candleCoreSummary = (
   const opens = candles.map((candle) => toFinite(candle.open, 0));
   const highs = candles.map((candle) => toFinite(candle.high, 0));
   const lows = candles.map((candle) => toFinite(candle.low, 0));
-  const volumes = candles.map((candle) => Math.log1p(Math.max(0, candle.volume)));
+  const volumes = candles.map((candle) =>
+    Math.log1p(Math.max(0, candle.volume)),
+  );
   const rangesPct = candles.map((candle) =>
-    safeDiv(Math.max(0, candle.high - candle.low), Math.abs(candle.close) + 1e-9),
+    safeDiv(
+      Math.max(0, candle.high - candle.low),
+      Math.abs(candle.close) + 1e-9,
+    ),
   );
   const bodyPct = candles.map((candle) =>
-    safeDiv(Math.abs(candle.close - candle.open), Math.abs(candle.close) + 1e-9),
+    safeDiv(
+      Math.abs(candle.close - candle.open),
+      Math.abs(candle.close) + 1e-9,
+    ),
   );
   const wickImbalance = candles.map((candle) => {
     const range = Math.max(0, candle.high - candle.low);
@@ -199,7 +207,9 @@ const candleCoreSummary = (
 
   return {
     CLOSE_NET_RET: clamp(safeDiv(lastClose, firstClose) - 1, -5, 5),
-    CLOSE_SLOPE_NORM: Math.tanh(safeDiv(closeSlope, Math.abs(firstClose) + 1e-9)),
+    CLOSE_SLOPE_NORM: Math.tanh(
+      safeDiv(closeSlope, Math.abs(firstClose) + 1e-9),
+    ),
     CLOSE_VOL: std(closeReturns),
     TREND_EFFICIENCY: clamp(safeDiv(Math.abs(netMove), absMoveSum), 0, 1),
     UP_MOVE_RATIO: clamp(
@@ -210,16 +220,20 @@ const candleCoreSummary = (
     AVG_RANGE_PCT: clamp(mean(rangesPct), 0, 5),
     AVG_BODY_PCT: clamp(mean(bodyPct), 0, 5),
     WICK_IMBALANCE: mean(wickImbalance),
-    RANGE_POSITION: clamp(
-      safeDiv(lastClose - lowMin, windowRange || 1),
+    RANGE_POSITION: clamp(safeDiv(lastClose - lowMin, windowRange || 1), 0, 1),
+    DRAWDOWN_FROM_HIGH: clamp(
+      safeDiv(highMax - lastClose, Math.abs(lastClose) + 1e-9),
       0,
-      1,
+      5,
     ),
-    DRAWDOWN_FROM_HIGH: clamp(safeDiv(highMax - lastClose, Math.abs(lastClose) + 1e-9), 0, 5),
-    REBOUND_FROM_LOW: clamp(safeDiv(lastClose - lowMin, Math.abs(lastClose) + 1e-9), -5, 5),
+    REBOUND_FROM_LOW: clamp(
+      safeDiv(lastClose - lowMin, Math.abs(lastClose) + 1e-9),
+      -5,
+      5,
+    ),
     VOLUME_SLOPE_NORM: Math.tanh(linearSlope(volumes)),
     VOLUME_SPIKE: clamp(
-      safeDiv((volumes[volumes.length - 1] ?? 0), median(volumes) || 1),
+      safeDiv(volumes[volumes.length - 1] ?? 0, median(volumes) || 1),
       0,
       10,
     ),
@@ -273,7 +287,9 @@ export const analyzeMlSeriesWindow = (
       ['MACD_HIST', indicatorMap.macdHistogram],
     ];
     for (const [prefix, maybeSeries] of indicatorEntries) {
-      const series = (maybeSeries ?? []).filter((value) => Number.isFinite(value));
+      const series = (maybeSeries ?? []).filter((value) =>
+        Number.isFinite(value),
+      );
       if (!series.length) continue;
       const stats = analyzeNumericSeries(series);
       summary[`${prefix}_LAST`] = stats.LAST ?? 0;
@@ -284,13 +300,21 @@ export const analyzeMlSeriesWindow = (
       summary[`${prefix}_RANK_LAST`] = stats.RANK_LAST ?? 0;
     }
 
-    const maFast = (indicatorMap.maFast ?? []).filter((v) => Number.isFinite(v));
-    const maSlow = (indicatorMap.maSlow ?? []).filter((v) => Number.isFinite(v));
+    const maFast = (indicatorMap.maFast ?? []).filter((v) =>
+      Number.isFinite(v),
+    );
+    const maSlow = (indicatorMap.maSlow ?? []).filter((v) =>
+      Number.isFinite(v),
+    );
     if (maFast.length && maSlow.length) {
       const length = Math.min(maFast.length, maSlow.length);
       const spread = Array.from({ length }, (_, i) =>
         clamp(
-          safeDiv(maFast[maFast.length - length + i] - maSlow[maSlow.length - length + i], maSlow[maSlow.length - length + i] || 1),
+          safeDiv(
+            maFast[maFast.length - length + i] -
+              maSlow[maSlow.length - length + i],
+            maSlow[maSlow.length - length + i] || 1,
+          ),
           -5,
           5,
         ),
@@ -322,7 +346,9 @@ export const buildMlSeriesAlignment = (
     NET_RET_GAP: clamp(leftRet - rightRet, -5, 5),
     EFFICIENCY_GAP: clamp(leftEfficiency - rightEfficiency, -1, 1),
     CONFLUENCE_SCORE: clamp(
-      leftSlope * rightSlope * (0.5 + 0.5 * Math.min(leftEfficiency, rightEfficiency)),
+      leftSlope *
+        rightSlope *
+        (0.5 + 0.5 * Math.min(leftEfficiency, rightEfficiency)),
       -1,
       1,
     ),

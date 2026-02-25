@@ -31,9 +31,12 @@ export const trendLineAiAdapter: StrategyAiAdapter = {
       trendline: signal.figures?.trendLine ?? null,
     },
   }),
-  buildSystemPromptAddon: () => `\n${TRENDLINE_CONTEXT_PROMPT}\n${TRENDLINE_PAYLOAD_PROMPT}\n`,
+  buildSystemPromptAddon: () =>
+    `\n${TRENDLINE_CONTEXT_PROMPT}\n${TRENDLINE_PAYLOAD_PROMPT}\n`,
   mapEntryRuntimeFromConfig: (config) =>
-    mapAiRuntimeFromConfig(config as Pick<TrendLineConfig, 'AI_ENABLED' | 'MIN_AI_QUALITY'>),
+    mapAiRuntimeFromConfig(
+      config as Pick<TrendLineConfig, 'AI_ENABLED' | 'MIN_AI_QUALITY'>,
+    ),
   // Intentionally omitted now: base human prompt is sufficient.
   // buildHumanPromptAddon: () => '',
 };

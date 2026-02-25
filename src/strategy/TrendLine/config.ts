@@ -62,7 +62,10 @@ export const config = {
 } as const;
 
 export type TrendLineConfig = StrategyConfig &
-  Omit<typeof config, 'BACKTEST_PRICE_MODE' | 'TRENDLINE' | 'HIGHS' | 'LOWS'> & {
+  Omit<
+    typeof config,
+    'BACKTEST_PRICE_MODE' | 'TRENDLINE' | 'HIGHS' | 'LOWS'
+  > & {
     BACKTEST_PRICE_MODE: BacktestPriceMode;
     TRENDLINE: Partial<TrendLineOptions>;
     HIGHS: TrendLineModeConfig;

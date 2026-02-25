@@ -6,18 +6,15 @@ type TrendLineBeforePlaceOrderHook = NonNullable<
   NonNullable<StrategyManifest['hooks']>['beforePlaceOrder']
 >;
 
-export const trendLineBeforePlaceOrderHook: TrendLineBeforePlaceOrderHook = async ({
-  connector,
-  entryContext,
-  config,
-}) => {
-  const trendLineConfig = config as TrendLineConfig;
-  if (!trendLineConfig.CLOSE_OPPOSITE_POSITIONS) {
-    return;
-  }
+export const trendLineBeforePlaceOrderHook: TrendLineBeforePlaceOrderHook =
+  async ({ connector, entryContext, config }) => {
+    const trendLineConfig = config as TrendLineConfig;
+    if (!trendLineConfig.CLOSE_OPPOSITE_POSITIONS) {
+      return;
+    }
 
-  await closeOppositePositionsBeforeOpen({
-    connector,
-    entryContext,
-  });
-};
+    await closeOppositePositionsBeforeOpen({
+      connector,
+      entryContext,
+    });
+  };

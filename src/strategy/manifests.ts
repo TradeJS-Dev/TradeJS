@@ -11,5 +11,7 @@ export const strategyManifestMap = Object.fromEntries(
   strategyManifests.map((manifest) => [manifest.name, manifest]),
 ) as Record<string, StrategyManifest>;
 
-export const getStrategyManifest = (name?: string): StrategyManifest | undefined =>
+export const getStrategyManifest = (
+  name?: string,
+): StrategyManifest | undefined =>
   name ? strategyManifestMap[name] : undefined;

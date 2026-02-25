@@ -66,7 +66,10 @@ export interface BuildStrategySignalParams {
   configFromBacktest?: boolean;
 }
 
-export type BuildStrategySignalDraft = Omit<BuildStrategySignalParams, 'signalId'> & {
+export type BuildStrategySignalDraft = Omit<
+  BuildStrategySignalParams,
+  'signalId'
+> & {
   signalId?: string;
 };
 
