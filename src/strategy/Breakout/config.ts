@@ -1,4 +1,7 @@
+import { StrategyConfig } from '@types';
+
 export const config = {
+  ML_ENABLED: false,
   MA_FAST: 49,
   MA_MEDIUM: 49,
   MA_SLOW: 99,
@@ -95,3 +98,5 @@ export const config = {
   SL_LONG: 0.06,
   SL_SHORT: 0.03,
 };
+
+export type BreakoutConfig = StrategyConfig & typeof config;

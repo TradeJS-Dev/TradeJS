@@ -1,12 +1,12 @@
 import _ from 'lodash';
 import { BACKTEST_PRELOAD_DAYS } from '@constants';
-import { TestSuite, BacktestConfig } from '@types';
+import { TestSuite, BacktestConfig, StrategyConfig } from '@types';
 import { getTimestamp } from '@utils/timestamp';
 import { uuid } from '@utils/uuid';
 
-type GenericConfig = Record<string, any>;
+type GenericConfig = StrategyConfig;
 
-export const generateParamGrid = <T extends Record<string, any>>(
+export const generateParamGrid = <T extends StrategyConfig>(
   paramOptions: Record<keyof T, T[keyof T][]>,
 ): T[] => {
   const keys = Object.keys(paramOptions) as (keyof T)[];
@@ -36,8 +36,8 @@ export const generateName = (prefix: string): string => `${prefix}_${uuid(6)}`;
 
 export const mergeConfigs = (
   configs: GenericConfig[],
-): Record<string, any[]> => {
-  const result: Record<string, any[]> = {};
+): Record<string, unknown[]> => {
+  const result: Record<string, unknown[]> = {};
 
   for (const config of configs) {
     for (const [key, value] of Object.entries(config)) {

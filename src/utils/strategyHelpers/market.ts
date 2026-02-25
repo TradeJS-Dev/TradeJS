@@ -1,5 +1,6 @@
 import { getTimestamp } from '@utils/timestamp';
 import {
+  BacktestPriceMode,
   Connector,
   Direction,
   Interval,
@@ -14,7 +15,7 @@ export interface StrategyMarketSnapshotParams {
   interval: Interval;
   cachedData: KlineChartData;
   preloadStart: number;
-  backtestPriceMode?: 'mid' | 'close';
+  backtestPriceMode?: BacktestPriceMode;
 }
 
 export interface StrategyMarketSnapshot {
@@ -44,10 +45,19 @@ export const getStrategyMarketSnapshot = async ({
         });
 
   const lastCandle = fullData[fullData.length - 1];
-  const currentPrice =
-    env === 'BACKTEST' && backtestPriceMode === 'mid'
-      ? (lastCandle.open + lastCandle.close) / 2
-      : lastCandle.close;
+  let currentPrice = lastCandle.close;
+
+  if (env === 'BACKTEST') {
+    if (backtestPriceMode === 'mid') {
+      currentPrice = (lastCandle.open + lastCandle.close) / 2;
+    } else if (backtestPriceMode === 'open') {
+      currentPrice = lastCandle.open;
+    } else if (backtestPriceMode === 'rand') {
+      const min = Math.min(lastCandle.low, lastCandle.high);
+      const max = Math.max(lastCandle.low, lastCandle.high);
+      currentPrice = min + Math.random() * (max - min);
+    }
+  }
 
   return { fullData, lastCandle, currentPrice };
 };

@@ -5,5 +5,12 @@ const defaultMlAdapter: StrategyMlAdapter = {
   normalizeStrategyConfig: (strategyConfig) => strategyConfig,
 };
 
-export const getStrategyMlAdapter = (strategy?: string): StrategyMlAdapter =>
-  getStrategyManifest(strategy)?.mlAdapter ?? defaultMlAdapter;
+export const getStrategyMlAdapter = (strategy?: string): StrategyMlAdapter => {
+  const strategyAdapter = getStrategyManifest(strategy)?.mlAdapter;
+  if (!strategyAdapter) return defaultMlAdapter;
+
+  return {
+    ...defaultMlAdapter,
+    ...strategyAdapter,
+  };
+};

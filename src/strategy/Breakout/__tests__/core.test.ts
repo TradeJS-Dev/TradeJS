@@ -1,6 +1,11 @@
 import { createIndicators } from '@utils/indicators';
 
 jest.mock('@utils/strategyHelpers', () => ({
+  mapMlRuntimeFromConfig: jest.fn((config, overrides = {}) => ({
+    enabled: Boolean(config?.ML_ENABLED ?? true),
+    mlThreshold: Number(config?.ML_THRESHOLD ?? 0),
+    ...overrides,
+  })),
   buildDefaultIndicatorPeriods: jest.fn(() => ({})),
   getDirectionalTpSlPrices: jest.fn(
     ({
@@ -53,8 +58,6 @@ jest.mock('@utils/strategyHelpers', () => ({
       configFromBacktest: params.entryContext.configFromBacktest,
     },
   })),
-  buildEntryOrderPlan: jest.fn((params) => params),
-  buildEntryRuntimePolicy: jest.fn((params) => params),
 }));
 
 import { createBreakoutCore } from '../core';

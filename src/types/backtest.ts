@@ -17,7 +17,13 @@ export type Strategy = (
   btcCandle: KlineChartItem,
 ) => Promise<string | Signal>;
 
-export type StrategyConfig = Record<string, any>;
+export type BacktestPriceMode = 'mid' | 'close' | 'open' | 'rand';
+
+export interface StrategyConfig {
+  BACKTEST_PRICE_MODE?: BacktestPriceMode;
+  ML_ENABLED?: boolean;
+  [key: string]: any;
+}
 export type StrategyResultConfig = StrategyConfig;
 
 export interface StrategyCreatorParams {

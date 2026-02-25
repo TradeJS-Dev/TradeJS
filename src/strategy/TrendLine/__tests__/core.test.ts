@@ -7,25 +7,20 @@ jest.mock('@utils/strategyHelpers', () => ({
   createStrategyIndicatorsState: jest.fn(),
   getStrategyMarketSnapshot: jest.fn(),
   getDirectionalTpSlPrices: jest.fn(),
+  buildEntrySignalDecision: jest.fn(),
 }));
 
 jest.mock('../filters', () => ({
   filterByVeryVolatility: jest.fn(() => true),
 }));
 
-jest.mock('../coreHelpers', () => ({
-  buildTrendlineSignal: jest.fn(),
-  buildTrendlineEntryDecision: jest.fn(),
-  buildTrendlineEntrySignalDecision: jest.fn(),
-}));
-
 import { createTrendlineEngine } from '@utils/trendLineEngine';
 import {
+  buildEntrySignalDecision,
   createStrategyIndicatorsState,
   getStrategyMarketSnapshot,
   getDirectionalTpSlPrices,
 } from '@utils/strategyHelpers';
-import { buildTrendlineEntrySignalDecision } from '../coreHelpers';
 import { createTrendLineCore } from '../core';
 import { config as DEFAULT_CONFIG } from '../config';
 
@@ -118,7 +113,7 @@ describe('createTrendLineCore', () => {
     });
 
     const fakeDecision = { kind: 'entry', code: 'TRENDLINE_SIGNAL' };
-    (buildTrendlineEntrySignalDecision as jest.Mock).mockReturnValue(fakeDecision);
+    (buildEntrySignalDecision as jest.Mock).mockReturnValue(fakeDecision);
 
     const connector = {
       getPosition: jest.fn(async () => ({ qty: 0 })),
@@ -150,16 +145,18 @@ describe('createTrendLineCore', () => {
 
     expect(result).toBe(fakeDecision);
     expect(indicatorState.onBar).toHaveBeenCalledWith(candle, btcCandle);
-    expect(buildTrendlineEntrySignalDecision).toHaveBeenCalledWith(
+    expect(buildEntrySignalDecision).toHaveBeenCalledWith(
       expect.objectContaining({
-        symbol: 'TESTUSDT',
-        bestLine,
-        prices: expect.objectContaining({
-          currentPrice: candle.close,
+        code: 'TRENDLINE_SIGNAL',
+        entryContext: expect.objectContaining({
+          symbol: 'TESTUSDT',
+          prices: expect.objectContaining({
+            currentPrice: candle.close,
+          }),
+          configFromBacktest: true,
         }),
-        configFromBacktest: true,
-        qty: 2,
-        config,
+        figures: { trendLine: bestLine },
+        orderPlan: expect.objectContaining({ qty: 2 }),
       }),
     );
   });

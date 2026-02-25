@@ -6,8 +6,38 @@ import {
   StrategyEntrySignalContext,
   StrategyEntryOrderPlan,
   StrategyEntryRuntimeOptions,
+  StrategyRuntimeAiOptions,
+  StrategyRuntimeMlOptions,
 } from '@types';
 import { uuid } from '@utils/uuid';
+
+type AiRuntimeConfigLike = {
+  AI_ENABLED?: boolean;
+  MIN_AI_QUALITY?: number;
+};
+
+type MlRuntimeConfigLike = {
+  ML_ENABLED?: boolean;
+  ML_THRESHOLD?: number;
+};
+
+export const mapAiRuntimeFromConfig = <TConfig extends AiRuntimeConfigLike>(
+  config: TConfig,
+  overrides: Partial<StrategyRuntimeAiOptions> = {},
+): StrategyRuntimeAiOptions => ({
+  enabled: Boolean(config.AI_ENABLED ?? true),
+  minQuality: Number(config.MIN_AI_QUALITY ?? 4),
+  ...overrides,
+});
+
+export const mapMlRuntimeFromConfig = <TConfig extends MlRuntimeConfigLike>(
+  config: TConfig,
+  overrides: Partial<StrategyRuntimeMlOptions> = {},
+): StrategyRuntimeMlOptions => ({
+  enabled: Boolean(config.ML_ENABLED ?? true),
+  mlThreshold: Number(config.ML_THRESHOLD ?? 0),
+  ...overrides,
+});
 
 export const buildStrategySignal = ({
   signalId,
@@ -46,7 +76,11 @@ interface BuildEntrySignalDecisionParams {
   runtime?: StrategyEntryRuntimeOptions;
 }
 
-export const buildEntrySignalDecision = ({
+export const buildEntrySignalDecision = <
+  TFigures extends BuildStrategySignalDraft['figures'] = BuildStrategySignalDraft['figures'],
+  TIndicators extends BuildStrategySignalDraft['indicators'] = BuildStrategySignalDraft['indicators'],
+  TAdditional extends BuildStrategySignalDraft['additionalIndicators'] = BuildStrategySignalDraft['additionalIndicators'],
+>({
   code,
   entryContext,
   figures,
@@ -55,7 +89,11 @@ export const buildEntrySignalDecision = ({
   signalId,
   orderPlan,
   runtime,
-}: BuildEntrySignalDecisionParams): StrategyDecision => ({
+}: Omit<BuildEntrySignalDecisionParams, 'figures' | 'indicators' | 'additionalIndicators'> & {
+  figures?: TFigures;
+  indicators?: TIndicators;
+  additionalIndicators?: TAdditional;
+}): StrategyDecision => ({
   kind: 'entry',
   code,
   entryContext,

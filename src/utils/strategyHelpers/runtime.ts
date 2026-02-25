@@ -27,7 +27,13 @@ export const enrichSignalWithMlAi = async ({
   ml,
   ai,
 }: EnrichSignalWithMlAiParams): Promise<number | undefined> => {
-  if (env !== 'BACKTEST' && ml && ml.enabled !== false) {
+  if (
+    env !== 'BACKTEST' &&
+    ml &&
+    ml.enabled !== false &&
+    ml.strategyConfig &&
+    typeof ml.mlThreshold === 'number'
+  ) {
     const mlResult = await fetchMlThreshold(signal, {
       strategyConfig: ml.strategyConfig,
       ML_THRESHOLD: ml.mlThreshold,

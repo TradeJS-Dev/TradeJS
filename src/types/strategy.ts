@@ -82,8 +82,8 @@ export interface StrategyEntrySignalContext {
 
 export interface StrategyRuntimeMlOptions {
   enabled?: boolean;
-  strategyConfig: StrategyConfig;
-  mlThreshold: number;
+  strategyConfig?: StrategyConfig;
+  mlThreshold?: number;
 }
 
 export interface StrategyRuntimeAiOptions {

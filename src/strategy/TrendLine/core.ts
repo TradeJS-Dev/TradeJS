@@ -4,6 +4,7 @@ import { getTimestamp } from '@utils/timestamp';
 import { round } from '@utils/math';
 import { createTrendlineEngine } from '@utils/trendLineEngine';
 import {
+  buildEntrySignalDecision,
   buildDefaultIndicatorPeriods,
   createStrategyIndicatorsState,
   getStrategyMarketSnapshot,
@@ -17,10 +18,8 @@ import {
   TrendLineOptions,
 } from '@types';
 import { filterByVeryVolatility } from './filters';
-import {
-  buildTrendlineEntrySignalDecision,
-} from './coreHelpers';
 import { TrendLineConfig } from './config';
+import { trendLineManifest } from './manifest';
 
 const PRELOAD_START = getTimestamp(SIGNALS_PRELOAD_DAYS);
 
@@ -110,8 +109,7 @@ export const createTrendLineCore = async ({
         interval: INTERVAL,
         cachedData,
         preloadStart: PRELOAD_START,
-        backtestPriceMode:
-          BACKTEST_PRICE_MODE === 'close' ? 'close' : 'mid',
+        backtestPriceMode: BACKTEST_PRICE_MODE,
       });
 
     if (!filterByVeryVolatility(fullData)) {
@@ -155,23 +153,36 @@ export const createTrendLineCore = async ({
       lastTradeTimestamp = lastCandle.timestamp;
     }
 
-    return buildTrendlineEntrySignalDecision({
-      symbol,
-      interval: INTERVAL,
-      direction,
-      timestamp: lastCandle.timestamp,
-      bestLine,
-      qty,
-      prices: {
-        currentPrice,
-        takeProfitPrice,
-        stopLossPrice,
-        riskRatio,
+    const prices = {
+      currentPrice,
+      takeProfitPrice,
+      stopLossPrice,
+      riskRatio,
+    };
+
+    return buildEntrySignalDecision({
+      code: 'TRENDLINE_SIGNAL',
+      entryContext: {
+        strategy: trendLineManifest.name,
+        symbol,
+        interval: INTERVAL,
+        direction,
+        timestamp: lastCandle.timestamp,
+        prices,
+        configFromBacktest,
       },
-      indicatorHistory,
-      configFromBacktest,
-      connector,
-      config,
+      figures: {
+        trendLine: bestLine,
+      },
+      indicators: indicatorHistory,
+      additionalIndicators: {
+        touches: bestLine.touches.length + 2,
+        distance: bestLine.distance,
+      },
+      orderPlan: {
+        qty,
+        takeProfits: [{ rate: 1, price: takeProfitPrice }],
+      },
     });
   };
 };

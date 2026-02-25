@@ -1,4 +1,11 @@
-import { Signal } from './trade';
+import {
+  StrategyEntryRuntimeOptions,
+  StrategyEntrySignalContext,
+  StrategyRuntimeAiOptions,
+  StrategyRuntimeMlOptions,
+} from './strategy';
+import { StrategyConfig } from './backtest';
+import { Connector, Signal } from './trade';
 
 export interface AiPayload {
   signal: {
@@ -23,6 +30,9 @@ export interface StrategyAiAdapter {
   buildPayload?: (params: { signal: Signal; basePayload: AiPayload }) => AiPayload;
   buildSystemPromptAddon?: (params: { signal: Signal }) => string;
   buildHumanPromptAddon?: (params: { signal: Signal; payload: AiPayload }) => string;
+  mapEntryRuntimeFromConfig?: (
+    config: StrategyConfig,
+  ) => StrategyRuntimeAiOptions | undefined;
 }
 
 export interface StrategyMlAdapter {
@@ -30,10 +40,25 @@ export interface StrategyMlAdapter {
   normalizeStrategyConfig?: (
     strategyConfig?: Record<string, any>,
   ) => Record<string, any> | undefined;
+  mapEntryRuntimeFromConfig?: (
+    config: StrategyConfig,
+  ) => StrategyRuntimeMlOptions | undefined;
 }
 
 export interface StrategyManifest {
   name: string;
+  entryRuntimeDefaults?: {
+    ai?: StrategyRuntimeAiOptions;
+    ml?: Pick<StrategyRuntimeMlOptions, 'enabled'>;
+  };
+  hooks?: {
+    beforePlaceOrder?: (params: {
+      connector: Connector;
+      entryContext: StrategyEntrySignalContext;
+      config: StrategyConfig;
+      runtime: StrategyEntryRuntimeOptions | undefined;
+    }) => Promise<void>;
+  };
   aiAdapter?: StrategyAiAdapter;
   mlAdapter?: StrategyMlAdapter;
 }

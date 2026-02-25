@@ -1,4 +1,10 @@
-import { Direction, Interval, StrategyConfig, TrendLineOptions } from '@types';
+import {
+  BacktestPriceMode,
+  Direction,
+  Interval,
+  StrategyConfig,
+  TrendLineOptions,
+} from '@types';
 
 export interface TrendLineModeConfig {
   enable: boolean;
@@ -15,6 +21,7 @@ export const config = {
   CLOSE_OPPOSITE_POSITIONS: false,
   BACKTEST_PRICE_MODE: 'mid' as const,
   AI_ENABLED: true,
+  ML_ENABLED: true,
   ML_THRESHOLD: 0.1,
   MIN_AI_QUALITY: 4,
   FEE_PERCENT: 0.005,
@@ -56,7 +63,7 @@ export const config = {
 
 export type TrendLineConfig = StrategyConfig &
   Omit<typeof config, 'BACKTEST_PRICE_MODE' | 'TRENDLINE' | 'HIGHS' | 'LOWS'> & {
-    BACKTEST_PRICE_MODE: 'mid' | 'close';
+    BACKTEST_PRICE_MODE: BacktestPriceMode;
     TRENDLINE: Partial<TrendLineOptions>;
     HIGHS: TrendLineModeConfig;
     LOWS: TrendLineModeConfig;

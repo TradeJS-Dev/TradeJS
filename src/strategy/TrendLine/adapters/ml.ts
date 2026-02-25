@@ -1,4 +1,29 @@
 import { Signal, StrategyMlAdapter } from '@types';
+import { mapMlRuntimeFromConfig } from '@utils/strategyHelpers/signalBuilders';
+import type { TrendLineConfig } from '../config';
+
+type TrendLineMlRuntimeConfig = Pick<
+  TrendLineConfig,
+  'ML_ENABLED' | 'ML_THRESHOLD' | 'TRENDLINE' | 'HIGHS' | 'LOWS'
+>;
+
+type TrendLineMlStrategyConfigInput = Partial<
+  Pick<TrendLineConfig, 'TRENDLINE' | 'HIGHS' | 'LOWS'>
+> & {
+  TRENDLINE_CONFIG?: unknown;
+  [key: string]: unknown;
+};
+
+const toTrendLineMlStrategyConfig = <T extends TrendLineMlStrategyConfigInput>(
+  input?: T,
+): (T & { TRENDLINE_CONFIG: unknown }) | undefined => {
+  if (!input) return undefined;
+
+  return {
+    ...input,
+    TRENDLINE_CONFIG: input.TRENDLINE_CONFIG ?? input.TRENDLINE ?? {},
+  };
+};
 
 export const trendLineMlAdapter: StrategyMlAdapter = {
   normalizeSignal: (signal: Signal) => {
@@ -22,11 +47,15 @@ export const trendLineMlAdapter: StrategyMlAdapter = {
   normalizeStrategyConfig: (
     strategyConfig?: Record<string, any>,
   ): Record<string, any> | undefined => {
-    if (!strategyConfig) return strategyConfig;
-    return {
-      ...strategyConfig,
-      TRENDLINE_CONFIG:
-        strategyConfig.TRENDLINE_CONFIG ?? strategyConfig.TRENDLINE,
-    };
+    return toTrendLineMlStrategyConfig(strategyConfig);
   },
+  mapEntryRuntimeFromConfig: (config) =>
+    mapMlRuntimeFromConfig(
+      config as TrendLineMlRuntimeConfig,
+      {
+        strategyConfig: toTrendLineMlStrategyConfig(
+          config as TrendLineMlRuntimeConfig,
+        ),
+      },
+    ),
 };

@@ -12,11 +12,12 @@ import {
   IndicatorSnapshot,
 } from '@utils/indicators';
 import {
+  buildEntrySignalDecision,
   buildDefaultIndicatorPeriods,
   getDirectionalTpSlPrices,
 } from '@utils/strategyHelpers';
-import { config as DEFAULT_CONFIG } from './config';
-import { buildBreakoutEntrySignalDecision } from './coreHelpers';
+import { config as DEFAULT_CONFIG, BreakoutConfig } from './config';
+import { breakoutManifest } from './manifest';
 
 interface SignalConfig {
   weight: number;
@@ -41,8 +42,6 @@ export enum Signal {
   CLOSE_BELOW_LOW_LEVEL = 'CLOSE_BELOW_LOW_LEVEL',
   CLOSE_BELOW_PREV_CLOSE = 'CLOSE_BELOW_PREV_CLOSE',
 }
-
-type BreakoutConfig = StrategyConfig & typeof DEFAULT_CONFIG;
 
 type BreakoutSignalIndicators = Omit<
   IndicatorSnapshot,
@@ -205,20 +204,23 @@ export const createBreakoutCore = async ({
             unit: 'ratio',
           });
 
-        return buildBreakoutEntrySignalDecision({
+        return buildEntrySignalDecision({
           code: 'OPEN_LONG',
-          symbol,
-          interval: config.INTERVAL ?? '15',
-          direction: 'LONG',
-          timestamp,
-          currentPrice: price,
-          qty,
-          takeProfitPrice,
-          stopLossPrice: slPrice,
-          takeProfits: config.TP_LONG.map(({ rate, profit }) => ({
-            rate,
-            price: price * (1 + profit),
-          })),
+          entryContext: {
+            strategy: breakoutManifest.name,
+            symbol,
+            interval: config.INTERVAL ?? '15',
+            direction: 'LONG',
+            timestamp,
+            prices: {
+              currentPrice: price,
+              takeProfitPrice,
+              stopLossPrice: slPrice,
+              riskRatio: 0,
+            },
+            configFromBacktest: Boolean(configFromBacktest),
+          },
+          figures: {},
           indicators: {
             maFast: indicatorValues.maFast,
             maSlow: indicatorValues.maSlow,
@@ -228,11 +230,19 @@ export const createBreakoutCore = async ({
             bbUpper: indicatorValues.bbUpper,
             bbLower: indicatorValues.bbLower,
             correlation: indicatorValues.correlation,
+          },
+          additionalIndicators: {
             highLevel: indicatorValues.highLevel,
             lowLevel: indicatorValues.lowLevel,
+            signals,
           },
-          signals,
-          configFromBacktest: Boolean(configFromBacktest),
+          orderPlan: {
+            qty,
+            takeProfits: config.TP_LONG.map(({ rate, profit }) => ({
+              rate,
+              price: price * (1 + profit),
+            })),
+          },
         });
       }
 
@@ -246,20 +256,23 @@ export const createBreakoutCore = async ({
             unit: 'ratio',
           });
 
-        return buildBreakoutEntrySignalDecision({
+        return buildEntrySignalDecision({
           code: 'OPEN_SHORT',
-          symbol,
-          interval: config.INTERVAL ?? '15',
-          direction: 'SHORT',
-          timestamp,
-          currentPrice: price,
-          qty,
-          takeProfitPrice,
-          stopLossPrice: slPrice,
-          takeProfits: config.TP_SHORT.map(({ rate, profit }) => ({
-            rate,
-            price: price * (1 - profit),
-          })),
+          entryContext: {
+            strategy: breakoutManifest.name,
+            symbol,
+            interval: config.INTERVAL ?? '15',
+            direction: 'SHORT',
+            timestamp,
+            prices: {
+              currentPrice: price,
+              takeProfitPrice,
+              stopLossPrice: slPrice,
+              riskRatio: 0,
+            },
+            configFromBacktest: Boolean(configFromBacktest),
+          },
+          figures: {},
           indicators: {
             maFast: indicatorValues.maFast,
             maSlow: indicatorValues.maSlow,
@@ -269,11 +282,19 @@ export const createBreakoutCore = async ({
             bbUpper: indicatorValues.bbUpper,
             bbLower: indicatorValues.bbLower,
             correlation: indicatorValues.correlation,
+          },
+          additionalIndicators: {
             highLevel: indicatorValues.highLevel,
             lowLevel: indicatorValues.lowLevel,
+            signals,
           },
-          signals,
-          configFromBacktest: Boolean(configFromBacktest),
+          orderPlan: {
+            qty,
+            takeProfits: config.TP_SHORT.map(({ rate, profit }) => ({
+              rate,
+              price: price * (1 - profit),
+            })),
+          },
         });
       }
 
