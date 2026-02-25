@@ -26,8 +26,7 @@
 - `Breakout`, `Channel`, `ReversalPattern` и др.
 - Стратегии приведены к более унифицированному формату:
   - `strategy.ts` — thin-wrapper,
-  - `core.ts` — логика стратегии (`skip/entry/exit` decisions),
-  - `coreHelpers.ts` — strategy-specific сборка signal/runtime policy,
+  - `core.ts` — логика стратегии + сборка `entry`/`exit` decisions (`skip/entry/exit`),
   - `manifest.ts` — manifest стратегии (`name`, AI/ML adapters),
   - `adapters/` — strategy-specific AI/ML adapters (если нужны).
 - Исполнение ордеров/AI/ML/runtime orchestration вынесено в общий слой (`src/utils/strategyRuntime.ts` + `src/utils/strategyHelpers/*`).
@@ -39,6 +38,7 @@
   - AI сохраняет результат в Redis (`analysis:*`),
   - ордер открывается только если AI подтверждает текущее направление и ставит `quality` 4-5.
 - Все стратегии перечислены в индексе.
+- Отдельный API/контракты стратегий описаны в `STRATEGY_API.md`.
 
 ---
 
