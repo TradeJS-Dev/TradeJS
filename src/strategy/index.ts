@@ -1,5 +1,6 @@
 import { BreakoutStrategyCreator } from './Breakout';
 import { TrendlineStrategyCreator } from './TrendLine';
+export { strategyManifests, getStrategyManifest } from './manifests';
 
 export enum StrategyNames {
   Breakout = 'Breakout',

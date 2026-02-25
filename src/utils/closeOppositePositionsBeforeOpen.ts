@@ -1,24 +1,25 @@
 import _ from 'lodash';
-import { Connector, Direction } from '@types';
+import { Connector, StrategyEntrySignalContext } from '@types';
 import { logger } from '@utils/logger';
 
 type CloseOppositePositionsBeforeOpenOptions = {
   connector: Connector;
-  currentSymbol: string;
-  currentDirection: Direction;
-  price: number;
-  timestamp: number;
-  strategyName?: string;
+  entryContext: StrategyEntrySignalContext;
 };
 
 export const closeOppositePositionsBeforeOpen = async ({
   connector,
-  currentSymbol,
-  currentDirection,
-  price,
-  timestamp,
-  strategyName = 'Strategy',
+  entryContext,
 }: CloseOppositePositionsBeforeOpenOptions) => {
+  const {
+    symbol: currentSymbol,
+    direction: currentDirection,
+    timestamp,
+    prices,
+    strategy: strategyName,
+  } = entryContext;
+  const price = prices.currentPrice;
+
   try {
     logger.log(
       'info',

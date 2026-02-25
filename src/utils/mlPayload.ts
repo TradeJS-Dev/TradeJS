@@ -1,4 +1,5 @@
 import { Signal } from '@types';
+import { getStrategyMlAdapter } from '@utils/strategyAdapters/ml';
 
 export type MlTestConfig = {
   strategyName?: string;
@@ -25,26 +26,32 @@ export type MlSignalPayload = {
 
 export const normalizeStrategyConfig = (
   strategyConfig?: Record<string, any>,
+  strategyName?: string,
 ): Record<string, any> | undefined => {
-  if (!strategyConfig) return strategyConfig;
-  return {
-    ...strategyConfig,
-    TRENDLINE_CONFIG:
-      strategyConfig.TRENDLINE_CONFIG ?? strategyConfig.TRENDLINE,
-  };
+  return getStrategyMlAdapter(strategyName).normalizeStrategyConfig?.(
+    strategyConfig,
+  );
 };
 
 export const buildMlPayload = (payload: MlSignalPayload): MlSignalPayload => {
+  const strategyName =
+    payload.signal?.strategy ?? payload.context?.strategyName;
+  const mlAdapter = getStrategyMlAdapter(strategyName);
+  const normalizedSignal =
+    mlAdapter.normalizeSignal?.(payload.signal) ?? payload.signal;
   const nextSignal = {
-    ...payload.signal,
+    ...normalizedSignal,
     indicators: {
-      ...(payload.signal?.indicators ?? {}),
+      ...(normalizedSignal?.indicators ?? {}),
     },
   };
   const nextContext = payload.context
     ? {
         ...payload.context,
-        strategyConfig: normalizeStrategyConfig(payload.context.strategyConfig),
+        strategyConfig: normalizeStrategyConfig(
+          payload.context.strategyConfig,
+          strategyName,
+        ),
       }
     : undefined;
 

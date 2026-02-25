@@ -7,7 +7,13 @@ import {
   SystemMessage,
 } from '@langchain/core/messages';
 import { setData, redisKeys } from '@utils/redis';
-import { Signal, SignalAnalysis } from '@types';
+import {
+  buildAiHumanPromptAddonByStrategy,
+  buildAiPayloadByStrategy,
+  buildAiSystemPromptAddonByStrategy,
+} from '@utils/strategyAdapters/ai';
+import { AiPayload, Signal, SignalAnalysis } from '@types';
+export { MAX_AI_SERIES_POINTS, trimSeriesDeep } from '@utils/aiShared';
 
 const parseAIResponse = (input: string | object): object => {
   try {
@@ -27,8 +33,6 @@ const parseAIResponse = (input: string | object): object => {
   }
 };
 
-export const MAX_AI_SERIES_POINTS = 5;
-
 const normalizeResponseContent = (content: unknown): string | object => {
   if (typeof content === 'string' || (content && typeof content === 'object')) {
     if (typeof content !== 'object' || !Array.isArray(content)) {
@@ -45,29 +49,6 @@ const normalizeResponseContent = (content: unknown): string | object => {
   }
 
   return String(content ?? '');
-};
-
-export const trimSeriesDeep = (value: any): any => {
-  if (Array.isArray(value)) {
-    const trimmed = value.slice(-MAX_AI_SERIES_POINTS);
-    const isMatrix = trimmed.every((item) => Array.isArray(item));
-
-    if (isMatrix) {
-      return trimmed;
-    }
-
-    return trimmed.map((item) =>
-      item && typeof item === 'object' ? trimSeriesDeep(item) : item,
-    );
-  }
-
-  if (value && typeof value === 'object') {
-    return Object.fromEntries(
-      Object.entries(value).map(([key, nested]) => [key, trimSeriesDeep(nested)]),
-    );
-  }
-
-  return value;
 };
 
 const normalizeAnalysis = (raw: any): Partial<SignalAnalysis> => {
@@ -111,16 +92,15 @@ const normalizeAnalysis = (raw: any): Partial<SignalAnalysis> => {
   };
 };
 
-export const buildAiSystemPrompt = (): string => `
+export const buildAiSystemPrompt = (signal?: Signal): string => `
 Ты — помощник крипто-трейдера.
-Анализируй присланный JSON со сделкой, свечами, индикаторами (по монете и BTC на разных ТФ) и трендовой линией.
+Анализируй присланный JSON со сделкой, свечами, индикаторами (по монете и BTC на разных ТФ) и фигурами/контекстом стратегии.
 Данные рядов уже укорочены до последних 5 значений.
 
 ВАЖНО:
 - Не придумывай отсутствующие данные.
 - Опирайся на направление и уровни исходного сигнала, но можешь не согласиться с ними.
 - Учитывай, что сигнал построен стратегией, указанной в поле signal.strategy.
-- Если strategy = "TrendLine" (или аналогичное имя), это сетап на основе пробоя/реакции от трендовой линии; поле figures.trendline содержит геометрию этой линии.
 - Твоя цель: дать ПРАКТИЧНЫЙ short-term trade plan, а не общие слова.
 - Не пиши абстрактно вроде "есть momentum/slope" без привязки к решению.
 - Пиши comment по-русски.
@@ -169,8 +149,8 @@ export const buildAiSystemPrompt = (): string => `
   symbol, signalId, interval, direction, timestamp, strategy, prices
 - payload.signal.prices:
   currentPrice, takeProfitPrice, stopLossPrice
-- payload.figures.trendline:
-  объект трендовой линии стратегии (НЕ урезан): mode, distance, touches[], points[], alpha[] и др.
+- payload.figures:
+  словарь strategy-specific фигур/геометрии (если есть). Конкретные поля зависят от стратегии.
 - payload.indicators:
   словарь индикаторов/рядов по монете и BTC; ряды уже обрезаны до последних 5 значений.
   Паттерны ключей:
@@ -179,14 +159,14 @@ export const buildAiSystemPrompt = (): string => `
   • служебные ключи стратегии возможны (например correlation, touches, distance)
 
 Как анализировать (приоритеты):
-1) Сначала проверь структуру цены и геометрию сетапа/контекст стратегии (особенно trendline). Это приоритетнее индикаторов.
+1) Сначала проверь структуру цены и геометрию/контекст сетапа из payload.figures. Это приоритетнее индикаторов.
 2) Затем оцени подтверждение/конфликт по индикаторам текущей монеты.
 3) Затем проверь контекст BTC (поддерживает или ломает идею).
 4) Только после этого выбери direction, quality и решение по ретесту.
 5) Если есть сильные конфликты, снижай quality или ставь null.
 
 Явные правила при конфликте сигналов:
-- Если trendline/структура цены невалидны или сомнительны, индикаторы не должны "спасать" сетап.
+- Если фигура/структура цены невалидны или сомнительны, индикаторы не должны "спасать" сетап.
 - Если структура ок, но BTC и/или ключевые индикаторы заметно конфликтуют, обычно quality <= 3.
 - Если не одобряешь текущую сделку (direction=null), в comment обязательно кратко назови главную причину.
   Если используешь структурные поля, укажи главную причину в "qualityReason" и/или "triggerInvalidation".
@@ -211,7 +191,7 @@ export const buildAiSystemPrompt = (): string => `
 
 Требования к полезному структурированному анализу (без воды):
 - Укажи 2-4 конкретных фактора "за" или "против" сделку в "confirmations".
-- Обязательно упомяни роль trendline (пробой/ретест/ложный пробой/касание/нет подтверждения).
+- Обязательно упомяни роль ключевой фигуры/структуры сетапа (например пробой/ретест/ложный пробой/касание/нет подтверждения).
 - Обязательно упомяни BTC-контекст (поддерживает, нейтрален или конфликтует).
 - Объясни, почему quality именно такой.
 - Если не входишь (direction=null), прямо укажи что должно измениться для входа.
@@ -228,28 +208,11 @@ export const buildAiSystemPrompt = (): string => `
 {"direction":null,"quality":2,"needRetest":false,"retestPrice":null,"takeProfitPrice":null,"stopLossPrice":null,"setup":"Касание/шум у трендовой без уверенного пробоя.","confirmations":"Индикаторы смешанные и не дают сильного преимущества.","btcContext":"BTC скорее конфликтует или не поддерживает идею.","retestPlan":"Ретест пока не оцениваем, потому что сначала нужен сам факт качественного пробоя.","riskLevels":"Сейчас нет качественного соотношения для входа.","qualityReason":"Quality=2: timing слабый и подтверждений мало.","triggerInvalidation":"Ждать явный пробой и подтверждение по монете и BTC."}
 
 Верни только JSON-объект, без лишних символов.
+${signal ? buildAiSystemPromptAddonByStrategy(signal) : ''}
 `;
 
-export const buildAiPayload = (signal: Signal) => ({
-  signal: {
-    symbol: signal.symbol,
-    signalId: signal.signalId,
-    interval: signal.interval,
-    direction: signal.direction,
-    timestamp: signal.timestamp,
-    strategy: signal.strategy,
-    prices: {
-      currentPrice: signal.prices.currentPrice,
-      takeProfitPrice: signal.prices.takeProfitPrice,
-      stopLossPrice: signal.prices.stopLossPrice,
-    },
-  },
-  figures: {
-    trendline: signal.figures?.trendLine ?? null,
-  },
-  indicators: trimSeriesDeep(signal.indicators),
-  additionalIndicators: trimSeriesDeep(signal.additionalIndicators ?? {}),
-});
+export const buildAiPayload = (signal: Signal): AiPayload =>
+  buildAiPayloadByStrategy(signal);
 
 export const buildAiHumanPrompt = (signal: Signal, payload = buildAiPayload(signal)) =>
   `
@@ -258,6 +221,7 @@ export const buildAiHumanPrompt = (signal: Signal, payload = buildAiPayload(sign
 
 Данные сделки:
 ${JSON.stringify(payload)}
+${buildAiHumanPromptAddonByStrategy(signal, payload)}
 `;
 
 export const askAI = async (signal: Signal) => {
@@ -280,7 +244,7 @@ export const askAI = async (signal: Signal) => {
 
   messages.push(
     new SystemMessage(
-      buildAiSystemPrompt(),
+      buildAiSystemPrompt(signal),
     ),
   );
   const payload = buildAiPayload(signal);

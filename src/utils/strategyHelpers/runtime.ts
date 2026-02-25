@@ -1,7 +1,14 @@
 import { askAI } from '@utils/ai';
 import { logger } from '@utils/logger';
 import { fetchMlThreshold } from '@utils/mlGrpc';
-import { Connector, Direction, Signal, StrategyRuntimeMlOptions, Tp } from '@types';
+import {
+  Connector,
+  Direction,
+  Signal,
+  StrategyRuntimeAiOptions,
+  StrategyRuntimeMlOptions,
+  Tp,
+} from '@types';
 
 interface EnrichSignalWithMlAiParams {
   signal: Signal;
@@ -9,7 +16,7 @@ interface EnrichSignalWithMlAiParams {
   direction: Direction;
   env: string;
   ml?: StrategyRuntimeMlOptions;
-  aiEnabled?: boolean;
+  ai?: StrategyRuntimeAiOptions;
 }
 
 export const enrichSignalWithMlAi = async ({
@@ -18,13 +25,11 @@ export const enrichSignalWithMlAi = async ({
   direction,
   env,
   ml,
-  aiEnabled = true,
+  ai,
 }: EnrichSignalWithMlAiParams): Promise<number | undefined> => {
-  if (env !== 'BACKTEST' && ml) {
+  if (env !== 'BACKTEST' && ml && ml.enabled !== false) {
     const mlResult = await fetchMlThreshold(signal, {
-      strategyName: ml.strategyName,
       strategyConfig: ml.strategyConfig,
-      symbol: ml.symbol,
       ML_THRESHOLD: ml.mlThreshold,
     });
 
@@ -33,7 +38,7 @@ export const enrichSignalWithMlAi = async ({
     }
   }
 
-  if (env === 'BACKTEST' || !aiEnabled) {
+  if (env === 'BACKTEST' || ai?.enabled === false) {
     return undefined;
   }
 

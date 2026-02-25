@@ -33,24 +33,25 @@ jest.mock('@utils/strategyHelpers', () => ({
     additionalIndicators: params.additionalIndicators,
     configFromBacktest: params.configFromBacktest,
   })),
-  buildEntrySignalDecision: jest.fn(({ code, signal, orderPlan, runtime }) => ({
+  buildEntrySignalDecision: jest.fn((params) => ({
     kind: 'entry',
-    code,
+    code: params.code,
+    entryContext: params.entryContext,
+    orderPlan: params.orderPlan,
+    runtime: params.runtime,
     signal: {
-      signalId: signal.signalId ?? 'test-signal-id',
-      strategy: signal.strategy,
-      symbol: signal.symbol,
-      interval: signal.interval,
-      direction: signal.direction,
-      timestamp: signal.timestamp,
-      figures: signal.figures ?? {},
-      prices: signal.prices,
-      indicators: signal.indicators ?? {},
-      additionalIndicators: signal.additionalIndicators,
-      configFromBacktest: signal.configFromBacktest,
+      signalId: params.signalId ?? 'test-signal-id',
+      strategy: params.entryContext.strategy,
+      symbol: params.entryContext.symbol,
+      interval: params.entryContext.interval,
+      direction: params.entryContext.direction,
+      timestamp: params.entryContext.timestamp,
+      figures: params.figures ?? {},
+      prices: params.entryContext.prices,
+      indicators: params.indicators ?? {},
+      additionalIndicators: params.additionalIndicators,
+      configFromBacktest: params.entryContext.configFromBacktest,
     },
-    orderPlan,
-    runtime,
   })),
   buildEntryOrderPlan: jest.fn((params) => params),
   buildEntryRuntimePolicy: jest.fn((params) => params),
@@ -179,7 +180,7 @@ describe('createBreakoutCore', () => {
     expect(result.kind).toBe('entry');
     if (result.kind !== 'entry') return;
     expect(result.code).toBe('OPEN_LONG');
-    expect(result.orderPlan.direction).toBe('LONG');
+    expect(result.entryContext.direction).toBe('LONG');
     expect(result.orderPlan.qty).toBeCloseTo(config.LIMIT / candle.close);
     expect(result.orderPlan.takeProfits?.length).toBe(config.TP_LONG.length);
   });

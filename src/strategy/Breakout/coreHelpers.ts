@@ -1,15 +1,10 @@
 import {
   StrategyDecision,
-  StrategyEntryRuntimeBuilderParams,
   StrategyEntryTakeProfitsParams,
   StrategyEntrySignalDecisionBuilderParams,
   StrategySignalPriceParams,
 } from '@types';
-import {
-  buildEntryOrderPlan,
-  buildEntryRuntimePolicy,
-  buildEntrySignalDecision,
-} from '@utils/strategyHelpers';
+import { buildEntrySignalDecision } from '@utils/strategyHelpers';
 type BreakoutSignalIndicators = {
   maFast: number;
   maSlow: number;
@@ -23,20 +18,17 @@ type BreakoutSignalIndicators = {
   lowLevel: number;
 };
 
-type BreakoutEntrySignalDecisionParams = StrategyEntrySignalDecisionBuilderParams<
-  Omit<StrategySignalPriceParams, 'riskRatio'>,
-  {
-    code: string;
-    indicators: BreakoutSignalIndicators;
-    signals: Record<string, boolean>;
-  } & StrategyEntryTakeProfitsParams
-> & {
-  configFromBacktest: boolean;
-};
-
-const buildBreakoutEntryRuntime = (
-  _params: StrategyEntryRuntimeBuilderParams,
-) => buildEntryRuntimePolicy({ aiEnabled: false });
+type BreakoutEntrySignalDecisionParams =
+  StrategyEntrySignalDecisionBuilderParams<
+    Omit<StrategySignalPriceParams, 'riskRatio'>,
+    {
+      code: string;
+      indicators: BreakoutSignalIndicators;
+      signals: Record<string, boolean>;
+    } & StrategyEntryTakeProfitsParams
+  > & {
+    configFromBacktest: boolean;
+  };
 
 export const buildBreakoutEntrySignalDecision = ({
   code,
@@ -55,49 +47,44 @@ export const buildBreakoutEntrySignalDecision = ({
 }: BreakoutEntrySignalDecisionParams): StrategyDecision => {
   return buildEntrySignalDecision({
     code,
-    signal: {
+    entryContext: {
       strategy: 'Breakout',
       symbol,
       interval,
       direction,
       timestamp,
-      figures: {},
       prices: {
         currentPrice,
         takeProfitPrice,
         stopLossPrice,
         riskRatio: 0,
       },
-      indicators: {
-        maFast: indicators.maFast,
-        maSlow: indicators.maSlow,
-        obv: indicators.obv,
-        smaObv: indicators.smaObv,
-        atr: indicators.atr,
-        bbUpper: indicators.bbUpper,
-        bbLower: indicators.bbLower,
-        correlation: indicators.correlation,
-      },
-      additionalIndicators: {
-        highLevel: indicators.highLevel,
-        lowLevel: indicators.lowLevel,
-        signals,
-      },
       configFromBacktest,
     },
-    orderPlan: buildEntryOrderPlan({
+    figures: {},
+    indicators: {
+      maFast: indicators.maFast,
+      maSlow: indicators.maSlow,
+      obv: indicators.obv,
+      smaObv: indicators.smaObv,
+      atr: indicators.atr,
+      bbUpper: indicators.bbUpper,
+      bbLower: indicators.bbLower,
+      correlation: indicators.correlation,
+    },
+    additionalIndicators: {
+      highLevel: indicators.highLevel,
+      lowLevel: indicators.lowLevel,
+      signals,
+    },
+    orderPlan: {
       qty,
-      price: currentPrice,
-      timestamp,
-      direction,
       takeProfits,
-      stopLossPrice,
-    }),
-    runtime: buildBreakoutEntryRuntime({
-      symbol,
-      direction,
-      timestamp,
-      currentPrice,
-    }),
+    },
+    runtime: {
+      ai: {
+        enabled: false,
+      },
+    },
   });
 };

@@ -27,8 +27,13 @@
 - Стратегии приведены к более унифицированному формату:
   - `strategy.ts` — thin-wrapper,
   - `core.ts` — логика стратегии (`skip/entry/exit` decisions),
-  - `coreHelpers.ts` — strategy-specific сборка signal/runtime policy.
+  - `coreHelpers.ts` — strategy-specific сборка signal/runtime policy,
+  - `manifest.ts` — manifest стратегии (`name`, AI/ML adapters),
+  - `adapters/` — strategy-specific AI/ML adapters (если нужны).
 - Исполнение ордеров/AI/ML/runtime orchestration вынесено в общий слой (`src/utils/strategyRuntime.ts` + `src/utils/strategyHelpers/*`).
+- `entry`-решения унифицированы:
+  - `entryContext` (strategy/symbol/direction/timestamp/prices) — единый источник данных для сигнала и исполнения,
+  - `orderPlan` — только execution-specific поля (`qty`, `takeProfits`).
 - Для `TrendLine` в live-режиме добавлен runtime AI-анализ сигнала:
   - анализируется уже собранный сигнал (индикаторы + BTC + трендовая линия),
   - AI сохраняет результат в Redis (`analysis:*`),
@@ -59,6 +64,9 @@ Node-скрипты для автоматизации:
 - Общие helper'ы стратегий:
   - `strategyRuntime.ts` — общий runtime для стратегий,
   - `strategyHelpers/` — config/indicator/market/signal-builder/runtime helper'ы.
+- Strategy-aware AI/ML:
+  - общий pipeline живет в `ai.ts` / `mlPayload.ts` / `mlGrpc.ts`,
+  - strategy-specific расширения берутся из strategy manifest/adapters (`src/strategy/*/manifest.ts`, `src/strategy/*/adapters/*`).
 - Подсчет результатов и другие вспомогательные функции.
 
 ---
@@ -129,7 +137,7 @@ Node-скрипты для автоматизации:
 - Для Bollinger Bands добавлены моменты по каждому TF и для обоих ассетов:
   - `_Mean`, `_Std`, `_Skew`, `_Kurt`.
 - Тот же `trim(..., 5)` применяется и в inference (`mlGrpc`), чтобы train/backtest/prod использовали одинаковую схему фичей.
-- Это не то же самое, что runtime AI-анализ сигналов: LLM получает runtime payload с сырыми именами индикаторов (`maFast`, `btcMaFast1h`, `candles15m` и т.п.), где ряды также режутся до 5 значений, но `trendLine` передается целиком.
+- Это не то же самое, что runtime AI-анализ сигналов: LLM получает runtime payload с сырыми именами индикаторов (`maFast`, `btcMaFast1h`, `candles15m` и т.п.), где ряды также режутся до 5 значений; strategy-specific фигуры/геометрия (например `trendLine`) могут передаваться через strategy AI adapter без trim.
 - В отчетах train теперь есть TOP-10 holdout признаков (single-feature threshold):
   - и в `*.md`,
   - и в `*.report.html`.

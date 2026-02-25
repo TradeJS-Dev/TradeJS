@@ -154,7 +154,9 @@ describe('createTrendLineCore', () => {
       expect.objectContaining({
         symbol: 'TESTUSDT',
         bestLine,
-        currentPrice: candle.close,
+        prices: expect.objectContaining({
+          currentPrice: candle.close,
+        }),
         configFromBacktest: true,
         qty: 2,
         config,

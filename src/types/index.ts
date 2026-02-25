@@ -5,3 +5,4 @@ export * from './bot';
 export * from './ui';
 export * from './ai';
 export * from './strategy';
+export * from './strategyAdapters';

@@ -137,6 +137,25 @@ describe('ai helpers', () => {
       expect(payload.figures.trendline.touches).toHaveLength(6);
       expect(payload.figures.trendline.alpha).toHaveLength(6);
     });
+
+    it('uses default adapter for non-trendline strategies without trendline alias', () => {
+      const signal = makeSignal();
+      signal.strategy = 'Breakout';
+      signal.figures = {
+        breakoutZone: {
+          level: 100,
+          values: [1, 2, 3, 4, 5, 6],
+        },
+      };
+
+      const payload = buildAiPayload(signal);
+
+      expect(payload.figures.breakoutZone).toEqual({
+        level: 100,
+        values: [2, 3, 4, 5, 6],
+      });
+      expect((payload.figures as any).trendline).toBeUndefined();
+    });
   });
 
   describe('prompt builders', () => {
@@ -156,6 +175,13 @@ describe('ai helpers', () => {
       expect(prompt).toContain('Короткие примеры (few-shot');
       expect(prompt).toContain('Не добавляй другие поля');
       expect(prompt).not.toContain('runtime-нейминг');
+    });
+
+    it('adds strategy-specific system prompt section for TrendLine', () => {
+      const prompt = buildAiSystemPrompt(makeSignal());
+
+      expect(prompt).toContain('Дополнение для trendline-сетапов');
+      expect(prompt).toContain('figures.trendline');
     });
 
     it('human prompt embeds serialized payload and concise task', () => {

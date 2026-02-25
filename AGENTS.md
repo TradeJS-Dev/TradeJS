@@ -100,6 +100,8 @@ These instructions apply to this repository (`/Users/aleksnick/dev/investing`).
 ## Runtime AI Signal Review (TrendLine)
 - Runtime AI analysis for live TrendLine signals is triggered in the shared strategy runtime (`src/utils/strategyRuntime.ts`) after strategy core returns an `entry` decision with assembled `signal`.
 - TrendLine signal assembly remains strategy-specific (`src/strategy/TrendLine/coreHelpers.ts` / `src/strategy/TrendLine/core.ts`), but AI/ML enrichment and order gating are executed by the common runtime layer.
+- Strategy-specific AI/ML customizations must live near the strategy (`src/strategy/<Strategy>/adapters/*`) and be connected through strategy manifests (`src/strategy/*/manifest.ts`, `src/strategy/manifests.ts`), not via hardcoded branches in shared `utils`.
+- `entry` decisions use `entryContext` as the source of truth for runtime execution fields (strategy/symbol/direction/timestamp/prices); `orderPlan` should contain only execution-specific additions (e.g. `qty`, `takeProfits`).
 - AI writes analysis to Redis key `analysis:${symbol}:${signalId}`.
 - Telegram sending reads Redis `analysis` and posts AI analysis as a separate follow-up message after the main signal message.
 - In non-BACKTEST mode, order placement is gated by AI only if AI confirms the current signal direction (`analysis.direction === signal.direction`) and `analysis.quality` is `4` or `5`.

@@ -102,4 +102,61 @@ describe('buildMlPayload', () => {
     expect(payload.signal.indicators.maFast).toBe(maFast);
     expect(payload.signal.indicators.candles15m).toBe(candles15m);
   });
+
+  it('applies TrendLine ML adapter normalization for additionalIndicators', () => {
+    const payload = buildMlPayload({
+      signal: {
+        signalId: 's3',
+        symbol: 'ETHUSDT',
+        strategy: 'TrendLine',
+        interval: '15' as any,
+        direction: 'LONG',
+        timestamp: 2,
+        figures: {},
+        prices: {
+          currentPrice: 1,
+          takeProfitPrice: 1,
+          stopLossPrice: 1,
+          riskRatio: 1,
+        },
+        indicators: {},
+        additionalIndicators: {
+          touches: 4,
+          distance: 1.23,
+        },
+      } as any,
+    });
+
+    expect(payload.signal.indicators.touches).toBe(4);
+    expect(payload.signal.indicators.distance).toBe(1.23);
+  });
+
+  it('does not inject TrendLine config aliases for other strategies', () => {
+    const payload = buildMlPayload({
+      signal: {
+        signalId: 's4',
+        symbol: 'ETHUSDT',
+        strategy: 'Breakout',
+        interval: '15' as any,
+        direction: 'LONG',
+        timestamp: 2,
+        figures: {},
+        prices: {
+          currentPrice: 1,
+          takeProfitPrice: 1,
+          stopLossPrice: 1,
+          riskRatio: 1,
+        },
+        indicators: {},
+      } as any,
+      context: {
+        strategyConfig: {
+          BREAKOUT: { enabled: true },
+        },
+      },
+    });
+
+    expect(payload.context?.strategyConfig?.TRENDLINE_CONFIG).toBeUndefined();
+    expect(payload.context?.strategyConfig?.BREAKOUT).toEqual({ enabled: true });
+  });
 });

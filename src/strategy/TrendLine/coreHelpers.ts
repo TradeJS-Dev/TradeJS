@@ -2,21 +2,17 @@ import { closeOppositePositionsBeforeOpen } from '@utils/closeOppositePositionsB
 import {
   Connector,
   Direction,
+  Interval,
   StrategyDecision,
-  StrategyEntryBaseParams,
-  StrategyEntryRuntimeBuilderParams,
-  StrategyEntrySignalDecisionBuilderParams,
   StrategyIndicatorsMap,
   StrategySignalPriceParams,
   TrendLine,
 } from '@types';
 import {
-  buildEntryOrderPlan,
-  buildEntryRuntimePolicy,
   buildEntrySignalDecision,
-  buildMlRuntimeOptions,
 } from '@utils/strategyHelpers';
 import { TrendLineConfig } from './config';
+import { trendLineManifest } from './manifest';
 
 type TrendLineEntryRuntimeConfig = Pick<
   TrendLineConfig,
@@ -29,52 +25,19 @@ type TrendLineEntryRuntimeConfig = Pick<
   | 'LOWS'
 >;
 
-const buildTrendlineEntryRuntime = ({
-  connector,
-  symbol,
-  direction,
-  currentPrice,
-  timestamp,
-  config,
-}: {
+interface BuildTrendlineEntrySignalDecisionParams {
+  symbol: string;
+  interval: Interval;
+  direction: Direction;
+  timestamp: number;
+  bestLine: TrendLine;
+  prices: StrategySignalPriceParams;
+  qty: number;
+  indicatorHistory: StrategyIndicatorsMap;
+  configFromBacktest: boolean;
   connector: Connector;
   config: TrendLineEntryRuntimeConfig;
-} & StrategyEntryRuntimeBuilderParams): ReturnType<typeof buildEntryRuntimePolicy> => {
-  const closeOppositePositions = Boolean(config.CLOSE_OPPOSITE_POSITIONS);
-  const mlThreshold = Number(config.ML_THRESHOLD ?? 0);
-  const minAiQuality = Number(config.MIN_AI_QUALITY ?? 4);
-  const aiEnabled = Boolean(config.AI_ENABLED ?? true);
-  const trendlineConfig = config.TRENDLINE ?? {};
-  const highs = config.HIGHS ?? {};
-  const lows = config.LOWS ?? {};
-
-  return buildEntryRuntimePolicy({
-    ml: buildMlRuntimeOptions({
-      strategyName: 'TrendLine',
-      strategyConfig: {
-        TRENDLINE_CONFIG: trendlineConfig,
-        HIGHS: highs,
-        LOWS: lows,
-      },
-      symbol,
-      mlThreshold,
-    }),
-    aiEnabled,
-    minAiQuality,
-    beforePlaceOrder: closeOppositePositions
-      ? async () => {
-          await closeOppositePositionsBeforeOpen({
-            connector,
-            currentSymbol: symbol,
-            currentDirection: direction,
-            price: currentPrice,
-            timestamp,
-            strategyName: 'TrendLine',
-          });
-        }
-      : undefined,
-  });
-};
+}
 
 export const buildTrendlineEntrySignalDecision = ({
   symbol,
@@ -82,63 +45,67 @@ export const buildTrendlineEntrySignalDecision = ({
   direction,
   timestamp,
   bestLine,
-  currentPrice,
-  takeProfitPrice,
-  stopLossPrice,
-  riskRatio,
+  prices,
   indicatorHistory,
   configFromBacktest,
   qty,
   connector,
   config,
-}: StrategyEntrySignalDecisionBuilderParams<
-  StrategySignalPriceParams,
-  {
-  bestLine: TrendLine;
-  indicatorHistory: StrategyIndicatorsMap;
-  connector: Connector;
-  config: TrendLineEntryRuntimeConfig;
-}
->): StrategyDecision => {
+}: BuildTrendlineEntrySignalDecisionParams): StrategyDecision => {
+  const closeOppositePositions = Boolean(config.CLOSE_OPPOSITE_POSITIONS);
+  const mlThreshold = Number(config.ML_THRESHOLD ?? 0);
+  const minAiQuality = Number(config.MIN_AI_QUALITY ?? 4);
+  const aiEnabled = Boolean(config.AI_ENABLED ?? true);
+  const trendlineConfig = config.TRENDLINE ?? {};
+  const highs = config.HIGHS ?? {};
+  const lows = config.LOWS ?? {};
+  const entryContext = {
+    strategy: trendLineManifest.name,
+    symbol,
+    interval,
+    direction,
+    timestamp,
+    prices,
+    configFromBacktest,
+  } as const;
+
   return buildEntrySignalDecision({
     code: 'TRENDLINE_SIGNAL',
-    signal: {
-      strategy: 'TrendLine',
-      symbol,
-      interval,
-      direction,
-      timestamp,
-      figures: {
-        trendLine: bestLine,
-      },
-      prices: {
-        currentPrice,
-        takeProfitPrice,
-        stopLossPrice,
-        riskRatio,
-      },
-      indicators: indicatorHistory,
-      additionalIndicators: {
-        touches: bestLine.touches.length + 2,
-        distance: bestLine.distance,
-      },
-      configFromBacktest,
+    entryContext,
+    figures: {
+      trendLine: bestLine,
     },
-    orderPlan: buildEntryOrderPlan({
+    indicators: indicatorHistory,
+    additionalIndicators: {
+      touches: bestLine.touches.length + 2,
+      distance: bestLine.distance,
+    },
+    orderPlan: {
       qty,
-      price: currentPrice,
-      timestamp,
-      direction,
-      takeProfits: [{ rate: 1, price: takeProfitPrice }],
-      stopLossPrice,
-    }),
-    runtime: buildTrendlineEntryRuntime({
-      connector,
-      symbol,
-      direction,
-      currentPrice,
-      timestamp,
-      config,
-    }),
+      takeProfits: [{ rate: 1, price: prices.takeProfitPrice }],
+    },
+    runtime: {
+      ml: {
+        enabled: true,
+        strategyConfig: {
+          TRENDLINE_CONFIG: trendlineConfig,
+          HIGHS: highs,
+          LOWS: lows,
+        },
+        mlThreshold,
+      },
+      ai: {
+        enabled: aiEnabled,
+        minQuality: minAiQuality,
+      },
+      beforePlaceOrder: closeOppositePositions
+        ? async () => {
+            await closeOppositePositionsBeforeOpen({
+              connector,
+              entryContext,
+            });
+          }
+        : undefined,
+    },
   });
 };

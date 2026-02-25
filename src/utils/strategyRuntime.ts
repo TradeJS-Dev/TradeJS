@@ -95,12 +95,12 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
           direction: signal.direction,
           env,
           ml: decision.runtime?.ml,
-          aiEnabled: decision.runtime?.aiEnabled ?? true,
+          ai: decision.runtime?.ai,
         });
         signal.orderStatus = 'canceled';
       }
 
-      const minAiQuality = decision.runtime?.minAiQuality ?? 4;
+      const minAiQuality = decision.runtime?.ai?.minQuality ?? 4;
       const shouldMakeOrder =
         makeOrdersEnabled &&
         (!signal ||
@@ -116,12 +116,12 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
           await executeEntryOrder({
             connector,
             symbol,
-            direction: decision.orderPlan.direction,
+            direction: decision.entryContext.direction,
             qty: decision.orderPlan.qty,
-            currentPrice: decision.orderPlan.price,
-            timestamp: decision.orderPlan.timestamp,
+            currentPrice: decision.entryContext.prices.currentPrice,
+            timestamp: decision.entryContext.timestamp,
             takeProfits: decision.orderPlan.takeProfits ?? [],
-            stopLossPrice: decision.orderPlan.stopLossPrice ?? null,
+            stopLossPrice: decision.entryContext.prices.stopLossPrice ?? null,
             signal,
             beforePlaceOrder: decision.runtime?.beforePlaceOrder,
           });
@@ -133,12 +133,12 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
           {
             symbol,
             qty: decision.orderPlan.qty,
-            price: decision.orderPlan.price,
-            timestamp: decision.orderPlan.timestamp,
-            direction: decision.orderPlan.direction,
+            price: decision.entryContext.prices.currentPrice,
+            timestamp: decision.entryContext.timestamp,
+            direction: decision.entryContext.direction,
           },
           decision.orderPlan.takeProfits,
-          decision.orderPlan.stopLossPrice ?? null,
+          decision.entryContext.prices.stopLossPrice ?? null,
         );
       } catch (err) {
         if (signal) {

@@ -70,43 +70,36 @@ export type BuildStrategySignalDraft = Omit<BuildStrategySignalParams, 'signalId
   signalId?: string;
 };
 
-export interface BuildEntryOrderPlanParams {
-  qty: number;
-  price: number;
-  timestamp: number;
-  direction: Direction;
-  takeProfits?: Tp[];
-  stopLossPrice?: number | null;
-}
-
-export interface BuildMlRuntimeOptionsParams {
-  strategyName: string;
-  strategyConfig: StrategyConfig;
-  symbol: string;
-  mlThreshold: number;
+export interface StrategyEntrySignalContext {
+  strategy: Signal['strategy'];
+  symbol: Signal['symbol'];
+  interval: Signal['interval'];
+  direction: Signal['direction'];
+  timestamp: Signal['timestamp'];
+  prices: Signal['prices'];
+  configFromBacktest?: Signal['configFromBacktest'];
 }
 
 export interface StrategyRuntimeMlOptions {
-  strategyName: string;
+  enabled?: boolean;
   strategyConfig: StrategyConfig;
-  symbol: string;
   mlThreshold: number;
+}
+
+export interface StrategyRuntimeAiOptions {
+  enabled?: boolean;
+  minQuality?: number;
 }
 
 export interface StrategyEntryRuntimeOptions {
   ml?: StrategyRuntimeMlOptions;
-  aiEnabled?: boolean;
-  minAiQuality?: number;
+  ai?: StrategyRuntimeAiOptions;
   beforePlaceOrder?: () => Promise<void>;
 }
 
 export interface StrategyEntryOrderPlan {
   qty: number;
-  price: number;
-  timestamp: number;
-  direction: Direction;
   takeProfits?: Tp[];
-  stopLossPrice?: number | null;
 }
 
 export interface StrategyClosePlan {
@@ -123,6 +116,7 @@ export type StrategyDecision =
   | {
       kind: 'entry';
       code: string;
+      entryContext: StrategyEntrySignalContext;
       orderPlan: StrategyEntryOrderPlan;
       signal?: Signal;
       runtime?: StrategyEntryRuntimeOptions;

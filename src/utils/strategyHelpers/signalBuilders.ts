@@ -1,13 +1,11 @@
 import {
-  BuildEntryOrderPlanParams,
-  BuildMlRuntimeOptionsParams,
   BuildStrategySignalDraft,
   BuildStrategySignalParams,
   Signal,
   StrategyDecision,
+  StrategyEntrySignalContext,
   StrategyEntryOrderPlan,
   StrategyEntryRuntimeOptions,
-  StrategyRuntimeMlOptions,
 } from '@types';
 import { uuid } from '@utils/uuid';
 
@@ -39,69 +37,40 @@ export const buildStrategySignal = ({
 
 interface BuildEntrySignalDecisionParams {
   code: string;
-  signal: BuildStrategySignalDraft;
+  entryContext: StrategyEntrySignalContext;
+  figures?: BuildStrategySignalDraft['figures'];
+  indicators?: BuildStrategySignalDraft['indicators'];
+  additionalIndicators?: BuildStrategySignalDraft['additionalIndicators'];
+  signalId?: BuildStrategySignalDraft['signalId'];
   orderPlan: StrategyEntryOrderPlan;
   runtime?: StrategyEntryRuntimeOptions;
 }
 
-interface BuildEntryRuntimePolicyParams {
-  ml?: StrategyEntryRuntimeOptions['ml'];
-  aiEnabled?: StrategyEntryRuntimeOptions['aiEnabled'];
-  minAiQuality?: StrategyEntryRuntimeOptions['minAiQuality'];
-  beforePlaceOrder?: StrategyEntryRuntimeOptions['beforePlaceOrder'];
-}
-
-export const buildMlRuntimeOptions = ({
-  strategyName,
-  strategyConfig,
-  symbol,
-  mlThreshold,
-}: BuildMlRuntimeOptionsParams): StrategyRuntimeMlOptions => ({
-  strategyName,
-  strategyConfig,
-  symbol,
-  mlThreshold,
-});
-
-export const buildEntryRuntimePolicy = ({
-  ml,
-  aiEnabled,
-  minAiQuality,
-  beforePlaceOrder,
-}: BuildEntryRuntimePolicyParams): StrategyEntryRuntimeOptions => ({
-  ml,
-  aiEnabled,
-  minAiQuality,
-  beforePlaceOrder,
-});
-
-export const buildEntryOrderPlan = ({
-  qty,
-  price,
-  timestamp,
-  direction,
-  takeProfits,
-  stopLossPrice,
-}: BuildEntryOrderPlanParams): StrategyEntryOrderPlan => ({
-  qty,
-  price,
-  timestamp,
-  direction,
-  takeProfits,
-  stopLossPrice,
-});
-
 export const buildEntrySignalDecision = ({
   code,
-  signal,
+  entryContext,
+  figures,
+  indicators,
+  additionalIndicators,
+  signalId,
   orderPlan,
   runtime,
 }: BuildEntrySignalDecisionParams): StrategyDecision => ({
   kind: 'entry',
   code,
+  entryContext,
   signal: buildStrategySignal({
-    signalId: signal.signalId ?? uuid(),
-    ...signal,
+    signalId: signalId ?? uuid(),
+    strategy: entryContext.strategy,
+    symbol: entryContext.symbol,
+    interval: entryContext.interval,
+    direction: entryContext.direction,
+    timestamp: entryContext.timestamp,
+    prices: entryContext.prices,
+    figures,
+    indicators,
+    additionalIndicators,
+    configFromBacktest: entryContext.configFromBacktest,
   }),
   orderPlan,
   runtime,

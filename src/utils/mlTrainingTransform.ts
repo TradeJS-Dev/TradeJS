@@ -31,6 +31,7 @@ type MlSignalPayload = {
     riskRatio?: number;
   };
   indicators?: Record<string, unknown>;
+  additionalIndicators?: Record<string, unknown>;
   figures?: {
     trendLine?: {
       mode?: 'highs' | 'lows' | string;
@@ -537,8 +538,14 @@ export const buildMlTrainingRow = (
     ),
     riskRatio: toNumber(signal?.prices?.riskRatio, 0),
     Correlation: toNumber(signal?.indicators?.correlation, 0),
-    Touches: toNumber(signal?.indicators?.touches, 0),
-    Distance: toNumber(signal?.indicators?.distance, 0),
+    Touches: toNumber(
+      signal?.additionalIndicators?.touches ?? signal?.indicators?.touches,
+      0,
+    ),
+    Distance: toNumber(
+      signal?.additionalIndicators?.distance ?? signal?.indicators?.distance,
+      0,
+    ),
     Ctx_EntryHour: entryHour,
     Ctx_EntryDayOfWeek: entryDayOfWeek,
     Ctx_EntryHourSin: Math.sin((2 * Math.PI * entryHour) / 24),

@@ -20,6 +20,10 @@
   - writes Redis `analysis:*`,
   - gates live order placement by AI-confirmed direction + quality.
 - Strategy runtime is now shared across strategies (`src/utils/strategyRuntime.ts`), while strategy-specific logic stays in per-strategy `core.ts`.
+- AI/ML strategy customizations are now split via strategy manifests/adapters:
+  - shared pipelines (`src/utils/ai.ts`, `src/utils/mlPayload.ts`, `src/utils/mlGrpc.ts`)
+  - strategy-local adapters (`src/strategy/*/adapters/*`)
+  - registry via `src/strategy/manifests.ts`
 
 ## Status Update (2026-02-18)
 - Closed:

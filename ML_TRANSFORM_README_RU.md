@@ -45,6 +45,7 @@
   - `signal.indicators` с runtime-именами (`maFast`, `btcMaFast1h`, `candles15m` и т.п.),
   - `figures.trendLine` (без trim).
 - В текущей архитектуре AI/ML enrichment и gating выполняются общим runtime-слоем стратегий (`src/utils/strategyRuntime.ts`), а стратегия возвращает `entry`-решение с уже собранным `signal`.
+- Strategy-specific AI/ML отклонения (payload/prompt/normalization) подключаются через strategy manifest/adapters (`src/strategy/*/manifest.ts`, `src/strategy/*/adapters/*`), а не через хардкод в shared `utils`.
 - Для LLM ряды в runtime payload тоже режутся до последних 5 значений, но это не `TF*_ALT_* / TF*_BTC_*` naming из ML transform.
 
 ## 5. BB moments
