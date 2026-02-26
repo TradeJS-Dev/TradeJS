@@ -2,13 +2,34 @@ jest.mock('@utils/trendLineEngine', () => ({
   createTrendlineEngine: jest.fn(),
 }));
 
-jest.mock('@utils/strategyHelpers', () => ({
-  buildDefaultIndicatorPeriods: jest.fn(() => ({})),
-  createStrategyIndicatorsState: jest.fn(),
-  getStrategyMarketSnapshot: jest.fn(),
-  getDirectionalTpSlPrices: jest.fn(),
-  buildEntrySignalDecision: jest.fn(),
-}));
+jest.mock('@utils/strategyHelpers', () => {
+  const buildEntrySignalDecision = jest.fn();
+  const getStrategyMarketSnapshot = jest.fn();
+
+  return {
+    createStrategyAPI: jest.fn(() => ({
+      skip: jest.fn((code) => ({ kind: 'skip', code })),
+      entry: buildEntrySignalDecision,
+      getMarketData: getStrategyMarketSnapshot,
+      getCurrentPosition: jest.fn(),
+      isCurrentPositionExists: jest.fn(),
+      getDirectionalTpSlPrices,
+      createLastTradeController: jest.fn(() => ({
+        isInCooldown: jest.fn(() => false),
+        markTrade: jest.fn(),
+        getLastTradeTimestamp: jest.fn(() => null),
+      })),
+    })),
+    createLastTradeController: jest.fn(() => ({
+      isInCooldown: jest.fn(() => false),
+      markTrade: jest.fn(),
+      getLastTradeTimestamp: jest.fn(() => null),
+    })),
+    getStrategyMarketSnapshot,
+    getDirectionalTpSlPrices: jest.fn(),
+    buildEntrySignalDecision,
+  };
+});
 
 jest.mock('../filters', () => ({
   filterByVeryVolatility: jest.fn(() => true),
@@ -17,7 +38,6 @@ jest.mock('../filters', () => ({
 import { createTrendlineEngine } from '@utils/trendLineEngine';
 import {
   buildEntrySignalDecision,
-  createStrategyIndicatorsState,
   getStrategyMarketSnapshot,
   getDirectionalTpSlPrices,
 } from '@utils/strategyHelpers';
@@ -35,6 +55,26 @@ const makeCandle = (timestamp: number, price: number) => ({
   turnover: price * 1000,
 });
 
+const makeStrategyApi = () => {
+  return {
+    skip: (code: string) => ({ kind: 'skip', code }),
+    entry: (params: any) =>
+      buildEntrySignalDecision({
+        ...params,
+        code: params.code ?? 'TRENDLINE_SIGNAL',
+      }),
+    getMarketData: (params: any) => getStrategyMarketSnapshot(params),
+    getCurrentPosition: jest.fn(),
+    isCurrentPositionExists: jest.fn(async () => false),
+    getDirectionalTpSlPrices: (params: any) => getDirectionalTpSlPrices(params),
+    createLastTradeController: jest.fn(() => ({
+      isInCooldown: jest.fn(() => false),
+      markTrade: jest.fn(),
+      getLastTradeTimestamp: jest.fn(() => null),
+    })),
+  } as any;
+};
+
 const makeConfig = (overrides: Record<string, any> = {}) => ({
   ...DEFAULT_CONFIG,
   ...overrides,
@@ -50,30 +90,38 @@ describe('createTrendLineCore', () => {
       .mockReturnValueOnce({ next: jest.fn(() => []) })
       .mockReturnValueOnce({ next: jest.fn(() => []) });
 
-    (createStrategyIndicatorsState as jest.Mock).mockReturnValue({
+    const indicatorsState = {
+      setCurrentBar: jest.fn(),
       onBar: jest.fn(),
+      next: jest.fn(),
       ensureInitializedWithCurrentBar: jest.fn(),
-    });
+      snapshot: jest.fn(),
+      latestNumber: jest.fn(),
+      isInitialized: jest.fn(() => true),
+    };
 
     const connector = {
       getPosition: jest.fn(),
     } as any;
 
+    const strategyApi = makeStrategyApi();
     const core = await createTrendLineCore({
       userName: 'test',
       symbol: 'TESTUSDT',
       config: makeConfig(),
-      configFromBacktest: false,
+      isConfigFromBacktest: false,
       connector,
       data: [],
       btcData: [],
+      strategyApi,
+      indicatorsState: indicatorsState as any,
     });
 
     const candle = makeCandle(1_700_000_000_000, 100);
     const result = await core(candle as any, candle as any);
 
     expect(result).toEqual({ kind: 'skip', code: 'NO_TRENDLINE' });
-    expect(connector.getPosition).not.toHaveBeenCalled();
+    expect(strategyApi.isCurrentPositionExists).not.toHaveBeenCalled();
   });
 
   it('returns entry decision for valid trendline setup', async () => {
@@ -91,15 +139,15 @@ describe('createTrendLineCore', () => {
       .mockReturnValueOnce({ next: jest.fn(() => [bestLine]) })
       .mockReturnValueOnce({ next: jest.fn(() => []) });
 
-    const indicatorState = {
+    const indicatorsState = {
+      setCurrentBar: jest.fn(),
       onBar: jest.fn(),
-      ensureInitializedWithCurrentBar: jest.fn(() => ({
-        result: () => ({ maFast: [1], correlation: [0.1] }),
-      })),
+      next: jest.fn(),
+      ensureInitializedWithCurrentBar: jest.fn(),
+      snapshot: jest.fn(() => ({ maFast: [1], correlation: [0.1] })),
+      latestNumber: jest.fn(() => 0.1),
+      isInitialized: jest.fn(() => true),
     };
-    (createStrategyIndicatorsState as jest.Mock).mockReturnValue(
-      indicatorState,
-    );
 
     (getStrategyMarketSnapshot as jest.Mock).mockResolvedValue({
       fullData: [candle],
@@ -137,25 +185,25 @@ describe('createTrendLineCore', () => {
       userName: 'test',
       symbol: 'TESTUSDT',
       config,
-      configFromBacktest: true,
+      isConfigFromBacktest: true,
       connector,
       data: [candle as any],
       btcData: [btcCandle as any],
+      strategyApi: makeStrategyApi(),
+      indicatorsState: indicatorsState as any,
     });
 
     const result = await core(candle as any, btcCandle as any);
 
     expect(result).toBe(fakeDecision);
-    expect(indicatorState.onBar).toHaveBeenCalledWith(candle, btcCandle);
+    expect(indicatorsState.onBar).toHaveBeenCalledWith();
     expect(buildEntrySignalDecision).toHaveBeenCalledWith(
       expect.objectContaining({
         code: 'TRENDLINE_SIGNAL',
-        entryContext: expect.objectContaining({
-          symbol: 'TESTUSDT',
-          prices: expect.objectContaining({
-            currentPrice: candle.close,
-          }),
-          configFromBacktest: true,
+        direction: 'SHORT',
+        timestamp: candle.timestamp,
+        prices: expect.objectContaining({
+          currentPrice: candle.close,
         }),
         figures: { trendLine: bestLine },
         orderPlan: expect.objectContaining({ qty: 2 }),

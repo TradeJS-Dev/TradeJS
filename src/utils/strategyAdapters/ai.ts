@@ -26,21 +26,23 @@ const defaultAiAdapter: StrategyAiAdapter = {};
 export const getStrategyAiAdapter = (strategy?: string): StrategyAiAdapter =>
   getStrategyManifest(strategy)?.aiAdapter ?? defaultAiAdapter;
 
+const getSignalAiAdapter = (signal: Signal) =>
+  getStrategyAiAdapter(signal.strategy);
+
 export const buildAiPayloadByStrategy = (signal: Signal): AiPayload => {
   const basePayload = buildBaseAiPayload(signal);
-  const adapter = getStrategyAiAdapter(signal.strategy);
+  const adapter = getSignalAiAdapter(signal);
   return adapter.buildPayload?.({ signal, basePayload }) ?? basePayload;
 };
 
 export const buildAiSystemPromptAddonByStrategy = (signal: Signal): string =>
-  getStrategyAiAdapter(signal.strategy).buildSystemPromptAddon?.({ signal }) ??
-  '';
+  getSignalAiAdapter(signal).buildSystemPromptAddon?.({ signal }) ?? '';
 
 export const buildAiHumanPromptAddonByStrategy = (
   signal: Signal,
   payload: AiPayload,
 ): string =>
-  getStrategyAiAdapter(signal.strategy).buildHumanPromptAddon?.({
+  getSignalAiAdapter(signal).buildHumanPromptAddon?.({
     signal,
     payload,
   }) ?? '';

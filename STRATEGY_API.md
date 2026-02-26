@@ -101,7 +101,7 @@ return { kind: 'skip', code: 'NO_SIGNAL' };
 - `direction`
 - `timestamp`
 - `prices`
-- `configFromBacktest`
+- `isConfigFromBacktest`
 
 `orderPlan` содержит:
 - `qty`
@@ -137,6 +137,23 @@ Shared helper для сборки `entry` решения и `signal`.
 Что он делает:
 - создает `signal`
 - возвращает `StrategyDecision` вида `kind: 'entry'`
+
+## `strategyApi` (DSL в `core.ts`)
+
+Shared runtime передает в `core.ts` готовый `strategyApi`.
+
+Базовые методы:
+- `strategyApi.skip(code)`
+- `strategyApi.entry(...)`
+  - `code` можно не передавать: shared API подставит `<STRATEGY_NAME>_SIGNAL`
+- `strategyApi.getMarketData()`
+  - использует runtime defaults (`preloadStart`, `BACKTEST_PRICE_MODE`)
+- `strategyApi.getCurrentPosition()`
+- `strategyApi.isCurrentPositionExists()`
+- `strategyApi.getDirectionalTpSlPrices(...)`
+- `strategyApi.createLastTradeController(...)`
+
+Отдельный подробный reference: `STRATEGY_API_REFERENCE.md`.
 
 ## Runtime policy: AI/ML
 

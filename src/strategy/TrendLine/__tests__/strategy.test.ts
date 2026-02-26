@@ -169,6 +169,7 @@ describe('TrendlineStrategyCreator', () => {
         ENV: 'test',
         INTERVAL: '15',
         MAKE_ORDERS: false,
+        ML_ENABLED: true,
         MAX_LOSS_VALUE: 10,
         MAX_CORRELATION: 1,
         TRENDLINE: {},
@@ -254,6 +255,7 @@ describe('TrendlineStrategyCreator', () => {
         ENV: 'test',
         INTERVAL: '15',
         MAKE_ORDERS: false,
+        ML_ENABLED: true,
         MAX_LOSS_VALUE: 10,
         MAX_CORRELATION: 1,
         TRENDLINE: {},
@@ -341,6 +343,7 @@ describe('TrendlineStrategyCreator', () => {
         ENV: 'test',
         INTERVAL: '15',
         MAKE_ORDERS: false,
+        ML_ENABLED: true,
         MAX_LOSS_VALUE: 10,
         MAX_CORRELATION: 1,
         TRENDLINE: {},
@@ -374,7 +377,7 @@ describe('TrendlineStrategyCreator', () => {
     expect(result).toBe('STRATEGY_DISABLED');
   });
 
-  it('applies backtest result config after user config and marks signal configFromBacktest', async () => {
+  it('applies backtest result config after user config and marks signal isConfigFromBacktest', async () => {
     (getData as jest.Mock).mockImplementation(async (key: string) => {
       if (key === 'strategy:config:TrendLine') {
         return {
@@ -467,7 +470,7 @@ describe('TrendlineStrategyCreator', () => {
     );
 
     expect(typeof result).toBe('object');
-    expect((result as any).configFromBacktest).toBe(true);
+    expect((result as any).isConfigFromBacktest).toBe(true);
     expect(redisKeys.strategyResults).toHaveBeenCalledWith('test', 'TrendLine');
   });
 
@@ -618,6 +621,7 @@ describe('TrendlineStrategyCreator', () => {
         ENV: 'test',
         INTERVAL: '15',
         MAKE_ORDERS: false,
+        ML_ENABLED: true,
         MAX_LOSS_VALUE: 10,
         MAX_CORRELATION: 1,
         TRENDLINE: {},
@@ -802,6 +806,7 @@ describe('TrendlineStrategyCreator', () => {
         INTERVAL: '15',
         MAKE_ORDERS: true,
         CLOSE_OPPOSITE_POSITIONS: true,
+        AI_ENABLED: true,
         MAX_LOSS_VALUE: 10,
         MAX_CORRELATION: 1,
         TRENDLINE: {},

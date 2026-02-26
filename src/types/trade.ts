@@ -173,7 +173,7 @@ export interface Signal {
   direction: Direction;
   timestamp: number;
   orderStatus?: 'completed' | 'failed' | 'canceled';
-  configFromBacktest?: boolean;
+  isConfigFromBacktest?: boolean;
   ml?: {
     probability: number;
     threshold: number;

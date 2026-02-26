@@ -1,6 +1,42 @@
 import { createIndicators } from '@utils/indicators';
 
 jest.mock('@utils/strategyHelpers', () => ({
+  createStrategyAPI: jest.fn((params) => ({
+    skip: (code: string) => ({ kind: 'skip', code }),
+    getMarketData: jest.fn(),
+    getCurrentPosition: jest.fn(),
+    isCurrentPositionExists: jest.fn(),
+    getDirectionalTpSlPrices: jest.fn(),
+    createLastTradeController: jest.fn(),
+    entry: (entryParams: any) => ({
+      kind: 'entry',
+      code: entryParams.code,
+      entryContext: {
+        strategy: params?.strategy ?? 'Breakout',
+        symbol: params?.symbol ?? 'TESTUSDT',
+        interval: params?.interval ?? '15',
+        direction: entryParams.direction,
+        timestamp: entryParams.timestamp,
+        prices: entryParams.prices,
+        isConfigFromBacktest: params?.isConfigFromBacktest,
+      },
+      orderPlan: entryParams.orderPlan,
+      runtime: entryParams.runtime,
+      signal: {
+        signalId: entryParams.signalId ?? 'test-signal-id',
+        strategy: params?.strategy ?? 'Breakout',
+        symbol: params?.symbol ?? 'TESTUSDT',
+        interval: params?.interval ?? '15',
+        direction: entryParams.direction,
+        timestamp: entryParams.timestamp,
+        figures: entryParams.figures ?? {},
+        prices: entryParams.prices,
+        indicators: entryParams.indicators ?? {},
+        additionalIndicators: entryParams.additionalIndicators,
+        isConfigFromBacktest: params?.isConfigFromBacktest,
+      },
+    }),
+  })),
   mapMlRuntimeFromConfig: jest.fn((config, overrides = {}) => ({
     enabled: Boolean(config?.ML_ENABLED ?? true),
     mlThreshold: Number(config?.ML_THRESHOLD ?? 0),
@@ -36,7 +72,7 @@ jest.mock('@utils/strategyHelpers', () => ({
     prices: params.prices,
     indicators: params.indicators ?? {},
     additionalIndicators: params.additionalIndicators,
-    configFromBacktest: params.configFromBacktest,
+    isConfigFromBacktest: params.isConfigFromBacktest,
   })),
   buildEntrySignalDecision: jest.fn((params) => ({
     kind: 'entry',
@@ -55,7 +91,7 @@ jest.mock('@utils/strategyHelpers', () => ({
       prices: params.entryContext.prices,
       indicators: params.indicators ?? {},
       additionalIndicators: params.additionalIndicators,
-      configFromBacktest: params.entryContext.configFromBacktest,
+      isConfigFromBacktest: params.entryContext.isConfigFromBacktest,
     },
   })),
 }));
@@ -87,6 +123,63 @@ const makeConfig = (overrides: Record<string, any> = {}) => ({
   ...overrides,
 });
 
+const makeStrategyApi = (overrides: Record<string, any> = {}) =>
+  ({
+    skip: (code: string) => ({ kind: 'skip', code }),
+    getMarketData: jest.fn(),
+    getCurrentPosition: jest.fn(async () => overrides.currentPosition),
+    isCurrentPositionExists: jest.fn(async () =>
+      Boolean(overrides.currentPosition?.qty > 0),
+    ),
+    getDirectionalTpSlPrices: jest.fn(
+      ({
+        price,
+        direction,
+        takeProfitDelta,
+        stopLossDelta,
+        unit = 'percent',
+      }) => {
+        const factor = unit === 'percent' ? 100 : 1;
+        const tp = takeProfitDelta / factor;
+        const sl = stopLossDelta / factor;
+        const isLong = direction === 'LONG';
+        return {
+          stopLossPrice: isLong ? price * (1 - sl) : price * (1 + sl),
+          takeProfitPrice: isLong ? price * (1 + tp) : price * (1 - tp),
+        };
+      },
+    ),
+    createLastTradeController: jest.fn(),
+    entry: (params: any) => ({
+      kind: 'entry',
+      code: params.code,
+      entryContext: {
+        strategy: 'Breakout',
+        symbol: 'TESTUSDT',
+        interval: '15',
+        direction: params.direction,
+        timestamp: params.timestamp,
+        prices: params.prices,
+        isConfigFromBacktest: false,
+      },
+      orderPlan: params.orderPlan,
+      runtime: params.runtime,
+      signal: {
+        signalId: params.signalId ?? 'test-signal-id',
+        strategy: 'Breakout',
+        symbol: 'TESTUSDT',
+        interval: '15',
+        direction: params.direction,
+        timestamp: params.timestamp,
+        figures: params.figures ?? {},
+        prices: params.prices,
+        indicators: params.indicators ?? {},
+        additionalIndicators: params.additionalIndicators,
+        isConfigFromBacktest: false,
+      },
+    }),
+  }) as any;
+
 const makeIndicatorSnapshot = (
   candle: any,
   overrides: Record<string, any> = {},
@@ -111,18 +204,23 @@ describe('createBreakoutCore', () => {
   });
 
   it('returns skip decision for empty candle', async () => {
-    (createIndicators as jest.Mock).mockImplementation(() => ({
-      next: jest.fn(),
-    }));
-
     const core = await createBreakoutCore({
       userName: 'test',
       symbol: 'TESTUSDT',
       config: makeConfig(),
-      configFromBacktest: false,
+      isConfigFromBacktest: false,
       connector: { getPosition: jest.fn() } as any,
       data: [],
       btcData: [],
+      strategyApi: makeStrategyApi({ currentPosition: undefined }),
+      indicatorsState: {
+        setCurrentBar: jest.fn(),
+        next: jest.fn(),
+        onBar: jest.fn(),
+        ensureInitializedWithCurrentBar: jest.fn(),
+        snapshot: jest.fn(),
+        isInitialized: jest.fn(() => true),
+      } as any,
     });
 
     await expect(core({} as any, {} as any)).resolves.toEqual({
@@ -134,7 +232,8 @@ describe('createBreakoutCore', () => {
   it('returns entry decision for long breakout', async () => {
     const candle = makeCandle(1_700_000_000_000, 100);
 
-    (createIndicators as jest.Mock).mockImplementation(() => ({
+    const indicatorsState = {
+      setCurrentBar: jest.fn(),
       next: jest.fn(() =>
         makeIndicatorSnapshot(candle, {
           maFast: 110,
@@ -151,7 +250,11 @@ describe('createBreakoutCore', () => {
           bbUpper: 95,
         }),
       ),
-    }));
+      onBar: jest.fn(),
+      ensureInitializedWithCurrentBar: jest.fn(),
+      snapshot: jest.fn(),
+      isInitialized: jest.fn(() => true),
+    };
 
     const config = makeConfig({
       REQUIRED_SCORE_LONG: 3,
@@ -168,17 +271,21 @@ describe('createBreakoutCore', () => {
       userName: 'test',
       symbol: 'TESTUSDT',
       config,
-      configFromBacktest: false,
+      isConfigFromBacktest: false,
       connector: {
-        getPosition: jest.fn(async () => ({
+        getPosition: jest.fn(),
+      } as any,
+      data: [],
+      btcData: [],
+      strategyApi: makeStrategyApi({
+        currentPosition: {
           symbol: 'TESTUSDT',
           qty: 0,
           price: 0,
           direction: 'LONG',
-        })),
-      } as any,
-      data: [],
-      btcData: [],
+        },
+      }),
+      indicatorsState: indicatorsState as any,
     });
 
     const result = await core(candle, {} as any);
@@ -194,7 +301,8 @@ describe('createBreakoutCore', () => {
   it('returns exit decision for reverse signal on open position', async () => {
     const candle = makeCandle(1_700_000_000_000, 100);
 
-    (createIndicators as jest.Mock).mockImplementation(() => ({
+    const indicatorsState = {
+      setCurrentBar: jest.fn(),
       next: jest.fn(() =>
         makeIndicatorSnapshot(candle, {
           maFast: 90,
@@ -211,7 +319,11 @@ describe('createBreakoutCore', () => {
           bbLower: 105,
         }),
       ),
-    }));
+      onBar: jest.fn(),
+      ensureInitializedWithCurrentBar: jest.fn(),
+      snapshot: jest.fn(),
+      isInitialized: jest.fn(() => true),
+    };
 
     const config = makeConfig({
       REQUIRED_SCORE_LONG: 99,
@@ -228,17 +340,21 @@ describe('createBreakoutCore', () => {
       userName: 'test',
       symbol: 'TESTUSDT',
       config,
-      configFromBacktest: false,
+      isConfigFromBacktest: false,
       connector: {
-        getPosition: jest.fn(async () => ({
+        getPosition: jest.fn(),
+      } as any,
+      data: [],
+      btcData: [],
+      strategyApi: makeStrategyApi({
+        currentPosition: {
           symbol: 'TESTUSDT',
           qty: 1,
           direction: 'LONG',
           price: 100,
-        })),
-      } as any,
-      data: [],
-      btcData: [],
+        },
+      }),
+      indicatorsState: indicatorsState as any,
     });
 
     const result = await core(candle, {} as any);

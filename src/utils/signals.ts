@@ -42,7 +42,7 @@ export const formatMessage = (
     direction,
     strategy,
     orderStatus,
-    configFromBacktest,
+    isConfigFromBacktest,
     ml,
     prices: { currentPrice, takeProfitPrice, stopLossPrice, riskRatio },
     indicators,
@@ -109,7 +109,7 @@ export const formatMessage = (
         lines.push(orderStatusText);
       }
 
-      if (configFromBacktest) {
+      if (isConfigFromBacktest) {
         lines.push('🟢 Using config from backtest');
       } else {
         lines.push('🟡 Using base config');

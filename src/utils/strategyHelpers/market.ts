@@ -1,3 +1,4 @@
+import { FEE_PERCENT as DEFAULT_FEE_PERCENT } from '@constants';
 import { getTimestamp } from '@utils/timestamp';
 import {
   BacktestPriceMode,
@@ -109,7 +110,7 @@ export const getDirectionalTpSlPrices = ({
   stopLossDelta,
   unit = 'percent',
   maxLossValue,
-  feePercent = 0,
+  feePercent = DEFAULT_FEE_PERCENT,
 }: DirectionalTpSlPricesParams): DirectionalTpSlPricesResult => {
   const deltaFactor = unit === 'percent' ? 100 : 1;
   const tp = takeProfitDelta / deltaFactor;

@@ -1,14 +1,22 @@
 import {
+  BacktestPriceMode,
   BuildStrategySignalDraft,
   BuildStrategySignalParams,
+  Connector,
+  KlineChartData,
   Signal,
   StrategyDecision,
+  StrategyAPI,
+  StrategyAPIEntryParams,
   StrategyEntrySignalContext,
   StrategyEntryOrderPlan,
   StrategyEntryRuntimeOptions,
+  StrategyLastTradeControllerParams,
   StrategyRuntimeAiOptions,
   StrategyRuntimeMlOptions,
 } from '@types';
+import { getDirectionalTpSlPrices, getStrategyMarketSnapshot } from './market';
+import { createLastTradeController } from './state';
 import { uuid } from '@utils/uuid';
 
 type AiRuntimeConfigLike = {
@@ -50,7 +58,7 @@ export const buildStrategySignal = ({
   figures = {},
   indicators = {},
   additionalIndicators,
-  configFromBacktest,
+  isConfigFromBacktest,
 }: BuildStrategySignalParams): Signal => ({
   signalId,
   strategy,
@@ -62,7 +70,7 @@ export const buildStrategySignal = ({
   prices,
   indicators,
   additionalIndicators,
-  configFromBacktest,
+  isConfigFromBacktest,
 });
 
 interface BuildEntrySignalDecisionParams {
@@ -114,8 +122,112 @@ export const buildEntrySignalDecision = <
     figures,
     indicators,
     additionalIndicators,
-    configFromBacktest: entryContext.configFromBacktest,
+    isConfigFromBacktest: entryContext.isConfigFromBacktest,
   }),
   orderPlan,
   runtime,
 });
+
+interface CreateStrategyAPIParams {
+  strategy: Signal['strategy'];
+  symbol: Signal['symbol'];
+  interval: Signal['interval'];
+  env: string;
+  connector: Connector;
+  cachedData: KlineChartData;
+  preloadStart?: number;
+  backtestPriceMode?: BacktestPriceMode;
+  isConfigFromBacktest?: Signal['isConfigFromBacktest'];
+}
+
+const toDefaultEntryCode = (strategy: string) =>
+  `${strategy
+    .replace(/([a-z0-9])([A-Z])/g, '$1_$2')
+    .replace(/[^a-zA-Z0-9]+/g, '_')
+    .toUpperCase()}_SIGNAL`;
+
+export const createStrategyAPI = ({
+  strategy,
+  symbol,
+  interval,
+  env,
+  connector,
+  cachedData,
+  preloadStart,
+  backtestPriceMode,
+  isConfigFromBacktest,
+}: CreateStrategyAPIParams): StrategyAPI => {
+  const getCurrentPosition = () => connector.getPosition(symbol);
+  const isPositionExists = async () => {
+    const position = await getCurrentPosition();
+    return Boolean(
+      position && typeof position.qty === 'number' && position.qty > 0,
+    );
+  };
+
+  return {
+    skip: (code) => ({ kind: 'skip', code }),
+    entry: ({
+      code,
+      direction,
+      timestamp,
+      prices,
+      figures,
+      indicators,
+      additionalIndicators,
+      signalId,
+      orderPlan,
+      runtime,
+    }: StrategyAPIEntryParams) => {
+      const resolvedCode = code ?? toDefaultEntryCode(String(strategy));
+
+      if (!resolvedCode) {
+        throw new Error('strategyApi.entry requires code');
+      }
+
+      return buildEntrySignalDecision({
+        code: resolvedCode,
+        entryContext: {
+          strategy,
+          symbol,
+          interval,
+          direction,
+          timestamp,
+          prices,
+          isConfigFromBacktest,
+        },
+        figures,
+        indicators,
+        additionalIndicators,
+        signalId,
+        orderPlan,
+        runtime,
+      }) as Extract<StrategyDecision, { kind: 'entry' }>;
+    },
+    getMarketData: (params = {}) => {
+      const resolvedPreloadStart = params.preloadStart ?? preloadStart;
+
+      if (typeof resolvedPreloadStart !== 'number') {
+        throw new Error('strategyApi.getMarketData requires preloadStart');
+      }
+
+      return getStrategyMarketSnapshot({
+        env,
+        connector,
+        symbol,
+        interval,
+        cachedData,
+        preloadStart: resolvedPreloadStart,
+        backtestPriceMode: params.backtestPriceMode ?? backtestPriceMode,
+      });
+    },
+    getCurrentPosition,
+    isCurrentPositionExists: isPositionExists,
+    getDirectionalTpSlPrices: (params) => getDirectionalTpSlPrices(params),
+    createLastTradeController: (params?: StrategyLastTradeControllerParams) =>
+      createLastTradeController({
+        env,
+        ...params,
+      }),
+  };
+};

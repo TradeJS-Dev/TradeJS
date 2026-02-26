@@ -3,6 +3,39 @@ const mockEnrichSignalWithMlAi = jest.fn();
 const mockExecuteEntryOrder = jest.fn();
 
 jest.mock('@utils/strategyHelpers', () => ({
+  createStrategyAPI: jest.fn((params: any) => ({
+    skip: (code: string) => ({ kind: 'skip', code }),
+    getMarketData: jest.fn(),
+    getCurrentPosition: jest.fn(),
+    isCurrentPositionExists: jest.fn(async () => false),
+    entry: (entryParams: any) => ({
+      kind: 'entry',
+      code: entryParams.code,
+      entryContext: {
+        strategy: params.strategy,
+        symbol: params.symbol,
+        interval: params.interval,
+        direction: entryParams.direction,
+        timestamp: entryParams.timestamp,
+        prices: entryParams.prices,
+        isConfigFromBacktest: params.isConfigFromBacktest,
+      },
+      orderPlan: entryParams.orderPlan,
+      runtime: entryParams.runtime,
+      signal: entryParams.signal,
+    }),
+  })),
+  buildDefaultIndicatorPeriods: jest.fn(() => ({})),
+  createStrategyIndicatorsState: jest.fn(() => ({
+    isInitialized: jest.fn(() => true),
+    setCurrentBar: jest.fn(),
+    onBar: jest.fn(),
+    next: jest.fn(),
+    ensureInitializedWithCurrentBar: jest.fn(() => ({
+      snapshot: jest.fn(() => ({})),
+    })),
+    snapshot: jest.fn(() => ({})),
+  })),
   resolveStrategyConfig: (...args: unknown[]) =>
     mockResolveStrategyConfig(...args),
   enrichSignalWithMlAi: (...args: unknown[]) =>
@@ -51,7 +84,7 @@ const makeDecisionEntry = (overrides: Record<string, any> = {}) => ({
       stopLossPrice: 230,
       riskRatio: 1.2,
     },
-    configFromBacktest: false,
+    isConfigFromBacktest: false,
   },
   orderPlan: {
     qty: 3,
@@ -75,7 +108,7 @@ const makeRuntime = async (
       MAKE_ORDERS: true,
       ...configOverrides,
     },
-    configFromBacktest: false,
+    isConfigFromBacktest: false,
   });
 
   const strategyCreator = createStrategyRuntime({

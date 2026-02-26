@@ -1,5 +1,10 @@
 import { SMA, ATR, BollingerBands, OBV, MACD } from 'technicalindicators';
-import { Candle } from '@types';
+import {
+  Candle,
+  IndicatorSnapshot,
+  IndicatorsHistorySnapshot,
+  MlCandleIndicatorsSnapshot,
+} from '@types';
 import { ML_BASE_CANDLES_WINDOW } from '@constants';
 import { cloneArrayValues } from '@utils/array';
 import { calculateCoinBtcCorrelation } from '@utils/correlation';
@@ -77,7 +82,7 @@ const resampleCandles = (
 export const buildMlCandleIndicators = (
   candles: Candle[],
   btcCandles: Candle[],
-) => ({
+): MlCandleIndicatorsSnapshot => ({
   candles15m: candles.slice(-CANDLE_WINDOW).map(toMlCandle),
   candles1h: resampleCandles(candles, 60).slice(-CANDLE_WINDOW),
   candles4h: resampleCandles(candles, 240).slice(-CANDLE_WINDOW),
@@ -154,35 +159,6 @@ export interface IndicatorPeriods {
   levelLookback: number;
   levelDelay: number;
 }
-
-export type IndicatorSnapshot = {
-  maFast: number;
-  maMedium: number;
-  maSlow: number;
-  atr: number;
-  atrPct: number | null;
-  bbUpper: number;
-  bbMiddle: number;
-  bbLower: number;
-  obv: number;
-  smaObv: number;
-  macd: number | undefined;
-  macdSignal: number | undefined;
-  macdHistogram: number | undefined;
-  price24hPcnt: number;
-  price1hPcnt: number;
-  highPrice1h: number | null;
-  lowPrice1h: number | null;
-  volume1h: number | null;
-  highPrice24h: number | null;
-  lowPrice24h: number | null;
-  volume24h: number | null;
-  candle: Candle;
-  prevCandle: Candle | null;
-  highLevel: number | null;
-  lowLevel: number | null;
-  correlation: number;
-};
 
 export const applyIndicatorsToHistory = (
   indicators: TrendlineIndicators,
@@ -518,10 +494,10 @@ export const createIndicators = (
 
   return {
     next,
-    result: () => {
+    result: (): IndicatorsHistorySnapshot => {
       const baseHistory = cloneArrayValues(indicatorHistory);
       if (!includeMlPayload) {
-        return baseHistory;
+        return baseHistory as IndicatorsHistorySnapshot;
       }
 
       const fullHistory = {
@@ -535,7 +511,7 @@ export const createIndicators = (
         ),
       };
 
-      return fullHistory;
+      return fullHistory as IndicatorsHistorySnapshot;
     },
   };
 };
@@ -557,7 +533,7 @@ export const buildMlTimeframeIndicators = (
     const history = createIndicators(tfCandles, [], {
       includeMlPayload: false,
       periods: indicatorPeriods,
-    }).result();
+    }).result() as Record<string, number[]>;
     for (const [key, values] of Object.entries(history)) {
       result[`${key}${timeframe.suffix}`] = values;
     }
@@ -582,7 +558,7 @@ const buildIndicatorSeriesByTimeframes = (
   const baseHistory = createIndicators(candles, [], {
     includeMlPayload: false,
     periods,
-  }).result();
+  }).result() as Record<string, number[]>;
   for (const [key, values] of Object.entries(baseHistory)) {
     result[withSourcePrefix(key, sourcePrefix)] = values;
   }

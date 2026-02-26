@@ -1,20 +1,11 @@
 import _ from 'lodash';
 import {
   Candle,
-  KlineChartItem,
-  CreateStrategyCoreParams,
+  CreateStrategyCoreWithNext,
+  IndicatorSnapshot,
   StrategyConfig,
-  StrategyDecision,
-  StrategyCoreRunner,
 } from '@types';
-import { createIndicators, IndicatorSnapshot } from '@utils/indicators';
-import {
-  buildEntrySignalDecision,
-  buildDefaultIndicatorPeriods,
-  getDirectionalTpSlPrices,
-} from '@utils/strategyHelpers';
-import { config as DEFAULT_CONFIG, BreakoutConfig } from './config';
-import { breakoutManifest } from './manifest';
+import { BreakoutConfig } from './config';
 
 interface SignalConfig {
   weight: number;
@@ -130,29 +121,16 @@ const checkSignals = (
   return score >= minScore;
 };
 
-export const createBreakoutCore = async ({
-  symbol,
-  config,
-  configFromBacktest,
-  connector,
-  data,
-  btcData,
-}: CreateStrategyCoreParams<BreakoutConfig>): Promise<StrategyCoreRunner> => {
-  const indicatorPeriods = buildDefaultIndicatorPeriods(config);
+export const createBreakoutCore: CreateStrategyCoreWithNext<
+  BreakoutConfig,
+  IndicatorSnapshot | undefined
+> = async ({ config, strategyApi, indicatorsState }) => {
+  return async (candle, btcCandle) => {
+    if (_.isEmpty(candle)) return strategyApi.skip('NO_DATA');
 
-  const indicatorsController = createIndicators(data, btcData ?? [], {
-    periods: indicatorPeriods,
-  });
-
-  return async (
-    candle: KlineChartItem,
-    btcCandle: KlineChartItem,
-  ): Promise<StrategyDecision> => {
-    if (_.isEmpty(candle)) return { kind: 'skip', code: 'NO_DATA' };
-
-    const indicatorValues = indicatorsController.next(candle, btcCandle);
+    const indicatorValues = indicatorsState.next(candle, btcCandle);
     if (!indicatorValues) {
-      return { kind: 'skip', code: 'NO_INDICATORS' };
+      return strategyApi.skip('NO_INDICATORS');
     }
 
     if (
@@ -160,11 +138,11 @@ export const createBreakoutCore = async ({
       indicatorValues.highLevel == null ||
       indicatorValues.lowLevel == null
     ) {
-      return { kind: 'skip', code: 'WAIT_DATA' };
+      return strategyApi.skip('WAIT_DATA');
     }
 
     const { close: price, timestamp } = candle;
-    const position = await connector.getPosition(symbol);
+    const position = await strategyApi.getCurrentPosition();
     const positionExists = !_.isEmpty(position) && position.qty > 0;
     const qty = config.LIMIT / price;
 
@@ -193,7 +171,7 @@ export const createBreakoutCore = async ({
     if (!positionExists) {
       if (shouldOpenLong) {
         const { stopLossPrice: slPrice, takeProfitPrice } =
-          getDirectionalTpSlPrices({
+          strategyApi.getDirectionalTpSlPrices({
             price,
             direction: 'LONG',
             takeProfitDelta: config.TP_LONG?.[0]?.profit ?? 0,
@@ -201,21 +179,15 @@ export const createBreakoutCore = async ({
             unit: 'ratio',
           });
 
-        return buildEntrySignalDecision({
+        return strategyApi.entry({
           code: 'OPEN_LONG',
-          entryContext: {
-            strategy: breakoutManifest.name,
-            symbol,
-            interval: config.INTERVAL ?? '15',
-            direction: 'LONG',
-            timestamp,
-            prices: {
-              currentPrice: price,
-              takeProfitPrice,
-              stopLossPrice: slPrice,
-              riskRatio: 0,
-            },
-            configFromBacktest: Boolean(configFromBacktest),
+          direction: 'LONG',
+          timestamp,
+          prices: {
+            currentPrice: price,
+            takeProfitPrice,
+            stopLossPrice: slPrice,
+            riskRatio: 0,
           },
           figures: {},
           indicators: {
@@ -245,7 +217,7 @@ export const createBreakoutCore = async ({
 
       if (shouldOpenShort) {
         const { stopLossPrice: slPrice, takeProfitPrice } =
-          getDirectionalTpSlPrices({
+          strategyApi.getDirectionalTpSlPrices({
             price,
             direction: 'SHORT',
             takeProfitDelta: config.TP_SHORT?.[0]?.profit ?? 0,
@@ -253,21 +225,15 @@ export const createBreakoutCore = async ({
             unit: 'ratio',
           });
 
-        return buildEntrySignalDecision({
+        return strategyApi.entry({
           code: 'OPEN_SHORT',
-          entryContext: {
-            strategy: breakoutManifest.name,
-            symbol,
-            interval: config.INTERVAL ?? '15',
-            direction: 'SHORT',
-            timestamp,
-            prices: {
-              currentPrice: price,
-              takeProfitPrice,
-              stopLossPrice: slPrice,
-              riskRatio: 0,
-            },
-            configFromBacktest: Boolean(configFromBacktest),
+          direction: 'SHORT',
+          timestamp,
+          prices: {
+            currentPrice: price,
+            takeProfitPrice,
+            stopLossPrice: slPrice,
+            riskRatio: 0,
           },
           figures: {},
           indicators: {
@@ -295,7 +261,7 @@ export const createBreakoutCore = async ({
         });
       }
 
-      return { kind: 'skip', code: 'NO_SIGNAL' };
+      return strategyApi.skip('NO_SIGNAL');
     }
 
     const isLong = position.direction === 'LONG';
@@ -318,6 +284,6 @@ export const createBreakoutCore = async ({
       };
     }
 
-    return { kind: 'skip', code: 'POSITION_HELD' };
+    return strategyApi.skip('POSITION_HELD');
   };
 };

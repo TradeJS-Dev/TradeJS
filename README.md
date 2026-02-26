@@ -32,13 +32,16 @@
 - Исполнение ордеров/AI/ML/runtime orchestration вынесено в общий слой (`src/utils/strategyRuntime.ts` + `src/utils/strategyHelpers/*`).
 - `entry`-решения унифицированы:
   - `entryContext` (strategy/symbol/direction/timestamp/prices) — единый источник данных для сигнала и исполнения,
-  - `orderPlan` — только execution-specific поля (`qty`, `takeProfits`).
+  - `orderPlan` — только execution-specific поля (`qty`, `takeProfits`),
+  - `isConfigFromBacktest` — флаг, что итоговый config был подмешан из backtest result.
+  - `strategyApi` (DSL в `core.ts`) закрывает типовой boilerplate (`skip`, `entry`, `getMarketData`, position helpers, TP/SL helper).
 - Для `TrendLine` в live-режиме добавлен runtime AI-анализ сигнала:
   - анализируется уже собранный сигнал (индикаторы + BTC + трендовая линия),
   - AI сохраняет результат в Redis (`analysis:*`),
   - ордер открывается только если AI подтверждает текущее направление и ставит `quality` 4-5.
 - Все стратегии перечислены в индексе.
 - Отдельный API/контракты стратегий описаны в `STRATEGY_API.md`.
+- Отдельный reference по методам `strategyApi` — `STRATEGY_API_REFERENCE.md`.
 
 ---
 

@@ -36,7 +36,7 @@ describe('closeOppositePositionsBeforeOpen', () => {
           stopLossPrice: 120,
           riskRatio: 2,
         },
-        configFromBacktest: false,
+        isConfigFromBacktest: false,
       },
     });
 

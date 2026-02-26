@@ -5,11 +5,6 @@ import { trendLineBeforePlaceOrderHook } from './hooks';
 
 export const trendLineManifest: StrategyManifest = {
   name: 'TrendLine',
-  entryRuntimeDefaults: {
-    ml: {
-      enabled: true,
-    },
-  },
   hooks: {
     beforePlaceOrder: trendLineBeforePlaceOrderHook,
   },

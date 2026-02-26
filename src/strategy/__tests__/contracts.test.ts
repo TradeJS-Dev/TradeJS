@@ -16,7 +16,7 @@ jest.mock('@utils/strategyHelpers', () => ({
       prices: params.entryContext.prices,
       indicators: params.indicators ?? {},
       additionalIndicators: params.additionalIndicators,
-      configFromBacktest: params.entryContext.configFromBacktest,
+      isConfigFromBacktest: params.entryContext.isConfigFromBacktest,
     },
   }),
 }));
@@ -39,7 +39,7 @@ describe('strategy decision contracts', () => {
           stopLossPrice: 95,
           riskRatio: 2,
         },
-        configFromBacktest: false,
+        isConfigFromBacktest: false,
       },
       figures: {
         trendLine: {
@@ -88,7 +88,7 @@ describe('strategy decision contracts', () => {
           stopLossPrice: 95,
           riskRatio: 0,
         },
-        configFromBacktest: false,
+        isConfigFromBacktest: false,
       },
       orderPlan: {
         qty: 1,

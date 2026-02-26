@@ -1,11 +1,17 @@
+import { SIGNALS_PRELOAD_DAYS } from '@constants';
 import { logger } from '@utils/logger';
+import { getTimestamp } from '@utils/timestamp';
 import { getStrategyManifest } from '../strategy/manifests';
 import {
+  buildDefaultIndicatorPeriods,
+  createStrategyAPI,
+  createStrategyIndicatorsState,
   enrichSignalWithMlAi,
   executeEntryOrder,
   resolveStrategyConfig,
 } from '@utils/strategyHelpers';
 import {
+  CreateStrategyCore,
   CreateStrategyCoreParams,
   StrategyCoreRunner,
   StrategyConfig,
@@ -16,9 +22,7 @@ import {
 interface CreateStrategyRuntimeParams<TConfig extends StrategyConfig> {
   strategyName: string;
   defaults: TConfig;
-  createCore: (
-    params: CreateStrategyCoreParams<TConfig>,
-  ) => Promise<StrategyCoreRunner> | StrategyCoreRunner;
+  createCore: CreateStrategyCore<TConfig, any>;
 }
 
 type EntryDecision = Extract<StrategyDecision, { kind: 'entry' }>;
@@ -209,7 +213,7 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
     btcData,
     connector,
   }) => {
-    const { config, configFromBacktest } = await resolveStrategyConfig({
+    const { config, isConfigFromBacktest } = await resolveStrategyConfig({
       strategyName,
       userName,
       symbol,
@@ -217,19 +221,40 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
       defaults,
     });
 
+    const strategyApi = createStrategyAPI({
+      strategy: strategyName as any,
+      symbol,
+      interval: (config.INTERVAL ?? '15') as any,
+      env: String(config.ENV ?? 'BACKTEST'),
+      connector,
+      cachedData: data,
+      preloadStart: getTimestamp(SIGNALS_PRELOAD_DAYS),
+      backtestPriceMode: config.BACKTEST_PRICE_MODE,
+      isConfigFromBacktest,
+    });
+    const indicatorsState = createStrategyIndicatorsState({
+      env: String(config.ENV ?? 'BACKTEST'),
+      data,
+      btcData,
+      periods: buildDefaultIndicatorPeriods(config as any),
+    });
+
     const core = await createCore({
       userName,
       symbol,
       config,
-      configFromBacktest,
+      isConfigFromBacktest,
       connector,
       data,
       btcData,
+      strategyApi,
+      indicatorsState,
     });
 
     return async (candle, btcCandle) => {
       data.push(candle);
       btcData.push(btcCandle);
+      indicatorsState.setCurrentBar(candle, btcCandle);
 
       const decision = await core(candle, btcCandle);
 

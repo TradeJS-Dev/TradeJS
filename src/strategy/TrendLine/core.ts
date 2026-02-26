@@ -1,58 +1,30 @@
-import _ from 'lodash';
-import { SIGNALS_PRELOAD_DAYS } from '@constants';
-import { getTimestamp } from '@utils/timestamp';
 import { round } from '@utils/math';
 import { createTrendlineEngine } from '@utils/trendLineEngine';
 import {
-  buildEntrySignalDecision,
-  buildDefaultIndicatorPeriods,
-  createStrategyIndicatorsState,
-  getStrategyMarketSnapshot,
-  getDirectionalTpSlPrices,
-} from '@utils/strategyHelpers';
-import {
-  CreateStrategyCoreParams,
-  KlineChartItem,
-  StrategyCoreRunner,
-  StrategyDecision,
+  CreateStrategyCoreWithSnapshot,
+  IndicatorsHistorySnapshot,
   TrendLineOptions,
 } from '@types';
 import { filterByVeryVolatility } from './filters';
 import { TrendLineConfig } from './config';
-import { trendLineManifest } from './manifest';
 
-const PRELOAD_START = getTimestamp(SIGNALS_PRELOAD_DAYS);
-
-export const createTrendLineCore = async ({
-  symbol,
-  config,
-  configFromBacktest,
-  connector,
-  data: cachedData,
-  btcData: btcCachedData,
-}: CreateStrategyCoreParams<TrendLineConfig>): Promise<StrategyCoreRunner> => {
-  const ONE_DAY_MS = 86_400_000;
-  let lastTradeTimestamp: number | null = null;
-
+export const createTrendLineCore: CreateStrategyCoreWithSnapshot<
+  TrendLineConfig,
+  IndicatorsHistorySnapshot | undefined
+> = async ({ config, data: cachedData, strategyApi, indicatorsState }) => {
   const {
     ENV,
-    INTERVAL,
-    BACKTEST_PRICE_MODE,
     TRENDLINE,
     FEE_PERCENT,
     MAX_LOSS_VALUE,
+    MAX_CORRELATION,
+    ALLOW_LONG,
+    ALLOW_SHORT,
     HIGHS,
     LOWS,
   } = config;
 
-  const indicatorPeriods = buildDefaultIndicatorPeriods(config);
-
-  const indicatorsState = createStrategyIndicatorsState({
-    env: String(ENV),
-    data: cachedData,
-    btcData: btcCachedData,
-    periods: indicatorPeriods,
-  });
+  const lastTradeController = strategyApi.createLastTradeController();
 
   const trendlineOptions: Partial<TrendLineOptions> = {
     bestLines: 1,
@@ -70,61 +42,53 @@ export const createTrendLineCore = async ({
     ...trendlineOptions,
   });
 
-  return async (
-    candle: KlineChartItem,
-    btcCandle: KlineChartItem,
-  ): Promise<StrategyDecision> => {
+  return async (candle) => {
     const lowsTrendlines = getLowsTrendlines.next(candle);
     const highsTrendlines = getHighsTrendlines.next(candle);
 
-    indicatorsState.onBar(candle, btcCandle);
+    indicatorsState.onBar();
 
     const bestLine =
       lowsTrendlines.length > 0 ? lowsTrendlines[0] : highsTrendlines[0];
 
     if (!bestLine) {
-      return { kind: 'skip', code: 'NO_TRENDLINE' };
+      return strategyApi.skip('NO_TRENDLINE');
     }
 
-    const position = await connector.getPosition(symbol);
-    const positionExists = !_.isEmpty(position) && position.qty > 0;
+    const positionExists = await strategyApi.isCurrentPositionExists();
 
     if (positionExists) {
-      return { kind: 'skip', code: 'POSITION_EXISTS' };
+      return strategyApi.skip('POSITION_EXISTS');
     }
 
-    if (
-      ENV === 'BACKTEST' &&
-      lastTradeTimestamp &&
-      candle.timestamp <= lastTradeTimestamp + ONE_DAY_MS
-    ) {
-      return { kind: 'skip', code: 'DEV_TRADE_COOLDOWN' };
+    if (lastTradeController.isInCooldown(candle.timestamp)) {
+      return strategyApi.skip('DEV_TRADE_COOLDOWN');
     }
 
     const { fullData, lastCandle, currentPrice } =
-      await getStrategyMarketSnapshot({
-        env: String(ENV),
-        connector,
-        symbol,
-        interval: INTERVAL,
-        cachedData,
-        preloadStart: PRELOAD_START,
-        backtestPriceMode: BACKTEST_PRICE_MODE,
-      });
+      await strategyApi.getMarketData();
 
     if (!filterByVeryVolatility(fullData)) {
-      return { kind: 'skip', code: 'VERY_VOLATILITY' };
+      return strategyApi.skip('VERY_VOLATILITY');
     }
 
     const modeConfig = bestLine.mode === 'highs' ? HIGHS : LOWS;
     const { direction, TP, SL, minRiskRatio, enable } = modeConfig;
 
+    if (direction === 'LONG' && !ALLOW_LONG) {
+      return strategyApi.skip('LONG_NOT_ALLOWED');
+    }
+
+    if (direction === 'SHORT' && !ALLOW_SHORT) {
+      return strategyApi.skip('SHORT_NOT_ALLOWED');
+    }
+
     if (!enable) {
-      return { kind: 'skip', code: 'STRATEGY_DISABLED' };
+      return strategyApi.skip('STRATEGY_DISABLED');
     }
 
     const { stopLossPrice, takeProfitPrice, riskRatio, qty } =
-      getDirectionalTpSlPrices({
+      strategyApi.getDirectionalTpSlPrices({
         price: currentPrice,
         direction,
         takeProfitDelta: TP,
@@ -135,20 +99,25 @@ export const createTrendLineCore = async ({
       });
 
     if (!qty || !Number.isFinite(qty) || qty <= 0) {
-      return { kind: 'skip', code: 'INVALID_QTY' };
+      return strategyApi.skip('INVALID_QTY');
     }
 
     if (riskRatio <= minRiskRatio) {
-      return { kind: 'skip', code: `RISK_RATIO:${round(riskRatio)}` };
+      return strategyApi.skip(`RISK_RATIO:${round(riskRatio)}`);
     }
 
-    const indicatorsController =
-      indicatorsState.ensureInitializedWithCurrentBar();
-    const indicatorHistory = indicatorsController.result();
+    const indicators = indicatorsState.snapshot();
+    const correlation = indicatorsState.latestNumber('correlation');
 
-    if (ENV === 'BACKTEST') {
-      lastTradeTimestamp = lastCandle.timestamp;
+    if (
+      ENV !== 'BACKTEST' &&
+      correlation != null &&
+      correlation >= MAX_CORRELATION
+    ) {
+      return strategyApi.skip(`MAX_CORRELATION:${round(correlation)}`);
     }
+
+    lastTradeController.markTrade(lastCandle.timestamp);
 
     const prices = {
       currentPrice,
@@ -157,21 +126,14 @@ export const createTrendLineCore = async ({
       riskRatio,
     };
 
-    return buildEntrySignalDecision({
-      code: 'TRENDLINE_SIGNAL',
-      entryContext: {
-        strategy: trendLineManifest.name,
-        symbol,
-        interval: INTERVAL,
-        direction,
-        timestamp: lastCandle.timestamp,
-        prices,
-        configFromBacktest,
-      },
+    return strategyApi.entry({
       figures: {
         trendLine: bestLine,
       },
-      indicators: indicatorHistory,
+      direction,
+      timestamp: lastCandle.timestamp,
+      prices,
+      indicators,
       additionalIndicators: {
         touches: bestLine.touches.length + 2,
         distance: bestLine.distance,

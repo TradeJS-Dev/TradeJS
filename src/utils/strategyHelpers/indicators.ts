@@ -1,5 +1,5 @@
 import { createIndicators, IndicatorPeriods } from '@utils/indicators';
-import { KlineChartData } from '@types';
+import { KlineChartData, StrategyIndicatorsState } from '@types';
 
 type IndicatorPeriodsConfig = Partial<
   Record<
@@ -41,22 +41,15 @@ export const buildDefaultIndicatorPeriods = (
 });
 
 type IndicatorsController = ReturnType<typeof createIndicators>;
+type SnapshotController = IndicatorsController & {
+  snapshot: () => ReturnType<IndicatorsController['result']>;
+};
 
 export interface StrategyIndicatorsStateParams {
   env: string;
   data: KlineChartData;
   btcData: KlineChartData;
   periods?: Partial<IndicatorPeriods>;
-}
-
-export interface StrategyIndicatorsState {
-  isInitialized: () => boolean;
-  onBar: (
-    candle: KlineChartData[number],
-    btcCandle: KlineChartData[number],
-  ) => void;
-  ensureInitializedWithCurrentBar: () => IndicatorsController;
-  result: () => ReturnType<IndicatorsController['result']> | undefined;
 }
 
 export const createStrategyIndicatorsState = ({
@@ -67,32 +60,75 @@ export const createStrategyIndicatorsState = ({
 }: StrategyIndicatorsStateParams): StrategyIndicatorsState => {
   let controller: IndicatorsController | null =
     env === 'BACKTEST' ? createIndicators(data, btcData, { periods }) : null;
+  let currentBarPair:
+    | {
+        candle: KlineChartData[number];
+        btcCandle: KlineChartData[number];
+      }
+    | undefined;
+  const withSnapshot = (value: IndicatorsController): SnapshotController =>
+    Object.assign(value, {
+      snapshot: () => value.result(),
+    });
+
+  const applyBar = (
+    candle: KlineChartData[number],
+    btcCandle: KlineChartData[number],
+  ) => {
+    if (!controller) return;
+    controller.next(candle, btcCandle);
+  };
+
+  const ensureControllerInitialized = (): SnapshotController => {
+    if (controller) return withSnapshot(controller);
+
+    controller = createIndicators(data.slice(0, -1), btcData.slice(0, -1), {
+      periods,
+    });
+
+    const lastCandle = data[data.length - 1];
+    const lastBtcCandle = btcData[btcData.length - 1];
+    if (lastCandle && lastBtcCandle) {
+      controller.next(lastCandle, lastBtcCandle);
+    }
+
+    return withSnapshot(controller);
+  };
 
   return {
     isInitialized: () => controller != null,
 
+    setCurrentBar: (candle, btcCandle) => {
+      currentBarPair = { candle, btcCandle };
+    },
+
     onBar: (candle, btcCandle) => {
-      if (!controller) return;
-      controller.next(candle, btcCandle);
+      const resolvedCandle = candle ?? currentBarPair?.candle;
+      const resolvedBtcCandle = btcCandle ?? currentBarPair?.btcCandle;
+      if (!resolvedCandle || !resolvedBtcCandle) return;
+      applyBar(resolvedCandle, resolvedBtcCandle);
+    },
+
+    next: (candle, btcCandle) => {
+      if (!controller) return undefined;
+      return controller.next(candle, btcCandle);
     },
 
     // Lazy bootstrap for live mode: initialize on history before current bar and then apply current bar once.
-    ensureInitializedWithCurrentBar: () => {
-      if (controller) return controller;
+    ensureInitializedWithCurrentBar: ensureControllerInitialized,
 
-      controller = createIndicators(data.slice(0, -1), btcData.slice(0, -1), {
-        periods,
-      });
+    snapshot: () => ensureControllerInitialized().snapshot(),
 
-      const lastCandle = data[data.length - 1];
-      const lastBtcCandle = btcData[btcData.length - 1];
-      if (lastCandle && lastBtcCandle) {
-        controller.next(lastCandle, lastBtcCandle);
+    latestNumber: (key) => {
+      const snapshot = ensureControllerInitialized().snapshot() as
+        | Record<string, unknown>
+        | undefined;
+      const value = snapshot?.[key];
+      if (!Array.isArray(value) || value.length === 0) {
+        return undefined;
       }
-
-      return controller;
+      const last = value[value.length - 1];
+      return typeof last === 'number' ? last : undefined;
     },
-
-    result: () => controller?.result(),
   };
 };

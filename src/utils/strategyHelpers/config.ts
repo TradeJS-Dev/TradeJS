@@ -18,7 +18,7 @@ export const resolveStrategyConfig = async <TConfig extends StrategyConfig>({
   defaults,
 }: ResolveStrategyConfigParams<TConfig>): Promise<{
   config: TConfig;
-  configFromBacktest: boolean;
+  isConfigFromBacktest: boolean;
 }> => {
   const mergeIfNotEmpty = <T extends object>(
     target: T,
@@ -36,7 +36,7 @@ export const resolveStrategyConfig = async <TConfig extends StrategyConfig>({
     ...baseConfig,
   } as TConfig;
 
-  let configFromBacktest = false;
+  let isConfigFromBacktest = false;
 
   if (config.ENV !== 'BACKTEST') {
     const userConfig = (await getData(
@@ -56,9 +56,9 @@ export const resolveStrategyConfig = async <TConfig extends StrategyConfig>({
         config,
         backtestResult.config as Partial<TConfig>,
       );
-      configFromBacktest = true;
+      isConfigFromBacktest = true;
     }
   }
 
-  return { config, configFromBacktest };
+  return { config, isConfigFromBacktest };
 };
