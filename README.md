@@ -34,7 +34,7 @@
   - `entryContext` (strategy/symbol/direction/timestamp/prices) — единый источник данных для сигнала и исполнения,
   - `orderPlan` — только execution-specific поля (`qty`, `takeProfits`),
   - `isConfigFromBacktest` — флаг, что итоговый config был подмешан из backtest result.
-  - `strategyApi` (DSL в `core.ts`) закрывает типовой boilerplate (`skip`, `entry`, `getMarketData`, position helpers, TP/SL helper).
+  - `strategyApi` (DSL в `core.ts`) закрывает типовой boilerplate (`skip`, `entry`, `getMarketData`, position helpers, TP/SL helper); `getMarketData()` возвращает `timestamp` (`lastCandle.timestamp`).
 - Для `TrendLine` в live-режиме добавлен runtime AI-анализ сигнала:
   - анализируется уже собранный сигнал (индикаторы + BTC + трендовая линия),
   - AI сохраняет результат в Redis (`analysis:*`),

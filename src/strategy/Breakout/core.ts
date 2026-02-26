@@ -1,7 +1,7 @@
 import _ from 'lodash';
 import {
   Candle,
-  CreateStrategyCoreWithNext,
+  CreateStrategyCore,
   IndicatorSnapshot,
   StrategyConfig,
 } from '@types';
@@ -121,14 +121,19 @@ const checkSignals = (
   return score >= minScore;
 };
 
-export const createBreakoutCore: CreateStrategyCoreWithNext<
+export const createBreakoutCore: CreateStrategyCore<
   BreakoutConfig,
+  Record<string, any> | undefined,
   IndicatorSnapshot | undefined
-> = async ({ config, strategyApi, indicatorsState }) => {
+> = async ({ config, strategyApi }) => {
   return async (candle, btcCandle) => {
-    if (_.isEmpty(candle)) return strategyApi.skip('NO_DATA');
+    if (_.isEmpty(candle)) {
+      return strategyApi.skip('NO_DATA');
+    }
 
-    const indicatorValues = indicatorsState.next(candle, btcCandle);
+    const indicatorValues = strategyApi.nextIndicators(candle, btcCandle) as
+      | IndicatorSnapshot
+      | undefined;
     if (!indicatorValues) {
       return strategyApi.skip('NO_INDICATORS');
     }
@@ -141,10 +146,10 @@ export const createBreakoutCore: CreateStrategyCoreWithNext<
       return strategyApi.skip('WAIT_DATA');
     }
 
-    const { close: price, timestamp } = candle;
+    const { currentPrice, timestamp } = await strategyApi.getMarketData();
     const position = await strategyApi.getCurrentPosition();
-    const positionExists = !_.isEmpty(position) && position.qty > 0;
-    const qty = config.LIMIT / price;
+    const positionExists = await strategyApi.isCurrentPositionExists();
+    const qty = config.LIMIT / currentPrice;
 
     const signals = getSignals(config, {
       ...indicatorValues,
@@ -168,11 +173,11 @@ export const createBreakoutCore: CreateStrategyCoreWithNext<
       signals,
     );
 
-    if (!positionExists) {
+    if (!positionExists || !position) {
       if (shouldOpenLong) {
-        const { stopLossPrice: slPrice, takeProfitPrice } =
+        const { stopLossPrice, takeProfitPrice } =
           strategyApi.getDirectionalTpSlPrices({
-            price,
+            price: currentPrice,
             direction: 'LONG',
             takeProfitDelta: config.TP_LONG?.[0]?.profit ?? 0,
             stopLossDelta: config.SL_LONG,
@@ -184,9 +189,9 @@ export const createBreakoutCore: CreateStrategyCoreWithNext<
           direction: 'LONG',
           timestamp,
           prices: {
-            currentPrice: price,
+            currentPrice,
             takeProfitPrice,
-            stopLossPrice: slPrice,
+            stopLossPrice,
             riskRatio: 0,
           },
           figures: {},
@@ -209,16 +214,16 @@ export const createBreakoutCore: CreateStrategyCoreWithNext<
             qty,
             takeProfits: config.TP_LONG.map(({ rate, profit }) => ({
               rate,
-              price: price * (1 + profit),
+              price: currentPrice * (1 + profit),
             })),
           },
         });
       }
 
       if (shouldOpenShort) {
-        const { stopLossPrice: slPrice, takeProfitPrice } =
+        const { stopLossPrice, takeProfitPrice } =
           strategyApi.getDirectionalTpSlPrices({
-            price,
+            price: currentPrice,
             direction: 'SHORT',
             takeProfitDelta: config.TP_SHORT?.[0]?.profit ?? 0,
             stopLossDelta: config.SL_SHORT,
@@ -230,9 +235,9 @@ export const createBreakoutCore: CreateStrategyCoreWithNext<
           direction: 'SHORT',
           timestamp,
           prices: {
-            currentPrice: price,
+            currentPrice,
             takeProfitPrice,
-            stopLossPrice: slPrice,
+            stopLossPrice,
             riskRatio: 0,
           },
           figures: {},
@@ -255,7 +260,7 @@ export const createBreakoutCore: CreateStrategyCoreWithNext<
             qty,
             takeProfits: config.TP_SHORT.map(({ rate, profit }) => ({
               rate,
-              price: price * (1 - profit),
+              price: currentPrice * (1 - profit),
             })),
           },
         });
@@ -272,7 +277,7 @@ export const createBreakoutCore: CreateStrategyCoreWithNext<
       return {
         kind: 'exit',
         code: 'CLOSE_POSITION_BY_OPEN_SIGNAL',
-        closePlan: { price, timestamp, direction },
+        closePlan: { price: currentPrice, timestamp, direction },
       };
     }
 
@@ -280,7 +285,7 @@ export const createBreakoutCore: CreateStrategyCoreWithNext<
       return {
         kind: 'exit',
         code: 'CLOSE_POSITION_BY_SMA',
-        closePlan: { price, timestamp, direction },
+        closePlan: { price: currentPrice, timestamp, direction },
       };
     }
 

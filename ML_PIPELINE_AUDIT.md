@@ -20,7 +20,7 @@
   - writes Redis `analysis:*`,
   - gates live order placement by AI-confirmed direction + quality.
 - Strategy runtime is now shared across strategies (`src/utils/strategyRuntime.ts`), while strategy-specific logic stays in per-strategy `core.ts` (including signal/decision assembly).
-- `core.ts` uses shared `strategyApi` DSL for entry/skip and market/position access (`getMarketData`, `getCurrentPosition`, `isCurrentPositionExists`).
+- `core.ts` uses shared `strategyApi` DSL for entry/skip and market/position access (`getMarketData`, `getCurrentPosition`, `isCurrentPositionExists`); `getMarketData()` returns `timestamp = lastCandle.timestamp` to reduce duplicate field plumbing in strategy cores.
 - AI/ML strategy customizations are now split via strategy manifests/adapters:
   - shared pipelines (`src/utils/ai.ts`, `src/utils/mlPayload.ts`, `src/utils/mlGrpc.ts`)
   - strategy-local adapters (`src/strategy/*/adapters/*`)

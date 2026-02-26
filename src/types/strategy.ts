@@ -105,6 +105,7 @@ export interface StrategyAPIMarketDataParams {
 export interface StrategyMarketSnapshot {
   fullData: KlineChartData;
   lastCandle: KlineChartItem;
+  timestamp: number;
   currentPrice: number;
 }
 
@@ -217,6 +218,10 @@ export interface StrategyAPI {
   getMarketData: (
     params?: StrategyAPIMarketDataParams,
   ) => Promise<StrategyMarketSnapshot>;
+  nextIndicators: (
+    candle: KlineChartData[number],
+    btcCandle: KlineChartData[number],
+  ) => unknown;
   getCurrentPosition: () => ReturnType<Connector['getPosition']>;
   isCurrentPositionExists: () => Promise<boolean>;
   getDirectionalTpSlPrices: (
@@ -320,34 +325,13 @@ export type StrategyCoreRunner = (
 
 export type CreateStrategyCore<
   TConfig extends StrategyConfig,
-  TIndicatorsState extends StrategyIndicatorsState = StrategyIndicatorsState,
+  TSnapshot extends Record<string, any> | undefined =
+    | Record<string, any>
+    | undefined,
+  TNext = unknown,
 > = (
-  params: CreateStrategyCoreParams<TConfig, TIndicatorsState>,
+  params: CreateStrategyCoreParams<
+    TConfig,
+    StrategyIndicatorsState<TNext, TSnapshot>
+  >,
 ) => Promise<StrategyCoreRunner> | StrategyCoreRunner;
-
-export type StrategyIndicatorsStateWithSnapshot<
-  TSnapshot extends Record<string, any> | undefined,
-> = StrategyIndicatorsState<unknown, TSnapshot>;
-
-export type StrategyIndicatorsStateWithNext<
-  TNext,
-  TSnapshot extends Record<string, any> | undefined =
-    | Record<string, any>
-    | undefined,
-> = StrategyIndicatorsState<TNext, TSnapshot>;
-
-export type CreateStrategyCoreWithSnapshot<
-  TConfig extends StrategyConfig,
-  TSnapshot extends Record<string, any> | undefined,
-> = CreateStrategyCore<TConfig, StrategyIndicatorsStateWithSnapshot<TSnapshot>>;
-
-export type CreateStrategyCoreWithNext<
-  TConfig extends StrategyConfig,
-  TNext,
-  TSnapshot extends Record<string, any> | undefined =
-    | Record<string, any>
-    | undefined,
-> = CreateStrategyCore<
-  TConfig,
-  StrategyIndicatorsStateWithNext<TNext, TSnapshot>
->;

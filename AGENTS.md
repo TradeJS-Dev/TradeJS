@@ -103,7 +103,7 @@ These instructions apply to this repository (`/Users/aleksnick/dev/investing`).
 - Strategy-specific AI/ML customizations must live near the strategy (`src/strategy/<Strategy>/adapters/*`) and be connected through strategy manifests (`src/strategy/*/manifest.ts`, `src/strategy/manifests.ts`), not via hardcoded branches in shared `utils`.
 - `entry` decisions use `entryContext` as the source of truth for runtime execution fields (strategy/symbol/direction/timestamp/prices); `orderPlan` should contain only execution-specific additions (e.g. `qty`, `takeProfits`).
 - Runtime `ai/ml` policy should be derived from strategy adapters/manifests (and optionally merged with `decision.runtime` overrides for special cases), not assembled ad hoc in strategy core.
-- `strategyApi` is the preferred DSL inside `core.ts` (`skip`, `entry`, `getMarketData`, `getCurrentPosition`, `isCurrentPositionExists`); avoid rebuilding these wrappers in strategies.
+- `strategyApi` is the preferred DSL inside `core.ts` (`skip`, `entry`, `getMarketData`, `getCurrentPosition`, `isCurrentPositionExists`); `getMarketData()` provides `timestamp = lastCandle.timestamp`. Avoid rebuilding these wrappers in strategies.
 - Prefer `strategyApi` wrappers for shared calculations/controllers too (e.g. TP/SL sizing helper, last-trade cooldown controller) instead of importing runtime-aware helpers directly into strategy cores.
 - AI writes analysis to Redis key `analysis:${symbol}:${signalId}`.
 - Telegram sending reads Redis `analysis` and posts AI analysis as a separate follow-up message after the main signal message.

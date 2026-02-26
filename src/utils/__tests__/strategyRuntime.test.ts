@@ -6,6 +6,7 @@ jest.mock('@utils/strategyHelpers', () => ({
   createStrategyAPI: jest.fn((params: any) => ({
     skip: (code: string) => ({ kind: 'skip', code }),
     getMarketData: jest.fn(),
+    nextIndicators: jest.fn(),
     getCurrentPosition: jest.fn(),
     isCurrentPositionExists: jest.fn(async () => false),
     entry: (entryParams: any) => ({
@@ -35,6 +36,7 @@ jest.mock('@utils/strategyHelpers', () => ({
       snapshot: jest.fn(() => ({})),
     })),
     snapshot: jest.fn(() => ({})),
+    latestNumber: jest.fn(),
   })),
   resolveStrategyConfig: (...args: unknown[]) =>
     mockResolveStrategyConfig(...args),

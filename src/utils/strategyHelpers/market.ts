@@ -22,6 +22,7 @@ export interface StrategyMarketSnapshotParams {
 export interface StrategyMarketSnapshot {
   fullData: KlineChartData;
   lastCandle: KlineChartItem;
+  timestamp: number;
   currentPrice: number;
 }
 
@@ -60,7 +61,12 @@ export const getStrategyMarketSnapshot = async ({
     }
   }
 
-  return { fullData, lastCandle, currentPrice };
+  return {
+    fullData,
+    lastCandle,
+    timestamp: lastCandle.timestamp,
+    currentPrice,
+  };
 };
 
 export const calculateRiskRatio = ({

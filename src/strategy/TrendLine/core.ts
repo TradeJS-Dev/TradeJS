@@ -1,14 +1,14 @@
 import { round } from '@utils/math';
 import { createTrendlineEngine } from '@utils/trendLineEngine';
 import {
-  CreateStrategyCoreWithSnapshot,
+  CreateStrategyCore,
   IndicatorsHistorySnapshot,
   TrendLineOptions,
 } from '@types';
 import { filterByVeryVolatility } from './filters';
 import { TrendLineConfig } from './config';
 
-export const createTrendLineCore: CreateStrategyCoreWithSnapshot<
+export const createTrendLineCore: CreateStrategyCore<
   TrendLineConfig,
   IndicatorsHistorySnapshot | undefined
 > = async ({ config, data: cachedData, strategyApi, indicatorsState }) => {
@@ -65,7 +65,7 @@ export const createTrendLineCore: CreateStrategyCoreWithSnapshot<
       return strategyApi.skip('DEV_TRADE_COOLDOWN');
     }
 
-    const { fullData, lastCandle, currentPrice } =
+    const { fullData, timestamp, currentPrice } =
       await strategyApi.getMarketData();
 
     if (!filterByVeryVolatility(fullData)) {
@@ -117,7 +117,7 @@ export const createTrendLineCore: CreateStrategyCoreWithSnapshot<
       return strategyApi.skip(`MAX_CORRELATION:${round(correlation)}`);
     }
 
-    lastTradeController.markTrade(lastCandle.timestamp);
+    lastTradeController.markTrade(timestamp);
 
     const prices = {
       currentPrice,
@@ -131,7 +131,7 @@ export const createTrendLineCore: CreateStrategyCoreWithSnapshot<
         trendLine: bestLine,
       },
       direction,
-      timestamp: lastCandle.timestamp,
+      timestamp,
       prices,
       indicators,
       additionalIndicators: {

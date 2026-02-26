@@ -66,6 +66,9 @@ return strategyApi.skip('NO_SIGNAL');
 const { fullData, lastCandle, currentPrice } = await strategyApi.getMarketData();
 ```
 
+Возвращает также:
+- `timestamp` (равен `lastCandle.timestamp`)
+
 ### `strategyApi.getCurrentPosition()`
 
 Обертка над:

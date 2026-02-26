@@ -135,6 +135,12 @@ interface CreateStrategyAPIParams {
   env: string;
   connector: Connector;
   cachedData: KlineChartData;
+  indicatorsState?: {
+    next: (
+      candle: KlineChartData[number],
+      btcCandle: KlineChartData[number],
+    ) => unknown;
+  };
   preloadStart?: number;
   backtestPriceMode?: BacktestPriceMode;
   isConfigFromBacktest?: Signal['isConfigFromBacktest'];
@@ -153,6 +159,7 @@ export const createStrategyAPI = ({
   env,
   connector,
   cachedData,
+  indicatorsState,
   preloadStart,
   backtestPriceMode,
   isConfigFromBacktest,
@@ -221,6 +228,8 @@ export const createStrategyAPI = ({
         backtestPriceMode: params.backtestPriceMode ?? backtestPriceMode,
       });
     },
+    nextIndicators: (candle, btcCandle) =>
+      indicatorsState?.next(candle, btcCandle),
     getCurrentPosition,
     isCurrentPositionExists: isPositionExists,
     getDirectionalTpSlPrices: (params) => getDirectionalTpSlPrices(params),

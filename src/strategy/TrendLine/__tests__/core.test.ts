@@ -11,6 +11,7 @@ jest.mock('@utils/strategyHelpers', () => {
       skip: jest.fn((code) => ({ kind: 'skip', code })),
       entry: buildEntrySignalDecision,
       getMarketData: getStrategyMarketSnapshot,
+      nextIndicators: jest.fn(),
       getCurrentPosition: jest.fn(),
       isCurrentPositionExists: jest.fn(),
       getDirectionalTpSlPrices,
@@ -64,6 +65,7 @@ const makeStrategyApi = () => {
         code: params.code ?? 'TRENDLINE_SIGNAL',
       }),
     getMarketData: (params: any) => getStrategyMarketSnapshot(params),
+    nextIndicators: jest.fn(),
     getCurrentPosition: jest.fn(),
     isCurrentPositionExists: jest.fn(async () => false),
     getDirectionalTpSlPrices: (params: any) => getDirectionalTpSlPrices(params),
@@ -152,6 +154,7 @@ describe('createTrendLineCore', () => {
     (getStrategyMarketSnapshot as jest.Mock).mockResolvedValue({
       fullData: [candle],
       lastCandle: candle,
+      timestamp: candle.timestamp,
       currentPrice: candle.close,
     });
 

@@ -4,6 +4,7 @@ jest.mock('@utils/strategyHelpers', () => ({
   createStrategyAPI: jest.fn((params) => ({
     skip: (code: string) => ({ kind: 'skip', code }),
     getMarketData: jest.fn(),
+    nextIndicators: jest.fn(),
     getCurrentPosition: jest.fn(),
     isCurrentPositionExists: jest.fn(),
     getDirectionalTpSlPrices: jest.fn(),
@@ -126,7 +127,10 @@ const makeConfig = (overrides: Record<string, any> = {}) => ({
 const makeStrategyApi = (overrides: Record<string, any> = {}) =>
   ({
     skip: (code: string) => ({ kind: 'skip', code }),
-    getMarketData: jest.fn(),
+    getMarketData: jest.fn(async () => overrides.marketData),
+    nextIndicators: jest.fn((candle: any, btcCandle: any) =>
+      overrides.nextIndicators?.(candle, btcCandle),
+    ),
     getCurrentPosition: jest.fn(async () => overrides.currentPosition),
     isCurrentPositionExists: jest.fn(async () =>
       Boolean(overrides.currentPosition?.qty > 0),
@@ -204,6 +208,15 @@ describe('createBreakoutCore', () => {
   });
 
   it('returns skip decision for empty candle', async () => {
+    const indicatorsState = {
+      setCurrentBar: jest.fn(),
+      next: jest.fn(),
+      onBar: jest.fn(),
+      ensureInitializedWithCurrentBar: jest.fn(),
+      snapshot: jest.fn(),
+      latestNumber: jest.fn(),
+      isInitialized: jest.fn(() => true),
+    };
     const core = await createBreakoutCore({
       userName: 'test',
       symbol: 'TESTUSDT',
@@ -212,15 +225,12 @@ describe('createBreakoutCore', () => {
       connector: { getPosition: jest.fn() } as any,
       data: [],
       btcData: [],
-      strategyApi: makeStrategyApi({ currentPosition: undefined }),
-      indicatorsState: {
-        setCurrentBar: jest.fn(),
-        next: jest.fn(),
-        onBar: jest.fn(),
-        ensureInitializedWithCurrentBar: jest.fn(),
-        snapshot: jest.fn(),
-        isInitialized: jest.fn(() => true),
-      } as any,
+      strategyApi: makeStrategyApi({
+        currentPosition: undefined,
+        nextIndicators: (...args: any[]) =>
+          (indicatorsState as any).next(...args),
+      }),
+      indicatorsState: indicatorsState as any,
     });
 
     await expect(core({} as any, {} as any)).resolves.toEqual({
@@ -253,6 +263,7 @@ describe('createBreakoutCore', () => {
       onBar: jest.fn(),
       ensureInitializedWithCurrentBar: jest.fn(),
       snapshot: jest.fn(),
+      latestNumber: jest.fn(),
       isInitialized: jest.fn(() => true),
     };
 
@@ -284,6 +295,14 @@ describe('createBreakoutCore', () => {
           price: 0,
           direction: 'LONG',
         },
+        marketData: {
+          currentPrice: candle.close,
+          timestamp: candle.timestamp,
+          fullData: [candle],
+          lastCandle: candle,
+        },
+        nextIndicators: (_nextCandle: any, _nextBtcCandle: any) =>
+          indicatorsState.next(),
       }),
       indicatorsState: indicatorsState as any,
     });
@@ -322,6 +341,7 @@ describe('createBreakoutCore', () => {
       onBar: jest.fn(),
       ensureInitializedWithCurrentBar: jest.fn(),
       snapshot: jest.fn(),
+      latestNumber: jest.fn(),
       isInitialized: jest.fn(() => true),
     };
 
@@ -353,6 +373,14 @@ describe('createBreakoutCore', () => {
           direction: 'LONG',
           price: 100,
         },
+        marketData: {
+          currentPrice: candle.close,
+          timestamp: candle.timestamp,
+          fullData: [candle],
+          lastCandle: candle,
+        },
+        nextIndicators: (_nextCandle: any, _nextBtcCandle: any) =>
+          indicatorsState.next(),
       }),
       indicatorsState: indicatorsState as any,
     });

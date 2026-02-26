@@ -22,7 +22,7 @@ import {
 interface CreateStrategyRuntimeParams<TConfig extends StrategyConfig> {
   strategyName: string;
   defaults: TConfig;
-  createCore: CreateStrategyCore<TConfig, any>;
+  createCore: CreateStrategyCore<TConfig, any, any>;
 }
 
 type EntryDecision = Extract<StrategyDecision, { kind: 'entry' }>;
@@ -221,6 +221,12 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
       defaults,
     });
 
+    const indicatorsState = createStrategyIndicatorsState({
+      env: String(config.ENV ?? 'BACKTEST'),
+      data,
+      btcData,
+      periods: buildDefaultIndicatorPeriods(config as any),
+    });
     const strategyApi = createStrategyAPI({
       strategy: strategyName as any,
       symbol,
@@ -228,15 +234,10 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
       env: String(config.ENV ?? 'BACKTEST'),
       connector,
       cachedData: data,
+      indicatorsState,
       preloadStart: getTimestamp(SIGNALS_PRELOAD_DAYS),
       backtestPriceMode: config.BACKTEST_PRICE_MODE,
       isConfigFromBacktest,
-    });
-    const indicatorsState = createStrategyIndicatorsState({
-      env: String(config.ENV ?? 'BACKTEST'),
-      data,
-      btcData,
-      periods: buildDefaultIndicatorPeriods(config as any),
     });
 
     const core = await createCore({

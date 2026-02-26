@@ -148,9 +148,11 @@ Shared runtime передает в `core.ts` готовый `strategyApi`.
   - `code` можно не передавать: shared API подставит `<STRATEGY_NAME>_SIGNAL`
 - `strategyApi.getMarketData()`
   - использует runtime defaults (`preloadStart`, `BACKTEST_PRICE_MODE`)
+  - возвращает `timestamp` (равен `lastCandle.timestamp`)
 - `strategyApi.getCurrentPosition()`
 - `strategyApi.isCurrentPositionExists()`
 - `strategyApi.getDirectionalTpSlPrices(...)`
+  - возвращает `stopLossPrice / takeProfitPrice / riskRatio / qty`
 - `strategyApi.createLastTradeController(...)`
 
 Отдельный подробный reference: `STRATEGY_API_REFERENCE.md`.
