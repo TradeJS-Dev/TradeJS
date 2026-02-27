@@ -47,6 +47,12 @@ export const useData = (filters: Filters) => {
 
   const updateData = async () => {
     const { provider = 'bybit', symbol, interval, start, end } = filters;
+    if (!symbol) {
+      if (!fulfilled) {
+        setFulfilled(true);
+      }
+      return;
+    }
     let currentData = [...data];
 
     if (!currentData || currentData.length < 2) {

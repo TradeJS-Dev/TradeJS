@@ -121,9 +121,9 @@ export const useSpreadIndicator = (
     () => ({
       ...filters,
       interval: dataInterval ?? filters.interval,
-      symbol: filters.symbol.toUpperCase(),
+      symbol: enabled ? filters.symbol.toUpperCase() : '',
     }),
-    [filters, dataInterval],
+    [filters, dataInterval, enabled],
   );
 
   const { data: binanceData } = useData({
@@ -158,6 +158,10 @@ export const useSpreadIndicator = (
   }, [dataInterval, binanceData, coinbaseData]);
 
   useEffect(() => {
+    if (!enabled) {
+      setRows([]);
+      return;
+    }
     if (!spreadInterval || !filters.symbol) {
       setRows([]);
       return;
@@ -170,7 +174,7 @@ export const useSpreadIndicator = (
         setRows(res.rows ?? []);
       })
       .catch(() => setRows([]));
-  }, [filters.symbol, filters.start, filters.end, spreadInterval]);
+  }, [enabled, filters.symbol, filters.start, filters.end, spreadInterval]);
 
   useEffect(() => {
     const sourceRows = rows.length ? rows : fallbackRows;

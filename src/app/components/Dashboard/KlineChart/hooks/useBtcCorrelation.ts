@@ -87,9 +87,9 @@ export const useBtcCorrelation = (
     () => ({
       ...filters,
       provider: (filters.provider || 'bybit') as Provider,
-      symbol: 'BTCUSDT',
+      symbol: enabled ? 'BTCUSDT' : '',
     }),
-    [filters],
+    [filters, enabled],
   );
 
   const { data: btcData } = useData(btcFilters);

@@ -63,20 +63,20 @@ export const useBtcIndicator = (
       bybit: {
         ...filters,
         provider: 'bybit' as Provider,
-        symbol: 'BTCUSDT',
+        symbol: enabled ? 'BTCUSDT' : '',
       },
       binance: {
         ...filters,
         provider: 'binance' as Provider,
-        symbol: 'BTCUSDT',
+        symbol: enabled ? 'BTCUSDT' : '',
       },
       coinbase: {
         ...filters,
         provider: 'coinbase' as Provider,
-        symbol: 'BTCUSDT',
+        symbol: enabled ? 'BTCUSDT' : '',
       },
     }),
-    [filters],
+    [filters, enabled],
   );
 
   const { data: bybitData } = useData(btcFilters.bybit);

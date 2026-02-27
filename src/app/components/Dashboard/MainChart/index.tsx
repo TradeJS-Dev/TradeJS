@@ -6,7 +6,7 @@ import { useFilters, useIndicators } from '@store';
 import { getTimestamp } from '@utils/timestamp';
 import { KlineChart } from '../KlineChart';
 
-const DASHBOARD_REFRESH_DELAY = 5_000;
+const DASHBOARD_REFRESH_DELAY = 10_000;
 
 export const MainChart = () => {
   const { filters, setFilters } = useFilters();
