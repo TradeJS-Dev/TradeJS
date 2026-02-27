@@ -2,12 +2,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import _ from 'lodash';
 import { Chart } from 'klinecharts';
 import { Filters, Interval, Provider } from '@types';
+import { SPREAD_WINDOW } from '@constants';
 import { API } from '@utils/api';
 import { useData } from '@store';
 import { grayDashedLineStyle } from './indicatorShared';
 import { useManagedIndicator } from './useManagedIndicator';
 
-const WINDOW = 50;
+const WINDOW = SPREAD_WINDOW;
 
 type SpreadPoint = {
   ts: string | number | Date;

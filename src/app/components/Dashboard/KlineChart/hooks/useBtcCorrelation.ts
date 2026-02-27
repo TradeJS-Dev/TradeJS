@@ -3,10 +3,11 @@ import _ from 'lodash';
 import { Chart } from 'klinecharts';
 import { Filters, Provider } from '@types';
 import { useData } from '@store';
+import { CORRELATION_WINDOW } from '@constants';
 import { getCloseAtOrBefore, grayDashedLineStyle } from './indicatorShared';
 import { useManagedIndicator } from './useManagedIndicator';
 
-const WINDOW = 50;
+const WINDOW = CORRELATION_WINDOW;
 
 const pearson = (x: number[], y: number[]) => {
   const len = x.length;

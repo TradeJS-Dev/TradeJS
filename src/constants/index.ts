@@ -5,6 +5,9 @@ const { NODE_ENV } = process.env;
 
 export const FEE_PERCENT = 0.005;
 
+export const CORRELATION_WINDOW = 50;
+export const SPREAD_WINDOW = 50;
+
 export const PRELOAD_DAYS = 200;
 export const SIGNALS_PRELOAD_DAYS = 60;
 export const BACKTEST_PRELOAD_DAYS = 160;

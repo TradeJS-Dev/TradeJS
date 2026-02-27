@@ -5,12 +5,11 @@ import {
   IndicatorsHistorySnapshot,
   MlCandleIndicatorsSnapshot,
 } from '@types';
-import { ML_BASE_CANDLES_WINDOW } from '@constants';
+import { ML_BASE_CANDLES_WINDOW, CORRELATION_WINDOW } from '@constants';
 import { cloneArrayValues } from '@utils/array';
 import { calculateCoinBtcCorrelation } from '@utils/correlation';
 
 const CANDLE_WINDOW = ML_BASE_CANDLES_WINDOW;
-const CORRELATION_WINDOW = 50;
 const BASE_INTERVAL_MINUTES = 15;
 const INDICATOR_TIMEFRAMES = [
   { minutes: 60, suffix: '1h' },
