@@ -176,6 +176,16 @@ const backtest = async () => {
 
   if (!flags.cacheOnly) {
     await update(marketConnector, interval, tickers);
+
+    const binanceConnector = await connectors[ConnectorNames.Binance]({
+      userName: flags.user,
+    });
+    await update(binanceConnector, interval, ['BTCUSDT']);
+
+    const coinbaseConnector = await connectors[ConnectorNames.Coinbase]({
+      userName: flags.user,
+    });
+    await update(coinbaseConnector, interval, ['BTCUSDT']);
   }
 
   if (flags.updateOnly) {

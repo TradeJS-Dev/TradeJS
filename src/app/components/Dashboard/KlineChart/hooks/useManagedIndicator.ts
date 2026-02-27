@@ -1,10 +1,9 @@
 import { useEffect, useState } from 'react';
 import { Chart, registerIndicator } from 'klinecharts';
 
-type CalcFn = (kLineDataList: any[]) => Record<
-  number,
-  Record<string, number | undefined>
->;
+type CalcFn = (
+  kLineDataList: any[],
+) => Record<number, Record<string, number | undefined>>;
 
 type IndicatorTemplate = {
   shortName: string;

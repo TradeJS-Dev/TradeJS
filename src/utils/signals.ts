@@ -15,6 +15,15 @@ const normalizeQuality = (value?: number) =>
     ? Math.max(1, Math.min(5, Math.round(value)))
     : null;
 
+const getLastNumber = (value: unknown): number | undefined => {
+  if (Array.isArray(value)) {
+    const last = value[value.length - 1];
+    return typeof last === 'number' ? last : undefined;
+  }
+
+  return typeof value === 'number' ? value : undefined;
+};
+
 const getAiQualityLine = (analysis?: Partial<SignalAnalysis> | null) => {
   const quality = normalizeQuality(analysis?.quality);
   if (!quality) return null;
@@ -51,17 +60,10 @@ export const formatMessage = (
 
   try {
     const lines: string[] = [];
-    const distance =
-      (additionalIndicators?.distance as number | undefined) ??
-      (indicators.distance as number | undefined);
-    const correlation = indicators.correlation as number | undefined;
-    const touches =
-      (additionalIndicators?.touches as number | undefined) ??
-      (indicators.touches as number | undefined);
-    const atrPctValue = indicators.atrPct;
-    const atrPct = Array.isArray(atrPctValue)
-      ? atrPctValue[atrPctValue.length - 1]
-      : (atrPctValue as number | undefined);
+    const distance = additionalIndicators?.distance as number | undefined;
+    const touches = additionalIndicators?.touches as number | undefined;
+    const correlation = getLastNumber(indicators.correlation);
+    const atrPct = getLastNumber(indicators.atrPct);
 
     const formatPrices = () => {
       const tpPercent =

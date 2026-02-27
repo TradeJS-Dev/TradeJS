@@ -7,7 +7,7 @@ import { useData } from '@store';
 import { grayDashedLineStyle } from './indicatorShared';
 import { useManagedIndicator } from './useManagedIndicator';
 
-const WINDOW = 100;
+const WINDOW = 50;
 
 type SpreadPoint = {
   ts: string | number | Date;
@@ -148,7 +148,8 @@ export const useSpreadIndicator = (
 
       result.push({
         ts: binanceCandle.timestamp,
-        spread: (coinbaseCandle.close - binanceCandle.close) / binanceCandle.close,
+        spread:
+          (coinbaseCandle.close - binanceCandle.close) / binanceCandle.close,
         binancePrice: binanceCandle.close,
         coinbasePrice: coinbaseCandle.close,
       });
@@ -184,14 +185,18 @@ export const useSpreadIndicator = (
       .filter((row) => Number.isFinite(row.timestamp))
       .sort((a, b) => a.timestamp - b.timestamp);
 
-    const smoothedRows: Array<{ timestamp: number; spread: number | null }> = [];
+    const smoothedRows: Array<{ timestamp: number; spread: number | null }> =
+      [];
     const binanceWindow: number[] = [];
     const coinbaseWindow: number[] = [];
     let binanceSum = 0;
     let coinbaseSum = 0;
 
     for (const row of normalizedRows) {
-      if (Number.isFinite(row.binancePrice) && Number.isFinite(row.coinbasePrice)) {
+      if (
+        Number.isFinite(row.binancePrice) &&
+        Number.isFinite(row.coinbasePrice)
+      ) {
         const binance = Number(row.binancePrice);
         const coinbase = Number(row.coinbasePrice);
         binanceWindow.push(binance);
@@ -209,7 +214,11 @@ export const useSpreadIndicator = (
       if (binanceWindow.length > 0 && coinbaseWindow.length > 0) {
         const avgBinance = binanceSum / binanceWindow.length;
         const avgCoinbase = coinbaseSum / coinbaseWindow.length;
-        if (Number.isFinite(avgBinance) && avgBinance > 0 && Number.isFinite(avgCoinbase)) {
+        if (
+          Number.isFinite(avgBinance) &&
+          avgBinance > 0 &&
+          Number.isFinite(avgCoinbase)
+        ) {
           spread = (avgCoinbase - avgBinance) / avgBinance;
         }
       }

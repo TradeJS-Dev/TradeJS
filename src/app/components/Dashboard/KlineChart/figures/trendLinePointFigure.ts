@@ -19,7 +19,9 @@ export const createTrendLinePointFigure = ({
   coordinates,
   overlay,
 }: CreatePointFiguresParams<TrendLineExtendData>) => {
-  const { mode } = (overlay.extendData || { mode: 'lows' }) as TrendLineExtendData;
+  const { mode } = (overlay.extendData || {
+    mode: 'lows',
+  }) as TrendLineExtendData;
   const figures: any[] = [];
   const color = mode === 'lows' ? '#facc15' : '#fb923c';
 

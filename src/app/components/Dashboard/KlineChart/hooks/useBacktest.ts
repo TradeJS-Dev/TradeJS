@@ -5,7 +5,10 @@ import _ from 'lodash';
 import { registerOverlay, registerIndicator, Chart } from 'klinecharts';
 import { KlineChartItem, OrderLogData, Signal, TrendLine } from '@types';
 import { useBacktest as useBacktestStore } from '@store';
-import { TradeZoneMode, createTradeZonePointFigure } from '../figures/tradeZonePointFigure';
+import {
+  TradeZoneMode,
+  createTradeZonePointFigure,
+} from '../figures/tradeZonePointFigure';
 import { createTrendLinePointFigure } from '../figures/trendLinePointFigure';
 import { createTrendLinePointsPointFigure } from '../figures/trendLinePointsPointFigure';
 import '../figures';
@@ -211,7 +214,8 @@ const buildIndicatorData = (
     Number.isFinite(value),
   );
   const startAmount = amounts[0];
-  const endAmount = amounts.length > 0 ? amounts[amounts.length - 1] : undefined;
+  const endAmount =
+    amounts.length > 0 ? amounts[amounts.length - 1] : undefined;
   const maxAmount = amounts.length > 0 ? Math.max(...amounts) : undefined;
   const minAmount = amounts.length > 0 ? Math.min(...amounts) : undefined;
 
@@ -306,7 +310,9 @@ const collectTrendLinesFromOrderLog = (
   return result;
 };
 
-const buildBacktestTradeZones = (alignedEvents: AlignedOrderEvent[]): TradeZone[] => {
+const buildBacktestTradeZones = (
+  alignedEvents: AlignedOrderEvent[],
+): TradeZone[] => {
   const trades = new Map<
     string,
     { open?: AlignedOrderEvent; lastClose?: AlignedOrderEvent }
@@ -447,7 +453,7 @@ const createBacktestProfit = (
         title: 'Start: ',
         type: 'line',
         styles: () =>
-            ({
+          ({
             color: grayTransparent,
             size: 1,
             style: 'dashed',
@@ -459,7 +465,7 @@ const createBacktestProfit = (
         title: 'End: ',
         type: 'line',
         styles: () =>
-            ({
+          ({
             color: grayTransparent,
             size: 1,
             style: 'dashed',
@@ -471,7 +477,7 @@ const createBacktestProfit = (
         title: 'Max: ',
         type: 'line',
         styles: () =>
-            ({
+          ({
             color: greenTransparent,
             size: 1,
             style: 'dashed',
@@ -483,7 +489,7 @@ const createBacktestProfit = (
         title: 'Min: ',
         type: 'line',
         styles: () =>
-            ({
+          ({
             color: redTransparent,
             size: 1,
             style: 'dashed',
@@ -559,10 +565,7 @@ export const useBacktest = (chart: Chart | null, id: string | undefined) => {
     }
 
     const { markersFlat, markersByTs, profitByIndex, alignedEvents } =
-      walkCandlesAndEvents(
-      candles,
-      backtest,
-    );
+      walkCandlesAndEvents(candles, backtest);
 
     const { points, groupedExtendData } = groupMarkersForOverlay(markersFlat);
     const tradeZones = buildBacktestTradeZones(alignedEvents);

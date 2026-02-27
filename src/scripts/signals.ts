@@ -131,6 +131,16 @@ const signals = async () => {
 
   if (!flags.cacheOnly) {
     await update(byBitConnector, interval, tickers);
+
+    const binanceConnector = await connectors.Binance({
+      userName: flags.user,
+    });
+    await update(binanceConnector, interval, ['BTCUSDT']);
+
+    const coinbaseConnector = await connectors.Coinbase({
+      userName: flags.user,
+    });
+    await update(coinbaseConnector, interval, ['BTCUSDT']);
   }
 
   if (flags.updateOnly) {

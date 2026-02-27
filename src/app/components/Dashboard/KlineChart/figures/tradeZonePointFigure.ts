@@ -19,9 +19,10 @@ export const createTradeZonePointFigure = ({
   coordinates,
   overlay,
 }: CreatePointFiguresParams<TradeZoneExtendData>) => {
-  const { mode } = (overlay.extendData || { mode: 'TP' }) as TradeZoneExtendData;
-  const color =
-    mode === 'TP' ? 'rgba(34,197,94,0.22)' : 'rgba(239,68,68,0.22)';
+  const { mode } = (overlay.extendData || {
+    mode: 'TP',
+  }) as TradeZoneExtendData;
+  const color = mode === 'TP' ? 'rgba(34,197,94,0.22)' : 'rgba(239,68,68,0.22)';
   const borderColor =
     mode === 'TP' ? 'rgba(34,197,94,0.7)' : 'rgba(239,68,68,0.7)';
 

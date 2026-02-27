@@ -6,7 +6,7 @@ import { useData } from '@store';
 import { getCloseAtOrBefore, grayDashedLineStyle } from './indicatorShared';
 import { useManagedIndicator } from './useManagedIndicator';
 
-const WINDOW = 100;
+const WINDOW = 50;
 
 const pearson = (x: number[], y: number[]) => {
   const len = x.length;
@@ -93,7 +93,10 @@ export const useBtcCorrelation = (
 
   const { data: btcData } = useData(btcFilters);
 
-  const btcByTimestamp = useMemo(() => _.keyBy(btcData, 'timestamp'), [btcData]);
+  const btcByTimestamp = useMemo(
+    () => _.keyBy(btcData, 'timestamp'),
+    [btcData],
+  );
   const btcCandles = useMemo(
     () =>
       btcData
