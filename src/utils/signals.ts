@@ -64,6 +64,7 @@ export const formatMessage = (
     const touches = additionalIndicators?.touches as number | undefined;
     const correlation = getLastNumber(indicators.correlation);
     const atrPct = getLastNumber(indicators.atrPct);
+    const spread = getLastNumber(indicators.spread);
 
     const formatPrices = () => {
       const tpPercent =
@@ -144,6 +145,10 @@ export const formatMessage = (
 
       if (correlation) {
         lines.push(`BTC correlation: ${correlation}`);
+      }
+
+      if (spread != null && Number.isFinite(spread)) {
+        lines.push(`BTC spread (CB-BN)/BN: ${spread.toFixed(6)}`);
       }
 
       const prices = formatPrices();

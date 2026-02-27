@@ -54,20 +54,43 @@ export const runBot = async () => {
         )({
           userName,
         });
+        const [binanceConnector, coinbaseConnector] = await Promise.all([
+          (connectors[ConnectorNames.Binance] as ConnectorCreator)({
+            userName,
+          }),
+          (connectors[ConnectorNames.Coinbase] as ConnectorCreator)({
+            userName,
+          }),
+        ]);
+        const interval = '15';
 
         const data = await connector.kline({
           symbol,
           start: preloadStart,
           end,
-          interval: '15',
+          interval,
         });
 
-        const btcData = await connector.kline({
-          symbol: 'BTCUSDT',
-          start: preloadStart,
-          end,
-          interval: '15',
-        });
+        const [btcData, btcBinanceData, btcCoinbaseData] = await Promise.all([
+          connector.kline({
+            symbol: 'BTCUSDT',
+            start: preloadStart,
+            end,
+            interval,
+          }),
+          binanceConnector.kline({
+            symbol: 'BTCUSDT',
+            start: preloadStart,
+            end,
+            interval,
+          }),
+          coinbaseConnector.kline({
+            symbol: 'BTCUSDT',
+            start: preloadStart,
+            end,
+            interval,
+          }),
+        ]);
 
         const candle = data.pop();
         const btcCandle = btcData.pop();
@@ -78,6 +101,8 @@ export const runBot = async () => {
           symbol,
           data,
           btcData,
+          btcBinanceData,
+          btcCoinbaseData,
           connector,
         });
 

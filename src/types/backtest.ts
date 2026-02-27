@@ -33,6 +33,8 @@ export interface StrategyCreatorParams {
   connector: Connector;
   data: KlineChartData;
   btcData: KlineChartData;
+  btcBinanceData?: KlineChartData;
+  btcCoinbaseData?: KlineChartData;
 }
 
 export type StrategyCreator = (

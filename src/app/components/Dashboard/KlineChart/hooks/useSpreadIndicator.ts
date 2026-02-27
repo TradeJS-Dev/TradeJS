@@ -2,13 +2,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import _ from 'lodash';
 import { Chart } from 'klinecharts';
 import { Filters, Interval, Provider } from '@types';
-import { SPREAD_WINDOW } from '@constants';
+import { smoothSpreadSeries } from '@src/indicators';
 import { API } from '@utils/api';
 import { useData } from '@store';
 import { grayDashedLineStyle } from './indicatorShared';
 import { useManagedIndicator } from './useManagedIndicator';
-
-const WINDOW = SPREAD_WINDOW;
 
 type SpreadPoint = {
   ts: string | number | Date;
@@ -186,49 +184,7 @@ export const useSpreadIndicator = (
       .filter((row) => Number.isFinite(row.timestamp))
       .sort((a, b) => a.timestamp - b.timestamp);
 
-    const smoothedRows: Array<{ timestamp: number; spread: number | null }> =
-      [];
-    const binanceWindow: number[] = [];
-    const coinbaseWindow: number[] = [];
-    let binanceSum = 0;
-    let coinbaseSum = 0;
-
-    for (const row of normalizedRows) {
-      if (
-        Number.isFinite(row.binancePrice) &&
-        Number.isFinite(row.coinbasePrice)
-      ) {
-        const binance = Number(row.binancePrice);
-        const coinbase = Number(row.coinbasePrice);
-        binanceWindow.push(binance);
-        coinbaseWindow.push(coinbase);
-        binanceSum += binance;
-        coinbaseSum += coinbase;
-
-        if (binanceWindow.length > WINDOW) {
-          binanceSum -= binanceWindow.shift() ?? 0;
-          coinbaseSum -= coinbaseWindow.shift() ?? 0;
-        }
-      }
-
-      let spread = row.spread;
-      if (binanceWindow.length > 0 && coinbaseWindow.length > 0) {
-        const avgBinance = binanceSum / binanceWindow.length;
-        const avgCoinbase = coinbaseSum / coinbaseWindow.length;
-        if (
-          Number.isFinite(avgBinance) &&
-          avgBinance > 0 &&
-          Number.isFinite(avgCoinbase)
-        ) {
-          spread = (avgCoinbase - avgBinance) / avgBinance;
-        }
-      }
-
-      smoothedRows.push({
-        timestamp: row.timestamp,
-        spread: Number.isFinite(Number(spread)) ? Number(spread) : null,
-      });
-    }
+    const smoothedRows = smoothSpreadSeries(normalizedRows);
 
     sortedSpreadRef.current = smoothedRows;
     spreadByTsRef.current = smoothedRows.reduce<

@@ -156,7 +156,7 @@ export const buildAiSystemPrompt = (signal?: Signal): string => `
   Паттерны ключей:
   • монета: maFast, atrPct, macd..., candles15m/candles1h/candles4h/candles1d, а также *1h/*4h/*1d
   • BTC: btcMaFast, btcAtr, btcMacd..., btcCandles*, а также btc*1h/*4h/*1d
-  • служебные ключи стратегии возможны (например correlation, touches, distance)
+  • служебные ключи стратегии возможны (например correlation, spread, touches, distance)
 
 Как анализировать (приоритеты):
 1) Сначала проверь структуру цены и геометрию/контекст сетапа из payload.figures. Это приоритетнее индикаторов.

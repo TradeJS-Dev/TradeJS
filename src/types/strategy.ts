@@ -146,6 +146,7 @@ export interface BaseIndicatorsHistorySnapshot {
   lowLevel?: number[];
   prevClose?: number[];
   correlation?: number[];
+  spread?: number[];
 }
 
 export type IndicatorsHistorySnapshot = Record<string, number[] | Candle[]> &
@@ -179,6 +180,7 @@ export interface IndicatorSnapshot {
   highLevel: number | null;
   lowLevel: number | null;
   correlation: number;
+  spread: number | null;
 }
 
 export interface StrategyDirectionalTpSlParams {

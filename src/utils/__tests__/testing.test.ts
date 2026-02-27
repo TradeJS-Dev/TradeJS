@@ -3,6 +3,12 @@ import { Test } from '@types';
 const mockByBitConnector = {
   kline: jest.fn(),
 };
+const mockBinanceConnector = {
+  kline: jest.fn(),
+};
+const mockCoinbaseConnector = {
+  kline: jest.fn(),
+};
 
 const mockTestConnector = {
   checkSl: jest.fn().mockResolvedValue(undefined),
@@ -25,10 +31,14 @@ const mockAppendMlDatasetRow = jest.fn((_params?: unknown) => undefined);
 jest.mock('@src/connectors', () => ({
   connectors: {
     ByBit: jest.fn(async () => mockByBitConnector),
+    Binance: jest.fn(async () => mockBinanceConnector),
+    Coinbase: jest.fn(async () => mockCoinbaseConnector),
     Test: jest.fn(() => mockTestConnector),
   },
   ConnectorNames: {
     ByBit: 'ByBit',
+    Binance: 'Binance',
+    Coinbase: 'Coinbase',
     Test: 'Test',
   },
 }));
@@ -99,6 +109,8 @@ describe('testing backtest flow', () => {
     resetTestingKlineCache();
     jest.clearAllMocks();
     mockByBitConnector.kline.mockReset();
+    mockBinanceConnector.kline.mockReset();
+    mockCoinbaseConnector.kline.mockReset();
     mockStrategyCreator.mockClear();
     mockStrategy.mockReset();
     mockTestConnector.checkSl.mockClear();
@@ -120,6 +132,8 @@ describe('testing backtest flow', () => {
   it('calls checkSl/checkTp for each test candle', async () => {
     const data = [candle(1_000_050), candle(1_000_150), candle(1_000_250)];
     mockByBitConnector.kline.mockResolvedValue(data);
+    mockBinanceConnector.kline.mockResolvedValue(data);
+    mockCoinbaseConnector.kline.mockResolvedValue(data);
     mockStrategy.mockResolvedValue('HOLD');
 
     await testing(createTest({ ml: true }));
@@ -132,6 +146,8 @@ describe('testing backtest flow', () => {
   it('writes transformed ml row when strategy returns signal object', async () => {
     const data = [candle(1_000_050), candle(1_000_150), candle(1_000_250)];
     mockByBitConnector.kline.mockResolvedValue(data);
+    mockBinanceConnector.kline.mockResolvedValue(data);
+    mockCoinbaseConnector.kline.mockResolvedValue(data);
     mockStrategy
       .mockResolvedValueOnce({
         signalId: 's1',
@@ -158,6 +174,8 @@ describe('testing backtest flow', () => {
   it('does not write ml row when strategy returns string', async () => {
     const data = [candle(1_000_050), candle(1_000_150), candle(1_000_250)];
     mockByBitConnector.kline.mockResolvedValue(data);
+    mockBinanceConnector.kline.mockResolvedValue(data);
+    mockCoinbaseConnector.kline.mockResolvedValue(data);
     mockStrategy.mockResolvedValue('NO_SIGNAL');
 
     await testing(createTest());
@@ -169,6 +187,8 @@ describe('testing backtest flow', () => {
     const prev = Array.from({ length: 60 }, (_, i) => candle(1_000_000 + i));
     const testPart = [candle(2_000_200)];
     mockByBitConnector.kline.mockResolvedValue([...prev, ...testPart]);
+    mockBinanceConnector.kline.mockResolvedValue([...prev, ...testPart]);
+    mockCoinbaseConnector.kline.mockResolvedValue([...prev, ...testPart]);
     mockStrategy.mockResolvedValue({
       signalId: 's1',
       symbol: 'ETHUSDT',
@@ -202,6 +222,8 @@ describe('testing backtest flow', () => {
       candle(1_000_350),
     ];
     mockByBitConnector.kline.mockResolvedValue(data);
+    mockBinanceConnector.kline.mockResolvedValue(data);
+    mockCoinbaseConnector.kline.mockResolvedValue(data);
     mockStrategy
       .mockResolvedValueOnce({ signalId: 's1', symbol: 'ETHUSDT' })
       .mockResolvedValueOnce({ signalId: 's2', symbol: 'ETHUSDT' })

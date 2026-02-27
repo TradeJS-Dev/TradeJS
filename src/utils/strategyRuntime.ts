@@ -211,6 +211,8 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
     symbol,
     data,
     btcData,
+    btcBinanceData,
+    btcCoinbaseData,
     connector,
   }) => {
     const { config, isConfigFromBacktest } = await resolveStrategyConfig({
@@ -225,6 +227,8 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
       env: String(config.ENV ?? 'BACKTEST'),
       data,
       btcData,
+      btcBinanceData,
+      btcCoinbaseData,
       periods: buildDefaultIndicatorPeriods(config as any),
     });
     const strategyApi = createStrategyAPI({

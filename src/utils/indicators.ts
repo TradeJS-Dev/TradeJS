@@ -8,6 +8,7 @@ import {
 import { ML_BASE_CANDLES_WINDOW, CORRELATION_WINDOW } from '@constants';
 import { cloneArrayValues } from '@utils/array';
 import { calculateCoinBtcCorrelation } from '@utils/correlation';
+import { createSpreadSmoother } from '@src/indicators';
 
 const CANDLE_WINDOW = ML_BASE_CANDLES_WINDOW;
 const BASE_INTERVAL_MINUTES = 15;
@@ -137,10 +138,13 @@ type TrendlineIndicators = {
   lowLevel: IndicatorValue;
   prevClose: IndicatorValue;
   correlation: IndicatorValue;
+  spread: IndicatorValue;
 };
 
 type CreateIndicatorsOptions = {
   includeMlPayload?: boolean;
+  btcBinanceData?: Candle[];
+  btcCoinbaseData?: Candle[];
 };
 
 export interface IndicatorPeriods {
@@ -189,6 +193,7 @@ export const applyIndicatorsToHistory = (
   pushIndicator('lowLevel', indicators.lowLevel ?? undefined);
   pushIndicator('prevClose', indicators.prevClose ?? undefined);
   pushIndicator('correlation', indicators.correlation ?? undefined);
+  pushIndicator('spread', indicators.spread ?? undefined);
 };
 
 export const createIndicators = (
@@ -210,6 +215,11 @@ export const createIndicators = (
   const timestamps: number[] = [];
   const candlesHistory: Candle[] = [];
   const btcCandlesHistory: Candle[] = [];
+  const btcBinanceCandles = (options.btcBinanceData ?? []).map(toMlCandle);
+  const btcCoinbaseCandles = (options.btcCoinbaseData ?? []).map(toMlCandle);
+  const spreadSmoother = createSpreadSmoother();
+  let btcBinanceCursor = 0;
+  let btcCoinbaseCursor = 0;
 
   const obv = new OBV({ close: [], volume: [] });
   const smaObv = new SMA({ period: indicatorPeriods.obvSma, values: [] });
@@ -260,6 +270,22 @@ export const createIndicators = (
         indicatorHistory[key].length - ML_BASE_CANDLES_WINDOW,
       );
     }
+  };
+
+  const resolveCloseAtOrBefore = (
+    candles: Candle[],
+    cursor: number,
+    targetTs: number,
+  ) => {
+    let idx = cursor;
+    while (idx + 1 < candles.length && candles[idx + 1].timestamp <= targetTs) {
+      idx += 1;
+    }
+    const close =
+      idx < candles.length && candles[idx].timestamp <= targetTs
+        ? candles[idx].close
+        : null;
+    return { close, cursor: idx };
   };
 
   let window1hStart = 0;
@@ -435,6 +461,35 @@ export const createIndicators = (
           ).correlation ?? 0
         : 0;
 
+    let spread: number | null = null;
+    if (btcBinanceCandles.length > 0 && btcCoinbaseCandles.length > 0) {
+      const binanceResolved = resolveCloseAtOrBefore(
+        btcBinanceCandles,
+        btcBinanceCursor,
+        currentTimestamp,
+      );
+      const coinbaseResolved = resolveCloseAtOrBefore(
+        btcCoinbaseCandles,
+        btcCoinbaseCursor,
+        currentTimestamp,
+      );
+      btcBinanceCursor = binanceResolved.cursor;
+      btcCoinbaseCursor = coinbaseResolved.cursor;
+
+      if (
+        binanceResolved.close != null &&
+        coinbaseResolved.close != null &&
+        Number.isFinite(binanceResolved.close) &&
+        Number.isFinite(coinbaseResolved.close) &&
+        binanceResolved.close > 0
+      ) {
+        spread = spreadSmoother.next({
+          binancePrice: binanceResolved.close,
+          coinbasePrice: coinbaseResolved.close,
+        });
+      }
+    }
+
     let highLevel: number | null = null;
     let lowLevel: number | null = null;
     if (len >= indicatorPeriods.levelLookback + indicatorPeriods.levelDelay) {
@@ -472,6 +527,7 @@ export const createIndicators = (
       lowLevel,
       prevClose: prevCandle?.close ?? null,
       correlation,
+      spread,
     };
 
     applyIndicatorsToHistory(baseResult, pushIndicator);

@@ -758,6 +758,9 @@ export const buildMlTrainingRow = (
       );
     }
     addSeriesRaw(featureKey('ATR_PCT'), indicatorSeries('atrPct'));
+    if (!sourcePrefix && !sourceSuffix && assetPrefix === 'ALT') {
+      addSeriesRaw(featureKey('Spread'), indicatorSeries('spread'));
+    }
     for (const [featureName, sourceName] of momentsSeries) {
       addSeriesMoments(featureKey(featureName), indicatorSeries(sourceName));
     }

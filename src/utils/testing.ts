@@ -14,6 +14,8 @@ import { appendMlDatasetRow } from '@utils/mlDatasetFile';
 const preloadStart = getTimestamp(PRELOAD_DAYS);
 const coinKlineCache = new Map<string, KlineChartData>();
 const btcKlineCache = new Map<string, KlineChartData>();
+const btcBinanceKlineCache = new Map<string, KlineChartData>();
+const btcCoinbaseKlineCache = new Map<string, KlineChartData>();
 
 const getKlineCacheKey = (params: {
   userName: string;
@@ -38,6 +40,8 @@ const getKlineCacheKey = (params: {
 export const resetTestingKlineCache = () => {
   coinKlineCache.clear();
   btcKlineCache.clear();
+  btcBinanceKlineCache.clear();
+  btcCoinbaseKlineCache.clear();
 };
 
 export const testing: TestingBox = async ({
@@ -64,6 +68,11 @@ export const testing: TestingBox = async ({
     userName,
   });
   const strategyCreator = strategies[strategyName as StrategyNames];
+  const binanceCreator = connectors[ConnectorNames.Binance];
+  const coinbaseCreator = connectors[ConnectorNames.Coinbase];
+  if (!binanceCreator || !coinbaseCreator) {
+    throw new Error('Binance/Coinbase connectors are required for BTC spread');
+  }
 
   const interval = '15';
   const cacheOnly = true;
@@ -86,38 +95,83 @@ export const testing: TestingBox = async ({
 
   const cachedCoinData = coinKlineCache.get(coinCacheKey);
   const cachedBtcData = btcKlineCache.get(btcCacheKey);
+  const btcBinanceCacheKey = getKlineCacheKey({
+    userName,
+    connectorName: ConnectorNames.Binance,
+    symbol: 'BTCUSDT',
+    end,
+    interval,
+    cacheOnly,
+  });
+  const btcCoinbaseCacheKey = getKlineCacheKey({
+    userName,
+    connectorName: ConnectorNames.Coinbase,
+    symbol: 'BTCUSDT',
+    end,
+    interval,
+    cacheOnly,
+  });
+  const cachedBtcBinanceData = btcBinanceKlineCache.get(btcBinanceCacheKey);
+  const cachedBtcCoinbaseData = btcCoinbaseKlineCache.get(btcCoinbaseCacheKey);
 
-  const [data, btcData] =
-    cachedCoinData && cachedBtcData
-      ? [cachedCoinData, cachedBtcData]
-      : await Promise.all([
-          cachedCoinData
-            ? Promise.resolve(cachedCoinData)
-            : connector.kline({
-                symbol,
-                start: preloadStart,
-                end,
-                interval,
-                silent: true,
-                cacheOnly,
-              }),
-          cachedBtcData
-            ? Promise.resolve(cachedBtcData)
-            : connector.kline({
-                symbol: 'BTCUSDT',
-                start: preloadStart,
-                end,
-                interval,
-                silent: true,
-                cacheOnly,
-              }),
-        ]);
+  const [data, btcData, btcBinanceData, btcCoinbaseData] = await Promise.all([
+    cachedCoinData
+      ? Promise.resolve(cachedCoinData)
+      : connector.kline({
+          symbol,
+          start: preloadStart,
+          end,
+          interval,
+          silent: true,
+          cacheOnly,
+        }),
+    cachedBtcData
+      ? Promise.resolve(cachedBtcData)
+      : connector.kline({
+          symbol: 'BTCUSDT',
+          start: preloadStart,
+          end,
+          interval,
+          silent: true,
+          cacheOnly,
+        }),
+    cachedBtcBinanceData
+      ? Promise.resolve(cachedBtcBinanceData)
+      : binanceCreator({ userName }).then((binanceConnector) =>
+          binanceConnector.kline({
+            symbol: 'BTCUSDT',
+            start: preloadStart,
+            end,
+            interval,
+            silent: true,
+            cacheOnly,
+          }),
+        ),
+    cachedBtcCoinbaseData
+      ? Promise.resolve(cachedBtcCoinbaseData)
+      : coinbaseCreator({ userName }).then((coinbaseConnector) =>
+          coinbaseConnector.kline({
+            symbol: 'BTCUSDT',
+            start: preloadStart,
+            end,
+            interval,
+            silent: true,
+            cacheOnly,
+          }),
+        ),
+  ]);
 
   if (!cachedCoinData) {
     coinKlineCache.set(coinCacheKey, data);
   }
   if (!cachedBtcData) {
     btcKlineCache.set(btcCacheKey, btcData);
+  }
+  if (!cachedBtcBinanceData) {
+    btcBinanceKlineCache.set(btcBinanceCacheKey, btcBinanceData);
+  }
+  if (!cachedBtcCoinbaseData) {
+    btcCoinbaseKlineCache.set(btcCoinbaseCacheKey, btcCoinbaseData);
   }
 
   const prevDataRaw = data.filter(
@@ -139,6 +193,22 @@ export const testing: TestingBox = async ({
     alignSortedCandlesByTimestamp(prevDataRaw, btcPrevDataRaw);
   const { alignedCoinCandles: testData, alignedBtcCandles: btcTestData } =
     alignSortedCandlesByTimestamp(testDataRaw, btcTestDataRaw);
+  const { alignedBtcCandles: btcBinancePrevData } =
+    alignSortedCandlesByTimestamp(
+      prevDataRaw,
+      btcBinanceData.filter(
+        (candle: Candle) =>
+          candle.timestamp >= preloadStart && candle.timestamp < start,
+      ),
+    );
+  const { alignedBtcCandles: btcCoinbasePrevData } =
+    alignSortedCandlesByTimestamp(
+      prevDataRaw,
+      btcCoinbaseData.filter(
+        (candle: Candle) =>
+          candle.timestamp >= preloadStart && candle.timestamp < start,
+      ),
+    );
 
   const testConnector = connectors.Test(connector, {
     userName,
@@ -151,6 +221,8 @@ export const testing: TestingBox = async ({
     symbol,
     data: prevData,
     btcData: btcPrevData,
+    btcBinanceData: btcBinancePrevData,
+    btcCoinbaseData: btcCoinbasePrevData,
     connector: testConnector,
   });
 

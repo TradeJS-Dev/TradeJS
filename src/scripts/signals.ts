@@ -7,6 +7,7 @@ import { TTL_1D, TTL_3M, SIGNALS_PRELOAD_DAYS } from '@constants';
 import { update, getTickers, makeScreenshots, sendToTG } from '@utils/cli';
 import { getKeys, setData, redisKeys } from '@utils/redis';
 import { getTimestamp } from '@utils/timestamp';
+import { runWithConcurrency } from '@utils/async';
 import { Connector, Interval, Signal } from '@types';
 import { TrendlineStrategyCreator } from '@src/strategy/TrendLine/strategy';
 import { logger } from '@utils/logger';
@@ -32,7 +33,12 @@ const minTouches = parseInt(flags.points);
 const offset = parseInt(flags.offset);
 const interval = flags.timeframe.toString() as Interval;
 
-const findSignals = async (symbol: string, connector: Connector) => {
+const findSignals = async (
+  symbol: string,
+  connector: Connector,
+  btcBinanceData: Awaited<ReturnType<Connector['kline']>>,
+  btcCoinbaseData: Awaited<ReturnType<Connector['kline']>>,
+) => {
   const prevSignals = await getKeys(redisKeys.signalsBySymbol(symbol));
 
   if (prevSignals.length) {
@@ -42,21 +48,22 @@ const findSignals = async (symbol: string, connector: Connector) => {
 
   const currentTimestamp = getTimestamp();
 
-  const cachedData = await connector.kline({
-    symbol,
-    start: PRELOAD_START,
-    end: currentTimestamp,
-    cacheOnly: true,
-    interval,
-  });
-
-  const btcCachedData = await connector.kline({
-    symbol: 'BTCUSDT',
-    start: PRELOAD_START,
-    end: currentTimestamp,
-    cacheOnly: true,
-    interval,
-  });
+  const [cachedData, btcCachedData] = await Promise.all([
+    connector.kline({
+      symbol,
+      start: PRELOAD_START,
+      end: currentTimestamp,
+      cacheOnly: true,
+      interval,
+    }),
+    connector.kline({
+      symbol: 'BTCUSDT',
+      start: PRELOAD_START,
+      end: currentTimestamp,
+      cacheOnly: true,
+      interval,
+    }),
+  ]);
 
   const lastCandle = cachedData.pop();
   const btcLastCandle = btcCachedData.pop();
@@ -71,6 +78,8 @@ const findSignals = async (symbol: string, connector: Connector) => {
     symbol,
     data: cachedData,
     btcData: btcCachedData,
+    btcBinanceData,
+    btcCoinbaseData,
     config: {
       ENV: 'CRON',
       INTERVAL: interval,
@@ -114,6 +123,12 @@ const signals = async () => {
   const byBitConnector = await connectors.ByBit({
     userName: flags.user,
   });
+  const binanceConnector = await connectors.Binance({
+    userName: flags.user,
+  });
+  const coinbaseConnector = await connectors.Coinbase({
+    userName: flags.user,
+  });
 
   const tickers = await getTickers(
     byBitConnector,
@@ -132,16 +147,28 @@ const signals = async () => {
   if (!flags.cacheOnly) {
     await update(byBitConnector, interval, tickers);
 
-    const binanceConnector = await connectors.Binance({
-      userName: flags.user,
-    });
     await update(binanceConnector, interval, ['BTCUSDT']);
 
-    const coinbaseConnector = await connectors.Coinbase({
-      userName: flags.user,
-    });
     await update(coinbaseConnector, interval, ['BTCUSDT']);
   }
+
+  const currentTimestamp = getTimestamp();
+  const [btcBinanceData, btcCoinbaseData] = await Promise.all([
+    binanceConnector.kline({
+      symbol: 'BTCUSDT',
+      start: PRELOAD_START,
+      end: currentTimestamp,
+      cacheOnly: true,
+      interval,
+    }),
+    coinbaseConnector.kline({
+      symbol: 'BTCUSDT',
+      start: PRELOAD_START,
+      end: currentTimestamp,
+      cacheOnly: true,
+      interval,
+    }),
+  ]);
 
   if (flags.updateOnly) {
     return;
@@ -157,8 +184,13 @@ const signals = async () => {
 
   logger.info(chalk.yellow(`tickers: ${tickers.length}`));
 
-  for await (const symbol of tickers) {
-    const signal = await findSignals(symbol, byBitConnector);
+  await runWithConcurrency(tickers, 5, async (symbol) => {
+    const signal = await findSignals(
+      symbol,
+      byBitConnector,
+      btcBinanceData,
+      btcCoinbaseData,
+    );
 
     if (signal) {
       signals.push(signal);
@@ -168,7 +200,7 @@ const signals = async () => {
       found: chalk.cyan(signals.length),
       symbol: chalk.gray(symbol),
     });
-  }
+  });
 
   await makeScreenshots(signals, '15');
 
