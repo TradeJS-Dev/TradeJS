@@ -7,15 +7,12 @@ import { Chart, registerOverlay } from 'klinecharts';
 import { getSignal } from '@actions/signal';
 import { toMs } from '@utils/timestamp';
 import { Signal } from '@types';
+import { createTradeZonePointFigure } from '../figures/tradeZonePointFigure';
 
 const SETUP = 'Setup';
 const SETUP_START = 'Setup-start';
 
 const FALLBACK_WIDTH_MS = 24 * 60 * 60_000;
-
-interface ExtendData {
-  mode: 'TP' | 'SL';
-}
 
 type Point = { timestamp: number; value: number };
 
@@ -42,30 +39,7 @@ export const useSetup = (chart: Chart | null, enabled: boolean) => {
       needDefaultPointFigure: false,
       needDefaultXAxisFigure: false,
       needDefaultYAxisFigure: false,
-      createPointFigures: ({ coordinates, overlay }) => {
-        const { mode } = overlay.extendData as ExtendData;
-
-        const color =
-          mode === 'TP' ? 'rgba(34,197,94,0.22)' : 'rgba(239,68,68,0.22)';
-        const borderColor =
-          mode === 'TP' ? 'rgba(34,197,94,0.7)' : 'rgba(239,68,68,0.7)';
-
-        if (coordinates.length < 2) return [];
-        const [p1, p2] = coordinates;
-
-        const x = Math.min(p1.x, p2.x);
-        const y = Math.min(p1.y, p2.y);
-        const w = Math.abs(p2.x - p1.x);
-        const h = Math.abs(p2.y - p1.y);
-
-        return [
-          {
-            type: 'rect',
-            attrs: { x, y, width: w, height: h },
-            styles: { color, borderColor, size: 1 },
-          },
-        ];
-      },
+      createPointFigures: createTradeZonePointFigure,
     });
 
     registerOverlay({

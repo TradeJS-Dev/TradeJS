@@ -8,10 +8,8 @@ import { getSignal } from '@actions/signal';
 import { createTrendlineEngine } from '@utils/trendLineEngine';
 import { toMs } from '@utils/timestamp';
 import { Signal, TrendLine } from '@types';
-
-interface ExtendData {
-  mode: TrendLine['mode'];
-}
+import { createTrendLinePointFigure } from '../figures/trendLinePointFigure';
+import { createTrendLinePointsPointFigure } from '../figures/trendLinePointsPointFigure';
 
 const fitKeepRightZoom = (chart: Chart, lastDataTsMs: number) => {
   if (!Number.isFinite(lastDataTsMs)) return;
@@ -57,21 +55,7 @@ export const useTrendLine = (chart: Chart | null, enabled: boolean) => {
       needDefaultPointFigure: false,
       needDefaultXAxisFigure: false,
       needDefaultYAxisFigure: false,
-      createPointFigures: ({ coordinates, overlay }) => {
-        const { mode } = overlay.extendData as ExtendData;
-        const figures: any[] = [];
-        const color = mode === 'lows' ? '#facc15' : '#fb923c';
-
-        if (coordinates.length === 2) {
-          figures.push({
-            type: 'line',
-            attrs: { coordinates: [coordinates[0], coordinates[1]] },
-            styles: { color, size: 2, style: 'solid' },
-          });
-        }
-
-        return figures;
-      },
+      createPointFigures: createTrendLinePointFigure,
     });
 
     registerOverlay({
@@ -79,24 +63,7 @@ export const useTrendLine = (chart: Chart | null, enabled: boolean) => {
       needDefaultPointFigure: true,
       needDefaultXAxisFigure: false,
       needDefaultYAxisFigure: false,
-      createPointFigures: ({ coordinates }) => {
-        const figures: any[] = [];
-
-        coordinates.forEach(({ x, y }, i) => {
-          figures.push({
-            type: 'circle',
-            key: `pt_${i}`,
-            attrs: { x, y, r: 4 },
-            styles: {
-              style: 'fill',
-              color: '#ef4444',
-            },
-            ignoreEvent: true,
-          });
-        });
-
-        return figures;
-      },
+      createPointFigures: createTrendLinePointsPointFigure,
     });
   }, []);
 
@@ -139,7 +106,7 @@ export const useTrendLine = (chart: Chart | null, enabled: boolean) => {
     for (const line of lines) {
       const points = [...line.points, ...line.touches];
 
-      const extendData: ExtendData = {
+      const extendData = {
         mode: line.mode,
       };
 

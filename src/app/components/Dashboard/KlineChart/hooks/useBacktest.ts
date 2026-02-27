@@ -5,6 +5,9 @@ import _ from 'lodash';
 import { registerOverlay, registerIndicator, Chart } from 'klinecharts';
 import { KlineChartItem, OrderLogData, Signal, TrendLine } from '@types';
 import { useBacktest as useBacktestStore } from '@store';
+import { TradeZoneMode, createTradeZonePointFigure } from '../figures/tradeZonePointFigure';
+import { createTrendLinePointFigure } from '../figures/trendLinePointFigure';
+import { createTrendLinePointsPointFigure } from '../figures/trendLinePointsPointFigure';
 import '../figures';
 
 const green = '#84cc16';
@@ -12,12 +15,12 @@ const red = '#dc2626';
 const darkRed = '#7f1d1d';
 const darkGreen = '#365314';
 const orange = '#fb923c';
+const grayTransparent = 'rgba(156,163,175,0.45)';
+const greenTransparent = 'rgba(132,204,22,0.45)';
+const redTransparent = 'rgba(220,38,38,0.45)';
 
 type MarkerShape = 'RECT' | 'DIAMOND' | 'STAR' | 'CIRCLE';
-
-interface TrendLineExtendData {
-  mode: TrendLine['mode'];
-}
+type ChartPoint = { timestamp: number; value: number };
 
 interface MarkerMeta {
   shape: MarkerShape;
@@ -28,6 +31,18 @@ interface MarkerMeta {
   profit: number;
   amount: number;
   tradeIndex: number;
+}
+
+interface AlignedOrderEvent {
+  event: OrderLogData[number];
+  alignedTimestamp: number;
+}
+
+interface TradeZone {
+  id: string;
+  start: ChartPoint;
+  tpEnd: ChartPoint;
+  slEnd: ChartPoint;
 }
 
 const resolveShapeAndColor = (
@@ -67,6 +82,7 @@ const walkCandlesAndEvents = (
   markersFlat: MarkerMeta[];
   markersByTs: Record<number, MarkerMeta[]>;
   profitByIndex: Array<number | undefined>;
+  alignedEvents: AlignedOrderEvent[];
 } => {
   const events = [...rawEvents].sort((a, b) => a.timestamp - b.timestamp);
 
@@ -75,6 +91,7 @@ const walkCandlesAndEvents = (
   const profitByIndex: Array<number | undefined> = new Array(
     candles.length,
   ).fill(undefined);
+  const alignedEvents: AlignedOrderEvent[] = [];
 
   let eventCursor = 0;
   let currentAmount: number | undefined = undefined;
@@ -112,6 +129,7 @@ const walkCandlesAndEvents = (
           markersByTs[currTs] = [];
         }
         markersByTs[currTs].push(marker);
+        alignedEvents.push({ event: evt, alignedTimestamp: currTs });
 
         currentAmount = evt.amount;
         continue;
@@ -126,7 +144,7 @@ const walkCandlesAndEvents = (
     profitByIndex[candleIndex] = currentAmount;
   }
 
-  return { markersFlat, markersByTs, profitByIndex };
+  return { markersFlat, markersByTs, profitByIndex, alignedEvents };
 };
 
 const groupMarkersForOverlay = (
@@ -167,13 +185,44 @@ const buildIndicatorData = (
   candles: KlineChartItem[],
   markersByTs: Record<number, MarkerMeta[]>,
   profitByIndex: Array<number | undefined>,
-): Record<number, { profit?: number; markers: MarkerMeta[] }> => {
-  const result: Record<number, { profit?: number; markers: MarkerMeta[] }> = {};
+): Record<
+  number,
+  {
+    profit?: number;
+    startAmount?: number;
+    endAmount?: number;
+    maxAmount?: number;
+    minAmount?: number;
+    markers: MarkerMeta[];
+  }
+> => {
+  const result: Record<
+    number,
+    {
+      profit?: number;
+      startAmount?: number;
+      endAmount?: number;
+      maxAmount?: number;
+      minAmount?: number;
+      markers: MarkerMeta[];
+    }
+  > = {};
+  const amounts = profitByIndex.filter((value): value is number =>
+    Number.isFinite(value),
+  );
+  const startAmount = amounts[0];
+  const endAmount = amounts.length > 0 ? amounts[amounts.length - 1] : undefined;
+  const maxAmount = amounts.length > 0 ? Math.max(...amounts) : undefined;
+  const minAmount = amounts.length > 0 ? Math.min(...amounts) : undefined;
 
   for (let i = 0; i < candles.length; i++) {
     const ts = candles[i].timestamp;
     result[ts] = {
       profit: profitByIndex[i],
+      startAmount,
+      endAmount,
+      maxAmount,
+      minAmount,
       markers: markersByTs[ts] ?? [],
     };
   }
@@ -182,6 +231,22 @@ const buildIndicatorData = (
 };
 
 let trendLineOverlaysRegistered = false;
+let backtestTradeZonesRegistered = false;
+
+const ensureBacktestTradeZonesRegistered = () => {
+  if (backtestTradeZonesRegistered) return;
+
+  registerOverlay({
+    name: 'BacktestTradeZone',
+    totalStep: 2,
+    needDefaultPointFigure: false,
+    needDefaultXAxisFigure: false,
+    needDefaultYAxisFigure: false,
+    createPointFigures: createTradeZonePointFigure,
+  });
+
+  backtestTradeZonesRegistered = true;
+};
 
 const ensureTrendLineOverlaysRegistered = () => {
   if (trendLineOverlaysRegistered) return;
@@ -192,21 +257,7 @@ const ensureTrendLineOverlaysRegistered = () => {
     needDefaultPointFigure: false,
     needDefaultXAxisFigure: false,
     needDefaultYAxisFigure: false,
-    createPointFigures: ({ coordinates, overlay }) => {
-      const { mode } = overlay.extendData as TrendLineExtendData;
-      const figures: any[] = [];
-      const color = mode === 'lows' ? '#facc15' : '#fb923c';
-
-      if (coordinates.length === 2) {
-        figures.push({
-          type: 'line',
-          attrs: { coordinates: [coordinates[0], coordinates[1]] },
-          styles: { color, size: 2, style: 'solid' },
-        });
-      }
-
-      return figures;
-    },
+    createPointFigures: createTrendLinePointFigure,
   });
 
   registerOverlay({
@@ -214,24 +265,7 @@ const ensureTrendLineOverlaysRegistered = () => {
     needDefaultPointFigure: true,
     needDefaultXAxisFigure: false,
     needDefaultYAxisFigure: false,
-    createPointFigures: ({ coordinates }) => {
-      const figures: any[] = [];
-
-      coordinates.forEach(({ x, y }, i) => {
-        figures.push({
-          type: 'circle',
-          key: `pt_${i}`,
-          attrs: { x, y, r: 4 },
-          styles: {
-            style: 'fill',
-            color: '#ef4444',
-          },
-          ignoreEvent: true,
-        });
-      });
-
-      return figures;
-    },
+    createPointFigures: createTrendLinePointsPointFigure,
   });
 
   trendLineOverlaysRegistered = true;
@@ -270,6 +304,58 @@ const collectTrendLinesFromOrderLog = (
   }
 
   return result;
+};
+
+const buildBacktestTradeZones = (alignedEvents: AlignedOrderEvent[]): TradeZone[] => {
+  const trades = new Map<
+    string,
+    { open?: AlignedOrderEvent; lastClose?: AlignedOrderEvent }
+  >();
+
+  for (const aligned of alignedEvents) {
+    const signalId = aligned.event.signal?.signalId;
+    if (!signalId) continue;
+
+    const current = trades.get(signalId) ?? {};
+    const isOpen = aligned.event.type.startsWith('OPEN_');
+
+    if (isOpen) {
+      current.open = aligned;
+    } else {
+      current.lastClose = aligned;
+    }
+
+    trades.set(signalId, current);
+  }
+
+  const zones: TradeZone[] = [];
+
+  for (const [signalId, trade] of trades.entries()) {
+    const open = trade.open;
+    const close = trade.lastClose;
+    if (!open || !close) continue;
+
+    const prices = open.event.signal?.prices;
+    if (!prices) continue;
+
+    zones.push({
+      id: signalId,
+      start: {
+        timestamp: open.alignedTimestamp,
+        value: open.event.price,
+      },
+      tpEnd: {
+        timestamp: close.alignedTimestamp,
+        value: prices.takeProfitPrice,
+      },
+      slEnd: {
+        timestamp: close.alignedTimestamp,
+        value: prices.stopLossPrice,
+      },
+    });
+  }
+
+  return zones;
 };
 
 registerOverlay({
@@ -334,7 +420,17 @@ registerOverlay({
 
 const createBacktestProfit = (
   chart: Chart,
-  latestByTs: Record<number, { profit?: number; markers: MarkerMeta[] }> = {},
+  latestByTs: Record<
+    number,
+    {
+      profit?: number;
+      startAmount?: number;
+      endAmount?: number;
+      maxAmount?: number;
+      minAmount?: number;
+      markers: MarkerMeta[];
+    }
+  > = {},
 ) => {
   registerIndicator({
     name: 'BacktestProfit',
@@ -345,6 +441,54 @@ const createBacktestProfit = (
         key: 'profit',
         title: 'Profit',
         type: 'line',
+      },
+      {
+        key: 'startAmount',
+        title: 'Start: ',
+        type: 'line',
+        styles: () =>
+            ({
+            color: grayTransparent,
+            size: 1,
+            style: 'dashed',
+            dashedValue: [4, 4],
+          }) as any,
+      },
+      {
+        key: 'endAmount',
+        title: 'End: ',
+        type: 'line',
+        styles: () =>
+            ({
+            color: grayTransparent,
+            size: 1,
+            style: 'dashed',
+            dashedValue: [4, 4],
+          }) as any,
+      },
+      {
+        key: 'maxAmount',
+        title: 'Max: ',
+        type: 'line',
+        styles: () =>
+            ({
+            color: greenTransparent,
+            size: 1,
+            style: 'dashed',
+            dashedValue: [4, 4],
+          }) as any,
+      },
+      {
+        key: 'minAmount',
+        title: 'Min: ',
+        type: 'line',
+        styles: () =>
+            ({
+            color: redTransparent,
+            size: 1,
+            style: 'dashed',
+            dashedValue: [4, 4],
+          }) as any,
       },
     ],
 
@@ -414,14 +558,17 @@ export const useBacktest = (chart: Chart | null, id: string | undefined) => {
       return;
     }
 
-    const { markersFlat, markersByTs, profitByIndex } = walkCandlesAndEvents(
+    const { markersFlat, markersByTs, profitByIndex, alignedEvents } =
+      walkCandlesAndEvents(
       candles,
       backtest,
     );
 
     const { points, groupedExtendData } = groupMarkersForOverlay(markersFlat);
+    const tradeZones = buildBacktestTradeZones(alignedEvents);
     const trendLines = collectTrendLinesFromOrderLog(backtest);
     const trendLineOverlayIds: string[] = [];
+    const tradeZoneOverlayIds: string[] = [];
 
     if (points.length > 0) {
       chart.createOverlay({
@@ -429,6 +576,32 @@ export const useBacktest = (chart: Chart | null, id: string | undefined) => {
         points,
         extendData: groupedExtendData,
       });
+    }
+
+    if (tradeZones.length > 0) {
+      ensureBacktestTradeZonesRegistered();
+
+      for (const zone of tradeZones) {
+        const tpId = `backtest-trade-zone-${zone.id}-tp`;
+        const slId = `backtest-trade-zone-${zone.id}-sl`;
+        tradeZoneOverlayIds.push(tpId, slId);
+
+        chart.createOverlay({
+          name: 'BacktestTradeZone',
+          id: tpId,
+          points: [zone.start, zone.tpEnd],
+          zLevel: 2,
+          extendData: { mode: 'TP' satisfies TradeZoneMode },
+        });
+
+        chart.createOverlay({
+          name: 'BacktestTradeZone',
+          id: slId,
+          points: [zone.start, zone.slEnd],
+          zLevel: 2,
+          extendData: { mode: 'SL' satisfies TradeZoneMode },
+        });
+      }
     }
 
     if (trendLines.length > 0) {
@@ -457,7 +630,7 @@ export const useBacktest = (chart: Chart | null, id: string | undefined) => {
           pointsSorted[pointsSorted.length - 1],
         ];
 
-        const extendData: TrendLineExtendData = {
+        const extendData = {
           mode: trendLine.mode,
         };
 
@@ -492,6 +665,11 @@ export const useBacktest = (chart: Chart | null, id: string | undefined) => {
             name: 'TrendLinePoints',
             id: `${overlayId}-points`,
           });
+        }
+      }
+      if (tradeZoneOverlayIds.length > 0) {
+        for (const overlayId of tradeZoneOverlayIds) {
+          chart.removeOverlay({ name: 'BacktestTradeZone', id: overlayId });
         }
       }
     };

@@ -1,31 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 import _ from 'lodash';
-import { registerIndicator, Chart } from 'klinecharts';
+import { Chart } from 'klinecharts';
 import { Filters, Provider } from '@types';
 import { useData } from '@store';
-
-const getCloseAtOrBefore = (
-  candles: Array<{ timestamp: number; close: number }>,
-  timestamp: number,
-) => {
-  let left = 0;
-  let right = candles.length - 1;
-  let result: number | undefined;
-
-  while (left <= right) {
-    const mid = Math.floor((left + right) / 2);
-    const candle = candles[mid];
-
-    if (candle.timestamp <= timestamp) {
-      result = candle.close;
-      left = mid + 1;
-    } else {
-      right = mid - 1;
-    }
-  }
-
-  return result;
-};
+import { getCloseAtOrBefore } from './indicatorShared';
+import { useManagedIndicator } from './useManagedIndicator';
 
 const buildBtcValues = (
   kLineDataList: Array<{ timestamp: number }>,
@@ -64,7 +43,8 @@ export const useBtcIndicator = (
   enabled: boolean,
   filters: Filters,
 ) => {
-  const [registered, setRegistered] = useState(false);
+  const indicatorId = 'btc_indicator';
+  const paneId = 'btc_indicator_pane';
   const bybitByTimestampRef = useRef<Record<number, { close: number }>>({});
   const binanceByTimestampRef = useRef<Record<number, { close: number }>>({});
   const coinbaseByTimestampRef = useRef<Record<number, { close: number }>>({});
@@ -153,13 +133,22 @@ export const useBtcIndicator = (
     coinbaseCandles,
   ]);
 
-  useEffect(() => {
-    if (registered) {
-      return;
-    }
+  const calc = useCallback(
+    (kLineDataList: Array<{ timestamp: number }>) =>
+      buildBtcValues(
+        kLineDataList,
+        bybitByTimestampRef.current,
+        binanceByTimestampRef.current,
+        coinbaseByTimestampRef.current,
+        bybitCandlesRef.current,
+        binanceCandlesRef.current,
+        coinbaseCandlesRef.current,
+      ),
+    [],
+  );
 
-    registerIndicator({
-      name: 'BTC',
+  const template = useMemo(
+    () => ({
       shortName: 'BTC',
       calcParams: [],
       figures: [
@@ -179,58 +168,18 @@ export const useBtcIndicator = (
           type: 'line',
         },
       ],
+    }),
+    [],
+  );
 
-      // Calculation results
-      calc: (kLineDataList) => {
-        return buildBtcValues(
-          kLineDataList,
-          bybitByTimestampRef.current,
-          binanceByTimestampRef.current,
-          coinbaseByTimestampRef.current,
-          bybitCandlesRef.current,
-          binanceCandlesRef.current,
-          coinbaseCandlesRef.current,
-        );
-      },
-    });
-
-    setRegistered(true);
-  }, [registered]);
-
-  useEffect(() => {
-    if (!registered || !chart || !enabled) {
-      return;
-    }
-
-    chart.removeIndicator({ name: 'BTC' });
-    chart.createIndicator('BTC', true, { minHeight: 100 });
-
-    return () => {
-      chart.removeIndicator({ name: 'BTC' });
-    };
-  }, [chart, enabled, registered]);
-
-  useEffect(() => {
-    if (!registered || !chart || !enabled) {
-      return;
-    }
-
-    const updated = chart.overrideIndicator({
-      name: 'BTC',
-      calc: (kLineDataList) =>
-        buildBtcValues(
-          kLineDataList,
-          bybitByTimestampRef.current,
-          binanceByTimestampRef.current,
-          coinbaseByTimestampRef.current,
-          bybitCandlesRef.current,
-          binanceCandlesRef.current,
-          coinbaseCandlesRef.current,
-        ),
-    });
-    if (!updated) {
-      chart.removeIndicator({ name: 'BTC' });
-      chart.createIndicator('BTC', true, { minHeight: 100 });
-    }
-  }, [chart, enabled, registered, bybitData, binanceData, coinbaseData]);
+  useManagedIndicator({
+    chart,
+    enabled,
+    indicatorName: 'BTC',
+    indicatorId,
+    paneId,
+    template,
+    calc,
+    updateDeps: [bybitData, binanceData, coinbaseData],
+  });
 };

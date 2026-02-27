@@ -21,6 +21,11 @@ const useStore = create<IndicatorsState>()(
           enabled: false,
         },
         {
+          id: 'btcCorrelation',
+          label: 'BTC Correlation',
+          enabled: false,
+        },
+        {
           id: 'spread',
           label: 'Spread',
           enabled: false,
