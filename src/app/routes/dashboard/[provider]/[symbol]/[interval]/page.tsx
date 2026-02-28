@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useCallback } from 'react';
-import { useParams, useSearchParams } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 import { Box, Flex, ClientOnly } from '@chakra-ui/react';
 import { useFilters, useTickers, useTestList } from '@store';
 import { Filters } from '@shared/Filters';
@@ -9,71 +9,59 @@ import { MainChart } from '@app/components/Dashboard/MainChart';
 import { Interval, OnChangeFilters, Provider } from '@types';
 
 const Dashboard = () => {
-  const { provider, symbol, interval } = useParams();
   const searchParams = useSearchParams();
   const { filters, setFilters } = useFilters();
-  const { tickers } = useTickers((provider as string) || 'bybit');
+  const { tickers } = useTickers(filters.provider || 'bybit');
   const { tests } = useTestList({ symbol: filters.symbol });
   const hasBacktestId = searchParams.has('backtestId');
   const hasBacktestStrategy = searchParams.has('backtestStrategy');
   const backtestId = searchParams.get('backtestId');
   const backtestStrategy = searchParams.get('backtestStrategy');
 
+  const parseDashboardPath = () => {
+    const parts = window.location.pathname.split('/').filter(Boolean);
+    return {
+      provider: (parts[2] || filters.provider || 'bybit') as Provider,
+      symbol: (parts[3] || filters.symbol) as string,
+      interval: (parts[4] || filters.interval) as Interval,
+    };
+  };
+
   useEffect(() => {
-    if (
-      typeof provider === 'string' &&
-      typeof symbol === 'string' &&
-      typeof interval === 'string'
-    ) {
-      setFilters({
-        provider: provider as Provider,
-        symbol,
-        interval: interval as Interval,
-        ...(hasBacktestId ? { backtestId } : {}),
-        ...(hasBacktestStrategy ? { backtestStrategy } : {}),
-      });
-    }
-  }, [
-    provider,
-    symbol,
-    interval,
-    hasBacktestId,
-    hasBacktestStrategy,
-    backtestId,
-    backtestStrategy,
-  ]);
+    const parsed = parseDashboardPath();
+    setFilters({
+      provider: parsed.provider,
+      symbol: parsed.symbol,
+      interval: parsed.interval,
+      ...(hasBacktestId ? { backtestId } : {}),
+      ...(hasBacktestStrategy ? { backtestStrategy } : {}),
+    });
+  }, [hasBacktestId, hasBacktestStrategy, backtestId, backtestStrategy]);
 
   const onChangeFilters: OnChangeFilters = useCallback(
     (newFilters) => {
-      setFilters(newFilters);
-      const nextProvider = newFilters.provider || filters.provider || 'bybit';
-      const nextSymbol = newFilters.symbol || filters.symbol;
-      const nextInterval = newFilters.interval || filters.interval;
+      const parsed = parseDashboardPath();
+      const nextFilters = {
+        ...filters,
+        ...newFilters,
+        provider: (newFilters.provider || parsed.provider) as Provider,
+        symbol: (newFilters.symbol || parsed.symbol) as string,
+        interval: (newFilters.interval || parsed.interval) as Interval,
+      };
+      setFilters(nextFilters);
+      const nextProvider = nextFilters.provider || 'bybit';
+      const nextSymbol = nextFilters.symbol;
+      const nextInterval = nextFilters.interval;
       const params = new URLSearchParams(window.location.search);
 
-      const backtestIdChanged = Object.prototype.hasOwnProperty.call(
-        newFilters,
-        'backtestId',
-      );
-      const backtestStrategyChanged = Object.prototype.hasOwnProperty.call(
-        newFilters,
-        'backtestStrategy',
-      );
-      const nextBacktestId = backtestIdChanged
-        ? newFilters.backtestId
-        : filters.backtestId;
-      const nextBacktestStrategy = backtestStrategyChanged
-        ? newFilters.backtestStrategy
-        : filters.backtestStrategy;
-
-      if (nextBacktestId) {
-        params.set('backtestId', nextBacktestId);
+      if (nextFilters.backtestId) {
+        params.set('backtestId', nextFilters.backtestId);
       } else {
         params.delete('backtestId');
       }
 
-      if (nextBacktestStrategy) {
-        params.set('backtestStrategy', nextBacktestStrategy);
+      if (nextFilters.backtestStrategy) {
+        params.set('backtestStrategy', nextFilters.backtestStrategy);
       } else {
         params.delete('backtestStrategy');
       }

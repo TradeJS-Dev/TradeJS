@@ -94,6 +94,7 @@ These instructions apply to this repository (`/Users/aleksnick/dev/investing`).
 ## Testing
 - Run unit tests with `yarn unit`.
 - Run type checks with `yarn dev-tsc`.
+- After successful `yarn dev-tsc` and `yarn unit`, run `yarn prettify`.
 - Keep Jest focused on unit suites (ignore temp artifacts and non-unit script entrypoints).
 - For changes in `src/utils/ai.ts`, `src/strategy/*`, signal generation, or ML/testing helpers, re-run both `yarn unit` and `yarn dev-tsc` before commit.
 

@@ -12,6 +12,7 @@ import { Items } from '@types';
 
 interface SelectProps {
   defaultValue: string[];
+  value?: string[];
   items: Items;
   placeholder?: string;
   width?: string | number;
@@ -22,6 +23,7 @@ interface SelectProps {
 
 export const Select = ({
   defaultValue,
+  value,
   items,
   multiple = false,
   placeholder = 'Select',
@@ -40,7 +42,7 @@ export const Select = ({
   return (
     <UISelect.Root
       collection={collection}
-      defaultValue={defaultValue}
+      {...(value ? { value } : { defaultValue })}
       onValueChange={(details) => onChange?.(details.value)}
       size={size}
       multiple={multiple}
