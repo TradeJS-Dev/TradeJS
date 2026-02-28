@@ -18,8 +18,6 @@ export const createTrendLineCore: CreateStrategyCore<
     FEE_PERCENT,
     MAX_LOSS_VALUE,
     MAX_CORRELATION,
-    ALLOW_LONG,
-    ALLOW_SHORT,
     HIGHS,
     LOWS,
   } = config;
@@ -74,14 +72,6 @@ export const createTrendLineCore: CreateStrategyCore<
 
     const modeConfig = bestLine.mode === 'highs' ? HIGHS : LOWS;
     const { direction, TP, SL, minRiskRatio, enable } = modeConfig;
-
-    if (direction === 'LONG' && !ALLOW_LONG) {
-      return strategyApi.skip('LONG_NOT_ALLOWED');
-    }
-
-    if (direction === 'SHORT' && !ALLOW_SHORT) {
-      return strategyApi.skip('SHORT_NOT_ALLOWED');
-    }
 
     if (!enable) {
       return strategyApi.skip('STRATEGY_DISABLED');

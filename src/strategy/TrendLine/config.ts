@@ -20,8 +20,6 @@ export const config = {
   MAKE_ORDERS: true,
   CLOSE_OPPOSITE_POSITIONS: false,
   BACKTEST_PRICE_MODE: 'mid' as const,
-  ALLOW_LONG: true,
-  ALLOW_SHORT: true,
   AI_ENABLED: false,
   ML_ENABLED: false,
   ML_THRESHOLD: 0.1,
