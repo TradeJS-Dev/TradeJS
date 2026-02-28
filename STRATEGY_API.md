@@ -16,6 +16,7 @@
 
 - `src/strategy/<Strategy>/config.ts`
 - `src/strategy/<Strategy>/core.ts`
+- `src/strategy/<Strategy>/figures.ts` (рекомендуется)
 - `src/strategy/<Strategy>/strategy.ts`
 - `src/strategy/<Strategy>/manifest.ts`
 - `src/strategy/<Strategy>/adapters/ai.ts` (optional)
@@ -34,6 +35,11 @@
 В `core.ts` допустимо:
 - собирать `signal` через `buildEntrySignalDecision(...)`
 - формировать `entryContext`, `figures`, `indicators`, `additionalIndicators`, `orderPlan`
+
+Рекомендация по `figures`:
+- использовать базовый формат `figures.lines / figures.points / figures.zones`
+- strategy-specific диагностику хранить в `additionalIndicators` (или `indicators`)
+- не завязывать UI на strategy-specific ключи в `figures`
 
 В `core.ts` не нужно:
 - вызывать `askAI`

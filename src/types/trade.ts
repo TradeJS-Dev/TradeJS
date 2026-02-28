@@ -148,6 +148,43 @@ export type TrendLine = {
   alpha?: number[];
 };
 
+export interface StrategyFigurePoint {
+  timestamp: number;
+  value: number;
+}
+
+export interface StrategyFigureLine {
+  id?: string;
+  kind?: string;
+  points: StrategyFigurePoint[];
+  color?: string;
+  width?: number;
+  style?: 'solid' | 'dashed';
+}
+
+export interface StrategyFigurePoints {
+  id?: string;
+  kind?: string;
+  points: StrategyFigurePoint[];
+  color?: string;
+  radius?: number;
+}
+
+export interface StrategyFigureZone {
+  id?: string;
+  kind?: string;
+  start: StrategyFigurePoint;
+  end: StrategyFigurePoint;
+  color?: string;
+  borderColor?: string;
+}
+
+export interface StrategyEntryModelFigures {
+  lines?: StrategyFigureLine[];
+  points?: StrategyFigurePoints[];
+  zones?: StrategyFigureZone[];
+}
+
 export interface TrendLineOptions {
   mode: TrendLineMode;
   maxLines?: number; // ограничение перебора пар опор (кандидатов)
@@ -181,6 +218,9 @@ export interface Signal {
   };
   figures: {
     trendLine?: TrendLine;
+    lines?: StrategyFigureLine[];
+    points?: StrategyFigurePoints[];
+    zones?: StrategyFigureZone[];
     [key: string]: any;
   };
   prices: {

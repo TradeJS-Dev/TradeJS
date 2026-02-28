@@ -91,7 +91,12 @@ const MODEL_TYPES: ModelType[] = [
   'xgboost',
   'lightgbm',
 ];
-const STRATEGIES = ['Breakout', 'TrendLine', 'any'] as const;
+const STRATEGIES = [
+  'Breakout',
+  'TrendLine',
+  'VolumeDivergence',
+  'any',
+] as const;
 type StrategyType = (typeof STRATEGIES)[number];
 
 args.option(['s', 'strategy'], 'Strategy name (e.g. TrendLine)');

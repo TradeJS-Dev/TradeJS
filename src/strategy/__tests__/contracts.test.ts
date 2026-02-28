@@ -42,13 +42,23 @@ describe('strategy decision contracts', () => {
         isConfigFromBacktest: false,
       },
       figures: {
-        trendLine: {
-          id: 'tl-1',
-          mode: 'lows',
-          distance: 1.2,
-          touches: [{ timestamp: 1, value: 100 }],
-          points: [{ timestamp: 1, value: 100 }],
-        },
+        lines: [
+          {
+            id: 'tl-1',
+            kind: 'trendline',
+            points: [
+              { timestamp: 1, value: 100 },
+              { timestamp: 2, value: 101 },
+            ],
+          },
+        ],
+        points: [
+          {
+            id: 'tl-1-points',
+            kind: 'trendline_points',
+            points: [{ timestamp: 1, value: 100 }],
+          },
+        ],
       },
       indicators: { correlation: 0.2 },
       additionalIndicators: { touches: 3, distance: 1.2 },

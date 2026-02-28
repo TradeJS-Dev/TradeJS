@@ -43,7 +43,7 @@
 - Runtime AI-анализ сигналов (`src/utils/ai.ts`) использует другой payload:
   - текущий `signal`,
   - `signal.indicators` с runtime-именами (`maFast`, `btcMaFast1h`, `candles15m` и т.п.),
-  - `figures.trendLine` (без trim).
+  - strategy figures в базовом формате (`figures.lines/points/zones`), при необходимости legacy `figures.trendLine` нормализуется для UI.
 - В текущей архитектуре AI/ML enrichment и gating выполняются общим runtime-слоем стратегий (`src/utils/strategyRuntime.ts`), а стратегия возвращает `entry`-решение с уже собранным `signal` (сборка делается прямо в `core.ts`).
 - В `core.ts` стратегии используют shared `strategyApi` DSL (`skip`, `entry`, `getMarketData`, position helpers), чтобы не дублировать runtime boilerplate. `getMarketData()` также возвращает `timestamp` (`lastCandle.timestamp`).
 - Strategy-specific AI/ML отклонения (payload/prompt/normalization) подключаются через strategy manifest/adapters (`src/strategy/*/manifest.ts`, `src/strategy/*/adapters/*`), а не через хардкод в shared `utils`.

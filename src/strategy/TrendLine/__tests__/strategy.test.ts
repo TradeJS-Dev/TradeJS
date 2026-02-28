@@ -1,6 +1,6 @@
 import { TrendlineStrategyCreator } from '../strategy';
 import { createIndicators } from '@utils/indicators';
-import { createTrendlineEngine } from '@utils/trendLineEngine';
+import { createTrendlineEngine } from '@utils/trendLine/engine';
 import { calculateCoinBtcCorrelation } from '@utils/correlation';
 import { filterByVeryVolatility } from '../filters';
 import { logger } from '@utils/logger';
@@ -8,7 +8,7 @@ import { fetchMlThreshold } from '@utils/mlGrpc';
 import { askAI } from '@utils/ai';
 import { getData, redisKeys } from '@utils/redis';
 
-jest.mock('@utils/trendLineEngine', () => ({
+jest.mock('@utils/trendLine/engine', () => ({
   createTrendlineEngine: jest.fn(),
 }));
 

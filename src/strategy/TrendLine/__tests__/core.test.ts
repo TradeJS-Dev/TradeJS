@@ -1,4 +1,4 @@
-jest.mock('@utils/trendLineEngine', () => ({
+jest.mock('@utils/trendLine/engine', () => ({
   createTrendlineEngine: jest.fn(),
 }));
 
@@ -36,7 +36,7 @@ jest.mock('../filters', () => ({
   filterByVeryVolatility: jest.fn(() => true),
 }));
 
-import { createTrendlineEngine } from '@utils/trendLineEngine';
+import { createTrendlineEngine } from '@utils/trendLine/engine';
 import {
   buildEntrySignalDecision,
   getStrategyMarketSnapshot,
@@ -208,7 +208,10 @@ describe('createTrendLineCore', () => {
         prices: expect.objectContaining({
           currentPrice: candle.close,
         }),
-        figures: { trendLine: bestLine },
+        figures: expect.objectContaining({
+          lines: expect.any(Array),
+          points: expect.any(Array),
+        }),
         orderPlan: expect.objectContaining({ qty: 2 }),
       }),
     );

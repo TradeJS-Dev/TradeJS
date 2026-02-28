@@ -40,6 +40,10 @@ return strategyApi.skip('NO_SIGNAL');
 Особенности:
 - если `code` не передан, по умолчанию используется `<STRATEGY_NAME>_SIGNAL`
   - пример: `TrendLine` -> `TRENDLINE_SIGNAL`
+- для кросс-стратегий UI используйте базовые фигуры:
+  - `figures.lines`
+  - `figures.points`
+  - `figures.zones`
 
 ### `strategyApi.getMarketData(params?)`
 

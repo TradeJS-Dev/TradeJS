@@ -20,7 +20,7 @@ import {
   useBtcIndicator,
   useBtcCorrelation,
   useSpreadIndicator,
-  useTrendLine,
+  useSignal,
   useBacktest,
   useSupportResistanceLines,
   useResize,
@@ -149,7 +149,7 @@ export const KlineChart = ({ id, filters, indicators }: KlineChartProps) => {
   useSpreadIndicator(chart, indicators.spread?.enabled, filters);
   useBacktest(chart, filters.backtestId || undefined);
   useSupportResistanceLines(chart, indicators.resistant?.enabled);
-  useTrendLine(chart, true);
+  useSignal(chart, true);
   useSetup(chart, true);
 
   return (

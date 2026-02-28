@@ -5,7 +5,7 @@ import { useSearchParams } from 'next/navigation';
 import _ from 'lodash';
 import { Chart, registerOverlay } from 'klinecharts';
 import { getSignal } from '@actions/signal';
-import { createTrendlineEngine } from '@utils/trendLineEngine';
+import { createTrendlineEngine } from '@utils/trendLine/engine';
 import { toMs } from '@utils/timestamp';
 import { Signal, TrendLine } from '@types';
 import { createTrendLinePointFigure } from '../figures/trendLinePointFigure';

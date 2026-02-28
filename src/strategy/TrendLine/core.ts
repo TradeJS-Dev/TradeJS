@@ -1,5 +1,5 @@
 import { round } from '@utils/math';
-import { createTrendlineEngine } from '@utils/trendLineEngine';
+import { createTrendlineEngine } from '@utils/trendLine/engine';
 import {
   CreateStrategyCore,
   IndicatorsHistorySnapshot,
@@ -7,6 +7,7 @@ import {
 } from '@types';
 import { filterByVeryVolatility } from './filters';
 import { TrendLineConfig } from './config';
+import { buildTrendLineFigures } from './figures';
 
 export const createTrendLineCore: CreateStrategyCore<
   TrendLineConfig,
@@ -118,7 +119,7 @@ export const createTrendLineCore: CreateStrategyCore<
 
     return strategyApi.entry({
       figures: {
-        trendLine: bestLine,
+        ...buildTrendLineFigures(bestLine),
       },
       direction,
       timestamp,
@@ -127,6 +128,7 @@ export const createTrendLineCore: CreateStrategyCore<
       additionalIndicators: {
         touches: bestLine.touches.length + 2,
         distance: bestLine.distance,
+        trendLine: bestLine,
       },
       orderPlan: {
         qty,

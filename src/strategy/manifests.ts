@@ -1,10 +1,12 @@
 import { StrategyManifest } from '@types';
 import { breakoutManifest } from './Breakout/manifest';
 import { trendLineManifest } from './TrendLine/manifest';
+import { volumeDivergenceManifest } from './VolumeDivergence/manifest';
 
 export const strategyManifests: StrategyManifest[] = [
   breakoutManifest,
   trendLineManifest,
+  volumeDivergenceManifest,
 ];
 
 export const strategyManifestMap = Object.fromEntries(

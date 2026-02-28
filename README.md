@@ -140,7 +140,7 @@ Node-скрипты для автоматизации:
 - Для Bollinger Bands добавлены моменты по каждому TF и для обоих ассетов:
   - `_Mean`, `_Std`, `_Skew`, `_Kurt`.
 - Тот же `trim(..., 5)` применяется и в inference (`mlGrpc`), чтобы train/backtest/prod использовали одинаковую схему фичей.
-- Это не то же самое, что runtime AI-анализ сигналов: LLM получает runtime payload с сырыми именами индикаторов (`maFast`, `btcMaFast1h`, `candles15m` и т.п.), где ряды также режутся до 5 значений; strategy-specific фигуры/геометрия (например `trendLine`) могут передаваться через strategy AI adapter без trim.
+- Это не то же самое, что runtime AI-анализ сигналов: LLM получает runtime payload с сырыми именами индикаторов (`maFast`, `btcMaFast1h`, `candles15m` и т.п.), где ряды также режутся до 5 значений; для UI базовый формат фигур унифицирован (`figures.lines/points/zones`), legacy `figures.trendLine` при чтении нормализуется в этот формат.
 - В отчетах train теперь есть TOP-10 holdout признаков (single-feature threshold):
   - и в `*.md`,
   - и в `*.report.html`.

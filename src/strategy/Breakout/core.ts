@@ -6,6 +6,7 @@ import {
   StrategyConfig,
 } from '@types';
 import { BreakoutConfig } from './config';
+import { buildBreakoutFigures } from './figures';
 
 interface SignalConfig {
   weight: number;
@@ -194,7 +195,7 @@ export const createBreakoutCore: CreateStrategyCore<
             stopLossPrice,
             riskRatio: 0,
           },
-          figures: {},
+          figures: buildBreakoutFigures(),
           indicators: {
             maFast: indicatorValues.maFast,
             maSlow: indicatorValues.maSlow,
@@ -240,7 +241,7 @@ export const createBreakoutCore: CreateStrategyCore<
             stopLossPrice,
             riskRatio: 0,
           },
-          figures: {},
+          figures: buildBreakoutFigures(),
           indicators: {
             maFast: indicatorValues.maFast,
             maSlow: indicatorValues.maSlow,

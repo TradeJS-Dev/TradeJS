@@ -3,7 +3,7 @@ import chalk from 'chalk';
 
 // Keep this script dependency-free from runtime strategy modules.
 // Importing @src/strategy can trigger unrelated side-effects (e.g. Redis clients).
-const strategies = ['Breakout', 'TrendLine'] as const;
+const strategies = ['Breakout', 'TrendLine', 'VolumeDivergence'] as const;
 const defaultStrategy = 'TrendLine';
 
 export const selectStrategy = async (

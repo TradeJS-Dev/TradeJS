@@ -7,7 +7,7 @@ export { useVolIndicator } from './useVolIndicator';
 export { useBtcIndicator } from './useBtcIndicator';
 export { useBtcCorrelation } from './useBtcCorrelation';
 export { useSpreadIndicator } from './useSpreadIndicator';
-export { useTrendLine } from './useTrendLine';
+export { useSignal } from './useSignal';
 export { useBacktest } from './useBacktest';
 export { useSupportResistanceLines } from './useSupportResistanceLines';
 export { useResize } from './useResize';

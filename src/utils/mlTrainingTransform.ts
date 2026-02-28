@@ -1034,7 +1034,9 @@ export const buildMlTrainingRow = (
   };
 
   const applyTrendlinePhase = () => {
-    const trendLine = signal?.figures?.trendLine;
+    const trendLine = (signal?.figures?.trendLine ??
+      signal?.additionalIndicators?.trendLine ??
+      {}) as any;
     row.TrendLine_Mode = trendLine?.mode === 'highs' ? 1 : 0;
     row.TrendLine_Distance = toNumber(trendLine?.distance, 0);
     const trendAlpha = padSeries(normalizeSeries(trendLine?.alpha));
