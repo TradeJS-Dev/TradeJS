@@ -55,11 +55,11 @@ describe('stat utils', () => {
     expect(classifyMetric('maxDrawdown', 20)).toBe('warning');
   });
 
-  it('getBacktestScore returns explicit score when present', () => {
-    expect(getBacktestScore({ score: 77.7, orders: 1 })).toBe(77.7);
+  it('getBacktestScore returns rounded netProfit * winRate', () => {
+    expect(getBacktestScore({ netProfit: 173.88, winRate: 87.5 })).toBe(15215);
   });
 
-  it('getBacktestScore returns 0 when orders are below minimal threshold', () => {
+  it('getBacktestScore returns 0 when required values are missing', () => {
     expect(getBacktestScore({ orders: 1, cagr: 100, maxDrawdown: 1 })).toBe(0);
   });
 

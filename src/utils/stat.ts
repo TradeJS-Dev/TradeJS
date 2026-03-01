@@ -8,18 +8,13 @@ import {
 import {
   PositionLogData,
   TestStat,
-  MetricScore,
   ThresholdLevel,
   TestThresholdsKey,
   TestWorkerResult,
   MonthlyEquityStats,
   EOMPoint,
 } from '@types';
-import {
-  TestThresholdsConfig,
-  levelScore,
-  TESTS_ORDERS_MIN_LIMIT,
-} from '@constants';
+import { TestThresholdsConfig } from '@constants';
 import {
   round,
   absReturns,
@@ -377,50 +372,14 @@ export const getBacktestScore = (stat: Partial<TestStat>): number => {
     return 0;
   }
 
-  if (stat.score !== undefined) {
-    return stat.score;
-  }
+  const netProfit = Number(stat.netProfit ?? 0);
+  const winRate = Number(stat.winRate ?? 0);
 
-  if (stat.orders && stat.orders < TESTS_ORDERS_MIN_LIMIT) {
+  if (!Number.isFinite(netProfit) || !Number.isFinite(winRate)) {
     return 0;
   }
 
-  let totalWeightedScore = 0;
-  let totalWeight = 0;
-
-  const breakdown: Record<string, MetricScore> = {};
-
-  for (const metricName in TestThresholdsConfig) {
-    const key = metricName as TestThresholdsKey;
-
-    const config = TestThresholdsConfig[key];
-    const value = stat[key];
-
-    if (!config || !config.weight || value == null || Number.isNaN(value)) {
-      continue;
-    }
-
-    const level = classifyMetric(key, value);
-    const score = levelScore[level];
-
-    const points = score * config.weight;
-
-    // TODO: Guard lower-direction scoring for value <= 0 to avoid Infinity/unstable scores (1 / value).
-    totalWeightedScore +=
-      config.direction === 'higher' ? points * value : points * (1 / value);
-    totalWeight += config.weight;
-
-    breakdown[key] = {
-      level,
-      score,
-      weight: config.weight,
-    };
-  }
-
-  const normalizedScore =
-    totalWeight > 0 ? (totalWeightedScore / totalWeight) * 100 : 0;
-
-  return round(normalizedScore, 1);
+  return Math.round(netProfit * winRate);
 };
 
 export const sortBestTests = (

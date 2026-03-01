@@ -50,18 +50,10 @@ export const TRENDLINE_DEFAULTS = {
   maxDistance: 2000,
 };
 
-export const levelScore = {
-  success: 1,
-  warning: 0.9,
-  error: 0.8,
-};
-
 // Мини-подсказка по порогам (thresholds):
 // - Для direction: 'higher' — больше лучше, 'lower' — меньше лучше.
 // - thresholds: [нижняя_граница, верхняя_граница] для выбранного направления.
 //   Например, для 'lower': [плохо, хорошо] = [25, 12] (% MaxDD).
-// - weight можно ставить 0, чтобы метрика не влияла на общий скоринг
-//   (но при этом сохранялась в отчёте).
 
 export const TestThresholdsConfig: TestThresholds = {
   // Период и частота — используем как требования к качеству теста, в скоринг не влияют
@@ -125,7 +117,6 @@ export const TestThresholdsConfig: TestThresholds = {
     thresholds: [5, 20],
     direction: 'higher',
     isAmount: true,
-    weight: 10,
     precision: 2,
   },
   totalReturn: {
@@ -137,7 +128,6 @@ export const TestThresholdsConfig: TestThresholds = {
   cagr: {
     thresholds: [15, 40],
     direction: 'higher',
-    weight: 35,
     isPercent: true,
     precision: 1,
   },
@@ -146,14 +136,12 @@ export const TestThresholdsConfig: TestThresholds = {
   maxDrawdown: {
     thresholds: [25, 12],
     direction: 'lower',
-    weight: 40,
     isPercent: true,
     precision: 1,
   },
   calmar: {
     thresholds: [0.5, 2.0],
     direction: 'higher',
-    weight: 35,
     precision: 2,
   },
 
@@ -161,27 +149,23 @@ export const TestThresholdsConfig: TestThresholds = {
   winRate: {
     thresholds: [40, 60],
     direction: 'higher',
-    weight: 10,
     isPercent: true,
     precision: 1,
   },
   riskRewardRatio: {
     thresholds: [1.5, 2.5],
     direction: 'higher',
-    weight: 10,
     precision: 2,
   },
   expectancy: {
     thresholds: [0.3, 1.0],
     direction: 'higher',
-    weight: 25,
     isPercent: true,
     precision: 2,
   },
   maxConsecutiveWins: {
     thresholds: [2, 6],
     direction: 'higher',
-    weight: 2,
     precision: 0,
   },
   maxConsecutiveLosses: {
@@ -194,7 +178,6 @@ export const TestThresholdsConfig: TestThresholds = {
   sharpeRatio: {
     thresholds: [0.5, 1.5],
     direction: 'higher',
-    weight: 45,
     precision: 2,
   },
 

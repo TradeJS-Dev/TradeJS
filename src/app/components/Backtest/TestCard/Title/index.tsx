@@ -2,6 +2,7 @@
 
 import { PropsWithChildren, ReactNode } from 'react';
 import { Text, Flex } from '@chakra-ui/react';
+import { getBacktestScore } from '@utils/stat';
 import { useTestContext } from '../context';
 
 interface TestCardTitleProps {
@@ -15,6 +16,7 @@ export const TestCardTitle = ({
   const {
     testResult: { stat, test },
   } = useTestContext();
+  const score = getBacktestScore(stat);
 
   return (
     <Flex gap="4" p={4} mb={3}>
@@ -30,7 +32,7 @@ export const TestCardTitle = ({
         </Text>
 
         <Text fontSize="lg" fontWeight="bold" color={'teal.500'}>
-          {stat.score}
+          {score}
         </Text>
       </Flex>
 

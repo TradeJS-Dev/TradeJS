@@ -57,14 +57,7 @@ export type ThresholdLevel = 'error' | 'warning' | 'success';
 export interface MetricThreshold {
   thresholds: [number, number];
   direction: 'higher' | 'lower';
-  weight?: number;
   isPercent?: boolean;
   isAmount?: boolean;
   precision: number;
-}
-
-export interface MetricScore {
-  level: 'success' | 'warning' | 'error';
-  score: number; // от 0 до 1
-  weight: number;
 }
