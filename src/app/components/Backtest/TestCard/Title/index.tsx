@@ -1,16 +1,25 @@
 'use client';
 
-import { PropsWithChildren } from 'react';
+import { PropsWithChildren, ReactNode } from 'react';
 import { Text, Flex } from '@chakra-ui/react';
 import { useTestContext } from '../context';
 
-export const TestCardTitle = ({ children }: PropsWithChildren<{}>) => {
+interface TestCardTitleProps {
+  leftSlot?: ReactNode;
+}
+
+export const TestCardTitle = ({
+  children,
+  leftSlot,
+}: PropsWithChildren<TestCardTitleProps>) => {
   const {
     testResult: { stat, test },
   } = useTestContext();
 
   return (
     <Flex gap="4" p={4} mb={3}>
+      {leftSlot ? <Flex alignItems="center">{leftSlot}</Flex> : null}
+
       <Text fontSize="lg" fontWeight="bold" color={'gray.200'}>
         {test.symbol}
       </Text>

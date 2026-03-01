@@ -1,10 +1,10 @@
 'use client';
 
-import { useCallback } from 'react';
+import { useCallback, useMemo } from 'react';
 import AutoSizer from 'react-virtualized-auto-sizer';
 import { FixedSizeList, ListChildComponentProps } from 'react-window';
 import { FiFolder } from 'react-icons/fi';
-import { Box, Code } from '@chakra-ui/react';
+import { Box, Checkbox, Code } from '@chakra-ui/react';
 import { TestCard } from '@components/Backtest/TestCard';
 import { EmptyState } from '@UI';
 import { Items } from '@types';
@@ -14,6 +14,8 @@ interface ListProps {
   loadding: boolean;
   fulFilled: boolean;
   noData: boolean;
+  selectedTestNames: string[];
+  onToggleSelection: (testName: string, checked: boolean) => void;
   overscan?: number;
 }
 
@@ -24,8 +26,15 @@ export const TestList = ({
   loadding,
   fulFilled,
   noData,
+  selectedTestNames,
+  onToggleSelection,
   overscan = 2,
 }: ListProps) => {
+  const selectedTestSet = useMemo(
+    () => new Set(selectedTestNames),
+    [selectedTestNames],
+  );
+
   const itemKey = useCallback(
     (index: number) => tests[index]?.value ?? String(index),
     [tests],
@@ -37,7 +46,21 @@ export const TestList = ({
       return (
         <Box style={style} px={2}>
           <TestCard.Root key={item.value} testName={item.value}>
-            <TestCard.Title>
+            <TestCard.Title
+              leftSlot={
+                <Checkbox.Root
+                  size="sm"
+                  colorPalette="teal"
+                  checked={selectedTestSet.has(item.value)}
+                  onCheckedChange={(details) =>
+                    onToggleSelection(item.value, details.checked === true)
+                  }
+                >
+                  <Checkbox.HiddenInput />
+                  <Checkbox.Control bg="gray.800" borderColor="gray.500" />
+                </Checkbox.Root>
+              }
+            >
               <TestCard.CompareButton />
               <TestCard.FavoriteIndicator />
               <TestCard.ConfigDrawer />
@@ -51,7 +74,7 @@ export const TestList = ({
         </Box>
       );
     },
-    [tests],
+    [onToggleSelection, selectedTestSet, tests],
   );
 
   if (!fulFilled && loadding) {
