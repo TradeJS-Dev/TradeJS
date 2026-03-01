@@ -23,6 +23,7 @@ import {
   Test,
   TestWorkerResult,
   ConnectorCreator,
+  BacktestConfig,
 } from '@types';
 
 const MAX_PARALLEL = Math.min(os.cpus().length, 6);
@@ -45,6 +46,11 @@ args.option(['c', 'config'], 'Backtest config', 'breakout');
 args.option(['L', 'showTickersList'], 'Just show only ticker list', false);
 args.option(['S', 'progressStep'], 'Progress step', 100);
 args.option(['U', 'user'], 'Use user confg', 'root');
+args.option(
+  'connector',
+  'Connector/provider for backtest (bybit|binance|coinbase)',
+  'bybit',
+);
 args.option(
   ['m', 'ml'],
   'Write ML dataset rows to per-worker JSONL chunks',
@@ -104,6 +110,22 @@ const recordError = (error: ErrorMessage) => {
   errorMessages.push(error);
 };
 
+const resolveConnectorName = (value: unknown): ConnectorNames => {
+  const provider = String(value || '')
+    .trim()
+    .toLowerCase();
+  if (provider === 'bybit') return ConnectorNames.ByBit;
+  if (provider === 'binance') return ConnectorNames.Binance;
+  if (provider === 'coinbase') return ConnectorNames.Coinbase;
+
+  console.log(
+    chalk.yellow(
+      `Unknown connector "${provider || String(value)}". Fallback to ${ConnectorNames.ByBit}.`,
+    ),
+  );
+  return ConnectorNames.ByBit;
+};
+
 const getLogsById = async (orderLogId: string) => {
   const orderLog = (await getData(
     redisKeys.cacheOrders(userName, orderLogId),
@@ -144,17 +166,23 @@ const setTestData = async (test: Test, stat: TestStat, orderLog: OrderLog) => {
 const backtest = async () => {
   const backtestConfig = await getData(
     redisKeys.backtestConfig(userName, flags.config),
+    null,
   );
-  const connectorNameRaw = String(backtestConfig?.connectorName || '');
-  const connectorName =
-    connectorNameRaw === 'binance'
-      ? ConnectorNames.Binance
-      : connectorNameRaw === 'coinbase'
-        ? ConnectorNames.Coinbase
-        : connectorNameRaw === 'bybit'
-          ? ConnectorNames.ByBit
-          : (backtestConfig?.connectorName as ConnectorNames | undefined) ||
-            ConnectorNames.ByBit;
+  if (!backtestConfig) {
+    throw new Error(`Backtest config "${flags.config}" not found`);
+  }
+
+  const typedBacktestConfig = backtestConfig as BacktestConfig;
+  if (
+    !typedBacktestConfig.strategyName ||
+    !typedBacktestConfig.strategyConfig
+  ) {
+    throw new Error(
+      `Backtest config "${flags.config}" must include strategyName and strategyConfig`,
+    );
+  }
+
+  const connectorName = resolveConnectorName(flags.connector);
   const connectorFactory =
     connectors[connectorName] || connectors[ConnectorNames.ByBit];
   const marketConnector = await (connectorFactory as ConnectorCreator)({
@@ -192,10 +220,12 @@ const backtest = async () => {
     return;
   }
 
-  let testSuite = createTestSuite(userName, tickers, backtestConfig).slice(
-    0,
-    parseInt(flags.tests),
-  );
+  let testSuite = createTestSuite(
+    userName,
+    tickers,
+    typedBacktestConfig,
+    connectorName,
+  ).slice(0, parseInt(flags.tests));
   const mlEnabled = Boolean(flags.ml);
   testSuite = testSuite.map((test) => ({ ...test, ml: mlEnabled }));
 

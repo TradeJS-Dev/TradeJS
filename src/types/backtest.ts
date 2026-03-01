@@ -46,10 +46,13 @@ export type TestingOptions = Pick<KlineRequest, 'start' | 'end'>;
 export interface BacktestConfig {
   strategyName: string;
   strategyConfig: StrategyConfig;
+}
+
+export interface BacktestRunConfig extends BacktestConfig {
   connectorName: string;
 }
 
-export interface Test extends BacktestConfig {
+export interface Test extends BacktestRunConfig {
   userName: string;
   name: string;
   testId: string;
