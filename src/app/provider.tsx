@@ -7,7 +7,7 @@ import {
   defineConfig,
 } from '@chakra-ui/react';
 import { SessionProvider } from 'next-auth/react';
-import { ColorModeProvider } from '@UI';
+import { AppToaster, ColorModeProvider } from '@UI';
 
 const config = defineConfig({
   theme: {
@@ -29,7 +29,10 @@ export default function Provider({
   return (
     <ChakraProvider value={system}>
       <ColorModeProvider forcedTheme="dark">
-        <SessionProvider>{children}</SessionProvider>
+        <SessionProvider>
+          {children}
+          <AppToaster />
+        </SessionProvider>
       </ColorModeProvider>
     </ChakraProvider>
   );

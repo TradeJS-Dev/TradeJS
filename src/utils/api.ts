@@ -32,7 +32,18 @@ const post = async <T>(url: string, body: object): Promise<T> => {
   return data;
 };
 
+const remove = async <T>(url: string): Promise<T> => {
+  const response = await fetch(url, {
+    method: 'DELETE',
+  });
+
+  const data = await handleResponse<T>(response);
+
+  return data;
+};
+
 export const API = {
   get,
   post,
+  delete: remove,
 };

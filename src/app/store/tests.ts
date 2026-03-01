@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import _ from 'lodash';
-import { get, set } from 'idb-keyval';
+import { del, get, set } from 'idb-keyval';
 import { getBacktest, getBacktestFiles, getOrderLog } from '@actions/backtest';
 import {
   TestResult,
@@ -31,6 +31,7 @@ const COLORS = [
 interface BacktestState {
   backtests: Map<string, OrderLogData | null>;
   setBacktest: (id: string, backtest: OrderLogData) => void;
+  removeBacktest: (id: string) => void;
 }
 
 const useDataStore = create<BacktestState>((set) => ({
@@ -44,6 +45,15 @@ const useDataStore = create<BacktestState>((set) => ({
         backtests: next,
       };
     }),
+  removeBacktest: (id) =>
+    set(({ backtests }) => {
+      const next = new Map(backtests);
+      next.delete(id);
+
+      return {
+        backtests: next,
+      };
+    }),
 }));
 
 interface FavotiteTestsState {
@@ -52,6 +62,7 @@ interface FavotiteTestsState {
     netProfit: number;
   }[];
   toggleFavorite: (testName: string, netProfit: number) => void;
+  removeFavorite: (testName: string) => void;
 }
 
 const useFavoriteTetstsStore = create<FavotiteTestsState>()(
@@ -76,6 +87,10 @@ const useFavoriteTetstsStore = create<FavotiteTestsState>()(
             ],
           };
         }),
+      removeFavorite: (testName) =>
+        set(({ tests }) => ({
+          tests: tests.filter((t) => t.testName !== testName),
+        })),
     }),
     {
       name: FAVORITE_LOCAL_STORAGE_KEY,
@@ -86,6 +101,7 @@ const useFavoriteTetstsStore = create<FavotiteTestsState>()(
 interface TestListState {
   tests: Items;
   setTest: (tests: Items) => void;
+  removeTest: (testName: string) => void;
 }
 
 const useTestListStore = create<TestListState>((set) => ({
@@ -93,6 +109,10 @@ const useTestListStore = create<TestListState>((set) => ({
   setTest: (tests) =>
     set(() => ({
       tests,
+    })),
+  removeTest: (testName) =>
+    set(({ tests }) => ({
+      tests: tests.filter((t) => t.value !== testName),
     })),
 }));
 
@@ -102,6 +122,7 @@ interface TestsCompareState {
     color: string;
   }[];
   onChangeCompare: OnChangeCompare;
+  removeFromCompare: (testName: string) => void;
 }
 
 const useTestsCompareStore = create<TestsCompareState>()(
@@ -124,6 +145,10 @@ const useTestsCompareStore = create<TestsCompareState>()(
             compareList: compareList.filter((t) => t.testName !== testName),
           };
         }),
+      removeFromCompare: (testName) =>
+        set(({ compareList }) => ({
+          compareList: compareList.filter((t) => t.testName !== testName),
+        })),
     }),
     {
       name: COMPARE_LOCAL_STORAGE_KEY,
@@ -134,6 +159,7 @@ const useTestsCompareStore = create<TestsCompareState>()(
 interface TestsState {
   tests: Map<string, TestResult | null>;
   setTest: (test: TestResult) => void;
+  removeTest: (testName: string) => void;
 }
 
 const useTestsStore = create<TestsState>((set) => ({
@@ -147,11 +173,21 @@ const useTestsStore = create<TestsState>((set) => ({
         tests: next,
       };
     }),
+  removeTest: (testName) =>
+    set(({ tests }) => {
+      const next = new Map(tests);
+      next.delete(testName);
+
+      return {
+        tests: next,
+      };
+    }),
 }));
 
 export const useFavoriteTests = () => {
   const favotites = useFavoriteTetstsStore((s) => s.tests);
   const toggleFavorite = useFavoriteTetstsStore((s) => s.toggleFavorite);
+  const removeFavorite = useFavoriteTetstsStore((s) => s.removeFavorite);
   const checkIsFavorite = (testName: string) =>
     favotites.some((t) => t.testName === testName);
 
@@ -172,6 +208,7 @@ export const useFavoriteTests = () => {
     favotites,
     favoriteItems,
     toggleFavorite,
+    removeFavorite,
     checkIsFavorite,
   };
 };
@@ -188,7 +225,31 @@ export const useTestList = (filters: TestListProps = {}) => {
   const setTest = useTestListStore((s) => s.setTest);
   const { favoriteItems } = useFavoriteTests();
 
+  const testStrategyMap = new Map(
+    tests
+      .filter((item) => typeof item.data?.strategyName === 'string')
+      .map((item) => [item.value, item.data?.strategyName as string]),
+  );
+
   const testItems: Items = _.chain([...favoriteItems, ...tests])
+    .map((item) => {
+      if (item.data?.strategyName) {
+        return item;
+      }
+
+      const strategyName = testStrategyMap.get(item.value);
+      if (!strategyName) {
+        return item;
+      }
+
+      return {
+        ...item,
+        data: {
+          ...(item.data || {}),
+          strategyName,
+        },
+      };
+    })
     .filter((t) => {
       const { symbol } = parseTestName(t.value);
 
@@ -285,6 +346,7 @@ export const useTestsCompare = () => {
   const setTest = useTestsStore((s) => s.setTest);
   const compareList = useTestsCompareStore((s) => s.compareList);
   const onChangeCompare = useTestsCompareStore((s) => s.onChangeCompare);
+  const removeFromCompare = useTestsCompareStore((s) => s.removeFromCompare);
 
   const loadData = async (testName: string) => {
     const key = `test-${testName}`;
@@ -319,6 +381,29 @@ export const useTestsCompare = () => {
       .filter((c) => !!c.testResult) as TestCompareList,
     checkIsCompared,
     onChangeCompare,
+    removeFromCompare,
+  };
+};
+
+export const useBacktestMutations = () => {
+  const removeTestFromList = useTestListStore((s) => s.removeTest);
+  const removeTestResult = useTestsStore((s) => s.removeTest);
+  const removeBacktest = useDataStore((s) => s.removeBacktest);
+  const removeFavorite = useFavoriteTetstsStore((s) => s.removeFavorite);
+  const removeFromCompare = useTestsCompareStore((s) => s.removeFromCompare);
+
+  const removeBacktestTest = async (testName: string) => {
+    removeTestFromList(testName);
+    removeTestResult(testName);
+    removeBacktest(testName);
+    removeFavorite(testName);
+    removeFromCompare(testName);
+
+    await Promise.all([del(`test-${testName}`), del(`backtest-${testName}`)]);
+  };
+
+  return {
+    removeBacktestTest,
   };
 };
 

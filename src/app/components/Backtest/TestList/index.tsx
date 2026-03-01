@@ -5,18 +5,27 @@ import AutoSizer from 'react-virtualized-auto-sizer';
 import { FixedSizeList, ListChildComponentProps } from 'react-window';
 import { FiFolder } from 'react-icons/fi';
 import { Box, Code } from '@chakra-ui/react';
-import { useTestList } from '@store';
 import { TestCard } from '@components/Backtest/TestCard';
 import { EmptyState } from '@UI';
+import { Items } from '@types';
 
 interface ListProps {
+  tests: Items;
+  loadding: boolean;
+  fulFilled: boolean;
+  noData: boolean;
   overscan?: number;
 }
 
 const ITEM_HEIGHT = 548;
 
-export const TestList = ({ overscan = 2 }: ListProps) => {
-  const { tests, loadding, fulFilled, noData } = useTestList();
+export const TestList = ({
+  tests,
+  loadding,
+  fulFilled,
+  noData,
+  overscan = 2,
+}: ListProps) => {
   const itemKey = useCallback(
     (index: number) => tests[index]?.value ?? String(index),
     [tests],
@@ -34,6 +43,7 @@ export const TestList = ({ overscan = 2 }: ListProps) => {
               <TestCard.ConfigDrawer />
               <TestCard.OpenDashboardButton />
               <TestCard.OpenReportButton />
+              <TestCard.DeleteButton />
             </TestCard.Title>
             <TestCard.Chart />
             <TestCard.StatLine />

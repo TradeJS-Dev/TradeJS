@@ -8,4 +8,5 @@ export {
   useTestList,
   useFavoriteTests,
   useBacktest,
+  useBacktestMutations,
 } from './tests';

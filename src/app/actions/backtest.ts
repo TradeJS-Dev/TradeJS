@@ -38,3 +38,18 @@ export const getBacktest = async (
 
   return data.result ?? null;
 };
+
+export const deleteBacktest = async (
+  name: string | undefined,
+  strategyName: string | undefined,
+): Promise<boolean> => {
+  if (!name || !strategyName) {
+    return false;
+  }
+
+  const data = await API.delete<{ deleted?: boolean }>(
+    `${API_BASE}/test/${encodeURIComponent(strategyName)}/${encodeURIComponent(name)}`,
+  );
+
+  return data.deleted === true;
+};

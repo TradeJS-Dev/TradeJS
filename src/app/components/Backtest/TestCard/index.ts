@@ -10,6 +10,7 @@ import { TestCardCompareButton } from './CompareButton';
 import { TestCardFavoriteIndicator } from './FavoriteIndicator';
 import { TestCardOpenReportButton } from './OpenReportButton';
 import { TestCardOpenDashboardButton } from './OpenDashboardButton';
+import { TestCardDeleteButton } from './DeleteButton';
 
 export const TestCard = {
   Root: TestCardRoot,
@@ -23,4 +24,5 @@ export const TestCard = {
   FavoriteIndicator: TestCardFavoriteIndicator,
   OpenDashboardButton: TestCardOpenDashboardButton,
   OpenReportButton: TestCardOpenReportButton,
+  DeleteButton: TestCardDeleteButton,
 };
