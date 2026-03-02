@@ -6,7 +6,8 @@ import {
   buildDefaultIndicatorPeriods,
   createStrategyAPI,
   createStrategyIndicatorsState,
-  enrichSignalWithMlAi,
+  enrichSignalWithAi,
+  enrichSignalWithMl,
   executeEntryOrder,
   resolveStrategyConfig,
 } from '@utils/strategyHelpers';
@@ -77,9 +78,34 @@ const shouldExecuteEntryDecision = ({
   minAiQuality: number;
 }) =>
   makeOrdersEnabled &&
-  (!signal ||
-    env === 'BACKTEST' ||
-    (quality != null && quality >= minAiQuality));
+  (!signal || env === 'BACKTEST' || quality == null || quality >= minAiQuality);
+
+const getEntrySkipReason = ({
+  makeOrdersEnabled,
+  env,
+  quality,
+  minAiQuality,
+}: {
+  makeOrdersEnabled: boolean;
+  env: string;
+  quality?: number;
+  minAiQuality: number;
+}): string => {
+  if (!makeOrdersEnabled) {
+    return 'MAKE_ORDERS_DISABLED';
+  }
+
+  if (
+    env !== 'BACKTEST' &&
+    quality != null &&
+    Number.isFinite(quality) &&
+    quality < minAiQuality
+  ) {
+    return `AI_QUALITY_BELOW_MIN (${quality} < ${minAiQuality})`;
+  }
+
+  return 'ENTRY_POLICY_BLOCKED';
+};
 
 const handleExitDecision = async ({
   connector,
@@ -121,15 +147,18 @@ const enrichEntryDecisionSignal = async ({
     return { signal, quality: undefined as number | undefined };
   }
 
-  const quality = await enrichSignalWithMlAi({
+  await enrichSignalWithMl({
+    signal,
+    env,
+    ml: runtime.ml,
+  });
+  const quality = await enrichSignalWithAi({
     signal,
     symbol,
     direction: signal.direction,
     env,
-    ml: runtime.ml,
     ai: runtime.ai,
   });
-  signal.orderStatus = 'canceled';
 
   return { signal, quality };
 };
@@ -295,6 +324,15 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
       });
 
       if (!shouldMakeOrder) {
+        if (signal) {
+          signal.orderStatus = 'skipped';
+          signal.orderSkipReason = getEntrySkipReason({
+            makeOrdersEnabled,
+            env,
+            quality,
+            minAiQuality,
+          });
+        }
         return signal ?? decision.code;
       }
       return executeEntryDecision({

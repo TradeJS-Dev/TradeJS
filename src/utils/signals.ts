@@ -51,6 +51,7 @@ export const formatMessage = (
     direction,
     strategy,
     orderStatus,
+    orderSkipReason,
     isConfigFromBacktest,
     ml,
     prices: { currentPrice, takeProfitPrice, stopLossPrice, riskRatio },
@@ -103,13 +104,22 @@ export const formatMessage = (
       lines.push('');
 
       if (orderStatus) {
-        let orderStatusText = '⚪️ Order canceled';
+        let orderStatusText = '⚪️ Order skipped';
         if (orderStatus === 'completed') {
           orderStatusText = '🟢 Order completed';
         } else if (orderStatus === 'failed') {
           orderStatusText = '🔴 Order failed';
+        } else if (orderStatus === 'canceled') {
+          // Legacy value for historical signals.
+          orderStatusText = '⚪️ Order skipped';
         }
         lines.push(orderStatusText);
+        if (
+          (orderStatus === 'skipped' || orderStatus === 'canceled') &&
+          orderSkipReason
+        ) {
+          lines.push(`Skip reason: <b>${escapeHtml(orderSkipReason)}</b>`);
+        }
       }
 
       if (isConfigFromBacktest) {

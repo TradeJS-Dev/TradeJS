@@ -209,7 +209,8 @@ export interface Signal {
   strategy: string;
   direction: Direction;
   timestamp: number;
-  orderStatus?: 'completed' | 'failed' | 'canceled';
+  orderStatus?: 'completed' | 'failed' | 'skipped' | 'canceled';
+  orderSkipReason?: string;
   isConfigFromBacktest?: boolean;
   ml?: {
     probability: number;

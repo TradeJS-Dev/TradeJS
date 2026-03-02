@@ -924,7 +924,7 @@ describe('TrendlineStrategyCreator', () => {
     expect(connector.placeOrder).toHaveBeenCalledTimes(1);
   });
 
-  it('does not place order in non-BACKTEST when AI does not confirm current direction', async () => {
+  it('places order in non-BACKTEST when AI direction mismatches and MIN_AI_QUALITY is 0', async () => {
     (askAI as jest.Mock).mockResolvedValue({
       direction: null,
       quality: 5,
@@ -975,6 +975,8 @@ describe('TrendlineStrategyCreator', () => {
         ENV: 'test',
         INTERVAL: '15',
         MAKE_ORDERS: true,
+        AI_ENABLED: true,
+        MIN_AI_QUALITY: 0,
         MAX_LOSS_VALUE: 10,
         MAX_CORRELATION: 1,
         TRENDLINE: {},
@@ -1005,7 +1007,7 @@ describe('TrendlineStrategyCreator', () => {
     );
 
     expect(typeof result).toBe('object');
-    expect((result as any).orderStatus).toBe('canceled');
-    expect(connector.placeOrder).not.toHaveBeenCalled();
+    expect((result as any).orderStatus).toBe('completed');
+    expect(connector.placeOrder).toHaveBeenCalledTimes(1);
   });
 });

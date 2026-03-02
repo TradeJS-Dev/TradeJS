@@ -19,14 +19,42 @@ interface EnrichSignalWithMlAiParams {
   ai?: StrategyRuntimeAiOptions;
 }
 
-export const enrichSignalWithMlAi = async ({
+const formatAiError = (err: unknown): string => {
+  const error = err as {
+    message?: unknown;
+    status?: unknown;
+    code?: unknown;
+    type?: unknown;
+    error?: unknown;
+  };
+
+  const safeJson = (value: unknown) => {
+    try {
+      return JSON.stringify(value);
+    } catch {
+      return String(value);
+    }
+  };
+
+  const details = {
+    message: String(error?.message ?? 'unknown'),
+    status: error?.status ?? null,
+    code: error?.code ?? null,
+    type: error?.type ?? null,
+    providerError: error?.error ?? null,
+  };
+
+  return safeJson(details);
+};
+
+export const enrichSignalWithMl = async ({
   signal,
-  symbol,
-  direction,
   env,
   ml,
-  ai,
-}: EnrichSignalWithMlAiParams): Promise<number | undefined> => {
+}: Pick<
+  EnrichSignalWithMlAiParams,
+  'signal' | 'env' | 'ml'
+>): Promise<void> => {
   if (
     env !== 'BACKTEST' &&
     ml &&
@@ -43,22 +71,47 @@ export const enrichSignalWithMlAi = async ({
       signal.ml = mlResult;
     }
   }
+};
 
+export const enrichSignalWithAi = async ({
+  signal,
+  symbol,
+  direction,
+  env,
+  ai,
+}: Pick<
+  EnrichSignalWithMlAiParams,
+  'signal' | 'symbol' | 'direction' | 'env' | 'ai'
+>): Promise<number | undefined> => {
   if (env === 'BACKTEST' || ai?.enabled === false) {
     return undefined;
   }
 
   try {
     const analysis = await askAI(signal);
-    const aiApprovedCurrentTrade = analysis?.direction === direction;
-    if (aiApprovedCurrentTrade && typeof analysis?.quality === 'number') {
-      return Math.round(analysis.quality);
+    if (typeof analysis?.quality === 'number') {
+      const normalizedQuality = Math.round(analysis.quality);
+      const aiApprovedCurrentTrade = analysis?.direction === direction;
+      // Direction mismatch should penalize quality instead of hard-blocking.
+      return aiApprovedCurrentTrade ? normalizedQuality : 0;
     }
   } catch (err) {
-    logger.error('AI analysis error: %s %s', symbol, err);
+    logger.error('AI analysis error: %s %s', symbol, formatAiError(err));
   }
 
   return undefined;
+};
+
+export const enrichSignalWithMlAi = async ({
+  signal,
+  symbol,
+  direction,
+  env,
+  ml,
+  ai,
+}: EnrichSignalWithMlAiParams): Promise<number | undefined> => {
+  await enrichSignalWithMl({ signal, env, ml });
+  return enrichSignalWithAi({ signal, symbol, direction, env, ai });
 };
 
 interface ExecuteEntryOrderParams {
@@ -103,6 +156,7 @@ export const executeEntryOrder = async ({
   );
 
   signal.orderStatus = orderPlaced ? 'completed' : 'failed';
+  signal.orderSkipReason = undefined;
 
   const currentPosition = await connector.getPosition(symbol);
   if (currentPosition?.price) {

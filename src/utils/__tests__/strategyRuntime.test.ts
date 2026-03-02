@@ -1,5 +1,6 @@
 const mockResolveStrategyConfig = jest.fn();
-const mockEnrichSignalWithMlAi = jest.fn();
+const mockEnrichSignalWithMl = jest.fn();
+const mockEnrichSignalWithAi = jest.fn();
 const mockExecuteEntryOrder = jest.fn();
 
 jest.mock('@utils/strategyHelpers', () => ({
@@ -40,8 +41,8 @@ jest.mock('@utils/strategyHelpers', () => ({
   })),
   resolveStrategyConfig: (...args: unknown[]) =>
     mockResolveStrategyConfig(...args),
-  enrichSignalWithMlAi: (...args: unknown[]) =>
-    mockEnrichSignalWithMlAi(...args),
+  enrichSignalWithMl: (...args: unknown[]) => mockEnrichSignalWithMl(...args),
+  enrichSignalWithAi: (...args: unknown[]) => mockEnrichSignalWithAi(...args),
   executeEntryOrder: (...args: unknown[]) => mockExecuteEntryOrder(...args),
 }));
 
@@ -140,11 +141,12 @@ describe('strategyRuntime', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockExecuteEntryOrder.mockResolvedValue(222);
-    mockEnrichSignalWithMlAi.mockResolvedValue(5);
+    mockEnrichSignalWithMl.mockResolvedValue(undefined);
+    mockEnrichSignalWithAi.mockResolvedValue(5);
   });
 
   it('gates entry by runtime.ai.minQuality', async () => {
-    mockEnrichSignalWithMlAi.mockResolvedValue(4);
+    mockEnrichSignalWithAi.mockResolvedValue(4);
     const { strategy, connector } = await makeRuntime(() =>
       makeDecisionEntry(),
     );
@@ -154,10 +156,65 @@ describe('strategyRuntime', () => {
       { timestamp: 1 } as any,
     );
 
-    expect(mockEnrichSignalWithMlAi).toHaveBeenCalledTimes(1);
+    expect(mockEnrichSignalWithMl).toHaveBeenCalledTimes(1);
+    expect(mockEnrichSignalWithAi).toHaveBeenCalledTimes(1);
     expect(mockExecuteEntryOrder).not.toHaveBeenCalled();
     expect(connector.placeOrder).not.toHaveBeenCalled();
-    expect((result as any).orderStatus).toBe('canceled');
+    expect((result as any).orderStatus).toBe('skipped');
+    expect((result as any).orderSkipReason).toBe(
+      'AI_QUALITY_BELOW_MIN (4 < 5)',
+    );
+  });
+
+  it('allows entry when minQuality is 0 and runtime quality is 0', async () => {
+    mockEnrichSignalWithAi.mockResolvedValue(0);
+    const { strategy, connector } = await makeRuntime(() =>
+      makeDecisionEntry({
+        runtime: {
+          ai: { enabled: true, minQuality: 0 },
+          ml: { enabled: false },
+        },
+      }),
+    );
+
+    await strategy({ timestamp: 1 } as any, { timestamp: 1 } as any);
+
+    expect(mockExecuteEntryOrder).toHaveBeenCalledTimes(1);
+    expect(connector.placeOrder).not.toHaveBeenCalled();
+  });
+
+  it('does not block entry when AI quality is unavailable (e.g. AI request failed)', async () => {
+    mockEnrichSignalWithAi.mockResolvedValue(undefined);
+    const { strategy, connector } = await makeRuntime(() =>
+      makeDecisionEntry({
+        runtime: {
+          ai: { enabled: true, minQuality: 5 },
+          ml: { enabled: false },
+        },
+      }),
+    );
+
+    await strategy({ timestamp: 1 } as any, { timestamp: 1 } as any);
+
+    expect(mockExecuteEntryOrder).toHaveBeenCalledTimes(1);
+    expect(connector.placeOrder).not.toHaveBeenCalled();
+  });
+
+  it('marks entry as skipped when MAKE_ORDERS is disabled', async () => {
+    const { strategy, connector } = await makeRuntime(
+      () => makeDecisionEntry(),
+      { MAKE_ORDERS: false },
+    );
+
+    const result = await strategy(
+      { timestamp: 1 } as any,
+      { timestamp: 1 } as any,
+    );
+
+    expect(mockExecuteEntryOrder).not.toHaveBeenCalled();
+    expect(connector.placeOrder).not.toHaveBeenCalled();
+    expect((result as any).orderStatus).toBe('skipped');
+    expect((result as any).orderSkipReason).toBe('MAKE_ORDERS_DISABLED');
   });
 
   it('uses entryContext as source of truth for executeEntryOrder args', async () => {
@@ -204,7 +261,8 @@ describe('strategyRuntime', () => {
       { timestamp: 1 } as any,
     );
 
-    expect(mockEnrichSignalWithMlAi).not.toHaveBeenCalled();
+    expect(mockEnrichSignalWithMl).not.toHaveBeenCalled();
+    expect(mockEnrichSignalWithAi).not.toHaveBeenCalled();
     expect(beforePlaceOrder).toHaveBeenCalledTimes(1);
     expect(connector.placeOrder).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -237,9 +295,13 @@ describe('strategyRuntime', () => {
 
     await strategy({ timestamp: 1 } as any, { timestamp: 1 } as any);
 
-    expect(mockEnrichSignalWithMlAi).toHaveBeenCalledWith(
+    expect(mockEnrichSignalWithMl).toHaveBeenCalledWith(
       expect.objectContaining({
         ml: expect.objectContaining({ enabled: false }),
+      }),
+    );
+    expect(mockEnrichSignalWithAi).toHaveBeenCalledWith(
+      expect.objectContaining({
         ai: expect.objectContaining({ enabled: false }),
       }),
     );
