@@ -25,6 +25,7 @@ export interface StrategyConfig {
   [key: string]: any;
 }
 export type StrategyResultConfig = StrategyConfig;
+export type StrategyConfigGrid = Record<string, unknown[]>;
 
 export interface StrategyCreatorParams {
   userName: string;
@@ -43,12 +44,9 @@ export type StrategyCreator = (
 
 export type TestingOptions = Pick<KlineRequest, 'start' | 'end'>;
 
-export interface BacktestConfig {
+export interface BacktestRunConfig {
   strategyName: string;
   strategyConfig: StrategyConfig;
-}
-
-export interface BacktestRunConfig extends BacktestConfig {
   connectorName: string;
 }
 

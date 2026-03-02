@@ -23,7 +23,7 @@ import {
   Test,
   TestWorkerResult,
   ConnectorCreator,
-  BacktestConfig,
+  StrategyConfigGrid,
 } from '@types';
 
 const MAX_PARALLEL = Math.min(os.cpus().length, 6);
@@ -110,6 +110,16 @@ const recordError = (error: ErrorMessage) => {
   errorMessages.push(error);
 };
 
+const isStrategyConfigGrid = (value: unknown): value is StrategyConfigGrid => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return false;
+  }
+
+  return Object.values(value as Record<string, unknown>).every((item) =>
+    Array.isArray(item),
+  );
+};
+
 const resolveConnectorName = (value: unknown): ConnectorNames => {
   const provider = String(value || '')
     .trim()
@@ -164,6 +174,16 @@ const setTestData = async (test: Test, stat: TestStat, orderLog: OrderLog) => {
 };
 
 const backtest = async () => {
+  if (!flags.confg) {
+    throw new Error('Backtest config not send');
+  }
+
+  const strategyName = flags.config.split(':')[0];
+
+  if (!flags.confg) {
+    throw new Error('Strategy name not found');
+  }
+
   const backtestConfig = await getData(
     redisKeys.backtestConfig(userName, flags.config),
     null,
@@ -172,13 +192,10 @@ const backtest = async () => {
     throw new Error(`Backtest config "${flags.config}" not found`);
   }
 
-  const typedBacktestConfig = backtestConfig as BacktestConfig;
-  if (
-    !typedBacktestConfig.strategyName ||
-    !typedBacktestConfig.strategyConfig
-  ) {
+  const typedBacktestConfig = backtestConfig as StrategyConfigGrid;
+  if (!isStrategyConfigGrid(typedBacktestConfig)) {
     throw new Error(
-      `Backtest config "${flags.config}" must include strategyName and strategyConfig`,
+      `Backtest config "${flags.config}" must include strategyName and strategyConfig grid`,
     );
   }
 
@@ -223,6 +240,7 @@ const backtest = async () => {
   let testSuite = createTestSuite(
     userName,
     tickers,
+    strategyName,
     typedBacktestConfig,
     connectorName,
   ).slice(0, parseInt(flags.tests));

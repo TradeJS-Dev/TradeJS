@@ -1,6 +1,6 @@
 import _ from 'lodash';
 import { BACKTEST_PRELOAD_DAYS } from '@constants';
-import { TestSuite, BacktestConfig, StrategyConfig } from '@types';
+import { TestSuite, StrategyConfig, StrategyConfigGrid } from '@types';
 import { ConnectorNames } from '@src/connectors';
 import { getTimestamp } from '@utils/timestamp';
 import { uuid } from '@utils/uuid';
@@ -8,9 +8,9 @@ import { uuid } from '@utils/uuid';
 type GenericConfig = StrategyConfig;
 
 export const generateParamGrid = <T extends StrategyConfig>(
-  paramOptions: Record<keyof T, T[keyof T][]>,
+  paramOptions: StrategyConfigGrid,
 ): T[] => {
-  const keys = Object.keys(paramOptions) as (keyof T)[];
+  const keys = Object.keys(paramOptions);
   const combinations: T[] = [];
 
   const helper = (index = 0, current: Partial<T> = {}) => {
@@ -20,12 +20,15 @@ export const generateParamGrid = <T extends StrategyConfig>(
     }
 
     const key = keys[index];
-    for (const value of paramOptions[key]) {
+    for (const value of paramOptions[key] || []) {
       const copiedValue =
         typeof value === 'object' && value !== null
           ? structuredClone(value)
           : value;
-      helper(index + 1, { ...current, [key]: copiedValue });
+      helper(index + 1, {
+        ...current,
+        [key as keyof T]: copiedValue as T[keyof T],
+      });
     }
   };
 
@@ -73,13 +76,14 @@ export const mergeConfigs = (
 export const createTestSuite = (
   userName: string,
   tickers: string[],
-  backtestConfig: BacktestConfig,
+  strategyName: string,
+  backtestConfig: StrategyConfigGrid,
   connectorName: ConnectorNames,
 ): TestSuite => {
   const start = getTimestamp(BACKTEST_PRELOAD_DAYS);
   const end = getTimestamp();
   const testSuiteId = uuid(6);
-  const paramGrid = generateParamGrid(backtestConfig.strategyConfig);
+  const paramGrid = generateParamGrid(backtestConfig);
 
   return tickers.flatMap((symbol) =>
     paramGrid.map((params) => {
@@ -91,7 +95,7 @@ export const createTestSuite = (
         testSuiteId,
         symbol,
         options: { start, end },
-        strategyName: backtestConfig.strategyName,
+        strategyName,
         strategyConfig: params,
         connectorName,
       };
