@@ -1,6 +1,6 @@
 import _ from 'lodash';
 import { BOT_PRELOAD_DAYS } from '@constants';
-import { strategies, StrategyNames } from '@src/strategy';
+import { strategies } from '@src/strategy';
 import { connectors, ConnectorNames } from '@src/connectors';
 import { logger } from '@utils/logger';
 import { getData, redisKeys, getKeys } from '@utils/redis';
@@ -48,7 +48,10 @@ export const runBot = async () => {
       }
 
       try {
-        const strategyCreator = strategies[strategyName as StrategyNames];
+        const strategyCreator = strategies[strategyName];
+        if (!strategyCreator) {
+          throw new Error(`Unknown strategy: ${strategyName}`);
+        }
         const connector = await (
           connectors[connectorName as ConnectorNames] as ConnectorCreator
         )({

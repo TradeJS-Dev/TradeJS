@@ -1,4 +1,4 @@
-import { strategies, StrategyNames } from '@src/strategy';
+import { strategies } from '@src/strategy';
 import { connectors, ConnectorNames } from '@src/connectors';
 import { Candle, ConnectorCreator, KlineChartData, TestingBox } from '@types';
 import { PRELOAD_DAYS } from '@constants';
@@ -67,7 +67,10 @@ export const testing: TestingBox = async ({
   )({
     userName,
   });
-  const strategyCreator = strategies[strategyName as StrategyNames];
+  const strategyCreator = strategies[strategyName];
+  if (!strategyCreator) {
+    throw new Error(`Unknown strategy: ${strategyName}`);
+  }
   const binanceCreator = connectors[ConnectorNames.Binance];
   const coinbaseCreator = connectors[ConnectorNames.Coinbase];
   if (!binanceCreator || !coinbaseCreator) {

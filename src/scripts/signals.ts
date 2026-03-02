@@ -16,7 +16,7 @@ args.option(['t', 'tickers'], 'Selected tickers');
 args.option(['e', 'exclude'], 'Exclude tickers from tests');
 args.option(['l', 'tickersLimit'], 'Tickers limit');
 args.option(['f', 'timeframe'], 'Timeframe', 15);
-args.option(['m', 'makeOrders'], 'Make orders', false);
+args.option(['m', 'makeOrders'], 'Make orders');
 args.option(['N', 'notify'], 'Send message in Telegram', false);
 args.option(['u', 'updateOnly'], 'Only update tickers history', false);
 args.option(['C', 'cacheOnly'], 'Do not update tickers history', false);
