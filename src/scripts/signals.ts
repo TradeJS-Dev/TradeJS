@@ -16,8 +16,6 @@ args.option(['t', 'tickers'], 'Selected tickers');
 args.option(['e', 'exclude'], 'Exclude tickers from tests');
 args.option(['l', 'tickersLimit'], 'Tickers limit');
 args.option(['f', 'timeframe'], 'Timeframe', 15);
-args.option(['o', 'offset'], 'Offset', 3);
-args.option(['p', 'points'], 'Points', 3);
 args.option(['m', 'makeOrders'], 'Make orders', false);
 args.option(['N', 'notify'], 'Send message in Telegram', false);
 args.option(['u', 'updateOnly'], 'Only update tickers history', false);
@@ -83,12 +81,7 @@ const findSignals = async (
     config: {
       ENV: 'CRON',
       INTERVAL: interval,
-      MAX_LOSS_VALUE: 1,
       MAKE_ORDERS: flags.makeOrders,
-      TRENDLINE: {
-        minTouches,
-        offset,
-      },
     },
   });
 
