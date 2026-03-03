@@ -44,12 +44,10 @@ jest.mock('@tradejs/connectors', () => ({
 }));
 
 jest.mock('@tradejs/core/strategy', () => ({
-  strategies: {
-    TrendLine: (config: unknown) => mockStrategyCreator(config),
-  },
-  StrategyNames: {
-    TrendLine: 'TrendLine',
-  },
+  getStrategyCreator: async (strategyName: string) =>
+    strategyName === 'TrendLine'
+      ? (config: unknown) => mockStrategyCreator(config)
+      : undefined,
 }));
 
 jest.mock('@utils/correlation', () => ({

@@ -1,6 +1,6 @@
 import _ from 'lodash';
 import { BOT_PRELOAD_DAYS } from '@constants';
-import { strategies } from '@tradejs/core/strategy';
+import { getStrategyCreator } from '@tradejs/core/strategy';
 import { connectors, ConnectorNames } from '@tradejs/connectors';
 import { logger } from '@utils/logger';
 import { getData, redisKeys, getKeys } from '@utils/redis';
@@ -48,7 +48,7 @@ export const runBot = async () => {
       }
 
       try {
-        const strategyCreator = strategies[strategyName];
+        const strategyCreator = await getStrategyCreator(strategyName);
         if (!strategyCreator) {
           throw new Error(`Unknown strategy: ${strategyName}`);
         }

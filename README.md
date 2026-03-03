@@ -12,6 +12,7 @@
 - `packages/cli` — CLI-скрипты (`backtest`, `signals`, `bot`, `ml-*`, `doctor`).
 - `packages/framework` — публичный TS-native слой для пользователей (контракты стратегий/сигналов без привязки к внутренней структуре).
 - `packages/ml` — Python ML сервисы (train/infer/profile).
+- `examples/sandbox` — пример пользовательского plugin-пакета со стратегией `SandboxMomentum`.
 
 ### Быстрый запуск локально
 
@@ -24,6 +25,26 @@
 
 - Пакет `@tradejs/framework` как внешнюю точку входа для TS-интеграции.
 - Внутренние пакеты (`core`, `connectors`, `cli`, `app`) остаются implementation detail текущего репозитория.
+
+### Подключение пользовательских стратегий
+
+- Создайте файл `tradejs.config.ts` (или `tradejs.config.js|mjs|cjs`) в корне.
+- Укажите список plugin-модулей в `strategyPlugins`.
+- Пример:
+
+```ts
+import { defineConfig } from '@tradejs/framework';
+
+export default defineConfig({
+  strategyPlugins: ['@scope/my-strategy-plugin'],
+});
+```
+
+- Каждый plugin-модуль должен экспортировать `strategyEntries`:
+  - `[{ manifest: { name }, creator }]`
+- В проекте есть готовая песочница:
+  - `yarn dev:sandbox`
+  - `yarn signals:sandbox`
 
 ---
 

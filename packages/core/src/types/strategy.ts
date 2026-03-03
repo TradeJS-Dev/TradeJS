@@ -8,7 +8,8 @@ import {
   Tp,
   Candle,
 } from './trade';
-import { BacktestPriceMode, StrategyConfig } from './backtest';
+import { BacktestPriceMode, StrategyConfig, StrategyCreator } from './backtest';
+import { StrategyManifest } from './strategyAdapters';
 
 export interface StrategySignalMetaParams {
   symbol: string;
@@ -337,3 +338,12 @@ export type CreateStrategyCore<
     StrategyIndicatorsState<TNext, TSnapshot>
   >,
 ) => Promise<StrategyCoreRunner> | StrategyCoreRunner;
+
+export interface StrategyRegistryEntry {
+  manifest: StrategyManifest;
+  creator: StrategyCreator;
+}
+
+export interface StrategyPluginDefinition {
+  strategyEntries: StrategyRegistryEntry[];
+}

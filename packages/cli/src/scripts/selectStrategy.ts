@@ -1,16 +1,31 @@
 import readline from 'readline';
 import chalk from 'chalk';
+import { getAvailableStrategyNames } from '@tradejs/core/strategy';
 
-// Keep this script dependency-free from runtime strategy modules.
-// Importing @tradejs/core/strategy can trigger unrelated side-effects (e.g. Redis clients).
-const strategies = ['Breakout', 'TrendLine', 'VolumeDivergence'] as const;
 const defaultStrategy = 'TrendLine';
+
+const getStrategyChoices = async (): Promise<string[]> => {
+  try {
+    const loaded = await getAvailableStrategyNames();
+    if (loaded.length) {
+      return loaded;
+    }
+  } catch (error) {
+    console.warn(`Failed to load strategy list: ${String(error)}`);
+  }
+  return ['Breakout', 'TrendLine', 'VolumeDivergence'];
+};
 
 export const selectStrategy = async (
   promptLabel = 'Select strategy',
 ): Promise<string> => {
+  const strategies = await getStrategyChoices();
+  const fallbackStrategy = strategies.includes(defaultStrategy)
+    ? defaultStrategy
+    : strategies[0];
+
   if (!process.stdin.isTTY) {
-    return defaultStrategy;
+    return fallbackStrategy;
   }
 
   console.log(chalk.cyan('Available strategies:'));
@@ -30,13 +45,13 @@ export const selectStrategy = async (
     new Promise<string>((resolve) => rl.question(text, resolve));
 
   const answer = await question(
-    `${promptLabel} [${chalk.green(defaultStrategy)}]: `,
+    `${promptLabel} [${chalk.green(fallbackStrategy)}]: `,
   );
   rl.close();
 
   const trimmed = answer.trim();
   if (!trimmed) {
-    return defaultStrategy;
+    return fallbackStrategy;
   }
 
   const asNumber = Number(trimmed);
@@ -55,6 +70,6 @@ export const selectStrategy = async (
     return byName;
   }
 
-  console.warn(`Unknown strategy "${trimmed}", using ${defaultStrategy}.`);
-  return defaultStrategy;
+  console.warn(`Unknown strategy "${trimmed}", using ${fallbackStrategy}.`);
+  return fallbackStrategy;
 };

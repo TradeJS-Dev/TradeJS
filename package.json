@@ -4,11 +4,13 @@
   "private": true,
   "workspaces": [
     "apps/*",
-    "packages/*"
+    "packages/*",
+    "examples/*"
   ],
   "scripts": {
     "build": "turbo run build",
     "dev": "turbo run dev --filter=@tradejs/app",
+    "dev:sandbox": "yarn dev",
     "start": "yarn workspace @tradejs/app start",
     "doctor": "yarn workspace @tradejs/cli doctor",
     "lint": "turbo run lint",
@@ -50,12 +52,13 @@
     "ml-train:trendline:xgboost": "time bash ./bin/ml-train-with-redis.sh yarn workspace @tradejs/cli ml-train:trendline:xgboost",
     "ml-train:unified:catboost": "time bash ./bin/ml-train-with-redis.sh yarn workspace @tradejs/cli ml-train:unified:catboost",
     "ml-upload:prod": "bash ./bin/upload-models.sh",
-    "prettify": "yarn prettier -c -w ./apps ./packages",
+    "prettify": "yarn prettier -c -w ./apps ./packages ./examples",
     "redis-down": "docker compose -f docker-compose.db.yml stop redis",
     "redis-restart": "yarn redis-down && yarn redis-up",
     "redis-up": "docker compose -f docker-compose.db.yml up -d redis",
     "results": "time yarn workspace @tradejs/cli results",
     "signals": "NODE_OPTIONS=\"--max-old-space-size=8192\" time yarn workspace @tradejs/cli signals",
+    "signals:sandbox": "NODE_OPTIONS=\"--max-old-space-size=8192\" time yarn workspace @tradejs/cli signals",
     "spread:ingest": "time yarn workspace @tradejs/cli spread:ingest",
     "test": "time yarn workspace @tradejs/cli test-script",
     "test-ml": "time yarn workspace @tradejs/cli test-ml",

@@ -1,0 +1,14 @@
+{
+  "name": "@tradejs/example-sandbox",
+  "version": "1.0.0",
+  "private": true,
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "dependencies": {
+    "@tradejs/framework": "workspace:*"
+  },
+  "scripts": {
+    "build": "echo 'example-sandbox: build placeholder'",
+    "typecheck": "tsc -p ../../tsconfig.json --noEmit"
+  }
+}

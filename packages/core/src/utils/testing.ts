@@ -1,4 +1,4 @@
-import { strategies } from '@tradejs/core/strategy';
+import { getStrategyCreator } from '@tradejs/core/strategy';
 import { connectors, ConnectorNames } from '@tradejs/connectors';
 import { Candle, ConnectorCreator, KlineChartData, TestingBox } from '@types';
 import { PRELOAD_DAYS } from '@constants';
@@ -67,7 +67,7 @@ export const testing: TestingBox = async ({
   )({
     userName,
   });
-  const strategyCreator = strategies[strategyName];
+  const strategyCreator = await getStrategyCreator(strategyName);
   if (!strategyCreator) {
     throw new Error(`Unknown strategy: ${strategyName}`);
   }

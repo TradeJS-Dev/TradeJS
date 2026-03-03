@@ -15,7 +15,7 @@ import {
   StrategyConfig,
   StrategyCreator,
 } from '@types';
-import { strategies } from '@tradejs/core/strategy';
+import { getStrategyCreator } from '@tradejs/core/strategy';
 import { logger } from '@utils/logger';
 
 args.option(['t', 'tickers'], 'Selected tickers');
@@ -77,7 +77,7 @@ const loadRuntimeStrategies = async (
       if (!strategyName) {
         return null;
       }
-      const strategyCreator = strategies[strategyName];
+      const strategyCreator = await getStrategyCreator(strategyName);
       if (!strategyCreator) {
         logger.warn('Skip unknown strategy config key: %s', key);
         return null;
