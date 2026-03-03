@@ -10,6 +10,7 @@
     "build": "turbo run build",
     "dev": "turbo run dev --filter=@tradejs/app",
     "start": "yarn workspace @tradejs/app start",
+    "doctor": "yarn workspace @tradejs/cli doctor",
     "lint": "turbo run lint",
     "dev-tsc": "npx tsc --noEmit",
     "typecheck": "turbo run typecheck",

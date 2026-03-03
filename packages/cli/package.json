@@ -26,6 +26,7 @@
     "clean-dir": "ts-node -r tsconfig-paths/register ./src/scripts/cleanDir",
     "clean-redis": "ts-node -r tsconfig-paths/register ./src/scripts/cleanRedis",
     "clean-tests": "ts-node -r tsconfig-paths/register ./src/scripts/cleanTests",
+    "doctor": "ts-node -r tsconfig-paths/register ./src/scripts/doctor",
     "backtest": "ts-node -r tsconfig-paths/register ./src/scripts/backtest",
     "bot": "ts-node -r tsconfig-paths/register ./src/scripts/bot",
     "signals": "ts-node -r tsconfig-paths/register ./src/scripts/signals",
