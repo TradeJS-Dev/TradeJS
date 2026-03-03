@@ -38,11 +38,11 @@
       "@tradejs/connectors/*": [
         "./packages/connectors/src/*"
       ],
-      "@tradejs/sdk": [
-        "./packages/sdk/src/index"
+      "@tradejs/framework": [
+        "./packages/framework/src/index"
       ],
-      "@tradejs/sdk/*": [
-        "./packages/sdk/src/*"
+      "@tradejs/framework/*": [
+        "./packages/framework/src/*"
       ],
       "@app/*": [
         "./apps/app/src/app/*"

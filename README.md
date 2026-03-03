@@ -4,6 +4,29 @@
 
 ---
 
+## 🧩 Monorepo модули (Turbo)
+
+- `apps/app` — Next.js приложение (UI + API).
+- `packages/core` — ядро стратегий, runtime, типы и утилиты.
+- `packages/connectors` — адаптеры бирж и market-data провайдеры.
+- `packages/cli` — CLI-скрипты (`backtest`, `signals`, `bot`, `ml-*`, `doctor`).
+- `packages/framework` — публичный TS-native слой для пользователей (контракты стратегий/сигналов без привязки к внутренней структуре).
+- `packages/ml` — Python ML сервисы (train/infer/profile).
+
+### Быстрый запуск локально
+
+- Поднять инфраструктуру: `yarn infra-up`
+- Проверить сервисы: `yarn doctor`
+- Запустить app: `yarn dev`
+- Запустить app + infra: `yarn dev:with-infra`
+
+### Что устанавливает пользователь framework
+
+- Пакет `@tradejs/framework` как внешнюю точку входа для TS-интеграции.
+- Внутренние пакеты (`core`, `connectors`, `cli`, `app`) остаются implementation detail текущего репозитория.
+
+---
+
 ## 📂 Общая структура `src/`
 
 ### **`actions/`**

@@ -2541,15 +2541,15 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@tradejs/ml@workspace:packages/ml":
+"@tradejs/framework@workspace:packages/framework":
   version: 0.0.0-use.local
-  resolution: "@tradejs/ml@workspace:packages/ml"
+  resolution: "@tradejs/framework@workspace:packages/framework"
   languageName: unknown
   linkType: soft
 
-"@tradejs/sdk@workspace:packages/sdk":
+"@tradejs/ml@workspace:packages/ml":
   version: 0.0.0-use.local
-  resolution: "@tradejs/sdk@workspace:packages/sdk"
+  resolution: "@tradejs/ml@workspace:packages/ml"
   languageName: unknown
   linkType: soft
 
