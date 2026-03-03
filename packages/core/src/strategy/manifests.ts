@@ -10,6 +10,7 @@ import { registerIndicatorEntries } from '@tradejs/core/indicators';
 import { logger } from '@utils/logger';
 import { loadTradejsConfig } from '@utils/tradejsConfig';
 import { breakoutManifest } from './Breakout/manifest';
+import { maStrategyManifest } from './MaStrategy/manifest';
 import { trendLineManifest } from './TrendLine/manifest';
 import { volumeDivergenceManifest } from './VolumeDivergence/manifest';
 
@@ -42,6 +43,13 @@ const builtInStrategyEntries: readonly StrategyRegistryEntry[] = [
     creator: createLazyStrategyCreator(
       () => import('./TrendLine/strategy'),
       'TrendlineStrategyCreator',
+    ),
+  },
+  {
+    manifest: maStrategyManifest,
+    creator: createLazyStrategyCreator(
+      () => import('./MaStrategy/strategy'),
+      'MaStrategyCreator',
     ),
   },
   {

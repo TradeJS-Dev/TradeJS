@@ -93,6 +93,7 @@ const MODEL_TYPES: ModelType[] = [
 ];
 const STRATEGIES = [
   'Breakout',
+  'MaStrategy',
   'TrendLine',
   'VolumeDivergence',
   'any',
