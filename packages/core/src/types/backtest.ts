@@ -1,4 +1,3 @@
-import { Tokens } from '@chakra-ui/react';
 import { Metrics, MetricThreshold } from './metrics';
 import {
   Candle,
@@ -142,7 +141,7 @@ export type TestConnectorCreator = (
   context?: TestConnectorContext,
 ) => TestConnector;
 
-export type ChartColor = Tokens['colors'] | React.CSSProperties['color'];
+export type ChartColor = string;
 export interface TestCompare {
   testResult: TestResult;
   color: ChartColor;

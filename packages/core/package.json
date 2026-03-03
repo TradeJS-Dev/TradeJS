@@ -5,7 +5,6 @@
   "main": "src/index.ts",
   "types": "src/index.ts",
   "dependencies": {
-    "@chakra-ui/react": "^3.24.2",
     "@grpc/grpc-js": "^1.10.7",
     "@grpc/proto-loader": "^0.7.13",
     "@langchain/core": "^0.3.68",
