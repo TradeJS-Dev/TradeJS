@@ -52,6 +52,7 @@ const getLogLevel = (res: any) => (res.retCode === 0 ? 'info' : 'error');
 
 export const ByBitConnectorCreator: ConnectorCreator = async (config) => {
   let state: Record<string, unknown> = {};
+  let isTimescaleFallbackMode = false;
 
   /** -------------------- low-level fetch from exchange -------------------- */
   const request = async ({
@@ -279,107 +280,138 @@ export const ByBitConnectorCreator: ConnectorCreator = async (config) => {
       }
       const intervalMs = intervalMsOf(intMinutes);
 
-      // 1) что уже есть в БД
-      const edges = await getDataEdges(symbol, intMinutes);
-      let dataStart = edges.min; // ms | undefined
-      let dataEnd = edges.max; // ms | undefined
+      try {
+        // 1) что уже есть в БД
+        const edges = await getDataEdges(symbol, intMinutes);
+        let dataStart = edges.min; // ms | undefined
+        let dataEnd = edges.max; // ms | undefined
 
-      // 2) нормализуем требуемый диапазон к закрытым свечам
-      const { normStart, normEnd } = normalizeRangeToClosed(
-        intervalMs,
-        defaultStart,
-        defaultEnd,
-      );
-
-      // 3) cacheOnly — только из БД
-      if (cacheOnly) {
-        const base = edges.max ?? Date.now();
-        const s = Math.max(
-          defaultStart ?? base - CACHE_FALLBACK_WINDOW * intervalMs,
-          0,
+        // 2) нормализуем требуемый диапазон к закрытым свечам
+        const { normStart, normEnd } = normalizeRangeToClosed(
+          intervalMs,
+          defaultStart,
+          defaultEnd,
         );
-        const e = defaultEnd ?? base;
-        const dbData = await getCandlesRange(symbol, intMinutes, s, e);
+
+        // 3) cacheOnly — только из БД
+        if (cacheOnly) {
+          const base = edges.max ?? Date.now();
+          const s = Math.max(
+            defaultStart ?? base - CACHE_FALLBACK_WINDOW * intervalMs,
+            0,
+          );
+          const e = defaultEnd ?? base;
+          const dbData = await getCandlesRange(symbol, intMinutes, s, e);
+          return rowsToKline(dbData);
+        }
+
+        // 4) решаем, надо ли дозагружать
+        const needOlderData =
+          defaultStart !== undefined &&
+          (dataStart === undefined || normStart < dataStart);
+
+        const needNewerData =
+          defaultEnd !== undefined &&
+          (dataEnd === undefined || normEnd > dataEnd);
+
+        // 5) дозагрузка старого хвоста (батчами по 1000, через loadData/while)
+        if (needOlderData) {
+          const pointerForOlder = dataStart ?? normEnd ?? Date.now();
+          const olderData = await loadData(
+            'older',
+            pointerForOlder,
+            normStart,
+            {
+              symbol,
+              interval,
+              silent,
+              start: normStart,
+              end: pointerForOlder,
+            },
+            intervalMs,
+          );
+
+          if (olderData.length) {
+            await upsertCandles(toRows(symbol, intMinutes, olderData));
+            dataStart = normStart;
+          }
+        }
+
+        // 6) дозагрузка нового хвоста (батчами по 1000)
+        if (needNewerData) {
+          const pointerForNewer = dataEnd ?? normStart ?? 0;
+          const newerData = await loadData(
+            'newer',
+            pointerForNewer,
+            normEnd,
+            {
+              symbol,
+              interval,
+              silent,
+              start: pointerForNewer,
+              end: normEnd,
+            },
+            intervalMs,
+          );
+
+          if (newerData.length) {
+            await upsertCandles(toRows(symbol, intMinutes, newerData));
+            dataEnd = normEnd;
+          }
+        }
+
+        // 7) точечное «освежение хвоста» из 2 свечей, если мы запрашиваем «правый край»
+        const isRightEdgeQuery =
+          defaultEnd === undefined ||
+          (defaultEnd && defaultEnd >= Date.now() - intervalMs);
+
+        if (!cacheOnly && isRightEdgeQuery) {
+          await refreshTail({ symbol, interval, silent });
+        }
+
+        // 8) финальный SELECT из БД — источник истины
+        const rangeStart = defaultStart ?? dataStart ?? 0;
+        const rangeEnd = defaultEnd ?? dataEnd ?? Date.now();
+        const { normStart: finalStart, normEnd: finalEnd } =
+          normalizeRangeToClosed(intervalMs, rangeStart, rangeEnd);
+
+        const dbData = await getCandlesRange(
+          symbol,
+          intMinutes,
+          finalStart,
+          finalEnd,
+        );
+
+        if (isTimescaleFallbackMode) {
+          isTimescaleFallbackMode = false;
+          logger.log('info', 'TimescaleDB connection restored for kline cache');
+        }
+
         return rowsToKline(dbData);
-      }
-
-      // 4) решаем, надо ли дозагружать
-      const needOlderData =
-        defaultStart !== undefined &&
-        (dataStart === undefined || normStart < dataStart);
-
-      const needNewerData =
-        defaultEnd !== undefined &&
-        (dataEnd === undefined || normEnd > dataEnd);
-
-      // 5) дозагрузка старого хвоста (батчами по 1000, через loadData/while)
-      if (needOlderData) {
-        const pointerForOlder = dataStart ?? normEnd ?? Date.now();
-        const olderData = await loadData(
-          'older',
-          pointerForOlder,
-          normStart,
-          {
+      } catch (error) {
+        if (!isTimescaleFallbackMode) {
+          isTimescaleFallbackMode = true;
+          logger.log(
+            'warn',
+            'TimescaleDB unavailable for %s %s: %s. Falling back to exchange API.',
             symbol,
             interval,
-            silent,
-            start: normStart,
-            end: pointerForOlder,
-          },
-          intervalMs,
-        );
-
-        if (olderData.length) {
-          await upsertCandles(toRows(symbol, intMinutes, olderData));
-          dataStart = normStart;
+            String(error),
+          );
         }
-      }
 
-      // 6) дозагрузка нового хвоста (батчами по 1000)
-      if (needNewerData) {
-        const pointerForNewer = dataEnd ?? normStart ?? 0;
-        const newerData = await loadData(
-          'newer',
-          pointerForNewer,
-          normEnd,
-          {
-            symbol,
-            interval,
-            silent,
-            start: pointerForNewer,
-            end: normEnd,
-          },
-          intervalMs,
-        );
-
-        if (newerData.length) {
-          await upsertCandles(toRows(symbol, intMinutes, newerData));
-          dataEnd = normEnd;
+        if (cacheOnly) {
+          return [];
         }
+
+        return request({
+          symbol,
+          interval,
+          start: defaultStart,
+          end: defaultEnd,
+          silent,
+        });
       }
-
-      // 7) точечное «освежение хвоста» из 2 свечей, если мы запрашиваем «правый край»
-      const isRightEdgeQuery =
-        defaultEnd === undefined ||
-        (defaultEnd && defaultEnd >= Date.now() - intervalMs);
-
-      if (!cacheOnly && isRightEdgeQuery) {
-        await refreshTail({ symbol, interval, silent });
-      }
-
-      // 8) финальный SELECT из БД — источник истины
-      const rangeStart = defaultStart ?? dataStart ?? 0;
-      const rangeEnd = defaultEnd ?? dataEnd ?? Date.now();
-      const { normStart: finalStart, normEnd: finalEnd } =
-        normalizeRangeToClosed(intervalMs, rangeStart, rangeEnd);
-
-      const dbData = await getCandlesRange(
-        symbol,
-        intMinutes,
-        finalStart,
-        finalEnd,
-      );
-      return rowsToKline(dbData);
     },
 
     getPosition: async (symbol) => {

@@ -9,11 +9,35 @@ declare global {
   var __redis__: Redis | undefined;
 }
 
+let redisConnectionWarningShown = false;
+
+const isRedisConnectivityError = (error: Error): boolean =>
+  /ECONNREFUSED|ENOTFOUND|EAI_AGAIN/i.test(error.message);
+
 const getRedis = () => {
   if (!global.__redis__) {
     global.__redis__ = new Redis({
       host: process.env.REDIS_HOST,
       port: Number(process.env.REDIS_PORT ?? 6379),
+    });
+    global.__redis__.on('error', (error: Error) => {
+      if (isRedisConnectivityError(error)) {
+        if (redisConnectionWarningShown) return;
+        redisConnectionWarningShown = true;
+        logger.log(
+          'warn',
+          'Redis is unavailable: %s. Cache-dependent features are temporarily disabled.',
+          error.message,
+        );
+        return;
+      }
+
+      logger.log('error', 'Redis client error: %s', String(error));
+    });
+    global.__redis__.on('ready', () => {
+      if (!redisConnectionWarningShown) return;
+      redisConnectionWarningShown = false;
+      logger.log('info', 'Redis connection restored');
     });
   }
   return global.__redis__;
@@ -42,22 +66,27 @@ export const getKeys = async (prefix: string): Promise<string[]> => {
   const redis = getRedis();
   const keys: string[] = [];
 
-  let cursor = '0';
-  do {
-    const [nextCursor, batch] = await redis.scan(
-      cursor,
-      'MATCH',
-      `${prefix}*`,
-      'COUNT',
-      '200',
-    );
-    cursor = nextCursor;
-    for (const key of batch) {
-      if (key.startsWith(prefix)) {
-        keys.push(key);
+  try {
+    let cursor = '0';
+    do {
+      const [nextCursor, batch] = await redis.scan(
+        cursor,
+        'MATCH',
+        `${prefix}*`,
+        'COUNT',
+        '200',
+      );
+      cursor = nextCursor;
+      for (const key of batch) {
+        if (key.startsWith(prefix)) {
+          keys.push(key);
+        }
       }
-    }
-  } while (cursor !== '0');
+    } while (cursor !== '0');
+  } catch (e) {
+    logger.log('warn', 'failed SCAN for %s: %s', prefix, String(e));
+    return [];
+  }
 
   return keys;
 };

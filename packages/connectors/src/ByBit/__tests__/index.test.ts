@@ -113,6 +113,32 @@ describe('ByBitConnectorCreator', () => {
     );
   });
 
+  it('falls back to exchange kline when timescale is unavailable', async () => {
+    mockedGetDataEdges.mockRejectedValue(
+      new Error('connect ECONNREFUSED 127.0.0.1:5432'),
+    );
+    const client = {
+      getKline: jest.fn().mockResolvedValue({
+        result: {
+          list: [{ timestamp: 2 }, { timestamp: 1 }],
+        },
+      }),
+    };
+    mockedGetClient.mockResolvedValue(client as any);
+
+    const connector = await ByBitConnectorCreator({ userName: 'alice' });
+    const result = await connector.kline({
+      symbol: 'BTCUSDT',
+      interval: '15',
+      end: Date.now(),
+      silent: true,
+    });
+
+    expect(client.getKline).toHaveBeenCalledTimes(1);
+    expect(mockedGetCandlesRange).not.toHaveBeenCalled();
+    expect(result).toEqual([{ timestamp: 1 }, { timestamp: 2 }]);
+  });
+
   it('returns null from getPosition when client is missing', async () => {
     mockedGetClient.mockResolvedValue(null);
     const connector = await ByBitConnectorCreator({ userName: 'alice' });
