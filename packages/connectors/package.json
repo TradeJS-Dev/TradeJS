@@ -4,6 +4,12 @@
   "private": true,
   "main": "src/index.ts",
   "types": "src/index.ts",
+  "dependencies": {
+    "@tradejs/core": "workspace:*",
+    "bybit-api": "^3.9.0",
+    "chalk": "4.1.2",
+    "lodash": "^4.17.21"
+  },
   "scripts": {
     "build": "echo 'connectors: build placeholder'",
     "typecheck": "tsc -p ../../tsconfig.json --noEmit"

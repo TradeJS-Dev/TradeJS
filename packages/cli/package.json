@@ -5,6 +5,21 @@
   "bin": {
     "tradejs": "dist/cli.js"
   },
+  "dependencies": {
+    "@tradejs/connectors": "workspace:*",
+    "@tradejs/core": "workspace:*",
+    "args": "^5.0.3",
+    "bcryptjs": "^2.4.3",
+    "chalk": "4.1.2",
+    "date-fns": "^3.3.1",
+    "ioredis": "5.8.0",
+    "lodash": "^4.17.21",
+    "progress": "^2.0.3"
+  },
+  "devDependencies": {
+    "ts-node": "^10.9.2",
+    "tsconfig-paths": "^4.2.0"
+  },
   "scripts": {
     "build": "echo 'cli: build placeholder'",
     "typecheck": "tsc -p ../../tsconfig.json --noEmit",
