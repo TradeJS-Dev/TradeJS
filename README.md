@@ -43,6 +43,9 @@ export default defineConfig({
 
 - Каждый plugin-модуль должен экспортировать `strategyEntries`:
   - `[{ manifest: { name }, creator }]`
+- Для индикаторов plugin может экспортировать `indicatorEntries`:
+  - `[{ indicator, compute, renderer }]`
+  - `renderer` (declarative) автоматически регистрируется в `klinecharts`.
 - В проекте есть готовая песочница:
   - `yarn dev:sandbox`
   - `yarn signals:sandbox`

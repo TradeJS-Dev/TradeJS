@@ -6,6 +6,7 @@
 
 - Стратегия: `SandboxMomentum`
 - Экспорт: `strategyEntries` (контракт framework plugin)
+- Индикатор: `sandboxMomentum` + `renderer` для auto-registration в chart
 
 ## Как запустить
 

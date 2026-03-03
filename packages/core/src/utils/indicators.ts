@@ -408,53 +408,7 @@ export const createIndicators = (
     const smaObvValue = obvValue == null ? null : smaObv.nextValue(obvValue);
     const macdValue = macd.nextValue(candle.close);
 
-    if (
-      ma14Value == null ||
-      ma49Value == null ||
-      ma50Value == null ||
-      atrValue == null ||
-      !bbValue ||
-      obvValue == null ||
-      smaObvValue == null ||
-      !macdValue
-    ) {
-      return null;
-    }
-
     const currentTimestamp = candle.timestamp;
-    const window1h = computeWindow(
-      currentTimestamp,
-      ONE_HOUR_MS,
-      window1hStart,
-    );
-    window1hStart = window1h.startIdx;
-    const window24h = computeWindow(
-      currentTimestamp,
-      ONE_DAY_MS,
-      window24hStart,
-    );
-    window24hStart = window24h.startIdx;
-
-    const price1hStart = findNearestStartClose(currentTimestamp, ONE_HOUR_MS);
-    const price24hStart = findNearestStartClose(currentTimestamp, ONE_DAY_MS);
-    const price1hPcntRaw =
-      price1hStart.startClose != null
-        ? percentChange(candle.close, price1hStart.startClose)
-        : null;
-    const price24hPcntRaw =
-      price24hStart.startClose != null
-        ? percentChange(candle.close, price24hStart.startClose)
-        : null;
-    const price1hPcnt = price1hPcntRaw ?? 0;
-    const price24hPcnt = price24hPcntRaw ?? 0;
-
-    const highPrice1h = window1h.hasFullWindow ? window1h.high : null;
-    const lowPrice1h = window1h.hasFullWindow ? window1h.low : null;
-    const volume1h = window1h.hasFullWindow ? window1h.volume : null;
-    const highPrice24h = window24h.hasFullWindow ? window24h.high : null;
-    const lowPrice24h = window24h.hasFullWindow ? window24h.low : null;
-    const volume24h = window24h.hasFullWindow ? window24h.volume : null;
-
     const len = candlesHistory.length;
     const prevCandle = len > 1 ? candlesHistory[len - 2] : null;
     const correlation =
@@ -493,6 +447,101 @@ export const createIndicators = (
         });
       }
     }
+
+    const computePluginSeries = (baseResult: Partial<IndicatorSnapshot>) => {
+      const pluginSeries: Record<string, number> = {};
+
+      for (const pluginEntry of indicatorPluginEntries) {
+        if (!pluginEntry.compute) continue;
+
+        const historyKey = pluginEntry.historyKey || pluginEntry.indicator.id;
+        try {
+          const pluginValue = pluginEntry.compute({
+            candle,
+            btcCandle,
+            data: candlesHistory,
+            btcData: btcCandlesHistory,
+            baseResult,
+          });
+
+          if (
+            pluginValue == null ||
+            typeof pluginValue !== 'number' ||
+            !Number.isFinite(pluginValue)
+          ) {
+            continue;
+          }
+
+          pluginSeries[historyKey] = pluginValue;
+          pushIndicator(historyKey, pluginValue);
+        } catch (error) {
+          if (indicatorPluginErrorShown.has(historyKey)) {
+            continue;
+          }
+          indicatorPluginErrorShown.add(historyKey);
+          // Log once per plugin key to avoid noisy per-candle output.
+          logger.warn(
+            'Indicator plugin "%s" compute failed: %s',
+            historyKey,
+            String(error),
+          );
+        }
+      }
+
+      return pluginSeries;
+    };
+
+    if (
+      ma14Value == null ||
+      ma49Value == null ||
+      ma50Value == null ||
+      atrValue == null ||
+      !bbValue ||
+      obvValue == null ||
+      smaObvValue == null ||
+      !macdValue
+    ) {
+      computePluginSeries({
+        prevCandle,
+        correlation,
+        spread,
+        candle,
+      });
+      return null;
+    }
+
+    const window1h = computeWindow(
+      currentTimestamp,
+      ONE_HOUR_MS,
+      window1hStart,
+    );
+    window1hStart = window1h.startIdx;
+    const window24h = computeWindow(
+      currentTimestamp,
+      ONE_DAY_MS,
+      window24hStart,
+    );
+    window24hStart = window24h.startIdx;
+
+    const price1hStart = findNearestStartClose(currentTimestamp, ONE_HOUR_MS);
+    const price24hStart = findNearestStartClose(currentTimestamp, ONE_DAY_MS);
+    const price1hPcntRaw =
+      price1hStart.startClose != null
+        ? percentChange(candle.close, price1hStart.startClose)
+        : null;
+    const price24hPcntRaw =
+      price24hStart.startClose != null
+        ? percentChange(candle.close, price24hStart.startClose)
+        : null;
+    const price1hPcnt = price1hPcntRaw ?? 0;
+    const price24hPcnt = price24hPcntRaw ?? 0;
+
+    const highPrice1h = window1h.hasFullWindow ? window1h.high : null;
+    const lowPrice1h = window1h.hasFullWindow ? window1h.low : null;
+    const volume1h = window1h.hasFullWindow ? window1h.volume : null;
+    const highPrice24h = window24h.hasFullWindow ? window24h.high : null;
+    const lowPrice24h = window24h.hasFullWindow ? window24h.low : null;
+    const volume24h = window24h.hasFullWindow ? window24h.volume : null;
 
     let highLevel: number | null = null;
     let lowLevel: number | null = null;
@@ -536,48 +585,12 @@ export const createIndicators = (
 
     applyIndicatorsToHistory(baseResult, pushIndicator);
 
-    const pluginSeries: Record<string, number> = {};
-    for (const pluginEntry of indicatorPluginEntries) {
-      if (!pluginEntry.compute) continue;
-
-      const historyKey = pluginEntry.historyKey || pluginEntry.indicator.id;
-      try {
-        const pluginValue = pluginEntry.compute({
-          candle,
-          btcCandle,
-          data: candlesHistory,
-          btcData: btcCandlesHistory,
-          baseResult: {
-            ...baseResult,
-            candle,
-            prevCandle,
-            correlation,
-          } as IndicatorSnapshot,
-        });
-
-        if (
-          pluginValue == null ||
-          typeof pluginValue !== 'number' ||
-          !Number.isFinite(pluginValue)
-        ) {
-          continue;
-        }
-
-        pluginSeries[historyKey] = pluginValue;
-        pushIndicator(historyKey, pluginValue);
-      } catch (error) {
-        if (indicatorPluginErrorShown.has(historyKey)) {
-          continue;
-        }
-        indicatorPluginErrorShown.add(historyKey);
-        // Log once per plugin key to avoid noisy per-candle output.
-        logger.warn(
-          'Indicator plugin "%s" compute failed: %s',
-          historyKey,
-          String(error),
-        );
-      }
-    }
+    const pluginSeries = computePluginSeries({
+      ...baseResult,
+      candle,
+      prevCandle,
+      correlation,
+    });
 
     const result: IndicatorSnapshot = {
       ...baseResult,

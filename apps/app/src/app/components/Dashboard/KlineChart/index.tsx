@@ -26,16 +26,23 @@ import {
   useResize,
   useSetup,
 } from './hooks';
-import { useData } from '@store';
+import { usePluginIndicators } from './hooks/usePluginIndicators';
+import { IndicatorRendererConfig, useData } from '@store';
 import { darkTheme } from './styles';
 
 interface KlineChartProps {
   id: string;
   filters: UIFilters;
   indicators: Record<string, Indicator>;
+  indicatorRenderers: Record<string, IndicatorRendererConfig>;
 }
 
-export const KlineChart = ({ id, filters, indicators }: KlineChartProps) => {
+export const KlineChart = ({
+  id,
+  filters,
+  indicators,
+  indicatorRenderers,
+}: KlineChartProps) => {
   const chartRef = useRef<Chart | null>(null);
   const { data, key, fulfilled } = useData(filters);
   const updateDataCallback = useRef<
@@ -151,6 +158,7 @@ export const KlineChart = ({ id, filters, indicators }: KlineChartProps) => {
   useSupportResistanceLines(chart, indicators.resistant?.enabled);
   useSignal(chart, true);
   useSetup(chart, true);
+  usePluginIndicators(chart, indicators, indicatorRenderers, data);
 
   return (
     <>

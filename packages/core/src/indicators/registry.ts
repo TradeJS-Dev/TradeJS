@@ -1,4 +1,8 @@
-import type { Indicator, IndicatorPluginEntry } from '@types';
+import type {
+  Indicator,
+  IndicatorPluginEntry,
+  IndicatorPluginRenderer,
+} from '@types';
 import { logger } from '@utils/logger';
 
 const pluginIndicatorEntries = new Map<string, IndicatorPluginEntry>();
@@ -38,3 +42,22 @@ export const getPluginIndicatorCatalog = (): Indicator[] =>
     enabled: entry.indicator.enabled,
     periods: entry.indicator.periods,
   }));
+
+export type IndicatorRendererDescriptor = {
+  indicatorId: string;
+  renderer: IndicatorPluginRenderer;
+};
+
+export const getPluginIndicatorRenderers = (): IndicatorRendererDescriptor[] =>
+  getRegisteredIndicatorEntries()
+    .filter(
+      (
+        entry,
+      ): entry is IndicatorPluginEntry & {
+        renderer: IndicatorPluginRenderer;
+      } => Boolean(entry.renderer),
+    )
+    .map((entry) => ({
+      indicatorId: entry.indicator.id,
+      renderer: entry.renderer,
+    }));

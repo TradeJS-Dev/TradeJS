@@ -6,4 +6,5 @@ export {
   registerIndicatorEntries,
   getRegisteredIndicatorEntries,
   getPluginIndicatorCatalog,
+  getPluginIndicatorRenderers,
 } from './registry';

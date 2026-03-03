@@ -10,7 +10,7 @@ const DASHBOARD_REFRESH_DELAY = 10_000;
 
 export const MainChart = () => {
   const { filters, setFilters } = useFilters();
-  const { indicatorsByKey } = useIndicators();
+  const { indicatorsByKey, indicatorRenderers } = useIndicators();
 
   useEffect(() => {
     const intervalId = setInterval(() => {
@@ -29,6 +29,7 @@ export const MainChart = () => {
       id="main-chart"
       filters={filters}
       indicators={indicatorsByKey}
+      indicatorRenderers={indicatorRenderers}
     />
   );
 };

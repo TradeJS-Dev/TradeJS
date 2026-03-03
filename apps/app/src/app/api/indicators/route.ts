@@ -1,5 +1,8 @@
 import { NextResponse } from 'next/server';
-import { getPluginIndicatorCatalog } from '@tradejs/core/indicators';
+import {
+  getPluginIndicatorCatalog,
+  getPluginIndicatorRenderers,
+} from '@tradejs/core/indicators';
 import { ensureIndicatorPluginsLoaded } from '@tradejs/core/strategy';
 import { logger } from '@utils/logger';
 
@@ -9,7 +12,8 @@ export const GET = async () => {
   try {
     await ensureIndicatorPluginsLoaded();
     const data = getPluginIndicatorCatalog();
-    return NextResponse.json({ data });
+    const renderers = getPluginIndicatorRenderers();
+    return NextResponse.json({ data, renderers });
   } catch (error) {
     logger.log('error', 'Indicators catalog error: %o', error);
     return NextResponse.json(

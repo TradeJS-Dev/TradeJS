@@ -4,7 +4,15 @@ import {
   providerToConnectorName,
   ConnectorProviders,
 } from '@tradejs/connectors';
-import { KlineRequest, Interval, ConnectorCreator } from '@types';
+import {
+  KlineChartData,
+  KlineRequest,
+  Interval,
+  ConnectorCreator,
+} from '@types';
+import { getRegisteredIndicatorEntries } from '@tradejs/core/indicators';
+import { ensureIndicatorPluginsLoaded } from '@tradejs/core/strategy';
+import { createIndicators } from '@utils/indicators';
 import { logger } from '@utils/logger';
 
 export const dynamic = 'force-dynamic';
@@ -19,6 +27,48 @@ const asProvider = (value: string): ConnectorProviders => {
   if (value === 'binance') return ConnectorProviders.binance;
   if (value === 'coinbase') return ConnectorProviders.coinbase;
   return ConnectorProviders.bybit;
+};
+
+const enrichWithPluginIndicators = (
+  data: KlineChartData,
+  btcData: KlineChartData,
+): KlineChartData => {
+  const pluginEntries = getRegisteredIndicatorEntries();
+  if (!pluginEntries.length || !data.length) {
+    return data;
+  }
+
+  const pluginKeys = pluginEntries.map(
+    (entry) => entry.historyKey || entry.indicator.id,
+  );
+
+  const history = createIndicators(data, btcData, {
+    includeMlPayload: false,
+  }).result() as Record<string, number[]>;
+
+  const nextData = data.map((candle) => ({ ...candle }));
+
+  for (const pluginKey of pluginKeys) {
+    const series = history[pluginKey];
+    if (!Array.isArray(series) || !series.length) {
+      continue;
+    }
+
+    const startIdx = nextData.length - series.length;
+    for (let i = 0; i < series.length; i += 1) {
+      const candleIndex = startIdx + i;
+      if (candleIndex < 0 || candleIndex >= nextData.length) {
+        continue;
+      }
+      const value = series[i];
+      if (!Number.isFinite(value)) {
+        continue;
+      }
+      (nextData[candleIndex] as Record<string, unknown>)[pluginKey] = value;
+    }
+  }
+
+  return nextData;
 };
 
 export const POST = async (
@@ -45,11 +95,28 @@ export const POST = async (
       userName: 'root',
     });
 
-    const data = await connector.kline({
+    const baseData = await connector.kline({
       symbol,
       interval: interval as Interval,
       ...options,
     });
+
+    await ensureIndicatorPluginsLoaded();
+    const pluginEntries = getRegisteredIndicatorEntries();
+    if (!pluginEntries.length) {
+      return NextResponse.json({ data: baseData });
+    }
+
+    const btcData =
+      symbol === 'BTCUSDT'
+        ? baseData
+        : await connector.kline({
+            symbol: 'BTCUSDT',
+            interval: interval as Interval,
+            ...options,
+          });
+
+    const data = enrichWithPluginIndicators(baseData, btcData);
 
     return NextResponse.json({ data });
   } catch (error) {

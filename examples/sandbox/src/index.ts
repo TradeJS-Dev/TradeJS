@@ -152,6 +152,26 @@ const indicatorEntries = defineIndicatorPlugin({
         }
         return ((last.close - prev.close) / prev.close) * 100;
       },
+      renderer: {
+        shortName: 'SBX MOM',
+        minHeight: 120,
+        figures: [
+          {
+            key: 'sandboxMomentum',
+            title: 'Sandbox Momentum: ',
+            type: 'line',
+            color: '#f59e0b',
+          },
+          {
+            key: 'sandboxMomentumZero',
+            title: 'Zero: ',
+            type: 'line',
+            color: '#94a3b8',
+            dashed: true,
+            constant: 0,
+          },
+        ],
+      },
     } satisfies IndicatorPluginEntry,
   ],
 }).indicatorEntries;

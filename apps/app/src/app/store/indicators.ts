@@ -6,10 +6,35 @@ import { Indicators, Items } from '@types';
 
 const LOCAL_STORAGE_KEY = 'indicators';
 
+export interface IndicatorRendererFigure {
+  key: string;
+  title?: string;
+  type?: 'line' | 'bar';
+  color?: string;
+  lineWidth?: number;
+  dashed?: boolean;
+  constant?: number;
+}
+
+export interface IndicatorRendererConfig {
+  indicatorName?: string;
+  shortName?: string;
+  paneId?: string;
+  minHeight?: number;
+  figures: IndicatorRendererFigure[];
+}
+
+export interface IndicatorRendererDescriptor {
+  indicatorId: string;
+  renderer: IndicatorRendererConfig;
+}
+
 interface IndicatorsState {
   indicators: Indicators;
+  indicatorRenderers: Record<string, IndicatorRendererConfig>;
   setEnabledIndicators: (values: string[]) => void;
   upsertIndicators: (items: Indicators) => void;
+  setIndicatorRenderers: (items: IndicatorRendererDescriptor[]) => void;
 }
 
 const useStore = create<IndicatorsState>()(
@@ -72,6 +97,7 @@ const useStore = create<IndicatorsState>()(
           periods: [49, 200],
         },
       ] as Indicators,
+      indicatorRenderers: {},
       setEnabledIndicators: (values: string[]) =>
         set((state) => {
           const clonedState = structuredClone(state.indicators);
@@ -118,6 +144,18 @@ const useStore = create<IndicatorsState>()(
 
           return { indicators: next };
         }),
+      setIndicatorRenderers: (items: IndicatorRendererDescriptor[]) =>
+        set(() => {
+          const indicatorRenderers = items.reduce<
+            Record<string, IndicatorRendererConfig>
+          >((acc, item) => {
+            if (!item?.indicatorId || !item.renderer) return acc;
+            acc[item.indicatorId] = item.renderer;
+            return acc;
+          }, {});
+
+          return { indicatorRenderers };
+        }),
     }),
     {
       name: LOCAL_STORAGE_KEY,
@@ -129,6 +167,8 @@ export const useIndicators = () => {
   const indicators = useStore((s) => s.indicators);
   const setEnabledIndicators = useStore((s) => s.setEnabledIndicators);
   const upsertIndicators = useStore((s) => s.upsertIndicators);
+  const indicatorRenderers = useStore((s) => s.indicatorRenderers);
+  const setIndicatorRenderers = useStore((s) => s.setIndicatorRenderers);
   const catalogRequestedRef = useRef(false);
 
   useEffect(() => {
@@ -137,17 +177,27 @@ export const useIndicators = () => {
 
     fetch('/api/indicators')
       .then(async (response) => {
-        if (!response.ok) return [];
+        if (!response.ok) {
+          return { data: [], renderers: [] };
+        }
         const payload = await response.json();
-        return Array.isArray(payload?.data) ? (payload.data as Indicators) : [];
+        return {
+          data: Array.isArray(payload?.data)
+            ? (payload.data as Indicators)
+            : [],
+          renderers: Array.isArray(payload?.renderers)
+            ? (payload.renderers as IndicatorRendererDescriptor[])
+            : [],
+        };
       })
-      .then((items) => {
+      .then(({ data: items, renderers }) => {
         if (items.length) {
           upsertIndicators(items);
         }
+        setIndicatorRenderers(renderers);
       })
       .catch(() => undefined);
-  }, [upsertIndicators]);
+  }, [upsertIndicators, setIndicatorRenderers]);
 
   const selectedIndicators = useMemo(
     () => indicators.filter((ind) => ind.enabled).map(({ id }) => id),
@@ -173,6 +223,7 @@ export const useIndicators = () => {
     selectedIndicators,
     indicatorsItems,
     indicatorsByKey,
+    indicatorRenderers,
     setEnabledIndicators,
   };
 };

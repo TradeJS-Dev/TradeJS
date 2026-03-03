@@ -11,6 +11,8 @@ export type {
   IndicatorPluginEntry,
   IndicatorPluginDefinition,
   IndicatorPluginComputeParams,
+  IndicatorPluginRenderer,
+  IndicatorPluginFigureRenderer,
   StrategyRegistryEntry,
   StrategyPluginDefinition,
   CreateStrategyCore,
