@@ -10,6 +10,10 @@
   "scripts": {
     "build": "turbo run build",
     "dev": "turbo run dev --filter=@tradejs/app",
+    "docs:dev": "yarn workspace @tradejs/docs dev",
+    "docs:dev:hot:en": "yarn workspace @tradejs/docs dev:hot:en",
+    "docs:dev:hot:ru": "yarn workspace @tradejs/docs dev:hot:ru",
+    "docs:build": "yarn workspace @tradejs/docs build",
     "dev:sandbox": "yarn dev",
     "start": "yarn workspace @tradejs/app start",
     "doctor": "yarn workspace @tradejs/cli doctor",

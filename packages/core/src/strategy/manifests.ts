@@ -11,6 +11,7 @@ import { logger } from '@utils/logger';
 import { loadTradejsConfig } from '@utils/tradejsConfig';
 import { breakoutManifest } from './Breakout/manifest';
 import { maStrategyManifest } from './MaStrategy/manifest';
+import { pineScriptManifest } from './PineScript/manifest';
 import { trendLineManifest } from './TrendLine/manifest';
 import { volumeDivergenceManifest } from './VolumeDivergence/manifest';
 
@@ -50,6 +51,13 @@ const builtInStrategyEntries: readonly StrategyRegistryEntry[] = [
     creator: createLazyStrategyCreator(
       () => import('./MaStrategy/strategy'),
       'MaStrategyCreator',
+    ),
+  },
+  {
+    manifest: pineScriptManifest,
+    creator: createLazyStrategyCreator(
+      () => import('./PineScript/strategy'),
+      'PineScriptStrategyCreator',
     ),
   },
   {

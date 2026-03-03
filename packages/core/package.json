@@ -17,6 +17,7 @@
     "klinecharts": "10.0.0-alpha9",
     "lodash": "^4.17.21",
     "pg": "8.16.3",
+    "pinets": "0.8.12",
     "progress": "^2.0.3",
     "puppeteer": "24.15.0",
     "technicalindicators": "^3.1.0",

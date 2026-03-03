@@ -24,11 +24,17 @@ const sidebars: SidebarsConfig = {
       items: [
         'strategies/write-strategies',
         'strategies/ma-strategy-step-by-step',
+        'strategies/pine-strategy-step-by-step',
         'strategies/debug-live',
         'strategies/risk-management',
         'strategies/pre-live-checklist',
         'strategies/plugin-e2e',
       ],
+    },
+    {
+      type: 'category',
+      label: 'Indicators',
+      items: ['indicators/write-indicators', 'indicators/pine-indicators'],
     },
     {
       type: 'category',

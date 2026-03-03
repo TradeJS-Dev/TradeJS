@@ -26,7 +26,10 @@ slug: /
 ## С чего начать
 
 - [Локальный запуск](./getting-started/local)
+- [Настройка root пользователя](./getting-started/root-user)
 - [Self-hosted развертывание](./getting-started/self-hosted)
 - [Cloud-использование](./getting-started/cloud)
 - [Framework API](./framework/api)
 - [CLI API](./cli/api)
+- [Как писать стратегии](./strategies/write-strategies)
+- [Как писать индикаторы](./indicators/write-indicators)

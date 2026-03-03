@@ -178,6 +178,7 @@ mapEntryRuntimeFromConfig: (config) =>
 If you want a full tutorial with all files, Redis keys, backtest flow, figures, and UI checks:
 
 - `strategies/ma-strategy-step-by-step`
+- `strategies/pine-strategy-step-by-step`
 
 ## External Plugin Strategy
 

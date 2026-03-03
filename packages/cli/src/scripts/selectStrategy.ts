@@ -13,7 +13,13 @@ const getStrategyChoices = async (): Promise<string[]> => {
   } catch (error) {
     console.warn(`Failed to load strategy list: ${String(error)}`);
   }
-  return ['Breakout', 'MaStrategy', 'TrendLine', 'VolumeDivergence'];
+  return [
+    'Breakout',
+    'MaStrategy',
+    'PineScript',
+    'TrendLine',
+    'VolumeDivergence',
+  ];
 };
 
 export const selectStrategy = async (

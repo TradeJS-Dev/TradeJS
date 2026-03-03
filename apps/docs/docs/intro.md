@@ -1,6 +1,6 @@
 ---
 sidebar_position: 1
-title: TradeJS Knowledge Base
+title: TradeJS Documentation
 slug: /
 ---
 
@@ -24,7 +24,10 @@ This documentation is focused on practical usage of the monorepo:
 ## Read Next
 
 - [Start locally](./getting-started/local)
+- [Set up root user](./getting-started/root-user)
 - [Self-hosted deployment](./getting-started/self-hosted)
 - [Cloud usage](./getting-started/cloud)
 - [Framework API](./framework/api)
 - [CLI API](./cli/api)
+- [Write strategies](./strategies/write-strategies)
+- [Write indicators](./indicators/write-indicators)

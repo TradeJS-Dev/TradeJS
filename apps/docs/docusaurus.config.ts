@@ -95,6 +95,7 @@ const config: Config = {
             { label: 'Framework API', to: '/framework/api' },
             { label: 'CLI API', to: '/cli/api' },
             { label: 'Writing Strategies', to: '/strategies/write-strategies' },
+            { label: 'Writing Indicators', to: '/indicators/write-indicators' },
           ],
         },
         {

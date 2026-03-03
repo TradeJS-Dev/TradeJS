@@ -174,6 +174,7 @@ mapEntryRuntimeFromConfig: (config) =>
 Если нужен полный туториал с файлами, Redis-ключами, бэктестом, figures и проверкой в UI:
 
 - `strategies/ma-strategy-step-by-step`
+- `strategies/pine-strategy-step-by-step`
 
 ## Внешняя стратегия как npm-плагин
 
