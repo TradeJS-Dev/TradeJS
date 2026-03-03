@@ -5,11 +5,17 @@ import { connectors } from '@src/connectors';
 import chalk from 'chalk';
 import { TTL_1D, TTL_3M, SIGNALS_PRELOAD_DAYS } from '@constants';
 import { update, getTickers, makeScreenshots, sendToTG } from '@utils/cli';
-import { getKeys, setData, redisKeys } from '@utils/redis';
+import { getData, getKeys, setData, redisKeys } from '@utils/redis';
 import { getTimestamp } from '@utils/timestamp';
 import { runWithConcurrency } from '@utils/async';
-import { Connector, Interval, Signal } from '@types';
-import { TrendlineStrategyCreator } from '@src/strategy/TrendLine/strategy';
+import {
+  Connector,
+  Interval,
+  Signal,
+  StrategyConfig,
+  StrategyCreator,
+} from '@types';
+import { strategies } from '@src/strategy';
 import { logger } from '@utils/logger';
 
 args.option(['t', 'tickers'], 'Selected tickers');
@@ -31,11 +37,68 @@ const minTouches = parseInt(flags.points);
 const offset = parseInt(flags.offset);
 const interval = flags.timeframe.toString() as Interval;
 
+interface StrategyRuntimeConfig {
+  strategyName: string;
+  strategyCreator: StrategyCreator;
+  strategyConfig: StrategyConfig;
+}
+
+const resolveStrategyNameByConfigKey = (
+  userName: string,
+  key: string,
+): string | null => {
+  const parts = key.split(':');
+  if (parts.length !== 5) {
+    return null;
+  }
+  const [users, keyUserName, strategiesKey, strategyName, configKey] = parts;
+  if (
+    users !== 'users' ||
+    keyUserName !== userName ||
+    strategiesKey !== 'strategies' ||
+    configKey !== 'config' ||
+    !strategyName
+  ) {
+    return null;
+  }
+  return strategyName;
+};
+
+const loadRuntimeStrategies = async (
+  userName: string,
+): Promise<StrategyRuntimeConfig[]> => {
+  const keys = await getKeys(`${redisKeys.strategies(userName)}:`);
+  const configKeys = keys
+    .filter((key) => key.endsWith(':config'))
+    .sort((a, b) => a.localeCompare(b));
+  const strategyConfigs = await Promise.all(
+    configKeys.map(async (key): Promise<StrategyRuntimeConfig | null> => {
+      const strategyName = resolveStrategyNameByConfigKey(userName, key);
+      if (!strategyName) {
+        return null;
+      }
+      const strategyCreator = strategies[strategyName];
+      if (!strategyCreator) {
+        logger.warn('Skip unknown strategy config key: %s', key);
+        return null;
+      }
+      const strategyConfig = (await getData(key, {})) as StrategyConfig;
+      return {
+        strategyName,
+        strategyCreator,
+        strategyConfig,
+      };
+    }),
+  );
+  return strategyConfigs.filter(Boolean) as StrategyRuntimeConfig[];
+};
+
 const findSignals = async (
   symbol: string,
   connector: Connector,
   btcBinanceData: Awaited<ReturnType<Connector['kline']>>,
   btcCoinbaseData: Awaited<ReturnType<Connector['kline']>>,
+  runtimeStrategies: StrategyRuntimeConfig[],
 ) => {
   const prevSignals = await getKeys(redisKeys.signalsBySymbol(symbol));
 
@@ -70,44 +133,40 @@ const findSignals = async (
     return;
   }
 
-  const strategy = await TrendlineStrategyCreator({
-    userName: flags.user,
-    connector,
-    symbol,
-    data: cachedData,
-    btcData: btcCachedData,
-    btcBinanceData,
-    btcCoinbaseData,
-    config: {
-      ENV: 'CRON',
-      INTERVAL: interval,
-      MAKE_ORDERS: flags.makeOrders,
-    },
-  });
+  for (const runtimeStrategy of runtimeStrategies) {
+    const { strategyName, strategyCreator, strategyConfig } = runtimeStrategy;
+    const strategy = await strategyCreator({
+      userName: flags.user,
+      connector,
+      symbol,
+      data: [...cachedData],
+      btcData: [...btcCachedData],
+      btcBinanceData: [...btcBinanceData],
+      btcCoinbaseData: [...btcCoinbaseData],
+      config: {
+        ...strategyConfig,
+        ENV: 'CRON',
+        INTERVAL: interval,
+        MAKE_ORDERS: flags.makeOrders,
+      },
+    });
 
-  const signal = await strategy(lastCandle, btcLastCandle);
-
-  if (!signal) {
-    return;
-  }
-
-  if (typeof signal === 'string') {
-    if (signal !== 'NO_TRENDLINE') {
-      logger.warn('exit %s by %s', symbol, signal);
+    const signal = await strategy(lastCandle, btcLastCandle);
+    if (!signal || typeof signal === 'string') {
+      continue;
     }
 
-    return;
+    await setData(redisKeys.signal(symbol, signal.signalId), signal, {
+      expire: TTL_1D,
+    });
+
+    await setData(redisKeys.storeSignal(symbol, signal.signalId), signal, {
+      expire: TTL_3M,
+    });
+
+    logger.info('Signal found %s by strategy %s', symbol, strategyName);
+    return signal;
   }
-
-  await setData(redisKeys.signal(symbol, signal.signalId), signal, {
-    expire: TTL_1D,
-  });
-
-  await setData(redisKeys.storeSignal(symbol, signal.signalId), signal, {
-    expire: TTL_3M,
-  });
-
-  return signal;
 };
 
 const signals = async () => {
@@ -167,6 +226,20 @@ const signals = async () => {
     return;
   }
 
+  const runtimeStrategies = await loadRuntimeStrategies(flags.user);
+  if (!runtimeStrategies.length) {
+    logger.warn(
+      'No strategy configs found by users:%s:strategies:*:config',
+      flags.user,
+    );
+    return;
+  }
+  logger.info(
+    chalk.yellow(
+      `loaded strategies: ${runtimeStrategies.map((s) => s.strategyName).join(', ')}`,
+    ),
+  );
+
   const bar = new ProgressBar(
     ':current/:total [:bar][:percent] :found :eta(s) :symbol',
     {
@@ -183,6 +256,7 @@ const signals = async () => {
       byBitConnector,
       btcBinanceData,
       btcCoinbaseData,
+      runtimeStrategies,
     );
 
     if (signal) {
