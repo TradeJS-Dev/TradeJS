@@ -32,15 +32,11 @@ const asProvider = (value: string): ConnectorProviders => {
 const enrichWithPluginIndicators = (
   data: KlineChartData,
   btcData: KlineChartData,
+  pluginKeys: string[],
 ): KlineChartData => {
-  const pluginEntries = getRegisteredIndicatorEntries();
-  if (!pluginEntries.length || !data.length) {
+  if (!pluginKeys.length || !data.length) {
     return data;
   }
-
-  const pluginKeys = pluginEntries.map(
-    (entry) => entry.historyKey || entry.indicator.id,
-  );
 
   const history = createIndicators(data, btcData, {
     includeMlPayload: false,
@@ -102,8 +98,10 @@ export const POST = async (
     });
 
     await ensureIndicatorPluginsLoaded();
-    const pluginEntries = getRegisteredIndicatorEntries();
-    if (!pluginEntries.length) {
+    const pluginKeys = getRegisteredIndicatorEntries().map(
+      (entry) => entry.historyKey || entry.indicator.id,
+    );
+    if (!pluginKeys.length) {
       return NextResponse.json({ data: baseData });
     }
 
@@ -116,7 +114,7 @@ export const POST = async (
             ...options,
           });
 
-    const data = enrichWithPluginIndicators(baseData, btcData);
+    const data = enrichWithPluginIndicators(baseData, btcData, pluginKeys);
 
     return NextResponse.json({ data });
   } catch (error) {

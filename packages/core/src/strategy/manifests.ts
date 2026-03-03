@@ -1,6 +1,7 @@
 import type {
   StrategyCreator,
   IndicatorPluginDefinition,
+  IndicatorPluginEntry,
   StrategyManifest,
   StrategyPluginDefinition,
   StrategyRegistryEntry,
@@ -58,72 +59,62 @@ const strategyManifestsMap = new Map<string, StrategyManifest>();
 let registryBootstrapped = false;
 let pluginsLoadPromise: Promise<void> | null = null;
 
-const parseStrategyPluginModuleNames = async (): Promise<string[]> => {
+const toUniqueModules = (modules: string[] = []): string[] => [
+  ...new Set(modules.map((moduleName) => moduleName.trim()).filter(Boolean)),
+];
+
+const getConfiguredPluginModuleNames = async (): Promise<{
+  strategyModules: string[];
+  indicatorModules: string[];
+}> => {
   const config = await loadTradejsConfig();
-  const fromConfig = config.strategyPlugins || [];
-  return [...new Set(fromConfig)];
+  return {
+    strategyModules: toUniqueModules(config.strategyPlugins),
+    indicatorModules: toUniqueModules(config.indicatorsPlugins),
+  };
 };
 
-const parseIndicatorPluginModuleNames = async (): Promise<string[]> => {
-  const config = await loadTradejsConfig();
-  const fromConfig = config.indicatorsPlugins || [];
-  return [...new Set(fromConfig)];
-};
-
-const extractPluginDefinition = (
+const extractModuleEntries = <TEntry>(
   moduleExport: unknown,
-): StrategyPluginDefinition | null => {
+  key: string,
+): TEntry[] | null => {
   if (!moduleExport || typeof moduleExport !== 'object') {
     return null;
   }
 
   const candidate = moduleExport as Record<string, unknown>;
-
-  if (Array.isArray(candidate.strategyEntries)) {
-    return {
-      strategyEntries: candidate.strategyEntries as StrategyRegistryEntry[],
-    };
+  if (Array.isArray(candidate[key])) {
+    return candidate[key] as TEntry[];
   }
 
   const defaultExport = candidate.default as
     | Record<string, unknown>
     | undefined;
-  if (defaultExport && Array.isArray(defaultExport.strategyEntries)) {
-    return {
-      strategyEntries: defaultExport.strategyEntries as StrategyRegistryEntry[],
-    };
+  if (defaultExport && Array.isArray(defaultExport[key])) {
+    return defaultExport[key] as TEntry[];
   }
 
   return null;
+};
+
+const extractStrategyPluginDefinition = (
+  moduleExport: unknown,
+): StrategyPluginDefinition | null => {
+  const strategyEntries = extractModuleEntries<StrategyRegistryEntry>(
+    moduleExport,
+    'strategyEntries',
+  );
+  return strategyEntries ? { strategyEntries } : null;
 };
 
 const extractIndicatorPluginDefinition = (
   moduleExport: unknown,
 ): IndicatorPluginDefinition | null => {
-  if (!moduleExport || typeof moduleExport !== 'object') {
-    return null;
-  }
-
-  const candidate = moduleExport as Record<string, unknown>;
-
-  if (Array.isArray(candidate.indicatorEntries)) {
-    return {
-      indicatorEntries:
-        candidate.indicatorEntries as IndicatorPluginDefinition['indicatorEntries'],
-    };
-  }
-
-  const defaultExport = candidate.default as
-    | Record<string, unknown>
-    | undefined;
-  if (defaultExport && Array.isArray(defaultExport.indicatorEntries)) {
-    return {
-      indicatorEntries:
-        defaultExport.indicatorEntries as IndicatorPluginDefinition['indicatorEntries'],
-    };
-  }
-
-  return null;
+  const indicatorEntries = extractModuleEntries<IndicatorPluginEntry>(
+    moduleExport,
+    'indicatorEntries',
+  );
+  return indicatorEntries ? { indicatorEntries } : null;
 };
 
 const registerEntries = (
@@ -169,16 +160,13 @@ export const ensureStrategyPluginsLoaded = async (): Promise<void> => {
   }
 
   pluginsLoadPromise = (async () => {
-    const [strategyPluginModuleNames, indicatorPluginModuleNames] =
-      await Promise.all([
-        parseStrategyPluginModuleNames(),
-        parseIndicatorPluginModuleNames(),
-      ]);
+    const { strategyModules, indicatorModules } =
+      await getConfiguredPluginModuleNames();
 
-    const strategySet = new Set(strategyPluginModuleNames);
-    const indicatorSet = new Set(indicatorPluginModuleNames);
+    const strategySet = new Set(strategyModules);
+    const indicatorSet = new Set(indicatorModules);
     const pluginModuleNames = [
-      ...new Set([...strategyPluginModuleNames, ...indicatorPluginModuleNames]),
+      ...new Set([...strategyModules, ...indicatorModules]),
     ];
     if (!pluginModuleNames.length) return;
 
@@ -186,7 +174,8 @@ export const ensureStrategyPluginsLoaded = async (): Promise<void> => {
       try {
         const moduleExport = await importStrategyPluginModule(moduleName);
         if (strategySet.has(moduleName)) {
-          const pluginDefinition = extractPluginDefinition(moduleExport);
+          const pluginDefinition =
+            extractStrategyPluginDefinition(moduleExport);
           if (!pluginDefinition) {
             logger.warn(
               'Skip strategy plugin "%s": export { strategyEntries } is missing',

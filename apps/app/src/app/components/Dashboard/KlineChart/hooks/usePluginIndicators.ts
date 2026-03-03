@@ -4,6 +4,17 @@ import { Indicator, KlineChartData } from '@types';
 import { IndicatorRendererConfig } from '@store';
 
 type RenderersMap = Record<string, IndicatorRendererConfig>;
+type RuntimeEntry = {
+  indicatorId: string;
+  enabled: boolean;
+  indicatorName: string;
+  indicatorRuntimeId: string;
+  paneId: string;
+  minHeight: number;
+  shortName: string;
+  figures: IndicatorRendererConfig['figures'];
+  calc: ReturnType<typeof createCalc>;
+};
 
 const getRuntimeIds = (
   indicatorId: string,
@@ -105,94 +116,97 @@ export const usePluginIndicators = (
 ) => {
   const registeredIndicatorsRef = useRef(new Set<string>());
 
-  const entries = useMemo(
+  const runtimeEntries = useMemo<RuntimeEntry[]>(
     () =>
-      Object.entries(indicatorRenderers || {}).filter(
-        ([, renderer]) => renderer?.figures?.length,
-      ) as Array<[string, IndicatorRendererConfig]>,
-    [indicatorRenderers],
+      Object.entries(indicatorRenderers || {})
+        .filter(([, renderer]) => renderer?.figures?.length)
+        .map(([indicatorId, renderer]) => {
+          const ids = getRuntimeIds(indicatorId, renderer);
+          return {
+            indicatorId,
+            enabled: Boolean(indicators[indicatorId]?.enabled),
+            indicatorName: ids.indicatorName,
+            indicatorRuntimeId: ids.indicatorRuntimeId,
+            paneId: ids.paneId,
+            minHeight: renderer.minHeight ?? 100,
+            shortName:
+              renderer.shortName ||
+              indicators[indicatorId]?.label ||
+              indicatorId,
+            figures: renderer.figures,
+            calc: createCalc(renderer),
+          };
+        }),
+    [indicatorRenderers, indicators],
   );
 
   useEffect(() => {
-    for (const [indicatorId, renderer] of entries) {
-      const { indicatorName } = getRuntimeIds(indicatorId, renderer);
-      if (registeredIndicatorsRef.current.has(indicatorName)) {
+    for (const entry of runtimeEntries) {
+      if (registeredIndicatorsRef.current.has(entry.indicatorName)) {
         continue;
       }
 
       registerIndicator({
-        name: indicatorName,
-        shortName:
-          renderer.shortName || indicators[indicatorId]?.label || indicatorId,
+        name: entry.indicatorName,
+        shortName: entry.shortName,
         calcParams: [],
-        figures: renderer.figures.map((figure) => ({
+        figures: entry.figures.map((figure) => ({
           key: figure.key,
           title: figure.title || `${figure.key}: `,
           type: figure.type || 'line',
           styles: createFigureStyles(figure),
         })) as any,
-        calc: createCalc(renderer) as any,
+        calc: entry.calc as any,
       });
 
-      registeredIndicatorsRef.current.add(indicatorName);
+      registeredIndicatorsRef.current.add(entry.indicatorName);
     }
-  }, [entries, indicators]);
+  }, [runtimeEntries]);
 
   useEffect(() => {
     if (!chart) {
       return;
     }
 
-    for (const [indicatorId, renderer] of entries) {
-      const { indicatorName, indicatorRuntimeId, paneId } = getRuntimeIds(
-        indicatorId,
-        renderer,
-      );
-
-      const enabled = Boolean(indicators[indicatorId]?.enabled);
-
-      if (!enabled) {
-        removeIndicator(chart, indicatorName, indicatorRuntimeId);
+    for (const entry of runtimeEntries) {
+      if (!entry.enabled) {
+        removeIndicator(chart, entry.indicatorName, entry.indicatorRuntimeId);
         continue;
       }
 
       ensureIndicator(
         chart,
-        indicatorName,
-        indicatorRuntimeId,
-        paneId,
-        renderer.minHeight,
+        entry.indicatorName,
+        entry.indicatorRuntimeId,
+        entry.paneId,
+        entry.minHeight,
       );
 
       const updated = chart.overrideIndicator({
-        name: indicatorName,
-        calc: createCalc(renderer) as any,
+        name: entry.indicatorName,
+        calc: entry.calc as any,
       });
 
       if (!updated) {
         ensureIndicator(
           chart,
-          indicatorName,
-          indicatorRuntimeId,
-          paneId,
-          renderer.minHeight,
+          entry.indicatorName,
+          entry.indicatorRuntimeId,
+          entry.paneId,
+          entry.minHeight,
         );
       }
     }
-  }, [chart, entries, indicators, data]);
+  }, [chart, runtimeEntries, data]);
 
   useEffect(() => {
     return () => {
       if (!chart) {
         return;
       }
-      for (const [indicatorId, renderer] of entries) {
-        const { indicatorName, indicatorRuntimeId } = getRuntimeIds(
-          indicatorId,
-          renderer,
-        );
-        removeIndicator(chart, indicatorName, indicatorRuntimeId);
+      for (const entry of runtimeEntries) {
+        removeIndicator(chart, entry.indicatorName, entry.indicatorRuntimeId);
       }
     };
-  }, [chart, entries]);
+  }, [chart, runtimeEntries]);
 };
