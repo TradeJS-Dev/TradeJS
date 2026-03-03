@@ -2,6 +2,7 @@ import {
   Connector,
   Direction,
   Interval,
+  Indicator,
   KlineChartData,
   KlineChartItem,
   Signal,
@@ -346,4 +347,22 @@ export interface StrategyRegistryEntry {
 
 export interface StrategyPluginDefinition {
   strategyEntries: StrategyRegistryEntry[];
+}
+
+export interface IndicatorPluginComputeParams {
+  candle: Candle;
+  btcCandle?: Candle;
+  data: Candle[];
+  btcData: Candle[];
+  baseResult: IndicatorSnapshot;
+}
+
+export interface IndicatorPluginEntry {
+  indicator: Indicator;
+  historyKey?: string;
+  compute?: (params: IndicatorPluginComputeParams) => number | null | undefined;
+}
+
+export interface IndicatorPluginDefinition {
+  indicatorEntries: IndicatorPluginEntry[];
 }

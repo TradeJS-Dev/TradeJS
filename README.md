@@ -37,6 +37,7 @@ import { defineConfig } from '@tradejs/framework';
 
 export default defineConfig({
   strategyPlugins: ['@scope/my-strategy-plugin'],
+  indicatorsPlugins: ['@scope/my-indicator-plugin'],
 });
 ```
 

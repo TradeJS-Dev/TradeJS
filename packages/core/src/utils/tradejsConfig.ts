@@ -5,6 +5,7 @@ import { logger } from '@utils/logger';
 
 export interface TradejsProjectConfig {
   strategyPlugins?: string[];
+  indicatorsPlugins?: string[];
 }
 
 const CONFIG_FILE_NAMES = [
@@ -29,9 +30,15 @@ const normalizeConfig = (rawConfig: unknown): TradejsProjectConfig => {
         .map((value) => String(value || '').trim())
         .filter(Boolean)
     : [];
+  const indicatorsPlugins = Array.isArray(config.indicatorsPlugins)
+    ? config.indicatorsPlugins
+        .map((value) => String(value || '').trim())
+        .filter(Boolean)
+    : [];
 
   return {
     strategyPlugins,
+    indicatorsPlugins,
   };
 };
 

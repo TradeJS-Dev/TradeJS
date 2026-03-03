@@ -2,4 +2,5 @@ import { defineConfig } from '@tradejs/framework';
 
 export default defineConfig({
   strategyPlugins: ['@tradejs/example-sandbox'],
+  indicatorsPlugins: ['@tradejs/example-sandbox'],
 });

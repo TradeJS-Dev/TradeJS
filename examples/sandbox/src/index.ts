@@ -1,12 +1,16 @@
 import type {
   Candle,
+  IndicatorPluginEntry,
   Signal,
   Strategy,
   StrategyConfig,
   StrategyCreator,
   StrategyManifest,
 } from '@tradejs/framework';
-import { defineStrategyPlugin } from '@tradejs/framework';
+import {
+  defineIndicatorPlugin,
+  defineStrategyPlugin,
+} from '@tradejs/framework';
 
 interface SandboxConfig extends StrategyConfig {
   INTERVAL?: Signal['interval'];
@@ -131,4 +135,30 @@ export const strategyEntries = defineStrategyPlugin({
   ],
 }).strategyEntries;
 
-export default defineStrategyPlugin({ strategyEntries });
+const indicatorEntries = defineIndicatorPlugin({
+  indicatorEntries: [
+    {
+      indicator: {
+        id: 'sandboxMomentum',
+        label: 'Sandbox Momentum',
+        enabled: false,
+      },
+      historyKey: 'sandboxMomentum',
+      compute: ({ data }) => {
+        const last = data[data.length - 1];
+        const prev = data[data.length - 2];
+        if (!last || !prev || prev.close === 0) {
+          return null;
+        }
+        return ((last.close - prev.close) / prev.close) * 100;
+      },
+    } satisfies IndicatorPluginEntry,
+  ],
+}).indicatorEntries;
+
+export { indicatorEntries };
+
+export default {
+  strategyEntries,
+  indicatorEntries,
+};

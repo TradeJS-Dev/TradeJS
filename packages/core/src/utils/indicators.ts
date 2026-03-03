@@ -8,7 +8,9 @@ import {
 import { ML_BASE_CANDLES_WINDOW, CORRELATION_WINDOW } from '@constants';
 import { cloneArrayValues } from '@utils/array';
 import { calculateCoinBtcCorrelation } from '@utils/correlation';
+import { logger } from '@utils/logger';
 import { createSpreadSmoother } from '@tradejs/core/indicators';
+import { getRegisteredIndicatorEntries } from '@tradejs/core/indicators/registry';
 
 const CANDLE_WINDOW = ML_BASE_CANDLES_WINDOW;
 const BASE_INTERVAL_MINUTES = 15;
@@ -203,6 +205,7 @@ export const createIndicators = (
     periods?: Partial<IndicatorPeriods>;
   } = {},
 ) => {
+  const indicatorPluginEntries = getRegisteredIndicatorEntries();
   const includeMlPayload = options.includeMlPayload !== false;
   const indicatorPeriods = {
     ...DEFAULT_INDICATOR_PERIODS,
@@ -255,6 +258,7 @@ export const createIndicators = (
   });
 
   const indicatorHistory: Record<string, number[]> = {};
+  const indicatorPluginErrorShown = new Set<string>();
 
   const pushIndicator = (key: string, value: number | null | undefined) => {
     if (value == null) {
@@ -532,8 +536,52 @@ export const createIndicators = (
 
     applyIndicatorsToHistory(baseResult, pushIndicator);
 
+    const pluginSeries: Record<string, number> = {};
+    for (const pluginEntry of indicatorPluginEntries) {
+      if (!pluginEntry.compute) continue;
+
+      const historyKey = pluginEntry.historyKey || pluginEntry.indicator.id;
+      try {
+        const pluginValue = pluginEntry.compute({
+          candle,
+          btcCandle,
+          data: candlesHistory,
+          btcData: btcCandlesHistory,
+          baseResult: {
+            ...baseResult,
+            candle,
+            prevCandle,
+            correlation,
+          } as IndicatorSnapshot,
+        });
+
+        if (
+          pluginValue == null ||
+          typeof pluginValue !== 'number' ||
+          !Number.isFinite(pluginValue)
+        ) {
+          continue;
+        }
+
+        pluginSeries[historyKey] = pluginValue;
+        pushIndicator(historyKey, pluginValue);
+      } catch (error) {
+        if (indicatorPluginErrorShown.has(historyKey)) {
+          continue;
+        }
+        indicatorPluginErrorShown.add(historyKey);
+        // Log once per plugin key to avoid noisy per-candle output.
+        logger.warn(
+          'Indicator plugin "%s" compute failed: %s',
+          historyKey,
+          String(error),
+        );
+      }
+    }
+
     const result: IndicatorSnapshot = {
       ...baseResult,
+      ...pluginSeries,
       candle,
       prevCandle,
       highLevel,

@@ -1,4 +1,5 @@
 import type { StrategyPluginDefinition } from '@tradejs/core/types';
+import type { IndicatorPluginDefinition } from '@tradejs/core/types';
 
 export type {
   Strategy,
@@ -7,6 +8,9 @@ export type {
   StrategyConfig,
   StrategyDecision,
   StrategyManifest,
+  IndicatorPluginEntry,
+  IndicatorPluginDefinition,
+  IndicatorPluginComputeParams,
   StrategyRegistryEntry,
   StrategyPluginDefinition,
   CreateStrategyCore,
@@ -19,10 +23,15 @@ export type {
 
 export interface TradejsConfig {
   strategyPlugins?: string[];
+  indicatorsPlugins?: string[];
 }
 
 export const defineConfig = <T extends TradejsConfig>(config: T): T => config;
 
 export const defineStrategyPlugin = <T extends StrategyPluginDefinition>(
+  plugin: T,
+): T => plugin;
+
+export const defineIndicatorPlugin = <T extends IndicatorPluginDefinition>(
   plugin: T,
 ): T => plugin;

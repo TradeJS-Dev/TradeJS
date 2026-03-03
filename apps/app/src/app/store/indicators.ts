@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import _ from 'lodash';
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
@@ -9,6 +9,7 @@ const LOCAL_STORAGE_KEY = 'indicators';
 interface IndicatorsState {
   indicators: Indicators;
   setEnabledIndicators: (values: string[]) => void;
+  upsertIndicators: (items: Indicators) => void;
 }
 
 const useStore = create<IndicatorsState>()(
@@ -81,6 +82,42 @@ const useStore = create<IndicatorsState>()(
 
           return { indicators: clonedState };
         }),
+      upsertIndicators: (items: Indicators) =>
+        set((state) => {
+          if (!items.length) {
+            return state;
+          }
+
+          const next = structuredClone(state.indicators);
+          const indexById = new Map(
+            next.map((indicator, index) => [indicator.id, index]),
+          );
+
+          for (const incoming of items) {
+            if (!incoming?.id) continue;
+
+            const existingIndex = indexById.get(incoming.id);
+            if (existingIndex == null) {
+              next.push({
+                id: incoming.id,
+                label: incoming.label,
+                enabled: Boolean(incoming.enabled),
+                periods: incoming.periods,
+              });
+              indexById.set(incoming.id, next.length - 1);
+              continue;
+            }
+
+            const existing = next[existingIndex];
+            next[existingIndex] = {
+              ...existing,
+              label: incoming.label || existing.label,
+              periods: incoming.periods || existing.periods,
+            };
+          }
+
+          return { indicators: next };
+        }),
     }),
     {
       name: LOCAL_STORAGE_KEY,
@@ -91,6 +128,26 @@ const useStore = create<IndicatorsState>()(
 export const useIndicators = () => {
   const indicators = useStore((s) => s.indicators);
   const setEnabledIndicators = useStore((s) => s.setEnabledIndicators);
+  const upsertIndicators = useStore((s) => s.upsertIndicators);
+  const catalogRequestedRef = useRef(false);
+
+  useEffect(() => {
+    if (catalogRequestedRef.current) return;
+    catalogRequestedRef.current = true;
+
+    fetch('/api/indicators')
+      .then(async (response) => {
+        if (!response.ok) return [];
+        const payload = await response.json();
+        return Array.isArray(payload?.data) ? (payload.data as Indicators) : [];
+      })
+      .then((items) => {
+        if (items.length) {
+          upsertIndicators(items);
+        }
+      })
+      .catch(() => undefined);
+  }, [upsertIndicators]);
 
   const selectedIndicators = useMemo(
     () => indicators.filter((ind) => ind.enabled).map(({ id }) => id),

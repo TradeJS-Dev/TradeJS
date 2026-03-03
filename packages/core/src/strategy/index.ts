@@ -1,5 +1,6 @@
 export {
   ensureStrategyPluginsLoaded,
+  ensureIndicatorPluginsLoaded,
   getAvailableStrategyNames,
   getRegisteredStrategies,
   getRegisteredManifests,

@@ -1,9 +1,11 @@
 import type {
   StrategyCreator,
+  IndicatorPluginDefinition,
   StrategyManifest,
   StrategyPluginDefinition,
   StrategyRegistryEntry,
 } from '@types';
+import { registerIndicatorEntries } from '@tradejs/core/indicators';
 import { logger } from '@utils/logger';
 import { loadTradejsConfig } from '@utils/tradejsConfig';
 import { breakoutManifest } from './Breakout/manifest';
@@ -56,9 +58,15 @@ const strategyManifestsMap = new Map<string, StrategyManifest>();
 let registryBootstrapped = false;
 let pluginsLoadPromise: Promise<void> | null = null;
 
-const parsePluginModuleNames = async (): Promise<string[]> => {
+const parseStrategyPluginModuleNames = async (): Promise<string[]> => {
   const config = await loadTradejsConfig();
   const fromConfig = config.strategyPlugins || [];
+  return [...new Set(fromConfig)];
+};
+
+const parseIndicatorPluginModuleNames = async (): Promise<string[]> => {
+  const config = await loadTradejsConfig();
+  const fromConfig = config.indicatorsPlugins || [];
   return [...new Set(fromConfig)];
 };
 
@@ -83,6 +91,35 @@ const extractPluginDefinition = (
   if (defaultExport && Array.isArray(defaultExport.strategyEntries)) {
     return {
       strategyEntries: defaultExport.strategyEntries as StrategyRegistryEntry[],
+    };
+  }
+
+  return null;
+};
+
+const extractIndicatorPluginDefinition = (
+  moduleExport: unknown,
+): IndicatorPluginDefinition | null => {
+  if (!moduleExport || typeof moduleExport !== 'object') {
+    return null;
+  }
+
+  const candidate = moduleExport as Record<string, unknown>;
+
+  if (Array.isArray(candidate.indicatorEntries)) {
+    return {
+      indicatorEntries:
+        candidate.indicatorEntries as IndicatorPluginDefinition['indicatorEntries'],
+    };
+  }
+
+  const defaultExport = candidate.default as
+    | Record<string, unknown>
+    | undefined;
+  if (defaultExport && Array.isArray(defaultExport.indicatorEntries)) {
+    return {
+      indicatorEntries:
+        defaultExport.indicatorEntries as IndicatorPluginDefinition['indicatorEntries'],
     };
   }
 
@@ -132,24 +169,59 @@ export const ensureStrategyPluginsLoaded = async (): Promise<void> => {
   }
 
   pluginsLoadPromise = (async () => {
-    const pluginModuleNames = await parsePluginModuleNames();
+    const [strategyPluginModuleNames, indicatorPluginModuleNames] =
+      await Promise.all([
+        parseStrategyPluginModuleNames(),
+        parseIndicatorPluginModuleNames(),
+      ]);
+
+    const strategySet = new Set(strategyPluginModuleNames);
+    const indicatorSet = new Set(indicatorPluginModuleNames);
+    const pluginModuleNames = [
+      ...new Set([...strategyPluginModuleNames, ...indicatorPluginModuleNames]),
+    ];
     if (!pluginModuleNames.length) return;
 
     for (const moduleName of pluginModuleNames) {
       try {
         const moduleExport = await importStrategyPluginModule(moduleName);
-        const pluginDefinition = extractPluginDefinition(moduleExport);
-        if (!pluginDefinition) {
+        if (strategySet.has(moduleName)) {
+          const pluginDefinition = extractPluginDefinition(moduleExport);
+          if (!pluginDefinition) {
+            logger.warn(
+              'Skip strategy plugin "%s": export { strategyEntries } is missing',
+              moduleName,
+            );
+          } else {
+            registerEntries(pluginDefinition.strategyEntries, moduleName);
+          }
+        }
+
+        if (indicatorSet.has(moduleName)) {
+          const indicatorPluginDefinition =
+            extractIndicatorPluginDefinition(moduleExport);
+          if (!indicatorPluginDefinition) {
+            logger.warn(
+              'Skip indicator plugin "%s": export { indicatorEntries } is missing',
+              moduleName,
+            );
+          } else {
+            registerIndicatorEntries(
+              indicatorPluginDefinition.indicatorEntries,
+              moduleName,
+            );
+          }
+        }
+
+        if (!strategySet.has(moduleName) && !indicatorSet.has(moduleName)) {
           logger.warn(
-            'Skip strategy plugin "%s": export { strategyEntries } is missing',
+            'Skip plugin "%s": no strategy/indicator sections requested in config',
             moduleName,
           );
-          continue;
         }
-        registerEntries(pluginDefinition.strategyEntries, moduleName);
       } catch (error) {
         logger.warn(
-          'Failed to load strategy plugin "%s": %s',
+          'Failed to load plugin "%s": %s',
           moduleName,
           String(error),
         );
@@ -159,6 +231,8 @@ export const ensureStrategyPluginsLoaded = async (): Promise<void> => {
 
   return pluginsLoadPromise;
 };
+
+export const ensureIndicatorPluginsLoaded = ensureStrategyPluginsLoaded;
 
 export const getStrategyCreator = async (
   name: string,
