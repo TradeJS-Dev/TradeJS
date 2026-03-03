@@ -1,0 +1,36 @@
+{
+  "name": "@tradejs/cli",
+  "version": "1.0.0",
+  "private": true,
+  "bin": {
+    "tradejs": "dist/cli.js"
+  },
+  "scripts": {
+    "build": "echo 'cli: build placeholder'",
+    "typecheck": "tsc -p ../../tsconfig.json --noEmit",
+    "clean-dir": "ts-node -r tsconfig-paths/register ./src/scripts/cleanDir",
+    "clean-redis": "ts-node -r tsconfig-paths/register ./src/scripts/cleanRedis",
+    "clean-tests": "ts-node -r tsconfig-paths/register ./src/scripts/cleanTests",
+    "backtest": "ts-node -r tsconfig-paths/register ./src/scripts/backtest",
+    "bot": "ts-node -r tsconfig-paths/register ./src/scripts/bot",
+    "signals": "ts-node -r tsconfig-paths/register ./src/scripts/signals",
+    "results": "ts-node -r tsconfig-paths/register ./src/scripts/results",
+    "continuity": "ts-node -r tsconfig-paths/register ./src/scripts/continuity",
+    "derivatives:ingest": "ts-node -r tsconfig-paths/register ./src/scripts/derivativesIngest",
+    "derivatives:ingest:coinalyze:all": "ts-node -r tsconfig-paths/register ./src/scripts/derivativesIngestCoinalyzeAll",
+    "spread:ingest": "ts-node -r tsconfig-paths/register ./src/scripts/derivativesIngest --provider binance_coinbase_spread",
+    "migration": "ts-node -r tsconfig-paths/register ./src/scripts/migration",
+    "ml-export": "ts-node -r tsconfig-paths/register ./src/scripts/mlExportSelect",
+    "ml-inspect": "ts-node -r tsconfig-paths/register ./src/scripts/mlInspect",
+    "ml-train:latest": "ts-node -r tsconfig-paths/register ./src/scripts/mlTrainLatestSelect",
+    "ml-train:trendline:catboost": "ts-node -r tsconfig-paths/register ./src/scripts/mlTrainLatestSelect --model catboost --latestOnly",
+    "ml-train:trendline:extra-trees": "ts-node -r tsconfig-paths/register ./src/scripts/mlTrainLatestSelect --model extra_trees --latestOnly",
+    "ml-train:trendline:lightgbm": "ts-node -r tsconfig-paths/register ./src/scripts/mlTrainLatestSelect --model lightgbm --latestOnly",
+    "ml-train:trendline:rf": "ts-node -r tsconfig-paths/register ./src/scripts/mlTrainLatestSelect --model random_forest --latestOnly",
+    "ml-train:trendline:xgboost": "ts-node -r tsconfig-paths/register ./src/scripts/mlTrainLatestSelect --model xgboost --latestOnly",
+    "ml-train:unified:catboost": "ts-node -r tsconfig-paths/register ./src/scripts/mlTrainLatestSelect --strategy any --model catboost --latestOnly",
+    "test-script": "ts-node -r tsconfig-paths/register ./src/scripts/test",
+    "test-ml": "ts-node -r tsconfig-paths/register ./src/scripts/test-ml",
+    "user-add": "ts-node -r tsconfig-paths/register ./src/scripts/user-add"
+  }
+}

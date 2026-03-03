@@ -1,7 +1,7 @@
 # ML Pipeline Audit
 
 ## Scope
-- Project: `investing`
+- Project: `tradejs`
 - Strategy family: `TrendLine` (applicable to other strategies)
 - Pipeline: export -> split -> train -> evaluate -> infer -> upload/deploy
 

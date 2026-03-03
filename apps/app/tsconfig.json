@@ -1,0 +1,35 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./src/*"],
+      "@tradejs/core/*": ["../../packages/core/src/*"],
+      "@tradejs/connectors": ["../../packages/connectors/src/index"],
+      "@tradejs/connectors/*": ["../../packages/connectors/src/*"],
+      "@tradejs/sdk": ["../../packages/sdk/src/index"],
+      "@tradejs/sdk/*": ["../../packages/sdk/src/*"],
+      "@app/*": ["./src/app/*"],
+      "@actions/*": ["./src/app/actions/*"],
+      "@store": ["./src/app/store/index"],
+      "@constants": ["../../packages/core/src/constants/index"],
+      "@types": ["../../packages/core/src/types/index"],
+      "@shared/*": ["./src/app/components/Shared/*"],
+      "@utils/*": ["../../packages/core/src/utils/*"],
+      "@UI": ["./src/app/components/UI/index"],
+      "@components/*": ["./src/app/components/*"]
+    },
+    "plugins": [
+      {
+        "name": "next"
+      }
+    ]
+  },
+  "include": [
+    "next-env.d.ts",
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    ".next/types/**/*.ts"
+  ],
+  "exclude": ["node_modules"]
+}

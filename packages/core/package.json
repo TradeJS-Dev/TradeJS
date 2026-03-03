@@ -1,0 +1,11 @@
+{
+  "name": "@tradejs/core",
+  "version": "1.0.0",
+  "private": true,
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "scripts": {
+    "build": "echo 'core: build placeholder'",
+    "typecheck": "tsc -p ../../tsconfig.json --noEmit"
+  }
+}

@@ -1,4 +1,4 @@
-# 📈 Trading Bot & Backtesting Framework
+# 📈 TradeJS — Trading Bot & Backtesting Framework
 
 Этот репозиторий — универсальный фреймворк для запуска торговых стратегий, бэктеста и автоматизации через Node.js и Next.js.
 
@@ -147,4 +147,4 @@ Node-скрипты для автоматизации:
 
 ---
 
-**📌 Happy Trading & Backtesting!**
+**📌 Happy Trading with TradeJS!**

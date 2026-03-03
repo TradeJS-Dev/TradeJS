@@ -4,7 +4,7 @@ services:
       context: .
       dockerfile: Dockerfile.ml
     volumes:
-      - ./ml:/app/ml
+      - ./packages/ml/python:/app/ml
       - ./data:/app/data
     mem_limit: 24g
     shm_size: 2g
@@ -16,7 +16,7 @@ services:
       context: .
       dockerfile: Dockerfile.ml.profile
     volumes:
-      - ./ml:/app/ml
+      - ./packages/ml/python:/app/ml
       - ./data:/app/data
     working_dir: /app
     command: ["python", "/app/ml/profile.py", "--help"]

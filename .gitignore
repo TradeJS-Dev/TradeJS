@@ -7,13 +7,18 @@
 
 # testing
 /coverage
+**/coverage/
 
 # next.js
 /.next/
 /out/
+**/.next/
+**/out/
 
 # production
 /build
+**/dist/
+**/.turbo/
 
 # misc
 .DS_Store

@@ -27,37 +27,49 @@
     ],
     "paths": {
       "@/*": [
-        "./*"
+        "./apps/app/src/*"
       ],
-      "@src/*": [
-        "./src/*"
+      "@tradejs/core/*": [
+        "./packages/core/src/*"
+      ],
+      "@tradejs/connectors": [
+        "./packages/connectors/src/index"
+      ],
+      "@tradejs/connectors/*": [
+        "./packages/connectors/src/*"
+      ],
+      "@tradejs/sdk": [
+        "./packages/sdk/src/index"
+      ],
+      "@tradejs/sdk/*": [
+        "./packages/sdk/src/*"
       ],
       "@app/*": [
-        "./src/app/*"
+        "./apps/app/src/app/*"
       ],
       "@actions/*": [
-        "./src/app/actions/*"
+        "./apps/app/src/app/actions/*"
       ],
       "@store": [
-        "./src/app/store/index"
+        "./apps/app/src/app/store/index"
       ],
       "@constants": [
-        "./src/constants/index"
+        "./packages/core/src/constants/index"
       ],
       "@types": [
-        "./src/types/index"
+        "./packages/core/src/types/index"
       ],
       "@shared/*": [
-        "./src/app/components/Shared/*"
+        "./apps/app/src/app/components/Shared/*"
       ],
       "@utils/*": [
-        "./src/utils/*"
+        "./packages/core/src/utils/*"
       ],
       "@UI": [
-        "./src/app/components/UI/index"
+        "./apps/app/src/app/components/UI/index"
       ],
       "@components/*": [
-        "./src/app/components/*"
+        "./apps/app/src/app/components/*"
       ]
     },
     "target": "ES2017"
@@ -73,11 +85,11 @@
     ]
   },
   "include": [
-    "next-env.d.ts",
+    "apps/app/next-env.d.ts",
     "**/*.ts",
     "**/*.tsx",
-    ".next/types/**/*.ts",
-    ".next/dev/types/**/*.ts"
+    "apps/app/.next/types/**/*.ts",
+    "apps/app/.next/dev/types/**/*.ts"
   ],
   "exclude": [
     "node_modules"

@@ -9,5 +9,5 @@ services:
       MODEL_DIR: /app/data/ml/models
       DEFAULT_STRATEGY: default
     volumes:
-      - ./ml:/app/ml
+      - ./packages/ml/python:/app/ml
       - ./data:/app/data

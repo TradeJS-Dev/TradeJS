@@ -47,7 +47,7 @@ services:
     ports:
       - "50051:50051"
     volumes:
-      - ./ml:/app/ml
+      - ./packages/ml/python:/app/ml
       - ./data:/app/data
       - ./proto:/app/proto
     networks:
