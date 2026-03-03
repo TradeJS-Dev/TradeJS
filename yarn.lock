@@ -1773,23 +1773,23 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@langchain/core@npm:^0.3.66":
-  version: 0.3.66
-  resolution: "@langchain/core@npm:0.3.66"
+"@langchain/core@npm:^0.3.68":
+  version: 0.3.80
+  resolution: "@langchain/core@npm:0.3.80"
   dependencies:
     "@cfworker/json-schema": "npm:^4.0.2"
     ansi-styles: "npm:^5.0.0"
     camelcase: "npm:6"
     decamelize: "npm:1.2.0"
     js-tiktoken: "npm:^1.0.12"
-    langsmith: "npm:^0.3.46"
+    langsmith: "npm:^0.3.67"
     mustache: "npm:^4.2.0"
     p-queue: "npm:^6.6.2"
     p-retry: "npm:4"
     uuid: "npm:^10.0.0"
     zod: "npm:^3.25.32"
     zod-to-json-schema: "npm:^3.22.3"
-  checksum: 10c0/c6689e860ac037e799cb41f6ca756086b8673f5c1ae9090db1a060934755c832827f6bb317ec0fe7677505549b1ae40e1bf0bd45778f8bab34bb2e52e87bef11
+  checksum: 10c0/c24a4641c11ddda77f89109800e59bdcd68b48f3dc0c485e6594e79ec494fc4b28e7c7b4013937e40e4edf12435dc09f7d5c0b3de5e63c8641fe81f6b17d7698
   languageName: node
   linkType: hard
 
@@ -1803,6 +1803,19 @@ __metadata:
   peerDependencies:
     "@langchain/core": ">=0.3.58 <0.4.0"
   checksum: 10c0/23b83987f3277ca852264fb86571ef2d1f6323d6ae019db075fcfd9f0115be4f68d853fdea48269e6d67375967586470fc3e5959da772c724bd904cfffef9ee6
+  languageName: node
+  linkType: hard
+
+"@langchain/openai@npm:^0.6.11":
+  version: 0.6.17
+  resolution: "@langchain/openai@npm:0.6.17"
+  dependencies:
+    js-tiktoken: "npm:^1.0.12"
+    openai: "npm:5.12.2"
+    zod: "npm:^3.25.32"
+  peerDependencies:
+    "@langchain/core": ">=0.3.68 <0.4.0"
+  checksum: 10c0/88fb09a4b32123c3e55524e88763eae3d53975b59abe03afd0bc998083104dbaca6073eeeec042c787394aa9fc466f9c1c7ef7d7930e09e091ab12b0f6ed19e7
   languageName: node
   linkType: hard
 
@@ -2280,6 +2293,31 @@ __metadata:
 "@tradejs/app@workspace:apps/app":
   version: 0.0.0-use.local
   resolution: "@tradejs/app@workspace:apps/app"
+  dependencies:
+    "@chakra-ui/charts": "npm:^3.24.0"
+    "@chakra-ui/react": "npm:^3.24.2"
+    "@emotion/react": "npm:^11.14.0"
+    "@langchain/core": "npm:^0.3.68"
+    "@langchain/openai": "npm:^0.6.11"
+    "@tradejs/connectors": "workspace:*"
+    "@tradejs/core": "workspace:*"
+    bcryptjs: "npm:^2.4.3"
+    date-fns: "npm:^3.3.1"
+    idb-keyval: "npm:^6.2.2"
+    klinecharts: "npm:10.0.0-alpha9"
+    lodash: "npm:^4.17.21"
+    next: "npm:^16.1.1"
+    next-auth: "npm:^5.0.0-beta.26"
+    next-themes: "npm:^0.4.6"
+    react: "npm:^19.2.3"
+    react-dom: "npm:^19.2.3"
+    react-icons: "npm:^5.5.0"
+    react-virtualized-auto-sizer: "npm:^1.0.26"
+    react-window: "npm:^1.8.11"
+    recharts: "npm:^3.1.1"
+    shiki: "npm:^3.9.2"
+    technicalindicators: "npm:^3.1.0"
+    zustand: "npm:^5.0.7"
   languageName: unknown
   linkType: soft
 
@@ -2291,13 +2329,13 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@tradejs/connectors@workspace:packages/connectors":
+"@tradejs/connectors@workspace:*, @tradejs/connectors@workspace:packages/connectors":
   version: 0.0.0-use.local
   resolution: "@tradejs/connectors@workspace:packages/connectors"
   languageName: unknown
   linkType: soft
 
-"@tradejs/core@workspace:packages/core":
+"@tradejs/core@workspace:*, @tradejs/core@workspace:packages/core":
   version: 0.0.0-use.local
   resolution: "@tradejs/core@workspace:packages/core"
   languageName: unknown
@@ -8753,7 +8791,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"langsmith@npm:^0.3.33, langsmith@npm:^0.3.46":
+"langsmith@npm:^0.3.33":
   version: 0.3.46
   resolution: "langsmith@npm:0.3.46"
   dependencies:
@@ -8779,6 +8817,34 @@ __metadata:
     openai:
       optional: true
   checksum: 10c0/f69513429f27b53406eb930f1bd86b1f366631f28c2cadaf32db0aee78b793a56bd0fa7b588829fb3f9e1a9dea566c653586921ebf212ccbd4873c7dfb55587c
+  languageName: node
+  linkType: hard
+
+"langsmith@npm:^0.3.67":
+  version: 0.3.87
+  resolution: "langsmith@npm:0.3.87"
+  dependencies:
+    "@types/uuid": "npm:^10.0.0"
+    chalk: "npm:^4.1.2"
+    console-table-printer: "npm:^2.12.1"
+    p-queue: "npm:^6.6.2"
+    semver: "npm:^7.6.3"
+    uuid: "npm:^10.0.0"
+  peerDependencies:
+    "@opentelemetry/api": "*"
+    "@opentelemetry/exporter-trace-otlp-proto": "*"
+    "@opentelemetry/sdk-trace-base": "*"
+    openai: "*"
+  peerDependenciesMeta:
+    "@opentelemetry/api":
+      optional: true
+    "@opentelemetry/exporter-trace-otlp-proto":
+      optional: true
+    "@opentelemetry/sdk-trace-base":
+      optional: true
+    openai:
+      optional: true
+  checksum: 10c0/eb1ac6baea51063b881a9dc9a61d2d699bfc9b7aa3443865e575775abe084d94704344275958c94f4e1f03154103e9dd896cde7285797e4afb6af570da6db3b8
   languageName: node
   linkType: hard
 
@@ -9781,6 +9847,23 @@ __metadata:
     regex: "npm:^6.0.1"
     regex-recursion: "npm:^6.0.2"
   checksum: 10c0/bc034e84dfee4dbc061cf6364023e66e1667fb8dc3afcad3b7d6a2c77e2d4a4809396ee2fb8c1fd3d6f00f76f7ca14b773586bf862c5f0c0074c059e2a219252
+  languageName: node
+  linkType: hard
+
+"openai@npm:5.12.2":
+  version: 5.12.2
+  resolution: "openai@npm:5.12.2"
+  peerDependencies:
+    ws: ^8.18.0
+    zod: ^3.23.8
+  peerDependenciesMeta:
+    ws:
+      optional: true
+    zod:
+      optional: true
+  bin:
+    openai: bin/cli
+  checksum: 10c0/7737b9b24edc81fcf9e6dcfb18a196cc0f8e29b6e839adf06a2538558c03908e3aa4cd94901b1a7f4a9dd62676fe9e34d6202281b2395090d998618ea1614c0c
   languageName: node
   linkType: hard
 
@@ -12022,7 +12105,7 @@ __metadata:
     "@emotion/react": "npm:^11.14.0"
     "@grpc/grpc-js": "npm:^1.10.7"
     "@grpc/proto-loader": "npm:^0.7.13"
-    "@langchain/core": "npm:^0.3.66"
+    "@langchain/core": "npm:^0.3.68"
     "@testing-library/jest-dom": "npm:^6.6.3"
     "@testing-library/react": "npm:^16.3.0"
     "@testing-library/user-event": "npm:^14.6.1"
