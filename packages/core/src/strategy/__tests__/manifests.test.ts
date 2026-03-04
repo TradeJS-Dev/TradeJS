@@ -186,4 +186,71 @@ describe('strategy manifests registry', () => {
       warnMessages.some((message) => message.includes('Failed to load plugin')),
     ).toBe(true);
   });
+
+  it('loads built-in lazy creators and returns undefined for symbol access in proxy', async () => {
+    const breakoutCreator = jest.fn(async () => 'breakout-runtime');
+    const trendlineCreator = jest.fn(async () => 'trendline-runtime');
+    const maCreator = jest.fn(async () => 'ma-runtime');
+    const amrCreator = jest.fn(async () => 'amr-runtime');
+    const vdCreator = jest.fn(async () => 'vd-runtime');
+
+    jest.doMock('../Breakout/strategy', () => ({
+      BreakoutStrategyCreator: breakoutCreator,
+    }));
+    jest.doMock('../TrendLine/strategy', () => ({
+      TrendlineStrategyCreator: trendlineCreator,
+    }));
+    jest.doMock('../MaStrategy/strategy', () => ({
+      MaStrategyCreator: maCreator,
+    }));
+    jest.doMock('../AdaptiveMomentumRibbon/strategy', () => ({
+      AdaptiveMomentumRibbonStrategyCreator: amrCreator,
+    }));
+    jest.doMock('../VolumeDivergence/strategy', () => ({
+      VolumeDivergenceStrategyCreator: vdCreator,
+    }));
+
+    const manifests = await loadModule();
+
+    const breakout = await manifests.getStrategyCreator('Breakout');
+    const trendline = await manifests.getStrategyCreator('TrendLine');
+    const ma = await manifests.getStrategyCreator('MaStrategy');
+    const amr = await manifests.getStrategyCreator('AdaptiveMomentumRibbon');
+    const vd = await manifests.getStrategyCreator('VolumeDivergence');
+
+    await expect(breakout?.({} as any)).resolves.toBe('breakout-runtime');
+    await expect(trendline?.({} as any)).resolves.toBe('trendline-runtime');
+    await expect(ma?.({} as any)).resolves.toBe('ma-runtime');
+    await expect(amr?.({} as any)).resolves.toBe('amr-runtime');
+    await expect(vd?.({} as any)).resolves.toBe('vd-runtime');
+
+    expect((manifests.strategies as any)[Symbol.iterator]).toBeUndefined();
+  });
+
+  it('throws when lazy strategy export is missing', async () => {
+    jest.doMock('../Breakout/strategy', () => ({}));
+
+    const manifests = await loadModule();
+    const breakout = await manifests.getStrategyCreator('Breakout');
+
+    await expect(breakout?.({} as any)).rejects.toThrow(
+      'Strategy creator export "BreakoutStrategyCreator" is missing',
+    );
+  });
+
+  it('warns for strategy plugin module with primitive export payload', async () => {
+    jest.doMock('plugin-primitive-export', () => 123, { virtual: true });
+    loadTradejsConfigMock.mockResolvedValue({
+      strategyPlugins: ['plugin-primitive-export'],
+      indicatorsPlugins: [],
+    });
+
+    const manifests = await loadModule();
+    await manifests.ensureStrategyPluginsLoaded();
+
+    const warnMessages = warnMock.mock.calls.map((call) => String(call[0]));
+    expect(
+      warnMessages.some((message) => message.includes('Skip strategy plugin')),
+    ).toBe(true);
+  });
 });
