@@ -1,13 +1,20 @@
 import { API } from '@utils/api';
-import { getBacktest, getBacktestFiles, getOrderLog } from '../backtest';
+import {
+  deleteBacktest,
+  getBacktest,
+  getBacktestFiles,
+  getOrderLog,
+} from '../backtest';
 
 jest.mock('@utils/api', () => ({
   API: {
     get: jest.fn(),
+    delete: jest.fn(),
   },
 }));
 
 const mockedGet = API.get as jest.MockedFunction<typeof API.get>;
+const mockedDelete = API.delete as jest.MockedFunction<typeof API.delete>;
 
 describe('backtest actions', () => {
   beforeEach(() => {
@@ -60,5 +67,28 @@ describe('backtest actions', () => {
       test: { name: 't1' },
     });
     expect(mockedGet).toHaveBeenCalledWith('/api/backtest/result/TrendLine/t1');
+  });
+
+  it('deleteBacktest returns false when args are missing', async () => {
+    await expect(deleteBacktest(undefined, 'TrendLine')).resolves.toBe(false);
+    await expect(deleteBacktest('t1', undefined)).resolves.toBe(false);
+    expect(mockedDelete).not.toHaveBeenCalled();
+  });
+
+  it('deleteBacktest uses encoded API url and returns true only for deleted=true', async () => {
+    mockedDelete.mockResolvedValueOnce({ deleted: true } as any);
+    mockedDelete.mockResolvedValueOnce({ deleted: false } as any);
+
+    await expect(deleteBacktest('t 1', 'Trend/Line')).resolves.toBe(true);
+    await expect(deleteBacktest('t 2', 'Trend/Line')).resolves.toBe(false);
+
+    expect(mockedDelete).toHaveBeenNthCalledWith(
+      1,
+      '/api/backtest/test/Trend%2FLine/t%201',
+    );
+    expect(mockedDelete).toHaveBeenNthCalledWith(
+      2,
+      '/api/backtest/test/Trend%2FLine/t%202',
+    );
   });
 });
