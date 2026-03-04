@@ -1,6 +1,7 @@
 /** @jest-environment node */
 
 import { runPineScript } from '@utils/pine';
+import { logger } from '@utils/logger';
 import { createAdaptiveMomentumRibbonCore } from '../core';
 import { config as DEFAULT_CONFIG } from '../config';
 
@@ -114,6 +115,54 @@ describe('createAdaptiveMomentumRibbonCore', () => {
   beforeEach(() => {
     mockedRunPineScript.mockReset();
   });
+
+  const makeRuntime = async ({
+    configOverrides = {},
+    currentPosition = null,
+    loadScript = 'mock-pine-script',
+    candles = makeCandles({ bullishLast: true }),
+    marketDataOverrides = {},
+    directionalTpSlPrices,
+  }: {
+    configOverrides?: Record<string, unknown>;
+    currentPosition?: any;
+    loadScript?: string;
+    candles?: ReturnType<typeof makeCandles>;
+    marketDataOverrides?: Record<string, unknown>;
+    directionalTpSlPrices?: (params: any) => any;
+  } = {}) => {
+    const marketData = {
+      fullData: candles,
+      timestamp: candles[candles.length - 1].timestamp,
+      currentPrice: candles[candles.length - 1].close,
+      ...marketDataOverrides,
+    };
+
+    const strategyApi = makeStrategyApi(marketData, currentPosition);
+    if (directionalTpSlPrices) {
+      strategyApi.getDirectionalTpSlPrices.mockImplementation(
+        directionalTpSlPrices,
+      );
+    }
+
+    const core = await createAdaptiveMomentumRibbonCore({
+      userName: 'root',
+      symbol: 'TESTUSDT',
+      config: {
+        ...DEFAULT_CONFIG,
+        ...configOverrides,
+      } as any,
+      isConfigFromBacktest: false,
+      connector: {} as any,
+      data: candles.slice(0, -1),
+      btcData: candles.slice(0, -1),
+      loadPineScript: jest.fn(() => loadScript),
+      strategyApi,
+      indicatorsState: makeIndicatorsState(),
+    });
+
+    return { core, candles, marketData, strategyApi };
+  };
 
   it('returns entry decision for bullish AMR signal', async () => {
     mockedRunPineScript.mockResolvedValue(
@@ -327,6 +376,225 @@ describe('createAdaptiveMomentumRibbonCore', () => {
     expect(decision).toEqual({
       kind: 'skip',
       code: 'NO_SIGNAL',
+    });
+  });
+
+  it('returns skip when pine script is missing', async () => {
+    const { core, candles } = await makeRuntime({
+      loadScript: '',
+    });
+
+    const decision = await core(
+      candles[candles.length - 1],
+      candles[candles.length - 1],
+    );
+
+    expect(decision).toEqual({
+      kind: 'skip',
+      code: 'AMR_SCRIPT_EMPTY',
+    });
+  });
+
+  it('returns WAIT_DATA when market data is not enough', async () => {
+    const shortCandles = makeCandles({ bullishLast: true }).slice(0, 1);
+    const { core } = await makeRuntime({
+      candles: shortCandles,
+      marketDataOverrides: {
+        fullData: shortCandles,
+        timestamp: shortCandles[0].timestamp,
+        currentPrice: shortCandles[0].close,
+      },
+    });
+
+    const decision = await core(shortCandles[0], shortCandles[0]);
+    expect(decision).toEqual({
+      kind: 'skip',
+      code: 'WAIT_DATA',
+    });
+  });
+
+  it('uses AMR defaults for invalid config values and no lookback slicing when lookback<=0', async () => {
+    mockedRunPineScript.mockResolvedValue(
+      makePineContext({
+        entryLong: 0,
+        entryShort: 0,
+        invalidated: 0,
+        activeBuy: 0,
+        activeSell: 0,
+        signalOsc: 0,
+        kcMidline: 100,
+        kcUpper: 101,
+        kcLower: 99,
+        invalidationLevel: 98,
+      }),
+    );
+    const candles = makeCandles({ bullishLast: true });
+    const { core } = await makeRuntime({
+      candles,
+      configOverrides: {
+        AMR_KC_MA_TYPE: 'INVALID_KC_TYPE',
+        AMR_LOOKBACK_BARS: 0,
+        AMR_LINE_PLOTS: 'not-an-array',
+      },
+    });
+
+    await core(candles[candles.length - 1], candles[candles.length - 1]);
+
+    expect(mockedRunPineScript).toHaveBeenCalledWith(
+      expect.objectContaining({
+        candles,
+        inputs: expect.objectContaining({
+          'KC MA Type': 'EMA',
+        }),
+      }),
+    );
+  });
+
+  it('returns AMR_SCRIPT_FAILED when pine execution throws and logs warning', async () => {
+    mockedRunPineScript.mockRejectedValueOnce(new Error('pine-failed'));
+    const warnSpy = jest
+      .spyOn(logger, 'warn')
+      .mockImplementation(() => logger as any);
+
+    const candles = makeCandles({ bullishLast: true });
+    const { core } = await makeRuntime({ candles });
+
+    const decision = await core(
+      candles[candles.length - 1],
+      candles[candles.length - 1],
+    );
+
+    expect(decision).toEqual({
+      kind: 'skip',
+      code: 'AMR_SCRIPT_FAILED',
+    });
+    expect(warnSpy).toHaveBeenCalledWith(
+      'AdaptiveMomentumRibbon pine run failed for %s: %s',
+      'TESTUSDT',
+      'Error: pine-failed',
+    );
+    warnSpy.mockRestore();
+  });
+
+  it('returns AMR_SIGNAL_CONFLICT when both entry flags are true', async () => {
+    mockedRunPineScript.mockResolvedValue(
+      makePineContext({
+        entryLong: 1,
+        entryShort: 1,
+        invalidated: 0,
+        activeBuy: 0,
+        activeSell: 0,
+      }),
+    );
+
+    const candles = makeCandles({ bullishLast: true });
+    const { core } = await makeRuntime({ candles });
+
+    const decision = await core(
+      candles[candles.length - 1],
+      candles[candles.length - 1],
+    );
+
+    expect(decision).toEqual({
+      kind: 'skip',
+      code: 'AMR_SIGNAL_CONFLICT',
+    });
+  });
+
+  it('returns POSITION_HELD when position exists with no opposite/invalidation signal', async () => {
+    mockedRunPineScript.mockResolvedValue(
+      makePineContext({
+        entryLong: 1,
+        entryShort: 0,
+        invalidated: 0,
+        activeBuy: 1,
+        activeSell: 0,
+      }),
+    );
+
+    const candles = makeCandles({ bullishLast: true });
+    const { core } = await makeRuntime({
+      candles,
+      currentPosition: {
+        direction: 'LONG',
+        qty: 1,
+      },
+    });
+
+    const decision = await core(
+      candles[candles.length - 1],
+      candles[candles.length - 1],
+    );
+
+    expect(decision).toEqual({
+      kind: 'skip',
+      code: 'POSITION_HELD',
+    });
+  });
+
+  it('returns STRATEGY_DISABLED when signaled side is disabled in config', async () => {
+    mockedRunPineScript.mockResolvedValue(
+      makePineContext({
+        entryLong: 1,
+        entryShort: 0,
+        invalidated: 0,
+        activeBuy: 1,
+        activeSell: 0,
+      }),
+    );
+
+    const candles = makeCandles({ bullishLast: true });
+    const { core } = await makeRuntime({
+      candles,
+      configOverrides: {
+        LONG: {
+          ...DEFAULT_CONFIG.LONG,
+          enable: false,
+        },
+      },
+    });
+
+    const decision = await core(
+      candles[candles.length - 1],
+      candles[candles.length - 1],
+    );
+
+    expect(decision).toEqual({
+      kind: 'skip',
+      code: 'STRATEGY_DISABLED',
+    });
+  });
+
+  it('returns INVALID_QTY when directional sizing returns non-positive quantity', async () => {
+    mockedRunPineScript.mockResolvedValue(
+      makePineContext({
+        entryLong: 1,
+        entryShort: 0,
+        invalidated: 0,
+        activeBuy: 1,
+        activeSell: 0,
+      }),
+    );
+
+    const candles = makeCandles({ bullishLast: true });
+    const { core } = await makeRuntime({
+      candles,
+      directionalTpSlPrices: ({ price, direction }) => ({
+        stopLossPrice: direction === 'LONG' ? price * 0.99 : price * 1.01,
+        takeProfitPrice: direction === 'LONG' ? price * 1.02 : price * 0.98,
+        riskRatio: 2.1,
+        qty: 0,
+      }),
+    });
+
+    const decision = await core(
+      candles[candles.length - 1],
+      candles[candles.length - 1],
+    );
+
+    expect(decision).toEqual({
+      kind: 'skip',
+      code: 'INVALID_QTY',
     });
   });
 });
