@@ -1,14 +1,49 @@
+const invokeMock = jest.fn();
+const chatOpenAICtorMock = jest.fn();
+const setDataMock = jest.fn();
+const analysisKeyMock = jest.fn((symbol: string, signalId: string) => {
+  return `analysis:${symbol}:${signalId}`;
+});
+
+class MockHumanMessage {
+  content: any;
+  constructor(content: any) {
+    this.content = content;
+  }
+}
+
+class MockSystemMessage {
+  content: any;
+  constructor(content: any) {
+    this.content = content;
+  }
+}
+
 jest.mock('@langchain/openai', () => ({
-  ChatOpenAI: class {},
+  ChatOpenAI: jest.fn().mockImplementation((config: unknown) => {
+    chatOpenAICtorMock(config);
+    return {
+      invoke: invokeMock,
+    };
+  }),
 }));
 
 jest.mock('@langchain/core/messages', () => ({
-  HumanMessage: class {},
-  SystemMessage: class {},
+  BaseMessage: class {},
+  HumanMessage: MockHumanMessage,
+  SystemMessage: MockSystemMessage,
+}));
+
+jest.mock('@utils/redis', () => ({
+  setData: (...args: unknown[]) => setDataMock(...args),
+  redisKeys: {
+    analysis: (...args: [string, string]) => analysisKeyMock(...args),
+  },
 }));
 
 const {
   MAX_AI_SERIES_POINTS,
+  askAI,
   buildAiHumanPrompt,
   buildAiPayload,
   buildAiSystemPrompt,
@@ -79,6 +114,23 @@ const makeSignal = () =>
   }) as any;
 
 describe('ai helpers', () => {
+  const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+  const logSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    invokeMock.mockReset();
+    chatOpenAICtorMock.mockReset();
+    setDataMock.mockReset();
+    analysisKeyMock.mockClear();
+    setDataMock.mockResolvedValue(undefined);
+  });
+
+  afterAll(() => {
+    errorSpy.mockRestore();
+    logSpy.mockRestore();
+  });
+
   describe('trimSeriesDeep', () => {
     it('trims nested arrays to last N values and keeps scalars', () => {
       const input = {
@@ -202,6 +254,147 @@ describe('ai helpers', () => {
       expect(prompt).toContain('"trendline"');
       expect(prompt).toContain('"maFast":[3,4,5,6,7]');
       expect(prompt).not.toContain('"riskRatio"');
+    });
+  });
+
+  describe('askAI', () => {
+    it('normalizes object content and persists analysis to redis', async () => {
+      process.env.OPENAI_API_KEY = 'key_123';
+      process.env.OPENAI_API_ENDPOINT = 'https://openrouter.example/v1';
+
+      invokeMock.mockResolvedValue({
+        content: {
+          direction: 'LONG',
+          quality: 4.6,
+          needRetest: 'yes',
+          retestPrice: '101.25',
+          takeProfitPrice: 104.5,
+          stopLossPrice: '98.9',
+          setup: 's'.repeat(500),
+          confirmations: 'confirm',
+          btcContext: 'btc',
+          retestPlan: 'plan',
+          riskLevels: 'risk',
+          qualityReason: 'reason',
+          triggerInvalidation: 'invalidate',
+          comment: 'c'.repeat(1500),
+        },
+      });
+
+      const result = await askAI(makeSignal());
+
+      expect(chatOpenAICtorMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          temperature: 0.2,
+          modelName: 'google/gemini-3.1-pro-preview',
+          openAIApiKey: 'key_123',
+          configuration: expect.objectContaining({
+            baseURL: 'https://openrouter.example/v1',
+          }),
+        }),
+      );
+      expect(invokeMock).toHaveBeenCalledTimes(1);
+
+      const messages = invokeMock.mock.calls[0]?.[0] as any[];
+      expect(messages).toHaveLength(2);
+      expect(messages[0]).toBeInstanceOf(MockSystemMessage);
+      expect(messages[1]).toBeInstanceOf(MockHumanMessage);
+      expect(messages[1].content.content[0].text).toContain(
+        'Проанализируй сделку по ETHUSDT',
+      );
+
+      expect(result).toEqual(
+        expect.objectContaining({
+          direction: 'LONG',
+          quality: 5,
+          needRetest: true,
+          retestPrice: 101.25,
+          takeProfitPrice: 104.5,
+          stopLossPrice: 98.9,
+          comment: 'c'.repeat(1024),
+        }),
+      );
+      expect(result.setup).toHaveLength(400);
+
+      expect(analysisKeyMock).toHaveBeenCalledWith('ETHUSDT', 'sig-1');
+      expect(setDataMock).toHaveBeenCalledWith(
+        'analysis:ETHUSDT:sig-1',
+        expect.objectContaining({
+          direction: 'LONG',
+          quality: 5,
+        }),
+      );
+    });
+
+    it('extracts JSON from array text response and parses numeric strings', async () => {
+      invokeMock.mockResolvedValue({
+        content: [
+          {
+            type: 'text',
+            text: [
+              'prefix',
+              '{"direction":"SHORT","quality":0,"needRetest":false,',
+              '"retestPrice":"abc","takeProfitPrice":"120.5","stopLossPrice":"130",',
+              '"setup":"setup","confirmations":"conf","btcContext":"ctx",',
+              '"retestPlan":"plan","riskLevels":"risk","qualityReason":"q",',
+              '"triggerInvalidation":"ti","comment":"ok"}',
+              'suffix',
+            ].join(' '),
+          },
+        ],
+      });
+
+      const result = await askAI(makeSignal());
+
+      expect(result).toEqual(
+        expect.objectContaining({
+          direction: 'SHORT',
+          quality: 1,
+          needRetest: false,
+          retestPrice: null,
+          takeProfitPrice: 120.5,
+          stopLossPrice: 130,
+          comment: 'ok',
+        }),
+      );
+      expect(errorSpy).not.toHaveBeenCalled();
+    });
+
+    it('returns safe defaults when model response has no JSON block', async () => {
+      invokeMock.mockResolvedValue({
+        content: 'no json here',
+      });
+
+      const result = await askAI(makeSignal());
+
+      expect(result).toEqual(
+        expect.objectContaining({
+          direction: null,
+          quality: undefined,
+          needRetest: false,
+          retestPrice: null,
+          takeProfitPrice: null,
+          stopLossPrice: null,
+          comment: '',
+        }),
+      );
+      expect(errorSpy).toHaveBeenCalled();
+      expect(logSpy).toHaveBeenCalledWith('🔍 Исходный текст:', 'no json here');
+    });
+
+    it('handles invalid json block and non-text array parts', async () => {
+      invokeMock.mockResolvedValue({
+        content: [
+          { image_url: 'x' },
+          { text: '```json { invalid } ```' },
+        ],
+      });
+
+      const result = await askAI(makeSignal());
+
+      expect(result.direction).toBeNull();
+      expect(result.comment).toBe('');
+      expect(errorSpy).toHaveBeenCalled();
     });
   });
 });
