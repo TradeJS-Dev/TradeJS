@@ -1,0 +1,187 @@
+@import 'tailwindcss';
+@import 'tw-animate-css';
+
+@custom-variant dark (&:is(.dark *));
+
+:root {
+  --background: #090d14;
+  --foreground: #d5ddee;
+  --card: #111826;
+  --card-foreground: #d5ddee;
+  --popover: #111826;
+  --popover-foreground: #d5ddee;
+  --primary: #20c5bd;
+  --primary-foreground: #090d14;
+  --secondary: #131f31;
+  --secondary-foreground: #d5ddee;
+  --muted: #131f31;
+  --muted-foreground: #9cb0c7;
+  --accent: #20c5bd;
+  --accent-foreground: #090d14;
+  --destructive: #ff5f70;
+  --destructive-foreground: #090d14;
+  --border: #22364a;
+  --input: #22364a;
+  --ring: #20c5bd;
+  --success: #19c6a0;
+  --danger: #ff5f70;
+  --info: #4ca9ff;
+  --surface: #111826;
+  --surface-2: #131f31;
+  --accent-hover: #34d1c9;
+  --radius: 0.625rem;
+}
+
+@theme inline {
+  --font-sans: var(--font-manrope), 'Manrope', sans-serif;
+  --font-mono: var(--font-jetbrains-mono), 'JetBrains Mono', monospace;
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-success: var(--success);
+  --color-danger: var(--danger);
+  --color-info: var(--info);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-accent-hover: var(--accent-hover);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+/* Grid background pattern */
+.grid-pattern {
+  background-image:
+    linear-gradient(rgba(34, 54, 74, 0.3) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(34, 54, 74, 0.3) 1px, transparent 1px);
+  background-size: 60px 60px;
+}
+
+.grid-pattern-fine {
+  background-image:
+    linear-gradient(rgba(34, 54, 74, 0.15) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(34, 54, 74, 0.15) 1px, transparent 1px);
+  background-size: 20px 20px;
+}
+
+/* Glow effect for CTA */
+.glow-accent {
+  box-shadow: 0 0 20px rgba(32, 197, 189, 0.3), 0 0 60px rgba(32, 197, 189, 0.1);
+}
+
+.glow-accent:hover {
+  box-shadow: 0 0 30px rgba(32, 197, 189, 0.4), 0 0 80px rgba(32, 197, 189, 0.15);
+}
+
+/* Mechanical counter flip animation */
+.mechanical-flip {
+  display: inline-block;
+  backface-visibility: hidden;
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  transform-origin: center bottom;
+}
+
+.mechanical-flip.flipping-out {
+  transform: rotateX(90deg) translateY(-10%);
+  opacity: 0;
+}
+
+.mechanical-flip.flipping-in {
+  transform: rotateX(0deg) translateY(0);
+  opacity: 1;
+}
+
+/* Fade-in animation */
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(24px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-up {
+  animation: fade-up 0.6s ease-out forwards;
+  opacity: 0;
+}
+
+.animate-delay-100 { animation-delay: 100ms; }
+.animate-delay-200 { animation-delay: 200ms; }
+.animate-delay-300 { animation-delay: 300ms; }
+.animate-delay-400 { animation-delay: 400ms; }
+.animate-delay-500 { animation-delay: 500ms; }
+.animate-delay-600 { animation-delay: 600ms; }
+.animate-delay-700 { animation-delay: 700ms; }
+
+/* Parallax background effect */
+.parallax-bg {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+
+.parallax-bg img {
+  will-change: transform;
+  transition: transform 0.1s linear;
+}
+
+@supports (background-attachment: fixed) {
+  .parallax-section {
+    background-attachment: fixed;
+  }
+}
+
+/* Code block styling */
+.code-block {
+  background: #0d1117;
+  border: 1px solid var(--border);
+}
+
+/* Smooth scrolling */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: var(--background);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--muted-foreground);
+}
