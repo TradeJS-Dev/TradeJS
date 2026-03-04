@@ -262,6 +262,43 @@ describe('strategyRuntime', () => {
     expect((result as any).orderSkipReason).toBe('MAKE_ORDERS_DISABLED');
   });
 
+  it('uses BACKTEST as fallback env when config ENV is missing', async () => {
+    mockEnrichSignalWithAi.mockResolvedValue(1);
+    const { strategy } = await makeRuntime(
+      () =>
+        makeDecisionEntry({
+          runtime: {
+            ai: { enabled: true, minQuality: 5 },
+            ml: { enabled: false },
+          },
+        }),
+      { ENV: undefined },
+    );
+
+    await strategy({ timestamp: 1 } as any, { timestamp: 1 } as any);
+
+    expect(mockExecuteEntryOrder).toHaveBeenCalledTimes(1);
+  });
+
+  it('treats non-boolean MAKE_ORDERS config as enabled by default', async () => {
+    const { strategy, connector } = await makeRuntime(
+      () =>
+        makeDecisionEntry({
+          signal: undefined,
+          runtime: { ml: { enabled: false }, ai: { enabled: false } },
+        }),
+      { MAKE_ORDERS: 'false' as any },
+    );
+
+    const result = await strategy(
+      { timestamp: 1 } as any,
+      { timestamp: 1 } as any,
+    );
+
+    expect(connector.placeOrder).toHaveBeenCalledTimes(1);
+    expect(result).toBe('ENTRY');
+  });
+
   it('uses entryContext as source of truth for executeEntryOrder args', async () => {
     const decision = makeDecisionEntry({
       signal: {
@@ -460,6 +497,31 @@ describe('strategyRuntime', () => {
     );
   });
 
+  it('returns HOOK_BEFORE_ENTRY_GATE when gate blocks without reason and no signal', async () => {
+    const beforeEntryGate = jest.fn(async () => ({
+      allow: false,
+    }));
+    setStrategyManifestHooks('TrendLine', {
+      beforeEntryGate,
+    });
+
+    const { strategy, connector } = await makeRuntime(() =>
+      makeDecisionEntry({
+        signal: undefined,
+        runtime: { ml: { enabled: false }, ai: { enabled: false } },
+      }),
+    );
+
+    const result = await strategy(
+      { timestamp: 1 } as any,
+      { timestamp: 1 } as any,
+    );
+
+    expect(beforeEntryGate).toHaveBeenCalledTimes(1);
+    expect(connector.placeOrder).not.toHaveBeenCalled();
+    expect(result).toBe('HOOK_BEFORE_ENTRY_GATE');
+  });
+
   it('calls afterPlaceOrder hook after successful signal order execution', async () => {
     const afterPlaceOrder = jest.fn(async () => {});
     setStrategyManifestHooks('TrendLine', {
@@ -507,6 +569,34 @@ describe('strategyRuntime', () => {
     expect(beforeClosePosition).toHaveBeenCalledTimes(1);
     expect(connector.closePosition).not.toHaveBeenCalled();
     expect(result).toBe('CLOSE_BLOCKED_BY_HOOK:WAIT_CONFIRM');
+  });
+
+  it('returns CLOSE_BLOCKED_BY_HOOK when close gate blocks without reason', async () => {
+    const beforeClosePosition = jest.fn(async () => ({
+      allow: false,
+    }));
+    setStrategyManifestHooks('TrendLine', {
+      beforeClosePosition,
+    });
+
+    const { strategy, connector } = await makeRuntime(() => ({
+      kind: 'exit',
+      code: 'CLOSE_BY_SIGNAL',
+      closePlan: {
+        price: 100,
+        timestamp: 1_700_000_123_000,
+        direction: 'LONG',
+      },
+    }));
+
+    const result = await strategy(
+      { timestamp: 1 } as any,
+      { timestamp: 1 } as any,
+    );
+
+    expect(beforeClosePosition).toHaveBeenCalledTimes(1);
+    expect(connector.closePosition).not.toHaveBeenCalled();
+    expect(result).toBe('CLOSE_BLOCKED_BY_HOOK');
   });
 
   it('returns exit code after successful closePosition execution', async () => {
@@ -577,6 +667,64 @@ describe('strategyRuntime', () => {
       expect.objectContaining({
         stage: 'enrichSignalWithMl',
         error: mlError,
+      }),
+    );
+  });
+
+  it('falls back to base strategy hooks when decision strategy manifest is missing', async () => {
+    const afterCoreDecision = jest.fn(async () => {});
+    setStrategyManifestHooks('TrendLine', {
+      afterCoreDecision,
+    });
+
+    const { strategy } = await makeRuntime(() =>
+      makeDecisionEntry({
+        entryContext: {
+          ...makeDecisionEntry().entryContext,
+          strategy: 'UnknownStrategy',
+        },
+        signal: undefined,
+        runtime: { ai: { enabled: false }, ml: { enabled: false } },
+      }),
+    );
+
+    await strategy({ timestamp: 1 } as any, { timestamp: 1 } as any);
+
+    expect(afterCoreDecision).toHaveBeenCalledTimes(1);
+  });
+
+  it('falls back to base strategy onRuntimeError when decision strategy manifest is missing', async () => {
+    const onRuntimeError = jest.fn(async () => {});
+    setStrategyManifestHooks('TrendLine', {
+      onRuntimeError,
+    });
+
+    const { strategy } = await makeRuntime(() =>
+      makeDecisionEntry({
+        entryContext: {
+          ...makeDecisionEntry().entryContext,
+          strategy: 'UnknownStrategy',
+        },
+        signal: undefined,
+        runtime: {
+          beforePlaceOrder: async () => {
+            throw new Error('unknown-strategy-before-order-failed');
+          },
+          ai: { enabled: false },
+          ml: { enabled: false },
+        },
+      }),
+    );
+
+    const result = await strategy(
+      { timestamp: 1 } as any,
+      { timestamp: 1 } as any,
+    );
+
+    expect(result).toBe('ORDER_ERROR');
+    expect(onRuntimeError).toHaveBeenCalledWith(
+      expect.objectContaining({
+        stage: 'runtime.beforePlaceOrder',
       }),
     );
   });
