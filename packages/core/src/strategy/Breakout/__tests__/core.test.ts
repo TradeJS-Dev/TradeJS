@@ -400,4 +400,297 @@ describe('createBreakoutCore', () => {
       },
     });
   });
+
+  it('returns skip when indicators are not available', async () => {
+    const candle = makeCandle(1_700_000_000_000, 100);
+    const core = await createBreakoutCore({
+      userName: 'test',
+      symbol: 'TESTUSDT',
+      config: makeConfig(),
+      isConfigFromBacktest: false,
+      connector: { getPosition: jest.fn() } as any,
+      data: [],
+      btcData: [],
+      loadPineScript: jest.fn(() => ''),
+      strategyApi: makeStrategyApi({
+        currentPosition: undefined,
+        marketData: {
+          currentPrice: candle.close,
+          timestamp: candle.timestamp,
+          fullData: [candle],
+          lastCandle: candle,
+        },
+        nextIndicators: () => undefined,
+      }),
+      indicatorsState: {} as any,
+    });
+
+    const result = await core(candle, {} as any);
+    expect(result).toEqual({
+      kind: 'skip',
+      code: 'NO_INDICATORS',
+    });
+  });
+
+  it('returns WAIT_DATA when required indicator fields are missing', async () => {
+    const candle = makeCandle(1_700_000_000_000, 100);
+    const core = await createBreakoutCore({
+      userName: 'test',
+      symbol: 'TESTUSDT',
+      config: makeConfig(),
+      isConfigFromBacktest: false,
+      connector: { getPosition: jest.fn() } as any,
+      data: [],
+      btcData: [],
+      loadPineScript: jest.fn(() => ''),
+      strategyApi: makeStrategyApi({
+        currentPosition: undefined,
+        marketData: {
+          currentPrice: candle.close,
+          timestamp: candle.timestamp,
+          fullData: [candle],
+          lastCandle: candle,
+        },
+        nextIndicators: () => ({
+          candle,
+          prevCandle: null,
+          highLevel: null,
+          lowLevel: null,
+        }),
+      }),
+      indicatorsState: {} as any,
+    });
+
+    const result = await core(candle, {} as any);
+    expect(result).toEqual({
+      kind: 'skip',
+      code: 'WAIT_DATA',
+    });
+  });
+
+  it('returns entry decision for short breakout', async () => {
+    const candle = makeCandle(1_700_000_000_000, 100);
+
+    const config = makeConfig({
+      REQUIRED_SCORE_LONG: 99,
+      SIGNALS_LONG: {},
+      REQUIRED_SCORE_SHORT: 3,
+      SIGNALS_SHORT: {
+        VOLATILE: { weight: 1, required: true },
+        SMA_DOWNTREND: { weight: 1, required: true },
+        OBV_BELOW_SMA: { weight: 1, required: true },
+      },
+    });
+
+    const core = await createBreakoutCore({
+      userName: 'test',
+      symbol: 'TESTUSDT',
+      config,
+      isConfigFromBacktest: false,
+      connector: { getPosition: jest.fn() } as any,
+      data: [],
+      btcData: [],
+      loadPineScript: jest.fn(() => ''),
+      strategyApi: makeStrategyApi({
+        currentPosition: {
+          symbol: 'TESTUSDT',
+          qty: 0,
+          direction: 'LONG',
+          price: 0,
+        },
+        marketData: {
+          currentPrice: candle.close,
+          timestamp: candle.timestamp,
+          fullData: [candle],
+          lastCandle: candle,
+        },
+        nextIndicators: () =>
+          makeIndicatorSnapshot(candle, {
+            maFast: 90,
+            maSlow: 110,
+            obv: 50,
+            smaObv: 100,
+            atr: 1,
+            prevCandle: {
+              ...makeCandle(candle.timestamp - 60_000, 101),
+              low: 80,
+              close: 101,
+            },
+            lowLevel: 95,
+            bbLower: 105,
+          }),
+      }),
+      indicatorsState: {} as any,
+    });
+
+    const result = await core(candle, {} as any);
+
+    expect(result.kind).toBe('entry');
+    if (result.kind !== 'entry') {
+      return;
+    }
+    expect(result.code).toBe('OPEN_SHORT');
+    expect(result.entryContext.direction).toBe('SHORT');
+    expect(result.orderPlan.qty).toBeCloseTo(config.LIMIT / candle.close);
+    expect(result.orderPlan.takeProfits?.length).toBe(config.TP_SHORT.length);
+  });
+
+  it('returns NO_SIGNAL when no entry conditions match and no position exists', async () => {
+    const candle = makeCandle(1_700_000_000_000, 100);
+
+    const core = await createBreakoutCore({
+      userName: 'test',
+      symbol: 'TESTUSDT',
+      config: makeConfig({
+        REQUIRED_SCORE_LONG: 1,
+        SIGNALS_LONG: {
+          SMA_UPTREND: { weight: 1, required: true },
+        },
+        REQUIRED_SCORE_SHORT: 1,
+        SIGNALS_SHORT: {
+          SMA_DOWNTREND: { weight: 1, required: true },
+        },
+      }),
+      isConfigFromBacktest: false,
+      connector: { getPosition: jest.fn() } as any,
+      data: [],
+      btcData: [],
+      loadPineScript: jest.fn(() => ''),
+      strategyApi: makeStrategyApi({
+        currentPosition: {
+          symbol: 'TESTUSDT',
+          qty: 0,
+          direction: 'LONG',
+          price: 0,
+        },
+        marketData: {
+          currentPrice: candle.close,
+          timestamp: candle.timestamp,
+          fullData: [candle],
+          lastCandle: candle,
+        },
+        nextIndicators: () =>
+          makeIndicatorSnapshot(candle, {
+            maFast: 100,
+            maSlow: 100,
+            obv: 100,
+            smaObv: 100,
+            prevCandle: {
+              ...makeCandle(candle.timestamp - 60_000, 100),
+              high: 100,
+              low: 100,
+              close: 100,
+            },
+            highLevel: 100,
+            lowLevel: 100,
+            bbUpper: 100,
+            bbLower: 100,
+          }),
+      }),
+      indicatorsState: {} as any,
+    });
+
+    const result = await core(candle, {} as any);
+    expect(result).toEqual({
+      kind: 'skip',
+      code: 'NO_SIGNAL',
+    });
+  });
+
+  it('returns CLOSE_POSITION_BY_SMA on adverse trend for open position', async () => {
+    const candle = makeCandle(1_700_000_000_000, 100);
+
+    const core = await createBreakoutCore({
+      userName: 'test',
+      symbol: 'TESTUSDT',
+      config: makeConfig({
+        REQUIRED_SCORE_SHORT: 99,
+        SIGNALS_SHORT: {},
+      }),
+      isConfigFromBacktest: false,
+      connector: { getPosition: jest.fn() } as any,
+      data: [],
+      btcData: [],
+      loadPineScript: jest.fn(() => ''),
+      strategyApi: makeStrategyApi({
+        currentPosition: {
+          symbol: 'TESTUSDT',
+          qty: 1,
+          direction: 'LONG',
+          price: 100,
+        },
+        marketData: {
+          currentPrice: candle.close,
+          timestamp: candle.timestamp,
+          fullData: [candle],
+          lastCandle: candle,
+        },
+        nextIndicators: () =>
+          makeIndicatorSnapshot(candle, {
+            maFast: 90,
+            maSlow: 110,
+            obv: 200,
+            smaObv: 100,
+          }),
+      }),
+      indicatorsState: {} as any,
+    });
+
+    const result = await core(candle, {} as any);
+    expect(result).toEqual({
+      kind: 'exit',
+      code: 'CLOSE_POSITION_BY_SMA',
+      closePlan: {
+        price: candle.close,
+        timestamp: candle.timestamp,
+        direction: 'LONG',
+      },
+    });
+  });
+
+  it('returns POSITION_HELD when position exists and no exit triggers fire', async () => {
+    const candle = makeCandle(1_700_000_000_000, 100);
+
+    const core = await createBreakoutCore({
+      userName: 'test',
+      symbol: 'TESTUSDT',
+      config: makeConfig({
+        REQUIRED_SCORE_SHORT: 99,
+        SIGNALS_SHORT: {},
+      }),
+      isConfigFromBacktest: false,
+      connector: { getPosition: jest.fn() } as any,
+      data: [],
+      btcData: [],
+      loadPineScript: jest.fn(() => ''),
+      strategyApi: makeStrategyApi({
+        currentPosition: {
+          symbol: 'TESTUSDT',
+          qty: 1,
+          direction: 'LONG',
+          price: 100,
+        },
+        marketData: {
+          currentPrice: candle.close,
+          timestamp: candle.timestamp,
+          fullData: [candle],
+          lastCandle: candle,
+        },
+        nextIndicators: () =>
+          makeIndicatorSnapshot(candle, {
+            maFast: 110,
+            maSlow: 90,
+            obv: 200,
+            smaObv: 100,
+          }),
+      }),
+      indicatorsState: {} as any,
+    });
+
+    const result = await core(candle, {} as any);
+    expect(result).toEqual({
+      kind: 'skip',
+      code: 'POSITION_HELD',
+    });
+  });
 });
