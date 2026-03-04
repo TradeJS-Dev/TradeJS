@@ -93,6 +93,58 @@ describe('fetchWithRetry', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
+  it('parses HTTP-date retry-after value and uses it as retry delay', async () => {
+    jest.useFakeTimers();
+    const now = new Date('2026-03-04T10:00:00.000Z');
+    jest.setSystemTime(now);
+    const retryAt = new Date(now.getTime() + 2_000).toUTCString();
+    const setTimeoutSpy = jest.spyOn(global, 'setTimeout');
+    const fetchMock = jest
+      .fn()
+      .mockResolvedValueOnce(makeResponse(429, retryAt) as any)
+      .mockResolvedValueOnce(makeResponse(200) as any);
+    (global as any).fetch = fetchMock;
+
+    const promise = fetchWithRetry('https://example.com', {
+      attempts: 2,
+      baseDelayMs: 100,
+      maxDelayMs: 5_000,
+    });
+
+    await Promise.resolve();
+    const retryDelay = Number(setTimeoutSpy.mock.calls[0]?.[1] ?? 0);
+    expect(retryDelay).toBeGreaterThanOrEqual(1_000);
+    expect(retryDelay).toBeLessThanOrEqual(2_000);
+
+    await jest.advanceTimersByTimeAsync(retryDelay);
+    const response = await promise;
+    expect(response.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('falls back to exponential backoff when retry-after header is invalid', async () => {
+    jest.useFakeTimers();
+    const setTimeoutSpy = jest.spyOn(global, 'setTimeout');
+    const fetchMock = jest
+      .fn()
+      .mockResolvedValueOnce(makeResponse(429, 'not-a-valid-retry-after') as any)
+      .mockResolvedValueOnce(makeResponse(200) as any);
+    (global as any).fetch = fetchMock;
+
+    const promise = fetchWithRetry('https://example.com', {
+      attempts: 2,
+      baseDelayMs: 250,
+      maxDelayMs: 5_000,
+    });
+
+    await Promise.resolve();
+    expect(setTimeoutSpy).toHaveBeenCalledWith(expect.any(Function), 250);
+    await jest.advanceTimersByTimeAsync(250);
+
+    const response = await promise;
+    expect(response.status).toBe(200);
+  });
+
   it('does not retry on non-retryable status', async () => {
     const fetchMock = jest.fn().mockResolvedValueOnce(makeResponse(400) as any);
     (global as any).fetch = fetchMock;
@@ -153,6 +205,29 @@ describe('fetchWithRetry', () => {
     });
 
     expect(response.status).toBe(204);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('throws remembered last error after loop completion for fractional attempts', async () => {
+    jest.useFakeTimers();
+    const fetchMock = jest
+      .fn()
+      .mockRejectedValueOnce(new Error('fractional-attempt-error'));
+    (global as any).fetch = fetchMock;
+
+    const promise = fetchWithRetry('https://example.com', {
+      attempts: 0.5,
+      baseDelayMs: 10,
+      maxDelayMs: 10,
+    });
+    const rejection = expect(promise).rejects.toThrow(
+      'fractional-attempt-error',
+    );
+
+    await Promise.resolve();
+    await jest.advanceTimersByTimeAsync(10);
+
+    await rejection;
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });
