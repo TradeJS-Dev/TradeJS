@@ -157,18 +157,18 @@ export const translations = {
       actionWords: ["ПИШИ", "ТЕСТИРУЙ", "ЗАПУСКАЙ"],
       titleSuffix: "Торговые стратегии",
       subtitle:
-        "TypeScript & Pine Script framework",
+        "Фреймворк для стратегий на TypeScript и Pine Script",
       quickstart: "Быстрый старт",
       trust: {
-        backtesting: "Гридовые бэктесты",
-        runtime: "Рантайм-сигналы",
+        backtesting: "Grid-бэктесты",
+        runtime: "Сигналы в рантайме",
         aiml: "AI / ML",
-        telegram: "Telegram-алерты",
+        telegram: "Уведомления в Telegram",
       },
     },
     strategyAuthoring: {
       sectionTitle: "Создание стратегий",
-      sectionSubtitle: "Пишите стратегии на предпочитаемом языке с полным контролем инфраструктуры",
+      sectionSubtitle: "Пишите стратегии на удобном языке с полным контролем инфраструктуры",
       items: [
         {
           title: "Стратегии и индикаторы на TypeScript",
@@ -189,19 +189,19 @@ export const translations = {
           ],
         },
         {
-          title: "Локальный и self-hosted запуск",
+          title: "Локальный и self-hosted режим",
           description:
             "Запускайте TradeJS локально или на своём сервере. Полный контроль над данными, инфраструктурой и средой исполнения.",
           links: [
             { label: "Локальная установка", url: "https://docs.aleksnick01inv.fvds.ru/ru/getting-started/local" },
-            { label: "Self-hosted", url: "https://docs.aleksnick01inv.fvds.ru/ru/getting-started/self-hosted" },
+            { label: "Self-hosted установка", url: "https://docs.aleksnick01inv.fvds.ru/ru/getting-started/self-hosted" },
           ],
         },
       ],
     },
     intelligence: {
       sectionTitle: "Интеллект и бэктестинг",
-      sectionSubtitle: "AI-усиление сигналов и массовая оптимизация параметров",
+      sectionSubtitle: "AI-усиление сигналов и масштабный перебор параметров",
       items: [
         {
           title: "Встроенный AI / ML",
@@ -213,9 +213,9 @@ export const translations = {
           ],
         },
         {
-          title: "Массовые бэктесты через Grid Config",
+          title: "Grid-бэктесты",
           description:
-            "Запускайте массовый перебор параметров через grid config. Находите оптимальные конфигурации среди тысяч комбинаций автоматически.",
+            "Запускайте массовый перебор параметров через Grid Config. Автоматически находите оптимальные конфигурации среди тысяч комбинаций.",
           links: [
             { label: "Grid Config", url: "https://docs.aleksnick01inv.fvds.ru/ru/runtime/backtesting/grid-config" },
           ],
@@ -260,7 +260,7 @@ export const translations = {
         },
         {
           step: "03",
-          title: "Продвиньте лучшие конфиги",
+          title: "Перенесите лучшие конфиги",
           description: "Выберите лучшие наборы параметров из результатов бэктестов и перенесите их в рантайм-конфигурацию.",
         },
         {
@@ -272,17 +272,17 @@ export const translations = {
     },
     devExperience: {
       sectionTitle: "Опыт разработчика",
-      sectionSubtitle: "Двойная авторизация: пишите на том языке, который знаете лучше",
+      sectionSubtitle: "Два режима разработки: пишите на языке, который знаете лучше",
       tsTab: "TypeScript",
       pineTab: "Pine Script",
     },
     finalCta: {
       title: "Готовы автоматизировать трейдинг?",
-      subtitle: "Начните создавать стратегии с TradeJS сегодня. Open-source, self-hosted, создан для разработчиков.",
+      subtitle: "Начните создавать стратегии с TradeJS уже сегодня. Open-source, self-hosted и создан для разработчиков.",
       quickstart: "Быстрый старт",
     },
     footer: {
-      description: "Open-source фреймворк торговых стратегий для разработчиков.",
+      description: "Open-source фреймворк для разработки торговых стратегий.",
       app: "Приложение",
       docs: "Документация",
       rights: "Все права защищены.",

@@ -4,48 +4,65 @@ import { useState } from "react"
 import { useLocale } from "./locale-provider"
 import { AnimateOnScroll } from "./animate-on-scroll"
 
-const tsCode = `import { Strategy, StrategyConfig } from 'tradejs'
+const tsCode = `export const createMyStrategyCore: CreateStrategyCore<
+  MyStrategyConfig
+> = async ({ strategyApi }) => {
+  return async () => {
+    const { currentPrice, timestamp } = await strategyApi.getMarketData()
 
-const config: StrategyConfig = {
-  symbol: 'BTCUSDT',
-  timeframe: '1h',
-  capital: 10_000,
-}
-
-export default class MACrossover extends Strategy {
-  maFast = this.sma(this.close, 9)
-  maSlow = this.sma(this.close, 21)
-
-  next() {
-    if (this.maFast.crossOver(this.maSlow)) {
-      this.buy({ size: 0.5 })
+    if (await strategyApi.isCurrentPositionExists()) {
+      return strategyApi.skip('POSITION_EXISTS')
     }
-    if (this.maFast.crossUnder(this.maSlow)) {
-      this.sell()
+
+    const { stopLossPrice, takeProfitPrice, riskRatio, qty } =
+      strategyApi.getDirectionalTpSlPrices({
+        price: currentPrice,
+        direction: 'LONG',
+        takeProfitDelta: 2,
+        stopLossDelta: 1,
+        unit: 'percent',
+      })
+
+    if (!qty || qty <= 0) {
+      return strategyApi.skip('INVALID_QTY')
     }
+
+    return strategyApi.entry({
+      code: 'SIMPLE_LONG_ENTRY',
+      direction: 'LONG',
+      timestamp,
+      prices: {
+        currentPrice,
+        takeProfitPrice,
+        stopLossPrice,
+        riskRatio,
+      },
+      orderPlan: {
+        qty,
+        takeProfits: [{ rate: 1, price: takeProfitPrice }],
+      },
+    })
   }
 }`
 
 const pineCode = `//@version=5
-strategy("MA Crossover", overlay=true)
+indicator("EMA Cross (TradeJS)", overlay=true)
 
-fastLen = input.int(9, "Fast MA Length")
-slowLen = input.int(21, "Slow MA Length")
+fastLen = input.int(9, "Fast EMA Length")
+slowLen = input.int(21, "Slow EMA Length")
 
-maFast = ta.sma(close, fastLen)
-maSlow = ta.sma(close, slowLen)
+emaFast = ta.ema(close, fastLen)
+emaSlow = ta.ema(close, slowLen)
 
-plot(maFast, color=color.teal, linewidth=2)
-plot(maSlow, color=color.orange, linewidth=2)
+entryLong = ta.crossover(emaFast, emaSlow)
+entryShort = ta.crossunder(emaFast, emaSlow)
+invalidated = false
 
-longCond  = ta.crossover(maFast, maSlow)
-shortCond = ta.crossunder(maFast, maSlow)
-
-if longCond
-    strategy.entry("Long", strategy.long)
-
-if shortCond
-    strategy.close("Long")`
+plot(emaFast, "emaFast")
+plot(emaSlow, "emaSlow")
+plot(invalidated ? 1 : 0, "invalidated")
+plot(entryLong ? 1 : 0, "entryLong")
+plot(entryShort ? 1 : 0, "entryShort")`
 
 export function DeveloperExperience() {
   const { t } = useLocale()
