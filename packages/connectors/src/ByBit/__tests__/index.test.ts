@@ -865,4 +865,74 @@ describe('ByBitConnectorCreator', () => {
 
     nowSpy.mockRestore();
   });
+
+  it('kline older loader advances pointer and stops on short chunk', async () => {
+    const nowSpy = jest.spyOn(Date, 'now').mockReturnValue(600_000);
+    const client = {
+      getKline: jest
+        .fn()
+        .mockResolvedValueOnce({
+          result: {
+            list: Array.from({ length: 1000 }, () => ({ timestamp: 300_000 })),
+          },
+        })
+        .mockResolvedValueOnce({
+          result: {
+            list: [{ timestamp: 150_000 }],
+          },
+        }),
+    };
+    mockedGetClient.mockResolvedValue(client as any);
+    mockedGetDataEdges.mockResolvedValue({ min: 200_000, max: 200_000 });
+    mockedGetCandlesRange.mockResolvedValue([
+      {
+        ts: new Date(180_000),
+        open: 1,
+        high: 2,
+        low: 0.5,
+        close: 1.1,
+        volume: 10,
+        turnover: 20,
+      } as any,
+    ]);
+    mockedToRows.mockImplementation((symbol, interval, data) => ({
+      symbol,
+      interval,
+      data,
+    }) as any);
+    mockedUpsertCandles.mockResolvedValue(undefined as any);
+
+    const connector = await ByBitConnectorCreator({ userName: 'alice' });
+    const result = await connector.kline({
+      symbol: 'BTCUSDT',
+      interval: '1',
+      start: 100_000,
+      end: 160_000,
+      silent: true,
+    });
+
+    expect(client.getKline).toHaveBeenCalledTimes(2);
+    expect(client.getKline).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        start: 60_000,
+        end: 200_000,
+      }),
+    );
+    expect(client.getKline).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        start: 60_000,
+        end: 240_000,
+      }),
+    );
+    expect(result).toEqual([
+      expect.objectContaining({
+        timestamp: 180_000,
+        close: 1.1,
+      }),
+    ]);
+
+    nowSpy.mockRestore();
+  });
 });

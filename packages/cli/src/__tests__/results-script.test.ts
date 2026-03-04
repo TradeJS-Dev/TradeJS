@@ -703,4 +703,26 @@ describe('results script', () => {
       { expire: 0 },
     );
   });
+
+  it('auto-runs script when NODE_ENV is not test', async () => {
+    await loadScript({
+      flags: {
+        strategy: 'TrendLine',
+        user: 'root',
+        coverage: false,
+        update: false,
+        merge: false,
+        clear: false,
+        verbose: false,
+      },
+      configKeys: [],
+      testConfigs: {},
+      testStats: {},
+      nodeEnv: 'production',
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(exitSpy).toHaveBeenCalled();
+  });
 });
