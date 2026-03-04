@@ -1,0 +1,301 @@
+type MockRedisClient = {
+  on: jest.Mock;
+  scan: jest.Mock;
+  call: jest.Mock;
+  get: jest.Mock;
+  del: jest.Mock;
+  expire: jest.Mock;
+  set: jest.Mock;
+  emit: (event: string, payload?: any) => void;
+};
+
+const createMockRedisClient = (): MockRedisClient => {
+  const handlers: Record<string, (payload?: any) => void> = {};
+  const client: MockRedisClient = {
+    on: jest.fn((event: string, callback: (payload?: any) => void) => {
+      handlers[event] = callback;
+      return client;
+    }),
+    scan: jest.fn(),
+    call: jest.fn(),
+    get: jest.fn(),
+    del: jest.fn(),
+    expire: jest.fn(),
+    set: jest.fn(),
+    emit: (event: string, payload?: any) => {
+      handlers[event]?.(payload);
+    },
+  };
+  return client;
+};
+
+describe('redis utils', () => {
+  const originalHost = process.env.REDIS_HOST;
+  const originalPort = process.env.REDIS_PORT;
+
+  afterEach(() => {
+    process.env.REDIS_HOST = originalHost;
+    process.env.REDIS_PORT = originalPort;
+    delete (global as any).__redis__;
+    jest.resetModules();
+    jest.clearAllMocks();
+  });
+
+  const setup = async () => {
+    const redisClient = createMockRedisClient();
+    const redisCtorMock = jest.fn(() => redisClient);
+    const loggerLogMock = jest.fn();
+
+    jest.doMock('ioredis', () => ({
+      __esModule: true,
+      default: redisCtorMock,
+    }));
+    jest.doMock('@utils/logger', () => ({
+      logger: {
+        log: loggerLogMock,
+      },
+    }));
+
+    const redisModule = await import('@utils/redis');
+    return {
+      redisModule,
+      redisClient,
+      redisCtorMock,
+      loggerLogMock,
+    };
+  };
+
+  it('creates singleton redis client with env host/port and reuses it', async () => {
+    process.env.REDIS_HOST = '127.0.0.1';
+    process.env.REDIS_PORT = '6380';
+
+    const { redisModule, redisClient, redisCtorMock } = await setup();
+    redisClient.call.mockResolvedValue('{"ok":1}');
+
+    await expect(redisModule.getData('k1', null)).resolves.toEqual({ ok: 1 });
+    await expect(redisModule.getData('k2', null)).resolves.toEqual({ ok: 1 });
+
+    expect(redisCtorMock).toHaveBeenCalledTimes(1);
+    expect(redisCtorMock).toHaveBeenCalledWith({
+      host: '127.0.0.1',
+      port: 6380,
+    });
+    expect(redisClient.on).toHaveBeenCalledWith('error', expect.any(Function));
+    expect(redisClient.on).toHaveBeenCalledWith('ready', expect.any(Function));
+  });
+
+  it('handles redis connectivity and generic error events with warning suppression/recovery', async () => {
+    const { redisModule, redisClient, loggerLogMock } = await setup();
+    redisClient.call.mockResolvedValue('null');
+
+    await redisModule.getData('bootstrap', null);
+
+    redisClient.emit('error', new Error('ECONNREFUSED: connect failed'));
+    redisClient.emit('error', new Error('EAI_AGAIN: dns'));
+    redisClient.emit('ready');
+    redisClient.emit('error', new Error('ENOTFOUND: redis'));
+    redisClient.emit('error', new Error('SOME_OTHER_ERROR'));
+
+    const levelCalls = loggerLogMock.mock.calls.map((call) => call[0]);
+    expect(levelCalls.filter((level) => level === 'warn')).toHaveLength(2);
+    expect(levelCalls.filter((level) => level === 'info')).toHaveLength(1);
+    expect(levelCalls.filter((level) => level === 'error')).toHaveLength(1);
+  });
+
+  it('scans keys by prefix and returns empty array on scan failure', async () => {
+    const { redisModule, redisClient, loggerLogMock } = await setup();
+
+    redisClient.scan
+      .mockResolvedValueOnce(['1', ['users:1', 'other:1']])
+      .mockResolvedValueOnce(['0', ['users:2']]);
+
+    await expect(redisModule.getKeys('users:')).resolves.toEqual([
+      'users:1',
+      'users:2',
+    ]);
+
+    redisClient.scan.mockRejectedValueOnce(new Error('scan-failed'));
+    await expect(redisModule.getKeys('users:')).resolves.toEqual([]);
+    expect(loggerLogMock).toHaveBeenCalledWith(
+      'warn',
+      'failed SCAN for %s: %s',
+      'users:',
+      'Error: scan-failed',
+    );
+  });
+
+  it('reads JSON.GET first, handles invalid payload, and falls back to GET on JSON.GET error', async () => {
+    const { redisModule, redisClient, loggerLogMock } = await setup();
+
+    redisClient.call.mockResolvedValueOnce('{"a":1}');
+    await expect(redisModule.getData('json-ok', {})).resolves.toEqual({ a: 1 });
+
+    redisClient.call.mockResolvedValueOnce(Buffer.from('{bad-json'));
+    await expect(redisModule.getData('json-bad', { fallback: 1 })).resolves.toEqual(
+      { fallback: 1 },
+    );
+    expect(redisClient.del).toHaveBeenCalledWith('json-bad');
+
+    redisClient.call.mockRejectedValueOnce(new Error('json-get-error'));
+    redisClient.get.mockResolvedValueOnce('{"b":2}');
+    await expect(redisModule.getData('fallback-get', null)).resolves.toEqual({
+      b: 2,
+    });
+
+    redisClient.call.mockRejectedValueOnce(new Error('json-get-error-2'));
+    redisClient.get.mockResolvedValueOnce('not-json');
+    await expect(redisModule.getData('fallback-bad-json', [])).resolves.toEqual(
+      [],
+    );
+    expect(redisClient.del).toHaveBeenCalledWith('fallback-bad-json');
+
+    redisClient.call.mockRejectedValueOnce(new Error('json-get-error-3'));
+    redisClient.get.mockRejectedValueOnce(new Error('get-error'));
+    await expect(redisModule.getData('fallback-get-error', 'x')).resolves.toBe(
+      'x',
+    );
+
+    expect(loggerLogMock).toHaveBeenCalledWith(
+      'error',
+      'failed GET %s: %s',
+      'fallback-get-error',
+      'Error: get-error',
+    );
+  });
+
+  it('supports delKey/delKeyWithOptions and raises on MISCONF when requested', async () => {
+    const { redisModule, redisClient, loggerLogMock } = await setup();
+
+    redisClient.del.mockResolvedValueOnce(1).mockResolvedValueOnce(0);
+    await expect(redisModule.delKey('key-1')).resolves.toBe(true);
+    await expect(redisModule.delKeyWithOptions('key-2')).resolves.toBe(false);
+
+    redisClient.del.mockRejectedValueOnce(new Error('MISCONF redis write stop'));
+    await expect(
+      redisModule.delKeyWithOptions('key-3', { raiseOnMisconf: true }),
+    ).rejects.toThrow(redisModule.RedisWriteBlockedError);
+
+    redisClient.del.mockRejectedValueOnce(new Error('DEL failed'));
+    await expect(redisModule.delKeyWithOptions('key-4')).resolves.toBe(false);
+    expect(loggerLogMock).toHaveBeenCalledWith(
+      'error',
+      'failed DEL %s: %s',
+      'key-4',
+      'Error: DEL failed',
+    );
+  });
+
+  it('writes data via JSON.SET, expires keys, and falls back to SET when JSON.SET fails', async () => {
+    const { redisModule, redisClient, loggerLogMock } = await setup();
+
+    redisClient.call.mockResolvedValueOnce('OK');
+    await redisModule.setData('json-set-ok', { x: 1 });
+    expect(redisClient.call).toHaveBeenCalledWith(
+      'JSON.SET',
+      'json-set-ok',
+      '$',
+      '{"x":1}',
+    );
+    expect(redisClient.expire).toHaveBeenCalledWith('json-set-ok', 86400);
+
+    redisClient.call.mockResolvedValueOnce('OK');
+    const expireCallsBefore = redisClient.expire.mock.calls.length;
+    await redisModule.setData('json-set-no-expire', { x: 2 }, { expire: 0 });
+    expect(redisClient.expire.mock.calls.length).toBe(expireCallsBefore);
+
+    redisClient.call.mockRejectedValueOnce(new Error('json-set-failed'));
+    redisClient.set.mockResolvedValueOnce('OK');
+    await redisModule.setData('set-fallback-expire', { x: 3 }, { expire: 12 });
+    expect(redisClient.set).toHaveBeenCalledWith(
+      'set-fallback-expire',
+      '{"x":3}',
+      'EX',
+      12,
+    );
+
+    redisClient.call.mockRejectedValueOnce(new Error('json-set-failed-2'));
+    redisClient.set.mockResolvedValueOnce('OK');
+    await redisModule.setData('set-fallback-no-expire', { x: 4 }, { expire: 0 });
+    expect(redisClient.set).toHaveBeenCalledWith(
+      'set-fallback-no-expire',
+      '{"x":4}',
+    );
+
+    redisClient.call.mockRejectedValueOnce(new Error('json-set-failed-3'));
+    redisClient.set.mockRejectedValueOnce(new Error('set-failed'));
+    await redisModule.setData('set-fallback-failed', { x: 5 }, { expire: 1 });
+    expect(loggerLogMock).toHaveBeenCalledWith(
+      'error',
+      'failed SET %s: %s',
+      'set-fallback-failed',
+      'Error: set-failed',
+    );
+  });
+
+  it('builds all redis key helpers with expected format', async () => {
+    const { redisModule } = await setup();
+    const { redisKeys } = redisModule;
+
+    expect(redisKeys.users()).toBe('users:index:');
+    expect(redisKeys.user('root')).toBe('users:index:root');
+    expect(redisKeys.bots('root')).toBe('users:root:bots');
+    expect(redisKeys.botsPrefix()).toBe('users:');
+    expect(redisKeys.bot('root', 'bot-1')).toBe('users:root:bots:bot-1');
+    expect(redisKeys.backtestConfig('root', 'TrendLine:base')).toBe(
+      'users:root:backtests:configs:TrendLine:base',
+    );
+    expect(redisKeys.strategies('root')).toBe('users:root:strategies');
+    expect(redisKeys.strategyConfig('root', 'TrendLine')).toBe(
+      'users:root:strategies:TrendLine:config',
+    );
+    expect(redisKeys.strategyResults('root', 'TrendLine')).toBe(
+      'users:root:strategies:TrendLine:results',
+    );
+    expect(redisKeys.tests('root')).toBe('users:root:tests:');
+    expect(redisKeys.tests('root', 'TrendLine')).toBe(
+      'users:root:tests:TrendLine',
+    );
+    expect(redisKeys.testOrders('root', 'TrendLine', 't1')).toBe(
+      'users:root:tests:TrendLine:t1:orders',
+    );
+    expect(redisKeys.testConfig('root', 'TrendLine', 't1')).toBe(
+      'users:root:tests:TrendLine:t1:config',
+    );
+    expect(redisKeys.testStat('root', 'TrendLine', 't1')).toBe(
+      'users:root:tests:TrendLine:t1:stat',
+    );
+    expect(redisKeys.cacheChunk('root', 'c1')).toBe(
+      'users:root:cache:tests:chunks:c1',
+    );
+    expect(redisKeys.cacheOrders('root', 'o1')).toBe(
+      'users:root:cache:tests:orders:o1',
+    );
+    expect(redisKeys.cachePositions('root', 'p1')).toBe(
+      'users:root:cache:tests:positions:p1',
+    );
+    expect(redisKeys.signal('BTCUSDT', 's1')).toBe('signals:BTCUSDT:s1');
+    expect(redisKeys.signalsBySymbol('BTCUSDT')).toBe('signals:BTCUSDT:');
+    expect(redisKeys.storeSignal('BTCUSDT', 's1')).toBe(
+      'store:signals:BTCUSDT:s1',
+    );
+    expect(redisKeys.analysis('BTCUSDT', 's1')).toBe('analysis:BTCUSDT:s1');
+    expect(redisKeys.backtestResults('root', 'TrendLine:base', '123')).toBe(
+      'users:root:backtests:results:TrendLine:base:123',
+    );
+    expect(redisKeys.mlSignalsByStrategy('TrendLine')).toBe(
+      'ml:TrendLine:signals:',
+    );
+    expect(redisKeys.mlSignals()).toBe('ml:');
+    expect(redisKeys.mlSignal('TrendLine', 'sid')).toBe(
+      'ml:TrendLine:signals:sid',
+    );
+    expect(redisKeys.mlResultsByStrategy('TrendLine')).toBe(
+      'ml:TrendLine:results:',
+    );
+    expect(redisKeys.mlResults()).toBe('ml:');
+    expect(redisKeys.mlResult('TrendLine', 'sid')).toBe(
+      'ml:TrendLine:results:sid',
+    );
+  });
+});
+
