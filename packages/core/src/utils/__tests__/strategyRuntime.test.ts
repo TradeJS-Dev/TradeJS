@@ -52,13 +52,46 @@ jest.mock('@utils/logger', () => ({
   },
 }));
 
-import { createStrategyRuntime } from '@utils/strategyRuntime';
+jest.mock('../../strategy/manifests', () => {
+  const actual = jest.requireActual('../../strategy/manifests');
+  return {
+    ...actual,
+    getStrategyManifest: jest.fn(actual.getStrategyManifest),
+  };
+});
 
-const makeSignal = () =>
+import { createStrategyRuntime } from '@utils/strategyRuntime';
+import { logger } from '@utils/logger';
+import * as manifestsModule from '../../strategy/manifests';
+
+const realGetStrategyManifest = (
+  jest.requireActual('../../strategy/manifests') as typeof manifestsModule
+).getStrategyManifest;
+const mockGetStrategyManifest =
+  manifestsModule.getStrategyManifest as jest.MockedFunction<
+    typeof manifestsModule.getStrategyManifest
+  >;
+const manifestOverrides = new Map<string, any>();
+
+const setStrategyManifestHooks = (
+  strategy: string,
+  hooks: Record<string, any>,
+) => {
+  const base = realGetStrategyManifest(strategy) ?? { name: strategy };
+  manifestOverrides.set(strategy, {
+    ...base,
+    hooks: {
+      ...(base.hooks ?? {}),
+      ...hooks,
+    },
+  });
+};
+
+const makeSignal = (strategy = 'TrendLine') =>
   ({
     signalId: 'sig-1',
     symbol: 'ETHUSDT',
-    strategy: 'TrendLine',
+    strategy,
     interval: '15',
     direction: 'LONG',
     timestamp: 1_700_000_000_000,
@@ -72,11 +105,14 @@ const makeSignal = () =>
     indicators: {},
   }) as any;
 
-const makeDecisionEntry = (overrides: Record<string, any> = {}) => ({
+const makeDecisionEntry = (
+  overrides: Record<string, any> = {},
+  strategy = 'TrendLine',
+) => ({
   kind: 'entry',
   code: 'ENTRY',
   entryContext: {
-    strategy: 'TrendLine',
+    strategy,
     symbol: 'ETHUSDT',
     interval: '15',
     direction: 'SHORT',
@@ -93,7 +129,7 @@ const makeDecisionEntry = (overrides: Record<string, any> = {}) => ({
     qty: 3,
     takeProfits: [{ rate: 1, price: 200 }],
   },
-  signal: makeSignal(),
+  signal: makeSignal(strategy),
   runtime: {
     ai: { enabled: true, minQuality: 5 },
     ml: { enabled: true, strategyConfig: { X: 1 }, mlThreshold: 0.5 },
@@ -104,7 +140,9 @@ const makeDecisionEntry = (overrides: Record<string, any> = {}) => ({
 const makeRuntime = async (
   decisionFactory: () => any,
   configOverrides: Record<string, any> = {},
+  options: { strategyName?: string } = {},
 ) => {
+  const strategyName = options.strategyName ?? 'TrendLine';
   mockResolveStrategyConfig.mockResolvedValue({
     config: {
       ENV: 'LIVE',
@@ -115,7 +153,7 @@ const makeRuntime = async (
   });
 
   const strategyCreator = createStrategyRuntime({
-    strategyName: 'TrendLine',
+    strategyName,
     defaults: {} as any,
     createCore: async () => async () => decisionFactory(),
   });
@@ -140,6 +178,13 @@ const makeRuntime = async (
 describe('strategyRuntime', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    manifestOverrides.clear();
+    mockGetStrategyManifest.mockImplementation((name?: string) => {
+      if (!name) {
+        return undefined;
+      }
+      return manifestOverrides.get(name) ?? realGetStrategyManifest(name);
+    });
     mockExecuteEntryOrder.mockResolvedValue(222);
     mockEnrichSignalWithMl.mockResolvedValue(undefined);
     mockEnrichSignalWithAi.mockResolvedValue(5);
@@ -249,6 +294,10 @@ describe('strategyRuntime', () => {
 
   it('can execute entry decision without signal using connector.placeOrder', async () => {
     const beforePlaceOrder = jest.fn(async () => {});
+    const manifestBeforePlaceOrder = jest.fn(async () => {});
+    setStrategyManifestHooks('TrendLine', {
+      beforePlaceOrder: manifestBeforePlaceOrder,
+    });
     const { strategy, connector } = await makeRuntime(() =>
       makeDecisionEntry({
         signal: undefined,
@@ -264,6 +313,17 @@ describe('strategyRuntime', () => {
     expect(mockEnrichSignalWithMl).not.toHaveBeenCalled();
     expect(mockEnrichSignalWithAi).not.toHaveBeenCalled();
     expect(beforePlaceOrder).toHaveBeenCalledTimes(1);
+    expect(manifestBeforePlaceOrder).toHaveBeenCalledTimes(1);
+    expect(manifestBeforePlaceOrder).toHaveBeenCalledWith(
+      expect.objectContaining({
+        strategyName: 'TrendLine',
+        symbol: 'ETHUSDT',
+        entryContext: expect.objectContaining({
+          direction: 'SHORT',
+          timestamp: 1_700_000_123_000,
+        }),
+      }),
+    );
     expect(connector.placeOrder).toHaveBeenCalledWith(
       expect.objectContaining({
         price: 222,
@@ -303,6 +363,422 @@ describe('strategyRuntime', () => {
     expect(mockEnrichSignalWithAi).toHaveBeenCalledWith(
       expect.objectContaining({
         ai: expect.objectContaining({ enabled: false }),
+      }),
+    );
+  });
+
+  it('calls onInit hook during runtime creation', async () => {
+    const onInit = jest.fn(async () => {});
+    setStrategyManifestHooks('TrendLine', { onInit });
+
+    await makeRuntime(() => ({ kind: 'skip', code: 'NO_SIGNAL' }));
+
+    expect(onInit).toHaveBeenCalledTimes(1);
+    expect(onInit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        strategyName: 'TrendLine',
+        symbol: 'ETHUSDT',
+      }),
+    );
+  });
+
+  it('calls afterCoreDecision and onSkip hooks for skip decisions', async () => {
+    const afterCoreDecision = jest.fn(async () => {});
+    const onSkip = jest.fn(async () => {});
+    setStrategyManifestHooks('TrendLine', {
+      afterCoreDecision,
+      onSkip,
+    });
+
+    const { strategy } = await makeRuntime(() => ({
+      kind: 'skip',
+      code: 'NO_SIGNAL',
+    }));
+
+    const result = await strategy(
+      { timestamp: 1 } as any,
+      { timestamp: 1 } as any,
+    );
+
+    expect(result).toBe('NO_SIGNAL');
+    expect(afterCoreDecision).toHaveBeenCalledTimes(1);
+    expect(onSkip).toHaveBeenCalledTimes(1);
+    expect(onSkip).toHaveBeenCalledWith(
+      expect.objectContaining({
+        decision: expect.objectContaining({
+          code: 'NO_SIGNAL',
+        }),
+      }),
+    );
+  });
+
+  it('calls afterEnrichMl and afterEnrichAi hooks for entry signal', async () => {
+    const afterEnrichMl = jest.fn(async () => {});
+    const afterEnrichAi = jest.fn(async () => {});
+    setStrategyManifestHooks('TrendLine', {
+      afterEnrichMl,
+      afterEnrichAi,
+    });
+
+    const { strategy } = await makeRuntime(() => makeDecisionEntry());
+
+    await strategy({ timestamp: 1 } as any, { timestamp: 1 } as any);
+
+    expect(afterEnrichMl).toHaveBeenCalledTimes(1);
+    expect(afterEnrichAi).toHaveBeenCalledTimes(1);
+    expect(afterEnrichAi).toHaveBeenCalledWith(
+      expect.objectContaining({
+        quality: 5,
+      }),
+    );
+  });
+
+  it('blocks entry when beforeEntryGate hook returns allow=false', async () => {
+    const beforeEntryGate = jest.fn(async () => ({
+      allow: false,
+      reason: 'SESSION_BLOCK',
+    }));
+    setStrategyManifestHooks('TrendLine', {
+      beforeEntryGate,
+    });
+
+    const { strategy, connector } = await makeRuntime(() =>
+      makeDecisionEntry(),
+    );
+
+    const result = await strategy(
+      { timestamp: 1 } as any,
+      { timestamp: 1 } as any,
+    );
+
+    expect(beforeEntryGate).toHaveBeenCalledTimes(1);
+    expect(mockExecuteEntryOrder).not.toHaveBeenCalled();
+    expect(connector.placeOrder).not.toHaveBeenCalled();
+    expect((result as any).orderStatus).toBe('skipped');
+    expect((result as any).orderSkipReason).toBe(
+      'HOOK_BEFORE_ENTRY_GATE:SESSION_BLOCK',
+    );
+  });
+
+  it('calls afterPlaceOrder hook after successful signal order execution', async () => {
+    const afterPlaceOrder = jest.fn(async () => {});
+    setStrategyManifestHooks('TrendLine', {
+      afterPlaceOrder,
+    });
+
+    const { strategy } = await makeRuntime(() => makeDecisionEntry());
+
+    await strategy({ timestamp: 1 } as any, { timestamp: 1 } as any);
+
+    expect(afterPlaceOrder).toHaveBeenCalledTimes(1);
+    expect(afterPlaceOrder).toHaveBeenCalledWith(
+      expect.objectContaining({
+        orderResult: expect.objectContaining({
+          signalId: 'sig-1',
+        }),
+      }),
+    );
+  });
+
+  it('blocks closePosition when beforeClosePosition hook returns allow=false', async () => {
+    const beforeClosePosition = jest.fn(async () => ({
+      allow: false,
+      reason: 'WAIT_CONFIRM',
+    }));
+    setStrategyManifestHooks('TrendLine', {
+      beforeClosePosition,
+    });
+
+    const { strategy, connector } = await makeRuntime(() => ({
+      kind: 'exit',
+      code: 'CLOSE_BY_SIGNAL',
+      closePlan: {
+        price: 100,
+        timestamp: 1_700_000_123_000,
+        direction: 'LONG',
+      },
+    }));
+
+    const result = await strategy(
+      { timestamp: 1 } as any,
+      { timestamp: 1 } as any,
+    );
+
+    expect(beforeClosePosition).toHaveBeenCalledTimes(1);
+    expect(connector.closePosition).not.toHaveBeenCalled();
+    expect(result).toBe('CLOSE_BLOCKED_BY_HOOK:WAIT_CONFIRM');
+  });
+
+  it('returns exit code after successful closePosition execution', async () => {
+    const { strategy, connector } = await makeRuntime(() => ({
+      kind: 'exit',
+      code: 'CLOSE_BY_SIGNAL',
+      closePlan: {
+        price: 100,
+        timestamp: 1_700_000_123_000,
+        direction: 'LONG',
+      },
+    }));
+
+    const result = await strategy(
+      { timestamp: 1 } as any,
+      { timestamp: 1 } as any,
+    );
+
+    expect(connector.closePosition).toHaveBeenCalledTimes(1);
+    expect(result).toBe('CLOSE_BY_SIGNAL');
+  });
+
+  it('calls onRuntimeError when a hook throws', async () => {
+    const onRuntimeError = jest.fn(async () => {});
+    const afterCoreDecision = jest.fn(async () => {
+      throw new Error('hook-failed');
+    });
+    setStrategyManifestHooks('TrendLine', {
+      onRuntimeError,
+      afterCoreDecision,
+    });
+
+    const { strategy } = await makeRuntime(() => ({
+      kind: 'skip',
+      code: 'NO_SIGNAL',
+    }));
+
+    const result = await strategy(
+      { timestamp: 1 } as any,
+      { timestamp: 1 } as any,
+    );
+
+    expect(result).toBe('NO_SIGNAL');
+    expect(onRuntimeError).toHaveBeenCalledTimes(1);
+    expect(onRuntimeError).toHaveBeenCalledWith(
+      expect.objectContaining({
+        stage: 'afterCoreDecision',
+      }),
+    );
+  });
+
+  it('calls onRuntimeError when ML enrichment fails', async () => {
+    const onRuntimeError = jest.fn(async () => {});
+    setStrategyManifestHooks('TrendLine', {
+      onRuntimeError,
+    });
+    const mlError = new Error('ml-failed');
+    mockEnrichSignalWithMl.mockRejectedValueOnce(mlError);
+
+    const { strategy } = await makeRuntime(() => makeDecisionEntry());
+
+    await expect(
+      strategy({ timestamp: 1 } as any, { timestamp: 1 } as any),
+    ).rejects.toThrow('ml-failed');
+
+    expect(onRuntimeError).toHaveBeenCalledTimes(1);
+    expect(onRuntimeError).toHaveBeenCalledWith(
+      expect.objectContaining({
+        stage: 'enrichSignalWithMl',
+        error: mlError,
+      }),
+    );
+  });
+
+  it('uses ENTRY_POLICY_BLOCKED skip reason when AI quality is NaN', async () => {
+    mockEnrichSignalWithAi.mockResolvedValue(Number.NaN);
+    const { strategy, connector } = await makeRuntime(() =>
+      makeDecisionEntry(),
+    );
+
+    const result = await strategy(
+      { timestamp: 1 } as any,
+      { timestamp: 1 } as any,
+    );
+
+    expect(mockExecuteEntryOrder).not.toHaveBeenCalled();
+    expect(connector.placeOrder).not.toHaveBeenCalled();
+    expect((result as any).orderStatus).toBe('skipped');
+    expect((result as any).orderSkipReason).toBe('ENTRY_POLICY_BLOCKED');
+  });
+
+  it('returns ORDER_ERROR when runtime.beforePlaceOrder throws for no-signal entry', async () => {
+    const onRuntimeError = jest.fn(async () => {});
+    setStrategyManifestHooks('TrendLine', {
+      onRuntimeError,
+    });
+
+    const { strategy, connector } = await makeRuntime(() =>
+      makeDecisionEntry({
+        signal: undefined,
+        runtime: {
+          beforePlaceOrder: async () => {
+            throw new Error('before-failed');
+          },
+        },
+      }),
+    );
+
+    const result = await strategy(
+      { timestamp: 1 } as any,
+      { timestamp: 1 } as any,
+    );
+
+    expect(result).toBe('ORDER_ERROR');
+    expect(connector.placeOrder).not.toHaveBeenCalled();
+    expect(onRuntimeError).toHaveBeenCalledWith(
+      expect.objectContaining({ stage: 'runtime.beforePlaceOrder' }),
+    );
+    expect(onRuntimeError).toHaveBeenCalledWith(
+      expect.objectContaining({ stage: 'placeOrder' }),
+    );
+  });
+
+  it('marks signal order as failed when executeEntryOrder throws', async () => {
+    const onRuntimeError = jest.fn(async () => {});
+    setStrategyManifestHooks('TrendLine', {
+      onRuntimeError,
+    });
+    const orderError = new Error('order-failed');
+    mockExecuteEntryOrder.mockRejectedValueOnce(orderError);
+
+    const { strategy } = await makeRuntime(() => makeDecisionEntry());
+
+    const result = await strategy(
+      { timestamp: 1 } as any,
+      { timestamp: 1 } as any,
+    );
+
+    expect((result as any).orderStatus).toBe('failed');
+    expect(onRuntimeError).toHaveBeenCalledWith(
+      expect.objectContaining({
+        stage: 'placeOrder',
+        error: orderError,
+      }),
+    );
+  });
+
+  it('continues gracefully when a hook fails and onRuntimeError hook is absent', async () => {
+    const afterCoreDecision = jest.fn(async () => {
+      throw new Error('hook-failed-no-handler');
+    });
+    setStrategyManifestHooks('TrendLine', {
+      afterCoreDecision,
+      onRuntimeError: undefined,
+    });
+
+    const { strategy } = await makeRuntime(() => ({
+      kind: 'skip',
+      code: 'NO_SIGNAL',
+    }));
+
+    const result = await strategy(
+      { timestamp: 1 } as any,
+      { timestamp: 1 } as any,
+    );
+
+    expect(result).toBe('NO_SIGNAL');
+  });
+
+  it('logs when onRuntimeError hook throws', async () => {
+    const onRuntimeError = jest.fn(async () => {
+      throw new Error('on-runtime-error-failed');
+    });
+    const afterCoreDecision = jest.fn(async () => {
+      throw new Error('hook-failed');
+    });
+    setStrategyManifestHooks('TrendLine', {
+      onRuntimeError,
+      afterCoreDecision,
+    });
+
+    const { strategy } = await makeRuntime(() => ({
+      kind: 'skip',
+      code: 'NO_SIGNAL',
+    }));
+
+    const result = await strategy(
+      { timestamp: 1 } as any,
+      { timestamp: 1 } as any,
+    );
+
+    expect(result).toBe('NO_SIGNAL');
+    expect(logger.error).toHaveBeenCalledWith(
+      'runtime hook onRuntimeError failed: %s %s',
+      'TrendLine',
+      expect.any(Error),
+    );
+  });
+
+  it('skips exit order placement when MAKE_ORDERS is disabled', async () => {
+    const { strategy, connector } = await makeRuntime(
+      () => ({
+        kind: 'exit',
+        code: 'CLOSE_BY_SIGNAL',
+        closePlan: {
+          price: 100,
+          timestamp: 1_700_000_123_000,
+          direction: 'LONG',
+        },
+      }),
+      { MAKE_ORDERS: false },
+    );
+
+    const result = await strategy(
+      { timestamp: 1 } as any,
+      { timestamp: 1 } as any,
+    );
+
+    expect(result).toBe('CLOSE_BY_SIGNAL');
+    expect(connector.closePosition).not.toHaveBeenCalled();
+  });
+
+  it('returns ORDER_ERROR and reports runtime error when closePosition fails', async () => {
+    const onRuntimeError = jest.fn(async () => {});
+    setStrategyManifestHooks('TrendLine', {
+      onRuntimeError,
+    });
+
+    const { strategy, connector } = await makeRuntime(() => ({
+      kind: 'exit',
+      code: 'CLOSE_BY_SIGNAL',
+      closePlan: {
+        price: 100,
+        timestamp: 1_700_000_123_000,
+        direction: 'LONG',
+      },
+    }));
+    const closeError = new Error('close-failed');
+    connector.closePosition.mockRejectedValueOnce(closeError);
+
+    const result = await strategy(
+      { timestamp: 1 } as any,
+      { timestamp: 1 } as any,
+    );
+
+    expect(result).toBe('ORDER_ERROR');
+    expect(onRuntimeError).toHaveBeenCalledWith(
+      expect.objectContaining({
+        stage: 'closePosition',
+        error: closeError,
+      }),
+    );
+  });
+
+  it('calls onRuntimeError when AI enrichment fails', async () => {
+    const onRuntimeError = jest.fn(async () => {});
+    setStrategyManifestHooks('TrendLine', {
+      onRuntimeError,
+    });
+    const aiError = new Error('ai-failed');
+    mockEnrichSignalWithAi.mockRejectedValueOnce(aiError);
+
+    const { strategy } = await makeRuntime(() => makeDecisionEntry());
+
+    await expect(
+      strategy({ timestamp: 1 } as any, { timestamp: 1 } as any),
+    ).rejects.toThrow('ai-failed');
+
+    expect(onRuntimeError).toHaveBeenCalledWith(
+      expect.objectContaining({
+        stage: 'enrichSignalWithAi',
+        error: aiError,
       }),
     );
   });
