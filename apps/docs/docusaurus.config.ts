@@ -111,8 +111,8 @@ const config: Config = {
       copyright: `Copyright © ${new Date().getFullYear()} TradeJS`,
     },
     prism: {
-      theme: prismThemes.dracula,
-      darkTheme: prismThemes.dracula,
+      theme: prismThemes.oneLight,
+      darkTheme: prismThemes.oneDark,
     },
   } satisfies Preset.ThemeConfig,
 };
