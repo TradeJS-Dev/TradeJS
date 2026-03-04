@@ -19,4 +19,20 @@ describe('buildTrendLineFigures', () => {
     expect(figures.points).toHaveLength(1);
     expect(figures.lines[0].points[0].timestamp).toBe(1);
   });
+
+  it('supports highs mode and missing points/touches arrays', () => {
+    const line = {
+      id: 'tl-2',
+      mode: 'highs' as const,
+      distance: 2,
+      points: undefined,
+      touches: undefined,
+    };
+
+    const figures = buildTrendLineFigures(line as any);
+
+    expect(figures.lines[0].color).toBe('#fb923c');
+    expect(figures.lines[0].points).toEqual([]);
+    expect(figures.points[0].points).toEqual([]);
+  });
 });
