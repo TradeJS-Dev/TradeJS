@@ -31,6 +31,23 @@ services:
         max-size: "10m"
         max-file: "3"
 
+  site:
+    build:
+      context: .
+      dockerfile: Dockerfile.site
+    container_name: site
+    restart: always
+    image: aleksnick/inv-site:latest
+    expose:
+      - "3003"
+    networks:
+      - web
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
   timescale:
     container_name: inv-timescale
     image: timescale/timescaledb:latest-pg16
@@ -105,6 +122,7 @@ services:
       - "443:443"
     depends_on:
       - app
+      - site
       - redis
     networks:
       - web
@@ -123,7 +141,8 @@ services:
     entrypoint: >
       sh -c "certbot certonly --webroot --webroot-path=/var/www/certbot
       --email aleksnick01@gmail.com --agree-tos --no-eff-email
-      -d aleksnick01inv.fvds.ru -d redisinsight.aleksnick01inv.fvds.ru -d docs.aleksnick01inv.fvds.ru || true"
+      --non-interactive --expand --cert-name aleksnick01inv.fvds.ru
+      -d aleksnick01inv.fvds.ru -d app.aleksnick01inv.fvds.ru -d redisinsight.aleksnick01inv.fvds.ru -d docs.aleksnick01inv.fvds.ru || true"
     networks:
       - web
 
