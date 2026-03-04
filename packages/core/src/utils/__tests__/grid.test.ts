@@ -28,6 +28,15 @@ describe('generateParamGrid', () => {
     expect(grid).toEqual([{}]);
   });
 
+  it('returns empty list when one of params has no options', () => {
+    const grid = generateParamGrid({
+      mode: ['fast', 'slow'],
+      period: [],
+    });
+
+    expect(grid).toEqual([]);
+  });
+
   it('handles nested values (e.g. arrays of objects)', () => {
     const grid = generateParamGrid({
       TP: [[{ profit: 0.1, rate: 0.5 }], [{ profit: 0.2, rate: 0.5 }]],
