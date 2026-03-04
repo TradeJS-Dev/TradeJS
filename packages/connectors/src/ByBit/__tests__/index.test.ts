@@ -772,6 +772,7 @@ describe('ByBitConnectorCreator', () => {
       symbol: 'BTCUSDT',
       interval: '15',
       start: Date.now() + 60_000,
+      end: undefined as any,
       silent: true,
     });
 

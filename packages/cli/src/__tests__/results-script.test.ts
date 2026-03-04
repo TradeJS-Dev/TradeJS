@@ -15,6 +15,8 @@ type Scenario = {
   testStats: Record<string, any>;
   currentResults?: Record<string, any>;
   tickers?: string[];
+  delKeyResult?: number;
+  nodeEnv?: string;
 };
 
 const makeRedisKeys = () => ({
@@ -33,7 +35,7 @@ const loadScript = async (scenario: Scenario) => {
   const redisKeys = makeRedisKeys();
   const getKeys = jest.fn(async () => scenario.configKeys);
   const setData = jest.fn(async () => null);
-  const delKey = jest.fn(async () => 0);
+  const delKey = jest.fn(async () => scenario.delKeyResult ?? 0);
   const getData = jest.fn(async (key: string, fallback: any) => {
     if (key in scenario.testConfigs) return scenario.testConfigs[key];
     if (key in scenario.testStats) return scenario.testStats[key];
@@ -85,7 +87,10 @@ const loadScript = async (scenario: Scenario) => {
     redisKeys,
   }));
 
+  const prevNodeEnv = process.env.NODE_ENV;
+  (process.env as any).NODE_ENV = scenario.nodeEnv ?? 'test';
   const module = await import('../scripts/results');
+  (process.env as any).NODE_ENV = prevNodeEnv;
 
   return {
     results: module.results,
@@ -361,6 +366,341 @@ describe('results script', () => {
 
     expect(logSpy).toHaveBeenCalledWith(
       expect.stringContaining('COVERAGE: 1 / 1 / 4 (50.00 %)'),
+    );
+  });
+
+  it('prints error when --strategy is missing', async () => {
+    const { results } = await loadScript({
+      flags: {
+        strategy: '',
+        user: 'root',
+        coverage: false,
+        update: false,
+        merge: false,
+        clear: false,
+        verbose: false,
+      },
+      configKeys: [],
+      testConfigs: {},
+      testStats: {},
+    });
+
+    await results();
+
+    expect(errorSpy).toHaveBeenCalledWith('Missing --strategy');
+    expect(exitSpy).toHaveBeenCalledWith(1);
+  });
+
+  it('clear prints "no results" when nothing deleted', async () => {
+    const { results, mocks } = await loadScript({
+      flags: {
+        strategy: 'TrendLine',
+        user: 'root',
+        coverage: false,
+        update: false,
+        merge: false,
+        clear: true,
+        verbose: false,
+      },
+      configKeys: [],
+      testConfigs: {},
+      testStats: {},
+      delKeyResult: 0,
+    });
+
+    await results();
+
+    expect(mocks.delKey).toHaveBeenCalledWith(
+      mocks.redisKeys.strategyResults('root', 'TrendLine'),
+    );
+    expect(logSpy).toHaveBeenCalledWith('No results to clear for TrendLine');
+    expect(exitSpy).toHaveBeenCalled();
+  });
+
+  it('clear prints "cleared" when key is deleted', async () => {
+    const { results } = await loadScript({
+      flags: {
+        strategy: 'TrendLine',
+        user: 'root',
+        coverage: false,
+        update: false,
+        merge: false,
+        clear: true,
+        verbose: false,
+      },
+      configKeys: [],
+      testConfigs: {},
+      testStats: {},
+      delKeyResult: 1,
+    });
+
+    await results();
+
+    expect(logSpy).toHaveBeenCalledWith('Cleared results:TrendLine');
+  });
+
+  it('merge exits early when no good results were found', async () => {
+    const { results, mocks } = await loadScript({
+      flags: {
+        strategy: 'TrendLine',
+        user: 'root',
+        coverage: false,
+        update: false,
+        merge: true,
+        clear: false,
+        verbose: false,
+      },
+      configKeys: [],
+      testConfigs: {},
+      testStats: {},
+    });
+
+    exitSpy.mockImplementationOnce((() => {
+      throw new Error('EXIT');
+    }) as any);
+
+    await expect(results()).rejects.toThrow('EXIT');
+
+    expect(logSpy).toHaveBeenCalledWith('No good results to merge.');
+    expect(mocks.setData).not.toHaveBeenCalled();
+  });
+
+  it('merge exits early when no symbols have higher profit than saved', async () => {
+    const userName = 'root';
+    const testData = createTestData(userName, [
+      {
+        strategyName: 'TrendLine',
+        testName: 't1',
+        symbol: 'BTCUSDT',
+        strategyConfig: { TP: 2, SL: 1 },
+        stat: {
+          totalReturn: 10,
+          periodMonths: 1,
+          winRate: 60,
+          ordersPerMonth: 2,
+          orders: 12,
+        },
+      },
+    ]);
+
+    const { results, mocks } = await loadScript({
+      flags: {
+        strategy: 'TrendLine',
+        user: userName,
+        coverage: false,
+        update: false,
+        merge: true,
+        clear: false,
+        verbose: false,
+      },
+      ...testData,
+      currentResults: {
+        BTCUSDT: {
+          config: { TP: 3, SL: 1 },
+          stats: {
+            totalReturn: 20,
+            periodMonths: 1,
+            winRate: 55,
+            ordersPerMonth: 2,
+            orders: 8,
+          },
+        },
+      },
+    });
+
+    exitSpy.mockImplementationOnce((() => {
+      throw new Error('EXIT');
+    }) as any);
+
+    await expect(results()).rejects.toThrow('EXIT');
+
+    expect(logSpy).toHaveBeenCalledWith(
+      'No symbols with higher profit than saved results:TrendLine',
+    );
+    expect(mocks.setData).not.toHaveBeenCalled();
+  });
+
+  it('merge verbose prints updates table when higher-profit symbols exist', async () => {
+    const userName = 'root';
+    const redisKeys = makeRedisKeys();
+    const testData = createTestData(userName, [
+      {
+        strategyName: 'TrendLine',
+        testName: 't1',
+        symbol: 'BTCUSDT',
+        strategyConfig: { TP: 3, SL: 1 },
+        stat: {
+          totalReturn: 15,
+          periodMonths: 1,
+          winRate: 60,
+          ordersPerMonth: 2,
+          orders: 11,
+        },
+      },
+      {
+        strategyName: 'TrendLine',
+        testName: 't2',
+        symbol: 'ETHUSDT',
+        strategyConfig: { TP: 2, SL: 1 },
+        stat: {
+          totalReturn: 6,
+          periodMonths: 1,
+          winRate: 61,
+          ordersPerMonth: 2,
+          orders: 10,
+        },
+      },
+    ]);
+
+    const { results, mocks } = await loadScript({
+      flags: {
+        strategy: 'TrendLine',
+        user: userName,
+        coverage: false,
+        update: false,
+        merge: true,
+        clear: false,
+        verbose: true,
+      },
+      ...testData,
+      currentResults: {
+        BTCUSDT: {
+          config: { TP: 2, SL: 1 },
+          stats: {
+            totalReturn: 5,
+            periodMonths: 1,
+            winRate: 50,
+            ordersPerMonth: 2,
+            orders: 7,
+          },
+        },
+      },
+    });
+
+    await results();
+
+    expect(logSpy).toHaveBeenCalledWith('MERGE UPDATES:');
+    expect(mocks.setData).toHaveBeenCalledWith(
+      redisKeys.strategyResults(userName, 'TrendLine'),
+      expect.objectContaining({
+        BTCUSDT: expect.any(Object),
+        ETHUSDT: expect.any(Object),
+      }),
+      { expire: 0 },
+    );
+  });
+
+  it('filters malformed keys, missing config/stat and low-quality stats in update mode', async () => {
+    const userName = 'root';
+    const redisKeys = makeRedisKeys();
+    const malformedConfigKey = 'a:b:c:config';
+    const missingConfigKey = redisKeys.testConfig(
+      userName,
+      'TrendLine',
+      'missingcfg',
+    );
+    const mismatchConfigKey = redisKeys.testConfig(userName, 'Other', 'mismatch');
+    const noStatConfigKey = redisKeys.testConfig(userName, 'TrendLine', 'nostat');
+    const periodZeroConfigKey = redisKeys.testConfig(
+      userName,
+      'TrendLine',
+      'period0',
+    );
+    const negativeBaseConfigKey = redisKeys.testConfig(
+      userName,
+      'TrendLine',
+      'negativebase',
+    );
+    const goodConfigKey = redisKeys.testConfig(userName, 'TrendLine', 'good');
+
+    const { results, mocks } = await loadScript({
+      flags: {
+        strategy: 'TrendLine',
+        user: userName,
+        coverage: false,
+        update: true,
+        merge: false,
+        clear: false,
+        verbose: false,
+      },
+      configKeys: [
+        malformedConfigKey,
+        missingConfigKey,
+        mismatchConfigKey,
+        noStatConfigKey,
+        periodZeroConfigKey,
+        negativeBaseConfigKey,
+        goodConfigKey,
+      ],
+      testConfigs: {
+        [mismatchConfigKey]: {
+          strategyName: 'Other',
+          symbol: 'XRPUSDT',
+          strategyConfig: { TP: 1 },
+        },
+        [noStatConfigKey]: {
+          strategyName: 'TrendLine',
+          symbol: 'ETHUSDT',
+          strategyConfig: { TP: 1.5 },
+        },
+        [periodZeroConfigKey]: {
+          strategyName: 'TrendLine',
+          symbol: 'SOLUSDT',
+          strategyConfig: { TP: 2 },
+        },
+        [negativeBaseConfigKey]: {
+          strategyName: 'TrendLine',
+          symbol: 'ADAUSDT',
+          strategyConfig: { TP: 2 },
+        },
+        [goodConfigKey]: {
+          strategyName: 'TrendLine',
+          symbol: 'BTCUSDT',
+          strategyConfig: { TP: 3, SL: 1 },
+        },
+      },
+      testStats: {
+        [redisKeys.testStat(userName, 'TrendLine', 'period0')]: {
+          totalReturn: 50,
+          periodMonths: 0,
+          winRate: 70,
+          ordersPerMonth: 2,
+          orders: 9,
+        },
+        [redisKeys.testStat(userName, 'TrendLine', 'negativebase')]: {
+          totalReturn: -200,
+          periodMonths: 1,
+          winRate: 70,
+          ordersPerMonth: 2,
+          orders: 9,
+        },
+        [redisKeys.testStat(userName, 'TrendLine', 'good')]: {
+          totalReturn: 10,
+          periodMonths: 1,
+          winRate: 60,
+          ordersPerMonth: 2,
+          orders: 10,
+        },
+      },
+    });
+
+    await results();
+
+    expect(mocks.setData).toHaveBeenCalledWith(
+      redisKeys.strategyResults(userName, 'TrendLine'),
+      {
+        BTCUSDT: {
+          config: { TP: 3, SL: 1 },
+          stats: {
+            totalReturn: 10,
+            periodMonths: 1,
+            winRate: 60,
+            ordersPerMonth: 2,
+            orders: 10,
+          },
+        },
+      },
+      { expire: 0 },
     );
   });
 });
