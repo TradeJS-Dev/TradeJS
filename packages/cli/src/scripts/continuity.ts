@@ -1,39 +1,60 @@
 import args from 'args';
 import ProgressBar from 'progress';
 import chalk from 'chalk';
-import { connectors } from '@tradejs/connectors';
+import {
+  connectors,
+  ConnectorProviders,
+  getConnectorProviders,
+  providerToConnectorName,
+} from '@tradejs/connectors';
 import { PRELOAD_DAYS } from '@constants';
 import { getTimestamp, formatUnix } from '@utils/timestamp';
 import { deleteCandles, waitForDbReady } from '@utils/timescale';
 import { getTickers } from '@utils/cli';
-import { Interval, KlineChartData } from '@types';
+import { ConnectorCreator, Interval, KlineChartData } from '@types';
 import { logger } from '@utils/logger';
 
 args.option(['t', 'tickers'], 'Selected tickers');
 args.option(['f', 'timeframe'], 'Timeframe', 15);
+args.option(
+  ['p', 'provider'],
+  'Data provider: all|bybit|binance|coinbase or comma list',
+  'all',
+);
 args.option(['U', 'user'], 'Use user confg', 'root');
 
 const flags = args.parse(process.argv);
 const interval = Number(flags.timeframe);
 const intervalKey = flags.timeframe.toString() as Interval;
 
-const providers = [
-  {
-    id: 'bybit',
-    name: 'ByBit',
-    create: connectors.ByBit,
-  },
-  {
-    id: 'binance',
-    name: 'Binance',
-    create: connectors.Binance,
-  },
-  {
-    id: 'coinbase',
-    name: 'Coinbase',
-    create: connectors.Coinbase,
-  },
-] as const;
+const parseProviders = (value: unknown): ConnectorProviders[] => {
+  const allProviders = getConnectorProviders();
+  const raw = String(value || '')
+    .trim()
+    .toLowerCase();
+
+  if (!raw || raw === 'all') {
+    return allProviders;
+  }
+
+  const selected = raw
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean) as ConnectorProviders[];
+
+  const uniqueSelected = [...new Set(selected)];
+  const invalid = uniqueSelected.filter((item) => !allProviders.includes(item));
+  if (invalid.length) {
+    logger.error(
+      'Unknown provider(s): %s. Supported: %s',
+      invalid.join(', '),
+      allProviders.join(', '),
+    );
+    process.exit(1);
+  }
+
+  return uniqueSelected;
+};
 
 const findGapInData = (data: KlineChartData, expectedMs: number) => {
   for (let i = 1; i < data.length; i++) {
@@ -62,6 +83,14 @@ const continuity = async () => {
   await waitForDbReady();
   const reloadStart = getTimestamp(PRELOAD_DAYS);
   const reloadEnd = getTimestamp();
+  const providers = parseProviders(flags.provider).map((providerId) => {
+    const connectorName = providerToConnectorName[providerId];
+    return {
+      id: providerId,
+      name: connectorName,
+      create: connectors[connectorName] as ConnectorCreator,
+    };
+  });
 
   for await (const provider of providers) {
     const connector = await provider.create({

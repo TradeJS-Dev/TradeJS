@@ -1,121 +1,97 @@
-# Strategy API
+# Strategy API Guide
 
-Актуально для текущей архитектуры framework (shared runtime + strategy manifests/adapters).
+Updated for current architecture (`shared runtime + strategy manifests/adapters`).
 
-## Цель
+## Purpose
 
-Этот документ фиксирует API/контракты для написания новых стратегий:
-- что делает `core.ts`
-- что делает `strategyRuntime`
-- где живут AI/ML/hook расширения
-- какой shape у `StrategyDecision`
+This document describes the contracts for implementing strategies:
 
-## Структура стратегии
+- strategy `core.ts` responsibilities
+- shared runtime responsibilities
+- AI/ML/hook extension points
+- `StrategyDecision` shape
 
-Минимальный набор файлов для стратегии:
+## Strategy File Layout
 
-- `src/strategy/<Strategy>/config.ts`
-- `src/strategy/<Strategy>/core.ts`
-- `src/strategy/<Strategy>/figures.ts` (рекомендуется)
-- `src/strategy/<Strategy>/strategy.ts`
-- `src/strategy/<Strategy>/manifest.ts`
-- `src/strategy/<Strategy>/adapters/ai.ts` (optional)
-- `src/strategy/<Strategy>/adapters/ml.ts` (optional)
-- `src/strategy/<Strategy>/hooks.ts` (optional)
+Recommended structure for `packages/core/src/strategy/<Strategy>`:
 
-## Роли слоев
+- `config.ts`
+- `core.ts`
+- `figures.ts` (recommended)
+- `strategy.ts`
+- `manifest.ts`
+- `adapters/ai.ts` (optional)
+- `adapters/ml.ts` (optional)
+- `hooks.ts` (optional)
+- `<strategy>.pine` (optional, for Pine-backed strategies)
+
+## Layer Responsibilities
 
 ### `core.ts`
 
-Стратегия должна:
-- читать `config`, `data`, `btcData`, `connector`
-- считать условия входа/выхода
-- возвращать `StrategyDecision`
+`core.ts` should:
 
-В `core.ts` допустимо:
-- собирать `signal` через `buildEntrySignalDecision(...)`
-- формировать `entryContext`, `figures`, `indicators`, `additionalIndicators`, `orderPlan`
+- evaluate entry/exit logic from config + market context
+- return `StrategyDecision` (`skip`, `entry`, or `exit`)
 
-Рекомендация по `figures`:
-- использовать базовый формат `figures.lines / figures.points / figures.zones`
-- strategy-specific диагностику хранить в `additionalIndicators` (или `indicators`)
-- не завязывать UI на strategy-specific ключи в `figures`
+`core.ts` should not:
 
-В `core.ts` не нужно:
-- вызывать `askAI`
-- вызывать ML gRPC
-- исполнять ордера (`placeOrder` / `closePosition`) напрямую
+- call AI prompt pipeline directly
+- call ML gRPC directly
+- place/close orders directly
+
+Use `strategyApi` for shared operations.
 
 ### `strategy.ts`
 
-Тонкая обертка, которая подключает стратегию к shared runtime:
+Thin wiring layer:
+
 - `createStrategyRuntime(...)`
-- `defaults`
+- strategy defaults
 - `createCore`
 
 ### `manifest.ts`
 
-Manifest стратегии подключает strategy-local расширения:
+Strategy-local runtime extension point:
+
 - `name`
-- `entryRuntimeDefaults` (опциональные дефолты runtime policy)
-- `hooks.beforePlaceOrder` (опционально)
-- `aiAdapter`
-- `mlAdapter`
+- `entryRuntimeDefaults` (optional)
+- `hooks.beforePlaceOrder` (optional)
+- `aiAdapter` (optional)
+- `mlAdapter` (optional)
 
-### `src/utils/strategyRuntime.ts`
+### Shared Runtime
 
-Shared runtime:
-- резолвит config
-- вызывает `core`
-- обогащает `signal` через ML/AI
-- применяет runtime policy (из manifest/adapters + decision overrides)
-- исполняет ордера
-- возвращает внешний контракт (`string | Signal`)
+`packages/core/src/utils/strategyRuntime.ts` does:
 
-## `StrategyDecision`
+- config resolution
+- `core` execution
+- AI/ML enrichment and gating
+- order execution
+- hook invocation
 
-Внутренний контракт стратегии (упрощенно):
-
-- `skip`
-- `entry`
-- `exit`
+## `StrategyDecision` Contract
 
 ### `skip`
 
-Возвращается, когда сигнала нет или стратегия пропускает бар.
-
-Пример:
-
 ```ts
-return { kind: 'skip', code: 'NO_SIGNAL' };
+return strategyApi.skip('NO_SIGNAL');
 ```
 
 ### `entry`
 
-Основной формат для открытия позиции.
+Use `strategyApi.entry(...)` and provide:
 
-Ключевые части:
-- `entryContext` — source of truth для runtime
-- `orderPlan` — только execution-specific данные
-- `signal` — обычно собирается через `buildEntrySignalDecision(...)`
-- `runtime` — optional overrides (редкие кейсы; обычно policy идет из adapters/manifests)
-
-`entryContext` содержит:
-- `strategy`
-- `symbol`
-- `interval`
 - `direction`
 - `timestamp`
 - `prices`
-- `isConfigFromBacktest`
+- `orderPlan`
+- optional `figures`, `indicators`, `additionalIndicators`, `runtime`, `code`
 
-`orderPlan` содержит:
-- `qty`
-- `takeProfits`
+`entryContext` is the source of truth for runtime execution fields.
+`orderPlan` should contain execution-only details (qty, take profits).
 
 ### `exit`
-
-Для закрытия позиции:
 
 ```ts
 return {
@@ -125,111 +101,86 @@ return {
 };
 ```
 
-## `buildEntrySignalDecision(...)`
+## `strategyApi` (Preferred DSL)
 
-Shared helper для сборки `entry` решения и `signal`.
+Shared runtime passes `strategyApi` into strategy core.
 
-Используется прямо в `core.ts`.
+Main methods:
 
-Что передаем:
-- `code`
-- `entryContext`
-- `figures`
-- `indicators`
-- `additionalIndicators`
-- `orderPlan`
-- `runtime` (optional)
+- `skip(code)`
+- `entry(params)`
+- `getMarketData(params?)`
+- `getCurrentPosition()`
+- `isCurrentPositionExists()`
+- `getDirectionalTpSlPrices(params)`
+- `createLastTradeController(params?)`
 
-Что он делает:
-- создает `signal`
-- возвращает `StrategyDecision` вида `kind: 'entry'`
+Detailed method reference:
 
-## `strategyApi` (DSL в `core.ts`)
+- `STRATEGY_API_REFERENCE.md`
 
-Shared runtime передает в `core.ts` готовый `strategyApi`.
+## Runtime Policy: AI/ML
 
-Базовые методы:
-- `strategyApi.skip(code)`
-- `strategyApi.entry(...)`
-  - `code` можно не передавать: shared API подставит `<STRATEGY_NAME>_SIGNAL`
-- `strategyApi.getMarketData()`
-  - использует runtime defaults (`preloadStart`, `BACKTEST_PRICE_MODE`)
-  - возвращает `timestamp` (равен `lastCandle.timestamp`)
-- `strategyApi.getCurrentPosition()`
-- `strategyApi.isCurrentPositionExists()`
-- `strategyApi.getDirectionalTpSlPrices(...)`
-  - возвращает `stopLossPrice / takeProfitPrice / riskRatio / qty`
-- `strategyApi.createLastTradeController(...)`
+Preferred policy sources:
 
-Отдельный подробный reference: `STRATEGY_API_REFERENCE.md`.
+1. strategy manifest defaults (`entryRuntimeDefaults`)
+2. adapter mapping (`mapEntryRuntimeFromConfig`)
+3. rare per-decision override (`decision.runtime`)
 
-## Runtime policy: AI/ML
+Runtime merge order:
 
-### Где задавать AI/ML policy
+1. manifest defaults
+2. adapter-derived runtime from strategy config
+3. decision runtime overrides
 
-Предпочтительно:
-- в strategy adapters (`mapEntryRuntimeFromConfig`)
-- в manifest defaults (`entryRuntimeDefaults`)
+## Strategy Adapters
 
-Допустимо (редкие случаи):
-- в `decision.runtime` как override
+### AI Adapter
 
-### Merge-порядок в shared runtime
+`aiAdapter` may provide:
 
-Shared runtime собирает policy так:
-
-1. `manifest.entryRuntimeDefaults`
-2. `manifest.aiAdapter/mlAdapter.mapEntryRuntimeFromConfig(config)`
-3. `decision.runtime` (если стратегия явно переопределила)
-
-Это позволяет:
-- держать дефолты/маппинг рядом со стратегией
-- не дублировать `AI_ENABLED`, `ML_ENABLED`, `MIN_AI_QUALITY`, `ML_THRESHOLD` в `core.ts`
-
-## AI/ML adapters
-
-### `aiAdapter`
-
-Используется для:
-- `buildPayload` (payload override)
+- `buildPayload`
 - `buildSystemPromptAddon`
 - `buildHumanPromptAddon`
-- `mapEntryRuntimeFromConfig(config)` (runtime AI policy)
+- `mapEntryRuntimeFromConfig`
 
-### `mlAdapter`
+### ML Adapter
 
-Используется для:
+`mlAdapter` may provide:
+
 - `normalizeSignal`
 - `normalizeStrategyConfig`
-- `mapEntryRuntimeFromConfig(config)` (runtime ML policy)
+- `mapEntryRuntimeFromConfig`
 
 ## Hooks
 
-### `beforePlaceOrder`
+Current strategy-level hook in manifest:
 
-Strategy-level pre-order поведение задается через manifest hook:
+- `beforePlaceOrder({ connector, entryContext, config, runtime })`
 
-- `manifest.hooks.beforePlaceOrder({ connector, entryContext, config, runtime })`
+Typical use case:
 
-Пример use-case:
-- `closeOppositePositionsBeforeOpen(...)`
+- close opposite positions before opening a new one
 
-Важно:
-- `decision.runtime.beforePlaceOrder` оставлен как дополнительная расширяемая точка для будущих стратегий/нестандартных кейсов.
+## Pine Strategy Support
 
-## Рекомендации для новых стратегий
+For Pine-backed strategies:
 
-1. Сначала собрать `entryContext` в `core.ts`
-2. Явно разделять:
-   - `indicators` (общие/base/runtime indicators)
-   - `additionalIndicators` (strategy-specific)
-3. Возвращать `buildEntrySignalDecision(...)`, а не руками собирать `signal`
-4. AI/ML policy уносить в adapters/manifests, а не в `core.ts`
-5. Держать `core.ts` сфокусированным на условиях стратегии
+- keep Pine source in a dedicated `.pine` file inside strategy folder
+- runtime injects `loadPineScript(...)` into `CreateStrategyCore` params
+- strategy `core.ts` executes Pine and maps plots into signal fields/figures
 
-## Смежные файлы
+## Recommended Implementation Rules
 
-- `src/types/strategy.ts` — основные типы (`StrategyDecision`, `entryContext`, `orderPlan`)
-- `src/types/strategyAdapters.ts` — контракты adapters/manifests
-- `src/utils/strategyRuntime.ts` — shared runtime pipeline
-- `src/utils/strategyHelpers/signalBuilders.ts` — `buildEntrySignalDecision(...)`
+1. Keep `core.ts` focused on strategy logic only.
+2. Keep cross-strategy figure format standardized (`lines/points/zones`).
+3. Put strategy-specific diagnostics into `additionalIndicators`.
+4. Prefer adapter/manifest policy over core-level AI/ML toggling logic.
+5. Reuse `strategyApi` helpers instead of duplicating runtime-aware logic.
+
+## Related Files
+
+- `packages/core/src/types/strategy.ts`
+- `packages/core/src/types/strategyAdapters.ts`
+- `packages/core/src/utils/strategyRuntime.ts`
+- `packages/core/src/utils/strategyHelpers/signalBuilders.ts`

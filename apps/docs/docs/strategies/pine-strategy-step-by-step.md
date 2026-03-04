@@ -1,66 +1,60 @@
 ---
-title: Pine Script Strategy Step by Step
+title: Pine Strategy Step by Step
 ---
 
-This guide explains how to add and run a strategy written in Pine Script using the built-in `PineScript` runtime strategy.
+This guide shows the Pine path in TradeJS: a real standalone strategy implemented in Pine Script and embedded into strategy runtime as a first-class strategy.
 
-## 1. Understand the Runtime Contract
+TradeJS now supports two strategy authoring paths:
 
-`PineScript` strategy still returns standard TradeJS decisions:
+- TypeScript strategy with `StrategyAPI` (`strategies/ma-strategy-step-by-step`)
+- Pine strategy with dedicated `.pine` source file (`AdaptiveMomentumRibbon` example below)
 
-- `skip`
-- `entry`
-- `exit`
+## 1. Strategy Is a Real Module (Not a Generic Wrapper)
 
-So AI/ML gates, order policy, and all existing APIs continue to work.
+`AdaptiveMomentumRibbon` lives as a regular strategy module:
 
-Core files:
+- `packages/core/src/strategy/AdaptiveMomentumRibbon/adaptiveMomentumRibbon.pine`
+- `packages/core/src/strategy/AdaptiveMomentumRibbon/config.ts`
+- `packages/core/src/strategy/AdaptiveMomentumRibbon/core.ts`
+- `packages/core/src/strategy/AdaptiveMomentumRibbon/figures.ts`
+- `packages/core/src/strategy/AdaptiveMomentumRibbon/manifest.ts`
+- `packages/core/src/strategy/AdaptiveMomentumRibbon/strategy.ts`
 
-- `packages/core/src/strategy/PineScript/core.ts`
-- `packages/core/src/utils/pine.ts`
+The Pine code is stored in a separate file and loaded by `core.ts`.
 
-## 2. Prepare Pine Script
+## 2. Pine Contract for Runtime Signals
 
-Use a script that exposes entry/exit plots:
+The runtime reads Pine plot series by name. Keep these output plots in your Pine script:
 
-```pinescript
-//@version=5
-indicator("TradeJS Pine MA Cross", overlay=true)
+- `entryLong`
+- `entryShort`
+- `invalidated`
+- plus line plots for figures (`kcMidline`, `kcUpper`, `kcLower`, `invalidationLevel`)
 
-fast = ta.sma(close, 9)
-slow = ta.sma(close, 21)
+`core.ts` converts these plot values to normal TradeJS decisions (`skip`, `entry`, `exit`), so backtest/signals/AI/ML pipelines stay unchanged.
 
-entryLong = fast > slow and fast[1] <= slow[1]
-entryShort = fast < slow and fast[1] >= slow[1]
-
-plot(fast, "fast")
-plot(slow, "slow")
-plot(entryLong ? 1 : 0, "entryLong")
-plot(entryShort ? 1 : 0, "entryShort")
-```
-
-## 3. Save Runtime Config in Redis
+## 3. Runtime Config (Redis)
 
 ```bash
-redis-cli JSON.SET users:root:strategies:PineScript:config '$' '{
+redis-cli JSON.SET users:root:strategies:AdaptiveMomentumRibbon:config '$' '{
   "ENV": "CRON",
   "INTERVAL": "15",
   "MAKE_ORDERS": false,
   "BACKTEST_PRICE_MODE": "mid",
-  "PINE_SCRIPT": "//@version=5\\nindicator(\"TradeJS Pine MA Cross\", overlay=true)\\nfast = ta.sma(close, 9)\\nslow = ta.sma(close, 21)\\nentryLong = fast > slow and fast[1] <= slow[1]\\nentryShort = fast < slow and fast[1] >= slow[1]\\nplot(fast, \"fast\")\\nplot(slow, \"slow\")\\nplot(entryLong ? 1 : 0, \"entryLong\")\\nplot(entryShort ? 1 : 0, \"entryShort\")",
-  "PINE_SCRIPT_INPUTS": {},
-  "PINE_LOOKBACK_BARS": 300,
-  "PINE_ENTRY_LONG_PLOT": "entryLong",
-  "PINE_ENTRY_SHORT_PLOT": "entryShort",
-  "PINE_EXIT_LONG_PLOT": "",
-  "PINE_EXIT_SHORT_PLOT": "",
-  "PINE_LINE_PLOTS": ["fast", "slow"],
-  "LONG": {"enable": true, "direction": "LONG", "TP": 2, "SL": 1, "minRiskRatio": 1.5},
-  "SHORT": {"enable": true, "direction": "SHORT", "TP": 2, "SL": 1, "minRiskRatio": 1.5},
-  "FEE_PERCENT": 0.005,
-  "MAX_LOSS_VALUE": 10,
-  "MAX_CORRELATION": 0.45,
-  "TRADE_COOLDOWN_MS": 0,
+  "AMR_MOMENTUM_PERIOD": 20,
+  "AMR_BUTTERWORTH_SMOOTHING": 3,
+  "AMR_WAIT_CLOSE": true,
+  "AMR_SHOW_INVALIDATION_LEVELS": true,
+  "AMR_SHOW_KELTNER_CHANNEL": true,
+  "AMR_KC_LENGTH": 20,
+  "AMR_KC_MA_TYPE": "EMA",
+  "AMR_ATR_LENGTH": 14,
+  "AMR_ATR_MULTIPLIER": 2,
+  "AMR_EXIT_ON_INVALIDATION": true,
+  "AMR_LOOKBACK_BARS": 400,
+  "AMR_LINE_PLOTS": ["kcMidline", "kcUpper", "kcLower", "invalidationLevel"],
+  "LONG": {"enable": true, "direction": "LONG", "TP": 2, "SL": 1},
+  "SHORT": {"enable": true, "direction": "SHORT", "TP": 2, "SL": 1},
   "AI_ENABLED": false,
   "ML_ENABLED": false,
   "ML_THRESHOLD": 0.1,
@@ -68,28 +62,28 @@ redis-cli JSON.SET users:root:strategies:PineScript:config '$' '{
 }'
 ```
 
-## 4. Save Backtest Grid Config
+## 4. Backtest Grid Config
 
 ```bash
-redis-cli JSON.SET users:root:backtests:configs:PineScript:ma-cross '$' '{
+redis-cli JSON.SET users:root:backtests:configs:AdaptiveMomentumRibbon:amr-default '$' '{
   "ENV": ["BACKTEST"],
   "INTERVAL": ["15"],
   "MAKE_ORDERS": [true],
   "BACKTEST_PRICE_MODE": ["mid"],
-  "PINE_SCRIPT": ["//@version=5\\nindicator(\"TradeJS Pine MA Cross\", overlay=true)\\nfast = ta.sma(close, 9)\\nslow = ta.sma(close, 21)\\nentryLong = fast > slow and fast[1] <= slow[1]\\nentryShort = fast < slow and fast[1] >= slow[1]\\nplot(fast, \"fast\")\\nplot(slow, \"slow\")\\nplot(entryLong ? 1 : 0, \"entryLong\")\\nplot(entryShort ? 1 : 0, \"entryShort\")"],
-  "PINE_SCRIPT_INPUTS": [{}],
-  "PINE_LOOKBACK_BARS": [300],
-  "PINE_ENTRY_LONG_PLOT": ["entryLong"],
-  "PINE_ENTRY_SHORT_PLOT": ["entryShort"],
-  "PINE_EXIT_LONG_PLOT": [""],
-  "PINE_EXIT_SHORT_PLOT": [""],
-  "PINE_LINE_PLOTS": [["fast", "slow"]],
-  "LONG": [{"enable": true, "direction": "LONG", "TP": 2, "SL": 1, "minRiskRatio": 1.5}],
-  "SHORT": [{"enable": true, "direction": "SHORT", "TP": 2, "SL": 1, "minRiskRatio": 1.5}],
-  "FEE_PERCENT": [0.005],
-  "MAX_LOSS_VALUE": [10],
-  "MAX_CORRELATION": [0.45],
-  "TRADE_COOLDOWN_MS": [0],
+  "AMR_MOMENTUM_PERIOD": [20],
+  "AMR_BUTTERWORTH_SMOOTHING": [3],
+  "AMR_WAIT_CLOSE": [true],
+  "AMR_SHOW_INVALIDATION_LEVELS": [true],
+  "AMR_SHOW_KELTNER_CHANNEL": [true],
+  "AMR_KC_LENGTH": [20],
+  "AMR_KC_MA_TYPE": ["EMA"],
+  "AMR_ATR_LENGTH": [14],
+  "AMR_ATR_MULTIPLIER": [2],
+  "AMR_EXIT_ON_INVALIDATION": [true],
+  "AMR_LOOKBACK_BARS": [400],
+  "AMR_LINE_PLOTS": [["kcMidline", "kcUpper", "kcLower", "invalidationLevel"]],
+  "LONG": [{"enable": true, "direction": "LONG", "TP": 2, "SL": 1}],
+  "SHORT": [{"enable": true, "direction": "SHORT", "TP": 2, "SL": 1}],
   "AI_ENABLED": [false],
   "ML_ENABLED": [false],
   "ML_THRESHOLD": [0.1],
@@ -97,12 +91,14 @@ redis-cli JSON.SET users:root:backtests:configs:PineScript:ma-cross '$' '{
 }'
 ```
 
-## 5. Run and Verify
+Important: config key must start with strategy name (`AdaptiveMomentumRibbon:*`).
+
+## 5. Run and Validate
 
 Backtest:
 
 ```bash
-yarn backtest --user root --config PineScript:ma-cross --connector bybit --tests 200 --parallel 4
+yarn backtest --user root --config AdaptiveMomentumRibbon:amr-default --connector bybit --tests 200 --parallel 4
 ```
 
 Signals:
@@ -111,17 +107,17 @@ Signals:
 yarn signals --user root --cacheOnly
 ```
 
-## 6. Inspect in App
+In app (`/routes/backtest`) verify:
 
-1. Start app: `yarn dev`
-2. Open `/routes/backtest`
-3. Filter strategy: `PineScript`
-4. Open test card and verify:
-   - entry/exit events
-   - Pine lines (`fast`, `slow`) rendered as figures
+- AMR entry/exit events
+- Pine-derived figures (`kcMidline`, `kcUpper`, `kcLower`, `invalidationLevel`)
 
-## 7. Extend the Strategy
+## 6. How to Add Another Pine Strategy
 
-- Add more `plot(..., "name")` lines and include those names in `PINE_LINE_PLOTS`.
-- Add explicit exits with `PINE_EXIT_LONG_PLOT` / `PINE_EXIT_SHORT_PLOT`.
-- Tune risk with `LONG` / `SHORT` TP/SL/minRiskRatio.
+1. Copy `AdaptiveMomentumRibbon` folder to a new strategy name.
+2. Replace `.pine` file with your strategy logic.
+3. Keep explicit Pine plots for entry/exit (+ figure lines).
+4. Map those plots in `core.ts` to TradeJS decisions.
+5. Register manifest in `packages/core/src/strategy/manifests.ts`.
+
+This keeps Pine strategies as independent modules, equivalent to TS strategies in runtime/backtest integration.

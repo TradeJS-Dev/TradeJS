@@ -2,76 +2,71 @@
 title: Add Pine Script Indicators
 ---
 
-TradeJS supports Pine indicators through `pinets` inside Pine-based strategies.
+TradeJS supports two indicator authoring paths:
 
-Important design note:
+- TypeScript indicator plugins (recommended for reusable pane indicators)
+- Pine plots inside standalone Pine strategies (for strategy-native visuals/signals)
 
-- Pine indicators are rendered from `figures` produced by strategy runtime.
-- Standalone pane indicators are still best implemented through regular indicator plugins (`indicators/write-indicators`).
+## 1. TypeScript Indicator Path
 
-## 1. Add Indicator Plot to Pine Script
+Use plugin indicators when you need reusable chart panes independent of one strategy.
 
-Example Pine code:
+Guide:
+
+- `indicators/write-indicators`
+
+## 2. Pine Indicator Path (Inside Pine Strategy)
+
+For Pine strategies (example: `AdaptiveMomentumRibbon`), indicator lines come from Pine `plot(...)` outputs and are converted to `figures`.
+
+Implementation path:
+
+- Pine source: `packages/core/src/strategy/AdaptiveMomentumRibbon/adaptiveMomentumRibbon.pine`
+- Figure mapping: `packages/core/src/strategy/AdaptiveMomentumRibbon/figures.ts`
+- Runtime signal mapping: `packages/core/src/strategy/AdaptiveMomentumRibbon/core.ts`
+
+## 3. Add a New Pine Plot
+
+Example: add RSI to Pine script.
 
 ```pinescript
-//@version=5
-indicator("TradeJS Pine MA + RSI", overlay=true)
-
-fast = ta.sma(close, 9)
-slow = ta.sma(close, 21)
 rsiValue = ta.rsi(close, 14)
-
-entryLong = fast > slow and fast[1] <= slow[1]
-entryShort = fast < slow and fast[1] >= slow[1]
-
-plot(fast, "fast")
-plot(slow, "slow")
 plot(rsiValue, "rsi")
-plot(entryLong ? 1 : 0, "entryLong")
-plot(entryShort ? 1 : 0, "entryShort")
 ```
 
-## 2. Register Plot Keys in Strategy Config
-
-For `PineScript` strategy config, include `rsi` in line plots:
+Then register it in strategy config:
 
 ```json
 {
-  "PINE_LINE_PLOTS": ["fast", "slow", "rsi"],
-  "PINE_ENTRY_LONG_PLOT": "entryLong",
-  "PINE_ENTRY_SHORT_PLOT": "entryShort"
+  "AMR_LINE_PLOTS": [
+    "kcMidline",
+    "kcUpper",
+    "kcLower",
+    "invalidationLevel",
+    "rsi"
+  ]
 }
 ```
 
-## 3. Run Signals/Backtest
+## 4. Validate in Backtest/Signals
 
 ```bash
-yarn signals --user root --cacheOnly
+yarn backtest --user root --config AdaptiveMomentumRibbon:amr-default
 ```
 
 or
 
 ```bash
-yarn backtest --user root --config PineScript:ma-cross
+yarn signals --user root --cacheOnly
 ```
 
-## 4. Where Indicator Is Rendered
-
-The Pine plots are converted into line figures by strategy runtime and shown in:
-
-- dashboard signal chart
-- backtest trade chart
-
-Implementation path:
-
-- script execution: `packages/core/src/utils/pine.ts`
-- figure conversion: `packages/core/src/strategy/PineScript/figures.ts`
+The new Pine plot should appear in signal/backtest figures.
 
 ## 5. Common Pitfalls
 
-- No line appears:
-  `PINE_LINE_PLOTS` key does not match Pine `plot(..., "name")`.
-- Values look flat:
-  check your Pine script warmup periods and lookback bars.
-- No entry signals:
-  verify `PINE_ENTRY_LONG_PLOT` / `PINE_ENTRY_SHORT_PLOT` names.
+- No line on chart:
+  plot name in config does not match `plot(..., "name")`.
+- Flat/incorrect values:
+  check Pine warmup and lookback window (`AMR_LOOKBACK_BARS`).
+- No entries/exits:
+  verify strategy signal plots (`entryLong`, `entryShort`, `invalidated`).

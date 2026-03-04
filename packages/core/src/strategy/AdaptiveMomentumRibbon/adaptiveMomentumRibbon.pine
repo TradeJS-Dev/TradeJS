@@ -1,0 +1,104 @@
+// © ZakAlgoTrade
+//@version=5
+indicator("Adaptive Momentum Ribbon", shorttitle="AMR", overlay=true)
+
+length = input.int(20, "Momentum Period", minval=2)
+smoothLength = input.int(3, "Butterworth Smoothing", minval=1)
+waitClose = input.bool(true, "Confirm Signals on Bar Close")
+
+disp_lvl = input.bool(true, "Show Invalidation Levels")
+disp_ch = input.bool(true, "Show Keltner Channel")
+
+lengthkc = input.int(20, "KC Length", minval=1)
+kcMaType = input.string(
+    "EMA",
+    "KC MA Type",
+    options=["SMA", "EMA", "SMMA (RMA)", "WMA", "VWMA"]
+)
+atrLen = input.int(14, "ATR Length", minval=1)
+mult_kc = input.float(2.0, "ATR Multiplier", minval=0.1, maxval=10.0, step=0.1)
+
+f_butterworth(float source, int len) =>
+    var float prev1 = na
+    var float prev2 = na
+    float pi_val = 3.14159265359
+    float safe_len = math.max(len, 1)
+    float a = math.exp(-math.sqrt(2.0) * pi_val / safe_len)
+    float b = 2.0 * a * math.cos(math.sqrt(2.0) * pi_val / safe_len)
+    float c2 = b
+    float c3 = -a * a
+    float c1 = 1.0 - c2 - c3
+    float result = na
+    if na(prev1) or na(prev2)
+        prev1 := source
+        prev2 := source
+        result := source
+    else
+        result := c1 * source + c2 * nz(prev1) + c3 * nz(prev2)
+    prev2 := prev1
+    prev1 := result
+    result
+
+ma(float source, int _length, string _type) =>
+    _type == "SMA" ? ta.sma(source, _length) :
+     _type == "EMA" ? ta.ema(source, _length) :
+     _type == "SMMA (RMA)" ? ta.rma(source, _length) :
+     _type == "WMA" ? ta.wma(source, _length) :
+     ta.vwma(source, _length)
+
+float conf_src = waitClose ? close[1] : close
+median_val = ta.percentile_nearest_rank(conf_src, length, 50)
+deviation = conf_src - median_val
+med_dev = ta.percentile_nearest_rank(math.abs(deviation), length, 50)
+mad_scale = med_dev == 0 ? ta.stdev(conf_src, length) : med_dev * 1.4826
+raw_osc = mad_scale != 0 ? deviation / mad_scale : 0.0
+signal_osc = f_butterworth(raw_osc, smoothLength)
+
+buy_sig = ta.crossover(signal_osc, 0)
+sell_sig = ta.crossunder(signal_osc, 0)
+
+var float level_price = na
+var bool active_buy = false
+var bool active_sell = false
+
+if buy_sig
+    level_price := waitClose ? low[1] : low
+    active_buy := true
+    active_sell := false
+
+if sell_sig
+    level_price := waitClose ? high[1] : high
+    active_sell := true
+    active_buy := false
+
+float check_low = waitClose ? low[1] : low
+float check_high = waitClose ? high[1] : high
+bool invalidated = false
+
+if active_buy and not na(level_price)
+    if check_low < level_price
+        invalidated := true
+
+if active_sell and not na(level_price)
+    if check_high > level_price
+        invalidated := true
+
+if invalidated
+    active_buy := false
+    active_sell := false
+
+float midline = ma(close, lengthkc, kcMaType)
+float atr_val = ta.atr(atrLen)
+float upper_kc = midline + mult_kc * atr_val
+float lower_kc = midline - mult_kc * atr_val
+
+plot(signal_osc, "signalOsc")
+plot(disp_ch ? midline : na, "kcMidline")
+plot(disp_ch ? upper_kc : na, "kcUpper")
+plot(disp_ch ? lower_kc : na, "kcLower")
+plot(disp_lvl ? level_price : na, "invalidationLevel")
+plot(active_buy ? 1 : 0, "activeBuy")
+plot(active_sell ? 1 : 0, "activeSell")
+plot(invalidated ? 1 : 0, "invalidated")
+plot(buy_sig ? 1 : 0, "entryLong")
+plot(sell_sig ? 1 : 0, "entryShort")

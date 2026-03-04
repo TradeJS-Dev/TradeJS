@@ -1,15 +1,16 @@
 import {
   PineContextLike,
-  getPinePlotSeries,
   asFiniteNumber,
+  getPinePlotSeries,
 } from '@utils/pine';
 import {
-  StrategyEntryModelFigures,
-  StrategyFigurePoint,
   Direction,
+  StrategyEntryModelFigures,
+  StrategyFigureLine,
+  StrategyFigurePoint,
 } from '@types';
 
-interface BuildPineScriptFiguresParams {
+interface BuildAdaptiveMomentumRibbonFiguresParams {
   pineContext: PineContextLike;
   linePlots: string[];
   direction: Direction;
@@ -18,14 +19,35 @@ interface BuildPineScriptFiguresParams {
   maxPoints?: number;
 }
 
-const LINE_COLORS = [
-  '#22d3ee',
-  '#f59e0b',
-  '#34d399',
-  '#a78bfa',
-  '#f43f5e',
-  '#facc15',
-] as const;
+type LineStyleDescriptor = Pick<
+  StrategyFigureLine,
+  'color' | 'width' | 'style'
+>;
+
+const DEFAULT_COLORS = ['#2962ff', '#f23645', '#089981', '#f59e0b'] as const;
+
+const LINE_STYLE_BY_PLOT: Record<string, LineStyleDescriptor> = {
+  kcMidline: {
+    color: '#2962ff',
+    width: 2,
+    style: 'solid',
+  },
+  kcUpper: {
+    color: '#f23645',
+    width: 2,
+    style: 'solid',
+  },
+  kcLower: {
+    color: '#089981',
+    width: 2,
+    style: 'solid',
+  },
+  invalidationLevel: {
+    color: '#f59e0b',
+    width: 1,
+    style: 'dashed',
+  },
+};
 
 const toFigurePoints = (
   series: ReturnType<typeof getPinePlotSeries>,
@@ -33,6 +55,7 @@ const toFigurePoints = (
 ): StrategyFigurePoint[] => {
   const start = Math.max(0, series.length - maxPoints);
   const points: StrategyFigurePoint[] = [];
+
   for (let i = start; i < series.length; i += 1) {
     const item = series[i];
     const timestamp = asFiniteNumber(item?.time);
@@ -43,17 +66,18 @@ const toFigurePoints = (
       value,
     });
   }
+
   return points;
 };
 
-export const buildPineScriptFigures = ({
+export const buildAdaptiveMomentumRibbonFigures = ({
   pineContext,
   linePlots,
   direction,
   entryTimestamp,
   entryPrice,
-  maxPoints = 120,
-}: BuildPineScriptFiguresParams): StrategyEntryModelFigures => {
+  maxPoints = 180,
+}: BuildAdaptiveMomentumRibbonFiguresParams): StrategyEntryModelFigures => {
   const lines = linePlots
     .map((plotName, index) => {
       const series = getPinePlotSeries(pineContext, plotName);
@@ -62,14 +86,20 @@ export const buildPineScriptFigures = ({
         return null;
       }
 
-      return {
-        id: `pine-line-${plotName}`,
-        kind: 'pine_plot_line',
-        points,
-        color: LINE_COLORS[index % LINE_COLORS.length],
+      const fallbackStyle: LineStyleDescriptor = {
+        color: DEFAULT_COLORS[index % DEFAULT_COLORS.length],
         width: 2,
-        style: 'solid' as const,
+        style: 'solid',
       };
+
+      const style = LINE_STYLE_BY_PLOT[plotName] || fallbackStyle;
+
+      return {
+        id: `amr-line-${plotName}`,
+        kind: 'amr_plot_line',
+        points,
+        ...style,
+      } as StrategyFigureLine;
     })
     .filter(Boolean) as NonNullable<StrategyEntryModelFigures['lines']>;
 
@@ -77,8 +107,8 @@ export const buildPineScriptFigures = ({
     lines,
     points: [
       {
-        id: `pine-entry-${entryTimestamp}`,
-        kind: 'pine_entry',
+        id: `amr-entry-${entryTimestamp}`,
+        kind: 'amr_entry',
         points: [{ timestamp: entryTimestamp, value: entryPrice }],
         color: direction === 'LONG' ? '#22c55e' : '#ef4444',
         radius: 4,

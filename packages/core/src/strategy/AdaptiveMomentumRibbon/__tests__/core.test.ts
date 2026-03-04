@@ -1,7 +1,16 @@
 /** @jest-environment node */
 
-import { createPineScriptCore } from '../core';
+import { runPineScript } from '@utils/pine';
+import { createAdaptiveMomentumRibbonCore } from '../core';
 import { config as DEFAULT_CONFIG } from '../config';
+
+jest.mock('@utils/pine', () => {
+  const actual = jest.requireActual('@utils/pine');
+  return {
+    ...actual,
+    runPineScript: jest.fn(),
+  };
+});
 
 const makeCandle = (timestamp: number, open: number, close: number) => ({
   timestamp,
@@ -16,9 +25,9 @@ const makeCandle = (timestamp: number, open: number, close: number) => ({
 
 const makeCandles = ({ bullishLast }: { bullishLast: boolean }) => {
   const start = 1_700_000_000_000;
-  const candles = Array.from({ length: 80 }, (_, index) => {
+  const candles = Array.from({ length: 90 }, (_, index) => {
     const base = 100 + Math.sin(index / 5) * 2;
-    const isLast = index === 79;
+    const isLast = index === 89;
     const open = isLast ? (bullishLast ? base - 0.5 : base + 0.5) : base - 0.1;
     const close = isLast ? (bullishLast ? base + 0.5 : base - 0.5) : base + 0.1;
     return makeCandle(start + index * 60_000, open, close);
@@ -49,7 +58,7 @@ const makeStrategyApi = (marketData: any, currentPosition: any = null) =>
       kind: 'entry',
       code: params.code,
       entryContext: {
-        strategy: 'PineScript',
+        strategy: 'AdaptiveMomentumRibbon',
         symbol: 'TESTUSDT',
         interval: '15',
         direction: params.direction,
@@ -60,8 +69,8 @@ const makeStrategyApi = (marketData: any, currentPosition: any = null) =>
       orderPlan: params.orderPlan,
       runtime: params.runtime,
       signal: {
-        signalId: params.signalId ?? 'pine-test-signal',
-        strategy: 'PineScript',
+        signalId: params.signalId ?? 'amr-test-signal',
+        strategy: 'AdaptiveMomentumRibbon',
         symbol: 'TESTUSDT',
         interval: '15',
         direction: params.direction,
@@ -86,8 +95,42 @@ const makeIndicatorsState = () =>
     isInitialized: jest.fn(() => true),
   }) as any;
 
-describe('createPineScriptCore', () => {
-  it('returns entry decision for bullish pine signal', async () => {
+const mockedRunPineScript = runPineScript as jest.MockedFunction<
+  typeof runPineScript
+>;
+
+const makePineContext = (plots: Record<string, unknown>) => ({
+  plots: Object.fromEntries(
+    Object.entries(plots).map(([plotName, value]) => [
+      plotName,
+      {
+        data: [{ time: 1_700_000_000_000, value }],
+      },
+    ]),
+  ),
+});
+
+describe('createAdaptiveMomentumRibbonCore', () => {
+  beforeEach(() => {
+    mockedRunPineScript.mockReset();
+  });
+
+  it('returns entry decision for bullish AMR signal', async () => {
+    mockedRunPineScript.mockResolvedValue(
+      makePineContext({
+        entryLong: 1,
+        entryShort: 0,
+        invalidated: 0,
+        activeBuy: 1,
+        activeSell: 0,
+        signalOsc: 0.6,
+        kcMidline: 101,
+        kcUpper: 102,
+        kcLower: 100,
+        invalidationLevel: 99,
+      }),
+    );
+
     const candles = makeCandles({ bullishLast: true });
     const marketData = {
       fullData: candles,
@@ -95,23 +138,17 @@ describe('createPineScriptCore', () => {
       currentPrice: candles[candles.length - 1].close,
     };
 
-    const core = await createPineScriptCore({
+    const core = await createAdaptiveMomentumRibbonCore({
       userName: 'root',
       symbol: 'TESTUSDT',
       config: {
         ...DEFAULT_CONFIG,
-        PINE_SCRIPT: `//@version=5
-indicator("Entry Long")
-plot(ta.sma(close, 5), "fast")
-plot(ta.sma(close, 15), "slow")
-plot(close > open ? 1 : 0, "entryLong")
-plot(close < open ? 1 : 0, "entryShort")
-`,
       } as any,
       isConfigFromBacktest: false,
       connector: {} as any,
       data: candles.slice(0, -1),
       btcData: candles.slice(0, -1),
+      loadPineScript: jest.fn(() => 'mock-pine-script'),
       strategyApi: makeStrategyApi(marketData),
       indicatorsState: makeIndicatorsState(),
     });
@@ -126,11 +163,27 @@ plot(close < open ? 1 : 0, "entryShort")
       return;
     }
     expect(decision.entryContext.direction).toBe('LONG');
-    expect(decision.code).toBe('PINE_ENTRY_LONG');
+    expect(decision.code).toBe('AMR_ENTRY_LONG');
     expect(decision.orderPlan.qty).toBe(1);
+    expect(decision.signal?.figures?.lines?.length ?? 0).toBeGreaterThan(0);
   });
 
-  it('returns exit decision when opposite pine signal appears on open position', async () => {
+  it('returns exit decision when opposite AMR signal appears on open position', async () => {
+    mockedRunPineScript.mockResolvedValue(
+      makePineContext({
+        entryLong: 0,
+        entryShort: 1,
+        invalidated: 0,
+        activeBuy: 0,
+        activeSell: 1,
+        signalOsc: -0.6,
+        kcMidline: 99,
+        kcUpper: 100,
+        kcLower: 98,
+        invalidationLevel: 101,
+      }),
+    );
+
     const candles = makeCandles({ bullishLast: false });
     const marketData = {
       fullData: candles,
@@ -138,21 +191,17 @@ plot(close < open ? 1 : 0, "entryShort")
       currentPrice: candles[candles.length - 1].close,
     };
 
-    const core = await createPineScriptCore({
+    const core = await createAdaptiveMomentumRibbonCore({
       userName: 'root',
       symbol: 'TESTUSDT',
       config: {
         ...DEFAULT_CONFIG,
-        PINE_SCRIPT: `//@version=5
-indicator("Entry Short")
-plot(close > open ? 1 : 0, "entryLong")
-plot(close < open ? 1 : 0, "entryShort")
-`,
       } as any,
       isConfigFromBacktest: false,
       connector: {} as any,
       data: candles.slice(0, -1),
       btcData: candles.slice(0, -1),
+      loadPineScript: jest.fn(() => 'mock-pine-script'),
       strategyApi: makeStrategyApi(marketData, {
         direction: 'LONG',
         qty: 1,
@@ -167,7 +216,7 @@ plot(close < open ? 1 : 0, "entryShort")
 
     expect(decision).toEqual({
       kind: 'exit',
-      code: 'CLOSE_BY_PINE_SIGNAL',
+      code: 'CLOSE_BY_AMR_SIGNAL',
       closePlan: {
         price: marketData.currentPrice,
         timestamp: marketData.timestamp,
@@ -176,7 +225,22 @@ plot(close < open ? 1 : 0, "entryShort")
     });
   });
 
-  it('returns skip NO_SIGNAL when pine script has no entry signal', async () => {
+  it('returns exit decision by invalidation on open position', async () => {
+    mockedRunPineScript.mockResolvedValue(
+      makePineContext({
+        entryLong: 0,
+        entryShort: 0,
+        invalidated: 1,
+        activeBuy: 1,
+        activeSell: 0,
+        signalOsc: 0.1,
+        kcMidline: 100,
+        kcUpper: 101,
+        kcLower: 99,
+        invalidationLevel: 98,
+      }),
+    );
+
     const candles = makeCandles({ bullishLast: true });
     const marketData = {
       fullData: candles,
@@ -184,21 +248,74 @@ plot(close < open ? 1 : 0, "entryShort")
       currentPrice: candles[candles.length - 1].close,
     };
 
-    const core = await createPineScriptCore({
+    const core = await createAdaptiveMomentumRibbonCore({
       userName: 'root',
       symbol: 'TESTUSDT',
       config: {
         ...DEFAULT_CONFIG,
-        PINE_SCRIPT: `//@version=5
-indicator("No Signal")
-plot(0, "entryLong")
-plot(0, "entryShort")
-`,
       } as any,
       isConfigFromBacktest: false,
       connector: {} as any,
       data: candles.slice(0, -1),
       btcData: candles.slice(0, -1),
+      loadPineScript: jest.fn(() => 'mock-pine-script'),
+      strategyApi: makeStrategyApi(marketData, {
+        direction: 'LONG',
+        qty: 1,
+      }),
+      indicatorsState: makeIndicatorsState(),
+    });
+
+    const decision = await core(
+      candles[candles.length - 1],
+      candles[candles.length - 1],
+    );
+
+    expect(decision).toEqual({
+      kind: 'exit',
+      code: 'CLOSE_BY_AMR_INVALIDATION',
+      closePlan: {
+        price: marketData.currentPrice,
+        timestamp: marketData.timestamp,
+        direction: 'LONG',
+      },
+    });
+  });
+
+  it('returns skip NO_SIGNAL when AMR script has no entry signal', async () => {
+    mockedRunPineScript.mockResolvedValue(
+      makePineContext({
+        entryLong: 0,
+        entryShort: 0,
+        invalidated: 0,
+        activeBuy: 0,
+        activeSell: 0,
+        signalOsc: 0,
+        kcMidline: 100,
+        kcUpper: 101,
+        kcLower: 99,
+        invalidationLevel: 98,
+      }),
+    );
+
+    const candles = makeCandles({ bullishLast: true });
+    const marketData = {
+      fullData: candles,
+      timestamp: candles[candles.length - 1].timestamp,
+      currentPrice: candles[candles.length - 1].close,
+    };
+
+    const core = await createAdaptiveMomentumRibbonCore({
+      userName: 'root',
+      symbol: 'TESTUSDT',
+      config: {
+        ...DEFAULT_CONFIG,
+      } as any,
+      isConfigFromBacktest: false,
+      connector: {} as any,
+      data: candles.slice(0, -1),
+      btcData: candles.slice(0, -1),
+      loadPineScript: jest.fn(() => 'mock-pine-script'),
       strategyApi: makeStrategyApi(marketData),
       indicatorsState: makeIndicatorsState(),
     });

@@ -2,76 +2,71 @@
 title: Как добавить Pine Script индикаторы
 ---
 
-В TradeJS Pine-индикаторы поддерживаются через `pinets` внутри Pine-стратегий.
+В TradeJS есть два пути добавления индикаторов:
 
-Важный момент по архитектуре:
+- TypeScript indicator plugins (рекомендуется для переиспользуемых pane-индикаторов)
+- Pine `plot`-линии внутри самостоятельной Pine-стратегии (для strategy-native визуализации/сигналов)
 
-- Pine-индикаторы рисуются через `figures`, которые возвращает стратегия.
-- Отдельные pane-индикаторы лучше делать как обычные indicator plugins (`indicators/write-indicators`).
+## 1. TypeScript-путь индикаторов
 
-## 1. Добавьте plot индикатора в Pine Script
+Используйте plugin-индикаторы, когда нужен переиспользуемый индикатор вне конкретной стратегии.
 
-Пример Pine-кода:
+Гайд:
+
+- `indicators/write-indicators`
+
+## 2. Pine-путь индикаторов (внутри Pine-стратегии)
+
+Для Pine-стратегий (пример: `AdaptiveMomentumRibbon`) линии индикаторов берутся из Pine `plot(...)` и конвертируются в `figures`.
+
+Путь в коде:
+
+- Pine-исходник: `packages/core/src/strategy/AdaptiveMomentumRibbon/adaptiveMomentumRibbon.pine`
+- mapping в фигуры: `packages/core/src/strategy/AdaptiveMomentumRibbon/figures.ts`
+- mapping в runtime-сигналы: `packages/core/src/strategy/AdaptiveMomentumRibbon/core.ts`
+
+## 3. Добавьте новый Pine plot
+
+Пример: добавить RSI в Pine-скрипт.
 
 ```pinescript
-//@version=5
-indicator("TradeJS Pine MA + RSI", overlay=true)
-
-fast = ta.sma(close, 9)
-slow = ta.sma(close, 21)
 rsiValue = ta.rsi(close, 14)
-
-entryLong = fast > slow and fast[1] <= slow[1]
-entryShort = fast < slow and fast[1] >= slow[1]
-
-plot(fast, "fast")
-plot(slow, "slow")
 plot(rsiValue, "rsi")
-plot(entryLong ? 1 : 0, "entryLong")
-plot(entryShort ? 1 : 0, "entryShort")
 ```
 
-## 2. Зарегистрируйте ключи plot в конфиге стратегии
-
-Для стратегии `PineScript` добавьте `rsi` в список линий:
+Затем добавьте его в конфиг стратегии:
 
 ```json
 {
-  "PINE_LINE_PLOTS": ["fast", "slow", "rsi"],
-  "PINE_ENTRY_LONG_PLOT": "entryLong",
-  "PINE_ENTRY_SHORT_PLOT": "entryShort"
+  "AMR_LINE_PLOTS": [
+    "kcMidline",
+    "kcUpper",
+    "kcLower",
+    "invalidationLevel",
+    "rsi"
+  ]
 }
 ```
 
-## 3. Запустите signals или backtest
+## 4. Проверка в backtest/signals
 
 ```bash
-yarn signals --user root --cacheOnly
+yarn backtest --user root --config AdaptiveMomentumRibbon:amr-default
 ```
 
 или
 
 ```bash
-yarn backtest --user root --config PineScript:ma-cross
+yarn signals --user root --cacheOnly
 ```
 
-## 4. Где отображается индикатор
-
-Pine plots конвертируются в line figures и отображаются в:
-
-- графике сигнала (dashboard)
-- графике сделок в backtest
-
-Путь в коде:
-
-- выполнение Pine: `packages/core/src/utils/pine.ts`
-- конвертация в фигуры: `packages/core/src/strategy/PineScript/figures.ts`
+Новая Pine-линия должна появиться в figures у сигналов/бэктеста.
 
 ## 5. Частые проблемы
 
 - Линия не отображается:
-  ключ в `PINE_LINE_PLOTS` не совпадает с именем `plot(..., "name")`.
-- Линия “плоская”:
-  проверьте warmup и lookback в Pine-скрипте.
-- Нет входов:
-  проверьте имена `PINE_ENTRY_LONG_PLOT` / `PINE_ENTRY_SHORT_PLOT`.
+  имя в конфиге не совпадает с `plot(..., "name")`.
+- Линия некорректная или “плоская”:
+  проверьте warmup в Pine и окно истории (`AMR_LOOKBACK_BARS`).
+- Нет entry/exit:
+  проверьте служебные plot-сигналы (`entryLong`, `entryShort`, `invalidated`).

@@ -1,22 +1,25 @@
 # AGENTS.md
 
 ## Scope
-These instructions apply to this repository (`/Users/aleksnick/dev/investing`).
+
+These repository rules apply to `/Users/aleksnick/dev/investing`.
 
 ## ML Training Workflow
+
 - Use `yarn ml-train:trendline:*` scripts for model training (`rf`, `xgboost`, `lightgbm`, etc.).
 - Training scripts are wrapped by `bin/ml-train-with-redis.sh`:
   - Redis is stopped before train.
   - Redis is restored on exit (success/error/interrupt).
 
 ## Dataset Handling
+
 - Backtest workers write ML rows directly to per-worker chunk files:
   - `ml-dataset-[strategyName]-[chunkId].jsonl`
-- ML rows are transformed immediately on signal creation (no `ml:*` Redis keys).
-- `yarn ml-export` merges chunk files into one dataset:
+- ML rows are transformed immediately on signal creation (no `ml:*` Redis dataset keys).
+- `yarn ml-export` merges chunk files into one JSONL export:
   - `ml-dataset-[strategyName]-merged-[timestamp].jsonl`
-- CSV export is disabled; only JSONL is generated.
-- Training uses the latest merged/base export file (`ml-dataset-*.jsonl`) only.
+- CSV export is disabled; JSONL is the canonical format.
+- Training consumes only base export files (`ml-dataset-*.jsonl`), not derived split files.
 - Derived split files are generated automatically:
   - `*.holdout-train.<key>.jsonl`
   - `*.holdout-test.<key>.jsonl`
@@ -25,25 +28,26 @@ These instructions apply to this repository (`/Users/aleksnick/dev/investing`).
   - `*.walk-forward-fold-<N>.test.<key>.jsonl`
 - Split metadata is stored in:
   - `*.windows.<key>.meta.json`
-  - contains `files.holdout`, `files.prod`, `files.walkForwardFolds`
-- Derived files are cached and reused when:
-  - same export filename hash
-  - same `ML_TRAIN_TEST_DAYS`
-  - same `ML_TRAIN_RECENT_DAYS`
-  - same `ML_TRAIN_WALK_FORWARD_FOLDS`
-- Never treat derived split files as source exports.
-- Keep feature-window parity across stages:
-  - backtest dataset write path uses trimmed windows (`trimMlTrainingRowWindows(..., 5)`),
-  - inference path must use the same trim policy before grpc predict.
-- In ML transform, last element of candle/indicator arrays is dropped before feature generation to avoid closed-vs-open candle mismatch.
-- Feature naming convention:
-  - use `TF*_ALT_*` for current-asset features,
-  - use `TF*_BTC_*` for BTC features.
-- Training reports include holdout TOP feature table (single-feature threshold) in both `md` and `html`.
+  - includes `files.holdout`, `files.prod`, `files.walkForwardFolds`
+- Derived files are reused when these are unchanged:
+  - export filename hash
+  - `ML_TRAIN_TEST_DAYS`
+  - `ML_TRAIN_RECENT_DAYS`
+  - `ML_TRAIN_WALK_FORWARD_FOLDS`
+
+## Feature Parity Rules
+
+- Keep feature-window parity across backtest write path and inference path:
+  - both must use `trimMlTrainingRowWindows(..., 5)`
+- In ML transform, remove the last element of candle/indicator arrays before feature generation.
+- Naming convention:
+  - `TF*_ALT_*` for current-asset features
+  - `TF*_BTC_*` for BTC features
 
 ## Train Parameters
-- `ML_TRAIN_RECENT_DAYS`: train window size (days).
-- `ML_TRAIN_TEST_DAYS`: holdout window size (days).
+
+- `ML_TRAIN_RECENT_DAYS`: train window size in days.
+- `ML_TRAIN_TEST_DAYS`: holdout window size in days.
 - `ML_TRAIN_WALK_FORWARD_FOLDS`:
   - `0` = disabled
   - `1+` = enabled with that many folds
@@ -51,73 +55,88 @@ These instructions apply to this repository (`/Users/aleksnick/dev/investing`).
 - `ML_TRAIN_FEATURE_SET`: `legacy` or `enriched`.
 
 ## Robust Profile Rule
+
 - `robust` keeps informative binary (0/1) features.
 - Constant binary features are dropped.
 
-## Walk-forward + Ensemble
-- Ensemble is applied to main holdout when enabled.
-- Ensemble is also applied inside walk-forward folds when enabled.
+## Walk-Forward and Ensemble
+
+- Ensemble applies to main holdout when enabled.
+- Ensemble also applies within walk-forward folds when enabled.
 - Reports include `ensemble_members_used` per fold.
 - Prod ensemble is trained from `--prod-input` / `*.prod.<key>.jsonl` when provided.
 
 ## Logging Conventions
-- Training logs can include heartbeat with:
+
+- Training logs may include heartbeat with:
   - elapsed time
   - Node RSS
   - ML container memory usage
 - Heartbeat is printed only when `ML_TRAIN_DEBUG=1`.
-- Console output is normalized line-by-line (no carriage-return drift).
-- `COMPOSE_IGNORE_ORPHANS=1` is used for cleaner train logs.
+- Console output must remain line-normalized (no carriage-return drift).
+- Use `COMPOSE_IGNORE_ORPHANS=1` for cleaner train logs.
 
 ## Reports
+
 - Markdown and HTML reports are saved next to model artifacts.
 - Reports include:
   - main holdout metrics and threshold table
   - walk-forward windows
   - walk-forward threshold tables per fold
-- One `md` and one `html` report are produced per run (final file includes eval + prod summary).
-- Console no longer prints threshold tables; they stay in `md/html`.
+- One `.md` and one `.html` report are generated per run (final file includes eval + prod summary).
+- Threshold tables are report-only (not printed to console).
 
-## Upload / Infer Artifacts
+## Upload and Infer Artifacts
+
 - Stable inference aliases:
   - single: `<Strategy>.joblib`
   - ensemble: `<Strategy>.modelN.joblib`
-- Each prod model (`*.prod.*.joblib` and alias `*.joblib`) has a sidecar metrics JSON with holdout/fold AUC summary.
-- Before each new train, previous strategy artifacts (`.joblib`, sidecar `.json`, `.md`, `.report.html`) are moved to `data/ml/models/archived/`.
-- `ml-upload:prod` uploads alias inference artifacts only (not archived `*.eval.*` / `*.prod.*` snapshots).
+- Each prod model (`*.prod.*.joblib` and alias `*.joblib`) has a sidecar JSON with holdout/fold AUC summary.
+- Before each new training run, previous strategy artifacts (`.joblib`, sidecar `.json`, `.md`, `.report.html`) are archived to `data/ml/models/archived/`.
+- `ml-upload:prod` uploads inference aliases only (not archived `*.eval.*` / `*.prod.*` snapshots).
 
 ## Causality Guard
-- Train step enforces no-lookahead checks for timestamp-like features (`*Ts`, `*Timestamp`, `*AtMs`) against `entryTimestamp`.
-- Guard runs during split generation and Python train stages.
+
+- Training enforces no-lookahead checks for timestamp-like features (`*Ts`, `*Timestamp`, `*AtMs`) against `entryTimestamp`.
+- Guard runs during split generation and Python training.
 - Disable only for debugging with `ML_TRAIN_DISABLE_CAUSALITY_GUARD=1`.
 
-## Testing
+## Testing Rules
+
 - Run unit tests with `yarn unit`.
 - Run type checks with `yarn dev-tsc`.
-- After successful `yarn dev-tsc` and `yarn unit`, run `yarn prettify`.
-- Keep Jest focused on unit suites (ignore temp artifacts and non-unit script entrypoints).
-- For changes in `src/utils/ai.ts`, `src/strategy/*`, signal generation, or ML/testing helpers, re-run both `yarn unit` and `yarn dev-tsc` before commit.
+- After both succeed, run `yarn prettify`.
+- Keep Jest focused on unit suites.
+- For changes in `packages/core/src/utils/ai.ts`, `packages/core/src/strategy/*`, signal generation, or ML/testing helpers, re-run both `yarn unit` and `yarn dev-tsc` before commit.
 
 ## Runtime AI Signal Review (TrendLine)
-- Runtime AI analysis for live TrendLine signals is triggered in the shared strategy runtime (`src/utils/strategyRuntime.ts`) after strategy core returns an `entry` decision with assembled `signal`.
-- TrendLine signal assembly remains strategy-specific (`src/strategy/TrendLine/core.ts`), but AI/ML enrichment and order gating are executed by the common runtime layer.
-- Strategy-specific AI/ML customizations must live near the strategy (`src/strategy/<Strategy>/adapters/*`) and be connected through strategy manifests (`src/strategy/*/manifest.ts`, `src/strategy/manifests.ts`), not via hardcoded branches in shared `utils`.
-- `entry` decisions use `entryContext` as the source of truth for runtime execution fields (strategy/symbol/direction/timestamp/prices); `orderPlan` should contain only execution-specific additions (e.g. `qty`, `takeProfits`).
-- Runtime `ai/ml` policy should be derived from strategy adapters/manifests (and optionally merged with `decision.runtime` overrides for special cases), not assembled ad hoc in strategy core.
-- `strategyApi` is the preferred DSL inside `core.ts` (`skip`, `entry`, `getMarketData`, `getCurrentPosition`, `isCurrentPositionExists`); `getMarketData()` provides `timestamp = lastCandle.timestamp`. Avoid rebuilding these wrappers in strategies.
-- Prefer `strategyApi` wrappers for shared calculations/controllers too (e.g. TP/SL sizing helper, last-trade cooldown controller) instead of importing runtime-aware helpers directly into strategy cores.
-- AI writes analysis to Redis key `analysis:${symbol}:${signalId}`.
-- Telegram sending reads Redis `analysis` and posts AI analysis as a separate follow-up message after the main signal message.
-- In non-BACKTEST mode, order placement is gated by AI only if AI confirms the current signal direction (`analysis.direction === signal.direction`) and `analysis.quality` is `4` or `5`.
-- AI prompt analyzes the current strategy signal only (it must not invent an opposite trade direction).
-- AI response includes retest guidance:
+
+- Runtime AI analysis for live TrendLine signals is triggered in shared runtime (`packages/core/src/utils/strategyRuntime.ts`) after `core.ts` returns an `entry` decision with assembled signal.
+- TrendLine signal assembly remains strategy-local in `packages/core/src/strategy/TrendLine/core.ts`.
+- Strategy-specific AI/ML customizations must live in strategy-local adapters/manifests, not as hardcoded branches in shared utils.
+- `entryContext` is the source of truth for runtime execution fields.
+- `orderPlan` should contain execution-only additions (`qty`, `takeProfits`, etc.).
+- Runtime AI/ML policy should come from strategy adapters/manifests (with optional `decision.runtime` overrides for special cases).
+- Prefer shared `strategyApi` DSL in `core.ts`:
+  - `skip`, `entry`, `getMarketData`, `getCurrentPosition`, `isCurrentPositionExists`
+- `getMarketData()` provides `timestamp = lastCandle.timestamp`.
+
+AI flow details:
+
+- AI writes analysis to `analysis:${symbol}:${signalId}`.
+- Telegram reads this key and sends AI analysis as follow-up after the main signal message.
+- In non-`BACKTEST` mode, order placement is AI-gated only when:
+  - `analysis.direction === signal.direction`
+  - `analysis.quality` is `4` or `5`
+- AI prompt must analyze the current strategy direction only.
+- AI response includes retest guidance fields:
   - `needRetest`
   - `retestPrice`
-  - plus `quality`, `takeProfitPrice`, `stopLossPrice`, `comment`.
-- LLM payload uses runtime indicator keys (`maFast`, `btcMaFast1h`, `candles15m`, etc.) and trims indicator/candle arrays to the last 5 values; `figures.trendLine` is sent untrimmed.
+  - plus `quality`, `takeProfitPrice`, `stopLossPrice`, `comment`
 
 ## Indicator Architecture
-- Keep shared strategy indicators in `src/utils/indicators.ts`.
-- Do not add strategy-specific branches/options into the shared indicator module.
-- If a strategy needs extra derived series, define them as neutral indicator periods/fields (for all strategies), not as per-strategy toggles.
-- For config refactors, do not keep backward-compatibility aliases or legacy fallback keys unless explicitly requested.
+
+- Keep shared strategy indicators in `packages/core/src/utils/indicators.ts`.
+- Do not add strategy-specific branches/toggles inside shared indicator module.
+- If a strategy needs extra derived series, add neutral fields/periods usable by all strategies.
+- For config refactors, do not keep backward-compat aliases or legacy fallback keys unless explicitly requested.

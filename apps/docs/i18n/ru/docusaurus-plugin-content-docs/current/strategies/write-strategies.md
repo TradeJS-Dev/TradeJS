@@ -5,6 +5,11 @@ title: Как писать стратегии
 
 Здесь показано, как устроен runtime стратегий в TradeJS, на реальном примере `TrendLine`.
 
+В TradeJS есть два пути написания стратегий:
+
+- TypeScript-стратегия через `StrategyAPI` (`strategies/ma-strategy-step-by-step`)
+- Pine-стратегия с отдельным `.pine` исходником (`strategies/pine-strategy-step-by-step`, пример `AdaptiveMomentumRibbon`)
+
 ## Типовая структура стратегии
 
 Внутри `packages/core/src/strategy/<Strategy>` обычно есть:

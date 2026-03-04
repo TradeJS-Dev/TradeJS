@@ -1,5 +1,7 @@
+import path from 'node:path';
 import { SIGNALS_PRELOAD_DAYS } from '@constants';
 import { logger } from '@utils/logger';
+import { createLoadPineScript } from '@utils/pine';
 import { getTimestamp } from '@utils/timestamp';
 import { getStrategyManifest } from '../strategy/manifests';
 import {
@@ -234,6 +236,17 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
   defaults,
   createCore,
 }: CreateStrategyRuntimeParams<TConfig>): StrategyCreator => {
+  const loadPineScript = createLoadPineScript(
+    path.resolve(
+      process.cwd(),
+      'packages',
+      'core',
+      'src',
+      'strategy',
+      strategyName,
+    ),
+  );
+
   return async ({
     userName,
     config: baseConfig,
@@ -281,6 +294,7 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
       connector,
       data,
       btcData,
+      loadPineScript,
       strategyApi,
       indicatorsState,
     });

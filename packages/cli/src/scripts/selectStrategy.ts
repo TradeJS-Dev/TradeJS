@@ -16,7 +16,7 @@ const getStrategyChoices = async (): Promise<string[]> => {
   return [
     'Breakout',
     'MaStrategy',
-    'PineScript',
+    'AdaptiveMomentumRibbon',
     'TrendLine',
     'VolumeDivergence',
   ];

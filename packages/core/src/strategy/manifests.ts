@@ -9,9 +9,9 @@ import type {
 import { registerIndicatorEntries } from '@tradejs/core/indicators';
 import { logger } from '@utils/logger';
 import { loadTradejsConfig } from '@utils/tradejsConfig';
+import { adaptiveMomentumRibbonManifest } from './AdaptiveMomentumRibbon/manifest';
 import { breakoutManifest } from './Breakout/manifest';
 import { maStrategyManifest } from './MaStrategy/manifest';
-import { pineScriptManifest } from './PineScript/manifest';
 import { trendLineManifest } from './TrendLine/manifest';
 import { volumeDivergenceManifest } from './VolumeDivergence/manifest';
 
@@ -54,10 +54,10 @@ const builtInStrategyEntries: readonly StrategyRegistryEntry[] = [
     ),
   },
   {
-    manifest: pineScriptManifest,
+    manifest: adaptiveMomentumRibbonManifest,
     creator: createLazyStrategyCreator(
-      () => import('./PineScript/strategy'),
-      'PineScriptStrategyCreator',
+      () => import('./AdaptiveMomentumRibbon/strategy'),
+      'AdaptiveMomentumRibbonStrategyCreator',
     ),
   },
   {

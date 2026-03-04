@@ -1,3 +1,5 @@
+import fs from 'node:fs';
+import path from 'node:path';
 import { Candle } from '@types';
 
 type PineRuntime = {
@@ -66,6 +68,36 @@ export interface RunPineScriptParams {
   inputs?: Record<string, unknown>;
   limit?: number;
 }
+
+export const loadPineScript = (filePath: string, fallback = ''): string => {
+  const resolvedPath = String(filePath || '').trim();
+  if (!resolvedPath) {
+    return fallback;
+  }
+
+  try {
+    return fs.readFileSync(resolvedPath, 'utf8').trim();
+  } catch {
+    return fallback;
+  }
+};
+
+export const createLoadPineScript = (
+  baseDir: string,
+): ((fileNameOrPath: string, fallback?: string) => string) => {
+  const resolvedBaseDir = path.resolve(baseDir);
+  return (fileNameOrPath: string, fallback = '') => {
+    const rawPath = String(fileNameOrPath || '').trim();
+    if (!rawPath) {
+      return fallback;
+    }
+
+    const resolvedPath = path.isAbsolute(rawPath)
+      ? rawPath
+      : path.resolve(resolvedBaseDir, rawPath);
+    return loadPineScript(resolvedPath, fallback);
+  };
+};
 
 const MINUTE_MS = 60_000;
 

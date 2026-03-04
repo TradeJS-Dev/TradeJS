@@ -318,6 +318,7 @@ export interface CreateStrategyCoreParams<
   connector: Connector;
   data: KlineChartData;
   btcData: KlineChartData;
+  loadPineScript: (fileNameOrPath: string, fallback?: string) => string;
   strategyApi: StrategyAPI;
   indicatorsState: TIndicatorsState;
 }

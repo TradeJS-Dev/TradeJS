@@ -67,3 +67,9 @@ yarn backtest --ml
 ```bash
 yarn ml-export
 ```
+
+## Связанные статьи
+
+- `runtime/backtest-grid-config`
+- `runtime/backtest-results-runtime-config`
+- `runtime/data-continuity-update-history`

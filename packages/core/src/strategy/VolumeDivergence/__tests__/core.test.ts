@@ -101,6 +101,7 @@ describe('createVolumeDivergenceCore', () => {
       connector: { getPosition: jest.fn() } as any,
       data: candles as any,
       btcData: candles as any,
+      loadPineScript: jest.fn(() => ''),
       strategyApi,
       indicatorsState: makeIndicatorsState(),
     });
@@ -152,6 +153,7 @@ describe('createVolumeDivergenceCore', () => {
       connector: { getPosition: jest.fn() } as any,
       data: candles as any,
       btcData: candles as any,
+      loadPineScript: jest.fn(() => ''),
       strategyApi,
       indicatorsState: makeIndicatorsState(),
     });

@@ -8,7 +8,11 @@ import chalk from 'chalk';
 import _ from 'lodash';
 import { format } from 'date-fns';
 import { TESTS_TOP_LIMIT, TESTS_LIMIT, TTL_1M, TTL_1D } from '@constants';
-import { connectors, ConnectorNames } from '@tradejs/connectors';
+import {
+  connectors,
+  ConnectorNames,
+  resolveConnectorNameByProvider,
+} from '@tradejs/connectors';
 import { mergeConfigs, createTestSuite } from '@utils/grid';
 import { calculateStatsFull, sortBestTests } from '@utils/stat';
 import { setData, getData, redisKeys } from '@utils/redis';
@@ -121,16 +125,14 @@ const isStrategyConfigGrid = (value: unknown): value is StrategyConfigGrid => {
 };
 
 const resolveConnectorName = (value: unknown): ConnectorNames => {
-  const provider = String(value || '')
-    .trim()
-    .toLowerCase();
-  if (provider === 'bybit') return ConnectorNames.ByBit;
-  if (provider === 'binance') return ConnectorNames.Binance;
-  if (provider === 'coinbase') return ConnectorNames.Coinbase;
+  const connectorName = resolveConnectorNameByProvider(value);
+  if (connectorName) {
+    return connectorName;
+  }
 
   console.log(
     chalk.yellow(
-      `Unknown connector "${provider || String(value)}". Fallback to ${ConnectorNames.ByBit}.`,
+      `Unknown connector "${String(value || '').trim() || String(value)}". Fallback to ${ConnectorNames.ByBit}.`,
     ),
   );
   return ConnectorNames.ByBit;

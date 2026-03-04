@@ -115,6 +115,7 @@ describe('createTrendLineCore', () => {
       connector,
       data: [],
       btcData: [],
+      loadPineScript: jest.fn(() => ''),
       strategyApi,
       indicatorsState: indicatorsState as any,
     });
@@ -192,6 +193,7 @@ describe('createTrendLineCore', () => {
       connector,
       data: [candle as any],
       btcData: [btcCandle as any],
+      loadPineScript: jest.fn(() => ''),
       strategyApi: makeStrategyApi(),
       indicatorsState: indicatorsState as any,
     });

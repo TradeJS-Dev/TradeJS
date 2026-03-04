@@ -37,3 +37,5 @@ export const defineStrategyPlugin = <T extends StrategyPluginDefinition>(
 export const defineIndicatorPlugin = <T extends IndicatorPluginDefinition>(
   plugin: T,
 ): T => plugin;
+
+export { asPositiveInt, asPositiveNumber } from '@tradejs/core/utils/number';

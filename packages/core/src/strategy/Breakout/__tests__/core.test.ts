@@ -225,6 +225,7 @@ describe('createBreakoutCore', () => {
       connector: { getPosition: jest.fn() } as any,
       data: [],
       btcData: [],
+      loadPineScript: jest.fn(() => ''),
       strategyApi: makeStrategyApi({
         currentPosition: undefined,
         nextIndicators: (...args: any[]) =>
@@ -288,6 +289,7 @@ describe('createBreakoutCore', () => {
       } as any,
       data: [],
       btcData: [],
+      loadPineScript: jest.fn(() => ''),
       strategyApi: makeStrategyApi({
         currentPosition: {
           symbol: 'TESTUSDT',
@@ -366,6 +368,7 @@ describe('createBreakoutCore', () => {
       } as any,
       data: [],
       btcData: [],
+      loadPineScript: jest.fn(() => ''),
       strategyApi: makeStrategyApi({
         currentPosition: {
           symbol: 'TESTUSDT',

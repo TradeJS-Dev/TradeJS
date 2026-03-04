@@ -1,22 +1,21 @@
 # StrategyAPI Reference
 
-Актуально для shared runtime (`src/utils/strategyRuntime.ts`) и `core.ts` стратегий.
+Updated for shared runtime and strategy `core.ts` usage.
 
-## Что такое `strategyApi`
+## What `strategyApi` Is
 
-`strategyApi` — это DSL-объект, который shared runtime передает в `createCore(...)`.
+`strategyApi` is the DSL object passed by shared runtime into `createCore(...)`.
 
-Цель:
-- убрать boilerplate из `core.ts`
-- дать стратегии доступ к runtime/context без ручного проброса одинаковых полей
+Goals:
 
-## Методы
+- reduce boilerplate in strategy cores
+- provide consistent access to runtime context and helper logic
+
+## Methods
 
 ### `strategyApi.skip(code)`
 
-Возвращает `StrategyDecision` вида `skip`.
-
-Пример:
+Returns a `skip` decision.
 
 ```ts
 return strategyApi.skip('NO_SIGNAL');
@@ -24,94 +23,91 @@ return strategyApi.skip('NO_SIGNAL');
 
 ### `strategyApi.entry(params)`
 
-Собирает `entry`-решение и `signal` через shared builder.
+Builds an `entry` decision + signal through shared builders.
 
-Что передает стратегия:
+Common fields:
+
 - `direction`
 - `timestamp`
 - `prices`
-- `figures`
-- `indicators`
-- `additionalIndicators`
 - `orderPlan`
-- `runtime` (optional)
-- `code` (optional)
+- optional: `code`, `figures`, `indicators`, `additionalIndicators`, `runtime`, `signalId`
 
-Особенности:
-- если `code` не передан, по умолчанию используется `<STRATEGY_NAME>_SIGNAL`
-  - пример: `TrendLine` -> `TRENDLINE_SIGNAL`
-- для кросс-стратегий UI используйте базовые фигуры:
-  - `figures.lines`
-  - `figures.points`
-  - `figures.zones`
+Behavior:
+
+- if `code` is omitted, runtime uses `<STRATEGY_NAME>_SIGNAL`
 
 ### `strategyApi.getMarketData(params?)`
 
-Возвращает market snapshot:
+Returns market snapshot:
+
 - `fullData`
 - `lastCandle`
+- `timestamp` (equal to `lastCandle.timestamp`)
 - `currentPrice`
 
-По умолчанию использует runtime context:
-- `symbol`
-- `interval`
-- `connector`
-- `cachedData` (тот же массив, который runtime обновляет на каждом баре)
-- `preloadStart` (framework default)
-- `BACKTEST_PRICE_MODE` из config
+Uses runtime defaults unless overridden:
 
-Можно переопределить:
 - `preloadStart`
 - `backtestPriceMode`
 
-Пример:
-
-```ts
-const { fullData, lastCandle, currentPrice } = await strategyApi.getMarketData();
-```
-
-Возвращает также:
-- `timestamp` (равен `lastCandle.timestamp`)
-
 ### `strategyApi.getCurrentPosition()`
 
-Обертка над:
+Wrapper for:
 
-```ts
-await connector.getPosition(symbol)
-```
+- `connector.getPosition(symbol)`
 
 ### `strategyApi.isCurrentPositionExists()`
 
-Возвращает `true`, если по текущему `symbol` есть открытая позиция (`qty > 0`).
-
-Пример:
-
-```ts
-if (await strategyApi.isCurrentPositionExists()) {
-  return strategyApi.skip('POSITION_EXISTS');
-}
-```
+Returns `true` when an open position exists (`qty > 0`).
 
 ### `strategyApi.getDirectionalTpSlPrices(params)`
 
-Shared helper для расчета:
+Shared TP/SL/risk helper. Returns:
+
 - `stopLossPrice`
 - `takeProfitPrice`
 - `riskRatio`
-- `qty` (если передан `maxLossValue`)
+- `qty` (when `maxLossValue` is provided)
 
 ### `strategyApi.createLastTradeController(params?)`
 
-Создает controller для cooldown по последней сделке.
+Creates reusable trade cooldown state controller.
 
-Обычно используется без аргументов:
-- `env` берется из runtime context
-- default cooldown policy задается в shared helper
+## Runtime Notes
 
-## Замечания
+- `getMarketData()` reads from runtime-managed candle history.
+- `indicatorsState` is already wired with current bar by runtime.
+- `indicatorsState.snapshot()` is lazy-init safe via shared wrappers.
 
-- `strategyApi.getMarketData()` в `BACKTEST` читает `cachedData` по ссылке.
-  Это значит, что при добавлении новых свечей runtime-ом следующий вызов увидит обновленный массив.
-- `indicatorsState` также приходит в `core.ts` готовым из runtime; runtime на каждом баре передает в него текущую свечу через `setCurrentBar(...)`, поэтому можно вызывать `indicatorsState.onBar()` без аргументов.
-- `indicatorsState.snapshot()` сам выполняет lazy-init (через shared wrapper), поэтому в типовых кейсах не нужен отдельный вызов `ensureInitializedWithCurrentBar()`.
+## Typical `core.ts` Pattern
+
+```ts
+return async () => {
+  const { currentPrice, timestamp } = await strategyApi.getMarketData();
+
+  if (await strategyApi.isCurrentPositionExists()) {
+    return strategyApi.skip('POSITION_EXISTS');
+  }
+
+  const { stopLossPrice, takeProfitPrice, riskRatio, qty } =
+    strategyApi.getDirectionalTpSlPrices({
+      price: currentPrice,
+      direction: 'LONG',
+      takeProfitDelta: 2,
+      stopLossDelta: 1,
+      unit: 'percent',
+    });
+
+  if (!qty || qty <= 0) {
+    return strategyApi.skip('INVALID_QTY');
+  }
+
+  return strategyApi.entry({
+    direction: 'LONG',
+    timestamp,
+    prices: { currentPrice, takeProfitPrice, stopLossPrice, riskRatio },
+    orderPlan: { qty, takeProfits: [{ rate: 1, price: takeProfitPrice }] },
+  });
+};
+```

@@ -1,73 +1,104 @@
-# ML Transform (RU)
+# ML Transform Notes (Legacy RU Filename)
 
-Актуально на 2026-02-18.
+This file keeps its historical name (`*_RU.md`) but now documents the current ML transform flow in English.
 
-Применимо к:
-- `src/utils/testing.ts`
-- `src/utils/mlTrainingTransform.ts`
-- `src/utils/mlGrpc.ts`
-- `src/utils/mlDatasetFile.ts`
+Last updated: 2026-03-04.
 
-## 1. Поток данных
+Applies to:
 
-1. `yarn backtest` формирует ML payload по сигналам и пишет строки в chunk JSONL.
-2. `yarn ml-export` только объединяет chunk-файлы в merged JSONL.
-3. Train режет merged JSONL на `holdout`, `prod` и `walk-forward` окна.
-4. Обучение использует только `*.train.*`, тестирование только `*.test.*`.
+- `packages/core/src/utils/testing.ts`
+- `packages/core/src/utils/mlTrainingTransform.ts`
+- `packages/core/src/utils/mlGrpc.ts`
+- `packages/core/src/utils/mlDatasetFile.ts`
 
-## 2. Окна и causality
+## 1. Data Flow
 
-- Перед построением фич из `signal.indicators` удаляется последний элемент у всех массивов.
-- Базовое окно после этого:
-  - `indicatorWindow = max(1, ML_BASE_CANDLES_WINDOW - 1)`
-  - `candleWindow = max(1, ML_CANDLE_FEATURE_WINDOW - 1)`
-- Финальный шаг: `trimMlTrainingRowWindows(row, 5)`.
-- В итоге в dataset/infer уходят только хвосты `_1.._5` (без `_49/_50`).
+1. `yarn backtest` generates ML payload rows from signals and writes worker chunk JSONL files.
+2. `yarn ml-export` merges chunk files into a merged JSONL export.
+3. Training splits merged JSONL into `holdout`, `prod`, and `walk-forward` windows.
+4. Model training consumes train windows only, evaluation consumes test windows only.
 
-## 3. Нейминг фич
+## 2. Windowing and Causality
 
-- Для всех TF используется единый порядок:
-  - `TF*_ALT_*` — признаки текущей монеты,
-  - `TF*_BTC_*` — признаки BTC.
-- Для mixed-признаков без отдельного asset-prefix (например, `RelRet`, `AltToBtc`) сохраняются отдельные имена.
+Before feature construction from `signal.indicators`:
 
-## 4. Что важно для parity train/prod
+- the last element of all indicator/candle arrays is removed
 
-- В backtest: `buildMlTrainingRow` -> `trimMlTrainingRowWindows(..., 5)` -> запись в JSONL.
-- В inference (`mlGrpc`): `buildMlTrainingRow` -> `trimMlTrainingRowWindows(..., 5)` -> gRPC `Predict`.
-- Это фиксирует одинаковую форму фич между train/backtest/prod.
+Base windows after that step:
 
-### Важно: не путать с runtime AI-анализом сигналов
+- `indicatorWindow = max(1, ML_BASE_CANDLES_WINDOW - 1)`
+- `candleWindow = max(1, ML_CANDLE_FEATURE_WINDOW - 1)`
 
-- Этот документ описывает ML feature pipeline (`buildMlTrainingRow`, `trimMlTrainingRowWindows`, gRPC inference).
-- Runtime AI-анализ сигналов (`src/utils/ai.ts`) использует другой payload:
-  - текущий `signal`,
-  - `signal.indicators` с runtime-именами (`maFast`, `btcMaFast1h`, `candles15m` и т.п.),
-  - strategy figures в базовом формате (`figures.lines/points/zones`), при необходимости legacy `figures.trendLine` нормализуется для UI.
-- В текущей архитектуре AI/ML enrichment и gating выполняются общим runtime-слоем стратегий (`src/utils/strategyRuntime.ts`), а стратегия возвращает `entry`-решение с уже собранным `signal` (сборка делается прямо в `core.ts`).
-- В `core.ts` стратегии используют shared `strategyApi` DSL (`skip`, `entry`, `getMarketData`, position helpers), чтобы не дублировать runtime boilerplate. `getMarketData()` также возвращает `timestamp` (`lastCandle.timestamp`).
-- Strategy-specific AI/ML отклонения (payload/prompt/normalization) подключаются через strategy manifest/adapters (`src/strategy/*/manifest.ts`, `src/strategy/*/adapters/*`), а не через хардкод в shared `utils`.
-- Strategy-specific runtime policy для AI/ML (например `enabled`, `minQuality`, `mlThreshold`, `strategyConfig`) также может маппиться в adapters и подмешивается shared runtime.
-- Для LLM ряды в runtime payload тоже режутся до последних 5 значений, но это не `TF*_ALT_* / TF*_BTC_*` naming из ML transform.
+Final row trimming:
 
-## 5. BB moments
+- `trimMlTrainingRowWindows(row, 5)`
 
-- Для `BB_Upper`, `BB_Middle`, `BB_Lower` добавлены статистики:
-  - `_Mean`, `_Std`, `_Skew`, `_Kurt`.
-- Считаются для всех TF и для обоих ассетов (`ALT`/`BTC`).
+Net effect:
 
-## 6. Исключения
+- dataset and inference use only `_1.._5` tails
+- `_49/_50` tails are not included in ML features
 
-- `POINTS_*` / `TOUCHES_*` не являются индикаторными candle-series и не должны удаляться как "последняя свеча".
-- `entryTimestamp` остается в row для guard/аудита, но исключается из инференс-фичей.
+## 3. Feature Naming Convention
 
-## 7. Отчеты и проверки
+Unified naming:
 
-- В итоговые train-отчеты добавляется TOP-10 признаков holdout:
-  - markdown (`*.md`)
-  - html (`*.report.html`)
-- Unit-тесты:
-  - `src/utils/__tests__/mlTrainingTransform.test.ts`
-  - `src/utils/__tests__/mlGrpc.test.ts`
-- Линт на неиспользуемые переменные/функции:
-  - включен через `@typescript-eslint/no-unused-vars` в `.eslintrc.json`.
+- `TF*_ALT_*` for current traded asset features
+- `TF*_BTC_*` for BTC features
+
+Mixed relational features without asset prefix (for example `RelRet`, `AltToBtc`) keep their dedicated names.
+
+## 4. Train/Prod Parity Rules
+
+Backtest write path:
+
+- `buildMlTrainingRow` -> `trimMlTrainingRowWindows(..., 5)` -> JSONL
+
+Inference path (`mlGrpc`):
+
+- `buildMlTrainingRow` -> `trimMlTrainingRowWindows(..., 5)` -> gRPC `Predict`
+
+This enforces schema parity across backtest, training, and production inference.
+
+## 5. Runtime AI vs ML Transform
+
+This document covers ML feature transform only.
+
+Runtime AI signal analysis is separate:
+
+- uses runtime signal payload (`maFast`, `btcMaFast1h`, `candles15m`, etc.)
+- series are also trimmed to last 5 values for LLM payload
+- strategy figures use shared normalized shape (`lines/points/zones`)
+
+AI/ML enrichment and order gating happen in shared runtime:
+
+- `packages/core/src/utils/strategyRuntime.ts`
+
+Strategy-specific AI/ML customizations are provided via strategy adapters/manifests.
+
+## 6. Bollinger Moments
+
+For `BB_Upper`, `BB_Middle`, and `BB_Lower`, moments are generated:
+
+- `_Mean`
+- `_Std`
+- `_Skew`
+- `_Kurt`
+
+Computed across all supported timeframes for both ALT and BTC.
+
+## 7. Exceptions
+
+- `POINTS_*` / `TOUCHES_*` are not candle-series and should not be trimmed as "last candle".
+- `entryTimestamp` remains in row for guard/audit, but is excluded from inference feature vectors.
+
+## 8. Reports and Validation
+
+Training reports now include TOP holdout single-feature thresholds in both formats:
+
+- `*.md`
+- `*.report.html`
+
+Relevant tests:
+
+- `packages/core/src/utils/__tests__/mlTrainingTransform.test.ts`
+- `packages/core/src/utils/__tests__/mlGrpc.test.ts`

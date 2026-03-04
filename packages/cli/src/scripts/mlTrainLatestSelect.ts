@@ -94,7 +94,7 @@ const MODEL_TYPES: ModelType[] = [
 const STRATEGIES = [
   'Breakout',
   'MaStrategy',
-  'PineScript',
+  'AdaptiveMomentumRibbon',
   'TrendLine',
   'VolumeDivergence',
   'any',

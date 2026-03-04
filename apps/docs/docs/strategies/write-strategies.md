@@ -5,6 +5,11 @@ title: Writing Strategies
 
 This page explains how strategy runtime is organized in TradeJS with real code from `TrendLine`.
 
+TradeJS supports two strategy authoring paths:
+
+- TypeScript strategy with `StrategyAPI` (`strategies/ma-strategy-step-by-step`)
+- Pine strategy with dedicated `.pine` source (`strategies/pine-strategy-step-by-step`, `AdaptiveMomentumRibbon` example)
+
 ## Typical Strategy Layout
 
 Each strategy in `packages/core/src/strategy/<Strategy>` usually has:

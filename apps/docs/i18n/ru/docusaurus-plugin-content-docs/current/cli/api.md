@@ -62,3 +62,9 @@ yarn ml-upload:prod
 
 - `--require-ml` — сделать проверку ML gRPC обязательной
 - `--skip-ml` — пропустить проверку ML gRPC
+
+## Подробные статьи
+
+- `runtime/backtest-grid-config` — как задавать Redis grid-конфиги для массового перебора параметров
+- `runtime/backtest-results-runtime-config` — promotion конфигов из бэктестов, `yarn results`, `isConfigFromBacktest`
+- `runtime/data-continuity-update-history` — прокачка данных через `continuity` и `update-history`

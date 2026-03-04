@@ -62,3 +62,9 @@ yarn ml-upload:prod
 
 - `--require-ml` make ML gRPC check mandatory
 - `--skip-ml` skip ML gRPC check
+
+## Deep Dives
+
+- `runtime/backtest-grid-config` - how to define Redis grid configs for mass parameter search
+- `runtime/backtest-results-runtime-config` - promoting backtest configs with `yarn results`, `isConfigFromBacktest`
+- `runtime/data-continuity-update-history` - data refresh via `continuity` and `update-history`
