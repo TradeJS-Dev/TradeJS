@@ -1,0 +1,21 @@
+services:
+  docs:
+    build:
+      context: .
+      dockerfile: Dockerfile.docs
+    container_name: docs
+    image: aleksnick/inv-docs:latest
+    restart: unless-stopped
+    expose:
+      - '80'
+    networks:
+      - web
+    logging:
+      driver: 'json-file'
+      options:
+        max-size: '10m'
+        max-file: '3'
+
+networks:
+  web:
+    driver: bridge

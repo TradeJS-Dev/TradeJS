@@ -8,6 +8,7 @@ docker-compose.yml
 .next
 .vscode
 certbot
-nginx
+nginx/*
+!nginx/nginx.docs.conf
 data
 screenshots

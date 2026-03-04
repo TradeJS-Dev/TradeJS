@@ -151,6 +151,24 @@ Build docs:
 yarn docs:build
 ```
 
+Deploy docs on `https://docs.aleksnick01inv.fvds.ru`:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.docs.yml build docs
+docker compose -f docker-compose.yml -f docker-compose.docs.yml up -d app redis docs nginx certbot-cron
+docker compose -f docker-compose.yml -f docker-compose.docs.yml run --rm certbot
+docker compose -f docker-compose.yml -f docker-compose.docs.yml restart nginx
+```
+
+SSL verification:
+
+```bash
+echo | openssl s_client -connect 92.63.100.27:443 -servername docs.aleksnick01inv.fvds.ru 2>/dev/null \
+  | openssl x509 -noout -subject -issuer -dates -ext subjectAltName
+```
+
+The certificate SAN must include `DNS:docs.aleksnick01inv.fvds.ru`.
+
 Recommended docs sections:
 
 - `strategies/*`

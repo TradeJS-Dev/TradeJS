@@ -11,8 +11,8 @@ const config: Config = {
     v4: true,
   },
 
-  url: 'https://aleksnick01inv.fvds.ru',
-  baseUrl: '/docs/',
+  url: 'https://docs.aleksnick01inv.fvds.ru',
+  baseUrl: '/',
 
   onBrokenLinks: 'throw',
   markdown: {

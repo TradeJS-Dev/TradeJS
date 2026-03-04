@@ -1,12 +1,14 @@
 #!/bin/bash
 
+COMPOSE_FILES="-f docker-compose.yml -f docker-compose.docs.yml"
+
 echo ">>> Запускаем nginx без SSL"
-docker compose up -d nginx
+docker compose $COMPOSE_FILES up -d docs nginx
 
 echo ">>> Выпрашиваем сертификат certbot"
-docker compose run --rm certbot
+docker compose $COMPOSE_FILES run --rm certbot
 
 echo ">>> Перезапускаем nginx с SSL"
-docker compose restart nginx
+docker compose $COMPOSE_FILES restart nginx
 
 echo ">>> Готово!"
