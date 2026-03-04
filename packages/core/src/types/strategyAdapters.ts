@@ -1,11 +1,12 @@
 import {
+  StrategyDecision,
   StrategyEntryRuntimeOptions,
   StrategyEntrySignalContext,
   StrategyRuntimeAiOptions,
   StrategyRuntimeMlOptions,
 } from './strategy';
 import { StrategyConfig } from './backtest';
-import { Connector, Signal } from './trade';
+import { Connector, KlineChartItem, Signal } from './trade';
 
 export interface AiPayload {
   signal: {
@@ -51,6 +52,79 @@ export interface StrategyMlAdapter {
   ) => StrategyRuntimeMlOptions | undefined;
 }
 
+export interface StrategyHookGateResult {
+  allow?: boolean;
+  reason?: string;
+}
+
+export interface StrategyHookBaseContext {
+  connector: Connector;
+  strategyName: string;
+  userName: string;
+  symbol: string;
+  config: StrategyConfig;
+  env: string;
+  isConfigFromBacktest: boolean;
+}
+
+export interface StrategyHookErrorContext extends StrategyHookBaseContext {
+  stage: string;
+  error: unknown;
+  decision?: StrategyDecision;
+  signal?: Signal;
+}
+
+export interface StrategyHookInitContext extends StrategyHookBaseContext {
+  data: KlineChartItem[];
+  btcData: KlineChartItem[];
+}
+
+export interface StrategyHookAfterDecisionContext
+  extends StrategyHookBaseContext {
+  decision: StrategyDecision;
+  candle: KlineChartItem;
+  btcCandle: KlineChartItem;
+}
+
+export interface StrategyHookSkipContext
+  extends StrategyHookAfterDecisionContext {
+  decision: Extract<StrategyDecision, { kind: 'skip' }>;
+}
+
+export interface StrategyHookBeforeCloseContext
+  extends StrategyHookBaseContext {
+  decision: Extract<StrategyDecision, { kind: 'exit' }>;
+}
+
+export interface StrategyHookEnrichContext extends StrategyHookBaseContext {
+  decision: Extract<StrategyDecision, { kind: 'entry' }>;
+  runtime: StrategyEntryRuntimeOptions | undefined;
+  signal?: Signal;
+}
+
+export interface StrategyHookAfterAiContext extends StrategyHookEnrichContext {
+  quality?: number;
+}
+
+export interface StrategyHookBeforeEntryGateContext
+  extends StrategyHookAfterAiContext {
+  makeOrdersEnabled: boolean;
+  minAiQuality: number;
+}
+
+export interface StrategyHookBeforePlaceOrderContext
+  extends StrategyHookBaseContext {
+  entryContext: StrategyEntrySignalContext;
+  runtime: StrategyEntryRuntimeOptions | undefined;
+  decision: Extract<StrategyDecision, { kind: 'entry' }>;
+  signal?: Signal;
+}
+
+export interface StrategyHookAfterPlaceOrderContext
+  extends StrategyHookEnrichContext {
+  orderResult: unknown;
+}
+
 export interface StrategyManifest {
   name: string;
   entryRuntimeDefaults?: {
@@ -58,12 +132,28 @@ export interface StrategyManifest {
     ml?: Pick<StrategyRuntimeMlOptions, 'enabled'>;
   };
   hooks?: {
-    beforePlaceOrder?: (params: {
-      connector: Connector;
-      entryContext: StrategyEntrySignalContext;
-      config: StrategyConfig;
-      runtime: StrategyEntryRuntimeOptions | undefined;
-    }) => Promise<void>;
+    onInit?: (params: StrategyHookInitContext) => Promise<void> | void;
+    afterCoreDecision?: (
+      params: StrategyHookAfterDecisionContext,
+    ) => Promise<void> | void;
+    onSkip?: (params: StrategyHookSkipContext) => Promise<void> | void;
+    beforeClosePosition?: (
+      params: StrategyHookBeforeCloseContext,
+    ) => Promise<StrategyHookGateResult | void> | StrategyHookGateResult | void;
+    afterEnrichMl?: (params: StrategyHookEnrichContext) => Promise<void> | void;
+    afterEnrichAi?: (
+      params: StrategyHookAfterAiContext,
+    ) => Promise<void> | void;
+    beforeEntryGate?: (
+      params: StrategyHookBeforeEntryGateContext,
+    ) => Promise<StrategyHookGateResult | void> | StrategyHookGateResult | void;
+    beforePlaceOrder?: (
+      params: StrategyHookBeforePlaceOrderContext,
+    ) => Promise<void> | void;
+    afterPlaceOrder?: (
+      params: StrategyHookAfterPlaceOrderContext,
+    ) => Promise<void> | void;
+    onRuntimeError?: (params: StrategyHookErrorContext) => Promise<void> | void;
   };
   aiAdapter?: StrategyAiAdapter;
   mlAdapter?: StrategyMlAdapter;

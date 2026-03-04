@@ -16,7 +16,8 @@ import {
 import {
   CreateStrategyCore,
   CreateStrategyCoreParams,
-  StrategyCoreRunner,
+  StrategyHookGateResult,
+  StrategyManifest,
   StrategyConfig,
   StrategyCreator,
   StrategyDecision,
@@ -29,6 +30,7 @@ interface CreateStrategyRuntimeParams<TConfig extends StrategyConfig> {
 }
 
 type EntryDecision = Extract<StrategyDecision, { kind: 'entry' }>;
+type ExitDecision = Extract<StrategyDecision, { kind: 'exit' }>;
 
 const resolveEntryRuntimePolicy = ({
   decision,
@@ -113,10 +115,16 @@ const handleExitDecision = async ({
   connector,
   symbol,
   decision,
+  onRuntimeError,
 }: {
   connector: CreateStrategyCoreParams<StrategyConfig>['connector'];
   symbol: string;
-  decision: Extract<StrategyDecision, { kind: 'exit' }>;
+  decision: ExitDecision;
+  onRuntimeError?: (params: {
+    stage: string;
+    error: unknown;
+    decision: ExitDecision;
+  }) => Promise<void>;
 }) => {
   try {
     await connector.closePosition({
@@ -126,6 +134,11 @@ const handleExitDecision = async ({
       direction: decision.closePlan.direction,
     });
   } catch (err) {
+    await onRuntimeError?.({
+      stage: 'closePosition',
+      error: err,
+      decision,
+    });
     logger.error('close order error: %s %s', symbol, err);
     return 'ORDER_ERROR';
   }
@@ -133,63 +146,71 @@ const handleExitDecision = async ({
   return decision.code;
 };
 
-const enrichEntryDecisionSignal = async ({
-  decision,
-  symbol,
-  env,
-  runtime,
-}: {
-  decision: EntryDecision;
-  symbol: string;
-  env: string;
-  runtime: ReturnType<typeof resolveEntryRuntimePolicy>;
-}) => {
-  const signal = decision.signal;
-  if (!signal) {
-    return { signal, quality: undefined as number | undefined };
-  }
-
-  await enrichSignalWithMl({
-    signal,
-    env,
-    ml: runtime.ml,
-  });
-  const quality = await enrichSignalWithAi({
-    signal,
-    symbol,
-    direction: signal.direction,
-    env,
-    ai: runtime.ai,
-  });
-
-  return { signal, quality };
-};
-
 const executeEntryDecision = async ({
   connector,
   symbol,
-  config,
   decision,
   runtime,
+  manifest,
+  hookBase,
+  invokeHook,
+  notifyRuntimeError,
 }: {
   connector: CreateStrategyCoreParams<StrategyConfig>['connector'];
   symbol: string;
-  config: StrategyConfig;
   decision: EntryDecision;
   runtime: ReturnType<typeof resolveEntryRuntimePolicy>;
+  manifest?: StrategyManifest;
+  hookBase: {
+    connector: CreateStrategyCoreParams<StrategyConfig>['connector'];
+    strategyName: string;
+    userName: string;
+    symbol: string;
+    config: StrategyConfig;
+    env: string;
+    isConfigFromBacktest: boolean;
+  };
+  invokeHook: <TReturn = unknown>(
+    stage: string,
+    hook: ((params: any) => Promise<TReturn> | TReturn) | undefined,
+    params: any,
+    errorContext?: {
+      decision?: StrategyDecision;
+      signal?: EntryDecision['signal'];
+    },
+  ) => Promise<TReturn | undefined>;
+  notifyRuntimeError: (params: {
+    stage: string;
+    error: unknown;
+    decision?: StrategyDecision;
+    signal?: EntryDecision['signal'];
+  }) => Promise<void>;
 }) => {
   const signal = decision.signal;
-  const manifestBeforePlaceOrder = getStrategyManifest(
-    decision.entryContext.strategy,
-  )?.hooks?.beforePlaceOrder;
   const beforePlaceOrder = async () => {
-    await manifestBeforePlaceOrder?.({
-      connector,
-      entryContext: decision.entryContext,
-      config,
-      runtime,
-    });
-    await runtime.beforePlaceOrder?.();
+    await invokeHook(
+      'beforePlaceOrder',
+      manifest?.hooks?.beforePlaceOrder,
+      {
+        ...hookBase,
+        entryContext: decision.entryContext,
+        runtime,
+        decision,
+        signal,
+      },
+      { decision, signal },
+    );
+    try {
+      await runtime.beforePlaceOrder?.();
+    } catch (error) {
+      await notifyRuntimeError({
+        stage: 'runtime.beforePlaceOrder',
+        error,
+        decision,
+        signal,
+      });
+      throw error;
+    }
   };
   try {
     if (signal) {
@@ -205,6 +226,18 @@ const executeEntryDecision = async ({
         signal,
         beforePlaceOrder,
       });
+      await invokeHook(
+        'afterPlaceOrder',
+        manifest?.hooks?.afterPlaceOrder,
+        {
+          ...hookBase,
+          decision,
+          runtime,
+          signal,
+          orderResult: signal,
+        },
+        { decision, signal },
+      );
       return signal;
     }
 
@@ -220,10 +253,29 @@ const executeEntryDecision = async ({
       decision.orderPlan.takeProfits,
       decision.entryContext.prices.stopLossPrice ?? null,
     );
+
+    await invokeHook(
+      'afterPlaceOrder',
+      manifest?.hooks?.afterPlaceOrder,
+      {
+        ...hookBase,
+        decision,
+        runtime,
+        signal,
+        orderResult: decision.code,
+      },
+      { decision, signal },
+    );
   } catch (err) {
     if (signal) {
       signal.orderStatus = 'failed';
     }
+    await notifyRuntimeError({
+      stage: 'placeOrder',
+      error: err,
+      decision,
+      signal,
+    });
     logger.error('order error: %s %s', symbol, err);
     return signal ?? 'ORDER_ERROR';
   }
@@ -264,9 +316,95 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
       baseConfig,
       defaults,
     });
+    const env = String(config.ENV ?? 'BACKTEST');
+    const strategyManifest = getStrategyManifest(strategyName);
+    const hookBase = {
+      connector,
+      strategyName,
+      userName,
+      symbol,
+      config,
+      env,
+      isConfigFromBacktest,
+    };
+
+    const notifyRuntimeError = async ({
+      stage,
+      error,
+      decision,
+      signal,
+    }: {
+      stage: string;
+      error: unknown;
+      decision?: StrategyDecision;
+      signal?: EntryDecision['signal'];
+    }) => {
+      const errorStrategyName =
+        decision?.kind === 'entry'
+          ? decision.entryContext.strategy
+          : strategyName;
+      const errorManifest =
+        getStrategyManifest(errorStrategyName) ?? strategyManifest;
+      const errorHookBase = {
+        ...hookBase,
+        strategyName: errorStrategyName,
+      };
+      const onRuntimeError = errorManifest?.hooks?.onRuntimeError;
+      if (!onRuntimeError) {
+        return;
+      }
+
+      try {
+        await onRuntimeError({
+          ...errorHookBase,
+          stage,
+          error,
+          decision,
+          signal,
+        });
+      } catch (hookError) {
+        logger.error(
+          'runtime hook onRuntimeError failed: %s %s',
+          strategyName,
+          hookError,
+        );
+      }
+    };
+
+    const invokeHook = async <TReturn = unknown>(
+      stage: string,
+      hook: ((params: any) => Promise<TReturn> | TReturn) | undefined,
+      params: any,
+      errorContext: {
+        decision?: StrategyDecision;
+        signal?: EntryDecision['signal'];
+      } = {},
+    ): Promise<TReturn | undefined> => {
+      if (!hook) {
+        return undefined;
+      }
+
+      try {
+        return await hook(params);
+      } catch (error) {
+        logger.error(
+          'strategy hook "%s" failed for %s: %s',
+          stage,
+          strategyName,
+          error,
+        );
+        await notifyRuntimeError({
+          stage,
+          error,
+          decision: errorContext.decision,
+          signal: errorContext.signal,
+        });
+        return undefined;
+      }
+    };
 
     const indicatorsState = createStrategyIndicatorsState({
-      env: String(config.ENV ?? 'BACKTEST'),
+      env,
       data,
       btcData,
       btcBinanceData,
@@ -277,7 +415,7 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
       strategy: strategyName as any,
       symbol,
       interval: (config.INTERVAL ?? '15') as any,
-      env: String(config.ENV ?? 'BACKTEST'),
+      env,
       connector,
       cachedData: data,
       indicatorsState,
@@ -299,14 +437,48 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
       indicatorsState,
     });
 
+    await invokeHook('onInit', strategyManifest?.hooks?.onInit, {
+      ...hookBase,
+      data,
+      btcData,
+    });
+
     return async (candle, btcCandle) => {
       data.push(candle);
       btcData.push(btcCandle);
       indicatorsState.setCurrentBar(candle, btcCandle);
 
       const decision = await core(candle, btcCandle);
+      const decisionStrategyName =
+        decision.kind === 'entry'
+          ? decision.entryContext.strategy
+          : strategyName;
+      const decisionManifest =
+        getStrategyManifest(decisionStrategyName) ?? strategyManifest;
+      const decisionHookBase = {
+        ...hookBase,
+        strategyName: decisionStrategyName,
+      };
+
+      await invokeHook(
+        'afterCoreDecision',
+        decisionManifest?.hooks?.afterCoreDecision,
+        {
+          ...decisionHookBase,
+          decision,
+          candle,
+          btcCandle,
+        },
+        { decision },
+      );
 
       if (decision.kind === 'skip') {
+        await invokeHook('onSkip', decisionManifest?.hooks?.onSkip, {
+          ...decisionHookBase,
+          decision,
+          candle,
+          btcCandle,
+        });
         return decision.code;
       }
 
@@ -317,17 +489,103 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
         if (!makeOrdersEnabled) {
           return decision.code;
         }
-        return handleExitDecision({ connector, symbol, decision });
+        const closeGate = await invokeHook<StrategyHookGateResult | void>(
+          'beforeClosePosition',
+          decisionManifest?.hooks?.beforeClosePosition,
+          {
+            ...decisionHookBase,
+            decision,
+          },
+          { decision },
+        );
+
+        if (closeGate?.allow === false) {
+          return closeGate.reason
+            ? `CLOSE_BLOCKED_BY_HOOK:${closeGate.reason}`
+            : 'CLOSE_BLOCKED_BY_HOOK';
+        }
+
+        return handleExitDecision({
+          connector,
+          symbol,
+          decision,
+          onRuntimeError: async ({ stage, error, decision: exitDecision }) => {
+            await notifyRuntimeError({
+              stage,
+              error,
+              decision: exitDecision,
+            });
+          },
+        });
       }
 
-      const env = String(config.ENV ?? 'BACKTEST');
       const runtime = resolveEntryRuntimePolicy({ decision, config });
-      const { signal, quality } = await enrichEntryDecisionSignal({
-        decision,
-        symbol,
-        env,
-        runtime,
-      });
+      const signal = decision.signal;
+
+      if (signal) {
+        try {
+          await enrichSignalWithMl({
+            signal,
+            env,
+            ml: runtime.ml,
+          });
+        } catch (error) {
+          await notifyRuntimeError({
+            stage: 'enrichSignalWithMl',
+            error,
+            decision,
+            signal,
+          });
+          throw error;
+        }
+
+        await invokeHook(
+          'afterEnrichMl',
+          decisionManifest?.hooks?.afterEnrichMl,
+          {
+            ...decisionHookBase,
+            decision,
+            runtime,
+            signal,
+          },
+          { decision, signal },
+        );
+      }
+
+      let quality: number | undefined;
+      if (signal) {
+        try {
+          quality = await enrichSignalWithAi({
+            signal,
+            symbol,
+            direction: signal.direction,
+            env,
+            ai: runtime.ai,
+          });
+        } catch (error) {
+          await notifyRuntimeError({
+            stage: 'enrichSignalWithAi',
+            error,
+            decision,
+            signal,
+          });
+          throw error;
+        }
+
+        await invokeHook(
+          'afterEnrichAi',
+          decisionManifest?.hooks?.afterEnrichAi,
+          {
+            ...decisionHookBase,
+            decision,
+            runtime,
+            signal,
+            quality,
+          },
+          { decision, signal },
+        );
+      }
+
       const minAiQuality = runtime.ai?.minQuality ?? 4;
       const shouldMakeOrder = shouldExecuteEntryDecision({
         makeOrdersEnabled,
@@ -349,12 +607,41 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
         }
         return signal ?? decision.code;
       }
+
+      const entryGate = await invokeHook<StrategyHookGateResult | void>(
+        'beforeEntryGate',
+        decisionManifest?.hooks?.beforeEntryGate,
+        {
+          ...decisionHookBase,
+          decision,
+          runtime,
+          signal,
+          quality,
+          makeOrdersEnabled,
+          minAiQuality,
+        },
+        { decision, signal },
+      );
+      if (entryGate?.allow === false) {
+        const skipReason = entryGate.reason
+          ? `HOOK_BEFORE_ENTRY_GATE:${entryGate.reason}`
+          : 'HOOK_BEFORE_ENTRY_GATE';
+        if (signal) {
+          signal.orderStatus = 'skipped';
+          signal.orderSkipReason = skipReason;
+        }
+        return signal ?? skipReason;
+      }
+
       return executeEntryDecision({
         connector,
         symbol,
-        config,
         decision,
         runtime,
+        manifest: decisionManifest,
+        hookBase: decisionHookBase,
+        invokeHook,
+        notifyRuntimeError,
       });
     };
   };

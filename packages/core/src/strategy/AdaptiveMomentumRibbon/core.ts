@@ -67,8 +67,7 @@ const getLookbackCandles = <TCandle>(
 const readBooleanPlot = (
   pineContext: PineContextLike,
   plotName: string,
-): boolean =>
-  asPineBoolean(getLatestPinePlotValue(pineContext, plotName));
+): boolean => asPineBoolean(getLatestPinePlotValue(pineContext, plotName));
 
 const readNumericPlot = (
   pineContext: PineContextLike,
