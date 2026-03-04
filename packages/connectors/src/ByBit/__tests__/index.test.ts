@@ -274,4 +274,390 @@ describe('ByBitConnectorCreator', () => {
 
     expect(ok).toBe(false);
   });
+
+  it('returns null from getPosition when exchange retCode is non-zero', async () => {
+    const client = {
+      getPositionInfo: jest.fn().mockResolvedValue({
+        retCode: 10001,
+        result: { list: [] },
+      }),
+    };
+    mockedGetClient.mockResolvedValue(client as any);
+
+    const connector = await ByBitConnectorCreator({ userName: 'alice' });
+    const position = await connector.getPosition('BTCUSDT');
+
+    expect(position).toBeNull();
+  });
+
+  it('returns null from getPosition when mapped positions are empty', async () => {
+    const client = {
+      getPositionInfo: jest.fn().mockResolvedValue({
+        retCode: 0,
+        result: { list: [{ raw: true }] },
+      }),
+    };
+    mockedGetClient.mockResolvedValue(client as any);
+    mockedMapPositionData.mockReturnValue([]);
+
+    const connector = await ByBitConnectorCreator({ userName: 'alice' });
+    const position = await connector.getPosition('BTCUSDT');
+
+    expect(position).toBeNull();
+  });
+
+  it('returns empty list from getPositions when client is missing', async () => {
+    mockedGetClient.mockResolvedValue(null);
+    const connector = await ByBitConnectorCreator({ userName: 'alice' });
+
+    const positions = await connector.getPositions();
+
+    expect(positions).toEqual([]);
+  });
+
+  it('returns empty list from getPositions when exchange retCode is non-zero', async () => {
+    const client = {
+      getPositionInfo: jest.fn().mockResolvedValue({
+        retCode: 10001,
+        result: { list: [] },
+      }),
+    };
+    mockedGetClient.mockResolvedValue(client as any);
+
+    const connector = await ByBitConnectorCreator({ userName: 'alice' });
+    const positions = await connector.getPositions();
+
+    expect(positions).toEqual([]);
+  });
+
+  it('returns empty list from getPositions when mapped data is empty', async () => {
+    const client = {
+      getPositionInfo: jest.fn().mockResolvedValue({
+        retCode: 0,
+        result: { list: [{ raw: true }] },
+      }),
+    };
+    mockedGetClient.mockResolvedValue(client as any);
+    mockedMapPositionData.mockReturnValue([]);
+
+    const connector = await ByBitConnectorCreator({ userName: 'alice' });
+    const positions = await connector.getPositions();
+
+    expect(positions).toEqual([]);
+  });
+
+  it('returns mapped positions from getPositions on success', async () => {
+    const client = {
+      getPositionInfo: jest.fn().mockResolvedValue({
+        retCode: 0,
+        result: { list: [{ raw: true }] },
+      }),
+    };
+    mockedGetClient.mockResolvedValue(client as any);
+    mockedMapPositionData.mockReturnValue([
+      { symbol: 'BTCUSDT', price: 100, qty: 1, direction: 'LONG' } as any,
+    ]);
+
+    const connector = await ByBitConnectorCreator({ userName: 'alice' });
+    const positions = await connector.getPositions();
+
+    expect(positions).toEqual([
+      expect.objectContaining({
+        symbol: 'BTCUSDT',
+        direction: 'LONG',
+      }),
+    ]);
+  });
+
+  it('returns false from placeOrder when client is missing', async () => {
+    mockedGetClient.mockResolvedValue(null);
+    const connector = await ByBitConnectorCreator({ userName: 'alice' });
+
+    const ok = await connector.placeOrder({
+      symbol: 'BTCUSDT',
+      price: 100,
+      qty: 1,
+      direction: 'LONG',
+      timestamp: Date.now(),
+    } as any);
+
+    expect(ok).toBe(false);
+  });
+
+  it('returns false from placeOrder when submitOrder retCode is non-zero', async () => {
+    const client = {
+      setLeverage: jest.fn().mockResolvedValue({}),
+      submitOrder: jest.fn().mockResolvedValue({ retCode: 10001 }),
+      setTradingStop: jest.fn(),
+    };
+    mockedGetClient.mockResolvedValue(client as any);
+    mockedGetSymbolMeta.mockResolvedValue({
+      tickSize: 0.1,
+      qtyStep: 0.001,
+      minOrderQty: 0.001,
+      pricePrecision: 1,
+      qtyPrecision: 3,
+    });
+    mockedNormalizeQty.mockImplementation((qty) => ({
+      qtyNum: qty,
+      qtyStr: qty.toFixed(3),
+    }));
+    mockedNormalizePrice.mockImplementation((price) => ({
+      priceNum: price,
+      priceStr: price.toFixed(1),
+    }));
+
+    const connector = await ByBitConnectorCreator({ userName: 'alice' });
+    const ok = await connector.placeOrder(
+      {
+        symbol: 'BTCUSDT',
+        price: 100,
+        qty: 1,
+        direction: 'LONG',
+        timestamp: Date.now(),
+      } as any,
+      [{ price: 110, rate: 1 }],
+      95,
+    );
+
+    expect(ok).toBe(false);
+    expect(client.setLeverage).toHaveBeenCalledTimes(1);
+    expect(client.submitOrder).toHaveBeenCalledTimes(1);
+    expect(client.setTradingStop).not.toHaveBeenCalled();
+  });
+
+  it('submits limit order and does not place partial TP orders', async () => {
+    const client = {
+      setLeverage: jest.fn().mockResolvedValue({}),
+      submitOrder: jest.fn().mockResolvedValue({ retCode: 0 }),
+      setTradingStop: jest.fn(),
+    };
+    mockedGetClient.mockResolvedValue(client as any);
+    mockedGetSymbolMeta.mockResolvedValue({
+      tickSize: 0.1,
+      qtyStep: 0.001,
+      minOrderQty: 0.001,
+      pricePrecision: 1,
+      qtyPrecision: 3,
+    });
+    mockedNormalizeQty.mockImplementation((qty) => ({
+      qtyNum: qty,
+      qtyStr: qty.toFixed(3),
+    }));
+    mockedNormalizePrice.mockImplementation((price) => ({
+      priceNum: price,
+      priceStr: price.toFixed(1),
+    }));
+
+    const connector = await ByBitConnectorCreator({ userName: 'alice' });
+    const ok = await connector.placeOrder(
+      {
+        symbol: 'BTCUSDT',
+        price: 100,
+        qty: 1,
+        direction: 'LONG',
+        isLimit: true,
+        timestamp: Date.now(),
+      } as any,
+      [{ price: 110, rate: 1 }],
+      95,
+    );
+
+    expect(ok).toBe(true);
+    expect(client.submitOrder).toHaveBeenCalledWith(
+      expect.objectContaining({
+        orderType: 'Limit',
+        price: '100.0',
+        takeProfit: '110.0',
+        stopLoss: '95.0',
+      }),
+    );
+    expect(client.setTradingStop).not.toHaveBeenCalled();
+  });
+
+  it('uses full TP mode for single take-profit with rate=1 in market order', async () => {
+    const client = {
+      setLeverage: jest.fn().mockResolvedValue({}),
+      submitOrder: jest.fn().mockResolvedValue({ retCode: 0 }),
+      setTradingStop: jest.fn().mockResolvedValue({ retCode: 0 }),
+    };
+    mockedGetClient.mockResolvedValue(client as any);
+    mockedGetSymbolMeta.mockResolvedValue({
+      tickSize: 0.1,
+      qtyStep: 0.001,
+      minOrderQty: 0.001,
+      pricePrecision: 1,
+      qtyPrecision: 3,
+    });
+    mockedNormalizeQty.mockImplementation((qty) => ({
+      qtyNum: qty,
+      qtyStr: qty.toFixed(3),
+    }));
+    mockedNormalizePrice.mockImplementation((price) => ({
+      priceNum: price,
+      priceStr: price.toFixed(1),
+    }));
+
+    const connector = await ByBitConnectorCreator({ userName: 'alice' });
+    const ok = await connector.placeOrder(
+      {
+        symbol: 'BTCUSDT',
+        price: 100,
+        qty: 1,
+        direction: 'LONG',
+        timestamp: Date.now(),
+      } as any,
+      [{ price: 120, rate: 1 }],
+      90,
+    );
+
+    expect(ok).toBe(true);
+    expect(client.setTradingStop).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tpslMode: 'Full',
+        tpSize: undefined,
+        takeProfit: '120.0',
+        stopLoss: '90.0',
+      }),
+    );
+  });
+
+  it('skips TP when computed TP size is below min order qty', async () => {
+    const client = {
+      setLeverage: jest.fn().mockResolvedValue({}),
+      submitOrder: jest.fn().mockResolvedValue({ retCode: 0 }),
+      setTradingStop: jest.fn(),
+    };
+    mockedGetClient.mockResolvedValue(client as any);
+    mockedGetSymbolMeta.mockResolvedValue({
+      tickSize: 0.1,
+      qtyStep: 0.001,
+      minOrderQty: 0.5,
+      pricePrecision: 1,
+      qtyPrecision: 3,
+    });
+    mockedNormalizeQty.mockImplementation((qty) => ({
+      qtyNum: qty,
+      qtyStr: qty.toFixed(3),
+    }));
+    mockedNormalizePrice.mockImplementation((price) => ({
+      priceNum: price,
+      priceStr: price.toFixed(1),
+    }));
+
+    const connector = await ByBitConnectorCreator({ userName: 'alice' });
+    const ok = await connector.placeOrder(
+      {
+        symbol: 'BTCUSDT',
+        price: 100,
+        qty: 1,
+        direction: 'LONG',
+        timestamp: Date.now(),
+      } as any,
+      [{ price: 120, rate: 0.1 }],
+      90,
+    );
+
+    expect(ok).toBe(true);
+    expect(client.setTradingStop).not.toHaveBeenCalled();
+  });
+
+  it('returns false from closePosition when client is missing', async () => {
+    mockedGetClient.mockResolvedValue(null);
+    const connector = await ByBitConnectorCreator({ userName: 'alice' });
+
+    const ok = await connector.closePosition({
+      symbol: 'BTCUSDT',
+      direction: 'LONG',
+      price: 0,
+      timestamp: 0,
+    });
+
+    expect(ok).toBe(false);
+  });
+
+  it('returns true from closePosition and uses opposite side', async () => {
+    const client = {
+      submitOrder: jest.fn().mockResolvedValue({ retCode: 0 }),
+    };
+    mockedGetClient.mockResolvedValue(client as any);
+    const connector = await ByBitConnectorCreator({ userName: 'alice' });
+
+    const ok = await connector.closePosition({
+      symbol: 'BTCUSDT',
+      direction: 'SHORT',
+      price: 0,
+      timestamp: 0,
+    });
+
+    expect(ok).toBe(true);
+    expect(client.submitOrder).toHaveBeenCalledWith(
+      expect.objectContaining({
+        symbol: 'BTCUSDT',
+        side: 'Buy',
+        reduceOnly: true,
+      }),
+    );
+  });
+
+  it('returns empty list from getTickers when client is missing', async () => {
+    mockedGetClient.mockResolvedValue(null);
+    const connector = await ByBitConnectorCreator({ userName: 'alice' });
+
+    const tickers = await connector.getTickers();
+
+    expect(tickers).toEqual([]);
+  });
+
+  it('normalizes exchange ticker payload in getTickers', async () => {
+    const client = {
+      getTickers: jest.fn().mockResolvedValue({
+        result: {
+          list: [
+            {
+              symbol: 'BTCUSDT',
+              lastPrice: '101',
+              indexPrice: '100',
+              markPrice: '100.5',
+              prevPrice24h: '95',
+              price24hPcnt: '0.05',
+              highPrice24h: '110',
+              lowPrice24h: '90',
+              prevPrice1h: '99',
+              openInterest: '10',
+              openInterestValue: '1000',
+              turnover24h: '999',
+              volume24h: '123456',
+              fundingRate: '0.0001',
+              nextFundingTime: '1700000000000',
+              predictedDeliveryPrice: '0',
+              basisRate: '0',
+              deliveryFeeRate: '0',
+              deliveryTime: '1700000000001',
+              ask1Size: '1',
+              bid1Price: '100',
+              ask1Price: '101',
+              bid1Size: '2',
+              basis: '0',
+              preOpenPrice: '0',
+              preQty: '0',
+            },
+          ],
+        },
+      }),
+    };
+    mockedGetClient.mockResolvedValue(client as any);
+    const connector = await ByBitConnectorCreator({ userName: 'alice' });
+
+    const tickers = await connector.getTickers();
+
+    expect(tickers).toHaveLength(1);
+    expect(tickers[0]).toEqual(
+      expect.objectContaining({
+        symbol: 'BTCUSDT',
+        lastPrice: 101,
+        volume24h: 123456,
+      }),
+    );
+  });
 });
