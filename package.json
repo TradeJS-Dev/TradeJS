@@ -67,6 +67,7 @@
     "test": "time yarn workspace @tradejs/cli test-script",
     "test-ml": "time yarn workspace @tradejs/cli test-ml",
     "unit": "jest",
+    "unit:coverage": "jest --coverage",
     "update-history": "yarn backtest --updateOnly",
     "user-add": "time yarn workspace @tradejs/cli user-add"
   },
