@@ -6,7 +6,12 @@ import {
   normalizePrice,
   normalizeQty,
 } from '../utils';
-import { getCandlesRange, getDataEdges } from '@utils/timescale';
+import {
+  getCandlesRange,
+  getDataEdges,
+  toRows,
+  upsertCandles,
+} from '@utils/timescale';
 
 jest.mock('@utils/logger', () => ({
   logger: {
@@ -54,6 +59,10 @@ const mockedGetDataEdges = getDataEdges as jest.MockedFunction<
 >;
 const mockedGetCandlesRange = getCandlesRange as jest.MockedFunction<
   typeof getCandlesRange
+>;
+const mockedToRows = toRows as jest.MockedFunction<typeof toRows>;
+const mockedUpsertCandles = upsertCandles as jest.MockedFunction<
+  typeof upsertCandles
 >;
 
 describe('ByBitConnectorCreator', () => {
@@ -659,5 +668,200 @@ describe('ByBitConnectorCreator', () => {
         volume24h: 123456,
       }),
     );
+  });
+
+  it('getState/setState merges state incrementally', async () => {
+    const connector = await ByBitConnectorCreator({ userName: 'alice' });
+
+    expect(await connector.getState()).toEqual({});
+
+    await connector.setState({ a: 1 });
+    await connector.setState({ b: 2 });
+
+    expect(await connector.getState()).toEqual({ a: 1, b: 2 });
+  });
+
+  it('returns [] in kline when end is not greater than start', async () => {
+    const connector = await ByBitConnectorCreator({ userName: 'alice' });
+    const result = await connector.kline({
+      symbol: 'BTCUSDT',
+      interval: '15',
+      start: 2000,
+      end: 2000,
+    });
+
+    expect(result).toEqual([]);
+    expect(mockedGetDataEdges).not.toHaveBeenCalled();
+  });
+
+  it('kline loads older/newer chunks, refreshes tail and returns final DB range', async () => {
+    const nowSpy = jest.spyOn(Date, 'now').mockReturnValue(600_000);
+    const client = {
+      getKline: jest
+        .fn()
+        .mockResolvedValueOnce({
+          result: {
+            list: Array.from({ length: 1000 }, () => ({ timestamp: 300_000 })),
+          },
+        })
+        .mockResolvedValueOnce({
+          result: {
+            list: Array.from({ length: 1000 }, () => ({ timestamp: 240_000 })),
+          },
+        })
+        .mockResolvedValueOnce({
+          result: {
+            list: [{ timestamp: 540_000 }],
+          },
+        }),
+    };
+    mockedGetClient.mockResolvedValue(client as any);
+    mockedGetDataEdges.mockResolvedValue({ min: 240_000, max: 300_000 });
+    mockedGetCandlesRange.mockResolvedValue([
+      {
+        ts: new Date(300_000),
+        open: 1,
+        high: 2,
+        low: 0.5,
+        close: 1.2,
+        volume: 10,
+        turnover: 20,
+      } as any,
+    ]);
+    mockedToRows.mockImplementation((symbol, interval, data) => ({
+      symbol,
+      interval,
+      data,
+    }) as any);
+    mockedUpsertCandles.mockResolvedValue(undefined as any);
+
+    const connector = await ByBitConnectorCreator({ userName: 'alice' });
+    const result = await connector.kline({
+      symbol: 'BTCUSDT',
+      interval: '1',
+      start: 60_000,
+      end: 600_000,
+    });
+
+    expect(client.getKline).toHaveBeenCalledTimes(3);
+    expect(mockedUpsertCandles).toHaveBeenCalledTimes(3);
+    expect(mockedGetCandlesRange).toHaveBeenCalledWith(
+      'BTCUSDT',
+      1,
+      60_000,
+      600_000,
+    );
+    expect(result).toEqual([
+      expect.objectContaining({
+        timestamp: 300_000,
+        close: 1.2,
+      }),
+    ]);
+
+    nowSpy.mockRestore();
+  });
+
+  it('fallback request returns [] when normalized end is not greater than start', async () => {
+    mockedGetDataEdges.mockRejectedValue(new Error('db down'));
+    mockedGetClient.mockResolvedValue({
+      getKline: jest.fn(),
+    } as any);
+
+    const connector = await ByBitConnectorCreator({ userName: 'alice' });
+    const result = await connector.kline({
+      symbol: 'BTCUSDT',
+      interval: '15',
+      start: Date.now() + 60_000,
+      silent: true,
+    });
+
+    expect(result).toEqual([]);
+  });
+
+  it('fallback request returns [] when exchange responds without kline list', async () => {
+    mockedGetDataEdges.mockRejectedValue(new Error('db down'));
+    const client = {
+      getKline: jest.fn().mockResolvedValue({ result: {} }),
+    };
+    mockedGetClient.mockResolvedValue(client as any);
+
+    const connector = await ByBitConnectorCreator({ userName: 'alice' });
+    const result = await connector.kline({
+      symbol: 'BTCUSDT',
+      interval: '15',
+      end: Date.now(),
+    });
+
+    expect(result).toEqual([]);
+    expect(client.getKline).toHaveBeenCalledTimes(1);
+  });
+
+  it('fallback request catches exchange errors and returns []', async () => {
+    mockedGetDataEdges.mockRejectedValue(new Error('db down'));
+    const client = {
+      getKline: jest.fn().mockRejectedValue(new Error('exchange timeout')),
+    };
+    mockedGetClient.mockResolvedValue(client as any);
+
+    const connector = await ByBitConnectorCreator({ userName: 'alice' });
+    const result = await connector.kline({
+      symbol: 'BTCUSDT',
+      interval: '15',
+      end: Date.now(),
+      silent: true,
+    });
+
+    expect(result).toEqual([]);
+  });
+
+  it('returns [] when cacheOnly=true and timescale access fails', async () => {
+    mockedGetDataEdges.mockRejectedValue(new Error('db down'));
+    mockedGetClient.mockResolvedValue({
+      getKline: jest.fn(),
+    } as any);
+
+    const connector = await ByBitConnectorCreator({ userName: 'alice' });
+    const result = await connector.kline({
+      symbol: 'BTCUSDT',
+      interval: '15',
+      cacheOnly: true,
+      end: Date.now(),
+    });
+
+    expect(result).toEqual([]);
+  });
+
+  it('exits fallback mode after successful DB read on next kline call', async () => {
+    const nowSpy = jest.spyOn(Date, 'now').mockReturnValue(600_000);
+    mockedGetDataEdges
+      .mockRejectedValueOnce(new Error('db down'))
+      .mockResolvedValueOnce({ min: undefined, max: undefined });
+    const client = {
+      getKline: jest.fn().mockResolvedValue({
+        result: { list: [] },
+      }),
+    };
+    mockedGetClient.mockResolvedValue(client as any);
+    mockedGetCandlesRange.mockResolvedValue([]);
+
+    const connector = await ByBitConnectorCreator({ userName: 'alice' });
+    const first = await connector.kline({
+      symbol: 'BTCUSDT',
+      interval: '15',
+      cacheOnly: true,
+      end: 120_000,
+    });
+    const second = await connector.kline({
+      symbol: 'BTCUSDT',
+      interval: '15',
+      end: 120_000,
+      silent: true,
+    });
+
+    expect(first).toEqual([]);
+    expect(second).toEqual([]);
+    expect(mockedGetCandlesRange).toHaveBeenCalled();
+
+    nowSpy.mockRestore();
   });
 });
