@@ -73,6 +73,40 @@ const makeConfig = (overrides: Record<string, any> = {}) => ({
   ...overrides,
 });
 
+const DIVERGENCE_TEST_CONFIG = {
+  NORMALIZATION_LENGTH: 8,
+  PIVOT_LOOKBACK_LEFT: 2,
+  PIVOT_LOOKBACK_RIGHT: 1,
+  MIN_BARS_BETWEEN_PIVOTS: 1,
+  MAX_BARS_BETWEEN_PIVOTS: 10,
+};
+
+const makeBullishDivergenceCandles = () => {
+  const baseTs = 1_700_000_000_000;
+  const volumes = [0, 200, 80, 40, 120, 60, 180, 20];
+  const prices = [110, 108, 106, 105, 100, 98, 90, 92];
+
+  return volumes.map((volume, index) => {
+    const candle = makeCandle(baseTs + index * 900_000, prices[index], volume);
+    if (index === 4) candle.low = 100;
+    if (index === 6) candle.low = 90;
+    return candle;
+  });
+};
+
+const makeBearishDivergenceCandles = () => {
+  const baseTs = 1_700_100_000_000;
+  const volumes = [1000, 100, 200, 900, 150, 200, 250, 300, 100];
+  const prices = [100, 101, 102, 104, 103, 106, 108, 112, 111];
+
+  return volumes.map((volume, index) => {
+    const candle = makeCandle(baseTs + index * 900_000, prices[index], volume);
+    if (index === 3) candle.high = 104;
+    if (index === 7) candle.high = 112;
+    return candle;
+  });
+};
+
 describe('createVolumeDivergenceCore', () => {
   it('returns NO_DIVERGENCE when pivots do not match divergence rules', async () => {
     const candles = Array.from({ length: 12 }).map((_, index) =>
@@ -91,11 +125,7 @@ describe('createVolumeDivergenceCore', () => {
       userName: 'test',
       symbol: 'TESTUSDT',
       config: makeConfig({
-        NORMALIZATION_LENGTH: 8,
-        PIVOT_LOOKBACK_LEFT: 2,
-        PIVOT_LOOKBACK_RIGHT: 1,
-        MIN_BARS_BETWEEN_PIVOTS: 1,
-        MAX_BARS_BETWEEN_PIVOTS: 10,
+        ...DIVERGENCE_TEST_CONFIG,
       }),
       isConfigFromBacktest: false,
       connector: { getPosition: jest.fn() } as any,
@@ -116,20 +146,7 @@ describe('createVolumeDivergenceCore', () => {
   });
 
   it('returns entry on bullish divergence', async () => {
-    const baseTs = 1_700_000_000_000;
-    const volumes = [0, 200, 80, 40, 120, 60, 180, 20];
-    const prices = [110, 108, 106, 105, 100, 98, 90, 92];
-
-    const candles = volumes.map((volume, index) => {
-      const candle = makeCandle(
-        baseTs + index * 900_000,
-        prices[index],
-        volume,
-      );
-      if (index === 4) candle.low = 100;
-      if (index === 6) candle.low = 90;
-      return candle;
-    });
+    const candles = makeBullishDivergenceCandles();
 
     const strategyApi = makeStrategyApi();
     strategyApi.getMarketData.mockResolvedValue({
@@ -143,11 +160,7 @@ describe('createVolumeDivergenceCore', () => {
       userName: 'test',
       symbol: 'TESTUSDT',
       config: makeConfig({
-        NORMALIZATION_LENGTH: 8,
-        PIVOT_LOOKBACK_LEFT: 2,
-        PIVOT_LOOKBACK_RIGHT: 1,
-        MIN_BARS_BETWEEN_PIVOTS: 1,
-        MAX_BARS_BETWEEN_PIVOTS: 10,
+        ...DIVERGENCE_TEST_CONFIG,
       }),
       isConfigFromBacktest: false,
       connector: { getPosition: jest.fn() } as any,
@@ -173,5 +186,330 @@ describe('createVolumeDivergenceCore', () => {
         }),
       }),
     );
+  });
+
+  it('returns entry on bearish divergence', async () => {
+    const candles = makeBearishDivergenceCandles();
+
+    const strategyApi = makeStrategyApi();
+    strategyApi.getMarketData.mockResolvedValue({
+      fullData: candles,
+      lastCandle: candles[candles.length - 1],
+      timestamp: candles[candles.length - 1].timestamp,
+      currentPrice: candles[candles.length - 1].close,
+    });
+
+    const core = await createVolumeDivergenceCore({
+      userName: 'test',
+      symbol: 'TESTUSDT',
+      config: makeConfig({
+        ...DIVERGENCE_TEST_CONFIG,
+      }),
+      isConfigFromBacktest: false,
+      connector: { getPosition: jest.fn() } as any,
+      data: candles as any,
+      btcData: candles as any,
+      loadPineScript: jest.fn(() => ''),
+      strategyApi,
+      indicatorsState: makeIndicatorsState(),
+    });
+
+    const result = await core(
+      candles[candles.length - 1] as any,
+      candles[candles.length - 1] as any,
+    );
+
+    expect(result.kind).toBe('entry');
+    expect(strategyApi.entry).toHaveBeenCalledWith(
+      expect.objectContaining({
+        code: 'VOLUME_DIVERGENCE_REVERSAL_SIGNAL',
+        direction: 'SHORT',
+        additionalIndicators: expect.objectContaining({
+          divergenceKind: 'bearish',
+        }),
+      }),
+    );
+  });
+
+  it('returns POSITION_EXISTS when runtime already has an open position', async () => {
+    const candles = makeBullishDivergenceCandles();
+    const strategyApi = makeStrategyApi({
+      isCurrentPositionExists: jest.fn(async () => true),
+      getMarketData: jest.fn(async () => ({
+        fullData: candles,
+        timestamp: candles[candles.length - 1].timestamp,
+        currentPrice: candles[candles.length - 1].close,
+      })),
+    });
+    const indicatorsState = makeIndicatorsState();
+
+    const core = await createVolumeDivergenceCore({
+      userName: 'test',
+      symbol: 'TESTUSDT',
+      config: makeConfig({
+        ...DIVERGENCE_TEST_CONFIG,
+      }),
+      isConfigFromBacktest: false,
+      connector: {} as any,
+      data: candles as any,
+      btcData: candles as any,
+      loadPineScript: jest.fn(() => ''),
+      strategyApi,
+      indicatorsState,
+    });
+
+    const result = await core(
+      candles[candles.length - 1] as any,
+      candles[candles.length - 1] as any,
+    );
+
+    expect(result).toEqual({
+      kind: 'skip',
+      code: 'POSITION_EXISTS',
+    });
+    expect(indicatorsState.onBar).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns WAIT_DATA when candle history is too short', async () => {
+    const candles = makeBullishDivergenceCandles().slice(0, 3);
+    const strategyApi = makeStrategyApi();
+    strategyApi.getMarketData.mockResolvedValue({
+      fullData: candles,
+      lastCandle: candles[candles.length - 1],
+      timestamp: candles[candles.length - 1].timestamp,
+      currentPrice: candles[candles.length - 1].close,
+    });
+
+    const core = await createVolumeDivergenceCore({
+      userName: 'test',
+      symbol: 'TESTUSDT',
+      config: makeConfig({
+        PIVOT_LOOKBACK_LEFT: 2,
+        PIVOT_LOOKBACK_RIGHT: 1,
+      }),
+      isConfigFromBacktest: false,
+      connector: {} as any,
+      data: candles as any,
+      btcData: candles as any,
+      loadPineScript: jest.fn(() => ''),
+      strategyApi,
+      indicatorsState: makeIndicatorsState(),
+    });
+
+    const result = await core(
+      candles[candles.length - 1] as any,
+      candles[candles.length - 1] as any,
+    );
+    expect(result).toEqual({
+      kind: 'skip',
+      code: 'WAIT_DATA',
+    });
+  });
+
+  it('returns DEV_TRADE_COOLDOWN when last trade cooldown is active', async () => {
+    const candles = makeBullishDivergenceCandles();
+    const strategyApi = makeStrategyApi({
+      createLastTradeController: jest.fn(() => ({
+        isInCooldown: jest.fn(() => true),
+        markTrade: jest.fn(),
+        getLastTradeTimestamp: jest.fn(() => candles[0].timestamp),
+      })),
+    });
+    strategyApi.getMarketData.mockResolvedValue({
+      fullData: candles,
+      lastCandle: candles[candles.length - 1],
+      timestamp: candles[candles.length - 1].timestamp,
+      currentPrice: candles[candles.length - 1].close,
+    });
+
+    const core = await createVolumeDivergenceCore({
+      userName: 'test',
+      symbol: 'TESTUSDT',
+      config: makeConfig({
+        ...DIVERGENCE_TEST_CONFIG,
+      }),
+      isConfigFromBacktest: false,
+      connector: {} as any,
+      data: candles as any,
+      btcData: candles as any,
+      loadPineScript: jest.fn(() => ''),
+      strategyApi,
+      indicatorsState: makeIndicatorsState(),
+    });
+
+    const result = await core(
+      candles[candles.length - 1] as any,
+      candles[candles.length - 1] as any,
+    );
+    expect(result).toEqual({
+      kind: 'skip',
+      code: 'DEV_TRADE_COOLDOWN',
+    });
+  });
+
+  it('returns STRATEGY_DISABLED when divergence side is disabled in config', async () => {
+    const candles = makeBullishDivergenceCandles();
+    const strategyApi = makeStrategyApi();
+    strategyApi.getMarketData.mockResolvedValue({
+      fullData: candles,
+      lastCandle: candles[candles.length - 1],
+      timestamp: candles[candles.length - 1].timestamp,
+      currentPrice: candles[candles.length - 1].close,
+    });
+
+    const core = await createVolumeDivergenceCore({
+      userName: 'test',
+      symbol: 'TESTUSDT',
+      config: makeConfig({
+        ...DIVERGENCE_TEST_CONFIG,
+        BULLISH: {
+          ...DEFAULT_CONFIG.BULLISH,
+          enable: false,
+        },
+      }),
+      isConfigFromBacktest: false,
+      connector: {} as any,
+      data: candles as any,
+      btcData: candles as any,
+      loadPineScript: jest.fn(() => ''),
+      strategyApi,
+      indicatorsState: makeIndicatorsState(),
+    });
+
+    const result = await core(
+      candles[candles.length - 1] as any,
+      candles[candles.length - 1] as any,
+    );
+    expect(result).toEqual({
+      kind: 'skip',
+      code: 'STRATEGY_DISABLED',
+    });
+  });
+
+  it('returns INVALID_QTY when directional sizing returns non-positive qty', async () => {
+    const candles = makeBullishDivergenceCandles();
+    const strategyApi = makeStrategyApi({
+      getDirectionalTpSlPrices: jest.fn(() => ({
+        stopLossPrice: 98,
+        takeProfitPrice: 104,
+        riskRatio: 3,
+        qty: 0,
+      })),
+    });
+    strategyApi.getMarketData.mockResolvedValue({
+      fullData: candles,
+      lastCandle: candles[candles.length - 1],
+      timestamp: candles[candles.length - 1].timestamp,
+      currentPrice: candles[candles.length - 1].close,
+    });
+
+    const core = await createVolumeDivergenceCore({
+      userName: 'test',
+      symbol: 'TESTUSDT',
+      config: makeConfig({
+        ...DIVERGENCE_TEST_CONFIG,
+      }),
+      isConfigFromBacktest: false,
+      connector: {} as any,
+      data: candles as any,
+      btcData: candles as any,
+      loadPineScript: jest.fn(() => ''),
+      strategyApi,
+      indicatorsState: makeIndicatorsState(),
+    });
+
+    const result = await core(
+      candles[candles.length - 1] as any,
+      candles[candles.length - 1] as any,
+    );
+    expect(result).toEqual({
+      kind: 'skip',
+      code: 'INVALID_QTY',
+    });
+  });
+
+  it('returns RISK_RATIO skip when calculated risk ratio is below minimum', async () => {
+    const candles = makeBullishDivergenceCandles();
+    const strategyApi = makeStrategyApi({
+      getDirectionalTpSlPrices: jest.fn(() => ({
+        stopLossPrice: 98,
+        takeProfitPrice: 104,
+        riskRatio: 1.01,
+        qty: 1,
+      })),
+    });
+    strategyApi.getMarketData.mockResolvedValue({
+      fullData: candles,
+      lastCandle: candles[candles.length - 1],
+      timestamp: candles[candles.length - 1].timestamp,
+      currentPrice: candles[candles.length - 1].close,
+    });
+
+    const core = await createVolumeDivergenceCore({
+      userName: 'test',
+      symbol: 'TESTUSDT',
+      config: makeConfig({
+        ...DIVERGENCE_TEST_CONFIG,
+        BULLISH: {
+          ...DEFAULT_CONFIG.BULLISH,
+          minRiskRatio: 2,
+        },
+      }),
+      isConfigFromBacktest: false,
+      connector: {} as any,
+      data: candles as any,
+      btcData: candles as any,
+      loadPineScript: jest.fn(() => ''),
+      strategyApi,
+      indicatorsState: makeIndicatorsState(),
+    });
+
+    const result = await core(
+      candles[candles.length - 1] as any,
+      candles[candles.length - 1] as any,
+    );
+    expect(result).toEqual({
+      kind: 'skip',
+      code: 'RISK_RATIO:1.01',
+    });
+  });
+
+  it('returns MAX_CORRELATION skip in non-backtest mode when correlation is too high', async () => {
+    const candles = makeBullishDivergenceCandles();
+    const strategyApi = makeStrategyApi();
+    strategyApi.getMarketData.mockResolvedValue({
+      fullData: candles,
+      lastCandle: candles[candles.length - 1],
+      timestamp: candles[candles.length - 1].timestamp,
+      currentPrice: candles[candles.length - 1].close,
+    });
+    const indicatorsState = makeIndicatorsState();
+    indicatorsState.latestNumber = jest.fn(() => 0.95);
+
+    const core = await createVolumeDivergenceCore({
+      userName: 'test',
+      symbol: 'TESTUSDT',
+      config: makeConfig({
+        ...DIVERGENCE_TEST_CONFIG,
+        ENV: 'PROD',
+        MAX_CORRELATION: 0.9,
+      }),
+      isConfigFromBacktest: false,
+      connector: {} as any,
+      data: candles as any,
+      btcData: candles as any,
+      loadPineScript: jest.fn(() => ''),
+      strategyApi,
+      indicatorsState,
+    });
+
+    const result = await core(
+      candles[candles.length - 1] as any,
+      candles[candles.length - 1] as any,
+    );
+    expect(result).toEqual({
+      kind: 'skip',
+      code: 'MAX_CORRELATION:0.95',
+    });
   });
 });
