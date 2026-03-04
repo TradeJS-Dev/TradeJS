@@ -1,15 +1,16 @@
-# Strategy API Guide
+# Strategy API
 
 Updated for current architecture (`shared runtime + strategy manifests/adapters`).
 
 ## Purpose
 
-This document describes the contracts for implementing strategies:
+This document is the single source of truth for strategy implementation contracts:
 
 - strategy `core.ts` responsibilities
 - shared runtime responsibilities
-- AI/ML/hook extension points
 - `StrategyDecision` shape
+- AI/ML adapters and manifest policy
+- `strategyApi` method reference
 
 ## Strategy File Layout
 
@@ -23,7 +24,7 @@ Recommended structure for `packages/core/src/strategy/<Strategy>`:
 - `adapters/ai.ts` (optional)
 - `adapters/ml.ts` (optional)
 - `hooks.ts` (optional)
-- `<strategy>.pine` (optional, for Pine-backed strategies)
+- `<strategy>.pine` (optional for Pine-backed strategies)
 
 ## Layer Responsibilities
 
@@ -32,7 +33,7 @@ Recommended structure for `packages/core/src/strategy/<Strategy>`:
 `core.ts` should:
 
 - evaluate entry/exit logic from config + market context
-- return `StrategyDecision` (`skip`, `entry`, or `exit`)
+- return a `StrategyDecision` (`skip`, `entry`, or `exit`)
 
 `core.ts` should not:
 
@@ -56,13 +57,13 @@ Strategy-local runtime extension point:
 
 - `name`
 - `entryRuntimeDefaults` (optional)
-- `hooks.beforePlaceOrder` (optional)
+- `hooks.*` lifecycle hooks (optional)
 - `aiAdapter` (optional)
 - `mlAdapter` (optional)
 
 ### Shared Runtime
 
-`packages/core/src/utils/strategyRuntime.ts` does:
+`packages/core/src/utils/strategyRuntime.ts` handles:
 
 - config resolution
 - `core` execution
@@ -86,10 +87,12 @@ Use `strategyApi.entry(...)` and provide:
 - `timestamp`
 - `prices`
 - `orderPlan`
-- optional `figures`, `indicators`, `additionalIndicators`, `runtime`, `code`
+- optional `figures`, `indicators`, `additionalIndicators`, `runtime`, `code`, `signalId`
 
-`entryContext` is the source of truth for runtime execution fields.
-`orderPlan` should contain execution-only details (qty, take profits).
+Rules:
+
+- `entryContext` is the source of truth for runtime execution fields.
+- `orderPlan` should contain execution-only details (qty, take profits).
 
 ### `exit`
 
@@ -100,24 +103,6 @@ return {
   closePlan: { price, timestamp, direction },
 };
 ```
-
-## `strategyApi` (Preferred DSL)
-
-Shared runtime passes `strategyApi` into strategy core.
-
-Main methods:
-
-- `skip(code)`
-- `entry(params)`
-- `getMarketData(params?)`
-- `getCurrentPosition()`
-- `isCurrentPositionExists()`
-- `getDirectionalTpSlPrices(params)`
-- `createLastTradeController(params?)`
-
-Detailed method reference:
-
-- `STRATEGY_API_REFERENCE.md`
 
 ## Runtime Policy: AI/ML
 
@@ -130,7 +115,7 @@ Preferred policy sources:
 Runtime merge order:
 
 1. manifest defaults
-2. adapter-derived runtime from strategy config
+2. adapter-derived runtime policy from strategy config
 3. decision runtime overrides
 
 ## Strategy Adapters
@@ -154,13 +139,24 @@ Runtime merge order:
 
 ## Hooks
 
-Current strategy-level hook in manifest:
+Manifest lifecycle hooks:
 
-- `beforePlaceOrder({ connector, entryContext, config, runtime })`
+- `onInit`
+- `afterCoreDecision`
+- `onSkip`
+- `beforeClosePosition` (can return `{ allow: false, reason? }`)
+- `afterEnrichMl`
+- `afterEnrichAi`
+- `beforeEntryGate` (can return `{ allow: false, reason? }`)
+- `beforePlaceOrder`
+- `afterPlaceOrder`
+- `onRuntimeError`
 
-Typical use case:
+Typical use cases:
 
 - close opposite positions before opening a new one
+- custom entry/exit gating by session or risk context
+- strategy-level telemetry and diagnostics
 
 ## Pine Strategy Support
 
@@ -170,12 +166,122 @@ For Pine-backed strategies:
 - runtime injects `loadPineScript(...)` into `CreateStrategyCore` params
 - strategy `core.ts` executes Pine and maps plots into signal fields/figures
 
+## `strategyApi` Reference
+
+### What `strategyApi` Is
+
+`strategyApi` is the DSL object passed by shared runtime into `createCore(...)`.
+
+Goals:
+
+- reduce boilerplate in strategy cores
+- provide consistent access to runtime context and helper logic
+
+### `strategyApi.skip(code)`
+
+Returns a `skip` decision.
+
+```ts
+return strategyApi.skip('NO_SIGNAL');
+```
+
+### `strategyApi.entry(params)`
+
+Builds an `entry` decision + signal through shared builders.
+
+Common fields:
+
+- `direction`
+- `timestamp`
+- `prices`
+- `orderPlan`
+- optional: `code`, `figures`, `indicators`, `additionalIndicators`, `runtime`, `signalId`
+
+Behavior:
+
+- if `code` is omitted, runtime uses `<STRATEGY_NAME>_SIGNAL`
+
+### `strategyApi.getMarketData(params?)`
+
+Returns market snapshot:
+
+- `fullData`
+- `lastCandle`
+- `timestamp` (equal to `lastCandle.timestamp`)
+- `currentPrice`
+
+Uses runtime defaults unless overridden:
+
+- `preloadStart`
+- `backtestPriceMode`
+
+### `strategyApi.getCurrentPosition()`
+
+Wrapper for:
+
+- `connector.getPosition(symbol)`
+
+### `strategyApi.isCurrentPositionExists()`
+
+Returns `true` when an open position exists (`qty > 0`).
+
+### `strategyApi.getDirectionalTpSlPrices(params)`
+
+Shared TP/SL/risk helper. Returns:
+
+- `stopLossPrice`
+- `takeProfitPrice`
+- `riskRatio`
+- `qty` (when `maxLossValue` is provided)
+
+### `strategyApi.createLastTradeController(params?)`
+
+Creates reusable trade cooldown state controller.
+
+### Runtime Notes
+
+- `getMarketData()` reads from runtime-managed candle history.
+- `indicatorsState` is already wired with current bar by runtime.
+- `indicatorsState.snapshot()` is lazy-init safe via shared wrappers.
+
+### Typical `core.ts` Pattern
+
+```ts
+return async () => {
+  const { currentPrice, timestamp } = await strategyApi.getMarketData();
+
+  if (await strategyApi.isCurrentPositionExists()) {
+    return strategyApi.skip('POSITION_EXISTS');
+  }
+
+  const { stopLossPrice, takeProfitPrice, riskRatio, qty } =
+    strategyApi.getDirectionalTpSlPrices({
+      price: currentPrice,
+      direction: 'LONG',
+      takeProfitDelta: 2,
+      stopLossDelta: 1,
+      unit: 'percent',
+    });
+
+  if (!qty || qty <= 0) {
+    return strategyApi.skip('INVALID_QTY');
+  }
+
+  return strategyApi.entry({
+    direction: 'LONG',
+    timestamp,
+    prices: { currentPrice, takeProfitPrice, stopLossPrice, riskRatio },
+    orderPlan: { qty, takeProfits: [{ rate: 1, price: takeProfitPrice }] },
+  });
+};
+```
+
 ## Recommended Implementation Rules
 
 1. Keep `core.ts` focused on strategy logic only.
-2. Keep cross-strategy figure format standardized (`lines/points/zones`).
-3. Put strategy-specific diagnostics into `additionalIndicators`.
-4. Prefer adapter/manifest policy over core-level AI/ML toggling logic.
+2. Keep figure format standardized (`lines/points/zones`) for cross-strategy UI.
+3. Store strategy-specific diagnostics in `additionalIndicators`.
+4. Prefer adapter/manifest policy over core-level AI/ML branching.
 5. Reuse `strategyApi` helpers instead of duplicating runtime-aware logic.
 
 ## Related Files

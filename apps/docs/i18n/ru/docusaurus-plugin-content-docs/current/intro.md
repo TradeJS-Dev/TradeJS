@@ -23,13 +23,23 @@ slug: /
 - `packages/framework` — публичный API для пользовательских плагинов,
 - `packages/ml` — Python-часть для обучения и инференса.
 
+## Карта базы знаний
+
+- Старт и установка: `getting-started/*`
+- Базовые API: `api/framework`, `api/cli`
+- Разработка стратегий: `strategies/*`
+- Разработка индикаторов: `indicators/*`
+- Runtime и бэктесты: `runtime/*`
+- ML и AI policy: `ai-ml/ml/*`, `ai-ml/ai/*`
+- Эксплуатация и прод: `operations/*`
+
 ## С чего начать
 
 - [Локальный запуск](./getting-started/local)
 - [Настройка root пользователя](./getting-started/root-user)
 - [Self-hosted развертывание](./getting-started/self-hosted)
 - [Cloud-использование](./getting-started/cloud)
-- [Framework API](./framework/api)
-- [CLI API](./cli/api)
-- [Как писать стратегии](./strategies/write-strategies)
-- [Как писать индикаторы](./indicators/write-indicators)
+- [Framework API](./api/framework)
+- [CLI API](./api/cli)
+- [Как создавать стратегии](./strategies/authoring/write-strategies)
+- [Как писать индикаторы](./indicators/authoring)

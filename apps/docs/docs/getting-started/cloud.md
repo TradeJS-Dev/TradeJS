@@ -3,29 +3,21 @@ sidebar_position: 4
 title: Cloud Usage
 ---
 
-## Current Cloud Endpoint
+The managed cloud workflow is currently under active development.
 
-TradeJS production endpoint:
+## What This Means Right Now
+
+- public cloud operations are not finalized as a stable production workflow
+- infrastructure, security baseline, and update procedures are still being formalized
+- this page will be expanded as the cloud flow matures
+
+## Current Testing Endpoint
 
 - `https://aleksnick01inv.fvds.ru/`
 
-## Typical Cloud Flow
+## What to Use for Production Today
 
-1. Prepare `.env` with production keys/secrets.
-2. Build and run stack on server (`docker compose up -d --build`).
-3. Verify app, db, redis, ml-infer health.
-4. Run `yarn doctor` inside runtime environment.
+For production deployments, use:
 
-## Security Checklist
-
-- Set strong `NEXTAUTH_SECRET`.
-- Restrict network access to DB/Redis ports.
-- Store API keys in secret manager, not in git.
-- Use HTTPS termination (nginx + certbot in provided stack).
-
-## Update Strategy
-
-- Pull latest code.
-- Rebuild containers.
-- Run health checks before enabling live orders.
-- Keep rollback image tags for `app` and `ml-infer`.
+- `getting-started/self-hosted`
+- `getting-started/local` (for development and validation)
