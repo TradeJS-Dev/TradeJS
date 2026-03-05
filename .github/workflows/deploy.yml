@@ -29,9 +29,9 @@ jobs:
           NODE_ENV=production
           OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}
           OPENAI_API_ENDPOINT=${{ secrets.OPENAI_API_ENDPOINT }}
-          APP_URL=https://aleksnick01inv.fvds.ru
+          APP_URL=https://app.aleksnick01inv.fvds.ru
           NEXTAUTH_SECRET=${{ secrets.NEXTAUTH_SECRET }}
-          NEXTAUTH_URL=https://aleksnick01inv.fvds.ru
+          NEXTAUTH_URL=https://app.aleksnick01inv.fvds.ru
           TG_BOT_TOKEN=${{ secrets.TG_BOT_TOKEN }}
           TG_CHAT_ID=207660648
           PUPPETEER_SKIP_DOWNLOAD=true
@@ -57,10 +57,14 @@ jobs:
       - name: Build Docker images
         run: |
           docker-compose build --pull app
+          docker-compose build --pull site
           docker-compose build --pull --no-cache ml-infer
+          docker-compose -f docker-compose.docs.yml build --pull docs
   
       - name: Push Docker images
-        run: docker-compose push
+        run: |
+          docker-compose push app site ml-infer
+          docker-compose -f docker-compose.docs.yml push docs
 
       - name: Copy compose and configs to server
         uses: appleboy/scp-action@v0.1.7
@@ -68,7 +72,7 @@ jobs:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_KEY }}
-          source: ".env,docker-compose.yml,nginx,sql,certbot,init-cert.sh"
+          source: ".env,docker-compose.yml,docker-compose.docs.yml,nginx,sql,certbot,init-cert.sh"
           target: ~/
 
       - name: Deploy on server
@@ -85,5 +89,7 @@ jobs:
             systemctl disable nginx
             docker compose up -d --remove-orphans
             docker compose up -d --force-recreate ml-infer
+            docker compose -f docker-compose.docs.yml pull docs
+            docker compose -f docker-compose.docs.yml up -d docs
             docker restart nginx
             chmod 777 ./data
