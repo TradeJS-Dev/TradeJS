@@ -102,7 +102,11 @@ describe('mlDatasetFile', () => {
       '{"x":1}\n',
       'utf8',
     );
-    await fs.writeFile(path.join(tempDir, 'other-file.jsonl'), '{"x":2}\n', 'utf8');
+    await fs.writeFile(
+      path.join(tempDir, 'other-file.jsonl'),
+      '{"x":2}\n',
+      'utf8',
+    );
 
     const files = await listMlChunkFiles({
       strategyName: 'TrendLine',

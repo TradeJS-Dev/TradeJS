@@ -131,9 +131,9 @@ describe('redis utils', () => {
     await expect(redisModule.getData('json-ok', {})).resolves.toEqual({ a: 1 });
 
     redisClient.call.mockResolvedValueOnce(Buffer.from('{bad-json'));
-    await expect(redisModule.getData('json-bad', { fallback: 1 })).resolves.toEqual(
-      { fallback: 1 },
-    );
+    await expect(
+      redisModule.getData('json-bad', { fallback: 1 }),
+    ).resolves.toEqual({ fallback: 1 });
     expect(redisClient.del).toHaveBeenCalledWith('json-bad');
 
     redisClient.call.mockRejectedValueOnce(new Error('json-get-error'));
@@ -170,7 +170,9 @@ describe('redis utils', () => {
     await expect(redisModule.delKey('key-1')).resolves.toBe(true);
     await expect(redisModule.delKeyWithOptions('key-2')).resolves.toBe(false);
 
-    redisClient.del.mockRejectedValueOnce(new Error('MISCONF redis write stop'));
+    redisClient.del.mockRejectedValueOnce(
+      new Error('MISCONF redis write stop'),
+    );
     await expect(
       redisModule.delKeyWithOptions('key-3', { raiseOnMisconf: true }),
     ).rejects.toThrow(redisModule.RedisWriteBlockedError);
@@ -215,7 +217,11 @@ describe('redis utils', () => {
 
     redisClient.call.mockRejectedValueOnce(new Error('json-set-failed-2'));
     redisClient.set.mockResolvedValueOnce('OK');
-    await redisModule.setData('set-fallback-no-expire', { x: 4 }, { expire: 0 });
+    await redisModule.setData(
+      'set-fallback-no-expire',
+      { x: 4 },
+      { expire: 0 },
+    );
     expect(redisClient.set).toHaveBeenCalledWith(
       'set-fallback-no-expire',
       '{"x":4}',
@@ -298,4 +304,3 @@ describe('redis utils', () => {
     );
   });
 });
-

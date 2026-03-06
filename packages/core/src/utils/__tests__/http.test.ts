@@ -127,7 +127,9 @@ describe('fetchWithRetry', () => {
     const setTimeoutSpy = jest.spyOn(global, 'setTimeout');
     const fetchMock = jest
       .fn()
-      .mockResolvedValueOnce(makeResponse(429, 'not-a-valid-retry-after') as any)
+      .mockResolvedValueOnce(
+        makeResponse(429, 'not-a-valid-retry-after') as any,
+      )
       .mockResolvedValueOnce(makeResponse(200) as any);
     (global as any).fetch = fetchMock;
 

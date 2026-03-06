@@ -90,7 +90,9 @@ describe('pine utils', () => {
   });
 
   it('returns empty plot series for invalid plot names or malformed data', () => {
-    expect(getPinePlotSeries({ plots: { fast: { data: [] } } }, '')).toEqual([]);
+    expect(getPinePlotSeries({ plots: { fast: { data: [] } } }, '')).toEqual(
+      [],
+    );
     expect(
       getPinePlotSeries(
         { plots: { fast: { data: { not: 'array' } as any } } },

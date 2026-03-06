@@ -47,7 +47,9 @@ describe('spotKlineProviders mapping', () => {
     ] as unknown[]);
 
     expect(rows).toHaveLength(2);
-    expect(rows.map((r) => r.timestamp)).toEqual([1700000000000, 1700000001000]);
+    expect(rows.map((r) => r.timestamp)).toEqual([
+      1700000000000, 1700000001000,
+    ]);
     expect(rows[0]).toEqual(
       expect.objectContaining({
         open: 90,
@@ -70,7 +72,9 @@ describe('spotKlineProviders mapping', () => {
     ] as unknown[]);
 
     expect(rows).toHaveLength(2);
-    expect(rows.map((r) => r.timestamp)).toEqual([1700000000000, 1700000001000]);
+    expect(rows.map((r) => r.timestamp)).toEqual([
+      1700000000000, 1700000001000,
+    ]);
     expect(rows[0]).toEqual(
       expect.objectContaining({
         open: 90,
@@ -186,7 +190,9 @@ describe('spotKlineProviders mapping', () => {
     expect(url.searchParams.get('start')).toBe(
       new Date(1700000000000).toISOString(),
     );
-    expect(url.searchParams.get('end')).toBe(new Date(1700000900000).toISOString());
+    expect(url.searchParams.get('end')).toBe(
+      new Date(1700000900000).toISOString(),
+    );
     expect(options).toEqual({
       headers: {
         'User-Agent': 'tradejs/market-data-ingest',
@@ -196,7 +202,9 @@ describe('spotKlineProviders mapping', () => {
   });
 
   test('coinbase kline returns empty array on 404', async () => {
-    mockedFetchWithRetry.mockResolvedValue(makeResponse({ ok: false, status: 404 }));
+    mockedFetchWithRetry.mockResolvedValue(
+      makeResponse({ ok: false, status: 404 }),
+    );
 
     const result = await spotKlineProviders.coinbase.kline({
       symbol: 'BTC-USD',
@@ -224,7 +232,9 @@ describe('spotKlineProviders mapping', () => {
   });
 
   test('coinbase kline returns empty array for non-array payload', async () => {
-    mockedFetchWithRetry.mockResolvedValue(makeResponse({ payload: { candles: [] } }));
+    mockedFetchWithRetry.mockResolvedValue(
+      makeResponse({ payload: { candles: [] } }),
+    );
 
     const result = await spotKlineProviders.coinbase.kline({
       symbol: 'BTC-USD',

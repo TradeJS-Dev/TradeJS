@@ -1,43 +1,43 @@
-"use client"
+'use client';
 
-import { useState, useEffect, useCallback } from "react"
-import { useLocale } from "./locale-provider"
-import { AnimateOnScroll } from "./animate-on-scroll"
-import { BarChart3, Radio, Brain, Send } from "lucide-react"
+import { useState, useEffect, useCallback } from 'react';
+import { useLocale } from './locale-provider';
+import { AnimateOnScroll } from './animate-on-scroll';
+import { BarChart3, Radio, Brain, Send } from 'lucide-react';
 
-const trustIcons = [BarChart3, Radio, Brain, Send]
+const trustIcons = [BarChart3, Radio, Brain, Send];
 
 export function Hero() {
-  const { locale, t } = useLocale()
-  const [wordIndex, setWordIndex] = useState(0)
-  const [isFlipping, setIsFlipping] = useState(false)
+  const { locale, t } = useLocale();
+  const [wordIndex, setWordIndex] = useState(0);
+  const [isFlipping, setIsFlipping] = useState(false);
 
-  const words = t.hero.actionWords
+  const words = t.hero.actionWords;
 
   const quickstartUrl =
-    locale === "ru"
-      ? "https://docs.tradejs.dev/ru/getting-started/quickstart"
-      : "https://docs.tradejs.dev/getting-started/quickstart"
+    locale === 'ru'
+      ? 'https://docs.tradejs.dev/ru/getting-started/quickstart'
+      : 'https://docs.tradejs.dev/getting-started/quickstart';
 
   const cycleWord = useCallback(() => {
-    setIsFlipping(true)
+    setIsFlipping(true);
     setTimeout(() => {
-      setWordIndex((prev) => (prev + 1) % words.length)
-      setIsFlipping(false)
-    }, 300)
-  }, [words.length])
+      setWordIndex((prev) => (prev + 1) % words.length);
+      setIsFlipping(false);
+    }, 300);
+  }, [words.length]);
 
   useEffect(() => {
-    const interval = setInterval(cycleWord, 2500)
-    return () => clearInterval(interval)
-  }, [cycleWord])
+    const interval = setInterval(cycleWord, 2500);
+    return () => clearInterval(interval);
+  }, [cycleWord]);
 
   const trustItems = [
     { label: t.hero.trust.backtesting, Icon: trustIcons[0] },
     { label: t.hero.trust.runtime, Icon: trustIcons[1] },
     { label: t.hero.trust.aiml, Icon: trustIcons[2] },
     { label: t.hero.trust.telegram, Icon: trustIcons[3] },
-  ]
+  ];
 
   return (
     <section className="relative min-h-screen flex items-center justify-center overflow-hidden">
@@ -58,7 +58,8 @@ export function Hero() {
       <div
         className="absolute top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[700px] h-[700px] rounded-full opacity-20"
         style={{
-          background: "radial-gradient(circle, rgba(32,197,189,0.2) 0%, transparent 70%)",
+          background:
+            'radial-gradient(circle, rgba(32,197,189,0.2) 0%, transparent 70%)',
         }}
       />
 
@@ -66,9 +67,12 @@ export function Hero() {
         <AnimateOnScroll delay={100}>
           <h1 className="text-5xl font-extrabold tracking-tight text-foreground sm:text-6xl lg:text-8xl leading-[1.05]">
             {/* Mechanical counter word */}
-            <span className="inline-block relative h-[1.15em] overflow-hidden align-bottom" style={{ minWidth: "3.5ch" }}>
+            <span
+              className="inline-block relative h-[1.15em] overflow-hidden align-bottom"
+              style={{ minWidth: '3.5ch' }}
+            >
               <span
-                className={`inline-block text-primary mechanical-flip ${isFlipping ? "flipping-out" : "flipping-in"}`}
+                className={`inline-block text-primary mechanical-flip ${isFlipping ? 'flipping-out' : 'flipping-in'}`}
               >
                 {words[wordIndex]}
               </span>
@@ -94,8 +98,18 @@ export function Hero() {
               aria-label={t.hero.quickstart}
             >
               {t.hero.quickstart}
-              <svg className="ml-2 w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6" />
+              <svg
+                className="ml-2 w-5 h-5"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={2.5}
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M13 7l5 5m0 0l-5 5m5-5H6"
+                />
               </svg>
             </a>
           </div>
@@ -104,7 +118,10 @@ export function Hero() {
         <AnimateOnScroll delay={400}>
           <div className="mt-16 flex flex-wrap items-center justify-center gap-6 lg:gap-10">
             {trustItems.map(({ label, Icon }) => (
-              <div key={label} className="flex items-center gap-2 text-muted-foreground">
+              <div
+                key={label}
+                className="flex items-center gap-2 text-muted-foreground"
+              >
                 <Icon size={16} className="text-primary/70" />
                 <span className="text-sm font-medium">{label}</span>
               </div>
@@ -116,5 +133,5 @@ export function Hero() {
       {/* Bottom fade */}
       <div className="absolute bottom-0 left-0 right-0 h-32 bg-gradient-to-t from-background to-transparent" />
     </section>
-  )
+  );
 }

@@ -1,10 +1,10 @@
-"use client"
+'use client';
 
-import { useLocale } from "./locale-provider"
-import { AnimateOnScroll } from "./animate-on-scroll"
+import { useLocale } from './locale-provider';
+import { AnimateOnScroll } from './animate-on-scroll';
 
 export function HowItWorks() {
-  const { t } = useLocale()
+  const { t } = useLocale();
 
   return (
     <section id="how-it-works" className="relative py-24 lg:py-32">
@@ -49,5 +49,5 @@ export function HowItWorks() {
         </div>
       </div>
     </section>
-  )
+  );
 }

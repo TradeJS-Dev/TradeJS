@@ -728,11 +728,14 @@ describe('ByBitConnectorCreator', () => {
         turnover: 20,
       } as any,
     ]);
-    mockedToRows.mockImplementation((symbol, interval, data) => ({
-      symbol,
-      interval,
-      data,
-    }) as any);
+    mockedToRows.mockImplementation(
+      (symbol, interval, data) =>
+        ({
+          symbol,
+          interval,
+          data,
+        }) as any,
+    );
     mockedUpsertCandles.mockResolvedValue(undefined as any);
 
     const connector = await ByBitConnectorCreator({ userName: 'alice' });
@@ -895,11 +898,14 @@ describe('ByBitConnectorCreator', () => {
         turnover: 20,
       } as any,
     ]);
-    mockedToRows.mockImplementation((symbol, interval, data) => ({
-      symbol,
-      interval,
-      data,
-    }) as any);
+    mockedToRows.mockImplementation(
+      (symbol, interval, data) =>
+        ({
+          symbol,
+          interval,
+          data,
+        }) as any,
+    );
     mockedUpsertCandles.mockResolvedValue(undefined as any);
 
     const connector = await ByBitConnectorCreator({ userName: 'alice' });

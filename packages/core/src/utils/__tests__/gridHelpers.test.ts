@@ -1,8 +1,4 @@
-import {
-  createTestSuite,
-  generateName,
-  mergeConfigs,
-} from '@utils/grid';
+import { createTestSuite, generateName, mergeConfigs } from '@utils/grid';
 import { getTimestamp } from '@utils/timestamp';
 import { uuid } from '@utils/uuid';
 
@@ -48,7 +44,11 @@ describe('grid helpers', () => {
       levels: [{ p: 0.2, r: 0.5 }],
     };
 
-    const merged = mergeConfigs([configA as any, configB as any, configC as any]);
+    const merged = mergeConfigs([
+      configA as any,
+      configB as any,
+      configC as any,
+    ]);
 
     expect(merged.threshold).toEqual([1, 2, 3]);
     expect(merged.mode).toEqual(['fast', 'slow']);

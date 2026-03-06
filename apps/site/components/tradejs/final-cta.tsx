@@ -1,15 +1,15 @@
-"use client"
+'use client';
 
-import { useLocale } from "./locale-provider"
-import { AnimateOnScroll } from "./animate-on-scroll"
+import { useLocale } from './locale-provider';
+import { AnimateOnScroll } from './animate-on-scroll';
 
 export function FinalCta() {
-  const { locale, t } = useLocale()
+  const { locale, t } = useLocale();
 
   const quickstartUrl =
-    locale === "ru"
-      ? "https://docs.tradejs.dev/ru/getting-started/quickstart"
-      : "https://docs.tradejs.dev/getting-started/quickstart"
+    locale === 'ru'
+      ? 'https://docs.tradejs.dev/ru/getting-started/quickstart'
+      : 'https://docs.tradejs.dev/getting-started/quickstart';
 
   return (
     <section className="relative py-24 lg:py-32">
@@ -17,7 +17,8 @@ export function FinalCta() {
       <div
         className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] rounded-full opacity-15"
         style={{
-          background: "radial-gradient(circle, rgba(32,197,189,0.2) 0%, transparent 70%)",
+          background:
+            'radial-gradient(circle, rgba(32,197,189,0.2) 0%, transparent 70%)',
         }}
       />
 
@@ -44,13 +45,23 @@ export function FinalCta() {
               aria-label={t.finalCta.quickstart}
             >
               {t.finalCta.quickstart}
-              <svg className="ml-2 w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6" />
+              <svg
+                className="ml-2 w-5 h-5"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={2.5}
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M13 7l5 5m0 0l-5 5m5-5H6"
+                />
               </svg>
             </a>
           </div>
         </AnimateOnScroll>
       </div>
     </section>
-  )
+  );
 }

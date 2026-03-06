@@ -384,10 +384,7 @@ describe('ai helpers', () => {
 
     it('handles invalid json block and non-text array parts', async () => {
       invokeMock.mockResolvedValue({
-        content: [
-          { image_url: 'x' },
-          { text: '```json { invalid } ```' },
-        ],
+        content: [{ image_url: 'x' }, { text: '```json { invalid } ```' }],
       });
 
       const result = await askAI(makeSignal());

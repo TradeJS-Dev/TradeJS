@@ -1,13 +1,13 @@
-"use client"
+'use client';
 
-import { useLocale } from "./locale-provider"
-import { AnimateOnScroll } from "./animate-on-scroll"
-import { Code2, TreePine, Server, ExternalLink } from "lucide-react"
+import { useLocale } from './locale-provider';
+import { AnimateOnScroll } from './animate-on-scroll';
+import { Code2, TreePine, Server, ExternalLink } from 'lucide-react';
 
-const icons = [Code2, TreePine, Server]
+const icons = [Code2, TreePine, Server];
 
 export function StrategyAuthoring() {
-  const { t } = useLocale()
+  const { t } = useLocale();
 
   return (
     <section
@@ -34,7 +34,7 @@ export function StrategyAuthoring() {
 
         <div className="grid gap-6 lg:grid-cols-3">
           {t.strategyAuthoring.items.map((item, i) => {
-            const Icon = icons[i]
+            const Icon = icons[i];
             return (
               <AnimateOnScroll key={i} delay={i * 100}>
                 <div className="group relative h-full rounded-xl border border-border bg-surface/60 p-8 backdrop-blur-sm hover:border-primary/30 hover:bg-surface transition-all duration-300">
@@ -63,10 +63,10 @@ export function StrategyAuthoring() {
                   </div>
                 </div>
               </AnimateOnScroll>
-            )
+            );
           })}
         </div>
       </div>
     </section>
-  )
+  );
 }

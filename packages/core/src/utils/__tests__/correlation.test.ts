@@ -55,8 +55,12 @@ describe('correlation utils', () => {
   });
 
   it('returns null correlation when aligned sample is too short', () => {
-    const coin = Array.from({ length: 10 }, (_, i) => makeCandle(i + 1, 100 + i));
-    const btc = Array.from({ length: 10 }, (_, i) => makeCandle(i + 1, 200 + i));
+    const coin = Array.from({ length: 10 }, (_, i) =>
+      makeCandle(i + 1, 100 + i),
+    );
+    const btc = Array.from({ length: 10 }, (_, i) =>
+      makeCandle(i + 1, 200 + i),
+    );
 
     const result = calculateCoinBtcCorrelation(coin, btc);
 

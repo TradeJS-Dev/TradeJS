@@ -88,7 +88,8 @@ describe('indicator registry', () => {
   });
 
   it('returns only entries with renderer in getPluginIndicatorRenderers', () => {
-    const { registerIndicatorEntries, getPluginIndicatorRenderers } = loadRegistry();
+    const { registerIndicatorEntries, getPluginIndicatorRenderers } =
+      loadRegistry();
 
     const renderer = jest.fn();
 

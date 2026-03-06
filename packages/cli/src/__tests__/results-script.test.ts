@@ -599,8 +599,16 @@ describe('results script', () => {
       'TrendLine',
       'missingcfg',
     );
-    const mismatchConfigKey = redisKeys.testConfig(userName, 'Other', 'mismatch');
-    const noStatConfigKey = redisKeys.testConfig(userName, 'TrendLine', 'nostat');
+    const mismatchConfigKey = redisKeys.testConfig(
+      userName,
+      'Other',
+      'mismatch',
+    );
+    const noStatConfigKey = redisKeys.testConfig(
+      userName,
+      'TrendLine',
+      'nostat',
+    );
     const periodZeroConfigKey = redisKeys.testConfig(
       userName,
       'TrendLine',

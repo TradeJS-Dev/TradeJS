@@ -1,13 +1,13 @@
-"use client"
+'use client';
 
-import { useLocale } from "./locale-provider"
-import { AnimateOnScroll } from "./animate-on-scroll"
-import { Brain, LayoutGrid, ExternalLink } from "lucide-react"
+import { useLocale } from './locale-provider';
+import { AnimateOnScroll } from './animate-on-scroll';
+import { Brain, LayoutGrid, ExternalLink } from 'lucide-react';
 
-const icons = [Brain, LayoutGrid]
+const icons = [Brain, LayoutGrid];
 
 export function Intelligence() {
-  const { t } = useLocale()
+  const { t } = useLocale();
 
   return (
     <section className="relative py-24 lg:py-32 overflow-hidden">
@@ -25,7 +25,8 @@ export function Intelligence() {
       <div
         className="absolute top-0 right-0 w-[500px] h-[500px] opacity-10"
         style={{
-          background: "radial-gradient(circle at top right, rgba(76,169,255,0.3) 0%, transparent 70%)",
+          background:
+            'radial-gradient(circle at top right, rgba(76,169,255,0.3) 0%, transparent 70%)',
         }}
       />
 
@@ -46,7 +47,7 @@ export function Intelligence() {
 
         <div className="grid gap-6 md:grid-cols-2">
           {t.intelligence.items.map((item, i) => {
-            const Icon = icons[i]
+            const Icon = icons[i];
             return (
               <AnimateOnScroll key={i} delay={i * 120}>
                 <div className="group relative h-full rounded-2xl border border-border bg-surface/40 backdrop-blur-md overflow-hidden hover:border-info/30 transition-all duration-300">
@@ -79,10 +80,10 @@ export function Intelligence() {
                   </div>
                 </div>
               </AnimateOnScroll>
-            )
+            );
           })}
         </div>
       </div>
     </section>
-  )
+  );
 }

@@ -78,7 +78,9 @@ describe('tickers utils', () => {
     expect(result.every((item) => item.label.endsWith('USDT'))).toBe(false);
     expect(
       result.every((item) =>
-        ['volatility24h', 'volatility1h', 'volume'].includes(item.description || ''),
+        ['volatility24h', 'volatility1h', 'volume'].includes(
+          item.description || '',
+        ),
       ),
     ).toBe(true);
   });

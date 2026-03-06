@@ -1,8 +1,8 @@
-"use client"
+'use client';
 
-import { useState } from "react"
-import { useLocale } from "./locale-provider"
-import { AnimateOnScroll } from "./animate-on-scroll"
+import { useState } from 'react';
+import { useLocale } from './locale-provider';
+import { AnimateOnScroll } from './animate-on-scroll';
 
 const tsCode = `export const createMyStrategyCore: CreateStrategyCore<
   MyStrategyConfig
@@ -43,7 +43,7 @@ const tsCode = `export const createMyStrategyCore: CreateStrategyCore<
       },
     })
   }
-}`
+}`;
 
 const pineCode = `//@version=5
 indicator("EMA Cross (TradeJS)", overlay=true)
@@ -62,11 +62,11 @@ plot(emaFast, "emaFast")
 plot(emaSlow, "emaSlow")
 plot(invalidated ? 1 : 0, "invalidated")
 plot(entryLong ? 1 : 0, "entryLong")
-plot(entryShort ? 1 : 0, "entryShort")`
+plot(entryShort ? 1 : 0, "entryShort")`;
 
 export function DeveloperExperience() {
-  const { t } = useLocale()
-  const [activeTab, setActiveTab] = useState<"ts" | "pine">("ts")
+  const { t } = useLocale();
+  const [activeTab, setActiveTab] = useState<'ts' | 'pine'>('ts');
 
   return (
     <section id="dev-experience" className="relative py-24 lg:py-32">
@@ -88,22 +88,22 @@ export function DeveloperExperience() {
             {/* Tabs */}
             <div className="flex border-b border-border">
               <button
-                onClick={() => setActiveTab("ts")}
+                onClick={() => setActiveTab('ts')}
                 className={`flex-1 px-6 py-3 text-sm font-semibold transition-colors ${
-                  activeTab === "ts"
-                    ? "text-primary border-b-2 border-primary bg-surface/80"
-                    : "text-muted-foreground hover:text-foreground"
+                  activeTab === 'ts'
+                    ? 'text-primary border-b-2 border-primary bg-surface/80'
+                    : 'text-muted-foreground hover:text-foreground'
                 }`}
                 aria-label="Show TypeScript example"
               >
                 {t.devExperience.tsTab}
               </button>
               <button
-                onClick={() => setActiveTab("pine")}
+                onClick={() => setActiveTab('pine')}
                 className={`flex-1 px-6 py-3 text-sm font-semibold transition-colors ${
-                  activeTab === "pine"
-                    ? "text-primary border-b-2 border-primary bg-surface/80"
-                    : "text-muted-foreground hover:text-foreground"
+                  activeTab === 'pine'
+                    ? 'text-primary border-b-2 border-primary bg-surface/80'
+                    : 'text-muted-foreground hover:text-foreground'
                 }`}
                 aria-label="Show Pine Script example"
               >
@@ -114,22 +114,22 @@ export function DeveloperExperience() {
             {/* Code block */}
             <div className="p-6 overflow-x-auto">
               <pre className="font-mono text-sm leading-relaxed text-foreground/90">
-                <code>{activeTab === "ts" ? tsCode : pineCode}</code>
+                <code>{activeTab === 'ts' ? tsCode : pineCode}</code>
               </pre>
             </div>
 
             {/* Bottom bar */}
             <div className="flex items-center justify-between border-t border-border px-6 py-3 bg-surface-2/50">
               <span className="text-xs text-muted-foreground font-mono">
-                {activeTab === "ts" ? "strategy.ts" : "strategy.pine"}
+                {activeTab === 'ts' ? 'strategy.ts' : 'strategy.pine'}
               </span>
               <span className="text-xs text-muted-foreground">
-                {activeTab === "ts" ? "TypeScript" : "Pine Script v5"}
+                {activeTab === 'ts' ? 'TypeScript' : 'Pine Script v5'}
               </span>
             </div>
           </div>
         </AnimateOnScroll>
       </div>
     </section>
-  )
+  );
 }

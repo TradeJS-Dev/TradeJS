@@ -2,10 +2,19 @@ describe('logger setup', () => {
   it('builds logger with console and file transports and printf formatters', () => {
     jest.resetModules();
 
-    const combineMock = jest.fn((...args: unknown[]) => ({ kind: 'combine', args }));
-    const timestampMock = jest.fn((opts?: unknown) => ({ kind: 'timestamp', opts }));
+    const combineMock = jest.fn((...args: unknown[]) => ({
+      kind: 'combine',
+      args,
+    }));
+    const timestampMock = jest.fn((opts?: unknown) => ({
+      kind: 'timestamp',
+      opts,
+    }));
     const splatMock = jest.fn(() => ({ kind: 'splat' }));
-    const colorizeMock = jest.fn((opts?: unknown) => ({ kind: 'colorize', opts }));
+    const colorizeMock = jest.fn((opts?: unknown) => ({
+      kind: 'colorize',
+      opts,
+    }));
     const uncolorizeMock = jest.fn(() => ({ kind: 'uncolorize' }));
 
     const formattedMessages: string[] = [];

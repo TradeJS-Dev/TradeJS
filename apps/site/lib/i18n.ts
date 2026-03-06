@@ -1,293 +1,373 @@
-export type Locale = "en" | "ru"
+export type Locale = 'en' | 'ru';
 
 export const translations = {
   en: {
     nav: {
-      advantages: "Advantages",
-      howItWorks: "How It Works",
-      devExperience: "For Developers",
-      quickstart: "Quickstart",
+      advantages: 'Advantages',
+      howItWorks: 'How It Works',
+      devExperience: 'For Developers',
+      quickstart: 'Quickstart',
     },
     hero: {
-      actionWords: ["WRITE", "TEST", "RUN"],
-      titleSuffix: "Trading Strategies",
-      subtitle:
-        "TypeScript & Pine Script framework",
-      quickstart: "Quickstart",
+      actionWords: ['WRITE', 'TEST', 'RUN'],
+      titleSuffix: 'Trading Strategies',
+      subtitle: 'TypeScript & Pine Script framework',
+      quickstart: 'Quickstart',
       trust: {
-        backtesting: "Grid Backtesting",
-        runtime: "Runtime Signals",
-        aiml: "AI / ML",
-        telegram: "Telegram Alerts",
+        backtesting: 'Grid Backtesting',
+        runtime: 'Runtime Signals',
+        aiml: 'AI / ML',
+        telegram: 'Telegram Alerts',
       },
     },
     // Group 1: Strategy Authoring (TS + Pine + Local)
     strategyAuthoring: {
-      sectionTitle: "Strategy Authoring",
-      sectionSubtitle: "Write strategies in your preferred language with full infrastructure control",
+      sectionTitle: 'Strategy Authoring',
+      sectionSubtitle:
+        'Write strategies in your preferred language with full infrastructure control',
       items: [
         {
-          title: "TypeScript Strategies & Indicators",
+          title: 'TypeScript Strategies & Indicators',
           description:
-            "Write strategies and indicators in TypeScript with full type safety, autocompletion, and access to the entire npm ecosystem.",
+            'Write strategies and indicators in TypeScript with full type safety, autocompletion, and access to the entire npm ecosystem.',
           links: [
-            { label: "Write Strategies", url: "https://docs.tradejs.dev/strategies/authoring/write-strategies" },
-            { label: "Author Indicators", url: "https://docs.tradejs.dev/indicators/authoring" },
+            {
+              label: 'Write Strategies',
+              url: 'https://docs.tradejs.dev/strategies/authoring/write-strategies',
+            },
+            {
+              label: 'Author Indicators',
+              url: 'https://docs.tradejs.dev/indicators/authoring',
+            },
           ],
         },
         {
-          title: "Pine Script Compatibility",
+          title: 'Pine Script Compatibility',
           description:
-            "Migrate existing TradingView strategies seamlessly. TradeJS supports Pine Script authoring alongside TypeScript.",
+            'Migrate existing TradingView strategies seamlessly. TradeJS supports Pine Script authoring alongside TypeScript.',
           links: [
-            { label: "Pine Strategies", url: "https://docs.tradejs.dev/strategies/authoring/pine-strategy-step-by-step" },
-            { label: "Pine Indicators", url: "https://docs.tradejs.dev/indicators/pine" },
+            {
+              label: 'Pine Strategies',
+              url: 'https://docs.tradejs.dev/strategies/authoring/pine-strategy-step-by-step',
+            },
+            {
+              label: 'Pine Indicators',
+              url: 'https://docs.tradejs.dev/indicators/pine',
+            },
           ],
         },
         {
-          title: "Local & Self-Hosted",
+          title: 'Local & Self-Hosted',
           description:
-            "Run TradeJS locally or deploy self-hosted. Full control over your data, infrastructure, and execution environment.",
+            'Run TradeJS locally or deploy self-hosted. Full control over your data, infrastructure, and execution environment.',
           links: [
-            { label: "Local Setup", url: "https://docs.tradejs.dev/getting-started/local" },
-            { label: "Self-Hosted", url: "https://docs.tradejs.dev/getting-started/self-hosted" },
+            {
+              label: 'Local Setup',
+              url: 'https://docs.tradejs.dev/getting-started/local',
+            },
+            {
+              label: 'Self-Hosted',
+              url: 'https://docs.tradejs.dev/getting-started/self-hosted',
+            },
           ],
         },
       ],
     },
     // Group 2: Intelligence & Backtesting (AI/ML + Grid)
     intelligence: {
-      sectionTitle: "Intelligence & Backtesting",
-      sectionSubtitle: "AI-powered signal enhancement and massive parameter optimization",
+      sectionTitle: 'Intelligence & Backtesting',
+      sectionSubtitle:
+        'AI-powered signal enhancement and massive parameter optimization',
       items: [
         {
-          title: "Built-in AI / ML",
+          title: 'Built-in AI / ML',
           description:
-            "Enhance your signals with AI and ML models. Configurable pipelines for signal filtering, prediction, and risk scoring.",
+            'Enhance your signals with AI and ML models. Configurable pipelines for signal filtering, prediction, and risk scoring.',
           links: [
-            { label: "AI Configuration", url: "https://docs.tradejs.dev/ai-ml/ai/configuration" },
-            { label: "ML Configuration", url: "https://docs.tradejs.dev/ai-ml/ml/configuration" },
+            {
+              label: 'AI Configuration',
+              url: 'https://docs.tradejs.dev/ai-ml/ai/configuration',
+            },
+            {
+              label: 'ML Configuration',
+              url: 'https://docs.tradejs.dev/ai-ml/ml/configuration',
+            },
           ],
         },
         {
-          title: "Grid Backtesting",
+          title: 'Grid Backtesting',
           description:
-            "Run massive parameter sweeps with grid config. Find optimal strategy configurations across thousands of combinations automatically.",
+            'Run massive parameter sweeps with grid config. Find optimal strategy configurations across thousands of combinations automatically.',
           links: [
-            { label: "Grid Config", url: "https://docs.tradejs.dev/runtime/backtesting/grid-config" },
+            {
+              label: 'Grid Config',
+              url: 'https://docs.tradejs.dev/runtime/backtesting/grid-config',
+            },
           ],
         },
       ],
     },
     // Group 3: Execution & Monitoring (Pipeline + Telegram)
     execution: {
-      sectionTitle: "Execution & Monitoring",
-      sectionSubtitle: "From backtest results to live trading with real-time notifications",
+      sectionTitle: 'Execution & Monitoring',
+      sectionSubtitle:
+        'From backtest results to live trading with real-time notifications',
       items: [
         {
-          title: "Backtest-to-Runtime Pipeline",
+          title: 'Backtest-to-Runtime Pipeline',
           description:
-            "Promote your best backtest results directly to runtime config. No manual tuning — the framework handles the transition.",
+            'Promote your best backtest results directly to runtime config. No manual tuning — the framework handles the transition.',
           links: [
-            { label: "Results to Runtime", url: "https://docs.tradejs.dev/runtime/backtesting/results-runtime-config" },
+            {
+              label: 'Results to Runtime',
+              url: 'https://docs.tradejs.dev/runtime/backtesting/results-runtime-config',
+            },
           ],
         },
         {
-          title: "Telegram Notifications",
+          title: 'Telegram Notifications',
           description:
-            "Get real-time signal alerts, execution reports, and error notifications directly in Telegram. Stay informed without watching dashboards.",
+            'Get real-time signal alerts, execution reports, and error notifications directly in Telegram. Stay informed without watching dashboards.',
           links: [
-            { label: "Telegram Setup", url: "https://docs.tradejs.dev/runtime/execution/telegram-notifications" },
+            {
+              label: 'Telegram Setup',
+              url: 'https://docs.tradejs.dev/runtime/execution/telegram-notifications',
+            },
           ],
         },
       ],
     },
     howItWorks: {
-      sectionTitle: "How It Works",
-      sectionSubtitle: "From strategy idea to live execution in four steps",
+      sectionTitle: 'How It Works',
+      sectionSubtitle: 'From strategy idea to live execution in four steps',
       steps: [
         {
-          step: "01",
-          title: "Create Strategy",
-          description: "Write your strategy in TypeScript or Pine Script. Define entry/exit rules, indicators, and risk management.",
+          step: '01',
+          title: 'Create Strategy',
+          description:
+            'Write your strategy in TypeScript or Pine Script. Define entry/exit rules, indicators, and risk management.',
         },
         {
-          step: "02",
-          title: "Run Grid Backtests",
-          description: "Configure parameter grids and run thousands of backtests automatically. Analyze results with built-in metrics.",
+          step: '02',
+          title: 'Run Grid Backtests',
+          description:
+            'Configure parameter grids and run thousands of backtests automatically. Analyze results with built-in metrics.',
         },
         {
-          step: "03",
-          title: "Promote Best Configs",
-          description: "Select top-performing parameter sets from backtest results and promote them to runtime configuration.",
+          step: '03',
+          title: 'Promote Best Configs',
+          description:
+            'Select top-performing parameter sets from backtest results and promote them to runtime configuration.',
         },
         {
-          step: "04",
-          title: "Execute & Monitor",
-          description: "Launch live signal execution with real-time Telegram notifications. Monitor performance and adjust on the fly.",
+          step: '04',
+          title: 'Execute & Monitor',
+          description:
+            'Launch live signal execution with real-time Telegram notifications. Monitor performance and adjust on the fly.',
         },
       ],
     },
     devExperience: {
-      sectionTitle: "Developer Experience",
-      sectionSubtitle: "Dual authoring: write in the language you know best",
-      tsTab: "TypeScript",
-      pineTab: "Pine Script",
+      sectionTitle: 'Developer Experience',
+      sectionSubtitle: 'Dual authoring: write in the language you know best',
+      tsTab: 'TypeScript',
+      pineTab: 'Pine Script',
     },
     finalCta: {
-      title: "Ready to Automate Your Trading?",
-      subtitle: "Start building strategies with TradeJS today. Open-source, self-hosted, and built for developers.",
-      quickstart: "Quickstart",
+      title: 'Ready to Automate Your Trading?',
+      subtitle:
+        'Start building strategies with TradeJS today. Open-source, self-hosted, and built for developers.',
+      quickstart: 'Quickstart',
     },
     footer: {
-      description: "Open-source trading strategy framework for developers.",
-      app: "Application",
-      docs: "Documentation",
-      rights: "All rights reserved.",
+      description: 'Open-source trading strategy framework for developers.',
+      app: 'Application',
+      docs: 'Documentation',
+      rights: 'All rights reserved.',
     },
   },
   ru: {
     nav: {
-      advantages: "Преимущества",
-      howItWorks: "Как это работает",
-      devExperience: "Разработчикам",
-      quickstart: "Быстрый старт",
+      advantages: 'Преимущества',
+      howItWorks: 'Как это работает',
+      devExperience: 'Разработчикам',
+      quickstart: 'Быстрый старт',
     },
     hero: {
-      actionWords: ["ПИШИ", "ТЕСТИРУЙ", "ЗАПУСКАЙ"],
-      titleSuffix: "Торговые стратегии",
-      subtitle:
-        "Фреймворк для стратегий на TypeScript и Pine Script",
-      quickstart: "Быстрый старт",
+      actionWords: ['ПИШИ', 'ТЕСТИРУЙ', 'ЗАПУСКАЙ'],
+      titleSuffix: 'Торговые стратегии',
+      subtitle: 'Фреймворк для стратегий на TypeScript и Pine Script',
+      quickstart: 'Быстрый старт',
       trust: {
-        backtesting: "Grid-бэктесты",
-        runtime: "Сигналы в рантайме",
-        aiml: "AI / ML",
-        telegram: "Уведомления в Telegram",
+        backtesting: 'Grid-бэктесты',
+        runtime: 'Сигналы в рантайме',
+        aiml: 'AI / ML',
+        telegram: 'Уведомления в Telegram',
       },
     },
     strategyAuthoring: {
-      sectionTitle: "Создание стратегий",
-      sectionSubtitle: "Пишите стратегии на удобном языке с полным контролем инфраструктуры",
+      sectionTitle: 'Создание стратегий',
+      sectionSubtitle:
+        'Пишите стратегии на удобном языке с полным контролем инфраструктуры',
       items: [
         {
-          title: "Стратегии и индикаторы на TypeScript",
+          title: 'Стратегии и индикаторы на TypeScript',
           description:
-            "Пишите стратегии и индикаторы на TypeScript с полной типизацией, автодополнением и доступом ко всей экосистеме npm.",
+            'Пишите стратегии и индикаторы на TypeScript с полной типизацией, автодополнением и доступом ко всей экосистеме npm.',
           links: [
-            { label: "Написание стратегий", url: "https://docs.tradejs.dev/ru/strategies/authoring/write-strategies" },
-            { label: "Создание индикаторов", url: "https://docs.tradejs.dev/ru/indicators/authoring" },
+            {
+              label: 'Написание стратегий',
+              url: 'https://docs.tradejs.dev/ru/strategies/authoring/write-strategies',
+            },
+            {
+              label: 'Создание индикаторов',
+              url: 'https://docs.tradejs.dev/ru/indicators/authoring',
+            },
           ],
         },
         {
-          title: "Совместимость с Pine Script",
+          title: 'Совместимость с Pine Script',
           description:
-            "Мигрируйте стратегии из TradingView без потерь. TradeJS поддерживает Pine Script наравне с TypeScript.",
+            'Мигрируйте стратегии из TradingView без потерь. TradeJS поддерживает Pine Script наравне с TypeScript.',
           links: [
-            { label: "Pine-стратегии", url: "https://docs.tradejs.dev/ru/strategies/authoring/pine-strategy-step-by-step" },
-            { label: "Pine-индикаторы", url: "https://docs.tradejs.dev/ru/indicators/pine" },
+            {
+              label: 'Pine-стратегии',
+              url: 'https://docs.tradejs.dev/ru/strategies/authoring/pine-strategy-step-by-step',
+            },
+            {
+              label: 'Pine-индикаторы',
+              url: 'https://docs.tradejs.dev/ru/indicators/pine',
+            },
           ],
         },
         {
-          title: "Локальный и self-hosted режим",
+          title: 'Локальный и self-hosted режим',
           description:
-            "Запускайте TradeJS локально или на своём сервере. Полный контроль над данными, инфраструктурой и средой исполнения.",
+            'Запускайте TradeJS локально или на своём сервере. Полный контроль над данными, инфраструктурой и средой исполнения.',
           links: [
-            { label: "Локальная установка", url: "https://docs.tradejs.dev/ru/getting-started/local" },
-            { label: "Self-hosted установка", url: "https://docs.tradejs.dev/ru/getting-started/self-hosted" },
+            {
+              label: 'Локальная установка',
+              url: 'https://docs.tradejs.dev/ru/getting-started/local',
+            },
+            {
+              label: 'Self-hosted установка',
+              url: 'https://docs.tradejs.dev/ru/getting-started/self-hosted',
+            },
           ],
         },
       ],
     },
     intelligence: {
-      sectionTitle: "Интеллект и бэктестинг",
-      sectionSubtitle: "AI-усиление сигналов и масштабный перебор параметров",
+      sectionTitle: 'Интеллект и бэктестинг',
+      sectionSubtitle: 'AI-усиление сигналов и масштабный перебор параметров',
       items: [
         {
-          title: "Встроенный AI / ML",
+          title: 'Встроенный AI / ML',
           description:
-            "Усиливайте сигналы с помощью AI и ML моделей. Настраиваемые пайплайны для фильтрации, предсказания и оценки рисков.",
+            'Усиливайте сигналы с помощью AI и ML моделей. Настраиваемые пайплайны для фильтрации, предсказания и оценки рисков.',
           links: [
-            { label: "Конфигурация AI", url: "https://docs.tradejs.dev/ru/ai-ml/ai/configuration" },
-            { label: "Конфигурация ML", url: "https://docs.tradejs.dev/ru/ai-ml/ml/configuration" },
+            {
+              label: 'Конфигурация AI',
+              url: 'https://docs.tradejs.dev/ru/ai-ml/ai/configuration',
+            },
+            {
+              label: 'Конфигурация ML',
+              url: 'https://docs.tradejs.dev/ru/ai-ml/ml/configuration',
+            },
           ],
         },
         {
-          title: "Grid-бэктесты",
+          title: 'Grid-бэктесты',
           description:
-            "Запускайте массовый перебор параметров через Grid Config. Автоматически находите оптимальные конфигурации среди тысяч комбинаций.",
+            'Запускайте массовый перебор параметров через Grid Config. Автоматически находите оптимальные конфигурации среди тысяч комбинаций.',
           links: [
-            { label: "Grid Config", url: "https://docs.tradejs.dev/ru/runtime/backtesting/grid-config" },
+            {
+              label: 'Grid Config',
+              url: 'https://docs.tradejs.dev/ru/runtime/backtesting/grid-config',
+            },
           ],
         },
       ],
     },
     execution: {
-      sectionTitle: "Исполнение и мониторинг",
-      sectionSubtitle: "От результатов бэктестов к живой торговле с уведомлениями в реальном времени",
+      sectionTitle: 'Исполнение и мониторинг',
+      sectionSubtitle:
+        'От результатов бэктестов к живой торговле с уведомлениями в реальном времени',
       items: [
         {
-          title: "Из бэктестов в рантайм",
+          title: 'Из бэктестов в рантайм',
           description:
-            "Переносите лучшие результаты бэктестов прямо в рантайм-конфиг. Без ручной настройки — фреймворк делает всё сам.",
+            'Переносите лучшие результаты бэктестов прямо в рантайм-конфиг. Без ручной настройки — фреймворк делает всё сам.',
           links: [
-            { label: "Результаты в рантайм", url: "https://docs.tradejs.dev/ru/runtime/backtesting/results-runtime-config" },
+            {
+              label: 'Результаты в рантайм',
+              url: 'https://docs.tradejs.dev/ru/runtime/backtesting/results-runtime-config',
+            },
           ],
         },
         {
-          title: "Telegram-уведомления",
+          title: 'Telegram-уведомления',
           description:
-            "Получайте алерты о сигналах, отчёты об исполнении и уведомления об ошибках прямо в Telegram. Будьте в курсе без мониторинга дашбордов.",
+            'Получайте алерты о сигналах, отчёты об исполнении и уведомления об ошибках прямо в Telegram. Будьте в курсе без мониторинга дашбордов.',
           links: [
-            { label: "Настройка Telegram", url: "https://docs.tradejs.dev/ru/runtime/execution/telegram-notifications" },
+            {
+              label: 'Настройка Telegram',
+              url: 'https://docs.tradejs.dev/ru/runtime/execution/telegram-notifications',
+            },
           ],
         },
       ],
     },
     howItWorks: {
-      sectionTitle: "Как это работает",
-      sectionSubtitle: "От идеи стратегии до исполнения — четыре шага",
+      sectionTitle: 'Как это работает',
+      sectionSubtitle: 'От идеи стратегии до исполнения — четыре шага',
       steps: [
         {
-          step: "01",
-          title: "Создайте стратегию",
-          description: "Напишите стратегию на TypeScript или Pine Script. Определите правила входа/выхода, индикаторы и управление рисками.",
+          step: '01',
+          title: 'Создайте стратегию',
+          description:
+            'Напишите стратегию на TypeScript или Pine Script. Определите правила входа/выхода, индикаторы и управление рисками.',
         },
         {
-          step: "02",
-          title: "Запустите Grid-бэктесты",
-          description: "Настройте сетку параметров и запустите тысячи бэктестов автоматически. Анализируйте результаты встроенными метриками.",
+          step: '02',
+          title: 'Запустите Grid-бэктесты',
+          description:
+            'Настройте сетку параметров и запустите тысячи бэктестов автоматически. Анализируйте результаты встроенными метриками.',
         },
         {
-          step: "03",
-          title: "Перенесите лучшие конфиги",
-          description: "Выберите лучшие наборы параметров из результатов бэктестов и перенесите их в рантайм-конфигурацию.",
+          step: '03',
+          title: 'Перенесите лучшие конфиги',
+          description:
+            'Выберите лучшие наборы параметров из результатов бэктестов и перенесите их в рантайм-конфигурацию.',
         },
         {
-          step: "04",
-          title: "Запуск и мониторинг",
-          description: "Запустите исполнение сигналов в реальном времени с Telegram-уведомлениями. Контролируйте и корректируйте на лету.",
+          step: '04',
+          title: 'Запуск и мониторинг',
+          description:
+            'Запустите исполнение сигналов в реальном времени с Telegram-уведомлениями. Контролируйте и корректируйте на лету.',
         },
       ],
     },
     devExperience: {
-      sectionTitle: "Опыт разработчика",
-      sectionSubtitle: "Два режима разработки: пишите на языке, который знаете лучше",
-      tsTab: "TypeScript",
-      pineTab: "Pine Script",
+      sectionTitle: 'Опыт разработчика',
+      sectionSubtitle:
+        'Два режима разработки: пишите на языке, который знаете лучше',
+      tsTab: 'TypeScript',
+      pineTab: 'Pine Script',
     },
     finalCta: {
-      title: "Готовы автоматизировать трейдинг?",
-      subtitle: "Начните создавать стратегии с TradeJS уже сегодня. Open-source, self-hosted и создан для разработчиков.",
-      quickstart: "Быстрый старт",
+      title: 'Готовы автоматизировать трейдинг?',
+      subtitle:
+        'Начните создавать стратегии с TradeJS уже сегодня. Open-source, self-hosted и создан для разработчиков.',
+      quickstart: 'Быстрый старт',
     },
     footer: {
-      description: "Open-source фреймворк для разработки торговых стратегий.",
-      app: "Приложение",
-      docs: "Документация",
-      rights: "Все права защищены.",
+      description: 'Open-source фреймворк для разработки торговых стратегий.',
+      app: 'Приложение',
+      docs: 'Документация',
+      rights: 'Все права защищены.',
     },
   },
-} as const
+} as const;
 
-export type Translations = (typeof translations)[Locale]
+export type Translations = (typeof translations)[Locale];

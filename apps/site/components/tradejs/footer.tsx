@@ -1,14 +1,14 @@
-"use client"
+'use client';
 
-import { useLocale } from "./locale-provider"
+import { useLocale } from './locale-provider';
 
 export function Footer() {
-  const { locale, t, toggleLocale } = useLocale()
+  const { locale, t, toggleLocale } = useLocale();
 
   const docsUrl =
-    locale === "ru"
-      ? "https://docs.tradejs.dev/ru/"
-      : "https://docs.tradejs.dev/"
+    locale === 'ru'
+      ? 'https://docs.tradejs.dev/ru/'
+      : 'https://docs.tradejs.dev/';
 
   return (
     <footer className="border-t border-border bg-surface/30">
@@ -18,9 +18,27 @@ export function Footer() {
           <div className="flex flex-col items-center md:items-start gap-3">
             <div className="flex items-center gap-2">
               <div className="flex items-center justify-center w-7 h-7 rounded-md bg-primary/10 border border-primary/20">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" className="text-primary">
-                  <path d="M3 17L9 11L13 15L21 7" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
-                  <path d="M17 7H21V11" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  className="text-primary"
+                >
+                  <path
+                    d="M3 17L9 11L13 15L21 7"
+                    stroke="currentColor"
+                    strokeWidth="2.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                  <path
+                    d="M17 7H21V11"
+                    stroke="currentColor"
+                    strokeWidth="2.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
                 </svg>
               </div>
               <span className="text-foreground font-bold text-base tracking-tight">
@@ -53,11 +71,15 @@ export function Footer() {
             <button
               onClick={toggleLocale}
               className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
-              aria-label={`Switch language to ${locale === "en" ? "Russian" : "English"}`}
+              aria-label={`Switch language to ${locale === 'en' ? 'Russian' : 'English'}`}
             >
-              <span className={locale === "en" ? "text-foreground" : ""}>EN</span>
+              <span className={locale === 'en' ? 'text-foreground' : ''}>
+                EN
+              </span>
               <span className="text-border">/</span>
-              <span className={locale === "ru" ? "text-foreground" : ""}>RU</span>
+              <span className={locale === 'ru' ? 'text-foreground' : ''}>
+                RU
+              </span>
             </button>
           </div>
         </div>
@@ -69,5 +91,5 @@ export function Footer() {
         </div>
       </div>
     </footer>
-  )
+  );
 }

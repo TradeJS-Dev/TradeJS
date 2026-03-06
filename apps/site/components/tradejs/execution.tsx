@@ -1,13 +1,13 @@
-"use client"
+'use client';
 
-import { useLocale } from "./locale-provider"
-import { AnimateOnScroll } from "./animate-on-scroll"
-import { ArrowRightLeft, Send, ExternalLink } from "lucide-react"
+import { useLocale } from './locale-provider';
+import { AnimateOnScroll } from './animate-on-scroll';
+import { ArrowRightLeft, Send, ExternalLink } from 'lucide-react';
 
-const icons = [ArrowRightLeft, Send]
+const icons = [ArrowRightLeft, Send];
 
 export function Execution() {
-  const { t } = useLocale()
+  const { t } = useLocale();
 
   return (
     <section className="relative py-24 lg:py-32 overflow-hidden bg-background">
@@ -31,14 +31,14 @@ export function Execution() {
 
         <div className="grid gap-6 md:grid-cols-2">
           {t.execution.items.map((item, i) => {
-            const Icon = icons[i]
+            const Icon = icons[i];
             return (
               <AnimateOnScroll key={i} delay={i * 120}>
                 <div className="group relative h-full overflow-hidden rounded-2xl border border-border bg-surface/40 backdrop-blur-md hover:border-success/30 transition-all duration-300">
                   <div className="p-8">
                     {/* Large step number watermark */}
                     <div className="absolute -top-4 -right-2 text-8xl font-extrabold font-mono text-success/5 select-none">
-                      {String(i + 1).padStart(2, "0")}
+                      {String(i + 1).padStart(2, '0')}
                     </div>
 
                     <div className="mb-5 inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-success/10 text-success group-hover:bg-success/15 transition-colors">
@@ -70,10 +70,10 @@ export function Execution() {
                   <div className="h-1 bg-gradient-to-r from-success/60 via-primary/40 to-transparent" />
                 </div>
               </AnimateOnScroll>
-            )
+            );
           })}
         </div>
       </div>
     </section>
-  )
+  );
 }
