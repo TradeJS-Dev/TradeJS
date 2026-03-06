@@ -23,11 +23,12 @@ COPY .yarn ./.yarn
 
 RUN corepack enable
 RUN corepack prepare yarn@4.13.0 --activate
-RUN yarn install --immutable
 
 COPY apps ./apps
 COPY packages ./packages
 COPY examples ./examples
+RUN yarn install --immutable
+
 COPY proto ./proto
 COPY entrypoint.sh ./entrypoint.sh
 COPY cronjob /etc/crontabs/root
