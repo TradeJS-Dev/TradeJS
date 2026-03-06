@@ -6,13 +6,13 @@ export const translations = {
       advantages: 'Advantages',
       howItWorks: 'How It Works',
       devExperience: 'For Developers',
-      quickstart: 'Quickstart',
+      quickstart: 'Getting Started',
     },
     hero: {
       actionWords: ['WRITE', 'TEST', 'RUN'],
       titleSuffix: 'Trading Strategies',
       subtitle: 'TypeScript & Pine Script framework',
-      quickstart: 'Quickstart',
+      quickstart: 'Getting Started',
       trust: {
         backtesting: 'Grid Backtesting',
         runtime: 'Runtime Signals',
@@ -177,7 +177,7 @@ export const translations = {
       title: 'Ready to Automate Your Trading?',
       subtitle:
         'Start building strategies with TradeJS today. Open-source, self-hosted, and built for developers.',
-      quickstart: 'Quickstart',
+      quickstart: 'Getting Started',
     },
     footer: {
       description: 'Open-source trading strategy framework for developers.',

@@ -11,8 +11,8 @@ export function Header() {
 
   const quickstartUrl =
     locale === 'ru'
-      ? 'https://docs.tradejs.dev/ru/getting-started/quickstart'
-      : 'https://docs.tradejs.dev/getting-started/quickstart';
+      ? 'https://docs.tradejs.dev/ru/getting-started/local/'
+      : 'https://docs.tradejs.dev/getting-started/local/';
 
   useEffect(() => {
     const handleScroll = () => setScrolled(window.scrollY > 20);
