@@ -21,7 +21,7 @@ http {
 
     server {
         listen 80;
-        server_name aleksnick01inv.fvds.ru;
+        server_name tradejs.dev;
 
         location /.well-known/acme-challenge/ {
             root /var/www/certbot;
@@ -34,10 +34,10 @@ http {
 
     server {
         listen 443 ssl;
-        server_name aleksnick01inv.fvds.ru;
+        server_name tradejs.dev;
 
-        ssl_certificate /etc/letsencrypt/live/aleksnick01inv.fvds.ru/fullchain.pem;
-        ssl_certificate_key /etc/letsencrypt/live/aleksnick01inv.fvds.ru/privkey.pem;
+        ssl_certificate /etc/letsencrypt/live/tradejs.dev/fullchain.pem;
+        ssl_certificate_key /etc/letsencrypt/live/tradejs.dev/privkey.pem;
 
         ssl_protocols TLSv1.2 TLSv1.3;
         ssl_ciphers HIGH:!aNULL:!MD5;
@@ -64,7 +64,7 @@ http {
 
     server {
         listen 80;
-        server_name app.aleksnick01inv.fvds.ru;
+        server_name app.tradejs.dev;
 
         location /.well-known/acme-challenge/ {
             root /var/www/certbot;
@@ -77,10 +77,10 @@ http {
 
     server {
         listen 443 ssl;
-        server_name app.aleksnick01inv.fvds.ru;
+        server_name app.tradejs.dev;
 
-        ssl_certificate /etc/letsencrypt/live/aleksnick01inv.fvds.ru/fullchain.pem;
-        ssl_certificate_key /etc/letsencrypt/live/aleksnick01inv.fvds.ru/privkey.pem;
+        ssl_certificate /etc/letsencrypt/live/tradejs.dev/fullchain.pem;
+        ssl_certificate_key /etc/letsencrypt/live/tradejs.dev/privkey.pem;
 
         ssl_protocols TLSv1.2 TLSv1.3;
         ssl_ciphers HIGH:!aNULL:!MD5;
@@ -107,7 +107,7 @@ http {
 
     server {
         listen 80;
-        server_name redisinsight.aleksnick01inv.fvds.ru;
+        server_name redisinsight.tradejs.dev;
 
         location /.well-known/acme-challenge/ {
             root /var/www/certbot;
@@ -120,10 +120,10 @@ http {
 
     server {
         listen 443 ssl;
-        server_name redisinsight.aleksnick01inv.fvds.ru;
+        server_name redisinsight.tradejs.dev;
 
-        ssl_certificate /etc/letsencrypt/live/aleksnick01inv.fvds.ru/fullchain.pem;
-        ssl_certificate_key /etc/letsencrypt/live/aleksnick01inv.fvds.ru/privkey.pem;
+        ssl_certificate /etc/letsencrypt/live/tradejs.dev/fullchain.pem;
+        ssl_certificate_key /etc/letsencrypt/live/tradejs.dev/privkey.pem;
 
         ssl_protocols TLSv1.2 TLSv1.3;
         ssl_ciphers HIGH:!aNULL:!MD5;
@@ -152,7 +152,7 @@ http {
 
     server {
         listen 80;
-        server_name docs.aleksnick01inv.fvds.ru;
+        server_name docs.tradejs.dev;
 
         location /.well-known/acme-challenge/ {
             root /var/www/certbot;
@@ -165,10 +165,10 @@ http {
 
     server {
         listen 443 ssl;
-        server_name docs.aleksnick01inv.fvds.ru;
+        server_name docs.tradejs.dev;
 
-        ssl_certificate /etc/letsencrypt/live/aleksnick01inv.fvds.ru/fullchain.pem;
-        ssl_certificate_key /etc/letsencrypt/live/aleksnick01inv.fvds.ru/privkey.pem;
+        ssl_certificate /etc/letsencrypt/live/tradejs.dev/fullchain.pem;
+        ssl_certificate_key /etc/letsencrypt/live/tradejs.dev/privkey.pem;
 
         ssl_protocols TLSv1.2 TLSv1.3;
         ssl_ciphers HIGH:!aNULL:!MD5;

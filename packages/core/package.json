@@ -1,7 +1,6 @@
 {
   "name": "@tradejs/core",
   "version": "1.0.0",
-  "private": true,
   "main": "src/index.ts",
   "types": "src/index.ts",
   "dependencies": {
@@ -23,6 +22,9 @@
     "technicalindicators": "^3.1.0",
     "uuid": "11.1.0",
     "winston": "3.17.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.1"
   },
   "scripts": {
     "build": "echo 'core: build placeholder'",

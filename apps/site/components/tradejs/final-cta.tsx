@@ -8,8 +8,8 @@ export function FinalCta() {
 
   const quickstartUrl =
     locale === "ru"
-      ? "https://docs.aleksnick01inv.fvds.ru/ru/getting-started/quickstart"
-      : "https://docs.aleksnick01inv.fvds.ru/getting-started/quickstart"
+      ? "https://docs.tradejs.dev/ru/getting-started/quickstart"
+      : "https://docs.tradejs.dev/getting-started/quickstart"
 
   return (
     <section className="relative py-24 lg:py-32">

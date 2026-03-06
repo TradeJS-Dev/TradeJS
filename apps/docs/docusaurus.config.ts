@@ -11,7 +11,7 @@ const config: Config = {
     v4: true,
   },
 
-  url: 'https://docs.aleksnick01inv.fvds.ru',
+  url: 'https://docs.tradejs.dev',
   baseUrl: '/',
 
   onBrokenLinks: 'throw',

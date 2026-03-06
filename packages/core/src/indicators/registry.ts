@@ -3,7 +3,10 @@ import type {
   IndicatorPluginEntry,
   IndicatorPluginRenderer,
 } from '@types';
-import { logger } from '@utils/logger';
+
+const warn = (message: string, ...args: unknown[]) => {
+  console.warn(`[indicators] ${message}`, ...args);
+};
 
 const pluginIndicatorEntries = new Map<string, IndicatorPluginEntry>();
 
@@ -14,12 +17,12 @@ export const registerIndicatorEntries = (
   for (const entry of entries) {
     const indicatorId = entry.indicator?.id;
     if (!indicatorId) {
-      logger.warn('Skip indicator entry without id from %s', source);
+      warn('Skip indicator entry without id from %s', source);
       continue;
     }
 
     if (pluginIndicatorEntries.has(indicatorId)) {
-      logger.warn(
+      warn(
         'Skip duplicate indicator "%s" from %s: already registered',
         indicatorId,
         source,

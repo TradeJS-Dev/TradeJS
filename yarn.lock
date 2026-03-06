@@ -129,7 +129,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@algolia/client-search@npm:5.49.1":
+"@algolia/client-search@npm:5.49.1, @algolia/client-search@npm:^5.37.0":
   version: 5.49.1
   resolution: "@algolia/client-search@npm:5.49.1"
   dependencies:
@@ -7184,10 +7184,10 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@tradejs/connectors@workspace:packages/connectors"
   dependencies:
-    "@tradejs/core": "workspace:*"
     bybit-api: "npm:^3.9.0"
     chalk: "npm:4.1.2"
     lodash: "npm:^4.17.21"
+    typescript: "npm:^5.1"
   languageName: unknown
   linkType: soft
 
@@ -7211,6 +7211,7 @@ __metadata:
     progress: "npm:^2.0.3"
     puppeteer: "npm:24.15.0"
     technicalindicators: "npm:^3.1.0"
+    typescript: "npm:^5.1"
     uuid: "npm:11.1.0"
     winston: "npm:3.17.0"
   languageName: unknown
@@ -7247,6 +7248,8 @@ __metadata:
 "@tradejs/framework@workspace:*, @tradejs/framework@workspace:packages/framework":
   version: 0.0.0-use.local
   resolution: "@tradejs/framework@workspace:packages/framework"
+  dependencies:
+    "@tradejs/core": "workspace:*"
   languageName: unknown
   linkType: soft
 
@@ -21732,6 +21735,13 @@ __metadata:
     ajv-formats: "npm:^2.1.1"
     ajv-keywords: "npm:^5.1.0"
   checksum: 10c0/1c8d2c480a026d7c02ab2ecbe5919133a096d6a721a3f201fa50663e4f30f6d6ba020dfddd93cb828b66b922e76b342e103edd19a62c95c8f60e9079cc403202
+  languageName: node
+  linkType: hard
+
+"search-insights@npm:^2.0.0":
+  version: 2.17.3
+  resolution: "search-insights@npm:2.17.3"
+  checksum: 10c0/e33eb2541e2de97665bfefe80d9633396fc0300cdeac475155a439022561244d294d7878f69c6a395bd4b81eaec4c7d03d72621c1128603d101bb8a3201cd36d
   languageName: node
   linkType: hard
 

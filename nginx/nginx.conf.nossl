@@ -13,7 +13,7 @@ http {
 
     server {
         listen 80;
-        server_name aleksnick01inv.fvds.ru;
+        server_name tradejs.dev;
 
         location /.well-known/acme-challenge/ {
             root /var/www/certbot;
@@ -26,7 +26,7 @@ http {
 
     server {
         listen 80;
-        server_name app.aleksnick01inv.fvds.ru;
+        server_name app.tradejs.dev;
 
         location /.well-known/acme-challenge/ {
             root /var/www/certbot;
@@ -39,7 +39,7 @@ http {
 
     server {
         listen 80;
-        server_name redisinsight.aleksnick01inv.fvds.ru;
+        server_name redisinsight.tradejs.dev;
 
         location /.well-known/acme-challenge/ {
             root /var/www/certbot;
@@ -52,7 +52,7 @@ http {
 
     server {
         listen 80;
-        server_name docs.aleksnick01inv.fvds.ru;
+        server_name docs.tradejs.dev;
 
         location /.well-known/acme-challenge/ {
             root /var/www/certbot;

@@ -113,7 +113,7 @@ services:
       - ./certbot/www:/var/www/certbot:ro
       - ./nginx/.htpasswd:/etc/nginx/.htpasswd:ro
     entrypoint: >
-      sh -c "[ -f /etc/letsencrypt/live/aleksnick01inv.fvds.ru/fullchain.pem ]
+      sh -c "[ -f /etc/letsencrypt/live/tradejs.dev/fullchain.pem ]
       && cp /etc/nginx/nginx.conf.ssl /etc/nginx/nginx.conf 
       || cp /etc/nginx/nginx.conf.nossl /etc/nginx/nginx.conf;
       nginx -g 'daemon off;'"
@@ -141,8 +141,8 @@ services:
     entrypoint: >
       sh -c "certbot certonly --webroot --webroot-path=/var/www/certbot
       --email aleksnick01@gmail.com --agree-tos --no-eff-email
-      --non-interactive --expand --cert-name aleksnick01inv.fvds.ru
-      -d aleksnick01inv.fvds.ru -d app.aleksnick01inv.fvds.ru -d redisinsight.aleksnick01inv.fvds.ru -d docs.aleksnick01inv.fvds.ru || true"
+      --non-interactive --expand --cert-name tradejs.dev
+      -d tradejs.dev -d app.tradejs.dev -d redisinsight.tradejs.dev -d docs.tradejs.dev || true"
     networks:
       - web
 

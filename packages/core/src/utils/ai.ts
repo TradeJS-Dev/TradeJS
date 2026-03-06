@@ -239,7 +239,7 @@ export const askAI = async (signal: Signal) => {
     configuration: {
       baseURL: process.env.OPENAI_API_ENDPOINT || 'https://api.openai.com/v1',
       defaultHeaders: {
-        'HTTP-Referer': 'https://aleksnick01inv.fvds.ru',
+        'HTTP-Referer': 'https://tradejs.dev',
         'X-Title': 'Inv',
       },
     },

@@ -10,12 +10,18 @@ declare global {
 
 const getPool = () => {
   if (!global.__pgPool__) {
+    const host = process.env.PG_HOST || '127.0.0.1';
+    const port = Number(process.env.PG_PORT ?? 5432);
+    const user = process.env.PG_USER || 'app';
+    const password = String(process.env.PG_PASSWORD ?? 'app');
+    const database = process.env.PG_DATABASE || process.env.PG_DB || 'app';
+
     global.__pgPool__ = new Pool({
-      host: process.env.PG_HOST,
-      port: Number(process.env.PG_PORT ?? 5432),
-      user: process.env.PG_USER,
-      password: process.env.PG_PASSWORD,
-      database: process.env.PG_DATABASE,
+      host,
+      port,
+      user,
+      password,
+      database,
       max: 10,
       idleTimeoutMillis: 30_000,
       connectionTimeoutMillis: 5_000,

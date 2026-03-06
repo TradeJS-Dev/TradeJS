@@ -31,8 +31,8 @@ export const translations = {
           description:
             "Write strategies and indicators in TypeScript with full type safety, autocompletion, and access to the entire npm ecosystem.",
           links: [
-            { label: "Write Strategies", url: "https://docs.aleksnick01inv.fvds.ru/strategies/authoring/write-strategies" },
-            { label: "Author Indicators", url: "https://docs.aleksnick01inv.fvds.ru/indicators/authoring" },
+            { label: "Write Strategies", url: "https://docs.tradejs.dev/strategies/authoring/write-strategies" },
+            { label: "Author Indicators", url: "https://docs.tradejs.dev/indicators/authoring" },
           ],
         },
         {
@@ -40,8 +40,8 @@ export const translations = {
           description:
             "Migrate existing TradingView strategies seamlessly. TradeJS supports Pine Script authoring alongside TypeScript.",
           links: [
-            { label: "Pine Strategies", url: "https://docs.aleksnick01inv.fvds.ru/strategies/authoring/pine-strategy-step-by-step" },
-            { label: "Pine Indicators", url: "https://docs.aleksnick01inv.fvds.ru/indicators/pine" },
+            { label: "Pine Strategies", url: "https://docs.tradejs.dev/strategies/authoring/pine-strategy-step-by-step" },
+            { label: "Pine Indicators", url: "https://docs.tradejs.dev/indicators/pine" },
           ],
         },
         {
@@ -49,8 +49,8 @@ export const translations = {
           description:
             "Run TradeJS locally or deploy self-hosted. Full control over your data, infrastructure, and execution environment.",
           links: [
-            { label: "Local Setup", url: "https://docs.aleksnick01inv.fvds.ru/getting-started/local" },
-            { label: "Self-Hosted", url: "https://docs.aleksnick01inv.fvds.ru/getting-started/self-hosted" },
+            { label: "Local Setup", url: "https://docs.tradejs.dev/getting-started/local" },
+            { label: "Self-Hosted", url: "https://docs.tradejs.dev/getting-started/self-hosted" },
           ],
         },
       ],
@@ -65,8 +65,8 @@ export const translations = {
           description:
             "Enhance your signals with AI and ML models. Configurable pipelines for signal filtering, prediction, and risk scoring.",
           links: [
-            { label: "AI Configuration", url: "https://docs.aleksnick01inv.fvds.ru/ai-ml/ai/configuration" },
-            { label: "ML Configuration", url: "https://docs.aleksnick01inv.fvds.ru/ai-ml/ml/configuration" },
+            { label: "AI Configuration", url: "https://docs.tradejs.dev/ai-ml/ai/configuration" },
+            { label: "ML Configuration", url: "https://docs.tradejs.dev/ai-ml/ml/configuration" },
           ],
         },
         {
@@ -74,7 +74,7 @@ export const translations = {
           description:
             "Run massive parameter sweeps with grid config. Find optimal strategy configurations across thousands of combinations automatically.",
           links: [
-            { label: "Grid Config", url: "https://docs.aleksnick01inv.fvds.ru/runtime/backtesting/grid-config" },
+            { label: "Grid Config", url: "https://docs.tradejs.dev/runtime/backtesting/grid-config" },
           ],
         },
       ],
@@ -89,7 +89,7 @@ export const translations = {
           description:
             "Promote your best backtest results directly to runtime config. No manual tuning — the framework handles the transition.",
           links: [
-            { label: "Results to Runtime", url: "https://docs.aleksnick01inv.fvds.ru/runtime/backtesting/results-runtime-config" },
+            { label: "Results to Runtime", url: "https://docs.tradejs.dev/runtime/backtesting/results-runtime-config" },
           ],
         },
         {
@@ -97,7 +97,7 @@ export const translations = {
           description:
             "Get real-time signal alerts, execution reports, and error notifications directly in Telegram. Stay informed without watching dashboards.",
           links: [
-            { label: "Telegram Setup", url: "https://docs.aleksnick01inv.fvds.ru/runtime/execution/telegram-notifications" },
+            { label: "Telegram Setup", url: "https://docs.tradejs.dev/runtime/execution/telegram-notifications" },
           ],
         },
       ],
@@ -175,8 +175,8 @@ export const translations = {
           description:
             "Пишите стратегии и индикаторы на TypeScript с полной типизацией, автодополнением и доступом ко всей экосистеме npm.",
           links: [
-            { label: "Написание стратегий", url: "https://docs.aleksnick01inv.fvds.ru/ru/strategies/authoring/write-strategies" },
-            { label: "Создание индикаторов", url: "https://docs.aleksnick01inv.fvds.ru/ru/indicators/authoring" },
+            { label: "Написание стратегий", url: "https://docs.tradejs.dev/ru/strategies/authoring/write-strategies" },
+            { label: "Создание индикаторов", url: "https://docs.tradejs.dev/ru/indicators/authoring" },
           ],
         },
         {
@@ -184,8 +184,8 @@ export const translations = {
           description:
             "Мигрируйте стратегии из TradingView без потерь. TradeJS поддерживает Pine Script наравне с TypeScript.",
           links: [
-            { label: "Pine-стратегии", url: "https://docs.aleksnick01inv.fvds.ru/ru/strategies/authoring/pine-strategy-step-by-step" },
-            { label: "Pine-индикаторы", url: "https://docs.aleksnick01inv.fvds.ru/ru/indicators/pine" },
+            { label: "Pine-стратегии", url: "https://docs.tradejs.dev/ru/strategies/authoring/pine-strategy-step-by-step" },
+            { label: "Pine-индикаторы", url: "https://docs.tradejs.dev/ru/indicators/pine" },
           ],
         },
         {
@@ -193,8 +193,8 @@ export const translations = {
           description:
             "Запускайте TradeJS локально или на своём сервере. Полный контроль над данными, инфраструктурой и средой исполнения.",
           links: [
-            { label: "Локальная установка", url: "https://docs.aleksnick01inv.fvds.ru/ru/getting-started/local" },
-            { label: "Self-hosted установка", url: "https://docs.aleksnick01inv.fvds.ru/ru/getting-started/self-hosted" },
+            { label: "Локальная установка", url: "https://docs.tradejs.dev/ru/getting-started/local" },
+            { label: "Self-hosted установка", url: "https://docs.tradejs.dev/ru/getting-started/self-hosted" },
           ],
         },
       ],
@@ -208,8 +208,8 @@ export const translations = {
           description:
             "Усиливайте сигналы с помощью AI и ML моделей. Настраиваемые пайплайны для фильтрации, предсказания и оценки рисков.",
           links: [
-            { label: "Конфигурация AI", url: "https://docs.aleksnick01inv.fvds.ru/ru/ai-ml/ai/configuration" },
-            { label: "Конфигурация ML", url: "https://docs.aleksnick01inv.fvds.ru/ru/ai-ml/ml/configuration" },
+            { label: "Конфигурация AI", url: "https://docs.tradejs.dev/ru/ai-ml/ai/configuration" },
+            { label: "Конфигурация ML", url: "https://docs.tradejs.dev/ru/ai-ml/ml/configuration" },
           ],
         },
         {
@@ -217,7 +217,7 @@ export const translations = {
           description:
             "Запускайте массовый перебор параметров через Grid Config. Автоматически находите оптимальные конфигурации среди тысяч комбинаций.",
           links: [
-            { label: "Grid Config", url: "https://docs.aleksnick01inv.fvds.ru/ru/runtime/backtesting/grid-config" },
+            { label: "Grid Config", url: "https://docs.tradejs.dev/ru/runtime/backtesting/grid-config" },
           ],
         },
       ],
@@ -231,7 +231,7 @@ export const translations = {
           description:
             "Переносите лучшие результаты бэктестов прямо в рантайм-конфиг. Без ручной настройки — фреймворк делает всё сам.",
           links: [
-            { label: "Результаты в рантайм", url: "https://docs.aleksnick01inv.fvds.ru/ru/runtime/backtesting/results-runtime-config" },
+            { label: "Результаты в рантайм", url: "https://docs.tradejs.dev/ru/runtime/backtesting/results-runtime-config" },
           ],
         },
         {
@@ -239,7 +239,7 @@ export const translations = {
           description:
             "Получайте алерты о сигналах, отчёты об исполнении и уведомления об ошибках прямо в Telegram. Будьте в курсе без мониторинга дашбордов.",
           links: [
-            { label: "Настройка Telegram", url: "https://docs.aleksnick01inv.fvds.ru/ru/runtime/execution/telegram-notifications" },
+            { label: "Настройка Telegram", url: "https://docs.tradejs.dev/ru/runtime/execution/telegram-notifications" },
           ],
         },
       ],

@@ -72,7 +72,16 @@
     "unit": "jest",
     "unit:coverage": "jest --coverage",
     "update-history": "yarn backtest --updateOnly",
-    "user-add": "time yarn workspace @tradejs/cli user-add"
+    "user-add": "time yarn workspace @tradejs/cli user-add",
+    "npm:whoami": "yarn npm whoami",
+    "npm:publish:core": "yarn workspace @tradejs/core npm publish --access public --tolerate-republish",
+    "npm:publish:connectors": "yarn workspace @tradejs/connectors npm publish --access public --tolerate-republish",
+    "npm:publish:framework": "yarn workspace @tradejs/framework npm publish --access public --tolerate-republish",
+    "npm:publish:core:dry": "yarn workspace @tradejs/core npm publish --access public --dry-run",
+    "npm:publish:connectors:dry": "yarn workspace @tradejs/connectors npm publish --access public --dry-run",
+    "npm:publish:framework:dry": "yarn workspace @tradejs/framework npm publish --access public --dry-run",
+    "npm:publish:all": "yarn npm:publish:core && yarn npm:publish:connectors && yarn npm:publish:framework",
+    "npm:publish:all:dry": "yarn npm:publish:core:dry && yarn npm:publish:connectors:dry && yarn npm:publish:framework:dry"
   },
   "devDependencies": {
     "@babel/core": "^7.28.0",
@@ -112,5 +121,5 @@
     "turbo": "^2.5.6",
     "typescript": "^5.1"
   },
-  "packageManager": "yarn@4.12.0"
+  "packageManager": "yarn@4.13.0"
 }

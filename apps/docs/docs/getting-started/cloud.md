@@ -13,7 +13,7 @@ The managed cloud workflow is currently under active development.
 
 ## Current Testing Endpoint
 
-- `https://aleksnick01inv.fvds.ru/`
+- `https://tradejs.dev/`
 
 ## What to Use for Production Today
 

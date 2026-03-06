@@ -49,7 +49,7 @@ args.option(['C', 'cacheOnly'], 'Do not update tickers history', false);
 args.option(['c', 'config'], 'Backtest config', 'breakout');
 args.option(['L', 'showTickersList'], 'Just show only ticker list', false);
 args.option(['S', 'progressStep'], 'Progress step', 100);
-args.option(['U', 'user'], 'Use user confg', 'root');
+args.option(['U', 'user'], 'Use user config', 'root');
 args.option(
   'connector',
   'Connector/provider for backtest (bybit|binance|coinbase)',
@@ -64,6 +64,10 @@ args.option(
 const flags = args.parse(process.argv);
 const interval = flags.timeframe.toString() as Interval;
 const progressStep = flags.progressStep;
+const testerWorkerPath = path.resolve(
+  __dirname,
+  '../../../core/src/workers/tester.ts',
+);
 
 const HEADERS_RESULTS = [
   chalk.blue('ID'),
@@ -176,13 +180,13 @@ const setTestData = async (test: Test, stat: TestStat, orderLog: OrderLog) => {
 };
 
 const backtest = async () => {
-  if (!flags.confg) {
+  if (!flags.config) {
     throw new Error('Backtest config not send');
   }
 
   const strategyName = flags.config.split(':')[0];
 
-  if (!flags.confg) {
+  if (!flags.config) {
     throw new Error('Strategy name not found');
   }
 
@@ -287,13 +291,15 @@ const backtest = async () => {
   for (const chunk of chunks) {
     const chunkId = uuid();
     const chunkWithId = chunk.map((test) => ({ ...test, chunkId }));
-    const tester = fork(
-      path.resolve(__dirname, '../workers', 'tester.ts'),
-      [],
-      {
-        execArgv: ['--max-old-space-size=8192', '-r', 'ts-node/register'],
-      },
-    );
+    const tester = fork(testerWorkerPath, [], {
+      execArgv: [
+        '--max-old-space-size=8192',
+        '-r',
+        'ts-node/register',
+        '-r',
+        'tsconfig-paths/register',
+      ],
+    });
     workers.add(tester);
 
     tester.on('message', async (msg: any) => {

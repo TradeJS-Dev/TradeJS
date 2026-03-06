@@ -13,7 +13,7 @@ title: Cloud-использование
 
 ## Текущий endpoint для тестирования
 
-- `https://aleksnick01inv.fvds.ru/`
+- `https://tradejs.dev/`
 
 ## Что использовать в проде сейчас
 

@@ -7,8 +7,8 @@ export function Footer() {
 
   const docsUrl =
     locale === "ru"
-      ? "https://docs.aleksnick01inv.fvds.ru/ru/"
-      : "https://docs.aleksnick01inv.fvds.ru/"
+      ? "https://docs.tradejs.dev/ru/"
+      : "https://docs.tradejs.dev/"
 
   return (
     <footer className="border-t border-border bg-surface/30">
@@ -35,7 +35,7 @@ export function Footer() {
           {/* Links */}
           <div className="flex items-center gap-6">
             <a
-              href="https://aleksnick01inv.fvds.ru"
+              href="https://tradejs.dev"
               target="_blank"
               rel="noopener noreferrer"
               className="text-sm text-muted-foreground hover:text-foreground transition-colors"

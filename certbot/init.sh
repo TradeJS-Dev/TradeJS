@@ -1,8 +1,8 @@
 #!/bin/sh
-if [ ! -d "/etc/letsencrypt/live/aleksnick01inv.fvds.ru" ]; then
+if [ ! -d "/etc/letsencrypt/live/tradejs.dev" ]; then
   certbot certonly --webroot -w /var/www/certbot \
     --email aleksnick01@gmail.com --agree-tos --no-eff-email \
-    -d aleksnick01inv.fvds.ru \
-    -d redisinsight.aleksnick01inv.fvds.ru \
-    -d docs.aleksnick01inv.fvds.ru
+    -d tradejs.dev \
+    -d redisinsight.tradejs.dev \
+    -d docs.tradejs.dev
 fi

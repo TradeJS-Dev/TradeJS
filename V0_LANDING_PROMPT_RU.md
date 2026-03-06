@@ -23,9 +23,9 @@ TradeJS — это фреймворк для:
 1. Лендинг должен быть **одностраничным**.
 2. Должен быть **переключатель языков RU/EN** (в шапке, заметный).
 3. Должна быть большая заметная кнопка **Get Started** (primary CTA), ведущая на:
-   - `https://aleksnick01inv.fvds.ru`
+   - `https://tradejs.dev`
 4. Должна быть кнопка/ссылка на документацию:
-   - `https://docs.aleksnick01inv.fvds.ru/`
+   - `https://docs.tradejs.dev/`
 5. В блоке преимуществ каждый пункт должен иметь ссылку **Learn more / Подробнее** на соответствующую статью из docs (см. exact links ниже).
 6. Адаптивность обязательна: mobile/tablet/desktop.
 7. Не использовать заглушки вида “Lorem ipsum”. Контент должен быть осмысленным и готовым к публикации.
@@ -100,53 +100,53 @@ TradeJS — это фреймворк для:
 
 ### 1) Стратегии/индикаторы на TypeScript
 EN:
-- `https://docs.aleksnick01inv.fvds.ru/strategies/authoring/write-strategies`
-- `https://docs.aleksnick01inv.fvds.ru/indicators/authoring`
+- `https://docs.tradejs.dev/strategies/authoring/write-strategies`
+- `https://docs.tradejs.dev/indicators/authoring`
 RU:
-- `https://docs.aleksnick01inv.fvds.ru/ru/strategies/authoring/write-strategies`
-- `https://docs.aleksnick01inv.fvds.ru/ru/indicators/authoring`
+- `https://docs.tradejs.dev/ru/strategies/authoring/write-strategies`
+- `https://docs.tradejs.dev/ru/indicators/authoring`
 
 ### 2) Совместимость с Pine Script
 EN:
-- `https://docs.aleksnick01inv.fvds.ru/strategies/authoring/pine-strategy-step-by-step`
-- `https://docs.aleksnick01inv.fvds.ru/indicators/pine`
+- `https://docs.tradejs.dev/strategies/authoring/pine-strategy-step-by-step`
+- `https://docs.tradejs.dev/indicators/pine`
 RU:
-- `https://docs.aleksnick01inv.fvds.ru/ru/strategies/authoring/pine-strategy-step-by-step`
-- `https://docs.aleksnick01inv.fvds.ru/ru/indicators/pine`
+- `https://docs.tradejs.dev/ru/strategies/authoring/pine-strategy-step-by-step`
+- `https://docs.tradejs.dev/ru/indicators/pine`
 
 ### 3) Локальный запуск и self-hosted
 EN:
-- `https://docs.aleksnick01inv.fvds.ru/getting-started/local`
-- `https://docs.aleksnick01inv.fvds.ru/getting-started/self-hosted`
+- `https://docs.tradejs.dev/getting-started/local`
+- `https://docs.tradejs.dev/getting-started/self-hosted`
 RU:
-- `https://docs.aleksnick01inv.fvds.ru/ru/getting-started/local`
-- `https://docs.aleksnick01inv.fvds.ru/ru/getting-started/self-hosted`
+- `https://docs.tradejs.dev/ru/getting-started/local`
+- `https://docs.tradejs.dev/ru/getting-started/self-hosted`
 
 ### 4) Встроенный AI / ML функционал
 EN:
-- `https://docs.aleksnick01inv.fvds.ru/ai-ml/ai/configuration`
-- `https://docs.aleksnick01inv.fvds.ru/ai-ml/ml/configuration`
+- `https://docs.tradejs.dev/ai-ml/ai/configuration`
+- `https://docs.tradejs.dev/ai-ml/ml/configuration`
 RU:
-- `https://docs.aleksnick01inv.fvds.ru/ru/ai-ml/ai/configuration`
-- `https://docs.aleksnick01inv.fvds.ru/ru/ai-ml/ml/configuration`
+- `https://docs.tradejs.dev/ru/ai-ml/ai/configuration`
+- `https://docs.tradejs.dev/ru/ai-ml/ml/configuration`
 
 ### 5) Массовые бэктесты через grid config
 EN:
-- `https://docs.aleksnick01inv.fvds.ru/runtime/backtesting/grid-config`
+- `https://docs.tradejs.dev/runtime/backtesting/grid-config`
 RU:
-- `https://docs.aleksnick01inv.fvds.ru/ru/runtime/backtesting/grid-config`
+- `https://docs.tradejs.dev/ru/runtime/backtesting/grid-config`
 
 ### 6) Применение лучших тестов в рантайме
 EN:
-- `https://docs.aleksnick01inv.fvds.ru/runtime/backtesting/results-runtime-config`
+- `https://docs.tradejs.dev/runtime/backtesting/results-runtime-config`
 RU:
-- `https://docs.aleksnick01inv.fvds.ru/ru/runtime/backtesting/results-runtime-config`
+- `https://docs.tradejs.dev/ru/runtime/backtesting/results-runtime-config`
 
 ### 7) Telegram-нотификации
 EN:
-- `https://docs.aleksnick01inv.fvds.ru/runtime/execution/telegram-notifications`
+- `https://docs.tradejs.dev/runtime/execution/telegram-notifications`
 RU:
-- `https://docs.aleksnick01inv.fvds.ru/ru/runtime/execution/telegram-notifications`
+- `https://docs.tradejs.dev/ru/runtime/execution/telegram-notifications`
 
 ## Локализация (важно)
 
