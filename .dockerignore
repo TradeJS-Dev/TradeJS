@@ -6,6 +6,9 @@ Dockerfile
 docker-compose.yml
 .env
 .next
+apps/**/.next
+apps/**/dist
+packages/**/dist
 .vscode
 certbot
 nginx/*

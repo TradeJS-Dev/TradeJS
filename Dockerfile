@@ -18,20 +18,21 @@ RUN apk add --no-cache \
 
 WORKDIR /app
 
-COPY package.json yarn.lock .yarn .yarnrc.yml ./
+COPY package.json yarn.lock .yarnrc.yml turbo.json tsconfig.json ./
+COPY .yarn ./.yarn
 
 RUN corepack enable
-RUN corepack prepare yarn@4.12.0 --activate
-RUN yarn
+RUN corepack prepare yarn@4.13.0 --activate
+RUN yarn install --immutable
 
-COPY next.config.mjs tsconfig.json next-env.d.ts postcss.config.js ./
-COPY src ./src
-COPY public ./public
+COPY apps ./apps
+COPY packages ./packages
+COPY examples ./examples
 COPY proto ./proto
 COPY entrypoint.sh ./entrypoint.sh
 COPY cronjob /etc/crontabs/root
 
-RUN yarn build
+RUN yarn workspace @tradejs/app build
 
 RUN chmod +x ./entrypoint.sh
 
