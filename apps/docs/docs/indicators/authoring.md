@@ -86,14 +86,38 @@ When app requests chart data, plugin indicator values become part of indicator h
 
 ## 4. Show Indicator in Chart UI
 
-Renderer config controls how the indicator is displayed:
+Define `renderer` inside `indicatorEntries`; the UI pipeline then wires it automatically:
 
-- pane id and height
-- line/bar type
-- color and line width
-- constants (for reference levels)
+1. `GET /api/indicators` returns `renderers` (`apps/app/src/app/api/indicators/route.ts`).
+2. Store keeps them in `indicatorRenderers` (`apps/app/src/app/store/indicators.ts`).
+3. `usePluginIndicators` registers indicator runtime in chart and draws figures (`apps/app/src/app/components/Dashboard/KlineChart/hooks/usePluginIndicators.ts`).
 
-The chart uses renderer descriptors from indicator plugin registry and builds overlays automatically.
+Minimal working setup:
+
+```ts
+{
+  historyKey: 'sandboxMomentum',
+  compute: ({ data }) => {
+    const last = data[data.length - 1];
+    const prev = data[data.length - 2];
+    if (!last || !prev || prev.close === 0) return null;
+    return ((last.close - prev.close) / prev.close) * 100;
+  },
+  renderer: {
+    shortName: 'SBX MOM',
+    paneId: 'sandbox_momentum_pane',
+    minHeight: 120,
+    figures: [
+      { key: 'sandboxMomentum', type: 'line', color: '#f59e0b' },
+      { key: 'sandboxMomentumZero', type: 'line', constant: 0, dashed: true },
+    ],
+  },
+}
+```
+
+- `renderer.figures[].key` must match keys present in candles (usually your `historyKey`).
+- Use `constant` for horizontal levels so no extra compute output is needed.
+- Then just enable the indicator in UI (Indicators); pane and lines are created automatically.
 
 ## 5. Debug Checklist
 

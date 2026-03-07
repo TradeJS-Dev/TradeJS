@@ -32,10 +32,14 @@ const createMockRedisClient = (): MockRedisClient => {
 describe('redis utils', () => {
   const originalHost = process.env.REDIS_HOST;
   const originalPort = process.env.REDIS_PORT;
+  const originalConnectTimeout = process.env.REDIS_CONNECT_TIMEOUT_MS;
+  const originalMaxRetries = process.env.REDIS_MAX_RETRIES_PER_REQUEST;
 
   afterEach(() => {
     process.env.REDIS_HOST = originalHost;
     process.env.REDIS_PORT = originalPort;
+    process.env.REDIS_CONNECT_TIMEOUT_MS = originalConnectTimeout;
+    process.env.REDIS_MAX_RETRIES_PER_REQUEST = originalMaxRetries;
     delete (global as any).__redis__;
     jest.resetModules();
     jest.clearAllMocks();
@@ -68,6 +72,8 @@ describe('redis utils', () => {
   it('creates singleton redis client with env host/port and reuses it', async () => {
     process.env.REDIS_HOST = '127.0.0.1';
     process.env.REDIS_PORT = '6380';
+    process.env.REDIS_CONNECT_TIMEOUT_MS = '4500';
+    process.env.REDIS_MAX_RETRIES_PER_REQUEST = '2';
 
     const { redisModule, redisClient, redisCtorMock } = await setup();
     redisClient.call.mockResolvedValue('{"ok":1}');
@@ -76,10 +82,16 @@ describe('redis utils', () => {
     await expect(redisModule.getData('k2', null)).resolves.toEqual({ ok: 1 });
 
     expect(redisCtorMock).toHaveBeenCalledTimes(1);
-    expect(redisCtorMock).toHaveBeenCalledWith({
-      host: '127.0.0.1',
-      port: 6380,
-    });
+    expect(redisCtorMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        host: '127.0.0.1',
+        port: 6380,
+        connectTimeout: 4500,
+        maxRetriesPerRequest: 2,
+        enableOfflineQueue: false,
+        retryStrategy: expect.any(Function),
+      }),
+    );
     expect(redisClient.on).toHaveBeenCalledWith('error', expect.any(Function));
     expect(redisClient.on).toHaveBeenCalledWith('ready', expect.any(Function));
   });
@@ -161,6 +173,36 @@ describe('redis utils', () => {
       'fallback-get-error',
       'Error: get-error',
     );
+  });
+
+  it('marks redis unavailable on connectivity errors and short-circuits until ready', async () => {
+    const { redisModule, redisClient, loggerLogMock } = await setup();
+
+    redisClient.call.mockRejectedValueOnce(
+      new Error(
+        'MaxRetriesPerRequestError: Reached the max retries per request limit',
+      ),
+    );
+
+    await expect(redisModule.getData('k1', { fallback: 1 })).resolves.toEqual({
+      fallback: 1,
+    });
+    expect(redisClient.get).not.toHaveBeenCalled();
+    expect(loggerLogMock).toHaveBeenCalledWith(
+      'warn',
+      'Redis is unavailable: %s. Cache-dependent features are temporarily disabled.',
+      expect.stringContaining('MaxRetriesPerRequestError'),
+    );
+
+    redisClient.call.mockClear();
+    await expect(redisModule.getData('k2', { fallback: 2 })).resolves.toEqual({
+      fallback: 2,
+    });
+    expect(redisClient.call).not.toHaveBeenCalled();
+
+    redisClient.emit('ready');
+    redisClient.call.mockResolvedValueOnce('{"ok":2}');
+    await expect(redisModule.getData('k3', null)).resolves.toEqual({ ok: 2 });
   });
 
   it('supports delKey/delKeyWithOptions and raises on MISCONF when requested', async () => {

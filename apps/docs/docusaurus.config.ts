@@ -80,6 +80,18 @@ const config: Config = {
         },
         {
           type: 'doc',
+          docId: 'api/framework',
+          position: 'left',
+          label: 'API',
+        },
+        {
+          type: 'doc',
+          docId: 'api/cli',
+          position: 'left',
+          label: 'CLI',
+        },
+        {
+          type: 'doc',
           docId: 'strategies/authoring/write-strategies',
           position: 'left',
           label: 'Strategies',

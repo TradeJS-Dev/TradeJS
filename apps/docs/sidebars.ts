@@ -15,54 +15,77 @@ const sidebars: SidebarsConfig = {
     },
     {
       type: 'category',
-      label: 'Core APIs',
-      items: ['api/framework', 'api/cli'],
-    },
-    {
-      type: 'category',
-      label: 'Strategies',
+      label: 'API',
+      collapsed: false,
       items: [
+        'api/framework',
         {
           type: 'category',
-          label: 'Authoring',
+          label: 'Runtime',
+          items: ['runtime/execution/strategy-hooks'],
+        },
+        {
+          type: 'category',
+          label: 'Strategies',
           items: [
-            'strategies/authoring/write-strategies',
-            'strategies/authoring/ma-strategy-step-by-step',
-            'strategies/authoring/pine-strategy-step-by-step',
-            'strategies/authoring/plugin-e2e',
+            {
+              type: 'category',
+              label: 'Authoring',
+              items: [
+                'strategies/authoring/write-strategies',
+                'strategies/authoring/ma-strategy-step-by-step',
+                'strategies/authoring/pine-strategy-step-by-step',
+                'strategies/authoring/plugin-e2e',
+              ],
+            },
+            {
+              type: 'category',
+              label: 'Built-In Strategies',
+              items: [
+                'strategies/reference/trendline',
+                'strategies/reference/breakout',
+                'strategies/reference/ma-strategy',
+                'strategies/reference/volume-divergence',
+                'strategies/reference/adaptive-momentum-ribbon',
+              ],
+            },
+            {
+              type: 'category',
+              label: 'Validation and Live Ops',
+              items: [
+                'strategies/operations/risk-management',
+                'strategies/operations/pre-live-checklist',
+                'strategies/operations/debug-live',
+              ],
+            },
           ],
         },
         {
           type: 'category',
-          label: 'Built-In Strategies',
+          label: 'Indicators',
           items: [
-            'strategies/reference/trendline',
-            'strategies/reference/breakout',
-            'strategies/reference/ma-strategy',
-            'strategies/reference/volume-divergence',
-            'strategies/reference/adaptive-momentum-ribbon',
-          ],
-        },
-        {
-          type: 'category',
-          label: 'Validation and Live Ops',
-          items: [
-            'strategies/operations/risk-management',
-            'strategies/operations/pre-live-checklist',
-            'strategies/operations/debug-live',
+            'indicators/authoring',
+            'indicators/pine',
+            'indicators/catalog',
           ],
         },
       ],
     },
     {
       type: 'category',
-      label: 'Indicators',
-      items: ['indicators/authoring', 'indicators/pine', 'indicators/catalog'],
-    },
-    {
-      type: 'category',
-      label: 'Runtime and Backtesting',
+      label: 'CLI',
+      collapsed: false,
       items: [
+        'api/cli',
+        {
+          type: 'category',
+          label: 'Runtime and Signals',
+          items: [
+            'runtime/execution/signals',
+            'runtime/execution/multi-strategy-signals',
+            'runtime/execution/telegram-notifications',
+          ],
+        },
         {
           type: 'category',
           label: 'Backtesting',
@@ -75,46 +98,37 @@ const sidebars: SidebarsConfig = {
         },
         {
           type: 'category',
-          label: 'Runtime Flow',
-          items: [
-            'runtime/execution/signals',
-            'runtime/execution/multi-strategy-signals',
-            'runtime/execution/telegram-notifications',
-            'runtime/execution/strategy-hooks',
-          ],
+          label: 'ML Pipeline',
+          items: ['ai-ml/ml/inspect', 'ai-ml/ml/train-latest-select'],
         },
         {
           type: 'category',
-          label: 'Data Continuity',
-          items: ['runtime/data/continuity-update-history'],
+          label: 'Data and Maintenance',
+          items: [
+            'runtime/data/continuity-update-history',
+            'operations/derivatives-ingest',
+            'operations/maintenance-cli-scripts',
+          ],
         },
       ],
     },
     {
       type: 'category',
-      label: 'AI and ML',
+      label: 'AI',
       items: [
-        {
-          type: 'category',
-          label: 'ML',
-          items: [
-            'ai-ml/ml/configuration',
-            'ai-ml/ml/inspect',
-            'ai-ml/ml/train-latest-select',
-            'ai-ml/ml/infer-service',
-            'ai-ml/ml/feature-engineering-cookbook',
-            'ai-ml/ml/model-promotion-policy',
-          ],
-        },
-        {
-          type: 'category',
-          label: 'AI',
-          items: [
-            'ai-ml/ai/configuration',
-            'ai-ml/ai/prompt-governance',
-            'ai-ml/ai/offline-gating-eval',
-          ],
-        },
+        'ai-ml/ai/configuration',
+        'ai-ml/ai/prompt-governance',
+        'ai-ml/ai/offline-gating-eval',
+      ],
+    },
+    {
+      type: 'category',
+      label: 'ML',
+      items: [
+        'ai-ml/ml/configuration',
+        'ai-ml/ml/infer-service',
+        'ai-ml/ml/feature-engineering-cookbook',
+        'ai-ml/ml/model-promotion-policy',
       ],
     },
     {
@@ -125,8 +139,6 @@ const sidebars: SidebarsConfig = {
         'operations/redis-data-model',
         'operations/timescale-schema',
         'operations/add-exchange-connector',
-        'operations/derivatives-ingest',
-        'operations/maintenance-cli-scripts',
         'operations/production-runbook',
         'operations/monitoring-alerts',
         'operations/backup-restore',

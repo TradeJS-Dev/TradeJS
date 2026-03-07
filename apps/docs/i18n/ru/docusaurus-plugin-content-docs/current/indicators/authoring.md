@@ -85,14 +85,38 @@ yarn dev
 
 ## 4. Выведите индикатор на графике
 
-Отрисовка управляется `renderer`:
+`renderer` нужно объявить в `indicatorEntries`, а дальше проброс делается автоматически:
 
-- pane и высота
-- тип фигуры (`line` / `bar`)
-- цвет/толщина/пунктир
-- константы (уровни)
+1. `GET /api/indicators` отдает `renderers` (`apps/app/src/app/api/indicators/route.ts`).
+2. Store сохраняет их в `indicatorRenderers` (`apps/app/src/app/store/indicators.ts`).
+3. `usePluginIndicators` регистрирует индикатор в chart и рисует фигуры (`apps/app/src/app/components/Dashboard/KlineChart/hooks/usePluginIndicators.ts`).
 
-Chart UI автоматически строит оверлеи из renderer-описаний.
+Минимальная рабочая связка:
+
+```ts
+{
+  historyKey: 'sandboxMomentum',
+  compute: ({ data }) => {
+    const last = data[data.length - 1];
+    const prev = data[data.length - 2];
+    if (!last || !prev || prev.close === 0) return null;
+    return ((last.close - prev.close) / prev.close) * 100;
+  },
+  renderer: {
+    shortName: 'SBX MOM',
+    paneId: 'sandbox_momentum_pane',
+    minHeight: 120,
+    figures: [
+      { key: 'sandboxMomentum', type: 'line', color: '#f59e0b' },
+      { key: 'sandboxMomentumZero', type: 'line', constant: 0, dashed: true },
+    ],
+  },
+}
+```
+
+- `renderer.figures[].key` должен совпадать с ключом в свечах (обычно `historyKey`).
+- Для горизонтальных уровней используйте `constant`: тогда значение не нужно писать в `compute`.
+- После этого просто включите индикатор в UI (Indicators), панель/линии появятся автоматически.
 
 ## 5. Чеклист дебага
 

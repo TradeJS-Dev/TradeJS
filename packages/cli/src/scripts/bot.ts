@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import { runBot } from '@utils/bot';
 
 const run = async () => {

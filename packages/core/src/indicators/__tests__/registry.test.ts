@@ -1,12 +1,8 @@
 const warnMock = jest.fn();
+let warnSpy: jest.SpyInstance<void, [message?: any, ...optionalParams: any[]]>;
 
 const loadRegistry = () => {
   jest.resetModules();
-  jest.doMock('@utils/logger', () => ({
-    logger: {
-      warn: (...args: unknown[]) => warnMock(...args),
-    },
-  }));
 
   return require('../registry') as typeof import('../registry');
 };
@@ -14,6 +10,15 @@ const loadRegistry = () => {
 describe('indicator registry', () => {
   beforeEach(() => {
     warnMock.mockReset();
+    warnSpy = jest
+      .spyOn(console, 'warn')
+      .mockImplementation((...args: unknown[]) => {
+        warnMock(...args);
+      });
+  });
+
+  afterEach(() => {
+    warnSpy.mockRestore();
   });
 
   it('registers entries and skips items without id and duplicates', () => {
@@ -77,11 +82,11 @@ describe('indicator registry', () => {
     ]);
 
     expect(warnMock).toHaveBeenCalledWith(
-      'Skip indicator entry without id from %s',
+      '[indicators] Skip indicator entry without id from %s',
       'plugin-a',
     );
     expect(warnMock).toHaveBeenCalledWith(
-      'Skip duplicate indicator "%s" from %s: already registered',
+      '[indicators] Skip duplicate indicator "%s" from %s: already registered',
       'sma_custom',
       'plugin-b',
     );

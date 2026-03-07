@@ -32,18 +32,36 @@
 
 html,
 body {
+  min-height: 100%;
   color-scheme: dark;
-  background: radial-gradient(
-      circle at 15% 0%,
-      rgba(32, 197, 189, 0.1),
-      rgba(9, 13, 20, 0) 30%
+  background-color: #090d14;
+}
+
+body {
+  position: relative;
+  background-color: #090d14;
+}
+
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(
+      circle at 14% 8%,
+      rgba(32, 197, 189, 0.1) 0%,
+      rgba(32, 197, 189, 0) 44%
     ),
     radial-gradient(
-      circle at 90% 20%,
-      rgba(76, 169, 255, 0.08),
-      rgba(9, 13, 20, 0) 35%
+      circle at 88% 12%,
+      rgba(76, 169, 255, 0.08) 0%,
+      rgba(76, 169, 255, 0) 48%
     ),
-    #090d14;
+    linear-gradient(180deg, #0b1524 0%, #090d14 52%, #08111d 100%);
+  background-repeat: no-repeat;
+  background-size: 100% 100%;
 }
 
 [data-theme='dark'] {
@@ -63,6 +81,7 @@ body {
 
 .main-wrapper {
   background: transparent;
+  min-height: calc(100vh - var(--ifm-navbar-height));
 }
 
 .navbar {

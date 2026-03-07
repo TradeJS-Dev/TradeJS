@@ -1,5 +1,5 @@
 ---
-title: Обучение через `yarn ml-train:latest`
+title: Обучение ML-модели
 ---
 
 `yarn ml-train:latest` запускает интерактивный/селективный train по актуальным export-файлам и автоматически готовит holdout/prod/walk-forward split.

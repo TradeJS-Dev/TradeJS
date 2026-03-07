@@ -10,34 +10,69 @@ declare global {
 }
 
 let redisConnectionWarningShown = false;
+let redisUnavailable = false;
 
 const isRedisConnectivityError = (error: Error): boolean =>
-  /ECONNREFUSED|ENOTFOUND|EAI_AGAIN/i.test(error.message);
+  /ECONNREFUSED|ENOTFOUND|EAI_AGAIN|ETIMEDOUT|MaxRetriesPerRequestError|Connection is closed|Stream isn't writeable/i.test(
+    error.message,
+  );
+
+const toNonNegativeInt = (value: string | undefined, fallback: number) => {
+  const parsed = Number.parseInt(String(value ?? ''), 10);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
+};
+
+const toPositiveInt = (value: string | undefined, fallback: number) => {
+  const parsed = Number.parseInt(String(value ?? ''), 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+};
+
+const markRedisUnavailable = (error: Error) => {
+  redisUnavailable = true;
+  if (redisConnectionWarningShown) return;
+  redisConnectionWarningShown = true;
+  logger.log(
+    'warn',
+    'Redis is unavailable: %s. Cache-dependent features are temporarily disabled.',
+    error.message,
+  );
+};
 
 const getRedis = () => {
   if (!global.__redis__) {
+    const host = process.env.REDIS_HOST || '127.0.0.1';
+    const port = toPositiveInt(process.env.REDIS_PORT, 6379);
+    const connectTimeout = toPositiveInt(
+      process.env.REDIS_CONNECT_TIMEOUT_MS,
+      3_000,
+    );
+    const maxRetriesPerRequest = toNonNegativeInt(
+      process.env.REDIS_MAX_RETRIES_PER_REQUEST,
+      1,
+    );
+
     global.__redis__ = new Redis({
-      host: process.env.REDIS_HOST,
-      port: Number(process.env.REDIS_PORT ?? 6379),
+      host,
+      port,
+      connectTimeout,
+      maxRetriesPerRequest,
+      enableOfflineQueue: false,
+      retryStrategy: (attempt) => Math.min(attempt * 200, 2_000),
     });
     global.__redis__.on('error', (error: Error) => {
       if (isRedisConnectivityError(error)) {
-        if (redisConnectionWarningShown) return;
-        redisConnectionWarningShown = true;
-        logger.log(
-          'warn',
-          'Redis is unavailable: %s. Cache-dependent features are temporarily disabled.',
-          error.message,
-        );
+        markRedisUnavailable(error);
         return;
       }
 
       logger.log('error', 'Redis client error: %s', String(error));
     });
     global.__redis__.on('ready', () => {
-      if (!redisConnectionWarningShown) return;
-      redisConnectionWarningShown = false;
-      logger.log('info', 'Redis connection restored');
+      redisUnavailable = false;
+      if (redisConnectionWarningShown) {
+        redisConnectionWarningShown = false;
+        logger.log('info', 'Redis connection restored');
+      }
     });
   }
   return global.__redis__;
@@ -63,6 +98,8 @@ const DEFAULT_OPTIONS: Options = {
 };
 
 export const getKeys = async (prefix: string): Promise<string[]> => {
+  if (redisUnavailable) return [];
+
   const redis = getRedis();
   const keys: string[] = [];
 
@@ -84,6 +121,10 @@ export const getKeys = async (prefix: string): Promise<string[]> => {
       }
     } while (cursor !== '0');
   } catch (e) {
+    if (e instanceof Error && isRedisConnectivityError(e)) {
+      markRedisUnavailable(e);
+      return [];
+    }
     logger.log('warn', 'failed SCAN for %s: %s', prefix, String(e));
     return [];
   }
@@ -95,6 +136,8 @@ export const getData = async (
   key: string,
   fallback: any = [],
 ): Promise<any> => {
+  if (redisUnavailable) return fallback;
+
   const redis = getRedis();
 
   try {
@@ -110,6 +153,10 @@ export const getData = async (
       return fallback;
     }
   } catch (e) {
+    if (e instanceof Error && isRedisConnectivityError(e)) {
+      markRedisUnavailable(e);
+      return fallback;
+    }
     logger.log(
       'error',
       'failed JSON.GET %s: %s (fallback to GET)',
@@ -130,6 +177,10 @@ export const getData = async (
       return fallback;
     }
   } catch (e) {
+    if (e instanceof Error && isRedisConnectivityError(e)) {
+      markRedisUnavailable(e);
+      return fallback;
+    }
     logger.log('error', 'failed GET %s: %s', key, String(e));
     return fallback;
   }
@@ -150,6 +201,8 @@ export const delKeyWithOptions = async (
   key: string,
   options: DelKeyOptions = {},
 ): Promise<boolean> => {
+  if (redisUnavailable) return false;
+
   const { raiseOnMisconf = false } = options;
   const redis = getRedis();
 
@@ -162,6 +215,10 @@ export const delKeyWithOptions = async (
 
     return false;
   } catch (e) {
+    if (e instanceof Error && isRedisConnectivityError(e)) {
+      markRedisUnavailable(e);
+      return false;
+    }
     const msg = String(e);
     if (raiseOnMisconf && msg.includes('MISCONF')) {
       throw new RedisWriteBlockedError(msg);
@@ -176,6 +233,8 @@ export const setData = async <T>(
   data: T,
   options: Options = {},
 ): Promise<void> => {
+  if (redisUnavailable) return;
+
   const { expire } = { ...DEFAULT_OPTIONS, ...options };
   const redis = getRedis();
   const value = toJson(data);
@@ -186,6 +245,10 @@ export const setData = async <T>(
       await redis.expire(key, expire);
     }
   } catch (e) {
+    if (e instanceof Error && isRedisConnectivityError(e)) {
+      markRedisUnavailable(e);
+      return;
+    }
     logger.log(
       'error',
       'failed JSON.SET %s: %s (fallback to SET)',
@@ -199,6 +262,10 @@ export const setData = async <T>(
         await redis.set(key, value);
       }
     } catch (e2) {
+      if (e2 instanceof Error && isRedisConnectivityError(e2)) {
+        markRedisUnavailable(e2);
+        return;
+      }
       logger.log('error', 'failed SET %s: %s', key, String(e2));
     }
   }

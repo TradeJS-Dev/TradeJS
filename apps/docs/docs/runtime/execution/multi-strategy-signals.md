@@ -1,5 +1,5 @@
 ---
-title: Multi-Strategy Runtime in `yarn signals`
+title: Multi-Strategy Runtime
 ---
 
 `yarn signals` can run multiple strategies in one pass.

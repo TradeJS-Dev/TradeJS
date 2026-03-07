@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import args from 'args';
 import ProgressBar from 'progress';
 import _ from 'lodash';

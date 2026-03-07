@@ -1,5 +1,5 @@
 ---
-title: ML Train Latest Select (`yarn ml-train:latest`)
+title: ML Train Latest Select
 ---
 
 `yarn ml-train:latest` runs interactive/selective training from latest exports and auto-prepares holdout/prod/walk-forward splits.

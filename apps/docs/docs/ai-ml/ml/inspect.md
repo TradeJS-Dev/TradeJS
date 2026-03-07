@@ -1,5 +1,5 @@
 ---
-title: ML Dataset Inspection (`yarn ml-inspect`)
+title: ML Dataset Inspection
 ---
 
 `yarn ml-inspect` helps validate dataset quality before training.
