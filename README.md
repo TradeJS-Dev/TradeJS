@@ -154,10 +154,10 @@ yarn docs:build
 Deploy docs on `https://docs.tradejs.dev`:
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.docs.yml build docs
-docker compose -f docker-compose.yml -f docker-compose.docs.yml up -d app redis docs nginx certbot-cron
-docker compose -f docker-compose.yml -f docker-compose.docs.yml run --rm certbot
-docker compose -f docker-compose.yml -f docker-compose.docs.yml restart nginx
+docker compose build docs
+docker compose up -d app redis docs nginx certbot-cron
+docker compose run --rm certbot
+docker compose restart nginx
 ```
 
 SSL verification:

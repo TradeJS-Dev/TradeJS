@@ -67,34 +67,22 @@ const config: Config = {
       },
       items: [
         {
-          type: 'docSidebar',
-          sidebarId: 'docsSidebar',
-          position: 'left',
-          label: 'All Docs',
-        },
-        {
           type: 'doc',
-          docId: 'getting-started/local',
+          docId: 'intro',
           position: 'left',
           label: 'Start',
-        },
-        {
-          type: 'doc',
-          docId: 'api/framework',
-          position: 'left',
-          label: 'API',
-        },
-        {
-          type: 'doc',
-          docId: 'api/cli',
-          position: 'left',
-          label: 'CLI',
         },
         {
           type: 'doc',
           docId: 'strategies/authoring/write-strategies',
           position: 'left',
           label: 'Strategies',
+        },
+        {
+          type: 'doc',
+          docId: 'indicators/authoring',
+          position: 'left',
+          label: 'Indicators',
         },
         {
           type: 'doc',
@@ -110,15 +98,15 @@ const config: Config = {
         },
         {
           type: 'doc',
-          docId: 'indicators/authoring',
+          docId: 'ai-ml/ml/configuration',
           position: 'left',
-          label: 'Indicators',
+          label: 'ML',
         },
         {
           type: 'doc',
-          docId: 'ai-ml/ml/configuration',
+          docId: 'ai-ml/ai/configuration',
           position: 'left',
-          label: 'ML/AI',
+          label: 'AI',
         },
         {
           type: 'doc',

@@ -48,6 +48,23 @@ services:
         max-size: "10m"
         max-file: "3"
 
+  docs:
+    build:
+      context: .
+      dockerfile: Dockerfile.docs
+    container_name: docs
+    image: aleksnick/inv-docs:latest
+    restart: unless-stopped
+    expose:
+      - "80"
+    networks:
+      - web
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
   timescale:
     container_name: inv-timescale
     image: timescale/timescaledb:latest-pg16
@@ -123,6 +140,7 @@ services:
     depends_on:
       - app
       - site
+      - docs
       - redis
     networks:
       - web

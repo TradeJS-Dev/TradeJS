@@ -27,6 +27,7 @@ RUN corepack prepare yarn@4.13.0 --activate
 COPY apps ./apps
 COPY packages ./packages
 COPY examples ./examples
+COPY bin ./bin
 RUN yarn install --immutable
 
 COPY proto ./proto
@@ -35,7 +36,7 @@ COPY cronjob /etc/crontabs/root
 
 RUN yarn workspace @tradejs/app build
 
-RUN chmod +x ./entrypoint.sh
+RUN chmod +x ./entrypoint.sh ./bin/cron-with-env.sh
 
 EXPOSE 3000
 

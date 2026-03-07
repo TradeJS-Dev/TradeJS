@@ -1,6 +1,6 @@
 #!/bin/bash
 
-COMPOSE_FILES="-f docker-compose.yml -f docker-compose.docs.yml"
+COMPOSE_FILES="-f docker-compose.yml"
 
 echo ">>> Запускаем nginx без SSL"
 docker compose $COMPOSE_FILES up -d docs nginx

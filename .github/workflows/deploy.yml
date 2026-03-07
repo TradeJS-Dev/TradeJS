@@ -58,13 +58,12 @@ jobs:
         run: |
           docker-compose build --pull app
           docker-compose build --pull site
+          docker-compose build --pull docs
           docker-compose build --pull --no-cache ml-infer
-          docker-compose -f docker-compose.docs.yml build --pull docs
   
       - name: Push Docker images
         run: |
-          docker-compose push app site ml-infer
-          docker-compose -f docker-compose.docs.yml push docs
+          docker-compose push app site docs ml-infer
 
       - name: Copy compose and configs to server
         uses: appleboy/scp-action@v0.1.7
@@ -72,7 +71,7 @@ jobs:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_KEY }}
-          source: ".env,docker-compose.yml,docker-compose.docs.yml,nginx,sql,certbot,init-cert.sh"
+          source: ".env,docker-compose.yml,nginx,sql,certbot,init-cert.sh"
           target: ~/
 
       - name: Deploy on server
@@ -89,7 +88,5 @@ jobs:
             systemctl disable nginx
             docker compose up -d --remove-orphans
             docker compose up -d --force-recreate ml-infer
-            docker compose -f docker-compose.docs.yml pull docs
-            docker compose -f docker-compose.docs.yml up -d docs
             docker restart nginx
             chmod 777 ./data
