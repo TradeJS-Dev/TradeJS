@@ -30,10 +30,11 @@
     "zustand": "^5.0.7"
   },
   "scripts": {
-    "dev": "dotenv -e ../../.env -- next dev",
-    "build": "dotenv -e ../../.env -- next build",
-    "start": "dotenv -e ../../.env -- next start -H 0.0.0.0",
-    "lint": "dotenv -e ../../.env -- next lint"
+    "run:next": "dotenv -e ../../.env -- next",
+    "dev": "yarn run run:next dev",
+    "build": "yarn run run:next build",
+    "start": "yarn run run:next start -H 0.0.0.0",
+    "lint": "yarn run run:next lint"
   },
   "devDependencies": {
     "dotenv-cli": "^11.0.0"

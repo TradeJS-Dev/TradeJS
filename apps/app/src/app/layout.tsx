@@ -8,8 +8,8 @@ import './globals.css';
 const inter = Inter({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
-  title: 'TradeJS',
-  description: 'madmoney',
+  title: 'TradeJS App',
+  description: 'Trading Strategies Framework',
 };
 
 export default function RootLayout({
