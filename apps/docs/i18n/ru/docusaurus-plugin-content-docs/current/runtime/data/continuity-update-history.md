@@ -4,6 +4,15 @@ title: 'Прокачка данных: continuity и backtest --updateOnly'
 
 В этой статье: как обновлять исторические данные через `npx @tradejs/cli backtest --updateOnly` и `npx @tradejs/cli continuity`, и как выбирать конкретную биржу.
 
+Требование к локальной инфраструктуре:
+
+```bash
+npx @tradejs/cli infra-init
+npx @tradejs/cli infra-up
+```
+
+После работы остановите локальную инфраструктуру: `npx @tradejs/cli infra-down`.
+
 ## 1. `npx @tradejs/cli backtest --updateOnly`
 
 Используйте `backtest` в update-only режиме:

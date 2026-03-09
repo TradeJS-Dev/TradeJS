@@ -77,6 +77,7 @@ Bootstrap схемы и upsert логика:
 
 ## 5. Операционные заметки
 
+- Для локального запуска выполните `npx @tradejs/cli infra-init` один раз, затем `npx @tradejs/cli infra-up`.
 - Перед ingest убедитесь, что PostgreSQL/Timescale доступен.
 - Начинайте с короткого lookback и малого списка символов.
 - Держите `batchDays` умеренным, чтобы снизить API/rate-limit нагрузку.

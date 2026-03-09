@@ -10,6 +10,13 @@ TimescaleDB stores market time-series and supports historical queries used by ru
 - schema bootstrap SQL for initial setup
 - migration workflow for schema updates
 
+Local start shortcut:
+
+```bash
+npx @tradejs/cli infra-init
+npx @tradejs/cli infra-up
+```
+
 ## What to Keep in Schema Design
 
 - Use hypertables for candle-like time-series.

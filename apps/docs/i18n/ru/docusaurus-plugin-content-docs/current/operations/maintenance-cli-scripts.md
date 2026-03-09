@@ -4,6 +4,26 @@ title: Maintenance и debug CLI-скрипты
 
 Здесь собраны сервисные скрипты, которые полезны в эксплуатации и отладке.
 
+## Dev-инфраструктура
+
+Инициализировать local compose-файл (один раз):
+
+```bash
+npx @tradejs/cli infra-init
+```
+
+Поднять инфраструктуру:
+
+```bash
+npx @tradejs/cli infra-up
+```
+
+Остановить локальную инфраструктуру:
+
+```bash
+npx @tradejs/cli infra-down
+```
+
 ## Очистка
 
 Очистка локальных файлов в `data/*`:

@@ -82,7 +82,7 @@ restore_redis() {
   run_with_timeout \
     "$REDIS_START_TIMEOUT_SEC" \
     "redis start" \
-    docker compose -f docker-compose.db.yml up -d redis || true
+    docker compose -f docker-compose.dev.yml up -d redis || true
 }
 
 trap restore_redis EXIT INT TERM
@@ -92,7 +92,7 @@ echo "[ml-train] Stopping redis..."
 run_with_timeout \
   "$REDIS_STOP_TIMEOUT_SEC" \
   "redis stop" \
-  docker compose -f docker-compose.db.yml stop redis || true
+  docker compose -f docker-compose.dev.yml stop redis || true
 
 SHOULD_RESTORE_REDIS=1
 echo "[ml-train] Running: $*"

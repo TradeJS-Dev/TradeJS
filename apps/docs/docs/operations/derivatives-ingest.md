@@ -77,6 +77,7 @@ For Coinalyze provider:
 
 ## 5. Operational Notes
 
+- For local setup, run `npx @tradejs/cli infra-init` once, then `npx @tradejs/cli infra-up`.
 - Ensure PostgreSQL/Timescale is running before ingest.
 - Begin with short lookback and small symbol set.
 - Keep `batchDays` moderate to reduce API/rate-limit pressure.

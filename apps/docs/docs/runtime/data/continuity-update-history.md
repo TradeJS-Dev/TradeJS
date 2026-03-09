@@ -4,6 +4,15 @@ title: 'Data Sync: continuity and backtest --updateOnly'
 
 This page explains how to refresh market history via `npx @tradejs/cli backtest --updateOnly` and `npx @tradejs/cli continuity`, and how to select a specific exchange.
 
+Local infra prerequisite:
+
+```bash
+npx @tradejs/cli infra-init
+npx @tradejs/cli infra-up
+```
+
+Use `npx @tradejs/cli infra-down` to stop local infra when done.
+
 ## 1. `npx @tradejs/cli backtest --updateOnly`
 
 Use `backtest` in update-only mode:

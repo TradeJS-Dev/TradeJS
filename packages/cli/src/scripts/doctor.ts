@@ -174,7 +174,9 @@ const run = async () => {
         `Doctor failed: ${failedRequired.length} required check(s) failed.`,
       ),
     );
-    console.log(infoLabel('Start infra: yarn infra-up'));
+    console.log(
+      infoLabel('Start infra: npx @tradejs/cli infra-init && npx @tradejs/cli infra-up'),
+    );
     process.exit(1);
   }
 

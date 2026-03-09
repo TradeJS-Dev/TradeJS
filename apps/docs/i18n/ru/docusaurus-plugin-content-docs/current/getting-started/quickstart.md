@@ -9,7 +9,9 @@ title: Quickstart
 
 - Node.js `20.19+`
 - npm/yarn/pnpm
-- Запущенные Redis и PostgreSQL/Timescale
+- Установленный и запущенный Docker Desktop (или Docker Engine)
+- Доступный Docker Compose plugin (`docker compose`)
+- `npx @tradejs/cli infra-init` (один раз на проект) + `npx @tradejs/cli infra-up`
 - (опционально) ML gRPC сервис для ML-сценариев
 
 ## 1. Создайте проект и установите пакеты
@@ -32,7 +34,32 @@ export default defineConfig({
 });
 ```
 
-## 3. Проверьте окружение
+## 3. Инициализируйте файлы dev-инфраструктуры
+
+`infra-init` создает `docker-compose.dev.yml` в корне проекта один раз.
+Если файл уже существует, команда его не перезаписывает.
+
+```bash
+npx @tradejs/cli infra-init
+```
+
+## 4. Поднимите dev-инфраструктуру
+
+`infra-up` использует существующий `docker-compose.dev.yml` и поднимает:
+
+- PostgreSQL/Timescale (`127.0.0.1:5432`)
+- Redis (`127.0.0.1:6379`)
+
+```bash
+npx @tradejs/cli infra-up
+```
+
+Важно:
+
+- `docker-compose.dev.yml` используется для локальной dev-инфраструктуры.
+- `docker-compose.prod.yml` предназначен для production deployment и `infra-up` его не использует.
+
+## 5. Проверьте окружение
 
 ```bash
 npx @tradejs/cli doctor
@@ -44,13 +71,19 @@ npx @tradejs/cli doctor
 - Redis: `127.0.0.1:6379`
 - ML gRPC (опционально): `127.0.0.1:50051`
 
-## 4. Базовые команды на каждый день
+## 6. Базовые команды на каждый день
 
 ```bash
 npx @tradejs/cli signals
 npx @tradejs/cli backtest
 npx @tradejs/cli results
 npx @tradejs/cli bot
+```
+
+## 7. Остановите dev-инфраструктуру
+
+```bash
+npx @tradejs/cli infra-down
 ```
 
 ## Если что-то не стартует

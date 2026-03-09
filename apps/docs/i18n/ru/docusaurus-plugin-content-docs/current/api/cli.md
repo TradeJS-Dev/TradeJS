@@ -12,6 +12,9 @@ CLI в TradeJS предоставляется пакетом `@tradejs/cli`.
 
 ```bash
 npx @tradejs/cli doctor
+npx @tradejs/cli infra-init
+npx @tradejs/cli infra-up
+npx @tradejs/cli infra-down
 npx @tradejs/cli backtest
 npx @tradejs/cli signals
 npx @tradejs/cli bot

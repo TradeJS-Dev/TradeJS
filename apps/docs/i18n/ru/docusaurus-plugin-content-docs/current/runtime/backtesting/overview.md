@@ -9,6 +9,17 @@ title: Как работают бэктесты
 npx @tradejs/cli backtest
 ```
 
+Требование к локальной инфраструктуре:
+
+```bash
+npx @tradejs/cli infra-init
+npx @tradejs/cli infra-up
+```
+
+`infra-init` создает `docker-compose.dev.yml` один раз и сохраняет пользовательские изменения, если файл уже есть.
+`infra-up` поднимает Redis + PostgreSQL/Timescale на основе этого файла.
+После работы инфраструктуру можно остановить через `npx @tradejs/cli infra-down`.
+
 Основные файлы:
 
 - CLI-скрипт: `@tradejs/cli`

@@ -4,6 +4,26 @@ title: Maintenance and Debug CLI Scripts
 
 This page covers operational scripts that are useful but easy to miss.
 
+## Dev Infra
+
+Initialize local dev compose file (one-time):
+
+```bash
+npx @tradejs/cli infra-init
+```
+
+Start infra:
+
+```bash
+npx @tradejs/cli infra-up
+```
+
+Stop local infra:
+
+```bash
+npx @tradejs/cli infra-down
+```
+
 ## Cleanups
 
 Clean local files under `data/*`:

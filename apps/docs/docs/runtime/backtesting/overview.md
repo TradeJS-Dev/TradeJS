@@ -11,6 +11,17 @@ Run:
 npx @tradejs/cli backtest
 ```
 
+Local infra prerequisite:
+
+```bash
+npx @tradejs/cli infra-init
+npx @tradejs/cli infra-up
+```
+
+`infra-init` creates `docker-compose.dev.yml` once and keeps user changes if file already exists.
+`infra-up` starts Redis + PostgreSQL/Timescale using that file.
+Stop infra after work with `npx @tradejs/cli infra-down`.
+
 Main files:
 
 - script: `@tradejs/cli`

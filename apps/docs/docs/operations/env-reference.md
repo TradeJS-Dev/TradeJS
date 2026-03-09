@@ -37,4 +37,5 @@ This page groups the most important environment variables by area.
 
 - Keep `.env.example` safe and generic; never commit secrets.
 - In production, inject secrets from a secret manager.
+- For local setup, run `npx @tradejs/cli infra-init` once, then `npx @tradejs/cli infra-up`.
 - Validate environment with `npx @tradejs/cli doctor` before enabling live orders.
