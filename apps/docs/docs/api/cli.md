@@ -3,41 +3,31 @@ sidebar_position: 6
 title: CLI API
 ---
 
-TradeJS CLI scripts are in `packages/cli/src/scripts/*` and exposed through root `yarn` commands.
+TradeJS command-line interface is exposed as the `@tradejs/cli` package.
+Use it directly after package install via `npx @tradejs/cli <command>`.
 
 ## Core Commands
 
 ```bash
-yarn doctor
-yarn backtest
-yarn signals
-yarn bot
-yarn results
-```
-
-## Data/Infra Commands
-
-```bash
-yarn infra-up
-yarn infra-down
-yarn redis-up
-yarn redis-down
-yarn clean-redis
+npx @tradejs/cli doctor
+npx @tradejs/cli backtest
+npx @tradejs/cli signals
+npx @tradejs/cli bot
+npx @tradejs/cli results
 ```
 
 ## ML Commands
 
 ```bash
-yarn ml-export
-yarn ml-inspect
-yarn ml-train:latest
-yarn ml-train:trendline:xgboost
-yarn ml-upload:prod
+npx @tradejs/cli ml-export
+npx @tradejs/cli ml-inspect
+npx @tradejs/cli ml-train:latest
+npx @tradejs/cli ml-train:trendline:xgboost
 ```
 
 ## Backtest Flags
 
-`yarn backtest --help` (via `args`) supports key flags:
+`npx @tradejs/cli backtest --help` supports key flags:
 
 - `-c, --config` backtest config key (default: `breakout`)
 - `-t, --tickers` custom symbol list
@@ -50,6 +40,8 @@ yarn ml-upload:prod
 
 ## Signals Flags
 
+`npx @tradejs/cli signals --help`:
+
 - `-t, --tickers`
 - `-e, --exclude`
 - `-m, --makeOrders`
@@ -60,11 +52,13 @@ yarn ml-upload:prod
 
 ## Doctor Flags
 
+`npx @tradejs/cli doctor --help`:
+
 - `--require-ml` make ML gRPC check mandatory
 - `--skip-ml` skip ML gRPC check
 
 ## Deep Dives
 
-- `runtime/backtesting/grid-config` - how to define Redis grid configs for mass parameter search
-- `runtime/backtesting/results-runtime-config` - promoting backtest configs with `yarn results`, `isConfigFromBacktest`
-- `runtime/data/continuity-update-history` - data refresh via `continuity` and `update-history`
+- [Grid config for backtests](../runtime/backtesting/grid-config) - how to define Redis grid configs for mass parameter search
+- [Results and runtime promotion](../runtime/backtesting/results-runtime-config) - promoting backtest configs with `@tradejs/cli results`, `isConfigFromBacktest`
+- [Data sync and continuity](../runtime/data/continuity-update-history) - data refresh via `continuity` and `backtest --updateOnly`

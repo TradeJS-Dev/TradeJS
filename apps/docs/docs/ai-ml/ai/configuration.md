@@ -9,7 +9,7 @@ AI in TradeJS is a runtime review layer. It evaluates the current strategy signa
 
 Core module:
 
-- `packages/core/src/utils/ai.ts`
+- `@tradejs/core`
 
 ## Required Environment
 

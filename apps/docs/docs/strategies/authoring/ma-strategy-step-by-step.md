@@ -2,13 +2,13 @@
 title: MaStrategy Step by Step
 ---
 
-This tutorial shows the full flow: create a new MA crossover strategy, register it, configure Redis keys, run backtests, and inspect results in the app.
+This tutorial shows the full flow: create a new MA crossover strategy, register it as a plugin, configure Redis keys, run backtests, and inspect results.
 
 ## 1. Create Strategy Files
 
 Create a new folder:
 
-- `packages/core/src/strategy/MaStrategy`
+- `src/strategies/MaStrategy`
 
 Recommended structure:
 
@@ -24,7 +24,12 @@ Recommended structure:
 ## 2. Add Config (`config.ts`)
 
 ```ts
-import { BacktestPriceMode, Direction, Interval, StrategyConfig } from '@types';
+import {
+  BacktestPriceMode,
+  Direction,
+  Interval,
+  StrategyConfig,
+} from '@tradejs/core';
 
 export interface MaStrategySideConfig {
   enable: boolean;
@@ -68,7 +73,7 @@ import {
   KlineChartData,
   StrategyEntryModelFigures,
   StrategyFigurePoint,
-} from '@types';
+} from '@tradejs/core';
 
 const toLinePoints = (
   candles: KlineChartData,
@@ -297,18 +302,21 @@ export const maStrategyManifest: StrategyManifest = {
 };
 ```
 
-Register in `packages/core/src/strategy/manifests.ts`:
+Register in your strategy plugin package:
 
 ```ts
+import { defineStrategyPlugin } from '@tradejs/core';
 import { maStrategyManifest } from './MaStrategy/manifest';
+import { MaStrategyCreator } from './MaStrategy/strategy';
 
-{
-  manifest: maStrategyManifest,
-  creator: createLazyStrategyCreator(
-    () => import('./MaStrategy/strategy'),
-    'MaStrategyCreator',
-  ),
-},
+export default defineStrategyPlugin({
+  strategyEntries: [
+    {
+      manifest: maStrategyManifest,
+      creator: MaStrategyCreator,
+    },
+  ],
+});
 ```
 
 ## 6. Add Redis Configs (Required)
@@ -366,42 +374,29 @@ Important: backtest key name must start with strategy name (`MaStrategy:*`), bec
 ## 7. Run Backtests
 
 ```bash
-yarn backtest --user root --config MaStrategy:quickstart --connector bybit --tests 300 --parallel 4
+npx @tradejs/cli backtest --user root --config MaStrategy:quickstart --connector bybit --tests 300 --parallel 4
 ```
 
-## 8. View Backtests in the App
+## 8. Inspect Backtest Results
 
-1. Start app: `yarn dev`
-2. Open `http://localhost:3000/routes/backtest`
-3. Sign in as `root`
-4. Filter by strategy `MaStrategy`
-5. Open a test card to inspect orders, chart, and metrics
+Use `results` commands for a quick review:
 
-Data/API path:
+```bash
+npx @tradejs/cli results --strategy MaStrategy --coverage --user root
+npx @tradejs/cli results --strategy MaStrategy --merge --user root
+```
 
-- list: `GET /api/backtest/files`
-- one result: `GET /api/backtest/result/<strategy>/<name>`
-
-Redis keys behind this view:
-
-- `users:<user>:tests:<strategy>:<testName>:config`
-- `users:<user>:tests:<strategy>:<testName>:stat`
-- `users:<user>:tests:<strategy>:<testName>:orders`
+If your deployment has TradeJS UI, you can also inspect the same run there (orders, chart, metrics).
 
 ## 9. How to Show `figures`
 
-`figures` are attached in `strategyApi.entry(...)` (in `core.ts`), then rendered in chart overlays.
+Attach `figures` in `strategyApi.entry(...)` from `core.ts`, and chart UIs render them as overlays.
 
-Backtest rendering path:
-
-- collect figures from order log in `useBacktest.ts`
-- draw overlays with `drawSignalFigures(...)`
-
-If you return `lines` / `points` / `zones` in strategy entry, they are visible on the chart.
+If strategy entry returns `lines` / `points` / `zones`, they appear on the chart.
 
 ## 10. Which Backtest Metrics Are Collected
 
-The metrics are built in `packages/core/src/utils/stat.ts` and typed in `packages/core/src/types/metrics.ts`.
+Metrics are produced by the backtest engine and available in `results` output (and UI cards, if your deployment includes UI).
 
 Main metrics:
 
@@ -411,6 +406,7 @@ Main metrics:
 - `winRate`, `riskRewardRatio`, `expectancy`
 - `maxConsecutiveWins`, `maxConsecutiveLosses`
 
-Where to see in UI:
+Where to see them:
 
-- `apps/app/src/app/components/Backtest/TestCard/Stat/index.tsx`
+- `npx @tradejs/cli results --strategy MaStrategy --coverage --user root`
+- backtest result card in TradeJS UI (if available in your deployment)

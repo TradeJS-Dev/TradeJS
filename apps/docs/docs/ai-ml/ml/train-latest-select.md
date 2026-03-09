@@ -2,12 +2,12 @@
 title: ML Train Latest Select
 ---
 
-`yarn ml-train:latest` runs interactive/selective training from latest exports and auto-prepares holdout/prod/walk-forward splits.
+`npx @tradejs/cli ml-train:latest` runs interactive/selective training from latest exports and auto-prepares holdout/prod/walk-forward splits.
 
-Sources:
+Runtime surface:
 
-- `packages/cli/src/scripts/mlTrainLatestSelect.ts`
-- `bin/ml-train-with-redis.sh`
+- `@tradejs/cli`
+- your configured ML training runtime (container/service)
 
 ## What It Does
 
@@ -23,13 +23,13 @@ Sources:
 
 4. Cache split results by deterministic key/hash.
 5. Enforce causality guard on timestamp-like features.
-6. Start Docker ML train (`docker-compose.ml.yml`, `train.py`).
+6. Start the configured ML training runtime.
 
 ## Commands
 
 ```bash
-yarn ml-train:latest
-yarn ml-train:latest --strategy TrendLine --model xgboost
+npx @tradejs/cli ml-train:latest
+npx @tradejs/cli ml-train:latest --strategy TrendLine --model xgboost
 ```
 
 Non-interactive options:
@@ -71,15 +71,11 @@ Logging/debug:
 - `ML_TRAIN_HEARTBEAT_SEC`
 - `ML_TRAIN_DOCKER_NO_OUTPUT_TIMEOUT_SEC`
 
-## Redis Safety Wrapper
+## Redis Safety Behavior
 
-Training scripts are wrapped with:
+In the reference deployment, training runs with a safety wrapper:
 
-- `bin/ml-train-with-redis.sh`
-
-Behavior:
-
-- stop Redis before train
+- pause Redis before train
 - restore Redis on exit (success/failure/interrupt)
 
 ## Output Artifacts

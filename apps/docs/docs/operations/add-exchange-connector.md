@@ -8,7 +8,7 @@ This guide explains how to add a new exchange connector and where integration po
 
 Create a new folder:
 
-- `packages/connectors/src/<Exchange>/index.ts`
+- `@tradejs/connectors`
 
 Implement `ConnectorCreator` and return full `Connector` contract:
 
@@ -20,15 +20,15 @@ Implement `ConnectorCreator` and return full `Connector` contract:
 
 Reference implementations:
 
-- `packages/connectors/src/Binance/index.ts`
-- `packages/connectors/src/Coinbase/index.ts`
-- `packages/connectors/src/ByBit/index.ts`
+- Binance connector in `@tradejs/connectors`
+- Coinbase connector in `@tradejs/connectors`
+- ByBit connector in `@tradejs/connectors`
 
 ## 2. Register Connector In One Place
 
 Register in:
 
-- `packages/connectors/src/index.ts`
+- `@tradejs/connectors`
 
 Update:
 
@@ -43,14 +43,14 @@ After this, `backtest` connector resolution and `continuity --provider` use the 
 
 If provider is user-facing in filters/configs, update provider union in:
 
-- `packages/core/src/types/trade.ts` (`Provider`)
+- `@tradejs/core` (`Provider`)
 
 ## 4. CLI Integration Points
 
 Already map-based:
 
-- `packages/cli/src/scripts/backtest.ts`
-- `packages/cli/src/scripts/continuity.ts`
+- `backtest` command in `@tradejs/cli`
+- `continuity` command in `@tradejs/cli`
 
 Still strategy-specific/fixed in current architecture:
 
@@ -61,11 +61,11 @@ So adding a connector for generic market history is easy, but some flows intenti
 
 ## 5. Recommended Validation Checklist
 
-1. `yarn dev-tsc`
-2. `yarn unit`
-3. `yarn update-history -- --connector <provider> --config <Strategy:Config> --timeframe 15`
-4. `yarn continuity --provider <provider> --timeframe 15 --tickers BTCUSDT`
-5. `yarn backtest --connector <provider> --config <Strategy:Config> --tests 20`
+1. Run TypeScript checks in your connector project.
+2. Run unit tests in your connector project.
+3. `npx @tradejs/cli backtest --updateOnly --connector <provider> --config <Strategy:Config> --timeframe 15`
+4. `npx @tradejs/cli continuity --provider <provider> --timeframe 15 --tickers BTCUSDT`
+5. `npx @tradejs/cli backtest --connector <provider> --config <Strategy:Config> --tests 20`
 
 ## 6. Optional Next Step
 

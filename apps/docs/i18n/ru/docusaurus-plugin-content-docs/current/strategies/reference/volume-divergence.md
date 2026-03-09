@@ -1,8 +1,8 @@
 ---
-title: 'Стратегия: VolumeDivergence'
+title: 'VolumeDivergence'
 ---
 
-`VolumeDivergence` — TypeScript-стратегия разворота (`packages/core/src/strategy/VolumeDivergence`), которая сравнивает price pivots и pivots нормализованного объема.
+`VolumeDivergence` — TypeScript-стратегия разворота (`@tradejs/core`), которая сравнивает price pivots и pivots нормализованного объема.
 
 ## Логика входа
 
@@ -69,15 +69,6 @@ title: 'Стратегия: VolumeDivergence'
 - `BEARISH.SL` — stop-loss в процентах.
 - `BEARISH.minRiskRatio` — минимально допустимое риск/прибыль.
 
-### Периоды индикаторов
-
-- `MA_FAST`, `MA_MEDIUM`, `MA_SLOW` — периоды MA.
-- `OBV_SMA` — период SMA для OBV.
-- `ATR`, `ATR_PCT_SHORT`, `ATR_PCT_LONG` — волатильность ATR (абсолютная и относительная).
-- `BB`, `BB_STD` — параметры Bollinger Bands.
-- `MACD_FAST`, `MACD_SLOW`, `MACD_SIGNAL` — параметры MACD.
-- `LEVEL_LOOKBACK`, `LEVEL_DELAY` — параметры расчета локальных уровней.
-
 ## Используемые индикаторы (что означает каждый)
 
 ### В логике стратегии
@@ -87,16 +78,6 @@ title: 'Стратегия: VolumeDivergence'
 - `price pivot high/low` — ценовые уровни в pivot-точках.
 - `deltaAtPivot` — прокси дельты свечи в pivot (`volume * bodyBias`).
 - `correlation` — корреляция актива с BTC для риск-guard.
-
-### В payload (`indicators`) для AI/ML
-
-- `maFast`, `maMedium`, `maSlow`
-- `obv`, `smaObv`
-- `atr`, `atrPctShort`, `atrPctLong`
-- `bbMiddle`, `bbUpper`, `bbLower`
-- `macd`, `macdSignal`, `macdHistogram`
-- `highLevel`, `lowLevel`
-- `correlation`
 
 ## Payload сигнала
 
@@ -143,6 +124,6 @@ title: 'Стратегия: VolumeDivergence'
 ## Запуск
 
 ```bash
-yarn backtest --user root --config VolumeDivergence:base --connector bybit --timeframe 15
-yarn signals --user root --timeframe 15
+npx @tradejs/cli backtest --user root --config VolumeDivergence:base --connector bybit --timeframe 15
+npx @tradejs/cli signals --user root --timeframe 15
 ```

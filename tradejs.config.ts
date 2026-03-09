@@ -1,4 +1,4 @@
-import { defineConfig } from '@tradejs/framework';
+import { defineConfig } from '@tradejs/core';
 
 export default defineConfig({
   strategyPlugins: ['@tradejs/example-sandbox'],

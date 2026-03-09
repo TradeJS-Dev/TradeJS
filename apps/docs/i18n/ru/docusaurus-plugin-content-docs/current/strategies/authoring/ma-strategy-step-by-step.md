@@ -2,13 +2,13 @@
 title: MaStrategy Пошагово
 ---
 
-В этой статье полный путь: создать MA crossover-стратегию, зарегистрировать ее, добавить Redis-конфиги, запустить бэктесты и посмотреть результат в приложении.
+В этой статье полный путь: создать MA crossover-стратегию, зарегистрировать ее как плагин, добавить Redis-конфиги, запустить бэктесты и разобрать результаты.
 
 ## 1. Создаем файлы стратегии
 
 Создайте папку:
 
-- `packages/core/src/strategy/MaStrategy`
+- `src/strategies/MaStrategy`
 
 Рекомендуемая структура:
 
@@ -24,7 +24,12 @@ title: MaStrategy Пошагово
 ## 2. Добавляем конфиг (`config.ts`)
 
 ```ts
-import { BacktestPriceMode, Direction, Interval, StrategyConfig } from '@types';
+import {
+  BacktestPriceMode,
+  Direction,
+  Interval,
+  StrategyConfig,
+} from '@tradejs/core';
 
 export interface MaStrategySideConfig {
   enable: boolean;
@@ -68,7 +73,7 @@ import {
   KlineChartData,
   StrategyEntryModelFigures,
   StrategyFigurePoint,
-} from '@types';
+} from '@tradejs/core';
 
 const toLinePoints = (
   candles: KlineChartData,
@@ -297,18 +302,21 @@ export const maStrategyManifest: StrategyManifest = {
 };
 ```
 
-Регистрируем в `packages/core/src/strategy/manifests.ts`:
+Регистрируем в вашем strategy plugin package:
 
 ```ts
+import { defineStrategyPlugin } from '@tradejs/core';
 import { maStrategyManifest } from './MaStrategy/manifest';
+import { MaStrategyCreator } from './MaStrategy/strategy';
 
-{
-  manifest: maStrategyManifest,
-  creator: createLazyStrategyCreator(
-    () => import('./MaStrategy/strategy'),
-    'MaStrategyCreator',
-  ),
-},
+export default defineStrategyPlugin({
+  strategyEntries: [
+    {
+      manifest: maStrategyManifest,
+      creator: MaStrategyCreator,
+    },
+  ],
+});
 ```
 
 ## 6. Добавляем Redis-конфиги (обязательно)
@@ -366,42 +374,29 @@ redis-cli JSON.SET users:root:backtests:configs:MaStrategy:quickstart '$' '{
 ## 7. Запускаем бэктесты
 
 ```bash
-yarn backtest --user root --config MaStrategy:quickstart --connector bybit --tests 300 --parallel 4
+npx @tradejs/cli backtest --user root --config MaStrategy:quickstart --connector bybit --tests 300 --parallel 4
 ```
 
-## 8. Смотрим тесты в приложении
+## 8. Разбираем результаты бэктеста
 
-1. Запустите приложение: `yarn dev`
-2. Откройте `http://localhost:3000/routes/backtest`
-3. Войдите под `root`
-4. Отфильтруйте стратегию `MaStrategy`
-5. Откройте карточку теста и посмотрите ордера, график и метрики
+Для быстрого разбора используйте `results`:
 
-API для этого экрана:
+```bash
+npx @tradejs/cli results --strategy MaStrategy --coverage --user root
+npx @tradejs/cli results --strategy MaStrategy --merge --user root
+```
 
-- список: `GET /api/backtest/files`
-- результат теста: `GET /api/backtest/result/<strategy>/<name>`
-
-Redis-ключи, которые использует экран:
-
-- `users:<user>:tests:<strategy>:<testName>:config`
-- `users:<user>:tests:<strategy>:<testName>:stat`
-- `users:<user>:tests:<strategy>:<testName>:orders`
+Если в вашем deployment есть TradeJS UI, те же результаты можно посмотреть и там (ордера, график, метрики).
 
 ## 9. Как выводить `figures`
 
-`figures` формируются в `strategyApi.entry(...)` внутри `core.ts` и потом рисуются оверлеями на графике.
+`figures` формируются в `strategyApi.entry(...)` внутри `core.ts`, после чего chart UI рисует их как overlay.
 
-Путь в backtest UI:
-
-- сбор фигур из order log в `useBacktest.ts`
-- отрисовка через `drawSignalFigures(...)`
-
-Если стратегия возвращает `lines` / `points` / `zones`, вы увидите их на графике.
+Если стратегия возвращает `lines` / `points` / `zones`, они появляются на графике.
 
 ## 10. Какие метрики бэктеста считаются
 
-Метрики считаются в `packages/core/src/utils/stat.ts`, типы лежат в `packages/core/src/types/metrics.ts`.
+Метрики считает backtest engine, а смотреть их можно в выводе `results` (и в UI-карточках, если UI есть в вашем deployment).
 
 Основные метрики:
 
@@ -411,6 +406,7 @@ Redis-ключи, которые использует экран:
 - `winRate`, `riskRewardRatio`, `expectancy`
 - `maxConsecutiveWins`, `maxConsecutiveLosses`
 
-Где смотреть в UI:
+Где смотреть:
 
-- `apps/app/src/app/components/Backtest/TestCard/Stat/index.tsx`
+- `npx @tradejs/cli results --strategy MaStrategy --coverage --user root`
+- карточка результата бэктеста в TradeJS UI (если доступен в вашем deployment)

@@ -16,8 +16,8 @@ TradeJS загружает индикаторы из плагинов через
 В пакете плагина экспортируйте `indicatorEntries`:
 
 ```ts
-import type { IndicatorPluginEntry } from '@tradejs/framework';
-import { defineIndicatorPlugin } from '@tradejs/framework';
+import type { IndicatorPluginEntry } from '@tradejs/core';
+import { defineIndicatorPlugin } from '@tradejs/core';
 
 export const indicatorEntries = defineIndicatorPlugin({
   indicatorEntries: [
@@ -61,35 +61,27 @@ export const indicatorEntries = defineIndicatorPlugin({
 }).indicatorEntries;
 ```
 
-Пример в репозитории:
-
-- `examples/sandbox/src/index.ts`
-
 ## 2. Подключите плагин в `tradejs.config.ts`
 
 ```ts
-import { defineConfig } from '@tradejs/framework';
+import { defineConfig } from '@tradejs/core';
 
 export default defineConfig({
   indicatorsPlugins: ['@your-scope/tradejs-indicators-pack'],
 });
 ```
 
-## 3. Запустите приложение
+## 3. Перезапустите runtime/UI
 
-```bash
-yarn dev
-```
-
-Реестр плагинов поднимается в core, и значения индикатора попадают в history при загрузке данных графика.
+Перезапустите ваш runtime/UI TradeJS, чтобы он подхватил изменения в реестре плагинов.
 
 ## 4. Выведите индикатор на графике
 
 `renderer` нужно объявить в `indicatorEntries`, а дальше проброс делается автоматически:
 
-1. `GET /api/indicators` отдает `renderers` (`apps/app/src/app/api/indicators/route.ts`).
-2. Store сохраняет их в `indicatorRenderers` (`apps/app/src/app/store/indicators.ts`).
-3. `usePluginIndicators` регистрирует индикатор в chart и рисует фигуры (`apps/app/src/app/components/Dashboard/KlineChart/hooks/usePluginIndicators.ts`).
+1. Бэкенд отдает `renderers` в метаданных индикаторов.
+2. Фронтенд сохраняет renderer-описания в состоянии индикаторов.
+3. Слой графика создает pane/figures по renderer-описанию.
 
 Минимальная рабочая связка:
 

@@ -4,11 +4,11 @@ title: Postgres and Timescale Schema Guide
 
 TimescaleDB stores market time-series and supports historical queries used by runtime and backtests.
 
-## Deployment Files
+## Deployment Components
 
-- `docker-compose.db.yml` - local infra run.
-- `docker-compose.yml` - full stack deployment.
-- `sql/create.sql` - initial DB bootstrap.
+- PostgreSQL/Timescale service in your environment
+- schema bootstrap SQL for initial setup
+- migration workflow for schema updates
 
 ## What to Keep in Schema Design
 

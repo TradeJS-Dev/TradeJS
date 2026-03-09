@@ -50,16 +50,16 @@ body::before {
   pointer-events: none;
   background:
     radial-gradient(
-      circle at 14% 8%,
-      rgba(32, 197, 189, 0.1) 0%,
-      rgba(32, 197, 189, 0) 44%
+      120% 70% at 12% -10%,
+      rgba(32, 197, 189, 0.08) 0%,
+      rgba(32, 197, 189, 0) 58%
     ),
     radial-gradient(
-      circle at 88% 12%,
-      rgba(76, 169, 255, 0.08) 0%,
-      rgba(76, 169, 255, 0) 48%
+      100% 65% at 92% -14%,
+      rgba(76, 169, 255, 0.07) 0%,
+      rgba(76, 169, 255, 0) 60%
     ),
-    linear-gradient(180deg, #0b1524 0%, #090d14 52%, #08111d 100%);
+    linear-gradient(180deg, #0b1524 0%, #09111d 46%, #090d14 100%);
   background-repeat: no-repeat;
   background-size: 100% 100%;
 }
@@ -82,6 +82,13 @@ body::before {
 .main-wrapper {
   background: transparent;
   min-height: calc(100vh - var(--ifm-navbar-height));
+}
+
+.docsWrapper_hBAB,
+div[class*='docMainContainer'],
+div[class*='docItemContainer'],
+article[class*='docItemContainer'] {
+  background: transparent;
 }
 
 .navbar {

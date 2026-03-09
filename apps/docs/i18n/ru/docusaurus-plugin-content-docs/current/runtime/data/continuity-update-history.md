@@ -1,21 +1,20 @@
 ---
-title: 'Прокачка данных: continuity и update-history'
+title: 'Прокачка данных: continuity и backtest --updateOnly'
 ---
 
-В этой статье: как обновлять исторические данные через `yarn continuity` и `yarn update-history`, и как выбирать конкретную биржу.
+В этой статье: как обновлять исторические данные через `npx @tradejs/cli backtest --updateOnly` и `npx @tradejs/cli continuity`, и как выбирать конкретную биржу.
 
-## 1. `yarn update-history`
+## 1. `npx @tradejs/cli backtest --updateOnly`
 
-`yarn update-history` — это алиас команды:
+Используйте `backtest` в update-only режиме:
 
 ```bash
-yarn backtest --updateOnly
+npx @tradejs/cli backtest --updateOnly
 ```
 
 Источники:
 
-- `package.json` (script `update-history`)
-- `packages/cli/src/scripts/backtest.ts`
+- `@tradejs/cli`
 
 Что делает команда:
 
@@ -28,20 +27,20 @@ yarn backtest --updateOnly
 Используйте `--connector` (`bybit|binance|coinbase`):
 
 ```bash
-yarn update-history -- --user root --config TrendLine:base --connector bybit --timeframe 15
-yarn update-history -- --user root --config TrendLine:base --connector binance --timeframe 15
-yarn update-history -- --user root --config TrendLine:base --connector coinbase --timeframe 15
+npx @tradejs/cli backtest --updateOnly --user root --config TrendLine:base --connector bybit --timeframe 15
+npx @tradejs/cli backtest --updateOnly --user root --config TrendLine:base --connector binance --timeframe 15
+npx @tradejs/cli backtest --updateOnly --user root --config TrendLine:base --connector coinbase --timeframe 15
 ```
 
 Совет: добавьте `--tickers BTCUSDT,ETHUSDT`, чтобы ограничить набор символов.
 
-## 2. `yarn continuity`
+## 2. `npx @tradejs/cli continuity`
 
-`yarn continuity` проверяет целостность истории и может автоматически чинить разрывы.
+`npx @tradejs/cli continuity` проверяет целостность истории и может автоматически чинить разрывы.
 
 Источник:
 
-- `packages/cli/src/scripts/continuity.ts`
+- `@tradejs/cli`
 
 Поведение:
 
@@ -62,14 +61,14 @@ yarn update-history -- --user root --config TrendLine:base --connector coinbase 
 Примеры:
 
 ```bash
-yarn continuity --user root --timeframe 15 --provider all
-yarn continuity --user root --timeframe 15 --provider bybit
-yarn continuity --user root --timeframe 15 --provider binance --tickers BTCUSDT,ETHUSDT
+npx @tradejs/cli continuity --user root --timeframe 15 --provider all
+npx @tradejs/cli continuity --user root --timeframe 15 --provider bybit
+npx @tradejs/cli continuity --user root --timeframe 15 --provider binance --tickers BTCUSDT,ETHUSDT
 ```
 
 ## 3. Когда какую команду использовать
 
-- `update-history` — для регулярного обновления истории.
+- `backtest --updateOnly` — для регулярного обновления истории.
 - `continuity` — когда подозреваете пропуски/битые диапазоны и нужно восстановление.
 
 ## 4. Операционные замечания

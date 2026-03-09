@@ -6,12 +6,12 @@ title: Как работают сигналы
 ## Точка входа
 
 ```bash
-yarn signals
+npx @tradejs/cli signals
 ```
 
 Основной скрипт:
 
-- `packages/cli/src/scripts/signals.ts`
+- `@tradejs/cli`
 
 ## Откуда берутся конфиги стратегий
 
@@ -57,7 +57,7 @@ const strategy = await strategyCreator({
 ## Telegram-уведомления
 
 ```bash
-yarn signals --notify
+npx @tradejs/cli signals --notify
 ```
 
 Если есть AI-анализ, он уходит отдельным сообщением.

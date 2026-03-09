@@ -9,23 +9,23 @@ title: Maintenance и debug CLI-скрипты
 Очистка локальных файлов в `data/*`:
 
 ```bash
-yarn clean-dir --dir cache
-yarn clean-dir --dir ml/export
+npx @tradejs/cli clean-dir --dir cache
+npx @tradejs/cli clean-dir --dir ml/export
 ```
 
 Очистка Redis area/prefix:
 
 ```bash
-yarn clean-redis --area cache
-yarn clean-redis --area users:root:tests:
+npx @tradejs/cli clean-redis --area cache
+npx @tradejs/cli clean-redis --area users:root:tests:
 ```
 
 Очистка test-ключей для всех пользователей или одного:
 
 ```bash
-yarn clean-tests
-yarn clean-tests --user root
-yarn clean-tests --user root --cache
+npx @tradejs/cli clean-tests
+npx @tradejs/cli clean-tests --user root
+npx @tradejs/cli clean-tests --user root --cache
 ```
 
 ## Управление пользователями
@@ -33,13 +33,13 @@ yarn clean-tests --user root --cache
 Создать/обновить пользователя в Redis:
 
 ```bash
-yarn user-add --user root --password 'secret'
+npx @tradejs/cli user-add --user root --password 'secret'
 ```
 
 Опциональный persistent token:
 
 ```bash
-yarn user-add --user root --password 'secret' --token '<token>'
+npx @tradejs/cli user-add --user root --password 'secret' --token '<token>'
 ```
 
 ## Миграция legacy-истории
@@ -47,7 +47,7 @@ yarn user-add --user root --password 'secret' --token '<token>'
 Перенос JSON свечей (`data/history/*.json`) в Timescale:
 
 ```bash
-yarn migration
+npx @tradejs/cli migration
 ```
 
 ## Отладка коннектора / ордеров
@@ -55,27 +55,19 @@ yarn migration
 Ручной smoke-скрипт коннектора:
 
 ```bash
-yarn test
+npx @tradejs/cli test-script
 ```
 
 Smoke-скрипт ML gRPC payload:
 
 ```bash
-yarn test-ml
-```
-
-## Поиск ключей в Redis (ML)
-
-Поиск ML signal keys по `context.testSuiteId`:
-
-```bash
-yarn ts-node ./packages/cli/src/scripts/findMlSignalsByTestSuite.ts --testSuiteId 861d9d --pattern 'ml:signals:*'
+npx @tradejs/cli test-ml
 ```
 
 ## Проверка состояния окружения
 
 ```bash
-yarn doctor
-yarn doctor --require-ml
-yarn doctor --skip-ml
+npx @tradejs/cli doctor
+npx @tradejs/cli doctor --require-ml
+npx @tradejs/cli doctor --skip-ml
 ```

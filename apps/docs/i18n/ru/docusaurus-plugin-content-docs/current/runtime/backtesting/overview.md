@@ -6,13 +6,13 @@ title: Как работают бэктесты
 ## Точка входа
 
 ```bash
-yarn backtest
+npx @tradejs/cli backtest
 ```
 
 Основные файлы:
 
-- CLI-скрипт: `packages/cli/src/scripts/backtest.ts`
-- воркер: `packages/core/src/workers/tester.ts`
+- CLI-скрипт: `@tradejs/cli`
+- воркер: `@tradejs/core`
 
 ## Реальные CLI-флаги (из кода)
 
@@ -27,7 +27,7 @@ args.option(['m', 'ml'], 'Write ML dataset rows', false);
 Пример запуска для TrendLine-подобного сценария:
 
 ```bash
-yarn backtest --config trendline --connector bybit --tests 500 --parallel 4 --ml
+npx @tradejs/cli backtest --config trendline --connector bybit --tests 500 --parallel 4 --ml
 ```
 
 ## Пайплайн
@@ -55,7 +55,7 @@ for await (const test of testSuite) {
 ## ML-датасет в процессе бэктеста
 
 ```bash
-yarn backtest --ml
+npx @tradejs/cli backtest --ml
 ```
 
 Создаются chunk-файлы:
@@ -65,11 +65,11 @@ yarn backtest --ml
 Потом они объединяются:
 
 ```bash
-yarn ml-export
+npx @tradejs/cli ml-export
 ```
 
 ## Связанные статьи
 
 - `runtime/backtesting/grid-config`
 - `runtime/backtesting/results-runtime-config`
-- `runtime/data/continuity-update-history`
+- [Прокачка данных и continuity](../data/continuity-update-history)

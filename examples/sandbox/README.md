@@ -5,7 +5,7 @@
 ## Что внутри
 
 - Стратегия: `SandboxMomentum`
-- Экспорт: `strategyEntries` (контракт framework plugin)
+- Экспорт: `strategyEntries` (контракт plugin API из `@tradejs/core`)
 - Индикатор: `sandboxMomentum` + `renderer` для auto-registration в chart
 
 ## Как запустить
@@ -13,7 +13,7 @@
 `tradejs.config.ts` в корне уже содержит:
 
 ```ts
-import { defineConfig } from '@tradejs/framework';
+import { defineConfig } from '@tradejs/core';
 
 export default defineConfig({
   strategyPlugins: ['@tradejs/example-sandbox'],

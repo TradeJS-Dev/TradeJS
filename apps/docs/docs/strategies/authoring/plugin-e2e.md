@@ -7,7 +7,7 @@ This guide outlines the full plugin flow from local coding to reuse.
 ## 1. Create Plugin Package
 
 - Create a package exporting `strategyEntries` and/or `indicatorEntries`.
-- Depend on `@tradejs/framework` types.
+- Depend on `@tradejs/core` types.
 
 ## 2. Implement Strategy or Indicator
 

@@ -2,20 +2,20 @@
 title: Use Backtest Results In Runtime
 ---
 
-This page explains how to promote positive backtest configs into runtime, how `yarn results` works, and how `isConfigFromBacktest` is set.
+This page explains how to promote positive backtest configs into runtime, how `npx @tradejs/cli results` works, and how `isConfigFromBacktest` is set.
 
-## 1. What `yarn results` Does
+## 1. What `npx @tradejs/cli results` Does
 
-`yarn results` scans saved test configs/stats and builds per-symbol winners for one strategy.
+`npx @tradejs/cli results` scans saved test configs/stats and builds per-symbol winners for one strategy.
 
 Source:
 
-- `packages/cli/src/scripts/results.ts`
+- `@tradejs/cli`
 
 Main command:
 
 ```bash
-yarn results --strategy TrendLine --coverage --user root
+npx @tradejs/cli results --strategy TrendLine --coverage --user root
 ```
 
 Useful modes:
@@ -27,9 +27,9 @@ Useful modes:
 Examples:
 
 ```bash
-yarn results --strategy TrendLine --merge --user root
-yarn results --strategy TrendLine --update --user root
-yarn results --strategy TrendLine --clear --user root
+npx @tradejs/cli results --strategy TrendLine --merge --user root
+npx @tradejs/cli results --strategy TrendLine --update --user root
+npx @tradejs/cli results --strategy TrendLine --clear --user root
 ```
 
 ## 2. Where Promoted Config Is Stored
@@ -58,8 +58,8 @@ When step 4 applies, runtime marks:
 
 Code:
 
-- `packages/core/src/utils/strategyHelpers/config.ts`
-- `packages/core/src/utils/strategyRuntime.ts`
+- `@tradejs/core`
+- `@tradejs/core`
 
 ## 4. How `isConfigFromBacktest` Is Used
 
@@ -67,8 +67,8 @@ Code:
 
 Code path:
 
-- signal build: `packages/core/src/utils/strategyHelpers/signalBuilders.ts`
-- telegram formatting: `packages/core/src/utils/signals.ts`
+- signal build: `@tradejs/core`
+- telegram formatting: `@tradejs/core`
 
 Runtime behavior:
 
@@ -78,9 +78,9 @@ Runtime behavior:
 ## 5. Recommended Workflow
 
 1. Run backtests for a strategy config grid.
-2. Run `yarn results --strategy <Strategy> --coverage` to inspect winners.
+2. Run `npx @tradejs/cli results --strategy <Strategy> --coverage` to inspect winners.
 3. Promote with `--merge` first (safer than full overwrite).
-4. Run `yarn signals` / `yarn bot` and verify signals with `isConfigFromBacktest=true`.
+4. Run `npx @tradejs/cli signals` / `npx @tradejs/cli bot` and verify signals with `isConfigFromBacktest=true`.
 5. Re-run promotion periodically after new backtests.
 
 ## 6. Notes

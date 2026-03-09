@@ -26,7 +26,7 @@ TradeJS uses mixed persistence:
 ## Operational Rules
 
 - Never flush Redis in production without a scope.
-- Prefer scoped cleanup commands (`yarn clean-redis` with area).
+- Prefer scoped cleanup commands (`npx @tradejs/cli clean-redis` with area).
 - Treat Redis as live runtime dependency; monitor availability and latency.
 
 ## Debug Tips

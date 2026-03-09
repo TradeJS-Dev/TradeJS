@@ -21,9 +21,9 @@ title: Как добавить Pine Script индикаторы
 
 Путь в коде:
 
-- Pine-исходник: `packages/core/src/strategy/AdaptiveMomentumRibbon/adaptiveMomentumRibbon.pine`
-- mapping в фигуры: `packages/core/src/strategy/AdaptiveMomentumRibbon/figures.ts`
-- mapping в runtime-сигналы: `packages/core/src/strategy/AdaptiveMomentumRibbon/core.ts`
+- Pine-исходник: `@tradejs/core`
+- mapping в фигуры: `@tradejs/core`
+- mapping в runtime-сигналы: `@tradejs/core`
 
 ## 3. Добавьте новый Pine plot
 
@@ -51,13 +51,13 @@ plot(rsiValue, "rsi")
 ## 4. Проверка в backtest/signals
 
 ```bash
-yarn backtest --user root --config AdaptiveMomentumRibbon:amr-default
+npx @tradejs/cli backtest --user root --config AdaptiveMomentumRibbon:amr-default
 ```
 
 или
 
 ```bash
-yarn signals --user root --cacheOnly
+npx @tradejs/cli signals --user root --cacheOnly
 ```
 
 Новая Pine-линия должна появиться в figures у сигналов/бэктеста.

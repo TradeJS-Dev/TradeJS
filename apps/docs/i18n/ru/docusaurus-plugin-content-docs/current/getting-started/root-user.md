@@ -7,7 +7,7 @@ title: Настройка root пользователя
 ## 1. Создать или обновить root
 
 ```bash
-yarn user-add -u root -p 'StrongPassword123!'
+npx @tradejs/cli user-add -u root -p 'StrongPassword123!'
 ```
 
 Что делает команда:
@@ -31,24 +31,20 @@ redis-cli JSON.GET users:index:root
 
 ## 3. Войти в приложение
 
-1. Запустите приложение: `yarn dev`
-2. Откройте: `http://localhost:3000/routes/signin`
-3. Войдите под `root` и указанным паролем
-
-Где лежит авторизация:
-
-- `apps/app/src/app/auth.ts`
+1. Откройте страницу входа вашего TradeJS-приложения (или API-клиент).
+2. Войдите под `root` и указанным паролем.
+3. Для API-only сценариев используйте persistent token из Redis.
 
 ## 4. Смена пароля или токена
 
 Смена пароля:
 
 ```bash
-yarn user-add -u root -p 'NewStrongPassword456!'
+npx @tradejs/cli user-add -u root -p 'NewStrongPassword456!'
 ```
 
 Явно задать токен:
 
 ```bash
-yarn user-add -u root -p 'NewStrongPassword456!' -t 'my-static-token'
+npx @tradejs/cli user-add -u root -p 'NewStrongPassword456!' -t 'my-static-token'
 ```

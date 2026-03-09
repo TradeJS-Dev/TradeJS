@@ -2,11 +2,11 @@
 title: Telegram Notifications
 ---
 
-TradeJS can send signal messages to Telegram from `yarn signals --notify`.
+TradeJS can send signal messages to Telegram from `npx @tradejs/cli signals --notify`.
 
 ## 1. Configure Telegram Variables
 
-`packages/core/src/utils/signals.ts` reads:
+`@tradejs/core` reads:
 
 - `TG_BOT_TOKEN`
 - `TG_CHAT_ID`
@@ -36,7 +36,7 @@ curl -s -X POST "https://api.telegram.org/bot${TG_BOT_TOKEN}/sendMessage" \
 ## 3. Send Notifications from Signals
 
 ```bash
-yarn signals --user root --notify --tickers BTC --cacheOnly
+npx @tradejs/cli signals --user root --notify --tickers BTC --cacheOnly
 ```
 
 Flow:

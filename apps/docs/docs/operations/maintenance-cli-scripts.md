@@ -9,23 +9,23 @@ This page covers operational scripts that are useful but easy to miss.
 Clean local files under `data/*`:
 
 ```bash
-yarn clean-dir --dir cache
-yarn clean-dir --dir ml/export
+npx @tradejs/cli clean-dir --dir cache
+npx @tradejs/cli clean-dir --dir ml/export
 ```
 
 Clean Redis area/prefix:
 
 ```bash
-yarn clean-redis --area cache
-yarn clean-redis --area users:root:tests:
+npx @tradejs/cli clean-redis --area cache
+npx @tradejs/cli clean-redis --area users:root:tests:
 ```
 
 Clean test keys for all users or one user:
 
 ```bash
-yarn clean-tests
-yarn clean-tests --user root
-yarn clean-tests --user root --cache
+npx @tradejs/cli clean-tests
+npx @tradejs/cli clean-tests --user root
+npx @tradejs/cli clean-tests --user root --cache
 ```
 
 ## User Management
@@ -33,13 +33,13 @@ yarn clean-tests --user root --cache
 Create/update user in Redis:
 
 ```bash
-yarn user-add --user root --password 'secret'
+npx @tradejs/cli user-add --user root --password 'secret'
 ```
 
 Optional persistent token:
 
 ```bash
-yarn user-add --user root --password 'secret' --token '<token>'
+npx @tradejs/cli user-add --user root --password 'secret' --token '<token>'
 ```
 
 ## Legacy History Migration
@@ -47,7 +47,7 @@ yarn user-add --user root --password 'secret' --token '<token>'
 Migrate JSON candle files (`data/history/*.json`) to Timescale:
 
 ```bash
-yarn migration
+npx @tradejs/cli migration
 ```
 
 ## Connector / Order Debug
@@ -55,27 +55,19 @@ yarn migration
 Manual connector smoke script:
 
 ```bash
-yarn test
+npx @tradejs/cli test-script
 ```
 
 ML gRPC payload smoke script:
 
 ```bash
-yarn test-ml
-```
-
-## Redis Search Helper (ML)
-
-Find ML signal keys by `context.testSuiteId`:
-
-```bash
-yarn ts-node ./packages/cli/src/scripts/findMlSignalsByTestSuite.ts --testSuiteId 861d9d --pattern 'ml:signals:*'
+npx @tradejs/cli test-ml
 ```
 
 ## Environment Health
 
 ```bash
-yarn doctor
-yarn doctor --require-ml
-yarn doctor --skip-ml
+npx @tradejs/cli doctor
+npx @tradejs/cli doctor --require-ml
+npx @tradejs/cli doctor --skip-ml
 ```

@@ -1,8 +1,8 @@
 ---
-title: 'Strategy: TrendLine'
+title: 'TrendLine'
 ---
 
-`TrendLine` is a TypeScript strategy (`packages/core/src/strategy/TrendLine`) that opens trades on trendline breakouts with risk guards.
+`TrendLine` is a TypeScript strategy (`@tradejs/core`) that opens trades on trendline breakouts with risk guards.
 
 ## Entry Logic
 
@@ -69,39 +69,10 @@ Position lifecycle is handled by TP/SL and shared runtime/order execution.
 - `LOWS.SL` — stop-loss in percent.
 - `LOWS.minRiskRatio` — minimum allowed risk/reward.
 
-### Indicator Period Parameters
-
-- `MA_FAST` — fast moving average period.
-- `MA_MEDIUM` — medium moving average period.
-- `MA_SLOW` — slow moving average period.
-- `OBV_SMA` — OBV SMA period.
-- `ATR` — ATR period.
-- `ATR_PCT_SHORT` — short ATR% window.
-- `ATR_PCT_LONG` — long ATR% window.
-- `BB` — Bollinger Bands period.
-- `BB_STD` — Bollinger Bands deviation multiplier.
-- `MACD_FAST` — MACD fast period.
-- `MACD_SLOW` — MACD slow period.
-- `MACD_SIGNAL` — MACD signal period.
-- `LEVEL_LOOKBACK` — lookback for high/low levels.
-- `LEVEL_DELAY` — level confirmation delay.
-
 ## Indicators Used (What Each One Means)
 
-### Used in Entry/Guards
-
-- `correlation` — correlation between asset and BTC; used as a risk guard.
-
-### Passed in `indicators` Payload (for analysis/ML)
-
-- `maFast`, `maMedium`, `maSlow` — moving averages.
-- `obv`, `smaObv` — OBV and its smoothing.
-- `atr`, `atrPctShort`, `atrPctLong` — absolute and relative volatility.
-- `bbMiddle`, `bbUpper`, `bbLower` — Bollinger Bands.
-- `macd`, `macdSignal`, `macdHistogram` — MACD components.
-- `highLevel`, `lowLevel` — local high/low levels.
-- `prevCandle` — previous candle snapshot.
-- `correlation` — BTC correlation context.
+- `correlation` — correlation between asset and BTC; used as the runtime risk guard (`MAX_CORRELATION`).
+- `trendLine` (derived geometry, not a base indicator) — selected line from trendline engine; this drives entry direction/placement.
 
 ## Signal Payload
 
@@ -150,6 +121,6 @@ Position lifecycle is handled by TP/SL and shared runtime/order execution.
 ## Run
 
 ```bash
-yarn backtest --user root --config TrendLine:base --connector bybit --timeframe 15
-yarn signals --user root --timeframe 15
+npx @tradejs/cli backtest --user root --config TrendLine:base --connector bybit --timeframe 15
+npx @tradejs/cli signals --user root --timeframe 15
 ```

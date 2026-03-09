@@ -13,12 +13,12 @@ title: Pine Script стратегия пошагово
 
 `AdaptiveMomentumRibbon` лежит как обычная стратегия:
 
-- `packages/core/src/strategy/AdaptiveMomentumRibbon/adaptiveMomentumRibbon.pine`
-- `packages/core/src/strategy/AdaptiveMomentumRibbon/config.ts`
-- `packages/core/src/strategy/AdaptiveMomentumRibbon/core.ts`
-- `packages/core/src/strategy/AdaptiveMomentumRibbon/figures.ts`
-- `packages/core/src/strategy/AdaptiveMomentumRibbon/manifest.ts`
-- `packages/core/src/strategy/AdaptiveMomentumRibbon/strategy.ts`
+- `@tradejs/core`
+- `@tradejs/core`
+- `@tradejs/core`
+- `@tradejs/core`
+- `@tradejs/core`
+- `@tradejs/core`
 
 Pine-код хранится отдельно и загружается в `core.ts`.
 
@@ -98,13 +98,13 @@ redis-cli JSON.SET users:root:backtests:configs:AdaptiveMomentumRibbon:amr-defau
 Бэктест:
 
 ```bash
-yarn backtest --user root --config AdaptiveMomentumRibbon:amr-default --connector bybit --tests 200 --parallel 4
+npx @tradejs/cli backtest --user root --config AdaptiveMomentumRibbon:amr-default --connector bybit --tests 200 --parallel 4
 ```
 
 Сигналы:
 
 ```bash
-yarn signals --user root --cacheOnly
+npx @tradejs/cli signals --user root --cacheOnly
 ```
 
 В UI (`/routes/backtest`) проверьте:
@@ -118,6 +118,6 @@ yarn signals --user root --cacheOnly
 2. Замените `.pine` файл на вашу стратегию.
 3. Сохраните явные `plot`-выходы для entry/exit (+ линии figures).
 4. Привяжите эти `plot`-ы в `core.ts` к решениям TradeJS.
-5. Зарегистрируйте manifest в `packages/core/src/strategy/manifests.ts`.
+5. Зарегистрируйте manifest в `@tradejs/core`.
 
 Так Pine-стратегии остаются самостоятельными модулями, равными TS-стратегиям по интеграции с runtime/backtest.

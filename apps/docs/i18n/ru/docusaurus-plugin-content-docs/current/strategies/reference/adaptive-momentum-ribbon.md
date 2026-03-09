@@ -1,12 +1,12 @@
 ---
-title: 'Стратегия: AdaptiveMomentumRibbon'
+title: 'AdaptiveMomentumRibbon'
 ---
 
-`AdaptiveMomentumRibbon` — Pine-стратегия как отдельная самостоятельная стратегия (`packages/core/src/strategy/AdaptiveMomentumRibbon`).
+`AdaptiveMomentumRibbon` — Pine-стратегия как отдельная самостоятельная стратегия (`@tradejs/core`).
 
 Исходник Pine:
 
-- `packages/core/src/strategy/AdaptiveMomentumRibbon/adaptiveMomentumRibbon.pine`
+- `@tradejs/core`
 
 Runtime передает в `core.ts` загрузчик скрипта (`loadPineScript`), поэтому Pine-логика хранится отдельно и обновляется независимо от TypeScript-кода.
 
@@ -142,6 +142,6 @@ Runtime передает в `core.ts` загрузчик скрипта (`loadPi
 ## Запуск
 
 ```bash
-yarn backtest --user root --config AdaptiveMomentumRibbon:amr-default --connector bybit --timeframe 15
-yarn signals --user root --timeframe 15
+npx @tradejs/cli backtest --user root --config AdaptiveMomentumRibbon:amr-default --connector bybit --timeframe 15
+npx @tradejs/cli signals --user root --timeframe 15
 ```

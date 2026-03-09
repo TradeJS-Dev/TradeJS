@@ -7,7 +7,7 @@ TradeJS CLI defaults to `--user root`, so creating a valid `root` account is the
 ## 1. Create or Update Root User
 
 ```bash
-yarn user-add -u root -p 'StrongPassword123!'
+npx @tradejs/cli user-add -u root -p 'StrongPassword123!'
 ```
 
 What this does:
@@ -31,24 +31,20 @@ You should see at least:
 
 ## 3. Sign In to the App
 
-1. Start app: `yarn dev`
-2. Open: `http://localhost:3000/routes/signin`
-3. Log in with `root` and your password
-
-Credential auth path:
-
-- `apps/app/src/app/auth.ts`
+1. Open your TradeJS sign-in page (or your API client).
+2. Log in with `root` and your password.
+3. For API-only flows, use the persistent token from Redis.
 
 ## 4. Rotate Password or Token
 
 Set new password:
 
 ```bash
-yarn user-add -u root -p 'NewStrongPassword456!'
+npx @tradejs/cli user-add -u root -p 'NewStrongPassword456!'
 ```
 
 Set explicit token:
 
 ```bash
-yarn user-add -u root -p 'NewStrongPassword456!' -t 'my-static-token'
+npx @tradejs/cli user-add -u root -p 'NewStrongPassword456!' -t 'my-static-token'
 ```

@@ -4,7 +4,7 @@ import type * as Preset from '@docusaurus/preset-classic';
 
 const config: Config = {
   title: 'TradeJS Docs',
-  tagline: 'Knowledge base for the TradeJS framework',
+  tagline: 'Knowledge base for TradeJS',
   favicon: 'img/favicon.ico',
 
   future: {
@@ -70,7 +70,7 @@ const config: Config = {
           type: 'doc',
           docId: 'intro',
           position: 'left',
-          label: 'Start',
+          label: 'Getting started',
         },
         {
           type: 'doc',
@@ -126,16 +126,15 @@ const config: Config = {
         {
           title: 'Getting Started',
           items: [
-            { label: 'Local Setup', to: '/getting-started/local' },
-            { label: 'Self-Hosted', to: '/getting-started/self-hosted' },
-            { label: 'Cloud', to: '/getting-started/cloud' },
+            { label: 'Overview', to: '/' },
+            { label: 'Quickstart', to: '/getting-started/quickstart' },
+            { label: 'Root User Setup', to: '/getting-started/root-user' },
           ],
         },
         {
-          title: 'Core Docs',
+          title: 'Authoring',
           items: [
-            { label: 'Framework API', to: '/api/framework' },
-            { label: 'CLI API', to: '/api/cli' },
+            { label: 'Core API', to: '/api/framework' },
             {
               label: 'Creating Strategies',
               to: '/strategies/authoring/write-strategies',
@@ -144,12 +143,12 @@ const config: Config = {
           ],
         },
         {
-          title: 'Runtime',
+          title: 'Operations',
           items: [
-            { label: 'Backtesting', to: '/runtime/backtesting/overview' },
-            { label: 'Signals', to: '/runtime/execution/signals' },
-            { label: 'ML', to: '/ai-ml/ml/configuration' },
-            { label: 'AI', to: '/ai-ml/ai/configuration' },
+            { label: 'CLI API', to: '/api/cli' },
+            { label: 'Production Runbook', to: '/operations/production-runbook' },
+            { label: 'Monitoring', to: '/operations/monitoring-alerts' },
+            { label: 'Backup and Restore', to: '/operations/backup-restore' },
           ],
         },
       ],

@@ -1,9 +1,9 @@
 ---
 sidebar_position: 5
-title: API Framework
+title: Core API
 ---
 
-`@tradejs/framework` — публичный пакет для пользователей, которые хотят расширять TradeJS своими стратегиями и индикаторами.
+`@tradejs/core` — публичный пакет для разработки strategy и indicator плагинов в TradeJS.
 
 ## Что экспортируется
 
@@ -17,7 +17,7 @@ title: API Framework
 Создайте `tradejs.config.ts` в корне проекта:
 
 ```ts
-import { defineConfig } from '@tradejs/framework';
+import { defineConfig } from '@tradejs/core';
 
 export default defineConfig({
   strategyPlugins: ['@scope/my-strategy-plugin'],
@@ -33,42 +33,6 @@ export default defineConfig({
 - `tradejs.config.mjs`
 - `tradejs.config.cjs`
 
-## Пример из проекта: creator для TrendLine
-
-```ts
-import { createStrategyRuntime } from '@utils/strategyRuntime';
-import { config as DEFAULT_CONFIG, TrendLineConfig } from './config';
-import { createTrendLineCore } from './core';
-
-export const TrendlineStrategyCreator = createStrategyRuntime<TrendLineConfig>({
-  strategyName: 'TrendLine',
-  defaults: DEFAULT_CONFIG as TrendLineConfig,
-  createCore: createTrendLineCore,
-});
-```
-
-## Пример: manifest TrendLine
-
-```ts
-import { StrategyManifest } from '@types';
-import { trendLineAiAdapter } from './adapters/ai';
-import { trendLineMlAdapter } from './adapters/ml';
-import { trendLineBeforePlaceOrderHook } from './hooks';
-
-export const trendLineManifest: StrategyManifest = {
-  name: 'TrendLine',
-  hooks: {
-    beforePlaceOrder: trendLineBeforePlaceOrderHook,
-  },
-  aiAdapter: trendLineAiAdapter,
-  mlAdapter: trendLineMlAdapter,
-};
-```
-
-Каталог lifecycle-хуков:
-
-- `runtime/execution/strategy-hooks`
-
 ## Strategy plugin API
 
 Плагин стратегии экспортирует `strategyEntries`:
@@ -77,7 +41,7 @@ export const trendLineManifest: StrategyManifest = {
 import {
   defineStrategyPlugin,
   type StrategyRegistryEntry,
-} from '@tradejs/framework';
+} from '@tradejs/core';
 
 const strategyEntries: StrategyRegistryEntry[] = [
   {
@@ -91,12 +55,23 @@ const strategyEntries: StrategyRegistryEntry[] = [
 export default defineStrategyPlugin({ strategyEntries });
 ```
 
+## Strategy Manifest
+
+Каждый strategy entry содержит `manifest` с полями:
+
+- обязательное `name`
+- опциональные `hooks`
+- опциональный `aiAdapter`
+- опциональный `mlAdapter`
+
+Подробно про lifecycle-хуки: [Strategy Hooks](../runtime/execution/strategy-hooks).
+
 ## Indicator plugin API
 
 Плагин индикаторов экспортирует `indicatorEntries`:
 
 ```ts
-import { defineIndicatorPlugin } from '@tradejs/framework';
+import { defineIndicatorPlugin } from '@tradejs/core';
 
 export default defineIndicatorPlugin({
   indicatorEntries: [
@@ -123,4 +98,4 @@ export default defineIndicatorPlugin({
 - `Signal`
 - `Direction`, `Interval`, `Candle`
 
-Контракты лежат в `packages/core/src/types/*`.
+Контракты лежат в `@tradejs/core`.

@@ -13,12 +13,12 @@ TradeJS now supports two strategy authoring paths:
 
 `AdaptiveMomentumRibbon` lives as a regular strategy module:
 
-- `packages/core/src/strategy/AdaptiveMomentumRibbon/adaptiveMomentumRibbon.pine`
-- `packages/core/src/strategy/AdaptiveMomentumRibbon/config.ts`
-- `packages/core/src/strategy/AdaptiveMomentumRibbon/core.ts`
-- `packages/core/src/strategy/AdaptiveMomentumRibbon/figures.ts`
-- `packages/core/src/strategy/AdaptiveMomentumRibbon/manifest.ts`
-- `packages/core/src/strategy/AdaptiveMomentumRibbon/strategy.ts`
+- `@tradejs/core`
+- `@tradejs/core`
+- `@tradejs/core`
+- `@tradejs/core`
+- `@tradejs/core`
+- `@tradejs/core`
 
 The Pine code is stored in a separate file and loaded by `core.ts`.
 
@@ -98,13 +98,13 @@ Important: config key must start with strategy name (`AdaptiveMomentumRibbon:*`)
 Backtest:
 
 ```bash
-yarn backtest --user root --config AdaptiveMomentumRibbon:amr-default --connector bybit --tests 200 --parallel 4
+npx @tradejs/cli backtest --user root --config AdaptiveMomentumRibbon:amr-default --connector bybit --tests 200 --parallel 4
 ```
 
 Signals:
 
 ```bash
-yarn signals --user root --cacheOnly
+npx @tradejs/cli signals --user root --cacheOnly
 ```
 
 In app (`/routes/backtest`) verify:
@@ -118,6 +118,6 @@ In app (`/routes/backtest`) verify:
 2. Replace `.pine` file with your strategy logic.
 3. Keep explicit Pine plots for entry/exit (+ figure lines).
 4. Map those plots in `core.ts` to TradeJS decisions.
-5. Register manifest in `packages/core/src/strategy/manifests.ts`.
+5. Register manifest in `@tradejs/core`.
 
 This keeps Pine strategies as independent modules, equivalent to TS strategies in runtime/backtest integration.

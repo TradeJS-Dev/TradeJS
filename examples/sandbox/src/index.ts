@@ -6,11 +6,11 @@ import type {
   StrategyConfig,
   StrategyCreator,
   StrategyManifest,
-} from '@tradejs/framework';
+} from '@tradejs/core';
 import {
   defineIndicatorPlugin,
   defineStrategyPlugin,
-} from '@tradejs/framework';
+} from '@tradejs/core';
 
 interface SandboxConfig extends StrategyConfig {
   INTERVAL?: Signal['interval'];

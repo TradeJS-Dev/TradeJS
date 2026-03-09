@@ -6,12 +6,12 @@ title: How Signals Work
 ## Entry Point
 
 ```bash
-yarn signals
+npx @tradejs/cli signals
 ```
 
 Main script:
 
-- `packages/cli/src/scripts/signals.ts`
+- `@tradejs/cli`
 
 ## Real Strategy Config Source
 
@@ -57,7 +57,7 @@ const strategy = await strategyCreator({
 ## Telegram Notifications
 
 ```bash
-yarn signals --notify
+npx @tradejs/cli signals --notify
 ```
 
 When AI analysis is present, Telegram receives a follow-up analysis message.

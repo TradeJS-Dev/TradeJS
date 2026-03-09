@@ -7,7 +7,7 @@ title: Production Runbook
 ## Ежедневные проверки
 
 1. Проверка статуса сервисов (`docker compose ps` или оркестратор).
-2. Проверка зависимостей через `yarn doctor`.
+2. Проверка зависимостей через `npx @tradejs/cli doctor`.
 3. Smoke-проверка API и базовых страниц UI.
 4. Контроль доступности Redis/Postgres и нагрузки.
 

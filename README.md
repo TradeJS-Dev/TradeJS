@@ -14,7 +14,7 @@ It supports two first-class authoring paths:
 - `packages/core`: strategy runtime, strategy implementations, shared types/helpers
 - `packages/connectors`: exchange connectors and market data providers
 - `packages/cli`: operational scripts (`backtest`, `signals`, `results`, `ml-*`, `doctor`, etc.)
-- `packages/framework`: public framework entrypoint for external strategy/indicator plugins
+- `packages/core`: public framework entrypoint for external strategy/indicator plugins
 - `packages/ml/python`: Python train/infer/profile services
 - `examples/sandbox`: reference strategy/indicator plugin package
 
@@ -124,7 +124,7 @@ yarn continuity --user root --timeframe 15 --provider bybit
 Create `tradejs.config.ts` at repository root:
 
 ```ts
-import { defineConfig } from '@tradejs/framework';
+import { defineConfig } from '@tradejs/core';
 
 export default defineConfig({
   strategyPlugins: ['@scope/my-strategy-plugin'],

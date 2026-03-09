@@ -18,7 +18,7 @@ Run this checklist before enabling `--makeOrders`.
 
 ## Infrastructure Readiness
 
-- `yarn doctor` passes required checks.
+- `npx @tradejs/cli doctor` passes required checks.
 - Redis and Postgres are stable.
 - ML inference endpoint is reachable if required.
 

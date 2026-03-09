@@ -7,7 +7,7 @@ Use this runbook as a daily operational checklist.
 ## Daily Health Checks
 
 1. `docker compose ps` or service manager status.
-2. `yarn doctor` (or equivalent in runtime environment).
+2. `npx @tradejs/cli doctor` (or equivalent in runtime environment).
 3. Verify API responsiveness and basic UI pages.
 4. Check Redis/Postgres connectivity and resource usage.
 

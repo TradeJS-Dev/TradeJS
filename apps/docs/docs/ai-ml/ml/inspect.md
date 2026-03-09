@@ -2,18 +2,18 @@
 title: ML Dataset Inspection
 ---
 
-`yarn ml-inspect` helps validate dataset quality before training.
+`npx @tradejs/cli ml-inspect` helps validate dataset quality before training.
 
 Source:
 
-- `packages/cli/src/scripts/mlInspect.ts`
+- `@tradejs/cli`
 
 ## Quick Start
 
 ```bash
-yarn ml-inspect
-yarn ml-inspect --strategy TrendLine --rows 20000 --mode sample
-yarn ml-inspect --file data/ml/export/ml-dataset-trendline-merged-123.jsonl --mode tail
+npx @tradejs/cli ml-inspect
+npx @tradejs/cli ml-inspect --strategy TrendLine --rows 20000 --mode sample
+npx @tradejs/cli ml-inspect --file data/ml/export/ml-dataset-trendline-merged-123.jsonl --mode tail
 ```
 
 ## Modes
@@ -25,13 +25,13 @@ yarn ml-inspect --file data/ml/export/ml-dataset-trendline-merged-123.jsonl --mo
 ## Inspect Tools
 
 - `quick` (default): built-in numeric diagnostics
-- `ydata`: HTML profile report via Docker (`ml-profile`)
+- `ydata`: HTML profile report via ydata profiling runtime
 
 Examples:
 
 ```bash
-yarn ml-inspect --tool quick --rows 15000
-yarn ml-inspect --tool ydata --rows 20000 --mode sample
+npx @tradejs/cli ml-inspect --tool quick --rows 15000
+npx @tradejs/cli ml-inspect --tool ydata --rows 20000 --mode sample
 ```
 
 ## What Quick Inspect Checks
@@ -54,9 +54,8 @@ It prints top problematic fields by score and recommended fixes.
 
 Requirements:
 
-```bash
-docker compose -f docker-compose.ml.yml build ml-profile
-```
+- ydata profiling runtime available in your environment
+- enough disk space for generated `.profile.html` report
 
 ## Useful Flags
 

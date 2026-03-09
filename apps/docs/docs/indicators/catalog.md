@@ -6,7 +6,7 @@ This page lists indicators currently produced/used by core runtime.
 
 Primary implementation:
 
-- `packages/core/src/utils/indicators.ts`
+- `@tradejs/core`
 
 ## 1. Base Indicator Snapshot
 
@@ -54,7 +54,7 @@ For BTC context, keys are prefixed with `btc` (`btcMaFast`, `btcMaFast1h`, etc).
 
 ## 5. Built-In Indicator Helpers
 
-From `packages/core/src/indicators`:
+From `@tradejs/core`:
 
 - `MOM`: momentum (`price - price[period]`)
 - `smaAligned`: SMA with alignment to source length/warmup

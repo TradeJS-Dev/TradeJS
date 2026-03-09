@@ -1,12 +1,12 @@
 ---
-title: 'Strategy: AdaptiveMomentumRibbon'
+title: 'AdaptiveMomentumRibbon'
 ---
 
-`AdaptiveMomentumRibbon` is a Pine-backed strategy integrated as a standalone strategy (`packages/core/src/strategy/AdaptiveMomentumRibbon`).
+`AdaptiveMomentumRibbon` is a Pine-backed strategy integrated as a standalone strategy (`@tradejs/core`).
 
 Pine source:
 
-- `packages/core/src/strategy/AdaptiveMomentumRibbon/adaptiveMomentumRibbon.pine`
+- `@tradejs/core`
 
 Runtime injects `loadPineScript` into `core.ts`, so Pine logic is maintained separately from TypeScript orchestration.
 
@@ -142,6 +142,6 @@ Runtime injects `loadPineScript` into `core.ts`, so Pine logic is maintained sep
 ## Run
 
 ```bash
-yarn backtest --user root --config AdaptiveMomentumRibbon:amr-default --connector bybit --timeframe 15
-yarn signals --user root --timeframe 15
+npx @tradejs/cli backtest --user root --config AdaptiveMomentumRibbon:amr-default --connector bybit --timeframe 15
+npx @tradejs/cli signals --user root --timeframe 15
 ```

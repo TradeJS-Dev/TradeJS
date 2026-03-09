@@ -6,12 +6,12 @@ This guide explains how to configure a backtest grid in Redis and run mass tests
 
 ## 1. How Grid Backtests Work
 
-`yarn backtest` reads a Redis config and builds a Cartesian product of parameter arrays.
+`npx @tradejs/cli backtest` reads a Redis config and builds a Cartesian product of parameter arrays.
 
 Code path:
 
-- `packages/cli/src/scripts/backtest.ts`
-- `packages/core/src/utils/grid.ts`
+- `@tradejs/cli`
+- `@tradejs/core`
 
 Key points:
 
@@ -84,7 +84,7 @@ Combination count in this example:
 Run:
 
 ```bash
-yarn backtest --user root --config AdaptiveMomentumRibbon:grid-v1 --connector bybit --timeframe 15 --tests 3000 --parallel 6
+npx @tradejs/cli backtest --user root --config AdaptiveMomentumRibbon:grid-v1 --connector bybit --timeframe 15 --tests 3000 --parallel 6
 ```
 
 Useful scaling flags:
@@ -106,13 +106,13 @@ redis-cli JSON.GET users:root:backtests:configs:AdaptiveMomentumRibbon:grid-v1
 Inspect winners:
 
 ```bash
-yarn results --strategy AdaptiveMomentumRibbon --coverage --user root
+npx @tradejs/cli results --strategy AdaptiveMomentumRibbon --coverage --user root
 ```
 
 Promote best configs to runtime:
 
 ```bash
-yarn results --strategy AdaptiveMomentumRibbon --merge --user root
+npx @tradejs/cli results --strategy AdaptiveMomentumRibbon --merge --user root
 ```
 
 ## 6. Common Mistakes

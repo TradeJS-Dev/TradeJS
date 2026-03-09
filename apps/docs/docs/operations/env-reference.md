@@ -37,4 +37,4 @@ This page groups the most important environment variables by area.
 
 - Keep `.env.example` safe and generic; never commit secrets.
 - In production, inject secrets from a secret manager.
-- Validate environment with `yarn doctor` before enabling live orders.
+- Validate environment with `npx @tradejs/cli doctor` before enabling live orders.

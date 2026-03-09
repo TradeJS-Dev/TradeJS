@@ -2,18 +2,18 @@
 title: Проверка ML-датасета
 ---
 
-`yarn ml-inspect` помогает проверить качество датасета до обучения.
+`npx @tradejs/cli ml-inspect` помогает проверить качество датасета до обучения.
 
 Источник:
 
-- `packages/cli/src/scripts/mlInspect.ts`
+- `@tradejs/cli`
 
 ## Быстрый старт
 
 ```bash
-yarn ml-inspect
-yarn ml-inspect --strategy TrendLine --rows 20000 --mode sample
-yarn ml-inspect --file data/ml/export/ml-dataset-trendline-merged-123.jsonl --mode tail
+npx @tradejs/cli ml-inspect
+npx @tradejs/cli ml-inspect --strategy TrendLine --rows 20000 --mode sample
+npx @tradejs/cli ml-inspect --file data/ml/export/ml-dataset-trendline-merged-123.jsonl --mode tail
 ```
 
 ## Режимы
@@ -25,13 +25,13 @@ yarn ml-inspect --file data/ml/export/ml-dataset-trendline-merged-123.jsonl --mo
 ## Инструменты инспекции
 
 - `quick` (по умолчанию): встроенная числовая диагностика
-- `ydata`: HTML-отчет профилирования через Docker (`ml-profile`)
+- `ydata`: HTML-отчет профилирования через ydata runtime
 
 Примеры:
 
 ```bash
-yarn ml-inspect --tool quick --rows 15000
-yarn ml-inspect --tool ydata --rows 20000 --mode sample
+npx @tradejs/cli ml-inspect --tool quick --rows 15000
+npx @tradejs/cli ml-inspect --tool ydata --rows 20000 --mode sample
 ```
 
 ## Что проверяет quick-режим
@@ -54,9 +54,8 @@ yarn ml-inspect --tool ydata --rows 20000 --mode sample
 
 Требование:
 
-```bash
-docker compose -f docker-compose.ml.yml build ml-profile
-```
+- в окружении доступен ydata profiling runtime
+- достаточно места на диске под итоговый `.profile.html` отчет
 
 ## Полезные флаги
 

@@ -6,7 +6,7 @@ title: ML Pipeline and Configuration
 ## Main Flow
 
 1. Backtests can write ML chunk files (`--ml`).
-2. `yarn ml-export` merges chunk files into one JSONL dataset.
+2. `npx @tradejs/cli ml-export` merges chunk files into one JSONL dataset.
 3. Train script builds derived windows (`holdout`, `prod`, `walk-forward`).
 4. Python train container generates model artifacts and reports.
 5. Runtime inference uses gRPC (`ML_GRPC_ADDRESS`).
@@ -14,11 +14,10 @@ title: ML Pipeline and Configuration
 ## Real Commands
 
 ```bash
-yarn backtest --config trendline --ml
-yarn ml-export
-yarn ml-inspect
-yarn ml-train:trendline:xgboost
-yarn ml-upload:prod
+npx @tradejs/cli backtest --config trendline --ml
+npx @tradejs/cli ml-export
+npx @tradejs/cli ml-inspect
+npx @tradejs/cli ml-train:trendline:xgboost
 ```
 
 ## Useful `.env` Example

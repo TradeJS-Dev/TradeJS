@@ -8,13 +8,13 @@ title: How Backtests Work
 Run:
 
 ```bash
-yarn backtest
+npx @tradejs/cli backtest
 ```
 
 Main files:
 
-- script: `packages/cli/src/scripts/backtest.ts`
-- worker: `packages/core/src/workers/tester.ts`
+- script: `@tradejs/cli`
+- worker: `@tradejs/core`
 
 ## Real CLI Flags (from code)
 
@@ -29,7 +29,7 @@ args.option(['m', 'ml'], 'Write ML dataset rows', false);
 Example run for TrendLine-like setup:
 
 ```bash
-yarn backtest --config trendline --connector bybit --tests 500 --parallel 4 --ml
+npx @tradejs/cli backtest --config trendline --connector bybit --tests 500 --parallel 4 --ml
 ```
 
 ## Pipeline
@@ -59,7 +59,7 @@ for await (const test of testSuite) {
 Enable ML rows writing:
 
 ```bash
-yarn backtest --ml
+npx @tradejs/cli backtest --ml
 ```
 
 Workers write chunk files:
@@ -69,11 +69,11 @@ Workers write chunk files:
 Later, merge with:
 
 ```bash
-yarn ml-export
+npx @tradejs/cli ml-export
 ```
 
 ## Related Guides
 
 - `runtime/backtesting/grid-config`
 - `runtime/backtesting/results-runtime-config`
-- `runtime/data/continuity-update-history`
+- [Data sync and continuity](../data/continuity-update-history)

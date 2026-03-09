@@ -2,11 +2,11 @@
 title: Multi-Strategy Runtime
 ---
 
-`yarn signals` can run multiple strategies in one pass.
+`npx @tradejs/cli signals` can run multiple strategies in one pass.
 
 Source:
 
-- `packages/cli/src/scripts/signals.ts`
+- `@tradejs/cli`
 
 ## How Strategies Are Loaded
 
@@ -54,13 +54,13 @@ Runtime injects:
 2. Run:
 
 ```bash
-yarn signals --user root --timeframe 15
+npx @tradejs/cli signals --user root --timeframe 15
 ```
 
 3. Optional notifications/orders:
 
 ```bash
-yarn signals --user root --timeframe 15 --notify --makeOrders
+npx @tradejs/cli signals --user root --timeframe 15 --notify --makeOrders
 ```
 
 ## Related

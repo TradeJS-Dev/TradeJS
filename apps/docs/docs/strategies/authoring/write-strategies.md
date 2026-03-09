@@ -12,7 +12,7 @@ TradeJS supports two strategy creation paths:
 
 ## Typical Strategy Layout
 
-Each strategy in `packages/core/src/strategy/<Strategy>` usually has:
+Each strategy in `@tradejs/core` usually has:
 
 - `config.ts`
 - `core.ts`
@@ -40,7 +40,7 @@ Shared runtime handles:
 
 Files:
 
-- `packages/core/src/utils/strategyRuntime.ts`
+- `@tradejs/core`
 - `runtime/execution/strategy-hooks` (full lifecycle hooks catalog)
 
 ## Minimal `core.ts` Example
@@ -110,7 +110,7 @@ export const createMyStrategyCore: CreateStrategyCore<
 ## External Strategy as an npm Plugin
 
 ```ts
-import { defineConfig } from '@tradejs/framework';
+import { defineConfig } from '@tradejs/core';
 
 export default defineConfig({
   strategyPlugins: ['@scope/tradejs-strategy-pack'],
@@ -119,4 +119,4 @@ export default defineConfig({
 
 Plugin example:
 
-- `examples/sandbox`
+- publish your strategy as an npm package and register it in `strategyPlugins`

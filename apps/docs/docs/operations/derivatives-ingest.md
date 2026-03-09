@@ -6,21 +6,21 @@ TradeJS can ingest derivatives and spread market features into TimescaleDB.
 
 Main scripts:
 
-- `yarn derivatives:ingest`
-- `yarn derivatives:ingest:coinalyze:all`
+- `npx @tradejs/cli derivatives:ingest`
+- `npx @tradejs/cli derivatives:ingest:coinalyze:all`
 
 Sources:
 
-- `packages/cli/src/scripts/derivativesIngest.ts`
-- `packages/cli/src/scripts/derivativesIngestCoinalyzeAll.ts`
-- `packages/connectors/src/marketData/providers/*`
+- `@tradejs/cli`
+- `@tradejs/cli`
+- `@tradejs/connectors`
 
 ## 1. Provider-Based Ingest
 
 Command:
 
 ```bash
-yarn derivatives:ingest --provider coinalyze --symbols BTCUSDT,ETHUSDT --intervals 15m,1h --days 120
+npx @tradejs/cli derivatives:ingest --provider coinalyze --symbols BTCUSDT,ETHUSDT --intervals 15m,1h --days 120
 ```
 
 Supported providers:
@@ -40,7 +40,7 @@ Useful flags:
 Command:
 
 ```bash
-yarn derivatives:ingest:coinalyze:all --user root --days 120 --intervals 15m,1h
+npx @tradejs/cli derivatives:ingest:coinalyze:all --user root --days 120 --intervals 15m,1h
 ```
 
 Behavior:
@@ -66,7 +66,7 @@ Ingest writes to:
 
 Schema bootstrap and upsert logic:
 
-- `packages/core/src/utils/timescale.ts`
+- `@tradejs/core`
 
 ## 4. Required Env
 
@@ -77,6 +77,6 @@ For Coinalyze provider:
 
 ## 5. Operational Notes
 
-- Start DB first (`yarn infra-up`).
+- Ensure PostgreSQL/Timescale is running before ingest.
 - Begin with short lookback and small symbol set.
 - Keep `batchDays` moderate to reduce API/rate-limit pressure.

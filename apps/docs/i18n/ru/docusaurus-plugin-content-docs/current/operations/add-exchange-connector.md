@@ -8,7 +8,7 @@ title: Как добавить connector новой биржи
 
 Создайте папку:
 
-- `packages/connectors/src/<Exchange>/index.ts`
+- `@tradejs/connectors`
 
 Реализуйте `ConnectorCreator`, возвращающий полный контракт `Connector`:
 
@@ -20,15 +20,15 @@ title: Как добавить connector новой биржи
 
 Референсы:
 
-- `packages/connectors/src/Binance/index.ts`
-- `packages/connectors/src/Coinbase/index.ts`
-- `packages/connectors/src/ByBit/index.ts`
+- Binance connector в `@tradejs/connectors`
+- Coinbase connector в `@tradejs/connectors`
+- ByBit connector в `@tradejs/connectors`
 
 ## 2. Зарегистрируйте connector в одном месте
 
 Регистрация делается в:
 
-- `packages/connectors/src/index.ts`
+- `@tradejs/connectors`
 
 Обновите:
 
@@ -43,14 +43,14 @@ title: Как добавить connector новой биржи
 
 Если провайдер должен быть user-facing в фильтрах/конфигах, обновите union в:
 
-- `packages/core/src/types/trade.ts` (`Provider`)
+- `@tradejs/core` (`Provider`)
 
 ## 4. Точки интеграции в CLI
 
 Уже переведены на map провайдеров:
 
-- `packages/cli/src/scripts/backtest.ts`
-- `packages/cli/src/scripts/continuity.ts`
+- команда `backtest` в `@tradejs/cli`
+- команда `continuity` в `@tradejs/cli`
 
 Остаются архитектурно фиксированные места:
 
@@ -61,11 +61,11 @@ title: Как добавить connector новой биржи
 
 ## 5. Рекомендуемый checklist проверки
 
-1. `yarn dev-tsc`
-2. `yarn unit`
-3. `yarn update-history -- --connector <provider> --config <Strategy:Config> --timeframe 15`
-4. `yarn continuity --provider <provider> --timeframe 15 --tickers BTCUSDT`
-5. `yarn backtest --connector <provider> --config <Strategy:Config> --tests 20`
+1. Прогоните TypeScript-проверки в вашем проекте connector.
+2. Прогоните unit-тесты в вашем проекте connector.
+3. `npx @tradejs/cli backtest --updateOnly --connector <provider> --config <Strategy:Config> --timeframe 15`
+4. `npx @tradejs/cli continuity --provider <provider> --timeframe 15 --tickers BTCUSDT`
+5. `npx @tradejs/cli backtest --connector <provider> --config <Strategy:Config> --tests 20`
 
 ## 6. Опциональный следующий шаг
 

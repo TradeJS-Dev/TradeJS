@@ -2,12 +2,12 @@
 title: Обучение ML-модели
 ---
 
-`yarn ml-train:latest` запускает интерактивный/селективный train по актуальным export-файлам и автоматически готовит holdout/prod/walk-forward split.
+`npx @tradejs/cli ml-train:latest` запускает интерактивный/селективный train по актуальным export-файлам и автоматически готовит holdout/prod/walk-forward split.
 
-Источники:
+Внешний интерфейс:
 
-- `packages/cli/src/scripts/mlTrainLatestSelect.ts`
-- `bin/ml-train-with-redis.sh`
+- `@tradejs/cli`
+- настроенный у вас ML train runtime (container/service)
 
 ## Что делает команда
 
@@ -23,13 +23,13 @@ title: Обучение ML-модели
 
 4. Кэширование split по детерминированному ключу/hash.
 5. Проверка causality guard по timestamp-like фичам.
-6. Запуск Docker ML train (`docker-compose.ml.yml`, `train.py`).
+6. Запуск настроенного ML train runtime.
 
 ## Команды
 
 ```bash
-yarn ml-train:latest
-yarn ml-train:latest --strategy TrendLine --model xgboost
+npx @tradejs/cli ml-train:latest
+npx @tradejs/cli ml-train:latest --strategy TrendLine --model xgboost
 ```
 
 Неинтерактивные опции:
@@ -71,15 +71,11 @@ Incremental mode:
 - `ML_TRAIN_HEARTBEAT_SEC`
 - `ML_TRAIN_DOCKER_NO_OUTPUT_TIMEOUT_SEC`
 
-## Обертка безопасности Redis
+## Безопасный режим Redis
 
-Train-скрипты запускаются через:
+В референсном deployment используется safety-wrapper:
 
-- `bin/ml-train-with-redis.sh`
-
-Поведение:
-
-- Redis останавливается перед train
+- Redis приостанавливается перед train
 - Redis поднимается обратно при любом завершении (успех/ошибка/interrupt)
 
 ## Артефакты на выходе

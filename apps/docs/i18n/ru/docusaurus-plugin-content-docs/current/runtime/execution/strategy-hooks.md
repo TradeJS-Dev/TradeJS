@@ -6,11 +6,11 @@ title: Хуки runtime стратегий
 
 Контракт хуков:
 
-- `packages/core/src/types/strategyAdapters.ts`
+- `@tradejs/core`
 
 Выполнение хуков в runtime:
 
-- `packages/core/src/utils/strategyRuntime.ts`
+- `@tradejs/core`
 
 ## Доступные хуки
 
@@ -71,7 +71,7 @@ title: Хуки runtime стратегий
 ## Пример manifest
 
 ```ts
-import { StrategyManifest } from '@types';
+import { StrategyManifest } from '@tradejs/core';
 
 export const myStrategyManifest: StrategyManifest = {
   name: 'MyStrategy',
@@ -97,7 +97,7 @@ export const myStrategyManifest: StrategyManifest = {
 Текущий helper:
 
 - `createCloseOppositeBeforePlaceOrderHook`
-  - файл: `packages/core/src/utils/strategyHooks.ts`
+  - файл: `@tradejs/core`
   - используется в `TrendLine` и `VolumeDivergence`
 
 ## Примечания

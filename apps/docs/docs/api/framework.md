@@ -1,11 +1,11 @@
 ---
 sidebar_position: 5
-title: Framework API
+title: Core API
 ---
 
-`@tradejs/framework` is the public package for end users who want to extend TradeJS.
+`@tradejs/core` is the public package for strategy and indicator plugin development.
 
-## Exports
+## Main Exports
 
 - `defineConfig(config)`
 - `defineStrategyPlugin(plugin)`
@@ -17,7 +17,7 @@ title: Framework API
 Create `tradejs.config.ts` in project root:
 
 ```ts
-import { defineConfig } from '@tradejs/framework';
+import { defineConfig } from '@tradejs/core';
 
 export default defineConfig({
   strategyPlugins: ['@scope/my-strategy-plugin'],
@@ -33,44 +33,6 @@ Supported filenames:
 - `tradejs.config.mjs`
 - `tradejs.config.cjs`
 
-## Real Built-In Example: TrendLine Runtime Creator
-
-TradeJS itself wires built-in strategies through the same runtime API:
-
-```ts
-import { createStrategyRuntime } from '@utils/strategyRuntime';
-import { config as DEFAULT_CONFIG, TrendLineConfig } from './config';
-import { createTrendLineCore } from './core';
-
-export const TrendlineStrategyCreator = createStrategyRuntime<TrendLineConfig>({
-  strategyName: 'TrendLine',
-  defaults: DEFAULT_CONFIG as TrendLineConfig,
-  createCore: createTrendLineCore,
-});
-```
-
-## Real Built-In Example: TrendLine Manifest
-
-```ts
-import { StrategyManifest } from '@types';
-import { trendLineAiAdapter } from './adapters/ai';
-import { trendLineMlAdapter } from './adapters/ml';
-import { trendLineBeforePlaceOrderHook } from './hooks';
-
-export const trendLineManifest: StrategyManifest = {
-  name: 'TrendLine',
-  hooks: {
-    beforePlaceOrder: trendLineBeforePlaceOrderHook,
-  },
-  aiAdapter: trendLineAiAdapter,
-  mlAdapter: trendLineMlAdapter,
-};
-```
-
-Lifecycle hooks catalog:
-
-- `runtime/execution/strategy-hooks`
-
 ## Strategy Plugin API
 
 A strategy plugin exports `strategyEntries`:
@@ -79,7 +41,7 @@ A strategy plugin exports `strategyEntries`:
 import {
   defineStrategyPlugin,
   type StrategyRegistryEntry,
-} from '@tradejs/framework';
+} from '@tradejs/core';
 
 const strategyEntries: StrategyRegistryEntry[] = [
   {
@@ -93,12 +55,23 @@ const strategyEntries: StrategyRegistryEntry[] = [
 export default defineStrategyPlugin({ strategyEntries });
 ```
 
+## Strategy Manifest
+
+Each strategy entry uses `manifest` with:
+
+- required `name`
+- optional `hooks`
+- optional `aiAdapter`
+- optional `mlAdapter`
+
+For hook lifecycle details, see [Strategy Hooks](../runtime/execution/strategy-hooks).
+
 ## Indicator Plugin API
 
 An indicator plugin exports `indicatorEntries`:
 
 ```ts
-import { defineIndicatorPlugin } from '@tradejs/framework';
+import { defineIndicatorPlugin } from '@tradejs/core';
 
 export default defineIndicatorPlugin({
   indicatorEntries: [
@@ -125,4 +98,4 @@ export default defineIndicatorPlugin({
 - `Signal`
 - `Direction`, `Interval`, `Candle`
 
-See contracts in `packages/core/src/types/*`.
+See contracts in `@tradejs/core`.

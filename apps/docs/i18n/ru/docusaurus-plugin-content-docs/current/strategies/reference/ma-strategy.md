@@ -1,8 +1,8 @@
 ---
-title: 'Стратегия: MaStrategy'
+title: 'MaStrategy'
 ---
 
-`MaStrategy` — TypeScript-стратегия (`packages/core/src/strategy/MaStrategy`) на пересечении fast/slow скользящих средних.
+`MaStrategy` — TypeScript-стратегия (`@tradejs/core`) на пересечении fast/slow скользящих средних.
 
 ## Логика входа
 
@@ -118,6 +118,6 @@ title: 'Стратегия: MaStrategy'
 ## Запуск
 
 ```bash
-yarn backtest --user root --config MaStrategy:base --connector bybit --timeframe 15
-yarn signals --user root --timeframe 15
+npx @tradejs/cli backtest --user root --config MaStrategy:base --connector bybit --timeframe 15
+npx @tradejs/cli signals --user root --timeframe 15
 ```

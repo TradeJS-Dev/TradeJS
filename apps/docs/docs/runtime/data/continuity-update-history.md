@@ -1,21 +1,20 @@
 ---
-title: 'Data Sync: continuity and update-history'
+title: 'Data Sync: continuity and backtest --updateOnly'
 ---
 
-This page explains how to refresh market history via `yarn continuity` and `yarn update-history`, and how to select a specific exchange.
+This page explains how to refresh market history via `npx @tradejs/cli backtest --updateOnly` and `npx @tradejs/cli continuity`, and how to select a specific exchange.
 
-## 1. `yarn update-history`
+## 1. `npx @tradejs/cli backtest --updateOnly`
 
-`yarn update-history` is an alias of:
+Use `backtest` in update-only mode:
 
 ```bash
-yarn backtest --updateOnly
+npx @tradejs/cli backtest --updateOnly
 ```
 
 Source:
 
-- `package.json` (`update-history` script)
-- `packages/cli/src/scripts/backtest.ts`
+- `@tradejs/cli`
 
 What it does:
 
@@ -28,20 +27,20 @@ What it does:
 Use `--connector` (`bybit|binance|coinbase`):
 
 ```bash
-yarn update-history -- --user root --config TrendLine:base --connector bybit --timeframe 15
-yarn update-history -- --user root --config TrendLine:base --connector binance --timeframe 15
-yarn update-history -- --user root --config TrendLine:base --connector coinbase --timeframe 15
+npx @tradejs/cli backtest --updateOnly --user root --config TrendLine:base --connector bybit --timeframe 15
+npx @tradejs/cli backtest --updateOnly --user root --config TrendLine:base --connector binance --timeframe 15
+npx @tradejs/cli backtest --updateOnly --user root --config TrendLine:base --connector coinbase --timeframe 15
 ```
 
 Tip: pass `--tickers BTCUSDT,ETHUSDT` to limit symbols.
 
-## 2. `yarn continuity`
+## 2. `npx @tradejs/cli continuity`
 
-`yarn continuity` checks historical gaps and can auto-repair broken ranges.
+`npx @tradejs/cli continuity` checks historical gaps and can auto-repair broken ranges.
 
 Source:
 
-- `packages/cli/src/scripts/continuity.ts`
+- `@tradejs/cli`
 
 Behavior:
 
@@ -62,14 +61,14 @@ Now supports provider filter:
 Examples:
 
 ```bash
-yarn continuity --user root --timeframe 15 --provider all
-yarn continuity --user root --timeframe 15 --provider bybit
-yarn continuity --user root --timeframe 15 --provider binance --tickers BTCUSDT,ETHUSDT
+npx @tradejs/cli continuity --user root --timeframe 15 --provider all
+npx @tradejs/cli continuity --user root --timeframe 15 --provider bybit
+npx @tradejs/cli continuity --user root --timeframe 15 --provider binance --tickers BTCUSDT,ETHUSDT
 ```
 
 ## 3. Which Command To Use
 
-- Use `update-history` for normal periodic refresh.
+- Use `backtest --updateOnly` for normal periodic refresh.
 - Use `continuity` when you suspect gaps/corruption and need repair.
 
 ## 4. Operational Notes

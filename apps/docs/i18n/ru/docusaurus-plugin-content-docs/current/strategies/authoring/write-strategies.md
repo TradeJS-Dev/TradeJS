@@ -12,7 +12,7 @@ TradeJS поддерживает два пути создания стратег
 
 ## Типовая структура стратегии
 
-Внутри `packages/core/src/strategy/<Strategy>` обычно есть:
+Внутри `@tradejs/core` обычно есть:
 
 - `config.ts`
 - `core.ts`
@@ -40,7 +40,7 @@ TradeJS поддерживает два пути создания стратег
 
 Файлы:
 
-- `packages/core/src/utils/strategyRuntime.ts`
+- `@tradejs/core`
 - `runtime/execution/strategy-hooks` (каталог lifecycle-хуков)
 
 ## Пример минимального `core.ts`
@@ -110,7 +110,7 @@ export const createMyStrategyCore: CreateStrategyCore<
 ## Внешняя стратегия как npm-плагин
 
 ```ts
-import { defineConfig } from '@tradejs/framework';
+import { defineConfig } from '@tradejs/core';
 
 export default defineConfig({
   strategyPlugins: ['@scope/tradejs-strategy-pack'],
@@ -119,4 +119,4 @@ export default defineConfig({
 
 Пример плагина:
 
-- `examples/sandbox`
+- публикуйте стратегию как npm-пакет и подключайте через `strategyPlugins`

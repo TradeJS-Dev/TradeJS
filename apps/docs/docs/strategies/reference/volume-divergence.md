@@ -1,8 +1,8 @@
 ---
-title: 'Strategy: VolumeDivergence'
+title: 'VolumeDivergence'
 ---
 
-`VolumeDivergence` is a TypeScript reversal strategy (`packages/core/src/strategy/VolumeDivergence`) that compares price pivots with normalized volume pivots.
+`VolumeDivergence` is a TypeScript reversal strategy (`@tradejs/core`) that compares price pivots with normalized volume pivots.
 
 ## Entry Logic
 
@@ -69,15 +69,6 @@ The strategy opens only when there is no active position.
 - `BEARISH.SL` — stop-loss in percent.
 - `BEARISH.minRiskRatio` — minimum allowed risk/reward.
 
-### Indicator Period Parameters
-
-- `MA_FAST`, `MA_MEDIUM`, `MA_SLOW` — MA periods.
-- `OBV_SMA` — OBV SMA period.
-- `ATR`, `ATR_PCT_SHORT`, `ATR_PCT_LONG` — ATR absolute and relative volatility windows.
-- `BB`, `BB_STD` — Bollinger Bands parameters.
-- `MACD_FAST`, `MACD_SLOW`, `MACD_SIGNAL` — MACD parameters.
-- `LEVEL_LOOKBACK`, `LEVEL_DELAY` — local level parameters.
-
 ## Indicators Used (What Each One Means)
 
 ### Used in Strategy Logic
@@ -87,16 +78,6 @@ The strategy opens only when there is no active position.
 - `price pivot high/low` — pivot prices used for divergence checks.
 - `deltaAtPivot` — proxy candle delta at pivot (`volume * bodyBias`).
 - `correlation` — BTC correlation guard.
-
-### Passed in `indicators` Payload (for AI/ML)
-
-- `maFast`, `maMedium`, `maSlow`
-- `obv`, `smaObv`
-- `atr`, `atrPctShort`, `atrPctLong`
-- `bbMiddle`, `bbUpper`, `bbLower`
-- `macd`, `macdSignal`, `macdHistogram`
-- `highLevel`, `lowLevel`
-- `correlation`
 
 ## Signal Payload
 
@@ -143,6 +124,6 @@ The strategy opens only when there is no active position.
 ## Run
 
 ```bash
-yarn backtest --user root --config VolumeDivergence:base --connector bybit --timeframe 15
-yarn signals --user root --timeframe 15
+npx @tradejs/cli backtest --user root --config VolumeDivergence:base --connector bybit --timeframe 15
+npx @tradejs/cli signals --user root --timeframe 15
 ```

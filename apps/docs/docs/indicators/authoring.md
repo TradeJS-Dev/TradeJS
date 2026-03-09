@@ -16,8 +16,8 @@ TradeJS loads indicator plugins through `tradejs.config.ts`.
 In your plugin package, export `indicatorEntries`:
 
 ```ts
-import type { IndicatorPluginEntry } from '@tradejs/framework';
-import { defineIndicatorPlugin } from '@tradejs/framework';
+import type { IndicatorPluginEntry } from '@tradejs/core';
+import { defineIndicatorPlugin } from '@tradejs/core';
 
 export const indicatorEntries = defineIndicatorPlugin({
   indicatorEntries: [
@@ -61,36 +61,27 @@ export const indicatorEntries = defineIndicatorPlugin({
 }).indicatorEntries;
 ```
 
-Real reference in this repo:
-
-- `examples/sandbox/src/index.ts`
-
 ## 2. Connect Plugin in `tradejs.config.ts`
 
 ```ts
-import { defineConfig } from '@tradejs/framework';
+import { defineConfig } from '@tradejs/core';
 
 export default defineConfig({
   indicatorsPlugins: ['@your-scope/tradejs-indicators-pack'],
 });
 ```
 
-## 3. Start the App
+## 3. Reload Your Runtime/UI
 
-```bash
-yarn dev
-```
-
-The plugin registry is loaded by core strategy/indicator manifests.  
-When app requests chart data, plugin indicator values become part of indicator history.
+Restart your TradeJS runtime/UI so plugin registry changes are picked up.
 
 ## 4. Show Indicator in Chart UI
 
 Define `renderer` inside `indicatorEntries`; the UI pipeline then wires it automatically:
 
-1. `GET /api/indicators` returns `renderers` (`apps/app/src/app/api/indicators/route.ts`).
-2. Store keeps them in `indicatorRenderers` (`apps/app/src/app/store/indicators.ts`).
-3. `usePluginIndicators` registers indicator runtime in chart and draws figures (`apps/app/src/app/components/Dashboard/KlineChart/hooks/usePluginIndicators.ts`).
+1. Backend returns indicator `renderers` in the indicators metadata endpoint.
+2. Frontend stores renderer metadata in indicator state.
+3. Chart layer creates pane/figures from renderer description.
 
 Minimal working setup:
 

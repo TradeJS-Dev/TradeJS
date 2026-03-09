@@ -29,20 +29,17 @@
       "@/*": [
         "./apps/app/src/*"
       ],
-      "@tradejs/core/*": [
-        "./packages/core/src/*"
-      ],
       "@tradejs/connectors": [
         "./packages/connectors/src/index"
       ],
       "@tradejs/connectors/*": [
         "./packages/connectors/src/*"
       ],
-      "@tradejs/framework": [
-        "./packages/framework/src/index"
+      "@tradejs/core": [
+        "./packages/core/src/index"
       ],
-      "@tradejs/framework/*": [
-        "./packages/framework/src/*"
+      "@tradejs/core/*": [
+        "./packages/core/src/*"
       ],
       "@app/*": [
         "./apps/app/src/app/*"

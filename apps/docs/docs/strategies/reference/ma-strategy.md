@@ -1,8 +1,8 @@
 ---
-title: 'Strategy: MaStrategy'
+title: 'MaStrategy'
 ---
 
-`MaStrategy` is a TypeScript strategy (`packages/core/src/strategy/MaStrategy`) based on fast/slow moving average crossover.
+`MaStrategy` is a TypeScript strategy (`@tradejs/core`) based on fast/slow moving average crossover.
 
 ## Entry Logic
 
@@ -118,6 +118,6 @@ Otherwise strategy returns `POSITION_HELD`.
 ## Run
 
 ```bash
-yarn backtest --user root --config MaStrategy:base --connector bybit --timeframe 15
-yarn signals --user root --timeframe 15
+npx @tradejs/cli backtest --user root --config MaStrategy:base --connector bybit --timeframe 15
+npx @tradejs/cli signals --user root --timeframe 15
 ```

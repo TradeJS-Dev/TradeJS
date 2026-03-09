@@ -21,9 +21,9 @@ For Pine strategies (example: `AdaptiveMomentumRibbon`), indicator lines come fr
 
 Implementation path:
 
-- Pine source: `packages/core/src/strategy/AdaptiveMomentumRibbon/adaptiveMomentumRibbon.pine`
-- Figure mapping: `packages/core/src/strategy/AdaptiveMomentumRibbon/figures.ts`
-- Runtime signal mapping: `packages/core/src/strategy/AdaptiveMomentumRibbon/core.ts`
+- Pine source: `@tradejs/core`
+- Figure mapping: `@tradejs/core`
+- Runtime signal mapping: `@tradejs/core`
 
 ## 3. Add a New Pine Plot
 
@@ -51,13 +51,13 @@ Then register it in strategy config:
 ## 4. Validate in Backtest/Signals
 
 ```bash
-yarn backtest --user root --config AdaptiveMomentumRibbon:amr-default
+npx @tradejs/cli backtest --user root --config AdaptiveMomentumRibbon:amr-default
 ```
 
 or
 
 ```bash
-yarn signals --user root --cacheOnly
+npx @tradejs/cli signals --user root --cacheOnly
 ```
 
 The new Pine plot should appear in signal/backtest figures.

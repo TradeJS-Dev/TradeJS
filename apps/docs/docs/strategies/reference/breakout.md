@@ -1,8 +1,8 @@
 ---
-title: 'Strategy: Breakout'
+title: 'Breakout'
 ---
 
-`Breakout` is a TypeScript strategy (`packages/core/src/strategy/Breakout`) with weighted signal scoring for long/short breakout scenarios.
+`Breakout` is a TypeScript strategy (`@tradejs/core`) with weighted signal scoring for long/short breakout scenarios.
 
 ## Entry Logic
 
@@ -57,17 +57,11 @@ Otherwise returns `POSITION_HELD`.
 ### Indicator Period Parameters
 
 - `MA_FAST` — fast MA period.
-- `MA_MEDIUM` — medium MA period.
 - `MA_SLOW` — slow MA period.
 - `OBV_SMA` — OBV SMA period.
 - `ATR` — ATR period.
-- `ATR_PCT_SHORT` — short ATR% window.
-- `ATR_PCT_LONG` — long ATR% window.
 - `BB` — Bollinger Bands period.
 - `BB_STD` — Bollinger Bands multiplier.
-- `MACD_FAST` — MACD fast period.
-- `MACD_SLOW` — MACD slow period.
-- `MACD_SIGNAL` — MACD signal period.
 - `LEVEL_LOOKBACK` — local level lookback window.
 - `LEVEL_DELAY` — local level confirmation delay.
 
@@ -131,6 +125,6 @@ Otherwise returns `POSITION_HELD`.
 ## Run
 
 ```bash
-yarn backtest --user root --config Breakout:base --connector bybit --timeframe 15
-yarn signals --user root --timeframe 15
+npx @tradejs/cli backtest --user root --config Breakout:base --connector bybit --timeframe 15
+npx @tradejs/cli signals --user root --timeframe 15
 ```

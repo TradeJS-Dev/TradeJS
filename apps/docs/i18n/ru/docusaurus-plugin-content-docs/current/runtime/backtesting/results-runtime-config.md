@@ -2,20 +2,20 @@
 title: Как применять результаты бэктестов в рантайме
 ---
 
-В этой статье: как продвигать позитивные backtest-конфиги в runtime, как работает `yarn results`, и как выставляется `isConfigFromBacktest`.
+В этой статье: как продвигать позитивные backtest-конфиги в runtime, как работает `npx @tradejs/cli results`, и как выставляется `isConfigFromBacktest`.
 
-## 1. Что делает `yarn results`
+## 1. Что делает `npx @tradejs/cli results`
 
-`yarn results` сканирует сохраненные тесты/статистику и собирает лучших кандидатов по символам для выбранной стратегии.
+`npx @tradejs/cli results` сканирует сохраненные тесты/статистику и собирает лучших кандидатов по символам для выбранной стратегии.
 
 Источник:
 
-- `packages/cli/src/scripts/results.ts`
+- `@tradejs/cli`
 
 Базовая команда:
 
 ```bash
-yarn results --strategy TrendLine --coverage --user root
+npx @tradejs/cli results --strategy TrendLine --coverage --user root
 ```
 
 Полезные режимы:
@@ -27,9 +27,9 @@ yarn results --strategy TrendLine --coverage --user root
 Примеры:
 
 ```bash
-yarn results --strategy TrendLine --merge --user root
-yarn results --strategy TrendLine --update --user root
-yarn results --strategy TrendLine --clear --user root
+npx @tradejs/cli results --strategy TrendLine --merge --user root
+npx @tradejs/cli results --strategy TrendLine --update --user root
+npx @tradejs/cli results --strategy TrendLine --clear --user root
 ```
 
 ## 2. Где хранится promoted config
@@ -58,8 +58,8 @@ yarn results --strategy TrendLine --clear --user root
 
 Код:
 
-- `packages/core/src/utils/strategyHelpers/config.ts`
-- `packages/core/src/utils/strategyRuntime.ts`
+- `@tradejs/core`
+- `@tradejs/core`
 
 ## 4. Как используется `isConfigFromBacktest`
 
@@ -67,8 +67,8 @@ yarn results --strategy TrendLine --clear --user root
 
 Путь в коде:
 
-- сбор сигнала: `packages/core/src/utils/strategyHelpers/signalBuilders.ts`
-- форматирование Telegram: `packages/core/src/utils/signals.ts`
+- сбор сигнала: `@tradejs/core`
+- форматирование Telegram: `@tradejs/core`
 
 Поведение:
 
@@ -78,9 +78,9 @@ yarn results --strategy TrendLine --clear --user root
 ## 5. Рекомендуемый workflow
 
 1. Прогоните бэктесты по сетке параметров стратегии.
-2. Выполните `yarn results --strategy <Strategy> --coverage`.
+2. Выполните `npx @tradejs/cli results --strategy <Strategy> --coverage`.
 3. Для продакшена сначала используйте `--merge` (безопаснее полной перезаписи).
-4. Запустите `yarn signals` / `yarn bot` и проверьте сигналы с `isConfigFromBacktest=true`.
+4. Запустите `npx @tradejs/cli signals` / `npx @tradejs/cli bot` и проверьте сигналы с `isConfigFromBacktest=true`.
 5. Повторяйте promotion после новых бэктестов.
 
 ## 6. Важные замечания

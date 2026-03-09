@@ -6,11 +6,10 @@ const customJestConfig = {
   setupFilesAfterEnv: ['<rootDir>/jest.setup.js'],
   moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/apps/app/src/$1',
-    '^@tradejs/core/(.*)$': '<rootDir>/packages/core/src/$1',
     '^@tradejs/connectors$': '<rootDir>/packages/connectors/src/index',
     '^@tradejs/connectors/(.*)$': '<rootDir>/packages/connectors/src/$1',
-    '^@tradejs/framework$': '<rootDir>/packages/framework/src/index',
-    '^@tradejs/framework/(.*)$': '<rootDir>/packages/framework/src/$1',
+    '^@tradejs/core$': '<rootDir>/packages/core/src/index',
+    '^@tradejs/core/(.*)$': '<rootDir>/packages/core/src/$1',
     '^@app/(.*)$': '<rootDir>/apps/app/src/app/$1',
     '^@actions/(.*)$': '<rootDir>/apps/app/src/app/actions/$1',
     '^@store$': '<rootDir>/apps/app/src/app/store/index',

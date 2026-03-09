@@ -4,25 +4,12 @@ const sidebars: SidebarsConfig = {
   docsSidebar: [
     {
       type: 'category',
-      label: 'Start',
+      label: 'Getting started',
       collapsed: false,
       items: [
         'intro',
-        {
-          type: 'category',
-          label: 'Setup',
-          items: [
-            'getting-started/local',
-            'getting-started/root-user',
-            'getting-started/self-hosted',
-            'getting-started/cloud',
-          ],
-        },
-        {
-          type: 'category',
-          label: 'Core Interfaces',
-          items: ['api/framework', 'api/cli'],
-        },
+        'getting-started/quickstart',
+        'getting-started/root-user',
       ],
     },
     {
@@ -33,6 +20,7 @@ const sidebars: SidebarsConfig = {
           type: 'category',
           label: 'Authoring',
           items: [
+            'api/framework',
             'strategies/authoring/write-strategies',
             'strategies/authoring/ma-strategy-step-by-step',
             'strategies/authoring/pine-strategy-step-by-step',
@@ -134,6 +122,7 @@ const sidebars: SidebarsConfig = {
       type: 'category',
       label: 'Operations',
       items: [
+        'api/cli',
         'operations/env-reference',
         'operations/redis-data-model',
         'operations/timescale-schema',

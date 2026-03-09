@@ -1,8 +1,8 @@
 ---
-title: 'Стратегия: TrendLine'
+title: 'TrendLine'
 ---
 
-`TrendLine` — TypeScript-стратегия (`packages/core/src/strategy/TrendLine`) для входа по пробою трендовой линии с риск-ограничениями.
+`TrendLine` — TypeScript-стратегия (`@tradejs/core`) для входа по пробою трендовой линии с риск-ограничениями.
 
 ## Логика входа
 
@@ -69,39 +69,10 @@ title: 'Стратегия: TrendLine'
 - `LOWS.SL` — stop-loss в процентах.
 - `LOWS.minRiskRatio` — минимально допустимое отношение риск/прибыль.
 
-### Периоды индикаторов
-
-- `MA_FAST` — период быстрой скользящей средней.
-- `MA_MEDIUM` — период средней скользящей средней.
-- `MA_SLOW` — период медленной скользящей средней.
-- `OBV_SMA` — период SMA для OBV.
-- `ATR` — период ATR.
-- `ATR_PCT_SHORT` — короткое окно для ATR%.
-- `ATR_PCT_LONG` — длинное окно для ATR%.
-- `BB` — период Bollinger Bands.
-- `BB_STD` — множитель стандартного отклонения Bollinger Bands.
-- `MACD_FAST` — быстрый период MACD.
-- `MACD_SLOW` — медленный период MACD.
-- `MACD_SIGNAL` — период сигнальной линии MACD.
-- `LEVEL_LOOKBACK` — окно расчета локальных уровней.
-- `LEVEL_DELAY` — задержка подтверждения уровней.
-
 ## Используемые индикаторы (что означает каждый)
 
-### В логике входа/фильтрах
-
-- `correlation` — корреляция актива с BTC; используется как guard через `MAX_CORRELATION`.
-
-### Передаются в payload (`indicators`) для анализа/ML
-
-- `maFast`, `maMedium`, `maSlow` — быстрый/средний/медленный MA.
-- `obv`, `smaObv` — OBV и его сглаживание.
-- `atr`, `atrPctShort`, `atrPctLong` — абсолютная и относительная волатильность.
-- `bbMiddle`, `bbUpper`, `bbLower` — границы Bollinger Bands.
-- `macd`, `macdSignal`, `macdHistogram` — компоненты MACD.
-- `highLevel`, `lowLevel` — локальные уровни high/low.
-- `prevCandle` — предыдущая свеча для сравнений.
-- `correlation` — корреляция с BTC.
+- `correlation` — корреляция актива с BTC; используется как runtime guard (`MAX_CORRELATION`).
+- `trendLine` (производная геометрия, не базовый индикатор) — выбранная линия из trendline engine, от нее зависит направление и параметры входа.
 
 ## Payload сигнала
 
@@ -150,6 +121,6 @@ title: 'Стратегия: TrendLine'
 ## Запуск
 
 ```bash
-yarn backtest --user root --config TrendLine:base --connector bybit --timeframe 15
-yarn signals --user root --timeframe 15
+npx @tradejs/cli backtest --user root --config TrendLine:base --connector bybit --timeframe 15
+npx @tradejs/cli signals --user root --timeframe 15
 ```

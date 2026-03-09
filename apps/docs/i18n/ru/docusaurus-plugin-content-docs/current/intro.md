@@ -1,6 +1,6 @@
 ---
 sidebar_position: 1
-title: Документация TradeJS
+title: Overview
 slug: /
 ---
 
@@ -14,32 +14,16 @@ slug: /
 - обучать и подключать ML-модели,
 - добавлять AI-проверку сигналов перед исполнением ордера.
 
-Документация устроена вокруг текущего monorepo:
+Для внешнего использования важны два пакета:
 
-- `apps/app` — веб-интерфейс и API на Next.js,
-- `packages/core` — сердце системы: runtime стратегий, типы и утилиты,
-- `packages/connectors` — интеграции с биржами и провайдерами данных,
-- `packages/cli` — команды для ежедневной работы,
-- `packages/framework` — публичный API для пользовательских плагинов,
-- `packages/ml` — Python-часть для обучения и инференса.
-
-## Карта базы знаний
-
-- Старт и установка: `getting-started/*`
-- Базовые API: `api/framework`, `api/cli`
-- Разработка стратегий: `strategies/*`
-- Разработка индикаторов: `indicators/*`
-- Runtime и бэктесты: `runtime/*`
-- ML и AI policy: `ai-ml/ml/*`, `ai-ml/ai/*`
-- Эксплуатация и прод: `operations/*`
+- `@tradejs/core` — API и типы для разработки стратегий и индикаторов, runtime-контракты
+- `@tradejs/cli` — рабочие команды для бэктестов, сигналов, ботов, проверок и ML-процесса
 
 ## С чего начать
 
-- [Локальный запуск](./getting-started/local)
+- [Quickstart](./getting-started/quickstart)
 - [Настройка root пользователя](./getting-started/root-user)
-- [Self-hosted развертывание](./getting-started/self-hosted)
-- [Cloud-использование](./getting-started/cloud)
-- [Framework API](./api/framework)
+- [Core API](./api/framework)
 - [CLI API](./api/cli)
 - [Как создавать стратегии](./strategies/authoring/write-strategies)
 - [Как писать индикаторы](./indicators/authoring)

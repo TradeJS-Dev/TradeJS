@@ -7243,14 +7243,6 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@tradejs/example-sandbox@workspace:examples/sandbox"
   dependencies:
-    "@tradejs/framework": "workspace:*"
-  languageName: unknown
-  linkType: soft
-
-"@tradejs/framework@workspace:*, @tradejs/framework@workspace:packages/framework":
-  version: 0.0.0-use.local
-  resolution: "@tradejs/framework@workspace:packages/framework"
-  dependencies:
     "@tradejs/core": "workspace:*"
   languageName: unknown
   linkType: soft

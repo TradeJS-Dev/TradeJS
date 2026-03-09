@@ -4,20 +4,15 @@ title: ML infer gRPC сервис
 
 Runtime ML-gating обращается к Python gRPC сервису инференса.
 
-Источники:
+Внешний интерфейс:
 
-- `packages/ml/python/api.py`
-- `proto/ml_infer.proto`
-- `packages/core/src/utils/mlGrpc.ts`
-- `docker-compose.infer.yml`
+- `@tradejs/core`
+- gRPC контракт `Predict` (`PredictRequest` / `PredictResponse`)
 
 ## Запуск / остановка
 
-```bash
-yarn ml-infer-build
-yarn ml-infer-up
-yarn ml-infer-down
-```
+Запускайте и останавливайте inference-сервис вашим deployment-инструментом
+(Docker/Kubernetes/systemd и т.д.).
 
 Адрес по умолчанию:
 
@@ -54,7 +49,7 @@ ML_GRPC_ADDRESS=127.0.0.1:50051
 
 ## Интеграция в runtime
 
-На стороне runtime, `fetchMlThreshold`:
+На стороне runtime, ML-gating:
 
 1. Строит ML payload из сигнала.
 2. Применяет тот же trim policy, что и train (`trimMlTrainingRowWindows(..., 5)`).
@@ -66,5 +61,5 @@ ML_GRPC_ADDRESS=127.0.0.1:50051
 ## Проверка доступности
 
 ```bash
-yarn doctor --require-ml
+npx @tradejs/cli doctor --require-ml
 ```

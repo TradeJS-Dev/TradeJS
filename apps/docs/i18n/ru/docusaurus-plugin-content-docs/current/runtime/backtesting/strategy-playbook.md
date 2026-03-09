@@ -23,25 +23,25 @@ redis-cli --scan --pattern 'users:root:backtests:configs:AdaptiveMomentumRibbon:
 Бэктест:
 
 ```bash
-yarn backtest --user root --config TrendLine:base --connector bybit --timeframe 15 --tests 500 --parallel 4
+npx @tradejs/cli backtest --user root --config TrendLine:base --connector bybit --timeframe 15 --tests 500 --parallel 4
 ```
 
 Посмотреть лучших кандидатов:
 
 ```bash
-yarn results --strategy TrendLine --coverage --user root
+npx @tradejs/cli results --strategy TrendLine --coverage --user root
 ```
 
 Промоутнуть положительные конфиги в runtime (`users:root:strategies:TrendLine:results`):
 
 ```bash
-yarn results --strategy TrendLine --merge --user root
+npx @tradejs/cli results --strategy TrendLine --merge --user root
 ```
 
 Запустить runtime-сигналы с promoted-конфигом:
 
 ```bash
-yarn signals --user root --cacheOnly --timeframe 15
+npx @tradejs/cli signals --user root --cacheOnly --timeframe 15
 ```
 
 Быстрая проверка, что применился promoted config (`isConfigFromBacktest=true`):
@@ -56,25 +56,25 @@ redis-cli JSON.GET "$KEY" '$.isConfigFromBacktest'
 Бэктест:
 
 ```bash
-yarn backtest --user root --config AdaptiveMomentumRibbon:amr-default --connector bybit --timeframe 15 --tests 200 --parallel 4
+npx @tradejs/cli backtest --user root --config AdaptiveMomentumRibbon:amr-default --connector bybit --timeframe 15 --tests 200 --parallel 4
 ```
 
 Посмотреть лучших кандидатов:
 
 ```bash
-yarn results --strategy AdaptiveMomentumRibbon --coverage --user root
+npx @tradejs/cli results --strategy AdaptiveMomentumRibbon --coverage --user root
 ```
 
 Промоутнуть положительные конфиги в runtime (`users:root:strategies:AdaptiveMomentumRibbon:results`):
 
 ```bash
-yarn results --strategy AdaptiveMomentumRibbon --merge --user root
+npx @tradejs/cli results --strategy AdaptiveMomentumRibbon --merge --user root
 ```
 
 Запустить runtime-сигналы с promoted-конфигом:
 
 ```bash
-yarn signals --user root --cacheOnly --timeframe 15
+npx @tradejs/cli signals --user root --cacheOnly --timeframe 15
 ```
 
 Опциональная проверка полезной нагрузки AMR в сигнале:
@@ -89,25 +89,25 @@ redis-cli JSON.GET "$KEY" '$.additionalIndicators.amr'
 Регулярное обновление истории:
 
 ```bash
-yarn update-history -- --user root --config TrendLine:base --connector bybit --timeframe 15
+npx @tradejs/cli backtest --updateOnly --user root --config TrendLine:base --connector bybit --timeframe 15
 ```
 
 Проверка целостности и ремонт разрывов:
 
 ```bash
-yarn continuity --user root --timeframe 15 --provider bybit
-yarn continuity --user root --timeframe 15 --provider bybit --tickers BTCUSDT,ETHUSDT
+npx @tradejs/cli continuity --user root --timeframe 15 --provider bybit
+npx @tradejs/cli continuity --user root --timeframe 15 --provider bybit --tickers BTCUSDT,ETHUSDT
 ```
 
 ## 5. Откат promoted results
 
 ```bash
-yarn results --strategy TrendLine --clear --user root
-yarn results --strategy AdaptiveMomentumRibbon --clear --user root
+npx @tradejs/cli results --strategy TrendLine --clear --user root
+npx @tradejs/cli results --strategy AdaptiveMomentumRibbon --clear --user root
 ```
 
 ## 6. Связанные статьи
 
 - `runtime/backtesting/results-runtime-config`
-- `runtime/data/continuity-update-history`
+- [Прокачка данных и continuity](../data/continuity-update-history)
 - `strategies/authoring/pine-strategy-step-by-step`

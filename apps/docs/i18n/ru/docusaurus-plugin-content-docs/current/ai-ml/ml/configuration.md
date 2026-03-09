@@ -6,7 +6,7 @@ title: 'ML: как работает и настраивается'
 ## Общая схема
 
 1. Бэктест (с `--ml`) пишет chunk-файлы.
-2. `yarn ml-export` объединяет их в merged JSONL.
+2. `npx @tradejs/cli ml-export` объединяет их в merged JSONL.
 3. Train-скрипт режет merged-файл на `holdout/prod/walk-forward`.
 4. Python train-контейнер обучает модель и пишет отчеты.
 5. Runtime-инференс идет в gRPC (`ML_GRPC_ADDRESS`).
@@ -14,11 +14,10 @@ title: 'ML: как работает и настраивается'
 ## Реальные команды
 
 ```bash
-yarn backtest --config trendline --ml
-yarn ml-export
-yarn ml-inspect
-yarn ml-train:trendline:xgboost
-yarn ml-upload:prod
+npx @tradejs/cli backtest --config trendline --ml
+npx @tradejs/cli ml-export
+npx @tradejs/cli ml-inspect
+npx @tradejs/cli ml-train:trendline:xgboost
 ```
 
 ## Пример `.env` для ML

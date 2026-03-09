@@ -6,12 +6,12 @@ title: Grid-конфиг бэктеста для массового перебо
 
 ## 1. Как работает grid-бэктест
 
-`yarn backtest` читает конфиг из Redis и строит декартово произведение массивов параметров.
+`npx @tradejs/cli backtest` читает конфиг из Redis и строит декартово произведение массивов параметров.
 
 Код:
 
-- `packages/cli/src/scripts/backtest.ts`
-- `packages/core/src/utils/grid.ts`
+- `@tradejs/cli`
+- `@tradejs/core`
 
 Ключевые правила:
 
@@ -82,7 +82,7 @@ redis-cli JSON.SET users:root:backtests:configs:AdaptiveMomentumRibbon:grid-v1 '
 ## 4. Запуск массового бэктеста
 
 ```bash
-yarn backtest --user root --config AdaptiveMomentumRibbon:grid-v1 --connector bybit --timeframe 15 --tests 3000 --parallel 6
+npx @tradejs/cli backtest --user root --config AdaptiveMomentumRibbon:grid-v1 --connector bybit --timeframe 15 --tests 3000 --parallel 6
 ```
 
 Полезные флаги масштаба:
@@ -104,13 +104,13 @@ redis-cli JSON.GET users:root:backtests:configs:AdaptiveMomentumRibbon:grid-v1
 Посмотреть лучших кандидатов:
 
 ```bash
-yarn results --strategy AdaptiveMomentumRibbon --coverage --user root
+npx @tradejs/cli results --strategy AdaptiveMomentumRibbon --coverage --user root
 ```
 
 Промоутнуть лучшие конфиги в runtime:
 
 ```bash
-yarn results --strategy AdaptiveMomentumRibbon --merge --user root
+npx @tradejs/cli results --strategy AdaptiveMomentumRibbon --merge --user root
 ```
 
 ## 6. Частые ошибки

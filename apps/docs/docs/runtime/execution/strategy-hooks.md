@@ -6,11 +6,11 @@ TradeJS strategy manifests support lifecycle hooks to customize runtime behavior
 
 Hook contract source:
 
-- `packages/core/src/types/strategyAdapters.ts`
+- `@tradejs/core`
 
 Runtime hook execution:
 
-- `packages/core/src/utils/strategyRuntime.ts`
+- `@tradejs/core`
 
 ## Available Hooks
 
@@ -71,7 +71,7 @@ Runtime hook execution:
 ## Manifest Example
 
 ```ts
-import { StrategyManifest } from '@types';
+import { StrategyManifest } from '@tradejs/core';
 
 export const myStrategyManifest: StrategyManifest = {
   name: 'MyStrategy',
@@ -98,7 +98,7 @@ To reduce duplication across strategies, shared hook helpers can be used.
 Current helper:
 
 - `createCloseOppositeBeforePlaceOrderHook`
-  - file: `packages/core/src/utils/strategyHooks.ts`
+  - file: `@tradejs/core`
   - used by `TrendLine` and `VolumeDivergence`
 
 ## Notes

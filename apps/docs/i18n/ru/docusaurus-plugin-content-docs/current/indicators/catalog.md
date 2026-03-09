@@ -6,7 +6,7 @@ title: Каталог индикаторов (текущий core)
 
 Основная реализация:
 
-- `packages/core/src/utils/indicators.ts`
+- `@tradejs/core`
 
 ## 1. Базовый Indicator Snapshot
 
@@ -54,7 +54,7 @@ title: Каталог индикаторов (текущий core)
 
 ## 5. Встроенные helper-индикаторы
 
-Из `packages/core/src/indicators`:
+Из `@tradejs/core`:
 
 - `MOM`: momentum (`price - price[period]`)
 - `smaAligned`: SMA с выравниванием длины/прогрева
