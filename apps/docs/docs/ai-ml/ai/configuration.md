@@ -48,6 +48,45 @@ export const trendLineAiAdapter: StrategyAiAdapter = {
 };
 ```
 
+## How to Override Prompt for Your Strategy
+
+Use strategy `aiAdapter` in your strategy plugin manifest.
+Runtime keeps the base prompt and appends your add-ons.
+
+```ts
+import type { StrategyAiAdapter } from '@tradejs/core/types';
+
+export const myStrategyAiAdapter: StrategyAiAdapter = {
+  buildSystemPromptAddon: ({ signal }) => `
+Additional rules for ${signal.strategy}:
+- Focus on breakout confirmation + volume agreement.
+- If volume confirmation is missing, reduce quality to <= 3.
+`,
+  buildHumanPromptAddon: ({ signal }) => `
+Extra context:
+- riskRatio=${signal.prices.riskRatio}
+- symbol=${signal.symbol}
+`,
+};
+```
+
+Then reference it in strategy manifest:
+
+```ts
+import type { StrategyManifest } from '@tradejs/core/types';
+import { myStrategyAiAdapter } from './adapters/ai';
+
+export const myStrategyManifest: StrategyManifest = {
+  name: 'MyStrategy',
+  aiAdapter: myStrategyAiAdapter,
+};
+```
+
+Notes:
+
+- this is the public way to customize prompt behavior per strategy
+- base runtime prompt is still applied; your add-ons are appended to system/human prompts
+
 ## Real Runtime Gate Logic Pattern
 
 ```ts

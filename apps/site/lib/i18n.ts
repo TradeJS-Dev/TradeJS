@@ -63,11 +63,11 @@ export const translations = {
           links: [
             {
               label: 'Local Setup',
-              url: 'https://docs.tradejs.dev/getting-started/local',
+              url: 'https://docs.tradejs.dev/getting-started/quickstart',
             },
             {
               label: 'Self-Hosted',
-              url: 'https://docs.tradejs.dev/getting-started/self-hosted',
+              url: 'https://docs.tradejs.dev/operations/production-runbook',
             },
           ],
         },
@@ -247,11 +247,11 @@ export const translations = {
           links: [
             {
               label: 'Локальная установка',
-              url: 'https://docs.tradejs.dev/ru/getting-started/local',
+              url: 'https://docs.tradejs.dev/ru/getting-started/quickstart',
             },
             {
               label: 'Self-hosted установка',
-              url: 'https://docs.tradejs.dev/ru/getting-started/self-hosted',
+              url: 'https://docs.tradejs.dev/ru/operations/production-runbook',
             },
           ],
         },

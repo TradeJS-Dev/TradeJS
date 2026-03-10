@@ -85,6 +85,6 @@ npx @tradejs/cli ml-export
 
 ## Related Guides
 
-- `runtime/backtesting/grid-config`
-- `runtime/backtesting/results-runtime-config`
-- [Data sync and continuity](../data/continuity-update-history)
+- [Backtest Grid Config for Mass Parameter Search](./grid-config)
+- [Results -> Runtime Config Promotion](./results-runtime-config)
+- [Data Sync](../../getting-started/data-sync)

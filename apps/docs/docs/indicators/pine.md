@@ -11,19 +11,17 @@ TradeJS supports two indicator authoring paths:
 
 Use plugin indicators when you need reusable chart panes independent of one strategy.
 
-Guide:
-
-- `indicators/authoring`
+See [Write Custom Indicators](./authoring).
 
 ## 2. Pine Indicator Path (Inside Pine Strategy)
 
 For Pine strategies (example: `AdaptiveMomentumRibbon`), indicator lines come from Pine `plot(...)` outputs and are converted to `figures`.
 
-Implementation path:
+What you actually need to do:
 
-- Pine source: `@tradejs/core`
-- Figure mapping: `@tradejs/core`
-- Runtime signal mapping: `@tradejs/core`
+1. Add/rename the `plot(...)` series in your Pine script.
+2. Include those plot names in strategy config (`AMR_LINE_PLOTS`).
+3. Run `backtest` or `signals`: selected plots will appear in `figures.lines`.
 
 ## 3. Add a New Pine Plot
 

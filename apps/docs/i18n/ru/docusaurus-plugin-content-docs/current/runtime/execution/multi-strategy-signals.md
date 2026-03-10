@@ -65,5 +65,5 @@ npx @tradejs/cli signals --user root --timeframe 15 --notify --makeOrders
 
 ## Связанные статьи
 
-- `runtime/execution/signals`
-- `runtime/backtesting/results-runtime-config`
+- [Как работают сигналы](./signals)
+- [Результаты бэктеста -> runtime-конфиг](../backtesting/results-runtime-config)

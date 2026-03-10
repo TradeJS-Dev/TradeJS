@@ -34,7 +34,7 @@
     "dev": "yarn run run:next dev",
     "build": "yarn run run:next build",
     "start": "yarn run run:next start -H 0.0.0.0",
-    "lint": "yarn run run:next lint"
+    "lint": "yarn run -T eslint src --ext .js,.jsx,.ts,.tsx"
   },
   "devDependencies": {
     "dotenv-cli": "^11.0.0"

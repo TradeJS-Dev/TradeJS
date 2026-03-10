@@ -7,10 +7,7 @@ import type {
   StrategyCreator,
   StrategyManifest,
 } from '@tradejs/core';
-import {
-  defineIndicatorPlugin,
-  defineStrategyPlugin,
-} from '@tradejs/core';
+import { defineIndicatorPlugin, defineStrategyPlugin } from '@tradejs/core';
 
 interface SandboxConfig extends StrategyConfig {
   INTERVAL?: Signal['interval'];

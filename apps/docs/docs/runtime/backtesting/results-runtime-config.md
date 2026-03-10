@@ -8,10 +8,6 @@ This page explains how to promote positive backtest configs into runtime, how `n
 
 `npx @tradejs/cli results` scans saved test configs/stats and builds per-symbol winners for one strategy.
 
-Source:
-
-- `@tradejs/cli`
-
 Main command:
 
 ```bash
@@ -56,19 +52,9 @@ When step 4 applies, runtime marks:
 
 - `isConfigFromBacktest = true`
 
-Code:
-
-- `@tradejs/core`
-- `@tradejs/core`
-
 ## 4. How `isConfigFromBacktest` Is Used
 
 `isConfigFromBacktest` is written into signal payload and can be used in UI/Telegram/debug flows.
-
-Code path:
-
-- signal build: `@tradejs/core`
-- telegram formatting: `@tradejs/core`
 
 Runtime behavior:
 

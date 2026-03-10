@@ -66,4 +66,4 @@ npx @tradejs/cli ml-train:trendline:xgboost
 
 - [Grid-конфиги бэктестов](../runtime/backtesting/grid-config) — как задавать Redis grid-конфиги для массового перебора параметров
 - [Results и promotion в runtime](../runtime/backtesting/results-runtime-config) — promotion конфигов из бэктестов, `@tradejs/cli results`, `isConfigFromBacktest`
-- [Прокачка данных и continuity](../runtime/data/continuity-update-history) — обновление данных через `continuity` и `backtest --updateOnly`
+- [Data Sync](../getting-started/data-sync) — обновление данных через `continuity` и `backtest --updateOnly`

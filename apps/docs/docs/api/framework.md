@@ -64,7 +64,7 @@ Each strategy entry uses `manifest` with:
 - optional `aiAdapter`
 - optional `mlAdapter`
 
-For hook lifecycle details, see [Strategy Hooks](../runtime/execution/strategy-hooks).
+For hook lifecycle details, see [Strategy Hooks](../strategies/authoring/strategy-hooks).
 
 ## Indicator Plugin API
 

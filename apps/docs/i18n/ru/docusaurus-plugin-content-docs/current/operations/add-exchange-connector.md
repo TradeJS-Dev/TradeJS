@@ -4,13 +4,78 @@ title: Как добавить connector новой биржи
 
 В этой статье: как добавить новый connector биржи и где находятся точки интеграции.
 
+Важно:
+
+- коннекторы не подключаются через `tradejs.config.ts`
+- `tradejs.config.ts` используется только для strategy/indicator plugins
+- чтобы новый провайдер работал в CLI, коннектор должен быть добавлен в карту коннекторов, с которой собран ваш `@tradejs/cli`
+
 ## 1. Реализуйте Connector Creator
 
-Создайте папку:
+Реализуйте коннектор в своем модуле/пакете (например, `@your-scope/tradejs-connectors`) и верните полный типизированный контракт `Connector`.
 
-- `@tradejs/connectors`
+Минимальный typed-скелет:
 
-Реализуйте `ConnectorCreator`, возвращающий полный контракт `Connector`:
+```ts
+import type {
+  Connector,
+  ConnectorCreator,
+  KlineRequest,
+  KlineChartData,
+  Ticker,
+  Position,
+  Order,
+  Tp,
+  Sl,
+} from '@tradejs/core/types';
+
+const kline = async (options: KlineRequest): Promise<KlineChartData> => {
+  return [];
+};
+
+const getTickers = async (): Promise<Ticker[]> => {
+  return [];
+};
+
+const getPosition = async (symbol: string): Promise<Position | null> => {
+  return null;
+};
+
+const getPositions = async (): Promise<Position[]> => {
+  return [];
+};
+
+const placeOrder = async (
+  order: Order,
+  tp?: Tp[],
+  slPrice?: Sl,
+): Promise<boolean> => {
+  return true;
+};
+
+const closePosition = async (order: Omit<Order, 'qty'>): Promise<boolean> => {
+  return true;
+};
+
+export const MyExchangeConnectorCreator: ConnectorCreator = async ({
+  userName,
+}) => {
+  const connector: Connector = {
+    kline,
+    getTickers,
+    getPosition,
+    getPositions,
+    placeOrder,
+    closePosition,
+    getState: async () => ({}),
+    setState: async (_state: object) => {},
+  };
+
+  return connector;
+};
+```
+
+Обязательные методы `Connector`:
 
 - `kline`
 - `getTickers`
@@ -18,17 +83,9 @@ title: Как добавить connector новой биржи
 - `placeOrder`, `closePosition`
 - `getState`, `setState`
 
-Референсы:
-
-- Binance connector в `@tradejs/connectors`
-- Coinbase connector в `@tradejs/connectors`
-- ByBit connector в `@tradejs/connectors`
-
 ## 2. Зарегистрируйте connector в одном месте
 
-Регистрация делается в:
-
-- `@tradejs/connectors`
+Зарегистрируйте провайдер в карте коннекторов, которую использует ваш CLI build (обычно `@tradejs/connectors`).
 
 Обновите:
 

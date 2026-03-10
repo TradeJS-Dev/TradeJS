@@ -108,6 +108,6 @@ npx @tradejs/cli results --strategy AdaptiveMomentumRibbon --clear --user root
 
 ## 6. Связанные статьи
 
-- `runtime/backtesting/results-runtime-config`
-- [Прокачка данных и continuity](../data/continuity-update-history)
-- `strategies/authoring/pine-strategy-step-by-step`
+- [Результаты бэктеста -> runtime-конфиг](./results-runtime-config)
+- [Data Sync](../../getting-started/data-sync)
+- [Pine Script стратегия пошагово](../../strategies/authoring/pine-strategy-step-by-step)

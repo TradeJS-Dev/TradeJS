@@ -81,6 +81,6 @@ npx @tradejs/cli ml-export
 
 ## Связанные статьи
 
-- `runtime/backtesting/grid-config`
-- `runtime/backtesting/results-runtime-config`
-- [Прокачка данных и continuity](../data/continuity-update-history)
+- [Grid-конфиг бэктеста для массового перебора параметров](./grid-config)
+- [Результаты бэктеста -> runtime-конфиг](./results-runtime-config)
+- [Data Sync](../../getting-started/data-sync)

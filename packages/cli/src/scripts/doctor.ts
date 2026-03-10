@@ -175,7 +175,9 @@ const run = async () => {
       ),
     );
     console.log(
-      infoLabel('Start infra: npx @tradejs/cli infra-init && npx @tradejs/cli infra-up'),
+      infoLabel(
+        'Start infra: npx @tradejs/cli infra-init && npx @tradejs/cli infra-up',
+      ),
     );
     process.exit(1);
   }

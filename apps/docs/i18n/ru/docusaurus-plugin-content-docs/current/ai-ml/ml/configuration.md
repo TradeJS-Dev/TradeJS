@@ -51,6 +51,21 @@ ml-dataset-<strategy>-<chunkId>.jsonl
 *.walk-forward-fold-<N>.test.<key>.jsonl
 ```
 
+## Локальная цепочка артефактов (export -> train -> signals)
+
+1. `npx @tradejs/cli backtest --ml` пишет chunk-файлы в локальную папку проекта:
+   `data/ml/export/ml-dataset-<strategy>-chunk-<chunkId>.jsonl`
+2. `npx @tradejs/cli ml-export` объединяет их в:
+   `data/ml/export/ml-dataset-<strategy>-merged-<timestamp>.jsonl`
+3. `npx @tradejs/cli ml-train:latest` читает export-файлы из `data/ml/export` и пишет model aliases в:
+   `data/ml/models/<Strategy>.joblib`
+   или ensemble aliases `data/ml/models/<Strategy>.modelN.joblib`
+4. ML infer сервис должен читать ту же директорию моделей (`MODEL_DIR`).
+5. `npx @tradejs/cli signals` (если в конфиге стратегии `ML_ENABLED=true`) отправляет `signal.strategy` в gRPC `Predict`.
+   Inference-сервис загружает `<Strategy>.joblib` / `<Strategy>.modelN.joblib` для этой стратегии.
+
+Если имя стратегии и префикс model alias совпадают, runtime автоматически использует обученную локальную модель.
+
 ## Качество и causality
 
 - На train есть проверка lookahead leakage.

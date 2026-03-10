@@ -78,6 +78,52 @@ const getRedis = () => {
   return global.__redis__;
 };
 
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const getRedisStatus = (redis: Redis): string =>
+  String((redis as unknown as { status?: unknown }).status ?? 'ready');
+
+const waitForRedisReady = async (redis: Redis): Promise<boolean> => {
+  if (getRedisStatus(redis) === 'ready') {
+    return true;
+  }
+
+  const readyTimeoutMs = toPositiveInt(
+    process.env.REDIS_READY_TIMEOUT_MS,
+    toPositiveInt(process.env.REDIS_CONNECT_TIMEOUT_MS, 3_000),
+  );
+  const startedAt = Date.now();
+
+  while (Date.now() - startedAt < readyTimeoutMs) {
+    if (getRedisStatus(redis) === 'ready') {
+      return true;
+    }
+
+    if (getRedisStatus(redis) === 'end') {
+      return false;
+    }
+
+    await sleep(50);
+  }
+
+  return getRedisStatus(redis) === 'ready';
+};
+
+const getReadyRedis = async (): Promise<Redis | null> => {
+  if (redisUnavailable) return null;
+
+  const redis = getRedis();
+  const ready = await waitForRedisReady(redis);
+  if (ready) {
+    return redis;
+  }
+
+  markRedisUnavailable(
+    new Error(`Redis is not ready (status=${getRedisStatus(redis)})`),
+  );
+  return null;
+};
+
 const toResultString = (result: unknown): string | null => {
   if (result == null) return null;
   if (typeof result === 'string') return result;
@@ -100,7 +146,8 @@ const DEFAULT_OPTIONS: Options = {
 export const getKeys = async (prefix: string): Promise<string[]> => {
   if (redisUnavailable) return [];
 
-  const redis = getRedis();
+  const redis = await getReadyRedis();
+  if (!redis) return [];
   const keys: string[] = [];
 
   try {
@@ -138,7 +185,8 @@ export const getData = async (
 ): Promise<any> => {
   if (redisUnavailable) return fallback;
 
-  const redis = getRedis();
+  const redis = await getReadyRedis();
+  if (!redis) return fallback;
 
   try {
     const rawJson = await redis.call('JSON.GET', key);
@@ -204,7 +252,8 @@ export const delKeyWithOptions = async (
   if (redisUnavailable) return false;
 
   const { raiseOnMisconf = false } = options;
-  const redis = getRedis();
+  const redis = await getReadyRedis();
+  if (!redis) return false;
 
   try {
     const result = await redis.del(key);
@@ -236,7 +285,8 @@ export const setData = async <T>(
   if (redisUnavailable) return;
 
   const { expire } = { ...DEFAULT_OPTIONS, ...options };
-  const redis = getRedis();
+  const redis = await getReadyRedis();
+  if (!redis) return;
   const value = toJson(data);
 
   try {

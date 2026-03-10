@@ -64,4 +64,4 @@ When AI analysis is present, Telegram receives a follow-up analysis message.
 
 See full setup:
 
-- `runtime/execution/telegram-notifications`
+- [Telegram Notifications](./telegram-notifications)

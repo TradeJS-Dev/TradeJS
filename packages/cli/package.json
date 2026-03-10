@@ -1,6 +1,7 @@
 {
   "name": "@tradejs/cli",
   "version": "1.0.0",
+  "homepage": "https://tradejs.dev",
   "private": true,
   "bin": {
     "tradejs": "dist/cli.js"
@@ -26,7 +27,7 @@
   "scripts": {
     "build": "echo 'cli: build placeholder'",
     "typecheck": "tsc -p ../../tsconfig.json --noEmit",
-    "run:ts": "dotenv -e ../../.env -- ts-node -r tsconfig-paths/register",
+    "run:ts": "dotenv -e \"${DOTENV_CONFIG_PATH:-${PROJECT_CWD:-$PWD}/.env}\" -- ts-node -r tsconfig-paths/register",
     "clean-dir": "yarn run run:ts ./src/scripts/cleanDir",
     "clean-redis": "yarn run run:ts ./src/scripts/cleanRedis",
     "clean-tests": "yarn run run:ts ./src/scripts/cleanTests",

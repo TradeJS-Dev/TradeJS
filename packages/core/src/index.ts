@@ -2,7 +2,10 @@ export * from './strategy';
 export * from './types';
 export * from './constants';
 
-import type { IndicatorPluginDefinition, StrategyPluginDefinition } from './types';
+import type {
+  IndicatorPluginDefinition,
+  StrategyPluginDefinition,
+} from './types';
 
 export interface TradejsConfig {
   strategyPlugins?: string[];

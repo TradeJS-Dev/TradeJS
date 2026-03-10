@@ -46,6 +46,45 @@ export const trendLineAiAdapter: StrategyAiAdapter = {
 };
 ```
 
+## Как подменить промпт для своей стратегии
+
+Используйте `aiAdapter` в manifest вашей стратегии.
+Runtime сохраняет базовый prompt и добавляет ваши add-on блоки.
+
+```ts
+import type { StrategyAiAdapter } from '@tradejs/core/types';
+
+export const myStrategyAiAdapter: StrategyAiAdapter = {
+  buildSystemPromptAddon: ({ signal }) => `
+Дополнительные правила для ${signal.strategy}:
+- Делай акцент на подтверждении пробоя + согласовании с объемом.
+- Если подтверждения по объему нет, снижай quality до <= 3.
+`,
+  buildHumanPromptAddon: ({ signal }) => `
+Дополнительный контекст:
+- riskRatio=${signal.prices.riskRatio}
+- symbol=${signal.symbol}
+`,
+};
+```
+
+Затем подключите adapter в manifest:
+
+```ts
+import type { StrategyManifest } from '@tradejs/core/types';
+import { myStrategyAiAdapter } from './adapters/ai';
+
+export const myStrategyManifest: StrategyManifest = {
+  name: 'MyStrategy',
+  aiAdapter: myStrategyAiAdapter,
+};
+```
+
+Важно:
+
+- это публичный способ кастомизировать поведение prompt для конкретной стратегии
+- базовый runtime-prompt все равно применяется; ваши add-on просто дописываются в system/human prompt
+
 ## Реальный паттерн gate-логики
 
 ```ts

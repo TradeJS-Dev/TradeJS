@@ -64,4 +64,4 @@ npx @tradejs/cli signals --notify
 
 Подробная инструкция:
 
-- `runtime/execution/telegram-notifications`
+- [Telegram Notifications](./telegram-notifications)

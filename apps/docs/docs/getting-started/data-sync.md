@@ -1,5 +1,5 @@
 ---
-title: 'Data Sync: continuity and backtest --updateOnly'
+title: Data Sync
 ---
 
 This page explains how to refresh market history via `npx @tradejs/cli backtest --updateOnly` and `npx @tradejs/cli continuity`, and how to select a specific exchange.

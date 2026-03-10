@@ -4,13 +4,78 @@ title: Add a New Exchange Connector
 
 This guide explains how to add a new exchange connector and where integration points are.
 
+Important:
+
+- connectors are not registered in `tradejs.config.ts`
+- `tradejs.config.ts` is only for strategy/indicator plugins
+- to use a new provider in CLI, connector must be present in the connector map used by your `@tradejs/cli` build
+
 ## 1. Implement Connector Creator
 
-Create a new folder:
+Implement connector in your own module/package (for example `@your-scope/tradejs-connectors`) and return full typed `Connector` contract.
 
-- `@tradejs/connectors`
+Minimal typed skeleton:
 
-Implement `ConnectorCreator` and return full `Connector` contract:
+```ts
+import type {
+  Connector,
+  ConnectorCreator,
+  KlineRequest,
+  KlineChartData,
+  Ticker,
+  Position,
+  Order,
+  Tp,
+  Sl,
+} from '@tradejs/core/types';
+
+const kline = async (options: KlineRequest): Promise<KlineChartData> => {
+  return [];
+};
+
+const getTickers = async (): Promise<Ticker[]> => {
+  return [];
+};
+
+const getPosition = async (symbol: string): Promise<Position | null> => {
+  return null;
+};
+
+const getPositions = async (): Promise<Position[]> => {
+  return [];
+};
+
+const placeOrder = async (
+  order: Order,
+  tp?: Tp[],
+  slPrice?: Sl,
+): Promise<boolean> => {
+  return true;
+};
+
+const closePosition = async (order: Omit<Order, 'qty'>): Promise<boolean> => {
+  return true;
+};
+
+export const MyExchangeConnectorCreator: ConnectorCreator = async ({
+  userName,
+}) => {
+  const connector: Connector = {
+    kline,
+    getTickers,
+    getPosition,
+    getPositions,
+    placeOrder,
+    closePosition,
+    getState: async () => ({}),
+    setState: async (_state: object) => {},
+  };
+
+  return connector;
+};
+```
+
+Required methods in `Connector`:
 
 - `kline`
 - `getTickers`
@@ -18,17 +83,9 @@ Implement `ConnectorCreator` and return full `Connector` contract:
 - `placeOrder`, `closePosition`
 - `getState`, `setState`
 
-Reference implementations:
-
-- Binance connector in `@tradejs/connectors`
-- Coinbase connector in `@tradejs/connectors`
-- ByBit connector in `@tradejs/connectors`
-
 ## 2. Register Connector In One Place
 
-Register in:
-
-- `@tradejs/connectors`
+Register provider in the connector map used by your CLI build (typically `@tradejs/connectors`).
 
 Update:
 

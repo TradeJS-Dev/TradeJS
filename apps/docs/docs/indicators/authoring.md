@@ -7,7 +7,7 @@ This guide shows how to add your own indicator and render it in the TradeJS char
 TradeJS supports two indicator paths:
 
 - TypeScript indicator plugins (this page)
-- Pine `plot` indicators inside Pine strategies (`indicators/pine`)
+- [Pine `plot` indicators inside Pine strategies](./pine)
 
 ## 1. Create an Indicator Plugin Package
 

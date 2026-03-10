@@ -47,6 +47,14 @@ Service resolves model files from `MODEL_DIR`:
 
 If ensemble files exist, prediction is mean probability across members.
 
+Typical local setup:
+
+- trained models are in `./data/ml/models`
+- container uses `MODEL_DIR=/app/data/ml/models`
+- host `./data` is mounted to `/app/data` in infer container
+
+So aliases written by training (`./data/ml/models/<Strategy>.joblib`) are immediately visible to inference.
+
 ## Runtime Integration
 
 On runtime side, ML gating:

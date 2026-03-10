@@ -10,6 +10,7 @@ const sidebars: SidebarsConfig = {
         'intro',
         'getting-started/quickstart',
         'getting-started/root-user',
+        'getting-started/data-sync',
       ],
     },
     {
@@ -22,6 +23,7 @@ const sidebars: SidebarsConfig = {
           items: [
             'api/framework',
             'strategies/authoring/write-strategies',
+            'strategies/authoring/strategy-hooks',
             'strategies/authoring/ma-strategy-step-by-step',
             'strategies/authoring/pine-strategy-step-by-step',
             'strategies/authoring/plugin-e2e',
@@ -85,14 +87,6 @@ const sidebars: SidebarsConfig = {
             'runtime/execution/signals',
             'runtime/execution/multi-strategy-signals',
             'runtime/execution/telegram-notifications',
-          ],
-        },
-        {
-          type: 'category',
-          label: 'Hooks and Data',
-          items: [
-            'runtime/execution/strategy-hooks',
-            'runtime/data/continuity-update-history',
           ],
         },
       ],

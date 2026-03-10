@@ -7,8 +7,8 @@ This page explains the core strategy contract in TradeJS and where to place stra
 
 TradeJS supports two strategy creation paths:
 
-- TypeScript strategy with `StrategyAPI` (`strategies/authoring/ma-strategy-step-by-step`)
-- Pine strategy with a dedicated `.pine` source (`strategies/authoring/pine-strategy-step-by-step`)
+- [TypeScript strategy with `StrategyAPI`](./ma-strategy-step-by-step)
+- [Pine strategy with a dedicated `.pine` source](./pine-strategy-step-by-step)
 
 ## Typical Strategy Layout
 
@@ -41,7 +41,7 @@ Shared runtime handles:
 Files:
 
 - `@tradejs/core`
-- `runtime/execution/strategy-hooks` (full lifecycle hooks catalog)
+- [Strategy Hooks](./strategy-hooks) (full lifecycle hooks catalog)
 
 ## Minimal `core.ts` Example
 
@@ -104,8 +104,8 @@ export const createMyStrategyCore: CreateStrategyCore<
 
 ## Step-by-Step Guides
 
-- `strategies/authoring/ma-strategy-step-by-step` — full TypeScript strategy walkthrough
-- `strategies/authoring/pine-strategy-step-by-step` — full Pine strategy walkthrough
+- [MA Strategy Step by Step](./ma-strategy-step-by-step) — full TypeScript strategy walkthrough
+- [Pine Strategy Step by Step](./pine-strategy-step-by-step) — full Pine strategy walkthrough
 
 ## External Strategy as an npm Plugin
 

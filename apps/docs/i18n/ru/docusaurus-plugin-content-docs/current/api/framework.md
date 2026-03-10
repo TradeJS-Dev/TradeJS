@@ -64,7 +64,7 @@ export default defineStrategyPlugin({ strategyEntries });
 - опциональный `aiAdapter`
 - опциональный `mlAdapter`
 
-Подробно про lifecycle-хуки: [Strategy Hooks](../runtime/execution/strategy-hooks).
+Подробно про lifecycle-хуки: [Strategy Hooks](../strategies/authoring/strategy-hooks).
 
 ## Indicator plugin API
 

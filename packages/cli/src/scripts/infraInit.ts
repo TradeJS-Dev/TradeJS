@@ -10,4 +10,3 @@ run().catch((error) => {
   console.error(chalk.red(`infra-init failed: ${String(error)}`));
   process.exit(1);
 });
-

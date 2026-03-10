@@ -47,6 +47,14 @@ ML_GRPC_ADDRESS=127.0.0.1:50051
 
 Если найдены ensemble-файлы, вероятность усредняется по всем участникам.
 
+Типичный локальный сценарий:
+
+- обученные модели лежат в `./data/ml/models`
+- контейнер запущен с `MODEL_DIR=/app/data/ml/models`
+- хост-папка `./data` смонтирована в `/app/data` для infer-контейнера
+
+Поэтому aliases после тренировки (`./data/ml/models/<Strategy>.joblib`) сразу доступны inference-сервису.
+
 ## Интеграция в runtime
 
 На стороне runtime, ML-gating:

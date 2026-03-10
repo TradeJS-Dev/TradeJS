@@ -48,20 +48,34 @@ body::before {
   inset: 0;
   z-index: -1;
   pointer-events: none;
-  background:
-    radial-gradient(
-      120% 70% at 12% -10%,
-      rgba(32, 197, 189, 0.08) 0%,
-      rgba(32, 197, 189, 0) 58%
+  background-color: #090d14;
+  background-image: radial-gradient(
+      140% 92% at 10% -24%,
+      rgba(32, 197, 189, 0.13) 0%,
+      rgba(32, 197, 189, 0.08) 26%,
+      rgba(32, 197, 189, 0) 62%
     ),
     radial-gradient(
-      100% 65% at 92% -14%,
-      rgba(76, 169, 255, 0.07) 0%,
-      rgba(76, 169, 255, 0) 60%
+      125% 86% at 92% -20%,
+      rgba(76, 169, 255, 0.12) 0%,
+      rgba(76, 169, 255, 0.06) 30%,
+      rgba(76, 169, 255, 0) 64%
     ),
-    linear-gradient(180deg, #0b1524 0%, #09111d 46%, #090d14 100%);
+    radial-gradient(
+      150% 90% at 50% 118%,
+      rgba(9, 23, 38, 0.48) 0%,
+      rgba(9, 23, 38, 0) 72%
+    ),
+    linear-gradient(
+      180deg,
+      #0c1728 0%,
+      #0b1524 28%,
+      #0a1320 58%,
+      #09111c 80%,
+      #090f18 100%
+    );
   background-repeat: no-repeat;
-  background-size: 100% 100%;
+  background-size: cover;
 }
 
 [data-theme='dark'] {

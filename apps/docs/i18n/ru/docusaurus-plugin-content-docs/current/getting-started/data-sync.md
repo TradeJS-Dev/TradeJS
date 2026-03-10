@@ -1,5 +1,5 @@
 ---
-title: 'Прокачка данных: continuity и backtest --updateOnly'
+title: Data Sync
 ---
 
 В этой статье: как обновлять исторические данные через `npx @tradejs/cli backtest --updateOnly` и `npx @tradejs/cli continuity`, и как выбирать конкретную биржу.

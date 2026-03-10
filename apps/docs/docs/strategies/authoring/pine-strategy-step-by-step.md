@@ -6,7 +6,7 @@ This guide shows the Pine path in TradeJS: a real standalone strategy implemente
 
 TradeJS now supports two strategy authoring paths:
 
-- TypeScript strategy with `StrategyAPI` (`strategies/authoring/ma-strategy-step-by-step`)
+- [TypeScript strategy with `StrategyAPI`](./ma-strategy-step-by-step)
 - Pine strategy with dedicated `.pine` source file (`AdaptiveMomentumRibbon` example below)
 
 ## 1. Strategy Is a Real Module (Not a Generic Wrapper)

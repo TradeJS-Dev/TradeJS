@@ -146,7 +146,10 @@ const config: Config = {
           title: 'Operations',
           items: [
             { label: 'CLI API', to: '/api/cli' },
-            { label: 'Production Runbook', to: '/operations/production-runbook' },
+            {
+              label: 'Production Runbook',
+              to: '/operations/production-runbook',
+            },
             { label: 'Monitoring', to: '/operations/monitoring-alerts' },
             { label: 'Backup and Restore', to: '/operations/backup-restore' },
           ],

@@ -11,8 +11,6 @@ This guide is for external package users (without cloning the TradeJS repo).
 - npm/yarn/pnpm
 - Docker Desktop (or Docker Engine) installed and running
 - Docker Compose plugin available (`docker compose`)
-- `npx @tradejs/cli infra-init` (once per project) + `npx @tradejs/cli infra-up`
-- Optional ML gRPC service for ML-enabled flows
 
 ## 1. Create Project and Install Packages
 

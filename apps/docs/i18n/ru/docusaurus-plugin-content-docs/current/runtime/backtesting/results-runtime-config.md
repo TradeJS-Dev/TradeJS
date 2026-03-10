@@ -8,10 +8,6 @@ title: Как применять результаты бэктестов в ра
 
 `npx @tradejs/cli results` сканирует сохраненные тесты/статистику и собирает лучших кандидатов по символам для выбранной стратегии.
 
-Источник:
-
-- `@tradejs/cli`
-
 Базовая команда:
 
 ```bash
@@ -56,19 +52,9 @@ npx @tradejs/cli results --strategy TrendLine --clear --user root
 
 - `isConfigFromBacktest = true`
 
-Код:
-
-- `@tradejs/core`
-- `@tradejs/core`
-
 ## 4. Как используется `isConfigFromBacktest`
 
 `isConfigFromBacktest` попадает в сигнал и может использоваться в UI/Telegram/debug-потоке.
-
-Путь в коде:
-
-- сбор сигнала: `@tradejs/core`
-- форматирование Telegram: `@tradejs/core`
 
 Поведение:
 

@@ -11,8 +11,6 @@ title: Quickstart
 - npm/yarn/pnpm
 - Установленный и запущенный Docker Desktop (или Docker Engine)
 - Доступный Docker Compose plugin (`docker compose`)
-- `npx @tradejs/cli infra-init` (один раз на проект) + `npx @tradejs/cli infra-up`
-- (опционально) ML gRPC сервис для ML-сценариев
 
 ## 1. Создайте проект и установите пакеты
 

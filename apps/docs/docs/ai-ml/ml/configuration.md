@@ -51,6 +51,21 @@ Derived split files (generated automatically):
 *.walk-forward-fold-<N>.test.<key>.jsonl
 ```
 
+## Local Artifact Chain (Export -> Train -> Signals)
+
+1. `npx @tradejs/cli backtest --ml` writes chunk files to local project folder:
+   `data/ml/export/ml-dataset-<strategy>-chunk-<chunkId>.jsonl`
+2. `npx @tradejs/cli ml-export` merges chunks into:
+   `data/ml/export/ml-dataset-<strategy>-merged-<timestamp>.jsonl`
+3. `npx @tradejs/cli ml-train:latest` reads export files from `data/ml/export` and writes model aliases to:
+   `data/ml/models/<Strategy>.joblib`
+   or ensemble aliases `data/ml/models/<Strategy>.modelN.joblib`
+4. ML infer service must read the same model directory (`MODEL_DIR`).
+5. `npx @tradejs/cli signals` (with strategy config `ML_ENABLED=true`) sends `signal.strategy` to gRPC `Predict`.
+   Inference service loads `<Strategy>.joblib` / `<Strategy>.modelN.joblib` for that strategy.
+
+If strategy name and model alias prefix match, runtime automatically uses the trained local model.
+
 ## Quality and Causality
 
 - Train validates lookahead leakage on timestamp-like fields.

@@ -7,8 +7,8 @@ title: Как создавать стратегии
 
 TradeJS поддерживает два пути создания стратегий:
 
-- TypeScript-стратегия через `StrategyAPI` (`strategies/authoring/ma-strategy-step-by-step`)
-- Pine-стратегия с отдельным `.pine` исходником (`strategies/authoring/pine-strategy-step-by-step`)
+- [TypeScript-стратегия через `StrategyAPI`](./ma-strategy-step-by-step)
+- [Pine-стратегия с отдельным `.pine` исходником](./pine-strategy-step-by-step)
 
 ## Типовая структура стратегии
 
@@ -41,7 +41,7 @@ TradeJS поддерживает два пути создания стратег
 Файлы:
 
 - `@tradejs/core`
-- `runtime/execution/strategy-hooks` (каталог lifecycle-хуков)
+- [Strategy Hooks](./strategy-hooks) (каталог lifecycle-хуков)
 
 ## Пример минимального `core.ts`
 
@@ -104,8 +104,8 @@ export const createMyStrategyCore: CreateStrategyCore<
 
 ## Пошаговые руководства
 
-- `strategies/authoring/ma-strategy-step-by-step` — полный путь для TypeScript-стратегии
-- `strategies/authoring/pine-strategy-step-by-step` — полный путь для Pine-стратегии
+- [MA Strategy Step by Step](./ma-strategy-step-by-step) — полный путь для TypeScript-стратегии
+- [Pine Strategy Step by Step](./pine-strategy-step-by-step) — полный путь для Pine-стратегии
 
 ## Внешняя стратегия как npm-плагин
 

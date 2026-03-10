@@ -1,5 +1,5 @@
 ---
-title: Indicator Catalog (Current Core)
+title: Indicator Catalog
 ---
 
 This page lists indicators currently produced/used by core runtime.

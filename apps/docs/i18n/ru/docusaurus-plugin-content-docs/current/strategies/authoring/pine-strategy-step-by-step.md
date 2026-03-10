@@ -6,7 +6,7 @@ title: Pine Script стратегия пошагово
 
 В TradeJS есть два пути написания стратегий:
 
-- TypeScript-стратегия через `StrategyAPI` (`strategies/authoring/ma-strategy-step-by-step`)
+- [TypeScript-стратегия через `StrategyAPI`](./ma-strategy-step-by-step)
 - Pine-стратегия с отдельным `.pine` файлом (пример `AdaptiveMomentumRibbon` ниже)
 
 ## 1. Стратегия оформляется как отдельный модуль

@@ -5,6 +5,11 @@ import path from 'node:path';
 
 export const DEV_COMPOSE_FILE = 'docker-compose.dev.yml';
 
+const getProjectRoot = (): string => {
+  const fromEnv = String(process.env.PROJECT_CWD || '').trim();
+  return fromEnv ? path.resolve(fromEnv) : process.cwd();
+};
+
 const DEV_COMPOSE_TEMPLATE = `services:
   timescale:
     image: timescale/timescaledb:latest-pg16
@@ -40,7 +45,7 @@ volumes:
 `;
 
 const getDevComposePath = (): string =>
-  path.resolve(process.cwd(), DEV_COMPOSE_FILE);
+  path.resolve(getProjectRoot(), DEV_COMPOSE_FILE);
 
 export const initDevComposeFile = (): string => {
   const composePath = getDevComposePath();
@@ -60,7 +65,7 @@ export const initDevComposeFile = (): string => {
 };
 
 export const requireDevComposeFile = (): string => {
-  const composePath = path.resolve(process.cwd(), DEV_COMPOSE_FILE);
+  const composePath = path.resolve(getProjectRoot(), DEV_COMPOSE_FILE);
 
   if (existsSync(composePath)) {
     console.log(chalk.gray(`Using existing ${DEV_COMPOSE_FILE}`));
@@ -73,13 +78,9 @@ export const requireDevComposeFile = (): string => {
 };
 
 export const runDockerCompose = (composePath: string, args: string[]): void => {
-  const result = spawnSync(
-    'docker',
-    ['compose', '-f', composePath, ...args],
-    {
-      stdio: 'inherit',
-    },
-  );
+  const result = spawnSync('docker', ['compose', '-f', composePath, ...args], {
+    stdio: 'inherit',
+  });
 
   if (result.error) {
     throw result.error;
