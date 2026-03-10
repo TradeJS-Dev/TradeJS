@@ -82,7 +82,7 @@ yarn ml-train:trendline:xgboost
 
 - local `tradejs.config.ts`
 - custom strategy, indicator and connector plugins
-- seeded user/config and stable backtest snapshot assertions
+- seeded user/config and stable backtest + signals snapshot assertions
 
 ```bash
 cd examples/sandbox

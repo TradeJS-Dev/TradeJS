@@ -16,7 +16,7 @@ It supports two first-class authoring paths:
 - `packages/cli`: operational scripts (`backtest`, `signals`, `results`, `ml-*`, `doctor`, etc.)
 - `packages/core`: public framework entrypoint for external strategy/indicator plugins
 - `packages/ml/python`: Python train/infer/profile services
-- `examples/sandbox`: full user-app style sandbox with local `tradejs.config.ts`, custom strategy/indicator/connector plugins, and deterministic backtest e2e flow
+- `examples/sandbox`: full user-app style sandbox with local `tradejs.config.ts`, custom strategy/indicator/connector plugins, and deterministic backtest/signals e2e flow
 
 ## Core Concepts
 

@@ -6,7 +6,7 @@
 - custom strategy plugin (`SandboxDeterministicSignal`)
 - custom indicator plugin (`sandboxDeterministicDrift`)
 - custom connector plugin (`SandboxMockConnector` / provider `sandbox`)
-- deterministic backtest e2e flow for CI
+- deterministic backtest + signals e2e flow for CI
 
 ## Files
 
@@ -17,6 +17,8 @@
 - `src/scripts/seedBacktestConfig.ts` — writes deterministic backtest config to Redis
 - `src/scripts/runDeterministicBacktest.ts` — runs backtest with local mocked Binance/Coinbase HTTP endpoints
 - `src/scripts/assertBacktestSnapshot.ts` — validates backtest snapshot in Redis
+- `src/scripts/runDeterministicSignals.ts` — runs deterministic `signals` flow with connector `sandbox`
+- `src/scripts/assertSignalsSnapshot.ts` — validates runtime/store signal keys in Redis
 
 ## Environment
 
@@ -39,6 +41,8 @@ yarn infra-down
 2. Seeds deterministic backtest config `SandboxDeterministicSignal:base`.
 3. Runs backtest with connector provider `sandbox` and ticker `SANDBOXUSDT`.
 4. Validates stat snapshot from Redis (`users:sandbox:tests:SandboxDeterministicSignal:*:stat`).
+5. Runs `signals` with connector provider `sandbox`.
+6. Validates signal snapshot from Redis (`signals:SANDBOXUSDT:*`, `store:signals:SANDBOXUSDT:*`).
 
 ## CI Intent
 
@@ -47,4 +51,6 @@ This sandbox is designed to be executed in GitHub Actions before deploy:
 - bring up infra (Redis + Timescale)
 - seed user/config
 - run deterministic backtest
-- assert snapshot is exactly stable
+- assert backtest snapshot is exactly stable
+- run deterministic signals
+- assert signals snapshot is exactly stable

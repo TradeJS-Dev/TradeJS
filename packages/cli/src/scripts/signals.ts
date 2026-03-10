@@ -2,7 +2,7 @@ import 'dotenv/config';
 import args from 'args';
 import ProgressBar from 'progress';
 import _ from 'lodash';
-import { connectors } from '@tradejs/connectors';
+import { ConnectorNames } from '@tradejs/connectors';
 import chalk from 'chalk';
 import { TTL_1D, TTL_3M, SIGNALS_PRELOAD_DAYS } from '@constants';
 import { update, getTickers, makeScreenshots, sendToTG } from '@utils/cli';
@@ -10,7 +10,13 @@ import { getData, getKeys, setData, redisKeys } from '@utils/redis';
 import { getTimestamp } from '@utils/timestamp';
 import { runWithConcurrency } from '@utils/async';
 import {
+  DEFAULT_CONNECTOR_NAME,
+  getConnectorCreatorByName,
+  resolveConnectorName,
+} from '@utils/connectorsRegistry';
+import {
   Connector,
+  ConnectorCreator,
   Interval,
   Signal,
   StrategyConfig,
@@ -25,11 +31,17 @@ args.option(['l', 'tickersLimit'], 'Tickers limit');
 args.option(['f', 'timeframe'], 'Timeframe', 15);
 args.option(['m', 'makeOrders'], 'Make orders');
 args.option(['N', 'notify'], 'Send message in Telegram', false);
+args.option(['S', 'skipScreenshots'], 'Skip screenshot generation', false);
 args.option(['u', 'updateOnly'], 'Only update tickers history', false);
 args.option(['C', 'cacheOnly'], 'Do not update tickers history', false);
 args.option(['L', 'showTickersList'], 'Just show only ticker list', false);
 args.option(['c', 'chunk'], 'Split by chunks, ex. 1/3');
 args.option(['U', 'user'], 'Use user confg', 'root');
+args.option(
+  'connector',
+  'Connector provider or name for signals (e.g. bybit, binance, coinbase, custom)',
+  'bybit',
+);
 
 const PRELOAD_START = getTimestamp(SIGNALS_PRELOAD_DAYS);
 
@@ -92,6 +104,20 @@ const loadRuntimeStrategies = async (
     }),
   );
   return strategyConfigs.filter(Boolean) as StrategyRuntimeConfig[];
+};
+
+const resolveSignalsConnectorName = async (value: unknown): Promise<string> => {
+  const connectorName = await resolveConnectorName(value);
+  if (connectorName) {
+    return connectorName;
+  }
+
+  logger.warn(
+    'Unknown connector "%s". Fallback to %s.',
+    String(value || '').trim() || String(value),
+    DEFAULT_CONNECTOR_NAME,
+  );
+  return DEFAULT_CONNECTOR_NAME;
 };
 
 const findSignals = async (
@@ -173,18 +199,50 @@ const findSignals = async (
 const signals = async () => {
   const signals = new Array<Signal>();
 
-  const byBitConnector = await connectors.ByBit({
-    userName: flags.user,
-  });
-  const binanceConnector = await connectors.Binance({
-    userName: flags.user,
-  });
-  const coinbaseConnector = await connectors.Coinbase({
+  const connectorName = await resolveSignalsConnectorName(flags.connector);
+  const connectorFactory = await getConnectorCreatorByName(connectorName);
+  if (!connectorFactory) {
+    throw new Error(`Connector "${connectorName}" is not registered`);
+  }
+  const marketConnector = await (connectorFactory as ConnectorCreator)({
     userName: flags.user,
   });
 
+  let btcBinanceConnector: Connector = marketConnector;
+  let btcCoinbaseConnector: Connector = marketConnector;
+
+  if (connectorName.toLowerCase() === DEFAULT_CONNECTOR_NAME.toLowerCase()) {
+    const binanceFactory = await getConnectorCreatorByName(
+      ConnectorNames.Binance,
+    );
+    if (binanceFactory) {
+      btcBinanceConnector = await (binanceFactory as ConnectorCreator)({
+        userName: flags.user,
+      });
+    } else {
+      logger.warn(
+        'Binance connector is unavailable. Reusing %s.',
+        connectorName,
+      );
+    }
+
+    const coinbaseFactory = await getConnectorCreatorByName(
+      ConnectorNames.Coinbase,
+    );
+    if (coinbaseFactory) {
+      btcCoinbaseConnector = await (coinbaseFactory as ConnectorCreator)({
+        userName: flags.user,
+      });
+    } else {
+      logger.warn(
+        'Coinbase connector is unavailable. Reusing %s.',
+        connectorName,
+      );
+    }
+  }
+
   const tickers = await getTickers(
-    byBitConnector,
+    marketConnector,
     flags.tickers,
     flags.exclude,
     flags.tickersLimit,
@@ -198,23 +256,27 @@ const signals = async () => {
   }
 
   if (!flags.cacheOnly) {
-    await update(byBitConnector, interval, tickers);
+    await update(marketConnector, interval, tickers);
 
-    await update(binanceConnector, interval, ['BTCUSDT']);
+    if (btcBinanceConnector !== marketConnector) {
+      await update(btcBinanceConnector, interval, ['BTCUSDT']);
+    }
 
-    await update(coinbaseConnector, interval, ['BTCUSDT']);
+    if (btcCoinbaseConnector !== marketConnector) {
+      await update(btcCoinbaseConnector, interval, ['BTCUSDT']);
+    }
   }
 
   const currentTimestamp = getTimestamp();
   const [btcBinanceData, btcCoinbaseData] = await Promise.all([
-    binanceConnector.kline({
+    btcBinanceConnector.kline({
       symbol: 'BTCUSDT',
       start: PRELOAD_START,
       end: currentTimestamp,
       cacheOnly: true,
       interval,
     }),
-    coinbaseConnector.kline({
+    btcCoinbaseConnector.kline({
       symbol: 'BTCUSDT',
       start: PRELOAD_START,
       end: currentTimestamp,
@@ -254,7 +316,7 @@ const signals = async () => {
   await runWithConcurrency(tickers, 5, async (symbol) => {
     const signal = await findSignals(
       symbol,
-      byBitConnector,
+      marketConnector,
       btcBinanceData,
       btcCoinbaseData,
       runtimeStrategies,
@@ -270,9 +332,10 @@ const signals = async () => {
     });
   });
 
-  await makeScreenshots(signals, '15');
-
-  await makeScreenshots(signals, '60');
+  if (!flags.skipScreenshots) {
+    await makeScreenshots(signals, '15');
+    await makeScreenshots(signals, '60');
+  }
 
   if (flags.notify) {
     await sendToTG(signals, '15');
