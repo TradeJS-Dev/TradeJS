@@ -234,8 +234,12 @@ export const makeScreenshots = async (
     async (signal) => {
       try {
         await screenDashboard({ ...signal, interval });
-      } catch {
-        logger.error('Failed screenshot: %s', signal.symbol);
+      } catch (error) {
+        logger.error(
+          'Failed screenshot: %s (%s)',
+          signal.symbol,
+          (error as Error)?.message || String(error),
+        );
       } finally {
         bar.tick(1, { symbol: chalk.gray(signal.symbol) });
       }

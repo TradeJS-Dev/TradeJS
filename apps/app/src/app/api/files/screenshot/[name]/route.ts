@@ -4,6 +4,11 @@ import path from 'path';
 
 export const runtime = 'nodejs';
 
+const getProjectRoot = (): string => {
+  const fromEnv = String(process.env.PROJECT_CWD || '').trim();
+  return fromEnv ? path.resolve(fromEnv) : process.cwd();
+};
+
 interface Params {
   name: string;
 }
@@ -15,7 +20,7 @@ export async function GET(
   try {
     const { name } = await params;
     const filePath = path.join(
-      process.cwd(),
+      getProjectRoot(),
       'data',
       'screenshots',
       `${name}.png`,

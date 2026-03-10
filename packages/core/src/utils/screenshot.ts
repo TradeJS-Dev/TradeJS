@@ -9,6 +9,14 @@ import { getData, redisKeys } from '@utils/redis';
 
 const { APP_URL } = process.env;
 
+const getProjectRoot = (): string => {
+  const fromEnv = String(process.env.PROJECT_CWD || '').trim();
+  return fromEnv ? path.resolve(fromEnv) : process.cwd();
+};
+
+const getScreenshotsDir = (): string =>
+  path.join(getProjectRoot(), 'data', 'screenshots');
+
 export const getScreenshotBase64 = async (signal: Signal) => {
   const screenshotPath = getScreenshotPath(signal);
 
@@ -24,8 +32,7 @@ export const getImageUrl = ({ symbol, signalId, interval }: Signal) =>
 
 export const getScreenshotPath = ({ symbol, signalId, interval }: Signal) => {
   return path.join(
-    process.cwd(),
-    'data/screenshots',
+    getScreenshotsDir(),
     `${symbol}_${signalId}_${interval}.png`,
   ) as `${string}.png`;
 };
@@ -69,6 +76,8 @@ export const screenDashboard = async (signal: Signal) => {
       );
 
       await delay(10_000);
+
+      await fs.mkdir(getScreenshotsDir(), { recursive: true });
 
       await page.screenshot({
         path: getScreenshotPath(signal),
