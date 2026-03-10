@@ -10,6 +10,7 @@ import {
   trimMlTrainingRowWindows,
 } from '@utils/mlTrainingTransform';
 import { appendMlDatasetRow } from '@utils/mlDatasetFile';
+import { getConnectorCreatorByName } from '@utils/connectorsRegistry';
 
 const preloadStart = getTimestamp(PRELOAD_DAYS);
 const coinKlineCache = new Map<string, KlineChartData>();
@@ -62,17 +63,23 @@ export const testing: TestingBox = async ({
   }
   // TODO: Add explicit end validation (and consistent error handling) similar to start validation.
 
-  const connector = await (
-    connectors[connectorName as ConnectorNames] as ConnectorCreator
-  )({
+  const connectorCreator = await getConnectorCreatorByName(connectorName);
+  if (!connectorCreator) {
+    throw new Error(`Unknown connector: ${connectorName}`);
+  }
+  const connector = await (connectorCreator as ConnectorCreator)({
     userName,
   });
   const strategyCreator = await getStrategyCreator(strategyName);
   if (!strategyCreator) {
     throw new Error(`Unknown strategy: ${strategyName}`);
   }
-  const binanceCreator = connectors[ConnectorNames.Binance];
-  const coinbaseCreator = connectors[ConnectorNames.Coinbase];
+  const binanceCreator = await getConnectorCreatorByName(
+    ConnectorNames.Binance,
+  );
+  const coinbaseCreator = await getConnectorCreatorByName(
+    ConnectorNames.Coinbase,
+  );
   if (!binanceCreator || !coinbaseCreator) {
     throw new Error('Binance/Coinbase connectors are required for BTC spread');
   }

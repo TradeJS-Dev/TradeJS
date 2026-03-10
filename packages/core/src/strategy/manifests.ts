@@ -8,7 +8,10 @@ import type {
 } from '@types';
 import { registerIndicatorEntries } from '@tradejs/core/indicators';
 import { logger } from '@utils/logger';
-import { loadTradejsConfig } from '@utils/tradejsConfig';
+import {
+  loadTradejsConfig,
+  resolvePluginModuleSpecifier,
+} from '@utils/tradejsConfig';
 import { adaptiveMomentumRibbonManifest } from './AdaptiveMomentumRibbon/manifest';
 import { breakoutManifest } from './Breakout/manifest';
 import { maStrategyManifest } from './MaStrategy/manifest';
@@ -188,7 +191,9 @@ export const ensureStrategyPluginsLoaded = async (): Promise<void> => {
 
     for (const moduleName of pluginModuleNames) {
       try {
-        const moduleExport = await importStrategyPluginModule(moduleName);
+        const resolvedModuleName = resolvePluginModuleSpecifier(moduleName);
+        const moduleExport =
+          await importStrategyPluginModule(resolvedModuleName);
         if (strategySet.has(moduleName)) {
           const pluginDefinition =
             extractStrategyPluginDefinition(moduleExport);

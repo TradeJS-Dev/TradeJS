@@ -1,8 +1,36 @@
 'use client';
 
-import { useState } from 'react';
+import hljs from 'highlight.js/lib/core';
+import typescript from 'highlight.js/lib/languages/typescript';
+import { useMemo, useState } from 'react';
 import { useLocale } from './locale-provider';
 import { AnimateOnScroll } from './animate-on-scroll';
+
+const pineScript = (hljsApi: typeof hljs) => ({
+  name: 'Pine Script',
+  aliases: ['pine'],
+  keywords: {
+    keyword:
+      'indicator strategy if else for while switch case break continue return import as and or not',
+    literal: 'true false na',
+    built_in:
+      'input plot ta math color request strategy close open high low volume timeframe',
+  },
+  contains: [
+    hljsApi.C_LINE_COMMENT_MODE,
+    hljsApi.APOS_STRING_MODE,
+    hljsApi.QUOTE_STRING_MODE,
+    hljsApi.C_NUMBER_MODE,
+  ],
+});
+
+if (!hljs.getLanguage('typescript')) {
+  hljs.registerLanguage('typescript', typescript);
+}
+
+if (!hljs.getLanguage('pine')) {
+  hljs.registerLanguage('pine', pineScript);
+}
 
 const tsCode = `export const createMyStrategyCore: CreateStrategyCore<
   MyStrategyConfig
@@ -67,6 +95,16 @@ plot(entryShort ? 1 : 0, "entryShort")`;
 export function DeveloperExperience() {
   const { t } = useLocale();
   const [activeTab, setActiveTab] = useState<'ts' | 'pine'>('ts');
+  const highlightedTsCode = useMemo(
+    () => hljs.highlight(tsCode, { language: 'typescript' }).value,
+    [],
+  );
+  const highlightedPineCode = useMemo(
+    () => hljs.highlight(pineCode, { language: 'pine' }).value,
+    [],
+  );
+  const isTsTab = activeTab === 'ts';
+  const highlightedCode = isTsTab ? highlightedTsCode : highlightedPineCode;
 
   return (
     <section id="dev-experience" className="relative py-24 lg:py-32">
@@ -113,8 +151,11 @@ export function DeveloperExperience() {
 
             {/* Code block */}
             <div className="p-6 overflow-x-auto">
-              <pre className="font-mono text-sm leading-relaxed text-foreground/90">
-                <code>{activeTab === 'ts' ? tsCode : pineCode}</code>
+              <pre className="hljs m-0 bg-transparent p-0 font-mono text-sm leading-relaxed text-foreground/90">
+                <code
+                  className={isTsTab ? 'language-typescript' : 'language-pine'}
+                  dangerouslySetInnerHTML={{ __html: highlightedCode }}
+                />
               </pre>
             </div>
 

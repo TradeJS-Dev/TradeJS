@@ -1,12 +1,8 @@
 import { NextResponse } from 'next/server';
-import {
-  connectors,
-  providerToConnectorName,
-  ConnectorProviders,
-} from '@tradejs/connectors';
 import { ConnectorCreator } from '@types';
 import { getTopTickers } from '@utils/tickers';
 import { logger } from '@utils/logger';
+import { getConnectorCreatorByProvider } from '@utils/connectorsRegistry';
 
 export const dynamic = 'force-dynamic';
 
@@ -14,21 +10,20 @@ interface Params {
   provider: string;
 }
 
-const asProvider = (value: string): ConnectorProviders => {
-  if (value === 'binance') return ConnectorProviders.binance;
-  if (value === 'coinbase') return ConnectorProviders.coinbase;
-  return ConnectorProviders.bybit;
-};
-
 export const GET = async (
   _request: Request,
   { params }: { params: Promise<Params> },
 ) => {
   try {
     const { provider } = await params;
-    const providerKey = asProvider(provider);
-    const connectorName = providerToConnectorName[providerKey];
-    const connector = await (connectors[connectorName] as ConnectorCreator)({
+    const connectorCreator =
+      (await getConnectorCreatorByProvider(provider)) ||
+      (await getConnectorCreatorByProvider('bybit'));
+    if (!connectorCreator) {
+      throw new Error('No connector available for provider');
+    }
+
+    const connector = await (connectorCreator as ConnectorCreator)({
       userName: 'root',
     });
 

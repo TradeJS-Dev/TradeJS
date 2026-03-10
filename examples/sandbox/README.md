@@ -1,34 +1,50 @@
-# TradeJS Sandbox Plugin
+# TradeJS Sandbox App (Deterministic E2E)
 
-Пример пользовательского strategy plugin для TradeJS.
+`examples/sandbox` is a full user-application style example:
 
-## Что внутри
+- local `tradejs.config.ts`
+- custom strategy plugin (`SandboxDeterministicSignal`)
+- custom indicator plugin (`sandboxDeterministicDrift`)
+- custom connector plugin (`SandboxMockConnector` / provider `sandbox`)
+- deterministic backtest e2e flow for CI
 
-- Стратегия: `SandboxMomentum`
-- Экспорт: `strategyEntries` (контракт plugin API из `@tradejs/core`)
-- Индикатор: `sandboxMomentum` + `renderer` для auto-registration в chart
+## Files
 
-## Как запустить
+- `tradejs.config.ts` — plugin wiring via local file paths
+- `src/plugins/sandboxStrategy.plugin.ts` — strategy that emits signals and places orders
+- `src/plugins/sandboxIndicator.plugin.ts` — custom indicator
+- `src/plugins/sandboxConnector.plugin.ts` — connector with deterministic mocked candles/tickers
+- `src/scripts/seedBacktestConfig.ts` — writes deterministic backtest config to Redis
+- `src/scripts/runDeterministicBacktest.ts` — runs backtest with local mocked Binance/Coinbase HTTP endpoints
+- `src/scripts/assertBacktestSnapshot.ts` — validates backtest snapshot in Redis
 
-`tradejs.config.ts` в корне уже содержит:
-
-```ts
-import { defineConfig } from '@tradejs/core';
-
-export default defineConfig({
-  strategyPlugins: ['@tradejs/example-sandbox'],
-  indicatorsPlugins: ['@tradejs/example-sandbox'],
-});
-```
-
-После этого:
+## Environment
 
 ```bash
-yarn dev
+cp examples/sandbox/.env.example examples/sandbox/.env
 ```
 
-## Минимальные параметры стратегии
+## Manual Run
 
-- `SANDBOX_MIN_MOVE_PCT` (default: `0.35`)
-- `SANDBOX_TP_PCT` (default: `0.6`)
-- `SANDBOX_SL_PCT` (default: `0.3`)
+```bash
+cd examples/sandbox
+yarn infra-up
+yarn e2e
+yarn infra-down
+```
+
+## What `e2e` does
+
+1. Creates/updates user `sandbox`.
+2. Seeds deterministic backtest config `SandboxDeterministicSignal:base`.
+3. Runs backtest with connector provider `sandbox` and ticker `SANDBOXUSDT`.
+4. Validates stat snapshot from Redis (`users:sandbox:tests:SandboxDeterministicSignal:*:stat`).
+
+## CI Intent
+
+This sandbox is designed to be executed in GitHub Actions before deploy:
+
+- bring up infra (Redis + Timescale)
+- seed user/config
+- run deterministic backtest
+- assert snapshot is exactly stable

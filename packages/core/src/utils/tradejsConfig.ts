@@ -1,11 +1,12 @@
 import fs from 'fs';
 import path from 'path';
-import { pathToFileURL } from 'url';
+import { fileURLToPath, pathToFileURL } from 'url';
 import { logger } from '@utils/logger';
 
 export interface TradejsProjectConfig {
   strategyPlugins?: string[];
   indicatorsPlugins?: string[];
+  connectorsPlugins?: string[];
 }
 
 const CONFIG_FILE_NAMES = [
@@ -18,6 +19,20 @@ const CONFIG_FILE_NAMES = [
 
 let cachedByCwd = new Map<string, TradejsProjectConfig>();
 let announcedConfigFile = new Set<string>();
+
+export const getTradejsProjectCwd = (cwd?: string): string => {
+  const explicit = String(cwd ?? '').trim();
+  if (explicit) {
+    return path.resolve(explicit);
+  }
+
+  const fromEnv = String(process.env.PROJECT_CWD || '').trim();
+  if (fromEnv) {
+    return path.resolve(fromEnv);
+  }
+
+  return process.cwd();
+};
 
 const normalizeConfig = (rawConfig: unknown): TradejsProjectConfig => {
   if (!rawConfig || typeof rawConfig !== 'object') {
@@ -35,10 +50,16 @@ const normalizeConfig = (rawConfig: unknown): TradejsProjectConfig => {
         .map((value) => String(value || '').trim())
         .filter(Boolean)
     : [];
+  const connectorsPlugins = Array.isArray(config.connectorsPlugins)
+    ? config.connectorsPlugins
+        .map((value) => String(value || '').trim())
+        .filter(Boolean)
+    : [];
 
   return {
     strategyPlugins,
     indicatorsPlugins,
+    connectorsPlugins,
   };
 };
 
@@ -98,8 +119,39 @@ const findConfigFilePath = (cwd: string): string | null => {
   return null;
 };
 
+const isRelativeModulePath = (moduleName: string): boolean =>
+  moduleName.startsWith('./') || moduleName.startsWith('../');
+
+export const resolvePluginModuleSpecifier = (
+  moduleName: string,
+  cwd = getTradejsProjectCwd(),
+): string => {
+  const normalized = String(moduleName ?? '').trim();
+  if (!normalized) {
+    return '';
+  }
+
+  if (normalized.startsWith('file://')) {
+    try {
+      return fileURLToPath(normalized);
+    } catch {
+      return normalized;
+    }
+  }
+
+  if (path.isAbsolute(normalized)) {
+    return normalized;
+  }
+
+  if (isRelativeModulePath(normalized)) {
+    return path.resolve(cwd, normalized);
+  }
+
+  return normalized;
+};
+
 export const loadTradejsConfig = async (
-  cwd = process.cwd(),
+  cwd = getTradejsProjectCwd(),
 ): Promise<TradejsProjectConfig> => {
   const cached = cachedByCwd.get(cwd);
   if (cached) {

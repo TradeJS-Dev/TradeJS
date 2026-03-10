@@ -5,10 +5,25 @@
   "main": "src/index.ts",
   "types": "src/index.ts",
   "dependencies": {
-    "@tradejs/core": "workspace:*"
+    "@tradejs/cli": "workspace:*",
+    "@tradejs/core": "workspace:*",
+    "ioredis": "5.8.0"
+  },
+  "devDependencies": {
+    "ts-node": "^10.9.2",
+    "tsconfig-paths": "^4.2.0",
+    "typescript": "^5.1"
   },
   "scripts": {
     "build": "echo 'example-sandbox: build placeholder'",
-    "typecheck": "tsc -p ../../tsconfig.json --noEmit"
+    "typecheck": "tsc -p ../../tsconfig.json --noEmit",
+    "run:ts": "ts-node -r tsconfig-paths/register -P ../../tsconfig.json",
+    "infra-up": "yarn run:ts ../../packages/cli/src/scripts/infraUp.ts",
+    "infra-down": "yarn run:ts ../../packages/cli/src/scripts/infraDown.ts",
+    "sandbox:user-add": "yarn run:ts ../../packages/cli/src/scripts/user-add.ts -u sandbox -p sandbox -t sandbox-token",
+    "sandbox:seed-config": "yarn run:ts ./src/scripts/seedBacktestConfig.ts",
+    "sandbox:backtest": "yarn run:ts ./src/scripts/runDeterministicBacktest.ts",
+    "sandbox:assert": "yarn run:ts ./src/scripts/assertBacktestSnapshot.ts",
+    "e2e": "yarn sandbox:user-add && yarn sandbox:seed-config && yarn sandbox:backtest && yarn sandbox:assert"
   }
 }

@@ -29,6 +29,7 @@ import { defineConfig } from '@tradejs/core';
 export default defineConfig({
   strategyPlugins: [],
   indicatorsPlugins: [],
+  connectorsPlugins: [],
 });
 ```
 

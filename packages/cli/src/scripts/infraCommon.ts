@@ -5,9 +5,23 @@ import path from 'node:path';
 
 export const DEV_COMPOSE_FILE = 'docker-compose.dev.yml';
 
-const getProjectRoot = (): string => {
+const resolveProjectRoot = (): string => {
+  const cwd = process.cwd();
+  const composeInCwd = path.resolve(cwd, DEV_COMPOSE_FILE);
+  if (existsSync(composeInCwd)) {
+    return cwd;
+  }
+
   const fromEnv = String(process.env.PROJECT_CWD || '').trim();
-  return fromEnv ? path.resolve(fromEnv) : process.cwd();
+  if (fromEnv) {
+    const normalized = path.resolve(fromEnv);
+    const composeFromEnv = path.resolve(normalized, DEV_COMPOSE_FILE);
+    if (existsSync(composeFromEnv)) {
+      return normalized;
+    }
+  }
+
+  return cwd;
 };
 
 const DEV_COMPOSE_TEMPLATE = `services:
@@ -45,7 +59,7 @@ volumes:
 `;
 
 const getDevComposePath = (): string =>
-  path.resolve(getProjectRoot(), DEV_COMPOSE_FILE);
+  path.resolve(resolveProjectRoot(), DEV_COMPOSE_FILE);
 
 export const initDevComposeFile = (): string => {
   const composePath = getDevComposePath();
@@ -65,7 +79,7 @@ export const initDevComposeFile = (): string => {
 };
 
 export const requireDevComposeFile = (): string => {
-  const composePath = path.resolve(getProjectRoot(), DEV_COMPOSE_FILE);
+  const composePath = path.resolve(resolveProjectRoot(), DEV_COMPOSE_FILE);
 
   if (existsSync(composePath)) {
     console.log(chalk.gray(`Using existing ${DEV_COMPOSE_FILE}`));

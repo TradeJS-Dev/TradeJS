@@ -6,9 +6,9 @@ title: Как добавить connector новой биржи
 
 Важно:
 
-- коннекторы не подключаются через `tradejs.config.ts`
-- `tradejs.config.ts` используется только для strategy/indicator plugins
-- чтобы новый провайдер работал в CLI, коннектор должен быть добавлен в карту коннекторов, с которой собран ваш `@tradejs/cli`
+- коннекторы подключаются через `tradejs.config.ts` через поле `connectorsPlugins`
+- connector plugin должен экспортировать `connectorEntries`
+- CLI/runtime резолвит провайдеры и connector names из объединенного реестра (built-in + plugins)
 
 ## 1. Реализуйте Connector Creator
 
@@ -83,18 +83,40 @@ export const MyExchangeConnectorCreator: ConnectorCreator = async ({
 - `placeOrder`, `closePosition`
 - `getState`, `setState`
 
-## 2. Зарегистрируйте connector в одном месте
+## 2. Экспортируйте connector plugin entries
 
-Зарегистрируйте провайдер в карте коннекторов, которую использует ваш CLI build (обычно `@tradejs/connectors`).
+В вашем пакете коннекторов экспортируйте `connectorEntries`:
 
-Обновите:
+```ts
+import {
+  defineConnectorPlugin,
+  type ConnectorRegistryEntry,
+} from '@tradejs/core';
 
-- `ConnectorNames`
-- `ConnectorProviders`
-- `providerToConnectorName`
-- `connectors`
+import { MyExchangeConnectorCreator } from './myExchangeConnector';
 
-После этого резолвинг connector в `backtest` и выбор `continuity --provider` используют общий map провайдеров.
+const connectorEntries: ConnectorRegistryEntry[] = [
+  {
+    name: 'MyExchange',
+    providers: ['myexchange', 'mx'],
+    creator: MyExchangeConnectorCreator,
+  },
+];
+
+export default defineConnectorPlugin({ connectorEntries });
+```
+
+Затем подключите пакет в корневом конфиге:
+
+```ts
+import { defineConfig } from '@tradejs/core';
+
+export default defineConfig({
+  strategyPlugins: [],
+  indicatorsPlugins: [],
+  connectorsPlugins: ['@your-scope/tradejs-connectors'],
+});
+```
 
 ## 3. Обновления типов
 
@@ -104,7 +126,7 @@ export const MyExchangeConnectorCreator: ConnectorCreator = async ({
 
 ## 4. Точки интеграции в CLI
 
-Уже переведены на map провайдеров:
+Уже работают через map провайдеров и plugin-реестр:
 
 - команда `backtest` в `@tradejs/cli`
 - команда `continuity` в `@tradejs/cli`

@@ -19,6 +19,7 @@ describe('strategy manifests registry', () => {
   const loadModule = async () => {
     jest.doMock('@utils/tradejsConfig', () => ({
       loadTradejsConfig: loadTradejsConfigMock,
+      resolvePluginModuleSpecifier: (moduleName: string) => moduleName,
     }));
     jest.doMock('@tradejs/core/indicators', () => ({
       registerIndicatorEntries: registerIndicatorEntriesMock,

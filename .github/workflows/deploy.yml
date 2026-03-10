@@ -10,7 +10,41 @@ on:
   workflow_dispatch:
 
 jobs:
+  sandbox-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+          cache: 'yarn'
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install Dependencies
+        run: yarn install --immutable
+
+      - name: Prepare Sandbox Env
+        run: cp examples/sandbox/.env.example examples/sandbox/.env
+
+      - name: Sandbox Infra Up
+        run: cd examples/sandbox && yarn infra-up
+
+      - name: Sandbox Deterministic E2E
+        run: cd examples/sandbox && yarn e2e
+
+      - name: Sandbox Infra Down
+        if: always()
+        run: cd examples/sandbox && yarn infra-down
+
   deploy:
+    needs: sandbox-e2e
     runs-on: ubuntu-latest
 
     steps:

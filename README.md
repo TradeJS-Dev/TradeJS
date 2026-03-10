@@ -16,7 +16,7 @@ It supports two first-class authoring paths:
 - `packages/cli`: operational scripts (`backtest`, `signals`, `results`, `ml-*`, `doctor`, etc.)
 - `packages/core`: public framework entrypoint for external strategy/indicator plugins
 - `packages/ml/python`: Python train/infer/profile services
-- `examples/sandbox`: reference strategy/indicator plugin package
+- `examples/sandbox`: full user-app style sandbox with local `tradejs.config.ts`, custom strategy/indicator/connector plugins, and deterministic backtest e2e flow
 
 ## Core Concepts
 
@@ -129,6 +129,7 @@ import { defineConfig } from '@tradejs/core';
 export default defineConfig({
   strategyPlugins: ['@scope/my-strategy-plugin'],
   indicatorsPlugins: ['@scope/my-indicator-plugin'],
+  connectorsPlugins: ['@scope/my-connector-plugin'],
 });
 ```
 
@@ -136,6 +137,16 @@ Expected plugin exports:
 
 - strategy plugin: `strategyEntries`
 - indicator plugin: `indicatorEntries`
+- connector plugin: `connectorEntries`
+
+Sandbox deterministic e2e example:
+
+```bash
+cd examples/sandbox
+yarn infra-up
+yarn e2e
+yarn infra-down
+```
 
 ## Documentation
 

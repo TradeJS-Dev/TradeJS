@@ -50,6 +50,21 @@ jest.mock('@tradejs/core/strategy', () => ({
       : undefined,
 }));
 
+jest.mock('@utils/connectorsRegistry', () => ({
+  getConnectorCreatorByName: async (name: string) => {
+    if (name === 'ByBit') {
+      return async () => mockByBitConnector;
+    }
+    if (name === 'Binance') {
+      return async () => mockBinanceConnector;
+    }
+    if (name === 'Coinbase') {
+      return async () => mockCoinbaseConnector;
+    }
+    return undefined;
+  },
+}));
+
 jest.mock('@utils/correlation', () => ({
   alignSortedCandlesByTimestamp: (coin: unknown[], btc: unknown[]) => ({
     alignedCoinCandles: coin,

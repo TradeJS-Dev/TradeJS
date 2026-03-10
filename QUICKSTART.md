@@ -78,11 +78,17 @@ yarn ml-train:trendline:xgboost
 
 ## 8. Sandbox Plugin Mode (Framework Check)
 
-`tradejs.config.ts` in this repo already references the sandbox plugin.
+`examples/sandbox` contains a full deterministic app-style e2e flow with:
+
+- local `tradejs.config.ts`
+- custom strategy, indicator and connector plugins
+- seeded user/config and stable backtest snapshot assertions
 
 ```bash
-yarn dev:sandbox
-yarn signals:sandbox
+cd examples/sandbox
+yarn infra-up
+yarn e2e
+yarn infra-down
 ```
 
 ## 9. Stop Infrastructure

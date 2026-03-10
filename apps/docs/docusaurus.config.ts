@@ -51,6 +51,19 @@ const config: Config = {
       } satisfies Preset.Options,
     ],
   ],
+  themes: [
+    [
+      '@easyops-cn/docusaurus-search-local',
+      {
+        docsRouteBasePath: '/',
+        hashed: true,
+        indexBlog: false,
+        indexDocs: true,
+        indexPages: false,
+        language: ['en', 'ru'],
+      },
+    ],
+  ],
 
   themeConfig: {
     image: 'img/docusaurus-social-card.jpg',
@@ -116,6 +129,10 @@ const config: Config = {
         },
         {
           type: 'localeDropdown',
+          position: 'right',
+        },
+        {
+          type: 'search',
           position: 'right',
         },
       ],

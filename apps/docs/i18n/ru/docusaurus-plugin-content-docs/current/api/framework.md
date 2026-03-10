@@ -10,6 +10,7 @@ title: Core API
 - `defineConfig(config)`
 - `defineStrategyPlugin(plugin)`
 - `defineIndicatorPlugin(plugin)`
+- `defineConnectorPlugin(plugin)`
 - runtime-типы из `@tradejs/core/types`
 
 ## Как подключить плагины
@@ -20,10 +21,23 @@ title: Core API
 import { defineConfig } from '@tradejs/core';
 
 export default defineConfig({
-  strategyPlugins: ['@scope/my-strategy-plugin'],
-  indicatorsPlugins: ['@scope/my-indicator-plugin'],
+  strategyPlugins: ['@scope/my-strategy-plugin', './src/plugins/strategy.ts'],
+  indicatorsPlugins: [
+    '@scope/my-indicator-plugin',
+    './src/plugins/indicator.ts',
+  ],
+  connectorsPlugins: [
+    '@scope/my-connector-plugin',
+    './src/plugins/connector.ts',
+  ],
 });
 ```
+
+Каждый элемент в списке плагинов — это строка-модуль:
+
+- npm-пакет (например `@scope/my-plugin`)
+- локальный относительный путь от корня проекта (например `./src/plugins/connector.ts`)
+- абсолютный путь или `file://` URL
 
 Поддерживаемые имена файла:
 
@@ -88,6 +102,38 @@ export default defineIndicatorPlugin({
     },
   ],
 });
+```
+
+## Connector plugin API
+
+Плагин коннекторов экспортирует `connectorEntries`:
+
+```ts
+import {
+  defineConnectorPlugin,
+  type ConnectorRegistryEntry,
+} from '@tradejs/core';
+
+const connectorEntries: ConnectorRegistryEntry[] = [
+  {
+    name: 'MyExchange',
+    providers: ['myexchange', 'mx'],
+    creator: async ({ userName }) => {
+      return {
+        kline: async () => [],
+        getTickers: async () => [],
+        getPosition: async () => null,
+        getPositions: async () => [],
+        placeOrder: async () => true,
+        closePosition: async () => true,
+        getState: async () => ({}),
+        setState: async () => {},
+      };
+    },
+  },
+];
+
+export default defineConnectorPlugin({ connectorEntries });
 ```
 
 ## Типы, которые чаще всего нужны

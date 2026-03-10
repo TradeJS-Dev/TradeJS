@@ -73,6 +73,16 @@ export interface ConnectorConfig {
   userName: string;
 }
 
+export interface ConnectorRegistryEntry {
+  name: string;
+  creator: ConnectorCreator;
+  providers?: string[];
+}
+
+export interface ConnectorPluginDefinition {
+  connectorEntries: ConnectorRegistryEntry[];
+}
+
 type GetPosition = (symbol: string) => Promise<Position | null>;
 type GetPositions = () => Promise<Position[]>;
 type PlaceOrder = (order: Order, tp?: Tp[], slPrice?: Sl) => Promise<boolean>;

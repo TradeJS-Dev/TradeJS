@@ -4,69 +4,92 @@ title: Хуки runtime стратегий
 
 В manifest стратегии можно задавать lifecycle-хуки, чтобы расширять runtime без усложнения `core.ts`.
 
-Контракт хуков:
+## Source of Truth
 
-- `@tradejs/core`
+- Контракты хуков и типы контекстов: `packages/core/src/types/strategyAdapters.ts`
+- Порядок выполнения и stage-имена в runtime: `packages/core/src/utils/strategyRuntime.ts`
+- Shared helper-хуки: `packages/core/src/utils/strategyHooks.ts`
 
-Выполнение хуков в runtime:
+## Полная типизация (`StrategyManifest['hooks']`)
 
-- `@tradejs/core`
+```ts
+type StrategyManifestHooks = {
+  onInit?: (params: StrategyHookInitContext) => Promise<void> | void;
+  afterCoreDecision?: (
+    params: StrategyHookAfterDecisionContext,
+  ) => Promise<void> | void;
+  onSkip?: (params: StrategyHookSkipContext) => Promise<void> | void;
+  beforeClosePosition?: (
+    params: StrategyHookBeforeCloseContext,
+  ) => Promise<StrategyHookGateResult | void> | StrategyHookGateResult | void;
+  afterEnrichMl?: (params: StrategyHookEnrichContext) => Promise<void> | void;
+  afterEnrichAi?: (params: StrategyHookAfterAiContext) => Promise<void> | void;
+  beforeEntryGate?: (
+    params: StrategyHookBeforeEntryGateContext,
+  ) => Promise<StrategyHookGateResult | void> | StrategyHookGateResult | void;
+  beforePlaceOrder?: (
+    params: StrategyHookBeforePlaceOrderContext,
+  ) => Promise<void> | void;
+  afterPlaceOrder?: (
+    params: StrategyHookAfterPlaceOrderContext,
+  ) => Promise<void> | void;
+  onRuntimeError?: (params: StrategyHookErrorContext) => Promise<void> | void;
+};
+```
 
-## Доступные хуки
+## Каталог хуков
 
-### Инициализация и decision flow
+| Хук                   | Тип параметров                        | Тип возврата                                                                | Stage в runtime       | Может блокировать       |
+| --------------------- | ------------------------------------- | --------------------------------------------------------------------------- | --------------------- | ----------------------- |
+| `onInit`              | `StrategyHookInitContext`             | `void \| Promise<void>`                                                     | `onInit`              | Нет                     |
+| `afterCoreDecision`   | `StrategyHookAfterDecisionContext`    | `void \| Promise<void>`                                                     | `afterCoreDecision`   | Нет                     |
+| `onSkip`              | `StrategyHookSkipContext`             | `void \| Promise<void>`                                                     | `onSkip`              | Нет                     |
+| `beforeClosePosition` | `StrategyHookBeforeCloseContext`      | `StrategyHookGateResult \| void \| Promise<StrategyHookGateResult \| void>` | `beforeClosePosition` | Да (`{ allow: false }`) |
+| `afterEnrichMl`       | `StrategyHookEnrichContext`           | `void \| Promise<void>`                                                     | `afterEnrichMl`       | Нет                     |
+| `afterEnrichAi`       | `StrategyHookAfterAiContext`          | `void \| Promise<void>`                                                     | `afterEnrichAi`       | Нет                     |
+| `beforeEntryGate`     | `StrategyHookBeforeEntryGateContext`  | `StrategyHookGateResult \| void \| Promise<StrategyHookGateResult \| void>` | `beforeEntryGate`     | Да (`{ allow: false }`) |
+| `beforePlaceOrder`    | `StrategyHookBeforePlaceOrderContext` | `void \| Promise<void>`                                                     | `beforePlaceOrder`    | Нет                     |
+| `afterPlaceOrder`     | `StrategyHookAfterPlaceOrderContext`  | `void \| Promise<void>`                                                     | `afterPlaceOrder`     | Нет                     |
+| `onRuntimeError`      | `StrategyHookErrorContext`            | `void \| Promise<void>`                                                     | `onRuntimeError`      | Нет                     |
 
-- `onInit`
+## Типы контекстов
 
-  - вызывается один раз при создании runtime стратегии
-  - подходит для warmup-проверок и setup
+### Базовый контекст
 
-- `afterCoreDecision`
+| Тип                       | Поля                                                                                       |
+| ------------------------- | ------------------------------------------------------------------------------------------ |
+| `StrategyHookBaseContext` | `connector`, `strategyName`, `userName`, `symbol`, `config`, `env`, `isConfigFromBacktest` |
 
-  - вызывается после возврата `skip|entry|exit` из `core.ts`
-  - подходит для диагностики и телеметрии
+### Расширения контекста для хуков
 
-- `onSkip`
-  - вызывается для `skip` решений
-  - удобно для аналитики skip-кодов
+| Тип                                   | Наследует                          | Дополнительные поля                                                                      |
+| ------------------------------------- | ---------------------------------- | ---------------------------------------------------------------------------------------- |
+| `StrategyHookInitContext`             | `StrategyHookBaseContext`          | `data`, `btcData`                                                                        |
+| `StrategyHookAfterDecisionContext`    | `StrategyHookBaseContext`          | `decision`, `candle`, `btcCandle`                                                        |
+| `StrategyHookSkipContext`             | `StrategyHookAfterDecisionContext` | `decision` сужен до `Extract<StrategyDecision, { kind: 'skip' }>`                        |
+| `StrategyHookBeforeCloseContext`      | `StrategyHookBaseContext`          | `decision` сужен до `Extract<StrategyDecision, { kind: 'exit' }>`                        |
+| `StrategyHookEnrichContext`           | `StrategyHookBaseContext`          | `decision` сужен до `Extract<StrategyDecision, { kind: 'entry' }>`, `runtime`, `signal?` |
+| `StrategyHookAfterAiContext`          | `StrategyHookEnrichContext`        | `quality?`                                                                               |
+| `StrategyHookBeforeEntryGateContext`  | `StrategyHookAfterAiContext`       | `makeOrdersEnabled`, `minAiQuality`                                                      |
+| `StrategyHookBeforePlaceOrderContext` | `StrategyHookBaseContext`          | `entryContext`, `runtime`, `decision` сужен до entry, `signal?`                          |
+| `StrategyHookAfterPlaceOrderContext`  | `StrategyHookEnrichContext`        | `orderResult`                                                                            |
+| `StrategyHookErrorContext`            | `StrategyHookBaseContext`          | `stage`, `error`, `decision?`, `signal?`                                                 |
+| `StrategyHookGateResult`              | -                                  | `{ allow?: boolean; reason?: string }`                                                   |
 
-### Хук для выхода
+## Порядок выполнения в runtime (entry/exit)
 
-- `beforeClosePosition`
-  - вызывается до `connector.closePosition`
-  - может вернуть `{ allow: false, reason?: string }`, чтобы заблокировать close
-
-### Enrich и entry-gate
-
-- `afterEnrichMl`
-
-  - вызывается после ML-enrichment сигнала
-
-- `afterEnrichAi`
-
-  - вызывается после AI-enrichment сигнала
-  - получает `quality`
-
-- `beforeEntryGate`
-  - вызывается перед исполнением ордера после стандартных runtime-проверок
-  - может вернуть `{ allow: false, reason?: string }`, чтобы заблокировать entry
-
-### Хуки исполнения ордеров
-
-- `beforePlaceOrder`
-
-  - вызывается непосредственно перед постановкой ордера
-  - существующий хук сохранен, но с расширенным контекстом
-
-- `afterPlaceOrder`
-  - вызывается после успешного исполнения ордера
-  - получает `orderResult`
-
-### Хук ошибок
-
-- `onRuntimeError`
-  - единая точка обработки runtime-ошибок (ошибки хуков, enrich, order/close)
-  - получает `stage`, `error`, optional `decision/signal`
+| Порядок | Хук                   | Комментарий                                           |
+| ------- | --------------------- | ----------------------------------------------------- |
+| 1       | `onInit`              | Вызывается один раз при создании runtime              |
+| 2       | `afterCoreDecision`   | Вызывается для каждого решения из `core.ts`           |
+| 3       | `onSkip`              | Только для `skip`                                     |
+| 4       | `beforeClosePosition` | Только в exit path, перед `connector.closePosition`   |
+| 5       | `afterEnrichMl`       | Только в entry path, после ML-enrichment              |
+| 6       | `afterEnrichAi`       | Только в entry path, после AI-enrichment              |
+| 7       | `beforeEntryGate`     | Только в entry path, после стандартной runtime-policy |
+| 8       | `beforePlaceOrder`    | Только в entry path, прямо перед постановкой ордера   |
+| 9       | `afterPlaceOrder`     | Только в entry path, после успешной постановки ордера |
+| \*      | `onRuntimeError`      | Вызывается при перехваченных runtime-ошибках          |
 
 ## Пример manifest
 
@@ -90,18 +113,15 @@ export const myStrategyManifest: StrategyManifest = {
 };
 ```
 
-## Reusable hook helpers
+## Reusable helper-хук
 
-Для устранения дублирования можно использовать shared helper-хуки.
-
-Текущий helper:
+Built-in helper, который используется в `TrendLine` и `VolumeDivergence`:
 
 - `createCloseOppositeBeforePlaceOrderHook`
-  - файл: `@tradejs/core`
-  - используется в `TrendLine` и `VolumeDivergence`
+- source: `packages/core/src/utils/strategyHooks.ts`
 
 ## Примечания
 
-- Ошибки в хуках по умолчанию не валят runtime: они логируются и прокидываются в `onRuntimeError`.
-- `beforeEntryGate` вызывается только если базовая runtime-policy уже разрешила исполнение.
-- `beforeClosePosition` вызывается только когда close разрешен (`MAKE_ORDERS=true`).
+- Ошибки в хуках по умолчанию не валят runtime: runtime их перехватывает, логирует и передает в `onRuntimeError`.
+- Gate-хуки только два: `beforeClosePosition` и `beforeEntryGate`; блокируют flow через `{ allow: false }`.
+- `beforeClosePosition` влияет только на фактическое закрытие позиции (`MAKE_ORDERS=true`).

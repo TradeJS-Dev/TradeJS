@@ -8,17 +8,18 @@ import chalk from 'chalk';
 import _ from 'lodash';
 import { format } from 'date-fns';
 import { TESTS_TOP_LIMIT, TESTS_LIMIT, TTL_1M, TTL_1D } from '@constants';
-import {
-  connectors,
-  ConnectorNames,
-  resolveConnectorNameByProvider,
-} from '@tradejs/connectors';
+import { ConnectorNames } from '@tradejs/connectors';
 import { mergeConfigs, createTestSuite } from '@utils/grid';
 import { calculateStatsFull, sortBestTests } from '@utils/stat';
 import { setData, getData, redisKeys } from '@utils/redis';
 import { toJson } from '@utils/toJson';
 import { uuid } from '@utils/uuid';
 import { update, drawStatInCLI, getTickers } from '@utils/cli';
+import {
+  DEFAULT_CONNECTOR_NAME,
+  getConnectorCreatorByName,
+  resolveConnectorName,
+} from '@utils/connectorsRegistry';
 import {
   Interval,
   OrderLog,
@@ -52,7 +53,7 @@ args.option(['S', 'progressStep'], 'Progress step', 100);
 args.option(['U', 'user'], 'Use user config', 'root');
 args.option(
   'connector',
-  'Connector/provider for backtest (bybit|binance|coinbase)',
+  'Connector provider or name for backtest (e.g. bybit, binance, coinbase, custom)',
   'bybit',
 );
 args.option(
@@ -128,18 +129,20 @@ const isStrategyConfigGrid = (value: unknown): value is StrategyConfigGrid => {
   );
 };
 
-const resolveConnectorName = (value: unknown): ConnectorNames => {
-  const connectorName = resolveConnectorNameByProvider(value);
+const resolveBacktestConnectorName = async (
+  value: unknown,
+): Promise<string> => {
+  const connectorName = await resolveConnectorName(value);
   if (connectorName) {
     return connectorName;
   }
 
   console.log(
     chalk.yellow(
-      `Unknown connector "${String(value || '').trim() || String(value)}". Fallback to ${ConnectorNames.ByBit}.`,
+      `Unknown connector "${String(value || '').trim() || String(value)}". Fallback to ${DEFAULT_CONNECTOR_NAME}.`,
     ),
   );
-  return ConnectorNames.ByBit;
+  return DEFAULT_CONNECTOR_NAME;
 };
 
 const getLogsById = async (orderLogId: string) => {
@@ -205,9 +208,11 @@ const backtest = async () => {
     );
   }
 
-  const connectorName = resolveConnectorName(flags.connector);
-  const connectorFactory =
-    connectors[connectorName] || connectors[ConnectorNames.ByBit];
+  const connectorName = await resolveBacktestConnectorName(flags.connector);
+  const connectorFactory = await getConnectorCreatorByName(connectorName);
+  if (!connectorFactory) {
+    throw new Error(`Connector "${connectorName}" is not registered`);
+  }
   const marketConnector = await (connectorFactory as ConnectorCreator)({
     userName: flags.user,
   });
@@ -228,14 +233,27 @@ const backtest = async () => {
   if (!flags.cacheOnly) {
     await update(marketConnector, interval, tickers);
 
-    const binanceConnector = await connectors[ConnectorNames.Binance]({
+    const binanceConnectorCreator = await getConnectorCreatorByName(
+      ConnectorNames.Binance,
+    );
+    const coinbaseConnectorCreator = await getConnectorCreatorByName(
+      ConnectorNames.Coinbase,
+    );
+    if (!binanceConnectorCreator || !coinbaseConnectorCreator) {
+      throw new Error('Binance/Coinbase connectors are required');
+    }
+
+    const binanceConnector = await (
+      binanceConnectorCreator as ConnectorCreator
+    )({
+      userName: flags.user,
+    });
+    const coinbaseConnector = await (
+      coinbaseConnectorCreator as ConnectorCreator
+    )({
       userName: flags.user,
     });
     await update(binanceConnector, interval, ['BTCUSDT']);
-
-    const coinbaseConnector = await connectors[ConnectorNames.Coinbase]({
-      userName: flags.user,
-    });
     await update(coinbaseConnector, interval, ['BTCUSDT']);
   }
 

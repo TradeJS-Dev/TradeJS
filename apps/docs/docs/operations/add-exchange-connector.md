@@ -6,9 +6,9 @@ This guide explains how to add a new exchange connector and where integration po
 
 Important:
 
-- connectors are not registered in `tradejs.config.ts`
-- `tradejs.config.ts` is only for strategy/indicator plugins
-- to use a new provider in CLI, connector must be present in the connector map used by your `@tradejs/cli` build
+- connectors can be registered via `tradejs.config.ts` using `connectorsPlugins`
+- connector plugins export `connectorEntries`
+- CLI/runtime resolve providers and connector names from the merged built-in + plugin connector registry
 
 ## 1. Implement Connector Creator
 
@@ -83,18 +83,40 @@ Required methods in `Connector`:
 - `placeOrder`, `closePosition`
 - `getState`, `setState`
 
-## 2. Register Connector In One Place
+## 2. Export Connector Plugin Entries
 
-Register provider in the connector map used by your CLI build (typically `@tradejs/connectors`).
+In your connector package, export `connectorEntries`:
 
-Update:
+```ts
+import {
+  defineConnectorPlugin,
+  type ConnectorRegistryEntry,
+} from '@tradejs/core';
 
-- `ConnectorNames`
-- `ConnectorProviders`
-- `providerToConnectorName`
-- `connectors`
+import { MyExchangeConnectorCreator } from './myExchangeConnector';
 
-After this, `backtest` connector resolution and `continuity --provider` use the shared provider map.
+const connectorEntries: ConnectorRegistryEntry[] = [
+  {
+    name: 'MyExchange',
+    providers: ['myexchange', 'mx'],
+    creator: MyExchangeConnectorCreator,
+  },
+];
+
+export default defineConnectorPlugin({ connectorEntries });
+```
+
+Then connect plugin package in root config:
+
+```ts
+import { defineConfig } from '@tradejs/core';
+
+export default defineConfig({
+  strategyPlugins: [],
+  indicatorsPlugins: [],
+  connectorsPlugins: ['@your-scope/tradejs-connectors'],
+});
+```
 
 ## 3. Type Updates
 
@@ -104,7 +126,7 @@ If provider is user-facing in filters/configs, update provider union in:
 
 ## 4. CLI Integration Points
 
-Already map-based:
+Already map-based and plugin-aware:
 
 - `backtest` command in `@tradejs/cli`
 - `continuity` command in `@tradejs/cli`

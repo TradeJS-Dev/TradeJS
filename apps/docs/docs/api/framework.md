@@ -10,6 +10,7 @@ title: Core API
 - `defineConfig(config)`
 - `defineStrategyPlugin(plugin)`
 - `defineIndicatorPlugin(plugin)`
+- `defineConnectorPlugin(plugin)`
 - Core types re-exported from `@tradejs/core/types`
 
 ## Project Config API
@@ -20,10 +21,23 @@ Create `tradejs.config.ts` in project root:
 import { defineConfig } from '@tradejs/core';
 
 export default defineConfig({
-  strategyPlugins: ['@scope/my-strategy-plugin'],
-  indicatorsPlugins: ['@scope/my-indicator-plugin'],
+  strategyPlugins: ['@scope/my-strategy-plugin', './src/plugins/strategy.ts'],
+  indicatorsPlugins: [
+    '@scope/my-indicator-plugin',
+    './src/plugins/indicator.ts',
+  ],
+  connectorsPlugins: [
+    '@scope/my-connector-plugin',
+    './src/plugins/connector.ts',
+  ],
 });
 ```
+
+Each plugin entry is a module specifier string:
+
+- npm package name (for example `@scope/my-plugin`)
+- local relative path from project root (for example `./src/plugins/connector.ts`)
+- absolute path or `file://` URL
 
 Supported filenames:
 
@@ -88,6 +102,38 @@ export default defineIndicatorPlugin({
     },
   ],
 });
+```
+
+## Connector Plugin API
+
+A connector plugin exports `connectorEntries`:
+
+```ts
+import {
+  defineConnectorPlugin,
+  type ConnectorRegistryEntry,
+} from '@tradejs/core';
+
+const connectorEntries: ConnectorRegistryEntry[] = [
+  {
+    name: 'MyExchange',
+    providers: ['myexchange', 'mx'],
+    creator: async ({ userName }) => {
+      return {
+        kline: async () => [],
+        getTickers: async () => [],
+        getPosition: async () => null,
+        getPositions: async () => [],
+        placeOrder: async () => true,
+        closePosition: async () => true,
+        getState: async () => ({}),
+        setState: async () => {},
+      };
+    },
+  },
+];
+
+export default defineConnectorPlugin({ connectorEntries });
 ```
 
 ## Runtime Types You Will Use Most

@@ -1,13 +1,14 @@
 import _ from 'lodash';
 import { BOT_PRELOAD_DAYS } from '@constants';
 import { getStrategyCreator } from '@tradejs/core/strategy';
-import { connectors, ConnectorNames } from '@tradejs/connectors';
+import { ConnectorNames } from '@tradejs/connectors';
 import { logger } from '@utils/logger';
 import { getData, redisKeys, getKeys } from '@utils/redis';
 import { toJson } from '@utils/toJson';
 import { getTimestamp } from '@utils/timestamp';
 import { delay } from '@utils/async';
 import { ConnectorCreator, BotConfig } from '@types';
+import { getConnectorCreatorByName } from '@utils/connectorsRegistry';
 
 export const runBot = async () => {
   const botResults = [];
@@ -52,16 +53,28 @@ export const runBot = async () => {
         if (!strategyCreator) {
           throw new Error(`Unknown strategy: ${strategyName}`);
         }
-        const connector = await (
-          connectors[connectorName as ConnectorNames] as ConnectorCreator
-        )({
+        const connectorCreator = await getConnectorCreatorByName(connectorName);
+        if (!connectorCreator) {
+          throw new Error(`Unknown connector: ${connectorName}`);
+        }
+
+        const connector = await (connectorCreator as ConnectorCreator)({
           userName,
         });
+        const binanceConnectorCreator = await getConnectorCreatorByName(
+          ConnectorNames.Binance,
+        );
+        const coinbaseConnectorCreator = await getConnectorCreatorByName(
+          ConnectorNames.Coinbase,
+        );
+        if (!binanceConnectorCreator || !coinbaseConnectorCreator) {
+          throw new Error('Binance/Coinbase connectors are required');
+        }
         const [binanceConnector, coinbaseConnector] = await Promise.all([
-          (connectors[ConnectorNames.Binance] as ConnectorCreator)({
+          (binanceConnectorCreator as ConnectorCreator)({
             userName,
           }),
-          (connectors[ConnectorNames.Coinbase] as ConnectorCreator)({
+          (coinbaseConnectorCreator as ConnectorCreator)({
             userName,
           }),
         ]);

@@ -2,11 +2,10 @@ import args from 'args';
 import ProgressBar from 'progress';
 import chalk from 'chalk';
 import {
-  connectors,
-  ConnectorProviders,
-  getConnectorProviders,
-  providerToConnectorName,
-} from '@tradejs/connectors';
+  getAvailableConnectorProviders,
+  getConnectorCreatorByName,
+  getConnectorNameByProvider,
+} from '@utils/connectorsRegistry';
 import { PRELOAD_DAYS } from '@constants';
 import { getTimestamp, formatUnix } from '@utils/timestamp';
 import { deleteCandles, waitForDbReady } from '@utils/timescale';
@@ -27,8 +26,8 @@ const flags = args.parse(process.argv);
 const interval = Number(flags.timeframe);
 const intervalKey = flags.timeframe.toString() as Interval;
 
-const parseProviders = (value: unknown): ConnectorProviders[] => {
-  const allProviders = getConnectorProviders();
+const parseProviders = async (value: unknown): Promise<string[]> => {
+  const allProviders = await getAvailableConnectorProviders();
   const raw = String(value || '')
     .trim()
     .toLowerCase();
@@ -40,7 +39,7 @@ const parseProviders = (value: unknown): ConnectorProviders[] => {
   const selected = raw
     .split(',')
     .map((item) => item.trim())
-    .filter(Boolean) as ConnectorProviders[];
+    .filter(Boolean);
 
   const uniqueSelected = [...new Set(selected)];
   const invalid = uniqueSelected.filter((item) => !allProviders.includes(item));
@@ -83,16 +82,44 @@ const continuity = async () => {
   await waitForDbReady();
   const reloadStart = getTimestamp(PRELOAD_DAYS);
   const reloadEnd = getTimestamp();
-  const providers = parseProviders(flags.provider).map((providerId) => {
-    const connectorName = providerToConnectorName[providerId];
-    return {
-      id: providerId,
-      name: connectorName,
-      create: connectors[connectorName] as ConnectorCreator,
-    };
-  });
+  const providerIds = await parseProviders(flags.provider);
+  const providers = await Promise.all(
+    providerIds.map(async (providerId) => {
+      const connectorName = await getConnectorNameByProvider(providerId);
+      if (!connectorName) {
+        logger.warn(
+          'Skip provider "%s": connector mapping is missing',
+          providerId,
+        );
+        return null;
+      }
+      const creator = await getConnectorCreatorByName(connectorName);
+      if (!creator) {
+        logger.warn(
+          'Skip provider "%s": connector "%s" is not registered',
+          providerId,
+          connectorName,
+        );
+        return null;
+      }
+      return {
+        id: providerId,
+        name: connectorName,
+        create: creator as ConnectorCreator,
+      };
+    }),
+  );
+  const activeProviders = providers.filter(Boolean) as Array<{
+    id: string;
+    name: string;
+    create: ConnectorCreator;
+  }>;
+  if (!activeProviders.length) {
+    logger.error('No connector providers available');
+    process.exit(1);
+  }
 
-  for await (const provider of providers) {
+  for await (const provider of activeProviders) {
     const connector = await provider.create({
       userName: flags.user,
     });

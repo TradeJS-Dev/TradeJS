@@ -184,6 +184,53 @@
   border: 1px solid var(--border);
 }
 
+/* Syntax highlighting */
+.hljs {
+  display: block;
+  overflow-x: auto;
+  color: var(--foreground);
+  background: transparent;
+}
+
+.hljs-comment,
+.hljs-quote {
+  color: #6f8198;
+  font-style: italic;
+}
+
+.hljs-keyword,
+.hljs-selector-tag,
+.hljs-literal,
+.hljs-doctag,
+.hljs-meta .hljs-keyword {
+  color: #4ca9ff;
+}
+
+.hljs-string,
+.hljs-attr,
+.hljs-template-variable {
+  color: #8ed59f;
+}
+
+.hljs-number,
+.hljs-meta,
+.hljs-built_in,
+.hljs-symbol {
+  color: #f3bf72;
+}
+
+.hljs-title,
+.hljs-title.function_,
+.hljs-function .hljs-title {
+  color: #20c5bd;
+}
+
+.hljs-property,
+.hljs-variable,
+.hljs-params {
+  color: #c8d7ea;
+}
+
 /* Smooth scrolling */
 html {
   scroll-behavior: smooth;

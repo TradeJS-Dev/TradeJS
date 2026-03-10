@@ -1,7 +1,6 @@
 import _ from 'lodash';
 import { BACKTEST_PRELOAD_DAYS } from '@constants';
 import { TestSuite, StrategyConfig, StrategyConfigGrid } from '@types';
-import { ConnectorNames } from '@tradejs/connectors';
 import { getTimestamp } from '@utils/timestamp';
 import { uuid } from '@utils/uuid';
 
@@ -78,7 +77,7 @@ export const createTestSuite = (
   tickers: string[],
   strategyName: string,
   backtestConfig: StrategyConfigGrid,
-  connectorName: ConnectorNames,
+  connectorName: string,
 ): TestSuite => {
   const start = getTimestamp(BACKTEST_PRELOAD_DAYS);
   const end = getTimestamp();

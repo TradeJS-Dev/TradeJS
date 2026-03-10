@@ -44,7 +44,7 @@ body {
 
 body::before {
   content: '';
-  position: fixed;
+  position: absolute;
   inset: 0;
   z-index: -1;
   pointer-events: none;
@@ -61,11 +61,6 @@ body::before {
       rgba(76, 169, 255, 0.06) 30%,
       rgba(76, 169, 255, 0) 64%
     ),
-    radial-gradient(
-      150% 90% at 50% 118%,
-      rgba(9, 23, 38, 0.48) 0%,
-      rgba(9, 23, 38, 0) 72%
-    ),
     linear-gradient(
       180deg,
       #0c1728 0%,
@@ -75,7 +70,7 @@ body::before {
       #090f18 100%
     );
   background-repeat: no-repeat;
-  background-size: cover;
+  background-size: 100% 100%;
 }
 
 [data-theme='dark'] {
