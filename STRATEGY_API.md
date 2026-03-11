@@ -84,15 +84,18 @@ return strategyApi.skip('NO_SIGNAL');
 Use `strategyApi.entry(...)` and provide:
 
 - `direction`
-- `timestamp`
-- `prices`
 - `orderPlan`
-- optional `figures`, `indicators`, `additionalIndicators`, `runtime`, `code`, `signalId`
+- optional `code`, `figures`, `indicators`, `additionalIndicators`, `runtime`, `signalId`
 
 Rules:
 
 - `entryContext` is the source of truth for runtime execution fields.
-- `orderPlan` should contain execution-only details (qty, take profits).
+- `orderPlan` contains execution-only details:
+  - `qty`
+  - `stopLossPrice`
+  - `takeProfits`
+- if `code` is omitted, it is auto-generated as `<STRATEGY_NAME>_<DIRECTION>_ENTRY`.
+- `timestamp/currentPrice/takeProfitPrice/riskRatio` are auto-resolved by shared `strategyApi.entry(...)`.
 
 ### `exit`
 
@@ -189,17 +192,27 @@ return strategyApi.skip('NO_SIGNAL');
 
 Builds an `entry` decision + signal through shared builders.
 
+Returns: `Promise<entry decision>`.
+
 Common fields:
 
 - `direction`
-- `timestamp`
-- `prices`
-- `orderPlan`
+- `orderPlan`:
+  - `qty`
+  - `stopLossPrice`
+  - `takeProfits`
 - optional: `code`, `figures`, `indicators`, `additionalIndicators`, `runtime`, `signalId`
 
 Behavior:
 
-- if `code` is omitted, runtime uses `<STRATEGY_NAME>_SIGNAL`
+- always calls `getMarketData()` internally to fill fresh:
+  - `timestamp`
+  - `currentPrice`
+- derives `takeProfitPrice` from `orderPlan.takeProfits`:
+  - `LONG` -> max TP price
+  - `SHORT` -> min TP price
+- computes `riskRatio` automatically from direction/current/tp/sl
+- uses provided `code`; if omitted generates `<STRATEGY_NAME>_<DIRECTION>_ENTRY`
 
 ### `strategyApi.getMarketData(params?)`
 
@@ -248,7 +261,7 @@ Creates reusable trade cooldown state controller.
 
 ```ts
 return async () => {
-  const { currentPrice, timestamp } = await strategyApi.getMarketData();
+  const { currentPrice } = await strategyApi.getMarketData();
 
   if (await strategyApi.isCurrentPositionExists()) {
     return strategyApi.skip('POSITION_EXISTS');
@@ -269,9 +282,11 @@ return async () => {
 
   return strategyApi.entry({
     direction: 'LONG',
-    timestamp,
-    prices: { currentPrice, takeProfitPrice, stopLossPrice, riskRatio },
-    orderPlan: { qty, takeProfits: [{ rate: 1, price: takeProfitPrice }] },
+    orderPlan: {
+      qty,
+      stopLossPrice,
+      takeProfits: [{ rate: 1, price: takeProfitPrice }],
+    },
   });
 };
 ```

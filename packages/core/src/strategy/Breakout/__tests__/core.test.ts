@@ -154,34 +154,68 @@ const makeStrategyApi = (overrides: Record<string, any> = {}) =>
       },
     ),
     createLastTradeController: jest.fn(),
-    entry: (params: any) => ({
-      kind: 'entry',
-      code: params.code,
-      entryContext: {
-        strategy: 'Breakout',
-        symbol: 'TESTUSDT',
-        interval: '15',
-        direction: params.direction,
-        timestamp: params.timestamp,
-        prices: params.prices,
-        isConfigFromBacktest: false,
-      },
-      orderPlan: params.orderPlan,
-      runtime: params.runtime,
-      signal: {
-        signalId: params.signalId ?? 'test-signal-id',
-        strategy: 'Breakout',
-        symbol: 'TESTUSDT',
-        interval: '15',
-        direction: params.direction,
-        timestamp: params.timestamp,
-        figures: params.figures ?? {},
-        prices: params.prices,
-        indicators: params.indicators ?? {},
-        additionalIndicators: params.additionalIndicators,
-        isConfigFromBacktest: false,
-      },
-    }),
+    entry: (params: any) => {
+      const marketData = overrides.marketData ?? {};
+      const currentPrice = Number(marketData.currentPrice ?? 0);
+      const timestamp = Number(marketData.timestamp ?? 0);
+      const takeProfitPrices = Array.isArray(params.orderPlan?.takeProfits)
+        ? params.orderPlan.takeProfits.map((tp: any) => Number(tp.price))
+        : [];
+      const takeProfitPrice =
+        params.direction === 'LONG'
+          ? Math.max(...takeProfitPrices)
+          : Math.min(...takeProfitPrices);
+      const stopLossPrice = Number(
+        params.orderPlan?.stopLossPrice ?? currentPrice,
+      );
+      const reward =
+        params.direction === 'LONG'
+          ? takeProfitPrice - currentPrice
+          : currentPrice - takeProfitPrice;
+      const risk =
+        params.direction === 'LONG'
+          ? currentPrice - stopLossPrice
+          : stopLossPrice - currentPrice;
+
+      return {
+        kind: 'entry',
+        code: params.code ?? `BREAKOUT_${params.direction}_ENTRY`,
+        entryContext: {
+          strategy: 'Breakout',
+          symbol: 'TESTUSDT',
+          interval: '15',
+          direction: params.direction,
+          timestamp,
+          prices: {
+            currentPrice,
+            takeProfitPrice,
+            stopLossPrice,
+            riskRatio: risk > 0 ? reward / risk : 0,
+          },
+          isConfigFromBacktest: false,
+        },
+        orderPlan: params.orderPlan,
+        runtime: params.runtime,
+        signal: {
+          signalId: params.signalId ?? 'test-signal-id',
+          strategy: 'Breakout',
+          symbol: 'TESTUSDT',
+          interval: '15',
+          direction: params.direction,
+          timestamp,
+          figures: params.figures ?? {},
+          prices: {
+            currentPrice,
+            takeProfitPrice,
+            stopLossPrice,
+            riskRatio: risk > 0 ? reward / risk : 0,
+          },
+          indicators: params.indicators ?? {},
+          additionalIndicators: params.additionalIndicators,
+          isConfigFromBacktest: false,
+        },
+      };
+    },
   }) as any;
 
 const makeIndicatorSnapshot = (
@@ -316,6 +350,9 @@ describe('createBreakoutCore', () => {
     expect(result.code).toBe('OPEN_LONG');
     expect(result.entryContext.direction).toBe('LONG');
     expect(result.orderPlan.qty).toBeCloseTo(config.LIMIT / candle.close);
+    expect(result.orderPlan.stopLossPrice).toBeCloseTo(
+      candle.close * (1 - config.SL_LONG),
+    );
     expect(result.orderPlan.takeProfits?.length).toBe(config.TP_LONG.length);
   });
 
@@ -532,6 +569,9 @@ describe('createBreakoutCore', () => {
     expect(result.code).toBe('OPEN_SHORT');
     expect(result.entryContext.direction).toBe('SHORT');
     expect(result.orderPlan.qty).toBeCloseTo(config.LIMIT / candle.close);
+    expect(result.orderPlan.stopLossPrice).toBeCloseTo(
+      candle.close * (1 + config.SL_SHORT),
+    );
     expect(result.orderPlan.takeProfits?.length).toBe(config.TP_SHORT.length);
   });
 

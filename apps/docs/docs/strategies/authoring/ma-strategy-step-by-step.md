@@ -249,12 +249,10 @@ export const createMaStrategyCore: CreateStrategyCore<
 
     lastTradeController.markTrade(timestamp);
 
-    // 5) Return entry decision; runtime handles AI/ML enrichment and execution policy.
+    // 5) Return entry decision; runtime handles AI/ML enrichment/execution
+    // and auto-fills entry code + signal prices.
     return strategyApi.entry({
-      code: bullish ? 'MA_BULLISH_CROSS' : 'MA_BEARISH_CROSS',
       direction: modeConfig.direction,
-      timestamp,
-      prices: { currentPrice, takeProfitPrice, stopLossPrice, riskRatio },
       figures: buildMaStrategyFigures({
         fullData,
         maFast,
@@ -273,6 +271,7 @@ export const createMaStrategyCore: CreateStrategyCore<
       },
       orderPlan: {
         qty,
+        stopLossPrice,
         takeProfits: [{ rate: 1, price: takeProfitPrice }],
       },
     });

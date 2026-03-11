@@ -89,8 +89,6 @@ export interface StrategyEntrySignalContext {
 export interface StrategyAPIEntryParams {
   code?: string;
   direction: Direction;
-  timestamp: Signal['timestamp'];
-  prices: Signal['prices'];
   figures?: BuildStrategySignalDraft['figures'];
   indicators?: BuildStrategySignalDraft['indicators'];
   additionalIndicators?: BuildStrategySignalDraft['additionalIndicators'];
@@ -218,7 +216,7 @@ export interface StrategyAPI {
   skip: (code: string) => Extract<StrategyDecision, { kind: 'skip' }>;
   entry: (
     params: StrategyAPIEntryParams,
-  ) => Extract<StrategyDecision, { kind: 'entry' }>;
+  ) => Promise<Extract<StrategyDecision, { kind: 'entry' }>>;
   getMarketData: (
     params?: StrategyAPIMarketDataParams,
   ) => Promise<StrategyMarketSnapshot>;
@@ -279,7 +277,8 @@ export interface StrategyEntryRuntimeOptions {
 
 export interface StrategyEntryOrderPlan {
   qty: number;
-  takeProfits?: Tp[];
+  stopLossPrice: number;
+  takeProfits: Tp[];
 }
 
 export interface StrategyClosePlan {

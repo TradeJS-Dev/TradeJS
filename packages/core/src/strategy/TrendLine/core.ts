@@ -110,20 +110,12 @@ export const createTrendLineCore: CreateStrategyCore<
 
     lastTradeController.markTrade(timestamp);
 
-    const prices = {
-      currentPrice,
-      takeProfitPrice,
-      stopLossPrice,
-      riskRatio,
-    };
-
     return strategyApi.entry({
+      code: 'TRENDLINE_SIGNAL',
       figures: {
         ...buildTrendLineFigures(bestLine),
       },
       direction,
-      timestamp,
-      prices,
       indicators,
       additionalIndicators: {
         touches: bestLine.touches.length + 2,
@@ -132,6 +124,7 @@ export const createTrendLineCore: CreateStrategyCore<
       },
       orderPlan: {
         qty,
+        stopLossPrice,
         takeProfits: [{ rate: 1, price: takeProfitPrice }],
       },
     });

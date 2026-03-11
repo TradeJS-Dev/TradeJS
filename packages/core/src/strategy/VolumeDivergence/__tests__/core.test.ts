@@ -14,31 +14,9 @@ const makeCandle = (timestamp: number, price: number, volume: number) => ({
 
 const makeStrategyApi = (overrides: Record<string, any> = {}) => {
   const skip = jest.fn((code: string) => ({ kind: 'skip', code }));
-  const entry = jest.fn((params: any) => ({
-    kind: 'entry',
-    code: params.code,
-    entryContext: {
-      strategy: 'VolumeDivergence',
-      symbol: 'TESTUSDT',
-      interval: '15',
-      direction: params.direction,
-      timestamp: params.timestamp,
-      prices: params.prices,
-    },
-    orderPlan: params.orderPlan,
-    signal: {
-      strategy: 'VolumeDivergence',
-      direction: params.direction,
-      prices: params.prices,
-      figures: params.figures,
-      indicators: params.indicators,
-      additionalIndicators: params.additionalIndicators,
-    },
-  }));
-
-  return {
+  const strategyApi = {
     skip,
-    entry,
+    entry: jest.fn(),
     getMarketData: jest.fn(),
     getCurrentPosition: jest.fn(),
     isCurrentPositionExists: jest.fn(async () => false),
@@ -55,6 +33,59 @@ const makeStrategyApi = (overrides: Record<string, any> = {}) => {
     })),
     ...overrides,
   } as any;
+
+  strategyApi.entry.mockImplementation(async (params: any) => {
+    const marketData = await strategyApi.getMarketData();
+    const currentPrice = Number(marketData.currentPrice);
+    const timestamp = Number(marketData.timestamp);
+    const takeProfitPrices = Array.isArray(params.orderPlan?.takeProfits)
+      ? params.orderPlan.takeProfits.map((tp: any) => Number(tp.price))
+      : [];
+    const takeProfitPrice =
+      params.direction === 'LONG'
+        ? Math.max(...takeProfitPrices)
+        : Math.min(...takeProfitPrices);
+    const stopLossPrice = Number(params.orderPlan?.stopLossPrice);
+    const reward =
+      params.direction === 'LONG'
+        ? takeProfitPrice - currentPrice
+        : currentPrice - takeProfitPrice;
+    const risk =
+      params.direction === 'LONG'
+        ? currentPrice - stopLossPrice
+        : stopLossPrice - currentPrice;
+    const prices = {
+      currentPrice,
+      takeProfitPrice,
+      stopLossPrice,
+      riskRatio: risk > 0 ? reward / risk : 0,
+    };
+
+    return {
+      kind: 'entry',
+      code: params.code ?? `VOLUME_DIVERGENCE_${params.direction}_ENTRY`,
+      entryContext: {
+        strategy: 'VolumeDivergence',
+        symbol: 'TESTUSDT',
+        interval: '15',
+        direction: params.direction,
+        timestamp,
+        prices,
+      },
+      orderPlan: params.orderPlan,
+      signal: {
+        strategy: 'VolumeDivergence',
+        direction: params.direction,
+        timestamp,
+        prices,
+        figures: params.figures,
+        indicators: params.indicators,
+        additionalIndicators: params.additionalIndicators,
+      },
+    };
+  });
+
+  return strategyApi;
 };
 
 const makeIndicatorsState = () =>
@@ -179,8 +210,10 @@ describe('createVolumeDivergenceCore', () => {
     expect(result.kind).toBe('entry');
     expect(strategyApi.entry).toHaveBeenCalledWith(
       expect.objectContaining({
-        code: 'VOLUME_DIVERGENCE_REVERSAL_SIGNAL',
         direction: 'LONG',
+        orderPlan: expect.objectContaining({
+          stopLossPrice: 98,
+        }),
         additionalIndicators: expect.objectContaining({
           divergenceKind: 'bullish',
         }),
@@ -222,8 +255,10 @@ describe('createVolumeDivergenceCore', () => {
     expect(result.kind).toBe('entry');
     expect(strategyApi.entry).toHaveBeenCalledWith(
       expect.objectContaining({
-        code: 'VOLUME_DIVERGENCE_REVERSAL_SIGNAL',
         direction: 'SHORT',
+        orderPlan: expect.objectContaining({
+          stopLossPrice: 98,
+        }),
         additionalIndicators: expect.objectContaining({
           divergenceKind: 'bearish',
         }),

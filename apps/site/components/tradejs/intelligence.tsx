@@ -1,10 +1,11 @@
 'use client';
 
+import Image from 'next/image';
 import { useLocale } from './locale-provider';
 import { AnimateOnScroll } from './animate-on-scroll';
 import { Brain, LayoutGrid, ExternalLink } from 'lucide-react';
 
-const icons = [Brain, LayoutGrid];
+const icons = [LayoutGrid, Brain];
 
 export function Intelligence() {
   const { t } = useLocale();
@@ -13,10 +14,12 @@ export function Intelligence() {
     <section className="relative py-24 lg:py-32 overflow-hidden">
       {/* Background image with heavy overlay */}
       <div className="absolute inset-0">
-        <img
+        <Image
           src="/images/trader-bg.jpg"
           alt=""
-          className="w-full h-full object-cover"
+          fill
+          sizes="100vw"
+          className="object-cover"
         />
         <div className="absolute inset-0 bg-background/92" />
       </div>

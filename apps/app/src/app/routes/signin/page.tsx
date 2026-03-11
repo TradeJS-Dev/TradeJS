@@ -1,13 +1,13 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { Suspense, useEffect, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Image from 'next/image';
 import { signIn } from 'next-auth/react';
 import { useSession } from 'next-auth/react';
 import { Box, Button, Field, Flex, Input, Stack, Text } from '@chakra-ui/react';
 
-const Signin = () => {
+const SigninContent = () => {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { status } = useSession();
@@ -144,5 +144,13 @@ const Signin = () => {
     </Flex>
   );
 };
+
+const SigninFallback = () => <Flex minH="100vh" bg="gray.950" />;
+
+const Signin = () => (
+  <Suspense fallback={<SigninFallback />}>
+    <SigninContent />
+  </Suspense>
+);
 
 export default Signin;

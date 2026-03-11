@@ -46,4 +46,125 @@ describe('createStrategyAPI', () => {
     expect(second.currentPrice).toBe(105);
     expect(connector.kline).not.toHaveBeenCalled();
   });
+
+  it('entry auto-builds timestamp/currentPrice/prices and code from market data + orderPlan', async () => {
+    const data = [makeCandle(1_700_000_000_000, 100)];
+    const connector = {
+      kline: jest.fn(),
+      getPosition: jest.fn(),
+    } as any;
+
+    const strategyApi = createStrategyAPI({
+      strategy: 'TrendLine' as any,
+      symbol: 'TESTUSDT',
+      interval: '15' as any,
+      env: 'BACKTEST',
+      connector,
+      cachedData: data,
+      preloadStart: 1,
+      backtestPriceMode: 'close',
+      isConfigFromBacktest: false,
+    });
+
+    const decision = await strategyApi.entry({
+      direction: 'LONG',
+      orderPlan: {
+        qty: 1,
+        stopLossPrice: 95,
+        takeProfits: [
+          { rate: 0.5, price: 103 },
+          { rate: 0.5, price: 110 },
+        ],
+      },
+    });
+
+    expect(decision.code).toBe('TREND_LINE_LONG_ENTRY');
+    expect(decision.entryContext.timestamp).toBe(1_700_000_000_000);
+    expect(decision.entryContext.prices).toEqual({
+      currentPrice: 100,
+      takeProfitPrice: 110,
+      stopLossPrice: 95,
+      riskRatio: 2,
+    });
+    expect(decision.signal?.prices.takeProfitPrice).toBe(110);
+    expect(connector.kline).not.toHaveBeenCalled();
+  });
+
+  it('entry uses provided code when passed', async () => {
+    const data = [makeCandle(1_700_000_000_000, 100)];
+    const connector = {
+      kline: jest.fn(),
+      getPosition: jest.fn(),
+    } as any;
+
+    const strategyApi = createStrategyAPI({
+      strategy: 'TrendLine' as any,
+      symbol: 'TESTUSDT',
+      interval: '15' as any,
+      env: 'BACKTEST',
+      connector,
+      cachedData: data,
+      preloadStart: 1,
+      backtestPriceMode: 'close',
+      isConfigFromBacktest: false,
+    });
+
+    const decision = await strategyApi.entry({
+      code: 'CUSTOM_ENTRY_CODE',
+      direction: 'LONG',
+      orderPlan: {
+        qty: 1,
+        stopLossPrice: 95,
+        takeProfits: [{ rate: 1, price: 110 }],
+      },
+    });
+
+    expect(decision.code).toBe('CUSTOM_ENTRY_CODE');
+  });
+
+  it('entry always reads fresh market data snapshot', async () => {
+    const data = [makeCandle(1_700_000_000_000, 100)];
+    const connector = {
+      kline: jest.fn(),
+      getPosition: jest.fn(),
+    } as any;
+
+    const strategyApi = createStrategyAPI({
+      strategy: 'TrendLine' as any,
+      symbol: 'TESTUSDT',
+      interval: '15' as any,
+      env: 'BACKTEST',
+      connector,
+      cachedData: data,
+      preloadStart: 1,
+      backtestPriceMode: 'close',
+      isConfigFromBacktest: false,
+    });
+
+    const firstDecision = await strategyApi.entry({
+      direction: 'LONG',
+      orderPlan: {
+        qty: 1,
+        stopLossPrice: 95,
+        takeProfits: [{ rate: 1, price: 110 }],
+      },
+    });
+
+    data.push(makeCandle(1_700_000_060_000, 105));
+
+    const secondDecision = await strategyApi.entry({
+      direction: 'LONG',
+      orderPlan: {
+        qty: 1,
+        stopLossPrice: 95,
+        takeProfits: [{ rate: 1, price: 115 }],
+      },
+    });
+
+    expect(firstDecision.entryContext.timestamp).toBe(1_700_000_000_000);
+    expect(firstDecision.entryContext.prices.currentPrice).toBe(100);
+    expect(secondDecision.entryContext.timestamp).toBe(1_700_000_060_000);
+    expect(secondDecision.entryContext.prices.currentPrice).toBe(105);
+    expect(connector.kline).not.toHaveBeenCalled();
+  });
 });

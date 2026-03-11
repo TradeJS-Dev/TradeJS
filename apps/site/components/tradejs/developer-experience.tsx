@@ -32,79 +32,69 @@ if (!hljs.getLanguage('pine')) {
   hljs.registerLanguage('pine', pineScript);
 }
 
-const tsCode = `import { EMA } from 'technicalindicators'
+const tsCode = `import { CreateStrategyCore } from '@tradejs/core';
+import { EMA } from 'technicalindicators';
 
 export const createMyStrategyCore: CreateStrategyCore<
   MyStrategyConfig
 > = async ({ strategyApi, config, data }) => {
-  const fastLen = Number(config.EMA_FAST ?? 9)
-  const slowLen = Number(config.EMA_SLOW ?? 21)
-  const closes = data.map((candle) => candle.close)
+  const fastLen = Number(config.EMA_FAST ?? 9);
+  const slowLen = Number(config.EMA_SLOW ?? 21);
+  const closes = data.map((candle) => candle.close);
 
-  const emaFast = new EMA({ period: fastLen, values: closes })
-  const emaSlow = new EMA({ period: slowLen, values: closes })
+  const emaFast = new EMA({ period: fastLen, values: closes });
+  const emaSlow = new EMA({ period: slowLen, values: closes });
 
-  return async () => {
-    const { currentPrice, timestamp } = await strategyApi.getMarketData()
-    emaFast.nextValue(currentPrice)
-    emaSlow.nextValue(currentPrice)
+  return async (candle) => {
+    const currentPrice = candle.close;
+    emaFast.nextValue(currentPrice);
+    emaSlow.nextValue(currentPrice);
 
     if (await strategyApi.isCurrentPositionExists()) {
-      return strategyApi.skip('POSITION_EXISTS')
+      return strategyApi.skip('POSITION_EXISTS');
     }
 
-    const fast = emaFast.getResult().slice(-2)
-    const slow = emaSlow.getResult().slice(-2)
+    const fast = emaFast.getResult().slice(-2);
+    const slow = emaSlow.getResult().slice(-2);
 
     if (fast.length < 2 || slow.length < 2) {
-      return strategyApi.skip('WAIT_EMA_DATA')
+      return strategyApi.skip('WAIT_EMA_DATA');
     }
 
-    const [fastPrev, fastCurrent] = fast
-    const [slowPrev, slowCurrent] = slow
+    const [fastPrev, fastCurrent] = fast;
+    const [slowPrev, slowCurrent] = slow;
 
-    const entryLong = fastPrev <= slowPrev && fastCurrent > slowCurrent
-    const entryShort = fastPrev >= slowPrev && fastCurrent < slowCurrent
+    const entryLong = fastPrev <= slowPrev && fastCurrent > slowCurrent;
+    const entryShort = fastPrev >= slowPrev && fastCurrent < slowCurrent;
 
     if (!entryLong && !entryShort) {
-      return strategyApi.skip('NO_EMA_CROSS')
+      return strategyApi.skip('NO_EMA_CROSS');
     }
 
-    const direction = entryLong ? 'LONG' : 'SHORT'
-    const { stopLossPrice, takeProfitPrice, riskRatio, qty } =
+    const direction = entryLong ? 'LONG' : 'SHORT';
+    const { stopLossPrice, takeProfitPrice, qty } =
       strategyApi.getDirectionalTpSlPrices({
         price: currentPrice,
         direction,
         takeProfitDelta: 2,
         stopLossDelta: 1,
         unit: 'percent',
-      })
-
-    if (!qty || qty <= 0) {
-      return strategyApi.skip('INVALID_QTY')
-    }
+      });
 
     return strategyApi.entry({
-      code: entryLong ? 'EMA_BULLISH_CROSS' : 'EMA_BEARISH_CROSS',
       direction,
-      timestamp,
-      prices: {
-        currentPrice,
-        takeProfitPrice,
-        stopLossPrice,
-        riskRatio,
-      },
       indicators: {
         emaFast: fastCurrent,
         emaSlow: slowCurrent,
       },
       orderPlan: {
         qty,
+        stopLossPrice,
         takeProfits: [{ rate: 1, price: takeProfitPrice }],
       },
-    })
-  }
-}`;
+    });
+  };
+};`;
 
 const pineCode = `//@version=5
 indicator("EMA Cross (TradeJS)", overlay=true)

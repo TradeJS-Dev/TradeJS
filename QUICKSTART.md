@@ -112,3 +112,9 @@ yarn doctor
 yarn dev-tsc
 yarn unit
 ```
+
+### Strategy API contract reference
+
+See root strategy contract doc:
+
+- `STRATEGY_API.md`

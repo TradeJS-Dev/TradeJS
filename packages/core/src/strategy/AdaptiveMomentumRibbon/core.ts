@@ -192,7 +192,7 @@ export const createAdaptiveMomentumRibbonCore: CreateStrategyCore<
       return strategyApi.skip('STRATEGY_DISABLED');
     }
 
-    const { stopLossPrice, takeProfitPrice, riskRatio, qty } =
+    const { stopLossPrice, takeProfitPrice, qty } =
       strategyApi.getDirectionalTpSlPrices({
         price: currentPrice,
         direction: modeConfig.direction,
@@ -208,13 +208,6 @@ export const createAdaptiveMomentumRibbonCore: CreateStrategyCore<
     return strategyApi.entry({
       code: amr.entryLong ? 'AMR_ENTRY_LONG' : 'AMR_ENTRY_SHORT',
       direction: modeConfig.direction,
-      timestamp,
-      prices: {
-        currentPrice,
-        takeProfitPrice,
-        stopLossPrice,
-        riskRatio,
-      },
       figures: buildAdaptiveMomentumRibbonFigures({
         pineContext,
         linePlots,
@@ -227,6 +220,7 @@ export const createAdaptiveMomentumRibbonCore: CreateStrategyCore<
       },
       orderPlan: {
         qty,
+        stopLossPrice,
         takeProfits: [{ rate: 1, price: takeProfitPrice }],
       },
     });

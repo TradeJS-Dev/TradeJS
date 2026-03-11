@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import Image from 'next/image';
 import { useLocale } from './locale-provider';
 import { AnimateOnScroll } from './animate-on-scroll';
 import { BarChart3, Radio, Brain, Send } from 'lucide-react';
@@ -43,10 +44,13 @@ export function Hero() {
     <section className="relative min-h-screen flex items-center justify-center overflow-hidden">
       {/* Background image */}
       <div className="absolute inset-0">
-        <img
+        <Image
           src="/images/chart-bg.jpg"
           alt=""
-          className="w-full h-full object-cover"
+          fill
+          priority
+          sizes="100vw"
+          className="object-cover"
         />
         <div className="absolute inset-0 bg-background/85" />
       </div>

@@ -188,13 +188,6 @@ export const createBreakoutCore: CreateStrategyCore<
         return strategyApi.entry({
           code: 'OPEN_LONG',
           direction: 'LONG',
-          timestamp,
-          prices: {
-            currentPrice,
-            takeProfitPrice,
-            stopLossPrice,
-            riskRatio: 0,
-          },
           figures: buildBreakoutFigures(),
           indicators: {
             maFast: indicatorValues.maFast,
@@ -213,10 +206,14 @@ export const createBreakoutCore: CreateStrategyCore<
           },
           orderPlan: {
             qty,
-            takeProfits: config.TP_LONG.map(({ rate, profit }) => ({
-              rate,
-              price: currentPrice * (1 + profit),
-            })),
+            stopLossPrice,
+            takeProfits:
+              config.TP_LONG.length > 0
+                ? config.TP_LONG.map(({ rate, profit }) => ({
+                    rate,
+                    price: currentPrice * (1 + profit),
+                  }))
+                : [{ rate: 1, price: takeProfitPrice }],
           },
         });
       }
@@ -234,13 +231,6 @@ export const createBreakoutCore: CreateStrategyCore<
         return strategyApi.entry({
           code: 'OPEN_SHORT',
           direction: 'SHORT',
-          timestamp,
-          prices: {
-            currentPrice,
-            takeProfitPrice,
-            stopLossPrice,
-            riskRatio: 0,
-          },
           figures: buildBreakoutFigures(),
           indicators: {
             maFast: indicatorValues.maFast,
@@ -259,10 +249,14 @@ export const createBreakoutCore: CreateStrategyCore<
           },
           orderPlan: {
             qty,
-            takeProfits: config.TP_SHORT.map(({ rate, profit }) => ({
-              rate,
-              price: currentPrice * (1 - profit),
-            })),
+            stopLossPrice,
+            takeProfits:
+              config.TP_SHORT.length > 0
+                ? config.TP_SHORT.map(({ rate, profit }) => ({
+                    rate,
+                    price: currentPrice * (1 - profit),
+                  }))
+                : [{ rate: 1, price: takeProfitPrice }],
           },
         });
       }

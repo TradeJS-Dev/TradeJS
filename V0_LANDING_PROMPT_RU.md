@@ -116,11 +116,11 @@ RU:
 
 ### 3) Локальный запуск и self-hosted
 EN:
-- `https://docs.tradejs.dev/getting-started/local`
-- `https://docs.tradejs.dev/getting-started/self-hosted`
+- `https://docs.tradejs.dev/getting-started/quickstart`
+- `https://docs.tradejs.dev/operations/production-runbook`
 RU:
-- `https://docs.tradejs.dev/ru/getting-started/local`
-- `https://docs.tradejs.dev/ru/getting-started/self-hosted`
+- `https://docs.tradejs.dev/ru/getting-started/quickstart`
+- `https://docs.tradejs.dev/ru/operations/production-runbook`
 
 ### 4) Встроенный AI / ML функционал
 EN:

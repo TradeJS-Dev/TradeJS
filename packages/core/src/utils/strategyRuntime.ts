@@ -221,8 +221,8 @@ const executeEntryDecision = async ({
         qty: decision.orderPlan.qty,
         currentPrice: decision.entryContext.prices.currentPrice,
         timestamp: decision.entryContext.timestamp,
-        takeProfits: decision.orderPlan.takeProfits ?? [],
-        stopLossPrice: decision.entryContext.prices.stopLossPrice ?? null,
+        takeProfits: decision.orderPlan.takeProfits,
+        stopLossPrice: decision.orderPlan.stopLossPrice,
         signal,
         beforePlaceOrder,
       });
@@ -251,7 +251,7 @@ const executeEntryDecision = async ({
         direction: decision.entryContext.direction,
       },
       decision.orderPlan.takeProfits,
-      decision.entryContext.prices.stopLossPrice ?? null,
+      decision.orderPlan.stopLossPrice,
     );
 
     await invokeHook(

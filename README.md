@@ -38,6 +38,12 @@ Runtime then handles:
 - optional ML/AI gating
 - order execution and hook invocation
 
+`strategyApi.entry(...)` contract is minimal:
+
+- strategy passes `direction` and `orderPlan` (`qty`, `stopLossPrice`, `takeProfits`)
+- strategy may pass optional `code`; if omitted, runtime auto-generates it
+- shared runtime resolves signal `timestamp/currentPrice/takeProfitPrice/riskRatio`
+
 ### Strategy Registration
 
 Built-in and plugin strategies are resolved via manifests and registry:

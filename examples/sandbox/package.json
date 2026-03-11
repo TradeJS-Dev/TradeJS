@@ -16,6 +16,7 @@
   },
   "scripts": {
     "build": "echo 'example-sandbox: build placeholder'",
+    "lint": "yarn run -T eslint src tradejs.config.ts --ext .ts",
     "typecheck": "tsc -p ../../tsconfig.json --noEmit",
     "run:ts": "ts-node -r tsconfig-paths/register -P ../../tsconfig.json",
     "infra-up": "yarn run:ts ../../packages/cli/src/scripts/infraUp.ts",

@@ -50,14 +50,14 @@ export const createMyStrategyCore: CreateStrategyCore<
   MyStrategyConfig
 > = async ({ strategyApi }) => {
   return async () => {
-    const { currentPrice, timestamp } = await strategyApi.getMarketData();
+    const { currentPrice } = await strategyApi.getMarketData();
 
     const positionExists = await strategyApi.isCurrentPositionExists();
     if (positionExists) {
       return strategyApi.skip('POSITION_EXISTS');
     }
 
-    const { stopLossPrice, takeProfitPrice, riskRatio, qty } =
+    const { stopLossPrice, takeProfitPrice, qty } =
       strategyApi.getDirectionalTpSlPrices({
         price: currentPrice,
         direction: 'LONG',
@@ -72,21 +72,17 @@ export const createMyStrategyCore: CreateStrategyCore<
 
     return strategyApi.entry({
       direction: 'LONG',
-      timestamp,
-      prices: {
-        currentPrice,
-        takeProfitPrice,
-        stopLossPrice,
-        riskRatio,
-      },
       orderPlan: {
         qty,
+        stopLossPrice,
         takeProfits: [{ rate: 1, price: takeProfitPrice }],
       },
     });
   };
 };
 ```
+
+`strategyApi.entry(...)` accepts optional `code`; if omitted it auto-generates one and resolves `timestamp/currentPrice/takeProfitPrice/riskRatio` from market data + `orderPlan`.
 
 ## Where Runtime Behavior Is Defined
 

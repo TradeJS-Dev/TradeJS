@@ -164,13 +164,6 @@ export const createMaStrategyCore: CreateStrategyCore<
     return strategyApi.entry({
       code: cross.kind === 'bullish' ? 'MA_BULLISH_CROSS' : 'MA_BEARISH_CROSS',
       direction: modeConfig.direction,
-      timestamp,
-      prices: {
-        currentPrice,
-        takeProfitPrice,
-        stopLossPrice,
-        riskRatio,
-      },
       figures: buildMaStrategyFigures({
         fullData,
         maFast,
@@ -191,6 +184,7 @@ export const createMaStrategyCore: CreateStrategyCore<
       },
       orderPlan: {
         qty,
+        stopLossPrice,
         takeProfits: [{ rate: 1, price: takeProfitPrice }],
       },
     });

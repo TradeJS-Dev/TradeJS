@@ -66,6 +66,26 @@ const config: Config = {
   ],
 
   themeConfig: {
+    metadata: [
+      {
+        name: 'description',
+        content:
+          'Official TradeJS documentation: strategy authoring, indicators, runtime, backtesting, AI/ML, and operations.',
+      },
+      {
+        name: 'keywords',
+        content:
+          'TradeJS, trading docs, algorithmic trading, TypeScript strategies, Pine Script, backtesting, AI/ML',
+      },
+      {
+        name: 'robots',
+        content: 'index,follow,max-image-preview:large,max-snippet:-1',
+      },
+      {
+        name: 'author',
+        content: 'TradeJS Team',
+      },
+    ],
     image: 'img/docusaurus-social-card.jpg',
     colorMode: {
       defaultMode: 'dark',

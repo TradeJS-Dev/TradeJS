@@ -64,6 +64,7 @@ describe('strategy decision contracts', () => {
       additionalIndicators: { touches: 3, distance: 1.2 },
       orderPlan: {
         qty: 1.5,
+        stopLossPrice: 95,
         takeProfits: [{ rate: 1, price: 105 }],
       },
     });
@@ -80,7 +81,7 @@ describe('strategy decision contracts', () => {
     expect('price' in decision.orderPlan).toBe(false);
     expect('timestamp' in decision.orderPlan).toBe(false);
     expect('direction' in decision.orderPlan).toBe(false);
-    expect('stopLossPrice' in decision.orderPlan).toBe(false);
+    expect('stopLossPrice' in decision.orderPlan).toBe(true);
   });
 
   test('Breakout entry decision includes strategy in entryContext and runtime ML policy from config', () => {
@@ -102,6 +103,7 @@ describe('strategy decision contracts', () => {
       },
       orderPlan: {
         qty: 1,
+        stopLossPrice: 95,
         takeProfits: [{ rate: 1, price: 110 }],
       },
       indicators: {

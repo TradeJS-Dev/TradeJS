@@ -3,19 +3,26 @@ import {
   BuildStrategySignalDraft,
   BuildStrategySignalParams,
   Connector,
+  Direction,
   KlineChartData,
   Signal,
   StrategyDecision,
   StrategyAPI,
+  StrategyAPIMarketDataParams,
   StrategyAPIEntryParams,
   StrategyEntrySignalContext,
   StrategyEntryOrderPlan,
   StrategyEntryRuntimeOptions,
   StrategyLastTradeControllerParams,
+  StrategyMarketSnapshot,
   StrategyRuntimeAiOptions,
   StrategyRuntimeMlOptions,
 } from '@types';
-import { getDirectionalTpSlPrices, getStrategyMarketSnapshot } from './market';
+import {
+  calculateRiskRatio,
+  getDirectionalTpSlPrices,
+  getStrategyMarketSnapshot,
+} from './market';
 import { createLastTradeController } from './state';
 import { uuid } from '@utils/uuid';
 
@@ -146,11 +153,36 @@ interface CreateStrategyAPIParams {
   isConfigFromBacktest?: Signal['isConfigFromBacktest'];
 }
 
-const toDefaultEntryCode = (strategy: string) =>
+const isFiniteNumber = (value: unknown): value is number =>
+  typeof value === 'number' && Number.isFinite(value);
+
+const toDefaultEntryCode = (strategy: string, direction: Direction) =>
   `${strategy
     .replace(/([a-z0-9])([A-Z])/g, '$1_$2')
     .replace(/[^a-zA-Z0-9]+/g, '_')
-    .toUpperCase()}_SIGNAL`;
+    .toUpperCase()}_${direction}_ENTRY`;
+
+const resolveTakeProfitPrice = ({
+  direction,
+  takeProfits,
+}: {
+  direction: Direction;
+  takeProfits: StrategyEntryOrderPlan['takeProfits'];
+}): number => {
+  if (!Array.isArray(takeProfits) || takeProfits.length === 0) {
+    throw new Error('strategyApi.entry requires at least one takeProfit');
+  }
+
+  const prices = takeProfits
+    .map((tp) => tp?.price)
+    .filter((price): price is number => isFiniteNumber(price));
+
+  if (prices.length === 0) {
+    throw new Error('strategyApi.entry requires finite takeProfit prices');
+  }
+
+  return direction === 'LONG' ? Math.max(...prices) : Math.min(...prices);
+};
 
 export const createStrategyAPI = ({
   strategy,
@@ -172,13 +204,33 @@ export const createStrategyAPI = ({
     );
   };
 
+  const getMarketData = async (
+    params: StrategyAPIMarketDataParams = {},
+  ): Promise<StrategyMarketSnapshot> => {
+    const resolvedPreloadStart = params.preloadStart ?? preloadStart;
+
+    if (typeof resolvedPreloadStart !== 'number') {
+      throw new Error('strategyApi.getMarketData requires preloadStart');
+    }
+
+    const snapshot = await getStrategyMarketSnapshot({
+      env,
+      connector,
+      symbol,
+      interval,
+      cachedData,
+      preloadStart: resolvedPreloadStart,
+      backtestPriceMode: params.backtestPriceMode ?? backtestPriceMode,
+    });
+
+    return snapshot;
+  };
+
   return {
     skip: (code) => ({ kind: 'skip', code }),
-    entry: ({
+    entry: async ({
       code,
       direction,
-      timestamp,
-      prices,
       figures,
       indicators,
       additionalIndicators,
@@ -186,11 +238,28 @@ export const createStrategyAPI = ({
       orderPlan,
       runtime,
     }: StrategyAPIEntryParams) => {
-      const resolvedCode = code ?? toDefaultEntryCode(String(strategy));
+      const marketData = await getMarketData();
+      const currentPrice = marketData.currentPrice;
+      const timestamp = marketData.timestamp;
+      const stopLossPrice = orderPlan.stopLossPrice;
+      const takeProfitPrice = resolveTakeProfitPrice({
+        direction,
+        takeProfits: orderPlan.takeProfits,
+      });
 
-      if (!resolvedCode) {
-        throw new Error('strategyApi.entry requires code');
+      if (!isFiniteNumber(stopLossPrice)) {
+        throw new Error(
+          'strategyApi.entry requires finite orderPlan.stopLossPrice',
+        );
       }
+
+      const resolvedCode = code ?? toDefaultEntryCode(String(strategy), direction);
+      const riskRatio = calculateRiskRatio({
+        direction,
+        currentPrice,
+        takeProfitPrice,
+        stopLossPrice,
+      });
 
       return buildEntrySignalDecision({
         code: resolvedCode,
@@ -200,7 +269,12 @@ export const createStrategyAPI = ({
           interval,
           direction,
           timestamp,
-          prices,
+          prices: {
+            currentPrice,
+            takeProfitPrice,
+            stopLossPrice,
+            riskRatio,
+          },
           isConfigFromBacktest,
         },
         figures,
@@ -211,23 +285,7 @@ export const createStrategyAPI = ({
         runtime,
       }) as Extract<StrategyDecision, { kind: 'entry' }>;
     },
-    getMarketData: (params = {}) => {
-      const resolvedPreloadStart = params.preloadStart ?? preloadStart;
-
-      if (typeof resolvedPreloadStart !== 'number') {
-        throw new Error('strategyApi.getMarketData requires preloadStart');
-      }
-
-      return getStrategyMarketSnapshot({
-        env,
-        connector,
-        symbol,
-        interval,
-        cachedData,
-        preloadStart: resolvedPreloadStart,
-        backtestPriceMode: params.backtestPriceMode ?? backtestPriceMode,
-      });
-    },
+    getMarketData,
     nextIndicators: (candle, btcCandle) =>
       indicatorsState?.next(candle, btcCandle),
     getCurrentPosition,

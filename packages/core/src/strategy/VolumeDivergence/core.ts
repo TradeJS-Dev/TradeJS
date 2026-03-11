@@ -304,13 +304,6 @@ export const createVolumeDivergenceCore: CreateStrategyCore<
     return strategyApi.entry({
       code: 'VOLUME_DIVERGENCE_REVERSAL_SIGNAL',
       direction: modeConfig.direction,
-      timestamp,
-      prices: {
-        currentPrice,
-        takeProfitPrice,
-        stopLossPrice,
-        riskRatio,
-      },
       figures: buildVolumeDivergenceFigures({
         kind: divergence.kind,
         previousPivotIndex: divergence.previousPivotIndex,
@@ -353,6 +346,7 @@ export const createVolumeDivergenceCore: CreateStrategyCore<
       },
       orderPlan: {
         qty,
+        stopLossPrice,
         takeProfits: [{ rate: 1, price: takeProfitPrice }],
       },
     });

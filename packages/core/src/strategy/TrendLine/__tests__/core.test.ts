@@ -58,14 +58,65 @@ const makeCandle = (timestamp: number, price: number) => ({
 });
 
 const makeStrategyApi = () => {
+  let latestMarketData: {
+    timestamp: number;
+    currentPrice: number;
+  } | null = null;
+
   return {
     skip: (code: string) => ({ kind: 'skip', code }),
-    entry: (params: any) =>
-      buildEntrySignalDecision({
-        ...params,
-        code: params.code ?? 'TRENDLINE_SIGNAL',
-      }),
-    getMarketData: (params: any) => getStrategyMarketSnapshot(params),
+    entry: async (params: any) => {
+      if (!latestMarketData) {
+        latestMarketData = await getStrategyMarketSnapshot({} as any);
+      }
+
+      const takeProfitPrices = Array.isArray(params.orderPlan?.takeProfits)
+        ? params.orderPlan.takeProfits.map((tp: any) => Number(tp.price))
+        : [];
+      const takeProfitPrice =
+        params.direction === 'LONG'
+          ? Math.max(...takeProfitPrices)
+          : Math.min(...takeProfitPrices);
+      const stopLossPrice = Number(params.orderPlan?.stopLossPrice);
+      const currentPrice = latestMarketData.currentPrice;
+      const reward =
+        params.direction === 'LONG'
+          ? takeProfitPrice - currentPrice
+          : currentPrice - takeProfitPrice;
+      const risk =
+        params.direction === 'LONG'
+          ? currentPrice - stopLossPrice
+          : stopLossPrice - currentPrice;
+
+      return buildEntrySignalDecision({
+        code: params.code ?? `TREND_LINE_${params.direction}_ENTRY`,
+        entryContext: {
+          strategy: 'TrendLine',
+          symbol: 'TESTUSDT',
+          interval: '15',
+          direction: params.direction,
+          timestamp: latestMarketData.timestamp,
+          prices: {
+            currentPrice,
+            takeProfitPrice,
+            stopLossPrice,
+            riskRatio: risk > 0 ? reward / risk : 0,
+          },
+          isConfigFromBacktest: false,
+        },
+        figures: params.figures,
+        indicators: params.indicators,
+        additionalIndicators: params.additionalIndicators,
+        signalId: params.signalId,
+        orderPlan: params.orderPlan,
+        runtime: params.runtime,
+      });
+    },
+    getMarketData: async (params: any) => {
+      const marketData = await getStrategyMarketSnapshot(params);
+      latestMarketData = marketData;
+      return marketData;
+    },
     nextIndicators: jest.fn(),
     getCurrentPosition: jest.fn(),
     isCurrentPositionExists: jest.fn(async () => false),
@@ -225,16 +276,18 @@ describe('createTrendLineCore', () => {
     expect(buildEntrySignalDecision).toHaveBeenCalledWith(
       expect.objectContaining({
         code: 'TRENDLINE_SIGNAL',
-        direction: 'SHORT',
-        timestamp: candle.timestamp,
-        prices: expect.objectContaining({
-          currentPrice: candle.close,
+        entryContext: expect.objectContaining({
+          direction: 'SHORT',
+          timestamp: candle.timestamp,
+          prices: expect.objectContaining({
+            currentPrice: candle.close,
+          }),
         }),
         figures: expect.objectContaining({
           lines: expect.any(Array),
           points: expect.any(Array),
         }),
-        orderPlan: expect.objectContaining({ qty: 2 }),
+        orderPlan: expect.objectContaining({ qty: 2, stopLossPrice: 98 }),
       }),
     );
   });

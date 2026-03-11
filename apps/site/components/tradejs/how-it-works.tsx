@@ -20,16 +20,11 @@ export function HowItWorks() {
           </div>
         </AnimateOnScroll>
 
-        <div className="grid gap-8 md:grid-cols-2 lg:grid-cols-4">
+        <div className="grid auto-rows-fr gap-8 md:grid-cols-2 lg:grid-cols-4">
           {t.howItWorks.steps.map((step, i) => (
-            <AnimateOnScroll key={i} delay={i * 120}>
-              <div className="relative group">
-                {/* Connector line (desktop) */}
-                {i < t.howItWorks.steps.length - 1 && (
-                  <div className="hidden lg:block absolute top-8 left-full w-full h-px bg-gradient-to-r from-border to-transparent z-0" />
-                )}
-
-                <div className="relative rounded-xl border border-border bg-surface/40 p-6 hover:border-primary/30 hover:bg-surface/70 transition-all duration-300">
+            <AnimateOnScroll key={i} delay={i * 120} className="h-full">
+              <div className="relative group h-full">
+                <div className="relative h-full rounded-xl border border-border bg-surface/40 p-6 hover:border-primary/30 hover:bg-surface/70 transition-all duration-300">
                   {/* Step number */}
                   <div className="mb-4 text-3xl font-extrabold text-primary/20 font-mono">
                     {step.step}

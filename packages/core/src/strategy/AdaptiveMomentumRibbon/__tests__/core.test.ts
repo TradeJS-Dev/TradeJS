@@ -55,34 +55,61 @@ const makeStrategyApi = (marketData: any, currentPosition: any = null) =>
       markTrade: jest.fn(),
       getLastTradeTimestamp: () => null,
     })),
-    entry: (params: any) => ({
-      kind: 'entry',
-      code: params.code,
-      entryContext: {
-        strategy: 'AdaptiveMomentumRibbon',
-        symbol: 'TESTUSDT',
-        interval: '15',
-        direction: params.direction,
-        timestamp: params.timestamp,
-        prices: params.prices,
-        isConfigFromBacktest: false,
-      },
-      orderPlan: params.orderPlan,
-      runtime: params.runtime,
-      signal: {
-        signalId: params.signalId ?? 'amr-test-signal',
-        strategy: 'AdaptiveMomentumRibbon',
-        symbol: 'TESTUSDT',
-        interval: '15',
-        direction: params.direction,
-        timestamp: params.timestamp,
-        figures: params.figures ?? {},
-        prices: params.prices,
-        indicators: params.indicators ?? {},
-        additionalIndicators: params.additionalIndicators,
-        isConfigFromBacktest: false,
-      },
-    }),
+    entry: (params: any) => {
+      const takeProfitPrices = Array.isArray(params.orderPlan?.takeProfits)
+        ? params.orderPlan.takeProfits.map((tp: any) => Number(tp.price))
+        : [];
+      const takeProfitPrice =
+        params.direction === 'LONG'
+          ? Math.max(...takeProfitPrices)
+          : Math.min(...takeProfitPrices);
+      const stopLossPrice = Number(params.orderPlan?.stopLossPrice);
+      const currentPrice = Number(marketData.currentPrice);
+      const reward =
+        params.direction === 'LONG'
+          ? takeProfitPrice - currentPrice
+          : currentPrice - takeProfitPrice;
+      const risk =
+        params.direction === 'LONG'
+          ? currentPrice - stopLossPrice
+          : stopLossPrice - currentPrice;
+      const prices = {
+        currentPrice,
+        takeProfitPrice,
+        stopLossPrice,
+        riskRatio: risk > 0 ? reward / risk : 0,
+      };
+
+      return {
+        kind: 'entry',
+        code:
+          params.code ?? `ADAPTIVE_MOMENTUM_RIBBON_${params.direction}_ENTRY`,
+        entryContext: {
+          strategy: 'AdaptiveMomentumRibbon',
+          symbol: 'TESTUSDT',
+          interval: '15',
+          direction: params.direction,
+          timestamp: marketData.timestamp,
+          prices,
+          isConfigFromBacktest: false,
+        },
+        orderPlan: params.orderPlan,
+        runtime: params.runtime,
+        signal: {
+          signalId: params.signalId ?? 'amr-test-signal',
+          strategy: 'AdaptiveMomentumRibbon',
+          symbol: 'TESTUSDT',
+          interval: '15',
+          direction: params.direction,
+          timestamp: marketData.timestamp,
+          figures: params.figures ?? {},
+          prices,
+          indicators: params.indicators ?? {},
+          additionalIndicators: params.additionalIndicators,
+          isConfigFromBacktest: false,
+        },
+      };
+    },
   }) as any;
 
 const makeIndicatorsState = () =>
@@ -214,6 +241,9 @@ describe('createAdaptiveMomentumRibbonCore', () => {
     expect(decision.entryContext.direction).toBe('LONG');
     expect(decision.code).toBe('AMR_ENTRY_LONG');
     expect(decision.orderPlan.qty).toBe(1);
+    expect(decision.orderPlan.stopLossPrice).toBeCloseTo(
+      marketData.currentPrice * 0.99,
+    );
     expect(decision.signal?.figures?.lines?.length ?? 0).toBeGreaterThan(0);
   });
 

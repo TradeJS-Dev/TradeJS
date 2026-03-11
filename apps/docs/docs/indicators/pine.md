@@ -7,7 +7,10 @@ TradeJS supports two indicator authoring paths:
 - TypeScript indicator plugins (recommended for reusable pane indicators)
 - Pine plots inside standalone Pine strategies (for strategy-native visuals/signals)
 
-## 1. TypeScript Indicator Path
+Important: a standalone Pine indicator plugin (`indicatorsPlugins`) is not supported yet.
+Pine indicators are rendered from `plot(...)` series produced by a Pine strategy.
+
+## 1. TypeScript Indicator Path (Standalone Pane Indicator)
 
 Use plugin indicators when you need reusable chart panes independent of one strategy.
 
@@ -17,22 +20,21 @@ See [Write Custom Indicators](./authoring).
 
 For Pine strategies (example: `AdaptiveMomentumRibbon`), indicator lines come from Pine `plot(...)` outputs and are converted to `figures`.
 
-What you actually need to do:
+If you only extend an existing Pine strategy, you usually edit:
 
-1. Add/rename the `plot(...)` series in your Pine script.
-2. Include those plot names in strategy config (`AMR_LINE_PLOTS`).
-3. Run `backtest` or `signals`: selected plots will appear in `figures.lines`.
+- strategy `.pine` file
+- strategy config (`*_LINE_PLOTS`)
 
-## 3. Add a New Pine Plot
+Example (`AdaptiveMomentumRibbon`):
 
-Example: add RSI to Pine script.
+### `adaptiveMomentumRibbon.pine`
 
 ```pinescript
 rsiValue = ta.rsi(close, 14)
 plot(rsiValue, "rsi")
 ```
 
-Then register it in strategy config:
+### strategy config
 
 ```json
 {
@@ -46,25 +48,260 @@ Then register it in strategy config:
 }
 ```
 
-## 4. Validate in Backtest/Signals
+Then run:
 
 ```bash
 npx @tradejs/cli backtest --user root --config AdaptiveMomentumRibbon:amr-default
 ```
 
-or
+or:
 
 ```bash
 npx @tradejs/cli signals --user root --cacheOnly
 ```
 
-The new Pine plot should appear in signal/backtest figures.
+The new Pine plot appears in `figures.lines`.
+
+## 3. Full Custom Pine Indicator Module (All Files)
+
+If you want a fully custom user Pine indicator, create a custom Pine strategy module.
+
+Minimal file set:
+
+```text
+packages/core/src/strategy/MyPineIndicator/
+  myPineIndicator.pine
+  config.ts
+  figures.ts
+  core.ts
+  strategy.ts
+  manifest.ts
+  index.ts
+```
+
+and one registry update:
+
+```text
+packages/core/src/strategy/manifests.ts
+```
+
+### `myPineIndicator.pine`
+
+```pinescript
+//@version=5
+indicator("My Pine Indicator", shorttitle="MPI", overlay=true)
+
+fast = ta.ema(close, 9)
+slow = ta.ema(close, 21)
+osc = fast - slow
+
+entryLong = ta.crossover(osc, 0)
+entryShort = ta.crossunder(osc, 0)
+invalidated = false
+
+plot(osc, "myOsc")
+plot(entryLong ? 1 : 0, "entryLong")
+plot(entryShort ? 1 : 0, "entryShort")
+plot(invalidated ? 1 : 0, "invalidated")
+```
+
+### `config.ts`
+
+```ts
+import { BacktestPriceMode, StrategyConfig } from '@types';
+
+export const config = {
+  ENV: 'BACKTEST',
+  INTERVAL: '15',
+  BACKTEST_PRICE_MODE: 'mid' as BacktestPriceMode,
+  MY_LOOKBACK_BARS: 400,
+  MY_LINE_PLOTS: ['myOsc'],
+  LONG: { enable: true, direction: 'LONG', TP: 2, SL: 1 },
+  SHORT: { enable: true, direction: 'SHORT', TP: 2, SL: 1 },
+} as const;
+
+export type MyPineIndicatorConfig = StrategyConfig & typeof config;
+```
+
+### `figures.ts`
+
+```ts
+import {
+  PineContextLike,
+  asFiniteNumber,
+  getPinePlotSeries,
+} from '@utils/pine';
+import { StrategyEntryModelFigures } from '@types';
+
+export const buildMyPineFigures = (
+  pineContext: PineContextLike,
+): StrategyEntryModelFigures => {
+  const points = getPinePlotSeries(pineContext, 'myOsc')
+    .slice(-180)
+    .map((item) => {
+      const timestamp = asFiniteNumber(item?.time);
+      const value = asFiniteNumber(item?.value);
+      if (timestamp == null || value == null) return null;
+      return { timestamp, value };
+    })
+    .filter(Boolean) as { timestamp: number; value: number }[];
+
+  return {
+    lines: [
+      {
+        id: 'my-osc-line',
+        kind: 'my_osc',
+        points,
+        color: '#22d3ee',
+        width: 2,
+        style: 'solid',
+      },
+    ],
+  };
+};
+```
+
+### `core.ts`
+
+```ts
+import {
+  asPineBoolean,
+  getLatestPinePlotValue,
+  runPineScript,
+} from '@utils/pine';
+import { CreateStrategyCore } from '@types';
+import { MyPineIndicatorConfig } from './config';
+import { buildMyPineFigures } from './figures';
+
+export const createMyPineIndicatorCore: CreateStrategyCore<
+  MyPineIndicatorConfig
+> = async ({ config, symbol, loadPineScript, strategyApi }) => {
+  const script = loadPineScript('myPineIndicator.pine');
+
+  return async () => {
+    if (!script) {
+      return strategyApi.skip('PINE_SCRIPT_EMPTY');
+    }
+
+    const { fullData, currentPrice } = await strategyApi.getMarketData();
+    const pineContext = await runPineScript({
+      candles: fullData.slice(-Number(config.MY_LOOKBACK_BARS ?? 400)),
+      script,
+      symbol,
+      timeframe: String(config.INTERVAL ?? '15'),
+    });
+
+    const entryLong = asPineBoolean(
+      getLatestPinePlotValue(pineContext, 'entryLong'),
+    );
+    const entryShort = asPineBoolean(
+      getLatestPinePlotValue(pineContext, 'entryShort'),
+    );
+
+    if (!entryLong && !entryShort) {
+      return strategyApi.skip('NO_SIGNAL');
+    }
+
+    const mode = entryLong ? config.LONG : config.SHORT;
+    if (!mode.enable) {
+      return strategyApi.skip('SIDE_DISABLED');
+    }
+
+    const { stopLossPrice, takeProfitPrice, qty } =
+      strategyApi.getDirectionalTpSlPrices({
+        price: currentPrice,
+        direction: mode.direction,
+        takeProfitDelta: mode.TP,
+        stopLossDelta: mode.SL,
+        unit: 'percent',
+      });
+
+    if (!qty || qty <= 0) {
+      return strategyApi.skip('INVALID_QTY');
+    }
+
+    return strategyApi.entry({
+      code: 'MY_PINE_INDICATOR_ENTRY',
+      direction: mode.direction,
+      figures: buildMyPineFigures(pineContext),
+      orderPlan: {
+        qty,
+        stopLossPrice,
+        takeProfits: [{ rate: 1, price: takeProfitPrice }],
+      },
+    });
+  };
+};
+```
+
+### `strategy.ts`
+
+```ts
+import { createStrategyRuntime } from '@utils/strategyRuntime';
+import { config, MyPineIndicatorConfig } from './config';
+import { createMyPineIndicatorCore } from './core';
+
+export const MyPineIndicatorStrategyCreator =
+  createStrategyRuntime<MyPineIndicatorConfig>({
+    strategyName: 'MyPineIndicator',
+    defaults: config as MyPineIndicatorConfig,
+    createCore: createMyPineIndicatorCore,
+  });
+```
+
+### `manifest.ts`
+
+```ts
+import { StrategyManifest } from '@types';
+
+export const myPineIndicatorManifest: StrategyManifest = {
+  name: 'MyPineIndicator',
+};
+```
+
+### `index.ts`
+
+```ts
+export { MyPineIndicatorStrategyCreator } from './strategy';
+export { myPineIndicatorManifest } from './manifest';
+```
+
+### `manifests.ts` registration
+
+Add to strategy registry (`packages/core/src/strategy/manifests.ts`):
+
+```ts
+import { myPineIndicatorManifest } from './MyPineIndicator/manifest';
+```
+
+```ts
+{
+  manifest: myPineIndicatorManifest,
+  creator: createLazyStrategyCreator(
+    () => import('./MyPineIndicator/strategy'),
+    'MyPineIndicatorStrategyCreator',
+  ),
+},
+```
+
+## 4. Validate in Backtest/Signals
+
+```bash
+npx @tradejs/cli backtest --user root --config MyPineIndicator:default
+```
+
+```bash
+npx @tradejs/cli signals --user root --cacheOnly
+```
 
 ## 5. Common Pitfalls
 
-- No line on chart:
-  plot name in config does not match `plot(..., "name")`.
-- Flat/incorrect values:
-  check Pine warmup and lookback window (`AMR_LOOKBACK_BARS`).
-- No entries/exits:
-  verify strategy signal plots (`entryLong`, `entryShort`, `invalidated`).
+- Plot name mismatch:
+  config `MY_LINE_PLOTS` names must match Pine `plot(..., "name")`.
+- Missing required runtime plots:
+  your Pine script must expose `entryLong`, `entryShort`, `invalidated`.
+- Flat/incorrect line:
+  increase lookback (`MY_LOOKBACK_BARS`) and check Pine warmup.
+
+For a full production-ready reference, see
+[Pine Strategy Step by Step](../strategies/authoring/pine-strategy-step-by-step).

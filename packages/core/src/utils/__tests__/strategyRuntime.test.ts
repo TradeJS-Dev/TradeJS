@@ -127,6 +127,7 @@ const makeDecisionEntry = (
   },
   orderPlan: {
     qty: 3,
+    stopLossPrice: 230,
     takeProfits: [{ rate: 1, price: 200 }],
   },
   signal: makeSignal(strategy),
@@ -299,8 +300,13 @@ describe('strategyRuntime', () => {
     expect(result).toBe('ENTRY');
   });
 
-  it('uses entryContext as source of truth for executeEntryOrder args', async () => {
+  it('uses entryContext prices and orderPlan stop loss for executeEntryOrder args', async () => {
     const decision = makeDecisionEntry({
+      orderPlan: {
+        qty: 3,
+        stopLossPrice: 237,
+        takeProfits: [{ rate: 1, price: 200 }],
+      },
       signal: {
         ...makeSignal(),
         direction: 'LONG',
@@ -324,7 +330,7 @@ describe('strategyRuntime', () => {
         direction: 'SHORT',
         currentPrice: 222,
         timestamp: 1_700_000_123_000,
-        stopLossPrice: 230,
+        stopLossPrice: 237,
       }),
     );
   });

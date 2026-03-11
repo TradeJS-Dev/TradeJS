@@ -80,6 +80,17 @@ export const translations = {
         'AI-powered signal enhancement and massive parameter optimization',
       items: [
         {
+          title: 'Grid Backtesting',
+          description:
+            'Run massive parameter sweeps with grid config. Find optimal strategy configurations across thousands of combinations automatically.',
+          links: [
+            {
+              label: 'Grid Config',
+              url: 'https://docs.tradejs.dev/runtime/backtesting/grid-config',
+            },
+          ],
+        },
+        {
           title: 'Built-in AI / ML',
           description:
             'Enhance your signals with AI and ML models. Configurable pipelines for signal filtering, prediction, and risk scoring.',
@@ -91,17 +102,6 @@ export const translations = {
             {
               label: 'ML Configuration',
               url: 'https://docs.tradejs.dev/ai-ml/ml/configuration',
-            },
-          ],
-        },
-        {
-          title: 'Grid Backtesting',
-          description:
-            'Run massive parameter sweeps with grid config. Find optimal strategy configurations across thousands of combinations automatically.',
-          links: [
-            {
-              label: 'Grid Config',
-              url: 'https://docs.tradejs.dev/runtime/backtesting/grid-config',
             },
           ],
         },
@@ -262,6 +262,17 @@ export const translations = {
       sectionSubtitle: 'AI-усиление сигналов и масштабный перебор параметров',
       items: [
         {
+          title: 'Grid-бэктесты',
+          description:
+            'Запускайте массовый перебор параметров через Grid Config. Автоматически находите оптимальные конфигурации среди тысяч комбинаций.',
+          links: [
+            {
+              label: 'Grid Config',
+              url: 'https://docs.tradejs.dev/ru/runtime/backtesting/grid-config',
+            },
+          ],
+        },
+        {
           title: 'Встроенный AI / ML',
           description:
             'Усиливайте сигналы с помощью AI и ML моделей. Настраиваемые пайплайны для фильтрации, предсказания и оценки рисков.',
@@ -273,17 +284,6 @@ export const translations = {
             {
               label: 'Конфигурация ML',
               url: 'https://docs.tradejs.dev/ru/ai-ml/ml/configuration',
-            },
-          ],
-        },
-        {
-          title: 'Grid-бэктесты',
-          description:
-            'Запускайте массовый перебор параметров через Grid Config. Автоматически находите оптимальные конфигурации среди тысяч комбинаций.',
-          links: [
-            {
-              label: 'Grid Config',
-              url: 'https://docs.tradejs.dev/ru/runtime/backtesting/grid-config',
             },
           ],
         },
