@@ -4,30 +4,40 @@ title: onRuntimeError
 
 Вызывается, когда runtime перехватывает ошибку на любом этапе или в хуках.
 
-## Вход (`params`)
-
-| Поле                   | Тип                       | Описание                                   |
-| ---------------------- | ------------------------- | ------------------------------------------ | ------------------------------ | ---------- | -------------------------------------- |
-| `connector`            | `object`                  | Экземпляр коннектора биржи.                |
-| `strategyName`         | `string`                  | Имя/идентификатор стратегии.               |
-| `userName`             | `string`                  | Пользователь runtime.                      |
-| `symbol`               | `string`                  | Текущий торговый символ.                   |
-| `config`               | `Record<string, unknown>` | Разрешенный конфиг стратегии.              |
-| `env`                  | `string`                  | Окружение, например `BACKTEST` или `LIVE`. |
-| `isConfigFromBacktest` | `boolean`                 | Конфиг получен из backtest payload.        |
-| `stage`                | `string`                  | Имя runtime-stage, где поймана ошибка.     |
-| `error`                | `unknown`                 | Перехваченная ошибка/значение.             |
-| `decision`             | `SkipDecision             | EntryDecision                              | ExitDecision                   | undefined` | Решение текущего этапа, если доступно. |
-| `signal`               | `Signal                   | undefined`                                 | Снимок сигнала, если доступен. |
-
-Формы `decision`:
+## Параметры
 
 ```ts
 {
-  kind: 'skip';
-  code: string;
+  connector: {
+    kline: (params: unknown) => Promise<unknown>;
+    getState: () => Promise<Record<string, unknown>>;
+    setState: (state: object) => Promise<void>;
+    getPosition: (symbol?: string) => Promise<unknown>;
+    getPositions: () => Promise<unknown[]>;
+    placeOrder: (...args: unknown[]) => Promise<unknown>;
+    closePosition: (params: unknown) => Promise<unknown>;
+    getTickers: () => Promise<unknown[]>;
+  };
+  strategyName: string;
+  userName: string;
+  symbol: string;
+  config: Record<string, unknown>;
+  env: string;
+  isConfigFromBacktest: boolean;
+  stage: string;
+  error: unknown;
+  decision: SkipDecision | EntryDecision | ExitDecision | undefined;
+  signal: Signal | undefined;
 }
 ```
+
+`SkipDecision` shape:
+
+```ts
+{ kind: 'skip'; code: string }
+```
+
+`ExitDecision` shape:
 
 ```ts
 {
@@ -37,9 +47,11 @@ title: onRuntimeError
     price: number;
     timestamp: number;
     direction: 'LONG' | 'SHORT';
-  }
+  };
 }
 ```
+
+`EntryDecision` shape:
 
 ```ts
 {
@@ -67,7 +79,9 @@ title: onRuntimeError
 }
 ```
 
-`Signal` (поля, используемые runtime):
+Важно: `prices` по-прежнему есть в hook payload-ах внутри `decision.entryContext.prices` и `signal.prices`. Мы убирали их из входа `strategyApi.entry(...)`, а рантайм теперь вычисляет их сам. Что реально изменилось в hook-контракте — это `orderPlan`: теперь там только `qty`, `stopLossPrice` и `takeProfits`.
+
+`Signal`, передаваемый в хук:
 
 ```ts
 {

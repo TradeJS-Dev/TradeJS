@@ -1,5 +1,5 @@
 ---
-title: Runtime Playbook (TrendLine + AdaptiveMomentumRibbon)
+title: Runtime Playbook
 ---
 
 Эта шпаргалка содержит copy-paste команды для текущей конфигурации:

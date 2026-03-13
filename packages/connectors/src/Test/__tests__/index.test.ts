@@ -11,9 +11,13 @@ jest.mock('@tradejs/infra/redis', () => ({
   },
 }));
 
-jest.mock('uuid', () => ({
-  v4: () => '000000000000order-log-id',
-}));
+jest.mock('node:crypto', () => {
+  const actual = jest.requireActual('node:crypto');
+  return {
+    ...actual,
+    randomUUID: () => '000000000000order-log-id',
+  };
+});
 
 const mockedSetData = setData as jest.MockedFunction<typeof setData>;
 

@@ -1,6 +1,7 @@
 {
   "name": "@tradejs/cli",
   "version": "1.0.0",
+  "description": "Official TradeJS CLI for infra setup, backtests, signals, bots, and ML workflows.",
   "homepage": "https://tradejs.dev",
   "main": "dist/cli.js",
   "types": "dist/cli.d.ts",
@@ -38,7 +39,7 @@
   },
   "scripts": {
     "build": "tsup",
-    "typecheck": "tsc -p ../../tsconfig.json --noEmit",
+    "typecheck": "tsc -p ./tsconfig.json --noEmit",
     "run:ts": "dotenv -e \"${DOTENV_CONFIG_PATH:-${PROJECT_CWD:-$PWD}/.env}\" -- ts-node -r tsconfig-paths/register",
     "clean-dir": "yarn run run:ts ./src/scripts/cleanDir",
     "clean-redis": "yarn run run:ts ./src/scripts/cleanRedis",
@@ -68,5 +69,7 @@
     "test-script": "yarn run run:ts ./src/scripts/test",
     "test-ml": "yarn run run:ts ./src/scripts/test-ml",
     "user-add": "yarn run run:ts ./src/scripts/user-add"
-  }
+  },
+  "license": "MIT",
+  "author": "aleksnick (https://github.com/aleksnick)"
 }

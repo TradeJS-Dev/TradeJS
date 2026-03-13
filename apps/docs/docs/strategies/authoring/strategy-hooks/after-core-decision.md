@@ -4,28 +4,41 @@ title: afterCoreDecision
 
 Called right after `core.ts` returns any decision.
 
-## Input (`params`)
-
-| Field                  | Type                      | Description                                    |
-| ---------------------- | ------------------------- | ---------------------------------------------- | ------------- | ------------------------------- |
-| `connector`            | `object`                  | Exchange connector instance.                   |
-| `strategyName`         | `string`                  | Strategy id/name.                              |
-| `userName`             | `string`                  | Runtime user.                                  |
-| `symbol`               | `string`                  | Current market symbol.                         |
-| `config`               | `Record<string, unknown>` | Resolved strategy config.                      |
-| `env`                  | `string`                  | Environment, for example `BACKTEST` or `LIVE`. |
-| `isConfigFromBacktest` | `boolean`                 | Whether config came from backtest payload.     |
-| `decision`             | `SkipDecision             | EntryDecision                                  | ExitDecision` | Decision produced by `core.ts`. |
-| `candle`               | `Candle`                  | Current symbol candle.                         |
-| `btcCandle`            | `Candle`                  | Current BTC candle.                            |
-
-Decision shapes:
+## Params
 
 ```ts
-// SkipDecision
-{ kind: 'skip'; code: string }
+{
+  connector: {
+    kline: (params: unknown) => Promise<unknown>;
+    getState: () => Promise<Record<string, unknown>>;
+    setState: (state: object) => Promise<void>;
+    getPosition: (symbol?: string) => Promise<unknown>;
+    getPositions: () => Promise<unknown[]>;
+    placeOrder: (...args: unknown[]) => Promise<unknown>;
+    closePosition: (params: unknown) => Promise<unknown>;
+    getTickers: () => Promise<unknown[]>;
+  };
+  strategyName: string;
+  userName: string;
+  symbol: string;
+  config: Record<string, unknown>;
+  env: string;
+  isConfigFromBacktest: boolean;
+  decision: SkipDecision | EntryDecision | ExitDecision;
+  candle: Candle;
+  btcCandle: Candle;
+}
+```
 
-// ExitDecision
+`SkipDecision` shape:
+
+```ts
+{ kind: 'skip'; code: string }
+```
+
+`ExitDecision` shape:
+
+```ts
 {
   kind: 'exit';
   code: string;
@@ -35,8 +48,11 @@ Decision shapes:
     direction: 'LONG' | 'SHORT';
   };
 }
+```
 
-// EntryDecision
+`EntryDecision` shape:
+
+```ts
 {
   kind: 'entry';
   code: string;
@@ -65,6 +81,23 @@ Decision shapes:
     beforePlaceOrder?: () => Promise<void>;
   };
   signal?: Signal;
+}
+```
+
+Note: `prices` are still part of hook payloads under `decision.entryContext.prices` and `signal.prices`. The API change happened earlier: `strategyApi.entry(...)` no longer accepts `prices`, and runtime derives them itself. The part that did change in the hook contract is `orderPlan`: it now contains only `qty`, `stopLossPrice`, and `takeProfits`.
+
+`Candle` shape:
+
+```ts
+{
+  timestamp: number;
+  dt: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+  turnover: number;
 }
 ```
 

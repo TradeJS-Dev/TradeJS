@@ -18,7 +18,7 @@ jest.mock('@tradejs/infra/logger', () => ({
   },
 }));
 
-jest.mock('@utils/ai', () => ({
+jest.mock('../../../../node/src/ai', () => ({
   askAI: (...args: unknown[]) => mockAskAI(...args),
 }));
 
@@ -26,7 +26,7 @@ import {
   enrichSignalWithAi,
   enrichSignalWithMl,
   enrichSignalWithMlAi,
-} from '@utils/strategyHelpers/runtime';
+} from '../../../../node/src/strategyHelpers/runtime';
 
 describe('strategyHelpers/runtime enrichSignalWithMlAi', () => {
   beforeEach(() => {

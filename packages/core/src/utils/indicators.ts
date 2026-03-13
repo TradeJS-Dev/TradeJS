@@ -5,11 +5,11 @@ import {
   IndicatorsHistorySnapshot,
   MlCandleIndicatorsSnapshot,
 } from '@tradejs/types';
-import { ML_BASE_CANDLES_WINDOW, CORRELATION_WINDOW } from '@constants';
-import { cloneArrayValues } from '@utils/array';
-import { calculateCoinBtcCorrelation } from '@utils/correlation';
-import { getRegisteredIndicatorEntries } from '@utils/indicatorPlugins';
-import { createSpreadSmoother } from '@utils/spread';
+import { ML_BASE_CANDLES_WINDOW, CORRELATION_WINDOW } from '../constants';
+import { cloneArrayValues } from './array';
+import { calculateCoinBtcCorrelation } from './correlation';
+import { getRegisteredIndicatorEntries } from './indicatorPlugins';
+import { createSpreadSmoother } from './spread';
 
 const CANDLE_WINDOW = ML_BASE_CANDLES_WINDOW;
 const BASE_INTERVAL_MINUTES = 15;

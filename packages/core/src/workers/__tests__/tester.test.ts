@@ -16,7 +16,7 @@ describe('worker tester', () => {
     jest.resetModules();
     messageHandler = null;
 
-    jest.doMock('@utils/testing', () => ({
+    jest.doMock('../../../../node/src/testing', () => ({
       testing: testingImpl,
       resetTestingKlineCache: jest.fn(),
     }));
@@ -44,7 +44,7 @@ describe('worker tester', () => {
         return process;
       });
 
-    await import('../tester');
+    await import('../../../../node/src/workers/tester');
   };
 
   afterEach(() => {

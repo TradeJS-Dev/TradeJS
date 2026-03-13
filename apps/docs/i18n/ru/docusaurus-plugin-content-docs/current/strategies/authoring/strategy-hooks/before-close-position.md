@@ -4,30 +4,35 @@ title: beforeClosePosition
 
 Вызывается в exit-path перед `connector.closePosition(...)`.
 
-## Вход (`params`)
-
-| Поле                   | Тип                       | Описание                                   |
-| ---------------------- | ------------------------- | ------------------------------------------ |
-| `connector`            | `object`                  | Экземпляр коннектора биржи.                |
-| `strategyName`         | `string`                  | Имя/идентификатор стратегии.               |
-| `userName`             | `string`                  | Пользователь runtime.                      |
-| `symbol`               | `string`                  | Текущий торговый символ.                   |
-| `config`               | `Record<string, unknown>` | Разрешенный конфиг стратегии.              |
-| `env`                  | `string`                  | Окружение, например `BACKTEST` или `LIVE`. |
-| `isConfigFromBacktest` | `boolean`                 | Конфиг получен из backtest payload.        |
-| `decision`             | `ExitDecision`            | Exit-решение из `core.ts`.                 |
-
-`ExitDecision`:
+## Параметры
 
 ```ts
 {
-  kind: 'exit';
-  code: string;
-  closePlan: {
-    price: number;
-    timestamp: number;
-    direction: 'LONG' | 'SHORT';
-  }
+  connector: {
+    kline: (params: unknown) => Promise<unknown>;
+    getState: () => Promise<Record<string, unknown>>;
+    setState: (state: object) => Promise<void>;
+    getPosition: (symbol?: string) => Promise<unknown>;
+    getPositions: () => Promise<unknown[]>;
+    placeOrder: (...args: unknown[]) => Promise<unknown>;
+    closePosition: (params: unknown) => Promise<unknown>;
+    getTickers: () => Promise<unknown[]>;
+  };
+  strategyName: string;
+  userName: string;
+  symbol: string;
+  config: Record<string, unknown>;
+  env: string;
+  isConfigFromBacktest: boolean;
+  decision: {
+    kind: 'exit';
+    code: string;
+    closePlan: {
+      price: number;
+      timestamp: number;
+      direction: 'LONG' | 'SHORT';
+    };
+  };
 }
 ```
 

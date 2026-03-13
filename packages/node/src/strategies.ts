@@ -1,8 +1,8 @@
 import type { StrategyConfig, StrategyManifest } from '@tradejs/types';
-import { closeOppositePositionsBeforeOpen } from '../../core/src/utils/closeOppositePositionsBeforeOpen';
+import { closeOppositePositionsBeforeOpen } from './closeOppositePositionsBeforeOpen';
 
 export * from '@tradejs/core/strategies';
-export * from '../../core/src/utils/ai';
+export * from './ai';
 export {
   ensureIndicatorPluginsLoaded,
   ensureStrategyPluginsLoaded,
@@ -15,15 +15,15 @@ export {
   strategies,
   getStrategyManifest,
   isKnownStrategy,
-} from '../../core/src/strategy';
-export { createStrategyRuntime } from '../../core/src/utils/strategyRuntime';
-export { resolveStrategyConfig } from '../../core/src/utils/strategyHelpers/config';
+} from './strategy';
+export { createStrategyRuntime } from './strategyRuntime';
+export { resolveStrategyConfig } from './strategyHelpers/config';
 export {
   enrichSignalWithAi,
   enrichSignalWithMl,
   enrichSignalWithMlAi,
   executeEntryOrder,
-} from '../../core/src/utils/strategyHelpers/runtime';
+} from './strategyHelpers/runtime';
 export { closeOppositePositionsBeforeOpen };
 
 type BeforePlaceOrderHook = NonNullable<

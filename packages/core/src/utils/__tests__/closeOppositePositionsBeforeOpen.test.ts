@@ -4,7 +4,7 @@ jest.mock('@tradejs/infra/logger', () => ({
   },
 }));
 
-import { closeOppositePositionsBeforeOpen } from '@utils/closeOppositePositionsBeforeOpen';
+import { closeOppositePositionsBeforeOpen } from '../../../../node/src/closeOppositePositionsBeforeOpen';
 
 describe('closeOppositePositionsBeforeOpen', () => {
   beforeEach(() => {

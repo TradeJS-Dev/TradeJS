@@ -1,5 +1,5 @@
 ---
-title: Runtime Playbook (TrendLine + AdaptiveMomentumRibbon)
+title: Runtime Playbook
 ---
 
 This playbook is a copy-paste command set for your current setup:

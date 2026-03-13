@@ -52,9 +52,7 @@
       "@app/*": ["./apps/app/src/app/*"],
       "@actions/*": ["./apps/app/src/app/actions/*"],
       "@store": ["./apps/app/src/app/store/index"],
-      "@constants": ["./packages/core/src/constants/index"],
       "@shared/*": ["./apps/app/src/app/components/Shared/*"],
-      "@utils/*": ["./packages/core/src/utils/*"],
       "@UI": ["./apps/app/src/app/components/UI/index"],
       "@components/*": ["./apps/app/src/app/components/*"]
     },

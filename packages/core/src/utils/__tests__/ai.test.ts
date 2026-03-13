@@ -48,11 +48,11 @@ const {
   buildAiPayload,
   buildAiSystemPrompt,
   trimSeriesDeep,
-} = require('../ai');
+} = require('../../../../node/src/ai');
 const {
   registerStrategyEntries,
   resetStrategyRegistryCache,
-} = require('../../strategy/manifests');
+} = require('../../../../node/src/strategy/manifests');
 const { strategyEntries } = require('@tradejs/strategies');
 
 const makeCandle = (timestamp: number) => ({

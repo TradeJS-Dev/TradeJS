@@ -2,7 +2,7 @@
 title: Strategy Runtime Hooks
 ---
 
-This section documents each lifecycle hook as a separate contract page with explicit input/output fields.
+This section documents each lifecycle hook as a separate contract page with explicit input and output shapes.
 
 ## Runtime Order
 
@@ -17,38 +17,51 @@ This section documents each lifecycle hook as a separate contract page with expl
 9. [afterPlaceOrder](./after-place-order)
 10. [onRuntimeError](./on-runtime-error)
 
-## Common Base Fields
+## Common Base Shape
 
-These fields are present in every hook `params` object:
+Every hook `params` object starts with these fields:
 
-| Field                  | Type                                                                                                                               |
-| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| `connector`            | `object` with methods: `kline`, `getState`, `setState`, `getPosition`, `getPositions`, `placeOrder`, `closePosition`, `getTickers` |
-| `strategyName`         | `string`                                                                                                                           |
-| `userName`             | `string`                                                                                                                           |
-| `symbol`               | `string`                                                                                                                           |
-| `config`               | `Record<string, unknown>`                                                                                                          |
-| `env`                  | `string`                                                                                                                           |
-| `isConfigFromBacktest` | `boolean`                                                                                                                          |
+```ts
+{
+  connector: {
+    kline: (params: unknown) => Promise<unknown>;
+    getState: () => Promise<Record<string, unknown>>;
+    setState: (state: object) => Promise<void>;
+    getPosition: (symbol?: string) => Promise<unknown>;
+    getPositions: () => Promise<unknown[]>;
+    placeOrder: (...args: unknown[]) => Promise<unknown>;
+    closePosition: (params: unknown) => Promise<unknown>;
+    getTickers: () => Promise<unknown[]>;
+  };
+  strategyName: string;
+  userName: string;
+  symbol: string;
+  config: Record<string, unknown>;
+  env: string;
+  isConfigFromBacktest: boolean;
+}
+```
 
-## Shared Object Shapes
+`candle`, `btcCandle`, and preload arrays use this shape:
 
-`candle` / `btcCandle` items use this shape:
+```ts
+{
+  timestamp: number;
+  dt: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+  turnover: number;
+}
+```
 
-| Field       | Type     |
-| ----------- | -------- |
-| `timestamp` | `number` |
-| `dt`        | `string` |
-| `open`      | `number` |
-| `high`      | `number` |
-| `low`       | `number` |
-| `close`     | `number` |
-| `volume`    | `number` |
-| `turnover`  | `number` |
+Gate hooks return this shape when they want to block execution:
 
-`StrategyHookGateResult` shape:
-
-| Field    | Type      | Required |
-| -------- | --------- | -------- |
-| `allow`  | `boolean` | No       |
-| `reason` | `string`  | No       |
+```ts
+{
+  allow?: boolean;
+  reason?: string;
+}
+```

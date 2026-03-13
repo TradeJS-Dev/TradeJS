@@ -1,1 +1,1 @@
-export * from '../../core/src/utils/connectorsRegistry';
+export * from './connectorsRegistry';

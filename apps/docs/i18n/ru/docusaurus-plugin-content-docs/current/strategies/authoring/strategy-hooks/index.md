@@ -2,7 +2,7 @@
 title: Хуки runtime стратегий
 ---
 
-В этом разделе каждый lifecycle-хук описан отдельной страницей с явными входными и выходными полями.
+В этом разделе каждый lifecycle-хук описан отдельной страницей с явными shape-блоками для входа и выхода.
 
 ## Порядок выполнения
 
@@ -17,36 +17,51 @@ title: Хуки runtime стратегий
 9. [afterPlaceOrder](./after-place-order)
 10. [onRuntimeError](./on-runtime-error)
 
-## Общие поля (есть в каждом `params`)
+## Общая базовая форма
 
-| Поле                   | Тип                                                                                                                              |
-| ---------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| `connector`            | `object` с методами: `kline`, `getState`, `setState`, `getPosition`, `getPositions`, `placeOrder`, `closePosition`, `getTickers` |
-| `strategyName`         | `string`                                                                                                                         |
-| `userName`             | `string`                                                                                                                         |
-| `symbol`               | `string`                                                                                                                         |
-| `config`               | `Record<string, unknown>`                                                                                                        |
-| `env`                  | `string`                                                                                                                         |
-| `isConfigFromBacktest` | `boolean`                                                                                                                        |
+Каждый объект `params` начинается с этих полей:
 
-## Общие формы объектов
+```ts
+{
+  connector: {
+    kline: (params: unknown) => Promise<unknown>;
+    getState: () => Promise<Record<string, unknown>>;
+    setState: (state: object) => Promise<void>;
+    getPosition: (symbol?: string) => Promise<unknown>;
+    getPositions: () => Promise<unknown[]>;
+    placeOrder: (...args: unknown[]) => Promise<unknown>;
+    closePosition: (params: unknown) => Promise<unknown>;
+    getTickers: () => Promise<unknown[]>;
+  };
+  strategyName: string;
+  userName: string;
+  symbol: string;
+  config: Record<string, unknown>;
+  env: string;
+  isConfigFromBacktest: boolean;
+}
+```
 
-`candle` / `btcCandle`:
+`candle`, `btcCandle` и preload-массивы используют такую форму:
 
-| Поле        | Тип      |
-| ----------- | -------- |
-| `timestamp` | `number` |
-| `dt`        | `string` |
-| `open`      | `number` |
-| `high`      | `number` |
-| `low`       | `number` |
-| `close`     | `number` |
-| `volume`    | `number` |
-| `turnover`  | `number` |
+```ts
+{
+  timestamp: number;
+  dt: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+  turnover: number;
+}
+```
 
-`StrategyHookGateResult`:
+Gate-хуки возвращают такую форму, если хотят заблокировать исполнение:
 
-| Поле     | Тип       | Обязательно |
-| -------- | --------- | ----------- |
-| `allow`  | `boolean` | Нет         |
-| `reason` | `string`  | Нет         |
+```ts
+{
+  allow?: boolean;
+  reason?: string;
+}
+```

@@ -4,21 +4,32 @@ title: beforePlaceOrder
 
 Called on entry path right before connector order placement.
 
-## Input (`params`)
+## Params
 
-| Field                  | Type                      | Description                                    |
-| ---------------------- | ------------------------- | ---------------------------------------------- | ---------------------------------------- |
-| `connector`            | `object`                  | Exchange connector instance.                   |
-| `strategyName`         | `string`                  | Strategy id/name.                              |
-| `userName`             | `string`                  | Runtime user.                                  |
-| `symbol`               | `string`                  | Current market symbol.                         |
-| `config`               | `Record<string, unknown>` | Resolved strategy config.                      |
-| `env`                  | `string`                  | Environment, for example `BACKTEST` or `LIVE`. |
-| `isConfigFromBacktest` | `boolean`                 | Whether config came from backtest payload.     |
-| `decision`             | `EntryDecision`           | Entry decision from `core.ts`.                 |
-| `entryContext`         | `EntryContext`            | Final execution context for this entry.        |
-| `runtime`              | `EntryRuntime             | undefined`                                     | Runtime overrides for this entry.        |
-| `signal`               | `Signal                   | undefined`                                     | Enriched signal snapshot (if available). |
+```ts
+{
+  connector: {
+    kline: (params: unknown) => Promise<unknown>;
+    getState: () => Promise<Record<string, unknown>>;
+    setState: (state: object) => Promise<void>;
+    getPosition: (symbol?: string) => Promise<unknown>;
+    getPositions: () => Promise<unknown[]>;
+    placeOrder: (...args: unknown[]) => Promise<unknown>;
+    closePosition: (params: unknown) => Promise<unknown>;
+    getTickers: () => Promise<unknown[]>;
+  };
+  strategyName: string;
+  userName: string;
+  symbol: string;
+  config: Record<string, unknown>;
+  env: string;
+  isConfigFromBacktest: boolean;
+  decision: EntryDecision;
+  entryContext: EntryContext;
+  runtime: EntryRuntime | undefined;
+  signal: Signal | undefined;
+}
+```
 
 `EntryContext` shape:
 
@@ -36,6 +47,58 @@ Called on entry path right before connector order placement.
     riskRatio: number;
   };
   isConfigFromBacktest?: boolean;
+}
+```
+
+`EntryDecision` shape:
+
+```ts
+{
+  kind: 'entry';
+  code: string;
+  entryContext: EntryContext;
+  orderPlan: {
+    qty: number;
+    stopLossPrice: number;
+    takeProfits: Array<{ price: number; rate: number; done?: boolean }>;
+  };
+  runtime?: EntryRuntime;
+  signal?: Signal;
+}
+```
+
+`EntryRuntime` shape:
+
+```ts
+{
+  ml?: { enabled?: boolean; strategyConfig?: Record<string, unknown>; mlThreshold?: number };
+  ai?: { enabled?: boolean; minQuality?: number };
+  beforePlaceOrder?: () => Promise<void>;
+}
+```
+
+Note: `prices` are still part of hook payloads under `decision.entryContext.prices` and `signal.prices`. The API change happened earlier: `strategyApi.entry(...)` no longer accepts `prices`, and runtime derives them itself. The part that did change in the hook contract is `orderPlan`: it now contains only `qty`, `stopLossPrice`, and `takeProfits`.
+
+`Signal` shape passed to the hook:
+
+```ts
+{
+  signalId: string;
+  symbol: string;
+  interval: string;
+  strategy: string;
+  direction: 'LONG' | 'SHORT';
+  timestamp: number;
+  prices: {
+    currentPrice: number;
+    takeProfitPrice: number;
+    stopLossPrice: number;
+    riskRatio: number;
+  };
+  figures: Record<string, unknown>;
+  indicators: Record<string, unknown>;
+  additionalIndicators?: Record<string, unknown>;
+  ml?: { probability: number; threshold: number; passed: boolean };
 }
 ```
 

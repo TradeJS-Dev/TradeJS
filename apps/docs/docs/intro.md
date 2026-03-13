@@ -17,6 +17,7 @@ TradeJS public developer surface is:
 - `@tradejs/core` - browser-safe authoring API, config helpers, shared indicator/math/time helpers
 - `@tradejs/node` - Node runtime for strategy execution, backtests, Pine loading, connector/plugin registries
 - `@tradejs/cli` - operational commands for backtests, signals, bots, doctor checks, ML workflows
+- `@tradejs/app` - optional installable Next.js UI for viewing backtests, dashboards, and runtime data
 
 ## Read Next
 

@@ -14,11 +14,12 @@ slug: /
 - обучать и подключать ML-модели,
 - добавлять AI-проверку сигналов перед исполнением ордера.
 
-Для внешнего использования важны два пакета:
+Для внешнего использования важны несколько пакетов:
 
 - `@tradejs/core` — browser-safe API для авторинга, config-helper’ы и общие indicator/math/time helper’ы
 - `@tradejs/node` — Node runtime для исполнения стратегий, бэктестов, Pine loader и plugin/connector registry
 - `@tradejs/cli` — рабочие команды для бэктестов, сигналов, ботов, проверок и ML-процесса
+- `@tradejs/app` — опциональный installable Next.js UI для просмотра бэктестов, дашбордов и runtime-данных
 
 ## С чего начать
 

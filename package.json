@@ -22,7 +22,7 @@
     "derivatives:ingest": "yarn cli derivatives:ingest --provider coinalyze",
     "derivatives:ingest:coinalyze:all": "yarn cli derivatives:ingest:coinalyze:all",
     "dev": "PROJECT_CWD=\"$PWD\" turbo run dev --filter=@tradejs/app",
-    "dev-tsc": "npx tsc --noEmit",
+    "dev-tsc": "yarn typecheck",
     "dev:sandbox": "yarn dev",
     "dev:with-infra": "yarn infra-up && yarn dev",
     "docker-build": "docker compose -f docker-compose.prod.yml build",
@@ -145,5 +145,7 @@
     "turbo": "^2.5.6",
     "typescript": "^5.1"
   },
-  "packageManager": "yarn@4.13.0"
+  "packageManager": "yarn@4.13.0",
+  "license": "MIT",
+  "author": "aleksnick (https://github.com/aleksnick)"
 }

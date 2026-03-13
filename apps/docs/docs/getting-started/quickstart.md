@@ -18,7 +18,7 @@ This guide is for external package users (without cloning the TradeJS repo).
 mkdir tradejs-project
 cd tradejs-project
 npm init -y
-npm i @tradejs/core @tradejs/node @tradejs/types @tradejs/base @tradejs/cli
+npm i @tradejs/app @tradejs/core @tradejs/node @tradejs/types @tradejs/base @tradejs/cli
 ```
 
 ## 2. Add `tradejs.config.ts`
@@ -84,14 +84,36 @@ npx @tradejs/cli results
 npx @tradejs/cli bot
 ```
 
-## Built-In Web UI Status
+## 7. Create Root User
 
-The published external package flow currently does not include a distributable `@tradejs/app`.
+TradeJS app and CLI use the `root` user by default.
+Create it once before opening the UI:
 
-That means this quickstart covers CLI/runtime usage only.
-There is no supported `app:dev` step for npm users yet, and simply adding `npm i @tradejs/app` would not work with the current package layout.
+```bash
+npx @tradejs/cli user-add -u root -p 'StrongPassword123!'
+```
 
-## 7. Stop Dev Infra
+For details, see [Root User Setup](./root-user).
+
+## 8. Run Web UI
+
+```bash
+npx tradejs-app dev
+```
+
+Open:
+
+- `http://localhost:3000/routes/backtest` for saved backtest runs
+- `http://localhost:3000/routes/dashboard` for market charts and signals
+
+For production mode:
+
+```bash
+npx tradejs-app build
+npx tradejs-app start
+```
+
+## 9. Stop Dev Infra
 
 ```bash
 npx @tradejs/cli infra-down

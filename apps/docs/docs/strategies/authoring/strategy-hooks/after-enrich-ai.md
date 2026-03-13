@@ -4,21 +4,32 @@ title: afterEnrichAi
 
 Called on entry path after AI enrichment.
 
-## Input (`params`)
+## Params
 
-| Field                  | Type                      | Description                                    |
-| ---------------------- | ------------------------- | ---------------------------------------------- | ----------------------------------------- |
-| `connector`            | `object`                  | Exchange connector instance.                   |
-| `strategyName`         | `string`                  | Strategy id/name.                              |
-| `userName`             | `string`                  | Runtime user.                                  |
-| `symbol`               | `string`                  | Current market symbol.                         |
-| `config`               | `Record<string, unknown>` | Resolved strategy config.                      |
-| `env`                  | `string`                  | Environment, for example `BACKTEST` or `LIVE`. |
-| `isConfigFromBacktest` | `boolean`                 | Whether config came from backtest payload.     |
-| `decision`             | `EntryDecision`           | Entry decision from `core.ts`.                 |
-| `runtime`              | `EntryRuntime             | undefined`                                     | Runtime overrides for this entry.         |
-| `signal`               | `Signal                   | undefined`                                     | Enriched signal snapshot (if available).  |
-| `quality`              | `number                   | undefined`                                     | AI quality score extracted from analysis. |
+```ts
+{
+  connector: {
+    kline: (params: unknown) => Promise<unknown>;
+    getState: () => Promise<Record<string, unknown>>;
+    setState: (state: object) => Promise<void>;
+    getPosition: (symbol?: string) => Promise<unknown>;
+    getPositions: () => Promise<unknown[]>;
+    placeOrder: (...args: unknown[]) => Promise<unknown>;
+    closePosition: (params: unknown) => Promise<unknown>;
+    getTickers: () => Promise<unknown[]>;
+  };
+  strategyName: string;
+  userName: string;
+  symbol: string;
+  config: Record<string, unknown>;
+  env: string;
+  isConfigFromBacktest: boolean;
+  decision: EntryDecision;
+  runtime: EntryRuntime | undefined;
+  signal: Signal | undefined;
+  quality: number | undefined;
+}
+```
 
 `EntryDecision` shape:
 
@@ -60,7 +71,9 @@ Called on entry path after AI enrichment.
 }
 ```
 
-`Signal` fields used by runtime:
+Note: `prices` are still part of hook payloads under `decision.entryContext.prices` and `signal.prices`. The API change happened earlier: `strategyApi.entry(...)` no longer accepts `prices`, and runtime derives them itself. The part that did change in the hook contract is `orderPlan`: it now contains only `qty`, `stopLossPrice`, and `takeProfits`.
+
+`Signal` shape passed to the hook:
 
 ```ts
 {

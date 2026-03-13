@@ -1,8 +1,8 @@
 import _ from 'lodash';
-import { BACKTEST_PRELOAD_DAYS } from '@constants';
+import { BACKTEST_PRELOAD_DAYS } from '../constants';
 import { TestSuite, StrategyConfig, StrategyConfigGrid } from '@tradejs/types';
-import { getTimestamp } from '@utils/timestamp';
-import { uuid } from '@utils/uuid';
+import { getTimestamp } from './timestamp';
+import { uuid } from './uuid';
 
 type GenericConfig = StrategyConfig;
 

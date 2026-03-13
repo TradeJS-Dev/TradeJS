@@ -26,18 +26,18 @@ const mockBuildMlPayload = jest.fn((data) => data);
 const mockBuildMlTrainingRow: jest.Mock = jest.fn(() => ({ featureA: 1 }));
 const mockAppendMlDatasetRow = jest.fn((_params?: unknown) => undefined);
 
-jest.mock('../../strategy/manifests', () => ({
+jest.mock('../../../../node/src/strategy/manifests', () => ({
   getStrategyCreator: async (strategyName: string) =>
     strategyName === 'TrendLine'
       ? (config: unknown) => mockStrategyCreator(config)
       : undefined,
 }));
 
-jest.mock('@utils/testConnector', () => ({
+jest.mock('../../../../node/src/testConnector', () => ({
   createTestConnector: () => mockTestConnector,
 }));
 
-jest.mock('@utils/connectorsRegistry', () => ({
+jest.mock('../../../../node/src/connectorsRegistry', () => ({
   BUILTIN_CONNECTOR_NAMES: {
     ByBit: 'ByBit',
     Binance: 'Binance',
@@ -65,7 +65,7 @@ jest.mock('@utils/correlation', () => ({
   }),
 }));
 
-jest.mock('@utils/mlPayload', () => ({
+jest.mock('../../../../node/src/mlPayload', () => ({
   buildMlPayload: (payload: unknown) => mockBuildMlPayload(payload),
 }));
 
@@ -80,7 +80,7 @@ jest.mock('@utils/timestamp', () => ({
   getTimestamp: () => 1_000_000,
 }));
 
-import { testing, resetTestingKlineCache } from '@utils/testing';
+import { testing, resetTestingKlineCache } from '../../../../node/src/testing';
 
 const candle = (timestamp: number) => ({
   timestamp,

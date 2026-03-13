@@ -4,21 +4,45 @@ title: onInit
 
 Called once when strategy runtime is created.
 
-## Input (`params`)
+## Params
 
-| Field                  | Type                      | Description                                    |
-| ---------------------- | ------------------------- | ---------------------------------------------- |
-| `connector`            | `object`                  | Exchange connector instance.                   |
-| `strategyName`         | `string`                  | Strategy id/name.                              |
-| `userName`             | `string`                  | Runtime user.                                  |
-| `symbol`               | `string`                  | Current market symbol.                         |
-| `config`               | `Record<string, unknown>` | Resolved strategy config.                      |
-| `env`                  | `string`                  | Environment, for example `BACKTEST` or `LIVE`. |
-| `isConfigFromBacktest` | `boolean`                 | Whether config came from backtest payload.     |
-| `data`                 | `Array<Candle>`           | Symbol candles preload.                        |
-| `btcData`              | `Array<Candle>`           | BTC candles preload.                           |
+```ts
+{
+  connector: {
+    kline: (params: unknown) => Promise<unknown>;
+    getState: () => Promise<Record<string, unknown>>;
+    setState: (state: object) => Promise<void>;
+    getPosition: (symbol?: string) => Promise<unknown>;
+    getPositions: () => Promise<unknown[]>;
+    placeOrder: (...args: unknown[]) => Promise<unknown>;
+    closePosition: (params: unknown) => Promise<unknown>;
+    getTickers: () => Promise<unknown[]>;
+  };
+  strategyName: string;
+  userName: string;
+  symbol: string;
+  config: Record<string, unknown>;
+  env: string;
+  isConfigFromBacktest: boolean;
+  data: Candle[];
+  btcData: Candle[];
+}
+```
 
-`Candle` fields: `timestamp: number`, `dt: string`, `open: number`, `high: number`, `low: number`, `close: number`, `volume: number`, `turnover: number`.
+`Candle` shape:
+
+```ts
+{
+  timestamp: number;
+  dt: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+  turnover: number;
+}
+```
 
 ## Output
 

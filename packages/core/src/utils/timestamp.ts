@@ -1,6 +1,6 @@
 import { format } from 'date-fns';
 import { getUnixTime, subDays } from 'date-fns';
-import { BACKTEST_PRELOAD_DAYS } from '@constants';
+import { BACKTEST_PRELOAD_DAYS } from '../constants';
 import {
   KlineChartItem,
   KlineChartData,

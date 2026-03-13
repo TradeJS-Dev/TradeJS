@@ -4,20 +4,49 @@ title: onSkip
 
 Called only for `skip` decisions.
 
-## Input (`params`)
+## Params
 
-| Field                  | Type                             | Description                                    |
-| ---------------------- | -------------------------------- | ---------------------------------------------- |
-| `connector`            | `object`                         | Exchange connector instance.                   |
-| `strategyName`         | `string`                         | Strategy id/name.                              |
-| `userName`             | `string`                         | Runtime user.                                  |
-| `symbol`               | `string`                         | Current market symbol.                         |
-| `config`               | `Record<string, unknown>`        | Resolved strategy config.                      |
-| `env`                  | `string`                         | Environment, for example `BACKTEST` or `LIVE`. |
-| `isConfigFromBacktest` | `boolean`                        | Whether config came from backtest payload.     |
-| `decision`             | `{ kind: 'skip'; code: string }` | Skip decision from `core.ts`.                  |
-| `candle`               | `Candle`                         | Current symbol candle.                         |
-| `btcCandle`            | `Candle`                         | Current BTC candle.                            |
+```ts
+{
+  connector: {
+    kline: (params: unknown) => Promise<unknown>;
+    getState: () => Promise<Record<string, unknown>>;
+    setState: (state: object) => Promise<void>;
+    getPosition: (symbol?: string) => Promise<unknown>;
+    getPositions: () => Promise<unknown[]>;
+    placeOrder: (...args: unknown[]) => Promise<unknown>;
+    closePosition: (params: unknown) => Promise<unknown>;
+    getTickers: () => Promise<unknown[]>;
+  };
+  strategyName: string;
+  userName: string;
+  symbol: string;
+  config: Record<string, unknown>;
+  env: string;
+  isConfigFromBacktest: boolean;
+  decision: {
+    kind: 'skip';
+    code: string;
+  };
+  candle: Candle;
+  btcCandle: Candle;
+}
+```
+
+`Candle` shape:
+
+```ts
+{
+  timestamp: number;
+  dt: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+  turnover: number;
+}
+```
 
 ## Output
 

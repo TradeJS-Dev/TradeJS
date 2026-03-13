@@ -1,6 +1,7 @@
 {
   "name": "@tradejs/base",
   "version": "1.0.0",
+  "description": "Default preset that wires the built-in TradeJS strategies, indicators, and connectors.",
   "main": "dist/index.js",
   "module": "dist/index.mjs",
   "types": "dist/index.d.ts",
@@ -26,6 +27,8 @@
   },
   "scripts": {
     "build": "tsup",
-    "typecheck": "tsc -p ../../tsconfig.json --noEmit"
-  }
+    "typecheck": "tsc -p ./tsconfig.json --noEmit"
+  },
+  "license": "MIT",
+  "author": "aleksnick (https://github.com/aleksnick)"
 }

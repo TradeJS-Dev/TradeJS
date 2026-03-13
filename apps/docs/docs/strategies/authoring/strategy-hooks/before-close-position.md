@@ -4,30 +4,35 @@ title: beforeClosePosition
 
 Called on exit path before `connector.closePosition(...)`.
 
-## Input (`params`)
-
-| Field                  | Type                      | Description                                    |
-| ---------------------- | ------------------------- | ---------------------------------------------- |
-| `connector`            | `object`                  | Exchange connector instance.                   |
-| `strategyName`         | `string`                  | Strategy id/name.                              |
-| `userName`             | `string`                  | Runtime user.                                  |
-| `symbol`               | `string`                  | Current market symbol.                         |
-| `config`               | `Record<string, unknown>` | Resolved strategy config.                      |
-| `env`                  | `string`                  | Environment, for example `BACKTEST` or `LIVE`. |
-| `isConfigFromBacktest` | `boolean`                 | Whether config came from backtest payload.     |
-| `decision`             | `ExitDecision`            | Exit decision from `core.ts`.                  |
-
-`ExitDecision` shape:
+## Params
 
 ```ts
 {
-  kind: 'exit';
-  code: string;
-  closePlan: {
-    price: number;
-    timestamp: number;
-    direction: 'LONG' | 'SHORT';
-  }
+  connector: {
+    kline: (params: unknown) => Promise<unknown>;
+    getState: () => Promise<Record<string, unknown>>;
+    setState: (state: object) => Promise<void>;
+    getPosition: (symbol?: string) => Promise<unknown>;
+    getPositions: () => Promise<unknown[]>;
+    placeOrder: (...args: unknown[]) => Promise<unknown>;
+    closePosition: (params: unknown) => Promise<unknown>;
+    getTickers: () => Promise<unknown[]>;
+  };
+  strategyName: string;
+  userName: string;
+  symbol: string;
+  config: Record<string, unknown>;
+  env: string;
+  isConfigFromBacktest: boolean;
+  decision: {
+    kind: 'exit';
+    code: string;
+    closePlan: {
+      price: number;
+      timestamp: number;
+      direction: 'LONG' | 'SHORT';
+    };
+  };
 }
 ```
 

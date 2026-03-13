@@ -17,11 +17,11 @@ describe('strategy manifests registry', () => {
   });
 
   const loadModule = async () => {
-    jest.doMock('@utils/tradejsConfig', () => ({
+    jest.doMock('../../../../node/src/tradejsConfig', () => ({
       loadTradejsConfig: loadTradejsConfigMock,
       resolvePluginModuleSpecifier: (moduleName: string) => moduleName,
     }));
-    jest.doMock('@utils/indicatorPlugins', () => ({
+    jest.doMock('@tradejs/core/indicators', () => ({
       registerIndicatorEntries: registerIndicatorEntriesMock,
       resetIndicatorRegistryCache: jest.fn(),
     }));
@@ -32,7 +32,7 @@ describe('strategy manifests registry', () => {
       },
     }));
 
-    return import('../manifests');
+    return import('../../../../node/src/strategy/manifests');
   };
 
   it('starts empty and supports runtime registration + proxy access', async () => {

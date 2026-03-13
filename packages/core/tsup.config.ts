@@ -19,7 +19,7 @@ export default defineConfig({
   ],
   format: ['cjs', 'esm'],
   dts: true,
-  tsconfig: '../../tsconfig.build.json',
+  tsconfig: './tsconfig.build.json',
   clean: true,
   outDir: 'dist',
   target: 'node20',

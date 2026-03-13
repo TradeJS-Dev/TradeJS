@@ -12,7 +12,7 @@ describe('connectors registry', () => {
   });
 
   const loadModule = async () => {
-    jest.doMock('@utils/tradejsConfig', () => ({
+    jest.doMock('../../../../node/src/tradejsConfig', () => ({
       loadTradejsConfig: loadTradejsConfigMock,
       resolvePluginModuleSpecifier: (moduleName: string) => moduleName,
     }));
@@ -23,7 +23,7 @@ describe('connectors registry', () => {
       },
     }));
 
-    const module = await import('../connectorsRegistry');
+    const module = await import('../../../../node/src/connectorsRegistry');
     return { module };
   };
 

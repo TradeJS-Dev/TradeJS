@@ -4,28 +4,41 @@ title: afterCoreDecision
 
 Вызывается сразу после того, как `core.ts` вернул любое решение.
 
-## Вход (`params`)
-
-| Поле                   | Тип                       | Описание                                   |
-| ---------------------- | ------------------------- | ------------------------------------------ | ------------- | --------------------- |
-| `connector`            | `object`                  | Экземпляр коннектора биржи.                |
-| `strategyName`         | `string`                  | Имя/идентификатор стратегии.               |
-| `userName`             | `string`                  | Пользователь runtime.                      |
-| `symbol`               | `string`                  | Текущий торговый символ.                   |
-| `config`               | `Record<string, unknown>` | Разрешенный конфиг стратегии.              |
-| `env`                  | `string`                  | Окружение, например `BACKTEST` или `LIVE`. |
-| `isConfigFromBacktest` | `boolean`                 | Конфиг получен из backtest payload.        |
-| `decision`             | `SkipDecision             | EntryDecision                              | ExitDecision` | Решение из `core.ts`. |
-| `candle`               | `Candle`                  | Текущая свеча по символу.                  |
-| `btcCandle`            | `Candle`                  | Текущая свеча по BTC.                      |
-
-Формы решений:
+## Параметры
 
 ```ts
-// SkipDecision
-{ kind: 'skip'; code: string }
+{
+  connector: {
+    kline: (params: unknown) => Promise<unknown>;
+    getState: () => Promise<Record<string, unknown>>;
+    setState: (state: object) => Promise<void>;
+    getPosition: (symbol?: string) => Promise<unknown>;
+    getPositions: () => Promise<unknown[]>;
+    placeOrder: (...args: unknown[]) => Promise<unknown>;
+    closePosition: (params: unknown) => Promise<unknown>;
+    getTickers: () => Promise<unknown[]>;
+  };
+  strategyName: string;
+  userName: string;
+  symbol: string;
+  config: Record<string, unknown>;
+  env: string;
+  isConfigFromBacktest: boolean;
+  decision: SkipDecision | EntryDecision | ExitDecision;
+  candle: Candle;
+  btcCandle: Candle;
+}
+```
 
-// ExitDecision
+`SkipDecision` shape:
+
+```ts
+{ kind: 'skip'; code: string }
+```
+
+`ExitDecision` shape:
+
+```ts
 {
   kind: 'exit';
   code: string;
@@ -35,8 +48,11 @@ title: afterCoreDecision
     direction: 'LONG' | 'SHORT';
   };
 }
+```
 
-// EntryDecision
+`EntryDecision` shape:
+
+```ts
 {
   kind: 'entry';
   code: string;
@@ -65,6 +81,23 @@ title: afterCoreDecision
     beforePlaceOrder?: () => Promise<void>;
   };
   signal?: Signal;
+}
+```
+
+Важно: `prices` по-прежнему есть в hook payload-ах внутри `decision.entryContext.prices` и `signal.prices`. Мы убирали их из входа `strategyApi.entry(...)`, а рантайм теперь вычисляет их сам. Что реально изменилось в hook-контракте — это `orderPlan`: теперь там только `qty`, `stopLossPrice` и `takeProfits`.
+
+`Candle` shape:
+
+```ts
+{
+  timestamp: number;
+  dt: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+  turnover: number;
 }
 ```
 

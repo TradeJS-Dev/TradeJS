@@ -4,20 +4,49 @@ title: onSkip
 
 Вызывается только для решений `skip`.
 
-## Вход (`params`)
+## Параметры
 
-| Поле                   | Тип                              | Описание                                   |
-| ---------------------- | -------------------------------- | ------------------------------------------ |
-| `connector`            | `object`                         | Экземпляр коннектора биржи.                |
-| `strategyName`         | `string`                         | Имя/идентификатор стратегии.               |
-| `userName`             | `string`                         | Пользователь runtime.                      |
-| `symbol`               | `string`                         | Текущий торговый символ.                   |
-| `config`               | `Record<string, unknown>`        | Разрешенный конфиг стратегии.              |
-| `env`                  | `string`                         | Окружение, например `BACKTEST` или `LIVE`. |
-| `isConfigFromBacktest` | `boolean`                        | Конфиг получен из backtest payload.        |
-| `decision`             | `{ kind: 'skip'; code: string }` | Skip-решение из `core.ts`.                 |
-| `candle`               | `Candle`                         | Текущая свеча по символу.                  |
-| `btcCandle`            | `Candle`                         | Текущая свеча по BTC.                      |
+```ts
+{
+  connector: {
+    kline: (params: unknown) => Promise<unknown>;
+    getState: () => Promise<Record<string, unknown>>;
+    setState: (state: object) => Promise<void>;
+    getPosition: (symbol?: string) => Promise<unknown>;
+    getPositions: () => Promise<unknown[]>;
+    placeOrder: (...args: unknown[]) => Promise<unknown>;
+    closePosition: (params: unknown) => Promise<unknown>;
+    getTickers: () => Promise<unknown[]>;
+  };
+  strategyName: string;
+  userName: string;
+  symbol: string;
+  config: Record<string, unknown>;
+  env: string;
+  isConfigFromBacktest: boolean;
+  decision: {
+    kind: 'skip';
+    code: string;
+  };
+  candle: Candle;
+  btcCandle: Candle;
+}
+```
+
+`Candle` shape:
+
+```ts
+{
+  timestamp: number;
+  dt: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+  turnover: number;
+}
+```
 
 ## Выход
 

@@ -73,7 +73,7 @@ Strategy-local runtime extension point:
 
 ### Shared Runtime
 
-`packages/core/src/utils/strategyRuntime.ts` handles:
+`packages/node/src/strategyRuntime.ts` handles:
 
 - config resolution
 - `core` execution
@@ -309,5 +309,6 @@ return async () => {
 
 - `packages/types/src/strategy.ts`
 - `packages/types/src/strategyAdapters.ts`
-- `packages/core/src/utils/strategyRuntime.ts`
+- `packages/node/src/strategyRuntime.ts`
+- `packages/node/src/strategy/manifests.ts`
 - `packages/core/src/utils/strategyHelpers/signalBuilders.ts`

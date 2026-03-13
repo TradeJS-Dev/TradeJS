@@ -4,23 +4,34 @@ title: beforePlaceOrder
 
 Вызывается в entry-path прямо перед постановкой ордера через коннектор.
 
-## Вход (`params`)
+## Параметры
 
-| Поле                   | Тип                       | Описание                                     |
-| ---------------------- | ------------------------- | -------------------------------------------- | ----------------------------------------- |
-| `connector`            | `object`                  | Экземпляр коннектора биржи.                  |
-| `strategyName`         | `string`                  | Имя/идентификатор стратегии.                 |
-| `userName`             | `string`                  | Пользователь runtime.                        |
-| `symbol`               | `string`                  | Текущий торговый символ.                     |
-| `config`               | `Record<string, unknown>` | Разрешенный конфиг стратегии.                |
-| `env`                  | `string`                  | Окружение, например `BACKTEST` или `LIVE`.   |
-| `isConfigFromBacktest` | `boolean`                 | Конфиг получен из backtest payload.          |
-| `decision`             | `EntryDecision`           | Entry-решение из `core.ts`.                  |
-| `entryContext`         | `EntryContext`            | Финальный execution context для этого entry. |
-| `runtime`              | `EntryRuntime             | undefined`                                   | Runtime overrides для этого entry.        |
-| `signal`               | `Signal                   | undefined`                                   | Enriched signal snapshot (если доступен). |
+```ts
+{
+  connector: {
+    kline: (params: unknown) => Promise<unknown>;
+    getState: () => Promise<Record<string, unknown>>;
+    setState: (state: object) => Promise<void>;
+    getPosition: (symbol?: string) => Promise<unknown>;
+    getPositions: () => Promise<unknown[]>;
+    placeOrder: (...args: unknown[]) => Promise<unknown>;
+    closePosition: (params: unknown) => Promise<unknown>;
+    getTickers: () => Promise<unknown[]>;
+  };
+  strategyName: string;
+  userName: string;
+  symbol: string;
+  config: Record<string, unknown>;
+  env: string;
+  isConfigFromBacktest: boolean;
+  decision: EntryDecision;
+  entryContext: EntryContext;
+  runtime: EntryRuntime | undefined;
+  signal: Signal | undefined;
+}
+```
 
-`EntryContext`:
+`EntryContext` shape:
 
 ```ts
 {
@@ -36,6 +47,58 @@ title: beforePlaceOrder
     riskRatio: number;
   };
   isConfigFromBacktest?: boolean;
+}
+```
+
+`EntryDecision` shape:
+
+```ts
+{
+  kind: 'entry';
+  code: string;
+  entryContext: EntryContext;
+  orderPlan: {
+    qty: number;
+    stopLossPrice: number;
+    takeProfits: Array<{ price: number; rate: number; done?: boolean }>;
+  };
+  runtime?: EntryRuntime;
+  signal?: Signal;
+}
+```
+
+`EntryRuntime` shape:
+
+```ts
+{
+  ml?: { enabled?: boolean; strategyConfig?: Record<string, unknown>; mlThreshold?: number };
+  ai?: { enabled?: boolean; minQuality?: number };
+  beforePlaceOrder?: () => Promise<void>;
+}
+```
+
+Важно: `prices` по-прежнему есть в hook payload-ах внутри `decision.entryContext.prices` и `signal.prices`. Мы убирали их из входа `strategyApi.entry(...)`, а рантайм теперь вычисляет их сам. Что реально изменилось в hook-контракте — это `orderPlan`: теперь там только `qty`, `stopLossPrice` и `takeProfits`.
+
+`Signal`, передаваемый в хук:
+
+```ts
+{
+  signalId: string;
+  symbol: string;
+  interval: string;
+  strategy: string;
+  direction: 'LONG' | 'SHORT';
+  timestamp: number;
+  prices: {
+    currentPrice: number;
+    takeProfitPrice: number;
+    stopLossPrice: number;
+    riskRatio: number;
+  };
+  figures: Record<string, unknown>;
+  indicators: Record<string, unknown>;
+  additionalIndicators?: Record<string, unknown>;
+  ml?: { probability: number; threshold: number; passed: boolean };
 }
 ```
 

@@ -18,7 +18,7 @@ title: Quickstart
 mkdir tradejs-project
 cd tradejs-project
 npm init -y
-npm i @tradejs/core @tradejs/node @tradejs/types @tradejs/base @tradejs/cli
+npm i @tradejs/app @tradejs/core @tradejs/node @tradejs/types @tradejs/base @tradejs/cli
 ```
 
 ## 2. Добавьте `tradejs.config.ts`
@@ -84,14 +84,36 @@ npx @tradejs/cli results
 npx @tradejs/cli bot
 ```
 
-## Статус встроенного web UI
+## 7. Создайте пользователя `root`
 
-Публичный пакетный flow для внешнего пользователя пока не включает publishable `@tradejs/app`.
+TradeJS app и CLI по умолчанию используют пользователя `root`.
+Создайте его один раз перед запуском UI:
 
-Поэтому этот quickstart покрывает только CLI/runtime-сценарий.
-Поддерживаемого шага `app:dev` для npm-пользователя пока нет, и простое добавление `npm i @tradejs/app` с текущей структурой пакета не заработает.
+```bash
+npx @tradejs/cli user-add -u root -p 'StrongPassword123!'
+```
 
-## 7. Остановите dev-инфраструктуру
+Подробнее см. в [Root User Setup](./root-user).
+
+## 8. Запустите web UI
+
+```bash
+npx tradejs-app dev
+```
+
+Откройте:
+
+- `http://localhost:3000/routes/backtest` для сохраненных бэктестов
+- `http://localhost:3000/routes/dashboard` для графиков и сигналов
+
+Для production-режима:
+
+```bash
+npx tradejs-app build
+npx tradejs-app start
+```
+
+## 9. Остановите dev-инфраструктуру
 
 ```bash
 npx @tradejs/cli infra-down

@@ -1,6 +1,6 @@
 # @tradejs/core
 
-Core TradeJS package for strategy and indicator development.
+Browser-safe TradeJS public API for config, strategy authoring helpers, indicators, figures, math, and shared utilities.
 
 - Homepage: https://tradejs.dev
 - Documentation: https://docs.tradejs.dev
@@ -10,10 +10,33 @@ Core TradeJS package for strategy and indicator development.
 ## Install
 
 ```bash
-npm i @tradejs/core @tradejs/node @tradejs/types
+npm i @tradejs/core @tradejs/types
 ```
 
-## Minimal example
+Add `@tradejs/node` when you need server/runtime execution helpers.
+
+## Public Surface
+
+Import only explicit public subpaths:
+
+- `@tradejs/core/config`
+- `@tradejs/core/strategies`
+- `@tradejs/core/indicators`
+- `@tradejs/core/backtest`
+- `@tradejs/core/math`
+- `@tradejs/core/time`
+- `@tradejs/core/api`
+- `@tradejs/core/figures`
+- `@tradejs/core/constants`
+- `@tradejs/core/data`
+- `@tradejs/core/json`
+- `@tradejs/core/async`
+- `@tradejs/core/pine`
+- `@tradejs/core/tickers`
+
+There is no root `@tradejs/core` import surface.
+
+## Minimal Example
 
 ```ts
 import { defineConfig } from '@tradejs/core/config';
@@ -26,17 +49,12 @@ export default defineConfig(basePreset, {
 });
 ```
 
-Import rule:
+## Import Rules
 
-- config/plugin registration should be imported from `@tradejs/core/config`
-- runtime/helpers should be imported from explicit public subpaths like `@tradejs/node/strategies`, `@tradejs/node/backtest`, `@tradejs/core/indicators`, `@tradejs/core/math`, `@tradejs/core/time`, `@tradejs/node/pine`
-- shared types should be imported from `@tradejs/types`
-- avoid internal aliases (`@utils`, `@constants`) and non-public deep imports
+- import plugin/config helpers from `@tradejs/core/config`
+- import browser-safe authoring helpers from explicit `@tradejs/core/*` subpaths
+- import shared contracts from `@tradejs/types`
+- do not use internal aliases like `@utils` / `@constants`
+- do not use non-public deep imports like `@tradejs/core/src/*`
 
-Repository conventions for `utils`:
-
-- runtime utilities live under `packages/core/src/utils/*` and `packages/infra/src/*`
-- test-only helpers must live under `packages/core/src/utils/testHelpers/*`
-- do not keep duplicate helper implementations in production runtime files
-
-For CLI commands, use `@tradejs/cli`.
+For runtime execution, Pine loading, plugin registries, and backtest orchestration, use `@tradejs/node`.

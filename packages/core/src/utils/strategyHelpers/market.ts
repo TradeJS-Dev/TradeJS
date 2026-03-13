@@ -1,5 +1,5 @@
-import { FEE_PERCENT as DEFAULT_FEE_PERCENT } from '@constants';
-import { getTimestamp } from '@utils/timestamp';
+import { FEE_PERCENT as DEFAULT_FEE_PERCENT } from '../../constants';
+import { getTimestamp } from '../timestamp';
 import {
   BacktestPriceMode,
   Connector,

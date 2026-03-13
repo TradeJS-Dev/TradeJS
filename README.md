@@ -27,7 +27,7 @@ It supports two first-class authoring paths:
 
 All strategies run through the shared runtime in:
 
-- `packages/core/src/utils/strategyRuntime.ts`
+- `packages/node/src/strategyRuntime.ts`
 
 Strategy `core.ts` returns one of:
 
@@ -51,7 +51,7 @@ Runtime then handles:
 
 Strategies are loaded as plugins via manifests and registry:
 
-- `packages/core/src/strategy/manifests.ts`
+- `packages/node/src/strategy/manifests.ts`
 - `packages/strategies/src/*/manifest.ts`
 
 ### Pine Strategy Support

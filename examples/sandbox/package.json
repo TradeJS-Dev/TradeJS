@@ -19,7 +19,7 @@
   "scripts": {
     "build": "mkdir -p dist && echo 'example-sandbox: build placeholder' > dist/.build.txt",
     "lint": "yarn run -T eslint src tradejs.config.ts --ext .ts",
-    "typecheck": "tsc -p ../../tsconfig.json --noEmit",
+    "typecheck": "tsc -p ./tsconfig.json --noEmit",
     "run:ts": "ts-node -r tsconfig-paths/register -P ../../tsconfig.json",
     "infra-up": "tradejs infra-up",
     "infra-down": "tradejs infra-down",
@@ -30,5 +30,7 @@
     "sandbox:signals": "yarn run:ts ./src/scripts/runDeterministicSignals.ts",
     "sandbox:assert-signals": "yarn run:ts ./src/scripts/assertSignalsSnapshot.ts",
     "e2e": "yarn sandbox:user-add && yarn sandbox:seed-config && yarn sandbox:backtest && yarn sandbox:assert-backtest && yarn sandbox:signals && yarn sandbox:assert-signals"
-  }
+  },
+  "license": "MIT",
+  "author": "aleksnick (https://github.com/aleksnick)"
 }

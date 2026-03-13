@@ -1,6 +1,7 @@
 {
   "name": "@tradejs/core",
   "version": "1.0.0",
+  "description": "Browser-safe TradeJS public API for config, strategy authoring, indicators, figures, and shared helpers.",
   "homepage": "https://tradejs.dev",
   "files": [
     "dist"
@@ -91,6 +92,8 @@
   },
   "scripts": {
     "build": "tsup",
-    "typecheck": "tsc -p ../../tsconfig.json --noEmit"
-  }
+    "typecheck": "tsc -p ./tsconfig.json --noEmit"
+  },
+  "license": "MIT",
+  "author": "aleksnick (https://github.com/aleksnick)"
 }

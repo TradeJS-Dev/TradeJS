@@ -13,7 +13,7 @@ title: Pine Script стратегия пошагово
 Создайте обычный модуль стратегии:
 
 ```text
-packages/strategies/src/AdaptiveMomentumRibbon/
+src/strategies/AdaptiveMomentumRibbon/
   adaptiveMomentumRibbon.pine
   config.ts
   core.ts
@@ -653,7 +653,7 @@ export { adaptiveMomentumRibbonManifest } from './manifest';
 
 ## 8. Регистрируйте через plugin + `tradejs.config.ts`
 
-Создайте plugin entry (например, в `packages/strategies/src/index.ts`):
+Создайте plugin entry (например, в `src/plugins/adaptiveMomentumRibbon.plugin.ts`):
 
 ```ts
 import { defineStrategyPlugin } from '@tradejs/core/config';

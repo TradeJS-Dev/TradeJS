@@ -14,7 +14,7 @@ import {
   MonthlyEquityStats,
   EOMPoint,
 } from '@tradejs/types';
-import { TestThresholdsConfig } from '@constants';
+import { TestThresholdsConfig } from '../constants';
 import {
   round,
   absReturns,
@@ -22,7 +22,7 @@ import {
   equityPoints,
   mean,
   sum,
-} from '@utils/math';
+} from './math';
 
 /**
  * Максимальные стрики побед/поражений по абсолютным ретёрнам на сделку.

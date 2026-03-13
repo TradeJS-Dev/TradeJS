@@ -13,7 +13,7 @@ If you need the TypeScript-only path, see [TypeScript strategy with `StrategyAPI
 Create a regular strategy module folder:
 
 ```text
-packages/strategies/src/AdaptiveMomentumRibbon/
+src/strategies/AdaptiveMomentumRibbon/
   adaptiveMomentumRibbon.pine
   config.ts
   core.ts
@@ -653,7 +653,7 @@ export { adaptiveMomentumRibbonManifest } from './manifest';
 
 ## 8. Register via Plugin + `tradejs.config.ts`
 
-Create plugin entry (for example, in `packages/strategies/src/index.ts`):
+Create plugin entry (for example, in `src/plugins/adaptiveMomentumRibbon.plugin.ts`):
 
 ```ts
 import { defineStrategyPlugin } from '@tradejs/core/config';

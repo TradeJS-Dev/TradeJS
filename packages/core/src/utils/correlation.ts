@@ -1,4 +1,4 @@
-import { round } from '@utils/math';
+import { round } from './math';
 import { KlineChartItem } from '@tradejs/types';
 
 /**

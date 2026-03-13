@@ -1,6 +1,7 @@
 {
   "name": "@tradejs/infra",
   "version": "1.0.0",
+  "description": "Server-only infrastructure adapters for Redis, Timescale, ML, logging, and IO.",
   "files": [
     "dist",
     "proto"
@@ -52,6 +53,8 @@
   },
   "scripts": {
     "build": "tsup",
-    "typecheck": "tsc -p ../../tsconfig.json --noEmit"
-  }
+    "typecheck": "tsc -p ./tsconfig.json --noEmit"
+  },
+  "license": "MIT",
+  "author": "aleksnick (https://github.com/aleksnick)"
 }

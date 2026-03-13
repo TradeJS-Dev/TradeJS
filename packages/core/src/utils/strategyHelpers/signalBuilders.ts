@@ -24,7 +24,7 @@ import {
   getStrategyMarketSnapshot,
 } from './market';
 import { createLastTradeController } from './state';
-import { uuid } from '@utils/uuid';
+import { uuid } from '../uuid';
 
 type AiRuntimeConfigLike = {
   AI_ENABLED?: boolean;

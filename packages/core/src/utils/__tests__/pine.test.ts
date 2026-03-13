@@ -11,7 +11,7 @@ import {
   getPinePlotSeries,
   loadPineScript,
   runPineScript,
-} from '@utils/pine';
+} from '@tradejs/node/pine';
 
 const makeCandles = (count = 120, startTimestamp = 1_700_000_000_000) =>
   Array.from({ length: count }, (_, index) => {

@@ -8,7 +8,7 @@ import {
   loadTradejsConfig,
   resetTradejsConfigCache,
   resolvePluginModuleSpecifier,
-} from '@utils/tradejsConfig';
+} from '../../../../node/src/tradejsConfig';
 
 const loggerLogMock = jest.fn();
 

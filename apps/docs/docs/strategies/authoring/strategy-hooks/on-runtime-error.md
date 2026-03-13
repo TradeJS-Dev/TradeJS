@@ -4,30 +4,40 @@ title: onRuntimeError
 
 Called when runtime catches an error in a runtime stage or hook.
 
-## Input (`params`)
-
-| Field                  | Type                      | Description                                    |
-| ---------------------- | ------------------------- | ---------------------------------------------- | ------------------------------ | ---------- | ------------------------------------------------ |
-| `connector`            | `object`                  | Exchange connector instance.                   |
-| `strategyName`         | `string`                  | Strategy id/name.                              |
-| `userName`             | `string`                  | Runtime user.                                  |
-| `symbol`               | `string`                  | Current market symbol.                         |
-| `config`               | `Record<string, unknown>` | Resolved strategy config.                      |
-| `env`                  | `string`                  | Environment, for example `BACKTEST` or `LIVE`. |
-| `isConfigFromBacktest` | `boolean`                 | Whether config came from backtest payload.     |
-| `stage`                | `string`                  | Runtime stage name where error was caught.     |
-| `error`                | `unknown`                 | Caught error object/value.                     |
-| `decision`             | `SkipDecision             | EntryDecision                                  | ExitDecision                   | undefined` | Decision related to current stage, if available. |
-| `signal`               | `Signal                   | undefined`                                     | Signal snapshot, if available. |
-
-Decision shapes:
+## Params
 
 ```ts
 {
-  kind: 'skip';
-  code: string;
+  connector: {
+    kline: (params: unknown) => Promise<unknown>;
+    getState: () => Promise<Record<string, unknown>>;
+    setState: (state: object) => Promise<void>;
+    getPosition: (symbol?: string) => Promise<unknown>;
+    getPositions: () => Promise<unknown[]>;
+    placeOrder: (...args: unknown[]) => Promise<unknown>;
+    closePosition: (params: unknown) => Promise<unknown>;
+    getTickers: () => Promise<unknown[]>;
+  };
+  strategyName: string;
+  userName: string;
+  symbol: string;
+  config: Record<string, unknown>;
+  env: string;
+  isConfigFromBacktest: boolean;
+  stage: string;
+  error: unknown;
+  decision: SkipDecision | EntryDecision | ExitDecision | undefined;
+  signal: Signal | undefined;
 }
 ```
+
+`SkipDecision` shape:
+
+```ts
+{ kind: 'skip'; code: string }
+```
+
+`ExitDecision` shape:
 
 ```ts
 {
@@ -37,9 +47,11 @@ Decision shapes:
     price: number;
     timestamp: number;
     direction: 'LONG' | 'SHORT';
-  }
+  };
 }
 ```
+
+`EntryDecision` shape:
 
 ```ts
 {
@@ -67,7 +79,9 @@ Decision shapes:
 }
 ```
 
-`Signal` fields used by runtime:
+Note: `prices` are still part of hook payloads under `decision.entryContext.prices` and `signal.prices`. The API change happened earlier: `strategyApi.entry(...)` no longer accepts `prices`, and runtime derives them itself. The part that did change in the hook contract is `orderPlan`: it now contains only `qty`, `stopLossPrice`, and `takeProfits`.
+
+`Signal` shape passed to the hook:
 
 ```ts
 {

@@ -10,4 +10,4 @@ export {
   strategies,
   getStrategyManifest,
   isKnownStrategy,
-} from '../../core/src/strategy';
+} from './strategy';
