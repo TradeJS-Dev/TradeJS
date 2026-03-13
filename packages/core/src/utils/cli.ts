@@ -2,21 +2,21 @@ import fs from 'fs/promises';
 import _ from 'lodash';
 import ProgressBar from 'progress';
 import chalk from 'chalk';
+import { PRELOAD_DAYS } from '@constants';
 import {
-  PRELOAD_DAYS,
-  KLINE_CONCURRENCY_LIMIT,
   AI_CONCURRENCY_LIMIT,
-  TG_CONCURRENCY_LIMIT,
+  KLINE_CONCURRENCY_LIMIT,
   SCREENSHOT_CONCURRENCY_LIMIT,
-} from '@constants';
+  TG_CONCURRENCY_LIMIT,
+} from '@utils/runtimeConstants';
+import { getFiles } from '@tradejs/infra/files';
 import {
   RedisWriteBlockedError,
   delKeyWithOptions,
   getKeys,
   getData,
   redisKeys,
-  getFiles,
-} from '@tradejs/infra';
+} from '@tradejs/infra/redis';
 import { getTimestamp } from '@utils/timestamp';
 import { getFormatted } from '@utils/stat';
 import { getTopTickers } from '@utils/tickers';
@@ -24,7 +24,7 @@ import { askAI } from '@utils/ai';
 import { sendSignal, sendSignalAnalysis } from '@utils/signals';
 import { screenDashboard } from '@utils/screenshot';
 import { runWithConcurrency } from '@utils/async';
-import { logger } from '@tradejs/infra';
+import { logger } from '@tradejs/infra/logger';
 import {
   Connector,
   Interval,

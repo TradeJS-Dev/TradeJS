@@ -1,10 +1,7 @@
-import { resetTestingKlineCache, testing } from '@tradejs/core/backtest';
-import {
-  closeAllMlDatasetWriters,
-  getData,
-  logger,
-  redisKeys,
-} from '@tradejs/infra';
+import { resetTestingKlineCache, testing } from '@tradejs/node/backtest';
+import { logger } from '@tradejs/infra/logger';
+import { closeAllMlDatasetWriters } from '@tradejs/infra/ml';
+import { getData, redisKeys } from '@tradejs/infra/redis';
 import { TestSuite } from '@tradejs/types';
 
 let isProcessing = false;

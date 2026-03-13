@@ -1,4 +1,7 @@
-import { findLookaheadViolations, isTimestampFeatureKey } from '@tradejs/infra';
+import {
+  findLookaheadViolations,
+  isTimestampFeatureKey,
+} from '@tradejs/infra/ml';
 
 describe('mlCausalityGuard', () => {
   it('detects timestamp-like keys only by expected suffixes', () => {

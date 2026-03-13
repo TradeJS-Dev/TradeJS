@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   Button,
   CloseButton,
@@ -12,7 +12,6 @@ import {
   HStack,
   Stack,
   Text,
-  Skeleton,
   SkeletonCircle,
   SkeletonText,
 } from '@chakra-ui/react';
@@ -29,7 +28,7 @@ export const AiDrawer = () => {
   const [messages, setMessages] = useState<AIChatHistory>([]);
   const { filters } = useFilters();
 
-  const loadHistory = async () => {
+  const loadHistory = useCallback(async () => {
     setLoading(true);
 
     const history = await getHistory(filters.symbol);
@@ -37,11 +36,11 @@ export const AiDrawer = () => {
     setMessages(history);
 
     setLoading(false);
-  };
+  }, [filters.symbol]);
 
   useEffect(() => {
-    loadHistory();
-  }, [filters.symbol]);
+    void loadHistory();
+  }, [loadHistory]);
 
   const handleSend = async () => {
     if (!input.trim()) return;
@@ -107,18 +106,21 @@ export const AiDrawer = () => {
             </Drawer.Header>
 
             <Drawer.Body overflowY="auto" flex="1">
-              <Timeline.Root>
-                {messages.map((message, index) => (
-                  <Message key={index} message={message} index={index} />
-                ))}
-              </Timeline.Root>
-              <Stack gap="4" maxW="xs">
-                <HStack width="full">
-                  <SkeletonCircle size="6" />
-                  <SkeletonText noOfLines={2} />
-                </HStack>
-                <SkeletonText ml="8" noOfLines={3} />
-              </Stack>
+              {loading ? (
+                <Stack gap="4" maxW="xs">
+                  <HStack width="full">
+                    <SkeletonCircle size="6" />
+                    <SkeletonText noOfLines={2} />
+                  </HStack>
+                  <SkeletonText ml="8" noOfLines={3} />
+                </Stack>
+              ) : (
+                <Timeline.Root>
+                  {messages.map((message, index) => (
+                    <Message key={index} message={message} index={index} />
+                  ))}
+                </Timeline.Root>
+              )}
             </Drawer.Body>
 
             <Drawer.Footer flexDirection="column" alignItems="stretch" gap={3}>

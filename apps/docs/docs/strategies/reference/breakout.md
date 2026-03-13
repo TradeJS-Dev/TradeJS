@@ -2,7 +2,7 @@
 title: 'Breakout'
 ---
 
-`Breakout` is a TypeScript strategy (`@tradejs/core`) with weighted signal scoring for long/short breakout scenarios.
+`Breakout` is a built-in TypeScript strategy from `@tradejs/strategies` with weighted signal scoring for long/short breakout scenarios.
 
 ## Entry Logic
 

@@ -40,13 +40,16 @@ TradeJS поддерживает два пути создания стратег
 
 Файлы:
 
-- `@tradejs/core`
+- `@tradejs/node/strategies`
+- `@tradejs/core/strategies`
 - [Strategy Runtime Hooks](./strategy-hooks) (каталог lifecycle-хуков)
 
 Правило импортов:
 
-- импортируйте runtime/типы/хелперы только из `@tradejs/core`
-- избегайте внутренних алиасов (`@utils`, `@types`, `@constants`) и deep-imports (`@tradejs/core/*`)
+- импортируйте Node runtime wiring из `@tradejs/node/strategies`
+- импортируйте pure strategy helper’ы из `@tradejs/core/strategies`
+- импортируйте общие контракты из `@tradejs/types`
+- избегайте внутренних алиасов (`@utils`, `@types`, `@constants`) и непубличных deep-imports
 
 ## Пример минимального `core.ts`
 

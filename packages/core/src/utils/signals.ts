@@ -1,10 +1,8 @@
-import 'dotenv/config';
-
 import { Signal, Interval, SignalAnalysis } from '@tradejs/types';
 import { getImageUrl } from '@utils/screenshot';
 import { formatNumber } from '@utils/math';
 import { escapeHtml } from '@utils/str';
-import { logger } from '@tradejs/infra';
+import { logger } from '@tradejs/infra/logger';
 
 const { APP_URL, TG_BOT_TOKEN: token, TG_CHAT_ID: chatId } = process.env;
 

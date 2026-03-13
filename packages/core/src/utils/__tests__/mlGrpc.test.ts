@@ -16,7 +16,7 @@ jest.mock('@grpc/grpc-js', () => ({
   })),
 }));
 
-import { buildMlFeatures, fetchMlThreshold } from '@tradejs/infra';
+import { buildMlFeatures, fetchMlThreshold } from '@tradejs/infra/ml';
 
 describe('mlGrpc', () => {
   beforeEach(() => {

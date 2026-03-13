@@ -17,7 +17,7 @@ describe('connectors registry', () => {
       resolvePluginModuleSpecifier: (moduleName: string) => moduleName,
     }));
 
-    jest.doMock('@tradejs/infra', () => ({
+    jest.doMock('@tradejs/infra/logger', () => ({
       logger: {
         warn: warnMock,
       },

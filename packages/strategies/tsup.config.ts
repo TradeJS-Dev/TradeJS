@@ -8,5 +8,10 @@ export default defineConfig({
   clean: true,
   outDir: 'dist',
   target: 'node20',
-  external: ['@tradejs/core', '@tradejs/indicators', '@tradejs/types'],
+  external: [
+    '@tradejs/core',
+    '@tradejs/indicators',
+    '@tradejs/node',
+    '@tradejs/types',
+  ],
 });

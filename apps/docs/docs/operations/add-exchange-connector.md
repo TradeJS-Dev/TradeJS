@@ -119,7 +119,7 @@ export default defineConfig(basePreset, {
 
 If provider is user-facing in filters/configs, update provider union in:
 
-- `@tradejs/core` (`Provider`)
+- `@tradejs/types` (`Provider`)
 
 ## 4. CLI Integration Points
 

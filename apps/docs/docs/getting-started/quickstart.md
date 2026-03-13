@@ -18,7 +18,7 @@ This guide is for external package users (without cloning the TradeJS repo).
 mkdir tradejs-project
 cd tradejs-project
 npm init -y
-npm i @tradejs/core @tradejs/base @tradejs/cli
+npm i @tradejs/core @tradejs/node @tradejs/types @tradejs/base @tradejs/cli
 ```
 
 ## 2. Add `tradejs.config.ts`
@@ -27,13 +27,16 @@ npm i @tradejs/core @tradejs/base @tradejs/cli
 import { defineConfig } from '@tradejs/core/config';
 import { basePreset } from '@tradejs/base';
 
-export default defineConfig(basePreset, {});
+export default defineConfig(basePreset);
 ```
 
 Plugin import policy:
 
-- import plugin registration from `@tradejs/core/config`, runtime/helpers from public `@tradejs/core/*` subpaths, and types from `@tradejs/types`
-- avoid internal aliases (`@utils`, `@types`, `@constants`) and deep imports (`@tradejs/core/*`)
+- import plugin registration from `@tradejs/core/config`
+- import browser-safe helpers from public `@tradejs/core/*` subpaths
+- import Node runtime helpers from public `@tradejs/node/*` subpaths
+- import shared contracts from `@tradejs/types`
+- avoid internal aliases (`@utils`, `@types`, `@constants`) and non-public deep imports like `@tradejs/core/src/*` or `@tradejs/node/src/*`
 
 ## 3. Initialize Dev Infra Files
 
@@ -80,6 +83,13 @@ npx @tradejs/cli backtest
 npx @tradejs/cli results
 npx @tradejs/cli bot
 ```
+
+## Built-In Web UI Status
+
+The published external package flow currently does not include a distributable `@tradejs/app`.
+
+That means this quickstart covers CLI/runtime usage only.
+There is no supported `app:dev` step for npm users yet, and simply adding `npm i @tradejs/app` would not work with the current package layout.
 
 ## 7. Stop Dev Infra
 

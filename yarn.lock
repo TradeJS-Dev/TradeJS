@@ -7697,14 +7697,14 @@ __metadata:
     "@emotion/react": "npm:^11.14.0"
     "@langchain/core": "npm:^0.3.68"
     "@langchain/openai": "npm:^0.6.11"
-    "@tradejs/connectors": "workspace:*"
-    "@tradejs/core": "workspace:*"
-    "@tradejs/indicators": "workspace:*"
-    "@tradejs/infra": "workspace:*"
-    "@tradejs/types": "workspace:*"
+    "@tradejs/connectors": "workspace:^"
+    "@tradejs/core": "workspace:^"
+    "@tradejs/indicators": "workspace:^"
+    "@tradejs/infra": "workspace:^"
+    "@tradejs/node": "workspace:^"
+    "@tradejs/types": "workspace:^"
     bcryptjs: "npm:^2.4.3"
     date-fns: "npm:^3.3.1"
-    dotenv-cli: "npm:^11.0.0"
     idb-keyval: "npm:^6.2.2"
     klinecharts: "npm:10.0.0-alpha9"
     lodash: "npm:^4.17.21"
@@ -7721,17 +7721,19 @@ __metadata:
     shiki: "npm:^3.9.2"
     technicalindicators: "npm:^3.1.0"
     zustand: "npm:^5.0.7"
+  bin:
+    tradejs-app: ./bin/tradejs-app.mjs
   languageName: unknown
   linkType: soft
 
-"@tradejs/base@npm:@tradejs/base@1.0.0, @tradejs/base@workspace:*, @tradejs/base@workspace:packages/base":
+"@tradejs/base@npm:@tradejs/base@1.0.0, @tradejs/base@workspace:^, @tradejs/base@workspace:packages/base":
   version: 0.0.0-use.local
   resolution: "@tradejs/base@workspace:packages/base"
   dependencies:
-    "@tradejs/connectors": "workspace:*"
-    "@tradejs/core": "workspace:*"
-    "@tradejs/indicators": "workspace:*"
-    "@tradejs/strategies": "workspace:*"
+    "@tradejs/connectors": "workspace:^"
+    "@tradejs/core": "workspace:^"
+    "@tradejs/indicators": "workspace:^"
+    "@tradejs/strategies": "workspace:^"
     tsup: "npm:^8.5.1"
     typescript: "npm:^5.1"
   languageName: unknown
@@ -7741,13 +7743,14 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@tradejs/cli@workspace:packages/cli"
   dependencies:
-    "@tradejs/base": "workspace:*"
-    "@tradejs/connectors": "workspace:*"
-    "@tradejs/core": "workspace:*"
-    "@tradejs/indicators": "workspace:*"
-    "@tradejs/infra": "workspace:*"
-    "@tradejs/strategies": "workspace:*"
-    "@tradejs/types": "workspace:*"
+    "@tradejs/base": "workspace:^"
+    "@tradejs/connectors": "workspace:^"
+    "@tradejs/core": "workspace:^"
+    "@tradejs/indicators": "workspace:^"
+    "@tradejs/infra": "workspace:^"
+    "@tradejs/node": "workspace:^"
+    "@tradejs/strategies": "workspace:^"
+    "@tradejs/types": "workspace:^"
     "@types/node": "npm:^20"
     args: "npm:^5.0.3"
     bcryptjs: "npm:^2.4.3"
@@ -7761,17 +7764,20 @@ __metadata:
     tsconfig-paths: "npm:^4.2.0"
     tsup: "npm:^8.5.1"
     typescript: "npm:^5.1"
+    uuid: "npm:11.1.0"
   bin:
     tradejs: dist/cli.js
   languageName: unknown
   linkType: soft
 
-"@tradejs/connectors@workspace:*, @tradejs/connectors@workspace:packages/connectors":
+"@tradejs/connectors@workspace:^, @tradejs/connectors@workspace:packages/connectors":
   version: 0.0.0-use.local
   resolution: "@tradejs/connectors@workspace:packages/connectors"
   dependencies:
-    "@tradejs/core": "workspace:*"
-    "@tradejs/infra": "workspace:*"
+    "@tradejs/core": "workspace:^"
+    "@tradejs/infra": "workspace:^"
+    "@tradejs/node": "workspace:^"
+    "@tradejs/types": "workspace:^"
     bybit-api: "npm:^3.9.0"
     chalk: "npm:4.1.2"
     lodash: "npm:^4.17.21"
@@ -7780,24 +7786,14 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@tradejs/core@npm:@tradejs/core@1.0.0, @tradejs/core@workspace:*, @tradejs/core@workspace:packages/core":
+"@tradejs/core@npm:@tradejs/core@1.0.0, @tradejs/core@workspace:^, @tradejs/core@workspace:packages/core":
   version: 0.0.0-use.local
   resolution: "@tradejs/core@workspace:packages/core"
   dependencies:
-    "@langchain/core": "npm:^0.3.68"
-    "@langchain/openai": "npm:^0.6.11"
-    "@tradejs/infra": "workspace:*"
-    "@tradejs/types": "workspace:*"
-    bybit-api: "npm:^3.9.0"
-    chalk: "npm:4.1.2"
+    "@tradejs/types": "workspace:^"
     date-fns: "npm:^3.3.1"
-    ioredis: "npm:5.8.0"
     klinecharts: "npm:10.0.0-alpha9"
     lodash: "npm:^4.17.21"
-    pg: "npm:8.16.3"
-    pinets: "npm:0.8.12"
-    progress: "npm:^2.0.3"
-    puppeteer: "npm:24.15.0"
     technicalindicators: "npm:^3.1.0"
     tsup: "npm:^8.5.1"
     typescript: "npm:^5.1"
@@ -7843,11 +7839,12 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@tradejs/indicators@workspace:*, @tradejs/indicators@workspace:packages/indicators":
+"@tradejs/indicators@workspace:^, @tradejs/indicators@workspace:packages/indicators":
   version: 0.0.0-use.local
   resolution: "@tradejs/indicators@workspace:packages/indicators"
   dependencies:
-    "@tradejs/core": "workspace:*"
+    "@tradejs/core": "workspace:^"
+    "@tradejs/types": "workspace:^"
     klinecharts: "npm:10.0.0-alpha9"
     technicalindicators: "npm:^3.1.0"
     tsup: "npm:^8.5.1"
@@ -7855,13 +7852,13 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@tradejs/infra@workspace:*, @tradejs/infra@workspace:packages/infra":
+"@tradejs/infra@workspace:^, @tradejs/infra@workspace:packages/infra":
   version: 0.0.0-use.local
   resolution: "@tradejs/infra@workspace:packages/infra"
   dependencies:
     "@grpc/grpc-js": "npm:^1.10.7"
     "@grpc/proto-loader": "npm:^0.7.13"
-    "@tradejs/types": "workspace:*"
+    "@tradejs/types": "workspace:^"
     chalk: "npm:4.1.2"
     ioredis: "npm:5.8.0"
     pg: "npm:8.16.3"
@@ -7874,6 +7871,27 @@ __metadata:
 "@tradejs/ml@workspace:packages/ml":
   version: 0.0.0-use.local
   resolution: "@tradejs/ml@workspace:packages/ml"
+  languageName: unknown
+  linkType: soft
+
+"@tradejs/node@workspace:^, @tradejs/node@workspace:packages/node":
+  version: 0.0.0-use.local
+  resolution: "@tradejs/node@workspace:packages/node"
+  dependencies:
+    "@langchain/core": "npm:^0.3.68"
+    "@langchain/openai": "npm:^0.6.11"
+    "@tradejs/core": "workspace:^"
+    "@tradejs/infra": "workspace:^"
+    "@tradejs/types": "workspace:^"
+    "@types/node": "npm:^20"
+    chalk: "npm:4.1.2"
+    ioredis: "npm:5.8.0"
+    pinets: "npm:0.8.12"
+    progress: "npm:^2.0.3"
+    puppeteer: "npm:24.15.0"
+    ts-node: "npm:^10.9.2"
+    tsup: "npm:^8.5.1"
+    typescript: "npm:^5.1"
   languageName: unknown
   linkType: soft
 
@@ -7938,18 +7956,20 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@tradejs/strategies@workspace:*, @tradejs/strategies@workspace:packages/strategies":
+"@tradejs/strategies@workspace:^, @tradejs/strategies@workspace:packages/strategies":
   version: 0.0.0-use.local
   resolution: "@tradejs/strategies@workspace:packages/strategies"
   dependencies:
-    "@tradejs/core": "workspace:*"
-    "@tradejs/indicators": "workspace:*"
+    "@tradejs/core": "workspace:^"
+    "@tradejs/indicators": "workspace:^"
+    "@tradejs/node": "workspace:^"
+    "@tradejs/types": "workspace:^"
     tsup: "npm:^8.5.1"
     typescript: "npm:^5.1"
   languageName: unknown
   linkType: soft
 
-"@tradejs/types@workspace:*, @tradejs/types@workspace:packages/types":
+"@tradejs/types@workspace:^, @tradejs/types@workspace:packages/types":
   version: 0.0.0-use.local
   resolution: "@tradejs/types@workspace:packages/types"
   dependencies:
@@ -24323,9 +24343,9 @@ __metadata:
     "@testing-library/jest-dom": "npm:^6.6.3"
     "@testing-library/react": "npm:^16.3.0"
     "@testing-library/user-event": "npm:^14.6.1"
-    "@tradejs/base": "workspace:*"
-    "@tradejs/core": "workspace:*"
-    "@tradejs/infra": "workspace:*"
+    "@tradejs/base": "workspace:^"
+    "@tradejs/core": "workspace:^"
+    "@tradejs/infra": "workspace:^"
     "@types/args": "npm:^5"
     "@types/bcryptjs": "npm:^2.4.6"
     "@types/identity-obj-proxy": "npm:^3"

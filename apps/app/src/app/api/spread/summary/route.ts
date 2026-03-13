@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSpreadSummary, logger } from '@tradejs/infra';
+import { logger } from '@tradejs/infra/logger';
+import { getSpreadSummary } from '@tradejs/infra/timescale';
 
 export const dynamic = 'force-dynamic';
 

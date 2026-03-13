@@ -25,7 +25,7 @@ Stop infra after work with `npx @tradejs/cli infra-down`.
 Main files:
 
 - script: `@tradejs/cli`
-- worker: `@tradejs/core`
+- worker runtime: `@tradejs/node`
 
 ## Real CLI Flags (from code)
 
@@ -55,7 +55,7 @@ npx @tradejs/cli backtest --config trendline --connector bybit --tests 500 --par
 ## Real Worker Processing Pattern
 
 ```ts
-import { testing } from '@tradejs/core/backtest';
+import { testing } from '@tradejs/node/backtest';
 
 for await (const test of testSuite) {
   const testResult = await testing(test);
@@ -84,6 +84,11 @@ Later, merge with:
 ```bash
 npx @tradejs/cli ml-export
 ```
+
+## UI Note
+
+The built-in Next.js app is not yet distributed as a public external package.
+For external package users, the supported backtest flow is CLI-first.
 
 ## Related Guides
 

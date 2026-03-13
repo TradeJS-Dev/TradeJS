@@ -2,7 +2,7 @@
 title: 'AdaptiveMomentumRibbon'
 ---
 
-`AdaptiveMomentumRibbon` is a Pine-backed strategy integrated as a standalone strategy (`@tradejs/core`).
+`AdaptiveMomentumRibbon` is a built-in Pine-backed strategy from `@tradejs/strategies`.
 
 Runtime injects `loadPineScript` into `core.ts`, so Pine logic is maintained separately from TypeScript orchestration.
 

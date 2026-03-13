@@ -69,8 +69,7 @@ jest.mock('@utils/mlPayload', () => ({
   buildMlPayload: (payload: unknown) => mockBuildMlPayload(payload),
 }));
 
-jest.mock('@tradejs/infra', () => ({
-  ...jest.requireActual('@tradejs/infra'),
+jest.mock('@tradejs/infra/ml', () => ({
   buildMlTrainingRow: (signalRecord: unknown, resultRecord: unknown) =>
     mockBuildMlTrainingRow(signalRecord, resultRecord),
   trimMlTrainingRowWindows: (row: unknown) => row,

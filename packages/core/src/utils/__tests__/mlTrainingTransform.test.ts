@@ -1,4 +1,7 @@
-import { buildMlTrainingRow, trimMlTrainingRowWindows } from '@tradejs/infra';
+import {
+  buildMlTrainingRow,
+  trimMlTrainingRowWindows,
+} from '@tradejs/infra/ml';
 
 test('buildMlTrainingRow: key normalizations and removals', () => {
   const makeArr = (value: number) => Array.from({ length: 5 }, () => value);

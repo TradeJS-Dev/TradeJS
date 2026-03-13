@@ -1,4 +1,3 @@
-import chalk from 'chalk';
 import { createLogger, transports, format } from 'winston';
 
 const baseFormat = format.combine(
@@ -14,7 +13,7 @@ export const logger = createLogger({
         format.colorize({ all: true }),
         format.printf(
           ({ level, timestamp, message }) =>
-            `${level}: ${chalk.gray(timestamp)}: ${message}`,
+            `${level}: ${timestamp}: ${message}`,
         ),
       ),
     }),

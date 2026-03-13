@@ -1,18 +1,35 @@
 {
   "name": "@tradejs/app",
   "version": "1.0.0",
-  "private": true,
+  "files": [
+    "README.md",
+    "bin",
+    "src",
+    "!src/**/__tests__",
+    "!src/**/*.test.ts",
+    "!src/**/*.test.tsx",
+    "next.config.mjs",
+    "tsconfig.json",
+    "next-env.d.ts"
+  ],
+  "bin": {
+    "tradejs-app": "./bin/tradejs-app.mjs"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "dependencies": {
     "@chakra-ui/charts": "^3.24.0",
     "@chakra-ui/react": "^3.24.2",
     "@emotion/react": "^11.14.0",
     "@langchain/core": "^0.3.68",
     "@langchain/openai": "^0.6.11",
-    "@tradejs/connectors": "workspace:*",
-    "@tradejs/core": "workspace:*",
-    "@tradejs/indicators": "workspace:*",
-    "@tradejs/infra": "workspace:*",
-    "@tradejs/types": "workspace:*",
+    "@tradejs/connectors": "workspace:^",
+    "@tradejs/core": "workspace:^",
+    "@tradejs/indicators": "workspace:^",
+    "@tradejs/infra": "workspace:^",
+    "@tradejs/node": "workspace:^",
+    "@tradejs/types": "workspace:^",
     "bcryptjs": "^2.4.3",
     "date-fns": "^3.3.1",
     "idb-keyval": "^6.2.2",
@@ -33,13 +50,9 @@
     "zustand": "^5.0.7"
   },
   "scripts": {
-    "run:next": "dotenv -e ../../.env -- next",
-    "dev": "yarn run run:next dev",
-    "build": "NODE_ENV=production yarn run run:next build",
-    "start": "yarn run run:next start -H 0.0.0.0",
+    "dev": "node ./bin/tradejs-app.mjs dev",
+    "build": "NODE_ENV=production node ./bin/tradejs-app.mjs build",
+    "start": "node ./bin/tradejs-app.mjs start",
     "lint": "yarn run -T eslint src --ext .js,.jsx,.ts,.tsx"
-  },
-  "devDependencies": {
-    "dotenv-cli": "^11.0.0"
   }
 }

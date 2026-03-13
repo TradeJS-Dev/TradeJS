@@ -2,7 +2,7 @@
 title: 'TrendLine'
 ---
 
-`TrendLine` — TypeScript-стратегия (`@tradejs/core`) для входа по пробою трендовой линии с риск-ограничениями.
+`TrendLine` — встроенная TypeScript-стратегия из `@tradejs/strategies` для входа по пробою трендовой линии с риск-ограничениями.
 
 ## Логика входа
 

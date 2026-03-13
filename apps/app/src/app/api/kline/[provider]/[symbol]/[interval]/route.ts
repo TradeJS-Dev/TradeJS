@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getRegisteredIndicatorEntries } from '@tradejs/core/indicators';
-import { createIndicators } from '@tradejs/core/indicators';
-import { getConnectorCreatorByProvider } from '@tradejs/core/connectors';
-import { ensureIndicatorPluginsLoaded } from '@tradejs/core/strategies';
-import { logger } from '@tradejs/infra';
+import {
+  createIndicators,
+  getRegisteredIndicatorEntries,
+} from '@tradejs/core/indicators';
+import { getConnectorCreatorByProvider } from '@tradejs/node/connectors';
+import { ensureIndicatorPluginsLoaded } from '@tradejs/node/registry';
+import { logger } from '@tradejs/infra/logger';
 import {
   KlineChartData,
   KlineRequest,

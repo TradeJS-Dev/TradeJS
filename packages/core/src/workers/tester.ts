@@ -1,7 +1,8 @@
 import { testing, resetTestingKlineCache } from '@utils/testing';
 import { TestSuite } from '@tradejs/types';
-import { getData, redisKeys, closeAllMlDatasetWriters } from '@tradejs/infra';
-import { logger } from '@tradejs/infra';
+import { closeAllMlDatasetWriters } from '@tradejs/infra/ml';
+import { getData, redisKeys } from '@tradejs/infra/redis';
+import { logger } from '@tradejs/infra/logger';
 
 let isProcessing = false;
 

@@ -1,0 +1,7 @@
+.next
+node_modules
+src/**/__tests__
+src/**/*.test.ts
+src/**/*.test.tsx
+tsconfig.tsbuildinfo
+yarn-error.log

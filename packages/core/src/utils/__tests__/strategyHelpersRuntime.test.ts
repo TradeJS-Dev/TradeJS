@@ -4,12 +4,15 @@ const mockTrimMlTrainingRowWindows = jest.fn();
 const mockBuildMlFeatures = jest.fn();
 const mockAskAI = jest.fn();
 
-jest.mock('@tradejs/infra', () => ({
+jest.mock('@tradejs/infra/ml', () => ({
   buildMlTrainingRow: (...args: unknown[]) => mockBuildMlTrainingRow(...args),
   trimMlTrainingRowWindows: (...args: unknown[]) =>
     mockTrimMlTrainingRowWindows(...args),
   buildMlFeatures: (...args: unknown[]) => mockBuildMlFeatures(...args),
   fetchMlThreshold: (...args: unknown[]) => mockFetchMlThreshold(...args),
+}));
+
+jest.mock('@tradejs/infra/logger', () => ({
   logger: {
     error: jest.fn(),
   },

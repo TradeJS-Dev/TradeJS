@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Box,
   Heading,
@@ -48,7 +48,7 @@ const DerivativesPage = () => {
   const [data, setData] = useState<SummaryResponse | null>(null);
   const [error, setError] = useState<string>('');
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true);
     setError('');
     try {
@@ -61,11 +61,11 @@ const DerivativesPage = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [hours, limit]);
 
   useEffect(() => {
-    load();
-  }, []);
+    void load();
+  }, [load]);
 
   const totals = useMemo(() => {
     const aggregates = data?.aggregates ?? [];

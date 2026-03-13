@@ -3,6 +3,6 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "build": "echo 'ml: python/docker module'"
+    "build": "mkdir -p dist && echo 'ml: python/docker module' > dist/.build.txt"
   }
 }

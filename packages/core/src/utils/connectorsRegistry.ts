@@ -3,7 +3,7 @@ import {
   ConnectorPluginDefinition,
   ConnectorRegistryEntry,
 } from '@tradejs/types';
-import { logger } from '@tradejs/infra';
+import { logger } from '@tradejs/infra/logger';
 import {
   loadTradejsConfig,
   resolvePluginModuleSpecifier,

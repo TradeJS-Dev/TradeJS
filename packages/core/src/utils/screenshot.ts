@@ -1,11 +1,9 @@
-import 'dotenv/config';
-
 import fs from 'fs/promises';
 import path from 'path';
 import puppeteer from 'puppeteer';
 import { delay } from '@utils/async';
 import { Signal } from '@tradejs/types';
-import { getData, redisKeys } from '@tradejs/infra';
+import { getData, redisKeys } from '@tradejs/infra/redis';
 
 const { APP_URL } = process.env;
 

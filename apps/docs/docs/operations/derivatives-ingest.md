@@ -66,7 +66,7 @@ Ingest writes to:
 
 Schema bootstrap and upsert logic:
 
-- `@tradejs/core`
+- `@tradejs/infra`
 
 ## 4. Required Env
 

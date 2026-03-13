@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useCallback } from 'react';
+import { useCallback, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Box, Flex, ClientOnly } from '@chakra-ui/react';
 import { useFilters, useTickers, useTestList } from '@store';
@@ -18,14 +18,14 @@ const Dashboard = () => {
   const backtestId = searchParams.get('backtestId');
   const backtestStrategy = searchParams.get('backtestStrategy');
 
-  const parseDashboardPath = () => {
+  const parseDashboardPath = useCallback(() => {
     const parts = window.location.pathname.split('/').filter(Boolean);
     return {
       provider: (parts[2] || filters.provider || 'bybit') as Provider,
       symbol: (parts[3] || filters.symbol) as string,
       interval: (parts[4] || filters.interval) as Interval,
     };
-  };
+  }, [filters.interval, filters.provider, filters.symbol]);
 
   useEffect(() => {
     const parsed = parseDashboardPath();
@@ -36,7 +36,14 @@ const Dashboard = () => {
       ...(hasBacktestId ? { backtestId } : {}),
       ...(hasBacktestStrategy ? { backtestStrategy } : {}),
     });
-  }, [hasBacktestId, hasBacktestStrategy, backtestId, backtestStrategy]);
+  }, [
+    backtestId,
+    backtestStrategy,
+    hasBacktestId,
+    hasBacktestStrategy,
+    parseDashboardPath,
+    setFilters,
+  ]);
 
   const onChangeFilters: OnChangeFilters = useCallback(
     (newFilters) => {
@@ -74,13 +81,7 @@ const Dashboard = () => {
         `/routes/dashboard/${nextProvider}/${nextSymbol}/${nextInterval}${search ? `?${search}` : ''}`,
       );
     },
-    [
-      filters.provider,
-      filters.symbol,
-      filters.interval,
-      filters.backtestId,
-      filters.backtestStrategy,
-    ],
+    [filters, parseDashboardPath, setFilters],
   );
 
   return (

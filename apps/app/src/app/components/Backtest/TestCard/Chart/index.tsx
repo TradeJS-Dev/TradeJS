@@ -46,7 +46,13 @@ export const TestCardChart = ({ height = '350px' }: TestCardChartProps) => {
     ];
 
     return getChartData(testList, timeline);
-  }, [compareList]);
+  }, [
+    compareList,
+    test.options.end,
+    test.options.start,
+    test.testId,
+    testResult,
+  ]);
 
   const chart = useChart(chartData as any);
 

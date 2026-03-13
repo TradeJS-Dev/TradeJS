@@ -1,5 +1,5 @@
 import _ from 'lodash';
-import { getData, redisKeys } from '@tradejs/infra';
+import { getData, redisKeys } from '@tradejs/infra/redis';
 import { StrategyConfig, StrategyResults } from '@tradejs/types';
 
 interface ResolveStrategyConfigParams<TConfig extends StrategyConfig> {

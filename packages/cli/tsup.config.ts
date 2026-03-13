@@ -13,6 +13,7 @@ export default defineConfig({
     '@tradejs/core',
     '@tradejs/infra',
     '@tradejs/indicators',
+    '@tradejs/node',
     '@tradejs/strategies',
     '@tradejs/types',
     'args',

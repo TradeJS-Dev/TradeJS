@@ -5,10 +5,16 @@ import {
   HumanMessage,
   SystemMessage,
 } from '@langchain/core/messages';
-import { connectors } from '@tradejs/connectors';
 import { toJson } from '@tradejs/core/json';
-import { AIChatHistory, AIChatMessage, Filters } from '@tradejs/types';
-import { getFile, logger, setFile } from '@tradejs/infra';
+import { getConnectorCreatorByProvider } from '@tradejs/node/connectors';
+import {
+  AIChatHistory,
+  AIChatMessage,
+  ConnectorCreator,
+  Filters,
+} from '@tradejs/types';
+import { getFile, setFile } from '@tradejs/infra/files';
+import { logger } from '@tradejs/infra/logger';
 
 export const dynamic = 'force-dynamic';
 
@@ -109,7 +115,12 @@ export const POST = async (request: NextRequest) => {
 
     await appendMessagesToHistory(filters.symbol, [message]);
 
-    const byBitConnector = await connectors.ByBit({
+    const connectorCreator = await getConnectorCreatorByProvider('bybit');
+    if (!connectorCreator) {
+      throw new Error('No connector available for provider');
+    }
+
+    const byBitConnector = await (connectorCreator as ConnectorCreator)({
       userName: 'root',
     });
 

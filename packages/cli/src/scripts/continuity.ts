@@ -5,11 +5,12 @@ import {
   getAvailableConnectorProviders,
   getConnectorCreatorByName,
   getConnectorNameByProvider,
-} from '@tradejs/core/connectors';
-import { getTickers } from '@tradejs/core/cli';
+} from '@tradejs/node/connectors';
+import { getTickers } from '@tradejs/node/cli';
 import { PRELOAD_DAYS } from '@tradejs/core/constants';
 import { formatUnix, getTimestamp } from '@tradejs/core/time';
-import { deleteCandles, logger, waitForDbReady } from '@tradejs/infra';
+import { logger } from '@tradejs/infra/logger';
+import { deleteCandles, waitForDbReady } from '@tradejs/infra/timescale';
 import { ConnectorCreator, Interval, KlineChartData } from '@tradejs/types';
 
 args.option(['t', 'tickers'], 'Selected tickers');

@@ -1,4 +1,4 @@
-jest.mock('@tradejs/infra', () => ({
+jest.mock('@tradejs/infra/logger', () => ({
   logger: {
     log: jest.fn(),
   },

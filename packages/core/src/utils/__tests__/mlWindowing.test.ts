@@ -2,7 +2,7 @@ import {
   computeWindowBoundaries,
   isDerivedDatasetFileName,
   toIsoUtcOrNull,
-} from '@tradejs/infra';
+} from '@tradejs/infra/ml';
 
 describe('mlWindowing', () => {
   it('computes holdout/walk-forward/prod windows for recent-days mode', () => {

@@ -9,7 +9,7 @@ import {
   PositionLogData,
   TestConnectorCreator,
 } from '@tradejs/types';
-import { redisKeys, setData } from '@tradejs/infra';
+import { redisKeys, setData } from '@tradejs/infra/redis';
 import { TTL_1D } from '@constants';
 import { uuid } from '@utils/uuid';
 import { round } from '@utils/math';

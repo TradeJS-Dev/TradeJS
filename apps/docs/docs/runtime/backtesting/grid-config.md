@@ -11,7 +11,7 @@ This guide explains how to configure a backtest grid in Redis and run mass tests
 Code path:
 
 - `@tradejs/cli`
-- `@tradejs/core`
+- `@tradejs/node`
 
 Key points:
 

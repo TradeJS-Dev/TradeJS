@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getDerivativesSummary, logger } from '@tradejs/infra';
+import { logger } from '@tradejs/infra/logger';
+import { getDerivativesSummary } from '@tradejs/infra/timescale';
 
 export const dynamic = 'force-dynamic';
 

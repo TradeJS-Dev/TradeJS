@@ -1,4 +1,3 @@
-import 'dotenv/config';
 import { Pool } from 'pg';
 import { KlineChartData } from '@tradejs/types';
 

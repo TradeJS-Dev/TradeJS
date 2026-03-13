@@ -11,7 +11,8 @@ It supports two first-class authoring paths:
 
 - `apps/app`: Next.js UI and API
 - `apps/docs`: Docusaurus documentation
-- `packages/core`: shared runtime, public types, plugin config API
+- `packages/core`: browser-safe public API, shared helpers, plugin config API
+- `packages/node`: Node-only runtime, plugin loading, backtest/pine execution helpers
 - `packages/strategies`: built-in strategy plugin package
 - `packages/indicators`: built-in indicators package
 - `packages/base`: default preset that wires built-in strategies/indicators/connectors
@@ -103,6 +104,11 @@ yarn dev
 
 Open `http://localhost:3000`.
 
+Useful routes:
+
+- `http://localhost:3000/routes/backtest` — saved backtest runs and detail pages
+- `http://localhost:3000/routes/dashboard` — chart view for signals and market inspection
+
 ## Common Commands
 
 ```bash
@@ -145,14 +151,16 @@ export default defineConfig(basePreset, {
 Import policy for plugin code:
 
 - import plugin registration from `@tradejs/core/config`
-- import runtime/helpers from explicit public subpaths like `@tradejs/core/strategies`, `@tradejs/core/indicators`, `@tradejs/core/backtest`, `@tradejs/core/math`, `@tradejs/core/time`, `@tradejs/core/pine`
+- import runtime/helpers from explicit public subpaths like `@tradejs/node/strategies`, `@tradejs/node/backtest`, `@tradejs/core/indicators`, `@tradejs/core/math`, `@tradejs/core/time`, `@tradejs/node/pine`
 - import shared types from `@tradejs/types`
 - do not use internal aliases like `@utils` / `@constants`
 - do not use non-public deep imports
 
 Utils convention for contributors:
 
-- keep production runtime utilities in `packages/core/src/utils/*` and `packages/infra/src/*`
+- keep browser-safe helpers in `packages/core/src/*`
+- keep node-only runtime orchestration in `packages/node/src/*`
+- keep infra adapters in `packages/infra/src/*`
 - keep test-only helpers in `packages/core/src/utils/testHelpers/*`
 - avoid duplicated helper implementations in runtime files
 

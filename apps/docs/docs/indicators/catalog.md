@@ -2,11 +2,11 @@
 title: Indicator Catalog
 ---
 
-This page lists indicators currently produced/used by core runtime.
+This page lists indicators produced by the shared indicator pipeline and consumed by strategy runtime.
 
 Primary implementation:
 
-- `@tradejs/core`
+- `@tradejs/core/indicators`
 
 ## 1. Base Indicator Snapshot
 
@@ -44,7 +44,7 @@ When ML payload is enabled, snapshot also includes candle windows:
 
 ## 4. Multi-Timeframe Indicator Series
 
-Core builds extra timeframe series for ML using suffixes:
+The shared indicator pipeline builds extra timeframe series for ML using suffixes:
 
 - `*1h`
 - `*4h`
@@ -54,7 +54,7 @@ For BTC context, keys are prefixed with `btc` (`btcMaFast`, `btcMaFast1h`, etc).
 
 ## 5. Built-In Indicator Helpers
 
-From `@tradejs/core`:
+From `@tradejs/core/indicators`:
 
 - `MOM`: momentum (`price - price[period]`)
 - `smaAligned`: SMA with alignment to source length/warmup

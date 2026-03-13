@@ -66,7 +66,7 @@ Ingest пишет в:
 
 Bootstrap схемы и upsert логика:
 
-- `@tradejs/core`
+- `@tradejs/infra`
 
 ## 4. Обязательные env
 

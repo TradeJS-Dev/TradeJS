@@ -1,6 +1,6 @@
 import readline from 'readline';
 import chalk from 'chalk';
-import { getAvailableStrategyNames } from '@tradejs/core/strategies';
+import { getAvailableStrategyNames } from '@tradejs/node/strategies';
 
 const defaultStrategy = 'TrendLine';
 

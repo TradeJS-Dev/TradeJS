@@ -25,5 +25,5 @@ export const useResize = (chart: Chart | null, id: string) => {
     return () => {
       resizeObserver.disconnect();
     };
-  }, [chart]);
+  }, [chart, id]);
 };

@@ -2,11 +2,11 @@
 title: Каталог индикаторов
 ---
 
-На этой странице перечислены индикаторы, которые сейчас строит и использует core runtime.
+На этой странице перечислены индикаторы, которые строит общий indicator pipeline и использует strategy runtime.
 
 Основная реализация:
 
-- `@tradejs/core`
+- `@tradejs/core/indicators`
 
 ## 1. Базовый Indicator Snapshot
 
@@ -44,7 +44,7 @@ title: Каталог индикаторов
 
 ## 4. Multi-Timeframe серии индикаторов
 
-Для ML core строит дополнительные серии с суффиксами:
+Для ML общий indicator pipeline строит дополнительные серии с суффиксами:
 
 - `*1h`
 - `*4h`
@@ -54,7 +54,7 @@ title: Каталог индикаторов
 
 ## 5. Встроенные helper-индикаторы
 
-Из `@tradejs/core`:
+Из `@tradejs/core/indicators`:
 
 - `MOM`: momentum (`price - price[period]`)
 - `smaAligned`: SMA с выравниванием длины/прогрева

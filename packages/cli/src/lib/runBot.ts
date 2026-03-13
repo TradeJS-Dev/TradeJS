@@ -2,13 +2,14 @@ import _ from 'lodash';
 import {
   getConnectorCreatorByName,
   BUILTIN_CONNECTOR_NAMES,
-} from '@tradejs/core/connectors';
+} from '@tradejs/node/connectors';
 import { toJson } from '@tradejs/core/json';
-import { getStrategyCreator } from '@tradejs/core/strategies';
+import { getStrategyCreator } from '@tradejs/node/strategies';
 import { delay } from '@tradejs/core/async';
 import { BOT_PRELOAD_DAYS } from '@tradejs/core/constants';
 import { getTimestamp } from '@tradejs/core/time';
-import { getData, redisKeys, getKeys, logger } from '@tradejs/infra';
+import { logger } from '@tradejs/infra/logger';
+import { getData, redisKeys, getKeys } from '@tradejs/infra/redis';
 import { ConnectorCreator, BotConfig } from '@tradejs/types';
 
 export const runBot = async () => {

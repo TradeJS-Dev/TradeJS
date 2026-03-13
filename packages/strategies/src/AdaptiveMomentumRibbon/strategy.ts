@@ -1,4 +1,4 @@
-import { createStrategyRuntime } from '@tradejs/core/strategies';
+import { createStrategyRuntime } from '@tradejs/node/strategies';
 import {
   AdaptiveMomentumRibbonConfig,
   config as DEFAULT_CONFIG,

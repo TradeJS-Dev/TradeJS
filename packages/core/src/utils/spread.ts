@@ -1,4 +1,4 @@
-import type { DerivativesInterval, SpreadRow } from '@tradejs/infra';
+import type { DerivativesInterval, SpreadRow } from '@tradejs/infra/timescale';
 import { toFiniteNumber } from './derivativesFeatureUtils';
 
 type SpreadValue = number | null | undefined;

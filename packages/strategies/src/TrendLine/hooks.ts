@@ -1,4 +1,4 @@
-import { createCloseOppositeBeforePlaceOrderHook } from '@tradejs/core/strategies';
+import { createCloseOppositeBeforePlaceOrderHook } from '@tradejs/node/strategies';
 import { TrendLineConfig } from './config';
 
 export const trendLineBeforePlaceOrderHook =

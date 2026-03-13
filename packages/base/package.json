@@ -15,10 +15,10 @@
     }
   },
   "dependencies": {
-    "@tradejs/connectors": "workspace:*",
-    "@tradejs/core": "workspace:*",
-    "@tradejs/indicators": "workspace:*",
-    "@tradejs/strategies": "workspace:*"
+    "@tradejs/connectors": "workspace:^",
+    "@tradejs/core": "workspace:^",
+    "@tradejs/indicators": "workspace:^",
+    "@tradejs/strategies": "workspace:^"
   },
   "devDependencies": {
     "tsup": "^8.5.1",

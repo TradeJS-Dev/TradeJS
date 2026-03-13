@@ -11,7 +11,7 @@ import {
   getDataEdges,
   toRows,
   upsertCandles,
-} from '@tradejs/infra';
+} from '@tradejs/infra/timescale';
 
 jest.mock('../client', () => ({
   getClient: jest.fn(),
@@ -28,20 +28,18 @@ jest.mock('../utils', () => ({
   mapPositionData: jest.fn(),
 }));
 
-jest.mock('@tradejs/infra', () => {
-  const actual = jest.requireActual('@tradejs/infra');
-  return {
-    ...actual,
-    logger: {
-      ...actual.logger,
-      log: jest.fn(),
-    },
-    getCandlesRange: jest.fn(),
-    getDataEdges: jest.fn(),
-    upsertCandles: jest.fn(),
-    toRows: jest.fn((symbol, interval, data) => ({ symbol, interval, data })),
-  };
-});
+jest.mock('@tradejs/infra/logger', () => ({
+  logger: {
+    log: jest.fn(),
+  },
+}));
+
+jest.mock('@tradejs/infra/timescale', () => ({
+  getCandlesRange: jest.fn(),
+  getDataEdges: jest.fn(),
+  upsertCandles: jest.fn(),
+  toRows: jest.fn((symbol, interval, data) => ({ symbol, interval, data })),
+}));
 
 const mockedGetClient = getClient as jest.MockedFunction<typeof getClient>;
 const mockedGetSymbolMeta = getSymbolMeta as jest.MockedFunction<

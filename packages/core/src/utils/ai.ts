@@ -1,7 +1,5 @@
-import 'dotenv/config';
-
 import type { BaseMessageLike } from '@langchain/core/messages';
-import { setData, redisKeys } from '@tradejs/infra';
+import { setData, redisKeys } from '@tradejs/infra/redis';
 import {
   buildAiHumanPromptAddonByStrategy,
   buildAiPayloadByStrategy,

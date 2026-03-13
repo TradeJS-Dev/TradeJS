@@ -16,7 +16,8 @@ slug: /
 
 Для внешнего использования важны два пакета:
 
-- `@tradejs/core` — API и типы для разработки стратегий и индикаторов, runtime-контракты
+- `@tradejs/core` — browser-safe API для авторинга, config-helper’ы и общие indicator/math/time helper’ы
+- `@tradejs/node` — Node runtime для исполнения стратегий, бэктестов, Pine loader и plugin/connector registry
 - `@tradejs/cli` — рабочие команды для бэктестов, сигналов, ботов, проверок и ML-процесса
 
 ## С чего начать

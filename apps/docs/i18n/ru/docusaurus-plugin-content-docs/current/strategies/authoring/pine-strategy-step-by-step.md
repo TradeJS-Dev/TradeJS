@@ -215,7 +215,7 @@ import {
   PineContextLike,
   asFiniteNumber,
   getPinePlotSeries,
-} from '@tradejs/core/pine';
+} from '@tradejs/node/pine';
 import {
   type Direction,
   type StrategyEntryModelFigures,
@@ -340,7 +340,7 @@ import {
   asFiniteNumber,
   getLatestPinePlotValue,
   runPineScript,
-} from '@tradejs/core/pine';
+} from '@tradejs/node/pine';
 import type { CreateStrategyCore } from '@tradejs/types';
 import { AdaptiveMomentumRibbonConfig } from './config';
 import { buildAdaptiveMomentumRibbonFigures } from './figures';
@@ -570,7 +570,7 @@ export const createAdaptiveMomentumRibbonCore: CreateStrategyCore<
 ## 6. Добавьте runtime entrypoint стратегии (`strategy.ts`)
 
 ```ts
-import { createStrategyRuntime } from '@tradejs/core/strategies';
+import { createStrategyRuntime } from '@tradejs/node/strategies';
 import {
   AdaptiveMomentumRibbonConfig,
   config as DEFAULT_CONFIG,

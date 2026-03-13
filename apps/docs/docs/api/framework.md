@@ -16,14 +16,14 @@ title: Core API
 ## Import Rule
 
 - Import config/plugin registration from `@tradejs/core/config`.
-- Import runtime/helpers from explicit public subpaths like `@tradejs/core/strategies`, `@tradejs/core/indicators`, `@tradejs/core/backtest`, `@tradejs/core/math`, `@tradejs/core/time`, `@tradejs/core/pine`.
+- Import runtime/helpers from explicit public subpaths like `@tradejs/node/strategies`, `@tradejs/node/backtest`, `@tradejs/core/indicators`, `@tradejs/core/math`, `@tradejs/core/time`, `@tradejs/node/pine`.
 - Import shared types from `@tradejs/types`.
 - Do not use internal aliases (`@utils`, `@constants`).
 - Do not use non-public deep imports.
 
 ## Utilities Convention (Contributors)
 
-- Keep production runtime utilities inside public runtime packages (`@tradejs/core`, `@tradejs/infra`).
+- Keep browser-safe helpers inside `@tradejs/core`, Node runtime helpers inside `@tradejs/node`, and infra adapters inside `@tradejs/infra`.
 - Keep test-only helpers isolated from runtime code and export only stable APIs.
 - Avoid duplicated helper logic across runtime files; extract shared helpers instead.
 
@@ -149,4 +149,4 @@ export default defineConnectorPlugin({ connectorEntries });
 - `Signal`
 - `Direction`, `Interval`, `Candle`
 
-See contracts in `@tradejs/core`.
+See shared contracts in `@tradejs/types` and public helper/runtime entrypoints in `@tradejs/core/*` and `@tradejs/node/*`.

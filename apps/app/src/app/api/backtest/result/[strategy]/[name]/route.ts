@@ -3,7 +3,8 @@
 import { NextResponse } from 'next/server';
 import { OrderLogData, Test, TestResult, TestStat } from '@tradejs/types';
 import { compactOrderLog, getTimeline } from '@tradejs/core/backtest';
-import { getData, logger, redisKeys } from '@tradejs/infra';
+import { getData, redisKeys } from '@tradejs/infra/redis';
+import { logger } from '@tradejs/infra/logger';
 import { auth } from '@app/auth';
 
 interface Params {

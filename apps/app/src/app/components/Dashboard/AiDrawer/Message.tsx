@@ -1,4 +1,3 @@
-import react from 'react';
 import { Timeline, Box, Text } from '@chakra-ui/react';
 import { PiRobotFill, PiUserFill } from 'react-icons/pi';
 import { AIChatMessage } from '@tradejs/types';
@@ -10,7 +9,7 @@ interface MessageProps {
 
 export const Message = ({ message, index }: MessageProps) => {
   return (
-    <Timeline.Item key={index}>
+    <Timeline.Item>
       <Timeline.Connector>
         <Timeline.Separator />
         <Timeline.Indicator>

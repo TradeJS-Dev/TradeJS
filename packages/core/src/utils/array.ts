@@ -1,5 +1,4 @@
 import _ from 'lodash';
-import chalk from 'chalk';
 import { KlineChartData, Interval } from '@tradejs/types';
 
 export const intervalToMs = (interval: Interval): number => {
@@ -57,8 +56,6 @@ export const isWrongData = (
     const curr = data[i].timestamp;
 
     if (curr - prev !== step) {
-      chalk.red('wrong data');
-
       return true;
     }
   }

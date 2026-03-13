@@ -2,8 +2,14 @@ import args from 'args';
 import chalk from 'chalk';
 const ListIt = require('list-it');
 import { connectors } from '@tradejs/connectors';
-import { getTickers } from '@tradejs/core/cli';
-import { getData, getKeys, setData, delKey, redisKeys } from '@tradejs/infra';
+import { getTickers } from '@tradejs/node/cli';
+import {
+  getData,
+  getKeys,
+  setData,
+  delKey,
+  redisKeys,
+} from '@tradejs/infra/redis';
 import { Test, TestStat, StrategyResults } from '@tradejs/types';
 
 args.example(

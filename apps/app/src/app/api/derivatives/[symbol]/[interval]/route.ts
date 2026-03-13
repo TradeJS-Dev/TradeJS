@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import {
   DerivativesInterval,
   getDerivativesRangeForSymbols,
-  logger,
-} from '@tradejs/infra';
+} from '@tradejs/infra/timescale';
+import { logger } from '@tradejs/infra/logger';
 
 export const dynamic = 'force-dynamic';
 

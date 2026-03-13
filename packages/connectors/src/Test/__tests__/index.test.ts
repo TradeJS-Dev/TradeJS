@@ -1,8 +1,7 @@
 import { TestConnectorCreator } from '..';
-import { setData } from '@tradejs/infra';
+import { setData } from '@tradejs/infra/redis';
 
-jest.mock('@tradejs/infra', () => ({
-  ...jest.requireActual('@tradejs/infra'),
+jest.mock('@tradejs/infra/redis', () => ({
   setData: jest.fn(),
   redisKeys: {
     cacheOrders: (userName: string, orderLogId: string) =>

@@ -48,6 +48,14 @@
               {
                 "name": "@tradejs/core",
                 "message": "Use explicit public subpaths like @tradejs/core/config, @tradejs/core/strategies, @tradejs/core/indicators, @tradejs/core/backtest, @tradejs/core/math, @tradejs/core/time."
+              },
+              {
+                "name": "@tradejs/infra",
+                "message": "Use explicit public subpaths like @tradejs/infra/redis, @tradejs/infra/logger, @tradejs/infra/http, @tradejs/infra/files, @tradejs/infra/ml, @tradejs/infra/timescale."
+              },
+              {
+                "name": "@tradejs/node",
+                "message": "Use explicit public subpaths like @tradejs/node/strategies, @tradejs/node/connectors, @tradejs/node/backtest, @tradejs/node/registry."
               }
             ],
             "patterns": [
@@ -56,7 +64,13 @@
               "@types",
               "@tradejs/core/src/*",
               "@tradejs/core/dist/*",
-              "@tradejs/core/*/*"
+              "@tradejs/core/*/*",
+              "@tradejs/infra/src/*",
+              "@tradejs/infra/dist/*",
+              "@tradejs/infra/*/*",
+              "@tradejs/node/src/*",
+              "@tradejs/node/dist/*",
+              "@tradejs/node/*/*"
             ]
           }
         ]

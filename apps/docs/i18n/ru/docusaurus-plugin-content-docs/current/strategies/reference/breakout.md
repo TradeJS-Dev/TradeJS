@@ -2,7 +2,7 @@
 title: 'Breakout'
 ---
 
-`Breakout` — TypeScript-стратегия (`@tradejs/core`) с весовой моделью сигналов для long/short breakout-сценариев.
+`Breakout` — встроенная TypeScript-стратегия из `@tradejs/strategies` с весовой моделью сигналов для long/short breakout-сценариев.
 
 ## Логика входа
 

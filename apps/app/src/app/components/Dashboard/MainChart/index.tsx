@@ -22,7 +22,7 @@ export const MainChart = () => {
     return () => {
       clearInterval(intervalId);
     };
-  }, []);
+  }, [setFilters]);
 
   return (
     <KlineChart

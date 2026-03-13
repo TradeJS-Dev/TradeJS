@@ -1,6 +1,6 @@
 import _ from 'lodash';
 import { Connector, StrategyEntrySignalContext } from '@tradejs/types';
-import { logger } from '@tradejs/infra';
+import { logger } from '@tradejs/infra/logger';
 
 type CloseOppositePositionsBeforeOpenOptions = {
   connector: Connector;

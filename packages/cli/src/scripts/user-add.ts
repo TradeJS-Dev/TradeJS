@@ -2,7 +2,7 @@ import args from 'args';
 import chalk from 'chalk';
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
-import { getData, setData, redisKeys } from '@tradejs/infra';
+import { getData, setData, redisKeys } from '@tradejs/infra/redis';
 
 args.example('yarn user-add -u myname -p 123456', 'Create or update user');
 args.option(['u', 'user'], 'Username', '');

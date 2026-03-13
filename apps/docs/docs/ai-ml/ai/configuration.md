@@ -7,9 +7,9 @@ title: AI Runtime and Configuration
 
 AI in TradeJS is a runtime review layer. It evaluates the current strategy signal and can gate order execution in live mode.
 
-Core module:
+Runtime module:
 
-- `@tradejs/core`
+- `@tradejs/node`
 
 ## Required Environment
 

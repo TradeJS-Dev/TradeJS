@@ -66,7 +66,7 @@ export const useTickers = (provider = 'bybit') => {
     scan(provider).then((coins) => {
       setTickers(provider, coins);
     });
-  }, [provider, loadedProvider]);
+  }, [loadedProvider, provider, setTickers, tickers.length]);
 
   const items = useMemo(() => {
     const favoriteItems = tickers

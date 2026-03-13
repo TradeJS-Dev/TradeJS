@@ -40,13 +40,16 @@ Shared runtime handles:
 
 Files:
 
-- `@tradejs/core`
+- `@tradejs/node/strategies`
+- `@tradejs/core/strategies`
 - [Strategy Runtime Hooks](./strategy-hooks) (full lifecycle hooks catalog)
 
 Import rule:
 
-- import runtime/helpers from `@tradejs/core`, and types from `@tradejs/types`
-- avoid internal aliases (`@utils`, `@types`, `@constants`) and deep imports (`@tradejs/core/*`)
+- import Node runtime wiring from `@tradejs/node/strategies`
+- import pure strategy helpers from `@tradejs/core/strategies`
+- import shared contracts from `@tradejs/types`
+- avoid internal aliases (`@utils`, `@types`, `@constants`) and non-public deep imports
 
 ## Minimal `core.ts` Example
 

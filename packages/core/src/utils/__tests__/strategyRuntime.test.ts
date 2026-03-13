@@ -46,7 +46,7 @@ jest.mock('@utils/strategyHelpers', () => ({
   executeEntryOrder: (...args: unknown[]) => mockExecuteEntryOrder(...args),
 }));
 
-jest.mock('@tradejs/infra', () => ({
+jest.mock('@tradejs/infra/logger', () => ({
   logger: {
     error: jest.fn(),
   },
@@ -61,7 +61,7 @@ jest.mock('../../strategy/manifests', () => {
 });
 
 import { createStrategyRuntime } from '@utils/strategyRuntime';
-import { logger } from '@tradejs/infra';
+import { logger } from '@tradejs/infra/logger';
 import * as manifestsModule from '../../strategy/manifests';
 import { strategyEntries } from '@tradejs/strategies';
 

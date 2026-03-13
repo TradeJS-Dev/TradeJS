@@ -6,7 +6,7 @@ import {
   buildMlTrainingRow,
   fetchMlThreshold,
   trimMlTrainingRowWindows,
-} from '@tradejs/infra';
+} from '@tradejs/infra/ml';
 import { Signal, TrendLine } from '@tradejs/types';
 import { trendLineDefaultConfig as DEFAULT_CONFIG } from '@tradejs/strategies';
 

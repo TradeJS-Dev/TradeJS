@@ -64,7 +64,7 @@ describe('redis utils', () => {
       default: redisCtorMock,
     }));
 
-    const redisModule = await import('@tradejs/infra');
+    const redisModule = await import('@tradejs/infra/redis');
     return {
       redisModule,
       redisClient,

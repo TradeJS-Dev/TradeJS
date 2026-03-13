@@ -25,23 +25,20 @@ jest.mock('@tradejs/core/backtest', () => {
   };
 });
 
-jest.mock('@tradejs/infra', () => {
-  const actual = jest.requireActual('@tradejs/infra');
-  return {
-    ...actual,
-    logger: {
-      ...actual.logger,
-      log: jest.fn(),
-    },
-    getData: (...args: unknown[]) => mockGetData(...args),
-    redisKeys: {
-      ...actual.redisKeys,
-      testOrders: (u: string, s: string, n: string) => `orders:${u}:${s}:${n}`,
-      testConfig: (u: string, s: string, n: string) => `config:${u}:${s}:${n}`,
-      testStat: (u: string, s: string, n: string) => `stat:${u}:${s}:${n}`,
-    },
-  };
-});
+jest.mock('@tradejs/infra/logger', () => ({
+  logger: {
+    log: jest.fn(),
+  },
+}));
+
+jest.mock('@tradejs/infra/redis', () => ({
+  getData: (...args: unknown[]) => mockGetData(...args),
+  redisKeys: {
+    testOrders: (u: string, s: string, n: string) => `orders:${u}:${s}:${n}`,
+    testConfig: (u: string, s: string, n: string) => `config:${u}:${s}:${n}`,
+    testStat: (u: string, s: string, n: string) => `stat:${u}:${s}:${n}`,
+  },
+}));
 
 import { GET } from '../result/[strategy]/[name]/route';
 

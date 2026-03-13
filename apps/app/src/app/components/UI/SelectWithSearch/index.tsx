@@ -48,7 +48,7 @@ export const SelectWithSearch = ({
 
   useEffect(() => {
     set(items);
-  }, [items]);
+  }, [items, set]);
 
   return (
     <Combobox.Root

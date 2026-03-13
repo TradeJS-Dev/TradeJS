@@ -6,7 +6,7 @@ TradeJS can send signal messages to Telegram from `npx @tradejs/cli signals --no
 
 ## 1. Configure Telegram Variables
 
-`@tradejs/core` reads:
+`@tradejs/node` / `@tradejs/cli` read:
 
 - `TG_BOT_TOKEN`
 - `TG_CHAT_ID`

@@ -1,6 +1,6 @@
-import { createCloseOppositeBeforePlaceOrderHook } from '@tradejs/core/strategies';
+import { createCloseOppositeBeforePlaceOrderHook } from '@tradejs/node/strategies';
 
-jest.mock('@tradejs/core/strategies', () => ({
+jest.mock('@tradejs/node/strategies', () => ({
   createCloseOppositeBeforePlaceOrderHook: jest.fn(() => 'hook'),
 }));
 

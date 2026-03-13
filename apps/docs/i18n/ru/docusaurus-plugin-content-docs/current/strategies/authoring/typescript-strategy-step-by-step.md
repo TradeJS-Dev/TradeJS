@@ -8,7 +8,7 @@ title: TypeScript Strategy Step by Step
 
 Правило импортов для гайда:
 
-- используйте публичные `@tradejs/core/*` subpath’и для runtime/хелперов и `@tradejs/types` для типов
+- используйте публичные `@tradejs/core/*` subpath’и для browser-safe helper’ов, `@tradejs/node/*` для Node runtime wiring и `@tradejs/types` для типов
 - не используйте `@utils`, `@types`, `@constants` и непубличные deep-imports
 
 ## 1. Создайте файлы
@@ -140,7 +140,7 @@ export const createSimpleMaCore: CreateStrategyCore<SimpleMaConfig> = async ({
 `strategy.ts`:
 
 ```ts
-import { createStrategyRuntime } from '@tradejs/core/strategies';
+import { createStrategyRuntime } from '@tradejs/node/strategies';
 import { config, SimpleMaConfig } from './config';
 import { createSimpleMaCore } from './core';
 

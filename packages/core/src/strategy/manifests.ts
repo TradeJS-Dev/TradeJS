@@ -10,7 +10,7 @@ import {
   registerIndicatorEntries,
   resetIndicatorRegistryCache,
 } from '@utils/indicatorPlugins';
-import { logger } from '@tradejs/infra';
+import { logger } from '@tradejs/infra/logger';
 import {
   loadTradejsConfig,
   resolvePluginModuleSpecifier,

@@ -16,14 +16,14 @@ title: Core API
 ## Правило импортов
 
 - Импортируйте config/plugin registration из `@tradejs/core/config`.
-- Импортируйте runtime/хелперы из явных публичных subpath’ов вроде `@tradejs/core/strategies`, `@tradejs/core/indicators`, `@tradejs/core/backtest`, `@tradejs/core/math`, `@tradejs/core/time`, `@tradejs/core/pine`.
+- Импортируйте runtime/хелперы из явных публичных subpath’ов вроде `@tradejs/node/strategies`, `@tradejs/node/backtest`, `@tradejs/core/indicators`, `@tradejs/core/math`, `@tradejs/core/time`, `@tradejs/node/pine`.
 - Импортируйте общие типы из `@tradejs/types`.
 - Не используйте внутренние алиасы (`@utils`, `@constants`).
 - Не используйте непубличные deep-imports.
 
 ## Конвенции по утилитам (для контрибьюторов)
 
-- Production runtime-утилиты держите в публичных runtime-пакетах (`@tradejs/core`, `@tradejs/infra`).
+- Browser-safe helper’ы держите в `@tradejs/core`, Node runtime helper’ы в `@tradejs/node`, infra-адаптеры в `@tradejs/infra`.
 - Тестовые helper-утилиты изолируйте от runtime-кода и экспортируйте только стабильные API.
 - Избегайте дублирования helper-логики в runtime-файлах; выносите общий код в единые функции.
 
@@ -149,4 +149,4 @@ export default defineConnectorPlugin({ connectorEntries });
 - `Signal`
 - `Direction`, `Interval`, `Candle`
 
-Контракты лежат в `@tradejs/core`.
+Общие контракты лежат в `@tradejs/types`, а публичные helper/runtime entrypoint’ы — в `@tradejs/core/*` и `@tradejs/node/*`.

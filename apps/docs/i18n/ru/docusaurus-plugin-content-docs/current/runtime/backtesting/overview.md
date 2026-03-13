@@ -23,7 +23,7 @@ npx @tradejs/cli infra-up
 Основные файлы:
 
 - CLI-скрипт: `@tradejs/cli`
-- воркер: `@tradejs/core`
+- runtime воркера: `@tradejs/node`
 
 ## Реальные CLI-флаги (из кода)
 
@@ -53,7 +53,7 @@ npx @tradejs/cli backtest --config trendline --connector bybit --tests 500 --par
 ## Реальный паттерн worker-обработки
 
 ```ts
-import { testing } from '@tradejs/core/backtest';
+import { testing } from '@tradejs/node/backtest';
 
 for await (const test of testSuite) {
   const testResult = await testing(test);
@@ -80,6 +80,11 @@ npx @tradejs/cli backtest --ml
 ```bash
 npx @tradejs/cli ml-export
 ```
+
+## Замечание про UI
+
+Встроенное Next.js-приложение пока не поставляется как публичный внешний пакет.
+Для внешнего пользователя поддерживаемый сценарий бэктеста сейчас CLI-first.
 
 ## Связанные статьи
 

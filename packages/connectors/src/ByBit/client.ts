@@ -1,9 +1,9 @@
 'use server';
 
-import 'dotenv/config';
 import { RestClientV5 } from 'bybit-api';
 
-import { getData, logger, redisKeys } from '@tradejs/infra';
+import { logger } from '@tradejs/infra/logger';
+import { getData, redisKeys } from '@tradejs/infra/redis';
 import { ConnectorConfig } from '@tradejs/types';
 
 const useTestnet = false;

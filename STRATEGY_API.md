@@ -14,9 +14,9 @@ This document is the single source of truth for strategy implementation contract
 
 ## Import Policy
 
-Strategy/plugin code should import runtime helpers from public `@tradejs/core/*` subpaths and shared types from `@tradejs/types`.
+Strategy/plugin code should import runtime helpers from explicit public `@tradejs/core/*` and `@tradejs/node/*` subpaths and shared types from `@tradejs/types`.
 
-- use: `import { createStrategyRuntime } from '@tradejs/core/strategies'`
+- use: `import { createStrategyRuntime } from '@tradejs/node/strategies'`
 - use: `import { CreateStrategyCore } from '@tradejs/types'`
 - do not use internal aliases (`@utils`, `@constants`)
 - do not use non-public deep imports

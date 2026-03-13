@@ -6,7 +6,7 @@ TradeJS умеет отправлять сигналы в Telegram через `n
 
 ## 1. Настройте переменные Telegram
 
-В `@tradejs/core` читаются:
+В `@tradejs/node` / `@tradejs/cli` читаются:
 
 - `TG_BOT_TOKEN`
 - `TG_CHAT_ID`

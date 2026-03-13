@@ -14,8 +14,8 @@ import {
   DEFAULT_CONNECTOR_NAME,
   getConnectorCreatorByName,
   resolveConnectorName,
-} from '@tradejs/core/connectors';
-import { drawStatInCLI, getTickers, update } from '@tradejs/core/cli';
+} from '@tradejs/node/connectors';
+import { drawStatInCLI, getTickers, update } from '@tradejs/node/cli';
 import {
   calculateStatsFull,
   createTestSuite,
@@ -29,7 +29,7 @@ import {
   TTL_1D,
   TTL_1M,
 } from '@tradejs/core/constants';
-import { setData, getData, redisKeys } from '@tradejs/infra';
+import { setData, getData, redisKeys } from '@tradejs/infra/redis';
 import {
   Interval,
   OrderLog,

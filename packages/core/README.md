@@ -10,7 +10,7 @@ Core TradeJS package for strategy and indicator development.
 ## Install
 
 ```bash
-npm i @tradejs/core
+npm i @tradejs/core @tradejs/node @tradejs/types
 ```
 
 ## Minimal example
@@ -29,7 +29,7 @@ export default defineConfig(basePreset, {
 Import rule:
 
 - config/plugin registration should be imported from `@tradejs/core/config`
-- runtime/helpers should be imported from explicit public subpaths like `@tradejs/core/strategies`, `@tradejs/core/indicators`, `@tradejs/core/backtest`, `@tradejs/core/math`, `@tradejs/core/time`, `@tradejs/core/pine`
+- runtime/helpers should be imported from explicit public subpaths like `@tradejs/node/strategies`, `@tradejs/node/backtest`, `@tradejs/core/indicators`, `@tradejs/core/math`, `@tradejs/core/time`, `@tradejs/node/pine`
 - shared types should be imported from `@tradejs/types`
 - avoid internal aliases (`@utils`, `@constants`) and non-public deep imports
 

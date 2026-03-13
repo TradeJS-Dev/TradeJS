@@ -8,18 +8,19 @@ import {
   getConnectorCreatorByName,
   resolveConnectorName,
   DEFAULT_CONNECTOR_NAME,
-} from '@tradejs/core/connectors';
+} from '@tradejs/node/connectors';
 import {
   getTickers,
   makeScreenshots,
   sendToTG,
   update,
-} from '@tradejs/core/cli';
+} from '@tradejs/node/cli';
 import { runWithConcurrency } from '@tradejs/core/async';
 import { SIGNALS_PRELOAD_DAYS, TTL_1D, TTL_3M } from '@tradejs/core/constants';
-import { getStrategyCreator } from '@tradejs/core/strategies';
+import { getStrategyCreator } from '@tradejs/node/strategies';
 import { getTimestamp } from '@tradejs/core/time';
-import { getData, getKeys, logger, redisKeys, setData } from '@tradejs/infra';
+import { logger } from '@tradejs/infra/logger';
+import { getData, getKeys, redisKeys, setData } from '@tradejs/infra/redis';
 import {
   Connector,
   ConnectorCreator,

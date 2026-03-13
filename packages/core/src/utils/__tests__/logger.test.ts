@@ -64,14 +64,14 @@ describe('logger setup', () => {
       },
     }));
 
-    const { logger } = require('@tradejs/infra');
+    const { logger } = require('@tradejs/infra/logger');
 
     expect(logger).toBeDefined();
     expect(createLoggerMock).toHaveBeenCalledTimes(1);
     expect(ConsoleMock).toHaveBeenCalledTimes(1);
     expect(FileMock).toHaveBeenCalledTimes(2);
     expect(printfMock).toHaveBeenCalledTimes(3);
-    expect(formattedMessages[0]).toContain('gray(01 Jan 00:00:00)');
+    expect(formattedMessages[0]).toContain('01 Jan 00:00:00');
     expect(formattedMessages[1]).toContain('01 Jan 00:00:00');
     expect(formattedMessages[2]).toContain('01 Jan 00:00:00');
   });

@@ -1,4 +1,4 @@
-import { createCloseOppositeBeforePlaceOrderHook } from '@tradejs/core/strategies';
+import { createCloseOppositeBeforePlaceOrderHook } from '@tradejs/node/strategies';
 import { VolumeDivergenceConfig } from './config';
 
 export const volumeDivergenceBeforePlaceOrderHook =

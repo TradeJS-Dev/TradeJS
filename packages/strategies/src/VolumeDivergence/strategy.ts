@@ -1,4 +1,4 @@
-import { createStrategyRuntime } from '@tradejs/core/strategies';
+import { createStrategyRuntime } from '@tradejs/node/strategies';
 import { config as DEFAULT_CONFIG, VolumeDivergenceConfig } from './config';
 import { createVolumeDivergenceCore } from './core';
 import { volumeDivergenceManifest } from './manifest';

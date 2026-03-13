@@ -1,4 +1,4 @@
-import { createStrategyRuntime } from '@tradejs/core/strategies';
+import { createStrategyRuntime } from '@tradejs/node/strategies';
 import { config as DEFAULT_CONFIG, TrendLineConfig } from './config';
 import { createTrendLineCore } from './core';
 import { trendLineManifest } from './manifest';

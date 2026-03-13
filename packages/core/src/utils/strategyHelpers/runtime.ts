@@ -1,10 +1,10 @@
+import { logger } from '@tradejs/infra/logger';
 import {
   buildMlFeatures,
   buildMlTrainingRow,
   fetchMlThreshold,
-  logger,
   trimMlTrainingRowWindows,
-} from '@tradejs/infra';
+} from '@tradejs/infra/ml';
 import { buildMlPayload } from '@utils/mlPayload';
 import {
   Connector,

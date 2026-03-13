@@ -11,12 +11,12 @@ import {
   normalizeDerivativesIntervals,
 } from '@tradejs/core/indicators';
 import { delay } from '@tradejs/core/async';
-import { getTickers } from '@tradejs/core/cli';
+import { getTickers } from '@tradejs/node/cli';
 import {
   DerivativesInterval,
   upsertDerivatives,
   waitForDbReady,
-} from '@tradejs/infra';
+} from '@tradejs/infra/timescale';
 
 type CoinalyzeMarket = {
   symbol: string;

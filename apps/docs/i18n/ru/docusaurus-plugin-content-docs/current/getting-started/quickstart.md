@@ -18,7 +18,7 @@ title: Quickstart
 mkdir tradejs-project
 cd tradejs-project
 npm init -y
-npm i @tradejs/core @tradejs/base @tradejs/cli
+npm i @tradejs/core @tradejs/node @tradejs/types @tradejs/base @tradejs/cli
 ```
 
 ## 2. Добавьте `tradejs.config.ts`
@@ -27,13 +27,16 @@ npm i @tradejs/core @tradejs/base @tradejs/cli
 import { defineConfig } from '@tradejs/core/config';
 import { basePreset } from '@tradejs/base';
 
-export default defineConfig(basePreset, {});
+export default defineConfig(basePreset);
 ```
 
 Политика импортов для плагинов:
 
-- импортируйте runtime/типы/хелперы/константы только из `@tradejs/core`
-- избегайте внутренних алиасов (`@utils`, `@types`, `@constants`) и deep-imports (`@tradejs/core/*`)
+- импортируйте plugin registration из `@tradejs/core/config`
+- browser-safe helper’ы импортируйте из публичных subpath’ов `@tradejs/core/*`
+- Node runtime helper’ы импортируйте из публичных subpath’ов `@tradejs/node/*`
+- общие контракты импортируйте из `@tradejs/types`
+- избегайте внутренних алиасов (`@utils`, `@types`, `@constants`) и непубличных deep-imports вроде `@tradejs/core/src/*` или `@tradejs/node/src/*`
 
 ## 3. Инициализируйте файлы dev-инфраструктуры
 
@@ -80,6 +83,13 @@ npx @tradejs/cli backtest
 npx @tradejs/cli results
 npx @tradejs/cli bot
 ```
+
+## Статус встроенного web UI
+
+Публичный пакетный flow для внешнего пользователя пока не включает publishable `@tradejs/app`.
+
+Поэтому этот quickstart покрывает только CLI/runtime-сценарий.
+Поддерживаемого шага `app:dev` для npm-пользователя пока нет, и простое добавление `npm i @tradejs/app` с текущей структурой пакета не заработает.
 
 ## 7. Остановите dev-инфраструктуру
 

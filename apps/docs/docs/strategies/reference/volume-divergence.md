@@ -2,7 +2,7 @@
 title: 'VolumeDivergence'
 ---
 
-`VolumeDivergence` is a TypeScript reversal strategy (`@tradejs/core`) that compares price pivots with normalized volume pivots.
+`VolumeDivergence` is a built-in TypeScript reversal strategy from `@tradejs/strategies` that compares price pivots with normalized volume pivots.
 
 ## Entry Logic
 

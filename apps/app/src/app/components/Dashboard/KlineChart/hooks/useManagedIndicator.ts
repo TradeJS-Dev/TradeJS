@@ -76,6 +76,7 @@ export const useManagedIndicator = ({
   updateDeps,
 }: UseManagedIndicatorParams) => {
   const [registered, setRegistered] = useState(false);
+  const updateDepsKey = JSON.stringify(updateDeps);
 
   useEffect(() => {
     if (registered) return;
@@ -134,6 +135,6 @@ export const useManagedIndicator = ({
     paneId,
     minHeight,
     calc,
-    ...updateDeps,
+    updateDepsKey,
   ]);
 };

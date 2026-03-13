@@ -1,12 +1,14 @@
 import { TrendlineStrategyCreator } from '../strategy';
-import { askAI } from '@tradejs/core/strategies';
+import { askAI } from '@tradejs/node/strategies';
 import {
   calculateCoinBtcCorrelation,
   createIndicators,
   createTrendlineEngine,
 } from '@tradejs/core/indicators';
 import { filterByVeryVolatility } from '../filters';
-import { fetchMlThreshold, getData, logger, redisKeys } from '@tradejs/infra';
+import { logger } from '@tradejs/infra/logger';
+import { fetchMlThreshold } from '@tradejs/infra/ml';
+import { getData, redisKeys } from '@tradejs/infra/redis';
 
 jest.mock('@tradejs/core/indicators', () => {
   const actual = jest.requireActual('@tradejs/core/indicators');
@@ -18,8 +20,8 @@ jest.mock('@tradejs/core/indicators', () => {
   };
 });
 
-jest.mock('@tradejs/core/strategies', () => {
-  const actual = jest.requireActual('@tradejs/core/strategies');
+jest.mock('@tradejs/node/strategies', () => {
+  const actual = jest.requireActual('@tradejs/node/strategies');
   return {
     ...actual,
     askAI: jest.fn(async () => ({
@@ -34,25 +36,27 @@ jest.mock('@tradejs/core/strategies', () => {
   };
 });
 
-jest.mock('@tradejs/infra', () => {
-  const actual = jest.requireActual('@tradejs/infra');
-  return {
-    ...actual,
-    getData: jest.fn(async () => ({})),
-    fetchMlThreshold: jest.fn(async () => null),
-    redisKeys: {
-      ...actual.redisKeys,
-      strategyConfig: jest.fn(() => 'strategy:config:TrendLine'),
-      strategyResults: jest.fn(() => 'strategy:results:TrendLine'),
-    },
-    logger: {
-      log: jest.fn(),
-      info: jest.fn(),
-      warn: jest.fn(),
-      error: jest.fn(),
-    },
-  };
-});
+jest.mock('@tradejs/infra/redis', () => ({
+  getData: jest.fn(async () => ({})),
+  redisKeys: {
+    strategyConfig: jest.fn(() => 'strategy:config:TrendLine'),
+    strategyResults: jest.fn(() => 'strategy:results:TrendLine'),
+  },
+}));
+
+jest.mock('@tradejs/infra/ml', () => ({
+  ...jest.requireActual('@tradejs/infra/ml'),
+  fetchMlThreshold: jest.fn(async () => null),
+}));
+
+jest.mock('@tradejs/infra/logger', () => ({
+  logger: {
+    log: jest.fn(),
+    info: jest.fn(),
+    warn: jest.fn(),
+    error: jest.fn(),
+  },
+}));
 
 jest.mock('../filters', () => ({
   filterByVeryVolatility: jest.fn(() => true),

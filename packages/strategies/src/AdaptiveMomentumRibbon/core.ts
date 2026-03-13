@@ -4,9 +4,9 @@ import {
   getLatestPinePlotValue,
   runPineScript,
   type PineContextLike,
-} from '@tradejs/core/pine';
+} from '@tradejs/node/pine';
 import { asPositiveInt, asPositiveNumber } from '@tradejs/core/math';
-import { logger } from '@tradejs/infra';
+import { logger } from '@tradejs/infra/logger';
 import type { AdaptiveMomentumRibbonConfig } from './config';
 import { buildAdaptiveMomentumRibbonFigures } from './figures';
 import { type CreateStrategyCore } from '@tradejs/types';

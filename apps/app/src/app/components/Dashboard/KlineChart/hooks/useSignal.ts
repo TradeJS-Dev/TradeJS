@@ -43,7 +43,7 @@ export const useSignal = (chart: Chart | null, enabled: boolean) => {
   const signalId = searchParams.get('signalId');
   const autoZoom = Boolean(searchParams.get('autoZoom')) ?? false;
 
-  const data = chart?.getDataList() || [];
+  const data = chart?.getDataList();
   const symbol = chart?.getSymbol()?.ticker || '';
 
   useEffect(() => {
@@ -81,5 +81,5 @@ export const useSignal = (chart: Chart | null, enabled: boolean) => {
     return () => {
       removeSignalFigures(chart, overlays);
     };
-  }, [chart, enabled, data.length, signal, autoZoom]);
+  }, [autoZoom, chart, data, enabled, signal]);
 };

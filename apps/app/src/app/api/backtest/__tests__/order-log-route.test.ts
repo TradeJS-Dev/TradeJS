@@ -14,21 +14,18 @@ jest.mock('@app/auth', () => ({
   auth: () => mockAuth(),
 }));
 
-jest.mock('@tradejs/infra', () => {
-  const actual = jest.requireActual('@tradejs/infra');
-  return {
-    ...actual,
-    logger: {
-      ...actual.logger,
-      log: jest.fn(),
-    },
-    getData: (...args: unknown[]) => mockGetData(...args),
-    redisKeys: {
-      ...actual.redisKeys,
-      testOrders: (u: string, s: string, n: string) => `orders:${u}:${s}:${n}`,
-    },
-  };
-});
+jest.mock('@tradejs/infra/logger', () => ({
+  logger: {
+    log: jest.fn(),
+  },
+}));
+
+jest.mock('@tradejs/infra/redis', () => ({
+  getData: (...args: unknown[]) => mockGetData(...args),
+  redisKeys: {
+    testOrders: (u: string, s: string, n: string) => `orders:${u}:${s}:${n}`,
+  },
+}));
 
 import { GET } from '../order-log/[strategy]/[name]/route';
 

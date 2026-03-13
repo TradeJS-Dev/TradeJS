@@ -1,7 +1,4 @@
-import 'dotenv/config';
 import type { TestThresholds } from '@tradejs/types';
-
-const { NODE_ENV } = process.env;
 
 export const FEE_PERCENT = 0.005;
 
@@ -27,10 +24,6 @@ export const TESTS_LIMIT = 100_000;
 export const TESTS_ORDERS_MIN_LIMIT = 3;
 
 export const MARKET_CATEGORY = 'linear';
-export const KLINE_CONCURRENCY_LIMIT = NODE_ENV === 'production' ? 5 : 10;
-export const TG_CONCURRENCY_LIMIT = 3;
-export const AI_CONCURRENCY_LIMIT = 3;
-export const SCREENSHOT_CONCURRENCY_LIMIT = NODE_ENV === 'production' ? 1 : 2;
 export const ML_CANDLE_FEATURE_WINDOW = 50;
 export const ML_BASE_CANDLES_WINDOW = 50;
 

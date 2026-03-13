@@ -15,9 +15,10 @@
     }
   },
   "dependencies": {
-    "@tradejs/core": "workspace:*",
-    "@tradejs/infra": "workspace:*",
-    "@tradejs/types": "workspace:*",
+    "@tradejs/core": "workspace:^",
+    "@tradejs/infra": "workspace:^",
+    "@tradejs/node": "workspace:^",
+    "@tradejs/types": "workspace:^",
     "bybit-api": "^3.9.0",
     "chalk": "4.1.2",
     "lodash": "^4.17.21"

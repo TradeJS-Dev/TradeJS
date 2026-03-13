@@ -1,12 +1,12 @@
 /** @jest-environment node */
 
-import { runPineScript } from '@tradejs/core/pine';
-import { logger } from '@tradejs/infra';
+import { runPineScript } from '@tradejs/node/pine';
+import { logger } from '@tradejs/infra/logger';
 import { createAdaptiveMomentumRibbonCore } from '../core';
 import { config as DEFAULT_CONFIG } from '../config';
 
-jest.mock('@tradejs/core/pine', () => {
-  const actual = jest.requireActual('@tradejs/core/pine');
+jest.mock('@tradejs/node/pine', () => {
+  const actual = jest.requireActual('@tradejs/node/pine');
   return {
     ...actual,
     runPineScript: jest.fn(),

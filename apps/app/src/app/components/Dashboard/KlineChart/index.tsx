@@ -60,7 +60,7 @@ export const KlineChart = ({
       dispose(id);
       chartRef.current = null;
     };
-  }, []);
+  }, [id]);
 
   useEffect(() => {
     if (!chartRef.current || _.isEmpty(data)) {
@@ -140,7 +140,7 @@ export const KlineChart = ({
     if (!wasPinnedToRightEdge) {
       chart.scrollToDataIndex(dataIndexToKeepVisible);
     }
-  }, [key, data, fulfilled]);
+  }, [data, filters.interval, filters.symbol, fulfilled, key]);
 
   const chart = chartRef.current;
 

@@ -12,7 +12,7 @@ import {
 
 const loggerLogMock = jest.fn();
 
-jest.mock('@tradejs/infra', () => ({
+jest.mock('@tradejs/infra/logger', () => ({
   logger: {
     log: (...args: unknown[]) => loggerLogMock(...args),
   },

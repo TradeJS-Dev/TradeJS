@@ -21,20 +21,10 @@
       "import": "./dist/backtest.mjs",
       "require": "./dist/backtest.js"
     },
-    "./cli": {
-      "types": "./dist/cli.d.ts",
-      "import": "./dist/cli.mjs",
-      "require": "./dist/cli.js"
-    },
     "./config": {
       "types": "./dist/config.d.ts",
       "import": "./dist/config.mjs",
       "require": "./dist/config.js"
-    },
-    "./connectors": {
-      "types": "./dist/connectors.d.ts",
-      "import": "./dist/connectors.mjs",
-      "require": "./dist/connectors.js"
     },
     "./constants": {
       "types": "./dist/constants.d.ts",
@@ -88,20 +78,10 @@
     }
   },
   "dependencies": {
-    "@langchain/core": "^0.3.68",
-    "@langchain/openai": "^0.6.11",
-    "@tradejs/infra": "workspace:*",
-    "@tradejs/types": "workspace:*",
-    "bybit-api": "^3.9.0",
-    "chalk": "4.1.2",
+    "@tradejs/types": "workspace:^",
     "date-fns": "^3.3.1",
-    "ioredis": "5.8.0",
     "klinecharts": "10.0.0-alpha9",
     "lodash": "^4.17.21",
-    "pg": "8.16.3",
-    "pinets": "0.8.12",
-    "progress": "^2.0.3",
-    "puppeteer": "24.15.0",
     "technicalindicators": "^3.1.0",
     "uuid": "11.1.0"
   },

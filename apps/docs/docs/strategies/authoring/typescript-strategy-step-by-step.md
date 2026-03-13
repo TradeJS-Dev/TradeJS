@@ -8,7 +8,7 @@ Example strategy: simple MA crossover.
 
 Import rule for this guide:
 
-- use public `@tradejs/core/*` subpaths for runtime/helpers and `@tradejs/types` for types
+- use public `@tradejs/core/*` subpaths for browser-safe helpers, `@tradejs/node/*` for Node runtime wiring, and `@tradejs/types` for types
 - do not use `@utils`, `@types`, `@constants` or non-public deep imports
 
 ## 1. Create Files
@@ -140,7 +140,7 @@ export const createSimpleMaCore: CreateStrategyCore<SimpleMaConfig> = async ({
 `strategy.ts`:
 
 ```ts
-import { createStrategyRuntime } from '@tradejs/core/strategies';
+import { createStrategyRuntime } from '@tradejs/node/strategies';
 import { config, SimpleMaConfig } from './config';
 import { createSimpleMaCore } from './core';
 

@@ -6,7 +6,7 @@ Runtime ML gating calls a Python gRPC inference service.
 
 Public interface:
 
-- `@tradejs/core`
+- `@tradejs/node`
 - gRPC `Predict` contract (`PredictRequest` / `PredictResponse`)
 
 ## Start / Stop

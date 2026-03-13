@@ -34,8 +34,7 @@ jest.mock('@langchain/core/messages', () => ({
   SystemMessage: MockSystemMessage,
 }));
 
-jest.mock('@tradejs/infra', () => ({
-  ...jest.requireActual('@tradejs/infra'),
+jest.mock('@tradejs/infra/redis', () => ({
   setData: (...args: unknown[]) => setDataMock(...args),
   redisKeys: {
     analysis: (...args: [string, string]) => analysisKeyMock(...args),

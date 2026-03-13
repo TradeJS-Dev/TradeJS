@@ -3,7 +3,6 @@
 import { useEffect } from 'react';
 import _ from 'lodash';
 import { Chart, registerOverlay } from 'klinecharts';
-import { KlineChartData } from '@tradejs/types';
 import { getSupportResistanceLevels } from '@tradejs/core/indicators';
 
 type SupportResistanceOverlayPoint = {
@@ -15,7 +14,7 @@ export const useSupportResistanceLines = (
   chart: Chart | null,
   enabled: boolean,
 ) => {
-  const data = chart?.getDataList() || [];
+  const data = chart?.getDataList();
 
   // регистрируем оверлеи один раз
   useEffect(() => {

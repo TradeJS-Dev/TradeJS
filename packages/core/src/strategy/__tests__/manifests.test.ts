@@ -25,7 +25,7 @@ describe('strategy manifests registry', () => {
       registerIndicatorEntries: registerIndicatorEntriesMock,
       resetIndicatorRegistryCache: jest.fn(),
     }));
-    jest.doMock('@tradejs/infra', () => ({
+    jest.doMock('@tradejs/infra/logger', () => ({
       logger: {
         warn: warnMock,
         log: logMock,

@@ -10,7 +10,7 @@ import {
   upsertDerivatives,
   upsertSpreadRows,
   waitForDbReady,
-} from '@tradejs/infra';
+} from '@tradejs/infra/timescale';
 import {
   marketDataProviders,
   MarketDataProviderName,

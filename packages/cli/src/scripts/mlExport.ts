@@ -2,7 +2,7 @@ import args from 'args';
 import chalk from 'chalk';
 import fs from 'fs/promises';
 import path from 'path';
-import { mergeJsonlFiles, toFileToken } from '@tradejs/infra';
+import { mergeJsonlFiles, toFileToken } from '@tradejs/infra/ml';
 
 args.example(
   'yarn ts-node ./src/scripts/mlExport --strategy trendline',

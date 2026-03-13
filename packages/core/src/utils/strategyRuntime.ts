@@ -1,6 +1,6 @@
 import path from 'node:path';
 import { SIGNALS_PRELOAD_DAYS } from '@constants';
-import { logger } from '@tradejs/infra';
+import { logger } from '@tradejs/infra/logger';
 import { createLoadPineScript } from '@utils/pine';
 import { getTimestamp } from '@utils/timestamp';
 import { getStrategyManifest } from '../strategy/manifests';

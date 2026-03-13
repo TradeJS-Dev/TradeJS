@@ -11,7 +11,7 @@ title: Grid-конфиг бэктеста для массового перебо
 Код:
 
 - `@tradejs/cli`
-- `@tradejs/core`
+- `@tradejs/node`
 
 Ключевые правила:
 

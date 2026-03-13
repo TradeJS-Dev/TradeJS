@@ -39,92 +39,11 @@ export const useData = (filters: Filters) => {
   const prevKey = useRef(key);
   const retried = useRef(false);
   const [fulfilled, setFulfilled] = useState(false);
-  const data = useDataStore((s) => s.data.get(key)) || [];
+  const storedData = useDataStore((s) => s.data.get(key));
   const setData = useDataStore((s) => s.setData);
 
   const searchParams = useSearchParams();
   const cacheOnly = Boolean(searchParams.get('cacheOnly')) ?? false;
-
-  const updateData = async () => {
-    const { provider = 'bybit', symbol, interval, start, end } = filters;
-    if (!symbol) {
-      if (!fulfilled) {
-        setFulfilled(true);
-      }
-      return;
-    }
-    let currentData = [...data];
-
-    if (!currentData || currentData.length < 2) {
-      const cachedResult = (await get(key)) as KlineChartData | null;
-
-      if (cachedResult && cachedResult.length > 2) {
-        currentData = [...cachedResult];
-      }
-    }
-
-    if (currentData?.length > 2 && isWrongData(interval, currentData)) {
-      console.warn('Wrong kline continuity, drop cache', symbol, interval);
-      currentData = [];
-      set(key, []);
-    }
-
-    const normStart = Math.max(
-      start,
-      currentData?.length > 2
-        ? currentData[currentData.length - 2]?.timestamp || 0
-        : 0,
-    );
-
-    const newData = await kline({
-      provider,
-      symbol,
-      interval,
-      start: normStart,
-      end,
-      cacheOnly,
-    });
-
-    const finalData = mergeData(currentData, newData);
-
-    if (
-      !cacheOnly &&
-      !retried.current &&
-      finalData.length > 2 &&
-      isWrongData(interval, finalData)
-    ) {
-      console.warn(
-        'Wrong kline continuity after merge, refetch full',
-        symbol,
-        interval,
-      );
-      retried.current = true;
-      set(key, []);
-      const refetchData = await kline({
-        provider,
-        symbol,
-        interval,
-        start,
-        end,
-        cacheOnly,
-      });
-      const cleaned = mergeData([], refetchData);
-      setData(provider as Provider, symbol, interval, cleaned);
-      if (!fulfilled) {
-        setFulfilled(true);
-      }
-      set(key, cleaned);
-      return;
-    }
-
-    setData(provider as Provider, symbol, interval, finalData);
-
-    if (!fulfilled) {
-      setFulfilled(true);
-    }
-
-    set(key, finalData);
-  };
 
   useEffect(() => {
     if (key !== prevKey.current) {
@@ -133,12 +52,93 @@ export const useData = (filters: Filters) => {
       retried.current = false;
     }
 
-    updateData();
-  }, [key, filters.end]);
+    const updateData = async () => {
+      const { provider = 'bybit', symbol, interval, start, end } = filters;
+      if (!symbol) {
+        if (!fulfilled) {
+          setFulfilled(true);
+        }
+        return;
+      }
+      let currentData = [...(storedData ?? [])];
+
+      if (!currentData || currentData.length < 2) {
+        const cachedResult = (await get(key)) as KlineChartData | null;
+
+        if (cachedResult && cachedResult.length > 2) {
+          currentData = [...cachedResult];
+        }
+      }
+
+      if (currentData?.length > 2 && isWrongData(interval, currentData)) {
+        console.warn('Wrong kline continuity, drop cache', symbol, interval);
+        currentData = [];
+        set(key, []);
+      }
+
+      const normStart = Math.max(
+        start,
+        currentData?.length > 2
+          ? currentData[currentData.length - 2]?.timestamp || 0
+          : 0,
+      );
+
+      const newData = await kline({
+        provider,
+        symbol,
+        interval,
+        start: normStart,
+        end,
+        cacheOnly,
+      });
+
+      const finalData = mergeData(currentData, newData);
+
+      if (
+        !cacheOnly &&
+        !retried.current &&
+        finalData.length > 2 &&
+        isWrongData(interval, finalData)
+      ) {
+        console.warn(
+          'Wrong kline continuity after merge, refetch full',
+          symbol,
+          interval,
+        );
+        retried.current = true;
+        set(key, []);
+        const refetchData = await kline({
+          provider,
+          symbol,
+          interval,
+          start,
+          end,
+          cacheOnly,
+        });
+        const cleaned = mergeData([], refetchData);
+        setData(provider as Provider, symbol, interval, cleaned);
+        if (!fulfilled) {
+          setFulfilled(true);
+        }
+        set(key, cleaned);
+        return;
+      }
+
+      setData(provider as Provider, symbol, interval, finalData);
+
+      if (!fulfilled) {
+        setFulfilled(true);
+      }
+
+      set(key, finalData);
+    };
+
+    void updateData();
+  }, [cacheOnly, filters, fulfilled, key, setData, storedData]);
 
   return {
     key,
-    data,
+    data: storedData ?? [],
     fulfilled,
   };
 };

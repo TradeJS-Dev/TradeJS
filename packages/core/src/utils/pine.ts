@@ -1,6 +1,18 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { Candle } from '@tradejs/types';
+import { PineContextLike, RunPineScriptParams } from './pineShared';
+export {
+  asFiniteNumber,
+  asPineBoolean,
+  getLatestPinePlotValue,
+  getPinePlotSeries,
+} from './pineShared';
+export type {
+  PineContextLike,
+  PinePlotPoint,
+  RunPineScriptParams,
+} from './pineShared';
 
 type PineRuntime = {
   run: (indicator: unknown) => Promise<unknown>;
@@ -45,28 +57,6 @@ interface PineRuntimeCandle {
   volume: number;
   openTime: number;
   closeTime: number;
-}
-
-export interface PinePlotPoint {
-  title?: string;
-  time?: number;
-  value?: unknown;
-  options?: Record<string, unknown>;
-}
-
-export interface PineContextLike {
-  plots?: Record<string, { data?: PinePlotPoint[] }>;
-  result?: Record<string, unknown>;
-  [key: string]: unknown;
-}
-
-export interface RunPineScriptParams {
-  candles: Candle[];
-  script: string;
-  symbol?: string;
-  timeframe?: string;
-  inputs?: Record<string, unknown>;
-  limit?: number;
 }
 
 export const loadPineScript = (filePath: string, fallback = ''): string => {
@@ -159,37 +149,4 @@ export const runPineScript = async ({
   const indicator = new Indicator(trimmedScript, inputs);
   const context = await pine.run(indicator);
   return context as unknown as PineContextLike;
-};
-
-export const getPinePlotSeries = (
-  context: PineContextLike,
-  plotName: string,
-): PinePlotPoint[] => {
-  const name = String(plotName || '').trim();
-  if (!name) return [];
-
-  const data = context?.plots?.[name]?.data;
-  return Array.isArray(data) ? data : [];
-};
-
-export const getLatestPinePlotValue = (
-  context: PineContextLike,
-  plotName: string,
-): unknown => {
-  const series = getPinePlotSeries(context, plotName);
-  if (!series.length) return undefined;
-  return series[series.length - 1]?.value;
-};
-
-export const asFiniteNumber = (value: unknown): number | undefined => {
-  if (typeof value !== 'number' || !Number.isFinite(value)) {
-    return undefined;
-  }
-  return value;
-};
-
-export const asPineBoolean = (value: unknown): boolean => {
-  if (typeof value === 'boolean') return value;
-  if (typeof value === 'number') return Number.isFinite(value) && value !== 0;
-  return false;
 };

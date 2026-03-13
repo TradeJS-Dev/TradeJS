@@ -14,7 +14,8 @@ TradeJS is a TypeScript-native trading platform for:
 
 TradeJS public developer surface is:
 
-- `@tradejs/core` - strategy and indicator authoring API, types, runtime contracts
+- `@tradejs/core` - browser-safe authoring API, config helpers, shared indicator/math/time helpers
+- `@tradejs/node` - Node runtime for strategy execution, backtests, Pine loading, connector/plugin registries
 - `@tradejs/cli` - operational commands for backtests, signals, bots, doctor checks, ML workflows
 
 ## Read Next

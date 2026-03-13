@@ -9,14 +9,17 @@ import { PRELOAD_DAYS } from '@constants';
 import { getTimestamp } from '@utils/timestamp';
 import { alignSortedCandlesByTimestamp } from '@utils/correlation';
 import { buildMlPayload } from '@utils/mlPayload';
-import { buildMlTrainingRow, trimMlTrainingRowWindows } from '@tradejs/infra';
-import { appendMlDatasetRow } from '@tradejs/infra';
+import {
+  appendMlDatasetRow,
+  buildMlTrainingRow,
+  trimMlTrainingRowWindows,
+} from '@tradejs/infra/ml';
 import {
   BUILTIN_CONNECTOR_NAMES,
   getConnectorCreatorByName,
 } from '@utils/connectorsRegistry';
 import { createTestConnector } from '@utils/testConnector';
-import { logger } from '@tradejs/infra';
+import { logger } from '@tradejs/infra/logger';
 
 const preloadStart = getTimestamp(PRELOAD_DAYS);
 const coinKlineCache = new Map<string, KlineChartData>();

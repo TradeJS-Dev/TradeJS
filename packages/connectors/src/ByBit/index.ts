@@ -11,13 +11,13 @@ import { toJson } from '@tradejs/core/json';
 import { round } from '@tradejs/core/math';
 import { normalizeTickerData } from '@tradejs/core/tickers';
 import { formatUnix, getItemTimestamp, getTimestamp } from '@tradejs/core/time';
-import { logger } from '@tradejs/infra';
+import { logger } from '@tradejs/infra/logger';
 import {
   getCandlesRange,
   getDataEdges,
   upsertCandles,
   toRows,
-} from '@tradejs/infra';
+} from '@tradejs/infra/timescale';
 
 import { getClient } from './client';
 import {

@@ -125,7 +125,7 @@ import {
   PineContextLike,
   asFiniteNumber,
   getPinePlotSeries,
-} from '@tradejs/core/pine';
+} from '@tradejs/node/pine';
 import type { StrategyEntryModelFigures } from '@tradejs/types';
 
 export const buildMyPineFigures = (
@@ -163,7 +163,7 @@ import {
   asPineBoolean,
   getLatestPinePlotValue,
   runPineScript,
-} from '@tradejs/core/pine';
+} from '@tradejs/node/pine';
 import type { CreateStrategyCore } from '@tradejs/types';
 import { MyPineIndicatorConfig } from './config';
 import { buildMyPineFigures } from './figures';
@@ -228,7 +228,7 @@ export const createMyPineIndicatorCore: CreateStrategyCore<
 ### `strategy.ts`
 
 ```ts
-import { createStrategyRuntime } from '@tradejs/core/strategies';
+import { createStrategyRuntime } from '@tradejs/node/strategies';
 import { config, MyPineIndicatorConfig } from './config';
 import { createMyPineIndicatorCore } from './core';
 import { myPineIndicatorManifest } from './manifest';

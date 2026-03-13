@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
-import _ from 'lodash';
 import { Chart, registerOverlay } from 'klinecharts';
 import { getSignal } from '@actions/signal';
 import { toMs } from '@tradejs/core/time';
@@ -21,7 +20,6 @@ export const useSetup = (chart: Chart | null, enabled: boolean) => {
   const searchParams = useSearchParams();
   const signalId = searchParams.get('signalId');
 
-  const data = chart?.getDataList() || [];
   const symbol = chart?.getSymbol()?.ticker || '';
 
   useEffect(() => {
@@ -79,7 +77,7 @@ export const useSetup = (chart: Chart | null, enabled: boolean) => {
     const slEnd: Point = { timestamp: endTsMs, value: prices.stopLossPrice };
 
     return { start, tpEnd, slEnd };
-  }, [signal, data.length]);
+  }, [signal]);
 
   useEffect(() => {
     if (!chart || !enabled || !signalId || !signal || !setupPoints) return;

@@ -7,7 +7,7 @@ title: Plugin-разработка от начала до конца
 ## 1. Создайте пакет плагина
 
 - Пакет должен экспортировать `strategyEntries` и/или `indicatorEntries`.
-- Используйте типы из `@tradejs/core`.
+- Используйте контракты из `@tradejs/types` и plugin-definition helper’ы из `@tradejs/core/config`.
 
 ## 2. Реализуйте стратегию или индикатор
 

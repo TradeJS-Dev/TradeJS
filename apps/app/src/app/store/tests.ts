@@ -265,23 +265,23 @@ export const useTestList = (filters: TestListProps = {}) => {
 
   const noData = _.isEmpty(testItems);
 
-  const loadData = async () => {
-    try {
-      setLoading(true);
-      await delay();
-      const newTests = await getBacktestFiles();
-      setLoading(false);
-      setFulfilled(true);
-
-      setTest(newTests);
-    } catch (err) {
-      setError(err);
-    }
-  };
-
   useEffect(() => {
-    loadData();
-  }, []);
+    const loadData = async () => {
+      try {
+        setLoading(true);
+        await delay();
+        const newTests = await getBacktestFiles();
+        setLoading(false);
+        setFulfilled(true);
+
+        setTest(newTests);
+      } catch (err) {
+        setError(err);
+      }
+    };
+
+    void loadData();
+  }, [setTest]);
 
   return {
     loadding,
@@ -300,43 +300,43 @@ export const useTest = (testName: string) => {
   const testItem = tests.find((item) => item.value === testName);
   const strategyName = testItem?.data?.strategyName as string | undefined;
 
-  const loadData = async () => {
-    if (!_.isEmpty(testResult)) {
-      return;
-    }
-
-    const key = `test-${testName}`;
-
-    const cachedResult = (await get(key)) as TestResult | null;
-
-    if (!_.isEmpty(cachedResult)) {
-      setTest(cachedResult);
-
-      return;
-    }
-
-    let resolvedStrategy = strategyName;
-    if (!resolvedStrategy) {
-      const newTests = await getBacktestFiles();
-      setTestList(newTests);
-      resolvedStrategy = newTests.find((item) => item.value === testName)?.data
-        ?.strategyName as string | undefined;
-    }
-
-    const test = await getBacktest(testName, resolvedStrategy);
-
-    if (!test) {
-      return;
-    }
-
-    setTest(test);
-
-    await set(key, test);
-  };
-
   useEffect(() => {
-    loadData();
-  }, [testName]);
+    const loadData = async () => {
+      if (!_.isEmpty(testResult)) {
+        return;
+      }
+
+      const key = `test-${testName}`;
+
+      const cachedResult = (await get(key)) as TestResult | null;
+
+      if (!_.isEmpty(cachedResult)) {
+        setTest(cachedResult);
+
+        return;
+      }
+
+      let resolvedStrategy = strategyName;
+      if (!resolvedStrategy) {
+        const newTests = await getBacktestFiles();
+        setTestList(newTests);
+        resolvedStrategy = newTests.find((item) => item.value === testName)
+          ?.data?.strategyName as string | undefined;
+      }
+
+      const test = await getBacktest(testName, resolvedStrategy);
+
+      if (!test) {
+        return;
+      }
+
+      setTest(test);
+
+      await set(key, test);
+    };
+
+    void loadData();
+  }, [setTest, setTestList, strategyName, testName, testResult]);
 
   return testResult;
 };
@@ -348,23 +348,24 @@ export const useTestsCompare = () => {
   const onChangeCompare = useTestsCompareStore((s) => s.onChangeCompare);
   const removeFromCompare = useTestsCompareStore((s) => s.removeFromCompare);
 
-  const loadData = async (testName: string) => {
-    const key = `test-${testName}`;
-
-    const cachedResult = (await get(key)) as TestResult | null;
-
-    if (!_.isEmpty(cachedResult)) {
-      setTest(cachedResult);
-    }
-  };
-
   useEffect(() => {
-    compareList.forEach(({ testName }) => {
-      if (!tests.has(testName)) {
-        loadData(testName);
+    const loadData = async () => {
+      for (const { testName } of compareList) {
+        if (tests.has(testName)) {
+          continue;
+        }
+
+        const key = `test-${testName}`;
+        const cachedResult = (await get(key)) as TestResult | null;
+
+        if (!_.isEmpty(cachedResult)) {
+          setTest(cachedResult);
+        }
       }
-    });
-  }, [compareList]);
+    };
+
+    void loadData();
+  }, [compareList, setTest, tests]);
 
   const checkIsCompared = (testName: string) =>
     compareList.some((s) => s.testName === testName);
@@ -416,45 +417,45 @@ export const useBacktest = (id: string | undefined) => {
   const testItem = tests.find((item) => item.value === id);
   const strategyName = testItem?.data?.strategyName as string | undefined;
 
-  const updateBacktest = async () => {
-    if (!id) {
-      return;
-    }
-
-    const key = `backtest-${id}`;
-
-    setLoading(true);
-
-    const cachedResult = (await get(key)) as OrderLogData | null;
-
-    if (cachedResult && !_.isEmpty(cachedResult)) {
-      setBacktest(id, cachedResult);
-      setLoading(false);
-
-      return;
-    }
-
-    let resolvedStrategy = strategyName;
-    if (!resolvedStrategy) {
-      const newTests = await getBacktestFiles();
-      setTestList(newTests);
-      resolvedStrategy = newTests.find((item) => item.value === id)?.data
-        ?.strategyName as string | undefined;
-    }
-
-    const backtestData = await getOrderLog(id, resolvedStrategy);
-
-    if (backtestData && !_.isEmpty(backtestData)) {
-      setBacktest(id, backtestData);
-      await set(key, backtestData);
-    }
-
-    setLoading(false);
-  };
-
   useEffect(() => {
-    updateBacktest();
-  }, [id]);
+    const updateBacktest = async () => {
+      if (!id) {
+        return;
+      }
+
+      const key = `backtest-${id}`;
+
+      setLoading(true);
+
+      const cachedResult = (await get(key)) as OrderLogData | null;
+
+      if (cachedResult && !_.isEmpty(cachedResult)) {
+        setBacktest(id, cachedResult);
+        setLoading(false);
+
+        return;
+      }
+
+      let resolvedStrategy = strategyName;
+      if (!resolvedStrategy) {
+        const newTests = await getBacktestFiles();
+        setTestList(newTests);
+        resolvedStrategy = newTests.find((item) => item.value === id)?.data
+          ?.strategyName as string | undefined;
+      }
+
+      const backtestData = await getOrderLog(id, resolvedStrategy);
+
+      if (backtestData && !_.isEmpty(backtestData)) {
+        setBacktest(id, backtestData);
+        await set(key, backtestData);
+      }
+
+      setLoading(false);
+    };
+
+    void updateBacktest();
+  }, [id, setBacktest, setTestList, strategyName]);
 
   return {
     backtest: backtest || [],

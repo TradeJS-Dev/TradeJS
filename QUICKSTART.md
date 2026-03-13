@@ -34,6 +34,11 @@ yarn dev
 
 Open `http://localhost:3000`.
 
+Useful routes:
+
+- `http://localhost:3000/routes/backtest` — saved backtest runs and detail pages
+- `http://localhost:3000/routes/dashboard` — chart view for signals and market inspection
+
 Single command alternative:
 
 ```bash
@@ -93,8 +98,11 @@ yarn infra-down
 
 ## Import Rule For Plugins
 
-- Use `@tradejs/core` for runtime/helpers and `@tradejs/types` for shared types.
-- Avoid internal aliases (`@utils`, `@constants`) and deep imports (`@tradejs/core/*`).
+- Use `@tradejs/core/config` for plugin registration.
+- Use public `@tradejs/core/*` subpaths for browser-safe helpers.
+- Use public `@tradejs/node/*` subpaths for Node runtime wiring.
+- Use `@tradejs/types` for shared contracts.
+- Avoid internal aliases (`@utils`, `@constants`) and non-public deep imports like `@tradejs/core/src/*` or `@tradejs/node/src/*`.
 
 ## 9. Stop Infrastructure
 

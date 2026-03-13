@@ -1,7 +1,8 @@
 import fs from 'fs';
 import path from 'path';
+import { createRequire } from 'module';
 import { fileURLToPath, pathToFileURL } from 'url';
-import { logger } from '@tradejs/infra';
+import { logger } from '@tradejs/infra/logger';
 
 export interface TradejsProjectConfig {
   strategies?: string[];
@@ -65,21 +66,21 @@ const normalizeConfig = (rawConfig: unknown): TradejsProjectConfig => {
   };
 };
 
-const getRequireFn = (): NodeJS.Require | null => {
-  try {
-    // eslint-disable-next-line no-eval
-    return eval('require') as NodeJS.Require;
-  } catch {
-    return null;
-  }
-};
+const getRequireFn = (cwd = getTradejsProjectCwd()): NodeJS.Require =>
+  createRequire(path.join(path.resolve(cwd), '__tradejs_loader__.js'));
 
-const ensureTsNodeRegistered = (requireFn: NodeJS.Require) => {
+const ensureTsNodeRegistered = async () => {
   if (tsNodeRegistered) {
     return;
   }
 
-  const tsNode = requireFn('ts-node') as {
+  const tsNodeModule = (await import('ts-node')) as {
+    register?: (options?: Record<string, unknown>) => void;
+    default?: {
+      register?: (options?: Record<string, unknown>) => void;
+    };
+  };
+  const tsNode = (tsNodeModule.default ?? tsNodeModule) as {
     register?: (options?: Record<string, unknown>) => void;
   };
   tsNode.register?.({
@@ -132,11 +133,9 @@ const importConfigFile = async (configFilePath: string): Promise<unknown> => {
   const configFileUrl = `${toImportSpecifier(configFilePath)}?t=${Date.now()}`;
 
   if (ext === '.ts' || ext === '.mts') {
-    const requireFn = getRequireFn();
-    if (requireFn) {
-      ensureTsNodeRegistered(requireFn);
-      return requireFn(configFilePath);
-    }
+    const requireFn = getRequireFn(path.dirname(configFilePath));
+    await ensureTsNodeRegistered();
+    return requireFn(configFilePath);
   }
 
   return import(/* webpackIgnore: true */ configFileUrl);
@@ -150,7 +149,6 @@ export const importTradejsModule = async (
     return {};
   }
 
-  const requireFn = getRequireFn();
   let modulePath = normalized;
   if (normalized.startsWith('file://')) {
     try {
@@ -160,12 +158,18 @@ export const importTradejsModule = async (
     }
   }
 
-  if (isTsModulePath(modulePath) && requireFn) {
-    ensureTsNodeRegistered(requireFn);
+  const requireFn = getRequireFn(
+    path.isAbsolute(modulePath)
+      ? path.dirname(modulePath)
+      : getTradejsProjectCwd(),
+  );
+
+  if (isTsModulePath(modulePath)) {
+    await ensureTsNodeRegistered();
     return requireFn(modulePath);
   }
 
-  if (isBareModuleSpecifier(normalized) && requireFn) {
+  if (isBareModuleSpecifier(normalized)) {
     return requireFn(normalized);
   }
 
@@ -174,8 +178,8 @@ export const importTradejsModule = async (
       /* webpackIgnore: true */ toImportSpecifier(normalized)
     );
   } catch (error) {
-    if (isTsModulePath(modulePath) && requireFn) {
-      ensureTsNodeRegistered(requireFn);
+    if (isTsModulePath(modulePath)) {
+      await ensureTsNodeRegistered();
       return requireFn(modulePath);
     }
     throw error;

@@ -12,7 +12,7 @@ const DashboardIndex = () => {
     router.replace(
       `/routes/dashboard/${filters.provider || 'bybit'}/${filters.symbol}/${filters.interval}`,
     );
-  }, []);
+  }, [filters.interval, filters.provider, filters.symbol, router]);
 
   return null;
 };

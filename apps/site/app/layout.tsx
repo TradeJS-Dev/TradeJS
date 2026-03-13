@@ -147,6 +147,7 @@ export default function RootLayout({
         </Script>
         <noscript>
           <div>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src="https://mc.yandex.ru/watch/107254154"
               style={{ position: 'absolute', left: '-9999px' }}

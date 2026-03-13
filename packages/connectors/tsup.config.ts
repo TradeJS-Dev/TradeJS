@@ -11,6 +11,7 @@ export default defineConfig({
   external: [
     '@tradejs/core',
     '@tradejs/infra',
+    '@tradejs/node',
     '@tradejs/types',
     'bybit-api',
     'chalk',
