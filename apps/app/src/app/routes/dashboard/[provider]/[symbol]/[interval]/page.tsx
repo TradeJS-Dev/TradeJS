@@ -6,7 +6,7 @@ import { Box, Flex, ClientOnly } from '@chakra-ui/react';
 import { useFilters, useTickers, useTestList } from '@store';
 import { Filters } from '@shared/Filters';
 import { MainChart } from '@app/components/Dashboard/MainChart';
-import { Interval, OnChangeFilters, Provider } from '@types';
+import { Interval, OnChangeFilters, Provider } from '@tradejs/types';
 
 const Dashboard = () => {
   const searchParams = useSearchParams();

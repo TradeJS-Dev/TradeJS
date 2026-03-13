@@ -4,13 +4,12 @@ import {
   IndicatorSnapshot,
   IndicatorsHistorySnapshot,
   MlCandleIndicatorsSnapshot,
-} from '@types';
+} from '@tradejs/types';
 import { ML_BASE_CANDLES_WINDOW, CORRELATION_WINDOW } from '@constants';
 import { cloneArrayValues } from '@utils/array';
 import { calculateCoinBtcCorrelation } from '@utils/correlation';
-import { logger } from '@utils/logger';
-import { createSpreadSmoother } from '@tradejs/core/indicators';
-import { getRegisteredIndicatorEntries } from '@tradejs/core/indicators/registry';
+import { getRegisteredIndicatorEntries } from '@utils/indicatorPlugins';
+import { createSpreadSmoother } from '@utils/spread';
 
 const CANDLE_WINDOW = ML_BASE_CANDLES_WINDOW;
 const BASE_INTERVAL_MINUTES = 15;
@@ -480,10 +479,8 @@ export const createIndicators = (
           }
           indicatorPluginErrorShown.add(historyKey);
           // Log once per plugin key to avoid noisy per-candle output.
-          logger.warn(
-            'Indicator plugin "%s" compute failed: %s',
-            historyKey,
-            String(error),
+          console.warn(
+            `Indicator plugin "${historyKey}" compute failed: ${String(error)}`,
           );
         }
       }

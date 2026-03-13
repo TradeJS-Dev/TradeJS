@@ -1,7 +1,5 @@
-import {
-  defineIndicatorPlugin,
-  type IndicatorPluginEntry,
-} from '@tradejs/core';
+import { defineIndicatorPlugin } from '@tradejs/core/config';
+import { type IndicatorPluginEntry } from '@tradejs/types';
 
 const indicatorEntries = defineIndicatorPlugin({
   indicatorEntries: [

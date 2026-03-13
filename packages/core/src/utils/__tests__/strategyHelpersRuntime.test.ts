@@ -1,18 +1,22 @@
 const mockFetchMlThreshold = jest.fn();
+const mockBuildMlTrainingRow = jest.fn();
+const mockTrimMlTrainingRowWindows = jest.fn();
+const mockBuildMlFeatures = jest.fn();
 const mockAskAI = jest.fn();
 
-jest.mock('@utils/mlGrpc', () => ({
+jest.mock('@tradejs/infra', () => ({
+  buildMlTrainingRow: (...args: unknown[]) => mockBuildMlTrainingRow(...args),
+  trimMlTrainingRowWindows: (...args: unknown[]) =>
+    mockTrimMlTrainingRowWindows(...args),
+  buildMlFeatures: (...args: unknown[]) => mockBuildMlFeatures(...args),
   fetchMlThreshold: (...args: unknown[]) => mockFetchMlThreshold(...args),
+  logger: {
+    error: jest.fn(),
+  },
 }));
 
 jest.mock('@utils/ai', () => ({
   askAI: (...args: unknown[]) => mockAskAI(...args),
-}));
-
-jest.mock('@utils/logger', () => ({
-  logger: {
-    error: jest.fn(),
-  },
 }));
 
 import {
@@ -24,6 +28,17 @@ import {
 describe('strategyHelpers/runtime enrichSignalWithMlAi', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockBuildMlTrainingRow.mockReturnValue({
+      label: 1,
+      featureA: 10,
+    });
+    mockTrimMlTrainingRowWindows.mockReturnValue({
+      label: 1,
+      featureA: 10,
+    });
+    mockBuildMlFeatures.mockReturnValue({
+      featureA: 10,
+    });
     mockAskAI.mockResolvedValue({
       direction: 'LONG',
       quality: 4,
@@ -88,15 +103,12 @@ describe('strategyHelpers/runtime enrichSignalWithMlAi', () => {
 
     expect(mockFetchMlThreshold).toHaveBeenCalledTimes(1);
     expect(mockFetchMlThreshold).toHaveBeenCalledWith(
-      enrichedSignal,
       expect.objectContaining({
-        strategyConfig: { TRENDLINE_CONFIG: { minTouches: 4 } },
-        ML_THRESHOLD: 0.4,
+        strategy: 'TrendLine',
+        threshold: 0.4,
+        features: { featureA: 10 },
       }),
     );
-    const [, configArg] = mockFetchMlThreshold.mock.calls[0];
-    expect(configArg.strategyName).toBeUndefined();
-    expect(configArg.symbol).toBeUndefined();
   });
 
   it('enrichSignalWithMl calls ML grpc when enabled', async () => {
@@ -113,10 +125,10 @@ describe('strategyHelpers/runtime enrichSignalWithMlAi', () => {
 
     expect(mockFetchMlThreshold).toHaveBeenCalledTimes(1);
     expect(mockFetchMlThreshold).toHaveBeenCalledWith(
-      enrichedSignal,
       expect.objectContaining({
-        strategyConfig: { TRENDLINE_CONFIG: { minTouches: 4 } },
-        ML_THRESHOLD: 0.4,
+        strategy: 'TrendLine',
+        threshold: 0.4,
+        features: { featureA: 10 },
       }),
     );
   });

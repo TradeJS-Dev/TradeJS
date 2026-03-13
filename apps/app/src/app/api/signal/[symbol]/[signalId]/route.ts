@@ -1,8 +1,7 @@
 import _ from 'lodash';
 import { NextResponse } from 'next/server';
-import { getData, redisKeys } from '@utils/redis';
-import { logger } from '@utils/logger';
-import { Signal } from '@types';
+import { getData, logger, redisKeys } from '@tradejs/infra';
+import { Signal } from '@tradejs/types';
 
 export const dynamic = 'force-dynamic';
 

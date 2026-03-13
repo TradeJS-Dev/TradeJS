@@ -1,9 +1,9 @@
-import { DerivativesInterval } from '@utils/timescale';
-import { delay } from '@utils/async';
+import { delay } from '@tradejs/core/async';
 import {
   coinalyzePointsToRows,
   mergeCoinalyzeMetrics,
-} from '@utils/derivativesCoinalyze';
+} from '@tradejs/core/indicators';
+import { DerivativesInterval } from '@tradejs/infra';
 import { MarketDataProvider } from './types';
 
 type CoinalyzeMetric = 'oi' | 'funding' | 'liq';

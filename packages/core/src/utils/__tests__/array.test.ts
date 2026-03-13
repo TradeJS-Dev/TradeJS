@@ -4,7 +4,7 @@ import {
   isWrongData,
   mergeData,
 } from '@utils/array';
-import { Interval, KlineChartItem } from '@types';
+import { Interval, KlineChartItem } from '@tradejs/types';
 
 const createCandle = (timestamp: number, close: number): KlineChartItem => ({
   timestamp,

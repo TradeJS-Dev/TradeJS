@@ -6,7 +6,7 @@ import {
   getTimestamp,
   toMs,
 } from '@utils/timestamp';
-import { KlineChartData, KlineChartItem, OrderLogData } from '@types';
+import { KlineChartData, KlineChartItem, OrderLogData } from '@tradejs/types';
 
 const createCandle = (timestamp: number): KlineChartItem => ({
   timestamp,

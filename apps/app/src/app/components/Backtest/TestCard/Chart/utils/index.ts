@@ -1,5 +1,9 @@
 import { format } from 'date-fns';
-import { SimpleOrderLogData, TestResult, TestCompareList } from '@types';
+import {
+  SimpleOrderLogData,
+  TestResult,
+  TestCompareList,
+} from '@tradejs/types';
 
 const getLineName = (testResult: TestResult) =>
   `${testResult.test.symbol}-${testResult.test.testId}`;

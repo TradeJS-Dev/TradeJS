@@ -2,7 +2,7 @@ import { KLineData } from 'klinecharts';
 import {
   findTrendlinesByHighs,
   findTrendlinesByLows,
-} from '@utils/trendLine/core';
+} from '../testHelpers/trendLine/referenceCore';
 
 const buildCandles = (length: number, trend: 'up' | 'down'): KLineData[] => {
   const start = 1_700_200_000_000;
@@ -32,7 +32,7 @@ const buildCandles = (length: number, trend: 'up' | 'down'): KLineData[] => {
   return data;
 };
 
-describe('trendLine/core edge cases', () => {
+describe('trendLine/referenceCore edge cases', () => {
   it('returns empty arrays for empty input and invalid range window', () => {
     const noDataLows = findTrendlinesByLows([]);
     const noDataHighs = findTrendlinesByHighs([]);

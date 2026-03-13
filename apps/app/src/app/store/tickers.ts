@@ -3,7 +3,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import _ from 'lodash';
 import { scan } from '@actions/scanner';
-import { Items } from '@types';
+import { Items } from '@tradejs/types';
 
 const LOCAL_STORAGE_KEY = 'tickers';
 

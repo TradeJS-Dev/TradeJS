@@ -2,19 +2,19 @@ import 'dotenv/config';
 import args from 'args';
 import chalk from 'chalk';
 import {
+  normalizeCoinalyzeSymbols,
+  normalizeDerivativesIntervals,
+} from '@tradejs/core/indicators';
+import {
   DerivativesInterval,
   upsertDerivatives,
   upsertSpreadRows,
   waitForDbReady,
-} from '@utils/timescale';
-import {
-  normalizeCoinalyzeSymbols,
-  normalizeDerivativesIntervals,
-} from '@utils/derivativesCoinalyze';
+} from '@tradejs/infra';
 import {
   marketDataProviders,
   MarketDataProviderName,
-} from '@tradejs/connectors/marketData/providers';
+} from '@tradejs/connectors';
 
 args.example(
   'yarn ts-node ./src/scripts/derivativesIngest --provider coinalyze --symbols BTCUSDT,ETHUSDT --intervals 15m,1h --days 120',

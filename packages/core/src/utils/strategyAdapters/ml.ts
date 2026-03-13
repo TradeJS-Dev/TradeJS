@@ -1,4 +1,4 @@
-import { StrategyMlAdapter } from '@types';
+import { StrategyMlAdapter } from '@tradejs/types';
 import { getStrategyManifest } from '../../strategy/manifests';
 
 const defaultMlAdapter: StrategyMlAdapter = {

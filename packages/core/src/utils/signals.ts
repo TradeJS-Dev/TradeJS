@@ -1,14 +1,12 @@
 import 'dotenv/config';
 
-import { Signal, Interval, SignalAnalysis } from '@types';
+import { Signal, Interval, SignalAnalysis } from '@tradejs/types';
 import { getImageUrl } from '@utils/screenshot';
 import { formatNumber } from '@utils/math';
-import { logger } from '@utils/logger';
+import { escapeHtml } from '@utils/str';
+import { logger } from '@tradejs/infra';
 
 const { APP_URL, TG_BOT_TOKEN: token, TG_CHAT_ID: chatId } = process.env;
-
-const escapeHtml = (value: string) =>
-  value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
 const normalizeQuality = (value?: number) =>
   typeof value === 'number'

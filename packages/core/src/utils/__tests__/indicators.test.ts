@@ -1,4 +1,4 @@
-import { Candle } from '@types';
+import { Candle } from '@tradejs/types';
 import { createIndicators } from '../indicators';
 
 const INTERVAL_15M_MS = 15 * 60_000;

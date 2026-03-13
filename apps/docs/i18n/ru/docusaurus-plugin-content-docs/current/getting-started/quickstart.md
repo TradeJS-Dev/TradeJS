@@ -18,20 +18,22 @@ title: Quickstart
 mkdir tradejs-project
 cd tradejs-project
 npm init -y
-npm i @tradejs/core @tradejs/cli
+npm i @tradejs/core @tradejs/base @tradejs/cli
 ```
 
 ## 2. Добавьте `tradejs.config.ts`
 
 ```ts
-import { defineConfig } from '@tradejs/core';
+import { defineConfig } from '@tradejs/core/config';
+import { basePreset } from '@tradejs/base';
 
-export default defineConfig({
-  strategyPlugins: [],
-  indicatorsPlugins: [],
-  connectorsPlugins: [],
-});
+export default defineConfig(basePreset, {});
 ```
+
+Политика импортов для плагинов:
+
+- импортируйте runtime/типы/хелперы/константы только из `@tradejs/core`
+- избегайте внутренних алиасов (`@utils`, `@types`, `@constants`) и deep-imports (`@tradejs/core/*`)
 
 ## 3. Инициализируйте файлы dev-инфраструктуры
 

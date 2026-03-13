@@ -1,5 +1,5 @@
 import { createContext, useContext } from 'react';
-import { UIFilters, Items, OnChangeFilters } from '@types';
+import { UIFilters, Items, OnChangeFilters } from '@tradejs/types';
 
 interface FiltersContextProps {
   filters: UIFilters;

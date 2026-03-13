@@ -2,14 +2,96 @@
   "name": "@tradejs/core",
   "version": "1.0.0",
   "homepage": "https://tradejs.dev",
-  "main": "src/index.ts",
-  "types": "src/index.ts",
+  "files": [
+    "dist"
+  ],
+  "exports": {
+    "./api": {
+      "types": "./dist/api.d.ts",
+      "import": "./dist/api.mjs",
+      "require": "./dist/api.js"
+    },
+    "./async": {
+      "types": "./dist/async.d.ts",
+      "import": "./dist/async.mjs",
+      "require": "./dist/async.js"
+    },
+    "./backtest": {
+      "types": "./dist/backtest.d.ts",
+      "import": "./dist/backtest.mjs",
+      "require": "./dist/backtest.js"
+    },
+    "./cli": {
+      "types": "./dist/cli.d.ts",
+      "import": "./dist/cli.mjs",
+      "require": "./dist/cli.js"
+    },
+    "./config": {
+      "types": "./dist/config.d.ts",
+      "import": "./dist/config.mjs",
+      "require": "./dist/config.js"
+    },
+    "./connectors": {
+      "types": "./dist/connectors.d.ts",
+      "import": "./dist/connectors.mjs",
+      "require": "./dist/connectors.js"
+    },
+    "./constants": {
+      "types": "./dist/constants.d.ts",
+      "import": "./dist/constants.mjs",
+      "require": "./dist/constants.js"
+    },
+    "./data": {
+      "types": "./dist/data.d.ts",
+      "import": "./dist/data.mjs",
+      "require": "./dist/data.js"
+    },
+    "./figures": {
+      "types": "./dist/figures.d.ts",
+      "import": "./dist/figures.mjs",
+      "require": "./dist/figures.js"
+    },
+    "./indicators": {
+      "types": "./dist/indicators.d.ts",
+      "import": "./dist/indicators.mjs",
+      "require": "./dist/indicators.js"
+    },
+    "./json": {
+      "types": "./dist/json.d.ts",
+      "import": "./dist/json.mjs",
+      "require": "./dist/json.js"
+    },
+    "./math": {
+      "types": "./dist/math.d.ts",
+      "import": "./dist/math.mjs",
+      "require": "./dist/math.js"
+    },
+    "./pine": {
+      "types": "./dist/pine.d.ts",
+      "import": "./dist/pine.mjs",
+      "require": "./dist/pine.js"
+    },
+    "./strategies": {
+      "types": "./dist/strategies.d.ts",
+      "import": "./dist/strategies.mjs",
+      "require": "./dist/strategies.js"
+    },
+    "./tickers": {
+      "types": "./dist/tickers.d.ts",
+      "import": "./dist/tickers.mjs",
+      "require": "./dist/tickers.js"
+    },
+    "./time": {
+      "types": "./dist/time.d.ts",
+      "import": "./dist/time.mjs",
+      "require": "./dist/time.js"
+    }
+  },
   "dependencies": {
-    "@grpc/grpc-js": "^1.10.7",
-    "@grpc/proto-loader": "^0.7.13",
     "@langchain/core": "^0.3.68",
     "@langchain/openai": "^0.6.11",
-    "@tradejs/connectors": "workspace:*",
+    "@tradejs/infra": "workspace:*",
+    "@tradejs/types": "workspace:*",
     "bybit-api": "^3.9.0",
     "chalk": "4.1.2",
     "date-fns": "^3.3.1",
@@ -21,14 +103,14 @@
     "progress": "^2.0.3",
     "puppeteer": "24.15.0",
     "technicalindicators": "^3.1.0",
-    "uuid": "11.1.0",
-    "winston": "3.17.0"
+    "uuid": "11.1.0"
   },
   "devDependencies": {
+    "tsup": "^8.5.1",
     "typescript": "^5.1"
   },
   "scripts": {
-    "build": "echo 'core: build placeholder'",
+    "build": "tsup",
     "typecheck": "tsc -p ../../tsconfig.json --noEmit"
   }
 }

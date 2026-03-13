@@ -3,8 +3,8 @@ import {
   getPluginIndicatorCatalog,
   getPluginIndicatorRenderers,
 } from '@tradejs/core/indicators';
-import { ensureIndicatorPluginsLoaded } from '@tradejs/core/strategy';
-import { logger } from '@utils/logger';
+import { ensureIndicatorPluginsLoaded } from '@tradejs/core/strategies';
+import { logger } from '@tradejs/infra';
 
 export const dynamic = 'force-dynamic';
 

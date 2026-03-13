@@ -1,7 +1,8 @@
 import { TestConnectorCreator } from '..';
-import { setData } from '@utils/redis';
+import { setData } from '@tradejs/infra';
 
-jest.mock('@utils/redis', () => ({
+jest.mock('@tradejs/infra', () => ({
+  ...jest.requireActual('@tradejs/infra'),
   setData: jest.fn(),
   redisKeys: {
     cacheOrders: (userName: string, orderLogId: string) =>
@@ -11,8 +12,8 @@ jest.mock('@utils/redis', () => ({
   },
 }));
 
-jest.mock('@utils/uuid', () => ({
-  uuid: () => 'order-log-id',
+jest.mock('uuid', () => ({
+  v4: () => '000000000000order-log-id',
 }));
 
 const mockedSetData = setData as jest.MockedFunction<typeof setData>;

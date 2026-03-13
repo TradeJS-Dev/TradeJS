@@ -1,4 +1,9 @@
 import { buildMlPayload } from '../mlPayload';
+import {
+  registerStrategyEntries,
+  resetStrategyRegistryCache,
+} from '../../strategy/manifests';
+import { strategyEntries } from '@tradejs/strategies';
 
 const makeCandle = (timestamp: number) => ({
   timestamp,
@@ -11,6 +16,15 @@ const makeCandle = (timestamp: number) => ({
 });
 
 describe('buildMlPayload', () => {
+  beforeEach(() => {
+    resetStrategyRegistryCache();
+    registerStrategyEntries(strategyEntries);
+  });
+
+  afterAll(() => {
+    resetStrategyRegistryCache();
+  });
+
   it('keeps signal.indicators as source of truth for candles', () => {
     const candles15m = [makeCandle(1), makeCandle(2)];
     const btcCandles15m = [makeCandle(1), makeCandle(2)];

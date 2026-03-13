@@ -1,5 +1,5 @@
-import { StrategyConfig, StrategyManifest } from '@types';
-import { closeOppositePositionsBeforeOpen } from '@utils/closeOppositePositionsBeforeOpen';
+import { StrategyConfig, StrategyManifest } from '@tradejs/types';
+import { closeOppositePositionsBeforeOpen } from './closeOppositePositionsBeforeOpen';
 
 type BeforePlaceOrderHook = NonNullable<
   NonNullable<StrategyManifest['hooks']>['beforePlaceOrder']

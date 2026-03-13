@@ -1,18 +1,13 @@
 import 'dotenv/config';
 
-import { ChatOpenAI } from '@langchain/openai';
-import {
-  BaseMessage,
-  HumanMessage,
-  SystemMessage,
-} from '@langchain/core/messages';
-import { setData, redisKeys } from '@utils/redis';
+import type { BaseMessageLike } from '@langchain/core/messages';
+import { setData, redisKeys } from '@tradejs/infra';
 import {
   buildAiHumanPromptAddonByStrategy,
   buildAiPayloadByStrategy,
   buildAiSystemPromptAddonByStrategy,
 } from '@utils/strategyAdapters/ai';
-import { AiPayload, Signal, SignalAnalysis } from '@types';
+import { AiPayload, Signal, SignalAnalysis } from '@tradejs/types';
 export { MAX_AI_SERIES_POINTS, trimSeriesDeep } from '@utils/aiShared';
 
 const parseAIResponse = (input: string | object): object => {
@@ -228,8 +223,13 @@ ${buildAiHumanPromptAddonByStrategy(signal, payload)}
 `;
 
 export const askAI = async (signal: Signal) => {
+  const [{ ChatOpenAI }, { HumanMessage, SystemMessage }] = await Promise.all([
+    import('@langchain/openai'),
+    import('@langchain/core/messages'),
+  ]);
+
   const { symbol } = signal;
-  const messages = new Array<BaseMessage>();
+  const messages: BaseMessageLike[] = [];
 
   const model = new ChatOpenAI({
     temperature: 0.2,

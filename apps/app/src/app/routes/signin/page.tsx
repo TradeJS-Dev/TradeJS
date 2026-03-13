@@ -3,8 +3,7 @@
 import { Suspense, useEffect, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Image from 'next/image';
-import { signIn } from 'next-auth/react';
-import { useSession } from 'next-auth/react';
+import { signIn, useSession } from 'next-auth/react';
 import { Box, Button, Field, Flex, Input, Stack, Text } from '@chakra-ui/react';
 
 const SigninContent = () => {

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef } from 'react';
 import _ from 'lodash';
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { Indicators, Items } from '@types';
+import { Indicators, Items } from '@tradejs/types';
 
 const LOCAL_STORAGE_KEY = 'indicators';
 

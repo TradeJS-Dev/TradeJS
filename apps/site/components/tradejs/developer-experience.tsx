@@ -32,7 +32,7 @@ if (!hljs.getLanguage('pine')) {
   hljs.registerLanguage('pine', pineScript);
 }
 
-const tsCode = `import { CreateStrategyCore } from '@tradejs/core';
+const tsCode = `import { CreateStrategyCore } from '@tradejs/types';
 import { EMA } from 'technicalindicators';
 
 export const createMyStrategyCore: CreateStrategyCore<

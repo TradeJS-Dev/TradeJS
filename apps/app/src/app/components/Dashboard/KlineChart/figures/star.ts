@@ -1,4 +1,4 @@
-import { Figure } from '@types';
+import { Figure } from '@tradejs/types';
 
 export const star = ({
   ctx,

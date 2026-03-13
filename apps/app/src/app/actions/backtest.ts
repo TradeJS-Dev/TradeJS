@@ -1,5 +1,5 @@
-import { API } from '@utils/api';
-import { Item, OrderLogData, TestResult } from '@types';
+import { API } from '@tradejs/core/api';
+import { Item, OrderLogData, TestResult } from '@tradejs/types';
 
 const API_BASE = '/api/backtest';
 

@@ -19,9 +19,12 @@ title: Plugin-разработка от начала до конца
 Добавьте пакет в `tradejs.config.ts`:
 
 ```ts
-export default defineConfig({
-  strategyPlugins: ['@scope/my-plugin'],
-  indicatorsPlugins: ['@scope/my-plugin'],
+import { defineConfig } from '@tradejs/core/config';
+import { basePreset } from '@tradejs/base';
+
+export default defineConfig(basePreset, {
+  strategies: ['@scope/my-plugin'],
+  indicators: ['@scope/my-plugin'],
 });
 ```
 

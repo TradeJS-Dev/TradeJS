@@ -5,7 +5,7 @@ import {
   getBacktestScore,
   getFormatted,
 } from '@utils/stat';
-import { PositionLogData } from '@types';
+import { PositionLogData } from '@tradejs/types';
 
 describe('stat utils', () => {
   it('calculateMaxDrawdown returns drawdown percent from peak', () => {

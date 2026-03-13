@@ -1,9 +1,9 @@
 'use client';
 
 import { SimpleGrid, Stat, Card, Heading } from '@chakra-ui/react';
-import { getFormatted } from '@utils/stat';
+import { getFormatted } from '@tradejs/core/backtest';
 import { useTestContext } from '../context';
-import { ThresholdLevel, TestThresholdsKey } from '@types';
+import { ThresholdLevel, TestThresholdsKey } from '@tradejs/types';
 
 const getColorByLevel = (level: ThresholdLevel) => {
   switch (level) {

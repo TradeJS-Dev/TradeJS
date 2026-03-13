@@ -14,20 +14,23 @@ jest.mock('@app/auth', () => ({
   auth: () => mockAuth(),
 }));
 
-jest.mock('@utils/redis', () => ({
-  delKey: (...args: unknown[]) => mockDelKey(...args),
-  redisKeys: {
-    testConfig: (u: string, s: string, n: string) => `config:${u}:${s}:${n}`,
-    testStat: (u: string, s: string, n: string) => `stat:${u}:${s}:${n}`,
-    testOrders: (u: string, s: string, n: string) => `orders:${u}:${s}:${n}`,
-  },
-}));
-
-jest.mock('@utils/logger', () => ({
-  logger: {
-    log: jest.fn(),
-  },
-}));
+jest.mock('@tradejs/infra', () => {
+  const actual = jest.requireActual('@tradejs/infra');
+  return {
+    ...actual,
+    logger: {
+      ...actual.logger,
+      log: jest.fn(),
+    },
+    delKey: (...args: unknown[]) => mockDelKey(...args),
+    redisKeys: {
+      ...actual.redisKeys,
+      testConfig: (u: string, s: string, n: string) => `config:${u}:${s}:${n}`,
+      testStat: (u: string, s: string, n: string) => `stat:${u}:${s}:${n}`,
+      testOrders: (u: string, s: string, n: string) => `orders:${u}:${s}:${n}`,
+    },
+  };
+});
 
 import { DELETE } from '../test/[strategy]/[name]/route';
 

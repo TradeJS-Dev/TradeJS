@@ -5,14 +5,14 @@ import { useSearchParams } from 'next/navigation';
 import _ from 'lodash';
 import { Chart } from 'klinecharts';
 import { getSignal } from '@actions/signal';
-import { toMs } from '@utils/timestamp';
-import { Signal } from '@types';
+import { Signal } from '@tradejs/types';
 import {
   drawSignalFigures,
   ensureBaseFigureOverlaysRegistered,
   normalizeSignalFigures,
   removeSignalFigures,
-} from '@utils/figures/signalFiguresPipeline';
+} from '@tradejs/core/figures';
+import { toMs } from '@tradejs/core/time';
 
 const fitKeepRightZoom = (chart: Chart, lastDataTsMs: number) => {
   if (!Number.isFinite(lastDataTsMs)) return;

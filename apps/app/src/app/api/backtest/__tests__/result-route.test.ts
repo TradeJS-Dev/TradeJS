@@ -16,25 +16,32 @@ jest.mock('@app/auth', () => ({
   auth: () => mockAuth(),
 }));
 
-jest.mock('@utils/redis', () => ({
-  getData: (...args: unknown[]) => mockGetData(...args),
-  redisKeys: {
-    testOrders: (u: string, s: string, n: string) => `orders:${u}:${s}:${n}`,
-    testConfig: (u: string, s: string, n: string) => `config:${u}:${s}:${n}`,
-    testStat: (u: string, s: string, n: string) => `stat:${u}:${s}:${n}`,
-  },
-}));
+jest.mock('@tradejs/core/backtest', () => {
+  const actual = jest.requireActual('@tradejs/core/backtest');
+  return {
+    ...actual,
+    getTimeline: (...args: unknown[]) => mockGetTimeline(...args),
+    compactOrderLog: (...args: unknown[]) => mockCompactOrderLog(...args),
+  };
+});
 
-jest.mock('@utils/timestamp', () => ({
-  getTimeline: (...args: unknown[]) => mockGetTimeline(...args),
-  compactOrderLog: (...args: unknown[]) => mockCompactOrderLog(...args),
-}));
-
-jest.mock('@utils/logger', () => ({
-  logger: {
-    log: jest.fn(),
-  },
-}));
+jest.mock('@tradejs/infra', () => {
+  const actual = jest.requireActual('@tradejs/infra');
+  return {
+    ...actual,
+    logger: {
+      ...actual.logger,
+      log: jest.fn(),
+    },
+    getData: (...args: unknown[]) => mockGetData(...args),
+    redisKeys: {
+      ...actual.redisKeys,
+      testOrders: (u: string, s: string, n: string) => `orders:${u}:${s}:${n}`,
+      testConfig: (u: string, s: string, n: string) => `config:${u}:${s}:${n}`,
+      testStat: (u: string, s: string, n: string) => `stat:${u}:${s}:${n}`,
+    },
+  };
+});
 
 import { GET } from '../result/[strategy]/[name]/route';
 

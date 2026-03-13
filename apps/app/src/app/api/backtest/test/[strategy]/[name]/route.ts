@@ -1,8 +1,7 @@
 'use server';
 
 import { NextResponse } from 'next/server';
-import { delKey, redisKeys } from '@utils/redis';
-import { logger } from '@utils/logger';
+import { delKey, logger, redisKeys } from '@tradejs/infra';
 import { auth } from '@app/auth';
 
 interface Params {

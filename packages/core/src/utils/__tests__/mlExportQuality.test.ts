@@ -4,7 +4,7 @@ import {
   formatMlExportQualityIssues,
   ingestMlExportQualityRow,
   summarizeMlExportQuality,
-} from '../mlExportQuality';
+} from '../testHelpers/mlExportQuality';
 
 describe('mlExport quality', () => {
   it('detects all-zero and high-zero numeric feature columns', () => {

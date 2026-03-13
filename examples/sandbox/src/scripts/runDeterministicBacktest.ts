@@ -49,24 +49,18 @@ const createMockExchangeServer = () =>
 
 const runBacktest = async (mockBaseUrl: string): Promise<void> => {
   const projectCwd = path.resolve(__dirname, '../..');
-  const tsNodeProject = path.resolve(projectCwd, '../../tsconfig.json');
   const childEnv: NodeJS.ProcessEnv = {
     ...process.env,
     BINANCE_BASE_URL: mockBaseUrl,
     COINBASE_BASE_URL: mockBaseUrl,
-    TS_NODE_PROJECT: tsNodeProject,
   };
   delete childEnv.PROJECT_CWD;
 
   await new Promise<void>((resolve, reject) => {
     const child = spawn(
-      'node',
+      'tradejs',
       [
-        '-r',
-        'ts-node/register',
-        '-r',
-        'tsconfig-paths/register',
-        '../../packages/cli/src/scripts/backtest.ts',
+        'backtest',
         '--user',
         SANDBOX_E2E_USER,
         '--config',

@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server';
-import { ConnectorCreator } from '@types';
-import { getTopTickers } from '@utils/tickers';
-import { logger } from '@utils/logger';
-import { getConnectorCreatorByProvider } from '@utils/connectorsRegistry';
+import { ConnectorCreator } from '@tradejs/types';
+import { getConnectorCreatorByProvider } from '@tradejs/core/connectors';
+import { getTopTickers } from '@tradejs/core/tickers';
+import { logger } from '@tradejs/infra';
 
 export const dynamic = 'force-dynamic';
 

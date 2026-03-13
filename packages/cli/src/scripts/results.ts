@@ -2,9 +2,9 @@ import args from 'args';
 import chalk from 'chalk';
 const ListIt = require('list-it');
 import { connectors } from '@tradejs/connectors';
-import { getTickers } from '@utils/cli';
-import { getData, getKeys, setData, delKey, redisKeys } from '@utils/redis';
-import { Test, TestStat, StrategyResults } from '@types';
+import { getTickers } from '@tradejs/core/cli';
+import { getData, getKeys, setData, delKey, redisKeys } from '@tradejs/infra';
+import { Test, TestStat, StrategyResults } from '@tradejs/types';
 
 args.example(
   'yarn results --strategy TrendLine --coverage',

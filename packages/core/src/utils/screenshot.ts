@@ -4,8 +4,8 @@ import fs from 'fs/promises';
 import path from 'path';
 import puppeteer from 'puppeteer';
 import { delay } from '@utils/async';
-import { Signal } from '@types';
-import { getData, redisKeys } from '@utils/redis';
+import { Signal } from '@tradejs/types';
+import { getData, redisKeys } from '@tradejs/infra';
 
 const { APP_URL } = process.env;
 

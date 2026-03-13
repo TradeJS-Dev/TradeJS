@@ -6,7 +6,7 @@ This guide explains how to add a new exchange connector and where integration po
 
 Important:
 
-- connectors can be registered via `tradejs.config.ts` using `connectorsPlugins`
+- connectors can be registered via `tradejs.config.ts` using `connectors`
 - connector plugins export `connectorEntries`
 - CLI/runtime resolve providers and connector names from the merged built-in + plugin connector registry
 
@@ -27,7 +27,7 @@ import type {
   Order,
   Tp,
   Sl,
-} from '@tradejs/core/types';
+} from '@tradejs/types';
 
 const kline = async (options: KlineRequest): Promise<KlineChartData> => {
   return [];
@@ -88,10 +88,8 @@ Required methods in `Connector`:
 In your connector package, export `connectorEntries`:
 
 ```ts
-import {
-  defineConnectorPlugin,
-  type ConnectorRegistryEntry,
-} from '@tradejs/core';
+import { defineConnectorPlugin } from '@tradejs/core/config';
+import type { ConnectorRegistryEntry } from '@tradejs/types';
 
 import { MyExchangeConnectorCreator } from './myExchangeConnector';
 
@@ -109,12 +107,11 @@ export default defineConnectorPlugin({ connectorEntries });
 Then connect plugin package in root config:
 
 ```ts
-import { defineConfig } from '@tradejs/core';
+import { defineConfig } from '@tradejs/core/config';
+import { basePreset } from '@tradejs/base';
 
-export default defineConfig({
-  strategyPlugins: [],
-  indicatorsPlugins: [],
-  connectorsPlugins: ['@your-scope/tradejs-connectors'],
+export default defineConfig(basePreset, {
+  connectors: ['@your-scope/tradejs-connectors'],
 });
 ```
 

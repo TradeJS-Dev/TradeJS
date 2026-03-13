@@ -1,7 +1,6 @@
-import { NextResponse } from 'next/server';
-import type { NextRequest } from 'next/server';
+import { NextResponse, type NextRequest } from 'next/server';
 import { encode, getToken } from 'next-auth/jwt';
-import { getData, getKeys, redisKeys } from '@utils/redis';
+import { getData, getKeys, redisKeys } from '@tradejs/infra';
 
 const SIGNIN_PATH = '/routes/signin';
 const SCREENSHOT_API_PREFIX = '/api/files/screenshot';

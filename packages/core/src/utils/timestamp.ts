@@ -6,7 +6,7 @@ import {
   KlineChartData,
   OrderLogData,
   SimpleOrderLogData,
-} from '@types';
+} from '@tradejs/types';
 
 const TIMELINE_STEP = 86_400_000;
 

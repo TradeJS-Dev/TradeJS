@@ -7,7 +7,7 @@ TradeJS supports two indicator authoring paths:
 - TypeScript indicator plugins (recommended for reusable pane indicators)
 - Pine plots inside standalone Pine strategies (for strategy-native visuals/signals)
 
-Important: a standalone Pine indicator plugin (`indicatorsPlugins`) is not supported yet.
+Important: a standalone Pine indicator plugin (`indicators`) is not supported yet.
 Pine indicators are rendered from `plot(...)` series produced by a Pine strategy.
 
 ## 1. TypeScript Indicator Path (Standalone Pane Indicator)
@@ -66,23 +66,18 @@ The new Pine plot appears in `figures.lines`.
 
 If you want a fully custom user Pine indicator, create a custom Pine strategy module.
 
-Minimal file set:
+Minimal file set (user project):
 
 ```text
-packages/core/src/strategy/MyPineIndicator/
+src/strategies/MyPineIndicator/
   myPineIndicator.pine
   config.ts
   figures.ts
   core.ts
   strategy.ts
   manifest.ts
-  index.ts
-```
-
-and one registry update:
-
-```text
-packages/core/src/strategy/manifests.ts
+src/plugins/myPineIndicator.plugin.ts
+tradejs.config.ts
 ```
 
 ### `myPineIndicator.pine`
@@ -108,7 +103,7 @@ plot(invalidated ? 1 : 0, "invalidated")
 ### `config.ts`
 
 ```ts
-import { BacktestPriceMode, StrategyConfig } from '@types';
+import type { BacktestPriceMode, StrategyConfig } from '@tradejs/types';
 
 export const config = {
   ENV: 'BACKTEST',
@@ -130,8 +125,8 @@ import {
   PineContextLike,
   asFiniteNumber,
   getPinePlotSeries,
-} from '@utils/pine';
-import { StrategyEntryModelFigures } from '@types';
+} from '@tradejs/core/pine';
+import type { StrategyEntryModelFigures } from '@tradejs/types';
 
 export const buildMyPineFigures = (
   pineContext: PineContextLike,
@@ -168,8 +163,8 @@ import {
   asPineBoolean,
   getLatestPinePlotValue,
   runPineScript,
-} from '@utils/pine';
-import { CreateStrategyCore } from '@types';
+} from '@tradejs/core/pine';
+import type { CreateStrategyCore } from '@tradejs/types';
 import { MyPineIndicatorConfig } from './config';
 import { buildMyPineFigures } from './figures';
 
@@ -207,7 +202,7 @@ export const createMyPineIndicatorCore: CreateStrategyCore<
       return strategyApi.skip('SIDE_DISABLED');
     }
 
-    const { stopLossPrice, takeProfitPrice, qty } =
+    const { stopLossPrice, takeProfitPrice } =
       strategyApi.getDirectionalTpSlPrices({
         price: currentPrice,
         direction: mode.direction,
@@ -216,16 +211,12 @@ export const createMyPineIndicatorCore: CreateStrategyCore<
         unit: 'percent',
       });
 
-    if (!qty || qty <= 0) {
-      return strategyApi.skip('INVALID_QTY');
-    }
-
     return strategyApi.entry({
       code: 'MY_PINE_INDICATOR_ENTRY',
       direction: mode.direction,
       figures: buildMyPineFigures(pineContext),
       orderPlan: {
-        qty,
+        qty: 1,
         stopLossPrice,
         takeProfits: [{ rate: 1, price: takeProfitPrice }],
       },
@@ -237,51 +228,57 @@ export const createMyPineIndicatorCore: CreateStrategyCore<
 ### `strategy.ts`
 
 ```ts
-import { createStrategyRuntime } from '@utils/strategyRuntime';
+import { createStrategyRuntime } from '@tradejs/core/strategies';
 import { config, MyPineIndicatorConfig } from './config';
 import { createMyPineIndicatorCore } from './core';
+import { myPineIndicatorManifest } from './manifest';
 
 export const MyPineIndicatorStrategyCreator =
   createStrategyRuntime<MyPineIndicatorConfig>({
     strategyName: 'MyPineIndicator',
     defaults: config as MyPineIndicatorConfig,
     createCore: createMyPineIndicatorCore,
+    manifest: myPineIndicatorManifest,
+    strategyDirectory: __dirname,
   });
 ```
 
 ### `manifest.ts`
 
 ```ts
-import { StrategyManifest } from '@types';
+import type { StrategyManifest } from '@tradejs/types';
 
 export const myPineIndicatorManifest: StrategyManifest = {
   name: 'MyPineIndicator',
 };
 ```
 
-### `index.ts`
+### `src/plugins/myPineIndicator.plugin.ts`
 
 ```ts
-export { MyPineIndicatorStrategyCreator } from './strategy';
-export { myPineIndicatorManifest } from './manifest';
+import { defineStrategyPlugin } from '@tradejs/core/config';
+import { myPineIndicatorManifest } from '../strategies/MyPineIndicator/manifest';
+import { MyPineIndicatorStrategyCreator } from '../strategies/MyPineIndicator/strategy';
+
+export default defineStrategyPlugin({
+  strategyEntries: [
+    {
+      manifest: myPineIndicatorManifest,
+      creator: MyPineIndicatorStrategyCreator,
+    },
+  ],
+});
 ```
 
-### `manifests.ts` registration
-
-Add to strategy registry (`packages/core/src/strategy/manifests.ts`):
+### `tradejs.config.ts`
 
 ```ts
-import { myPineIndicatorManifest } from './MyPineIndicator/manifest';
-```
+import { defineConfig } from '@tradejs/core/config';
+import { basePreset } from '@tradejs/base';
 
-```ts
-{
-  manifest: myPineIndicatorManifest,
-  creator: createLazyStrategyCreator(
-    () => import('./MyPineIndicator/strategy'),
-    'MyPineIndicatorStrategyCreator',
-  ),
-},
+export default defineConfig(basePreset, {
+  strategies: ['./src/plugins/myPineIndicator.plugin.ts'],
+});
 ```
 
 ## 4. Validate in Backtest/Signals

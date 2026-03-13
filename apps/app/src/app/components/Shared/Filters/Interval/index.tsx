@@ -1,7 +1,7 @@
 'use client';
 
 import { Segment } from '@UI';
-import { Interval } from '@types';
+import { Interval } from '@tradejs/types';
 import { intervals } from './intervals';
 import { useFiltersContext } from '../context';
 

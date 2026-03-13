@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef } from 'react';
 import { Chart, registerIndicator } from 'klinecharts';
-import { Indicator, KlineChartData } from '@types';
+import { Indicator, KlineChartData } from '@tradejs/types';
 import { IndicatorRendererConfig } from '@store';
 
 type RenderersMap = Record<string, IndicatorRendererConfig>;

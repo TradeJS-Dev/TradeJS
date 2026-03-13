@@ -1,9 +1,8 @@
 import ProgressBar from 'progress';
 import chalk from 'chalk';
-import { toRows, upsertCandles } from '@utils/timescale';
-import { getFile, getFiles } from '@utils/files';
-import { KlineChartData } from '@types';
-import { logger } from '@utils/logger';
+import { logger } from '@tradejs/infra';
+import { toRows, upsertCandles, getFile, getFiles } from '@tradejs/infra';
+import { KlineChartData } from '@tradejs/types';
 
 const DIR = 'data/history';
 const re = /^(.+?)_(\d+)\.json$/; // SYMBOL_INTERVAL.json

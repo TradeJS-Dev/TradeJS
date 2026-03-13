@@ -82,10 +82,6 @@ jobs:
           PG_DATABASE=app
           " > .env
 
-      - name: Test env
-        run: |
-          cat .env
-  
       - name: Docker login to Docker Hub
         run: |
           echo "${{ secrets.DOCKERHUB_TOKEN }}" | docker login --username ${{ secrets.DOCKERHUB_USERNAME }} --password-stdin

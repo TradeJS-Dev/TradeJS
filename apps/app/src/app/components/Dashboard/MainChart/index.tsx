@@ -3,7 +3,7 @@
 import _ from 'lodash';
 import { useEffect } from 'react';
 import { useFilters, useIndicators } from '@store';
-import { getTimestamp } from '@utils/timestamp';
+import { getTimestamp } from '@tradejs/core/time';
 import { KlineChart } from '../KlineChart';
 
 const DASHBOARD_REFRESH_DELAY = 10_000;

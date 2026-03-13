@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import _ from 'lodash';
 import { Chart } from 'klinecharts';
-import { Filters, Interval, Provider } from '@types';
-import { smoothSpreadSeries } from '@tradejs/core/indicators';
-import { API } from '@utils/api';
+import { Filters, Interval, Provider } from '@tradejs/types';
+import { smoothSpreadSeries } from '@tradejs/indicators';
+import { API } from '@tradejs/core/api';
 import { useData } from '@store';
 import { grayDashedLineStyle } from './indicatorShared';
 import { useManagedIndicator } from './useManagedIndicator';

@@ -1,0 +1,35 @@
+{
+  "name": "@tradejs/infra",
+  "version": "1.0.0",
+  "main": "dist/index.js",
+  "module": "dist/index.mjs",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist",
+    "proto"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    }
+  },
+  "dependencies": {
+    "@grpc/grpc-js": "^1.10.7",
+    "@grpc/proto-loader": "^0.7.13",
+    "@tradejs/types": "workspace:*",
+    "chalk": "4.1.2",
+    "ioredis": "5.8.0",
+    "pg": "8.16.3",
+    "winston": "3.17.0"
+  },
+  "devDependencies": {
+    "tsup": "^8.5.1",
+    "typescript": "^5.1"
+  },
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc -p ../../tsconfig.json --noEmit"
+  }
+}

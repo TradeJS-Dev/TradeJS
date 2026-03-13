@@ -54,7 +54,7 @@ Use strategy `aiAdapter` in your strategy plugin manifest.
 Runtime keeps the base prompt and appends your add-ons.
 
 ```ts
-import type { StrategyAiAdapter } from '@tradejs/core/types';
+import type { StrategyAiAdapter } from '@tradejs/types';
 
 export const myStrategyAiAdapter: StrategyAiAdapter = {
   buildSystemPromptAddon: ({ signal }) => `
@@ -73,7 +73,7 @@ Extra context:
 Then reference it in strategy manifest:
 
 ```ts
-import type { StrategyManifest } from '@tradejs/core/types';
+import type { StrategyManifest } from '@tradejs/types';
 import { myStrategyAiAdapter } from './adapters/ai';
 
 export const myStrategyManifest: StrategyManifest = {

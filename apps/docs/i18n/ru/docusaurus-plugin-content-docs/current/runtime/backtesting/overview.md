@@ -53,6 +53,8 @@ npx @tradejs/cli backtest --config trendline --connector bybit --tests 500 --par
 ## Реальный паттерн worker-обработки
 
 ```ts
+import { testing } from '@tradejs/core/backtest';
+
 for await (const test of testSuite) {
   const testResult = await testing(test);
   process.send?.({

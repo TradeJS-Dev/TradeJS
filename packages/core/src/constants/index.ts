@@ -1,5 +1,5 @@
 import 'dotenv/config';
-import type { TestThresholds } from '@types';
+import type { TestThresholds } from '@tradejs/types';
 
 const { NODE_ENV } = process.env;
 

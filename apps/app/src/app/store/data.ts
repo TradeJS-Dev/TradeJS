@@ -3,9 +3,9 @@ import { create } from 'zustand';
 import _ from 'lodash';
 import { get, set } from 'idb-keyval';
 import { useSearchParams } from 'next/navigation';
-import { KlineChartData, Interval, Filters, Provider } from '@types';
+import { KlineChartData, Interval, Filters, Provider } from '@tradejs/types';
 import { kline } from '@actions/kline';
-import { mergeData, isWrongData } from '@utils/array';
+import { isWrongData, mergeData } from '@tradejs/core/data';
 
 interface DataState {
   data: Map<string, KlineChartData | null>;

@@ -1,5 +1,5 @@
 import 'dotenv/config';
-import { runBot } from '@utils/bot';
+import { runBot } from '../lib/runBot';
 
 const run = async () => {
   await runBot();

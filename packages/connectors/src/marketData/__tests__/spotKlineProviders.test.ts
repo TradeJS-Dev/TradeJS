@@ -1,13 +1,17 @@
-import { fetchWithRetry } from '@utils/http';
+import { fetchWithRetry } from '@tradejs/infra';
 import {
   mapBinanceKline,
   mapCoinbaseKline,
   spotKlineProviders,
 } from '../spotKlineProviders';
 
-jest.mock('@utils/http', () => ({
-  fetchWithRetry: jest.fn(),
-}));
+jest.mock('@tradejs/infra', () => {
+  const actual = jest.requireActual('@tradejs/infra');
+  return {
+    ...actual,
+    fetchWithRetry: jest.fn(),
+  };
+});
 
 const mockedFetchWithRetry = fetchWithRetry as jest.MockedFunction<
   typeof fetchWithRetry

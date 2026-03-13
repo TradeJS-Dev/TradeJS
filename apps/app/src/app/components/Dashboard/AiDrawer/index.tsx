@@ -16,7 +16,7 @@ import {
   SkeletonCircle,
   SkeletonText,
 } from '@chakra-ui/react';
-import { AIChatMessage, AIChatHistory } from '@types';
+import { AIChatMessage, AIChatHistory } from '@tradejs/types';
 import { GiArtificialHive } from 'react-icons/gi';
 import { useFilters } from '@store';
 import { sendMessage, getHistory } from '@actions/ai';

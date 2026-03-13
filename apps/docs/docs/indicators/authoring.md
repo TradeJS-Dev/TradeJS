@@ -16,8 +16,8 @@ TradeJS loads indicator plugins through `tradejs.config.ts`.
 In your plugin package, export `indicatorEntries`:
 
 ```ts
-import type { IndicatorPluginEntry } from '@tradejs/core';
-import { defineIndicatorPlugin } from '@tradejs/core';
+import type { IndicatorPluginEntry } from '@tradejs/types';
+import { defineIndicatorPlugin } from '@tradejs/core/config';
 
 export const indicatorEntries = defineIndicatorPlugin({
   indicatorEntries: [
@@ -64,10 +64,11 @@ export const indicatorEntries = defineIndicatorPlugin({
 ## 2. Connect Plugin in `tradejs.config.ts`
 
 ```ts
-import { defineConfig } from '@tradejs/core';
+import { defineConfig } from '@tradejs/core/config';
+import { basePreset } from '@tradejs/base';
 
-export default defineConfig({
-  indicatorsPlugins: ['@your-scope/tradejs-indicators-pack'],
+export default defineConfig(basePreset, {
+  indicators: ['@your-scope/tradejs-indicators-pack'],
 });
 ```
 
@@ -113,7 +114,7 @@ Minimal working setup:
 ## 5. Debug Checklist
 
 - Indicator does not appear:
-  verify plugin package is listed in `indicatorsPlugins`.
+  verify plugin package is listed in `indicators`.
 - Values are empty:
   check `compute` returns finite numbers and handles warmup bars.
 - Draw looks wrong:

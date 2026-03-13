@@ -1,4 +1,4 @@
-import { Signal } from '@types';
+import { Signal } from '@tradejs/types';
 import { getStrategyMlAdapter } from '@utils/strategyAdapters/ml';
 
 export type MlTestConfig = {

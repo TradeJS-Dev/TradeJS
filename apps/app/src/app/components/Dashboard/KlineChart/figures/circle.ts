@@ -1,4 +1,4 @@
-import { Figure } from '@types';
+import { Figure } from '@tradejs/types';
 
 export const circle = ({ ctx, x, y, width, height, color }: Figure) => {
   const radius = Math.min(width, height) / 2;

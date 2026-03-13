@@ -1,5 +1,5 @@
-import { API } from '@utils/api';
-import { Signal } from '@types';
+import { API } from '@tradejs/core/api';
+import { Signal } from '@tradejs/types';
 
 const API_PATH = '/api/signal';
 

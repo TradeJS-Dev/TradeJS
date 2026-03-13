@@ -1,7 +1,7 @@
-import { defineConfig } from '@tradejs/core';
+import { defineConfig } from '@tradejs/core/config';
 
 export default defineConfig({
-  strategyPlugins: ['./src/plugins/sandboxStrategy.plugin.ts'],
-  indicatorsPlugins: ['./src/plugins/sandboxIndicator.plugin.ts'],
-  connectorsPlugins: ['./src/plugins/sandboxConnector.plugin.ts'],
+  strategies: ['./src/plugins/sandboxStrategy.plugin.ts'],
+  indicators: ['./src/plugins/sandboxIndicator.plugin.ts'],
+  connectors: ['./src/plugins/sandboxConnector.plugin.ts'],
 });

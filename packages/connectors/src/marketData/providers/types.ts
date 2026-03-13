@@ -1,8 +1,4 @@
-import {
-  DerivativesRow,
-  DerivativesInterval,
-  SpreadRow,
-} from '@utils/timescale';
+import { DerivativesRow, DerivativesInterval, SpreadRow } from '@tradejs/infra';
 
 export type MarketDataProviderName = 'coinalyze' | 'binance_coinbase_spread';
 

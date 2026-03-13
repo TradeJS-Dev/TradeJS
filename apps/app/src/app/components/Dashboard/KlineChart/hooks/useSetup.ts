@@ -5,8 +5,8 @@ import { useSearchParams } from 'next/navigation';
 import _ from 'lodash';
 import { Chart, registerOverlay } from 'klinecharts';
 import { getSignal } from '@actions/signal';
-import { toMs } from '@utils/timestamp';
-import { Signal } from '@types';
+import { toMs } from '@tradejs/core/time';
+import { Signal } from '@tradejs/types';
 import { createTradeZonePointFigure } from '../figures/tradeZonePointFigure';
 
 const SETUP = 'Setup';

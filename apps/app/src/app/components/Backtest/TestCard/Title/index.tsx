@@ -2,7 +2,7 @@
 
 import { PropsWithChildren, ReactNode } from 'react';
 import { Text, Flex } from '@chakra-ui/react';
-import { getBacktestScore } from '@utils/stat';
+import { getBacktestScore } from '@tradejs/core/backtest';
 import { useTestContext } from '../context';
 
 interface TestCardTitleProps {

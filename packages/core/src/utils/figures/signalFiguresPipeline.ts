@@ -7,10 +7,10 @@ import {
   StrategyFigurePoints,
   StrategyFigureZone,
   TrendLine,
-} from '@types';
-import { createEntryLinePointFigure } from '@components/Dashboard/KlineChart/figures/entryLinePointFigure';
-import { createEntryPointsPointFigure } from '@components/Dashboard/KlineChart/figures/entryPointsPointFigure';
-import { createEntryZonePointFigure } from '@components/Dashboard/KlineChart/figures/entryZonePointFigure';
+} from '@tradejs/types';
+import { createEntryLinePointFigure } from './entryLinePointFigure';
+import { createEntryPointsPointFigure } from './entryPointsPointFigure';
+import { createEntryZonePointFigure } from './entryZonePointFigure';
 
 export type FigureOverlayRef = {
   name: 'BacktestEntryLine' | 'BacktestEntryPoints' | 'BacktestEntryZone';

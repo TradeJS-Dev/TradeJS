@@ -1,7 +1,7 @@
 'use client';
 
 import { SegmentGroup } from '@chakra-ui/react';
-import { Items } from '@types';
+import { Items } from '@tradejs/types';
 
 interface SegmentProps {
   defaultValue: string;

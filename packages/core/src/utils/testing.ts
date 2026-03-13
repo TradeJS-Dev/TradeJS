@@ -1,16 +1,22 @@
-import { getStrategyCreator } from '@tradejs/core/strategy';
-import { connectors, ConnectorNames } from '@tradejs/connectors';
-import { Candle, ConnectorCreator, KlineChartData, TestingBox } from '@types';
+import { getStrategyCreator } from '../strategy/manifests';
+import {
+  Candle,
+  ConnectorCreator,
+  KlineChartData,
+  TestingBox,
+} from '@tradejs/types';
 import { PRELOAD_DAYS } from '@constants';
 import { getTimestamp } from '@utils/timestamp';
 import { alignSortedCandlesByTimestamp } from '@utils/correlation';
 import { buildMlPayload } from '@utils/mlPayload';
+import { buildMlTrainingRow, trimMlTrainingRowWindows } from '@tradejs/infra';
+import { appendMlDatasetRow } from '@tradejs/infra';
 import {
-  buildMlTrainingRow,
-  trimMlTrainingRowWindows,
-} from '@utils/mlTrainingTransform';
-import { appendMlDatasetRow } from '@utils/mlDatasetFile';
-import { getConnectorCreatorByName } from '@utils/connectorsRegistry';
+  BUILTIN_CONNECTOR_NAMES,
+  getConnectorCreatorByName,
+} from '@utils/connectorsRegistry';
+import { createTestConnector } from '@utils/testConnector';
+import { logger } from '@tradejs/infra';
 
 const preloadStart = getTimestamp(PRELOAD_DAYS);
 const coinKlineCache = new Map<string, KlineChartData>();
@@ -75,13 +81,16 @@ export const testing: TestingBox = async ({
     throw new Error(`Unknown strategy: ${strategyName}`);
   }
   const binanceCreator = await getConnectorCreatorByName(
-    ConnectorNames.Binance,
+    BUILTIN_CONNECTOR_NAMES.Binance,
   );
   const coinbaseCreator = await getConnectorCreatorByName(
-    ConnectorNames.Coinbase,
+    BUILTIN_CONNECTOR_NAMES.Coinbase,
   );
   if (!binanceCreator || !coinbaseCreator) {
-    throw new Error('Binance/Coinbase connectors are required for BTC spread');
+    logger.warn(
+      'Binance/Coinbase connectors are unavailable. Reusing %s for BTC references.',
+      connectorName,
+    );
   }
 
   const interval = '15';
@@ -107,7 +116,9 @@ export const testing: TestingBox = async ({
   const cachedBtcData = btcKlineCache.get(btcCacheKey);
   const btcBinanceCacheKey = getKlineCacheKey({
     userName,
-    connectorName: ConnectorNames.Binance,
+    connectorName: binanceCreator
+      ? BUILTIN_CONNECTOR_NAMES.Binance
+      : connectorName,
     symbol: 'BTCUSDT',
     end,
     interval,
@@ -115,7 +126,9 @@ export const testing: TestingBox = async ({
   });
   const btcCoinbaseCacheKey = getKlineCacheKey({
     userName,
-    connectorName: ConnectorNames.Coinbase,
+    connectorName: coinbaseCreator
+      ? BUILTIN_CONNECTOR_NAMES.Coinbase
+      : connectorName,
     symbol: 'BTCUSDT',
     end,
     interval,
@@ -147,8 +160,18 @@ export const testing: TestingBox = async ({
         }),
     cachedBtcBinanceData
       ? Promise.resolve(cachedBtcBinanceData)
-      : binanceCreator({ userName }).then((binanceConnector) =>
-          binanceConnector.kline({
+      : binanceCreator
+        ? binanceCreator({ userName }).then((binanceConnector) =>
+            binanceConnector.kline({
+              symbol: 'BTCUSDT',
+              start: preloadStart,
+              end,
+              interval,
+              silent: true,
+              cacheOnly,
+            }),
+          )
+        : connector.kline({
             symbol: 'BTCUSDT',
             start: preloadStart,
             end,
@@ -156,11 +179,20 @@ export const testing: TestingBox = async ({
             silent: true,
             cacheOnly,
           }),
-        ),
     cachedBtcCoinbaseData
       ? Promise.resolve(cachedBtcCoinbaseData)
-      : coinbaseCreator({ userName }).then((coinbaseConnector) =>
-          coinbaseConnector.kline({
+      : coinbaseCreator
+        ? coinbaseCreator({ userName }).then((coinbaseConnector) =>
+            coinbaseConnector.kline({
+              symbol: 'BTCUSDT',
+              start: preloadStart,
+              end,
+              interval,
+              silent: true,
+              cacheOnly,
+            }),
+          )
+        : connector.kline({
             symbol: 'BTCUSDT',
             start: preloadStart,
             end,
@@ -168,7 +200,6 @@ export const testing: TestingBox = async ({
             silent: true,
             cacheOnly,
           }),
-        ),
   ]);
 
   if (!cachedCoinData) {
@@ -220,7 +251,7 @@ export const testing: TestingBox = async ({
       ),
     );
 
-  const testConnector = connectors.Test(connector, {
+  const testConnector = createTestConnector(connector, {
     userName,
     mlEnabled: ml,
   });

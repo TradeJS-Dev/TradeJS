@@ -1,5 +1,5 @@
-import { API } from '@utils/api';
-import { KlineChartData, KlineRequest, Provider } from '@types';
+import { API } from '@tradejs/core/api';
+import { KlineChartData, KlineRequest, Provider } from '@tradejs/types';
 
 const API_PATH = '/api/kline';
 

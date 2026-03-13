@@ -1,7 +1,7 @@
 import { ATR } from 'technicalindicators';
 import { useEffect } from 'react';
 import { registerIndicator, Chart } from 'klinecharts';
-import { ATR_PCT } from '@tradejs/core/indicators';
+import { ATR_PCT } from '@tradejs/indicators';
 
 export const useAtrIndicator = (
   chart: Chart | null,

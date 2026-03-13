@@ -52,7 +52,7 @@ export const trendLineAiAdapter: StrategyAiAdapter = {
 Runtime сохраняет базовый prompt и добавляет ваши add-on блоки.
 
 ```ts
-import type { StrategyAiAdapter } from '@tradejs/core/types';
+import type { StrategyAiAdapter } from '@tradejs/types';
 
 export const myStrategyAiAdapter: StrategyAiAdapter = {
   buildSystemPromptAddon: ({ signal }) => `
@@ -71,7 +71,7 @@ export const myStrategyAiAdapter: StrategyAiAdapter = {
 Затем подключите adapter в manifest:
 
 ```ts
-import type { StrategyManifest } from '@tradejs/core/types';
+import type { StrategyManifest } from '@tradejs/types';
 import { myStrategyAiAdapter } from './adapters/ai';
 
 export const myStrategyManifest: StrategyManifest = {

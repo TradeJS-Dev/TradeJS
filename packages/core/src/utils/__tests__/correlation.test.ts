@@ -4,7 +4,7 @@ import {
   calculateCoinBtcCorrelation,
   calculatePearsonCorrelation,
 } from '@utils/correlation';
-import { KlineChartItem } from '@types';
+import { KlineChartItem } from '@tradejs/types';
 
 const makeCandle = (timestamp: number, close: number): KlineChartItem => ({
   timestamp,

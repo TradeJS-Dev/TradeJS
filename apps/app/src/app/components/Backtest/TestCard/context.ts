@@ -1,5 +1,5 @@
 import { createContext, useContext } from 'react';
-import { TestResult } from '@types';
+import { TestResult } from '@tradejs/types';
 
 interface TestResultContextProps {
   testResult: TestResult;

@@ -1,23 +1,6 @@
 {
   "extends": "../../tsconfig.json",
   "compilerOptions": {
-    "baseUrl": ".",
-    "paths": {
-      "@/*": ["./src/*"],
-      "@tradejs/connectors": ["../../packages/connectors/src/index"],
-      "@tradejs/connectors/*": ["../../packages/connectors/src/*"],
-      "@tradejs/core": ["../../packages/core/src/index"],
-      "@tradejs/core/*": ["../../packages/core/src/*"],
-      "@app/*": ["./src/app/*"],
-      "@actions/*": ["./src/app/actions/*"],
-      "@store": ["./src/app/store/index"],
-      "@constants": ["../../packages/core/src/constants/index"],
-      "@types": ["../../packages/core/src/types/index"],
-      "@shared/*": ["./src/app/components/Shared/*"],
-      "@utils/*": ["../../packages/core/src/utils/*"],
-      "@UI": ["./src/app/components/UI/index"],
-      "@components/*": ["./src/app/components/*"]
-    },
     "plugins": [
       {
         "name": "next"

@@ -7,12 +7,12 @@ title: Как создавать стратегии
 
 TradeJS поддерживает два пути создания стратегий:
 
-- [TypeScript-стратегия через `StrategyAPI`](./ma-strategy-step-by-step)
+- [TypeScript-стратегия через `StrategyAPI`](./typescript-strategy-step-by-step)
 - [Pine-стратегия с отдельным `.pine` исходником](./pine-strategy-step-by-step)
 
 ## Типовая структура стратегии
 
-Внутри `@tradejs/core` обычно есть:
+В пакете стратегии (built-in в `packages/strategies`, пользовательская в `src/strategies`) обычно есть:
 
 - `config.ts`
 - `core.ts`
@@ -41,7 +41,12 @@ TradeJS поддерживает два пути создания стратег
 Файлы:
 
 - `@tradejs/core`
-- [Strategy Hooks](./strategy-hooks) (каталог lifecycle-хуков)
+- [Strategy Runtime Hooks](./strategy-hooks) (каталог lifecycle-хуков)
+
+Правило импортов:
+
+- импортируйте runtime/типы/хелперы только из `@tradejs/core`
+- избегайте внутренних алиасов (`@utils`, `@types`, `@constants`) и deep-imports (`@tradejs/core/*`)
 
 ## Пример минимального `core.ts`
 
@@ -50,14 +55,14 @@ export const createMyStrategyCore: CreateStrategyCore<
   MyStrategyConfig
 > = async ({ strategyApi }) => {
   return async () => {
-    const { currentPrice } = await strategyApi.getMarketData();
-
     const positionExists = await strategyApi.isCurrentPositionExists();
     if (positionExists) {
       return strategyApi.skip('POSITION_EXISTS');
     }
 
-    const { stopLossPrice, takeProfitPrice, qty } =
+    const { currentPrice } = await strategyApi.getMarketData();
+
+    const { stopLossPrice, takeProfitPrice } =
       strategyApi.getDirectionalTpSlPrices({
         price: currentPrice,
         direction: 'LONG',
@@ -66,14 +71,10 @@ export const createMyStrategyCore: CreateStrategyCore<
         unit: 'percent',
       });
 
-    if (!qty || qty <= 0) {
-      return strategyApi.skip('INVALID_QTY');
-    }
-
     return strategyApi.entry({
       direction: 'LONG',
       orderPlan: {
-        qty,
+        qty: 1,
         stopLossPrice,
         takeProfits: [{ rate: 1, price: takeProfitPrice }],
       },
@@ -81,8 +82,6 @@ export const createMyStrategyCore: CreateStrategyCore<
   };
 };
 ```
-
-`strategyApi.entry(...)` принимает опциональный `code`; если его не передать, код будет сгенерирован автоматически, а `timestamp/currentPrice/takeProfitPrice/riskRatio` вычисляются из market data и `orderPlan`.
 
 ## Где задается runtime-поведение
 
@@ -100,19 +99,20 @@ export const createMyStrategyCore: CreateStrategyCore<
 
 ## Пошаговые руководства
 
-- [MA Strategy Step by Step](./ma-strategy-step-by-step) — полный путь для TypeScript-стратегии
+- [TypeScript Strategy Step by Step](./typescript-strategy-step-by-step) — полный путь для TypeScript-стратегии
 - [Pine Strategy Step by Step](./pine-strategy-step-by-step) — полный путь для Pine-стратегии
 
 ## Внешняя стратегия как npm-плагин
 
 ```ts
-import { defineConfig } from '@tradejs/core';
+import { defineConfig } from '@tradejs/core/config';
+import { basePreset } from '@tradejs/base';
 
-export default defineConfig({
-  strategyPlugins: ['@scope/tradejs-strategy-pack'],
+export default defineConfig(basePreset, {
+  strategies: ['@scope/tradejs-strategy-pack'],
 });
 ```
 
 Пример плагина:
 
-- публикуйте стратегию как npm-пакет и подключайте через `strategyPlugins`
+- публикуйте стратегию как npm-пакет и подключайте через `strategies`

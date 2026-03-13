@@ -1,4 +1,4 @@
-import { Test } from '@types';
+import { Test } from '@tradejs/types';
 
 const mockByBitConnector = {
   kline: jest.fn(),
@@ -23,34 +23,27 @@ const mockTestConnector = {
 const mockStrategy = jest.fn();
 const mockStrategyCreator = jest.fn(async (_config?: unknown) => mockStrategy);
 const mockBuildMlPayload = jest.fn((data) => data);
-const mockBuildMlTrainingRow: jest.Mock = jest.fn(
-  (_signalRecord?: unknown, _resultRecord?: unknown) => ({ featureA: 1 }),
-);
+const mockBuildMlTrainingRow: jest.Mock = jest.fn(() => ({ featureA: 1 }));
 const mockAppendMlDatasetRow = jest.fn((_params?: unknown) => undefined);
 
-jest.mock('@tradejs/connectors', () => ({
-  connectors: {
-    ByBit: jest.fn(async () => mockByBitConnector),
-    Binance: jest.fn(async () => mockBinanceConnector),
-    Coinbase: jest.fn(async () => mockCoinbaseConnector),
-    Test: jest.fn(() => mockTestConnector),
-  },
-  ConnectorNames: {
-    ByBit: 'ByBit',
-    Binance: 'Binance',
-    Coinbase: 'Coinbase',
-    Test: 'Test',
-  },
-}));
-
-jest.mock('@tradejs/core/strategy', () => ({
+jest.mock('../../strategy/manifests', () => ({
   getStrategyCreator: async (strategyName: string) =>
     strategyName === 'TrendLine'
       ? (config: unknown) => mockStrategyCreator(config)
       : undefined,
 }));
 
+jest.mock('@utils/testConnector', () => ({
+  createTestConnector: () => mockTestConnector,
+}));
+
 jest.mock('@utils/connectorsRegistry', () => ({
+  BUILTIN_CONNECTOR_NAMES: {
+    ByBit: 'ByBit',
+    Binance: 'Binance',
+    Coinbase: 'Coinbase',
+    Test: 'Test',
+  },
   getConnectorCreatorByName: async (name: string) => {
     if (name === 'ByBit') {
       return async () => mockByBitConnector;
@@ -76,13 +69,11 @@ jest.mock('@utils/mlPayload', () => ({
   buildMlPayload: (payload: unknown) => mockBuildMlPayload(payload),
 }));
 
-jest.mock('@utils/mlTrainingTransform', () => ({
+jest.mock('@tradejs/infra', () => ({
+  ...jest.requireActual('@tradejs/infra'),
   buildMlTrainingRow: (signalRecord: unknown, resultRecord: unknown) =>
     mockBuildMlTrainingRow(signalRecord, resultRecord),
   trimMlTrainingRowWindows: (row: unknown) => row,
-}));
-
-jest.mock('@utils/mlDatasetFile', () => ({
   appendMlDatasetRow: (params: unknown) => mockAppendMlDatasetRow(params),
 }));
 

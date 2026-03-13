@@ -46,7 +46,7 @@ jest.mock('@utils/strategyHelpers', () => ({
   executeEntryOrder: (...args: unknown[]) => mockExecuteEntryOrder(...args),
 }));
 
-jest.mock('@utils/logger', () => ({
+jest.mock('@tradejs/infra', () => ({
   logger: {
     error: jest.fn(),
   },
@@ -61,8 +61,9 @@ jest.mock('../../strategy/manifests', () => {
 });
 
 import { createStrategyRuntime } from '@utils/strategyRuntime';
-import { logger } from '@utils/logger';
+import { logger } from '@tradejs/infra';
 import * as manifestsModule from '../../strategy/manifests';
+import { strategyEntries } from '@tradejs/strategies';
 
 const realGetStrategyManifest = (
   jest.requireActual('../../strategy/manifests') as typeof manifestsModule
@@ -179,6 +180,8 @@ const makeRuntime = async (
 describe('strategyRuntime', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    manifestsModule.resetStrategyRegistryCache();
+    manifestsModule.registerStrategyEntries(strategyEntries);
     manifestOverrides.clear();
     mockGetStrategyManifest.mockImplementation((name?: string) => {
       if (!name) {
@@ -189,6 +192,10 @@ describe('strategyRuntime', () => {
     mockExecuteEntryOrder.mockResolvedValue(222);
     mockEnrichSignalWithMl.mockResolvedValue(undefined);
     mockEnrichSignalWithAi.mockResolvedValue(5);
+  });
+
+  afterAll(() => {
+    manifestsModule.resetStrategyRegistryCache();
   });
 
   it('gates entry by runtime.ai.minQuality', async () => {

@@ -1,12 +1,12 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
-import { logger } from '@utils/logger';
+import { logger } from '@tradejs/infra';
 
 export interface TradejsProjectConfig {
-  strategyPlugins?: string[];
-  indicatorsPlugins?: string[];
-  connectorsPlugins?: string[];
+  strategies?: string[];
+  indicators?: string[];
+  connectors?: string[];
 }
 
 const CONFIG_FILE_NAMES = [
@@ -16,9 +16,11 @@ const CONFIG_FILE_NAMES = [
   'tradejs.config.mjs',
   'tradejs.config.cjs',
 ] as const;
+const TS_MODULE_RE = /\.(cts|mts|ts)$/i;
 
 let cachedByCwd = new Map<string, TradejsProjectConfig>();
 let announcedConfigFile = new Set<string>();
+let tsNodeRegistered = false;
 
 export const getTradejsProjectCwd = (cwd?: string): string => {
   const explicit = String(cwd ?? '').trim();
@@ -40,26 +42,26 @@ const normalizeConfig = (rawConfig: unknown): TradejsProjectConfig => {
   }
 
   const config = rawConfig as Record<string, unknown>;
-  const strategyPlugins = Array.isArray(config.strategyPlugins)
-    ? config.strategyPlugins
+  const strategies = Array.isArray(config.strategies)
+    ? config.strategies
         .map((value) => String(value || '').trim())
         .filter(Boolean)
     : [];
-  const indicatorsPlugins = Array.isArray(config.indicatorsPlugins)
-    ? config.indicatorsPlugins
+  const indicators = Array.isArray(config.indicators)
+    ? config.indicators
         .map((value) => String(value || '').trim())
         .filter(Boolean)
     : [];
-  const connectorsPlugins = Array.isArray(config.connectorsPlugins)
-    ? config.connectorsPlugins
+  const connectors = Array.isArray(config.connectors)
+    ? config.connectors
         .map((value) => String(value || '').trim())
         .filter(Boolean)
     : [];
 
   return {
-    strategyPlugins,
-    indicatorsPlugins,
-    connectorsPlugins,
+    strategies,
+    indicators,
+    connectors,
   };
 };
 
@@ -72,28 +74,112 @@ const getRequireFn = (): NodeJS.Require | null => {
   }
 };
 
+const ensureTsNodeRegistered = (requireFn: NodeJS.Require) => {
+  if (tsNodeRegistered) {
+    return;
+  }
+
+  const tsNode = requireFn('ts-node') as {
+    register?: (options?: Record<string, unknown>) => void;
+  };
+  tsNode.register?.({
+    transpileOnly: true,
+    compilerOptions: {
+      module: 'commonjs',
+      moduleResolution: 'node',
+    },
+  });
+  tsNodeRegistered = true;
+};
+
+const toImportSpecifier = (moduleName: string): string => {
+  if (moduleName.startsWith('file://')) {
+    return moduleName;
+  }
+
+  if (path.isAbsolute(moduleName)) {
+    return pathToFileURL(moduleName).href;
+  }
+
+  return moduleName;
+};
+
+const isTsModulePath = (moduleName: string): boolean =>
+  TS_MODULE_RE.test(moduleName.split('?')[0]);
+
+const isRelativeModulePath = (moduleName: string): boolean =>
+  moduleName.startsWith('./') || moduleName.startsWith('../');
+
+const isBareModuleSpecifier = (moduleName: string): boolean => {
+  const normalized = String(moduleName ?? '').trim();
+  if (!normalized) {
+    return false;
+  }
+
+  if (
+    normalized.startsWith('file://') ||
+    path.isAbsolute(normalized) ||
+    isRelativeModulePath(normalized)
+  ) {
+    return false;
+  }
+
+  return true;
+};
+
 const importConfigFile = async (configFilePath: string): Promise<unknown> => {
   const ext = path.extname(configFilePath).toLowerCase();
-  const configFileUrl = `${pathToFileURL(configFilePath).href}?t=${Date.now()}`;
+  const configFileUrl = `${toImportSpecifier(configFilePath)}?t=${Date.now()}`;
 
   if (ext === '.ts' || ext === '.mts') {
     const requireFn = getRequireFn();
     if (requireFn) {
-      const tsNode = requireFn('ts-node') as {
-        register?: (options?: Record<string, unknown>) => void;
-      };
-      tsNode.register?.({
-        transpileOnly: true,
-        compilerOptions: {
-          module: 'commonjs',
-          moduleResolution: 'node',
-        },
-      });
+      ensureTsNodeRegistered(requireFn);
       return requireFn(configFilePath);
     }
   }
 
   return import(/* webpackIgnore: true */ configFileUrl);
+};
+
+export const importTradejsModule = async (
+  moduleName: string,
+): Promise<unknown> => {
+  const normalized = String(moduleName ?? '').trim();
+  if (!normalized) {
+    return {};
+  }
+
+  const requireFn = getRequireFn();
+  let modulePath = normalized;
+  if (normalized.startsWith('file://')) {
+    try {
+      modulePath = fileURLToPath(normalized);
+    } catch {
+      modulePath = normalized;
+    }
+  }
+
+  if (isTsModulePath(modulePath) && requireFn) {
+    ensureTsNodeRegistered(requireFn);
+    return requireFn(modulePath);
+  }
+
+  if (isBareModuleSpecifier(normalized) && requireFn) {
+    return requireFn(normalized);
+  }
+
+  try {
+    return await import(
+      /* webpackIgnore: true */ toImportSpecifier(normalized)
+    );
+  } catch (error) {
+    if (isTsModulePath(modulePath) && requireFn) {
+      ensureTsNodeRegistered(requireFn);
+      return requireFn(modulePath);
+    }
+    throw error;
+  }
 };
 
 const resolveExportedConfig = (
@@ -110,17 +196,23 @@ const resolveExportedConfig = (
 };
 
 const findConfigFilePath = (cwd: string): string | null => {
-  for (const fileName of CONFIG_FILE_NAMES) {
-    const fullPath = path.join(cwd, fileName);
-    if (fs.existsSync(fullPath) && fs.statSync(fullPath).isFile()) {
-      return fullPath;
-    }
-  }
-  return null;
-};
+  let currentDir = path.resolve(cwd);
 
-const isRelativeModulePath = (moduleName: string): boolean =>
-  moduleName.startsWith('./') || moduleName.startsWith('../');
+  while (true) {
+    for (const fileName of CONFIG_FILE_NAMES) {
+      const fullPath = path.join(currentDir, fileName);
+      if (fs.existsSync(fullPath) && fs.statSync(fullPath).isFile()) {
+        return fullPath;
+      }
+    }
+
+    const parentDir = path.dirname(currentDir);
+    if (parentDir === currentDir) {
+      return null;
+    }
+    currentDir = parentDir;
+  }
+};
 
 export const resolvePluginModuleSpecifier = (
   moduleName: string,
@@ -190,4 +282,5 @@ export const loadTradejsConfig = async (
 export const resetTradejsConfigCache = (): void => {
   cachedByCwd = new Map<string, TradejsProjectConfig>();
   announcedConfigFile = new Set<string>();
+  tsNodeRegistered = false;
 };

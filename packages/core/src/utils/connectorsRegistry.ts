@@ -1,24 +1,26 @@
 import {
-  ConnectorNames,
-  connectors as builtInConnectors,
-  providerToConnectorName as builtInProviderToConnectorName,
-} from '@tradejs/connectors';
-import {
   ConnectorCreator,
   ConnectorPluginDefinition,
   ConnectorRegistryEntry,
-} from '@types';
-import { logger } from '@utils/logger';
+} from '@tradejs/types';
+import { logger } from '@tradejs/infra';
 import {
   loadTradejsConfig,
   resolvePluginModuleSpecifier,
 } from '@utils/tradejsConfig';
+import * as tradejsConfig from '@utils/tradejsConfig';
 
 const connectorCreators = new Map<string, ConnectorCreator>();
 const providerToConnectorName = new Map<string, string>();
 
-let registryBootstrapped = false;
 let pluginsLoadPromise: Promise<void> | null = null;
+
+export const BUILTIN_CONNECTOR_NAMES = {
+  ByBit: 'ByBit',
+  Binance: 'Binance',
+  Coinbase: 'Coinbase',
+  Test: 'Test',
+} as const;
 
 const normalizeProvider = (value: unknown): string =>
   String(value ?? '')
@@ -120,41 +122,6 @@ const registerEntries = (
   }
 };
 
-const bootstrapBuiltInEntries = () => {
-  if (registryBootstrapped) {
-    return;
-  }
-
-  const providersByConnector = new Map<string, string[]>();
-  for (const [provider, connectorName] of Object.entries(
-    builtInProviderToConnectorName,
-  )) {
-    const normalizedProvider = normalizeProvider(provider);
-    if (!normalizedProvider) {
-      continue;
-    }
-    const list = providersByConnector.get(connectorName) ?? [];
-    list.push(normalizedProvider);
-    providersByConnector.set(connectorName, list);
-  }
-
-  for (const [connectorName, creator] of Object.entries(builtInConnectors)) {
-    if (connectorName === ConnectorNames.Test) {
-      continue;
-    }
-    registerEntry(
-      {
-        name: connectorName,
-        creator: creator as ConnectorCreator,
-        providers: providersByConnector.get(connectorName),
-      },
-      'built-in',
-    );
-  }
-
-  registryBootstrapped = true;
-};
-
 const extractConnectorPluginDefinition = (
   moduleExport: unknown,
 ): ConnectorPluginDefinition | null => {
@@ -184,18 +151,21 @@ const extractConnectorPluginDefinition = (
 
 const importConnectorPluginModule = async (
   moduleName: string,
-): Promise<unknown> => import(/* webpackIgnore: true */ moduleName);
+): Promise<unknown> => {
+  if (typeof tradejsConfig.importTradejsModule === 'function') {
+    return tradejsConfig.importTradejsModule(moduleName);
+  }
+  return import(/* webpackIgnore: true */ moduleName);
+};
 
 export const ensureConnectorPluginsLoaded = async (): Promise<void> => {
-  bootstrapBuiltInEntries();
-
   if (pluginsLoadPromise) {
     return pluginsLoadPromise;
   }
 
   pluginsLoadPromise = (async () => {
     const config = await loadTradejsConfig();
-    const connectorModules = toUniqueModules(config.connectorsPlugins);
+    const connectorModules = toUniqueModules(config.connectors);
     if (!connectorModules.length) {
       return;
     }
@@ -304,15 +274,13 @@ export const getAvailableConnectorProviders = async (): Promise<string[]> => {
 export const registerConnectorEntries = (
   entries: readonly ConnectorRegistryEntry[],
 ) => {
-  bootstrapBuiltInEntries();
   registerEntries(entries, 'runtime');
 };
 
 export const resetConnectorRegistryCache = () => {
   connectorCreators.clear();
   providerToConnectorName.clear();
-  registryBootstrapped = false;
   pluginsLoadPromise = null;
 };
 
-export const DEFAULT_CONNECTOR_NAME = ConnectorNames.ByBit;
+export const DEFAULT_CONNECTOR_NAME = BUILTIN_CONNECTOR_NAMES.ByBit;

@@ -91,6 +91,11 @@ yarn e2e
 yarn infra-down
 ```
 
+## Import Rule For Plugins
+
+- Use `@tradejs/core` for runtime/helpers and `@tradejs/types` for shared types.
+- Avoid internal aliases (`@utils`, `@constants`) and deep imports (`@tradejs/core/*`).
+
 ## 9. Stop Infrastructure
 
 ```bash

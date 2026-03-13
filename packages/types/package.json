@@ -1,0 +1,25 @@
+{
+  "name": "@tradejs/types",
+  "version": "1.0.0",
+  "main": "dist/index.js",
+  "module": "dist/index.mjs",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    }
+  },
+  "devDependencies": {
+    "tsup": "^8.5.1",
+    "typescript": "^5.1"
+  },
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc -p ../../tsconfig.json --noEmit"
+  }
+}

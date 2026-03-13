@@ -3,7 +3,7 @@ import {
   coinbaseProductFromSymbol,
   rollingMeanStd,
   intervalToMs,
-} from '../marketSpread';
+} from '../spread';
 
 describe('marketSpread utils', () => {
   test('intervalToMs maps supported intervals', () => {

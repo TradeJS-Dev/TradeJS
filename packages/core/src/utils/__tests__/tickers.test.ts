@@ -3,7 +3,7 @@ import {
   getVolatilityTickers,
   normalizeTickerData,
 } from '@utils/tickers';
-import { Ticker } from '@types';
+import { Ticker } from '@tradejs/types';
 
 const makeTicker = (overrides: Partial<Ticker>): Ticker => ({
   symbol: 'AAAUSDT',

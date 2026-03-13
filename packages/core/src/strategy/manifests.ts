@@ -5,77 +5,21 @@ import type {
   StrategyManifest,
   StrategyPluginDefinition,
   StrategyRegistryEntry,
-} from '@types';
-import { registerIndicatorEntries } from '@tradejs/core/indicators';
-import { logger } from '@utils/logger';
+} from '@tradejs/types';
+import {
+  registerIndicatorEntries,
+  resetIndicatorRegistryCache,
+} from '@utils/indicatorPlugins';
+import { logger } from '@tradejs/infra';
 import {
   loadTradejsConfig,
   resolvePluginModuleSpecifier,
 } from '@utils/tradejsConfig';
-import { adaptiveMomentumRibbonManifest } from './AdaptiveMomentumRibbon/manifest';
-import { breakoutManifest } from './Breakout/manifest';
-import { maStrategyManifest } from './MaStrategy/manifest';
-import { trendLineManifest } from './TrendLine/manifest';
-import { volumeDivergenceManifest } from './VolumeDivergence/manifest';
-
-const createLazyStrategyCreator = <TModule extends Record<string, unknown>>(
-  loader: () => Promise<TModule>,
-  exportName: keyof TModule,
-): StrategyCreator => {
-  return async (params) => {
-    const module = await loader();
-    const creator = module[exportName];
-    if (typeof creator !== 'function') {
-      throw new Error(
-        `Strategy creator export "${String(exportName)}" is missing`,
-      );
-    }
-    return (creator as StrategyCreator)(params);
-  };
-};
-
-const builtInStrategyEntries: readonly StrategyRegistryEntry[] = [
-  {
-    manifest: breakoutManifest,
-    creator: createLazyStrategyCreator(
-      () => import('./Breakout/strategy'),
-      'BreakoutStrategyCreator',
-    ),
-  },
-  {
-    manifest: trendLineManifest,
-    creator: createLazyStrategyCreator(
-      () => import('./TrendLine/strategy'),
-      'TrendlineStrategyCreator',
-    ),
-  },
-  {
-    manifest: maStrategyManifest,
-    creator: createLazyStrategyCreator(
-      () => import('./MaStrategy/strategy'),
-      'MaStrategyCreator',
-    ),
-  },
-  {
-    manifest: adaptiveMomentumRibbonManifest,
-    creator: createLazyStrategyCreator(
-      () => import('./AdaptiveMomentumRibbon/strategy'),
-      'AdaptiveMomentumRibbonStrategyCreator',
-    ),
-  },
-  {
-    manifest: volumeDivergenceManifest,
-    creator: createLazyStrategyCreator(
-      () => import('./VolumeDivergence/strategy'),
-      'VolumeDivergenceStrategyCreator',
-    ),
-  },
-] as const;
+import * as tradejsConfig from '@utils/tradejsConfig';
 
 const strategyCreators = new Map<string, StrategyCreator>();
 const strategyManifestsMap = new Map<string, StrategyManifest>();
 
-let registryBootstrapped = false;
 let pluginsLoadPromise: Promise<void> | null = null;
 
 const toUniqueModules = (modules: string[] = []): string[] => [
@@ -88,8 +32,8 @@ const getConfiguredPluginModuleNames = async (): Promise<{
 }> => {
   const config = await loadTradejsConfig();
   return {
-    strategyModules: toUniqueModules(config.strategyPlugins),
-    indicatorModules: toUniqueModules(config.indicatorsPlugins),
+    strategyModules: toUniqueModules(config.strategies),
+    indicatorModules: toUniqueModules(config.indicators),
   };
 };
 
@@ -159,21 +103,16 @@ const registerEntries = (
   }
 };
 
-const bootstrapBuiltInEntries = () => {
-  if (registryBootstrapped) return;
-  registerEntries(builtInStrategyEntries, 'built-in');
-  registryBootstrapped = true;
-};
-
 const importStrategyPluginModule = async (
   moduleName: string,
 ): Promise<unknown> => {
+  if (typeof tradejsConfig.importTradejsModule === 'function') {
+    return tradejsConfig.importTradejsModule(moduleName);
+  }
   return import(/* webpackIgnore: true */ moduleName);
 };
 
 export const ensureStrategyPluginsLoaded = async (): Promise<void> => {
-  bootstrapBuiltInEntries();
-
   if (pluginsLoadPromise) {
     return pluginsLoadPromise;
   }
@@ -257,46 +196,46 @@ export const getAvailableStrategyNames = async (): Promise<string[]> => {
 };
 
 export const getRegisteredStrategies = (): Record<string, StrategyCreator> => {
-  bootstrapBuiltInEntries();
   return Object.fromEntries(strategyCreators.entries());
 };
 
 export const getRegisteredManifests = (): StrategyManifest[] => {
-  bootstrapBuiltInEntries();
   return [...strategyManifestsMap.values()];
 };
 
 export const getStrategyManifest = (
   name?: string,
 ): StrategyManifest | undefined => {
-  bootstrapBuiltInEntries();
   return name ? strategyManifestsMap.get(name) : undefined;
 };
 
 export const isKnownStrategy = (name: string): boolean => {
-  bootstrapBuiltInEntries();
   return strategyCreators.has(name);
 };
 
 export const registerStrategyEntries = (
   entries: readonly StrategyRegistryEntry[],
 ) => {
-  bootstrapBuiltInEntries();
   registerEntries(entries, 'runtime');
+};
+
+export const resetStrategyRegistryCache = () => {
+  strategyCreators.clear();
+  strategyManifestsMap.clear();
+  resetIndicatorRegistryCache();
+  pluginsLoadPromise = null;
 };
 
 export const strategies = new Proxy(
   {},
   {
     get: (_target, property: string | symbol) => {
-      bootstrapBuiltInEntries();
       if (typeof property !== 'string') {
         return undefined;
       }
       return strategyCreators.get(property);
     },
     ownKeys: () => {
-      bootstrapBuiltInEntries();
       return [...strategyCreators.keys()];
     },
     getOwnPropertyDescriptor: () => ({
@@ -305,8 +244,3 @@ export const strategies = new Proxy(
     }),
   },
 ) as Record<string, StrategyCreator>;
-
-bootstrapBuiltInEntries();
-
-export const strategyManifests: StrategyManifest[] = getRegisteredManifests();
-export const strategyNames: string[] = [...strategyCreators.keys()];

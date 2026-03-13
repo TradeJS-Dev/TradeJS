@@ -1,7 +1,7 @@
 import react from 'react';
 import { Timeline, Box, Text } from '@chakra-ui/react';
 import { PiRobotFill, PiUserFill } from 'react-icons/pi';
-import { AIChatMessage } from '@types';
+import { AIChatMessage } from '@tradejs/types';
 
 interface MessageProps {
   message: AIChatMessage;

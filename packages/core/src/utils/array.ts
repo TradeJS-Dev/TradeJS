@@ -1,6 +1,6 @@
 import _ from 'lodash';
 import chalk from 'chalk';
-import { KlineChartData, Interval } from '@types';
+import { KlineChartData, Interval } from '@tradejs/types';
 
 export const intervalToMs = (interval: Interval): number => {
   const minutes: Record<

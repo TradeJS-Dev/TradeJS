@@ -1,5 +1,5 @@
-import { API } from '@utils/api';
-import { AIChatMessage, AIChatHistory, Filters } from '@types';
+import { API } from '@tradejs/core/api';
+import { AIChatMessage, AIChatHistory, Filters } from '@tradejs/types';
 
 interface SendMessageProps {
   message: AIChatMessage;

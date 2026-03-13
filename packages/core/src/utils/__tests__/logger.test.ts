@@ -64,7 +64,7 @@ describe('logger setup', () => {
       },
     }));
 
-    const { logger } = require('@utils/logger');
+    const { logger } = require('@tradejs/infra');
 
     expect(logger).toBeDefined();
     expect(createLoggerMock).toHaveBeenCalledTimes(1);

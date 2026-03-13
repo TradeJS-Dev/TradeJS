@@ -11,7 +11,7 @@ import {
   Button,
   Input,
 } from '@chakra-ui/react';
-import { API } from '@utils/api';
+import { API } from '@tradejs/core/api';
 
 type SummaryResponse = {
   rows: Array<{

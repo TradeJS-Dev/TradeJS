@@ -1,4 +1,4 @@
-import { AiPayload, Signal, StrategyAiAdapter } from '@types';
+import { AiPayload, Signal, StrategyAiAdapter } from '@tradejs/types';
 import { trimSeriesDeep } from '@utils/aiShared';
 import { getStrategyManifest } from '../../strategy/manifests';
 

@@ -11,7 +11,7 @@ import {
   useFilter,
   useListCollection,
 } from '@chakra-ui/react';
-import { Items } from '@types';
+import { Items } from '@tradejs/types';
 
 interface SelectWithSearchProps {
   defaultValue: string[];

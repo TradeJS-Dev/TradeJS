@@ -1,4 +1,4 @@
-import { API } from '@utils/api';
+import { API } from '@tradejs/core/api';
 import {
   deleteBacktest,
   getBacktest,
@@ -6,15 +6,8 @@ import {
   getOrderLog,
 } from '../backtest';
 
-jest.mock('@utils/api', () => ({
-  API: {
-    get: jest.fn(),
-    delete: jest.fn(),
-  },
-}));
-
-const mockedGet = API.get as jest.MockedFunction<typeof API.get>;
-const mockedDelete = API.delete as jest.MockedFunction<typeof API.delete>;
+const mockedGet = jest.spyOn(API, 'get');
+const mockedDelete = jest.spyOn(API, 'delete');
 
 describe('backtest actions', () => {
   beforeEach(() => {

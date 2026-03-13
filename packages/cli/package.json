@@ -2,30 +2,41 @@
   "name": "@tradejs/cli",
   "version": "1.0.0",
   "homepage": "https://tradejs.dev",
-  "private": true,
+  "main": "dist/cli.js",
+  "types": "dist/cli.d.ts",
+  "files": [
+    "dist"
+  ],
   "bin": {
     "tradejs": "dist/cli.js"
   },
   "dependencies": {
+    "@tradejs/base": "workspace:*",
     "@tradejs/connectors": "workspace:*",
     "@tradejs/core": "workspace:*",
+    "@tradejs/indicators": "workspace:*",
+    "@tradejs/infra": "workspace:*",
+    "@tradejs/strategies": "workspace:*",
+    "@tradejs/types": "workspace:*",
     "args": "^5.0.3",
     "bcryptjs": "^2.4.3",
     "chalk": "4.1.2",
     "date-fns": "^3.3.1",
     "ioredis": "5.8.0",
     "lodash": "^4.17.21",
-    "progress": "^2.0.3"
+    "progress": "^2.0.3",
+    "uuid": "11.1.0"
   },
   "devDependencies": {
     "@types/node": "^20",
     "dotenv-cli": "^11.0.0",
     "ts-node": "^10.9.2",
     "tsconfig-paths": "^4.2.0",
+    "tsup": "^8.5.1",
     "typescript": "^5.1"
   },
   "scripts": {
-    "build": "echo 'cli: build placeholder'",
+    "build": "tsup",
     "typecheck": "tsc -p ../../tsconfig.json --noEmit",
     "run:ts": "dotenv -e \"${DOTENV_CONFIG_PATH:-${PROJECT_CWD:-$PWD}/.env}\" -- ts-node -r tsconfig-paths/register",
     "clean-dir": "yarn run run:ts ./src/scripts/cleanDir",

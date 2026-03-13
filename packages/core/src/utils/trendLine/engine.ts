@@ -1,5 +1,5 @@
 import { KLineData } from 'klinecharts';
-import { TrendLine, TrendLineOptions } from '@types';
+import { TrendLine, TrendLineOptions } from '@tradejs/types';
 import { TRENDLINE_DEFAULTS } from '@constants';
 import { toMs } from '@utils/timestamp';
 

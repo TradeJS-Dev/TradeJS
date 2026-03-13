@@ -6,14 +6,14 @@ title: Pine Script стратегия пошагово
 
 Ниже приведена полная реализация `AdaptiveMomentumRibbon` (включая `.pine`, runtime-мост, config, figures, adapters и регистрацию).
 
-Если нужен путь без Pine, см. [TypeScript-стратегия через `StrategyAPI`](./ma-strategy-step-by-step).
+Если нужен путь без Pine, см. [TypeScript-стратегия через `StrategyAPI`](./typescript-strategy-step-by-step).
 
 ## 1. Создайте структуру папки стратегии
 
 Создайте обычный модуль стратегии:
 
 ```text
-packages/core/src/strategy/AdaptiveMomentumRibbon/
+packages/strategies/src/AdaptiveMomentumRibbon/
   adaptiveMomentumRibbon.pine
   config.ts
   core.ts
@@ -135,23 +135,16 @@ plot(buy_sig ? 1 : 0, "entryLong")
 plot(sell_sig ? 1 : 0, "entryShort")
 ```
 
-Контракт plot-серий, который читает `core.ts`:
-
-- `entryLong`
-- `entryShort`
-- `invalidated`
-- `activeBuy`
-- `activeSell`
-- `signalOsc`
-- `kcMidline`
-- `kcUpper`
-- `kcLower`
-- `invalidationLevel`
-
 ## 3. Добавьте конфиг стратегии (`config.ts`)
 
 ```ts
-import { BacktestPriceMode, Direction, Interval, StrategyConfig } from '@types';
+import {
+  type BacktestPriceMode,
+  type Direction,
+  type Interval,
+  type StrategyConfig,
+} from '@tradejs/types';
+import { asPositiveInt, asPositiveNumber } from '@tradejs/core/math';
 
 export type AdaptiveMomentumRibbonKcMaType =
   | 'SMA'
@@ -222,13 +215,13 @@ import {
   PineContextLike,
   asFiniteNumber,
   getPinePlotSeries,
-} from '@utils/pine';
+} from '@tradejs/core/pine';
 import {
-  Direction,
-  StrategyEntryModelFigures,
-  StrategyFigureLine,
-  StrategyFigurePoint,
-} from '@types';
+  type Direction,
+  type StrategyEntryModelFigures,
+  type StrategyFigureLine,
+  type StrategyFigurePoint,
+} from '@tradejs/types';
 
 interface BuildAdaptiveMomentumRibbonFiguresParams {
   pineContext: PineContextLike;
@@ -341,20 +334,28 @@ export const buildAdaptiveMomentumRibbonFigures = ({
 ## 5. Добавьте runtime-мост (`core.ts`)
 
 ```ts
-import { logger } from '@utils/logger';
-import { asPositiveInt, asPositiveNumber } from '@utils/number';
 import {
   PineContextLike,
   asPineBoolean,
   asFiniteNumber,
   getLatestPinePlotValue,
   runPineScript,
-} from '@utils/pine';
-import { CreateStrategyCore } from '@types';
+} from '@tradejs/core/pine';
+import type { CreateStrategyCore } from '@tradejs/types';
 import { AdaptiveMomentumRibbonConfig } from './config';
 import { buildAdaptiveMomentumRibbonFigures } from './figures';
 
 const AMR_PINE_FILE_NAME = 'adaptiveMomentumRibbon.pine';
+
+const asPositiveInt = (value: unknown, fallback: number): number => {
+  const normalized = Math.floor(Number(value));
+  return Number.isFinite(normalized) && normalized > 0 ? normalized : fallback;
+};
+
+const asPositiveNumber = (value: unknown, fallback: number): number => {
+  const normalized = Number(value);
+  return Number.isFinite(normalized) && normalized > 0 ? normalized : fallback;
+};
 
 const asKcMaType = (
   value: unknown,
@@ -480,7 +481,7 @@ export const createAdaptiveMomentumRibbonCore: CreateStrategyCore<
       });
     } catch (error) {
       if (typeof globalThis.setImmediate === 'function') {
-        logger.warn(
+        console.warn(
           'AdaptiveMomentumRibbon pine run failed for %s: %s',
           symbol,
           String(error),
@@ -535,7 +536,7 @@ export const createAdaptiveMomentumRibbonCore: CreateStrategyCore<
       return strategyApi.skip('STRATEGY_DISABLED');
     }
 
-    const { stopLossPrice, takeProfitPrice, qty } =
+    const { stopLossPrice, takeProfitPrice } =
       strategyApi.getDirectionalTpSlPrices({
         price: currentPrice,
         direction: modeConfig.direction,
@@ -543,10 +544,6 @@ export const createAdaptiveMomentumRibbonCore: CreateStrategyCore<
         stopLossDelta: modeConfig.SL,
         unit: 'percent',
       });
-
-    if (!qty || !Number.isFinite(qty) || qty <= 0) {
-      return strategyApi.skip('INVALID_QTY');
-    }
 
     return strategyApi.entry({
       direction: modeConfig.direction,
@@ -561,7 +558,7 @@ export const createAdaptiveMomentumRibbonCore: CreateStrategyCore<
         amr,
       },
       orderPlan: {
-        qty,
+        qty: 1,
         stopLossPrice,
         takeProfits: [{ rate: 1, price: takeProfitPrice }],
       },
@@ -573,7 +570,7 @@ export const createAdaptiveMomentumRibbonCore: CreateStrategyCore<
 ## 6. Добавьте runtime entrypoint стратегии (`strategy.ts`)
 
 ```ts
-import { createStrategyRuntime } from '@utils/strategyRuntime';
+import { createStrategyRuntime } from '@tradejs/core/strategies';
 import {
   AdaptiveMomentumRibbonConfig,
   config as DEFAULT_CONFIG,
@@ -593,43 +590,50 @@ export const AdaptiveMomentumRibbonStrategyCreator =
 ### `adapters/ai.ts`
 
 ```ts
-import { StrategyAiAdapter } from '@types';
-import { mapAiRuntimeFromConfig } from '@utils/strategyHelpers/signalBuilders';
+import type { StrategyAiAdapter } from '@tradejs/types';
 import { AdaptiveMomentumRibbonConfig } from '../config';
 
 export const adaptiveMomentumRibbonAiAdapter: StrategyAiAdapter = {
-  mapEntryRuntimeFromConfig: (config) =>
-    mapAiRuntimeFromConfig(
-      config as Pick<
-        AdaptiveMomentumRibbonConfig,
-        'AI_ENABLED' | 'MIN_AI_QUALITY'
-      >,
-    ),
+  mapEntryRuntimeFromConfig: (config) => {
+    const typedConfig = config as Pick<
+      AdaptiveMomentumRibbonConfig,
+      'AI_ENABLED' | 'MIN_AI_QUALITY'
+    >;
+
+    return {
+      enabled: Boolean(typedConfig.AI_ENABLED),
+      minQuality: Number(typedConfig.MIN_AI_QUALITY ?? 4),
+    };
+  },
 };
 ```
 
 ### `adapters/ml.ts`
 
 ```ts
-import { StrategyMlAdapter } from '@types';
-import { mapMlRuntimeFromConfig } from '@utils/strategyHelpers/signalBuilders';
+import type { StrategyMlAdapter } from '@tradejs/types';
 import { AdaptiveMomentumRibbonConfig } from '../config';
 
 export const adaptiveMomentumRibbonMlAdapter: StrategyMlAdapter = {
-  mapEntryRuntimeFromConfig: (config) =>
-    mapMlRuntimeFromConfig(
-      config as Pick<
-        AdaptiveMomentumRibbonConfig,
-        'ML_ENABLED' | 'ML_THRESHOLD'
-      >,
-    ),
+  mapEntryRuntimeFromConfig: (config) => {
+    const typedConfig = config as Pick<
+      AdaptiveMomentumRibbonConfig,
+      'ML_ENABLED' | 'ML_THRESHOLD'
+    >;
+
+    return {
+      enabled: Boolean(typedConfig.ML_ENABLED),
+      mlThreshold: Number(typedConfig.ML_THRESHOLD ?? 0.1),
+      strategyConfig: config,
+    };
+  },
 };
 ```
 
 ### `manifest.ts`
 
 ```ts
-import { StrategyManifest } from '@types';
+import type { StrategyManifest } from '@tradejs/types';
 import { adaptiveMomentumRibbonAiAdapter } from './adapters/ai';
 import { adaptiveMomentumRibbonMlAdapter } from './adapters/ml';
 
@@ -647,25 +651,37 @@ export { AdaptiveMomentumRibbonStrategyCreator } from './strategy';
 export { adaptiveMomentumRibbonManifest } from './manifest';
 ```
 
-## 8. Зарегистрируйте стратегию в built-in реестре
+## 8. Регистрируйте через plugin + `tradejs.config.ts`
 
-Обновите [`packages/core/src/strategy/manifests.ts`]:
+Создайте plugin entry (например, в `packages/strategies/src/index.ts`):
 
 ```ts
+import { defineStrategyPlugin } from '@tradejs/core/config';
 import { adaptiveMomentumRibbonManifest } from './AdaptiveMomentumRibbon/manifest';
+import { AdaptiveMomentumRibbonStrategyCreator } from './AdaptiveMomentumRibbon/strategy';
+
+export const strategyEntries = [
+  {
+    manifest: adaptiveMomentumRibbonManifest,
+    creator: AdaptiveMomentumRibbonStrategyCreator,
+  },
+];
+
+export default defineStrategyPlugin({ strategyEntries });
 ```
+
+Далее подключите этот plugin в корневом `tradejs.config.ts`:
 
 ```ts
-{
-  manifest: adaptiveMomentumRibbonManifest,
-  creator: createLazyStrategyCreator(
-    () => import('./AdaptiveMomentumRibbon/strategy'),
-    'AdaptiveMomentumRibbonStrategyCreator',
-  ),
-},
+import { defineConfig } from '@tradejs/core/config';
+import { basePreset } from '@tradejs/base';
+
+export default defineConfig(basePreset, {
+  strategies: ['./src/plugins/adaptiveMomentumRibbon.plugin.ts'],
+});
 ```
 
-После этого `AdaptiveMomentumRibbon` доступна runtime/backtest как обычная стратегия.
+После этого `AdaptiveMomentumRibbon` доступна runtime/backtest как обычная plugin-стратегия.
 
 ## 9. Runtime config в Redis
 

@@ -1,5 +1,5 @@
-import { createIndicators, IndicatorPeriods } from '@utils/indicators';
-import { KlineChartData, StrategyIndicatorsState } from '@types';
+import { createIndicators, IndicatorPeriods } from '../../indicators';
+import { KlineChartData, StrategyIndicatorsState } from '@tradejs/types';
 
 type IndicatorPeriodsConfig = Partial<
   Record<

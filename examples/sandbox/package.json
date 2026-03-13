@@ -5,11 +5,13 @@
   "main": "src/index.ts",
   "types": "src/index.ts",
   "dependencies": {
-    "@tradejs/cli": "workspace:*",
-    "@tradejs/core": "workspace:*",
+    "@tradejs/base": "npm:@tradejs/base@1.0.0",
+    "@tradejs/cli": "npm:@tradejs/cli@1.0.0",
+    "@tradejs/core": "npm:@tradejs/core@1.0.0",
     "ioredis": "5.8.0"
   },
   "devDependencies": {
+    "@types/node": "^20",
     "ts-node": "^10.9.2",
     "tsconfig-paths": "^4.2.0",
     "typescript": "^5.1"
@@ -19,9 +21,9 @@
     "lint": "yarn run -T eslint src tradejs.config.ts --ext .ts",
     "typecheck": "tsc -p ../../tsconfig.json --noEmit",
     "run:ts": "ts-node -r tsconfig-paths/register -P ../../tsconfig.json",
-    "infra-up": "yarn run:ts ../../packages/cli/src/scripts/infraUp.ts",
-    "infra-down": "yarn run:ts ../../packages/cli/src/scripts/infraDown.ts",
-    "sandbox:user-add": "yarn run:ts ../../packages/cli/src/scripts/user-add.ts -u sandbox -p sandbox -t sandbox-token",
+    "infra-up": "tradejs infra-up",
+    "infra-down": "tradejs infra-down",
+    "sandbox:user-add": "tradejs user-add -u sandbox -p sandbox -t sandbox-token",
     "sandbox:seed-config": "yarn run:ts ./src/scripts/seedBacktestConfig.ts",
     "sandbox:backtest": "yarn run:ts ./src/scripts/runDeterministicBacktest.ts",
     "sandbox:assert-backtest": "yarn run:ts ./src/scripts/assertBacktestSnapshot.ts",

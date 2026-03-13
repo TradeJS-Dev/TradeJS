@@ -2,7 +2,8 @@ import { ByBitConnectorCreator } from './ByBit';
 import { BinanceConnectorCreator } from './Binance';
 import { CoinbaseConnectorCreator } from './Coinbase';
 import { TestConnectorCreator } from './Test';
-import { ConnectorCreator } from '@types';
+
+import { ConnectorCreator, ConnectorRegistryEntry } from '@tradejs/types';
 
 export enum ConnectorNames {
   ByBit = 'ByBit',
@@ -45,6 +46,24 @@ export const connectors = {
   [ConnectorNames.Test]: TestConnectorCreator,
 } as const;
 
+export const connectorEntries: ConnectorRegistryEntry[] = [
+  {
+    name: ConnectorNames.ByBit,
+    creator: ByBitConnectorCreator,
+    providers: [ConnectorProviders.bybit],
+  },
+  {
+    name: ConnectorNames.Binance,
+    creator: BinanceConnectorCreator,
+    providers: [ConnectorProviders.binance],
+  },
+  {
+    name: ConnectorNames.Coinbase,
+    creator: CoinbaseConnectorCreator,
+    providers: [ConnectorProviders.coinbase],
+  },
+];
+
 export const getConnectorCreatorByProvider = (
   provider: unknown,
 ): ConnectorCreator | null => {
@@ -56,3 +75,10 @@ export const getConnectorCreatorByProvider = (
 };
 
 export { spotKlineProviders } from './marketData/spotKlineProviders';
+export {
+  marketDataProviders,
+  type MarketDataProvider,
+  type MarketDataProviderName,
+} from './marketData/providers';
+
+export default { connectorEntries };

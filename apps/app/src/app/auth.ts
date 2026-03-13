@@ -1,7 +1,7 @@
 import NextAuth from 'next-auth';
 import Credentials from 'next-auth/providers/credentials';
 import bcrypt from 'bcryptjs';
-import { getData, redisKeys } from '@utils/redis';
+import { getData, redisKeys } from '@tradejs/infra';
 
 const getPasswordHash = (user: unknown): string | null => {
   if (!user) return null;

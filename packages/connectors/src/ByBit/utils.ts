@@ -1,7 +1,8 @@
 import { OHLCVKlineV5, RestClientV5, PositionV5 } from 'bybit-api';
-import { MARKET_CATEGORY } from '@constants';
-import { formatUnix } from '@utils/timestamp';
-import { KlineChartItem, Position, Direction } from '@types';
+import { MARKET_CATEGORY } from '@tradejs/core/constants';
+import { formatUnix } from '@tradejs/core/time';
+
+import { KlineChartItem, Position, Direction } from '@tradejs/types';
 
 const parseKlineItem = (item: OHLCVKlineV5): KlineChartItem => ({
   dt: formatUnix(parseInt(item[0])),

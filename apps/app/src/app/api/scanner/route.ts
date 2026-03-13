@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { connectors } from '@tradejs/connectors';
-import { getTopTickers } from '@utils/tickers';
-import { logger } from '@utils/logger';
+import { getTopTickers } from '@tradejs/core/tickers';
+import { logger } from '@tradejs/infra';
 
 export const dynamic = 'force-dynamic';
 

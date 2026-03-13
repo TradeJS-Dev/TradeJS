@@ -1,6 +1,6 @@
 import path from 'node:path';
 import { SIGNALS_PRELOAD_DAYS } from '@constants';
-import { logger } from '@utils/logger';
+import { logger } from '@tradejs/infra';
 import { createLoadPineScript } from '@utils/pine';
 import { getTimestamp } from '@utils/timestamp';
 import { getStrategyManifest } from '../strategy/manifests';
@@ -21,12 +21,14 @@ import {
   StrategyConfig,
   StrategyCreator,
   StrategyDecision,
-} from '@types';
+} from '@tradejs/types';
 
 interface CreateStrategyRuntimeParams<TConfig extends StrategyConfig> {
   strategyName: string;
   defaults: TConfig;
   createCore: CreateStrategyCore<TConfig, any, any>;
+  manifest?: StrategyManifest;
+  strategyDirectory?: string;
 }
 
 type EntryDecision = Extract<StrategyDecision, { kind: 'entry' }>;
@@ -35,11 +37,12 @@ type ExitDecision = Extract<StrategyDecision, { kind: 'exit' }>;
 const resolveEntryRuntimePolicy = ({
   decision,
   config,
+  manifest,
 }: {
   decision: EntryDecision;
   config: StrategyConfig;
+  manifest?: StrategyManifest;
 }) => {
-  const manifest = getStrategyManifest(decision.entryContext.strategy);
   const manifestDefaults = manifest?.entryRuntimeDefaults;
   const adapterMl = manifest?.mlAdapter?.mapEntryRuntimeFromConfig?.(config);
   const adapterAi = manifest?.aiAdapter?.mapEntryRuntimeFromConfig?.(config);
@@ -287,16 +290,31 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
   strategyName,
   defaults,
   createCore,
+  manifest: staticManifest,
+  strategyDirectory,
 }: CreateStrategyRuntimeParams<TConfig>): StrategyCreator => {
+  const resolveManifest = (name?: string): StrategyManifest | undefined => {
+    if (!name) {
+      return undefined;
+    }
+
+    if (staticManifest?.name === name) {
+      return staticManifest;
+    }
+
+    return getStrategyManifest(name);
+  };
+
   const loadPineScript = createLoadPineScript(
-    path.resolve(
-      process.cwd(),
-      'packages',
-      'core',
-      'src',
-      'strategy',
-      strategyName,
-    ),
+    strategyDirectory
+      ? path.resolve(strategyDirectory)
+      : path.resolve(
+          process.cwd(),
+          'packages',
+          'strategies',
+          'src',
+          strategyName,
+        ),
   );
 
   return async ({
@@ -317,7 +335,7 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
       defaults,
     });
     const env = String(config.ENV ?? 'BACKTEST');
-    const strategyManifest = getStrategyManifest(strategyName);
+    const strategyManifest = resolveManifest(strategyName);
     const hookBase = {
       connector,
       strategyName,
@@ -344,7 +362,7 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
           ? decision.entryContext.strategy
           : strategyName;
       const errorManifest =
-        getStrategyManifest(errorStrategyName) ?? strategyManifest;
+        resolveManifest(errorStrategyName) ?? strategyManifest;
       const errorHookBase = {
         ...hookBase,
         strategyName: errorStrategyName,
@@ -454,7 +472,7 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
           ? decision.entryContext.strategy
           : strategyName;
       const decisionManifest =
-        getStrategyManifest(decisionStrategyName) ?? strategyManifest;
+        resolveManifest(decisionStrategyName) ?? strategyManifest;
       const decisionHookBase = {
         ...hookBase,
         strategyName: decisionStrategyName,
@@ -519,7 +537,11 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
         });
       }
 
-      const runtime = resolveEntryRuntimePolicy({ decision, config });
+      const runtime = resolveEntryRuntimePolicy({
+        decision,
+        config,
+        manifest: decisionManifest,
+      });
       const signal = decision.signal;
 
       if (signal) {

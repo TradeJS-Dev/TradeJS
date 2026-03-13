@@ -1,4 +1,4 @@
-import { DerivativesRow, DerivativesInterval } from './timescale';
+import { DerivativesRow, DerivativesInterval } from '@tradejs/infra';
 import {
   parseDerivativesIntervals,
   toFiniteNumber as toFinite,

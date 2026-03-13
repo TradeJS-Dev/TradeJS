@@ -1,5 +1,5 @@
 import args from 'args';
-import { cleanFiles } from '@utils/cli';
+import { cleanFiles } from '@tradejs/core/cli';
 
 args.option('dir', 'Directory clean up', 'cache');
 

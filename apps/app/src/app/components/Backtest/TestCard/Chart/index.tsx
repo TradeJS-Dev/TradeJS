@@ -15,10 +15,9 @@ import {
 } from 'recharts';
 import { useTestsCompare } from '@store';
 import { useTestContext } from '../context';
-import { TestCompareList } from '@types';
+import { TestCompareList } from '@tradejs/types';
 import { mapOrderLogToChartData, getChartData } from './utils';
-import { getFormatted } from '@utils/stat';
-import { getTimeline } from '@utils/timestamp';
+import { getFormatted, getTimeline } from '@tradejs/core/backtest';
 
 interface TestCardChartProps {
   height?: string | number;

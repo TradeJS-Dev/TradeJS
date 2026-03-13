@@ -1,9 +1,14 @@
 import 'dotenv/config';
 
-import { ML_BASE_CANDLES_WINDOW } from '@constants';
-import { fetchMlThreshold } from '@utils/mlGrpc';
-import { Signal, TrendLine } from '@types';
-import { config as DEFAULT_CONFIG } from '@tradejs/core/strategy/TrendLine/config';
+import { ML_BASE_CANDLES_WINDOW } from '@tradejs/core/constants';
+import {
+  buildMlFeatures,
+  buildMlTrainingRow,
+  fetchMlThreshold,
+  trimMlTrainingRowWindows,
+} from '@tradejs/infra';
+import { Signal, TrendLine } from '@tradejs/types';
+import { trendLineDefaultConfig as DEFAULT_CONFIG } from '@tradejs/strategies';
 
 const now = Date.now();
 const INTERVAL_MIN = 15;
@@ -119,15 +124,27 @@ const main = async () => {
 
   const { TRENDLINE, HIGHS, LOWS, ML_THRESHOLD } = DEFAULT_CONFIG;
 
-  const mlResult = await fetchMlThreshold(signal, {
-    strategyName: 'TrendLine',
-    strategyConfig: {
-      TRENDLINE_CONFIG: TRENDLINE,
-      HIGHS,
-      LOWS,
+  const fullRow = buildMlTrainingRow(
+    {
+      signal,
+      context: {
+        strategyName: 'TrendLine',
+        strategyConfig: {
+          TRENDLINE_CONFIG: TRENDLINE,
+          HIGHS,
+          LOWS,
+        },
+        symbol: signal.symbol,
+      },
     },
-    symbol: signal.symbol,
-    ML_THRESHOLD,
+    null,
+  );
+  const row = trimMlTrainingRowWindows(fullRow, 5);
+  const features = buildMlFeatures(row);
+  const mlResult = await fetchMlThreshold({
+    strategy: 'TrendLine',
+    features,
+    threshold: ML_THRESHOLD,
   });
 
   if (!mlResult) {

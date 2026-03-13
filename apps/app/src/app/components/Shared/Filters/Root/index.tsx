@@ -2,7 +2,7 @@
 
 import { PropsWithChildren } from 'react';
 import { FiltersContext } from '../context';
-import { UIFilters, Items, OnChangeFilters } from '@types';
+import { UIFilters, Items, OnChangeFilters } from '@tradejs/types';
 
 interface RootProps {
   tickers: Items;

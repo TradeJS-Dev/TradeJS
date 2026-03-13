@@ -7,29 +7,38 @@ title: Core API
 
 ## Main Exports
 
-- `defineConfig(config)`
+- `defineConfig(basePreset, overrides)`
 - `defineStrategyPlugin(plugin)`
 - `defineIndicatorPlugin(plugin)`
 - `defineConnectorPlugin(plugin)`
-- Core types re-exported from `@tradejs/core/types`
+- Shared types are available from `@tradejs/types`
+
+## Import Rule
+
+- Import config/plugin registration from `@tradejs/core/config`.
+- Import runtime/helpers from explicit public subpaths like `@tradejs/core/strategies`, `@tradejs/core/indicators`, `@tradejs/core/backtest`, `@tradejs/core/math`, `@tradejs/core/time`, `@tradejs/core/pine`.
+- Import shared types from `@tradejs/types`.
+- Do not use internal aliases (`@utils`, `@constants`).
+- Do not use non-public deep imports.
+
+## Utilities Convention (Contributors)
+
+- Keep production runtime utilities inside public runtime packages (`@tradejs/core`, `@tradejs/infra`).
+- Keep test-only helpers isolated from runtime code and export only stable APIs.
+- Avoid duplicated helper logic across runtime files; extract shared helpers instead.
 
 ## Project Config API
 
 Create `tradejs.config.ts` in project root:
 
 ```ts
-import { defineConfig } from '@tradejs/core';
+import { defineConfig } from '@tradejs/core/config';
+import { basePreset } from '@tradejs/base';
 
-export default defineConfig({
-  strategyPlugins: ['@scope/my-strategy-plugin', './src/plugins/strategy.ts'],
-  indicatorsPlugins: [
-    '@scope/my-indicator-plugin',
-    './src/plugins/indicator.ts',
-  ],
-  connectorsPlugins: [
-    '@scope/my-connector-plugin',
-    './src/plugins/connector.ts',
-  ],
+export default defineConfig(basePreset, {
+  strategies: ['@scope/my-strategy-plugin', './src/plugins/strategy.ts'],
+  indicators: ['@scope/my-indicator-plugin', './src/plugins/indicator.ts'],
+  connectors: ['@scope/my-connector-plugin', './src/plugins/connector.ts'],
 });
 ```
 
@@ -52,10 +61,8 @@ Supported filenames:
 A strategy plugin exports `strategyEntries`:
 
 ```ts
-import {
-  defineStrategyPlugin,
-  type StrategyRegistryEntry,
-} from '@tradejs/core';
+import { defineStrategyPlugin } from '@tradejs/core/config';
+import type { StrategyRegistryEntry } from '@tradejs/types';
 
 const strategyEntries: StrategyRegistryEntry[] = [
   {
@@ -78,14 +85,14 @@ Each strategy entry uses `manifest` with:
 - optional `aiAdapter`
 - optional `mlAdapter`
 
-For hook lifecycle details, see [Strategy Hooks](../strategies/authoring/strategy-hooks).
+For hook lifecycle details, see [Strategy Runtime Hooks](../strategies/authoring/strategy-hooks).
 
 ## Indicator Plugin API
 
 An indicator plugin exports `indicatorEntries`:
 
 ```ts
-import { defineIndicatorPlugin } from '@tradejs/core';
+import { defineIndicatorPlugin } from '@tradejs/core/config';
 
 export default defineIndicatorPlugin({
   indicatorEntries: [
@@ -109,10 +116,8 @@ export default defineIndicatorPlugin({
 A connector plugin exports `connectorEntries`:
 
 ```ts
-import {
-  defineConnectorPlugin,
-  type ConnectorRegistryEntry,
-} from '@tradejs/core';
+import { defineConnectorPlugin } from '@tradejs/core/config';
+import type { ConnectorRegistryEntry } from '@tradejs/types';
 
 const connectorEntries: ConnectorRegistryEntry[] = [
   {

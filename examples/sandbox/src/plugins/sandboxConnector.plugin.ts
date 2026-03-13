@@ -1,16 +1,16 @@
-import {
-  defineConnectorPlugin,
-  type Connector,
-  type ConnectorCreator,
-  type ConnectorRegistryEntry,
-  type KlineChartData,
-} from '@tradejs/core';
+import { defineConnectorPlugin } from '@tradejs/core/config';
 import {
   BTC_TICKER_SYMBOL,
   SANDBOX_TICKER_SYMBOL,
   buildDeterministicCandles,
   buildDeterministicTickers,
 } from './sandboxMarketData';
+import {
+  type Connector,
+  type ConnectorCreator,
+  type ConnectorRegistryEntry,
+  type KlineChartData,
+} from '@tradejs/types';
 
 const cache = new Map<string, KlineChartData>();
 

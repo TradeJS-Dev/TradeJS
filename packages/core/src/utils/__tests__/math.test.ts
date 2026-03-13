@@ -8,7 +8,7 @@ import {
   round,
   sum,
 } from '@utils/math';
-import { PositionLogData } from '@types';
+import { PositionLogData } from '@tradejs/types';
 
 describe('math utils', () => {
   describe('diffRel', () => {

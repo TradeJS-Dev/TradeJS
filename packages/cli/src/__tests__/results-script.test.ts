@@ -75,11 +75,13 @@ const loadScript = async (scenario: Scenario) => {
     },
   }));
 
-  jest.doMock('@utils/cli', () => ({
+  jest.doMock('@tradejs/core/cli', () => ({
+    ...jest.requireActual('@tradejs/core/cli'),
     getTickers,
   }));
 
-  jest.doMock('@utils/redis', () => ({
+  jest.doMock('@tradejs/infra', () => ({
+    ...jest.requireActual('@tradejs/infra'),
     getData,
     getKeys,
     setData,

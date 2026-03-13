@@ -16,8 +16,8 @@ TradeJS загружает индикаторы из плагинов через
 В пакете плагина экспортируйте `indicatorEntries`:
 
 ```ts
-import type { IndicatorPluginEntry } from '@tradejs/core';
-import { defineIndicatorPlugin } from '@tradejs/core';
+import type { IndicatorPluginEntry } from '@tradejs/types';
+import { defineIndicatorPlugin } from '@tradejs/core/config';
 
 export const indicatorEntries = defineIndicatorPlugin({
   indicatorEntries: [
@@ -64,10 +64,11 @@ export const indicatorEntries = defineIndicatorPlugin({
 ## 2. Подключите плагин в `tradejs.config.ts`
 
 ```ts
-import { defineConfig } from '@tradejs/core';
+import { defineConfig } from '@tradejs/core/config';
+import { basePreset } from '@tradejs/base';
 
-export default defineConfig({
-  indicatorsPlugins: ['@your-scope/tradejs-indicators-pack'],
+export default defineConfig(basePreset, {
+  indicators: ['@your-scope/tradejs-indicators-pack'],
 });
 ```
 
@@ -113,7 +114,7 @@ export default defineConfig({
 ## 5. Чеклист дебага
 
 - Индикатор не виден:
-  проверьте, что пакет есть в `indicatorsPlugins`.
+  проверьте, что пакет есть в `indicators`.
 - Пустые значения:
   убедитесь, что `compute` возвращает конечные числа и корректно обрабатывает warmup.
 - Неправильная отрисовка:

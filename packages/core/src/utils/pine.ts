@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { Candle } from '@types';
+import { Candle } from '@tradejs/types';
 
 type PineRuntime = {
   run: (indicator: unknown) => Promise<unknown>;

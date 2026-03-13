@@ -9,14 +9,14 @@ import {
   TG_CONCURRENCY_LIMIT,
   SCREENSHOT_CONCURRENCY_LIMIT,
 } from '@constants';
-import { getFiles } from '@utils/files';
 import {
   RedisWriteBlockedError,
   delKeyWithOptions,
   getKeys,
   getData,
   redisKeys,
-} from '@utils/redis';
+  getFiles,
+} from '@tradejs/infra';
 import { getTimestamp } from '@utils/timestamp';
 import { getFormatted } from '@utils/stat';
 import { getTopTickers } from '@utils/tickers';
@@ -24,7 +24,7 @@ import { askAI } from '@utils/ai';
 import { sendSignal, sendSignalAnalysis } from '@utils/signals';
 import { screenDashboard } from '@utils/screenshot';
 import { runWithConcurrency } from '@utils/async';
-import { logger } from '@utils/logger';
+import { logger } from '@tradejs/infra';
 import {
   Connector,
   Interval,
@@ -32,7 +32,7 @@ import {
   ThresholdLevel,
   TestThresholdsKey,
   Signal,
-} from '@types';
+} from '@tradejs/types';
 
 export const cleanFiles = async (dir: string) => {
   let completed = 0;

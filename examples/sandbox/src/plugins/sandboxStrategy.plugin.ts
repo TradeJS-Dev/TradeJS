@@ -1,12 +1,12 @@
+import { defineStrategyPlugin } from '@tradejs/core/config';
 import {
-  defineStrategyPlugin,
   type Candle,
   type Signal,
   type Strategy,
   type StrategyConfig,
   type StrategyCreator,
   type StrategyManifest,
-} from '@tradejs/core';
+} from '@tradejs/types';
 
 const STRATEGY_NAME = 'SandboxDeterministicSignal';
 

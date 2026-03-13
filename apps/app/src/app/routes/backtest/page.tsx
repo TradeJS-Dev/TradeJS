@@ -17,7 +17,7 @@ import { useBacktestMutations, useTestList } from '@store';
 import { Select, toaster } from '@UI';
 import { CompareList } from '@components/Backtest/CompareList';
 import { TestList } from '@components/Backtest/TestList';
-import { parseTestName } from '@utils/tests';
+import { parseTestName } from '@tradejs/core/backtest';
 
 const ALL_STRATEGIES = '__all__';
 const ALL_SUITES = '__all__';

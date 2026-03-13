@@ -21,16 +21,16 @@ describe('worker tester', () => {
       resetTestingKlineCache: jest.fn(),
     }));
 
-    jest.doMock('@utils/redis', () => ({
+    jest.doMock('@tradejs/infra', () => ({
+      ...jest.requireActual('@tradejs/infra'),
       getData: jest.fn(async () => suite),
+      logger: { error: jest.fn() },
       redisKeys: {
+        ...jest.requireActual('@tradejs/infra').redisKeys,
         cacheChunk: (userName: string, chunkId: string) =>
           `users:${userName}:cache:tests:chunks:${chunkId}`,
       },
-    }));
-
-    jest.doMock('@utils/logger', () => ({
-      logger: { error: jest.fn() },
+      closeAllMlDatasetWriters: jest.fn(async () => undefined),
     }));
 
     jest

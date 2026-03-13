@@ -5,9 +5,9 @@ import { useSearchParams } from 'next/navigation';
 import _ from 'lodash';
 import { Chart, registerOverlay } from 'klinecharts';
 import { getSignal } from '@actions/signal';
-import { createTrendlineEngine } from '@utils/trendLine/engine';
-import { toMs } from '@utils/timestamp';
-import { Signal, TrendLine } from '@types';
+import { toMs } from '@tradejs/core/time';
+import { createTrendlineEngine } from '@tradejs/core/indicators';
+import { Signal, TrendLine } from '@tradejs/types';
 import { createTrendLinePointFigure } from '../figures/trendLinePointFigure';
 import { createTrendLinePointsPointFigure } from '../figures/trendLinePointsPointFigure';
 

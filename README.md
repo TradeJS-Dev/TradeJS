@@ -11,10 +11,12 @@ It supports two first-class authoring paths:
 
 - `apps/app`: Next.js UI and API
 - `apps/docs`: Docusaurus documentation
-- `packages/core`: strategy runtime, strategy implementations, shared types/helpers
+- `packages/core`: shared runtime, public types, plugin config API
+- `packages/strategies`: built-in strategy plugin package
+- `packages/indicators`: built-in indicators package
+- `packages/base`: default preset that wires built-in strategies/indicators/connectors
 - `packages/connectors`: exchange connectors and market data providers
 - `packages/cli`: operational scripts (`backtest`, `signals`, `results`, `ml-*`, `doctor`, etc.)
-- `packages/core`: public framework entrypoint for external strategy/indicator plugins
 - `packages/ml/python`: Python train/infer/profile services
 - `examples/sandbox`: full user-app style sandbox with local `tradejs.config.ts`, custom strategy/indicator/connector plugins, and deterministic backtest/signals e2e flow
 
@@ -46,16 +48,16 @@ Runtime then handles:
 
 ### Strategy Registration
 
-Built-in and plugin strategies are resolved via manifests and registry:
+Strategies are loaded as plugins via manifests and registry:
 
 - `packages/core/src/strategy/manifests.ts`
-- `packages/core/src/strategy/*/manifest.ts`
+- `packages/strategies/src/*/manifest.ts`
 
 ### Pine Strategy Support
 
 Pine strategies are stored as normal strategy modules and keep Pine source in a dedicated file:
 
-- `packages/core/src/strategy/<Strategy>/<strategy>.pine`
+- `packages/strategies/src/<Strategy>/<strategy>.pine`
 
 `createStrategyRuntime` provides `loadPineScript(...)` to strategy core via `CreateStrategyCore` params.
 
@@ -130,14 +132,29 @@ yarn continuity --user root --timeframe 15 --provider bybit
 Create `tradejs.config.ts` at repository root:
 
 ```ts
-import { defineConfig } from '@tradejs/core';
+import { defineConfig } from '@tradejs/core/config';
+import { basePreset } from '@tradejs/base';
 
-export default defineConfig({
-  strategyPlugins: ['@scope/my-strategy-plugin'],
-  indicatorsPlugins: ['@scope/my-indicator-plugin'],
-  connectorsPlugins: ['@scope/my-connector-plugin'],
+export default defineConfig(basePreset, {
+  strategies: ['@scope/my-strategy-plugin'],
+  indicators: ['@scope/my-indicator-plugin'],
+  connectors: ['@scope/my-connector-plugin'],
 });
 ```
+
+Import policy for plugin code:
+
+- import plugin registration from `@tradejs/core/config`
+- import runtime/helpers from explicit public subpaths like `@tradejs/core/strategies`, `@tradejs/core/indicators`, `@tradejs/core/backtest`, `@tradejs/core/math`, `@tradejs/core/time`, `@tradejs/core/pine`
+- import shared types from `@tradejs/types`
+- do not use internal aliases like `@utils` / `@constants`
+- do not use non-public deep imports
+
+Utils convention for contributors:
+
+- keep production runtime utilities in `packages/core/src/utils/*` and `packages/infra/src/*`
+- keep test-only helpers in `packages/core/src/utils/testHelpers/*`
+- avoid duplicated helper implementations in runtime files
 
 Expected plugin exports:
 

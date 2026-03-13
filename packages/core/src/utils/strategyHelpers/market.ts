@@ -7,7 +7,8 @@ import {
   Interval,
   KlineChartData,
   KlineChartItem,
-} from '@types';
+  StrategyMarketSnapshot,
+} from '@tradejs/types';
 
 export interface StrategyMarketSnapshotParams {
   env: string;
@@ -17,13 +18,6 @@ export interface StrategyMarketSnapshotParams {
   cachedData: KlineChartData;
   preloadStart: number;
   backtestPriceMode?: BacktestPriceMode;
-}
-
-export interface StrategyMarketSnapshot {
-  fullData: KlineChartData;
-  lastCandle: KlineChartItem;
-  timestamp: number;
-  currentPrice: number;
 }
 
 export const getStrategyMarketSnapshot = async ({

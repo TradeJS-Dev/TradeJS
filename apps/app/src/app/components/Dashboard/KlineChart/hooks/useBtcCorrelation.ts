@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react';
 import _ from 'lodash';
 import { Chart } from 'klinecharts';
-import { Filters, Provider } from '@types';
+import { Filters, Provider } from '@tradejs/types';
 import { useData } from '@store';
-import { CORRELATION_WINDOW } from '@constants';
+import { CORRELATION_WINDOW } from '@tradejs/core/constants';
 import { getCloseAtOrBefore, grayDashedLineStyle } from './indicatorShared';
 import { useManagedIndicator } from './useManagedIndicator';
 

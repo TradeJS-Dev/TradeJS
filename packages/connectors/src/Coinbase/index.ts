@@ -1,7 +1,12 @@
 'use server';
 
-import { ConnectorCreator, Interval, KlineChartData, Ticker } from '@types';
-import { fetchWithRetry } from '@utils/http';
+import { fetchWithRetry } from '@tradejs/infra';
+import {
+  ConnectorCreator,
+  Interval,
+  KlineChartData,
+  Ticker,
+} from '@tradejs/types';
 
 const INTERVAL_MS: Record<string, number> = {
   '1': 60_000,

@@ -17,7 +17,7 @@ import {
   StrategyMarketSnapshot,
   StrategyRuntimeAiOptions,
   StrategyRuntimeMlOptions,
-} from '@types';
+} from '@tradejs/types';
 import {
   calculateRiskRatio,
   getDirectionalTpSlPrices,
@@ -253,7 +253,8 @@ export const createStrategyAPI = ({
         );
       }
 
-      const resolvedCode = code ?? toDefaultEntryCode(String(strategy), direction);
+      const resolvedCode =
+        code ?? toDefaultEntryCode(String(strategy), direction);
       const riskRatio = calculateRiskRatio({
         direction,
         currentPrice,

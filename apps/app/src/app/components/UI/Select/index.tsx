@@ -8,7 +8,7 @@ import {
   Select as UISelect,
   createListCollection,
 } from '@chakra-ui/react';
-import { Items } from '@types';
+import { Items } from '@tradejs/types';
 
 interface SelectProps {
   defaultValue: string[];

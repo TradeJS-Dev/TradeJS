@@ -1,5 +1,5 @@
-import { API } from '@utils/api';
-import { Items } from '@types';
+import { API } from '@tradejs/core/api';
+import { Items } from '@tradejs/types';
 
 const API_PATH = '/api/scanner';
 

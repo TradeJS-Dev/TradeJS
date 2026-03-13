@@ -1,4 +1,4 @@
-import { TrendLine } from '@types';
+import { TrendLine } from '@tradejs/types';
 
 type Coordinate = { x: number; y: number };
 

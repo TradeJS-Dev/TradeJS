@@ -1,6 +1,11 @@
-import { askAI } from '@utils/ai';
-import { logger } from '@utils/logger';
-import { fetchMlThreshold } from '@utils/mlGrpc';
+import {
+  buildMlFeatures,
+  buildMlTrainingRow,
+  fetchMlThreshold,
+  logger,
+  trimMlTrainingRowWindows,
+} from '@tradejs/infra';
+import { buildMlPayload } from '@utils/mlPayload';
 import {
   Connector,
   Direction,
@@ -8,7 +13,7 @@ import {
   StrategyRuntimeAiOptions,
   StrategyRuntimeMlOptions,
   Tp,
-} from '@types';
+} from '@tradejs/types';
 
 interface EnrichSignalWithMlAiParams {
   signal: Signal;
@@ -62,9 +67,24 @@ export const enrichSignalWithMl = async ({
     ml.strategyConfig &&
     typeof ml.mlThreshold === 'number'
   ) {
-    const mlResult = await fetchMlThreshold(signal, {
-      strategyConfig: ml.strategyConfig,
-      ML_THRESHOLD: ml.mlThreshold,
+    const strategy = signal.strategy;
+    const fullRow = buildMlTrainingRow(
+      buildMlPayload({
+        signal,
+        context: {
+          strategyConfig: ml.strategyConfig,
+          strategyName: strategy,
+          symbol: signal.symbol,
+        },
+      }),
+      null,
+    );
+    const row = trimMlTrainingRowWindows(fullRow, 5);
+    const features = buildMlFeatures(row);
+    const mlResult = await fetchMlThreshold({
+      strategy,
+      features,
+      threshold: ml.mlThreshold,
     });
 
     if (mlResult) {
@@ -88,6 +108,7 @@ export const enrichSignalWithAi = async ({
   }
 
   try {
+    const { askAI } = await import('../ai');
     const analysis = await askAI(signal);
     if (typeof analysis?.quality === 'number') {
       const normalizedQuality = Math.round(analysis.quality);

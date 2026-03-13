@@ -1,5 +1,5 @@
 import _ from 'lodash';
-import { PositionLogData } from '@types';
+import { PositionLogData } from '@tradejs/types';
 
 export const diffRel = (a: number, b: number) => {
   const min = _.min([a, b]) || 0;

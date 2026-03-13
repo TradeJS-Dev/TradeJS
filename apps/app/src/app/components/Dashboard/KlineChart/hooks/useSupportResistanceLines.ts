@@ -3,8 +3,8 @@
 import { useEffect } from 'react';
 import _ from 'lodash';
 import { Chart, registerOverlay } from 'klinecharts';
-import { KlineChartData } from '@types';
-import { getSupportResistanceLevels } from '@utils/supportResistance';
+import { KlineChartData } from '@tradejs/types';
+import { getSupportResistanceLevels } from '@tradejs/core/indicators';
 
 type SupportResistanceOverlayPoint = {
   timestamp: number;

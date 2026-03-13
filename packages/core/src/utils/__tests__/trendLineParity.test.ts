@@ -3,7 +3,7 @@ import { createTrendlineEngine } from '@utils/trendLine/engine';
 import {
   findTrendlinesByHighs,
   findTrendlinesByLows,
-} from '@utils/trendLine/core';
+} from '../testHelpers/trendLine/referenceCore';
 
 const buildCandles = (length: number, trend: 'up' | 'down'): KLineData[] => {
   const start = 1_700_100_000_000;

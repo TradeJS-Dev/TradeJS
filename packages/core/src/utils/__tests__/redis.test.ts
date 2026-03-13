@@ -43,29 +43,35 @@ describe('redis utils', () => {
     delete (global as any).__redis__;
     jest.resetModules();
     jest.clearAllMocks();
+    jest.restoreAllMocks();
   });
 
   const setup = async () => {
     const redisClient = createMockRedisClient();
     const redisCtorMock = jest.fn(() => redisClient);
-    const loggerLogMock = jest.fn();
+    const consoleWarnMock = jest
+      .spyOn(console, 'warn')
+      .mockImplementation(() => undefined);
+    const consoleLogMock = jest
+      .spyOn(console, 'log')
+      .mockImplementation(() => undefined);
+    const consoleErrorMock = jest
+      .spyOn(console, 'error')
+      .mockImplementation(() => undefined);
 
     jest.doMock('ioredis', () => ({
       __esModule: true,
       default: redisCtorMock,
     }));
-    jest.doMock('@utils/logger', () => ({
-      logger: {
-        log: loggerLogMock,
-      },
-    }));
 
-    const redisModule = await import('@utils/redis');
+    const redisModule = await import('@tradejs/infra');
     return {
       redisModule,
       redisClient,
       redisCtorMock,
-      loggerLogMock,
+      consoleWarnMock,
+      consoleLogMock,
+      consoleErrorMock,
     };
   };
 
@@ -97,7 +103,13 @@ describe('redis utils', () => {
   });
 
   it('handles redis connectivity and generic error events with warning suppression/recovery', async () => {
-    const { redisModule, redisClient, loggerLogMock } = await setup();
+    const {
+      redisModule,
+      redisClient,
+      consoleWarnMock,
+      consoleLogMock,
+      consoleErrorMock,
+    } = await setup();
     redisClient.call.mockResolvedValue('null');
 
     await redisModule.getData('bootstrap', null);
@@ -108,14 +120,13 @@ describe('redis utils', () => {
     redisClient.emit('error', new Error('ENOTFOUND: redis'));
     redisClient.emit('error', new Error('SOME_OTHER_ERROR'));
 
-    const levelCalls = loggerLogMock.mock.calls.map((call) => call[0]);
-    expect(levelCalls.filter((level) => level === 'warn')).toHaveLength(2);
-    expect(levelCalls.filter((level) => level === 'info')).toHaveLength(1);
-    expect(levelCalls.filter((level) => level === 'error')).toHaveLength(1);
+    expect(consoleWarnMock).toHaveBeenCalledTimes(2);
+    expect(consoleLogMock).toHaveBeenCalledTimes(1);
+    expect(consoleErrorMock).toHaveBeenCalledTimes(1);
   });
 
   it('scans keys by prefix and returns empty array on scan failure', async () => {
-    const { redisModule, redisClient, loggerLogMock } = await setup();
+    const { redisModule, redisClient, consoleWarnMock } = await setup();
 
     redisClient.scan
       .mockResolvedValueOnce(['1', ['users:1', 'other:1']])
@@ -128,16 +139,15 @@ describe('redis utils', () => {
 
     redisClient.scan.mockRejectedValueOnce(new Error('scan-failed'));
     await expect(redisModule.getKeys('users:')).resolves.toEqual([]);
-    expect(loggerLogMock).toHaveBeenCalledWith(
-      'warn',
-      'failed SCAN for %s: %s',
+    expect(consoleWarnMock).toHaveBeenCalledWith(
+      '[infra:redis] failed SCAN for %s: %s',
       'users:',
       'Error: scan-failed',
     );
   });
 
   it('reads JSON.GET first, handles invalid payload, and falls back to GET on JSON.GET error', async () => {
-    const { redisModule, redisClient, loggerLogMock } = await setup();
+    const { redisModule, redisClient, consoleErrorMock } = await setup();
 
     redisClient.call.mockResolvedValueOnce('{"a":1}');
     await expect(redisModule.getData('json-ok', {})).resolves.toEqual({ a: 1 });
@@ -167,16 +177,15 @@ describe('redis utils', () => {
       'x',
     );
 
-    expect(loggerLogMock).toHaveBeenCalledWith(
-      'error',
-      'failed GET %s: %s',
+    expect(consoleErrorMock).toHaveBeenCalledWith(
+      '[infra:redis] failed GET %s: %s',
       'fallback-get-error',
       'Error: get-error',
     );
   });
 
   it('marks redis unavailable on connectivity errors and short-circuits until ready', async () => {
-    const { redisModule, redisClient, loggerLogMock } = await setup();
+    const { redisModule, redisClient, consoleWarnMock } = await setup();
 
     redisClient.call.mockRejectedValueOnce(
       new Error(
@@ -188,9 +197,8 @@ describe('redis utils', () => {
       fallback: 1,
     });
     expect(redisClient.get).not.toHaveBeenCalled();
-    expect(loggerLogMock).toHaveBeenCalledWith(
-      'warn',
-      'Redis is unavailable: %s. Cache-dependent features are temporarily disabled.',
+    expect(consoleWarnMock).toHaveBeenCalledWith(
+      '[infra:redis] Redis is unavailable: %s. Cache-dependent features are temporarily disabled.',
       expect.stringContaining('MaxRetriesPerRequestError'),
     );
 
@@ -206,7 +214,7 @@ describe('redis utils', () => {
   });
 
   it('supports delKey/delKeyWithOptions and raises on MISCONF when requested', async () => {
-    const { redisModule, redisClient, loggerLogMock } = await setup();
+    const { redisModule, redisClient, consoleErrorMock } = await setup();
 
     redisClient.del.mockResolvedValueOnce(1).mockResolvedValueOnce(0);
     await expect(redisModule.delKey('key-1')).resolves.toBe(true);
@@ -221,16 +229,15 @@ describe('redis utils', () => {
 
     redisClient.del.mockRejectedValueOnce(new Error('DEL failed'));
     await expect(redisModule.delKeyWithOptions('key-4')).resolves.toBe(false);
-    expect(loggerLogMock).toHaveBeenCalledWith(
-      'error',
-      'failed DEL %s: %s',
+    expect(consoleErrorMock).toHaveBeenCalledWith(
+      '[infra:redis] failed DEL %s: %s',
       'key-4',
       'Error: DEL failed',
     );
   });
 
   it('writes data via JSON.SET, expires keys, and falls back to SET when JSON.SET fails', async () => {
-    const { redisModule, redisClient, loggerLogMock } = await setup();
+    const { redisModule, redisClient, consoleErrorMock } = await setup();
 
     redisClient.call.mockResolvedValueOnce('OK');
     await redisModule.setData('json-set-ok', { x: 1 });
@@ -272,9 +279,8 @@ describe('redis utils', () => {
     redisClient.call.mockRejectedValueOnce(new Error('json-set-failed-3'));
     redisClient.set.mockRejectedValueOnce(new Error('set-failed'));
     await redisModule.setData('set-fallback-failed', { x: 5 }, { expire: 1 });
-    expect(loggerLogMock).toHaveBeenCalledWith(
-      'error',
-      'failed SET %s: %s',
+    expect(consoleErrorMock).toHaveBeenCalledWith(
+      '[infra:redis] failed SET %s: %s',
       'set-fallback-failed',
       'Error: set-failed',
     );

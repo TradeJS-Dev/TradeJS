@@ -1,5 +1,5 @@
 import _ from 'lodash';
-import { Ticker, Item } from '@types';
+import { Ticker, Item } from '@tradejs/types';
 import { round } from '@utils/math';
 
 type Category = 'volatility24h' | 'volatility1h' | 'volume';

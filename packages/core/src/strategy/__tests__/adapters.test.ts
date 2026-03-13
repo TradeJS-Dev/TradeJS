@@ -1,9 +1,11 @@
-import { adaptiveMomentumRibbonAiAdapter } from '../AdaptiveMomentumRibbon/adapters/ai';
-import { adaptiveMomentumRibbonMlAdapter } from '../AdaptiveMomentumRibbon/adapters/ml';
-import { maStrategyAiAdapter } from '../MaStrategy/adapters/ai';
-import { maStrategyMlAdapter } from '../MaStrategy/adapters/ml';
-import { volumeDivergenceAiAdapter } from '../VolumeDivergence/adapters/ai';
-import { volumeDivergenceMlAdapter } from '../VolumeDivergence/adapters/ml';
+import {
+  adaptiveMomentumRibbonAiAdapter,
+  adaptiveMomentumRibbonMlAdapter,
+  maStrategyAiAdapter,
+  maStrategyMlAdapter,
+  volumeDivergenceAiAdapter,
+  volumeDivergenceMlAdapter,
+} from '@tradejs/strategies';
 
 describe('strategy adapters', () => {
   it('maps AI runtime for AMR and MaStrategy configs', () => {

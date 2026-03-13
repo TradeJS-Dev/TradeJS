@@ -34,7 +34,8 @@ jest.mock('@langchain/core/messages', () => ({
   SystemMessage: MockSystemMessage,
 }));
 
-jest.mock('@utils/redis', () => ({
+jest.mock('@tradejs/infra', () => ({
+  ...jest.requireActual('@tradejs/infra'),
   setData: (...args: unknown[]) => setDataMock(...args),
   redisKeys: {
     analysis: (...args: [string, string]) => analysisKeyMock(...args),
@@ -49,6 +50,11 @@ const {
   buildAiSystemPrompt,
   trimSeriesDeep,
 } = require('../ai');
+const {
+  registerStrategyEntries,
+  resetStrategyRegistryCache,
+} = require('../../strategy/manifests');
+const { strategyEntries } = require('@tradejs/strategies');
 
 const makeCandle = (timestamp: number) => ({
   timestamp,
@@ -119,6 +125,8 @@ describe('ai helpers', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    resetStrategyRegistryCache();
+    registerStrategyEntries(strategyEntries);
     invokeMock.mockReset();
     chatOpenAICtorMock.mockReset();
     setDataMock.mockReset();
@@ -127,6 +135,7 @@ describe('ai helpers', () => {
   });
 
   afterAll(() => {
+    resetStrategyRegistryCache();
     errorSpy.mockRestore();
     logSpy.mockRestore();
   });

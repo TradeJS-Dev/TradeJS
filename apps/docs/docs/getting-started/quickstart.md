@@ -18,20 +18,22 @@ This guide is for external package users (without cloning the TradeJS repo).
 mkdir tradejs-project
 cd tradejs-project
 npm init -y
-npm i @tradejs/core @tradejs/cli
+npm i @tradejs/core @tradejs/base @tradejs/cli
 ```
 
 ## 2. Add `tradejs.config.ts`
 
 ```ts
-import { defineConfig } from '@tradejs/core';
+import { defineConfig } from '@tradejs/core/config';
+import { basePreset } from '@tradejs/base';
 
-export default defineConfig({
-  strategyPlugins: [],
-  indicatorsPlugins: [],
-  connectorsPlugins: [],
-});
+export default defineConfig(basePreset, {});
 ```
+
+Plugin import policy:
+
+- import plugin registration from `@tradejs/core/config`, runtime/helpers from public `@tradejs/core/*` subpaths, and types from `@tradejs/types`
+- avoid internal aliases (`@utils`, `@types`, `@constants`) and deep imports (`@tradejs/core/*`)
 
 ## 3. Initialize Dev Infra Files
 

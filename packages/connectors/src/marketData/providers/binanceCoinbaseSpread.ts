@@ -1,12 +1,12 @@
-import { DerivativesInterval } from '@utils/timescale';
+import { DerivativesInterval } from '@tradejs/infra';
 import {
   alignSpreadRows,
   coinbaseProductFromSymbol,
   intervalToMs,
   PricePoint,
-} from '@utils/marketSpread';
+} from '@tradejs/core/indicators';
 import { MarketDataProvider } from './types';
-import { spotKlineProviders } from '@tradejs/connectors/marketData/spotKlineProviders';
+import { spotKlineProviders } from '../spotKlineProviders';
 
 const fetchBinanceKlines = async (params: {
   symbol: string;

@@ -10,7 +10,7 @@ import {
   listMlChunkFiles,
   mergeJsonlFiles,
   toFileToken,
-} from '../mlDatasetFile';
+} from '@tradejs/infra';
 
 describe('mlDatasetFile', () => {
   let tempDir = '';

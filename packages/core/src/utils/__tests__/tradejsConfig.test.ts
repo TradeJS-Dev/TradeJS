@@ -4,6 +4,7 @@ import path from 'path';
 import { pathToFileURL } from 'url';
 import {
   getTradejsProjectCwd,
+  importTradejsModule,
   loadTradejsConfig,
   resetTradejsConfigCache,
   resolvePluginModuleSpecifier,
@@ -11,7 +12,7 @@ import {
 
 const loggerLogMock = jest.fn();
 
-jest.mock('@utils/logger', () => ({
+jest.mock('@tradejs/infra', () => ({
   logger: {
     log: (...args: unknown[]) => loggerLogMock(...args),
   },
@@ -42,9 +43,9 @@ describe('tradejsConfig utils', () => {
     fs.writeFileSync(
       configPath,
       `export default {
-  strategyPlugins: [' alpha ', '', null, 10],
-  indicatorsPlugins: ['beta', '  ', undefined],
-  connectorsPlugins: ['connector-a', '  ', null, 20]
+  strategies: [' alpha ', '', null, 10],
+  indicators: ['beta', '  ', undefined],
+  connectors: ['connector-a', '  ', null, 20]
 };`,
       'utf8',
     );
@@ -52,9 +53,35 @@ describe('tradejsConfig utils', () => {
     const config = await loadTradejsConfig(cwd);
 
     expect(config).toEqual({
-      strategyPlugins: ['alpha', '10'],
-      indicatorsPlugins: ['beta'],
-      connectorsPlugins: ['connector-a', '20'],
+      strategies: ['alpha', '10'],
+      indicators: ['beta'],
+      connectors: ['connector-a', '20'],
+    });
+    expect(loggerLogMock).toHaveBeenCalledWith(
+      'info',
+      'Loaded TradeJS config: %s',
+      configPath,
+    );
+  });
+
+  it('finds tradejs.config.ts in parent directories', async () => {
+    const cwd = createTempDir();
+    const childDir = path.join(cwd, 'nested', 'project');
+    fs.mkdirSync(childDir, { recursive: true });
+    const configPath = path.join(cwd, 'tradejs.config.ts');
+
+    fs.writeFileSync(
+      configPath,
+      `export default { strategies: ['@tradejs/strategies'] };`,
+      'utf8',
+    );
+
+    const config = await loadTradejsConfig(childDir);
+
+    expect(config).toEqual({
+      strategies: ['@tradejs/strategies'],
+      indicators: [],
+      connectors: [],
     });
     expect(loggerLogMock).toHaveBeenCalledWith(
       'info',
@@ -70,7 +97,7 @@ describe('tradejsConfig utils', () => {
 
     fs.writeFileSync(
       configPath,
-      `export default { strategyPlugins: ['env-config'] };`,
+      `export default { strategies: ['env-config'] };`,
       'utf8',
     );
 
@@ -80,9 +107,9 @@ describe('tradejsConfig utils', () => {
       const config = await loadTradejsConfig();
 
       expect(config).toEqual({
-        strategyPlugins: ['env-config'],
-        indicatorsPlugins: [],
-        connectorsPlugins: [],
+        strategies: ['env-config'],
+        indicators: [],
+        connectors: [],
       });
     } finally {
       process.env.PROJECT_CWD = previousProjectCwd;
@@ -101,6 +128,15 @@ describe('tradejsConfig utils', () => {
     expect(resolvePluginModuleSpecifier(relative, cwd)).toBe(absolute);
     expect(resolvePluginModuleSpecifier(absolute, cwd)).toBe(absolute);
     expect(resolvePluginModuleSpecifier(absoluteFileUrl, cwd)).toBe(absolute);
+  });
+
+  it('loads bare package specifiers via runtime module loader', async () => {
+    const moduleExports = (await importTradejsModule(
+      'path',
+    )) as typeof import('path');
+
+    expect(typeof moduleExports.join).toBe('function');
+    expect(moduleExports.join('a', 'b')).toBe(path.join('a', 'b'));
   });
 
   it('getTradejsProjectCwd prefers explicit value over PROJECT_CWD', () => {
@@ -122,22 +158,22 @@ describe('tradejsConfig utils', () => {
 
     fs.writeFileSync(
       configPath,
-      `export default { strategyPlugins: ['one'] };`,
+      `export default { strategies: ['one'] };`,
       'utf8',
     );
 
     const first = await loadTradejsConfig(cwd);
     fs.writeFileSync(
       configPath,
-      `export default { strategyPlugins: ['two'] };`,
+      `export default { strategies: ['two'] };`,
       'utf8',
     );
     const second = await loadTradejsConfig(cwd);
 
     expect(first).toEqual({
-      strategyPlugins: ['one'],
-      indicatorsPlugins: [],
-      connectorsPlugins: [],
+      strategies: ['one'],
+      indicators: [],
+      connectors: [],
     });
     expect(second).toEqual(first);
     expect(loggerLogMock).toHaveBeenCalledTimes(1);
@@ -169,7 +205,7 @@ describe('tradejsConfig utils', () => {
 
     fs.writeFileSync(
       configPath,
-      `export default { strategyPlugins: ['first'] };`,
+      `export default { strategies: ['first'] };`,
       'utf8',
     );
 
@@ -180,9 +216,9 @@ describe('tradejsConfig utils', () => {
     const afterReset = await loadTradejsConfig(cwd);
 
     expect(afterReset).toEqual({
-      strategyPlugins: ['first'],
-      indicatorsPlugins: [],
-      connectorsPlugins: [],
+      strategies: ['first'],
+      indicators: [],
+      connectors: [],
     });
     expect(loggerLogMock).toHaveBeenCalledWith(
       'info',

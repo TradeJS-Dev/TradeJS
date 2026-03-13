@@ -1,5 +1,5 @@
 import args from 'args';
-import { cleanRedis } from '@utils/cli';
+import { cleanRedis } from '@tradejs/core/cli';
 
 args.option('area', 'Area clean up', 'cache');
 

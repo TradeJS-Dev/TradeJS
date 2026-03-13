@@ -2,6 +2,7 @@
   "extends": "next/core-web-vitals",
   "plugins": ["@typescript-eslint"],
   "rules": {
+    "no-duplicate-imports": "error",
     "no-unused-vars": [
       "warn",
       {
@@ -24,6 +25,39 @@
             "varsIgnorePattern": "^_",
             "caughtErrorsIgnorePattern": "^_",
             "ignoreRestSiblings": true
+          }
+        ]
+      }
+    },
+    {
+      "files": [
+        "apps/**/*.{ts,tsx,js,jsx}",
+        "packages/**/*.{ts,tsx,js,jsx}",
+        "examples/**/*.{ts,tsx,js,jsx}"
+      ],
+      "excludedFiles": [
+        "packages/core/**/*.{ts,tsx,js,jsx}",
+        "**/dist/**",
+        "**/.next/**"
+      ],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "paths": [
+              {
+                "name": "@tradejs/core",
+                "message": "Use explicit public subpaths like @tradejs/core/config, @tradejs/core/strategies, @tradejs/core/indicators, @tradejs/core/backtest, @tradejs/core/math, @tradejs/core/time."
+              }
+            ],
+            "patterns": [
+              "@utils/*",
+              "@constants",
+              "@types",
+              "@tradejs/core/src/*",
+              "@tradejs/core/dist/*",
+              "@tradejs/core/*/*"
+            ]
           }
         ]
       }

@@ -1,4 +1,4 @@
-import { Signal, TrendLine } from '@types';
+import { Signal, TrendLine } from '@tradejs/types';
 const mockRegisterOverlay = jest.fn();
 
 jest.mock('klinecharts', () => ({

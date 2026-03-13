@@ -2,24 +2,34 @@ const ListIt = require('list-it');
 import args from 'args';
 import ProgressBar from 'progress';
 import { fork } from 'child_process';
+import fs from 'fs';
 import path from 'path';
 import os from 'os';
 import chalk from 'chalk';
 import _ from 'lodash';
 import { format } from 'date-fns';
-import { TESTS_TOP_LIMIT, TESTS_LIMIT, TTL_1M, TTL_1D } from '@constants';
+import { v4 as uuidv4 } from 'uuid';
 import { ConnectorNames } from '@tradejs/connectors';
-import { mergeConfigs, createTestSuite } from '@utils/grid';
-import { calculateStatsFull, sortBestTests } from '@utils/stat';
-import { setData, getData, redisKeys } from '@utils/redis';
-import { toJson } from '@utils/toJson';
-import { uuid } from '@utils/uuid';
-import { update, drawStatInCLI, getTickers } from '@utils/cli';
 import {
   DEFAULT_CONNECTOR_NAME,
   getConnectorCreatorByName,
   resolveConnectorName,
-} from '@utils/connectorsRegistry';
+} from '@tradejs/core/connectors';
+import { drawStatInCLI, getTickers, update } from '@tradejs/core/cli';
+import {
+  calculateStatsFull,
+  createTestSuite,
+  mergeConfigs,
+  sortBestTests,
+} from '@tradejs/core/backtest';
+import { toJson } from '@tradejs/core/json';
+import {
+  TESTS_LIMIT,
+  TESTS_TOP_LIMIT,
+  TTL_1D,
+  TTL_1M,
+} from '@tradejs/core/constants';
+import { setData, getData, redisKeys } from '@tradejs/infra';
 import {
   Interval,
   OrderLog,
@@ -29,7 +39,7 @@ import {
   TestWorkerResult,
   ConnectorCreator,
   StrategyConfigGrid,
-} from '@types';
+} from '@tradejs/types';
 
 const MAX_PARALLEL = Math.min(os.cpus().length, 6);
 
@@ -65,10 +75,20 @@ args.option(
 const flags = args.parse(process.argv);
 const interval = flags.timeframe.toString() as Interval;
 const progressStep = flags.progressStep;
-const testerWorkerPath = path.resolve(
-  __dirname,
-  '../../../core/src/workers/tester.ts',
+const uuid = (len = 12) => uuidv4().slice(-len);
+const testerWorkerPathCandidates = [
+  path.resolve(__dirname, '../workers/testerWorker.js'),
+  path.resolve(__dirname, '../workers/testerWorker.ts'),
+];
+const testerWorkerPath = testerWorkerPathCandidates.find((candidate) =>
+  fs.existsSync(candidate),
 );
+if (!testerWorkerPath) {
+  throw new Error(
+    `Tester worker file not found. Checked: ${testerWorkerPathCandidates.join(', ')}`,
+  );
+}
+const testerNeedsTsRuntime = testerWorkerPath.endsWith('.ts');
 
 const HEADERS_RESULTS = [
   chalk.blue('ID'),
@@ -310,13 +330,15 @@ const backtest = async () => {
     const chunkId = uuid();
     const chunkWithId = chunk.map((test) => ({ ...test, chunkId }));
     const tester = fork(testerWorkerPath, [], {
-      execArgv: [
-        '--max-old-space-size=8192',
-        '-r',
-        'ts-node/register',
-        '-r',
-        'tsconfig-paths/register',
-      ],
+      execArgv: testerNeedsTsRuntime
+        ? [
+            '--max-old-space-size=8192',
+            '-r',
+            'ts-node/register',
+            '-r',
+            'tsconfig-paths/register',
+          ]
+        : ['--max-old-space-size=8192'],
     });
     workers.add(tester);
 

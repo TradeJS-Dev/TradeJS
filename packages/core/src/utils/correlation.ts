@@ -1,5 +1,5 @@
 import { round } from '@utils/math';
-import { KlineChartItem } from '@types';
+import { KlineChartItem } from '@tradejs/types';
 
 /**
  * Выравнивает два отсортированных массива свечей по timestamp.

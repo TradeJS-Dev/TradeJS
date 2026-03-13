@@ -3,7 +3,7 @@
 import { useEffect } from 'react';
 import _ from 'lodash';
 import { registerOverlay, registerIndicator, Chart } from 'klinecharts';
-import { KlineChartItem, OrderLogData } from '@types';
+import { KlineChartItem, OrderLogData } from '@tradejs/types';
 import { useBacktest as useBacktestStore } from '@store';
 import {
   TradeZoneMode,
@@ -16,7 +16,7 @@ import {
   drawSignalFigures,
   ensureBaseFigureOverlaysRegistered,
   removeSignalFigures,
-} from '@utils/figures/signalFiguresPipeline';
+} from '@tradejs/core/figures';
 import '../figures';
 
 const green = '#84cc16';

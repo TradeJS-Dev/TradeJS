@@ -1,9 +1,9 @@
-import type {
-  Interval,
-  KlineChartData,
-  KlineRequest,
-  Ticker,
-} from '@tradejs/core';
+import {
+  type Interval,
+  type KlineChartData,
+  type KlineRequest,
+  type Ticker,
+} from '@tradejs/types';
 
 export const SANDBOX_TICKER_SYMBOL = 'SANDBOXUSDT';
 export const BTC_TICKER_SYMBOL = 'BTCUSDT';

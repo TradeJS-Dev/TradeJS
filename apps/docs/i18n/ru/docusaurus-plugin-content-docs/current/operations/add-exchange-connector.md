@@ -6,7 +6,7 @@ title: Как добавить connector новой биржи
 
 Важно:
 
-- коннекторы подключаются через `tradejs.config.ts` через поле `connectorsPlugins`
+- коннекторы подключаются через `tradejs.config.ts` через поле `connectors`
 - connector plugin должен экспортировать `connectorEntries`
 - CLI/runtime резолвит провайдеры и connector names из объединенного реестра (built-in + plugins)
 
@@ -27,7 +27,7 @@ import type {
   Order,
   Tp,
   Sl,
-} from '@tradejs/core/types';
+} from '@tradejs/types';
 
 const kline = async (options: KlineRequest): Promise<KlineChartData> => {
   return [];
@@ -88,10 +88,8 @@ export const MyExchangeConnectorCreator: ConnectorCreator = async ({
 В вашем пакете коннекторов экспортируйте `connectorEntries`:
 
 ```ts
-import {
-  defineConnectorPlugin,
-  type ConnectorRegistryEntry,
-} from '@tradejs/core';
+import { defineConnectorPlugin } from '@tradejs/core/config';
+import type { ConnectorRegistryEntry } from '@tradejs/types';
 
 import { MyExchangeConnectorCreator } from './myExchangeConnector';
 
@@ -109,12 +107,11 @@ export default defineConnectorPlugin({ connectorEntries });
 Затем подключите пакет в корневом конфиге:
 
 ```ts
-import { defineConfig } from '@tradejs/core';
+import { defineConfig } from '@tradejs/core/config';
+import { basePreset } from '@tradejs/base';
 
-export default defineConfig({
-  strategyPlugins: [],
-  indicatorsPlugins: [],
-  connectorsPlugins: ['@your-scope/tradejs-connectors'],
+export default defineConfig(basePreset, {
+  connectors: ['@your-scope/tradejs-connectors'],
 });
 ```
 

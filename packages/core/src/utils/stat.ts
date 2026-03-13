@@ -13,7 +13,7 @@ import {
   TestWorkerResult,
   MonthlyEquityStats,
   EOMPoint,
-} from '@types';
+} from '@tradejs/types';
 import { TestThresholdsConfig } from '@constants';
 import {
   round,

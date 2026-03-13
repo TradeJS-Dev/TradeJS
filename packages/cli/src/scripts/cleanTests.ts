@@ -1,7 +1,7 @@
 import args from 'args';
 import chalk from 'chalk';
-import { cleanRedis } from '@utils/cli';
-import { getKeys, redisKeys } from '@utils/redis';
+import { cleanRedis } from '@tradejs/core/cli';
+import { getKeys, redisKeys } from '@tradejs/infra';
 
 args.option(['U', 'user'], 'Clean tests for user', '');
 args.option(['C', 'cache'], 'Clean only cache keys', false);

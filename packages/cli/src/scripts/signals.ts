@@ -4,16 +4,22 @@ import ProgressBar from 'progress';
 import _ from 'lodash';
 import { ConnectorNames } from '@tradejs/connectors';
 import chalk from 'chalk';
-import { TTL_1D, TTL_3M, SIGNALS_PRELOAD_DAYS } from '@constants';
-import { update, getTickers, makeScreenshots, sendToTG } from '@utils/cli';
-import { getData, getKeys, setData, redisKeys } from '@utils/redis';
-import { getTimestamp } from '@utils/timestamp';
-import { runWithConcurrency } from '@utils/async';
 import {
-  DEFAULT_CONNECTOR_NAME,
   getConnectorCreatorByName,
   resolveConnectorName,
-} from '@utils/connectorsRegistry';
+  DEFAULT_CONNECTOR_NAME,
+} from '@tradejs/core/connectors';
+import {
+  getTickers,
+  makeScreenshots,
+  sendToTG,
+  update,
+} from '@tradejs/core/cli';
+import { runWithConcurrency } from '@tradejs/core/async';
+import { SIGNALS_PRELOAD_DAYS, TTL_1D, TTL_3M } from '@tradejs/core/constants';
+import { getStrategyCreator } from '@tradejs/core/strategies';
+import { getTimestamp } from '@tradejs/core/time';
+import { getData, getKeys, logger, redisKeys, setData } from '@tradejs/infra';
 import {
   Connector,
   ConnectorCreator,
@@ -21,9 +27,7 @@ import {
   Signal,
   StrategyConfig,
   StrategyCreator,
-} from '@types';
-import { getStrategyCreator } from '@tradejs/core/strategy';
-import { logger } from '@utils/logger';
+} from '@tradejs/types';
 
 args.option(['t', 'tickers'], 'Selected tickers');
 args.option(['e', 'exclude'], 'Exclude tickers from tests');

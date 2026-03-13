@@ -1,6 +1,6 @@
 import 'dotenv/config';
 import { connectors } from '@tradejs/connectors';
-import { Connector } from '@types';
+import { Connector } from '@tradejs/types';
 
 const SYMBOL = 'TACUSDT';
 

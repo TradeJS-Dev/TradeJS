@@ -12,9 +12,19 @@ This document is the single source of truth for strategy implementation contract
 - AI/ML adapters and manifest policy
 - `strategyApi` method reference
 
+## Import Policy
+
+Strategy/plugin code should import runtime helpers from public `@tradejs/core/*` subpaths and shared types from `@tradejs/types`.
+
+- use: `import { createStrategyRuntime } from '@tradejs/core/strategies'`
+- use: `import { CreateStrategyCore } from '@tradejs/types'`
+- do not use internal aliases (`@utils`, `@constants`)
+- do not use non-public deep imports
+- do not rely on test-only helpers under `packages/core/src/utils/testHelpers/*`
+
 ## Strategy File Layout
 
-Recommended structure for `packages/core/src/strategy/<Strategy>`:
+Recommended structure for `packages/strategies/src/<Strategy>` (built-ins) or `src/strategies/<Strategy>` (user plugin):
 
 - `config.ts`
 - `core.ts`
@@ -261,13 +271,13 @@ Creates reusable trade cooldown state controller.
 
 ```ts
 return async () => {
-  const { currentPrice } = await strategyApi.getMarketData();
-
   if (await strategyApi.isCurrentPositionExists()) {
     return strategyApi.skip('POSITION_EXISTS');
   }
 
-  const { stopLossPrice, takeProfitPrice, riskRatio, qty } =
+  const { currentPrice } = await strategyApi.getMarketData();
+
+  const { stopLossPrice, takeProfitPrice } =
     strategyApi.getDirectionalTpSlPrices({
       price: currentPrice,
       direction: 'LONG',
@@ -276,14 +286,10 @@ return async () => {
       unit: 'percent',
     });
 
-  if (!qty || qty <= 0) {
-    return strategyApi.skip('INVALID_QTY');
-  }
-
   return strategyApi.entry({
     direction: 'LONG',
     orderPlan: {
-      qty,
+      qty: 1,
       stopLossPrice,
       takeProfits: [{ rate: 1, price: takeProfitPrice }],
     },
@@ -301,7 +307,7 @@ return async () => {
 
 ## Related Files
 
-- `packages/core/src/types/strategy.ts`
-- `packages/core/src/types/strategyAdapters.ts`
+- `packages/types/src/strategy.ts`
+- `packages/types/src/strategyAdapters.ts`
 - `packages/core/src/utils/strategyRuntime.ts`
 - `packages/core/src/utils/strategyHelpers/signalBuilders.ts`

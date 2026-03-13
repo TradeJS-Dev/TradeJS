@@ -7,81 +7,33 @@ describe('connectors registry', () => {
     loadTradejsConfigMock.mockReset();
     warnMock.mockReset();
     loadTradejsConfigMock.mockResolvedValue({
-      connectorsPlugins: [],
+      connectors: [],
     });
   });
 
   const loadModule = async () => {
-    const byBitCreator = jest.fn(async () => ({}) as any);
-    const binanceCreator = jest.fn(async () => ({}) as any);
-    const coinbaseCreator = jest.fn(async () => ({}) as any);
-    const testCreator = jest.fn();
-
-    jest.doMock('@tradejs/connectors', () => ({
-      ConnectorNames: {
-        ByBit: 'ByBit',
-        Binance: 'Binance',
-        Coinbase: 'Coinbase',
-        Test: 'Test',
-      },
-      connectors: {
-        ByBit: byBitCreator,
-        Binance: binanceCreator,
-        Coinbase: coinbaseCreator,
-        Test: testCreator,
-      },
-      providerToConnectorName: {
-        bybit: 'ByBit',
-        binance: 'Binance',
-        coinbase: 'Coinbase',
-      },
-    }));
-
     jest.doMock('@utils/tradejsConfig', () => ({
       loadTradejsConfig: loadTradejsConfigMock,
       resolvePluginModuleSpecifier: (moduleName: string) => moduleName,
     }));
 
-    jest.doMock('@utils/logger', () => ({
+    jest.doMock('@tradejs/infra', () => ({
       logger: {
         warn: warnMock,
       },
     }));
 
     const module = await import('../connectorsRegistry');
-    return {
-      module,
-      byBitCreator,
-      binanceCreator,
-      coinbaseCreator,
-      testCreator,
-    };
+    return { module };
   };
 
-  it('resolves built-in connectors by provider and name', async () => {
-    const { module, byBitCreator, binanceCreator, coinbaseCreator } =
-      await loadModule();
+  it('starts empty when no connector plugins configured', async () => {
+    const { module } = await loadModule();
 
-    expect(await module.getConnectorNameByProvider('bybit')).toBe('ByBit');
-    expect(await module.getConnectorNameByProvider('BINANCE')).toBe('Binance');
-
-    expect(await module.resolveConnectorName('coinbase')).toBe('Coinbase');
-    expect(await module.resolveConnectorName('Coinbase')).toBe('Coinbase');
-
-    expect(await module.getConnectorCreatorByProvider('bybit')).toBe(
-      byBitCreator,
-    );
-    expect(await module.getConnectorCreatorByName('binance')).toBe(
-      binanceCreator,
-    );
-    expect(await module.getConnectorCreatorByName('Coinbase')).toBe(
-      coinbaseCreator,
-    );
-
-    const providers = await module.getAvailableConnectorProviders();
-    expect(providers).toEqual(['binance', 'bybit', 'coinbase']);
-    const names = await module.getAvailableConnectorNames();
-    expect(names).toEqual(['Binance', 'ByBit', 'Coinbase']);
+    expect(await module.getConnectorNameByProvider('bybit')).toBeUndefined();
+    expect(await module.getConnectorCreatorByName('ByBit')).toBeUndefined();
+    expect(await module.getAvailableConnectorProviders()).toEqual([]);
+    expect(await module.getAvailableConnectorNames()).toEqual([]);
   });
 
   it('loads connector plugins once and supports default exports + aliases', async () => {
@@ -121,7 +73,7 @@ describe('connectors registry', () => {
     jest.doMock('connector-plugin-missing', () => ({}), { virtual: true });
 
     loadTradejsConfigMock.mockResolvedValue({
-      connectorsPlugins: [
+      connectors: [
         ' connector-plugin-valid ',
         'connector-plugin-missing',
         'connector-plugin-default',
@@ -182,6 +134,5 @@ describe('connectors registry', () => {
     expect(await module.getConnectorNameByProvider('runtime-provider')).toBe(
       undefined,
     );
-    expect(await module.getConnectorNameByProvider('bybit')).toBe('ByBit');
   });
 });

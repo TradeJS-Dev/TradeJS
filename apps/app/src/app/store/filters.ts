@@ -1,7 +1,7 @@
 import { create } from 'zustand';
-import { DASHBOARD_PRELOAD_DAYS } from '@constants';
-import { getTimestamp } from '@utils/timestamp';
-import { Interval, UIFilters } from '@types';
+import { DASHBOARD_PRELOAD_DAYS } from '@tradejs/core/constants';
+import { getTimestamp } from '@tradejs/core/time';
+import { Interval, UIFilters } from '@tradejs/types';
 
 interface FiltersState {
   filters: UIFilters;

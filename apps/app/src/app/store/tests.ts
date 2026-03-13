@@ -10,9 +10,9 @@ import {
   OrderLogData,
   OnChangeCompare,
   Items,
-} from '@types';
-import { delay } from '@utils/async';
-import { parseTestName } from '@utils/tests';
+} from '@tradejs/types';
+import { delay } from '@tradejs/core/async';
+import { parseTestName } from '@tradejs/core/backtest';
 
 const COMPARE_LOCAL_STORAGE_KEY = 'compare';
 const FAVORITE_LOCAL_STORAGE_KEY = 'favorite';
