@@ -4,9 +4,9 @@ import {
   buildAiHumanPromptAddonByStrategy,
   buildAiPayloadByStrategy,
   buildAiSystemPromptAddonByStrategy,
-} from '@utils/strategyAdapters/ai';
+} from './strategyAdapters/ai';
 import { AiPayload, Signal, SignalAnalysis } from '@tradejs/types';
-export { MAX_AI_SERIES_POINTS, trimSeriesDeep } from '@utils/aiShared';
+export { MAX_AI_SERIES_POINTS, trimSeriesDeep } from './aiShared';
 
 const parseAIResponse = (input: string | object): object => {
   try {

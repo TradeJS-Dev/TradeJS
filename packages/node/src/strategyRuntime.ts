@@ -1,18 +1,20 @@
 import path from 'node:path';
-import { SIGNALS_PRELOAD_DAYS } from '@constants';
-import { logger } from '@tradejs/infra/logger';
-import { createLoadPineScript } from '@utils/pine';
-import { getTimestamp } from '@utils/timestamp';
-import { getStrategyManifest } from '../strategy/manifests';
+import { SIGNALS_PRELOAD_DAYS } from '@tradejs/core/constants';
 import {
   buildDefaultIndicatorPeriods,
   createStrategyAPI,
   createStrategyIndicatorsState,
+} from '@tradejs/core/strategies';
+import { getTimestamp } from '@tradejs/core/time';
+import { logger } from '@tradejs/infra/logger';
+import {
   enrichSignalWithAi,
   enrichSignalWithMl,
   executeEntryOrder,
-  resolveStrategyConfig,
-} from '@utils/strategyHelpers';
+} from './strategyHelpers/runtime';
+import { createLoadPineScript } from './pine';
+import { getStrategyManifest } from './strategy/manifests';
+import { resolveStrategyConfig } from './strategyHelpers/config';
 import {
   CreateStrategyCore,
   CreateStrategyCoreParams,

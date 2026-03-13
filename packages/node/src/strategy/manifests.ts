@@ -9,13 +9,13 @@ import type {
 import {
   registerIndicatorEntries,
   resetIndicatorRegistryCache,
-} from '@utils/indicatorPlugins';
+} from '@tradejs/core/indicators';
 import { logger } from '@tradejs/infra/logger';
 import {
   loadTradejsConfig,
   resolvePluginModuleSpecifier,
-} from '@utils/tradejsConfig';
-import * as tradejsConfig from '@utils/tradejsConfig';
+} from '../tradejsConfig';
+import * as tradejsConfig from '../tradejsConfig';
 
 const strategyCreators = new Map<string, StrategyCreator>();
 const strategyManifestsMap = new Map<string, StrategyManifest>();

@@ -1,8 +1,12 @@
 import { Signal, Interval, SignalAnalysis } from '@tradejs/types';
-import { getImageUrl } from '@utils/screenshot';
-import { formatNumber } from '@utils/math';
-import { escapeHtml } from '@utils/str';
+import { formatNumber } from '@tradejs/core/math';
 import { logger } from '@tradejs/infra/logger';
+import { getImageUrl } from './screenshot';
+
+const escapeHtml = (s?: string | null) => {
+  if (!s) return '';
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+};
 
 const { APP_URL, TG_BOT_TOKEN: token, TG_CHAT_ID: chatId } = process.env;
 

@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import _ from 'lodash';
 import {
   Candle,
@@ -9,10 +10,9 @@ import {
   PositionLogData,
   TestConnectorCreator,
 } from '@tradejs/types';
+import { TTL_1D } from '@tradejs/core/constants';
+import { round } from '@tradejs/core/math';
 import { redisKeys, setData } from '@tradejs/infra/redis';
-import { TTL_1D } from '@constants';
-import { uuid } from '@utils/uuid';
-import { round } from '@utils/math';
 
 const FEE = 0.005;
 const INITIAL_AMOUNT = 100;
@@ -96,7 +96,7 @@ export const createTestConnector: TestConnectorCreator = (
     kline: async (options) => connector.kline(options),
 
     getResult: async () => {
-      const orderLogId = uuid();
+      const orderLogId = randomUUID().slice(-12);
       const cacheUserName = userName || 'root';
 
       await setData(

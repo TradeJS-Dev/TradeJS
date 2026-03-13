@@ -7,8 +7,8 @@ import { logger } from '@tradejs/infra/logger';
 import {
   loadTradejsConfig,
   resolvePluginModuleSpecifier,
-} from '@utils/tradejsConfig';
-import * as tradejsConfig from '@utils/tradejsConfig';
+} from './tradejsConfig';
+import * as tradejsConfig from './tradejsConfig';
 
 const connectorCreators = new Map<string, ConnectorCreator>();
 const providerToConnectorName = new Map<string, string>();

@@ -5,7 +5,6 @@ import {
   fetchMlThreshold,
   trimMlTrainingRowWindows,
 } from '@tradejs/infra/ml';
-import { buildMlPayload } from '@utils/mlPayload';
 import {
   Connector,
   Direction,
@@ -14,6 +13,7 @@ import {
   StrategyRuntimeMlOptions,
   Tp,
 } from '@tradejs/types';
+import { buildMlPayload } from '../mlPayload';
 
 interface EnrichSignalWithMlAiParams {
   signal: Signal;

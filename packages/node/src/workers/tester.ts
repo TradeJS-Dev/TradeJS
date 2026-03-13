@@ -1,4 +1,4 @@
-import { testing, resetTestingKlineCache } from '@utils/testing';
+import { testing, resetTestingKlineCache } from '../testing';
 import { TestSuite } from '@tradejs/types';
 import { closeAllMlDatasetWriters } from '@tradejs/infra/ml';
 import { getData, redisKeys } from '@tradejs/infra/redis';

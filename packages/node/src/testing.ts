@@ -1,25 +1,25 @@
-import { getStrategyCreator } from '../strategy/manifests';
 import {
   Candle,
   ConnectorCreator,
   KlineChartData,
   TestingBox,
 } from '@tradejs/types';
-import { PRELOAD_DAYS } from '@constants';
-import { getTimestamp } from '@utils/timestamp';
-import { alignSortedCandlesByTimestamp } from '@utils/correlation';
-import { buildMlPayload } from '@utils/mlPayload';
+import { alignSortedCandlesByTimestamp } from '@tradejs/core/indicators';
+import { PRELOAD_DAYS } from '@tradejs/core/constants';
+import { getTimestamp } from '@tradejs/core/time';
 import {
   appendMlDatasetRow,
   buildMlTrainingRow,
   trimMlTrainingRowWindows,
 } from '@tradejs/infra/ml';
+import { logger } from '@tradejs/infra/logger';
+import { getStrategyCreator } from './strategy/manifests';
+import { buildMlPayload } from './mlPayload';
 import {
   BUILTIN_CONNECTOR_NAMES,
   getConnectorCreatorByName,
-} from '@utils/connectorsRegistry';
-import { createTestConnector } from '@utils/testConnector';
-import { logger } from '@tradejs/infra/logger';
+} from './connectorsRegistry';
+import { createTestConnector } from './testConnector';
 
 const preloadStart = getTimestamp(PRELOAD_DAYS);
 const coinKlineCache = new Map<string, KlineChartData>();

@@ -1,6 +1,6 @@
 import { AiPayload, Signal, StrategyAiAdapter } from '@tradejs/types';
-import { trimSeriesDeep } from '@utils/aiShared';
-import { getStrategyManifest } from '../../strategy/manifests';
+import { trimSeriesDeep } from '../aiShared';
+import { getStrategyManifest } from '../strategy/manifests';
 
 const buildBaseAiPayload = (signal: Signal): AiPayload => ({
   signal: {

@@ -1,5 +1,5 @@
 import { StrategyMlAdapter } from '@tradejs/types';
-import { getStrategyManifest } from '../../strategy/manifests';
+import { getStrategyManifest } from '../strategy/manifests';
 
 const defaultMlAdapter: StrategyMlAdapter = {
   normalizeStrategyConfig: (strategyConfig) => strategyConfig,
