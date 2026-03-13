@@ -1,6 +1,5 @@
 import http from 'http';
 import path from 'path';
-import { spawn } from 'child_process';
 import {
   SANDBOX_E2E_BACKTEST_CONFIG,
   SANDBOX_E2E_CONNECTOR_PROVIDER,
@@ -8,6 +7,7 @@ import {
   SANDBOX_E2E_TIMEFRAME,
   SANDBOX_E2E_USER,
 } from './e2eConfig';
+import { runTradejsCli } from './runTradejsCli';
 
 const writeJson = (
   res: http.ServerResponse,
@@ -49,54 +49,35 @@ const createMockExchangeServer = () =>
 
 const runBacktest = async (mockBaseUrl: string): Promise<void> => {
   const projectCwd = path.resolve(__dirname, '../..');
-  const childEnv: NodeJS.ProcessEnv = {
-    ...process.env,
+  await runTradejsCli({
+    command: 'backtest',
+    args: [
+      '--user',
+      SANDBOX_E2E_USER,
+      '--config',
+      SANDBOX_E2E_BACKTEST_CONFIG,
+      '--connector',
+      SANDBOX_E2E_CONNECTOR_PROVIDER,
+      '--cacheOnly',
+      '--tickers',
+      SANDBOX_E2E_TICKER,
+      '--timeframe',
+      SANDBOX_E2E_TIMEFRAME,
+      '--tests',
+      '1',
+      '--parallel',
+      '1',
+      '--top',
+      '1',
+      '--progressStep',
+      '1',
+    ],
+    projectCwd,
+    env: {
     BINANCE_BASE_URL: mockBaseUrl,
     COINBASE_BASE_URL: mockBaseUrl,
-  };
-  delete childEnv.PROJECT_CWD;
-
-  await new Promise<void>((resolve, reject) => {
-    const child = spawn(
-      'tradejs',
-      [
-        'backtest',
-        '--user',
-        SANDBOX_E2E_USER,
-        '--config',
-        SANDBOX_E2E_BACKTEST_CONFIG,
-        '--connector',
-        SANDBOX_E2E_CONNECTOR_PROVIDER,
-        '--cacheOnly',
-        '--tickers',
-        SANDBOX_E2E_TICKER,
-        '--timeframe',
-        SANDBOX_E2E_TIMEFRAME,
-        '--tests',
-        '1',
-        '--parallel',
-        '1',
-        '--top',
-        '1',
-        '--progressStep',
-        '1',
-      ],
-      {
-        cwd: projectCwd,
-        stdio: 'inherit',
-        env: childEnv,
-      },
-    );
-
-    child.on('error', reject);
-    child.on('exit', (code) => {
-      if (code === 0) {
-        resolve();
-        return;
-      }
-
-      reject(new Error(`Backtest process exited with code ${code ?? -1}`));
-    });
+    },
+    errorMessage: 'Backtest process exited with code',
   });
 };
 
