@@ -2,6 +2,14 @@
   "name": "@tradejs/strategies",
   "version": "1.0.0",
   "description": "Built-in TradeJS strategy plugin catalog.",
+  "keywords": [
+    "tradejs",
+    "trading",
+    "backtesting",
+    "strategies",
+    "plugin",
+    "algorithmic-trading"
+  ],
   "main": "dist/index.js",
   "module": "dist/index.mjs",
   "types": "dist/index.d.ts",

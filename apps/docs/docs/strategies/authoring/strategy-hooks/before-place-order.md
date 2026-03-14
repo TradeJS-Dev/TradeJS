@@ -17,7 +17,7 @@ Called on entry path right before connector order placement.
     placeOrder: (...args: unknown[]) => Promise<unknown>;
     closePosition: (params: unknown) => Promise<unknown>;
     getTickers: () => Promise<unknown[]>;
-  };
+  }
   strategyName: string;
   userName: string;
   symbol: string;

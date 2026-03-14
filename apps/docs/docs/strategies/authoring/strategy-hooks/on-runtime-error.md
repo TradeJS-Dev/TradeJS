@@ -17,7 +17,7 @@ Called when runtime catches an error in a runtime stage or hook.
     placeOrder: (...args: unknown[]) => Promise<unknown>;
     closePosition: (params: unknown) => Promise<unknown>;
     getTickers: () => Promise<unknown[]>;
-  };
+  }
   strategyName: string;
   userName: string;
   symbol: string;
@@ -34,7 +34,10 @@ Called when runtime catches an error in a runtime stage or hook.
 `SkipDecision` shape:
 
 ```ts
-{ kind: 'skip'; code: string }
+{
+  kind: 'skip';
+  code: string;
+}
 ```
 
 `ExitDecision` shape:
@@ -47,7 +50,7 @@ Called when runtime catches an error in a runtime stage or hook.
     price: number;
     timestamp: number;
     direction: 'LONG' | 'SHORT';
-  };
+  }
 }
 ```
 

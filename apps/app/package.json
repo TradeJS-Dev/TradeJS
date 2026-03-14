@@ -1,6 +1,15 @@
 {
   "name": "@tradejs/app",
   "version": "1.0.0",
+  "keywords": [
+    "tradejs",
+    "trading",
+    "backtesting",
+    "app",
+    "dashboard",
+    "nextjs",
+    "signals"
+  ],
   "files": [
     "README.md",
     "bin",

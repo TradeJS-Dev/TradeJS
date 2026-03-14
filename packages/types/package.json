@@ -2,6 +2,14 @@
   "name": "@tradejs/types",
   "version": "1.0.0",
   "description": "Shared TypeScript contracts for the TradeJS ecosystem.",
+  "keywords": [
+    "tradejs",
+    "trading",
+    "backtesting",
+    "typescript",
+    "types",
+    "contracts"
+  ],
   "main": "dist/index.js",
   "module": "dist/index.mjs",
   "types": "dist/index.d.ts",

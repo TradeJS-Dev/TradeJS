@@ -74,8 +74,8 @@ const runBacktest = async (mockBaseUrl: string): Promise<void> => {
     ],
     projectCwd,
     env: {
-    BINANCE_BASE_URL: mockBaseUrl,
-    COINBASE_BASE_URL: mockBaseUrl,
+      BINANCE_BASE_URL: mockBaseUrl,
+      COINBASE_BASE_URL: mockBaseUrl,
     },
     errorMessage: 'Backtest process exited with code',
   });

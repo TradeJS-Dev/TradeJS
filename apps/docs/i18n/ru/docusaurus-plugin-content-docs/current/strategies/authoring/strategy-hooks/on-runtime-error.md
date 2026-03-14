@@ -17,7 +17,7 @@ title: onRuntimeError
     placeOrder: (...args: unknown[]) => Promise<unknown>;
     closePosition: (params: unknown) => Promise<unknown>;
     getTickers: () => Promise<unknown[]>;
-  };
+  }
   strategyName: string;
   userName: string;
   symbol: string;
@@ -34,7 +34,10 @@ title: onRuntimeError
 `SkipDecision` shape:
 
 ```ts
-{ kind: 'skip'; code: string }
+{
+  kind: 'skip';
+  code: string;
+}
 ```
 
 `ExitDecision` shape:
@@ -47,7 +50,7 @@ title: onRuntimeError
     price: number;
     timestamp: number;
     direction: 'LONG' | 'SHORT';
-  };
+  }
 }
 ```
 

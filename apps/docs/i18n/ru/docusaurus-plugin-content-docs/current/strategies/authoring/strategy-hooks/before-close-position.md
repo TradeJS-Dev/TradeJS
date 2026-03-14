@@ -17,7 +17,7 @@ title: beforeClosePosition
     placeOrder: (...args: unknown[]) => Promise<unknown>;
     closePosition: (params: unknown) => Promise<unknown>;
     getTickers: () => Promise<unknown[]>;
-  };
+  }
   strategyName: string;
   userName: string;
   symbol: string;
@@ -31,8 +31,8 @@ title: beforeClosePosition
       price: number;
       timestamp: number;
       direction: 'LONG' | 'SHORT';
-    };
-  };
+    }
+  }
 }
 ```
 

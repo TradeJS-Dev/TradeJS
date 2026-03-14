@@ -2,6 +2,15 @@
   "name": "@tradejs/core",
   "version": "1.0.0",
   "description": "Browser-safe TradeJS public API for config, strategy authoring, indicators, figures, and shared helpers.",
+  "keywords": [
+    "tradejs",
+    "trading",
+    "backtesting",
+    "typescript",
+    "strategy",
+    "indicators",
+    "pine-script"
+  ],
   "homepage": "https://tradejs.dev",
   "files": [
     "dist"

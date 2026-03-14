@@ -84,7 +84,9 @@ import * as manifestsModule from '../../../../node/src/strategy/manifests';
 import { strategyEntries } from '@tradejs/strategies';
 
 const realGetStrategyManifest = (
-  jest.requireActual('../../../../node/src/strategy/manifests') as typeof manifestsModule
+  jest.requireActual(
+    '../../../../node/src/strategy/manifests',
+  ) as typeof manifestsModule
 ).getStrategyManifest;
 const mockGetStrategyManifest =
   manifestsModule.getStrategyManifest as jest.MockedFunction<

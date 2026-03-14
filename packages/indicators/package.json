@@ -2,6 +2,14 @@
   "name": "@tradejs/indicators",
   "version": "1.0.0",
   "description": "Built-in TradeJS indicator plugin catalog.",
+  "keywords": [
+    "tradejs",
+    "trading",
+    "backtesting",
+    "indicators",
+    "plugin",
+    "technical-analysis"
+  ],
   "main": "dist/index.js",
   "module": "dist/index.mjs",
   "types": "dist/index.d.ts",

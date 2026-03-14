@@ -2,6 +2,14 @@
   "name": "@tradejs/base",
   "version": "1.0.0",
   "description": "Default preset that wires the built-in TradeJS strategies, indicators, and connectors.",
+  "keywords": [
+    "tradejs",
+    "trading",
+    "backtesting",
+    "preset",
+    "starter",
+    "plugins"
+  ],
   "main": "dist/index.js",
   "module": "dist/index.mjs",
   "types": "dist/index.d.ts",

@@ -2,6 +2,15 @@
   "name": "@tradejs/infra",
   "version": "1.0.0",
   "description": "Server-only infrastructure adapters for Redis, Timescale, ML, logging, and IO.",
+  "keywords": [
+    "tradejs",
+    "trading",
+    "backtesting",
+    "infrastructure",
+    "redis",
+    "timescale",
+    "ml"
+  ],
   "files": [
     "dist",
     "proto"

@@ -17,7 +17,7 @@ Called right after `core.ts` returns any decision.
     placeOrder: (...args: unknown[]) => Promise<unknown>;
     closePosition: (params: unknown) => Promise<unknown>;
     getTickers: () => Promise<unknown[]>;
-  };
+  }
   strategyName: string;
   userName: string;
   symbol: string;
@@ -33,7 +33,10 @@ Called right after `core.ts` returns any decision.
 `SkipDecision` shape:
 
 ```ts
-{ kind: 'skip'; code: string }
+{
+  kind: 'skip';
+  code: string;
+}
 ```
 
 `ExitDecision` shape:
@@ -46,7 +49,7 @@ Called right after `core.ts` returns any decision.
     price: number;
     timestamp: number;
     direction: 'LONG' | 'SHORT';
-  };
+  }
 }
 ```
 

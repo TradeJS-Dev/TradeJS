@@ -17,7 +17,7 @@ Called on exit path before `connector.closePosition(...)`.
     placeOrder: (...args: unknown[]) => Promise<unknown>;
     closePosition: (params: unknown) => Promise<unknown>;
     getTickers: () => Promise<unknown[]>;
-  };
+  }
   strategyName: string;
   userName: string;
   symbol: string;
@@ -31,8 +31,8 @@ Called on exit path before `connector.closePosition(...)`.
       price: number;
       timestamp: number;
       direction: 'LONG' | 'SHORT';
-    };
-  };
+    }
+  }
 }
 ```
 

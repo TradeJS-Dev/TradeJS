@@ -77,7 +77,11 @@ const interval = flags.timeframe.toString() as Interval;
 const progressStep = flags.progressStep;
 const uuid = (len = 12) => uuidv4().slice(-len);
 const testerWorkerPathCandidates = [
+  // `tradejs` bin runs from dist/cli.js, so bundled commands resolve from `dist`.
+  path.resolve(__dirname, './workers/testerWorker.js'),
+  // Direct execution of dist/scripts/backtest.js resolves from `dist/scripts`.
   path.resolve(__dirname, '../workers/testerWorker.js'),
+  // ts-node execution resolves from `src/scripts`.
   path.resolve(__dirname, '../workers/testerWorker.ts'),
 ];
 const testerWorkerPath = testerWorkerPathCandidates.find((candidate) =>

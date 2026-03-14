@@ -2,6 +2,15 @@
   "name": "@tradejs/connectors",
   "version": "1.0.0",
   "description": "Built-in TradeJS exchange connectors and market data providers.",
+  "keywords": [
+    "tradejs",
+    "trading",
+    "backtesting",
+    "connectors",
+    "exchange",
+    "market-data",
+    "bybit"
+  ],
   "main": "dist/index.js",
   "module": "dist/index.mjs",
   "types": "dist/index.d.ts",
