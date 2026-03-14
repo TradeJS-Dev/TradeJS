@@ -35,6 +35,9 @@ jobs:
       - name: Prepare Sandbox Env
         run: cp examples/sandbox/.env.example examples/sandbox/.env
 
+      - name: Install Sandbox Dependencies
+        run: cd examples/sandbox && yarn install --immutable
+
       - name: Sandbox Infra Up
         run: cd examples/sandbox && yarn infra-up
 

@@ -1,6 +1,5 @@
+import path from 'path';
 import { spawn } from 'child_process';
-
-const yarnCommand = process.platform === 'win32' ? 'yarn.cmd' : 'yarn';
 
 export const runTradejsCli = async ({
   command,
@@ -15,20 +14,23 @@ export const runTradejsCli = async ({
   env?: NodeJS.ProcessEnv;
   errorMessage: string;
 }): Promise<void> => {
+  const cliBin = path.resolve(
+    projectCwd,
+    'node_modules',
+    '.bin',
+    process.platform === 'win32' ? 'tradejs.cmd' : 'tradejs',
+  );
+
   await new Promise<void>((resolve, reject) => {
-    const child = spawn(
-      yarnCommand,
-      ['workspace', '@tradejs/cli', command, ...args],
-      {
-        cwd: projectCwd,
-        stdio: 'inherit',
-        env: {
-          ...process.env,
-          ...env,
-          PROJECT_CWD: projectCwd,
-        },
+    const child = spawn(cliBin, [command, ...args], {
+      cwd: projectCwd,
+      stdio: 'inherit',
+      env: {
+        ...process.env,
+        ...env,
+        PROJECT_CWD: projectCwd,
       },
-    );
+    });
 
     child.on('error', reject);
     child.on('exit', (code) => {

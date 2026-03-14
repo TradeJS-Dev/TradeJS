@@ -91,6 +91,7 @@ yarn ml-train:trendline:xgboost
 
 ```bash
 cd examples/sandbox
+yarn install
 yarn infra-up
 yarn e2e
 yarn infra-down

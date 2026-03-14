@@ -174,6 +174,7 @@ Sandbox deterministic e2e example:
 
 ```bash
 cd examples/sandbox
+yarn install
 yarn infra-up
 yarn e2e
 yarn infra-down

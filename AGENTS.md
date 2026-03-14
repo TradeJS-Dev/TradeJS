@@ -158,7 +158,7 @@ Docs:
 
 Sandbox:
 
-- `cd examples/sandbox && yarn e2e`
+- `cd examples/sandbox && yarn install && yarn e2e`
 
 ## Testing Expectations
 

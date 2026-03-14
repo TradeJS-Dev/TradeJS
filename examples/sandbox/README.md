@@ -8,6 +8,9 @@
 - custom connector plugin (`SandboxMockConnector` / provider `sandbox`)
 - deterministic backtest + signals e2e flow for CI
 
+This example is intentionally installed as a standalone Yarn project and pulls
+published `@tradejs/*` packages from npm instead of local workspaces.
+
 ## Files
 
 - `tradejs.config.ts` — plugin wiring via local file paths
@@ -30,6 +33,7 @@ cp examples/sandbox/.env.example examples/sandbox/.env
 
 ```bash
 cd examples/sandbox
+yarn install
 yarn infra-up
 yarn e2e
 yarn infra-down
