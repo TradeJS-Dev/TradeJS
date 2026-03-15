@@ -90,6 +90,7 @@ yarn ml-train:trendline:xgboost
 - seeded user/config and stable backtest + signals snapshot assertions
 
 ```bash
+yarn sandbox:refresh # optional after publishing newer @tradejs/* versions
 yarn sandbox:install
 yarn sandbox:infra-up
 yarn sandbox:e2e

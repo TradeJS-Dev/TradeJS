@@ -4,19 +4,21 @@ import puppeteer from 'puppeteer';
 import { Signal } from '@tradejs/types';
 import { delay } from '@tradejs/core/async';
 import { getData, redisKeys } from '@tradejs/infra/redis';
+import { getTradejsProjectCwd } from './tradejsConfig';
 
 const { APP_URL } = process.env;
 
-const getProjectRoot = (): string => {
-  const fromEnv = String(process.env.PROJECT_CWD || '').trim();
-  return fromEnv ? path.resolve(fromEnv) : process.cwd();
-};
+const getProjectRoot = (projectRoot?: string): string =>
+  path.resolve(getTradejsProjectCwd(projectRoot));
 
-const getScreenshotsDir = (): string =>
-  path.join(getProjectRoot(), 'data', 'screenshots');
+const getScreenshotsDir = (projectRoot?: string): string =>
+  path.join(getProjectRoot(projectRoot), 'data', 'screenshots');
 
-export const getScreenshotBase64 = async (signal: Signal) => {
-  const screenshotPath = getScreenshotPath(signal);
+export const getScreenshotBase64 = async (
+  signal: Signal,
+  projectRoot?: string,
+) => {
+  const screenshotPath = getScreenshotPath(signal, projectRoot);
 
   const fileBuffer = await fs.readFile(screenshotPath);
   const base64Image = fileBuffer.toString('base64');
@@ -28,14 +30,17 @@ export const getScreenshotBase64 = async (signal: Signal) => {
 export const getImageUrl = ({ symbol, signalId, interval }: Signal) =>
   `${APP_URL}/api/files/screenshot/${symbol}_${signalId}_${interval}`;
 
-export const getScreenshotPath = ({ symbol, signalId, interval }: Signal) => {
+export const getScreenshotPath = (
+  { symbol, signalId, interval }: Signal,
+  projectRoot?: string,
+) => {
   return path.join(
-    getScreenshotsDir(),
+    getScreenshotsDir(projectRoot),
     `${symbol}_${signalId}_${interval}.png`,
   ) as `${string}.png`;
 };
 
-export const screenDashboard = async (signal: Signal) => {
+export const screenDashboard = async (signal: Signal, projectRoot?: string) => {
   const { symbol, signalId, interval } = signal;
   const rootUser = await getData(redisKeys.user('root'), null);
   const token =
@@ -75,10 +80,10 @@ export const screenDashboard = async (signal: Signal) => {
 
       await delay(10_000);
 
-      await fs.mkdir(getScreenshotsDir(), { recursive: true });
+      await fs.mkdir(getScreenshotsDir(projectRoot), { recursive: true });
 
       await page.screenshot({
-        path: getScreenshotPath(signal),
+        path: getScreenshotPath(signal, projectRoot),
       });
     } finally {
       await page.close();

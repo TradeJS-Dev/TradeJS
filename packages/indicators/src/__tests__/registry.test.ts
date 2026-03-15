@@ -128,4 +128,79 @@ describe('indicator registry', () => {
       },
     ]);
   });
+
+  it('keeps indicator registry state isolated per scope', () => {
+    const {
+      registerIndicatorEntries,
+      getRegisteredIndicatorEntries,
+      getPluginIndicatorCatalog,
+      getPluginIndicatorRenderers,
+    } = loadRegistry();
+
+    const rendererA = jest.fn();
+    const rendererB = jest.fn();
+
+    registerIndicatorEntries(
+      [
+        {
+          indicator: {
+            id: 'scoped_indicator',
+            label: 'Scoped A',
+            enabled: true,
+            periods: [5],
+          },
+          renderer: rendererA,
+        },
+      ] as any,
+      'plugin-a',
+      '/tmp/project-a',
+    );
+
+    registerIndicatorEntries(
+      [
+        {
+          indicator: {
+            id: 'scoped_indicator',
+            label: 'Scoped B',
+            enabled: true,
+            periods: [10],
+          },
+          renderer: rendererB,
+        },
+      ] as any,
+      'plugin-b',
+      '/tmp/project-b',
+    );
+
+    expect(getRegisteredIndicatorEntries('/tmp/project-a')).toHaveLength(1);
+    expect(getRegisteredIndicatorEntries('/tmp/project-b')).toHaveLength(1);
+    expect(getPluginIndicatorCatalog('/tmp/project-a')).toEqual([
+      {
+        id: 'scoped_indicator',
+        label: 'Scoped A',
+        enabled: true,
+        periods: [5],
+      },
+    ]);
+    expect(getPluginIndicatorCatalog('/tmp/project-b')).toEqual([
+      {
+        id: 'scoped_indicator',
+        label: 'Scoped B',
+        enabled: true,
+        periods: [10],
+      },
+    ]);
+    expect(getPluginIndicatorRenderers('/tmp/project-a')).toEqual([
+      {
+        indicatorId: 'scoped_indicator',
+        renderer: rendererA,
+      },
+    ]);
+    expect(getPluginIndicatorRenderers('/tmp/project-b')).toEqual([
+      {
+        indicatorId: 'scoped_indicator',
+        renderer: rendererB,
+      },
+    ]);
+  });
 });

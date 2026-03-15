@@ -1,2 +1,2 @@
-# 0,15,30,45 * * * * cd /app && /usr/local/bin/yarn run bot >> /var/log/cron.bot.log 2>&1
-1,15,30,45 * * * * cd /app && /usr/local/bin/yarn run signals --tickersLimit 300 --timeframe 15 --chunk 1/1 --notify --makeOrders >> /var/log/cron.signals.15.log 2>&1
+# 0,15,30,45 * * * * cd /app && yarn bot:cron >> /var/log/cron.bot.log 2>&1
+1,15,30,45 * * * * cd /app && yarn signals:cron -- --tickersLimit 300 --timeframe 15 --chunk 1/1 --notify --makeOrders >> /var/log/cron.signals.15.log 2>&1

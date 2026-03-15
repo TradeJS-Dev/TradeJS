@@ -19,9 +19,11 @@ import { logger } from '@tradejs/infra/logger';
 export const dynamic = 'force-dynamic';
 
 const HISTORY_DIR = 'data/chats';
+const projectRoot =
+  String(process.env.PROJECT_CWD || process.cwd()).trim() || process.cwd();
 
 const getHistory = async (symbol: string): Promise<AIChatHistory> => {
-  const history = await getFile(HISTORY_DIR, symbol);
+  const history = await getFile(HISTORY_DIR, symbol, [], projectRoot);
   return history;
 };
 
@@ -30,7 +32,9 @@ const appendMessagesToHistory = async (
   messages: AIChatHistory,
 ): Promise<void> => {
   const history = await getHistory(symbol);
-  await setFile(HISTORY_DIR, symbol, [...history, ...messages]);
+  await setFile(HISTORY_DIR, symbol, [...history, ...messages], {
+    projectRoot,
+  });
 };
 
 const buildMessages = (
@@ -115,7 +119,10 @@ export const POST = async (request: NextRequest) => {
 
     await appendMessagesToHistory(filters.symbol, [message]);
 
-    const connectorCreator = await getConnectorCreatorByProvider('bybit');
+    const connectorCreator = await getConnectorCreatorByProvider(
+      'bybit',
+      projectRoot,
+    );
     if (!connectorCreator) {
       throw new Error('No connector available for provider');
     }

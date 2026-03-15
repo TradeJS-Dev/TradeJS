@@ -25,19 +25,25 @@ const mockStrategyCreator = jest.fn(async (_config?: unknown) => mockStrategy);
 const mockBuildMlPayload = jest.fn((data) => data);
 const mockBuildMlTrainingRow: jest.Mock = jest.fn(() => ({ featureA: 1 }));
 const mockAppendMlDatasetRow = jest.fn((_params?: unknown) => undefined);
+const originalProjectCwd = process.env.PROJECT_CWD;
 
-jest.mock('../../../../node/src/strategy/manifests', () => ({
+jest.mock('../tradejsConfig', () => ({
+  getTradejsProjectCwd: (cwd?: string) =>
+    cwd || process.env.PROJECT_CWD || '/tmp/project-default',
+}));
+
+jest.mock('../strategy/manifests', () => ({
   getStrategyCreator: async (strategyName: string) =>
     strategyName === 'TrendLine'
       ? (config: unknown) => mockStrategyCreator(config)
       : undefined,
 }));
 
-jest.mock('../../../../node/src/testConnector', () => ({
+jest.mock('../testConnector', () => ({
   createTestConnector: () => mockTestConnector,
 }));
 
-jest.mock('../../../../node/src/connectorsRegistry', () => ({
+jest.mock('../connectorsRegistry', () => ({
   BUILTIN_CONNECTOR_NAMES: {
     ByBit: 'ByBit',
     Binance: 'Binance',
@@ -58,14 +64,14 @@ jest.mock('../../../../node/src/connectorsRegistry', () => ({
   },
 }));
 
-jest.mock('@utils/correlation', () => ({
+jest.mock('@tradejs/core/indicators', () => ({
   alignSortedCandlesByTimestamp: (coin: unknown[], btc: unknown[]) => ({
     alignedCoinCandles: coin,
     alignedBtcCandles: btc,
   }),
 }));
 
-jest.mock('../../../../node/src/mlPayload', () => ({
+jest.mock('../mlPayload', () => ({
   buildMlPayload: (payload: unknown) => mockBuildMlPayload(payload),
 }));
 
@@ -76,11 +82,11 @@ jest.mock('@tradejs/infra/ml', () => ({
   appendMlDatasetRow: (params: unknown) => mockAppendMlDatasetRow(params),
 }));
 
-jest.mock('@utils/timestamp', () => ({
+jest.mock('@tradejs/core/time', () => ({
   getTimestamp: () => 1_000_000,
 }));
 
-import { testing, resetTestingKlineCache } from '../../../../node/src/testing';
+import { testing, resetTestingKlineCache } from '../testing';
 
 const candle = (timestamp: number) => ({
   timestamp,
@@ -109,6 +115,7 @@ const createTest = (overrides: Partial<Test> = {}): Test =>
 
 describe('testing backtest flow', () => {
   beforeEach(() => {
+    process.env.PROJECT_CWD = '/tmp/project-default';
     resetTestingKlineCache();
     jest.clearAllMocks();
     mockByBitConnector.kline.mockReset();
@@ -124,6 +131,15 @@ describe('testing backtest flow', () => {
       orderLogId: 'log-1',
       stat: { amount: 110, profit: 10, orders: 1 },
     });
+  });
+
+  afterAll(() => {
+    if (originalProjectCwd == null) {
+      delete process.env.PROJECT_CWD;
+      return;
+    }
+
+    process.env.PROJECT_CWD = originalProjectCwd;
   });
 
   it('throws when start is missing', async () => {
@@ -272,6 +288,44 @@ describe('testing backtest flow', () => {
         row: expect.objectContaining({ signalId: 's1', profit: -1.1 }),
       }),
     );
+  });
+
+  it('keeps kline cache isolated per project root and supports scoped reset', async () => {
+    const data = [candle(1_000_050), candle(1_000_150), candle(1_000_250)];
+    mockByBitConnector.kline.mockResolvedValue(data);
+    mockBinanceConnector.kline.mockResolvedValue(data);
+    mockCoinbaseConnector.kline.mockResolvedValue(data);
+    mockStrategy.mockResolvedValue('HOLD');
+
+    process.env.PROJECT_CWD = '/tmp/project-a';
+    await testing(createTest());
+
+    expect(mockByBitConnector.kline).toHaveBeenCalledTimes(2);
+    expect(mockBinanceConnector.kline).toHaveBeenCalledTimes(1);
+    expect(mockCoinbaseConnector.kline).toHaveBeenCalledTimes(1);
+
+    process.env.PROJECT_CWD = '/tmp/project-b';
+    await testing(createTest());
+
+    expect(mockByBitConnector.kline).toHaveBeenCalledTimes(4);
+    expect(mockBinanceConnector.kline).toHaveBeenCalledTimes(2);
+    expect(mockCoinbaseConnector.kline).toHaveBeenCalledTimes(2);
+
+    resetTestingKlineCache('/tmp/project-a');
+
+    process.env.PROJECT_CWD = '/tmp/project-b';
+    await testing(createTest());
+
+    expect(mockByBitConnector.kline).toHaveBeenCalledTimes(4);
+    expect(mockBinanceConnector.kline).toHaveBeenCalledTimes(2);
+    expect(mockCoinbaseConnector.kline).toHaveBeenCalledTimes(2);
+
+    process.env.PROJECT_CWD = '/tmp/project-a';
+    await testing(createTest());
+
+    expect(mockByBitConnector.kline).toHaveBeenCalledTimes(6);
+    expect(mockBinanceConnector.kline).toHaveBeenCalledTimes(3);
+    expect(mockCoinbaseConnector.kline).toHaveBeenCalledTimes(3);
   });
 });
 mockBuildMlTrainingRow.mockClear();

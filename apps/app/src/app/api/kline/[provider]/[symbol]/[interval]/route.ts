@@ -14,6 +14,8 @@ import {
 } from '@tradejs/types';
 
 export const dynamic = 'force-dynamic';
+const projectRoot =
+  String(process.env.PROJECT_CWD || process.cwd()).trim() || process.cwd();
 
 interface Params {
   provider: string;
@@ -32,6 +34,7 @@ const enrichWithPluginIndicators = (
 
   const history = createIndicators(data, btcData, {
     includeMlPayload: false,
+    pluginRegistryScope: projectRoot,
   }).result() as Record<string, number[]>;
 
   const nextData = data.map((candle) => ({ ...candle }));
@@ -78,8 +81,8 @@ export const POST = async (
     }
 
     const connectorCreator =
-      (await getConnectorCreatorByProvider(provider)) ||
-      (await getConnectorCreatorByProvider('bybit'));
+      (await getConnectorCreatorByProvider(provider, projectRoot)) ||
+      (await getConnectorCreatorByProvider('bybit', projectRoot));
     if (!connectorCreator) {
       throw new Error('No connector available for provider');
     }
@@ -93,8 +96,8 @@ export const POST = async (
       ...options,
     });
 
-    await ensureIndicatorPluginsLoaded();
-    const pluginKeys = getRegisteredIndicatorEntries().map(
+    await ensureIndicatorPluginsLoaded(projectRoot);
+    const pluginKeys = getRegisteredIndicatorEntries(projectRoot).map(
       (entry) => entry.historyKey || entry.indicator.id,
     );
     if (!pluginKeys.length) {

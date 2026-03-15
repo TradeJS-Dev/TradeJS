@@ -12,7 +12,8 @@ describe('connectors registry', () => {
   });
 
   const loadModule = async () => {
-    jest.doMock('../../../../node/src/tradejsConfig', () => ({
+    jest.doMock('../tradejsConfig', () => ({
+      getTradejsProjectCwd: (cwd?: string) => cwd || '/tmp/test-project',
       loadTradejsConfig: loadTradejsConfigMock,
       resolvePluginModuleSpecifier: (moduleName: string) => moduleName,
     }));
@@ -23,7 +24,7 @@ describe('connectors registry', () => {
       },
     }));
 
-    const module = await import('../../../../node/src/connectorsRegistry');
+    const module = await import('../connectorsRegistry');
     return { module };
   };
 
@@ -108,6 +109,61 @@ describe('connectors registry', () => {
         message.includes('Failed to load connector plugin'),
       ),
     ).toBe(true);
+  });
+
+  it('keeps connector registry state isolated per project root', async () => {
+    const { module } = await loadModule();
+    const creatorA = jest.fn(async () => ({}) as any);
+    const creatorB = jest.fn(async () => ({}) as any);
+
+    module.registerConnectorEntries(
+      [
+        {
+          name: 'SandboxConnector',
+          creator: creatorA,
+          providers: ['sandbox'],
+        },
+      ],
+      '/tmp/project-a',
+    );
+    module.registerConnectorEntries(
+      [
+        {
+          name: 'SandboxConnector',
+          creator: creatorB,
+          providers: ['sandbox'],
+        },
+      ],
+      '/tmp/project-b',
+    );
+
+    expect(
+      await module.getConnectorCreatorByName(
+        'SandboxConnector',
+        '/tmp/project-a',
+      ),
+    ).toBe(creatorA);
+    expect(
+      await module.getConnectorCreatorByName(
+        'SandboxConnector',
+        '/tmp/project-b',
+      ),
+    ).toBe(creatorB);
+
+    module.resetConnectorRegistryCache('/tmp/project-a');
+
+    expect(
+      await module.getConnectorCreatorByName(
+        'SandboxConnector',
+        '/tmp/project-a',
+      ),
+    ).toBeUndefined();
+    expect(
+      await module.getConnectorCreatorByName(
+        'SandboxConnector',
+        '/tmp/project-b',
+      ),
+    ).toBe(creatorB);
   });
 
   it('supports runtime connector registration and registry reset', async () => {

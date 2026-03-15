@@ -145,6 +145,7 @@ const main = async () => {
     strategy: 'TrendLine',
     features,
     threshold: ML_THRESHOLD,
+    projectRoot: process.cwd(),
   });
 
   if (!mlResult) {

@@ -5,10 +5,15 @@ import { logger } from '@tradejs/infra/logger';
 import { ConnectorCreator } from '@tradejs/types';
 
 export const dynamic = 'force-dynamic';
+const projectRoot =
+  String(process.env.PROJECT_CWD || process.cwd()).trim() || process.cwd();
 
 export const GET = async () => {
   try {
-    const connectorCreator = await getConnectorCreatorByProvider('bybit');
+    const connectorCreator = await getConnectorCreatorByProvider(
+      'bybit',
+      projectRoot,
+    );
     if (!connectorCreator) {
       throw new Error('No connector available for provider');
     }

@@ -15,15 +15,27 @@ export type MlPredictParams = {
   features: Record<string, number>;
   threshold: number;
   grpcAddress?: string;
+  protoPath?: string;
+  projectRoot?: string;
 };
 
 const clientCache = new Map<string, any>();
 
-const resolveProtoPath = (): string => {
+const resolveProtoPath = (projectRoot?: string, protoPath?: string): string => {
+  if (protoPath && fs.existsSync(protoPath)) {
+    return protoPath;
+  }
+
+  const explicitRoot = String(projectRoot || '').trim();
+  const root = explicitRoot
+    ? path.resolve(explicitRoot)
+    : String(process.env.PROJECT_CWD || '').trim()
+      ? path.resolve(String(process.env.PROJECT_CWD || '').trim())
+      : process.cwd();
   const candidates = [
     path.resolve(__dirname, '../proto/ml_infer.proto'),
     path.resolve(__dirname, '../../proto/ml_infer.proto'),
-    path.resolve(process.cwd(), 'proto/ml_infer.proto'),
+    path.resolve(root, 'proto/ml_infer.proto'),
   ];
 
   for (const candidate of candidates) {
@@ -35,12 +47,17 @@ const resolveProtoPath = (): string => {
   return candidates[candidates.length - 1];
 };
 
-const getClient = (address: string) => {
-  const cached = clientCache.get(address);
+const getClient = (
+  address: string,
+  projectRoot?: string,
+  protoPath?: string,
+) => {
+  const resolvedProtoPath = resolveProtoPath(projectRoot, protoPath);
+  const cacheKey = `${address}::${resolvedProtoPath}`;
+  const cached = clientCache.get(cacheKey);
   if (cached) return cached;
 
-  const protoPath = resolveProtoPath();
-  const packageDefinition = protoLoader.loadSync(protoPath, {
+  const packageDefinition = protoLoader.loadSync(resolvedProtoPath, {
     keepCase: true,
     longs: String,
     enums: String,
@@ -52,7 +69,7 @@ const getClient = (address: string) => {
     address,
     grpc.credentials.createInsecure(),
   );
-  clientCache.set(address, client);
+  clientCache.set(cacheKey, client);
   return client;
 };
 
@@ -88,11 +105,13 @@ export const fetchMlThreshold = async ({
   features,
   threshold,
   grpcAddress,
+  protoPath,
+  projectRoot,
 }: MlPredictParams): Promise<MlPredictResponse | null> => {
   try {
     const address =
       grpcAddress || process.env.ML_GRPC_ADDRESS || 'localhost:50051';
-    const client = getClient(address);
+    const client = getClient(address, projectRoot, protoPath);
 
     return await new Promise((resolve, reject) => {
       client.Predict(

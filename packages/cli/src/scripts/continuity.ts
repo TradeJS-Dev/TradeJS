@@ -25,9 +25,11 @@ args.option(['U', 'user'], 'Use user confg', 'root');
 const flags = args.parse(process.argv);
 const interval = Number(flags.timeframe);
 const intervalKey = flags.timeframe.toString() as Interval;
+const projectRoot =
+  String(process.env.PROJECT_CWD || process.cwd()).trim() || process.cwd();
 
 const parseProviders = async (value: unknown): Promise<string[]> => {
-  const allProviders = await getAvailableConnectorProviders();
+  const allProviders = await getAvailableConnectorProviders(projectRoot);
   const raw = String(value || '')
     .trim()
     .toLowerCase();
@@ -85,7 +87,10 @@ const continuity = async () => {
   const providerIds = await parseProviders(flags.provider);
   const providers = await Promise.all(
     providerIds.map(async (providerId) => {
-      const connectorName = await getConnectorNameByProvider(providerId);
+      const connectorName = await getConnectorNameByProvider(
+        providerId,
+        projectRoot,
+      );
       if (!connectorName) {
         logger.warn(
           'Skip provider "%s": connector mapping is missing',
@@ -93,7 +98,10 @@ const continuity = async () => {
         );
         return null;
       }
-      const creator = await getConnectorCreatorByName(connectorName);
+      const creator = await getConnectorCreatorByName(
+        connectorName,
+        projectRoot,
+      );
       if (!creator) {
         logger.warn(
           'Skip provider "%s": connector "%s" is not registered',

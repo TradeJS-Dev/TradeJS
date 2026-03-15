@@ -53,12 +53,12 @@ jest.mock('@tradejs/core/strategies', () => ({
     mockResolveStrategyConfig(...args),
 }));
 
-jest.mock('../../../../node/src/strategyHelpers/config', () => ({
+jest.mock('../strategyHelpers/config', () => ({
   resolveStrategyConfig: (...args: unknown[]) =>
     mockResolveStrategyConfig(...args),
 }));
 
-jest.mock('../../../../node/src/strategyHelpers/runtime', () => ({
+jest.mock('../strategyHelpers/runtime', () => ({
   enrichSignalWithMl: (...args: unknown[]) => mockEnrichSignalWithMl(...args),
   enrichSignalWithAi: (...args: unknown[]) => mockEnrichSignalWithAi(...args),
   executeEntryOrder: (...args: unknown[]) => mockExecuteEntryOrder(...args),
@@ -70,23 +70,21 @@ jest.mock('@tradejs/infra/logger', () => ({
   },
 }));
 
-jest.mock('../../../../node/src/strategy/manifests', () => {
-  const actual = jest.requireActual('../../../../node/src/strategy/manifests');
+jest.mock('../strategy/manifests', () => {
+  const actual = jest.requireActual('../strategy/manifests');
   return {
     ...actual,
     getStrategyManifest: jest.fn(actual.getStrategyManifest),
   };
 });
 
-import { createStrategyRuntime } from '../../../../node/src/strategyRuntime';
+import { createStrategyRuntime } from '../strategyRuntime';
 import { logger } from '@tradejs/infra/logger';
-import * as manifestsModule from '../../../../node/src/strategy/manifests';
+import * as manifestsModule from '../strategy/manifests';
 import { strategyEntries } from '@tradejs/strategies';
 
 const realGetStrategyManifest = (
-  jest.requireActual(
-    '../../../../node/src/strategy/manifests',
-  ) as typeof manifestsModule
+  jest.requireActual('../strategy/manifests') as typeof manifestsModule
 ).getStrategyManifest;
 const mockGetStrategyManifest =
   manifestsModule.getStrategyManifest as jest.MockedFunction<

@@ -14,6 +14,7 @@ import {
   Tp,
 } from '@tradejs/types';
 import { buildMlPayload } from '../mlPayload';
+import { getTradejsProjectCwd } from '../tradejsConfig';
 
 interface EnrichSignalWithMlAiParams {
   signal: Signal;
@@ -85,6 +86,7 @@ export const enrichSignalWithMl = async ({
       strategy,
       features,
       threshold: ml.mlThreshold,
+      projectRoot: getTradejsProjectCwd(),
     });
 
     if (mlResult) {

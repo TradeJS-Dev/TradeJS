@@ -5,6 +5,7 @@ import path from 'path';
 interface Options {
   stringify?: boolean;
   lock?: boolean;
+  projectRoot?: string;
 }
 
 const DEFAULT_OPTIONS: Options = {
@@ -19,31 +20,48 @@ const logError = (message: string, ...args: unknown[]) => {
   console.error(`[infra:files] ${message}`, ...args);
 };
 
-const getPath = (dir: string, file: string, lock = false) => {
-  if (!lock) {
-    return path.join(process.cwd(), dir, `${file}.json`);
+const resolveProjectRoot = (projectRoot?: string): string => {
+  const explicit = String(projectRoot || '').trim();
+  if (explicit) {
+    return path.resolve(explicit);
   }
 
-  return path.join(
-    process.cwd(),
-    'data',
-    'cache',
-    `${file}.lock.${randomUUID()}.json`,
-  );
+  const fromEnv = String(process.env.PROJECT_CWD || '').trim();
+  if (fromEnv) {
+    return path.resolve(fromEnv);
+  }
+
+  return process.cwd();
 };
 
-const getDir = (dir: string) => path.join(process.cwd(), dir);
+const getPath = (
+  dir: string,
+  file: string,
+  lock = false,
+  projectRoot?: string,
+) => {
+  const root = resolveProjectRoot(projectRoot);
+  if (!lock) {
+    return path.join(root, dir, `${file}.json`);
+  }
 
-export const getFiles = async (dir: string) => {
-  return await fs.readdir(getDir(dir));
+  return path.join(root, 'data', 'cache', `${file}.lock.${randomUUID()}.json`);
+};
+
+const getDir = (dir: string, projectRoot?: string) =>
+  path.join(resolveProjectRoot(projectRoot), dir);
+
+export const getFiles = async (dir: string, projectRoot?: string) => {
+  return await fs.readdir(getDir(dir, projectRoot));
 };
 
 export const getFile = async (
   dir: string,
   file: string,
   fallback = [],
+  projectRoot?: string,
 ): Promise<any> => {
-  const fullPath = getPath(dir, file);
+  const fullPath = getPath(dir, file, false, projectRoot);
 
   try {
     await fs.access(fullPath);
@@ -67,12 +85,12 @@ export const setFile = async <T>(
   data: T,
   options: Options = {},
 ): Promise<void> => {
-  const { stringify, lock } = {
+  const { stringify, lock, projectRoot } = {
     ...DEFAULT_OPTIONS,
     ...options,
   };
-  const fullPath = getPath(dir, file);
-  const lockFullPath = getPath(dir, file, true);
+  const fullPath = getPath(dir, file, false, projectRoot);
+  const lockFullPath = getPath(dir, file, true, projectRoot);
 
   try {
     if (!lock) {

@@ -49,6 +49,8 @@ args.option(
 );
 
 const PRELOAD_START = getTimestamp(SIGNALS_PRELOAD_DAYS);
+const projectRoot =
+  String(process.env.PROJECT_CWD || process.cwd()).trim() || process.cwd();
 
 const flags = args.parse(process.argv);
 const minTouches = parseInt(flags.points);
@@ -95,7 +97,10 @@ const loadRuntimeStrategies = async (
       if (!strategyName) {
         return null;
       }
-      const strategyCreator = await getStrategyCreator(strategyName);
+      const strategyCreator = await getStrategyCreator(
+        strategyName,
+        projectRoot,
+      );
       if (!strategyCreator) {
         logger.warn('Skip unknown strategy config key: %s', key);
         return null;
@@ -112,7 +117,7 @@ const loadRuntimeStrategies = async (
 };
 
 const resolveSignalsConnectorName = async (value: unknown): Promise<string> => {
-  const connectorName = await resolveConnectorName(value);
+  const connectorName = await resolveConnectorName(value, projectRoot);
   if (connectorName) {
     return connectorName;
   }
@@ -205,7 +210,10 @@ const signals = async () => {
   const signals = new Array<Signal>();
 
   const connectorName = await resolveSignalsConnectorName(flags.connector);
-  const connectorFactory = await getConnectorCreatorByName(connectorName);
+  const connectorFactory = await getConnectorCreatorByName(
+    connectorName,
+    projectRoot,
+  );
   if (!connectorFactory) {
     throw new Error(`Connector "${connectorName}" is not registered`);
   }
@@ -219,6 +227,7 @@ const signals = async () => {
   if (connectorName.toLowerCase() === DEFAULT_CONNECTOR_NAME.toLowerCase()) {
     const binanceFactory = await getConnectorCreatorByName(
       ConnectorNames.Binance,
+      projectRoot,
     );
     if (binanceFactory) {
       btcBinanceConnector = await (binanceFactory as ConnectorCreator)({
@@ -233,6 +242,7 @@ const signals = async () => {
 
     const coinbaseFactory = await getConnectorCreatorByName(
       ConnectorNames.Coinbase,
+      projectRoot,
     );
     if (coinbaseFactory) {
       btcCoinbaseConnector = await (coinbaseFactory as ConnectorCreator)({

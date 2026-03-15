@@ -12,6 +12,9 @@ import { logger } from '@tradejs/infra/logger';
 import { getData, redisKeys, getKeys } from '@tradejs/infra/redis';
 import { ConnectorCreator, BotConfig } from '@tradejs/types';
 
+const projectRoot =
+  String(process.env.PROJECT_CWD || process.cwd()).trim() || process.cwd();
+
 export const runBot = async () => {
   const botResults = [];
   const preloadStart = getTimestamp(BOT_PRELOAD_DAYS);
@@ -51,11 +54,17 @@ export const runBot = async () => {
       }
 
       try {
-        const strategyCreator = await getStrategyCreator(strategyName);
+        const strategyCreator = await getStrategyCreator(
+          strategyName,
+          projectRoot,
+        );
         if (!strategyCreator) {
           throw new Error(`Unknown strategy: ${strategyName}`);
         }
-        const connectorCreator = await getConnectorCreatorByName(connectorName);
+        const connectorCreator = await getConnectorCreatorByName(
+          connectorName,
+          projectRoot,
+        );
         if (!connectorCreator) {
           throw new Error(`Unknown connector: ${connectorName}`);
         }
@@ -65,9 +74,11 @@ export const runBot = async () => {
         });
         const binanceConnectorCreator = await getConnectorCreatorByName(
           BUILTIN_CONNECTOR_NAMES.Binance,
+          projectRoot,
         );
         const coinbaseConnectorCreator = await getConnectorCreatorByName(
           BUILTIN_CONNECTOR_NAMES.Coinbase,
+          projectRoot,
         );
         if (!binanceConnectorCreator || !coinbaseConnectorCreator) {
           throw new Error('Binance/Coinbase connectors are required');

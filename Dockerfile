@@ -33,6 +33,7 @@ COPY proto ./proto
 COPY entrypoint.sh ./entrypoint.sh
 COPY cronjob /etc/crontabs/root
 
+RUN yarn workspace @tradejs/cli build
 RUN yarn workspace @tradejs/app build
 
 RUN chmod +x ./entrypoint.sh

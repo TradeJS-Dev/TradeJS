@@ -1,6 +1,7 @@
 describe('strategy manifests registry', () => {
   const loadTradejsConfigMock = jest.fn();
   const registerIndicatorEntriesMock = jest.fn();
+  const resetIndicatorRegistryCacheMock = jest.fn();
   const warnMock = jest.fn();
   const logMock = jest.fn();
 
@@ -8,6 +9,7 @@ describe('strategy manifests registry', () => {
     jest.resetModules();
     loadTradejsConfigMock.mockReset();
     registerIndicatorEntriesMock.mockReset();
+    resetIndicatorRegistryCacheMock.mockReset();
     warnMock.mockReset();
     logMock.mockReset();
     loadTradejsConfigMock.mockResolvedValue({
@@ -17,13 +19,14 @@ describe('strategy manifests registry', () => {
   });
 
   const loadModule = async () => {
-    jest.doMock('../../../../node/src/tradejsConfig', () => ({
+    jest.doMock('../../tradejsConfig', () => ({
+      getTradejsProjectCwd: (cwd?: string) => cwd || '/tmp/test-project',
       loadTradejsConfig: loadTradejsConfigMock,
       resolvePluginModuleSpecifier: (moduleName: string) => moduleName,
     }));
     jest.doMock('@tradejs/core/indicators', () => ({
       registerIndicatorEntries: registerIndicatorEntriesMock,
-      resetIndicatorRegistryCache: jest.fn(),
+      resetIndicatorRegistryCache: resetIndicatorRegistryCacheMock,
     }));
     jest.doMock('@tradejs/infra/logger', () => ({
       logger: {
@@ -32,7 +35,7 @@ describe('strategy manifests registry', () => {
       },
     }));
 
-    return import('../../../../node/src/strategy/manifests');
+    return import('../manifests');
   };
 
   it('starts empty and supports runtime registration + proxy access', async () => {
@@ -154,6 +157,10 @@ describe('strategy manifests registry', () => {
     const manifests = await loadModule();
     await manifests.ensureStrategyPluginsLoaded();
 
+    expect(registerIndicatorEntriesMock).toHaveBeenCalledTimes(2);
+    expect(resetIndicatorRegistryCacheMock).toHaveBeenCalledTimes(1);
+    expect(loadTradejsConfigMock).toHaveBeenCalledTimes(1);
+
     const names = await manifests.getAvailableStrategyNames();
     expect(names).toEqual(
       expect.arrayContaining(['PluginValid', 'PluginDefault']),
@@ -162,9 +169,6 @@ describe('strategy manifests registry', () => {
       pluginCreator,
     );
     expect(await manifests.getStrategyCreator('Unknown')).toBeUndefined();
-
-    expect(registerIndicatorEntriesMock).toHaveBeenCalledTimes(2);
-    expect(loadTradejsConfigMock).toHaveBeenCalledTimes(1);
 
     await manifests.ensureStrategyPluginsLoaded();
     expect(loadTradejsConfigMock).toHaveBeenCalledTimes(1);
@@ -179,6 +183,45 @@ describe('strategy manifests registry', () => {
     expect(
       warnMessages.some((message) => message.includes('Failed to load plugin')),
     ).toBe(true);
+  });
+
+  it('keeps strategy registry state isolated per project root', async () => {
+    const manifests = await loadModule();
+    const creatorA = jest.fn(async () => ({}) as any);
+    const creatorB = jest.fn(async () => ({}) as any);
+
+    manifests.registerStrategyEntries(
+      [
+        {
+          manifest: { name: 'SandboxStrategy' } as any,
+          creator: creatorA,
+        },
+      ],
+      '/tmp/project-a',
+    );
+    manifests.registerStrategyEntries(
+      [
+        {
+          manifest: { name: 'SandboxStrategy' } as any,
+          creator: creatorB,
+        },
+      ],
+      '/tmp/project-b',
+    );
+
+    expect(
+      manifests.getRegisteredStrategies('/tmp/project-a').SandboxStrategy,
+    ).toBe(creatorA);
+    expect(
+      manifests.getRegisteredStrategies('/tmp/project-b').SandboxStrategy,
+    ).toBe(creatorB);
+
+    manifests.resetStrategyRegistryCache('/tmp/project-a');
+
+    expect(manifests.getRegisteredStrategies('/tmp/project-a')).toEqual({});
+    expect(
+      manifests.getRegisteredStrategies('/tmp/project-b').SandboxStrategy,
+    ).toBe(creatorB);
   });
 
   it('warns for strategy plugin module with primitive export payload', async () => {

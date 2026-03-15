@@ -12,25 +12,56 @@ import {
 } from '@tradejs/core/indicators';
 import { logger } from '@tradejs/infra/logger';
 import {
+  getTradejsProjectCwd,
   loadTradejsConfig,
   resolvePluginModuleSpecifier,
 } from '../tradejsConfig';
 import * as tradejsConfig from '../tradejsConfig';
 
-const strategyCreators = new Map<string, StrategyCreator>();
-const strategyManifestsMap = new Map<string, StrategyManifest>();
+type StrategyRegistryState = {
+  strategyCreators: Map<string, StrategyCreator>;
+  strategyManifestsMap: Map<string, StrategyManifest>;
+  pluginsLoadPromise: Promise<void> | null;
+};
 
-let pluginsLoadPromise: Promise<void> | null = null;
+const createStrategyRegistryState = (): StrategyRegistryState => ({
+  strategyCreators: new Map<string, StrategyCreator>(),
+  strategyManifestsMap: new Map<string, StrategyManifest>(),
+  pluginsLoadPromise: null,
+});
+
+const registryStateByProjectRoot = new Map<string, StrategyRegistryState>();
+
+const getStrategyRegistryState = (
+  cwd = getTradejsProjectCwd(),
+): {
+  projectRoot: string;
+  state: StrategyRegistryState;
+} => {
+  const projectRoot = getTradejsProjectCwd(cwd);
+  let state = registryStateByProjectRoot.get(projectRoot);
+  if (!state) {
+    state = createStrategyRegistryState();
+    registryStateByProjectRoot.set(projectRoot, state);
+  }
+
+  return {
+    projectRoot,
+    state,
+  };
+};
 
 const toUniqueModules = (modules: string[] = []): string[] => [
   ...new Set(modules.map((moduleName) => moduleName.trim()).filter(Boolean)),
 ];
 
-const getConfiguredPluginModuleNames = async (): Promise<{
+const getConfiguredPluginModuleNames = async (
+  cwd = getTradejsProjectCwd(),
+): Promise<{
   strategyModules: string[];
   indicatorModules: string[];
 }> => {
-  const config = await loadTradejsConfig();
+  const config = await loadTradejsConfig(cwd);
   return {
     strategyModules: toUniqueModules(config.strategies),
     indicatorModules: toUniqueModules(config.indicators),
@@ -83,6 +114,7 @@ const extractIndicatorPluginDefinition = (
 const registerEntries = (
   entries: readonly StrategyRegistryEntry[],
   source: string,
+  state: StrategyRegistryState,
 ) => {
   for (const entry of entries) {
     const strategyName = entry.manifest?.name;
@@ -90,7 +122,7 @@ const registerEntries = (
       logger.warn('Skip strategy entry without name from %s', source);
       continue;
     }
-    if (strategyCreators.has(strategyName)) {
+    if (state.strategyCreators.has(strategyName)) {
       logger.warn(
         'Skip duplicate strategy "%s" from %s: already registered',
         strategyName,
@@ -98,8 +130,8 @@ const registerEntries = (
       );
       continue;
     }
-    strategyCreators.set(strategyName, entry.creator);
-    strategyManifestsMap.set(strategyName, entry.manifest);
+    state.strategyCreators.set(strategyName, entry.creator);
+    state.strategyManifestsMap.set(strategyName, entry.manifest);
   }
 };
 
@@ -112,118 +144,163 @@ const importStrategyPluginModule = async (
   return import(/* webpackIgnore: true */ moduleName);
 };
 
-export const ensureStrategyPluginsLoaded = async (): Promise<void> => {
-  if (pluginsLoadPromise) {
-    return pluginsLoadPromise;
-  }
+export const ensureStrategyPluginsLoaded = async (
+  cwd = getTradejsProjectCwd(),
+): Promise<void> => {
+  const { projectRoot, state } = getStrategyRegistryState(cwd);
 
-  pluginsLoadPromise = (async () => {
-    const { strategyModules, indicatorModules } =
-      await getConfiguredPluginModuleNames();
+  if (!state.pluginsLoadPromise) {
+    resetIndicatorRegistryCache(projectRoot);
 
-    const strategySet = new Set(strategyModules);
-    const indicatorSet = new Set(indicatorModules);
-    const pluginModuleNames = [
-      ...new Set([...strategyModules, ...indicatorModules]),
-    ];
-    if (!pluginModuleNames.length) return;
+    state.pluginsLoadPromise = (async () => {
+      const { strategyModules, indicatorModules } =
+        await getConfiguredPluginModuleNames(projectRoot);
 
-    for (const moduleName of pluginModuleNames) {
-      try {
-        const resolvedModuleName = resolvePluginModuleSpecifier(moduleName);
-        const moduleExport =
-          await importStrategyPluginModule(resolvedModuleName);
-        if (strategySet.has(moduleName)) {
-          const pluginDefinition =
-            extractStrategyPluginDefinition(moduleExport);
-          if (!pluginDefinition) {
-            logger.warn(
-              'Skip strategy plugin "%s": export { strategyEntries } is missing',
-              moduleName,
-            );
-          } else {
-            registerEntries(pluginDefinition.strategyEntries, moduleName);
-          }
-        }
+      const strategySet = new Set(strategyModules);
+      const indicatorSet = new Set(indicatorModules);
+      const pluginModuleNames = [
+        ...new Set([...strategyModules, ...indicatorModules]),
+      ];
+      if (!pluginModuleNames.length) {
+        return;
+      }
 
-        if (indicatorSet.has(moduleName)) {
-          const indicatorPluginDefinition =
-            extractIndicatorPluginDefinition(moduleExport);
-          if (!indicatorPluginDefinition) {
-            logger.warn(
-              'Skip indicator plugin "%s": export { indicatorEntries } is missing',
-              moduleName,
-            );
-          } else {
-            registerIndicatorEntries(
-              indicatorPluginDefinition.indicatorEntries,
-              moduleName,
-            );
-          }
-        }
-
-        if (!strategySet.has(moduleName) && !indicatorSet.has(moduleName)) {
-          logger.warn(
-            'Skip plugin "%s": no strategy/indicator sections requested in config',
+      for (const moduleName of pluginModuleNames) {
+        try {
+          const resolvedModuleName = resolvePluginModuleSpecifier(
             moduleName,
+            projectRoot,
+          );
+          const moduleExport =
+            await importStrategyPluginModule(resolvedModuleName);
+          if (strategySet.has(moduleName)) {
+            const pluginDefinition =
+              extractStrategyPluginDefinition(moduleExport);
+            if (!pluginDefinition) {
+              logger.warn(
+                'Skip strategy plugin "%s": export { strategyEntries } is missing',
+                moduleName,
+              );
+            } else {
+              registerEntries(
+                pluginDefinition.strategyEntries,
+                moduleName,
+                state,
+              );
+            }
+          }
+
+          if (indicatorSet.has(moduleName)) {
+            const indicatorPluginDefinition =
+              extractIndicatorPluginDefinition(moduleExport);
+            if (!indicatorPluginDefinition) {
+              logger.warn(
+                'Skip indicator plugin "%s": export { indicatorEntries } is missing',
+                moduleName,
+              );
+            } else {
+              registerIndicatorEntries(
+                indicatorPluginDefinition.indicatorEntries,
+                moduleName,
+                projectRoot,
+              );
+            }
+          }
+
+          if (!strategySet.has(moduleName) && !indicatorSet.has(moduleName)) {
+            logger.warn(
+              'Skip plugin "%s": no strategy/indicator sections requested in config',
+              moduleName,
+            );
+          }
+        } catch (error) {
+          logger.warn(
+            'Failed to load plugin "%s": %s',
+            moduleName,
+            String(error),
           );
         }
-      } catch (error) {
-        logger.warn(
-          'Failed to load plugin "%s": %s',
-          moduleName,
-          String(error),
-        );
       }
-    }
-  })();
+    })();
+  }
 
-  return pluginsLoadPromise;
+  await state.pluginsLoadPromise;
 };
 
-export const ensureIndicatorPluginsLoaded = ensureStrategyPluginsLoaded;
+export const ensureIndicatorPluginsLoaded = async (
+  cwd = getTradejsProjectCwd(),
+) => ensureStrategyPluginsLoaded(cwd);
 
 export const getStrategyCreator = async (
   name: string,
+  cwd = getTradejsProjectCwd(),
 ): Promise<StrategyCreator | undefined> => {
-  await ensureStrategyPluginsLoaded();
-  return strategyCreators.get(name);
+  await ensureStrategyPluginsLoaded(cwd);
+  const { state } = getStrategyRegistryState(cwd);
+  return state.strategyCreators.get(name);
 };
 
-export const getAvailableStrategyNames = async (): Promise<string[]> => {
-  await ensureStrategyPluginsLoaded();
-  return [...strategyCreators.keys()].sort((a, b) => a.localeCompare(b));
+export const getAvailableStrategyNames = async (
+  cwd = getTradejsProjectCwd(),
+): Promise<string[]> => {
+  await ensureStrategyPluginsLoaded(cwd);
+  const { state } = getStrategyRegistryState(cwd);
+  return [...state.strategyCreators.keys()].sort((a, b) => a.localeCompare(b));
 };
 
-export const getRegisteredStrategies = (): Record<string, StrategyCreator> => {
-  return Object.fromEntries(strategyCreators.entries());
+export const getRegisteredStrategies = (
+  cwd = getTradejsProjectCwd(),
+): Record<string, StrategyCreator> => {
+  const { state } = getStrategyRegistryState(cwd);
+  return Object.fromEntries(state.strategyCreators.entries());
 };
 
-export const getRegisteredManifests = (): StrategyManifest[] => {
-  return [...strategyManifestsMap.values()];
+export const getRegisteredManifests = (
+  cwd = getTradejsProjectCwd(),
+): StrategyManifest[] => {
+  const { state } = getStrategyRegistryState(cwd);
+  return [...state.strategyManifestsMap.values()];
 };
 
 export const getStrategyManifest = (
   name?: string,
+  cwd = getTradejsProjectCwd(),
 ): StrategyManifest | undefined => {
-  return name ? strategyManifestsMap.get(name) : undefined;
+  if (!name) {
+    return undefined;
+  }
+
+  const { state } = getStrategyRegistryState(cwd);
+  return state.strategyManifestsMap.get(name);
 };
 
-export const isKnownStrategy = (name: string): boolean => {
-  return strategyCreators.has(name);
+export const isKnownStrategy = (
+  name: string,
+  cwd = getTradejsProjectCwd(),
+): boolean => {
+  const { state } = getStrategyRegistryState(cwd);
+  return state.strategyCreators.has(name);
 };
 
 export const registerStrategyEntries = (
   entries: readonly StrategyRegistryEntry[],
+  cwd = getTradejsProjectCwd(),
 ) => {
-  registerEntries(entries, 'runtime');
+  const { state } = getStrategyRegistryState(cwd);
+  registerEntries(entries, 'runtime', state);
 };
 
-export const resetStrategyRegistryCache = () => {
-  strategyCreators.clear();
-  strategyManifestsMap.clear();
-  resetIndicatorRegistryCache();
-  pluginsLoadPromise = null;
+export const resetStrategyRegistryCache = (cwd?: string) => {
+  const normalizedCwd = String(cwd ?? '').trim();
+  if (!normalizedCwd) {
+    registryStateByProjectRoot.clear();
+    resetIndicatorRegistryCache();
+    return;
+  }
+
+  const projectRoot = getTradejsProjectCwd(normalizedCwd);
+  registryStateByProjectRoot.delete(projectRoot);
+  resetIndicatorRegistryCache(projectRoot);
 };
 
 export const strategies = new Proxy(
@@ -233,10 +310,10 @@ export const strategies = new Proxy(
       if (typeof property !== 'string') {
         return undefined;
       }
-      return strategyCreators.get(property);
+      return getStrategyRegistryState().state.strategyCreators.get(property);
     },
     ownKeys: () => {
-      return [...strategyCreators.keys()];
+      return [...getStrategyRegistryState().state.strategyCreators.keys()];
     },
     getOwnPropertyDescriptor: () => ({
       enumerable: true,

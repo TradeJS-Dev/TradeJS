@@ -5,6 +5,8 @@ import { getTopTickers } from '@tradejs/core/tickers';
 import { logger } from '@tradejs/infra/logger';
 
 export const dynamic = 'force-dynamic';
+const projectRoot =
+  String(process.env.PROJECT_CWD || process.cwd()).trim() || process.cwd();
 
 interface Params {
   provider: string;
@@ -17,8 +19,8 @@ export const GET = async (
   try {
     const { provider } = await params;
     const connectorCreator =
-      (await getConnectorCreatorByProvider(provider)) ||
-      (await getConnectorCreatorByProvider('bybit'));
+      (await getConnectorCreatorByProvider(provider, projectRoot)) ||
+      (await getConnectorCreatorByProvider('bybit', projectRoot));
     if (!connectorCreator) {
       throw new Error('No connector available for provider');
     }

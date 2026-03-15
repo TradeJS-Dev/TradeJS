@@ -146,6 +146,7 @@ type CreateIndicatorsOptions = {
   includeMlPayload?: boolean;
   btcBinanceData?: Candle[];
   btcCoinbaseData?: Candle[];
+  pluginRegistryScope?: string;
 };
 
 export interface IndicatorPeriods {
@@ -204,7 +205,9 @@ export const createIndicators = (
     periods?: Partial<IndicatorPeriods>;
   } = {},
 ) => {
-  const indicatorPluginEntries = getRegisteredIndicatorEntries();
+  const indicatorPluginEntries = getRegisteredIndicatorEntries(
+    options.pluginRegistryScope,
+  );
   const includeMlPayload = options.includeMlPayload !== false;
   const indicatorPeriods = {
     ...DEFAULT_INDICATOR_PERIODS,

@@ -1,6 +1,6 @@
 {
   "name": "@tradejs/node",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Node-only TradeJS runtime for strategies, backtests, Pine loading, and plugin registries.",
   "keywords": [
     "tradejs",

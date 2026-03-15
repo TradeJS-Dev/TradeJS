@@ -12,17 +12,20 @@ import {
 export const registerIndicatorEntries = (
   entries: readonly IndicatorPluginEntry[],
   source: string,
-) => registerIndicatorEntriesCore(entries, source);
+  scope?: string,
+) => registerIndicatorEntriesCore(entries, source, scope);
 
-export const getRegisteredIndicatorEntries = () =>
-  getRegisteredIndicatorEntriesCore();
+export const getRegisteredIndicatorEntries = (scope?: string) =>
+  getRegisteredIndicatorEntriesCore(scope);
 
-export const getPluginIndicatorCatalog = () => getPluginIndicatorCatalogCore();
+export const getPluginIndicatorCatalog = (scope?: string) =>
+  getPluginIndicatorCatalogCore(scope);
 
 export type IndicatorRendererDescriptor = {
   indicatorId: string;
   renderer: IndicatorPluginRenderer;
 };
 
-export const getPluginIndicatorRenderers = (): IndicatorRendererDescriptor[] =>
-  getPluginIndicatorRenderersCore();
+export const getPluginIndicatorRenderers = (
+  scope?: string,
+): IndicatorRendererDescriptor[] => getPluginIndicatorRenderersCore(scope);

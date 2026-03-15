@@ -3,11 +3,11 @@ const mockTrimSeriesDeep = jest.fn((value: unknown) => ({
   trimmed: value,
 }));
 
-jest.mock('../../../../node/src/strategy/manifests', () => ({
+jest.mock('../strategy/manifests', () => ({
   getStrategyManifest: (strategy?: string) => mockGetStrategyManifest(strategy),
 }));
 
-jest.mock('../../../../node/src/aiShared', () => ({
+jest.mock('../aiShared', () => ({
   trimSeriesDeep: (value: unknown) => mockTrimSeriesDeep(value),
 }));
 
@@ -16,8 +16,8 @@ import {
   buildAiPayloadByStrategy,
   buildAiSystemPromptAddonByStrategy,
   getStrategyAiAdapter,
-} from '../../../../node/src/strategyAdapters/ai';
-import { getStrategyMlAdapter } from '../../../../node/src/strategyAdapters/ml';
+} from '../strategyAdapters/ai';
+import { getStrategyMlAdapter } from '../strategyAdapters/ml';
 
 const makeSignal = () =>
   ({

@@ -5,15 +5,44 @@ import {
 } from '@tradejs/types';
 import { logger } from '@tradejs/infra/logger';
 import {
+  getTradejsProjectCwd,
   loadTradejsConfig,
   resolvePluginModuleSpecifier,
 } from './tradejsConfig';
 import * as tradejsConfig from './tradejsConfig';
 
-const connectorCreators = new Map<string, ConnectorCreator>();
-const providerToConnectorName = new Map<string, string>();
+type ConnectorRegistryState = {
+  connectorCreators: Map<string, ConnectorCreator>;
+  providerToConnectorName: Map<string, string>;
+  pluginsLoadPromise: Promise<void> | null;
+};
 
-let pluginsLoadPromise: Promise<void> | null = null;
+const createConnectorRegistryState = (): ConnectorRegistryState => ({
+  connectorCreators: new Map<string, ConnectorCreator>(),
+  providerToConnectorName: new Map<string, string>(),
+  pluginsLoadPromise: null,
+});
+
+const registryStateByProjectRoot = new Map<string, ConnectorRegistryState>();
+
+const getConnectorRegistryState = (
+  cwd = getTradejsProjectCwd(),
+): {
+  projectRoot: string;
+  state: ConnectorRegistryState;
+} => {
+  const projectRoot = getTradejsProjectCwd(cwd);
+  let state = registryStateByProjectRoot.get(projectRoot);
+  if (!state) {
+    state = createConnectorRegistryState();
+    registryStateByProjectRoot.set(projectRoot, state);
+  }
+
+  return {
+    projectRoot,
+    state,
+  };
+};
 
 export const BUILTIN_CONNECTOR_NAMES = {
   ByBit: 'ByBit',
@@ -31,7 +60,10 @@ const toUniqueModules = (modules: string[] = []): string[] => [
   ...new Set(modules.map((moduleName) => moduleName.trim()).filter(Boolean)),
 ];
 
-const findConnectorNameInsensitive = (name: string): string | null => {
+const findConnectorNameInsensitive = (
+  name: string,
+  connectorCreators: ReadonlyMap<string, ConnectorCreator>,
+): string | null => {
   const normalized = name.trim().toLowerCase();
   if (!normalized) {
     return null;
@@ -64,6 +96,7 @@ const registerProvider = (
   provider: string,
   connectorName: string,
   source: string,
+  providerToConnectorName: Map<string, string>,
 ) => {
   const existing = providerToConnectorName.get(provider);
   if (existing && existing !== connectorName) {
@@ -79,7 +112,11 @@ const registerProvider = (
   providerToConnectorName.set(provider, connectorName);
 };
 
-const registerEntry = (entry: ConnectorRegistryEntry, source: string) => {
+const registerEntry = (
+  entry: ConnectorRegistryEntry,
+  source: string,
+  state: ConnectorRegistryState,
+) => {
   const connectorName = String(entry?.name ?? '').trim();
   if (!connectorName) {
     logger.warn('Skip connector entry without name from %s', source);
@@ -95,7 +132,10 @@ const registerEntry = (entry: ConnectorRegistryEntry, source: string) => {
     return;
   }
 
-  const existingByName = findConnectorNameInsensitive(connectorName);
+  const existingByName = findConnectorNameInsensitive(
+    connectorName,
+    state.connectorCreators,
+  );
   if (existingByName) {
     logger.warn(
       'Skip duplicate connector "%s" from %s: already registered as %s',
@@ -106,19 +146,25 @@ const registerEntry = (entry: ConnectorRegistryEntry, source: string) => {
     return;
   }
 
-  connectorCreators.set(connectorName, entry.creator);
+  state.connectorCreators.set(connectorName, entry.creator);
   const providers = normalizeProviders(entry.providers, connectorName);
   for (const provider of providers) {
-    registerProvider(provider, connectorName, source);
+    registerProvider(
+      provider,
+      connectorName,
+      source,
+      state.providerToConnectorName,
+    );
   }
 };
 
 const registerEntries = (
   entries: readonly ConnectorRegistryEntry[],
   source: string,
+  state: ConnectorRegistryState,
 ) => {
   for (const entry of entries) {
-    registerEntry(entry, source);
+    registerEntry(entry, source, state);
   }
 };
 
@@ -158,129 +204,161 @@ const importConnectorPluginModule = async (
   return import(/* webpackIgnore: true */ moduleName);
 };
 
-export const ensureConnectorPluginsLoaded = async (): Promise<void> => {
-  if (pluginsLoadPromise) {
-    return pluginsLoadPromise;
+export const ensureConnectorPluginsLoaded = async (
+  cwd = getTradejsProjectCwd(),
+): Promise<void> => {
+  const { projectRoot, state } = getConnectorRegistryState(cwd);
+
+  if (!state.pluginsLoadPromise) {
+    state.pluginsLoadPromise = (async () => {
+      const config = await loadTradejsConfig(projectRoot);
+      const connectorModules = toUniqueModules(config.connectors);
+      if (!connectorModules.length) {
+        return;
+      }
+
+      for (const moduleName of connectorModules) {
+        try {
+          const resolvedModuleName = resolvePluginModuleSpecifier(
+            moduleName,
+            projectRoot,
+          );
+          const moduleExport =
+            await importConnectorPluginModule(resolvedModuleName);
+          const pluginDefinition =
+            extractConnectorPluginDefinition(moduleExport);
+          if (!pluginDefinition) {
+            logger.warn(
+              'Skip connector plugin "%s": export { connectorEntries } is missing',
+              moduleName,
+            );
+            continue;
+          }
+          registerEntries(pluginDefinition.connectorEntries, moduleName, state);
+        } catch (error) {
+          logger.warn(
+            'Failed to load connector plugin "%s": %s',
+            moduleName,
+            String(error),
+          );
+        }
+      }
+    })();
   }
 
-  pluginsLoadPromise = (async () => {
-    const config = await loadTradejsConfig();
-    const connectorModules = toUniqueModules(config.connectors);
-    if (!connectorModules.length) {
-      return;
-    }
-
-    for (const moduleName of connectorModules) {
-      try {
-        const resolvedModuleName = resolvePluginModuleSpecifier(moduleName);
-        const moduleExport =
-          await importConnectorPluginModule(resolvedModuleName);
-        const pluginDefinition = extractConnectorPluginDefinition(moduleExport);
-        if (!pluginDefinition) {
-          logger.warn(
-            'Skip connector plugin "%s": export { connectorEntries } is missing',
-            moduleName,
-          );
-          continue;
-        }
-        registerEntries(pluginDefinition.connectorEntries, moduleName);
-      } catch (error) {
-        logger.warn(
-          'Failed to load connector plugin "%s": %s',
-          moduleName,
-          String(error),
-        );
-      }
-    }
-  })();
-
-  return pluginsLoadPromise;
+  await state.pluginsLoadPromise;
 };
 
 export const getConnectorCreatorByName = async (
   connectorName: unknown,
+  cwd = getTradejsProjectCwd(),
 ): Promise<ConnectorCreator | undefined> => {
-  await ensureConnectorPluginsLoaded();
+  await ensureConnectorPluginsLoaded(cwd);
+  const { state } = getConnectorRegistryState(cwd);
   const raw = String(connectorName ?? '').trim();
   if (!raw) {
     return undefined;
   }
 
-  const direct = connectorCreators.get(raw);
+  const direct = state.connectorCreators.get(raw);
   if (direct) {
     return direct;
   }
 
-  const existing = findConnectorNameInsensitive(raw);
+  const existing = findConnectorNameInsensitive(raw, state.connectorCreators);
   if (!existing) {
     return undefined;
   }
 
-  return connectorCreators.get(existing);
+  return state.connectorCreators.get(existing);
 };
 
 export const getConnectorNameByProvider = async (
   provider: unknown,
+  cwd = getTradejsProjectCwd(),
 ): Promise<string | undefined> => {
-  await ensureConnectorPluginsLoaded();
+  await ensureConnectorPluginsLoaded(cwd);
+  const { state } = getConnectorRegistryState(cwd);
   const normalized = normalizeProvider(provider);
   if (!normalized) {
     return undefined;
   }
-  return providerToConnectorName.get(normalized);
+  return state.providerToConnectorName.get(normalized);
 };
 
 export const getConnectorCreatorByProvider = async (
   provider: unknown,
+  cwd = getTradejsProjectCwd(),
 ): Promise<ConnectorCreator | undefined> => {
-  const connectorName = await getConnectorNameByProvider(provider);
+  await ensureConnectorPluginsLoaded(cwd);
+  const { state } = getConnectorRegistryState(cwd);
+  const normalized = normalizeProvider(provider);
+  if (!normalized) {
+    return undefined;
+  }
+
+  const connectorName = state.providerToConnectorName.get(normalized);
   if (!connectorName) {
     return undefined;
   }
-  return connectorCreators.get(connectorName);
+  return state.connectorCreators.get(connectorName);
 };
 
 export const resolveConnectorName = async (
   providerOrName: unknown,
+  cwd = getTradejsProjectCwd(),
 ): Promise<string | undefined> => {
+  await ensureConnectorPluginsLoaded(cwd);
+  const { state } = getConnectorRegistryState(cwd);
   const raw = String(providerOrName ?? '').trim();
   if (!raw) {
     return undefined;
   }
 
-  const byProvider = await getConnectorNameByProvider(raw);
+  const byProvider = state.providerToConnectorName.get(normalizeProvider(raw));
   if (byProvider) {
     return byProvider;
   }
 
-  const byName = await getConnectorCreatorByName(raw);
-  if (!byName) {
-    return undefined;
-  }
-
-  return findConnectorNameInsensitive(raw) ?? undefined;
+  return state.connectorCreators.get(raw) && raw
+    ? raw
+    : findConnectorNameInsensitive(raw, state.connectorCreators) ?? undefined;
 };
 
-export const getAvailableConnectorNames = async (): Promise<string[]> => {
-  await ensureConnectorPluginsLoaded();
-  return [...connectorCreators.keys()].sort((a, b) => a.localeCompare(b));
+export const getAvailableConnectorNames = async (
+  cwd = getTradejsProjectCwd(),
+): Promise<string[]> => {
+  await ensureConnectorPluginsLoaded(cwd);
+  const { state } = getConnectorRegistryState(cwd);
+  return [...state.connectorCreators.keys()].sort((a, b) => a.localeCompare(b));
 };
 
-export const getAvailableConnectorProviders = async (): Promise<string[]> => {
-  await ensureConnectorPluginsLoaded();
-  return [...providerToConnectorName.keys()].sort((a, b) => a.localeCompare(b));
+export const getAvailableConnectorProviders = async (
+  cwd = getTradejsProjectCwd(),
+): Promise<string[]> => {
+  await ensureConnectorPluginsLoaded(cwd);
+  const { state } = getConnectorRegistryState(cwd);
+  return [...state.providerToConnectorName.keys()].sort((a, b) =>
+    a.localeCompare(b),
+  );
 };
 
 export const registerConnectorEntries = (
   entries: readonly ConnectorRegistryEntry[],
+  cwd = getTradejsProjectCwd(),
 ) => {
-  registerEntries(entries, 'runtime');
+  const { state } = getConnectorRegistryState(cwd);
+  registerEntries(entries, 'runtime', state);
 };
 
-export const resetConnectorRegistryCache = () => {
-  connectorCreators.clear();
-  providerToConnectorName.clear();
-  pluginsLoadPromise = null;
+export const resetConnectorRegistryCache = (cwd?: string) => {
+  const normalizedCwd = String(cwd ?? '').trim();
+  if (!normalizedCwd) {
+    registryStateByProjectRoot.clear();
+    return;
+  }
+
+  registryStateByProjectRoot.delete(getTradejsProjectCwd(normalizedCwd));
 };
 
 export const DEFAULT_CONNECTOR_NAME = BUILTIN_CONNECTOR_NAMES.ByBit;

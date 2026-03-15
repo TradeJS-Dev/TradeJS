@@ -14,6 +14,7 @@ import {
 } from './strategyHelpers/runtime';
 import { createLoadPineScript } from './pine';
 import { getStrategyManifest } from './strategy/manifests';
+import { getTradejsProjectCwd } from './tradejsConfig';
 import { resolveStrategyConfig } from './strategyHelpers/config';
 import {
   CreateStrategyCore,
@@ -295,6 +296,8 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
   manifest: staticManifest,
   strategyDirectory,
 }: CreateStrategyRuntimeParams<TConfig>): StrategyCreator => {
+  const projectRoot = getTradejsProjectCwd();
+
   const resolveManifest = (name?: string): StrategyManifest | undefined => {
     if (!name) {
       return undefined;
@@ -304,14 +307,14 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
       return staticManifest;
     }
 
-    return getStrategyManifest(name);
+    return getStrategyManifest(name, projectRoot);
   };
 
   const loadPineScript = createLoadPineScript(
     strategyDirectory
       ? path.resolve(strategyDirectory)
       : path.resolve(
-          process.cwd(),
+          projectRoot,
           'packages',
           'strategies',
           'src',
@@ -430,6 +433,7 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
       btcBinanceData,
       btcCoinbaseData,
       periods: buildDefaultIndicatorPeriods(config as any),
+      pluginRegistryScope: projectRoot,
     });
     const strategyApi = createStrategyAPI({
       strategy: strategyName as any,

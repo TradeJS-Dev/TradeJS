@@ -76,6 +76,8 @@ const flags = args.parse(process.argv);
 const interval = flags.timeframe.toString() as Interval;
 const progressStep = flags.progressStep;
 const uuid = (len = 12) => uuidv4().slice(-len);
+const projectRoot =
+  String(process.env.PROJECT_CWD || process.cwd()).trim() || process.cwd();
 const testerWorkerPathCandidates = [
   // `tradejs` bin runs from dist/cli.js, so bundled commands resolve from `dist`.
   path.resolve(__dirname, './workers/testerWorker.js'),
@@ -156,7 +158,7 @@ const isStrategyConfigGrid = (value: unknown): value is StrategyConfigGrid => {
 const resolveBacktestConnectorName = async (
   value: unknown,
 ): Promise<string> => {
-  const connectorName = await resolveConnectorName(value);
+  const connectorName = await resolveConnectorName(value, projectRoot);
   if (connectorName) {
     return connectorName;
   }
@@ -233,7 +235,10 @@ const backtest = async () => {
   }
 
   const connectorName = await resolveBacktestConnectorName(flags.connector);
-  const connectorFactory = await getConnectorCreatorByName(connectorName);
+  const connectorFactory = await getConnectorCreatorByName(
+    connectorName,
+    projectRoot,
+  );
   if (!connectorFactory) {
     throw new Error(`Connector "${connectorName}" is not registered`);
   }
@@ -259,9 +264,11 @@ const backtest = async () => {
 
     const binanceConnectorCreator = await getConnectorCreatorByName(
       ConnectorNames.Binance,
+      projectRoot,
     );
     const coinbaseConnectorCreator = await getConnectorCreatorByName(
       ConnectorNames.Coinbase,
+      projectRoot,
     );
     if (!binanceConnectorCreator || !coinbaseConnectorCreator) {
       throw new Error('Binance/Coinbase connectors are required');

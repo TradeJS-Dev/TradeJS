@@ -52,6 +52,7 @@ export interface StrategyIndicatorsStateParams {
   btcBinanceData?: KlineChartData;
   btcCoinbaseData?: KlineChartData;
   periods?: Partial<IndicatorPeriods>;
+  pluginRegistryScope?: string;
 }
 
 export const createStrategyIndicatorsState = ({
@@ -61,6 +62,7 @@ export const createStrategyIndicatorsState = ({
   btcBinanceData,
   btcCoinbaseData,
   periods,
+  pluginRegistryScope,
 }: StrategyIndicatorsStateParams): StrategyIndicatorsState => {
   let controller: IndicatorsController | null =
     env === 'BACKTEST'
@@ -68,6 +70,7 @@ export const createStrategyIndicatorsState = ({
           periods,
           btcBinanceData,
           btcCoinbaseData,
+          pluginRegistryScope,
         })
       : null;
   let currentBarPair:
@@ -96,6 +99,7 @@ export const createStrategyIndicatorsState = ({
       periods,
       btcBinanceData,
       btcCoinbaseData,
+      pluginRegistryScope,
     });
 
     const lastCandle = data[data.length - 1];

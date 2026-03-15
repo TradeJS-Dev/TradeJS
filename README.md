@@ -172,6 +172,7 @@ Expected plugin exports:
 Sandbox deterministic e2e example:
 
 ```bash
+yarn sandbox:refresh # optional after publishing newer @tradejs/* versions
 yarn sandbox:install
 yarn sandbox:infra-up
 yarn sandbox:e2e

@@ -8,6 +8,8 @@ import { KlineChartData } from '@tradejs/types';
 const DIR = 'data/history';
 const re = /^(.+?)_(\d+)\.json$/; // SYMBOL_INTERVAL.json
 const BATCH = 2000;
+const projectRoot =
+  String(process.env.PROJECT_CWD || process.cwd()).trim() || process.cwd();
 
 const migrateFile = async (file: string) => {
   const m = re.exec(file);
@@ -15,7 +17,12 @@ const migrateFile = async (file: string) => {
   const symbol = m[1];
   const interval = Number(m[2]);
 
-  const data = (await getFile(DIR, `${symbol}_${interval}`)) as KlineChartData;
+  const data = (await getFile(
+    DIR,
+    `${symbol}_${interval}`,
+    [],
+    projectRoot,
+  )) as KlineChartData;
 
   const rows = toRows(symbol, interval, data);
 
@@ -25,7 +32,7 @@ const migrateFile = async (file: string) => {
 };
 
 const migration = async () => {
-  const files = await getFiles(DIR);
+  const files = await getFiles(DIR, projectRoot);
 
   const bar = new ProgressBar(
     ':current/:total [:bar][:percent] :eta(s) :file',

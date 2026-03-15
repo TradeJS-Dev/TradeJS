@@ -20,12 +20,47 @@ import {
   getConnectorCreatorByName,
 } from './connectorsRegistry';
 import { createTestConnector } from './testConnector';
+import { getTradejsProjectCwd } from './tradejsConfig';
 
 const preloadStart = getTimestamp(PRELOAD_DAYS);
-const coinKlineCache = new Map<string, KlineChartData>();
-const btcKlineCache = new Map<string, KlineChartData>();
-const btcBinanceKlineCache = new Map<string, KlineChartData>();
-const btcCoinbaseKlineCache = new Map<string, KlineChartData>();
+
+type TestingKlineCacheState = {
+  coinKlineCache: Map<string, KlineChartData>;
+  btcKlineCache: Map<string, KlineChartData>;
+  btcBinanceKlineCache: Map<string, KlineChartData>;
+  btcCoinbaseKlineCache: Map<string, KlineChartData>;
+};
+
+const createTestingKlineCacheState = (): TestingKlineCacheState => ({
+  coinKlineCache: new Map<string, KlineChartData>(),
+  btcKlineCache: new Map<string, KlineChartData>(),
+  btcBinanceKlineCache: new Map<string, KlineChartData>(),
+  btcCoinbaseKlineCache: new Map<string, KlineChartData>(),
+});
+
+const testingKlineCacheStateByProjectRoot = new Map<
+  string,
+  TestingKlineCacheState
+>();
+
+const getTestingKlineCacheState = (
+  cwd = getTradejsProjectCwd(),
+): {
+  projectRoot: string;
+  state: TestingKlineCacheState;
+} => {
+  const projectRoot = getTradejsProjectCwd(cwd);
+  let state = testingKlineCacheStateByProjectRoot.get(projectRoot);
+  if (!state) {
+    state = createTestingKlineCacheState();
+    testingKlineCacheStateByProjectRoot.set(projectRoot, state);
+  }
+
+  return {
+    projectRoot,
+    state,
+  };
+};
 
 const getKlineCacheKey = (params: {
   userName: string;
@@ -47,11 +82,16 @@ const getKlineCacheKey = (params: {
   ].join(':');
 };
 
-export const resetTestingKlineCache = () => {
-  coinKlineCache.clear();
-  btcKlineCache.clear();
-  btcBinanceKlineCache.clear();
-  btcCoinbaseKlineCache.clear();
+export const resetTestingKlineCache = (cwd?: string) => {
+  const normalizedCwd = String(cwd ?? '').trim();
+  if (!normalizedCwd) {
+    testingKlineCacheStateByProjectRoot.clear();
+    return;
+  }
+
+  testingKlineCacheStateByProjectRoot.delete(
+    getTradejsProjectCwd(normalizedCwd),
+  );
 };
 
 export const testing: TestingBox = async ({
@@ -72,22 +112,29 @@ export const testing: TestingBox = async ({
   }
   // TODO: Add explicit end validation (and consistent error handling) similar to start validation.
 
-  const connectorCreator = await getConnectorCreatorByName(connectorName);
+  const { projectRoot, state } = getTestingKlineCacheState();
+
+  const connectorCreator = await getConnectorCreatorByName(
+    connectorName,
+    projectRoot,
+  );
   if (!connectorCreator) {
     throw new Error(`Unknown connector: ${connectorName}`);
   }
   const connector = await (connectorCreator as ConnectorCreator)({
     userName,
   });
-  const strategyCreator = await getStrategyCreator(strategyName);
+  const strategyCreator = await getStrategyCreator(strategyName, projectRoot);
   if (!strategyCreator) {
     throw new Error(`Unknown strategy: ${strategyName}`);
   }
   const binanceCreator = await getConnectorCreatorByName(
     BUILTIN_CONNECTOR_NAMES.Binance,
+    projectRoot,
   );
   const coinbaseCreator = await getConnectorCreatorByName(
     BUILTIN_CONNECTOR_NAMES.Coinbase,
+    projectRoot,
   );
   if (!binanceCreator || !coinbaseCreator) {
     logger.warn(
@@ -115,8 +162,8 @@ export const testing: TestingBox = async ({
     cacheOnly,
   });
 
-  const cachedCoinData = coinKlineCache.get(coinCacheKey);
-  const cachedBtcData = btcKlineCache.get(btcCacheKey);
+  const cachedCoinData = state.coinKlineCache.get(coinCacheKey);
+  const cachedBtcData = state.btcKlineCache.get(btcCacheKey);
   const btcBinanceCacheKey = getKlineCacheKey({
     userName,
     connectorName: binanceCreator
@@ -137,8 +184,10 @@ export const testing: TestingBox = async ({
     interval,
     cacheOnly,
   });
-  const cachedBtcBinanceData = btcBinanceKlineCache.get(btcBinanceCacheKey);
-  const cachedBtcCoinbaseData = btcCoinbaseKlineCache.get(btcCoinbaseCacheKey);
+  const cachedBtcBinanceData =
+    state.btcBinanceKlineCache.get(btcBinanceCacheKey);
+  const cachedBtcCoinbaseData =
+    state.btcCoinbaseKlineCache.get(btcCoinbaseCacheKey);
 
   const [data, btcData, btcBinanceData, btcCoinbaseData] = await Promise.all([
     cachedCoinData
@@ -206,16 +255,16 @@ export const testing: TestingBox = async ({
   ]);
 
   if (!cachedCoinData) {
-    coinKlineCache.set(coinCacheKey, data);
+    state.coinKlineCache.set(coinCacheKey, data);
   }
   if (!cachedBtcData) {
-    btcKlineCache.set(btcCacheKey, btcData);
+    state.btcKlineCache.set(btcCacheKey, btcData);
   }
   if (!cachedBtcBinanceData) {
-    btcBinanceKlineCache.set(btcBinanceCacheKey, btcBinanceData);
+    state.btcBinanceKlineCache.set(btcBinanceCacheKey, btcBinanceData);
   }
   if (!cachedBtcCoinbaseData) {
-    btcCoinbaseKlineCache.set(btcCoinbaseCacheKey, btcCoinbaseData);
+    state.btcCoinbaseKlineCache.set(btcCoinbaseCacheKey, btcCoinbaseData);
   }
 
   const prevDataRaw = data.filter(

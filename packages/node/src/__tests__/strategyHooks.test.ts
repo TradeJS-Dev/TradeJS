@@ -1,7 +1,7 @@
 import { createCloseOppositeBeforePlaceOrderHook } from '@tradejs/node/strategies';
-import { closeOppositePositionsBeforeOpen } from '../../../../node/src/closeOppositePositionsBeforeOpen';
+import { closeOppositePositionsBeforeOpen } from '../closeOppositePositionsBeforeOpen';
 
-jest.mock('../../../../node/src/closeOppositePositionsBeforeOpen', () => ({
+jest.mock('../closeOppositePositionsBeforeOpen', () => ({
   closeOppositePositionsBeforeOpen: jest.fn(),
 }));
 

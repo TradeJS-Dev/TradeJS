@@ -33,11 +33,15 @@ import {
   TestThresholdsKey,
   Signal,
 } from '@tradejs/types';
+import { getTradejsProjectCwd } from './tradejsConfig';
+
+const getProjectRoot = (): string => getTradejsProjectCwd();
 
 export const cleanFiles = async (dir: string) => {
   let completed = 0;
 
-  const files = await getFiles(dir);
+  const projectRoot = getProjectRoot();
+  const files = await getFiles(dir, projectRoot);
 
   const bar = new ProgressBar(':current/:total [:bar][:percent] :eta(s)', {
     total: files.length,
@@ -218,6 +222,7 @@ export const makeScreenshots = async (
   signals: Signal[],
   interval: Interval,
 ) => {
+  const projectRoot = getProjectRoot();
   const bar = new ProgressBar(
     ':current/:total [:bar][:percent] :eta(s) :symbol',
     {
@@ -233,7 +238,7 @@ export const makeScreenshots = async (
     SCREENSHOT_CONCURRENCY_LIMIT,
     async (signal) => {
       try {
-        await screenDashboard({ ...signal, interval });
+        await screenDashboard({ ...signal, interval }, projectRoot);
       } catch (error) {
         logger.error(
           'Failed screenshot: %s (%s)',

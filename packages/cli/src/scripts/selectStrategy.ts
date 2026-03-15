@@ -3,10 +3,12 @@ import chalk from 'chalk';
 import { getAvailableStrategyNames } from '@tradejs/node/strategies';
 
 const defaultStrategy = 'TrendLine';
+const projectRoot =
+  String(process.env.PROJECT_CWD || process.cwd()).trim() || process.cwd();
 
 const getStrategyChoices = async (): Promise<string[]> => {
   try {
-    const loaded = await getAvailableStrategyNames();
+    const loaded = await getAvailableStrategyNames(projectRoot);
     if (loaded.length) {
       return loaded;
     }

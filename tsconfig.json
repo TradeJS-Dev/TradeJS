@@ -1,26 +1,8 @@
 {
+  "extends": "./tsconfig.base.json",
   "compilerOptions": {
-    "lib": ["dom", "dom.iterable", "esnext"],
-    "types": ["jest", "node"],
-    "allowJs": true,
-    "skipLibCheck": true,
-    "strict": true,
-    "noEmit": true,
-    "esModuleInterop": true,
-    "module": "esnext",
-    "moduleResolution": "bundler",
     "baseUrl": ".",
-    "resolveJsonModule": true,
-    "isolatedModules": true,
-    "jsx": "react-jsx",
-    "incremental": true,
-    "plugins": [
-      {
-        "name": "next"
-      }
-    ],
     "paths": {
-      "@/*": ["./apps/app/src/*"],
       "@tradejs/connectors": ["./packages/connectors/src/index"],
       "@tradejs/core/api": ["./packages/core/src/api"],
       "@tradejs/core/async": ["./packages/core/src/async"],
@@ -46,30 +28,21 @@
       "@tradejs/strategies": ["./packages/strategies/src/index"],
       "@tradejs/indicators": ["./packages/indicators/src/index"],
       "@tradejs/types": ["./packages/types/src/index"],
-      "@tradejs/types/*": ["./packages/types/src/*"],
-      "@app/*": ["./apps/app/src/app/*"],
-      "@actions/*": ["./apps/app/src/app/actions/*"],
-      "@store": ["./apps/app/src/app/store/index"],
-      "@shared/*": ["./apps/app/src/app/components/Shared/*"],
-      "@UI": ["./apps/app/src/app/components/UI/index"],
-      "@components/*": ["./apps/app/src/app/components/*"]
-    },
-    "target": "ES2017"
+      "@tradejs/types/*": ["./packages/types/src/*"]
+    }
   },
   "ts-node": {
-    // these options are overrides used only by ts-node
-    // same as the --compilerOptions flag and the TS_NODE_COMPILER_OPTIONS environment variable
     "compilerOptions": {
       "module": "commonjs"
     },
     "require": ["tsconfig-paths/register"]
   },
-  "include": [
-    "apps/app/next-env.d.ts",
-    "**/*.ts",
-    "**/*.tsx",
-    "apps/app/.next/types/**/*.ts",
-    "apps/app/.next/dev/types/**/*.ts"
-  ],
-  "exclude": ["node_modules", "apps/site/**", "**/dist/**"]
+  "include": ["**/*.ts", "**/*.tsx"],
+  "exclude": [
+    "node_modules",
+    "apps/app/**",
+    "apps/site/**",
+    "examples/sandbox/**",
+    "**/dist/**"
+  ]
 }

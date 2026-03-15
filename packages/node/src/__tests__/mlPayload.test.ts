@@ -1,8 +1,8 @@
-import { buildMlPayload } from '../../../../node/src/mlPayload';
+import { buildMlPayload } from '../mlPayload';
 import {
   registerStrategyEntries,
   resetStrategyRegistryCache,
-} from '../../../../node/src/strategy/manifests';
+} from '../strategy/manifests';
 import { strategyEntries } from '@tradejs/strategies';
 
 const makeCandle = (timestamp: number) => ({
