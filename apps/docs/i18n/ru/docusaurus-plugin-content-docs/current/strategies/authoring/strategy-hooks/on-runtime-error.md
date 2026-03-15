@@ -8,20 +8,11 @@ title: onRuntimeError
 
 ```ts
 {
-  connector: {
-    kline: (params: unknown) => Promise<unknown>;
-    getState: () => Promise<Record<string, unknown>>;
-    setState: (state: object) => Promise<void>;
-    getPosition: (symbol?: string) => Promise<unknown>;
-    getPositions: () => Promise<unknown[]>;
-    placeOrder: (...args: unknown[]) => Promise<unknown>;
-    closePosition: (params: unknown) => Promise<unknown>;
-    getTickers: () => Promise<unknown[]>;
-  }
+  connector: Connector;
   strategyName: string;
   userName: string;
   symbol: string;
-  config: Record<string, unknown>;
+  config: StrategyConfig;
   env: string;
   isConfigFromBacktest: boolean;
   stage: string;
@@ -79,31 +70,12 @@ title: onRuntimeError
     stopLossPrice: number;
     takeProfits: Array<{ price: number; rate: number; done?: boolean }>;
   };
-}
-```
-
-Важно: `prices` по-прежнему есть в hook payload-ах внутри `decision.entryContext.prices` и `signal.prices`. Мы убирали их из входа `strategyApi.entry(...)`, а рантайм теперь вычисляет их сам. Что реально изменилось в hook-контракте — это `orderPlan`: теперь там только `qty`, `stopLossPrice` и `takeProfits`.
-
-`Signal`, передаваемый в хук:
-
-```ts
-{
-  signalId: string;
-  symbol: string;
-  interval: string;
-  strategy: string;
-  direction: 'LONG' | 'SHORT';
-  timestamp: number;
-  prices: {
-    currentPrice: number;
-    takeProfitPrice: number;
-    stopLossPrice: number;
-    riskRatio: number;
+  runtime?: {
+    ml?: { enabled?: boolean; strategyConfig?: StrategyConfig; mlThreshold?: number };
+    ai?: { enabled?: boolean; minQuality?: number };
+    beforePlaceOrder?: () => Promise<void>;
   };
-  figures: Record<string, unknown>;
-  indicators: Record<string, unknown>;
-  additionalIndicators?: Record<string, unknown>;
-  ml?: { probability: number; threshold: number; passed: boolean };
+  signal?: Signal;
 }
 ```
 

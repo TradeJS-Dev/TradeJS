@@ -4,3 +4,4 @@ export {
   isWrongData,
   mergeData,
 } from './utils/array';
+export * from './utils/toJson';

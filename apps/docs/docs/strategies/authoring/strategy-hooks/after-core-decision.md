@@ -8,25 +8,16 @@ Called right after `core.ts` returns any decision.
 
 ```ts
 {
-  connector: {
-    kline: (params: unknown) => Promise<unknown>;
-    getState: () => Promise<Record<string, unknown>>;
-    setState: (state: object) => Promise<void>;
-    getPosition: (symbol?: string) => Promise<unknown>;
-    getPositions: () => Promise<unknown[]>;
-    placeOrder: (...args: unknown[]) => Promise<unknown>;
-    closePosition: (params: unknown) => Promise<unknown>;
-    getTickers: () => Promise<unknown[]>;
-  }
+  connector: Connector;
   strategyName: string;
   userName: string;
   symbol: string;
-  config: Record<string, unknown>;
+  config: StrategyConfig;
   env: string;
   isConfigFromBacktest: boolean;
   decision: SkipDecision | EntryDecision | ExitDecision;
-  candle: Candle;
-  btcCandle: Candle;
+  candle: KlineChartItem;
+  btcCandle: KlineChartItem;
 }
 ```
 
@@ -79,28 +70,11 @@ Called right after `core.ts` returns any decision.
     takeProfits: Array<{ price: number; rate: number; done?: boolean }>;
   };
   runtime?: {
-    ml?: { enabled?: boolean; strategyConfig?: Record<string, unknown>; mlThreshold?: number };
+    ml?: { enabled?: boolean; strategyConfig?: StrategyConfig; mlThreshold?: number };
     ai?: { enabled?: boolean; minQuality?: number };
     beforePlaceOrder?: () => Promise<void>;
   };
   signal?: Signal;
-}
-```
-
-Note: `prices` are still part of hook payloads under `decision.entryContext.prices` and `signal.prices`. The API change happened earlier: `strategyApi.entry(...)` no longer accepts `prices`, and runtime derives them itself. The part that did change in the hook contract is `orderPlan`: it now contains only `qty`, `stopLossPrice`, and `takeProfits`.
-
-`Candle` shape:
-
-```ts
-{
-  timestamp: number;
-  dt: string;
-  open: number;
-  high: number;
-  low: number;
-  close: number;
-  volume: number;
-  turnover: number;
 }
 ```
 

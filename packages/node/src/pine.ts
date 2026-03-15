@@ -1,8 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import type { Candle } from '@tradejs/types';
-import type { PineContextLike, RunPineScriptParams } from '@tradejs/core/pine';
-export * from '@tradejs/core/pine';
+import type { PineContextLike, RunPineScriptParams } from './pineShared';
+export * from './pineShared';
 
 type PineRuntime = {
   run: (indicator: unknown) => Promise<unknown>;

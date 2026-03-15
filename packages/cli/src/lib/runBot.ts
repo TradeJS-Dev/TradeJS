@@ -3,7 +3,7 @@ import {
   getConnectorCreatorByName,
   BUILTIN_CONNECTOR_NAMES,
 } from '@tradejs/node/connectors';
-import { toJson } from '@tradejs/core/json';
+import { toJson } from '@tradejs/core/data';
 import { getStrategyCreator } from '@tradejs/node/strategies';
 import { delay } from '@tradejs/core/async';
 import { BOT_PRELOAD_DAYS } from '@tradejs/core/constants';

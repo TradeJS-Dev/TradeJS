@@ -29,9 +29,7 @@ Import only explicit public subpaths:
 - `@tradejs/core/figures`
 - `@tradejs/core/constants`
 - `@tradejs/core/data`
-- `@tradejs/core/json`
 - `@tradejs/core/async`
-- `@tradejs/core/pine`
 - `@tradejs/core/tickers`
 
 There is no root `@tradejs/core` import surface.

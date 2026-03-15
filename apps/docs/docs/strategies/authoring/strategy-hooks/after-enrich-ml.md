@@ -8,20 +8,11 @@ Called on entry path after ML enrichment.
 
 ```ts
 {
-  connector: {
-    kline: (params: unknown) => Promise<unknown>;
-    getState: () => Promise<Record<string, unknown>>;
-    setState: (state: object) => Promise<void>;
-    getPosition: (symbol?: string) => Promise<unknown>;
-    getPositions: () => Promise<unknown[]>;
-    placeOrder: (...args: unknown[]) => Promise<unknown>;
-    closePosition: (params: unknown) => Promise<unknown>;
-    getTickers: () => Promise<unknown[]>;
-  }
+  connector: Connector;
   strategyName: string;
   userName: string;
   symbol: string;
-  config: Record<string, unknown>;
+  config: StrategyConfig;
   env: string;
   isConfigFromBacktest: boolean;
   decision: EntryDecision;
@@ -64,34 +55,9 @@ Called on entry path after ML enrichment.
 
 ```ts
 {
-  ml?: { enabled?: boolean; strategyConfig?: Record<string, unknown>; mlThreshold?: number };
+  ml?: { enabled?: boolean; strategyConfig?: StrategyConfig; mlThreshold?: number };
   ai?: { enabled?: boolean; minQuality?: number };
   beforePlaceOrder?: () => Promise<void>;
-}
-```
-
-Note: `prices` are still part of hook payloads under `decision.entryContext.prices` and `signal.prices`. The API change happened earlier: `strategyApi.entry(...)` no longer accepts `prices`, and runtime derives them itself. The part that did change in the hook contract is `orderPlan`: it now contains only `qty`, `stopLossPrice`, and `takeProfits`.
-
-`Signal` shape passed to the hook:
-
-```ts
-{
-  signalId: string;
-  symbol: string;
-  interval: string;
-  strategy: string;
-  direction: 'LONG' | 'SHORT';
-  timestamp: number;
-  prices: {
-    currentPrice: number;
-    takeProfitPrice: number;
-    stopLossPrice: number;
-    riskRatio: number;
-  };
-  figures: Record<string, unknown>;
-  indicators: Record<string, unknown>;
-  additionalIndicators?: Record<string, unknown>;
-  ml?: { probability: number; threshold: number; passed: boolean };
 }
 ```
 

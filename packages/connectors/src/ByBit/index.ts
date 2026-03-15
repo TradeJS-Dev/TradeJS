@@ -7,7 +7,7 @@ import {
   PRELOAD_FALLBACK_DAYS,
 } from '@tradejs/core/constants';
 import { mergeData } from '@tradejs/core/data';
-import { toJson } from '@tradejs/core/json';
+import { toJson } from '@tradejs/core/data';
 import { round } from '@tradejs/core/math';
 import { normalizeTickerData } from '@tradejs/core/tickers';
 import { formatUnix, getItemTimestamp, getTimestamp } from '@tradejs/core/time';

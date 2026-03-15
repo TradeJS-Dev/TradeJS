@@ -3,7 +3,7 @@ import { defineConfig } from 'tsup';
 export default defineConfig({
   entry: ['src/cli.ts', 'src/scripts/*.ts', 'src/lib/*.ts', 'src/workers/*.ts'],
   format: ['cjs'],
-  tsconfig: '../../tsconfig.build.json',
+  tsconfig: './tsconfig.build.json',
   clean: true,
   outDir: 'dist',
   target: 'node20',

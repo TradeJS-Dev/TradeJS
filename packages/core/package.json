@@ -1,6 +1,6 @@
 {
   "name": "@tradejs/core",
-  "version": "1.0.0",
+  "version": "1.0.2",
   "description": "Browser-safe TradeJS public API for config, strategy authoring, indicators, figures, and shared helpers.",
   "keywords": [
     "tradejs",
@@ -56,20 +56,10 @@
       "import": "./dist/indicators.mjs",
       "require": "./dist/indicators.js"
     },
-    "./json": {
-      "types": "./dist/json.d.ts",
-      "import": "./dist/json.mjs",
-      "require": "./dist/json.js"
-    },
     "./math": {
       "types": "./dist/math.d.ts",
       "import": "./dist/math.mjs",
       "require": "./dist/math.js"
-    },
-    "./pine": {
-      "types": "./dist/pine.d.ts",
-      "import": "./dist/pine.mjs",
-      "require": "./dist/pine.js"
     },
     "./strategies": {
       "types": "./dist/strategies.d.ts",

@@ -22,7 +22,7 @@ import {
   mergeConfigs,
   sortBestTests,
 } from '@tradejs/core/backtest';
-import { toJson } from '@tradejs/core/json';
+import { toJson } from '@tradejs/core/data';
 import {
   TESTS_LIMIT,
   TESTS_TOP_LIMIT,

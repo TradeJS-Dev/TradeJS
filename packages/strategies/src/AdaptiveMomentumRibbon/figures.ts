@@ -2,7 +2,7 @@ import {
   PineContextLike,
   asFiniteNumber,
   getPinePlotSeries,
-} from '@tradejs/core/pine';
+} from '@tradejs/node/pine';
 
 import {
   Direction,

@@ -18,7 +18,7 @@ RUN apk add --no-cache \
 
 WORKDIR /app
 
-COPY package.json yarn.lock .yarnrc.yml turbo.json tsconfig.json ./
+COPY package.json yarn.lock .yarnrc.yml turbo.json tsconfig.json tradejs.config.ts ./
 COPY .yarn ./.yarn
 
 RUN corepack enable

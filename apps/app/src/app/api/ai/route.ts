@@ -5,7 +5,7 @@ import {
   HumanMessage,
   SystemMessage,
 } from '@langchain/core/messages';
-import { toJson } from '@tradejs/core/json';
+import { toJson } from '@tradejs/core/data';
 import { getConnectorCreatorByProvider } from '@tradejs/node/connectors';
 import {
   AIChatHistory,

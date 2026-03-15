@@ -21,7 +21,7 @@ TradeJS is a monorepo for:
 
 Main areas:
 
-- `apps/app` — internal Next.js UI and API
+- `apps/app` — publishable Next.js UI and API package, also used internally in the workspace
 - `apps/docs` — public Docusaurus documentation for external package users
 - `apps/site` — public marketing site
 - `packages/core` — browser-safe public API, shared helpers, plugin config API
@@ -33,13 +33,14 @@ Main areas:
 - `packages/connectors` — built-in connectors and market data providers
 - `packages/base` — default preset wiring built-ins
 - `packages/cli` — operational commands
-- `examples/sandbox` — deterministic external-user style example app
+- `examples/sandbox` — standalone deterministic external-user style example app that installs published `@tradejs/*` packages from npm
 
 ## Audience Rules For Documentation
 
 This rule is important and should be treated as architectural, not editorial.
 
 - `apps/docs` is for external package users.
+- package `README.md` files are also for external package users.
 - Do not document repo-only flows in `apps/docs`.
 - Do not tell external users to run monorepo-only commands like `yarn dev`, `yarn workspace @tradejs/app dev`, or similar internal workflows in public docs unless the package flow truly supports them.
 - Internal repository workflows belong in root markdown files:
@@ -60,6 +61,22 @@ If a feature is not publish-ready for external users, document that limitation e
 
 Do not blur these boundaries without explicit request.
 
+### Public Surface Rules
+
+- `@tradejs/core`, `@tradejs/node`, and `@tradejs/infra` are subpath-first packages.
+- `@tradejs/core` has no root export.
+- `@tradejs/node` has no root export.
+- `@tradejs/infra` has no root export.
+
+Keep public APIs expressed through explicit subpaths such as:
+
+- `@tradejs/core/data`
+- `@tradejs/core/strategies`
+- `@tradejs/node/pine`
+- `@tradejs/node/registry`
+- `@tradejs/infra/redis`
+- `@tradejs/infra/logger`
+
 ### Import Rules
 
 For production code:
@@ -67,12 +84,21 @@ For production code:
 - import plugin registration from `@tradejs/core/config`
 - import browser-safe helpers from public `@tradejs/core/*` subpaths
 - import Node runtime helpers from public `@tradejs/node/*` subpaths
+- import infra adapters from public `@tradejs/infra/*` subpaths
 - import shared contracts from `@tradejs/types`
 
 Do not:
 
 - use non-public deep imports like `@tradejs/core/src/*` or `@tradejs/node/src/*`
-- reintroduce root `@tradejs/core` catch-all imports
+- use non-public deep imports like `@tradejs/infra/src/*`
+- reintroduce root imports like `@tradejs/core`, `@tradejs/node`, or `@tradejs/infra`
+
+### Build Isolation Rules
+
+- Package builds must not depend on `apps/app/.next` or other generated app artifacts.
+- `tsup` packages should use package-local `tsconfig.build.json`, not the root build config.
+- Tests should live in the package that owns the code under test.
+- Do not leave `core` tests pointing at `node` or `infra` internals.
 
 ### Strategy Runtime Rules
 
@@ -127,7 +153,8 @@ Before documenting or implementing an external-user flow, verify that it truly w
 
 Examples:
 
-- `@tradejs/app` is currently internal-only and not publish-ready if it remains `private`, depends on repo-local workspace protocols, or assumes repo-local files.
+- `@tradejs/app` and `@tradejs/cli` are publishable packages and should be treated as external entrypoints.
+- `examples/sandbox` is intentionally outside the workspace graph and should continue consuming published `@tradejs/*` packages from npm rather than local workspace sources.
 - If an npm flow does not work, do not paper over it in public docs.
 
 ## Development Commands
@@ -157,7 +184,16 @@ Docs:
 
 Sandbox:
 
-- `cd examples/sandbox && yarn install && yarn e2e`
+- `yarn sandbox:install`
+- `yarn sandbox:infra-up`
+- `yarn sandbox:e2e`
+- `yarn sandbox:infra-down`
+
+Publishing:
+
+- `yarn publish:packages:dry`
+- `yarn publish:packages`
+- `yarn bump:packages patch|minor|major|<version>`
 
 ## Testing Expectations
 
@@ -174,11 +210,18 @@ For docs-only changes:
 For package boundary / import refactors:
 
 - run at least `yarn typecheck`, `yarn build`, and `yarn unit`
+- for package-local moves, also run the affected package build/tests directly when practical
 
 For app/runtime changes:
 
 - prefer verifying `yarn build`
 - if docs mention a runnable flow, verify the flow is actually supported
+
+For sandbox changes:
+
+- verify `yarn sandbox:install`
+- run `yarn sandbox:e2e` when infra is available
+- do not re-couple sandbox to workspace-local package sources
 
 ## ML Workflow Notes
 
