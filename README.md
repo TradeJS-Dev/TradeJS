@@ -153,7 +153,6 @@ Import policy for plugin code:
 - import plugin registration from `@tradejs/core/config`
 - import runtime/helpers from explicit public subpaths like `@tradejs/node/strategies`, `@tradejs/node/backtest`, `@tradejs/core/indicators`, `@tradejs/core/math`, `@tradejs/core/time`, `@tradejs/node/pine`
 - import shared types from `@tradejs/types`
-- do not use internal aliases like `@utils` / `@constants`
 - do not use non-public deep imports
 
 Utils convention for contributors:
@@ -174,6 +173,7 @@ Sandbox deterministic e2e example:
 
 ```bash
 cd examples/sandbox
+yarn refresh:tradejs
 yarn install
 yarn infra-up
 yarn e2e

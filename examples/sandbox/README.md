@@ -33,11 +33,15 @@ cp examples/sandbox/.env.example examples/sandbox/.env
 
 ```bash
 cd examples/sandbox
+yarn refresh:tradejs
 yarn install
 yarn infra-up
 yarn e2e
 yarn infra-down
 ```
+
+`refresh:tradejs` updates all published `@tradejs/*` packages in the sandbox
+lockfile to the newest versions allowed by the semver ranges before install.
 
 ## What `e2e` does
 

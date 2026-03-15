@@ -18,7 +18,6 @@ title: Core API
 - Импортируйте config/plugin registration из `@tradejs/core/config`.
 - Импортируйте runtime/хелперы из явных публичных subpath’ов вроде `@tradejs/node/strategies`, `@tradejs/node/backtest`, `@tradejs/core/indicators`, `@tradejs/core/math`, `@tradejs/core/time`, `@tradejs/node/pine`.
 - Импортируйте общие типы из `@tradejs/types`.
-- Не используйте внутренние алиасы (`@utils`, `@constants`).
 - Не используйте непубличные deep-imports.
 
 ## Конвенции по утилитам (для контрибьюторов)

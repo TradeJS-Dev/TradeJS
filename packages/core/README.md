@@ -54,7 +54,6 @@ export default defineConfig(basePreset, {
 - import plugin/config helpers from `@tradejs/core/config`
 - import browser-safe authoring helpers from explicit `@tradejs/core/*` subpaths
 - import shared contracts from `@tradejs/types`
-- do not use internal aliases like `@utils` / `@constants`
 - do not use non-public deep imports like `@tradejs/core/src/*`
 
 For runtime execution, Pine loading, plugin registries, and backtest orchestration, use `@tradejs/node`.

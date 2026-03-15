@@ -49,7 +49,7 @@ Import rule:
 - import Node runtime wiring from `@tradejs/node/strategies`
 - import pure strategy helpers from `@tradejs/core/strategies`
 - import shared contracts from `@tradejs/types`
-- avoid internal aliases (`@utils`, `@types`, `@constants`) and non-public deep imports
+- avoid non-public deep imports
 
 ## Minimal `core.ts` Example
 

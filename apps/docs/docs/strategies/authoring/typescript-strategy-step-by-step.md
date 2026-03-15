@@ -9,7 +9,7 @@ Example strategy: simple MA crossover.
 Import rule for this guide:
 
 - use public `@tradejs/core/*` subpaths for browser-safe helpers, `@tradejs/node/*` for Node runtime wiring, and `@tradejs/types` for types
-- do not use `@utils`, `@types`, `@constants` or non-public deep imports
+- do not use non-public deep imports
 
 ## 1. Create Files
 

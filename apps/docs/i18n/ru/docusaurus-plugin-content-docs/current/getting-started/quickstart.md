@@ -36,7 +36,7 @@ export default defineConfig(basePreset);
 - browser-safe helper’ы импортируйте из публичных subpath’ов `@tradejs/core/*`
 - Node runtime helper’ы импортируйте из публичных subpath’ов `@tradejs/node/*`
 - общие контракты импортируйте из `@tradejs/types`
-- избегайте внутренних алиасов (`@utils`, `@types`, `@constants`) и непубличных deep-imports вроде `@tradejs/core/src/*` или `@tradejs/node/src/*`
+- избегайте непубличных deep-imports вроде `@tradejs/core/src/*` или `@tradejs/node/src/*`
 
 ## 3. Инициализируйте файлы dev-инфраструктуры
 

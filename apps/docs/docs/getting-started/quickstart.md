@@ -36,7 +36,7 @@ Plugin import policy:
 - import browser-safe helpers from public `@tradejs/core/*` subpaths
 - import Node runtime helpers from public `@tradejs/node/*` subpaths
 - import shared contracts from `@tradejs/types`
-- avoid internal aliases (`@utils`, `@types`, `@constants`) and non-public deep imports like `@tradejs/core/src/*` or `@tradejs/node/src/*`
+- avoid non-public deep imports like `@tradejs/core/src/*` or `@tradejs/node/src/*`
 
 ## 3. Initialize Dev Infra Files
 

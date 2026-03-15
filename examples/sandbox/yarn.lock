@@ -423,9 +423,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@tradejs/cli@npm:^1.0.0":
-  version: 1.0.0
-  resolution: "@tradejs/cli@npm:1.0.0"
+"@tradejs/cli@npm:^1.0.1":
+  version: 1.0.1
+  resolution: "@tradejs/cli@npm:1.0.1"
   dependencies:
     "@tradejs/base": "npm:^1.0.0"
     "@tradejs/connectors": "npm:^1.0.0"
@@ -445,7 +445,7 @@ __metadata:
     uuid: "npm:11.1.0"
   bin:
     tradejs: dist/cli.js
-  checksum: 10c0/4ada72210878338ab129fb2770f13f647cbc3c247ce0ecff34e3714bd07ddb030dc53ef3ecbe5142c143a4bf8fae62b469363fa1728ea9e0883a38ccc7bcb299
+  checksum: 10c0/d3246ac1e7e082a7b9b919f6ec62dffd747eaf92cf222ba062b96ef1ffe9e4fb3250379596799fbdd559e65bf56bf82103d773e8f55ec0a79eab632a448019fc
   languageName: node
   linkType: hard
 
@@ -482,7 +482,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@tradejs/example-sandbox@workspace:."
   dependencies:
-    "@tradejs/cli": "npm:^1.0.0"
+    "@tradejs/cli": "npm:^1.0.1"
     "@tradejs/core": "npm:^1.0.0"
     "@tradejs/types": "npm:^1.0.0"
     "@types/node": "npm:^20"

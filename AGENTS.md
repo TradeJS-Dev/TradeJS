@@ -71,7 +71,6 @@ For production code:
 
 Do not:
 
-- use internal aliases like `@utils`, `@constants`, `@types` outside their owning package
 - use non-public deep imports like `@tradejs/core/src/*` or `@tradejs/node/src/*`
 - reintroduce root `@tradejs/core` catch-all imports
 

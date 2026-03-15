@@ -18,7 +18,6 @@ title: Core API
 - Import config/plugin registration from `@tradejs/core/config`.
 - Import runtime/helpers from explicit public subpaths like `@tradejs/node/strategies`, `@tradejs/node/backtest`, `@tradejs/core/indicators`, `@tradejs/core/math`, `@tradejs/core/time`, `@tradejs/node/pine`.
 - Import shared types from `@tradejs/types`.
-- Do not use internal aliases (`@utils`, `@constants`).
 - Do not use non-public deep imports.
 
 ## Utilities Convention (Contributors)

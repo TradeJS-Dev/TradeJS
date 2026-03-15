@@ -91,6 +91,7 @@ yarn ml-train:trendline:xgboost
 
 ```bash
 cd examples/sandbox
+yarn refresh:tradejs
 yarn install
 yarn infra-up
 yarn e2e
@@ -103,7 +104,7 @@ yarn infra-down
 - Use public `@tradejs/core/*` subpaths for browser-safe helpers.
 - Use public `@tradejs/node/*` subpaths for Node runtime wiring.
 - Use `@tradejs/types` for shared contracts.
-- Avoid internal aliases (`@utils`, `@constants`) and non-public deep imports like `@tradejs/core/src/*` or `@tradejs/node/src/*`.
+- Avoid non-public deep imports like `@tradejs/core/src/*` or `@tradejs/node/src/*`.
 
 ## 9. Stop Infrastructure
 

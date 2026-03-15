@@ -9,7 +9,7 @@ title: TypeScript Strategy Step by Step
 Правило импортов для гайда:
 
 - используйте публичные `@tradejs/core/*` subpath’и для browser-safe helper’ов, `@tradejs/node/*` для Node runtime wiring и `@tradejs/types` для типов
-- не используйте `@utils`, `@types`, `@constants` и непубличные deep-imports
+- не используйте непубличные deep-imports
 
 ## 1. Создайте файлы
 
