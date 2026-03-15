@@ -172,12 +172,10 @@ Expected plugin exports:
 Sandbox deterministic e2e example:
 
 ```bash
-cd examples/sandbox
-yarn refresh:tradejs
-yarn install
-yarn infra-up
-yarn e2e
-yarn infra-down
+yarn sandbox:install
+yarn sandbox:infra-up
+yarn sandbox:e2e
+yarn sandbox:infra-down
 ```
 
 ## Documentation

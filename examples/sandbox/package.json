@@ -23,7 +23,6 @@
     "build": "mkdir -p dist && echo 'example-sandbox: build placeholder' > dist/.build.txt",
     "lint": "eslint src tradejs.config.ts --ext .ts",
     "typecheck": "tsc -p ./tsconfig.json --noEmit",
-    "refresh:tradejs": "yarn up -R @tradejs/cli @tradejs/core @tradejs/types @tradejs/base @tradejs/connectors @tradejs/indicators @tradejs/infra @tradejs/node @tradejs/strategies",
     "run:ts": "ts-node -P ./tsconfig.json",
     "run:cli": "PROJECT_CWD=\"$PWD\" tradejs",
     "infra-up": "yarn run:cli infra-up",

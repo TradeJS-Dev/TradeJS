@@ -32,16 +32,15 @@ cp examples/sandbox/.env.example examples/sandbox/.env
 ## Manual Run
 
 ```bash
-cd examples/sandbox
-yarn refresh:tradejs
-yarn install
-yarn infra-up
-yarn e2e
-yarn infra-down
+yarn sandbox:install
+yarn sandbox:infra-up
+yarn sandbox:e2e
+yarn sandbox:infra-down
 ```
 
-`refresh:tradejs` updates all published `@tradejs/*` packages in the sandbox
-lockfile to the newest versions allowed by the semver ranges before install.
+`yarn sandbox:install` refreshes all published `@tradejs/*` packages in the
+sandbox lockfile to the newest versions allowed by the semver ranges before
+install.
 
 ## What `e2e` does
 

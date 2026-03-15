@@ -90,12 +90,10 @@ yarn ml-train:trendline:xgboost
 - seeded user/config and stable backtest + signals snapshot assertions
 
 ```bash
-cd examples/sandbox
-yarn refresh:tradejs
-yarn install
-yarn infra-up
-yarn e2e
-yarn infra-down
+yarn sandbox:install
+yarn sandbox:infra-up
+yarn sandbox:e2e
+yarn sandbox:infra-down
 ```
 
 ## Import Rule For Plugins
