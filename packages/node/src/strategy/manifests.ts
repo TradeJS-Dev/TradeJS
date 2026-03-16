@@ -137,9 +137,10 @@ const registerEntries = (
 
 const importStrategyPluginModule = async (
   moduleName: string,
+  cwd = getTradejsProjectCwd(),
 ): Promise<unknown> => {
   if (typeof tradejsConfig.importTradejsModule === 'function') {
-    return tradejsConfig.importTradejsModule(moduleName);
+    return tradejsConfig.importTradejsModule(moduleName, cwd);
   }
   return import(/* webpackIgnore: true */ moduleName);
 };
@@ -172,7 +173,7 @@ export const ensureStrategyPluginsLoaded = async (
             projectRoot,
           );
           const moduleExport =
-            await importStrategyPluginModule(resolvedModuleName);
+            await importStrategyPluginModule(resolvedModuleName, projectRoot);
           if (strategySet.has(moduleName)) {
             const pluginDefinition =
               extractStrategyPluginDefinition(moduleExport);

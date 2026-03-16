@@ -7875,6 +7875,7 @@ __metadata:
     progress: "npm:^2.0.3"
     puppeteer: "npm:24.15.0"
     ts-node: "npm:^10.9.2"
+    tsconfig-paths: "npm:^4.2.0"
     tsup: "npm:^8.5.1"
     typescript: "npm:^5.1"
   languageName: unknown

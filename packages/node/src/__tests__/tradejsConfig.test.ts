@@ -139,6 +139,50 @@ describe('tradejsConfig utils', () => {
     expect(moduleExports.join('a', 'b')).toBe(path.join('a', 'b'));
   });
 
+  it('loads ts config that imports workspace modules via tsconfig paths', async () => {
+    const cwd = createTempDir();
+    const configPath = path.join(cwd, 'tradejs.config.ts');
+    const tsconfigPath = path.join(cwd, 'tsconfig.json');
+    const baseModulePath = path.join(cwd, 'packages', 'base', 'src');
+
+    fs.mkdirSync(baseModulePath, { recursive: true });
+    fs.writeFileSync(
+      tsconfigPath,
+      JSON.stringify({
+        compilerOptions: {
+          baseUrl: '.',
+          paths: {
+            '@tradejs/base': ['./packages/base/src/index.ts'],
+          },
+        },
+      }),
+      'utf8',
+    );
+    fs.writeFileSync(
+      path.join(baseModulePath, 'index.ts'),
+      `export const basePreset = { connectors: ['@tradejs/connectors'] };`,
+      'utf8',
+    );
+    fs.writeFileSync(
+      configPath,
+      `import { basePreset } from '@tradejs/base'; export default basePreset;`,
+      'utf8',
+    );
+
+    const config = await loadTradejsConfig(cwd);
+
+    expect(config).toEqual({
+      strategies: ['@tradejs/strategies'],
+      indicators: ['@tradejs/indicators'],
+      connectors: ['@tradejs/connectors'],
+    });
+    expect(loggerLogMock).toHaveBeenCalledWith(
+      'info',
+      'Loaded TradeJS config: %s',
+      configPath,
+    );
+  });
+
   it('getTradejsProjectCwd prefers explicit value over PROJECT_CWD', () => {
     const previousProjectCwd = process.env.PROJECT_CWD;
 

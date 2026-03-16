@@ -197,9 +197,10 @@ const extractConnectorPluginDefinition = (
 
 const importConnectorPluginModule = async (
   moduleName: string,
+  cwd = getTradejsProjectCwd(),
 ): Promise<unknown> => {
   if (typeof tradejsConfig.importTradejsModule === 'function') {
-    return tradejsConfig.importTradejsModule(moduleName);
+    return tradejsConfig.importTradejsModule(moduleName, cwd);
   }
   return import(/* webpackIgnore: true */ moduleName);
 };
@@ -224,7 +225,7 @@ export const ensureConnectorPluginsLoaded = async (
             projectRoot,
           );
           const moduleExport =
-            await importConnectorPluginModule(resolvedModuleName);
+            await importConnectorPluginModule(resolvedModuleName, projectRoot);
           const pluginDefinition =
             extractConnectorPluginDefinition(moduleExport);
           if (!pluginDefinition) {

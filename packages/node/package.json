@@ -62,7 +62,8 @@
     "pinets": "0.8.12",
     "progress": "^2.0.3",
     "puppeteer": "24.15.0",
-    "ts-node": "^10.9.2"
+    "ts-node": "^10.9.2",
+    "tsconfig-paths": "^4.2.0"
   },
   "devDependencies": {
     "@types/node": "^20",

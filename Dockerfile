@@ -30,6 +30,7 @@ COPY examples ./examples
 RUN yarn install --immutable
 
 COPY proto ./proto
+COPY bin ./bin
 COPY entrypoint.sh ./entrypoint.sh
 COPY cronjob /etc/crontabs/root
 
