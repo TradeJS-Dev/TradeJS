@@ -35,7 +35,7 @@ COPY entrypoint.sh ./entrypoint.sh
 COPY cronjob /etc/crontabs/root
 
 RUN yarn workspace @tradejs/cli build
-RUN yarn turbo run build --filter=@tradejs/app
+RUN yarn turbo run build --filter=@tradejs/app...
 RUN yarn install --immutable
 
 RUN chmod +x ./entrypoint.sh
