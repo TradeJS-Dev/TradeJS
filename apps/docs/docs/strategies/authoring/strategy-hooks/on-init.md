@@ -26,4 +26,4 @@ Called once when strategy runtime is created.
 | --------------- | ------------------------- |
 | No return value | `void` or `Promise<void>` |
 
-This hook cannot block runtime flow.
+This hook cannot block runtime flow. If it throws, the error is logged, `onRuntimeError` is called, and the runtime continues.

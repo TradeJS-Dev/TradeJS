@@ -19,7 +19,9 @@ import { resolveStrategyConfig } from './strategyHelpers/config';
 import {
   CreateStrategyCore,
   CreateStrategyCoreParams,
+  KlineChartItem,
   StrategyHookGateResult,
+  StrategyHookStage,
   StrategyManifest,
   StrategyConfig,
   StrategyCreator,

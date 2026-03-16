@@ -6,16 +6,35 @@ This section documents each lifecycle hook as a separate contract page with expl
 
 ## Runtime Order
 
-1. [onInit](./on-init)
-2. [afterCoreDecision](./after-core-decision)
-3. [onSkip](./on-skip)
-4. [beforeClosePosition](./before-close-position)
-5. [afterEnrichMl](./after-enrich-ml)
-6. [afterEnrichAi](./after-enrich-ai)
-7. [beforeEntryGate](./before-entry-gate)
-8. [beforePlaceOrder](./before-place-order)
-9. [afterPlaceOrder](./after-place-order)
-10. [onRuntimeError](./on-runtime-error)
+1. [onInit](./on-init) — once, at strategy creation
+2. [afterCoreDecision](./after-core-decision) — every candle
+3. [onSkip](./on-skip) — only for `skip` decisions
+4. [beforeClosePosition](./before-close-position) — **gate**, can block close
+5. [afterEnrichMl](./after-enrich-ml) — only when `signal` exists
+6. [afterEnrichAi](./after-enrich-ai) — only when `signal` exists
+7. [beforeEntryGate](./before-entry-gate) — **gate**, can block entry
+8. [beforePlaceOrder](./before-place-order) — right before connector call
+9. [afterPlaceOrder](./after-place-order) — after successful order
+10. [onRuntimeError](./on-runtime-error) — on any runtime/hook error
+
+## `runtime` Parameter
+
+Entry-path hooks (`afterEnrichMl`, `afterEnrichAi`, `beforeEntryGate`, `beforePlaceOrder`, `afterPlaceOrder`) receive a `runtime` parameter. This is the **resolved** runtime — a merge of manifest defaults, adapter config, and the raw `decision.runtime`:
+
+```ts
+runtime = {
+  ...manifest.entryRuntimeDefaults,
+  ...decision.runtime,
+  ml: { ...manifestMlDefaults, ...adapterMl, ...decision.runtime?.ml },
+  ai: { ...manifestAiDefaults, ...adapterAi, ...decision.runtime?.ai },
+}
+```
+
+This means `runtime` is always an object (never `undefined`), and its values may differ from `decision.runtime`. The raw decision runtime is still available via `decision.runtime`.
+
+## Error Handling
+
+Non-blocking hooks (all hooks except `beforeClosePosition` and `beforeEntryGate`) have their errors **swallowed**: if a hook throws, the error is logged, `onRuntimeError` is called, and the runtime flow **continues**. Gate hooks also swallow errors (treated as if the hook returned `undefined`, i.e. execution continues).
 
 ## Common Reusable Shapes
 
@@ -234,6 +253,16 @@ number | null;
     Promise<boolean>;
   closePosition: (order: ClosePositionOrder) => Promise<boolean>;
   getTickers: () => Promise<Ticker[]>;
+}
+```
+
+`ResolvedEntryRuntime` shape (the resolved merge of manifest defaults + adapter config + decision runtime):
+
+```ts
+{
+  ml?: { enabled?: boolean; strategyConfig?: StrategyConfig; mlThreshold?: number };
+  ai?: { enabled?: boolean; minQuality?: number };
+  beforePlaceOrder?: () => Promise<void>;
 }
 ```
 

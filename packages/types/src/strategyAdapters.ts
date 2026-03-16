@@ -1,7 +1,6 @@
 import {
   StrategyDecision,
   StrategyEntryRuntimeOptions,
-  StrategyEntrySignalContext,
   StrategyRuntimeAiOptions,
   StrategyRuntimeMlOptions,
 } from './strategy';
@@ -67,8 +66,24 @@ export interface StrategyHookBaseContext {
   isConfigFromBacktest: boolean;
 }
 
+export type StrategyHookStage =
+  | 'onInit'
+  | 'afterCoreDecision'
+  | 'onSkip'
+  | 'beforeClosePosition'
+  | 'afterEnrichMl'
+  | 'afterEnrichAi'
+  | 'beforeEntryGate'
+  | 'beforePlaceOrder'
+  | 'afterPlaceOrder'
+  | 'runtime.beforePlaceOrder'
+  | 'enrichSignalWithMl'
+  | 'enrichSignalWithAi'
+  | 'closePosition'
+  | 'placeOrder';
+
 export interface StrategyHookErrorContext extends StrategyHookBaseContext {
-  stage: string;
+  stage: StrategyHookStage;
   error: unknown;
   decision?: StrategyDecision;
   signal?: Signal;
@@ -94,35 +109,55 @@ export interface StrategyHookSkipContext
 export interface StrategyHookBeforeCloseContext
   extends StrategyHookBaseContext {
   decision: Extract<StrategyDecision, { kind: 'exit' }>;
+  candle: KlineChartItem;
+  btcCandle: KlineChartItem;
 }
 
 export interface StrategyHookEnrichContext extends StrategyHookBaseContext {
   decision: Extract<StrategyDecision, { kind: 'entry' }>;
-  runtime: StrategyEntryRuntimeOptions | undefined;
-  signal?: Signal;
+  resolvedRuntime: StrategyEntryRuntimeOptions;
+  signal: Signal;
+  candle: KlineChartItem;
+  btcCandle: KlineChartItem;
 }
 
 export interface StrategyHookAfterAiContext extends StrategyHookEnrichContext {
   quality?: number;
 }
 
-export interface StrategyHookBeforeEntryGateContext
-  extends StrategyHookAfterAiContext {
+export interface StrategyHookPolicyContext {
+  quality?: number;
   makeOrdersEnabled: boolean;
   minAiQuality: number;
 }
 
+export interface StrategyHookBeforeEntryGateContext
+  extends StrategyHookBaseContext {
+  decision: Extract<StrategyDecision, { kind: 'entry' }>;
+  resolvedRuntime: StrategyEntryRuntimeOptions;
+  signal?: Signal;
+  candle: KlineChartItem;
+  btcCandle: KlineChartItem;
+  policyContext: StrategyHookPolicyContext;
+}
+
 export interface StrategyHookBeforePlaceOrderContext
   extends StrategyHookBaseContext {
-  entryContext: StrategyEntrySignalContext;
-  runtime: StrategyEntryRuntimeOptions | undefined;
   decision: Extract<StrategyDecision, { kind: 'entry' }>;
+  resolvedRuntime: StrategyEntryRuntimeOptions;
   signal?: Signal;
+  candle: KlineChartItem;
+  btcCandle: KlineChartItem;
 }
 
 export interface StrategyHookAfterPlaceOrderContext
-  extends StrategyHookEnrichContext {
-  orderResult: unknown;
+  extends StrategyHookBaseContext {
+  decision: Extract<StrategyDecision, { kind: 'entry' }>;
+  resolvedRuntime: StrategyEntryRuntimeOptions;
+  signal?: Signal;
+  candle: KlineChartItem;
+  btcCandle: KlineChartItem;
+  orderResult: Signal | string;
 }
 
 export interface StrategyManifest {

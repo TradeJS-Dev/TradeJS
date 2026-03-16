@@ -2,7 +2,7 @@
 title: afterEnrichAi
 ---
 
-Called on entry path after AI enrichment.
+Called on entry path after AI enrichment. This hook **only fires when `signal` exists** — if the entry decision has no signal, AI enrichment is skipped and this hook is not called.
 
 ## Params
 
@@ -16,51 +16,15 @@ Called on entry path after AI enrichment.
   env: string;
   isConfigFromBacktest: boolean;
   decision: EntryDecision;
-  runtime: EntryRuntime | undefined;
-  signal: Signal | undefined;
+  runtime: ResolvedEntryRuntime;
+  signal: Signal;
   quality: number | undefined;
 }
 ```
 
-`EntryDecision` shape:
+`runtime` is the [resolved entry runtime](./index.md#runtime-parameter) (always an object, never `undefined`). The raw decision runtime is available via `decision.runtime`.
 
-```ts
-{
-  kind: 'entry';
-  code: string;
-  entryContext: {
-    strategy: string;
-    symbol: string;
-    interval: string;
-    direction: 'LONG' | 'SHORT';
-    timestamp: number;
-    prices: {
-      currentPrice: number;
-      takeProfitPrice: number;
-      stopLossPrice: number;
-      riskRatio: number;
-    };
-    isConfigFromBacktest?: boolean;
-  };
-  orderPlan: {
-    qty: number;
-    stopLossPrice: number;
-    takeProfits: Array<{ price: number; rate: number; done?: boolean }>;
-  };
-  runtime?: EntryRuntime;
-  signal?: Signal;
-}
-```
-
-`EntryRuntime` shape:
-
-```ts
-{
-  ml?: { enabled?: boolean; strategyConfig?: StrategyConfig; mlThreshold?: number };
-  ai?: { enabled?: boolean; minQuality?: number };
-  beforePlaceOrder?: () => Promise<void>;
-}
-```
+`quality` is the AI quality score returned by the AI enrichment step. It is `undefined` when AI is disabled or the AI request returned no score.
 
 ## Output
 
@@ -68,4 +32,4 @@ Called on entry path after AI enrichment.
 | --------------- | ------------------------- |
 | No return value | `void` or `Promise<void>` |
 
-This hook cannot block runtime flow.
+This hook cannot block runtime flow. If it throws, the error is logged, `onRuntimeError` is called, and the runtime continues.

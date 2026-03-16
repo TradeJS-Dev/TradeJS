@@ -2,7 +2,7 @@
 title: beforePlaceOrder
 ---
 
-Called on entry path right before connector order placement.
+Called on entry path right before connector order placement. This hook fires for both signal and no-signal entries.
 
 ## Params
 
@@ -17,10 +17,14 @@ Called on entry path right before connector order placement.
   isConfigFromBacktest: boolean;
   decision: EntryDecision;
   entryContext: EntryContext;
-  runtime: EntryRuntime | undefined;
+  runtime: ResolvedEntryRuntime;
   signal: Signal | undefined;
 }
 ```
+
+`entryContext` is a convenience shortcut for `decision.entryContext`.
+
+`runtime` is the [resolved entry runtime](./index.md#runtime-parameter) (always an object, never `undefined`). The raw decision runtime is available via `decision.runtime`.
 
 `EntryContext` shape:
 
@@ -41,37 +45,10 @@ Called on entry path right before connector order placement.
 }
 ```
 
-`EntryDecision` shape:
-
-```ts
-{
-  kind: 'entry';
-  code: string;
-  entryContext: EntryContext;
-  orderPlan: {
-    qty: number;
-    stopLossPrice: number;
-    takeProfits: Array<{ price: number; rate: number; done?: boolean }>;
-  };
-  runtime?: EntryRuntime;
-  signal?: Signal;
-}
-```
-
-`EntryRuntime` shape:
-
-```ts
-{
-  ml?: { enabled?: boolean; strategyConfig?: StrategyConfig; mlThreshold?: number };
-  ai?: { enabled?: boolean; minQuality?: number };
-  beforePlaceOrder?: () => Promise<void>;
-}
-```
-
 ## Output
 
 | Return          | Type                      |
 | --------------- | ------------------------- |
 | No return value | `void` or `Promise<void>` |
 
-This hook cannot block runtime flow.
+This hook cannot block runtime flow. If it throws, the error is logged, `onRuntimeError` is called, and the runtime continues.

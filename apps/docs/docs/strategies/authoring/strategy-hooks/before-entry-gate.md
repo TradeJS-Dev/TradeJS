@@ -2,7 +2,7 @@
 title: beforeEntryGate
 ---
 
-Called on entry path after standard runtime policy checks and before order placement.
+Called on entry path after standard runtime policy checks (AI quality, `MAKE_ORDERS`) pass, and before order placement. This hook is called for **all** entry decisions, regardless of whether `signal` exists.
 
 ## Params
 
@@ -16,7 +16,7 @@ Called on entry path after standard runtime policy checks and before order place
   env: string;
   isConfigFromBacktest: boolean;
   decision: EntryDecision;
-  runtime: EntryRuntime | undefined;
+  runtime: ResolvedEntryRuntime;
   signal: Signal | undefined;
   quality: number | undefined;
   makeOrdersEnabled: boolean;
@@ -24,45 +24,11 @@ Called on entry path after standard runtime policy checks and before order place
 }
 ```
 
-`EntryDecision` shape:
+`runtime` is the [resolved entry runtime](./index.md#runtime-parameter) (always an object, never `undefined`). The raw decision runtime is available via `decision.runtime`.
 
-```ts
-{
-  kind: 'entry';
-  code: string;
-  entryContext: {
-    strategy: string;
-    symbol: string;
-    interval: string;
-    direction: 'LONG' | 'SHORT';
-    timestamp: number;
-    prices: {
-      currentPrice: number;
-      takeProfitPrice: number;
-      stopLossPrice: number;
-      riskRatio: number;
-    };
-    isConfigFromBacktest?: boolean;
-  };
-  orderPlan: {
-    qty: number;
-    stopLossPrice: number;
-    takeProfits: Array<{ price: number; rate: number; done?: boolean }>;
-  };
-  runtime?: EntryRuntime;
-  signal?: Signal;
-}
-```
+`minAiQuality` is resolved from `runtime.ai?.minQuality` with a **default of 4** when not specified.
 
-`EntryRuntime` shape:
-
-```ts
-{
-  ml?: { enabled?: boolean; strategyConfig?: StrategyConfig; mlThreshold?: number };
-  ai?: { enabled?: boolean; minQuality?: number };
-  beforePlaceOrder?: () => Promise<void>;
-}
-```
+`quality` is `undefined` when there is no signal or AI enrichment returned no score.
 
 ## Output
 
@@ -70,3 +36,7 @@ Called on entry path after standard runtime policy checks and before order place
 | ---------------- | ----------------------------------------------------------------------------------------- | ------------------------------------------------- |
 | Allow/deny entry | `{ allow?: boolean; reason?: string }` or `Promise<{ allow?: boolean; reason?: string }>` | If `allow === false`, entry execution is blocked. |
 | No return value  | `void` or `Promise<void>`                                                                 | Entry execution continues.                        |
+
+When the gate blocks (`allow === false`):
+- If `signal` exists: `signal.orderStatus` is set to `'skipped'` and `signal.orderSkipReason` is set to `'HOOK_BEFORE_ENTRY_GATE:${reason}'` (or `'HOOK_BEFORE_ENTRY_GATE'` if no reason).
+- If no signal: the runtime returns the string `'HOOK_BEFORE_ENTRY_GATE:${reason}'` (or `'HOOK_BEFORE_ENTRY_GATE'`).

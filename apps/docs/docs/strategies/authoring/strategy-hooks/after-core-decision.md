@@ -84,4 +84,4 @@ Called right after `core.ts` returns any decision.
 | --------------- | ------------------------- |
 | No return value | `void` or `Promise<void>` |
 
-This hook cannot block runtime flow.
+This hook cannot block runtime flow. If it throws, the error is logged, `onRuntimeError` is called, and the runtime continues.

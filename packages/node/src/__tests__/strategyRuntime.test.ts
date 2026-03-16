@@ -961,4 +961,231 @@ describe('strategyRuntime', () => {
       }),
     );
   });
+
+  describe('hook params snapshots', () => {
+    const candle = { timestamp: 1, dt: '2024-01-01', open: 100, high: 105, low: 95, close: 102, volume: 1000, turnover: 100000 } as any;
+    const btcCandle = { timestamp: 1, dt: '2024-01-01', open: 40000, high: 41000, low: 39000, close: 40500, volume: 500, turnover: 20000000 } as any;
+
+    const stripFunctions = (obj: any): any => {
+      if (obj === null || obj === undefined) return obj;
+      if (typeof obj === 'function') return '[Function]';
+      if (Array.isArray(obj)) return obj.map(stripFunctions);
+      if (typeof obj === 'object') {
+        const result: any = {};
+        for (const [key, value] of Object.entries(obj)) {
+          result[key] = stripFunctions(value);
+        }
+        return result;
+      }
+      return obj;
+    };
+
+    const firstCallArg = (mock: jest.Mock) =>
+      stripFunctions((mock.mock.calls as any[][])[0][0]);
+
+    it('onInit params snapshot', async () => {
+      const onInit = jest.fn(async () => {});
+      setStrategyManifestHooks('TrendLine', { onInit });
+
+      await makeRuntime(() => ({ kind: 'skip', code: 'X' }));
+
+      expect(onInit).toHaveBeenCalledTimes(1);
+      expect(firstCallArg(onInit)).toMatchSnapshot();
+    });
+
+    it('afterCoreDecision params snapshot (skip)', async () => {
+      const afterCoreDecision = jest.fn(async () => {});
+      setStrategyManifestHooks('TrendLine', { afterCoreDecision });
+
+      const { strategy } = await makeRuntime(() => ({
+        kind: 'skip',
+        code: 'NO_SIGNAL',
+      }));
+      await strategy(candle, btcCandle);
+
+      expect(afterCoreDecision).toHaveBeenCalledTimes(1);
+      expect(firstCallArg(afterCoreDecision)).toMatchSnapshot();
+    });
+
+    it('afterCoreDecision params snapshot (entry)', async () => {
+      const afterCoreDecision = jest.fn(async () => {});
+      setStrategyManifestHooks('TrendLine', { afterCoreDecision });
+
+      const { strategy } = await makeRuntime(() => makeDecisionEntry());
+      await strategy(candle, btcCandle);
+
+      expect(afterCoreDecision).toHaveBeenCalledTimes(1);
+      expect(firstCallArg(afterCoreDecision)).toMatchSnapshot();
+    });
+
+    it('afterCoreDecision params snapshot (exit)', async () => {
+      const afterCoreDecision = jest.fn(async () => {});
+      setStrategyManifestHooks('TrendLine', { afterCoreDecision });
+
+      const { strategy } = await makeRuntime(() => ({
+        kind: 'exit',
+        code: 'CLOSE_BY_SIGNAL',
+        closePlan: { price: 100, timestamp: 1_700_000_123_000, direction: 'LONG' },
+      }));
+      await strategy(candle, btcCandle);
+
+      expect(afterCoreDecision).toHaveBeenCalledTimes(1);
+      expect(firstCallArg(afterCoreDecision)).toMatchSnapshot();
+    });
+
+    it('onSkip params snapshot', async () => {
+      const onSkip = jest.fn(async () => {});
+      setStrategyManifestHooks('TrendLine', { onSkip });
+
+      const { strategy } = await makeRuntime(() => ({
+        kind: 'skip',
+        code: 'FILTER_BLOCKED',
+      }));
+      await strategy(candle, btcCandle);
+
+      expect(onSkip).toHaveBeenCalledTimes(1);
+      expect(firstCallArg(onSkip)).toMatchSnapshot();
+    });
+
+    it('beforeClosePosition params snapshot', async () => {
+      const beforeClosePosition = jest.fn(async () => {});
+      setStrategyManifestHooks('TrendLine', { beforeClosePosition });
+
+      const { strategy } = await makeRuntime(() => ({
+        kind: 'exit',
+        code: 'CLOSE_BY_SIGNAL',
+        closePlan: { price: 100, timestamp: 1_700_000_123_000, direction: 'LONG' },
+      }));
+      await strategy(candle, btcCandle);
+
+      expect(beforeClosePosition).toHaveBeenCalledTimes(1);
+      expect(firstCallArg(beforeClosePosition)).toMatchSnapshot();
+    });
+
+    it('afterEnrichMl params snapshot', async () => {
+      const afterEnrichMl = jest.fn(async () => {});
+      setStrategyManifestHooks('TrendLine', { afterEnrichMl });
+
+      const { strategy } = await makeRuntime(() => makeDecisionEntry());
+      await strategy(candle, btcCandle);
+
+      expect(afterEnrichMl).toHaveBeenCalledTimes(1);
+      expect(firstCallArg(afterEnrichMl)).toMatchSnapshot();
+    });
+
+    it('afterEnrichAi params snapshot', async () => {
+      const afterEnrichAi = jest.fn(async () => {});
+      setStrategyManifestHooks('TrendLine', { afterEnrichAi });
+
+      const { strategy } = await makeRuntime(() => makeDecisionEntry());
+      await strategy(candle, btcCandle);
+
+      expect(afterEnrichAi).toHaveBeenCalledTimes(1);
+      expect(firstCallArg(afterEnrichAi)).toMatchSnapshot();
+    });
+
+    it('beforeEntryGate params snapshot (with signal)', async () => {
+      const beforeEntryGate = jest.fn(async () => {});
+      setStrategyManifestHooks('TrendLine', { beforeEntryGate });
+
+      const { strategy } = await makeRuntime(() => makeDecisionEntry());
+      await strategy(candle, btcCandle);
+
+      expect(beforeEntryGate).toHaveBeenCalledTimes(1);
+      expect(firstCallArg(beforeEntryGate)).toMatchSnapshot();
+    });
+
+    it('beforeEntryGate params snapshot (without signal)', async () => {
+      const beforeEntryGate = jest.fn(async () => {});
+      setStrategyManifestHooks('TrendLine', { beforeEntryGate });
+
+      const { strategy } = await makeRuntime(() =>
+        makeDecisionEntry({
+          signal: undefined,
+          runtime: { ml: { enabled: false }, ai: { enabled: false } },
+        }),
+      );
+      await strategy(candle, btcCandle);
+
+      expect(beforeEntryGate).toHaveBeenCalledTimes(1);
+      expect(firstCallArg(beforeEntryGate)).toMatchSnapshot();
+    });
+
+    it('beforePlaceOrder params snapshot', async () => {
+      const beforePlaceOrder = jest.fn(async () => {});
+      setStrategyManifestHooks('TrendLine', { beforePlaceOrder });
+
+      const { strategy } = await makeRuntime(() =>
+        makeDecisionEntry({
+          signal: undefined,
+          runtime: { ml: { enabled: false }, ai: { enabled: false } },
+        }),
+      );
+      await strategy(candle, btcCandle);
+
+      expect(beforePlaceOrder).toHaveBeenCalledTimes(1);
+      expect(firstCallArg(beforePlaceOrder)).toMatchSnapshot();
+    });
+
+    it('beforePlaceOrder params snapshot (with signal)', async () => {
+      const beforePlaceOrder = jest.fn(async () => {});
+      setStrategyManifestHooks('TrendLine', { beforePlaceOrder });
+      mockExecuteEntryOrder.mockImplementation(async ({ beforePlaceOrder: bp }: any) => {
+        await bp?.();
+        return 222;
+      });
+
+      const { strategy } = await makeRuntime(() => makeDecisionEntry());
+      await strategy(candle, btcCandle);
+
+      expect(beforePlaceOrder).toHaveBeenCalledTimes(1);
+      expect(firstCallArg(beforePlaceOrder)).toMatchSnapshot();
+    });
+
+    it('afterPlaceOrder params snapshot (with signal)', async () => {
+      const afterPlaceOrder = jest.fn(async () => {});
+      setStrategyManifestHooks('TrendLine', { afterPlaceOrder });
+
+      const { strategy } = await makeRuntime(() => makeDecisionEntry());
+      await strategy(candle, btcCandle);
+
+      expect(afterPlaceOrder).toHaveBeenCalledTimes(1);
+      expect(firstCallArg(afterPlaceOrder)).toMatchSnapshot();
+    });
+
+    it('afterPlaceOrder params snapshot (without signal)', async () => {
+      const afterPlaceOrder = jest.fn(async () => {});
+      setStrategyManifestHooks('TrendLine', { afterPlaceOrder });
+
+      const { strategy } = await makeRuntime(() =>
+        makeDecisionEntry({
+          signal: undefined,
+          runtime: { ml: { enabled: false }, ai: { enabled: false } },
+        }),
+      );
+      await strategy(candle, btcCandle);
+
+      expect(afterPlaceOrder).toHaveBeenCalledTimes(1);
+      expect(firstCallArg(afterPlaceOrder)).toMatchSnapshot();
+    });
+
+    it('onRuntimeError params snapshot', async () => {
+      const onRuntimeError = jest.fn(async () => {});
+      const afterCoreDecision = jest.fn(async () => {
+        throw new Error('test-hook-error');
+      });
+      setStrategyManifestHooks('TrendLine', { onRuntimeError, afterCoreDecision });
+
+      const { strategy } = await makeRuntime(() => ({
+        kind: 'skip',
+        code: 'NO_SIGNAL',
+      }));
+      await strategy(candle, btcCandle);
+
+      expect(onRuntimeError).toHaveBeenCalledTimes(1);
+      const params = { ...(onRuntimeError.mock.calls as any[][])[0][0] };
+      params.error = params.error?.message ?? params.error;
+      expect(stripFunctions(params)).toMatchSnapshot();
+    });
+  });
 });

@@ -85,4 +85,4 @@ Called when runtime catches an error in a runtime stage or hook.
 | --------------- | ------------------------- |
 | No return value | `void` or `Promise<void>` |
 
-This hook cannot block runtime flow.
+This hook cannot block runtime flow. If `onRuntimeError` itself throws, the error is logged but **not** re-thrown — the runtime continues.

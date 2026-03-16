@@ -2,7 +2,7 @@
 title: afterEnrichMl
 ---
 
-Called on entry path after ML enrichment.
+Called on entry path after ML enrichment. This hook **only fires when `signal` exists** — if the entry decision has no signal, ML enrichment is skipped and this hook is not called.
 
 ## Params
 
@@ -16,50 +16,12 @@ Called on entry path after ML enrichment.
   env: string;
   isConfigFromBacktest: boolean;
   decision: EntryDecision;
-  runtime: EntryRuntime | undefined;
-  signal: Signal | undefined;
+  runtime: ResolvedEntryRuntime;
+  signal: Signal;
 }
 ```
 
-`EntryDecision` shape:
-
-```ts
-{
-  kind: 'entry';
-  code: string;
-  entryContext: {
-    strategy: string;
-    symbol: string;
-    interval: string;
-    direction: 'LONG' | 'SHORT';
-    timestamp: number;
-    prices: {
-      currentPrice: number;
-      takeProfitPrice: number;
-      stopLossPrice: number;
-      riskRatio: number;
-    };
-    isConfigFromBacktest?: boolean;
-  };
-  orderPlan: {
-    qty: number;
-    stopLossPrice: number;
-    takeProfits: Array<{ price: number; rate: number; done?: boolean }>;
-  };
-  runtime?: EntryRuntime;
-  signal?: Signal;
-}
-```
-
-`EntryRuntime` shape:
-
-```ts
-{
-  ml?: { enabled?: boolean; strategyConfig?: StrategyConfig; mlThreshold?: number };
-  ai?: { enabled?: boolean; minQuality?: number };
-  beforePlaceOrder?: () => Promise<void>;
-}
-```
+`runtime` is the [resolved entry runtime](./index.md#runtime-parameter) (always an object, never `undefined`). The raw decision runtime is available via `decision.runtime`.
 
 ## Output
 
@@ -67,4 +29,4 @@ Called on entry path after ML enrichment.
 | --------------- | ------------------------- |
 | No return value | `void` or `Promise<void>` |
 
-This hook cannot block runtime flow.
+This hook cannot block runtime flow. If it throws, the error is logged, `onRuntimeError` is called, and the runtime continues.
