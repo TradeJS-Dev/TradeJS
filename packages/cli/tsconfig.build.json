@@ -1,7 +1,15 @@
 {
-  "extends": "./tsconfig.json",
+  "extends": "../../tsconfig.packages.json",
   "compilerOptions": {
     "incremental": false,
     "noEmit": false
-  }
+  },
+  "include": ["src/**/*.ts", "src/**/*.tsx"],
+  "exclude": [
+    "dist",
+    "node_modules",
+    "src/**/__tests__/**",
+    "src/**/*.test.ts",
+    "src/**/*.test.tsx"
+  ]
 }

@@ -1,4 +1,4 @@
-import { DerivativesInterval } from '@tradejs/infra/timescale';
+import type { DerivativesInterval } from '@tradejs/types';
 
 export const SUPPORTED_DERIVATIVE_INTERVALS: DerivativesInterval[] = [
   '15m',

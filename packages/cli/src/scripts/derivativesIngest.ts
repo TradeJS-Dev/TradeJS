@@ -6,11 +6,11 @@ import {
   normalizeDerivativesIntervals,
 } from '@tradejs/core/indicators';
 import {
-  DerivativesInterval,
   upsertDerivatives,
   upsertSpreadRows,
   waitForDbReady,
 } from '@tradejs/infra/timescale';
+import type { DerivativesInterval } from '@tradejs/types';
 import {
   marketDataProviders,
   MarketDataProviderName,

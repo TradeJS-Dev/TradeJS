@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import {
-  DerivativesInterval,
-  getSpreadRangeForSymbols,
-} from '@tradejs/infra/timescale';
+import { getSpreadRangeForSymbols } from '@tradejs/infra/timescale';
 import { logger } from '@tradejs/infra/logger';
+import type { DerivativesInterval } from '@tradejs/types';
 
 export const dynamic = 'force-dynamic';
 

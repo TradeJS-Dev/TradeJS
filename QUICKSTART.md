@@ -123,7 +123,7 @@ yarn doctor
 ### Type/Test checks after core changes
 
 ```bash
-yarn dev-tsc
+yarn typecheck
 yarn unit
 ```
 

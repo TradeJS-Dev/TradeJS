@@ -3,7 +3,7 @@ import {
   coinalyzePointsToRows,
   mergeCoinalyzeMetrics,
 } from '@tradejs/core/indicators';
-import { DerivativesInterval } from '@tradejs/infra/timescale';
+import type { DerivativesInterval } from '@tradejs/types';
 import { MarketDataProvider } from './types';
 
 type CoinalyzeMetric = 'oi' | 'funding' | 'liq';

@@ -29,6 +29,30 @@ export interface KlineRequest {
   cacheOnly?: boolean;
 }
 
+export type DerivativesInterval = '15m' | '1h';
+
+export type DerivativesRow = {
+  symbol: string;
+  interval: DerivativesInterval;
+  ts: Date;
+  openInterest?: number | null;
+  fundingRate?: number | null;
+  liqLong?: number | null;
+  liqShort?: number | null;
+  liqTotal?: number | null;
+  source?: string | null;
+};
+
+export type SpreadRow = {
+  symbol: string;
+  interval: DerivativesInterval;
+  ts: Date;
+  binancePrice?: number | null;
+  coinbasePrice?: number | null;
+  spread?: number | null;
+  source?: string | null;
+};
+
 export interface Tp {
   price: number;
   rate: number;

@@ -1,4 +1,4 @@
-import { DerivativesInterval } from '@tradejs/infra/timescale';
+import type { DerivativesInterval } from '@tradejs/types';
 import {
   alignSpreadRows,
   coinbaseProductFromSymbol,

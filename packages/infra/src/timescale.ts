@@ -1,5 +1,10 @@
 import { Pool } from 'pg';
-import { KlineChartData } from '@tradejs/types';
+import {
+  KlineChartData,
+  DerivativesInterval,
+  DerivativesRow,
+  SpreadRow,
+} from '@tradejs/types';
 
 declare global {
   // чтобы Next.js не создавал пул на каждый HMR
@@ -39,30 +44,6 @@ export type CandleRow = {
   close: number;
   volume?: number | null;
   turnover?: number | null;
-};
-
-export type DerivativesInterval = '15m' | '1h';
-
-export type DerivativesRow = {
-  symbol: string;
-  interval: DerivativesInterval;
-  ts: Date;
-  openInterest?: number | null;
-  fundingRate?: number | null;
-  liqLong?: number | null;
-  liqShort?: number | null;
-  liqTotal?: number | null;
-  source?: string | null;
-};
-
-export type SpreadRow = {
-  symbol: string;
-  interval: DerivativesInterval;
-  ts: Date;
-  binancePrice?: number | null;
-  coinbasePrice?: number | null;
-  spread?: number | null;
-  source?: string | null;
 };
 
 let derivativesSchemaReady = false;

@@ -1,5 +1,4 @@
-import { DerivativesInterval } from '@tradejs/infra/timescale';
-import { KlineChartData } from '@tradejs/types';
+import { KlineChartData, DerivativesInterval } from '@tradejs/types';
 import { fetchWithRetry } from '@tradejs/infra/http';
 
 export type SpotKlineRequest = {
