@@ -2,33 +2,20 @@
 
 exports[`strategyRuntime hook params snapshots afterCoreDecision params snapshot (entry) 1`] = `
 {
-  "btcCandle": {
-    "close": 40500,
-    "dt": "2024-01-01",
-    "high": 41000,
-    "low": 39000,
-    "open": 40000,
-    "timestamp": 1,
-    "turnover": 20000000,
-    "volume": 500,
-  },
-  "candle": {
-    "close": 102,
-    "dt": "2024-01-01",
-    "high": 105,
-    "low": 95,
-    "open": 100,
-    "timestamp": 1,
-    "turnover": 100000,
-    "volume": 1000,
-  },
-  "config": {
-    "ENV": "LIVE",
-    "MAKE_ORDERS": true,
-  },
-  "connector": {
-    "closePosition": "[Function]",
-    "placeOrder": "[Function]",
+  "ctx": {
+    "connector": {
+      "closePosition": "[Function]",
+      "placeOrder": "[Function]",
+    },
+    "env": "LIVE",
+    "isConfigFromBacktest": false,
+    "strategyConfig": {
+      "ENV": "LIVE",
+      "MAKE_ORDERS": true,
+    },
+    "strategyName": "TrendLine",
+    "symbol": "ETHUSDT",
+    "userName": "root",
   },
   "decision": {
     "code": "ENTRY",
@@ -87,43 +74,47 @@ exports[`strategyRuntime hook params snapshots afterCoreDecision params snapshot
       "timestamp": 1700000000000,
     },
   },
-  "env": "LIVE",
-  "isConfigFromBacktest": false,
-  "strategyName": "TrendLine",
-  "symbol": "ETHUSDT",
-  "userName": "root",
+  "market": {
+    "btcCandle": {
+      "close": 40500,
+      "dt": "2024-01-01",
+      "high": 41000,
+      "low": 39000,
+      "open": 40000,
+      "timestamp": 1,
+      "turnover": 20000000,
+      "volume": 500,
+    },
+    "candle": {
+      "close": 102,
+      "dt": "2024-01-01",
+      "high": 105,
+      "low": 95,
+      "open": 100,
+      "timestamp": 1,
+      "turnover": 100000,
+      "volume": 1000,
+    },
+  },
 }
 `;
 
 exports[`strategyRuntime hook params snapshots afterCoreDecision params snapshot (exit) 1`] = `
 {
-  "btcCandle": {
-    "close": 40500,
-    "dt": "2024-01-01",
-    "high": 41000,
-    "low": 39000,
-    "open": 40000,
-    "timestamp": 1,
-    "turnover": 20000000,
-    "volume": 500,
-  },
-  "candle": {
-    "close": 102,
-    "dt": "2024-01-01",
-    "high": 105,
-    "low": 95,
-    "open": 100,
-    "timestamp": 1,
-    "turnover": 100000,
-    "volume": 1000,
-  },
-  "config": {
-    "ENV": "LIVE",
-    "MAKE_ORDERS": true,
-  },
-  "connector": {
-    "closePosition": "[Function]",
-    "placeOrder": "[Function]",
+  "ctx": {
+    "connector": {
+      "closePosition": "[Function]",
+      "placeOrder": "[Function]",
+    },
+    "env": "LIVE",
+    "isConfigFromBacktest": false,
+    "strategyConfig": {
+      "ENV": "LIVE",
+      "MAKE_ORDERS": true,
+    },
+    "strategyName": "TrendLine",
+    "symbol": "ETHUSDT",
+    "userName": "root",
   },
   "decision": {
     "closePlan": {
@@ -134,65 +125,102 @@ exports[`strategyRuntime hook params snapshots afterCoreDecision params snapshot
     "code": "CLOSE_BY_SIGNAL",
     "kind": "exit",
   },
-  "env": "LIVE",
-  "isConfigFromBacktest": false,
-  "strategyName": "TrendLine",
-  "symbol": "ETHUSDT",
-  "userName": "root",
+  "market": {
+    "btcCandle": {
+      "close": 40500,
+      "dt": "2024-01-01",
+      "high": 41000,
+      "low": 39000,
+      "open": 40000,
+      "timestamp": 1,
+      "turnover": 20000000,
+      "volume": 500,
+    },
+    "candle": {
+      "close": 102,
+      "dt": "2024-01-01",
+      "high": 105,
+      "low": 95,
+      "open": 100,
+      "timestamp": 1,
+      "turnover": 100000,
+      "volume": 1000,
+    },
+  },
 }
 `;
 
 exports[`strategyRuntime hook params snapshots afterCoreDecision params snapshot (skip) 1`] = `
 {
-  "btcCandle": {
-    "close": 40500,
-    "dt": "2024-01-01",
-    "high": 41000,
-    "low": 39000,
-    "open": 40000,
-    "timestamp": 1,
-    "turnover": 20000000,
-    "volume": 500,
-  },
-  "candle": {
-    "close": 102,
-    "dt": "2024-01-01",
-    "high": 105,
-    "low": 95,
-    "open": 100,
-    "timestamp": 1,
-    "turnover": 100000,
-    "volume": 1000,
-  },
-  "config": {
-    "ENV": "LIVE",
-    "MAKE_ORDERS": true,
-  },
-  "connector": {
-    "closePosition": "[Function]",
-    "placeOrder": "[Function]",
+  "ctx": {
+    "connector": {
+      "closePosition": "[Function]",
+      "placeOrder": "[Function]",
+    },
+    "env": "LIVE",
+    "isConfigFromBacktest": false,
+    "strategyConfig": {
+      "ENV": "LIVE",
+      "MAKE_ORDERS": true,
+    },
+    "strategyName": "TrendLine",
+    "symbol": "ETHUSDT",
+    "userName": "root",
   },
   "decision": {
     "code": "NO_SIGNAL",
     "kind": "skip",
   },
-  "env": "LIVE",
-  "isConfigFromBacktest": false,
-  "strategyName": "TrendLine",
-  "symbol": "ETHUSDT",
-  "userName": "root",
+  "market": {
+    "btcCandle": {
+      "close": 40500,
+      "dt": "2024-01-01",
+      "high": 41000,
+      "low": 39000,
+      "open": 40000,
+      "timestamp": 1,
+      "turnover": 20000000,
+      "volume": 500,
+    },
+    "candle": {
+      "close": 102,
+      "dt": "2024-01-01",
+      "high": 105,
+      "low": 95,
+      "open": 100,
+      "timestamp": 1,
+      "turnover": 100000,
+      "volume": 1000,
+    },
+  },
 }
 `;
 
 exports[`strategyRuntime hook params snapshots afterEnrichAi params snapshot 1`] = `
 {
-  "config": {
-    "ENV": "LIVE",
-    "MAKE_ORDERS": true,
+  "ai": {
+    "applied": true,
+    "attempted": true,
+    "config": {
+      "enabled": true,
+      "minQuality": 5,
+    },
+    "quality": 5,
   },
-  "connector": {
-    "closePosition": "[Function]",
-    "placeOrder": "[Function]",
+  "ctx": {
+    "connector": {
+      "closePosition": "[Function]",
+      "placeOrder": "[Function]",
+    },
+    "env": "LIVE",
+    "isConfigFromBacktest": false,
+    "strategyConfig": {
+      "ENV": "LIVE",
+      "MAKE_ORDERS": true,
+    },
+    "strategyName": "TrendLine",
+    "symbol": "ETHUSDT",
+    "userName": "root",
   },
   "decision": {
     "code": "ENTRY",
@@ -251,53 +279,129 @@ exports[`strategyRuntime hook params snapshots afterEnrichAi params snapshot 1`]
       "timestamp": 1700000000000,
     },
   },
-  "env": "LIVE",
-  "isConfigFromBacktest": false,
-  "quality": 5,
-  "runtime": {
-    "ai": {
-      "enabled": true,
-      "minQuality": 5,
+  "entry": {
+    "context": {
+      "direction": "SHORT",
+      "interval": "15",
+      "isConfigFromBacktest": false,
+      "prices": {
+        "currentPrice": 222,
+        "riskRatio": 1.2,
+        "stopLossPrice": 230,
+        "takeProfitPrice": 200,
+      },
+      "strategy": "TrendLine",
+      "symbol": "ETHUSDT",
+      "timestamp": 1700000123000,
     },
-    "ml": {
+    "orderPlan": {
+      "qty": 3,
+      "stopLossPrice": 230,
+      "takeProfits": [
+        {
+          "price": 200,
+          "rate": 1,
+        },
+      ],
+    },
+    "runtime": {
+      "raw": {
+        "ai": {
+          "enabled": true,
+          "minQuality": 5,
+        },
+        "ml": {
+          "enabled": true,
+          "mlThreshold": 0.5,
+          "strategyConfig": {
+            "X": 1,
+          },
+        },
+      },
+      "resolved": {
+        "ai": {
+          "enabled": true,
+          "minQuality": 5,
+        },
+        "ml": {
+          "enabled": true,
+          "mlThreshold": 0.5,
+          "strategyConfig": {
+            "X": 1,
+          },
+        },
+      },
+    },
+    "signal": {
+      "direction": "LONG",
+      "figures": {},
+      "indicators": {},
+      "interval": "15",
+      "prices": {
+        "currentPrice": 100,
+        "riskRatio": 2,
+        "stopLossPrice": 95,
+        "takeProfitPrice": 105,
+      },
+      "signalId": "sig-1",
+      "strategy": "TrendLine",
+      "symbol": "ETHUSDT",
+      "timestamp": 1700000000000,
+    },
+  },
+  "market": {
+    "btcCandle": {
+      "close": 40500,
+      "dt": "2024-01-01",
+      "high": 41000,
+      "low": 39000,
+      "open": 40000,
+      "timestamp": 1,
+      "turnover": 20000000,
+      "volume": 500,
+    },
+    "candle": {
+      "close": 102,
+      "dt": "2024-01-01",
+      "high": 105,
+      "low": 95,
+      "open": 100,
+      "timestamp": 1,
+      "turnover": 100000,
+      "volume": 1000,
+    },
+  },
+  "ml": {
+    "applied": false,
+    "attempted": true,
+    "config": {
       "enabled": true,
       "mlThreshold": 0.5,
       "strategyConfig": {
         "X": 1,
       },
     },
+    "skippedReason": "NO_RESULT",
   },
-  "signal": {
-    "direction": "LONG",
-    "figures": {},
-    "indicators": {},
-    "interval": "15",
-    "prices": {
-      "currentPrice": 100,
-      "riskRatio": 2,
-      "stopLossPrice": 95,
-      "takeProfitPrice": 105,
-    },
-    "signalId": "sig-1",
-    "strategy": "TrendLine",
-    "symbol": "ETHUSDT",
-    "timestamp": 1700000000000,
-  },
-  "strategyName": "TrendLine",
-  "symbol": "ETHUSDT",
-  "userName": "root",
 }
 `;
 
 exports[`strategyRuntime hook params snapshots afterEnrichMl params snapshot 1`] = `
 {
-  "config": {
-    "ENV": "LIVE",
-    "MAKE_ORDERS": true,
-  },
-  "connector": {
-    "closePosition": "[Function]",
-    "placeOrder": "[Function]",
+  "ctx": {
+    "connector": {
+      "closePosition": "[Function]",
+      "placeOrder": "[Function]",
+    },
+    "env": "LIVE",
+    "isConfigFromBacktest": false,
+    "strategyConfig": {
+      "ENV": "LIVE",
+      "MAKE_ORDERS": true,
+    },
+    "strategyName": "TrendLine",
+    "symbol": "ETHUSDT",
+    "userName": "root",
   },
   "decision": {
     "code": "ENTRY",
@@ -356,52 +460,138 @@ exports[`strategyRuntime hook params snapshots afterEnrichMl params snapshot 1`]
       "timestamp": 1700000000000,
     },
   },
-  "env": "LIVE",
-  "isConfigFromBacktest": false,
-  "runtime": {
-    "ai": {
-      "enabled": true,
-      "minQuality": 5,
+  "entry": {
+    "context": {
+      "direction": "SHORT",
+      "interval": "15",
+      "isConfigFromBacktest": false,
+      "prices": {
+        "currentPrice": 222,
+        "riskRatio": 1.2,
+        "stopLossPrice": 230,
+        "takeProfitPrice": 200,
+      },
+      "strategy": "TrendLine",
+      "symbol": "ETHUSDT",
+      "timestamp": 1700000123000,
     },
-    "ml": {
+    "orderPlan": {
+      "qty": 3,
+      "stopLossPrice": 230,
+      "takeProfits": [
+        {
+          "price": 200,
+          "rate": 1,
+        },
+      ],
+    },
+    "runtime": {
+      "raw": {
+        "ai": {
+          "enabled": true,
+          "minQuality": 5,
+        },
+        "ml": {
+          "enabled": true,
+          "mlThreshold": 0.5,
+          "strategyConfig": {
+            "X": 1,
+          },
+        },
+      },
+      "resolved": {
+        "ai": {
+          "enabled": true,
+          "minQuality": 5,
+        },
+        "ml": {
+          "enabled": true,
+          "mlThreshold": 0.5,
+          "strategyConfig": {
+            "X": 1,
+          },
+        },
+      },
+    },
+    "signal": {
+      "direction": "LONG",
+      "figures": {},
+      "indicators": {},
+      "interval": "15",
+      "prices": {
+        "currentPrice": 100,
+        "riskRatio": 2,
+        "stopLossPrice": 95,
+        "takeProfitPrice": 105,
+      },
+      "signalId": "sig-1",
+      "strategy": "TrendLine",
+      "symbol": "ETHUSDT",
+      "timestamp": 1700000000000,
+    },
+  },
+  "market": {
+    "btcCandle": {
+      "close": 40500,
+      "dt": "2024-01-01",
+      "high": 41000,
+      "low": 39000,
+      "open": 40000,
+      "timestamp": 1,
+      "turnover": 20000000,
+      "volume": 500,
+    },
+    "candle": {
+      "close": 102,
+      "dt": "2024-01-01",
+      "high": 105,
+      "low": 95,
+      "open": 100,
+      "timestamp": 1,
+      "turnover": 100000,
+      "volume": 1000,
+    },
+  },
+  "ml": {
+    "applied": false,
+    "attempted": true,
+    "config": {
       "enabled": true,
       "mlThreshold": 0.5,
       "strategyConfig": {
         "X": 1,
       },
     },
+    "skippedReason": "NO_RESULT",
   },
-  "signal": {
-    "direction": "LONG",
-    "figures": {},
-    "indicators": {},
-    "interval": "15",
-    "prices": {
-      "currentPrice": 100,
-      "riskRatio": 2,
-      "stopLossPrice": 95,
-      "takeProfitPrice": 105,
-    },
-    "signalId": "sig-1",
-    "strategy": "TrendLine",
-    "symbol": "ETHUSDT",
-    "timestamp": 1700000000000,
-  },
-  "strategyName": "TrendLine",
-  "symbol": "ETHUSDT",
-  "userName": "root",
 }
 `;
 
 exports[`strategyRuntime hook params snapshots afterPlaceOrder params snapshot (with signal) 1`] = `
 {
-  "config": {
-    "ENV": "LIVE",
-    "MAKE_ORDERS": true,
+  "ai": {
+    "applied": true,
+    "attempted": true,
+    "config": {
+      "enabled": true,
+      "minQuality": 5,
+    },
+    "quality": 5,
   },
-  "connector": {
-    "closePosition": "[Function]",
-    "placeOrder": "[Function]",
+  "ctx": {
+    "connector": {
+      "closePosition": "[Function]",
+      "placeOrder": "[Function]",
+    },
+    "env": "LIVE",
+    "isConfigFromBacktest": false,
+    "strategyConfig": {
+      "ENV": "LIVE",
+      "MAKE_ORDERS": true,
+    },
+    "strategyName": "TrendLine",
+    "symbol": "ETHUSDT",
+    "userName": "root",
   },
   "decision": {
     "code": "ENTRY",
@@ -460,68 +650,153 @@ exports[`strategyRuntime hook params snapshots afterPlaceOrder params snapshot (
       "timestamp": 1700000000000,
     },
   },
-  "env": "LIVE",
-  "isConfigFromBacktest": false,
-  "orderResult": {
-    "direction": "LONG",
-    "figures": {},
-    "indicators": {},
-    "interval": "15",
-    "prices": {
-      "currentPrice": 100,
-      "riskRatio": 2,
-      "stopLossPrice": 95,
-      "takeProfitPrice": 105,
+  "entry": {
+    "context": {
+      "direction": "SHORT",
+      "interval": "15",
+      "isConfigFromBacktest": false,
+      "prices": {
+        "currentPrice": 222,
+        "riskRatio": 1.2,
+        "stopLossPrice": 230,
+        "takeProfitPrice": 200,
+      },
+      "strategy": "TrendLine",
+      "symbol": "ETHUSDT",
+      "timestamp": 1700000123000,
     },
-    "signalId": "sig-1",
-    "strategy": "TrendLine",
-    "symbol": "ETHUSDT",
-    "timestamp": 1700000000000,
+    "orderPlan": {
+      "qty": 3,
+      "stopLossPrice": 230,
+      "takeProfits": [
+        {
+          "price": 200,
+          "rate": 1,
+        },
+      ],
+    },
+    "runtime": {
+      "raw": {
+        "ai": {
+          "enabled": true,
+          "minQuality": 5,
+        },
+        "ml": {
+          "enabled": true,
+          "mlThreshold": 0.5,
+          "strategyConfig": {
+            "X": 1,
+          },
+        },
+      },
+      "resolved": {
+        "ai": {
+          "enabled": true,
+          "minQuality": 5,
+        },
+        "ml": {
+          "enabled": true,
+          "mlThreshold": 0.5,
+          "strategyConfig": {
+            "X": 1,
+          },
+        },
+      },
+    },
+    "signal": {
+      "direction": "LONG",
+      "figures": {},
+      "indicators": {},
+      "interval": "15",
+      "prices": {
+        "currentPrice": 100,
+        "riskRatio": 2,
+        "stopLossPrice": 95,
+        "takeProfitPrice": 105,
+      },
+      "signalId": "sig-1",
+      "strategy": "TrendLine",
+      "symbol": "ETHUSDT",
+      "timestamp": 1700000000000,
+    },
   },
-  "runtime": {
-    "ai": {
-      "enabled": true,
-      "minQuality": 5,
+  "market": {
+    "btcCandle": {
+      "close": 40500,
+      "dt": "2024-01-01",
+      "high": 41000,
+      "low": 39000,
+      "open": 40000,
+      "timestamp": 1,
+      "turnover": 20000000,
+      "volume": 500,
     },
-    "ml": {
+    "candle": {
+      "close": 102,
+      "dt": "2024-01-01",
+      "high": 105,
+      "low": 95,
+      "open": 100,
+      "timestamp": 1,
+      "turnover": 100000,
+      "volume": 1000,
+    },
+  },
+  "ml": {
+    "applied": false,
+    "attempted": true,
+    "config": {
       "enabled": true,
       "mlThreshold": 0.5,
       "strategyConfig": {
         "X": 1,
       },
     },
+    "skippedReason": "NO_RESULT",
   },
-  "signal": {
-    "direction": "LONG",
-    "figures": {},
-    "indicators": {},
-    "interval": "15",
-    "prices": {
-      "currentPrice": 100,
-      "riskRatio": 2,
-      "stopLossPrice": 95,
-      "takeProfitPrice": 105,
+  "order": {
+    "result": {
+      "direction": "LONG",
+      "figures": {},
+      "indicators": {},
+      "interval": "15",
+      "prices": {
+        "currentPrice": 100,
+        "riskRatio": 2,
+        "stopLossPrice": 95,
+        "takeProfitPrice": 105,
+      },
+      "signalId": "sig-1",
+      "strategy": "TrendLine",
+      "symbol": "ETHUSDT",
+      "timestamp": 1700000000000,
     },
-    "signalId": "sig-1",
-    "strategy": "TrendLine",
-    "symbol": "ETHUSDT",
-    "timestamp": 1700000000000,
   },
-  "strategyName": "TrendLine",
-  "symbol": "ETHUSDT",
-  "userName": "root",
+  "policy": {
+    "aiQuality": 5,
+    "makeOrdersEnabled": true,
+    "minAiQuality": 5,
+  },
 }
 `;
 
 exports[`strategyRuntime hook params snapshots afterPlaceOrder params snapshot (without signal) 1`] = `
 {
-  "config": {
-    "ENV": "LIVE",
-    "MAKE_ORDERS": true,
-  },
-  "connector": {
-    "closePosition": "[Function]",
-    "placeOrder": "[Function]",
+  "ai": undefined,
+  "ctx": {
+    "connector": {
+      "closePosition": "[Function]",
+      "placeOrder": "[Function]",
+    },
+    "env": "LIVE",
+    "isConfigFromBacktest": false,
+    "strategyConfig": {
+      "ENV": "LIVE",
+      "MAKE_ORDERS": true,
+    },
+    "strategyName": "TrendLine",
+    "symbol": "ETHUSDT",
+    "userName": "root",
   },
   "decision": {
     "code": "ENTRY",
@@ -560,40 +835,108 @@ exports[`strategyRuntime hook params snapshots afterPlaceOrder params snapshot (
     },
     "signal": undefined,
   },
-  "env": "LIVE",
-  "isConfigFromBacktest": false,
-  "orderResult": "ENTRY",
-  "runtime": {
-    "ai": {
-      "enabled": false,
-      "minQuality": undefined,
+  "entry": {
+    "context": {
+      "direction": "SHORT",
+      "interval": "15",
+      "isConfigFromBacktest": false,
+      "prices": {
+        "currentPrice": 222,
+        "riskRatio": 1.2,
+        "stopLossPrice": 230,
+        "takeProfitPrice": 200,
+      },
+      "strategy": "TrendLine",
+      "symbol": "ETHUSDT",
+      "timestamp": 1700000123000,
     },
-    "ml": {
-      "enabled": false,
-      "mlThreshold": undefined,
-      "strategyConfig": {
-        "ENV": "LIVE",
-        "MAKE_ORDERS": true,
-        "TRENDLINE_CONFIG": {},
+    "orderPlan": {
+      "qty": 3,
+      "stopLossPrice": 230,
+      "takeProfits": [
+        {
+          "price": 200,
+          "rate": 1,
+        },
+      ],
+    },
+    "runtime": {
+      "raw": {
+        "ai": {
+          "enabled": false,
+        },
+        "ml": {
+          "enabled": false,
+        },
+      },
+      "resolved": {
+        "ai": {
+          "enabled": false,
+          "minQuality": undefined,
+        },
+        "ml": {
+          "enabled": false,
+          "mlThreshold": undefined,
+          "strategyConfig": {
+            "ENV": "LIVE",
+            "MAKE_ORDERS": true,
+            "TRENDLINE_CONFIG": {},
+          },
+        },
       },
     },
+    "signal": undefined,
   },
-  "signal": undefined,
-  "strategyName": "TrendLine",
-  "symbol": "ETHUSDT",
-  "userName": "root",
+  "market": {
+    "btcCandle": {
+      "close": 40500,
+      "dt": "2024-01-01",
+      "high": 41000,
+      "low": 39000,
+      "open": 40000,
+      "timestamp": 1,
+      "turnover": 20000000,
+      "volume": 500,
+    },
+    "candle": {
+      "close": 102,
+      "dt": "2024-01-01",
+      "high": 105,
+      "low": 95,
+      "open": 100,
+      "timestamp": 1,
+      "turnover": 100000,
+      "volume": 1000,
+    },
+  },
+  "ml": undefined,
+  "order": {
+    "result": "ENTRY",
+  },
+  "policy": {
+    "aiQuality": undefined,
+    "makeOrdersEnabled": true,
+    "minAiQuality": 4,
+  },
 }
 `;
 
 exports[`strategyRuntime hook params snapshots beforeClosePosition params snapshot 1`] = `
 {
-  "config": {
-    "ENV": "LIVE",
-    "MAKE_ORDERS": true,
-  },
-  "connector": {
-    "closePosition": "[Function]",
-    "placeOrder": "[Function]",
+  "ctx": {
+    "connector": {
+      "closePosition": "[Function]",
+      "placeOrder": "[Function]",
+    },
+    "env": "LIVE",
+    "isConfigFromBacktest": false,
+    "strategyConfig": {
+      "ENV": "LIVE",
+      "MAKE_ORDERS": true,
+    },
+    "strategyName": "TrendLine",
+    "symbol": "ETHUSDT",
+    "userName": "root",
   },
   "decision": {
     "closePlan": {
@@ -604,23 +947,56 @@ exports[`strategyRuntime hook params snapshots beforeClosePosition params snapsh
     "code": "CLOSE_BY_SIGNAL",
     "kind": "exit",
   },
-  "env": "LIVE",
-  "isConfigFromBacktest": false,
-  "strategyName": "TrendLine",
-  "symbol": "ETHUSDT",
-  "userName": "root",
+  "market": {
+    "btcCandle": {
+      "close": 40500,
+      "dt": "2024-01-01",
+      "high": 41000,
+      "low": 39000,
+      "open": 40000,
+      "timestamp": 1,
+      "turnover": 20000000,
+      "volume": 500,
+    },
+    "candle": {
+      "close": 102,
+      "dt": "2024-01-01",
+      "high": 105,
+      "low": 95,
+      "open": 100,
+      "timestamp": 1,
+      "turnover": 100000,
+      "volume": 1000,
+    },
+  },
 }
 `;
 
 exports[`strategyRuntime hook params snapshots beforeEntryGate params snapshot (with signal) 1`] = `
 {
-  "config": {
-    "ENV": "LIVE",
-    "MAKE_ORDERS": true,
+  "ai": {
+    "applied": true,
+    "attempted": true,
+    "config": {
+      "enabled": true,
+      "minQuality": 5,
+    },
+    "quality": 5,
   },
-  "connector": {
-    "closePosition": "[Function]",
-    "placeOrder": "[Function]",
+  "ctx": {
+    "connector": {
+      "closePosition": "[Function]",
+      "placeOrder": "[Function]",
+    },
+    "env": "LIVE",
+    "isConfigFromBacktest": false,
+    "strategyConfig": {
+      "ENV": "LIVE",
+      "MAKE_ORDERS": true,
+    },
+    "strategyName": "TrendLine",
+    "symbol": "ETHUSDT",
+    "userName": "root",
   },
   "decision": {
     "code": "ENTRY",
@@ -679,55 +1055,135 @@ exports[`strategyRuntime hook params snapshots beforeEntryGate params snapshot (
       "timestamp": 1700000000000,
     },
   },
-  "env": "LIVE",
-  "isConfigFromBacktest": false,
-  "makeOrdersEnabled": true,
-  "minAiQuality": 5,
-  "quality": 5,
-  "runtime": {
-    "ai": {
-      "enabled": true,
-      "minQuality": 5,
+  "entry": {
+    "context": {
+      "direction": "SHORT",
+      "interval": "15",
+      "isConfigFromBacktest": false,
+      "prices": {
+        "currentPrice": 222,
+        "riskRatio": 1.2,
+        "stopLossPrice": 230,
+        "takeProfitPrice": 200,
+      },
+      "strategy": "TrendLine",
+      "symbol": "ETHUSDT",
+      "timestamp": 1700000123000,
     },
-    "ml": {
+    "orderPlan": {
+      "qty": 3,
+      "stopLossPrice": 230,
+      "takeProfits": [
+        {
+          "price": 200,
+          "rate": 1,
+        },
+      ],
+    },
+    "runtime": {
+      "raw": {
+        "ai": {
+          "enabled": true,
+          "minQuality": 5,
+        },
+        "ml": {
+          "enabled": true,
+          "mlThreshold": 0.5,
+          "strategyConfig": {
+            "X": 1,
+          },
+        },
+      },
+      "resolved": {
+        "ai": {
+          "enabled": true,
+          "minQuality": 5,
+        },
+        "ml": {
+          "enabled": true,
+          "mlThreshold": 0.5,
+          "strategyConfig": {
+            "X": 1,
+          },
+        },
+      },
+    },
+    "signal": {
+      "direction": "LONG",
+      "figures": {},
+      "indicators": {},
+      "interval": "15",
+      "prices": {
+        "currentPrice": 100,
+        "riskRatio": 2,
+        "stopLossPrice": 95,
+        "takeProfitPrice": 105,
+      },
+      "signalId": "sig-1",
+      "strategy": "TrendLine",
+      "symbol": "ETHUSDT",
+      "timestamp": 1700000000000,
+    },
+  },
+  "market": {
+    "btcCandle": {
+      "close": 40500,
+      "dt": "2024-01-01",
+      "high": 41000,
+      "low": 39000,
+      "open": 40000,
+      "timestamp": 1,
+      "turnover": 20000000,
+      "volume": 500,
+    },
+    "candle": {
+      "close": 102,
+      "dt": "2024-01-01",
+      "high": 105,
+      "low": 95,
+      "open": 100,
+      "timestamp": 1,
+      "turnover": 100000,
+      "volume": 1000,
+    },
+  },
+  "ml": {
+    "applied": false,
+    "attempted": true,
+    "config": {
       "enabled": true,
       "mlThreshold": 0.5,
       "strategyConfig": {
         "X": 1,
       },
     },
+    "skippedReason": "NO_RESULT",
   },
-  "signal": {
-    "direction": "LONG",
-    "figures": {},
-    "indicators": {},
-    "interval": "15",
-    "prices": {
-      "currentPrice": 100,
-      "riskRatio": 2,
-      "stopLossPrice": 95,
-      "takeProfitPrice": 105,
-    },
-    "signalId": "sig-1",
-    "strategy": "TrendLine",
-    "symbol": "ETHUSDT",
-    "timestamp": 1700000000000,
+  "policy": {
+    "aiQuality": 5,
+    "makeOrdersEnabled": true,
+    "minAiQuality": 5,
   },
-  "strategyName": "TrendLine",
-  "symbol": "ETHUSDT",
-  "userName": "root",
 }
 `;
 
 exports[`strategyRuntime hook params snapshots beforeEntryGate params snapshot (without signal) 1`] = `
 {
-  "config": {
-    "ENV": "LIVE",
-    "MAKE_ORDERS": true,
-  },
-  "connector": {
-    "closePosition": "[Function]",
-    "placeOrder": "[Function]",
+  "ai": undefined,
+  "ctx": {
+    "connector": {
+      "closePosition": "[Function]",
+      "placeOrder": "[Function]",
+    },
+    "env": "LIVE",
+    "isConfigFromBacktest": false,
+    "strategyConfig": {
+      "ENV": "LIVE",
+      "MAKE_ORDERS": true,
+    },
+    "strategyName": "TrendLine",
+    "symbol": "ETHUSDT",
+    "userName": "root",
   },
   "decision": {
     "code": "ENTRY",
@@ -766,42 +1222,114 @@ exports[`strategyRuntime hook params snapshots beforeEntryGate params snapshot (
     },
     "signal": undefined,
   },
-  "env": "LIVE",
-  "isConfigFromBacktest": false,
-  "makeOrdersEnabled": true,
-  "minAiQuality": 4,
-  "quality": undefined,
-  "runtime": {
-    "ai": {
-      "enabled": false,
-      "minQuality": undefined,
+  "entry": {
+    "context": {
+      "direction": "SHORT",
+      "interval": "15",
+      "isConfigFromBacktest": false,
+      "prices": {
+        "currentPrice": 222,
+        "riskRatio": 1.2,
+        "stopLossPrice": 230,
+        "takeProfitPrice": 200,
+      },
+      "strategy": "TrendLine",
+      "symbol": "ETHUSDT",
+      "timestamp": 1700000123000,
     },
-    "ml": {
-      "enabled": false,
-      "mlThreshold": undefined,
-      "strategyConfig": {
-        "ENV": "LIVE",
-        "MAKE_ORDERS": true,
-        "TRENDLINE_CONFIG": {},
+    "orderPlan": {
+      "qty": 3,
+      "stopLossPrice": 230,
+      "takeProfits": [
+        {
+          "price": 200,
+          "rate": 1,
+        },
+      ],
+    },
+    "runtime": {
+      "raw": {
+        "ai": {
+          "enabled": false,
+        },
+        "ml": {
+          "enabled": false,
+        },
+      },
+      "resolved": {
+        "ai": {
+          "enabled": false,
+          "minQuality": undefined,
+        },
+        "ml": {
+          "enabled": false,
+          "mlThreshold": undefined,
+          "strategyConfig": {
+            "ENV": "LIVE",
+            "MAKE_ORDERS": true,
+            "TRENDLINE_CONFIG": {},
+          },
+        },
       },
     },
+    "signal": undefined,
   },
-  "signal": undefined,
-  "strategyName": "TrendLine",
-  "symbol": "ETHUSDT",
-  "userName": "root",
+  "market": {
+    "btcCandle": {
+      "close": 40500,
+      "dt": "2024-01-01",
+      "high": 41000,
+      "low": 39000,
+      "open": 40000,
+      "timestamp": 1,
+      "turnover": 20000000,
+      "volume": 500,
+    },
+    "candle": {
+      "close": 102,
+      "dt": "2024-01-01",
+      "high": 105,
+      "low": 95,
+      "open": 100,
+      "timestamp": 1,
+      "turnover": 100000,
+      "volume": 1000,
+    },
+  },
+  "ml": undefined,
+  "policy": {
+    "aiQuality": undefined,
+    "makeOrdersEnabled": true,
+    "minAiQuality": 4,
+  },
 }
 `;
 
 exports[`strategyRuntime hook params snapshots beforePlaceOrder params snapshot (with signal) 1`] = `
 {
-  "config": {
-    "ENV": "LIVE",
-    "MAKE_ORDERS": true,
+  "ai": {
+    "applied": true,
+    "attempted": true,
+    "config": {
+      "enabled": true,
+      "minQuality": 5,
+    },
+    "quality": 5,
   },
-  "connector": {
-    "closePosition": "[Function]",
-    "placeOrder": "[Function]",
+  "ctx": {
+    "connector": {
+      "closePosition": "[Function]",
+      "placeOrder": "[Function]",
+    },
+    "env": "LIVE",
+    "isConfigFromBacktest": false,
+    "strategyConfig": {
+      "ENV": "LIVE",
+      "MAKE_ORDERS": true,
+    },
+    "strategyName": "TrendLine",
+    "symbol": "ETHUSDT",
+    "userName": "root",
   },
   "decision": {
     "code": "ENTRY",
@@ -860,66 +1388,135 @@ exports[`strategyRuntime hook params snapshots beforePlaceOrder params snapshot 
       "timestamp": 1700000000000,
     },
   },
-  "entryContext": {
-    "direction": "SHORT",
-    "interval": "15",
-    "isConfigFromBacktest": false,
-    "prices": {
-      "currentPrice": 222,
-      "riskRatio": 1.2,
+  "entry": {
+    "context": {
+      "direction": "SHORT",
+      "interval": "15",
+      "isConfigFromBacktest": false,
+      "prices": {
+        "currentPrice": 222,
+        "riskRatio": 1.2,
+        "stopLossPrice": 230,
+        "takeProfitPrice": 200,
+      },
+      "strategy": "TrendLine",
+      "symbol": "ETHUSDT",
+      "timestamp": 1700000123000,
+    },
+    "orderPlan": {
+      "qty": 3,
       "stopLossPrice": 230,
-      "takeProfitPrice": 200,
+      "takeProfits": [
+        {
+          "price": 200,
+          "rate": 1,
+        },
+      ],
     },
-    "strategy": "TrendLine",
-    "symbol": "ETHUSDT",
-    "timestamp": 1700000123000,
+    "runtime": {
+      "raw": {
+        "ai": {
+          "enabled": true,
+          "minQuality": 5,
+        },
+        "ml": {
+          "enabled": true,
+          "mlThreshold": 0.5,
+          "strategyConfig": {
+            "X": 1,
+          },
+        },
+      },
+      "resolved": {
+        "ai": {
+          "enabled": true,
+          "minQuality": 5,
+        },
+        "ml": {
+          "enabled": true,
+          "mlThreshold": 0.5,
+          "strategyConfig": {
+            "X": 1,
+          },
+        },
+      },
+    },
+    "signal": {
+      "direction": "LONG",
+      "figures": {},
+      "indicators": {},
+      "interval": "15",
+      "prices": {
+        "currentPrice": 100,
+        "riskRatio": 2,
+        "stopLossPrice": 95,
+        "takeProfitPrice": 105,
+      },
+      "signalId": "sig-1",
+      "strategy": "TrendLine",
+      "symbol": "ETHUSDT",
+      "timestamp": 1700000000000,
+    },
   },
-  "env": "LIVE",
-  "isConfigFromBacktest": false,
-  "runtime": {
-    "ai": {
-      "enabled": true,
-      "minQuality": 5,
+  "market": {
+    "btcCandle": {
+      "close": 40500,
+      "dt": "2024-01-01",
+      "high": 41000,
+      "low": 39000,
+      "open": 40000,
+      "timestamp": 1,
+      "turnover": 20000000,
+      "volume": 500,
     },
-    "ml": {
+    "candle": {
+      "close": 102,
+      "dt": "2024-01-01",
+      "high": 105,
+      "low": 95,
+      "open": 100,
+      "timestamp": 1,
+      "turnover": 100000,
+      "volume": 1000,
+    },
+  },
+  "ml": {
+    "applied": false,
+    "attempted": true,
+    "config": {
       "enabled": true,
       "mlThreshold": 0.5,
       "strategyConfig": {
         "X": 1,
       },
     },
+    "skippedReason": "NO_RESULT",
   },
-  "signal": {
-    "direction": "LONG",
-    "figures": {},
-    "indicators": {},
-    "interval": "15",
-    "prices": {
-      "currentPrice": 100,
-      "riskRatio": 2,
-      "stopLossPrice": 95,
-      "takeProfitPrice": 105,
-    },
-    "signalId": "sig-1",
-    "strategy": "TrendLine",
-    "symbol": "ETHUSDT",
-    "timestamp": 1700000000000,
+  "policy": {
+    "aiQuality": 5,
+    "makeOrdersEnabled": true,
+    "minAiQuality": 5,
   },
-  "strategyName": "TrendLine",
-  "symbol": "ETHUSDT",
-  "userName": "root",
 }
 `;
 
 exports[`strategyRuntime hook params snapshots beforePlaceOrder params snapshot 1`] = `
 {
-  "config": {
-    "ENV": "LIVE",
-    "MAKE_ORDERS": true,
-  },
-  "connector": {
-    "closePosition": "[Function]",
-    "placeOrder": "[Function]",
+  "ai": undefined,
+  "ctx": {
+    "connector": {
+      "closePosition": "[Function]",
+      "placeOrder": "[Function]",
+    },
+    "env": "LIVE",
+    "isConfigFromBacktest": false,
+    "strategyConfig": {
+      "ENV": "LIVE",
+      "MAKE_ORDERS": true,
+    },
+    "strategyName": "TrendLine",
+    "symbol": "ETHUSDT",
+    "userName": "root",
   },
   "decision": {
     "code": "ENTRY",
@@ -958,127 +1555,206 @@ exports[`strategyRuntime hook params snapshots beforePlaceOrder params snapshot 
     },
     "signal": undefined,
   },
-  "entryContext": {
-    "direction": "SHORT",
-    "interval": "15",
-    "isConfigFromBacktest": false,
-    "prices": {
-      "currentPrice": 222,
-      "riskRatio": 1.2,
+  "entry": {
+    "context": {
+      "direction": "SHORT",
+      "interval": "15",
+      "isConfigFromBacktest": false,
+      "prices": {
+        "currentPrice": 222,
+        "riskRatio": 1.2,
+        "stopLossPrice": 230,
+        "takeProfitPrice": 200,
+      },
+      "strategy": "TrendLine",
+      "symbol": "ETHUSDT",
+      "timestamp": 1700000123000,
+    },
+    "orderPlan": {
+      "qty": 3,
       "stopLossPrice": 230,
-      "takeProfitPrice": 200,
+      "takeProfits": [
+        {
+          "price": 200,
+          "rate": 1,
+        },
+      ],
     },
-    "strategy": "TrendLine",
-    "symbol": "ETHUSDT",
-    "timestamp": 1700000123000,
-  },
-  "env": "LIVE",
-  "isConfigFromBacktest": false,
-  "runtime": {
-    "ai": {
-      "enabled": false,
-      "minQuality": undefined,
-    },
-    "ml": {
-      "enabled": false,
-      "mlThreshold": undefined,
-      "strategyConfig": {
-        "ENV": "LIVE",
-        "MAKE_ORDERS": true,
-        "TRENDLINE_CONFIG": {},
+    "runtime": {
+      "raw": {
+        "ai": {
+          "enabled": false,
+        },
+        "ml": {
+          "enabled": false,
+        },
+      },
+      "resolved": {
+        "ai": {
+          "enabled": false,
+          "minQuality": undefined,
+        },
+        "ml": {
+          "enabled": false,
+          "mlThreshold": undefined,
+          "strategyConfig": {
+            "ENV": "LIVE",
+            "MAKE_ORDERS": true,
+            "TRENDLINE_CONFIG": {},
+          },
+        },
       },
     },
+    "signal": undefined,
   },
-  "signal": undefined,
-  "strategyName": "TrendLine",
-  "symbol": "ETHUSDT",
-  "userName": "root",
+  "market": {
+    "btcCandle": {
+      "close": 40500,
+      "dt": "2024-01-01",
+      "high": 41000,
+      "low": 39000,
+      "open": 40000,
+      "timestamp": 1,
+      "turnover": 20000000,
+      "volume": 500,
+    },
+    "candle": {
+      "close": 102,
+      "dt": "2024-01-01",
+      "high": 105,
+      "low": 95,
+      "open": 100,
+      "timestamp": 1,
+      "turnover": 100000,
+      "volume": 1000,
+    },
+  },
+  "ml": undefined,
+  "policy": {
+    "aiQuality": undefined,
+    "makeOrdersEnabled": true,
+    "minAiQuality": 4,
+  },
 }
 `;
 
 exports[`strategyRuntime hook params snapshots onInit params snapshot 1`] = `
 {
-  "btcData": [],
-  "config": {
-    "ENV": "LIVE",
-    "MAKE_ORDERS": true,
+  "ctx": {
+    "connector": {
+      "closePosition": "[Function]",
+      "placeOrder": "[Function]",
+    },
+    "env": "LIVE",
+    "isConfigFromBacktest": false,
+    "strategyConfig": {
+      "ENV": "LIVE",
+      "MAKE_ORDERS": true,
+    },
+    "strategyName": "TrendLine",
+    "symbol": "ETHUSDT",
+    "userName": "root",
   },
-  "connector": {
-    "closePosition": "[Function]",
-    "placeOrder": "[Function]",
+  "market": {
+    "btcData": [],
+    "data": [],
   },
-  "data": [],
-  "env": "LIVE",
-  "isConfigFromBacktest": false,
-  "strategyName": "TrendLine",
-  "symbol": "ETHUSDT",
-  "userName": "root",
 }
 `;
 
 exports[`strategyRuntime hook params snapshots onRuntimeError params snapshot 1`] = `
 {
-  "config": {
-    "ENV": "LIVE",
-    "MAKE_ORDERS": true,
-  },
-  "connector": {
-    "closePosition": "[Function]",
-    "placeOrder": "[Function]",
+  "ctx": {
+    "connector": {
+      "closePosition": "[Function]",
+      "placeOrder": "[Function]",
+    },
+    "env": "LIVE",
+    "isConfigFromBacktest": false,
+    "strategyConfig": {
+      "ENV": "LIVE",
+      "MAKE_ORDERS": true,
+    },
+    "strategyName": "TrendLine",
+    "symbol": "ETHUSDT",
+    "userName": "root",
   },
   "decision": {
     "code": "NO_SIGNAL",
     "kind": "skip",
   },
-  "env": "LIVE",
-  "error": "test-hook-error",
-  "isConfigFromBacktest": false,
-  "signal": undefined,
-  "stage": "afterCoreDecision",
-  "strategyName": "TrendLine",
-  "symbol": "ETHUSDT",
-  "userName": "root",
+  "entry": undefined,
+  "error": {
+    "cause": {},
+    "stage": "afterCoreDecision",
+  },
+  "market": {
+    "btcCandle": {
+      "close": 40500,
+      "dt": "2024-01-01",
+      "high": 41000,
+      "low": 39000,
+      "open": 40000,
+      "timestamp": 1,
+      "turnover": 20000000,
+      "volume": 500,
+    },
+    "candle": {
+      "close": 102,
+      "dt": "2024-01-01",
+      "high": 105,
+      "low": 95,
+      "open": 100,
+      "timestamp": 1,
+      "turnover": 100000,
+      "volume": 1000,
+    },
+  },
 }
 `;
 
 exports[`strategyRuntime hook params snapshots onSkip params snapshot 1`] = `
 {
-  "btcCandle": {
-    "close": 40500,
-    "dt": "2024-01-01",
-    "high": 41000,
-    "low": 39000,
-    "open": 40000,
-    "timestamp": 1,
-    "turnover": 20000000,
-    "volume": 500,
-  },
-  "candle": {
-    "close": 102,
-    "dt": "2024-01-01",
-    "high": 105,
-    "low": 95,
-    "open": 100,
-    "timestamp": 1,
-    "turnover": 100000,
-    "volume": 1000,
-  },
-  "config": {
-    "ENV": "LIVE",
-    "MAKE_ORDERS": true,
-  },
-  "connector": {
-    "closePosition": "[Function]",
-    "placeOrder": "[Function]",
+  "ctx": {
+    "connector": {
+      "closePosition": "[Function]",
+      "placeOrder": "[Function]",
+    },
+    "env": "LIVE",
+    "isConfigFromBacktest": false,
+    "strategyConfig": {
+      "ENV": "LIVE",
+      "MAKE_ORDERS": true,
+    },
+    "strategyName": "TrendLine",
+    "symbol": "ETHUSDT",
+    "userName": "root",
   },
   "decision": {
     "code": "FILTER_BLOCKED",
     "kind": "skip",
   },
-  "env": "LIVE",
-  "isConfigFromBacktest": false,
-  "strategyName": "TrendLine",
-  "symbol": "ETHUSDT",
-  "userName": "root",
+  "market": {
+    "btcCandle": {
+      "close": 40500,
+      "dt": "2024-01-01",
+      "high": 41000,
+      "low": 39000,
+      "open": 40000,
+      "timestamp": 1,
+      "turnover": 20000000,
+      "volume": 500,
+    },
+    "candle": {
+      "close": 102,
+      "dt": "2024-01-01",
+      "high": 105,
+      "low": 95,
+      "open": 100,
+      "timestamp": 1,
+      "turnover": 100000,
+      "volume": 1000,
+    },
+  },
 }
 `;

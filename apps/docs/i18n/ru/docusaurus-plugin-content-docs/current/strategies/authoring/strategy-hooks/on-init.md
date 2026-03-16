@@ -2,28 +2,24 @@
 title: onInit
 ---
 
-Вызывается один раз при создании runtime стратегии.
+Вызывается один раз сразу после создания runtime стратегии и до запуска per-candle runner.
 
-## Параметры
+## Params
 
 ```ts
 {
-  connector: Connector;
-  strategyName: string;
-  userName: string;
-  symbol: string;
-  config: StrategyConfig;
-  env: string;
-  isConfigFromBacktest: boolean;
-  data: KlineChartItem[];
-  btcData: KlineChartItem[];
+  ctx: StrategyHookCtx;
+  market: {
+    data: KlineChartItem[];
+    btcData: KlineChartItem[];
+  };
 }
 ```
 
-## Выход
+## Output
 
-| Возврат      | Тип                        |
-| ------------ | -------------------------- |
-| Без значения | `void` или `Promise<void>` |
+| Возврат         | Тип                       |
+| --------------- | ------------------------- |
+| Без return value | `void` или `Promise<void>` |
 
-Этот хук не блокирует выполнение runtime.
+Этот хук не может блокировать runtime flow. Если он бросает ошибку, runtime логирует ее, вызывает `onRuntimeError` и продолжает работу.

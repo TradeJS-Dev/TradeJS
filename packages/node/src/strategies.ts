@@ -37,14 +37,14 @@ interface CreateCloseOppositeBeforePlaceOrderHookParams {
 export const createCloseOppositeBeforePlaceOrderHook = ({
   isEnabled,
 }: CreateCloseOppositeBeforePlaceOrderHookParams): BeforePlaceOrderHook => {
-  return async ({ connector, entryContext, config }) => {
-    if (!isEnabled(config)) {
+  return async ({ ctx, entry }) => {
+    if (!isEnabled(ctx.strategyConfig)) {
       return;
     }
 
     await closeOppositePositionsBeforeOpen({
-      connector,
-      entryContext,
+      connector: ctx.connector,
+      entryContext: entry.context,
     });
   };
 };

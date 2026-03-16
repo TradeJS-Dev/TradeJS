@@ -2,76 +2,31 @@
 title: beforePlaceOrder
 ---
 
-Вызывается в entry-path прямо перед постановкой ордера через коннектор.
+Вызывается на entry path прямо перед постановкой ордера через коннектор. Этот хук вызывается и для signal, и для no-signal entry.
 
-## Параметры
+## Params
 
 ```ts
 {
-  connector: Connector;
-  strategyName: string;
-  userName: string;
-  symbol: string;
-  config: StrategyConfig;
-  env: string;
-  isConfigFromBacktest: boolean;
+  ctx: StrategyHookCtx;
+  market: {
+    candle: KlineChartItem;
+    btcCandle: KlineChartItem;
+  };
   decision: EntryDecision;
-  entryContext: EntryContext;
-  runtime: EntryRuntime | undefined;
-  signal: Signal | undefined;
+  entry: StrategyHookEntryContext;
+  policy: StrategyHookPolicyContext;
+  ml?: StrategyHookMlContext;
+  ai?: StrategyHookAiContext;
 }
 ```
 
-`EntryContext` shape:
+Используй `entry.context` вместо отдельного top-level alias `entryContext`.
 
-```ts
-{
-  strategy: string;
-  symbol: string;
-  interval: string;
-  direction: 'LONG' | 'SHORT';
-  timestamp: number;
-  prices: {
-    currentPrice: number;
-    takeProfitPrice: number;
-    stopLossPrice: number;
-    riskRatio: number;
-  };
-  isConfigFromBacktest?: boolean;
-}
-```
+## Output
 
-`EntryDecision` shape:
+| Возврат         | Тип                       |
+| --------------- | ------------------------- |
+| Без return value | `void` или `Promise<void>` |
 
-```ts
-{
-  kind: 'entry';
-  code: string;
-  entryContext: EntryContext;
-  orderPlan: {
-    qty: number;
-    stopLossPrice: number;
-    takeProfits: Array<{ price: number; rate: number; done?: boolean }>;
-  };
-  runtime?: EntryRuntime;
-  signal?: Signal;
-}
-```
-
-`EntryRuntime` shape:
-
-```ts
-{
-  ml?: { enabled?: boolean; strategyConfig?: StrategyConfig; mlThreshold?: number };
-  ai?: { enabled?: boolean; minQuality?: number };
-  beforePlaceOrder?: () => Promise<void>;
-}
-```
-
-## Выход
-
-| Возврат      | Тип                        |
-| ------------ | -------------------------- |
-| Без значения | `void` или `Promise<void>` |
-
-Этот хук не блокирует выполнение runtime.
+Этот хук не может блокировать runtime flow. Если он бросает ошибку, runtime логирует ее, вызывает `onRuntimeError` и продолжает работу.

@@ -2,31 +2,30 @@
 title: afterPlaceOrder
 ---
 
-Called on entry path right after successful order placement call. This hook fires for both signal and no-signal entries.
+Called on the entry path right after a successful order placement call. This hook fires for both signal and no-signal entries.
 
 ## Params
 
 ```ts
 {
-  connector: Connector;
-  strategyName: string;
-  userName: string;
-  symbol: string;
-  config: StrategyConfig;
-  env: string;
-  isConfigFromBacktest: boolean;
+  ctx: StrategyHookCtx;
+  market: {
+    candle: KlineChartItem;
+    btcCandle: KlineChartItem;
+  };
   decision: EntryDecision;
-  runtime: ResolvedEntryRuntime;
-  signal: Signal | undefined;
-  orderResult: Signal | string;
+  entry: StrategyHookEntryContext;
+  policy: StrategyHookPolicyContext;
+  ml?: StrategyHookMlContext;
+  ai?: StrategyHookAiContext;
+  order: StrategyHookOrderContext;
 }
 ```
 
-`runtime` is the [resolved entry runtime](./index.md#runtime-parameter) (always an object, never `undefined`). The raw decision runtime is available via `decision.runtime`.
+`order.result` depends on the entry path:
 
-`orderResult` depends on the entry path:
-- **With signal:** `orderResult` is the `Signal` object (same reference as `signal`).
-- **Without signal:** `orderResult` is the `decision.code` string (e.g. `'ENTRY'`).
+- With signal: `order.result` is the `Signal` object.
+- Without signal: `order.result` is the `decision.code` string.
 
 ## Output
 

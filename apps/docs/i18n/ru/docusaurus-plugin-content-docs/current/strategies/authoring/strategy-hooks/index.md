@@ -1,25 +1,43 @@
 ---
-title: Хуки runtime стратегий
+title: Lifecycle-хуки стратегий
 ---
 
-В этом разделе каждый lifecycle-хук описан отдельной страницей с явными shape-блоками для входа и выхода.
+В этом разделе описан контракт lifecycle-хуков, который использует shared runtime стратегии.
 
-## Порядок выполнения
+## Порядок вызова
 
-1. [onInit](./on-init)
-2. [afterCoreDecision](./after-core-decision)
-3. [onSkip](./on-skip)
-4. [beforeClosePosition](./before-close-position)
-5. [afterEnrichMl](./after-enrich-ml)
-6. [afterEnrichAi](./after-enrich-ai)
-7. [beforeEntryGate](./before-entry-gate)
-8. [beforePlaceOrder](./before-place-order)
-9. [afterPlaceOrder](./after-place-order)
-10. [onRuntimeError](./on-runtime-error)
+1. [onInit](./on-init) — один раз при создании runtime
+2. [afterCoreDecision](./after-core-decision) — на каждой свече
+3. [onSkip](./on-skip) — только для `skip`
+4. [beforeClosePosition](./before-close-position) — gate, может заблокировать закрытие
+5. [afterEnrichMl](./after-enrich-ml) — только когда есть `decision.signal`
+6. [afterEnrichAi](./after-enrich-ai) — только когда есть `decision.signal`
+7. [beforeEntryGate](./before-entry-gate) — gate, может заблокировать вход
+8. [beforePlaceOrder](./before-place-order) — прямо перед вызовом коннектора
+9. [afterPlaceOrder](./after-place-order) — после успешной постановки ордера
+10. [onRuntimeError](./on-runtime-error) — на любой runtime/hook error
 
-## Общие переиспользуемые shape-ы
+## Канонический shape params
 
-Каждый объект `params` начинается с этих полей:
+Теперь каждый хук получает stage-specific подмножество одного и того же вложенного объекта:
+
+```ts
+{
+  ctx?: StrategyHookCtx;
+  market?: StrategyHookMarketContext;
+  decision?: StrategyDecision;
+  entry?: StrategyHookEntryContext;
+  ml?: StrategyHookMlContext;
+  ai?: StrategyHookAiContext;
+  policy?: StrategyHookPolicyContext;
+  order?: StrategyHookOrderContext;
+  error?: StrategyHookErrorPayload;
+}
+```
+
+## Общие вложенные объекты
+
+`ctx`:
 
 ```ts
 {
@@ -27,217 +45,95 @@ title: Хуки runtime стратегий
   strategyName: string;
   userName: string;
   symbol: string;
-  config: StrategyConfig;
+  strategyConfig: StrategyConfig;
   env: string;
   isConfigFromBacktest: boolean;
 }
 ```
 
-`StrategyConfig` shape:
+`market`:
 
 ```ts
 {
-  BACKTEST_PRICE_MODE?: 'mid' | 'close' | 'open' | 'rand';
-  ML_ENABLED?: boolean;
-  [key: string]: any;
+  candle?: KlineChartItem;
+  btcCandle?: KlineChartItem;
+  data?: KlineChartItem[];
+  btcData?: KlineChartItem[];
 }
 ```
 
-`KlineRequest` shape:
+`entry`:
 
 ```ts
 {
-  symbol: string;
-  interval: string;
-  start?: number;
-  end: number;
-  silent?: boolean;
-  cacheOnly?: boolean;
-}
-```
-
-`KlineChartItem` shape:
-
-```ts
-{
-  timestamp: number;
-  dt: string;
-  open: number;
-  high: number;
-  low: number;
-  close: number;
-  volume: number;
-  turnover: number;
-}
-```
-
-`Position` shape:
-
-```ts
-{
-  symbol: string;
-  qty: number;
-  price: number;
-  direction: 'LONG' | 'SHORT';
-}
-```
-
-`TakeProfit` shape:
-
-```ts
-{
-  price: number;
-  rate: number;
-  done?: boolean;
-}
-```
-
-`StopLoss` shape:
-
-```ts
-number | null;
-```
-
-`Order` shape:
-
-```ts
-{
-  symbol: string;
-  isLimit?: boolean;
-  qty: number;
-  price: number;
-  timestamp: number;
-  direction: 'LONG' | 'SHORT';
+  context: StrategyEntrySignalContext;
+  orderPlan: StrategyEntryOrderPlan;
   signal?: Signal;
-}
-```
-
-`ClosePositionOrder` shape:
-
-```ts
-{
-  symbol: string;
-  isLimit?: boolean;
-  price: number;
-  timestamp: number;
-  direction: 'LONG' | 'SHORT';
-  signal?: Signal;
-}
-```
-
-`Ticker` shape:
-
-```ts
-{
-  symbol: string;
-  lastPrice: number;
-  indexPrice: number;
-  markPrice: number;
-  prevPrice24h: number;
-  price24hPcnt: number;
-  highPrice24h: number;
-  lowPrice24h: number;
-  prevPrice1h: number;
-  openInterest: number;
-  openInterestValue: number;
-  turnover24h: number;
-  volume24h: number;
-  fundingRate: number;
-  nextFundingTime: number;
-  predictedDeliveryPrice: string;
-  basisRate: string;
-  deliveryFeeRate: string;
-  deliveryTime: number;
-  ask1Size: number;
-  bid1Price: number;
-  ask1Price: number;
-  bid1Size: number;
-  basis: string;
-  preOpenPrice: string;
-  preQty: string;
-}
-```
-
-`Signal` shape:
-
-```ts
-{
-  signalId: string;
-  symbol: string;
-  interval: string;
-  strategy: string;
-  direction: 'LONG' | 'SHORT';
-  timestamp: number;
-  orderStatus?: 'completed' | 'failed' | 'skipped' | 'canceled';
-  orderSkipReason?: string;
-  isConfigFromBacktest?: boolean;
-  ml?: {
-    probability: number;
-    threshold: number;
-    passed: boolean;
+  runtime: {
+    raw?: StrategyEntryRuntimeOptions;
+    resolved: StrategyEntryRuntimeOptions;
   };
-  figures: {
-    trendLine?: {
-      id: string;
-      mode: 'lows' | 'highs';
-      distance: number;
-      touches: Array<{ timestamp: number; value: number }>;
-      points: Array<{ timestamp: number; value: number }>;
-      alpha?: number[];
-    };
-    lines?: Array<{
-      id?: string;
-      kind?: string;
-      points: Array<{ timestamp: number; value: number }>;
-      color?: string;
-      width?: number;
-      style?: 'solid' | 'dashed';
-    }>;
-    points?: Array<{
-      id?: string;
-      kind?: string;
-      points: Array<{ timestamp: number; value: number }>;
-      color?: string;
-      radius?: number;
-    }>;
-    zones?: Array<{
-      id?: string;
-      kind?: string;
-      start: { timestamp: number; value: number };
-      end: { timestamp: number; value: number };
-      color?: string;
-      borderColor?: string;
-    }>;
-    [key: string]: any;
-  };
-  prices: {
-    currentPrice: number;
-    takeProfitPrice: number;
-    stopLossPrice: number;
-    riskRatio: number;
-  };
-  indicators: Record<string, any>;
-  additionalIndicators?: Record<string, any>;
 }
 ```
 
-`Connector` shape:
+`ml`:
 
 ```ts
 {
-  kline: (params: KlineRequest) => Promise<KlineChartItem[]>;
-  getState: () => Promise<object>;
-  setState: (state: object) => Promise<void>;
-  getPosition: (symbol: string) => Promise<Position | null>;
-  getPositions: () => Promise<Position[]>;
-  placeOrder: (order: Order, tp?: TakeProfit[], slPrice?: StopLoss) =>
-    Promise<boolean>;
-  closePosition: (order: ClosePositionOrder) => Promise<boolean>;
-  getTickers: () => Promise<Ticker[]>;
+  config?: StrategyRuntimeMlOptions;
+  attempted: boolean;
+  applied: boolean;
+  result?: Signal['ml'];
+  skippedReason?:
+    | 'BACKTEST'
+    | 'DISABLED'
+    | 'NO_RUNTIME'
+    | 'NO_STRATEGY_CONFIG'
+    | 'NO_THRESHOLD'
+    | 'NO_RESULT';
 }
 ```
 
-Gate-хуки возвращают такую форму, если хотят заблокировать исполнение:
+`ai`:
+
+```ts
+{
+  config?: StrategyRuntimeAiOptions;
+  attempted: boolean;
+  applied: boolean;
+  quality?: number;
+  skippedReason?: 'BACKTEST' | 'DISABLED' | 'NO_RUNTIME' | 'NO_QUALITY';
+}
+```
+
+`policy`:
+
+```ts
+{
+  aiQuality?: number;
+  makeOrdersEnabled: boolean;
+  minAiQuality: number;
+}
+```
+
+`order`:
+
+```ts
+{
+  result: Signal | string;
+}
+```
+
+`error`:
+
+```ts
+{
+  stage: StrategyHookStage;
+  cause: unknown;
+}
+```
+
+Gate-хуки возвращают такой shape, если хотят заблокировать исполнение:
 
 ```ts
 {
@@ -245,3 +141,12 @@ Gate-хуки возвращают такую форму, если хотят з
   reason?: string;
 }
 ```
+
+## Важные замечания
+
+- `entry.runtime.raw` — это raw runtime, который вернул `core.ts` через `strategyApi.entry(...)`.
+- `entry.runtime.resolved` — это runtime, который реально использует shared runtime после merge manifest defaults, adapter config и raw decision runtime.
+- `afterEnrichMl` описывает именно ML stage, а не только успешный ML. Смотри `ml.attempted`, `ml.applied` и `ml.skippedReason`.
+- `afterEnrichAi` использует тот же паттерн через объект `ai`.
+- Ошибки non-blocking хуков проглатываются: runtime логирует их, вызывает `onRuntimeError` и продолжает выполнение.
+- Ошибки в gate-хуках (`beforeClosePosition`, `beforeEntryGate`) тоже проглатываются; runtime ведет себя так, будто хук вернул `undefined`.

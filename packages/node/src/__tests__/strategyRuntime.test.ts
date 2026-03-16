@@ -384,11 +384,15 @@ describe('strategyRuntime', () => {
     expect(manifestBeforePlaceOrder).toHaveBeenCalledTimes(1);
     expect(manifestBeforePlaceOrder).toHaveBeenCalledWith(
       expect.objectContaining({
-        strategyName: 'TrendLine',
-        symbol: 'ETHUSDT',
-        entryContext: expect.objectContaining({
-          direction: 'SHORT',
-          timestamp: 1_700_000_123_000,
+        ctx: expect.objectContaining({
+          strategyName: 'TrendLine',
+          symbol: 'ETHUSDT',
+        }),
+        entry: expect.objectContaining({
+          context: expect.objectContaining({
+            direction: 'SHORT',
+            timestamp: 1_700_000_123_000,
+          }),
         }),
       }),
     );
@@ -444,8 +448,10 @@ describe('strategyRuntime', () => {
     expect(onInit).toHaveBeenCalledTimes(1);
     expect(onInit).toHaveBeenCalledWith(
       expect.objectContaining({
-        strategyName: 'TrendLine',
-        symbol: 'ETHUSDT',
+        ctx: expect.objectContaining({
+          strategyName: 'TrendLine',
+          symbol: 'ETHUSDT',
+        }),
       }),
     );
   });
@@ -496,7 +502,9 @@ describe('strategyRuntime', () => {
     expect(afterEnrichAi).toHaveBeenCalledTimes(1);
     expect(afterEnrichAi).toHaveBeenCalledWith(
       expect.objectContaining({
-        quality: 5,
+        ai: expect.objectContaining({
+          quality: 5,
+        }),
       }),
     );
   });
@@ -566,8 +574,10 @@ describe('strategyRuntime', () => {
     expect(afterPlaceOrder).toHaveBeenCalledTimes(1);
     expect(afterPlaceOrder).toHaveBeenCalledWith(
       expect.objectContaining({
-        orderResult: expect.objectContaining({
-          signalId: 'sig-1',
+        order: expect.objectContaining({
+          result: expect.objectContaining({
+            signalId: 'sig-1',
+          }),
         }),
       }),
     );
@@ -674,7 +684,9 @@ describe('strategyRuntime', () => {
     expect(onRuntimeError).toHaveBeenCalledTimes(1);
     expect(onRuntimeError).toHaveBeenCalledWith(
       expect.objectContaining({
-        stage: 'afterCoreDecision',
+        error: expect.objectContaining({
+          stage: 'afterCoreDecision',
+        }),
       }),
     );
   });
@@ -696,8 +708,10 @@ describe('strategyRuntime', () => {
     expect(onRuntimeError).toHaveBeenCalledTimes(1);
     expect(onRuntimeError).toHaveBeenCalledWith(
       expect.objectContaining({
-        stage: 'enrichSignalWithMl',
-        error: mlError,
+        error: expect.objectContaining({
+          stage: 'enrichSignalWithMl',
+          cause: mlError,
+        }),
       }),
     );
   });
@@ -755,7 +769,9 @@ describe('strategyRuntime', () => {
     expect(result).toBe('ORDER_ERROR');
     expect(onRuntimeError).toHaveBeenCalledWith(
       expect.objectContaining({
-        stage: 'runtime.beforePlaceOrder',
+        error: expect.objectContaining({
+          stage: 'runtime.beforePlaceOrder',
+        }),
       }),
     );
   });
@@ -802,10 +818,14 @@ describe('strategyRuntime', () => {
     expect(result).toBe('ORDER_ERROR');
     expect(connector.placeOrder).not.toHaveBeenCalled();
     expect(onRuntimeError).toHaveBeenCalledWith(
-      expect.objectContaining({ stage: 'runtime.beforePlaceOrder' }),
+      expect.objectContaining({
+        error: expect.objectContaining({ stage: 'runtime.beforePlaceOrder' }),
+      }),
     );
     expect(onRuntimeError).toHaveBeenCalledWith(
-      expect.objectContaining({ stage: 'placeOrder' }),
+      expect.objectContaining({
+        error: expect.objectContaining({ stage: 'placeOrder' }),
+      }),
     );
   });
 
@@ -827,8 +847,10 @@ describe('strategyRuntime', () => {
     expect((result as any).orderStatus).toBe('failed');
     expect(onRuntimeError).toHaveBeenCalledWith(
       expect.objectContaining({
-        stage: 'placeOrder',
-        error: orderError,
+        error: expect.objectContaining({
+          stage: 'placeOrder',
+          cause: orderError,
+        }),
       }),
     );
   });
@@ -934,8 +956,10 @@ describe('strategyRuntime', () => {
     expect(result).toBe('ORDER_ERROR');
     expect(onRuntimeError).toHaveBeenCalledWith(
       expect.objectContaining({
-        stage: 'closePosition',
-        error: closeError,
+        error: expect.objectContaining({
+          stage: 'closePosition',
+          cause: closeError,
+        }),
       }),
     );
   });
@@ -956,8 +980,10 @@ describe('strategyRuntime', () => {
 
     expect(onRuntimeError).toHaveBeenCalledWith(
       expect.objectContaining({
-        stage: 'enrichSignalWithAi',
-        error: aiError,
+        error: expect.objectContaining({
+          stage: 'enrichSignalWithAi',
+          cause: aiError,
+        }),
       }),
     );
   });

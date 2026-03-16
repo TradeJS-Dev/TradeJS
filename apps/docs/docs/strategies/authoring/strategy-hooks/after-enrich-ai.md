@@ -2,29 +2,25 @@
 title: afterEnrichAi
 ---
 
-Called on entry path after AI enrichment. This hook **only fires when `signal` exists** — if the entry decision has no signal, AI enrichment is skipped and this hook is not called.
+Called on the entry path after the AI stage. This hook only fires when `decision.signal` exists.
 
 ## Params
 
 ```ts
 {
-  connector: Connector;
-  strategyName: string;
-  userName: string;
-  symbol: string;
-  config: StrategyConfig;
-  env: string;
-  isConfigFromBacktest: boolean;
+  ctx: StrategyHookCtx;
+  market: {
+    candle: KlineChartItem;
+    btcCandle: KlineChartItem;
+  };
   decision: EntryDecision;
-  runtime: ResolvedEntryRuntime;
-  signal: Signal;
-  quality: number | undefined;
+  entry: StrategyHookEntryContext;
+  ml: StrategyHookMlContext;
+  ai: StrategyHookAiContext;
 }
 ```
 
-`runtime` is the [resolved entry runtime](./index.md#runtime-parameter) (always an object, never `undefined`). The raw decision runtime is available via `decision.runtime`.
-
-`quality` is the AI quality score returned by the AI enrichment step. It is `undefined` when AI is disabled or the AI request returned no score.
+`ai.quality` is present only when `ai.applied === true`. When AI was skipped or produced no score, inspect `ai.attempted` and `ai.skippedReason`.
 
 ## Output
 

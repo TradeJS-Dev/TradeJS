@@ -2,25 +2,18 @@
 title: onSkip
 ---
 
-Called only for `skip` decisions.
+Called only when `core.ts` returns a `skip` decision.
 
 ## Params
 
 ```ts
 {
-  connector: Connector;
-  strategyName: string;
-  userName: string;
-  symbol: string;
-  config: StrategyConfig;
-  env: string;
-  isConfigFromBacktest: boolean;
-  decision: {
-    kind: 'skip';
-    code: string;
-  }
-  candle: KlineChartItem;
-  btcCandle: KlineChartItem;
+  ctx: StrategyHookCtx;
+  market: {
+    candle: KlineChartItem;
+    btcCandle: KlineChartItem;
+  };
+  decision: SkipDecision;
 }
 ```
 

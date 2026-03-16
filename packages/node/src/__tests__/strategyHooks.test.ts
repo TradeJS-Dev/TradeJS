@@ -20,30 +20,47 @@ describe('createCloseOppositeBeforePlaceOrderHook', () => {
       isEnabled: () => false,
     });
 
-    await hook({
-      connector: {} as any,
-      entryContext: {
-        strategy: 'TrendLine',
-        symbol: 'ETHUSDT',
-        interval: '15',
-        direction: 'LONG',
-        timestamp: 1_700_000_000_000,
-        prices: {
-          currentPrice: 100,
-          takeProfitPrice: 110,
-          stopLossPrice: 95,
-          riskRatio: 2,
-        },
-      } as any,
-      config: {} as any,
-      runtime: undefined,
-      decision: {} as any,
-      signal: undefined,
-      strategyName: 'TrendLine',
-      userName: 'root',
+    const connector = {} as any;
+    const entryContext = {
+      strategy: 'TrendLine',
       symbol: 'ETHUSDT',
-      env: 'LIVE',
-      isConfigFromBacktest: false,
+      interval: '15',
+      direction: 'LONG',
+      timestamp: 1_700_000_000_000,
+      prices: {
+        currentPrice: 100,
+        takeProfitPrice: 110,
+        stopLossPrice: 95,
+        riskRatio: 2,
+      },
+    } as any;
+
+    await hook({
+      ctx: {
+        connector,
+        strategyName: 'TrendLine',
+        userName: 'root',
+        symbol: 'ETHUSDT',
+        strategyConfig: {} as any,
+        env: 'LIVE',
+        isConfigFromBacktest: false,
+      },
+      market: {} as any,
+      decision: {} as any,
+      entry: {
+        context: entryContext,
+        orderPlan: {} as any,
+        signal: undefined,
+        runtime: {
+          raw: undefined,
+          resolved: {} as any,
+        },
+      },
+      policy: {
+        aiQuality: undefined,
+        makeOrdersEnabled: true,
+        minAiQuality: 4,
+      },
     });
 
     expect(mockedCloseOppositePositionsBeforeOpen).not.toHaveBeenCalled();
@@ -70,17 +87,31 @@ describe('createCloseOppositeBeforePlaceOrderHook', () => {
     } as any;
 
     await hook({
-      connector,
-      entryContext,
-      config: {} as any,
-      runtime: undefined,
+      ctx: {
+        connector,
+        strategyName: 'TrendLine',
+        userName: 'root',
+        symbol: 'ETHUSDT',
+        strategyConfig: {} as any,
+        env: 'LIVE',
+        isConfigFromBacktest: false,
+      },
+      market: {} as any,
       decision: {} as any,
-      signal: undefined,
-      strategyName: 'TrendLine',
-      userName: 'root',
-      symbol: 'ETHUSDT',
-      env: 'LIVE',
-      isConfigFromBacktest: false,
+      entry: {
+        context: entryContext,
+        orderPlan: {} as any,
+        signal: undefined,
+        runtime: {
+          raw: undefined,
+          resolved: {} as any,
+        },
+      },
+      policy: {
+        aiQuality: undefined,
+        makeOrdersEnabled: true,
+        minAiQuality: 4,
+      },
     });
 
     expect(mockedCloseOppositePositionsBeforeOpen).toHaveBeenCalledTimes(1);

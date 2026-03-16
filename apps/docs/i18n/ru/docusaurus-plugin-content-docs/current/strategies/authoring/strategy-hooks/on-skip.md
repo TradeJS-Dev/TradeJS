@@ -2,32 +2,25 @@
 title: onSkip
 ---
 
-Вызывается только для решений `skip`.
+Вызывается только когда `core.ts` вернул решение `skip`.
 
-## Параметры
+## Params
 
 ```ts
 {
-  connector: Connector;
-  strategyName: string;
-  userName: string;
-  symbol: string;
-  config: StrategyConfig;
-  env: string;
-  isConfigFromBacktest: boolean;
-  decision: {
-    kind: 'skip';
-    code: string;
-  }
-  candle: KlineChartItem;
-  btcCandle: KlineChartItem;
+  ctx: StrategyHookCtx;
+  market: {
+    candle: KlineChartItem;
+    btcCandle: KlineChartItem;
+  };
+  decision: SkipDecision;
 }
 ```
 
-## Выход
+## Output
 
-| Возврат      | Тип                        |
-| ------------ | -------------------------- |
-| Без значения | `void` или `Promise<void>` |
+| Возврат         | Тип                       |
+| --------------- | ------------------------- |
+| Без return value | `void` или `Promise<void>` |
 
-Этот хук не блокирует выполнение runtime.
+Этот хук не может блокировать runtime flow. Если он бросает ошибку, runtime логирует ее, вызывает `onRuntimeError` и продолжает работу.

@@ -2,69 +2,33 @@
 title: afterEnrichMl
 ---
 
-Вызывается в entry-path после ML enrichment.
+Вызывается на entry path после ML stage. Этот хук вызывается только когда существует `decision.signal`.
 
-## Параметры
+## Params
 
 ```ts
 {
-  connector: Connector;
-  strategyName: string;
-  userName: string;
-  symbol: string;
-  config: StrategyConfig;
-  env: string;
-  isConfigFromBacktest: boolean;
+  ctx: StrategyHookCtx;
+  market: {
+    candle: KlineChartItem;
+    btcCandle: KlineChartItem;
+  };
   decision: EntryDecision;
-  runtime: EntryRuntime | undefined;
-  signal: Signal | undefined;
+  entry: StrategyHookEntryContext;
+  ml: StrategyHookMlContext;
 }
 ```
 
-`EntryDecision` shape:
+`ml` содержит явный статус stage:
 
-```ts
-{
-  kind: 'entry';
-  code: string;
-  entryContext: {
-    strategy: string;
-    symbol: string;
-    interval: string;
-    direction: 'LONG' | 'SHORT';
-    timestamp: number;
-    prices: {
-      currentPrice: number;
-      takeProfitPrice: number;
-      stopLossPrice: number;
-      riskRatio: number;
-    };
-    isConfigFromBacktest?: boolean;
-  };
-  orderPlan: {
-    qty: number;
-    stopLossPrice: number;
-    takeProfits: Array<{ price: number; rate: number; done?: boolean }>;
-  };
-  runtime?: EntryRuntime;
-  signal?: Signal;
-}
-```
+- `ml.attempted === false` значит, что runtime пропустил ML до любого ML request.
+- `ml.applied === true` значит, что ML дал результат, и `ml.result` зеркалит `entry.signal?.ml`.
+- `ml.skippedReason` объясняет, почему stage оказался no-op.
 
-`EntryRuntime` shape:
+## Output
 
-```ts
-{
-  ml?: { enabled?: boolean; strategyConfig?: StrategyConfig; mlThreshold?: number };
-  ai?: { enabled?: boolean; minQuality?: number };
-  beforePlaceOrder?: () => Promise<void>;
-}
-```
+| Возврат         | Тип                       |
+| --------------- | ------------------------- |
+| Без return value | `void` или `Promise<void>` |
 
-## Выход
-
-| Возврат      | Тип                        |
-| ------------ | -------------------------- |
-| Без значения | `void` или `Promise<void>` |
-
-Этот хук не блокирует выполнение runtime.
+Этот хук не может блокировать runtime flow. Если он бросает ошибку, runtime логирует ее, вызывает `onRuntimeError` и продолжает работу.

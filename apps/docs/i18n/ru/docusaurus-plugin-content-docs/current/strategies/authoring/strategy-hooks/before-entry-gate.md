@@ -2,71 +2,35 @@
 title: beforeEntryGate
 ---
 
-Вызывается в entry-path после стандартных policy-проверок runtime и до постановки ордера.
+Вызывается на entry path после вычисления standard runtime policy checks и до постановки ордера. Этот хук вызывается для всех entry решений, включая no-signal entries.
 
-## Параметры
+## Params
 
 ```ts
 {
-  connector: Connector;
-  strategyName: string;
-  userName: string;
-  symbol: string;
-  config: StrategyConfig;
-  env: string;
-  isConfigFromBacktest: boolean;
+  ctx: StrategyHookCtx;
+  market: {
+    candle: KlineChartItem;
+    btcCandle: KlineChartItem;
+  };
   decision: EntryDecision;
-  runtime: EntryRuntime | undefined;
-  signal: Signal | undefined;
-  quality: number | undefined;
-  makeOrdersEnabled: boolean;
-  minAiQuality: number;
+  entry: StrategyHookEntryContext;
+  policy: StrategyHookPolicyContext;
+  ml?: StrategyHookMlContext;
+  ai?: StrategyHookAiContext;
 }
 ```
 
-`EntryDecision` shape:
+`policy.aiQuality` равен `undefined`, когда сигнала нет или AI не вернул quality score.
 
-```ts
-{
-  kind: 'entry';
-  code: string;
-  entryContext: {
-    strategy: string;
-    symbol: string;
-    interval: string;
-    direction: 'LONG' | 'SHORT';
-    timestamp: number;
-    prices: {
-      currentPrice: number;
-      takeProfitPrice: number;
-      stopLossPrice: number;
-      riskRatio: number;
-    };
-    isConfigFromBacktest?: boolean;
-  };
-  orderPlan: {
-    qty: number;
-    stopLossPrice: number;
-    takeProfits: Array<{ price: number; rate: number; done?: boolean }>;
-  };
-  runtime?: EntryRuntime;
-  signal?: Signal;
-}
-```
+## Output
 
-`EntryRuntime` shape:
+| Возврат              | Тип                                                                                      | Эффект                                             |
+| -------------------- | ----------------------------------------------------------------------------------------- | -------------------------------------------------- |
+| Разрешить/запретить  | `{ allow?: boolean; reason?: string }` или `Promise<{ allow?: boolean; reason?: string }>` | Если `allow === false`, вход блокируется.          |
+| Без return value     | `void` или `Promise<void>`                                                                | Вход продолжается.                                 |
 
-```ts
-{
-  ml?: { enabled?: boolean; strategyConfig?: StrategyConfig; mlThreshold?: number };
-  ai?: { enabled?: boolean; minQuality?: number };
-  beforePlaceOrder?: () => Promise<void>;
-}
-```
+Когда gate блокирует исполнение (`allow === false`):
 
-## Выход
-
-| Возврат                  | Тип                                                                                        | Эффект                                     |
-| ------------------------ | ------------------------------------------------------------------------------------------ | ------------------------------------------ |
-| Разрешить/запретить вход | `{ allow?: boolean; reason?: string }` или `Promise<{ allow?: boolean; reason?: string }>` | Если `allow === false`, entry блокируется. |
-| Без значения             | `void` или `Promise<void>`                                                                 | Entry продолжается.                        |
+- Если существует `entry.signal`, runtime ставит `signal.orderStatus = 'skipped'` и `signal.orderSkipReason = 'HOOK_BEFORE_ENTRY_GATE:${reason}'` или `HOOK_BEFORE_ENTRY_GATE`.
+- Если сигнала нет, runtime возвращает строку `HOOK_BEFORE_ENTRY_GATE:${reason}` или `HOOK_BEFORE_ENTRY_GATE`.

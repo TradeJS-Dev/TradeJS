@@ -2,70 +2,30 @@
 title: afterEnrichAi
 ---
 
-Вызывается в entry-path после AI enrichment.
+Вызывается на entry path после AI stage. Этот хук вызывается только когда существует `decision.signal`.
 
-## Параметры
+## Params
 
 ```ts
 {
-  connector: Connector;
-  strategyName: string;
-  userName: string;
-  symbol: string;
-  config: StrategyConfig;
-  env: string;
-  isConfigFromBacktest: boolean;
+  ctx: StrategyHookCtx;
+  market: {
+    candle: KlineChartItem;
+    btcCandle: KlineChartItem;
+  };
   decision: EntryDecision;
-  runtime: EntryRuntime | undefined;
-  signal: Signal | undefined;
-  quality: number | undefined;
+  entry: StrategyHookEntryContext;
+  ml: StrategyHookMlContext;
+  ai: StrategyHookAiContext;
 }
 ```
 
-`EntryDecision` shape:
+`ai.quality` присутствует только когда `ai.applied === true`. Если AI был пропущен или не вернул quality, смотри `ai.attempted` и `ai.skippedReason`.
 
-```ts
-{
-  kind: 'entry';
-  code: string;
-  entryContext: {
-    strategy: string;
-    symbol: string;
-    interval: string;
-    direction: 'LONG' | 'SHORT';
-    timestamp: number;
-    prices: {
-      currentPrice: number;
-      takeProfitPrice: number;
-      stopLossPrice: number;
-      riskRatio: number;
-    };
-    isConfigFromBacktest?: boolean;
-  };
-  orderPlan: {
-    qty: number;
-    stopLossPrice: number;
-    takeProfits: Array<{ price: number; rate: number; done?: boolean }>;
-  };
-  runtime?: EntryRuntime;
-  signal?: Signal;
-}
-```
+## Output
 
-`EntryRuntime` shape:
+| Возврат         | Тип                       |
+| --------------- | ------------------------- |
+| Без return value | `void` или `Promise<void>` |
 
-```ts
-{
-  ml?: { enabled?: boolean; strategyConfig?: StrategyConfig; mlThreshold?: number };
-  ai?: { enabled?: boolean; minQuality?: number };
-  beforePlaceOrder?: () => Promise<void>;
-}
-```
-
-## Выход
-
-| Возврат      | Тип                        |
-| ------------ | -------------------------- |
-| Без значения | `void` или `Promise<void>` |
-
-Этот хук не блокирует выполнение runtime.
+Этот хук не может блокировать runtime flow. Если он бросает ошибку, runtime логирует ее, вызывает `onRuntimeError` и продолжает работу.

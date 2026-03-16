@@ -2,34 +2,26 @@
 title: beforeClosePosition
 ---
 
-Вызывается в exit-path перед `connector.closePosition(...)`.
+Вызывается на exit path перед `connector.closePosition(...)`.
 
-## Параметры
+## Params
 
 ```ts
 {
-  connector: Connector;
-  strategyName: string;
-  userName: string;
-  symbol: string;
-  config: StrategyConfig;
-  env: string;
-  isConfigFromBacktest: boolean;
-  decision: {
-    kind: 'exit';
-    code: string;
-    closePlan: {
-      price: number;
-      timestamp: number;
-      direction: 'LONG' | 'SHORT';
-    }
-  }
+  ctx: StrategyHookCtx;
+  market: {
+    candle: KlineChartItem;
+    btcCandle: KlineChartItem;
+  };
+  decision: ExitDecision;
 }
 ```
 
-## Выход
+## Output
 
-| Возврат                      | Тип                                                                                        | Эффект                                        |
-| ---------------------------- | ------------------------------------------------------------------------------------------ | --------------------------------------------- |
-| Разрешить/запретить закрытие | `{ allow?: boolean; reason?: string }` или `Promise<{ allow?: boolean; reason?: string }>` | Если `allow === false`, закрытие блокируется. |
-| Без значения                 | `void` или `Promise<void>`                                                                 | Закрытие продолжается.                        |
+| Возврат              | Тип                                                                                      | Эффект                                             |
+| -------------------- | ----------------------------------------------------------------------------------------- | -------------------------------------------------- |
+| Разрешить/запретить  | `{ allow?: boolean; reason?: string }` или `Promise<{ allow?: boolean; reason?: string }>` | Если `allow === false`, закрытие блокируется.      |
+| Без return value     | `void` или `Promise<void>`                                                                | Закрытие продолжается.                             |
+
+Когда gate блокирует исполнение (`allow === false`), runtime возвращает `CLOSE_BLOCKED_BY_HOOK:${reason}` или `CLOSE_BLOCKED_BY_HOOK`.

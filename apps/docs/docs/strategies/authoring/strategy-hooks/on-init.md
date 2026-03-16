@@ -2,21 +2,17 @@
 title: onInit
 ---
 
-Called once when strategy runtime is created.
+Called once, right after strategy runtime creation and before the per-candle runner starts.
 
 ## Params
 
 ```ts
 {
-  connector: Connector;
-  strategyName: string;
-  userName: string;
-  symbol: string;
-  config: StrategyConfig;
-  env: string;
-  isConfigFromBacktest: boolean;
-  data: KlineChartItem[];
-  btcData: KlineChartItem[];
+  ctx: StrategyHookCtx;
+  market: {
+    data: KlineChartItem[];
+    btcData: KlineChartItem[];
+  };
 }
 ```
 

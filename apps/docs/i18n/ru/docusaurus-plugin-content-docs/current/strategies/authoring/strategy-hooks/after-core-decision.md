@@ -4,84 +4,23 @@ title: afterCoreDecision
 
 Вызывается сразу после того, как `core.ts` вернул любое решение.
 
-## Параметры
+## Params
 
 ```ts
 {
-  connector: Connector;
-  strategyName: string;
-  userName: string;
-  symbol: string;
-  config: StrategyConfig;
-  env: string;
-  isConfigFromBacktest: boolean;
+  ctx: StrategyHookCtx;
+  market: {
+    candle: KlineChartItem;
+    btcCandle: KlineChartItem;
+  };
   decision: SkipDecision | EntryDecision | ExitDecision;
-  candle: KlineChartItem;
-  btcCandle: KlineChartItem;
 }
 ```
 
-`SkipDecision` shape:
+## Output
 
-```ts
-{
-  kind: 'skip';
-  code: string;
-}
-```
+| Возврат         | Тип                       |
+| --------------- | ------------------------- |
+| Без return value | `void` или `Promise<void>` |
 
-`ExitDecision` shape:
-
-```ts
-{
-  kind: 'exit';
-  code: string;
-  closePlan: {
-    price: number;
-    timestamp: number;
-    direction: 'LONG' | 'SHORT';
-  }
-}
-```
-
-`EntryDecision` shape:
-
-```ts
-{
-  kind: 'entry';
-  code: string;
-  entryContext: {
-    strategy: string;
-    symbol: string;
-    interval: string;
-    direction: 'LONG' | 'SHORT';
-    timestamp: number;
-    prices: {
-      currentPrice: number;
-      takeProfitPrice: number;
-      stopLossPrice: number;
-      riskRatio: number;
-    };
-    isConfigFromBacktest?: boolean;
-  };
-  orderPlan: {
-    qty: number;
-    stopLossPrice: number;
-    takeProfits: Array<{ price: number; rate: number; done?: boolean }>;
-  };
-  runtime?: {
-    ml?: { enabled?: boolean; strategyConfig?: StrategyConfig; mlThreshold?: number };
-    ai?: { enabled?: boolean; minQuality?: number };
-    beforePlaceOrder?: () => Promise<void>;
-  };
-  signal?: Signal;
-}
-```
-
-## Выход
-
-| Возврат      | Тип                        |
-| ------------ | -------------------------- |
-| Без значения | `void` или `Promise<void>` |
-
-Этот хук не блокирует выполнение runtime.
+Этот хук не может блокировать runtime flow. Если он бросает ошибку, runtime логирует ее, вызывает `onRuntimeError` и продолжает работу.
