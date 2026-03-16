@@ -18,7 +18,7 @@ RUN apk add --no-cache \
 
 WORKDIR /app
 
-COPY package.json yarn.lock .yarnrc.yml turbo.json tsconfig.json tradejs.config.ts ./
+COPY package.json yarn.lock .yarnrc.yml turbo.json tsconfig.json tsconfig.base.json tradejs.config.ts ./
 COPY .yarn ./.yarn
 
 RUN corepack enable
@@ -34,7 +34,7 @@ COPY entrypoint.sh ./entrypoint.sh
 COPY cronjob /etc/crontabs/root
 
 RUN yarn workspace @tradejs/cli build
-RUN yarn workspace @tradejs/app build
+RUN yarn turbo run build --filter=@tradejs/app
 
 RUN chmod +x ./entrypoint.sh
 
