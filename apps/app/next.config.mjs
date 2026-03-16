@@ -8,6 +8,7 @@ const nextConfig = {
   //   };
   //   return config;
   // },
+  serverExternalPackages: ['@tradejs/node', 'ts-node', 'tsconfig-paths'],
   experimental: {
     externalDir: true,
     optimizePackageImports: ['@chakra-ui/react'],
