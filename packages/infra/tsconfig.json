@@ -1,5 +1,5 @@
 {
-  "extends": "../../tsconfig.json",
+  "extends": "../../tsconfig.packages.json",
   "include": ["src/**/*.ts", "src/**/*.tsx", "tradejs.config.ts"],
   "exclude": ["dist", "node_modules"]
 }
