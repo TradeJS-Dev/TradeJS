@@ -12,7 +12,7 @@ Called on the entry path after the AI stage. This hook only fires when `decision
   market: {
     candle: KlineChartItem;
     btcCandle: KlineChartItem;
-  };
+  }
   decision: EntryDecision;
   entry: StrategyHookEntryContext;
   ml: StrategyHookMlContext;

@@ -12,7 +12,7 @@ Called only when `core.ts` returns a `skip` decision.
   market: {
     candle: KlineChartItem;
     btcCandle: KlineChartItem;
-  };
+  }
   decision: SkipDecision;
 }
 ```

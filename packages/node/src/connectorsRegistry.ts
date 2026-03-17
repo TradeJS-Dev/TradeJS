@@ -224,8 +224,10 @@ export const ensureConnectorPluginsLoaded = async (
             moduleName,
             projectRoot,
           );
-          const moduleExport =
-            await importConnectorPluginModule(resolvedModuleName, projectRoot);
+          const moduleExport = await importConnectorPluginModule(
+            resolvedModuleName,
+            projectRoot,
+          );
           const pluginDefinition =
             extractConnectorPluginDefinition(moduleExport);
           if (!pluginDefinition) {

@@ -11,9 +11,11 @@
   "scripts": {
     "backtest": "yarn clean-tests --cache && yarn cli:node8g backtest",
     "bot": "yarn cli bot",
+    "bot:cron": "yarn bot",
     "build": "turbo run build",
     "build:ci": "bash -lc 'rm -rf .turbo apps/*/.next apps/*/build apps/*/.turbo packages/*/dist packages/*/build packages/*/.turbo && yarn build'",
     "bump:packages": "node ./bin/bump-publishable-versions.mjs",
+    "checks": "yarn prettify && yarn build:ci && yarn lint && yarn typecheck && yarn unit",
     "clean-dir": "yarn cli clean-dir",
     "clean-ml-export": "yarn clean-dir --dir ml/export",
     "clean-redis": "yarn cli clean-redis",
@@ -34,7 +36,6 @@
     "docs:dev": "yarn workspace @tradejs/docs dev",
     "docs:dev:hot:en": "yarn workspace @tradejs/docs dev:hot:en",
     "docs:dev:hot:ru": "yarn workspace @tradejs/docs dev:hot:ru",
-    "precommit:checks": "yarn build:ci && yarn lint && yarn typecheck && yarn unit",
     "doctor": "yarn cli doctor",
     "infra-down": "yarn cli infra-down",
     "infra-init": "yarn cli infra-init",
@@ -94,9 +95,9 @@
     "sandbox:e2e": "cd examples/sandbox && yarn e2e",
     "sandbox:infra-down": "cd examples/sandbox && yarn infra-down",
     "sandbox:infra-up": "cd examples/sandbox && yarn infra-up",
-    "sandbox:install": "cd examples/sandbox && yarn install",
-    "sandbox:refresh": "cd examples/sandbox && yarn up -R @tradejs/cli @tradejs/core @tradejs/types @tradejs/base @tradejs/connectors @tradejs/indicators @tradejs/infra @tradejs/node @tradejs/strategies",
+    "sandbox:install": "cd examples/sandbox && yarn up -R @tradejs/cli @tradejs/core @tradejs/types @tradejs/base @tradejs/connectors @tradejs/indicators @tradejs/infra @tradejs/node @tradejs/strategies && yarn install",
     "signals": "yarn cli:node8g signals",
+    "signals:cron": "yarn signals",
     "signals:sandbox": "yarn signals",
     "site:build": "yarn workspace @tradejs/site build",
     "site:dev": "yarn workspace @tradejs/site dev",
@@ -109,9 +110,7 @@
     "unit": "jest",
     "unit:coverage": "jest --coverage",
     "update-history": "yarn backtest --updateOnly",
-    "user-add": "yarn cli user-add",
-    "bot:cron": "yarn bot",
-    "signals:cron": "yarn signals"
+    "user-add": "yarn cli user-add"
   },
   "dependencies": {
     "@tradejs/base": "workspace:^",

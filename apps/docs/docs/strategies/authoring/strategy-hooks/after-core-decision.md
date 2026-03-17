@@ -12,7 +12,7 @@ Called right after `core.ts` returns any decision.
   market: {
     candle: KlineChartItem;
     btcCandle: KlineChartItem;
-  };
+  }
   decision: SkipDecision | EntryDecision | ExitDecision;
 }
 ```

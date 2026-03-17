@@ -12,7 +12,7 @@ title: afterEnrichAi
   market: {
     candle: KlineChartItem;
     btcCandle: KlineChartItem;
-  };
+  }
   decision: EntryDecision;
   entry: StrategyHookEntryContext;
   ml: StrategyHookMlContext;
@@ -24,8 +24,8 @@ title: afterEnrichAi
 
 ## Output
 
-| Возврат         | Тип                       |
-| --------------- | ------------------------- |
+| Возврат          | Тип                        |
+| ---------------- | -------------------------- |
 | Без return value | `void` или `Promise<void>` |
 
 Этот хук не может блокировать runtime flow. Если он бросает ошибку, runtime логирует ее, вызывает `onRuntimeError` и продолжает работу.

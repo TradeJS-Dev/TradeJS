@@ -305,8 +305,12 @@ export const sendToTG = async (signals: Signal[], imgInterval: Interval) => {
       ) {
         await sendSignalAnalysis(signal, analysis);
       }
-    } catch {
-      logger.error('Failed sent: %s', signal.symbol);
+    } catch (err) {
+      logger.error(
+        'Failed sent: %s %s',
+        signal.symbol,
+        (err as Error)?.message || String(err),
+      );
     } finally {
       bar.tick(1, { symbol: chalk.gray(signal.symbol) });
     }

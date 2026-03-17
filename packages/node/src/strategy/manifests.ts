@@ -172,8 +172,10 @@ export const ensureStrategyPluginsLoaded = async (
             moduleName,
             projectRoot,
           );
-          const moduleExport =
-            await importStrategyPluginModule(resolvedModuleName, projectRoot);
+          const moduleExport = await importStrategyPluginModule(
+            resolvedModuleName,
+            projectRoot,
+          );
           if (strategySet.has(moduleName)) {
             const pluginDefinition =
               extractStrategyPluginDefinition(moduleExport);

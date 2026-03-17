@@ -228,12 +228,14 @@ export const sendSignal = async (
   const data = await res.json();
 
   if (!data?.ok) {
+    logger.error('tg sendPhoto failed: %s', JSON.stringify(data));
     await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         chat_id: chatId,
-        text: JSON.stringify(data),
+        text: message,
+        reply_markup: markup,
         parse_mode: 'HTML',
       }),
     });

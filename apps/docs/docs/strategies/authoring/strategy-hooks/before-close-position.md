@@ -12,7 +12,7 @@ Called on the exit path before `connector.closePosition(...)`.
   market: {
     candle: KlineChartItem;
     btcCandle: KlineChartItem;
-  };
+  }
   decision: ExitDecision;
 }
 ```

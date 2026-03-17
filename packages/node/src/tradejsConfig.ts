@@ -94,9 +94,7 @@ const ensureTsNodeRegistered = async () => {
   tsNodeRegistered = true;
 };
 
-const ensureTsconfigPathsRegistered = async (
-  cwd = getTradejsProjectCwd(),
-) => {
+const ensureTsconfigPathsRegistered = async (cwd = getTradejsProjectCwd()) => {
   const projectRoot = getTradejsProjectCwd(cwd);
   if (tsconfigPathsRegisteredByCwd.has(projectRoot)) {
     return;
@@ -207,9 +205,7 @@ export const importTradejsModule = async (
   }
 
   const requireFn = getRequireFn(
-    path.isAbsolute(modulePath)
-      ? path.dirname(modulePath)
-      : cwd,
+    path.isAbsolute(modulePath) ? path.dirname(modulePath) : cwd,
   );
 
   if (isTsModulePath(modulePath)) {

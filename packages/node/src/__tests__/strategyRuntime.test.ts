@@ -989,8 +989,26 @@ describe('strategyRuntime', () => {
   });
 
   describe('hook params snapshots', () => {
-    const candle = { timestamp: 1, dt: '2024-01-01', open: 100, high: 105, low: 95, close: 102, volume: 1000, turnover: 100000 } as any;
-    const btcCandle = { timestamp: 1, dt: '2024-01-01', open: 40000, high: 41000, low: 39000, close: 40500, volume: 500, turnover: 20000000 } as any;
+    const candle = {
+      timestamp: 1,
+      dt: '2024-01-01',
+      open: 100,
+      high: 105,
+      low: 95,
+      close: 102,
+      volume: 1000,
+      turnover: 100000,
+    } as any;
+    const btcCandle = {
+      timestamp: 1,
+      dt: '2024-01-01',
+      open: 40000,
+      high: 41000,
+      low: 39000,
+      close: 40500,
+      volume: 500,
+      turnover: 20000000,
+    } as any;
 
     const stripFunctions = (obj: any): any => {
       if (obj === null || obj === undefined) return obj;
@@ -1051,7 +1069,11 @@ describe('strategyRuntime', () => {
       const { strategy } = await makeRuntime(() => ({
         kind: 'exit',
         code: 'CLOSE_BY_SIGNAL',
-        closePlan: { price: 100, timestamp: 1_700_000_123_000, direction: 'LONG' },
+        closePlan: {
+          price: 100,
+          timestamp: 1_700_000_123_000,
+          direction: 'LONG',
+        },
       }));
       await strategy(candle, btcCandle);
 
@@ -1080,7 +1102,11 @@ describe('strategyRuntime', () => {
       const { strategy } = await makeRuntime(() => ({
         kind: 'exit',
         code: 'CLOSE_BY_SIGNAL',
-        closePlan: { price: 100, timestamp: 1_700_000_123_000, direction: 'LONG' },
+        closePlan: {
+          price: 100,
+          timestamp: 1_700_000_123_000,
+          direction: 'LONG',
+        },
       }));
       await strategy(candle, btcCandle);
 
@@ -1156,10 +1182,12 @@ describe('strategyRuntime', () => {
     it('beforePlaceOrder params snapshot (with signal)', async () => {
       const beforePlaceOrder = jest.fn(async () => {});
       setStrategyManifestHooks('TrendLine', { beforePlaceOrder });
-      mockExecuteEntryOrder.mockImplementation(async ({ beforePlaceOrder: bp }: any) => {
-        await bp?.();
-        return 222;
-      });
+      mockExecuteEntryOrder.mockImplementation(
+        async ({ beforePlaceOrder: bp }: any) => {
+          await bp?.();
+          return 222;
+        },
+      );
 
       const { strategy } = await makeRuntime(() => makeDecisionEntry());
       await strategy(candle, btcCandle);
@@ -1200,7 +1228,10 @@ describe('strategyRuntime', () => {
       const afterCoreDecision = jest.fn(async () => {
         throw new Error('test-hook-error');
       });
-      setStrategyManifestHooks('TrendLine', { onRuntimeError, afterCoreDecision });
+      setStrategyManifestHooks('TrendLine', {
+        onRuntimeError,
+        afterCoreDecision,
+      });
 
       const { strategy } = await makeRuntime(() => ({
         kind: 'skip',

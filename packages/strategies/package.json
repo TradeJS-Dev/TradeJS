@@ -1,6 +1,6 @@
 {
   "name": "@tradejs/strategies",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "Built-in TradeJS strategy plugin catalog.",
   "keywords": [
     "tradejs",
