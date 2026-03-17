@@ -7,14 +7,14 @@ Called only when `core.ts` returns a `skip` decision.
 ## Params
 
 ```ts
-{
+type Params = {
   ctx: StrategyHookCtx;
   market: {
     candle: KlineChartItem;
     btcCandle: KlineChartItem;
-  }
+  };
   decision: SkipDecision;
-}
+};
 ```
 
 ## Output

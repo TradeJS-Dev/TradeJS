@@ -7,7 +7,7 @@ Called when runtime catches an error in a runtime stage or hook.
 ## Params
 
 ```ts
-{
+type Params = {
   ctx: StrategyHookCtx;
   market?: StrategyHookMarketContext;
   decision?: StrategyDecision;
@@ -16,7 +16,7 @@ Called when runtime catches an error in a runtime stage or hook.
     stage: StrategyHookStage;
     cause: unknown;
   };
-}
+};
 ```
 
 `market`, `decision`, and `entry` are optional because some failures happen before all stage-specific context exists.

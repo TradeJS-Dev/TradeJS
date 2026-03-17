@@ -7,13 +7,13 @@ Called once, right after strategy runtime creation and before the per-candle run
 ## Params
 
 ```ts
-{
+type Params = {
   ctx: StrategyHookCtx;
   market: {
     data: KlineChartItem[];
     btcData: KlineChartItem[];
   };
-}
+};
 ```
 
 ## Output

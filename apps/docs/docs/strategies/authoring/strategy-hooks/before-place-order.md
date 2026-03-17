@@ -7,7 +7,7 @@ Called on the entry path right before connector order placement. This hook fires
 ## Params
 
 ```ts
-{
+type Params = {
   ctx: StrategyHookCtx;
   market: {
     candle: KlineChartItem;
@@ -18,7 +18,7 @@ Called on the entry path right before connector order placement. This hook fires
   policy: StrategyHookPolicyContext;
   ml?: StrategyHookMlContext;
   ai?: StrategyHookAiContext;
-}
+};
 ```
 
 Use `entry.context` instead of a separate top-level `entryContext` alias.

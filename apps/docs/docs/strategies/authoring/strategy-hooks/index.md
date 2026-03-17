@@ -22,7 +22,7 @@ This section documents the lifecycle hook contract used by the shared strategy r
 Every hook now receives a stage-specific subset of the same nested object:
 
 ```ts
-{
+type HookParams = {
   ctx?: StrategyHookCtx;
   market?: StrategyHookMarketContext;
   decision?: StrategyDecision;
@@ -32,7 +32,7 @@ Every hook now receives a stage-specific subset of the same nested object:
   policy?: StrategyHookPolicyContext;
   order?: StrategyHookOrderContext;
   error?: StrategyHookErrorPayload;
-}
+};
 ```
 
 ## Common Nested Shapes
@@ -40,7 +40,7 @@ Every hook now receives a stage-specific subset of the same nested object:
 `ctx`:
 
 ```ts
-{
+type StrategyHookCtx = {
   connector: Connector;
   strategyName: string;
   userName: string;
@@ -48,24 +48,24 @@ Every hook now receives a stage-specific subset of the same nested object:
   strategyConfig: StrategyConfig;
   env: string;
   isConfigFromBacktest: boolean;
-}
+};
 ```
 
 `market`:
 
 ```ts
-{
+type StrategyHookMarketContext = {
   candle?: KlineChartItem;
   btcCandle?: KlineChartItem;
   data?: KlineChartItem[];
   btcData?: KlineChartItem[];
-}
+};
 ```
 
 `entry`:
 
 ```ts
-{
+type StrategyHookEntryContext = {
   context: StrategyEntrySignalContext;
   orderPlan: StrategyEntryOrderPlan;
   signal?: Signal;
@@ -73,13 +73,13 @@ Every hook now receives a stage-specific subset of the same nested object:
     raw?: StrategyEntryRuntimeOptions;
     resolved: StrategyEntryRuntimeOptions;
   };
-}
+};
 ```
 
 `ml`:
 
 ```ts
-{
+type StrategyHookMlContext = {
   config?: StrategyRuntimeMlOptions;
   attempted: boolean;
   applied: boolean;
@@ -91,55 +91,55 @@ Every hook now receives a stage-specific subset of the same nested object:
     | 'NO_STRATEGY_CONFIG'
     | 'NO_THRESHOLD'
     | 'NO_RESULT';
-}
+};
 ```
 
 `ai`:
 
 ```ts
-{
+type StrategyHookAiContext = {
   config?: StrategyRuntimeAiOptions;
   attempted: boolean;
   applied: boolean;
   quality?: number;
   skippedReason?: 'BACKTEST' | 'DISABLED' | 'NO_RUNTIME' | 'NO_QUALITY';
-}
+};
 ```
 
 `policy`:
 
 ```ts
-{
+type StrategyHookPolicyContext = {
   aiQuality?: number;
   makeOrdersEnabled: boolean;
   minAiQuality: number;
-}
+};
 ```
 
 `order`:
 
 ```ts
-{
+type StrategyHookOrderContext = {
   result: Signal | string;
-}
+};
 ```
 
 `error`:
 
 ```ts
-{
+type StrategyHookErrorPayload = {
   stage: StrategyHookStage;
   cause: unknown;
-}
+};
 ```
 
 Gate hooks return this shape when they want to block execution:
 
 ```ts
-{
+type GateOutput = {
   allow?: boolean;
   reason?: string;
-}
+};
 ```
 
 ## Important Notes

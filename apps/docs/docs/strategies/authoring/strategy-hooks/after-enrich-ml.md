@@ -7,16 +7,16 @@ Called on the entry path after the ML stage. This hook only fires when `decision
 ## Params
 
 ```ts
-{
+type Params = {
   ctx: StrategyHookCtx;
   market: {
     candle: KlineChartItem;
     btcCandle: KlineChartItem;
-  }
+  };
   decision: EntryDecision;
   entry: StrategyHookEntryContext;
   ml: StrategyHookMlContext;
-}
+};
 ```
 
 `ml` is explicit stage metadata:

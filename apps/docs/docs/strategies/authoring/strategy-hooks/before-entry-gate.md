@@ -7,7 +7,7 @@ Called on the entry path after standard runtime policy checks are resolved and b
 ## Params
 
 ```ts
-{
+type Params = {
   ctx: StrategyHookCtx;
   market: {
     candle: KlineChartItem;
@@ -18,7 +18,7 @@ Called on the entry path after standard runtime policy checks are resolved and b
   policy: StrategyHookPolicyContext;
   ml?: StrategyHookMlContext;
   ai?: StrategyHookAiContext;
-}
+};
 ```
 
 `policy.aiQuality` is `undefined` when there is no signal or AI produced no quality score.
