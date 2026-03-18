@@ -1,0 +1,30 @@
+# TradeJS Documentation
+
+> Official technical documentation for TradeJS: setup, APIs, strategy authoring, indicators, runtime execution, backtesting, AI/ML, and operations.
+
+Docs home: https://docs.tradejs.dev
+Russian docs: https://docs.tradejs.dev/ru/
+Marketing site: https://tradejs.dev
+
+## Start Here
+
+- Overview: https://docs.tradejs.dev/
+- Quickstart: https://docs.tradejs.dev/getting-started/quickstart
+- Root user setup: https://docs.tradejs.dev/getting-started/root-user
+- Core API: https://docs.tradejs.dev/api/framework
+- CLI API: https://docs.tradejs.dev/api/cli
+
+## Main Technical Areas
+
+- Strategies: https://docs.tradejs.dev/strategies/authoring/write-strategies
+- Indicators: https://docs.tradejs.dev/indicators/authoring
+- Runtime execution: https://docs.tradejs.dev/runtime/execution/signals
+- Backtesting: https://docs.tradejs.dev/runtime/backtesting/overview
+- AI: https://docs.tradejs.dev/ai-ml/ai/configuration
+- ML: https://docs.tradejs.dev/ai-ml/ml/configuration
+- Operations: https://docs.tradejs.dev/operations/production-runbook
+
+## Reading Preference
+
+- Prefer English pages for canonical wording.
+- Use Russian pages only as localized equivalents when the user requests Russian.

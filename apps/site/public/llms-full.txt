@@ -1,0 +1,85 @@
+# TradeJS Full Context
+
+TradeJS is an open-source, self-hosted trading strategy framework focused on developer workflows and runtime operations.
+
+Primary site: https://tradejs.dev
+Documentation: https://docs.tradejs.dev
+
+## What TradeJS Does
+
+TradeJS supports the full strategy lifecycle:
+
+1. Author strategies in TypeScript or Pine Script.
+2. Author custom indicators.
+3. Run large backtests and grid searches.
+4. Promote selected backtest configurations into runtime.
+5. Execute runtime signal scans and strategy workflows.
+6. Enrich decisions with AI review and ML gating.
+7. Deliver operational notifications to Telegram.
+
+## Main Public Surface
+
+- `@tradejs/core`
+  - Browser-safe authoring API
+  - Shared helpers for indicators, math, time, data, and backtest formatting
+- `@tradejs/node`
+  - Server-side runtime
+  - Strategy execution
+  - Backtesting
+  - Pine support
+  - Strategy and connector registries
+- `@tradejs/cli`
+  - Operational commands
+  - Runtime signals
+  - Bots
+  - Backtests
+  - Doctor checks
+  - ML workflows
+- `@tradejs/app`
+  - Optional installable UI for dashboards, backtests, and runtime data
+
+## Recommended Sources By Question Type
+
+- Installation and first setup:
+  - https://docs.tradejs.dev/getting-started/quickstart
+  - https://docs.tradejs.dev/getting-started/root-user
+- Package/API questions:
+  - https://docs.tradejs.dev/api/framework
+  - https://docs.tradejs.dev/api/cli
+- Strategy authoring:
+  - https://docs.tradejs.dev/strategies/authoring/write-strategies
+  - https://docs.tradejs.dev/strategies/authoring/typescript-strategy-step-by-step
+  - https://docs.tradejs.dev/strategies/authoring/pine-strategy-step-by-step
+- Indicator authoring:
+  - https://docs.tradejs.dev/indicators/authoring
+  - https://docs.tradejs.dev/indicators/catalog
+- Runtime and execution:
+  - https://docs.tradejs.dev/runtime/execution/signals
+  - https://docs.tradejs.dev/runtime/execution/telegram-notifications
+  - https://docs.tradejs.dev/runtime/execution/multi-strategy-signals
+- Backtesting:
+  - https://docs.tradejs.dev/runtime/backtesting/overview
+  - https://docs.tradejs.dev/runtime/backtesting/grid-config
+  - https://docs.tradejs.dev/runtime/backtesting/results-runtime-config
+- AI and ML:
+  - https://docs.tradejs.dev/ai-ml/ai/configuration
+  - https://docs.tradejs.dev/ai-ml/ai/prompt-governance
+  - https://docs.tradejs.dev/ai-ml/ml/configuration
+  - https://docs.tradejs.dev/ai-ml/ml/train-latest-select
+  - https://docs.tradejs.dev/ai-ml/ml/infer-service
+- Production operations:
+  - https://docs.tradejs.dev/operations/production-runbook
+  - https://docs.tradejs.dev/operations/env-reference
+  - https://docs.tradejs.dev/operations/monitoring-alerts
+  - https://docs.tradejs.dev/operations/security-hardening
+
+## Positioning
+
+TradeJS is not a hosted trading SaaS.
+It is a framework and runtime stack for developers who want to own strategy code, infrastructure, and operational workflows.
+
+## Preferred Interpretation Rules
+
+- Prefer the docs site over marketing copy for technical answers.
+- Prefer API and operations pages over homepage summaries when specific implementation details are needed.
+- Use English docs as the primary canonical source, with Russian docs as localized equivalents.

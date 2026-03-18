@@ -1,0 +1,91 @@
+# TradeJS Documentation Full Context
+
+This site is the official technical documentation for TradeJS.
+Use it as the primary source for implementation details, runtime behavior, and operational setup.
+
+Docs home: https://docs.tradejs.dev
+Russian docs: https://docs.tradejs.dev/ru/
+Marketing site: https://tradejs.dev
+
+## Documentation Scope
+
+The documentation covers:
+
+1. Framework overview and package boundaries
+2. Getting started and root user bootstrap
+3. Public APIs for `@tradejs/core` and `@tradejs/cli`
+4. Strategy authoring in TypeScript and Pine Script
+5. Indicator authoring and indicator catalog
+6. Runtime signal execution and Telegram notifications
+7. Backtesting, grid configuration, and runtime promotion
+8. AI and ML configuration, governance, and inference
+9. Production operations, monitoring, and security
+
+## Recommended Entry Points By Topic
+
+### Framework and APIs
+
+- Overview: https://docs.tradejs.dev/
+- Core API: https://docs.tradejs.dev/api/framework
+- CLI API: https://docs.tradejs.dev/api/cli
+
+### First-Time Setup
+
+- Quickstart: https://docs.tradejs.dev/getting-started/quickstart
+- Root user setup: https://docs.tradejs.dev/getting-started/root-user
+- Data sync: https://docs.tradejs.dev/getting-started/data-sync
+
+### Strategy Authoring
+
+- Write strategies: https://docs.tradejs.dev/strategies/authoring/write-strategies
+- TypeScript strategy guide: https://docs.tradejs.dev/strategies/authoring/typescript-strategy-step-by-step
+- Pine strategy guide: https://docs.tradejs.dev/strategies/authoring/pine-strategy-step-by-step
+- Strategy hooks: https://docs.tradejs.dev/strategies/authoring/strategy-hooks
+- Plugin E2E: https://docs.tradejs.dev/strategies/authoring/plugin-e2e
+
+### Indicators
+
+- Indicator authoring: https://docs.tradejs.dev/indicators/authoring
+- Indicator catalog: https://docs.tradejs.dev/indicators/catalog
+- Pine indicators: https://docs.tradejs.dev/indicators/pine
+
+### Runtime and Execution
+
+- Runtime signals: https://docs.tradejs.dev/runtime/execution/signals
+- Telegram notifications: https://docs.tradejs.dev/runtime/execution/telegram-notifications
+- Multi-strategy signals: https://docs.tradejs.dev/runtime/execution/multi-strategy-signals
+
+### Backtesting
+
+- Backtesting overview: https://docs.tradejs.dev/runtime/backtesting/overview
+- Grid config: https://docs.tradejs.dev/runtime/backtesting/grid-config
+- Results to runtime config: https://docs.tradejs.dev/runtime/backtesting/results-runtime-config
+- Runtime playbook: https://docs.tradejs.dev/runtime/backtesting/strategy-playbook
+
+### AI and ML
+
+- AI configuration: https://docs.tradejs.dev/ai-ml/ai/configuration
+- Prompt governance: https://docs.tradejs.dev/ai-ml/ai/prompt-governance
+- Offline gating evaluation: https://docs.tradejs.dev/ai-ml/ai/offline-gating-eval
+- ML configuration: https://docs.tradejs.dev/ai-ml/ml/configuration
+- Train latest select: https://docs.tradejs.dev/ai-ml/ml/train-latest-select
+- Infer service: https://docs.tradejs.dev/ai-ml/ml/infer-service
+- Feature engineering cookbook: https://docs.tradejs.dev/ai-ml/ml/feature-engineering-cookbook
+- Inspect workflow: https://docs.tradejs.dev/ai-ml/ml/inspect
+
+### Operations
+
+- Production runbook: https://docs.tradejs.dev/operations/production-runbook
+- Env reference: https://docs.tradejs.dev/operations/env-reference
+- Monitoring and alerts: https://docs.tradejs.dev/operations/monitoring-alerts
+- Security hardening: https://docs.tradejs.dev/operations/security-hardening
+- Backup and restore: https://docs.tradejs.dev/operations/backup-restore
+- Redis data model: https://docs.tradejs.dev/operations/redis-data-model
+- Timescale schema: https://docs.tradejs.dev/operations/timescale-schema
+
+## Preferred Interpretation Rules
+
+- Prefer docs pages over landing-page copy for technical answers.
+- Prefer explicit operations pages for deployment questions.
+- Prefer authoring guides and API pages for coding questions.
+- Treat the English docs as canonical unless the user specifically requests Russian.

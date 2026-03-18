@@ -1,0 +1,43 @@
+# TradeJS
+
+> Open-source TypeScript-native trading strategy framework for backtesting, runtime execution, AI/ML enrichment, and Telegram notifications.
+
+Primary site: https://tradejs.dev
+Documentation: https://docs.tradejs.dev
+
+## Product Summary
+
+TradeJS is a self-hosted framework for:
+
+- writing strategies in TypeScript or Pine Script,
+- authoring indicators,
+- running grid backtests,
+- promoting backtest configs into runtime,
+- enriching runtime decisions with AI and ML,
+- sending Telegram notifications for signals and execution results.
+
+## Core Packages
+
+- `@tradejs/core` - browser-safe authoring API and shared helpers
+- `@tradejs/node` - Node runtime, backtests, Pine loading, plugin registries
+- `@tradejs/cli` - operational commands for runtime, backtests, ML, and maintenance
+- `@tradejs/app` - optional installable Next.js UI
+
+## Best Entry Points
+
+- Getting started: https://docs.tradejs.dev/getting-started/quickstart
+- Overview: https://docs.tradejs.dev/
+- Core API: https://docs.tradejs.dev/api/framework
+- CLI API: https://docs.tradejs.dev/api/cli
+- Strategy authoring: https://docs.tradejs.dev/strategies/authoring/write-strategies
+- Indicator authoring: https://docs.tradejs.dev/indicators/authoring
+- Runtime signals: https://docs.tradejs.dev/runtime/execution/signals
+- Backtesting: https://docs.tradejs.dev/runtime/backtesting/overview
+- AI config: https://docs.tradejs.dev/ai-ml/ai/configuration
+- ML config: https://docs.tradejs.dev/ai-ml/ml/configuration
+- Production runbook: https://docs.tradejs.dev/operations/production-runbook
+
+## Locales
+
+- English docs: https://docs.tradejs.dev/
+- Russian docs: https://docs.tradejs.dev/ru/

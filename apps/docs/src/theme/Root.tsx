@@ -71,6 +71,35 @@ function ensureYandexMetrikaInit(): void {
 export default function Root({ children }: Props): JSX.Element {
   const location = useLocation();
   const lastTrackedHrefRef = useRef<string | null>(null);
+  const docsJsonLd = {
+    '@context': 'https://schema.org',
+    '@graph': [
+      {
+        '@type': 'WebSite',
+        name: 'TradeJS Docs',
+        url: 'https://docs.tradejs.dev',
+        inLanguage: ['en-US', 'ru-RU'],
+        about: 'TradeJS technical documentation',
+        potentialAction: {
+          '@type': 'SearchAction',
+          target: 'https://docs.tradejs.dev/?q={search_term_string}',
+          'query-input': 'required name=search_term_string',
+        },
+      },
+      {
+        '@type': 'CollectionPage',
+        name: 'TradeJS Documentation',
+        url: `https://docs.tradejs.dev${location.pathname}${location.search}${location.hash}`,
+        isPartOf: {
+          '@type': 'WebSite',
+          name: 'TradeJS Docs',
+          url: 'https://docs.tradejs.dev',
+        },
+        description:
+          'Official TradeJS docs for setup, APIs, strategy authoring, indicators, runtime execution, backtesting, AI/ML, and operations.',
+      },
+    ],
+  };
 
   useEffect(() => {
     ensureYandexMetrikaInit();
@@ -103,6 +132,12 @@ export default function Root({ children }: Props): JSX.Element {
 
   return (
     <>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify(docsJsonLd).replace(/</g, '\\u003c'),
+        }}
+      />
       {children}
       <noscript>
         <div>
