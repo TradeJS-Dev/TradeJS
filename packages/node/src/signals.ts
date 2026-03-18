@@ -42,6 +42,33 @@ const getAiQualityLine = (analysis?: Partial<SignalAnalysis> | null) => {
   return `🔴 AI Quality: ${quality}/5`;
 };
 
+const getTelegramErrorReason = (data: unknown): string => {
+  if (data && typeof data === 'object') {
+    const record = data as {
+      description?: unknown;
+      error_code?: unknown;
+    };
+    const description =
+      typeof record.description === 'string' ? record.description : '';
+    const errorCode =
+      typeof record.error_code === 'number' ? record.error_code : undefined;
+
+    if (description && errorCode != null) {
+      return `${errorCode}: ${description}`;
+    }
+
+    if (description) {
+      return description;
+    }
+  }
+
+  try {
+    return JSON.stringify(data);
+  } catch {
+    return String(data);
+  }
+};
+
 export const formatMessage = (
   signal: Signal,
   analysis?: Partial<SignalAnalysis> | null,
@@ -228,13 +255,14 @@ export const sendSignal = async (
   const data = await res.json();
 
   if (!data?.ok) {
+    const reason = getTelegramErrorReason(data);
     logger.error('tg sendPhoto failed: %s', JSON.stringify(data));
     await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         chat_id: chatId,
-        text: message,
+        text: `${message}\n\n⚠️ <b>Photo delivery failed</b>\nReason: <code>${escapeHtml(reason)}</code>`,
         reply_markup: markup,
         parse_mode: 'HTML',
       }),

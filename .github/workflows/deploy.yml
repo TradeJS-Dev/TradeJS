@@ -11,6 +11,7 @@ on:
 
 jobs:
   repo-checks:
+    if: ${{ github.event.act || startsWith(github.repository, 'aleksnick') }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
