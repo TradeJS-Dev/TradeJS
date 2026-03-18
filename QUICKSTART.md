@@ -48,6 +48,7 @@ yarn dev:with-infra
 ## 5. Run Basic CLI Flows
 
 ```bash
+yarn build:ci
 yarn backtest
 yarn results
 yarn signals
@@ -90,12 +91,13 @@ yarn ml-train:trendline:xgboost
 - seeded user/config and stable backtest + signals snapshot assertions
 
 ```bash
-yarn sandbox:refresh # optional after publishing newer @tradejs/* versions
 yarn sandbox:install
 yarn sandbox:infra-up
 yarn sandbox:e2e
 yarn sandbox:infra-down
 ```
+
+`yarn sandbox:install` refreshes published `@tradejs/*` packages in `examples/sandbox` before install.
 
 ## Import Rule For Plugins
 
@@ -123,6 +125,7 @@ yarn doctor
 ### Type/Test checks after core changes
 
 ```bash
+yarn build:ci
 yarn typecheck
 yarn unit
 ```

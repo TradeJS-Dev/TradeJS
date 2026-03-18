@@ -167,6 +167,7 @@ Common internal commands:
 - `yarn infra-up`
 - `yarn infra-down`
 - `yarn doctor`
+- `yarn build:ci`
 - `yarn backtest`
 - `yarn results`
 - `yarn signals`
@@ -181,6 +182,7 @@ Docs:
 
 - `yarn docs:dev`
 - `yarn docs:build`
+- `yarn site:build`
 
 Sandbox:
 
@@ -222,6 +224,21 @@ For sandbox changes:
 - verify `yarn sandbox:install`
 - run `yarn sandbox:e2e` when infra is available
 - do not re-couple sandbox to workspace-local package sources
+
+## AI Discovery Files
+
+Public web surfaces also include AI discovery assets:
+
+- `apps/site/public/llms.txt`
+- `apps/site/public/llms-full.txt`
+- `apps/docs/static/llms.txt`
+- `apps/docs/static/llms-full.txt`
+
+Keep them aligned with:
+
+- current public package boundaries
+- current docs URLs
+- current external install flow
 
 ## ML Workflow Notes
 

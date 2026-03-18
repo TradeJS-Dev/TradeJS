@@ -7,6 +7,27 @@ It supports two first-class authoring paths:
 - TypeScript strategies built with `StrategyAPI`
 - Pine Script strategies embedded as standalone strategy modules (with a separate `.pine` source file)
 
+## Public Resources
+
+### Web
+
+- Site: [tradejs.dev](https://tradejs.dev)
+- Documentation: [docs.tradejs.dev](https://docs.tradejs.dev)
+- npm organization: [npmjs.com/org/tradejs](https://www.npmjs.com/org/tradejs)
+
+### Published npm Packages
+
+- [`@tradejs/app`](https://www.npmjs.com/package/@tradejs/app) — installable Next.js UI for dashboards, backtests, and runtime data
+- [`@tradejs/cli`](https://www.npmjs.com/package/@tradejs/cli) — official CLI for infra setup, backtests, signals, bots, and ML workflows
+- [`@tradejs/base`](https://www.npmjs.com/package/@tradejs/base) — default preset wiring built-in strategies, indicators, and connectors
+- [`@tradejs/core`](https://www.npmjs.com/package/@tradejs/core) — browser-safe public API for config, strategy authoring, indicators, and shared helpers
+- [`@tradejs/node`](https://www.npmjs.com/package/@tradejs/node) — Node runtime for strategies, backtests, Pine loading, and plugin registries
+- [`@tradejs/types`](https://www.npmjs.com/package/@tradejs/types) — shared TypeScript contracts for the TradeJS ecosystem
+- [`@tradejs/infra`](https://www.npmjs.com/package/@tradejs/infra) — server-only adapters for Redis, Timescale, ML, logging, and IO
+- [`@tradejs/strategies`](https://www.npmjs.com/package/@tradejs/strategies) — built-in strategy plugin catalog
+- [`@tradejs/indicators`](https://www.npmjs.com/package/@tradejs/indicators) — built-in indicator plugin catalog
+- [`@tradejs/connectors`](https://www.npmjs.com/package/@tradejs/connectors) — built-in exchange connectors and market data providers
+
 ## Repository Layout
 
 - `apps/app`: Next.js UI and API
@@ -112,6 +133,7 @@ Useful routes:
 ## Common Commands
 
 ```bash
+yarn build:ci
 yarn backtest
 yarn results
 yarn signals
@@ -172,12 +194,13 @@ Expected plugin exports:
 Sandbox deterministic e2e example:
 
 ```bash
-yarn sandbox:refresh # optional after publishing newer @tradejs/* versions
 yarn sandbox:install
 yarn sandbox:infra-up
 yarn sandbox:e2e
 yarn sandbox:infra-down
 ```
+
+`yarn sandbox:install` updates the published `@tradejs/*` packages used by `examples/sandbox` within the allowed semver ranges before installing them.
 
 ## Documentation
 
@@ -218,3 +241,18 @@ Recommended docs sections:
 - `indicators/*`
 - `ml/*`
 - `operations/*`
+
+## AI Discovery Surface
+
+Public web surfaces expose AI-oriented discovery files:
+
+- `apps/site/public/llms.txt`
+- `apps/site/public/llms-full.txt`
+- `apps/docs/static/llms.txt`
+- `apps/docs/static/llms-full.txt`
+
+Keep these files aligned with:
+
+- current package boundaries
+- current public entrypoints
+- current canonical docs URLs
