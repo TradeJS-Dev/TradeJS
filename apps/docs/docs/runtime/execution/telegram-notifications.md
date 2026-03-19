@@ -22,7 +22,7 @@ APP_URL=https://your-tradejs-host
 
 Notes:
 
-- If `APP_URL` is HTTPS, TradeJS renders the dashboard screenshot locally and uploads it to Telegram with the caption.
+- If `APP_URL` is HTTPS, TradeJS sends Telegram a public screenshot URL plus the caption.
 - If `APP_URL` is not HTTPS, TradeJS sends text-only message.
 
 ## 2. Quick Bot Check
@@ -43,7 +43,7 @@ Flow:
 
 1. Script finds signals.
 2. Script loads AI analysis from Redis key `analysis:<symbol>:<signalId>` if present.
-3. TradeJS sends main signal message.
+3. TradeJS sends the main signal message with dashboard and screenshot links when available.
 4. If AI analysis exists, TradeJS sends one follow-up analysis message.
 
 ## 4. Common Troubleshooting
@@ -51,6 +51,6 @@ Flow:
 - No messages at all:
   check `TG_BOT_TOKEN`, `TG_CHAT_ID`, and whether bot is added to chat/channel.
 - Message without image:
-  check `APP_URL`, screenshot generation, and whether the app can render the dashboard page used for screenshots.
+  check `APP_URL`, screenshot generation, and whether the screenshot URL is reachable from outside.
 - Missing AI follow-up:
   check that `analysis:<symbol>:<signalId>` exists in Redis.

@@ -16,7 +16,7 @@ describe('signals', () => {
     process.env = originalEnv;
   });
 
-  it('uploads local screenshot to Telegram as multipart form data', async () => {
+  it('sends screenshot URL to Telegram sendPhoto', async () => {
     const fetchMock = jest.fn().mockResolvedValueOnce({
       json: async () => ({ ok: true }),
     });
@@ -24,8 +24,10 @@ describe('signals', () => {
     (global as any).fetch = fetchMock;
 
     jest.doMock('../screenshot', () => ({
-      getScreenshotBuffer: jest.fn(async () => Buffer.from('png-bytes')),
-      getScreenshotFilename: jest.fn(() => 'BTCUSDT_sig-1_15.png'),
+      getImageUrl: jest.fn(
+        () =>
+          'https://app.example.com/api/files/screenshot/BTCUSDT_sig-1_15.png',
+      ),
     }));
 
     jest.doMock('@tradejs/infra/logger', () => ({
@@ -60,19 +62,23 @@ describe('signals', () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
 
-    const sendPhotoPayload = fetchMock.mock.calls[0][1].body;
+    const sendPhotoPayload = JSON.parse(fetchMock.mock.calls[0][1].body);
 
-    expect(sendPhotoPayload).toBeInstanceOf(FormData);
-    expect(sendPhotoPayload.get('chat_id')).toBe('tg-chat-id');
-    expect(sendPhotoPayload.get('caption')).toContain('BTCUSDT');
-    expect(sendPhotoPayload.get('parse_mode')).toBe('HTML');
-    expect(sendPhotoPayload.get('reply_markup')).toContain('Dashboard');
-
-    const photo = sendPhotoPayload.get('photo') as File;
-
-    expect(photo).toBeTruthy();
-    expect(photo.name).toBe('BTCUSDT_sig-1_15.png');
-    expect(photo.type).toBe('image/png');
+    expect(sendPhotoPayload.chat_id).toBe('tg-chat-id');
+    expect(sendPhotoPayload.photo).toBe(
+      'https://app.example.com/api/files/screenshot/BTCUSDT_sig-1_15.png',
+    );
+    expect(sendPhotoPayload.caption).toContain('BTCUSDT');
+    expect(sendPhotoPayload.parse_mode).toBe('HTML');
+    expect(JSON.stringify(sendPhotoPayload.reply_markup)).toContain(
+      'Dashboard',
+    );
+    expect(JSON.stringify(sendPhotoPayload.reply_markup)).toContain(
+      'Screenshot',
+    );
+    expect(JSON.stringify(sendPhotoPayload.reply_markup)).toContain(
+      '/api/files/screenshot/BTCUSDT_sig-1_15.png',
+    );
   });
 
   it('adds sendPhoto failure reason to fallback Telegram message', async () => {
@@ -90,8 +96,10 @@ describe('signals', () => {
     (global as any).fetch = fetchMock;
 
     jest.doMock('../screenshot', () => ({
-      getScreenshotBuffer: jest.fn(async () => Buffer.from('png-bytes')),
-      getScreenshotFilename: jest.fn(() => 'BTCUSDT_sig-1_15.png'),
+      getImageUrl: jest.fn(
+        () =>
+          'https://app.example.com/api/files/screenshot/BTCUSDT_sig-1_15.png',
+      ),
     }));
 
     jest.doMock('@tradejs/infra/logger', () => ({

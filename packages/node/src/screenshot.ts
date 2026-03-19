@@ -42,7 +42,7 @@ export const getScreenshotFilename = ({
 }: ScreenshotRef) => `${symbol}_${signalId}_${interval}.png`;
 
 export const getImageUrl = ({ symbol, signalId, interval }: Signal) =>
-  `${APP_URL}/api/files/screenshot/${symbol}_${signalId}_${interval}`;
+  `${APP_URL}/api/files/screenshot/${symbol}_${signalId}_${interval}.png`;
 
 export const getScreenshotPath = (
   { symbol, signalId, interval }: ScreenshotRef,

@@ -1,7 +1,7 @@
 import { Signal, Interval, SignalAnalysis } from '@tradejs/types';
 import { formatNumber } from '@tradejs/core/math';
 import { logger } from '@tradejs/infra/logger';
-import { getScreenshotBuffer, getScreenshotFilename } from './screenshot';
+import { getImageUrl } from './screenshot';
 
 const escapeHtml = (s?: string | null) => {
   if (!s) return '';
@@ -216,9 +216,16 @@ export const sendSignal = async (
   const dashboardUrl = APP_URL
     ? `${APP_URL}/routes/dashboard/bybit/${symbol}/${interval}/?signalId=${signalId}`
     : null;
-  const markup = dashboardUrl
+  const screenshotUrl = APP_URL
+    ? getImageUrl({ ...signal, interval: imgInterval })
+    : null;
+  const actionButtons = [
+    dashboardUrl ? { text: 'Dashboard', url: dashboardUrl } : null,
+    screenshotUrl ? { text: 'Screenshot', url: screenshotUrl } : null,
+  ].filter(Boolean) as Array<{ text: string; url: string }>;
+  const markup = actionButtons.length
     ? {
-        inline_keyboard: [[{ text: 'Dashboard', url: dashboardUrl }]],
+        inline_keyboard: [actionButtons],
       }
     : undefined;
 
@@ -235,30 +242,18 @@ export const sendSignal = async (
 
     return;
   }
-
-  const photoBody = new FormData();
-  const screenshot = await getScreenshotBuffer({
-    ...signal,
-    interval: imgInterval,
-  });
-  const screenshotBytes = Uint8Array.from(screenshot);
-
-  photoBody.set('chat_id', String(chatId || ''));
-  photoBody.set(
-    'photo',
-    new Blob([screenshotBytes], { type: 'image/png' }),
-    getScreenshotFilename({ ...signal, interval: imgInterval }),
-  );
-  photoBody.set('caption', message);
-  photoBody.set('parse_mode', 'HTML');
-
-  if (markup) {
-    photoBody.set('reply_markup', JSON.stringify(markup));
-  }
+  const imageUrl = getImageUrl({ ...signal, interval: imgInterval });
 
   const res = await fetch(`https://api.telegram.org/bot${token}/sendPhoto`, {
     method: 'POST',
-    body: photoBody,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      chat_id: chatId,
+      photo: imageUrl,
+      caption: message,
+      reply_markup: markup,
+      parse_mode: 'HTML',
+    }),
   });
 
   const data = await res.json();
