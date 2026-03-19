@@ -16,6 +16,65 @@ describe('signals', () => {
     process.env = originalEnv;
   });
 
+  it('uploads local screenshot to Telegram as multipart form data', async () => {
+    const fetchMock = jest.fn().mockResolvedValueOnce({
+      json: async () => ({ ok: true }),
+    });
+
+    (global as any).fetch = fetchMock;
+
+    jest.doMock('../screenshot', () => ({
+      getScreenshotBuffer: jest.fn(async () => Buffer.from('png-bytes')),
+      getScreenshotFilename: jest.fn(() => 'BTCUSDT_sig-1_15.png'),
+    }));
+
+    jest.doMock('@tradejs/infra/logger', () => ({
+      logger: {
+        error: jest.fn(),
+        info: jest.fn(),
+      },
+    }));
+
+    const { sendSignal } = require('../signals');
+
+    await sendSignal(
+      {
+        signalId: 'sig-1',
+        symbol: 'BTCUSDT',
+        strategy: 'TrendLine',
+        interval: '15',
+        direction: 'LONG',
+        timestamp: 1_700_000_000_000,
+        indicators: {},
+        additionalIndicators: {},
+        prices: {
+          currentPrice: 100,
+          takeProfitPrice: 110,
+          stopLossPrice: 95,
+          riskRatio: 2,
+        },
+      },
+      '15',
+      null,
+    );
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    const sendPhotoPayload = fetchMock.mock.calls[0][1].body;
+
+    expect(sendPhotoPayload).toBeInstanceOf(FormData);
+    expect(sendPhotoPayload.get('chat_id')).toBe('tg-chat-id');
+    expect(sendPhotoPayload.get('caption')).toContain('BTCUSDT');
+    expect(sendPhotoPayload.get('parse_mode')).toBe('HTML');
+    expect(sendPhotoPayload.get('reply_markup')).toContain('Dashboard');
+
+    const photo = sendPhotoPayload.get('photo') as File;
+
+    expect(photo).toBeTruthy();
+    expect(photo.name).toBe('BTCUSDT_sig-1_15.png');
+    expect(photo.type).toBe('image/png');
+  });
+
   it('adds sendPhoto failure reason to fallback Telegram message', async () => {
     const fetchMock = jest
       .fn()
@@ -31,7 +90,8 @@ describe('signals', () => {
     (global as any).fetch = fetchMock;
 
     jest.doMock('../screenshot', () => ({
-      getImageUrl: jest.fn(() => 'https://app.example.com/image.png'),
+      getScreenshotBuffer: jest.fn(async () => Buffer.from('png-bytes')),
+      getScreenshotFilename: jest.fn(() => 'BTCUSDT_sig-1_15.png'),
     }));
 
     jest.doMock('@tradejs/infra/logger', () => ({
