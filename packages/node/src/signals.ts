@@ -1,7 +1,7 @@
 import { Signal, Interval, SignalAnalysis } from '@tradejs/types';
 import { formatNumber } from '@tradejs/core/math';
 import { logger } from '@tradejs/infra/logger';
-import { getImageUrl } from './screenshot';
+import { getScreenshotBuffer, getScreenshotFilename } from './screenshot';
 
 const escapeHtml = (s?: string | null) => {
   if (!s) return '';
@@ -67,6 +67,33 @@ const getTelegramErrorReason = (data: unknown): string => {
   } catch {
     return String(data);
   }
+};
+
+const sendTelegramMessage = async ({
+  message,
+  markup,
+}: {
+  message: string;
+  markup?: Record<string, unknown>;
+}) => {
+  const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      chat_id: chatId,
+      text: message,
+      reply_markup: markup,
+      parse_mode: 'HTML',
+    }),
+  });
+
+  const data = await res.json();
+  logger.info(
+    'tg sendMessage: %s',
+    data?.ok ? 'sent' : getTelegramErrorReason(data),
+  );
+
+  return data;
 };
 
 export const formatMessage = (
@@ -213,15 +240,12 @@ export const sendSignal = async (
 
   const message = formatMessage(signal, analysis);
 
-  const dashboardUrl = APP_URL
+  const publicAppUrl = APP_URL?.startsWith('https') ? APP_URL : null;
+  const dashboardUrl = publicAppUrl
     ? `${APP_URL}/routes/dashboard/bybit/${symbol}/${interval}/?signalId=${signalId}`
-    : null;
-  const screenshotUrl = APP_URL
-    ? getImageUrl({ ...signal, interval: imgInterval })
     : null;
   const actionButtons = [
     dashboardUrl ? { text: 'Dashboard', url: dashboardUrl } : null,
-    screenshotUrl ? { text: 'Screenshot', url: screenshotUrl } : null,
   ].filter(Boolean) as Array<{ text: string; url: string }>;
   const markup = actionButtons.length
     ? {
@@ -229,31 +253,29 @@ export const sendSignal = async (
       }
     : undefined;
 
-  if (!APP_URL?.startsWith('https')) {
-    await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        chat_id: chatId,
-        text: message,
-        parse_mode: 'HTML',
-      }),
-    });
+  const screenshot = await getScreenshotBuffer({
+    ...signal,
+    interval: imgInterval,
+  });
+  const screenshotBytes = Uint8Array.from(screenshot);
+  const photoBody = new FormData();
 
-    return;
+  photoBody.set('chat_id', String(chatId || ''));
+  photoBody.set(
+    'photo',
+    new Blob([screenshotBytes], { type: 'image/png' }),
+    getScreenshotFilename({ ...signal, interval: imgInterval }),
+  );
+  photoBody.set('caption', message);
+  photoBody.set('parse_mode', 'HTML');
+
+  if (markup) {
+    photoBody.set('reply_markup', JSON.stringify(markup));
   }
-  const imageUrl = getImageUrl({ ...signal, interval: imgInterval });
 
   const res = await fetch(`https://api.telegram.org/bot${token}/sendPhoto`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      chat_id: chatId,
-      photo: imageUrl,
-      caption: message,
-      reply_markup: markup,
-      parse_mode: 'HTML',
-    }),
+    body: photoBody,
   });
 
   const data = await res.json();
@@ -261,19 +283,14 @@ export const sendSignal = async (
   if (!data?.ok) {
     const reason = getTelegramErrorReason(data);
     logger.error('tg sendPhoto failed: %s', JSON.stringify(data));
-    await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        chat_id: chatId,
-        text: `${message}\n\n⚠️ <b>Photo delivery failed</b>\nReason: <code>${escapeHtml(reason)}</code>`,
-        reply_markup: markup,
-        parse_mode: 'HTML',
-      }),
+    await sendTelegramMessage({
+      message: `${message}\n\n⚠️ <b>Photo delivery failed</b>\nReason: <code>${escapeHtml(reason)}</code>`,
+      markup,
     });
+    return;
   }
 
-  logger.info('tg sendPhoto: %s', data?.ok ? 'sent' : JSON.stringify(data));
+  logger.info('tg sendPhoto: sent');
 };
 
 export const formatAnalysisMessage = (

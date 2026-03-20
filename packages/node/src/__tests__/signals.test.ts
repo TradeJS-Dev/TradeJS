@@ -16,7 +16,7 @@ describe('signals', () => {
     process.env = originalEnv;
   });
 
-  it('sends screenshot URL to Telegram sendPhoto', async () => {
+  it('uploads local screenshot to Telegram with dashboard button', async () => {
     const fetchMock = jest.fn().mockResolvedValueOnce({
       json: async () => ({ ok: true }),
     });
@@ -24,10 +24,8 @@ describe('signals', () => {
     (global as any).fetch = fetchMock;
 
     jest.doMock('../screenshot', () => ({
-      getImageUrl: jest.fn(
-        () =>
-          'https://app.example.com/api/files/screenshot/BTCUSDT_sig-1_15.png',
-      ),
+      getScreenshotBuffer: jest.fn(async () => Buffer.from('png-bytes')),
+      getScreenshotFilename: jest.fn(() => 'BTCUSDT_sig-1_15.png'),
     }));
 
     jest.doMock('@tradejs/infra/logger', () => ({
@@ -62,23 +60,20 @@ describe('signals', () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
 
-    const sendPhotoPayload = JSON.parse(fetchMock.mock.calls[0][1].body);
+    const payload = fetchMock.mock.calls[0][1].body;
 
-    expect(sendPhotoPayload.chat_id).toBe('tg-chat-id');
-    expect(sendPhotoPayload.photo).toBe(
-      'https://app.example.com/api/files/screenshot/BTCUSDT_sig-1_15.png',
-    );
-    expect(sendPhotoPayload.caption).toContain('BTCUSDT');
-    expect(sendPhotoPayload.parse_mode).toBe('HTML');
-    expect(JSON.stringify(sendPhotoPayload.reply_markup)).toContain(
-      'Dashboard',
-    );
-    expect(JSON.stringify(sendPhotoPayload.reply_markup)).toContain(
-      'Screenshot',
-    );
-    expect(JSON.stringify(sendPhotoPayload.reply_markup)).toContain(
-      '/api/files/screenshot/BTCUSDT_sig-1_15.png',
-    );
+    expect(payload).toBeInstanceOf(FormData);
+    expect(payload.get('chat_id')).toBe('tg-chat-id');
+    expect(payload.get('caption')).toContain('BTCUSDT');
+    expect(payload.get('parse_mode')).toBe('HTML');
+    expect(payload.get('reply_markup')).toContain('Dashboard');
+    expect(payload.get('reply_markup')).not.toContain('Screenshot');
+
+    const photo = payload.get('photo') as File;
+
+    expect(photo).toBeTruthy();
+    expect(photo.name).toBe('BTCUSDT_sig-1_15.png');
+    expect(photo.type).toBe('image/png');
   });
 
   it('adds sendPhoto failure reason to fallback Telegram message', async () => {
@@ -91,15 +86,15 @@ describe('signals', () => {
           description: 'Bad Request: wrong file identifier/http url specified',
         }),
       })
-      .mockResolvedValueOnce({ ok: true });
+      .mockResolvedValueOnce({
+        json: async () => ({ ok: true }),
+      });
 
     (global as any).fetch = fetchMock;
 
     jest.doMock('../screenshot', () => ({
-      getImageUrl: jest.fn(
-        () =>
-          'https://app.example.com/api/files/screenshot/BTCUSDT_sig-1_15.png',
-      ),
+      getScreenshotBuffer: jest.fn(async () => Buffer.from('png-bytes')),
+      getScreenshotFilename: jest.fn(() => 'BTCUSDT_sig-1_15.png'),
     }));
 
     jest.doMock('@tradejs/infra/logger', () => ({
@@ -134,11 +129,70 @@ describe('signals', () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(2);
 
-    const fallbackPayload = JSON.parse(fetchMock.mock.calls[1][1].body);
+    const payload = JSON.parse(fetchMock.mock.calls[1][1].body);
 
-    expect(fallbackPayload.text).toContain('Photo delivery failed');
-    expect(fallbackPayload.text).toContain(
+    expect(payload.text).toContain('BTCUSDT');
+    expect(payload.text).toContain('Photo delivery failed');
+    expect(payload.text).toContain(
       '400: Bad Request: wrong file identifier/http url specified',
     );
+  });
+
+  it('uploads screenshot without dashboard button when APP_URL is not https', async () => {
+    process.env.APP_URL = 'http://app.example.com';
+
+    const fetchMock = jest.fn().mockResolvedValueOnce({
+      json: async () => ({ ok: true }),
+    });
+
+    (global as any).fetch = fetchMock;
+
+    jest.doMock('../screenshot', () => ({
+      getScreenshotBuffer: jest.fn(async () => Buffer.from('png-bytes')),
+      getScreenshotFilename: jest.fn(() => 'BTCUSDT_sig-1_15.png'),
+    }));
+
+    jest.doMock('@tradejs/infra/logger', () => ({
+      logger: {
+        error: jest.fn(),
+        info: jest.fn(),
+      },
+    }));
+
+    const { sendSignal } = require('../signals');
+
+    await sendSignal(
+      {
+        signalId: 'sig-1',
+        symbol: 'BTCUSDT',
+        strategy: 'TrendLine',
+        interval: '15',
+        direction: 'LONG',
+        timestamp: 1_700_000_000_000,
+        indicators: {},
+        additionalIndicators: {},
+        prices: {
+          currentPrice: 100,
+          takeProfitPrice: 110,
+          stopLossPrice: 95,
+          riskRatio: 2,
+        },
+      },
+      '15',
+      null,
+    );
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    const payload = fetchMock.mock.calls[0][1].body;
+
+    expect(payload).toBeInstanceOf(FormData);
+    expect(payload.get('caption')).toContain('BTCUSDT');
+    expect(payload.get('reply_markup')).toBeNull();
+
+    const photo = payload.get('photo') as File;
+
+    expect(photo).toBeTruthy();
+    expect(photo.name).toBe('BTCUSDT_sig-1_15.png');
   });
 });
