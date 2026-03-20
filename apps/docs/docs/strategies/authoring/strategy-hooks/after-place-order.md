@@ -6,8 +6,8 @@ Called on the entry path right after a successful order placement call. This hoo
 
 ## Params
 
-```ts
-type Params = {
+```tstype
+{
   ctx: StrategyHookCtx;
   market: {
     candle: KlineChartItem;
@@ -19,7 +19,7 @@ type Params = {
   ml?: StrategyHookMlContext;
   ai?: StrategyHookAiContext;
   order: StrategyHookOrderContext;
-};
+}
 ```
 
 `order.result` depends on the entry path:

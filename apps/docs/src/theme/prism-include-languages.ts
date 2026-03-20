@@ -10,4 +10,19 @@ export default function prismIncludeLanguages(PrismObject: any): void {
   });
 
   Prism.languages.pine.comment = [/\/\/.*$/, /\/\*[\s\S]*?\*\//];
+
+  Prism.languages.tstype = {
+    comment: Prism.languages.typescript.comment,
+    string: Prism.languages.typescript.string,
+    keyword: /\b(?:type|readonly|keyof|extends|infer|as|is)\b/,
+    builtin:
+      /\b(?:string|number|boolean|bigint|symbol|unknown|void|never|undefined|null|object|any|true|false)\b/,
+    property: {
+      pattern: /(^|[\s{;,])([A-Za-z_$][\w$]*)(?=\??\s*:)/m,
+      lookbehind: true,
+    },
+    'class-name': /\b[A-Z][\w$]*\b/,
+    operator: /=>|[?:|&=]/,
+    punctuation: /[{}[\]();,.<>]/,
+  };
 }

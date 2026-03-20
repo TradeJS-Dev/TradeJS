@@ -6,15 +6,15 @@ Called right after `core.ts` returns any decision.
 
 ## Params
 
-```ts
-type Params = {
+```tstype
+{
   ctx: StrategyHookCtx;
   market: {
     candle: KlineChartItem;
     btcCandle: KlineChartItem;
   };
   decision: SkipDecision | EntryDecision | ExitDecision;
-};
+}
 ```
 
 ## Output

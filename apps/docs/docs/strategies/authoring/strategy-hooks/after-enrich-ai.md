@@ -6,8 +6,8 @@ Called on the entry path after the AI stage. This hook only fires when `decision
 
 ## Params
 
-```ts
-type Params = {
+```tstype
+{
   ctx: StrategyHookCtx;
   market: {
     candle: KlineChartItem;
@@ -17,7 +17,7 @@ type Params = {
   entry: StrategyHookEntryContext;
   ml: StrategyHookMlContext;
   ai: StrategyHookAiContext;
-};
+}
 ```
 
 `ai.quality` is present only when `ai.applied === true`. When AI was skipped or produced no score, inspect `ai.attempted` and `ai.skippedReason`.

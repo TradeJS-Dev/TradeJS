@@ -6,8 +6,8 @@ Called when runtime catches an error in a runtime stage or hook.
 
 ## Params
 
-```ts
-type Params = {
+```tstype
+{
   ctx: StrategyHookCtx;
   market?: StrategyHookMarketContext;
   decision?: StrategyDecision;
@@ -16,7 +16,7 @@ type Params = {
     stage: StrategyHookStage;
     cause: unknown;
   };
-};
+}
 ```
 
 `market`, `decision`, and `entry` are optional because some failures happen before all stage-specific context exists.

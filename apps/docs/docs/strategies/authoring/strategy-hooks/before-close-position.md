@@ -6,15 +6,15 @@ Called on the exit path before `connector.closePosition(...)`.
 
 ## Params
 
-```ts
-type Params = {
+```tstype
+{
   ctx: StrategyHookCtx;
   market: {
     candle: KlineChartItem;
     btcCandle: KlineChartItem;
   };
   decision: ExitDecision;
-};
+}
 ```
 
 ## Output
