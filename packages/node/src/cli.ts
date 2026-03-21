@@ -123,7 +123,11 @@ export const update = async (
     },
   );
 
-  logger.info(chalk.yellow('update:', tickers.length));
+  logger.info(
+    chalk.yellow(
+      `update: ${tickers.length} (klineConcurrency=${KLINE_CONCURRENCY_LIMIT})`,
+    ),
+  );
 
   const queue = tickers.slice();
 
