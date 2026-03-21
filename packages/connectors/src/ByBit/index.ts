@@ -91,7 +91,24 @@ export const ByBitConnectorCreator: ConnectorCreator = async (config) => {
       });
 
       if (!kline?.result?.list) {
-        logger.log('error', 'empty kline.list for %s %s', symbol, interval);
+        const responseError =
+          typeof kline?.retMsg === 'string' && kline.retMsg !== 'OK'
+            ? `${kline.retMsg}${
+                typeof kline?.retCode === 'number'
+                  ? ` (retCode: ${kline.retCode})`
+                  : ''
+              }`
+            : typeof kline?.retCode === 'number' && kline.retCode !== 0
+              ? `retCode: ${kline.retCode}`
+              : '';
+
+        logger.log(
+          'error',
+          'empty kline.list for %s %s%s',
+          symbol,
+          interval,
+          responseError ? `: ${responseError}` : '',
+        );
         return [];
       }
 

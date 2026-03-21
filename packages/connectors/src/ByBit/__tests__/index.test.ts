@@ -12,6 +12,7 @@ import {
   toRows,
   upsertCandles,
 } from '@tradejs/infra/timescale';
+import { logger } from '@tradejs/infra/logger';
 
 jest.mock('../client', () => ({
   getClient: jest.fn(),
@@ -64,6 +65,7 @@ const mockedToRows = toRows as jest.MockedFunction<typeof toRows>;
 const mockedUpsertCandles = upsertCandles as jest.MockedFunction<
   typeof upsertCandles
 >;
+const mockedLoggerLog = logger.log as jest.MockedFunction<typeof logger.log>;
 
 describe('ByBitConnectorCreator', () => {
   beforeEach(() => {
@@ -785,7 +787,11 @@ describe('ByBitConnectorCreator', () => {
   it('fallback request returns [] when exchange responds without kline list', async () => {
     mockedGetDataEdges.mockRejectedValue(new Error('db down'));
     const client = {
-      getKline: jest.fn().mockResolvedValue({ result: {} }),
+      getKline: jest.fn().mockResolvedValue({
+        retCode: 10001,
+        retMsg: 'symbol is invalid',
+        result: {},
+      }),
     };
     mockedGetClient.mockResolvedValue(client as any);
 
@@ -798,6 +804,13 @@ describe('ByBitConnectorCreator', () => {
 
     expect(result).toEqual([]);
     expect(client.getKline).toHaveBeenCalledTimes(1);
+    expect(mockedLoggerLog).toHaveBeenCalledWith(
+      'error',
+      'empty kline.list for %s %s%s',
+      'BTCUSDT',
+      '15',
+      ': symbol is invalid (retCode: 10001)',
+    );
   });
 
   it('fallback request catches exchange errors and returns []', async () => {
