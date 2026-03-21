@@ -138,6 +138,66 @@ describe('signals', () => {
     );
   });
 
+  it('falls back to a text message when screenshot file is missing', async () => {
+    const fetchMock = jest.fn().mockResolvedValueOnce({
+      json: async () => ({ ok: true }),
+    });
+
+    (global as any).fetch = fetchMock;
+
+    jest.doMock('../screenshot', () => ({
+      getScreenshotBuffer: jest.fn(async () => {
+        throw new Error(
+          "ENOENT: no such file or directory, open '/app/data/screenshots/BTCUSDT_sig-1_15.png'",
+        );
+      }),
+      getScreenshotFilename: jest.fn(() => 'BTCUSDT_sig-1_15.png'),
+    }));
+
+    const loggerError = jest.fn();
+    jest.doMock('@tradejs/infra/logger', () => ({
+      logger: {
+        error: loggerError,
+        info: jest.fn(),
+      },
+    }));
+
+    const { sendSignal } = require('../signals');
+
+    await sendSignal(
+      {
+        signalId: 'sig-1',
+        symbol: 'BTCUSDT',
+        strategy: 'TrendLine',
+        interval: '15',
+        direction: 'LONG',
+        timestamp: 1_700_000_000_000,
+        indicators: {},
+        additionalIndicators: {},
+        prices: {
+          currentPrice: 100,
+          takeProfitPrice: 110,
+          stopLossPrice: 95,
+          riskRatio: 2,
+        },
+      },
+      '15',
+      null,
+    );
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    const payload = JSON.parse(fetchMock.mock.calls[0][1].body);
+
+    expect(payload.text).toContain('BTCUSDT');
+    expect(JSON.stringify(payload.reply_markup)).toContain('Dashboard');
+    expect(loggerError).toHaveBeenCalledWith(
+      'tg screenshot unavailable: %s (%s)',
+      'BTCUSDT',
+      expect.stringContaining('ENOENT'),
+    );
+  });
+
   it('uploads screenshot without dashboard button when APP_URL is not https', async () => {
     process.env.APP_URL = 'http://app.example.com';
 

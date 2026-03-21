@@ -253,11 +253,27 @@ export const sendSignal = async (
       }
     : undefined;
 
-  const screenshot = await getScreenshotBuffer({
-    ...signal,
-    interval: imgInterval,
-  });
-  const screenshotBytes = Uint8Array.from(screenshot);
+  let screenshotBytes: ArrayBuffer | null = null;
+
+  try {
+    const screenshot = await getScreenshotBuffer({
+      ...signal,
+      interval: imgInterval,
+    });
+    screenshotBytes = screenshot.buffer.slice(
+      screenshot.byteOffset,
+      screenshot.byteOffset + screenshot.byteLength,
+    ) as ArrayBuffer;
+  } catch (error) {
+    logger.error(
+      'tg screenshot unavailable: %s (%s)',
+      symbol,
+      (error as Error)?.message || String(error),
+    );
+    await sendTelegramMessage({ message, markup });
+    return;
+  }
+
   const photoBody = new FormData();
 
   photoBody.set('chat_id', String(chatId || ''));

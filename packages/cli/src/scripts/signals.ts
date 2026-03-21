@@ -57,6 +57,9 @@ const minTouches = parseInt(flags.points);
 const offset = parseInt(flags.offset);
 const interval = flags.timeframe.toString() as Interval;
 
+const formatElapsed = (startedAt: number) =>
+  `${((Date.now() - startedAt) / 1000).toFixed(1)}s`;
+
 interface StrategyRuntimeConfig {
   strategyName: string;
   strategyCreator: StrategyCreator;
@@ -207,164 +210,185 @@ const findSignals = async (
 };
 
 const signals = async () => {
+  const startedAt = Date.now();
   const signals = new Array<Signal>();
+  let status: 'completed' | 'failed' = 'completed';
 
-  const connectorName = await resolveSignalsConnectorName(flags.connector);
-  const connectorFactory = await getConnectorCreatorByName(
-    connectorName,
-    projectRoot,
-  );
-  if (!connectorFactory) {
-    throw new Error(`Connector "${connectorName}" is not registered`);
-  }
-  const marketConnector = await (connectorFactory as ConnectorCreator)({
-    userName: flags.user,
-  });
-
-  let btcBinanceConnector: Connector = marketConnector;
-  let btcCoinbaseConnector: Connector = marketConnector;
-
-  if (connectorName.toLowerCase() === DEFAULT_CONNECTOR_NAME.toLowerCase()) {
-    const binanceFactory = await getConnectorCreatorByName(
-      ConnectorNames.Binance,
+  try {
+    const connectorName = await resolveSignalsConnectorName(flags.connector);
+    const connectorFactory = await getConnectorCreatorByName(
+      connectorName,
       projectRoot,
     );
-    if (binanceFactory) {
-      btcBinanceConnector = await (binanceFactory as ConnectorCreator)({
-        userName: flags.user,
-      });
-    } else {
-      logger.warn(
-        'Binance connector is unavailable. Reusing %s.',
-        connectorName,
-      );
+    if (!connectorFactory) {
+      throw new Error(`Connector "${connectorName}" is not registered`);
     }
-
-    const coinbaseFactory = await getConnectorCreatorByName(
-      ConnectorNames.Coinbase,
-      projectRoot,
-    );
-    if (coinbaseFactory) {
-      btcCoinbaseConnector = await (coinbaseFactory as ConnectorCreator)({
-        userName: flags.user,
-      });
-    } else {
-      logger.warn(
-        'Coinbase connector is unavailable. Reusing %s.',
-        connectorName,
-      );
-    }
-  }
-
-  const tickers = await getTickers(
-    marketConnector,
-    flags.tickers,
-    flags.exclude,
-    flags.tickersLimit,
-    flags.chunk,
-  );
-
-  if (flags.showTickersList) {
-    console.log(chalk.gray(JSON.stringify(tickers.sort(), null, 2)));
-
-    return;
-  }
-
-  if (!flags.cacheOnly) {
-    await update(marketConnector, interval, tickers);
-
-    if (btcBinanceConnector !== marketConnector) {
-      await update(btcBinanceConnector, interval, ['BTCUSDT']);
-    }
-
-    if (btcCoinbaseConnector !== marketConnector) {
-      await update(btcCoinbaseConnector, interval, ['BTCUSDT']);
-    }
-  }
-
-  const currentTimestamp = getTimestamp();
-  const [btcBinanceData, btcCoinbaseData] = await Promise.all([
-    btcBinanceConnector.kline({
-      symbol: 'BTCUSDT',
-      start: PRELOAD_START,
-      end: currentTimestamp,
-      cacheOnly: true,
-      interval,
-    }),
-    btcCoinbaseConnector.kline({
-      symbol: 'BTCUSDT',
-      start: PRELOAD_START,
-      end: currentTimestamp,
-      cacheOnly: true,
-      interval,
-    }),
-  ]);
-
-  if (flags.updateOnly) {
-    return;
-  }
-
-  const runtimeStrategies = await loadRuntimeStrategies(flags.user);
-  if (!runtimeStrategies.length) {
-    logger.warn(
-      'No strategy configs found by users:%s:strategies:*:config',
-      flags.user,
-    );
-    return;
-  }
-  logger.info(
-    chalk.yellow(
-      `loaded strategies: ${runtimeStrategies.map((s) => s.strategyName).join(', ')}`,
-    ),
-  );
-
-  const bar = new ProgressBar(
-    ':current/:total [:bar][:percent] :found :eta(s) :symbol',
-    {
-      total: tickers.length,
-      width: 30,
-    },
-  );
-
-  logger.info(chalk.yellow(`tickers: ${tickers.length}`));
-
-  await runWithConcurrency(tickers, 5, async (symbol) => {
-    const signal = await findSignals(
-      symbol,
-      marketConnector,
-      btcBinanceData,
-      btcCoinbaseData,
-      runtimeStrategies,
-    );
-
-    if (signal) {
-      signals.push(signal);
-    }
-
-    bar.tick(1, {
-      found: chalk.cyan(signals.length),
-      symbol: chalk.gray(symbol),
+    const marketConnector = await (connectorFactory as ConnectorCreator)({
+      userName: flags.user,
     });
-  });
 
-  if (!flags.skipScreenshots) {
-    await makeScreenshots(signals, '15');
-    await makeScreenshots(signals, '60');
+    let btcBinanceConnector: Connector = marketConnector;
+    let btcCoinbaseConnector: Connector = marketConnector;
+
+    if (connectorName.toLowerCase() === DEFAULT_CONNECTOR_NAME.toLowerCase()) {
+      const binanceFactory = await getConnectorCreatorByName(
+        ConnectorNames.Binance,
+        projectRoot,
+      );
+      if (binanceFactory) {
+        btcBinanceConnector = await (binanceFactory as ConnectorCreator)({
+          userName: flags.user,
+        });
+      } else {
+        logger.warn(
+          'Binance connector is unavailable. Reusing %s.',
+          connectorName,
+        );
+      }
+
+      const coinbaseFactory = await getConnectorCreatorByName(
+        ConnectorNames.Coinbase,
+        projectRoot,
+      );
+      if (coinbaseFactory) {
+        btcCoinbaseConnector = await (coinbaseFactory as ConnectorCreator)({
+          userName: flags.user,
+        });
+      } else {
+        logger.warn(
+          'Coinbase connector is unavailable. Reusing %s.',
+          connectorName,
+        );
+      }
+    }
+
+    const tickers = await getTickers(
+      marketConnector,
+      flags.tickers,
+      flags.exclude,
+      flags.tickersLimit,
+      flags.chunk,
+    );
+
+    if (flags.showTickersList) {
+      console.log(chalk.gray(JSON.stringify(tickers.sort(), null, 2)));
+
+      return;
+    }
+
+    if (!flags.cacheOnly) {
+      await update(marketConnector, interval, tickers);
+
+      if (btcBinanceConnector !== marketConnector) {
+        await update(btcBinanceConnector, interval, ['BTCUSDT']);
+      }
+
+      if (btcCoinbaseConnector !== marketConnector) {
+        await update(btcCoinbaseConnector, interval, ['BTCUSDT']);
+      }
+    }
+
+    const currentTimestamp = getTimestamp();
+    const [btcBinanceData, btcCoinbaseData] = await Promise.all([
+      btcBinanceConnector.kline({
+        symbol: 'BTCUSDT',
+        start: PRELOAD_START,
+        end: currentTimestamp,
+        cacheOnly: true,
+        interval,
+      }),
+      btcCoinbaseConnector.kline({
+        symbol: 'BTCUSDT',
+        start: PRELOAD_START,
+        end: currentTimestamp,
+        cacheOnly: true,
+        interval,
+      }),
+    ]);
+
+    if (flags.updateOnly) {
+      return;
+    }
+
+    const runtimeStrategies = await loadRuntimeStrategies(flags.user);
+    if (!runtimeStrategies.length) {
+      logger.warn(
+        'No strategy configs found by users:%s:strategies:*:config',
+        flags.user,
+      );
+      return;
+    }
+    logger.info(
+      chalk.yellow(
+        `loaded strategies: ${runtimeStrategies.map((s) => s.strategyName).join(', ')}`,
+      ),
+    );
+
+    const bar = new ProgressBar(
+      ':current/:total [:bar][:percent] :found :eta(s) :symbol',
+      {
+        total: tickers.length,
+        width: 30,
+      },
+    );
+
+    logger.info(chalk.yellow(`tickers: ${tickers.length}`));
+
+    await runWithConcurrency(tickers, 5, async (symbol) => {
+      const signal = await findSignals(
+        symbol,
+        marketConnector,
+        btcBinanceData,
+        btcCoinbaseData,
+        runtimeStrategies,
+      );
+
+      if (signal) {
+        signals.push(signal);
+      }
+
+      bar.tick(1, {
+        found: chalk.cyan(signals.length),
+        symbol: chalk.gray(symbol),
+      });
+    });
+
+    if (!flags.skipScreenshots) {
+      await makeScreenshots(signals, '15');
+      await makeScreenshots(signals, '60');
+    }
+
+    if (flags.notify) {
+      await sendToTG(signals, '15');
+    }
+
+    logger.info(
+      JSON.stringify(
+        signals.map((s) => s.symbol),
+        null,
+        2,
+      ),
+    );
+  } catch (error) {
+    status = 'failed';
+    logger.error(
+      'signals failed: %s',
+      (error as Error)?.message || String(error),
+    );
+    throw error;
+  } finally {
+    logger.info(
+      chalk.yellow(
+        `signals ${status} in ${formatElapsed(startedAt)} (found=${signals.length})`,
+      ),
+    );
   }
-
-  if (flags.notify) {
-    await sendToTG(signals, '15');
-  }
-
-  logger.info(
-    JSON.stringify(
-      signals.map((s) => s.symbol),
-      null,
-      2,
-    ),
-  );
-
-  process.exit();
 };
 
-signals();
+signals()
+  .then(() => {
+    process.exit(0);
+  })
+  .catch(() => {
+    process.exit(1);
+  });

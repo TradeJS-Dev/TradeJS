@@ -24,6 +24,7 @@ Notes:
 
 - TradeJS uploads the rendered screenshot to Telegram with the signal caption.
 - If `APP_URL` is a public HTTPS URL, the Telegram message also includes a dashboard button.
+- If screenshot rendering fails or the PNG is missing, TradeJS falls back to a text message instead of dropping the notification.
 
 ## 2. Quick Bot Check
 
