@@ -10,6 +10,14 @@
     "starter",
     "plugins"
   ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tradejs-dev/tradejs.git",
+    "directory": "packages/base"
+  },
+  "bugs": {
+    "url": "https://github.com/tradejs-dev/tradejs/issues"
+  },
   "main": "dist/index.js",
   "module": "dist/index.mjs",
   "types": "dist/index.d.ts",

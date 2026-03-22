@@ -32,7 +32,7 @@ export default function Page() {
       {
         '@type': 'SoftwareSourceCode',
         name: 'TradeJS',
-        codeRepository: 'https://github.com/aleksnick/investing',
+        codeRepository: 'https://github.com/tradejs-dev/tradejs',
         programmingLanguage: ['TypeScript', 'Pine Script'],
         runtimePlatform: 'Node.js',
         url: 'https://tradejs.dev',

@@ -11,6 +11,14 @@
     "strategy",
     "pine-script"
   ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tradejs-dev/tradejs.git",
+    "directory": "packages/node"
+  },
+  "bugs": {
+    "url": "https://github.com/tradejs-dev/tradejs/issues"
+  },
   "files": [
     "dist"
   ],

@@ -12,6 +12,14 @@
     "pine-script"
   ],
   "homepage": "https://tradejs.dev",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tradejs-dev/tradejs.git",
+    "directory": "packages/core"
+  },
+  "bugs": {
+    "url": "https://github.com/tradejs-dev/tradejs/issues"
+  },
   "files": [
     "dist"
   ],

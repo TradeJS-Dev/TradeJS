@@ -11,7 +11,7 @@ on:
 
 jobs:
   repo-checks:
-    if: ${{ github.event.act || startsWith(github.repository, 'aleksnick') }}
+    if: ${{ github.event.act || github.repository == 'tradejs-dev/tradejs' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
 

@@ -27,6 +27,14 @@
   "publishConfig": {
     "access": "public"
   },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tradejs-dev/tradejs.git",
+    "directory": "apps/app"
+  },
+  "bugs": {
+    "url": "https://github.com/tradejs-dev/tradejs/issues"
+  },
   "dependencies": {
     "@chakra-ui/charts": "^3.24.0",
     "@chakra-ui/react": "^3.24.2",
