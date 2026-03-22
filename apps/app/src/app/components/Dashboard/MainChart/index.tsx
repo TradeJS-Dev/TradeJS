@@ -8,11 +8,19 @@ import { KlineChart } from '../KlineChart';
 
 const DASHBOARD_REFRESH_DELAY = 10_000;
 
-export const MainChart = () => {
+interface MainChartProps {
+  screenshotMode?: boolean;
+}
+
+export const MainChart = ({ screenshotMode = false }: MainChartProps) => {
   const { filters, setFilters } = useFilters();
   const { indicatorsByKey, indicatorRenderers } = useIndicators();
 
   useEffect(() => {
+    if (screenshotMode) {
+      return;
+    }
+
     const intervalId = setInterval(() => {
       setFilters({
         end: getTimestamp(),
@@ -22,7 +30,7 @@ export const MainChart = () => {
     return () => {
       clearInterval(intervalId);
     };
-  }, [setFilters]);
+  }, [screenshotMode, setFilters]);
 
   return (
     <KlineChart

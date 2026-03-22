@@ -1,4 +1,5 @@
 import { Signal, Interval, SignalAnalysis } from '@tradejs/types';
+import { delay } from '@tradejs/core/async';
 import { formatNumber } from '@tradejs/core/math';
 import { logger } from '@tradejs/infra/logger';
 import { getScreenshotBuffer, getScreenshotFilename } from './screenshot';
@@ -9,6 +10,8 @@ const escapeHtml = (s?: string | null) => {
 };
 
 const { APP_URL, TG_BOT_TOKEN: token, TG_CHAT_ID: chatId } = process.env;
+const TG_REQUEST_ATTEMPTS = 3;
+const TG_REQUEST_RETRY_DELAY_MS = 2_000;
 
 const normalizeQuality = (value?: number) =>
   typeof value === 'number'
@@ -69,6 +72,80 @@ const getTelegramErrorReason = (data: unknown): string => {
   }
 };
 
+const getErrorMessage = (error: unknown): string => {
+  const maybeError = error as Error & { cause?: unknown };
+  const message = maybeError?.message || String(error);
+
+  if (maybeError?.cause == null) {
+    return message;
+  }
+
+  const cause =
+    maybeError.cause instanceof Error
+      ? maybeError.cause.message
+      : String(maybeError.cause);
+
+  return `${message}; cause: ${cause}`;
+};
+
+const parseTelegramResponse = async (response: Response) => {
+  const fallback = {
+    ok: response.ok,
+    error_code: response.status,
+    description: response.statusText,
+  };
+
+  try {
+    return await response.json();
+  } catch {
+    try {
+      const text = await response.text();
+      return text
+        ? {
+            ...fallback,
+            description: text,
+          }
+        : fallback;
+    } catch {
+      return fallback;
+    }
+  }
+};
+
+const requestTelegram = async (
+  method: 'sendMessage' | 'sendPhoto',
+  init: RequestInit,
+) => {
+  let lastError: Error | null = null;
+
+  for (let attempt = 1; attempt <= TG_REQUEST_ATTEMPTS; attempt += 1) {
+    try {
+      const res = await fetch(
+        `https://api.telegram.org/bot${token}/${method}`,
+        {
+          ...init,
+        },
+      );
+
+      return await parseTelegramResponse(res);
+    } catch (error) {
+      lastError = error as Error;
+      logger.error(
+        'tg %s network failed: attempt=%d (%s)',
+        method,
+        attempt,
+        getErrorMessage(error),
+      );
+
+      if (attempt < TG_REQUEST_ATTEMPTS) {
+        await delay(TG_REQUEST_RETRY_DELAY_MS);
+      }
+    }
+  }
+
+  throw lastError || new Error(`Telegram ${method} request failed`);
+};
+
 const sendTelegramMessage = async ({
   message,
   markup,
@@ -76,7 +153,7 @@ const sendTelegramMessage = async ({
   message: string;
   markup?: Record<string, unknown>;
 }) => {
-  const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+  const data = await requestTelegram('sendMessage', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -86,8 +163,6 @@ const sendTelegramMessage = async ({
       parse_mode: 'HTML',
     }),
   });
-
-  const data = await res.json();
   logger.info(
     'tg sendMessage: %s',
     data?.ok ? 'sent' : getTelegramErrorReason(data),
@@ -289,12 +364,22 @@ export const sendSignal = async (
     photoBody.set('reply_markup', JSON.stringify(markup));
   }
 
-  const res = await fetch(`https://api.telegram.org/bot${token}/sendPhoto`, {
-    method: 'POST',
-    body: photoBody,
-  });
+  let data: any;
 
-  const data = await res.json();
+  try {
+    data = await requestTelegram('sendPhoto', {
+      method: 'POST',
+      body: photoBody,
+    });
+  } catch (error) {
+    const reason = getErrorMessage(error);
+    logger.error('tg sendPhoto request failed: %s', reason);
+    await sendTelegramMessage({
+      message: `${message}\n\n⚠️ <b>Photo delivery failed</b>\nReason: <code>${escapeHtml(reason)}</code>`,
+      markup,
+    });
+    return;
+  }
 
   if (!data?.ok) {
     const reason = getTelegramErrorReason(data);
@@ -370,7 +455,7 @@ export const sendSignalAnalysis = async (
 ) => {
   const message = formatAnalysisMessage(signal, analysis);
 
-  const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+  const data = await requestTelegram('sendMessage', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -379,10 +464,8 @@ export const sendSignalAnalysis = async (
       parse_mode: 'HTML',
     }),
   });
-
-  const data = await res.json();
   logger.info(
     'tg sendMessage (analysis): %s',
-    data?.ok ? 'sent' : JSON.stringify(data),
+    data?.ok ? 'sent' : getTelegramErrorReason(data),
   );
 };

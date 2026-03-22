@@ -11,7 +11,15 @@ const { APP_URL } = process.env;
 type ScreenshotRef = Pick<Signal, 'symbol' | 'signalId' | 'interval'>;
 const SCREENSHOT_NAVIGATION_ATTEMPTS = 3;
 const SCREENSHOT_NAVIGATION_RETRY_DELAY_MS = 2_000;
+const SCREENSHOT_CAPTURE_ATTEMPTS = 2;
+const SCREENSHOT_CAPTURE_RETRY_DELAY_MS = 2_000;
 const SCREENSHOT_NAVIGATION_TIMEOUT_MS = 30_000;
+const SCREENSHOT_RENDER_DELAY_MS = 10_000;
+const SCREENSHOT_VIEWPORT = {
+  width: 1280,
+  height: 800,
+  deviceScaleFactor: process.env.NODE_ENV === 'production' ? 1 : 2,
+};
 
 const getProjectRoot = (projectRoot?: string): string =>
   path.resolve(getTradejsProjectCwd(projectRoot));
@@ -21,6 +29,22 @@ const getScreenshotsDir = (projectRoot?: string): string =>
 
 const maskTokenInUrl = (url: string) =>
   url.replace(/([?&]token=)[^&]+/i, '$1<hidden>');
+
+const getErrorMessage = (error: unknown) => {
+  const maybeError = error as Error & { cause?: unknown };
+  const message = maybeError?.message || String(error);
+
+  if (maybeError?.cause == null) {
+    return message;
+  }
+
+  const cause =
+    maybeError.cause instanceof Error
+      ? maybeError.cause.message
+      : String(maybeError.cause);
+
+  return `${message}; cause: ${cause}`;
+};
 
 export const getScreenshotBase64 = async (
   signal: Signal,
@@ -83,141 +107,172 @@ export const screenDashboard = async (signal: Signal, projectRoot?: string) => {
     typeof token === 'string' && token.length > 0
       ? `&token=${encodeURIComponent(token)}`
       : '';
+  const dashboardUrl = `${screenshotBaseUrl}/routes/dashboard/bybit/${symbol}/${interval}/?signalId=${signalId}&autoZoom=true&screenshot=1${tokenParam}`;
+  const maskedDashboardUrl = maskTokenInUrl(dashboardUrl);
 
-  const browser = await puppeteer.launch({
-    headless: true,
-    executablePath: process.env.PUPPETEER_EXECUTABLE_PATH!,
-    args: [
-      '--no-sandbox',
-      '--disable-setuid-sandbox',
-      '--disable-dev-shm-usage',
-      '--disable-gpu',
-      '--font-render-hinting=medium',
-    ],
-  });
+  logger.info(
+    'screenshot start: %s %sm url=%s path=%s',
+    symbol,
+    interval,
+    maskedDashboardUrl,
+    screenshotPath,
+  );
 
-  try {
-    const page = await browser.newPage();
+  let captureError: Error | null = null;
+
+  for (
+    let captureAttempt = 1;
+    captureAttempt <= SCREENSHOT_CAPTURE_ATTEMPTS;
+    captureAttempt += 1
+  ) {
+    const browser = await puppeteer.launch({
+      headless: true,
+      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH!,
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-gpu',
+        '--font-render-hinting=medium',
+      ],
+    });
 
     try {
-      page.on('requestfailed', (request) => {
-        if (
-          !request.isNavigationRequest() &&
-          request.resourceType() !== 'document'
-        ) {
-          return;
-        }
+      const page = await browser.newPage();
 
-        logger.error(
-          'screenshot request failed: %s %sm %s (%s)',
-          symbol,
-          interval,
-          maskTokenInUrl(request.url()),
-          request.failure()?.errorText || 'unknown',
-        );
-      });
-      page.on('pageerror', (error) => {
-        logger.error(
-          'screenshot page error: %s %sm (%s)',
-          symbol,
-          interval,
-          error.message || String(error),
-        );
-      });
-      page.on('error', (error) => {
-        logger.error(
-          'screenshot target error: %s %sm (%s)',
-          symbol,
-          interval,
-          error.message || String(error),
-        );
-      });
-
-      await page.setViewport({
-        width: 1400,
-        height: 960,
-        deviceScaleFactor: 2,
-      });
-
-      const dashboardUrl = `${screenshotBaseUrl}/routes/dashboard/bybit/${symbol}/${interval}/?signalId=${signalId}&autoZoom=true${tokenParam}`;
-      const maskedDashboardUrl = maskTokenInUrl(dashboardUrl);
-      let gotoError: Error | null = null;
-
-      logger.info(
-        'screenshot start: %s %sm url=%s path=%s',
-        symbol,
-        interval,
-        maskedDashboardUrl,
-        screenshotPath,
-      );
-
-      for (
-        let attempt = 1;
-        attempt <= SCREENSHOT_NAVIGATION_ATTEMPTS;
-        attempt += 1
-      ) {
-        try {
-          logger.info(
-            'screenshot goto: %s %sm attempt=%d url=%s',
-            symbol,
-            interval,
-            attempt,
-            maskedDashboardUrl,
-          );
-          const response = await page.goto(dashboardUrl, {
-            waitUntil: 'domcontentloaded',
-            timeout: SCREENSHOT_NAVIGATION_TIMEOUT_MS,
-          });
-          logger.info(
-            'screenshot goto ok: %s %sm attempt=%d status=%s finalUrl=%s',
-            symbol,
-            interval,
-            attempt,
-            response ? String(response.status()) : 'null',
-            maskTokenInUrl(page.url()),
-          );
-          gotoError = null;
-          break;
-        } catch (error) {
-          gotoError = error as Error;
-          logger.error(
-            'screenshot goto failed: %s %sm attempt=%d url=%s (%s)',
-            symbol,
-            interval,
-            attempt,
-            maskedDashboardUrl,
-            gotoError.message || String(gotoError),
-          );
-          if (attempt >= SCREENSHOT_NAVIGATION_ATTEMPTS) {
-            break;
+      try {
+        page.on('requestfailed', (request) => {
+          if (
+            !request.isNavigationRequest() &&
+            request.resourceType() !== 'document'
+          ) {
+            return;
           }
-          await delay(SCREENSHOT_NAVIGATION_RETRY_DELAY_MS);
-        }
-      }
 
-      if (gotoError) {
-        throw new Error(
-          `Failed to open dashboard ${dashboardUrl}: ${gotoError.message || String(gotoError)}`,
+          logger.error(
+            'screenshot request failed: %s %sm %s (%s)',
+            symbol,
+            interval,
+            maskTokenInUrl(request.url()),
+            request.failure()?.errorText || 'unknown',
+          );
+        });
+        page.on('pageerror', (error) => {
+          logger.error(
+            'screenshot page error: %s %sm (%s)',
+            symbol,
+            interval,
+            error.message || String(error),
+          );
+        });
+        page.on('error', (error) => {
+          logger.error(
+            'screenshot target error: %s %sm (%s)',
+            symbol,
+            interval,
+            error.message || String(error),
+          );
+        });
+
+        await page.setViewport(SCREENSHOT_VIEWPORT);
+
+        let gotoError: Error | null = null;
+
+        logger.info(
+          'screenshot render: %s %sm captureAttempt=%d viewport=%dx%d@%d',
+          symbol,
+          interval,
+          captureAttempt,
+          SCREENSHOT_VIEWPORT.width,
+          SCREENSHOT_VIEWPORT.height,
+          SCREENSHOT_VIEWPORT.deviceScaleFactor,
         );
+
+        for (
+          let attempt = 1;
+          attempt <= SCREENSHOT_NAVIGATION_ATTEMPTS;
+          attempt += 1
+        ) {
+          try {
+            logger.info(
+              'screenshot goto: %s %sm captureAttempt=%d attempt=%d url=%s',
+              symbol,
+              interval,
+              captureAttempt,
+              attempt,
+              maskedDashboardUrl,
+            );
+            const response = await page.goto(dashboardUrl, {
+              waitUntil: 'domcontentloaded',
+              timeout: SCREENSHOT_NAVIGATION_TIMEOUT_MS,
+            });
+            logger.info(
+              'screenshot goto ok: %s %sm captureAttempt=%d attempt=%d status=%s finalUrl=%s',
+              symbol,
+              interval,
+              captureAttempt,
+              attempt,
+              response ? String(response.status()) : 'null',
+              maskTokenInUrl(page.url()),
+            );
+            gotoError = null;
+            break;
+          } catch (error) {
+            gotoError = error as Error;
+            logger.error(
+              'screenshot goto failed: %s %sm captureAttempt=%d attempt=%d url=%s (%s)',
+              symbol,
+              interval,
+              captureAttempt,
+              attempt,
+              maskedDashboardUrl,
+              gotoError.message || String(gotoError),
+            );
+            if (attempt >= SCREENSHOT_NAVIGATION_ATTEMPTS) {
+              break;
+            }
+            await delay(SCREENSHOT_NAVIGATION_RETRY_DELAY_MS);
+          }
+        }
+
+        if (gotoError) {
+          throw new Error(
+            `Failed to open dashboard ${dashboardUrl}: ${gotoError.message || String(gotoError)}`,
+          );
+        }
+
+        await delay(SCREENSHOT_RENDER_DELAY_MS);
+        await fs.mkdir(getScreenshotsDir(projectRoot), { recursive: true });
+        await page.screenshot({
+          path: screenshotPath,
+          type: 'png',
+        });
+        logger.info(
+          'screenshot saved: %s %sm path=%s',
+          symbol,
+          interval,
+          screenshotPath,
+        );
+        return;
+      } finally {
+        await page.close().catch(() => undefined);
       }
-
-      await delay(10_000);
-
-      await fs.mkdir(getScreenshotsDir(projectRoot), { recursive: true });
-
-      await page.screenshot({
-        path: screenshotPath,
-      });
-      logger.info(
-        'screenshot saved: %s %sm path=%s',
+    } catch (error) {
+      captureError = error as Error;
+      logger.error(
+        'screenshot capture failed: %s %sm captureAttempt=%d (%s)',
         symbol,
         interval,
-        screenshotPath,
+        captureAttempt,
+        getErrorMessage(captureError),
       );
+      if (captureAttempt < SCREENSHOT_CAPTURE_ATTEMPTS) {
+        await delay(SCREENSHOT_CAPTURE_RETRY_DELAY_MS);
+      }
     } finally {
-      await page.close();
+      await browser.close().catch(() => undefined);
     }
-  } finally {
-    await browser.close();
   }
+
+  throw captureError || new Error(`Failed screenshot: ${symbol} ${interval}`);
 };

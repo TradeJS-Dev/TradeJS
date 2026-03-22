@@ -17,6 +17,7 @@ const Dashboard = () => {
   const hasBacktestStrategy = searchParams.has('backtestStrategy');
   const backtestId = searchParams.get('backtestId');
   const backtestStrategy = searchParams.get('backtestStrategy');
+  const isScreenshotMode = searchParams.get('screenshot') === '1';
 
   const parseDashboardPath = useCallback(() => {
     const parts = window.location.pathname.split('/').filter(Boolean);
@@ -89,32 +90,34 @@ const Dashboard = () => {
       <Box
         as="main"
         minH="100vh"
-        p={4}
+        p={isScreenshotMode ? 0 : 4}
         bg="gray.900"
         display="flex"
         flexDirection="column"
         justifyContent="space-between"
         alignItems="flex-start"
       >
-        <Filters.Root
-          filters={filters}
-          tickers={tickers}
-          backtestFiles={tests}
-          onChangeFilters={onChangeFilters}
-        >
-          <Flex mb={2} gap={4} alignItems="center" flexDirection="row">
-            <Filters.SelectProvider />
-            <Filters.SelectSymbol />
-            <Filters.FavoriteIndicator />
-            <Filters.SelectInterval />
-            <Filters.SelectIndicator />
-          </Flex>
-          <Flex mb={4} gap={4} flexDirection="row">
-            <Filters.SelectBacktest />
-          </Flex>
-        </Filters.Root>
+        {!isScreenshotMode && (
+          <Filters.Root
+            filters={filters}
+            tickers={tickers}
+            backtestFiles={tests}
+            onChangeFilters={onChangeFilters}
+          >
+            <Flex mb={2} gap={4} alignItems="center" flexDirection="row">
+              <Filters.SelectProvider />
+              <Filters.SelectSymbol />
+              <Filters.FavoriteIndicator />
+              <Filters.SelectInterval />
+              <Filters.SelectIndicator />
+            </Flex>
+            <Flex mb={4} gap={4} flexDirection="row">
+              <Filters.SelectBacktest />
+            </Flex>
+          </Filters.Root>
+        )}
         <Box position="relative" flex="1" w="full">
-          <MainChart />
+          <MainChart screenshotMode={isScreenshotMode} />
         </Box>
       </Box>
     </ClientOnly>
