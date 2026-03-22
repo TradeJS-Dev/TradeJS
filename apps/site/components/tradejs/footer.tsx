@@ -5,6 +5,7 @@ import { useLocale } from './locale-provider';
 
 const GITHUB_REPO_URL = 'https://github.com/tradejs-dev/tradejs';
 const X_ACCOUNT_URL = 'https://x.com/tradejsdev';
+const TELEGRAM_CONTACT_URL = 'https://t.me/aleksnick';
 
 export function Footer() {
   const { locale, t, toggleLocale } = useLocale();
@@ -57,7 +58,7 @@ export function Footer() {
           {/* Links */}
           <div className="flex flex-wrap items-center justify-center gap-6">
             <a
-              href="https://tradejs.dev"
+              href="https://app.tradejs.dev"
               target="_blank"
               rel="noopener noreferrer"
               className="text-sm text-muted-foreground hover:text-foreground transition-colors"
@@ -89,6 +90,14 @@ export function Footer() {
             >
               <Twitter size={15} />
               <span>{t.footer.x}</span>
+            </a>
+            <a
+              href={TELEGRAM_CONTACT_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+            >
+              {t.footer.contact}
             </a>
             <button
               onClick={toggleLocale}

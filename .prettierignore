@@ -9,3 +9,4 @@ backtest/*
 **/dist
 **/next-env.d.ts
 coverage
+x
