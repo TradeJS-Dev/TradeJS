@@ -1,9 +1,10 @@
 'use client';
 
-import { Github } from 'lucide-react';
+import { Github, Twitter } from 'lucide-react';
 import { useLocale } from './locale-provider';
 
 const GITHUB_REPO_URL = 'https://github.com/tradejs-dev/tradejs';
+const X_ACCOUNT_URL = 'https://x.com/tradejsdev';
 
 export function Footer() {
   const { locale, t, toggleLocale } = useLocale();
@@ -79,6 +80,15 @@ export function Footer() {
             >
               <Github size={15} />
               <span>{t.footer.github}</span>
+            </a>
+            <a
+              href={X_ACCOUNT_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <Twitter size={15} />
+              <span>{t.footer.x}</span>
             </a>
             <button
               onClick={toggleLocale}
