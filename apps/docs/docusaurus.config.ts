@@ -152,6 +152,13 @@ const config: Config = {
           position: 'right',
         },
         {
+          href: 'https://github.com/tradejs-dev/tradejs',
+          label: 'GitHub',
+          position: 'right',
+          className: 'navbar-github-link',
+          'aria-label': 'TradeJS GitHub repository',
+        },
+        {
           type: 'search',
           position: 'right',
         },
@@ -189,6 +196,19 @@ const config: Config = {
             },
             { label: 'Monitoring', to: '/operations/monitoring-alerts' },
             { label: 'Backup and Restore', to: '/operations/backup-restore' },
+          ],
+        },
+        {
+          title: 'Open Source',
+          items: [
+            {
+              label: 'GitHub Repository',
+              href: 'https://github.com/tradejs-dev/tradejs',
+            },
+            {
+              label: 'Issue Tracker',
+              href: 'https://github.com/tradejs-dev/tradejs/issues',
+            },
           ],
         },
       ],

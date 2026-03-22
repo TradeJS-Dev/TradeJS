@@ -2,7 +2,9 @@
 
 import { useState, useEffect } from 'react';
 import { useLocale } from './locale-provider';
-import { Menu, X } from 'lucide-react';
+import { Github, Menu, X } from 'lucide-react';
+
+const GITHUB_REPO_URL = 'https://github.com/tradejs-dev/tradejs';
 
 export function Header() {
   const { locale, t, toggleLocale } = useLocale();
@@ -110,6 +112,16 @@ export function Header() {
             </span>
           </button>
           <a
+            href={GITHUB_REPO_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-2 rounded-lg border border-border bg-surface/70 px-4 py-2 text-sm font-semibold text-foreground hover:border-primary/40 hover:bg-surface transition-colors"
+            aria-label={t.nav.github}
+          >
+            <Github size={16} />
+            <span>{t.nav.github}</span>
+          </a>
+          <a
             href={quickstartUrl}
             target="_blank"
             rel="noopener noreferrer"
@@ -174,6 +186,15 @@ export function Header() {
                 </span>
               </button>
             </div>
+            <a
+              href={GITHUB_REPO_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center justify-center gap-2 rounded-lg border border-border px-4 py-2 text-sm font-semibold text-foreground hover:border-primary/40 hover:bg-surface transition-colors"
+            >
+              <Github size={16} />
+              <span>{t.nav.github}</span>
+            </a>
             <a
               href={quickstartUrl}
               target="_blank"

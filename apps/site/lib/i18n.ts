@@ -6,6 +6,7 @@ export const translations = {
       advantages: 'Advantages',
       howItWorks: 'How It Works',
       devExperience: 'For Developers',
+      github: 'GitHub',
       quickstart: 'Getting Started',
     },
     hero: {
@@ -183,6 +184,7 @@ export const translations = {
       description: 'Open-source trading strategy framework for developers.',
       app: 'Application',
       docs: 'Documentation',
+      github: 'GitHub Repository',
       rights: 'All rights reserved.',
     },
   },
@@ -191,6 +193,7 @@ export const translations = {
       advantages: 'Преимущества',
       howItWorks: 'Как это работает',
       devExperience: 'Разработчикам',
+      github: 'GitHub',
       quickstart: 'Быстрый старт',
     },
     hero: {
@@ -365,6 +368,7 @@ export const translations = {
       description: 'Open-source фреймворк для разработки торговых стратегий.',
       app: 'Приложение',
       docs: 'Документация',
+      github: 'GitHub-репозиторий',
       rights: 'Все права защищены.',
     },
   },

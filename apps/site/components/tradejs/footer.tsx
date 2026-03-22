@@ -1,6 +1,9 @@
 'use client';
 
+import { Github } from 'lucide-react';
 import { useLocale } from './locale-provider';
+
+const GITHUB_REPO_URL = 'https://github.com/tradejs-dev/tradejs';
 
 export function Footer() {
   const { locale, t, toggleLocale } = useLocale();
@@ -51,7 +54,7 @@ export function Footer() {
           </div>
 
           {/* Links */}
-          <div className="flex items-center gap-6">
+          <div className="flex flex-wrap items-center justify-center gap-6">
             <a
               href="https://tradejs.dev"
               target="_blank"
@@ -67,6 +70,15 @@ export function Footer() {
               className="text-sm text-muted-foreground hover:text-foreground transition-colors"
             >
               {t.footer.docs}
+            </a>
+            <a
+              href={GITHUB_REPO_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <Github size={15} />
+              <span>{t.footer.github}</span>
             </a>
             <button
               onClick={toggleLocale}
