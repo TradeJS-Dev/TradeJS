@@ -174,6 +174,36 @@ export const translations = {
       tsTab: 'TypeScript',
       pineTab: 'Pine Script',
     },
+    roadmap: {
+      sectionTitle: 'Roadmap',
+      sectionSubtitle: 'Project roadmap for the next major milestones',
+      items: [
+        {
+          quarter: 'Q1',
+          title: 'Project Launch',
+          description:
+            'Launch of the TradeJS open-source framework and the core project foundation.',
+        },
+        {
+          quarter: 'Q2',
+          title: 'AI Evaluation of Backtest Trades',
+          description:
+            'Export backtest trades, run them through prompts attached to each strategy, and measure how accurately AI accepts or rejects trades.',
+        },
+        {
+          quarter: 'Q3',
+          title: 'Built-In Strategy Catalog Expansion',
+          description:
+            'Expand the catalog of built-in working and validated strategies available out of the box.',
+        },
+        {
+          quarter: 'Q4',
+          title: 'New Data Sources For Strategies',
+          description:
+            'Add new data sources for strategies, including news portals, Reddit, X.com, and Arkham.',
+        },
+      ],
+    },
     finalCta: {
       title: 'Ready to Automate Your Trading?',
       subtitle:
@@ -359,6 +389,36 @@ export const translations = {
         'Два режима разработки: пишите на языке, который знаете лучше',
       tsTab: 'TypeScript',
       pineTab: 'Pine Script',
+    },
+    roadmap: {
+      sectionTitle: 'Roadmap',
+      sectionSubtitle: 'Дорожная карта проекта',
+      items: [
+        {
+          quarter: 'Q1',
+          title: 'Старт проекта',
+          description:
+            'Запуск TradeJS как open-source фреймворка и закладка базовой архитектуры проекта.',
+        },
+        {
+          quarter: 'Q2',
+          title: 'AI-оценка сделок из бэктестов',
+          description:
+            'Экспорт сделок из бэктестов, прогон через промпты, привязанные к стратегии, и анализ того, насколько AI верно или неверно отбирает сделки.',
+        },
+        {
+          quarter: 'Q3',
+          title: 'Расширение каталога встроенных стратегий',
+          description:
+            'Обогащение каталога встроенных рабочих и проверенных стратегий, доступных из коробки.',
+        },
+        {
+          quarter: 'Q4',
+          title: 'Новые источники данных для стратегий',
+          description:
+            'Добавление в стратегии новых источников данных, включая новостные порталы, Reddit, X.com и Arkham.',
+        },
+      ],
     },
     finalCta: {
       title: 'Готовы автоматизировать трейдинг?',
