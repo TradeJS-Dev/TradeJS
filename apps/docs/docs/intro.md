@@ -4,7 +4,7 @@ title: Overview
 slug: /
 ---
 
-TradeJS is a TypeScript-native trading platform for:
+TradeJS is an open-source framework for:
 
 - running strategy logic in live mode,
 - scanning and sending signals,

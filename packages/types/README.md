@@ -1,6 +1,6 @@
 # @tradejs/types
 
-Shared TradeJS contracts and TypeScript types.
+Shared contracts and TypeScript types for the TradeJS open-source framework.
 
 - Homepage: https://tradejs.dev
 - Documentation: https://docs.tradejs.dev

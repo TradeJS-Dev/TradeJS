@@ -1,7 +1,7 @@
 {
   "name": "@tradejs/indicators",
   "version": "1.0.4",
-  "description": "Built-in TradeJS indicator plugin catalog.",
+  "description": "Built-in indicator plugin catalog for the TradeJS open-source framework.",
   "keywords": [
     "tradejs",
     "trading",

@@ -1,6 +1,6 @@
 # @tradejs/base
 
-Default TradeJS preset.
+Default preset for the TradeJS open-source framework.
 
 - Homepage: https://tradejs.dev
 - Documentation: https://docs.tradejs.dev

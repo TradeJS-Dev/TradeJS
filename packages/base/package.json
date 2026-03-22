@@ -1,7 +1,7 @@
 {
   "name": "@tradejs/base",
   "version": "1.0.4",
-  "description": "Default preset that wires the built-in TradeJS strategies, indicators, and connectors.",
+  "description": "Default preset for the TradeJS open-source framework, wiring the built-in strategies, indicators, and connectors.",
   "keywords": [
     "tradejs",
     "trading",

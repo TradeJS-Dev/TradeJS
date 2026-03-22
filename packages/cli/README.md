@@ -1,6 +1,6 @@
 # @tradejs/cli
 
-Official TradeJS command line interface.
+Official CLI for the TradeJS open-source framework.
 
 - Homepage: https://tradejs.dev
 - Documentation: https://docs.tradejs.dev

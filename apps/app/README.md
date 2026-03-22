@@ -1,6 +1,6 @@
 # @tradejs/app
 
-Publishable Next.js UI package for viewing TradeJS backtests, charts, and signal flows.
+Publishable Next.js UI package for the TradeJS open-source framework, with backtests, charts, and signal flows.
 
 Typical external usage:
 

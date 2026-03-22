@@ -1,6 +1,6 @@
 # @tradejs/connectors
 
-Built-in TradeJS connector package.
+Built-in connector package for the TradeJS open-source framework.
 
 - Homepage: https://tradejs.dev
 - Documentation: https://docs.tradejs.dev

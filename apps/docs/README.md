@@ -1,6 +1,6 @@
 # @tradejs/docs
 
-Docusaurus knowledge base app for TradeJS.
+Docusaurus documentation app for the TradeJS open-source framework.
 
 ## Run (both locales)
 

@@ -1,7 +1,7 @@
 {
   "name": "@tradejs/ml",
   "version": "1.0.0",
-  "description": "Private TradeJS ML runtime assets and Python build helpers.",
+  "description": "Private ML runtime assets and Python build helpers for the TradeJS open-source framework.",
   "private": true,
   "scripts": {
     "build": "mkdir -p dist && echo 'ml: python/docker module' > dist/.build.txt"

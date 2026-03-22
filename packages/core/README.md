@@ -1,6 +1,6 @@
 # @tradejs/core
 
-Browser-safe TradeJS public API for config, strategy authoring helpers, indicators, figures, math, and shared utilities.
+Browser-safe public API for the TradeJS open-source framework: config, strategy authoring helpers, indicators, figures, math, and shared utilities.
 
 - Homepage: https://tradejs.dev
 - Documentation: https://docs.tradejs.dev

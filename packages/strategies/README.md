@@ -1,6 +1,6 @@
 # @tradejs/strategies
 
-Built-in TradeJS strategy plugin package.
+Built-in strategy plugin package for the TradeJS open-source framework.
 
 - Homepage: https://tradejs.dev
 - Documentation: https://docs.tradejs.dev

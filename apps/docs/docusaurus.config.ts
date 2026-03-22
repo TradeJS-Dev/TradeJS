@@ -4,7 +4,7 @@ import type * as Preset from '@docusaurus/preset-classic';
 
 const config: Config = {
   title: 'TradeJS Docs',
-  tagline: 'Knowledge base for TradeJS',
+  tagline: 'Technical docs for the TradeJS open-source framework',
   favicon: 'img/favicon.ico',
 
   future: {
@@ -70,7 +70,7 @@ const config: Config = {
       {
         name: 'description',
         content:
-          'Official TradeJS documentation: strategy authoring, indicators, runtime, backtesting, AI/ML, and operations.',
+          'Official documentation for the TradeJS open-source framework: strategy authoring, indicators, runtime, backtesting, AI/ML, and operations.',
       },
       {
         name: 'keywords',

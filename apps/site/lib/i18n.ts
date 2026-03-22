@@ -12,7 +12,7 @@ export const translations = {
     hero: {
       actionWords: ['WRITE', 'TEST', 'RUN'],
       titleSuffix: 'Trading Strategies',
-      subtitle: 'TypeScript & Pine Script framework',
+      subtitle: 'Open-source framework for TypeScript & Pine Script strategies',
       quickstart: 'Getting Started',
       trust: {
         backtesting: 'Grid Backtesting',
@@ -177,11 +177,11 @@ export const translations = {
     finalCta: {
       title: 'Ready to Automate Your Trading?',
       subtitle:
-        'Start building strategies with TradeJS today. Open-source, self-hosted, and built for developers.',
+        'Start building with the TradeJS open-source framework today. Self-hosted and built for developers.',
       quickstart: 'Getting Started',
     },
     footer: {
-      description: 'Open-source trading strategy framework for developers.',
+      description: 'Open-source framework for trading strategy developers.',
       app: 'Application',
       docs: 'Documentation',
       github: 'GitHub Repository',
@@ -199,7 +199,8 @@ export const translations = {
     hero: {
       actionWords: ['ПИШИ', 'ТЕСТИРУЙ', 'ЗАПУСКАЙ'],
       titleSuffix: 'Торговые стратегии',
-      subtitle: 'Фреймворк для стратегий на TypeScript и Pine Script',
+      subtitle:
+        'Open-source фреймворк для торговых стратегий на TypeScript и Pine Script',
       quickstart: 'Быстрый старт',
       trust: {
         backtesting: 'Grid-бэктесты',
@@ -361,11 +362,11 @@ export const translations = {
     finalCta: {
       title: 'Готовы автоматизировать трейдинг?',
       subtitle:
-        'Начните создавать стратегии с TradeJS уже сегодня. Open-source, self-hosted и создан для разработчиков.',
+        'Начните работать с open-source фреймворком TradeJS уже сегодня. Self-hosted и создан для разработчиков.',
       quickstart: 'Быстрый старт',
     },
     footer: {
-      description: 'Open-source фреймворк для разработки торговых стратегий.',
+      description: 'Open-source фреймворк для разработчиков торговых стратегий.',
       app: 'Приложение',
       docs: 'Документация',
       github: 'GitHub-репозиторий',

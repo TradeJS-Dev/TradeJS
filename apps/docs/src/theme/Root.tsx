@@ -79,7 +79,7 @@ export default function Root({ children }: Props): JSX.Element {
         name: 'TradeJS Docs',
         url: 'https://docs.tradejs.dev',
         inLanguage: ['en-US', 'ru-RU'],
-        about: 'TradeJS technical documentation',
+        about: 'Technical documentation for the TradeJS open-source framework',
         potentialAction: {
           '@type': 'SearchAction',
           target: 'https://docs.tradejs.dev/?q={search_term_string}',
@@ -96,7 +96,7 @@ export default function Root({ children }: Props): JSX.Element {
           url: 'https://docs.tradejs.dev',
         },
         description:
-          'Official TradeJS docs for setup, APIs, strategy authoring, indicators, runtime execution, backtesting, AI/ML, and operations.',
+          'Official docs for the TradeJS open-source framework: setup, APIs, strategy authoring, indicators, runtime execution, backtesting, AI/ML, and operations.',
       },
     ],
   };

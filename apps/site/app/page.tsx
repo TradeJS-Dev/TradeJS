@@ -27,7 +27,7 @@ export default function Page() {
         },
         url: 'https://tradejs.dev',
         description:
-          'Trading strategy framework for TypeScript and Pine Script with backtesting, runtime execution, and AI/ML enrichment.',
+          'Open-source trading strategy framework for TypeScript and Pine Script with backtesting, runtime execution, and AI/ML enrichment.',
       },
       {
         '@type': 'SoftwareSourceCode',
@@ -38,7 +38,7 @@ export default function Page() {
         url: 'https://tradejs.dev',
         license: 'https://opensource.org/licenses/MIT',
         description:
-          'Open-source trading strategy framework with TypeScript and Pine Script authoring, runtime execution, and AI/ML enrichment.',
+          'Open-source framework for TypeScript and Pine Script trading strategies, with runtime execution, backtesting, and AI/ML enrichment.',
       },
     ],
   };

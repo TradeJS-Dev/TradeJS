@@ -1,6 +1,6 @@
 # TradeJS
 
-TradeJS is a monorepo framework for strategy development, backtesting, live signal generation, and optional auto-trading.
+TradeJS is an open-source framework for TypeScript and Pine Script strategy authoring, backtesting, live signal generation, and optional auto-trading.
 
 It supports two first-class authoring paths:
 

@@ -1,6 +1,6 @@
 # @tradejs/indicators
 
-Built-in TradeJS indicator plugin package.
+Built-in indicator plugin package for the TradeJS open-source framework.
 
 - Homepage: https://tradejs.dev
 - Documentation: https://docs.tradejs.dev

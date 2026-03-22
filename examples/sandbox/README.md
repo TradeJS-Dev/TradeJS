@@ -1,6 +1,6 @@
 # TradeJS Sandbox App (Deterministic E2E)
 
-`examples/sandbox` is a full user-application style example:
+`examples/sandbox` is a full user-application style example for the TradeJS open-source framework:
 
 - local `tradejs.config.ts`
 - custom strategy plugin (`SandboxDeterministicSignal`)

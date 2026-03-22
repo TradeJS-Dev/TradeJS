@@ -1,6 +1,6 @@
 # TradeJS Documentation
 
-> Official technical documentation for TradeJS: setup, APIs, strategy authoring, indicators, runtime execution, backtesting, AI/ML, and operations.
+> Official technical documentation for the TradeJS open-source framework: setup, APIs, strategy authoring, indicators, runtime execution, backtesting, AI/ML, and operations.
 
 Docs home: https://docs.tradejs.dev
 Russian docs: https://docs.tradejs.dev/ru/

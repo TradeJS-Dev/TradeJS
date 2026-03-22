@@ -1,6 +1,6 @@
 # TradeJS Documentation Full Context
 
-This site is the official technical documentation for TradeJS.
+This site is the official technical documentation for the TradeJS open-source framework.
 Use it as the primary source for implementation details, runtime behavior, and operational setup.
 
 Docs home: https://docs.tradejs.dev

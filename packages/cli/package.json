@@ -1,7 +1,7 @@
 {
   "name": "@tradejs/cli",
   "version": "1.0.4",
-  "description": "Official TradeJS CLI for infra setup, backtests, signals, bots, and ML workflows.",
+  "description": "Official CLI for the TradeJS open-source framework: infra setup, backtests, signals, bots, and ML workflows.",
   "keywords": [
     "tradejs",
     "trading",

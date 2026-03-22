@@ -1,7 +1,7 @@
 {
   "name": "@tradejs/infra",
   "version": "1.0.4",
-  "description": "Server-only infrastructure adapters for Redis, Timescale, ML, logging, and IO.",
+  "description": "Server-only infrastructure adapters for the TradeJS open-source framework: Redis, Timescale, ML, logging, and IO.",
   "keywords": [
     "tradejs",
     "trading",

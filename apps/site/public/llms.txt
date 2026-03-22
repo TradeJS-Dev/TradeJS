@@ -7,7 +7,7 @@ Documentation: https://docs.tradejs.dev
 
 ## Product Summary
 
-TradeJS is a self-hosted framework for:
+TradeJS is an open-source, self-hosted framework for:
 
 - writing strategies in TypeScript or Pine Script,
 - authoring indicators,

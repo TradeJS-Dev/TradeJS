@@ -1,6 +1,6 @@
 # @tradejs/infra
 
-Server-only infrastructure adapters for TradeJS.
+Server-only infrastructure adapters for the TradeJS open-source framework.
 
 - Homepage: https://tradejs.dev
 - Documentation: https://docs.tradejs.dev

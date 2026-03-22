@@ -1,6 +1,6 @@
 # @tradejs/node
 
-Node-only TradeJS runtime package.
+Node-only runtime package for the TradeJS open-source framework.
 
 - Homepage: https://tradejs.dev
 - Documentation: https://docs.tradejs.dev

@@ -17,14 +17,15 @@ const _jetbrainsMono = JetBrains_Mono({
 export const metadata: Metadata = {
   metadataBase: new URL('https://tradejs.dev'),
   title: {
-    default: 'TradeJS — Trading Strategy Framework',
+    default: 'TradeJS — Open-Source Trading Strategy Framework',
     template: '%s | TradeJS',
   },
   description:
-    'Build, backtest, and run trading strategies with TypeScript and Pine Script. AI/ML-enhanced signals, grid backtesting, and real-time Telegram notifications.',
+    'TradeJS is an open-source framework for building, backtesting, and running trading strategies with TypeScript and Pine Script, including AI/ML enrichment and real-time Telegram notifications.',
   applicationName: 'TradeJS',
   keywords: [
     'TradeJS',
+    'open-source trading framework',
     'trading strategy framework',
     'algorithmic trading',
     'TypeScript trading bot',
@@ -51,9 +52,9 @@ export const metadata: Metadata = {
     },
   },
   openGraph: {
-    title: 'TradeJS — Trading Strategy Framework',
+    title: 'TradeJS — Open-Source Trading Strategy Framework',
     description:
-      'Build, backtest, and run trading strategies with TypeScript and Pine Script. AI/ML-enhanced signals, grid backtesting, and real-time Telegram notifications.',
+      'TradeJS is an open-source framework for building, backtesting, and running trading strategies with TypeScript and Pine Script, including AI/ML enrichment and real-time Telegram notifications.',
     type: 'website',
     url: 'https://tradejs.dev',
     siteName: 'TradeJS',
@@ -63,15 +64,15 @@ export const metadata: Metadata = {
         url: '/og-image.jpg',
         width: 1200,
         height: 630,
-        alt: 'TradeJS — Trading Strategy Framework',
+        alt: 'TradeJS — Open-Source Trading Strategy Framework',
       },
     ],
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'TradeJS — Trading Strategy Framework',
+    title: 'TradeJS — Open-Source Trading Strategy Framework',
     description:
-      'Build, backtest, and run trading strategies with TypeScript and Pine Script.',
+      'Open-source framework for TypeScript and Pine Script trading strategies.',
     images: ['/og-image.jpg'],
   },
   icons: {

@@ -1,6 +1,6 @@
 # @tradejs/ml
 
-Internal TradeJS ML runtime assets.
+Internal ML runtime assets for the TradeJS open-source framework.
 
 This package is private and is not intended as a public authoring/runtime dependency.
 
