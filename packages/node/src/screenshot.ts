@@ -15,6 +15,10 @@ const SCREENSHOT_CAPTURE_ATTEMPTS = 2;
 const SCREENSHOT_CAPTURE_RETRY_DELAY_MS = 2_000;
 const SCREENSHOT_NAVIGATION_TIMEOUT_MS = 30_000;
 const SCREENSHOT_RENDER_DELAY_MS = 10_000;
+const SCREENSHOT_CONSOLE_LOG_LIMIT = 20;
+const SCREENSHOT_CONSOLE_TEXT_LIMIT = 500;
+const SCREENSHOT_BROWSER_STDERR = process.env.SCREENSHOT_BROWSER_STDERR === '1';
+const PUPPETEER_DUMPIO = process.env.PUPPETEER_DUMPIO === '1';
 const SCREENSHOT_VIEWPORT = {
   width: 1280,
   height: 800,
@@ -45,6 +49,12 @@ const getErrorMessage = (error: unknown) => {
 
   return `${message}; cause: ${cause}`;
 };
+
+const truncateText = (value: string, maxLength = SCREENSHOT_CONSOLE_TEXT_LIMIT) =>
+  value.length > maxLength ? `${value.slice(0, maxLength)}...` : value;
+
+const shouldLogConsoleMessage = (type: string) =>
+  ['error', 'warning', 'assert'].includes(type);
 
 export const getScreenshotBase64 = async (
   signal: Signal,
@@ -127,6 +137,7 @@ export const screenDashboard = async (signal: Signal, projectRoot?: string) => {
   ) {
     const browser = await puppeteer.launch({
       headless: true,
+      dumpio: PUPPETEER_DUMPIO,
       executablePath: process.env.PUPPETEER_EXECUTABLE_PATH!,
       args: [
         '--no-sandbox',
@@ -136,11 +147,56 @@ export const screenDashboard = async (signal: Signal, projectRoot?: string) => {
         '--font-render-hinting=medium',
       ],
     });
+    const browserProcess = browser.process();
 
     try {
+      if (browserProcess) {
+        logger.info(
+          'screenshot browser: %s %sm captureAttempt=%d pid=%s exec=%s',
+          symbol,
+          interval,
+          captureAttempt,
+          String(browserProcess.pid ?? 'unknown'),
+          browserProcess.spawnfile || 'unknown',
+        );
+      }
+      logger.info(
+        'screenshot browser version: %s %sm captureAttempt=%d version=%s',
+        symbol,
+        interval,
+        captureAttempt,
+        await browser.version(),
+      );
+      browser.on('disconnected', () => {
+        logger.error(
+          'screenshot browser disconnected: %s %sm captureAttempt=%d',
+          symbol,
+          interval,
+          captureAttempt,
+        );
+      });
+      if (SCREENSHOT_BROWSER_STDERR && browserProcess?.stderr) {
+        browserProcess.stderr.on('data', (chunk: Buffer | string) => {
+          const text = String(chunk).trim();
+          if (!text) {
+            return;
+          }
+
+          logger.error(
+            'screenshot browser stderr: %s %sm captureAttempt=%d (%s)',
+            symbol,
+            interval,
+            captureAttempt,
+            truncateText(text),
+          );
+        });
+      }
+
       const page = await browser.newPage();
 
       try {
+        let consoleMessagesLogged = 0;
+
         page.on('requestfailed', (request) => {
           if (
             !request.isNavigationRequest() &&
@@ -171,6 +227,65 @@ export const screenDashboard = async (signal: Signal, projectRoot?: string) => {
             symbol,
             interval,
             error.message || String(error),
+          );
+        });
+        page.on('close', () => {
+          logger.info(
+            'screenshot page closed: %s %sm captureAttempt=%d',
+            symbol,
+            interval,
+            captureAttempt,
+          );
+        });
+        page.on('console', (message) => {
+          if (!shouldLogConsoleMessage(message.type())) {
+            return;
+          }
+
+          if (consoleMessagesLogged >= SCREENSHOT_CONSOLE_LOG_LIMIT) {
+            return;
+          }
+
+          consoleMessagesLogged += 1;
+          const location = message.location();
+          const suffix = location.url
+            ? ` ${maskTokenInUrl(location.url)}:${location.lineNumber ?? 0}:${location.columnNumber ?? 0}`
+            : '';
+
+          logger.error(
+            'screenshot console %s: %s %sm captureAttempt=%d (%s%s)',
+            message.type(),
+            symbol,
+            interval,
+            captureAttempt,
+            truncateText(message.text()),
+            suffix,
+          );
+        });
+        page.on('response', (response) => {
+          const status = response.status();
+          if (status < 400) {
+            return;
+          }
+
+          const request = response.request();
+          const resourceType = request.resourceType();
+          if (
+            !['document', 'script', 'stylesheet', 'fetch', 'xhr'].includes(
+              resourceType,
+            )
+          ) {
+            return;
+          }
+
+          logger.error(
+            'screenshot response failed: %s %sm captureAttempt=%d status=%d type=%s url=%s',
+            symbol,
+            interval,
+            captureAttempt,
+            status,
+            resourceType,
+            maskTokenInUrl(response.url()),
           );
         });
 
@@ -214,6 +329,14 @@ export const screenDashboard = async (signal: Signal, projectRoot?: string) => {
               attempt,
               response ? String(response.status()) : 'null',
               maskTokenInUrl(page.url()),
+            );
+            logger.info(
+              'screenshot page info: %s %sm captureAttempt=%d title=%s ua=%s',
+              symbol,
+              interval,
+              captureAttempt,
+              truncateText(await page.title(), 120),
+              truncateText(await page.evaluate(() => navigator.userAgent), 240),
             );
             gotoError = null;
             break;
