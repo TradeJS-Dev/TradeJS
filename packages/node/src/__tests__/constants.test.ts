@@ -25,7 +25,7 @@ describe('node/constants', () => {
     jest.isolateModules(() => {
       const constants = require('@tradejs/node/constants');
 
-      expect(constants.KLINE_CONCURRENCY_LIMIT).toBe(2);
+      expect(constants.KLINE_CONCURRENCY_LIMIT).toBe(1);
       expect(constants.SCREENSHOT_CONCURRENCY_LIMIT).toBe(1);
       expect(constants.TG_CONCURRENCY_LIMIT).toBe(3);
       expect(constants.AI_CONCURRENCY_LIMIT).toBe(3);
