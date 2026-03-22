@@ -152,6 +152,12 @@ const config: Config = {
           position: 'right',
         },
         {
+          href: 'https://x.com/tradejsdev',
+          label: 'X.com',
+          position: 'right',
+          'aria-label': 'TradeJS X account',
+        },
+        {
           href: 'https://github.com/tradejs-dev/tradejs',
           label: 'GitHub',
           position: 'right',
