@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { create } from 'zustand';
 import { get, set } from 'idb-keyval';
 import { useSearchParams } from 'next/navigation';
@@ -16,20 +16,42 @@ interface DataState {
   ) => void;
 }
 
-const getKey = (filters: Pick<Filters, 'provider' | 'symbol' | 'interval'>) =>
-  `${filters.provider || 'bybit'}_${filters.symbol}_${filters.interval}`;
-
-const getRequestKey = ({
-  key,
-  start,
-  end,
-  cacheOnly,
-}: {
+interface DataRequest {
   key: string;
+  provider: Provider;
+  symbol: string;
+  interval: Interval;
   start: number;
   end: number;
   cacheOnly: boolean;
-}) => `${key}_${start}_${end}_${cacheOnly ? 'cache' : 'live'}`;
+}
+
+const MIN_CACHED_CANDLES = 2;
+
+const getKey = (provider: Provider, symbol: string, interval: Interval) =>
+  `${provider}_${symbol}_${interval}`;
+
+const getProvider = (provider?: Provider): Provider => provider || 'bybit';
+
+const toRequest = (filters: Filters, cacheOnly: boolean): DataRequest => {
+  const provider = getProvider(filters.provider);
+
+  return {
+    key: getKey(provider, filters.symbol, filters.interval),
+    provider,
+    symbol: filters.symbol,
+    interval: filters.interval,
+    start: filters.start,
+    end: filters.end,
+    cacheOnly,
+  };
+};
+
+const getRequestKey = ({ key, start, end, cacheOnly }: DataRequest) =>
+  `${key}_${start}_${end}_${cacheOnly ? 'cache' : 'live'}`;
+
+const hasContinuityData = (data: KlineChartData) =>
+  data.length > MIN_CACHED_CANDLES;
 
 const inFlightRequests = new Map<string, Promise<KlineChartData>>();
 
@@ -39,7 +61,7 @@ const useDataStore = create<DataState>((set) => ({
     set(({ data }) => {
       const next = new Map(data);
 
-      next.set(getKey({ provider, symbol, interval }), newData);
+      next.set(getKey(provider, symbol, interval), newData);
 
       return {
         data: next,
@@ -47,144 +69,164 @@ const useDataStore = create<DataState>((set) => ({
     }),
 }));
 
-const fetchAndStoreData = async ({
+const loadCachedData = async (key: string) =>
+  ((await get(key)) as KlineChartData | null) ?? [];
+
+const clearCachedData = async (key: string) => {
+  await set(key, []);
+};
+
+const getFetchStart = (start: number, data: KlineChartData) =>
+  Math.max(
+    start,
+    hasContinuityData(data) ? data[data.length - 2]?.timestamp || 0 : 0,
+  );
+
+const requestKline = async (
+  request: Pick<
+    DataRequest,
+    'provider' | 'symbol' | 'interval' | 'end' | 'cacheOnly'
+  > & { start: number },
+) =>
+  kline({
+    provider: request.provider,
+    symbol: request.symbol,
+    interval: request.interval,
+    start: request.start,
+    end: request.end,
+    cacheOnly: request.cacheOnly,
+  });
+
+const loadCurrentData = async ({
   key,
-  provider,
   symbol,
   interval,
-  start,
-  end,
-  cacheOnly,
-}: {
-  key: string;
-  provider: Provider;
-  symbol: string;
-  interval: Interval;
-  start: number;
-  end: number;
-  cacheOnly: boolean;
-}) => {
-  const requestKey = getRequestKey({ key, start, end, cacheOnly });
+}: Pick<DataRequest, 'key' | 'symbol' | 'interval'>) => {
+  let currentData = [
+    ...(useDataStore.getState().data.get(key) ?? []),
+  ] as KlineChartData;
+
+  if (currentData.length < MIN_CACHED_CANDLES) {
+    const cachedData = await loadCachedData(key);
+
+    if (hasContinuityData(cachedData)) {
+      currentData = [...cachedData];
+    }
+  }
+
+  if (hasContinuityData(currentData) && isWrongData(interval, currentData)) {
+    console.warn('Wrong kline continuity, drop cache', symbol, interval);
+    await clearCachedData(key);
+    return [];
+  }
+
+  return currentData;
+};
+
+const mergeFreshData = async (
+  dataRequest: DataRequest,
+  currentData: KlineChartData,
+) => {
+  const incrementalData = await requestKline({
+    ...dataRequest,
+    start: getFetchStart(dataRequest.start, currentData),
+  });
+
+  const mergedData = mergeData(currentData, incrementalData);
+
+  if (
+    dataRequest.cacheOnly ||
+    !hasContinuityData(mergedData) ||
+    !isWrongData(dataRequest.interval, mergedData)
+  ) {
+    return mergedData;
+  }
+
+  console.warn(
+    'Wrong kline continuity after merge, refetch full',
+    dataRequest.symbol,
+    dataRequest.interval,
+  );
+  await clearCachedData(dataRequest.key);
+
+  const fullData = await requestKline({
+    ...dataRequest,
+    start: dataRequest.start,
+  });
+
+  return mergeData([], fullData);
+};
+
+const persistData = async (
+  {
+    provider,
+    symbol,
+    interval,
+    key,
+  }: Pick<DataRequest, 'provider' | 'symbol' | 'interval' | 'key'>,
+  data: KlineChartData,
+) => {
+  useDataStore.getState().setData(provider, symbol, interval, data);
+  await set(key, data);
+};
+
+const fetchAndStoreData = async (dataRequest: DataRequest) => {
+  const requestKey = getRequestKey(dataRequest);
   const existingRequest = inFlightRequests.get(requestKey);
 
   if (existingRequest) {
     return existingRequest;
   }
 
-  const request = (async () => {
-    let currentData = [
-      ...(useDataStore.getState().data.get(key) ?? []),
-    ] as KlineChartData;
-
-    if (currentData.length < 2) {
-      const cachedResult = (await get(key)) as KlineChartData | null;
-
-      if (cachedResult && cachedResult.length > 2) {
-        currentData = [...cachedResult];
-      }
-    }
-
-    if (currentData.length > 2 && isWrongData(interval, currentData)) {
-      console.warn('Wrong kline continuity, drop cache', symbol, interval);
-      currentData = [];
-      await set(key, []);
-    }
-
-    const normStart = Math.max(
-      start,
-      currentData.length > 2
-        ? currentData[currentData.length - 2]?.timestamp || 0
-        : 0,
-    );
-
-    const newData = await kline({
-      provider,
-      symbol,
-      interval,
-      start: normStart,
-      end,
-      cacheOnly,
-    });
-
-    let finalData = mergeData(currentData, newData);
-
-    if (!cacheOnly && finalData.length > 2 && isWrongData(interval, finalData)) {
-      console.warn(
-        'Wrong kline continuity after merge, refetch full',
-        symbol,
-        interval,
-      );
-      await set(key, []);
-      const refetchData = await kline({
-        provider,
-        symbol,
-        interval,
-        start,
-        end,
-        cacheOnly,
-      });
-      finalData = mergeData([], refetchData);
-    }
-
-    useDataStore.getState().setData(provider, symbol, interval, finalData);
-    await set(key, finalData);
+  const pendingRequest = (async () => {
+    const currentData = await loadCurrentData(dataRequest);
+    const finalData = await mergeFreshData(dataRequest, currentData);
+    await persistData(dataRequest, finalData);
 
     return finalData;
   })().finally(() => {
     inFlightRequests.delete(requestKey);
   });
 
-  inFlightRequests.set(requestKey, request);
+  inFlightRequests.set(requestKey, pendingRequest);
 
-  return request;
+  return pendingRequest;
 };
 
 export const useData = (filters: Filters) => {
-  const {
-    provider = 'bybit',
-    symbol,
-    interval,
-    start,
-    end,
-  } = filters as Filters & { provider: Provider };
-  const key = getKey({ provider, symbol, interval });
-  const prevKey = useRef(key);
-  const [fulfilled, setFulfilled] = useState(false);
-  const storedData = useDataStore((s) => s.data.get(key));
-
   const searchParams = useSearchParams();
   const cacheOnly = Boolean(searchParams.get('cacheOnly')) ?? false;
+  const dataRequest = useMemo(
+    () => toRequest(filters, cacheOnly),
+    [
+      cacheOnly,
+      filters.end,
+      filters.interval,
+      filters.provider,
+      filters.start,
+      filters.symbol,
+    ],
+  );
+  const [fulfilledKey, setFulfilledKey] = useState<string | null>(null);
+  const storedData = useDataStore((s) => s.data.get(dataRequest.key));
 
-  useEffect(() => {
-    if (key !== prevKey.current) {
-      setFulfilled(false);
-      prevKey.current = key;
-    }
-  }, [key]);
+  const fulfilled = fulfilledKey === dataRequest.key;
 
   useEffect(() => {
     let cancelled = false;
 
     const updateData = async () => {
-      if (!symbol) {
+      if (!dataRequest.symbol) {
         if (!cancelled) {
-          setFulfilled(true);
+          setFulfilledKey(dataRequest.key);
         }
         return;
       }
 
-      await fetchAndStoreData({
-        key,
-        provider,
-        symbol,
-        interval,
-        start,
-        end,
-        cacheOnly,
-      });
+      await fetchAndStoreData(dataRequest);
 
       if (!cancelled) {
-        setFulfilled(true);
+        setFulfilledKey(dataRequest.key);
       }
     };
 
@@ -193,10 +235,10 @@ export const useData = (filters: Filters) => {
     return () => {
       cancelled = true;
     };
-  }, [cacheOnly, end, interval, key, provider, start, symbol]);
+  }, [dataRequest]);
 
   return {
-    key,
+    key: dataRequest.key,
     data: storedData ?? [],
     fulfilled,
   };
