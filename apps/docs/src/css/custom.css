@@ -153,12 +153,6 @@ article[class*='docItemContainer'] {
     transform 0.2s ease;
 }
 
-.navbar__link.navbar-github-link::after {
-  content: '↗';
-  font-size: 0.9rem;
-  opacity: 0.72;
-}
-
 .navbar__link.navbar-github-link:hover {
   color: #f8fdff;
   border-color: rgba(124, 232, 226, 0.5);
