@@ -86,7 +86,7 @@ const config: Config = {
         content: 'TradeJS Team',
       },
     ],
-    image: 'img/docusaurus-social-card.jpg',
+    image: 'img/docusaurus-social-card.png',
     colorMode: {
       defaultMode: 'dark',
       disableSwitch: true,
@@ -172,6 +172,13 @@ const config: Config = {
     },
     footer: {
       style: 'dark',
+      logo: {
+        alt: 'TradeJS Docs',
+        src: 'img/tradejs-docs-wordmark.svg',
+        href: '/',
+        width: 300,
+        height: 56,
+      },
       links: [
         {
           title: 'Getting Started',

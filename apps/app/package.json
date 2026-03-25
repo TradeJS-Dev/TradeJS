@@ -14,6 +14,7 @@
   "files": [
     "README.md",
     "bin",
+    "public",
     "src",
     "!src/**/__tests__",
     "!src/**/*.test.ts",

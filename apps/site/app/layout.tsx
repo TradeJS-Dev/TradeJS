@@ -61,7 +61,7 @@ export const metadata: Metadata = {
     locale: 'en_US',
     images: [
       {
-        url: '/og-image.jpg',
+        url: '/og-image.png',
         width: 1200,
         height: 630,
         alt: 'TradeJS — Open-Source Trading Strategy Framework',
@@ -73,7 +73,7 @@ export const metadata: Metadata = {
     title: 'TradeJS — Open-Source Trading Strategy Framework',
     description:
       'Open-source framework for TypeScript and Pine Script trading strategies.',
-    images: ['/og-image.jpg'],
+    images: ['/og-image.png'],
   },
   icons: {
     icon: [

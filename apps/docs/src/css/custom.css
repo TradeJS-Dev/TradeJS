@@ -111,6 +111,25 @@ article[class*='docItemContainer'] {
   color: #d5ddee;
 }
 
+.tradejs-navbar-title {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0;
+}
+
+.tradejs-navbar-word,
+.tradejs-navbar-suffix {
+  color: #eef6ff;
+}
+
+.tradejs-navbar-js {
+  color: var(--ifm-color-primary);
+}
+
+.tradejs-navbar-suffix {
+  margin-left: 0.4rem;
+}
+
 .navbar__link:hover,
 .navbar__link--active {
   color: #7ce8e2;

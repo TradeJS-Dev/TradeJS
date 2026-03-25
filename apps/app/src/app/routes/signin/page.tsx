@@ -75,8 +75,17 @@ const SigninContent = () => {
               <Text fontSize="sm" opacity={0.7} letterSpacing="0.2em">
                 SIGN IN
               </Text>
-              <Text fontSize="2xl" fontWeight="600">
-                TradeJS
+              <Text
+                fontSize="2xl"
+                fontWeight="700"
+                letterSpacing="-0.03em"
+                lineHeight="1"
+                color="white"
+              >
+                <Box as="span">Trade</Box>
+                <Box as="span" color="#20c5bd">
+                  JS
+                </Box>
               </Text>
             </Stack>
 

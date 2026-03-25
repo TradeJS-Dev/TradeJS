@@ -1,0 +1,93 @@
+<svg
+  xmlns="http://www.w3.org/2000/svg"
+  width="300"
+  height="56"
+  viewBox="0 0 300 56"
+  fill="none"
+>
+  <defs>
+    <linearGradient id="tradejs-docs-wordmark-bg" x1="4" y1="4" x2="52" y2="52" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#0C2230" />
+      <stop offset="1" stop-color="#081521" />
+    </linearGradient>
+    <linearGradient id="tradejs-docs-wordmark-stroke" x1="5" y1="5" x2="51" y2="51" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#1A7E90" />
+      <stop offset="1" stop-color="#1FD5C5" />
+    </linearGradient>
+    <linearGradient id="tradejs-docs-wordmark-glyph" x1="16" y1="34" x2="40" y2="16" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#28EAD3" />
+      <stop offset="1" stop-color="#1CCAC0" />
+    </linearGradient>
+  </defs>
+
+  <rect x="4" y="4" width="48" height="48" rx="12" fill="url(#tradejs-docs-wordmark-bg)" />
+  <rect
+    x="4"
+    y="4"
+    width="48"
+    height="48"
+    rx="12"
+    stroke="url(#tradejs-docs-wordmark-stroke)"
+    stroke-opacity="0.82"
+    stroke-width="1.5"
+  />
+  <path
+    d="M17 34L25 26L29.5 30.5L39 21"
+    stroke="url(#tradejs-docs-wordmark-glyph)"
+    stroke-width="3.7"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+  <path
+    d="M34.5 21H39V25.5"
+    stroke="url(#tradejs-docs-wordmark-glyph)"
+    stroke-width="3.7"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+
+  <text
+    x="68"
+    y="31"
+    fill="#EEF6FF"
+    font-family="Arial, Helvetica, sans-serif"
+    font-size="24"
+    font-weight="700"
+    letter-spacing="-0.7"
+  >
+    Trade
+  </text>
+  <text
+    x="131"
+    y="31"
+    fill="#20C5BD"
+    font-family="Arial, Helvetica, sans-serif"
+    font-size="24"
+    font-weight="700"
+    letter-spacing="-0.7"
+  >
+    JS
+  </text>
+  <text
+    x="163"
+    y="31"
+    fill="#EEF6FF"
+    font-family="Arial, Helvetica, sans-serif"
+    font-size="24"
+    font-weight="700"
+    letter-spacing="-0.7"
+  >
+    Docs
+  </text>
+  <text
+    x="68"
+    y="47"
+    fill="#91A5BF"
+    font-family="Arial, Helvetica, sans-serif"
+    font-size="11"
+    font-weight="600"
+    letter-spacing="1.8"
+  >
+    KNOWLEDGE BASE
+  </text>
+</svg>

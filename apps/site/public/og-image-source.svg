@@ -1,0 +1,88 @@
+<svg
+  xmlns="http://www.w3.org/2000/svg"
+  width="1200"
+  height="630"
+  viewBox="0 0 1200 630"
+  fill="none"
+>
+  <defs>
+    <linearGradient id="bg" x1="96" y1="36" x2="1110" y2="650" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#0C1728" />
+      <stop offset="0.46" stop-color="#0A1320" />
+      <stop offset="1" stop-color="#07101A" />
+    </linearGradient>
+    <radialGradient id="glow-left" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(156 52) rotate(56.931) scale(495.205 518.765)">
+      <stop offset="0" stop-color="#20C5BD" stop-opacity="0.23" />
+      <stop offset="0.5" stop-color="#20C5BD" stop-opacity="0.08" />
+      <stop offset="1" stop-color="#20C5BD" stop-opacity="0" />
+    </radialGradient>
+    <radialGradient id="glow-right" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(1082 24) rotate(112.105) scale(468.802 625.774)">
+      <stop offset="0" stop-color="#4CA9FF" stop-opacity="0.17" />
+      <stop offset="0.44" stop-color="#4CA9FF" stop-opacity="0.06" />
+      <stop offset="1" stop-color="#4CA9FF" stop-opacity="0" />
+    </radialGradient>
+    <linearGradient id="frame" x1="160" y1="86" x2="1086" y2="544" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#27445F" stop-opacity="0.9" />
+      <stop offset="1" stop-color="#1CCAC0" stop-opacity="0.62" />
+    </linearGradient>
+    <linearGradient id="glyph" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#28EAD3" />
+      <stop offset="1" stop-color="#1CCAC0" />
+    </linearGradient>
+    <linearGradient id="chart" x1="702" y1="430" x2="1108" y2="232" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#20C5BD" stop-opacity="0.22" />
+      <stop offset="0.38" stop-color="#20C5BD" stop-opacity="0.95" />
+      <stop offset="1" stop-color="#7CE8E2" stop-opacity="0.95" />
+    </linearGradient>
+    <pattern id="grid" width="36" height="36" patternUnits="userSpaceOnUse">
+      <path d="M36 0H0V36" stroke="#203347" stroke-opacity="0.32" />
+    </pattern>
+  </defs>
+
+  <rect width="1200" height="630" fill="url(#bg)" />
+  <rect width="1200" height="630" fill="url(#glow-left)" />
+  <rect width="1200" height="630" fill="url(#glow-right)" />
+  <rect width="1200" height="630" fill="url(#grid)" opacity="0.62" />
+  <rect x="64" y="64" width="1072" height="502" rx="34" fill="#0E1726" fill-opacity="0.55" stroke="url(#frame)" />
+  <rect x="96" y="96" width="170" height="38" rx="19" fill="#112233" stroke="#27445F" />
+  <text x="126" y="121" fill="#9EEDE8" font-family="Arial, Helvetica, sans-serif" font-size="15" font-weight="700" letter-spacing="2.3">
+    OFFICIAL SITE
+  </text>
+
+  <g transform="translate(96 170)">
+    <rect x="0" y="0" width="84" height="84" rx="22" fill="#0A1624" stroke="#235768" stroke-opacity="0.8" stroke-width="2" />
+    <rect x="0" y="0" width="84" height="84" rx="22" fill="url(#glow-left)" opacity="0.22" />
+    <path d="M24 54L40 38L49 47L67 29" stroke="url(#glyph)" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" />
+    <path d="M59 29H67V37" stroke="url(#glyph)" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" />
+  </g>
+
+  <text x="96" y="320" fill="#EEF6FF" font-family="Arial, Helvetica, sans-serif" font-size="104" font-weight="700" letter-spacing="-4">
+    Trade
+  </text>
+  <text x="442" y="320" fill="#20C5BD" font-family="Arial, Helvetica, sans-serif" font-size="104" font-weight="700" letter-spacing="-4">
+    JS
+  </text>
+
+  <text x="96" y="392" fill="#A8BED5" font-family="Arial, Helvetica, sans-serif" font-size="30" font-weight="400">
+    Open-source framework for TypeScript and Pine Script trading strategies.
+  </text>
+
+  <rect x="96" y="474" width="164" height="46" rx="23" fill="#102133" stroke="#28516B" />
+  <text x="128" y="504" fill="#DAF6F4" font-family="Arial, Helvetica, sans-serif" font-size="21" font-weight="700" letter-spacing="0.4">
+    tradejs.dev
+  </text>
+
+  <rect x="686" y="162" width="392" height="250" rx="28" fill="#101B2A" fill-opacity="0.72" stroke="#1F364C" />
+  <path d="M728 346L814 306L886 326L972 244L1040 190" stroke="url(#chart)" stroke-width="10" stroke-linecap="round" stroke-linejoin="round" />
+  <path d="M1040 190H1082V232" stroke="url(#chart)" stroke-width="10" stroke-linecap="round" stroke-linejoin="round" />
+  <circle cx="814" cy="306" r="10" fill="#20C5BD" />
+  <circle cx="972" cy="244" r="10" fill="#20C5BD" />
+  <circle cx="1040" cy="190" r="11" fill="#7CE8E2" />
+  <rect x="730" y="370" width="158" height="14" rx="7" fill="#173046" />
+  <rect x="730" y="404" width="226" height="14" rx="7" fill="#12283C" />
+  <rect x="730" y="438" width="194" height="14" rx="7" fill="#12283C" />
+
+  <text x="96" y="560" fill="#7F93AC" font-family="Arial, Helvetica, sans-serif" font-size="20" font-weight="600" letter-spacing="1.2">
+    SELF-HOSTED • BACKTESTING • LIVE SIGNALS • AI/ML
+  </text>
+</svg>
