@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
 import { create } from 'zustand';
-import _ from 'lodash';
 import { get, set } from 'idb-keyval';
 import { useSearchParams } from 'next/navigation';
 import { KlineChartData, Interval, Filters, Provider } from '@tradejs/types';
@@ -20,6 +19,20 @@ interface DataState {
 const getKey = (filters: Pick<Filters, 'provider' | 'symbol' | 'interval'>) =>
   `${filters.provider || 'bybit'}_${filters.symbol}_${filters.interval}`;
 
+const getRequestKey = ({
+  key,
+  start,
+  end,
+  cacheOnly,
+}: {
+  key: string;
+  start: number;
+  end: number;
+  cacheOnly: boolean;
+}) => `${key}_${start}_${end}_${cacheOnly ? 'cache' : 'live'}`;
+
+const inFlightRequests = new Map<string, Promise<KlineChartData>>();
+
 const useDataStore = create<DataState>((set) => ({
   data: new Map<string, KlineChartData | null>(),
   setData: (provider, symbol, interval, newData) =>
@@ -34,13 +47,110 @@ const useDataStore = create<DataState>((set) => ({
     }),
 }));
 
+const fetchAndStoreData = async ({
+  key,
+  provider,
+  symbol,
+  interval,
+  start,
+  end,
+  cacheOnly,
+}: {
+  key: string;
+  provider: Provider;
+  symbol: string;
+  interval: Interval;
+  start: number;
+  end: number;
+  cacheOnly: boolean;
+}) => {
+  const requestKey = getRequestKey({ key, start, end, cacheOnly });
+  const existingRequest = inFlightRequests.get(requestKey);
+
+  if (existingRequest) {
+    return existingRequest;
+  }
+
+  const request = (async () => {
+    let currentData = [
+      ...(useDataStore.getState().data.get(key) ?? []),
+    ] as KlineChartData;
+
+    if (currentData.length < 2) {
+      const cachedResult = (await get(key)) as KlineChartData | null;
+
+      if (cachedResult && cachedResult.length > 2) {
+        currentData = [...cachedResult];
+      }
+    }
+
+    if (currentData.length > 2 && isWrongData(interval, currentData)) {
+      console.warn('Wrong kline continuity, drop cache', symbol, interval);
+      currentData = [];
+      await set(key, []);
+    }
+
+    const normStart = Math.max(
+      start,
+      currentData.length > 2
+        ? currentData[currentData.length - 2]?.timestamp || 0
+        : 0,
+    );
+
+    const newData = await kline({
+      provider,
+      symbol,
+      interval,
+      start: normStart,
+      end,
+      cacheOnly,
+    });
+
+    let finalData = mergeData(currentData, newData);
+
+    if (!cacheOnly && finalData.length > 2 && isWrongData(interval, finalData)) {
+      console.warn(
+        'Wrong kline continuity after merge, refetch full',
+        symbol,
+        interval,
+      );
+      await set(key, []);
+      const refetchData = await kline({
+        provider,
+        symbol,
+        interval,
+        start,
+        end,
+        cacheOnly,
+      });
+      finalData = mergeData([], refetchData);
+    }
+
+    useDataStore.getState().setData(provider, symbol, interval, finalData);
+    await set(key, finalData);
+
+    return finalData;
+  })().finally(() => {
+    inFlightRequests.delete(requestKey);
+  });
+
+  inFlightRequests.set(requestKey, request);
+
+  return request;
+};
+
 export const useData = (filters: Filters) => {
-  const key = getKey(filters);
+  const {
+    provider = 'bybit',
+    symbol,
+    interval,
+    start,
+    end,
+  } = filters as Filters & { provider: Provider };
+  const key = getKey({ provider, symbol, interval });
   const prevKey = useRef(key);
-  const retried = useRef(false);
   const [fulfilled, setFulfilled] = useState(false);
   const storedData = useDataStore((s) => s.data.get(key));
-  const setData = useDataStore((s) => s.setData);
 
   const searchParams = useSearchParams();
   const cacheOnly = Boolean(searchParams.get('cacheOnly')) ?? false;
@@ -49,92 +159,41 @@ export const useData = (filters: Filters) => {
     if (key !== prevKey.current) {
       setFulfilled(false);
       prevKey.current = key;
-      retried.current = false;
     }
+  }, [key]);
+
+  useEffect(() => {
+    let cancelled = false;
 
     const updateData = async () => {
-      const { provider = 'bybit', symbol, interval, start, end } = filters;
       if (!symbol) {
-        if (!fulfilled) {
+        if (!cancelled) {
           setFulfilled(true);
         }
         return;
       }
-      let currentData = [...(storedData ?? [])];
 
-      if (!currentData || currentData.length < 2) {
-        const cachedResult = (await get(key)) as KlineChartData | null;
-
-        if (cachedResult && cachedResult.length > 2) {
-          currentData = [...cachedResult];
-        }
-      }
-
-      if (currentData?.length > 2 && isWrongData(interval, currentData)) {
-        console.warn('Wrong kline continuity, drop cache', symbol, interval);
-        currentData = [];
-        set(key, []);
-      }
-
-      const normStart = Math.max(
-        start,
-        currentData?.length > 2
-          ? currentData[currentData.length - 2]?.timestamp || 0
-          : 0,
-      );
-
-      const newData = await kline({
+      await fetchAndStoreData({
+        key,
         provider,
         symbol,
         interval,
-        start: normStart,
+        start,
         end,
         cacheOnly,
       });
 
-      const finalData = mergeData(currentData, newData);
-
-      if (
-        !cacheOnly &&
-        !retried.current &&
-        finalData.length > 2 &&
-        isWrongData(interval, finalData)
-      ) {
-        console.warn(
-          'Wrong kline continuity after merge, refetch full',
-          symbol,
-          interval,
-        );
-        retried.current = true;
-        set(key, []);
-        const refetchData = await kline({
-          provider,
-          symbol,
-          interval,
-          start,
-          end,
-          cacheOnly,
-        });
-        const cleaned = mergeData([], refetchData);
-        setData(provider as Provider, symbol, interval, cleaned);
-        if (!fulfilled) {
-          setFulfilled(true);
-        }
-        set(key, cleaned);
-        return;
-      }
-
-      setData(provider as Provider, symbol, interval, finalData);
-
-      if (!fulfilled) {
+      if (!cancelled) {
         setFulfilled(true);
       }
-
-      set(key, finalData);
     };
 
     void updateData();
-  }, [cacheOnly, filters, fulfilled, key, setData, storedData]);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [cacheOnly, end, interval, key, provider, start, symbol]);
 
   return {
     key,
