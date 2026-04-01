@@ -32,9 +32,6 @@ services:
         max-file: "3"
 
   site:
-    build:
-      context: .
-      dockerfile: Dockerfile.site
     container_name: site
     restart: always
     image: ghcr.io/tradejs-dev/tradejs-site:latest
@@ -49,9 +46,6 @@ services:
         max-file: "3"
 
   docs:
-    build:
-      context: .
-      dockerfile: Dockerfile.docs
     container_name: docs
     image: ghcr.io/tradejs-dev/tradejs-docs:latest
     restart: unless-stopped
