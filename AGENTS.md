@@ -38,8 +38,7 @@ Public web repos now live outside this monorepo:
 - `tradejs-site` — source of truth for `tradejs.dev`
 - `tradejs-docs` — source of truth for `docs.tradejs.dev`
 
-If legacy copies under `apps/site` or `apps/docs` still exist here, treat them as mirrors only.
-Do not edit them unless the task is explicitly about sync or deletion.
+This monorepo no longer carries the source code for those public web surfaces.
 
 ## Audience Rules For Documentation
 
@@ -230,10 +229,10 @@ For sandbox changes:
 
 Public web surfaces also include AI discovery assets:
 
-- `tradejs-site/public/llms.txt`
-- `tradejs-site/public/llms-full.txt`
-- `tradejs-docs/static/llms.txt`
-- `tradejs-docs/static/llms-full.txt`
+- `tradejs-site/public/llms.txt` in `TradeJS-Dev/tradejs-site`
+- `tradejs-site/public/llms-full.txt` in `TradeJS-Dev/tradejs-site`
+- `tradejs-docs/static/llms.txt` in `TradeJS-Dev/tradejs-docs`
+- `tradejs-docs/static/llms-full.txt` in `TradeJS-Dev/tradejs-docs`
 
 Keep them aligned with:
 

@@ -48,7 +48,7 @@ Public web surfaces are now maintained in separate repositories:
 - `tradejs-site` for `tradejs.dev`
 - `tradejs-docs` for `docs.tradejs.dev`
 
-If mirrored copies still exist under `apps/site` or `apps/docs` in this repo, do not treat them as the primary source of truth.
+This monorepo no longer contains the source code for those public web surfaces.
 
 ## Core Concepts
 
@@ -234,10 +234,10 @@ Use this monorepo README only for internal repository workflows.
 
 Public web surfaces expose AI-oriented discovery files:
 
-- `tradejs-site/public/llms.txt`
-- `tradejs-site/public/llms-full.txt`
-- `tradejs-docs/static/llms.txt`
-- `tradejs-docs/static/llms-full.txt`
+- `tradejs-site/public/llms.txt` in `TradeJS-Dev/tradejs-site`
+- `tradejs-site/public/llms-full.txt` in `TradeJS-Dev/tradejs-site`
+- `tradejs-docs/static/llms.txt` in `TradeJS-Dev/tradejs-docs`
+- `tradejs-docs/static/llms-full.txt` in `TradeJS-Dev/tradejs-docs`
 
 Keep these files aligned with:
 

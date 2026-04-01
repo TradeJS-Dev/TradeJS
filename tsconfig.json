@@ -10,7 +10,6 @@
   "exclude": [
     "node_modules",
     "apps/app/**",
-    "apps/site/**",
     "examples/sandbox/**",
     "**/dist/**"
   ]
