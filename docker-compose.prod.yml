@@ -14,7 +14,7 @@ services:
         condition: service_healthy
       ml-infer:
         condition: service_started
-    image: ghcr.io/tradejs-dev/inv-app:latest
+    image: ghcr.io/tradejs-dev/tradejs-app:latest
     expose:
       - "3000"
     env_file:
@@ -37,7 +37,7 @@ services:
       dockerfile: Dockerfile.site
     container_name: site
     restart: always
-    image: ghcr.io/tradejs-dev/inv-site:latest
+    image: ghcr.io/tradejs-dev/tradejs-site:latest
     expose:
       - "3003"
     networks:
@@ -53,7 +53,7 @@ services:
       context: .
       dockerfile: Dockerfile.docs
     container_name: docs
-    image: ghcr.io/tradejs-dev/inv-docs:latest
+    image: ghcr.io/tradejs-dev/tradejs-docs:latest
     restart: unless-stopped
     expose:
       - "80"
@@ -105,7 +105,7 @@ services:
       context: .
       dockerfile: Dockerfile.infer
     container_name: ml-infer
-    image: ghcr.io/tradejs-dev/inv-ml-infer:latest
+    image: ghcr.io/tradejs-dev/tradejs-ml-infer:latest
     restart: unless-stopped
     environment:
       MODEL_DIR: /app/data/ml/models
