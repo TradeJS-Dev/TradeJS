@@ -5,7 +5,12 @@ import {
   buildAiPayloadByStrategy,
   buildAiSystemPromptAddonByStrategy,
 } from './strategyAdapters/ai';
-import { AiPayload, Signal, SignalAnalysis } from '@tradejs/types';
+import {
+  AiPayload,
+  AiPromptPair,
+  Signal,
+  SignalAnalysis,
+} from '@tradejs/types';
 export { MAX_AI_SERIES_POINTS, trimSeriesDeep } from './aiShared';
 
 const parseAIResponse = (input: string | object): object => {
@@ -220,16 +225,9 @@ ${JSON.stringify(payload)}
 ${buildAiHumanPromptAddonByStrategy(signal, payload)}
 `;
 
-export const askAI = async (signal: Signal) => {
-  const [{ ChatOpenAI }, { HumanMessage, SystemMessage }] = await Promise.all([
-    import('@langchain/openai'),
-    import('@langchain/core/messages'),
-  ]);
-
-  const { symbol } = signal;
-  const messages: BaseMessageLike[] = [];
-
-  const model = new ChatOpenAI({
+const createAiModel = async () => {
+  const { ChatOpenAI } = await import('@langchain/openai');
+  return new ChatOpenAI({
     temperature: 0.2,
     //modelName: 'anthropic/claude-sonnet-4.5',
     modelName: 'google/gemini-3.1-pro-preview',
@@ -242,16 +240,33 @@ export const askAI = async (signal: Signal) => {
       },
     },
   });
+};
 
-  messages.push(new SystemMessage(buildAiSystemPrompt(signal)));
+export const buildAiPrompts = (signal: Signal): AiPromptPair => {
   const payload = buildAiPayload(signal);
+  return {
+    systemPrompt: buildAiSystemPrompt(signal),
+    humanPrompt: buildAiHumanPrompt(signal, payload),
+  };
+};
 
+export const runAiPrompt = async ({
+  systemPrompt,
+  humanPrompt,
+}: AiPromptPair): Promise<Partial<SignalAnalysis>> => {
+  const [{ HumanMessage, SystemMessage }, model] = await Promise.all([
+    import('@langchain/core/messages'),
+    createAiModel(),
+  ]);
+  const messages: BaseMessageLike[] = [];
+
+  messages.push(new SystemMessage(systemPrompt));
   messages.push(
     new HumanMessage({
       content: [
         {
           type: 'text',
-          text: buildAiHumanPrompt(signal, payload),
+          text: humanPrompt,
         },
       ],
     }),
@@ -261,8 +276,12 @@ export const askAI = async (signal: Signal) => {
   const parsed = parseAIResponse(
     normalizeResponseContent(response.content),
   ) as any;
-  const content = normalizeAnalysis(parsed);
+  return normalizeAnalysis(parsed);
+};
 
+export const askAI = async (signal: Signal) => {
+  const { symbol } = signal;
+  const content = await runAiPrompt(buildAiPrompts(signal));
   await setData(redisKeys.analysis(symbol, signal.signalId), content);
 
   return content;

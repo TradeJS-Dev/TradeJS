@@ -1,11 +1,6 @@
 'use client';
 
-import {
-  BookMarked,
-  BrainCircuit,
-  DatabaseZap,
-  Rocket,
-} from 'lucide-react';
+import { BookMarked, BrainCircuit, DatabaseZap, Rocket } from 'lucide-react';
 import { useLocale } from './locale-provider';
 import { AnimateOnScroll } from './animate-on-scroll';
 

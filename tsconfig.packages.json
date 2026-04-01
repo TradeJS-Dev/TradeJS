@@ -16,6 +16,7 @@
       "@tradejs/core/strategies": ["./packages/core/src/strategies"],
       "@tradejs/core/tickers": ["./packages/core/src/tickers"],
       "@tradejs/core/time": ["./packages/core/src/time"],
+      "@tradejs/node/ai": ["./packages/node/src/ai"],
       "@tradejs/node/backtest": ["./packages/node/src/backtest"],
       "@tradejs/node/cli": ["./packages/node/src/cli"],
       "@tradejs/node/connectors": ["./packages/node/src/connectors"],

@@ -1,4 +1,6 @@
 import {
+  AiDatasetRow,
+  AiPromptPair,
   Candle,
   ConnectorCreator,
   KlineChartData,
@@ -7,12 +9,14 @@ import {
 import { alignSortedCandlesByTimestamp } from '@tradejs/core/indicators';
 import { PRELOAD_DAYS } from '@tradejs/core/constants';
 import { getTimestamp } from '@tradejs/core/time';
+import { appendAiDatasetRow } from '@tradejs/infra/ai';
 import {
   appendMlDatasetRow,
   buildMlTrainingRow,
   trimMlTrainingRowWindows,
 } from '@tradejs/infra/ml';
 import { logger } from '@tradejs/infra/logger';
+import { buildAiPrompts } from './ai';
 import { getStrategyCreator } from './strategy/manifests';
 import { buildMlPayload } from './mlPayload';
 import {
@@ -105,6 +109,7 @@ export const testing: TestingBox = async ({
   strategyConfig,
   connectorName,
   ml = false,
+  ai = false,
   chunkId = 'single',
 }) => {
   if (!start) {
@@ -306,6 +311,7 @@ export const testing: TestingBox = async ({
   const testConnector = createTestConnector(connector, {
     userName,
     mlEnabled: ml,
+    aiEnabled: ai,
   });
 
   const strategy = await strategyCreator({
@@ -323,26 +329,44 @@ export const testing: TestingBox = async ({
     string,
     ReturnType<typeof buildMlPayload>
   >();
+  const pendingAiRowBySignalId = new Map<
+    string,
+    Omit<AiDatasetRow, 'profit'> & AiPromptPair
+  >();
 
-  const flushMlResultsBatch = async () => {
-    if (!ml) return;
+  const flushClosedResultsBatch = async () => {
+    if (!ml && !ai) return;
     const batch = await testConnector.drainMlResultsBatch();
     if (!batch.length) return;
 
     for (const resultRecord of batch) {
       const payload = pendingMlPayloadBySignalId.get(resultRecord.signalId);
-      if (!payload) continue;
-      pendingMlPayloadBySignalId.delete(resultRecord.signalId);
+      if (payload) {
+        pendingMlPayloadBySignalId.delete(resultRecord.signalId);
 
-      const fullRow = buildMlTrainingRow(payload, {
-        profit: resultRecord.profit,
-      });
-      const row = trimMlTrainingRowWindows(fullRow, 5);
-      await appendMlDatasetRow({
-        strategyName,
-        chunkId,
-        row,
-      });
+        const fullRow = buildMlTrainingRow(payload, {
+          profit: resultRecord.profit,
+        });
+        const row = trimMlTrainingRowWindows(fullRow, 5);
+        await appendMlDatasetRow({
+          strategyName,
+          chunkId,
+          row,
+        });
+      }
+
+      const aiRowBase = pendingAiRowBySignalId.get(resultRecord.signalId);
+      if (aiRowBase) {
+        pendingAiRowBySignalId.delete(resultRecord.signalId);
+        await appendAiDatasetRow({
+          strategyName,
+          chunkId,
+          row: {
+            ...aiRowBase,
+            profit: resultRecord.profit,
+          },
+        });
+      }
     }
   };
 
@@ -372,9 +396,23 @@ export const testing: TestingBox = async ({
       });
       pendingMlPayloadBySignalId.set(signal.signalId, payload);
     }
+    if (ai && signal && typeof signal !== 'string' && signal.signalId) {
+      pendingAiRowBySignalId.set(signal.signalId, {
+        signalId: signal.signalId,
+        strategyName: signal.strategy || strategyName,
+        symbol: signal.symbol || symbol,
+        direction: signal.direction,
+        timestamp: signal.timestamp,
+        testId,
+        testSuiteId,
+        testName: name,
+        connectorName,
+        ...buildAiPrompts(signal),
+      });
+    }
   }
 
-  await flushMlResultsBatch();
+  await flushClosedResultsBatch();
 
   return await testConnector.getResult();
 };

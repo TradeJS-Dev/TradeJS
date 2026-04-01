@@ -28,6 +28,13 @@ npx @tradejs/cli ml-train:latest
 npx @tradejs/cli ml-train:trendline:xgboost
 ```
 
+## AI Commands
+
+```bash
+npx @tradejs/cli ai-export
+npx @tradejs/cli ai-train -n 50 --minQuality 4
+```
+
 ## Backtest Flags
 
 `npx @tradejs/cli backtest --help` supports key flags:
@@ -40,6 +47,16 @@ npx @tradejs/cli ml-train:trendline:xgboost
 - `-u, --updateOnly` update market cache only
 - `-C, --cacheOnly` do not refresh market cache
 - `-m, --ml` write ML rows to dataset chunks
+- `-A, --ai` write AI prompt rows to dataset chunks
+
+## AI Train Flags
+
+`npx @tradejs/cli ai-train --help`:
+
+- `-n, --recent` evaluate the latest N trades from the end (`0` = all rows)
+- `--minQuality` minimum AI quality threshold for approval
+- `-s, --strategy` select latest merged dataset for one strategy
+- `-f, --file` evaluate an explicit merged dataset file
 
 ## Signals Flags
 

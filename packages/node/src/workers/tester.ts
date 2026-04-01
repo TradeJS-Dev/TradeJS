@@ -1,5 +1,6 @@
 import { testing, resetTestingKlineCache } from '../testing';
 import { TestSuite } from '@tradejs/types';
+import { closeAllAiDatasetWriters } from '@tradejs/infra/ai';
 import { closeAllMlDatasetWriters } from '@tradejs/infra/ml';
 import { getData, redisKeys } from '@tradejs/infra/redis';
 import { logger } from '@tradejs/infra/logger';
@@ -41,6 +42,7 @@ process.on(
         }
       }
     } finally {
+      await closeAllAiDatasetWriters();
       await closeAllMlDatasetWriters();
       resetTestingKlineCache();
     }

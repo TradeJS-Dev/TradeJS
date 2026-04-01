@@ -44,9 +44,11 @@ jest.mock('@tradejs/infra/redis', () => ({
 const {
   MAX_AI_SERIES_POINTS,
   askAI,
+  buildAiPrompts,
   buildAiHumanPrompt,
   buildAiPayload,
   buildAiSystemPrompt,
+  runAiPrompt,
   trimSeriesDeep,
 } = require('../ai');
 const {
@@ -263,9 +265,51 @@ describe('ai helpers', () => {
       expect(prompt).toContain('"maFast":[3,4,5,6,7]');
       expect(prompt).not.toContain('"riskRatio"');
     });
+
+    it('builds prompt pair for dataset replay', () => {
+      const prompts = buildAiPrompts(makeSignal());
+
+      expect(prompts.systemPrompt).toContain('Ты — помощник крипто-трейдера');
+      expect(prompts.humanPrompt).toContain('Проанализируй сделку по ETHUSDT');
+    });
   });
 
   describe('askAI', () => {
+    it('replays explicit prompts via runAiPrompt', async () => {
+      process.env.OPENAI_API_KEY = 'key_123';
+
+      invokeMock.mockResolvedValue({
+        content: {
+          direction: 'LONG',
+          quality: 3.2,
+          needRetest: false,
+          retestPrice: null,
+          takeProfitPrice: '101.5',
+          stopLossPrice: '98.2',
+          comment: 'ok',
+        },
+      });
+
+      const result = await runAiPrompt({
+        systemPrompt: 'system',
+        humanPrompt: 'human',
+      });
+
+      expect(chatOpenAICtorMock).toHaveBeenCalledTimes(1);
+      const messages = invokeMock.mock.calls[0]?.[0] as any[];
+      expect(messages[0].content).toBe('system');
+      expect(messages[1].content.content[0].text).toBe('human');
+      expect(result).toEqual(
+        expect.objectContaining({
+          direction: 'LONG',
+          quality: 3,
+          takeProfitPrice: 101.5,
+          stopLossPrice: 98.2,
+          comment: 'ok',
+        }),
+      );
+    });
+
     it('normalizes object content and persists analysis to redis', async () => {
       process.env.OPENAI_API_KEY = 'key_123';
       process.env.OPENAI_API_ENDPOINT = 'https://openrouter.example/v1';

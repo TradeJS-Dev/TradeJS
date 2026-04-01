@@ -161,7 +161,6 @@ const config: Config = {
           href: 'https://github.com/tradejs-dev/tradejs',
           label: 'GitHub',
           position: 'right',
-          className: 'navbar-github-link',
           'aria-label': 'TradeJS GitHub repository',
         },
         {

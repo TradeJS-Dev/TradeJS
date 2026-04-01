@@ -71,8 +71,23 @@ args.option(
   'Write ML dataset rows to per-worker JSONL chunks',
   false,
 );
+args.option(
+  ['A', 'ai'],
+  'Write AI prompt rows to per-worker JSONL chunks',
+  false,
+);
 
-const flags = args.parse(process.argv);
+const normalizedArgv = process.argv.map((arg) => {
+  if (arg === '--ML') {
+    return '--ml';
+  }
+  if (arg === '--AI') {
+    return '--ai';
+  }
+  return arg;
+});
+
+const flags = args.parse(normalizedArgv);
 const interval = flags.timeframe.toString() as Interval;
 const progressStep = flags.progressStep;
 const uuid = (len = 12) => uuidv4().slice(-len);
@@ -300,7 +315,12 @@ const backtest = async () => {
     connectorName,
   ).slice(0, parseInt(flags.tests));
   const mlEnabled = Boolean(flags.ml);
-  testSuite = testSuite.map((test) => ({ ...test, ml: mlEnabled }));
+  const aiEnabled = Boolean(flags.ai);
+  testSuite = testSuite.map((test) => ({
+    ...test,
+    ml: mlEnabled,
+    ai: aiEnabled,
+  }));
 
   const chunkSize = Math.ceil(testSuite.length / parseInt(flags.parallel));
   const chunks = _.chunk(testSuite, chunkSize);

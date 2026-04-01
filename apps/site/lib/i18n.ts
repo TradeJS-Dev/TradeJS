@@ -430,7 +430,8 @@ export const translations = {
       quickstart: 'Быстрый старт',
     },
     footer: {
-      description: 'Open-source фреймворк для разработчиков торговых стратегий.',
+      description:
+        'Open-source фреймворк для разработчиков торговых стратегий.',
       app: 'Приложение',
       docs: 'Документация',
       github: 'GitHub-репозиторий',

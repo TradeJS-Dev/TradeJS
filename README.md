@@ -18,7 +18,7 @@ It supports two first-class authoring paths:
 ### Published npm Packages
 
 - [`@tradejs/app`](https://www.npmjs.com/package/@tradejs/app) — installable Next.js UI for dashboards, backtests, and runtime data
-- [`@tradejs/cli`](https://www.npmjs.com/package/@tradejs/cli) — official CLI for infra setup, backtests, signals, bots, and ML workflows
+- [`@tradejs/cli`](https://www.npmjs.com/package/@tradejs/cli) — official CLI for infra setup, backtests, signals, bots, and AI/ML workflows
 - [`@tradejs/base`](https://www.npmjs.com/package/@tradejs/base) — default preset wiring built-in strategies, indicators, and connectors
 - [`@tradejs/core`](https://www.npmjs.com/package/@tradejs/core) — browser-safe public API for config, strategy authoring, indicators, and shared helpers
 - [`@tradejs/node`](https://www.npmjs.com/package/@tradejs/node) — Node runtime for strategies, backtests, Pine loading, and plugin registries
@@ -38,7 +38,7 @@ It supports two first-class authoring paths:
 - `packages/indicators`: built-in indicators package
 - `packages/base`: default preset that wires built-in strategies/indicators/connectors
 - `packages/connectors`: exchange connectors and market data providers
-- `packages/cli`: operational scripts (`backtest`, `signals`, `results`, `ml-*`, `doctor`, etc.)
+- `packages/cli`: operational scripts (`backtest`, `signals`, `results`, `ai-*`, `ml-*`, `doctor`, etc.)
 - `packages/ml/python`: Python train/infer/profile services
 - `examples/sandbox`: full user-app style sandbox with local `tradejs.config.ts`, custom strategy/indicator/connector plugins, and deterministic backtest/signals e2e flow
 
@@ -154,6 +154,14 @@ yarn continuity --user root --timeframe 15 --provider bybit
 3. `yarn ml-train:latest` (or model-specific scripts) prepares holdout/prod/walk-forward splits and trains.
 4. `yarn ml-upload:prod` uploads inference aliases.
 5. Runtime inference uses gRPC (`ML_GRPC_ADDRESS`) when enabled.
+
+## AI Flow (Offline Prompt Replay)
+
+1. `yarn backtest --AI` writes per-worker AI prompt chunks to `data/ai/export/ai-dataset-<strategy>-chunk-<chunkId>.jsonl`.
+2. `yarn ai-export` merges chunks to `data/ai/export/ai-dataset-<strategy>-merged-<timestamp>.jsonl`.
+3. `yarn ai-train -n 50 --minQuality 4` replays saved prompts through AI and prints approval/accuracy stats.
+4. `-n 0` evaluates all rows from the merged dataset instead of only the latest sample from the end.
+5. `ai-train` treats a trade as AI-approved when returned `direction` matches the original signal direction and `quality >= minQuality`.
 
 ## Plugin Configuration
 

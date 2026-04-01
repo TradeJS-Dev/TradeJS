@@ -24,6 +24,11 @@
     "proto"
   ],
   "exports": {
+    "./ai": {
+      "types": "./dist/ai.d.ts",
+      "import": "./dist/ai.mjs",
+      "require": "./dist/ai.js"
+    },
     "./files": {
       "types": "./dist/files.d.ts",
       "import": "./dist/files.mjs",

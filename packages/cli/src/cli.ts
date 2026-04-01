@@ -3,6 +3,8 @@
 type ScriptLoader = () => Promise<unknown>;
 
 const scriptLoaders: Record<string, ScriptLoader> = {
+  'ai-export': () => import('./scripts/aiExportSelect'),
+  'ai-train': () => import('./scripts/aiTrain'),
   backtest: () => import('./scripts/backtest'),
   bot: () => import('./scripts/bot'),
   'clean-dir': () => import('./scripts/cleanDir'),

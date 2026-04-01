@@ -23,8 +23,13 @@ const mockTestConnector = {
 const mockStrategy = jest.fn();
 const mockStrategyCreator = jest.fn(async (_config?: unknown) => mockStrategy);
 const mockBuildMlPayload = jest.fn((data) => data);
+const mockBuildAiPrompts: jest.Mock = jest.fn((_signal?: unknown) => ({
+  systemPrompt: 'system prompt',
+  humanPrompt: 'human prompt',
+}));
 const mockBuildMlTrainingRow: jest.Mock = jest.fn(() => ({ featureA: 1 }));
 const mockAppendMlDatasetRow = jest.fn((_params?: unknown) => undefined);
+const mockAppendAiDatasetRow = jest.fn((_params?: unknown) => undefined);
 const originalProjectCwd = process.env.PROJECT_CWD;
 
 jest.mock('../tradejsConfig', () => ({
@@ -75,6 +80,14 @@ jest.mock('../mlPayload', () => ({
   buildMlPayload: (payload: unknown) => mockBuildMlPayload(payload),
 }));
 
+jest.mock('../ai', () => ({
+  buildAiPrompts: (signal: unknown) => mockBuildAiPrompts(signal),
+}));
+
+jest.mock('@tradejs/infra/ai', () => ({
+  appendAiDatasetRow: (params: unknown) => mockAppendAiDatasetRow(params),
+}));
+
 jest.mock('@tradejs/infra/ml', () => ({
   buildMlTrainingRow: (signalRecord: unknown, resultRecord: unknown) =>
     mockBuildMlTrainingRow(signalRecord, resultRecord),
@@ -123,6 +136,7 @@ describe('testing backtest flow', () => {
     mockCoinbaseConnector.kline.mockReset();
     mockStrategyCreator.mockClear();
     mockStrategy.mockReset();
+    mockBuildAiPrompts.mockClear();
     mockTestConnector.checkSl.mockClear();
     mockTestConnector.checkTp.mockClear();
     mockTestConnector.drainMlResultsBatch.mockReset();
@@ -190,6 +204,45 @@ describe('testing backtest flow', () => {
     );
   });
 
+  it('writes AI prompt row when strategy returns signal object', async () => {
+    const data = [candle(1_000_050), candle(1_000_150), candle(1_000_250)];
+    mockByBitConnector.kline.mockResolvedValue(data);
+    mockBinanceConnector.kline.mockResolvedValue(data);
+    mockCoinbaseConnector.kline.mockResolvedValue(data);
+    mockStrategy
+      .mockResolvedValueOnce({
+        signalId: 's1',
+        symbol: 'ETHUSDT',
+        strategy: 'TrendLine',
+        direction: 'LONG',
+        timestamp: 1_000_150,
+      })
+      .mockResolvedValueOnce('HOLD');
+    mockTestConnector.drainMlResultsBatch.mockResolvedValueOnce([
+      { signalId: 's1', profit: -3.5 },
+    ]);
+
+    await testing(createTest({ ai: true, chunkId: 'worker-7' }));
+
+    expect(mockBuildAiPrompts).toHaveBeenCalledTimes(1);
+    expect(mockAppendAiDatasetRow).toHaveBeenCalledWith(
+      expect.objectContaining({
+        strategyName: 'TrendLine',
+        chunkId: 'worker-7',
+        row: expect.objectContaining({
+          signalId: 's1',
+          symbol: 'ETHUSDT',
+          strategyName: 'TrendLine',
+          direction: 'LONG',
+          timestamp: 1_000_150,
+          systemPrompt: 'system prompt',
+          humanPrompt: 'human prompt',
+          profit: -3.5,
+        }),
+      }),
+    );
+  });
+
   it('does not write ml row when strategy returns string', async () => {
     const data = [candle(1_000_050), candle(1_000_150), candle(1_000_250)];
     mockByBitConnector.kline.mockResolvedValue(data);
@@ -200,6 +253,7 @@ describe('testing backtest flow', () => {
     await testing(createTest());
 
     expect(mockAppendMlDatasetRow).not.toHaveBeenCalled();
+    expect(mockAppendAiDatasetRow).not.toHaveBeenCalled();
   });
 
   it('does not pass legacy candle arrays into ml payload builder', async () => {
@@ -328,5 +382,3 @@ describe('testing backtest flow', () => {
     expect(mockCoinbaseConnector.kline).toHaveBeenCalledTimes(3);
   });
 });
-mockBuildMlTrainingRow.mockClear();
-mockAppendMlDatasetRow.mockClear();

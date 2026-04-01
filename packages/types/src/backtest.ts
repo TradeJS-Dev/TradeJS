@@ -57,6 +57,7 @@ export interface Test extends BacktestRunConfig {
   symbol: string;
   options: TestingOptions;
   ml?: boolean;
+  ai?: boolean;
   chunkId?: string;
 }
 
@@ -134,6 +135,7 @@ export interface TestConnector extends Connector {
 export interface TestConnectorContext {
   userName?: string;
   mlEnabled?: boolean;
+  aiEnabled?: boolean;
 }
 
 export type TestConnectorCreator = (

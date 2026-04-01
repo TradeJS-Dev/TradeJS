@@ -51,7 +51,9 @@ function NavbarBrandTitle({
   const suffix = title.slice('TradeJS'.length).trim();
 
   return (
-    <b className={[className, 'tradejs-navbar-title'].filter(Boolean).join(' ')}>
+    <b
+      className={[className, 'tradejs-navbar-title'].filter(Boolean).join(' ')}
+    >
       <span className="tradejs-navbar-word">Trade</span>
       <span className="tradejs-navbar-js">JS</span>
       {suffix ? <span className="tradejs-navbar-suffix">{suffix}</span> : null}
@@ -78,11 +80,7 @@ export default function NavbarLogo(): ReactNode {
       {...(logo?.target && { target: logo.target })}
     >
       {logo ? (
-        <LogoThemedImage
-          logo={logo}
-          alt={alt}
-          imageClassName="navbar__logo"
-        />
+        <LogoThemedImage logo={logo} alt={alt} imageClassName="navbar__logo" />
       ) : null}
       {navbarTitle ? (
         <NavbarBrandTitle

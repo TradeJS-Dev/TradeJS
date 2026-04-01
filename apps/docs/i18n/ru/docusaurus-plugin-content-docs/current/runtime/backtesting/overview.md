@@ -33,12 +33,13 @@ args.option(['n', 'tests'], 'Tests limit', TESTS_LIMIT);
 args.option(['p', 'parallel'], 'Parallel tasks', MAX_PARALLEL);
 args.option('connector', 'Connector/provider', 'bybit');
 args.option(['m', 'ml'], 'Write ML dataset rows', false);
+args.option(['A', 'ai'], 'Write AI prompt rows', false);
 ```
 
 Пример запуска для TrendLine-подобного сценария:
 
 ```bash
-npx @tradejs/cli backtest --config trendline --connector bybit --tests 500 --parallel 4 --ml
+npx @tradejs/cli backtest --config trendline --connector bybit --tests 500 --parallel 4 --ml --ai
 ```
 
 ## Пайплайн
@@ -73,12 +74,29 @@ npx @tradejs/cli backtest --ml
 
 Создаются chunk-файлы:
 
-- `ml-dataset-<strategy>-<chunkId>.jsonl`
+- `ml-dataset-<strategy>-chunk-<chunkId>.jsonl`
 
 Потом они объединяются:
 
 ```bash
 npx @tradejs/cli ml-export
+```
+
+## AI prompt-датасет в процессе бэктеста
+
+```bash
+npx @tradejs/cli backtest --ai
+```
+
+Создаются chunk-файлы:
+
+- `ai-dataset-<strategy>-chunk-<chunkId>.jsonl`
+
+Потом их можно объединить и прогнать оффлайн:
+
+```bash
+npx @tradejs/cli ai-export
+npx @tradejs/cli ai-train -n 50 --minQuality 4
 ```
 
 ## Замечание про UI

@@ -50,8 +50,10 @@ const getErrorMessage = (error: unknown) => {
   return `${message}; cause: ${cause}`;
 };
 
-const truncateText = (value: string, maxLength = SCREENSHOT_CONSOLE_TEXT_LIMIT) =>
-  value.length > maxLength ? `${value.slice(0, maxLength)}...` : value;
+const truncateText = (
+  value: string,
+  maxLength = SCREENSHOT_CONSOLE_TEXT_LIMIT,
+) => (value.length > maxLength ? `${value.slice(0, maxLength)}...` : value);
 
 const shouldLogConsoleMessage = (type: string) =>
   ['error', 'warning', 'assert'].includes(type);

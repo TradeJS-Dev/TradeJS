@@ -69,7 +69,9 @@ Continuity check/repair:
 yarn continuity --user root --timeframe 15 --provider bybit
 ```
 
-## 7. ML (Optional)
+## 7. ML / AI (Optional)
+
+ML dataset flow:
 
 ```bash
 yarn ml-export
@@ -81,6 +83,16 @@ Or run a predefined model script:
 ```bash
 yarn ml-train:trendline:xgboost
 ```
+
+AI offline replay flow:
+
+```bash
+yarn backtest --AI
+yarn ai-export
+yarn ai-train -n 50 --minQuality 4
+```
+
+`yarn ai-train` replays saved prompts from the merged dataset, evaluates the latest trades from the end, and treats `-n 0` as "check all rows".
 
 ## 8. Sandbox Plugin Mode (Framework Check)
 

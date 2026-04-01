@@ -35,12 +35,13 @@ args.option(['n', 'tests'], 'Tests limit', TESTS_LIMIT);
 args.option(['p', 'parallel'], 'Parallel tasks', MAX_PARALLEL);
 args.option('connector', 'Connector/provider', 'bybit');
 args.option(['m', 'ml'], 'Write ML dataset rows', false);
+args.option(['A', 'ai'], 'Write AI prompt rows', false);
 ```
 
 Example run for TrendLine-like setup:
 
 ```bash
-npx @tradejs/cli backtest --config trendline --connector bybit --tests 500 --parallel 4 --ml
+npx @tradejs/cli backtest --config trendline --connector bybit --tests 500 --parallel 4 --ml --ai
 ```
 
 ## Pipeline
@@ -77,12 +78,31 @@ npx @tradejs/cli backtest --ml
 
 Workers write chunk files:
 
-- `ml-dataset-<strategy>-<chunkId>.jsonl`
+- `ml-dataset-<strategy>-chunk-<chunkId>.jsonl`
 
 Later, merge with:
 
 ```bash
 npx @tradejs/cli ml-export
+```
+
+## AI Prompt Dataset During Backtest
+
+Enable AI prompt dataset writing:
+
+```bash
+npx @tradejs/cli backtest --ai
+```
+
+Workers write chunk files:
+
+- `ai-dataset-<strategy>-chunk-<chunkId>.jsonl`
+
+Later, merge and replay with:
+
+```bash
+npx @tradejs/cli ai-export
+npx @tradejs/cli ai-train -n 50 --minQuality 4
 ```
 
 ## UI Note

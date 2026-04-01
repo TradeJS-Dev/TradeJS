@@ -15,7 +15,7 @@ Official CLI for the TradeJS open-source framework.
 - start/stop Redis + PostgreSQL/Timescale
 - verify runtime dependencies
 - create users
-- run backtests, signals, bots, and ML workflows
+- run backtests, signals, bots, and AI/ML workflows
 
 ## Standard External Install Flow
 
@@ -47,6 +47,9 @@ After that you can run:
 
 ```bash
 npx @tradejs/cli backtest
+npx @tradejs/cli backtest --ai
+npx @tradejs/cli ai-export
+npx @tradejs/cli ai-train -n 50 --minQuality 4
 npx @tradejs/cli signals
 npx @tradejs/cli results
 npx @tradejs/cli bot

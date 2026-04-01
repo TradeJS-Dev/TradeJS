@@ -30,6 +30,13 @@ npx @tradejs/cli ml-train:latest
 npx @tradejs/cli ml-train:trendline:xgboost
 ```
 
+## AI-команды
+
+```bash
+npx @tradejs/cli ai-export
+npx @tradejs/cli ai-train -n 50 --minQuality 4
+```
+
 ## Часто используемые флаги `backtest`
 
 `npx @tradejs/cli backtest --help`:
@@ -42,6 +49,16 @@ npx @tradejs/cli ml-train:trendline:xgboost
 - `-u, --updateOnly` — только обновить кэш рынка
 - `-C, --cacheOnly` — не обновлять кэш рынка
 - `-m, --ml` — писать ML-строки в chunk-файлы
+- `-A, --ai` — писать AI prompt-строки в chunk-файлы
+
+## Флаги `ai-train`
+
+`npx @tradejs/cli ai-train --help`:
+
+- `-n, --recent` — проверить последние N сделок с конца (`0` = все строки)
+- `--minQuality` — минимальный quality threshold для AI approval
+- `-s, --strategy` — выбрать последний merged dataset для конкретной стратегии
+- `-f, --file` — указать конкретный merged dataset файл
 
 ## Часто используемые флаги `signals`
 

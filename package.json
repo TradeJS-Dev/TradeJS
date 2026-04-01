@@ -9,6 +9,8 @@
     "packages/*"
   ],
   "scripts": {
+    "ai-export": "yarn cli ai-export",
+    "ai-train": "yarn cli:node8g ai-train",
     "backtest": "yarn clean-tests --cache && yarn cli:node8g backtest",
     "bot": "PROJECT_CWD=\"$PWD\" DOTENV_CONFIG_PATH=\"${DOTENV_CONFIG_PATH:-$PWD/.env}\" time bash ./bin/run-cli-dist.sh bot",
     "bot:cron": "PROJECT_CWD=\"$PWD\" DOTENV_CONFIG_PATH=\"${DOTENV_CONFIG_PATH:-$PWD/.env}\" time bash ./bin/run-cli-dist.sh bot",

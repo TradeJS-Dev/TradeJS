@@ -135,32 +135,6 @@ article[class*='docItemContainer'] {
   color: #7ce8e2;
 }
 
-.navbar__link.navbar-github-link {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.45rem;
-  margin-left: 0.35rem;
-  padding: 0.42rem 0.82rem;
-  border: 1px solid rgba(52, 209, 201, 0.24);
-  border-radius: 999px;
-  background: rgba(17, 26, 42, 0.78);
-  color: #eef6ff;
-  font-weight: 600;
-  transition:
-    border-color 0.2s ease,
-    background 0.2s ease,
-    color 0.2s ease,
-    transform 0.2s ease;
-}
-
-.navbar__link.navbar-github-link:hover {
-  color: #f8fdff;
-  border-color: rgba(124, 232, 226, 0.5);
-  background: rgba(19, 33, 50, 0.96);
-  text-decoration: none;
-  transform: translateY(-1px);
-}
-
 .theme-doc-sidebar-container {
   background: linear-gradient(180deg, #0f1725 0%, #0d1522 100%);
   border-right: 1px solid rgba(52, 209, 201, 0.2);

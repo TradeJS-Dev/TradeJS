@@ -31,7 +31,7 @@ export const createTestConnector: TestConnectorCreator = (
   let currentPositionProfit = 0;
   let takeProfits: Tp[] = [];
   let stopLossPrice: Sl = null;
-  const closedMlResults: Array<{ signalId: string; profit: number }> = [];
+  const closedSignalResults: Array<{ signalId: string; profit: number }> = [];
 
   const logOrder = (data: Partial<OrderLog>) => {
     const nextEntry = {
@@ -58,10 +58,10 @@ export const createTestConnector: TestConnectorCreator = (
       return;
     }
 
-    if (context?.mlEnabled) {
+    if (context?.mlEnabled || context?.aiEnabled) {
       const signalId = currentPosition.signal?.signalId;
       if (signalId) {
-        closedMlResults.push({
+        closedSignalResults.push({
           signalId,
           profit: currentPositionProfit,
         });
@@ -261,6 +261,6 @@ export const createTestConnector: TestConnectorCreator = (
 
     getTickers: connector.getTickers,
     getPositions: connector.getPositions,
-    drainMlResultsBatch: async () => closedMlResults.splice(0),
+    drainMlResultsBatch: async () => closedSignalResults.splice(0),
   };
 };
