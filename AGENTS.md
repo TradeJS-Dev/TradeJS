@@ -22,8 +22,6 @@ TradeJS is a monorepo for:
 Main areas:
 
 - `apps/app` — publishable Next.js UI and API package, also used internally in the workspace
-- `apps/docs` — public Docusaurus documentation for external package users
-- `apps/site` — public marketing site
 - `packages/core` — browser-safe public API, shared helpers, plugin config API
 - `packages/node` — Node-only runtime, plugin loading, backtest/pine execution helpers
 - `packages/types` — shared contracts and types
@@ -35,13 +33,21 @@ Main areas:
 - `packages/cli` — operational commands
 - `examples/sandbox` — standalone deterministic external-user style example app that installs published `@tradejs/*` packages from npm
 
+Public web repos now live outside this monorepo:
+
+- `tradejs-site` — source of truth for `tradejs.dev`
+- `tradejs-docs` — source of truth for `docs.tradejs.dev`
+
+If legacy copies under `apps/site` or `apps/docs` still exist here, treat them as mirrors only.
+Do not edit them unless the task is explicitly about sync or deletion.
+
 ## Audience Rules For Documentation
 
 This rule is important and should be treated as architectural, not editorial.
 
-- `apps/docs` is for external package users.
+- `tradejs-docs` is for external package users.
 - package `README.md` files are also for external package users.
-- Do not document repo-only flows in `apps/docs`.
+- Do not document repo-only flows in `tradejs-docs`.
 - Do not tell external users to run monorepo-only commands like `yarn dev`, `yarn workspace @tradejs/app dev`, or similar internal workflows in public docs unless the package flow truly supports them.
 - Internal repository workflows belong in root markdown files:
   - `README.md`
@@ -178,12 +184,6 @@ Common internal commands:
 - `yarn unit`
 - `yarn prettify`
 
-Docs:
-
-- `yarn docs:dev`
-- `yarn docs:build`
-- `yarn site:build`
-
 Sandbox:
 
 - `yarn sandbox:install`
@@ -205,9 +205,10 @@ Minimum relevant checks:
 - `yarn typecheck`
 - `yarn unit`
 
-For docs-only changes:
+For public docs/site changes:
 
-- run `yarn workspace @tradejs/docs build` when practical
+- make the change in `tradejs-docs` or `tradejs-site`, not in this monorepo
+- run the relevant build in that external repo when practical
 
 For package boundary / import refactors:
 
@@ -229,10 +230,10 @@ For sandbox changes:
 
 Public web surfaces also include AI discovery assets:
 
-- `apps/site/public/llms.txt`
-- `apps/site/public/llms-full.txt`
-- `apps/docs/static/llms.txt`
-- `apps/docs/static/llms-full.txt`
+- `tradejs-site/public/llms.txt`
+- `tradejs-site/public/llms-full.txt`
+- `tradejs-docs/static/llms.txt`
+- `tradejs-docs/static/llms-full.txt`
 
 Keep them aligned with:
 
@@ -284,4 +285,4 @@ Keep them aligned with:
 
 - Prefer the current code and root markdown over stale assumptions.
 - If public docs and actual package behavior disagree, trust the package behavior and fix the docs.
-- If a flow only works inside the repo, document it only in root markdown, not in `apps/docs`.
+- If a flow only works inside the repo, document it only in root markdown, not in `tradejs-docs`.
