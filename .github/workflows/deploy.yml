@@ -87,6 +87,9 @@ jobs:
   deploy:
     needs: sandbox-e2e
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
 
     steps:
       - name: Checkout
@@ -121,9 +124,9 @@ jobs:
           PG_DATABASE=app
           " > .env
 
-      - name: Docker login to Docker Hub
+      - name: Docker login to GHCR
         run: |
-          echo "${{ secrets.DOCKERHUB_TOKEN }}" | docker login --username ${{ secrets.DOCKERHUB_USERNAME }} --password-stdin
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io --username ${{ github.actor }} --password-stdin
 
       - name: Build Docker images
         run: |
