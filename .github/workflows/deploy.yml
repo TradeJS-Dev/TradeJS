@@ -131,13 +131,11 @@ jobs:
       - name: Build Docker images
         run: |
           docker-compose -f docker-compose.prod.yml build --pull app
-          docker-compose -f docker-compose.prod.yml build --pull site
-          docker-compose -f docker-compose.prod.yml build --pull docs
           docker-compose -f docker-compose.prod.yml build --pull --no-cache ml-infer
   
       - name: Push Docker images
         run: |
-          docker-compose -f docker-compose.prod.yml push app site docs ml-infer
+          docker-compose -f docker-compose.prod.yml push app ml-infer
 
       - name: Copy compose and configs to server
         uses: appleboy/scp-action@v0.1.7

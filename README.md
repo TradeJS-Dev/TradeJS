@@ -13,6 +13,8 @@ It supports two first-class authoring paths:
 
 - Site: [tradejs.dev](https://tradejs.dev)
 - Documentation: [docs.tradejs.dev](https://docs.tradejs.dev)
+- Site repo: [TradeJS-Dev/tradejs-site](https://github.com/TradeJS-Dev/tradejs-site)
+- Docs repo: [TradeJS-Dev/tradejs-docs](https://github.com/TradeJS-Dev/tradejs-docs)
 - npm organization: [npmjs.com/org/tradejs](https://www.npmjs.com/org/tradejs)
 
 ### Published npm Packages
@@ -31,7 +33,6 @@ It supports two first-class authoring paths:
 ## Repository Layout
 
 - `apps/app`: Next.js UI and API
-- `apps/docs`: Docusaurus documentation
 - `packages/core`: browser-safe public API, shared helpers, plugin config API
 - `packages/node`: Node-only runtime, plugin loading, backtest/pine execution helpers
 - `packages/strategies`: built-in strategy plugin package
@@ -41,6 +42,13 @@ It supports two first-class authoring paths:
 - `packages/cli`: operational scripts (`backtest`, `signals`, `results`, `ai-*`, `ml-*`, `doctor`, etc.)
 - `packages/ml/python`: Python train/infer/profile services
 - `examples/sandbox`: full user-app style sandbox with local `tradejs.config.ts`, custom strategy/indicator/connector plugins, and deterministic backtest/signals e2e flow
+
+Public web surfaces are now maintained in separate repositories:
+
+- `tradejs-site` for `tradejs.dev`
+- `tradejs-docs` for `docs.tradejs.dev`
+
+This monorepo no longer contains the source code for those public web surfaces.
 
 ## Core Concepts
 
@@ -212,52 +220,24 @@ yarn sandbox:infra-down
 
 ## Documentation
 
-Run local docs:
+Public documentation now lives in the standalone repository:
 
-```bash
-yarn docs:dev
-```
+- [TradeJS-Dev/tradejs-docs](https://github.com/TradeJS-Dev/tradejs-docs)
 
-Build docs:
+Public marketing site now lives in:
 
-```bash
-yarn docs:build
-```
+- [TradeJS-Dev/tradejs-site](https://github.com/TradeJS-Dev/tradejs-site)
 
-Deploy docs on `https://docs.tradejs.dev`:
-
-```bash
-docker compose -f docker-compose.prod.yml build docs
-docker compose -f docker-compose.prod.yml up -d app redis docs nginx certbot-cron
-docker compose -f docker-compose.prod.yml run --rm certbot
-docker compose -f docker-compose.prod.yml restart nginx
-```
-
-SSL verification:
-
-```bash
-echo | openssl s_client -connect 92.63.100.27:443 -servername docs.tradejs.dev 2>/dev/null \
-  | openssl x509 -noout -subject -issuer -dates -ext subjectAltName
-```
-
-The certificate SAN must include `DNS:docs.tradejs.dev`.
-
-Recommended docs sections:
-
-- `strategies/*`
-- `runtime/*`
-- `indicators/*`
-- `ml/*`
-- `operations/*`
+Use this monorepo README only for internal repository workflows.
 
 ## AI Discovery Surface
 
 Public web surfaces expose AI-oriented discovery files:
 
-- `apps/site/public/llms.txt`
-- `apps/site/public/llms-full.txt`
-- `apps/docs/static/llms.txt`
-- `apps/docs/static/llms-full.txt`
+- `tradejs-site/public/llms.txt` in `TradeJS-Dev/tradejs-site`
+- `tradejs-site/public/llms-full.txt` in `TradeJS-Dev/tradejs-site`
+- `tradejs-docs/static/llms.txt` in `TradeJS-Dev/tradejs-docs`
+- `tradejs-docs/static/llms-full.txt` in `TradeJS-Dev/tradejs-docs`
 
 Keep these files aligned with:
 
