@@ -1,0 +1,24 @@
+# Default ownership
+* @aleksnick
+
+# Repository automation and governance
+/.github/ @aleksnick
+
+# Application
+/apps/app/ @aleksnick
+
+# Packages
+/packages/ @aleksnick
+
+# Examples and docs
+/examples/ @aleksnick
+/*.md @aleksnick
+
+# Runtime and deploy
+/bin/ @aleksnick
+/docker-compose*.yml @aleksnick
+/Dockerfile* @aleksnick
+/nginx/ @aleksnick
+/sql/ @aleksnick
+/certbot/ @aleksnick
+/init-cert.sh @aleksnick
