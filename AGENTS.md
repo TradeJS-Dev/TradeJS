@@ -35,8 +35,8 @@ Main areas:
 
 Public web repos now live outside this monorepo:
 
-- `tradejs-site` — source of truth for `tradejs.dev`
-- `tradejs-docs` — source of truth for `docs.tradejs.dev`
+- `TradeJS-Site` — source of truth for `tradejs.dev`
+- `TradeJS-Docs` — source of truth for `docs.tradejs.dev`
 
 This monorepo no longer carries the source code for those public web surfaces.
 
@@ -44,9 +44,9 @@ This monorepo no longer carries the source code for those public web surfaces.
 
 This rule is important and should be treated as architectural, not editorial.
 
-- `tradejs-docs` is for external package users.
+- `TradeJS-Docs` is for external package users.
 - package `README.md` files are also for external package users.
-- Do not document repo-only flows in `tradejs-docs`.
+- Do not document repo-only flows in `TradeJS-Docs`.
 - Do not tell external users to run monorepo-only commands like `yarn dev`, `yarn workspace @tradejs/app dev`, or similar internal workflows in public docs unless the package flow truly supports them.
 - Internal repository workflows belong in root markdown files:
   - `README.md`
@@ -206,7 +206,7 @@ Minimum relevant checks:
 
 For public docs/site changes:
 
-- make the change in `tradejs-docs` or `tradejs-site`, not in this monorepo
+- make the change in `TradeJS-Docs` or `TradeJS-Site`, not in this monorepo
 - run the relevant build in that external repo when practical
 
 For package boundary / import refactors:
@@ -229,10 +229,10 @@ For sandbox changes:
 
 Public web surfaces also include AI discovery assets:
 
-- `tradejs-site/public/llms.txt` in `TradeJS-Dev/tradejs-site`
-- `tradejs-site/public/llms-full.txt` in `TradeJS-Dev/tradejs-site`
-- `tradejs-docs/static/llms.txt` in `TradeJS-Dev/tradejs-docs`
-- `tradejs-docs/static/llms-full.txt` in `TradeJS-Dev/tradejs-docs`
+- `TradeJS-Site/public/llms.txt` in `TradeJS-Dev/TradeJS-Site`
+- `TradeJS-Site/public/llms-full.txt` in `TradeJS-Dev/TradeJS-Site`
+- `TradeJS-Docs/static/llms.txt` in `TradeJS-Dev/TradeJS-Docs`
+- `TradeJS-Docs/static/llms-full.txt` in `TradeJS-Dev/TradeJS-Docs`
 
 Keep them aligned with:
 
@@ -284,4 +284,4 @@ Keep them aligned with:
 
 - Prefer the current code and root markdown over stale assumptions.
 - If public docs and actual package behavior disagree, trust the package behavior and fix the docs.
-- If a flow only works inside the repo, document it only in root markdown, not in `tradejs-docs`.
+- If a flow only works inside the repo, document it only in root markdown, not in `TradeJS-Docs`.

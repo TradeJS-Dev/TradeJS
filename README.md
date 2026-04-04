@@ -13,8 +13,8 @@ It supports two first-class authoring paths:
 
 - Site: [tradejs.dev](https://tradejs.dev)
 - Documentation: [docs.tradejs.dev](https://docs.tradejs.dev)
-- Site repo: [TradeJS-Dev/tradejs-site](https://github.com/TradeJS-Dev/tradejs-site)
-- Docs repo: [TradeJS-Dev/tradejs-docs](https://github.com/TradeJS-Dev/tradejs-docs)
+- Site repo: [TradeJS-Dev/TradeJS-Site](https://github.com/TradeJS-Dev/TradeJS-Site)
+- Docs repo: [TradeJS-Dev/TradeJS-Docs](https://github.com/TradeJS-Dev/TradeJS-Docs)
 - npm organization: [npmjs.com/org/tradejs](https://www.npmjs.com/org/tradejs)
 
 ### Published npm Packages
@@ -45,8 +45,8 @@ It supports two first-class authoring paths:
 
 Public web surfaces are now maintained in separate repositories:
 
-- `tradejs-site` for `tradejs.dev`
-- `tradejs-docs` for `docs.tradejs.dev`
+- `TradeJS-Site` for `tradejs.dev`
+- `TradeJS-Docs` for `docs.tradejs.dev`
 
 This monorepo no longer contains the source code for those public web surfaces.
 
@@ -222,11 +222,11 @@ yarn sandbox:infra-down
 
 Public documentation now lives in the standalone repository:
 
-- [TradeJS-Dev/tradejs-docs](https://github.com/TradeJS-Dev/tradejs-docs)
+- [TradeJS-Dev/TradeJS-Docs](https://github.com/TradeJS-Dev/TradeJS-Docs)
 
 Public marketing site now lives in:
 
-- [TradeJS-Dev/tradejs-site](https://github.com/TradeJS-Dev/tradejs-site)
+- [TradeJS-Dev/TradeJS-Site](https://github.com/TradeJS-Dev/TradeJS-Site)
 
 Use this monorepo README only for internal repository workflows.
 
@@ -234,10 +234,10 @@ Use this monorepo README only for internal repository workflows.
 
 Public web surfaces expose AI-oriented discovery files:
 
-- `tradejs-site/public/llms.txt` in `TradeJS-Dev/tradejs-site`
-- `tradejs-site/public/llms-full.txt` in `TradeJS-Dev/tradejs-site`
-- `tradejs-docs/static/llms.txt` in `TradeJS-Dev/tradejs-docs`
-- `tradejs-docs/static/llms-full.txt` in `TradeJS-Dev/tradejs-docs`
+- `TradeJS-Site/public/llms.txt` in `TradeJS-Dev/TradeJS-Site`
+- `TradeJS-Site/public/llms-full.txt` in `TradeJS-Dev/TradeJS-Site`
+- `TradeJS-Docs/static/llms.txt` in `TradeJS-Dev/TradeJS-Docs`
+- `TradeJS-Docs/static/llms-full.txt` in `TradeJS-Dev/TradeJS-Docs`
 
 Keep these files aligned with:
 
