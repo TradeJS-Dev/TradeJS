@@ -164,6 +164,41 @@ const makeBlockedTrendlineSignal = () => {
   return signal;
 };
 
+const makeAggressivePreBreakTrendlineSignal = () => {
+  const signal = makeSignal();
+  signal.direction = 'SHORT';
+  signal.prices.currentPrice = 100.111;
+  signal.prices.takeProfitPrice = 96;
+  signal.prices.stopLossPrice = 101.3;
+  signal.figures.trendLine = {
+    ...signal.figures.trendLine,
+    mode: 'lows',
+    points: [
+      { timestamp: 1, value: 98.9 },
+      { timestamp: 2, value: 100 },
+    ],
+    touches: [
+      { timestamp: 1, value: 98.9 },
+      { timestamp: 1.2, value: 99.2 },
+      { timestamp: 1.4, value: 99.4 },
+      { timestamp: 1.6, value: 99.7 },
+      { timestamp: 1.8, value: 99.9 },
+    ],
+  };
+  signal.indicators = {
+    ...signal.indicators,
+    maFast: [101, 100, 98.5],
+    maSlow: [101, 101, 100],
+    btcMaFast: [101, 100.2, 99.5],
+    btcMaSlow: [101, 100.5, 99.9],
+  };
+  signal.additionalIndicators = {
+    touches: 5,
+    distance: 100,
+  };
+  return signal;
+};
+
 describe('ai helpers', () => {
   const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
   const logSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
@@ -436,6 +471,44 @@ describe('ai helpers', () => {
       );
       expect(result.qualityReason).toContain('TrendLine guardrail');
       expect(result.comment).toContain('TrendLine guardrail');
+    });
+
+    it('allows aggressive pre-break pressure setups but caps quality to 4', async () => {
+      invokeMock.mockResolvedValue({
+        content: {
+          direction: null,
+          quality: 2,
+          needRetest: false,
+          retestPrice: null,
+          takeProfitPrice: null,
+          stopLossPrice: null,
+          setup: 'Агрессивное давление перед пробоем',
+          retestPlan: 'Вход агрессивный',
+          qualityReason: 'Сильное давление вниз',
+          triggerInvalidation: 'Отмена при возврате выше',
+          comment: 'ok',
+        },
+      });
+
+      const result = await runAiPrompt(
+        {
+          systemPrompt: 'system',
+          humanPrompt: 'human',
+        },
+        {
+          signal: makeAggressivePreBreakTrendlineSignal(),
+        },
+      );
+
+      expect(result).toEqual(
+        expect.objectContaining({
+          direction: 'SHORT',
+          quality: 4,
+          takeProfitPrice: 96,
+          stopLossPrice: 101.3,
+        }),
+      );
+      expect(result.qualityReason).toBe('Сильное давление вниз');
     });
 
     it('reuses cached settings and model for repeated prompt calls', async () => {
