@@ -129,11 +129,22 @@ describe('aiDatasetFile', () => {
     const merged = path.join(tempDir, 'ai-dataset-trendline-merged.jsonl');
     await mergeAiJsonlFiles({ filePaths: [chunkA, chunkB], outPath: merged });
 
-    const allRows = await readAiDatasetRows({ filePath: merged });
-    const recentRows = await readAiDatasetRows({
-      filePath: merged,
-      limitFromEnd: 2,
-    });
+    const parseSpy = jest.spyOn(JSON, 'parse');
+    let allRows: Awaited<ReturnType<typeof readAiDatasetRows>>;
+    let recentRows: Awaited<ReturnType<typeof readAiDatasetRows>>;
+    try {
+      allRows = await readAiDatasetRows({ filePath: merged });
+      expect(parseSpy).toHaveBeenCalledTimes(3);
+
+      parseSpy.mockClear();
+      recentRows = await readAiDatasetRows({
+        filePath: merged,
+        limitFromEnd: 2,
+      });
+      expect(parseSpy).toHaveBeenCalledTimes(2);
+    } finally {
+      parseSpy.mockRestore();
+    }
 
     expect(allRows.totalRows).toBe(3);
     expect(allRows.rows).toHaveLength(3);

@@ -1,4 +1,9 @@
-import { AiPayload, Signal, StrategyAiAdapter } from '@tradejs/types';
+import {
+  AiPayload,
+  Signal,
+  SignalAnalysis,
+  StrategyAiAdapter,
+} from '@tradejs/types';
 import { trimSeriesDeep } from '../aiShared';
 import { getStrategyManifest } from '../strategy/manifests';
 
@@ -46,3 +51,14 @@ export const buildAiHumanPromptAddonByStrategy = (
     signal,
     payload,
   }) ?? '';
+
+export const postProcessAiAnalysisByStrategy = (
+  signal: Signal,
+  analysis: Partial<SignalAnalysis>,
+  payload = buildAiPayloadByStrategy(signal),
+): Partial<SignalAnalysis> =>
+  getSignalAiAdapter(signal).postProcessAnalysis?.({
+    signal,
+    payload,
+    analysis,
+  }) ?? analysis;

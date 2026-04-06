@@ -1,11 +1,18 @@
 import args from 'args';
 import chalk from 'chalk';
+const ListIt = require('list-it');
 import fs from 'fs/promises';
 import path from 'path';
 import ProgressBar from 'progress';
+import { runWithConcurrency } from '@tradejs/core/async';
 import { readAiDatasetRows, toFileToken } from '@tradejs/infra/ai';
-import { runAiPrompt } from '@tradejs/node/ai';
-import { AiDatasetRow, SignalAnalysis } from '@tradejs/types';
+import {
+  buildAiPrompts,
+  ensureAiStrategyPluginsLoaded,
+  runAiPrompt,
+} from '@tradejs/node/ai';
+import { AI_CONCURRENCY_LIMIT } from '@tradejs/node/constants';
+import { AiDatasetRow, Signal, SignalAnalysis } from '@tradejs/types';
 import { summarizeAiTrainEvaluations } from '../lib/aiTrainMetrics';
 
 args.example(
@@ -21,12 +28,28 @@ args.option(
   'How many recent trades to evaluate from the end (0 = all)',
   50,
 );
+args.option(
+  ['p', 'parallel'],
+  'Concurrent AI requests during replay',
+  AI_CONCURRENCY_LIMIT,
+);
+args.option(
+  'rebuildPrompts',
+  'Rebuild prompts from payload embedded in dataset rows using current prompt builders',
+  false,
+);
 args.option('minQuality', 'Minimum AI quality required to approve entry', 4);
 
 const flags = args.parse(process.argv);
 
-const percent = (value: number, total: number) =>
-  total > 0 ? `${((value / total) * 100).toFixed(1)}%` : '0.0%';
+const createListIt = () =>
+  new ListIt({
+    autoAlign: true,
+    headerUnderline: true,
+  });
+
+const createTable = (headers: string[], rows: string[][]) =>
+  createListIt().setHeaderRow(headers).d(rows).toString();
 
 const formatRatio = (value: number | null) =>
   value == null ? 'n/a' : `${(value * 100).toFixed(1)}%`;
@@ -34,9 +57,63 @@ const formatRatio = (value: number | null) =>
 const formatProfit = (value: number | null) =>
   value == null ? 'n/a' : value.toFixed(2);
 
+const colorizeRatio = (value: number | null) => {
+  const text = formatRatio(value);
+  if (value == null) {
+    return chalk.gray(text);
+  }
+  if (value >= 0.6) {
+    return chalk.green(text);
+  }
+  if (value >= 0.3) {
+    return chalk.yellow(text);
+  }
+  return chalk.red(text);
+};
+
+const colorizePercent = (value: number, total: number) => {
+  const ratio = total > 0 ? value / total : null;
+  return colorizeRatio(ratio);
+};
+
+const colorizeProfit = (value: number | null) => {
+  const text = formatProfit(value);
+  if (value == null) {
+    return chalk.gray(text);
+  }
+  if (value > 0) {
+    return chalk.green(text);
+  }
+  if (value < 0) {
+    return chalk.red(text);
+  }
+  return chalk.yellow(text);
+};
+
+const colorizeQuality = (quality: number | null) => {
+  const text = quality == null ? 'n/a' : String(quality);
+  if (quality == null) {
+    return chalk.gray(text);
+  }
+  if (quality >= 4) {
+    return chalk.green(text);
+  }
+  if (quality === 3) {
+    return chalk.yellow(text);
+  }
+  return chalk.red(text);
+};
+
 const normalizeInt = (value: unknown, fallback: number) => {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? Math.max(0, Math.trunc(parsed)) : fallback;
+};
+
+const normalizePositiveInt = (value: unknown, fallback: number) => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0
+    ? Math.trunc(parsed)
+    : fallback;
 };
 
 const normalizeQuality = (analysis: Partial<SignalAnalysis>) => {
@@ -89,6 +166,82 @@ const deriveStrategyNameFromFile = (filePath: string) => {
   return match?.[1] ? match[1] : 'unknown';
 };
 
+const extractPayloadFromHumanPrompt = (humanPrompt: string) => {
+  const marker = 'Данные сделки:\n';
+  const markerIndex = humanPrompt.indexOf(marker);
+  if (markerIndex < 0) {
+    return null;
+  }
+
+  const afterMarker = humanPrompt.slice(markerIndex + marker.length);
+  const jsonStart = afterMarker.indexOf('{');
+  if (jsonStart < 0) {
+    return null;
+  }
+
+  let depth = 0;
+  let jsonEnd = -1;
+  for (let index = jsonStart; index < afterMarker.length; index += 1) {
+    const char = afterMarker[index];
+    if (char === '{') {
+      depth += 1;
+    } else if (char === '}') {
+      depth -= 1;
+      if (depth === 0) {
+        jsonEnd = index;
+        break;
+      }
+    }
+  }
+
+  if (jsonEnd < 0) {
+    return null;
+  }
+
+  return JSON.parse(afterMarker.slice(jsonStart, jsonEnd + 1)) as {
+    signal?: Signal;
+    figures?: Record<string, unknown>;
+    indicators?: unknown;
+    additionalIndicators?: unknown;
+  };
+};
+
+const extractSignalFromDatasetRow = (row: AiDatasetRow) => {
+  const payload = extractPayloadFromHumanPrompt(row.humanPrompt);
+  if (!payload?.signal) {
+    return null;
+  }
+
+  return {
+    ...payload.signal,
+    strategy: payload.signal.strategy,
+    figures: payload.figures ?? {},
+    indicators: payload.indicators ?? {},
+    additionalIndicators: payload.additionalIndicators ?? {},
+    prices: payload.signal.prices,
+  } as Signal;
+};
+
+const resolvePromptRunContext = (row: AiDatasetRow, rebuildPrompts: boolean) => {
+  const signal = extractSignalFromDatasetRow(row);
+  return {
+    signal,
+    promptPair:
+      rebuildPrompts && signal
+        ? buildAiPrompts(signal)
+        : {
+            systemPrompt: row.systemPrompt,
+            humanPrompt: row.humanPrompt,
+          },
+  };
+};
+
+const printSection = (title: string, table: string) => {
+  console.log(chalk.gray(`${title}:`));
+  console.log(table);
+  console.log('');
+};
+
 const resolveDatasetFile = async () => {
   const explicitFile = String(flags.file || '').trim();
   if (explicitFile) {
@@ -114,6 +267,12 @@ const resolveDatasetFile = async () => {
 const main = async () => {
   const recent = normalizeInt(flags.recent, 50);
   const minQuality = normalizeInt(flags.minQuality, 4);
+  const rebuildPrompts = Boolean(flags.rebuildPrompts);
+  const parallel = normalizePositiveInt(
+    flags.parallel,
+    AI_CONCURRENCY_LIMIT,
+  );
+  await ensureAiStrategyPluginsLoaded();
   const filePath = await resolveDatasetFile();
   const { rows, totalRows } = await readAiDatasetRows({
     filePath,
@@ -127,6 +286,7 @@ const main = async () => {
 
   const strategyName =
     rows[0]?.strategyName || deriveStrategyNameFromFile(filePath);
+  const concurrency = Math.max(1, Math.min(parallel, rows.length));
   const bar = new ProgressBar(
     ':current/:total [:bar][:percent] :symbol :status',
     {
@@ -144,15 +304,20 @@ const main = async () => {
     quality: number | null;
   }> = [];
 
-  for (const row of rows) {
+  await runWithConcurrency(rows, concurrency, async (row) => {
     const profit = Number(row.profit);
     const profitableTrade = isProfitableTrade(row);
+    const { promptPair, signal } = resolvePromptRunContext(row, rebuildPrompts);
 
     try {
-      const analysis = await runAiPrompt({
-        systemPrompt: row.systemPrompt,
-        humanPrompt: row.humanPrompt,
-      });
+      const analysis = await runAiPrompt(
+        promptPair,
+        signal
+          ? {
+              signal,
+            }
+          : undefined,
+      );
       const aiApproved = isAiApproval(row, analysis, minQuality);
       const quality = normalizeQuality(analysis);
 
@@ -182,67 +347,97 @@ const main = async () => {
         status: chalk.yellow('error'),
       });
     }
-  }
+  });
 
   const summary = summarizeAiTrainEvaluations(evaluations);
   const evaluated = summary.correct + summary.incorrect;
   console.log('');
-  console.log(chalk.green(`AI train finished: ${filePath}`));
-  console.log(
-    chalk.gray(
-      `strategy=${strategyName}, selected=${rows.length}, source_rows=${totalRows}, recent=${recent === 0 ? 'all' : recent}, minQuality=${minQuality}`,
+  console.log(chalk.green('AI train finished'));
+  console.log(chalk.gray(filePath));
+  console.log('');
+
+  printSection(
+    'RUN',
+    createTable(
+      [chalk.gray('FIELD'), chalk.gray('VALUE')],
+      [
+        ['strategy', chalk.yellow(strategyName)],
+        ['selected', chalk.blue(String(rows.length))],
+        ['source_rows', chalk.blue(String(totalRows))],
+        ['recent', chalk.blue(recent === 0 ? 'all' : String(recent))],
+        ['min_quality', chalk.magenta(String(minQuality))],
+        ['parallel', chalk.magenta(String(concurrency))],
+        ['rebuild_prompts', rebuildPrompts ? chalk.green('yes') : chalk.gray('no')],
+      ],
     ),
   );
-  console.log(
-    chalk.cyan(
-      `correct=${summary.correct}, incorrect=${summary.incorrect}, failed=${failed}, accuracy=${percent(
-        summary.correct,
-        evaluated,
-      )}`,
+
+  printSection(
+    'OUTCOME',
+    createTable(
+      [chalk.gray('METRIC'), chalk.gray('VALUE')],
+      [
+        ['accuracy', colorizePercent(summary.correct, evaluated)],
+        ['evaluated', chalk.blue(String(evaluated))],
+        ['correct', chalk.green(String(summary.correct))],
+        ['incorrect', chalk.red(String(summary.incorrect))],
+        ['failed', failed > 0 ? chalk.yellow(String(failed)) : chalk.green('0')],
+        ['approved', chalk.cyan(String(summary.approved))],
+        ['rejected', chalk.cyan(String(summary.rejected))],
+        ['profitable', chalk.green(String(summary.profitable))],
+        ['unprofitable', chalk.red(String(summary.unprofitable))],
+        ['flat', chalk.yellow(String(summary.flat))],
+        ['precision_approved', colorizeRatio(summary.precisionApproved)],
+        ['recall_winners', colorizeRatio(summary.recallWinners)],
+        ['avg_profit_all', colorizeProfit(summary.avgProfitAll)],
+        ['avg_profit_approved', colorizeProfit(summary.avgProfitApproved)],
+        ['expectancy_delta', colorizeProfit(summary.expectancyDelta)],
+      ],
     ),
   );
-  console.log(
-    chalk.cyan(
-      `approved=${summary.approved}, rejected=${summary.rejected}, evaluated=${evaluated}`,
+
+  printSection(
+    'CONFUSION',
+    createTable(
+      [
+        chalk.green('TP'),
+        chalk.red('FP'),
+        chalk.green('TN'),
+        chalk.red('FN'),
+      ],
+      [
+        [
+          chalk.green(String(summary.truePositive)),
+          chalk.red(String(summary.falsePositive)),
+          chalk.green(String(summary.trueNegative)),
+          chalk.red(String(summary.falseNegative)),
+        ],
+      ],
     ),
-  );
-  console.log(
-    chalk.cyan(
-      `tp=${summary.truePositive}, fp=${summary.falsePositive}, tn=${summary.trueNegative}, fn=${summary.falseNegative}`,
-    ),
-  );
-  console.log(
-    chalk.cyan(
-      `profitable=${summary.profitable}, unprofitable=${summary.unprofitable}, flat=${summary.flat}`,
-    ),
-  );
-  console.log(
-    chalk.cyan(
-      `precision_approved=${formatRatio(summary.precisionApproved)}, recall_winners=${formatRatio(summary.recallWinners)}`,
-    ),
-  );
-  console.log(
-    chalk.cyan(
-      `avg_profit_approved=${formatProfit(summary.avgProfitApproved)}, expectancy_delta=${formatProfit(summary.expectancyDelta)}`,
-    ),
-  );
-  console.log(
-    chalk.cyan(`avg_profit_all=${formatProfit(summary.avgProfitAll)}`),
   );
 
   if (summary.qualityBuckets.length) {
-    console.log(chalk.cyan('quality_breakdown:'));
-    summary.qualityBuckets.forEach((bucket) => {
-      console.log(
-        chalk.cyan(
-          `  quality=${bucket.quality == null ? 'n/a' : bucket.quality} count=${bucket.count} approved=${bucket.approved} approval_rate=${formatRatio(
-            bucket.approved / bucket.count,
-          )} winrate=${formatRatio(
-            bucket.profitable / bucket.count,
-          )} avg_profit=${formatProfit(bucket.totalProfit / bucket.count)}`,
-        ),
-      );
-    });
+    printSection(
+      'QUALITY BREAKDOWN',
+      createTable(
+        [
+          chalk.gray('QUALITY'),
+          chalk.gray('COUNT'),
+          chalk.gray('APPROVED'),
+          chalk.gray('APPROVAL_RATE'),
+          chalk.gray('WINRATE'),
+          chalk.gray('AVG_PROFIT'),
+        ],
+        summary.qualityBuckets.map((bucket) => [
+          colorizeQuality(bucket.quality),
+          chalk.blue(String(bucket.count)),
+          chalk.cyan(String(bucket.approved)),
+          colorizeRatio(bucket.approved / bucket.count),
+          colorizeRatio(bucket.profitable / bucket.count),
+          colorizeProfit(bucket.totalProfit / bucket.count),
+        ]),
+      ),
+    );
   }
 
   if (errorMessages.length) {

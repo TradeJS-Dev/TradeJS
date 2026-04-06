@@ -16,6 +16,7 @@ import {
   buildAiPayloadByStrategy,
   buildAiSystemPromptAddonByStrategy,
   getStrategyAiAdapter,
+  postProcessAiAnalysisByStrategy,
 } from '../strategyAdapters/ai';
 import { getStrategyMlAdapter } from '../strategyAdapters/ml';
 
@@ -154,5 +155,55 @@ describe('strategyAdapters utils', () => {
 
     expect(buildAiSystemPromptAddonByStrategy(signal)).toBe('');
     expect(buildAiHumanPromptAddonByStrategy(signal, {} as any)).toBe('');
+  });
+
+  it('post-processes AI analysis via strategy adapter and falls back to original analysis', () => {
+    const signal = makeSignal();
+    const postProcessAnalysis = jest.fn(({ analysis }) => ({
+      ...analysis,
+      direction: null,
+      quality: 3,
+    }));
+    mockGetStrategyManifest.mockReturnValue({
+      aiAdapter: {
+        postProcessAnalysis,
+      },
+    });
+
+    const processed = postProcessAiAnalysisByStrategy(signal, {
+      direction: 'LONG',
+      quality: 5,
+    } as any);
+
+    expect(processed).toEqual({
+      direction: null,
+      quality: 3,
+    });
+    expect(postProcessAnalysis).toHaveBeenCalledWith(
+      expect.objectContaining({
+        signal,
+        analysis: {
+          direction: 'LONG',
+          quality: 5,
+        },
+        payload: expect.objectContaining({
+          signal: expect.objectContaining({
+            symbol: 'BTCUSDT',
+          }),
+        }),
+      }),
+    );
+
+    mockGetStrategyManifest.mockReturnValue({ aiAdapter: {} });
+
+    expect(
+      postProcessAiAnalysisByStrategy(signal, {
+        direction: 'LONG',
+        quality: 4,
+      } as any),
+    ).toEqual({
+      direction: 'LONG',
+      quality: 4,
+    });
   });
 });

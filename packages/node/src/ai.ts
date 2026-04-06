@@ -1,11 +1,16 @@
 import type { BaseMessageLike } from '@langchain/core/messages';
 import { setData, redisKeys } from '@tradejs/infra/redis';
-import { getUserSettings } from '@tradejs/infra/userSettings';
+import {
+  getUserSettings,
+  type UserSettings,
+} from '@tradejs/infra/userSettings';
 import {
   buildAiHumanPromptAddonByStrategy,
   buildAiPayloadByStrategy,
   buildAiSystemPromptAddonByStrategy,
+  postProcessAiAnalysisByStrategy,
 } from './strategyAdapters/ai';
+import { ensureStrategyPluginsLoaded } from './strategy/manifests';
 import {
   AiPayload,
   AiPromptPair,
@@ -152,6 +157,10 @@ export const buildAiSystemPrompt = (signal?: Signal): string => `
   словарь strategy-specific фигур/геометрии (если есть). Конкретные поля зависят от стратегии.
 - payload.indicators:
   словарь индикаторов/рядов по монете и BTC; ряды уже обрезаны до последних 5 значений.
+- payload.additionalIndicators:
+  strategy-specific summary/context fields. Это не "шум", а полезные derived-поля, которые стратегия передает специально для решения.
+  Примеры: helperFlags, structureContext, spread, correlation, volatilitySummary.
+  Если такие поля есть, используй их как более явную подсказку, чем попытку заново вывести то же самое только по lines/points.
   Паттерны ключей:
   • монета: maFast, atrPct, macd..., candles15m/candles1h/candles4h/candles1d, а также *1h/*4h/*1d
   • BTC: btcMaFast, btcAtr, btcMacd..., btcCandles*, а также btc*1h/*4h/*1d
@@ -159,13 +168,15 @@ export const buildAiSystemPrompt = (signal?: Signal): string => `
 
 Как анализировать (приоритеты):
 1) Сначала проверь структуру цены и геометрию/контекст сетапа из payload.figures. Это приоритетнее индикаторов.
-2) Затем оцени подтверждение/конфликт по индикаторам текущей монеты.
-3) Затем проверь контекст BTC (поддерживает или ломает идею).
-4) Только после этого выбери direction, quality и решение по ретесту.
-5) Если есть сильные конфликты, снижай quality или ставь null.
+2) Затем используй payload.additionalIndicators, если там есть явный strategy-specific context по линии/спреду/корреляции и т.п.
+3) Затем оцени подтверждение/конфликт по индикаторам текущей монеты.
+4) Затем проверь контекст BTC (поддерживает или ломает идею).
+5) Только после этого выбери direction, quality и решение по ретесту.
+6) Если есть сильные конфликты, снижай quality или ставь null.
 
 Явные правила при конфликте сигналов:
 - Если фигура/структура цены невалидны или сомнительны, индикаторы не должны "спасать" сетап.
+- Если strategy-specific helper fields прямо говорят, что вход еще не подтвержден / без запаса / требует ожидания, не завышай quality.
 - Если структура ок, но BTC и/или ключевые индикаторы заметно конфликтуют, обычно quality <= 3.
 - Если не одобряешь текущую сделку (direction=null), в comment обязательно кратко назови главную причину.
   Если используешь структурные поля, укажи главную причину в "qualityReason" и/или "triggerInvalidation".
@@ -228,28 +239,84 @@ ${buildAiHumanPromptAddonByStrategy(signal, payload)}
 
 interface AiRequestOptions {
   userName?: string;
+  signal?: Signal;
+  payload?: AiPayload;
 }
 
-const createAiModel = async (userName = 'root') => {
-  const { ChatOpenAI } = await import('@langchain/openai');
-  const settings = await getUserSettings(userName);
+type AiModel = {
+  invoke: (messages: BaseMessageLike[]) => Promise<{ content: unknown }>;
+};
+
+const userSettingsCache = new Map<string, Promise<UserSettings>>();
+const aiModelCache = new Map<string, Promise<AiModel>>();
+
+const getAiSettings = async (userName = 'root') => {
+  let settingsPromise = userSettingsCache.get(userName);
+  if (!settingsPromise) {
+    settingsPromise = getUserSettings(userName);
+    settingsPromise.catch(() => {
+      userSettingsCache.delete(userName);
+    });
+    userSettingsCache.set(userName, settingsPromise);
+  }
+
+  const settings = await settingsPromise;
   if (!settings.OPENAI_API_KEY || !settings.OPENAI_API_ENDPOINT) {
     throw new Error(`AI settings are incomplete for user ${userName}`);
   }
 
-  return new ChatOpenAI({
-    temperature: 0.2,
-    //modelName: 'anthropic/claude-sonnet-4.5',
-    modelName: 'google/gemini-3.1-pro-preview',
-    openAIApiKey: settings.OPENAI_API_KEY,
-    configuration: {
-      baseURL: settings.OPENAI_API_ENDPOINT,
-      defaultHeaders: {
-        'HTTP-Referer': 'https://tradejs.dev',
-        'X-Title': 'Inv',
-      },
-    },
-  });
+  return settings;
+};
+
+const createAiModel = async (userName = 'root') => {
+  let modelPromise = aiModelCache.get(userName);
+  if (!modelPromise) {
+    modelPromise = (async () => {
+      const [{ ChatOpenAI }, settings] = await Promise.all([
+        import('@langchain/openai'),
+        getAiSettings(userName),
+      ]);
+
+      return new ChatOpenAI({
+        temperature: 0.2,
+        //modelName: 'anthropic/claude-sonnet-4.5',
+        modelName: 'google/gemini-3.1-pro-preview',
+        openAIApiKey: settings.OPENAI_API_KEY,
+        configuration: {
+          baseURL: settings.OPENAI_API_ENDPOINT,
+          defaultHeaders: {
+            'HTTP-Referer': 'https://tradejs.dev',
+            'X-Title': 'Inv',
+          },
+        },
+      }) as AiModel;
+    })();
+    modelPromise.catch(() => {
+      aiModelCache.delete(userName);
+    });
+    aiModelCache.set(userName, modelPromise);
+  }
+
+  return modelPromise;
+};
+
+const getAiModel = async (userName = 'root') => {
+  try {
+    return await createAiModel(userName);
+  } catch (error) {
+    aiModelCache.delete(userName);
+    userSettingsCache.delete(userName);
+    throw error;
+  }
+};
+
+export const resetAiRuntimeCache = () => {
+  aiModelCache.clear();
+  userSettingsCache.clear();
+};
+
+export const ensureAiStrategyPluginsLoaded = async () => {
+  await ensureStrategyPluginsLoaded();
 };
 
 export const buildAiPrompts = (signal: Signal): AiPromptPair => {
@@ -264,9 +331,13 @@ export const runAiPrompt = async (
   { systemPrompt, humanPrompt }: AiPromptPair,
   options: AiRequestOptions = {},
 ): Promise<Partial<SignalAnalysis>> => {
+  if (options.signal) {
+    await ensureAiStrategyPluginsLoaded();
+  }
+
   const [{ HumanMessage, SystemMessage }, model] = await Promise.all([
     import('@langchain/core/messages'),
-    createAiModel(options.userName),
+    getAiModel(options.userName),
   ]);
   const messages: BaseMessageLike[] = [];
 
@@ -286,12 +357,34 @@ export const runAiPrompt = async (
   const parsed = parseAIResponse(
     normalizeResponseContent(response.content),
   ) as any;
-  return normalizeAnalysis(parsed);
+  const normalized = normalizeAnalysis(parsed);
+
+  if (!options.signal) {
+    return normalized;
+  }
+
+  return postProcessAiAnalysisByStrategy(
+    options.signal,
+    normalized,
+    options.payload,
+  );
 };
 
 export const askAI = async (signal: Signal, options: AiRequestOptions = {}) => {
   const { symbol } = signal;
-  const content = await runAiPrompt(buildAiPrompts(signal), options);
+  await ensureAiStrategyPluginsLoaded();
+  const payload = buildAiPayload(signal);
+  const content = await runAiPrompt(
+    {
+      systemPrompt: buildAiSystemPrompt(signal),
+      humanPrompt: buildAiHumanPrompt(signal, payload),
+    },
+    {
+      ...options,
+      signal,
+      payload,
+    },
+  );
   await setData(redisKeys.analysis(symbol, signal.signalId), content);
 
   return content;

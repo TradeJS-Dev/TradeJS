@@ -148,6 +148,7 @@ export const readAiDatasetRows = async (params: {
 }) => {
   const { filePath, limitFromEnd = 0 } = params;
   const rows: AiDatasetRow[] = [];
+  const recentLines: string[] = [];
   let totalRows = 0;
   const reader = readline.createInterface({
     input: createReadStream(filePath, { encoding: 'utf8' }),
@@ -161,16 +162,22 @@ export const readAiDatasetRows = async (params: {
     }
 
     totalRows += 1;
-    const row = JSON.parse(trimmed) as AiDatasetRow;
     if (limitFromEnd > 0) {
-      if (rows.length === limitFromEnd) {
-        rows.shift();
+      if (recentLines.length === limitFromEnd) {
+        recentLines.shift();
       }
-      rows.push(row);
+      recentLines.push(trimmed);
     } else {
+      const row = JSON.parse(trimmed) as AiDatasetRow;
       rows.push(row);
     }
   }
 
-  return { rows, totalRows };
+  return {
+    rows:
+      limitFromEnd > 0
+        ? recentLines.map((line) => JSON.parse(line) as AiDatasetRow)
+        : rows,
+    totalRows,
+  };
 };

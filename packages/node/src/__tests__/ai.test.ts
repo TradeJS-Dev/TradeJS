@@ -63,6 +63,7 @@ const {
   buildAiHumanPrompt,
   buildAiPayload,
   buildAiSystemPrompt,
+  resetAiRuntimeCache,
   runAiPrompt,
   trimSeriesDeep,
 } = require('../ai');
@@ -135,12 +136,41 @@ const makeSignal = () =>
     },
   }) as any;
 
+const makeBlockedTrendlineSignal = () => {
+  const signal = makeSignal();
+  signal.direction = 'SHORT';
+  signal.prices.currentPrice = 100;
+  signal.prices.takeProfitPrice = 96;
+  signal.prices.stopLossPrice = 102;
+  signal.figures.trendLine = {
+    ...signal.figures.trendLine,
+    mode: 'lows',
+    points: [
+      { timestamp: 1, value: 99.5 },
+      { timestamp: 2, value: 100.05 },
+    ],
+  };
+  signal.indicators = {
+    ...signal.indicators,
+    maFast: [3, 4, 5],
+    maSlow: [1, 2, 3],
+    btcMaFast: [101, 102, 103],
+    btcMaSlow: [100, 101, 102],
+  };
+  signal.additionalIndicators = {
+    touches: 4,
+    distance: 12,
+  };
+  return signal;
+};
+
 describe('ai helpers', () => {
   const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
   const logSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
 
   beforeEach(() => {
     jest.clearAllMocks();
+    resetAiRuntimeCache();
     resetStrategyRegistryCache();
     registerStrategyEntries(strategyEntries);
     invokeMock.mockReset();
@@ -256,6 +286,7 @@ describe('ai helpers', () => {
       expect(prompt).toContain(
         'не пиши технический шаблон вроде "needRetest=false @ null"',
       );
+      expect(prompt).toContain('payload.additionalIndicators');
       expect(prompt).toContain('Короткие примеры (few-shot');
       expect(prompt).toContain('Не добавляй другие поля');
       expect(prompt).not.toContain('runtime-нейминг');
@@ -265,7 +296,8 @@ describe('ai helpers', () => {
       const prompt = buildAiSystemPrompt(makeSignal());
 
       expect(prompt).toContain('Дополнение для trendline-сетапов');
-      expect(prompt).toContain('figures.trendline');
+      expect(prompt).toContain('payload.figures.trendline');
+      expect(prompt).toContain('trendlineContext');
     });
 
     it('human prompt embeds serialized payload and concise task', () => {
@@ -278,6 +310,7 @@ describe('ai helpers', () => {
       expect(prompt).toContain('без предложения противоположного направления');
       expect(prompt).toContain('"symbol":"ETHUSDT"');
       expect(prompt).toContain('"trendline"');
+      expect(prompt).toContain('trendline.currentLinePrice=');
       expect(prompt).toContain('"maFast":[3,4,5,6,7]');
       expect(prompt).not.toContain('"riskRatio"');
     });
@@ -287,6 +320,46 @@ describe('ai helpers', () => {
 
       expect(prompts.systemPrompt).toContain('Ты — помощник крипто-трейдера');
       expect(prompts.humanPrompt).toContain('Проанализируй сделку по ETHUSDT');
+    });
+
+    it('falls back to additionalIndicators trendLine when figures.trendLine is missing', () => {
+      const signal = makeSignal();
+      const additionalTrendLine = {
+        id: 'tl-ai',
+        mode: 'lows',
+        distance: 42,
+        points: [
+          { timestamp: 1, value: 99 },
+          { timestamp: 2, value: 101 },
+        ],
+        touches: [{ timestamp: 1.5, value: 100 }],
+        alpha: [0.99, 1.01],
+      };
+      signal.figures = {};
+      signal.additionalIndicators = {
+        touches: 3,
+        distance: 42,
+        trendLine: additionalTrendLine,
+      };
+
+      const payload = buildAiPayload(signal);
+      const prompt = buildAiHumanPrompt(signal, payload);
+
+      expect(payload.figures.trendline).toEqual(additionalTrendLine);
+      expect(payload.additionalIndicators).toEqual(
+        expect.objectContaining({
+          trendlineContext: expect.objectContaining({
+            mode: 'lows',
+            touches: 3,
+            distance: 42,
+            currentLinePrice: 101,
+            currentPrice: 100,
+            priceVsLineSide: 'below',
+          }),
+        }),
+      );
+      expect(prompt).toContain('trendline.priceVsLineSide=below');
+      expect(prompt).toContain('trendline.distance=42');
     });
   });
 
@@ -322,6 +395,74 @@ describe('ai helpers', () => {
           comment: 'ok',
         }),
       );
+    });
+
+    it('applies TrendLine guardrail when signal context is provided', async () => {
+      invokeMock.mockResolvedValue({
+        content: {
+          direction: 'SHORT',
+          quality: 5,
+          needRetest: false,
+          retestPrice: null,
+          takeProfitPrice: 96,
+          stopLossPrice: 102,
+          setup: 'Пробой вниз',
+          retestPlan: 'Можно входить сразу',
+          qualityReason: 'Сетап сильный',
+          triggerInvalidation: 'Отмена при возврате выше',
+          comment: 'ok',
+        },
+      });
+
+      const result = await runAiPrompt(
+        {
+          systemPrompt: 'system',
+          humanPrompt: 'human',
+        },
+        {
+          signal: makeBlockedTrendlineSignal(),
+        },
+      );
+
+      expect(result).toEqual(
+        expect.objectContaining({
+          direction: null,
+          quality: 3,
+          needRetest: true,
+          retestPrice: 100.05,
+          takeProfitPrice: null,
+          stopLossPrice: null,
+        }),
+      );
+      expect(result.qualityReason).toContain('TrendLine guardrail');
+      expect(result.comment).toContain('TrendLine guardrail');
+    });
+
+    it('reuses cached settings and model for repeated prompt calls', async () => {
+      invokeMock.mockResolvedValue({
+        content: {
+          direction: 'LONG',
+          quality: 4,
+          needRetest: false,
+          retestPrice: null,
+          takeProfitPrice: 101.5,
+          stopLossPrice: 98.2,
+          comment: 'ok',
+        },
+      });
+
+      await runAiPrompt({
+        systemPrompt: 'system-1',
+        humanPrompt: 'human-1',
+      });
+      await runAiPrompt({
+        systemPrompt: 'system-2',
+        humanPrompt: 'human-2',
+      });
+
+      expect(getUserSettingsMock).toHaveBeenCalledTimes(1);
+      expect(chatOpenAICtorMock).toHaveBeenCalledTimes(1);
+      expect(invokeMock).toHaveBeenCalledTimes(2);
     });
 
     it('normalizes object content and persists analysis to redis', async () => {

@@ -7,7 +7,7 @@ import {
   StrategyRuntimeMlOptions,
 } from './strategy';
 import { StrategyConfig } from './backtest';
-import { Connector, KlineChartItem, Signal } from './trade';
+import { Connector, KlineChartItem, Signal, SignalAnalysis } from './trade';
 
 export interface AiPayload {
   signal: {
@@ -33,6 +33,11 @@ export interface StrategyAiAdapter {
     signal: Signal;
     basePayload: AiPayload;
   }) => AiPayload;
+  postProcessAnalysis?: (params: {
+    signal: Signal;
+    payload: AiPayload;
+    analysis: Partial<SignalAnalysis>;
+  }) => Partial<SignalAnalysis>;
   buildSystemPromptAddon?: (params: { signal: Signal }) => string;
   buildHumanPromptAddon?: (params: {
     signal: Signal;
