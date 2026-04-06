@@ -42,8 +42,14 @@ This monorepo no longer carries the source code for those public web surfaces.
 
 Local checkouts for those repos in this environment:
 
-- `TradeJS-Site`: `/Users/aleksnick/dev/open-source/tradejs-site`
-- `TradeJS-Docs`: `/Users/aleksnick/dev/open-source/tradejs-docs`
+- `TradeJS`: `~/dev/investing`
+- `TradeJS-Site`: `~/dev/tradejs-site`
+- `TradeJS-Docs`: `~/dev/tradejs-docs`
+
+Local clone policy for `TradeJS-Dev` repositories:
+
+- keep local clones under `~/dev/...`
+- do not clone or stage working copies under `/tmp`
 
 ## Audience Rules For Documentation
 

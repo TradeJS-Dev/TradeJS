@@ -424,7 +424,7 @@ const backtest = async () => {
         results = sortBestTests(results, flags.top);
 
         const {
-          test: { symbol, name },
+          test: { symbol },
           stat: { profit },
         } = results[0];
 
