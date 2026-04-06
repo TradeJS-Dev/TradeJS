@@ -11,6 +11,7 @@ import {
   normalizeDerivativesIntervals,
 } from '@tradejs/core/indicators';
 import { delay } from '@tradejs/core/async';
+import { getUserSettings } from '@tradejs/infra/userSettings';
 import { getTickers } from '@tradejs/node/cli';
 import { upsertDerivatives, waitForDbReady } from '@tradejs/infra/timescale';
 import type { DerivativesInterval } from '@tradejs/types';
@@ -48,7 +49,7 @@ args.example(
   'Fetch derivatives for all getTickers symbols matched to Coinalyze markets',
 );
 
-args.option(['U', 'user'], 'Bybit user config name from Redis', 'root');
+args.option(['U', 'user'], 'User settings profile name from Redis', 'root');
 args.option(['t', 'tickers'], 'Comma-separated include symbols');
 args.option(['e', 'exclude'], 'Comma-separated exclude symbols');
 args.option(['l', 'tickersLimit'], 'Tickers limit');
@@ -91,17 +92,12 @@ const parseList = (value: unknown) =>
     .map((item) => item.trim().toUpperCase())
     .filter(Boolean);
 
-const apiKey = process.env.COINALYZE_API_KEY?.trim();
-if (!apiKey) {
-  throw new Error('Missing COINALYZE_API_KEY');
-}
-
 const coinalyzeBaseUrl =
   process.env.COINALYZE_BASE_URL?.trim() || 'https://api.coinalyze.net/v1';
 const coinalyzeMaxRetries = asInt(process.env.COINALYZE_MAX_RETRIES, 4);
 let lastRequestTs = 0;
 
-const fetchJsonWithRateLimit = async (url: string) => {
+const fetchJsonWithRateLimit = async (url: string, apiKey: string) => {
   const requestDelayMs = Math.max(100, asInt(flags.requestDelayMs, 200));
   const requestTimeoutMs = Math.max(
     5_000,
@@ -167,9 +163,12 @@ const fetchJsonWithRateLimit = async (url: string) => {
   throw new Error('Coinalyze request failed after retries');
 };
 
-const fetchCoinalyzeMarkets = async (): Promise<CoinalyzeMarket[]> => {
+const fetchCoinalyzeMarkets = async (
+  apiKey: string,
+): Promise<CoinalyzeMarket[]> => {
   const raw = await fetchJsonWithRateLimit(
     `${coinalyzeBaseUrl}/future-markets`,
+    apiKey,
   );
   return Array.isArray(raw) ? (raw as CoinalyzeMarket[]) : [];
 };
@@ -291,11 +290,13 @@ const fetchMetricBatch = async (params: {
   endpoint: string;
   metric: CoinalyzeMetric;
   marketSymbols: string[];
+  apiKey: string;
   interval: DerivativesInterval;
   fromMs: number;
   toMs: number;
 }) => {
-  const { endpoint, metric, marketSymbols, interval, fromMs, toMs } = params;
+  const { endpoint, metric, marketSymbols, apiKey, interval, fromMs, toMs } =
+    params;
 
   const url = new URL(`${coinalyzeBaseUrl}${endpoint}`);
   url.searchParams.set('symbols', marketSymbols.join(','));
@@ -303,11 +304,12 @@ const fetchMetricBatch = async (params: {
   url.searchParams.set('from', String(Math.floor(fromMs / 1000)));
   url.searchParams.set('to', String(Math.floor(toMs / 1000)));
 
-  const raw = await fetchJsonWithRateLimit(url.toString());
+  const raw = await fetchJsonWithRateLimit(url.toString(), apiKey);
   return toSeriesMap(raw, metric);
 };
 
 const run = async () => {
+  const userName = String(flags.user || 'root').trim() || 'root';
   const intervals = normalizeDerivativesIntervals(
     flags.intervals,
   ) as DerivativesInterval[];
@@ -322,9 +324,17 @@ const run = async () => {
 
   if (!intervals.length) throw new Error('No intervals provided');
 
+  const settings = await getUserSettings(userName);
+  const coinalyzeApiKey = settings.COINALYZE_API_KEY.trim();
+  if (!coinalyzeApiKey) {
+    throw new Error(
+      `Missing COINALYZE_API_KEY in user settings for user ${userName}`,
+    );
+  }
+
   const connectorFactory = connectors[ConnectorNames.ByBit] as ConnectorCreator;
   const bybit = await connectorFactory({
-    userName: String(flags.user || 'root'),
+    userName,
   });
   const tickers = await getTickers(
     bybit,
@@ -337,7 +347,7 @@ const run = async () => {
     throw new Error('No tickers loaded via getTickers');
   }
 
-  const markets = await fetchCoinalyzeMarkets();
+  const markets = await fetchCoinalyzeMarkets(coinalyzeApiKey);
   if (!markets.length) {
     throw new Error('No markets returned by Coinalyze /future-markets');
   }
@@ -420,6 +430,7 @@ const run = async () => {
             endpoint: oiPath,
             metric: 'oi',
             marketSymbols,
+            apiKey: coinalyzeApiKey,
             interval,
             fromMs: cursor,
             toMs,
@@ -428,6 +439,7 @@ const run = async () => {
             endpoint: fundingPath,
             metric: 'funding',
             marketSymbols,
+            apiKey: coinalyzeApiKey,
             interval,
             fromMs: cursor,
             toMs,
@@ -436,6 +448,7 @@ const run = async () => {
             endpoint: liqPath,
             metric: 'liq',
             marketSymbols,
+            apiKey: coinalyzeApiKey,
             interval,
             fromMs: cursor,
             toMs,

@@ -5,6 +5,7 @@ describe('signals', () => {
     BYBIT_API_KEY: '',
     BYBIT_API_SECRET: '',
     token: '',
+    COINALYZE_API_KEY: '',
     OPENAI_API_KEY: 'openai-key',
     OPENAI_API_ENDPOINT: 'https://api.openai.com/v1',
     TG_BOT_TOKEN: 'tg-token',

@@ -10,6 +10,7 @@ import {
   upsertSpreadRows,
   waitForDbReady,
 } from '@tradejs/infra/timescale';
+import { getUserSettings } from '@tradejs/infra/userSettings';
 import type { DerivativesInterval } from '@tradejs/types';
 import {
   marketDataProviders,
@@ -29,6 +30,7 @@ args.option(
   'Provider name: coinalyze | binance_coinbase_spread',
   'coinalyze',
 );
+args.option(['U', 'user'], 'User settings profile name from Redis', 'root');
 args.option(['b', 'batchDays'], 'Request chunk size in days', 7);
 
 const flags = args.parse(process.argv);
@@ -53,6 +55,11 @@ const run = async () => {
   );
   const days = asInt(flags.days, 120);
   const batchDays = asInt(flags.batchDays, 7);
+  const userName = String(flags.user || 'root').trim() || 'root';
+  const coinalyzeApiKey =
+    providerName === 'coinalyze'
+      ? (await getUserSettings(userName)).COINALYZE_API_KEY
+      : undefined;
 
   if (!symbols.length) throw new Error('No symbols provided');
   if (!intervals.length) throw new Error('No intervals provided');
@@ -76,6 +83,7 @@ const run = async () => {
 
         const window = await provider.fetchWindow({
           symbol,
+          apiKey: coinalyzeApiKey,
           interval,
           fromMs: cursor,
           toMs,

@@ -9,6 +9,7 @@ export type MarketDataProviderName = 'coinalyze' | 'binance_coinbase_spread';
 export type ProviderWindowParams = {
   symbol: string;
   marketSymbol?: string;
+  apiKey?: string;
   interval: DerivativesInterval;
   fromMs: number;
   toMs: number;

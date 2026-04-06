@@ -73,17 +73,14 @@ const fetchCoinalyzeSeries = async (params: {
   endpoint: string;
   metric: CoinalyzeMetric;
   symbol: string;
+  apiKey: string;
   interval: DerivativesInterval;
   fromMs: number;
   toMs: number;
 }) => {
-  const { endpoint, metric, symbol, interval, fromMs, toMs } = params;
+  const { endpoint, metric, symbol, apiKey, interval, fromMs, toMs } = params;
   const baseUrl =
     process.env.COINALYZE_BASE_URL?.trim() || 'https://api.coinalyze.net/v1';
-  const apiKey = process.env.COINALYZE_API_KEY?.trim();
-  if (!apiKey) {
-    throw new Error('Missing COINALYZE_API_KEY');
-  }
   const url = new URL(`${baseUrl}${endpoint}`);
   url.searchParams.set('symbols', symbol);
   url.searchParams.set('interval', coinalyzeIntervalMap[interval] || interval);
@@ -131,7 +128,18 @@ const fetchCoinalyzeSeries = async (params: {
 
 export const coinalyzeProvider: MarketDataProvider = {
   name: 'coinalyze',
-  fetchWindow: async ({ symbol, marketSymbol, interval, fromMs, toMs }) => {
+  fetchWindow: async ({
+    symbol,
+    marketSymbol,
+    apiKey,
+    interval,
+    fromMs,
+    toMs,
+  }) => {
+    if (!apiKey?.trim()) {
+      throw new Error('Missing COINALYZE_API_KEY in user settings');
+    }
+
     const oiPath =
       process.env.COINALYZE_OI_PATH?.trim() || '/open-interest-history';
     const fundingPath =
@@ -139,11 +147,13 @@ export const coinalyzeProvider: MarketDataProvider = {
     const liqPath =
       process.env.COINALYZE_LIQ_PATH?.trim() || '/liquidation-history';
     const requestSymbol = (marketSymbol || symbol).trim().toUpperCase();
+    const normalizedApiKey = apiKey.trim();
 
     const oiRaw = await fetchCoinalyzeSeries({
       endpoint: oiPath,
       metric: 'oi',
       symbol: requestSymbol,
+      apiKey: normalizedApiKey,
       interval,
       fromMs,
       toMs,
@@ -152,6 +162,7 @@ export const coinalyzeProvider: MarketDataProvider = {
       endpoint: fundingPath,
       metric: 'funding',
       symbol: requestSymbol,
+      apiKey: normalizedApiKey,
       interval,
       fromMs,
       toMs,
@@ -160,6 +171,7 @@ export const coinalyzeProvider: MarketDataProvider = {
       endpoint: liqPath,
       metric: 'liq',
       symbol: requestSymbol,
+      apiKey: normalizedApiKey,
       interval,
       fromMs,
       toMs,

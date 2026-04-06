@@ -25,6 +25,12 @@ type UpdateBody =
       };
     }
   | {
+      section: 'coinalyze';
+      data?: {
+        apiKey?: string;
+      };
+    }
+  | {
       section: 'openai';
       data?: {
         apiKey?: string;
@@ -75,6 +81,9 @@ const toResponse = (settings: UserSettings) => ({
       apiSecret: maskSecret(settings.BYBIT_API_SECRET),
     },
     token: maskSecret(settings.token),
+    coinalyze: {
+      apiKey: maskSecret(settings.COINALYZE_API_KEY),
+    },
     openai: {
       apiKey: maskSecret(settings.OPENAI_API_KEY),
       apiEndpoint: settings.OPENAI_API_ENDPOINT,
@@ -156,6 +165,14 @@ export const PATCH = async (request: Request) => {
 
     if (token) {
       await updateUserRecord(userName, { token });
+    }
+  }
+
+  if (body.section === 'coinalyze') {
+    const apiKey = cleanOptionalText(body.data?.apiKey);
+
+    if (apiKey) {
+      await updateUserRecord(userName, { COINALYZE_API_KEY: apiKey });
     }
   }
 
