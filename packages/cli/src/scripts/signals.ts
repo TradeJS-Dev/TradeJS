@@ -354,12 +354,12 @@ const signals = async () => {
     });
 
     if (!flags.skipScreenshots) {
-      await makeScreenshots(signals, '15');
-      await makeScreenshots(signals, '60');
+      await makeScreenshots(signals, '15', flags.user);
+      await makeScreenshots(signals, '60', flags.user);
     }
 
     if (flags.notify) {
-      await sendToTG(signals, '15');
+      await sendToTG(signals, '15', flags.user);
     }
 
     logger.info(

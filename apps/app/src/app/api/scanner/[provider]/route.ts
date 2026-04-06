@@ -3,6 +3,7 @@ import { ConnectorCreator } from '@tradejs/types';
 import { getConnectorCreatorByProvider } from '@tradejs/node/connectors';
 import { getTopTickers } from '@tradejs/core/tickers';
 import { logger } from '@tradejs/infra/logger';
+import { getCurrentUserName } from '@app/lib/currentUser';
 
 export const dynamic = 'force-dynamic';
 const projectRoot =
@@ -17,6 +18,11 @@ export const GET = async (
   { params }: { params: Promise<Params> },
 ) => {
   try {
+    const userName = await getCurrentUserName();
+    if (!userName) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     const { provider } = await params;
     const connectorCreator =
       (await getConnectorCreatorByProvider(provider, projectRoot)) ||
@@ -26,7 +32,7 @@ export const GET = async (
     }
 
     const connector = await (connectorCreator as ConnectorCreator)({
-      userName: 'root',
+      userName,
     });
 
     const data = await connector.getTickers();

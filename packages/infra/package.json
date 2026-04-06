@@ -54,6 +54,11 @@
       "import": "./dist/redis.mjs",
       "require": "./dist/redis.js"
     },
+    "./userSettings": {
+      "types": "./dist/userSettings.d.ts",
+      "import": "./dist/userSettings.mjs",
+      "require": "./dist/userSettings.js"
+    },
     "./timescale": {
       "types": "./dist/timescale.d.ts",
       "import": "./dist/timescale.mjs",

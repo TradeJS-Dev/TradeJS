@@ -89,7 +89,7 @@ Pine strategies are stored as normal strategy modules and keep Pine source in a 
 
 - `packages/strategies/src/<Strategy>/<strategy>.pine`
 
-`createStrategyRuntime` provides `loadPineScript(...)` to strategy core via `CreateStrategyCore` params.
+`createStrategyRuntime` provides `loadPineScriptFile(...)` to strategy core via `CreateStrategyCore` params.
 
 ### Indicator Architecture
 

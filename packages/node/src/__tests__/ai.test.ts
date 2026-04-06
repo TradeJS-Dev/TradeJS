@@ -1,6 +1,16 @@
 const invokeMock = jest.fn();
 const chatOpenAICtorMock = jest.fn();
 const setDataMock = jest.fn();
+const getUserSettingsMock = jest.fn(async (userName = 'root') => ({
+  userName,
+  BYBIT_API_KEY: '',
+  BYBIT_API_SECRET: '',
+  token: '',
+  OPENAI_API_KEY: 'key_123',
+  OPENAI_API_ENDPOINT: 'https://api.openai.com/v1',
+  TG_BOT_TOKEN: 'tg-token',
+  TG_CHAT_ID: 'tg-chat-id',
+}));
 const analysisKeyMock = jest.fn((symbol: string, signalId: string) => {
   return `analysis:${symbol}:${signalId}`;
 });
@@ -39,6 +49,10 @@ jest.mock('@tradejs/infra/redis', () => ({
   redisKeys: {
     analysis: (...args: [string, string]) => analysisKeyMock(...args),
   },
+}));
+
+jest.mock('@tradejs/infra/userSettings', () => ({
+  getUserSettings: (...args: unknown[]) => getUserSettingsMock(...args),
 }));
 
 const {
@@ -130,6 +144,7 @@ describe('ai helpers', () => {
     registerStrategyEntries(strategyEntries);
     invokeMock.mockReset();
     chatOpenAICtorMock.mockReset();
+    getUserSettingsMock.mockClear();
     setDataMock.mockReset();
     analysisKeyMock.mockClear();
     setDataMock.mockResolvedValue(undefined);
@@ -276,8 +291,6 @@ describe('ai helpers', () => {
 
   describe('askAI', () => {
     it('replays explicit prompts via runAiPrompt', async () => {
-      process.env.OPENAI_API_KEY = 'key_123';
-
       invokeMock.mockResolvedValue({
         content: {
           direction: 'LONG',
@@ -311,8 +324,16 @@ describe('ai helpers', () => {
     });
 
     it('normalizes object content and persists analysis to redis', async () => {
-      process.env.OPENAI_API_KEY = 'key_123';
-      process.env.OPENAI_API_ENDPOINT = 'https://openrouter.example/v1';
+      getUserSettingsMock.mockResolvedValueOnce({
+        userName: 'root',
+        BYBIT_API_KEY: '',
+        BYBIT_API_SECRET: '',
+        token: '',
+        OPENAI_API_KEY: 'key_123',
+        OPENAI_API_ENDPOINT: 'https://openrouter.example/v1',
+        TG_BOT_TOKEN: 'tg-token',
+        TG_CHAT_ID: 'tg-chat-id',
+      });
 
       invokeMock.mockResolvedValue({
         content: {

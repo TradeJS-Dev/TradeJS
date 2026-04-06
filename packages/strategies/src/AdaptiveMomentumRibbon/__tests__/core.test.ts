@@ -183,7 +183,7 @@ describe('createAdaptiveMomentumRibbonCore', () => {
       connector: {} as any,
       data: candles.slice(0, -1),
       btcData: candles.slice(0, -1),
-      loadPineScript: jest.fn(() => loadScript),
+      loadPineScriptFile: jest.fn(() => loadScript),
       strategyApi,
       indicatorsState: makeIndicatorsState(),
     });
@@ -224,7 +224,7 @@ describe('createAdaptiveMomentumRibbonCore', () => {
       connector: {} as any,
       data: candles.slice(0, -1),
       btcData: candles.slice(0, -1),
-      loadPineScript: jest.fn(() => 'mock-pine-script'),
+      loadPineScriptFile: jest.fn(() => 'mock-pine-script'),
       strategyApi: makeStrategyApi(marketData),
       indicatorsState: makeIndicatorsState(),
     });
@@ -280,7 +280,7 @@ describe('createAdaptiveMomentumRibbonCore', () => {
       connector: {} as any,
       data: candles.slice(0, -1),
       btcData: candles.slice(0, -1),
-      loadPineScript: jest.fn(() => 'mock-pine-script'),
+      loadPineScriptFile: jest.fn(() => 'mock-pine-script'),
       strategyApi: makeStrategyApi(marketData, {
         direction: 'LONG',
         qty: 1,
@@ -337,7 +337,7 @@ describe('createAdaptiveMomentumRibbonCore', () => {
       connector: {} as any,
       data: candles.slice(0, -1),
       btcData: candles.slice(0, -1),
-      loadPineScript: jest.fn(() => 'mock-pine-script'),
+      loadPineScriptFile: jest.fn(() => 'mock-pine-script'),
       strategyApi: makeStrategyApi(marketData, {
         direction: 'LONG',
         qty: 1,
@@ -394,7 +394,7 @@ describe('createAdaptiveMomentumRibbonCore', () => {
       connector: {} as any,
       data: candles.slice(0, -1),
       btcData: candles.slice(0, -1),
-      loadPineScript: jest.fn(() => 'mock-pine-script'),
+      loadPineScriptFile: jest.fn(() => 'mock-pine-script'),
       strategyApi: makeStrategyApi(marketData),
       indicatorsState: makeIndicatorsState(),
     });

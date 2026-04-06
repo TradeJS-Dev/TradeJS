@@ -105,13 +105,9 @@ jobs:
           echo "
           PORT=3000
           NODE_ENV=production
-          OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}
-          OPENAI_API_ENDPOINT=${{ secrets.OPENAI_API_ENDPOINT }}
           APP_URL=https://app.tradejs.dev
           NEXTAUTH_SECRET=${{ secrets.NEXTAUTH_SECRET }}
           NEXTAUTH_URL=https://app.tradejs.dev
-          TG_BOT_TOKEN=${{ secrets.TG_BOT_TOKEN }}
-          TG_CHAT_ID=207660648
           PUPPETEER_SKIP_DOWNLOAD=true
           PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
           REDIS_HOST=redis

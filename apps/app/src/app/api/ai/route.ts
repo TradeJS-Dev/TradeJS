@@ -15,6 +15,8 @@ import {
 } from '@tradejs/types';
 import { getFile, setFile } from '@tradejs/infra/files';
 import { logger } from '@tradejs/infra/logger';
+import { getUserSettings } from '@tradejs/infra/userSettings';
+import { getCurrentUserName } from '@app/lib/currentUser';
 
 export const dynamic = 'force-dynamic';
 
@@ -67,13 +69,18 @@ const buildMessages = (
   return messages;
 };
 
-const invokeChatModel = async (messages: BaseMessage[]) => {
+const invokeChatModel = async (messages: BaseMessage[], userName: string) => {
+  const settings = await getUserSettings(userName);
+  if (!settings.OPENAI_API_KEY || !settings.OPENAI_API_ENDPOINT) {
+    throw new Error(`AI settings are incomplete for user ${userName}`);
+  }
+
   const model = new ChatOpenAI({
     temperature: 0.7,
     modelName: 'gpt-4o',
-    openAIApiKey: process.env.OPENAI_API_KEY,
+    openAIApiKey: settings.OPENAI_API_KEY,
     configuration: {
-      baseURL: process.env.OPENAI_API_ENDPOINT || 'https://api.openai.com/v1',
+      baseURL: settings.OPENAI_API_ENDPOINT,
     },
   });
 
@@ -82,6 +89,11 @@ const invokeChatModel = async (messages: BaseMessage[]) => {
 
 export const GET = async (request: NextRequest) => {
   try {
+    const userName = await getCurrentUserName();
+    if (!userName) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     const symbol = request.nextUrl.searchParams.get('symbol');
 
     if (!symbol) {
@@ -104,6 +116,11 @@ export const GET = async (request: NextRequest) => {
 
 export const POST = async (request: NextRequest) => {
   try {
+    const userName = await getCurrentUserName();
+    if (!userName) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     const body = await request.json();
     const { message, filters } = body as {
       message?: AIChatMessage;
@@ -128,7 +145,7 @@ export const POST = async (request: NextRequest) => {
     }
 
     const byBitConnector = await (connectorCreator as ConnectorCreator)({
-      userName: 'root',
+      userName,
     });
 
     const data = await byBitConnector.kline({
@@ -138,7 +155,7 @@ export const POST = async (request: NextRequest) => {
 
     const chatMessages = buildMessages(filters, message, data.slice(-100));
 
-    const response = await invokeChatModel(chatMessages);
+    const response = await invokeChatModel(chatMessages, userName);
 
     const responseMessage: AIChatMessage = {
       from: 'ai',

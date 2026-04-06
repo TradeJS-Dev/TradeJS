@@ -2,6 +2,7 @@ import { Signal, Interval, SignalAnalysis } from '@tradejs/types';
 import { delay } from '@tradejs/core/async';
 import { formatNumber } from '@tradejs/core/math';
 import { logger } from '@tradejs/infra/logger';
+import { getUserSettings } from '@tradejs/infra/userSettings';
 import { getScreenshotBuffer, getScreenshotFilename } from './screenshot';
 
 const escapeHtml = (s?: string | null) => {
@@ -9,7 +10,7 @@ const escapeHtml = (s?: string | null) => {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 };
 
-const { APP_URL, TG_BOT_TOKEN: token, TG_CHAT_ID: chatId } = process.env;
+const { APP_URL } = process.env;
 const TG_REQUEST_ATTEMPTS = 3;
 const TG_REQUEST_RETRY_DELAY_MS = 2_000;
 
@@ -112,10 +113,27 @@ const parseTelegramResponse = async (response: Response) => {
   }
 };
 
-const requestTelegram = async (
-  method: 'sendMessage' | 'sendPhoto',
-  init: RequestInit,
-) => {
+const getTelegramSettings = async (userName = 'root') => {
+  const settings = await getUserSettings(userName);
+  const token = settings.TG_BOT_TOKEN;
+  const chatId = settings.TG_CHAT_ID;
+
+  if (!token || !chatId) {
+    throw new Error(`Telegram settings are incomplete for user ${userName}`);
+  }
+
+  return { token, chatId };
+};
+
+const requestTelegram = async ({
+  method,
+  token,
+  init,
+}: {
+  method: 'sendMessage' | 'sendPhoto';
+  token: string;
+  init: RequestInit;
+}) => {
   let lastError: Error | null = null;
 
   for (let attempt = 1; attempt <= TG_REQUEST_ATTEMPTS; attempt += 1) {
@@ -149,19 +167,27 @@ const requestTelegram = async (
 const sendTelegramMessage = async ({
   message,
   markup,
+  token,
+  chatId,
 }: {
   message: string;
   markup?: Record<string, unknown>;
+  token: string;
+  chatId: string;
 }) => {
-  const data = await requestTelegram('sendMessage', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      chat_id: chatId,
-      text: message,
-      reply_markup: markup,
-      parse_mode: 'HTML',
-    }),
+  const data = await requestTelegram({
+    method: 'sendMessage',
+    token,
+    init: {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: chatId,
+        text: message,
+        reply_markup: markup,
+        parse_mode: 'HTML',
+      }),
+    },
   });
   logger.info(
     'tg sendMessage: %s',
@@ -310,8 +336,12 @@ export const sendSignal = async (
   signal: Signal,
   imgInterval: Interval,
   analysis?: Partial<SignalAnalysis> | null,
+  options: {
+    userName?: string;
+  } = {},
 ) => {
   const { symbol, signalId, interval } = signal;
+  const { token, chatId } = await getTelegramSettings(options.userName);
 
   const message = formatMessage(signal, analysis);
 
@@ -345,7 +375,7 @@ export const sendSignal = async (
       symbol,
       (error as Error)?.message || String(error),
     );
-    await sendTelegramMessage({ message, markup });
+    await sendTelegramMessage({ message, markup, token, chatId });
     return;
   }
 
@@ -367,9 +397,13 @@ export const sendSignal = async (
   let data: any;
 
   try {
-    data = await requestTelegram('sendPhoto', {
-      method: 'POST',
-      body: photoBody,
+    data = await requestTelegram({
+      method: 'sendPhoto',
+      token,
+      init: {
+        method: 'POST',
+        body: photoBody,
+      },
     });
   } catch (error) {
     const reason = getErrorMessage(error);
@@ -377,6 +411,8 @@ export const sendSignal = async (
     await sendTelegramMessage({
       message: `${message}\n\n⚠️ <b>Photo delivery failed</b>\nReason: <code>${escapeHtml(reason)}</code>`,
       markup,
+      token,
+      chatId,
     });
     return;
   }
@@ -387,6 +423,8 @@ export const sendSignal = async (
     await sendTelegramMessage({
       message: `${message}\n\n⚠️ <b>Photo delivery failed</b>\nReason: <code>${escapeHtml(reason)}</code>`,
       markup,
+      token,
+      chatId,
     });
     return;
   }
@@ -452,17 +490,25 @@ export const formatAnalysisMessage = (
 export const sendSignalAnalysis = async (
   signal: Signal,
   analysis: Partial<SignalAnalysis>,
+  options: {
+    userName?: string;
+  } = {},
 ) => {
+  const { token, chatId } = await getTelegramSettings(options.userName);
   const message = formatAnalysisMessage(signal, analysis);
 
-  const data = await requestTelegram('sendMessage', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      chat_id: chatId,
-      text: message,
-      parse_mode: 'HTML',
-    }),
+  const data = await requestTelegram({
+    method: 'sendMessage',
+    token,
+    init: {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: chatId,
+        text: message,
+        parse_mode: 'HTML',
+      }),
+    },
   });
   logger.info(
     'tg sendMessage (analysis): %s',

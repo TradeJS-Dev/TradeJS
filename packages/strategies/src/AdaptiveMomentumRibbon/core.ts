@@ -1,7 +1,6 @@
 import {
-  asPineBoolean,
-  asFiniteNumber,
-  getLatestPinePlotValue,
+  getLatestPineBooleanPlotValues,
+  getLatestPineNumberPlotValues,
   runPineScript,
   type PineContextLike,
 } from '@tradejs/node/pine';
@@ -12,6 +11,20 @@ import { buildAdaptiveMomentumRibbonFigures } from './figures';
 import { type CreateStrategyCore } from '@tradejs/types';
 
 const AMR_PINE_FILE_NAME = 'adaptiveMomentumRibbon.pine';
+const AMR_BOOLEAN_PLOTS = [
+  'entryLong',
+  'entryShort',
+  'invalidated',
+  'activeBuy',
+  'activeSell',
+] as const;
+const AMR_NUMBER_PLOTS = [
+  'signalOsc',
+  'kcMidline',
+  'kcUpper',
+  'kcLower',
+  'invalidationLevel',
+] as const;
 
 const asKcMaType = (
   value: unknown,
@@ -53,55 +66,18 @@ const resolveLinePlots = (value: unknown): string[] => {
     .filter((item) => item.length > 0);
 };
 
-const getLookbackCandles = <TCandle>(
-  candles: TCandle[],
-  lookbackBars: number,
-) => {
-  if (lookbackBars <= 0) {
-    return candles;
-  }
-
-  return candles.slice(-lookbackBars);
-};
-
-const readBooleanPlot = (
-  pineContext: PineContextLike,
-  plotName: string,
-): boolean => asPineBoolean(getLatestPinePlotValue(pineContext, plotName));
-
-const readNumericPlot = (
-  pineContext: PineContextLike,
-  plotName: string,
-): number | null =>
-  asFiniteNumber(getLatestPinePlotValue(pineContext, plotName)) ?? null;
-
 const readAmrSnapshot = (pineContext: PineContextLike, linePlots: string[]) => {
-  const lineValues = Object.fromEntries(
-    linePlots.map((plotName) => [
-      plotName,
-      readNumericPlot(pineContext, plotName),
-    ]),
-  );
-
   return {
-    entryLong: readBooleanPlot(pineContext, 'entryLong'),
-    entryShort: readBooleanPlot(pineContext, 'entryShort'),
-    invalidated: readBooleanPlot(pineContext, 'invalidated'),
-    activeBuy: readBooleanPlot(pineContext, 'activeBuy'),
-    activeSell: readBooleanPlot(pineContext, 'activeSell'),
-    signalOsc: readNumericPlot(pineContext, 'signalOsc'),
-    kcMidline: readNumericPlot(pineContext, 'kcMidline'),
-    kcUpper: readNumericPlot(pineContext, 'kcUpper'),
-    kcLower: readNumericPlot(pineContext, 'kcLower'),
-    invalidationLevel: readNumericPlot(pineContext, 'invalidationLevel'),
-    lineValues,
+    ...getLatestPineBooleanPlotValues(pineContext, AMR_BOOLEAN_PLOTS),
+    ...getLatestPineNumberPlotValues(pineContext, AMR_NUMBER_PLOTS),
+    lineValues: getLatestPineNumberPlotValues(pineContext, linePlots),
   };
 };
 
 export const createAdaptiveMomentumRibbonCore: CreateStrategyCore<
   AdaptiveMomentumRibbonConfig
-> = async ({ config, symbol, loadPineScript, strategyApi }) => {
-  const script = loadPineScript(AMR_PINE_FILE_NAME);
+> = async ({ config, symbol, loadPineScriptFile, strategyApi }) => {
+  const script = loadPineScriptFile(AMR_PINE_FILE_NAME);
   const { LONG, SHORT, AMR_EXIT_ON_INVALIDATION } = config;
   const linePlots = resolveLinePlots(config.AMR_LINE_PLOTS);
   const lookbackBars = asPositiveInt(config.AMR_LOOKBACK_BARS, 0);
@@ -124,7 +100,7 @@ export const createAdaptiveMomentumRibbonCore: CreateStrategyCore<
       position && typeof position.qty === 'number' && position.qty > 0,
     );
 
-    const candles = getLookbackCandles(fullData, lookbackBars);
+    const candles = lookbackBars > 0 ? fullData.slice(-lookbackBars) : fullData;
 
     let pineContext;
     try {

@@ -12,6 +12,7 @@ import {
   Interval,
   ConnectorCreator,
 } from '@tradejs/types';
+import { getCurrentUserName } from '@app/lib/currentUser';
 
 export const dynamic = 'force-dynamic';
 const projectRoot =
@@ -67,6 +68,11 @@ export const POST = async (
   { params }: { params: Promise<Params> },
 ) => {
   try {
+    const userName = await getCurrentUserName();
+    if (!userName) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     const { provider, symbol, interval } = await params;
     const body = await request.json();
     const options = body as
@@ -87,7 +93,7 @@ export const POST = async (
       throw new Error('No connector available for provider');
     }
     const connector = await (connectorCreator as ConnectorCreator)({
-      userName: 'root',
+      userName,
     });
 
     const baseData = await connector.kline({

@@ -1,5 +1,6 @@
 import type { BaseMessageLike } from '@langchain/core/messages';
 import { setData, redisKeys } from '@tradejs/infra/redis';
+import { getUserSettings } from '@tradejs/infra/userSettings';
 import {
   buildAiHumanPromptAddonByStrategy,
   buildAiPayloadByStrategy,
@@ -225,15 +226,24 @@ ${JSON.stringify(payload)}
 ${buildAiHumanPromptAddonByStrategy(signal, payload)}
 `;
 
-const createAiModel = async () => {
+interface AiRequestOptions {
+  userName?: string;
+}
+
+const createAiModel = async (userName = 'root') => {
   const { ChatOpenAI } = await import('@langchain/openai');
+  const settings = await getUserSettings(userName);
+  if (!settings.OPENAI_API_KEY || !settings.OPENAI_API_ENDPOINT) {
+    throw new Error(`AI settings are incomplete for user ${userName}`);
+  }
+
   return new ChatOpenAI({
     temperature: 0.2,
     //modelName: 'anthropic/claude-sonnet-4.5',
     modelName: 'google/gemini-3.1-pro-preview',
-    openAIApiKey: process.env.OPENAI_API_KEY,
+    openAIApiKey: settings.OPENAI_API_KEY,
     configuration: {
-      baseURL: process.env.OPENAI_API_ENDPOINT || 'https://api.openai.com/v1',
+      baseURL: settings.OPENAI_API_ENDPOINT,
       defaultHeaders: {
         'HTTP-Referer': 'https://tradejs.dev',
         'X-Title': 'Inv',
@@ -250,13 +260,13 @@ export const buildAiPrompts = (signal: Signal): AiPromptPair => {
   };
 };
 
-export const runAiPrompt = async ({
-  systemPrompt,
-  humanPrompt,
-}: AiPromptPair): Promise<Partial<SignalAnalysis>> => {
+export const runAiPrompt = async (
+  { systemPrompt, humanPrompt }: AiPromptPair,
+  options: AiRequestOptions = {},
+): Promise<Partial<SignalAnalysis>> => {
   const [{ HumanMessage, SystemMessage }, model] = await Promise.all([
     import('@langchain/core/messages'),
-    createAiModel(),
+    createAiModel(options.userName),
   ]);
   const messages: BaseMessageLike[] = [];
 
@@ -279,9 +289,9 @@ export const runAiPrompt = async ({
   return normalizeAnalysis(parsed);
 };
 
-export const askAI = async (signal: Signal) => {
+export const askAI = async (signal: Signal, options: AiRequestOptions = {}) => {
   const { symbol } = signal;
-  const content = await runAiPrompt(buildAiPrompts(signal));
+  const content = await runAiPrompt(buildAiPrompts(signal), options);
   await setData(redisKeys.analysis(symbol, signal.signalId), content);
 
   return content;

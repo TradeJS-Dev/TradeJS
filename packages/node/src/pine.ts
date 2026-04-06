@@ -35,7 +35,7 @@ export const getPinePlotSeries = (
   return Array.isArray(data) ? data : [];
 };
 
-export const getLatestPinePlotValue = (
+export const getLatestPineRawPlotValue = (
   context: PineContextLike,
   plotName: string,
 ): unknown => {
@@ -44,14 +44,47 @@ export const getLatestPinePlotValue = (
   return series[series.length - 1]?.value;
 };
 
-export const asFiniteNumber = (value: unknown): number | undefined => {
+export const getLatestPineNumberPlotValue = (
+  context: PineContextLike,
+  plotName: string,
+): number | null =>
+  toFiniteNumber(getLatestPineRawPlotValue(context, plotName)) ?? null;
+
+export const getLatestPineBooleanPlotValue = (
+  context: PineContextLike,
+  plotName: string,
+): boolean => toPineBoolean(getLatestPineRawPlotValue(context, plotName));
+
+export const getLatestPineNumberPlotValues = <TPlotName extends string>(
+  context: PineContextLike,
+  plotNames: readonly TPlotName[],
+): Record<TPlotName, number | null> =>
+  Object.fromEntries(
+    plotNames.map((plotName) => [
+      plotName,
+      getLatestPineNumberPlotValue(context, plotName),
+    ]),
+  ) as Record<TPlotName, number | null>;
+
+export const getLatestPineBooleanPlotValues = <TPlotName extends string>(
+  context: PineContextLike,
+  plotNames: readonly TPlotName[],
+): Record<TPlotName, boolean> =>
+  Object.fromEntries(
+    plotNames.map((plotName) => [
+      plotName,
+      getLatestPineBooleanPlotValue(context, plotName),
+    ]),
+  ) as Record<TPlotName, boolean>;
+
+export const toFiniteNumber = (value: unknown): number | undefined => {
   if (typeof value !== 'number' || !Number.isFinite(value)) {
     return undefined;
   }
   return value;
 };
 
-export const asPineBoolean = (value: unknown): boolean => {
+export const toPineBoolean = (value: unknown): boolean => {
   if (typeof value === 'boolean') return value;
   if (typeof value === 'number') return Number.isFinite(value) && value !== 0;
   return false;
@@ -102,7 +135,7 @@ interface PineRuntimeCandle {
   closeTime: number;
 }
 
-export const loadPineScript = (filePath: string, fallback = ''): string => {
+export const loadPineScriptFile = (filePath: string, fallback = ''): string => {
   const resolvedPath = String(filePath || '').trim();
   if (!resolvedPath) {
     return fallback;
@@ -115,7 +148,7 @@ export const loadPineScript = (filePath: string, fallback = ''): string => {
   }
 };
 
-export const createLoadPineScript = (
+export const createPineScriptLoader = (
   baseDir: string,
 ): ((fileNameOrPath: string, fallback?: string) => string) => {
   const resolvedBaseDir = path.resolve(baseDir);
@@ -128,7 +161,7 @@ export const createLoadPineScript = (
     const resolvedPath = path.isAbsolute(rawPath)
       ? rawPath
       : path.resolve(resolvedBaseDir, rawPath);
-    return loadPineScript(resolvedPath, fallback);
+    return loadPineScriptFile(resolvedPath, fallback);
   };
 };
 

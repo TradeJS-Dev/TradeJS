@@ -4,13 +4,17 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {
-  asFiniteNumber,
-  asPineBoolean,
-  createLoadPineScript,
-  getLatestPinePlotValue,
+  createPineScriptLoader,
+  getLatestPineBooleanPlotValue,
+  getLatestPineBooleanPlotValues,
+  getLatestPineNumberPlotValue,
+  getLatestPineNumberPlotValues,
+  getLatestPineRawPlotValue,
   getPinePlotSeries,
-  loadPineScript,
+  loadPineScriptFile,
   runPineScript,
+  toFiniteNumber,
+  toPineBoolean,
 } from '@tradejs/node/pine';
 
 const makeCandles = (count = 120, startTimestamp = 1_700_000_000_000) =>
@@ -59,7 +63,9 @@ describe('pine utils', () => {
     expect(longSeries.length).toBeGreaterThan(0);
     expect(shortSeries.length).toBeGreaterThan(0);
 
-    const latestFast = asFiniteNumber(getLatestPinePlotValue(context, 'fast'));
+    const latestFast = toFiniteNumber(
+      getLatestPineRawPlotValue(context, 'fast'),
+    );
     expect(typeof latestFast).toBe('number');
     expect(Number.isFinite(latestFast)).toBe(true);
 
@@ -70,23 +76,23 @@ describe('pine utils', () => {
   });
 
   it('converts pine values to booleans', () => {
-    expect(asPineBoolean(true)).toBe(true);
-    expect(asPineBoolean(false)).toBe(false);
-    expect(asPineBoolean(1)).toBe(true);
-    expect(asPineBoolean(-2)).toBe(true);
-    expect(asPineBoolean(0)).toBe(false);
-    expect(asPineBoolean(NaN)).toBe(false);
-    expect(asPineBoolean(null)).toBe(false);
-    expect(asPineBoolean(undefined)).toBe(false);
-    expect(asPineBoolean('1')).toBe(false);
+    expect(toPineBoolean(true)).toBe(true);
+    expect(toPineBoolean(false)).toBe(false);
+    expect(toPineBoolean(1)).toBe(true);
+    expect(toPineBoolean(-2)).toBe(true);
+    expect(toPineBoolean(0)).toBe(false);
+    expect(toPineBoolean(NaN)).toBe(false);
+    expect(toPineBoolean(null)).toBe(false);
+    expect(toPineBoolean(undefined)).toBe(false);
+    expect(toPineBoolean('1')).toBe(false);
   });
 
   it('returns finite numbers only', () => {
-    expect(asFiniteNumber(10)).toBe(10);
-    expect(asFiniteNumber(-0.5)).toBe(-0.5);
-    expect(asFiniteNumber(Infinity)).toBeUndefined();
-    expect(asFiniteNumber(NaN)).toBeUndefined();
-    expect(asFiniteNumber('10')).toBeUndefined();
+    expect(toFiniteNumber(10)).toBe(10);
+    expect(toFiniteNumber(-0.5)).toBe(-0.5);
+    expect(toFiniteNumber(Infinity)).toBeUndefined();
+    expect(toFiniteNumber(NaN)).toBeUndefined();
+    expect(toFiniteNumber('10')).toBeUndefined();
   });
 
   it('returns empty plot series for invalid plot names or malformed data', () => {
@@ -99,7 +105,39 @@ describe('pine utils', () => {
         'fast',
       ),
     ).toEqual([]);
-    expect(getLatestPinePlotValue({}, 'fast')).toBeUndefined();
+    expect(getLatestPineRawPlotValue({}, 'fast')).toBeUndefined();
+  });
+
+  it('reads latest pine number and boolean plots via shared helpers', () => {
+    const context = {
+      plots: {
+        fast: { data: [{ time: 1, value: 101.5 }] },
+        slow: { data: [{ time: 1, value: 99.5 }] },
+        entryLong: { data: [{ time: 1, value: 1 }] },
+        entryShort: { data: [{ time: 1, value: 0 }] },
+        invalid: { data: [{ time: 1, value: 'oops' }] },
+      },
+    };
+
+    expect(getLatestPineNumberPlotValue(context, 'fast')).toBe(101.5);
+    expect(getLatestPineNumberPlotValue(context, 'invalid')).toBeNull();
+    expect(getLatestPineBooleanPlotValue(context, 'entryLong')).toBe(true);
+    expect(getLatestPineBooleanPlotValue(context, 'entryShort')).toBe(false);
+
+    expect(
+      getLatestPineNumberPlotValues(context, ['fast', 'slow', 'invalid']),
+    ).toEqual({
+      fast: 101.5,
+      slow: 99.5,
+      invalid: null,
+    });
+
+    expect(
+      getLatestPineBooleanPlotValues(context, ['entryLong', 'entryShort']),
+    ).toEqual({
+      entryLong: true,
+      entryShort: false,
+    });
   });
 
   it('loads pine scripts from files and handles fallbacks', () => {
@@ -107,13 +145,13 @@ describe('pine utils', () => {
     const filePath = path.join(tmpDir, 'sample.pine');
     fs.writeFileSync(filePath, '  plot(close)  \n', 'utf8');
 
-    expect(loadPineScript(filePath, 'fallback')).toBe('plot(close)');
-    expect(loadPineScript('', 'fallback')).toBe('fallback');
+    expect(loadPineScriptFile(filePath, 'fallback')).toBe('plot(close)');
+    expect(loadPineScriptFile('', 'fallback')).toBe('fallback');
     expect(
-      loadPineScript(path.join(tmpDir, 'missing-file.pine'), 'fallback'),
+      loadPineScriptFile(path.join(tmpDir, 'missing-file.pine'), 'fallback'),
     ).toBe('fallback');
 
-    const fromBaseDir = createLoadPineScript(tmpDir);
+    const fromBaseDir = createPineScriptLoader(tmpDir);
     expect(fromBaseDir('sample.pine', 'fallback')).toBe('plot(close)');
     expect(fromBaseDir(filePath, 'fallback')).toBe('plot(close)');
     expect(fromBaseDir('', 'fallback')).toBe('fallback');

@@ -4,7 +4,7 @@ import puppeteer from 'puppeteer';
 import { Signal } from '@tradejs/types';
 import { delay } from '@tradejs/core/async';
 import { logger } from '@tradejs/infra/logger';
-import { getData, redisKeys } from '@tradejs/infra/redis';
+import { getUserSettings } from '@tradejs/infra/userSettings';
 import { getTradejsProjectCwd } from './tradejsConfig';
 
 const { APP_URL } = process.env;
@@ -106,15 +106,16 @@ export const getScreenshotPath = (
   ) as `${string}.png`;
 };
 
-export const screenDashboard = async (signal: Signal, projectRoot?: string) => {
+export const screenDashboard = async (
+  signal: Signal,
+  projectRoot?: string,
+  userName = 'root',
+) => {
   const { symbol, signalId, interval } = signal;
   const screenshotBaseUrl = getScreenshotRenderBaseUrl();
   const screenshotPath = getScreenshotPath(signal, projectRoot);
-  const rootUser = await getData(redisKeys.user('root'), null);
-  const token =
-    rootUser && typeof rootUser === 'object'
-      ? (rootUser as Record<string, unknown>).token
-      : null;
+  const settings = await getUserSettings(userName);
+  const token = settings.token;
   const tokenParam =
     typeof token === 'string' && token.length > 0
       ? `&token=${encodeURIComponent(token)}`

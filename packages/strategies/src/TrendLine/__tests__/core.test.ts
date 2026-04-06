@@ -172,7 +172,7 @@ describe('createTrendLineCore', () => {
       connector,
       data: [],
       btcData: [],
-      loadPineScript: jest.fn(() => ''),
+      loadPineScriptFile: jest.fn(() => ''),
       strategyApi,
       indicatorsState: indicatorsState as any,
     });
@@ -250,7 +250,7 @@ describe('createTrendLineCore', () => {
       connector,
       data: [candle as any],
       btcData: [btcCandle as any],
-      loadPineScript: jest.fn(() => ''),
+      loadPineScriptFile: jest.fn(() => ''),
       strategyApi: makeStrategyApi(),
       indicatorsState: indicatorsState as any,
     });
@@ -295,7 +295,7 @@ describe('createTrendLineCore', () => {
       connector: {} as any,
       data: [candle as any],
       btcData: [candle as any],
-      loadPineScript: jest.fn(() => ''),
+      loadPineScriptFile: jest.fn(() => ''),
       strategyApi,
       indicatorsState: makeIndicatorsState() as any,
     });
@@ -325,7 +325,7 @@ describe('createTrendLineCore', () => {
       connector: {} as any,
       data: [candle as any],
       btcData: [candle as any],
-      loadPineScript: jest.fn(() => ''),
+      loadPineScriptFile: jest.fn(() => ''),
       strategyApi,
       indicatorsState: makeIndicatorsState() as any,
     });
@@ -355,7 +355,7 @@ describe('createTrendLineCore', () => {
       connector: {} as any,
       data: [candle as any],
       btcData: [candle as any],
-      loadPineScript: jest.fn(() => ''),
+      loadPineScriptFile: jest.fn(() => ''),
       strategyApi: makeStrategyApi(),
       indicatorsState: makeIndicatorsState() as any,
     });
@@ -389,7 +389,7 @@ describe('createTrendLineCore', () => {
       connector: {} as any,
       data: [candle as any],
       btcData: [candle as any],
-      loadPineScript: jest.fn(() => ''),
+      loadPineScriptFile: jest.fn(() => ''),
       strategyApi: makeStrategyApi(),
       indicatorsState: makeIndicatorsState() as any,
     });
@@ -424,7 +424,7 @@ describe('createTrendLineCore', () => {
       connector: {} as any,
       data: [candle as any],
       btcData: [candle as any],
-      loadPineScript: jest.fn(() => ''),
+      loadPineScriptFile: jest.fn(() => ''),
       strategyApi: makeStrategyApi(),
       indicatorsState: makeIndicatorsState() as any,
     });
@@ -464,7 +464,7 @@ describe('createTrendLineCore', () => {
       connector: {} as any,
       data: [candle as any],
       btcData: [candle as any],
-      loadPineScript: jest.fn(() => ''),
+      loadPineScriptFile: jest.fn(() => ''),
       strategyApi: makeStrategyApi(),
       indicatorsState: makeIndicatorsState() as any,
     });
@@ -505,7 +505,7 @@ describe('createTrendLineCore', () => {
       connector: {} as any,
       data: [candle as any],
       btcData: [candle as any],
-      loadPineScript: jest.fn(() => ''),
+      loadPineScriptFile: jest.fn(() => ''),
       strategyApi: makeStrategyApi(),
       indicatorsState,
     });

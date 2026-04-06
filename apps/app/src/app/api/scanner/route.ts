@@ -3,6 +3,7 @@ import { getTopTickers } from '@tradejs/core/tickers';
 import { getConnectorCreatorByProvider } from '@tradejs/node/connectors';
 import { logger } from '@tradejs/infra/logger';
 import { ConnectorCreator } from '@tradejs/types';
+import { getCurrentUserName } from '@app/lib/currentUser';
 
 export const dynamic = 'force-dynamic';
 const projectRoot =
@@ -10,6 +11,11 @@ const projectRoot =
 
 export const GET = async () => {
   try {
+    const userName = await getCurrentUserName();
+    if (!userName) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     const connectorCreator = await getConnectorCreatorByProvider(
       'bybit',
       projectRoot,
@@ -19,7 +25,7 @@ export const GET = async () => {
     }
 
     const byBitConnector = await (connectorCreator as ConnectorCreator)({
-      userName: 'root',
+      userName,
     });
 
     const data = await byBitConnector.getTickers();

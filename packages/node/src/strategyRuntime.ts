@@ -12,7 +12,7 @@ import {
   enrichSignalWithMl,
   executeEntryOrder,
 } from './strategyHelpers/runtime';
-import { createLoadPineScript } from './pine';
+import { createPineScriptLoader } from './pine';
 import { getStrategyManifest } from './strategy/manifests';
 import { getTradejsProjectCwd } from './tradejsConfig';
 import { resolveStrategyConfig } from './strategyHelpers/config';
@@ -523,7 +523,7 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
     return getStrategyManifest(name, projectRoot);
   };
 
-  const loadPineScript = createLoadPineScript(
+  const loadPineScriptFile = createPineScriptLoader(
     strategyDirectory
       ? path.resolve(strategyDirectory)
       : path.resolve(
@@ -677,7 +677,7 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
       connector,
       data,
       btcData,
-      loadPineScript,
+      loadPineScriptFile,
       strategyApi,
       indicatorsState,
     });
@@ -833,6 +833,7 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
         try {
           quality = await enrichSignalWithAi({
             signal,
+            userName,
             symbol,
             direction: signal.direction,
             env,

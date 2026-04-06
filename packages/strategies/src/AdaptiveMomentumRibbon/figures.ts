@@ -1,7 +1,7 @@
 import {
   PineContextLike,
-  asFiniteNumber,
   getPinePlotSeries,
+  toFiniteNumber,
 } from '@tradejs/node/pine';
 
 import {
@@ -59,8 +59,8 @@ const toFigurePoints = (
 
   for (let i = start; i < series.length; i += 1) {
     const item = series[i];
-    const timestamp = asFiniteNumber(item?.time);
-    const value = asFiniteNumber(item?.value);
+    const timestamp = toFiniteNumber(item?.time);
+    const value = toFiniteNumber(item?.value);
     if (timestamp == null || value == null) continue;
     points.push({
       timestamp,

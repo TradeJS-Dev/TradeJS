@@ -225,6 +225,7 @@ export const getTickers = async (
 export const makeScreenshots = async (
   signals: Signal[],
   interval: Interval,
+  userName = 'root',
 ) => {
   const projectRoot = getProjectRoot();
   const bar = new ProgressBar(
@@ -242,7 +243,7 @@ export const makeScreenshots = async (
     SCREENSHOT_CONCURRENCY_LIMIT,
     async (signal) => {
       try {
-        await screenDashboard({ ...signal, interval }, projectRoot);
+        await screenDashboard({ ...signal, interval }, projectRoot, userName);
       } catch (error) {
         logger.error(
           'Failed screenshot: %s (%s)',
@@ -258,7 +259,7 @@ export const makeScreenshots = async (
   logger.info('');
 };
 
-export const sendToAI = async (signals: Signal[]) => {
+export const sendToAI = async (signals: Signal[], userName = 'root') => {
   const bar = new ProgressBar(
     ':current/:total [:bar][:percent] :eta(s) :symbol',
     {
@@ -271,7 +272,7 @@ export const sendToAI = async (signals: Signal[]) => {
 
   await runWithConcurrency(signals, AI_CONCURRENCY_LIMIT, async (signal) => {
     try {
-      await askAI(signal);
+      await askAI(signal, { userName });
     } catch {
       logger.error('Failed ask: %s', signal.symbol);
     } finally {
@@ -282,7 +283,11 @@ export const sendToAI = async (signals: Signal[]) => {
   logger.info('');
 };
 
-export const sendToTG = async (signals: Signal[], imgInterval: Interval) => {
+export const sendToTG = async (
+  signals: Signal[],
+  imgInterval: Interval,
+  userName = 'root',
+) => {
   const bar = new ProgressBar(
     ':current/:total [:bar][:percent] :eta(s) :symbol',
     {
@@ -300,14 +305,14 @@ export const sendToTG = async (signals: Signal[], imgInterval: Interval) => {
         null,
       );
 
-      await sendSignal(signal, imgInterval, analysis);
+      await sendSignal(signal, imgInterval, analysis, { userName });
 
       if (
         analysis &&
         typeof analysis === 'object' &&
         Object.keys(analysis).length > 0
       ) {
-        await sendSignalAnalysis(signal, analysis);
+        await sendSignalAnalysis(signal, analysis, { userName });
       }
     } catch (err) {
       logger.error(

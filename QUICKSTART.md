@@ -32,7 +32,7 @@ Services:
 yarn dev
 ```
 
-Open `http://localhost:3000`.
+Open the local URL printed by Next.js (`http://localhost:3000` by default).
 
 Useful routes:
 
@@ -45,7 +45,37 @@ Single command alternative:
 yarn dev:with-infra
 ```
 
-## 5. Run Basic CLI Flows
+## 5. Create Or Update A Local User
+
+```bash
+yarn user-add -u root -p 'StrongPassword123!'
+```
+
+Use the created credentials on `/routes/signin`.
+
+## 6. Configure Account Settings In The UI
+
+After sign in, open the gear icon in the left sidebar.
+
+User profile settings are stored in Redis under the user record and now include:
+
+- `BYBIT_API_KEY`
+- `BYBIT_API_SECRET`
+- passwordless auth `token`
+- `OPENAI_API_KEY`
+- `OPENAI_API_ENDPOINT`
+- `TG_BOT_TOKEN`
+- `TG_CHAT_ID`
+
+Use the drawer to:
+
+- rotate Bybit credentials
+- change the password
+- rotate the passwordless auth token
+- set per-user OpenAI provider settings
+- set per-user Telegram bot delivery settings
+
+## 7. Run Basic CLI Flows
 
 ```bash
 yarn build:ci
@@ -55,7 +85,7 @@ yarn signals
 yarn bot
 ```
 
-## 6. Data Maintenance
+## 8. Data Maintenance
 
 Refresh history:
 
@@ -69,7 +99,7 @@ Continuity check/repair:
 yarn continuity --user root --timeframe 15 --provider bybit
 ```
 
-## 7. ML / AI (Optional)
+## 9. ML / AI (Optional)
 
 ML dataset flow:
 
@@ -94,7 +124,7 @@ yarn ai-train -n 50 --minQuality 4
 
 `yarn ai-train` replays saved prompts from the merged dataset, evaluates the latest trades from the end, and treats `-n 0` as "check all rows".
 
-## 8. Sandbox Plugin Mode (Framework Check)
+## 10. Sandbox Plugin Mode (Framework Check)
 
 `examples/sandbox` contains a full deterministic app-style e2e flow with:
 
@@ -119,7 +149,7 @@ yarn sandbox:infra-down
 - Use `@tradejs/types` for shared contracts.
 - Avoid non-public deep imports like `@tradejs/core/src/*` or `@tradejs/node/src/*`.
 
-## 9. Stop Infrastructure
+## 11. Stop Infrastructure
 
 ```bash
 yarn infra-down

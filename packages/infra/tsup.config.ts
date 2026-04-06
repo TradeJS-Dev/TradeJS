@@ -8,6 +8,7 @@ export default defineConfig({
     'src/logger.ts',
     'src/ml.ts',
     'src/redis.ts',
+    'src/userSettings.ts',
     'src/timescale.ts',
   ],
   format: ['cjs', 'esm'],

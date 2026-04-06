@@ -18,6 +18,7 @@ import { getTradejsProjectCwd } from '../tradejsConfig';
 
 interface EnrichSignalWithMlAiParams {
   signal: Signal;
+  userName?: string;
   symbol: string;
   direction: Direction;
   env: string;
@@ -98,12 +99,13 @@ export const enrichSignalWithMl = async ({
 export const enrichSignalWithAi = async ({
   signal,
   symbol,
+  userName,
   direction,
   env,
   ai,
 }: Pick<
   EnrichSignalWithMlAiParams,
-  'signal' | 'symbol' | 'direction' | 'env' | 'ai'
+  'signal' | 'userName' | 'symbol' | 'direction' | 'env' | 'ai'
 >): Promise<number | undefined> => {
   if (env === 'BACKTEST' || ai?.enabled === false) {
     return undefined;
@@ -111,7 +113,7 @@ export const enrichSignalWithAi = async ({
 
   try {
     const { askAI } = await import('../ai');
-    const analysis = await askAI(signal);
+    const analysis = await askAI(signal, { userName });
     if (typeof analysis?.quality === 'number') {
       const normalizedQuality = Math.round(analysis.quality);
       const aiApprovedCurrentTrade = analysis?.direction === direction;
@@ -127,6 +129,7 @@ export const enrichSignalWithAi = async ({
 
 export const enrichSignalWithMlAi = async ({
   signal,
+  userName,
   symbol,
   direction,
   env,
@@ -134,7 +137,7 @@ export const enrichSignalWithMlAi = async ({
   ai,
 }: EnrichSignalWithMlAiParams): Promise<number | undefined> => {
   await enrichSignalWithMl({ signal, env, ml });
-  return enrichSignalWithAi({ signal, symbol, direction, env, ai });
+  return enrichSignalWithAi({ signal, userName, symbol, direction, env, ai });
 };
 
 interface ExecuteEntryOrderParams {

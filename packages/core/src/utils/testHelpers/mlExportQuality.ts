@@ -50,7 +50,7 @@ export type MlExportQualityOptions = {
 const isWhitelisted = (column: string, whitelist: string[]) =>
   whitelist.some((allowed) => allowed === column);
 
-const asFiniteNumber = (
+const toFiniteNumber = (
   value: unknown,
 ):
   | { finite: true; value: number }
@@ -114,7 +114,7 @@ export const ingestMlExportQualityRow = (
       acc.columnStats.set(column, stats);
     }
 
-    const parsed = asFiniteNumber(rawValue);
+    const parsed = toFiniteNumber(rawValue);
     if (!parsed.finite) {
       if (parsed.reason === 'nan_or_inf') {
         stats.nanOrInfCount += 1;

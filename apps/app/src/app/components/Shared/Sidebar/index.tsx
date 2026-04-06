@@ -4,6 +4,7 @@ import { Box, Flex, IconButton, VStack } from '@chakra-ui/react';
 import { useRouter, usePathname } from 'next/navigation';
 import { signOut } from 'next-auth/react';
 import { FiActivity, FiBarChart2, FiLogOut, FiPlay } from 'react-icons/fi';
+import { AccountSettingsDrawer } from './AccountSettingsDrawer';
 
 export const Sidebar = () => {
   const router = useRouter();
@@ -57,15 +58,18 @@ export const Sidebar = () => {
           ))}
         </VStack>
 
-        <IconButton
-          aria-label="Sign out"
-          size="md"
-          colorPalette="teal"
-          variant="outline"
-          onClick={() => signOut({ callbackUrl: '/routes/signin' })}
-        >
-          <FiLogOut />
-        </IconButton>
+        <VStack gap={2}>
+          <AccountSettingsDrawer />
+          <IconButton
+            aria-label="Sign out"
+            size="md"
+            colorPalette="teal"
+            variant="outline"
+            onClick={() => signOut({ callbackUrl: '/routes/signin' })}
+          >
+            <FiLogOut />
+          </IconButton>
+        </VStack>
       </Flex>
     </Box>
   );

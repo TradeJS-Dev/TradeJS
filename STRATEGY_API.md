@@ -176,7 +176,7 @@ Typical use cases:
 For Pine-backed strategies:
 
 - keep Pine source in a dedicated `.pine` file inside strategy folder
-- runtime injects `loadPineScript(...)` into `CreateStrategyCore` params
+- runtime injects `loadPineScriptFile(...)` into `CreateStrategyCore` params
 - strategy `core.ts` executes Pine and maps plots into signal fields/figures
 
 ## `strategyApi` Reference

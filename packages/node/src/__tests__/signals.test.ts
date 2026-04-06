@@ -1,5 +1,15 @@
 describe('signals', () => {
   const originalEnv = process.env;
+  const getUserSettingsMock = jest.fn(async (userName = 'root') => ({
+    userName,
+    BYBIT_API_KEY: '',
+    BYBIT_API_SECRET: '',
+    token: '',
+    OPENAI_API_KEY: 'openai-key',
+    OPENAI_API_ENDPOINT: 'https://api.openai.com/v1',
+    TG_BOT_TOKEN: 'tg-token',
+    TG_CHAT_ID: 'tg-chat-id',
+  }));
 
   beforeEach(() => {
     jest.resetModules();
@@ -10,9 +20,10 @@ describe('signals', () => {
     process.env = {
       ...originalEnv,
       APP_URL: 'https://app.example.com',
-      TG_BOT_TOKEN: 'tg-token',
-      TG_CHAT_ID: 'tg-chat-id',
     };
+    jest.doMock('@tradejs/infra/userSettings', () => ({
+      getUserSettings: (...args: unknown[]) => getUserSettingsMock(...args),
+    }));
   });
 
   afterAll(() => {
