@@ -1,11 +1,13 @@
-import { spawnSync } from 'child_process';
 import { selectStrategy } from './selectStrategy';
+import { spawnSiblingScript } from './spawnSiblingScript';
 
 const run = async () => {
   const selected = await selectStrategy('Select AI export strategy');
-  const args = ['ts-node', './src/scripts/aiExport', '--strategy', selected];
-  const result = spawnSync('yarn', args, { stdio: 'inherit' });
-  process.exit(result.status ?? 1);
+  const status = spawnSiblingScript(__dirname, 'aiExport', [
+    '--strategy',
+    selected,
+  ]);
+  process.exit(status);
 };
 
 run().catch((err) => {

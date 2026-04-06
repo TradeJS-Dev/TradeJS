@@ -314,7 +314,7 @@ export const loadTradejsConfig = async (
 
     if (!announcedConfigFile.has(configFilePath)) {
       announcedConfigFile.add(configFilePath);
-      logger.log('info', 'Loaded TradeJS config: %s', configFilePath);
+      logger.log('debug', 'Loaded TradeJS config: %s', configFilePath);
     }
 
     return config;

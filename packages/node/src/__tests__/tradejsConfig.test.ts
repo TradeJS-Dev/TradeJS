@@ -58,7 +58,7 @@ describe('tradejsConfig utils', () => {
       connectors: ['connector-a', '20'],
     });
     expect(loggerLogMock).toHaveBeenCalledWith(
-      'info',
+      'debug',
       'Loaded TradeJS config: %s',
       configPath,
     );
@@ -84,7 +84,7 @@ describe('tradejsConfig utils', () => {
       connectors: [],
     });
     expect(loggerLogMock).toHaveBeenCalledWith(
-      'info',
+      'debug',
       'Loaded TradeJS config: %s',
       configPath,
     );
@@ -177,7 +177,7 @@ describe('tradejsConfig utils', () => {
       connectors: ['@tradejs/connectors'],
     });
     expect(loggerLogMock).toHaveBeenCalledWith(
-      'info',
+      'debug',
       'Loaded TradeJS config: %s',
       configPath,
     );
@@ -265,7 +265,7 @@ describe('tradejsConfig utils', () => {
       connectors: [],
     });
     expect(loggerLogMock).toHaveBeenCalledWith(
-      'info',
+      'debug',
       'Loaded TradeJS config: %s',
       configPath,
     );
