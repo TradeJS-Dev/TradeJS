@@ -22,6 +22,7 @@ const TRENDLINE_CONTEXT_PROMPT = `
 - Если payload.additionalIndicators.trendlineContext.coinBiasAligned=false или btcBiasAligned=false, трактуй это как прямой конфликт с направлением сделки. В таком случае обычно не одобряй вход, если нет исключительного структурного преимущества.
 - Если payload.additionalIndicators.trendlineContext.clearBreak=false и цена все еще около линии, не описывай это как "чистый пробой".
 - Если clearBreak=true, но trendlineContext.weakCleanBreak=true, трактуй это как слишком слабый формальный пробой: структуру уже задело, но запаса по displacement пока мало. Обычно здесь нужен follow-through или ретест, а не немедленный вход.
+- Если clearBreak=true, но trendlineContext.compressedCleanBreak=true, это сжатый пробой после серии близких касаний на короткой линии. Даже при формальном выходе за линию здесь чаще нужен follow-through или ретест, а не немедленный вход.
 - Если clearBreak=true, но trendlineContext.breakVsAtrRatio < 0.5 и при этом trendlineContext.weakBtcLedBreak=true, считай это слабым BTC-led пробоем без собственного follow-through по монете. Обычно здесь нужен ретест/подтверждение, а не немедленный вход.
 - Для TrendLine quality 4-5 допустим только когда одновременно: clearBreak=true, nearLineNoise=false, coinBiasAligned=true и btcBiasAligned=true. Если хотя бы одно из этих условий не выполнено, не ставь quality выше 3.
 - Редкое исключение: если trendlineContext.aggressivePreBreakPressure=true, это агрессивный pre-break pressure сетап. В таком случае допустим quality=4 даже без clearBreak, но только как ранний вход с tight risk и только если не конфликтуют coin/BTC bias.
@@ -31,10 +32,13 @@ const TRENDLINE_CONTEXT_PROMPT = `
 const TRENDLINE_PAYLOAD_PROMPT = `
 - В payload.figures.trendline передается полная геометрия трендовой линии (без trim), чтобы можно было оценивать касания/структуру.
 - В payload.additionalIndicators.trendlineContext передается mode / touches / distance / currentLinePrice / priceVsLinePct / priceVsLineSide / clearBreak / nearLineNoise / coinMaBias / btcMaBias / maxAllowedQuality / approvalAllowedNow / hardBlockReasons.
-- Дополнительно в trendlineContext передаются atrPct / breakVsAtrRatio / coinMaSpreadPct / btcMaSpreadPct / aggressivePreBreakPressure / strongNearBreakPressure / weakCleanBreak / weakBtcLedBreak.
+- Дополнительно в trendlineContext передаются atrPct / breakVsAtrRatio / coinMaSpreadPct / btcMaSpreadPct / aggressivePreBreakPressure / strongNearBreakPressure / weakCleanBreak / compressedCleanBreak / weakBtcLedBreak.
 `;
 
 const WEAK_CLEAN_BREAK_ATR_RATIO_MAX = 0.45;
+const COMPRESSED_CLEAN_BREAK_ATR_RATIO_MAX = 0.6;
+const COMPRESSED_CLEAN_BREAK_DISTANCE_MAX = 120;
+const COMPRESSED_CLEAN_BREAK_TOUCHES_MIN = 5;
 
 const toFiniteNumberOrNull = (value: unknown) => {
   const num = Number(value);
@@ -201,6 +205,14 @@ const buildTrendlineContext = (signal: {
     nearLineNoise === false &&
     breakVsAtrRatio != null &&
     breakVsAtrRatio < WEAK_CLEAN_BREAK_ATR_RATIO_MAX;
+  const compressedCleanBreak =
+    clearBreak === true &&
+    nearLineNoise === false &&
+    breakVsAtrRatio != null &&
+    breakVsAtrRatio < COMPRESSED_CLEAN_BREAK_ATR_RATIO_MAX &&
+    (touches ?? 0) >= COMPRESSED_CLEAN_BREAK_TOUCHES_MIN &&
+    distance != null &&
+    distance < COMPRESSED_CLEAN_BREAK_DISTANCE_MAX;
   const weakBtcLedBreak =
     signalDirection === 'SHORT'
       ? clearBreak === true &&
@@ -239,6 +251,9 @@ const buildTrendlineContext = (signal: {
   }
   if (weakCleanBreak) {
     hardBlockReasons.push('weak_clean_break');
+  }
+  if (compressedCleanBreak) {
+    hardBlockReasons.push('compressed_clean_break');
   }
   if (weakBtcLedBreak) {
     hardBlockReasons.push('weak_btc_led_break');
@@ -282,6 +297,7 @@ const buildTrendlineContext = (signal: {
     aggressivePreBreakPressure,
     strongNearBreakPressure,
     weakCleanBreak,
+    compressedCleanBreak,
     weakBtcLedBreak,
     maxAllowedQuality,
     approvalAllowedNow,
@@ -320,6 +336,8 @@ const getHardBlockReasonText = (reason: string) => {
       return 'BTC-контекст конфликтует с направлением';
     case 'weak_clean_break':
       return 'формальный пробой есть, но displacement еще слишком слабый относительно ATR';
+    case 'compressed_clean_break':
+      return 'пробой выглядит слишком сжатым: серия близких касаний на короткой линии без достаточного follow-through';
     case 'weak_btc_led_break':
       return 'пробой слишком мелкий относительно ATR и больше похож на BTC-led движение без follow-through по монете';
     default:
@@ -495,6 +513,7 @@ export const trendLineAiAdapter: StrategyAiAdapter = {
 - trendline.aggressivePreBreakPressure=${String(trendlineContext.aggressivePreBreakPressure)}
 - trendline.strongNearBreakPressure=${String(trendlineContext.strongNearBreakPressure)}
 - trendline.weakCleanBreak=${String(trendlineContext.weakCleanBreak)}
+- trendline.compressedCleanBreak=${String(trendlineContext.compressedCleanBreak)}
 - trendline.weakBtcLedBreak=${String(trendlineContext.weakBtcLedBreak)}
 - trendline.maxAllowedQuality=${String(trendlineContext.maxAllowedQuality)}
 - trendline.approvalAllowedNow=${String(trendlineContext.approvalAllowedNow)}
@@ -515,6 +534,7 @@ export const trendLineAiAdapter: StrategyAiAdapter = {
 - LONG от линии highs подтверждается только явным уходом выше линии или ретестом сверху с отбоем.
 - Если trendline.nearLineNoise=true или biasAligned=false, лучше вернуть direction=null и quality 1-3, чем одобрить вход без запаса.
 - Если trendline.weakCleanBreak=true, формальный пробой уже есть, но он слишком слабый по displacement: нужен follow-through или ретест, а не quality 4-5.
+- Если trendline.compressedCleanBreak=true, пробой формально есть, но линия слишком короткая и сжатая после серии близких касаний: обычно здесь нужен follow-through или ретест, а не немедленный вход.
 - Если trendline.weakBtcLedBreak=true, трактуй это как мелкий пробой, который сильнее тянет BTC, чем сама монета: здесь обычно нужен ретест и quality 1-3.
 - Если clearBreak=false или любой alignment=false, не поднимай quality выше 3.
 - Если trendline.aggressivePreBreakPressure=true, можно рассматривать ранний SHORT до явного пробоя, но только как исключение: quality максимум 4, нужен tight stop и явное описание, что вход агрессивный.

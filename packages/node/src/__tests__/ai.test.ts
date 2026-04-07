@@ -306,6 +306,42 @@ const makeWeakCleanBreakTrendlineSignal = () => {
   return signal;
 };
 
+const makeCompressedCleanBreakTrendlineSignal = () => {
+  const signal = makeSignal();
+  signal.direction = 'SHORT';
+  signal.prices.currentPrice = 99.49;
+  signal.prices.takeProfitPrice = 96;
+  signal.prices.stopLossPrice = 101.15;
+  signal.figures.trendLine = {
+    ...signal.figures.trendLine,
+    mode: 'lows',
+    points: [
+      { timestamp: 1, value: 100.15 },
+      { timestamp: 2, value: 100 },
+    ],
+    touches: [
+      { timestamp: 1, value: 100.55 },
+      { timestamp: 1.2, value: 100.4 },
+      { timestamp: 1.4, value: 100.28 },
+      { timestamp: 1.6, value: 100.16 },
+      { timestamp: 1.8, value: 100.08 },
+    ],
+  };
+  signal.indicators = {
+    ...signal.indicators,
+    maFast: [100.3, 99.95, 99.8],
+    maSlow: [100.4, 100.15, 100],
+    btcMaFast: [100.1, 100.02, 99.95],
+    btcMaSlow: [100.15, 100.08, 100],
+    atrPct: [0.94],
+  };
+  signal.additionalIndicators = {
+    touches: 5,
+    distance: 96,
+  };
+  return signal;
+};
+
 describe('ai helpers', () => {
   const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
   const logSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
@@ -665,6 +701,47 @@ describe('ai helpers', () => {
         }),
       );
       expect(result.qualityReason).toContain('слишком слабый относительно ATR');
+      expect(result.comment).toContain('TrendLine guardrail');
+    });
+
+    it('blocks compressed clean breaks on short-range lines', async () => {
+      invokeMock.mockResolvedValue({
+        content: {
+          direction: 'SHORT',
+          quality: 5,
+          needRetest: false,
+          retestPrice: null,
+          takeProfitPrice: 96,
+          stopLossPrice: 101.15,
+          setup: 'Есть пробой вниз',
+          retestPlan: 'Можно входить сразу',
+          qualityReason: 'Чистый пробой на короткой линии',
+          triggerInvalidation: 'Отмена при возврате выше',
+          comment: 'ok',
+        },
+      });
+
+      const result = await runAiPrompt(
+        {
+          systemPrompt: 'system',
+          humanPrompt: 'human',
+        },
+        {
+          signal: makeCompressedCleanBreakTrendlineSignal(),
+        },
+      );
+
+      expect(result).toEqual(
+        expect.objectContaining({
+          direction: null,
+          quality: 3,
+          needRetest: true,
+          retestPrice: 100,
+          takeProfitPrice: null,
+          stopLossPrice: null,
+        }),
+      );
+      expect(result.qualityReason).toContain('слишком сжатым');
       expect(result.comment).toContain('TrendLine guardrail');
     });
 
