@@ -179,10 +179,7 @@ export const readAiDatasetRows = async (params: {
   const effectiveSkip = Math.max(0, skipFromEnd);
   const selectedRecentLines =
     effectiveSkip > 0
-      ? recentLines.slice(
-          0,
-          Math.max(0, recentLines.length - effectiveSkip),
-        )
+      ? recentLines.slice(0, Math.max(0, recentLines.length - effectiveSkip))
       : recentLines;
   const selectedRows =
     limitFromEnd > 0

@@ -309,10 +309,7 @@ const createAiModel = async (
   return modelPromise;
 };
 
-const getAiModel = async (
-  userName = 'root',
-  modelName = DEFAULT_AI_MODEL,
-) => {
+const getAiModel = async (userName = 'root', modelName = DEFAULT_AI_MODEL) => {
   try {
     return await createAiModel(userName, modelName);
   } catch (error) {

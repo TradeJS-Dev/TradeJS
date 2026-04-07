@@ -621,7 +621,9 @@ describe('ai helpers', () => {
           stopLossPrice: null,
         }),
       );
-      expect(result.qualityReason).toContain('пробой слишком мелкий относительно ATR');
+      expect(result.qualityReason).toContain(
+        'пробой слишком мелкий относительно ATR',
+      );
       expect(result.comment).toContain('TrendLine guardrail');
     });
 

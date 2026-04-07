@@ -122,9 +122,7 @@ const normalizeInt = (value: unknown, fallback: number) => {
 
 const normalizePositiveInt = (value: unknown, fallback: number) => {
   const parsed = Number(value);
-  return Number.isFinite(parsed) && parsed > 0
-    ? Math.trunc(parsed)
-    : fallback;
+  return Number.isFinite(parsed) && parsed > 0 ? Math.trunc(parsed) : fallback;
 };
 
 const normalizeQuality = (analysis: Partial<SignalAnalysis>) => {
@@ -233,7 +231,10 @@ const extractSignalFromDatasetRow = (row: AiDatasetRow) => {
   } as Signal;
 };
 
-const resolvePromptRunContext = (row: AiDatasetRow, rebuildPrompts: boolean) => {
+const resolvePromptRunContext = (
+  row: AiDatasetRow,
+  rebuildPrompts: boolean,
+) => {
   const signal = extractSignalFromDatasetRow(row);
   return {
     signal,
@@ -280,11 +281,9 @@ const main = async () => {
   const skip = normalizeInt(flags.skip, 0);
   const minQuality = normalizeInt(flags.minQuality, 4);
   const rebuildPrompts = Boolean(flags.rebuildPrompts);
-  const model = String(flags.model || DEFAULT_AI_MODEL).trim() || DEFAULT_AI_MODEL;
-  const parallel = normalizePositiveInt(
-    flags.parallel,
-    AI_CONCURRENCY_LIMIT,
-  );
+  const model =
+    String(flags.model || DEFAULT_AI_MODEL).trim() || DEFAULT_AI_MODEL;
+  const parallel = normalizePositiveInt(flags.parallel, AI_CONCURRENCY_LIMIT);
   await ensureAiStrategyPluginsLoaded();
   const filePath = await resolveDatasetFile();
   const { rows, totalRows } = await readAiDatasetRows({
@@ -388,7 +387,10 @@ const main = async () => {
         ['min_quality', chalk.magenta(String(minQuality))],
         ['model', chalk.yellow(model)],
         ['parallel', chalk.magenta(String(concurrency))],
-        ['rebuild_prompts', rebuildPrompts ? chalk.green('yes') : chalk.gray('no')],
+        [
+          'rebuild_prompts',
+          rebuildPrompts ? chalk.green('yes') : chalk.gray('no'),
+        ],
       ],
     ),
   );
@@ -402,7 +404,10 @@ const main = async () => {
         ['evaluated', chalk.blue(String(evaluated))],
         ['correct', chalk.green(String(summary.correct))],
         ['incorrect', chalk.red(String(summary.incorrect))],
-        ['failed', failed > 0 ? chalk.yellow(String(failed)) : chalk.green('0')],
+        [
+          'failed',
+          failed > 0 ? chalk.yellow(String(failed)) : chalk.green('0'),
+        ],
         ['approved', chalk.cyan(String(summary.approved))],
         ['rejected', chalk.cyan(String(summary.rejected))],
         ['profitable', chalk.green(String(summary.profitable))],
@@ -420,12 +425,7 @@ const main = async () => {
   printSection(
     'CONFUSION',
     createTable(
-      [
-        chalk.green('TP'),
-        chalk.red('FP'),
-        chalk.green('TN'),
-        chalk.red('FN'),
-      ],
+      [chalk.green('TP'), chalk.red('FP'), chalk.green('TN'), chalk.red('FN')],
       [
         [
           chalk.green(String(summary.truePositive)),

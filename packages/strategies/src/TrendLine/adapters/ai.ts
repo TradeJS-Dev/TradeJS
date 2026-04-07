@@ -70,22 +70,23 @@ const getSpreadPct = (fast: number | null, slow: number | null) => {
   return ((fast - slow) / slow) * 100;
 };
 
-const getTrendLineFromPayload = (
-  signal: { figures?: Record<string, unknown>; additionalIndicators?: Record<string, unknown> },
-) =>
+const getTrendLineFromPayload = (signal: {
+  figures?: Record<string, unknown>;
+  additionalIndicators?: Record<string, unknown>;
+}) =>
   (signal.figures?.trendLine as Record<string, unknown> | undefined) ??
-  (signal.additionalIndicators?.trendLine as Record<string, unknown> | undefined) ??
+  (signal.additionalIndicators?.trendLine as
+    | Record<string, unknown>
+    | undefined) ??
   null;
 
-const buildTrendlineContext = (
-  signal: {
-    direction?: unknown;
-    prices?: { currentPrice?: unknown };
-    indicators?: Record<string, unknown>;
-    additionalIndicators?: Record<string, unknown>;
-    figures?: Record<string, unknown>;
-  },
-) => {
+const buildTrendlineContext = (signal: {
+  direction?: unknown;
+  prices?: { currentPrice?: unknown };
+  indicators?: Record<string, unknown>;
+  additionalIndicators?: Record<string, unknown>;
+  figures?: Record<string, unknown>;
+}) => {
   const trendLine = getTrendLineFromPayload(signal);
   const currentPrice = toFiniteNumberOrNull(signal.prices?.currentPrice);
   const signalDirection =
@@ -100,9 +101,7 @@ const buildTrendlineContext = (
       : null,
   );
   const priceVsLinePct =
-    currentPrice != null &&
-    currentLinePrice != null &&
-    currentLinePrice !== 0
+    currentPrice != null && currentLinePrice != null && currentLinePrice !== 0
       ? ((currentPrice - currentLinePrice) / currentLinePrice) * 100
       : null;
   const priceVsLineSide =
@@ -115,7 +114,9 @@ const buildTrendlineContext = (
           : 'at';
   const priceVsLinePctAbs =
     priceVsLinePct == null ? null : Math.abs(priceVsLinePct);
-  const touchesTotal = toFiniteNumberOrNull(signal.additionalIndicators?.touches);
+  const touchesTotal = toFiniteNumberOrNull(
+    signal.additionalIndicators?.touches,
+  );
   const distance = toFiniteNumberOrNull(signal.additionalIndicators?.distance);
   const coinMaFast = getLastFiniteNumber(signal.indicators?.maFast);
   const coinMaSlow = getLastFiniteNumber(signal.indicators?.maSlow);
@@ -245,10 +246,10 @@ const buildTrendlineContext = (
 
   const maxAllowedQuality =
     aggressivePreBreakPressure || strongNearBreakPressure
-    ? 4
-    : hardBlockReasons.length > 0
-      ? 3
-      : 5;
+      ? 4
+      : hardBlockReasons.length > 0
+        ? 3
+        : 5;
   const approvalAllowedNow =
     hardBlockReasons.length === 0 ||
     aggressivePreBreakPressure ||
@@ -256,10 +257,7 @@ const buildTrendlineContext = (
 
   return {
     signalDirection,
-    mode:
-      typeof trendLine?.mode === 'string'
-        ? trendLine.mode
-        : null,
+    mode: typeof trendLine?.mode === 'string' ? trendLine.mode : null,
     touches,
     distance,
     currentLinePrice,
@@ -342,12 +340,12 @@ const getTrendlineContextFromPayload = (
   payload: AiPayload,
   signal: Parameters<typeof buildTrendlineContext>[0],
 ) => {
-  const additional =
-    payload.additionalIndicators as Record<string, unknown> | undefined;
-  const fromPayload =
-    additional?.trendlineContext as
-      | ReturnType<typeof buildTrendlineContext>
-      | undefined;
+  const additional = payload.additionalIndicators as
+    | Record<string, unknown>
+    | undefined;
+  const fromPayload = additional?.trendlineContext as
+    | ReturnType<typeof buildTrendlineContext>
+    | undefined;
 
   return fromPayload ?? buildTrendlineContext(signal);
 };
@@ -407,11 +405,7 @@ export const trendLineAiAdapter: StrategyAiAdapter = {
           fallbackReason,
           400,
         ),
-        comment: mergeShortText(
-          analysis.comment ?? '',
-          fallbackComment,
-          1024,
-        ),
+        comment: mergeShortText(analysis.comment ?? '', fallbackComment, 1024),
       };
     }
 
@@ -473,12 +467,12 @@ export const trendLineAiAdapter: StrategyAiAdapter = {
   buildSystemPromptAddon: () =>
     `\n${TRENDLINE_CONTEXT_PROMPT}\n${TRENDLINE_PAYLOAD_PROMPT}\n`,
   buildHumanPromptAddon: ({ payload }) => {
-    const additional =
-      payload.additionalIndicators as Record<string, unknown> | undefined;
-    const trendlineContext =
-      additional?.trendlineContext as
-        | ReturnType<typeof buildTrendlineContext>
-        | undefined;
+    const additional = payload.additionalIndicators as
+      | Record<string, unknown>
+      | undefined;
+    const trendlineContext = additional?.trendlineContext as
+      | ReturnType<typeof buildTrendlineContext>
+      | undefined;
 
     if (!trendlineContext) {
       return '';
