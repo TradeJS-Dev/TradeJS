@@ -18,6 +18,7 @@
     "build:ci": "bash -lc 'rm -rf .turbo apps/*/.next apps/*/build apps/*/.turbo packages/*/dist packages/*/build packages/*/.turbo && yarn build'",
     "bump:packages": "node ./bin/bump-publishable-versions.mjs",
     "checks": "yarn prettify && yarn build && yarn lint && yarn typecheck && yarn unit",
+    "clean-ai-export": "yarn clean-dir --dir ai/export",
     "clean-dir": "yarn cli clean-dir",
     "clean-ml-export": "yarn clean-dir --dir ml/export",
     "clean-redis": "yarn cli clean-redis",
