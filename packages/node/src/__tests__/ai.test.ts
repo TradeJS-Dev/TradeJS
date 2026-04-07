@@ -199,6 +199,78 @@ const makeAggressivePreBreakTrendlineSignal = () => {
   return signal;
 };
 
+const makeStrongNearBreakPressureTrendlineSignal = () => {
+  const signal = makeSignal();
+  signal.direction = 'SHORT';
+  signal.prices.currentPrice = 99.7372;
+  signal.prices.takeProfitPrice = 96;
+  signal.prices.stopLossPrice = 101.3;
+  signal.figures.trendLine = {
+    ...signal.figures.trendLine,
+    mode: 'lows',
+    points: [
+      { timestamp: 1, value: 98.8 },
+      { timestamp: 2, value: 100 },
+    ],
+    touches: [
+      { timestamp: 1, value: 99.1 },
+      { timestamp: 1.2, value: 99.35 },
+      { timestamp: 1.4, value: 99.55 },
+      { timestamp: 1.6, value: 99.8 },
+      { timestamp: 1.8, value: 99.95 },
+    ],
+  };
+  signal.indicators = {
+    ...signal.indicators,
+    maFast: [100.4, 99.1, 97.3],
+    maSlow: [100.6, 100.3, 100],
+    btcMaFast: [100.4, 99.7, 99.3],
+    btcMaSlow: [100.5, 100.2, 100],
+    atrPct: [0.918],
+  };
+  signal.additionalIndicators = {
+    touches: 5,
+    distance: 748,
+  };
+  return signal;
+};
+
+const makeWeakBtcLedBreakTrendlineSignal = () => {
+  const signal = makeSignal();
+  signal.direction = 'SHORT';
+  signal.prices.currentPrice = 100;
+  signal.prices.takeProfitPrice = 96;
+  signal.prices.stopLossPrice = 101.2;
+  signal.figures.trendLine = {
+    ...signal.figures.trendLine,
+    mode: 'lows',
+    points: [
+      { timestamp: 1, value: 100.2 },
+      { timestamp: 2, value: 100.425 },
+    ],
+    touches: [
+      { timestamp: 1, value: 100.1 },
+      { timestamp: 1.2, value: 100.2 },
+      { timestamp: 1.4, value: 100.25 },
+      { timestamp: 1.6, value: 100.32 },
+      { timestamp: 1.8, value: 100.38 },
+    ],
+  };
+  signal.indicators = {
+    ...signal.indicators,
+    maFast: [101, 100, 99.58],
+    maSlow: [101, 100, 100],
+    btcMaFast: [101, 100, 99.34],
+    btcMaSlow: [101, 100, 100],
+    atrPct: [1.02],
+  };
+  signal.additionalIndicators = {
+    touches: 5,
+    distance: 293,
+  };
+  return signal;
+};
+
 describe('ai helpers', () => {
   const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
   const logSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
@@ -346,6 +418,9 @@ describe('ai helpers', () => {
       expect(prompt).toContain('"symbol":"ETHUSDT"');
       expect(prompt).toContain('"trendline"');
       expect(prompt).toContain('trendline.currentLinePrice=');
+      expect(prompt).toContain('trendline.breakVsAtrRatio=');
+      expect(prompt).toContain('trendline.strongNearBreakPressure=');
+      expect(prompt).toContain('trendline.weakBtcLedBreak=');
       expect(prompt).toContain('"maFast":[3,4,5,6,7]');
       expect(prompt).not.toContain('"riskRatio"');
     });
@@ -473,6 +548,47 @@ describe('ai helpers', () => {
       expect(result.comment).toContain('TrendLine guardrail');
     });
 
+    it('blocks shallow BTC-led breaks without coin follow-through', async () => {
+      invokeMock.mockResolvedValue({
+        content: {
+          direction: 'SHORT',
+          quality: 5,
+          needRetest: false,
+          retestPrice: null,
+          takeProfitPrice: 96,
+          stopLossPrice: 101.2,
+          setup: 'Чистый пробой вниз',
+          retestPlan: 'Можно входить сразу',
+          qualityReason: 'Сильный шорт',
+          triggerInvalidation: 'Отмена при возврате выше',
+          comment: 'ok',
+        },
+      });
+
+      const result = await runAiPrompt(
+        {
+          systemPrompt: 'system',
+          humanPrompt: 'human',
+        },
+        {
+          signal: makeWeakBtcLedBreakTrendlineSignal(),
+        },
+      );
+
+      expect(result).toEqual(
+        expect.objectContaining({
+          direction: null,
+          quality: 3,
+          needRetest: true,
+          retestPrice: 100.425,
+          takeProfitPrice: null,
+          stopLossPrice: null,
+        }),
+      );
+      expect(result.qualityReason).toContain('пробой слишком мелкий относительно ATR');
+      expect(result.comment).toContain('TrendLine guardrail');
+    });
+
     it('allows aggressive pre-break pressure setups but caps quality to 4', async () => {
       invokeMock.mockResolvedValue({
         content: {
@@ -511,6 +627,44 @@ describe('ai helpers', () => {
       expect(result.qualityReason).toBe('Сильное давление вниз');
     });
 
+    it('allows strong near-break pressure setups but caps quality to 4', async () => {
+      invokeMock.mockResolvedValue({
+        content: {
+          direction: null,
+          quality: 2,
+          needRetest: true,
+          retestPrice: 100,
+          takeProfitPrice: null,
+          stopLossPrice: null,
+          setup: 'Давление вниз у зрелой линии',
+          retestPlan: 'Ждать ретест',
+          qualityReason: 'Сильное давление вниз у линии',
+          triggerInvalidation: 'Отмена при возврате выше',
+          comment: 'ok',
+        },
+      });
+
+      const result = await runAiPrompt(
+        {
+          systemPrompt: 'system',
+          humanPrompt: 'human',
+        },
+        {
+          signal: makeStrongNearBreakPressureTrendlineSignal(),
+        },
+      );
+
+      expect(result).toEqual(
+        expect.objectContaining({
+          direction: 'SHORT',
+          quality: 4,
+          takeProfitPrice: 96,
+          stopLossPrice: 101.3,
+        }),
+      );
+      expect(result.qualityReason).toBe('Сильное давление вниз у линии');
+    });
+
     it('reuses cached settings and model for repeated prompt calls', async () => {
       invokeMock.mockResolvedValue({
         content: {
@@ -536,6 +690,53 @@ describe('ai helpers', () => {
       expect(getUserSettingsMock).toHaveBeenCalledTimes(1);
       expect(chatOpenAICtorMock).toHaveBeenCalledTimes(1);
       expect(invokeMock).toHaveBeenCalledTimes(2);
+    });
+
+    it('creates a separate client when model override changes', async () => {
+      invokeMock.mockResolvedValue({
+        content: {
+          direction: 'LONG',
+          quality: 4,
+          needRetest: false,
+          retestPrice: null,
+          takeProfitPrice: 101.5,
+          stopLossPrice: 98.2,
+          comment: 'ok',
+        },
+      });
+
+      await runAiPrompt(
+        {
+          systemPrompt: 'system-1',
+          humanPrompt: 'human-1',
+        },
+        {
+          model: 'google/gemini-3.1-pro-preview',
+        },
+      );
+      await runAiPrompt(
+        {
+          systemPrompt: 'system-2',
+          humanPrompt: 'human-2',
+        },
+        {
+          model: 'openai/gpt-5-mini',
+        },
+      );
+
+      expect(chatOpenAICtorMock).toHaveBeenCalledTimes(2);
+      expect(chatOpenAICtorMock).toHaveBeenNthCalledWith(
+        1,
+        expect.objectContaining({
+          modelName: 'google/gemini-3.1-pro-preview',
+        }),
+      );
+      expect(chatOpenAICtorMock).toHaveBeenNthCalledWith(
+        2,
+        expect.objectContaining({
+          modelName: 'openai/gpt-5-mini',
+        }),
+      );
     });
 
     it('normalizes object content and persists analysis to redis', async () => {

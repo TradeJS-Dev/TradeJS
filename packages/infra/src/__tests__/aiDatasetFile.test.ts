@@ -151,4 +151,37 @@ describe('aiDatasetFile', () => {
     expect(recentRows.totalRows).toBe(3);
     expect(recentRows.rows.map((row) => row.signalId)).toEqual(['b', 'c']);
   });
+
+  it('supports skipping rows from the end before selecting recent rows', async () => {
+    const merged = path.join(tempDir, 'ai-dataset-trendline-windowed.jsonl');
+    await fs.writeFile(
+      merged,
+      [
+        { signalId: 'a', symbol: 'BTCUSDT', strategyName: 'TrendLine', direction: 'LONG', timestamp: 1, profit: 1, systemPrompt: 'sa', humanPrompt: 'ha' },
+        { signalId: 'b', symbol: 'ETHUSDT', strategyName: 'TrendLine', direction: 'LONG', timestamp: 2, profit: 2, systemPrompt: 'sb', humanPrompt: 'hb' },
+        { signalId: 'c', symbol: 'SOLUSDT', strategyName: 'TrendLine', direction: 'LONG', timestamp: 3, profit: 3, systemPrompt: 'sc', humanPrompt: 'hc' },
+        { signalId: 'd', symbol: 'XRPUSDT', strategyName: 'TrendLine', direction: 'LONG', timestamp: 4, profit: 4, systemPrompt: 'sd', humanPrompt: 'hd' },
+        { signalId: 'e', symbol: 'ADAUSDT', strategyName: 'TrendLine', direction: 'LONG', timestamp: 5, profit: 5, systemPrompt: 'se', humanPrompt: 'he' },
+      ]
+        .map((row) => JSON.stringify(row))
+        .join('\n') + '\n',
+      'utf8',
+    );
+
+    const parseSpy = jest.spyOn(JSON, 'parse');
+    let windowedRows: Awaited<ReturnType<typeof readAiDatasetRows>>;
+    try {
+      windowedRows = await readAiDatasetRows({
+        filePath: merged,
+        limitFromEnd: 2,
+        skipFromEnd: 2,
+      });
+      expect(parseSpy).toHaveBeenCalledTimes(2);
+    } finally {
+      parseSpy.mockRestore();
+    }
+
+    expect(windowedRows.totalRows).toBe(5);
+    expect(windowedRows.rows.map((row) => row.signalId)).toEqual(['b', 'c']);
+  });
 });

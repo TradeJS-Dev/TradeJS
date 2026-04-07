@@ -7,6 +7,7 @@ import ProgressBar from 'progress';
 import { runWithConcurrency } from '@tradejs/core/async';
 import { readAiDatasetRows, toFileToken } from '@tradejs/infra/ai';
 import {
+  DEFAULT_AI_MODEL,
   buildAiPrompts,
   ensureAiStrategyPluginsLoaded,
   runAiPrompt,
@@ -29,6 +30,11 @@ args.option(
   50,
 );
 args.option(
+  'skip',
+  'How many recent trades to skip from the end before selecting replay rows',
+  0,
+);
+args.option(
   ['p', 'parallel'],
   'Concurrent AI requests during replay',
   AI_CONCURRENCY_LIMIT,
@@ -37,6 +43,11 @@ args.option(
   'rebuildPrompts',
   'Rebuild prompts from payload embedded in dataset rows using current prompt builders',
   false,
+);
+args.option(
+  'model',
+  'OpenRouter model id override for this replay run',
+  DEFAULT_AI_MODEL,
 );
 args.option('minQuality', 'Minimum AI quality required to approve entry', 4);
 
@@ -266,8 +277,10 @@ const resolveDatasetFile = async () => {
 
 const main = async () => {
   const recent = normalizeInt(flags.recent, 50);
+  const skip = normalizeInt(flags.skip, 0);
   const minQuality = normalizeInt(flags.minQuality, 4);
   const rebuildPrompts = Boolean(flags.rebuildPrompts);
+  const model = String(flags.model || DEFAULT_AI_MODEL).trim() || DEFAULT_AI_MODEL;
   const parallel = normalizePositiveInt(
     flags.parallel,
     AI_CONCURRENCY_LIMIT,
@@ -277,10 +290,15 @@ const main = async () => {
   const { rows, totalRows } = await readAiDatasetRows({
     filePath,
     limitFromEnd: recent,
+    skipFromEnd: skip,
   });
 
   if (!rows.length) {
-    console.log(chalk.yellow(`No AI prompt rows found in ${filePath}`));
+    console.log(
+      chalk.yellow(
+        `No AI prompt rows selected in ${filePath} (recent=${recent || 'all'}, skip=${skip})`,
+      ),
+    );
     process.exit(0);
   }
 
@@ -314,9 +332,10 @@ const main = async () => {
         promptPair,
         signal
           ? {
+              model,
               signal,
             }
-          : undefined,
+          : { model },
       );
       const aiApproved = isAiApproval(row, analysis, minQuality);
       const quality = normalizeQuality(analysis);
@@ -365,7 +384,9 @@ const main = async () => {
         ['selected', chalk.blue(String(rows.length))],
         ['source_rows', chalk.blue(String(totalRows))],
         ['recent', chalk.blue(recent === 0 ? 'all' : String(recent))],
+        ['skip', chalk.blue(String(skip))],
         ['min_quality', chalk.magenta(String(minQuality))],
+        ['model', chalk.yellow(model)],
         ['parallel', chalk.magenta(String(concurrency))],
         ['rebuild_prompts', rebuildPrompts ? chalk.green('yes') : chalk.gray('no')],
       ],

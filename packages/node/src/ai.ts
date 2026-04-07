@@ -241,14 +241,20 @@ interface AiRequestOptions {
   userName?: string;
   signal?: Signal;
   payload?: AiPayload;
+  model?: string;
 }
 
 type AiModel = {
   invoke: (messages: BaseMessageLike[]) => Promise<{ content: unknown }>;
 };
 
+export const DEFAULT_AI_MODEL = 'google/gemini-3.1-pro-preview';
+
 const userSettingsCache = new Map<string, Promise<UserSettings>>();
 const aiModelCache = new Map<string, Promise<AiModel>>();
+
+const getAiModelCacheKey = (userName: string, modelName: string) =>
+  `${userName}::${modelName}`;
 
 const getAiSettings = async (userName = 'root') => {
   let settingsPromise = userSettingsCache.get(userName);
@@ -268,8 +274,12 @@ const getAiSettings = async (userName = 'root') => {
   return settings;
 };
 
-const createAiModel = async (userName = 'root') => {
-  let modelPromise = aiModelCache.get(userName);
+const createAiModel = async (
+  userName = 'root',
+  modelName = DEFAULT_AI_MODEL,
+) => {
+  const cacheKey = getAiModelCacheKey(userName, modelName);
+  let modelPromise = aiModelCache.get(cacheKey);
   if (!modelPromise) {
     modelPromise = (async () => {
       const [{ ChatOpenAI }, settings] = await Promise.all([
@@ -279,8 +289,7 @@ const createAiModel = async (userName = 'root') => {
 
       return new ChatOpenAI({
         temperature: 0.2,
-        //modelName: 'anthropic/claude-sonnet-4.5',
-        modelName: 'google/gemini-3.1-pro-preview',
+        modelName,
         openAIApiKey: settings.OPENAI_API_KEY,
         configuration: {
           baseURL: settings.OPENAI_API_ENDPOINT,
@@ -292,19 +301,22 @@ const createAiModel = async (userName = 'root') => {
       }) as AiModel;
     })();
     modelPromise.catch(() => {
-      aiModelCache.delete(userName);
+      aiModelCache.delete(cacheKey);
     });
-    aiModelCache.set(userName, modelPromise);
+    aiModelCache.set(cacheKey, modelPromise);
   }
 
   return modelPromise;
 };
 
-const getAiModel = async (userName = 'root') => {
+const getAiModel = async (
+  userName = 'root',
+  modelName = DEFAULT_AI_MODEL,
+) => {
   try {
-    return await createAiModel(userName);
+    return await createAiModel(userName, modelName);
   } catch (error) {
-    aiModelCache.delete(userName);
+    aiModelCache.delete(getAiModelCacheKey(userName, modelName));
     userSettingsCache.delete(userName);
     throw error;
   }
@@ -337,7 +349,7 @@ export const runAiPrompt = async (
 
   const [{ HumanMessage, SystemMessage }, model] = await Promise.all([
     import('@langchain/core/messages'),
-    getAiModel(options.userName),
+    getAiModel(options.userName, options.model),
   ]);
   const messages: BaseMessageLike[] = [];
 

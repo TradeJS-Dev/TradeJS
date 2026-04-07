@@ -145,11 +145,14 @@ export const mergeAiJsonlFiles = async (params: {
 export const readAiDatasetRows = async (params: {
   filePath: string;
   limitFromEnd?: number;
+  skipFromEnd?: number;
 }) => {
-  const { filePath, limitFromEnd = 0 } = params;
+  const { filePath, limitFromEnd = 0, skipFromEnd = 0 } = params;
   const rows: AiDatasetRow[] = [];
   const recentLines: string[] = [];
   let totalRows = 0;
+  const recentWindowLimit =
+    limitFromEnd > 0 ? limitFromEnd + Math.max(0, skipFromEnd) : 0;
   const reader = readline.createInterface({
     input: createReadStream(filePath, { encoding: 'utf8' }),
     crlfDelay: Infinity,
@@ -163,7 +166,7 @@ export const readAiDatasetRows = async (params: {
 
     totalRows += 1;
     if (limitFromEnd > 0) {
-      if (recentLines.length === limitFromEnd) {
+      if (recentLines.length === recentWindowLimit) {
         recentLines.shift();
       }
       recentLines.push(trimmed);
@@ -173,11 +176,23 @@ export const readAiDatasetRows = async (params: {
     }
   }
 
+  const effectiveSkip = Math.max(0, skipFromEnd);
+  const selectedRecentLines =
+    effectiveSkip > 0
+      ? recentLines.slice(
+          0,
+          Math.max(0, recentLines.length - effectiveSkip),
+        )
+      : recentLines;
+  const selectedRows =
+    limitFromEnd > 0
+      ? selectedRecentLines.map((line) => JSON.parse(line) as AiDatasetRow)
+      : effectiveSkip > 0
+        ? rows.slice(0, Math.max(0, rows.length - effectiveSkip))
+        : rows;
+
   return {
-    rows:
-      limitFromEnd > 0
-        ? recentLines.map((line) => JSON.parse(line) as AiDatasetRow)
-        : rows,
+    rows: selectedRows,
     totalRows,
   };
 };
