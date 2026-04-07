@@ -271,6 +271,41 @@ const makeWeakBtcLedBreakTrendlineSignal = () => {
   return signal;
 };
 
+const makeWeakCleanBreakTrendlineSignal = () => {
+  const signal = makeSignal();
+  signal.direction = 'SHORT';
+  signal.prices.currentPrice = 99.541;
+  signal.prices.takeProfitPrice = 96;
+  signal.prices.stopLossPrice = 101.1;
+  signal.figures.trendLine = {
+    ...signal.figures.trendLine,
+    mode: 'lows',
+    points: [
+      { timestamp: 1, value: 100.2 },
+      { timestamp: 2, value: 100 },
+    ],
+    touches: [
+      { timestamp: 1, value: 100.8 },
+      { timestamp: 1.2, value: 100.6 },
+      { timestamp: 1.4, value: 100.4 },
+      { timestamp: 1.6, value: 100.2 },
+    ],
+  };
+  signal.indicators = {
+    ...signal.indicators,
+    maFast: [100.5, 99.8, 99.1],
+    maSlow: [100.7, 100.2, 100],
+    btcMaFast: [100.4, 100.1, 99.9],
+    btcMaSlow: [100.5, 100.2, 100],
+    atrPct: [1.133],
+  };
+  signal.additionalIndicators = {
+    touches: 4,
+    distance: 132,
+  };
+  return signal;
+};
+
 describe('ai helpers', () => {
   const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
   const logSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
@@ -420,6 +455,7 @@ describe('ai helpers', () => {
       expect(prompt).toContain('trendline.currentLinePrice=');
       expect(prompt).toContain('trendline.breakVsAtrRatio=');
       expect(prompt).toContain('trendline.strongNearBreakPressure=');
+      expect(prompt).toContain('trendline.weakCleanBreak=');
       expect(prompt).toContain('trendline.weakBtcLedBreak=');
       expect(prompt).toContain('"maFast":[3,4,5,6,7]');
       expect(prompt).not.toContain('"riskRatio"');
@@ -586,6 +622,47 @@ describe('ai helpers', () => {
         }),
       );
       expect(result.qualityReason).toContain('пробой слишком мелкий относительно ATR');
+      expect(result.comment).toContain('TrendLine guardrail');
+    });
+
+    it('blocks weak clean breaks that lack displacement reserve', async () => {
+      invokeMock.mockResolvedValue({
+        content: {
+          direction: 'SHORT',
+          quality: 5,
+          needRetest: false,
+          retestPrice: null,
+          takeProfitPrice: 96,
+          stopLossPrice: 101.1,
+          setup: 'Есть пробой вниз',
+          retestPlan: 'Можно входить сразу',
+          qualityReason: 'Чистый пробой',
+          triggerInvalidation: 'Отмена при возврате выше',
+          comment: 'ok',
+        },
+      });
+
+      const result = await runAiPrompt(
+        {
+          systemPrompt: 'system',
+          humanPrompt: 'human',
+        },
+        {
+          signal: makeWeakCleanBreakTrendlineSignal(),
+        },
+      );
+
+      expect(result).toEqual(
+        expect.objectContaining({
+          direction: null,
+          quality: 3,
+          needRetest: true,
+          retestPrice: 100,
+          takeProfitPrice: null,
+          stopLossPrice: null,
+        }),
+      );
+      expect(result.qualityReason).toContain('слишком слабый относительно ATR');
       expect(result.comment).toContain('TrendLine guardrail');
     });
 
