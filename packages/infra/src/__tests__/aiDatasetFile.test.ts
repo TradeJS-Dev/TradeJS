@@ -82,7 +82,7 @@ describe('aiDatasetFile', () => {
     await expect(closeAiDatasetWriter(missing)).resolves.toBeUndefined();
   });
 
-  it('merges chunk files and reads only recent rows from tail', async () => {
+  it('merges chunk files in chronological order and reads recent rows from tail', async () => {
     const chunkA = path.join(tempDir, 'ai-dataset-trendline-a.jsonl');
     const chunkB = path.join(tempDir, 'ai-dataset-trendline-b.jsonl');
     await fs.writeFile(
@@ -93,7 +93,7 @@ describe('aiDatasetFile', () => {
           strategyName: 'TrendLine',
           symbol: 'ETHUSDT',
           direction: 'LONG',
-          timestamp: 1,
+          timestamp: 3,
           profit: 1,
           systemPrompt: 'sa',
           humanPrompt: 'ha',
@@ -103,7 +103,7 @@ describe('aiDatasetFile', () => {
           strategyName: 'TrendLine',
           symbol: 'BTCUSDT',
           direction: 'SHORT',
-          timestamp: 2,
+          timestamp: 1,
           profit: -1,
           systemPrompt: 'sb',
           humanPrompt: 'hb',
@@ -118,7 +118,7 @@ describe('aiDatasetFile', () => {
         strategyName: 'TrendLine',
         symbol: 'SOLUSDT',
         direction: 'LONG',
-        timestamp: 3,
+        timestamp: 2,
         profit: 3,
         systemPrompt: 'sc',
         humanPrompt: 'hc',
@@ -148,8 +148,9 @@ describe('aiDatasetFile', () => {
 
     expect(allRows.totalRows).toBe(3);
     expect(allRows.rows).toHaveLength(3);
+    expect(allRows.rows.map((row) => row.signalId)).toEqual(['b', 'c', 'a']);
     expect(recentRows.totalRows).toBe(3);
-    expect(recentRows.rows.map((row) => row.signalId)).toEqual(['b', 'c']);
+    expect(recentRows.rows.map((row) => row.signalId)).toEqual(['c', 'a']);
   });
 
   it('supports skipping rows from the end before selecting recent rows', async () => {

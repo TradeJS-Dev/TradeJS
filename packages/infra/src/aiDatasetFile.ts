@@ -139,7 +139,69 @@ export const mergeAiJsonlFiles = async (params: {
   filePaths: string[];
   outPath: string;
 }) => {
-  await mergeJsonlFiles(params);
+  const { filePaths, outPath } = params;
+  const rows: Array<{
+    row: AiDatasetRow;
+    line: string;
+    index: number;
+  }> = [];
+  let index = 0;
+
+  for (const filePath of filePaths) {
+    const content = await fs.readFile(filePath, 'utf8');
+    const lines = content.split('\n');
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed) {
+        continue;
+      }
+
+      rows.push({
+        row: JSON.parse(trimmed) as AiDatasetRow,
+        line: trimmed,
+        index,
+      });
+      index += 1;
+    }
+  }
+
+  rows.sort((left, right) => {
+    const leftTimestamp = Number(left.row.timestamp);
+    const rightTimestamp = Number(right.row.timestamp);
+    const normalizedLeftTimestamp = Number.isFinite(leftTimestamp)
+      ? leftTimestamp
+      : Number.MAX_SAFE_INTEGER;
+    const normalizedRightTimestamp = Number.isFinite(rightTimestamp)
+      ? rightTimestamp
+      : Number.MAX_SAFE_INTEGER;
+
+    if (normalizedLeftTimestamp !== normalizedRightTimestamp) {
+      return normalizedLeftTimestamp - normalizedRightTimestamp;
+    }
+
+    const symbolCompare = (left.row.symbol || '').localeCompare(
+      right.row.symbol || '',
+    );
+    if (symbolCompare !== 0) {
+      return symbolCompare;
+    }
+
+    const signalIdCompare = (left.row.signalId || '').localeCompare(
+      right.row.signalId || '',
+    );
+    if (signalIdCompare !== 0) {
+      return signalIdCompare;
+    }
+
+    return left.index - right.index;
+  });
+
+  await fs.mkdir(path.dirname(outPath), { recursive: true });
+  await fs.writeFile(
+    outPath,
+    rows.map(({ line }) => line).join('\n') + (rows.length ? '\n' : ''),
+    'utf8',
+  );
 };
 
 export const readAiDatasetRows = async (params: {
