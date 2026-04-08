@@ -4,6 +4,7 @@ import { createTrendlineEngine } from '@tradejs/core/indicators';
 import { filterByVeryVolatility } from './filters';
 import { TrendLineConfig } from './config';
 import { buildTrendLineFigures } from './figures';
+import { buildTrendlineStructuralContext } from './guardrails';
 import {
   CreateStrategyCore,
   IndicatorsHistorySnapshot,
@@ -79,6 +80,27 @@ export const createTrendLineCore: CreateStrategyCore<
       return strategyApi.skip('STRATEGY_DISABLED');
     }
 
+    const indicators = indicatorsState.snapshot();
+    const structuralContext = buildTrendlineStructuralContext({
+      direction,
+      prices: { currentPrice },
+      indicators: indicators as Record<string, unknown>,
+      additionalIndicators: {
+        touches: bestLine.touches.length + 2,
+        distance: bestLine.distance,
+        trendLine: bestLine,
+      },
+      figures: {
+        trendLine: bestLine,
+      },
+    });
+
+    if (structuralContext.structuralHardBlockReasons.length > 0) {
+      return strategyApi.skip(
+        `TRENDLINE_STRUCTURE:${structuralContext.structuralHardBlockReasons[0]}`,
+      );
+    }
+
     const { stopLossPrice, takeProfitPrice, riskRatio, qty } =
       strategyApi.getDirectionalTpSlPrices({
         price: currentPrice,
@@ -98,7 +120,6 @@ export const createTrendLineCore: CreateStrategyCore<
       return strategyApi.skip(`RISK_RATIO:${round(riskRatio)}`);
     }
 
-    const indicators = indicatorsState.snapshot();
     const correlation = indicatorsState.latestNumber('correlation');
 
     if (

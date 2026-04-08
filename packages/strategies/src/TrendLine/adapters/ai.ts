@@ -1,6 +1,13 @@
 import { mapAiRuntimeFromConfig } from '@tradejs/core/strategies';
-import type { TrendLineConfig } from '../config';
 import { AiPayload, StrategyAiAdapter } from '@tradejs/types';
+import type { TrendLineConfig } from '../config';
+import {
+  buildTrendlineStructuralContext,
+  getBias,
+  getLastFiniteNumber,
+  getSpreadPct,
+  getTrendLineFromPayload,
+} from '../guardrails';
 
 /**
  * TrendLine AI adapter extends the shared AI pipeline (`src/utils/ai.ts`):
@@ -24,6 +31,7 @@ const TRENDLINE_CONTEXT_PROMPT = `
 - Если clearBreak=true, но trendlineContext.weakCleanBreak=true, трактуй это как слишком слабый формальный пробой: структуру уже задело, но запаса по displacement пока мало. Обычно здесь нужен follow-through или ретест, а не немедленный вход.
 - Если clearBreak=true, но trendlineContext.compressedCleanBreak=true, это сжатый пробой после серии близких касаний на короткой линии. Даже при формальном выходе за линию здесь чаще нужен follow-through или ретест, а не немедленный вход.
 - Если clearBreak=true, но trendlineContext.breakVsAtrRatio < 0.5 и при этом trendlineContext.weakBtcLedBreak=true, считай это слабым BTC-led пробоем без собственного follow-through по монете. Обычно здесь нужен ретест/подтверждение, а не немедленный вход.
+- Для LONG по descending resistance, если линия очень длинная, а выход над ней пока умеренный и BTC поддерживает пробой слабо, трактуй это как ранний breakout без follow-through. В таком случае чаще нужен ретест/подтверждение, а не немедленный вход.
 - Для TrendLine quality 4-5 допустим только когда одновременно: clearBreak=true, nearLineNoise=false, coinBiasAligned=true и btcBiasAligned=true. Если хотя бы одно из этих условий не выполнено, не ставь quality выше 3.
 - Редкое исключение: если trendlineContext.aggressivePreBreakPressure=true, это агрессивный pre-break pressure сетап. В таком случае допустим quality=4 даже без clearBreak, но только как ранний вход с tight risk и только если не конфликтуют coin/BTC bias.
 - Еще одно редкое исключение: если trendlineContext.strongNearBreakPressure=true, это зрелая линия с уже начавшимся продавливанием в сторону сделки и очень сильным aligned pressure по монете и BTC. В таком случае допустим quality=4 даже при nearLineNoise=true, но только как ранний вход по сильной структуре.
@@ -32,57 +40,8 @@ const TRENDLINE_CONTEXT_PROMPT = `
 const TRENDLINE_PAYLOAD_PROMPT = `
 - В payload.figures.trendline передается полная геометрия трендовой линии (без trim), чтобы можно было оценивать касания/структуру.
 - В payload.additionalIndicators.trendlineContext передается mode / touches / distance / currentLinePrice / priceVsLinePct / priceVsLineSide / clearBreak / nearLineNoise / coinMaBias / btcMaBias / maxAllowedQuality / approvalAllowedNow / hardBlockReasons.
-- Дополнительно в trendlineContext передаются atrPct / breakVsAtrRatio / coinMaSpreadPct / btcMaSpreadPct / aggressivePreBreakPressure / strongNearBreakPressure / weakCleanBreak / compressedCleanBreak / weakBtcLedBreak.
+- Дополнительно в trendlineContext передаются atrPct / breakVsAtrRatio / coinMaSpreadPct / btcMaSpreadPct / aggressivePreBreakPressure / strongNearBreakPressure / weakCleanBreak / compressedCleanBreak / weakBtcLedBreak / weakLongFarBreak.
 `;
-
-const WEAK_CLEAN_BREAK_ATR_RATIO_MAX = 0.45;
-const COMPRESSED_CLEAN_BREAK_ATR_RATIO_MAX = 0.6;
-const COMPRESSED_CLEAN_BREAK_DISTANCE_MAX = 120;
-const COMPRESSED_CLEAN_BREAK_TOUCHES_MIN = 5;
-
-const toFiniteNumberOrNull = (value: unknown) => {
-  const num = Number(value);
-  return Number.isFinite(num) ? num : null;
-};
-
-const getLastFiniteNumber = (value: unknown) => {
-  if (!Array.isArray(value) || value.length === 0) {
-    return null;
-  }
-
-  return toFiniteNumberOrNull(value[value.length - 1]);
-};
-
-const getBias = (fast: number | null, slow: number | null) => {
-  if (fast == null || slow == null) {
-    return null;
-  }
-  if (fast > slow) {
-    return 'bullish';
-  }
-  if (fast < slow) {
-    return 'bearish';
-  }
-  return 'flat';
-};
-
-const getSpreadPct = (fast: number | null, slow: number | null) => {
-  if (fast == null || slow == null || slow === 0) {
-    return null;
-  }
-
-  return ((fast - slow) / slow) * 100;
-};
-
-const getTrendLineFromPayload = (signal: {
-  figures?: Record<string, unknown>;
-  additionalIndicators?: Record<string, unknown>;
-}) =>
-  (signal.figures?.trendLine as Record<string, unknown> | undefined) ??
-  (signal.additionalIndicators?.trendLine as
-    | Record<string, unknown>
-    | undefined) ??
-  null;
 
 const buildTrendlineContext = (signal: {
   direction?: unknown;
@@ -91,169 +50,82 @@ const buildTrendlineContext = (signal: {
   additionalIndicators?: Record<string, unknown>;
   figures?: Record<string, unknown>;
 }) => {
+  const structural = buildTrendlineStructuralContext(signal);
   const trendLine = getTrendLineFromPayload(signal);
-  const currentPrice = toFiniteNumberOrNull(signal.prices?.currentPrice);
-  const signalDirection =
-    signal.direction === 'LONG' || signal.direction === 'SHORT'
-      ? signal.direction
-      : null;
-  const points = Array.isArray(trendLine?.points) ? trendLine.points : [];
-  const latestPoint = points.length ? points[points.length - 1] : null;
-  const currentLinePrice = toFiniteNumberOrNull(
-    latestPoint && typeof latestPoint === 'object'
-      ? (latestPoint as { value?: unknown }).value
-      : null,
-  );
-  const priceVsLinePct =
-    currentPrice != null && currentLinePrice != null && currentLinePrice !== 0
-      ? ((currentPrice - currentLinePrice) / currentLinePrice) * 100
-      : null;
-  const priceVsLineSide =
-    priceVsLinePct == null
-      ? null
-      : priceVsLinePct > 0
-        ? 'above'
-        : priceVsLinePct < 0
-          ? 'below'
-          : 'at';
-  const priceVsLinePctAbs =
-    priceVsLinePct == null ? null : Math.abs(priceVsLinePct);
-  const touchesTotal = toFiniteNumberOrNull(
-    signal.additionalIndicators?.touches,
-  );
-  const distance = toFiniteNumberOrNull(signal.additionalIndicators?.distance);
   const coinMaFast = getLastFiniteNumber(signal.indicators?.maFast);
   const coinMaSlow = getLastFiniteNumber(signal.indicators?.maSlow);
-  const btcMaFast = getLastFiniteNumber(signal.indicators?.btcMaFast);
-  const btcMaSlow = getLastFiniteNumber(signal.indicators?.btcMaSlow);
-  const atrPct = getLastFiniteNumber(signal.indicators?.atrPct);
   const coinMaBias = getBias(coinMaFast, coinMaSlow);
-  const btcMaBias = getBias(btcMaFast, btcMaSlow);
   const coinMaSpreadPct = getSpreadPct(coinMaFast, coinMaSlow);
-  const btcMaSpreadPct = getSpreadPct(btcMaFast, btcMaSlow);
   const coinBiasAligned =
-    signalDirection == null || coinMaBias == null
+    structural.signalDirection == null || coinMaBias == null
       ? null
-      : signalDirection === 'SHORT'
+      : structural.signalDirection === 'SHORT'
         ? coinMaBias === 'bearish'
         : coinMaBias === 'bullish';
-  const btcBiasAligned =
-    signalDirection == null || btcMaBias == null
-      ? null
-      : signalDirection === 'SHORT'
-        ? btcMaBias === 'bearish'
-        : btcMaBias === 'bullish';
-  const clearBreak =
-    signalDirection === 'SHORT'
-      ? priceVsLineSide === 'below' &&
-        priceVsLinePctAbs != null &&
-        priceVsLinePctAbs >= 0.35
-      : signalDirection === 'LONG'
-        ? priceVsLineSide === 'above' &&
-          priceVsLinePctAbs != null &&
-          priceVsLinePctAbs >= 0.35
-        : null;
-  const nearLineNoise =
-    priceVsLinePctAbs == null ? null : priceVsLinePctAbs < 0.35;
-  const breakVsAtrRatio =
-    priceVsLinePctAbs != null && atrPct != null && atrPct > 0
-      ? priceVsLinePctAbs / atrPct
-      : null;
-  const touches =
-    touchesTotal != null
-      ? touchesTotal
-      : Array.isArray(trendLine?.touches)
-        ? trendLine.touches.length
-        : null;
   const aggressivePreBreakPressure =
-    signalDirection === 'SHORT' &&
+    structural.signalDirection === 'SHORT' &&
     trendLine?.mode === 'lows' &&
-    priceVsLinePct != null &&
-    priceVsLinePct > 0 &&
-    priceVsLinePct <= 0.15 &&
-    (touches ?? 0) >= 5 &&
-    distance != null &&
-    distance >= 90 &&
-    distance <= 120 &&
+    structural.priceVsLinePct != null &&
+    structural.priceVsLinePct > 0 &&
+    structural.priceVsLinePct <= 0.15 &&
+    (structural.touches ?? 0) >= 5 &&
+    structural.distance != null &&
+    structural.distance >= 90 &&
+    structural.distance <= 120 &&
     coinBiasAligned === true &&
-    btcBiasAligned === true &&
+    structural.btcBiasAligned === true &&
     coinMaSpreadPct != null &&
     coinMaSpreadPct <= -1.0 &&
-    btcMaSpreadPct != null &&
-    btcMaSpreadPct <= -0.3;
+    structural.btcMaSpreadPct != null &&
+    structural.btcMaSpreadPct <= -0.3;
   const strongNearBreakPressure =
-    signalDirection === 'SHORT' &&
+    structural.signalDirection === 'SHORT' &&
     trendLine?.mode === 'lows' &&
-    clearBreak === false &&
-    nearLineNoise === true &&
-    priceVsLinePct != null &&
-    priceVsLinePct < 0 &&
-    breakVsAtrRatio != null &&
-    breakVsAtrRatio >= 0.25 &&
-    breakVsAtrRatio <= 0.35 &&
+    structural.clearBreak === false &&
+    structural.nearLineNoise === true &&
+    structural.priceVsLinePct != null &&
+    structural.priceVsLinePct < 0 &&
+    structural.breakVsAtrRatio != null &&
+    structural.breakVsAtrRatio >= 0.25 &&
+    structural.breakVsAtrRatio <= 0.35 &&
     coinBiasAligned === true &&
-    btcBiasAligned === true &&
+    structural.btcBiasAligned === true &&
     coinMaSpreadPct != null &&
     coinMaSpreadPct <= -1.5 &&
-    btcMaSpreadPct != null &&
-    btcMaSpreadPct <= -0.5 &&
-    (touches ?? 0) >= 5 &&
-    distance != null &&
-    distance >= 300;
-  const weakCleanBreak =
-    clearBreak === true &&
-    nearLineNoise === false &&
-    breakVsAtrRatio != null &&
-    breakVsAtrRatio < WEAK_CLEAN_BREAK_ATR_RATIO_MAX;
-  const compressedCleanBreak =
-    clearBreak === true &&
-    nearLineNoise === false &&
-    breakVsAtrRatio != null &&
-    breakVsAtrRatio < COMPRESSED_CLEAN_BREAK_ATR_RATIO_MAX &&
-    (touches ?? 0) >= COMPRESSED_CLEAN_BREAK_TOUCHES_MIN &&
-    distance != null &&
-    distance < COMPRESSED_CLEAN_BREAK_DISTANCE_MAX;
+    structural.btcMaSpreadPct != null &&
+    structural.btcMaSpreadPct <= -0.5 &&
+    (structural.touches ?? 0) >= 5 &&
+    structural.distance != null &&
+    structural.distance >= 300;
   const weakBtcLedBreak =
-    signalDirection === 'SHORT'
-      ? clearBreak === true &&
-        breakVsAtrRatio != null &&
-        breakVsAtrRatio < 0.5 &&
+    structural.signalDirection === 'SHORT'
+      ? structural.clearBreak === true &&
+        structural.breakVsAtrRatio != null &&
+        structural.breakVsAtrRatio < 0.5 &&
         coinBiasAligned === true &&
-        btcBiasAligned === true &&
+        structural.btcBiasAligned === true &&
         coinMaSpreadPct != null &&
         coinMaSpreadPct > -0.6 &&
-        btcMaSpreadPct != null &&
-        btcMaSpreadPct <= -0.3
-      : signalDirection === 'LONG'
-        ? clearBreak === true &&
-          breakVsAtrRatio != null &&
-          breakVsAtrRatio < 0.5 &&
+        structural.btcMaSpreadPct != null &&
+        structural.btcMaSpreadPct <= -0.3
+      : structural.signalDirection === 'LONG'
+        ? structural.clearBreak === true &&
+          structural.breakVsAtrRatio != null &&
+          structural.breakVsAtrRatio < 0.5 &&
           coinBiasAligned === true &&
-          btcBiasAligned === true &&
+          structural.btcBiasAligned === true &&
           coinMaSpreadPct != null &&
           coinMaSpreadPct < 0.6 &&
-          btcMaSpreadPct != null &&
-          btcMaSpreadPct >= 0.3
+          structural.btcMaSpreadPct != null &&
+          structural.btcMaSpreadPct >= 0.3
         : false;
-  const hardBlockReasons: string[] = [];
+  const hardBlockReasons = [...structural.structuralHardBlockReasons];
 
-  if (clearBreak === false) {
-    hardBlockReasons.push('no_clear_break');
-  }
-  if (nearLineNoise === true) {
-    hardBlockReasons.push('near_line_noise');
-  }
   if (coinBiasAligned === false) {
     hardBlockReasons.push('coin_bias_conflict');
   }
-  if (btcBiasAligned === false) {
+  if (structural.btcBiasAligned === false) {
     hardBlockReasons.push('btc_bias_conflict');
-  }
-  if (weakCleanBreak) {
-    hardBlockReasons.push('weak_clean_break');
-  }
-  if (compressedCleanBreak) {
-    hardBlockReasons.push('compressed_clean_break');
   }
   if (weakBtcLedBreak) {
     hardBlockReasons.push('weak_btc_led_break');
@@ -271,33 +143,14 @@ const buildTrendlineContext = (signal: {
     strongNearBreakPressure;
 
   return {
-    signalDirection,
-    mode: typeof trendLine?.mode === 'string' ? trendLine.mode : null,
-    touches,
-    distance,
-    currentLinePrice,
-    currentPrice,
-    priceVsLinePct,
-    priceVsLineSide,
-    priceVsLinePctAbs,
-    clearBreak,
-    nearLineNoise,
+    ...structural,
     coinMaFast,
     coinMaSlow,
     coinMaBias,
-    atrPct,
-    breakVsAtrRatio,
     coinMaSpreadPct,
     coinBiasAligned,
-    btcMaFast,
-    btcMaSlow,
-    btcMaBias,
-    btcMaSpreadPct,
-    btcBiasAligned,
     aggressivePreBreakPressure,
     strongNearBreakPressure,
-    weakCleanBreak,
-    compressedCleanBreak,
     weakBtcLedBreak,
     maxAllowedQuality,
     approvalAllowedNow,
@@ -340,6 +193,8 @@ const getHardBlockReasonText = (reason: string) => {
       return 'пробой выглядит слишком сжатым: серия близких касаний на короткой линии без достаточного follow-through';
     case 'weak_btc_led_break':
       return 'пробой слишком мелкий относительно ATR и больше похож на BTC-led движение без follow-through по монете';
+    case 'weak_long_far_break':
+      return 'для LONG пробой очень длинной линии пока слишком умеренный, а BTC поддерживает его слишком слабо';
     default:
       return reason;
   }
@@ -515,6 +370,7 @@ export const trendLineAiAdapter: StrategyAiAdapter = {
 - trendline.weakCleanBreak=${String(trendlineContext.weakCleanBreak)}
 - trendline.compressedCleanBreak=${String(trendlineContext.compressedCleanBreak)}
 - trendline.weakBtcLedBreak=${String(trendlineContext.weakBtcLedBreak)}
+- trendline.weakLongFarBreak=${String(trendlineContext.weakLongFarBreak)}
 - trendline.maxAllowedQuality=${String(trendlineContext.maxAllowedQuality)}
 - trendline.approvalAllowedNow=${String(trendlineContext.approvalAllowedNow)}
 - trendline.hardBlockReasons=${JSON.stringify(trendlineContext.hardBlockReasons)}

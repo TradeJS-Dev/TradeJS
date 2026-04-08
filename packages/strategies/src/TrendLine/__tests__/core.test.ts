@@ -136,7 +136,12 @@ const makeBestLine = (mode: 'lows' | 'highs' = 'lows') => ({
   mode,
   distance: 1.5,
   touches: [{ timestamp: 1_700_000_000_000 - 1, value: 99 }],
-  points: [{ timestamp: 1_700_000_000_000 - 1, value: 99 }],
+  points: [
+    {
+      timestamp: 1_700_000_000_000 - 1,
+      value: mode === 'lows' ? 100.5 : 99.5,
+    },
+  ],
 });
 
 describe('createTrendLineCore', () => {
@@ -192,7 +197,7 @@ describe('createTrendLineCore', () => {
       mode: 'lows',
       distance: 1.5,
       touches: [{ timestamp: candle.timestamp - 1, value: 99 }],
-      points: [{ timestamp: candle.timestamp - 1, value: 99 }],
+      points: [{ timestamp: candle.timestamp - 1, value: 100.5 }],
     };
 
     (createTrendlineEngine as jest.Mock)
@@ -302,6 +307,42 @@ describe('createTrendLineCore', () => {
 
     const result = await core(candle as any, candle as any);
     expect(result).toEqual({ kind: 'skip', code: 'POSITION_EXISTS' });
+  });
+
+  it('returns structural skip when breakout is not confirmed', async () => {
+    const candle = makeCandle(1_700_000_000_000, 100);
+    const invalidLine = {
+      ...makeBestLine('lows'),
+      points: [{ timestamp: candle.timestamp - 1, value: 99 }],
+    };
+    (createTrendlineEngine as jest.Mock)
+      .mockReturnValueOnce({ next: jest.fn(() => [invalidLine]) })
+      .mockReturnValueOnce({ next: jest.fn(() => []) });
+    (getStrategyMarketSnapshot as jest.Mock).mockResolvedValue({
+      fullData: [candle],
+      lastCandle: candle,
+      timestamp: candle.timestamp,
+      currentPrice: candle.close,
+    });
+
+    const core = await createTrendLineCore({
+      userName: 'test',
+      symbol: 'TESTUSDT',
+      config: makeConfig(),
+      isConfigFromBacktest: false,
+      connector: {} as any,
+      data: [candle as any],
+      btcData: [candle as any],
+      loadPineScriptFile: jest.fn(() => ''),
+      strategyApi: makeStrategyApi(),
+      indicatorsState: makeIndicatorsState() as any,
+    });
+
+    const result = await core(candle as any, candle as any);
+    expect(result).toEqual({
+      kind: 'skip',
+      code: 'TRENDLINE_STRUCTURE:no_clear_break',
+    });
   });
 
   it('returns skip when trade cooldown is active', async () => {

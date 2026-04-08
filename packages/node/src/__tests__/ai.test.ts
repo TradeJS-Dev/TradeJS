@@ -342,6 +342,42 @@ const makeCompressedCleanBreakTrendlineSignal = () => {
   return signal;
 };
 
+const makeWeakLongFarBreakTrendlineSignal = () => {
+  const signal = makeSignal();
+  signal.direction = 'LONG';
+  signal.prices.currentPrice = 100.505;
+  signal.prices.takeProfitPrice = 104.5;
+  signal.prices.stopLossPrice = 98.9;
+  signal.figures.trendLine = {
+    ...signal.figures.trendLine,
+    mode: 'highs',
+    points: [
+      { timestamp: 1, value: 101.4 },
+      { timestamp: 2, value: 100 },
+    ],
+    touches: [
+      { timestamp: 1, value: 101.3 },
+      { timestamp: 1.2, value: 101.1 },
+      { timestamp: 1.4, value: 100.8 },
+      { timestamp: 1.6, value: 100.4 },
+      { timestamp: 1.8, value: 100.15 },
+    ],
+  };
+  signal.indicators = {
+    ...signal.indicators,
+    maFast: [99.8, 100.1, 100.36],
+    maSlow: [99.7, 99.95, 100],
+    btcMaFast: [100.02, 100.18, 100.3],
+    btcMaSlow: [100, 100.08, 100],
+    atrPct: [0.93],
+  };
+  signal.additionalIndicators = {
+    touches: 5,
+    distance: 1687,
+  };
+  return signal;
+};
+
 describe('ai helpers', () => {
   const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
   const logSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
@@ -493,6 +529,7 @@ describe('ai helpers', () => {
       expect(prompt).toContain('trendline.strongNearBreakPressure=');
       expect(prompt).toContain('trendline.weakCleanBreak=');
       expect(prompt).toContain('trendline.weakBtcLedBreak=');
+      expect(prompt).toContain('trendline.weakLongFarBreak=');
       expect(prompt).toContain('"maFast":[3,4,5,6,7]');
       expect(prompt).not.toContain('"riskRatio"');
     });
@@ -742,6 +779,47 @@ describe('ai helpers', () => {
         }),
       );
       expect(result.qualityReason).toContain('слишком сжатым');
+      expect(result.comment).toContain('TrendLine guardrail');
+    });
+
+    it('blocks weak long breaks on very long lines with weak btc support', async () => {
+      invokeMock.mockResolvedValue({
+        content: {
+          direction: 'LONG',
+          quality: 5,
+          needRetest: false,
+          retestPrice: null,
+          takeProfitPrice: 104.5,
+          stopLossPrice: 98.9,
+          setup: 'Есть пробой вверх',
+          retestPlan: 'Можно входить сразу',
+          qualityReason: 'Чистый пробой вверх',
+          triggerInvalidation: 'Отмена при возврате ниже',
+          comment: 'ok',
+        },
+      });
+
+      const result = await runAiPrompt(
+        {
+          systemPrompt: 'system',
+          humanPrompt: 'human',
+        },
+        {
+          signal: makeWeakLongFarBreakTrendlineSignal(),
+        },
+      );
+
+      expect(result).toEqual(
+        expect.objectContaining({
+          direction: null,
+          quality: 3,
+          needRetest: true,
+          retestPrice: 100,
+          takeProfitPrice: null,
+          stopLossPrice: null,
+        }),
+      );
+      expect(result.qualityReason).toContain('для LONG пробой очень длинной линии');
       expect(result.comment).toContain('TrendLine guardrail');
     });
 
