@@ -316,7 +316,8 @@ const resolveDeterministicGateEvaluation = (
     gateContext?.structuralHardBlockReasons,
   )
     ? gateContext.structuralHardBlockReasons.filter(
-        (reason): reason is string => typeof reason === 'string' && reason,
+        (reason): reason is string =>
+          typeof reason === 'string' && reason.trim().length > 0,
       )
     : [];
   const coreBlocked = structuralHardBlockReasons.length > 0;
@@ -521,7 +522,8 @@ const main = async () => {
   });
 
   const summary = summarizeAiTrainEvaluations(evaluations);
-  const directionSummaries = summarizeAiTrainEvaluationsByDirection(evaluations);
+  const directionSummaries =
+    summarizeAiTrainEvaluationsByDirection(evaluations);
   const deterministicSummary = summarizeDeterministicGateEvaluations(
     preparedRows.map((preparedRow) => preparedRow.deterministic),
     evaluations,

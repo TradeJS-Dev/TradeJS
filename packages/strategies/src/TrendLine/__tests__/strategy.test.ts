@@ -73,6 +73,34 @@ const makeCandle = (timestamp: number, price: number) => ({
   turnover: price * 1000,
 });
 
+const makeFreshBreakoutTrendLine = (
+  candle: ReturnType<typeof makeCandle>,
+  mode: 'lows' | 'highs' = 'lows',
+) => {
+  const delta = candle.close * 0.006;
+
+  return {
+    id: 'line-1',
+    mode,
+    distance: 50,
+    touches: [
+      { timestamp: candle.timestamp - 2_700_000, value: candle.close + delta },
+      { timestamp: candle.timestamp - 1_800_000, value: candle.close + delta },
+      { timestamp: candle.timestamp - 900_000, value: candle.close + delta },
+    ],
+    points: [
+      {
+        timestamp: candle.timestamp - 900_000,
+        value: mode === 'lows' ? candle.close + delta : candle.close - delta,
+      },
+      {
+        timestamp: candle.timestamp,
+        value: mode === 'lows' ? candle.close - delta : candle.close + delta,
+      },
+    ],
+  };
+};
+
 describe('TrendlineStrategyCreator', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -94,18 +122,11 @@ describe('TrendlineStrategyCreator', () => {
 
   it('stores 10 indicator values and exposes them in signal', async () => {
     (createTrendlineEngine as jest.Mock).mockImplementation(
-      (_data, options) => {
-        const line = {
-          id: 'line-1',
-          mode: options.mode ?? 'lows',
-          distance: 1,
-          touches: [{ timestamp: 1, value: 1 }],
-          points: [{ timestamp: 1, value: 1 }],
-        };
-        return {
-          next: jest.fn(() => [line]),
-        };
-      },
+      (_data, options) => ({
+        next: jest.fn((candle) => [
+          makeFreshBreakoutTrendLine(candle as any, options.mode ?? 'lows'),
+        ]),
+      }),
     );
 
     let counter = 0;
@@ -203,7 +224,10 @@ describe('TrendlineStrategyCreator', () => {
     for (let i = 0; i < 10; i += 1) {
       const candle = makeCandle(start + i * 900_000, 100 + i);
       const btcCandle = makeCandle(start + i * 900_000, 20000 + i);
-      result = await strategy(candle, btcCandle);
+      const nextResult = await strategy(candle, btcCandle);
+      if (!result && typeof nextResult === 'object') {
+        result = nextResult;
+      }
     }
 
     expect(result).toBeTruthy();
@@ -217,18 +241,11 @@ describe('TrendlineStrategyCreator', () => {
 
   it('keeps indicator history isolated between sequential signals', async () => {
     (createTrendlineEngine as jest.Mock).mockImplementation(
-      (_data, options) => {
-        const line = {
-          id: 'line-1',
-          mode: options.mode ?? 'lows',
-          distance: 1,
-          touches: [{ timestamp: 1, value: 1 }],
-          points: [{ timestamp: 1, value: 1 }],
-        };
-        return {
-          next: jest.fn(() => [line]),
-        };
-      },
+      (_data, options) => ({
+        next: jest.fn((candle) => [
+          makeFreshBreakoutTrendLine(candle as any, options.mode ?? 'lows'),
+        ]),
+      }),
     );
 
     let value = 0;
@@ -315,18 +332,11 @@ describe('TrendlineStrategyCreator', () => {
     });
 
     (createTrendlineEngine as jest.Mock).mockImplementation(
-      (_data, options) => {
-        const line = {
-          id: 'line-1',
-          mode: options.mode ?? 'lows',
-          distance: 1,
-          touches: [{ timestamp: 1, value: 1 }],
-          points: [{ timestamp: 1, value: 1 }],
-        };
-        return {
-          next: jest.fn(() => [line]),
-        };
-      },
+      (_data, options) => ({
+        next: jest.fn((candle) => [
+          makeFreshBreakoutTrendLine(candle as any, options.mode ?? 'lows'),
+        ]),
+      }),
     );
 
     (createIndicators as jest.Mock).mockImplementation(() => ({
@@ -666,19 +676,17 @@ describe('TrendlineStrategyCreator', () => {
     let lowsCandlesSeen = 0;
     (createTrendlineEngine as jest.Mock).mockImplementation(
       (_data, options) => {
-        const line = {
-          id: 'line-1',
-          mode: options.mode ?? 'lows',
-          distance: 1,
-          touches: [{ timestamp: 1, value: 1 }],
-          points: [{ timestamp: 1, value: 1 }],
-        };
         return {
-          next: jest.fn(() => {
+          next: jest.fn((candle) => {
             if (options.mode === 'lows') {
               lowsCandlesSeen += 1;
               if (lowsCandlesSeen > 120) {
-                return [line];
+                return [
+                  makeFreshBreakoutTrendLine(
+                    candle as ReturnType<typeof makeCandle>,
+                    options.mode ?? 'lows',
+                  ),
+                ];
               }
             }
             return [];
@@ -745,20 +753,20 @@ describe('TrendlineStrategyCreator', () => {
       connector,
     });
 
-    let firstSignal: any = null;
     const start = 1_700_000_000_000;
     for (let i = 0; i < 140; i += 1) {
       const candle = makeCandle(start + i * 900_000, 100 + i);
       const btcCandle = makeCandle(start + i * 900_000, 20000 + i);
-      const result = await strategy(candle, btcCandle);
-      if (!firstSignal && typeof result === 'object') {
-        firstSignal = result;
-      }
+      await strategy(candle, btcCandle);
     }
 
-    expect(firstSignal).toBeTruthy();
-    expect(firstSignal.indicators.price24hPcnt).toHaveLength(50);
-    expect(firstSignal.indicators.price1hPcnt).toHaveLength(50);
+    const indicatorsInstance = (createIndicators as jest.Mock).mock.results[0]
+      ?.value;
+    const history = indicatorsInstance?.result();
+
+    expect(history).toBeTruthy();
+    expect(history.price24hPcnt).toHaveLength(50);
+    expect(history.price1hPcnt).toHaveLength(50);
   });
 
   it('closes opposite positions on other symbols before opening in non-BACKTEST', async () => {

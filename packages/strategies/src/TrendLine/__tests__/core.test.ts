@@ -43,6 +43,25 @@ const makeCandle = (timestamp: number, price: number) => ({
   turnover: price * 1000,
 });
 
+const makeRangeCandle = (
+  timestamp: number,
+  {
+    open,
+    close,
+    high,
+    low,
+  }: { open: number; close: number; high: number; low: number },
+) => ({
+  timestamp,
+  dt: new Date(timestamp).toISOString(),
+  open,
+  close,
+  high,
+  low,
+  volume: 100 + close,
+  turnover: close * 1000,
+});
+
 const makeStrategyApi = () => {
   let latestMarketData: {
     timestamp: number;
@@ -278,6 +297,12 @@ describe('createTrendLineCore', () => {
           lines: expect.any(Array),
           points: expect.any(Array),
         }),
+        additionalIndicators: expect.objectContaining({
+          trendlineTiming: expect.objectContaining({
+            entryTiming: 'ready_breakout',
+            entryReadyNow: true,
+          }),
+        }),
         orderPlan: expect.objectContaining({ qty: 2, stopLossPrice: 98 }),
       }),
     );
@@ -343,6 +368,155 @@ describe('createTrendLineCore', () => {
       kind: 'skip',
       code: 'TRENDLINE_STRUCTURE:no_clear_break',
     });
+  });
+
+  it('returns timing skip for stale breakout without retest', async () => {
+    const baseTimestamp = 1_700_000_000_000;
+    const candles = [
+      makeRangeCandle(baseTimestamp, {
+        open: 99.5,
+        close: 99.4,
+        high: 99.6,
+        low: 99.1,
+      }),
+      makeRangeCandle(baseTimestamp + 900_000, {
+        open: 99.4,
+        close: 99.3,
+        high: 99.5,
+        low: 99.0,
+      }),
+      makeRangeCandle(baseTimestamp + 1_800_000, {
+        open: 99.3,
+        close: 99.2,
+        high: 99.4,
+        low: 98.9,
+      }),
+    ];
+    const bestLine = {
+      ...makeBestLine('lows'),
+      points: [{ timestamp: baseTimestamp, value: 100 }],
+    };
+
+    (createTrendlineEngine as jest.Mock)
+      .mockReturnValueOnce({ next: jest.fn(() => [bestLine]) })
+      .mockReturnValueOnce({ next: jest.fn(() => []) });
+    (getStrategyMarketSnapshot as jest.Mock).mockResolvedValue({
+      fullData: candles,
+      lastCandle: candles[candles.length - 1],
+      timestamp: candles[candles.length - 1].timestamp,
+      currentPrice: candles[candles.length - 1].close,
+    });
+
+    const core = await createTrendLineCore({
+      userName: 'test',
+      symbol: 'TESTUSDT',
+      config: makeConfig(),
+      isConfigFromBacktest: false,
+      connector: {} as any,
+      data: candles as any,
+      btcData: candles as any,
+      loadPineScriptFile: jest.fn(() => ''),
+      strategyApi: makeStrategyApi(),
+      indicatorsState: makeIndicatorsState() as any,
+    });
+
+    const result = await core(
+      candles[candles.length - 1] as any,
+      candles[candles.length - 1] as any,
+    );
+
+    expect(result).toEqual({
+      kind: 'skip',
+      code: 'TRENDLINE_TIMING:STALE_BREAKOUT',
+    });
+  });
+
+  it('returns entry when retest was confirmed after initial breakout', async () => {
+    const baseTimestamp = 1_700_000_000_000;
+    const candles = [
+      makeRangeCandle(baseTimestamp, {
+        open: 99.5,
+        close: 99.4,
+        high: 99.6,
+        low: 99.1,
+      }),
+      makeRangeCandle(baseTimestamp + 900_000, {
+        open: 99.8,
+        close: 99.9,
+        high: 100.1,
+        low: 99.6,
+      }),
+      makeRangeCandle(baseTimestamp + 1_800_000, {
+        open: 99.6,
+        close: 99.4,
+        high: 99.7,
+        low: 99.1,
+      }),
+    ];
+    const bestLine = {
+      ...makeBestLine('lows'),
+      points: [{ timestamp: baseTimestamp, value: 100 }],
+    };
+
+    (createTrendlineEngine as jest.Mock)
+      .mockReturnValueOnce({ next: jest.fn(() => [bestLine]) })
+      .mockReturnValueOnce({ next: jest.fn(() => []) });
+    (getStrategyMarketSnapshot as jest.Mock).mockResolvedValue({
+      fullData: candles,
+      lastCandle: candles[candles.length - 1],
+      timestamp: candles[candles.length - 1].timestamp,
+      currentPrice: candles[candles.length - 1].close,
+    });
+    (getDirectionalTpSlPrices as jest.Mock).mockReturnValue({
+      stopLossPrice: 98,
+      takeProfitPrice: 104,
+      riskRatio: 3,
+      qty: 2,
+    });
+
+    const fakeDecision = { kind: 'entry', code: 'TRENDLINE_SIGNAL' };
+    (buildEntrySignalDecision as jest.Mock).mockReturnValue(fakeDecision);
+
+    const core = await createTrendLineCore({
+      userName: 'test',
+      symbol: 'TESTUSDT',
+      config: makeConfig({
+        ENV: 'BACKTEST',
+        LOWS: {
+          enable: true,
+          direction: 'SHORT',
+          TP: 4,
+          SL: 1,
+          minRiskRatio: 2,
+        },
+      }),
+      isConfigFromBacktest: true,
+      connector: {} as any,
+      data: candles as any,
+      btcData: candles as any,
+      loadPineScriptFile: jest.fn(() => ''),
+      strategyApi: makeStrategyApi(),
+      indicatorsState: makeIndicatorsState() as any,
+    });
+
+    const result = await core(
+      candles[candles.length - 1] as any,
+      candles[candles.length - 1] as any,
+    );
+
+    expect(result).toBe(fakeDecision);
+    expect(buildEntrySignalDecision).toHaveBeenCalledWith(
+      expect.objectContaining({
+        additionalIndicators: expect.objectContaining({
+          trendlineTiming: expect.objectContaining({
+            retestHappened: true,
+            retestConfirmed: true,
+            entryTiming: 'ready_retest',
+            entryReadyNow: true,
+          }),
+        }),
+      }),
+    );
   });
 
   it('returns skip when trade cooldown is active', async () => {

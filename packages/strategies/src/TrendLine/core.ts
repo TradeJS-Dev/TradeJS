@@ -4,12 +4,43 @@ import { createTrendlineEngine } from '@tradejs/core/indicators';
 import { filterByVeryVolatility } from './filters';
 import { TrendLineConfig } from './config';
 import { buildTrendLineFigures } from './figures';
-import { buildTrendlineStructuralContext } from './guardrails';
+import {
+  buildTrendlineStructuralContext,
+  buildTrendlineTimingContext,
+} from './guardrails';
 import {
   CreateStrategyCore,
   IndicatorsHistorySnapshot,
+  TrendLine,
   TrendLineOptions,
 } from '@tradejs/types';
+
+const buildTrendlineSignalSeed = ({
+  direction,
+  currentPrice,
+  indicators,
+  bestLine,
+  trendlineTiming,
+}: {
+  direction: TrendLineConfig['HIGHS']['direction'];
+  currentPrice: number;
+  indicators: Record<string, unknown>;
+  bestLine: TrendLine;
+  trendlineTiming?: Record<string, unknown>;
+}) => ({
+  direction,
+  prices: { currentPrice },
+  indicators,
+  additionalIndicators: {
+    touches: bestLine.touches.length + 2,
+    distance: bestLine.distance,
+    trendLine: bestLine,
+    ...(trendlineTiming ? { trendlineTiming } : {}),
+  },
+  figures: {
+    trendLine: bestLine,
+  },
+});
 
 export const createTrendLineCore: CreateStrategyCore<
   TrendLineConfig,
@@ -81,24 +112,33 @@ export const createTrendLineCore: CreateStrategyCore<
     }
 
     const indicators = indicatorsState.snapshot();
-    const structuralContext = buildTrendlineStructuralContext({
+    const signalSeed = buildTrendlineSignalSeed({
       direction,
-      prices: { currentPrice },
+      currentPrice,
       indicators: indicators as Record<string, unknown>,
-      additionalIndicators: {
-        touches: bestLine.touches.length + 2,
-        distance: bestLine.distance,
-        trendLine: bestLine,
-      },
-      figures: {
-        trendLine: bestLine,
-      },
+      bestLine,
     });
+    const structuralContext = buildTrendlineStructuralContext(signalSeed);
 
     if (structuralContext.structuralHardBlockReasons.length > 0) {
       return strategyApi.skip(
         `TRENDLINE_STRUCTURE:${structuralContext.structuralHardBlockReasons[0]}`,
       );
+    }
+
+    const timingContext = buildTrendlineTimingContext({
+      signal: signalSeed,
+      candles: fullData,
+    });
+
+    if (!timingContext.entryReadyNow) {
+      const timingCode =
+        timingContext.entryTiming === 'stale_breakout'
+          ? 'STALE_BREAKOUT'
+          : timingContext.entryTiming === 'wait_retest_confirmation'
+            ? 'WAIT_RETEST_CONFIRMATION'
+            : 'WAIT_RETEST';
+      return strategyApi.skip(`TRENDLINE_TIMING:${timingCode}`);
     }
 
     const { stopLossPrice, takeProfitPrice, riskRatio, qty } =
@@ -139,11 +179,13 @@ export const createTrendLineCore: CreateStrategyCore<
       },
       direction,
       indicators,
-      additionalIndicators: {
-        touches: bestLine.touches.length + 2,
-        distance: bestLine.distance,
-        trendLine: bestLine,
-      },
+      additionalIndicators: buildTrendlineSignalSeed({
+        direction,
+        currentPrice,
+        indicators: indicators as Record<string, unknown>,
+        bestLine,
+        trendlineTiming: timingContext as Record<string, unknown>,
+      }).additionalIndicators,
       orderPlan: {
         qty,
         stopLossPrice,

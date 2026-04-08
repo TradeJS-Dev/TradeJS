@@ -819,7 +819,9 @@ describe('ai helpers', () => {
           stopLossPrice: null,
         }),
       );
-      expect(result.qualityReason).toContain('для LONG пробой очень длинной линии');
+      expect(result.qualityReason).toContain(
+        'для LONG пробой очень длинной линии',
+      );
       expect(result.comment).toContain('TrendLine guardrail');
     });
 
