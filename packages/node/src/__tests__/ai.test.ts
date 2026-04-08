@@ -1097,7 +1097,7 @@ describe('ai helpers', () => {
           humanPrompt: 'human-1',
         },
         {
-          model: 'google/gemini-3.1-pro-preview',
+          model: 'openai/gpt-5-mini',
         },
       );
       await runAiPrompt(
@@ -1106,7 +1106,7 @@ describe('ai helpers', () => {
           humanPrompt: 'human-2',
         },
         {
-          model: 'openai/gpt-5-mini',
+          model: 'anthropic/claude-sonnet-4.5',
         },
       );
 
@@ -1114,13 +1114,13 @@ describe('ai helpers', () => {
       expect(chatOpenAICtorMock).toHaveBeenNthCalledWith(
         1,
         expect.objectContaining({
-          modelName: 'google/gemini-3.1-pro-preview',
+          modelName: 'openai/gpt-5-mini',
         }),
       );
       expect(chatOpenAICtorMock).toHaveBeenNthCalledWith(
         2,
         expect.objectContaining({
-          modelName: 'openai/gpt-5-mini',
+          modelName: 'anthropic/claude-sonnet-4.5',
         }),
       );
     });
@@ -1164,7 +1164,7 @@ describe('ai helpers', () => {
       expect(chatOpenAICtorMock).toHaveBeenCalledWith(
         expect.objectContaining({
           temperature: 0.2,
-          modelName: 'google/gemini-3.1-pro-preview',
+          modelName: 'openai/gpt-5-mini',
           apiKey: 'key_123',
           configuration: expect.objectContaining({
             baseURL: 'https://openrouter.example/v1',

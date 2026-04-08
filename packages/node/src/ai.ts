@@ -248,7 +248,7 @@ type AiModel = {
   invoke: (messages: BaseMessageLike[]) => Promise<{ content: unknown }>;
 };
 
-export const DEFAULT_AI_MODEL = 'google/gemini-3.1-pro-preview';
+export const DEFAULT_AI_MODEL = 'openai/gpt-5-mini';
 
 const userSettingsCache = new Map<string, Promise<UserSettings>>();
 const aiModelCache = new Map<string, Promise<AiModel>>();
