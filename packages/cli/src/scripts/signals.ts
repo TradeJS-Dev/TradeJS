@@ -140,13 +140,6 @@ const findSignals = async (
   btcCoinbaseData: Awaited<ReturnType<Connector['kline']>>,
   runtimeStrategies: StrategyRuntimeConfig[],
 ) => {
-  const prevSignals = await getKeys(redisKeys.signalsBySymbol(symbol));
-
-  if (prevSignals.length) {
-    logger.info('Exit by signal exists %s', symbol);
-    return null;
-  }
-
   const currentTimestamp = getTimestamp();
 
   const [cachedData, btcCachedData] = await Promise.all([
@@ -209,7 +202,7 @@ const findSignals = async (
   }
 };
 
-const signals = async () => {
+export const signals = async () => {
   const startedAt = Date.now();
   const signals = new Array<Signal>();
   let status: 'completed' | 'failed' = 'completed';
@@ -385,10 +378,12 @@ const signals = async () => {
   }
 };
 
-signals()
-  .then(() => {
-    process.exit(0);
-  })
-  .catch(() => {
-    process.exit(1);
-  });
+if (process.env.NODE_ENV !== 'test') {
+  signals()
+    .then(() => {
+      process.exit(0);
+    })
+    .catch(() => {
+      process.exit(1);
+    });
+}

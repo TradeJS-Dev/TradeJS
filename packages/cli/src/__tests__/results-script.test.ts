@@ -1,3 +1,5 @@
+export {};
+
 type ScriptFlags = {
   strategy: string;
   user: string;
