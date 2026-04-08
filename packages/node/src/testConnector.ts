@@ -206,15 +206,13 @@ export const createTestConnector: TestConnectorCreator = (
       }
     },
 
-    placeOrder: async (order, tp = [], slPrice) => {
+    placeOrder: async (order) => {
       if (currentPosition) {
         return false;
       }
 
       const isLong = order.direction === 'LONG';
 
-      takeProfits = _.cloneDeep(tp);
-      stopLossPrice = slPrice || null;
       currentPosition = { ...order, amount };
       originalQty = order.qty;
 
@@ -231,6 +229,24 @@ export const createTestConnector: TestConnectorCreator = (
         type: isLong ? 'OPEN_LONG' : 'OPEN_SHORT',
       });
 
+      return true;
+    },
+
+    setTakeProfits: async ({ takeProfits: nextTakeProfits }) => {
+      if (!currentPosition) {
+        return false;
+      }
+
+      takeProfits = _.cloneDeep(nextTakeProfits);
+      return true;
+    },
+
+    setStopLoss: async ({ stopLossPrice: nextStopLossPrice }) => {
+      if (!currentPosition) {
+        return false;
+      }
+
+      stopLossPrice = nextStopLossPrice || null;
       return true;
     },
 

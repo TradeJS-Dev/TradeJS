@@ -67,6 +67,7 @@ const makeStrategyApi = () => {
     timestamp: number;
     currentPrice: number;
   } | null = null;
+  let currentPosition: any = null;
 
   return {
     skip: (code: string) => ({ kind: 'skip', code }),
@@ -117,14 +118,37 @@ const makeStrategyApi = () => {
         runtime: params.runtime,
       });
     },
+    exit: async (params: any) => {
+      if (!latestMarketData) {
+        latestMarketData = await getStrategyMarketSnapshot({} as any);
+      }
+
+      return {
+        kind: 'exit',
+        code: params.code ?? `TREND_LINE_${params.direction}_EXIT`,
+        closePlan: {
+          direction: params.direction,
+          price: params.price ?? latestMarketData.currentPrice,
+          timestamp: params.timestamp ?? latestMarketData.timestamp,
+        },
+      };
+    },
+    protect: (params: any) => ({
+      kind: 'protect',
+      code: params.code ?? `TREND_LINE_${params.protectPlan.direction}_PROTECT`,
+      protectPlan: params.protectPlan,
+    }),
     getMarketData: async (params: any) => {
       const marketData = await getStrategyMarketSnapshot(params);
       latestMarketData = marketData;
       return marketData;
     },
     nextIndicators: jest.fn(),
-    getCurrentPosition: jest.fn(),
-    isCurrentPositionExists: jest.fn(async () => false),
+    getCurrentPosition: jest.fn(async () => currentPosition),
+    isCurrentPositionExists: jest.fn(async () => Boolean(currentPosition)),
+    __setCurrentPosition: (position: any) => {
+      currentPosition = position;
+    },
     getDirectionalTpSlPrices: (params: any) => getDirectionalTpSlPrices(params),
     createLastTradeController: jest.fn(() => ({
       isInCooldown: jest.fn(() => false),
@@ -169,6 +193,7 @@ describe('createTrendLineCore', () => {
   });
 
   it('returns skip when no trendline is found', async () => {
+    const candle = makeCandle(1_700_000_000_000, 100);
     (createTrendlineEngine as jest.Mock)
       .mockReturnValueOnce({ next: jest.fn(() => []) })
       .mockReturnValueOnce({ next: jest.fn(() => []) });
@@ -186,6 +211,12 @@ describe('createTrendLineCore', () => {
     const connector = {
       getPosition: jest.fn(),
     } as any;
+    (getStrategyMarketSnapshot as jest.Mock).mockResolvedValue({
+      fullData: [candle],
+      lastCandle: candle,
+      timestamp: candle.timestamp,
+      currentPrice: candle.close,
+    });
 
     const strategyApi = makeStrategyApi();
     const core = await createTrendLineCore({
@@ -201,7 +232,6 @@ describe('createTrendLineCore', () => {
       indicatorsState: indicatorsState as any,
     });
 
-    const candle = makeCandle(1_700_000_000_000, 100);
     const result = await core(candle as any, candle as any);
 
     expect(result).toEqual({ kind: 'skip', code: 'NO_TRENDLINE' });
@@ -313,9 +343,20 @@ describe('createTrendLineCore', () => {
     (createTrendlineEngine as jest.Mock)
       .mockReturnValueOnce({ next: jest.fn(() => [makeBestLine('lows')]) })
       .mockReturnValueOnce({ next: jest.fn(() => []) });
+    (getStrategyMarketSnapshot as jest.Mock).mockResolvedValue({
+      fullData: [candle],
+      lastCandle: candle,
+      timestamp: candle.timestamp,
+      currentPrice: candle.close,
+    });
 
     const strategyApi = makeStrategyApi();
-    strategyApi.isCurrentPositionExists = jest.fn(async () => true);
+    strategyApi.__setCurrentPosition({
+      symbol: 'TESTUSDT',
+      qty: 1,
+      price: 99,
+      direction: 'SHORT',
+    });
 
     const core = await createTrendLineCore({
       userName: 'test',
@@ -332,6 +373,103 @@ describe('createTrendLineCore', () => {
 
     const result = await core(candle as any, candle as any);
     expect(result).toEqual({ kind: 'skip', code: 'POSITION_EXISTS' });
+  });
+
+  it('moves stop to break-even when open position reaches half-risk progress', async () => {
+    const candle = makeCandle(1_700_000_000_000, 101);
+    const highsLine = {
+      ...makeBestLine('highs'),
+      points: [{ timestamp: candle.timestamp - 1, value: 99.5 }],
+    };
+
+    (createTrendlineEngine as jest.Mock)
+      .mockReturnValueOnce({ next: jest.fn(() => []) })
+      .mockReturnValueOnce({ next: jest.fn(() => [highsLine]) });
+    (getStrategyMarketSnapshot as jest.Mock).mockResolvedValue({
+      fullData: [candle],
+      lastCandle: candle,
+      timestamp: candle.timestamp,
+      currentPrice: candle.close,
+    });
+
+    const strategyApi = makeStrategyApi();
+    strategyApi.__setCurrentPosition({
+      symbol: 'TESTUSDT',
+      qty: 1,
+      price: 100,
+      direction: 'LONG',
+    });
+
+    const core = await createTrendLineCore({
+      userName: 'test',
+      symbol: 'TESTUSDT',
+      config: makeConfig(),
+      isConfigFromBacktest: false,
+      connector: {} as any,
+      data: [candle as any],
+      btcData: [candle as any],
+      loadPineScriptFile: jest.fn(() => ''),
+      strategyApi,
+      indicatorsState: makeIndicatorsState() as any,
+    });
+
+    await expect(core(candle as any, candle as any)).resolves.toEqual({
+      kind: 'protect',
+      code: 'TRENDLINE_MOVE_STOP_TO_BREAK_EVEN',
+      protectPlan: {
+        direction: 'LONG',
+        stopLossPrice: 100,
+      },
+    });
+  });
+
+  it('exits open position when breakout fails back through the line', async () => {
+    const candle = makeCandle(1_700_000_000_000, 101);
+    const lowsLine = {
+      ...makeBestLine('lows'),
+      points: [{ timestamp: candle.timestamp - 1, value: 100 }],
+    };
+
+    (createTrendlineEngine as jest.Mock)
+      .mockReturnValueOnce({ next: jest.fn(() => [lowsLine]) })
+      .mockReturnValueOnce({ next: jest.fn(() => []) });
+    (getStrategyMarketSnapshot as jest.Mock).mockResolvedValue({
+      fullData: [candle],
+      lastCandle: candle,
+      timestamp: candle.timestamp,
+      currentPrice: candle.close,
+    });
+
+    const strategyApi = makeStrategyApi();
+    strategyApi.__setCurrentPosition({
+      symbol: 'TESTUSDT',
+      qty: 1,
+      price: 100,
+      direction: 'SHORT',
+    });
+
+    const core = await createTrendLineCore({
+      userName: 'test',
+      symbol: 'TESTUSDT',
+      config: makeConfig(),
+      isConfigFromBacktest: false,
+      connector: {} as any,
+      data: [candle as any],
+      btcData: [candle as any],
+      loadPineScriptFile: jest.fn(() => ''),
+      strategyApi,
+      indicatorsState: makeIndicatorsState() as any,
+    });
+
+    await expect(core(candle as any, candle as any)).resolves.toEqual({
+      kind: 'exit',
+      code: 'TRENDLINE_FAILED_BREAKOUT_EXIT',
+      closePlan: {
+        direction: 'SHORT',
+        price: 101,
+        timestamp: 1_700_000_000_000,
+      },
+    });
   });
 
   it('returns structural skip when breakout is not confirmed', async () => {

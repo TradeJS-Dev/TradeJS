@@ -109,8 +109,19 @@ export interface ConnectorPluginDefinition {
 
 type GetPosition = (symbol: string) => Promise<Position | null>;
 type GetPositions = () => Promise<Position[]>;
-type PlaceOrder = (order: Order, tp?: Tp[], slPrice?: Sl) => Promise<boolean>;
+type PlaceOrder = (order: Order) => Promise<boolean>;
 type ClosePosition = (order: Omit<Order, 'qty'>) => Promise<boolean>;
+type SetTakeProfits = (params: {
+  symbol: string;
+  direction: Direction;
+  qty?: number;
+  takeProfits: Tp[];
+}) => Promise<boolean>;
+type SetStopLoss = (params: {
+  symbol: string;
+  direction: Direction;
+  stopLossPrice: Sl;
+}) => Promise<boolean>;
 export type Kline = (options: KlineRequest) => Promise<KlineChartData>;
 export type GetTickers = () => Promise<Ticker[]>;
 
@@ -121,6 +132,8 @@ export interface Connector {
   getPosition: GetPosition;
   getPositions: GetPositions;
   placeOrder: PlaceOrder;
+  setTakeProfits: SetTakeProfits;
+  setStopLoss: SetStopLoss;
   closePosition: ClosePosition;
   getTickers: GetTickers;
 }

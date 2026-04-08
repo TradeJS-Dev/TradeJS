@@ -6,19 +6,30 @@ const SYMBOL = 'TACUSDT';
 
 const placeOrder = async (connector: Connector) => {
   const price = 0.0041;
+  const qty = 100 / price;
 
-  const res = await connector.placeOrder(
-    {
+  const res = await connector.placeOrder({
+    symbol: SYMBOL,
+    qty,
+    price,
+    timestamp: 0,
+    direction: 'LONG',
+    isLimit: true,
+  });
+
+  if (res) {
+    await connector.setTakeProfits({
       symbol: SYMBOL,
-      qty: 100 / price,
-      price,
-      timestamp: 0,
       direction: 'LONG',
-      isLimit: true,
-    },
-    [{ price: 0.0047, rate: 1 }],
-    0.004,
-  );
+      qty,
+      takeProfits: [{ price: 0.0047, rate: 1 }],
+    });
+    await connector.setStopLoss({
+      symbol: SYMBOL,
+      direction: 'LONG',
+      stopLossPrice: 0.004,
+    });
+  }
 
   console.log('res', res);
 };

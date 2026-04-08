@@ -284,7 +284,10 @@ const getDeterministicTrendlineQuality = (
 };
 
 const getDeterministicTrendlineQualityReason = (
-  trendlineContext: Pick<TrendlineQualityContext, 'signalDirection' | 'hardBlockReasons'>,
+  trendlineContext: Pick<
+    TrendlineQualityContext,
+    'signalDirection' | 'hardBlockReasons'
+  >,
 ) => {
   if (trendlineContext.hardBlockReasons.length > 0) {
     return `TrendLine guardrail: вход заблокирован, потому что ${trendlineContext.hardBlockReasons
@@ -372,7 +375,10 @@ export const trendLineAiAdapter: StrategyAiAdapter = {
       };
     }
 
-    if (trendlineContext.approvalAllowedNow === true && signalDirection != null) {
+    if (
+      trendlineContext.approvalAllowedNow === true &&
+      signalDirection != null
+    ) {
       return {
         ...analysis,
         direction: signalDirection,

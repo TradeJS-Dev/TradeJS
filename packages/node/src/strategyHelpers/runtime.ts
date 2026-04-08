@@ -153,6 +153,47 @@ interface ExecuteEntryOrderParams {
   beforePlaceOrder?: () => Promise<void>;
 }
 
+const applyProtectiveOrders = async ({
+  connector,
+  symbol,
+  direction,
+  qty,
+  takeProfits,
+  stopLossPrice,
+}: {
+  connector: Connector;
+  symbol: string;
+  direction: Direction;
+  qty?: number;
+  takeProfits: Tp[];
+  stopLossPrice: number | null;
+}) => {
+  if (Array.isArray(takeProfits) && takeProfits.length > 0) {
+    const tpOk = await connector.setTakeProfits({
+      symbol,
+      direction,
+      qty,
+      takeProfits,
+    });
+
+    if (!tpOk) {
+      throw new Error('SET_TAKE_PROFITS_FAILED');
+    }
+  }
+
+  if (typeof stopLossPrice === 'number' && Number.isFinite(stopLossPrice)) {
+    const slOk = await connector.setStopLoss({
+      symbol,
+      direction,
+      stopLossPrice,
+    });
+
+    if (!slOk) {
+      throw new Error('SET_STOP_LOSS_FAILED');
+    }
+  }
+};
+
 export const executeEntryOrder = async ({
   connector,
   symbol,
@@ -167,19 +208,36 @@ export const executeEntryOrder = async ({
 }: ExecuteEntryOrderParams): Promise<number> => {
   await beforePlaceOrder?.();
 
-  const orderPlaced = await connector.placeOrder(
-    {
-      symbol,
-      qty,
-      price: currentPrice,
-      isLimit: false,
-      timestamp,
-      direction,
-      signal,
-    },
-    takeProfits,
-    stopLossPrice,
-  );
+  const orderPlaced = await connector.placeOrder({
+    symbol,
+    qty,
+    price: currentPrice,
+    isLimit: false,
+    timestamp,
+    direction,
+    signal,
+  });
+
+  if (orderPlaced) {
+    try {
+      await applyProtectiveOrders({
+        connector,
+        symbol,
+        direction,
+        qty,
+        takeProfits,
+        stopLossPrice,
+      });
+    } catch (error) {
+      await connector.closePosition({
+        symbol,
+        price: currentPrice,
+        timestamp,
+        direction,
+      });
+      throw error;
+    }
+  }
 
   signal.orderStatus = orderPlaced ? 'completed' : 'failed';
   signal.orderSkipReason = undefined;
@@ -191,4 +249,29 @@ export const executeEntryOrder = async ({
   }
 
   return currentPrice;
+};
+
+export const updatePositionProtection = async ({
+  connector,
+  symbol,
+  direction,
+  qty,
+  takeProfits,
+  stopLossPrice,
+}: {
+  connector: Connector;
+  symbol: string;
+  direction: Direction;
+  qty?: number;
+  takeProfits?: Tp[];
+  stopLossPrice?: number | null;
+}) => {
+  await applyProtectiveOrders({
+    connector,
+    symbol,
+    direction,
+    qty,
+    takeProfits: takeProfits ?? [],
+    stopLossPrice: stopLossPrice ?? null,
+  });
 };

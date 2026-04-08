@@ -1,6 +1,6 @@
 # TrendLine AI Replay Notes
 
-Last updated: 2026-04-07.
+Last updated: 2026-04-08.
 
 This file keeps internal notes for `ai-train` replay windows and TrendLine AI gate analysis.
 
@@ -204,3 +204,285 @@ Current conclusion:
 - this is a safety-first improvement
 - good fit if production should prefer precision over recall
 - especially consistent with using `AI_MIN_QUALITY=5` for live order gating
+
+## New export: `1775649989150`
+
+File:
+
+```bash
+data/ai/export/ai-dataset-trendline-merged-1775649989150.jsonl
+```
+
+Quick context:
+
+- `1495` rows total
+- chronological merge is now fixed before replay windowing
+- duplicates are much lower than in older exports
+- latest windows contain both `LONG` and `SHORT`
+
+## Baseline on new export: `latest 100` before deterministic quality remap
+
+Command:
+
+```bash
+yarn ai-train -n 100 --rebuildPrompts -p 3 --model openai/gpt-5-mini --file data/ai/export/ai-dataset-trendline-merged-1775649989150.jsonl
+```
+
+Replay result before remap:
+
+- `accuracy = 50.0%`
+- `TP/FP/TN/FN = 16 / 31 / 34 / 19`
+- `approved = 47`
+- `precision_approved = 34.0%`
+- `recall_winners = 45.7%`
+- `avg_profit_all = 0.38`
+- `avg_profit_approved = -0.01`
+- `expectancy_delta = -0.39`
+
+Main finding:
+
+- on this more honest window the AI gate had no edge
+- approved-trade winrate was slightly worse than the base profitable ratio of the whole window
+- `quality` stopped being useful; `quality=5` appeared more often than `quality=4`, but did not mean better trades
+
+## Deterministic quality remap
+
+Implemented in commit:
+
+- `2d19f8c` `Make TrendLine AI quality deterministic`
+
+Implementation summary:
+
+- `TrendLine` adapter now assigns `quality` deterministically in code instead of trusting model confidence
+- model still writes analysis text, but `approve/reject` is now mostly driven by deterministic `TrendLine` context
+- top-tier `LONG` and `SHORT` setups can still get `q5`
+- weaker but still acceptable setups get `q4`
+- everything else is forced into `q3` or below and becomes `watch/reject now`
+
+Current ladder shape:
+
+- `LONG q5`: strong breakout, enough displacement, shorter line, strong BTC support
+- `LONG q4`: acceptable breakout, moderate displacement, less strict BTC support
+- `SHORT q5`: very strong bearish breakout, enough touches, strong BTC support
+- `SHORT q4`: acceptable bearish breakout, but not top-tier
+- all non-qualifying clean breaks: `q3`
+
+## Replay after deterministic quality remap: `latest 100`
+
+Command:
+
+```bash
+yarn ai-train -n 100 --rebuildPrompts -p 3 --model openai/gpt-5-mini --file data/ai/export/ai-dataset-trendline-merged-1775649989150.jsonl
+```
+
+Replay result after remap:
+
+- `accuracy = 72.0%`
+- `TP/FP/TN/FN = 12 / 5 / 60 / 23`
+- `approved = 17`
+- `precision_approved = 70.6%`
+- `recall_winners = 34.3%`
+- `avg_profit_all = 0.38`
+- `avg_profit_approved = 16.12`
+- `expectancy_delta = 15.74`
+
+By direction:
+
+- `LONG`: `TP/FP/TN/FN = 11 / 4 / 25 / 16`, `precision = 73.3%`
+- `SHORT`: `TP/FP/TN/FN = 1 / 1 / 35 / 7`, `precision = 50.0%`
+
+Deterministic flow:
+
+- `core_blocked_now = 0`
+- `adapter_blocked_now = 83`
+- `left_to_model_now = 17`
+- `model_approved = 17`
+- `model_rejected = 0`
+
+Interpretation:
+
+- the remap worked in the intended sense: `quality` became useful again
+- approvals became much fewer, but far cleaner
+- in this window the model stopped being the effective gate; the adapter became the gate
+
+## Replay after deterministic quality remap: `--skip 100 -n 100`
+
+Command:
+
+```bash
+yarn ai-train -n 100 --skip 100 --rebuildPrompts -p 3 --model openai/gpt-5-mini --file data/ai/export/ai-dataset-trendline-merged-1775649989150.jsonl
+```
+
+Replay result:
+
+- `accuracy = 67.0%`
+- `TP/FP/TN/FN = 8 / 11 / 59 / 22`
+- `approved = 19`
+- `precision_approved = 42.1%`
+- `recall_winners = 26.7%`
+- `avg_profit_all = -2.28`
+- `avg_profit_approved = 2.76`
+- `expectancy_delta = 5.04`
+
+By direction:
+
+- `LONG`: `TP/FP/TN/FN = 2 / 4 / 29 / 3`, `precision = 33.3%`
+- `SHORT`: `TP/FP/TN/FN = 6 / 7 / 30 / 19`, `precision = 46.2%`
+
+Deterministic flow:
+
+- `core_blocked_now = 0`
+- `adapter_blocked_now = 81`
+- `left_to_model_now = 19`
+- `model_approved = 19`
+- `model_rejected = 0`
+
+Interpretation:
+
+- the remap still helps relative to the old fully model-led behavior
+- but it generalizes noticeably worse on the previous 100-row window than on the freshest 100-row window
+- current deterministic ladder is useful, but not yet robust enough to be treated as a final solution
+
+## Failure analysis on `--skip 100 -n 100`
+
+Error totals:
+
+- `FP = 11`
+- `FN = 22`
+
+Breakdown:
+
+- `LONG FP = 4`
+- `SHORT FP = 7`
+- `LONG FN = 3`
+- `SHORT FN = 19`
+
+### `LONG FP`
+
+Main shape:
+
+- moderate `q4` breakouts, not garbage setups
+- average `breakVsAtrRatio = 0.662`
+- average `abs(priceVsLinePct) = 0.674`
+- average `distance = 368`
+- average `touches = 5`
+
+Examples:
+
+- `BBUSDT`
+- `ICPUSDT`
+- `MNTUSDT`
+- `AAVEUSDT`
+
+Conclusion:
+
+- this does not look like one cleanly removable false-positive class
+- these are moderate `LONG q4` breakouts that still need better separation
+
+### `SHORT FN`
+
+Main shape:
+
+- mostly shallow bearish breaks
+- average `breakVsAtrRatio = 0.848`
+- average `abs(priceVsLinePct) = 0.816`
+- average `btcMaSpreadPct = -0.228`
+- average `coinMaSpreadPct = -0.365`
+- average `touches = 4.7`
+
+Typical reasons:
+
+- weak BTC follow-through
+- weak own-coin follow-through
+- too few touches
+- explicit bias conflicts
+
+Conclusion:
+
+- current ladder is doing what it was designed to do here
+- many `SHORT FN` are weak or conflicted setups, not obvious misses
+
+### `SHORT FP`
+
+Main shape:
+
+- all `7` are strong fresh bearish breakouts
+- average `breakVsAtrRatio = 6.132`
+- average `abs(priceVsLinePct) = 6.021`
+- average `btcMaSpreadPct = -1.415`
+- average `coinMaSpreadPct = -1.622`
+- average `touches = 5.9`
+
+Examples:
+
+- `FLOCKUSDT`
+- `MANAUSDT`
+- `NEWTUSDT`
+- `NMRUSDT`
+- `REDUSDT`
+- `SPELLUSDT`
+- `USTCUSDT`
+
+Conclusion:
+
+- these do not look like weak entries
+- they are much harder to separate from `SHORT TP` using current structural fields alone
+
+## Timing analysis: `SHORT TP` vs `SHORT FP` on `--skip 100 -n 100`
+
+Main result:
+
+- timing does not currently separate the remaining `SHORT FP`
+
+What is identical between `SHORT TP` and `SHORT FP`:
+
+- all are `entryTiming=ready_breakout`
+- all have `breakoutFresh=true`
+- all have `barsSinceLineCross=0`
+- all have `barsSinceClearBreak=0`
+- all have `retestHappened=false`
+- all have `staleBreakout=false`
+
+Weak differences:
+
+- `SHORT TP` has stronger average line slope and stronger average distance acceleration from the line
+- `SHORT FP` is a bit weaker on average on:
+  - `lineSlopePctPerBar`
+  - `currentDistanceAtrRatio`
+  - `distanceAtrVelocity`
+  - `distanceAtrAcceleration`
+
+But:
+
+- separation is not clean enough for a safe hard rule
+- there are `FP` with very strong acceleration
+- there are `TP` with negative velocity
+
+Current conclusion:
+
+- the remaining `SHORT FP` problem is not a stale-breakout problem
+- it is not obviously solvable by adding one more simple timing threshold
+
+## New hypothesis: `SHORT TP/SL` may now be the bottleneck
+
+Reasons:
+
+- remaining `SHORT FP` are structurally strong and fresh
+- timing state is almost identical to `SHORT TP`
+- all `7` `SHORT FP` in this window have the same loss magnitude: `-15.18`
+- current `TrendLine` config uses the same symmetric exit profile for both directions:
+  - `SHORT TP = 4`
+  - `SHORT SL = 1.3`
+  - `LONG TP = 4`
+  - `LONG SL = 1.3`
+
+Interpretation:
+
+- these trades may not be “bad entries”
+- they may be good or acceptable breakouts that still do not survive the current short-side exit profile
+
+Current conclusion:
+
+- next investigation should not start with another quality threshold
+- next investigation should be a dedicated `SHORT TP/SL` sweep in strategy config
+- this requires new backtests and a fresh `ai-export`, not just replay on old labels

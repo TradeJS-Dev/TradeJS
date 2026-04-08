@@ -136,6 +136,9 @@ export type StrategyHookStage =
   | 'runtime.beforePlaceOrder'
   | 'enrichSignalWithMl'
   | 'enrichSignalWithAi'
+  | 'setTakeProfits'
+  | 'setStopLoss'
+  | 'protectPosition'
   | 'closePosition'
   | 'placeOrder';
 

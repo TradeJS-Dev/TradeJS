@@ -97,6 +97,24 @@ export interface StrategyAPIEntryParams {
   runtime?: StrategyEntryRuntimeOptions;
 }
 
+export interface StrategyAPIExitParams {
+  code?: string;
+  direction: Direction;
+  price?: number;
+  timestamp?: number;
+}
+
+export interface StrategyProtectPlan {
+  direction: Direction;
+  stopLossPrice?: number | null;
+  takeProfits?: Tp[];
+}
+
+export interface StrategyAPIProtectParams {
+  code?: string;
+  protectPlan: StrategyProtectPlan;
+}
+
 export interface StrategyAPIMarketDataParams {
   preloadStart?: number;
   backtestPriceMode?: BacktestPriceMode;
@@ -217,6 +235,12 @@ export interface StrategyAPI {
   entry: (
     params: StrategyAPIEntryParams,
   ) => Promise<Extract<StrategyDecision, { kind: 'entry' }>>;
+  exit: (
+    params: StrategyAPIExitParams,
+  ) => Promise<Extract<StrategyDecision, { kind: 'exit' }>>;
+  protect: (
+    params: StrategyAPIProtectParams,
+  ) => Extract<StrategyDecision, { kind: 'protect' }>;
   getMarketData: (
     params?: StrategyAPIMarketDataParams,
   ) => Promise<StrategyMarketSnapshot>;
@@ -304,6 +328,11 @@ export type StrategyDecision =
       kind: 'exit';
       code: string;
       closePlan: StrategyClosePlan;
+    }
+  | {
+      kind: 'protect';
+      code: string;
+      protectPlan: StrategyProtectPlan;
     };
 
 export interface CreateStrategyCoreParams<

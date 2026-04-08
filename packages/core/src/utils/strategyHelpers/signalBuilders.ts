@@ -8,8 +8,10 @@ import {
   Signal,
   StrategyDecision,
   StrategyAPI,
+  StrategyAPIExitParams,
   StrategyAPIMarketDataParams,
   StrategyAPIEntryParams,
+  StrategyAPIProtectParams,
   StrategyEntrySignalContext,
   StrategyEntryOrderPlan,
   StrategyEntryRuntimeOptions,
@@ -162,6 +164,18 @@ const toDefaultEntryCode = (strategy: string, direction: Direction) =>
     .replace(/[^a-zA-Z0-9]+/g, '_')
     .toUpperCase()}_${direction}_ENTRY`;
 
+const toDefaultExitCode = (strategy: string, direction: Direction) =>
+  `${strategy
+    .replace(/([a-z0-9])([A-Z])/g, '$1_$2')
+    .replace(/[^a-zA-Z0-9]+/g, '_')
+    .toUpperCase()}_${direction}_EXIT`;
+
+const toDefaultProtectCode = (strategy: string, direction: Direction) =>
+  `${strategy
+    .replace(/([a-z0-9])([A-Z])/g, '$1_$2')
+    .replace(/[^a-zA-Z0-9]+/g, '_')
+    .toUpperCase()}_${direction}_PROTECT`;
+
 const resolveTakeProfitPrice = ({
   direction,
   takeProfits,
@@ -286,6 +300,30 @@ export const createStrategyAPI = ({
         runtime,
       }) as Extract<StrategyDecision, { kind: 'entry' }>;
     },
+    exit: async ({
+      code,
+      direction,
+      price,
+      timestamp,
+    }: StrategyAPIExitParams) => {
+      const marketData = await getMarketData();
+      return {
+        kind: 'exit',
+        code: code ?? toDefaultExitCode(String(strategy), direction),
+        closePlan: {
+          price: price ?? marketData.currentPrice,
+          timestamp: timestamp ?? marketData.timestamp,
+          direction,
+        },
+      } as Extract<StrategyDecision, { kind: 'exit' }>;
+    },
+    protect: ({ code, protectPlan }: StrategyAPIProtectParams) =>
+      ({
+        kind: 'protect',
+        code:
+          code ?? toDefaultProtectCode(String(strategy), protectPlan.direction),
+        protectPlan,
+      }) as Extract<StrategyDecision, { kind: 'protect' }>,
     getMarketData,
     nextIndicators: (candle, btcCandle) =>
       indicatorsState?.next(candle, btcCandle),

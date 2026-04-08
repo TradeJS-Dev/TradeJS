@@ -70,9 +70,22 @@ describe('TestConnectorCreator', () => {
       },
     } as any;
 
-    expect(
-      await connector.placeOrder(order, [{ price: 110, rate: 1 }], 95),
-    ).toBe(true);
+    expect(await connector.placeOrder(order)).toBe(true);
+    await expect(
+      connector.setTakeProfits({
+        symbol: 'BTCUSDT',
+        direction: 'LONG',
+        qty: 2,
+        takeProfits: [{ price: 110, rate: 1 }],
+      }),
+    ).resolves.toBe(true);
+    await expect(
+      connector.setStopLoss({
+        symbol: 'BTCUSDT',
+        direction: 'LONG',
+        stopLossPrice: 95,
+      }),
+    ).resolves.toBe(true);
     expect(await connector.placeOrder(order)).toBe(false);
 
     await connector.checkTp({
@@ -123,17 +136,18 @@ describe('TestConnectorCreator', () => {
       userName: 'alice',
     });
 
-    await connector.placeOrder(
-      {
-        symbol: 'BTCUSDT',
-        qty: 1,
-        price: 100,
-        timestamp: 1_000,
-        direction: 'SHORT',
-      } as any,
-      [],
-      105,
-    );
+    await connector.placeOrder({
+      symbol: 'BTCUSDT',
+      qty: 1,
+      price: 100,
+      timestamp: 1_000,
+      direction: 'SHORT',
+    } as any);
+    await connector.setStopLoss({
+      symbol: 'BTCUSDT',
+      direction: 'SHORT',
+      stopLossPrice: 105,
+    });
 
     await connector.checkSl({
       open: 100,
@@ -150,6 +164,45 @@ describe('TestConnectorCreator', () => {
     expect(result.stat.orders).toBe(1);
     expect(result.stat.amount).toBe(94.5);
     expect(result.stat.profit).toBe(-5.5);
+  });
+
+  it('updates stop loss for an open position', async () => {
+    const connector = TestConnectorCreator(createBaseConnector(), {
+      userName: 'alice',
+    });
+
+    await connector.placeOrder({
+      symbol: 'BTCUSDT',
+      qty: 1,
+      price: 100,
+      timestamp: 1_000,
+      direction: 'LONG',
+    } as any);
+    await connector.setStopLoss({
+      symbol: 'BTCUSDT',
+      direction: 'LONG',
+      stopLossPrice: 95,
+    });
+    await connector.setStopLoss({
+      symbol: 'BTCUSDT',
+      direction: 'LONG',
+      stopLossPrice: 101,
+    });
+
+    await connector.checkSl({
+      open: 103,
+      high: 104,
+      low: 100.5,
+      close: 101.5,
+      volume: 1,
+      turnover: 1,
+      timestamp: 2_000,
+    });
+
+    const result = await connector.getResult();
+
+    expect(result.stat.amount).toBe(100.5);
+    expect(result.stat.profit).toBe(0.5);
   });
 
   it('falls back to root user cache when userName is missing', async () => {

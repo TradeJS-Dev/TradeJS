@@ -822,6 +822,8 @@ describe('TrendlineStrategyCreator', () => {
       ]),
       closePosition: jest.fn(async () => true),
       placeOrder: jest.fn(async () => true),
+      setTakeProfits: jest.fn(async () => true),
+      setStopLoss: jest.fn(async () => true),
       kline: jest.fn(async () => cachedData),
     };
 
@@ -908,6 +910,8 @@ describe('TrendlineStrategyCreator', () => {
       getPositions: jest.fn(async () => []),
       closePosition: jest.fn(async () => true),
       placeOrder: jest.fn(async () => true),
+      setTakeProfits: jest.fn(async () => true),
+      setStopLoss: jest.fn(async () => true),
       kline: jest.fn(async () => cachedData),
     };
 
@@ -992,6 +996,8 @@ describe('TrendlineStrategyCreator', () => {
     const connector: any = {
       getPosition: jest.fn(async () => ({ qty: 0 })),
       placeOrder: jest.fn(async () => true),
+      setTakeProfits: jest.fn(async () => true),
+      setStopLoss: jest.fn(async () => true),
       kline: jest.fn(async () => cachedData),
     };
 

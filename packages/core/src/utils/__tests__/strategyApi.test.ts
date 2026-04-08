@@ -167,4 +167,74 @@ describe('createStrategyAPI', () => {
     expect(secondDecision.entryContext.prices.currentPrice).toBe(105);
     expect(connector.kline).not.toHaveBeenCalled();
   });
+
+  it('exit auto-builds timestamp and price from market data', async () => {
+    const data = [makeCandle(1_700_000_000_000, 100)];
+    const connector = {
+      kline: jest.fn(),
+      getPosition: jest.fn(),
+    } as any;
+
+    const strategyApi = createStrategyAPI({
+      strategy: 'TrendLine' as any,
+      symbol: 'TESTUSDT',
+      interval: '15' as any,
+      env: 'BACKTEST',
+      connector,
+      cachedData: data,
+      preloadStart: 1,
+      backtestPriceMode: 'close',
+      isConfigFromBacktest: false,
+    });
+
+    const decision = await strategyApi.exit({
+      direction: 'SHORT',
+    });
+
+    expect(decision).toEqual({
+      kind: 'exit',
+      code: 'TREND_LINE_SHORT_EXIT',
+      closePlan: {
+        direction: 'SHORT',
+        price: 100,
+        timestamp: 1_700_000_000_000,
+      },
+    });
+  });
+
+  it('protect builds deterministic protection decision', () => {
+    const data = [makeCandle(1_700_000_000_000, 100)];
+    const connector = {
+      kline: jest.fn(),
+      getPosition: jest.fn(),
+    } as any;
+
+    const strategyApi = createStrategyAPI({
+      strategy: 'TrendLine' as any,
+      symbol: 'TESTUSDT',
+      interval: '15' as any,
+      env: 'BACKTEST',
+      connector,
+      cachedData: data,
+      preloadStart: 1,
+      backtestPriceMode: 'close',
+      isConfigFromBacktest: false,
+    });
+
+    expect(
+      strategyApi.protect({
+        protectPlan: {
+          direction: 'LONG',
+          stopLossPrice: 101,
+        },
+      }),
+    ).toEqual({
+      kind: 'protect',
+      code: 'TREND_LINE_LONG_PROTECT',
+      protectPlan: {
+        direction: 'LONG',
+        stopLossPrice: 101,
+      },
+    });
+  });
 });

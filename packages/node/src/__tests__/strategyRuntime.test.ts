@@ -2,6 +2,7 @@ const mockResolveStrategyConfig = jest.fn();
 const mockEnrichSignalWithMl = jest.fn();
 const mockEnrichSignalWithAi = jest.fn();
 const mockExecuteEntryOrder = jest.fn();
+const mockUpdatePositionProtection = jest.fn();
 
 jest.mock('@tradejs/core/strategies', () => ({
   createStrategyAPI: jest.fn((params: any) => ({
@@ -25,6 +26,20 @@ jest.mock('@tradejs/core/strategies', () => ({
       orderPlan: entryParams.orderPlan,
       runtime: entryParams.runtime,
       signal: entryParams.signal,
+    }),
+    exit: async (exitParams: any) => ({
+      kind: 'exit',
+      code: exitParams.code,
+      closePlan: {
+        direction: exitParams.direction,
+        price: exitParams.price,
+        timestamp: exitParams.timestamp,
+      },
+    }),
+    protect: (protectParams: any) => ({
+      kind: 'protect',
+      code: protectParams.code,
+      protectPlan: protectParams.protectPlan,
     }),
   })),
   buildDefaultIndicatorPeriods: jest.fn(() => ({})),
@@ -62,6 +77,8 @@ jest.mock('../strategyHelpers/runtime', () => ({
   enrichSignalWithMl: (...args: unknown[]) => mockEnrichSignalWithMl(...args),
   enrichSignalWithAi: (...args: unknown[]) => mockEnrichSignalWithAi(...args),
   executeEntryOrder: (...args: unknown[]) => mockExecuteEntryOrder(...args),
+  updatePositionProtection: (...args: unknown[]) =>
+    mockUpdatePositionProtection(...args),
 }));
 
 jest.mock('@tradejs/infra/logger', () => ({
@@ -157,6 +174,17 @@ const makeDecisionEntry = (
   ...overrides,
 });
 
+const makeDecisionProtect = (overrides: Record<string, any> = {}) => ({
+  kind: 'protect',
+  code: 'PROTECT',
+  protectPlan: {
+    direction: 'LONG',
+    stopLossPrice: 101,
+    ...overrides.protectPlan,
+  },
+  ...overrides,
+});
+
 const makeRuntime = async (
   decisionFactory: () => any,
   configOverrides: Record<string, any> = {},
@@ -180,6 +208,8 @@ const makeRuntime = async (
 
   const connector = {
     placeOrder: jest.fn(async () => true),
+    setTakeProfits: jest.fn(async () => true),
+    setStopLoss: jest.fn(async () => true),
     closePosition: jest.fn(async () => true),
   } as any;
 
@@ -208,6 +238,7 @@ describe('strategyRuntime', () => {
       return manifestOverrides.get(name) ?? realGetStrategyManifest(name);
     });
     mockExecuteEntryOrder.mockResolvedValue(222);
+    mockUpdatePositionProtection.mockResolvedValue(undefined);
     mockEnrichSignalWithMl.mockResolvedValue(undefined);
     mockEnrichSignalWithAi.mockResolvedValue(5);
   });
@@ -403,10 +434,43 @@ describe('strategyRuntime', () => {
         direction: 'SHORT',
         qty: 3,
       }),
-      [{ rate: 1, price: 200 }],
-      230,
     );
+    expect(mockUpdatePositionProtection).toHaveBeenCalledWith({
+      connector,
+      symbol: 'ETHUSDT',
+      direction: 'SHORT',
+      qty: 3,
+      takeProfits: [{ rate: 1, price: 200 }],
+      stopLossPrice: 230,
+    });
     expect(result).toBe('ENTRY');
+  });
+
+  it('closes no-signal entry when protection update fails after placeOrder', async () => {
+    const { strategy, connector } = await makeRuntime(() =>
+      makeDecisionEntry({
+        signal: undefined,
+        runtime: { ml: { enabled: false }, ai: { enabled: false } },
+      }),
+    );
+    const protectError = new Error('stop update failed');
+    mockUpdatePositionProtection.mockRejectedValueOnce(protectError);
+
+    const result = await strategy(
+      { timestamp: 1 } as any,
+      { timestamp: 1 } as any,
+    );
+
+    expect(connector.placeOrder).toHaveBeenCalledTimes(1);
+    expect(connector.closePosition).toHaveBeenCalledWith(
+      expect.objectContaining({
+        symbol: 'ETHUSDT',
+        direction: 'SHORT',
+        price: 222,
+        timestamp: 1_700_000_123_000,
+      }),
+    );
+    expect(result).toBe('ORDER_ERROR');
   });
 
   it('applies manifest runtime defaults when decision runtime omits ai/ml toggles', async () => {
@@ -658,6 +722,50 @@ describe('strategyRuntime', () => {
 
     expect(connector.closePosition).toHaveBeenCalledTimes(1);
     expect(result).toBe('CLOSE_BY_SIGNAL');
+  });
+
+  it('returns protect code after successful protection update', async () => {
+    const { strategy } = await makeRuntime(() => makeDecisionProtect());
+
+    const result = await strategy(
+      { timestamp: 1 } as any,
+      { timestamp: 1 } as any,
+    );
+
+    expect(mockUpdatePositionProtection).toHaveBeenCalledWith({
+      connector: expect.any(Object),
+      symbol: 'ETHUSDT',
+      direction: 'LONG',
+      takeProfits: [],
+      stopLossPrice: 101,
+    });
+    expect(result).toBe('PROTECT');
+  });
+
+  it('returns ORDER_ERROR and reports runtime error when protection update fails', async () => {
+    const onRuntimeError = jest.fn(async () => {});
+    setStrategyManifestHooks('TrendLine', {
+      onRuntimeError,
+    });
+
+    const { strategy } = await makeRuntime(() => makeDecisionProtect());
+    const protectError = new Error('protect failed');
+    mockUpdatePositionProtection.mockRejectedValueOnce(protectError);
+
+    const result = await strategy(
+      { timestamp: 1 } as any,
+      { timestamp: 1 } as any,
+    );
+
+    expect(result).toBe('ORDER_ERROR');
+    expect(onRuntimeError).toHaveBeenCalledWith(
+      expect.objectContaining({
+        error: expect.objectContaining({
+          stage: 'protectPosition',
+          cause: protectError,
+        }),
+      }),
+    );
   });
 
   it('calls onRuntimeError when a hook throws', async () => {

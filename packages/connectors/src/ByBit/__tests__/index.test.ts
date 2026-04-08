@@ -209,10 +209,51 @@ describe('ByBitConnectorCreator', () => {
     expect(client.submitOrder).not.toHaveBeenCalled();
   });
 
-  it('submits market order and sets partial TP stops', async () => {
+  it('submits market order without TP/SL in the entry request', async () => {
     const client = {
       setLeverage: jest.fn().mockResolvedValue({}),
       submitOrder: jest.fn().mockResolvedValue({ retCode: 0 }),
+    };
+    mockedGetClient.mockResolvedValue(client as any);
+    mockedGetSymbolMeta.mockResolvedValue({
+      tickSize: 0.1,
+      qtyStep: 0.001,
+      minOrderQty: 0.001,
+      pricePrecision: 1,
+      qtyPrecision: 3,
+    });
+    mockedNormalizeQty.mockImplementation((qty) => ({
+      qtyNum: qty,
+      qtyStr: qty.toFixed(3),
+    }));
+    mockedNormalizePrice.mockImplementation((price) => ({
+      priceNum: price,
+      priceStr: price.toFixed(1),
+    }));
+
+    const connector = await ByBitConnectorCreator({ userName: 'alice' });
+    const ok = await connector.placeOrder({
+      symbol: 'BTCUSDT',
+      price: 100,
+      qty: 1,
+      direction: 'LONG',
+      timestamp: Date.now(),
+    } as any);
+
+    expect(ok).toBe(true);
+    expect(client.setLeverage).toHaveBeenCalledTimes(1);
+    expect(client.submitOrder).toHaveBeenCalledWith(
+      expect.objectContaining({
+        symbol: 'BTCUSDT',
+        side: 'Buy',
+        orderType: 'Market',
+        qty: '1.000',
+      }),
+    );
+  });
+
+  it('sets partial take profits in separate calls', async () => {
+    const client = {
       setTradingStop: jest.fn().mockResolvedValue({ retCode: 0 }),
     };
     mockedGetClient.mockResolvedValue(client as any);
@@ -233,37 +274,58 @@ describe('ByBitConnectorCreator', () => {
     }));
 
     const connector = await ByBitConnectorCreator({ userName: 'alice' });
-    const ok = await connector.placeOrder(
-      {
-        symbol: 'BTCUSDT',
-        price: 100,
-        qty: 1,
-        direction: 'LONG',
-        timestamp: Date.now(),
-      } as any,
-      [
+    const ok = await connector.setTakeProfits({
+      symbol: 'BTCUSDT',
+      direction: 'LONG',
+      qty: 1,
+      takeProfits: [
         { price: 110, rate: 0.5 },
         { price: 120, rate: 0.5 },
       ],
-      95,
-    );
+    });
 
     expect(ok).toBe(true);
-    expect(client.setLeverage).toHaveBeenCalledTimes(1);
-    expect(client.submitOrder).toHaveBeenCalledWith(
-      expect.objectContaining({
-        symbol: 'BTCUSDT',
-        side: 'Buy',
-        orderType: 'Market',
-        qty: '1.000',
-      }),
-    );
     expect(client.setTradingStop).toHaveBeenCalledTimes(2);
     expect(client.setTradingStop).toHaveBeenNthCalledWith(
       1,
       expect.objectContaining({
         tpslMode: 'Partial',
         tpSize: '0.500',
+        takeProfit: '110.0',
+      }),
+    );
+  });
+
+  it('sets stop loss in a separate call', async () => {
+    const client = {
+      setTradingStop: jest.fn().mockResolvedValue({ retCode: 0 }),
+    };
+    mockedGetClient.mockResolvedValue(client as any);
+    mockedGetSymbolMeta.mockResolvedValue({
+      tickSize: 0.1,
+      qtyStep: 0.001,
+      minOrderQty: 0.001,
+      pricePrecision: 1,
+      qtyPrecision: 3,
+    });
+    mockedNormalizePrice.mockImplementation((price) => ({
+      priceNum: price,
+      priceStr: price.toFixed(1),
+    }));
+
+    const connector = await ByBitConnectorCreator({ userName: 'alice' });
+    const ok = await connector.setStopLoss({
+      symbol: 'BTCUSDT',
+      direction: 'LONG',
+      stopLossPrice: 95,
+    });
+
+    expect(ok).toBe(true);
+    expect(client.setTradingStop).toHaveBeenCalledWith(
+      expect.objectContaining({
+        symbol: 'BTCUSDT',
+        tpslMode: 'Full',
+        stopLoss: '95.0',
       }),
     );
   });
@@ -399,7 +461,6 @@ describe('ByBitConnectorCreator', () => {
     const client = {
       setLeverage: jest.fn().mockResolvedValue({}),
       submitOrder: jest.fn().mockResolvedValue({ retCode: 10001 }),
-      setTradingStop: jest.fn(),
     };
     mockedGetClient.mockResolvedValue(client as any);
     mockedGetSymbolMeta.mockResolvedValue({
@@ -419,29 +480,23 @@ describe('ByBitConnectorCreator', () => {
     }));
 
     const connector = await ByBitConnectorCreator({ userName: 'alice' });
-    const ok = await connector.placeOrder(
-      {
-        symbol: 'BTCUSDT',
-        price: 100,
-        qty: 1,
-        direction: 'LONG',
-        timestamp: Date.now(),
-      } as any,
-      [{ price: 110, rate: 1 }],
-      95,
-    );
+    const ok = await connector.placeOrder({
+      symbol: 'BTCUSDT',
+      price: 100,
+      qty: 1,
+      direction: 'LONG',
+      timestamp: Date.now(),
+    } as any);
 
     expect(ok).toBe(false);
     expect(client.setLeverage).toHaveBeenCalledTimes(1);
     expect(client.submitOrder).toHaveBeenCalledTimes(1);
-    expect(client.setTradingStop).not.toHaveBeenCalled();
   });
 
-  it('submits limit order and does not place partial TP orders', async () => {
+  it('submits limit order without immediate TP/SL binding', async () => {
     const client = {
       setLeverage: jest.fn().mockResolvedValue({}),
       submitOrder: jest.fn().mockResolvedValue({ retCode: 0 }),
-      setTradingStop: jest.fn(),
     };
     mockedGetClient.mockResolvedValue(client as any);
     mockedGetSymbolMeta.mockResolvedValue({
@@ -461,35 +516,26 @@ describe('ByBitConnectorCreator', () => {
     }));
 
     const connector = await ByBitConnectorCreator({ userName: 'alice' });
-    const ok = await connector.placeOrder(
-      {
-        symbol: 'BTCUSDT',
-        price: 100,
-        qty: 1,
-        direction: 'LONG',
-        isLimit: true,
-        timestamp: Date.now(),
-      } as any,
-      [{ price: 110, rate: 1 }],
-      95,
-    );
+    const ok = await connector.placeOrder({
+      symbol: 'BTCUSDT',
+      price: 100,
+      qty: 1,
+      direction: 'LONG',
+      isLimit: true,
+      timestamp: Date.now(),
+    } as any);
 
     expect(ok).toBe(true);
     expect(client.submitOrder).toHaveBeenCalledWith(
       expect.objectContaining({
         orderType: 'Limit',
         price: '100.0',
-        takeProfit: '110.0',
-        stopLoss: '95.0',
       }),
     );
-    expect(client.setTradingStop).not.toHaveBeenCalled();
   });
 
-  it('uses full TP mode for single take-profit with rate=1 in market order', async () => {
+  it('uses full TP mode for single take-profit with rate=1', async () => {
     const client = {
-      setLeverage: jest.fn().mockResolvedValue({}),
-      submitOrder: jest.fn().mockResolvedValue({ retCode: 0 }),
       setTradingStop: jest.fn().mockResolvedValue({ retCode: 0 }),
     };
     mockedGetClient.mockResolvedValue(client as any);
@@ -510,17 +556,12 @@ describe('ByBitConnectorCreator', () => {
     }));
 
     const connector = await ByBitConnectorCreator({ userName: 'alice' });
-    const ok = await connector.placeOrder(
-      {
-        symbol: 'BTCUSDT',
-        price: 100,
-        qty: 1,
-        direction: 'LONG',
-        timestamp: Date.now(),
-      } as any,
-      [{ price: 120, rate: 1 }],
-      90,
-    );
+    const ok = await connector.setTakeProfits({
+      symbol: 'BTCUSDT',
+      direction: 'LONG',
+      qty: 1,
+      takeProfits: [{ price: 120, rate: 1 }],
+    });
 
     expect(ok).toBe(true);
     expect(client.setTradingStop).toHaveBeenCalledWith(
@@ -528,15 +569,12 @@ describe('ByBitConnectorCreator', () => {
         tpslMode: 'Full',
         tpSize: undefined,
         takeProfit: '120.0',
-        stopLoss: '90.0',
       }),
     );
   });
 
   it('skips TP when computed TP size is below min order qty', async () => {
     const client = {
-      setLeverage: jest.fn().mockResolvedValue({}),
-      submitOrder: jest.fn().mockResolvedValue({ retCode: 0 }),
       setTradingStop: jest.fn(),
     };
     mockedGetClient.mockResolvedValue(client as any);
@@ -557,17 +595,12 @@ describe('ByBitConnectorCreator', () => {
     }));
 
     const connector = await ByBitConnectorCreator({ userName: 'alice' });
-    const ok = await connector.placeOrder(
-      {
-        symbol: 'BTCUSDT',
-        price: 100,
-        qty: 1,
-        direction: 'LONG',
-        timestamp: Date.now(),
-      } as any,
-      [{ price: 120, rate: 0.1 }],
-      90,
-    );
+    const ok = await connector.setTakeProfits({
+      symbol: 'BTCUSDT',
+      direction: 'LONG',
+      qty: 1,
+      takeProfits: [{ price: 120, rate: 0.1 }],
+    });
 
     expect(ok).toBe(true);
     expect(client.setTradingStop).not.toHaveBeenCalled();

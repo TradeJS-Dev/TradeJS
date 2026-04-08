@@ -31,7 +31,10 @@ import {
   KlineChartData,
   KlineRequest,
   ConnectorCreator,
+  Direction,
   Interval,
+  Position,
+  Tp,
 } from '@tradejs/types';
 
 const LIMIT = 1000;
@@ -270,6 +273,184 @@ export const ByBitConnectorCreator: ConnectorCreator = async (config) => {
     }
   };
 
+  const getPositionSnapshot = async (
+    symbol: string,
+  ): Promise<Position | null> => {
+    const client = await getClient(config);
+
+    if (!client) {
+      return null;
+    }
+
+    const positionRes = await client.getPositionInfo({
+      symbol,
+      category: MARKET_CATEGORY,
+    });
+
+    logger.log(
+      getLogLevel(positionRes),
+      'position retCode: %s, %s',
+      symbol,
+      positionRes.retCode,
+    );
+
+    if (positionRes.retCode !== 0) {
+      return null;
+    }
+
+    const positions = mapPositionData(positionRes.result.list);
+
+    if (!positions || _.isEmpty(positions)) {
+      return null;
+    }
+
+    const position = positions[0] as Position;
+
+    logger.log(
+      getLogLevel(positionRes),
+      'position: %s, %s',
+      symbol,
+      toJson(positionRes, true),
+    );
+
+    return {
+      ...position,
+    };
+  };
+
+  const setTakeProfits = async ({
+    symbol,
+    direction,
+    qty,
+    takeProfits,
+  }: {
+    symbol: string;
+    direction: Direction;
+    qty?: number;
+    takeProfits: Tp[];
+  }) => {
+    const client = await getClient(config);
+
+    if (!client) {
+      return false;
+    }
+
+    if (!Array.isArray(takeProfits) || takeProfits.length === 0) {
+      return true;
+    }
+
+    const meta = await getSymbolMeta(client, symbol);
+    const positionQty = qty ?? (await getPositionSnapshot(symbol))?.qty ?? 0;
+
+    if (!Number.isFinite(positionQty) || positionQty <= 0) {
+      logger.log(
+        'warn',
+        'setTakeProfits: missing position qty: %s',
+        toJson({ symbol, qty, positionQty, takeProfits }, true),
+      );
+      return false;
+    }
+
+    const isLong = direction === 'LONG';
+
+    for (const tp of takeProfits) {
+      const tpSizeRaw = positionQty * tp.rate;
+      const { qtyNum: tpSizeNum, qtyStr: tpSizeStr } = normalizeQty(
+        tpSizeRaw,
+        meta,
+      );
+
+      if (!tpSizeNum || tpSizeNum < meta.minOrderQty) {
+        logger.log(
+          'warn',
+          'tp skipped: size too small %s',
+          toJson(
+            { symbol, tp, tpSizeNum, minOrderQty: meta.minOrderQty },
+            true,
+          ),
+        );
+        continue;
+      }
+
+      const tpPriceNorm = normalizePrice(
+        tp.price,
+        isLong ? 'TP_LONG' : 'TP_SHORT',
+        meta,
+      );
+      const isFullMode = takeProfits.length === 1 && tp.rate === 1;
+
+      const tpRes = await client.setTradingStop({
+        category: MARKET_CATEGORY,
+        symbol,
+        tpSize: isFullMode ? undefined : tpSizeStr,
+        tpslMode: isFullMode ? 'Full' : 'Partial',
+        takeProfit: tpPriceNorm.priceStr,
+        tpTriggerBy: 'MarkPrice',
+        tpOrderType: 'Market',
+        positionIdx: 0,
+      });
+
+      logger.log(
+        getLogLevel(tpRes),
+        'tp: %s %s',
+        toJson(tp, true),
+        toJson(tpRes, true),
+      );
+
+      if (tpRes.retCode !== 0) {
+        return false;
+      }
+    }
+
+    return true;
+  };
+
+  const setStopLoss = async ({
+    symbol,
+    direction,
+    stopLossPrice,
+  }: {
+    symbol: string;
+    direction: Direction;
+    stopLossPrice: number | null;
+  }) => {
+    const client = await getClient(config);
+
+    if (!client) {
+      return false;
+    }
+
+    if (typeof stopLossPrice !== 'number' || !Number.isFinite(stopLossPrice)) {
+      return true;
+    }
+
+    const meta = await getSymbolMeta(client, symbol);
+    const isLong = direction === 'LONG';
+    const slNormalized = normalizePrice(
+      stopLossPrice,
+      isLong ? 'SL_LONG' : 'SL_SHORT',
+      meta,
+    );
+
+    const slRes = await client.setTradingStop({
+      category: MARKET_CATEGORY,
+      symbol,
+      tpslMode: 'Full',
+      stopLoss: slNormalized.priceStr,
+      slTriggerBy: 'LastPrice',
+      positionIdx: 0,
+    });
+
+    logger.log(
+      getLogLevel(slRes),
+      'sl: %s %s',
+      toJson({ symbol, direction, stopLossPrice }, true),
+      toJson(slRes, true),
+    );
+
+    return slRes.retCode === 0;
+  };
+
   /** -------------------- public API -------------------- */
   return {
     getState: async () => state,
@@ -435,48 +616,7 @@ export const ByBitConnectorCreator: ConnectorCreator = async (config) => {
       }
     },
 
-    getPosition: async (symbol) => {
-      const client = await getClient(config);
-
-      if (!client) {
-        return null;
-      }
-
-      const positionRes = await client.getPositionInfo({
-        symbol,
-        category: MARKET_CATEGORY,
-      });
-
-      logger.log(
-        getLogLevel(positionRes),
-        'position retCode: %s, %s',
-        symbol,
-        positionRes.retCode,
-      );
-
-      if (positionRes.retCode !== 0) {
-        return null;
-      }
-
-      const positions = mapPositionData(positionRes.result.list);
-
-      if (!positions || _.isEmpty(positions)) {
-        return null;
-      }
-
-      const position = positions[0];
-
-      logger.log(
-        getLogLevel(positionRes),
-        'position: %s, %s',
-        symbol,
-        toJson(positionRes, true),
-      );
-
-      return {
-        ...position,
-      };
-    },
+    getPosition: async (symbol) => getPositionSnapshot(symbol),
 
     getPositions: async () => {
       const client = await getClient(config);
@@ -509,11 +649,7 @@ export const ByBitConnectorCreator: ConnectorCreator = async (config) => {
       return positions;
     },
 
-    placeOrder: async (
-      { symbol, price, qty, direction, isLimit },
-      TP = [],
-      slPrice,
-    ) => {
+    placeOrder: async ({ symbol, price, qty, direction, isLimit }) => {
       const client = await getClient(config);
 
       if (!client) {
@@ -542,17 +678,6 @@ export const ByBitConnectorCreator: ConnectorCreator = async (config) => {
         ? normalizePrice(price, 'ENTRY', meta)
         : undefined;
 
-      const slNormalized = slPrice
-        ? normalizePrice(slPrice, isLong ? 'SL_LONG' : 'SL_SHORT', meta)
-        : undefined;
-
-      const firstTP = TP?.[0];
-
-      const tpNormalized =
-        firstTP && firstTP.rate === 1
-          ? normalizePrice(firstTP.price, isLong ? 'TP_LONG' : 'TP_SHORT', meta)
-          : undefined;
-
       logger.log(
         'info',
         'placeOrder: %s',
@@ -564,9 +689,6 @@ export const ByBitConnectorCreator: ConnectorCreator = async (config) => {
             direction,
             orderQty,
             orderQtyStr,
-            slPrice,
-            slPriceNorm: slNormalized?.priceStr,
-            TP,
           },
           true,
         ),
@@ -583,10 +705,6 @@ export const ByBitConnectorCreator: ConnectorCreator = async (config) => {
         category: MARKET_CATEGORY,
         symbol,
         price: entryNormalized?.priceStr || undefined,
-        takeProfit: tpNormalized?.priceStr || undefined,
-        tpTriggerBy: 'MarkPrice',
-        stopLoss: slNormalized?.priceStr || undefined,
-        slTriggerBy: 'LastPrice',
         side: isLong ? 'Buy' : 'Sell',
         orderType: isLimit ? 'Limit' : 'Market',
         qty: orderQtyStr,
@@ -603,59 +721,12 @@ export const ByBitConnectorCreator: ConnectorCreator = async (config) => {
         return false;
       }
 
-      // --- Partial TP ---
-      if (!isLimit) {
-        for (const tp of TP) {
-          const tpSizeRaw = orderQty * tp.rate;
-          const { qtyNum: tpSizeNum, qtyStr: tpSizeStr } = normalizeQty(
-            tpSizeRaw,
-            meta,
-          );
-
-          if (!tpSizeNum || tpSizeNum < meta.minOrderQty) {
-            logger.log(
-              'warn',
-              'tp skipped: size too small %s',
-              toJson(
-                { symbol, tp, tpSizeNum, minOrderQty: meta.minOrderQty },
-                true,
-              ),
-            );
-            continue;
-          }
-
-          const tpPriceNorm = normalizePrice(
-            tp.price,
-            isLong ? 'TP_LONG' : 'TP_SHORT',
-            meta,
-          );
-
-          const isFullMode = TP.length === 1 && tp.rate === 1;
-
-          const tpRes = await client.setTradingStop({
-            category: MARKET_CATEGORY,
-            symbol,
-            tpSize: isFullMode ? undefined : tpSizeStr,
-            tpslMode: isFullMode ? 'Full' : 'Partial',
-            takeProfit: tpPriceNorm.priceStr,
-            stopLoss:
-              isFullMode && slNormalized ? slNormalized.priceStr : undefined,
-            slTriggerBy: 'LastPrice',
-            tpOrderType: 'Market',
-            positionIdx: 0,
-          });
-
-          logger.log(
-            getLogLevel(tpRes),
-            'tp: %s %s',
-            toJson(tp, true),
-            toJson(tpRes, true),
-          );
-        }
-      }
-
       return true;
     },
+
+    setTakeProfits,
+
+    setStopLoss,
 
     closePosition: async ({ symbol, direction }) => {
       const client = await getClient(config);

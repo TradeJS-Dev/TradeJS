@@ -10,10 +10,14 @@ import {
 } from './guardrails';
 import {
   CreateStrategyCore,
+  Direction,
   IndicatorsHistorySnapshot,
+  Position,
   TrendLine,
   TrendLineOptions,
 } from '@tradejs/types';
+
+const BREAK_EVEN_TRIGGER_RISK_MULTIPLIER = 0.5;
 
 const buildTrendlineSignalSeed = ({
   direction,
@@ -41,6 +45,53 @@ const buildTrendlineSignalSeed = ({
     trendLine: bestLine,
   },
 });
+
+const isOpenPosition = (position: Position | null): position is Position =>
+  Boolean(
+    position &&
+      typeof position.price === 'number' &&
+      Number.isFinite(position.price) &&
+      typeof position.qty === 'number' &&
+      Number.isFinite(position.qty) &&
+      position.qty > 0 &&
+      (position.direction === 'LONG' || position.direction === 'SHORT'),
+  );
+
+const getFavorableMovePct = ({
+  direction,
+  entryPrice,
+  currentPrice,
+}: {
+  direction: Direction;
+  entryPrice: number;
+  currentPrice: number;
+}) => {
+  if (
+    !Number.isFinite(entryPrice) ||
+    !Number.isFinite(currentPrice) ||
+    entryPrice <= 0
+  ) {
+    return null;
+  }
+
+  return direction === 'LONG'
+    ? ((currentPrice - entryPrice) / entryPrice) * 100
+    : ((entryPrice - currentPrice) / entryPrice) * 100;
+};
+
+const isFailedBreakout = ({
+  direction,
+  priceVsLinePct,
+}: {
+  direction: Direction;
+  priceVsLinePct: number | null;
+}) => {
+  if (priceVsLinePct == null) {
+    return false;
+  }
+
+  return direction === 'LONG' ? priceVsLinePct < 0 : priceVsLinePct > 0;
+};
 
 export const createTrendLineCore: CreateStrategyCore<
   TrendLineConfig,
@@ -80,6 +131,65 @@ export const createTrendLineCore: CreateStrategyCore<
 
     indicatorsState.onBar();
 
+    const { fullData, timestamp, currentPrice } =
+      await strategyApi.getMarketData();
+
+    const currentPosition = await strategyApi.getCurrentPosition();
+
+    if (isOpenPosition(currentPosition)) {
+      const activeLine =
+        currentPosition.direction === 'LONG'
+          ? highsTrendlines[0]
+          : lowsTrendlines[0];
+      const activeModeConfig =
+        currentPosition.direction === 'LONG' ? HIGHS : LOWS;
+      const favorableMovePct = getFavorableMovePct({
+        direction: currentPosition.direction,
+        entryPrice: currentPosition.price,
+        currentPrice,
+      });
+
+      if (activeLine) {
+        const indicators = indicatorsState.snapshot();
+        const manageSignalSeed = buildTrendlineSignalSeed({
+          direction: activeModeConfig.direction,
+          currentPrice,
+          indicators: indicators as Record<string, unknown>,
+          bestLine: activeLine,
+        });
+        const structuralContext =
+          buildTrendlineStructuralContext(manageSignalSeed);
+
+        if (
+          isFailedBreakout({
+            direction: currentPosition.direction,
+            priceVsLinePct: structuralContext.priceVsLinePct,
+          })
+        ) {
+          return strategyApi.exit({
+            code: 'TRENDLINE_FAILED_BREAKOUT_EXIT',
+            direction: currentPosition.direction,
+          });
+        }
+      }
+
+      if (
+        favorableMovePct != null &&
+        favorableMovePct >=
+          activeModeConfig.SL * BREAK_EVEN_TRIGGER_RISK_MULTIPLIER
+      ) {
+        return strategyApi.protect({
+          code: 'TRENDLINE_MOVE_STOP_TO_BREAK_EVEN',
+          protectPlan: {
+            direction: currentPosition.direction,
+            stopLossPrice: currentPosition.price,
+          },
+        });
+      }
+
+      return strategyApi.skip('POSITION_EXISTS');
+    }
+
     const bestLine =
       lowsTrendlines.length > 0 ? lowsTrendlines[0] : highsTrendlines[0];
 
@@ -87,18 +197,9 @@ export const createTrendLineCore: CreateStrategyCore<
       return strategyApi.skip('NO_TRENDLINE');
     }
 
-    const positionExists = await strategyApi.isCurrentPositionExists();
-
-    if (positionExists) {
-      return strategyApi.skip('POSITION_EXISTS');
-    }
-
     if (lastTradeController.isInCooldown(candle.timestamp)) {
       return strategyApi.skip('DEV_TRADE_COOLDOWN');
     }
-
-    const { fullData, timestamp, currentPrice } =
-      await strategyApi.getMarketData();
 
     if (!filterByVeryVolatility(fullData)) {
       return strategyApi.skip('VERY_VOLATILITY');

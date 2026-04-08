@@ -11,6 +11,7 @@ import {
   enrichSignalWithAi,
   enrichSignalWithMl,
   executeEntryOrder,
+  updatePositionProtection,
 } from './strategyHelpers/runtime';
 import { createPineScriptLoader } from './pine';
 import { getStrategyManifest } from './strategy/manifests';
@@ -44,6 +45,7 @@ interface CreateStrategyRuntimeParams<TConfig extends StrategyConfig> {
 
 type EntryDecision = Extract<StrategyDecision, { kind: 'entry' }>;
 type ExitDecision = Extract<StrategyDecision, { kind: 'exit' }>;
+type ProtectDecision = Extract<StrategyDecision, { kind: 'protect' }>;
 
 const resolveEntryRuntimePolicy = ({
   decision,
@@ -347,6 +349,46 @@ const handleExitDecision = async ({
   return decision.code;
 };
 
+const handleProtectDecision = async ({
+  connector,
+  symbol,
+  decision,
+  market,
+  onRuntimeError,
+}: {
+  connector: CreateStrategyCoreParams<StrategyConfig>['connector'];
+  symbol: string;
+  decision: ProtectDecision;
+  market: HookCandleMarket;
+  onRuntimeError?: (params: {
+    stage: StrategyHookStage;
+    error: unknown;
+    decision: ProtectDecision;
+    market: HookCandleMarket;
+  }) => Promise<void>;
+}) => {
+  try {
+    await updatePositionProtection({
+      connector,
+      symbol,
+      direction: decision.protectPlan.direction,
+      takeProfits: decision.protectPlan.takeProfits ?? [],
+      stopLossPrice: decision.protectPlan.stopLossPrice ?? null,
+    });
+  } catch (err) {
+    await onRuntimeError?.({
+      stage: 'protectPosition',
+      error: err,
+      decision,
+      market,
+    });
+    logger.error('protect position error: %s %s', symbol, err);
+    return 'ORDER_ERROR';
+  }
+
+  return decision.code;
+};
+
 const executeEntryDecision = async ({
   connector,
   symbol,
@@ -455,17 +497,36 @@ const executeEntryDecision = async ({
     }
 
     await beforePlaceOrder();
-    await connector.placeOrder(
-      {
+    const orderPlaced = await connector.placeOrder({
+      symbol,
+      qty: decision.orderPlan.qty,
+      price: decision.entryContext.prices.currentPrice,
+      timestamp: decision.entryContext.timestamp,
+      direction: decision.entryContext.direction,
+    });
+
+    if (!orderPlaced) {
+      throw new Error('PLACE_ORDER_FAILED');
+    }
+
+    try {
+      await updatePositionProtection({
+        connector,
         symbol,
+        direction: decision.entryContext.direction,
         qty: decision.orderPlan.qty,
+        takeProfits: decision.orderPlan.takeProfits,
+        stopLossPrice: decision.orderPlan.stopLossPrice,
+      });
+    } catch (error) {
+      await connector.closePosition({
+        symbol,
         price: decision.entryContext.prices.currentPrice,
         timestamp: decision.entryContext.timestamp,
         direction: decision.entryContext.direction,
-      },
-      decision.orderPlan.takeProfits,
-      decision.orderPlan.stopLossPrice,
-    );
+      });
+      throw error;
+    }
 
     await invokeHook(
       'afterPlaceOrder',
@@ -772,6 +833,32 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
               stage,
               error,
               decision: exitDecision,
+              market: errorMarket,
+            });
+          },
+        });
+      }
+
+      if (decision.kind === 'protect') {
+        if (!makeOrdersEnabled) {
+          return decision.code;
+        }
+
+        return handleProtectDecision({
+          connector,
+          symbol,
+          decision,
+          market,
+          onRuntimeError: async ({
+            stage,
+            error,
+            decision: protectDecision,
+            market: errorMarket,
+          }) => {
+            await notifyRuntimeError({
+              stage,
+              error,
+              decision: protectDecision,
               market: errorMarket,
             });
           },
