@@ -1,4 +1,7 @@
-import { summarizeAiTrainEvaluations } from '../lib/aiTrainMetrics';
+import {
+  summarizeAiTrainEvaluations,
+  summarizeAiTrainEvaluationsByDirection,
+} from '../lib/aiTrainMetrics';
 
 describe('aiTrainMetrics', () => {
   it('computes requested summary metrics and quality buckets', () => {
@@ -70,5 +73,72 @@ describe('aiTrainMetrics', () => {
     expect(summary.recallWinners).toBeNull();
     expect(summary.avgProfitApproved).toBeNull();
     expect(summary.expectancyDelta).toBeNull();
+  });
+
+  it('splits summaries by direction', () => {
+    const summaries = summarizeAiTrainEvaluationsByDirection([
+      {
+        profit: 10,
+        profitableTrade: true,
+        aiApproved: true,
+        quality: 5,
+        direction: 'LONG',
+      },
+      {
+        profit: -4,
+        profitableTrade: false,
+        aiApproved: true,
+        quality: 4,
+        direction: 'LONG',
+      },
+      {
+        profit: 6,
+        profitableTrade: true,
+        aiApproved: false,
+        quality: 3,
+        direction: 'SHORT',
+      },
+      {
+        profit: -2,
+        profitableTrade: false,
+        aiApproved: false,
+        quality: null,
+        direction: 'SHORT',
+      },
+      {
+        profit: 1,
+        profitableTrade: true,
+        aiApproved: true,
+        quality: 5,
+        direction: null,
+      },
+    ]);
+
+    expect(summaries).toEqual([
+      expect.objectContaining({
+        direction: 'LONG',
+        summary: expect.objectContaining({
+          approved: 2,
+          truePositive: 1,
+          falsePositive: 1,
+        }),
+      }),
+      expect.objectContaining({
+        direction: 'SHORT',
+        summary: expect.objectContaining({
+          approved: 0,
+          falseNegative: 1,
+          trueNegative: 1,
+        }),
+      }),
+      expect.objectContaining({
+        direction: 'UNKNOWN',
+        summary: expect.objectContaining({
+          approved: 1,
+          truePositive: 1,
+          falsePositive: 0,
+        }),
+      }),
+    ]);
   });
 });

@@ -3,6 +3,7 @@ export type AiTrainEvaluation = {
   profitableTrade: boolean;
   aiApproved: boolean;
   quality: number | null;
+  direction?: string | null;
 };
 
 export type AiTrainQualityBucket = {
@@ -31,6 +32,11 @@ export type AiTrainSummary = {
   avgProfitApproved: number | null;
   expectancyDelta: number | null;
   qualityBuckets: AiTrainQualityBucket[];
+};
+
+export type AiTrainDirectionSummary = {
+  direction: string;
+  summary: AiTrainSummary;
 };
 
 const divideOrNull = (num: number, denom: number) => {
@@ -145,4 +151,42 @@ export const summarizeAiTrainEvaluations = (
       (a, b) => qualitySortKey(a.quality) - qualitySortKey(b.quality),
     ),
   };
+};
+
+const getDirectionSortKey = (direction: string) => {
+  if (direction === 'LONG') {
+    return 0;
+  }
+  if (direction === 'SHORT') {
+    return 1;
+  }
+  return 2;
+};
+
+export const summarizeAiTrainEvaluationsByDirection = (
+  evaluations: AiTrainEvaluation[],
+): AiTrainDirectionSummary[] => {
+  const grouped = new Map<string, AiTrainEvaluation[]>();
+
+  for (const evaluation of evaluations) {
+    const direction =
+      typeof evaluation.direction === 'string' && evaluation.direction.trim()
+        ? evaluation.direction
+        : 'UNKNOWN';
+    const bucket = grouped.get(direction) ?? [];
+    bucket.push(evaluation);
+    grouped.set(direction, bucket);
+  }
+
+  return [...grouped.entries()]
+    .sort(
+      ([leftDirection], [rightDirection]) =>
+        getDirectionSortKey(leftDirection) -
+          getDirectionSortKey(rightDirection) ||
+        leftDirection.localeCompare(rightDirection),
+    )
+    .map(([direction, directionEvaluations]) => ({
+      direction,
+      summary: summarizeAiTrainEvaluations(directionEvaluations),
+    }));
 };

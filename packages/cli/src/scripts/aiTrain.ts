@@ -8,13 +8,17 @@ import { runWithConcurrency } from '@tradejs/core/async';
 import { readAiDatasetRows, toFileToken } from '@tradejs/infra/ai';
 import {
   DEFAULT_AI_MODEL,
+  buildAiPayload,
   buildAiPrompts,
   ensureAiStrategyPluginsLoaded,
   runAiPrompt,
 } from '@tradejs/node/ai';
 import { AI_CONCURRENCY_LIMIT } from '@tradejs/node/constants';
 import { AiDatasetRow, Signal, SignalAnalysis } from '@tradejs/types';
-import { summarizeAiTrainEvaluations } from '../lib/aiTrainMetrics';
+import {
+  summarizeAiTrainEvaluations,
+  summarizeAiTrainEvaluationsByDirection,
+} from '../lib/aiTrainMetrics';
 
 args.example(
   'yarn ai-train -n 50 --minQuality 4',
@@ -248,6 +252,142 @@ const resolvePromptRunContext = (
   };
 };
 
+const asRecord = (value: unknown): Record<string, unknown> | null => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return null;
+  }
+
+  return value as Record<string, unknown>;
+};
+
+const getDeterministicGateContext = (signal: Signal) => {
+  const payload = buildAiPayload(signal);
+  const additionalIndicators = asRecord(payload.additionalIndicators);
+  const candidates = [
+    additionalIndicators,
+    ...Object.values(additionalIndicators ?? {}).map(asRecord),
+  ].filter((value): value is Record<string, unknown> => Boolean(value));
+
+  return (
+    candidates.find(
+      (candidate) =>
+        Array.isArray(candidate.structuralHardBlockReasons) ||
+        typeof candidate.approvalAllowedNow === 'boolean',
+    ) ?? null
+  );
+};
+
+type DeterministicGateEvaluation = {
+  direction: string;
+  signalAvailable: boolean;
+  coreBlocked: boolean;
+  adapterBlocked: boolean;
+  modelCandidate: boolean;
+};
+
+type DeterministicGateSummary = {
+  selected: number;
+  signalAvailable: number;
+  signalMissing: number;
+  coreBlocked: number;
+  adapterBlocked: number;
+  modelCandidate: number;
+  modelApproved: number;
+  modelRejected: number;
+  modelFailed: number;
+};
+
+const resolveDeterministicGateEvaluation = (
+  signal: Signal | null,
+  fallbackDirection: string,
+): DeterministicGateEvaluation => {
+  if (!signal) {
+    return {
+      direction: fallbackDirection || 'UNKNOWN',
+      signalAvailable: false,
+      coreBlocked: false,
+      adapterBlocked: false,
+      modelCandidate: false,
+    };
+  }
+
+  const gateContext = getDeterministicGateContext(signal);
+  const structuralHardBlockReasons = Array.isArray(
+    gateContext?.structuralHardBlockReasons,
+  )
+    ? gateContext.structuralHardBlockReasons.filter(
+        (reason): reason is string => typeof reason === 'string' && reason,
+      )
+    : [];
+  const coreBlocked = structuralHardBlockReasons.length > 0;
+  const approvalAllowedNow =
+    typeof gateContext?.approvalAllowedNow === 'boolean'
+      ? gateContext.approvalAllowedNow
+      : null;
+  const adapterBlocked = !coreBlocked && approvalAllowedNow === false;
+
+  return {
+    direction:
+      typeof signal.direction === 'string' && signal.direction.trim()
+        ? signal.direction
+        : fallbackDirection || 'UNKNOWN',
+    signalAvailable: true,
+    coreBlocked,
+    adapterBlocked,
+    modelCandidate: !coreBlocked && !adapterBlocked,
+  };
+};
+
+const summarizeDeterministicGateEvaluations = (
+  deterministicEvaluations: DeterministicGateEvaluation[],
+  evaluations: Array<{ aiApproved: boolean; modelCandidate: boolean }>,
+): DeterministicGateSummary => {
+  const summary: DeterministicGateSummary = {
+    selected: deterministicEvaluations.length,
+    signalAvailable: 0,
+    signalMissing: 0,
+    coreBlocked: 0,
+    adapterBlocked: 0,
+    modelCandidate: 0,
+    modelApproved: 0,
+    modelRejected: 0,
+    modelFailed: 0,
+  };
+
+  for (const evaluation of deterministicEvaluations) {
+    if (evaluation.signalAvailable) {
+      summary.signalAvailable += 1;
+    } else {
+      summary.signalMissing += 1;
+    }
+
+    if (evaluation.coreBlocked) {
+      summary.coreBlocked += 1;
+    } else if (evaluation.adapterBlocked) {
+      summary.adapterBlocked += 1;
+    } else if (evaluation.modelCandidate) {
+      summary.modelCandidate += 1;
+    }
+  }
+
+  for (const evaluation of evaluations) {
+    if (!evaluation.modelCandidate) {
+      continue;
+    }
+
+    if (evaluation.aiApproved) {
+      summary.modelApproved += 1;
+    } else {
+      summary.modelRejected += 1;
+    }
+  }
+
+  summary.modelFailed =
+    summary.modelCandidate - summary.modelApproved - summary.modelRejected;
+
+  return summary;
+};
+
 const printSection = (title: string, table: string) => {
   console.log(chalk.gray(`${title}:`));
   console.log(table);
@@ -303,6 +443,15 @@ const main = async () => {
 
   const strategyName =
     rows[0]?.strategyName || deriveStrategyNameFromFile(filePath);
+  const preparedRows = rows.map((row) => {
+    const { promptPair, signal } = resolvePromptRunContext(row, rebuildPrompts);
+    return {
+      row,
+      promptPair,
+      signal,
+      deterministic: resolveDeterministicGateEvaluation(signal, row.direction),
+    };
+  });
   const concurrency = Math.max(1, Math.min(parallel, rows.length));
   const bar = new ProgressBar(
     ':current/:total [:bar][:percent] :symbol :status',
@@ -319,12 +468,14 @@ const main = async () => {
     profitableTrade: boolean;
     aiApproved: boolean;
     quality: number | null;
+    direction: string | null;
+    modelCandidate: boolean;
   }> = [];
 
-  await runWithConcurrency(rows, concurrency, async (row) => {
+  await runWithConcurrency(preparedRows, concurrency, async (preparedRow) => {
+    const { row, promptPair, signal, deterministic } = preparedRow;
     const profit = Number(row.profit);
     const profitableTrade = isProfitableTrade(row);
-    const { promptPair, signal } = resolvePromptRunContext(row, rebuildPrompts);
 
     try {
       const analysis = await runAiPrompt(
@@ -345,6 +496,8 @@ const main = async () => {
         profitableTrade,
         aiApproved,
         quality,
+        direction: row.direction,
+        modelCandidate: deterministic.modelCandidate,
       });
 
       bar.tick(1, {
@@ -368,6 +521,11 @@ const main = async () => {
   });
 
   const summary = summarizeAiTrainEvaluations(evaluations);
+  const directionSummaries = summarizeAiTrainEvaluationsByDirection(evaluations);
+  const deterministicSummary = summarizeDeterministicGateEvaluations(
+    preparedRows.map((preparedRow) => preparedRow.deterministic),
+    evaluations,
+  );
   const evaluated = summary.correct + summary.incorrect;
   console.log('');
   console.log(chalk.green('AI train finished'));
@@ -432,6 +590,92 @@ const main = async () => {
           chalk.red(String(summary.falsePositive)),
           chalk.green(String(summary.trueNegative)),
           chalk.red(String(summary.falseNegative)),
+        ],
+      ],
+    ),
+  );
+
+  if (directionSummaries.length) {
+    printSection(
+      'BY DIRECTION',
+      createTable(
+        [
+          chalk.gray('DIR'),
+          chalk.gray('EVAL'),
+          chalk.gray('ACCURACY'),
+          chalk.gray('APPROVED'),
+          chalk.green('TP'),
+          chalk.red('FP'),
+          chalk.green('TN'),
+          chalk.red('FN'),
+          chalk.gray('PRECISION'),
+          chalk.gray('RECALL'),
+        ],
+        directionSummaries.map(({ direction, summary: directionSummary }) => {
+          const directionEvaluated =
+            directionSummary.correct + directionSummary.incorrect;
+          return [
+            chalk.yellow(direction),
+            chalk.blue(String(directionEvaluated)),
+            colorizePercent(directionSummary.correct, directionEvaluated),
+            chalk.cyan(String(directionSummary.approved)),
+            chalk.green(String(directionSummary.truePositive)),
+            chalk.red(String(directionSummary.falsePositive)),
+            chalk.green(String(directionSummary.trueNegative)),
+            chalk.red(String(directionSummary.falseNegative)),
+            colorizeRatio(directionSummary.precisionApproved),
+            colorizeRatio(directionSummary.recallWinners),
+          ];
+        }),
+      ),
+    );
+  }
+
+  printSection(
+    'DETERMINISTIC FLOW',
+    createTable(
+      [chalk.gray('METRIC'), chalk.gray('VALUE')],
+      [
+        ['selected', chalk.blue(String(deterministicSummary.selected))],
+        [
+          'signal_available',
+          chalk.blue(String(deterministicSummary.signalAvailable)),
+        ],
+        [
+          'signal_missing',
+          deterministicSummary.signalMissing > 0
+            ? chalk.yellow(String(deterministicSummary.signalMissing))
+            : chalk.green('0'),
+        ],
+        [
+          'core_blocked_now',
+          deterministicSummary.coreBlocked > 0
+            ? chalk.yellow(String(deterministicSummary.coreBlocked))
+            : chalk.green('0'),
+        ],
+        [
+          'adapter_blocked_now',
+          deterministicSummary.adapterBlocked > 0
+            ? chalk.yellow(String(deterministicSummary.adapterBlocked))
+            : chalk.green('0'),
+        ],
+        [
+          'left_to_model_now',
+          chalk.cyan(String(deterministicSummary.modelCandidate)),
+        ],
+        [
+          'model_approved',
+          chalk.green(String(deterministicSummary.modelApproved)),
+        ],
+        [
+          'model_rejected',
+          chalk.red(String(deterministicSummary.modelRejected)),
+        ],
+        [
+          'model_failed',
+          deterministicSummary.modelFailed > 0
+            ? chalk.yellow(String(deterministicSummary.modelFailed))
+            : chalk.green('0'),
         ],
       ],
     ),
