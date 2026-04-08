@@ -1,6 +1,6 @@
 # TrendLine AI Replay Notes
 
-Last updated: 2026-04-08.
+Last updated: 2026-04-09.
 
 This file keeps internal notes for `ai-train` replay windows and TrendLine AI gate analysis.
 
@@ -631,7 +631,109 @@ Implementation summary:
 - `TP` is now derived from a setup-based target `RR`, not from a fixed percent
 - break-even protection now uses actual position risk when a live `SL` is known
 
-Status:
+## Validation after dynamic risk model: `latest 200`
 
-- code and unit tests are in place
-- fresh `backtest -> ai-export -> ai-train` validation for this new risk model is still pending
+Export:
+
+```bash
+data/ai/export/ai-dataset-trendline-merged-1775678280125.jsonl
+```
+
+Replay-equivalent result on `latest 200`:
+
+- `accuracy = 74.5%`
+- `TP/FP/TN/FN = 9 / 3 / 140 / 48`
+- `approved = 12`
+- `precision_approved = 75.0%`
+- `recall_winners = 15.8%`
+- `avg_profit_all = 1.58`
+- `avg_profit_approved = 16.15`
+- `expectancy_delta = 14.57`
+
+By direction:
+
+- `LONG`: `TP/FP/TN/FN = 6 / 2 / 65 / 22`
+- `SHORT`: `TP/FP/TN/FN = 3 / 1 / 75 / 26`
+
+Interpretation:
+
+- dynamic risk did not break the safety profile
+- but it did not improve approval recall on its own
+- the main bottleneck remained the deterministic `q3 -> q4` boundary in the TrendLine AI adapter
+
+## Follow-up experiment: restore a narrow `SHORT ready_breakout` approval path
+
+Problem observed after dynamic risk validation:
+
+- too many profitable `SHORT ready_breakout` setups were still capped at `q3`
+- this showed up as a large `SHORT FN` cluster on the latest `200` rows
+
+Initial combined experiment:
+
+- re-approve strong `SHORT ready_breakout`
+- also relax `LONG ready_follow_through` and `LONG ready_retest`
+
+Combined replay result:
+
+- `accuracy = 74.0%`
+- `TP/FP/TN/FN = 18 / 13 / 130 / 39`
+- `approved = 31`
+- `precision_approved = 58.1%`
+- `recall_winners = 31.6%`
+
+Conclusion:
+
+- the `SHORT` relaxation helped recall
+- but the additional `LONG` relaxation introduced too many new `FP`
+- this combined variant should not be kept
+
+## Current best working variant after the latest comparison
+
+Kept change:
+
+- restore only a narrow `SHORT ready_breakout q3 -> q4` path
+
+Rolled back from the experiment:
+
+- `LONG ready_follow_through q3 -> q4`
+- `LONG ready_retest q3 -> q4`
+
+Replay-equivalent result on the same `latest 200` window:
+
+- `accuracy = 76.0%`
+- `TP/FP/TN/FN = 15 / 6 / 137 / 42`
+- `approved = 21`
+- `precision_approved = 71.4%`
+- `recall_winners = 26.3%`
+- `avg_profit_all = 1.58`
+- `avg_profit_approved = 16.62`
+- `expectancy_delta = 15.04`
+
+By direction:
+
+- `LONG`: `TP/FP/TN/FN = 6 / 2 / 65 / 22`
+- `SHORT`: `TP/FP/TN/FN = 9 / 4 / 72 / 20`
+
+Quality breakdown:
+
+- `quality=4`: `19` approvals, `68.4%` winrate, `avg_profit = 15.36`
+- `quality=5`: `2` approvals, `100.0%` winrate, `avg_profit = 28.60`
+
+Current conclusion:
+
+- this is a better tradeoff than the plain post-risk baseline
+- it preserves the safer `LONG` side while materially improving `SHORT` recall
+- it is also materially better than the combined `LONG + SHORT` relaxation
+
+## Rollback guidance
+
+If a rollback is needed, use these levels:
+
+- best proven pure AI-gate checkpoint before the dynamic-risk branch: `54c5e20`
+- best current repo baseline to keep: `73308b6`
+
+Practical recommendation:
+
+- do not roll back below `73308b6`
+- if continuing from current work, keep the repo on top of `73308b6`
+- apply only the narrow `SHORT ready_breakout` approval restoration, not the broader `LONG` relaxations

@@ -56,6 +56,21 @@ const buildTrendlineContext = (signal: {
   const coinMaSlow = getLastFiniteNumber(signal.indicators?.maSlow);
   const coinMaBias = getBias(coinMaFast, coinMaSlow);
   const coinMaSpreadPct = getSpreadPct(coinMaFast, coinMaSlow);
+  const entryTiming =
+    typeof signal.additionalIndicators?.trendlineTiming === 'object' &&
+    signal.additionalIndicators?.trendlineTiming &&
+    typeof (signal.additionalIndicators.trendlineTiming as { entryTiming?: unknown })
+      .entryTiming === 'string'
+      ? ((signal.additionalIndicators.trendlineTiming as { entryTiming: string })
+          .entryTiming as
+          | 'ready_breakout'
+          | 'ready_follow_through'
+          | 'ready_retest'
+          | 'wait_retest'
+          | 'wait_retest_confirmation'
+          | 'stale_breakout'
+          | 'unknown')
+      : null;
   const coinBiasAligned =
     structural.signalDirection == null || coinMaBias == null
       ? null
@@ -143,6 +158,8 @@ const buildTrendlineContext = (signal: {
     aggressivePreBreakPressure,
     strongNearBreakPressure,
     hardBlockReasons,
+    entryTiming,
+    coinMaSpreadPct,
   });
   const maxAllowedQuality = deterministicQuality;
   const approvalAllowedNow = deterministicQuality >= 4;
@@ -218,6 +235,16 @@ type TrendlineQualityContext = {
   touches: number | null;
   distance: number | null;
   btcMaSpreadPct: number | null;
+  coinMaSpreadPct: number | null;
+  entryTiming:
+    | 'ready_breakout'
+    | 'ready_follow_through'
+    | 'ready_retest'
+    | 'wait_retest'
+    | 'wait_retest_confirmation'
+    | 'stale_breakout'
+    | 'unknown'
+    | null;
 };
 
 const getDeterministicTrendlineQuality = (
@@ -247,6 +274,8 @@ const getDeterministicTrendlineQuality = (
   const touches = trendlineContext.touches ?? 0;
   const distance = trendlineContext.distance ?? Number.POSITIVE_INFINITY;
   const btcMaSpreadPct = trendlineContext.btcMaSpreadPct ?? 0;
+  const coinMaSpreadPct = trendlineContext.coinMaSpreadPct ?? 0;
+  const entryTiming = trendlineContext.entryTiming;
 
   if (trendlineContext.signalDirection === 'LONG') {
     const quality5 =
@@ -283,7 +312,6 @@ const getDeterministicTrendlineQuality = (
       touches >= 5 &&
       distance < 600 &&
       btcMaSpreadPct >= 0.9;
-
     return compactBreakoutQuality4 ||
       shortLineStrengthQuality4 ||
       matureLineQuality4 ||
@@ -310,7 +338,14 @@ const getDeterministicTrendlineQuality = (
     touches >= 5 &&
     distance < 300 &&
     btcMaSpreadPct <= -0.5;
-  return quality4 ? 4 : 3;
+  const strongReadyBreakoutQuality4 =
+    entryTiming === 'ready_breakout' &&
+    breakVsAtrRatio >= 2 &&
+    priceVsLinePctAbs >= 1.8 &&
+    touches >= 5 &&
+    btcMaSpreadPct <= -1.0 &&
+    (coinMaSpreadPct <= -1.0 || breakVsAtrRatio >= 3);
+  return quality4 || strongReadyBreakoutQuality4 ? 4 : 3;
 };
 
 const getDeterministicTrendlineQualityReason = (

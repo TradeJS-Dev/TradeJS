@@ -522,6 +522,123 @@ const makeDeterministicWatchShortSignal = () => {
   return signal;
 };
 
+const makeStrongReadyBreakoutShortSignal = () => {
+  const signal = makeSignal();
+  signal.direction = 'SHORT';
+  signal.prices.currentPrice = 97.5;
+  signal.prices.takeProfitPrice = 92;
+  signal.prices.stopLossPrice = 101.2;
+  signal.figures.trendLine = {
+    ...signal.figures.trendLine,
+    mode: 'lows',
+    points: [
+      { timestamp: 1, value: 100.8 },
+      { timestamp: 2, value: 100 },
+    ],
+    touches: [
+      { timestamp: 1, value: 101.1 },
+      { timestamp: 1.2, value: 100.9 },
+      { timestamp: 1.4, value: 100.6 },
+      { timestamp: 1.6, value: 100.3 },
+      { timestamp: 1.8, value: 100.1 },
+    ],
+  };
+  signal.indicators = {
+    ...signal.indicators,
+    maFast: [100.8, 99.1, 98.4],
+    maSlow: [100.9, 100.3, 100],
+    btcMaFast: [100.7, 99.1, 98.6],
+    btcMaSlow: [100.8, 100.2, 100],
+    atrPct: [1],
+  };
+  signal.additionalIndicators = {
+    touches: 5,
+    distance: 500,
+    trendlineTiming: {
+      entryTiming: 'ready_breakout',
+    },
+  };
+  return signal;
+};
+
+const makeFollowThroughLongTrendlineSignal = () => {
+  const signal = makeSignal();
+  signal.direction = 'LONG';
+  signal.prices.currentPrice = 100.65;
+  signal.prices.takeProfitPrice = 103;
+  signal.prices.stopLossPrice = 98.9;
+  signal.figures.trendLine = {
+    ...signal.figures.trendLine,
+    mode: 'highs',
+    points: [
+      { timestamp: 1, value: 100.2 },
+      { timestamp: 2, value: 100 },
+    ],
+    touches: [
+      { timestamp: 1, value: 100.35 },
+      { timestamp: 1.2, value: 100.28 },
+      { timestamp: 1.4, value: 100.2 },
+      { timestamp: 1.6, value: 100.12 },
+    ],
+  };
+  signal.indicators = {
+    ...signal.indicators,
+    maFast: [99.8, 100.1, 100.25],
+    maSlow: [100.1, 100.05, 100],
+    btcMaFast: [99.8, 100.05, 100.2],
+    btcMaSlow: [100.1, 100.08, 100],
+    atrPct: [1],
+  };
+  signal.additionalIndicators = {
+    touches: 4,
+    distance: 520,
+    trendlineTiming: {
+      entryTiming: 'ready_follow_through',
+    },
+  };
+  return signal;
+};
+
+const makeRetestLongTrendlineSignal = () => {
+  const signal = makeSignal();
+  signal.direction = 'LONG';
+  signal.prices.currentPrice = 101.02;
+  signal.prices.takeProfitPrice = 103.5;
+  signal.prices.stopLossPrice = 98.9;
+  signal.figures.trendLine = {
+    ...signal.figures.trendLine,
+    mode: 'highs',
+    points: [
+      { timestamp: 1, value: 100.1 },
+      { timestamp: 2, value: 100 },
+    ],
+    touches: [
+      { timestamp: 1, value: 100.3 },
+      { timestamp: 1.2, value: 100.25 },
+      { timestamp: 1.4, value: 100.18 },
+      { timestamp: 1.6, value: 100.1 },
+      { timestamp: 1.8, value: 100.05 },
+      { timestamp: 1.9, value: 100.02 },
+    ],
+  };
+  signal.indicators = {
+    ...signal.indicators,
+    maFast: [100.1, 100.12, 100.13],
+    maSlow: [100.3, 100.2, 100],
+    btcMaFast: [99.6, 99.8, 100.05],
+    btcMaSlow: [100.2, 100.1, 100],
+    atrPct: [1.5],
+  };
+  signal.additionalIndicators = {
+    touches: 6,
+    distance: 228,
+    trendlineTiming: {
+      entryTiming: 'ready_retest',
+    },
+  };
+  return signal;
+};
+
 describe('ai helpers', () => {
   const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
   const logSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
@@ -1123,6 +1240,120 @@ describe('ai helpers', () => {
       );
       expect(result.qualityReason).toContain('deterministic quality');
       expect(result.comment).toContain('deterministic quality');
+    });
+
+    it('upgrades strong ready-breakout shorts back to deterministic quality 4', async () => {
+      invokeMock.mockResolvedValue({
+        content: {
+          direction: 'SHORT',
+          quality: 5,
+          needRetest: false,
+          retestPrice: null,
+          takeProfitPrice: 92,
+          stopLossPrice: 101.2,
+          setup: 'Есть сильный пробой вниз',
+          retestPlan: 'Можно входить сразу',
+          qualityReason: 'Шорт выглядит сильно',
+          triggerInvalidation: 'Отмена при возврате выше',
+          comment: 'ok',
+        },
+      });
+
+      const result = await runAiPrompt(
+        {
+          systemPrompt: 'system',
+          humanPrompt: 'human',
+        },
+        {
+          signal: makeStrongReadyBreakoutShortSignal(),
+        },
+      );
+
+      expect(result).toEqual(
+        expect.objectContaining({
+          direction: 'SHORT',
+          quality: 4,
+          needRetest: false,
+          takeProfitPrice: 92,
+          stopLossPrice: 101.2,
+        }),
+      );
+    });
+
+    it('keeps long follow-through setups on watch quality when only model upgrades them', async () => {
+      invokeMock.mockResolvedValue({
+        content: {
+          direction: 'LONG',
+          quality: 5,
+          needRetest: false,
+          retestPrice: null,
+          takeProfitPrice: 103,
+          stopLossPrice: 98.9,
+          setup: 'Есть follow-through вверх',
+          retestPlan: 'Можно входить сразу',
+          qualityReason: 'Лонг выглядит хорошо',
+          triggerInvalidation: 'Отмена при возврате ниже',
+          comment: 'ok',
+        },
+      });
+
+      const result = await runAiPrompt(
+        {
+          systemPrompt: 'system',
+          humanPrompt: 'human',
+        },
+        {
+          signal: makeFollowThroughLongTrendlineSignal(),
+        },
+      );
+
+      expect(result).toEqual(
+        expect.objectContaining({
+          direction: null,
+          quality: 3,
+          needRetest: true,
+          takeProfitPrice: null,
+          stopLossPrice: null,
+        }),
+      );
+    });
+
+    it('keeps long retest setups on watch quality when only model upgrades them', async () => {
+      invokeMock.mockResolvedValue({
+        content: {
+          direction: 'LONG',
+          quality: 5,
+          needRetest: false,
+          retestPrice: null,
+          takeProfitPrice: 103.5,
+          stopLossPrice: 98.9,
+          setup: 'Есть ретест и удержание над линией',
+          retestPlan: 'Можно входить сразу',
+          qualityReason: 'Лонг после ретеста выглядит хорошо',
+          triggerInvalidation: 'Отмена при возврате ниже',
+          comment: 'ok',
+        },
+      });
+
+      const result = await runAiPrompt(
+        {
+          systemPrompt: 'system',
+          humanPrompt: 'human',
+        },
+        {
+          signal: makeRetestLongTrendlineSignal(),
+        },
+      );
+
+      expect(result).toEqual(
+        expect.objectContaining({
+          direction: null,
+          quality: 3,
+          needRetest: true,
+          takeProfitPrice: null,
+          stopLossPrice: null,
+        }),
+      );
     });
 
     it('allows aggressive pre-break pressure setups but caps quality to 4', async () => {
