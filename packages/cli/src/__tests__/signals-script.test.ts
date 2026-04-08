@@ -170,11 +170,11 @@ const loadScript = async (scenario: Scenario) => {
 
   const prevNodeEnv = process.env.NODE_ENV;
   (process.env as any).NODE_ENV = 'test';
-  const module = await import('../scripts/signals');
+  const signalsScriptModule = await import('../scripts/signals');
   (process.env as any).NODE_ENV = prevNodeEnv;
 
   return {
-    signals: module.signals,
+    signals: signalsScriptModule.signals,
     mocks: {
       connector,
       getData,
