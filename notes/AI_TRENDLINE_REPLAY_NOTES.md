@@ -486,3 +486,152 @@ Current conclusion:
 - next investigation should not start with another quality threshold
 - next investigation should be a dedicated `SHORT TP/SL` sweep in strategy config
 - this requires new backtests and a fresh `ai-export`, not just replay on old labels
+
+## Runtime default model
+
+Implemented in commit:
+
+- `c90ba0f` `Default AI runtime to GPT-5 mini`
+
+Current default:
+
+- `askAI` and `ai-train` now default to `openai/gpt-5-mini`
+- another model should be used only when explicitly passed through `--model`
+
+## New export: `1775667786011`
+
+File:
+
+```bash
+data/ai/export/ai-dataset-trendline-merged-1775667786011.jsonl
+```
+
+## Replay on new export: `latest 200` before quality ladder recalibration
+
+Command:
+
+```bash
+yarn ai-train -n 200 -p 8 --file data/ai/export/ai-dataset-trendline-merged-1775667786011.jsonl
+```
+
+Replay result:
+
+- `accuracy = 72.0%`
+- `TP/FP/TN/FN = 10 / 27 / 134 / 29`
+- `approved = 37`
+- `precision_approved = 27.0%`
+- `recall_winners = 25.6%`
+- `avg_profit_all = -0.54`
+- `avg_profit_approved = 1.52`
+- `expectancy_delta = 2.06`
+
+By direction:
+
+- `LONG`: `TP/FP/TN/FN = 7 / 15 / 59 / 13`, `precision = 31.8%`, `recall = 35.0%`
+- `SHORT`: `TP/FP/TN/FN = 3 / 12 / 75 / 16`, `precision = 20.0%`, `recall = 15.8%`
+
+Deterministic flow:
+
+- `adapter_blocked_now = 163`
+- `left_to_model_now = 37`
+- `model_approved = 37`
+- `model_rejected = 0`
+
+Main finding:
+
+- current deterministic gate still left too many moderate `LONG` approvals and overextended `SHORT` approvals
+- `quality=5` was still inflated and not materially better than `quality=4`
+- at this point the bottleneck was again not the model, but the deterministic ladder
+
+## Failure analysis on `latest 200`
+
+False-positive split:
+
+- `LONG FP = 15`
+- `SHORT FP = 12`
+
+Observed shapes:
+
+- `LONG FP`: mostly moderate clean breakouts, average `breakVsAtrRatio ~ 0.72`, average `distance ~ 314`
+- `SHORT FP`: mostly very strong bearish breakouts that looked late/overextended, average `breakVsAtrRatio ~ 5.22`, average `distance ~ 555`
+
+Practical takeaway:
+
+- `LONG q5` needed a stricter top-tier definition
+- `SHORT q5` needed an explicit overextension downgrade
+
+## Guardrail change: deterministic quality ladder recalibration
+
+Implemented in commit:
+
+- `54c5e20` `Tighten TrendLine deterministic quality ladder`
+
+Implementation summary:
+
+- tightened `LONG q5`
+- split `LONG q4` into a smaller set of acceptable breakout shapes
+- tightened `SHORT q5` to exclude very stretched bearish breaks
+- kept `SHORT q4` only for moderate clean breaks
+- downgraded overextended `SHORT` setups from approval into `q3`
+
+## Replay after ladder recalibration: `latest 200`
+
+Command:
+
+```bash
+yarn ai-train -n 200 -p 8 --file data/ai/export/ai-dataset-trendline-merged-1775667786011.jsonl
+```
+
+Replay result:
+
+- `accuracy = 83.5%`
+- `TP/FP/TN/FN = 9 / 3 / 158 / 30`
+- `approved = 12`
+- `precision_approved = 75.0%`
+- `recall_winners = 23.1%`
+- `avg_profit_all = -0.54`
+- `avg_profit_approved = 16.73`
+- `expectancy_delta = 17.26`
+
+By direction:
+
+- `LONG`: `TP/FP/TN/FN = 6 / 2 / 72 / 14`, `precision = 75.0%`
+- `SHORT`: `TP/FP/TN/FN = 3 / 1 / 86 / 16`, `precision = 75.0%`
+
+Deterministic flow:
+
+- `adapter_blocked_now = 188`
+- `left_to_model_now = 12`
+- `model_approved = 12`
+- `model_rejected = 0`
+
+Interpretation:
+
+- this was a large precision improvement without any meaningful help from the model itself
+- the system now behaves much closer to `deterministic policy engine + AI explanation`
+- `accuracy` here measures the full approve/reject pipeline, not standalone LLM quality
+
+## Dynamic setup-based risk model
+
+Implemented after the replay work:
+
+- dynamic `SL` in `TrendLine core`
+- `TP` now derived from `SL * targetRR`
+- separate `LONG` and `SHORT` behavior, but only through shared setup features
+
+Implementation summary:
+
+- `SL` is now derived from:
+  - line invalidation distance
+  - ATR buffer
+  - breakout strength
+  - touches
+  - line distance
+  - timing state (`ready_breakout`, `ready_follow_through`, `ready_retest`)
+- `TP` is now derived from a setup-based target `RR`, not from a fixed percent
+- break-even protection now uses actual position risk when a live `SL` is known
+
+Status:
+
+- code and unit tests are in place
+- fresh `backtest -> ai-export -> ai-train` validation for this new risk model is still pending

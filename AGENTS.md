@@ -68,6 +68,15 @@ This rule is important and should be treated as architectural, not editorial.
 
 If a feature is not publish-ready for external users, document that limitation explicitly instead of implying a working package flow.
 
+## Internal Notes
+
+- Internal research notes and audit-style markdown files should live under `notes/`, not in the repo root.
+- Current internal notes include:
+  - `notes/AI_TRENDLINE_REPLAY_NOTES.md`
+  - `notes/ML_PIPELINE_AUDIT.md`
+  - `notes/ML_TRANSFORM_README_RU.md`
+- Keep root markdown focused on stable repository guidance and runnable internal workflows.
+
 ## Architecture Rules
 
 ### Package Boundaries

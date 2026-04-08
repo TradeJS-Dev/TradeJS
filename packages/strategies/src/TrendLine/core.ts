@@ -8,6 +8,7 @@ import {
   buildTrendlineStructuralContext,
   buildTrendlineTimingContext,
 } from './guardrails';
+import { buildTrendlineRiskPlan } from './risk';
 import {
   CreateStrategyCore,
   Direction,
@@ -79,6 +80,53 @@ const getFavorableMovePct = ({
     : ((entryPrice - currentPrice) / entryPrice) * 100;
 };
 
+const getPositionStopLossPrice = (position: Position | null) => {
+  if (!position || typeof position !== 'object') {
+    return null;
+  }
+
+  const slPrice = Number(
+    (position as Position & { slPrice?: unknown }).slPrice ?? Number.NaN,
+  );
+
+  if (Number.isFinite(slPrice)) {
+    return slPrice;
+  }
+
+  const signalStopLossPrice = Number(
+    (
+      position as Position & {
+        signal?: { prices?: { stopLossPrice?: unknown } };
+      }
+    ).signal?.prices?.stopLossPrice ?? Number.NaN,
+  );
+
+  return Number.isFinite(signalStopLossPrice) ? signalStopLossPrice : null;
+};
+
+const getPositionRiskPct = ({
+  direction,
+  entryPrice,
+  stopLossPrice,
+}: {
+  direction: Direction;
+  entryPrice: number;
+  stopLossPrice: number | null;
+}) => {
+  if (
+    stopLossPrice == null ||
+    !Number.isFinite(entryPrice) ||
+    !Number.isFinite(stopLossPrice) ||
+    entryPrice <= 0
+  ) {
+    return null;
+  }
+
+  return direction === 'LONG'
+    ? ((entryPrice - stopLossPrice) / entryPrice) * 100
+    : ((stopLossPrice - entryPrice) / entryPrice) * 100;
+};
+
 const isFailedBreakout = ({
   direction,
   priceVsLinePct,
@@ -148,6 +196,11 @@ export const createTrendLineCore: CreateStrategyCore<
         entryPrice: currentPosition.price,
         currentPrice,
       });
+      const currentPositionRiskPct = getPositionRiskPct({
+        direction: currentPosition.direction,
+        entryPrice: currentPosition.price,
+        stopLossPrice: getPositionStopLossPrice(currentPosition),
+      });
 
       if (activeLine) {
         const indicators = indicatorsState.snapshot();
@@ -176,7 +229,8 @@ export const createTrendLineCore: CreateStrategyCore<
       if (
         favorableMovePct != null &&
         favorableMovePct >=
-          activeModeConfig.SL * BREAK_EVEN_TRIGGER_RISK_MULTIPLIER
+          (currentPositionRiskPct ?? activeModeConfig.SL) *
+            BREAK_EVEN_TRIGGER_RISK_MULTIPLIER
       ) {
         return strategyApi.protect({
           code: 'TRENDLINE_MOVE_STOP_TO_BREAK_EVEN',
@@ -206,7 +260,7 @@ export const createTrendLineCore: CreateStrategyCore<
     }
 
     const modeConfig = bestLine.mode === 'highs' ? HIGHS : LOWS;
-    const { direction, TP, SL, minRiskRatio, enable } = modeConfig;
+    const { direction, minRiskRatio, enable } = modeConfig;
 
     if (!enable) {
       return strategyApi.skip('STRATEGY_DISABLED');
@@ -242,12 +296,19 @@ export const createTrendLineCore: CreateStrategyCore<
       return strategyApi.skip(`TRENDLINE_TIMING:${timingCode}`);
     }
 
+    const riskPlan = buildTrendlineRiskPlan({
+      direction,
+      modeConfig,
+      structuralContext,
+      timingContext,
+    });
+
     const { stopLossPrice, takeProfitPrice, riskRatio, qty } =
       strategyApi.getDirectionalTpSlPrices({
         price: currentPrice,
         direction,
-        takeProfitDelta: TP,
-        stopLossDelta: SL,
+        takeProfitDelta: riskPlan.takeProfitDelta,
+        stopLossDelta: riskPlan.stopLossDelta,
         unit: 'percent',
         maxLossValue: MAX_LOSS_VALUE,
         feePercent: Number(FEE_PERCENT ?? 0),

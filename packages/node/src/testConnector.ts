@@ -247,6 +247,10 @@ export const createTestConnector: TestConnectorCreator = (
       }
 
       stopLossPrice = nextStopLossPrice || null;
+      currentPosition = {
+        ...currentPosition,
+        ...(stopLossPrice != null ? { slPrice: stopLossPrice } : {}),
+      };
       return true;
     },
 
