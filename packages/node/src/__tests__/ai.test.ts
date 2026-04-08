@@ -378,6 +378,77 @@ const makeWeakLongFarBreakTrendlineSignal = () => {
   return signal;
 };
 
+const makeDeterministicQualityLongSignal = () => {
+  const signal = makeSignal();
+  signal.direction = 'LONG';
+  signal.prices.currentPrice = 100.82;
+  signal.prices.takeProfitPrice = 104.5;
+  signal.prices.stopLossPrice = 98.9;
+  signal.figures.trendLine = {
+    ...signal.figures.trendLine,
+    mode: 'highs',
+    points: [
+      { timestamp: 1, value: 101.4 },
+      { timestamp: 2, value: 100 },
+    ],
+    touches: [
+      { timestamp: 1, value: 101.3 },
+      { timestamp: 1.2, value: 101.0 },
+      { timestamp: 1.4, value: 100.7 },
+      { timestamp: 1.6, value: 100.35 },
+      { timestamp: 1.8, value: 100.1 },
+    ],
+  };
+  signal.indicators = {
+    ...signal.indicators,
+    maFast: [99.8, 100.2, 100.7],
+    maSlow: [99.7, 99.95, 100],
+    btcMaFast: [100.2, 100.5, 100.8],
+    btcMaSlow: [100, 100.1, 100],
+    atrPct: [0.95],
+  };
+  signal.additionalIndicators = {
+    touches: 5,
+    distance: 220,
+  };
+  return signal;
+};
+
+const makeDeterministicWatchShortSignal = () => {
+  const signal = makeSignal();
+  signal.direction = 'SHORT';
+  signal.prices.currentPrice = 99.36;
+  signal.prices.takeProfitPrice = 96;
+  signal.prices.stopLossPrice = 101.2;
+  signal.figures.trendLine = {
+    ...signal.figures.trendLine,
+    mode: 'lows',
+    points: [
+      { timestamp: 1, value: 100.5 },
+      { timestamp: 2, value: 100 },
+    ],
+    touches: [
+      { timestamp: 1, value: 100.7 },
+      { timestamp: 1.2, value: 100.5 },
+      { timestamp: 1.4, value: 100.3 },
+      { timestamp: 1.6, value: 100.15 },
+    ],
+  };
+  signal.indicators = {
+    ...signal.indicators,
+    maFast: [100.5, 99.9, 99.3],
+    maSlow: [100.6, 100.1, 100],
+    btcMaFast: [100.1, 100.04, 99.95],
+    btcMaSlow: [100.15, 100.08, 100],
+    atrPct: [1.1],
+  };
+  signal.additionalIndicators = {
+    touches: 4,
+    distance: 140,
+  };
+  return signal;
+};
+
 describe('ai helpers', () => {
   const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
   const logSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
@@ -646,7 +717,7 @@ describe('ai helpers', () => {
       expect(result).toEqual(
         expect.objectContaining({
           direction: null,
-          quality: 3,
+          quality: 2,
           needRetest: true,
           retestPrice: 100.05,
           takeProfitPrice: null,
@@ -823,6 +894,85 @@ describe('ai helpers', () => {
         'для LONG пробой очень длинной линии',
       );
       expect(result.comment).toContain('TrendLine guardrail');
+    });
+
+    it('uses deterministic q5 for top-tier long breakouts even if model quality is lower', async () => {
+      invokeMock.mockResolvedValue({
+        content: {
+          direction: null,
+          quality: 4,
+          needRetest: true,
+          retestPrice: 100,
+          takeProfitPrice: null,
+          stopLossPrice: null,
+          setup: 'Сильный breakout вверх',
+          retestPlan: 'Можно ждать ретест',
+          qualityReason: 'Модель осторожна',
+          triggerInvalidation: 'Отмена при возврате ниже линии',
+          comment: 'ok',
+        },
+      });
+
+      const result = await runAiPrompt(
+        {
+          systemPrompt: 'system',
+          humanPrompt: 'human',
+        },
+        {
+          signal: makeDeterministicQualityLongSignal(),
+        },
+      );
+
+      expect(result).toEqual(
+        expect.objectContaining({
+          direction: 'LONG',
+          quality: 5,
+          needRetest: false,
+          retestPrice: null,
+          takeProfitPrice: 104.5,
+          stopLossPrice: 98.9,
+        }),
+      );
+    });
+
+    it('downgrades weak allowed shorts to deterministic watch quality', async () => {
+      invokeMock.mockResolvedValue({
+        content: {
+          direction: 'SHORT',
+          quality: 5,
+          needRetest: false,
+          retestPrice: null,
+          takeProfitPrice: 96,
+          stopLossPrice: 101.2,
+          setup: 'Есть пробой вниз',
+          retestPlan: 'Можно входить сразу',
+          qualityReason: 'Шорт выглядит сильно',
+          triggerInvalidation: 'Отмена при возврате выше',
+          comment: 'ok',
+        },
+      });
+
+      const result = await runAiPrompt(
+        {
+          systemPrompt: 'system',
+          humanPrompt: 'human',
+        },
+        {
+          signal: makeDeterministicWatchShortSignal(),
+        },
+      );
+
+      expect(result).toEqual(
+        expect.objectContaining({
+          direction: null,
+          quality: 3,
+          needRetest: true,
+          takeProfitPrice: null,
+          stopLossPrice: null,
+        }),
+      );
+      expect(result.qualityReason).toContain('deterministic quality');
+      expect(result.comment).toContain('deterministic quality');
     });
 
     it('allows aggressive pre-break pressure setups but caps quality to 4', async () => {
@@ -1007,7 +1157,9 @@ describe('ai helpers', () => {
         },
       });
 
-      const result = await askAI(makeSignal());
+      const signal = makeSignal();
+      signal.strategy = 'Breakout';
+      const result = await askAI(signal);
 
       expect(chatOpenAICtorMock).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -1070,7 +1222,9 @@ describe('ai helpers', () => {
         ],
       });
 
-      const result = await askAI(makeSignal());
+      const signal = makeSignal();
+      signal.strategy = 'Breakout';
+      const result = await askAI(signal);
 
       expect(result).toEqual(
         expect.objectContaining({
@@ -1091,7 +1245,9 @@ describe('ai helpers', () => {
         content: 'no json here',
       });
 
-      const result = await askAI(makeSignal());
+      const signal = makeSignal();
+      signal.strategy = 'Breakout';
+      const result = await askAI(signal);
 
       expect(result).toEqual(
         expect.objectContaining({
@@ -1113,7 +1269,9 @@ describe('ai helpers', () => {
         content: [{ image_url: 'x' }, { text: '```json { invalid } ```' }],
       });
 
-      const result = await askAI(makeSignal());
+      const signal = makeSignal();
+      signal.strategy = 'Breakout';
+      const result = await askAI(signal);
 
       expect(result.direction).toBeNull();
       expect(result.comment).toBe('');

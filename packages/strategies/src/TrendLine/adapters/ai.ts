@@ -131,16 +131,21 @@ const buildTrendlineContext = (signal: {
     hardBlockReasons.push('weak_btc_led_break');
   }
 
-  const maxAllowedQuality =
-    aggressivePreBreakPressure || strongNearBreakPressure
-      ? 4
-      : hardBlockReasons.length > 0
-        ? 3
-        : 5;
-  const approvalAllowedNow =
-    hardBlockReasons.length === 0 ||
-    aggressivePreBreakPressure ||
-    strongNearBreakPressure;
+  const deterministicQuality = getDeterministicTrendlineQuality({
+    signalDirection: structural.signalDirection,
+    clearBreak: structural.clearBreak,
+    nearLineNoise: structural.nearLineNoise,
+    breakVsAtrRatio: structural.breakVsAtrRatio,
+    priceVsLinePctAbs: structural.priceVsLinePctAbs,
+    touches: structural.touches,
+    distance: structural.distance,
+    btcMaSpreadPct: structural.btcMaSpreadPct,
+    aggressivePreBreakPressure,
+    strongNearBreakPressure,
+    hardBlockReasons,
+  });
+  const maxAllowedQuality = deterministicQuality;
+  const approvalAllowedNow = deterministicQuality >= 4;
 
   return {
     ...structural,
@@ -152,6 +157,7 @@ const buildTrendlineContext = (signal: {
     aggressivePreBreakPressure,
     strongNearBreakPressure,
     weakBtcLedBreak,
+    deterministicQuality,
     maxAllowedQuality,
     approvalAllowedNow,
     hardBlockReasons,
@@ -166,15 +172,6 @@ const formatPromptNumber = (
     return 'n/a';
   }
   return value.toFixed(fractionDigits);
-};
-
-const clampQuality = (value: unknown, maxAllowedQuality: number) => {
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed)) {
-    return Math.min(3, maxAllowedQuality);
-  }
-
-  return Math.max(1, Math.min(maxAllowedQuality, Math.round(parsed)));
 };
 
 const getHardBlockReasonText = (reason: string) => {
@@ -209,6 +206,103 @@ const mergeShortText = (
   return value.slice(0, maxLength);
 };
 
+type TrendlineQualityContext = {
+  signalDirection: 'LONG' | 'SHORT' | null;
+  clearBreak: boolean | null;
+  nearLineNoise: boolean | null;
+  hardBlockReasons: string[];
+  aggressivePreBreakPressure: boolean;
+  strongNearBreakPressure: boolean;
+  breakVsAtrRatio: number | null;
+  priceVsLinePctAbs: number | null;
+  touches: number | null;
+  distance: number | null;
+  btcMaSpreadPct: number | null;
+};
+
+const getDeterministicTrendlineQuality = (
+  trendlineContext: TrendlineQualityContext,
+) => {
+  if (
+    trendlineContext.aggressivePreBreakPressure === true ||
+    trendlineContext.strongNearBreakPressure === true
+  ) {
+    return 4;
+  }
+
+  if (trendlineContext.hardBlockReasons.length > 0) {
+    return trendlineContext.clearBreak === true ? 3 : 2;
+  }
+
+  if (
+    trendlineContext.clearBreak !== true ||
+    trendlineContext.nearLineNoise !== false ||
+    trendlineContext.signalDirection == null
+  ) {
+    return 2;
+  }
+
+  const breakVsAtrRatio = trendlineContext.breakVsAtrRatio ?? 0;
+  const priceVsLinePctAbs = trendlineContext.priceVsLinePctAbs ?? 0;
+  const touches = trendlineContext.touches ?? 0;
+  const distance = trendlineContext.distance ?? Number.POSITIVE_INFINITY;
+  const btcMaSpreadPct = trendlineContext.btcMaSpreadPct ?? 0;
+
+  if (trendlineContext.signalDirection === 'LONG') {
+    const quality5 =
+      breakVsAtrRatio >= 0.8 &&
+      priceVsLinePctAbs >= 0.7 &&
+      distance < 300 &&
+      btcMaSpreadPct >= 0.5;
+    if (quality5) {
+      return 5;
+    }
+
+    const quality4 =
+      breakVsAtrRatio >= 0.55 &&
+      priceVsLinePctAbs >= 0.5 &&
+      distance < 700 &&
+      btcMaSpreadPct >= 0.15;
+    return quality4 ? 4 : 3;
+  }
+
+  const quality5 =
+    breakVsAtrRatio >= 1.2 &&
+    priceVsLinePctAbs >= 1.0 &&
+    touches >= 5 &&
+    btcMaSpreadPct <= -0.3;
+  if (quality5) {
+    return 5;
+  }
+
+  const quality4 =
+    breakVsAtrRatio >= 0.8 &&
+    priceVsLinePctAbs >= 0.7 &&
+    touches >= 5 &&
+    btcMaSpreadPct <= -0.15;
+  return quality4 ? 4 : 3;
+};
+
+const getDeterministicTrendlineQualityReason = (
+  trendlineContext: Pick<TrendlineQualityContext, 'signalDirection' | 'hardBlockReasons'>,
+) => {
+  if (trendlineContext.hardBlockReasons.length > 0) {
+    return `TrendLine guardrail: вход заблокирован, потому что ${trendlineContext.hardBlockReasons
+      .map(getHardBlockReasonText)
+      .join('; ')}.`;
+  }
+
+  if (trendlineContext.signalDirection === 'LONG') {
+    return 'TrendLine deterministic quality: пробой есть, но для LONG не хватает displacement, поддержки BTC или линия слишком длинная для немедленного входа.';
+  }
+
+  if (trendlineContext.signalDirection === 'SHORT') {
+    return 'TrendLine deterministic quality: пробой есть, но для SHORT не хватает bearish displacement или follow-through, поэтому вход пока рано одобрять.';
+  }
+
+  return 'TrendLine deterministic quality: структура еще не дотягивает до входа прямо сейчас.';
+};
+
 const getTrendlineContextFromPayload = (
   payload: AiPayload,
   signal: Parameters<typeof buildTrendlineContext>[0],
@@ -239,11 +333,7 @@ export const trendLineAiAdapter: StrategyAiAdapter = {
   }),
   postProcessAnalysis: ({ signal, payload, analysis }) => {
     const trendlineContext = getTrendlineContextFromPayload(payload, signal);
-    const hasNumericQuality = Number.isFinite(Number(analysis.quality));
-    const quality = clampQuality(
-      analysis.quality,
-      trendlineContext.maxAllowedQuality,
-    );
+    const quality = trendlineContext.deterministicQuality;
     const signalDirection =
       signal.direction === 'LONG' || signal.direction === 'SHORT'
         ? signal.direction
@@ -267,8 +357,8 @@ export const trendLineAiAdapter: StrategyAiAdapter = {
         ...analysis,
         direction: signalDirection,
         quality: 4,
-        needRetest: analysis.needRetest ?? false,
-        retestPrice: analysis.retestPrice,
+        needRetest: false,
+        retestPrice: null,
         takeProfitPrice:
           analysis.takeProfitPrice ?? signal.prices?.takeProfitPrice ?? null,
         stopLossPrice:
@@ -282,34 +372,42 @@ export const trendLineAiAdapter: StrategyAiAdapter = {
       };
     }
 
-    if (trendlineContext.approvalAllowedNow !== false) {
-      if (!hasNumericQuality || quality === analysis.quality) {
-        return analysis;
-      }
-
+    if (trendlineContext.approvalAllowedNow === true && signalDirection != null) {
       return {
         ...analysis,
+        direction: signalDirection,
         quality,
+        needRetest: false,
+        retestPrice: null,
+        takeProfitPrice:
+          analysis.takeProfitPrice ?? signal.prices?.takeProfitPrice ?? null,
+        stopLossPrice:
+          analysis.stopLossPrice ?? signal.prices?.stopLossPrice ?? null,
       };
     }
 
-    const reasons = trendlineContext.hardBlockReasons
-      .map(getHardBlockReasonText)
-      .join('; ');
     const retestPrice =
       trendlineContext.currentLinePrice ?? analysis.retestPrice ?? null;
     const qualityReason = mergeShortText(
-      `TrendLine guardrail: вход заблокирован, потому что ${reasons}.`,
+      getDeterministicTrendlineQualityReason(trendlineContext),
       'TrendLine guardrail: вход заблокирован до подтверждения структуры.',
       400,
     );
     const triggerInvalidation = mergeShortText(
-      `Ждать чистый пробой/ретест линии и убрать конфликты: ${reasons}.`,
+      trendlineContext.hardBlockReasons.length > 0
+        ? `Ждать чистый пробой/ретест линии и убрать конфликты: ${trendlineContext.hardBlockReasons
+            .map(getHardBlockReasonText)
+            .join('; ')}.`
+        : 'Ждать более сильный breakout/follow-through или ретест линии с подтверждением по монете и BTC.',
       'Ждать чистый пробой/ретест линии и подтверждение по монете и BTC.',
       400,
     );
     const comment = mergeShortText(
-      `TrendLine guardrail заблокировал вход: ${reasons}.`,
+      trendlineContext.hardBlockReasons.length > 0
+        ? `TrendLine guardrail заблокировал вход: ${trendlineContext.hardBlockReasons
+            .map(getHardBlockReasonText)
+            .join('; ')}.`
+        : 'TrendLine deterministic quality опустил вход в watch/reject до появления более сильной структуры.',
       'TrendLine guardrail заблокировал вход до подтверждения структуры.',
       1024,
     );
@@ -371,6 +469,7 @@ export const trendLineAiAdapter: StrategyAiAdapter = {
 - trendline.compressedCleanBreak=${String(trendlineContext.compressedCleanBreak)}
 - trendline.weakBtcLedBreak=${String(trendlineContext.weakBtcLedBreak)}
 - trendline.weakLongFarBreak=${String(trendlineContext.weakLongFarBreak)}
+- trendline.deterministicQuality=${String(trendlineContext.deterministicQuality)}
 - trendline.maxAllowedQuality=${String(trendlineContext.maxAllowedQuality)}
 - trendline.approvalAllowedNow=${String(trendlineContext.approvalAllowedNow)}
 - trendline.hardBlockReasons=${JSON.stringify(trendlineContext.hardBlockReasons)}
@@ -395,8 +494,8 @@ export const trendLineAiAdapter: StrategyAiAdapter = {
 - Если clearBreak=false или любой alignment=false, не поднимай quality выше 3.
 - Если trendline.aggressivePreBreakPressure=true, можно рассматривать ранний SHORT до явного пробоя, но только как исключение: quality максимум 4, нужен tight stop и явное описание, что вход агрессивный.
 - Если trendline.strongNearBreakPressure=true, можно рассматривать ранний SHORT при сильном давлении уже по нужную сторону линии, даже если пробой еще не дотягивает до clearBreak-порога: quality максимум 4.
-- Жесткое ограничение: никогда не возвращай quality выше trendline.maxAllowedQuality.
-- Если trendline.approvalAllowedNow=false, не одобряй немедленный вход: обычно direction=null либо quality 1-3 с ожиданием подтверждения/ретеста.
+- Стратегия детерминированно нормализует итоговый quality до trendline.deterministicQuality; твоя задача — объяснить решение в этих рамках, а не спорить с tier.
+- Если trendline.approvalAllowedNow=false, не описывай это как сделку для входа прямо сейчас: объясняй, чего не хватает до одобрения.
 `;
   },
   mapEntryRuntimeFromConfig: (config) =>
