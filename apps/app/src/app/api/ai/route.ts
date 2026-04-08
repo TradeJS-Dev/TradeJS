@@ -78,7 +78,7 @@ const invokeChatModel = async (messages: BaseMessage[], userName: string) => {
   const model = new ChatOpenAI({
     temperature: 0.7,
     modelName: 'gpt-4o',
-    openAIApiKey: settings.OPENAI_API_KEY,
+    apiKey: settings.OPENAI_API_KEY,
     configuration: {
       baseURL: settings.OPENAI_API_ENDPOINT,
     },

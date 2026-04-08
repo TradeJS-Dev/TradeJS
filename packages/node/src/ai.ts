@@ -290,7 +290,7 @@ const createAiModel = async (
       return new ChatOpenAI({
         temperature: 0.2,
         modelName,
-        openAIApiKey: settings.OPENAI_API_KEY,
+        apiKey: settings.OPENAI_API_KEY,
         configuration: {
           baseURL: settings.OPENAI_API_ENDPOINT,
           defaultHeaders: {

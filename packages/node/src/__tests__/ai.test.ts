@@ -1011,7 +1011,7 @@ describe('ai helpers', () => {
         expect.objectContaining({
           temperature: 0.2,
           modelName: 'google/gemini-3.1-pro-preview',
-          openAIApiKey: 'key_123',
+          apiKey: 'key_123',
           configuration: expect.objectContaining({
             baseURL: 'https://openrouter.example/v1',
           }),
