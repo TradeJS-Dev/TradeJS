@@ -381,7 +381,7 @@ const makeWeakLongFarBreakTrendlineSignal = () => {
 const makeDeterministicQualityLongSignal = () => {
   const signal = makeSignal();
   signal.direction = 'LONG';
-  signal.prices.currentPrice = 100.82;
+  signal.prices.currentPrice = 101.15;
   signal.prices.takeProfitPrice = 104.5;
   signal.prices.stopLossPrice = 98.9;
   signal.figures.trendLine = {
@@ -401,7 +401,7 @@ const makeDeterministicQualityLongSignal = () => {
   };
   signal.indicators = {
     ...signal.indicators,
-    maFast: [99.8, 100.2, 100.7],
+    maFast: [99.8, 100.2, 100.9],
     maSlow: [99.7, 99.95, 100],
     btcMaFast: [100.2, 100.5, 100.8],
     btcMaSlow: [100, 100.1, 100],
@@ -410,6 +410,79 @@ const makeDeterministicQualityLongSignal = () => {
   signal.additionalIndicators = {
     touches: 5,
     distance: 220,
+  };
+  return signal;
+};
+
+const makeDeterministicQualityShortSignal = () => {
+  const signal = makeSignal();
+  signal.direction = 'SHORT';
+  signal.prices.currentPrice = 98.9;
+  signal.prices.takeProfitPrice = 96;
+  signal.prices.stopLossPrice = 101.2;
+  signal.figures.trendLine = {
+    ...signal.figures.trendLine,
+    mode: 'lows',
+    points: [
+      { timestamp: 1, value: 100.6 },
+      { timestamp: 2, value: 100 },
+    ],
+    touches: [
+      { timestamp: 1, value: 100.9 },
+      { timestamp: 1.2, value: 100.7 },
+      { timestamp: 1.4, value: 100.45 },
+      { timestamp: 1.6, value: 100.2 },
+      { timestamp: 1.8, value: 100.05 },
+    ],
+  };
+  signal.indicators = {
+    ...signal.indicators,
+    maFast: [100.5, 99.6, 98.6],
+    maSlow: [100.7, 100.2, 100],
+    btcMaFast: [100.4, 99.4, 98.6],
+    btcMaSlow: [100.5, 100.1, 100],
+    atrPct: [1],
+  };
+  signal.additionalIndicators = {
+    touches: 5,
+    distance: 250,
+  };
+  return signal;
+};
+
+const makeOverextendedShortTrendlineSignal = () => {
+  const signal = makeSignal();
+  signal.direction = 'SHORT';
+  signal.prices.currentPrice = 93.8;
+  signal.prices.takeProfitPrice = 90;
+  signal.prices.stopLossPrice = 101.2;
+  signal.figures.trendLine = {
+    ...signal.figures.trendLine,
+    mode: 'lows',
+    points: [
+      { timestamp: 1, value: 100.8 },
+      { timestamp: 2, value: 100 },
+    ],
+    touches: [
+      { timestamp: 1, value: 101.1 },
+      { timestamp: 1.2, value: 100.9 },
+      { timestamp: 1.4, value: 100.6 },
+      { timestamp: 1.6, value: 100.3 },
+      { timestamp: 1.8, value: 100.1 },
+      { timestamp: 1.9, value: 100.02 },
+    ],
+  };
+  signal.indicators = {
+    ...signal.indicators,
+    maFast: [100.7, 98.4, 98.4],
+    maSlow: [100.8, 100.2, 100],
+    btcMaFast: [100.6, 98.7, 98.6],
+    btcMaSlow: [100.7, 100.1, 100],
+    atrPct: [1],
+  };
+  signal.additionalIndicators = {
+    touches: 6,
+    distance: 700,
   };
   return signal;
 };
@@ -931,6 +1004,83 @@ describe('ai helpers', () => {
           retestPrice: null,
           takeProfitPrice: 104.5,
           stopLossPrice: 98.9,
+        }),
+      );
+    });
+
+    it('uses deterministic q4 for clean moderate short breakouts', async () => {
+      invokeMock.mockResolvedValue({
+        content: {
+          direction: null,
+          quality: 2,
+          needRetest: true,
+          retestPrice: 100,
+          takeProfitPrice: null,
+          stopLossPrice: null,
+          setup: 'Шорт можно рассмотреть',
+          retestPlan: 'Ждать подтверждение',
+          qualityReason: 'Модель осторожна',
+          triggerInvalidation: 'Отмена при возврате выше линии',
+          comment: 'ok',
+        },
+      });
+
+      const result = await runAiPrompt(
+        {
+          systemPrompt: 'system',
+          humanPrompt: 'human',
+        },
+        {
+          signal: makeDeterministicQualityShortSignal(),
+        },
+      );
+
+      expect(result).toEqual(
+        expect.objectContaining({
+          direction: 'SHORT',
+          quality: 4,
+          needRetest: false,
+          retestPrice: null,
+          takeProfitPrice: 96,
+          stopLossPrice: 101.2,
+        }),
+      );
+    });
+
+    it('downgrades overextended short breakouts to watch quality', async () => {
+      invokeMock.mockResolvedValue({
+        content: {
+          direction: 'SHORT',
+          quality: 5,
+          needRetest: false,
+          retestPrice: null,
+          takeProfitPrice: 90,
+          stopLossPrice: 101.2,
+          setup: 'Очень сильный пробой вниз',
+          retestPlan: 'Можно входить сразу',
+          qualityReason: 'Пробой выглядит экстремально сильным',
+          triggerInvalidation: 'Отмена при возврате выше',
+          comment: 'ok',
+        },
+      });
+
+      const result = await runAiPrompt(
+        {
+          systemPrompt: 'system',
+          humanPrompt: 'human',
+        },
+        {
+          signal: makeOverextendedShortTrendlineSignal(),
+        },
+      );
+
+      expect(result).toEqual(
+        expect.objectContaining({
+          direction: null,
+          quality: 3,
+          needRetest: true,
+          takeProfitPrice: null,
+          stopLossPrice: null,
         }),
       );
     });

@@ -250,36 +250,66 @@ const getDeterministicTrendlineQuality = (
 
   if (trendlineContext.signalDirection === 'LONG') {
     const quality5 =
-      breakVsAtrRatio >= 0.8 &&
-      priceVsLinePctAbs >= 0.7 &&
-      distance < 300 &&
+      breakVsAtrRatio >= 1.1 &&
+      priceVsLinePctAbs >= 1.0 &&
+      touches >= 5 &&
+      distance < 250 &&
       btcMaSpreadPct >= 0.5;
     if (quality5) {
       return 5;
     }
 
-    const quality4 =
-      breakVsAtrRatio >= 0.55 &&
-      priceVsLinePctAbs >= 0.5 &&
-      distance < 700 &&
-      btcMaSpreadPct >= 0.15;
-    return quality4 ? 4 : 3;
+    const compactBreakoutQuality4 =
+      breakVsAtrRatio >= 0.75 &&
+      priceVsLinePctAbs >= 0.7 &&
+      distance < 150 &&
+      (btcMaSpreadPct >= 0.4 || breakVsAtrRatio >= 1.0) &&
+      (touches >= 5 || breakVsAtrRatio >= 0.85);
+    const shortLineStrengthQuality4 =
+      breakVsAtrRatio >= 0.6 &&
+      priceVsLinePctAbs >= 0.65 &&
+      touches >= 6 &&
+      distance < 120 &&
+      btcMaSpreadPct >= 0.75;
+    const matureLineQuality4 =
+      breakVsAtrRatio >= 0.8 &&
+      priceVsLinePctAbs >= 0.7 &&
+      touches >= 5 &&
+      distance < 350 &&
+      btcMaSpreadPct >= 0.4;
+    const extendedHighConvictionQuality4 =
+      breakVsAtrRatio >= 0.75 &&
+      priceVsLinePctAbs >= 0.65 &&
+      touches >= 5 &&
+      distance < 600 &&
+      btcMaSpreadPct >= 0.9;
+
+    return compactBreakoutQuality4 ||
+      shortLineStrengthQuality4 ||
+      matureLineQuality4 ||
+      extendedHighConvictionQuality4
+      ? 4
+      : 3;
   }
 
   const quality5 =
-    breakVsAtrRatio >= 1.2 &&
-    priceVsLinePctAbs >= 1.0 &&
+    breakVsAtrRatio >= 5 &&
+    priceVsLinePctAbs >= 10 &&
     touches >= 5 &&
-    btcMaSpreadPct <= -0.3;
+    distance >= 240 &&
+    distance <= 400 &&
+    btcMaSpreadPct <= -1.0;
   if (quality5) {
     return 5;
   }
 
   const quality4 =
-    breakVsAtrRatio >= 0.8 &&
-    priceVsLinePctAbs >= 0.7 &&
+    breakVsAtrRatio >= 1.0 &&
+    breakVsAtrRatio < 2.5 &&
+    priceVsLinePctAbs >= 1.0 &&
     touches >= 5 &&
-    btcMaSpreadPct <= -0.15;
+    distance < 300 &&
+    btcMaSpreadPct <= -0.5;
   return quality4 ? 4 : 3;
 };
 
