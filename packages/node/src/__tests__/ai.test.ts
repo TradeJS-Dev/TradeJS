@@ -639,6 +639,146 @@ const makeRetestLongTrendlineSignal = () => {
   return signal;
 };
 
+const makeReverseSupportBounceLongSignal = () => {
+  const signal = makeSignal();
+  signal.strategy = 'ReverseTrendLine';
+  signal.direction = 'LONG';
+  signal.prices.currentPrice = 100.35;
+  signal.prices.takeProfitPrice = 102.4;
+  signal.prices.stopLossPrice = 99.1;
+  signal.figures.trendLine = {
+    ...signal.figures.trendLine,
+    mode: 'lows',
+    points: [
+      { timestamp: 1, value: 100 },
+      { timestamp: 2, value: 100 },
+    ],
+    touches: [
+      { timestamp: 1, value: 100 },
+      { timestamp: 1.2, value: 100.02 },
+      { timestamp: 1.4, value: 100.01 },
+      { timestamp: 1.6, value: 99.99 },
+      { timestamp: 1.8, value: 100 },
+    ],
+  };
+  signal.indicators = {
+    ...signal.indicators,
+    maFast: [99.9, 100.05, 100.3],
+    maSlow: [99.8, 99.95, 100.1],
+    btcMaFast: [99.8, 100.0, 100.25],
+    btcMaSlow: [99.9, 99.95, 100.05],
+    atrPct: [0.8],
+  };
+  signal.additionalIndicators = {
+    touches: 5,
+    distance: 140,
+    currentCandle: {
+      timestamp: 2,
+      open: 99.95,
+      close: 100.35,
+      high: 100.45,
+      low: 99.76,
+    },
+    reverseTrendlineTiming: {
+      entryTiming: 'ready_rejection',
+    },
+  };
+  return signal;
+};
+
+const makeReverseResistanceBounceShortSignal = () => {
+  const signal = makeSignal();
+  signal.strategy = 'ReverseTrendLine';
+  signal.direction = 'SHORT';
+  signal.prices.currentPrice = 99.62;
+  signal.prices.takeProfitPrice = 97.5;
+  signal.prices.stopLossPrice = 100.8;
+  signal.figures.trendLine = {
+    ...signal.figures.trendLine,
+    mode: 'highs',
+    points: [
+      { timestamp: 1, value: 100 },
+      { timestamp: 2, value: 100 },
+    ],
+    touches: [
+      { timestamp: 1, value: 100 },
+      { timestamp: 1.2, value: 100.03 },
+      { timestamp: 1.4, value: 100.01 },
+      { timestamp: 1.6, value: 99.99 },
+      { timestamp: 1.8, value: 100 },
+    ],
+  };
+  signal.indicators = {
+    ...signal.indicators,
+    maFast: [100.2, 100.0, 99.7],
+    maSlow: [100.1, 100.05, 99.9],
+    btcMaFast: [100.2, 100.0, 99.7],
+    btcMaSlow: [100.1, 100.05, 99.85],
+    atrPct: [0.85],
+  };
+  signal.additionalIndicators = {
+    touches: 5,
+    distance: 150,
+    currentCandle: {
+      timestamp: 2,
+      open: 100.04,
+      close: 99.62,
+      high: 100.24,
+      low: 99.56,
+    },
+    reverseTrendlineTiming: {
+      entryTiming: 'ready_rejection',
+    },
+  };
+  return signal;
+};
+
+const makeFailedReverseBounceLongSignal = () => {
+  const signal = makeSignal();
+  signal.strategy = 'ReverseTrendLine';
+  signal.direction = 'LONG';
+  signal.prices.currentPrice = 99.4;
+  signal.prices.takeProfitPrice = 102.4;
+  signal.prices.stopLossPrice = 98.8;
+  signal.figures.trendLine = {
+    ...signal.figures.trendLine,
+    mode: 'lows',
+    points: [
+      { timestamp: 1, value: 100 },
+      { timestamp: 2, value: 100 },
+    ],
+    touches: [
+      { timestamp: 1, value: 100 },
+      { timestamp: 1.2, value: 100.02 },
+      { timestamp: 1.4, value: 100.01 },
+      { timestamp: 1.6, value: 99.99 },
+    ],
+  };
+  signal.indicators = {
+    ...signal.indicators,
+    maFast: [100.0, 99.8, 99.5],
+    maSlow: [100.0, 99.95, 99.8],
+    btcMaFast: [100.0, 99.85, 99.6],
+    btcMaSlow: [100.0, 99.95, 99.8],
+    atrPct: [0.8],
+  };
+  signal.additionalIndicators = {
+    touches: 4,
+    distance: 120,
+    currentCandle: {
+      timestamp: 2,
+      open: 100.05,
+      close: 99.4,
+      high: 100.12,
+      low: 99.25,
+    },
+    reverseTrendlineTiming: {
+      entryTiming: 'wait_touch',
+    },
+  };
+  return signal;
+};
+
 describe('ai helpers', () => {
   const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
   const logSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
@@ -1354,6 +1494,121 @@ describe('ai helpers', () => {
           stopLossPrice: null,
         }),
       );
+    });
+
+    it('approves support bounce setups for ReverseTrendLine with deterministic quality', async () => {
+      invokeMock.mockResolvedValue({
+        content: {
+          direction: null,
+          quality: 2,
+          needRetest: true,
+          retestPrice: 100,
+          takeProfitPrice: null,
+          stopLossPrice: null,
+          setup: 'Есть отскок от линии поддержки',
+          retestPlan: 'Можно входить сразу',
+          qualityReason: 'Модель осторожна',
+          triggerInvalidation: 'Отмена при пробое вниз',
+          comment: 'ok',
+        },
+      });
+
+      const result = await runAiPrompt(
+        {
+          systemPrompt: 'system',
+          humanPrompt: 'human',
+        },
+        {
+          signal: makeReverseSupportBounceLongSignal(),
+        },
+      );
+
+      expect(result).toEqual(
+        expect.objectContaining({
+          direction: 'LONG',
+          quality: 4,
+          needRetest: false,
+          takeProfitPrice: 102.4,
+          stopLossPrice: 99.1,
+        }),
+      );
+    });
+
+    it('approves resistance bounce setups for ReverseTrendLine with deterministic quality', async () => {
+      invokeMock.mockResolvedValue({
+        content: {
+          direction: null,
+          quality: 2,
+          needRetest: true,
+          retestPrice: 100,
+          takeProfitPrice: null,
+          stopLossPrice: null,
+          setup: 'Есть отскок вниз от сопротивления',
+          retestPlan: 'Можно входить сразу',
+          qualityReason: 'Модель осторожна',
+          triggerInvalidation: 'Отмена при пробое вверх',
+          comment: 'ok',
+        },
+      });
+
+      const result = await runAiPrompt(
+        {
+          systemPrompt: 'system',
+          humanPrompt: 'human',
+        },
+        {
+          signal: makeReverseResistanceBounceShortSignal(),
+        },
+      );
+
+      expect(result).toEqual(
+        expect.objectContaining({
+          direction: 'SHORT',
+          quality: 4,
+          needRetest: false,
+          takeProfitPrice: 97.5,
+          stopLossPrice: 100.8,
+        }),
+      );
+    });
+
+    it('blocks failed bounce breaks for ReverseTrendLine', async () => {
+      invokeMock.mockResolvedValue({
+        content: {
+          direction: 'LONG',
+          quality: 5,
+          needRetest: false,
+          retestPrice: null,
+          takeProfitPrice: 102.4,
+          stopLossPrice: 98.8,
+          setup: 'Можно ловить отскок',
+          retestPlan: 'Вход сейчас',
+          qualityReason: 'Модель слишком оптимистична',
+          triggerInvalidation: 'Отмена при пробое вниз',
+          comment: 'ok',
+        },
+      });
+
+      const result = await runAiPrompt(
+        {
+          systemPrompt: 'system',
+          humanPrompt: 'human',
+        },
+        {
+          signal: makeFailedReverseBounceLongSignal(),
+        },
+      );
+
+      expect(result).toEqual(
+        expect.objectContaining({
+          direction: null,
+          quality: 2,
+          needRetest: true,
+          takeProfitPrice: null,
+          stopLossPrice: null,
+        }),
+      );
+      expect(result.qualityReason).toContain('ReverseTrendLine guardrail');
     });
 
     it('allows aggressive pre-break pressure setups but caps quality to 4', async () => {

@@ -2,6 +2,7 @@ import { defineStrategyPlugin } from '@tradejs/core/config';
 import { adaptiveMomentumRibbonManifest } from './AdaptiveMomentumRibbon/manifest';
 import { breakoutManifest } from './Breakout/manifest';
 import { maStrategyManifest } from './MaStrategy/manifest';
+import { reverseTrendLineManifest } from './ReverseTrendLine/manifest';
 import { trendLineManifest } from './TrendLine/manifest';
 import { volumeDivergenceManifest } from './VolumeDivergence/manifest';
 import {
@@ -41,6 +42,13 @@ export const strategyEntries: StrategyRegistryEntry[] = [
     ),
   },
   {
+    manifest: reverseTrendLineManifest,
+    creator: createLazyStrategyCreator(
+      () => import('./ReverseTrendLine/strategy'),
+      'ReverseTrendLineStrategyCreator',
+    ),
+  },
+  {
     manifest: maStrategyManifest,
     creator: createLazyStrategyCreator(
       () => import('./MaStrategy/strategy'),
@@ -64,10 +72,12 @@ export const strategyEntries: StrategyRegistryEntry[] = [
 ];
 
 export { config as trendLineDefaultConfig } from './TrendLine/config';
+export { config as reverseTrendLineDefaultConfig } from './ReverseTrendLine/config';
 export { adaptiveMomentumRibbonAiAdapter } from './AdaptiveMomentumRibbon/adapters/ai';
 export { adaptiveMomentumRibbonMlAdapter } from './AdaptiveMomentumRibbon/adapters/ml';
 export { maStrategyAiAdapter } from './MaStrategy/adapters/ai';
 export { maStrategyMlAdapter } from './MaStrategy/adapters/ml';
+export { reverseTrendLineAiAdapter } from './ReverseTrendLine/adapters/ai';
 export { volumeDivergenceAiAdapter } from './VolumeDivergence/adapters/ai';
 export { volumeDivergenceMlAdapter } from './VolumeDivergence/adapters/ml';
 
