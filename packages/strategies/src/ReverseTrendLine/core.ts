@@ -372,11 +372,7 @@ export const createReverseTrendLineCore: CreateStrategyCore<
       return strategyApi.skip('NO_TRENDLINE');
     }
 
-    const {
-      line: bestLine,
-      direction,
-      candidateContext,
-    } = bestCandidate;
+    const { line: bestLine, direction, candidateContext } = bestCandidate;
     const modeConfig = direction === 'LONG' ? LOWS : HIGHS;
     const { minRiskRatio } = modeConfig;
 
@@ -409,7 +405,8 @@ export const createReverseTrendLineCore: CreateStrategyCore<
       },
     });
 
-    const structuralContext = buildReverseTrendlineStructuralContext(signalSeed);
+    const structuralContext =
+      buildReverseTrendlineStructuralContext(signalSeed);
 
     const timingContext = buildReverseTrendlineTimingContext({
       signal: signalSeed,
