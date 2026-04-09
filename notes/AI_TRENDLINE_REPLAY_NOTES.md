@@ -737,3 +737,251 @@ Practical recommendation:
 - do not roll back below `73308b6`
 - if continuing from current work, keep the repo on top of `73308b6`
 - apply only the narrow `SHORT ready_breakout` approval restoration, not the broader `LONG` relaxations
+
+## New export after fresh backtest: `1775714508559`
+
+File:
+
+```bash
+data/ai/export/ai-dataset-trendline-merged-1775714508559.jsonl
+```
+
+Important note:
+
+- full remote `ai-train` via OpenRouter became unreliable on this export due to provider-side waiting / throttling
+- for current `TrendLine` this does not materially change approve/reject analysis, because the effective gate is deterministic in the adapter and the model does not reject allowed rows
+- below, `latest 200` and `latest 500` were computed via a replay-equivalent local pass over the same dataset and current `TrendLine` AI adapter
+
+## Replay-equivalent result on new export: `latest 200`
+
+Window:
+
+```bash
+latest 200 rows from data/ai/export/ai-dataset-trendline-merged-1775714508559.jsonl
+```
+
+Replay-equivalent result:
+
+- `accuracy = 64.5%`
+- `TP/FP/TN/FN = 14 / 5 / 115 / 66`
+- `approved = 19`
+- `precision_approved = 73.7%`
+- `recall_winners = 17.5%`
+- `avg_profit_all = 2.11`
+- `avg_profit_approved = 13.04`
+- `expectancy_delta = 10.93`
+
+By direction:
+
+- `LONG`: `TP/FP/TN/FN = 7 / 1 / 58 / 30`, `approved = 8`, `precision = 87.5%`
+- `SHORT`: `TP/FP/TN/FN = 7 / 4 / 57 / 36`, `approved = 11`, `precision = 63.6%`
+
+Quality breakdown:
+
+- `quality=4`: `18` approvals, `72.2%` winrate
+- `quality=5`: `1` approval, `100.0%` winrate
+- `quality=3`: `181` rejects, winner-rate `36.5%`
+
+Deterministic flow:
+
+- `core_blocked_now = 0`
+- `adapter_blocked_now = 181`
+- `left_to_model_now = 19`
+- `model_approved = 19`
+- `model_rejected = 0`
+
+Interpretation:
+
+- precision stayed healthy, but recall dropped hard relative to the older `latest 200`
+- this new window is much more profitable overall, and the current deterministic ladder misses too many winners
+- the bottleneck is still the adapter-level `q3 -> q4` boundary, not the LLM
+
+## Replay-equivalent result on new export: `latest 500`
+
+Window:
+
+```bash
+latest 500 rows from data/ai/export/ai-dataset-trendline-merged-1775714508559.jsonl
+```
+
+Replay-equivalent result:
+
+- `accuracy = 68.4%`
+- `TP/FP/TN/FN = 21 / 19 / 321 / 139`
+- `approved = 40`
+- `precision_approved = 52.5%`
+- `recall_winners = 13.1%`
+- `avg_profit_all = 0.15`
+- `avg_profit_approved = 8.26`
+- `expectancy_delta = 8.11`
+
+By direction:
+
+- `LONG`: `TP/FP/TN/FN = 9 / 7 / 156 / 64`, `precision = 56.3%`, `recall = 12.3%`
+- `SHORT`: `TP/FP/TN/FN = 12 / 12 / 165 / 75`, `precision = 50.0%`, `recall = 13.8%`
+
+Quality breakdown:
+
+- `quality=4`: `37` approvals, `48.6%` winrate, `avg_profit = 6.94`
+- `quality=5`: `3` approvals, `100.0%` winrate, `avg_profit = 24.51`
+- `quality=3`: `460` rejects, winner-rate `30.2%`
+
+Deterministic flow:
+
+- `core_blocked_now = 0`
+- `adapter_blocked_now = 460`
+- `left_to_model_now = 40`
+- `model_approved = 40`
+- `model_rejected = 0`
+
+Interpretation:
+
+- edge still exists, but it is now conservative and weaker than on shorter windows
+- approved trades are better than the base window winrate, but a very large number of winners are still rejected
+- the current ladder is stable enough to avoid chaos, but not yet strong enough on recall
+
+## Timing visibility fix in TrendLine AI adapter
+
+Problem found:
+
+- `TrendLine core` already wrote `trendlineTiming` into the signal
+- `TrendLine` AI adapter used `entryTiming` internally for deterministic quality
+- but `entryTiming` was not returned in `trendlineContext`, so prompt context and replay diagnostics were blind to timing stage
+
+Fix:
+
+- `entryTiming` is now returned in `trendlineContext`
+- it is also rendered in the human prompt for visibility
+
+Effect:
+
+- replay metrics did not change
+- diagnostics became timing-aware again
+
+## Timing breakdown on `latest 500`
+
+With `entryTiming` visible in replay context:
+
+`FN = 139`:
+
+- `ready_retest = 65`
+- `ready_follow_through = 64`
+- `ready_breakout = 10`
+
+`FP = 19`:
+
+- `ready_breakout = 10`
+- `ready_follow_through = 5`
+- `ready_retest = 4`
+
+`TP = 21`:
+
+- `ready_breakout = 12`
+- `ready_follow_through = 5`
+- `ready_retest = 4`
+
+Main finding:
+
+- the largest recall gap is no longer in `ready_breakout`
+- most missed winners now sit in `ready_retest` and `ready_follow_through`
+- but broad relaxation is unsafe, because already-approved `follow_through` and `retest` setups are nearly coin-flip on this window
+
+## `latest 500` false-negative analysis
+
+Totals:
+
+- `FN = 139`
+- `LONG FN = 64`
+- `SHORT FN = 75`
+
+Hard-block split:
+
+- `none = 67`
+- `btc_bias_conflict = 33`
+- `coin_bias_conflict + btc_bias_conflict = 21`
+- `coin_bias_conflict = 13`
+- `weak_btc_led_break = 5`
+
+Average profile:
+
+- `breakVsAtrRatio ≈ 0.694`
+- `priceVsLinePctAbs ≈ 0.690`
+- `touches ≈ 5.17`
+- `distance ≈ 385`
+
+Main finding:
+
+- a large share of `FN` are not structural rejects
+- they are moderate clean breaks that still remain at `q3`
+- the adapter is stricter than needed on many acceptable-but-not-top-tier setups
+
+Timing-specific no-hard-block concentration:
+
+- `LONG | ready_retest = 24`
+- `SHORT | ready_follow_through = 18`
+
+Practical takeaway:
+
+- the next useful discriminators should target these two clusters, not all clean breaks globally
+
+## `latest 500` false-positive analysis
+
+Totals:
+
+- `FP = 19`
+- all `FP` are `quality=4`
+- all `FP` are `clearBreak=true` and `nearLineNoise=false`
+- all `FP` have no hard-block reason
+
+Average profile:
+
+- `breakVsAtrRatio ≈ 3.893`
+- `priceVsLinePctAbs ≈ 3.514`
+- `touches ≈ 5.74`
+- `distance ≈ 344.68`
+
+Main finding:
+
+- current `FP` are not weak/noisy entries
+- they look like strong, often stretched breakouts
+- especially on the `SHORT` side, current `TP` and `FP` shapes are very similar, which suggests that pure threshold tuning may be near its limit
+
+Practical takeaway:
+
+- further progress likely needs either:
+  - better timing-stage subfeatures
+  - candle-shape / wick / close-location features
+  - or additional work on `SHORT` exit profile rather than only entry approval
+
+## Operational note: OpenRouter / Azure content-policy failures
+
+Observed production issue:
+
+- OpenRouter occasionally routed AI requests to Azure
+- Azure returned `403` with a content-policy / temporary-block message on internal trading-classification prompts
+
+Fix implemented in commit:
+
+- `993a5c5` `Harden OpenRouter routing and trim signal output`
+
+Implementation summary:
+
+- when `OPENAI_API_ENDPOINT` points to OpenRouter, AI calls now send:
+  - `provider: { ignore: ['azure'] }`
+- this is applied in both:
+  - runtime AI helper
+  - app chat route
+
+Additional cleanup in the same commit:
+
+- removed verbose internal lines from Telegram signal messages:
+  - `Points`
+  - `ATR`
+  - `Distance`
+  - `BTC spread (CB-BN)/BN`
+- removed the old `react-hooks/exhaustive-deps` warning in `apps/app/src/app/store/data.ts`
+
+Current conclusion:
+
+- routing around Azure is the correct first operational fix because the failure was explicitly provider-specific
+- this does not prove that prompt text is perfect, but it removes the currently observed upstream failure mode
