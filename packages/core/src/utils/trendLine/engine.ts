@@ -161,43 +161,6 @@ const hasCloseBreachInRange = (params: {
   return false;
 };
 
-const hasCaptureInRange = (params: {
-  mode: TrendLine['mode'];
-  lowSeries: number[];
-  highSeries: number[];
-  timestampsMs: number[];
-  startIndex: number;
-  endIndex: number;
-  evaluateY: (t: number) => number;
-  epsilonOffset: number;
-}): boolean => {
-  const {
-    mode,
-    lowSeries,
-    highSeries,
-    timestampsMs,
-    startIndex,
-    endIndex,
-    evaluateY,
-    epsilonOffset,
-  } = params;
-
-  if (startIndex > endIndex) return false;
-
-  for (let barIndex = startIndex; barIndex <= endIndex; barIndex++) {
-    const lineY = evaluateY(timestampsMs[barIndex]);
-    const offsetTolerance = toleranceAt(lineY, epsilonOffset);
-
-    if (mode === 'lows') {
-      if (lowSeries[barIndex] <= lineY - offsetTolerance) return true;
-    } else {
-      if (highSeries[barIndex] >= lineY + offsetTolerance) return true;
-    }
-  }
-
-  return false;
-};
-
 /* ================= Block min/max for wick breach (two-phase) ================= */
 
 const BLOCK_SIZE = 64;
