@@ -834,7 +834,7 @@ describe('TrendlineStrategyCreator', () => {
         INTERVAL: '15',
         MAKE_ORDERS: true,
         CLOSE_OPPOSITE_POSITIONS: true,
-        AI_ENABLED: true,
+        AI_ENABLED: false,
         MAX_LOSS_VALUE: 10,
         MAX_CORRELATION: 1,
         TRENDLINE: {},
@@ -954,17 +954,7 @@ describe('TrendlineStrategyCreator', () => {
     expect(connector.placeOrder).toHaveBeenCalledTimes(1);
   });
 
-  it('places order in non-BACKTEST when AI direction mismatches and MIN_AI_QUALITY is 0', async () => {
-    (askAI as jest.Mock).mockResolvedValue({
-      direction: null,
-      quality: 5,
-      needRetest: false,
-      retestPrice: null,
-      takeProfitPrice: null,
-      stopLossPrice: null,
-      comment: 'skip',
-    });
-
+  it('skips order in non-BACKTEST when AI quality is unavailable even if MIN_AI_QUALITY is 0', async () => {
     (fetchMlThreshold as jest.Mock).mockResolvedValue({
       passed: true,
       threshold: 0.1,
@@ -1039,7 +1029,8 @@ describe('TrendlineStrategyCreator', () => {
     );
 
     expect(typeof result).toBe('object');
-    expect((result as any).orderStatus).toBe('completed');
-    expect(connector.placeOrder).toHaveBeenCalledTimes(1);
+    expect((result as any).orderStatus).toBe('skipped');
+    expect((result as any).orderSkipReason).toBe('AI_QUALITY_UNAVAILABLE');
+    expect(connector.placeOrder).not.toHaveBeenCalled();
   });
 });
