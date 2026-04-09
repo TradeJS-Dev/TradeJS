@@ -13,6 +13,37 @@ import {
   toFileToken,
 } from '@tradejs/infra/ai';
 
+const makePayload = ({
+  signalId,
+  symbol,
+  direction,
+  timestamp,
+  strategyName = 'TrendLine',
+}: {
+  signalId: string;
+  symbol: string;
+  direction: 'LONG' | 'SHORT';
+  timestamp: number;
+  strategyName?: string;
+}) => ({
+  signal: {
+    symbol,
+    signalId,
+    interval: '15' as const,
+    direction,
+    timestamp,
+    strategy: strategyName,
+    prices: {
+      currentPrice: 100,
+      takeProfitPrice: direction === 'LONG' ? 103 : 97,
+      stopLossPrice: direction === 'LONG' ? 99 : 101,
+    },
+  },
+  figures: {},
+  indicators: {},
+  additionalIndicators: {},
+});
+
 describe('aiDatasetFile', () => {
   let tempDir = '';
 
@@ -39,8 +70,12 @@ describe('aiDatasetFile', () => {
         direction: 'LONG',
         timestamp: 1,
         profit: 1,
-        systemPrompt: 's1',
-        humanPrompt: 'h1',
+        payload: makePayload({
+          signalId: 'a',
+          symbol: 'ETHUSDT',
+          direction: 'LONG',
+          timestamp: 1,
+        }),
       },
     });
     await appendAiDatasetRow({
@@ -54,8 +89,12 @@ describe('aiDatasetFile', () => {
         direction: 'SHORT',
         timestamp: 2,
         profit: -1,
-        systemPrompt: 's2',
-        humanPrompt: 'h2',
+        payload: makePayload({
+          signalId: 'b',
+          symbol: 'BTCUSDT',
+          direction: 'SHORT',
+          timestamp: 2,
+        }),
       },
     });
     await closeAllAiDatasetWriters();
@@ -95,8 +134,12 @@ describe('aiDatasetFile', () => {
           direction: 'LONG',
           timestamp: 3,
           profit: 1,
-          systemPrompt: 'sa',
-          humanPrompt: 'ha',
+          payload: makePayload({
+            signalId: 'a',
+            symbol: 'ETHUSDT',
+            direction: 'LONG',
+            timestamp: 3,
+          }),
         }),
         JSON.stringify({
           signalId: 'b',
@@ -105,8 +148,12 @@ describe('aiDatasetFile', () => {
           direction: 'SHORT',
           timestamp: 1,
           profit: -1,
-          systemPrompt: 'sb',
-          humanPrompt: 'hb',
+          payload: makePayload({
+            signalId: 'b',
+            symbol: 'BTCUSDT',
+            direction: 'SHORT',
+            timestamp: 1,
+          }),
         }),
       ].join('\n') + '\n',
       'utf8',
@@ -120,8 +167,12 @@ describe('aiDatasetFile', () => {
         direction: 'LONG',
         timestamp: 2,
         profit: 3,
-        systemPrompt: 'sc',
-        humanPrompt: 'hc',
+        payload: makePayload({
+          signalId: 'c',
+          symbol: 'SOLUSDT',
+          direction: 'LONG',
+          timestamp: 2,
+        }),
       }) + '\n',
       'utf8',
     );
@@ -165,8 +216,12 @@ describe('aiDatasetFile', () => {
           direction: 'LONG',
           timestamp: 1,
           profit: 1,
-          systemPrompt: 'sa',
-          humanPrompt: 'ha',
+          payload: makePayload({
+            signalId: 'a',
+            symbol: 'BTCUSDT',
+            direction: 'LONG',
+            timestamp: 1,
+          }),
         },
         {
           signalId: 'b',
@@ -175,8 +230,12 @@ describe('aiDatasetFile', () => {
           direction: 'LONG',
           timestamp: 2,
           profit: 2,
-          systemPrompt: 'sb',
-          humanPrompt: 'hb',
+          payload: makePayload({
+            signalId: 'b',
+            symbol: 'ETHUSDT',
+            direction: 'LONG',
+            timestamp: 2,
+          }),
         },
         {
           signalId: 'c',
@@ -185,8 +244,12 @@ describe('aiDatasetFile', () => {
           direction: 'LONG',
           timestamp: 3,
           profit: 3,
-          systemPrompt: 'sc',
-          humanPrompt: 'hc',
+          payload: makePayload({
+            signalId: 'c',
+            symbol: 'SOLUSDT',
+            direction: 'LONG',
+            timestamp: 3,
+          }),
         },
         {
           signalId: 'd',
@@ -195,8 +258,12 @@ describe('aiDatasetFile', () => {
           direction: 'LONG',
           timestamp: 4,
           profit: 4,
-          systemPrompt: 'sd',
-          humanPrompt: 'hd',
+          payload: makePayload({
+            signalId: 'd',
+            symbol: 'XRPUSDT',
+            direction: 'LONG',
+            timestamp: 4,
+          }),
         },
         {
           signalId: 'e',
@@ -205,8 +272,12 @@ describe('aiDatasetFile', () => {
           direction: 'LONG',
           timestamp: 5,
           profit: 5,
-          systemPrompt: 'se',
-          humanPrompt: 'he',
+          payload: makePayload({
+            signalId: 'e',
+            symbol: 'ADAUSDT',
+            direction: 'LONG',
+            timestamp: 5,
+          }),
         },
       ]
         .map((row) => JSON.stringify(row))

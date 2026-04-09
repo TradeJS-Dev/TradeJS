@@ -328,4 +328,43 @@ describe('signals', () => {
     expect(fetchMock.mock.calls[0][0]).toContain('/sendMessage');
     expect(fetchMock.mock.calls[1][0]).toContain('/sendMessage');
   });
+
+  it('hides AI quality details inside Telegram skip reason', async () => {
+    jest.doMock('../screenshot', () => ({
+      getScreenshotBuffer: jest.fn(async () => {
+        throw new Error('no screenshot');
+      }),
+      getScreenshotFilename: jest.fn(() => 'ZETAUSDT_sig-1_15.png'),
+    }));
+
+    const { formatMessage } = require('../signals');
+
+    const message = formatMessage(
+      {
+        signalId: 'sig-1',
+        symbol: 'ZETAUSDT',
+        strategy: 'TrendLine',
+        interval: '15',
+        direction: 'LONG',
+        orderStatus: 'skipped',
+        orderSkipReason: 'AI_QUALITY_BELOW_MIN (0 < 4)',
+        timestamp: 1_700_000_000_000,
+        indicators: {},
+        additionalIndicators: {},
+        prices: {
+          currentPrice: 100,
+          takeProfitPrice: 110,
+          stopLossPrice: 95,
+          riskRatio: 2,
+        },
+      },
+      {
+        quality: 3,
+        direction: 'SHORT',
+      },
+    );
+
+    expect(message).toContain('Skip reason: <b>AI_QUALITY_BELOW_MIN</b>');
+    expect(message).not.toContain('0 &lt; 4');
+  });
 });

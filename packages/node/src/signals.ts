@@ -19,6 +19,16 @@ const normalizeQuality = (value?: number) =>
     ? Math.max(1, Math.min(5, Math.round(value)))
     : null;
 
+const formatOrderSkipReason = (reason?: string | null) => {
+  if (!reason) return '';
+
+  if (reason.startsWith('AI_QUALITY_BELOW_MIN')) {
+    return 'AI_QUALITY_BELOW_MIN';
+  }
+
+  return reason;
+};
+
 const getLastNumber = (value: unknown): number | undefined => {
   if (Array.isArray(value)) {
     const last = value[value.length - 1];
@@ -273,7 +283,9 @@ export const formatMessage = (
           (orderStatus === 'skipped' || orderStatus === 'canceled') &&
           orderSkipReason
         ) {
-          lines.push(`Skip reason: <b>${escapeHtml(orderSkipReason)}</b>`);
+          lines.push(
+            `Skip reason: <b>${escapeHtml(formatOrderSkipReason(orderSkipReason))}</b>`,
+          );
         }
       }
 

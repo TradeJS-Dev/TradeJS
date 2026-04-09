@@ -23,9 +23,11 @@ const mockTestConnector = {
 const mockStrategy = jest.fn();
 const mockStrategyCreator = jest.fn(async (_config?: unknown) => mockStrategy);
 const mockBuildMlPayload = jest.fn((data) => data);
-const mockBuildAiPrompts: jest.Mock = jest.fn((_signal?: unknown) => ({
-  systemPrompt: 'system prompt',
-  humanPrompt: 'human prompt',
+const mockBuildAiPayload: jest.Mock = jest.fn((_signal?: unknown) => ({
+  signal: { strategy: 'TrendLine' },
+  figures: {},
+  indicators: {},
+  additionalIndicators: {},
 }));
 const mockBuildMlTrainingRow: jest.Mock = jest.fn(() => ({ featureA: 1 }));
 const mockAppendMlDatasetRow = jest.fn((_params?: unknown) => undefined);
@@ -81,7 +83,7 @@ jest.mock('../mlPayload', () => ({
 }));
 
 jest.mock('../ai', () => ({
-  buildAiPrompts: (signal: unknown) => mockBuildAiPrompts(signal),
+  buildAiPayload: (signal: unknown) => mockBuildAiPayload(signal),
 }));
 
 jest.mock('@tradejs/infra/ai', () => ({
@@ -136,7 +138,7 @@ describe('testing backtest flow', () => {
     mockCoinbaseConnector.kline.mockReset();
     mockStrategyCreator.mockClear();
     mockStrategy.mockReset();
-    mockBuildAiPrompts.mockClear();
+    mockBuildAiPayload.mockClear();
     mockTestConnector.checkSl.mockClear();
     mockTestConnector.checkTp.mockClear();
     mockTestConnector.drainMlResultsBatch.mockReset();
@@ -204,7 +206,7 @@ describe('testing backtest flow', () => {
     );
   });
 
-  it('writes AI prompt row when strategy returns signal object', async () => {
+  it('writes compact AI payload row when strategy returns signal object', async () => {
     const data = [candle(1_000_050), candle(1_000_150), candle(1_000_250)];
     mockByBitConnector.kline.mockResolvedValue(data);
     mockBinanceConnector.kline.mockResolvedValue(data);
@@ -224,7 +226,7 @@ describe('testing backtest flow', () => {
 
     await testing(createTest({ ai: true, chunkId: 'worker-7' }));
 
-    expect(mockBuildAiPrompts).toHaveBeenCalledTimes(1);
+    expect(mockBuildAiPayload).toHaveBeenCalledTimes(1);
     expect(mockAppendAiDatasetRow).toHaveBeenCalledWith(
       expect.objectContaining({
         strategyName: 'TrendLine',
@@ -235,8 +237,9 @@ describe('testing backtest flow', () => {
           strategyName: 'TrendLine',
           direction: 'LONG',
           timestamp: 1_000_150,
-          systemPrompt: 'system prompt',
-          humanPrompt: 'human prompt',
+          payload: expect.objectContaining({
+            signal: expect.objectContaining({ strategy: 'TrendLine' }),
+          }),
           profit: -3.5,
         }),
       }),

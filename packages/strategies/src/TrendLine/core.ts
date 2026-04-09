@@ -178,13 +178,10 @@ export const createTrendLineCore: CreateStrategyCore<
     const highsTrendlines = getHighsTrendlines.next(candle);
 
     indicatorsState.onBar();
-
-    const { fullData, timestamp, currentPrice } =
-      await strategyApi.getMarketData();
-
     const currentPosition = await strategyApi.getCurrentPosition();
 
     if (isOpenPosition(currentPosition)) {
+      const { currentPrice } = await strategyApi.getMarketData();
       const activeLine =
         currentPosition.direction === 'LONG'
           ? highsTrendlines[0]
@@ -255,15 +252,18 @@ export const createTrendLineCore: CreateStrategyCore<
       return strategyApi.skip('DEV_TRADE_COOLDOWN');
     }
 
-    if (!filterByVeryVolatility(fullData)) {
-      return strategyApi.skip('VERY_VOLATILITY');
-    }
-
     const modeConfig = bestLine.mode === 'highs' ? HIGHS : LOWS;
     const { direction, minRiskRatio, enable } = modeConfig;
 
     if (!enable) {
       return strategyApi.skip('STRATEGY_DISABLED');
+    }
+
+    const { fullData, timestamp, currentPrice } =
+      await strategyApi.getMarketData();
+
+    if (!filterByVeryVolatility(fullData)) {
+      return strategyApi.skip('VERY_VOLATILITY');
     }
 
     const indicators = indicatorsState.snapshot();
@@ -284,6 +284,7 @@ export const createTrendLineCore: CreateStrategyCore<
     const timingContext = buildTrendlineTimingContext({
       signal: signalSeed,
       candles: fullData,
+      structuralContext,
     });
 
     if (!timingContext.entryReadyNow) {

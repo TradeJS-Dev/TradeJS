@@ -461,11 +461,14 @@ export const buildReverseTrendlineStructuralContext = (
 export const buildReverseTrendlineTimingContext = ({
   signal,
   candles,
+  structuralContext,
 }: {
   signal: ReverseStructuralSignal;
   candles?: ReverseTimingCandle[];
+  structuralContext?: ReturnType<typeof buildReverseTrendlineStructuralContext>;
 }) => {
-  const structural = buildReverseTrendlineStructuralContext(signal);
+  const structural =
+    structuralContext ?? buildReverseTrendlineStructuralContext(signal);
   const trendLine = getTrendLineFromPayload(signal);
   const evaluator = buildTrendLineEvaluator(trendLine);
   const timingCandles = Array.isArray(candles)

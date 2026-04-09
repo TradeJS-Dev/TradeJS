@@ -44,11 +44,6 @@ args.option(
   AI_CONCURRENCY_LIMIT,
 );
 args.option(
-  'rebuildPrompts',
-  'Rebuild prompts from payload embedded in dataset rows using current prompt builders',
-  false,
-);
-args.option(
   'model',
   'OpenRouter model id override for this replay run',
   DEFAULT_AI_MODEL,
@@ -179,51 +174,8 @@ const deriveStrategyNameFromFile = (filePath: string) => {
   return match?.[1] ? match[1] : 'unknown';
 };
 
-const extractPayloadFromHumanPrompt = (humanPrompt: string) => {
-  const marker = 'Данные сделки:\n';
-  const markerIndex = humanPrompt.indexOf(marker);
-  if (markerIndex < 0) {
-    return null;
-  }
-
-  const afterMarker = humanPrompt.slice(markerIndex + marker.length);
-  const jsonStart = afterMarker.indexOf('{');
-  if (jsonStart < 0) {
-    return null;
-  }
-
-  let depth = 0;
-  let jsonEnd = -1;
-  for (let index = jsonStart; index < afterMarker.length; index += 1) {
-    const char = afterMarker[index];
-    if (char === '{') {
-      depth += 1;
-    } else if (char === '}') {
-      depth -= 1;
-      if (depth === 0) {
-        jsonEnd = index;
-        break;
-      }
-    }
-  }
-
-  if (jsonEnd < 0) {
-    return null;
-  }
-
-  return JSON.parse(afterMarker.slice(jsonStart, jsonEnd + 1)) as {
-    signal?: Signal;
-    figures?: Record<string, unknown>;
-    indicators?: unknown;
-    additionalIndicators?: unknown;
-  };
-};
-
 const extractSignalFromDatasetRow = (row: AiDatasetRow) => {
-  const payload = extractPayloadFromHumanPrompt(row.humanPrompt);
-  if (!payload?.signal) {
-    return null;
-  }
+  const { payload } = row;
 
   return {
     ...payload.signal,
@@ -235,20 +187,12 @@ const extractSignalFromDatasetRow = (row: AiDatasetRow) => {
   } as Signal;
 };
 
-const resolvePromptRunContext = (
-  row: AiDatasetRow,
-  rebuildPrompts: boolean,
-) => {
+const resolvePromptRunContext = (row: AiDatasetRow) => {
   const signal = extractSignalFromDatasetRow(row);
+
   return {
     signal,
-    promptPair:
-      rebuildPrompts && signal
-        ? buildAiPrompts(signal)
-        : {
-            systemPrompt: row.systemPrompt,
-            humanPrompt: row.humanPrompt,
-          },
+    promptPair: buildAiPrompts(signal),
   };
 };
 
@@ -421,7 +365,6 @@ const main = async () => {
   const recent = normalizeInt(flags.recent, 50);
   const skip = normalizeInt(flags.skip, 0);
   const minQuality = normalizeInt(flags.minQuality, 4);
-  const rebuildPrompts = Boolean(flags.rebuildPrompts);
   const model =
     String(flags.model || DEFAULT_AI_MODEL).trim() || DEFAULT_AI_MODEL;
   const parallel = normalizePositiveInt(flags.parallel, AI_CONCURRENCY_LIMIT);
@@ -445,7 +388,7 @@ const main = async () => {
   const strategyName =
     rows[0]?.strategyName || deriveStrategyNameFromFile(filePath);
   const preparedRows = rows.map((row) => {
-    const { promptPair, signal } = resolvePromptRunContext(row, rebuildPrompts);
+    const { promptPair, signal } = resolvePromptRunContext(row);
     return {
       row,
       promptPair,
@@ -547,10 +490,6 @@ const main = async () => {
         ['min_quality', chalk.magenta(String(minQuality))],
         ['model', chalk.yellow(model)],
         ['parallel', chalk.magenta(String(concurrency))],
-        [
-          'rebuild_prompts',
-          rebuildPrompts ? chalk.green('yes') : chalk.gray('no'),
-        ],
       ],
     ),
   );

@@ -149,10 +149,57 @@ const getLinePriceAtNow = (line: TrendLine | null, timestamp: number) => {
   return first.value + slope * (timestamp - first.timestamp);
 };
 
+const buildReverseTrendlineCandidateContext = ({
+  line,
+  candle,
+  direction,
+}: {
+  line: TrendLine;
+  candle: {
+    timestamp: number;
+    open: number;
+    close: number;
+    high: number;
+    low: number;
+  };
+  direction: Direction;
+}) => {
+  const latestPoint =
+    Array.isArray(line.points) && line.points.length > 0
+      ? line.points[line.points.length - 1]
+      : null;
+  const currentLinePrice = toFiniteNumberOrNull(
+    latestPoint && typeof latestPoint === 'object'
+      ? (latestPoint as { value?: unknown }).value
+      : null,
+  );
+  const priceVsLinePct =
+    currentLinePrice != null && currentLinePrice !== 0
+      ? ((candle.close - currentLinePrice) / currentLinePrice) * 100
+      : null;
+  const priceVsLinePctAbs =
+    priceVsLinePct == null ? null : Math.abs(priceVsLinePct);
+  const lineTouchedNow =
+    currentLinePrice != null &&
+    candle.low <= currentLinePrice &&
+    candle.high >= currentLinePrice;
+  const failedBounceBreak =
+    direction === 'LONG'
+      ? priceVsLinePct != null && priceVsLinePct <= -0.35
+      : priceVsLinePct != null && priceVsLinePct >= 0.35;
+
+  return {
+    currentLinePrice,
+    priceVsLinePctAbs,
+    lineTouchedNow,
+    failedBounceBreak,
+    distance: toFiniteNumberOrNull(line.distance),
+  };
+};
+
 const pickBestCandidateLine = ({
   candle,
   lines,
-  indicators,
 }: {
   candle: {
     timestamp: number;
@@ -162,39 +209,35 @@ const pickBestCandidateLine = ({
     low: number;
   };
   lines: Array<{ line: TrendLine; direction: Direction }>;
-  indicators: Record<string, unknown>;
 }) => {
   const ranked = lines
     .map(({ line, direction }) => {
-      const signalSeed = buildReverseTrendlineSignalSeed({
+      const candidateContext = buildReverseTrendlineCandidateContext({
+        line,
+        candle,
         direction,
-        currentPrice: candle.close,
-        indicators,
-        bestLine: line,
-        currentCandle: candle,
       });
-      const context = buildReverseTrendlineStructuralContext(signalSeed);
-      return { line, direction, context };
+      return { line, direction, candidateContext };
     })
-    .filter(({ context }) => context.currentLinePrice != null)
+    .filter(({ candidateContext }) => candidateContext.currentLinePrice != null)
     .sort((left, right) => {
-      const leftTouchRank = left.context.lineTouchedNow ? 0 : 1;
-      const rightTouchRank = right.context.lineTouchedNow ? 0 : 1;
+      const leftTouchRank = left.candidateContext.lineTouchedNow ? 0 : 1;
+      const rightTouchRank = right.candidateContext.lineTouchedNow ? 0 : 1;
       if (leftTouchRank !== rightTouchRank) {
         return leftTouchRank - rightTouchRank;
       }
 
       const leftDistance =
-        left.context.priceVsLinePctAbs ?? Number.POSITIVE_INFINITY;
+        left.candidateContext.priceVsLinePctAbs ?? Number.POSITIVE_INFINITY;
       const rightDistance =
-        right.context.priceVsLinePctAbs ?? Number.POSITIVE_INFINITY;
+        right.candidateContext.priceVsLinePctAbs ?? Number.POSITIVE_INFINITY;
       if (leftDistance !== rightDistance) {
         return leftDistance - rightDistance;
       }
 
       return (
-        (left.context.distance ?? Number.POSITIVE_INFINITY) -
-        (right.context.distance ?? Number.POSITIVE_INFINITY)
+        (left.candidateContext.distance ?? Number.POSITIVE_INFINITY) -
+        (right.candidateContext.distance ?? Number.POSITIVE_INFINITY)
       );
     });
 
@@ -238,9 +281,6 @@ export const createReverseTrendLineCore: CreateStrategyCore<
     const highsTrendlines = getHighsTrendlines.next(candle);
 
     indicatorsState.onBar();
-
-    const { fullData, timestamp, currentPrice } =
-      await strategyApi.getMarketData();
     const currentPosition = await strategyApi.getCurrentPosition();
 
     if (isOpenPosition(currentPosition)) {
@@ -250,10 +290,13 @@ export const createReverseTrendLineCore: CreateStrategyCore<
           : highsTrendlines[0];
       const activeModeConfig =
         currentPosition.direction === 'LONG' ? LOWS : HIGHS;
-      const activeLinePrice = getLinePriceAtNow(activeLine ?? null, timestamp);
+      const activeLinePrice = getLinePriceAtNow(
+        activeLine ?? null,
+        candle.timestamp,
+      );
       const priceVsLinePct =
         activeLinePrice != null && activeLinePrice !== 0
-          ? ((currentPrice - activeLinePrice) / activeLinePrice) * 100
+          ? ((candle.close - activeLinePrice) / activeLinePrice) * 100
           : null;
       const failedBounceBreak =
         currentPosition.direction === 'LONG'
@@ -270,7 +313,7 @@ export const createReverseTrendLineCore: CreateStrategyCore<
       const favorableMovePct = getFavorableMovePct({
         direction: currentPosition.direction,
         entryPrice: currentPosition.price,
-        currentPrice,
+        currentPrice: candle.close,
       });
       const currentPositionRiskPct = getPositionRiskPct({
         direction: currentPosition.direction,
@@ -300,11 +343,6 @@ export const createReverseTrendLineCore: CreateStrategyCore<
       return strategyApi.skip('DEV_TRADE_COOLDOWN');
     }
 
-    if (!filterByVeryVolatility(fullData)) {
-      return strategyApi.skip('VERY_VOLATILITY');
-    }
-
-    const indicators = indicatorsState.snapshot();
     const candidates: Array<{ line: TrendLine; direction: Direction }> = [];
 
     if (LOWS.enable && lowsTrendlines.length > 0) {
@@ -328,16 +366,34 @@ export const createReverseTrendLineCore: CreateStrategyCore<
         low: candle.low,
       },
       lines: candidates,
-      indicators: indicators as Record<string, unknown>,
     });
 
     if (!bestCandidate) {
       return strategyApi.skip('NO_TRENDLINE');
     }
 
-    const { line: bestLine, direction } = bestCandidate;
+    const {
+      line: bestLine,
+      direction,
+      candidateContext,
+    } = bestCandidate;
     const modeConfig = direction === 'LONG' ? LOWS : HIGHS;
     const { minRiskRatio } = modeConfig;
+
+    if (candidateContext.failedBounceBreak) {
+      return strategyApi.skip(
+        'REVERSE_TRENDLINE_STRUCTURE:failed_bounce_break',
+      );
+    }
+
+    const { fullData, timestamp, currentPrice } =
+      await strategyApi.getMarketData();
+
+    if (!filterByVeryVolatility(fullData)) {
+      return strategyApi.skip('VERY_VOLATILITY');
+    }
+
+    const indicators = indicatorsState.snapshot();
 
     const signalSeed = buildReverseTrendlineSignalSeed({
       direction,
@@ -352,18 +408,13 @@ export const createReverseTrendLineCore: CreateStrategyCore<
         low: candle.low,
       },
     });
-    const structuralContext =
-      buildReverseTrendlineStructuralContext(signalSeed);
 
-    if (structuralContext.structuralHardBlockReasons.length > 0) {
-      return strategyApi.skip(
-        `REVERSE_TRENDLINE_STRUCTURE:${structuralContext.structuralHardBlockReasons[0]}`,
-      );
-    }
+    const structuralContext = buildReverseTrendlineStructuralContext(signalSeed);
 
     const timingContext = buildReverseTrendlineTimingContext({
       signal: signalSeed,
       candles: fullData,
+      structuralContext,
     });
 
     if (!timingContext.entryReadyNow) {

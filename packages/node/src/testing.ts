@@ -1,9 +1,9 @@
 import {
   AiDatasetRow,
-  AiPromptPair,
   Candle,
   ConnectorCreator,
   KlineChartData,
+  Signal,
   TestingBox,
 } from '@tradejs/types';
 import { alignSortedCandlesByTimestamp } from '@tradejs/core/indicators';
@@ -16,7 +16,7 @@ import {
   trimMlTrainingRowWindows,
 } from '@tradejs/infra/ml';
 import { logger } from '@tradejs/infra/logger';
-import { buildAiPrompts } from './ai';
+import { buildAiPayload } from './ai';
 import { getStrategyCreator } from './strategy/manifests';
 import { buildMlPayload } from './mlPayload';
 import {
@@ -331,7 +331,7 @@ export const testing: TestingBox = async ({
   >();
   const pendingAiRowBySignalId = new Map<
     string,
-    Omit<AiDatasetRow, 'profit'> & AiPromptPair
+    Omit<AiDatasetRow, 'profit'>
   >();
 
   const flushClosedResultsBatch = async () => {
@@ -403,11 +403,11 @@ export const testing: TestingBox = async ({
         symbol: signal.symbol || symbol,
         direction: signal.direction,
         timestamp: signal.timestamp,
+        payload: buildAiPayload(signal as Signal),
         testId,
         testSuiteId,
         testName: name,
         connectorName,
-        ...buildAiPrompts(signal),
       });
     }
   }

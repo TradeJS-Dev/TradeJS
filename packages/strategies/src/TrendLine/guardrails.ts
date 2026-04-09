@@ -329,11 +329,14 @@ export const buildTrendlineStructuralContext = (
 export const buildTrendlineTimingContext = ({
   signal,
   candles,
+  structuralContext,
 }: {
   signal: StructuralTrendLineSignal;
   candles?: TrendlineTimingCandle[];
+  structuralContext?: ReturnType<typeof buildTrendlineStructuralContext>;
 }) => {
-  const structural = buildTrendlineStructuralContext(signal);
+  const structural =
+    structuralContext ?? buildTrendlineStructuralContext(signal);
   const trendLine = getTrendLineFromPayload(signal);
   const evaluator = buildTrendLineEvaluator(trendLine);
   const timingCandles = Array.isArray(candles)
