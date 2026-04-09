@@ -16,7 +16,7 @@ const REVERSE_TRENDLINE_CONTEXT_PROMPT = `
 - Для bounce-сетапов приоритетнее реакция свечи на линии, rejection wick, удержание закрытия по правильную сторону и follow-through на следующем баре.
 - Если payload.additionalIndicators.reverseTrendlineContext.failedBounceBreak=true, не считай сигнал структурно подтвержденным.
 - Если payload.additionalIndicators.reverseTrendlineContext.entryTiming не равен ready_rejection или ready_follow_through, обычно quality <= 3.
-- Конфликт BTC/coin bias снижает уверенность и обычно не дает quality 4-5.
+- Для SHORT bounce setup с btc_bias_conflict не завышай quality без очень сильного mean-reversion подтверждения.
 `;
 
 const REVERSE_TRENDLINE_PAYLOAD_PROMPT = `
@@ -119,7 +119,10 @@ const getDeterministicReverseTrendlineQuality = (
     context.entryTiming === 'ready_rejection' &&
     conflictOnly &&
     rejectionStrengthPct >= 0.45 &&
-    touches >= 5;
+    touches >= 5 &&
+    !(
+      context.signalDirection === 'SHORT' && biasConflictState === 'btc_only'
+    );
 
   if (quality4ConflictRejection) {
     return 4;

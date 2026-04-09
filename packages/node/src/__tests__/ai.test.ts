@@ -796,6 +796,37 @@ const makeReverseConflictResistanceBounceShortSignal = () => {
   return signal;
 };
 
+const makeReverseBtcOnlyResistanceBounceShortSignal = () => {
+  const signal = makeReverseResistanceBounceShortSignal();
+  signal.indicators = {
+    ...signal.indicators,
+    maFast: [100.2, 100.0, 99.7],
+    maSlow: [100.1, 100.05, 99.85],
+    btcMaFast: [99.8, 100.0, 100.25],
+    btcMaSlow: [99.9, 99.95, 100.05],
+    atrPct: [0.85],
+  };
+  signal.additionalIndicators = {
+    ...signal.additionalIndicators,
+    touches: 5,
+    distance: 150,
+    currentCandle: {
+      timestamp: 2,
+      open: 100.08,
+      close: 99.36,
+      high: 100.4,
+      low: 99.29,
+    },
+    reverseTrendlineTiming: {
+      entryTiming: 'ready_rejection',
+    },
+  };
+  signal.prices.currentPrice = 99.36;
+  signal.prices.takeProfitPrice = 97.5;
+  signal.prices.stopLossPrice = 100.8;
+  return signal;
+};
+
 const makeReverseAlignedFollowThroughLongSignal = () => {
   const signal = makeReverseSupportBounceLongSignal();
   signal.indicators = {
@@ -1724,6 +1755,44 @@ describe('ai helpers', () => {
           needRetest: false,
           takeProfitPrice: 97.5,
           stopLossPrice: 100.8,
+        }),
+      );
+    });
+
+    it('keeps SHORT btc-only rejection bounces on watch quality for ReverseTrendLine', async () => {
+      invokeMock.mockResolvedValue({
+        content: {
+          direction: null,
+          quality: 2,
+          needRetest: true,
+          retestPrice: 100,
+          takeProfitPrice: null,
+          stopLossPrice: null,
+          setup: 'Есть отскок вниз от сопротивления',
+          retestPlan: 'Можно входить сразу',
+          qualityReason: 'Модель осторожна',
+          triggerInvalidation: 'Отмена при пробое вверх',
+          comment: 'ok',
+        },
+      });
+
+      const result = await runAiPrompt(
+        {
+          systemPrompt: 'system',
+          humanPrompt: 'human',
+        },
+        {
+          signal: makeReverseBtcOnlyResistanceBounceShortSignal(),
+        },
+      );
+
+      expect(result).toEqual(
+        expect.objectContaining({
+          direction: null,
+          quality: 3,
+          needRetest: true,
+          takeProfitPrice: null,
+          stopLossPrice: null,
         }),
       );
     });
