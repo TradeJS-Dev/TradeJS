@@ -59,10 +59,12 @@ const buildTrendlineContext = (signal: {
   const entryTiming =
     typeof signal.additionalIndicators?.trendlineTiming === 'object' &&
     signal.additionalIndicators?.trendlineTiming &&
-    typeof (signal.additionalIndicators.trendlineTiming as { entryTiming?: unknown })
-      .entryTiming === 'string'
-      ? ((signal.additionalIndicators.trendlineTiming as { entryTiming: string })
-          .entryTiming as
+    typeof (
+      signal.additionalIndicators.trendlineTiming as { entryTiming?: unknown }
+    ).entryTiming === 'string'
+      ? ((
+          signal.additionalIndicators.trendlineTiming as { entryTiming: string }
+        ).entryTiming as
           | 'ready_breakout'
           | 'ready_follow_through'
           | 'ready_retest'
