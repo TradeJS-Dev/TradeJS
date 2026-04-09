@@ -687,6 +687,37 @@ const makeReverseSupportBounceLongSignal = () => {
   return signal;
 };
 
+const makeReverseConflictSupportBounceLongSignal = () => {
+  const signal = makeReverseSupportBounceLongSignal();
+  signal.indicators = {
+    ...signal.indicators,
+    maFast: [100.3, 100.2, 100.1],
+    maSlow: [100.1, 100.15, 100.18],
+    btcMaFast: [99.8, 99.95, 100.2],
+    btcMaSlow: [99.85, 99.9, 100.05],
+    atrPct: [0.8],
+  };
+  signal.additionalIndicators = {
+    ...signal.additionalIndicators,
+    touches: 5,
+    distance: 140,
+    currentCandle: {
+      timestamp: 2,
+      open: 99.9,
+      close: 100.55,
+      high: 100.62,
+      low: 99.62,
+    },
+    reverseTrendlineTiming: {
+      entryTiming: 'ready_rejection',
+    },
+  };
+  signal.prices.currentPrice = 100.55;
+  signal.prices.takeProfitPrice = 102.4;
+  signal.prices.stopLossPrice = 99.1;
+  return signal;
+};
+
 const makeReverseResistanceBounceShortSignal = () => {
   const signal = makeSignal();
   signal.strategy = 'ReverseTrendLine';
@@ -731,6 +762,68 @@ const makeReverseResistanceBounceShortSignal = () => {
       entryTiming: 'ready_rejection',
     },
   };
+  return signal;
+};
+
+const makeReverseConflictResistanceBounceShortSignal = () => {
+  const signal = makeReverseResistanceBounceShortSignal();
+  signal.indicators = {
+    ...signal.indicators,
+    maFast: [99.7, 99.8, 100.1],
+    maSlow: [99.9, 99.95, 100],
+    btcMaFast: [100.2, 100.0, 99.7],
+    btcMaSlow: [100.15, 100.05, 99.85],
+    atrPct: [0.85],
+  };
+  signal.additionalIndicators = {
+    ...signal.additionalIndicators,
+    touches: 5,
+    distance: 150,
+    currentCandle: {
+      timestamp: 2,
+      open: 100.1,
+      close: 99.35,
+      high: 100.42,
+      low: 99.28,
+    },
+    reverseTrendlineTiming: {
+      entryTiming: 'ready_rejection',
+    },
+  };
+  signal.prices.currentPrice = 99.35;
+  signal.prices.takeProfitPrice = 97.5;
+  signal.prices.stopLossPrice = 100.8;
+  return signal;
+};
+
+const makeReverseAlignedFollowThroughLongSignal = () => {
+  const signal = makeReverseSupportBounceLongSignal();
+  signal.indicators = {
+    ...signal.indicators,
+    maFast: [99.95, 100.15, 100.4],
+    maSlow: [99.9, 100.0, 100.1],
+    btcMaFast: [99.95, 100.1, 100.3],
+    btcMaSlow: [99.9, 99.98, 100.05],
+    atrPct: [0.9],
+  };
+  signal.additionalIndicators = {
+    ...signal.additionalIndicators,
+    touches: 5,
+    distance: 180,
+    currentCandle: {
+      timestamp: 2,
+      open: 100.1,
+      close: 100.42,
+      high: 100.5,
+      low: 99.88,
+    },
+    reverseTrendlineTiming: {
+      entryTiming: 'ready_follow_through',
+    },
+  };
+  signal.prices.currentPrice = 100.42;
+  signal.prices.takeProfitPrice = 102.6;
+  signal.prices.stopLossPrice = 99.2;
   return signal;
 };
 
@@ -1521,7 +1614,7 @@ describe('ai helpers', () => {
       );
     });
 
-    it('approves support bounce setups for ReverseTrendLine with deterministic quality', async () => {
+    it('downgrades aligned ready-rejection support bounces for ReverseTrendLine', async () => {
       invokeMock.mockResolvedValue({
         content: {
           direction: null,
@@ -1550,16 +1643,16 @@ describe('ai helpers', () => {
 
       expect(result).toEqual(
         expect.objectContaining({
-          direction: 'LONG',
-          quality: 4,
-          needRetest: false,
-          takeProfitPrice: 102.4,
-          stopLossPrice: 99.1,
+          direction: null,
+          quality: 3,
+          needRetest: true,
+          takeProfitPrice: null,
+          stopLossPrice: null,
         }),
       );
     });
 
-    it('approves resistance bounce setups for ReverseTrendLine with deterministic quality', async () => {
+    it('approves strong conflict-only support bounces for ReverseTrendLine', async () => {
       invokeMock.mockResolvedValue({
         content: {
           direction: null,
@@ -1582,7 +1675,45 @@ describe('ai helpers', () => {
           humanPrompt: 'human',
         },
         {
-          signal: makeReverseResistanceBounceShortSignal(),
+          signal: makeReverseConflictSupportBounceLongSignal(),
+        },
+      );
+
+      expect(result).toEqual(
+        expect.objectContaining({
+          direction: 'LONG',
+          quality: 4,
+          needRetest: false,
+          takeProfitPrice: 102.4,
+          stopLossPrice: 99.1,
+        }),
+      );
+    });
+
+    it('approves strong conflict-only resistance bounces for ReverseTrendLine', async () => {
+      invokeMock.mockResolvedValue({
+        content: {
+          direction: null,
+          quality: 2,
+          needRetest: true,
+          retestPrice: 100,
+          takeProfitPrice: null,
+          stopLossPrice: null,
+          setup: 'Есть отскок вниз от сопротивления',
+          retestPlan: 'Можно входить сразу',
+          qualityReason: 'Модель осторожна',
+          triggerInvalidation: 'Отмена при пробое вверх',
+          comment: 'ok',
+        },
+      });
+
+      const result = await runAiPrompt(
+        {
+          systemPrompt: 'system',
+          humanPrompt: 'human',
+        },
+        {
+          signal: makeReverseConflictResistanceBounceShortSignal(),
         },
       );
 
@@ -1593,6 +1724,44 @@ describe('ai helpers', () => {
           needRetest: false,
           takeProfitPrice: 97.5,
           stopLossPrice: 100.8,
+        }),
+      );
+    });
+
+    it('approves aligned follow-through support bounces for ReverseTrendLine', async () => {
+      invokeMock.mockResolvedValue({
+        content: {
+          direction: null,
+          quality: 2,
+          needRetest: true,
+          retestPrice: 100,
+          takeProfitPrice: null,
+          stopLossPrice: null,
+          setup: 'Есть отскок от линии поддержки',
+          retestPlan: 'Follow-through подтвержден',
+          qualityReason: 'Модель осторожна',
+          triggerInvalidation: 'Отмена при пробое вниз',
+          comment: 'ok',
+        },
+      });
+
+      const result = await runAiPrompt(
+        {
+          systemPrompt: 'system',
+          humanPrompt: 'human',
+        },
+        {
+          signal: makeReverseAlignedFollowThroughLongSignal(),
+        },
+      );
+
+      expect(result).toEqual(
+        expect.objectContaining({
+          direction: 'LONG',
+          quality: 5,
+          needRetest: false,
+          takeProfitPrice: 102.6,
+          stopLossPrice: 99.2,
         }),
       );
     });

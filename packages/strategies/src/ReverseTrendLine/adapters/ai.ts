@@ -44,6 +44,31 @@ type ReverseTrendlineQualityContext = ReverseStructuralContext &
     hardBlockReasons: string[];
   };
 
+const getReverseTrendlineBiasConflictState = (
+  context: Pick<
+    ReverseTrendlineQualityContext,
+    'coinBiasAligned' | 'btcBiasAligned'
+  >,
+) => {
+  const coinConflict = context.coinBiasAligned === false;
+  const btcConflict = context.btcBiasAligned === false;
+
+  if (coinConflict && btcConflict) {
+    return 'both';
+  }
+  if (coinConflict) {
+    return 'coin_only';
+  }
+  if (btcConflict) {
+    return 'btc_only';
+  }
+  if (context.coinBiasAligned === true && context.btcBiasAligned === true) {
+    return 'none';
+  }
+
+  return 'unknown';
+};
+
 const getDeterministicReverseTrendlineQuality = (
   context: ReverseTrendlineQualityContext,
 ) => {
@@ -62,31 +87,53 @@ const getDeterministicReverseTrendlineQuality = (
   const rejectionWickPct = context.rejectionWickPct ?? 0;
   const touches = context.touches ?? 0;
   const distance = context.distance ?? Number.POSITIVE_INFINITY;
-  const coinOk = context.coinBiasAligned !== false;
-  const btcOk = context.btcBiasAligned !== false;
+  const biasConflictState = getReverseTrendlineBiasConflictState(context);
+  const noConflict = biasConflictState === 'none';
+  const conflictOnly =
+    biasConflictState === 'coin_only' || biasConflictState === 'btc_only';
 
   const quality5 =
     context.entryTiming === 'ready_follow_through' &&
-    rejectionStrengthPct >= 0.3 &&
-    rejectionWickPct >= 0.2 &&
-    touches >= 5 &&
-    distance < 300 &&
-    context.coinBiasAligned === true &&
-    context.btcBiasAligned === true;
+    noConflict &&
+    rejectionStrengthPct >= 0.25 &&
+    rejectionWickPct >= 0.18 &&
+    touches >= 4 &&
+    distance < 500;
 
   if (quality5) {
     return 5;
   }
 
-  const quality4 =
-    rejectionStrengthPct >= 0.12 &&
-    rejectionWickPct >= 0.1 &&
-    touches >= 4 &&
-    distance < 800 &&
-    coinOk &&
-    btcOk;
+  const quality4FollowThrough =
+    context.entryTiming === 'ready_follow_through' &&
+    noConflict &&
+    rejectionStrengthPct >= 0.22 &&
+    rejectionWickPct >= 0.18 &&
+    touches >= 4;
 
-  return quality4 ? 4 : 3;
+  if (quality4FollowThrough) {
+    return 4;
+  }
+
+  const quality4ConflictRejection =
+    context.entryTiming === 'ready_rejection' &&
+    conflictOnly &&
+    rejectionStrengthPct >= 0.45 &&
+    touches >= 5;
+
+  if (quality4ConflictRejection) {
+    return 4;
+  }
+
+  const quality4EliteAlignedRejection =
+    context.entryTiming === 'ready_rejection' &&
+    noConflict &&
+    rejectionStrengthPct >= 0.9 &&
+    rejectionWickPct >= 0.15 &&
+    touches >= 5 &&
+    distance <= 250;
+
+  return quality4EliteAlignedRejection ? 4 : 3;
 };
 
 const buildReverseTrendlineAiContext = (signal: {
@@ -121,14 +168,6 @@ const buildReverseTrendlineAiContext = (signal: {
     : computedTiming;
 
   const hardBlockReasons = [...structural.structuralHardBlockReasons];
-
-  if (structural.coinBiasAligned === false) {
-    hardBlockReasons.push('coin_bias_conflict');
-  }
-
-  if (structural.btcBiasAligned === false) {
-    hardBlockReasons.push('btc_bias_conflict');
-  }
 
   const deterministicQuality = getDeterministicReverseTrendlineQuality({
     ...structural,
@@ -218,7 +257,7 @@ export const reverseTrendLineAiAdapter: StrategyAiAdapter = {
           ? `ReverseTrendLine guardrail: ${context.hardBlockReasons
               .map(getHardBlockReasonText)
               .join('; ')}.`
-          : 'ReverseTrendLine deterministic quality: отскок еще не подтвержден реакцией свечи или follow-through.',
+          : 'ReverseTrendLine deterministic quality: для bounce нужен либо сильный conflict-only rejection, либо подтвержденный aligned follow-through.',
       triggerInvalidation:
         context.hardBlockReasons.length > 0
           ? `Ждать новый bounce setup: ${context.hardBlockReasons
