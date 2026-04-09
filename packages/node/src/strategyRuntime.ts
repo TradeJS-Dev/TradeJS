@@ -88,26 +88,38 @@ const shouldExecuteEntryDecision = ({
   makeOrdersEnabled,
   env,
   signal,
+  aiEnabled,
   quality,
   minAiQuality,
 }: {
   makeOrdersEnabled: boolean;
   env: string;
   signal?: EntryDecision['signal'];
+  aiEnabled: boolean;
   quality?: number;
   minAiQuality: number;
-}) =>
-  makeOrdersEnabled &&
-  (!signal || env === 'BACKTEST' || quality == null || quality >= minAiQuality);
+}) => {
+  if (!makeOrdersEnabled) {
+    return false;
+  }
+
+  if (!signal || env === 'BACKTEST' || !aiEnabled) {
+    return true;
+  }
+
+  return Number.isFinite(quality) && (quality as number) >= minAiQuality;
+};
 
 const getEntrySkipReason = ({
   makeOrdersEnabled,
   env,
+  aiEnabled,
   quality,
   minAiQuality,
 }: {
   makeOrdersEnabled: boolean;
   env: string;
+  aiEnabled: boolean;
   quality?: number;
   minAiQuality: number;
 }): string => {
@@ -115,8 +127,13 @@ const getEntrySkipReason = ({
     return 'MAKE_ORDERS_DISABLED';
   }
 
+  if (env !== 'BACKTEST' && aiEnabled && quality == null) {
+    return 'AI_QUALITY_UNAVAILABLE';
+  }
+
   if (
     env !== 'BACKTEST' &&
+    aiEnabled &&
     quality != null &&
     Number.isFinite(quality) &&
     quality < minAiQuality
@@ -958,6 +975,7 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
       }
 
       const minAiQuality = runtime.ai?.minQuality ?? 4;
+      const aiEnabled = runtime.ai?.enabled !== false && runtime.ai != null;
       const policy = buildHookPolicy({
         quality,
         makeOrdersEnabled,
@@ -967,6 +985,7 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
         makeOrdersEnabled,
         env,
         signal,
+        aiEnabled,
         quality,
         minAiQuality,
       });
@@ -977,6 +996,7 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
           signal.orderSkipReason = getEntrySkipReason({
             makeOrdersEnabled,
             env,
+            aiEnabled,
             quality,
             minAiQuality,
           });

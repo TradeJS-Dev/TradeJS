@@ -887,8 +887,13 @@ describe('ai helpers', () => {
     it('system prompt includes critical constraints and examples', () => {
       const prompt = buildAiSystemPrompt();
 
+      expect(prompt).toContain(
+        'Ты — внутренний классификатор структуры рынка для уже рассчитанного системного сигнала',
+      );
       expect(prompt).toContain('Пиши comment по-русски');
-      expect(prompt).toContain('quality" — качество ВХОДА ИМЕННО СЕЙЧАС');
+      expect(prompt).toContain(
+        'quality" — уровень структурного подтверждения текущего сигнала ИМЕННО СЕЙЧАС',
+      );
       expect(prompt).toContain(
         'Никогда не предлагай противоположное направление',
       );
@@ -896,7 +901,9 @@ describe('ai helpers', () => {
       expect(prompt).toContain('"retestPrice": number | null');
       expect(prompt).toContain('"setup": string');
       expect(prompt).toContain('"triggerInvalidation": string');
-      expect(prompt).toContain('reward/risk >= 0.33');
+      expect(prompt).toContain(
+        'Не оптимизируй и не пересчитывай TP/SL под "лучшую сделку"',
+      );
       expect(prompt).toContain('структурированному анализу');
       expect(prompt).toContain(
         'не пиши технический шаблон вроде "needRetest=false @ null"',
@@ -904,6 +911,7 @@ describe('ai helpers', () => {
       expect(prompt).toContain('payload.additionalIndicators');
       expect(prompt).toContain('Короткие примеры (few-shot');
       expect(prompt).toContain('Не добавляй другие поля');
+      expect(prompt).not.toContain('помощник крипто-трейдера');
       expect(prompt).not.toContain('runtime-нейминг');
     });
 
@@ -920,9 +928,11 @@ describe('ai helpers', () => {
       const payload = buildAiPayload(signal);
       const prompt = buildAiHumanPrompt(signal, payload);
 
-      expect(prompt).toContain('Проанализируй сделку по ETHUSDT');
+      expect(prompt).toContain(
+        'Проанализируй уже рассчитанный внутренний сигнал по ETHUSDT',
+      );
       expect(prompt).toContain('Исходный сигнал имеет направление LONG');
-      expect(prompt).toContain('без предложения противоположного направления');
+      expect(prompt).toContain('Это задача классификации/аудита структуры');
       expect(prompt).toContain('"symbol":"ETHUSDT"');
       expect(prompt).toContain('"trendline"');
       expect(prompt).toContain('trendline.currentLinePrice=');
@@ -938,8 +948,12 @@ describe('ai helpers', () => {
     it('builds prompt pair for dataset replay', () => {
       const prompts = buildAiPrompts(makeSignal());
 
-      expect(prompts.systemPrompt).toContain('Ты — помощник крипто-трейдера');
-      expect(prompts.humanPrompt).toContain('Проанализируй сделку по ETHUSDT');
+      expect(prompts.systemPrompt).toContain(
+        'Ты — внутренний классификатор структуры рынка',
+      );
+      expect(prompts.humanPrompt).toContain(
+        'Проанализируй уже рассчитанный внутренний сигнал по ETHUSDT',
+      );
     });
 
     it('falls back to additionalIndicators trendLine when figures.trendLine is missing', () => {
@@ -1814,7 +1828,7 @@ describe('ai helpers', () => {
       expect(messages[0]).toBeInstanceOf(MockSystemMessage);
       expect(messages[1]).toBeInstanceOf(MockHumanMessage);
       expect(messages[1].content.content[0].text).toContain(
-        'Проанализируй сделку по ETHUSDT',
+        'Проанализируй уже рассчитанный внутренний сигнал по ETHUSDT',
       );
 
       expect(result).toEqual(

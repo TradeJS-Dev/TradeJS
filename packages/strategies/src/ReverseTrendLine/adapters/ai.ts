@@ -14,7 +14,7 @@ const REVERSE_TRENDLINE_CONTEXT_PROMPT = `
 - Для SHORT по resistance line (trendline.mode="highs") нужен касание/ложный прокол линии и удержание закрытия ниже нее.
 - Если цена уже уверенно пробила линию в сторону, противоположную отскоку, это не bounce setup: direction=null и quality <= 2.
 - Для bounce-сетапов приоритетнее реакция свечи на линии, rejection wick, удержание закрытия по правильную сторону и follow-through на следующем баре.
-- Если payload.additionalIndicators.reverseTrendlineContext.failedBounceBreak=true, не одобряй вход.
+- Если payload.additionalIndicators.reverseTrendlineContext.failedBounceBreak=true, не считай сигнал структурно подтвержденным.
 - Если payload.additionalIndicators.reverseTrendlineContext.entryTiming не равен ready_rejection или ready_follow_through, обычно quality <= 3.
 - Конфликт BTC/coin bias снижает уверенность и обычно не дает quality 4-5.
 `;
@@ -254,8 +254,8 @@ export const reverseTrendLineAiAdapter: StrategyAiAdapter = {
 - hardBlockReasons=${context.hardBlockReasons.join(', ') || 'none'}
 
 Правило интерпретации для ReverseTrendLine:
-- искать вход на реакцию от линии, а не на пробой через линию;
-- если уже есть failedBounceBreak=true, не одобрять сделку;
+- искать структурное подтверждение реакции от линии, а не пробоя через линию;
+- если уже есть failedBounceBreak=true, не считать сигнал подтвержденным;
 - если setup еще в стадии wait_touch / wait_reaction_confirmation / stale_reaction, не завышать quality.
 `;
   },

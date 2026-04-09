@@ -285,12 +285,34 @@ describe('strategyRuntime', () => {
     expect(connector.placeOrder).not.toHaveBeenCalled();
   });
 
-  it('does not block entry when AI quality is unavailable (e.g. AI request failed)', async () => {
+  it('blocks entry when AI quality is unavailable (e.g. AI request failed)', async () => {
     mockEnrichSignalWithAi.mockResolvedValue(undefined);
     const { strategy, connector } = await makeRuntime(() =>
       makeDecisionEntry({
         runtime: {
           ai: { enabled: true, minQuality: 5 },
+          ml: { enabled: false },
+        },
+      }),
+    );
+
+    const result = await strategy(
+      { timestamp: 1 } as any,
+      { timestamp: 1 } as any,
+    );
+
+    expect(mockExecuteEntryOrder).not.toHaveBeenCalled();
+    expect(connector.placeOrder).not.toHaveBeenCalled();
+    expect((result as any).orderStatus).toBe('skipped');
+    expect((result as any).orderSkipReason).toBe('AI_QUALITY_UNAVAILABLE');
+  });
+
+  it('does not block entry when AI runtime is disabled and quality is unavailable', async () => {
+    mockEnrichSignalWithAi.mockResolvedValue(undefined);
+    const { strategy, connector } = await makeRuntime(() =>
+      makeDecisionEntry({
+        runtime: {
+          ai: { enabled: false, minQuality: 5 },
           ml: { enabled: false },
         },
       }),
