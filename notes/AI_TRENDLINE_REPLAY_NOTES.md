@@ -985,3 +985,73 @@ Current conclusion:
 
 - routing around Azure is the correct first operational fix because the failure was explicitly provider-specific
 - this does not prove that prompt text is perfect, but it removes the currently observed upstream failure mode
+
+## Next-step plan for `FN = 139`
+
+Do not implement this blindly. This is the current working plan for the next replay iteration.
+
+What is already clear:
+
+- `67` `FN` have no hard-block reason at all
+- `33` `FN` are blocked only by `btc_bias_conflict`
+- the biggest clean timing clusters are:
+  - `LONG | ready_retest = 24`
+  - `SHORT | ready_follow_through = 18`
+
+Current plan:
+
+1. Do not relax all `q3` setups globally.
+
+- broad `q3 -> q4` relaxation is too risky
+- previous broad relaxations already showed that precision collapses quickly
+
+2. Add new timing-specific features before changing the ladder.
+
+For `LONG ready_retest`:
+
+- retest compactness relative to ATR
+- how cleanly price reclaimed / held the line after retest
+- rejection wick quality near the line
+- time gap between original breakout and retest
+
+For `SHORT ready_follow_through`:
+
+- whether the follow-through candle closes below the breakout close
+- upper-wick penalty on the follow-through candle
+- distance-to-line acceleration / slowdown after breakout
+- own-coin bearish strength even when BTC confirmation is only moderate
+
+3. Test only a narrow `SHORT ready_follow_through` relaxation first.
+
+- do not touch `LONG` first
+- do not weaken all `btc_bias_conflict` cases
+- only inspect the subset where:
+  - `entryTiming = ready_follow_through`
+  - `clearBreak = true`
+  - `nearLineNoise = false`
+  - own-coin bearish context is already strong
+  - line maturity is acceptable (`touches >= 5`)
+
+Reason:
+
+- current `SHORT FN` cluster is the cleaner and safer candidate
+- `LONG ready_retest` needs more discriminative features before any relaxation
+
+4. Keep using exit-layer protection as a safety net for any new approvals.
+
+- `break-even protection` and `failed breakout exit` already exist
+- this makes a narrow `SHORT` expansion safer to evaluate in backtest
+
+5. Validate only through a full pipeline.
+
+- `backtest`
+- `ai-export`
+- `ai-train -n 500`
+
+Do not treat local ladder inspection alone as sufficient validation.
+
+Explicit non-goals for the next step:
+
+- do not lower `AI_MIN_QUALITY` globally
+- do not remove `btc_bias_conflict` as a general rule
+- do not broadly promote all `ready_retest` or `ready_follow_through` setups to `q4`
