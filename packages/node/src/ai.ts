@@ -257,6 +257,32 @@ const aiModelCache = new Map<string, Promise<AiModel>>();
 const getAiModelCacheKey = (userName: string, modelName: string) =>
   `${userName}::${modelName}`;
 
+export const getOpenRouterModelKwargs = (
+  apiEndpoint?: string | null,
+): Record<string, unknown> => {
+  const endpoint = String(apiEndpoint ?? '').trim();
+  if (!endpoint) {
+    return {};
+  }
+
+  let hostname = '';
+  try {
+    hostname = new URL(endpoint).hostname;
+  } catch {
+    hostname = endpoint;
+  }
+
+  if (!hostname.toLowerCase().includes('openrouter')) {
+    return {};
+  }
+
+  return {
+    provider: {
+      ignore: ['azure'],
+    },
+  };
+};
+
 const getAiSettings = async (userName = 'root') => {
   let settingsPromise = userSettingsCache.get(userName);
   if (!settingsPromise) {
@@ -287,11 +313,15 @@ const createAiModel = async (
         import('@langchain/openai'),
         getAiSettings(userName),
       ]);
+      const modelKwargs = getOpenRouterModelKwargs(
+        settings.OPENAI_API_ENDPOINT,
+      );
 
       return new ChatOpenAI({
         temperature: 0.2,
         modelName,
         apiKey: settings.OPENAI_API_KEY,
+        ...(Object.keys(modelKwargs).length ? { modelKwargs } : {}),
         configuration: {
           baseURL: settings.OPENAI_API_ENDPOINT,
           defaultHeaders: {

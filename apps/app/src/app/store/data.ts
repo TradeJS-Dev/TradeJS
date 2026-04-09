@@ -196,16 +196,20 @@ const fetchAndStoreData = async (dataRequest: DataRequest) => {
 export const useData = (filters: Filters) => {
   const searchParams = useSearchParams();
   const cacheOnly = Boolean(searchParams.get('cacheOnly')) ?? false;
+  const { end, interval, provider, start, symbol } = filters;
   const dataRequest = useMemo(
-    () => toRequest(filters, cacheOnly),
-    [
-      cacheOnly,
-      filters.end,
-      filters.interval,
-      filters.provider,
-      filters.start,
-      filters.symbol,
-    ],
+    () =>
+      toRequest(
+        {
+          end,
+          interval,
+          provider,
+          start,
+          symbol,
+        } as Filters,
+        cacheOnly,
+      ),
+    [cacheOnly, end, interval, provider, start, symbol],
   );
   const [fulfilledKey, setFulfilledKey] = useState<string | null>(null);
   const storedData = useDataStore((s) => s.data.get(dataRequest.key));

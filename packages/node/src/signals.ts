@@ -296,24 +296,8 @@ export const formatMessage = (
 
       lines.push('');
 
-      if (touches) {
-        lines.push(`Points: ${touches}`);
-      }
-
-      if (atrPct != null && Number.isFinite(atrPct)) {
-        lines.push(`ATR: ${atrPct.toFixed(2)}`);
-      }
-
-      if (distance) {
-        lines.push(`Distance: ${distance}`);
-      }
-
       if (correlation) {
         lines.push(`BTC correlation: ${correlation}`);
-      }
-
-      if (spread != null && Number.isFinite(spread)) {
-        lines.push(`BTC spread (CB-BN)/BN: ${spread.toFixed(6)}`);
       }
 
       const prices = formatPrices();

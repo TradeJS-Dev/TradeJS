@@ -6,6 +6,7 @@ import {
   SystemMessage,
 } from '@langchain/core/messages';
 import { toJson } from '@tradejs/core/data';
+import { getOpenRouterModelKwargs } from '@tradejs/node/ai';
 import { getConnectorCreatorByProvider } from '@tradejs/node/connectors';
 import {
   AIChatHistory,
@@ -75,10 +76,13 @@ const invokeChatModel = async (messages: BaseMessage[], userName: string) => {
     throw new Error(`AI settings are incomplete for user ${userName}`);
   }
 
+  const modelKwargs = getOpenRouterModelKwargs(settings.OPENAI_API_ENDPOINT);
+
   const model = new ChatOpenAI({
     temperature: 0.7,
     modelName: 'gpt-4o',
     apiKey: settings.OPENAI_API_KEY,
+    ...(Object.keys(modelKwargs).length ? { modelKwargs } : {}),
     configuration: {
       baseURL: settings.OPENAI_API_ENDPOINT,
     },

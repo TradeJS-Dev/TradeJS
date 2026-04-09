@@ -63,6 +63,7 @@ const {
   buildAiHumanPrompt,
   buildAiPayload,
   buildAiSystemPrompt,
+  getOpenRouterModelKwargs,
   resetAiRuntimeCache,
   runAiPrompt,
   trimSeriesDeep,
@@ -839,6 +840,12 @@ describe('ai helpers', () => {
   describe('buildAiPayload', () => {
     it('builds payload with trimmed indicators and full trendline', () => {
       const signal = makeSignal();
+      signal.additionalIndicators = {
+        ...signal.additionalIndicators,
+        trendlineTiming: {
+          entryTiming: 'ready_breakout',
+        },
+      };
       const payload = buildAiPayload(signal);
 
       expect(payload.signal.symbol).toBe('ETHUSDT');
@@ -861,6 +868,9 @@ describe('ai helpers', () => {
       expect(payload.figures.trendline).toBe(signal.figures.trendLine);
       expect(payload.figures.trendline.touches).toHaveLength(6);
       expect(payload.figures.trendline.alpha).toHaveLength(6);
+      expect(
+        (payload.additionalIndicators as any).trendlineContext.entryTiming,
+      ).toBe('ready_breakout');
     });
 
     it('uses default adapter for non-trendline strategies without trendline alias', () => {
@@ -938,6 +948,7 @@ describe('ai helpers', () => {
       expect(prompt).toContain('trendline.currentLinePrice=');
       expect(prompt).toContain('trendline.breakVsAtrRatio=');
       expect(prompt).toContain('trendline.strongNearBreakPressure=');
+      expect(prompt).toContain('trendline.entryTiming=');
       expect(prompt).toContain('trendline.weakCleanBreak=');
       expect(prompt).toContain('trendline.weakBtcLedBreak=');
       expect(prompt).toContain('trendline.weakLongFarBreak=');
@@ -1816,6 +1827,11 @@ describe('ai helpers', () => {
           temperature: 0.2,
           modelName: 'openai/gpt-5-mini',
           apiKey: 'key_123',
+          modelKwargs: {
+            provider: {
+              ignore: ['azure'],
+            },
+          },
           configuration: expect.objectContaining({
             baseURL: 'https://openrouter.example/v1',
           }),
@@ -1852,6 +1868,16 @@ describe('ai helpers', () => {
           quality: 5,
         }),
       );
+    });
+
+    it('builds OpenRouter provider preferences only for OpenRouter endpoints', () => {
+      expect(getOpenRouterModelKwargs('https://openrouter.ai/api/v1')).toEqual({
+        provider: {
+          ignore: ['azure'],
+        },
+      });
+
+      expect(getOpenRouterModelKwargs('https://api.openai.com/v1')).toEqual({});
     });
 
     it('extracts JSON from array text response and parses numeric strings', async () => {

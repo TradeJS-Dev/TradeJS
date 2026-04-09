@@ -168,6 +168,7 @@ const buildTrendlineContext = (signal: {
 
   return {
     ...structural,
+    entryTiming,
     coinMaFast,
     coinMaSlow,
     coinMaBias,
@@ -542,6 +543,7 @@ export const trendLineAiAdapter: StrategyAiAdapter = {
 - trendline.compressedCleanBreak=${String(trendlineContext.compressedCleanBreak)}
 - trendline.weakBtcLedBreak=${String(trendlineContext.weakBtcLedBreak)}
 - trendline.weakLongFarBreak=${String(trendlineContext.weakLongFarBreak)}
+- trendline.entryTiming=${trendlineContext.entryTiming ?? 'n/a'}
 - trendline.deterministicQuality=${String(trendlineContext.deterministicQuality)}
 - trendline.maxAllowedQuality=${String(trendlineContext.maxAllowedQuality)}
 - trendline.approvalAllowedNow=${String(trendlineContext.approvalAllowedNow)}
