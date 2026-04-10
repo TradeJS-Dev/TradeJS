@@ -51,3 +51,4 @@ error.log*
 # python cache
 __pycache__/
 *.py[cod]
+.codex-tmp/

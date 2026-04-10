@@ -20,7 +20,6 @@ import {
   calculateStatsFull,
   createTestSuite,
   mergeConfigs,
-  sortBestTests,
 } from '@tradejs/core/backtest';
 import { toJson } from '@tradejs/core/data';
 import {
@@ -143,6 +142,9 @@ const errorMessages: ErrorMessage[] = [];
 let results: TestWorkerResult[] = [];
 const resultsByTickers = new Map<string, TestWorkerResult>();
 const resultArtifactsByTestName = new Map<string, TestResultArtifacts>();
+const artifactRefCountsByTestName = new Map<string, number>();
+const bestTickerTestNameBySymbol = new Map<string, string>();
+let topResultNames = new Set<string>();
 
 const userName = flags.user;
 const runStartedAt = Date.now();
@@ -160,6 +162,8 @@ const createTimestamp = (date: Date) => format(date, 'yyyyMMddHHmm');
 
 const isGoodTest = (result: TestWorkerResult) =>
   result.stat?.orders > 5 && result.stat?.profit > 10;
+
+const getResultAmount = (result: TestWorkerResult) => result.stat.amount ?? 0;
 
 const recordError = (error: ErrorMessage) => {
   errorMessages.push(error);
@@ -183,16 +187,121 @@ const getInlineArtifacts = (
   };
 };
 
-const pruneResultArtifacts = () => {
-  const activeTestNames = new Set<string>([
-    ...results.map((result) => result.test.name),
-    ...Array.from(resultsByTickers.values(), (result) => result.test.name),
-  ]);
+const retainArtifacts = (
+  testName: string,
+  artifacts?: TestResultArtifacts | null,
+) => {
+  if (artifacts) {
+    resultArtifactsByTestName.set(testName, artifacts);
+  }
+  artifactRefCountsByTestName.set(
+    testName,
+    (artifactRefCountsByTestName.get(testName) ?? 0) + 1,
+  );
+};
 
-  for (const testName of resultArtifactsByTestName.keys()) {
-    if (!activeTestNames.has(testName)) {
-      resultArtifactsByTestName.delete(testName);
+const releaseArtifacts = (testName: string) => {
+  const nextCount = (artifactRefCountsByTestName.get(testName) ?? 0) - 1;
+  if (nextCount <= 0) {
+    artifactRefCountsByTestName.delete(testName);
+    resultArtifactsByTestName.delete(testName);
+    return;
+  }
+
+  artifactRefCountsByTestName.set(testName, nextCount);
+};
+
+const insertTopResult = (
+  currentResults: TestWorkerResult[],
+  nextResult: TestWorkerResult,
+  limit: number,
+) => {
+  if (limit <= 0) {
+    return {
+      results: [] as TestWorkerResult[],
+      added: false,
+    };
+  }
+
+  const nextResults = [...currentResults];
+  const nextAmount = getResultAmount(nextResult);
+  let insertIndex = nextResults.length;
+
+  for (let index = 0; index < nextResults.length; index += 1) {
+    if (nextAmount > getResultAmount(nextResults[index])) {
+      insertIndex = index;
+      break;
     }
+  }
+
+  if (insertIndex === nextResults.length && nextResults.length >= limit) {
+    return {
+      results: currentResults,
+      added: false,
+    };
+  }
+
+  nextResults.splice(insertIndex, 0, nextResult);
+  if (nextResults.length > limit) {
+    nextResults.length = limit;
+  }
+
+  return {
+    results: nextResults,
+    added: nextResults.some(
+      (candidate) => candidate.test.name === nextResult.test.name,
+    ),
+  };
+};
+
+const updateTopResults = (
+  nextResults: TestWorkerResult[],
+  nextResult: TestWorkerResult,
+  artifacts?: TestResultArtifacts | null,
+) => {
+  const previousTopNames = topResultNames;
+  const nextTopNames = new Set(nextResults.map((result) => result.test.name));
+
+  if (
+    artifacts &&
+    !previousTopNames.has(nextResult.test.name) &&
+    nextTopNames.has(nextResult.test.name)
+  ) {
+    retainArtifacts(nextResult.test.name, artifacts);
+  }
+
+  for (const testName of previousTopNames) {
+    if (!nextTopNames.has(testName)) {
+      releaseArtifacts(testName);
+    }
+  }
+
+  results = nextResults;
+  topResultNames = nextTopNames;
+};
+
+const updateBestTickerResult = (
+  result: TestWorkerResult,
+  artifacts?: TestResultArtifacts | null,
+) => {
+  if (!isGoodTest(result)) {
+    return;
+  }
+
+  const previousResult = resultsByTickers.get(result.test.symbol);
+  if (previousResult && previousResult.stat.profit >= result.stat.profit) {
+    return;
+  }
+
+  const previousTestName = bestTickerTestNameBySymbol.get(result.test.symbol);
+  if (previousTestName) {
+    releaseArtifacts(previousTestName);
+  }
+
+  resultsByTickers.set(result.test.symbol, result);
+  bestTickerTestNameBySymbol.set(result.test.symbol, result.test.name);
+  if (artifacts) {
+    retainArtifacts(result.test.name, artifacts);
   }
 };
 
@@ -429,7 +538,6 @@ const backtest = async () => {
 
         if (completedWorkers === chunks.length && !isFinishing) {
           isFinishing = true;
-          results = sortBestTests(results, flags.top);
           await finish();
         }
 
@@ -459,25 +567,12 @@ const backtest = async () => {
       const result = stripInlineLogs(fullResult);
       const inlineArtifacts = getInlineArtifacts(fullResult);
 
-      results = sortBestTests([...results, result], flags.top);
-      if (results.some((candidate) => candidate.test.name === result.test.name)) {
-        if (inlineArtifacts) {
-          resultArtifactsByTestName.set(result.test.name, inlineArtifacts);
-        }
+      const nextTopResults = insertTopResult(results, result, flags.top);
+      if (nextTopResults.added || results !== nextTopResults.results) {
+        updateTopResults(nextTopResults.results, result, inlineArtifacts);
       }
 
-      if (isGoodTest(result)) {
-        const prevValue = resultsByTickers.get(result.test.symbol);
-
-        if (!prevValue || prevValue.stat.profit < result.stat.profit) {
-          resultsByTickers.set(result.test.symbol, result);
-          if (inlineArtifacts) {
-            resultArtifactsByTestName.set(result.test.name, inlineArtifacts);
-          }
-        }
-      }
-
-      pruneResultArtifacts();
+      updateBestTickerResult(result, inlineArtifacts);
 
       if (
         completedTests % progressStep === 0 ||
