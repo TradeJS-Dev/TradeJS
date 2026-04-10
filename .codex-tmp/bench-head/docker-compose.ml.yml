@@ -1,0 +1,22 @@
+services:
+  ml:
+    build:
+      context: .
+      dockerfile: Dockerfile.ml
+    volumes:
+      - ./packages/ml/python:/app/ml
+      - ./data:/app/data
+    mem_limit: 24g
+    shm_size: 2g
+    working_dir: /app
+    command: ["python", "/app/ml/train.py", "--help"]
+
+  ml-profile:
+    build:
+      context: .
+      dockerfile: Dockerfile.ml.profile
+    volumes:
+      - ./packages/ml/python:/app/ml
+      - ./data:/app/data
+    working_dir: /app
+    command: ["python", "/app/ml/profile.py", "--help"]

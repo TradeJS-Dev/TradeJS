@@ -1,0 +1,92 @@
+{
+  "name": "@tradejs/node",
+  "version": "1.0.5",
+  "description": "Node-only runtime for the TradeJS open-source framework: strategies, backtests, Pine loading, and plugin registries.",
+  "keywords": [
+    "tradejs",
+    "trading",
+    "backtesting",
+    "node",
+    "runtime",
+    "strategy",
+    "pine-script"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tradejs-dev/tradejs.git",
+    "directory": "packages/node"
+  },
+  "bugs": {
+    "url": "https://github.com/tradejs-dev/tradejs/issues"
+  },
+  "files": [
+    "dist"
+  ],
+  "exports": {
+    "./ai": {
+      "types": "./dist/ai.d.ts",
+      "import": "./dist/ai.mjs",
+      "require": "./dist/ai.js"
+    },
+    "./backtest": {
+      "types": "./dist/backtest.d.ts",
+      "import": "./dist/backtest.mjs",
+      "require": "./dist/backtest.js"
+    },
+    "./cli": {
+      "types": "./dist/cli.d.ts",
+      "import": "./dist/cli.mjs",
+      "require": "./dist/cli.js"
+    },
+    "./connectors": {
+      "types": "./dist/connectors.d.ts",
+      "import": "./dist/connectors.mjs",
+      "require": "./dist/connectors.js"
+    },
+    "./constants": {
+      "types": "./dist/constants.d.ts",
+      "import": "./dist/constants.mjs",
+      "require": "./dist/constants.js"
+    },
+    "./pine": {
+      "types": "./dist/pine.d.ts",
+      "import": "./dist/pine.mjs",
+      "require": "./dist/pine.js"
+    },
+    "./registry": {
+      "types": "./dist/registry.d.ts",
+      "import": "./dist/registry.mjs",
+      "require": "./dist/registry.js"
+    },
+    "./strategies": {
+      "types": "./dist/strategies.d.ts",
+      "import": "./dist/strategies.mjs",
+      "require": "./dist/strategies.js"
+    }
+  },
+  "dependencies": {
+    "@langchain/core": "^0.3.68",
+    "@langchain/openai": "^0.6.11",
+    "@tradejs/core": "workspace:^",
+    "@tradejs/infra": "workspace:^",
+    "@tradejs/types": "workspace:^",
+    "chalk": "4.1.2",
+    "ioredis": "5.8.0",
+    "pinets": "0.8.12",
+    "progress": "^2.0.3",
+    "puppeteer": "24.15.0",
+    "ts-node": "^10.9.2",
+    "tsconfig-paths": "^4.2.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "tsup": "^8.5.1",
+    "typescript": "^5.1"
+  },
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc -p ./tsconfig.json --noEmit"
+  },
+  "license": "MIT",
+  "author": "aleksnick (https://github.com/aleksnick)"
+}

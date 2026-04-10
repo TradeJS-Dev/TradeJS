@@ -1,0 +1,12 @@
+data/cache
+data/history
+data/tests
+backtest/*
+**/node_modules
+**/.next
+**/.docusaurus
+**/build
+**/dist
+**/next-env.d.ts
+coverage
+x

@@ -1,0 +1,40 @@
+{
+  "name": "@tradejs/example-sandbox",
+  "version": "1.0.0",
+  "private": true,
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "packageManager": "yarn@4.13.0",
+  "dependencies": {
+    "@tradejs/cli": "^1.0.1",
+    "@tradejs/core": "^1.0.0",
+    "@tradejs/types": "^1.0.0",
+    "ioredis": "5.8.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "@typescript-eslint/eslint-plugin": "^8.57.0",
+    "@typescript-eslint/parser": "^8.57.0",
+    "eslint": "^8.57.1",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.1"
+  },
+  "scripts": {
+    "build": "mkdir -p dist && echo 'example-sandbox: build placeholder' > dist/.build.txt",
+    "lint": "eslint src tradejs.config.ts --ext .ts",
+    "typecheck": "tsc -p ./tsconfig.json --noEmit",
+    "run:ts": "ts-node -P ./tsconfig.json",
+    "run:cli": "PROJECT_CWD=\"$PWD\" tradejs",
+    "infra-up": "yarn run:cli infra-up",
+    "infra-down": "yarn run:cli infra-down",
+    "sandbox:user-add": "yarn run:cli user-add -u sandbox -p sandbox -t sandbox-token",
+    "sandbox:seed-config": "yarn run:ts ./src/scripts/seedBacktestConfig.ts",
+    "sandbox:backtest": "yarn run:ts ./src/scripts/runDeterministicBacktest.ts",
+    "sandbox:assert-backtest": "yarn run:ts ./src/scripts/assertBacktestSnapshot.ts",
+    "sandbox:signals": "yarn run:ts ./src/scripts/runDeterministicSignals.ts",
+    "sandbox:assert-signals": "yarn run:ts ./src/scripts/assertSignalsSnapshot.ts",
+    "e2e": "yarn sandbox:user-add && yarn sandbox:seed-config && yarn sandbox:backtest && yarn sandbox:assert-backtest && yarn sandbox:signals && yarn sandbox:assert-signals"
+  },
+  "license": "MIT",
+  "author": "aleksnick (https://github.com/aleksnick)"
+}

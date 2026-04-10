@@ -3,12 +3,21 @@ import { Test } from '@tradejs/types';
 const mockByBitConnector = {
   kline: jest.fn(),
 };
+const mockByBitConnectorCreator = jest.fn(async () => mockByBitConnector);
 const mockBinanceConnector = {
   kline: jest.fn(),
 };
+const mockBinanceConnectorCreator = jest.fn(async () => mockBinanceConnector);
 const mockCoinbaseConnector = {
   kline: jest.fn(),
 };
+const mockCoinbaseConnectorCreator = jest.fn(async () => mockCoinbaseConnector);
+const mockAlignSortedCandlesByTimestamp = jest.fn(
+  (coin: unknown[], btc: unknown[]) => ({
+    alignedCoinCandles: coin,
+    alignedBtcCandles: btc,
+  }),
+);
 
 const mockTestConnector = {
   checkSl: jest.fn().mockResolvedValue(undefined),
@@ -59,23 +68,21 @@ jest.mock('../connectorsRegistry', () => ({
   },
   getConnectorCreatorByName: async (name: string) => {
     if (name === 'ByBit') {
-      return async () => mockByBitConnector;
+      return mockByBitConnectorCreator;
     }
     if (name === 'Binance') {
-      return async () => mockBinanceConnector;
+      return mockBinanceConnectorCreator;
     }
     if (name === 'Coinbase') {
-      return async () => mockCoinbaseConnector;
+      return mockCoinbaseConnectorCreator;
     }
     return undefined;
   },
 }));
 
 jest.mock('@tradejs/core/indicators', () => ({
-  alignSortedCandlesByTimestamp: (coin: unknown[], btc: unknown[]) => ({
-    alignedCoinCandles: coin,
-    alignedBtcCandles: btc,
-  }),
+  alignSortedCandlesByTimestamp: (coin: unknown[], btc: unknown[]) =>
+    mockAlignSortedCandlesByTimestamp(coin, btc),
 }));
 
 jest.mock('../mlPayload', () => ({
@@ -136,6 +143,10 @@ describe('testing backtest flow', () => {
     mockByBitConnector.kline.mockReset();
     mockBinanceConnector.kline.mockReset();
     mockCoinbaseConnector.kline.mockReset();
+    mockByBitConnectorCreator.mockClear();
+    mockBinanceConnectorCreator.mockClear();
+    mockCoinbaseConnectorCreator.mockClear();
+    mockAlignSortedCandlesByTimestamp.mockClear();
     mockStrategyCreator.mockClear();
     mockStrategy.mockReset();
     mockBuildAiPayload.mockClear();
@@ -383,5 +394,21 @@ describe('testing backtest flow', () => {
     expect(mockByBitConnector.kline).toHaveBeenCalledTimes(6);
     expect(mockBinanceConnector.kline).toHaveBeenCalledTimes(3);
     expect(mockCoinbaseConnector.kline).toHaveBeenCalledTimes(3);
+  });
+
+  it('reuses prepared candle data and connector instances for identical tests', async () => {
+    const data = [candle(1_000_050), candle(1_000_150), candle(1_000_250)];
+    mockByBitConnector.kline.mockResolvedValue(data);
+    mockBinanceConnector.kline.mockResolvedValue(data);
+    mockCoinbaseConnector.kline.mockResolvedValue(data);
+    mockStrategy.mockResolvedValue('HOLD');
+
+    await testing(createTest());
+    await testing(createTest());
+
+    expect(mockByBitConnectorCreator).toHaveBeenCalledTimes(1);
+    expect(mockBinanceConnectorCreator).toHaveBeenCalledTimes(1);
+    expect(mockCoinbaseConnectorCreator).toHaveBeenCalledTimes(1);
+    expect(mockAlignSortedCandlesByTimestamp).toHaveBeenCalledTimes(4);
   });
 });

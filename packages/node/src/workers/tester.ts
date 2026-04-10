@@ -28,11 +28,14 @@ process.on(
             throw new Error('No result');
           }
 
-          const { stat, orderLogId } = testResult;
+          const { stat, orderLogId, inlineOrderLog, inlinePositionLog } =
+            testResult;
 
           process.send?.({
             stat,
             orderLogId,
+            inlineOrderLog,
+            inlinePositionLog,
             test,
           });
         } catch (error) {

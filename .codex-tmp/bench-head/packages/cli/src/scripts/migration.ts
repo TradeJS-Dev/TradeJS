@@ -1,0 +1,60 @@
+import ProgressBar from 'progress';
+import chalk from 'chalk';
+import { logger } from '@tradejs/infra/logger';
+import { getFile, getFiles } from '@tradejs/infra/files';
+import { toRows, upsertCandles } from '@tradejs/infra/timescale';
+import { KlineChartData } from '@tradejs/types';
+
+const DIR = 'data/history';
+const re = /^(.+?)_(\d+)\.json$/; // SYMBOL_INTERVAL.json
+const BATCH = 2000;
+const projectRoot =
+  String(process.env.PROJECT_CWD || process.cwd()).trim() || process.cwd();
+
+const migrateFile = async (file: string) => {
+  const m = re.exec(file);
+  if (!m) return;
+  const symbol = m[1];
+  const interval = Number(m[2]);
+
+  const data = (await getFile(
+    DIR,
+    `${symbol}_${interval}`,
+    [],
+    projectRoot,
+  )) as KlineChartData;
+
+  const rows = toRows(symbol, interval, data);
+
+  for (let i = 0; i < rows.length; i += BATCH) {
+    await upsertCandles(rows.slice(i, i + BATCH));
+  }
+};
+
+const migration = async () => {
+  const files = await getFiles(DIR, projectRoot);
+
+  const bar = new ProgressBar(
+    ':current/:total [:bar][:percent] :eta(s) :file',
+    {
+      total: files.length,
+      width: 30,
+    },
+  );
+
+  for await (const file of files) {
+    try {
+      await migrateFile(file);
+    } catch (e) {
+      logger.error('Failed: %s %s', file, e);
+    } finally {
+      bar.tick(1, {
+        file: chalk.gray(file),
+      });
+    }
+  }
+
+  process.exit();
+};
+
+migration();

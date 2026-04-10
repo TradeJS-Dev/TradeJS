@@ -1,0 +1,106 @@
+{
+  "name": "@tradejs/core",
+  "version": "1.0.5",
+  "description": "Browser-safe public API for the TradeJS open-source framework: config, strategy authoring, indicators, figures, and shared helpers.",
+  "keywords": [
+    "tradejs",
+    "trading",
+    "backtesting",
+    "typescript",
+    "strategy",
+    "indicators",
+    "pine-script"
+  ],
+  "homepage": "https://tradejs.dev",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tradejs-dev/tradejs.git",
+    "directory": "packages/core"
+  },
+  "bugs": {
+    "url": "https://github.com/tradejs-dev/tradejs/issues"
+  },
+  "files": [
+    "dist"
+  ],
+  "exports": {
+    "./api": {
+      "types": "./dist/api.d.ts",
+      "import": "./dist/api.mjs",
+      "require": "./dist/api.js"
+    },
+    "./async": {
+      "types": "./dist/async.d.ts",
+      "import": "./dist/async.mjs",
+      "require": "./dist/async.js"
+    },
+    "./backtest": {
+      "types": "./dist/backtest.d.ts",
+      "import": "./dist/backtest.mjs",
+      "require": "./dist/backtest.js"
+    },
+    "./config": {
+      "types": "./dist/config.d.ts",
+      "import": "./dist/config.mjs",
+      "require": "./dist/config.js"
+    },
+    "./constants": {
+      "types": "./dist/constants.d.ts",
+      "import": "./dist/constants.mjs",
+      "require": "./dist/constants.js"
+    },
+    "./data": {
+      "types": "./dist/data.d.ts",
+      "import": "./dist/data.mjs",
+      "require": "./dist/data.js"
+    },
+    "./figures": {
+      "types": "./dist/figures.d.ts",
+      "import": "./dist/figures.mjs",
+      "require": "./dist/figures.js"
+    },
+    "./indicators": {
+      "types": "./dist/indicators.d.ts",
+      "import": "./dist/indicators.mjs",
+      "require": "./dist/indicators.js"
+    },
+    "./math": {
+      "types": "./dist/math.d.ts",
+      "import": "./dist/math.mjs",
+      "require": "./dist/math.js"
+    },
+    "./strategies": {
+      "types": "./dist/strategies.d.ts",
+      "import": "./dist/strategies.mjs",
+      "require": "./dist/strategies.js"
+    },
+    "./tickers": {
+      "types": "./dist/tickers.d.ts",
+      "import": "./dist/tickers.mjs",
+      "require": "./dist/tickers.js"
+    },
+    "./time": {
+      "types": "./dist/time.d.ts",
+      "import": "./dist/time.mjs",
+      "require": "./dist/time.js"
+    }
+  },
+  "dependencies": {
+    "@tradejs/types": "workspace:^",
+    "date-fns": "^3.3.1",
+    "klinecharts": "10.0.0-alpha9",
+    "lodash": "^4.17.21",
+    "technicalindicators": "^3.1.0",
+    "uuid": "11.1.0"
+  },
+  "devDependencies": {
+    "tsup": "^8.5.1",
+    "typescript": "^5.1"
+  },
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc -p ./tsconfig.json --noEmit"
+  },
+  "license": "MIT",
+  "author": "aleksnick (https://github.com/aleksnick)"
+}

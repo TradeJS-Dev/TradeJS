@@ -1,0 +1,50 @@
+{
+  "name": "@tradejs/base",
+  "version": "1.0.5",
+  "description": "Default preset for the TradeJS open-source framework, wiring the built-in strategies, indicators, and connectors.",
+  "keywords": [
+    "tradejs",
+    "trading",
+    "backtesting",
+    "preset",
+    "starter",
+    "plugins"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tradejs-dev/tradejs.git",
+    "directory": "packages/base"
+  },
+  "bugs": {
+    "url": "https://github.com/tradejs-dev/tradejs/issues"
+  },
+  "main": "dist/index.js",
+  "module": "dist/index.mjs",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    }
+  },
+  "dependencies": {
+    "@tradejs/connectors": "workspace:^",
+    "@tradejs/core": "workspace:^",
+    "@tradejs/indicators": "workspace:^",
+    "@tradejs/strategies": "workspace:^"
+  },
+  "devDependencies": {
+    "tsup": "^8.5.1",
+    "typescript": "^5.1"
+  },
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc -p ./tsconfig.json --noEmit"
+  },
+  "license": "MIT",
+  "author": "aleksnick (https://github.com/aleksnick)"
+}

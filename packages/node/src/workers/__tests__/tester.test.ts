@@ -64,17 +64,23 @@ describe('worker tester', () => {
     const testingImpl = jest.fn(async () => ({
       stat: { amount: 100, profit: 0, orders: 1 },
       orderLogId: 'log-1',
+      inlineOrderLog: [{ index: 0 }],
+      inlinePositionLog: [{ direction: 'LONG' }],
     }));
 
     await setup({ suite: [test], testingImpl });
 
     await messageHandler?.({ chunkId: 'chunk-1', userName: 'alice' });
 
-    expect(send).toHaveBeenCalledWith({
-      stat: { amount: 100, profit: 0, orders: 1 },
-      orderLogId: 'log-1',
-      test,
-    });
+    expect(send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        stat: { amount: 100, profit: 0, orders: 1 },
+        orderLogId: 'log-1',
+        inlineOrderLog: [{ index: 0 }],
+        inlinePositionLog: [{ direction: 'LONG' }],
+        test,
+      }),
+    );
     expect(send).toHaveBeenCalledWith({ done: true });
     expect(process.disconnect).toHaveBeenCalled();
     expect(process.exit).toHaveBeenCalledWith(0);

@@ -1,5 +1,4 @@
 import { randomUUID } from 'node:crypto';
-import _ from 'lodash';
 import {
   Candle,
   Sl,
@@ -10,9 +9,7 @@ import {
   PositionLogData,
   TestConnectorCreator,
 } from '@tradejs/types';
-import { TTL_1D } from '@tradejs/core/constants';
 import { round } from '@tradejs/core/math';
-import { redisKeys, setData } from '@tradejs/infra/redis';
 
 const FEE = 0.005;
 const INITIAL_AMOUNT = 100;
@@ -21,7 +18,6 @@ export const createTestConnector: TestConnectorCreator = (
   connector,
   context,
 ) => {
-  const userName = context?.userName;
   let state = {};
   const orderLog: OrderLogData = [];
   const positionLog: PositionLogData = [];
@@ -43,7 +39,9 @@ export const createTestConnector: TestConnectorCreator = (
     } as OrderLog;
 
     if (nextEntry.signal) {
-      nextEntry.signal = _.omit(nextEntry.signal, 'indicators') as any;
+      const { indicators: _indicators, ...signalWithoutIndicators } =
+        nextEntry.signal as unknown as Record<string, unknown>;
+      nextEntry.signal = signalWithoutIndicators as any;
     }
 
     orderLog.push(nextEntry);
@@ -97,22 +95,6 @@ export const createTestConnector: TestConnectorCreator = (
 
     getResult: async () => {
       const orderLogId = randomUUID().slice(-12);
-      const cacheUserName = userName || 'root';
-
-      await setData(
-        redisKeys.cacheOrders(cacheUserName, orderLogId),
-        orderLog,
-        {
-          expire: TTL_1D,
-        },
-      );
-      await setData(
-        redisKeys.cachePositions(cacheUserName, orderLogId),
-        positionLog,
-        {
-          expire: TTL_1D,
-        },
-      );
 
       return {
         stat: {
@@ -121,13 +103,15 @@ export const createTestConnector: TestConnectorCreator = (
           orders: positionLog.length,
         },
         orderLogId,
+        inlineOrderLog: [...orderLog],
+        inlinePositionLog: [...positionLog],
       };
     },
 
     getPosition: async () => currentPosition || null,
 
     checkTp: async (candle: Candle) => {
-      if (_.isEmpty(candle) || !currentPosition || !currentPosition.qty) {
+      if (!candle || !currentPosition || !currentPosition.qty) {
         return;
       }
 
@@ -176,7 +160,7 @@ export const createTestConnector: TestConnectorCreator = (
     },
 
     checkSl: async (candle: Candle) => {
-      if (!stopLossPrice || !currentPosition || _.isEmpty(candle)) {
+      if (!stopLossPrice || !currentPosition || !candle) {
         return;
       }
 
@@ -237,7 +221,9 @@ export const createTestConnector: TestConnectorCreator = (
         return false;
       }
 
-      takeProfits = _.cloneDeep(nextTakeProfits);
+      takeProfits = Array.isArray(nextTakeProfits)
+        ? nextTakeProfits.map((tp) => ({ ...tp }))
+        : [];
       return true;
     },
 

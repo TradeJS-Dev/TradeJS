@@ -1,0 +1,82 @@
+services:
+  timescale:
+    container_name: inv-timescale
+    image: timescale/timescaledb:latest-pg16
+    platform: linux/amd64
+    environment:
+      - POSTGRES_USER=${PG_USER:-app}
+      - POSTGRES_PASSWORD=${PG_PASSWORD:-app}
+      - POSTGRES_DB=${PG_DB:-app}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${PG_USER:-app} -d ${PG_DB:-app}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+    networks:
+      - web
+
+  redis:
+    image: redis/redis-stack:latest
+    container_name: inv-redis
+    stop_grace_period: 2m
+    ports:
+      - "6379:6379"
+      - "5540:8001"
+    volumes:
+      - redisdata:/data
+    restart: unless-stopped
+    networks:
+      - web
+
+  ml-infer:
+    build:
+      context: .
+      dockerfile: Dockerfile.infer
+    container_name: ml-infer
+    restart: unless-stopped
+    environment:
+      MODEL_DIR: /app/data/ml/models
+      DEFAULT_STRATEGY: TrendLine
+      ML_GRPC_HOST: 0.0.0.0
+      ML_GRPC_PORT: 50051
+    ports:
+      - "50051:50051"
+    volumes:
+      - ./packages/ml/python:/app/ml
+      - ./data:/app/data
+      - ./proto:/app/proto
+    networks:
+      - web
+
+  # ---------- ВЕБ-АДМИНКИ ----------
+  pgadmin:
+    image: dpage/pgadmin4
+    container_name: inv-pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@example.com}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-admin}
+      PGADMIN_LISTEN_PORT: "5050"
+    ports:
+      - "5050:5050"
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    depends_on:
+      - timescale
+    restart: unless-stopped
+    networks:
+      - web
+
+
+networks:
+  web:
+    driver: bridge
+
+volumes:
+  pgdata:
+  pgadmin_data:
+  redisdata:

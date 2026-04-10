@@ -1,0 +1,160 @@
+# .github/workflows/deploy.yml
+
+name: Deploy
+on:
+  push:
+    branches:
+      - stable
+    tags:
+      - v**
+  workflow_dispatch:
+
+jobs:
+  repo-checks:
+    if: ${{ github.event.act || github.repository == 'tradejs-dev/tradejs' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+
+      - name: Enable Corepack
+        run: |
+          corepack enable
+          corepack prepare yarn@4.13.0 --activate
+          yarn --version
+
+      - name: Install Dependencies
+        run: yarn install --immutable
+
+      - name: Build
+        run: yarn build
+
+      - name: Lint
+        run: yarn lint
+
+      - name: Typecheck
+        run: yarn typecheck
+
+      - name: Unit Tests
+        run: yarn unit
+
+  sandbox-e2e:
+    needs: repo-checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+
+      - name: Enable Corepack
+        run: |
+          corepack enable
+          corepack prepare yarn@4.13.0 --activate
+          yarn --version
+
+      - name: Install Dependencies
+        run: yarn install --immutable
+
+      - name: Prepare Sandbox Env
+        run: cp examples/sandbox/.env.example examples/sandbox/.env
+
+      - name: Install Sandbox Dependencies
+        run: yarn sandbox:install
+
+      - name: Sandbox Infra Up
+        run: cd examples/sandbox && yarn infra-up
+
+      - name: Sandbox Deterministic E2E
+        run: cd examples/sandbox && yarn e2e
+
+      - name: Sandbox Infra Down
+        if: always()
+        run: cd examples/sandbox && yarn infra-down
+
+  deploy:
+    needs: sandbox-e2e
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Install Docker Compose
+        run: |
+          sudo curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+          sudo chmod +x /usr/local/bin/docker-compose
+
+      - name: Env file
+        run: |
+          echo "
+          PORT=3000
+          NODE_ENV=production
+          APP_URL=https://app.tradejs.dev
+          NEXTAUTH_SECRET=${{ secrets.NEXTAUTH_SECRET }}
+          NEXTAUTH_URL=https://app.tradejs.dev
+          PUPPETEER_SKIP_DOWNLOAD=true
+          PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
+          REDIS_HOST=redis
+          REDIS_PORT=6379
+          ML_GRPC_ADDRESS=ml-infer:50051
+          PG_HOST=timescale
+          PG_PORT=5432
+          PG_USER=app
+          PG_PASSWORD=app
+          PG_DATABASE=app
+          " > .env
+
+      - name: Docker login to GHCR
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io --username ${{ github.actor }} --password-stdin
+
+      - name: Build Docker images
+        run: |
+          docker-compose -f docker-compose.prod.yml build --pull app
+          docker-compose -f docker-compose.prod.yml build --pull --no-cache ml-infer
+  
+      - name: Push Docker images
+        run: |
+          docker-compose -f docker-compose.prod.yml push app ml-infer
+
+      - name: Copy compose and configs to server
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          source: ".env,docker-compose.prod.yml,nginx,sql,certbot,init-cert.sh"
+          target: ~/
+
+      - name: Deploy on server
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          script: |
+            cd ~/
+            docker image prune -a -f
+            docker compose -f docker-compose.prod.yml pull
+            systemctl stop nginx
+            systemctl disable nginx
+            docker compose -f docker-compose.prod.yml up -d --remove-orphans
+            docker compose -f docker-compose.prod.yml up -d --force-recreate ml-infer
+            docker restart nginx
+            chmod 777 ./data

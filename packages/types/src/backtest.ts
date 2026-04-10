@@ -83,6 +83,8 @@ export interface MinimalStat {
 export interface TestingBoxResult {
   orderLogId: string;
   stat: MinimalStat;
+  inlineOrderLog?: OrderLogData;
+  inlinePositionLog?: PositionLogData;
 }
 
 export type TestingBox = (test: Test) => Promise<TestingBoxResult | null>;

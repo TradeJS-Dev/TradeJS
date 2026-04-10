@@ -1,0 +1,49 @@
+'use client';
+
+import _ from 'lodash';
+import { SelectWithSearch } from '@UI';
+import { SkeletonText, Stack, Show } from '@chakra-ui/react';
+import { useFiltersContext } from '../context';
+
+interface SelectSymbolProps {}
+
+export const SelectSymbol = ({}: SelectSymbolProps) => {
+  const { filters, tickers, onChangeFilters } = useFiltersContext();
+  const loading = _.isEmpty(tickers);
+  const defaultInputValue =
+    tickers.find(({ value }) => value === filters.symbol)?.label ||
+    filters.symbol;
+
+  const onChange = (value: string[]) => {
+    if (_.isEmpty(value)) {
+      return;
+    }
+
+    const newFilters = {
+      symbol: value[0],
+      backtestId: null,
+      backtestStrategy: null,
+    };
+
+    onChangeFilters?.(newFilters);
+  };
+
+  return (
+    <Show
+      when={!loading}
+      fallback={
+        <Stack width="240px">
+          <SkeletonText height={8} noOfLines={1} />
+        </Stack>
+      }
+    >
+      <SelectWithSearch
+        defaultValue={[filters.symbol]}
+        defaultInputValue={defaultInputValue}
+        onChange={onChange}
+        items={tickers}
+        width="240px"
+      />
+    </Show>
+  );
+};

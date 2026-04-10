@@ -1,0 +1,216 @@
+import bcrypt from 'bcryptjs';
+import { NextResponse } from 'next/server';
+import {
+  getUserSettings,
+  updateUserRecord,
+  type UserRecord,
+  type UserSettings,
+} from '@tradejs/infra/userSettings';
+import { getCurrentUserName } from '@app/lib/currentUser';
+
+export const dynamic = 'force-dynamic';
+
+type UpdateBody =
+  | {
+      section: 'bybit';
+      data?: {
+        apiKey?: string;
+        apiSecret?: string;
+      };
+    }
+  | {
+      section: 'token';
+      data?: {
+        token?: string;
+      };
+    }
+  | {
+      section: 'coinalyze';
+      data?: {
+        apiKey?: string;
+      };
+    }
+  | {
+      section: 'openai';
+      data?: {
+        apiKey?: string;
+        apiEndpoint?: string;
+      };
+    }
+  | {
+      section: 'telegram';
+      data?: {
+        botToken?: string;
+        chatId?: string;
+      };
+    }
+  | {
+      section: 'password';
+      data?: {
+        password?: string;
+        confirmPassword?: string;
+      };
+    };
+
+const cleanText = (value: unknown): string =>
+  typeof value === 'string' ? value.trim() : '';
+
+const cleanOptionalText = (value: unknown): string | undefined => {
+  if (typeof value !== 'string') {
+    return undefined;
+  }
+
+  const trimmed = value.trim();
+  return trimmed ? trimmed : undefined;
+};
+
+const maskSecret = (value: string) => {
+  const trimmed = cleanText(value);
+  if (!trimmed) {
+    return '';
+  }
+
+  return `${'*'.repeat(12)}${trimmed.slice(-4) || trimmed}`;
+};
+
+const toResponse = (settings: UserSettings) => ({
+  userName: settings.userName,
+  settings: {
+    bybit: {
+      apiKey: maskSecret(settings.BYBIT_API_KEY),
+      apiSecret: maskSecret(settings.BYBIT_API_SECRET),
+    },
+    token: maskSecret(settings.token),
+    coinalyze: {
+      apiKey: maskSecret(settings.COINALYZE_API_KEY),
+    },
+    openai: {
+      apiKey: maskSecret(settings.OPENAI_API_KEY),
+      apiEndpoint: settings.OPENAI_API_ENDPOINT,
+    },
+    telegram: {
+      botToken: maskSecret(settings.TG_BOT_TOKEN),
+      chatId: settings.TG_CHAT_ID,
+    },
+  },
+});
+
+const hasKeys = (patch: Partial<UserRecord>) => Object.keys(patch).length > 0;
+
+export const GET = async () => {
+  const userName = await getCurrentUserName();
+  if (!userName) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  const settings = await getUserSettings(userName);
+  return NextResponse.json(toResponse(settings));
+};
+
+export const PATCH = async (request: Request) => {
+  const userName = await getCurrentUserName();
+  if (!userName) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  const body = (await request.json()) as UpdateBody | null;
+  if (!body || typeof body !== 'object' || !('section' in body)) {
+    return NextResponse.json({ error: 'Invalid payload' }, { status: 400 });
+  }
+
+  if (body.section === 'password') {
+    const password = String(body.data?.password || '');
+    const confirmPassword = String(body.data?.confirmPassword || '');
+
+    if (!password) {
+      return NextResponse.json(
+        { error: 'Password is required' },
+        { status: 400 },
+      );
+    }
+
+    if (password !== confirmPassword) {
+      return NextResponse.json(
+        { error: 'Password confirmation does not match' },
+        { status: 400 },
+      );
+    }
+
+    const passwordHash = await bcrypt.hash(password, 10);
+    await updateUserRecord(userName, { passwordHash });
+    const settings = await getUserSettings(userName);
+    return NextResponse.json(toResponse(settings));
+  }
+
+  if (body.section === 'bybit') {
+    const patch: Partial<UserRecord> = {};
+    const apiKey = cleanOptionalText(body.data?.apiKey);
+    const apiSecret = cleanOptionalText(body.data?.apiSecret);
+
+    if (apiKey) {
+      patch.BYBIT_API_KEY = apiKey;
+    }
+
+    if (apiSecret) {
+      patch.BYBIT_API_SECRET = apiSecret;
+    }
+
+    if (hasKeys(patch)) {
+      await updateUserRecord(userName, patch);
+    }
+  }
+
+  if (body.section === 'token') {
+    const token = cleanOptionalText(body.data?.token);
+
+    if (token) {
+      await updateUserRecord(userName, { token });
+    }
+  }
+
+  if (body.section === 'coinalyze') {
+    const apiKey = cleanOptionalText(body.data?.apiKey);
+
+    if (apiKey) {
+      await updateUserRecord(userName, { COINALYZE_API_KEY: apiKey });
+    }
+  }
+
+  if (body.section === 'openai') {
+    const patch: Partial<UserRecord> = {};
+    const apiKey = cleanOptionalText(body.data?.apiKey);
+    const apiEndpoint = cleanOptionalText(body.data?.apiEndpoint);
+
+    if (apiKey) {
+      patch.OPENAI_API_KEY = apiKey;
+    }
+
+    if (apiEndpoint) {
+      patch.OPENAI_API_ENDPOINT = apiEndpoint;
+    }
+
+    if (hasKeys(patch)) {
+      await updateUserRecord(userName, patch);
+    }
+  }
+
+  if (body.section === 'telegram') {
+    const patch: Partial<UserRecord> = {};
+    const botToken = cleanOptionalText(body.data?.botToken);
+
+    if (botToken) {
+      patch.TG_BOT_TOKEN = botToken;
+    }
+
+    if (body.data && 'chatId' in body.data) {
+      patch.TG_CHAT_ID = cleanText(body.data.chatId);
+    }
+
+    if (hasKeys(patch)) {
+      await updateUserRecord(userName, patch);
+    }
+  }
+
+  const settings = await getUserSettings(userName);
+  return NextResponse.json(toResponse(settings));
+};

@@ -1,6 +1,7 @@
 import {
   AiDatasetRow,
   Candle,
+  Connector,
   ConnectorCreator,
   KlineChartData,
   Signal,
@@ -33,6 +34,17 @@ type TestingKlineCacheState = {
   btcKlineCache: Map<string, KlineChartData>;
   btcBinanceKlineCache: Map<string, KlineChartData>;
   btcCoinbaseKlineCache: Map<string, KlineChartData>;
+  preparedDataCache: Map<string, PreparedTestingData>;
+  connectorCache: Map<string, Connector>;
+};
+
+type PreparedTestingData = {
+  prevData: KlineChartData;
+  btcPrevData: KlineChartData;
+  testData: KlineChartData;
+  btcTestData: KlineChartData;
+  btcBinancePrevData: KlineChartData;
+  btcCoinbasePrevData: KlineChartData;
 };
 
 const createTestingKlineCacheState = (): TestingKlineCacheState => ({
@@ -40,6 +52,8 @@ const createTestingKlineCacheState = (): TestingKlineCacheState => ({
   btcKlineCache: new Map<string, KlineChartData>(),
   btcBinanceKlineCache: new Map<string, KlineChartData>(),
   btcCoinbaseKlineCache: new Map<string, KlineChartData>(),
+  preparedDataCache: new Map<string, PreparedTestingData>(),
+  connectorCache: new Map<string, Connector>(),
 });
 
 const testingKlineCacheStateByProjectRoot = new Map<
@@ -86,6 +100,95 @@ const getKlineCacheKey = (params: {
   ].join(':');
 };
 
+const getPreparedDataCacheKey = (params: {
+  userName: string;
+  connectorName: string;
+  symbol: string;
+  start: number;
+  end: number;
+  interval: string;
+  btcBinanceConnectorName: string;
+  btcCoinbaseConnectorName: string;
+}) => {
+  const {
+    userName,
+    connectorName,
+    symbol,
+    start,
+    end,
+    interval,
+    btcBinanceConnectorName,
+    btcCoinbaseConnectorName,
+  } = params;
+
+  return [
+    userName,
+    connectorName,
+    symbol,
+    start,
+    end,
+    interval,
+    btcBinanceConnectorName,
+    btcCoinbaseConnectorName,
+  ].join(':');
+};
+
+const getConnectorCacheKey = (params: {
+  userName: string;
+  connectorName: string;
+}) => [params.userName, params.connectorName].join(':');
+
+const splitCandlesForTesting = (
+  candles: KlineChartData,
+  start: number,
+): {
+  prevData: KlineChartData;
+  testData: KlineChartData;
+} => {
+  const prevData: KlineChartData = [];
+  const testData: KlineChartData = [];
+
+  for (const candle of candles) {
+    if (candle.timestamp < preloadStart) continue;
+    if (candle.timestamp < start) {
+      prevData.push(candle);
+    } else {
+      testData.push(candle);
+    }
+  }
+
+  return { prevData, testData };
+};
+
+const getCachedConnector = async (params: {
+  state: TestingKlineCacheState;
+  projectRoot: string;
+  userName: string;
+  connectorName: string;
+}): Promise<Connector | undefined> => {
+  const { state, projectRoot, userName, connectorName } = params;
+  const cacheKey = getConnectorCacheKey({ userName, connectorName });
+  const cachedConnector = state.connectorCache.get(cacheKey);
+  if (cachedConnector) {
+    return cachedConnector;
+  }
+
+  const connectorCreator = await getConnectorCreatorByName(
+    connectorName,
+    projectRoot,
+  );
+  if (!connectorCreator) {
+    return undefined;
+  }
+
+  const connector = await (connectorCreator as ConnectorCreator)({
+    userName,
+  });
+  state.connectorCache.set(cacheKey, connector);
+
+  return connector;
+};
+
 export const resetTestingKlineCache = (cwd?: string) => {
   const normalizedCwd = String(cwd ?? '').trim();
   if (!normalizedCwd) {
@@ -119,29 +222,32 @@ export const testing: TestingBox = async ({
 
   const { projectRoot, state } = getTestingKlineCacheState();
 
-  const connectorCreator = await getConnectorCreatorByName(
-    connectorName,
+  const connector = await getCachedConnector({
+    state,
     projectRoot,
-  );
-  if (!connectorCreator) {
+    userName,
+    connectorName,
+  });
+  if (!connector) {
     throw new Error(`Unknown connector: ${connectorName}`);
   }
-  const connector = await (connectorCreator as ConnectorCreator)({
-    userName,
-  });
   const strategyCreator = await getStrategyCreator(strategyName, projectRoot);
   if (!strategyCreator) {
     throw new Error(`Unknown strategy: ${strategyName}`);
   }
-  const binanceCreator = await getConnectorCreatorByName(
-    BUILTIN_CONNECTOR_NAMES.Binance,
+  const binanceConnector = await getCachedConnector({
+    state,
     projectRoot,
-  );
-  const coinbaseCreator = await getConnectorCreatorByName(
-    BUILTIN_CONNECTOR_NAMES.Coinbase,
+    userName,
+    connectorName: BUILTIN_CONNECTOR_NAMES.Binance,
+  });
+  const coinbaseConnector = await getCachedConnector({
+    state,
     projectRoot,
-  );
-  if (!binanceCreator || !coinbaseCreator) {
+    userName,
+    connectorName: BUILTIN_CONNECTOR_NAMES.Coinbase,
+  });
+  if (!binanceConnector || !coinbaseConnector) {
     logger.warn(
       'Binance/Coinbase connectors are unavailable. Reusing %s for BTC references.',
       connectorName,
@@ -166,14 +272,18 @@ export const testing: TestingBox = async ({
     interval,
     cacheOnly,
   });
+  const btcBinanceConnectorName = binanceConnector
+    ? BUILTIN_CONNECTOR_NAMES.Binance
+    : connectorName;
+  const btcCoinbaseConnectorName = coinbaseConnector
+    ? BUILTIN_CONNECTOR_NAMES.Coinbase
+    : connectorName;
 
   const cachedCoinData = state.coinKlineCache.get(coinCacheKey);
   const cachedBtcData = state.btcKlineCache.get(btcCacheKey);
   const btcBinanceCacheKey = getKlineCacheKey({
     userName,
-    connectorName: binanceCreator
-      ? BUILTIN_CONNECTOR_NAMES.Binance
-      : connectorName,
+    connectorName: btcBinanceConnectorName,
     symbol: 'BTCUSDT',
     end,
     interval,
@@ -181,9 +291,7 @@ export const testing: TestingBox = async ({
   });
   const btcCoinbaseCacheKey = getKlineCacheKey({
     userName,
-    connectorName: coinbaseCreator
-      ? BUILTIN_CONNECTOR_NAMES.Coinbase
-      : connectorName,
+    connectorName: btcCoinbaseConnectorName,
     symbol: 'BTCUSDT',
     end,
     interval,
@@ -193,33 +301,35 @@ export const testing: TestingBox = async ({
     state.btcBinanceKlineCache.get(btcBinanceCacheKey);
   const cachedBtcCoinbaseData =
     state.btcCoinbaseKlineCache.get(btcCoinbaseCacheKey);
+  const preparedDataCacheKey = getPreparedDataCacheKey({
+    userName,
+    connectorName,
+    symbol,
+    start,
+    end,
+    interval,
+    btcBinanceConnectorName,
+    btcCoinbaseConnectorName,
+  });
 
-  const [data, btcData, btcBinanceData, btcCoinbaseData] = await Promise.all([
-    cachedCoinData
-      ? Promise.resolve(cachedCoinData)
-      : connector.kline({
-          symbol,
-          start: preloadStart,
-          end,
-          interval,
-          silent: true,
-          cacheOnly,
-        }),
-    cachedBtcData
-      ? Promise.resolve(cachedBtcData)
-      : connector.kline({
-          symbol: 'BTCUSDT',
-          start: preloadStart,
-          end,
-          interval,
-          silent: true,
-          cacheOnly,
-        }),
-    cachedBtcBinanceData
-      ? Promise.resolve(cachedBtcBinanceData)
-      : binanceCreator
-        ? binanceCreator({ userName }).then((binanceConnector) =>
-            binanceConnector.kline({
+  let preparedData = state.preparedDataCache.get(preparedDataCacheKey);
+
+  if (!preparedData) {
+    const [data, btcData, btcBinanceData, btcCoinbaseData] =
+      await Promise.all([
+        cachedCoinData
+          ? Promise.resolve(cachedCoinData)
+          : connector.kline({
+              symbol,
+              start: preloadStart,
+              end,
+              interval,
+              silent: true,
+              cacheOnly,
+            }),
+        cachedBtcData
+          ? Promise.resolve(cachedBtcData)
+          : connector.kline({
               symbol: 'BTCUSDT',
               start: preloadStart,
               end,
@@ -227,20 +337,9 @@ export const testing: TestingBox = async ({
               silent: true,
               cacheOnly,
             }),
-          )
-        : connector.kline({
-            symbol: 'BTCUSDT',
-            start: preloadStart,
-            end,
-            interval,
-            silent: true,
-            cacheOnly,
-          }),
-    cachedBtcCoinbaseData
-      ? Promise.resolve(cachedBtcCoinbaseData)
-      : coinbaseCreator
-        ? coinbaseCreator({ userName }).then((coinbaseConnector) =>
-            coinbaseConnector.kline({
+        cachedBtcBinanceData
+          ? Promise.resolve(cachedBtcBinanceData)
+          : (binanceConnector ?? connector).kline({
               symbol: 'BTCUSDT',
               start: preloadStart,
               end,
@@ -248,65 +347,76 @@ export const testing: TestingBox = async ({
               silent: true,
               cacheOnly,
             }),
-          )
-        : connector.kline({
-            symbol: 'BTCUSDT',
-            start: preloadStart,
-            end,
-            interval,
-            silent: true,
-            cacheOnly,
-          }),
-  ]);
+        cachedBtcCoinbaseData
+          ? Promise.resolve(cachedBtcCoinbaseData)
+          : (coinbaseConnector ?? connector).kline({
+              symbol: 'BTCUSDT',
+              start: preloadStart,
+              end,
+              interval,
+              silent: true,
+              cacheOnly,
+            }),
+      ]);
 
-  if (!cachedCoinData) {
-    state.coinKlineCache.set(coinCacheKey, data);
-  }
-  if (!cachedBtcData) {
-    state.btcKlineCache.set(btcCacheKey, btcData);
-  }
-  if (!cachedBtcBinanceData) {
-    state.btcBinanceKlineCache.set(btcBinanceCacheKey, btcBinanceData);
-  }
-  if (!cachedBtcCoinbaseData) {
-    state.btcCoinbaseKlineCache.set(btcCoinbaseCacheKey, btcCoinbaseData);
-  }
+    if (!cachedCoinData) {
+      state.coinKlineCache.set(coinCacheKey, data);
+    }
+    if (!cachedBtcData) {
+      state.btcKlineCache.set(btcCacheKey, btcData);
+    }
+    if (!cachedBtcBinanceData) {
+      state.btcBinanceKlineCache.set(btcBinanceCacheKey, btcBinanceData);
+    }
+    if (!cachedBtcCoinbaseData) {
+      state.btcCoinbaseKlineCache.set(btcCoinbaseCacheKey, btcCoinbaseData);
+    }
 
-  const prevDataRaw = data.filter(
-    (candle: Candle) =>
-      candle.timestamp >= preloadStart && candle.timestamp < start,
-  );
-  const btcPrevDataRaw = btcData.filter(
-    (candle: Candle) =>
-      candle.timestamp >= preloadStart && candle.timestamp < start,
-  );
-  const testDataRaw = data.filter(
-    (candle: Candle) => candle.timestamp >= start,
-  );
-  const btcTestDataRaw = btcData.filter(
-    (candle: Candle) => candle.timestamp >= start,
-  );
-
-  const { alignedCoinCandles: prevData, alignedBtcCandles: btcPrevData } =
-    alignSortedCandlesByTimestamp(prevDataRaw, btcPrevDataRaw);
-  const { alignedCoinCandles: testData, alignedBtcCandles: btcTestData } =
-    alignSortedCandlesByTimestamp(testDataRaw, btcTestDataRaw);
-  const { alignedBtcCandles: btcBinancePrevData } =
-    alignSortedCandlesByTimestamp(
-      prevDataRaw,
-      btcBinanceData.filter(
-        (candle: Candle) =>
-          candle.timestamp >= preloadStart && candle.timestamp < start,
-      ),
+    const { prevData: prevDataRaw, testData: testDataRaw } =
+      splitCandlesForTesting(data, start);
+    const { prevData: btcPrevDataRaw, testData: btcTestDataRaw } =
+      splitCandlesForTesting(btcData, start);
+    const { prevData: btcBinancePrevDataRaw } = splitCandlesForTesting(
+      btcBinanceData,
+      start,
     );
-  const { alignedBtcCandles: btcCoinbasePrevData } =
-    alignSortedCandlesByTimestamp(
-      prevDataRaw,
-      btcCoinbaseData.filter(
-        (candle: Candle) =>
-          candle.timestamp >= preloadStart && candle.timestamp < start,
-      ),
+    const { prevData: btcCoinbasePrevDataRaw } = splitCandlesForTesting(
+      btcCoinbaseData,
+      start,
     );
+
+    const { alignedCoinCandles: prevData, alignedBtcCandles: btcPrevData } =
+      alignSortedCandlesByTimestamp(prevDataRaw, btcPrevDataRaw);
+    const { alignedCoinCandles: testData, alignedBtcCandles: btcTestData } =
+      alignSortedCandlesByTimestamp(testDataRaw, btcTestDataRaw);
+    const { alignedBtcCandles: btcBinancePrevData } =
+      alignSortedCandlesByTimestamp(prevDataRaw, btcBinancePrevDataRaw);
+    const { alignedBtcCandles: btcCoinbasePrevData } =
+      alignSortedCandlesByTimestamp(prevDataRaw, btcCoinbasePrevDataRaw);
+
+    preparedData = {
+      prevData,
+      btcPrevData,
+      testData,
+      btcTestData,
+      btcBinancePrevData,
+      btcCoinbasePrevData,
+    };
+    state.preparedDataCache.set(preparedDataCacheKey, preparedData);
+  }
+
+  if (!preparedData) {
+    throw new Error('Prepared backtest data not available');
+  }
+
+  const {
+    prevData,
+    btcPrevData,
+    testData,
+    btcTestData,
+    btcBinancePrevData,
+    btcCoinbasePrevData,
+  } = preparedData;
 
   const testConnector = createTestConnector(connector, {
     userName,

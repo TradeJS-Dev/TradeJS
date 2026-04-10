@@ -132,12 +132,17 @@ const HEADERS_RESULTS_BY_TICKERS = [
 ];
 
 type ErrorMessage = { id?: number; error?: unknown; payload?: any };
+type TestResultArtifacts = {
+  orderLog?: OrderLog[];
+  positionLog?: PositionLogData;
+};
 
 let successTests = 0;
 let errorTests = 0;
 const errorMessages: ErrorMessage[] = [];
 let results: TestWorkerResult[] = [];
 const resultsByTickers = new Map<string, TestWorkerResult>();
+const resultArtifactsByTestName = new Map<string, TestResultArtifacts>();
 
 const userName = flags.user;
 const runStartedAt = Date.now();
@@ -153,11 +158,42 @@ const createTable = (headers: string[], rows: string[][]) =>
 
 const createTimestamp = (date: Date) => format(date, 'yyyyMMddHHmm');
 
-const filterGoodTests = (tests: TestWorkerResult[]) =>
-  tests.filter((res) => res.stat?.orders > 5 && res.stat?.profit > 10);
+const isGoodTest = (result: TestWorkerResult) =>
+  result.stat?.orders > 5 && result.stat?.profit > 10;
 
 const recordError = (error: ErrorMessage) => {
   errorMessages.push(error);
+};
+
+const stripInlineLogs = (result: TestWorkerResult): TestWorkerResult => {
+  const { inlineOrderLog, inlinePositionLog, ...resultWithoutLogs } = result;
+  return resultWithoutLogs;
+};
+
+const getInlineArtifacts = (
+  result: TestWorkerResult,
+): TestResultArtifacts | null => {
+  if (!result.inlineOrderLog && !result.inlinePositionLog) {
+    return null;
+  }
+
+  return {
+    orderLog: result.inlineOrderLog,
+    positionLog: result.inlinePositionLog,
+  };
+};
+
+const pruneResultArtifacts = () => {
+  const activeTestNames = new Set<string>([
+    ...results.map((result) => result.test.name),
+    ...Array.from(resultsByTickers.values(), (result) => result.test.name),
+  ]);
+
+  for (const testName of resultArtifactsByTestName.keys()) {
+    if (!activeTestNames.has(testName)) {
+      resultArtifactsByTestName.delete(testName);
+    }
+  }
 };
 
 const isStrategyConfigGrid = (value: unknown): value is StrategyConfigGrid => {
@@ -189,7 +225,7 @@ const resolveBacktestConnectorName = async (
 const getLogsById = async (orderLogId: string) => {
   const orderLog = (await getData(
     redisKeys.cacheOrders(userName, orderLogId),
-  )) as OrderLog;
+  )) as OrderLog[];
   const positionLog = (await getData(
     redisKeys.cachePositions(userName, orderLogId),
   )) as PositionLogData;
@@ -197,7 +233,20 @@ const getLogsById = async (orderLogId: string) => {
   return { orderLog, positionLog };
 };
 
-const setTestData = async (test: Test, stat: TestStat, orderLog: OrderLog) => {
+const resolveResultArtifacts = async (result: TestWorkerResult) => {
+  const inlineArtifacts = resultArtifactsByTestName.get(result.test.name);
+  if (inlineArtifacts?.orderLog && inlineArtifacts?.positionLog) {
+    return inlineArtifacts;
+  }
+
+  return getLogsById(result.orderLogId);
+};
+
+const setTestData = async (
+  test: Test,
+  stat: TestStat,
+  orderLog: OrderLog[],
+) => {
   await setData(
     redisKeys.testOrders(test.userName, test.strategyName, test.name),
     orderLog,
@@ -406,27 +455,37 @@ const backtest = async () => {
         successTests++;
       }
 
-      results.push(msg as TestWorkerResult);
-      const goodResults = filterGoodTests(results);
+      const fullResult = msg as TestWorkerResult;
+      const result = stripInlineLogs(fullResult);
+      const inlineArtifacts = getInlineArtifacts(fullResult);
 
-      goodResults.forEach((res) => {
-        const prevValue = resultsByTickers.get(res.test.symbol);
-
-        if (!prevValue || prevValue.stat.profit < res.stat.profit) {
-          resultsByTickers.set(res.test.symbol, res);
+      results = sortBestTests([...results, result], flags.top);
+      if (results.some((candidate) => candidate.test.name === result.test.name)) {
+        if (inlineArtifacts) {
+          resultArtifactsByTestName.set(result.test.name, inlineArtifacts);
         }
-      });
+      }
+
+      if (isGoodTest(result)) {
+        const prevValue = resultsByTickers.get(result.test.symbol);
+
+        if (!prevValue || prevValue.stat.profit < result.stat.profit) {
+          resultsByTickers.set(result.test.symbol, result);
+          if (inlineArtifacts) {
+            resultArtifactsByTestName.set(result.test.name, inlineArtifacts);
+          }
+        }
+      }
+
+      pruneResultArtifacts();
 
       if (
         completedTests % progressStep === 0 ||
         completedTests === testSuite.length
       ) {
-        results = sortBestTests(results, flags.top);
-
-        const {
-          test: { symbol },
-          stat: { profit },
-        } = results[0];
+        const bestResult = results[0];
+        const symbol = bestResult?.test.symbol || '-';
+        const profit = bestResult?.stat.profit || 0;
 
         const profitStr = `${(profit || 0).toFixed(2)}$`;
 
@@ -466,11 +525,14 @@ const backtest = async () => {
 const saveAndPrintResults = async () => {
   const colorizedResults: string[][] = [];
   for await (const result of results) {
-    const { test, orderLogId } = result;
+    const { test } = result;
 
     const { symbol, name } = test;
 
-    const { orderLog, positionLog } = await getLogsById(orderLogId);
+    const { orderLog, positionLog } = await resolveResultArtifacts(result);
+    if (!orderLog || !positionLog) {
+      throw new Error(`Logs not found for test ${name}`);
+    }
 
     const stat = calculateStatsFull(positionLog) as TestStat;
 
@@ -500,11 +562,14 @@ const saveAndPrintResults = async () => {
 const saveAndPrintResultsByTickers = async () => {
   const colorizedResultsByTickers: string[][] = [];
   for await (const result of resultsByTickers.values()) {
-    const { test, orderLogId } = result;
+    const { test } = result;
 
     const { symbol, name } = test;
 
-    const { orderLog, positionLog } = await getLogsById(orderLogId);
+    const { orderLog, positionLog } = await resolveResultArtifacts(result);
+    if (!orderLog || !positionLog) {
+      throw new Error(`Logs not found for ticker result ${name}`);
+    }
 
     const stat = calculateStatsFull(positionLog) as TestStat;
 
