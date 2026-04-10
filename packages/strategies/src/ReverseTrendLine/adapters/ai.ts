@@ -35,6 +35,7 @@ type ReverseEntryTiming = ReverseTimingContext['entryTiming'];
 type ReverseTrendlineAiContext = ReverseStructuralContext &
   ReverseTimingContext & {
     deterministicQuality: number;
+    deterministicRejectionScore: number | null;
     approvalAllowedNow: boolean;
     hardBlockReasons: string[];
   };
@@ -120,11 +121,22 @@ const getDeterministicReverseTrendlineQuality = (
     conflictOnly &&
     rejectionStrengthPct >= 0.45 &&
     touches >= 5 &&
-    !(
-      context.signalDirection === 'SHORT' && biasConflictState === 'btc_only'
-    );
+    !(context.signalDirection === 'SHORT' && biasConflictState === 'btc_only');
 
   if (quality4ConflictRejection) {
+    return 4;
+  }
+
+  const rejectionScore = getDeterministicReverseTrendlineRejectionScore(
+    context,
+  );
+  const quality4ScoredRejection =
+    context.entryTiming === 'ready_rejection' &&
+    (biasConflictState === 'none' || biasConflictState === 'both') &&
+    rejectionScore != null &&
+    rejectionScore >= 7;
+
+  if (quality4ScoredRejection) {
     return 4;
   }
 
@@ -137,6 +149,58 @@ const getDeterministicReverseTrendlineQuality = (
     distance <= 250;
 
   return quality4EliteAlignedRejection ? 4 : 3;
+};
+
+const getDeterministicReverseTrendlineRejectionScore = (
+  context: ReverseTrendlineQualityContext,
+) => {
+  if (context.entryTiming !== 'ready_rejection') {
+    return null;
+  }
+
+  const biasConflictState = getReverseTrendlineBiasConflictState(context);
+  const rejectionStrengthPct = context.rejectionStrengthPct ?? 0;
+  const rejectionWickPct = context.rejectionWickPct ?? 0;
+  const touches = context.touches ?? 0;
+  const distance = context.distance ?? Number.POSITIVE_INFINITY;
+
+  let score = 0;
+
+  if (rejectionStrengthPct >= 0.25) {
+    score += 1;
+  }
+  if (rejectionStrengthPct >= 0.6) {
+    score += 1;
+  }
+  if (rejectionWickPct >= 0.18) {
+    score += 1;
+  }
+  if (touches >= 4) {
+    score += 1;
+  }
+  if (distance <= 250) {
+    score += 1;
+  }
+
+  if (context.signalDirection === 'LONG') {
+    if (biasConflictState === 'both') {
+      score += 1;
+    }
+    if (rejectionWickPct >= 0.75) {
+      score += 1;
+    }
+  }
+
+  if (context.signalDirection === 'SHORT') {
+    if (biasConflictState === 'none') {
+      score += 1;
+    }
+    if (distance <= 150) {
+      score += 1;
+    }
+  }
+
+  return score;
 };
 
 const buildReverseTrendlineAiContext = (signal: {
@@ -171,6 +235,12 @@ const buildReverseTrendlineAiContext = (signal: {
     : computedTiming;
 
   const hardBlockReasons = [...structural.structuralHardBlockReasons];
+  const deterministicRejectionScore =
+    getDeterministicReverseTrendlineRejectionScore({
+      ...structural,
+      ...timing,
+      hardBlockReasons,
+    });
 
   const deterministicQuality = getDeterministicReverseTrendlineQuality({
     ...structural,
@@ -182,6 +252,7 @@ const buildReverseTrendlineAiContext = (signal: {
     ...structural,
     ...timing,
     deterministicQuality,
+    deterministicRejectionScore,
     approvalAllowedNow: deterministicQuality >= 4,
     hardBlockReasons,
   };
@@ -292,6 +363,7 @@ export const reverseTrendLineAiAdapter: StrategyAiAdapter = {
 - distance=${context.distance ?? 'n/a'}
 - coinBiasAligned=${context.coinBiasAligned}
 - btcBiasAligned=${context.btcBiasAligned}
+- deterministicRejectionScore=${context.deterministicRejectionScore ?? 'n/a'}
 - approvalAllowedNow=${context.approvalAllowedNow}
 - hardBlockReasons=${context.hardBlockReasons.join(', ') || 'none'}
 
