@@ -127,9 +127,8 @@ const getDeterministicReverseTrendlineQuality = (
     return 4;
   }
 
-  const rejectionScore = getDeterministicReverseTrendlineRejectionScore(
-    context,
-  );
+  const rejectionScore =
+    getDeterministicReverseTrendlineRejectionScore(context);
   const quality4ScoredRejection =
     context.entryTiming === 'ready_rejection' &&
     (biasConflictState === 'none' || biasConflictState === 'both') &&
