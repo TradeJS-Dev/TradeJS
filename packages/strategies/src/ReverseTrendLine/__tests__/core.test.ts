@@ -419,4 +419,107 @@ describe('createReverseTrendLineCore', () => {
     expect(decision.kind).toBe('exit');
     expect(decision.code).toBe('REVERSE_TRENDLINE_FAILED_BOUNCE_EXIT');
   });
+
+  it('moves stop to break-even after favorable move reaches half-risk', async () => {
+    const candle = makeCandle(1_700_000_000_000, {
+      open: 100.2,
+      close: 100.6,
+      high: 100.8,
+      low: 100.1,
+    });
+
+    (createTrendlineEngine as jest.Mock)
+      .mockReturnValueOnce({ next: jest.fn(() => []) })
+      .mockReturnValueOnce({ next: jest.fn(() => []) });
+
+    const strategyApi = makeStrategyApi();
+    strategyApi.__setCurrentPosition({
+      direction: 'LONG',
+      price: 100,
+      qty: 1,
+      slPrice: 99,
+    });
+
+    const core = await createReverseTrendLineCore(
+      makeCoreParams({
+        data: [candle] as any,
+        strategyApi,
+      }) as any,
+    );
+
+    const decision = await core(candle as any, candle as any);
+
+    expect(decision).toEqual({
+      kind: 'protect',
+      code: 'REVERSE_TRENDLINE_MOVE_STOP_TO_BREAK_EVEN',
+      protectPlan: {
+        direction: 'LONG',
+        stopLossPrice: 100,
+      },
+    });
+  });
+
+  it('prefers the touched candidate line when both directions are available', async () => {
+    const candle = makeCandle(1_700_000_000_000, {
+      open: 100.15,
+      close: 99.52,
+      high: 100.32,
+      low: 99.42,
+    });
+    const lowsLine = makeLine({
+      mode: 'lows',
+      timestamp: candle.timestamp,
+      linePrice: 99.1,
+      distance: 140,
+      touches: 5,
+    });
+    const highsLine = makeLine({
+      mode: 'highs',
+      timestamp: candle.timestamp,
+      linePrice: 100,
+      distance: 105,
+      touches: 5,
+    });
+
+    (createTrendlineEngine as jest.Mock)
+      .mockReturnValueOnce({ next: jest.fn(() => [lowsLine]) })
+      .mockReturnValueOnce({ next: jest.fn(() => [highsLine]) });
+    (getStrategyMarketSnapshot as jest.Mock).mockResolvedValue({
+      fullData: [
+        makeCandle(candle.timestamp - 900_000, {
+          open: 99.8,
+          close: 99.9,
+          high: 100.1,
+          low: 99.7,
+        }),
+        candle,
+      ],
+      lastCandle: candle,
+      timestamp: candle.timestamp,
+      currentPrice: candle.close,
+    });
+
+    const indicatorsState = makeIndicatorsState();
+    indicatorsState.snapshot.mockReturnValue({
+      maFast: [99.7],
+      maSlow: [100],
+      btcMaFast: [99.7],
+      btcMaSlow: [100],
+      atrPct: [0.8],
+      correlation: [0.1],
+    });
+
+    const core = await createReverseTrendLineCore(
+      makeCoreParams({
+        data: [candle] as any,
+        indicatorsState,
+      }) as any,
+    );
+
+    const decision = await core(candle as any, candle as any);
+
+    expect(decision.kind).toBe('entry');
+    expect((decision as any).direction).toBe('SHORT');
+    expect((decision as any).figures.lines[0].id).toBe(highsLine.id);
+  });
 });

@@ -145,15 +145,7 @@ export const createTrendLineCore: CreateStrategyCore<
   TrendLineConfig,
   IndicatorsHistorySnapshot | undefined
 > = async ({ config, data: cachedData, strategyApi, indicatorsState }) => {
-  const {
-    ENV,
-    TRENDLINE,
-    FEE_PERCENT,
-    MAX_LOSS_VALUE,
-    MAX_CORRELATION,
-    HIGHS,
-    LOWS,
-  } = config;
+  const { TRENDLINE, FEE_PERCENT, MAX_LOSS_VALUE, HIGHS, LOWS } = config;
 
   const lastTradeController = strategyApi.createLastTradeController();
 
@@ -321,16 +313,6 @@ export const createTrendLineCore: CreateStrategyCore<
 
     if (riskRatio <= minRiskRatio) {
       return strategyApi.skip(`RISK_RATIO:${round(riskRatio)}`);
-    }
-
-    const correlation = indicatorsState.latestNumber('correlation');
-
-    if (
-      ENV !== 'BACKTEST' &&
-      correlation != null &&
-      correlation >= MAX_CORRELATION
-    ) {
-      return strategyApi.skip(`MAX_CORRELATION:${round(correlation)}`);
     }
 
     lastTradeController.markTrade(timestamp);

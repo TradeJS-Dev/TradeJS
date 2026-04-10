@@ -40,7 +40,7 @@ const buildReverseTrendlineSignalSeed = ({
   prices: { currentPrice },
   indicators,
   additionalIndicators: {
-    touches: bestLine.touches.length + 2,
+    touches: Array.isArray(bestLine.touches) ? bestLine.touches.length + 2 : 2,
     distance: bestLine.distance,
     trendLine: bestLine,
     ...(currentCandle ? { currentCandle } : {}),
@@ -164,15 +164,7 @@ const buildReverseTrendlineCandidateContext = ({
   };
   direction: Direction;
 }) => {
-  const latestPoint =
-    Array.isArray(line.points) && line.points.length > 0
-      ? line.points[line.points.length - 1]
-      : null;
-  const currentLinePrice = toFiniteNumberOrNull(
-    latestPoint && typeof latestPoint === 'object'
-      ? (latestPoint as { value?: unknown }).value
-      : null,
-  );
+  const currentLinePrice = getLinePriceAtNow(line, candle.timestamp);
   const priceVsLinePct =
     currentLinePrice != null && currentLinePrice !== 0
       ? ((candle.close - currentLinePrice) / currentLinePrice) * 100
@@ -248,15 +240,7 @@ export const createReverseTrendLineCore: CreateStrategyCore<
   ReverseTrendLineConfig,
   IndicatorsHistorySnapshot | undefined
 > = async ({ config, data: cachedData, strategyApi, indicatorsState }) => {
-  const {
-    ENV,
-    TRENDLINE,
-    FEE_PERCENT,
-    MAX_LOSS_VALUE,
-    MAX_CORRELATION,
-    HIGHS,
-    LOWS,
-  } = config;
+  const { TRENDLINE, FEE_PERCENT, MAX_LOSS_VALUE, HIGHS, LOWS } = config;
 
   const lastTradeController = strategyApi.createLastTradeController();
 
@@ -448,15 +432,6 @@ export const createReverseTrendLineCore: CreateStrategyCore<
 
     if (riskRatio <= minRiskRatio) {
       return strategyApi.skip(`RISK_RATIO:${round(riskRatio)}`);
-    }
-
-    const correlation = indicatorsState.latestNumber('correlation');
-    if (
-      ENV !== 'BACKTEST' &&
-      correlation != null &&
-      correlation >= MAX_CORRELATION
-    ) {
-      return strategyApi.skip(`MAX_CORRELATION:${round(correlation)}`);
     }
 
     lastTradeController.markTrade(timestamp);

@@ -908,8 +908,16 @@ export const createTrendlineEngine = (
   };
 
   const nextMany = (candles: KLineData[]) => {
-    let result: TrendLine[] = [];
-    for (const candle of candles) result = next(candle);
+    for (const candle of candles) {
+      appendCandle(candle);
+    }
+
+    let result = buildResult();
+    if (opts.capture && result.length === 0 && rawExtremaPoints.length) {
+      rebuildCandidatesLikeBatch();
+      result = buildResult();
+    }
+
     return result;
   };
 

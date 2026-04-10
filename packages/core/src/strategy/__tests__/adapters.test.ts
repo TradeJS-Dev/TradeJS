@@ -71,7 +71,7 @@ describe('strategy adapters', () => {
         indicators: {},
       },
     });
-    expect(addon).toContain('Volume Divergence Reversal Signals');
+    expect(addon).toContain('Дополнение для VolumeDivergence');
     expect(addon).toContain('Bullish divergence');
 
     expect(

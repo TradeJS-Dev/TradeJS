@@ -309,8 +309,10 @@ export const buildReverseTrendlineStructuralContext = (
   signal: ReverseStructuralSignal,
 ) => {
   const trendLine = getTrendLineFromPayload(signal);
+  const evaluator = buildTrendLineEvaluator(trendLine);
   const currentPrice = toFiniteNumberOrNull(signal.prices?.currentPrice);
   const currentCandle = getCurrentCandle(signal);
+  const currentTimestamp = toFiniteNumberOrNull(currentCandle?.timestamp);
   const currentOpen = toFiniteNumberOrNull(currentCandle?.open);
   const currentClose =
     toFiniteNumberOrNull(currentCandle?.close) ?? currentPrice;
@@ -320,13 +322,10 @@ export const buildReverseTrendlineStructuralContext = (
     signal.direction === 'LONG' || signal.direction === 'SHORT'
       ? signal.direction
       : deriveDirectionFromMode(trendLine?.mode);
-  const points = Array.isArray(trendLine?.points) ? trendLine.points : [];
-  const latestPoint = points.length ? points[points.length - 1] : null;
-  const currentLinePrice = toFiniteNumberOrNull(
-    latestPoint && typeof latestPoint === 'object'
-      ? (latestPoint as { value?: unknown }).value
-      : null,
-  );
+  const currentLinePrice =
+    currentTimestamp != null && evaluator
+      ? evaluator.evaluate(currentTimestamp)
+      : evaluator?.lastPoint.value ?? null;
   const priceVsLinePct =
     currentClose != null && currentLinePrice != null && currentLinePrice !== 0
       ? ((currentClose - currentLinePrice) / currentLinePrice) * 100

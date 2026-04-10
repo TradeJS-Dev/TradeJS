@@ -934,7 +934,7 @@ describe('createTrendLineCore', () => {
     expect(result).toEqual({ kind: 'skip', code: 'RISK_RATIO:1' });
   });
 
-  it('returns MAX_CORRELATION skip outside backtest when correlation is high', async () => {
+  it('does not skip entry outside backtest when correlation is high', async () => {
     const candle = makeCandle(1_700_000_000_000, 100);
     (createTrendlineEngine as jest.Mock)
       .mockReturnValueOnce({ next: jest.fn(() => [makeBestLine('lows')]) })
@@ -954,6 +954,7 @@ describe('createTrendLineCore', () => {
 
     const indicatorsState = makeIndicatorsState() as any;
     indicatorsState.latestNumber = jest.fn(() => 0.95);
+    const strategyApi = makeStrategyApi();
 
     const core = await createTrendLineCore({
       userName: 'test',
@@ -967,11 +968,11 @@ describe('createTrendLineCore', () => {
       data: [candle as any],
       btcData: [candle as any],
       loadPineScriptFile: jest.fn(() => ''),
-      strategyApi: makeStrategyApi(),
+      strategyApi,
       indicatorsState,
     });
 
     const result = await core(candle as any, candle as any);
-    expect(result).toEqual({ kind: 'skip', code: 'MAX_CORRELATION:0.95' });
+    expect(result.kind).toBe('entry');
   });
 });

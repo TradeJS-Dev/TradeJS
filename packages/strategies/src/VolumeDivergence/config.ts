@@ -25,7 +25,6 @@ export const config = {
   MIN_AI_QUALITY: 3,
   FEE_PERCENT: 0.005,
   MAX_LOSS_VALUE: 10,
-  MAX_CORRELATION: 0.45,
   MA_FAST: 14,
   MA_MEDIUM: 49,
   MA_SLOW: 50,

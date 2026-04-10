@@ -509,7 +509,7 @@ describe('createVolumeDivergenceCore', () => {
     });
   });
 
-  it('returns MAX_CORRELATION skip in non-backtest mode when correlation is too high', async () => {
+  it('does not skip entry in non-backtest mode when correlation is too high', async () => {
     const candles = makeBullishDivergenceCandles();
     const strategyApi = makeStrategyApi();
     strategyApi.getMarketData.mockResolvedValue({
@@ -542,9 +542,6 @@ describe('createVolumeDivergenceCore', () => {
       candles[candles.length - 1] as any,
       candles[candles.length - 1] as any,
     );
-    expect(result).toEqual({
-      kind: 'skip',
-      code: 'MAX_CORRELATION:0.95',
-    });
+    expect(result.kind).toBe('entry');
   });
 });

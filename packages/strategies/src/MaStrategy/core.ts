@@ -61,15 +61,8 @@ export const createMaStrategyCore: CreateStrategyCore<
   MaStrategyConfig,
   IndicatorsHistorySnapshot | undefined
 > = async ({ config, strategyApi, indicatorsState }) => {
-  const {
-    ENV,
-    FEE_PERCENT,
-    MAX_LOSS_VALUE,
-    MAX_CORRELATION,
-    TRADE_COOLDOWN_MS,
-    LONG,
-    SHORT,
-  } = config;
+  const { FEE_PERCENT, MAX_LOSS_VALUE, TRADE_COOLDOWN_MS, LONG, SHORT } =
+    config;
 
   const lastTradeController = strategyApi.createLastTradeController({
     enabled: Number(TRADE_COOLDOWN_MS ?? 0) > 0,
@@ -152,13 +145,6 @@ export const createMaStrategyCore: CreateStrategyCore<
     }
 
     const correlation = indicatorsState.latestNumber('correlation');
-    if (
-      ENV !== 'BACKTEST' &&
-      correlation != null &&
-      correlation >= MAX_CORRELATION
-    ) {
-      return strategyApi.skip(`MAX_CORRELATION:${round(correlation)}`);
-    }
 
     lastTradeController.markTrade(timestamp);
 

@@ -16,12 +16,16 @@ const REVERSE_TRENDLINE_CONTEXT_PROMPT = `
 - Для bounce-сетапов приоритетнее реакция свечи на линии, rejection wick, удержание закрытия по правильную сторону и follow-through на следующем баре.
 - Если payload.additionalIndicators.reverseTrendlineContext.failedBounceBreak=true, не считай сигнал структурно подтвержденным.
 - Если payload.additionalIndicators.reverseTrendlineContext.entryTiming не равен ready_rejection или ready_follow_through, обычно quality <= 3.
-- Для SHORT bounce setup с btc_bias_conflict не завышай quality без очень сильного mean-reversion подтверждения.
+- Базовый deterministic approve для same-bar rejection дается не всем:
+  - сильный conflict-only rejection может получить quality=4;
+  - часть same-bar rejection с conflictState=none или both может получить quality=4 только при очень сильном deterministic rejection score.
+- Для SHORT bounce setup с btc_bias_conflict не завышай quality: такие кейсы обычно остаются watch, если нет гораздо более сильного подтверждения.
+- Если deterministicRejectionScore низкий или средний, не придумывай quality=4 только потому, что свеча визуально похожа на rejection.
 `;
 
 const REVERSE_TRENDLINE_PAYLOAD_PROMPT = `
 - В payload.figures.trendline передается геометрия линии.
-- В payload.additionalIndicators.reverseTrendlineContext передается краткая сводка bounce-логики: направление, расстояние цены до линии, был ли касание линии, была ли rejection-свеча, силу rejection, timing-stage и конфликты bias.
+- В payload.additionalIndicators.reverseTrendlineContext передается краткая сводка bounce-логики: направление, расстояние цены до линии, был ли касание линии, была ли rejection-свеча, силу rejection, timing-stage, конфликты bias и deterministicRejectionScore.
 `;
 
 type ReverseTimingContext = ReturnType<
@@ -370,6 +374,7 @@ export const reverseTrendLineAiAdapter: StrategyAiAdapter = {
 - искать структурное подтверждение реакции от линии, а не пробоя через линию;
 - если уже есть failedBounceBreak=true, не считать сигнал подтвержденным;
 - если setup еще в стадии wait_touch / wait_reaction_confirmation / stale_reaction, не завышать quality.
+- если deterministicRejectionScore высокий, используй его как дополнительный сигнал только вместе с правильным bounce-контекстом, а не как замену структуры.
 `;
   },
   mapEntryRuntimeFromConfig: (config) =>

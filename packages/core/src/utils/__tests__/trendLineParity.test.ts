@@ -105,6 +105,24 @@ const expectParityForModeStreaming = (
   expect(normalizeLines(engineLines)).toEqual(normalizeLines(batchLines));
 };
 
+const expectBatchAndStreamingParity = (
+  mode: 'lows' | 'highs',
+  data: KLineData[],
+  options: any,
+) => {
+  const batchEngine = createTrendlineEngine([], { mode, ...options });
+  batchEngine.nextMany(data);
+
+  const streamingEngine = createTrendlineEngine([], { mode, ...options });
+  for (const candle of data) {
+    streamingEngine.next(candle);
+  }
+
+  expect(normalizeLines(batchEngine.getLines())).toEqual(
+    normalizeLines(streamingEngine.getLines()),
+  );
+};
+
 describe('trendLine vs trendLineEngine parity', () => {
   const lowsData = buildCandles(80, 'up');
   const highsData = buildCandles(80, 'down');
@@ -170,5 +188,26 @@ describe('trendLine vs trendLineEngine parity', () => {
 
     expectParityForMode('lows', lowsData, options);
     expectParityForMode('highs', highsData, options);
+  });
+
+  it('keeps batch nextMany() equivalent to streaming next()', () => {
+    const options = {
+      range: 2,
+      firstRange: 2,
+      minTouches: 2,
+      minDistance: 8,
+      minTouchGap: 2,
+      maxTouchGap: 50,
+      offset: 5,
+      capture: true,
+      bestLines: 5,
+      maxLines: 50,
+      maxDistance: 200,
+      epsilon: 0.001,
+      epsilonOffset: 0.001,
+    };
+
+    expectBatchAndStreamingParity('lows', lowsData, options);
+    expectBatchAndStreamingParity('highs', highsData, options);
   });
 });

@@ -23,30 +23,86 @@ type PivotDivergence = {
   kind: 'bullish' | 'bearish';
 };
 
+type RollingMaxQueueState = {
+  indices: number[];
+  start: number;
+};
+
+type ConfirmedPivotState = {
+  indices: number[];
+  nextConfirmationIndex: number;
+};
+
 const isFiniteNumber = (value: unknown): value is number =>
   typeof value === 'number' && Number.isFinite(value);
 
 const clamp = (value: number, min: number, max: number) =>
   Math.min(max, Math.max(min, value));
 
+const compactQueue = (queue: RollingMaxQueueState) => {
+  if (queue.start <= 1024 || queue.start * 2 <= queue.indices.length) {
+    return;
+  }
+
+  queue.indices.splice(0, queue.start);
+  queue.start = 0;
+};
+
+const rebaseQueue = (queue: RollingMaxQueueState, offset: number) => {
+  queue.indices = queue.indices
+    .slice(queue.start)
+    .map((index) => index - offset)
+    .filter((index) => index >= 0);
+  queue.start = 0;
+};
+
+const rebaseConfirmedPivots = (
+  state: ConfirmedPivotState,
+  offset: number,
+) => {
+  state.indices = state.indices
+    .map((index) => index - offset)
+    .filter((index) => index >= 0);
+  state.nextConfirmationIndex = Math.max(0, state.nextConfirmationIndex - offset);
+};
+
 const appendNormalizedVolumes = ({
   candles,
   length,
   normalizedVolumes,
+  queue,
 }: {
   candles: Candle[];
   length: number;
   normalizedVolumes: number[];
+  queue: RollingMaxQueueState;
 }) => {
   while (normalizedVolumes.length < candles.length) {
     const i = normalizedVolumes.length;
-    const start = Math.max(0, i - length + 1);
-    let highest = 0;
-    for (let j = start; j <= i; j += 1) {
-      highest = Math.max(highest, Number(candles[j]?.volume) || 0);
+    const windowStart = Math.max(0, i - length + 1);
+    const volume = Number(candles[i]?.volume) || 0;
+
+    while (
+      queue.start < queue.indices.length &&
+      queue.indices[queue.start] < windowStart
+    ) {
+      queue.start += 1;
     }
 
-    const volume = Number(candles[i]?.volume) || 0;
+    while (queue.indices.length > queue.start) {
+      const lastIndex = queue.indices[queue.indices.length - 1];
+      const lastVolume = Number(candles[lastIndex]?.volume) || 0;
+      if (lastVolume > volume) {
+        break;
+      }
+      queue.indices.pop();
+    }
+
+    queue.indices.push(i);
+    compactQueue(queue);
+
+    const highestIndex = queue.indices[queue.start];
+    const highest = Number(candles[highestIndex]?.volume) || 0;
     normalizedVolumes.push(highest > 0 ? (volume / highest) * 100 : 0);
   }
 };
@@ -88,9 +144,44 @@ const candleDeltaProxy = (candle: Candle): number => {
   return volume * clamp(bodyBias, -1, 1);
 };
 
+const appendConfirmedPivotIndices = ({
+  candles,
+  normalizedVolumes,
+  lookbackLeft,
+  lookbackRight,
+  state,
+}: {
+  candles: Candle[];
+  normalizedVolumes: number[];
+  lookbackLeft: number;
+  lookbackRight: number;
+  state: ConfirmedPivotState;
+}) => {
+  const maxConfirmationIndex = candles.length - 1;
+
+  while (state.nextConfirmationIndex <= maxConfirmationIndex) {
+    const candidatePivotIndex = state.nextConfirmationIndex - lookbackRight;
+
+    if (
+      candidatePivotIndex >= 0 &&
+      isPivotHigh({
+        values: normalizedVolumes,
+        index: candidatePivotIndex,
+        left: lookbackLeft,
+        right: lookbackRight,
+      })
+    ) {
+      state.indices.push(candidatePivotIndex);
+    }
+
+    state.nextConfirmationIndex += 1;
+  }
+};
+
 const findLatestDivergence = ({
   candles,
   normalizedVolumes,
+  confirmedPivots,
   lookbackLeft,
   lookbackRight,
   rangeLower,
@@ -98,6 +189,7 @@ const findLatestDivergence = ({
 }: {
   candles: Candle[];
   normalizedVolumes: number[];
+  confirmedPivots: number[];
   lookbackLeft: number;
   lookbackRight: number;
   rangeLower: number;
@@ -109,33 +201,21 @@ const findLatestDivergence = ({
     return null;
   }
 
-  if (
-    !isPivotHigh({
-      values: normalizedVolumes,
-      index: currentPivotIndex,
-      left: lookbackLeft,
-      right: lookbackRight,
-    })
-  ) {
+  const lastConfirmedPivotIndex =
+    confirmedPivots.length > 0
+      ? confirmedPivots[confirmedPivots.length - 1]
+      : undefined;
+
+  if (lastConfirmedPivotIndex !== currentPivotIndex) {
     return null;
   }
 
-  let previousPivotIndex = -1;
-  for (let i = currentPivotIndex - 1; i >= lookbackLeft; i -= 1) {
-    if (
-      isPivotHigh({
-        values: normalizedVolumes,
-        index: i,
-        left: lookbackLeft,
-        right: lookbackRight,
-      })
-    ) {
-      previousPivotIndex = i;
-      break;
-    }
-  }
+  const previousPivotIndex =
+    confirmedPivots.length > 1
+      ? confirmedPivots[confirmedPivots.length - 2]
+      : undefined;
 
-  if (previousPivotIndex < 0) {
+  if (previousPivotIndex == null || previousPivotIndex < lookbackLeft) {
     return null;
   }
 
@@ -210,10 +290,27 @@ const findLatestDivergence = ({
   return null;
 };
 
+const getRequiredHistorySize = ({
+  normalizationLength,
+  lookbackLeft,
+  lookbackRight,
+  maxBarsBetweenPivots,
+}: {
+  normalizationLength: number;
+  lookbackLeft: number;
+  lookbackRight: number;
+  maxBarsBetweenPivots: number;
+}) =>
+  normalizationLength +
+  maxBarsBetweenPivots +
+  lookbackLeft +
+  lookbackRight * 2 +
+  8;
+
 export const createVolumeDivergenceCore: CreateStrategyCore<
   VolumeDivergenceConfig,
   IndicatorsHistorySnapshot | undefined
-> = async ({ config, strategyApi, indicatorsState }) => {
+> = async ({ config, strategyApi, indicatorsState, data: initialData }) => {
   const {
     NORMALIZATION_LENGTH,
     PIVOT_LOOKBACK_LEFT,
@@ -222,27 +319,91 @@ export const createVolumeDivergenceCore: CreateStrategyCore<
     MIN_BARS_BETWEEN_PIVOTS,
     FEE_PERCENT,
     MAX_LOSS_VALUE,
-    MAX_CORRELATION,
-    ENV,
     BULLISH,
     BEARISH,
   } = config;
 
   const lastTradeController = strategyApi.createLastTradeController();
+  const maxHistorySize = getRequiredHistorySize({
+    normalizationLength: NORMALIZATION_LENGTH,
+    lookbackLeft: PIVOT_LOOKBACK_LEFT,
+    lookbackRight: PIVOT_LOOKBACK_RIGHT,
+    maxBarsBetweenPivots: MAX_BARS_BETWEEN_PIVOTS,
+  });
+  const candleWindow = (
+    Array.isArray(initialData) ? initialData.slice(-maxHistorySize) : []
+  ) as Candle[];
   const normalizedVolumes: number[] = [];
+  const rollingMaxQueue: RollingMaxQueueState = {
+    indices: [],
+    start: 0,
+  };
+  const confirmedPivotState: ConfirmedPivotState = {
+    indices: [],
+    nextConfirmationIndex: 0,
+  };
 
-  return async () => {
+  const syncDerivedState = () => {
+    appendNormalizedVolumes({
+      candles: candleWindow,
+      length: NORMALIZATION_LENGTH,
+      normalizedVolumes,
+      queue: rollingMaxQueue,
+    });
+
+    appendConfirmedPivotIndices({
+      candles: candleWindow,
+      normalizedVolumes,
+      lookbackLeft: PIVOT_LOOKBACK_LEFT,
+      lookbackRight: PIVOT_LOOKBACK_RIGHT,
+      state: confirmedPivotState,
+    });
+  };
+
+  const appendWindowCandle = (candle: Candle) => {
+    const latestTimestamp =
+      candleWindow.length > 0
+        ? Number(candleWindow[candleWindow.length - 1]?.timestamp)
+        : null;
+
+    if (latestTimestamp === Number(candle.timestamp)) {
+      candleWindow[candleWindow.length - 1] = candle;
+      normalizedVolumes.length = 0;
+      rollingMaxQueue.indices = [];
+      rollingMaxQueue.start = 0;
+      confirmedPivotState.indices = [];
+      confirmedPivotState.nextConfirmationIndex = 0;
+      syncDerivedState();
+      return;
+    }
+
+    candleWindow.push(candle);
+
+    if (candleWindow.length > maxHistorySize) {
+      const overflow = candleWindow.length - maxHistorySize;
+      candleWindow.splice(0, overflow);
+      normalizedVolumes.splice(0, overflow);
+      rebaseQueue(rollingMaxQueue, overflow);
+      rebaseConfirmedPivots(confirmedPivotState, overflow);
+    }
+
+    syncDerivedState();
+  };
+
+  syncDerivedState();
+
+  return async (candle) => {
+    appendWindowCandle(candle as Candle);
+
     indicatorsState.onBar();
+    const timestamp = Number(candle.timestamp);
 
     const positionExists = await strategyApi.isCurrentPositionExists();
     if (positionExists) {
       return strategyApi.skip('POSITION_EXISTS');
     }
 
-    const { fullData, timestamp, currentPrice } =
-      await strategyApi.getMarketData();
-
-    if (fullData.length < PIVOT_LOOKBACK_LEFT + PIVOT_LOOKBACK_RIGHT + 2) {
+    if (candleWindow.length < PIVOT_LOOKBACK_LEFT + PIVOT_LOOKBACK_RIGHT + 2) {
       return strategyApi.skip('WAIT_DATA');
     }
 
@@ -250,15 +411,10 @@ export const createVolumeDivergenceCore: CreateStrategyCore<
       return strategyApi.skip('DEV_TRADE_COOLDOWN');
     }
 
-    appendNormalizedVolumes({
-      candles: fullData,
-      length: NORMALIZATION_LENGTH,
-      normalizedVolumes,
-    });
-
     const divergence = findLatestDivergence({
-      candles: fullData,
+      candles: candleWindow,
       normalizedVolumes,
+      confirmedPivots: confirmedPivotState.indices,
       lookbackLeft: PIVOT_LOOKBACK_LEFT,
       lookbackRight: PIVOT_LOOKBACK_RIGHT,
       rangeLower: MIN_BARS_BETWEEN_PIVOTS,
@@ -273,6 +429,8 @@ export const createVolumeDivergenceCore: CreateStrategyCore<
     if (!modeConfig.enable) {
       return strategyApi.skip('STRATEGY_DISABLED');
     }
+
+    const { currentPrice } = await strategyApi.getMarketData();
 
     const { stopLossPrice, takeProfitPrice, riskRatio, qty } =
       strategyApi.getDirectionalTpSlPrices({
@@ -294,15 +452,6 @@ export const createVolumeDivergenceCore: CreateStrategyCore<
     }
 
     const indicators = indicatorsState.snapshot();
-    const correlation = indicatorsState.latestNumber('correlation');
-
-    if (
-      ENV !== 'BACKTEST' &&
-      correlation != null &&
-      correlation >= MAX_CORRELATION
-    ) {
-      return strategyApi.skip(`MAX_CORRELATION:${round(correlation)}`);
-    }
 
     lastTradeController.markTrade(timestamp);
 
@@ -317,7 +466,7 @@ export const createVolumeDivergenceCore: CreateStrategyCore<
         previousPivotHigh: divergence.previousPivotHigh,
         currentPivotLow: divergence.currentPivotLow,
         currentPivotHigh: divergence.currentPivotHigh,
-        fullData,
+        fullData: candleWindow,
       }),
       indicators,
       additionalIndicators: {
@@ -333,14 +482,14 @@ export const createVolumeDivergenceCore: CreateStrategyCore<
           pivotLookbackRight: PIVOT_LOOKBACK_RIGHT,
           currentPivot: {
             index: divergence.currentPivotIndex,
-            timestamp: fullData[divergence.currentPivotIndex]?.timestamp,
+            timestamp: candleWindow[divergence.currentPivotIndex]?.timestamp,
             priceLow: divergence.currentPivotLow,
             priceHigh: divergence.currentPivotHigh,
             volumeNorm: divergence.currentPivotVolumeNorm,
           },
           previousPivot: {
             index: divergence.previousPivotIndex,
-            timestamp: fullData[divergence.previousPivotIndex]?.timestamp,
+            timestamp: candleWindow[divergence.previousPivotIndex]?.timestamp,
             priceLow: divergence.previousPivotLow,
             priceHigh: divergence.previousPivotHigh,
             volumeNorm: divergence.previousPivotVolumeNorm,
