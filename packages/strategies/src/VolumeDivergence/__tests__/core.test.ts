@@ -138,6 +138,23 @@ const makeBearishDivergenceCandles = () => {
   });
 };
 
+const makeFollowUpCandle = ({
+  previousCandle,
+  price,
+  volume,
+}: {
+  previousCandle: ReturnType<typeof makeCandle>;
+  price: number;
+  volume: number;
+}) => {
+  const candle = makeCandle(previousCandle.timestamp + 900_000, price, volume);
+  candle.open = previousCandle.close;
+  candle.close = price;
+  candle.high = Math.max(candle.high, previousCandle.close, price);
+  candle.low = Math.min(candle.low, previousCandle.close, price);
+  return candle;
+};
+
 describe('createVolumeDivergenceCore', () => {
   it('returns NO_DIVERGENCE when pivots do not match divergence rules', async () => {
     const candles = Array.from({ length: 12 }).map((_, index) =>
@@ -176,17 +193,10 @@ describe('createVolumeDivergenceCore', () => {
     expect(strategyApi.entry).not.toHaveBeenCalled();
   });
 
-  it('returns entry on bullish divergence', async () => {
+  it('stores pending bullish divergence and enters on later confirmation', async () => {
     const candles = makeBullishDivergenceCandles();
 
     const strategyApi = makeStrategyApi();
-    strategyApi.getMarketData.mockResolvedValue({
-      fullData: candles,
-      lastCandle: candles[candles.length - 1],
-      timestamp: candles[candles.length - 1].timestamp,
-      currentPrice: candles[candles.length - 1].close,
-    });
-
     const core = await createVolumeDivergenceCore({
       userName: 'test',
       symbol: 'TESTUSDT',
@@ -202,9 +212,32 @@ describe('createVolumeDivergenceCore', () => {
       indicatorsState: makeIndicatorsState(),
     });
 
+    const pendingResult = await core(
+      candles[candles.length - 1] as any,
+      candles[candles.length - 1] as any,
+    );
+
+    expect(pendingResult).toEqual({
+      kind: 'skip',
+      code: 'WAIT_REVERSAL_CONFIRMATION',
+    });
+    expect(strategyApi.entry).not.toHaveBeenCalled();
+
+    const confirmationCandle = makeFollowUpCandle({
+      previousCandle: candles[candles.length - 1],
+      price: 94,
+      volume: 90,
+    });
+    strategyApi.getMarketData.mockResolvedValue({
+      fullData: [...candles, confirmationCandle],
+      lastCandle: confirmationCandle,
+      timestamp: confirmationCandle.timestamp,
+      currentPrice: confirmationCandle.close,
+    });
+
     const result = await core(
-      candles[candles.length - 1] as any,
-      candles[candles.length - 1] as any,
+      confirmationCandle as any,
+      confirmationCandle as any,
     );
 
     expect(result.kind).toBe('entry');
@@ -216,22 +249,19 @@ describe('createVolumeDivergenceCore', () => {
         }),
         additionalIndicators: expect.objectContaining({
           divergenceKind: 'bullish',
+          volumeDivergenceSignalTiming: expect.objectContaining({
+            entryTiming: 'confirmation_ready',
+            barsSinceDetection: 1,
+          }),
         }),
       }),
     );
   });
 
-  it('returns entry on bearish divergence', async () => {
+  it('stores pending bearish divergence and enters on later confirmation', async () => {
     const candles = makeBearishDivergenceCandles();
 
     const strategyApi = makeStrategyApi();
-    strategyApi.getMarketData.mockResolvedValue({
-      fullData: candles,
-      lastCandle: candles[candles.length - 1],
-      timestamp: candles[candles.length - 1].timestamp,
-      currentPrice: candles[candles.length - 1].close,
-    });
-
     const core = await createVolumeDivergenceCore({
       userName: 'test',
       symbol: 'TESTUSDT',
@@ -247,9 +277,32 @@ describe('createVolumeDivergenceCore', () => {
       indicatorsState: makeIndicatorsState(),
     });
 
+    const pendingResult = await core(
+      candles[candles.length - 1] as any,
+      candles[candles.length - 1] as any,
+    );
+
+    expect(pendingResult).toEqual({
+      kind: 'skip',
+      code: 'WAIT_REVERSAL_CONFIRMATION',
+    });
+    expect(strategyApi.entry).not.toHaveBeenCalled();
+
+    const confirmationCandle = makeFollowUpCandle({
+      previousCandle: candles[candles.length - 1],
+      price: 109,
+      volume: 120,
+    });
+    strategyApi.getMarketData.mockResolvedValue({
+      fullData: [...candles, confirmationCandle],
+      lastCandle: confirmationCandle,
+      timestamp: confirmationCandle.timestamp,
+      currentPrice: confirmationCandle.close,
+    });
+
     const result = await core(
-      candles[candles.length - 1] as any,
-      candles[candles.length - 1] as any,
+      confirmationCandle as any,
+      confirmationCandle as any,
     );
 
     expect(result.kind).toBe('entry');
@@ -261,6 +314,10 @@ describe('createVolumeDivergenceCore', () => {
         }),
         additionalIndicators: expect.objectContaining({
           divergenceKind: 'bearish',
+          volumeDivergenceSignalTiming: expect.objectContaining({
+            entryTiming: 'confirmation_ready',
+            barsSinceDetection: 1,
+          }),
         }),
       }),
     );
@@ -431,13 +488,6 @@ describe('createVolumeDivergenceCore', () => {
         qty: 0,
       })),
     });
-    strategyApi.getMarketData.mockResolvedValue({
-      fullData: candles,
-      lastCandle: candles[candles.length - 1],
-      timestamp: candles[candles.length - 1].timestamp,
-      currentPrice: candles[candles.length - 1].close,
-    });
-
     const core = await createVolumeDivergenceCore({
       userName: 'test',
       symbol: 'TESTUSDT',
@@ -453,9 +503,30 @@ describe('createVolumeDivergenceCore', () => {
       indicatorsState: makeIndicatorsState(),
     });
 
+    const pendingResult = await core(
+      candles[candles.length - 1] as any,
+      candles[candles.length - 1] as any,
+    );
+    expect(pendingResult).toEqual({
+      kind: 'skip',
+      code: 'WAIT_REVERSAL_CONFIRMATION',
+    });
+
+    const confirmationCandle = makeFollowUpCandle({
+      previousCandle: candles[candles.length - 1],
+      price: 94,
+      volume: 90,
+    });
+    strategyApi.getMarketData.mockResolvedValue({
+      fullData: [...candles, confirmationCandle],
+      lastCandle: confirmationCandle,
+      timestamp: confirmationCandle.timestamp,
+      currentPrice: confirmationCandle.close,
+    });
+
     const result = await core(
-      candles[candles.length - 1] as any,
-      candles[candles.length - 1] as any,
+      confirmationCandle as any,
+      confirmationCandle as any,
     );
     expect(result).toEqual({
       kind: 'skip',
@@ -473,13 +544,6 @@ describe('createVolumeDivergenceCore', () => {
         qty: 1,
       })),
     });
-    strategyApi.getMarketData.mockResolvedValue({
-      fullData: candles,
-      lastCandle: candles[candles.length - 1],
-      timestamp: candles[candles.length - 1].timestamp,
-      currentPrice: candles[candles.length - 1].close,
-    });
-
     const core = await createVolumeDivergenceCore({
       userName: 'test',
       symbol: 'TESTUSDT',
@@ -499,9 +563,30 @@ describe('createVolumeDivergenceCore', () => {
       indicatorsState: makeIndicatorsState(),
     });
 
+    const pendingResult = await core(
+      candles[candles.length - 1] as any,
+      candles[candles.length - 1] as any,
+    );
+    expect(pendingResult).toEqual({
+      kind: 'skip',
+      code: 'WAIT_REVERSAL_CONFIRMATION',
+    });
+
+    const confirmationCandle = makeFollowUpCandle({
+      previousCandle: candles[candles.length - 1],
+      price: 94,
+      volume: 90,
+    });
+    strategyApi.getMarketData.mockResolvedValue({
+      fullData: [...candles, confirmationCandle],
+      lastCandle: confirmationCandle,
+      timestamp: confirmationCandle.timestamp,
+      currentPrice: confirmationCandle.close,
+    });
+
     const result = await core(
-      candles[candles.length - 1] as any,
-      candles[candles.length - 1] as any,
+      confirmationCandle as any,
+      confirmationCandle as any,
     );
     expect(result).toEqual({
       kind: 'skip',
@@ -512,12 +597,6 @@ describe('createVolumeDivergenceCore', () => {
   it('does not skip entry in non-backtest mode when correlation is too high', async () => {
     const candles = makeBullishDivergenceCandles();
     const strategyApi = makeStrategyApi();
-    strategyApi.getMarketData.mockResolvedValue({
-      fullData: candles,
-      lastCandle: candles[candles.length - 1],
-      timestamp: candles[candles.length - 1].timestamp,
-      currentPrice: candles[candles.length - 1].close,
-    });
     const indicatorsState = makeIndicatorsState();
     indicatorsState.latestNumber = jest.fn(() => 0.95);
 
@@ -538,9 +617,30 @@ describe('createVolumeDivergenceCore', () => {
       indicatorsState,
     });
 
+    const pendingResult = await core(
+      candles[candles.length - 1] as any,
+      candles[candles.length - 1] as any,
+    );
+    expect(pendingResult).toEqual({
+      kind: 'skip',
+      code: 'WAIT_REVERSAL_CONFIRMATION',
+    });
+
+    const confirmationCandle = makeFollowUpCandle({
+      previousCandle: candles[candles.length - 1],
+      price: 94,
+      volume: 90,
+    });
+    strategyApi.getMarketData.mockResolvedValue({
+      fullData: [...candles, confirmationCandle],
+      lastCandle: confirmationCandle,
+      timestamp: confirmationCandle.timestamp,
+      currentPrice: confirmationCandle.close,
+    });
+
     const result = await core(
-      candles[candles.length - 1] as any,
-      candles[candles.length - 1] as any,
+      confirmationCandle as any,
+      confirmationCandle as any,
     );
     expect(result.kind).toBe('entry');
   });

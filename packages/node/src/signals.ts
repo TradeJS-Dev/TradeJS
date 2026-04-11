@@ -14,6 +14,60 @@ const { APP_URL } = process.env;
 const TG_REQUEST_ATTEMPTS = 3;
 const TG_REQUEST_RETRY_DELAY_MS = 2_000;
 
+const getErrorFields = (value: unknown) => {
+  if (!value || typeof value !== 'object') {
+    return [];
+  }
+
+  const record = value as Record<string, unknown>;
+  const fields: Array<[string, unknown]> = [
+    ['name', record.name],
+    ['code', record.code],
+    ['errno', record.errno],
+    ['type', record.type],
+    ['syscall', record.syscall],
+    ['hostname', record.hostname],
+    ['host', record.host],
+    ['address', record.address],
+    ['port', record.port],
+  ];
+
+  return fields
+    .filter(([, fieldValue]) => fieldValue != null && String(fieldValue).trim())
+    .map(([key, fieldValue]) => `${key}=${String(fieldValue)}`);
+};
+
+const describeErrorValue = (value: unknown): string => {
+  if (value == null) {
+    return '';
+  }
+
+  if (typeof value === 'string') {
+    return value;
+  }
+
+  if (value instanceof Error) {
+    const message = value.message?.trim() || '';
+    const fields = getErrorFields(value);
+    return [message, ...fields].filter(Boolean).join(' ');
+  }
+
+  if (typeof value === 'object') {
+    const fields = getErrorFields(value);
+    if (fields.length) {
+      return fields.join(' ');
+    }
+
+    try {
+      return JSON.stringify(value);
+    } catch {
+      return String(value);
+    }
+  }
+
+  return String(value);
+};
+
 const normalizeQuality = (value?: number) =>
   typeof value === 'number'
     ? Math.max(1, Math.min(5, Math.round(value)))
@@ -85,16 +139,17 @@ const getTelegramErrorReason = (data: unknown): string => {
 
 const getErrorMessage = (error: unknown): string => {
   const maybeError = error as Error & { cause?: unknown };
-  const message = maybeError?.message || String(error);
+  const message = describeErrorValue(error) || String(error);
 
   if (maybeError?.cause == null) {
     return message;
   }
 
-  const cause =
-    maybeError.cause instanceof Error
-      ? maybeError.cause.message
-      : String(maybeError.cause);
+  const cause = describeErrorValue(maybeError.cause);
+
+  if (!cause) {
+    return message;
+  }
 
   return `${message}; cause: ${cause}`;
 };

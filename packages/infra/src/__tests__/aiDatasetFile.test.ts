@@ -301,4 +301,122 @@ describe('aiDatasetFile', () => {
     expect(windowedRows.totalRows).toBe(5);
     expect(windowedRows.rows.map((row) => row.signalId)).toEqual(['b', 'c']);
   });
+
+  it('merges AI chunk files with external sort when in-memory run size is small', async () => {
+    const chunkA = path.join(tempDir, 'ai-dataset-volumedivergence-a.jsonl');
+    const chunkB = path.join(tempDir, 'ai-dataset-volumedivergence-b.jsonl');
+
+    await fs.writeFile(
+      chunkA,
+      [
+        {
+          signalId: 'e',
+          symbol: 'ETHUSDT',
+          strategyName: 'VolumeDivergence',
+          direction: 'LONG',
+          timestamp: 5,
+          profit: 5,
+          payload: makePayload({
+            signalId: 'e',
+            symbol: 'ETHUSDT',
+            direction: 'LONG',
+            timestamp: 5,
+            strategyName: 'VolumeDivergence',
+          }),
+        },
+        {
+          signalId: 'a',
+          symbol: 'BTCUSDT',
+          strategyName: 'VolumeDivergence',
+          direction: 'LONG',
+          timestamp: 1,
+          profit: 1,
+          payload: makePayload({
+            signalId: 'a',
+            symbol: 'BTCUSDT',
+            direction: 'LONG',
+            timestamp: 1,
+            strategyName: 'VolumeDivergence',
+          }),
+        },
+        {
+          signalId: 'd',
+          symbol: 'ADAUSDT',
+          strategyName: 'VolumeDivergence',
+          direction: 'LONG',
+          timestamp: 4,
+          profit: 4,
+          payload: makePayload({
+            signalId: 'd',
+            symbol: 'ADAUSDT',
+            direction: 'LONG',
+            timestamp: 4,
+            strategyName: 'VolumeDivergence',
+          }),
+        },
+      ]
+        .map((row) => JSON.stringify(row))
+        .join('\n') + '\n',
+      'utf8',
+    );
+
+    await fs.writeFile(
+      chunkB,
+      [
+        {
+          signalId: 'c',
+          symbol: 'SOLUSDT',
+          strategyName: 'VolumeDivergence',
+          direction: 'SHORT',
+          timestamp: 3,
+          profit: -3,
+          payload: makePayload({
+            signalId: 'c',
+            symbol: 'SOLUSDT',
+            direction: 'SHORT',
+            timestamp: 3,
+            strategyName: 'VolumeDivergence',
+          }),
+        },
+        {
+          signalId: 'b',
+          symbol: 'BNBUSDT',
+          strategyName: 'VolumeDivergence',
+          direction: 'SHORT',
+          timestamp: 2,
+          profit: -2,
+          payload: makePayload({
+            signalId: 'b',
+            symbol: 'BNBUSDT',
+            direction: 'SHORT',
+            timestamp: 2,
+            strategyName: 'VolumeDivergence',
+          }),
+        },
+      ]
+        .map((row) => JSON.stringify(row))
+        .join('\n') + '\n',
+      'utf8',
+    );
+
+    const merged = path.join(
+      tempDir,
+      'ai-dataset-volumedivergence-merged.jsonl',
+    );
+    await mergeAiJsonlFiles({
+      filePaths: [chunkA, chunkB],
+      outPath: merged,
+      maxRowsInMemory: 2,
+      maxBytesInMemory: 256,
+    });
+
+    const mergedRows = await readAiDatasetRows({ filePath: merged });
+    expect(mergedRows.rows.map((row) => row.signalId)).toEqual([
+      'a',
+      'b',
+      'c',
+      'd',
+      'e',
+    ]);
+  });
 });

@@ -63,9 +63,11 @@ const {
   buildAiHumanPrompt,
   buildAiPayload,
   buildAiSystemPrompt,
+  getDeterministicAiGateContext,
   getOpenRouterModelKwargs,
   resetAiRuntimeCache,
   runAiPrompt,
+  runAiPromptLocal,
   trimSeriesDeep,
 } = require('../ai');
 const {
@@ -234,6 +236,82 @@ const makeStrongNearBreakPressureTrendlineSignal = () => {
     distance: 748,
   };
   return signal;
+};
+
+const makeVolumeDivergenceSignal = (overrides: Record<string, any> = {}) => {
+  const base = {
+    signalId: 'vd-1',
+    symbol: 'TESTUSDT',
+    strategy: 'VolumeDivergence',
+    interval: '15',
+    direction: 'LONG',
+    timestamp: 1_700_000_000_000,
+    figures: {},
+    prices: {
+      currentPrice: 101,
+      takeProfitPrice: 104,
+      stopLossPrice: 98,
+      riskRatio: 2,
+    },
+    indicators: {
+      maFast: [100, 101, 102],
+      maSlow: [100, 100, 101],
+      btcMaFast: [50, 51, 52],
+      btcMaSlow: [50, 50.5, 51],
+    },
+    additionalIndicators: {
+      deltaAtPivot: 120,
+      divergence: {
+        kind: 'bullish',
+        pivotLookbackLeft: 2,
+        pivotLookbackRight: 1,
+        currentPivot: {
+          index: 6,
+          timestamp: 6,
+          priceLow: 95,
+          priceHigh: 100,
+          volumeNorm: 80,
+        },
+        previousPivot: {
+          index: 4,
+          timestamp: 4,
+          priceLow: 97,
+          priceHigh: 101,
+          volumeNorm: 60,
+        },
+        barsBetweenPivotConfirmations: 4,
+      },
+    },
+  };
+
+  return {
+    ...base,
+    ...overrides,
+    prices: {
+      ...base.prices,
+      ...overrides.prices,
+    },
+    indicators: {
+      ...base.indicators,
+      ...overrides.indicators,
+    },
+    additionalIndicators: {
+      ...base.additionalIndicators,
+      ...overrides.additionalIndicators,
+      divergence: {
+        ...base.additionalIndicators.divergence,
+        ...overrides.additionalIndicators?.divergence,
+        currentPivot: {
+          ...base.additionalIndicators.divergence.currentPivot,
+          ...overrides.additionalIndicators?.divergence?.currentPivot,
+        },
+        previousPivot: {
+          ...base.additionalIndicators.divergence.previousPivot,
+          ...overrides.additionalIndicators?.divergence?.previousPivot,
+        },
+      },
+    },
+  } as any;
 };
 
 const makeWeakBtcLedBreakTrendlineSignal = () => {
@@ -2124,6 +2202,104 @@ describe('ai helpers', () => {
         }),
       );
       expect(result.qualityReason).toBe('Сильное давление вниз у линии');
+    });
+
+    it('replays confirmed VolumeDivergence entries locally without AI provider calls', async () => {
+      const signal = makeVolumeDivergenceSignal();
+      const payload = buildAiPayload(signal);
+
+      expect(getDeterministicAiGateContext(payload)).toEqual(
+        expect.objectContaining({
+          approvalAllowedNow: true,
+          deterministicQuality: 4,
+          structuralHardBlockReasons: [],
+        }),
+      );
+
+      const result = await runAiPromptLocal(signal, { payload });
+
+      expect(result).toEqual(
+        expect.objectContaining({
+          direction: 'LONG',
+          quality: 4,
+          needRetest: false,
+          retestPrice: null,
+          takeProfitPrice: 104,
+          stopLossPrice: 98,
+        }),
+      );
+      expect(chatOpenAICtorMock).not.toHaveBeenCalled();
+      expect(invokeMock).not.toHaveBeenCalled();
+    });
+
+    it('keeps unconfirmed VolumeDivergence entries in watch mode during local replay', async () => {
+      const signal = makeVolumeDivergenceSignal({
+        prices: {
+          currentPrice: 99,
+        },
+      });
+      const payload = buildAiPayload(signal);
+
+      expect(getDeterministicAiGateContext(payload)).toEqual(
+        expect.objectContaining({
+          approvalAllowedNow: false,
+          deterministicQuality: 4,
+          structuralHardBlockReasons: [],
+        }),
+      );
+
+      const result = await runAiPromptLocal(signal, { payload });
+
+      expect(result).toEqual(
+        expect.objectContaining({
+          direction: null,
+          quality: 4,
+          needRetest: true,
+          retestPrice: 100,
+          takeProfitPrice: null,
+          stopLossPrice: null,
+        }),
+      );
+      expect(chatOpenAICtorMock).not.toHaveBeenCalled();
+      expect(invokeMock).not.toHaveBeenCalled();
+    });
+
+    it('replays VolumeDivergence structure-advance entries locally without AI provider calls', async () => {
+      const signal = makeVolumeDivergenceSignal({
+        prices: {
+          currentPrice: 99,
+        },
+        additionalIndicators: {
+          volumeDivergenceSignalTiming: {
+            entryTiming: 'structure_advance',
+            barsSinceDetection: 2,
+          },
+        },
+      });
+      const payload = buildAiPayload(signal);
+
+      expect(getDeterministicAiGateContext(payload)).toEqual(
+        expect.objectContaining({
+          approvalAllowedNow: true,
+          deterministicQuality: 5,
+          structuralHardBlockReasons: [],
+        }),
+      );
+
+      const result = await runAiPromptLocal(signal, { payload });
+
+      expect(result).toEqual(
+        expect.objectContaining({
+          direction: 'LONG',
+          quality: 5,
+          needRetest: false,
+          retestPrice: null,
+          takeProfitPrice: 104,
+          stopLossPrice: 98,
+        }),
+      );
+      expect(chatOpenAICtorMock).not.toHaveBeenCalled();
+      expect(invokeMock).not.toHaveBeenCalled();
     });
 
     it('reuses cached settings and model for repeated prompt calls', async () => {

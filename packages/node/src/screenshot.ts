@@ -34,18 +34,73 @@ const getScreenshotsDir = (projectRoot?: string): string =>
 const maskTokenInUrl = (url: string) =>
   url.replace(/([?&]token=)[^&]+/i, '$1<hidden>');
 
+const getErrorFields = (value: unknown) => {
+  if (!value || typeof value !== 'object') {
+    return [];
+  }
+
+  const record = value as Record<string, unknown>;
+  const fields: Array<[string, unknown]> = [
+    ['name', record.name],
+    ['code', record.code],
+    ['errno', record.errno],
+    ['type', record.type],
+    ['syscall', record.syscall],
+    ['hostname', record.hostname],
+    ['host', record.host],
+    ['address', record.address],
+    ['port', record.port],
+  ];
+
+  return fields
+    .filter(([, fieldValue]) => fieldValue != null && String(fieldValue).trim())
+    .map(([key, fieldValue]) => `${key}=${String(fieldValue)}`);
+};
+
+const describeErrorValue = (value: unknown): string => {
+  if (value == null) {
+    return '';
+  }
+
+  if (typeof value === 'string') {
+    return value;
+  }
+
+  if (value instanceof Error) {
+    const message = value.message?.trim() || '';
+    const fields = getErrorFields(value);
+    return [message, ...fields].filter(Boolean).join(' ');
+  }
+
+  if (typeof value === 'object') {
+    const fields = getErrorFields(value);
+    if (fields.length) {
+      return fields.join(' ');
+    }
+
+    try {
+      return JSON.stringify(value);
+    } catch {
+      return String(value);
+    }
+  }
+
+  return String(value);
+};
+
 const getErrorMessage = (error: unknown) => {
   const maybeError = error as Error & { cause?: unknown };
-  const message = maybeError?.message || String(error);
+  const message = describeErrorValue(error) || String(error);
 
   if (maybeError?.cause == null) {
     return message;
   }
 
-  const cause =
-    maybeError.cause instanceof Error
-      ? maybeError.cause.message
-      : String(maybeError.cause);
+  const cause = describeErrorValue(maybeError.cause);
+
+  if (!cause) {
+    return message;
+  }
 
   return `${message}; cause: ${cause}`;
 };
@@ -151,6 +206,7 @@ export const screenDashboard = async (
       ],
     });
     const browserProcess = browser.process();
+    let browserCloseRequested = false;
 
     try {
       if (browserProcess) {
@@ -171,6 +227,10 @@ export const screenDashboard = async (
         await browser.version(),
       );
       browser.on('disconnected', () => {
+        if (browserCloseRequested) {
+          return;
+        }
+
         logger.error(
           'screenshot browser disconnected: %s %sm captureAttempt=%d',
           symbol,
@@ -396,6 +456,7 @@ export const screenDashboard = async (
         await delay(SCREENSHOT_CAPTURE_RETRY_DELAY_MS);
       }
     } finally {
+      browserCloseRequested = true;
       await browser.close().catch(() => undefined);
     }
   }

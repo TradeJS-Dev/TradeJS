@@ -112,23 +112,8 @@ describe('TestConnectorCreator', () => {
     expect(result.stat.amount).toBe(119);
     expect(result.stat.profit).toBe(19);
 
-    expect(mockedSetData).toHaveBeenCalledWith(
-      'users:alice:cache:tests:orders:order-log-id',
-      expect.any(Array),
-      expect.objectContaining({ expire: expect.any(Number) }),
-    );
-    expect(mockedSetData).toHaveBeenCalledWith(
-      'users:alice:cache:tests:positions:order-log-id',
-      expect.any(Array),
-      expect.objectContaining({ expire: expect.any(Number) }),
-    );
-
-    const orderLogWriteCall = mockedSetData.mock.calls.find(
-      ([key]) => key === 'users:alice:cache:tests:orders:order-log-id',
-    );
-    expect(orderLogWriteCall).toBeDefined();
-    const orderLogPayload = orderLogWriteCall?.[1] as Array<any>;
-    expect(orderLogPayload[0]?.signal?.indicators).toBeUndefined();
+    expect(mockedSetData).not.toHaveBeenCalled();
+    expect(result.inlineOrderLog?.[0]?.signal?.indicators).toBeUndefined();
   });
 
   it('applies stop loss for short position and updates final stats', async () => {
@@ -211,15 +196,8 @@ describe('TestConnectorCreator', () => {
     const result = await connector.getResult();
 
     expect(result.orderLogId).toBe('order-log-id');
-    expect(mockedSetData).toHaveBeenCalledWith(
-      'users:root:cache:tests:orders:order-log-id',
-      expect.any(Array),
-      expect.objectContaining({ expire: expect.any(Number) }),
-    );
-    expect(mockedSetData).toHaveBeenCalledWith(
-      'users:root:cache:tests:positions:order-log-id',
-      expect.any(Array),
-      expect.objectContaining({ expire: expect.any(Number) }),
-    );
+    expect(mockedSetData).not.toHaveBeenCalled();
+    expect(result.inlineOrderLog).toEqual([]);
+    expect(result.inlinePositionLog).toEqual([]);
   });
 });

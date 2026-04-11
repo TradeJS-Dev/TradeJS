@@ -11,7 +11,9 @@ import {
   buildAiPayload,
   buildAiPrompts,
   ensureAiStrategyPluginsLoaded,
+  getDeterministicAiGateContext,
   runAiPrompt,
+  runAiPromptLocal,
 } from '@tradejs/node/ai';
 import { AI_CONCURRENCY_LIMIT } from '@tradejs/node/constants';
 import { AiDatasetRow, Signal, SignalAnalysis } from '@tradejs/types';
@@ -49,6 +51,11 @@ args.option(
   DEFAULT_AI_MODEL,
 );
 args.option('minQuality', 'Minimum AI quality required to approve entry', 4);
+args.option(
+  'localOnly',
+  'Replay deterministic adapter gate without AI provider calls',
+  false,
+);
 
 const flags = args.parse(process.argv);
 
@@ -196,29 +203,9 @@ const resolvePromptRunContext = (row: AiDatasetRow) => {
   };
 };
 
-const asRecord = (value: unknown): Record<string, unknown> | null => {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    return null;
-  }
-
-  return value as Record<string, unknown>;
-};
-
 const getDeterministicGateContext = (signal: Signal) => {
   const payload = buildAiPayload(signal);
-  const additionalIndicators = asRecord(payload.additionalIndicators);
-  const candidates = [
-    additionalIndicators,
-    ...Object.values(additionalIndicators ?? {}).map(asRecord),
-  ].filter((value): value is Record<string, unknown> => Boolean(value));
-
-  return (
-    candidates.find(
-      (candidate) =>
-        Array.isArray(candidate.structuralHardBlockReasons) ||
-        typeof candidate.approvalAllowedNow === 'boolean',
-    ) ?? null
-  );
+  return getDeterministicAiGateContext(payload);
 };
 
 type DeterministicGateEvaluation = {
@@ -365,6 +352,7 @@ const main = async () => {
   const recent = normalizeInt(flags.recent, 50);
   const skip = normalizeInt(flags.skip, 0);
   const minQuality = normalizeInt(flags.minQuality, 4);
+  const localOnly = Boolean(flags.localOnly);
   const model =
     String(flags.model || DEFAULT_AI_MODEL).trim() || DEFAULT_AI_MODEL;
   const parallel = normalizePositiveInt(flags.parallel, AI_CONCURRENCY_LIMIT);
@@ -389,9 +377,11 @@ const main = async () => {
     rows[0]?.strategyName || deriveStrategyNameFromFile(filePath);
   const preparedRows = rows.map((row) => {
     const { promptPair, signal } = resolvePromptRunContext(row);
+    const payload = buildAiPayload(signal);
     return {
       row,
       promptPair,
+      payload,
       signal,
       deterministic: resolveDeterministicGateEvaluation(signal, row.direction),
     };
@@ -417,20 +407,23 @@ const main = async () => {
   }> = [];
 
   await runWithConcurrency(preparedRows, concurrency, async (preparedRow) => {
-    const { row, promptPair, signal, deterministic } = preparedRow;
+    const { row, promptPair, payload, signal, deterministic } = preparedRow;
     const profit = Number(row.profit);
     const profitableTrade = isProfitableTrade(row);
 
     try {
-      const analysis = await runAiPrompt(
-        promptPair,
-        signal
-          ? {
-              model,
-              signal,
-            }
-          : { model },
-      );
+      const analysis = localOnly
+        ? await runAiPromptLocal(signal, { payload })
+        : await runAiPrompt(
+            promptPair,
+            signal
+              ? {
+                  model,
+                  signal,
+                  payload,
+                }
+              : { model },
+          );
       const aiApproved = isAiApproval(row, analysis, minQuality);
       const quality = normalizeQuality(analysis);
 
@@ -488,7 +481,11 @@ const main = async () => {
         ['recent', chalk.blue(recent === 0 ? 'all' : String(recent))],
         ['skip', chalk.blue(String(skip))],
         ['min_quality', chalk.magenta(String(minQuality))],
-        ['model', chalk.yellow(model)],
+        [
+          'mode',
+          localOnly ? chalk.green('local-deterministic') : chalk.yellow('llm'),
+        ],
+        ['model', chalk.yellow(localOnly ? 'local-deterministic' : model)],
         ['parallel', chalk.magenta(String(concurrency))],
       ],
     ),

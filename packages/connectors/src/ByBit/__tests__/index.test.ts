@@ -361,6 +361,12 @@ describe('ByBitConnectorCreator', () => {
     const position = await connector.getPosition('BTCUSDT');
 
     expect(position).toBeNull();
+    expect(mockedLoggerLog).toHaveBeenCalledWith(
+      'error',
+      'position retCode: %s, %s',
+      'BTCUSDT',
+      10001,
+    );
   });
 
   it('returns null from getPosition when mapped positions are empty', async () => {
@@ -377,6 +383,12 @@ describe('ByBitConnectorCreator', () => {
     const position = await connector.getPosition('BTCUSDT');
 
     expect(position).toBeNull();
+    expect(mockedLoggerLog).not.toHaveBeenCalledWith(
+      'info',
+      'position retCode: %s, %s',
+      'BTCUSDT',
+      0,
+    );
   });
 
   it('returns empty list from getPositions when client is missing', async () => {
@@ -401,6 +413,11 @@ describe('ByBitConnectorCreator', () => {
     const positions = await connector.getPositions();
 
     expect(positions).toEqual([]);
+    expect(mockedLoggerLog).toHaveBeenCalledWith(
+      'error',
+      'positions retCode: %s, %s',
+      10001,
+    );
   });
 
   it('returns empty list from getPositions when mapped data is empty', async () => {
@@ -417,6 +434,11 @@ describe('ByBitConnectorCreator', () => {
     const positions = await connector.getPositions();
 
     expect(positions).toEqual([]);
+    expect(mockedLoggerLog).not.toHaveBeenCalledWith(
+      'info',
+      'positions retCode: %s, %s',
+      0,
+    );
   });
 
   it('returns mapped positions from getPositions on success', async () => {

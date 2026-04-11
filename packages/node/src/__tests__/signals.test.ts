@@ -153,6 +153,79 @@ describe('signals', () => {
     );
   });
 
+  it('includes detailed network cause in Telegram photo fallback message', async () => {
+    const networkError = Object.assign(new Error('fetch failed'), {
+      cause: {
+        code: 'ECONNRESET',
+        address: 'api.telegram.org',
+        port: 443,
+      },
+    });
+    const fetchMock = jest
+      .fn()
+      .mockRejectedValueOnce(networkError)
+      .mockRejectedValueOnce(networkError)
+      .mockRejectedValueOnce(networkError)
+      .mockResolvedValueOnce({
+        json: async () => ({ ok: true }),
+      });
+
+    (global as any).fetch = fetchMock;
+
+    jest.doMock('../screenshot', () => ({
+      getScreenshotBuffer: jest.fn(async () => Buffer.from('png-bytes')),
+      getScreenshotFilename: jest.fn(() => 'BTCUSDT_sig-1_15.png'),
+    }));
+
+    const loggerError = jest.fn();
+    jest.doMock('@tradejs/infra/logger', () => ({
+      logger: {
+        error: loggerError,
+        info: jest.fn(),
+      },
+    }));
+
+    const { sendSignal } = require('../signals');
+
+    await sendSignal(
+      {
+        signalId: 'sig-1',
+        symbol: 'BTCUSDT',
+        strategy: 'TrendLine',
+        interval: '15',
+        direction: 'LONG',
+        timestamp: 1_700_000_000_000,
+        indicators: {},
+        additionalIndicators: {},
+        prices: {
+          currentPrice: 100,
+          takeProfitPrice: 110,
+          stopLossPrice: 95,
+          riskRatio: 2,
+        },
+      },
+      '15',
+      null,
+    );
+
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+    expect(fetchMock.mock.calls[0][0]).toContain('/sendPhoto');
+    expect(fetchMock.mock.calls[1][0]).toContain('/sendPhoto');
+    expect(fetchMock.mock.calls[2][0]).toContain('/sendPhoto');
+    expect(fetchMock.mock.calls[3][0]).toContain('/sendMessage');
+
+    const payload = JSON.parse(fetchMock.mock.calls[3][1].body);
+    expect(payload.text).toContain('Photo delivery failed');
+    expect(payload.text).toContain('code=ECONNRESET');
+    expect(payload.text).toContain('address=api.telegram.org');
+    expect(payload.text).toContain('port=443');
+
+    expect(loggerError).toHaveBeenCalledWith(
+      'tg sendPhoto request failed: %s',
+      expect.stringContaining('code=ECONNRESET'),
+    );
+  });
+
   it('falls back to a text message when screenshot file is missing', async () => {
     const fetchMock = jest.fn().mockResolvedValueOnce({
       json: async () => ({ ok: true }),

@@ -285,12 +285,12 @@ const updateBestTickerResult = (
   artifacts?: TestResultArtifacts | null,
 ) => {
   if (!isGoodTest(result)) {
-    return;
+    return false;
   }
 
   const previousResult = resultsByTickers.get(result.test.symbol);
   if (previousResult && previousResult.stat.profit >= result.stat.profit) {
-    return;
+    return false;
   }
 
   const previousTestName = bestTickerTestNameBySymbol.get(result.test.symbol);
@@ -303,6 +303,8 @@ const updateBestTickerResult = (
   if (artifacts) {
     retainArtifacts(result.test.name, artifacts);
   }
+
+  return true;
 };
 
 const isStrategyConfigGrid = (value: unknown): value is StrategyConfigGrid => {
@@ -334,12 +336,40 @@ const resolveBacktestConnectorName = async (
 const getLogsById = async (orderLogId: string) => {
   const orderLog = (await getData(
     redisKeys.cacheOrders(userName, orderLogId),
+    null,
   )) as OrderLog[];
   const positionLog = (await getData(
     redisKeys.cachePositions(userName, orderLogId),
+    null,
   )) as PositionLogData;
 
   return { orderLog, positionLog };
+};
+
+const cacheArtifactsById = async (
+  orderLogId: string,
+  artifacts?: TestResultArtifacts | null,
+) => {
+  if (
+    !artifacts ||
+    !Array.isArray(artifacts.orderLog) ||
+    !Array.isArray(artifacts.positionLog)
+  ) {
+    return;
+  }
+
+  await Promise.all([
+    setData(redisKeys.cacheOrders(userName, orderLogId), artifacts.orderLog, {
+      expire: TTL_1D,
+    }),
+    setData(
+      redisKeys.cachePositions(userName, orderLogId),
+      artifacts.positionLog,
+      {
+        expire: TTL_1D,
+      },
+    ),
+  ]);
 };
 
 const resolveResultArtifacts = async (result: TestWorkerResult) => {
@@ -568,11 +598,22 @@ const backtest = async () => {
       const inlineArtifacts = getInlineArtifacts(fullResult);
 
       const nextTopResults = insertTopResult(results, result, flags.top);
+      const shouldCacheTopArtifacts = nextTopResults.added;
       if (nextTopResults.added || results !== nextTopResults.results) {
         updateTopResults(nextTopResults.results, result, inlineArtifacts);
       }
 
-      updateBestTickerResult(result, inlineArtifacts);
+      const updatedBestTickerResult = updateBestTickerResult(
+        result,
+        inlineArtifacts,
+      );
+
+      if (
+        (shouldCacheTopArtifacts || updatedBestTickerResult) &&
+        inlineArtifacts
+      ) {
+        await cacheArtifactsById(result.orderLogId, inlineArtifacts);
+      }
 
       if (
         completedTests % progressStep === 0 ||
@@ -630,6 +671,11 @@ const saveAndPrintResults = async () => {
     }
 
     const stat = calculateStatsFull(positionLog) as TestStat;
+    if (!stat && result.stat.orders > 0) {
+      throw new Error(
+        `Position log is empty for test ${name} despite ${result.stat.orders} closed orders`,
+      );
+    }
 
     await setTestData(test, stat, orderLog);
 
@@ -667,6 +713,11 @@ const saveAndPrintResultsByTickers = async () => {
     }
 
     const stat = calculateStatsFull(positionLog) as TestStat;
+    if (!stat && result.stat.orders > 0) {
+      throw new Error(
+        `Position log is empty for ticker result ${name} despite ${result.stat.orders} closed orders`,
+      );
+    }
 
     await setTestData(test, stat, orderLog);
 
@@ -731,7 +782,7 @@ const finish = async () => {
       finishedAt: finishedAt.toISOString(),
       durationSeconds,
       results,
-      resultsByTickers: resultsByTickers.values(),
+      resultsByTickers: Array.from(resultsByTickers.values()),
       bestConfig,
       mergedConfig,
       successTests,

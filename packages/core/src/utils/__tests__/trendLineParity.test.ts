@@ -123,6 +123,25 @@ const expectBatchAndStreamingParity = (
   );
 };
 
+const expectSignalsStyleParity = (
+  mode: 'lows' | 'highs',
+  data: KLineData[],
+  options: any,
+) => {
+  const batchEngine = createTrendlineEngine([], { mode, ...options });
+  batchEngine.nextMany(data);
+
+  const preloadEngine = createTrendlineEngine(data.slice(0, -1), {
+    mode,
+    ...options,
+  });
+  preloadEngine.next(data[data.length - 1]);
+
+  expect(normalizeLines(preloadEngine.getLines())).toEqual(
+    normalizeLines(batchEngine.getLines()),
+  );
+};
+
 describe('trendLine vs trendLineEngine parity', () => {
   const lowsData = buildCandles(80, 'up');
   const highsData = buildCandles(80, 'down');
@@ -209,5 +228,26 @@ describe('trendLine vs trendLineEngine parity', () => {
 
     expectBatchAndStreamingParity('lows', lowsData, options);
     expectBatchAndStreamingParity('highs', highsData, options);
+  });
+
+  it('keeps preload-then-last-candle flow equivalent to full preload', () => {
+    const options = {
+      range: 2,
+      firstRange: 2,
+      minTouches: 2,
+      minDistance: 8,
+      minTouchGap: 2,
+      maxTouchGap: 50,
+      offset: 5,
+      capture: true,
+      bestLines: 5,
+      maxLines: 50,
+      maxDistance: 200,
+      epsilon: 0.001,
+      epsilonOffset: 0.001,
+    };
+
+    expectSignalsStyleParity('lows', lowsData, options);
+    expectSignalsStyleParity('highs', highsData, options);
   });
 });

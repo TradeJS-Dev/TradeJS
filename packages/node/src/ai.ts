@@ -19,6 +19,13 @@ import {
 } from '@tradejs/types';
 export { MAX_AI_SERIES_POINTS, trimSeriesDeep } from './aiShared';
 
+type DeterministicAiGateContext = {
+  approvalAllowedNow?: boolean;
+  deterministicQuality?: number;
+  maxAllowedQuality?: number;
+  structuralHardBlockReasons?: string[];
+};
+
 const parseAIResponse = (input: string | object): object => {
   try {
     // если уже объект — просто вернуть
@@ -94,6 +101,38 @@ const normalizeAnalysis = (raw: any): Partial<SignalAnalysis> => {
     triggerInvalidation: toText(raw?.triggerInvalidation),
     comment: typeof raw?.comment === 'string' ? raw.comment.slice(0, 1024) : '',
   };
+};
+
+const asRecord = (value: unknown): Record<string, unknown> | null => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return null;
+  }
+
+  return value as Record<string, unknown>;
+};
+
+const getSignalDirection = (signal: Signal) =>
+  signal.direction === 'LONG' || signal.direction === 'SHORT'
+    ? signal.direction
+    : null;
+
+const getDeterministicQuality = (
+  gateContext: DeterministicAiGateContext | null,
+) => {
+  const deterministicQuality = Number(gateContext?.deterministicQuality);
+  if (Number.isFinite(deterministicQuality)) {
+    return Math.max(1, Math.min(5, Math.round(deterministicQuality)));
+  }
+
+  const maxAllowedQuality = Number(gateContext?.maxAllowedQuality);
+  if (Number.isFinite(maxAllowedQuality)) {
+    return Math.max(1, Math.min(5, Math.round(maxAllowedQuality)));
+  }
+
+  return Array.isArray(gateContext?.structuralHardBlockReasons) &&
+    gateContext.structuralHardBlockReasons.length > 0
+    ? 2
+    : 3;
 };
 
 export const buildAiSystemPrompt = (signal?: Signal): string => `
@@ -224,6 +263,22 @@ ${signal ? buildAiSystemPromptAddonByStrategy(signal) : ''}
 
 export const buildAiPayload = (signal: Signal): AiPayload =>
   buildAiPayloadByStrategy(signal);
+
+export const getDeterministicAiGateContext = (
+  payload: AiPayload,
+): DeterministicAiGateContext | null => {
+  const additionalIndicators = asRecord(payload.additionalIndicators);
+  const candidates = [
+    additionalIndicators,
+    ...Object.values(additionalIndicators ?? {}).map(asRecord),
+  ].filter((value): value is Record<string, unknown> => Boolean(value));
+
+  return (candidates.find(
+    (candidate) =>
+      Array.isArray(candidate.structuralHardBlockReasons) ||
+      typeof candidate.approvalAllowedNow === 'boolean',
+  ) ?? null) as DeterministicAiGateContext | null;
+};
 
 export const buildAiHumanPrompt = (
   signal: Signal,
@@ -407,6 +462,38 @@ export const runAiPrompt = async (
     options.signal,
     normalized,
     options.payload,
+  );
+};
+
+export const runAiPromptLocal = async (
+  signal: Signal,
+  options: Omit<AiRequestOptions, 'model' | 'userName'> = {},
+): Promise<Partial<SignalAnalysis>> => {
+  await ensureAiStrategyPluginsLoaded();
+  const payload = options.payload ?? buildAiPayload(signal);
+  const gateContext = getDeterministicAiGateContext(payload);
+  const signalDirection = getSignalDirection(signal);
+  const deterministicQuality = getDeterministicQuality(gateContext);
+  const approvalAllowedNow =
+    typeof gateContext?.approvalAllowedNow === 'boolean'
+      ? gateContext.approvalAllowedNow
+      : deterministicQuality >= 4;
+
+  return postProcessAiAnalysisByStrategy(
+    signal,
+    {
+      direction: approvalAllowedNow ? signalDirection : null,
+      quality: deterministicQuality,
+      needRetest: !approvalAllowedNow,
+      retestPrice: null,
+      takeProfitPrice: approvalAllowedNow
+        ? signal.prices?.takeProfitPrice ?? null
+        : null,
+      stopLossPrice: approvalAllowedNow
+        ? signal.prices?.stopLossPrice ?? null
+        : null,
+    },
+    payload,
   );
 };
 

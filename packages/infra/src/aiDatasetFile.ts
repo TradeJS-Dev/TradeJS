@@ -9,6 +9,8 @@ import { mergeJsonlFiles, toFileToken } from './mlDatasetFile';
 
 const DEFAULT_DIR = 'data/ai/export';
 const AI_DATASET_WRITE_BATCH_SIZE = 100;
+const AI_MERGE_SORT_RUN_MAX_ROWS = 2_000;
+const AI_MERGE_SORT_RUN_MAX_BYTES = 16 * 1024 * 1024;
 
 type WriterState = {
   filePath: string;
@@ -16,6 +18,26 @@ type WriterState = {
   buffer: string[];
   writeQueue: Promise<void>;
   closed: boolean;
+};
+
+type AiDatasetSortKey = {
+  timestamp: number;
+  symbol: string;
+  signalId: string;
+};
+
+type SortableAiDatasetLine = {
+  line: string;
+  sortKey: AiDatasetSortKey;
+  sourceIndex: number;
+};
+
+type SortedRunHead = {
+  runIndex: number;
+  line: string;
+  sortKey: AiDatasetSortKey;
+  iterator: AsyncIterator<string>;
+  reader: readline.Interface;
 };
 
 const writerByPath = new Map<string, WriterState>();
@@ -135,73 +157,285 @@ export const listAiChunkFiles = async (params: {
     .sort();
 };
 
-export const mergeAiJsonlFiles = async (params: {
-  filePaths: string[];
+const parseAiDatasetLine = (line: string, filePath: string): AiDatasetRow => {
+  try {
+    return JSON.parse(line) as AiDatasetRow;
+  } catch (error) {
+    const message = (error as Error)?.message || String(error);
+    throw new Error(
+      `Failed to parse AI dataset row from ${filePath}: ${message}`,
+    );
+  }
+};
+
+const getAiDatasetSortKey = (row: AiDatasetRow): AiDatasetSortKey => {
+  const timestamp = Number(row.timestamp);
+
+  return {
+    timestamp: Number.isFinite(timestamp) ? timestamp : Number.MAX_SAFE_INTEGER,
+    symbol: String(row.symbol || ''),
+    signalId: String(row.signalId || ''),
+  };
+};
+
+const compareAiDatasetSortKeys = (
+  left: AiDatasetSortKey,
+  right: AiDatasetSortKey,
+) => {
+  if (left.timestamp !== right.timestamp) {
+    return left.timestamp - right.timestamp;
+  }
+
+  const symbolCompare = left.symbol.localeCompare(right.symbol);
+  if (symbolCompare !== 0) {
+    return symbolCompare;
+  }
+
+  return left.signalId.localeCompare(right.signalId);
+};
+
+const compareSortableAiDatasetLines = (
+  left: SortableAiDatasetLine,
+  right: SortableAiDatasetLine,
+) => {
+  const keyCompare = compareAiDatasetSortKeys(left.sortKey, right.sortKey);
+  if (keyCompare !== 0) {
+    return keyCompare;
+  }
+
+  return left.sourceIndex - right.sourceIndex;
+};
+
+const compareSortedRunHeads = (left: SortedRunHead, right: SortedRunHead) => {
+  const keyCompare = compareAiDatasetSortKeys(left.sortKey, right.sortKey);
+  if (keyCompare !== 0) {
+    return keyCompare;
+  }
+
+  return left.runIndex - right.runIndex;
+};
+
+const writeJsonlLines = async (params: {
+  filePath: string;
+  lines: string[];
+}) => {
+  const { filePath, lines } = params;
+  await fs.mkdir(path.dirname(filePath), { recursive: true });
+  const stream = createWriteStream(filePath, { encoding: 'utf8' });
+  const done = Promise.all([once(stream, 'finish'), once(stream, 'close')]);
+
+  try {
+    for (const line of lines) {
+      if (!stream.write(`${line}\n`)) {
+        await once(stream, 'drain');
+      }
+    }
+  } finally {
+    stream.end();
+    await done;
+  }
+};
+
+const flushSortedRun = async (params: {
+  tempDir: string;
+  runIndex: number;
+  entries: SortableAiDatasetLine[];
+}) => {
+  const { tempDir, runIndex, entries } = params;
+  entries.sort(compareSortableAiDatasetLines);
+
+  const filePath = path.join(
+    tempDir,
+    `run-${String(runIndex).padStart(6, '0')}.jsonl`,
+  );
+  await writeJsonlLines({
+    filePath,
+    lines: entries.map(({ line }) => line),
+  });
+
+  return filePath;
+};
+
+const readNextNonEmptyLine = async (
+  iterator: AsyncIterator<string>,
+): Promise<string | null> => {
+  while (true) {
+    const next = await iterator.next();
+    if (next.done) {
+      return null;
+    }
+
+    const trimmed = String(next.value || '').trim();
+    if (trimmed) {
+      return trimmed;
+    }
+  }
+};
+
+const mergeSortedRuns = async (params: {
+  runPaths: string[];
   outPath: string;
 }) => {
-  const { filePaths, outPath } = params;
-  const rows: Array<{
-    row: AiDatasetRow;
-    line: string;
-    index: number;
-  }> = [];
-  let index = 0;
+  const { runPaths, outPath } = params;
+  await fs.mkdir(path.dirname(outPath), { recursive: true });
+  const output = createWriteStream(outPath, { encoding: 'utf8' });
+  const outputDone = Promise.all([
+    once(output, 'finish'),
+    once(output, 'close'),
+  ]);
+  const heads: SortedRunHead[] = [];
 
-  for (const filePath of filePaths) {
-    const content = await fs.readFile(filePath, 'utf8');
-    const lines = content.split('\n');
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (!trimmed) {
+  try {
+    for (let runIndex = 0; runIndex < runPaths.length; runIndex += 1) {
+      const runPath = runPaths[runIndex];
+      const reader = readline.createInterface({
+        input: createReadStream(runPath, { encoding: 'utf8' }),
+        crlfDelay: Infinity,
+      });
+      const iterator = reader[Symbol.asyncIterator]();
+      const line = await readNextNonEmptyLine(iterator);
+
+      if (!line) {
+        reader.close();
         continue;
       }
 
-      rows.push({
-        row: JSON.parse(trimmed) as AiDatasetRow,
-        line: trimmed,
-        index,
+      heads.push({
+        runIndex,
+        line,
+        sortKey: getAiDatasetSortKey(parseAiDatasetLine(line, runPath)),
+        iterator,
+        reader,
       });
-      index += 1;
     }
+
+    while (heads.length > 0) {
+      let bestIndex = 0;
+
+      for (let index = 1; index < heads.length; index += 1) {
+        if (compareSortedRunHeads(heads[index], heads[bestIndex]) < 0) {
+          bestIndex = index;
+        }
+      }
+
+      const best = heads[bestIndex];
+      if (!output.write(`${best.line}\n`)) {
+        await once(output, 'drain');
+      }
+
+      const nextLine = await readNextNonEmptyLine(best.iterator);
+      if (!nextLine) {
+        best.reader.close();
+        heads.splice(bestIndex, 1);
+        continue;
+      }
+
+      best.line = nextLine;
+      best.sortKey = getAiDatasetSortKey(
+        parseAiDatasetLine(nextLine, runPaths[best.runIndex]),
+      );
+    }
+  } finally {
+    for (const head of heads) {
+      head.reader.close();
+    }
+
+    output.end();
+    await outputDone;
   }
+};
 
-  rows.sort((left, right) => {
-    const leftTimestamp = Number(left.row.timestamp);
-    const rightTimestamp = Number(right.row.timestamp);
-    const normalizedLeftTimestamp = Number.isFinite(leftTimestamp)
-      ? leftTimestamp
-      : Number.MAX_SAFE_INTEGER;
-    const normalizedRightTimestamp = Number.isFinite(rightTimestamp)
-      ? rightTimestamp
-      : Number.MAX_SAFE_INTEGER;
-
-    if (normalizedLeftTimestamp !== normalizedRightTimestamp) {
-      return normalizedLeftTimestamp - normalizedRightTimestamp;
-    }
-
-    const symbolCompare = (left.row.symbol || '').localeCompare(
-      right.row.symbol || '',
-    );
-    if (symbolCompare !== 0) {
-      return symbolCompare;
-    }
-
-    const signalIdCompare = (left.row.signalId || '').localeCompare(
-      right.row.signalId || '',
-    );
-    if (signalIdCompare !== 0) {
-      return signalIdCompare;
-    }
-
-    return left.index - right.index;
-  });
-
-  await fs.mkdir(path.dirname(outPath), { recursive: true });
-  await fs.writeFile(
+export const mergeAiJsonlFiles = async (params: {
+  filePaths: string[];
+  outPath: string;
+  maxRowsInMemory?: number;
+  maxBytesInMemory?: number;
+}) => {
+  const {
+    filePaths,
     outPath,
-    rows.map(({ line }) => line).join('\n') + (rows.length ? '\n' : ''),
-    'utf8',
+    maxRowsInMemory = AI_MERGE_SORT_RUN_MAX_ROWS,
+    maxBytesInMemory = AI_MERGE_SORT_RUN_MAX_BYTES,
+  } = params;
+
+  const tempDir = path.join(
+    path.dirname(outPath),
+    `.ai-merge-${path.basename(outPath)}-${Date.now()}-${process.pid}`,
   );
+  let batch: SortableAiDatasetLine[] = [];
+  let batchBytes = 0;
+  let sourceIndex = 0;
+  let runIndex = 0;
+  const runPaths: string[] = [];
+
+  const flushBatch = async () => {
+    if (!batch.length) {
+      return;
+    }
+
+    runPaths.push(
+      await flushSortedRun({
+        tempDir,
+        runIndex,
+        entries: batch,
+      }),
+    );
+    runIndex += 1;
+    batch = [];
+    batchBytes = 0;
+  };
+
+  try {
+    await fs.mkdir(tempDir, { recursive: true });
+
+    for (const filePath of filePaths) {
+      const reader = readline.createInterface({
+        input: createReadStream(filePath, { encoding: 'utf8' }),
+        crlfDelay: Infinity,
+      });
+
+      try {
+        for await (const line of reader) {
+          const trimmed = line.trim();
+          if (!trimmed) {
+            continue;
+          }
+
+          batch.push({
+            line: trimmed,
+            sortKey: getAiDatasetSortKey(parseAiDatasetLine(trimmed, filePath)),
+            sourceIndex,
+          });
+          sourceIndex += 1;
+          batchBytes += Buffer.byteLength(trimmed, 'utf8') + 1;
+
+          if (
+            batch.length >= maxRowsInMemory ||
+            batchBytes >= maxBytesInMemory
+          ) {
+            await flushBatch();
+          }
+        }
+      } finally {
+        reader.close();
+      }
+    }
+
+    await flushBatch();
+
+    if (!runPaths.length) {
+      await fs.mkdir(path.dirname(outPath), { recursive: true });
+      await fs.writeFile(outPath, '', 'utf8');
+      return;
+    }
+
+    await mergeSortedRuns({
+      runPaths,
+      outPath,
+    });
+  } finally {
+    await fs.rm(tempDir, { recursive: true, force: true });
+  }
 };
 
 export const readAiDatasetRows = async (params: {

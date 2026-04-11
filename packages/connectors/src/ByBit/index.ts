@@ -287,14 +287,13 @@ export const ByBitConnectorCreator: ConnectorCreator = async (config) => {
       category: MARKET_CATEGORY,
     });
 
-    logger.log(
-      getLogLevel(positionRes),
-      'position retCode: %s, %s',
-      symbol,
-      positionRes.retCode,
-    );
-
     if (positionRes.retCode !== 0) {
+      logger.log(
+        getLogLevel(positionRes),
+        'position retCode: %s, %s',
+        symbol,
+        positionRes.retCode,
+      );
       return null;
     }
 
@@ -630,13 +629,12 @@ export const ByBitConnectorCreator: ConnectorCreator = async (config) => {
         settleCoin: 'USDT',
       });
 
-      logger.log(
-        getLogLevel(positionRes),
-        'positions retCode: %s, %s',
-        positionRes.retCode,
-      );
-
       if (positionRes.retCode !== 0) {
+        logger.log(
+          getLogLevel(positionRes),
+          'positions retCode: %s, %s',
+          positionRes.retCode,
+        );
         return [];
       }
 

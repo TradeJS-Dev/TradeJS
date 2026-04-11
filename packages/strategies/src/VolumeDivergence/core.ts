@@ -1,6 +1,6 @@
 import { round } from '@tradejs/core/math';
 
-import { VolumeDivergenceConfig } from './config';
+import { VolumeDivergenceConfig, VolumeDivergenceModeConfig } from './config';
 import { buildVolumeDivergenceFigures } from './figures';
 import {
   Candle,
@@ -33,6 +33,29 @@ type ConfirmedPivotState = {
   nextConfirmationIndex: number;
 };
 
+type PendingEntryTiming = 'confirmation_ready' | 'structure_advance';
+
+type PendingDivergenceCandidate = {
+  kind: PivotDivergence['kind'];
+  direction: VolumeDivergenceModeConfig['direction'];
+  currentPivotVolumeNorm: number;
+  previousPivotVolumeNorm: number;
+  currentPivotLow: number;
+  previousPivotLow: number;
+  currentPivotHigh: number;
+  previousPivotHigh: number;
+  currentPivotVolume: number;
+  currentPivotDelta: number;
+  barsBetweenPivotConfirmations: number;
+  currentPivotTimestamp: number | null;
+  previousPivotTimestamp: number | null;
+  pivotLookbackLeft: number;
+  pivotLookbackRight: number;
+  detectedAtTimestamp: number;
+  lastObservedTimestamp: number;
+  barsSinceDetection: number;
+};
+
 const isFiniteNumber = (value: unknown): value is number =>
   typeof value === 'number' && Number.isFinite(value);
 
@@ -56,14 +79,14 @@ const rebaseQueue = (queue: RollingMaxQueueState, offset: number) => {
   queue.start = 0;
 };
 
-const rebaseConfirmedPivots = (
-  state: ConfirmedPivotState,
-  offset: number,
-) => {
+const rebaseConfirmedPivots = (state: ConfirmedPivotState, offset: number) => {
   state.indices = state.indices
     .map((index) => index - offset)
     .filter((index) => index >= 0);
-  state.nextConfirmationIndex = Math.max(0, state.nextConfirmationIndex - offset);
+  state.nextConfirmationIndex = Math.max(
+    0,
+    state.nextConfirmationIndex - offset,
+  );
 };
 
 const appendNormalizedVolumes = ({
@@ -307,6 +330,173 @@ const getRequiredHistorySize = ({
   lookbackRight * 2 +
   8;
 
+const buildPendingDivergenceCandidate = ({
+  divergence,
+  candleWindow,
+  direction,
+  pivotLookbackLeft,
+  pivotLookbackRight,
+  detectedAtTimestamp,
+}: {
+  divergence: PivotDivergence;
+  candleWindow: Candle[];
+  direction: VolumeDivergenceModeConfig['direction'];
+  pivotLookbackLeft: number;
+  pivotLookbackRight: number;
+  detectedAtTimestamp: number;
+}): PendingDivergenceCandidate => ({
+  kind: divergence.kind,
+  direction,
+  currentPivotVolumeNorm: divergence.currentPivotVolumeNorm,
+  previousPivotVolumeNorm: divergence.previousPivotVolumeNorm,
+  currentPivotLow: divergence.currentPivotLow,
+  previousPivotLow: divergence.previousPivotLow,
+  currentPivotHigh: divergence.currentPivotHigh,
+  previousPivotHigh: divergence.previousPivotHigh,
+  currentPivotVolume: divergence.currentPivotVolume,
+  currentPivotDelta: divergence.currentPivotDelta,
+  barsBetweenPivotConfirmations: divergence.barsBetweenPivotConfirmations,
+  currentPivotTimestamp:
+    Number(candleWindow[divergence.currentPivotIndex]?.timestamp) || null,
+  previousPivotTimestamp:
+    Number(candleWindow[divergence.previousPivotIndex]?.timestamp) || null,
+  pivotLookbackLeft,
+  pivotLookbackRight,
+  detectedAtTimestamp,
+  lastObservedTimestamp: detectedAtTimestamp,
+  barsSinceDetection: 0,
+});
+
+const updatePendingCandidateProgress = (
+  candidate: PendingDivergenceCandidate,
+  timestamp: number,
+) => {
+  if (candidate.lastObservedTimestamp === timestamp) {
+    return;
+  }
+
+  candidate.barsSinceDetection += 1;
+  candidate.lastObservedTimestamp = timestamp;
+};
+
+const resolvePendingEntryTiming = ({
+  candidate,
+  currentPrice,
+}: {
+  candidate: PendingDivergenceCandidate;
+  currentPrice: number;
+}): PendingEntryTiming | null => {
+  if (candidate.direction === 'LONG') {
+    if (currentPrice >= candidate.previousPivotLow) {
+      return 'structure_advance';
+    }
+    if (currentPrice >= candidate.currentPivotHigh) {
+      return 'confirmation_ready';
+    }
+    return null;
+  }
+
+  if (currentPrice <= candidate.previousPivotHigh) {
+    return 'structure_advance';
+  }
+  if (currentPrice <= candidate.currentPivotLow) {
+    return 'confirmation_ready';
+  }
+  return null;
+};
+
+const findCandleIndexByTimestamp = (
+  candles: Candle[],
+  timestamp: number | null,
+  fallbackIndex: number,
+) => {
+  if (timestamp == null) {
+    return fallbackIndex;
+  }
+
+  const index = candles.findIndex(
+    (candle) => Number(candle.timestamp) === timestamp,
+  );
+  return index >= 0 ? index : fallbackIndex;
+};
+
+const getModeConfigByKind = ({
+  kind,
+  bullish,
+  bearish,
+}: {
+  kind: PivotDivergence['kind'];
+  bullish: VolumeDivergenceModeConfig;
+  bearish: VolumeDivergenceModeConfig;
+}) => (kind === 'bullish' ? bullish : bearish);
+
+const buildEntryPayloadFromPendingCandidate = ({
+  candidate,
+  candleWindow,
+  entryTiming,
+}: {
+  candidate: PendingDivergenceCandidate;
+  candleWindow: Candle[];
+  entryTiming: PendingEntryTiming;
+}) => {
+  const previousPivotIndex = findCandleIndexByTimestamp(
+    candleWindow,
+    candidate.previousPivotTimestamp,
+    0,
+  );
+  const currentPivotIndex = findCandleIndexByTimestamp(
+    candleWindow,
+    candidate.currentPivotTimestamp,
+    candleWindow.length - 1,
+  );
+
+  return {
+    figures: buildVolumeDivergenceFigures({
+      kind: candidate.kind,
+      previousPivotIndex,
+      currentPivotIndex,
+      previousPivotLow: candidate.previousPivotLow,
+      previousPivotHigh: candidate.previousPivotHigh,
+      currentPivotLow: candidate.currentPivotLow,
+      currentPivotHigh: candidate.currentPivotHigh,
+      fullData: candleWindow,
+    }),
+    additionalIndicators: {
+      divergenceKind: candidate.kind,
+      normalizedVolumeAtPivot: candidate.currentPivotVolumeNorm,
+      previousNormalizedVolumeAtPivot: candidate.previousPivotVolumeNorm,
+      volumeAtPivot: candidate.currentPivotVolume,
+      deltaAtPivot: candidate.currentPivotDelta,
+      barsBetweenPivotConfirmations: candidate.barsBetweenPivotConfirmations,
+      divergence: {
+        kind: candidate.kind,
+        pivotLookbackLeft: candidate.pivotLookbackLeft,
+        pivotLookbackRight: candidate.pivotLookbackRight,
+        currentPivot: {
+          index: currentPivotIndex,
+          timestamp: candidate.currentPivotTimestamp,
+          priceLow: candidate.currentPivotLow,
+          priceHigh: candidate.currentPivotHigh,
+          volumeNorm: candidate.currentPivotVolumeNorm,
+        },
+        previousPivot: {
+          index: previousPivotIndex,
+          timestamp: candidate.previousPivotTimestamp,
+          priceLow: candidate.previousPivotLow,
+          priceHigh: candidate.previousPivotHigh,
+          volumeNorm: candidate.previousPivotVolumeNorm,
+        },
+        barsBetweenPivotConfirmations: candidate.barsBetweenPivotConfirmations,
+      },
+      volumeDivergenceSignalTiming: {
+        entryTiming,
+        barsSinceDetection: candidate.barsSinceDetection,
+        detectedAtTimestamp: candidate.detectedAtTimestamp,
+      },
+    },
+  };
+};
+
 export const createVolumeDivergenceCore: CreateStrategyCore<
   VolumeDivergenceConfig,
   IndicatorsHistorySnapshot | undefined
@@ -330,6 +520,13 @@ export const createVolumeDivergenceCore: CreateStrategyCore<
     lookbackRight: PIVOT_LOOKBACK_RIGHT,
     maxBarsBetweenPivots: MAX_BARS_BETWEEN_PIVOTS,
   });
+  const maxPendingConfirmationBars = Math.max(
+    2,
+    Math.min(
+      MAX_BARS_BETWEEN_PIVOTS,
+      PIVOT_LOOKBACK_LEFT + PIVOT_LOOKBACK_RIGHT + 1,
+    ),
+  );
   const candleWindow = (
     Array.isArray(initialData) ? initialData.slice(-maxHistorySize) : []
   ) as Candle[];
@@ -342,6 +539,7 @@ export const createVolumeDivergenceCore: CreateStrategyCore<
     indices: [],
     nextConfirmationIndex: 0,
   };
+  let pendingCandidate: PendingDivergenceCandidate | null = null;
 
   const syncDerivedState = () => {
     appendNormalizedVolumes({
@@ -421,16 +619,54 @@ export const createVolumeDivergenceCore: CreateStrategyCore<
       rangeUpper: MAX_BARS_BETWEEN_PIVOTS,
     });
 
-    if (!divergence) {
+    if (divergence) {
+      const modeConfig = getModeConfigByKind({
+        kind: divergence.kind,
+        bullish: BULLISH,
+        bearish: BEARISH,
+      });
+      if (!modeConfig.enable) {
+        return strategyApi.skip('STRATEGY_DISABLED');
+      }
+
+      pendingCandidate = buildPendingDivergenceCandidate({
+        divergence,
+        candleWindow,
+        direction: modeConfig.direction,
+        pivotLookbackLeft: PIVOT_LOOKBACK_LEFT,
+        pivotLookbackRight: PIVOT_LOOKBACK_RIGHT,
+        detectedAtTimestamp: timestamp,
+      });
+
+      return strategyApi.skip('WAIT_REVERSAL_CONFIRMATION');
+    }
+
+    if (!pendingCandidate) {
       return strategyApi.skip('NO_DIVERGENCE');
     }
 
-    const modeConfig = divergence.kind === 'bullish' ? BULLISH : BEARISH;
-    if (!modeConfig.enable) {
-      return strategyApi.skip('STRATEGY_DISABLED');
+    updatePendingCandidateProgress(pendingCandidate, timestamp);
+
+    if (pendingCandidate.barsSinceDetection > maxPendingConfirmationBars) {
+      pendingCandidate = null;
+      return strategyApi.skip('PENDING_DIVERGENCE_EXPIRED');
     }
 
     const { currentPrice } = await strategyApi.getMarketData();
+    const entryTiming = resolvePendingEntryTiming({
+      candidate: pendingCandidate,
+      currentPrice,
+    });
+
+    if (!entryTiming) {
+      return strategyApi.skip('WAIT_REVERSAL_CONFIRMATION');
+    }
+
+    const modeConfig = getModeConfigByKind({
+      kind: pendingCandidate.kind,
+      bullish: BULLISH,
+      bearish: BEARISH,
+    });
 
     const { stopLossPrice, takeProfitPrice, riskRatio, qty } =
       strategyApi.getDirectionalTpSlPrices({
@@ -452,52 +688,21 @@ export const createVolumeDivergenceCore: CreateStrategyCore<
     }
 
     const indicators = indicatorsState.snapshot();
+    const entryPayload = buildEntryPayloadFromPendingCandidate({
+      candidate: pendingCandidate,
+      candleWindow,
+      entryTiming,
+    });
 
     lastTradeController.markTrade(timestamp);
+    pendingCandidate = null;
 
     return strategyApi.entry({
       code: 'VOLUME_DIVERGENCE_REVERSAL_SIGNAL',
       direction: modeConfig.direction,
-      figures: buildVolumeDivergenceFigures({
-        kind: divergence.kind,
-        previousPivotIndex: divergence.previousPivotIndex,
-        currentPivotIndex: divergence.currentPivotIndex,
-        previousPivotLow: divergence.previousPivotLow,
-        previousPivotHigh: divergence.previousPivotHigh,
-        currentPivotLow: divergence.currentPivotLow,
-        currentPivotHigh: divergence.currentPivotHigh,
-        fullData: candleWindow,
-      }),
+      figures: entryPayload.figures,
       indicators,
-      additionalIndicators: {
-        divergenceKind: divergence.kind,
-        normalizedVolumeAtPivot: divergence.currentPivotVolumeNorm,
-        previousNormalizedVolumeAtPivot: divergence.previousPivotVolumeNorm,
-        volumeAtPivot: divergence.currentPivotVolume,
-        deltaAtPivot: divergence.currentPivotDelta,
-        barsBetweenPivotConfirmations: divergence.barsBetweenPivotConfirmations,
-        divergence: {
-          kind: divergence.kind,
-          pivotLookbackLeft: PIVOT_LOOKBACK_LEFT,
-          pivotLookbackRight: PIVOT_LOOKBACK_RIGHT,
-          currentPivot: {
-            index: divergence.currentPivotIndex,
-            timestamp: candleWindow[divergence.currentPivotIndex]?.timestamp,
-            priceLow: divergence.currentPivotLow,
-            priceHigh: divergence.currentPivotHigh,
-            volumeNorm: divergence.currentPivotVolumeNorm,
-          },
-          previousPivot: {
-            index: divergence.previousPivotIndex,
-            timestamp: candleWindow[divergence.previousPivotIndex]?.timestamp,
-            priceLow: divergence.previousPivotLow,
-            priceHigh: divergence.previousPivotHigh,
-            volumeNorm: divergence.previousPivotVolumeNorm,
-          },
-          barsBetweenPivotConfirmations:
-            divergence.barsBetweenPivotConfirmations,
-        },
-      },
+      additionalIndicators: entryPayload.additionalIndicators,
       orderPlan: {
         qty,
         stopLossPrice,
