@@ -411,4 +411,28 @@ describe('testing backtest flow', () => {
     expect(mockCoinbaseConnectorCreator).toHaveBeenCalledTimes(1);
     expect(mockAlignSortedCandlesByTimestamp).toHaveBeenCalledTimes(4);
   });
+
+  it('times out a slow test item with symbol in the error message', async () => {
+    jest.useFakeTimers();
+
+    const data = [candle(1_000_050), candle(1_000_150), candle(1_000_250)];
+    mockByBitConnector.kline.mockResolvedValue(data);
+    mockBinanceConnector.kline.mockResolvedValue(data);
+    mockCoinbaseConnector.kline.mockResolvedValue(data);
+    mockStrategy.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          setTimeout(() => resolve('HOLD'), 100);
+        }),
+    );
+
+    const promise = testing(createTest({ timeoutMs: 10 }));
+    const rejection = expect(promise).rejects.toThrow(
+      'Test ETH_suite_1 (ETHUSDT) timed out after 10ms during strategy signal',
+    );
+    await jest.advanceTimersByTimeAsync(20);
+    await rejection;
+
+    jest.useRealTimers();
+  });
 });

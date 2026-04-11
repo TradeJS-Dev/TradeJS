@@ -55,7 +55,9 @@ describe('worker tester', () => {
   });
 
   it('sends test result and done message for successful test', async () => {
-    const send = jest.fn();
+    const send = jest.fn((_message?: unknown, callback?: () => void) => {
+      callback?.();
+    });
     process.send = send as any;
     process.disconnect = jest.fn() as any;
     process.exit = jest.fn() as any;
@@ -81,13 +83,19 @@ describe('worker tester', () => {
         test,
       }),
     );
-    expect(send).toHaveBeenCalledWith({ done: true });
+    expect(send).toHaveBeenNthCalledWith(
+      2,
+      { done: true },
+      expect.any(Function),
+    );
     expect(process.disconnect).toHaveBeenCalled();
     expect(process.exit).toHaveBeenCalledWith(0);
   });
 
   it('sends error payload and done message when testing throws', async () => {
-    const send = jest.fn();
+    const send = jest.fn((_message?: unknown, callback?: () => void) => {
+      callback?.();
+    });
     process.send = send as any;
     process.disconnect = jest.fn() as any;
     process.exit = jest.fn() as any;
@@ -107,7 +115,11 @@ describe('worker tester', () => {
         id: 't2',
       }),
     );
-    expect(send).toHaveBeenCalledWith({ done: true });
+    expect(send).toHaveBeenNthCalledWith(
+      2,
+      { done: true },
+      expect.any(Function),
+    );
     expect(process.disconnect).toHaveBeenCalled();
     expect(process.exit).toHaveBeenCalledWith(0);
   });

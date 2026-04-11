@@ -214,39 +214,97 @@ export const testing: TestingBox = async ({
   ml = false,
   ai = false,
   chunkId = 'single',
+  timeoutMs,
 }) => {
   if (!start) {
     throw new Error('no start');
   }
   // TODO: Add explicit end validation (and consistent error handling) similar to start validation.
 
+  const startedAt = Date.now();
+  const formatTimeoutMessage = (stage: string) =>
+    `Test ${name} (${symbol}) timed out after ${timeoutMs}ms during ${stage}`;
+  const getRemainingTimeoutMs = (stage: string) => {
+    if (!timeoutMs || timeoutMs <= 0) {
+      return null;
+    }
+
+    const remainingMs = timeoutMs - (Date.now() - startedAt);
+    if (remainingMs <= 0) {
+      throw new Error(formatTimeoutMessage(stage));
+    }
+
+    return remainingMs;
+  };
+  const throwIfTimedOut = (stage: string) => {
+    getRemainingTimeoutMs(stage);
+  };
+  const withTimeout = async <T>(
+    stage: string,
+    promise: Promise<T>,
+  ): Promise<T> => {
+    const remainingMs = getRemainingTimeoutMs(stage);
+    if (remainingMs == null) {
+      return promise;
+    }
+
+    return await new Promise<T>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        reject(new Error(formatTimeoutMessage(stage)));
+      }, remainingMs);
+
+      promise.then(
+        (value) => {
+          clearTimeout(timer);
+          resolve(value);
+        },
+        (error) => {
+          clearTimeout(timer);
+          reject(error);
+        },
+      );
+    });
+  };
+
   const { projectRoot, state } = getTestingKlineCacheState();
 
-  const connector = await getCachedConnector({
-    state,
-    projectRoot,
-    userName,
-    connectorName,
-  });
+  const connector = await withTimeout(
+    'connector init',
+    getCachedConnector({
+      state,
+      projectRoot,
+      userName,
+      connectorName,
+    }),
+  );
   if (!connector) {
     throw new Error(`Unknown connector: ${connectorName}`);
   }
-  const strategyCreator = await getStrategyCreator(strategyName, projectRoot);
+  const strategyCreator = await withTimeout(
+    'strategy lookup',
+    getStrategyCreator(strategyName, projectRoot),
+  );
   if (!strategyCreator) {
     throw new Error(`Unknown strategy: ${strategyName}`);
   }
-  const binanceConnector = await getCachedConnector({
-    state,
-    projectRoot,
-    userName,
-    connectorName: BUILTIN_CONNECTOR_NAMES.Binance,
-  });
-  const coinbaseConnector = await getCachedConnector({
-    state,
-    projectRoot,
-    userName,
-    connectorName: BUILTIN_CONNECTOR_NAMES.Coinbase,
-  });
+  const binanceConnector = await withTimeout(
+    'binance connector init',
+    getCachedConnector({
+      state,
+      projectRoot,
+      userName,
+      connectorName: BUILTIN_CONNECTOR_NAMES.Binance,
+    }),
+  );
+  const coinbaseConnector = await withTimeout(
+    'coinbase connector init',
+    getCachedConnector({
+      state,
+      projectRoot,
+      userName,
+      connectorName: BUILTIN_CONNECTOR_NAMES.Coinbase,
+    }),
+  );
   if (!binanceConnector || !coinbaseConnector) {
     logger.warn(
       'Binance/Coinbase connectors are unavailable. Reusing %s for BTC references.',
@@ -315,48 +373,51 @@ export const testing: TestingBox = async ({
   let preparedData = state.preparedDataCache.get(preparedDataCacheKey);
 
   if (!preparedData) {
-    const [data, btcData, btcBinanceData, btcCoinbaseData] = await Promise.all([
-      cachedCoinData
-        ? Promise.resolve(cachedCoinData)
-        : connector.kline({
-            symbol,
-            start: preloadStart,
-            end,
-            interval,
-            silent: true,
-            cacheOnly,
-          }),
-      cachedBtcData
-        ? Promise.resolve(cachedBtcData)
-        : connector.kline({
-            symbol: 'BTCUSDT',
-            start: preloadStart,
-            end,
-            interval,
-            silent: true,
-            cacheOnly,
-          }),
-      cachedBtcBinanceData
-        ? Promise.resolve(cachedBtcBinanceData)
-        : (binanceConnector ?? connector).kline({
-            symbol: 'BTCUSDT',
-            start: preloadStart,
-            end,
-            interval,
-            silent: true,
-            cacheOnly,
-          }),
-      cachedBtcCoinbaseData
-        ? Promise.resolve(cachedBtcCoinbaseData)
-        : (coinbaseConnector ?? connector).kline({
-            symbol: 'BTCUSDT',
-            start: preloadStart,
-            end,
-            interval,
-            silent: true,
-            cacheOnly,
-          }),
-    ]);
+    const [data, btcData, btcBinanceData, btcCoinbaseData] = await withTimeout(
+      'kline preload',
+      Promise.all([
+        cachedCoinData
+          ? Promise.resolve(cachedCoinData)
+          : connector.kline({
+              symbol,
+              start: preloadStart,
+              end,
+              interval,
+              silent: true,
+              cacheOnly,
+            }),
+        cachedBtcData
+          ? Promise.resolve(cachedBtcData)
+          : connector.kline({
+              symbol: 'BTCUSDT',
+              start: preloadStart,
+              end,
+              interval,
+              silent: true,
+              cacheOnly,
+            }),
+        cachedBtcBinanceData
+          ? Promise.resolve(cachedBtcBinanceData)
+          : (binanceConnector ?? connector).kline({
+              symbol: 'BTCUSDT',
+              start: preloadStart,
+              end,
+              interval,
+              silent: true,
+              cacheOnly,
+            }),
+        cachedBtcCoinbaseData
+          ? Promise.resolve(cachedBtcCoinbaseData)
+          : (coinbaseConnector ?? connector).kline({
+              symbol: 'BTCUSDT',
+              start: preloadStart,
+              end,
+              interval,
+              silent: true,
+              cacheOnly,
+            }),
+      ]),
+    );
 
     if (!cachedCoinData) {
       state.coinKlineCache.set(coinCacheKey, data);
@@ -423,16 +484,19 @@ export const testing: TestingBox = async ({
     aiEnabled: ai,
   });
 
-  const strategy = await strategyCreator({
-    userName,
-    config: strategyConfig,
-    symbol,
-    data: prevData,
-    btcData: btcPrevData,
-    btcBinanceData: btcBinancePrevData,
-    btcCoinbaseData: btcCoinbasePrevData,
-    connector: testConnector,
-  });
+  const strategy = await withTimeout(
+    'strategy init',
+    strategyCreator({
+      userName,
+      config: strategyConfig,
+      symbol,
+      data: prevData,
+      btcData: btcPrevData,
+      btcBinanceData: btcBinancePrevData,
+      btcCoinbaseData: btcCoinbasePrevData,
+      connector: testConnector,
+    }),
+  );
 
   const pendingMlPayloadBySignalId = new Map<
     string,
@@ -480,15 +544,22 @@ export const testing: TestingBox = async ({
   };
 
   for (let candleIndex = 0; candleIndex < testData.length; candleIndex++) {
+    if (candleIndex % 25 === 0) {
+      throwIfTimedOut('candle loop');
+    }
+
     const candle = testData[candleIndex];
     const btcCandle = btcTestData[candleIndex];
 
     // Process exits on the current candle first. Any position opened below
     // can only be closed starting from the next candle to avoid same-bar lookahead.
-    await testConnector.checkSl(candle);
-    await testConnector.checkTp(candle);
+    await withTimeout('stop-loss check', testConnector.checkSl(candle));
+    await withTimeout('take-profit check', testConnector.checkTp(candle));
 
-    const signal = await strategy(candle, btcCandle);
+    const signal = await withTimeout(
+      'strategy signal',
+      strategy(candle, btcCandle),
+    );
     if (ml && signal && typeof signal !== 'string' && signal.signalId) {
       const payload = buildMlPayload({
         signal,
@@ -521,7 +592,7 @@ export const testing: TestingBox = async ({
     }
   }
 
-  await flushClosedResultsBatch();
+  await withTimeout('flush closed results', flushClosedResultsBatch());
 
-  return await testConnector.getResult();
+  return await withTimeout('collect result', testConnector.getResult());
 };

@@ -59,6 +59,7 @@ export interface Test extends BacktestRunConfig {
   ml?: boolean;
   ai?: boolean;
   chunkId?: string;
+  timeoutMs?: number;
 }
 
 export type TestSuite = Test[];

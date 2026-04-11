@@ -40,8 +40,18 @@ process.on(
           });
         } catch (error) {
           logger.error(error);
-          // TODO: Serialize error payload ({ message, stack }) before process.send for safer IPC transport.
-          process.send?.({ error: true, id: test.name, msg: error });
+          const errorMessage =
+            error instanceof Error ? error.message : String(error);
+          const errorStack = error instanceof Error ? error.stack : undefined;
+          process.send?.({
+            error: true,
+            id: test.name,
+            symbol: test.symbol,
+            msg: {
+              message: errorMessage,
+              stack: errorStack,
+            },
+          });
         }
       }
     } finally {
@@ -50,7 +60,14 @@ process.on(
       resetTestingKlineCache();
     }
 
-    process.send?.({ done: true });
+    if (process.send) {
+      process.send({ done: true }, () => {
+        process.disconnect?.();
+        process.exit(0);
+      });
+      return;
+    }
+
     process.disconnect?.();
     process.exit(0);
   },

@@ -51,6 +51,7 @@ args.option(['t', 'tickers'], 'Selected tickers');
 args.option(['e', 'exclude'], 'Exclude tickers from tests');
 args.option(['l', 'tickersLimit'], 'Tickers limit');
 args.option(['n', 'tests'], 'Tests limit', TESTS_LIMIT);
+args.option('skip', 'Skip first N tests', 0);
 args.option(['p', 'parallel'], 'Parallel tasks', MAX_PARALLEL);
 args.option(['f', 'timeframe'], 'Timeframe', 15);
 args.option(['T', 'top'], 'Return N best tests', TESTS_TOP_LIMIT);
@@ -88,7 +89,10 @@ const normalizedArgv = process.argv.map((arg) => {
 
 const flags = args.parse(normalizedArgv);
 const interval = flags.timeframe.toString() as Interval;
-const progressStep = flags.progressStep;
+const progressStep = Math.max(1, parseInt(String(flags.progressStep), 10));
+const testsLimit = Math.max(0, parseInt(String(flags.tests), 10));
+const testsSkip = Math.max(0, parseInt(String(flags.skip ?? 0), 10));
+const testItemTimeoutMs = 60_000;
 const uuid = (len = 12) => uuidv4().slice(-len);
 const projectRoot =
   String(process.env.PROJECT_CWD || process.cwd()).trim() || process.cwd();
@@ -501,21 +505,45 @@ const backtest = async () => {
     strategyName,
     typedBacktestConfig,
     connectorName,
-  ).slice(0, parseInt(flags.tests));
+  );
   const mlEnabled = Boolean(flags.ml);
   const aiEnabled = Boolean(flags.ai);
-  testSuite = testSuite.map((test) => ({
-    ...test,
-    ml: mlEnabled,
-    ai: aiEnabled,
-  }));
+  testSuite = testSuite
+    .map((test) => ({
+      ...test,
+      ml: mlEnabled,
+      ai: aiEnabled,
+      timeoutMs: testItemTimeoutMs,
+    }))
+    .slice(testsSkip, testsSkip + testsLimit);
+
+  if (!testSuite.length) {
+    console.log(
+      chalk.yellow(
+        `No tests selected (skip=${testsSkip}, limit=${testsLimit}).`,
+      ),
+    );
+    return;
+  }
 
   const chunkSize = Math.ceil(testSuite.length / parseInt(flags.parallel));
   const chunks = _.chunk(testSuite, chunkSize);
-  let completedWorkers = 0;
   let completedTests = 0;
   let isFinishing = false;
   const workers = new Set<ReturnType<typeof fork>>();
+
+  const maybeFinish = async () => {
+    if (isFinishing) {
+      return;
+    }
+
+    if (completedTests !== testSuite.length || workers.size > 0) {
+      return;
+    }
+
+    isFinishing = true;
+    await finish();
+  };
 
   const stopWorkers = () => {
     for (const worker of workers) {
@@ -534,7 +562,11 @@ const backtest = async () => {
     process.exit(143);
   });
 
-  console.log(chalk.yellow(`tests: ${testSuite.length}`));
+  console.log(
+    chalk.yellow(
+      `tests: ${testSuite.length} (skip=${testsSkip}, timeout=${testItemTimeoutMs}ms)`,
+    ),
+  );
 
   console.log('');
   const bar = new ProgressBar(
@@ -563,14 +595,8 @@ const backtest = async () => {
 
     tester.on('message', async (msg: any) => {
       if (msg.done) {
-        completedWorkers++;
         workers.delete(tester);
-
-        if (completedWorkers === chunks.length && !isFinishing) {
-          isFinishing = true;
-          await finish();
-        }
-
+        await maybeFinish();
         return;
       }
 
@@ -648,6 +674,8 @@ const backtest = async () => {
         recordError({ error: `Worker exited with code ${code}` });
         console.error(chalk.red(`Worker exited with code ${code}`));
       }
+
+      void maybeFinish();
     });
 
     await setData(redisKeys.cacheChunk(userName, chunkId), chunkWithId, {

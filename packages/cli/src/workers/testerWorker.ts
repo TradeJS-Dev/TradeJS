@@ -44,6 +44,7 @@ process.on(
           process.send?.({
             error: true,
             id: test.name,
+            symbol: test.symbol,
             msg: {
               message: errorMessage,
               stack: errorStack,
@@ -57,7 +58,14 @@ process.on(
       resetTestingKlineCache();
     }
 
-    process.send?.({ done: true });
+    if (process.send) {
+      process.send({ done: true }, () => {
+        process.disconnect?.();
+        process.exit(0);
+      });
+      return;
+    }
+
     process.disconnect?.();
     process.exit(0);
   },
