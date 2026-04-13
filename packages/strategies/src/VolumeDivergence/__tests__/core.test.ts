@@ -249,9 +249,109 @@ describe('createVolumeDivergenceCore', () => {
         }),
         additionalIndicators: expect.objectContaining({
           divergenceKind: 'bullish',
+          volumeDivergenceSetup: expect.objectContaining({
+            divergenceAmplitudeAtrRatio: expect.any(Number),
+            reclaimPct: expect.any(Number),
+            confirmationCandleQuality: expect.any(Number),
+            atrPct: expect.any(Number),
+          }),
           volumeDivergenceSignalTiming: expect.objectContaining({
             entryTiming: 'confirmation_ready',
             barsSinceDetection: 1,
+          }),
+        }),
+      }),
+    );
+  });
+
+  it('keeps bullish structure-advance candidates pending until confirmation is ready', async () => {
+    const candles = makeBullishDivergenceCandles();
+    candles[4].low = 96.5;
+    candles[6].low = 95;
+    candles[6].high = 97;
+
+    const strategyApi = makeStrategyApi();
+    const core = await createVolumeDivergenceCore({
+      userName: 'test',
+      symbol: 'TESTUSDT',
+      config: makeConfig({
+        ...DIVERGENCE_TEST_CONFIG,
+      }),
+      isConfigFromBacktest: false,
+      connector: { getPosition: jest.fn() } as any,
+      data: candles as any,
+      btcData: candles as any,
+      loadPineScriptFile: jest.fn(() => ''),
+      strategyApi,
+      indicatorsState: makeIndicatorsState(),
+    });
+
+    const pendingResult = await core(
+      candles[candles.length - 1] as any,
+      candles[candles.length - 1] as any,
+    );
+
+    expect(pendingResult).toEqual({
+      kind: 'skip',
+      code: 'WAIT_REVERSAL_CONFIRMATION',
+    });
+    expect(strategyApi.entry).not.toHaveBeenCalled();
+
+    const weakStructureAdvanceCandle = makeFollowUpCandle({
+      previousCandle: candles[candles.length - 1],
+      price: 96.6,
+      volume: 90,
+    });
+    strategyApi.getMarketData.mockResolvedValue({
+      fullData: [...candles, weakStructureAdvanceCandle],
+      lastCandle: weakStructureAdvanceCandle,
+      timestamp: weakStructureAdvanceCandle.timestamp,
+      currentPrice: weakStructureAdvanceCandle.close,
+    });
+
+    const weakResult = await core(
+      weakStructureAdvanceCandle as any,
+      weakStructureAdvanceCandle as any,
+    );
+
+    expect(weakResult).toEqual({
+      kind: 'skip',
+      code: 'WAIT_CONFIRMATION_READY',
+    });
+    expect(strategyApi.entry).not.toHaveBeenCalled();
+
+    const confirmationCandle = makeFollowUpCandle({
+      previousCandle: weakStructureAdvanceCandle,
+      price: 97.8,
+      volume: 95,
+    });
+    strategyApi.getMarketData.mockResolvedValue({
+      fullData: [...candles, weakStructureAdvanceCandle, confirmationCandle],
+      lastCandle: confirmationCandle,
+      timestamp: confirmationCandle.timestamp,
+      currentPrice: confirmationCandle.close,
+    });
+
+    const result = await core(
+      confirmationCandle as any,
+      confirmationCandle as any,
+    );
+
+    expect(result.kind).toBe('entry');
+    expect(strategyApi.entry).toHaveBeenCalledWith(
+      expect.objectContaining({
+        direction: 'LONG',
+        additionalIndicators: expect.objectContaining({
+          divergenceKind: 'bullish',
+          volumeDivergenceSetup: expect.objectContaining({
+            divergenceAmplitudeAtrRatio: expect.any(Number),
+            reclaimPct: expect.any(Number),
+            confirmationCandleQuality: expect.any(Number),
+            atrPct: expect.any(Number),
+          }),
+          volumeDivergenceSignalTiming: expect.objectContaining({
+            entryTiming: 'confirmation_ready',
+            barsSinceDetection: 2,
           }),
         }),
       }),
@@ -290,7 +390,7 @@ describe('createVolumeDivergenceCore', () => {
 
     const confirmationCandle = makeFollowUpCandle({
       previousCandle: candles[candles.length - 1],
-      price: 109,
+      price: 107,
       volume: 120,
     });
     strategyApi.getMarketData.mockResolvedValue({

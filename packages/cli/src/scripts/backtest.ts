@@ -92,7 +92,7 @@ const interval = flags.timeframe.toString() as Interval;
 const progressStep = Math.max(1, parseInt(String(flags.progressStep), 10));
 const testsLimit = Math.max(0, parseInt(String(flags.tests), 10));
 const testsSkip = Math.max(0, parseInt(String(flags.skip ?? 0), 10));
-const testItemTimeoutMs = 60_000;
+const testItemTimeoutMs = 120_000;
 const uuid = (len = 12) => uuidv4().slice(-len);
 const projectRoot =
   String(process.env.PROJECT_CWD || process.cwd()).trim() || process.cwd();
@@ -562,11 +562,7 @@ const backtest = async () => {
     process.exit(143);
   });
 
-  console.log(
-    chalk.yellow(
-      `tests: ${testSuite.length} (skip=${testsSkip}, timeout=${testItemTimeoutMs}ms)`,
-    ),
-  );
+  console.log(chalk.yellow(`tests: ${testSuite.length}`));
 
   console.log('');
   const bar = new ProgressBar(

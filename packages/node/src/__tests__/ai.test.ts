@@ -261,6 +261,18 @@ const makeVolumeDivergenceSignal = (overrides: Record<string, any> = {}) => {
     },
     additionalIndicators: {
       deltaAtPivot: 120,
+      volumeDivergenceThresholds: {
+        allowStructureAdvanceEntry: false,
+        minDivergenceAmplitudeAtrRatio: 0.35,
+        minReclaimPct: 105,
+        minConfirmationCandleQuality: 0.58,
+      },
+      volumeDivergenceSetup: {
+        atrPct: 2.1,
+        divergenceAmplitudeAtrRatio: 0.7,
+        reclaimPct: 210,
+        confirmationCandleQuality: 0.72,
+      },
       divergence: {
         kind: 'bullish',
         pivotLookbackLeft: 2,
@@ -298,6 +310,14 @@ const makeVolumeDivergenceSignal = (overrides: Record<string, any> = {}) => {
     additionalIndicators: {
       ...base.additionalIndicators,
       ...overrides.additionalIndicators,
+      volumeDivergenceThresholds: {
+        ...base.additionalIndicators.volumeDivergenceThresholds,
+        ...overrides.additionalIndicators?.volumeDivergenceThresholds,
+      },
+      volumeDivergenceSetup: {
+        ...base.additionalIndicators.volumeDivergenceSetup,
+        ...overrides.additionalIndicators?.volumeDivergenceSetup,
+      },
       divergence: {
         ...base.additionalIndicators.divergence,
         ...overrides.additionalIndicators?.divergence,
@@ -2243,7 +2263,7 @@ describe('ai helpers', () => {
       expect(getDeterministicAiGateContext(payload)).toEqual(
         expect.objectContaining({
           approvalAllowedNow: false,
-          deterministicQuality: 4,
+          deterministicQuality: 3,
           structuralHardBlockReasons: [],
         }),
       );
@@ -2253,7 +2273,7 @@ describe('ai helpers', () => {
       expect(result).toEqual(
         expect.objectContaining({
           direction: null,
-          quality: 4,
+          quality: 3,
           needRetest: true,
           retestPrice: 100,
           takeProfitPrice: null,
@@ -2269,7 +2289,19 @@ describe('ai helpers', () => {
         prices: {
           currentPrice: 99,
         },
+        indicators: {
+          maFast: [99, 99.2, 99.4],
+          maSlow: [100, 100.1, 100.2],
+          btcMaFast: [49, 49.2, 49.4],
+          btcMaSlow: [50, 50.1, 50.2],
+        },
         additionalIndicators: {
+          volumeDivergenceSetup: {
+            atrPct: 2.1,
+            divergenceAmplitudeAtrRatio: 0.7,
+            reclaimPct: 150,
+            confirmationCandleQuality: 0.7,
+          },
           volumeDivergenceSignalTiming: {
             entryTiming: 'structure_advance',
             barsSinceDetection: 2,
@@ -2280,8 +2312,8 @@ describe('ai helpers', () => {
 
       expect(getDeterministicAiGateContext(payload)).toEqual(
         expect.objectContaining({
-          approvalAllowedNow: true,
-          deterministicQuality: 5,
+          approvalAllowedNow: false,
+          deterministicQuality: 3,
           structuralHardBlockReasons: [],
         }),
       );
@@ -2290,12 +2322,12 @@ describe('ai helpers', () => {
 
       expect(result).toEqual(
         expect.objectContaining({
-          direction: 'LONG',
-          quality: 5,
-          needRetest: false,
-          retestPrice: null,
-          takeProfitPrice: 104,
-          stopLossPrice: 98,
+          direction: null,
+          quality: 3,
+          needRetest: true,
+          retestPrice: 100,
+          takeProfitPrice: null,
+          stopLossPrice: null,
         }),
       );
       expect(chatOpenAICtorMock).not.toHaveBeenCalled();

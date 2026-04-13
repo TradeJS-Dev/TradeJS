@@ -3,6 +3,12 @@ import { round } from '@tradejs/core/math';
 import { VolumeDivergenceConfig, VolumeDivergenceModeConfig } from './config';
 import { buildVolumeDivergenceFigures } from './figures';
 import {
+  buildVolumeDivergenceSetupFeatures,
+  getVolumeDivergenceEntryThresholds,
+  VolumeDivergenceEntryThresholdSnapshot,
+  VolumeDivergenceSetupFeatures,
+} from './setup';
+import {
   Candle,
   CreateStrategyCore,
   IndicatorsHistorySnapshot,
@@ -387,20 +393,20 @@ const resolvePendingEntryTiming = ({
   currentPrice: number;
 }): PendingEntryTiming | null => {
   if (candidate.direction === 'LONG') {
-    if (currentPrice >= candidate.previousPivotLow) {
-      return 'structure_advance';
-    }
     if (currentPrice >= candidate.currentPivotHigh) {
       return 'confirmation_ready';
+    }
+    if (currentPrice >= candidate.previousPivotLow) {
+      return 'structure_advance';
     }
     return null;
   }
 
-  if (currentPrice <= candidate.previousPivotHigh) {
-    return 'structure_advance';
-  }
   if (currentPrice <= candidate.currentPivotLow) {
     return 'confirmation_ready';
+  }
+  if (currentPrice <= candidate.previousPivotHigh) {
+    return 'structure_advance';
   }
   return null;
 };
@@ -434,10 +440,14 @@ const buildEntryPayloadFromPendingCandidate = ({
   candidate,
   candleWindow,
   entryTiming,
+  setupFeatures,
+  entryThresholds,
 }: {
   candidate: PendingDivergenceCandidate;
   candleWindow: Candle[];
   entryTiming: PendingEntryTiming;
+  setupFeatures: VolumeDivergenceSetupFeatures;
+  entryThresholds: VolumeDivergenceEntryThresholdSnapshot;
 }) => {
   const previousPivotIndex = findCandleIndexByTimestamp(
     candleWindow,
@@ -493,6 +503,8 @@ const buildEntryPayloadFromPendingCandidate = ({
         barsSinceDetection: candidate.barsSinceDetection,
         detectedAtTimestamp: candidate.detectedAtTimestamp,
       },
+      volumeDivergenceSetup: setupFeatures,
+      volumeDivergenceThresholds: entryThresholds,
     },
   };
 };
@@ -507,11 +519,21 @@ export const createVolumeDivergenceCore: CreateStrategyCore<
     PIVOT_LOOKBACK_RIGHT,
     MAX_BARS_BETWEEN_PIVOTS,
     MIN_BARS_BETWEEN_PIVOTS,
+    ALLOW_STRUCTURE_ADVANCE_ENTRY,
+    MIN_DIVERGENCE_AMPLITUDE_ATR_RATIO,
+    MIN_RECLAIM_PCT,
+    MIN_CONFIRMATION_CANDLE_QUALITY,
     FEE_PERCENT,
     MAX_LOSS_VALUE,
     BULLISH,
     BEARISH,
   } = config;
+  const entryThresholds = getVolumeDivergenceEntryThresholds({
+    ALLOW_STRUCTURE_ADVANCE_ENTRY,
+    MIN_DIVERGENCE_AMPLITUDE_ATR_RATIO,
+    MIN_RECLAIM_PCT,
+    MIN_CONFIRMATION_CANDLE_QUALITY,
+  });
 
   const lastTradeController = strategyApi.createLastTradeController();
   const maxHistorySize = getRequiredHistorySize({
@@ -629,7 +651,7 @@ export const createVolumeDivergenceCore: CreateStrategyCore<
         return strategyApi.skip('STRATEGY_DISABLED');
       }
 
-      pendingCandidate = buildPendingDivergenceCandidate({
+      const nextPendingCandidate = buildPendingDivergenceCandidate({
         divergence,
         candleWindow,
         direction: modeConfig.direction,
@@ -637,6 +659,27 @@ export const createVolumeDivergenceCore: CreateStrategyCore<
         pivotLookbackRight: PIVOT_LOOKBACK_RIGHT,
         detectedAtTimestamp: timestamp,
       });
+      const detectionSetupFeatures = buildVolumeDivergenceSetupFeatures({
+        candles: candleWindow,
+        currentCandle: candle as Candle,
+        direction: modeConfig.direction,
+        currentPrice: Number(candle.close),
+        currentPivotLow: nextPendingCandidate.currentPivotLow,
+        previousPivotLow: nextPendingCandidate.previousPivotLow,
+        currentPivotHigh: nextPendingCandidate.currentPivotHigh,
+        previousPivotHigh: nextPendingCandidate.previousPivotHigh,
+        atrPeriod: config.ATR,
+      });
+
+      if (
+        detectionSetupFeatures.divergenceAmplitudeAtrRatio != null &&
+        detectionSetupFeatures.divergenceAmplitudeAtrRatio <
+          entryThresholds.minDivergenceAmplitudeAtrRatio
+      ) {
+        return strategyApi.skip('WEAK_DIVERGENCE_AMPLITUDE_ATR');
+      }
+
+      pendingCandidate = nextPendingCandidate;
 
       return strategyApi.skip('WAIT_REVERSAL_CONFIRMATION');
     }
@@ -662,11 +705,44 @@ export const createVolumeDivergenceCore: CreateStrategyCore<
       return strategyApi.skip('WAIT_REVERSAL_CONFIRMATION');
     }
 
+    if (
+      entryTiming === 'structure_advance' &&
+      !entryThresholds.allowStructureAdvanceEntry
+    ) {
+      return strategyApi.skip('WAIT_CONFIRMATION_READY');
+    }
+
     const modeConfig = getModeConfigByKind({
       kind: pendingCandidate.kind,
       bullish: BULLISH,
       bearish: BEARISH,
     });
+    const setupFeatures = buildVolumeDivergenceSetupFeatures({
+      candles: candleWindow,
+      currentCandle: candle as Candle,
+      direction: modeConfig.direction,
+      currentPrice,
+      currentPivotLow: pendingCandidate.currentPivotLow,
+      previousPivotLow: pendingCandidate.previousPivotLow,
+      currentPivotHigh: pendingCandidate.currentPivotHigh,
+      previousPivotHigh: pendingCandidate.previousPivotHigh,
+      atrPeriod: config.ATR,
+    });
+
+    if (
+      setupFeatures.reclaimPct != null &&
+      setupFeatures.reclaimPct < entryThresholds.minReclaimPct
+    ) {
+      return strategyApi.skip('WAIT_CONFIRMATION_RECLAIM');
+    }
+
+    if (
+      setupFeatures.confirmationCandleQuality != null &&
+      setupFeatures.confirmationCandleQuality <
+        entryThresholds.minConfirmationCandleQuality
+    ) {
+      return strategyApi.skip('WAIT_CONFIRMATION_CANDLE_QUALITY');
+    }
 
     const { stopLossPrice, takeProfitPrice, riskRatio, qty } =
       strategyApi.getDirectionalTpSlPrices({
@@ -692,6 +768,8 @@ export const createVolumeDivergenceCore: CreateStrategyCore<
       candidate: pendingCandidate,
       candleWindow,
       entryTiming,
+      setupFeatures,
+      entryThresholds,
     });
 
     lastTradeController.markTrade(timestamp);

@@ -9,30 +9,51 @@ const makeSignal = (overrides: Record<string, any> = {}) =>
     direction: 'LONG',
     timestamp: 1_700_000_000_000,
     figures: {},
+    ...overrides,
     prices: {
       currentPrice: 101,
       takeProfitPrice: 104,
       stopLossPrice: 98,
       riskRatio: 2,
+      ...overrides.prices,
     },
     indicators: {
       maFast: [100, 101, 102],
       maSlow: [100, 100, 101],
       btcMaFast: [50, 51, 52],
       btcMaSlow: [50, 50.5, 51],
+      ...overrides.indicators,
     },
     additionalIndicators: {
+      ...overrides.additionalIndicators,
       deltaAtPivot: 120,
+      volumeDivergenceThresholds: {
+        allowStructureAdvanceEntry: false,
+        minDivergenceAmplitudeAtrRatio: 0.35,
+        minReclaimPct: 105,
+        minConfirmationCandleQuality: 0.58,
+        ...overrides.additionalIndicators?.volumeDivergenceThresholds,
+      },
+      volumeDivergenceSetup: {
+        atrPct: 2.1,
+        divergenceAmplitudeAtrRatio: 0.7,
+        reclaimPct: 210,
+        confirmationCandleQuality: 0.72,
+        ...overrides.additionalIndicators?.volumeDivergenceSetup,
+      },
       divergence: {
         kind: 'bullish',
         pivotLookbackLeft: 2,
         pivotLookbackRight: 1,
+        barsBetweenPivotConfirmations: 4,
+        ...overrides.additionalIndicators?.divergence,
         currentPivot: {
           index: 6,
           timestamp: 6,
           priceLow: 95,
           priceHigh: 100,
           volumeNorm: 80,
+          ...overrides.additionalIndicators?.divergence?.currentPivot,
         },
         previousPivot: {
           index: 4,
@@ -40,11 +61,10 @@ const makeSignal = (overrides: Record<string, any> = {}) =>
           priceLow: 97,
           priceHigh: 101,
           volumeNorm: 60,
+          ...overrides.additionalIndicators?.divergence?.previousPivot,
         },
-        barsBetweenPivotConfirmations: 4,
       },
     },
-    ...overrides,
   }) as any;
 
 describe('volumeDivergenceAiAdapter', () => {
@@ -81,6 +101,9 @@ describe('volumeDivergenceAiAdapter', () => {
         confirmationPrice: 100,
         confirmationReady: true,
         structureAdvanced: true,
+        divergenceAmplitudeAtrRatio: 0.7,
+        reclaimPct: 210,
+        confirmationCandleQuality: 0.72,
         deltaAligned: true,
         coinBiasAligned: true,
         btcBiasAligned: true,
@@ -198,7 +221,7 @@ describe('volumeDivergenceAiAdapter', () => {
     expect(analysis).toEqual(
       expect.objectContaining({
         direction: null,
-        quality: 4,
+        quality: 3,
         needRetest: true,
         retestPrice: 100,
         takeProfitPrice: null,
@@ -207,7 +230,7 @@ describe('volumeDivergenceAiAdapter', () => {
     );
   });
 
-  it('approves structure-advance entries produced by the core pending flow', () => {
+  it('keeps structure-advance entries in watch mode until confirmation is ready', () => {
     const signal = makeSignal({
       prices: {
         currentPrice: 99,
@@ -215,8 +238,20 @@ describe('volumeDivergenceAiAdapter', () => {
         stopLossPrice: 98,
         riskRatio: 2,
       },
+      indicators: {
+        maFast: [99, 99.2, 99.4],
+        maSlow: [100, 100.1, 100.2],
+        btcMaFast: [49, 49.2, 49.4],
+        btcMaSlow: [50, 50.1, 50.2],
+      },
       additionalIndicators: {
         deltaAtPivot: 120,
+        volumeDivergenceSetup: {
+          atrPct: 2.1,
+          divergenceAmplitudeAtrRatio: 0.7,
+          reclaimPct: 150,
+          confirmationCandleQuality: 0.7,
+        },
         volumeDivergenceSignalTiming: {
           entryTiming: 'structure_advance',
           barsSinceDetection: 2,
@@ -271,8 +306,8 @@ describe('volumeDivergenceAiAdapter', () => {
       expect.objectContaining({
         entryTiming: 'structure_advance',
         barsSinceDetection: 2,
-        deterministicQuality: 5,
-        approvalAllowedNow: true,
+        deterministicQuality: 3,
+        approvalAllowedNow: false,
       }),
     );
 
@@ -288,12 +323,12 @@ describe('volumeDivergenceAiAdapter', () => {
 
     expect(analysis).toEqual(
       expect.objectContaining({
-        direction: 'LONG',
-        quality: 5,
-        needRetest: false,
-        retestPrice: null,
-        takeProfitPrice: 104,
-        stopLossPrice: 98,
+        direction: null,
+        quality: 3,
+        needRetest: true,
+        retestPrice: 100,
+        takeProfitPrice: null,
+        stopLossPrice: null,
       }),
     );
   });

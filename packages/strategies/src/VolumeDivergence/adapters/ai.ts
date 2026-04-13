@@ -2,6 +2,12 @@ import { mapAiRuntimeFromConfig } from '@tradejs/core/strategies';
 import { AiPayload, StrategyAiAdapter } from '@tradejs/types';
 import type { Signal, SignalAnalysis } from '@tradejs/types';
 import type { VolumeDivergenceConfig } from '../config';
+import {
+  DEFAULT_VOLUME_DIVERGENCE_ENTRY_THRESHOLDS,
+  getVolumeDivergenceAiThresholds,
+  VolumeDivergenceEntryThresholdSnapshot,
+  VolumeDivergenceSetupFeatures,
+} from '../setup';
 
 const VOLUME_DIVERGENCE_CONTEXT_PROMPT = `
 Дополнение для VolumeDivergence:
@@ -11,22 +17,29 @@ const VOLUME_DIVERGENCE_CONTEXT_PROMPT = `
 - Для bullish-сигнала не завышай quality, если цена после pivot low так и не смогла заметно отскочить от текущего pivot low или не смогла вернуть хотя бы часть структуры.
 - Для bearish-сигнала зеркально: не завышай quality, если цена после pivot high не смогла заметно уйти вниз от текущего pivot high.
 - Если payload.additionalIndicators.volumeDivergenceContext.confirmationReady=false, обычно это еще не fully confirmed reversal; чаще quality <= 4 и часто нужен retest/confirmation.
+- Для live approve считай confirmationReady намного важнее, чем structureAdvanced: structure advance сам по себе еще не означает готовый reversal entry.
 - Для reversal-сетапа не награждай quality автоматически только за то, что MA bias по монете/BTC уже совпадает с направлением сигнала.
+- Для LONG с entryTiming=structure_advance обычно не ставь quality=5: это промежуточный этап, а не fully confirmed reversal.
 - Для SHORT будь строже, чем для LONG: bearish reversal должен требовать более чистого follow-through, а конфликт по bias/delta должен сильнее снижать quality.
 - Если deltaAtPivot конфликтует с направлением reversal или bias по монете/BTC конфликтует с сигналом, не завышай quality только из-за самой дивергенции.
+- Смотри на divergenceAmplitudeAtrRatio / reclaimPct / confirmationCandleQuality: это explicit setup-features, описывающие насколько дивергенция действительно значима относительно ATR, насколько цена вернула структуру и насколько качественной была confirmation candle.
 - additionalIndicators.deltaAtPivot — это proxy net-volume по свече pivot, а не настоящий lower-timeframe volume delta TradingView.
 `;
 
 const VOLUME_DIVERGENCE_PAYLOAD_PROMPT = `
 - В payload.additionalIndicators.volumeDivergenceContext передается краткая сводка по силе дивергенции:
-  divergenceKind / confirmationPrice / confirmationReady / structureAdvanced / reboundFromPivotPct / priceDisplacementPct / volumeDivergenceStrength / deltaAligned / coinBiasAligned / btcBiasAligned / deterministicQuality / approvalAllowedNow / structuralHardBlockReasons / maxAllowedQuality.
+  divergenceKind / confirmationPrice / confirmationReady / structureAdvanced / reboundFromPivotPct / priceDisplacementPct / divergenceAmplitudeAtrRatio / reclaimPct / confirmationCandleQuality / volumeDivergenceStrength / deltaAligned / coinBiasAligned / btcBiasAligned / deterministicQuality / approvalAllowedNow / structuralHardBlockReasons / maxAllowedQuality.
 - Используй этот context как explicit strategy-specific summary, а не пытайся заново вывести то же самое только по общим свечам.
 `;
 
 type Direction = 'LONG' | 'SHORT';
 type Bias = 'bullish' | 'bearish' | null;
 type DivergenceKind = 'bullish' | 'bearish';
-type HardBlockReason = 'no_rebound_from_pivot';
+type HardBlockReason =
+  | 'no_rebound_from_pivot'
+  | 'weak_divergence_amplitude'
+  | 'weak_reclaim'
+  | 'weak_confirmation_candle';
 type EntryTiming = 'confirmation_ready' | 'structure_advance';
 
 type PivotSummary = {
@@ -54,6 +67,10 @@ type VolumeDivergenceAiContext = {
   structureAdvanced: boolean;
   reboundFromPivotPct: number | null;
   priceDisplacementPct: number | null;
+  atrPct: number | null;
+  divergenceAmplitudeAtrRatio: number | null;
+  reclaimPct: number | null;
+  confirmationCandleQuality: number | null;
   volumeDivergenceStrength: number | null;
   volumeDivergenceRatio: number | null;
   deltaAtPivot: number | null;
@@ -132,6 +149,53 @@ const getDivergenceSummary = (
     : {};
 };
 
+const getVolumeDivergenceSetupSummary = (
+  signal: Signal,
+): Partial<VolumeDivergenceSetupFeatures> => {
+  const additional = signal.additionalIndicators as Record<
+    string,
+    unknown
+  > | null;
+  const setup = additional?.volumeDivergenceSetup;
+
+  return setup && typeof setup === 'object'
+    ? (setup as Partial<VolumeDivergenceSetupFeatures>)
+    : {};
+};
+
+const getVolumeDivergenceThresholdSummary = (
+  signal: Signal,
+): VolumeDivergenceEntryThresholdSnapshot => {
+  const additional = signal.additionalIndicators as Record<
+    string,
+    unknown
+  > | null;
+  const thresholds = additional?.volumeDivergenceThresholds;
+
+  if (!thresholds || typeof thresholds !== 'object') {
+    return DEFAULT_VOLUME_DIVERGENCE_ENTRY_THRESHOLDS;
+  }
+
+  const candidate =
+    thresholds as Partial<VolumeDivergenceEntryThresholdSnapshot>;
+
+  return {
+    allowStructureAdvanceEntry:
+      typeof candidate.allowStructureAdvanceEntry === 'boolean'
+        ? candidate.allowStructureAdvanceEntry
+        : DEFAULT_VOLUME_DIVERGENCE_ENTRY_THRESHOLDS.allowStructureAdvanceEntry,
+    minDivergenceAmplitudeAtrRatio:
+      toFiniteNumberOrNull(candidate.minDivergenceAmplitudeAtrRatio) ??
+      DEFAULT_VOLUME_DIVERGENCE_ENTRY_THRESHOLDS.minDivergenceAmplitudeAtrRatio,
+    minReclaimPct:
+      toFiniteNumberOrNull(candidate.minReclaimPct) ??
+      DEFAULT_VOLUME_DIVERGENCE_ENTRY_THRESHOLDS.minReclaimPct,
+    minConfirmationCandleQuality:
+      toFiniteNumberOrNull(candidate.minConfirmationCandleQuality) ??
+      DEFAULT_VOLUME_DIVERGENCE_ENTRY_THRESHOLDS.minConfirmationCandleQuality,
+  };
+};
+
 const getVolumeDivergenceContext = (
   signal: Signal,
 ): VolumeDivergenceAiContext => {
@@ -184,6 +248,16 @@ const getVolumeDivergenceContext = (
     (signal.additionalIndicators as Record<string, unknown> | undefined)
       ?.deltaAtPivot,
   );
+  const setup = getVolumeDivergenceSetupSummary(signal);
+  const atrPct = toFiniteNumberOrNull(setup.atrPct);
+  const divergenceAmplitudeAtrRatio = toFiniteNumberOrNull(
+    setup.divergenceAmplitudeAtrRatio,
+  );
+  const reclaimPct = toFiniteNumberOrNull(setup.reclaimPct);
+  const confirmationCandleQuality = toFiniteNumberOrNull(
+    setup.confirmationCandleQuality,
+  );
+  const entryThresholds = getVolumeDivergenceThresholdSummary(signal);
   const coinMaBias = getBias(
     getLastFiniteNumber(signal.indicators?.maFast),
     getLastFiniteNumber(signal.indicators?.maSlow),
@@ -305,16 +379,40 @@ const getVolumeDivergenceContext = (
           : null
         : null;
 
-  const hardBlockReasons: HardBlockReason[] =
-    reboundFromPivotPct != null && reboundFromPivotPct <= 0
-      ? ['no_rebound_from_pivot']
-      : [];
-  const readyNow =
-    entryTiming != null || confirmationReady || structureAdvanced;
+  const aiThresholds =
+    signalDirection != null
+      ? getVolumeDivergenceAiThresholds(signalDirection)
+      : null;
+  const hardBlockReasons: HardBlockReason[] = [];
+  if (reboundFromPivotPct != null && reboundFromPivotPct <= 0) {
+    hardBlockReasons.push('no_rebound_from_pivot');
+  }
+  if (
+    divergenceAmplitudeAtrRatio != null &&
+    divergenceAmplitudeAtrRatio < entryThresholds.minDivergenceAmplitudeAtrRatio
+  ) {
+    hardBlockReasons.push('weak_divergence_amplitude');
+  }
+  if (
+    confirmationReady &&
+    reclaimPct != null &&
+    reclaimPct < entryThresholds.minReclaimPct
+  ) {
+    hardBlockReasons.push('weak_reclaim');
+  }
+  if (
+    confirmationReady &&
+    confirmationCandleQuality != null &&
+    confirmationCandleQuality < entryThresholds.minConfirmationCandleQuality
+  ) {
+    hardBlockReasons.push('weak_confirmation_candle');
+  }
   const reboundModerate =
     reboundFromPivotPct != null && reboundFromPivotPct >= 0.6;
   const reboundStrong =
     reboundFromPivotPct != null && reboundFromPivotPct >= 1.2;
+  const reboundVeryStrong =
+    reboundFromPivotPct != null && reboundFromPivotPct >= 1.8;
   const volumeModerate =
     volumeDivergenceStrength != null && volumeDivergenceStrength >= 5;
   const volumeStrong =
@@ -324,6 +422,31 @@ const getVolumeDivergenceContext = (
   const longBiasConflictCount =
     Number(coinBiasAligned === false) + Number(btcBiasAligned === false);
   const shortBiasConflictCount = longBiasConflictCount;
+  const isCounterTrendLong = longBiasConflictCount === 2;
+  const q4SetupReady =
+    aiThresholds != null &&
+    divergenceAmplitudeAtrRatio != null &&
+    reclaimPct != null &&
+    confirmationCandleQuality != null &&
+    divergenceAmplitudeAtrRatio >= aiThresholds.q4DivergenceAmplitudeAtrRatio &&
+    reclaimPct >= aiThresholds.q4ReclaimPct &&
+    confirmationCandleQuality >= aiThresholds.q4ConfirmationCandleQuality;
+  const q5SetupReady =
+    aiThresholds != null &&
+    divergenceAmplitudeAtrRatio != null &&
+    reclaimPct != null &&
+    confirmationCandleQuality != null &&
+    divergenceAmplitudeAtrRatio >= aiThresholds.q5DivergenceAmplitudeAtrRatio &&
+    reclaimPct >= aiThresholds.q5ReclaimPct &&
+    confirmationCandleQuality >= aiThresholds.q5ConfirmationCandleQuality;
+  const minimumSetupReady =
+    divergenceAmplitudeAtrRatio != null &&
+    reclaimPct != null &&
+    confirmationCandleQuality != null &&
+    divergenceAmplitudeAtrRatio >=
+      entryThresholds.minDivergenceAmplitudeAtrRatio &&
+    reclaimPct >= entryThresholds.minReclaimPct &&
+    confirmationCandleQuality >= entryThresholds.minConfirmationCandleQuality;
 
   let deterministicQuality = 3;
 
@@ -331,23 +454,27 @@ const getVolumeDivergenceContext = (
     deterministicQuality = 2;
   } else if (signalDirection === 'LONG') {
     if (
-      entryTiming === 'structure_advance' &&
-      structureAdvanced &&
-      reboundStrong &&
-      volumeStrong &&
-      deltaAligned === true
+      confirmationReady &&
+      q5SetupReady &&
+      reboundVeryStrong &&
+      volumeVeryStrong &&
+      deltaAligned === true &&
+      longBiasConflictCount === 0
     ) {
       deterministicQuality = 5;
     } else if (
-      readyNow &&
+      confirmationReady &&
+      q4SetupReady &&
       reboundModerate &&
       volumeModerate &&
-      deltaAligned !== false &&
-      longBiasConflictCount <= 1
+      (deltaAligned !== false ||
+        (isCounterTrendLong && reboundStrong && volumeStrong))
     ) {
       deterministicQuality = 4;
+    } else if (confirmationReady && minimumSetupReady && reboundModerate) {
+      deterministicQuality = 3;
     } else if (
-      (confirmationReady || structureAdvanced) &&
+      structureAdvanced &&
       reboundFromPivotPct != null &&
       reboundFromPivotPct >= 0.25
     ) {
@@ -357,25 +484,32 @@ const getVolumeDivergenceContext = (
     }
   } else if (signalDirection === 'SHORT') {
     if (
-      entryTiming === 'structure_advance' &&
-      structureAdvanced &&
-      reboundStrong &&
+      confirmationReady &&
+      q5SetupReady &&
+      reboundVeryStrong &&
       volumeVeryStrong &&
       deltaAligned === true &&
       shortBiasConflictCount === 0
     ) {
       deterministicQuality = 5;
     } else if (
-      readyNow &&
-      structureAdvanced &&
-      reboundModerate &&
-      volumeStrong &&
+      confirmationReady &&
+      q4SetupReady &&
+      reboundStrong &&
+      volumeVeryStrong &&
       deltaAligned === true &&
       shortBiasConflictCount === 0
     ) {
       deterministicQuality = 4;
     } else if (
-      (confirmationReady || structureAdvanced) &&
+      confirmationReady &&
+      minimumSetupReady &&
+      reboundModerate &&
+      deltaAligned !== false
+    ) {
+      deterministicQuality = 3;
+    } else if (
+      structureAdvanced &&
       reboundFromPivotPct != null &&
       reboundFromPivotPct >= 0.25 &&
       deltaAligned !== false
@@ -388,7 +522,7 @@ const getVolumeDivergenceContext = (
   const approvalAllowedNow =
     hardBlockReasons.length === 0 &&
     deterministicQuality >= 4 &&
-    (entryTiming != null || confirmationReady);
+    confirmationReady;
 
   return {
     signalDirection,
@@ -398,6 +532,10 @@ const getVolumeDivergenceContext = (
     structureAdvanced,
     reboundFromPivotPct,
     priceDisplacementPct,
+    atrPct,
+    divergenceAmplitudeAtrRatio,
+    reclaimPct,
+    confirmationCandleQuality,
     volumeDivergenceStrength,
     volumeDivergenceRatio,
     deltaAtPivot,
@@ -441,6 +579,12 @@ const getHardBlockReasonText = (reason: HardBlockReason) => {
   switch (reason) {
     case 'no_rebound_from_pivot':
       return 'цена не смогла уйти от pivot в сторону reversal';
+    case 'weak_divergence_amplitude':
+      return 'дивергенция слишком маленькая относительно ATR';
+    case 'weak_reclaim':
+      return 'цена вернула слишком мало структуры после pivot';
+    case 'weak_confirmation_candle':
+      return 'confirmation candle слишком слабая';
     default:
       return reason;
   }
