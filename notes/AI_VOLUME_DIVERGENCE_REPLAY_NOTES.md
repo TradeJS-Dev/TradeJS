@@ -28,7 +28,7 @@ The important distinction versus breakout strategies:
 Current merged export used for this replay:
 
 ```bash
-data/ai/export/ai-dataset-volumedivergence-merged-1776164708075.jsonl
+data/ai/export/ai-dataset-volumedivergence-merged-1776169479959.jsonl
 ```
 
 Current Redis config `VolumeDivergence:ai`:
@@ -106,38 +106,38 @@ So the current regression is not coming from that old field mismatch.
 
 Local deterministic replay on the current export and config:
 
-- `accuracy = 81.6%`
-- `TP/FP/TN/FN = 7 / 14 / 401 / 78`
-- `approved = 21`
-- `precision_approved = 33.3%`
-- `recall_winners = 8.2%`
-- `avg_profit_all = -2.03`
-- `avg_profit_approved = +3.68`
-- `expectancy_delta = +5.70`
+- `accuracy = 82.8%`
+- `TP/FP/TN/FN = 6 / 10 / 408 / 76`
+- `approved = 16`
+- `precision_approved = 37.5%`
+- `recall_winners = 7.3%`
+- `avg_profit_all = -2.23`
+- `avg_profit_approved = +5.19`
+- `expectancy_delta = +7.42`
 
 Direction split:
 
-- `LONG`: `7 / 12 / 219 / 57`, `approved = 19`
-- `SHORT`: `0 / 2 / 182 / 21`, `approved = 2`
+- `LONG`: `6 / 8 / 225 / 59`, `approved = 14`
+- `SHORT`: `0 / 2 / 183 / 17`, `approved = 2`
 
 Deterministic flow:
 
 - `selected = 500`
 - `core_blocked_now = 8`
-- `adapter_blocked_now = 471`
-- `left_to_model_now = 21`
+- `adapter_blocked_now = 476`
+- `left_to_model_now = 16`
 
 Quality breakdown:
 
-- `quality=2`: `144` rows, `0` approvals, `10.4%` winrate, `avg_profit = -4.46`
-- `quality=3`: `335` rows, `0` approvals, `18.8%` winrate, `avg_profit = -1.34`
-- `quality=4`: `21` rows, `21` approvals, `33.3%` winrate, `avg_profit = +3.68`
+- `quality=2`: `143` rows, `0` approvals, `9.1%` winrate, `avg_profit = -4.97`
+- `quality=3`: `341` rows, `0` approvals, `18.5%` winrate, `avg_profit = -1.43`
+- `quality=4`: `16` rows, `16` approvals, `37.5%` winrate, `avg_profit = +5.19`
 
 Immediate interpretation:
 
 - raw classification accuracy is not the headline metric here
 - the approval stream got much smaller again
-- approved expectancy stayed positive and even improved
+- approved expectancy stayed positive and improved again
 - the system is now clearly trading selectivity for recall
 - this is a healthier regime than the earlier wide-approval windows, but the sample is now very small
 
@@ -145,45 +145,45 @@ Immediate interpretation:
 
 Compared to the previous `latest 500` snapshot in this file:
 
-- `accuracy`: `66.0% -> 81.6%`
-- `TP`: `17 -> 7`
-- `FP`: `28 -> 14`
-- `TN`: `313 -> 401`
-- `FN`: `142 -> 78`
-- `approved`: `45 -> 21`
-- `precision_approved`: `37.8% -> 33.3%`
-- `recall_winners`: `10.7% -> 8.2%`
-- `avg_profit_all`: `-0.20 -> -2.03`
-- `avg_profit_approved`: `+2.75 -> +3.68`
-- `expectancy_delta`: `+2.94 -> +5.70`
+- `accuracy`: `81.6% -> 82.8%`
+- `TP`: `7 -> 6`
+- `FP`: `14 -> 10`
+- `TN`: `401 -> 408`
+- `FN`: `78 -> 76`
+- `approved`: `21 -> 16`
+- `precision_approved`: `33.3% -> 37.5%`
+- `recall_winners`: `8.2% -> 7.3%`
+- `avg_profit_all`: `-2.03 -> -2.23`
+- `avg_profit_approved`: `+3.68 -> +5.19`
+- `expectancy_delta`: `+5.70 -> +7.42`
 
 Interpretation:
 
-- the current branch became materially stricter
-- approvals halved again, and false approvals halved too
-- precision slipped slightly, but approved expectancy improved
-- the biggest positive shift is `TN: 313 -> 401`, which means the adapter is now much more conservative
-- the cost is that the tradable stream is getting very small, so the next risk is under-trading rather than over-approving
+- the current branch became even stricter
+- approvals and false approvals both fell again
+- precision improved and approved expectancy improved even more
+- the adapter is now very conservative
+- the cost is now clearly under-trading rather than over-approving
 
 ## Main discovery: `LONG q4 confirmation_ready` remains the whole game, but now only one sub-pocket is still bad
 
 The current replay is still dominated by one pocket:
 
-- `LONG | q4 | confirmation_ready = 19` approvals
-- winrate `36.8%`
-- `avg_profit = +5.03`
+- `LONG | q4 | confirmation_ready = 14` approvals
+- winrate `42.9%`
+- `avg_profit = +7.24`
 
 Deeper split of approved rows:
 
-- `LONG | q4 | confirmation_ready | coinAgainst | btcAgainst = 13`
-  - winrate `23.1%`
-  - `avg_profit = -1.47`
+- `LONG | q4 | confirmation_ready | coinAgainst | btcAgainst = 7`
+  - winrate `28.6%`
+  - `avg_profit = -1.30`
+- `LONG | q4 | confirmation_ready | coinAgainst | btcAlign = 3`
+  - winrate `66.7%`
+  - `avg_profit = +19.09`
 - `LONG | q4 | confirmation_ready | coinAlign | btcAgainst = 3`
   - winrate `66.7%`
   - `avg_profit = +19.09`
-- `LONG | q4 | confirmation_ready | coinAgainst | btcAlign = 2`
-  - winrate `100.0%`
-  - `avg_profit = +30.71`
 - `LONG | q4 | confirmation_ready | coinAlign | btcAlign = 1`
   - winrate `0.0%`
   - `avg_profit = -4.15`
@@ -209,7 +209,7 @@ Current behavior:
 Evidence:
 
 - `SHORT approved = 2`, `TP = 0`, `FP = 2`
-- `LONG approved = 19`, `TP = 7`, `FP = 12`
+- `LONG approved = 14`, `TP = 6`, `FP = 8`
 
 Practical interpretation:
 
@@ -224,14 +224,15 @@ False negatives are even more clearly score-ladder cases now.
 
 Most profitable rejected rows are:
 
-- `LONG | q3 | confirmation_ready | coinAgainst | btcAgainst = 26`, `avg_profit = +30.71`
-- `LONG | q3 | confirmation_ready | coinAgainst | btcAlign = 12`, `avg_profit = +30.71`
-- `LONG | q3 | confirmation_ready | coinAlign | btcAgainst = 9`, `avg_profit = +30.71`
-- `LONG | q3 | confirmation_ready | coinAlign | btcAlign = 7`, `avg_profit = +30.71`
+- `LONG | q3 | confirmation_ready | coinAgainst | btcAgainst = 28`, `avg_profit = +30.71`
+- `LONG | q3 | confirmation_ready | coinAgainst | btcAlign = 13`, `avg_profit = +30.71`
+- `LONG | q3 | confirmation_ready | coinAlign | btcAlign = 8`, `avg_profit = +30.71`
+- `LONG | q3 | confirmation_ready | coinAlign | btcAgainst = 7`, `avg_profit = +30.71`
+- `SHORT | q3 | confirmation_ready | coinAgainst | btcAgainst = 4`, `avg_profit = +27.39`
 
 Hard-block split of FN:
 
-- `none = 75`
+- `none = 73`
 - `weak_divergence_amplitude = 3`
 
 Meaning:
@@ -250,34 +251,35 @@ This is now the main tradeoff:
 Comparing approved winners vs approved losers:
 
 - `divergenceAmplitudeAtrRatio`
-  - winners avg `1.70`
-  - losers avg `1.99`
+  - winners avg `1.63`
+  - losers avg `2.15`
 - `reclaimPct`
-  - winners avg `227.25`
-  - losers avg `189.06`
+  - winners avg `243.23`
+  - losers avg `166.68`
 - `confirmationCandleQuality`
-  - winners avg `0.769`
-  - losers avg `0.845`
+  - winners avg `0.790`
+  - losers avg `0.852`
 - `confirmationDistancePct`
-  - winners avg `0.92`
-  - losers avg `3.10`
+  - winners avg `1.00`
+  - losers avg `0.67`
 - `atrPct`
-  - winners avg `0.695`
-  - losers avg `1.236`
+  - winners avg `0.716`
+  - losers avg `0.634`
 - `volumeDivergenceRatio`
-  - winners avg `2.71`
-  - losers avg `2.84`
+  - winners avg `2.74`
+  - losers avg `2.58`
 - `barsSinceDetection`
-  - winners avg `3.86`
-  - losers avg `6.36`
+  - winners avg `3.00`
+  - losers avg `4.60`
 
 Most useful interpretation:
 
 - lower amplitude is still better than oversized amplitude
-- lower volatility (`atrPct`) is still a meaningful positive sign
+- higher reclaim is still a meaningful positive sign
 - higher reclaim is more useful than “stronger candle quality”
-- larger `confirmationDistancePct` is not automatically better; oversized post-confirmation extension now looks worse
-- longer maturity is no longer clearly positive; in this snapshot approved losers are actually older than winners
+- `confirmationDistancePct` is no longer a stable separator on its own
+- `atrPct` is also not behaving as a monotonic separator in this smaller snapshot
+- older approvals are still not automatically better
 - `volumeDivergenceRatio` remains weak as a separator
 
 This is important because it weakens the earlier hypothesis that simply increasing weight on `volumeDivergenceRatio` would solve the lane.
@@ -286,9 +288,9 @@ This is important because it weakens the earlier hypothesis that simply increasi
 
 Best visible approved pockets:
 
-- `LONG | q4 | confirmation_ready | coinAgainst | btcAlign = 2`
-  - winrate `100.0%`
-  - `avg_profit = +30.71`
+- `LONG | q4 | confirmation_ready | coinAgainst | btcAlign = 3`
+  - winrate `66.7%`
+  - `avg_profit = +19.09`
 - `LONG | q4 | confirmation_ready | coinAlign | btcAgainst = 3`
   - winrate `66.7%`
   - `avg_profit = +19.09`
@@ -297,9 +299,9 @@ These are still small samples, but they show the lane is no longer uniformly bro
 
 Worst dominant pocket:
 
-- `LONG | q4 | confirmation_ready | coinAgainst | btcAgainst = 13`
-- winrate `23.1%`
-- `avg_profit = -1.47`
+- `LONG | q4 | confirmation_ready | coinAgainst | btcAgainst = 7`
+- winrate `28.6%`
+- `avg_profit = -1.30`
 
 Secondary bad pocket:
 
@@ -323,11 +325,12 @@ The most promising new core feature candidate is:
 
 - explicit maturity / freshness after detection
 
-Because winners in the approved set now tend to have slightly larger `barsSinceDetection` than losers.
+But the latest snapshot weakens the earlier “older is better” reading.
 
 So if the core changes again, it should probably be in the direction of:
 
 - exposing more explicit post-detection maturity features
+- exposing regime features without assuming that age alone is positive
 - not in the direction of reopening earlier entries
 
 ### 2. Backtest config
@@ -387,10 +390,10 @@ So the next adapter improvement should be:
 - keep selective promotion, but only in the `LONG confirmation_ready` lane
 - avoid increasing raw weight on `volumeDivergenceRatio` further
 - instead consider:
-  - a mild preference for lower `atrPct`
-  - a mild preference for higher `reclaimPct`
-  - a mild penalty for oversized `confirmationDistancePct`
-  - additional demotion of the large `coinAgainst | btcAgainst` `LONG q4` pocket
+  - a stronger preference for higher `reclaimPct`
+  - a mild penalty for the large `coinAgainst | btcAgainst` `LONG q4` pocket
+  - a selective promotion path for profitable `LONG q3 confirmation_ready`
+  - avoid assuming that lower `atrPct` or larger `confirmationDistancePct` always means better
 
 ## Code changes applied on 2026-04-14
 
@@ -398,10 +401,10 @@ The current adapter branch is now replayed on a fresh export.
 
 Observed effect:
 
-- `approved: 45 -> 21`
-- `FP: 28 -> 14`
-- `avg_profit_approved: +2.75 -> +3.68`
-- `expectancy_delta: +2.94 -> +5.70`
+- `approved: 21 -> 16`
+- `FP: 14 -> 10`
+- `avg_profit_approved: +3.68 -> +5.19`
+- `expectancy_delta: +5.70 -> +7.42`
 
 So the current adapter branch is worth keeping and iterating on.
 
@@ -420,7 +423,7 @@ The important result of this replay:
 So the next move should be:
 
 1. keep the current adapter branch
-2. rerun the same `NORMALIZATION_LENGTH = 120` detector point after any further adapter changes
+2. keep rerunning the same `NORMALIZATION_LENGTH = 120` detector point after any adapter-only changes
 3. work on selective `LONG q3 confirmation_ready` promotion
 4. keep targeting the `coinAgainst | btcAgainst` `LONG q4` cluster
 5. avoid reopening early/weak lanes just to chase recall

@@ -2430,6 +2430,67 @@ describe('ai helpers', () => {
       expect(invokeMock).not.toHaveBeenCalled();
     });
 
+    it('promotes semi-aligned VolumeDivergence long q3 confirmations during local replay when reclaim and candle quality are strong', async () => {
+      const signal = makeVolumeDivergenceSignal({
+        indicators: {
+          maFast: [100, 101, 102],
+          maSlow: [100, 100, 101],
+          btcMaFast: [50, 49.8, 49.6],
+          btcMaSlow: [50, 50.1, 50.2],
+        },
+        additionalIndicators: {
+          volumeDivergenceSetup: {
+            atrPct: 0.9,
+            divergenceAmplitudeAtrRatio: 1.6,
+            reclaimPct: 145,
+            confirmationCandleQuality: 0.82,
+            confirmationDistancePct: 0.7,
+          },
+          volumeDivergenceSignalTiming: {
+            entryTiming: 'confirmation_ready',
+            barsSinceDetection: 4,
+          },
+          divergence: {
+            currentPivot: {
+              volumeNorm: 110,
+            },
+            previousPivot: {
+              volumeNorm: 90,
+            },
+          },
+        },
+      });
+      const payload = buildAiPayload(signal);
+
+      expect(getDeterministicAiGateContext(payload)).toEqual(
+        expect.objectContaining({
+          coinBiasAligned: true,
+          btcBiasAligned: false,
+          volumeDivergenceRatio: 110 / 90,
+          divergenceAmplitudeAtrRatio: 1.6,
+          reclaimPct: 145,
+          confirmationCandleQuality: 0.82,
+          approvalAllowedNow: true,
+          deterministicQuality: 4,
+        }),
+      );
+
+      const result = await runAiPromptLocal(signal, { payload });
+
+      expect(result).toEqual(
+        expect.objectContaining({
+          direction: 'LONG',
+          quality: 4,
+          needRetest: false,
+          retestPrice: null,
+          takeProfitPrice: 104,
+          stopLossPrice: 98,
+        }),
+      );
+      expect(chatOpenAICtorMock).not.toHaveBeenCalled();
+      expect(invokeMock).not.toHaveBeenCalled();
+    });
+
     it('keeps immature double-conflict VolumeDivergence long confirmations in watch mode during local replay', async () => {
       const signal = makeVolumeDivergenceSignal({
         indicators: {

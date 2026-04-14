@@ -460,6 +460,29 @@ const getLongDeterministicQuality = ({
     deltaAligned !== false &&
     longBiasConflictCount <= 1 &&
     !longQ4Demotion;
+  const longAlignedFnPromotion =
+    confirmationReady &&
+    minimumSetupReady &&
+    coinBiasAligned === true &&
+    btcBiasAligned === true &&
+    reboundModerate &&
+    isAtLeast(reclaimPct, 130) &&
+    isAtLeast(
+      confirmationCandleQuality,
+      Math.max(entryThresholds.minConfirmationCandleQuality, 0.72),
+    ) &&
+    isAtMost(divergenceAmplitudeAtrRatio, 1.8) &&
+    isAtMost(confirmationDistancePct, 0.8) &&
+    !longQ4Demotion;
+  const longSemiAlignedFnPromotion =
+    confirmationReady &&
+    minimumSetupReady &&
+    (coinBiasAligned === true || btcBiasAligned === true) &&
+    reboundModerate &&
+    isAtLeast(reclaimPct, 140) &&
+    isAtLeast(confirmationCandleQuality, 0.8) &&
+    isAtMost(divergenceAmplitudeAtrRatio, 2.5) &&
+    !longQ4Demotion;
   const longCounterTrendSelectivePromotion =
     confirmationReady &&
     minimumSetupReady &&
@@ -496,6 +519,8 @@ const getLongDeterministicQuality = ({
 
   if (
     longCounterTrendSelectivePromotion ||
+    longSemiAlignedFnPromotion ||
+    longAlignedFnPromotion ||
     longSelectivePromotion ||
     (confirmationReady &&
       q4SetupReady &&

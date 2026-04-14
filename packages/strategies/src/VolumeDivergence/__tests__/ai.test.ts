@@ -485,6 +485,94 @@ describe('volumeDivergenceAiAdapter', () => {
     );
   });
 
+  it('promotes semi-aligned long q3 confirmations when reclaim and candle quality are strong', () => {
+    const signal = makeSignal({
+      indicators: {
+        maFast: [100, 101, 102],
+        maSlow: [100, 100, 101],
+        btcMaFast: [50, 49.8, 49.6],
+        btcMaSlow: [50, 50.1, 50.2],
+      },
+      additionalIndicators: {
+        volumeDivergenceSetup: {
+          atrPct: 0.9,
+          divergenceAmplitudeAtrRatio: 1.6,
+          reclaimPct: 145,
+          confirmationCandleQuality: 0.82,
+          confirmationDistancePct: 0.7,
+        },
+        volumeDivergenceSignalTiming: {
+          entryTiming: 'confirmation_ready',
+          barsSinceDetection: 4,
+        },
+        divergence: {
+          currentPivot: {
+            volumeNorm: 110,
+          },
+          previousPivot: {
+            volumeNorm: 90,
+          },
+        },
+      },
+    });
+    const payload = volumeDivergenceAiAdapter.buildPayload?.({
+      signal,
+      basePayload: {
+        signal: {
+          symbol: signal.symbol,
+          signalId: signal.signalId,
+          interval: signal.interval,
+          direction: signal.direction,
+          timestamp: signal.timestamp,
+          strategy: signal.strategy,
+          prices: {
+            currentPrice: signal.prices.currentPrice,
+            takeProfitPrice: signal.prices.takeProfitPrice,
+            stopLossPrice: signal.prices.stopLossPrice,
+          },
+        },
+        figures: {},
+        indicators: signal.indicators,
+        additionalIndicators: signal.additionalIndicators,
+      },
+    }) as any;
+
+    expect(
+      (payload.additionalIndicators as any).volumeDivergenceContext,
+    ).toEqual(
+      expect.objectContaining({
+        coinBiasAligned: true,
+        btcBiasAligned: false,
+        volumeDivergenceRatio: 110 / 90,
+        divergenceAmplitudeAtrRatio: 1.6,
+        reclaimPct: 145,
+        confirmationCandleQuality: 0.82,
+        deterministicQuality: 4,
+        approvalAllowedNow: true,
+      }),
+    );
+
+    const analysis = volumeDivergenceAiAdapter.postProcessAnalysis?.({
+      signal,
+      payload,
+      analysis: {
+        direction: 'LONG',
+        quality: 4,
+      },
+    });
+
+    expect(analysis).toEqual(
+      expect.objectContaining({
+        direction: 'LONG',
+        quality: 4,
+        needRetest: false,
+        retestPrice: null,
+        takeProfitPrice: 104,
+        stopLossPrice: 98,
+      }),
+    );
+  });
+
   it('demotes immature double-conflict long confirmations back to q3', () => {
     const signal = makeSignal({
       indicators: {
