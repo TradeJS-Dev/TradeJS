@@ -11,7 +11,9 @@ import {
 import {
   Candle,
   CreateStrategyCore,
+  Direction,
   IndicatorsHistorySnapshot,
+  Position,
 } from '@tradejs/types';
 
 type PivotDivergence = {
@@ -62,11 +64,95 @@ type PendingDivergenceCandidate = {
   barsSinceDetection: number;
 };
 
+const BREAK_EVEN_TRIGGER_RISK_MULTIPLIER = 0.5;
+
 const isFiniteNumber = (value: unknown): value is number =>
   typeof value === 'number' && Number.isFinite(value);
 
 const clamp = (value: number, min: number, max: number) =>
   Math.min(max, Math.max(min, value));
+
+const isOpenPosition = (
+  position: Position | null | undefined,
+): position is Position =>
+  Boolean(
+    position &&
+      typeof position.price === 'number' &&
+      Number.isFinite(position.price) &&
+      typeof position.qty === 'number' &&
+      Number.isFinite(position.qty) &&
+      position.qty > 0 &&
+      (position.direction === 'LONG' || position.direction === 'SHORT'),
+  );
+
+const getFavorableMovePct = ({
+  direction,
+  entryPrice,
+  currentPrice,
+}: {
+  direction: Direction;
+  entryPrice: number;
+  currentPrice: number;
+}) => {
+  if (
+    !Number.isFinite(entryPrice) ||
+    !Number.isFinite(currentPrice) ||
+    entryPrice <= 0
+  ) {
+    return null;
+  }
+
+  return direction === 'LONG'
+    ? ((currentPrice - entryPrice) / entryPrice) * 100
+    : ((entryPrice - currentPrice) / entryPrice) * 100;
+};
+
+const getPositionStopLossPrice = (position: Position | null | undefined) => {
+  if (!position || typeof position !== 'object') {
+    return null;
+  }
+
+  const slPrice = Number(
+    (position as Position & { slPrice?: unknown }).slPrice ?? Number.NaN,
+  );
+
+  if (Number.isFinite(slPrice)) {
+    return slPrice;
+  }
+
+  const signalStopLossPrice = Number(
+    (
+      position as Position & {
+        signal?: { prices?: { stopLossPrice?: unknown } };
+      }
+    ).signal?.prices?.stopLossPrice ?? Number.NaN,
+  );
+
+  return Number.isFinite(signalStopLossPrice) ? signalStopLossPrice : null;
+};
+
+const getPositionRiskPct = ({
+  direction,
+  entryPrice,
+  stopLossPrice,
+}: {
+  direction: Direction;
+  entryPrice: number;
+  stopLossPrice: number | null;
+}) => {
+  if (
+    stopLossPrice == null ||
+    !Number.isFinite(entryPrice) ||
+    !Number.isFinite(stopLossPrice) ||
+    entryPrice <= 0
+  ) {
+    return null;
+  }
+
+  return direction === 'LONG'
+    ? ((entryPrice - stopLossPrice) / entryPrice) * 100
+    : ((stopLossPrice - entryPrice) / entryPrice) * 100;
+};
 
 const compactQueue = (queue: RollingMaxQueueState) => {
   if (queue.start <= 1024 || queue.start * 2 <= queue.indices.length) {
@@ -618,8 +704,37 @@ export const createVolumeDivergenceCore: CreateStrategyCore<
     indicatorsState.onBar();
     const timestamp = Number(candle.timestamp);
 
-    const positionExists = await strategyApi.isCurrentPositionExists();
-    if (positionExists) {
+    const currentPosition = await strategyApi.getCurrentPosition();
+    if (isOpenPosition(currentPosition)) {
+      const { currentPrice } = await strategyApi.getMarketData();
+      const activeModeConfig =
+        currentPosition.direction === 'LONG' ? BULLISH : BEARISH;
+      const favorableMovePct = getFavorableMovePct({
+        direction: currentPosition.direction,
+        entryPrice: currentPosition.price,
+        currentPrice,
+      });
+      const currentPositionRiskPct = getPositionRiskPct({
+        direction: currentPosition.direction,
+        entryPrice: currentPosition.price,
+        stopLossPrice: getPositionStopLossPrice(currentPosition),
+      });
+
+      if (
+        favorableMovePct != null &&
+        favorableMovePct >=
+          (currentPositionRiskPct ?? activeModeConfig.SL) *
+            BREAK_EVEN_TRIGGER_RISK_MULTIPLIER
+      ) {
+        return strategyApi.protect({
+          code: 'VOLUME_DIVERGENCE_MOVE_STOP_TO_BREAK_EVEN',
+          protectPlan: {
+            direction: currentPosition.direction,
+            stopLossPrice: currentPosition.price,
+          },
+        });
+      }
+
       return strategyApi.skip('POSITION_EXISTS');
     }
 

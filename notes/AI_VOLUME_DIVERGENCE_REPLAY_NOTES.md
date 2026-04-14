@@ -1,6 +1,6 @@
 # VolumeDivergence AI Replay Notes
 
-Last updated: 2026-04-11.
+Last updated: 2026-04-14.
 
 This file keeps internal notes for `ai-train` replay windows and `VolumeDivergence` deterministic AI-gate analysis.
 
@@ -28,13 +28,17 @@ The important distinction versus breakout strategies:
 Current merged export used for this replay:
 
 ```bash
-data/ai/export/ai-dataset-volumedivergence-merged-1775909347993.jsonl
+data/ai/export/ai-dataset-volumedivergence-merged-1776145408313.jsonl
 ```
 
 Current Redis config `VolumeDivergence:ai`:
 
 ```json
 {
+  "MAX_BARS_BETWEEN_PIVOTS": [24],
+  "MIN_BARS_BETWEEN_PIVOTS": [6],
+  "PIVOT_LOOKBACK_LEFT": [10],
+  "NORMALIZATION_LENGTH": [120],
   "BULLISH": [
     {
       "enable": true,
@@ -58,18 +62,17 @@ Current Redis config `VolumeDivergence:ai`:
 
 Important:
 
-- this config does not explore the detector at all
-- it only explores TP/SL
-- so if signal quality is bad, this grid cannot fix the core problem
+- this is no longer a pure TP/SL config
+- current detector point is:
+  - `MAX_BARS_BETWEEN_PIVOTS` down to `24`
+  - `MIN_BARS_BETWEEN_PIVOTS` up to `6`
+  - `PIVOT_LOOKBACK_LEFT` up to `10`
+  - `NORMALIZATION_LENGTH` up to `120`
+- relative to the previous failed window, only `NORMALIZATION_LENGTH` changed
 
 ## Deterministic replay setup
 
-For this investigation, `ai-train` was extended with:
-
-- `--localOnly`
-- deterministic gate extraction from strategy AI payload
-
-Current local replay command:
+Replay mode used:
 
 ```bash
 yarn ai-train --strategy VolumeDivergence -n 500 --localOnly
@@ -77,14 +80,11 @@ yarn ai-train --strategy VolumeDivergence -n 500 --localOnly
 
 This replay does not call OpenRouter.
 
-It measures the deterministic adapter gate that sits between:
-
-- strategy-produced entry rows
-- final `approve now / watch / reject` decision
+It uses the deterministic strategy AI payload and local adapter gate only.
 
 ## Critical adapter fix found during investigation
 
-During the replay audit, a concrete bug was found:
+Earlier in this investigation a real bug was found:
 
 - `core.ts` writes `additionalIndicators.deltaAtPivot`
 - `adapters/ai.ts` was reading `currentPivotDelta`
@@ -92,287 +92,334 @@ During the replay audit, a concrete bug was found:
 Because of this mismatch:
 
 - `deltaAligned` was always `null`
-- one of the intended scoring features was effectively dead
+- one scoring feature was dead
 
-After fixing the key mismatch:
+That fix remains important context:
 
-- replay improved from `accuracy 71.8%` to `73.4%`
+- replay had improved from `accuracy 71.8%` to `73.4%`
 - `precision_approved` improved from `16.7%` to `20.0%`
 - `expectancy_delta` improved from `-1.25` to `+0.22`
 
-This was a real bugfix, not just a metric trick.
+So the current regression is not coming from that old field mismatch.
 
 ## Replay result: `latest 500`
 
-Local deterministic replay on the current export:
+Local deterministic replay on the current export and config:
 
-- `accuracy = 73.6%`
-- `TP/FP/TN/FN = 9 / 32 / 359 / 100`
-- `approved = 41`
-- `precision_approved = 22.0%`
-- `recall_winners = 8.3%`
-- `avg_profit_all = -4.58`
-- `avg_profit_approved = -4.27`
-- `expectancy_delta = +0.31`
+- `accuracy = 66.0%`
+- `TP/FP/TN/FN = 17 / 28 / 313 / 142`
+- `approved = 45`
+- `precision_approved = 37.8%`
+- `recall_winners = 10.7%`
+- `avg_profit_all = -0.20`
+- `avg_profit_approved = +2.75`
+- `expectancy_delta = +2.94`
 
 Direction split:
 
-- `LONG`: `9 / 30 / 151 / 64`
-- `SHORT`: `0 / 2 / 208 / 36`
+- `LONG`: `16 / 27 / 152 / 92`, `approved = 43`
+- `SHORT`: `1 / 1 / 161 / 50`, `approved = 2`
 
 Deterministic flow:
 
 - `selected = 500`
-- `core_blocked_now = 0`
-- `adapter_blocked_now = 459`
-- `left_to_model_now = 41`
+- `core_blocked_now = 8`
+- `adapter_blocked_now = 447`
+- `left_to_model_now = 45`
 
 Quality breakdown:
 
-- `quality=2`: `159` rows, `0` approvals, `16.4%` winrate, `avg_profit = -7.22`
-- `quality=3`: `300` rows, `0` approvals, `24.7%` winrate, `avg_profit = -3.22`
-- `quality=4`: `38` rows, `38` approvals, `23.7%` winrate, `avg_profit = -3.49`
-- `quality=5`: `3` rows, `3` approvals, `0.0%` winrate, `avg_profit = -14.11`
-
-Window composition:
-
-- `LONG rows = 254`
-- `SHORT rows = 246`
-- `entryTiming = structure_advance` on `351 / 500`
-- `entryTiming = confirmation_ready` on `149 / 500`
+- `quality=2`: `150` rows, `0` approvals, `26.7%` winrate, `avg_profit = -2.84`
+- `quality=3`: `305` rows, `0` approvals, `33.4%` winrate, `avg_profit = +0.67`
+- `quality=4`: `45` rows, `45` approvals, `37.8%` winrate, `avg_profit = +2.75`
 
 Immediate interpretation:
 
-- the filter is stricter than before and it did cut a visible chunk of false positives
-- `quality=5` became much rarer, which was the right move
-- but `quality=4` is still not a profitable bucket on this window
-- approvals are still almost entirely a `LONG` problem, while `SHORT` is now close to fully suppressed
+- raw classification accuracy is not the headline metric here
+- the important change is that approved expectancy turned positive
+- the stream is now much narrower and materially cleaner
+- this is the first recent `VolumeDivergence` replay window that looks directionally promising
 
 ## Comparison vs previous snapshot
 
-Compared to the previous `latest 500` note in this file:
+Compared to the previous `latest 500` snapshot in this file:
 
-- `accuracy`: `72.4% -> 73.6%`
-- `FP`: `41 -> 32`
-- `TP`: `12 -> 9`
-- `FN`: `97 -> 100`
-- `approved`: `53 -> 41`
-- `precision_approved`: `22.6% -> 22.0%`
-- `avg_profit_all`: `-4.58 -> -4.58`
-- `avg_profit_approved`: `-4.02 -> -4.27`
-- `expectancy_delta`: `+0.55 -> +0.31`
-- `quality=5 count`: `25 -> 3`
-
-Interpretation:
-
-- the latest tightening improved raw classification accuracy and reduced false approvals
-- but it also removed some true positives and reduced recall
-- the `q5` explosion was fixed, but the promoted `q4` bucket is still weak
-- this was a useful calibration step, not a finished solution
-
-## Main discovery: the timing problem moved, but did not disappear
-
-The old version entered too early on raw divergence.
-
-That specific issue was improved by the pending-confirmation flow.
-
-But the new replay shows a second-order mismatch:
-
-- `core_blocked_now = 0`
-- `adapter_blocked_now = 447`
-- only `53 / 500` rows are allowed through the deterministic adapter gate
-
-Meaning:
-
-- the strategy now waits until `confirmation_ready` or `structure_advance`
-- the extra rebound guard on `structure_advance` helped, but did not materially reduce adapter dependence
-- the adapter is still doing most of the real filtering work
-
-So the core is closer to the adapter than before, but the two layers are still not aligned.
-
-The practical version of this finding:
-
-- `raw divergence -> pending` was the right first move
-- the next move is to make `entry_structure_advance` itself stricter
-- otherwise the adapter keeps acting like a late rescue layer
-
-## Quality ladder is still broken
-
-The strongest single finding on this window is still the quality ladder:
-
-- `quality=5` is now rare, which is correct
-- but the remaining `quality=5` rows are still the worst rows
-- `quality=4` became the main approved bucket, but it is still negative on average
-
-This is not a cosmetic issue.
-
-It means the ladder is inverted at the top:
-
-- the system is most confident exactly where it should be most skeptical
-
-Practical conclusion:
-
-- `MIN_AI_QUALITY = 5` is still a mistake here
-- `quality=5` is now almost gone, but the remaining lane still should not exist in its current form
-- if `quality=4` remains the approval bucket, it has to become materially cleaner before this strategy is production-worthy
-
-## Direction asymmetry changed
-
-The previous snapshot already shifted risk toward `LONG`.
-
-The new snapshot makes that even more explicit:
-
-- `SHORT` approvals almost disappeared: only `2`
-- `LONG` approvals dominate: `39`
-- all true positives on this window are `LONG`
-- most remaining false positives are approved `LONG`
-
-So current behavior is:
-
-- `SHORT` is mostly being rejected
-- `LONG` is where the adapter still takes the wrong bets
-
-This does not mean `SHORT` is solved.
-
-It means:
-
-- `SHORT` recall is now effectively zero on this window
-- `LONG` precision is still poor
-- the system is simultaneously too conservative on `SHORT` and still too tolerant of weak `LONG` reversal approvals
-
-## Best and worst pockets
-
-Compared to the previous snapshot, the visible pocket rotation is now clear even without another deep cluster dump:
-
-- `quality=5` was cut from `25` rows to `3`
-- `approved` was cut from `53` to `41`
-- `FP` was cut from `41` to `32`
-- but `TP` also fell from `12` to `9`
+- `accuracy`: `67.2% -> 66.0%`
+- `TP`: `20 -> 17`
+- `FP`: `70 -> 28`
+- `TN`: `316 -> 313`
+- `FN`: `94 -> 142`
+- `approved`: `90 -> 45`
+- `precision_approved`: `22.2% -> 37.8%`
+- `recall_winners`: `17.5% -> 10.7%`
+- `avg_profit_all`: `-4.20 -> -0.20`
+- `avg_profit_approved`: `-4.22 -> +2.75`
+- `expectancy_delta`: `-0.02 -> +2.94`
 
 Interpretation:
 
-- the bad `LONG q5 structure_advance` lane was largely removed
-- the remaining issue moved one level down into `q4`
-- the strategy is now less reckless, but not yet selective enough where it approves
+- `NORMALIZATION_LENGTH = 120` plus the current adapter calibration sharply reduced false approvals
+- the tradeoff is obvious: recall fell and FN rose
+- but unlike the `80` window, the narrower approval stream is now actually better than the all-trades baseline
+- this is a much healthier failure mode than before
 
-This repeats the earlier theme from `ReverseTrendLine`:
+## Main discovery: `LONG q4 confirmation_ready` is still dominant, but no longer uniformly bad
 
-- reversal setups should not automatically reward alignment with current MA bias
+The current replay is still dominated by one pocket:
+
+- `LONG | q4 | confirmation_ready = 43` approvals
+- winrate `37.2%`
+- `avg_profit = +2.57`
+
+Deeper split of approved rows:
+
+- `LONG | q4 | confirmation_ready | coinAgainst | btcAgainst = 34`
+  - winrate `26.5%`
+  - `avg_profit = -2.25`
+- `LONG | q4 | confirmation_ready | coinAlign | btcAgainst = 5`
+  - winrate `60.0%`
+  - `avg_profit = +12.78`
+- `LONG | q4 | confirmation_ready | coinAgainst | btcAlign = 2`
+  - winrate `100.0%`
+  - `avg_profit = +30.71`
+- `LONG | q4 | confirmation_ready | coinAlign | btcAlign = 2`
+  - winrate `100.0%`
+  - `avg_profit = +30.71`
+
+This means:
+
+- the dominant `LONG q4` lane is no longer globally broken
+- but one large sub-pocket inside it is still weak: `coinAgainst | btcAgainst`
+- the recent adapter demotions likely helped a lot, but that sub-pocket still needs more cleanup
+
+## Direction asymmetry is now explicit
+
+Current behavior:
+
+- `SHORT` is still precise but almost absent
+- `LONG` still carries almost all approvals
+- unlike the previous window, `LONG` is no longer uniformly toxic
+
+Evidence:
+
+- `SHORT approved = 2`, `TP = 1`, `FP = 1`
+- `LONG approved = 43`, `TP = 16`, `FP = 27`
+
+Practical interpretation:
+
+- the strategy is still not symmetric
+- `SHORT` remains a tiny research branch
+- `LONG` is the real tradable lane, and now it at least has positive approved expectancy
 
 ## FN reading
 
-The new FN profile is simpler to read from the aggregate metrics:
+False negatives are even more clearly score-ladder cases now.
 
-- `FN` rose from `97` to `100`
-- `LONG` is still where the winners are
-- `SHORT` produced zero approved winners on this window
+Most profitable rejected rows are:
 
-Important interpretation:
+- `LONG | q3 | confirmation_ready = 83`, `avg_profit = +30.71`
+- `SHORT | q2 | confirmation_ready = 31`, `avg_profit = +27.39`
+- `SHORT | q3 | confirmation_ready = 19`, `avg_profit = +27.39`
+- `LONG | q2 | confirmation_ready = 9`, `avg_profit = +30.71`
 
-- the new guardrail did remove bad approvals
-- but it also demoted some real `LONG` winners out of the approval set
-- the next FN fix should therefore be selective score recalibration, not another blanket tightening step
+Hard-block split of FN:
+
+- `none = 137`
+- `weak_divergence_amplitude = 5`
+
+Meaning:
+
+- the system is definitely not losing winners because of structural vetoes
+- it is losing them because the current `q3` bucket is full of profitable confirmed reversals
+
+This is now the main tradeoff:
+
+- approved stream is positive
+- but recall is still too low
+- so the next move should be selective `q3 -> q4` expansion, not another blanket tightening
+
+## Feature reading: what separates approved winners from approved losers
+
+Comparing approved winners vs approved losers:
+
+- `divergenceAmplitudeAtrRatio`
+  - winners avg `1.64`
+  - losers avg `2.51`
+- `reclaimPct`
+  - winners avg `187.05`
+  - losers avg `185.94`
+  - but median is more informative: winners `169.90`, losers `137.10`
+- `confirmationCandleQuality`
+  - winners avg `0.802`
+  - losers avg `0.814`
+- `atrPct`
+  - winners avg `0.689`
+  - losers avg `1.046`
+- `volumeDivergenceRatio`
+  - winners avg `2.66`
+  - losers avg `3.38`
+- `barsSinceDetection`
+  - winners avg `6.12`
+  - losers avg `4.29`
+
+Most useful interpretation:
+
+- lower amplitude is still better than oversized amplitude
+- lower volatility (`atrPct`) is a meaningful positive sign
+- slightly more mature confirmations appear better than immediate ones
+- `volumeDivergenceRatio` is no longer a clean positive separator after the latest adapter changes
+
+This is important because it weakens the earlier hypothesis that simply increasing weight on `volumeDivergenceRatio` would solve the lane.
+
+## Best and worst pockets
+
+Best visible approved pockets:
+
+- `LONG | q4 | confirmation_ready | coinAgainst | btcAlign = 2`
+  - winrate `100.0%`
+  - `avg_profit = +30.71`
+- `LONG | q4 | confirmation_ready | coinAlign | btcAlign = 2`
+  - winrate `100.0%`
+  - `avg_profit = +30.71`
+- `LONG | q4 | confirmation_ready | coinAlign | btcAgainst = 5`
+  - winrate `60.0%`
+  - `avg_profit = +12.78`
+- `SHORT | q4 | confirmation_ready | coinAlign | btcAlign = 2`
+  - winrate `50.0%`
+  - `avg_profit = +6.64`
+
+These are still small samples, but they show the lane is no longer uniformly broken.
+
+Worst dominant pocket:
+
+- `LONG | q4 | confirmation_ready | coinAgainst | btcAgainst = 34`
+- winrate `26.5%`
+- `avg_profit = -2.25`
+
+Secondary bad pocket:
+
+- `SHORT | q4 | confirmation_ready = 2` is too small to optimize around
+
+So the next cleanup target is still obvious:
+
+- keep refining the big `LONG | q4 | confirmation_ready | coinAgainst | btcAgainst` cluster
 
 ## What to improve next
 
 ### 1. Strategy core
 
-The pending-candidate layer is already the right direction.
+Do not reopen `structure_advance`.
 
-The next core improvement should be narrower:
+Current evidence still says the next core change should be feature quality, not timing looseness.
 
-- keep the new extra rebound threshold on `entry_structure_advance`
-- do not add another blanket timing gate yet
-- the next core step should be to improve the quality of candidates before they reach `pending`, not to keep stacking waits after detection
+The most promising new core feature candidate is:
 
-Concretely:
+- explicit maturity / freshness after detection
 
-- preserve `LONG confirmation_ready` as the cleaner aggressive lane
-- keep `SHORT` strict for now
-- explore detector params before touching exit logic again
+Because winners in the approved set now tend to have slightly larger `barsSinceDetection` than losers.
+
+So if the core changes again, it should probably be in the direction of:
+
+- exposing more explicit post-detection maturity features
+- not in the direction of reopening earlier entries
 
 ### 2. Backtest config
 
-Do not keep tuning only TP/SL at this stage.
+Do not explode the grid again.
 
-The current grid explores exits but not the detector.
+The current detector point already proved that looser approval flow can reopen a bad lane.
 
-The next useful search should include:
+Next config work should be compact and directional:
 
-- `NORMALIZATION_LENGTH`
-- `PIVOT_LOOKBACK_LEFT`
-- `PIVOT_LOOKBACK_RIGHT`
-- `MIN_BARS_BETWEEN_PIVOTS`
-- `MAX_BARS_BETWEEN_PIVOTS`
+1. keep `LONG` only for the next research loop if the goal is pure lane cleanup
+2. keep `MAX_BARS_BETWEEN_PIVOTS = 24`
+3. keep `MIN_BARS_BETWEEN_PIVOTS = 6`
+4. keep `PIVOT_LOOKBACK_LEFT = 10`
+5. keep `NORMALIZATION_LENGTH = 120` for now
 
-Suggested next detector grid:
+This is the first detector point in this branch that produced a positive approved stream.
+
+Do not move away from it immediately.
+
+Follow-up after the config comparison:
+
+- the likely loosening culprit in the bad `80` window really was `NORMALIZATION_LENGTH: 100 -> 80`
+- moving to `120` improved selectivity much more than it hurt the approved stream
+- so the next compact config candidate should not be a big grid
+- first rerun the same point with the latest adapter changes
+
+Only after that, if you want one next config probe:
 
 ```json
 {
-  "NORMALIZATION_LENGTH": [64, 96, 144],
-  "PIVOT_LOOKBACK_LEFT": [5, 8, 13],
-  "PIVOT_LOOKBACK_RIGHT": [2, 3, 5],
-  "MIN_BARS_BETWEEN_PIVOTS": [2, 4, 6],
-  "MAX_BARS_BETWEEN_PIVOTS": [24, 36, 48]
+  "MAX_BARS_BETWEEN_PIVOTS": [24],
+  "MIN_BARS_BETWEEN_PIVOTS": [6],
+  "PIVOT_LOOKBACK_LEFT": [10],
+  "NORMALIZATION_LENGTH": [140]
 }
 ```
 
-Practical search order:
+If one more follow-up point is needed after that:
 
-1. `LONG` only
-2. detector grid
-3. then TP/SL
-4. only after that re-open `SHORT`
+```json
+{
+  "MAX_BARS_BETWEEN_PIVOTS": [24],
+  "MIN_BARS_BETWEEN_PIVOTS": [6],
+  "PIVOT_LOOKBACK_LEFT": [12],
+  "NORMALIZATION_LENGTH": [120]
+}
+```
 
 ### 3. AI adapter
 
-Current adapter should be improved in four ways.
+Current adapter should move in two opposite directions at once.
 
-First:
+The adapter changes below are now partly validated by this replay:
 
-- remove the remaining `quality=5` lane entirely or make it confirmation-only
-- current evidence still does not justify any live use of `q5`
+- demotion of overheated `LONG q4 confirmation_ready` helped materially
+- selective `LONG q3 -> q4` promotion did not reopen the old bad `80`-window lane
 
-Second:
+But the current replay also falsifies one earlier assumption:
 
-- improve `quality=4`, because that is now the real approval bucket
-- the current `q4` bucket is still negative on average
+- `volumeDivergenceRatio` is not a clean positive separator anymore
 
-Third:
+So the next adapter improvement should be:
 
-- keep avoiding automatic reward for MA-bias alignment on `LONG`
-- reversal context should stay more important than alignment bias
+- keep the amplitude-cap logic
+- keep selective promotion
+- avoid increasing raw weight on `volumeDivergenceRatio` further
+- instead consider:
+  - a mild preference for lower `atrPct`
+  - a mild preference for larger `barsSinceDetection`
+  - additional demotion of the large `coinAgainst | btcAgainst` `LONG q4` pocket
 
-Fourth:
+## Code changes applied on 2026-04-14
 
-- selectively re-open some `LONG q3 confirmation_ready` winners into `q4`
-- do not broadly re-open `structure_advance`; that would likely just restore the old FP problem
+The adapter changes from `2026-04-14` are now replayed on a fresh export.
 
-Recommended concrete adapter experiment:
+Observed effect:
 
-- `LONG confirmation_ready`:
-  - allow `q4` more often, even with some bias conflict
-- `LONG structure_advance`:
-  - keep capped below the old `q5` behavior
-  - require stronger evidence than generic rebound + volume
-- `SHORT`:
-  - keep strict for now
-  - do not widen until the detector itself is explored
+- `approved: 90 -> 45`
+- `FP: 70 -> 28`
+- `avg_profit_approved: -4.22 -> +2.75`
+- `expectancy_delta: -0.02 -> +2.94`
+
+So the current adapter branch is worth keeping and iterating on.
 
 ## Practical current verdict
 
-Current `VolumeDivergence` is still behind the stronger replayable setups.
+Current `VolumeDivergence` is still not ready for production, but this is the first recent replay where the approved stream is actually better than the baseline.
 
-Best practical reading right now:
+The important result of this replay:
 
-- the new tightening removed a clearly bad high-confidence lane
-- but it did not improve approved expectancy enough
-- `LONG` remains the only realistically tradable side for now
-- `SHORT` is still more useful as a research branch than as a live branch
+- approved expectancy is positive
+- the approval stream is narrower and cleaner
+- `LONG` is now a plausible research lane instead of a clearly broken one
+- the main remaining problem is low recall, not negative approved expectancy
 
 So the next move should be:
 
-1. search detector params, not just exits
-2. remove or nearly eliminate `quality=5`
-3. recalibrate `LONG q4 confirmation_ready` separately from `LONG q4 structure_advance`
-4. keep `SHORT` strict until detector research shows a cleaner base signal
+1. keep the current adapter branch
+2. rerun the same `NORMALIZATION_LENGTH = 120` detector point after any further adapter changes
+3. work on selective `LONG q3 confirmation_ready` promotion
+4. avoid reopening early/weak lanes just to chase recall

@@ -272,6 +272,7 @@ const makeVolumeDivergenceSignal = (overrides: Record<string, any> = {}) => {
         divergenceAmplitudeAtrRatio: 0.7,
         reclaimPct: 210,
         confirmationCandleQuality: 0.72,
+        confirmationDistancePct: 1,
       },
       divergence: {
         kind: 'bullish',
@@ -2328,6 +2329,212 @@ describe('ai helpers', () => {
           retestPrice: 100,
           takeProfitPrice: null,
           stopLossPrice: null,
+        }),
+      );
+      expect(chatOpenAICtorMock).not.toHaveBeenCalled();
+      expect(invokeMock).not.toHaveBeenCalled();
+    });
+
+    it('keeps overheated VolumeDivergence long confirmations in watch mode during local replay', async () => {
+      const signal = makeVolumeDivergenceSignal({
+        additionalIndicators: {
+          volumeDivergenceSetup: {
+            atrPct: 2.1,
+            divergenceAmplitudeAtrRatio: 2.6,
+            reclaimPct: 135,
+            confirmationCandleQuality: 0.74,
+          },
+          divergence: {
+            currentPivot: {
+              volumeNorm: 80,
+            },
+            previousPivot: {
+              volumeNorm: 40,
+            },
+          },
+        },
+      });
+      const payload = buildAiPayload(signal);
+
+      expect(getDeterministicAiGateContext(payload)).toEqual(
+        expect.objectContaining({
+          approvalAllowedNow: false,
+          deterministicQuality: 3,
+          volumeDivergenceRatio: 2,
+        }),
+      );
+
+      const result = await runAiPromptLocal(signal, { payload });
+
+      expect(result).toEqual(
+        expect.objectContaining({
+          direction: null,
+          quality: 3,
+          needRetest: true,
+          retestPrice: 100,
+          takeProfitPrice: null,
+          stopLossPrice: null,
+        }),
+      );
+      expect(chatOpenAICtorMock).not.toHaveBeenCalled();
+      expect(invokeMock).not.toHaveBeenCalled();
+    });
+
+    it('promotes the best VolumeDivergence long q3 setups into q4 during local replay', async () => {
+      const signal = makeVolumeDivergenceSignal({
+        additionalIndicators: {
+          volumeDivergenceSetup: {
+            atrPct: 0.85,
+            divergenceAmplitudeAtrRatio: 0.42,
+            reclaimPct: 130,
+            confirmationCandleQuality: 0.74,
+            confirmationDistancePct: 0.8,
+          },
+          volumeDivergenceSignalTiming: {
+            entryTiming: 'confirmation_ready',
+            barsSinceDetection: 2,
+          },
+          divergence: {
+            currentPivot: {
+              volumeNorm: 110,
+            },
+            previousPivot: {
+              volumeNorm: 60,
+            },
+          },
+        },
+      });
+      const payload = buildAiPayload(signal);
+
+      expect(getDeterministicAiGateContext(payload)).toEqual(
+        expect.objectContaining({
+          approvalAllowedNow: true,
+          deterministicQuality: 4,
+          volumeDivergenceRatio: 110 / 60,
+        }),
+      );
+
+      const result = await runAiPromptLocal(signal, { payload });
+
+      expect(result).toEqual(
+        expect.objectContaining({
+          direction: 'LONG',
+          quality: 4,
+          needRetest: false,
+          retestPrice: null,
+          takeProfitPrice: 104,
+          stopLossPrice: 98,
+        }),
+      );
+      expect(chatOpenAICtorMock).not.toHaveBeenCalled();
+      expect(invokeMock).not.toHaveBeenCalled();
+    });
+
+    it('keeps immature double-conflict VolumeDivergence long confirmations in watch mode during local replay', async () => {
+      const signal = makeVolumeDivergenceSignal({
+        indicators: {
+          maFast: [99, 99.2, 99.4],
+          maSlow: [100, 100.1, 100.2],
+          btcMaFast: [49, 49.2, 49.4],
+          btcMaSlow: [50, 50.1, 50.2],
+        },
+        additionalIndicators: {
+          volumeDivergenceSetup: {
+            atrPct: 1.1,
+            divergenceAmplitudeAtrRatio: 0.7,
+            reclaimPct: 150,
+            confirmationCandleQuality: 0.72,
+            confirmationDistancePct: 0.5,
+          },
+          volumeDivergenceSignalTiming: {
+            entryTiming: 'confirmation_ready',
+            barsSinceDetection: 1,
+          },
+        },
+      });
+      const payload = buildAiPayload(signal);
+
+      expect(getDeterministicAiGateContext(payload)).toEqual(
+        expect.objectContaining({
+          coinBiasAligned: false,
+          btcBiasAligned: false,
+          confirmationDistancePct: 0.5,
+          deterministicQuality: 3,
+          approvalAllowedNow: false,
+        }),
+      );
+
+      const result = await runAiPromptLocal(signal, { payload });
+
+      expect(result).toEqual(
+        expect.objectContaining({
+          direction: null,
+          quality: 3,
+          needRetest: true,
+          retestPrice: 100,
+          takeProfitPrice: null,
+          stopLossPrice: null,
+        }),
+      );
+      expect(chatOpenAICtorMock).not.toHaveBeenCalled();
+      expect(invokeMock).not.toHaveBeenCalled();
+    });
+
+    it('still approves mature counter-trend VolumeDivergence long confirmations during local replay', async () => {
+      const signal = makeVolumeDivergenceSignal({
+        indicators: {
+          maFast: [99, 99.2, 99.4],
+          maSlow: [100, 100.1, 100.2],
+          btcMaFast: [49, 49.2, 49.4],
+          btcMaSlow: [50, 50.1, 50.2],
+        },
+        additionalIndicators: {
+          deltaAtPivot: -40,
+          volumeDivergenceSetup: {
+            atrPct: 0.8,
+            divergenceAmplitudeAtrRatio: 0.55,
+            reclaimPct: 132,
+            confirmationCandleQuality: 0.74,
+            confirmationDistancePct: 0.8,
+          },
+          volumeDivergenceSignalTiming: {
+            entryTiming: 'confirmation_ready',
+            barsSinceDetection: 3,
+          },
+          divergence: {
+            currentPivot: {
+              volumeNorm: 110,
+            },
+            previousPivot: {
+              volumeNorm: 50,
+            },
+          },
+        },
+      });
+      const payload = buildAiPayload(signal);
+
+      expect(getDeterministicAiGateContext(payload)).toEqual(
+        expect.objectContaining({
+          coinBiasAligned: false,
+          btcBiasAligned: false,
+          deltaAligned: false,
+          confirmationDistancePct: 0.8,
+          volumeDivergenceRatio: 2.2,
+          deterministicQuality: 4,
+          approvalAllowedNow: true,
+        }),
+      );
+
+      const result = await runAiPromptLocal(signal, { payload });
+
+      expect(result).toEqual(
+        expect.objectContaining({
+          direction: 'LONG',
+          quality: 4,
+          needRetest: false,
+          retestPrice: null,
+          takeProfitPrice: 104,
+          stopLossPrice: 98,
         }),
       );
       expect(chatOpenAICtorMock).not.toHaveBeenCalled();

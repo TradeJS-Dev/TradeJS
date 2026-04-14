@@ -16,7 +16,11 @@ import {
   update,
 } from '@tradejs/node/cli';
 import { runWithConcurrency } from '@tradejs/core/async';
-import { SIGNALS_PRELOAD_DAYS, TTL_1D, TTL_3M } from '@tradejs/core/constants';
+import {
+  SIGNALS_CLI_PRELOAD_DAYS,
+  TTL_1D,
+  TTL_3M,
+} from '@tradejs/core/constants';
 import { getStrategyCreator } from '@tradejs/node/strategies';
 import { getTimestamp } from '@tradejs/core/time';
 import { logger } from '@tradejs/infra/logger';
@@ -48,7 +52,7 @@ args.option(
   'bybit',
 );
 
-const PRELOAD_START = getTimestamp(SIGNALS_PRELOAD_DAYS);
+const PRELOAD_START = getTimestamp(SIGNALS_CLI_PRELOAD_DAYS);
 const projectRoot =
   String(process.env.PROJECT_CWD || process.cwd()).trim() || process.cwd();
 
@@ -270,14 +274,29 @@ export const signals = async () => {
     }
 
     if (!flags.cacheOnly) {
-      await update(marketConnector, interval, tickers);
+      await update(
+        marketConnector,
+        interval,
+        tickers,
+        SIGNALS_CLI_PRELOAD_DAYS,
+      );
 
       if (btcBinanceConnector !== marketConnector) {
-        await update(btcBinanceConnector, interval, ['BTCUSDT']);
+        await update(
+          btcBinanceConnector,
+          interval,
+          ['BTCUSDT'],
+          SIGNALS_CLI_PRELOAD_DAYS,
+        );
       }
 
       if (btcCoinbaseConnector !== marketConnector) {
-        await update(btcCoinbaseConnector, interval, ['BTCUSDT']);
+        await update(
+          btcCoinbaseConnector,
+          interval,
+          ['BTCUSDT'],
+          SIGNALS_CLI_PRELOAD_DAYS,
+        );
       }
     }
 

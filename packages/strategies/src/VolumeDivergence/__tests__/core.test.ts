@@ -17,8 +17,15 @@ const makeStrategyApi = (overrides: Record<string, any> = {}) => {
   const strategyApi = {
     skip,
     entry: jest.fn(),
+    protect: jest.fn((params: any) => ({
+      kind: 'protect',
+      code:
+        params.code ??
+        `VOLUME_DIVERGENCE_${params.protectPlan.direction}_PROTECT`,
+      protectPlan: params.protectPlan,
+    })),
     getMarketData: jest.fn(),
-    getCurrentPosition: jest.fn(),
+    getCurrentPosition: jest.fn(async () => null),
     isCurrentPositionExists: jest.fn(async () => false),
     getDirectionalTpSlPrices: jest.fn(() => ({
       stopLossPrice: 98,
@@ -254,6 +261,7 @@ describe('createVolumeDivergenceCore', () => {
             reclaimPct: expect.any(Number),
             confirmationCandleQuality: expect.any(Number),
             atrPct: expect.any(Number),
+            confirmationDistancePct: expect.any(Number),
           }),
           volumeDivergenceSignalTiming: expect.objectContaining({
             entryTiming: 'confirmation_ready',
@@ -348,6 +356,7 @@ describe('createVolumeDivergenceCore', () => {
             reclaimPct: expect.any(Number),
             confirmationCandleQuality: expect.any(Number),
             atrPct: expect.any(Number),
+            confirmationDistancePct: expect.any(Number),
           }),
           volumeDivergenceSignalTiming: expect.objectContaining({
             entryTiming: 'confirmation_ready',
@@ -426,7 +435,13 @@ describe('createVolumeDivergenceCore', () => {
   it('returns POSITION_EXISTS when runtime already has an open position', async () => {
     const candles = makeBullishDivergenceCandles();
     const strategyApi = makeStrategyApi({
-      isCurrentPositionExists: jest.fn(async () => true),
+      getCurrentPosition: jest.fn(async () => ({
+        symbol: 'TESTUSDT',
+        qty: 1,
+        price: 100,
+        direction: 'LONG',
+        slPrice: 99.4,
+      })),
       getMarketData: jest.fn(async () => ({
         fullData: candles,
         timestamp: candles[candles.length - 1].timestamp,
@@ -460,6 +475,147 @@ describe('createVolumeDivergenceCore', () => {
       code: 'POSITION_EXISTS',
     });
     expect(indicatorsState.onBar).toHaveBeenCalledTimes(1);
+  });
+
+  it('moves stop to break-even when open position reaches half-risk progress', async () => {
+    const candles = makeBullishDivergenceCandles();
+    const strategyApi = makeStrategyApi({
+      getCurrentPosition: jest.fn(async () => ({
+        symbol: 'TESTUSDT',
+        qty: 1,
+        price: 100,
+        direction: 'LONG',
+        slPrice: 98,
+      })),
+      getMarketData: jest.fn(async () => ({
+        fullData: candles,
+        timestamp: candles[candles.length - 1].timestamp,
+        currentPrice: 101.1,
+      })),
+    });
+
+    const core = await createVolumeDivergenceCore({
+      userName: 'test',
+      symbol: 'TESTUSDT',
+      config: makeConfig({
+        ...DIVERGENCE_TEST_CONFIG,
+      }),
+      isConfigFromBacktest: false,
+      connector: {} as any,
+      data: candles as any,
+      btcData: candles as any,
+      loadPineScriptFile: jest.fn(() => ''),
+      strategyApi,
+      indicatorsState: makeIndicatorsState(),
+    });
+
+    const result = await core(
+      candles[candles.length - 1] as any,
+      candles[candles.length - 1] as any,
+    );
+
+    expect(result).toEqual({
+      kind: 'protect',
+      code: 'VOLUME_DIVERGENCE_MOVE_STOP_TO_BREAK_EVEN',
+      protectPlan: {
+        direction: 'LONG',
+        stopLossPrice: 100,
+      },
+    });
+  });
+
+  it('uses current position stop price to avoid premature break-even moves', async () => {
+    const candles = makeBullishDivergenceCandles();
+    const strategyApi = makeStrategyApi({
+      getCurrentPosition: jest.fn(async () => ({
+        symbol: 'TESTUSDT',
+        qty: 1,
+        price: 100,
+        direction: 'LONG',
+        slPrice: 98,
+      })),
+      getMarketData: jest.fn(async () => ({
+        fullData: candles,
+        timestamp: candles[candles.length - 1].timestamp,
+        currentPrice: 100.7,
+      })),
+    });
+
+    const core = await createVolumeDivergenceCore({
+      userName: 'test',
+      symbol: 'TESTUSDT',
+      config: makeConfig({
+        ...DIVERGENCE_TEST_CONFIG,
+      }),
+      isConfigFromBacktest: false,
+      connector: {} as any,
+      data: candles as any,
+      btcData: candles as any,
+      loadPineScriptFile: jest.fn(() => ''),
+      strategyApi,
+      indicatorsState: makeIndicatorsState(),
+    });
+
+    const result = await core(
+      candles[candles.length - 1] as any,
+      candles[candles.length - 1] as any,
+    );
+
+    expect(result).toEqual({
+      kind: 'skip',
+      code: 'POSITION_EXISTS',
+    });
+  });
+
+  it('falls back to signal stop price when evaluating break-even trigger', async () => {
+    const candles = makeBullishDivergenceCandles();
+    const strategyApi = makeStrategyApi({
+      getCurrentPosition: jest.fn(async () => ({
+        symbol: 'TESTUSDT',
+        qty: 1,
+        price: 100,
+        direction: 'LONG',
+        signal: {
+          prices: {
+            stopLossPrice: 98,
+          },
+        },
+      })),
+      getMarketData: jest.fn(async () => ({
+        fullData: candles,
+        timestamp: candles[candles.length - 1].timestamp,
+        currentPrice: 101.1,
+      })),
+    });
+
+    const core = await createVolumeDivergenceCore({
+      userName: 'test',
+      symbol: 'TESTUSDT',
+      config: makeConfig({
+        ...DIVERGENCE_TEST_CONFIG,
+      }),
+      isConfigFromBacktest: false,
+      connector: {} as any,
+      data: candles as any,
+      btcData: candles as any,
+      loadPineScriptFile: jest.fn(() => ''),
+      strategyApi,
+      indicatorsState: makeIndicatorsState(),
+    });
+
+    const result = await core(
+      candles[candles.length - 1] as any,
+      candles[candles.length - 1] as any,
+    );
+
+    expect(result).toEqual({
+      kind: 'protect',
+      code: 'VOLUME_DIVERGENCE_MOVE_STOP_TO_BREAK_EVEN',
+      protectPlan: {
+        direction: 'LONG',
+        stopLossPrice: 100,
+      },
+    });
   });
 
   it('returns WAIT_DATA when candle history is too short', async () => {

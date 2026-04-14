@@ -821,6 +821,45 @@ describe('ByBitConnectorCreator', () => {
     nowSpy.mockRestore();
   });
 
+  it('warmOnly syncs cache without reading final DB range', async () => {
+    const nowSpy = jest.spyOn(Date, 'now').mockReturnValue(600_000);
+    const client = {
+      getKline: jest.fn().mockResolvedValue({
+        result: {
+          list: [{ timestamp: 540_000 }],
+        },
+      }),
+    };
+    mockedGetClient.mockResolvedValue(client as any);
+    mockedGetDataEdges.mockResolvedValue({ min: 540_000, max: 540_000 });
+    mockedToRows.mockImplementation(
+      (symbol, interval, data) =>
+        ({
+          symbol,
+          interval,
+          data,
+        }) as any,
+    );
+    mockedUpsertCandles.mockResolvedValue(undefined as any);
+
+    const connector = await ByBitConnectorCreator({ userName: 'alice' });
+    const result = await connector.kline({
+      symbol: 'BTCUSDT',
+      interval: '1',
+      start: 540_000,
+      end: 600_000,
+      warmOnly: true,
+      silent: true,
+    });
+
+    expect(result).toEqual([]);
+    expect(client.getKline).toHaveBeenCalledTimes(2);
+    expect(mockedUpsertCandles).toHaveBeenCalledTimes(2);
+    expect(mockedGetCandlesRange).not.toHaveBeenCalled();
+
+    nowSpy.mockRestore();
+  });
+
   it('fallback request returns [] when normalized end is not greater than start', async () => {
     mockedGetDataEdges.mockRejectedValue(new Error('db down'));
     mockedGetClient.mockResolvedValue({
@@ -901,6 +940,25 @@ describe('ByBitConnectorCreator', () => {
     });
 
     expect(result).toEqual([]);
+  });
+
+  it('returns [] when warmOnly=true and timescale access fails without exchange fallback', async () => {
+    mockedGetDataEdges.mockRejectedValue(new Error('db down'));
+    const client = {
+      getKline: jest.fn(),
+    };
+    mockedGetClient.mockResolvedValue(client as any);
+
+    const connector = await ByBitConnectorCreator({ userName: 'alice' });
+    const result = await connector.kline({
+      symbol: 'BTCUSDT',
+      interval: '15',
+      warmOnly: true,
+      end: Date.now(),
+    });
+
+    expect(result).toEqual([]);
+    expect(client.getKline).not.toHaveBeenCalled();
   });
 
   it('exits fallback mode after successful DB read on next kline call', async () => {

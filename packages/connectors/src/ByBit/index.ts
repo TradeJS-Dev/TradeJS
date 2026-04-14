@@ -465,6 +465,7 @@ export const ByBitConnectorCreator: ConnectorCreator = async (config) => {
       end: defaultEnd,
       silent = false,
       cacheOnly = false,
+      warmOnly = false,
     }: KlineRequest) => {
       const intMinutes = intervalToMinutes(interval);
       if (!intMinutes) {
@@ -570,6 +571,17 @@ export const ByBitConnectorCreator: ConnectorCreator = async (config) => {
           await refreshTail({ symbol, interval, silent });
         }
 
+        if (warmOnly) {
+          if (isTimescaleFallbackMode) {
+            isTimescaleFallbackMode = false;
+            logger.log(
+              'info',
+              'TimescaleDB connection restored for kline cache',
+            );
+          }
+          return [];
+        }
+
         // 8) финальный SELECT из БД — источник истины
         const rangeStart = defaultStart ?? dataStart ?? 0;
         const rangeEnd = defaultEnd ?? dataEnd ?? Date.now();
@@ -601,7 +613,7 @@ export const ByBitConnectorCreator: ConnectorCreator = async (config) => {
           );
         }
 
-        if (cacheOnly) {
+        if (cacheOnly || warmOnly) {
           return [];
         }
 

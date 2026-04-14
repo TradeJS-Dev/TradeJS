@@ -27,6 +27,7 @@ export interface KlineRequest {
   end: number;
   silent?: boolean;
   cacheOnly?: boolean;
+  warmOnly?: boolean;
 }
 
 export type DerivativesInterval = '15m' | '1h';

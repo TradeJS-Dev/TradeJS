@@ -1,7 +1,7 @@
 import { Candle, Direction } from '@tradejs/types';
 import type { VolumeDivergenceConfig } from './config';
 
-type VolumeDivergenceAiThresholds = {
+export type VolumeDivergenceAiThresholds = {
   q4DivergenceAmplitudeAtrRatio: number;
   q4ReclaimPct: number;
   q4ConfirmationCandleQuality: number;
@@ -16,6 +16,7 @@ export type VolumeDivergenceSetupFeatures = {
   divergenceAmplitudeAtrRatio: number | null;
   reclaimPct: number | null;
   confirmationCandleQuality: number | null;
+  confirmationDistancePct: number | null;
 };
 
 export type VolumeDivergenceEntryThresholdSnapshot = {
@@ -150,6 +151,85 @@ export const getConfirmationCandleQuality = ({
   return closeLocation * 0.7 + bodyPct * 0.3;
 };
 
+const calculateAtrPct = ({
+  atrAbsolute,
+  currentPrice,
+}: {
+  atrAbsolute: number | null;
+  currentPrice: number;
+}) =>
+  atrAbsolute != null && currentPrice > 0
+    ? (atrAbsolute / currentPrice) * 100
+    : null;
+
+const calculateDivergenceAmplitudeAtrRatio = ({
+  direction,
+  atrAbsolute,
+  currentPivotLow,
+  previousPivotLow,
+  currentPivotHigh,
+  previousPivotHigh,
+}: {
+  direction: Direction;
+  atrAbsolute: number | null;
+  currentPivotLow: number;
+  previousPivotLow: number;
+  currentPivotHigh: number;
+  previousPivotHigh: number;
+}) => {
+  const divergenceAmplitude =
+    direction === 'LONG'
+      ? previousPivotLow - currentPivotLow
+      : currentPivotHigh - previousPivotHigh;
+
+  return atrAbsolute != null && atrAbsolute > 0 && divergenceAmplitude > 0
+    ? divergenceAmplitude / atrAbsolute
+    : null;
+};
+
+const calculateReclaimPct = ({
+  direction,
+  currentPrice,
+  currentPivotLow,
+  currentPivotHigh,
+}: {
+  direction: Direction;
+  currentPrice: number;
+  currentPivotLow: number;
+  currentPivotHigh: number;
+}) => {
+  const reclaimRange = currentPivotHigh - currentPivotLow;
+  const reclaimProgress =
+    direction === 'LONG'
+      ? currentPrice - currentPivotLow
+      : currentPivotHigh - currentPrice;
+
+  return reclaimRange > 0 ? (reclaimProgress / reclaimRange) * 100 : null;
+};
+
+const calculateConfirmationDistancePct = ({
+  direction,
+  currentPrice,
+  currentPivotLow,
+  currentPivotHigh,
+}: {
+  direction: Direction;
+  currentPrice: number;
+  currentPivotLow: number;
+  currentPivotHigh: number;
+}) => {
+  const confirmationPrice =
+    direction === 'LONG' ? currentPivotHigh : currentPivotLow;
+
+  if (!(confirmationPrice > 0)) {
+    return null;
+  }
+
+  return direction === 'LONG'
+    ? ((currentPrice - confirmationPrice) / confirmationPrice) * 100
+    : ((confirmationPrice - currentPrice) / confirmationPrice) * 100;
+};
+
 export const buildVolumeDivergenceSetupFeatures = ({
   candles,
   currentCandle,
@@ -172,31 +252,30 @@ export const buildVolumeDivergenceSetupFeatures = ({
   atrPeriod: number;
 }): VolumeDivergenceSetupFeatures => {
   const atrAbsolute = calculateAverageTrueRange(candles, atrPeriod);
-  const atrPct =
-    atrAbsolute != null && currentPrice > 0
-      ? (atrAbsolute / currentPrice) * 100
-      : null;
-  const divergenceAmplitude =
-    direction === 'LONG'
-      ? previousPivotLow - currentPivotLow
-      : currentPivotHigh - previousPivotHigh;
-  const divergenceAmplitudeAtrRatio =
-    atrAbsolute != null && atrAbsolute > 0 && divergenceAmplitude > 0
-      ? divergenceAmplitude / atrAbsolute
-      : null;
-  const reclaimRange =
-    direction === 'LONG'
-      ? currentPivotHigh - currentPivotLow
-      : currentPivotHigh - currentPivotLow;
-  const reclaimProgress =
-    direction === 'LONG'
-      ? currentPrice - currentPivotLow
-      : currentPivotHigh - currentPrice;
-  const reclaimPct =
-    reclaimRange > 0 ? (reclaimProgress / reclaimRange) * 100 : null;
+  const atrPct = calculateAtrPct({ atrAbsolute, currentPrice });
+  const divergenceAmplitudeAtrRatio = calculateDivergenceAmplitudeAtrRatio({
+    direction,
+    atrAbsolute,
+    currentPivotLow,
+    previousPivotLow,
+    currentPivotHigh,
+    previousPivotHigh,
+  });
+  const reclaimPct = calculateReclaimPct({
+    direction,
+    currentPrice,
+    currentPivotLow,
+    currentPivotHigh,
+  });
   const confirmationCandleQuality = getConfirmationCandleQuality({
     candle: currentCandle,
     direction,
+  });
+  const confirmationDistancePct = calculateConfirmationDistancePct({
+    direction,
+    currentPrice,
+    currentPivotLow,
+    currentPivotHigh,
   });
 
   return {
@@ -205,5 +284,6 @@ export const buildVolumeDivergenceSetupFeatures = ({
     divergenceAmplitudeAtrRatio,
     reclaimPct,
     confirmationCandleQuality,
+    confirmationDistancePct,
   };
 };

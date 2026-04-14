@@ -11,7 +11,6 @@ import {
   AI_CONCURRENCY_LIMIT,
   KLINE_CONCURRENCY_LIMIT,
   SCREENSHOT_CONCURRENCY_LIMIT,
-  TG_CONCURRENCY_LIMIT,
 } from './constants';
 import { getFiles } from '@tradejs/infra/files';
 import {
@@ -111,8 +110,9 @@ export const update = async (
   connector: Connector,
   interval: Interval,
   tickers: string[],
+  preloadDays = PRELOAD_DAYS,
 ) => {
-  const PRELOAD_START = getTimestamp(PRELOAD_DAYS);
+  const PRELOAD_START = getTimestamp(preloadDays);
   const PRELOAD_END = getTimestamp();
 
   const bar = new ProgressBar(
@@ -125,7 +125,7 @@ export const update = async (
 
   logger.info(
     chalk.yellow(
-      `update: ${tickers.length} (klineConcurrency=${KLINE_CONCURRENCY_LIMIT})`,
+      `update: ${tickers.length} (klineConcurrency=${KLINE_CONCURRENCY_LIMIT}, preloadDays=${preloadDays})`,
     ),
   );
 
@@ -143,6 +143,7 @@ export const update = async (
         end: PRELOAD_END,
         interval,
         silent: true,
+        warmOnly: true,
       });
     } catch {
       logger.error('Failed loading: %s', symbol);
@@ -298,7 +299,9 @@ export const sendToTG = async (
 
   logger.info(chalk.yellow('messages:', signals.length));
 
-  await runWithConcurrency(signals, TG_CONCURRENCY_LIMIT, async (signal) => {
+  // Keep Telegram deliveries serialized so each signal stays grouped
+  // with its AI analysis in chat order.
+  await runWithConcurrency(signals, 1, async (signal) => {
     try {
       const analysis = await getData(
         redisKeys.analysis(signal.symbol, signal.signalId),
