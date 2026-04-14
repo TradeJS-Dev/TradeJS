@@ -688,6 +688,74 @@ describe('volumeDivergenceAiAdapter', () => {
     );
   });
 
+  it('demotes mature double-conflict long confirmations with oversized amplitude back to q3', () => {
+    const signal = makeSignal({
+      indicators: {
+        maFast: [99, 99.2, 99.4],
+        maSlow: [100, 100.1, 100.2],
+        btcMaFast: [49, 49.2, 49.4],
+        btcMaSlow: [50, 50.1, 50.2],
+      },
+      additionalIndicators: {
+        deltaAtPivot: -20,
+        volumeDivergenceSetup: {
+          atrPct: 0.7,
+          divergenceAmplitudeAtrRatio: 2.6,
+          reclaimPct: 165,
+          confirmationCandleQuality: 0.84,
+          confirmationDistancePct: 0.7,
+        },
+        volumeDivergenceSignalTiming: {
+          entryTiming: 'confirmation_ready',
+          barsSinceDetection: 3,
+        },
+        divergence: {
+          currentPivot: {
+            volumeNorm: 132,
+          },
+          previousPivot: {
+            volumeNorm: 50,
+          },
+        },
+      },
+    });
+    const payload = volumeDivergenceAiAdapter.buildPayload?.({
+      signal,
+      basePayload: {
+        signal: {
+          symbol: signal.symbol,
+          signalId: signal.signalId,
+          interval: signal.interval,
+          direction: signal.direction,
+          timestamp: signal.timestamp,
+          strategy: signal.strategy,
+          prices: {
+            currentPrice: signal.prices.currentPrice,
+            takeProfitPrice: signal.prices.takeProfitPrice,
+            stopLossPrice: signal.prices.stopLossPrice,
+          },
+        },
+        figures: {},
+        indicators: signal.indicators,
+        additionalIndicators: signal.additionalIndicators,
+      },
+    }) as any;
+
+    expect(
+      (payload.additionalIndicators as any).volumeDivergenceContext,
+    ).toEqual(
+      expect.objectContaining({
+        coinBiasAligned: false,
+        btcBiasAligned: false,
+        divergenceAmplitudeAtrRatio: 2.6,
+        reclaimPct: 165,
+        confirmationDistancePct: 0.7,
+        deterministicQuality: 3,
+        approvalAllowedNow: false,
+      }),
+    );
+  });
+
   it('keeps mature counter-trend long confirmations eligible when structure and volume are strong', () => {
     const signal = makeSignal({
       indicators: {

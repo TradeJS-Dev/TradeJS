@@ -26,10 +26,18 @@ const getStrategyChoices = async (): Promise<string[]> => {
 
 export const selectStrategy = async (
   promptLabel = 'Select strategy',
+  options?: {
+    strategies?: string[];
+    defaultStrategy?: string;
+  },
 ): Promise<string> => {
-  const strategies = await getStrategyChoices();
-  const fallbackStrategy = strategies.includes(defaultStrategy)
-    ? defaultStrategy
+  const strategies =
+    options?.strategies && options.strategies.length
+      ? options.strategies
+      : await getStrategyChoices();
+  const preferredDefault = options?.defaultStrategy || defaultStrategy;
+  const fallbackStrategy = strategies.includes(preferredDefault)
+    ? preferredDefault
     : strategies[0];
 
   if (!process.stdin.isTTY) {

@@ -3,7 +3,7 @@
 type ScriptLoader = () => Promise<unknown>;
 
 const scriptLoaders: Record<string, ScriptLoader> = {
-  'ai-export': () => import('./scripts/aiExportSelect'),
+  'ai-export': () => import('./scripts/aiExport'),
   'ai-train': () => import('./scripts/aiTrain'),
   backtest: () => import('./scripts/backtest'),
   bot: () => import('./scripts/bot'),
@@ -19,7 +19,7 @@ const scriptLoaders: Record<string, ScriptLoader> = {
   'infra-init': () => import('./scripts/infraInit'),
   'infra-up': () => import('./scripts/infraUp'),
   migration: () => import('./scripts/migration'),
-  'ml-export': () => import('./scripts/mlExportSelect'),
+  'ml-export': () => import('./scripts/mlExport'),
   'ml-inspect': () => import('./scripts/mlInspect'),
   'ml-train:latest': () => import('./scripts/mlTrainLatestSelect'),
   results: () => import('./scripts/results'),

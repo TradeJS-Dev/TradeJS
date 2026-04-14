@@ -2,7 +2,12 @@ import args from 'args';
 import chalk from 'chalk';
 import fs from 'fs/promises';
 import path from 'path';
-import { mergeJsonlFiles, toFileToken } from '@tradejs/infra/ml';
+import {
+  listMlChunkStrategies,
+  mergeJsonlFiles,
+  toFileToken,
+} from '@tradejs/infra/ml';
+import { resolveExportStrategy } from './resolveExportStrategy';
 
 args.example(
   'yarn ts-node ./src/scripts/mlExport --strategy trendline',
@@ -30,19 +35,22 @@ const listChunkFiles = async (outDir: string, strategyName: string) => {
     .sort();
 };
 
-const resolveStrategyName = async (): Promise<string> => {
-  const raw = String(flags.strategy || '').trim();
-  if (raw) {
-    return raw;
-  }
-  throw new Error('Missing --strategy. Use mlExportSelect or pass --strategy.');
-};
-
 const main = async () => {
   const outDir = String(flags.outDir || 'data/ml/export');
-  const strategyName = await resolveStrategyName();
 
   await fs.mkdir(outDir, { recursive: true });
+  const strategyName = await resolveExportStrategy({
+    explicitStrategy: String(flags.strategy || ''),
+    outDir,
+    datasetLabel: 'ML',
+    promptLabel: 'Select ML export strategy',
+    listStrategies: listMlChunkStrategies,
+  });
+  if (!strategyName) {
+    console.log(chalk.yellow(`No ML chunk files found in ${outDir}`));
+    process.exit(0);
+  }
+
   const chunkFiles = await listChunkFiles(outDir, strategyName);
   if (!chunkFiles.length) {
     console.log(

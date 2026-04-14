@@ -8,6 +8,7 @@ import {
   flushAiDatasetWriter,
   getAiChunkFilePath,
   listAiChunkFiles,
+  listAiChunkStrategies,
   mergeAiJsonlFiles,
   readAiDatasetRows,
   toFileToken,
@@ -119,6 +120,30 @@ describe('aiDatasetFile', () => {
     const missing = path.join(tempDir, 'missing.jsonl');
     await expect(flushAiDatasetWriter(missing)).resolves.toBeUndefined();
     await expect(closeAiDatasetWriter(missing)).resolves.toBeUndefined();
+  });
+
+  it('lists unique AI chunk strategies found in directory', async () => {
+    await fs.writeFile(
+      path.join(tempDir, 'ai-dataset-volumedivergence-chunk-b.jsonl'),
+      '{"b":1}\n',
+      'utf8',
+    );
+    await fs.writeFile(
+      path.join(tempDir, 'ai-dataset-trendline-chunk-a.jsonl'),
+      '{"a":1}\n',
+      'utf8',
+    );
+    await fs.writeFile(
+      path.join(tempDir, 'ai-dataset-trendline-merged.jsonl'),
+      '{"x":1}\n',
+      'utf8',
+    );
+
+    await expect(
+      listAiChunkStrategies({
+        outDir: tempDir,
+      }),
+    ).resolves.toEqual(['trendline', 'volumedivergence']);
   });
 
   it('merges chunk files in chronological order and reads recent rows from tail', async () => {

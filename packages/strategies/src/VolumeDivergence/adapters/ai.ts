@@ -319,6 +319,7 @@ const getLongQ4Demotion = ({
     coinBiasAligned === false &&
     btcBiasAligned === false &&
     (!isAtMost(confirmationDistancePct, 1.4) ||
+      !isAtMost(divergenceAmplitudeAtrRatio, 2.2) ||
       !isAtMost(atrPct, 1.0) ||
       !isAtLeast(reclaimPct, 130));
   const longLateExtendedConfirmation =
@@ -400,7 +401,6 @@ const getLongDeterministicQuality = ({
   const volumeRatioVeryStrong = isAtLeast(volumeDivergenceRatio, 2.2);
   const longBiasConflictCount =
     Number(coinBiasAligned === false) + Number(btcBiasAligned === false);
-  const isCounterTrendLong = longBiasConflictCount === 2;
   const longQ4Demotion = getLongQ4Demotion({
     divergenceAmplitudeAtrRatio,
     volumeDivergenceRatio,
@@ -466,11 +466,9 @@ const getLongDeterministicQuality = ({
     coinBiasAligned === true &&
     btcBiasAligned === true &&
     reboundModerate &&
-    isAtLeast(reclaimPct, 130) &&
-    isAtLeast(
-      confirmationCandleQuality,
-      Math.max(entryThresholds.minConfirmationCandleQuality, 0.72),
-    ) &&
+    calmAtr &&
+    isAtLeast(reclaimPct, 145) &&
+    isAtLeast(confirmationCandleQuality, 0.8) &&
     isAtMost(divergenceAmplitudeAtrRatio, 1.8) &&
     isAtMost(confirmationDistancePct, 0.8) &&
     !longQ4Demotion;
@@ -530,14 +528,7 @@ const getLongDeterministicQuality = ({
       volumeModerate &&
       volumeRatioModerate &&
       !longQ4Demotion &&
-      (deltaAligned !== false ||
-        (isCounterTrendLong &&
-          reboundStrong &&
-          maturityCounterTrend &&
-          calmAtr &&
-          isAtLeast(reclaimPct, 130) &&
-          volumeStrong &&
-          volumeRatioStrong)))
+      deltaAligned !== false)
   ) {
     return 4;
   }

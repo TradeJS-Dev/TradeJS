@@ -5,6 +5,7 @@ import path from 'path';
 
 const DEFAULT_DIR = 'data/ml/export';
 const ML_DATASET_WRITE_BATCH_SIZE = 200;
+const ML_CHUNK_FILE_RE = /^ml-dataset-(.+)-chunk-[^.]+\.jsonl$/;
 
 type WriterState = {
   filePath: string;
@@ -132,6 +133,24 @@ export const listMlChunkFiles = async (params: {
     .filter((name) => name.startsWith(prefix) && name.endsWith('.jsonl'))
     .map((name) => path.join(outDir, name))
     .sort();
+};
+
+export const listMlChunkStrategies = async (params?: { outDir?: string }) => {
+  const outDir = params?.outDir ?? DEFAULT_DIR;
+  let entries: string[] = [];
+  try {
+    entries = await fs.readdir(outDir);
+  } catch {
+    return [];
+  }
+
+  return [
+    ...new Set(
+      entries
+        .map((name) => name.match(ML_CHUNK_FILE_RE)?.[1] || '')
+        .filter(Boolean),
+    ),
+  ].sort();
 };
 
 export const mergeJsonlFiles = async (params: {

@@ -11,6 +11,7 @@ const DEFAULT_DIR = 'data/ai/export';
 const AI_DATASET_WRITE_BATCH_SIZE = 100;
 const AI_MERGE_SORT_RUN_MAX_ROWS = 2_000;
 const AI_MERGE_SORT_RUN_MAX_BYTES = 16 * 1024 * 1024;
+const AI_CHUNK_FILE_RE = /^ai-dataset-(.+)-chunk-[^.]+\.jsonl$/;
 
 type WriterState = {
   filePath: string;
@@ -155,6 +156,24 @@ export const listAiChunkFiles = async (params: {
     .filter((name) => name.startsWith(prefix) && name.endsWith('.jsonl'))
     .map((name) => path.join(outDir, name))
     .sort();
+};
+
+export const listAiChunkStrategies = async (params?: { outDir?: string }) => {
+  const outDir = params?.outDir ?? DEFAULT_DIR;
+  let entries: string[] = [];
+  try {
+    entries = await fs.readdir(outDir);
+  } catch {
+    return [];
+  }
+
+  return [
+    ...new Set(
+      entries
+        .map((name) => name.match(AI_CHUNK_FILE_RE)?.[1] || '')
+        .filter(Boolean),
+    ),
+  ].sort();
 };
 
 const parseAiDatasetLine = (line: string, filePath: string): AiDatasetRow => {

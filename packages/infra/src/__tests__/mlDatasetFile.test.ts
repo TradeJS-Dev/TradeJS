@@ -8,6 +8,7 @@ import {
   flushMlDatasetWriter,
   getMlChunkFilePath,
   listMlChunkFiles,
+  listMlChunkStrategies,
   mergeJsonlFiles,
   toFileToken,
 } from '@tradejs/infra/ml';
@@ -117,6 +118,30 @@ describe('mlDatasetFile', () => {
       path.join(tempDir, 'ml-dataset-trendline-chunk-a.jsonl'),
       path.join(tempDir, 'ml-dataset-trendline-chunk-b.jsonl'),
     ]);
+  });
+
+  it('lists unique chunk strategies found in directory', async () => {
+    await fs.writeFile(
+      path.join(tempDir, 'ml-dataset-volumedivergence-chunk-b.jsonl'),
+      '{"b":1}\n',
+      'utf8',
+    );
+    await fs.writeFile(
+      path.join(tempDir, 'ml-dataset-trendline-chunk-a.jsonl'),
+      '{"a":1}\n',
+      'utf8',
+    );
+    await fs.writeFile(
+      path.join(tempDir, 'ml-dataset-trendline-merged.jsonl'),
+      '{"x":1}\n',
+      'utf8',
+    );
+
+    await expect(
+      listMlChunkStrategies({
+        outDir: tempDir,
+      }),
+    ).resolves.toEqual(['trendline', 'volumedivergence']);
   });
 
   it('returns empty chunk list when output directory does not exist', async () => {
