@@ -205,6 +205,9 @@ const isAtLeast = (value: number | null, threshold: number) =>
 const isAtMost = (value: number | null, threshold: number) =>
   value != null && value <= threshold;
 
+const isInRange = (value: number | null, min: number, max: number) =>
+  value != null && value >= min && value <= max;
+
 const getConfirmationDistancePct = ({
   signalDirection,
   currentPrice,
@@ -286,6 +289,7 @@ const getLongQ4Demotion = ({
   confirmationDistancePct,
   barsSinceDetection,
   atrPct,
+  reclaimPct,
 }: {
   divergenceAmplitudeAtrRatio: number | null;
   volumeDivergenceRatio: number | null;
@@ -294,6 +298,7 @@ const getLongQ4Demotion = ({
   confirmationDistancePct: number | null;
   barsSinceDetection: number | null;
   atrPct: number | null;
+  reclaimPct: number | null;
 }) => {
   const longOverextendedWithoutVolumeSupport =
     isAtLeast(divergenceAmplitudeAtrRatio, 2.2) &&
@@ -310,11 +315,23 @@ const getLongQ4Demotion = ({
     (!isAtLeast(confirmationDistancePct, 0.35) ||
       !isAtLeast(barsSinceDetection, 2) ||
       !isAtMost(atrPct, 0.95));
+  const longDoubleConflictOverextended =
+    coinBiasAligned === false &&
+    btcBiasAligned === false &&
+    (!isAtMost(confirmationDistancePct, 1.4) ||
+      !isAtMost(atrPct, 1.0) ||
+      !isAtLeast(reclaimPct, 130));
+  const longLateExtendedConfirmation =
+    isAtLeast(barsSinceDetection, 6) &&
+    isAtLeast(confirmationDistancePct, 1.5) &&
+    !isAtMost(atrPct, 1.0);
 
   return (
     longOverextendedWithoutVolumeSupport ||
     longBtcLedWithoutCoinSupport ||
-    longDoubleConflictWithoutMaturity
+    longDoubleConflictWithoutMaturity ||
+    longDoubleConflictOverextended ||
+    longLateExtendedConfirmation
   );
 };
 
@@ -364,8 +381,17 @@ const getLongDeterministicQuality = ({
   const reboundVeryStrong = isAtLeast(reboundFromPivotPct, 1.8);
   const confirmationDistanceModerate = isAtLeast(confirmationDistancePct, 0.35);
   const confirmationDistanceStrong = isAtLeast(confirmationDistancePct, 0.7);
+  const confirmationDistanceContained = isAtMost(confirmationDistancePct, 1.4);
+  const confirmationDistanceBalanced = isInRange(
+    confirmationDistancePct,
+    0.45,
+    1.1,
+  );
   const maturityReady = isAtLeast(barsSinceDetection, 2);
+  const maturityFresh = isInRange(barsSinceDetection, 2, 5);
+  const maturityCounterTrend = isInRange(barsSinceDetection, 2, 4);
   const calmAtr = isAtMost(atrPct, 0.95);
+  const veryCalmAtr = isAtMost(atrPct, 0.85);
   const volumeModerate = isAtLeast(volumeDivergenceStrength, 5);
   const volumeStrong = isAtLeast(volumeDivergenceStrength, 15);
   const volumeVeryStrong = isAtLeast(volumeDivergenceStrength, 30);
@@ -383,6 +409,7 @@ const getLongDeterministicQuality = ({
     confirmationDistancePct,
     barsSinceDetection,
     atrPct,
+    reclaimPct,
   });
   const q4SetupReady =
     aiThresholds != null &&
@@ -420,12 +447,12 @@ const getLongDeterministicQuality = ({
     confirmationReady &&
     minimumSetupReady &&
     reboundStrong &&
-    confirmationDistanceStrong &&
-    maturityReady &&
+    confirmationDistanceBalanced &&
+    maturityFresh &&
     calmAtr &&
     volumeStrong &&
     volumeRatioStrong &&
-    isAtLeast(reclaimPct, Math.max(entryThresholds.minReclaimPct + 10, 120)) &&
+    isAtLeast(reclaimPct, Math.max(entryThresholds.minReclaimPct + 15, 130)) &&
     isAtLeast(
       confirmationCandleQuality,
       Math.max(entryThresholds.minConfirmationCandleQuality + 0.1, 0.7),
@@ -433,12 +460,29 @@ const getLongDeterministicQuality = ({
     deltaAligned !== false &&
     longBiasConflictCount <= 1 &&
     !longQ4Demotion;
+  const longCounterTrendSelectivePromotion =
+    confirmationReady &&
+    minimumSetupReady &&
+    reboundStrong &&
+    confirmationDistanceBalanced &&
+    maturityCounterTrend &&
+    veryCalmAtr &&
+    volumeVeryStrong &&
+    volumeRatioVeryStrong &&
+    isAtLeast(reclaimPct, 130) &&
+    isAtLeast(
+      confirmationCandleQuality,
+      Math.max(entryThresholds.minConfirmationCandleQuality + 0.1, 0.7),
+    ) &&
+    longBiasConflictCount === 2 &&
+    !longQ4Demotion;
 
   if (
     confirmationReady &&
     q5SetupReady &&
     reboundVeryStrong &&
     confirmationDistanceStrong &&
+    confirmationDistanceContained &&
     maturityReady &&
     calmAtr &&
     volumeVeryStrong &&
@@ -451,18 +495,22 @@ const getLongDeterministicQuality = ({
   }
 
   if (
+    longCounterTrendSelectivePromotion ||
     longSelectivePromotion ||
     (confirmationReady &&
       q4SetupReady &&
       reboundModerate &&
       confirmationDistanceModerate &&
+      confirmationDistanceContained &&
       volumeModerate &&
       volumeRatioModerate &&
       !longQ4Demotion &&
       (deltaAligned !== false ||
         (isCounterTrendLong &&
           reboundStrong &&
-          maturityReady &&
+          maturityCounterTrend &&
+          calmAtr &&
+          isAtLeast(reclaimPct, 130) &&
           volumeStrong &&
           volumeRatioStrong)))
   ) {

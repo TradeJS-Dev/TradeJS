@@ -542,6 +542,64 @@ describe('volumeDivergenceAiAdapter', () => {
     );
   });
 
+  it('demotes late overextended double-conflict long confirmations back to q3', () => {
+    const signal = makeSignal({
+      indicators: {
+        maFast: [99, 99.2, 99.4],
+        maSlow: [100, 100.1, 100.2],
+        btcMaFast: [49, 49.2, 49.4],
+        btcMaSlow: [50, 50.1, 50.2],
+      },
+      additionalIndicators: {
+        volumeDivergenceSetup: {
+          atrPct: 1.15,
+          divergenceAmplitudeAtrRatio: 0.72,
+          reclaimPct: 132,
+          confirmationCandleQuality: 0.74,
+          confirmationDistancePct: 1.9,
+        },
+        volumeDivergenceSignalTiming: {
+          entryTiming: 'confirmation_ready',
+          barsSinceDetection: 6,
+        },
+      },
+    });
+    const payload = volumeDivergenceAiAdapter.buildPayload?.({
+      signal,
+      basePayload: {
+        signal: {
+          symbol: signal.symbol,
+          signalId: signal.signalId,
+          interval: signal.interval,
+          direction: signal.direction,
+          timestamp: signal.timestamp,
+          strategy: signal.strategy,
+          prices: {
+            currentPrice: signal.prices.currentPrice,
+            takeProfitPrice: signal.prices.takeProfitPrice,
+            stopLossPrice: signal.prices.stopLossPrice,
+          },
+        },
+        figures: {},
+        indicators: signal.indicators,
+        additionalIndicators: signal.additionalIndicators,
+      },
+    }) as any;
+
+    expect(
+      (payload.additionalIndicators as any).volumeDivergenceContext,
+    ).toEqual(
+      expect.objectContaining({
+        coinBiasAligned: false,
+        btcBiasAligned: false,
+        confirmationDistancePct: 1.9,
+        barsSinceDetection: 6,
+        deterministicQuality: 3,
+        approvalAllowedNow: false,
+      }),
+    );
+  });
+
   it('keeps mature counter-trend long confirmations eligible when structure and volume are strong', () => {
     const signal = makeSignal({
       indicators: {

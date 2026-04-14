@@ -2480,6 +2480,57 @@ describe('ai helpers', () => {
       expect(invokeMock).not.toHaveBeenCalled();
     });
 
+    it('keeps late overextended double-conflict VolumeDivergence long confirmations in watch mode during local replay', async () => {
+      const signal = makeVolumeDivergenceSignal({
+        indicators: {
+          maFast: [99, 99.2, 99.4],
+          maSlow: [100, 100.1, 100.2],
+          btcMaFast: [49, 49.2, 49.4],
+          btcMaSlow: [50, 50.1, 50.2],
+        },
+        additionalIndicators: {
+          volumeDivergenceSetup: {
+            atrPct: 1.15,
+            divergenceAmplitudeAtrRatio: 0.72,
+            reclaimPct: 132,
+            confirmationCandleQuality: 0.74,
+            confirmationDistancePct: 1.9,
+          },
+          volumeDivergenceSignalTiming: {
+            entryTiming: 'confirmation_ready',
+            barsSinceDetection: 6,
+          },
+        },
+      });
+      const payload = buildAiPayload(signal);
+
+      expect(getDeterministicAiGateContext(payload)).toEqual(
+        expect.objectContaining({
+          coinBiasAligned: false,
+          btcBiasAligned: false,
+          confirmationDistancePct: 1.9,
+          barsSinceDetection: 6,
+          deterministicQuality: 3,
+          approvalAllowedNow: false,
+        }),
+      );
+
+      const result = await runAiPromptLocal(signal, { payload });
+
+      expect(result).toEqual(
+        expect.objectContaining({
+          direction: null,
+          quality: 3,
+          needRetest: true,
+          retestPrice: 100,
+          takeProfitPrice: null,
+          stopLossPrice: null,
+        }),
+      );
+      expect(chatOpenAICtorMock).not.toHaveBeenCalled();
+      expect(invokeMock).not.toHaveBeenCalled();
+    });
+
     it('still approves mature counter-trend VolumeDivergence long confirmations during local replay', async () => {
       const signal = makeVolumeDivergenceSignal({
         indicators: {
