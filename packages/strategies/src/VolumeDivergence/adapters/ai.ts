@@ -322,6 +322,15 @@ const getLongQ4Demotion = ({
       !isAtMost(divergenceAmplitudeAtrRatio, 2.2) ||
       !isAtMost(atrPct, 1.0) ||
       !isAtLeast(reclaimPct, 130));
+  const longDoubleConflictStaleConfirmation =
+    coinBiasAligned === false &&
+    btcBiasAligned === false &&
+    isAtLeast(barsSinceDetection, 5);
+  const longFullyAlignedLateWeakConfirmation =
+    coinBiasAligned === true &&
+    btcBiasAligned === true &&
+    isAtLeast(barsSinceDetection, 5) &&
+    (!isAtLeast(confirmationDistancePct, 1.2) || !isAtLeast(reclaimPct, 170));
   const longLateExtendedConfirmation =
     isAtLeast(barsSinceDetection, 6) &&
     isAtLeast(confirmationDistancePct, 1.5) &&
@@ -332,6 +341,8 @@ const getLongQ4Demotion = ({
     longBtcLedWithoutCoinSupport ||
     longDoubleConflictWithoutMaturity ||
     longDoubleConflictOverextended ||
+    longDoubleConflictStaleConfirmation ||
+    longFullyAlignedLateWeakConfirmation ||
     longLateExtendedConfirmation
   );
 };

@@ -57,11 +57,10 @@ const INTERVAL_TO_MINUTES: Record<string, number> = {
 };
 
 const getLogLevel = (res: any) => (res.retCode === 0 ? 'info' : 'error');
-const isTradingStopAccepted = (res: any) =>
-  res?.retCode === 0 ||
+const isTradingStopNotModified = (res: any) =>
   res?.retCode === BYBIT_TRADING_STOP_NOT_MODIFIED_RETCODE;
-const getTradingStopLogLevel = (res: any) =>
-  isTradingStopAccepted(res) ? 'info' : 'error';
+const isTradingStopAccepted = (res: any) =>
+  res?.retCode === 0 || isTradingStopNotModified(res);
 
 export const ByBitConnectorCreator: ConnectorCreator = async (config) => {
   let state: Record<string, unknown> = {};
@@ -312,10 +311,12 @@ export const ByBitConnectorCreator: ConnectorCreator = async (config) => {
     const position = positions[0] as Position;
 
     logger.log(
-      getLogLevel(positionRes),
-      'position: %s, %s',
-      symbol,
-      toJson(positionRes, true),
+      'debug',
+      'position: %s %s qty=%s price=%s',
+      position.symbol,
+      position.direction,
+      position.qty,
+      position.price,
     );
 
     return {
@@ -395,12 +396,35 @@ export const ByBitConnectorCreator: ConnectorCreator = async (config) => {
         positionIdx: 0,
       });
 
-      logger.log(
-        getTradingStopLogLevel(tpRes),
-        'tp: %s %s',
-        toJson(tp, true),
-        toJson(tpRes, true),
-      );
+      if (isTradingStopNotModified(tpRes)) {
+        logger.log(
+          'debug',
+          'tp unchanged: %s %s price=%s rate=%s',
+          symbol,
+          direction,
+          tpPriceNorm.priceStr,
+          tp.rate,
+        );
+      } else if (tpRes.retCode === 0) {
+        logger.log(
+          'info',
+          'tp updated: %s %s price=%s rate=%s',
+          symbol,
+          direction,
+          tpPriceNorm.priceStr,
+          tp.rate,
+        );
+      } else {
+        logger.log(
+          'error',
+          'tp failed: %s %s price=%s rate=%s %s',
+          symbol,
+          direction,
+          tpPriceNorm.priceStr,
+          tp.rate,
+          toJson(tpRes, true),
+        );
+      }
 
       if (!isTradingStopAccepted(tpRes)) {
         return false;
@@ -446,12 +470,32 @@ export const ByBitConnectorCreator: ConnectorCreator = async (config) => {
       positionIdx: 0,
     });
 
-    logger.log(
-      getTradingStopLogLevel(slRes),
-      'sl: %s %s',
-      toJson({ symbol, direction, stopLossPrice }, true),
-      toJson(slRes, true),
-    );
+    if (isTradingStopNotModified(slRes)) {
+      logger.log(
+        'debug',
+        'sl unchanged: %s %s stopLoss=%s',
+        symbol,
+        direction,
+        slNormalized.priceStr,
+      );
+    } else if (slRes.retCode === 0) {
+      logger.log(
+        'info',
+        'sl updated: %s %s stopLoss=%s',
+        symbol,
+        direction,
+        slNormalized.priceStr,
+      );
+    } else {
+      logger.log(
+        'error',
+        'sl failed: %s %s stopLoss=%s %s',
+        symbol,
+        direction,
+        slNormalized.priceStr,
+        toJson(slRes, true),
+      );
+    }
 
     return isTradingStopAccepted(slRes);
   };

@@ -329,10 +329,12 @@ describe('ByBitConnectorCreator', () => {
 
     expect(ok).toBe(true);
     expect(mockedLoggerLog).toHaveBeenCalledWith(
-      'info',
-      'tp: %s %s',
-      expect.any(String),
-      expect.any(String),
+      'debug',
+      'tp unchanged: %s %s price=%s rate=%s',
+      'BTCUSDT',
+      'LONG',
+      '120.0',
+      1,
     );
   });
 
@@ -368,6 +370,13 @@ describe('ByBitConnectorCreator', () => {
         stopLoss: '95.0',
       }),
     );
+    expect(mockedLoggerLog).toHaveBeenCalledWith(
+      'info',
+      'sl updated: %s %s stopLoss=%s',
+      'BTCUSDT',
+      'LONG',
+      '95.0',
+    );
   });
 
   it('treats unchanged stop loss as successful no-op', async () => {
@@ -398,10 +407,11 @@ describe('ByBitConnectorCreator', () => {
 
     expect(ok).toBe(true);
     expect(mockedLoggerLog).toHaveBeenCalledWith(
-      'info',
-      'sl: %s %s',
-      expect.any(String),
-      expect.any(String),
+      'debug',
+      'sl unchanged: %s %s stopLoss=%s',
+      'BTCUSDT',
+      'LONG',
+      '95.0',
     );
   });
 
@@ -463,6 +473,37 @@ describe('ByBitConnectorCreator', () => {
       'position retCode: %s, %s',
       'BTCUSDT',
       0,
+    );
+  });
+
+  it('logs compact position snapshots at debug level', async () => {
+    const client = {
+      getPositionInfo: jest.fn().mockResolvedValue({
+        retCode: 0,
+        result: { list: [{ raw: true }] },
+      }),
+    };
+    mockedGetClient.mockResolvedValue(client as any);
+    mockedMapPositionData.mockReturnValue([
+      { symbol: 'BTCUSDT', price: 100, qty: 1, direction: 'LONG' } as any,
+    ]);
+
+    const connector = await ByBitConnectorCreator({ userName: 'alice' });
+    const position = await connector.getPosition('BTCUSDT');
+
+    expect(position).toEqual(
+      expect.objectContaining({
+        symbol: 'BTCUSDT',
+        direction: 'LONG',
+      }),
+    );
+    expect(mockedLoggerLog).toHaveBeenCalledWith(
+      'debug',
+      'position: %s %s qty=%s price=%s',
+      'BTCUSDT',
+      'LONG',
+      1,
+      100,
     );
   });
 

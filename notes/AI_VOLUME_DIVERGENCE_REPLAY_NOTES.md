@@ -28,7 +28,7 @@ The important distinction versus breakout strategies:
 Current merged export used for this replay:
 
 ```bash
-data/ai/export/ai-dataset-volumedivergence-merged-1776185827684.jsonl
+data/ai/export/ai-dataset-volumedivergence-merged-1776200115976.jsonl
 ```
 
 Current Redis config `VolumeDivergence:ai`:
@@ -106,87 +106,86 @@ So the current regression is not coming from that old field mismatch.
 
 Local deterministic replay on the current export and config:
 
-- `accuracy = 81.8%`
-- `TP/FP/TN/FN = 8 / 14 / 401 / 77`
+- `accuracy = 80.8%`
+- `TP/FP/TN/FN = 8 / 14 / 396 / 82`
 - `approved = 22`
 - `precision_approved = 36.4%`
-- `recall_winners = 9.4%`
-- `avg_profit_all = -1.86`
-- `avg_profit_approved = +7.17`
-- `expectancy_delta = +9.03`
+- `recall_winners = 8.9%`
+- `avg_profit_all = -1.65`
+- `avg_profit_approved = +8.07`
+- `expectancy_delta = +9.73`
 
 Direction split:
 
-- `LONG`: `8 / 12 / 209 / 60`, `approved = 20`
-- `SHORT`: `0 / 2 / 192 / 17`, `approved = 2`
+- `LONG`: `8 / 13 / 217 / 56`, `approved = 21`
+- `SHORT`: `0 / 1 / 179 / 26`, `approved = 1`
 
 Deterministic flow:
 
 - `selected = 500`
-- `core_blocked_now = 9`
-- `adapter_blocked_now = 469`
+- `core_blocked_now = 6`
+- `adapter_blocked_now = 472`
 - `left_to_model_now = 22`
 
 Quality breakdown:
 
-- `quality=2`: `146` rows, `0` approvals, `8.2%` winrate, `avg_profit = -5.45`
-- `quality=3`: `332` rows, `0` approvals, `19.6%` winrate, `avg_profit = -0.88`
-- `quality=4`: `22` rows, `22` approvals, `36.4%` winrate, `avg_profit = +7.17`
+- `quality=2`: `148` rows, `0` approvals, `10.8%` winrate, `avg_profit = -4.67`
+- `quality=3`: `330` rows, `0` approvals, `20.0%` winrate, `avg_profit = -0.95`
+- `quality=4`: `22` rows, `22` approvals, `36.4%` winrate, `avg_profit = +8.07`
 
 Immediate interpretation:
 
 - raw classification accuracy is not the headline metric here
-- the approval stream widened again, but not into obviously broken territory
-- approved expectancy improved again despite the wider flow
-- the strategy is still trading selectivity for recall, but less aggressively than the previous snapshot
+- the approval stream stayed exactly the same size
+- approved expectancy improved again
+- the latest tightening did not reduce `latest 500` throughput
 - `LONG` remains the only practically useful lane
 
 ## Comparison vs previous snapshot
 
 Compared to the previous `latest 500` snapshot in this file:
 
-- `accuracy`: `82.8% -> 81.8%`
-- `TP`: `6 -> 8`
-- `FP`: `10 -> 14`
-- `TN`: `408 -> 401`
-- `FN`: `76 -> 77`
-- `approved`: `16 -> 22`
-- `precision_approved`: `37.5% -> 36.4%`
-- `recall_winners`: `7.3% -> 9.4%`
-- `avg_profit_all`: `-2.23 -> -1.86`
-- `avg_profit_approved`: `+5.19 -> +7.17`
-- `expectancy_delta`: `+7.42 -> +9.03`
+- `accuracy`: `81.8% -> 80.8%`
+- `TP`: `8 -> 8`
+- `FP`: `14 -> 14`
+- `TN`: `401 -> 396`
+- `FN`: `77 -> 82`
+- `approved`: `22 -> 22`
+- `precision_approved`: `36.4% -> 36.4%`
+- `recall_winners`: `9.4% -> 8.9%`
+- `avg_profit_all`: `-1.86 -> -1.65`
+- `avg_profit_approved`: `+7.17 -> +8.07`
+- `expectancy_delta`: `+9.03 -> +9.73`
 
 Interpretation:
 
-- the current branch became a bit wider again
-- approvals and false approvals both rose
-- but approved expectancy improved even further
-- this means the latest widening was not obviously bad on the freshest window
+- the current branch did not widen further on the freshest window
+- approved quality stayed stable and expectancy improved a bit more
+- the latest adapter tightening looks neutral-to-positive on `latest 500`
 - the key question is no longer `latest 500`; it is now walk-forward stability
 
 ## Main discovery: `LONG q4 confirmation_ready` remains the whole game, and the latest validated window has no approved `double-conflict` pocket
 
 The current replay is still dominated by one pocket:
 
-- `LONG | q4 | confirmation_ready = 20` approvals
-- winrate `40.0%`
-- `avg_profit = +8.80`
+- `LONG | q4 | confirmation_ready = 21` approvals
+- winrate `38.1%`
+- `avg_profit = +8.65`
 
 Deeper split of approved rows:
 
 - `LONG | q4 | confirmation_ready | coinAlign | btcAgainst = 10`
   - winrate `40.0%`
-  - `avg_profit = +7.80`
-- `LONG | q4 | confirmation_ready | coinAlign | btcAlign = 7`
-  - winrate `28.6%`
-  - `avg_profit = +5.81`
+  - `avg_profit = +8.80`
+- `LONG | q4 | confirmation_ready | coinAlign | btcAlign = 8`
+  - winrate `25.0%`
+  - `avg_profit = +4.56`
 - `LONG | q4 | confirmation_ready | coinAgainst | btcAlign = 3`
   - winrate `66.7%`
   - `avg_profit = +19.09`
-- `SHORT | q4 | confirmation_ready | coinAlign | btcAlign = 2`
+- `SHORT | q4 | confirmation_ready | coinAlign | btcAlign = 1`
   - winrate `0.0%`
-  - `avg_profit = -9.13`
+  - `avg_profit = -4.15`
 
 This means:
 
@@ -205,8 +204,8 @@ Current behavior:
 
 Evidence:
 
-- `SHORT approved = 2`, `TP = 0`, `FP = 2`
-- `LONG approved = 20`, `TP = 8`, `FP = 12`
+- `SHORT approved = 1`, `TP = 0`, `FP = 1`
+- `LONG approved = 21`, `TP = 8`, `FP = 13`
 
 Practical interpretation:
 
@@ -221,11 +220,11 @@ False negatives are still score-ladder cases.
 
 Most profitable rejected rows are:
 
-- `LONG | q3 | confirmation_ready | coinAgainst | btcAgainst = 29`, `avg_profit = +30.71`
+- `LONG | q3 | confirmation_ready | coinAgainst | btcAgainst = 26`, `avg_profit = +30.71`
 - `LONG | q3 | confirmation_ready | coinAgainst | btcAlign = 16`, `avg_profit = +30.71`
 - `LONG | q3 | confirmation_ready | coinAlign | btcAlign = 9`, `avg_profit = +30.71`
 - `LONG | q3 | confirmation_ready | coinAlign | btcAgainst = 3`, `avg_profit = +30.71`
-- `SHORT | q3 | confirmation_ready | coinAgainst | btcAgainst = 5`, `avg_profit = +27.39`
+- `SHORT | q3 | confirmation_ready | coinAgainst | btcAgainst = 9`, `avg_profit = +27.39`
 
 Meaning:
 
@@ -377,7 +376,9 @@ Most recent adapter direction:
 
 This is the correct next experiment because:
 
-- `latest 500` widened in a healthy way
+- `latest 500` no longer needs additional widening
+- the current task is now confirming stability outside the freshest window
+- the next meaningful replay should focus on `skip 500` and `skip 1000`
 - `skip 1000` suggested the main problem was not `semi-aligned` promotion
 - the weak point was broader `q4` stability across older windows
 
@@ -387,20 +388,16 @@ Validated replay effects on the current branch:
 
 Observed effect:
 
-- `approved: 16 -> 22`
-- `FP: 10 -> 14`
-- `avg_profit_approved: +5.19 -> +7.17`
-- `expectancy_delta: +7.42 -> +9.03`
+- `approved: 22 -> 22`
+- `FP: 14 -> 14`
+- `avg_profit_approved: +7.17 -> +8.07`
+- `expectancy_delta: +9.03 -> +9.73`
 
 Interpretation:
 
-- the latest validated widening improved the freshest window
-- but walk-forward stayed weak enough that more tightening is still justified
-
-Not yet validated on fresh export:
-
-- tighter `aligned` promotion
-- removed soft counter-trend fallback from the base `q4` branch
+- the latest adapter tightening is validated on a fresh `latest 500` export
+- it did not harm throughput on the freshest window
+- but walk-forward outside the freshest window is still the real acceptance criterion
 
 ## Practical current verdict
 
@@ -416,7 +413,6 @@ The important result of the latest validated replay set:
 So the next move should be:
 
 1. keep the same detector point: `NORMALIZATION_LENGTH = 120`
-2. validate the newest adapter changes on a fresh export
-3. keep judging the strategy on `latest 500`, `skip 500`, and `skip 1000` together
-4. avoid reopening broader `q3 -> q4` promotion paths until walk-forward improves
-5. keep `SHORT` out of focus for now
+2. keep judging the strategy on `latest 500`, `skip 500`, and `skip 1000` together
+3. do not reopen broader `q3 -> q4` promotion paths until walk-forward improves
+4. keep `SHORT` out of focus for now

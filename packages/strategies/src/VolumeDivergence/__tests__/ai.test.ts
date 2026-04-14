@@ -573,6 +573,67 @@ describe('volumeDivergenceAiAdapter', () => {
     );
   });
 
+  it('demotes late fully-aligned long confirmations with weak follow-through back to q3', () => {
+    const signal = makeSignal({
+      additionalIndicators: {
+        volumeDivergenceSetup: {
+          atrPct: 0.72,
+          divergenceAmplitudeAtrRatio: 0.85,
+          reclaimPct: 165,
+          confirmationCandleQuality: 0.82,
+          confirmationDistancePct: 0.9,
+        },
+        volumeDivergenceSignalTiming: {
+          entryTiming: 'confirmation_ready',
+          barsSinceDetection: 5,
+        },
+        divergence: {
+          currentPivot: {
+            volumeNorm: 118,
+          },
+          previousPivot: {
+            volumeNorm: 82,
+          },
+        },
+      },
+    });
+    const payload = volumeDivergenceAiAdapter.buildPayload?.({
+      signal,
+      basePayload: {
+        signal: {
+          symbol: signal.symbol,
+          signalId: signal.signalId,
+          interval: signal.interval,
+          direction: signal.direction,
+          timestamp: signal.timestamp,
+          strategy: signal.strategy,
+          prices: {
+            currentPrice: signal.prices.currentPrice,
+            takeProfitPrice: signal.prices.takeProfitPrice,
+            stopLossPrice: signal.prices.stopLossPrice,
+          },
+        },
+        figures: {},
+        indicators: signal.indicators,
+        additionalIndicators: signal.additionalIndicators,
+      },
+    }) as any;
+
+    expect(
+      (payload.additionalIndicators as any).volumeDivergenceContext,
+    ).toEqual(
+      expect.objectContaining({
+        coinBiasAligned: true,
+        btcBiasAligned: true,
+        confirmationDistancePct: 0.9,
+        barsSinceDetection: 5,
+        reclaimPct: 165,
+        deterministicQuality: 3,
+        approvalAllowedNow: false,
+      }),
+    );
+  });
+
   it('demotes immature double-conflict long confirmations back to q3', () => {
     const signal = makeSignal({
       indicators: {
@@ -624,6 +685,73 @@ describe('volumeDivergenceAiAdapter', () => {
         coinBiasAligned: false,
         btcBiasAligned: false,
         confirmationDistancePct: 0.5,
+        deterministicQuality: 3,
+        approvalAllowedNow: false,
+      }),
+    );
+  });
+
+  it('demotes stale double-conflict long confirmations back to q3 even when they are otherwise tidy', () => {
+    const signal = makeSignal({
+      indicators: {
+        maFast: [99, 99.2, 99.4],
+        maSlow: [100, 100.1, 100.2],
+        btcMaFast: [49, 49.2, 49.4],
+        btcMaSlow: [50, 50.1, 50.2],
+      },
+      additionalIndicators: {
+        volumeDivergenceSetup: {
+          atrPct: 0.7,
+          divergenceAmplitudeAtrRatio: 1,
+          reclaimPct: 170,
+          confirmationCandleQuality: 0.84,
+          confirmationDistancePct: 0.8,
+        },
+        volumeDivergenceSignalTiming: {
+          entryTiming: 'confirmation_ready',
+          barsSinceDetection: 5,
+        },
+        divergence: {
+          currentPivot: {
+            volumeNorm: 120,
+          },
+          previousPivot: {
+            volumeNorm: 60,
+          },
+        },
+      },
+    });
+    const payload = volumeDivergenceAiAdapter.buildPayload?.({
+      signal,
+      basePayload: {
+        signal: {
+          symbol: signal.symbol,
+          signalId: signal.signalId,
+          interval: signal.interval,
+          direction: signal.direction,
+          timestamp: signal.timestamp,
+          strategy: signal.strategy,
+          prices: {
+            currentPrice: signal.prices.currentPrice,
+            takeProfitPrice: signal.prices.takeProfitPrice,
+            stopLossPrice: signal.prices.stopLossPrice,
+          },
+        },
+        figures: {},
+        indicators: signal.indicators,
+        additionalIndicators: signal.additionalIndicators,
+      },
+    }) as any;
+
+    expect(
+      (payload.additionalIndicators as any).volumeDivergenceContext,
+    ).toEqual(
+      expect.objectContaining({
+        coinBiasAligned: false,
+        btcBiasAligned: false,
+        barsSinceDetection: 5,
+        confirmationDistancePct: 0.8,
+        divergenceAmplitudeAtrRatio: 1,
         deterministicQuality: 3,
         approvalAllowedNow: false,
       }),

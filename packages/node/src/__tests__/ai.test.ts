@@ -2491,6 +2491,60 @@ describe('ai helpers', () => {
       expect(invokeMock).not.toHaveBeenCalled();
     });
 
+    it('keeps late fully-aligned VolumeDivergence long confirmations in watch mode during local replay when follow-through is weak', async () => {
+      const signal = makeVolumeDivergenceSignal({
+        additionalIndicators: {
+          volumeDivergenceSetup: {
+            atrPct: 0.72,
+            divergenceAmplitudeAtrRatio: 0.85,
+            reclaimPct: 165,
+            confirmationCandleQuality: 0.82,
+            confirmationDistancePct: 0.9,
+          },
+          volumeDivergenceSignalTiming: {
+            entryTiming: 'confirmation_ready',
+            barsSinceDetection: 5,
+          },
+          divergence: {
+            currentPivot: {
+              volumeNorm: 118,
+            },
+            previousPivot: {
+              volumeNorm: 82,
+            },
+          },
+        },
+      });
+      const payload = buildAiPayload(signal);
+
+      expect(getDeterministicAiGateContext(payload)).toEqual(
+        expect.objectContaining({
+          coinBiasAligned: true,
+          btcBiasAligned: true,
+          confirmationDistancePct: 0.9,
+          barsSinceDetection: 5,
+          reclaimPct: 165,
+          deterministicQuality: 3,
+          approvalAllowedNow: false,
+        }),
+      );
+
+      const result = await runAiPromptLocal(signal, { payload });
+
+      expect(result).toEqual(
+        expect.objectContaining({
+          direction: null,
+          quality: 3,
+          needRetest: true,
+          retestPrice: 100,
+          takeProfitPrice: null,
+          stopLossPrice: null,
+        }),
+      );
+      expect(chatOpenAICtorMock).not.toHaveBeenCalled();
+      expect(invokeMock).not.toHaveBeenCalled();
+    });
+
     it('keeps immature double-conflict VolumeDivergence long confirmations in watch mode during local replay', async () => {
       const signal = makeVolumeDivergenceSignal({
         indicators: {
@@ -2520,6 +2574,66 @@ describe('ai helpers', () => {
           coinBiasAligned: false,
           btcBiasAligned: false,
           confirmationDistancePct: 0.5,
+          deterministicQuality: 3,
+          approvalAllowedNow: false,
+        }),
+      );
+
+      const result = await runAiPromptLocal(signal, { payload });
+
+      expect(result).toEqual(
+        expect.objectContaining({
+          direction: null,
+          quality: 3,
+          needRetest: true,
+          retestPrice: 100,
+          takeProfitPrice: null,
+          stopLossPrice: null,
+        }),
+      );
+      expect(chatOpenAICtorMock).not.toHaveBeenCalled();
+      expect(invokeMock).not.toHaveBeenCalled();
+    });
+
+    it('keeps stale double-conflict VolumeDivergence long confirmations in watch mode during local replay even when setup is otherwise tidy', async () => {
+      const signal = makeVolumeDivergenceSignal({
+        indicators: {
+          maFast: [99, 99.2, 99.4],
+          maSlow: [100, 100.1, 100.2],
+          btcMaFast: [49, 49.2, 49.4],
+          btcMaSlow: [50, 50.1, 50.2],
+        },
+        additionalIndicators: {
+          volumeDivergenceSetup: {
+            atrPct: 0.7,
+            divergenceAmplitudeAtrRatio: 1,
+            reclaimPct: 170,
+            confirmationCandleQuality: 0.84,
+            confirmationDistancePct: 0.8,
+          },
+          volumeDivergenceSignalTiming: {
+            entryTiming: 'confirmation_ready',
+            barsSinceDetection: 5,
+          },
+          divergence: {
+            currentPivot: {
+              volumeNorm: 120,
+            },
+            previousPivot: {
+              volumeNorm: 60,
+            },
+          },
+        },
+      });
+      const payload = buildAiPayload(signal);
+
+      expect(getDeterministicAiGateContext(payload)).toEqual(
+        expect.objectContaining({
+          coinBiasAligned: false,
+          btcBiasAligned: false,
+          barsSinceDetection: 5,
+          confirmationDistancePct: 0.8,
+          divergenceAmplitudeAtrRatio: 1,
           deterministicQuality: 3,
           approvalAllowedNow: false,
         }),
