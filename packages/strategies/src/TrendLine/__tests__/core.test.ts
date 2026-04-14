@@ -478,6 +478,51 @@ describe('createTrendLineCore', () => {
     });
   });
 
+  it('does not reapply break-even protection once stop is already at entry', async () => {
+    const candle = makeCandle(1_700_000_000_000, 101.1);
+    const highsLine = {
+      ...makeBestLine('highs'),
+      points: [{ timestamp: candle.timestamp - 1, value: 99.5 }],
+    };
+
+    (createTrendlineEngine as jest.Mock)
+      .mockReturnValueOnce({ next: jest.fn(() => []) })
+      .mockReturnValueOnce({ next: jest.fn(() => [highsLine]) });
+    (getStrategyMarketSnapshot as jest.Mock).mockResolvedValue({
+      fullData: [candle],
+      lastCandle: candle,
+      timestamp: candle.timestamp,
+      currentPrice: candle.close,
+    });
+
+    const strategyApi = makeStrategyApi();
+    strategyApi.__setCurrentPosition({
+      symbol: 'TESTUSDT',
+      qty: 1,
+      price: 100,
+      direction: 'LONG',
+      slPrice: 100,
+    });
+
+    const core = await createTrendLineCore({
+      userName: 'test',
+      symbol: 'TESTUSDT',
+      config: makeConfig(),
+      isConfigFromBacktest: false,
+      connector: {} as any,
+      data: [candle as any],
+      btcData: [candle as any],
+      loadPineScriptFile: jest.fn(() => ''),
+      strategyApi,
+      indicatorsState: makeIndicatorsState() as any,
+    });
+
+    await expect(core(candle as any, candle as any)).resolves.toEqual({
+      kind: 'skip',
+      code: 'POSITION_EXISTS',
+    });
+  });
+
   it('falls back to signal stop price when evaluating break-even trigger', async () => {
     const candle = makeCandle(1_700_000_000_000, 101.1);
     const highsLine = {

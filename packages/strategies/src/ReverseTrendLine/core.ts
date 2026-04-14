@@ -131,6 +131,28 @@ const getPositionRiskPct = ({
     : ((stopLossPrice - entryPrice) / entryPrice) * 100;
 };
 
+const isBreakEvenStopAlreadyApplied = ({
+  direction,
+  entryPrice,
+  stopLossPrice,
+}: {
+  direction: Direction;
+  entryPrice: number;
+  stopLossPrice: number | null;
+}) => {
+  if (
+    stopLossPrice == null ||
+    !Number.isFinite(entryPrice) ||
+    !Number.isFinite(stopLossPrice)
+  ) {
+    return false;
+  }
+
+  return direction === 'LONG'
+    ? stopLossPrice >= entryPrice
+    : stopLossPrice <= entryPrice;
+};
+
 const getLinePriceAtNow = (line: TrendLine | null, timestamp: number) => {
   if (!line || !Array.isArray(line.points) || line.points.length === 0) {
     return null;
@@ -299,13 +321,19 @@ export const createReverseTrendLineCore: CreateStrategyCore<
         entryPrice: currentPosition.price,
         currentPrice: candle.close,
       });
+      const currentStopLossPrice = getPositionStopLossPrice(currentPosition);
       const currentPositionRiskPct = getPositionRiskPct({
         direction: currentPosition.direction,
         entryPrice: currentPosition.price,
-        stopLossPrice: getPositionStopLossPrice(currentPosition),
+        stopLossPrice: currentStopLossPrice,
       });
 
       if (
+        !isBreakEvenStopAlreadyApplied({
+          direction: currentPosition.direction,
+          entryPrice: currentPosition.price,
+          stopLossPrice: currentStopLossPrice,
+        }) &&
         favorableMovePct != null &&
         favorableMovePct >=
           (currentPositionRiskPct ?? activeModeConfig.SL) *

@@ -154,6 +154,28 @@ const getPositionRiskPct = ({
     : ((stopLossPrice - entryPrice) / entryPrice) * 100;
 };
 
+const isBreakEvenStopAlreadyApplied = ({
+  direction,
+  entryPrice,
+  stopLossPrice,
+}: {
+  direction: Direction;
+  entryPrice: number;
+  stopLossPrice: number | null;
+}) => {
+  if (
+    stopLossPrice == null ||
+    !Number.isFinite(entryPrice) ||
+    !Number.isFinite(stopLossPrice)
+  ) {
+    return false;
+  }
+
+  return direction === 'LONG'
+    ? stopLossPrice >= entryPrice
+    : stopLossPrice <= entryPrice;
+};
+
 const compactQueue = (queue: RollingMaxQueueState) => {
   if (queue.start <= 1024 || queue.start * 2 <= queue.indices.length) {
     return;
@@ -709,6 +731,7 @@ export const createVolumeDivergenceCore: CreateStrategyCore<
       const { currentPrice } = await strategyApi.getMarketData();
       const activeModeConfig =
         currentPosition.direction === 'LONG' ? BULLISH : BEARISH;
+      const currentStopLossPrice = getPositionStopLossPrice(currentPosition);
       const favorableMovePct = getFavorableMovePct({
         direction: currentPosition.direction,
         entryPrice: currentPosition.price,
@@ -717,10 +740,15 @@ export const createVolumeDivergenceCore: CreateStrategyCore<
       const currentPositionRiskPct = getPositionRiskPct({
         direction: currentPosition.direction,
         entryPrice: currentPosition.price,
-        stopLossPrice: getPositionStopLossPrice(currentPosition),
+        stopLossPrice: currentStopLossPrice,
       });
 
       if (
+        !isBreakEvenStopAlreadyApplied({
+          direction: currentPosition.direction,
+          entryPrice: currentPosition.price,
+          stopLossPrice: currentStopLossPrice,
+        }) &&
         favorableMovePct != null &&
         favorableMovePct >=
           (currentPositionRiskPct ?? activeModeConfig.SL) *

@@ -127,6 +127,28 @@ const getPositionRiskPct = ({
     : ((stopLossPrice - entryPrice) / entryPrice) * 100;
 };
 
+const isBreakEvenStopAlreadyApplied = ({
+  direction,
+  entryPrice,
+  stopLossPrice,
+}: {
+  direction: Direction;
+  entryPrice: number;
+  stopLossPrice: number | null;
+}) => {
+  if (
+    stopLossPrice == null ||
+    !Number.isFinite(entryPrice) ||
+    !Number.isFinite(stopLossPrice)
+  ) {
+    return false;
+  }
+
+  return direction === 'LONG'
+    ? stopLossPrice >= entryPrice
+    : stopLossPrice <= entryPrice;
+};
+
 const isFailedBreakout = ({
   direction,
   priceVsLinePct,
@@ -180,6 +202,7 @@ export const createTrendLineCore: CreateStrategyCore<
           : lowsTrendlines[0];
       const activeModeConfig =
         currentPosition.direction === 'LONG' ? HIGHS : LOWS;
+      const currentStopLossPrice = getPositionStopLossPrice(currentPosition);
       const favorableMovePct = getFavorableMovePct({
         direction: currentPosition.direction,
         entryPrice: currentPosition.price,
@@ -188,7 +211,7 @@ export const createTrendLineCore: CreateStrategyCore<
       const currentPositionRiskPct = getPositionRiskPct({
         direction: currentPosition.direction,
         entryPrice: currentPosition.price,
-        stopLossPrice: getPositionStopLossPrice(currentPosition),
+        stopLossPrice: currentStopLossPrice,
       });
 
       if (activeLine) {
@@ -216,6 +239,11 @@ export const createTrendLineCore: CreateStrategyCore<
       }
 
       if (
+        !isBreakEvenStopAlreadyApplied({
+          direction: currentPosition.direction,
+          entryPrice: currentPosition.price,
+          stopLossPrice: currentStopLossPrice,
+        }) &&
         favorableMovePct != null &&
         favorableMovePct >=
           (currentPositionRiskPct ?? activeModeConfig.SL) *

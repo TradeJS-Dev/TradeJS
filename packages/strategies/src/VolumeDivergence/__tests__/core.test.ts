@@ -567,6 +567,49 @@ describe('createVolumeDivergenceCore', () => {
     });
   });
 
+  it('does not reapply break-even protection once stop is already at entry', async () => {
+    const candles = makeBullishDivergenceCandles();
+    const strategyApi = makeStrategyApi({
+      getCurrentPosition: jest.fn(async () => ({
+        symbol: 'TESTUSDT',
+        qty: 1,
+        price: 100,
+        direction: 'LONG',
+        slPrice: 100,
+      })),
+      getMarketData: jest.fn(async () => ({
+        fullData: candles,
+        timestamp: candles[candles.length - 1].timestamp,
+        currentPrice: 101.1,
+      })),
+    });
+
+    const core = await createVolumeDivergenceCore({
+      userName: 'test',
+      symbol: 'TESTUSDT',
+      config: makeConfig({
+        ...DIVERGENCE_TEST_CONFIG,
+      }),
+      isConfigFromBacktest: false,
+      connector: {} as any,
+      data: candles as any,
+      btcData: candles as any,
+      loadPineScriptFile: jest.fn(() => ''),
+      strategyApi,
+      indicatorsState: makeIndicatorsState(),
+    });
+
+    const result = await core(
+      candles[candles.length - 1] as any,
+      candles[candles.length - 1] as any,
+    );
+
+    expect(result).toEqual({
+      kind: 'skip',
+      code: 'POSITION_EXISTS',
+    });
+  });
+
   it('falls back to signal stop price when evaluating break-even trigger', async () => {
     const candles = makeBullishDivergenceCandles();
     const strategyApi = makeStrategyApi({

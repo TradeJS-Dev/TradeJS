@@ -459,6 +459,41 @@ describe('createReverseTrendLineCore', () => {
     });
   });
 
+  it('does not reapply break-even protection once stop is already at entry', async () => {
+    const candle = makeCandle(1_700_000_000_000, {
+      open: 100.4,
+      close: 101.1,
+      high: 101.3,
+      low: 100.2,
+    });
+
+    (createTrendlineEngine as jest.Mock)
+      .mockReturnValueOnce({ next: jest.fn(() => []) })
+      .mockReturnValueOnce({ next: jest.fn(() => []) });
+
+    const strategyApi = makeStrategyApi();
+    strategyApi.__setCurrentPosition({
+      direction: 'LONG',
+      price: 100,
+      qty: 1,
+      slPrice: 100,
+    });
+
+    const core = await createReverseTrendLineCore(
+      makeCoreParams({
+        data: [candle] as any,
+        strategyApi,
+      }) as any,
+    );
+
+    const decision = await core(candle as any, candle as any);
+
+    expect(decision).toEqual({
+      kind: 'skip',
+      code: 'POSITION_EXISTS',
+    });
+  });
+
   it('prefers the touched candidate line when both directions are available', async () => {
     const candle = makeCandle(1_700_000_000_000, {
       open: 100.15,
