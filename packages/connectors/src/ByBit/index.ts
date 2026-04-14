@@ -39,6 +39,7 @@ import {
 
 const LIMIT = 1000;
 const CACHE_FALLBACK_WINDOW = 1_000;
+const BYBIT_TRADING_STOP_NOT_MODIFIED_RETCODE = 34_040;
 const INTERVAL_TO_MINUTES: Record<string, number> = {
   '1': 1,
   '3': 3,
@@ -56,6 +57,11 @@ const INTERVAL_TO_MINUTES: Record<string, number> = {
 };
 
 const getLogLevel = (res: any) => (res.retCode === 0 ? 'info' : 'error');
+const isTradingStopAccepted = (res: any) =>
+  res?.retCode === 0 ||
+  res?.retCode === BYBIT_TRADING_STOP_NOT_MODIFIED_RETCODE;
+const getTradingStopLogLevel = (res: any) =>
+  isTradingStopAccepted(res) ? 'info' : 'error';
 
 export const ByBitConnectorCreator: ConnectorCreator = async (config) => {
   let state: Record<string, unknown> = {};
@@ -390,13 +396,13 @@ export const ByBitConnectorCreator: ConnectorCreator = async (config) => {
       });
 
       logger.log(
-        getLogLevel(tpRes),
+        getTradingStopLogLevel(tpRes),
         'tp: %s %s',
         toJson(tp, true),
         toJson(tpRes, true),
       );
 
-      if (tpRes.retCode !== 0) {
+      if (!isTradingStopAccepted(tpRes)) {
         return false;
       }
     }
@@ -441,13 +447,13 @@ export const ByBitConnectorCreator: ConnectorCreator = async (config) => {
     });
 
     logger.log(
-      getLogLevel(slRes),
+      getTradingStopLogLevel(slRes),
       'sl: %s %s',
       toJson({ symbol, direction, stopLossPrice }, true),
       toJson(slRes, true),
     );
 
-    return slRes.retCode === 0;
+    return isTradingStopAccepted(slRes);
   };
 
   /** -------------------- public API -------------------- */

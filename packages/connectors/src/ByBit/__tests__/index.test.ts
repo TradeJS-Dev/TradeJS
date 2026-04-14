@@ -296,6 +296,46 @@ describe('ByBitConnectorCreator', () => {
     );
   });
 
+  it('treats unchanged take-profit as successful no-op', async () => {
+    const client = {
+      setTradingStop: jest
+        .fn()
+        .mockResolvedValue({ retCode: 34040, retMsg: 'not modified' }),
+    };
+    mockedGetClient.mockResolvedValue(client as any);
+    mockedGetSymbolMeta.mockResolvedValue({
+      tickSize: 0.1,
+      qtyStep: 0.001,
+      minOrderQty: 0.001,
+      pricePrecision: 1,
+      qtyPrecision: 3,
+    });
+    mockedNormalizeQty.mockImplementation((qty) => ({
+      qtyNum: qty,
+      qtyStr: qty.toFixed(3),
+    }));
+    mockedNormalizePrice.mockImplementation((price) => ({
+      priceNum: price,
+      priceStr: price.toFixed(1),
+    }));
+
+    const connector = await ByBitConnectorCreator({ userName: 'alice' });
+    const ok = await connector.setTakeProfits({
+      symbol: 'BTCUSDT',
+      direction: 'LONG',
+      qty: 1,
+      takeProfits: [{ price: 120, rate: 1 }],
+    });
+
+    expect(ok).toBe(true);
+    expect(mockedLoggerLog).toHaveBeenCalledWith(
+      'info',
+      'tp: %s %s',
+      expect.any(String),
+      expect.any(String),
+    );
+  });
+
   it('sets stop loss in a separate call', async () => {
     const client = {
       setTradingStop: jest.fn().mockResolvedValue({ retCode: 0 }),
@@ -327,6 +367,41 @@ describe('ByBitConnectorCreator', () => {
         tpslMode: 'Full',
         stopLoss: '95.0',
       }),
+    );
+  });
+
+  it('treats unchanged stop loss as successful no-op', async () => {
+    const client = {
+      setTradingStop: jest
+        .fn()
+        .mockResolvedValue({ retCode: 34040, retMsg: 'not modified' }),
+    };
+    mockedGetClient.mockResolvedValue(client as any);
+    mockedGetSymbolMeta.mockResolvedValue({
+      tickSize: 0.1,
+      qtyStep: 0.001,
+      minOrderQty: 0.001,
+      pricePrecision: 1,
+      qtyPrecision: 3,
+    });
+    mockedNormalizePrice.mockImplementation((price) => ({
+      priceNum: price,
+      priceStr: price.toFixed(1),
+    }));
+
+    const connector = await ByBitConnectorCreator({ userName: 'alice' });
+    const ok = await connector.setStopLoss({
+      symbol: 'BTCUSDT',
+      direction: 'LONG',
+      stopLossPrice: 95,
+    });
+
+    expect(ok).toBe(true);
+    expect(mockedLoggerLog).toHaveBeenCalledWith(
+      'info',
+      'sl: %s %s',
+      expect.any(String),
+      expect.any(String),
     );
   });
 
