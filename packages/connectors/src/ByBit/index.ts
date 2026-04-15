@@ -2,6 +2,7 @@
 
 import _ from 'lodash';
 import chalk from 'chalk';
+import { delay } from '@tradejs/core/async';
 import {
   MARKET_CATEGORY,
   PRELOAD_FALLBACK_DAYS,
@@ -39,7 +40,12 @@ import {
 
 const LIMIT = 1000;
 const CACHE_FALLBACK_WINDOW = 1_000;
+const BYBIT_RATE_LIMIT_RETCODE = 10_006;
 const BYBIT_TRADING_STOP_NOT_MODIFIED_RETCODE = 34_040;
+const KLINE_RATE_LIMIT_MAX_ATTEMPTS = 3;
+const KLINE_RATE_LIMIT_BASE_DELAY_MS = 800;
+const KLINE_RATE_LIMIT_MAX_DELAY_MS = 10_000;
+const KLINE_RATE_LIMIT_RESET_BUFFER_MS = 50;
 const INTERVAL_TO_MINUTES: Record<string, number> = {
   '1': 1,
   '3': 3,
@@ -61,10 +67,45 @@ const isTradingStopNotModified = (res: any) =>
   res?.retCode === BYBIT_TRADING_STOP_NOT_MODIFIED_RETCODE;
 const isTradingStopAccepted = (res: any) =>
   res?.retCode === 0 || isTradingStopNotModified(res);
+const isKlineRateLimited = (res: any) =>
+  res?.retCode === BYBIT_RATE_LIMIT_RETCODE;
+
+const resolveKlineRetryDelayMs = (res: any, attempt: number) => {
+  const resetAtRaw = Number(res?.rateLimitApi?.resetAtTimestamp);
+  if (Number.isFinite(resetAtRaw) && resetAtRaw > 0) {
+    return Math.max(
+      KLINE_RATE_LIMIT_RESET_BUFFER_MS,
+      resetAtRaw - Date.now() + KLINE_RATE_LIMIT_RESET_BUFFER_MS,
+    );
+  }
+
+  const jitterMs = Math.round(Math.random() * 250);
+  const backoffMs = Math.min(
+    KLINE_RATE_LIMIT_MAX_DELAY_MS,
+    KLINE_RATE_LIMIT_BASE_DELAY_MS * 2 ** (attempt - 1),
+  );
+  return backoffMs + jitterMs;
+};
 
 export const ByBitConnectorCreator: ConnectorCreator = async (config) => {
   let state: Record<string, unknown> = {};
   let isTimescaleFallbackMode = false;
+  let publicClientPromise: Promise<
+    Awaited<ReturnType<typeof getClient>>
+  > | null = null;
+  let privateClientPromise: Promise<
+    Awaited<ReturnType<typeof getClient>>
+  > | null = null;
+
+  const getPublicClient = async () => {
+    publicClientPromise ??= getClient(config, 'public');
+    return publicClientPromise;
+  };
+
+  const getPrivateClient = async () => {
+    privateClientPromise ??= getClient(config, 'private');
+    return privateClientPromise;
+  };
 
   /** -------------------- low-level fetch from exchange -------------------- */
   const request = async ({
@@ -82,57 +123,82 @@ export const ByBitConnectorCreator: ConnectorCreator = async (config) => {
     const normalizedEnd = round(end || Date.now());
 
     try {
-      const client = await getClient(config);
+      const client = await getPublicClient();
       if (!client) return [];
 
       if (normalizedEnd <= normalizedStart) {
         return [];
       }
 
-      const kline = await client.getKline({
-        category: MARKET_CATEGORY,
-        symbol,
-        interval,
-        start: normalizedStart,
-        end: normalizedEnd,
-        limit: LIMIT,
-      });
-
-      if (!kline?.result?.list) {
-        const responseError =
-          typeof kline?.retMsg === 'string' && kline.retMsg !== 'OK'
-            ? `${kline.retMsg}${
-                typeof kline?.retCode === 'number'
-                  ? ` (retCode: ${kline.retCode})`
-                  : ''
-              }`
-            : typeof kline?.retCode === 'number' && kline.retCode !== 0
-              ? `retCode: ${kline.retCode}`
-              : '';
-
-        logger.log(
-          'error',
-          'empty kline.list for %s %s%s',
+      for (
+        let attempt = 1;
+        attempt <= KLINE_RATE_LIMIT_MAX_ATTEMPTS;
+        attempt += 1
+      ) {
+        const kline = await client.getKline({
+          category: MARKET_CATEGORY,
           symbol,
           interval,
-          responseError ? `: ${responseError}` : '',
-        );
-        return [];
+          start: normalizedStart,
+          end: normalizedEnd,
+          limit: LIMIT,
+        });
+
+        if (isKlineRateLimited(kline)) {
+          if (attempt < KLINE_RATE_LIMIT_MAX_ATTEMPTS) {
+            const waitMs = resolveKlineRetryDelayMs(kline, attempt);
+            logger.log(
+              'warn',
+              'kline rate limited for %s %s: attempt=%s/%s waitMs=%s',
+              symbol,
+              interval,
+              attempt,
+              KLINE_RATE_LIMIT_MAX_ATTEMPTS,
+              waitMs,
+            );
+            await delay(waitMs);
+            continue;
+          }
+        }
+
+        if (!kline?.result?.list) {
+          const responseError =
+            typeof kline?.retMsg === 'string' && kline.retMsg !== 'OK'
+              ? `${kline.retMsg}${
+                  typeof kline?.retCode === 'number'
+                    ? ` (retCode: ${kline.retCode})`
+                    : ''
+                }`
+              : typeof kline?.retCode === 'number' && kline.retCode !== 0
+                ? `retCode: ${kline.retCode}`
+                : '';
+
+          logger.log(
+            'error',
+            'empty kline.list for %s %s%s',
+            symbol,
+            interval,
+            responseError ? `: ${responseError}` : '',
+          );
+          return [];
+        }
+
+        if (!silent) {
+          logger.log(
+            'info',
+            '%s %s %s %s',
+            chalk.yellow(formatUnix(normalizedEnd)),
+            chalk.cyan(symbol),
+            chalk.cyan(interval),
+            chalk.yellow(kline.result.list.length),
+          );
+        }
+
+        // reverse() -> по возрастанию времени
+        return mapKlineToChartData(kline.result.list.reverse());
       }
 
-      if (!silent) {
-        logger.log(
-          'info',
-          '%s %s %s %s',
-          chalk.yellow(formatUnix(normalizedEnd)),
-          chalk.cyan(symbol),
-          chalk.cyan(interval),
-          chalk.yellow(kline.result.list.length),
-        );
-      }
-
-      // reverse() -> по возрастанию времени
-      return mapKlineToChartData(kline.result.list.reverse());
+      return [];
     } catch (error) {
       logger.log(
         'error',
@@ -281,7 +347,7 @@ export const ByBitConnectorCreator: ConnectorCreator = async (config) => {
   const getPositionSnapshot = async (
     symbol: string,
   ): Promise<Position | null> => {
-    const client = await getClient(config);
+    const client = await getPrivateClient();
 
     if (!client) {
       return null;
@@ -335,9 +401,10 @@ export const ByBitConnectorCreator: ConnectorCreator = async (config) => {
     qty?: number;
     takeProfits: Tp[];
   }) => {
-    const client = await getClient(config);
+    const client = await getPrivateClient();
+    const marketDataClient = await getPublicClient();
 
-    if (!client) {
+    if (!client || !marketDataClient) {
       return false;
     }
 
@@ -345,7 +412,7 @@ export const ByBitConnectorCreator: ConnectorCreator = async (config) => {
       return true;
     }
 
-    const meta = await getSymbolMeta(client, symbol);
+    const meta = await getSymbolMeta(marketDataClient, symbol);
     const positionQty = qty ?? (await getPositionSnapshot(symbol))?.qty ?? 0;
 
     if (!Number.isFinite(positionQty) || positionQty <= 0) {
@@ -443,9 +510,10 @@ export const ByBitConnectorCreator: ConnectorCreator = async (config) => {
     direction: Direction;
     stopLossPrice: number | null;
   }) => {
-    const client = await getClient(config);
+    const client = await getPrivateClient();
+    const marketDataClient = await getPublicClient();
 
-    if (!client) {
+    if (!client || !marketDataClient) {
       return false;
     }
 
@@ -453,7 +521,7 @@ export const ByBitConnectorCreator: ConnectorCreator = async (config) => {
       return true;
     }
 
-    const meta = await getSymbolMeta(client, symbol);
+    const meta = await getSymbolMeta(marketDataClient, symbol);
     const isLong = direction === 'LONG';
     const slNormalized = normalizePrice(
       stopLossPrice,
@@ -680,7 +748,7 @@ export const ByBitConnectorCreator: ConnectorCreator = async (config) => {
     getPosition: async (symbol) => getPositionSnapshot(symbol),
 
     getPositions: async () => {
-      const client = await getClient(config);
+      const client = await getPrivateClient();
 
       if (!client) {
         return [];
@@ -710,15 +778,16 @@ export const ByBitConnectorCreator: ConnectorCreator = async (config) => {
     },
 
     placeOrder: async ({ symbol, price, qty, direction, isLimit }) => {
-      const client = await getClient(config);
+      const client = await getPrivateClient();
+      const marketDataClient = await getPublicClient();
 
-      if (!client) {
+      if (!client || !marketDataClient) {
         return false;
       }
 
       const isLong = direction === 'LONG';
 
-      const meta = await getSymbolMeta(client, symbol);
+      const meta = await getSymbolMeta(marketDataClient, symbol);
 
       const { qtyNum: orderQty, qtyStr: orderQtyStr } = normalizeQty(qty, meta);
 
@@ -789,7 +858,7 @@ export const ByBitConnectorCreator: ConnectorCreator = async (config) => {
     setStopLoss,
 
     closePosition: async ({ symbol, direction }) => {
-      const client = await getClient(config);
+      const client = await getPrivateClient();
 
       if (!client) {
         return false;
@@ -820,7 +889,7 @@ export const ByBitConnectorCreator: ConnectorCreator = async (config) => {
     },
 
     getTickers: async () => {
-      const client = await getClient(config);
+      const client = await getPublicClient();
 
       if (!client) {
         return [];

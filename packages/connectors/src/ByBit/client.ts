@@ -8,7 +8,19 @@ import { ConnectorConfig } from '@tradejs/types';
 
 const useTestnet = false;
 
-export const getClient = async ({ userName }: ConnectorConfig) => {
+export type ByBitRestAccess = 'private' | 'public';
+
+export const getClient = async (
+  { userName }: ConnectorConfig,
+  access: ByBitRestAccess = 'private',
+) => {
+  if (access === 'public') {
+    return new RestClientV5({
+      parseAPIRateLimits: true,
+      testnet: useTestnet,
+    });
+  }
+
   const user = await getData(redisKeys.user(userName));
 
   if (!user) {
@@ -20,6 +32,7 @@ export const getClient = async ({ userName }: ConnectorConfig) => {
   const client = new RestClientV5({
     key: user.BYBIT_API_KEY,
     secret: user.BYBIT_API_SECRET,
+    parseAPIRateLimits: true,
     testnet: useTestnet,
   });
 

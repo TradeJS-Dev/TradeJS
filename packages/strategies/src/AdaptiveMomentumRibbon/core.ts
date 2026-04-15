@@ -78,7 +78,8 @@ export const createAdaptiveMomentumRibbonCore: CreateStrategyCore<
   AdaptiveMomentumRibbonConfig
 > = async ({ config, symbol, loadPineScriptFile, strategyApi }) => {
   const script = loadPineScriptFile(AMR_PINE_FILE_NAME);
-  const { LONG, SHORT, AMR_EXIT_ON_INVALIDATION } = config;
+  const { LONG, SHORT, AMR_EXIT_ON_INVALIDATION, MAX_LOSS_VALUE, FEE_PERCENT } =
+    config;
   const linePlots = resolveLinePlots(config.AMR_LINE_PLOTS);
   const lookbackBars = asPositiveInt(config.AMR_LOOKBACK_BARS, 0);
   const pineInputs = resolveAmrInputs(config);
@@ -175,6 +176,8 @@ export const createAdaptiveMomentumRibbonCore: CreateStrategyCore<
         takeProfitDelta: modeConfig.TP,
         stopLossDelta: modeConfig.SL,
         unit: 'percent',
+        maxLossValue: MAX_LOSS_VALUE,
+        feePercent: Number(FEE_PERCENT ?? 0),
       });
 
     if (!qty || !Number.isFinite(qty) || qty <= 0) {
@@ -193,6 +196,21 @@ export const createAdaptiveMomentumRibbonCore: CreateStrategyCore<
       }),
       additionalIndicators: {
         amr,
+        amrSignalTiming: {
+          entryTiming: 'zero_cross',
+          waitClose: Boolean(config.AMR_WAIT_CLOSE),
+          lookbackBars,
+        },
+        amrConfigSnapshot: {
+          momentumPeriod: asPositiveInt(config.AMR_MOMENTUM_PERIOD, 20),
+          butterworthSmoothing: asPositiveInt(
+            config.AMR_BUTTERWORTH_SMOOTHING,
+            3,
+          ),
+          kcLength: asPositiveInt(config.AMR_KC_LENGTH, 20),
+          atrLength: asPositiveInt(config.AMR_ATR_LENGTH, 14),
+          atrMultiplier: asPositiveNumber(config.AMR_ATR_MULTIPLIER, 2),
+        },
       },
       orderPlan: {
         qty,

@@ -213,6 +213,7 @@ describe('createAdaptiveMomentumRibbonCore', () => {
       timestamp: candles[candles.length - 1].timestamp,
       currentPrice: candles[candles.length - 1].close,
     };
+    const strategyApi = makeStrategyApi(marketData);
 
     const core = await createAdaptiveMomentumRibbonCore({
       userName: 'root',
@@ -225,7 +226,7 @@ describe('createAdaptiveMomentumRibbonCore', () => {
       data: candles.slice(0, -1),
       btcData: candles.slice(0, -1),
       loadPineScriptFile: jest.fn(() => 'mock-pine-script'),
-      strategyApi: makeStrategyApi(marketData),
+      strategyApi,
       indicatorsState: makeIndicatorsState(),
     });
 
@@ -243,6 +244,33 @@ describe('createAdaptiveMomentumRibbonCore', () => {
     expect(decision.orderPlan.qty).toBe(1);
     expect(decision.orderPlan.stopLossPrice).toBeCloseTo(
       marketData.currentPrice * 0.99,
+    );
+    expect(strategyApi.getDirectionalTpSlPrices).toHaveBeenCalledWith(
+      expect.objectContaining({
+        price: marketData.currentPrice,
+        direction: 'LONG',
+        takeProfitDelta: 2,
+        stopLossDelta: 1,
+        unit: 'percent',
+        maxLossValue: 10,
+        feePercent: 0.005,
+      }),
+    );
+    expect(decision.signal?.additionalIndicators).toEqual(
+      expect.objectContaining({
+        amrSignalTiming: expect.objectContaining({
+          entryTiming: 'zero_cross',
+          waitClose: true,
+          lookbackBars: 400,
+        }),
+        amrConfigSnapshot: expect.objectContaining({
+          momentumPeriod: 20,
+          butterworthSmoothing: 3,
+          kcLength: 20,
+          atrLength: 14,
+          atrMultiplier: 2,
+        }),
+      }),
     );
     expect(decision.signal?.figures?.lines?.length ?? 0).toBeGreaterThan(0);
   });

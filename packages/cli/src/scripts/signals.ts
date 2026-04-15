@@ -44,6 +44,11 @@ args.option(['S', 'skipScreenshots'], 'Skip screenshot generation', false);
 args.option(['u', 'updateOnly'], 'Only update tickers history', false);
 args.option(['C', 'cacheOnly'], 'Do not update tickers history', false);
 args.option(['L', 'showTickersList'], 'Just show only ticker list', false);
+args.option(
+  ['R', 'showSkipStats'],
+  'Show aggregated skip stats by strategy',
+  false,
+);
 args.option(['c', 'chunk'], 'Split by chunks, ex. 1/3');
 args.option(['U', 'user'], 'Use user confg', 'root');
 args.option(
@@ -67,6 +72,14 @@ interface StrategyRuntimeConfig {
   strategyCreator: StrategyCreator;
   strategyConfig: StrategyConfig;
 }
+
+interface StrategySkipStats {
+  evaluated: number;
+  signals: number;
+  reasons: Map<string, number>;
+}
+
+type StrategySkipStatsMap = Map<string, StrategySkipStats>;
 
 const resolveStrategyNameByConfigKey = (
   userName: string,
@@ -121,6 +134,64 @@ const loadRuntimeStrategies = async (
   return strategyConfigs.filter(Boolean) as StrategyRuntimeConfig[];
 };
 
+const createStrategySkipStats = (
+  runtimeStrategies: StrategyRuntimeConfig[],
+): StrategySkipStatsMap =>
+  new Map(
+    runtimeStrategies.map(({ strategyName }) => [
+      strategyName,
+      {
+        evaluated: 0,
+        signals: 0,
+        reasons: new Map<string, number>(),
+      },
+    ]),
+  );
+
+const recordStrategyReason = (
+  strategyStats: StrategySkipStatsMap,
+  strategyName: string,
+  reason: string,
+) => {
+  const stats = strategyStats.get(strategyName);
+  if (!stats) {
+    return;
+  }
+
+  stats.reasons.set(reason, (stats.reasons.get(reason) ?? 0) + 1);
+};
+
+const logStrategySkipStats = (
+  runtimeStrategies: StrategyRuntimeConfig[],
+  strategyStats: StrategySkipStatsMap,
+) => {
+  logger.info(chalk.yellow('skip stats:'));
+
+  for (const { strategyName } of runtimeStrategies) {
+    const stats = strategyStats.get(strategyName);
+    if (!stats) {
+      continue;
+    }
+
+    logger.info(
+      `${strategyName}: evaluated=${stats.evaluated}, signals=${stats.signals}`,
+    );
+
+    const sortedReasons = [...stats.reasons.entries()].sort(
+      (left, right) => right[1] - left[1] || left[0].localeCompare(right[0]),
+    );
+
+    if (!sortedReasons.length) {
+      logger.info('  none');
+      continue;
+    }
+
+    for (const [reason, count] of sortedReasons) {
+      logger.info(`  ${reason}: ${count}`);
+    }
+  }
+};
+
 const resolveSignalsConnectorName = async (value: unknown): Promise<string> => {
   const connectorName = await resolveConnectorName(value, projectRoot);
   if (connectorName) {
@@ -141,8 +212,10 @@ const findSignals = async (
   btcBinanceData: Awaited<ReturnType<Connector['kline']>>,
   btcCoinbaseData: Awaited<ReturnType<Connector['kline']>>,
   runtimeStrategies: StrategyRuntimeConfig[],
-) => {
+  strategyStats: StrategySkipStatsMap,
+): Promise<Signal[]> => {
   const currentTimestamp = getTimestamp();
+  const strategySignals: Signal[] = [];
 
   const [cachedData, btcCachedData] = await Promise.all([
     connector.kline({
@@ -165,11 +238,16 @@ const findSignals = async (
   const btcLastCandle = btcCachedData.pop();
 
   if (!lastCandle || !btcLastCandle) {
-    return;
+    return strategySignals;
   }
 
   for (const runtimeStrategy of runtimeStrategies) {
     const { strategyName, strategyCreator, strategyConfig } = runtimeStrategy;
+    const stats = strategyStats.get(strategyName);
+    if (stats) {
+      stats.evaluated += 1;
+    }
+
     const strategy = await strategyCreator({
       userName: flags.user,
       connector,
@@ -188,8 +266,16 @@ const findSignals = async (
 
     const signal = await strategy(lastCandle, btcLastCandle);
     if (!signal || typeof signal === 'string') {
+      if (typeof signal === 'string') {
+        recordStrategyReason(strategyStats, strategyName, signal);
+      }
       continue;
     }
+
+    if (stats) {
+      stats.signals += 1;
+    }
+    strategySignals.push(signal);
 
     await setData(redisKeys.signal(symbol, signal.signalId), signal, {
       expire: TTL_1D,
@@ -200,8 +286,9 @@ const findSignals = async (
     });
 
     logger.info('Signal found %s by strategy %s', symbol, strategyName);
-    return signal;
   }
+
+  return strategySignals;
 };
 
 export const signals = async () => {
@@ -333,6 +420,7 @@ export const signals = async () => {
         `loaded strategies: ${runtimeStrategies.map((s) => s.strategyName).join(', ')}`,
       ),
     );
+    const strategyStats = createStrategySkipStats(runtimeStrategies);
 
     const bar = new ProgressBar(
       ':current/:total [:bar][:percent] :found :eta(s) :symbol',
@@ -345,16 +433,17 @@ export const signals = async () => {
     logger.info(chalk.yellow(`tickers: ${tickers.length}`));
 
     await runWithConcurrency(tickers, 5, async (symbol) => {
-      const signal = await findSignals(
+      const strategySignals = await findSignals(
         symbol,
         marketConnector,
         btcBinanceData,
         btcCoinbaseData,
         runtimeStrategies,
+        strategyStats,
       );
 
-      if (signal) {
-        signals.push(signal);
+      if (strategySignals.length > 0) {
+        signals.push(...strategySignals);
       }
 
       bar.tick(1, {
@@ -378,6 +467,10 @@ export const signals = async () => {
         2,
       ),
     );
+
+    if (flags.showSkipStats) {
+      logStrategySkipStats(runtimeStrategies, strategyStats);
+    }
   } catch (error) {
     status = 'failed';
     logger.error(

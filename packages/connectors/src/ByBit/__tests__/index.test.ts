@@ -1,5 +1,6 @@
 import { ByBitConnectorCreator } from '..';
 import { getClient } from '../client';
+import { delay } from '@tradejs/core/async';
 import {
   getSymbolMeta,
   mapPositionData,
@@ -16,6 +17,10 @@ import { logger } from '@tradejs/infra/logger';
 
 jest.mock('../client', () => ({
   getClient: jest.fn(),
+}));
+
+jest.mock('@tradejs/core/async', () => ({
+  delay: jest.fn(async () => undefined),
 }));
 
 jest.mock('../utils', () => ({
@@ -46,6 +51,7 @@ const mockedGetClient = getClient as jest.MockedFunction<typeof getClient>;
 const mockedGetSymbolMeta = getSymbolMeta as jest.MockedFunction<
   typeof getSymbolMeta
 >;
+const mockedDelay = delay as jest.MockedFunction<typeof delay>;
 const mockedNormalizeQty = normalizeQty as jest.MockedFunction<
   typeof normalizeQty
 >;
@@ -70,6 +76,11 @@ const mockedLoggerLog = logger.log as jest.MockedFunction<typeof logger.log>;
 describe('ByBitConnectorCreator', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    jest.spyOn(Math, 'random').mockReturnValue(0);
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
   });
 
   it('returns empty data for unsupported interval in kline', async () => {
@@ -146,6 +157,10 @@ describe('ByBitConnectorCreator', () => {
     });
 
     expect(client.getKline).toHaveBeenCalledTimes(1);
+    expect(mockedGetClient).toHaveBeenCalledWith(
+      { userName: 'alice' },
+      'public',
+    );
     expect(mockedGetCandlesRange).not.toHaveBeenCalled();
     expect(result).toEqual([{ timestamp: 1 }, { timestamp: 2 }]);
   });
@@ -174,6 +189,10 @@ describe('ByBitConnectorCreator', () => {
 
     expect(client.getPositionInfo).toHaveBeenCalledWith(
       expect.objectContaining({ symbol: 'BTCUSDT' }),
+    );
+    expect(mockedGetClient).toHaveBeenCalledWith(
+      { userName: 'alice' },
+      'private',
     );
     expect(position).toEqual(
       expect.objectContaining({ symbol: 'BTCUSDT', direction: 'LONG' }),
@@ -241,6 +260,16 @@ describe('ByBitConnectorCreator', () => {
     } as any);
 
     expect(ok).toBe(true);
+    expect(mockedGetClient).toHaveBeenNthCalledWith(
+      1,
+      { userName: 'alice' },
+      'private',
+    );
+    expect(mockedGetClient).toHaveBeenNthCalledWith(
+      2,
+      { userName: 'alice' },
+      'public',
+    );
     expect(client.setLeverage).toHaveBeenCalledTimes(1);
     expect(client.submitOrder).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -833,6 +862,10 @@ describe('ByBitConnectorCreator', () => {
 
     const tickers = await connector.getTickers();
 
+    expect(mockedGetClient).toHaveBeenCalledWith(
+      { userName: 'alice' },
+      'public',
+    );
     expect(tickers).toHaveLength(1);
     expect(tickers[0]).toEqual(
       expect.objectContaining({
@@ -1039,6 +1072,86 @@ describe('ByBitConnectorCreator', () => {
     });
 
     expect(result).toEqual([]);
+  });
+
+  it('retries getKline on retCode 10006 using rate-limit reset timestamp', async () => {
+    const now = Date.now();
+    mockedGetDataEdges.mockRejectedValue(new Error('db down'));
+    const client = {
+      getKline: jest
+        .fn()
+        .mockResolvedValueOnce({
+          retCode: 10006,
+          retMsg: 'Too many visits. Exceeded the API Rate Limit.',
+          result: {},
+          rateLimitApi: {
+            remainingRequests: 0,
+            maxRequests: 10,
+            resetAtTimestamp: now + 400,
+          },
+        })
+        .mockResolvedValueOnce({
+          result: {
+            list: [{ timestamp: 2 }, { timestamp: 1 }],
+          },
+        }),
+    };
+    mockedGetClient.mockResolvedValue(client as any);
+
+    const connector = await ByBitConnectorCreator({ userName: 'alice' });
+    const result = await connector.kline({
+      symbol: 'BTCUSDT',
+      interval: '15',
+      end: Date.now(),
+      silent: true,
+    });
+
+    expect(result).toEqual([{ timestamp: 1 }, { timestamp: 2 }]);
+    expect(client.getKline).toHaveBeenCalledTimes(2);
+    expect(mockedDelay).toHaveBeenCalledTimes(1);
+    const waitMs = mockedDelay.mock.calls[0]?.[0] ?? 0;
+    expect(waitMs).toBeGreaterThanOrEqual(350);
+    expect(waitMs).toBeLessThanOrEqual(1_000);
+    expect(mockedLoggerLog).toHaveBeenCalledWith(
+      'warn',
+      'kline rate limited for %s %s: attempt=%s/%s waitMs=%s',
+      'BTCUSDT',
+      '15',
+      1,
+      3,
+      waitMs,
+    );
+  });
+
+  it('retries getKline on retCode 10006 with exponential backoff when reset timestamp is missing', async () => {
+    mockedGetDataEdges.mockRejectedValue(new Error('db down'));
+    const client = {
+      getKline: jest
+        .fn()
+        .mockResolvedValueOnce({
+          retCode: 10006,
+          retMsg: 'Too many visits. Exceeded the API Rate Limit.',
+          result: {},
+        })
+        .mockResolvedValueOnce({
+          result: {
+            list: [{ timestamp: 2 }, { timestamp: 1 }],
+          },
+        }),
+    };
+    mockedGetClient.mockResolvedValue(client as any);
+
+    const connector = await ByBitConnectorCreator({ userName: 'alice' });
+    const result = await connector.kline({
+      symbol: 'BTCUSDT',
+      interval: '15',
+      end: Date.now(),
+      silent: true,
+    });
+
+    expect(result).toEqual([{ timestamp: 1 }, { timestamp: 2 }]);
+    expect(client.getKline).toHaveBeenCalledTimes(2);
+    expect(mockedDelay).toHaveBeenCalledWith(800);
   });
 
   it('returns [] when cacheOnly=true and timescale access fails', async () => {

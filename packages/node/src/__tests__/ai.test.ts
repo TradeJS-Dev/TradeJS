@@ -335,6 +335,87 @@ const makeVolumeDivergenceSignal = (overrides: Record<string, any> = {}) => {
   } as any;
 };
 
+const makeAdaptiveMomentumRibbonSignal = (
+  overrides: Record<string, any> = {},
+) => {
+  const base = {
+    signalId: 'amr-1',
+    symbol: 'TESTUSDT',
+    strategy: 'AdaptiveMomentumRibbon',
+    interval: '15',
+    direction: 'LONG',
+    timestamp: 1_700_000_000_000,
+    figures: {},
+    prices: {
+      currentPrice: 100.8,
+      takeProfitPrice: 103,
+      stopLossPrice: 99.7,
+      riskRatio: 2,
+    },
+    indicators: {
+      maFast: [100, 100.4, 100.7],
+      maSlow: [99.9, 100.1, 100.3],
+      btcMaFast: [50, 50.2, 50.5],
+      btcMaSlow: [49.9, 50.0, 50.1],
+    },
+    additionalIndicators: {
+      amr: {
+        entryLong: 1,
+        entryShort: 0,
+        invalidated: 0,
+        activeBuy: 1,
+        activeSell: 0,
+        signalOsc: 1.05,
+        kcMidline: 100.2,
+        kcUpper: 100.7,
+        kcLower: 99.7,
+        invalidationLevel: 99.9,
+      },
+      amrSignalTiming: {
+        entryTiming: 'zero_cross',
+        waitClose: true,
+        lookbackBars: 400,
+      },
+      amrConfigSnapshot: {
+        momentumPeriod: 20,
+        butterworthSmoothing: 3,
+        kcLength: 20,
+        atrLength: 14,
+        atrMultiplier: 2,
+      },
+    },
+  };
+
+  return {
+    ...base,
+    ...overrides,
+    prices: {
+      ...base.prices,
+      ...overrides.prices,
+    },
+    indicators: {
+      ...base.indicators,
+      ...overrides.indicators,
+    },
+    additionalIndicators: {
+      ...base.additionalIndicators,
+      ...overrides.additionalIndicators,
+      amr: {
+        ...base.additionalIndicators.amr,
+        ...overrides.additionalIndicators?.amr,
+      },
+      amrSignalTiming: {
+        ...base.additionalIndicators.amrSignalTiming,
+        ...overrides.additionalIndicators?.amrSignalTiming,
+      },
+      amrConfigSnapshot: {
+        ...base.additionalIndicators.amrConfigSnapshot,
+        ...overrides.additionalIndicators?.amrConfigSnapshot,
+      },
+    },
+  } as any;
+};
+
 const makeWeakBtcLedBreakTrendlineSignal = () => {
   const signal = makeSignal();
   signal.direction = 'SHORT';
@@ -2223,6 +2304,171 @@ describe('ai helpers', () => {
         }),
       );
       expect(result.qualityReason).toBe('Сильное давление вниз у линии');
+    });
+
+    it('replays strong AdaptiveMomentumRibbon long entries locally without AI provider calls', async () => {
+      const signal = makeAdaptiveMomentumRibbonSignal();
+      const payload = buildAiPayload(signal);
+
+      expect(getDeterministicAiGateContext(payload)).toEqual(
+        expect.objectContaining({
+          approvalAllowedNow: true,
+          deterministicQuality: 5,
+          structuralHardBlockReasons: [],
+        }),
+      );
+
+      const result = await runAiPromptLocal(signal, { payload });
+
+      expect(result).toEqual(
+        expect.objectContaining({
+          direction: 'LONG',
+          quality: 5,
+          needRetest: false,
+          retestPrice: null,
+          takeProfitPrice: 103,
+          stopLossPrice: 99.7,
+        }),
+      );
+      expect(chatOpenAICtorMock).not.toHaveBeenCalled();
+      expect(invokeMock).not.toHaveBeenCalled();
+    });
+
+    it('keeps invalidated AdaptiveMomentumRibbon signals in watch mode during local replay', async () => {
+      const signal = makeAdaptiveMomentumRibbonSignal({
+        additionalIndicators: {
+          amr: {
+            invalidated: 1,
+          },
+        },
+      });
+      const payload = buildAiPayload(signal);
+
+      expect(getDeterministicAiGateContext(payload)).toEqual(
+        expect.objectContaining({
+          approvalAllowedNow: false,
+          deterministicQuality: 2,
+          structuralHardBlockReasons: ['invalidated'],
+        }),
+      );
+
+      const result = await runAiPromptLocal(signal, { payload });
+
+      expect(result).toEqual(
+        expect.objectContaining({
+          direction: null,
+          quality: 2,
+          needRetest: true,
+          retestPrice: 100.7,
+          takeProfitPrice: null,
+          stopLossPrice: null,
+        }),
+      );
+      expect(chatOpenAICtorMock).not.toHaveBeenCalled();
+      expect(invokeMock).not.toHaveBeenCalled();
+    });
+
+    it('keeps conflicted AdaptiveMomentumRibbon long setups below approval threshold during local replay', async () => {
+      const signal = makeAdaptiveMomentumRibbonSignal({
+        prices: {
+          currentPrice: 99.8,
+          takeProfitPrice: 101.8,
+        },
+        indicators: {
+          maFast: [99.8, 99.7, 99.6],
+          maSlow: [100, 100, 100],
+          btcMaFast: [49.8, 49.7, 49.6],
+          btcMaSlow: [50, 50, 50],
+        },
+        additionalIndicators: {
+          amr: {
+            signalOsc: 0.34,
+            kcMidline: 100.1,
+            kcUpper: 100.8,
+            kcLower: 99.2,
+            invalidationLevel: 99.3,
+          },
+        },
+      });
+      const payload = buildAiPayload(signal);
+
+      expect(getDeterministicAiGateContext(payload)).toEqual(
+        expect.objectContaining({
+          approvalAllowedNow: false,
+          deterministicQuality: 3,
+          structuralHardBlockReasons: [],
+        }),
+      );
+
+      const result = await runAiPromptLocal(signal, { payload });
+
+      expect(result).toEqual(
+        expect.objectContaining({
+          direction: null,
+          quality: 3,
+          needRetest: true,
+          retestPrice: 100.1,
+          takeProfitPrice: null,
+          stopLossPrice: null,
+        }),
+      );
+      expect(chatOpenAICtorMock).not.toHaveBeenCalled();
+      expect(invokeMock).not.toHaveBeenCalled();
+    });
+
+    it('replays strong AdaptiveMomentumRibbon short entries locally without AI provider calls', async () => {
+      const signal = makeAdaptiveMomentumRibbonSignal({
+        direction: 'SHORT',
+        prices: {
+          currentPrice: 98.9,
+          takeProfitPrice: 96.6,
+          stopLossPrice: 99.9,
+        },
+        indicators: {
+          maFast: [100.2, 99.8, 99.3],
+          maSlow: [100.1, 100.0, 99.8],
+          btcMaFast: [50.2, 49.9, 49.4],
+          btcMaSlow: [50.1, 50.0, 49.8],
+        },
+        additionalIndicators: {
+          amr: {
+            entryLong: 0,
+            entryShort: 1,
+            invalidated: 0,
+            activeBuy: 0,
+            activeSell: 1,
+            signalOsc: -0.95,
+            kcMidline: 99.5,
+            kcUpper: 100.1,
+            kcLower: 99.0,
+            invalidationLevel: 99.8,
+          },
+        },
+      });
+      const payload = buildAiPayload(signal);
+
+      expect(getDeterministicAiGateContext(payload)).toEqual(
+        expect.objectContaining({
+          approvalAllowedNow: true,
+          deterministicQuality: 5,
+          structuralHardBlockReasons: [],
+        }),
+      );
+
+      const result = await runAiPromptLocal(signal, { payload });
+
+      expect(result).toEqual(
+        expect.objectContaining({
+          direction: 'SHORT',
+          quality: 5,
+          needRetest: false,
+          retestPrice: null,
+          takeProfitPrice: 96.6,
+          stopLossPrice: 99.9,
+        }),
+      );
+      expect(chatOpenAICtorMock).not.toHaveBeenCalled();
+      expect(invokeMock).not.toHaveBeenCalled();
     });
 
     it('replays confirmed VolumeDivergence entries locally without AI provider calls', async () => {

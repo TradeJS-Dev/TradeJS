@@ -11,6 +11,7 @@ type ScriptFlags = {
   updateOnly: boolean;
   cacheOnly: boolean;
   showTickersList: boolean;
+  showSkipStats: boolean;
   chunk?: string;
   user: string;
   connector: string;
@@ -22,6 +23,12 @@ type Scenario = {
   flags: ScriptFlags;
   strategyConfig?: Record<string, unknown>;
   existingSignalKeys?: string[];
+  strategyResult?: unknown;
+  strategyConfigs?: Array<{
+    strategyName: string;
+    config?: Record<string, unknown>;
+    result?: unknown;
+  }>;
 };
 
 const makeRedisKeys = () => ({
@@ -45,19 +52,34 @@ const loadScript = async (scenario: Scenario) => {
   jest.resetModules();
 
   const redisKeys = makeRedisKeys();
-  const strategyConfigKey = 'users:root:strategies:TrendLine:config';
+  const strategyEntries = scenario.strategyConfigs ?? [
+    {
+      strategyName: 'TrendLine',
+      config: scenario.strategyConfig,
+      result: scenario.strategyResult,
+    },
+  ];
+  const strategyConfigKeys = strategyEntries.map(
+    ({ strategyName }) => `users:root:strategies:${strategyName}:config`,
+  );
   const getKeys = jest.fn(async (key: string) => {
     if (key === `${redisKeys.strategies('root')}:`) {
-      return [strategyConfigKey];
+      return strategyConfigKeys;
     }
     if (key === redisKeys.signalsBySymbol('ETHUSDT')) {
       return scenario.existingSignalKeys ?? [];
     }
     return [];
   });
+  const strategyConfigMap = new Map(
+    strategyEntries.map(({ strategyName, config }) => [
+      `users:root:strategies:${strategyName}:config`,
+      config ?? { INTERVAL: '15' },
+    ]),
+  );
   const getData = jest.fn(async (key: string, fallback: any) => {
-    if (key === strategyConfigKey) {
-      return scenario.strategyConfig ?? { INTERVAL: '15' };
+    if (strategyConfigMap.has(key)) {
+      return strategyConfigMap.get(key);
     }
     return fallback;
   });
@@ -75,21 +97,31 @@ const loadScript = async (scenario: Scenario) => {
       return [makeCandle(1000, 10), makeCandle(2000, 11)];
     }),
   };
-  const strategySignal = {
-    signalId: 'sig-new',
-    strategy: 'TrendLine',
-    symbol: 'ETHUSDT',
-    interval: '15',
-    direction: 'LONG',
-    timestamp: 2000,
-    prices: { currentPrice: 11 },
-    figures: {},
-    indicators: {},
-    additionalIndicators: {},
-  };
-  const strategyFn = jest.fn(async () => strategySignal);
-  const strategyCreator = jest.fn(async () => strategyFn);
-  const getStrategyCreator = jest.fn(async () => strategyCreator);
+  const strategyCreatorMap = new Map<string, jest.Mock>();
+  const strategyFnMap = new Map<string, jest.Mock>();
+
+  for (const { strategyName, result } of strategyEntries) {
+    const strategySignal = {
+      signalId: `${strategyName}-sig`,
+      strategy: strategyName,
+      symbol: 'ETHUSDT',
+      interval: '15',
+      direction: 'LONG',
+      timestamp: 2000,
+      prices: { currentPrice: 11 },
+      figures: {},
+      indicators: {},
+      additionalIndicators: {},
+    };
+    const strategyFn = jest.fn(async () => result ?? strategySignal);
+    const strategyCreator = jest.fn(async () => strategyFn);
+    strategyFnMap.set(strategyName, strategyFn);
+    strategyCreatorMap.set(strategyName, strategyCreator);
+  }
+
+  const getStrategyCreator = jest.fn(async (strategyName: string) =>
+    strategyCreatorMap.get(strategyName),
+  );
   const getTickers = jest.fn(async () => ['ETHUSDT']);
   const update = jest.fn(async () => null);
   const makeScreenshots = jest.fn(async () => null);
@@ -188,8 +220,8 @@ const loadScript = async (scenario: Scenario) => {
       runWithConcurrency,
       sendToTG,
       setData,
-      strategyCreator,
-      strategyFn,
+      strategyCreatorMap,
+      strategyFnMap,
       update,
     },
   };
@@ -220,6 +252,7 @@ describe('signals script', () => {
         updateOnly: false,
         cacheOnly: true,
         showTickersList: false,
+        showSkipStats: false,
         user: 'root',
         connector: 'bybit',
       },
@@ -232,20 +265,130 @@ describe('signals script', () => {
       'TrendLine',
       expect.any(String),
     );
-    expect(mocks.strategyCreator).toHaveBeenCalledTimes(1);
-    expect(mocks.strategyFn).toHaveBeenCalledTimes(1);
+    expect(mocks.strategyCreatorMap.get('TrendLine')).toHaveBeenCalledTimes(1);
+    expect(mocks.strategyFnMap.get('TrendLine')).toHaveBeenCalledTimes(1);
     expect(mocks.setData).toHaveBeenCalledWith(
-      mocks.redisKeys.signal('ETHUSDT', 'sig-new'),
-      expect.objectContaining({ signalId: 'sig-new', symbol: 'ETHUSDT' }),
+      mocks.redisKeys.signal('ETHUSDT', 'TrendLine-sig'),
+      expect.objectContaining({
+        signalId: 'TrendLine-sig',
+        symbol: 'ETHUSDT',
+      }),
       { expire: expect.any(Number) },
     );
     expect(mocks.setData).toHaveBeenCalledWith(
-      mocks.redisKeys.storeSignal('ETHUSDT', 'sig-new'),
-      expect.objectContaining({ signalId: 'sig-new', symbol: 'ETHUSDT' }),
+      mocks.redisKeys.storeSignal('ETHUSDT', 'TrendLine-sig'),
+      expect.objectContaining({
+        signalId: 'TrendLine-sig',
+        symbol: 'ETHUSDT',
+      }),
       { expire: expect.any(Number) },
     );
     expect(mocks.getKeys).not.toHaveBeenCalledWith(
       mocks.redisKeys.signalsBySymbol('ETHUSDT'),
+    );
+  });
+
+  it('logs aggregated skip stats when enabled', async () => {
+    const { signals, mocks } = await loadScript({
+      flags: {
+        timeframe: 15,
+        makeOrders: false,
+        notify: false,
+        skipScreenshots: true,
+        updateOnly: false,
+        cacheOnly: true,
+        showTickersList: false,
+        showSkipStats: true,
+        user: 'root',
+        connector: 'bybit',
+      },
+      strategyResult: 'TRENDLINE_TIMING:WAIT_RETEST',
+    });
+
+    await signals();
+
+    expect(mocks.logger.info).toHaveBeenCalledWith('skip stats:');
+    expect(mocks.logger.info).toHaveBeenCalledWith(
+      'TrendLine: evaluated=1, signals=0',
+    );
+    expect(mocks.logger.info).toHaveBeenCalledWith(
+      '  TRENDLINE_TIMING:WAIT_RETEST: 1',
+    );
+  });
+
+  it('collects signals from multiple strategies for the same symbol', async () => {
+    const { signals, mocks } = await loadScript({
+      flags: {
+        timeframe: 15,
+        makeOrders: false,
+        notify: false,
+        skipScreenshots: true,
+        updateOnly: false,
+        cacheOnly: true,
+        showTickersList: false,
+        showSkipStats: false,
+        user: 'root',
+        connector: 'bybit',
+      },
+      strategyConfigs: [
+        {
+          strategyName: 'ReverseTrendLine',
+          result: {
+            signalId: 'rev-sig',
+            strategy: 'ReverseTrendLine',
+            symbol: 'ETHUSDT',
+            interval: '15',
+            direction: 'SHORT',
+            timestamp: 2000,
+            prices: { currentPrice: 11 },
+            figures: {},
+            indicators: {},
+            additionalIndicators: {},
+          },
+        },
+        {
+          strategyName: 'TrendLine',
+          result: {
+            signalId: 'trend-sig',
+            strategy: 'TrendLine',
+            symbol: 'ETHUSDT',
+            interval: '15',
+            direction: 'LONG',
+            timestamp: 2000,
+            prices: { currentPrice: 11 },
+            figures: {},
+            indicators: {},
+            additionalIndicators: {},
+          },
+        },
+      ],
+    });
+
+    await signals();
+
+    expect(mocks.strategyFnMap.get('ReverseTrendLine')).toHaveBeenCalledTimes(
+      1,
+    );
+    expect(mocks.strategyFnMap.get('TrendLine')).toHaveBeenCalledTimes(1);
+    expect(mocks.setData).toHaveBeenCalledWith(
+      mocks.redisKeys.signal('ETHUSDT', 'rev-sig'),
+      expect.objectContaining({ signalId: 'rev-sig' }),
+      { expire: expect.any(Number) },
+    );
+    expect(mocks.setData).toHaveBeenCalledWith(
+      mocks.redisKeys.signal('ETHUSDT', 'trend-sig'),
+      expect.objectContaining({ signalId: 'trend-sig' }),
+      { expire: expect.any(Number) },
+    );
+    expect(mocks.logger.info).toHaveBeenCalledWith(
+      'Signal found %s by strategy %s',
+      'ETHUSDT',
+      'ReverseTrendLine',
+    );
+    expect(mocks.logger.info).toHaveBeenCalledWith(
+      'Signal found %s by strategy %s',
+      'ETHUSDT',
+      'TrendLine',
     );
   });
 });
