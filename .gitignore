@@ -41,6 +41,7 @@ error.log*
 
 # typescript
 *.tsbuildinfo
+apps/app/next-env.d.ts
 
 # app
 /data

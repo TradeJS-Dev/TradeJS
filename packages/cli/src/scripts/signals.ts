@@ -57,8 +57,6 @@ const projectRoot =
   String(process.env.PROJECT_CWD || process.cwd()).trim() || process.cwd();
 
 const flags = args.parse(process.argv);
-const minTouches = parseInt(flags.points);
-const offset = parseInt(flags.offset);
 const interval = flags.timeframe.toString() as Interval;
 
 const formatElapsed = (startedAt: number) =>
@@ -367,7 +365,6 @@ export const signals = async () => {
 
     if (!flags.skipScreenshots) {
       await makeScreenshots(signals, '15', flags.user);
-      await makeScreenshots(signals, '60', flags.user);
     }
 
     if (flags.notify) {
