@@ -1,6 +1,6 @@
 {
   "name": "@tradejs/core",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "description": "Browser-safe public API for the TradeJS open-source framework: config, strategy authoring, indicators, figures, and shared helpers.",
   "keywords": [
     "tradejs",

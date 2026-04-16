@@ -364,6 +364,7 @@ export const signals = async () => {
         interval,
         tickers,
         SIGNALS_CLI_PRELOAD_DAYS,
+        { connectorLabel: connectorName },
       );
 
       if (btcBinanceConnector !== marketConnector) {
@@ -372,6 +373,7 @@ export const signals = async () => {
           interval,
           ['BTCUSDT'],
           SIGNALS_CLI_PRELOAD_DAYS,
+          { connectorLabel: ConnectorNames.Binance },
         );
       }
 
@@ -381,6 +383,7 @@ export const signals = async () => {
           interval,
           ['BTCUSDT'],
           SIGNALS_CLI_PRELOAD_DAYS,
+          { connectorLabel: ConnectorNames.Coinbase },
         );
       }
     }
@@ -417,7 +420,7 @@ export const signals = async () => {
     }
     logger.info(
       chalk.yellow(
-        `loaded strategies: ${runtimeStrategies.map((s) => s.strategyName).join(', ')}`,
+        `loaded strategies (user=${flags.user}): ${runtimeStrategies.map((s) => s.strategyName).join(', ')}`,
       ),
     );
     const strategyStats = createStrategySkipStats(runtimeStrategies);

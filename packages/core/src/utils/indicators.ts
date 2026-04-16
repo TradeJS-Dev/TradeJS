@@ -36,6 +36,24 @@ const DEFAULT_INDICATOR_PERIODS: IndicatorPeriods = {
   levelDelay: 2,
 };
 
+const resolveIndicatorPeriods = (
+  periods: Partial<IndicatorPeriods> = {},
+): IndicatorPeriods => {
+  const resolved = {
+    ...DEFAULT_INDICATOR_PERIODS,
+  };
+
+  for (const [key, value] of Object.entries(periods) as Array<
+    [keyof IndicatorPeriods, unknown]
+  >) {
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      resolved[key] = value;
+    }
+  }
+
+  return resolved;
+};
+
 const ONE_HOUR_MS = 3_600_000;
 const ONE_DAY_MS = 86_400_000;
 
@@ -209,10 +227,7 @@ export const createIndicators = (
     options.pluginRegistryScope,
   );
   const includeMlPayload = options.includeMlPayload !== false;
-  const indicatorPeriods = {
-    ...DEFAULT_INDICATOR_PERIODS,
-    ...(options.periods || {}),
-  };
+  const indicatorPeriods = resolveIndicatorPeriods(options.periods);
   const closes: number[] = [];
   const highs: number[] = [];
   const lows: number[] = [];
@@ -638,10 +653,7 @@ export const buildMlTimeframeIndicators = (
   periods: Partial<IndicatorPeriods> = {},
 ): Record<string, number[]> => {
   const result: Record<string, number[]> = {};
-  const indicatorPeriods = {
-    ...DEFAULT_INDICATOR_PERIODS,
-    ...periods,
-  };
+  const indicatorPeriods = resolveIndicatorPeriods(periods);
 
   for (const timeframe of INDICATOR_TIMEFRAMES) {
     const tfCandles = resampleCandles(candles, timeframe.minutes);

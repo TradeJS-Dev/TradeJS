@@ -23,22 +23,35 @@ type IndicatorPeriodsConfig = Partial<
 
 export const buildDefaultIndicatorPeriods = (
   config: IndicatorPeriodsConfig,
-): Partial<IndicatorPeriods> => ({
-  maFast: config.MA_FAST,
-  maMedium: config.MA_MEDIUM,
-  maSlow: config.MA_SLOW,
-  obvSma: config.OBV_SMA,
-  atr: config.ATR,
-  atrPctShort: config.ATR_PCT_SHORT,
-  atrPctLong: config.ATR_PCT_LONG,
-  bb: config.BB,
-  bbStd: config.BB_STD,
-  macdFast: config.MACD_FAST,
-  macdSlow: config.MACD_SLOW,
-  macdSignal: config.MACD_SIGNAL,
-  levelLookback: config.LEVEL_LOOKBACK,
-  levelDelay: config.LEVEL_DELAY,
-});
+): Partial<IndicatorPeriods> => {
+  const periods: Partial<IndicatorPeriods> = {};
+
+  const assignIfFinite = (
+    key: keyof IndicatorPeriods,
+    value: unknown,
+  ): void => {
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      periods[key] = value;
+    }
+  };
+
+  assignIfFinite('maFast', config.MA_FAST);
+  assignIfFinite('maMedium', config.MA_MEDIUM);
+  assignIfFinite('maSlow', config.MA_SLOW);
+  assignIfFinite('obvSma', config.OBV_SMA);
+  assignIfFinite('atr', config.ATR);
+  assignIfFinite('atrPctShort', config.ATR_PCT_SHORT);
+  assignIfFinite('atrPctLong', config.ATR_PCT_LONG);
+  assignIfFinite('bb', config.BB);
+  assignIfFinite('bbStd', config.BB_STD);
+  assignIfFinite('macdFast', config.MACD_FAST);
+  assignIfFinite('macdSlow', config.MACD_SLOW);
+  assignIfFinite('macdSignal', config.MACD_SIGNAL);
+  assignIfFinite('levelLookback', config.LEVEL_LOOKBACK);
+  assignIfFinite('levelDelay', config.LEVEL_DELAY);
+
+  return periods;
+};
 
 type IndicatorsController = ReturnType<typeof createIndicators>;
 type SnapshotController = IndicatorsController & {

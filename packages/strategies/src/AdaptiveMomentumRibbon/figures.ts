@@ -1,9 +1,7 @@
-import {
-  PineContextLike,
-  getPinePlotSeries,
-  toFiniteNumber,
-} from '@tradejs/node/pine';
-
+import type {
+  AdaptiveMomentumRibbonPlotName,
+  AdaptiveMomentumRibbonPlotPoint,
+} from './engine';
 import {
   Direction,
   StrategyEntryModelFigures,
@@ -12,7 +10,9 @@ import {
 } from '@tradejs/types';
 
 interface BuildAdaptiveMomentumRibbonFiguresParams {
-  pineContext: PineContextLike;
+  plotSeries: Partial<
+    Record<AdaptiveMomentumRibbonPlotName, AdaptiveMomentumRibbonPlotPoint[]>
+  >;
   linePlots: string[];
   direction: Direction;
   entryTimestamp: number;
@@ -51,7 +51,7 @@ const LINE_STYLE_BY_PLOT: Record<string, LineStyleDescriptor> = {
 };
 
 const toFigurePoints = (
-  series: ReturnType<typeof getPinePlotSeries>,
+  series: AdaptiveMomentumRibbonPlotPoint[],
   maxPoints: number,
 ): StrategyFigurePoint[] => {
   const start = Math.max(0, series.length - maxPoints);
@@ -59,12 +59,13 @@ const toFigurePoints = (
 
   for (let i = start; i < series.length; i += 1) {
     const item = series[i];
-    const timestamp = toFiniteNumber(item?.time);
-    const value = toFiniteNumber(item?.value);
-    if (timestamp == null || value == null) continue;
+    if (!Number.isFinite(item?.time) || !Number.isFinite(item?.value)) {
+      continue;
+    }
+
     points.push({
-      timestamp,
-      value,
+      timestamp: item.time,
+      value: item.value,
     });
   }
 
@@ -72,7 +73,7 @@ const toFigurePoints = (
 };
 
 export const buildAdaptiveMomentumRibbonFigures = ({
-  pineContext,
+  plotSeries,
   linePlots,
   direction,
   entryTimestamp,
@@ -81,7 +82,8 @@ export const buildAdaptiveMomentumRibbonFigures = ({
 }: BuildAdaptiveMomentumRibbonFiguresParams): StrategyEntryModelFigures => {
   const lines = linePlots
     .map((plotName, index) => {
-      const series = getPinePlotSeries(pineContext, plotName);
+      const series =
+        plotSeries[plotName as AdaptiveMomentumRibbonPlotName] ?? [];
       const points = toFigurePoints(series, maxPoints);
       if (!points.length) {
         return null;

@@ -1,60 +1,9 @@
-import {
-  getLatestPineBooleanPlotValues,
-  getLatestPineNumberPlotValues,
-  runPineScript,
-  type PineContextLike,
-} from '@tradejs/node/pine';
 import { asPositiveInt, asPositiveNumber } from '@tradejs/core/math';
 import { logger } from '@tradejs/infra/logger';
+import type { CreateStrategyCore } from '@tradejs/types';
 import type { AdaptiveMomentumRibbonConfig } from './config';
+import { evaluateAdaptiveMomentumRibbon } from './engine';
 import { buildAdaptiveMomentumRibbonFigures } from './figures';
-import { type CreateStrategyCore } from '@tradejs/types';
-
-const AMR_PINE_FILE_NAME = 'adaptiveMomentumRibbon.pine';
-const AMR_BOOLEAN_PLOTS = [
-  'entryLong',
-  'entryShort',
-  'invalidated',
-  'activeBuy',
-  'activeSell',
-] as const;
-const AMR_NUMBER_PLOTS = [
-  'signalOsc',
-  'kcMidline',
-  'kcUpper',
-  'kcLower',
-  'invalidationLevel',
-] as const;
-
-const asKcMaType = (
-  value: unknown,
-): AdaptiveMomentumRibbonConfig['AMR_KC_MA_TYPE'] => {
-  if (
-    value === 'SMA' ||
-    value === 'EMA' ||
-    value === 'SMMA (RMA)' ||
-    value === 'WMA' ||
-    value === 'VWMA'
-  ) {
-    return value;
-  }
-
-  return 'EMA';
-};
-
-const resolveAmrInputs = (
-  config: AdaptiveMomentumRibbonConfig,
-): Record<string, unknown> => ({
-  'Momentum Period': asPositiveInt(config.AMR_MOMENTUM_PERIOD, 20),
-  'Butterworth Smoothing': asPositiveInt(config.AMR_BUTTERWORTH_SMOOTHING, 3),
-  'Confirm Signals on Bar Close': Boolean(config.AMR_WAIT_CLOSE),
-  'Show Invalidation Levels': Boolean(config.AMR_SHOW_INVALIDATION_LEVELS),
-  'Show Keltner Channel': Boolean(config.AMR_SHOW_KELTNER_CHANNEL),
-  'KC Length': asPositiveInt(config.AMR_KC_LENGTH, 20),
-  'KC MA Type': asKcMaType(config.AMR_KC_MA_TYPE),
-  'ATR Length': asPositiveInt(config.AMR_ATR_LENGTH, 14),
-  'ATR Multiplier': asPositiveNumber(config.AMR_ATR_MULTIPLIER, 2),
-});
 
 const resolveLinePlots = (value: unknown): string[] => {
   if (!Array.isArray(value)) {
@@ -66,30 +15,15 @@ const resolveLinePlots = (value: unknown): string[] => {
     .filter((item) => item.length > 0);
 };
 
-const readAmrSnapshot = (pineContext: PineContextLike, linePlots: string[]) => {
-  return {
-    ...getLatestPineBooleanPlotValues(pineContext, AMR_BOOLEAN_PLOTS),
-    ...getLatestPineNumberPlotValues(pineContext, AMR_NUMBER_PLOTS),
-    lineValues: getLatestPineNumberPlotValues(pineContext, linePlots),
-  };
-};
-
 export const createAdaptiveMomentumRibbonCore: CreateStrategyCore<
   AdaptiveMomentumRibbonConfig
-> = async ({ config, symbol, loadPineScriptFile, strategyApi }) => {
-  const script = loadPineScriptFile(AMR_PINE_FILE_NAME);
+> = async ({ config, symbol, strategyApi }) => {
   const { LONG, SHORT, AMR_EXIT_ON_INVALIDATION, MAX_LOSS_VALUE, FEE_PERCENT } =
     config;
   const linePlots = resolveLinePlots(config.AMR_LINE_PLOTS);
   const lookbackBars = asPositiveInt(config.AMR_LOOKBACK_BARS, 0);
-  const pineInputs = resolveAmrInputs(config);
-  const timeframe = String(config.INTERVAL ?? '15');
 
   return async () => {
-    if (!script) {
-      return strategyApi.skip('AMR_SCRIPT_EMPTY');
-    }
-
     const { fullData, currentPrice, timestamp } =
       await strategyApi.getMarketData();
     if (fullData.length < 2) {
@@ -103,27 +37,26 @@ export const createAdaptiveMomentumRibbonCore: CreateStrategyCore<
 
     const candles = lookbackBars > 0 ? fullData.slice(-lookbackBars) : fullData;
 
-    let pineContext;
+    let evaluation;
     try {
-      pineContext = await runPineScript({
+      evaluation = evaluateAdaptiveMomentumRibbon({
         candles,
-        script,
-        symbol,
-        timeframe,
-        inputs: pineInputs,
+        config,
+        linePlots,
       });
     } catch (error) {
       if (typeof globalThis.setImmediate === 'function') {
         logger.warn(
-          'AdaptiveMomentumRibbon pine run failed for %s: %s',
+          'AdaptiveMomentumRibbon evaluation failed for %s: %s',
           symbol,
           String(error),
         );
       }
-      return strategyApi.skip('AMR_SCRIPT_FAILED');
+
+      return strategyApi.skip('AMR_EVALUATION_FAILED');
     }
 
-    const amr = readAmrSnapshot(pineContext, linePlots);
+    const { snapshot: amr, plotSeries } = evaluation;
 
     if (amr.entryLong && amr.entryShort) {
       return strategyApi.skip('AMR_SIGNAL_CONFLICT');
@@ -188,7 +121,7 @@ export const createAdaptiveMomentumRibbonCore: CreateStrategyCore<
       code: amr.entryLong ? 'AMR_ENTRY_LONG' : 'AMR_ENTRY_SHORT',
       direction: modeConfig.direction,
       figures: buildAdaptiveMomentumRibbonFigures({
-        pineContext,
+        plotSeries,
         linePlots,
         direction: modeConfig.direction,
         entryTimestamp: timestamp,
@@ -206,6 +139,15 @@ export const createAdaptiveMomentumRibbonCore: CreateStrategyCore<
           butterworthSmoothing: asPositiveInt(
             config.AMR_BUTTERWORTH_SMOOTHING,
             3,
+          ),
+          minSignalOscAbs: asPositiveNumber(
+            config.AMR_MIN_SIGNAL_OSC_ABS,
+            0.55,
+          ),
+          requireKcBias: Boolean(config.AMR_REQUIRE_KC_BIAS),
+          minBarsBetweenSignals: asPositiveInt(
+            config.AMR_MIN_BARS_BETWEEN_SIGNALS,
+            12,
           ),
           kcLength: asPositiveInt(config.AMR_KC_LENGTH, 20),
           atrLength: asPositiveInt(config.AMR_ATR_LENGTH, 14),

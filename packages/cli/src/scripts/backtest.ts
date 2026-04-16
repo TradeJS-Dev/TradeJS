@@ -467,7 +467,9 @@ const backtest = async () => {
   }
 
   if (!flags.cacheOnly) {
-    await update(marketConnector, interval, tickers);
+    await update(marketConnector, interval, tickers, undefined, {
+      connectorLabel: connectorName,
+    });
 
     const binanceConnectorCreator = await getConnectorCreatorByName(
       ConnectorNames.Binance,
@@ -491,8 +493,12 @@ const backtest = async () => {
     )({
       userName: flags.user,
     });
-    await update(binanceConnector, interval, ['BTCUSDT']);
-    await update(coinbaseConnector, interval, ['BTCUSDT']);
+    await update(binanceConnector, interval, ['BTCUSDT'], undefined, {
+      connectorLabel: ConnectorNames.Binance,
+    });
+    await update(coinbaseConnector, interval, ['BTCUSDT'], undefined, {
+      connectorLabel: ConnectorNames.Coinbase,
+    });
   }
 
   if (flags.updateOnly) {

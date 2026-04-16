@@ -139,7 +139,11 @@ yarn sandbox:e2e
 yarn sandbox:infra-down
 ```
 
-`yarn sandbox:install` refreshes published `@tradejs/*` packages in `examples/sandbox` before install.
+`yarn sandbox:install` installs `examples/sandbox` deterministically from its
+committed lockfile.
+
+Use `yarn sandbox:refresh` only when you intentionally want to update the
+published `@tradejs/*` versions used by the sandbox.
 
 ## Import Rule For Plugins
 

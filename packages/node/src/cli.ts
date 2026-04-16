@@ -111,9 +111,13 @@ export const update = async (
   interval: Interval,
   tickers: string[],
   preloadDays = PRELOAD_DAYS,
+  options: {
+    connectorLabel?: string;
+  } = {},
 ) => {
   const PRELOAD_START = getTimestamp(preloadDays);
   const PRELOAD_END = getTimestamp();
+  const connectorLabel = String(options.connectorLabel || '').trim();
 
   const bar = new ProgressBar(
     ':current/:total [:bar][:percent] :eta(s) :symbol',
@@ -125,7 +129,7 @@ export const update = async (
 
   logger.info(
     chalk.yellow(
-      `update: ${tickers.length} (klineConcurrency=${KLINE_CONCURRENCY_LIMIT}, preloadDays=${preloadDays})`,
+      `update: ${tickers.length} (connector=${connectorLabel || 'unknown'}, klineConcurrency=${KLINE_CONCURRENCY_LIMIT}, preloadDays=${preloadDays})`,
     ),
   );
 

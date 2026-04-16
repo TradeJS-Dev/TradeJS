@@ -42,12 +42,15 @@ const makeSignal = (overrides: Record<string, any> = {}) =>
       amrSignalTiming: {
         entryTiming: 'zero_cross',
         waitClose: true,
-        lookbackBars: 400,
+        lookbackBars: 200,
         ...overrides.additionalIndicators?.amrSignalTiming,
       },
       amrConfigSnapshot: {
-        momentumPeriod: 20,
-        butterworthSmoothing: 3,
+        momentumPeriod: 32,
+        butterworthSmoothing: 4,
+        minSignalOscAbs: 0.55,
+        requireKcBias: true,
+        minBarsBetweenSignals: 12,
         kcLength: 20,
         atrLength: 14,
         atrMultiplier: 2,

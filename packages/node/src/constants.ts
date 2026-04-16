@@ -9,7 +9,7 @@ const getPositiveIntegerEnv = (name: string, fallback: number) => {
     : fallback;
 };
 
-const DEFAULT_KLINE_CONCURRENCY_LIMIT = NODE_ENV === 'production' ? 1 : 10;
+const DEFAULT_KLINE_CONCURRENCY_LIMIT = NODE_ENV === 'production' ? 5 : 10;
 
 export const KLINE_CONCURRENCY_LIMIT = getPositiveIntegerEnv(
   'KLINE_CONCURRENCY_LIMIT',

@@ -39,6 +39,10 @@ yarn sandbox:e2e
 yarn sandbox:infra-down
 ```
 
+`yarn sandbox:install` is deterministic and installs from the committed
+`examples/sandbox` lockfile. Use `yarn sandbox:refresh` only when you explicitly
+want to update the published `@tradejs/*` versions used by the sandbox.
+
 ## What `e2e` does
 
 1. Creates/updates user `sandbox`.

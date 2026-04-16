@@ -1,5 +1,6 @@
 import { Candle } from '@tradejs/types';
 import { createIndicators } from '../indicators';
+import { buildDefaultIndicatorPeriods } from '../strategyHelpers/indicators';
 
 const INTERVAL_15M_MS = 15 * 60_000;
 
@@ -19,6 +20,21 @@ const makeCandle = (
 });
 
 describe('utils indicators', () => {
+  it('ignores undefined strategy period overrides and preserves defaults', () => {
+    const periods = buildDefaultIndicatorPeriods({
+      MA_FAST: undefined,
+      ATR: 14,
+      LEVEL_DELAY: 0,
+    });
+
+    expect(periods).toEqual({
+      atr: 14,
+      levelDelay: 0,
+    });
+
+    expect(() => createIndicators([], [], { periods })).not.toThrow();
+  });
+
   it('computes price1hPcnt and price24hPcnt when window is full', () => {
     const indicators = createIndicators([]);
     const results: Array<ReturnType<typeof indicators.next> | null> = [];

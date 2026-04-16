@@ -216,7 +216,15 @@ yarn sandbox:e2e
 yarn sandbox:infra-down
 ```
 
-`yarn sandbox:install` updates the published `@tradejs/*` packages used by `examples/sandbox` within the allowed semver ranges before installing them.
+`yarn sandbox:install` is deterministic and installs `examples/sandbox` from its
+committed lockfile.
+
+If you intentionally want to refresh the published `@tradejs/*` packages used by
+the sandbox, run:
+
+```bash
+yarn sandbox:refresh
+```
 
 ## Documentation
 
