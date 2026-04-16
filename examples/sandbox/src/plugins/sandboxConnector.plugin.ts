@@ -54,6 +54,8 @@ const SandboxMockConnectorCreator: ConnectorCreator = async () => {
     getPosition: async () => null,
     getPositions: async () => [],
     placeOrder: async () => true,
+    setTakeProfits: async () => true,
+    setStopLoss: async () => true,
     closePosition: async () => true,
     getState: async () => state,
     setState: async (nextState: object) => {

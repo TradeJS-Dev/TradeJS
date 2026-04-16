@@ -116,26 +116,55 @@ const SandboxDeterministicStrategyCreator: StrategyCreator = async ({
       slPct,
     });
 
-    const placed = await connector.placeOrder(
-      {
-        symbol,
-        qty,
-        price: signal.prices.currentPrice,
-        timestamp: candle.timestamp,
-        direction: signal.direction,
-        signal,
-      },
-      [
+    const placed = await connector.placeOrder({
+      symbol,
+      qty,
+      price: signal.prices.currentPrice,
+      timestamp: candle.timestamp,
+      direction: signal.direction,
+      signal,
+    });
+
+    if (!placed) {
+      return 'SANDBOX_ORDER_REJECTED';
+    }
+
+    const takeProfitsSet = await connector.setTakeProfits({
+      symbol,
+      direction: signal.direction,
+      qty,
+      takeProfits: [
         {
           price: signal.prices.takeProfitPrice,
           rate: 1,
         },
       ],
-      signal.prices.stopLossPrice,
-    );
+    });
 
-    if (!placed) {
-      return 'SANDBOX_ORDER_REJECTED';
+    if (!takeProfitsSet) {
+      await connector.closePosition({
+        symbol,
+        price: signal.prices.currentPrice,
+        timestamp: candle.timestamp,
+        direction: signal.direction,
+      });
+      return 'SANDBOX_SET_TP_FAILED';
+    }
+
+    const stopLossSet = await connector.setStopLoss({
+      symbol,
+      direction: signal.direction,
+      stopLossPrice: signal.prices.stopLossPrice,
+    });
+
+    if (!stopLossSet) {
+      await connector.closePosition({
+        symbol,
+        price: signal.prices.currentPrice,
+        timestamp: candle.timestamp,
+        direction: signal.direction,
+      });
+      return 'SANDBOX_SET_SL_FAILED';
     }
 
     return signal;
