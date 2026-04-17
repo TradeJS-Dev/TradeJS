@@ -31,6 +31,7 @@ yarn-error.log*
 service.log*
 error.log*
 /logs
+.playwright-cli/
 
 # local env files
 .env*.local

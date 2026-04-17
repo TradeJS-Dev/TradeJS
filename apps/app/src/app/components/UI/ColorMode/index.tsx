@@ -8,17 +8,8 @@ import {
   type IconButtonProps,
   type SpanProps,
 } from '@chakra-ui/react';
-import { ThemeProvider, useTheme, type ThemeProviderProps } from 'next-themes';
 import * as React from 'react';
 import { LuMoon, LuSun } from 'react-icons/lu';
-
-export interface ColorModeProviderProps extends ThemeProviderProps {}
-
-export function ColorModeProvider(props: ColorModeProviderProps) {
-  return (
-    <ThemeProvider attribute="class" disableTransitionOnChange {...props} />
-  );
-}
 
 export type ColorMode = 'light' | 'dark';
 
@@ -28,16 +19,72 @@ export interface UseColorModeReturn {
   toggleColorMode: () => void;
 }
 
-export function useColorMode(): UseColorModeReturn {
-  const { resolvedTheme, setTheme } = useTheme();
-  const toggleColorMode = () => {
-    setTheme(resolvedTheme === 'dark' ? 'light' : 'dark');
+export interface ColorModeProviderProps {
+  children: React.ReactNode;
+  forcedTheme?: ColorMode;
+}
+
+const ColorModeContext = React.createContext<UseColorModeReturn | null>(null);
+
+export function ColorModeProvider({
+  children,
+  forcedTheme,
+}: ColorModeProviderProps) {
+  const [colorMode, setColorModeState] = React.useState<ColorMode>(
+    forcedTheme ?? 'dark',
+  );
+
+  React.useEffect(() => {
+    if (!forcedTheme) {
+      return;
+    }
+
+    setColorModeState(forcedTheme);
+  }, [forcedTheme]);
+
+  React.useEffect(() => {
+    const root = document.documentElement;
+    const nextColorMode = forcedTheme ?? colorMode;
+    const previousColorMode = nextColorMode === 'dark' ? 'light' : 'dark';
+
+    root.classList.remove(previousColorMode);
+    root.classList.add(nextColorMode);
+    root.style.colorScheme = nextColorMode;
+  }, [colorMode, forcedTheme]);
+
+  const setColorMode = (nextColorMode: ColorMode) => {
+    if (forcedTheme) {
+      return;
+    }
+
+    setColorModeState(nextColorMode);
   };
-  return {
-    colorMode: resolvedTheme as ColorMode,
-    setColorMode: setTheme,
+
+  const toggleColorMode = () => {
+    setColorMode(colorMode === 'dark' ? 'light' : 'dark');
+  };
+
+  const value: UseColorModeReturn = {
+    colorMode: forcedTheme ?? colorMode,
+    setColorMode,
     toggleColorMode,
   };
+
+  return (
+    <ColorModeContext.Provider value={value}>
+      {children}
+    </ColorModeContext.Provider>
+  );
+}
+
+export function useColorMode(): UseColorModeReturn {
+  return (
+    React.useContext(ColorModeContext) ?? {
+      colorMode: 'dark',
+      setColorMode: () => {},
+      toggleColorMode: () => {},
+    }
+  );
 }
 
 export function useColorModeValue<T>(light: T, dark: T) {
