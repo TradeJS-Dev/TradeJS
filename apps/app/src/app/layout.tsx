@@ -1,5 +1,4 @@
 import type { Metadata } from 'next';
-import { ClientOnly } from '@chakra-ui/react';
 import { AppShell } from '@shared/AppShell';
 import Provider from './provider';
 import './globals.css';
@@ -57,11 +56,9 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body>
-        <ClientOnly>
-          <Provider>
-            <AppShell>{children}</AppShell>
-          </Provider>
-        </ClientOnly>
+        <Provider>
+          <AppShell>{children}</AppShell>
+        </Provider>
       </body>
     </html>
   );
