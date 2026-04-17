@@ -280,6 +280,7 @@ describe('createAdaptiveMomentumRibbonCore', () => {
         amrSignalTiming: expect.objectContaining({
           entryTiming: 'zero_cross',
           waitClose: true,
+          confirmOnNextBar: true,
           lookbackBars: 200,
         }),
         amrConfigSnapshot: expect.objectContaining({

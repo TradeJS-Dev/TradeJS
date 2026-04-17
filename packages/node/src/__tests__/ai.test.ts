@@ -374,6 +374,7 @@ const makeAdaptiveMomentumRibbonSignal = (
       amrSignalTiming: {
         entryTiming: 'zero_cross',
         waitClose: true,
+        confirmOnNextBar: true,
         lookbackBars: 200,
       },
       amrConfigSnapshot: {
@@ -2413,6 +2414,92 @@ describe('ai helpers', () => {
           retestPrice: 100.1,
           takeProfitPrice: null,
           stopLossPrice: null,
+        }),
+      );
+      expect(chatOpenAICtorMock).not.toHaveBeenCalled();
+      expect(invokeMock).not.toHaveBeenCalled();
+    });
+
+    it('keeps strong inside-channel AdaptiveMomentumRibbon longs in watch mode during local replay', async () => {
+      const signal = makeAdaptiveMomentumRibbonSignal({
+        prices: {
+          currentPrice: 100.5,
+          takeProfitPrice: 103.2,
+          stopLossPrice: 99.8,
+        },
+        additionalIndicators: {
+          amr: {
+            signalOsc: 0.88,
+            kcMidline: 100.2,
+            kcUpper: 101.1,
+            kcLower: 99.5,
+            invalidationLevel: 99.9,
+          },
+        },
+      });
+      const payload = buildAiPayload(signal);
+
+      expect(getDeterministicAiGateContext(payload)).toEqual(
+        expect.objectContaining({
+          approvalAllowedNow: false,
+          deterministicQuality: 3,
+          structuralHardBlockReasons: [],
+        }),
+      );
+
+      const result = await runAiPromptLocal(signal, { payload });
+
+      expect(result).toEqual(
+        expect.objectContaining({
+          direction: null,
+          quality: 3,
+          needRetest: true,
+          retestPrice: 101.1,
+          takeProfitPrice: null,
+          stopLossPrice: null,
+        }),
+      );
+      expect(chatOpenAICtorMock).not.toHaveBeenCalled();
+      expect(invokeMock).not.toHaveBeenCalled();
+    });
+
+    it('keeps moderate above-upper AdaptiveMomentumRibbon longs in q4 during local replay', async () => {
+      const signal = makeAdaptiveMomentumRibbonSignal({
+        prices: {
+          currentPrice: 100.78,
+          takeProfitPrice: 103.4,
+          stopLossPrice: 99.92,
+        },
+        additionalIndicators: {
+          amr: {
+            signalOsc: 0.72,
+            kcMidline: 100.2,
+            kcUpper: 100.7,
+            kcLower: 99.6,
+            invalidationLevel: 99.92,
+          },
+        },
+      });
+      const payload = buildAiPayload(signal);
+
+      expect(getDeterministicAiGateContext(payload)).toEqual(
+        expect.objectContaining({
+          approvalAllowedNow: true,
+          deterministicQuality: 4,
+          structuralHardBlockReasons: [],
+        }),
+      );
+
+      const result = await runAiPromptLocal(signal, { payload });
+
+      expect(result).toEqual(
+        expect.objectContaining({
+          direction: 'LONG',
+          quality: 4,
+          needRetest: false,
+          retestPrice: null,
+          takeProfitPrice: 103.4,
+          stopLossPrice: 99.92,
         }),
       );
       expect(chatOpenAICtorMock).not.toHaveBeenCalled();

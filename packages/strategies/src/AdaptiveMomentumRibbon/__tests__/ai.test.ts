@@ -42,6 +42,7 @@ const makeSignal = (overrides: Record<string, any> = {}) =>
       amrSignalTiming: {
         entryTiming: 'zero_cross',
         waitClose: true,
+        confirmOnNextBar: true,
         lookbackBars: 200,
         ...overrides.additionalIndicators?.amrSignalTiming,
       },
@@ -209,6 +210,126 @@ describe('adaptiveMomentumRibbonAiAdapter', () => {
         btcBiasAligned: false,
         deterministicQuality: 3,
         approvalAllowedNow: false,
+      }),
+    );
+  });
+
+  it('keeps strong inside-channel long setups in watch mode until channel expansion', () => {
+    const signal = makeSignal({
+      prices: {
+        currentPrice: 100.5,
+        takeProfitPrice: 103.2,
+        stopLossPrice: 99.8,
+      },
+      additionalIndicators: {
+        amr: {
+          signalOsc: 0.88,
+          kcMidline: 100.2,
+          kcUpper: 101.1,
+          kcLower: 99.5,
+          invalidationLevel: 99.9,
+        },
+      },
+    });
+    const payload = adaptiveMomentumRibbonAiAdapter.buildPayload?.({
+      signal,
+      basePayload: {
+        signal: {
+          symbol: signal.symbol,
+          signalId: signal.signalId,
+          interval: signal.interval,
+          direction: signal.direction,
+          timestamp: signal.timestamp,
+          strategy: signal.strategy,
+          prices: {
+            currentPrice: signal.prices.currentPrice,
+            takeProfitPrice: signal.prices.takeProfitPrice,
+            stopLossPrice: signal.prices.stopLossPrice,
+          },
+        },
+        figures: {},
+        indicators: signal.indicators,
+        additionalIndicators: signal.additionalIndicators,
+      },
+    }) as any;
+
+    expect(payload.additionalIndicators.adaptiveMomentumRibbonContext).toEqual(
+      expect.objectContaining({
+        channelState: 'inside_channel',
+        channelBiasAligned: true,
+        deterministicQuality: 3,
+        approvalAllowedNow: false,
+        structuralHardBlockReasons: [],
+      }),
+    );
+
+    const analysis = adaptiveMomentumRibbonAiAdapter.postProcessAnalysis?.({
+      signal,
+      payload,
+      analysis: {
+        direction: 'LONG',
+        quality: 5,
+      },
+    });
+
+    expect(analysis).toEqual(
+      expect.objectContaining({
+        direction: null,
+        quality: 3,
+        needRetest: true,
+        retestPrice: 101.1,
+        takeProfitPrice: null,
+        stopLossPrice: null,
+      }),
+    );
+  });
+
+  it('keeps moderate above-upper longs in q4 without promoting them to q5', () => {
+    const signal = makeSignal({
+      prices: {
+        currentPrice: 100.78,
+        takeProfitPrice: 103.4,
+        stopLossPrice: 99.92,
+      },
+      additionalIndicators: {
+        amr: {
+          signalOsc: 0.72,
+          kcMidline: 100.2,
+          kcUpper: 100.7,
+          kcLower: 99.6,
+          invalidationLevel: 99.92,
+        },
+      },
+    });
+    const payload = adaptiveMomentumRibbonAiAdapter.buildPayload?.({
+      signal,
+      basePayload: {
+        signal: {
+          symbol: signal.symbol,
+          signalId: signal.signalId,
+          interval: signal.interval,
+          direction: signal.direction,
+          timestamp: signal.timestamp,
+          strategy: signal.strategy,
+          prices: {
+            currentPrice: signal.prices.currentPrice,
+            takeProfitPrice: signal.prices.takeProfitPrice,
+            stopLossPrice: signal.prices.stopLossPrice,
+          },
+        },
+        figures: {},
+        indicators: signal.indicators,
+        additionalIndicators: signal.additionalIndicators,
+      },
+    }) as any;
+
+    expect(payload.additionalIndicators.adaptiveMomentumRibbonContext).toEqual(
+      expect.objectContaining({
+        channelState: 'above_upper',
+        channelBiasAligned: true,
+        deterministicQuality: 4,
+        approvalAllowedNow: true,
+        structuralHardBlockReasons: [],
       }),
     );
   });

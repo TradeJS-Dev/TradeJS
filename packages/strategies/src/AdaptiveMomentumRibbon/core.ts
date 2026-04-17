@@ -132,6 +132,7 @@ export const createAdaptiveMomentumRibbonCore: CreateStrategyCore<
         amrSignalTiming: {
           entryTiming: 'zero_cross',
           waitClose: Boolean(config.AMR_WAIT_CLOSE),
+          confirmOnNextBar: Boolean(config.AMR_CONFIRM_ON_NEXT_BAR),
           lookbackBars,
         },
         amrConfigSnapshot: {

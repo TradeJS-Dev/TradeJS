@@ -20,7 +20,7 @@ const ADAPTIVE_MOMENTUM_RIBBON_CONTEXT_PROMPT = `
 
 const ADAPTIVE_MOMENTUM_RIBBON_PAYLOAD_PROMPT = `
 - В payload.additionalIndicators.adaptiveMomentumRibbonContext передается краткая сводка сигнала:
-  signalOsc / oscillatorStrength / channelState / invalidationDistancePct / structuralRewardRiskRatio / coinBiasAligned / btcBiasAligned / deterministicQuality / approvalAllowedNow / structuralHardBlockReasons.
+  signalOsc / oscillatorStrength / channelState / channelExtensionPct / invalidationDistancePct / structuralRewardRiskRatio / coinBiasAligned / btcBiasAligned / deterministicQuality / approvalAllowedNow / structuralHardBlockReasons.
 - Используй этот контекст как основную strategy-specific интерпретацию, а не пытайся заново восстановить ее только по общим рядам.
 `;
 
@@ -67,6 +67,7 @@ type AdaptiveMomentumRibbonAiContext = {
   invalidationLevel: number | null;
   channelState: AmrChannelState;
   channelBiasAligned: boolean | null;
+  channelExtensionPct: number | null;
   invalidationDistancePct: number | null;
   structuralRewardRiskRatio: number | null;
   coinMaBias: Bias;
@@ -202,6 +203,36 @@ const getDirectionalRewardPct = ({
     : ((currentPrice - takeProfitPrice) / currentPrice) * 100;
 };
 
+const getDirectionalChannelExtensionPct = ({
+  signalDirection,
+  currentPrice,
+  kcUpper,
+  kcLower,
+}: {
+  signalDirection: Direction | null;
+  currentPrice: number | null;
+  kcUpper: number | null;
+  kcLower: number | null;
+}) => {
+  if (signalDirection == null || currentPrice == null || currentPrice <= 0) {
+    return null;
+  }
+
+  if (signalDirection === 'LONG') {
+    if (kcUpper == null || currentPrice <= kcUpper) {
+      return null;
+    }
+
+    return ((currentPrice - kcUpper) / currentPrice) * 100;
+  }
+
+  if (kcLower == null || currentPrice >= kcLower) {
+    return null;
+  }
+
+  return ((kcLower - currentPrice) / currentPrice) * 100;
+};
+
 const getChannelState = ({
   signalDirection,
   currentPrice,
@@ -304,12 +335,12 @@ const getDeterministicAdaptiveMomentumRibbonQuality = (
     context.signalDirection === 'LONG'
       ? context.channelState === 'above_upper'
       : context.channelState === 'below_lower';
-  const channelInside =
-    context.channelState === 'inside_channel' || channelExpansion;
+  const channelExtensionStrong = isAtLeast(context.channelExtensionPct, 0.08);
 
   if (
     channelSupportive &&
     channelExpansion &&
+    channelExtensionStrong &&
     oscillatorElite &&
     invalidationTight &&
     structuralRrStrong &&
@@ -320,12 +351,12 @@ const getDeterministicAdaptiveMomentumRibbonQuality = (
 
   if (
     channelSupportive &&
-    channelInside &&
+    channelExpansion &&
     oscillatorModerate &&
     invalidationCompact &&
     structuralRrModerate &&
     biasConflictCount < 2 &&
-    (biasConflictCount === 0 || channelExpansion || oscillatorStrong)
+    (biasConflictCount === 0 || oscillatorStrong)
   ) {
     return 4;
   }
@@ -383,6 +414,12 @@ const buildAdaptiveMomentumRibbonContext = (
           ? currentPrice <= kcMidline
           : null
         : null;
+  const channelExtensionPct = getDirectionalChannelExtensionPct({
+    signalDirection,
+    currentPrice,
+    kcUpper,
+    kcLower,
+  });
   const invalidationDistancePct = getDirectionalInvalidationDistancePct({
     signalDirection,
     currentPrice,
@@ -471,6 +508,7 @@ const buildAdaptiveMomentumRibbonContext = (
     invalidationLevel,
     channelState,
     channelBiasAligned,
+    channelExtensionPct,
     invalidationDistancePct,
     structuralRewardRiskRatio,
     coinMaBias: coinBias,
@@ -495,6 +533,7 @@ const buildAdaptiveMomentumRibbonContext = (
     invalidationLevel,
     channelState,
     channelBiasAligned,
+    channelExtensionPct,
     invalidationDistancePct,
     structuralRewardRiskRatio,
     coinMaBias: coinBias,
@@ -621,6 +660,7 @@ export const adaptiveMomentumRibbonAiAdapter: StrategyAiAdapter = {
 - oscillatorStrength=${context.oscillatorStrength?.toFixed?.(3) ?? 'n/a'}
 - channelState=${context.channelState}
 - channelBiasAligned=${context.channelBiasAligned}
+- channelExtensionPct=${context.channelExtensionPct?.toFixed?.(3) ?? 'n/a'}%
 - invalidationDistancePct=${context.invalidationDistancePct?.toFixed?.(3) ?? 'n/a'}%
 - structuralRewardRiskRatio=${context.structuralRewardRiskRatio?.toFixed?.(3) ?? 'n/a'}
 - coinBiasAligned=${context.coinBiasAligned}

@@ -38,6 +38,11 @@ export type AdaptiveMomentumRibbonEvaluation = {
   >;
 };
 
+type PendingAdaptiveMomentumRibbonSignal = {
+  direction: 'LONG' | 'SHORT';
+  invalidationLevel: number | null;
+};
+
 type MovingAverageState =
   | {
       type: 'SMA';
@@ -364,6 +369,7 @@ export const evaluateAdaptiveMomentumRibbon = ({
   const momentumPeriod = asPositiveInt(config.AMR_MOMENTUM_PERIOD, 20);
   const smoothingLength = asPositiveInt(config.AMR_BUTTERWORTH_SMOOTHING, 3);
   const waitClose = Boolean(config.AMR_WAIT_CLOSE);
+  const confirmOnNextBar = Boolean(config.AMR_CONFIRM_ON_NEXT_BAR);
   const minSignalOscAbs = asPositiveNumber(config.AMR_MIN_SIGNAL_OSC_ABS, 0.55);
   const requireKcBias = Boolean(config.AMR_REQUIRE_KC_BIAS);
   const minBarsBetweenSignals = asPositiveInt(
@@ -395,6 +401,7 @@ export const evaluateAdaptiveMomentumRibbon = ({
 
   let previousSignalOsc: number | null = null;
   let lastAcceptedSignalIndex: number | null = null;
+  let pendingSignal: PendingAdaptiveMomentumRibbonSignal | null = null;
   let invalidationLevel: number | null = null;
   let activeBuy = false;
   let activeSell = false;
@@ -485,8 +492,60 @@ export const evaluateAdaptiveMomentumRibbon = ({
       const shortKcBiasOk =
         !requireKcBias || (kcMidline != null && candle.close < kcMidline);
 
-      entryLong = rawEntryLong && strongEnough && spacingOk && longKcBiasOk;
-      entryShort = rawEntryShort && strongEnough && spacingOk && shortKcBiasOk;
+      if (confirmOnNextBar) {
+        if (pendingSignal?.direction === 'LONG') {
+          const pendingStillValid =
+            pendingSignal.invalidationLevel == null ||
+            candle.low >= pendingSignal.invalidationLevel;
+          const confirmed =
+            pendingStillValid && signalOsc > 0 && strongEnough && longKcBiasOk;
+
+          if (confirmed) {
+            entryLong = true;
+            invalidationLevel = pendingSignal.invalidationLevel;
+            lastAcceptedSignalIndex = index;
+          }
+
+          pendingSignal = null;
+        } else if (pendingSignal?.direction === 'SHORT') {
+          const pendingStillValid =
+            pendingSignal.invalidationLevel == null ||
+            candle.high <= pendingSignal.invalidationLevel;
+          const confirmed =
+            pendingStillValid && signalOsc < 0 && strongEnough && shortKcBiasOk;
+
+          if (confirmed) {
+            entryShort = true;
+            invalidationLevel = pendingSignal.invalidationLevel;
+            lastAcceptedSignalIndex = index;
+          }
+
+          pendingSignal = null;
+        }
+
+        if (!entryLong && !entryShort && spacingOk) {
+          if (rawEntryLong && strongEnough && longKcBiasOk && sourceCandle) {
+            pendingSignal = {
+              direction: 'LONG',
+              invalidationLevel: sourceCandle.low,
+            };
+          } else if (
+            rawEntryShort &&
+            strongEnough &&
+            shortKcBiasOk &&
+            sourceCandle
+          ) {
+            pendingSignal = {
+              direction: 'SHORT',
+              invalidationLevel: sourceCandle.high,
+            };
+          }
+        }
+      } else {
+        entryLong = rawEntryLong && strongEnough && spacingOk && longKcBiasOk;
+        entryShort =
+          rawEntryShort && strongEnough && spacingOk && shortKcBiasOk;
+      }
     }
 
     if (signalOsc != null) {
@@ -494,15 +553,17 @@ export const evaluateAdaptiveMomentumRibbon = ({
     }
 
     if (entryLong && sourceCandle) {
-      lastAcceptedSignalIndex = index;
-      invalidationLevel = sourceCandle.low;
+      if (invalidationLevel == null) {
+        invalidationLevel = sourceCandle.low;
+      }
       activeBuy = true;
       activeSell = false;
     }
 
     if (entryShort && sourceCandle) {
-      lastAcceptedSignalIndex = index;
-      invalidationLevel = sourceCandle.high;
+      if (invalidationLevel == null) {
+        invalidationLevel = sourceCandle.high;
+      }
       activeSell = true;
       activeBuy = false;
     }
