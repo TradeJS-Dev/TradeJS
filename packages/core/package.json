@@ -89,7 +89,7 @@
     "@tradejs/types": "workspace:^",
     "date-fns": "^3.3.1",
     "klinecharts": "10.0.0-alpha9",
-    "lodash": "^4.17.21",
+    "lodash": "^4.18.1",
     "technicalindicators": "^3.1.0",
     "uuid": "11.1.0"
   },
