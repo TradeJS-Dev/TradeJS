@@ -89,6 +89,7 @@ interface StrategySkipStats {
 }
 
 type StrategySkipStatsMap = Map<string, StrategySkipStats>;
+type StrategySkipSource = 'core' | 'AI' | 'ML' | 'hook' | 'policy' | 'runtime';
 
 const normalizeHookList = <THook extends (...args: any[]) => unknown>(
   value: THook | THook[] | undefined,
@@ -194,17 +195,59 @@ const createStrategySkipStats = (
     ]),
   );
 
+const normalizeSkipStatsReason = (
+  reason: string,
+  fallbackSource: StrategySkipSource,
+) => {
+  let source = fallbackSource;
+  let normalizedReason = reason;
+
+  if (reason.startsWith('AI_QUALITY_BELOW_MIN')) {
+    source = 'AI';
+    normalizedReason = 'MIN_AI_QUALITY';
+  } else if (reason === 'AI_QUALITY_UNAVAILABLE') {
+    source = 'AI';
+    normalizedReason = 'QUALITY_UNAVAILABLE';
+  } else if (reason === 'ML_RESULT_UNAVAILABLE') {
+    source = 'ML';
+    normalizedReason = 'RESULT_UNAVAILABLE';
+  } else if (reason.startsWith('ML_THRESHOLD_NOT_MET')) {
+    source = 'ML';
+    normalizedReason = 'ML_THRESHOLD';
+  } else if (reason.startsWith('HOOK_BEFORE_ENTRY_GATE:')) {
+    source = 'hook';
+    normalizedReason = `BEFORE_ENTRY_GATE:${reason.slice(
+      'HOOK_BEFORE_ENTRY_GATE:'.length,
+    )}`;
+  } else if (reason === 'HOOK_BEFORE_ENTRY_GATE') {
+    source = 'hook';
+    normalizedReason = 'BEFORE_ENTRY_GATE';
+  } else if (
+    reason === 'MAKE_ORDERS_DISABLED' ||
+    reason === 'ENTRY_POLICY_BLOCKED'
+  ) {
+    source = 'policy';
+  }
+
+  return `skip from ${source} / ${normalizedReason}`;
+};
+
 const recordStrategyReason = (
   strategyStats: StrategySkipStatsMap,
   strategyName: string,
   reason: string,
+  fallbackSource: StrategySkipSource = 'core',
 ) => {
   const stats = strategyStats.get(strategyName);
   if (!stats) {
     return;
   }
 
-  stats.reasons.set(reason, (stats.reasons.get(reason) ?? 0) + 1);
+  const normalizedReason = normalizeSkipStatsReason(reason, fallbackSource);
+  stats.reasons.set(
+    normalizedReason,
+    (stats.reasons.get(normalizedReason) ?? 0) + 1,
+  );
 };
 
 const logStrategySkipStats = (
@@ -313,13 +356,25 @@ const findSignals = async (
     const signal = await strategy(lastCandle, btcLastCandle);
     if (!signal || typeof signal === 'string') {
       if (typeof signal === 'string') {
-        recordStrategyReason(strategyStats, strategyName, signal);
+        recordStrategyReason(strategyStats, strategyName, signal, 'core');
       }
       continue;
     }
 
     if (stats) {
       stats.signals += 1;
+    }
+    if (
+      signal.orderStatus === 'skipped' &&
+      typeof signal.orderSkipReason === 'string' &&
+      signal.orderSkipReason.trim()
+    ) {
+      recordStrategyReason(
+        strategyStats,
+        strategyName,
+        signal.orderSkipReason,
+        'runtime',
+      );
     }
     strategySignals.push(signal);
 

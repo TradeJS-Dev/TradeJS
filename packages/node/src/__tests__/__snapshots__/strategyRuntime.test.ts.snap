@@ -64,6 +64,11 @@ exports[`strategyRuntime hook params snapshots afterCoreDecision params snapshot
       "figures": {},
       "indicators": {},
       "interval": "15",
+      "ml": {
+        "passed": true,
+        "probability": 0.9,
+        "threshold": 0.5,
+      },
       "prices": {
         "currentPrice": 100,
         "riskRatio": 2,
@@ -275,6 +280,11 @@ exports[`strategyRuntime hook params snapshots afterEnrichAi params snapshot 1`]
       "figures": {},
       "indicators": {},
       "interval": "15",
+      "ml": {
+        "passed": true,
+        "probability": 0.9,
+        "threshold": 0.5,
+      },
       "prices": {
         "currentPrice": 100,
         "riskRatio": 2,
@@ -345,6 +355,11 @@ exports[`strategyRuntime hook params snapshots afterEnrichAi params snapshot 1`]
       "figures": {},
       "indicators": {},
       "interval": "15",
+      "ml": {
+        "passed": true,
+        "probability": 0.9,
+        "threshold": 0.5,
+      },
       "prices": {
         "currentPrice": 100,
         "riskRatio": 2,
@@ -380,7 +395,7 @@ exports[`strategyRuntime hook params snapshots afterEnrichAi params snapshot 1`]
     },
   },
   "ml": {
-    "applied": false,
+    "applied": true,
     "attempted": true,
     "config": {
       "enabled": true,
@@ -389,7 +404,11 @@ exports[`strategyRuntime hook params snapshots afterEnrichAi params snapshot 1`]
         "X": 1,
       },
     },
-    "skippedReason": "NO_RESULT",
+    "result": {
+      "passed": true,
+      "probability": 0.9,
+      "threshold": 0.5,
+    },
   },
 }
 `;
@@ -458,6 +477,11 @@ exports[`strategyRuntime hook params snapshots afterEnrichMl params snapshot 1`]
       "figures": {},
       "indicators": {},
       "interval": "15",
+      "ml": {
+        "passed": true,
+        "probability": 0.9,
+        "threshold": 0.5,
+      },
       "prices": {
         "currentPrice": 100,
         "riskRatio": 2,
@@ -528,6 +552,11 @@ exports[`strategyRuntime hook params snapshots afterEnrichMl params snapshot 1`]
       "figures": {},
       "indicators": {},
       "interval": "15",
+      "ml": {
+        "passed": true,
+        "probability": 0.9,
+        "threshold": 0.5,
+      },
       "prices": {
         "currentPrice": 100,
         "riskRatio": 2,
@@ -563,7 +592,7 @@ exports[`strategyRuntime hook params snapshots afterEnrichMl params snapshot 1`]
     },
   },
   "ml": {
-    "applied": false,
+    "applied": true,
     "attempted": true,
     "config": {
       "enabled": true,
@@ -572,7 +601,11 @@ exports[`strategyRuntime hook params snapshots afterEnrichMl params snapshot 1`]
         "X": 1,
       },
     },
-    "skippedReason": "NO_RESULT",
+    "result": {
+      "passed": true,
+      "probability": 0.9,
+      "threshold": 0.5,
+    },
   },
 }
 `;
@@ -650,6 +683,11 @@ exports[`strategyRuntime hook params snapshots afterPlaceOrder params snapshot (
       "figures": {},
       "indicators": {},
       "interval": "15",
+      "ml": {
+        "passed": true,
+        "probability": 0.9,
+        "threshold": 0.5,
+      },
       "prices": {
         "currentPrice": 100,
         "riskRatio": 2,
@@ -720,6 +758,11 @@ exports[`strategyRuntime hook params snapshots afterPlaceOrder params snapshot (
       "figures": {},
       "indicators": {},
       "interval": "15",
+      "ml": {
+        "passed": true,
+        "probability": 0.9,
+        "threshold": 0.5,
+      },
       "prices": {
         "currentPrice": 100,
         "riskRatio": 2,
@@ -755,7 +798,7 @@ exports[`strategyRuntime hook params snapshots afterPlaceOrder params snapshot (
     },
   },
   "ml": {
-    "applied": false,
+    "applied": true,
     "attempted": true,
     "config": {
       "enabled": true,
@@ -764,7 +807,11 @@ exports[`strategyRuntime hook params snapshots afterPlaceOrder params snapshot (
         "X": 1,
       },
     },
-    "skippedReason": "NO_RESULT",
+    "result": {
+      "passed": true,
+      "probability": 0.9,
+      "threshold": 0.5,
+    },
   },
   "order": {
     "result": {
@@ -772,6 +819,11 @@ exports[`strategyRuntime hook params snapshots afterPlaceOrder params snapshot (
       "figures": {},
       "indicators": {},
       "interval": "15",
+      "ml": {
+        "passed": true,
+        "probability": 0.9,
+        "threshold": 0.5,
+      },
       "prices": {
         "currentPrice": 100,
         "riskRatio": 2,
@@ -1061,6 +1113,11 @@ exports[`strategyRuntime hook params snapshots beforeEntryGate params snapshot (
       "figures": {},
       "indicators": {},
       "interval": "15",
+      "ml": {
+        "passed": true,
+        "probability": 0.9,
+        "threshold": 0.5,
+      },
       "prices": {
         "currentPrice": 100,
         "riskRatio": 2,
@@ -1131,6 +1188,11 @@ exports[`strategyRuntime hook params snapshots beforeEntryGate params snapshot (
       "figures": {},
       "indicators": {},
       "interval": "15",
+      "ml": {
+        "passed": true,
+        "probability": 0.9,
+        "threshold": 0.5,
+      },
       "prices": {
         "currentPrice": 100,
         "riskRatio": 2,
@@ -1166,7 +1228,7 @@ exports[`strategyRuntime hook params snapshots beforeEntryGate params snapshot (
     },
   },
   "ml": {
-    "applied": false,
+    "applied": true,
     "attempted": true,
     "config": {
       "enabled": true,
@@ -1175,7 +1237,11 @@ exports[`strategyRuntime hook params snapshots beforeEntryGate params snapshot (
         "X": 1,
       },
     },
-    "skippedReason": "NO_RESULT",
+    "result": {
+      "passed": true,
+      "probability": 0.9,
+      "threshold": 0.5,
+    },
   },
   "policy": {
     "aiQuality": 5,
@@ -1398,6 +1464,11 @@ exports[`strategyRuntime hook params snapshots beforePlaceOrder params snapshot 
       "figures": {},
       "indicators": {},
       "interval": "15",
+      "ml": {
+        "passed": true,
+        "probability": 0.9,
+        "threshold": 0.5,
+      },
       "prices": {
         "currentPrice": 100,
         "riskRatio": 2,
@@ -1468,6 +1539,11 @@ exports[`strategyRuntime hook params snapshots beforePlaceOrder params snapshot 
       "figures": {},
       "indicators": {},
       "interval": "15",
+      "ml": {
+        "passed": true,
+        "probability": 0.9,
+        "threshold": 0.5,
+      },
       "prices": {
         "currentPrice": 100,
         "riskRatio": 2,
@@ -1503,7 +1579,7 @@ exports[`strategyRuntime hook params snapshots beforePlaceOrder params snapshot 
     },
   },
   "ml": {
-    "applied": false,
+    "applied": true,
     "attempted": true,
     "config": {
       "enabled": true,
@@ -1512,7 +1588,11 @@ exports[`strategyRuntime hook params snapshots beforePlaceOrder params snapshot 
         "X": 1,
       },
     },
-    "skippedReason": "NO_RESULT",
+    "result": {
+      "passed": true,
+      "probability": 0.9,
+      "threshold": 0.5,
+    },
   },
   "policy": {
     "aiQuality": 5,

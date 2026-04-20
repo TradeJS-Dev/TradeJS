@@ -91,10 +91,38 @@ const resolveEntryRuntimePolicy = ({
   };
 };
 
+const formatGateNumber = (value: number) => {
+  if (!Number.isFinite(value)) {
+    return String(value);
+  }
+
+  const normalized = Number(value.toFixed(6));
+  return Number.isInteger(normalized) ? String(normalized) : String(normalized);
+};
+
+const isMlRuntimeGateEnabled = (params: {
+  env: string;
+  ml?: StrategyHookMlContext;
+}) => {
+  const { env, ml } = params;
+  return (
+    env !== 'BACKTEST' && ml?.config != null && ml.config.enabled !== false
+  );
+};
+
+const isMlResultUnavailable = (params: {
+  env: string;
+  ml?: StrategyHookMlContext;
+}) => {
+  const { env, ml } = params;
+  return isMlRuntimeGateEnabled({ env, ml }) && ml?.result == null;
+};
+
 const shouldExecuteEntryDecision = ({
   makeOrdersEnabled,
   env,
   signal,
+  ml,
   aiEnabled,
   quality,
   minAiQuality,
@@ -102,6 +130,7 @@ const shouldExecuteEntryDecision = ({
   makeOrdersEnabled: boolean;
   env: string;
   signal?: EntryDecision['signal'];
+  ml?: StrategyHookMlContext;
   aiEnabled: boolean;
   quality?: number;
   minAiQuality: number;
@@ -110,7 +139,19 @@ const shouldExecuteEntryDecision = ({
     return false;
   }
 
-  if (!signal || env === 'BACKTEST' || !aiEnabled) {
+  if (!signal || env === 'BACKTEST') {
+    return true;
+  }
+
+  if (isMlResultUnavailable({ env, ml })) {
+    return false;
+  }
+
+  if (isMlRuntimeGateEnabled({ env, ml }) && ml?.result?.passed === false) {
+    return false;
+  }
+
+  if (!aiEnabled) {
     return true;
   }
 
@@ -120,18 +161,30 @@ const shouldExecuteEntryDecision = ({
 const getEntrySkipReason = ({
   makeOrdersEnabled,
   env,
+  ml,
   aiEnabled,
   quality,
   minAiQuality,
 }: {
   makeOrdersEnabled: boolean;
   env: string;
+  ml?: StrategyHookMlContext;
   aiEnabled: boolean;
   quality?: number;
   minAiQuality: number;
 }): string => {
   if (!makeOrdersEnabled) {
     return 'MAKE_ORDERS_DISABLED';
+  }
+
+  if (isMlResultUnavailable({ env, ml })) {
+    return 'ML_RESULT_UNAVAILABLE';
+  }
+
+  if (isMlRuntimeGateEnabled({ env, ml }) && ml?.result?.passed === false) {
+    const probability = formatGateNumber(ml.result.probability);
+    const threshold = formatGateNumber(ml.result.threshold);
+    return `ML_THRESHOLD_NOT_MET (${probability} < ${threshold})`;
   }
 
   if (env !== 'BACKTEST' && aiEnabled && quality == null) {
@@ -1316,6 +1369,7 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
         makeOrdersEnabled,
         env,
         signal,
+        ml,
         aiEnabled,
         quality,
         minAiQuality,
@@ -1327,6 +1381,7 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
           signal.orderSkipReason = getEntrySkipReason({
             makeOrdersEnabled,
             env,
+            ml,
             aiEnabled,
             quality,
             minAiQuality,

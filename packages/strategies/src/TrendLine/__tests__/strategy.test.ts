@@ -1033,4 +1033,164 @@ describe('TrendlineStrategyCreator', () => {
     expect((result as any).orderSkipReason).toBe('AI_QUALITY_UNAVAILABLE');
     expect(connector.placeOrder).not.toHaveBeenCalled();
   });
+
+  it('skips order in non-BACKTEST when ML threshold rejects the signal', async () => {
+    (fetchMlThreshold as jest.Mock).mockResolvedValue({
+      passed: false,
+      threshold: 0.5,
+      probability: 0.4,
+    });
+
+    (createTrendlineEngine as jest.Mock).mockImplementation(
+      (_data, options) => {
+        const line = {
+          id: 'line-1',
+          mode: options.mode ?? 'lows',
+          distance: 1,
+          touches: [{ timestamp: 1, value: 1 }],
+          points: [{ timestamp: 1, value: 1 }],
+        };
+        return {
+          next: jest.fn(() => [line]),
+        };
+      },
+    );
+
+    (createIndicators as jest.Mock).mockImplementation(() => ({
+      next: jest.fn(() => ({})),
+      result: jest.fn(() => ({})),
+    }));
+
+    const cachedData: any[] = [makeCandle(1, 100)];
+    const btcCachedData: any[] = [makeCandle(1, 20000)];
+    const connector: any = {
+      getPosition: jest.fn(async () => ({ qty: 0 })),
+      placeOrder: jest.fn(async () => true),
+      setTakeProfits: jest.fn(async () => true),
+      setStopLoss: jest.fn(async () => true),
+      kline: jest.fn(async () => cachedData),
+    };
+
+    const strategy = await TrendlineStrategyCreator({
+      userName: 'test',
+      config: {
+        ENV: 'test',
+        INTERVAL: '15',
+        MAKE_ORDERS: true,
+        AI_ENABLED: false,
+        ML_ENABLED: true,
+        ML_THRESHOLD: 0.5,
+        MAX_LOSS_VALUE: 10,
+        MAX_CORRELATION: 1,
+        TRENDLINE: {},
+        HIGHS: {
+          enable: false,
+          direction: 'LONG',
+          TP: 2,
+          SL: 1,
+          minRiskRatio: 0,
+        },
+        LOWS: {
+          enable: true,
+          direction: 'LONG',
+          TP: 2,
+          SL: 1,
+          minRiskRatio: 0,
+        },
+      },
+      symbol: 'TESTUSDT',
+      data: cachedData,
+      btcData: btcCachedData,
+      connector,
+    });
+
+    const result = await strategy(
+      makeCandle(1_700_000_000_000, 100),
+      makeCandle(1_700_000_000_000, 20000),
+    );
+
+    expect(typeof result).toBe('object');
+    expect((result as any).orderStatus).toBe('skipped');
+    expect((result as any).orderSkipReason).toBe(
+      'ML_THRESHOLD_NOT_MET (0.4 < 0.5)',
+    );
+    expect(connector.placeOrder).not.toHaveBeenCalled();
+  });
+
+  it('skips order in non-BACKTEST when ML result is unavailable', async () => {
+    (fetchMlThreshold as jest.Mock).mockResolvedValue(null);
+
+    (createTrendlineEngine as jest.Mock).mockImplementation(
+      (_data, options) => {
+        const line = {
+          id: 'line-1',
+          mode: options.mode ?? 'lows',
+          distance: 1,
+          touches: [{ timestamp: 1, value: 1 }],
+          points: [{ timestamp: 1, value: 1 }],
+        };
+        return {
+          next: jest.fn(() => [line]),
+        };
+      },
+    );
+
+    (createIndicators as jest.Mock).mockImplementation(() => ({
+      next: jest.fn(() => ({})),
+      result: jest.fn(() => ({})),
+    }));
+
+    const cachedData: any[] = [makeCandle(1, 100)];
+    const btcCachedData: any[] = [makeCandle(1, 20000)];
+    const connector: any = {
+      getPosition: jest.fn(async () => ({ qty: 0 })),
+      placeOrder: jest.fn(async () => true),
+      setTakeProfits: jest.fn(async () => true),
+      setStopLoss: jest.fn(async () => true),
+      kline: jest.fn(async () => cachedData),
+    };
+
+    const strategy = await TrendlineStrategyCreator({
+      userName: 'test',
+      config: {
+        ENV: 'test',
+        INTERVAL: '15',
+        MAKE_ORDERS: true,
+        AI_ENABLED: false,
+        ML_ENABLED: true,
+        ML_THRESHOLD: 0.5,
+        MAX_LOSS_VALUE: 10,
+        MAX_CORRELATION: 1,
+        TRENDLINE: {},
+        HIGHS: {
+          enable: false,
+          direction: 'LONG',
+          TP: 2,
+          SL: 1,
+          minRiskRatio: 0,
+        },
+        LOWS: {
+          enable: true,
+          direction: 'LONG',
+          TP: 2,
+          SL: 1,
+          minRiskRatio: 0,
+        },
+      },
+      symbol: 'TESTUSDT',
+      data: cachedData,
+      btcData: btcCachedData,
+      connector,
+    });
+
+    const result = await strategy(
+      makeCandle(1_700_000_000_000, 100),
+      makeCandle(1_700_000_000_000, 20000),
+    );
+
+    expect(typeof result).toBe('object');
+    expect((result as any).orderStatus).toBe('skipped');
+    expect((result as any).orderSkipReason).toBe('ML_RESULT_UNAVAILABLE');
+    expect(connector.placeOrder).not.toHaveBeenCalled();
+  });
 });

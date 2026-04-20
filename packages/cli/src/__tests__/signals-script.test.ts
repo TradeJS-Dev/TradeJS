@@ -331,7 +331,87 @@ describe('signals script', () => {
       'TrendLine: evaluated=1, signals=0',
     );
     expect(mocks.logger.info).toHaveBeenCalledWith(
-      '  TRENDLINE_TIMING:WAIT_RETEST: 1',
+      '  skip from core / TRENDLINE_TIMING:WAIT_RETEST: 1',
+    );
+  });
+
+  it('logs gate skip stats for skipped signals by source', async () => {
+    const { signals, mocks } = await loadScript({
+      flags: {
+        timeframe: 15,
+        makeOrders: true,
+        notify: false,
+        skipScreenshots: true,
+        updateOnly: false,
+        cacheOnly: true,
+        showTickersList: false,
+        showSkipStats: true,
+        user: 'root',
+        connector: 'bybit',
+      },
+      strategyResult: {
+        signalId: 'TrendLine-sig',
+        strategy: 'TrendLine',
+        symbol: 'ETHUSDT',
+        interval: '15',
+        direction: 'LONG',
+        timestamp: 2000,
+        orderStatus: 'skipped',
+        orderSkipReason: 'AI_QUALITY_BELOW_MIN (2 < 3)',
+        prices: { currentPrice: 11 },
+        figures: {},
+        indicators: {},
+        additionalIndicators: {},
+      },
+    });
+
+    await signals();
+
+    expect(mocks.logger.info).toHaveBeenCalledWith(
+      'TrendLine: evaluated=1, signals=1',
+    );
+    expect(mocks.logger.info).toHaveBeenCalledWith(
+      '  skip from AI / MIN_AI_QUALITY: 1',
+    );
+  });
+
+  it('logs ML unavailable skip stats by source', async () => {
+    const { signals, mocks } = await loadScript({
+      flags: {
+        timeframe: 15,
+        makeOrders: true,
+        notify: false,
+        skipScreenshots: true,
+        updateOnly: false,
+        cacheOnly: true,
+        showTickersList: false,
+        showSkipStats: true,
+        user: 'root',
+        connector: 'bybit',
+      },
+      strategyResult: {
+        signalId: 'TrendLine-sig',
+        strategy: 'TrendLine',
+        symbol: 'ETHUSDT',
+        interval: '15',
+        direction: 'LONG',
+        timestamp: 2000,
+        orderStatus: 'skipped',
+        orderSkipReason: 'ML_RESULT_UNAVAILABLE',
+        prices: { currentPrice: 11 },
+        figures: {},
+        indicators: {},
+        additionalIndicators: {},
+      },
+    });
+
+    await signals();
+
+    expect(mocks.logger.info).toHaveBeenCalledWith(
+      'TrendLine: evaluated=1, signals=1',
+    );
+    expect(mocks.logger.info).toHaveBeenCalledWith(
+      '  skip from ML / RESULT_UNAVAILABLE: 1',
     );
   });
 

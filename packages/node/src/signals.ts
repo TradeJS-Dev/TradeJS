@@ -80,6 +80,14 @@ const formatOrderSkipReason = (reason?: string | null) => {
     return 'AI_QUALITY_BELOW_MIN';
   }
 
+  if (reason.startsWith('ML_THRESHOLD_NOT_MET')) {
+    return 'ML_THRESHOLD_NOT_MET';
+  }
+
+  if (reason === 'ML_RESULT_UNAVAILABLE') {
+    return 'ML_RESULT_UNAVAILABLE';
+  }
+
   return reason;
 };
 

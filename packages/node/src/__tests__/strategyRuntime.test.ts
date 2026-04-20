@@ -255,7 +255,15 @@ describe('strategyRuntime', () => {
     });
     mockExecuteEntryOrder.mockResolvedValue(222);
     mockUpdatePositionProtection.mockResolvedValue(undefined);
-    mockEnrichSignalWithMl.mockResolvedValue(undefined);
+    mockEnrichSignalWithMl.mockImplementation(async ({ signal, ml }: any) => {
+      if (ml?.enabled !== false) {
+        signal.ml = {
+          probability: 0.9,
+          threshold: ml?.mlThreshold ?? 0.5,
+          passed: true,
+        };
+      }
+    });
     mockEnrichSignalWithAi.mockResolvedValue(5);
     mockMarkRuntimeTradeClosed.mockResolvedValue(null);
   });
@@ -283,6 +291,52 @@ describe('strategyRuntime', () => {
     expect((result as any).orderSkipReason).toBe(
       'AI_QUALITY_BELOW_MIN (4 < 5)',
     );
+  });
+
+  it('gates entry by ML threshold when runtime ML result does not pass', async () => {
+    mockEnrichSignalWithMl.mockImplementation(async ({ signal }: any) => {
+      signal.ml = {
+        probability: 0.4,
+        threshold: 0.5,
+        passed: false,
+      };
+    });
+    mockEnrichSignalWithAi.mockResolvedValue(5);
+    const { strategy, connector } = await makeRuntime(() =>
+      makeDecisionEntry(),
+    );
+
+    const result = await strategy(
+      { timestamp: 1 } as any,
+      { timestamp: 1 } as any,
+    );
+
+    expect(mockEnrichSignalWithMl).toHaveBeenCalledTimes(1);
+    expect(mockExecuteEntryOrder).not.toHaveBeenCalled();
+    expect(connector.placeOrder).not.toHaveBeenCalled();
+    expect((result as any).orderStatus).toBe('skipped');
+    expect((result as any).orderSkipReason).toBe(
+      'ML_THRESHOLD_NOT_MET (0.4 < 0.5)',
+    );
+  });
+
+  it('blocks entry when ML result is unavailable while runtime ML is enabled', async () => {
+    mockEnrichSignalWithMl.mockResolvedValue(undefined);
+    mockEnrichSignalWithAi.mockResolvedValue(5);
+    const { strategy, connector } = await makeRuntime(() =>
+      makeDecisionEntry(),
+    );
+
+    const result = await strategy(
+      { timestamp: 1 } as any,
+      { timestamp: 1 } as any,
+    );
+
+    expect(mockEnrichSignalWithMl).toHaveBeenCalledTimes(1);
+    expect(mockExecuteEntryOrder).not.toHaveBeenCalled();
+    expect(connector.placeOrder).not.toHaveBeenCalled();
+    expect((result as any).orderStatus).toBe('skipped');
+    expect((result as any).orderSkipReason).toBe('ML_RESULT_UNAVAILABLE');
   });
 
   it('allows entry when minQuality is 0 and runtime quality is 0', async () => {
