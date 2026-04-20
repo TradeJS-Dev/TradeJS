@@ -38,7 +38,7 @@ RUN yarn workspace @tradejs/cli build
 RUN yarn turbo run build --filter=@tradejs/app...
 RUN yarn install --immutable
 
-RUN chmod +x ./entrypoint.sh
+RUN chmod +x ./entrypoint.sh ./bin/*.sh
 
 EXPOSE 3000
 
