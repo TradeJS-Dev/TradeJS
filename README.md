@@ -145,6 +145,7 @@ yarn build:ci
 yarn backtest
 yarn results
 yarn signals
+yarn signals:summary -- --printOnly
 yarn bot
 ```
 
@@ -154,6 +155,14 @@ Data refresh and integrity:
 yarn update-history -- --user root --config TrendLine:base --connector bybit --timeframe 15
 yarn continuity --user root --timeframe 15 --provider bybit
 ```
+
+## Telegram Notifications
+
+- Telegram bot credentials are configured per user via `TG_BOT_TOKEN` and `TG_CHAT_ID` in the app settings drawer.
+- `yarn signals -- --notify` sends runtime signal notifications; `skipped` and `canceled` signals are filtered out and not delivered to Telegram.
+- Each signal is delivered in order with its optional AI analysis follow-up so chat ordering stays stable.
+- `yarn signals:summary` builds the daily Telegram digest; current cron sends it every day at `23:00` in `Europe/Moscow` timezone for the last 24 hours.
+- The summary groups signal statuses and trade PnL/status by strategy and uses generated runtime `orderId` linkage (`orderLinkId` on Bybit).
 
 ## ML Flow (High-Level)
 

@@ -82,7 +82,38 @@ yarn build:ci
 yarn backtest
 yarn results
 yarn signals
+yarn signals:summary -- --printOnly
 yarn bot
+```
+
+## Telegram Notifications
+
+Telegram delivery uses per-user settings from the account drawer:
+
+- `TG_BOT_TOKEN`
+- `TG_CHAT_ID`
+
+Runtime signal delivery:
+
+- `yarn signals -- --notify` sends Telegram messages for runtime signals
+- production cron runs `signals --notify --makeOrders` every 15 minutes
+- signals with `orderStatus=skipped` or `orderStatus=canceled` are not sent to Telegram anymore
+- deliverable signals are sent one by one so the main signal message stays grouped with its optional AI analysis message
+- the main signal message tries to send a screenshot with caption first; if photo delivery fails, TradeJS falls back to a text message
+- if AI analysis exists for the signal, it is sent as a separate follow-up Telegram message
+
+Daily summary:
+
+- `yarn signals:summary` builds a Telegram digest for the last 24 hours
+- production cron sends it every day at `23:00` in `Europe/Moscow` timezone
+- summary includes per-strategy signal counts by status, plus per-strategy trade counts, active/closed status, and current/closed PnL
+- runtime trade linking uses generated `orderId`; for Bybit it is passed through as `orderLinkId`
+
+Useful manual checks:
+
+```bash
+yarn signals -- --notify --user root --connector bybit
+yarn signals:summary -- --user root --connector bybit --printOnly
 ```
 
 ## 8. Data Maintenance

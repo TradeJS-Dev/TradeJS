@@ -15,6 +15,10 @@ import {
 } from '@tradejs/types';
 import { buildMlPayload } from '../mlPayload';
 import { getTradejsProjectCwd } from '../tradejsConfig';
+import {
+  createRuntimeOrderId,
+  recordRuntimeTradeOpen,
+} from '../runtimeJournal';
 
 interface EnrichSignalWithMlAiParams {
   signal: Signal;
@@ -142,6 +146,7 @@ export const enrichSignalWithMlAi = async ({
 
 interface ExecuteEntryOrderParams {
   connector: Connector;
+  userName?: string;
   symbol: string;
   direction: Direction;
   qty: number;
@@ -196,6 +201,7 @@ const applyProtectiveOrders = async ({
 
 export const executeEntryOrder = async ({
   connector,
+  userName,
   symbol,
   direction,
   qty,
@@ -207,6 +213,8 @@ export const executeEntryOrder = async ({
   beforePlaceOrder,
 }: ExecuteEntryOrderParams): Promise<number> => {
   await beforePlaceOrder?.();
+  const orderId = signal.orderId || createRuntimeOrderId();
+  signal.orderId = orderId;
 
   const orderPlaced = await connector.placeOrder({
     symbol,
@@ -215,6 +223,7 @@ export const executeEntryOrder = async ({
     isLimit: false,
     timestamp,
     direction,
+    orderId,
     signal,
   });
 
@@ -243,12 +252,32 @@ export const executeEntryOrder = async ({
   signal.orderSkipReason = undefined;
 
   const currentPosition = await connector.getPosition(symbol);
+  const entryPrice =
+    currentPosition?.price && Number.isFinite(currentPosition.price)
+      ? currentPosition.price
+      : currentPrice;
+
+  signal.prices.currentPrice = entryPrice;
+
+  if (orderPlaced) {
+    await recordRuntimeTradeOpen({
+      userName,
+      orderId,
+      signalId: signal.signalId,
+      strategy: signal.strategy,
+      symbol,
+      direction,
+      qty,
+      entryPrice,
+      entryTimestamp: timestamp,
+    });
+  }
+
   if (currentPosition?.price) {
-    signal.prices.currentPrice = currentPosition.price;
     return currentPosition.price;
   }
 
-  return currentPrice;
+  return entryPrice;
 };
 
 export const updatePositionProtection = async ({

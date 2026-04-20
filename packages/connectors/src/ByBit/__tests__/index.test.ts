@@ -248,6 +248,53 @@ describe('ByBitConnectorCreator', () => {
     ]);
   });
 
+  it('maps closed pnl snapshots from exchange response', async () => {
+    const client = {
+      getClosedPnL: jest.fn().mockResolvedValue({
+        retCode: 0,
+        result: {
+          list: [
+            {
+              symbol: 'BTCUSDT',
+              qty: '1',
+              avgEntryPrice: '100',
+              avgExitPrice: '112',
+              closedPnl: '12',
+              updatedTime: '1700000001000',
+              orderId: 'bybit-order-1',
+            },
+          ],
+        },
+      }),
+    };
+    mockedGetClient.mockResolvedValue(client as any);
+
+    const connector = await ByBitConnectorCreator({ userName: 'alice' });
+    const rows = await connector.getClosedPnl?.({
+      startTime: 1_700_000_000_000,
+      endTime: 1_700_000_100_000,
+    });
+
+    expect(client.getClosedPnL).toHaveBeenCalledWith(
+      expect.objectContaining({
+        category: expect.any(String),
+        startTime: 1_700_000_000_000,
+        endTime: 1_700_000_100_000,
+      }),
+    );
+    expect(rows).toEqual([
+      {
+        symbol: 'BTCUSDT',
+        qty: 1,
+        entryPrice: 100,
+        exitPrice: 112,
+        closedPnl: 12,
+        closedAt: 1_700_000_001_000,
+        orderId: 'bybit-order-1',
+      },
+    ]);
+  });
+
   it('returns false in placeOrder when normalized qty is below min', async () => {
     const client = {
       setLeverage: jest.fn(),
@@ -305,6 +352,7 @@ describe('ByBitConnectorCreator', () => {
       price: 100,
       qty: 1,
       direction: 'LONG',
+      orderId: 'tjs-order-1',
       timestamp: Date.now(),
     } as any);
 
@@ -326,6 +374,7 @@ describe('ByBitConnectorCreator', () => {
         side: 'Buy',
         orderType: 'Market',
         qty: '1.000',
+        orderLinkId: 'tjs-order-1',
       }),
     );
   });

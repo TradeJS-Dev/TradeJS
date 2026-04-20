@@ -37,6 +37,8 @@ const makeRedisKeys = () => ({
   signalsBySymbol: (symbol: string) => `signals:${symbol}:`,
   storeSignal: (symbol: string, signalId: string) =>
     `store:signals:${symbol}:${signalId}`,
+  runtimeSignal: (userName: string, signalId: string) =>
+    `users:${userName}:runtime:signals:${signalId}`,
 });
 
 const makeCandle = (timestamp: number, close: number) => ({
@@ -283,6 +285,14 @@ describe('signals script', () => {
       }),
       { expire: expect.any(Number) },
     );
+    expect(mocks.setData).toHaveBeenCalledWith(
+      mocks.redisKeys.runtimeSignal('root', 'TrendLine-sig'),
+      expect.objectContaining({
+        signalId: 'TrendLine-sig',
+        symbol: 'ETHUSDT',
+      }),
+      { expire: expect.any(Number) },
+    );
     expect(mocks.getKeys).not.toHaveBeenCalledWith(
       mocks.redisKeys.signalsBySymbol('ETHUSDT'),
     );
@@ -377,6 +387,16 @@ describe('signals script', () => {
     );
     expect(mocks.setData).toHaveBeenCalledWith(
       mocks.redisKeys.signal('ETHUSDT', 'trend-sig'),
+      expect.objectContaining({ signalId: 'trend-sig' }),
+      { expire: expect.any(Number) },
+    );
+    expect(mocks.setData).toHaveBeenCalledWith(
+      mocks.redisKeys.runtimeSignal('root', 'rev-sig'),
+      expect.objectContaining({ signalId: 'rev-sig' }),
+      { expire: expect.any(Number) },
+    );
+    expect(mocks.setData).toHaveBeenCalledWith(
+      mocks.redisKeys.runtimeSignal('root', 'trend-sig'),
       expect.objectContaining({ signalId: 'trend-sig' }),
       { expire: expect.any(Number) },
     );

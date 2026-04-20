@@ -23,7 +23,7 @@ import {
 import { logger } from '@tradejs/infra/logger';
 import { askAI } from './ai';
 import { screenDashboard } from './screenshot';
-import { sendSignal, sendSignalAnalysis } from './signals';
+import { sendSignal, sendSignalAnalysis, sendTextToTG } from './signals';
 import {
   Connector,
   Interval,
@@ -293,19 +293,29 @@ export const sendToTG = async (
   imgInterval: Interval,
   userName = 'root',
 ) => {
+  const deliverableSignals = signals.filter(
+    (signal) =>
+      signal.orderStatus !== 'skipped' && signal.orderStatus !== 'canceled',
+  );
+
+  logger.info(chalk.yellow('messages:', deliverableSignals.length));
+
+  if (!deliverableSignals.length) {
+    logger.info('');
+    return;
+  }
+
   const bar = new ProgressBar(
     ':current/:total [:bar][:percent] :eta(s) :symbol',
     {
-      total: signals.length,
+      total: deliverableSignals.length,
       width: 30,
     },
   );
 
-  logger.info(chalk.yellow('messages:', signals.length));
-
   // Keep Telegram deliveries serialized so each signal stays grouped
   // with its AI analysis in chat order.
-  await runWithConcurrency(signals, 1, async (signal) => {
+  await runWithConcurrency(deliverableSignals, 1, async (signal) => {
     try {
       const analysis = await getData(
         redisKeys.analysis(signal.symbol, signal.signalId),
@@ -334,3 +344,5 @@ export const sendToTG = async (
 
   logger.info('');
 };
+
+export { sendTextToTG };

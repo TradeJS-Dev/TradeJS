@@ -29,10 +29,12 @@ import {
   mapPositionData,
 } from './utils';
 import {
+  ClosedPnlRecord,
   KlineChartData,
   KlineRequest,
   ConnectorCreator,
   Direction,
+  GetClosedPnlParams,
   Interval,
   Position,
   PositionPnlSnapshot,
@@ -837,7 +839,72 @@ export const ByBitConnectorCreator: ConnectorCreator = async (config) => {
         );
     },
 
-    placeOrder: async ({ symbol, price, qty, direction, isLimit }) => {
+    getClosedPnl: async ({
+      startTime,
+      endTime,
+      symbol,
+      limit = 100,
+    }: GetClosedPnlParams): Promise<ClosedPnlRecord[]> => {
+      const client = await getPrivateClient();
+      if (!client) {
+        return [];
+      }
+
+      const response = await client.getClosedPnL({
+        category: MARKET_CATEGORY,
+        startTime,
+        endTime,
+        symbol,
+        limit: Math.min(Math.max(1, Math.trunc(limit)), 100),
+      });
+
+      if (response.retCode !== 0) {
+        logger.log(
+          'error',
+          'closedPnl retCode: %s, %s',
+          response.retCode,
+          response.retMsg,
+        );
+        return [];
+      }
+
+      return (response.result?.list ?? [])
+        .map((item) => {
+          const qty = Number(item.qty ?? item.closedSize ?? Number.NaN);
+          const entryPrice = Number(item.avgEntryPrice ?? Number.NaN);
+          const exitPrice = Number(item.avgExitPrice ?? Number.NaN);
+          const closedPnl = Number(item.closedPnl ?? Number.NaN);
+          const closedAt = Number(
+            item.updatedTime ?? item.createdTime ?? Number.NaN,
+          );
+          const orderId =
+            typeof item.orderId === 'string' && item.orderId.trim()
+              ? item.orderId
+              : null;
+
+          if (
+            !String(item.symbol ?? '').trim() ||
+            !Number.isFinite(qty) ||
+            !Number.isFinite(closedPnl) ||
+            !Number.isFinite(closedAt)
+          ) {
+            return null;
+          }
+
+          return {
+            symbol: String(item.symbol),
+            qty,
+            entryPrice: Number.isFinite(entryPrice) ? entryPrice : null,
+            exitPrice: Number.isFinite(exitPrice) ? exitPrice : null,
+            closedPnl,
+            closedAt,
+            ...(orderId ? { orderId } : {}),
+          } as ClosedPnlRecord;
+        })
+        .filter((item): item is NonNullable<typeof item> => item != null);
+    },
+
+    placeOrder: async ({ symbol, price, qty, direction, isLimit, orderId }) => {
       const client = await getPrivateClient();
       const marketDataClient = await getPublicClient();
 
@@ -898,6 +965,8 @@ export const ByBitConnectorCreator: ConnectorCreator = async (config) => {
         orderType: isLimit ? 'Limit' : 'Market',
         qty: orderQtyStr,
         orderFilter: 'Order',
+        orderLinkId:
+          typeof orderId === 'string' && orderId.trim() ? orderId : undefined,
       });
 
       logger.log(

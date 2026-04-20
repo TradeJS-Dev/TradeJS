@@ -106,6 +106,7 @@ describe('cli telegram notifications', () => {
     jest.doMock('../signals', () => ({
       sendSignal,
       sendSignalAnalysis,
+      sendTextToTG: jest.fn(),
     }));
 
     jest.doMock('../tradejsConfig', () => ({
@@ -137,5 +138,102 @@ describe('cli telegram notifications', () => {
       'analysis:ETHUSDT',
     ]);
     expect(progressTick).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not send skipped signals to Telegram', async () => {
+    const progressTick = jest.fn();
+    const logger = {
+      info: jest.fn(),
+      error: jest.fn(),
+      warn: jest.fn(),
+    };
+    const getData = jest.fn(async () => null);
+    const sendSignal = jest.fn(async () => undefined);
+    const sendSignalAnalysis = jest.fn(async () => undefined);
+
+    jest.doMock('progress', () => ({
+      __esModule: true,
+      default: jest.fn().mockImplementation(() => ({
+        tick: progressTick,
+      })),
+    }));
+
+    jest.doMock('chalk', () => ({
+      __esModule: true,
+      default: {
+        yellow: (...values: unknown[]) => values.join(' '),
+        gray: (value: string) => value,
+      },
+    }));
+
+    jest.doMock('@tradejs/core/backtest', () => ({
+      getFormatted: jest.fn(),
+    }));
+
+    jest.doMock('@tradejs/core/tickers', () => ({
+      getTopTickers: jest.fn(),
+    }));
+
+    jest.doMock('@tradejs/core/time', () => ({
+      getTimestamp: jest.fn(() => 0),
+    }));
+
+    jest.doMock('@tradejs/infra/files', () => ({
+      getFiles: jest.fn(async () => []),
+    }));
+
+    jest.doMock('@tradejs/infra/logger', () => ({
+      logger,
+    }));
+
+    jest.doMock('@tradejs/infra/redis', () => ({
+      RedisWriteBlockedError: class RedisWriteBlockedError extends Error {},
+      delKeyWithOptions: jest.fn(),
+      getData,
+      getKeys: jest.fn(async () => []),
+      redisKeys: {
+        analysis: (symbol: string, signalId: string) =>
+          `analysis:${symbol}:${signalId}`,
+      },
+    }));
+
+    jest.doMock('../ai', () => ({
+      askAI: jest.fn(),
+    }));
+
+    jest.doMock('../screenshot', () => ({
+      screenDashboard: jest.fn(),
+    }));
+
+    jest.doMock('../signals', () => ({
+      sendSignal,
+      sendSignalAnalysis,
+      sendTextToTG: jest.fn(),
+    }));
+
+    jest.doMock('../tradejsConfig', () => ({
+      getTradejsProjectCwd: jest.fn(() => '/tmp/tradejs'),
+    }));
+
+    const { sendToTG } = require('../cli');
+
+    await sendToTG(
+      [
+        { signalId: 'sig-1', symbol: 'BTCUSDT', orderStatus: 'skipped' },
+        { signalId: 'sig-2', symbol: 'ETHUSDT', orderStatus: 'completed' },
+      ],
+      '15',
+      'root',
+    );
+
+    expect(sendSignal).toHaveBeenCalledTimes(1);
+    expect(sendSignal).toHaveBeenCalledWith(
+      expect.objectContaining({ symbol: 'ETHUSDT' }),
+      '15',
+      null,
+      { userName: 'root' },
+    );
+    expect(sendSignalAnalysis).not.toHaveBeenCalled();
+    expect(progressTick).toHaveBeenCalledTimes(1);
   });
 });

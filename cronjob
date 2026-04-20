@@ -1,2 +1,4 @@
 # 0,15,30,45 * * * * cd /app && PROJECT_CWD=/app DOTENV_CONFIG_PATH=/app/.env bash ./bin/run-cli-dist.sh bot >> /var/log/cron.bot.log 2>&1
 0,15,30,45 * * * * cd /app && PROJECT_CWD=/app DOTENV_CONFIG_PATH=/app/.env NODE_OPTIONS=--max-old-space-size=8192 bash ./bin/run-cli-dist.sh signals --tickersLimit 350 --timeframe 15 --chunk 1/1 --notify --makeOrders --showSkipStats >> /var/log/cron.signals.15.log 2>&1
+CRON_TZ=Europe/Moscow
+0 23 * * * cd /app && PROJECT_CWD=/app DOTENV_CONFIG_PATH=/app/.env NODE_OPTIONS=--max-old-space-size=8192 bash ./bin/run-cli-dist.sh signals-summary --user root --connector bybit >> /var/log/cron.signals.summary.log 2>&1

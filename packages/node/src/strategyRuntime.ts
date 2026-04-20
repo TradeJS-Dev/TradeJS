@@ -19,6 +19,7 @@ import {
   executeEntryOrder,
   updatePositionProtection,
 } from './strategyHelpers/runtime';
+import { markRuntimeTradeClosed } from './runtimeJournal';
 import { createPineScriptLoader } from './pine';
 import { getStrategyManifest } from './strategy/manifests';
 import { getTradejsProjectCwd, loadTradejsConfig } from './tradejsConfig';
@@ -378,12 +379,16 @@ const buildAiHookContext = ({
 
 const handleExitDecision = async ({
   connector,
+  userName,
+  strategyName,
   symbol,
   decision,
   market,
   onRuntimeError,
 }: {
   connector: CreateStrategyCoreParams<StrategyConfig>['connector'];
+  userName?: string;
+  strategyName?: string;
   symbol: string;
   decision: ExitDecision;
   market: HookCandleMarket;
@@ -400,6 +405,13 @@ const handleExitDecision = async ({
       price: decision.closePlan.price,
       timestamp: decision.closePlan.timestamp,
       direction: decision.closePlan.direction,
+    });
+    await markRuntimeTradeClosed({
+      userName,
+      strategy: strategyName,
+      symbol,
+      exitPrice: decision.closePlan.price,
+      exitTimestamp: decision.closePlan.timestamp,
     });
   } catch (err) {
     await onRuntimeError?.({
@@ -532,6 +544,7 @@ const executeEntryDecision = async ({
     if (signal) {
       await executeEntryOrder({
         connector,
+        userName: hookCtx.userName,
         symbol,
         direction: decision.entryContext.direction,
         qty: decision.orderPlan.qty,
@@ -1153,6 +1166,8 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
 
         return handleExitDecision({
           connector,
+          userName,
+          strategyName,
           symbol,
           decision,
           market,

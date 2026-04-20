@@ -285,6 +285,14 @@ const findSignals = async (
       expire: TTL_3M,
     });
 
+    await setData(
+      redisKeys.runtimeSignal(flags.user, signal.signalId),
+      signal,
+      {
+        expire: TTL_3M,
+      },
+    );
+
     logger.info('Signal found %s by strategy %s', symbol, strategyName);
   }
 

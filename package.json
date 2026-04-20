@@ -98,6 +98,7 @@
     "sandbox:refresh": "cd examples/sandbox && yarn up -R @tradejs/cli @tradejs/core @tradejs/types @tradejs/base @tradejs/connectors @tradejs/indicators @tradejs/infra @tradejs/node @tradejs/strategies && yarn install",
     "signals": "PROJECT_CWD=\"$PWD\" DOTENV_CONFIG_PATH=\"${DOTENV_CONFIG_PATH:-$PWD/.env}\" NODE_OPTIONS=\"--max-old-space-size=8192\" time bash ./bin/run-cli-dist.sh signals",
     "signals:cron": "PROJECT_CWD=\"$PWD\" DOTENV_CONFIG_PATH=\"${DOTENV_CONFIG_PATH:-$PWD/.env}\" NODE_OPTIONS=\"--max-old-space-size=8192\" time bash ./bin/run-cli-dist.sh signals",
+    "signals:summary": "PROJECT_CWD=\"$PWD\" DOTENV_CONFIG_PATH=\"${DOTENV_CONFIG_PATH:-$PWD/.env}\" NODE_OPTIONS=\"--max-old-space-size=8192\" time bash ./bin/run-cli-dist.sh signals-summary",
     "signals:sandbox": "yarn signals",
     "spread:ingest": "yarn cli spread:ingest",
     "start": "PROJECT_CWD=\"$PWD\" yarn workspace @tradejs/app start",

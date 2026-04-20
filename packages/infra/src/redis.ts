@@ -364,6 +364,17 @@ export const redisKeys = {
   signalsBySymbol: (symbol: string) => `signals:${symbol}:`,
   storeSignal: (symbol: string, signalId: string) =>
     `store:signals:${symbol}:${signalId}`,
+  runtimeSignals: (userName: string) => `users:${userName}:runtime:signals:`,
+  runtimeSignal: (userName: string, signalId: string) =>
+    `users:${userName}:runtime:signals:${signalId}`,
+  runtimeTrades: (userName: string) =>
+    `users:${userName}:runtime:trade-records:`,
+  runtimeTrade: (userName: string, orderId: string) =>
+    `users:${userName}:runtime:trade-records:${orderId}`,
+  runtimeActiveTrades: (userName: string) =>
+    `users:${userName}:runtime:active-trades:`,
+  runtimeActiveTrade: (userName: string, symbol: string) =>
+    `users:${userName}:runtime:active-trades:${symbol}`,
   analysis: (symbol: string, signalId: string) =>
     `analysis:${symbol}:${signalId}`,
   backtestResults: (userName: string, config: string, timestamp: string) =>

@@ -24,6 +24,7 @@ const scriptLoaders: Record<string, ScriptLoader> = {
   'ml-train:latest': () => import('./scripts/mlTrainLatestSelect'),
   results: () => import('./scripts/results'),
   signals: () => import('./scripts/signals'),
+  'signals-summary': () => import('./scripts/signalsSummary'),
   'spread:ingest': () => import('./scripts/derivativesIngest'),
   'test-ml': () => import('./scripts/test-ml'),
   'test-script': () => import('./scripts/test'),

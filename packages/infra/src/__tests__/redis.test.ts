@@ -332,6 +332,24 @@ describe('redis utils', () => {
     expect(redisKeys.storeSignal('BTCUSDT', 's1')).toBe(
       'store:signals:BTCUSDT:s1',
     );
+    expect(redisKeys.runtimeSignals('root')).toBe(
+      'users:root:runtime:signals:',
+    );
+    expect(redisKeys.runtimeSignal('root', 's1')).toBe(
+      'users:root:runtime:signals:s1',
+    );
+    expect(redisKeys.runtimeTrades('root')).toBe(
+      'users:root:runtime:trade-records:',
+    );
+    expect(redisKeys.runtimeTrade('root', 'o1')).toBe(
+      'users:root:runtime:trade-records:o1',
+    );
+    expect(redisKeys.runtimeActiveTrades('root')).toBe(
+      'users:root:runtime:active-trades:',
+    );
+    expect(redisKeys.runtimeActiveTrade('root', 'BTCUSDT')).toBe(
+      'users:root:runtime:active-trades:BTCUSDT',
+    );
     expect(redisKeys.analysis('BTCUSDT', 's1')).toBe('analysis:BTCUSDT:s1');
     expect(redisKeys.backtestResults('root', 'TrendLine:base', '123')).toBe(
       'users:root:backtests:results:TrendLine:base:123',

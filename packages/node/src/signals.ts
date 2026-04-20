@@ -262,6 +262,22 @@ const sendTelegramMessage = async ({
   return data;
 };
 
+export const sendTextToTG = async (
+  message: string,
+  options: {
+    userName?: string;
+    markup?: Record<string, unknown>;
+  } = {},
+) => {
+  const { token, chatId } = await getTelegramSettings(options.userName);
+  return sendTelegramMessage({
+    message,
+    markup: options.markup,
+    token,
+    chatId,
+  });
+};
+
 export const formatMessage = (
   signal: Signal,
   analysis?: Partial<SignalAnalysis> | null,

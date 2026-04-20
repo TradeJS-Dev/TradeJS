@@ -4,6 +4,7 @@ const mockEnrichSignalWithAi = jest.fn();
 const mockExecuteEntryOrder = jest.fn();
 const mockUpdatePositionProtection = jest.fn();
 const mockLoadTradejsConfig = jest.fn();
+const mockMarkRuntimeTradeClosed = jest.fn();
 
 jest.mock('@tradejs/core/strategies', () => ({
   createStrategyAPI: jest.fn((params: any) => ({
@@ -88,6 +89,11 @@ jest.mock('../strategyHelpers/runtime', () => ({
   executeEntryOrder: (...args: unknown[]) => mockExecuteEntryOrder(...args),
   updatePositionProtection: (...args: unknown[]) =>
     mockUpdatePositionProtection(...args),
+}));
+
+jest.mock('../runtimeJournal', () => ({
+  markRuntimeTradeClosed: (...args: unknown[]) =>
+    mockMarkRuntimeTradeClosed(...args),
 }));
 
 jest.mock('@tradejs/infra/logger', () => ({
@@ -251,6 +257,7 @@ describe('strategyRuntime', () => {
     mockUpdatePositionProtection.mockResolvedValue(undefined);
     mockEnrichSignalWithMl.mockResolvedValue(undefined);
     mockEnrichSignalWithAi.mockResolvedValue(5);
+    mockMarkRuntimeTradeClosed.mockResolvedValue(null);
   });
 
   afterAll(() => {

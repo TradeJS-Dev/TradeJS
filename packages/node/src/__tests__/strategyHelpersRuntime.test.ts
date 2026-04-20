@@ -3,6 +3,8 @@ const mockBuildMlTrainingRow = jest.fn();
 const mockTrimMlTrainingRowWindows = jest.fn();
 const mockBuildMlFeatures = jest.fn();
 const mockAskAI = jest.fn();
+const mockCreateRuntimeOrderId = jest.fn();
+const mockRecordRuntimeTradeOpen = jest.fn();
 
 jest.mock('@tradejs/infra/ml', () => ({
   buildMlTrainingRow: (...args: unknown[]) => mockBuildMlTrainingRow(...args),
@@ -22,10 +24,18 @@ jest.mock('../ai', () => ({
   askAI: (...args: unknown[]) => mockAskAI(...args),
 }));
 
+jest.mock('../runtimeJournal', () => ({
+  createRuntimeOrderId: (...args: unknown[]) =>
+    mockCreateRuntimeOrderId(...args),
+  recordRuntimeTradeOpen: (...args: unknown[]) =>
+    mockRecordRuntimeTradeOpen(...args),
+}));
+
 import {
   enrichSignalWithAi,
   enrichSignalWithMl,
   enrichSignalWithMlAi,
+  executeEntryOrder,
 } from '../strategyHelpers/runtime';
 
 describe('strategyHelpers/runtime enrichSignalWithMlAi', () => {
@@ -46,6 +56,8 @@ describe('strategyHelpers/runtime enrichSignalWithMlAi', () => {
       direction: 'LONG',
       quality: 4,
     });
+    mockCreateRuntimeOrderId.mockReturnValue('tjs-order-1');
+    mockRecordRuntimeTradeOpen.mockResolvedValue(null);
     mockFetchMlThreshold.mockResolvedValue({
       probability: 0.9,
       threshold: 0.5,
@@ -182,5 +194,56 @@ describe('strategyHelpers/runtime enrichSignalWithMlAi', () => {
     });
 
     expect(quality).toBeUndefined();
+  });
+
+  it('assigns orderId and records runtime trade after successful entry order', async () => {
+    const connector = {
+      placeOrder: jest.fn(async () => true),
+      setTakeProfits: jest.fn(async () => true),
+      setStopLoss: jest.fn(async () => true),
+      closePosition: jest.fn(async () => true),
+      getPosition: jest.fn(async () => ({
+        symbol: 'ETHUSDT',
+        qty: 1,
+        price: 101,
+        direction: 'LONG',
+      })),
+    } as any;
+    const placedSignal = { ...signal };
+
+    const price = await executeEntryOrder({
+      connector,
+      userName: 'root',
+      symbol: 'ETHUSDT',
+      direction: 'LONG',
+      qty: 1,
+      currentPrice: 100,
+      timestamp: 1_700_000_000_000,
+      takeProfits: [{ price: 110, rate: 1 }],
+      stopLossPrice: 95,
+      signal: placedSignal,
+    });
+
+    expect(connector.placeOrder).toHaveBeenCalledWith(
+      expect.objectContaining({
+        symbol: 'ETHUSDT',
+        orderId: 'tjs-order-1',
+      }),
+    );
+    expect(placedSignal.orderId).toBe('tjs-order-1');
+    expect(placedSignal.orderStatus).toBe('completed');
+    expect(placedSignal.prices.currentPrice).toBe(101);
+    expect(mockRecordRuntimeTradeOpen).toHaveBeenCalledWith({
+      userName: 'root',
+      orderId: 'tjs-order-1',
+      signalId: 's1',
+      strategy: 'TrendLine',
+      symbol: 'ETHUSDT',
+      direction: 'LONG',
+      qty: 1,
+      entryPrice: 101,
+      entryTimestamp: 1_700_000_000_000,
+    });
+    expect(price).toBe(101);
   });
 });

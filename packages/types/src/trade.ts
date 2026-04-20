@@ -72,6 +72,7 @@ export type Order = {
   price: number;
   timestamp: number;
   direction: Direction;
+  orderId?: string;
   signal?: Signal;
 };
 
@@ -116,6 +117,24 @@ export interface ConnectorPluginDefinition {
 type GetPosition = (symbol: string) => Promise<Position | null>;
 type GetPositions = () => Promise<Position[]>;
 type GetOpenPositionPnl = () => Promise<PositionPnlSnapshot[]>;
+export interface ClosedPnlRecord {
+  symbol: string;
+  qty: number;
+  entryPrice: number | null;
+  exitPrice: number | null;
+  closedPnl: number;
+  closedAt: number;
+  orderId?: string;
+}
+
+export interface GetClosedPnlParams {
+  startTime: number;
+  endTime: number;
+  symbol?: string;
+  limit?: number;
+}
+
+type GetClosedPnl = (params: GetClosedPnlParams) => Promise<ClosedPnlRecord[]>;
 type PlaceOrder = (order: Order) => Promise<boolean>;
 type ClosePosition = (order: Omit<Order, 'qty'>) => Promise<boolean>;
 type SetTakeProfits = (params: {
@@ -139,6 +158,7 @@ export interface Connector {
   getPosition: GetPosition;
   getPositions: GetPositions;
   getOpenPositionPnl?: GetOpenPositionPnl;
+  getClosedPnl?: GetClosedPnl;
   placeOrder: PlaceOrder;
   setTakeProfits: SetTakeProfits;
   setStopLoss: SetStopLoss;
@@ -259,12 +279,13 @@ export interface TrendLineOptions {
 
 export interface Signal {
   signalId: string;
+  orderId?: string;
   symbol: string;
   interval: Interval;
   strategy: string;
   direction: Direction;
   timestamp: number;
-  orderStatus?: 'completed' | 'failed' | 'skipped' | 'canceled';
+  orderStatus?: SignalOrderStatus;
   orderSkipReason?: string;
   isConfigFromBacktest?: boolean;
   ml?: {
@@ -304,4 +325,26 @@ export interface SignalAnalysis {
   qualityReason?: string;
   triggerInvalidation?: string;
   comment: string;
+}
+
+export type SignalOrderStatus = 'completed' | 'failed' | 'skipped' | 'canceled';
+
+export type RuntimeTradeStatus = 'active' | 'closed';
+
+export interface RuntimeTradeRecord {
+  orderId: string;
+  signalId?: string;
+  strategy: string;
+  symbol: string;
+  direction: Direction;
+  qty: number;
+  entryPrice: number;
+  entryTimestamp: number;
+  status: RuntimeTradeStatus;
+  currentPrice?: number | null;
+  currentPnl?: number | null;
+  closedPnl?: number | null;
+  exitPrice?: number | null;
+  exitTimestamp?: number | null;
+  lastSyncedAt?: number;
 }
