@@ -2,12 +2,17 @@ import fs from 'fs';
 import path from 'path';
 import { createRequire } from 'module';
 import { fileURLToPath, pathToFileURL } from 'url';
+import {
+  normalizeTradejsConfigHooks,
+  type TradejsConfigHooks,
+} from '@tradejs/core/config';
 import { logger } from '@tradejs/infra/logger';
 
 export interface TradejsProjectConfig {
   strategies?: string[];
   indicators?: string[];
   connectors?: string[];
+  hooks?: TradejsConfigHooks;
 }
 
 const CONFIG_FILE_NAMES = [
@@ -59,11 +64,15 @@ const normalizeConfig = (rawConfig: unknown): TradejsProjectConfig => {
         .map((value) => String(value || '').trim())
         .filter(Boolean)
     : [];
+  const hooks = normalizeTradejsConfigHooks(
+    config.hooks as TradejsConfigHooks | undefined,
+  );
 
   return {
     strategies,
     indicators,
     connectors,
+    ...(hooks ? { hooks } : {}),
   };
 };
 

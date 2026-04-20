@@ -1,6 +1,3 @@
-import type { StrategyConfig, StrategyManifest } from '@tradejs/types';
-import { closeOppositePositionsBeforeOpen } from './closeOppositePositionsBeforeOpen';
-
 export * from '@tradejs/core/strategies';
 export * from './ai';
 export {
@@ -24,27 +21,7 @@ export {
   enrichSignalWithMlAi,
   executeEntryOrder,
 } from './strategyHelpers/runtime';
-export { closeOppositePositionsBeforeOpen };
-
-type BeforePlaceOrderHook = NonNullable<
-  NonNullable<StrategyManifest['hooks']>['beforePlaceOrder']
->;
-
-interface CreateCloseOppositeBeforePlaceOrderHookParams {
-  isEnabled: (config: StrategyConfig) => boolean;
-}
-
-export const createCloseOppositeBeforePlaceOrderHook = ({
-  isEnabled,
-}: CreateCloseOppositeBeforePlaceOrderHookParams): BeforePlaceOrderHook => {
-  return async ({ ctx, entry }) => {
-    if (!isEnabled(ctx.strategyConfig)) {
-      return;
-    }
-
-    await closeOppositePositionsBeforeOpen({
-      connector: ctx.connector,
-      entryContext: entry.context,
-    });
-  };
-};
+export { closeOppositePositionsBeforeOpen } from './closeOppositePositionsBeforeOpen';
+export { createCloseOppositeBeforePlaceOrderHook } from './strategyHooks/closeOppositeBeforePlaceOrder';
+export { createMoveStopToBreakEvenAfterCoreDecisionHook } from './strategyHooks/moveStopToBreakEvenAfterCoreDecision';
+export { createCloseAllPositionsOnGlobalProfitHook } from './strategyHooks/closeAllPositionsOnGlobalProfit';

@@ -3,6 +3,7 @@ const mockEnrichSignalWithMl = jest.fn();
 const mockEnrichSignalWithAi = jest.fn();
 const mockExecuteEntryOrder = jest.fn();
 const mockUpdatePositionProtection = jest.fn();
+const mockLoadTradejsConfig = jest.fn();
 
 jest.mock('@tradejs/core/strategies', () => ({
   createStrategyAPI: jest.fn((params: any) => ({
@@ -72,6 +73,14 @@ jest.mock('../strategyHelpers/config', () => ({
   resolveStrategyConfig: (...args: unknown[]) =>
     mockResolveStrategyConfig(...args),
 }));
+
+jest.mock('../tradejsConfig', () => {
+  const actual = jest.requireActual('../tradejsConfig');
+  return {
+    ...actual,
+    loadTradejsConfig: (...args: unknown[]) => mockLoadTradejsConfig(...args),
+  };
+});
 
 jest.mock('../strategyHelpers/runtime', () => ({
   enrichSignalWithMl: (...args: unknown[]) => mockEnrichSignalWithMl(...args),
@@ -231,6 +240,7 @@ describe('strategyRuntime', () => {
     manifestsModule.resetStrategyRegistryCache();
     manifestsModule.registerStrategyEntries(strategyEntries);
     manifestOverrides.clear();
+    mockLoadTradejsConfig.mockResolvedValue({});
     mockGetStrategyManifest.mockImplementation((name?: string) => {
       if (!name) {
         return undefined;
@@ -468,6 +478,34 @@ describe('strategyRuntime', () => {
     expect(result).toBe('ENTRY');
   });
 
+  it('runs project beforePlaceOrder hooks before manifest hooks', async () => {
+    const projectBeforePlaceOrder = jest.fn(async () => {});
+    const manifestBeforePlaceOrder = jest.fn(async () => {});
+    mockLoadTradejsConfig.mockResolvedValue({
+      hooks: {
+        beforePlaceOrder: [projectBeforePlaceOrder],
+      },
+    });
+    setStrategyManifestHooks('TrendLine', {
+      beforePlaceOrder: manifestBeforePlaceOrder,
+    });
+
+    const { strategy } = await makeRuntime(() =>
+      makeDecisionEntry({
+        signal: undefined,
+        runtime: { ml: { enabled: false }, ai: { enabled: false } },
+      }),
+    );
+
+    await strategy({ timestamp: 1 } as any, { timestamp: 1 } as any);
+
+    expect(projectBeforePlaceOrder).toHaveBeenCalledTimes(1);
+    expect(manifestBeforePlaceOrder).toHaveBeenCalledTimes(1);
+    expect(projectBeforePlaceOrder.mock.invocationCallOrder[0]).toBeLessThan(
+      manifestBeforePlaceOrder.mock.invocationCallOrder[0],
+    );
+  });
+
   it('closes no-signal entry when protection update fails after placeOrder', async () => {
     const { strategy, connector } = await makeRuntime(() =>
       makeDecisionEntry({
@@ -542,11 +580,114 @@ describe('strategyRuntime', () => {
     );
   });
 
-  it('calls afterCoreDecision and onSkip hooks for skip decisions', async () => {
+  it('runs project onInit hooks before manifest onInit hooks', async () => {
+    const projectOnInit = jest.fn(async () => {});
+    const manifestOnInit = jest.fn(async () => {});
+    mockLoadTradejsConfig.mockResolvedValue({
+      hooks: {
+        onInit: [projectOnInit],
+      },
+    });
+    setStrategyManifestHooks('TrendLine', { onInit: manifestOnInit });
+
+    await makeRuntime(() => ({ kind: 'skip', code: 'NO_SIGNAL' }));
+
+    expect(projectOnInit).toHaveBeenCalledTimes(1);
+    expect(manifestOnInit).toHaveBeenCalledTimes(1);
+    expect(projectOnInit.mock.invocationCallOrder[0]).toBeLessThan(
+      manifestOnInit.mock.invocationCallOrder[0],
+    );
+  });
+
+  it('calls onBar hook before core on every bar', async () => {
+    const onBar = jest.fn(async () => {});
+    const decisionFactory = jest.fn(() => ({
+      kind: 'skip',
+      code: 'NO_SIGNAL',
+    }));
+    setStrategyManifestHooks('TrendLine', { onBar });
+
+    const { strategy } = await makeRuntime(decisionFactory);
+
+    const result = await strategy(
+      { timestamp: 1 } as any,
+      { timestamp: 1 } as any,
+    );
+
+    expect(result).toBe('NO_SIGNAL');
+    expect(onBar).toHaveBeenCalledTimes(1);
+    expect(decisionFactory).toHaveBeenCalledTimes(1);
+    expect(onBar.mock.invocationCallOrder[0]).toBeLessThan(
+      decisionFactory.mock.invocationCallOrder[0],
+    );
+  });
+
+  it('short-circuits the bar from project onBar hook without running core', async () => {
+    const projectOnBar = jest.fn(async () => ({
+      kind: 'skip',
+      code: 'GLOBAL_CLOSE_ALL',
+    }));
+    const manifestOnBar = jest.fn(async () => {});
+    const onSkip = jest.fn(async () => {});
+    const decisionFactory = jest.fn(() => ({
+      kind: 'entry',
+      code: 'ENTRY',
+    }));
+    mockLoadTradejsConfig.mockResolvedValue({
+      hooks: {
+        onBar: [projectOnBar],
+      },
+    });
+    setStrategyManifestHooks('TrendLine', {
+      onBar: manifestOnBar,
+      onSkip,
+    });
+
+    const { strategy } = await makeRuntime(decisionFactory);
+
+    const result = await strategy(
+      { timestamp: 1 } as any,
+      { timestamp: 1 } as any,
+    );
+
+    expect(result).toBe('GLOBAL_CLOSE_ALL');
+    expect(projectOnBar).toHaveBeenCalledTimes(1);
+    expect(manifestOnBar).not.toHaveBeenCalled();
+    expect(onSkip).toHaveBeenCalledTimes(1);
+    expect(decisionFactory).not.toHaveBeenCalled();
+  });
+
+  it('runs project onBar hooks before manifest onBar hooks', async () => {
+    const projectOnBar = jest.fn(async () => {});
+    const manifestOnBar = jest.fn(async () => {});
+    mockLoadTradejsConfig.mockResolvedValue({
+      hooks: {
+        onBar: [projectOnBar],
+      },
+    });
+    setStrategyManifestHooks('TrendLine', { onBar: manifestOnBar });
+
+    const { strategy } = await makeRuntime(() => ({
+      kind: 'skip',
+      code: 'NO_SIGNAL',
+    }));
+
+    await strategy({ timestamp: 1 } as any, { timestamp: 1 } as any);
+
+    expect(projectOnBar).toHaveBeenCalledTimes(1);
+    expect(manifestOnBar).toHaveBeenCalledTimes(1);
+    expect(projectOnBar.mock.invocationCallOrder[0]).toBeLessThan(
+      manifestOnBar.mock.invocationCallOrder[0],
+    );
+  });
+
+  it('calls afterCoreDecision, afterBarDecision and onSkip hooks for skip decisions', async () => {
     const afterCoreDecision = jest.fn(async () => {});
+    const afterBarDecision = jest.fn(async () => {});
     const onSkip = jest.fn(async () => {});
     setStrategyManifestHooks('TrendLine', {
       afterCoreDecision,
+      afterBarDecision,
       onSkip,
     });
 
@@ -562,6 +703,7 @@ describe('strategyRuntime', () => {
 
     expect(result).toBe('NO_SIGNAL');
     expect(afterCoreDecision).toHaveBeenCalledTimes(1);
+    expect(afterBarDecision).toHaveBeenCalledTimes(1);
     expect(onSkip).toHaveBeenCalledTimes(1);
     expect(onSkip).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -570,6 +712,153 @@ describe('strategyRuntime', () => {
         }),
       }),
     );
+  });
+
+  it('calls afterBarDecision when onBar short-circuits the bar and skips afterCoreDecision', async () => {
+    const onBar = jest.fn(async () => ({
+      kind: 'skip',
+      code: 'GLOBAL_CLOSE_ALL',
+    }));
+    const afterCoreDecision = jest.fn(async () => {});
+    const afterBarDecision = jest.fn(async () => {});
+    const onSkip = jest.fn(async () => {});
+    setStrategyManifestHooks('TrendLine', {
+      onBar,
+      afterCoreDecision,
+      afterBarDecision,
+      onSkip,
+    });
+
+    const { strategy } = await makeRuntime(() => ({
+      kind: 'entry',
+      code: 'ENTRY',
+    }));
+
+    const result = await strategy(
+      { timestamp: 1 } as any,
+      { timestamp: 1 } as any,
+    );
+
+    expect(result).toBe('GLOBAL_CLOSE_ALL');
+    expect(onBar).toHaveBeenCalledTimes(1);
+    expect(afterCoreDecision).not.toHaveBeenCalled();
+    expect(afterBarDecision).toHaveBeenCalledTimes(1);
+    expect(afterBarDecision).toHaveBeenCalledWith(
+      expect.objectContaining({
+        decision: expect.objectContaining({
+          code: 'GLOBAL_CLOSE_ALL',
+        }),
+      }),
+    );
+    expect(onSkip).toHaveBeenCalledTimes(1);
+  });
+
+  it('applies project afterCoreDecision transforms without disabling manifest hooks', async () => {
+    const projectAfterCoreDecision = jest.fn(async () => ({
+      kind: 'protect',
+      code: 'TRENDLINE_MOVE_STOP_TO_BREAK_EVEN',
+      protectPlan: {
+        direction: 'LONG',
+        stopLossPrice: 101,
+      },
+    }));
+    const manifestAfterCoreDecision = jest.fn(async () => {});
+    const onSkip = jest.fn(async () => {});
+    mockLoadTradejsConfig.mockResolvedValue({
+      hooks: {
+        afterCoreDecision: [projectAfterCoreDecision],
+      },
+    });
+    setStrategyManifestHooks('TrendLine', {
+      afterCoreDecision: manifestAfterCoreDecision,
+      onSkip,
+    });
+
+    const { strategy } = await makeRuntime(() => ({
+      kind: 'skip',
+      code: 'POSITION_EXISTS',
+    }));
+
+    const result = await strategy(
+      { timestamp: 1, close: 101 } as any,
+      { timestamp: 1 } as any,
+    );
+
+    expect(projectAfterCoreDecision).toHaveBeenCalledTimes(1);
+    expect(manifestAfterCoreDecision).toHaveBeenCalledWith(
+      expect.objectContaining({
+        decision: expect.objectContaining({
+          kind: 'protect',
+          code: 'TRENDLINE_MOVE_STOP_TO_BREAK_EVEN',
+        }),
+      }),
+    );
+    expect(onSkip).not.toHaveBeenCalled();
+    expect(mockUpdatePositionProtection).toHaveBeenCalledWith({
+      connector: expect.any(Object),
+      symbol: 'ETHUSDT',
+      direction: 'LONG',
+      takeProfits: [],
+      stopLossPrice: 101,
+    });
+    expect(result).toBe('TRENDLINE_MOVE_STOP_TO_BREAK_EVEN');
+  });
+
+  it('applies project afterBarDecision transforms after onBar short-circuit without disabling manifest hooks', async () => {
+    const projectOnBar = jest.fn(async () => ({
+      kind: 'skip',
+      code: 'GLOBAL_CLOSE_ALL',
+    }));
+    const projectAfterBarDecision = jest.fn(async () => ({
+      kind: 'protect',
+      code: 'AFTER_BAR_PROTECT',
+      protectPlan: {
+        direction: 'LONG',
+        stopLossPrice: 101,
+      },
+    }));
+    const manifestAfterBarDecision = jest.fn(async () => {});
+    const afterCoreDecision = jest.fn(async () => {});
+    mockLoadTradejsConfig.mockResolvedValue({
+      hooks: {
+        onBar: [projectOnBar],
+        afterBarDecision: [projectAfterBarDecision],
+      },
+    });
+    setStrategyManifestHooks('TrendLine', {
+      afterCoreDecision,
+      afterBarDecision: manifestAfterBarDecision,
+    });
+
+    const { strategy } = await makeRuntime(() => ({
+      kind: 'skip',
+      code: 'NO_SIGNAL',
+    }));
+
+    const result = await strategy(
+      { timestamp: 1 } as any,
+      { timestamp: 1 } as any,
+    );
+
+    expect(projectOnBar).toHaveBeenCalledTimes(1);
+    expect(projectAfterBarDecision).toHaveBeenCalledTimes(1);
+    expect(afterCoreDecision).not.toHaveBeenCalled();
+    expect(manifestAfterBarDecision).toHaveBeenCalledWith(
+      expect.objectContaining({
+        decision: expect.objectContaining({
+          kind: 'protect',
+          code: 'AFTER_BAR_PROTECT',
+        }),
+      }),
+    );
+    expect(mockUpdatePositionProtection).toHaveBeenCalledWith({
+      connector: expect.any(Object),
+      symbol: 'ETHUSDT',
+      direction: 'LONG',
+      takeProfits: [],
+      stopLossPrice: 101,
+    });
+    expect(result).toBe('AFTER_BAR_PROTECT');
   });
 
   it('calls afterEnrichMl and afterEnrichAi hooks for entry signal', async () => {
@@ -592,6 +881,29 @@ describe('strategyRuntime', () => {
           quality: 5,
         }),
       }),
+    );
+  });
+
+  it('runs project afterEnrichAi hooks before manifest afterEnrichAi hooks', async () => {
+    const projectAfterEnrichAi = jest.fn(async () => {});
+    const manifestAfterEnrichAi = jest.fn(async () => {});
+    mockLoadTradejsConfig.mockResolvedValue({
+      hooks: {
+        afterEnrichAi: [projectAfterEnrichAi],
+      },
+    });
+    setStrategyManifestHooks('TrendLine', {
+      afterEnrichAi: manifestAfterEnrichAi,
+    });
+
+    const { strategy } = await makeRuntime(() => makeDecisionEntry());
+
+    await strategy({ timestamp: 1 } as any, { timestamp: 1 } as any);
+
+    expect(projectAfterEnrichAi).toHaveBeenCalledTimes(1);
+    expect(manifestAfterEnrichAi).toHaveBeenCalledTimes(1);
+    expect(projectAfterEnrichAi.mock.invocationCallOrder[0]).toBeLessThan(
+      manifestAfterEnrichAi.mock.invocationCallOrder[0],
     );
   });
 
@@ -647,6 +959,39 @@ describe('strategyRuntime', () => {
     expect(result).toBe('HOOK_BEFORE_ENTRY_GATE');
   });
 
+  it('blocks entry from project beforeEntryGate hook before manifest hook runs', async () => {
+    const projectBeforeEntryGate = jest.fn(async () => ({
+      allow: false,
+      reason: 'GLOBAL_SESSION_BLOCK',
+    }));
+    const manifestBeforeEntryGate = jest.fn(async () => ({}));
+    mockLoadTradejsConfig.mockResolvedValue({
+      hooks: {
+        beforeEntryGate: [projectBeforeEntryGate],
+      },
+    });
+    setStrategyManifestHooks('TrendLine', {
+      beforeEntryGate: manifestBeforeEntryGate,
+    });
+
+    const { strategy, connector } = await makeRuntime(() =>
+      makeDecisionEntry({
+        signal: undefined,
+        runtime: { ml: { enabled: false }, ai: { enabled: false } },
+      }),
+    );
+
+    const result = await strategy(
+      { timestamp: 1 } as any,
+      { timestamp: 1 } as any,
+    );
+
+    expect(projectBeforeEntryGate).toHaveBeenCalledTimes(1);
+    expect(manifestBeforeEntryGate).not.toHaveBeenCalled();
+    expect(connector.placeOrder).not.toHaveBeenCalled();
+    expect(result).toBe('HOOK_BEFORE_ENTRY_GATE:GLOBAL_SESSION_BLOCK');
+  });
+
   it('calls afterPlaceOrder hook after successful signal order execution', async () => {
     const afterPlaceOrder = jest.fn(async () => {});
     setStrategyManifestHooks('TrendLine', {
@@ -666,6 +1011,29 @@ describe('strategyRuntime', () => {
           }),
         }),
       }),
+    );
+  });
+
+  it('runs project afterPlaceOrder hooks before manifest afterPlaceOrder hooks', async () => {
+    const projectAfterPlaceOrder = jest.fn(async () => {});
+    const manifestAfterPlaceOrder = jest.fn(async () => {});
+    mockLoadTradejsConfig.mockResolvedValue({
+      hooks: {
+        afterPlaceOrder: [projectAfterPlaceOrder],
+      },
+    });
+    setStrategyManifestHooks('TrendLine', {
+      afterPlaceOrder: manifestAfterPlaceOrder,
+    });
+
+    const { strategy } = await makeRuntime(() => makeDecisionEntry());
+
+    await strategy({ timestamp: 1 } as any, { timestamp: 1 } as any);
+
+    expect(projectAfterPlaceOrder).toHaveBeenCalledTimes(1);
+    expect(manifestAfterPlaceOrder).toHaveBeenCalledTimes(1);
+    expect(projectAfterPlaceOrder.mock.invocationCallOrder[0]).toBeLessThan(
+      manifestAfterPlaceOrder.mock.invocationCallOrder[0],
     );
   });
 
@@ -724,6 +1092,42 @@ describe('strategyRuntime', () => {
     expect(beforeClosePosition).toHaveBeenCalledTimes(1);
     expect(connector.closePosition).not.toHaveBeenCalled();
     expect(result).toBe('CLOSE_BLOCKED_BY_HOOK');
+  });
+
+  it('blocks closePosition from project beforeClosePosition hook before manifest hook runs', async () => {
+    const projectBeforeClosePosition = jest.fn(async () => ({
+      allow: false,
+      reason: 'GLOBAL_CLOSE_LOCK',
+    }));
+    const manifestBeforeClosePosition = jest.fn(async () => ({}));
+    mockLoadTradejsConfig.mockResolvedValue({
+      hooks: {
+        beforeClosePosition: [projectBeforeClosePosition],
+      },
+    });
+    setStrategyManifestHooks('TrendLine', {
+      beforeClosePosition: manifestBeforeClosePosition,
+    });
+
+    const { strategy, connector } = await makeRuntime(() => ({
+      kind: 'exit',
+      code: 'CLOSE_BY_SIGNAL',
+      closePlan: {
+        price: 100,
+        timestamp: 1_700_000_123_000,
+        direction: 'LONG',
+      },
+    }));
+
+    const result = await strategy(
+      { timestamp: 1 } as any,
+      { timestamp: 1 } as any,
+    );
+
+    expect(projectBeforeClosePosition).toHaveBeenCalledTimes(1);
+    expect(manifestBeforeClosePosition).not.toHaveBeenCalled();
+    expect(connector.closePosition).not.toHaveBeenCalled();
+    expect(result).toBe('CLOSE_BLOCKED_BY_HOOK:GLOBAL_CLOSE_LOCK');
   });
 
   it('returns exit code after successful closePosition execution', async () => {
@@ -818,6 +1222,76 @@ describe('strategyRuntime', () => {
           stage: 'afterCoreDecision',
         }),
       }),
+    );
+  });
+
+  it('calls project onRuntimeError hooks before manifest onRuntimeError hooks', async () => {
+    const projectOnRuntimeError = jest.fn(async () => {});
+    const manifestOnRuntimeError = jest.fn(async () => {});
+    const afterCoreDecision = jest.fn(async () => {
+      throw new Error('hook-failed');
+    });
+    mockLoadTradejsConfig.mockResolvedValue({
+      hooks: {
+        onRuntimeError: [projectOnRuntimeError],
+      },
+    });
+    setStrategyManifestHooks('TrendLine', {
+      onRuntimeError: manifestOnRuntimeError,
+      afterCoreDecision,
+    });
+
+    const { strategy } = await makeRuntime(() => ({
+      kind: 'skip',
+      code: 'NO_SIGNAL',
+    }));
+
+    await strategy({ timestamp: 1 } as any, { timestamp: 1 } as any);
+
+    expect(projectOnRuntimeError).toHaveBeenCalledTimes(1);
+    expect(manifestOnRuntimeError).toHaveBeenCalledTimes(1);
+    expect(projectOnRuntimeError.mock.invocationCallOrder[0]).toBeLessThan(
+      manifestOnRuntimeError.mock.invocationCallOrder[0],
+    );
+    expect(projectOnRuntimeError).toHaveBeenCalledWith(
+      expect.objectContaining({
+        error: expect.objectContaining({
+          stage: 'afterCoreDecision',
+        }),
+      }),
+    );
+  });
+
+  it('still calls manifest onRuntimeError when project onRuntimeError hook throws', async () => {
+    const projectOnRuntimeError = jest.fn(async () => {
+      throw new Error('project-error-hook-failed');
+    });
+    const manifestOnRuntimeError = jest.fn(async () => {});
+    const afterCoreDecision = jest.fn(async () => {
+      throw new Error('hook-failed');
+    });
+    mockLoadTradejsConfig.mockResolvedValue({
+      hooks: {
+        onRuntimeError: [projectOnRuntimeError],
+      },
+    });
+    setStrategyManifestHooks('TrendLine', {
+      onRuntimeError: manifestOnRuntimeError,
+      afterCoreDecision,
+    });
+
+    const { strategy } = await makeRuntime(() => ({
+      kind: 'skip',
+      code: 'NO_SIGNAL',
+    }));
+
+    await strategy({ timestamp: 1 } as any, { timestamp: 1 } as any);
+
+    expect(manifestOnRuntimeError).toHaveBeenCalledTimes(1);
+    expect(logger.error).toHaveBeenCalledWith(
+      'project hook onRuntimeError failed: %s %s',
+      'TrendLine',
+      expect.any(Error),
     );
   });
 

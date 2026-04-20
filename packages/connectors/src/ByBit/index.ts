@@ -35,6 +35,7 @@ import {
   Direction,
   Interval,
   Position,
+  PositionPnlSnapshot,
   Tp,
 } from '@tradejs/types';
 
@@ -775,6 +776,65 @@ export const ByBitConnectorCreator: ConnectorCreator = async (config) => {
       }
 
       return positions;
+    },
+
+    getOpenPositionPnl: async () => {
+      const client = await getPrivateClient();
+
+      if (!client) {
+        return [];
+      }
+
+      const positionRes = await client.getPositionInfo({
+        category: MARKET_CATEGORY,
+        settleCoin: 'USDT',
+      });
+
+      if (positionRes.retCode !== 0) {
+        logger.log(
+          getLogLevel(positionRes),
+          'positions pnl retCode: %s, %s',
+          positionRes.retCode,
+        );
+        return [];
+      }
+
+      return (
+        (positionRes.result?.list ?? []) as unknown as Array<
+          Record<string, unknown>
+        >
+      )
+        .map((item) => {
+          const qty = Number(item.size ?? Number.NaN);
+          const entryPrice = Number(item.avgPrice ?? Number.NaN);
+          const currentPrice = Number(item.markPrice ?? Number.NaN);
+          const unrealizedPnl = Number(item.unrealisedPnl ?? Number.NaN);
+          const side = String(item.side ?? '');
+
+          if (
+            !Number.isFinite(qty) ||
+            qty <= 0 ||
+            !Number.isFinite(entryPrice) ||
+            !Number.isFinite(currentPrice) ||
+            !Number.isFinite(unrealizedPnl) ||
+            (side !== 'Buy' && side !== 'Sell')
+          ) {
+            return null;
+          }
+
+          return {
+            symbol: String(item.symbol ?? ''),
+            qty,
+            price: entryPrice,
+            currentPrice,
+            unrealizedPnl,
+            direction: (side === 'Buy' ? 'LONG' : 'SHORT') as Direction,
+          } satisfies PositionPnlSnapshot;
+        })
+        .filter(
+          (item): item is PositionPnlSnapshot =>
+            item != null && item.symbol.length > 0,
+        );
     },
 
     placeOrder: async ({ symbol, price, qty, direction, isLimit }) => {

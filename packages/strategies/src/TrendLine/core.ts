@@ -18,8 +18,6 @@ import {
   TrendLineOptions,
 } from '@tradejs/types';
 
-const BREAK_EVEN_TRIGGER_RISK_MULTIPLIER = 0.5;
-
 const buildTrendlineSignalSeed = ({
   direction,
   currentPrice,
@@ -57,97 +55,6 @@ const isOpenPosition = (position: Position | null): position is Position =>
       position.qty > 0 &&
       (position.direction === 'LONG' || position.direction === 'SHORT'),
   );
-
-const getFavorableMovePct = ({
-  direction,
-  entryPrice,
-  currentPrice,
-}: {
-  direction: Direction;
-  entryPrice: number;
-  currentPrice: number;
-}) => {
-  if (
-    !Number.isFinite(entryPrice) ||
-    !Number.isFinite(currentPrice) ||
-    entryPrice <= 0
-  ) {
-    return null;
-  }
-
-  return direction === 'LONG'
-    ? ((currentPrice - entryPrice) / entryPrice) * 100
-    : ((entryPrice - currentPrice) / entryPrice) * 100;
-};
-
-const getPositionStopLossPrice = (position: Position | null) => {
-  if (!position || typeof position !== 'object') {
-    return null;
-  }
-
-  const slPrice = Number(
-    (position as Position & { slPrice?: unknown }).slPrice ?? Number.NaN,
-  );
-
-  if (Number.isFinite(slPrice)) {
-    return slPrice;
-  }
-
-  const signalStopLossPrice = Number(
-    (
-      position as Position & {
-        signal?: { prices?: { stopLossPrice?: unknown } };
-      }
-    ).signal?.prices?.stopLossPrice ?? Number.NaN,
-  );
-
-  return Number.isFinite(signalStopLossPrice) ? signalStopLossPrice : null;
-};
-
-const getPositionRiskPct = ({
-  direction,
-  entryPrice,
-  stopLossPrice,
-}: {
-  direction: Direction;
-  entryPrice: number;
-  stopLossPrice: number | null;
-}) => {
-  if (
-    stopLossPrice == null ||
-    !Number.isFinite(entryPrice) ||
-    !Number.isFinite(stopLossPrice) ||
-    entryPrice <= 0
-  ) {
-    return null;
-  }
-
-  return direction === 'LONG'
-    ? ((entryPrice - stopLossPrice) / entryPrice) * 100
-    : ((stopLossPrice - entryPrice) / entryPrice) * 100;
-};
-
-const isBreakEvenStopAlreadyApplied = ({
-  direction,
-  entryPrice,
-  stopLossPrice,
-}: {
-  direction: Direction;
-  entryPrice: number;
-  stopLossPrice: number | null;
-}) => {
-  if (
-    stopLossPrice == null ||
-    !Number.isFinite(entryPrice) ||
-    !Number.isFinite(stopLossPrice)
-  ) {
-    return false;
-  }
-
-  return direction === 'LONG'
-    ? stopLossPrice >= entryPrice
-    : stopLossPrice <= entryPrice;
-};
 
 const isFailedBreakout = ({
   direction,
@@ -202,17 +109,6 @@ export const createTrendLineCore: CreateStrategyCore<
           : lowsTrendlines[0];
       const activeModeConfig =
         currentPosition.direction === 'LONG' ? HIGHS : LOWS;
-      const currentStopLossPrice = getPositionStopLossPrice(currentPosition);
-      const favorableMovePct = getFavorableMovePct({
-        direction: currentPosition.direction,
-        entryPrice: currentPosition.price,
-        currentPrice,
-      });
-      const currentPositionRiskPct = getPositionRiskPct({
-        direction: currentPosition.direction,
-        entryPrice: currentPosition.price,
-        stopLossPrice: currentStopLossPrice,
-      });
 
       if (activeLine) {
         const indicators = indicatorsState.snapshot();
@@ -236,26 +132,6 @@ export const createTrendLineCore: CreateStrategyCore<
             direction: currentPosition.direction,
           });
         }
-      }
-
-      if (
-        !isBreakEvenStopAlreadyApplied({
-          direction: currentPosition.direction,
-          entryPrice: currentPosition.price,
-          stopLossPrice: currentStopLossPrice,
-        }) &&
-        favorableMovePct != null &&
-        favorableMovePct >=
-          (currentPositionRiskPct ?? activeModeConfig.SL) *
-            BREAK_EVEN_TRIGGER_RISK_MULTIPLIER
-      ) {
-        return strategyApi.protect({
-          code: 'TRENDLINE_MOVE_STOP_TO_BREAK_EVEN',
-          protectPlan: {
-            direction: currentPosition.direction,
-            stopLossPrice: currentPosition.price,
-          },
-        });
       }
 
       return strategyApi.skip('POSITION_EXISTS');

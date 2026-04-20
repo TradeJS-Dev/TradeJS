@@ -137,6 +137,7 @@ export const CoinbaseConnectorCreator: ConnectorCreator = async () => {
 
     getPosition: async () => null,
     getPositions: async () => [],
+    getOpenPositionPnl: async () => [],
     placeOrder: async () => false,
     setTakeProfits: async () => false,
     setStopLoss: async () => false,

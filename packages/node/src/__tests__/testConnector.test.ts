@@ -13,6 +13,7 @@ const baseConnector = {
   kline: jest.fn(),
   getTickers: jest.fn(),
   getPositions: jest.fn(),
+  getOpenPositionPnl: jest.fn(),
 };
 
 describe('testConnector', () => {
@@ -134,5 +135,65 @@ describe('testConnector', () => {
     });
     expect(result.inlineOrderLog).toHaveLength(2);
     expect(result.inlinePositionLog).toHaveLength(1);
+  });
+
+  it('delegates unrealized pnl snapshots to the underlying connector when available', async () => {
+    baseConnector.getOpenPositionPnl.mockResolvedValue([
+      {
+        symbol: 'ETHUSDT',
+        qty: 1,
+        price: 100,
+        currentPrice: 110,
+        unrealizedPnl: 10,
+        direction: 'LONG',
+      },
+    ]);
+
+    const connector = createTestConnector(baseConnector as any, {
+      userName: 'alice',
+    });
+
+    await expect(connector.getOpenPositionPnl?.()).resolves.toEqual([
+      {
+        symbol: 'ETHUSDT',
+        qty: 1,
+        price: 100,
+        currentPrice: 110,
+        unrealizedPnl: 10,
+        direction: 'LONG',
+      },
+    ]);
+  });
+
+  it('returns a zero-pnl snapshot for the in-memory open position when the underlying connector has no snapshot method', async () => {
+    const connector = createTestConnector(
+      {
+        ...baseConnector,
+        getOpenPositionPnl: undefined,
+      } as any,
+      {
+        userName: 'alice',
+      },
+    );
+
+    await connector.placeOrder({
+      symbol: 'ETHUSDT',
+      qty: 1,
+      price: 100,
+      isLimit: false,
+      timestamp: 1,
+      direction: 'LONG',
+    });
+
+    await expect(connector.getOpenPositionPnl?.()).resolves.toEqual([
+      {
+        symbol: 'ETHUSDT',
+        qty: 1,
+        price: 100,
+        currentPrice: 100,
+        unrealizedPnl: 0,
+        direction: 'LONG',
+      },
+    ]);
   });
 });

@@ -82,6 +82,11 @@ export type Position = {
   direction: Direction;
 };
 
+export interface PositionPnlSnapshot extends Position {
+  currentPrice: number;
+  unrealizedPnl: number;
+}
+
 export type OrderType =
   | 'OPEN_LONG'
   | 'OPEN_SHORT'
@@ -110,6 +115,7 @@ export interface ConnectorPluginDefinition {
 
 type GetPosition = (symbol: string) => Promise<Position | null>;
 type GetPositions = () => Promise<Position[]>;
+type GetOpenPositionPnl = () => Promise<PositionPnlSnapshot[]>;
 type PlaceOrder = (order: Order) => Promise<boolean>;
 type ClosePosition = (order: Omit<Order, 'qty'>) => Promise<boolean>;
 type SetTakeProfits = (params: {
@@ -132,6 +138,7 @@ export interface Connector {
   setState: (state: object) => Promise<void>;
   getPosition: GetPosition;
   getPositions: GetPositions;
+  getOpenPositionPnl?: GetOpenPositionPnl;
   placeOrder: PlaceOrder;
   setTakeProfits: SetTakeProfits;
   setStopLoss: SetStopLoss;

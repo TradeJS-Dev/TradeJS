@@ -125,7 +125,9 @@ export interface StrategyHookAiContext {
 
 export type StrategyHookStage =
   | 'onInit'
+  | 'onBar'
   | 'afterCoreDecision'
+  | 'afterBarDecision'
   | 'onSkip'
   | 'beforeClosePosition'
   | 'afterEnrichMl'
@@ -160,9 +162,13 @@ export interface StrategyHookInitContext {
   market: Required<Pick<StrategyHookMarketContext, 'data' | 'btcData'>>;
 }
 
-export interface StrategyHookAfterDecisionContext {
+export interface StrategyHookBarContext {
   ctx: StrategyHookCtx;
   market: Required<Pick<StrategyHookMarketContext, 'candle' | 'btcCandle'>>;
+}
+
+export interface StrategyHookAfterDecisionContext
+  extends StrategyHookBarContext {
   decision: StrategyDecision;
 }
 
@@ -237,7 +243,13 @@ export interface StrategyManifest {
   };
   hooks?: {
     onInit?: (params: StrategyHookInitContext) => Promise<void> | void;
+    onBar?: (
+      params: StrategyHookBarContext,
+    ) => Promise<StrategyDecision | void> | StrategyDecision | void;
     afterCoreDecision?: (
+      params: StrategyHookAfterDecisionContext,
+    ) => Promise<void> | void;
+    afterBarDecision?: (
       params: StrategyHookAfterDecisionContext,
     ) => Promise<void> | void;
     onSkip?: (params: StrategyHookSkipContext) => Promise<void> | void;

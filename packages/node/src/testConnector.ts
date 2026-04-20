@@ -6,6 +6,7 @@ import {
   Order,
   OrderLog,
   OrderLogData,
+  PositionPnlSnapshot,
   PositionLogData,
   TestConnectorCreator,
 } from '@tradejs/types';
@@ -109,6 +110,27 @@ export const createTestConnector: TestConnectorCreator = (
     },
 
     getPosition: async () => currentPosition || null,
+
+    getOpenPositionPnl: async () => {
+      if (typeof connector.getOpenPositionPnl === 'function') {
+        return connector.getOpenPositionPnl();
+      }
+
+      if (!currentPosition) {
+        return [];
+      }
+
+      return [
+        {
+          symbol: currentPosition.symbol,
+          qty: currentPosition.qty,
+          price: currentPosition.price,
+          currentPrice: currentPosition.price,
+          unrealizedPnl: 0,
+          direction: currentPosition.direction,
+        } satisfies PositionPnlSnapshot,
+      ];
+    },
 
     checkTp: async (candle: Candle) => {
       if (!candle || !currentPosition || !currentPosition.qty) {

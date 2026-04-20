@@ -199,6 +199,55 @@ describe('ByBitConnectorCreator', () => {
     );
   });
 
+  it('maps open position pnl snapshots from exchange response', async () => {
+    const client = {
+      getPositionInfo: jest.fn().mockResolvedValue({
+        retCode: 0,
+        result: {
+          list: [
+            {
+              symbol: 'BTCUSDT',
+              size: '1.5',
+              avgPrice: '100',
+              markPrice: '120',
+              unrealisedPnl: '30',
+              side: 'Buy',
+            },
+            {
+              symbol: 'ETHUSDT',
+              size: '0',
+              avgPrice: '200',
+              markPrice: '210',
+              unrealisedPnl: '10',
+              side: 'Sell',
+            },
+          ],
+        },
+      }),
+    };
+    mockedGetClient.mockResolvedValue(client as any);
+
+    const connector = await ByBitConnectorCreator({ userName: 'alice' });
+    const snapshots = await connector.getOpenPositionPnl?.();
+
+    expect(client.getPositionInfo).toHaveBeenCalledWith(
+      expect.objectContaining({
+        category: expect.any(String),
+        settleCoin: 'USDT',
+      }),
+    );
+    expect(snapshots).toEqual([
+      {
+        symbol: 'BTCUSDT',
+        qty: 1.5,
+        price: 100,
+        currentPrice: 120,
+        unrealizedPnl: 30,
+        direction: 'LONG',
+      },
+    ]);
+  });
+
   it('returns false in placeOrder when normalized qty is below min', async () => {
     const client = {
       setLeverage: jest.fn(),

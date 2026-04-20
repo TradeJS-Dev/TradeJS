@@ -64,6 +64,47 @@ describe('tradejsConfig utils', () => {
     );
   });
 
+  it('preserves function hooks from config files', async () => {
+    const cwd = createTempDir();
+    const configPath = path.join(cwd, 'tradejs.config.ts');
+
+    fs.writeFileSync(
+      configPath,
+      `const beforePlaceOrder = async () => {};
+const afterCoreDecision = async () => {};
+const afterBarDecision = async () => {};
+
+export default {
+  hooks: {
+    beforePlaceOrder,
+    afterCoreDecision,
+    afterBarDecision,
+  },
+};`,
+      'utf8',
+    );
+
+    const config = await loadTradejsConfig(cwd);
+
+    expect(Array.isArray(config.hooks?.beforePlaceOrder)).toBe(true);
+    expect(Array.isArray(config.hooks?.afterCoreDecision)).toBe(true);
+    expect(Array.isArray(config.hooks?.afterBarDecision)).toBe(true);
+    expect(typeof (config.hooks?.beforePlaceOrder as any)?.[0]).toBe(
+      'function',
+    );
+    expect(typeof (config.hooks?.afterCoreDecision as any)?.[0]).toBe(
+      'function',
+    );
+    expect(typeof (config.hooks?.afterBarDecision as any)?.[0]).toBe(
+      'function',
+    );
+    expect(loggerLogMock).toHaveBeenCalledWith(
+      'debug',
+      'Loaded TradeJS config: %s',
+      configPath,
+    );
+  });
+
   it('finds tradejs.config.ts in parent directories', async () => {
     const cwd = createTempDir();
     const childDir = path.join(cwd, 'nested', 'project');
@@ -171,11 +212,13 @@ describe('tradejsConfig utils', () => {
 
     const config = await loadTradejsConfig(cwd);
 
-    expect(config).toEqual({
-      strategies: ['@tradejs/strategies'],
-      indicators: ['@tradejs/indicators'],
-      connectors: ['@tradejs/connectors'],
-    });
+    expect(config).toEqual(
+      expect.objectContaining({
+        strategies: ['@tradejs/strategies'],
+        indicators: ['@tradejs/indicators'],
+        connectors: ['@tradejs/connectors'],
+      }),
+    );
     expect(loggerLogMock).toHaveBeenCalledWith(
       'debug',
       'Loaded TradeJS config: %s',

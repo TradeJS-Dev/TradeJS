@@ -1,4 +1,10 @@
 import path from 'node:path';
+import type {
+  TradejsConfigAfterBarDecisionHook,
+  TradejsConfigAfterCoreDecisionHook,
+  TradejsConfigOnBarHook,
+  TradejsConfigHooks,
+} from '@tradejs/core/config';
 import { SIGNALS_PRELOAD_DAYS } from '@tradejs/core/constants';
 import {
   buildDefaultIndicatorPeriods,
@@ -15,7 +21,7 @@ import {
 } from './strategyHelpers/runtime';
 import { createPineScriptLoader } from './pine';
 import { getStrategyManifest } from './strategy/manifests';
-import { getTradejsProjectCwd } from './tradejsConfig';
+import { getTradejsProjectCwd, loadTradejsConfig } from './tradejsConfig';
 import { resolveStrategyConfig } from './strategyHelpers/config';
 import {
   CreateStrategyCore,
@@ -148,6 +154,49 @@ type ResolvedEntryRuntime = ReturnType<typeof resolveEntryRuntimePolicy>;
 type HookCandleMarket = Required<
   Pick<StrategyHookMarketContext, 'candle' | 'btcCandle'>
 >;
+
+const normalizeConfigHookList = <THook extends (...args: any[]) => unknown>(
+  value: THook | THook[] | undefined,
+): THook[] => {
+  if (Array.isArray(value)) {
+    return value;
+  }
+
+  return value ? [value] : [];
+};
+
+const isStrategyDecision = (value: unknown): value is StrategyDecision => {
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+
+  const kind = (value as { kind?: unknown }).kind;
+  return (
+    kind === 'skip' || kind === 'entry' || kind === 'exit' || kind === 'protect'
+  );
+};
+
+const CONFIG_HOOK_STAGES: Array<StrategyHookStage & keyof TradejsConfigHooks> =
+  [
+    'onInit',
+    'onBar',
+    'afterCoreDecision',
+    'afterBarDecision',
+    'onSkip',
+    'beforeClosePosition',
+    'afterEnrichMl',
+    'afterEnrichAi',
+    'beforeEntryGate',
+    'beforePlaceOrder',
+    'afterPlaceOrder',
+  ];
+
+const isConfigHookStage = (
+  stage: StrategyHookStage,
+): stage is StrategyHookStage & keyof TradejsConfigHooks =>
+  CONFIG_HOOK_STAGES.includes(
+    stage as StrategyHookStage & keyof TradejsConfigHooks,
+  );
 
 const buildHookCtx = ({
   connector,
@@ -418,7 +467,7 @@ const executeEntryDecision = async ({
   policy,
   ml,
   ai,
-  invokeHook,
+  invokeStageHooks,
   notifyRuntimeError,
 }: {
   connector: CreateStrategyCoreParams<StrategyConfig>['connector'];
@@ -432,7 +481,7 @@ const executeEntryDecision = async ({
   policy: StrategyHookPolicyContext;
   ml?: StrategyHookMlContext;
   ai?: StrategyHookAiContext;
-  invokeHook: <TReturn = unknown>(
+  invokeStageHooks: <TReturn = unknown>(
     stage: StrategyHookStage,
     hook: ((params: any) => Promise<TReturn> | TReturn) | undefined,
     params: any,
@@ -452,7 +501,7 @@ const executeEntryDecision = async ({
 }) => {
   const signal = decision.signal;
   const beforePlaceOrder = async () => {
-    await invokeHook(
+    await invokeStageHooks(
       'beforePlaceOrder',
       manifest?.hooks?.beforePlaceOrder,
       {
@@ -493,7 +542,7 @@ const executeEntryDecision = async ({
         signal,
         beforePlaceOrder,
       });
-      await invokeHook(
+      await invokeStageHooks(
         'afterPlaceOrder',
         manifest?.hooks?.afterPlaceOrder,
         {
@@ -545,7 +594,7 @@ const executeEntryDecision = async ({
       throw error;
     }
 
-    await invokeHook(
+    await invokeStageHooks(
       'afterPlaceOrder',
       manifest?.hooks?.afterPlaceOrder,
       {
@@ -630,6 +679,8 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
       baseConfig,
       defaults,
     });
+    const projectConfig = await loadTradejsConfig(projectRoot);
+    const projectHooks = projectConfig.hooks;
     const env = String(config.ENV ?? 'BACKTEST');
     const strategyManifest = resolveManifest(strategyName);
     const hookBase = {
@@ -646,6 +697,8 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
         ...hookBase,
         strategyName: name,
       });
+    const getProjectHookList = (stage: keyof TradejsConfigHooks) =>
+      normalizeConfigHookList(projectHooks?.[stage] as any);
 
     const notifyRuntimeError = async ({
       stage,
@@ -666,22 +719,38 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
           : strategyName;
       const errorManifest =
         resolveManifest(errorStrategyName) ?? strategyManifest;
+      const errorParams = {
+        ctx: getHookCtx(errorStrategyName),
+        market,
+        decision,
+        entry,
+        error: {
+          stage,
+          cause: error,
+        },
+      };
+
+      for (const projectHook of getProjectHookList('onRuntimeError') as Array<
+        (params: any) => Promise<void> | void
+      >) {
+        try {
+          await projectHook(errorParams);
+        } catch (hookError) {
+          logger.error(
+            'project hook onRuntimeError failed: %s %s',
+            strategyName,
+            hookError,
+          );
+        }
+      }
+
       const onRuntimeError = errorManifest?.hooks?.onRuntimeError;
       if (!onRuntimeError) {
         return;
       }
 
       try {
-        await onRuntimeError({
-          ctx: getHookCtx(errorStrategyName),
-          market,
-          decision,
-          entry,
-          error: {
-            stage,
-            cause: error,
-          },
-        });
+        await onRuntimeError(errorParams);
       } catch (hookError) {
         logger.error(
           'runtime hook onRuntimeError failed: %s %s',
@@ -725,6 +794,190 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
       }
     };
 
+    const invokeProjectHooks = async <TReturn = unknown>(
+      stage: StrategyHookStage & keyof TradejsConfigHooks,
+      params: any,
+      errorContext: {
+        decision?: StrategyDecision;
+        entry?: StrategyHookEntryContext;
+        market?: StrategyHookMarketContext;
+      } = {},
+    ): Promise<TReturn[]> => {
+      const results: TReturn[] = [];
+
+      for (const hook of getProjectHookList(stage) as Array<
+        (hookParams: any) => Promise<TReturn> | TReturn
+      >) {
+        const result = await invokeHook<TReturn>(
+          stage,
+          hook,
+          params,
+          errorContext,
+        );
+        if (result !== undefined) {
+          results.push(result);
+        }
+      }
+
+      return results;
+    };
+
+    const invokeStageHooks = async <TReturn = unknown>(
+      stage: StrategyHookStage,
+      hook: ((params: any) => Promise<TReturn> | TReturn) | undefined,
+      params: any,
+      errorContext: {
+        decision?: StrategyDecision;
+        entry?: StrategyHookEntryContext;
+        market?: StrategyHookMarketContext;
+      } = {},
+    ): Promise<TReturn | undefined> => {
+      if (isConfigHookStage(stage)) {
+        await invokeProjectHooks<TReturn>(stage, params, errorContext);
+      }
+      return invokeHook(stage, hook, params, errorContext);
+    };
+
+    const invokeGateHooks = async (
+      stage: 'beforeClosePosition' | 'beforeEntryGate',
+      hook:
+        | ((
+            params: any,
+          ) =>
+            | Promise<StrategyHookGateResult | void>
+            | StrategyHookGateResult
+            | void)
+        | undefined,
+      params: any,
+      errorContext: {
+        decision?: StrategyDecision;
+        entry?: StrategyHookEntryContext;
+        market?: StrategyHookMarketContext;
+      } = {},
+    ): Promise<StrategyHookGateResult | void> => {
+      const projectResults =
+        await invokeProjectHooks<StrategyHookGateResult | void>(
+          stage,
+          params,
+          errorContext,
+        );
+      const projectBlock = projectResults.find(
+        (result) => result?.allow === false,
+      );
+      if (projectBlock?.allow === false) {
+        return projectBlock;
+      }
+
+      return invokeHook<StrategyHookGateResult | void>(
+        stage,
+        hook,
+        params,
+        errorContext,
+      );
+    };
+
+    const applyProjectAfterCoreDecisionHooks = async ({
+      hookCtx,
+      market,
+      decision,
+    }: {
+      hookCtx: StrategyHookCtx;
+      market: HookCandleMarket;
+      decision: StrategyDecision;
+    }): Promise<StrategyDecision> => {
+      let nextDecision = decision;
+
+      for (const hook of getProjectHookList(
+        'afterCoreDecision',
+      ) as TradejsConfigAfterCoreDecisionHook[]) {
+        const result = await invokeHook<StrategyDecision | void>(
+          'afterCoreDecision',
+          hook,
+          {
+            ctx: hookCtx,
+            market,
+            decision: nextDecision,
+          },
+          {
+            decision: nextDecision,
+            market,
+          },
+        );
+
+        if (isStrategyDecision(result)) {
+          nextDecision = result;
+        }
+      }
+
+      return nextDecision;
+    };
+
+    const applyProjectAfterBarDecisionHooks = async ({
+      hookCtx,
+      market,
+      decision,
+    }: {
+      hookCtx: StrategyHookCtx;
+      market: HookCandleMarket;
+      decision: StrategyDecision;
+    }): Promise<StrategyDecision> => {
+      let nextDecision = decision;
+
+      for (const hook of getProjectHookList(
+        'afterBarDecision',
+      ) as TradejsConfigAfterBarDecisionHook[]) {
+        const result = await invokeHook<StrategyDecision | void>(
+          'afterBarDecision',
+          hook,
+          {
+            ctx: hookCtx,
+            market,
+            decision: nextDecision,
+          },
+          {
+            decision: nextDecision,
+            market,
+          },
+        );
+
+        if (isStrategyDecision(result)) {
+          nextDecision = result;
+        }
+      }
+
+      return nextDecision;
+    };
+
+    const applyProjectOnBarHooks = async ({
+      hookCtx,
+      market,
+    }: {
+      hookCtx: StrategyHookCtx;
+      market: HookCandleMarket;
+    }): Promise<StrategyDecision | undefined> => {
+      for (const hook of getProjectHookList(
+        'onBar',
+      ) as TradejsConfigOnBarHook[]) {
+        const result = await invokeHook<StrategyDecision | void>(
+          'onBar',
+          hook,
+          {
+            ctx: hookCtx,
+            market,
+          },
+          {
+            market,
+          },
+        );
+
+        if (isStrategyDecision(result)) {
+          return result;
+        }
+      }
+
+      return undefined;
+    };
+
     const indicatorsState = createStrategyIndicatorsState({
       env,
       data,
@@ -760,7 +1013,7 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
       indicatorsState,
     });
 
-    await invokeHook('onInit', strategyManifest?.hooks?.onInit, {
+    await invokeStageHooks('onInit', strategyManifest?.hooks?.onInit, {
       ctx: getHookCtx(),
       market: {
         data,
@@ -776,8 +1029,58 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
         candle,
         btcCandle,
       };
+      const onBarHookCtx = getHookCtx();
+      const projectOnBarDecision = await applyProjectOnBarHooks({
+        hookCtx: onBarHookCtx,
+        market,
+      });
 
-      const decision = await core(candle, btcCandle);
+      let decision: StrategyDecision;
+      let shouldInvokeAfterCoreDecisionHook = false;
+
+      if (projectOnBarDecision) {
+        decision = projectOnBarDecision;
+      } else {
+        const manifestOnBarDecision = await invokeHook<StrategyDecision | void>(
+          'onBar',
+          strategyManifest?.hooks?.onBar,
+          {
+            ctx: onBarHookCtx,
+            market,
+          },
+          { market },
+        );
+
+        if (isStrategyDecision(manifestOnBarDecision)) {
+          decision = manifestOnBarDecision;
+        } else {
+          decision = await core(candle, btcCandle);
+          shouldInvokeAfterCoreDecisionHook = true;
+        }
+      }
+
+      if (shouldInvokeAfterCoreDecisionHook) {
+        const initialDecisionStrategyName =
+          decision.kind === 'entry'
+            ? decision.entryContext.strategy
+            : strategyName;
+        decision = await applyProjectAfterCoreDecisionHooks({
+          hookCtx: getHookCtx(initialDecisionStrategyName),
+          market,
+          decision,
+        });
+      }
+
+      const initialAfterBarDecisionStrategyName =
+        decision.kind === 'entry'
+          ? decision.entryContext.strategy
+          : strategyName;
+      decision = await applyProjectAfterBarDecisionHooks({
+        hookCtx: getHookCtx(initialAfterBarDecisionStrategyName),
+        market,
+        decision,
+      });
+
       const decisionStrategyName =
         decision.kind === 'entry'
           ? decision.entryContext.strategy
@@ -786,9 +1089,22 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
         resolveManifest(decisionStrategyName) ?? strategyManifest;
       const decisionHookCtx = getHookCtx(decisionStrategyName);
 
+      if (shouldInvokeAfterCoreDecisionHook) {
+        await invokeHook(
+          'afterCoreDecision',
+          decisionManifest?.hooks?.afterCoreDecision,
+          {
+            ctx: decisionHookCtx,
+            market,
+            decision,
+          },
+          { decision, market },
+        );
+      }
+
       await invokeHook(
-        'afterCoreDecision',
-        decisionManifest?.hooks?.afterCoreDecision,
+        'afterBarDecision',
+        decisionManifest?.hooks?.afterBarDecision,
         {
           ctx: decisionHookCtx,
           market,
@@ -798,7 +1114,7 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
       );
 
       if (decision.kind === 'skip') {
-        await invokeHook(
+        await invokeStageHooks(
           'onSkip',
           decisionManifest?.hooks?.onSkip,
           {
@@ -818,7 +1134,7 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
         if (!makeOrdersEnabled) {
           return decision.code;
         }
-        const closeGate = await invokeHook<StrategyHookGateResult | void>(
+        const closeGate = await invokeGateHooks(
           'beforeClosePosition',
           decisionManifest?.hooks?.beforeClosePosition,
           {
@@ -917,7 +1233,7 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
           ml: runtime.ml,
         });
 
-        await invokeHook(
+        await invokeStageHooks(
           'afterEnrichMl',
           decisionManifest?.hooks?.afterEnrichMl,
           {
@@ -959,7 +1275,7 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
           quality,
         });
 
-        await invokeHook(
+        await invokeStageHooks(
           'afterEnrichAi',
           decisionManifest?.hooks?.afterEnrichAi,
           {
@@ -1004,7 +1320,7 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
         return signal ?? decision.code;
       }
 
-      const entryGate = await invokeHook<StrategyHookGateResult | void>(
+      const entryGate = await invokeGateHooks(
         'beforeEntryGate',
         decisionManifest?.hooks?.beforeEntryGate,
         {
@@ -1041,7 +1357,7 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
         policy,
         ml,
         ai,
-        invokeHook,
+        invokeStageHooks,
         notifyRuntimeError,
       });
     };

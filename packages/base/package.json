@@ -35,6 +35,7 @@
     "@tradejs/connectors": "workspace:^",
     "@tradejs/core": "workspace:^",
     "@tradejs/indicators": "workspace:^",
+    "@tradejs/node": "workspace:^",
     "@tradejs/strategies": "workspace:^"
   },
   "devDependencies": {
