@@ -3,7 +3,7 @@ import { getBuiltInStrategyDefaultConfig } from '@tradejs/strategies';
 import {
   createCloseOppositeBeforePlaceOrderHook,
   createCloseAllPositionsOnGlobalProfitHook,
-  createMoveStopToBreakEvenAfterCoreDecisionHook,
+  createMoveStopToBreakEvenOnBarHook,
 } from '@tradejs/node/strategies';
 
 export const basePreset: TradejsConfig = {
@@ -18,10 +18,12 @@ export const basePreset: TradejsConfig = {
             .CLOSE_OPPOSITE_POSITIONS,
         ),
     }),
-    onBar: createCloseAllPositionsOnGlobalProfitHook({
-      getStrategyDefaultConfig: getBuiltInStrategyDefaultConfig,
-    }),
-    afterCoreDecision: createMoveStopToBreakEvenAfterCoreDecisionHook(),
+    onBar: [
+      createCloseAllPositionsOnGlobalProfitHook({
+        getStrategyDefaultConfig: getBuiltInStrategyDefaultConfig,
+      }),
+      createMoveStopToBreakEvenOnBarHook(),
+    ],
   },
 };
 

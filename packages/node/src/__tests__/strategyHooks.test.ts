@@ -1,7 +1,7 @@
 import {
   createCloseOppositeBeforePlaceOrderHook,
   createCloseAllPositionsOnGlobalProfitHook,
-  createMoveStopToBreakEvenAfterCoreDecisionHook,
+  createMoveStopToBreakEvenOnBarHook,
 } from '@tradejs/node/strategies';
 import { closeOppositePositionsBeforeOpen } from '../closeOppositePositionsBeforeOpen';
 
@@ -183,17 +183,15 @@ describe('createCloseOppositeBeforePlaceOrderHook', () => {
   });
 });
 
-describe('createMoveStopToBreakEvenAfterCoreDecisionHook', () => {
+describe('createMoveStopToBreakEvenOnBarHook', () => {
   const makeParams = ({
     strategyConfig = {},
     position,
     currentPrice = 101,
-    decision = { kind: 'skip', code: 'POSITION_EXISTS' } as any,
   }: {
     strategyConfig?: Record<string, unknown>;
     position?: Record<string, unknown> | null;
     currentPrice?: number;
-    decision?: any;
   } = {}) => {
     const connector = {
       getPosition: jest.fn(async () => position ?? null),
@@ -215,13 +213,12 @@ describe('createMoveStopToBreakEvenAfterCoreDecisionHook', () => {
         },
         btcCandle: {} as any,
       },
-      decision,
       connector,
     };
   };
 
   it('returns protect decision when favorable move reaches half-risk', async () => {
-    const hook = createMoveStopToBreakEvenAfterCoreDecisionHook();
+    const hook = createMoveStopToBreakEvenOnBarHook();
     const params = makeParams({
       position: {
         symbol: 'ETHUSDT',
@@ -244,7 +241,7 @@ describe('createMoveStopToBreakEvenAfterCoreDecisionHook', () => {
   });
 
   it('falls back to signal stop price when position stop loss is missing', async () => {
-    const hook = createMoveStopToBreakEvenAfterCoreDecisionHook();
+    const hook = createMoveStopToBreakEvenOnBarHook();
 
     await expect(
       hook(
@@ -271,7 +268,7 @@ describe('createMoveStopToBreakEvenAfterCoreDecisionHook', () => {
   });
 
   it('falls back to direction config SL when position stop loss is unavailable', async () => {
-    const hook = createMoveStopToBreakEvenAfterCoreDecisionHook();
+    const hook = createMoveStopToBreakEvenOnBarHook();
 
     await expect(
       hook(
@@ -303,7 +300,7 @@ describe('createMoveStopToBreakEvenAfterCoreDecisionHook', () => {
   });
 
   it('does nothing when stop is already at break-even', async () => {
-    const hook = createMoveStopToBreakEvenAfterCoreDecisionHook();
+    const hook = createMoveStopToBreakEvenOnBarHook();
 
     await expect(
       hook(

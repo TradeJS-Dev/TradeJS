@@ -1,4 +1,4 @@
-import type { TradejsConfigAfterCoreDecisionHook } from '@tradejs/core/config';
+import type { TradejsConfigOnBarHook } from '@tradejs/core/config';
 import type { StrategyConfig } from '@tradejs/types';
 import {
   DEFAULT_BREAK_EVEN_TRIGGER_RISK_MULTIPLIER,
@@ -11,17 +11,17 @@ import {
   toStrategyCodePrefix,
 } from './shared';
 
-interface CreateMoveStopToBreakEvenAfterCoreDecisionHookParams {
+interface CreateMoveStopToBreakEvenOnBarHookParams {
   isEnabled?: (config: StrategyConfig) => boolean;
   triggerRiskMultiplier?: number;
 }
 
-export const createMoveStopToBreakEvenAfterCoreDecisionHook = ({
+export const createMoveStopToBreakEvenOnBarHook = ({
   isEnabled = () => true,
   triggerRiskMultiplier = DEFAULT_BREAK_EVEN_TRIGGER_RISK_MULTIPLIER,
-}: CreateMoveStopToBreakEvenAfterCoreDecisionHookParams = {}): TradejsConfigAfterCoreDecisionHook => {
-  return async ({ ctx, market, decision }) => {
-    if (decision.kind !== 'skip' || !isEnabled(ctx.strategyConfig)) {
+}: CreateMoveStopToBreakEvenOnBarHookParams = {}): TradejsConfigOnBarHook => {
+  return async ({ ctx, market }) => {
+    if (!isEnabled(ctx.strategyConfig)) {
       return;
     }
 
@@ -80,3 +80,6 @@ export const createMoveStopToBreakEvenAfterCoreDecisionHook = ({
     };
   };
 };
+
+export const createMoveStopToBreakEvenAfterCoreDecisionHook =
+  createMoveStopToBreakEvenOnBarHook;

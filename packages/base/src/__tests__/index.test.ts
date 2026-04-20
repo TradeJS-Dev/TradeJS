@@ -4,16 +4,16 @@ describe('basePreset', () => {
     jest.clearAllMocks();
   });
 
-  it('wires shared beforePlaceOrder and afterCoreDecision hooks', () => {
+  it('wires shared beforePlaceOrder and onBar hooks', () => {
     const getBuiltInStrategyDefaultConfig = jest.fn();
     const createCloseOppositeBeforePlaceOrderHook = jest.fn(
       () => 'before-place-order-hook',
     );
     const createCloseAllPositionsOnGlobalProfitHook = jest.fn(
-      () => 'on-bar-hook',
+      () => 'close-all-on-bar-hook',
     );
-    const createMoveStopToBreakEvenAfterCoreDecisionHook = jest.fn(
-      () => 'break-even-after-core-decision-hook',
+    const createMoveStopToBreakEvenOnBarHook = jest.fn(
+      () => 'break-even-on-bar-hook',
     );
 
     jest.isolateModules(() => {
@@ -24,7 +24,7 @@ describe('basePreset', () => {
       jest.doMock('@tradejs/node/strategies', () => ({
         createCloseOppositeBeforePlaceOrderHook,
         createCloseAllPositionsOnGlobalProfitHook,
-        createMoveStopToBreakEvenAfterCoreDecisionHook,
+        createMoveStopToBreakEvenOnBarHook,
       }));
 
       const { basePreset } = require('../index');
@@ -33,9 +33,7 @@ describe('basePreset', () => {
       expect(createCloseAllPositionsOnGlobalProfitHook).toHaveBeenCalledTimes(
         1,
       );
-      expect(
-        createMoveStopToBreakEvenAfterCoreDecisionHook,
-      ).toHaveBeenCalledTimes(1);
+      expect(createMoveStopToBreakEvenOnBarHook).toHaveBeenCalledTimes(1);
       expect(createCloseAllPositionsOnGlobalProfitHook).toHaveBeenCalledWith({
         getStrategyDefaultConfig: getBuiltInStrategyDefaultConfig,
       });
@@ -45,8 +43,7 @@ describe('basePreset', () => {
         connectors: ['@tradejs/connectors'],
         hooks: {
           beforePlaceOrder: 'before-place-order-hook',
-          onBar: 'on-bar-hook',
-          afterCoreDecision: 'break-even-after-core-decision-hook',
+          onBar: ['close-all-on-bar-hook', 'break-even-on-bar-hook'],
         },
       });
 

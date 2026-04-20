@@ -23,5 +23,8 @@ export {
 } from './strategyHelpers/runtime';
 export { closeOppositePositionsBeforeOpen } from './closeOppositePositionsBeforeOpen';
 export { createCloseOppositeBeforePlaceOrderHook } from './strategyHooks/closeOppositeBeforePlaceOrder';
-export { createMoveStopToBreakEvenAfterCoreDecisionHook } from './strategyHooks/moveStopToBreakEvenAfterCoreDecision';
+export {
+  createMoveStopToBreakEvenOnBarHook,
+  createMoveStopToBreakEvenAfterCoreDecisionHook,
+} from './strategyHooks/moveStopToBreakEvenAfterCoreDecision';
 export { createCloseAllPositionsOnGlobalProfitHook } from './strategyHooks/closeAllPositionsOnGlobalProfit';
