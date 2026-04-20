@@ -2854,6 +2854,7 @@ __metadata:
     "@tradejs/connectors": "workspace:^"
     "@tradejs/core": "workspace:^"
     "@tradejs/indicators": "workspace:^"
+    "@tradejs/node": "workspace:^"
     "@tradejs/strategies": "workspace:^"
     tsup: "npm:^8.5.1"
     typescript: "npm:^5.1"
