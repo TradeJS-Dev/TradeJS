@@ -60,7 +60,7 @@ export default function RootLayout({
       style={{ colorScheme: 'dark' }}
       suppressHydrationWarning
     >
-      <body>
+      <body suppressHydrationWarning>
         <Provider>
           <AppShell>{children}</AppShell>
         </Provider>

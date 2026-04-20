@@ -98,6 +98,13 @@ async function main() {
   const nextBin = require.resolve('next/dist/bin/next');
   const args = [nextBin, command, ...rawArgs];
   const explicitPort = parsePort(readArgValue(rawArgs, ['-p', '--port']));
+  const hasBundlerFlag = rawArgs.some(
+    (arg) => arg === '--webpack' || arg === '--turbopack',
+  );
+
+  if ((command === 'dev' || command === 'build') && !hasBundlerFlag) {
+    args.push('--webpack');
+  }
 
   if (dev && explicitPort === null) {
     const requestedPort = parsePort(process.env.PORT) || 3000;
