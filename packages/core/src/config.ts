@@ -1,9 +1,13 @@
 import type {
   ConnectorPluginDefinition,
+  Connector,
+  Interval,
   IndicatorPluginDefinition,
+  Signal,
   StrategyDecision,
   StrategyHookBarContext,
   StrategyHookAfterDecisionContext,
+  StrategyConfig,
   StrategyManifest,
   StrategyPluginDefinition,
 } from '@tradejs/types';
@@ -25,7 +29,46 @@ export type TradejsConfigOnBarHook = (
   params: StrategyHookBarContext,
 ) => Promise<StrategyDecision | void> | StrategyDecision | void;
 
+export interface TradejsConfigSignalsRuntimeStrategy {
+  strategyName: string;
+  strategyConfig: StrategyConfig;
+}
+
+export interface TradejsConfigSignalsHookContext {
+  connector: Connector;
+  connectorName: string;
+  userName: string;
+  interval: Interval;
+  tickers: string[];
+  runtimeStrategies: TradejsConfigSignalsRuntimeStrategy[];
+}
+
+export interface TradejsConfigBeforeSignalsHookResult {
+  abort?: boolean;
+  reason?: string;
+}
+
+export interface TradejsConfigAfterSignalsHookContext
+  extends TradejsConfigSignalsHookContext {
+  signals: Signal[];
+  status: 'completed' | 'failed';
+  durationMs: number;
+}
+
+export type TradejsConfigBeforeSignalsHook = (
+  params: TradejsConfigSignalsHookContext,
+) =>
+  | Promise<TradejsConfigBeforeSignalsHookResult | void>
+  | TradejsConfigBeforeSignalsHookResult
+  | void;
+
+export type TradejsConfigAfterSignalsHook = (
+  params: TradejsConfigAfterSignalsHookContext,
+) => Promise<void> | void;
+
 export interface TradejsConfigHooks {
+  beforeSignals?: HookOrHooks<TradejsConfigBeforeSignalsHook>;
+  afterSignals?: HookOrHooks<TradejsConfigAfterSignalsHook>;
   onInit?: HookOrHooks<NonNullable<StrategyManifestHooks['onInit']>>;
   onBar?: HookOrHooks<TradejsConfigOnBarHook>;
   afterCoreDecision?: HookOrHooks<TradejsConfigAfterCoreDecisionHook>;
@@ -104,6 +147,8 @@ export const mergeTradejsConfigHooks = (
 ): TradejsConfigHooks | undefined => {
   const hooks: TradejsConfigHooks = {};
 
+  setMergedHook('beforeSignals', groups, hooks);
+  setMergedHook('afterSignals', groups, hooks);
   setMergedHook('onInit', groups, hooks);
   setMergedHook('onBar', groups, hooks);
   setMergedHook('afterCoreDecision', groups, hooks);

@@ -28,3 +28,4 @@ export {
   createMoveStopToBreakEvenAfterCoreDecisionHook,
 } from './strategyHooks/moveStopToBreakEvenAfterCoreDecision';
 export { createCloseAllPositionsOnGlobalProfitHook } from './strategyHooks/closeAllPositionsOnGlobalProfit';
+export { createCloseAllPositionsOnGlobalProfitBeforeSignalsHook } from './signalsHooks/closeAllPositionsOnGlobalProfitBeforeSignals';

@@ -4,13 +4,13 @@ describe('basePreset', () => {
     jest.clearAllMocks();
   });
 
-  it('wires shared beforePlaceOrder and onBar hooks', () => {
+  it('wires shared beforeSignals, beforePlaceOrder and onBar hooks', () => {
     const getBuiltInStrategyDefaultConfig = jest.fn();
     const createCloseOppositeBeforePlaceOrderHook = jest.fn(
       () => 'before-place-order-hook',
     );
-    const createCloseAllPositionsOnGlobalProfitHook = jest.fn(
-      () => 'close-all-on-bar-hook',
+    const createCloseAllPositionsOnGlobalProfitBeforeSignalsHook = jest.fn(
+      () => 'close-all-before-signals-hook',
     );
     const createMoveStopToBreakEvenOnBarHook = jest.fn(
       () => 'break-even-on-bar-hook',
@@ -23,18 +23,20 @@ describe('basePreset', () => {
 
       jest.doMock('@tradejs/node/strategies', () => ({
         createCloseOppositeBeforePlaceOrderHook,
-        createCloseAllPositionsOnGlobalProfitHook,
+        createCloseAllPositionsOnGlobalProfitBeforeSignalsHook,
         createMoveStopToBreakEvenOnBarHook,
       }));
 
       const { basePreset } = require('../index');
 
       expect(createCloseOppositeBeforePlaceOrderHook).toHaveBeenCalledTimes(1);
-      expect(createCloseAllPositionsOnGlobalProfitHook).toHaveBeenCalledTimes(
-        1,
-      );
+      expect(
+        createCloseAllPositionsOnGlobalProfitBeforeSignalsHook,
+      ).toHaveBeenCalledTimes(1);
       expect(createMoveStopToBreakEvenOnBarHook).toHaveBeenCalledTimes(1);
-      expect(createCloseAllPositionsOnGlobalProfitHook).toHaveBeenCalledWith({
+      expect(
+        createCloseAllPositionsOnGlobalProfitBeforeSignalsHook,
+      ).toHaveBeenCalledWith({
         getStrategyDefaultConfig: getBuiltInStrategyDefaultConfig,
       });
       expect(basePreset).toEqual({
@@ -42,8 +44,9 @@ describe('basePreset', () => {
         indicators: ['@tradejs/indicators'],
         connectors: ['@tradejs/connectors'],
         hooks: {
+          beforeSignals: 'close-all-before-signals-hook',
           beforePlaceOrder: 'before-place-order-hook',
-          onBar: ['close-all-on-bar-hook', 'break-even-on-bar-hook'],
+          onBar: 'break-even-on-bar-hook',
         },
       });
 

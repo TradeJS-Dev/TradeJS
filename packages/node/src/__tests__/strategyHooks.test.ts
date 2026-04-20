@@ -1,6 +1,7 @@
 import {
   createCloseOppositeBeforePlaceOrderHook,
   createCloseAllPositionsOnGlobalProfitHook,
+  createCloseAllPositionsOnGlobalProfitBeforeSignalsHook,
   createMoveStopToBreakEvenOnBarHook,
 } from '@tradejs/node/strategies';
 import { closeOppositePositionsBeforeOpen } from '../closeOppositePositionsBeforeOpen';
@@ -515,5 +516,101 @@ describe('createCloseAllPositionsOnGlobalProfitHook', () => {
 
     await expect(hook(params as any)).resolves.toBeUndefined();
     expect(params.connector.closePosition).not.toHaveBeenCalled();
+  });
+});
+
+describe('createCloseAllPositionsOnGlobalProfitBeforeSignalsHook', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('closes all open positions once before signals and aborts evaluation', async () => {
+    const hook = createCloseAllPositionsOnGlobalProfitBeforeSignalsHook({
+      getStrategyDefaultConfig: (strategyName: string) =>
+        strategyName === 'TrendLine'
+          ? ({ MAX_LOSS_VALUE: 10 } as any)
+          : ({ MAX_LOSS_VALUE: 20 } as any),
+    });
+    const connector = {
+      getOpenPositionPnl: jest.fn(async () => [
+        {
+          symbol: 'ETHUSDT',
+          qty: 1,
+          price: 100,
+          currentPrice: 140,
+          unrealizedPnl: 70,
+          direction: 'LONG',
+        },
+      ]),
+      closePosition: jest.fn(async () => true),
+    } as any;
+
+    await expect(
+      hook({
+        connector,
+        connectorName: 'ByBit',
+        userName: 'root',
+        interval: '15',
+        tickers: ['ETHUSDT'],
+        runtimeStrategies: [
+          {
+            strategyName: 'TrendLine',
+            strategyConfig: {} as any,
+          },
+          {
+            strategyName: 'MaStrategy',
+            strategyConfig: {} as any,
+          },
+        ],
+      } as any),
+    ).resolves.toEqual({
+      abort: true,
+      reason: 'GLOBAL_UNREALIZED_PNL_TARGET_REACHED_CLOSE_ALL',
+    });
+
+    expect(connector.closePosition).toHaveBeenCalledTimes(1);
+    expect(connector.closePosition).toHaveBeenCalledWith({
+      symbol: 'ETHUSDT',
+      direction: 'LONG',
+      price: 140,
+      timestamp: expect.any(Number),
+    });
+  });
+
+  it('does nothing when unrealized pnl stays below threshold', async () => {
+    const hook = createCloseAllPositionsOnGlobalProfitBeforeSignalsHook({
+      getStrategyDefaultConfig: () => ({ MAX_LOSS_VALUE: 20 }) as any,
+    });
+    const connector = {
+      getOpenPositionPnl: jest.fn(async () => [
+        {
+          symbol: 'ETHUSDT',
+          qty: 1,
+          price: 100,
+          currentPrice: 110,
+          unrealizedPnl: 10,
+          direction: 'LONG',
+        },
+      ]),
+      closePosition: jest.fn(async () => true),
+    } as any;
+
+    await expect(
+      hook({
+        connector,
+        connectorName: 'ByBit',
+        userName: 'root',
+        interval: '15',
+        tickers: ['ETHUSDT'],
+        runtimeStrategies: [
+          {
+            strategyName: 'TrendLine',
+            strategyConfig: {} as any,
+          },
+        ],
+      } as any),
+    ).resolves.toBeUndefined();
+
+    expect(connector.closePosition).not.toHaveBeenCalled();
   });
 });

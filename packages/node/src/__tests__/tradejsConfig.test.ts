@@ -70,12 +70,16 @@ describe('tradejsConfig utils', () => {
 
     fs.writeFileSync(
       configPath,
-      `const beforePlaceOrder = async () => {};
+      `const beforeSignals = async () => {};
+const afterSignals = async () => {};
+const beforePlaceOrder = async () => {};
 const afterCoreDecision = async () => {};
 const afterBarDecision = async () => {};
 
 export default {
   hooks: {
+    beforeSignals,
+    afterSignals,
     beforePlaceOrder,
     afterCoreDecision,
     afterBarDecision,
@@ -86,9 +90,13 @@ export default {
 
     const config = await loadTradejsConfig(cwd);
 
+    expect(Array.isArray(config.hooks?.beforeSignals)).toBe(true);
+    expect(Array.isArray(config.hooks?.afterSignals)).toBe(true);
     expect(Array.isArray(config.hooks?.beforePlaceOrder)).toBe(true);
     expect(Array.isArray(config.hooks?.afterCoreDecision)).toBe(true);
     expect(Array.isArray(config.hooks?.afterBarDecision)).toBe(true);
+    expect(typeof (config.hooks?.beforeSignals as any)?.[0]).toBe('function');
+    expect(typeof (config.hooks?.afterSignals as any)?.[0]).toBe('function');
     expect(typeof (config.hooks?.beforePlaceOrder as any)?.[0]).toBe(
       'function',
     );

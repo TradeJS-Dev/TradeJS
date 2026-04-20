@@ -46,4 +46,20 @@ describe('strategyHelpers/market getStrategyMarketSnapshot', () => {
 
     randomSpy.mockRestore();
   });
+
+  it('uses cached data in CRON mode without refetching connector kline', async () => {
+    const connector = {
+      kline: jest.fn(async () => [candle]),
+    } as any;
+
+    const snapshot = await getStrategyMarketSnapshot({
+      ...baseParams,
+      env: 'CRON',
+      connector,
+    });
+
+    expect(snapshot.fullData).toEqual([candle]);
+    expect(snapshot.currentPrice).toBe(candle.close);
+    expect(connector.kline).not.toHaveBeenCalled();
+  });
 });

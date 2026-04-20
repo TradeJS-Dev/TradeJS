@@ -2,6 +2,9 @@ import { defineConfig, normalizeTradejsConfigHooks } from '../config';
 
 describe('defineConfig hooks', () => {
   it('merges project hooks without dropping earlier presets', () => {
+    const beforeSignalsPreset = jest.fn(async () => {});
+    const beforeSignalsProject = jest.fn(async () => {});
+    const afterSignalsProject = jest.fn(async () => {});
     const beforePlaceOrderPreset = jest.fn(async () => {});
     const beforePlaceOrderProject = jest.fn(async () => {});
     const onBarProject = jest.fn(async () => {});
@@ -11,11 +14,14 @@ describe('defineConfig hooks', () => {
     const config = defineConfig(
       {
         hooks: {
+          beforeSignals: beforeSignalsPreset,
           beforePlaceOrder: beforePlaceOrderPreset,
         },
       },
       {
         hooks: {
+          beforeSignals: beforeSignalsProject,
+          afterSignals: afterSignalsProject,
           beforePlaceOrder: beforePlaceOrderProject,
           onBar: onBarProject,
           afterCoreDecision: afterCoreDecisionProject,
@@ -25,6 +31,8 @@ describe('defineConfig hooks', () => {
     );
 
     expect(config.hooks).toEqual({
+      beforeSignals: [beforeSignalsPreset, beforeSignalsProject],
+      afterSignals: [afterSignalsProject],
       beforePlaceOrder: [beforePlaceOrderPreset, beforePlaceOrderProject],
       onBar: [onBarProject],
       afterCoreDecision: [afterCoreDecisionProject],
@@ -33,12 +41,16 @@ describe('defineConfig hooks', () => {
   });
 
   it('normalizes hook arrays by dropping non-functions and deduplicating references', () => {
+    const beforeSignals = jest.fn(async () => {});
+    const afterSignals = jest.fn(async () => {});
     const beforePlaceOrder = jest.fn(async () => {});
     const onBar = jest.fn(async () => {});
     const afterCoreDecision = jest.fn(async () => {});
     const afterBarDecision = jest.fn(async () => {});
 
     const hooks = normalizeTradejsConfigHooks({
+      beforeSignals: [beforeSignals, undefined as any, beforeSignals] as any,
+      afterSignals: [afterSignals, null as any, afterSignals] as any,
       beforePlaceOrder: [
         beforePlaceOrder,
         null as any,
@@ -58,6 +70,8 @@ describe('defineConfig hooks', () => {
     });
 
     expect(hooks).toEqual({
+      beforeSignals: [beforeSignals],
+      afterSignals: [afterSignals],
       beforePlaceOrder: [beforePlaceOrder],
       onBar: [onBar],
       afterCoreDecision: [afterCoreDecision],

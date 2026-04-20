@@ -11,11 +11,20 @@ import {
 } from '@tradejs/node/connectors';
 import {
   getTickers,
+  loadTradejsConfig,
   makeScreenshots,
   sendToTG,
   update,
 } from '@tradejs/node/cli';
 import { runWithConcurrency } from '@tradejs/core/async';
+import type {
+  TradejsConfigAfterSignalsHook,
+  TradejsConfigAfterSignalsHookContext,
+  TradejsConfigBeforeSignalsHook,
+  TradejsConfigBeforeSignalsHookResult,
+  TradejsConfigHooks,
+  TradejsConfigSignalsHookContext,
+} from '@tradejs/core/config';
 import {
   SIGNALS_CLI_PRELOAD_DAYS,
   TTL_1D,
@@ -80,6 +89,43 @@ interface StrategySkipStats {
 }
 
 type StrategySkipStatsMap = Map<string, StrategySkipStats>;
+
+const normalizeHookList = <THook extends (...args: any[]) => unknown>(
+  value: THook | THook[] | undefined,
+): THook[] => {
+  if (Array.isArray(value)) {
+    return value;
+  }
+
+  return value ? [value] : [];
+};
+
+const invokeBeforeSignalsHooks = async (
+  hooks: TradejsConfigHooks | undefined,
+  params: TradejsConfigSignalsHookContext,
+): Promise<TradejsConfigBeforeSignalsHookResult | undefined> => {
+  for (const hook of normalizeHookList(
+    hooks?.beforeSignals,
+  ) as TradejsConfigBeforeSignalsHook[]) {
+    const result = await hook(params);
+    if (result?.abort === true) {
+      return result;
+    }
+  }
+
+  return undefined;
+};
+
+const invokeAfterSignalsHooks = async (
+  hooks: TradejsConfigHooks | undefined,
+  params: TradejsConfigAfterSignalsHookContext,
+) => {
+  for (const hook of normalizeHookList(
+    hooks?.afterSignals,
+  ) as TradejsConfigAfterSignalsHook[]) {
+    await hook(params);
+  }
+};
 
 const resolveStrategyNameByConfigKey = (
   userName: string,
@@ -303,6 +349,11 @@ export const signals = async () => {
   const startedAt = Date.now();
   const signals = new Array<Signal>();
   let status: 'completed' | 'failed' = 'completed';
+  let projectHooks: TradejsConfigHooks | undefined;
+  let afterSignalsHookContext: Omit<
+    TradejsConfigAfterSignalsHookContext,
+    'signals' | 'status' | 'durationMs'
+  > | null = null;
 
   try {
     const connectorName = await resolveSignalsConnectorName(flags.connector);
@@ -365,6 +416,9 @@ export const signals = async () => {
 
       return;
     }
+
+    const projectConfig = await loadTradejsConfig(projectRoot);
+    projectHooks = projectConfig.hooks;
 
     if (!flags.cacheOnly) {
       await update(
@@ -431,6 +485,32 @@ export const signals = async () => {
         `loaded strategies (user=${flags.user}): ${runtimeStrategies.map((s) => s.strategyName).join(', ')}`,
       ),
     );
+    afterSignalsHookContext = {
+      connector: marketConnector,
+      connectorName,
+      userName: flags.user,
+      interval,
+      tickers: [...tickers],
+      runtimeStrategies: runtimeStrategies.map(
+        ({ strategyName, strategyConfig }) => ({
+          strategyName,
+          strategyConfig,
+        }),
+      ),
+    };
+
+    const beforeSignalsResult = await invokeBeforeSignalsHooks(
+      projectHooks,
+      afterSignalsHookContext,
+    );
+    if (beforeSignalsResult?.abort === true) {
+      logger.info(
+        'signals aborted before ticker evaluation: %s',
+        beforeSignalsResult.reason ?? 'PROJECT_BEFORE_SIGNALS_ABORTED',
+      );
+      return;
+    }
+
     const strategyStats = createStrategySkipStats(runtimeStrategies);
 
     const bar = new ProgressBar(
@@ -490,6 +570,22 @@ export const signals = async () => {
     );
     throw error;
   } finally {
+    if (projectHooks && afterSignalsHookContext) {
+      try {
+        await invokeAfterSignalsHooks(projectHooks, {
+          ...afterSignalsHookContext,
+          signals: [...signals],
+          status,
+          durationMs: Date.now() - startedAt,
+        });
+      } catch (error) {
+        logger.error(
+          'afterSignals hook failed: %s',
+          (error as Error)?.message || String(error),
+        );
+      }
+    }
+
     logger.info(
       chalk.yellow(
         `signals ${status} in ${formatElapsed(startedAt)} (found=${signals.length})`,

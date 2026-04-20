@@ -33,6 +33,7 @@ import {
   Signal,
 } from '@tradejs/types';
 import { getTradejsProjectCwd } from './tradejsConfig';
+export { loadTradejsConfig } from './tradejsConfig';
 
 const getProjectRoot = (): string => getTradejsProjectCwd();
 

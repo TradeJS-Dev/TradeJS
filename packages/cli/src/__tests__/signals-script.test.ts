@@ -24,6 +24,10 @@ type Scenario = {
   strategyConfig?: Record<string, unknown>;
   existingSignalKeys?: string[];
   strategyResult?: unknown;
+  projectHooks?: {
+    beforeSignals?: (...args: any[]) => unknown;
+    afterSignals?: (...args: any[]) => unknown;
+  };
   strategyConfigs?: Array<{
     strategyName: string;
     config?: Record<string, unknown>;
@@ -128,6 +132,9 @@ const loadScript = async (scenario: Scenario) => {
   const update = jest.fn(async () => null);
   const makeScreenshots = jest.fn(async () => null);
   const sendToTG = jest.fn(async () => null);
+  const loadTradejsConfig = jest.fn(async () => ({
+    hooks: scenario.projectHooks ?? {},
+  }));
   const runWithConcurrency = jest.fn(
     async <T>(items: T[], _limit: number, worker: (item: T) => Promise<void>) =>
       Promise.all(items.map(worker)),
@@ -174,6 +181,7 @@ const loadScript = async (scenario: Scenario) => {
 
   jest.doMock('@tradejs/node/cli', () => ({
     getTickers,
+    loadTradejsConfig,
     update,
     makeScreenshots,
     sendToTG,
@@ -216,6 +224,7 @@ const loadScript = async (scenario: Scenario) => {
       getStrategyCreator,
       getTickers,
       logger,
+      loadTradejsConfig,
       makeScreenshots,
       progressTick,
       redisKeys,
@@ -409,6 +418,45 @@ describe('signals script', () => {
       'Signal found %s by strategy %s',
       'ETHUSDT',
       'TrendLine',
+    );
+  });
+
+  it('aborts ticker evaluation when beforeSignals hook requests it', async () => {
+    const beforeSignals = jest.fn(async () => ({
+      abort: true,
+      reason: 'GLOBAL_UNREALIZED_PNL_TARGET_REACHED_CLOSE_ALL',
+    }));
+    const afterSignals = jest.fn(async () => {});
+    const { signals, mocks } = await loadScript({
+      flags: {
+        timeframe: 15,
+        makeOrders: false,
+        notify: false,
+        skipScreenshots: true,
+        updateOnly: false,
+        cacheOnly: true,
+        showTickersList: false,
+        showSkipStats: false,
+        user: 'root',
+        connector: 'bybit',
+      },
+      projectHooks: {
+        beforeSignals,
+        afterSignals,
+      },
+    });
+
+    await signals();
+
+    expect(beforeSignals).toHaveBeenCalledTimes(1);
+    expect(mocks.strategyCreatorMap.get('TrendLine')).toHaveBeenCalledTimes(0);
+    expect(mocks.strategyFnMap.get('TrendLine')).toHaveBeenCalledTimes(0);
+    expect(mocks.progressTick).not.toHaveBeenCalled();
+    expect(mocks.setData).not.toHaveBeenCalled();
+    expect(afterSignals).toHaveBeenCalledTimes(1);
+    expect(mocks.logger.info).toHaveBeenCalledWith(
+      'signals aborted before ticker evaluation: %s',
+      'GLOBAL_UNREALIZED_PNL_TARGET_REACHED_CLOSE_ALL',
     );
   });
 });
