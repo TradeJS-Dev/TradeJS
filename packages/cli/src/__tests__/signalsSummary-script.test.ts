@@ -31,6 +31,7 @@ describe('signals summary script', () => {
       error: jest.fn(),
     };
     const redisKeys = {
+      strategies: (userName: string) => `users:${userName}:strategies`,
       runtimeSignals: (userName: string) =>
         `users:${userName}:runtime:signals:`,
       runtimeTrades: (userName: string) =>
@@ -47,6 +48,10 @@ describe('signals summary script', () => {
     const runtimeTradeKeys = [
       redisKeys.runtimeTrades('root') + 'ord-1',
       redisKeys.runtimeTrades('root') + 'ord-2',
+    ];
+    const strategyConfigKeys = [
+      `${redisKeys.strategies('root')}:TrendLine:config`,
+      `${redisKeys.strategies('root')}:ReverseTrendLine:config`,
     ];
     const records = new Map<string, unknown>([
       [
@@ -123,6 +128,9 @@ describe('signals summary script', () => {
       [redisKeys.runtimeActiveTrade('root', 'ETHUSDT'), { orderId: 'ord-2' }],
     ]);
     const getKeys = jest.fn(async (prefix: string) => {
+      if (prefix === `${redisKeys.strategies('root')}:`) {
+        return strategyConfigKeys;
+      }
       if (prefix === redisKeys.runtimeSignals('root')) {
         return runtimeSignalKeys;
       }
@@ -233,5 +241,140 @@ describe('signals summary script', () => {
     expect(delKey).toHaveBeenCalledWith(
       redisKeys.runtimeActiveTrade('root', 'ETHUSDT'),
     );
+  });
+
+  it('includes configured strategies with no signals or trades in the window', async () => {
+    jest.resetModules();
+
+    const now = 1_700_086_400_000;
+    jest.spyOn(Date, 'now').mockReturnValue(now);
+
+    const sendTextToTG = jest.fn(
+      async (_message: string, _options?: unknown) => null,
+    );
+    const setData = jest.fn(async () => null);
+    const delKey = jest.fn(async () => true);
+    const logger = {
+      info: jest.fn(),
+      warn: jest.fn(),
+      error: jest.fn(),
+    };
+    const redisKeys = {
+      strategies: (userName: string) => `users:${userName}:strategies`,
+      runtimeSignals: (userName: string) =>
+        `users:${userName}:runtime:signals:`,
+      runtimeTrades: (userName: string) =>
+        `users:${userName}:runtime:trade-records:`,
+      runtimeTrade: (userName: string, orderId: string) =>
+        `users:${userName}:runtime:trade-records:${orderId}`,
+      runtimeActiveTrade: (userName: string, symbol: string) =>
+        `users:${userName}:runtime:active-trades:${symbol}`,
+    };
+    const strategyConfigKeys = [
+      `${redisKeys.strategies('root')}:AdaptiveMomentumRibbon:config`,
+      `${redisKeys.strategies('root')}:ReverseTrendLine:config`,
+      `${redisKeys.strategies('root')}:TrendLine:config`,
+      `${redisKeys.strategies('root')}:VolumeDivergence:config`,
+    ];
+    const getKeys = jest.fn(async (prefix: string) => {
+      if (prefix === `${redisKeys.strategies('root')}:`) {
+        return strategyConfigKeys;
+      }
+      if (prefix === redisKeys.runtimeSignals('root')) {
+        return [`${redisKeys.runtimeSignals('root')}sig-1`];
+      }
+      if (prefix === redisKeys.runtimeTrades('root')) {
+        return [];
+      }
+      return [];
+    });
+    const getData = jest.fn(async (key: string, fallback: unknown) => {
+      if (key === `${redisKeys.runtimeSignals('root')}sig-1`) {
+        return {
+          signalId: 'sig-1',
+          strategy: 'AdaptiveMomentumRibbon',
+          symbol: 'BTCUSDT',
+          interval: '15',
+          direction: 'LONG',
+          timestamp: now - 60_000,
+          orderStatus: 'skipped',
+          prices: {
+            currentPrice: 100,
+            takeProfitPrice: 110,
+            stopLossPrice: 95,
+            riskRatio: 2,
+          },
+          figures: {},
+          indicators: {},
+          additionalIndicators: {},
+        };
+      }
+      return fallback;
+    });
+    const connector = {
+      getOpenPositionPnl: jest.fn(async () => []),
+      getClosedPnl: jest.fn(async () => []),
+    };
+
+    jest.doMock('args', () => ({
+      __esModule: true,
+      default: {
+        option: jest.fn(),
+        parse: jest.fn(() => ({
+          user: 'root',
+          connector: 'bybit',
+          hours: 24,
+          printOnly: false,
+        })),
+      },
+    }));
+
+    jest.doMock('@tradejs/core/constants', () => ({
+      TTL_3M: 7_800_000,
+    }));
+
+    jest.doMock('@tradejs/infra/logger', () => ({
+      logger,
+    }));
+
+    jest.doMock('@tradejs/infra/redis', () => ({
+      delKey,
+      getData,
+      getKeys,
+      redisKeys,
+      setData,
+    }));
+
+    jest.doMock('@tradejs/node/cli', () => ({
+      sendTextToTG,
+    }));
+
+    jest.doMock('@tradejs/node/connectors', () => ({
+      DEFAULT_CONNECTOR_NAME: 'bybit',
+      getConnectorCreatorByName: jest.fn(async () => async () => connector),
+      resolveConnectorName: jest.fn(async () => 'bybit'),
+    }));
+
+    const prevNodeEnv = process.env.NODE_ENV;
+    (process.env as any).NODE_ENV = 'test';
+    const module = await import('../scripts/signalsSummary');
+    (process.env as any).NODE_ENV = prevNodeEnv;
+
+    await module.signalsSummary();
+
+    const message = sendTextToTG.mock.calls[0]?.[0];
+    expect(typeof message).toBe('string');
+    if (typeof message !== 'string') {
+      throw new Error('Expected summary message to be a string');
+    }
+
+    expect(message).toContain('AdaptiveMomentumRibbon: skipped=1');
+    expect(message).toContain('ReverseTrendLine: none');
+    expect(message).toContain('TrendLine: none');
+    expect(message).toContain('VolumeDivergence: none');
+    expect(message).toContain('AdaptiveMomentumRibbon: total=0');
+    expect(message).toContain('ReverseTrendLine: total=0');
+    expect(message).toContain('TrendLine: total=0');
+    expect(message).toContain('VolumeDivergence: total=0');
   });
 });

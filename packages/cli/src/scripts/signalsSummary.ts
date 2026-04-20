@@ -124,6 +124,41 @@ const loadRuntimeSignals = async (userName: string): Promise<Signal[]> => {
     .sort((left, right) => left.timestamp - right.timestamp);
 };
 
+const resolveStrategyNameByConfigKey = (
+  userName: string,
+  key: string,
+): string | null => {
+  const parts = key.split(':');
+  if (parts.length !== 5) {
+    return null;
+  }
+
+  const [users, keyUserName, strategiesKey, strategyName, configKey] = parts;
+  if (
+    users !== 'users' ||
+    keyUserName !== userName ||
+    strategiesKey !== 'strategies' ||
+    configKey !== 'config' ||
+    !strategyName
+  ) {
+    return null;
+  }
+
+  return strategyName;
+};
+
+const loadRuntimeStrategyNames = async (
+  userName: string,
+): Promise<string[]> => {
+  const keys = await getKeys(`${redisKeys.strategies(userName)}:`);
+
+  return keys
+    .filter((key) => key.endsWith(':config'))
+    .map((key) => resolveStrategyNameByConfigKey(userName, key))
+    .filter((value): value is string => Boolean(value))
+    .sort((left, right) => left.localeCompare(right));
+};
+
 const loadRuntimeTrades = async (
   userName: string,
 ): Promise<RuntimeTradeRecord[]> => {
@@ -311,12 +346,14 @@ const buildSummaryMessage = ({
   hours,
   startTime,
   endTime,
+  configuredStrategyNames,
   signals,
   trades,
 }: {
   hours: number;
   startTime: number;
   endTime: number;
+  configuredStrategyNames: string[];
   signals: Signal[];
   trades: RuntimeTradeRecord[];
 }) => {
@@ -344,6 +381,12 @@ const buildSummaryMessage = ({
       totalPnlKnown: number;
     }
   >();
+
+  for (const strategyName of configuredStrategyNames) {
+    if (strategyName) {
+      strategyNames.add(strategyName);
+    }
+  }
 
   for (const signal of signals) {
     strategyNames.add(signal.strategy);
@@ -470,7 +513,8 @@ export const signalsSummary = async () => {
   const connector = await (connectorFactory as ConnectorCreator)({
     userName: flags.user,
   });
-  const [signals, trades] = await Promise.all([
+  const [configuredStrategyNames, signals, trades] = await Promise.all([
+    loadRuntimeStrategyNames(flags.user),
     loadRuntimeSignals(flags.user),
     loadRuntimeTrades(flags.user),
   ]);
@@ -492,6 +536,7 @@ export const signalsSummary = async () => {
     hours,
     startTime,
     endTime,
+    configuredStrategyNames,
     signals: windowSignals,
     trades: windowTrades,
   });
