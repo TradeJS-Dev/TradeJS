@@ -4,13 +4,45 @@ import {
 } from '../lib/aiTrainMetrics';
 
 describe('aiTrainMetrics', () => {
+  const DAY_MS = 24 * 60 * 60 * 1000;
+
   it('computes requested summary metrics and quality buckets', () => {
     const summary = summarizeAiTrainEvaluations([
-      { profit: 10, profitableTrade: true, aiApproved: true, quality: 5 },
-      { profit: -4, profitableTrade: false, aiApproved: true, quality: 4 },
-      { profit: 6, profitableTrade: true, aiApproved: false, quality: 3 },
-      { profit: -2, profitableTrade: false, aiApproved: false, quality: null },
-      { profit: 0, profitableTrade: false, aiApproved: false, quality: 3 },
+      {
+        profit: 10,
+        profitableTrade: true,
+        aiApproved: true,
+        quality: 5,
+        timestamp: 0,
+      },
+      {
+        profit: -4,
+        profitableTrade: false,
+        aiApproved: true,
+        quality: 4,
+        timestamp: DAY_MS,
+      },
+      {
+        profit: 6,
+        profitableTrade: true,
+        aiApproved: false,
+        quality: 3,
+        timestamp: 2 * DAY_MS,
+      },
+      {
+        profit: -2,
+        profitableTrade: false,
+        aiApproved: false,
+        quality: null,
+        timestamp: 3 * DAY_MS,
+      },
+      {
+        profit: 0,
+        profitableTrade: false,
+        aiApproved: false,
+        quality: 3,
+        timestamp: 4 * DAY_MS,
+      },
     ]);
 
     expect(summary).toEqual(
@@ -28,6 +60,10 @@ describe('aiTrainMetrics', () => {
         recallWinners: 0.5,
         avgProfitApproved: 3,
         avgProfitAll: 2,
+        avgProfitApprovedPerDay: 1.5,
+        avgProfitApprovedPerMonth: 45.65625,
+        avgApprovedTradesPerDay: 0.5,
+        avgApprovedTradesPerWeek: 3.5,
         expectancyDelta: 1,
       }),
     );
@@ -72,6 +108,10 @@ describe('aiTrainMetrics', () => {
     expect(summary.precisionApproved).toBeNull();
     expect(summary.recallWinners).toBeNull();
     expect(summary.avgProfitApproved).toBeNull();
+    expect(summary.avgProfitApprovedPerDay).toBeNull();
+    expect(summary.avgProfitApprovedPerMonth).toBeNull();
+    expect(summary.avgApprovedTradesPerDay).toBeNull();
+    expect(summary.avgApprovedTradesPerWeek).toBeNull();
     expect(summary.expectancyDelta).toBeNull();
   });
 

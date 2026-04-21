@@ -26,12 +26,14 @@ const VOLUME_DIVERGENCE_CONTEXT_PROMPT = `
 - Смотри на divergenceAmplitudeAtrRatio / reclaimPct / confirmationCandleQuality: это explicit setup-features, описывающие насколько дивергенция действительно значима относительно ATR, насколько цена вернула структуру и насколько качественной была confirmation candle.
 - confirmationDistancePct показывает, насколько далеко цена ушла за confirmation level; не завышай quality, если confirmation вроде бы есть, но закрепление за уровнем минимальное.
 - additionalIndicators.deltaAtPivot — это proxy net-volume по свече pivot, а не настоящий lower-timeframe volume delta TradingView.
+- Если payload.additionalIndicators.derivativesContext есть, используй Coinalyze-derived open interest / funding / liquidations как контекст позиционирования: liquidation flush может усиливать reversal, а crowded positioning против направления или stale/missing данные не должны механически повышать quality.
 `;
 
 const VOLUME_DIVERGENCE_PAYLOAD_PROMPT = `
 - В payload.additionalIndicators.volumeDivergenceContext передается краткая сводка по силе дивергенции:
   divergenceKind / confirmationPrice / confirmationReady / structureAdvanced / reboundFromPivotPct / confirmationDistancePct / priceDisplacementPct / divergenceAmplitudeAtrRatio / reclaimPct / confirmationCandleQuality / volumeDivergenceStrength / deltaAligned / coinBiasAligned / btcBiasAligned / deterministicQuality / approvalAllowedNow / structuralHardBlockReasons / maxAllowedQuality.
 - Используй этот context как explicit strategy-specific summary, а не пытайся заново вывести то же самое только по общим свечам.
+- Если есть payload.additionalIndicators.derivativesContext, это Coinalyze-derived summary по derivatives состоянию на момент сигнала; stale/missing_derivatives означает, что Coinalyze контекст нельзя использовать.
 `;
 
 type Direction = 'LONG' | 'SHORT';

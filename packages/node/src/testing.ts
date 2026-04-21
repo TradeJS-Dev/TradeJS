@@ -18,6 +18,7 @@ import {
 } from '@tradejs/infra/ml';
 import { logger } from '@tradejs/infra/logger';
 import { buildAiPayload } from './ai';
+import { enrichSignalWithDerivativesContext } from './strategyHelpers/derivativesContext';
 import { getStrategyCreator } from './strategy/manifests';
 import { buildMlPayload } from './mlPayload';
 import {
@@ -577,6 +578,13 @@ export const testing: TestingBox = async ({
       pendingMlPayloadBySignalId.set(signal.signalId, payload);
     }
     if (ai && signal && typeof signal !== 'string' && signal.signalId) {
+      await withTimeout(
+        'derivatives context',
+        enrichSignalWithDerivativesContext({
+          signal: signal as Signal,
+          env: 'BACKTEST',
+        }),
+      );
       pendingAiRowBySignalId.set(signal.signalId, {
         signalId: signal.signalId,
         strategyName: signal.strategy || strategyName,

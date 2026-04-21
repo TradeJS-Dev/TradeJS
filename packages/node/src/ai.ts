@@ -202,6 +202,7 @@ export const buildAiSystemPrompt = (signal?: Signal): string => `
   strategy-specific summary/context fields. Это не "шум", а полезные derived-поля, которые стратегия передает специально для решения.
   Примеры: helperFlags, structureContext, spread, correlation, volatilitySummary.
   Если такие поля есть, используй их как более явную подсказку, чем попытку заново вывести то же самое только по lines/points.
+  Если есть derivativesContext, это derived-сводка по Coinalyze derivatives данным на момент сигнала: open interest, funding, ликвидации и итоговая pressure/riskFlags. Используй ее только как контекст позиционирования, не как самостоятельную торговую идею.
   Паттерны ключей:
   • монета: maFast, atrPct, macd..., candles15m/candles1h/candles4h/candles1d, а также *1h/*4h/*1d
   • BTC: btcMaFast, btcAtr, btcMacd..., btcCandles*, а также btc*1h/*4h/*1d
@@ -219,6 +220,9 @@ export const buildAiSystemPrompt = (signal?: Signal): string => `
 - Если фигура/структура цены невалидны или сомнительны, индикаторы не должны "спасать" сетап.
 - Если strategy-specific helper fields прямо говорят, что сигнал еще не подтвержден / без запаса / требует ожидания, не завышай quality.
 - Если структура ок, но BTC и/или ключевые индикаторы заметно конфликтуют, обычно quality <= 3.
+- Если derivativesContext.summary.riskFlags содержит crowded_long для LONG или crowded_short для SHORT, считай это признаком crowded positioning и не завышай quality без сильного структурного подтверждения.
+- Если derivativesContext.summary.directionAligned=false, явно упомяни derivatives-конфликт в confirmations или qualityReason.
+- Если derivativesContext отсутствует, stale или missing_derivatives, не делай выводов по Coinalyze и не штрафуй сигнал только за отсутствие этих данных.
 - Если текущий сигнал не подтвержден (direction=null), в comment обязательно кратко назови главную причину.
   Если используешь структурные поля, укажи главную причину в "qualityReason" и/или "triggerInvalidation".
 

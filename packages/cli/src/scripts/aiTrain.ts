@@ -74,6 +74,9 @@ const formatRatio = (value: number | null) =>
 const formatProfit = (value: number | null) =>
   value == null ? 'n/a' : value.toFixed(2);
 
+const formatMetricNumber = (value: number | null) =>
+  value == null ? 'n/a' : value.toFixed(2);
+
 const colorizeRatio = (value: number | null) => {
   const text = formatRatio(value);
   if (value == null) {
@@ -105,6 +108,11 @@ const colorizeProfit = (value: number | null) => {
     return chalk.red(text);
   }
   return chalk.yellow(text);
+};
+
+const colorizeMetricNumber = (value: number | null) => {
+  const text = formatMetricNumber(value);
+  return value == null ? chalk.gray(text) : chalk.cyan(text);
 };
 
 const colorizeQuality = (quality: number | null) => {
@@ -403,6 +411,7 @@ const main = async () => {
     aiApproved: boolean;
     quality: number | null;
     direction: string | null;
+    timestamp: number | null;
     modelCandidate: boolean;
   }> = [];
 
@@ -434,6 +443,9 @@ const main = async () => {
         aiApproved,
         quality,
         direction: row.direction,
+        timestamp: Number.isFinite(Number(row.timestamp))
+          ? Number(row.timestamp)
+          : null,
         modelCandidate: deterministic.modelCandidate,
       });
 
@@ -513,6 +525,22 @@ const main = async () => {
         ['recall_winners', colorizeRatio(summary.recallWinners)],
         ['avg_profit_all', colorizeProfit(summary.avgProfitAll)],
         ['avg_profit_approved', colorizeProfit(summary.avgProfitApproved)],
+        [
+          'avg_profit_approved_per_day',
+          colorizeProfit(summary.avgProfitApprovedPerDay),
+        ],
+        [
+          'avg_profit_approved_per_month',
+          colorizeProfit(summary.avgProfitApprovedPerMonth),
+        ],
+        [
+          'avg_approved_trades_per_day',
+          colorizeMetricNumber(summary.avgApprovedTradesPerDay),
+        ],
+        [
+          'avg_approved_trades_per_week',
+          colorizeMetricNumber(summary.avgApprovedTradesPerWeek),
+        ],
         ['expectancy_delta', colorizeProfit(summary.expectancyDelta)],
       ],
     ),

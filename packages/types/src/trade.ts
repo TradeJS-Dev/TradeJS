@@ -44,6 +44,53 @@ export type DerivativesRow = {
   source?: string | null;
 };
 
+export type DerivativesPressure =
+  | 'neutral'
+  | 'crowded_long'
+  | 'crowded_short'
+  | 'long_flush'
+  | 'short_flush';
+
+export type DerivativesContextRiskFlag =
+  | 'missing_derivatives'
+  | 'stale_derivatives'
+  | 'crowded_long'
+  | 'crowded_short'
+  | 'oi_falling'
+  | 'oi_not_confirming'
+  | 'long_liquidation_spike'
+  | 'short_liquidation_spike';
+
+export interface DerivativesIntervalContext {
+  interval: DerivativesInterval;
+  asOfTs: number | null;
+  stale: boolean;
+  points: number;
+  openInterest: number | null;
+  oiChangePct1h: number | null;
+  oiChangePct4h: number | null;
+  oiChangePct24h: number | null;
+  fundingRate: number | null;
+  fundingZScore: number | null;
+  liqLong: number | null;
+  liqShort: number | null;
+  liqTotal: number | null;
+  liqImbalance: number | null;
+  liqSpikeRatio: number | null;
+}
+
+export interface DerivativesContext {
+  source: 'coinalyze';
+  symbol: string;
+  timestamp: number;
+  intervals: Partial<Record<DerivativesInterval, DerivativesIntervalContext>>;
+  summary: {
+    pressure: DerivativesPressure;
+    directionAligned: boolean | null;
+    riskFlags: DerivativesContextRiskFlag[];
+  };
+}
+
 export type SpreadRow = {
   symbol: string;
   interval: DerivativesInterval;

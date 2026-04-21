@@ -291,6 +291,72 @@ export async function getDerivativesRangeForSymbols(
   return res.rows;
 }
 
+export async function getDerivativesWindow(params: {
+  symbol: string;
+  intervals: DerivativesInterval[];
+  endMs: number;
+  lookbackMs: number;
+}): Promise<Partial<Record<DerivativesInterval, DerivativesRow[]>>> {
+  const { symbol, intervals, endMs, lookbackMs } = params;
+  const normalizedSymbol = String(symbol || '')
+    .trim()
+    .toUpperCase();
+  const normalizedIntervals = [...new Set(intervals)].filter(Boolean);
+
+  if (!normalizedSymbol || !normalizedIntervals.length) {
+    return {};
+  }
+
+  await ensureDerivativesSchema();
+  const startMs = endMs - Math.max(0, lookbackMs);
+  const pool = getPool();
+  const sql = `
+    SELECT symbol, interval, ts, open_interest, funding_rate, liq_long, liq_short, liq_total, source
+    FROM derivatives_market
+    WHERE symbol = $1
+      AND interval = ANY($2)
+      AND ts >= to_timestamp($3/1000.0)
+      AND ts <= to_timestamp($4/1000.0)
+    ORDER BY interval ASC, ts ASC
+  `;
+  const res = await pool.query(sql, [
+    normalizedSymbol,
+    normalizedIntervals,
+    startMs,
+    endMs,
+  ]);
+  const rowsByInterval: Partial<Record<DerivativesInterval, DerivativesRow[]>> =
+    {};
+
+  for (const row of res.rows as Array<{
+    symbol: string;
+    interval: DerivativesInterval;
+    ts: Date;
+    open_interest: number | null;
+    funding_rate: number | null;
+    liq_long: number | null;
+    liq_short: number | null;
+    liq_total: number | null;
+    source: string | null;
+  }>) {
+    const interval = row.interval;
+    rowsByInterval[interval] ??= [];
+    rowsByInterval[interval]?.push({
+      symbol: row.symbol,
+      interval,
+      ts: row.ts,
+      openInterest: row.open_interest,
+      fundingRate: row.funding_rate,
+      liqLong: row.liq_long,
+      liqShort: row.liq_short,
+      liqTotal: row.liq_total,
+      source: row.source,
+    });
+  }
+
+  return rowsByInterval;
+}
+
 export async function getDerivativesSummary(hours = 24, limit = 500) {
   await ensureDerivativesSchema();
   const pool = getPool();

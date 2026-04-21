@@ -4,6 +4,7 @@ export type AiTrainEvaluation = {
   aiApproved: boolean;
   quality: number | null;
   direction?: string | null;
+  timestamp?: number | null;
 };
 
 export type AiTrainQualityBucket = {
@@ -30,6 +31,10 @@ export type AiTrainSummary = {
   recallWinners: number | null;
   avgProfitAll: number | null;
   avgProfitApproved: number | null;
+  avgProfitApprovedPerDay: number | null;
+  avgProfitApprovedPerMonth: number | null;
+  avgApprovedTradesPerDay: number | null;
+  avgApprovedTradesPerWeek: number | null;
   expectancyDelta: number | null;
   qualityBuckets: AiTrainQualityBucket[];
 };
@@ -44,6 +49,30 @@ const divideOrNull = (num: number, denom: number) => {
     return null;
   }
   return num / denom;
+};
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+const DAYS_PER_WEEK = 7;
+const DAYS_PER_MONTH = 30.4375;
+
+const getEvaluationPeriodDays = (evaluations: AiTrainEvaluation[]) => {
+  const timestamps = evaluations
+    .map((evaluation) =>
+      typeof evaluation.timestamp === 'number' &&
+      Number.isFinite(evaluation.timestamp)
+        ? evaluation.timestamp
+        : null,
+    )
+    .filter((timestamp): timestamp is number => timestamp != null);
+
+  if (!timestamps.length) {
+    return null;
+  }
+
+  const minTimestamp = Math.min(...timestamps);
+  const maxTimestamp = Math.max(...timestamps);
+
+  return Math.max((maxTimestamp - minTimestamp) / DAY_MS, 1);
 };
 
 const qualitySortKey = (quality: number | null) =>
@@ -125,6 +154,19 @@ export const summarizeAiTrainEvaluations = (
 
   const avgProfitAll = divideOrNull(totalProfitAll, evaluations.length);
   const avgProfitApproved = divideOrNull(totalProfitApproved, approved);
+  const periodDays = getEvaluationPeriodDays(evaluations);
+  const avgProfitApprovedPerDay =
+    periodDays == null ? null : divideOrNull(totalProfitApproved, periodDays);
+  const avgApprovedTradesPerDay =
+    periodDays == null ? null : divideOrNull(approved, periodDays);
+  const avgProfitApprovedPerMonth =
+    avgProfitApprovedPerDay == null
+      ? null
+      : avgProfitApprovedPerDay * DAYS_PER_MONTH;
+  const avgApprovedTradesPerWeek =
+    avgApprovedTradesPerDay == null
+      ? null
+      : avgApprovedTradesPerDay * DAYS_PER_WEEK;
   const expectancyDelta =
     avgProfitAll == null || avgProfitApproved == null
       ? null
@@ -146,6 +188,10 @@ export const summarizeAiTrainEvaluations = (
     recallWinners: divideOrNull(truePositive, profitable),
     avgProfitAll,
     avgProfitApproved,
+    avgProfitApprovedPerDay,
+    avgProfitApprovedPerMonth,
+    avgApprovedTradesPerDay,
+    avgApprovedTradesPerWeek,
     expectancyDelta,
     qualityBuckets: [...bucketMap.values()].sort(
       (a, b) => qualitySortKey(a.quality) - qualitySortKey(b.quality),

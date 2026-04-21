@@ -19,6 +19,7 @@ import {
   createRuntimeOrderId,
   recordRuntimeTradeOpen,
 } from '../runtimeJournal';
+import { enrichSignalWithDerivativesContext } from './derivativesContext';
 
 interface EnrichSignalWithMlAiParams {
   signal: Signal;
@@ -141,6 +142,7 @@ export const enrichSignalWithMlAi = async ({
   ai,
 }: EnrichSignalWithMlAiParams): Promise<number | undefined> => {
   await enrichSignalWithMl({ signal, env, ml });
+  await enrichSignalWithDerivativesContext({ signal, env });
   return enrichSignalWithAi({ signal, userName, symbol, direction, env, ai });
 };
 

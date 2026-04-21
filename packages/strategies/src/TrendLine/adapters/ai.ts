@@ -27,6 +27,7 @@ const TRENDLINE_CONTEXT_PROMPT = `
 - Для LONG по descending resistance (trendline.mode="highs") зеркально: нужен выход выше линии или ретест сверху. Если цена под линией или прямо на ней, обычно direction=null и quality <= 2.
 - Если payload.additionalIndicators.trendlineContext.nearLineNoise=true, не считай это подтвержденным пробоем: чаще quality <= 2-3 и ожидание ретеста/подтверждения.
 - Если payload.additionalIndicators.trendlineContext.coinBiasAligned=false или btcBiasAligned=false, трактуй это как прямой конфликт с направлением сигнала. В таком случае обычно не считай сигнал подтвержденным, если нет исключительного структурного преимущества.
+- Если payload.additionalIndicators.derivativesContext есть, используй его как Coinalyze-подтверждение/конфликт breakout: OI должен подтверждать движение, funding не должен быть экстремально crowded против качества входа, liquidation spike может означать flush/squeeze или exhaustion.
 - Если payload.additionalIndicators.trendlineContext.clearBreak=false и цена все еще около линии, не описывай это как "чистый пробой".
 - Если clearBreak=true, но trendlineContext.weakCleanBreak=true, трактуй это как слишком слабый формальный пробой: структуру уже задело, но запаса по displacement пока мало. Обычно здесь нужен follow-through или ретест, а не немедленное подтверждение сигнала.
 - Если clearBreak=true, но trendlineContext.compressedCleanBreak=true, это сжатый пробой после серии близких касаний на короткой линии. Даже при формальном выходе за линию здесь чаще нужен follow-through или ретест, а не немедленное подтверждение сигнала.
@@ -41,6 +42,7 @@ const TRENDLINE_PAYLOAD_PROMPT = `
 - В payload.figures.trendline передается полная геометрия трендовой линии (без trim), чтобы можно было оценивать касания/структуру.
 - В payload.additionalIndicators.trendlineContext передается mode / touches / distance / currentLinePrice / priceVsLinePct / priceVsLineSide / clearBreak / nearLineNoise / coinMaBias / btcMaBias / maxAllowedQuality / approvalAllowedNow / hardBlockReasons.
 - Дополнительно в trendlineContext передаются atrPct / breakVsAtrRatio / coinMaSpreadPct / btcMaSpreadPct / aggressivePreBreakPressure / strongNearBreakPressure / weakCleanBreak / compressedCleanBreak / weakBtcLedBreak / weakLongFarBreak.
+- Если есть payload.additionalIndicators.derivativesContext, в нем передаются Coinalyze-derived поля по open interest / funding / liquidations на момент сигнала; не считай stale/missing_derivatives подтверждением или конфликтом.
 `;
 
 const buildTrendlineContext = (signal: {

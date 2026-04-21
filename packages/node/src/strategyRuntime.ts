@@ -19,6 +19,7 @@ import {
   executeEntryOrder,
   updatePositionProtection,
 } from './strategyHelpers/runtime';
+import { enrichSignalWithDerivativesContext } from './strategyHelpers/derivativesContext';
 import { markRuntimeTradeClosed } from './runtimeJournal';
 import { createPineScriptLoader } from './pine';
 import { getStrategyManifest } from './strategy/manifests';
@@ -1319,6 +1320,10 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
       let ai: StrategyHookAiContext | undefined;
       if (signal) {
         try {
+          await enrichSignalWithDerivativesContext({
+            signal,
+            env,
+          });
           quality = await enrichSignalWithAi({
             signal,
             userName,
