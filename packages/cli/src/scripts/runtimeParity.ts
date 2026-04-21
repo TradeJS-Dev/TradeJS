@@ -39,6 +39,7 @@ args.option(['d', 'days'], 'Replay window in days', 3);
 args.option('startTime', 'Explicit replay start timestamp (ms or seconds)');
 args.option('endTime', 'Explicit replay end timestamp (ms or seconds)');
 args.option(['s', 'strategy'], 'Only compare one strategy');
+args.option(['t', 'tickers'], 'Only replay comma-separated symbols');
 args.option(
   ['C', 'cacheOnly'],
   'Do not refresh market history before replay',
@@ -61,11 +62,22 @@ const DETAIL_LIMIT = 10;
 type ReplayTarget = {
   strategy: string;
   symbol: string;
+  sources: Array<'runtime' | 'strategyResults'>;
 };
 
 type ReplayError = ReplayTarget & {
   message: string;
 };
+
+const parseSymbolsFromCLI = (symbols = '') =>
+  symbols
+    .split(',')
+    .map((symbol) => symbol.trim().toUpperCase())
+    .filter(Boolean)
+    .map((symbol) => (symbol.endsWith('USDT') ? symbol : `${symbol}USDT`));
+
+const toTargetKey = (target: Pick<ReplayTarget, 'strategy' | 'symbol'>) =>
+  `${target.strategy}::${target.symbol}`;
 
 const isRuntimeTradeRecord = (value: unknown): value is RuntimeTradeRecord => {
   if (!value || typeof value !== 'object') {
@@ -109,11 +121,132 @@ const loadRuntimeTrades = async (
     .sort((left, right) => left.entryTimestamp - right.entryTimestamp);
 };
 
+const resolveStrategyNameByConfigKey = (
+  userName: string,
+  key: string,
+): string | null => {
+  const parts = key.split(':');
+  if (parts.length !== 5) {
+    return null;
+  }
+
+  const [users, keyUserName, strategiesKey, strategyName, configKey] = parts;
+  if (
+    users !== 'users' ||
+    keyUserName !== userName ||
+    strategiesKey !== 'strategies' ||
+    configKey !== 'config' ||
+    !strategyName
+  ) {
+    return null;
+  }
+
+  return strategyName;
+};
+
+const loadConfiguredStrategyNames = async (userName: string) => {
+  const keys = await getKeys(`${redisKeys.strategies(userName)}:`);
+
+  return keys
+    .filter((key) => key.endsWith(':config'))
+    .map((key) => resolveStrategyNameByConfigKey(userName, key))
+    .filter((value): value is string => Boolean(value))
+    .sort((left, right) => left.localeCompare(right));
+};
+
+const loadStrategyResultSymbols = async ({
+  userName,
+  strategy,
+}: {
+  userName: string;
+  strategy: string;
+}) => {
+  const results = (await getData(
+    redisKeys.strategyResults(userName, strategy),
+    {},
+  )) as StrategyResults;
+
+  return Object.keys(results ?? {}).sort((left, right) =>
+    left.localeCompare(right),
+  );
+};
+
+const addReplayTarget = (
+  targets: Map<string, ReplayTarget>,
+  target: Pick<ReplayTarget, 'strategy' | 'symbol'>,
+  source: ReplayTarget['sources'][number],
+) => {
+  const key = toTargetKey(target);
+  const existing = targets.get(key);
+
+  if (existing) {
+    if (!existing.sources.includes(source)) {
+      existing.sources.push(source);
+    }
+    return;
+  }
+
+  targets.set(key, {
+    strategy: target.strategy,
+    symbol: target.symbol,
+    sources: [source],
+  });
+};
+
+const buildReplayTargets = async ({
+  userName,
+  runtimeTrades,
+  strategyFilter,
+  symbolFilter,
+}: {
+  userName: string;
+  runtimeTrades: RuntimeTradeRecord[];
+  strategyFilter?: string;
+  symbolFilter: Set<string> | null;
+}) => {
+  const targets = new Map<string, ReplayTarget>();
+  const configuredStrategies = (
+    await loadConfiguredStrategyNames(userName)
+  ).filter((strategy) => !strategyFilter || strategy === strategyFilter);
+
+  for (const trade of runtimeTrades) {
+    if (strategyFilter && trade.strategy !== strategyFilter) {
+      continue;
+    }
+    if (symbolFilter && !symbolFilter.has(trade.symbol)) {
+      continue;
+    }
+    addReplayTarget(
+      targets,
+      { strategy: trade.strategy, symbol: trade.symbol },
+      'runtime',
+    );
+  }
+
+  for (const strategy of configuredStrategies) {
+    const symbols = await loadStrategyResultSymbols({ userName, strategy });
+    for (const symbol of symbols) {
+      if (symbolFilter && !symbolFilter.has(symbol)) {
+        continue;
+      }
+      addReplayTarget(targets, { strategy, symbol }, 'strategyResults');
+    }
+  }
+
+  return [...targets.values()].sort(
+    (left, right) =>
+      left.strategy.localeCompare(right.strategy) ||
+      left.symbol.localeCompare(right.symbol),
+  );
+};
+
 const buildReplayConfig = async ({
   userName,
   strategy,
   symbol,
-}: ReplayTarget & { userName: string }): Promise<StrategyConfig> => {
+}: Pick<ReplayTarget, 'strategy' | 'symbol'> & {
+  userName: string;
+}): Promise<StrategyConfig> => {
   const [userConfig, strategyResults] = await Promise.all([
     getData(redisKeys.strategyConfig(userName, strategy), {}),
     getData(redisKeys.strategyResults(userName, strategy), {}),
@@ -226,12 +359,18 @@ const printEntryDetails = (label: string, entries: TradeParityEntry[]) => {
 };
 
 const summarizeByStrategy = ({
+  targets,
+  successfulTargetKeys,
+  replayErrors,
   runtimeEntries,
   backtestEntries,
   matchedEntries,
   runtimeOnlyEntries,
   backtestOnlyEntries,
 }: {
+  targets: ReplayTarget[];
+  successfulTargetKeys: Set<string>;
+  replayErrors: ReplayError[];
   runtimeEntries: TradeParityEntry[];
   backtestEntries: TradeParityEntry[];
   matchedEntries: ReturnType<typeof compareTradeParityEntries>['matched'];
@@ -246,6 +385,9 @@ const summarizeByStrategy = ({
       matched: number;
       runtimeOnly: number;
       backtestOnly: number;
+      targets: number;
+      compared: number;
+      errors: number;
     }
   >();
 
@@ -256,11 +398,24 @@ const summarizeByStrategy = ({
       matched: 0,
       runtimeOnly: 0,
       backtestOnly: 0,
+      targets: 0,
+      compared: 0,
+      errors: 0,
     };
     rows.set(strategy, row);
     return row;
   };
 
+  for (const target of targets) {
+    const row = ensureRow(target.strategy);
+    row.targets += 1;
+    if (successfulTargetKeys.has(toTargetKey(target))) {
+      row.compared += 1;
+    }
+  }
+  for (const error of replayErrors) {
+    ensureRow(error.strategy).errors += 1;
+  }
   for (const entry of runtimeEntries) {
     ensureRow(entry.strategy).runtime += 1;
   }
@@ -296,6 +451,10 @@ export const runtimeParity = async () => {
   );
   const toleranceMs = toleranceBars * 15 * 60 * 1000;
   const connectorName = await resolveParityConnectorName(flags.connector);
+  const requestedSymbols = parseSymbolsFromCLI(String(flags.tickers || ''));
+  const symbolFilter = requestedSymbols.length
+    ? new Set(requestedSymbols)
+    : null;
 
   let replayErrors: ReplayError[] = [];
 
@@ -307,30 +466,21 @@ export const runtimeParity = async () => {
         (!flags.strategy || trade.strategy === flags.strategy),
     );
 
-    if (!runtimeTrades.length) {
+    const replayTargets = await buildReplayTargets({
+      userName: flags.user,
+      runtimeTrades,
+      strategyFilter: String(flags.strategy || '').trim() || undefined,
+      symbolFilter,
+    });
+
+    if (!replayTargets.length) {
       console.log(
         chalk.yellow(
-          `No runtime trades found for ${flags.user} in ${formatUnix(window.start)} -> ${formatUnix(window.end)}.`,
+          `No replay targets found for ${flags.user} in ${formatUnix(window.start)} -> ${formatUnix(window.end)}.`,
         ),
       );
       return;
     }
-
-    const replayTargets = [
-      ...new Map(
-        runtimeTrades.map((trade) => [
-          `${trade.strategy}::${trade.symbol}`,
-          {
-            strategy: trade.strategy,
-            symbol: trade.symbol,
-          } satisfies ReplayTarget,
-        ]),
-      ).values(),
-    ].sort(
-      (left, right) =>
-        left.strategy.localeCompare(right.strategy) ||
-        left.symbol.localeCompare(right.symbol),
-    );
 
     if (!flags.cacheOnly) {
       await warmReplayHistory({
@@ -342,7 +492,7 @@ export const runtimeParity = async () => {
 
     const backtestEntries: TradeParityEntry[] = [];
     const successfulTargetKeys = new Set<string>();
-    const runtimeGateWarnings = new Set<string>();
+    const runtimeGateWarningCounts = new Map<string, number>();
 
     for (const target of replayTargets) {
       try {
@@ -356,8 +506,9 @@ export const runtimeParity = async () => {
           replayConfig.AI_ENABLED === true ||
           replayConfig.ML_ENABLED === true
         ) {
-          runtimeGateWarnings.add(
-            `${target.strategy}:${target.symbol} uses AI/ML runtime gates; BACKTEST replay covers core execution, not live gating.`,
+          runtimeGateWarningCounts.set(
+            target.strategy,
+            (runtimeGateWarningCounts.get(target.strategy) ?? 0) + 1,
           );
         }
 
@@ -380,7 +531,7 @@ export const runtimeParity = async () => {
         backtestEntries.push(
           ...extractBacktestEntryParityEntries(result?.inlineOrderLog),
         );
-        successfulTargetKeys.add(`${target.strategy}::${target.symbol}`);
+        successfulTargetKeys.add(toTargetKey(target));
       } catch (error) {
         replayErrors.push({
           ...target,
@@ -390,7 +541,7 @@ export const runtimeParity = async () => {
     }
 
     const comparableRuntimeTrades = runtimeTrades.filter((trade) =>
-      successfulTargetKeys.has(`${trade.strategy}::${trade.symbol}`),
+      successfulTargetKeys.has(toTargetKey(trade)),
     );
     const runtimeEntries = extractRuntimeParityEntries(comparableRuntimeTrades);
     const comparison = compareTradeParityEntries({
@@ -411,6 +562,9 @@ export const runtimeParity = async () => {
     console.log(
       `Targets: ${replayTargets.length}, compared: ${successfulTargetKeys.size}, replayErrors: ${replayErrors.length}`,
     );
+    console.log(
+      `Target sources: runtime=${replayTargets.filter((target) => target.sources.includes('runtime')).length}, strategyResults=${replayTargets.filter((target) => target.sources.includes('strategyResults')).length}`,
+    );
     console.log('');
     console.log(
       `Runtime entries: ${runtimeEntries.length}, backtest entries: ${backtestEntries.length}, matched: ${comparison.matched.length}, runtimeOnly: ${comparison.runtimeOnly.length}, backtestOnly: ${comparison.backtestOnly.length}`,
@@ -423,6 +577,9 @@ export const runtimeParity = async () => {
     );
 
     const strategyRows = summarizeByStrategy({
+      targets: replayTargets,
+      successfulTargetKeys,
+      replayErrors,
       runtimeEntries,
       backtestEntries,
       matchedEntries: comparison.matched,
@@ -435,16 +592,20 @@ export const runtimeParity = async () => {
       console.log(chalk.cyan('By strategy'));
       for (const [strategy, row] of strategyRows) {
         console.log(
-          `- ${strategy}: runtime=${row.runtime}, backtest=${row.backtest}, matched=${row.matched}, runtimeOnly=${row.runtimeOnly}, backtestOnly=${row.backtestOnly}`,
+          `- ${strategy}: targets=${row.targets}, compared=${row.compared}, errors=${row.errors}, runtime=${row.runtime}, backtest=${row.backtest}, matched=${row.matched}, runtimeOnly=${row.runtimeOnly}, backtestOnly=${row.backtestOnly}`,
         );
       }
     }
 
-    if (runtimeGateWarnings.size) {
+    if (runtimeGateWarningCounts.size) {
       console.log('');
       console.log(chalk.yellow('Warnings'));
-      for (const warning of runtimeGateWarnings) {
-        console.log(`- ${warning}`);
+      for (const [strategy, count] of [
+        ...runtimeGateWarningCounts.entries(),
+      ].sort(([left], [right]) => left.localeCompare(right))) {
+        console.log(
+          `- ${strategy} uses AI/ML runtime gates on ${count} replay target(s); BACKTEST replay covers core execution, not live gating.`,
+        );
       }
     }
 
