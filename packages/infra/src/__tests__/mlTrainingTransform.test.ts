@@ -658,3 +658,66 @@ test('trimMlTrainingRowWindows: keeps grouped suffix windows independent', () =>
   expect(row.TF15M_ALT_Volume1h_49).toBe(11);
   expect(row.TF15M_ALT_Volume1h_50).toBe(12);
 });
+
+test('buildMlTrainingRow: includes derivatives context features', () => {
+  const timestamp = 1_700_000_000_000;
+  const row = buildMlTrainingRow(
+    {
+      signal: {
+        symbol: 'ETHUSDT',
+        strategy: 'TrendLine',
+        direction: 'LONG',
+        interval: '15',
+        timestamp,
+        prices: {
+          currentPrice: 100,
+          takeProfitPrice: 110,
+          stopLossPrice: 95,
+          riskRatio: 2,
+        },
+        indicators: {},
+        additionalIndicators: {
+          derivativesContext: {
+            source: 'coinalyze',
+            summary: {
+              pressure: 'crowded_long',
+              directionAligned: false,
+              riskFlags: ['crowded_long', 'oi_not_confirming'],
+            },
+            intervals: {
+              '15m': {
+                asOfTs: timestamp - 15 * 60 * 1000,
+                stale: false,
+                points: 12,
+                openInterest: 1_000_000,
+                oiChangePct1h: 2.5,
+                oiChangePct4h: -1,
+                oiChangePct24h: 5,
+                fundingRate: 0.0006,
+                fundingZScore: 1.8,
+                liqLong: 100,
+                liqShort: 250,
+                liqTotal: 350,
+                liqImbalance: 0.42,
+                liqSpikeRatio: 2.5,
+              },
+            },
+          },
+        },
+      },
+    },
+    { profit: -1 },
+  );
+
+  expect(row.Deriv_HasContext).toBe(1);
+  expect(row.Deriv_Source_Coinalyze).toBe(1);
+  expect(row.Deriv_DirectionAligned).toBe(-1);
+  expect(row.Deriv_Pressure_CrowdedLong).toBe(1);
+  expect(row.Deriv_Flag_CrowdedLong).toBe(1);
+  expect(row.Deriv_Flag_OiNotConfirming).toBe(1);
+  expect(row.Deriv_15M_Present).toBe(1);
+  expect(row.Deriv_15M_OiChange1h).toBeCloseTo(0.025);
+  expect(row.Deriv_15M_FundingBps).toBeCloseTo(6);
+  expect(row.Deriv_15M_LiqImbalance).toBeCloseTo(0.42);
+  expect(row.Deriv_1H_Present).toBe(0);
+});

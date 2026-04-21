@@ -20,4 +20,4 @@ if [ "${#ARGS[@]}" -ge 2 ] && [ "${ARGS[1]}" = "--" ]; then
   ARGS=("${ARGS[0]}" "${ARGS[@]:2}")
 fi
 
-exec node ./packages/cli/dist/cli.js "${ARGS[@]}"
+exec node -r dotenv/config ./packages/cli/dist/cli.js "${ARGS[@]}"

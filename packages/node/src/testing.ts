@@ -561,6 +561,17 @@ export const testing: TestingBox = async ({
       'strategy signal',
       strategy(candle, btcCandle),
     );
+    const shouldCapturePayload =
+      signal && typeof signal !== 'string' && signal.signalId && (ml || ai);
+    if (shouldCapturePayload) {
+      await withTimeout(
+        'derivatives context',
+        enrichSignalWithDerivativesContext({
+          signal: signal as Signal,
+          env: 'BACKTEST',
+        }),
+      );
+    }
     if (ml && signal && typeof signal !== 'string' && signal.signalId) {
       const payload = buildMlPayload({
         signal,
@@ -578,13 +589,6 @@ export const testing: TestingBox = async ({
       pendingMlPayloadBySignalId.set(signal.signalId, payload);
     }
     if (ai && signal && typeof signal !== 'string' && signal.signalId) {
-      await withTimeout(
-        'derivatives context',
-        enrichSignalWithDerivativesContext({
-          signal: signal as Signal,
-          env: 'BACKTEST',
-        }),
-      );
       pendingAiRowBySignalId.set(signal.signalId, {
         signalId: signal.signalId,
         strategyName: signal.strategy || strategyName,

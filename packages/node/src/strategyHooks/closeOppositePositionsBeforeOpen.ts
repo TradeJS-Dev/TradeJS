@@ -1,11 +1,24 @@
 import _ from 'lodash';
-import { Connector, StrategyEntrySignalContext } from '@tradejs/types';
+import type {
+  Connector,
+  StrategyConfig,
+  StrategyEntrySignalContext,
+  StrategyManifest,
+} from '@tradejs/types';
 import { logger } from '@tradejs/infra/logger';
 
 type CloseOppositePositionsBeforeOpenOptions = {
   connector: Connector;
   entryContext: StrategyEntrySignalContext;
 };
+
+type BeforePlaceOrderHook = NonNullable<
+  NonNullable<StrategyManifest['hooks']>['beforePlaceOrder']
+>;
+
+interface CreateCloseOppositeBeforePlaceOrderHookParams {
+  isEnabled: (config: StrategyConfig) => boolean;
+}
 
 export const closeOppositePositionsBeforeOpen = async ({
   connector,
@@ -99,4 +112,23 @@ export const closeOppositePositionsBeforeOpen = async ({
       err,
     );
   }
+};
+
+export const createCloseOppositeBeforePlaceOrderHook = ({
+  isEnabled,
+}: CreateCloseOppositeBeforePlaceOrderHookParams): BeforePlaceOrderHook => {
+  return async ({ ctx, entry }) => {
+    if (ctx.env === 'BACKTEST') {
+      return;
+    }
+
+    if (!isEnabled(ctx.strategyConfig)) {
+      return;
+    }
+
+    await closeOppositePositionsBeforeOpen({
+      connector: ctx.connector,
+      entryContext: entry.context,
+    });
+  };
 };

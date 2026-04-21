@@ -41,6 +41,16 @@ const mockBuildAiPayload: jest.Mock = jest.fn((_signal?: unknown) => ({
 const mockBuildMlTrainingRow: jest.Mock = jest.fn(() => ({ featureA: 1 }));
 const mockAppendMlDatasetRow = jest.fn((_params?: unknown) => undefined);
 const mockAppendAiDatasetRow = jest.fn((_params?: unknown) => undefined);
+const mockEnrichSignalWithDerivativesContext = jest.fn(async (params: any) => {
+  params.signal.additionalIndicators = {
+    ...(params.signal.additionalIndicators ?? {}),
+    derivativesContext: {
+      source: 'coinalyze',
+      summary: { pressure: 'neutral', riskFlags: [] },
+    },
+  };
+  return true;
+});
 const originalProjectCwd = process.env.PROJECT_CWD;
 
 jest.mock('../tradejsConfig', () => ({
@@ -91,6 +101,11 @@ jest.mock('../mlPayload', () => ({
 
 jest.mock('../ai', () => ({
   buildAiPayload: (signal: unknown) => mockBuildAiPayload(signal),
+}));
+
+jest.mock('../strategyHelpers/derivativesContext', () => ({
+  enrichSignalWithDerivativesContext: (params: unknown) =>
+    mockEnrichSignalWithDerivativesContext(params),
 }));
 
 jest.mock('@tradejs/infra/ai', () => ({
@@ -150,6 +165,7 @@ describe('testing backtest flow', () => {
     mockStrategyCreator.mockClear();
     mockStrategy.mockReset();
     mockBuildAiPayload.mockClear();
+    mockEnrichSignalWithDerivativesContext.mockClear();
     mockTestConnector.checkSl.mockClear();
     mockTestConnector.checkTp.mockClear();
     mockTestConnector.drainMlResultsBatch.mockReset();
@@ -207,6 +223,17 @@ describe('testing backtest flow', () => {
     await testing(createTest({ ml: true }));
 
     expect(mockBuildMlPayload).toHaveBeenCalledTimes(1);
+    expect(mockBuildMlPayload.mock.calls[0][0]).toEqual(
+      expect.objectContaining({
+        signal: expect.objectContaining({
+          additionalIndicators: expect.objectContaining({
+            derivativesContext: expect.objectContaining({
+              source: 'coinalyze',
+            }),
+          }),
+        }),
+      }),
+    );
     expect(mockBuildMlTrainingRow).toHaveBeenCalledTimes(1);
     expect(mockAppendMlDatasetRow).toHaveBeenCalledWith(
       expect.objectContaining({

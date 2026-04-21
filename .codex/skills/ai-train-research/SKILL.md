@@ -55,7 +55,18 @@ yarn ai-train --strategy VolumeDivergence -n 500 --localOnly
 - `DETERMINISTIC FLOW`
 - `QUALITY BREAKDOWN`
 
-6. For deeper FP/FN analysis, do not read the entire merged JSONL into memory.
+6. Always show quality-cadence metrics for the main approved bucket.
+
+For `quality=4` approved rows, report:
+
+- `avg_profit_approved_per_day`
+- `avg_profit_approved_per_month`
+- `avg_approved_trades_per_day`
+- `avg_approved_trades_per_week`
+
+Use the same period logic as `packages/cli/src/lib/aiTrainMetrics.ts`: `(max timestamp - min timestamp) / 1 day`, with a minimum of `1` day. If useful, also mention the full-window normalization separately, but the required table is for the `q4` approved subset. If another quality tier is the main approved bucket for a strategy, include that tier too, but never omit `q4` when it exists.
+
+7. For deeper FP/FN analysis, do not read the entire merged JSONL into memory.
 
 For large exports:
 
@@ -77,7 +88,7 @@ rm -f "$tmp"
 exit $rc
 ```
 
-7. For strategy AI investigations, always look for these questions:
+8. For strategy AI investigations, always look for these questions:
 
 - Is the strategy core firing earlier than the adapter wants?
 - Is `quality=5` actually better than `quality=4`?
@@ -101,9 +112,14 @@ Keep the structure similar:
 2. current export and config
 3. replay mode used
 4. latest window metrics
-5. main discoveries
-6. best and worst pockets
-7. concrete next improvements for:
+5. `q4` approved cadence/profit metrics:
+   - `avg_profit_approved_per_day`
+   - `avg_profit_approved_per_month`
+   - `avg_approved_trades_per_day`
+   - `avg_approved_trades_per_week`
+6. main discoveries
+7. best and worst pockets
+8. concrete next improvements for:
    - strategy core
    - backtest config
    - AI adapter

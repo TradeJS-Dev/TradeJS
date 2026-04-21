@@ -4,11 +4,6 @@ import {
   createCloseAllPositionsOnGlobalProfitBeforeSignalsHook,
   createMoveStopToBreakEvenOnBarHook,
 } from '@tradejs/node/strategies';
-import { closeOppositePositionsBeforeOpen } from '../strategyHooks/closeOppositePositionsBeforeOpen';
-
-jest.mock('../strategyHooks/closeOppositePositionsBeforeOpen', () => ({
-  closeOppositePositionsBeforeOpen: jest.fn(),
-}));
 
 jest.mock('@tradejs/infra/logger', () => ({
   logger: {
@@ -18,11 +13,6 @@ jest.mock('@tradejs/infra/logger', () => ({
     log: jest.fn(),
   },
 }));
-
-const mockedCloseOppositePositionsBeforeOpen =
-  closeOppositePositionsBeforeOpen as jest.MockedFunction<
-    typeof closeOppositePositionsBeforeOpen
-  >;
 
 describe('createCloseOppositeBeforePlaceOrderHook', () => {
   beforeEach(() => {
@@ -34,7 +24,10 @@ describe('createCloseOppositeBeforePlaceOrderHook', () => {
       isEnabled: () => false,
     });
 
-    const connector = {} as any;
+    const connector = {
+      getPositions: jest.fn(async () => []),
+      closePosition: jest.fn(async () => true),
+    } as any;
     const entryContext = {
       strategy: 'TrendLine',
       symbol: 'ETHUSDT',
@@ -77,7 +70,8 @@ describe('createCloseOppositeBeforePlaceOrderHook', () => {
       },
     });
 
-    expect(mockedCloseOppositePositionsBeforeOpen).not.toHaveBeenCalled();
+    expect(connector.getPositions).not.toHaveBeenCalled();
+    expect(connector.closePosition).not.toHaveBeenCalled();
   });
 
   it('closes opposite positions when feature flag resolver returns true', async () => {
@@ -85,7 +79,12 @@ describe('createCloseOppositeBeforePlaceOrderHook', () => {
       isEnabled: () => true,
     });
 
-    const connector = {} as any;
+    const connector = {
+      getPositions: jest.fn(async () => [
+        { symbol: 'BTCUSDT', qty: 1, direction: 'SHORT' },
+      ]),
+      closePosition: jest.fn(async () => true),
+    } as any;
     const entryContext = {
       strategy: 'TrendLine',
       symbol: 'ETHUSDT',
@@ -128,10 +127,13 @@ describe('createCloseOppositeBeforePlaceOrderHook', () => {
       },
     });
 
-    expect(mockedCloseOppositePositionsBeforeOpen).toHaveBeenCalledTimes(1);
-    expect(mockedCloseOppositePositionsBeforeOpen).toHaveBeenCalledWith({
-      connector,
-      entryContext,
+    expect(connector.getPositions).toHaveBeenCalledTimes(1);
+    expect(connector.closePosition).toHaveBeenCalledTimes(1);
+    expect(connector.closePosition).toHaveBeenCalledWith({
+      symbol: 'BTCUSDT',
+      price: 100,
+      timestamp: 1_700_000_000_000,
+      direction: 'SHORT',
     });
   });
 
@@ -139,10 +141,14 @@ describe('createCloseOppositeBeforePlaceOrderHook', () => {
     const hook = createCloseOppositeBeforePlaceOrderHook({
       isEnabled: () => true,
     });
+    const connector = {
+      getPositions: jest.fn(async () => []),
+      closePosition: jest.fn(async () => true),
+    } as any;
 
     await hook({
       ctx: {
-        connector: {} as any,
+        connector,
         strategyName: 'TrendLine',
         userName: 'root',
         symbol: 'ETHUSDT',
@@ -180,7 +186,8 @@ describe('createCloseOppositeBeforePlaceOrderHook', () => {
       },
     });
 
-    expect(mockedCloseOppositePositionsBeforeOpen).not.toHaveBeenCalled();
+    expect(connector.getPositions).not.toHaveBeenCalled();
+    expect(connector.closePosition).not.toHaveBeenCalled();
   });
 });
 

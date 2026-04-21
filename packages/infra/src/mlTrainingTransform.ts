@@ -73,6 +73,50 @@ const INDICATOR_TIMEFRAMES = [
   { label: 'TF4H', suffix: '4h' },
   { label: 'TF1D', suffix: '1d' },
 ] as const;
+const DERIVATIVES_INTERVALS = [
+  { label: '15M', key: '15m' },
+  { label: '1H', key: '1h' },
+] as const;
+const DERIVATIVES_PRESSURES = [
+  'neutral',
+  'crowded_long',
+  'crowded_short',
+  'long_flush',
+  'short_flush',
+] as const;
+const DERIVATIVES_PRESSURE_LABELS: Record<
+  (typeof DERIVATIVES_PRESSURES)[number],
+  string
+> = {
+  neutral: 'Neutral',
+  crowded_long: 'CrowdedLong',
+  crowded_short: 'CrowdedShort',
+  long_flush: 'LongFlush',
+  short_flush: 'ShortFlush',
+};
+const DERIVATIVES_RISK_FLAGS = [
+  'missing_derivatives',
+  'stale_derivatives',
+  'crowded_long',
+  'crowded_short',
+  'oi_falling',
+  'oi_not_confirming',
+  'long_liquidation_spike',
+  'short_liquidation_spike',
+] as const;
+const DERIVATIVES_RISK_FLAG_LABELS: Record<
+  (typeof DERIVATIVES_RISK_FLAGS)[number],
+  string
+> = {
+  missing_derivatives: 'Missing',
+  stale_derivatives: 'Stale',
+  crowded_long: 'CrowdedLong',
+  crowded_short: 'CrowdedShort',
+  oi_falling: 'OiFalling',
+  oi_not_confirming: 'OiNotConfirming',
+  long_liquidation_spike: 'LongLiqSpike',
+  short_liquidation_spike: 'ShortLiqSpike',
+};
 type CandleTimeframeLabel = (typeof CANDLE_TIMEFRAMES)[number]['label'];
 type IndicatorTimeframe = (typeof INDICATOR_TIMEFRAMES)[number];
 type CandleLike = {
@@ -240,6 +284,11 @@ const sliceWindow = (
 // Normalize any "maybe series" value into an array.
 const asArray = <T = unknown>(value: unknown): T[] =>
   Array.isArray(value) ? (value as T[]) : [];
+
+const asRecord = (value: unknown): Record<string, unknown> | null =>
+  value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
 
 const dropLastFromIndicatorSeries = (
   indicators: Record<string, unknown>,
@@ -1137,6 +1186,101 @@ export const buildMlTrainingRow = (
     }
   };
 
+  const applyDerivativesPhase = () => {
+    const context = asRecord(signal?.additionalIndicators?.derivativesContext);
+    const summary = asRecord(context?.summary);
+    const intervals = asRecord(context?.intervals);
+    const pressure =
+      typeof summary?.pressure === 'string' ? summary.pressure : '';
+    const riskFlags = new Set(
+      asArray<string>(summary?.riskFlags).map((flag) => String(flag)),
+    );
+
+    row.Deriv_HasContext = context ? 1 : 0;
+    row.Deriv_Source_Coinalyze = context?.source === 'coinalyze' ? 1 : 0;
+    row.Deriv_DirectionAligned =
+      summary?.directionAligned === true
+        ? 1
+        : summary?.directionAligned === false
+          ? -1
+          : 0;
+
+    for (const pressureName of DERIVATIVES_PRESSURES) {
+      row[`Deriv_Pressure_${DERIVATIVES_PRESSURE_LABELS[pressureName]}`] =
+        pressure === pressureName ? 1 : 0;
+    }
+
+    for (const riskFlag of DERIVATIVES_RISK_FLAGS) {
+      row[`Deriv_Flag_${DERIVATIVES_RISK_FLAG_LABELS[riskFlag]}`] =
+        riskFlags.has(riskFlag) ? 1 : 0;
+    }
+
+    for (const { label, key: intervalKey } of DERIVATIVES_INTERVALS) {
+      const intervalContext = asRecord(intervals?.[intervalKey]);
+      const prefix = `Deriv_${label}`;
+      const asOfTs = toNumber(intervalContext?.asOfTs, entryTimestamp);
+      const ageHours = intervalContext
+        ? Math.max(0, safeDiv(entryTimestamp - asOfTs, 60 * 60 * 1000))
+        : 0;
+
+      row[`${prefix}_Present`] = intervalContext ? 1 : 0;
+      row[`${prefix}_Stale`] = intervalContext?.stale === true ? 1 : 0;
+      row[`${prefix}_AgeHours_Log`] = safeLog1pPositive(ageHours);
+      row[`${prefix}_Points_Log`] = safeLog1pPositive(
+        toNumber(intervalContext?.points, 0),
+      );
+      row[`${prefix}_OpenInterest_Log`] = safeLog1pPositive(
+        toNumber(intervalContext?.openInterest, 0),
+      );
+      row[`${prefix}_OiChange1h`] = clamp(
+        toNumber(intervalContext?.oiChangePct1h, 0) / 100,
+        -5,
+        5,
+      );
+      row[`${prefix}_OiChange4h`] = clamp(
+        toNumber(intervalContext?.oiChangePct4h, 0) / 100,
+        -5,
+        5,
+      );
+      row[`${prefix}_OiChange24h`] = clamp(
+        toNumber(intervalContext?.oiChangePct24h, 0) / 100,
+        -5,
+        5,
+      );
+      row[`${prefix}_FundingBps`] = clamp(
+        toNumber(intervalContext?.fundingRate, 0) * 10_000,
+        -100,
+        100,
+      );
+      row[`${prefix}_FundingZ`] = clamp(
+        toNumber(intervalContext?.fundingZScore, 0),
+        -8,
+        8,
+      );
+      row[`${prefix}_LiqLong_Log`] = safeLog1pPositive(
+        toNumber(intervalContext?.liqLong, 0),
+      );
+      row[`${prefix}_LiqShort_Log`] = safeLog1pPositive(
+        toNumber(intervalContext?.liqShort, 0),
+      );
+      row[`${prefix}_LiqTotal_Log`] = safeLog1pPositive(
+        toNumber(intervalContext?.liqTotal, 0),
+      );
+      row[`${prefix}_LiqImbalance`] = clamp(
+        toNumber(intervalContext?.liqImbalance, 0),
+        -1,
+        1,
+      );
+      row[`${prefix}_LiqSpike_Log`] = safeLog1pPositive(
+        toNumber(intervalContext?.liqSpikeRatio, 0),
+      );
+      row[`${prefix}_LiqSpike_Squashed`] = squash(
+        toNumber(intervalContext?.liqSpikeRatio, 0),
+        3,
+      );
+    }
+  };
+
   const applyLabelPhase = () => {
     const profit = toNumber(resultRecord?.profit, NaN);
     row.label = Number.isFinite(profit) ? (profit > 0 ? 1 : 0) : null;
@@ -1147,6 +1291,7 @@ export const buildMlTrainingRow = (
   applyRegimePhase();
   applySeriesAnalysisPhase();
   applyTrendlinePhase();
+  applyDerivativesPhase();
   applyLabelPhase();
 
   return row;
