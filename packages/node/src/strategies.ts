@@ -21,7 +21,7 @@ export {
   enrichSignalWithMlAi,
   executeEntryOrder,
 } from './strategyHelpers/runtime';
-export { closeOppositePositionsBeforeOpen } from './closeOppositePositionsBeforeOpen';
+export { closeOppositePositionsBeforeOpen } from './strategyHooks/closeOppositePositionsBeforeOpen';
 export { createCloseOppositeBeforePlaceOrderHook } from './strategyHooks/closeOppositeBeforePlaceOrder';
 export {
   createMoveStopToBreakEvenOnBarHook,

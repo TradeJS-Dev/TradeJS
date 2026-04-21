@@ -4,9 +4,9 @@ import {
   createCloseAllPositionsOnGlobalProfitBeforeSignalsHook,
   createMoveStopToBreakEvenOnBarHook,
 } from '@tradejs/node/strategies';
-import { closeOppositePositionsBeforeOpen } from '../closeOppositePositionsBeforeOpen';
+import { closeOppositePositionsBeforeOpen } from '../strategyHooks/closeOppositePositionsBeforeOpen';
 
-jest.mock('../closeOppositePositionsBeforeOpen', () => ({
+jest.mock('../strategyHooks/closeOppositePositionsBeforeOpen', () => ({
   closeOppositePositionsBeforeOpen: jest.fn(),
 }));
 
