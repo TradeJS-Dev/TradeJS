@@ -17,13 +17,17 @@ import {
   ConnectorCreator,
   Interval,
   RuntimeTradeRecord,
+  Signal,
+  SignalOrderStatus,
   StrategyConfig,
   StrategyResults,
 } from '@tradejs/types';
 import {
   compareTradeParityEntries,
+  dedupeRuntimeParityEntries,
   extractBacktestEntryParityEntries,
   extractRuntimeParityEntries,
+  RuntimeDuplicateGroup,
   summarizeMatchedParity,
   TradeParityEntry,
 } from '../lib/runtimeParity';
@@ -74,6 +78,27 @@ type ReplayError = ReplayTarget & {
   message: string;
 };
 
+type BacktestOnlyClassification =
+  | 'gated_out'
+  | 'order_failed'
+  | 'not_evaluated'
+  | 'true_mismatch';
+
+type ClassifiedBacktestOnlyEntry = {
+  entry: TradeParityEntry;
+  classification: BacktestOnlyClassification;
+  reason: string;
+  signal?: Signal;
+  signalTimestampDiffMs?: number;
+};
+
+const BACKTEST_ONLY_CLASSIFICATIONS: BacktestOnlyClassification[] = [
+  'gated_out',
+  'order_failed',
+  'not_evaluated',
+  'true_mismatch',
+];
+
 const parseSymbolsFromCLI = (symbols = '') =>
   symbols
     .split(',')
@@ -83,6 +108,21 @@ const parseSymbolsFromCLI = (symbols = '') =>
 
 const toTargetKey = (target: Pick<ReplayTarget, 'strategy' | 'symbol'>) =>
   `${target.strategy}::${target.symbol}`;
+
+const normalizeSignalOrderStatus = (
+  value: Signal['orderStatus'],
+): SignalOrderStatus | 'unknown' => {
+  if (
+    value === 'completed' ||
+    value === 'failed' ||
+    value === 'skipped' ||
+    value === 'canceled'
+  ) {
+    return value;
+  }
+
+  return 'unknown';
+};
 
 const isRuntimeTradeRecord = (value: unknown): value is RuntimeTradeRecord => {
   if (!value || typeof value !== 'object') {
@@ -97,6 +137,21 @@ const isRuntimeTradeRecord = (value: unknown): value is RuntimeTradeRecord => {
     typeof record.entryTimestamp === 'number' &&
     typeof record.entryPrice === 'number' &&
     typeof record.qty === 'number' &&
+    (record.direction === 'LONG' || record.direction === 'SHORT')
+  );
+};
+
+const isSignalRecord = (value: unknown): value is Signal => {
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+
+  const record = value as Record<string, unknown>;
+  return (
+    typeof record.signalId === 'string' &&
+    typeof record.strategy === 'string' &&
+    typeof record.symbol === 'string' &&
+    typeof record.timestamp === 'number' &&
     (record.direction === 'LONG' || record.direction === 'SHORT')
   );
 };
@@ -124,6 +179,15 @@ const loadRuntimeTrades = async (
   return trades
     .filter(isRuntimeTradeRecord)
     .sort((left, right) => left.entryTimestamp - right.entryTimestamp);
+};
+
+const loadRuntimeSignals = async (userName: string): Promise<Signal[]> => {
+  const keys = await getKeys(redisKeys.runtimeSignals(userName));
+  const signals = await Promise.all(keys.map((key) => getData(key, null)));
+
+  return signals
+    .filter(isSignalRecord)
+    .sort((left, right) => left.timestamp - right.timestamp);
 };
 
 const resolveStrategyNameByConfigKey = (
@@ -394,11 +458,202 @@ const printEntryDetails = (label: string, entries: TradeParityEntry[]) => {
   }
 };
 
+const printRuntimeDuplicateDetails = (groups: RuntimeDuplicateGroup[]) => {
+  if (!groups.length) {
+    return;
+  }
+
+  console.log('');
+  console.log(chalk.yellow('Runtime duplicates'));
+
+  for (const group of groups.slice(0, DETAIL_LIMIT)) {
+    const ids = group.entries.map((entry) => entry.orderId ?? entry.id);
+
+    console.log(
+      `- ${formatEntryLabel(group.entries[0])} count=${group.entries.length}, duplicateEntries=${group.entries.length - 1}, ids=${ids.join(',')}`,
+    );
+  }
+
+  if (groups.length > DETAIL_LIMIT) {
+    console.log(`- ... ${groups.length - DETAIL_LIMIT} more`);
+  }
+};
+
+const findNearestRuntimeSignal = ({
+  entry,
+  runtimeSignals,
+  toleranceMs,
+}: {
+  entry: TradeParityEntry;
+  runtimeSignals: Signal[];
+  toleranceMs: number;
+}) => {
+  let bestSignal: Signal | null = null;
+  let bestDiff = Number.POSITIVE_INFINITY;
+
+  for (const signal of runtimeSignals) {
+    if (
+      signal.strategy !== entry.strategy ||
+      signal.symbol !== entry.symbol ||
+      signal.direction !== entry.direction
+    ) {
+      continue;
+    }
+
+    const diff = Math.abs(signal.timestamp - entry.timestamp);
+    if (diff > toleranceMs || diff >= bestDiff) {
+      continue;
+    }
+
+    bestSignal = signal;
+    bestDiff = diff;
+  }
+
+  return bestSignal
+    ? {
+        signal: bestSignal,
+        timestampDiffMs: bestDiff,
+      }
+    : null;
+};
+
+const buildSignalClassificationReason = ({
+  signal,
+  orderStatus,
+  classification,
+}: {
+  signal: Signal;
+  orderStatus: SignalOrderStatus | 'unknown';
+  classification: BacktestOnlyClassification;
+}) => {
+  const skipReason =
+    typeof signal.orderSkipReason === 'string'
+      ? signal.orderSkipReason.trim()
+      : '';
+  if (skipReason) {
+    return skipReason;
+  }
+
+  if (classification === 'gated_out' && signal.ml?.passed === false) {
+    return `ml_probability=${signal.ml.probability.toFixed(4)} threshold=${signal.ml.threshold.toFixed(4)}`;
+  }
+
+  if (orderStatus === 'completed') {
+    return 'completed_signal_without_runtime_trade';
+  }
+
+  if (orderStatus !== 'unknown') {
+    return `orderStatus=${orderStatus}`;
+  }
+
+  return 'runtime_signal_without_completed_trade';
+};
+
+const classifyBacktestOnlyEntries = ({
+  entries,
+  runtimeSignals,
+  toleranceMs,
+}: {
+  entries: TradeParityEntry[];
+  runtimeSignals: Signal[];
+  toleranceMs: number;
+}): ClassifiedBacktestOnlyEntry[] =>
+  entries.map((entry) => {
+    const nearestSignal = findNearestRuntimeSignal({
+      entry,
+      runtimeSignals,
+      toleranceMs,
+    });
+
+    if (!nearestSignal) {
+      return {
+        entry,
+        classification: 'not_evaluated',
+        reason: 'no_runtime_signal',
+      };
+    }
+
+    const orderStatus = normalizeSignalOrderStatus(
+      nearestSignal.signal.orderStatus,
+    );
+    let classification: BacktestOnlyClassification;
+
+    if (orderStatus === 'failed') {
+      classification = 'order_failed';
+    } else if (
+      orderStatus === 'skipped' ||
+      orderStatus === 'canceled' ||
+      nearestSignal.signal.ml?.passed === false ||
+      (typeof nearestSignal.signal.orderSkipReason === 'string' &&
+        nearestSignal.signal.orderSkipReason.trim())
+    ) {
+      classification = 'gated_out';
+    } else {
+      classification = 'true_mismatch';
+    }
+
+    return {
+      entry,
+      classification,
+      reason: buildSignalClassificationReason({
+        signal: nearestSignal.signal,
+        orderStatus,
+        classification,
+      }),
+      signal: nearestSignal.signal,
+      signalTimestampDiffMs: nearestSignal.timestampDiffMs,
+    };
+  });
+
+const summarizeBacktestOnlyClassifications = (
+  classifiedEntries: ClassifiedBacktestOnlyEntry[],
+) => {
+  const counts = new Map<BacktestOnlyClassification, number>(
+    BACKTEST_ONLY_CLASSIFICATIONS.map((classification) => [classification, 0]),
+  );
+
+  for (const item of classifiedEntries) {
+    counts.set(item.classification, (counts.get(item.classification) ?? 0) + 1);
+  }
+
+  return BACKTEST_ONLY_CLASSIFICATIONS.map(
+    (classification) => `${classification}=${counts.get(classification) ?? 0}`,
+  ).join(', ');
+};
+
+const printClassifiedBacktestOnlyDetails = (
+  classifiedEntries: ClassifiedBacktestOnlyEntry[],
+) => {
+  if (!classifiedEntries.length) {
+    return;
+  }
+
+  console.log('');
+  console.log(chalk.yellow('Backtest only'));
+
+  for (const item of classifiedEntries.slice(0, DETAIL_LIMIT)) {
+    const signalSuffix = item.signal
+      ? ` signalId=${item.signal.signalId} signalDrift=${formatMinutes(item.signalTimestampDiffMs ?? null)}`
+      : '';
+
+    console.log(
+      `- [${item.classification}] ${formatEntryLabel(item.entry)} price=${
+        item.entry.price == null ? 'n/a' : item.entry.price.toFixed(6)
+      } id=${item.entry.id} reason=${item.reason}${signalSuffix}`,
+    );
+  }
+
+  if (classifiedEntries.length > DETAIL_LIMIT) {
+    console.log(`- ... ${classifiedEntries.length - DETAIL_LIMIT} more`);
+  }
+};
+
 const summarizeByStrategy = ({
   targets,
   successfulTargetKeys,
   replayErrors,
   runtimeEntries,
+  runtimeDuplicateEntries,
   backtestEntries,
   matchedEntries,
   runtimeOnlyEntries,
@@ -408,6 +663,7 @@ const summarizeByStrategy = ({
   successfulTargetKeys: Set<string>;
   replayErrors: ReplayError[];
   runtimeEntries: TradeParityEntry[];
+  runtimeDuplicateEntries: TradeParityEntry[];
   backtestEntries: TradeParityEntry[];
   matchedEntries: ReturnType<typeof compareTradeParityEntries>['matched'];
   runtimeOnlyEntries: TradeParityEntry[];
@@ -417,6 +673,7 @@ const summarizeByStrategy = ({
     string,
     {
       runtime: number;
+      runtimeDuplicates: number;
       backtest: number;
       matched: number;
       runtimeOnly: number;
@@ -430,6 +687,7 @@ const summarizeByStrategy = ({
   const ensureRow = (strategy: string) => {
     const row = rows.get(strategy) ?? {
       runtime: 0,
+      runtimeDuplicates: 0,
       backtest: 0,
       matched: 0,
       runtimeOnly: 0,
@@ -454,6 +712,9 @@ const summarizeByStrategy = ({
   }
   for (const entry of runtimeEntries) {
     ensureRow(entry.strategy).runtime += 1;
+  }
+  for (const entry of runtimeDuplicateEntries) {
+    ensureRow(entry.strategy).runtimeDuplicates += 1;
   }
   for (const entry of backtestEntries) {
     ensureRow(entry.strategy).backtest += 1;
@@ -488,15 +749,29 @@ export const runtimeParity = async () => {
   const toleranceMs = toleranceBars * 15 * 60 * 1000;
   const connectorName = await resolveParityConnectorName(flags.connector);
   const requestedSymbols = parseSymbolsFromCLI(String(flags.tickers || ''));
+  const requestedSymbolSet = requestedSymbols.length
+    ? new Set(requestedSymbols)
+    : null;
 
   let replayErrors: ReplayError[] = [];
 
   try {
-    const runtimeTrades = (await loadRuntimeTrades(flags.user)).filter(
+    const [allRuntimeTrades, allRuntimeSignals] = await Promise.all([
+      loadRuntimeTrades(flags.user),
+      loadRuntimeSignals(flags.user),
+    ]);
+    const runtimeTrades = allRuntimeTrades.filter(
       (trade) =>
         trade.entryTimestamp >= window.start &&
         trade.entryTimestamp <= window.end &&
         (!flags.strategy || trade.strategy === flags.strategy),
+    );
+    const runtimeSignals = allRuntimeSignals.filter(
+      (signal) =>
+        signal.timestamp >= window.start &&
+        signal.timestamp <= window.end &&
+        (!flags.strategy || signal.strategy === flags.strategy) &&
+        (!requestedSymbolSet || requestedSymbolSet.has(signal.symbol)),
     );
 
     const replayTargets = await buildReplayTargets({
@@ -576,10 +851,19 @@ export const runtimeParity = async () => {
     const comparableRuntimeTrades = runtimeTrades.filter((trade) =>
       successfulTargetKeys.has(toTargetKey(trade)),
     );
-    const runtimeEntries = extractRuntimeParityEntries(comparableRuntimeTrades);
+    const rawRuntimeEntries = extractRuntimeParityEntries(
+      comparableRuntimeTrades,
+    );
+    const runtimeDedupe = dedupeRuntimeParityEntries(rawRuntimeEntries);
+    const runtimeEntries = runtimeDedupe.entries;
     const comparison = compareTradeParityEntries({
       runtimeEntries,
       backtestEntries,
+      toleranceMs,
+    });
+    const classifiedBacktestOnly = classifyBacktestOnlyEntries({
+      entries: comparison.backtestOnly,
+      runtimeSignals,
       toleranceMs,
     });
     const summary = summarizeMatchedParity(comparison.matched);
@@ -600,7 +884,7 @@ export const runtimeParity = async () => {
     );
     console.log('');
     console.log(
-      `Runtime entries: ${runtimeEntries.length}, backtest entries: ${backtestEntries.length}, matched: ${comparison.matched.length}, runtimeOnly: ${comparison.runtimeOnly.length}, backtestOnly: ${comparison.backtestOnly.length}`,
+      `Runtime entries: ${rawRuntimeEntries.length} (deduped: ${runtimeEntries.length}, duplicates: ${runtimeDedupe.duplicateEntries.length}), backtest entries: ${backtestEntries.length}, matched: ${comparison.matched.length}, runtimeOnly: ${comparison.runtimeOnly.length}, backtestOnly: ${comparison.backtestOnly.length}`,
     );
     console.log(
       `Matched price delta avg/max: ${formatPercent(summary.avgPriceDeltaPct)} / ${formatPercent(summary.maxPriceDeltaPct)}`,
@@ -608,12 +892,23 @@ export const runtimeParity = async () => {
     console.log(
       `Matched timestamp drift avg/max: ${formatMinutes(summary.avgTimestampDiffMs)} / ${formatMinutes(summary.maxTimestampDiffMs)}`,
     );
+    if (runtimeDedupe.duplicateGroups.length) {
+      console.log(
+        `Runtime duplicate groups: ${runtimeDedupe.duplicateGroups.length}, duplicate entries: ${runtimeDedupe.duplicateEntries.length}`,
+      );
+    }
+    if (classifiedBacktestOnly.length) {
+      console.log(
+        `Backtest only classifications: ${summarizeBacktestOnlyClassifications(classifiedBacktestOnly)}`,
+      );
+    }
 
     const strategyRows = summarizeByStrategy({
       targets: replayTargets,
       successfulTargetKeys,
       replayErrors,
       runtimeEntries,
+      runtimeDuplicateEntries: runtimeDedupe.duplicateEntries,
       backtestEntries,
       matchedEntries: comparison.matched,
       runtimeOnlyEntries: comparison.runtimeOnly,
@@ -625,7 +920,7 @@ export const runtimeParity = async () => {
       console.log(chalk.cyan('By strategy'));
       for (const [strategy, row] of strategyRows) {
         console.log(
-          `- ${strategy}: targets=${row.targets}, compared=${row.compared}, errors=${row.errors}, runtime=${row.runtime}, backtest=${row.backtest}, matched=${row.matched}, runtimeOnly=${row.runtimeOnly}, backtestOnly=${row.backtestOnly}`,
+          `- ${strategy}: targets=${row.targets}, compared=${row.compared}, errors=${row.errors}, runtime=${row.runtime}, runtimeDuplicates=${row.runtimeDuplicates}, backtest=${row.backtest}, matched=${row.matched}, runtimeOnly=${row.runtimeOnly}, backtestOnly=${row.backtestOnly}`,
         );
       }
     }
@@ -654,8 +949,9 @@ export const runtimeParity = async () => {
     }
 
     if (flags.details) {
+      printRuntimeDuplicateDetails(runtimeDedupe.duplicateGroups);
       printEntryDetails('Runtime only', comparison.runtimeOnly);
-      printEntryDetails('Backtest only', comparison.backtestOnly);
+      printClassifiedBacktestOnlyDetails(classifiedBacktestOnly);
     }
   } finally {
     resetTestingKlineCache(projectRoot);

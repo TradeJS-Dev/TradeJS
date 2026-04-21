@@ -25,12 +25,44 @@ export interface CompareTradeParityResult {
   backtestOnly: TradeParityEntry[];
 }
 
+export interface RuntimeDuplicateGroup {
+  key: string;
+  strategy: string;
+  symbol: string;
+  direction: Direction;
+  timestamp: number;
+  entries: TradeParityEntry[];
+}
+
+export interface DedupeRuntimeParityEntriesResult {
+  entries: TradeParityEntry[];
+  duplicateGroups: RuntimeDuplicateGroup[];
+  duplicateEntries: TradeParityEntry[];
+}
+
 const toFiniteNumberOrNull = (value: unknown): number | null =>
   typeof value === 'number' && Number.isFinite(value) ? value : null;
 
 const toGroupKey = (
   entry: Pick<TradeParityEntry, 'strategy' | 'symbol' | 'direction'>,
 ) => `${entry.strategy}::${entry.symbol}::${entry.direction}`;
+
+const toRuntimeDuplicateKey = (
+  entry: Pick<
+    TradeParityEntry,
+    'strategy' | 'symbol' | 'direction' | 'timestamp'
+  >,
+) => `${toGroupKey(entry)}::${entry.timestamp}`;
+
+const sortTradeParityEntries = (
+  left: TradeParityEntry,
+  right: TradeParityEntry,
+) =>
+  left.timestamp - right.timestamp ||
+  left.strategy.localeCompare(right.strategy) ||
+  left.symbol.localeCompare(right.symbol) ||
+  left.direction.localeCompare(right.direction) ||
+  left.id.localeCompare(right.id);
 
 const buildPriceDeltaPct = (
   leftPrice: number | null,
@@ -115,6 +147,72 @@ export const extractRuntimeParityEntries = (
       signalId: typeof trade.signalId === 'string' ? trade.signalId : undefined,
     }))
     .sort((left, right) => left.timestamp - right.timestamp);
+
+export const findRuntimeDuplicateGroups = (
+  entries: TradeParityEntry[],
+): RuntimeDuplicateGroup[] => {
+  const groups = new Map<string, TradeParityEntry[]>();
+
+  for (const entry of entries) {
+    if (entry.source !== 'runtime') {
+      continue;
+    }
+
+    const key = toRuntimeDuplicateKey(entry);
+    const bucket = groups.get(key) ?? [];
+    bucket.push(entry);
+    groups.set(key, bucket);
+  }
+
+  return [...groups.entries()]
+    .filter(([, group]) => group.length > 1)
+    .map(([key, group]) => {
+      const sortedGroup = [...group].sort(sortTradeParityEntries);
+      const first = sortedGroup[0];
+
+      return {
+        key,
+        strategy: first.strategy,
+        symbol: first.symbol,
+        direction: first.direction,
+        timestamp: first.timestamp,
+        entries: sortedGroup,
+      };
+    })
+    .sort(
+      (left, right) =>
+        left.timestamp - right.timestamp ||
+        left.strategy.localeCompare(right.strategy) ||
+        left.symbol.localeCompare(right.symbol) ||
+        left.direction.localeCompare(right.direction),
+    );
+};
+
+export const dedupeRuntimeParityEntries = (
+  entries: TradeParityEntry[],
+): DedupeRuntimeParityEntriesResult => {
+  const duplicateGroups = findRuntimeDuplicateGroups(entries);
+  const duplicateEntriesSet = new Set<TradeParityEntry>();
+
+  for (const group of duplicateGroups) {
+    for (const duplicate of group.entries.slice(1)) {
+      duplicateEntriesSet.add(duplicate);
+    }
+  }
+
+  const dedupedEntries = entries
+    .filter((entry) => !duplicateEntriesSet.has(entry))
+    .sort(sortTradeParityEntries);
+  const duplicateEntries = duplicateGroups
+    .flatMap((group) => group.entries.slice(1))
+    .sort(sortTradeParityEntries);
+
+  return {
+    entries: dedupedEntries,
+    duplicateGroups,
+    duplicateEntries,
+  };
+};
 
 export const compareTradeParityEntries = ({
   runtimeEntries,

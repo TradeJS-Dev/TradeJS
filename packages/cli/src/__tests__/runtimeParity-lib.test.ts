@@ -1,5 +1,6 @@
 import {
   compareTradeParityEntries,
+  dedupeRuntimeParityEntries,
   extractBacktestEntryParityEntries,
   extractRuntimeParityEntries,
   summarizeMatchedParity,
@@ -187,6 +188,42 @@ describe('runtime parity helpers', () => {
     expect(comparison.matched[1]).toEqual(
       expect.objectContaining({
         timestampDiffMs: 500,
+      }),
+    );
+  });
+
+  it('dedupes repeated runtime entries by strategy, symbol, direction, and timestamp', () => {
+    const runtimeEntries = extractRuntimeParityEntries([
+      ...runtimeTrades,
+      {
+        orderId: 'ord-1-copy',
+        signalId: 'sig-1-copy',
+        strategy: 'TrendLine',
+        symbol: 'BTCUSDT',
+        direction: 'LONG',
+        qty: 1,
+        entryPrice: 100.1,
+        entryTimestamp: 1_000,
+        status: 'closed',
+      },
+    ]);
+
+    const deduped = dedupeRuntimeParityEntries(runtimeEntries);
+
+    expect(deduped.entries.map((entry) => entry.id)).toEqual([
+      'ord-1',
+      'ord-2',
+    ]);
+    expect(deduped.duplicateEntries.map((entry) => entry.id)).toEqual([
+      'ord-1-copy',
+    ]);
+    expect(deduped.duplicateGroups).toHaveLength(1);
+    expect(deduped.duplicateGroups[0]).toEqual(
+      expect.objectContaining({
+        strategy: 'TrendLine',
+        symbol: 'BTCUSDT',
+        direction: 'LONG',
+        timestamp: 1_000,
       }),
     );
   });
