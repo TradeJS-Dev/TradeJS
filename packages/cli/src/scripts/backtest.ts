@@ -41,6 +41,10 @@ import {
   ConnectorCreator,
   StrategyConfigGrid,
 } from '@tradejs/types';
+import {
+  backfillDerivativesContextForBacktest,
+  shouldBackfillDerivativesContextForBacktest,
+} from '../lib/derivativesContextBackfill';
 import { resolveTimeWindow } from '../lib/timeWindow';
 
 const MAX_PARALLEL = Math.min(os.cpus().length, 6);
@@ -547,6 +551,21 @@ const backtest = async () => {
       ),
     );
     return;
+  }
+
+  if (
+    shouldBackfillDerivativesContextForBacktest({
+      aiEnabled,
+      cacheOnly: Boolean(flags.cacheOnly),
+      mlEnabled,
+    })
+  ) {
+    await backfillDerivativesContextForBacktest({
+      userName,
+      symbols: testSuite.map((test) => test.symbol),
+      startMs: window.start,
+      endMs: window.end,
+    });
   }
 
   const chunkSize = Math.ceil(testSuite.length / parseInt(flags.parallel));
