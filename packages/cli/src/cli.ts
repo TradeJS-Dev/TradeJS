@@ -23,6 +23,7 @@ const scriptLoaders: Record<string, ScriptLoader> = {
   'ml-inspect': () => import('./scripts/mlInspect'),
   'ml-train:latest': () => import('./scripts/mlTrainLatestSelect'),
   results: () => import('./scripts/results'),
+  'runtime-parity': () => import('./scripts/runtimeParity'),
   signals: () => import('./scripts/signals'),
   'signals-summary': () => import('./scripts/signalsSummary'),
   'spread:ingest': () => import('./scripts/derivativesIngest'),

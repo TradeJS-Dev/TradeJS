@@ -23,11 +23,13 @@ import {
 } from '@tradejs/core/backtest';
 import { toJson } from '@tradejs/core/data';
 import {
+  BACKTEST_PRELOAD_DAYS,
   TESTS_LIMIT,
   TESTS_TOP_LIMIT,
   TTL_1D,
   TTL_1M,
 } from '@tradejs/core/constants';
+import { formatUnix, getTimestamp } from '@tradejs/core/time';
 import { setData, getData, redisKeys } from '@tradejs/infra/redis';
 import {
   Interval,
@@ -39,6 +41,7 @@ import {
   ConnectorCreator,
   StrategyConfigGrid,
 } from '@tradejs/types';
+import { resolveTimeWindow } from '../lib/timeWindow';
 
 const MAX_PARALLEL = Math.min(os.cpus().length, 6);
 
@@ -54,6 +57,9 @@ args.option(['n', 'tests'], 'Tests limit', TESTS_LIMIT);
 args.option('skip', 'Skip first N tests', 0);
 args.option(['p', 'parallel'], 'Parallel tasks', MAX_PARALLEL);
 args.option(['f', 'timeframe'], 'Timeframe', 15);
+args.option(['d', 'days'], 'Run backtest only for the last N days');
+args.option('startTime', 'Explicit backtest start timestamp (ms or seconds)');
+args.option('endTime', 'Explicit backtest end timestamp (ms or seconds)');
 args.option(['T', 'top'], 'Return N best tests', TESTS_TOP_LIMIT);
 args.option(['u', 'updateOnly'], 'Only update tickers history', false);
 args.option(['C', 'cacheOnly'], 'Do not update tickers history', false);
@@ -512,11 +518,22 @@ const backtest = async () => {
     typedBacktestConfig,
     connectorName,
   );
+  const window = resolveTimeWindow({
+    days: flags.days,
+    startTime: flags.startTime,
+    endTime: flags.endTime,
+    defaultStartMs: getTimestamp(BACKTEST_PRELOAD_DAYS),
+    defaultEndMs: getTimestamp(),
+  });
   const mlEnabled = Boolean(flags.ml);
   const aiEnabled = Boolean(flags.ai);
   testSuite = testSuite
     .map((test) => ({
       ...test,
+      options: {
+        start: window.start,
+        end: window.end,
+      },
       ml: mlEnabled,
       ai: aiEnabled,
       timeoutMs: testItemTimeoutMs,
@@ -569,6 +586,11 @@ const backtest = async () => {
   });
 
   console.log(chalk.yellow(`tests: ${testSuite.length}`));
+  console.log(
+    chalk.gray(
+      `window: ${formatUnix(window.start)} -> ${formatUnix(window.end)} (${window.source})`,
+    ),
+  );
 
   console.log('');
   const bar = new ProgressBar(

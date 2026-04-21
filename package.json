@@ -91,6 +91,7 @@
     "redis-restart": "yarn redis-down && yarn redis-up",
     "redis-up": "docker compose -f docker-compose.dev.yml up -d redis",
     "results": "yarn cli results",
+    "runtime-parity": "PROJECT_CWD=\"$PWD\" DOTENV_CONFIG_PATH=\"${DOTENV_CONFIG_PATH:-$PWD/.env}\" NODE_OPTIONS=\"--max-old-space-size=8192\" time bash ./bin/run-cli-dist.sh runtime-parity",
     "sandbox:e2e": "cd examples/sandbox && yarn e2e",
     "sandbox:infra-down": "cd examples/sandbox && yarn infra-down",
     "sandbox:infra-up": "cd examples/sandbox && yarn infra-up",

@@ -80,9 +80,11 @@ Use the drawer to:
 ```bash
 yarn build:ci
 yarn backtest
+yarn backtest -- --days 3 --config TrendLine:prod
 yarn results
 yarn signals
 yarn signals:summary -- --printOnly
+yarn runtime-parity -- --days 3
 yarn bot
 ```
 
@@ -114,7 +116,14 @@ Useful manual checks:
 ```bash
 yarn signals -- --notify --user root --connector bybit
 yarn signals:summary -- --user root --connector bybit --printOnly
+yarn runtime-parity -- --user root --connector bybit --days 3 --details
 ```
+
+Runtime/backtest parity:
+
+- `yarn runtime-parity` replays recent history with the effective runtime config (`user strategy config` + per-symbol `results` patch) in `BACKTEST` mode and compares backtest entries against saved runtime trade records.
+- matching is done by `strategy + symbol + direction + timestamp` with configurable tolerance in bars; entry price is reported as drift only, not used as the primary match key.
+- if a strategy enables AI/ML gates, the command warns that standard `BACKTEST` replay covers core execution parity, not live gating parity.
 
 ## 8. Data Maintenance
 
@@ -122,6 +131,7 @@ Refresh history:
 
 ```bash
 yarn update-history -- --user root --config TrendLine:base --connector bybit --timeframe 15
+yarn backtest -- --user root --config TrendLine:prod --days 3 --connector bybit
 ```
 
 Continuity check/repair:
