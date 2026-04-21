@@ -39,7 +39,10 @@ args.option(['d', 'days'], 'Replay window in days', 3);
 args.option('startTime', 'Explicit replay start timestamp (ms or seconds)');
 args.option('endTime', 'Explicit replay end timestamp (ms or seconds)');
 args.option(['s', 'strategy'], 'Only compare one strategy');
-args.option(['t', 'tickers'], 'Only replay comma-separated symbols');
+args.option(
+  ['t', 'tickers'],
+  'Replay comma-separated symbols for all configured strategies',
+);
 args.option(
   ['C', 'cacheOnly'],
   'Do not refresh market history before replay',
@@ -62,7 +65,9 @@ const DETAIL_LIMIT = 10;
 type ReplayTarget = {
   strategy: string;
   symbol: string;
-  sources: Array<'runtime' | 'strategyResults'>;
+  sources: Array<
+    'runtime' | 'strategyResults' | 'runtimeUniverse' | 'explicitTickers'
+  >;
 };
 
 type ReplayError = ReplayTarget & {
@@ -197,23 +202,32 @@ const buildReplayTargets = async ({
   userName,
   runtimeTrades,
   strategyFilter,
-  symbolFilter,
+  explicitSymbols,
 }: {
   userName: string;
   runtimeTrades: RuntimeTradeRecord[];
   strategyFilter?: string;
-  symbolFilter: Set<string> | null;
+  explicitSymbols: string[];
 }) => {
   const targets = new Map<string, ReplayTarget>();
-  const configuredStrategies = (
+  let configuredStrategies = (
     await loadConfiguredStrategyNames(userName)
   ).filter((strategy) => !strategyFilter || strategy === strategyFilter);
+  if (
+    strategyFilter &&
+    !configuredStrategies.some((strategy) => strategy === strategyFilter)
+  ) {
+    configuredStrategies = [strategyFilter];
+  }
+  const explicitSymbolSet = explicitSymbols.length
+    ? new Set(explicitSymbols)
+    : null;
 
   for (const trade of runtimeTrades) {
     if (strategyFilter && trade.strategy !== strategyFilter) {
       continue;
     }
-    if (symbolFilter && !symbolFilter.has(trade.symbol)) {
+    if (explicitSymbolSet && !explicitSymbolSet.has(trade.symbol)) {
       continue;
     }
     addReplayTarget(
@@ -223,10 +237,32 @@ const buildReplayTargets = async ({
     );
   }
 
+  const runtimeSymbols = [
+    ...new Set(
+      runtimeTrades
+        .map((trade) => trade.symbol)
+        .filter(
+          (symbol) => !explicitSymbolSet || explicitSymbolSet.has(symbol),
+        ),
+    ),
+  ].sort((left, right) => left.localeCompare(right));
+  const universeSymbols = explicitSymbols.length
+    ? explicitSymbols
+    : runtimeSymbols;
+  const universeSource = explicitSymbols.length
+    ? 'explicitTickers'
+    : 'runtimeUniverse';
+
+  for (const strategy of configuredStrategies) {
+    for (const symbol of universeSymbols) {
+      addReplayTarget(targets, { strategy, symbol }, universeSource);
+    }
+  }
+
   for (const strategy of configuredStrategies) {
     const symbols = await loadStrategyResultSymbols({ userName, strategy });
     for (const symbol of symbols) {
-      if (symbolFilter && !symbolFilter.has(symbol)) {
+      if (explicitSymbolSet && !explicitSymbolSet.has(symbol)) {
         continue;
       }
       addReplayTarget(targets, { strategy, symbol }, 'strategyResults');
@@ -452,9 +488,6 @@ export const runtimeParity = async () => {
   const toleranceMs = toleranceBars * 15 * 60 * 1000;
   const connectorName = await resolveParityConnectorName(flags.connector);
   const requestedSymbols = parseSymbolsFromCLI(String(flags.tickers || ''));
-  const symbolFilter = requestedSymbols.length
-    ? new Set(requestedSymbols)
-    : null;
 
   let replayErrors: ReplayError[] = [];
 
@@ -470,7 +503,7 @@ export const runtimeParity = async () => {
       userName: flags.user,
       runtimeTrades,
       strategyFilter: String(flags.strategy || '').trim() || undefined,
-      symbolFilter,
+      explicitSymbols: requestedSymbols,
     });
 
     if (!replayTargets.length) {
@@ -563,7 +596,7 @@ export const runtimeParity = async () => {
       `Targets: ${replayTargets.length}, compared: ${successfulTargetKeys.size}, replayErrors: ${replayErrors.length}`,
     );
     console.log(
-      `Target sources: runtime=${replayTargets.filter((target) => target.sources.includes('runtime')).length}, strategyResults=${replayTargets.filter((target) => target.sources.includes('strategyResults')).length}`,
+      `Target sources: runtime=${replayTargets.filter((target) => target.sources.includes('runtime')).length}, runtimeUniverse=${replayTargets.filter((target) => target.sources.includes('runtimeUniverse')).length}, explicitTickers=${replayTargets.filter((target) => target.sources.includes('explicitTickers')).length}, strategyResults=${replayTargets.filter((target) => target.sources.includes('strategyResults')).length}`,
     );
     console.log('');
     console.log(
