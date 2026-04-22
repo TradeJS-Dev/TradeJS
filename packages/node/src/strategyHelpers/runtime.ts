@@ -9,6 +9,7 @@ import {
   Connector,
   Direction,
   Signal,
+  SignalAnalysis,
   StrategyRuntimeAiOptions,
   StrategyRuntimeMlOptions,
   Tp,
@@ -57,6 +58,60 @@ const formatAiError = (err: unknown): string => {
   };
 
   return safeJson(details);
+};
+
+const resolveAiQuality = (
+  analysis: Partial<SignalAnalysis> | undefined,
+  direction: Direction,
+): number | undefined => {
+  if (typeof analysis?.quality !== 'number') {
+    return undefined;
+  }
+
+  const normalizedQuality = Math.round(analysis.quality);
+  const aiApprovedCurrentTrade = analysis.direction === direction;
+  // Direction mismatch should penalize quality instead of hard-blocking.
+  return aiApprovedCurrentTrade ? normalizedQuality : 0;
+};
+
+const findReplayAiAnalysis = ({
+  signal,
+  direction,
+  ai,
+}: {
+  signal: Signal;
+  direction: Direction;
+  ai?: StrategyRuntimeAiOptions;
+}): Partial<SignalAnalysis> | undefined => {
+  const snapshots = ai?.replayAnalyses;
+  if (!Array.isArray(snapshots) || !snapshots.length) {
+    return undefined;
+  }
+
+  let best: { diff: number; analysis: Partial<SignalAnalysis> } | null = null;
+
+  for (const snapshot of snapshots) {
+    if (
+      snapshot.symbol !== signal.symbol ||
+      snapshot.direction !== direction ||
+      (snapshot.strategy && snapshot.strategy !== signal.strategy)
+    ) {
+      continue;
+    }
+
+    const toleranceMs = Math.max(0, Number(snapshot.toleranceMs ?? 0));
+    const diff = Math.abs(snapshot.timestamp - signal.timestamp);
+    if (diff > toleranceMs || (best && diff >= best.diff)) {
+      continue;
+    }
+
+    best = {
+      diff,
+      analysis: snapshot.analysis,
+    };
+  }
+
+  return best?.analysis;
 };
 
 export const enrichSignalWithMl = async ({
@@ -112,19 +167,27 @@ export const enrichSignalWithAi = async ({
   EnrichSignalWithMlAiParams,
   'signal' | 'userName' | 'symbol' | 'direction' | 'env' | 'ai'
 >): Promise<number | undefined> => {
-  if (env === 'BACKTEST' || ai?.enabled === false) {
+  if (ai?.enabled === false) {
+    return undefined;
+  }
+
+  if (env === 'PARITY') {
+    const replayAnalysis = findReplayAiAnalysis({ signal, direction, ai });
+    if (replayAnalysis) {
+      signal.aiAnalysis = replayAnalysis;
+      return resolveAiQuality(replayAnalysis, direction);
+    }
+  }
+
+  if (env === 'BACKTEST') {
     return undefined;
   }
 
   try {
     const { askAI } = await import('../ai');
     const analysis = await askAI(signal, { userName });
-    if (typeof analysis?.quality === 'number') {
-      const normalizedQuality = Math.round(analysis.quality);
-      const aiApprovedCurrentTrade = analysis?.direction === direction;
-      // Direction mismatch should penalize quality instead of hard-blocking.
-      return aiApprovedCurrentTrade ? normalizedQuality : 0;
-    }
+    signal.aiAnalysis = analysis;
+    return resolveAiQuality(analysis, direction);
   } catch (err) {
     logger.error('AI analysis error: %s %s', symbol, formatAiError(err));
   }
@@ -274,6 +337,7 @@ export const executeEntryOrder = async ({
       qty,
       entryPrice,
       entryTimestamp: timestamp,
+      ...(signal.aiAnalysis ? { aiAnalysis: signal.aiAnalysis } : {}),
     });
   }
 

@@ -28,6 +28,7 @@ import type {
 import {
   SIGNALS_CLI_PRELOAD_DAYS,
   TTL_1D,
+  TTL_1M,
   TTL_3M,
 } from '@tradejs/core/constants';
 import { getStrategyCreator } from '@tradejs/node/strategies';
@@ -271,7 +272,7 @@ const saveRuntimeSignalEvaluation = async (
     ),
     evaluation,
     {
-      expire: TTL_3M,
+      expire: TTL_1M,
     },
   );
 };
@@ -433,7 +434,7 @@ const findSignals = async (
       redisKeys.runtimeSignal(flags.user, signal.signalId),
       signal,
       {
-        expire: TTL_3M,
+        expire: TTL_1M,
       },
     );
 
@@ -455,6 +456,8 @@ const findSignals = async (
       direction: signal.direction,
       orderStatus: signal.orderStatus,
       orderSkipReason: signal.orderSkipReason,
+      ...(signal.aiAnalysis ? { aiAnalysis: signal.aiAnalysis } : {}),
+      ...(signal.ml ? { ml: signal.ml } : {}),
     });
 
     logger.info('Signal found %s by strategy %s', symbol, strategyName);

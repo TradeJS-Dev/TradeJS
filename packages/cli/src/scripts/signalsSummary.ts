@@ -1,6 +1,6 @@
 import 'dotenv/config';
 import args from 'args';
-import { TTL_3M } from '@tradejs/core/constants';
+import { TTL_1M } from '@tradejs/core/constants';
 import { logger } from '@tradejs/infra/logger';
 import {
   delKey,
@@ -407,7 +407,7 @@ const syncRuntimeTrades = async ({
 
     await Promise.all([
       setData(redisKeys.runtimeTrade(userName, trade.orderId), nextTrade, {
-        expire: TTL_3M,
+        expire: TTL_1M,
       }),
       ...(isCurrentActiveTrade
         ? [delKey(redisKeys.runtimeActiveTrade(userName, trade.symbol))]

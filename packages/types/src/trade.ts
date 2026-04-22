@@ -335,6 +335,7 @@ export interface Signal {
   orderStatus?: SignalOrderStatus;
   orderSkipReason?: string;
   isConfigFromBacktest?: boolean;
+  aiAnalysis?: Partial<SignalAnalysis>;
   ml?: {
     probability: number;
     threshold: number;
@@ -373,6 +374,8 @@ export interface RuntimeSignalEvaluationRecord {
   direction?: Direction;
   orderStatus?: SignalOrderStatus;
   orderSkipReason?: string;
+  aiAnalysis?: Partial<SignalAnalysis> | null;
+  ml?: Signal['ml'];
 }
 
 export interface SignalAnalysis {
@@ -390,6 +393,15 @@ export interface SignalAnalysis {
   qualityReason?: string;
   triggerInvalidation?: string;
   comment: string;
+}
+
+export interface RuntimeAiAnalysisSnapshot {
+  strategy?: string;
+  symbol: string;
+  direction: Direction;
+  timestamp: number;
+  toleranceMs?: number;
+  analysis: Partial<SignalAnalysis>;
 }
 
 export type SignalOrderStatus = 'completed' | 'failed' | 'skipped' | 'canceled';
@@ -411,5 +423,6 @@ export interface RuntimeTradeRecord {
   closedPnl?: number | null;
   exitPrice?: number | null;
   exitTimestamp?: number | null;
+  aiAnalysis?: Partial<SignalAnalysis> | null;
   lastSyncedAt?: number;
 }

@@ -1,5 +1,7 @@
 export {};
 
+const TTL_1M = 2_600_000;
+
 type ScriptFlags = {
   tickers?: string;
   exclude?: string;
@@ -302,7 +304,7 @@ describe('signals script', () => {
         signalId: 'TrendLine-sig',
         symbol: 'ETHUSDT',
       }),
-      { expire: expect.any(Number) },
+      { expire: TTL_1M },
     );
     expect(mocks.setData).toHaveBeenCalledWith(
       mocks.redisKeys.runtimeSignalEvaluation('root', 'TrendLine:ETHUSDT:2000'),
@@ -315,10 +317,68 @@ describe('signals script', () => {
         signalId: 'TrendLine-sig',
         direction: 'LONG',
       }),
-      { expire: expect.any(Number) },
+      { expire: TTL_1M },
     );
     expect(mocks.getKeys).not.toHaveBeenCalledWith(
       mocks.redisKeys.signalsBySymbol('ETHUSDT'),
+    );
+  });
+
+  it('snapshots AI and ML gate payloads in runtime signal evaluations', async () => {
+    const aiAnalysis = {
+      direction: null,
+      quality: 3,
+      comment: 'reject',
+    };
+    const ml = {
+      probability: 0.42,
+      threshold: 0.5,
+      passed: false,
+    };
+    const { signals, mocks } = await loadScript({
+      flags: {
+        timeframe: 15,
+        makeOrders: true,
+        notify: false,
+        skipScreenshots: true,
+        updateOnly: false,
+        cacheOnly: true,
+        showTickersList: false,
+        showSkipStats: false,
+        user: 'root',
+        connector: 'bybit',
+      },
+      strategyResult: {
+        signalId: 'TrendLine-sig',
+        strategy: 'TrendLine',
+        symbol: 'ETHUSDT',
+        interval: '15',
+        direction: 'LONG',
+        timestamp: 2000,
+        orderStatus: 'skipped',
+        orderSkipReason: 'AI_QUALITY_BELOW_MIN (0 < 4)',
+        aiAnalysis,
+        ml,
+        prices: { currentPrice: 11 },
+        figures: {},
+        indicators: {},
+        additionalIndicators: {},
+      },
+    });
+
+    await signals();
+
+    expect(mocks.setData).toHaveBeenCalledWith(
+      mocks.redisKeys.runtimeSignalEvaluation('root', 'TrendLine:ETHUSDT:2000'),
+      expect.objectContaining({
+        evaluationId: 'TrendLine:ETHUSDT:2000',
+        status: 'signal',
+        orderStatus: 'skipped',
+        orderSkipReason: 'AI_QUALITY_BELOW_MIN (0 < 4)',
+        aiAnalysis,
+        ml,
+      }),
+      { expire: TTL_1M },
     );
   });
 
@@ -358,7 +418,7 @@ describe('signals script', () => {
         status: 'skip',
         reason: 'TRENDLINE_TIMING:WAIT_RETEST',
       }),
-      { expire: expect.any(Number) },
+      { expire: TTL_1M },
     );
   });
 
@@ -509,12 +569,12 @@ describe('signals script', () => {
     expect(mocks.setData).toHaveBeenCalledWith(
       mocks.redisKeys.runtimeSignal('root', 'rev-sig'),
       expect.objectContaining({ signalId: 'rev-sig' }),
-      { expire: expect.any(Number) },
+      { expire: TTL_1M },
     );
     expect(mocks.setData).toHaveBeenCalledWith(
       mocks.redisKeys.runtimeSignal('root', 'trend-sig'),
       expect.objectContaining({ signalId: 'trend-sig' }),
-      { expire: expect.any(Number) },
+      { expire: TTL_1M },
     );
     expect(mocks.logger.info).toHaveBeenCalledWith(
       'Signal found %s by strategy %s',

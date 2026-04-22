@@ -18,6 +18,7 @@ import {
   Interval,
   RuntimeTradeRecord,
   RuntimeSignalEvaluationRecord,
+  RuntimeAiAnalysisSnapshot,
   Signal,
   SignalOrderStatus,
   StrategyConfig,
@@ -447,12 +448,78 @@ const buildReplayTargets = async ({
   );
 };
 
+const buildReplayAiAnalyses = ({
+  runtimeTrades,
+  runtimeSignalEvaluations,
+  strategy,
+  symbol,
+  toleranceMs,
+}: Pick<ReplayTarget, 'strategy' | 'symbol'> & {
+  runtimeTrades: RuntimeTradeRecord[];
+  runtimeSignalEvaluations: RuntimeSignalEvaluationRecord[];
+  toleranceMs: number;
+}): RuntimeAiAnalysisSnapshot[] => {
+  const snapshots = [
+    ...runtimeTrades
+      .filter(
+        (trade) =>
+          trade.strategy === strategy &&
+          trade.symbol === symbol &&
+          trade.aiAnalysis &&
+          typeof trade.entryTimestamp === 'number' &&
+          Number.isFinite(trade.entryTimestamp),
+      )
+      .map((trade) => ({
+        strategy: trade.strategy,
+        symbol: trade.symbol,
+        direction: trade.direction,
+        timestamp: trade.entryTimestamp,
+        toleranceMs,
+        analysis: trade.aiAnalysis!,
+      })),
+    ...runtimeSignalEvaluations
+      .filter(
+        (evaluation) =>
+          evaluation.strategy === strategy &&
+          evaluation.symbol === symbol &&
+          evaluation.aiAnalysis &&
+          evaluation.direction &&
+          typeof evaluation.timestamp === 'number' &&
+          Number.isFinite(evaluation.timestamp),
+      )
+      .map((evaluation) => ({
+        strategy: evaluation.strategy,
+        symbol: evaluation.symbol,
+        direction: evaluation.direction!,
+        timestamp: evaluation.timestamp,
+        toleranceMs,
+        analysis: evaluation.aiAnalysis!,
+      })),
+  ];
+
+  const seen = new Set<string>();
+  return snapshots.filter((snapshot) => {
+    const key = `${snapshot.strategy}:${snapshot.symbol}:${snapshot.direction}:${snapshot.timestamp}`;
+    if (seen.has(key)) {
+      return false;
+    }
+    seen.add(key);
+    return true;
+  });
+};
+
 const buildReplayConfig = async ({
   userName,
   strategy,
   symbol,
+  runtimeTrades,
+  runtimeSignalEvaluations,
+  toleranceMs,
 }: Pick<ReplayTarget, 'strategy' | 'symbol'> & {
   userName: string;
+  runtimeTrades: RuntimeTradeRecord[];
+  runtimeSignalEvaluations: RuntimeSignalEvaluationRecord[];
+  toleranceMs: number;
 }): Promise<StrategyConfig> => {
   const [userConfig, strategyResults] = await Promise.all([
     getData(redisKeys.strategyConfig(userName, strategy), {}),
@@ -467,6 +534,13 @@ const buildReplayConfig = async ({
     typeof symbolResult.config === 'object'
       ? symbolResult.config
       : {};
+  const aiReplayAnalyses = buildReplayAiAnalyses({
+    runtimeTrades,
+    runtimeSignalEvaluations,
+    strategy,
+    symbol,
+    toleranceMs,
+  });
 
   return {
     ...(userConfig as StrategyConfig),
@@ -475,6 +549,9 @@ const buildReplayConfig = async ({
     MAKE_ORDERS: true,
     INTERVAL: interval,
     RECORD_RUNTIME_TRADES: false,
+    ...(aiReplayAnalyses.length
+      ? { AI_REPLAY_ANALYSES: aiReplayAnalyses }
+      : {}),
   };
 };
 
@@ -1200,6 +1277,9 @@ export const runtimeParity = async () => {
           userName: flags.user,
           strategy: target.strategy,
           symbol: target.symbol,
+          runtimeTrades,
+          runtimeSignalEvaluations,
+          toleranceMs,
         });
 
         if (

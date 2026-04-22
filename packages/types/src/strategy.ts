@@ -5,6 +5,7 @@ import {
   Indicator,
   KlineChartData,
   KlineChartItem,
+  RuntimeAiAnalysisSnapshot,
   Signal,
   Tp,
   Candle,
@@ -291,6 +292,7 @@ export interface StrategyRuntimeMlOptions {
 export interface StrategyRuntimeAiOptions {
   enabled?: boolean;
   minQuality?: number;
+  replayAnalyses?: RuntimeAiAnalysisSnapshot[];
 }
 
 export interface StrategyEntryRuntimeOptions {

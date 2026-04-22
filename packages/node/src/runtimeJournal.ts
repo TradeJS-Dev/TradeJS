@@ -1,8 +1,8 @@
 import { randomUUID } from 'node:crypto';
-import { TTL_3M } from '@tradejs/core/constants';
+import { TTL_1M } from '@tradejs/core/constants';
 import { logger } from '@tradejs/infra/logger';
 import { delKey, getData, redisKeys, setData } from '@tradejs/infra/redis';
-import { Direction, RuntimeTradeRecord } from '@tradejs/types';
+import { Direction, RuntimeTradeRecord, SignalAnalysis } from '@tradejs/types';
 
 const now = () => Date.now();
 
@@ -37,6 +37,7 @@ export const recordRuntimeTradeOpen = async (params: {
   qty: number;
   entryPrice: number;
   entryTimestamp: number;
+  aiAnalysis?: Partial<SignalAnalysis> | null;
 }) => {
   const { userName } = params;
   if (!userName) {
@@ -146,7 +147,7 @@ export const markRuntimeTradeClosed = async (params: {
   try {
     await Promise.all([
       setData(redisKeys.runtimeTrade(userName, orderId), next, {
-        expire: TTL_3M,
+        expire: TTL_1M,
       }),
       delKey(redisKeys.runtimeActiveTrade(userName, symbol)),
     ]);

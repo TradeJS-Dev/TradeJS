@@ -9,7 +9,7 @@ const setupRuntimeParityModule = async (
     async (_message: string, _options?: unknown) => null,
   );
   const update = jest.fn(async () => null);
-  const getKeys = jest.fn(async (_prefix: string) => []);
+  const getKeys = jest.fn(async (_prefix: string): Promise<string[]> => []);
   const getData = jest.fn(async (_key: string, fallback: unknown) => fallback);
   const resetTestingKlineCache = jest.fn();
   const testing = jest.fn();
@@ -216,6 +216,84 @@ describe('runtime parity script', () => {
       { userName: 'root' },
     );
     expect(resetTestingKlineCache).toHaveBeenCalled();
+
+    logSpy.mockRestore();
+  });
+
+  it('injects AI replay snapshots from runtime signal evaluations', async () => {
+    const logSpy = jest
+      .spyOn(console, 'log')
+      .mockImplementation(() => undefined);
+    const startTime = 1_700_000_000_000;
+    const endTime = startTime + 86_400_000;
+    const { mod, getKeys, getData, testing } = await setupRuntimeParityModule({
+      startTime,
+      endTime,
+      strategy: 'TrendLine',
+      tickers: 'ETHUSDT',
+      runtimeGates: true,
+      cacheOnly: true,
+    });
+    const aiAnalysis = {
+      direction: null,
+      quality: 3,
+      comment: 'reject',
+    };
+
+    getKeys.mockImplementation(async (prefix: string) => {
+      if (prefix === 'users:root:strategies:') {
+        return ['users:root:strategies:TrendLine:config'];
+      }
+      if (prefix === 'users:root:runtime:signal-evaluations:') {
+        return ['users:root:runtime:signal-evaluations:eval-1'];
+      }
+      return [];
+    });
+    getData.mockImplementation(async (key: string, fallback: unknown) => {
+      if (key === 'users:root:strategies:TrendLine:config') {
+        return { AI_ENABLED: true };
+      }
+      if (key === 'users:root:strategies:TrendLine:results') {
+        return {};
+      }
+      if (key === 'users:root:runtime:signal-evaluations:eval-1') {
+        return {
+          evaluationId: 'eval-1',
+          userName: 'root',
+          strategy: 'TrendLine',
+          symbol: 'ETHUSDT',
+          interval: '15',
+          timestamp: startTime + 900_000,
+          evaluatedAt: startTime + 900_000,
+          status: 'signal',
+          signalId: 'sig-1',
+          direction: 'LONG',
+          orderStatus: 'skipped',
+          orderSkipReason: 'AI_QUALITY_BELOW_MIN (0 < 4)',
+          aiAnalysis,
+        };
+      }
+      return fallback;
+    });
+    testing.mockResolvedValue({ inlineOrderLog: [] });
+
+    await mod.runtimeParity();
+
+    expect(testing).toHaveBeenCalledTimes(1);
+    expect(testing.mock.calls[0]?.[0]?.strategyConfig).toEqual(
+      expect.objectContaining({
+        AI_REPLAY_ANALYSES: [
+          {
+            strategy: 'TrendLine',
+            symbol: 'ETHUSDT',
+            direction: 'LONG',
+            timestamp: startTime + 900_000,
+            toleranceMs: 900_000,
+            analysis: aiAnalysis,
+          },
+        ],
+      }),
+    );
 
     logSpy.mockRestore();
   });

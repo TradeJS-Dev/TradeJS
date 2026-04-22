@@ -149,13 +149,18 @@ describe('strategyHelpers/runtime enrichSignalWithMlAi', () => {
   });
 
   it('returns AI quality when direction matches', async () => {
-    mockAskAI.mockResolvedValue({
+    const analysis = {
       direction: 'LONG',
       quality: 2,
+      comment: 'approved',
+    };
+    mockAskAI.mockResolvedValue({
+      ...analysis,
     });
+    const enrichedSignal = { ...signal };
 
     const quality = await enrichSignalWithMlAi({
-      signal: { ...signal },
+      signal: enrichedSignal,
       symbol: 'ETHUSDT',
       direction: 'LONG',
       env: 'LIVE',
@@ -163,6 +168,7 @@ describe('strategyHelpers/runtime enrichSignalWithMlAi', () => {
     } as any);
 
     expect(quality).toBe(2);
+    expect(enrichedSignal.aiAnalysis).toEqual(analysis);
   });
 
   it('penalizes quality to 0 when AI direction mismatches signal direction', async () => {
@@ -179,6 +185,70 @@ describe('strategyHelpers/runtime enrichSignalWithMlAi', () => {
       ai: { enabled: true },
     } as any);
 
+    expect(quality).toBe(0);
+  });
+
+  it('uses replay AI snapshot in PARITY env without calling provider', async () => {
+    const enrichedSignal = { ...signal };
+
+    const quality = await enrichSignalWithAi({
+      signal: enrichedSignal,
+      symbol: 'ETHUSDT',
+      direction: 'LONG',
+      env: 'PARITY',
+      ai: {
+        enabled: true,
+        replayAnalyses: [
+          {
+            strategy: 'TrendLine',
+            symbol: 'ETHUSDT',
+            direction: 'LONG',
+            timestamp: 1,
+            toleranceMs: 15 * 60 * 1000,
+            analysis: {
+              direction: 'LONG',
+              quality: 4,
+              comment: 'historical approval',
+            },
+          },
+        ],
+      },
+    });
+
+    expect(mockAskAI).not.toHaveBeenCalled();
+    expect(quality).toBe(4);
+    expect(enrichedSignal.aiAnalysis).toEqual({
+      direction: 'LONG',
+      quality: 4,
+      comment: 'historical approval',
+    });
+  });
+
+  it('penalizes replay AI snapshot when direction mismatches in PARITY env', async () => {
+    const quality = await enrichSignalWithAi({
+      signal: { ...signal },
+      symbol: 'ETHUSDT',
+      direction: 'LONG',
+      env: 'PARITY',
+      ai: {
+        enabled: true,
+        replayAnalyses: [
+          {
+            strategy: 'TrendLine',
+            symbol: 'ETHUSDT',
+            direction: 'LONG',
+            timestamp: 1,
+            analysis: {
+              direction: null,
+              quality: 4,
+              comment: 'historical reject',
+            },
+          },
+        ],
+      },
+    });
+
+    expect(mockAskAI).not.toHaveBeenCalled();
     expect(quality).toBe(0);
   });
 
@@ -245,6 +315,50 @@ describe('strategyHelpers/runtime enrichSignalWithMlAi', () => {
       entryTimestamp: 1_700_000_000_000,
     });
     expect(price).toBe(101);
+  });
+
+  it('snapshots AI analysis into runtime trade record', async () => {
+    const connector = {
+      placeOrder: jest.fn(async () => true),
+      setTakeProfits: jest.fn(async () => true),
+      setStopLoss: jest.fn(async () => true),
+      closePosition: jest.fn(async () => true),
+      getPosition: jest.fn(async () => ({
+        symbol: 'ETHUSDT',
+        qty: 1,
+        price: 101,
+        direction: 'LONG',
+      })),
+    } as any;
+    const aiAnalysis = {
+      direction: 'LONG',
+      quality: 4,
+      comment: 'approved by AI',
+    };
+
+    await executeEntryOrder({
+      connector,
+      userName: 'root',
+      symbol: 'ETHUSDT',
+      direction: 'LONG',
+      qty: 1,
+      currentPrice: 100,
+      timestamp: 1_700_000_000_000,
+      takeProfits: [{ price: 110, rate: 1 }],
+      stopLossPrice: 95,
+      signal: {
+        ...signal,
+        aiAnalysis,
+      },
+    });
+
+    expect(mockRecordRuntimeTradeOpen).toHaveBeenCalledWith(
+      expect.objectContaining({
+        orderId: 'tjs-order-1',
+        signalId: 's1',
+        aiAnalysis,
+      }),
+    );
   });
 
   it('can skip runtime trade journaling for replay orders', async () => {

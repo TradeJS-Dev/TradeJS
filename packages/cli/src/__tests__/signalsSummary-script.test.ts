@@ -222,7 +222,7 @@ describe('signals summary script', () => {
     }));
 
     jest.doMock('@tradejs/core/constants', () => ({
-      TTL_3M: 7_800_000,
+      TTL_1M: 2_600_000,
     }));
 
     jest.doMock('@tradejs/infra/logger', () => ({
@@ -282,7 +282,7 @@ describe('signals summary script', () => {
         status: 'closed',
         closedPnl: -4,
       }),
-      { expire: 7_800_000 },
+      { expire: 2_600_000 },
     );
     expect(delKey).toHaveBeenCalledWith(
       redisKeys.runtimeActiveTrade('root', 'ETHUSDT'),
@@ -394,7 +394,7 @@ describe('signals summary script', () => {
     }));
 
     jest.doMock('@tradejs/core/constants', () => ({
-      TTL_3M: 7_800_000,
+      TTL_1M: 2_600_000,
     }));
 
     jest.doMock('@tradejs/infra/logger', () => ({
