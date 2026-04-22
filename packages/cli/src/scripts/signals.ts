@@ -38,6 +38,7 @@ import {
   Connector,
   ConnectorCreator,
   Interval,
+  RuntimeSignalEvaluationRecord,
   Signal,
   StrategyConfig,
   StrategyCreator,
@@ -250,6 +251,31 @@ const recordStrategyReason = (
   );
 };
 
+const buildRuntimeSignalEvaluationId = ({
+  strategyName,
+  symbol,
+  timestamp,
+}: {
+  strategyName: string;
+  symbol: string;
+  timestamp: number;
+}) => `${strategyName}:${symbol}:${timestamp}`;
+
+const saveRuntimeSignalEvaluation = async (
+  evaluation: RuntimeSignalEvaluationRecord,
+) => {
+  await setData(
+    redisKeys.runtimeSignalEvaluation(
+      evaluation.userName,
+      evaluation.evaluationId,
+    ),
+    evaluation,
+    {
+      expire: TTL_3M,
+    },
+  );
+};
+
 const logStrategySkipStats = (
   runtimeStrategies: StrategyRuntimeConfig[],
   strategyStats: StrategySkipStatsMap,
@@ -355,9 +381,26 @@ const findSignals = async (
 
     const signal = await strategy(lastCandle, btcLastCandle);
     if (!signal || typeof signal === 'string') {
+      const reason =
+        typeof signal === 'string' && signal.trim() ? signal : 'NO_SIGNAL';
       if (typeof signal === 'string') {
         recordStrategyReason(strategyStats, strategyName, signal, 'core');
       }
+      await saveRuntimeSignalEvaluation({
+        evaluationId: buildRuntimeSignalEvaluationId({
+          strategyName,
+          symbol,
+          timestamp: lastCandle.timestamp,
+        }),
+        userName: flags.user,
+        strategy: strategyName,
+        symbol,
+        interval,
+        timestamp: lastCandle.timestamp,
+        evaluatedAt: Date.now(),
+        status: 'skip',
+        reason,
+      });
       continue;
     }
 
@@ -393,6 +436,26 @@ const findSignals = async (
         expire: TTL_3M,
       },
     );
+
+    await saveRuntimeSignalEvaluation({
+      evaluationId: buildRuntimeSignalEvaluationId({
+        strategyName,
+        symbol,
+        timestamp: lastCandle.timestamp,
+      }),
+      userName: flags.user,
+      strategy: strategyName,
+      symbol,
+      interval,
+      timestamp: lastCandle.timestamp,
+      evaluatedAt: Date.now(),
+      status: 'signal',
+      reason: signal.orderSkipReason || signal.orderStatus || 'SIGNAL',
+      signalId: signal.signalId,
+      direction: signal.direction,
+      orderStatus: signal.orderStatus,
+      orderSkipReason: signal.orderSkipReason,
+    });
 
     logger.info('Signal found %s by strategy %s', symbol, strategyName);
   }

@@ -357,6 +357,24 @@ export interface Signal {
   additionalIndicators?: Record<string, any>;
 }
 
+export type RuntimeSignalEvaluationStatus = 'signal' | 'skip' | 'error';
+
+export interface RuntimeSignalEvaluationRecord {
+  evaluationId: string;
+  userName: string;
+  strategy: string;
+  symbol: string;
+  interval: Interval;
+  timestamp: number;
+  evaluatedAt: number;
+  status: RuntimeSignalEvaluationStatus;
+  reason?: string;
+  signalId?: string;
+  direction?: Direction;
+  orderStatus?: SignalOrderStatus;
+  orderSkipReason?: string;
+}
+
 export interface SignalAnalysis {
   direction: Direction | null;
   quality: 1 | 2 | 3 | 4 | 5 | number;

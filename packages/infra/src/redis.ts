@@ -367,6 +367,10 @@ export const redisKeys = {
   runtimeSignals: (userName: string) => `users:${userName}:runtime:signals:`,
   runtimeSignal: (userName: string, signalId: string) =>
     `users:${userName}:runtime:signals:${signalId}`,
+  runtimeSignalEvaluations: (userName: string) =>
+    `users:${userName}:runtime:signal-evaluations:`,
+  runtimeSignalEvaluation: (userName: string, evaluationId: string) =>
+    `users:${userName}:runtime:signal-evaluations:${evaluationId}`,
   runtimeTrades: (userName: string) =>
     `users:${userName}:runtime:trade-records:`,
   runtimeTrade: (userName: string, orderId: string) =>

@@ -43,6 +43,8 @@ const makeRedisKeys = () => ({
     `store:signals:${symbol}:${signalId}`,
   runtimeSignal: (userName: string, signalId: string) =>
     `users:${userName}:runtime:signals:${signalId}`,
+  runtimeSignalEvaluation: (userName: string, evaluationId: string) =>
+    `users:${userName}:runtime:signal-evaluations:${evaluationId}`,
 });
 
 const makeCandle = (timestamp: number, close: number) => ({
@@ -302,6 +304,19 @@ describe('signals script', () => {
       }),
       { expire: expect.any(Number) },
     );
+    expect(mocks.setData).toHaveBeenCalledWith(
+      mocks.redisKeys.runtimeSignalEvaluation('root', 'TrendLine:ETHUSDT:2000'),
+      expect.objectContaining({
+        evaluationId: 'TrendLine:ETHUSDT:2000',
+        strategy: 'TrendLine',
+        symbol: 'ETHUSDT',
+        timestamp: 2000,
+        status: 'signal',
+        signalId: 'TrendLine-sig',
+        direction: 'LONG',
+      }),
+      { expire: expect.any(Number) },
+    );
     expect(mocks.getKeys).not.toHaveBeenCalledWith(
       mocks.redisKeys.signalsBySymbol('ETHUSDT'),
     );
@@ -332,6 +347,18 @@ describe('signals script', () => {
     );
     expect(mocks.logger.info).toHaveBeenCalledWith(
       '  skip from core / TRENDLINE_TIMING:WAIT_RETEST: 1',
+    );
+    expect(mocks.setData).toHaveBeenCalledWith(
+      mocks.redisKeys.runtimeSignalEvaluation('root', 'TrendLine:ETHUSDT:2000'),
+      expect.objectContaining({
+        evaluationId: 'TrendLine:ETHUSDT:2000',
+        strategy: 'TrendLine',
+        symbol: 'ETHUSDT',
+        timestamp: 2000,
+        status: 'skip',
+        reason: 'TRENDLINE_TIMING:WAIT_RETEST',
+      }),
+      { expire: expect.any(Number) },
     );
   });
 

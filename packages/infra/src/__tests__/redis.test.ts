@@ -338,6 +338,12 @@ describe('redis utils', () => {
     expect(redisKeys.runtimeSignal('root', 's1')).toBe(
       'users:root:runtime:signals:s1',
     );
+    expect(redisKeys.runtimeSignalEvaluations('root')).toBe(
+      'users:root:runtime:signal-evaluations:',
+    );
+    expect(redisKeys.runtimeSignalEvaluation('root', 'e1')).toBe(
+      'users:root:runtime:signal-evaluations:e1',
+    );
     expect(redisKeys.runtimeTrades('root')).toBe(
       'users:root:runtime:trade-records:',
     );

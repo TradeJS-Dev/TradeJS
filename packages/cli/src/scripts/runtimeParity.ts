@@ -17,6 +17,7 @@ import {
   ConnectorCreator,
   Interval,
   RuntimeTradeRecord,
+  RuntimeSignalEvaluationRecord,
   Signal,
   SignalOrderStatus,
   StrategyConfig,
@@ -81,6 +82,7 @@ type ReplayError = ReplayTarget & {
 type BacktestOnlyClassification =
   | 'gated_out'
   | 'order_failed'
+  | 'core_skipped'
   | 'not_evaluated'
   | 'true_mismatch';
 
@@ -90,11 +92,14 @@ type ClassifiedBacktestOnlyEntry = {
   reason: string;
   signal?: Signal;
   signalTimestampDiffMs?: number;
+  evaluation?: RuntimeSignalEvaluationRecord;
+  evaluationTimestampDiffMs?: number;
 };
 
 const BACKTEST_ONLY_CLASSIFICATIONS: BacktestOnlyClassification[] = [
   'gated_out',
   'order_failed',
+  'core_skipped',
   'not_evaluated',
   'true_mismatch',
 ];
@@ -156,6 +161,25 @@ const isSignalRecord = (value: unknown): value is Signal => {
   );
 };
 
+const isRuntimeSignalEvaluationRecord = (
+  value: unknown,
+): value is RuntimeSignalEvaluationRecord => {
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+
+  const record = value as Record<string, unknown>;
+  return (
+    typeof record.evaluationId === 'string' &&
+    typeof record.strategy === 'string' &&
+    typeof record.symbol === 'string' &&
+    typeof record.timestamp === 'number' &&
+    (record.status === 'signal' ||
+      record.status === 'skip' ||
+      record.status === 'error')
+  );
+};
+
 const resolveParityConnectorName = async (value: unknown): Promise<string> => {
   const connectorName = await resolveConnectorName(value, projectRoot);
   if (connectorName) {
@@ -187,6 +211,17 @@ const loadRuntimeSignals = async (userName: string): Promise<Signal[]> => {
 
   return signals
     .filter(isSignalRecord)
+    .sort((left, right) => left.timestamp - right.timestamp);
+};
+
+const loadRuntimeSignalEvaluations = async (
+  userName: string,
+): Promise<RuntimeSignalEvaluationRecord[]> => {
+  const keys = await getKeys(redisKeys.runtimeSignalEvaluations(userName));
+  const evaluations = await Promise.all(keys.map((key) => getData(key, null)));
+
+  return evaluations
+    .filter(isRuntimeSignalEvaluationRecord)
     .sort((left, right) => left.timestamp - right.timestamp);
 };
 
@@ -517,6 +552,43 @@ const findNearestRuntimeSignal = ({
     : null;
 };
 
+const findNearestRuntimeSignalEvaluation = ({
+  entry,
+  runtimeSignalEvaluations,
+  toleranceMs,
+}: {
+  entry: TradeParityEntry;
+  runtimeSignalEvaluations: RuntimeSignalEvaluationRecord[];
+  toleranceMs: number;
+}) => {
+  let bestEvaluation: RuntimeSignalEvaluationRecord | null = null;
+  let bestDiff = Number.POSITIVE_INFINITY;
+
+  for (const evaluation of runtimeSignalEvaluations) {
+    if (
+      evaluation.strategy !== entry.strategy ||
+      evaluation.symbol !== entry.symbol
+    ) {
+      continue;
+    }
+
+    const diff = Math.abs(evaluation.timestamp - entry.timestamp);
+    if (diff > toleranceMs || diff >= bestDiff) {
+      continue;
+    }
+
+    bestEvaluation = evaluation;
+    bestDiff = diff;
+  }
+
+  return bestEvaluation
+    ? {
+        evaluation: bestEvaluation,
+        timestampDiffMs: bestDiff,
+      }
+    : null;
+};
+
 const buildSignalClassificationReason = ({
   signal,
   orderStatus,
@@ -549,13 +621,79 @@ const buildSignalClassificationReason = ({
   return 'runtime_signal_without_completed_trade';
 };
 
+const buildEvaluationClassification = ({
+  entry,
+  evaluation,
+}: {
+  entry: TradeParityEntry;
+  evaluation: RuntimeSignalEvaluationRecord;
+}): Pick<ClassifiedBacktestOnlyEntry, 'classification' | 'reason'> => {
+  if (evaluation.status === 'skip') {
+    return {
+      classification: 'core_skipped',
+      reason: evaluation.reason || 'NO_SIGNAL',
+    };
+  }
+
+  if (evaluation.status === 'error') {
+    return {
+      classification: 'true_mismatch',
+      reason: evaluation.reason || 'runtime_evaluation_error',
+    };
+  }
+
+  if (evaluation.direction && evaluation.direction !== entry.direction) {
+    return {
+      classification: 'core_skipped',
+      reason: `runtime_signal_direction=${evaluation.direction}`,
+    };
+  }
+
+  const orderStatus = normalizeSignalOrderStatus(evaluation.orderStatus);
+  if (orderStatus === 'failed') {
+    return {
+      classification: 'order_failed',
+      reason: evaluation.reason || 'orderStatus=failed',
+    };
+  }
+
+  if (
+    orderStatus === 'skipped' ||
+    orderStatus === 'canceled' ||
+    (typeof evaluation.orderSkipReason === 'string' &&
+      evaluation.orderSkipReason.trim())
+  ) {
+    return {
+      classification: 'gated_out',
+      reason:
+        evaluation.orderSkipReason ||
+        evaluation.reason ||
+        `orderStatus=${orderStatus}`,
+    };
+  }
+
+  if (orderStatus === 'completed') {
+    return {
+      classification: 'true_mismatch',
+      reason: 'completed_signal_without_runtime_trade',
+    };
+  }
+
+  return {
+    classification: 'true_mismatch',
+    reason: evaluation.reason || 'runtime_signal_without_completed_trade',
+  };
+};
+
 const classifyBacktestOnlyEntries = ({
   entries,
   runtimeSignals,
+  runtimeSignalEvaluations,
   toleranceMs,
 }: {
   entries: TradeParityEntry[];
   runtimeSignals: Signal[];
+  runtimeSignalEvaluations: RuntimeSignalEvaluationRecord[];
   toleranceMs: number;
 }): ClassifiedBacktestOnlyEntry[] =>
   entries.map((entry) => {
@@ -566,10 +704,30 @@ const classifyBacktestOnlyEntries = ({
     });
 
     if (!nearestSignal) {
+      const nearestEvaluation = findNearestRuntimeSignalEvaluation({
+        entry,
+        runtimeSignalEvaluations,
+        toleranceMs,
+      });
+
+      if (nearestEvaluation) {
+        const evaluationClassification = buildEvaluationClassification({
+          entry,
+          evaluation: nearestEvaluation.evaluation,
+        });
+
+        return {
+          entry,
+          ...evaluationClassification,
+          evaluation: nearestEvaluation.evaluation,
+          evaluationTimestampDiffMs: nearestEvaluation.timestampDiffMs,
+        };
+      }
+
       return {
         entry,
         classification: 'not_evaluated',
-        reason: 'no_runtime_signal',
+        reason: 'no_runtime_evaluation',
       };
     }
 
@@ -632,14 +790,17 @@ const printClassifiedBacktestOnlyDetails = (
   console.log(chalk.yellow('Backtest only'));
 
   for (const item of classifiedEntries.slice(0, DETAIL_LIMIT)) {
-    const signalSuffix = item.signal
+    const evidenceSuffix = item.signal
       ? ` signalId=${item.signal.signalId} signalDrift=${formatMinutes(item.signalTimestampDiffMs ?? null)}`
-      : '';
+      : item.evaluation
+        ? ` evaluationId=${item.evaluation.evaluationId} evaluationDrift=${formatMinutes(item.evaluationTimestampDiffMs ?? null)}`
+        : '';
+
+    const price =
+      item.entry.price == null ? 'n/a' : item.entry.price.toFixed(6);
 
     console.log(
-      `- [${item.classification}] ${formatEntryLabel(item.entry)} price=${
-        item.entry.price == null ? 'n/a' : item.entry.price.toFixed(6)
-      } id=${item.entry.id} reason=${item.reason}${signalSuffix}`,
+      `- [${item.classification}] ${formatEntryLabel(item.entry)} price=${price} id=${item.entry.id} reason=${item.reason}${evidenceSuffix}`,
     );
   }
 
@@ -756,10 +917,12 @@ export const runtimeParity = async () => {
   let replayErrors: ReplayError[] = [];
 
   try {
-    const [allRuntimeTrades, allRuntimeSignals] = await Promise.all([
-      loadRuntimeTrades(flags.user),
-      loadRuntimeSignals(flags.user),
-    ]);
+    const [allRuntimeTrades, allRuntimeSignals, allRuntimeSignalEvaluations] =
+      await Promise.all([
+        loadRuntimeTrades(flags.user),
+        loadRuntimeSignals(flags.user),
+        loadRuntimeSignalEvaluations(flags.user),
+      ]);
     const runtimeTrades = allRuntimeTrades.filter(
       (trade) =>
         trade.entryTimestamp >= window.start &&
@@ -772,6 +935,13 @@ export const runtimeParity = async () => {
         signal.timestamp <= window.end &&
         (!flags.strategy || signal.strategy === flags.strategy) &&
         (!requestedSymbolSet || requestedSymbolSet.has(signal.symbol)),
+    );
+    const runtimeSignalEvaluations = allRuntimeSignalEvaluations.filter(
+      (evaluation) =>
+        evaluation.timestamp >= window.start &&
+        evaluation.timestamp <= window.end &&
+        (!flags.strategy || evaluation.strategy === flags.strategy) &&
+        (!requestedSymbolSet || requestedSymbolSet.has(evaluation.symbol)),
     );
 
     const replayTargets = await buildReplayTargets({
@@ -864,6 +1034,7 @@ export const runtimeParity = async () => {
     const classifiedBacktestOnly = classifyBacktestOnlyEntries({
       entries: comparison.backtestOnly,
       runtimeSignals,
+      runtimeSignalEvaluations,
       toleranceMs,
     });
     const summary = summarizeMatchedParity(comparison.matched);
@@ -901,6 +1072,9 @@ export const runtimeParity = async () => {
       console.log(
         `Backtest only classifications: ${summarizeBacktestOnlyClassifications(classifiedBacktestOnly)}`,
       );
+    }
+    if (runtimeSignalEvaluations.length) {
+      console.log(`Runtime evaluations: ${runtimeSignalEvaluations.length}`);
     }
 
     const strategyRows = summarizeByStrategy({
