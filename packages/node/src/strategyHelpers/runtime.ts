@@ -158,6 +158,7 @@ interface ExecuteEntryOrderParams {
   stopLossPrice: number | null;
   signal: Signal;
   beforePlaceOrder?: () => Promise<void>;
+  recordRuntimeTrade?: boolean;
 }
 
 const applyProtectiveOrders = async ({
@@ -213,6 +214,7 @@ export const executeEntryOrder = async ({
   stopLossPrice,
   signal,
   beforePlaceOrder,
+  recordRuntimeTrade = true,
 }: ExecuteEntryOrderParams): Promise<number> => {
   await beforePlaceOrder?.();
   const orderId = signal.orderId || createRuntimeOrderId();
@@ -261,7 +263,7 @@ export const executeEntryOrder = async ({
 
   signal.prices.currentPrice = entryPrice;
 
-  if (orderPlaced) {
+  if (orderPlaced && recordRuntimeTrade) {
     await recordRuntimeTradeOpen({
       userName,
       orderId,

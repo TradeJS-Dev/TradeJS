@@ -58,6 +58,11 @@ args.option(
   'Allowed entry timestamp drift in bars when matching runtime vs backtest',
   1,
 );
+args.option(
+  'runtimeGates',
+  'Replay with runtime AI/ML gates enabled when configured. This may call external AI providers and ML inference.',
+  false,
+);
 args.option(['D', 'details'], 'Print unmatched entry details (capped)', false);
 
 const flags = args.parse(process.argv);
@@ -66,6 +71,7 @@ const projectRoot =
   String(process.env.PROJECT_CWD || process.cwd()).trim() || process.cwd();
 const DEFAULT_LOOKBACK_DAYS = 3;
 const DETAIL_LIMIT = 10;
+const REPLAY_ENV = flags.runtimeGates ? 'PARITY' : 'BACKTEST';
 
 type ReplayTarget = {
   strategy: string;
@@ -399,9 +405,10 @@ const buildReplayConfig = async ({
   return {
     ...(userConfig as StrategyConfig),
     ...(symbolConfig as StrategyConfig),
-    ENV: 'BACKTEST',
+    ENV: REPLAY_ENV,
     MAKE_ORDERS: true,
     INTERVAL: interval,
+    RECORD_RUNTIME_TRADES: false,
   };
 };
 
@@ -1045,6 +1052,13 @@ export const runtimeParity = async () => {
     );
     console.log(`Connector: ${connectorName}`);
     console.log(
+      `Replay env: ${REPLAY_ENV}${
+        flags.runtimeGates
+          ? ' (runtime AI/ML gates enabled)'
+          : ' (core/backtest gates only)'
+      }`,
+    );
+    console.log(
       `Tolerance: ${toleranceBars} bar(s) / ${(toleranceMs / 60_000).toFixed(0)}m`,
     );
     console.log(
@@ -1099,7 +1113,7 @@ export const runtimeParity = async () => {
       }
     }
 
-    if (runtimeGateWarningCounts.size) {
+    if (runtimeGateWarningCounts.size && !flags.runtimeGates) {
       console.log('');
       console.log(chalk.yellow('Warnings'));
       for (const [strategy, count] of [

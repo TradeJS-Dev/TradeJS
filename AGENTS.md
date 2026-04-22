@@ -273,6 +273,12 @@ Keep these conventions stable unless explicitly changing the ML pipeline.
 - Training consumes base JSONL exports, not derived split files.
 - Feature-window parity must remain consistent between backtest write path and inference path.
 - Keep causality guards intact unless explicitly debugging.
+- Treat `runtime-parity` as core/backtest execution parity, not live AI/ML approval parity:
+  - it replays in `ENV=BACKTEST` with order placement enabled and compares replayed entry orders to saved runtime trade records
+  - `runtime=0` and `backtest=0` for a strategy means the selected replay targets produced no comparable entries in that window; it does not measure how many AI rows would be approved
+  - if AI/ML gates matter, inspect runtime signals/evaluations or run `ai-train` separately
+- Treat `ai-train` approved cadence metrics as historical dataset averages over selected rows, not a guarantee of one live approved trade on every calendar day.
+- TrendLine core/runtime config uses `TRENDLINE`; `TRENDLINE_CONFIG` is used in ML payload/training contexts. When applying backtest or result configs to a live/replay strategy config, make sure detector options land in `TRENDLINE`, or the core may run with stale/default trendline detector settings.
 
 ## Generated / Build Files
 

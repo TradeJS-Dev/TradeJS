@@ -34,6 +34,8 @@ describe('signals summary script', () => {
       strategies: (userName: string) => `users:${userName}:strategies`,
       runtimeSignals: (userName: string) =>
         `users:${userName}:runtime:signals:`,
+      runtimeSignalEvaluations: (userName: string) =>
+        `users:${userName}:runtime:signal-evaluations:`,
       runtimeTrades: (userName: string) =>
         `users:${userName}:runtime:trade-records:`,
       runtimeTrade: (userName: string, orderId: string) =>
@@ -44,6 +46,10 @@ describe('signals summary script', () => {
     const runtimeSignalKeys = [
       redisKeys.runtimeSignals('root') + 'sig-1',
       redisKeys.runtimeSignals('root') + 'sig-2',
+    ];
+    const runtimeSignalEvaluationKeys = [
+      redisKeys.runtimeSignalEvaluations('root') + 'eval-1',
+      redisKeys.runtimeSignalEvaluations('root') + 'eval-2',
     ];
     const runtimeTradeKeys = [
       redisKeys.runtimeTrades('root') + 'ord-1',
@@ -97,6 +103,39 @@ describe('signals summary script', () => {
         },
       ],
       [
+        runtimeSignalEvaluationKeys[0],
+        {
+          evaluationId: 'eval-1',
+          userName: 'root',
+          strategy: 'TrendLine',
+          symbol: 'BTCUSDT',
+          interval: '15',
+          timestamp: now - 60_000,
+          evaluatedAt: now - 60_000,
+          status: 'signal',
+          signalId: 'sig-1',
+          direction: 'LONG',
+          orderStatus: 'completed',
+        },
+      ],
+      [
+        runtimeSignalEvaluationKeys[1],
+        {
+          evaluationId: 'eval-2',
+          userName: 'root',
+          strategy: 'ReverseTrendLine',
+          symbol: 'ETHUSDT',
+          interval: '15',
+          timestamp: now - 120_000,
+          evaluatedAt: now - 120_000,
+          status: 'signal',
+          signalId: 'sig-2',
+          direction: 'SHORT',
+          orderStatus: 'skipped',
+          orderSkipReason: 'AI_QUALITY_BELOW_MIN (2 < 3)',
+        },
+      ],
+      [
         runtimeTradeKeys[0],
         {
           orderId: 'ord-1',
@@ -133,6 +172,9 @@ describe('signals summary script', () => {
       }
       if (prefix === redisKeys.runtimeSignals('root')) {
         return runtimeSignalKeys;
+      }
+      if (prefix === redisKeys.runtimeSignalEvaluations('root')) {
+        return runtimeSignalEvaluationKeys;
       }
       if (prefix === redisKeys.runtimeTrades('root')) {
         return runtimeTradeKeys;
@@ -224,6 +266,10 @@ describe('signals summary script', () => {
     expect(message).toContain('TrendLine: completed=1');
     expect(message).toContain('ReverseTrendLine: skipped=1');
     expect(message).toContain(
+      'ReverseTrendLine: skipped=1\n  evaluated=1, signals=1',
+    );
+    expect(message).toContain('skip from AI / MIN_AI_QUALITY: 1');
+    expect(message).toContain(
       'TrendLine: total=1, active=1 (PnL +12.00), closed=0 (PnL n/a), totalPnL=+12.00',
     );
     expect(message).toContain(
@@ -263,6 +309,8 @@ describe('signals summary script', () => {
       strategies: (userName: string) => `users:${userName}:strategies`,
       runtimeSignals: (userName: string) =>
         `users:${userName}:runtime:signals:`,
+      runtimeSignalEvaluations: (userName: string) =>
+        `users:${userName}:runtime:signal-evaluations:`,
       runtimeTrades: (userName: string) =>
         `users:${userName}:runtime:trade-records:`,
       runtimeTrade: (userName: string, orderId: string) =>
@@ -282,6 +330,9 @@ describe('signals summary script', () => {
       }
       if (prefix === redisKeys.runtimeSignals('root')) {
         return [`${redisKeys.runtimeSignals('root')}sig-1`];
+      }
+      if (prefix === redisKeys.runtimeSignalEvaluations('root')) {
+        return [`${redisKeys.runtimeSignalEvaluations('root')}eval-1`];
       }
       if (prefix === redisKeys.runtimeTrades('root')) {
         return [];
@@ -309,6 +360,19 @@ describe('signals summary script', () => {
           additionalIndicators: {},
         };
       }
+      if (key === `${redisKeys.runtimeSignalEvaluations('root')}eval-1`) {
+        return {
+          evaluationId: 'eval-1',
+          userName: 'root',
+          strategy: 'VolumeDivergence',
+          symbol: 'BTCUSDT',
+          interval: '15',
+          timestamp: now - 60_000,
+          evaluatedAt: now - 60_000,
+          status: 'skip',
+          reason: 'NO_DIVERGENCE',
+        };
+      }
       return fallback;
     });
     const connector = {
@@ -323,7 +387,7 @@ describe('signals summary script', () => {
         parse: jest.fn(() => ({
           user: 'root',
           connector: 'bybit',
-          hours: 24,
+          hours: 168,
           printOnly: false,
         })),
       },
@@ -368,10 +432,16 @@ describe('signals summary script', () => {
       throw new Error('Expected summary message to be a string');
     }
 
+    expect(message).toContain('TradeJS weekly summary');
+    expect(message).toContain('Range: <b>168h</b>');
     expect(message).toContain('AdaptiveMomentumRibbon: skipped=1');
     expect(message).toContain('ReverseTrendLine: none');
     expect(message).toContain('TrendLine: none');
     expect(message).toContain('VolumeDivergence: none');
+    expect(message).toContain(
+      'VolumeDivergence: none\n  evaluated=1, signals=0',
+    );
+    expect(message).toContain('skip from core / NO_DIVERGENCE: 1');
     expect(message).toContain('AdaptiveMomentumRibbon: total=0');
     expect(message).toContain('ReverseTrendLine: total=0');
     expect(message).toContain('TrendLine: total=0');

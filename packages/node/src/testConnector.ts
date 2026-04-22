@@ -84,6 +84,8 @@ export const createTestConnector: TestConnectorCreator = (
   };
 
   return {
+    __tradejsTestConnector: true,
+
     getState: async () => state,
     setState: async (newState: object) => {
       state = {

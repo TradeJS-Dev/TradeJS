@@ -19,6 +19,7 @@ import {
   ClosedPnlRecord,
   Connector,
   ConnectorCreator,
+  RuntimeSignalEvaluationRecord,
   RuntimeTradeRecord,
   Signal,
   SignalOrderStatus,
@@ -56,6 +57,18 @@ const formatMskDateTime = (timestamp: number) =>
 const formatSigned = (value: number) =>
   `${value >= 0 ? '+' : ''}${value.toFixed(2)}`;
 
+const resolveSummaryTitle = (hours: number) => {
+  if (hours === 24) {
+    return 'TradeJS daily summary';
+  }
+
+  if (hours === 168) {
+    return 'TradeJS weekly summary';
+  }
+
+  return `TradeJS ${hours}h summary`;
+};
+
 const normalizeStatus = (
   value: Signal['orderStatus'],
 ): SignalOrderStatus | 'unknown' => {
@@ -71,6 +84,40 @@ const normalizeStatus = (
   return 'unknown';
 };
 
+const normalizeSkipStatsReason = (reason: string, fallbackSource: string) => {
+  let source = fallbackSource;
+  let normalizedReason = reason;
+
+  if (reason.startsWith('AI_QUALITY_BELOW_MIN')) {
+    source = 'AI';
+    normalizedReason = 'MIN_AI_QUALITY';
+  } else if (reason === 'AI_QUALITY_UNAVAILABLE') {
+    source = 'AI';
+    normalizedReason = 'QUALITY_UNAVAILABLE';
+  } else if (reason === 'ML_RESULT_UNAVAILABLE') {
+    source = 'ML';
+    normalizedReason = 'RESULT_UNAVAILABLE';
+  } else if (reason.startsWith('ML_THRESHOLD_NOT_MET')) {
+    source = 'ML';
+    normalizedReason = 'ML_THRESHOLD';
+  } else if (reason.startsWith('HOOK_BEFORE_ENTRY_GATE:')) {
+    source = 'hook';
+    normalizedReason = `BEFORE_ENTRY_GATE:${reason.slice(
+      'HOOK_BEFORE_ENTRY_GATE:'.length,
+    )}`;
+  } else if (reason === 'HOOK_BEFORE_ENTRY_GATE') {
+    source = 'hook';
+    normalizedReason = 'BEFORE_ENTRY_GATE';
+  } else if (
+    reason === 'MAKE_ORDERS_DISABLED' ||
+    reason === 'ENTRY_POLICY_BLOCKED'
+  ) {
+    source = 'policy';
+  }
+
+  return `skip from ${source} / ${normalizedReason}`;
+};
+
 const isSignalRecord = (value: unknown): value is Signal => {
   if (!value || typeof value !== 'object') {
     return false;
@@ -82,6 +129,25 @@ const isSignalRecord = (value: unknown): value is Signal => {
     typeof record.strategy === 'string' &&
     typeof record.symbol === 'string' &&
     typeof record.timestamp === 'number'
+  );
+};
+
+const isRuntimeSignalEvaluationRecord = (
+  value: unknown,
+): value is RuntimeSignalEvaluationRecord => {
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+
+  const record = value as Record<string, unknown>;
+  return (
+    typeof record.evaluationId === 'string' &&
+    typeof record.strategy === 'string' &&
+    typeof record.symbol === 'string' &&
+    typeof record.timestamp === 'number' &&
+    (record.status === 'signal' ||
+      record.status === 'skip' ||
+      record.status === 'error')
   );
 };
 
@@ -121,6 +187,17 @@ const loadRuntimeSignals = async (userName: string): Promise<Signal[]> => {
 
   return signals
     .filter(isSignalRecord)
+    .sort((left, right) => left.timestamp - right.timestamp);
+};
+
+const loadRuntimeSignalEvaluations = async (
+  userName: string,
+): Promise<RuntimeSignalEvaluationRecord[]> => {
+  const keys = await getKeys(redisKeys.runtimeSignalEvaluations(userName));
+  const evaluations = await Promise.all(keys.map((key) => getData(key, null)));
+
+  return evaluations
+    .filter(isRuntimeSignalEvaluationRecord)
     .sort((left, right) => left.timestamp - right.timestamp);
 };
 
@@ -348,6 +425,7 @@ const buildSummaryMessage = ({
   endTime,
   configuredStrategyNames,
   signals,
+  signalEvaluations,
   trades,
 }: {
   hours: number;
@@ -355,6 +433,7 @@ const buildSummaryMessage = ({
   endTime: number;
   configuredStrategyNames: string[];
   signals: Signal[];
+  signalEvaluations: RuntimeSignalEvaluationRecord[];
   trades: RuntimeTradeRecord[];
 }) => {
   const lines: string[] = [];
@@ -367,6 +446,14 @@ const buildSummaryMessage = ({
   ];
   const strategyNames = new Set<string>();
   const signalStats = new Map<string, Map<string, number>>();
+  const evaluationStats = new Map<
+    string,
+    {
+      evaluated: number;
+      signals: number;
+      reasons: Map<string, number>;
+    }
+  >();
   const tradeStats = new Map<
     string,
     {
@@ -394,6 +481,48 @@ const buildSummaryMessage = ({
     const status = normalizeStatus(signal.orderStatus);
     stats.set(status, (stats.get(status) ?? 0) + 1);
     signalStats.set(signal.strategy, stats);
+  }
+
+  for (const evaluation of signalEvaluations) {
+    strategyNames.add(evaluation.strategy);
+    const stats = evaluationStats.get(evaluation.strategy) ?? {
+      evaluated: 0,
+      signals: 0,
+      reasons: new Map<string, number>(),
+    };
+    stats.evaluated += 1;
+
+    if (evaluation.status === 'signal') {
+      stats.signals += 1;
+    }
+
+    const orderStatus = normalizeStatus(evaluation.orderStatus);
+    let skipReason: string | null = null;
+    let fallbackSource = 'core';
+
+    if (evaluation.status === 'skip') {
+      skipReason = evaluation.reason || 'NO_SIGNAL';
+      fallbackSource = 'core';
+    } else if (
+      evaluation.status === 'signal' &&
+      (orderStatus === 'skipped' || orderStatus === 'canceled')
+    ) {
+      skipReason =
+        evaluation.orderSkipReason ||
+        evaluation.reason ||
+        `orderStatus=${orderStatus}`;
+      fallbackSource = 'runtime';
+    } else if (evaluation.status === 'error') {
+      skipReason = evaluation.reason || 'EVALUATION_ERROR';
+      fallbackSource = 'runtime';
+    }
+
+    if (skipReason) {
+      const reason = normalizeSkipStatsReason(skipReason, fallbackSource);
+      stats.reasons.set(reason, (stats.reasons.get(reason) ?? 0) + 1);
+    }
+
+    evaluationStats.set(evaluation.strategy, stats);
   }
 
   for (const trade of trades) {
@@ -439,7 +568,7 @@ const buildSummaryMessage = ({
     left.localeCompare(right),
   );
 
-  lines.push(`<b>TradeJS daily summary</b>`);
+  lines.push(`<b>${escapeHtml(resolveSummaryTitle(hours))}</b>`);
   lines.push(
     `Window: <b>${escapeHtml(formatMskDateTime(startTime))} - ${escapeHtml(formatMskDateTime(endTime))} ${SUMMARY_TIMEZONE_LABEL}</b>`,
   );
@@ -452,10 +581,28 @@ const buildSummaryMessage = ({
     return lines.join('\n');
   }
 
+  const appendEvaluationDetails = (strategyName: string) => {
+    const evaluation = evaluationStats.get(strategyName);
+    if (!evaluation) {
+      return;
+    }
+
+    lines.push(
+      `  evaluated=${evaluation.evaluated}, signals=${evaluation.signals}`,
+    );
+    const sortedReasons = [...evaluation.reasons.entries()].sort(
+      (left, right) => right[1] - left[1] || left[0].localeCompare(right[0]),
+    );
+    for (const [reason, count] of sortedReasons) {
+      lines.push(`  ${escapeHtml(reason)}: ${count}`);
+    }
+  };
+
   for (const strategyName of sortedStrategies) {
     const stats = signalStats.get(strategyName);
     if (!stats || stats.size === 0) {
       lines.push(`${escapeHtml(strategyName)}: none`);
+      appendEvaluationDetails(strategyName);
       continue;
     }
 
@@ -466,6 +613,7 @@ const buildSummaryMessage = ({
       })
       .filter(Boolean);
     lines.push(`${escapeHtml(strategyName)}: ${parts.join(', ')}`);
+    appendEvaluationDetails(strategyName);
   }
 
   lines.push('');
@@ -513,11 +661,13 @@ export const signalsSummary = async () => {
   const connector = await (connectorFactory as ConnectorCreator)({
     userName: flags.user,
   });
-  const [configuredStrategyNames, signals, trades] = await Promise.all([
-    loadRuntimeStrategyNames(flags.user),
-    loadRuntimeSignals(flags.user),
-    loadRuntimeTrades(flags.user),
-  ]);
+  const [configuredStrategyNames, signals, signalEvaluations, trades] =
+    await Promise.all([
+      loadRuntimeStrategyNames(flags.user),
+      loadRuntimeSignals(flags.user),
+      loadRuntimeSignalEvaluations(flags.user),
+      loadRuntimeTrades(flags.user),
+    ]);
   const syncedTrades = await syncRuntimeTrades({
     userName: flags.user,
     connector,
@@ -527,6 +677,10 @@ export const signalsSummary = async () => {
   });
   const windowSignals = signals.filter(
     (signal) => signal.timestamp >= startTime && signal.timestamp <= endTime,
+  );
+  const windowSignalEvaluations = signalEvaluations.filter(
+    (evaluation) =>
+      evaluation.timestamp >= startTime && evaluation.timestamp <= endTime,
   );
   const windowTrades = syncedTrades.filter(
     (trade) =>
@@ -538,13 +692,15 @@ export const signalsSummary = async () => {
     endTime,
     configuredStrategyNames,
     signals: windowSignals,
+    signalEvaluations: windowSignalEvaluations,
     trades: windowTrades,
   });
 
   logger.info(
-    'signals summary window=%sh signals=%s trades=%s connector=%s user=%s',
+    'signals summary window=%sh signals=%s evaluations=%s trades=%s connector=%s user=%s',
     hours,
     windowSignals.length,
+    windowSignalEvaluations.length,
     windowTrades.length,
     connectorName,
     flags.user,

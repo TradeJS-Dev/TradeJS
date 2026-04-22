@@ -246,4 +246,35 @@ describe('strategyHelpers/runtime enrichSignalWithMlAi', () => {
     });
     expect(price).toBe(101);
   });
+
+  it('can skip runtime trade journaling for replay orders', async () => {
+    const connector = {
+      placeOrder: jest.fn(async () => true),
+      setTakeProfits: jest.fn(async () => true),
+      setStopLoss: jest.fn(async () => true),
+      closePosition: jest.fn(async () => true),
+      getPosition: jest.fn(async () => ({
+        symbol: 'ETHUSDT',
+        qty: 1,
+        price: 101,
+        direction: 'LONG',
+      })),
+    } as any;
+
+    await executeEntryOrder({
+      connector,
+      userName: 'root',
+      symbol: 'ETHUSDT',
+      direction: 'LONG',
+      qty: 1,
+      currentPrice: 100,
+      timestamp: 1_700_000_000_000,
+      takeProfits: [{ price: 110, rate: 1 }],
+      stopLossPrice: 95,
+      signal: { ...signal },
+      recordRuntimeTrade: false,
+    });
+
+    expect(mockRecordRuntimeTradeOpen).not.toHaveBeenCalled();
+  });
 });

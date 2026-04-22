@@ -309,6 +309,25 @@ const buildHookPolicy = ({
   minAiQuality,
 });
 
+const shouldRecordRuntimeJournal = ({
+  env,
+  config,
+}: {
+  env: string;
+  config: StrategyConfig;
+}) =>
+  env !== 'BACKTEST' &&
+  env !== 'PARITY' &&
+  config.RECORD_RUNTIME_TRADES !== false;
+
+const isTestConnector = (
+  connector: CreateStrategyCoreParams<StrategyConfig>['connector'],
+) =>
+  Boolean(
+    (connector as unknown as { __tradejsTestConnector?: unknown })
+      .__tradejsTestConnector,
+  );
+
 const buildMlHookContext = ({
   signal,
   env,
@@ -533,6 +552,7 @@ const executeEntryDecision = async ({
   policy,
   ml,
   ai,
+  recordRuntimeJournal,
   invokeStageHooks,
   notifyRuntimeError,
 }: {
@@ -547,6 +567,7 @@ const executeEntryDecision = async ({
   policy: StrategyHookPolicyContext;
   ml?: StrategyHookMlContext;
   ai?: StrategyHookAiContext;
+  recordRuntimeJournal: boolean;
   invokeStageHooks: <TReturn = unknown>(
     stage: StrategyHookStage,
     hook: ((params: any) => Promise<TReturn> | TReturn) | undefined,
@@ -608,6 +629,7 @@ const executeEntryDecision = async ({
         stopLossPrice: decision.orderPlan.stopLossPrice,
         signal,
         beforePlaceOrder,
+        recordRuntimeTrade: recordRuntimeJournal,
       });
       await invokeStageHooks(
         'afterPlaceOrder',
@@ -749,6 +771,7 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
     const projectConfig = await loadTradejsConfig(projectRoot);
     const projectHooks = projectConfig.hooks;
     const env = String(config.ENV ?? 'BACKTEST');
+    const recordRuntimeJournal = shouldRecordRuntimeJournal({ env, config });
     const strategyManifest = resolveManifest(strategyName);
     const hookBase = {
       connector,
@@ -1194,8 +1217,11 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
         return decision.code;
       }
 
-      const makeOrdersEnabled =
+      const rawMakeOrdersEnabled =
         typeof config.MAKE_ORDERS === 'boolean' ? config.MAKE_ORDERS : true;
+      const makeOrdersEnabled =
+        rawMakeOrdersEnabled &&
+        (env !== 'PARITY' || isTestConnector(connector));
 
       if (decision.kind === 'exit') {
         if (!makeOrdersEnabled) {
@@ -1220,7 +1246,7 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
 
         return handleExitDecision({
           connector,
-          userName,
+          userName: recordRuntimeJournal ? userName : undefined,
           strategyName,
           symbol,
           decision,
@@ -1432,6 +1458,7 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
         policy,
         ml,
         ai,
+        recordRuntimeJournal,
         invokeStageHooks,
         notifyRuntimeError,
       });

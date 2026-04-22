@@ -104,10 +104,11 @@ Runtime signal delivery:
 - the main signal message tries to send a screenshot with caption first; if photo delivery fails, TradeJS falls back to a text message
 - if AI analysis exists for the signal, it is sent as a separate follow-up Telegram message
 
-Daily summary:
+Summary reports:
 
 - `yarn signals:summary` builds a Telegram digest for the last 24 hours
-- production cron sends it every day at `23:00` in `Europe/Moscow` timezone
+- production cron sends the daily report every day at `22:00` in `Europe/Moscow` timezone
+- production cron sends the weekly report on Sundays at `22:10` in `Europe/Moscow` timezone using `--hours 168`
 - summary includes per-strategy signal counts by status, plus per-strategy trade counts, active/closed status, and current/closed PnL
 - runtime trade linking uses generated `orderId`; for Bybit it is passed through as `orderLinkId`
 

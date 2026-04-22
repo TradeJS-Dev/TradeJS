@@ -203,7 +203,7 @@ const makeDecisionProtect = (overrides: Record<string, any> = {}) => ({
 const makeRuntime = async (
   decisionFactory: () => any,
   configOverrides: Record<string, any> = {},
-  options: { strategyName?: string } = {},
+  options: { strategyName?: string; testConnector?: boolean } = {},
 ) => {
   const strategyName = options.strategyName ?? 'TrendLine';
   mockResolveStrategyConfig.mockResolvedValue({
@@ -222,6 +222,7 @@ const makeRuntime = async (
   });
 
   const connector = {
+    ...(options.testConnector ? { __tradejsTestConnector: true } : {}),
     placeOrder: jest.fn(async () => true),
     setTakeProfits: jest.fn(async () => true),
     setStopLoss: jest.fn(async () => true),
@@ -482,6 +483,48 @@ describe('strategyRuntime', () => {
         stopLossPrice: 237,
       }),
     );
+  });
+
+  it('disables runtime trade journaling for backtest-style replay envs', async () => {
+    for (const env of ['BACKTEST', 'PARITY']) {
+      const { strategy } = await makeRuntime(
+        () => makeDecisionEntry(),
+        {
+          ENV: env,
+        },
+        {
+          testConnector: env === 'PARITY',
+        },
+      );
+
+      await strategy({ timestamp: 1 } as any, { timestamp: 1 } as any);
+
+      expect(mockExecuteEntryOrder).toHaveBeenCalledWith(
+        expect.objectContaining({
+          recordRuntimeTrade: false,
+        }),
+      );
+      mockExecuteEntryOrder.mockClear();
+    }
+  });
+
+  it('does not execute parity orders on a non-test connector', async () => {
+    const { strategy, connector } = await makeRuntime(
+      () => makeDecisionEntry(),
+      {
+        ENV: 'PARITY',
+      },
+    );
+
+    const result = await strategy(
+      { timestamp: 1 } as any,
+      { timestamp: 1 } as any,
+    );
+
+    expect(mockExecuteEntryOrder).not.toHaveBeenCalled();
+    expect(connector.placeOrder).not.toHaveBeenCalled();
+    expect((result as any).orderStatus).toBe('skipped');
+    expect((result as any).orderSkipReason).toBe('MAKE_ORDERS_DISABLED');
   });
 
   it('can execute entry decision without signal using connector.placeOrder', async () => {
