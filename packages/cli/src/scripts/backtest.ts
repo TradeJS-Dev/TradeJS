@@ -45,6 +45,7 @@ import {
   backfillDerivativesContextForBacktest,
   shouldBackfillDerivativesContextForBacktest,
 } from '../lib/derivativesContextBackfill';
+import { normalizeCliArgv } from '../lib/cliArgs';
 import { resolveTimeWindow } from '../lib/timeWindow';
 
 const MAX_PARALLEL = Math.min(os.cpus().length, 6);
@@ -58,7 +59,7 @@ args.option(['t', 'tickers'], 'Selected tickers');
 args.option(['e', 'exclude'], 'Exclude tickers from tests');
 args.option(['l', 'tickersLimit'], 'Tickers limit');
 args.option(['n', 'tests'], 'Tests limit', TESTS_LIMIT);
-args.option('skip', 'Skip first N tests', 0);
+args.option(['s', 'skip'], 'Skip first N tests', 0);
 args.option(['p', 'parallel'], 'Parallel tasks', MAX_PARALLEL);
 args.option(['f', 'timeframe'], 'Timeframe', 15);
 args.option(['d', 'days'], 'Run backtest only for the last N days');
@@ -69,10 +70,10 @@ args.option(['u', 'updateOnly'], 'Only update tickers history', false);
 args.option(['C', 'cacheOnly'], 'Do not update tickers history', false);
 args.option(['c', 'config'], 'Backtest config', 'breakout');
 args.option(['L', 'showTickersList'], 'Just show only ticker list', false);
-args.option(['S', 'progressStep'], 'Progress step', 100);
+args.option(['g', 'progressStep'], 'Progress step', 100);
 args.option(['U', 'user'], 'Use user config', 'root');
 args.option(
-  'connector',
+  ['o', 'connector'],
   'Connector provider or name for backtest (e.g. bybit, binance, coinbase, custom)',
   'bybit',
 );
@@ -87,17 +88,20 @@ args.option(
   false,
 );
 
-const normalizedArgv = process.argv.map((arg) => {
-  if (arg === '--ML') {
-    return '--ml';
-  }
-  if (arg === '--AI') {
-    return '--ai';
-  }
-  return arg;
+const normalizedArgv = normalizeCliArgv(process.argv, {
+  '--AI': '--ai',
+  '--ML': '--ml',
+  '-C': '--cacheOnly',
+  '-E': '--endTime',
+  '-P': '--progressStep',
+  '-S': '--startTime',
+  '-T': '--top',
+  '-U': '--user',
 });
 
-const flags = args.parse(normalizedArgv);
+process.argv = normalizedArgv;
+
+const flags = args.parse(process.argv);
 const interval = flags.timeframe.toString() as Interval;
 const progressStep = Math.max(1, parseInt(String(flags.progressStep), 10));
 const testsLimit = Math.max(0, parseInt(String(flags.tests), 10));

@@ -6,7 +6,7 @@ import { ConnectorNames } from '@tradejs/connectors';
 import { formatUnix } from '@tradejs/core/time';
 import { logger } from '@tradejs/infra/logger';
 import { getData, getKeys, redisKeys } from '@tradejs/infra/redis';
-import { update } from '@tradejs/node/cli';
+import { sendTextToTG, update } from '@tradejs/node/cli';
 import { resetTestingKlineCache, testing } from '@tradejs/node/backtest';
 import {
   DEFAULT_CONNECTOR_NAME,
@@ -32,17 +32,21 @@ import {
   summarizeMatchedParity,
   TradeParityEntry,
 } from '../lib/runtimeParity';
+import { normalizeCliArgv } from '../lib/cliArgs';
 import { resolveTimeWindow } from '../lib/timeWindow';
 
 args.option(['u', 'user'], 'Use user config', 'root');
 args.option(
-  'connector',
+  ['o', 'connector'],
   'Connector provider or name for parity replay (e.g. bybit, binance, coinbase, custom)',
   'bybit',
 );
 args.option(['d', 'days'], 'Replay window in days', 3);
-args.option('startTime', 'Explicit replay start timestamp (ms or seconds)');
-args.option('endTime', 'Explicit replay end timestamp (ms or seconds)');
+args.option(
+  ['b', 'startTime'],
+  'Explicit replay start timestamp (ms or seconds)',
+);
+args.option(['e', 'endTime'], 'Explicit replay end timestamp (ms or seconds)');
 args.option(['s', 'strategy'], 'Only compare one strategy');
 args.option(
   ['t', 'tickers'],
@@ -54,7 +58,7 @@ args.option(
   false,
 );
 args.option(
-  'toleranceBars',
+  ['a', 'toleranceBars'],
   'Allowed entry timestamp drift in bars when matching runtime vs backtest',
   1,
 );
@@ -63,7 +67,17 @@ args.option(
   'Replay with runtime AI/ML gates enabled when configured. This may call external AI providers and ML inference.',
   false,
 );
+args.option(['N', 'notify'], 'Send parity summary to Telegram', false);
 args.option(['D', 'details'], 'Print unmatched entry details (capped)', false);
+
+process.argv = normalizeCliArgv(process.argv, {
+  '-C': '--cacheOnly',
+  '-D': '--details',
+  '-E': '--endTime',
+  '-N': '--notify',
+  '-S': '--startTime',
+  '-T': '--toleranceBars',
+});
 
 const flags = args.parse(process.argv);
 const interval = '15' as Interval;
@@ -71,6 +85,9 @@ const projectRoot =
   String(process.env.PROJECT_CWD || process.cwd()).trim() || process.cwd();
 const DEFAULT_LOOKBACK_DAYS = 3;
 const DETAIL_LIMIT = 10;
+const TELEGRAM_DETAIL_LIMIT = 5;
+const SUMMARY_TIMEZONE = 'Europe/Moscow';
+const SUMMARY_TIMEZONE_LABEL = 'MSK';
 const REPLAY_ENV = flags.runtimeGates ? 'PARITY' : 'BACKTEST';
 
 type ReplayTarget = {
@@ -83,6 +100,13 @@ type ReplayTarget = {
 
 type ReplayError = ReplayTarget & {
   message: string;
+};
+
+type ReplayTargetSourceCounts = {
+  runtime: number;
+  runtimeUniverse: number;
+  explicitTickers: number;
+  strategyResults: number;
 };
 
 type BacktestOnlyClassification =
@@ -102,6 +126,18 @@ type ClassifiedBacktestOnlyEntry = {
   evaluationTimestampDiffMs?: number;
 };
 
+type StrategyParitySummaryRow = {
+  runtime: number;
+  runtimeDuplicates: number;
+  backtest: number;
+  matched: number;
+  runtimeOnly: number;
+  backtestOnly: number;
+  targets: number;
+  compared: number;
+  errors: number;
+};
+
 const BACKTEST_ONLY_CLASSIFICATIONS: BacktestOnlyClassification[] = [
   'gated_out',
   'order_failed',
@@ -119,6 +155,20 @@ const parseSymbolsFromCLI = (symbols = '') =>
 
 const toTargetKey = (target: Pick<ReplayTarget, 'strategy' | 'symbol'>) =>
   `${target.strategy}::${target.symbol}`;
+
+const escapeHtml = (value: string) =>
+  value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+const formatMskDateTime = (timestamp: number) =>
+  new Intl.DateTimeFormat('ru-RU', {
+    timeZone: SUMMARY_TIMEZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).format(new Date(timestamp));
 
 const normalizeSignalOrderStatus = (
   value: Signal['orderStatus'],
@@ -302,6 +352,22 @@ const addReplayTarget = (
     sources: [source],
   });
 };
+
+const countReplayTargetSources = (
+  targets: ReplayTarget[],
+): ReplayTargetSourceCounts => ({
+  runtime: targets.filter((target) => target.sources.includes('runtime'))
+    .length,
+  runtimeUniverse: targets.filter((target) =>
+    target.sources.includes('runtimeUniverse'),
+  ).length,
+  explicitTickers: targets.filter((target) =>
+    target.sources.includes('explicitTickers'),
+  ).length,
+  strategyResults: targets.filter((target) =>
+    target.sources.includes('strategyResults'),
+  ).length,
+});
 
 const buildReplayTargets = async ({
   userName,
@@ -837,20 +903,7 @@ const summarizeByStrategy = ({
   runtimeOnlyEntries: TradeParityEntry[];
   backtestOnlyEntries: TradeParityEntry[];
 }) => {
-  const rows = new Map<
-    string,
-    {
-      runtime: number;
-      runtimeDuplicates: number;
-      backtest: number;
-      matched: number;
-      runtimeOnly: number;
-      backtestOnly: number;
-      targets: number;
-      compared: number;
-      errors: number;
-    }
-  >();
+  const rows = new Map<string, StrategyParitySummaryRow>();
 
   const ensureRow = (strategy: string) => {
     const row = rows.get(strategy) ?? {
@@ -901,6 +954,154 @@ const summarizeByStrategy = ({
     left.localeCompare(right),
   );
 };
+
+export const buildRuntimeParityMessage = ({
+  window,
+  connectorName,
+  replayEnv,
+  runtimeGatesEnabled,
+  toleranceBars,
+  toleranceMs,
+  replayTargetsCount,
+  comparedTargetsCount,
+  replayErrors,
+  sourceCounts,
+  rawRuntimeEntriesCount,
+  runtimeEntriesCount,
+  runtimeDuplicateEntriesCount,
+  backtestEntriesCount,
+  matchedCount,
+  runtimeOnlyCount,
+  backtestOnlyCount,
+  matchedSummary,
+  classifiedBacktestOnly,
+  runtimeSignalEvaluationsCount,
+  strategyRows,
+  runtimeGateWarningCounts,
+}: {
+  window: { start: number; end: number };
+  connectorName: string;
+  replayEnv: string;
+  runtimeGatesEnabled: boolean;
+  toleranceBars: number;
+  toleranceMs: number;
+  replayTargetsCount: number;
+  comparedTargetsCount: number;
+  replayErrors: ReplayError[];
+  sourceCounts: ReplayTargetSourceCounts;
+  rawRuntimeEntriesCount: number;
+  runtimeEntriesCount: number;
+  runtimeDuplicateEntriesCount: number;
+  backtestEntriesCount: number;
+  matchedCount: number;
+  runtimeOnlyCount: number;
+  backtestOnlyCount: number;
+  matchedSummary: ReturnType<typeof summarizeMatchedParity>;
+  classifiedBacktestOnly: ClassifiedBacktestOnlyEntry[];
+  runtimeSignalEvaluationsCount: number;
+  strategyRows: Array<[string, StrategyParitySummaryRow]>;
+  runtimeGateWarningCounts: Map<string, number>;
+}) => {
+  const lines: string[] = [];
+
+  lines.push('<b>TradeJS runtime parity</b>');
+  lines.push(
+    `Window: <b>${escapeHtml(formatMskDateTime(window.start))} - ${escapeHtml(formatMskDateTime(window.end))} ${SUMMARY_TIMEZONE_LABEL}</b>`,
+  );
+  lines.push(`Connector: <b>${escapeHtml(connectorName)}</b>`);
+  lines.push(`Replay env: <b>${escapeHtml(replayEnv)}</b>`);
+  lines.push(
+    `Runtime gates: <b>${runtimeGatesEnabled ? 'enabled' : 'disabled'}</b>`,
+  );
+  lines.push(
+    `Tolerance: <b>${toleranceBars} bar(s) / ${(toleranceMs / 60_000).toFixed(0)}m</b>`,
+  );
+  lines.push('');
+  lines.push(
+    `Targets: <b>${replayTargetsCount}</b>, compared: <b>${comparedTargetsCount}</b>, replayErrors: <b>${replayErrors.length}</b>`,
+  );
+  lines.push(
+    `Target sources: runtime=<b>${sourceCounts.runtime}</b>, runtimeUniverse=<b>${sourceCounts.runtimeUniverse}</b>, explicitTickers=<b>${sourceCounts.explicitTickers}</b>, strategyResults=<b>${sourceCounts.strategyResults}</b>`,
+  );
+  lines.push(
+    `Entries: runtime <b>${rawRuntimeEntriesCount}</b> (deduped <b>${runtimeEntriesCount}</b>, dup <b>${runtimeDuplicateEntriesCount}</b>), backtest <b>${backtestEntriesCount}</b>, matched <b>${matchedCount}</b>, runtimeOnly <b>${runtimeOnlyCount}</b>, backtestOnly <b>${backtestOnlyCount}</b>`,
+  );
+  lines.push(
+    `Matched deltas: price <b>${escapeHtml(formatPercent(matchedSummary.avgPriceDeltaPct))} / ${escapeHtml(formatPercent(matchedSummary.maxPriceDeltaPct))}</b>, drift <b>${escapeHtml(formatMinutes(matchedSummary.avgTimestampDiffMs))} / ${escapeHtml(formatMinutes(matchedSummary.maxTimestampDiffMs))}</b>`,
+  );
+
+  if (classifiedBacktestOnly.length) {
+    lines.push(
+      `Backtest-only: <code>${escapeHtml(summarizeBacktestOnlyClassifications(classifiedBacktestOnly))}</code>`,
+    );
+  }
+
+  if (runtimeSignalEvaluationsCount) {
+    lines.push(`Runtime evaluations: <b>${runtimeSignalEvaluationsCount}</b>`);
+  }
+
+  if (strategyRows.length) {
+    lines.push('');
+    lines.push('<b>By strategy</b>');
+    for (const [strategy, row] of strategyRows) {
+      lines.push(
+        `${escapeHtml(strategy)}: targets=<b>${row.targets}</b>, compared=<b>${row.compared}</b>, errors=<b>${row.errors}</b>, runtime=<b>${row.runtime}</b>, runtimeDup=<b>${row.runtimeDuplicates}</b>, backtest=<b>${row.backtest}</b>, matched=<b>${row.matched}</b>, runtimeOnly=<b>${row.runtimeOnly}</b>, backtestOnly=<b>${row.backtestOnly}</b>`,
+      );
+    }
+  }
+
+  if (runtimeGateWarningCounts.size && !runtimeGatesEnabled) {
+    lines.push('');
+    lines.push('<b>Warnings</b>');
+    for (const [strategy, count] of [
+      ...runtimeGateWarningCounts.entries(),
+    ].sort(([left], [right]) => left.localeCompare(right))) {
+      lines.push(
+        `${escapeHtml(strategy)}: AI/ML runtime gates configured on <b>${count}</b> target(s); BACKTEST replay covers core execution only.`,
+      );
+    }
+  }
+
+  if (replayErrors.length) {
+    lines.push('');
+    lines.push('<b>Replay errors</b>');
+    for (const error of replayErrors.slice(0, TELEGRAM_DETAIL_LIMIT)) {
+      lines.push(
+        `${escapeHtml(error.strategy)} ${escapeHtml(error.symbol)}: <code>${escapeHtml(error.message)}</code>`,
+      );
+    }
+    if (replayErrors.length > TELEGRAM_DETAIL_LIMIT) {
+      lines.push(
+        `... <b>${replayErrors.length - TELEGRAM_DETAIL_LIMIT}</b> more`,
+      );
+    }
+  }
+
+  return lines.join('\n');
+};
+
+const buildRuntimeParityNoTargetsMessage = ({
+  window,
+  connectorName,
+  replayEnv,
+  runtimeGatesEnabled,
+  userName,
+}: {
+  window: { start: number; end: number };
+  connectorName: string;
+  replayEnv: string;
+  runtimeGatesEnabled: boolean;
+  userName: string;
+}) =>
+  [
+    '<b>TradeJS runtime parity</b>',
+    `Window: <b>${escapeHtml(formatMskDateTime(window.start))} - ${escapeHtml(formatMskDateTime(window.end))} ${SUMMARY_TIMEZONE_LABEL}</b>`,
+    `Connector: <b>${escapeHtml(connectorName)}</b>`,
+    `Replay env: <b>${escapeHtml(replayEnv)}</b>`,
+    `Runtime gates: <b>${runtimeGatesEnabled ? 'enabled' : 'disabled'}</b>`,
+    '',
+    `No replay targets found for user <b>${escapeHtml(userName)}</b>.`,
+  ].join('\n');
 
 export const runtimeParity = async () => {
   const window = resolveTimeWindow({
@@ -964,8 +1165,22 @@ export const runtimeParity = async () => {
           `No replay targets found for ${flags.user} in ${formatUnix(window.start)} -> ${formatUnix(window.end)}.`,
         ),
       );
+      if (flags.notify) {
+        await sendTextToTG(
+          buildRuntimeParityNoTargetsMessage({
+            window,
+            connectorName,
+            replayEnv: REPLAY_ENV,
+            runtimeGatesEnabled: Boolean(flags.runtimeGates),
+            userName: String(flags.user),
+          }),
+          { userName: flags.user },
+        );
+      }
       return;
     }
+
+    const sourceCounts = countReplayTargetSources(replayTargets);
 
     if (!flags.cacheOnly) {
       await warmReplayHistory({
@@ -1065,7 +1280,7 @@ export const runtimeParity = async () => {
       `Targets: ${replayTargets.length}, compared: ${successfulTargetKeys.size}, replayErrors: ${replayErrors.length}`,
     );
     console.log(
-      `Target sources: runtime=${replayTargets.filter((target) => target.sources.includes('runtime')).length}, runtimeUniverse=${replayTargets.filter((target) => target.sources.includes('runtimeUniverse')).length}, explicitTickers=${replayTargets.filter((target) => target.sources.includes('explicitTickers')).length}, strategyResults=${replayTargets.filter((target) => target.sources.includes('strategyResults')).length}`,
+      `Target sources: runtime=${sourceCounts.runtime}, runtimeUniverse=${sourceCounts.runtimeUniverse}, explicitTickers=${sourceCounts.explicitTickers}, strategyResults=${sourceCounts.strategyResults}`,
     );
     console.log('');
     console.log(
@@ -1140,6 +1355,36 @@ export const runtimeParity = async () => {
       printRuntimeDuplicateDetails(runtimeDedupe.duplicateGroups);
       printEntryDetails('Runtime only', comparison.runtimeOnly);
       printClassifiedBacktestOnlyDetails(classifiedBacktestOnly);
+    }
+
+    if (flags.notify) {
+      await sendTextToTG(
+        buildRuntimeParityMessage({
+          window,
+          connectorName,
+          replayEnv: REPLAY_ENV,
+          runtimeGatesEnabled: Boolean(flags.runtimeGates),
+          toleranceBars,
+          toleranceMs,
+          replayTargetsCount: replayTargets.length,
+          comparedTargetsCount: successfulTargetKeys.size,
+          replayErrors,
+          sourceCounts,
+          rawRuntimeEntriesCount: rawRuntimeEntries.length,
+          runtimeEntriesCount: runtimeEntries.length,
+          runtimeDuplicateEntriesCount: runtimeDedupe.duplicateEntries.length,
+          backtestEntriesCount: backtestEntries.length,
+          matchedCount: comparison.matched.length,
+          runtimeOnlyCount: comparison.runtimeOnly.length,
+          backtestOnlyCount: comparison.backtestOnly.length,
+          matchedSummary: summary,
+          classifiedBacktestOnly,
+          runtimeSignalEvaluationsCount: runtimeSignalEvaluations.length,
+          strategyRows,
+          runtimeGateWarningCounts,
+        }),
+        { userName: flags.user },
+      );
     }
   } finally {
     resetTestingKlineCache(projectRoot);

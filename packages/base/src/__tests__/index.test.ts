@@ -4,47 +4,29 @@ describe('basePreset', () => {
     jest.clearAllMocks();
   });
 
-  it('wires shared beforeSignals, beforePlaceOrder and onBar hooks', () => {
-    const getBuiltInStrategyDefaultConfig = jest.fn();
+  it('wires shared beforePlaceOrder and onBar hooks', () => {
     const createCloseOppositeBeforePlaceOrderHook = jest.fn(
       () => 'before-place-order-hook',
-    );
-    const createCloseAllPositionsOnGlobalProfitBeforeSignalsHook = jest.fn(
-      () => 'close-all-before-signals-hook',
     );
     const createMoveStopToBreakEvenOnBarHook = jest.fn(
       () => 'break-even-on-bar-hook',
     );
 
     jest.isolateModules(() => {
-      jest.doMock('@tradejs/strategies', () => ({
-        getBuiltInStrategyDefaultConfig,
-      }));
-
       jest.doMock('@tradejs/node/strategies', () => ({
         createCloseOppositeBeforePlaceOrderHook,
-        createCloseAllPositionsOnGlobalProfitBeforeSignalsHook,
         createMoveStopToBreakEvenOnBarHook,
       }));
 
       const { basePreset } = require('../index');
 
       expect(createCloseOppositeBeforePlaceOrderHook).toHaveBeenCalledTimes(1);
-      expect(
-        createCloseAllPositionsOnGlobalProfitBeforeSignalsHook,
-      ).toHaveBeenCalledTimes(1);
       expect(createMoveStopToBreakEvenOnBarHook).toHaveBeenCalledTimes(1);
-      expect(
-        createCloseAllPositionsOnGlobalProfitBeforeSignalsHook,
-      ).toHaveBeenCalledWith({
-        getStrategyDefaultConfig: getBuiltInStrategyDefaultConfig,
-      });
       expect(basePreset).toEqual({
         strategies: ['@tradejs/strategies'],
         indicators: ['@tradejs/indicators'],
         connectors: ['@tradejs/connectors'],
         hooks: {
-          beforeSignals: 'close-all-before-signals-hook',
           beforePlaceOrder: 'before-place-order-hook',
           onBar: 'break-even-on-bar-hook',
         },
