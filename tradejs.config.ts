@@ -10,7 +10,7 @@ export default defineConfig(basePreset, {
   hooks: {
     beforeSignals: createCloseAllOnGlobalProfitBeforeSignalsHook({
       getStrategyDefaultConfig: getBuiltInStrategyDefaultConfig,
-      profitRiskMultiplier: 5,
+      profitRiskMultiplier: 4,
     }),
     onBar: createMoveStopToBreakEvenOnBarHook(),
   },
