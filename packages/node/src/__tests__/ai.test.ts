@@ -2337,6 +2337,81 @@ describe('ai helpers', () => {
       expect(result.qualityReason).toBe('Сильное давление вниз у линии');
     });
 
+    it('keeps TrendLine short approvals in watch mode during off-hours local replay', async () => {
+      const signal = makeDeterministicQualityShortSignal();
+      signal.timestamp = Date.UTC(2026, 0, 1, 23, 30);
+      signal.additionalIndicators = {
+        ...signal.additionalIndicators,
+        trendlineTiming: {
+          entryTiming: 'ready_follow_through',
+        },
+      };
+      const payload = buildAiPayload(signal);
+
+      expect(getDeterministicAiGateContext(payload)).toEqual(
+        expect.objectContaining({
+          approvalAllowedNow: false,
+          deterministicQuality: 3,
+          hardBlockReasons: expect.arrayContaining(['short_session_risk']),
+        }),
+      );
+
+      const result = await runAiPromptLocal(signal, { payload });
+
+      expect(result).toEqual(
+        expect.objectContaining({
+          direction: null,
+          quality: 3,
+          needRetest: true,
+          takeProfitPrice: null,
+          stopLossPrice: null,
+        }),
+      );
+      expect(chatOpenAICtorMock).not.toHaveBeenCalled();
+      expect(invokeMock).not.toHaveBeenCalled();
+    });
+
+    it('keeps TrendLine approvals in watch mode when derivatives oi is not confirming during local replay', async () => {
+      const signal = makeDeterministicQualityShortSignal();
+      signal.additionalIndicators = {
+        ...signal.additionalIndicators,
+        derivativesContext: {
+          source: 'coinalyze',
+          symbol: 'BTCUSDT',
+          timestamp: signal.timestamp,
+          intervals: {},
+          summary: {
+            pressure: 'neutral',
+            directionAligned: null,
+            riskFlags: ['oi_not_confirming'],
+          },
+        },
+      };
+      const payload = buildAiPayload(signal);
+
+      expect(getDeterministicAiGateContext(payload)).toEqual(
+        expect.objectContaining({
+          approvalAllowedNow: false,
+          deterministicQuality: 3,
+          hardBlockReasons: expect.arrayContaining(['oi_not_confirming']),
+        }),
+      );
+
+      const result = await runAiPromptLocal(signal, { payload });
+
+      expect(result).toEqual(
+        expect.objectContaining({
+          direction: null,
+          quality: 3,
+          needRetest: true,
+          takeProfitPrice: null,
+          stopLossPrice: null,
+        }),
+      );
+      expect(chatOpenAICtorMock).not.toHaveBeenCalled();
+      expect(invokeMock).not.toHaveBeenCalled();
+    });
+
     it('replays strong AdaptiveMomentumRibbon long entries locally without AI provider calls', async () => {
       const signal = makeAdaptiveMomentumRibbonSignal();
       const payload = buildAiPayload(signal);

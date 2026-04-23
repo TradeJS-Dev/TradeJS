@@ -28,6 +28,8 @@ const TRENDLINE_CONTEXT_PROMPT = `
 - Если payload.additionalIndicators.trendlineContext.nearLineNoise=true, не считай это подтвержденным пробоем: чаще quality <= 2-3 и ожидание ретеста/подтверждения.
 - Если payload.additionalIndicators.trendlineContext.coinBiasAligned=false или btcBiasAligned=false, трактуй это как прямой конфликт с направлением сигнала. В таком случае обычно не считай сигнал подтвержденным, если нет исключительного структурного преимущества.
 - Если payload.additionalIndicators.derivativesContext есть, используй его как Coinalyze-подтверждение/конфликт breakout: OI должен подтверждать движение, funding не должен быть экстремально crowded против качества входа, liquidation spike может означать flush/squeeze или exhaustion.
+- Если derivativesContext.summary.riskFlags содержит oi_not_confirming, считай это прямым признаком того, что breakout пока не подтвержден по open interest. Без очень сильного follow-through не повышай такой сигнал до немедленного входа.
+- Для SHORT в off_hours и во время session overlap требуй более чистый structural follow-through, чем в обычные часы: такие окна чаще шумные и хуже подходят для немедленного approval.
 - Если payload.additionalIndicators.trendlineContext.clearBreak=false и цена все еще около линии, не описывай это как "чистый пробой".
 - Если clearBreak=true, но trendlineContext.weakCleanBreak=true, трактуй это как слишком слабый формальный пробой: структуру уже задело, но запаса по displacement пока мало. Обычно здесь нужен follow-through или ретест, а не немедленное подтверждение сигнала.
 - Если clearBreak=true, но trendlineContext.compressedCleanBreak=true, это сжатый пробой после серии близких касаний на короткой линии. Даже при формальном выходе за линию здесь чаще нужен follow-through или ретест, а не немедленное подтверждение сигнала.
@@ -52,6 +54,48 @@ const buildTrendlineContext = (signal: {
   additionalIndicators?: Record<string, unknown>;
   figures?: Record<string, unknown>;
 }) => {
+  const marketContext =
+    signal.additionalIndicators &&
+    typeof signal.additionalIndicators.marketContext === 'object' &&
+    signal.additionalIndicators.marketContext &&
+    !Array.isArray(signal.additionalIndicators.marketContext)
+      ? (signal.additionalIndicators.marketContext as Record<string, unknown>)
+      : null;
+  const tradingSession =
+    marketContext &&
+    typeof marketContext.tradingSession === 'object' &&
+    marketContext.tradingSession &&
+    !Array.isArray(marketContext.tradingSession)
+      ? (marketContext.tradingSession as Record<string, unknown>)
+      : null;
+  const sessionPrimary =
+    typeof tradingSession?.primarySession === 'string'
+      ? tradingSession.primarySession
+      : null;
+  const sessionIsOverlap = tradingSession?.isOverlap === true;
+  const derivativesContext =
+    signal.additionalIndicators &&
+    typeof signal.additionalIndicators.derivativesContext === 'object' &&
+    signal.additionalIndicators.derivativesContext &&
+    !Array.isArray(signal.additionalIndicators.derivativesContext)
+      ? (signal.additionalIndicators.derivativesContext as Record<
+          string,
+          unknown
+        >)
+      : null;
+  const derivativesSummary =
+    derivativesContext &&
+    typeof derivativesContext.summary === 'object' &&
+    derivativesContext.summary &&
+    !Array.isArray(derivativesContext.summary)
+      ? (derivativesContext.summary as Record<string, unknown>)
+      : null;
+  const derivativesRiskFlags = Array.isArray(derivativesSummary?.riskFlags)
+    ? derivativesSummary.riskFlags.filter(
+        (flag): flag is string => typeof flag === 'string' && flag.length > 0,
+      )
+    : [];
+  const oiNotConfirming = derivativesRiskFlags.includes('oi_not_confirming');
   const structural = buildTrendlineStructuralContext(signal);
   const trendLine = getTrendLineFromPayload(signal);
   const coinMaFast = getLastFiniteNumber(signal.indicators?.maFast);
@@ -149,6 +193,18 @@ const buildTrendlineContext = (signal: {
   if (weakBtcLedBreak) {
     hardBlockReasons.push('weak_btc_led_break');
   }
+  if (oiNotConfirming && !hardBlockReasons.includes('oi_not_confirming')) {
+    hardBlockReasons.push('oi_not_confirming');
+  }
+  if (
+    structural.signalDirection === 'SHORT' &&
+    (entryTiming === 'ready_follow_through' ||
+      entryTiming === 'ready_retest') &&
+    (sessionPrimary === 'off_hours' || sessionIsOverlap) &&
+    !hardBlockReasons.includes('short_session_risk')
+  ) {
+    hardBlockReasons.push('short_session_risk');
+  }
 
   const deterministicQuality = getDeterministicTrendlineQuality({
     signalDirection: structural.signalDirection,
@@ -179,6 +235,10 @@ const buildTrendlineContext = (signal: {
     aggressivePreBreakPressure,
     strongNearBreakPressure,
     weakBtcLedBreak,
+    sessionPrimary,
+    sessionIsOverlap,
+    derivativesRiskFlags,
+    oiNotConfirming,
     deterministicQuality,
     maxAllowedQuality,
     approvalAllowedNow,
@@ -214,6 +274,10 @@ const getHardBlockReasonText = (reason: string) => {
       return 'пробой слишком мелкий относительно ATR и больше похож на BTC-led движение без follow-through по монете';
     case 'weak_long_far_break':
       return 'для LONG пробой очень длинной линии пока слишком умеренный, а BTC поддерживает его слишком слабо';
+    case 'oi_not_confirming':
+      return 'open interest не подтверждает движение, поэтому breakout пока выглядит неподтвержденным по derivatives';
+    case 'short_session_risk':
+      return 'для SHORT текущая сессия слишком шумная или тонкая (off-hours / overlap), поэтому нужен более явный follow-through';
     default:
       return reason;
   }
@@ -392,18 +456,29 @@ const getTrendlineContextFromPayload = (
 
 export const trendLineAiAdapter: StrategyAiAdapter = {
   // Shared builder trims nested series/figures; TrendLine keeps trendline geometry untrimmed on purpose.
-  buildPayload: ({ signal, basePayload }) => ({
-    ...basePayload,
-    figures: {
-      ...basePayload.figures,
-      // Keep raw line geometry available exactly where the shared prompt expects it.
-      trendline: getTrendLineFromPayload(signal),
-    },
-    additionalIndicators: {
-      ...(basePayload.additionalIndicators as Record<string, unknown>),
-      trendlineContext: buildTrendlineContext(signal),
-    } satisfies AiPayload['additionalIndicators'],
-  }),
+  buildPayload: ({ signal, basePayload }) => {
+    const mergedAdditionalIndicators = {
+      ...((signal.additionalIndicators as Record<string, unknown>) ?? {}),
+      ...((basePayload.additionalIndicators as Record<string, unknown>) ?? {}),
+    };
+    const trendlineContext = buildTrendlineContext({
+      ...signal,
+      additionalIndicators: mergedAdditionalIndicators,
+    });
+
+    return {
+      ...basePayload,
+      figures: {
+        ...basePayload.figures,
+        // Keep raw line geometry available exactly where the shared prompt expects it.
+        trendline: getTrendLineFromPayload(signal),
+      },
+      additionalIndicators: {
+        ...mergedAdditionalIndicators,
+        trendlineContext,
+      } satisfies AiPayload['additionalIndicators'],
+    };
+  },
   postProcessAnalysis: ({ signal, payload, analysis }) => {
     const trendlineContext = getTrendlineContextFromPayload(payload, signal);
     const quality = trendlineContext.deterministicQuality;
