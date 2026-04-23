@@ -9,12 +9,12 @@ import {
   redisKeys,
   setData,
 } from '@tradejs/infra/redis';
-import { sendTextToTG } from '@tradejs/node/cli';
 import {
   DEFAULT_CONNECTOR_NAME,
   getConnectorCreatorByName,
   resolveConnectorName,
 } from '@tradejs/node/connectors';
+import { sendTelegramReport } from '../lib/telegramReports';
 import {
   ClosedPnlRecord,
   Connector,
@@ -567,17 +567,34 @@ const buildSummaryMessage = ({
   const sortedStrategies = [...strategyNames].sort((left, right) =>
     left.localeCompare(right),
   );
-
-  lines.push(`<b>${escapeHtml(resolveSummaryTitle(hours))}</b>`);
-  lines.push(
-    `Window: <b>${escapeHtml(formatMskDateTime(startTime))} - ${escapeHtml(formatMskDateTime(endTime))} ${SUMMARY_TIMEZONE_LABEL}</b>`,
+  const totalWindowPnl = [...tradeStats.values()].reduce(
+    (sum, stats) => sum + stats.totalPnl,
+    0,
   );
-  lines.push(`Range: <b>${hours}h</b>`);
+  const totalWindowPnlKnown = [...tradeStats.values()].reduce(
+    (sum, stats) => sum + stats.totalPnlKnown,
+    0,
+  );
+  const totalWindowPnlText =
+    totalWindowPnlKnown > 0 ? formatSigned(totalWindowPnl) : 'n/a';
+  const windowPnlLabel = hours === 24 ? '24h PnL' : `${hours}h PnL`;
+
+  lines.push(`📋 <b>${escapeHtml(resolveSummaryTitle(hours))}</b>`);
   lines.push('');
-  lines.push('<b>Signals</b>');
+  lines.push('🕒 <b>Window</b>');
+  lines.push(
+    `<b>${escapeHtml(formatMskDateTime(startTime))} - ${escapeHtml(formatMskDateTime(endTime))} ${SUMMARY_TIMEZONE_LABEL}</b>`,
+  );
+  lines.push('');
+  lines.push(`⏱ Range: <b>${hours}h</b>`);
+  lines.push(
+    `💰 <b>${windowPnlLabel}:</b> <b>${escapeHtml(totalWindowPnlText)}</b>`,
+  );
+  lines.push('');
+  lines.push('📡 <b>Signals</b>');
 
   if (!sortedStrategies.length) {
-    lines.push('No runtime data for this window.');
+    lines.push('⚠️ No runtime data for this window.');
     return lines.join('\n');
   }
 
@@ -588,20 +605,21 @@ const buildSummaryMessage = ({
     }
 
     lines.push(
-      `  evaluated=${evaluation.evaluated}, signals=${evaluation.signals}`,
+      `  • evaluated=<b>${evaluation.evaluated}</b>, signals=<b>${evaluation.signals}</b>`,
     );
     const sortedReasons = [...evaluation.reasons.entries()].sort(
       (left, right) => right[1] - left[1] || left[0].localeCompare(right[0]),
     );
     for (const [reason, count] of sortedReasons) {
-      lines.push(`  ${escapeHtml(reason)}: ${count}`);
+      lines.push(`  • ${escapeHtml(reason)}: <b>${count}</b>`);
     }
   };
 
   for (const strategyName of sortedStrategies) {
     const stats = signalStats.get(strategyName);
     if (!stats || stats.size === 0) {
-      lines.push(`${escapeHtml(strategyName)}: none`);
+      lines.push('');
+      lines.push(`<b>${escapeHtml(strategyName)}</b>: none`);
       appendEvaluationDetails(strategyName);
       continue;
     }
@@ -609,20 +627,22 @@ const buildSummaryMessage = ({
     const parts = statusOrder
       .map((status) => {
         const count = stats.get(status) ?? 0;
-        return count > 0 ? `${status}=${count}` : null;
+        return count > 0 ? `${status}=<b>${count}</b>` : null;
       })
       .filter(Boolean);
-    lines.push(`${escapeHtml(strategyName)}: ${parts.join(', ')}`);
+    lines.push('');
+    lines.push(`<b>${escapeHtml(strategyName)}</b>: ${parts.join(', ')}`);
     appendEvaluationDetails(strategyName);
   }
 
   lines.push('');
-  lines.push('<b>Trades</b>');
+  lines.push('💼 <b>Trades</b>');
 
   for (const strategyName of sortedStrategies) {
     const stats = tradeStats.get(strategyName);
     if (!stats) {
-      lines.push(`${escapeHtml(strategyName)}: total=0`);
+      lines.push('');
+      lines.push(`<b>${escapeHtml(strategyName)}</b>: total=<b>0</b>`);
       continue;
     }
 
@@ -633,8 +653,13 @@ const buildSummaryMessage = ({
     const totalPnlText =
       stats.totalPnlKnown > 0 ? formatSigned(stats.totalPnl) : 'n/a';
 
+    lines.push('');
+    lines.push(`<b>${escapeHtml(strategyName)}</b>`);
     lines.push(
-      `${escapeHtml(strategyName)}: total=${stats.total}, active=${stats.active} (PnL ${activePnlText}), closed=${stats.closed} (PnL ${closedPnlText}), totalPnL=${totalPnlText}`,
+      `• total=<b>${stats.total}</b>, active=<b>${stats.active}</b> (PnL <b>${escapeHtml(activePnlText)}</b>)`,
+    );
+    lines.push(
+      `• closed=<b>${stats.closed}</b> (PnL <b>${escapeHtml(closedPnlText)}</b>), totalPnL=<b>${escapeHtml(totalPnlText)}</b>`,
     );
   }
 
@@ -711,7 +736,7 @@ export const signalsSummary = async () => {
     return;
   }
 
-  await sendTextToTG(message, { userName: flags.user });
+  await sendTelegramReport(message, { userName: flags.user });
 };
 
 if (process.env.NODE_ENV !== 'test') {

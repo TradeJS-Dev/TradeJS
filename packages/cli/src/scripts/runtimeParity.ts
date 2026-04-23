@@ -6,7 +6,7 @@ import { ConnectorNames } from '@tradejs/connectors';
 import { formatUnix } from '@tradejs/core/time';
 import { logger } from '@tradejs/infra/logger';
 import { getData, getKeys, redisKeys } from '@tradejs/infra/redis';
-import { sendTextToTG, update } from '@tradejs/node/cli';
+import { update } from '@tradejs/node/cli';
 import { resetTestingKlineCache, testing } from '@tradejs/node/backtest';
 import {
   DEFAULT_CONNECTOR_NAME,
@@ -34,6 +34,7 @@ import {
   TradeParityEntry,
 } from '../lib/runtimeParity';
 import { normalizeCliArgv } from '../lib/cliArgs';
+import { sendTelegramReport } from '../lib/telegramReports';
 import { resolveTimeWindow } from '../lib/timeWindow';
 
 args.option(['u', 'user'], 'Use user config', 'root');
@@ -1081,70 +1082,91 @@ export const buildRuntimeParityMessage = ({
 }) => {
   const lines: string[] = [];
 
-  lines.push('<b>TradeJS runtime parity</b>');
+  lines.push('🧪 <b>TradeJS runtime parity</b>');
+  lines.push('');
+  lines.push('🕒 <b>Window</b>');
   lines.push(
-    `Window: <b>${escapeHtml(formatMskDateTime(window.start))} - ${escapeHtml(formatMskDateTime(window.end))} ${SUMMARY_TIMEZONE_LABEL}</b>`,
-  );
-  lines.push(`Connector: <b>${escapeHtml(connectorName)}</b>`);
-  lines.push(`Replay env: <b>${escapeHtml(replayEnv)}</b>`);
-  lines.push(
-    `Runtime gates: <b>${runtimeGatesEnabled ? 'enabled' : 'disabled'}</b>`,
-  );
-  lines.push(
-    `Tolerance: <b>${toleranceBars} bar(s) / ${(toleranceMs / 60_000).toFixed(0)}m</b>`,
+    `<b>${escapeHtml(formatMskDateTime(window.start))} - ${escapeHtml(formatMskDateTime(window.end))} ${SUMMARY_TIMEZONE_LABEL}</b>`,
   );
   lines.push('');
+  lines.push(`🔌 Connector: <b>${escapeHtml(connectorName)}</b>`);
+  lines.push(`🧬 Replay env: <b>${escapeHtml(replayEnv)}</b>`);
   lines.push(
-    `Targets: <b>${replayTargetsCount}</b>, compared: <b>${comparedTargetsCount}</b>, replayErrors: <b>${replayErrors.length}</b>`,
+    `🚦 Runtime gates: <b>${runtimeGatesEnabled ? '✅ enabled' : '⛔ disabled'}</b>`,
   );
   lines.push(
-    `Target sources: runtime=<b>${sourceCounts.runtime}</b>, runtimeUniverse=<b>${sourceCounts.runtimeUniverse}</b>, explicitTickers=<b>${sourceCounts.explicitTickers}</b>, strategyResults=<b>${sourceCounts.strategyResults}</b>`,
+    `🎯 Tolerance: <b>${toleranceBars} bar(s) / ${(toleranceMs / 60_000).toFixed(0)}m</b>`,
+  );
+  lines.push('');
+  lines.push('📌 <b>Overview</b>');
+  lines.push(
+    `• Targets: <b>${replayTargetsCount}</b> / compared <b>${comparedTargetsCount}</b> / errors <b>${replayErrors.length}</b>`,
   );
   lines.push(
-    `Entries: runtime <b>${rawRuntimeEntriesCount}</b> (deduped <b>${runtimeEntriesCount}</b>, dup <b>${runtimeDuplicateEntriesCount}</b>), backtest <b>${backtestEntriesCount}</b>, matched <b>${matchedCount}</b>, runtimeOnly <b>${runtimeOnlyCount}</b>, backtestOnly <b>${backtestOnlyCount}</b>`,
+    `• Sources: runtime=<b>${sourceCounts.runtime}</b>, universe=<b>${sourceCounts.runtimeUniverse}</b>, explicit=<b>${sourceCounts.explicitTickers}</b>, results=<b>${sourceCounts.strategyResults}</b>`,
+  );
+  lines.push('');
+  lines.push('📈 <b>Entries</b>');
+  lines.push(
+    `• Runtime: <b>${rawRuntimeEntriesCount}</b> (deduped <b>${runtimeEntriesCount}</b>, dup <b>${runtimeDuplicateEntriesCount}</b>)`,
+  );
+  lines.push(`• Backtest: <b>${backtestEntriesCount}</b>`);
+  lines.push(`• Matched: <b>${matchedCount}</b>`);
+  lines.push(
+    `• Runtime only: <b>${runtimeOnlyCount}</b> / Backtest only: <b>${backtestOnlyCount}</b>`,
   );
   lines.push(
-    `Matched deltas: price <b>${escapeHtml(formatPercent(matchedSummary.avgPriceDeltaPct))} / ${escapeHtml(formatPercent(matchedSummary.maxPriceDeltaPct))}</b>, drift <b>${escapeHtml(formatMinutes(matchedSummary.avgTimestampDiffMs))} / ${escapeHtml(formatMinutes(matchedSummary.maxTimestampDiffMs))}</b>`,
+    `• Deltas: price <b>${escapeHtml(formatPercent(matchedSummary.avgPriceDeltaPct))} / ${escapeHtml(formatPercent(matchedSummary.maxPriceDeltaPct))}</b>, drift <b>${escapeHtml(formatMinutes(matchedSummary.avgTimestampDiffMs))} / ${escapeHtml(formatMinutes(matchedSummary.maxTimestampDiffMs))}</b>`,
   );
 
   if (classifiedBacktestOnly.length) {
     lines.push(
-      `Backtest-only: <code>${escapeHtml(summarizeBacktestOnlyClassifications(classifiedBacktestOnly))}</code>`,
+      `• Backtest-only classes: <code>${escapeHtml(summarizeBacktestOnlyClassifications(classifiedBacktestOnly))}</code>`,
     );
   }
 
   if (runtimeSignalEvaluationsCount) {
-    lines.push(`Runtime evaluations: <b>${runtimeSignalEvaluationsCount}</b>`);
+    lines.push(
+      `• Runtime evaluations: <b>${runtimeSignalEvaluationsCount}</b>`,
+    );
   }
 
   if (strategyRows.length) {
     lines.push('');
-    lines.push('<b>By strategy</b>');
+    lines.push('📊 <b>By strategy</b>');
     for (const [strategy, row] of strategyRows) {
+      lines.push('');
+      lines.push(`<b>${escapeHtml(strategy)}</b>`);
       lines.push(
-        `${escapeHtml(strategy)}: targets=<b>${row.targets}</b>, compared=<b>${row.compared}</b>, errors=<b>${row.errors}</b>, runtime=<b>${row.runtime}</b>, runtimeDup=<b>${row.runtimeDuplicates}</b>, backtest=<b>${row.backtest}</b>, matched=<b>${row.matched}</b>, runtimeOnly=<b>${row.runtimeOnly}</b>, backtestOnly=<b>${row.backtestOnly}</b>`,
+        `• targets=<b>${row.targets}</b>, compared=<b>${row.compared}</b>, errors=<b>${row.errors}</b>`,
+      );
+      lines.push(
+        `• runtime=<b>${row.runtime}</b> (dup <b>${row.runtimeDuplicates}</b>), backtest=<b>${row.backtest}</b>, matched=<b>${row.matched}</b>`,
+      );
+      lines.push(
+        `• runtimeOnly=<b>${row.runtimeOnly}</b>, backtestOnly=<b>${row.backtestOnly}</b>`,
       );
     }
   }
 
   if (runtimeGateWarningCounts.size && !runtimeGatesEnabled) {
     lines.push('');
-    lines.push('<b>Warnings</b>');
+    lines.push('⚠️ <b>Warnings</b>');
     for (const [strategy, count] of [
       ...runtimeGateWarningCounts.entries(),
     ].sort(([left], [right]) => left.localeCompare(right))) {
       lines.push(
-        `${escapeHtml(strategy)}: AI/ML runtime gates configured on <b>${count}</b> target(s); BACKTEST replay covers core execution only.`,
+        `• <b>${escapeHtml(strategy)}</b>: AI/ML runtime gates configured on <b>${count}</b> target(s); BACKTEST replay covers core execution only.`,
       );
     }
   }
 
   if (replayErrors.length) {
     lines.push('');
-    lines.push('<b>Replay errors</b>');
+    lines.push('❌ <b>Replay errors</b>');
     for (const error of replayErrors.slice(0, TELEGRAM_DETAIL_LIMIT)) {
       lines.push(
-        `${escapeHtml(error.strategy)} ${escapeHtml(error.symbol)}: <code>${escapeHtml(error.message)}</code>`,
+        `• <b>${escapeHtml(error.strategy)}</b> ${escapeHtml(error.symbol)}: <code>${escapeHtml(error.message)}</code>`,
       );
     }
     if (replayErrors.length > TELEGRAM_DETAIL_LIMIT) {
@@ -1171,13 +1193,16 @@ const buildRuntimeParityNoTargetsMessage = ({
   userName: string;
 }) =>
   [
-    '<b>TradeJS runtime parity</b>',
-    `Window: <b>${escapeHtml(formatMskDateTime(window.start))} - ${escapeHtml(formatMskDateTime(window.end))} ${SUMMARY_TIMEZONE_LABEL}</b>`,
-    `Connector: <b>${escapeHtml(connectorName)}</b>`,
-    `Replay env: <b>${escapeHtml(replayEnv)}</b>`,
-    `Runtime gates: <b>${runtimeGatesEnabled ? 'enabled' : 'disabled'}</b>`,
+    '🧪 <b>TradeJS runtime parity</b>',
     '',
-    `No replay targets found for user <b>${escapeHtml(userName)}</b>.`,
+    '🕒 <b>Window</b>',
+    `<b>${escapeHtml(formatMskDateTime(window.start))} - ${escapeHtml(formatMskDateTime(window.end))} ${SUMMARY_TIMEZONE_LABEL}</b>`,
+    '',
+    `🔌 Connector: <b>${escapeHtml(connectorName)}</b>`,
+    `🧬 Replay env: <b>${escapeHtml(replayEnv)}</b>`,
+    `🚦 Runtime gates: <b>${runtimeGatesEnabled ? '✅ enabled' : '⛔ disabled'}</b>`,
+    '',
+    `⚠️ No replay targets found for user <b>${escapeHtml(userName)}</b>.`,
   ].join('\n');
 
 export const runtimeParity = async () => {
@@ -1243,7 +1268,7 @@ export const runtimeParity = async () => {
         ),
       );
       if (flags.notify) {
-        await sendTextToTG(
+        await sendTelegramReport(
           buildRuntimeParityNoTargetsMessage({
             window,
             connectorName,
@@ -1438,7 +1463,7 @@ export const runtimeParity = async () => {
     }
 
     if (flags.notify) {
-      await sendTextToTG(
+      await sendTelegramReport(
         buildRuntimeParityMessage({
           window,
           connectorName,

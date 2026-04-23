@@ -181,16 +181,18 @@ describe('runtime parity script', () => {
 
     expect(message).toContain('<b>TradeJS runtime parity</b>');
     expect(message).toContain('Replay env: <b>PARITY</b>');
-    expect(message).toContain('Runtime gates: <b>enabled</b>');
-    expect(message).toContain('Targets: <b>5</b>, compared: <b>5</b>');
+    expect(message).toContain('Runtime gates: <b>✅ enabled</b>');
     expect(message).toContain(
-      'TrendLine: targets=<b>5</b>, compared=<b>5</b>, errors=<b>0</b>',
+      '• Targets: <b>5</b> / compared <b>5</b> / errors <b>1</b>',
     );
     expect(message).toContain(
-      'Backtest-only: <code>gated_out=1, order_failed=0, core_skipped=0, not_evaluated=0, true_mismatch=0</code>',
+      '<b>TrendLine</b>\n• targets=<b>5</b>, compared=<b>5</b>, errors=<b>0</b>',
     );
     expect(message).toContain(
-      'TrendLine BTCUSDT: <code>boom &lt;fail&gt;</code>',
+      '• Backtest-only classes: <code>gated_out=1, order_failed=0, core_skipped=0, not_evaluated=0, true_mismatch=0</code>',
+    );
+    expect(message).toContain(
+      '• <b>TrendLine</b> BTCUSDT: <code>boom &lt;fail&gt;</code>',
     );
   });
 

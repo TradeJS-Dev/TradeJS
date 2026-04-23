@@ -263,17 +263,18 @@ describe('signals summary script', () => {
       throw new Error('Expected summary message to be a string');
     }
     expect(message).toContain('TradeJS daily summary');
-    expect(message).toContain('TrendLine: completed=1');
-    expect(message).toContain('ReverseTrendLine: skipped=1');
+    expect(message).toContain('💰 <b>24h PnL:</b> <b>+8.00</b>');
+    expect(message).toContain('<b>TrendLine</b>: completed=<b>1</b>');
+    expect(message).toContain('<b>ReverseTrendLine</b>: skipped=<b>1</b>');
     expect(message).toContain(
-      'ReverseTrendLine: skipped=1\n  evaluated=1, signals=1',
+      '<b>ReverseTrendLine</b>: skipped=<b>1</b>\n  • evaluated=<b>1</b>, signals=<b>1</b>',
     );
-    expect(message).toContain('skip from AI / MIN_AI_QUALITY: 1');
+    expect(message).toContain('skip from AI / MIN_AI_QUALITY: <b>1</b>');
     expect(message).toContain(
-      'TrendLine: total=1, active=1 (PnL +12.00), closed=0 (PnL n/a), totalPnL=+12.00',
+      '<b>TrendLine</b>\n• total=<b>1</b>, active=<b>1</b> (PnL <b>+12.00</b>)\n• closed=<b>0</b> (PnL <b>n/a</b>), totalPnL=<b>+12.00</b>',
     );
     expect(message).toContain(
-      'ReverseTrendLine: total=1, active=0 (PnL n/a), closed=1 (PnL -4.00), totalPnL=-4.00',
+      '<b>ReverseTrendLine</b>\n• total=<b>1</b>, active=<b>0</b> (PnL <b>n/a</b>)\n• closed=<b>1</b> (PnL <b>-4.00</b>), totalPnL=<b>-4.00</b>',
     );
     expect(setData).toHaveBeenCalledWith(
       redisKeys.runtimeTrade('root', 'ord-2'),
@@ -434,17 +435,20 @@ describe('signals summary script', () => {
 
     expect(message).toContain('TradeJS weekly summary');
     expect(message).toContain('Range: <b>168h</b>');
-    expect(message).toContain('AdaptiveMomentumRibbon: skipped=1');
-    expect(message).toContain('ReverseTrendLine: none');
-    expect(message).toContain('TrendLine: none');
-    expect(message).toContain('VolumeDivergence: none');
+    expect(message).toContain('💰 <b>168h PnL:</b> <b>n/a</b>');
     expect(message).toContain(
-      'VolumeDivergence: none\n  evaluated=1, signals=0',
+      '<b>AdaptiveMomentumRibbon</b>: skipped=<b>1</b>',
     );
-    expect(message).toContain('skip from core / NO_DIVERGENCE: 1');
-    expect(message).toContain('AdaptiveMomentumRibbon: total=0');
-    expect(message).toContain('ReverseTrendLine: total=0');
-    expect(message).toContain('TrendLine: total=0');
-    expect(message).toContain('VolumeDivergence: total=0');
+    expect(message).toContain('<b>ReverseTrendLine</b>: none');
+    expect(message).toContain('<b>TrendLine</b>: none');
+    expect(message).toContain('<b>VolumeDivergence</b>: none');
+    expect(message).toContain(
+      '<b>VolumeDivergence</b>: none\n  • evaluated=<b>1</b>, signals=<b>0</b>',
+    );
+    expect(message).toContain('skip from core / NO_DIVERGENCE: <b>1</b>');
+    expect(message).toContain('<b>AdaptiveMomentumRibbon</b>: total=<b>0</b>');
+    expect(message).toContain('<b>ReverseTrendLine</b>: total=<b>0</b>');
+    expect(message).toContain('<b>TrendLine</b>: total=<b>0</b>');
+    expect(message).toContain('<b>VolumeDivergence</b>: total=<b>0</b>');
   });
 });
