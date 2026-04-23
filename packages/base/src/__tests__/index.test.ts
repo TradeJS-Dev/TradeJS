@@ -4,31 +4,25 @@ describe('basePreset', () => {
     jest.clearAllMocks();
   });
 
-  it('wires shared beforePlaceOrder and onBar hooks', () => {
+  it('wires shared beforePlaceOrder hook', () => {
     const createCloseOppositeBeforePlaceOrderHook = jest.fn(
       () => 'before-place-order-hook',
-    );
-    const createMoveStopToBreakEvenOnBarHook = jest.fn(
-      () => 'break-even-on-bar-hook',
     );
 
     jest.isolateModules(() => {
       jest.doMock('@tradejs/node/strategies', () => ({
         createCloseOppositeBeforePlaceOrderHook,
-        createMoveStopToBreakEvenOnBarHook,
       }));
 
       const { basePreset } = require('../index');
 
       expect(createCloseOppositeBeforePlaceOrderHook).toHaveBeenCalledTimes(1);
-      expect(createMoveStopToBreakEvenOnBarHook).toHaveBeenCalledTimes(1);
       expect(basePreset).toEqual({
         strategies: ['@tradejs/strategies'],
         indicators: ['@tradejs/indicators'],
         connectors: ['@tradejs/connectors'],
         hooks: {
           beforePlaceOrder: 'before-place-order-hook',
-          onBar: 'break-even-on-bar-hook',
         },
       });
 

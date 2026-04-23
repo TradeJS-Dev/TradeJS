@@ -1,7 +1,6 @@
 import {
   createCloseOppositeBeforePlaceOrderHook,
-  createCloseAllPositionsOnGlobalProfitHook,
-  createCloseAllPositionsOnGlobalProfitBeforeSignalsHook,
+  createCloseAllOnGlobalProfitBeforeSignalsHook,
   createMoveStopToBreakEvenOnBarHook,
 } from '@tradejs/node/strategies';
 
@@ -327,212 +326,13 @@ describe('createMoveStopToBreakEvenOnBarHook', () => {
   });
 });
 
-describe('createCloseAllPositionsOnGlobalProfitHook', () => {
-  const makeParams = ({
-    strategyConfig = {
-      MAX_LOSS_VALUE: 10,
-      MAKE_ORDERS: true,
-    },
-    positions = [],
-    env = 'LIVE',
-    decision = {
-      kind: 'entry',
-      code: 'ENTRY_SIGNAL',
-    } as any,
-  }: {
-    strategyConfig?: Record<string, unknown>;
-    positions?: Array<Record<string, unknown>>;
-    env?: string;
-    decision?: any;
-  } = {}) => {
-    const connector = {
-      getOpenPositionPnl: jest.fn(async () => positions),
-      closePosition: jest.fn(async () => true),
-    } as any;
-
-    return {
-      ctx: {
-        connector,
-        strategyName: 'TrendLine',
-        userName: 'root',
-        symbol: 'ETHUSDT',
-        strategyConfig: strategyConfig as any,
-        env,
-        isConfigFromBacktest: false,
-      },
-      market: {
-        candle: {
-          close: 101,
-          timestamp: 1_700_000_000_000,
-        },
-        btcCandle: {} as any,
-      },
-      decision,
-      connector,
-    };
-  };
-
-  beforeEach(() => {
-    jest.clearAllMocks();
-  });
-
-  it('closes all open positions when total unrealized pnl reaches the global threshold', async () => {
-    const getActiveStrategyNames = jest.fn(async () => ['MaStrategy']);
-    const getStrategyDefaultConfig = jest.fn((strategyName: string) =>
-      strategyName === 'MaStrategy'
-        ? ({ MAX_LOSS_VALUE: 20 } as any)
-        : undefined,
-    );
-    const resolveStrategyConfigFn = jest.fn(async () => ({
-      config: {
-        MAX_LOSS_VALUE: 20,
-      },
-      isConfigFromBacktest: false,
-    }));
-    const hook = createCloseAllPositionsOnGlobalProfitHook({
-      getActiveStrategyNames,
-      getStrategyDefaultConfig,
-      resolveStrategyConfigFn: resolveStrategyConfigFn as any,
-    });
-    const params = makeParams({
-      positions: [
-        {
-          symbol: 'ETHUSDT',
-          qty: 1,
-          price: 100,
-          currentPrice: 140,
-          unrealizedPnl: 40,
-          direction: 'LONG',
-        },
-        {
-          symbol: 'BTCUSDT',
-          qty: 1,
-          price: 200,
-          currentPrice: 230,
-          unrealizedPnl: 30,
-          direction: 'LONG',
-        },
-      ],
-    });
-
-    await expect(hook(params as any)).resolves.toEqual({
-      kind: 'skip',
-      code: 'GLOBAL_UNREALIZED_PNL_TARGET_REACHED_CLOSE_ALL',
-    });
-
-    expect(getActiveStrategyNames).toHaveBeenCalledTimes(1);
-    expect(getStrategyDefaultConfig).toHaveBeenCalledWith('MaStrategy');
-    expect(resolveStrategyConfigFn).toHaveBeenCalledWith({
-      strategyName: 'MaStrategy',
-      userName: 'root',
-      symbol: 'ETHUSDT',
-      baseConfig: {
-        ENV: 'LIVE',
-      },
-      defaults: {
-        MAX_LOSS_VALUE: 20,
-      },
-    });
-    expect(params.connector.closePosition).toHaveBeenCalledTimes(2);
-    expect(params.connector.closePosition).toHaveBeenNthCalledWith(1, {
-      symbol: 'ETHUSDT',
-      direction: 'LONG',
-      price: 140,
-      timestamp: 1_700_000_000_000,
-    });
-    expect(params.connector.closePosition).toHaveBeenNthCalledWith(2, {
-      symbol: 'BTCUSDT',
-      direction: 'LONG',
-      price: 230,
-      timestamp: 1_700_000_000_000,
-    });
-  });
-
-  it('prefers resolved strategy config over built-in defaults when averaging MAX_LOSS_VALUE', async () => {
-    const hook = createCloseAllPositionsOnGlobalProfitHook({
-      getActiveStrategyNames: async () => ['MaStrategy'],
-      getStrategyDefaultConfig: () => ({
-        MAX_LOSS_VALUE: 20,
-      }),
-      resolveStrategyConfigFn: (async () => ({
-        config: {
-          MAX_LOSS_VALUE: 40,
-        },
-        isConfigFromBacktest: false,
-      })) as any,
-    });
-    const params = makeParams({
-      positions: [
-        {
-          symbol: 'ETHUSDT',
-          qty: 1,
-          price: 100,
-          currentPrice: 180,
-          unrealizedPnl: 80,
-          direction: 'LONG',
-        },
-      ],
-    });
-
-    await expect(hook(params as any)).resolves.toBeUndefined();
-    expect(params.connector.closePosition).not.toHaveBeenCalled();
-  });
-
-  it('does nothing when connector does not support unrealized pnl snapshots', async () => {
-    const hook = createCloseAllPositionsOnGlobalProfitHook();
-
-    await expect(
-      hook({
-        ...makeParams(),
-        ctx: {
-          ...makeParams().ctx,
-          connector: {
-            closePosition: jest.fn(async () => true),
-          },
-        },
-      } as any),
-    ).resolves.toBeUndefined();
-  });
-
-  it('does nothing in backtest mode', async () => {
-    const hook = createCloseAllPositionsOnGlobalProfitHook({
-      getActiveStrategyNames: async () => ['MaStrategy'],
-      getStrategyDefaultConfig: () => ({
-        MAX_LOSS_VALUE: 20,
-      }),
-      resolveStrategyConfigFn: (async () => ({
-        config: {
-          MAX_LOSS_VALUE: 20,
-        },
-        isConfigFromBacktest: false,
-      })) as any,
-    });
-    const params = makeParams({
-      env: 'BACKTEST',
-      positions: [
-        {
-          symbol: 'ETHUSDT',
-          qty: 1,
-          price: 100,
-          currentPrice: 180,
-          unrealizedPnl: 80,
-          direction: 'LONG',
-        },
-      ],
-    });
-
-    await expect(hook(params as any)).resolves.toBeUndefined();
-    expect(params.connector.closePosition).not.toHaveBeenCalled();
-  });
-});
-
-describe('createCloseAllPositionsOnGlobalProfitBeforeSignalsHook', () => {
+describe('createCloseAllOnGlobalProfitBeforeSignalsHook', () => {
   beforeEach(() => {
     jest.clearAllMocks();
   });
 
   it('closes all open positions once before signals and aborts evaluation', async () => {
-    const hook = createCloseAllPositionsOnGlobalProfitBeforeSignalsHook({
+    const hook = createCloseAllOnGlobalProfitBeforeSignalsHook({
       getStrategyDefaultConfig: (strategyName: string) =>
         strategyName === 'TrendLine'
           ? ({ MAX_LOSS_VALUE: 10 } as any)
@@ -585,7 +385,7 @@ describe('createCloseAllPositionsOnGlobalProfitBeforeSignalsHook', () => {
   });
 
   it('does nothing when unrealized pnl stays below threshold', async () => {
-    const hook = createCloseAllPositionsOnGlobalProfitBeforeSignalsHook({
+    const hook = createCloseAllOnGlobalProfitBeforeSignalsHook({
       getStrategyDefaultConfig: () => ({ MAX_LOSS_VALUE: 20 }) as any,
     });
     const connector = {

@@ -29,5 +29,4 @@ export {
   createMoveStopToBreakEvenOnBarHook,
   createMoveStopToBreakEvenAfterCoreDecisionHook,
 } from './strategyHooks/moveStopToBreakEvenAfterCoreDecision';
-export { createCloseAllPositionsOnGlobalProfitHook } from './strategyHooks/closeAllPositionsOnGlobalProfit';
-export { createCloseAllPositionsOnGlobalProfitBeforeSignalsHook } from './signalsHooks/closeAllPositionsOnGlobalProfitBeforeSignals';
+export { createCloseAllOnGlobalProfitBeforeSignalsHook } from './signalsHooks/closeAllPositionsOnGlobalProfitBeforeSignals';

@@ -1,8 +1,5 @@
 import type { TradejsConfig } from '@tradejs/core/config';
-import {
-  createCloseOppositeBeforePlaceOrderHook,
-  createMoveStopToBreakEvenOnBarHook,
-} from '@tradejs/node/strategies';
+import { createCloseOppositeBeforePlaceOrderHook } from '@tradejs/node/strategies';
 
 export const basePreset: TradejsConfig = {
   strategies: ['@tradejs/strategies'],
@@ -16,7 +13,6 @@ export const basePreset: TradejsConfig = {
             .CLOSE_OPPOSITE_POSITIONS,
         ),
     }),
-    onBar: createMoveStopToBreakEvenOnBarHook(),
   },
 };
 

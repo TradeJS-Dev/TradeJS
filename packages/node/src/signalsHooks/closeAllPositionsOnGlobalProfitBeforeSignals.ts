@@ -8,17 +8,17 @@ import {
   isOpenPositionPnlSnapshot,
 } from '../strategyHooks/shared';
 
-interface CreateCloseAllPositionsOnGlobalProfitBeforeSignalsHookParams {
+interface CreateCloseAllOnGlobalProfitBeforeSignalsHookParams {
   getStrategyDefaultConfig?: (
     strategyName: string,
   ) => StrategyConfig | undefined;
   profitRiskMultiplier?: number;
 }
 
-export const createCloseAllPositionsOnGlobalProfitBeforeSignalsHook = ({
+export const createCloseAllOnGlobalProfitBeforeSignalsHook = ({
   getStrategyDefaultConfig = () => undefined,
   profitRiskMultiplier = DEFAULT_GLOBAL_UNREALIZED_PNL_TRIGGER_RISK_MULTIPLIER,
-}: CreateCloseAllPositionsOnGlobalProfitBeforeSignalsHookParams = {}): TradejsConfigBeforeSignalsHook => {
+}: CreateCloseAllOnGlobalProfitBeforeSignalsHookParams = {}): TradejsConfigBeforeSignalsHook => {
   return async ({ connector, runtimeStrategies }) => {
     if (typeof connector.getOpenPositionPnl !== 'function') {
       return;
