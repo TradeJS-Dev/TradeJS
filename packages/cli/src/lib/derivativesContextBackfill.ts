@@ -1,12 +1,17 @@
 import chalk from 'chalk';
 import ProgressBar from 'progress';
 import { delay } from '@tradejs/core/async';
+import { DERIVATIVES_CONTEXT_REFERENCE_SYMBOLS } from '@tradejs/core/constants';
 import {
   coinalyzePointsToRows,
   mergeCoinalyzeMetrics,
   normalizeDerivativesIntervals,
 } from '@tradejs/core/indicators';
-import { upsertDerivatives, waitForDbReady } from '@tradejs/infra/timescale';
+import {
+  getDerivativesDataEdgesForSymbols,
+  upsertDerivatives,
+  waitForDbReady,
+} from '@tradejs/infra/timescale';
 import { getUserSettings } from '@tradejs/infra/userSettings';
 import type { DerivativesInterval } from '@tradejs/types';
 
@@ -37,6 +42,7 @@ type BackfillResult = {
   matchedSymbols: number;
   unmatchedSymbols: number;
   failedWindows: number;
+  skippedWindows: number;
 };
 
 const HOUR_MS = 60 * 60 * 1000;
@@ -61,6 +67,22 @@ const parseList = (value: unknown) =>
     .split(',')
     .map((item) => item.trim().toUpperCase())
     .filter(Boolean);
+
+const normalizeSymbols = (symbols: unknown[]) => [
+  ...new Set(
+    symbols
+      .map((symbol) =>
+        String(symbol || '')
+          .trim()
+          .toUpperCase(),
+      )
+      .filter(Boolean),
+  ),
+];
+
+export const resolveDerivativesContextBackfillSymbols = (
+  _requestedSymbols: string[] = [],
+) => [...DERIVATIVES_CONTEXT_REFERENCE_SYMBOLS];
 
 const chunkArray = <T>(items: T[], size: number): T[][] => {
   const chunks: T[][] = [];
@@ -102,6 +124,35 @@ export const resolveDerivativesContextLookbackMs = () => {
   const normalizedHours =
     Number.isFinite(hours) && hours > 0 ? hours : DEFAULT_LOOKBACK_HOURS;
   return normalizedHours * HOUR_MS;
+};
+
+export const resolveDerivativesContextBackfillWindow = (params: {
+  startMs: number;
+  endMs: number;
+  preloadStartMs?: number;
+  nowMs?: number;
+}) => {
+  const { startMs, endMs, preloadStartMs, nowMs = Date.now() } = params;
+  const safeEndMs = Math.min(endMs, nowMs);
+  const safeStartMs = Math.max(0, Math.min(startMs, safeEndMs));
+  const lookbackFromMs = safeStartMs - resolveDerivativesContextLookbackMs();
+  const requestedFromMs =
+    preloadStartMs != null
+      ? Math.max(Number(preloadStartMs), lookbackFromMs)
+      : lookbackFromMs;
+  const fromMs = Math.max(
+    0,
+    Math.min(
+      Number.isFinite(requestedFromMs) ? requestedFromMs : safeStartMs,
+      safeStartMs,
+    ),
+  );
+
+  return {
+    fromMs: Math.trunc(fromMs),
+    toMs: Math.trunc(safeEndMs),
+    testStartMs: Math.trunc(safeStartMs),
+  };
 };
 
 const getCoinalyzeApiKey = async (userName: string) => {
@@ -339,27 +390,24 @@ export const backfillDerivativesContextForBacktest = async (params: {
   symbols: string[];
   startMs: number;
   endMs: number;
+  preloadStartMs?: number;
 }): Promise<BackfillResult> => {
   const { userName, startMs, endMs } = params;
-  const symbols = [
-    ...new Set(
-      params.symbols
-        .map((symbol) =>
-          String(symbol || '')
-            .trim()
-            .toUpperCase(),
-        )
-        .filter(Boolean),
-    ),
-  ];
+  const requestedSymbols = normalizeSymbols(params.symbols);
+  const symbols = resolveDerivativesContextBackfillSymbols(requestedSymbols);
 
-  if (!isBacktestDerivativesContextEnabled() || !symbols.length) {
+  if (
+    !isBacktestDerivativesContextEnabled() ||
+    !requestedSymbols.length ||
+    !symbols.length
+  ) {
     return {
       skipped: true,
       rows: 0,
       matchedSymbols: 0,
       unmatchedSymbols: 0,
       failedWindows: 0,
+      skippedWindows: 0,
     };
   }
 
@@ -371,6 +419,7 @@ export const backfillDerivativesContextForBacktest = async (params: {
       matchedSymbols: 0,
       unmatchedSymbols: 0,
       failedWindows: 0,
+      skippedWindows: 0,
     };
   }
 
@@ -381,12 +430,15 @@ export const backfillDerivativesContextForBacktest = async (params: {
     );
   }
 
-  const safeEndMs = Math.min(endMs, Date.now());
-  const safeStartMs = Math.max(0, Math.min(startMs, safeEndMs));
-  const fromMs = Math.max(
-    0,
-    safeStartMs - resolveDerivativesContextLookbackMs(),
-  );
+  const {
+    fromMs,
+    toMs: safeEndMs,
+    testStartMs: safeStartMs,
+  } = resolveDerivativesContextBackfillWindow({
+    startMs,
+    endMs,
+    preloadStartMs: params.preloadStartMs,
+  });
   if (safeEndMs <= fromMs) {
     return {
       skipped: true,
@@ -394,6 +446,7 @@ export const backfillDerivativesContextForBacktest = async (params: {
       matchedSymbols: 0,
       unmatchedSymbols: 0,
       failedWindows: 0,
+      skippedWindows: 0,
     };
   }
 
@@ -414,7 +467,7 @@ export const backfillDerivativesContextForBacktest = async (params: {
   );
   if (!matches.length) {
     throw new Error(
-      'No matched symbols between backtest tickers and Coinalyze',
+      'No matched derivatives reference symbols between BTC/ETH and Coinalyze',
     );
   }
 
@@ -432,7 +485,7 @@ export const backfillDerivativesContextForBacktest = async (params: {
   const windowsPerPair = Math.ceil((safeEndMs - fromMs) / (batchDays * DAY_MS));
   const totalWindows = symbolBatches.length * intervals.length * windowsPerPair;
   const bar = new ProgressBar(
-    ':current/:total [:bar][:percent] :eta(s) :batch rows=:rows fail=:fail',
+    ':current/:total [:bar][:percent] :eta(s) :batch rows=:rows fail=:fail skip=:skip',
     {
       total: Math.max(1, totalWindows),
       width: 24,
@@ -448,65 +501,84 @@ export const backfillDerivativesContextForBacktest = async (params: {
 
   let totalRows = 0;
   let failedWindows = 0;
+  let skippedWindows = 0;
 
   console.log(
     chalk.cyan(
-      `derivatives context backfill: symbols=${matches.length}, unmatched=${unmatched.length}, intervals=${intervals.join(',')}`,
+      `derivatives context backfill: referenceSymbols=${matches.length}, requestedSymbols=${requestedSymbols.length}, unmatched=${unmatched.length}, intervals=${intervals.join(',')}, window=${new Date(fromMs).toISOString()}..${new Date(safeEndMs).toISOString()}, testStart=${new Date(safeStartMs).toISOString()}`,
     ),
   );
 
   for (const interval of intervals) {
+    const edgesBySymbol = await getDerivativesDataEdgesForSymbols(
+      matches.map((item) => item.symbol),
+      interval,
+    );
+
     for (let batchIdx = 0; batchIdx < symbolBatches.length; batchIdx += 1) {
       const batch = symbolBatches[batchIdx];
-      const marketSymbols = batch.map((item) => item.marketSymbol);
       let cursor = fromMs;
 
       while (cursor < safeEndMs) {
         const toMs = Math.min(safeEndMs, cursor + batchDays * DAY_MS);
+        const missingBatch = batch.filter((item) => {
+          const edges = edgesBySymbol.get(item.symbol.toUpperCase());
+          return (
+            edges?.min == null ||
+            edges?.max == null ||
+            edges.min > cursor ||
+            edges.max < toMs
+          );
+        });
 
         try {
-          const oiMap = await fetchMetricBatch({
-            endpoint: oiPath,
-            metric: 'oi',
-            marketSymbols,
-            apiKey,
-            interval,
-            fromMs: cursor,
-            toMs,
-          });
-          const fundingMap = await fetchMetricBatch({
-            endpoint: fundingPath,
-            metric: 'funding',
-            marketSymbols,
-            apiKey,
-            interval,
-            fromMs: cursor,
-            toMs,
-          });
-          const liqMap = await fetchMetricBatch({
-            endpoint: liqPath,
-            metric: 'liq',
-            marketSymbols,
-            apiKey,
-            interval,
-            fromMs: cursor,
-            toMs,
-          });
-
-          const rows = batch.flatMap((item) => {
-            const marketSymbol = item.marketSymbol.toUpperCase();
-            const points = mergeCoinalyzeMetrics({
-              symbol: item.symbol,
-              oiRaw: oiMap.get(marketSymbol) ?? [],
-              fundingRaw: fundingMap.get(marketSymbol) ?? [],
-              liqRaw: liqMap.get(marketSymbol) ?? [],
+          if (!missingBatch.length) {
+            skippedWindows += 1;
+          } else {
+            const marketSymbols = missingBatch.map((item) => item.marketSymbol);
+            const oiMap = await fetchMetricBatch({
+              endpoint: oiPath,
+              metric: 'oi',
+              marketSymbols,
+              apiKey,
+              interval,
+              fromMs: cursor,
+              toMs,
             });
-            return coinalyzePointsToRows(points, interval, 'coinalyze');
-          });
+            const fundingMap = await fetchMetricBatch({
+              endpoint: fundingPath,
+              metric: 'funding',
+              marketSymbols,
+              apiKey,
+              interval,
+              fromMs: cursor,
+              toMs,
+            });
+            const liqMap = await fetchMetricBatch({
+              endpoint: liqPath,
+              metric: 'liq',
+              marketSymbols,
+              apiKey,
+              interval,
+              fromMs: cursor,
+              toMs,
+            });
 
-          if (rows.length) {
-            await upsertDerivatives(rows);
-            totalRows += rows.length;
+            const rows = missingBatch.flatMap((item) => {
+              const marketSymbol = item.marketSymbol.toUpperCase();
+              const points = mergeCoinalyzeMetrics({
+                symbol: item.symbol,
+                oiRaw: oiMap.get(marketSymbol) ?? [],
+                fundingRaw: fundingMap.get(marketSymbol) ?? [],
+                liqRaw: liqMap.get(marketSymbol) ?? [],
+              });
+              return coinalyzePointsToRows(points, interval, 'coinalyze');
+            });
+
+            if (rows.length) {
+              await upsertDerivatives(rows);
+              totalRows += rows.length;
+            }
           }
         } catch (error) {
           failedWindows += 1;
@@ -522,6 +594,7 @@ export const backfillDerivativesContextForBacktest = async (params: {
             ),
             rows: totalRows,
             fail: failedWindows,
+            skip: skippedWindows,
           });
         }
 
@@ -533,7 +606,7 @@ export const backfillDerivativesContextForBacktest = async (params: {
   console.log('');
   console.log(
     chalk.green(
-      `derivatives context backfill done: rows=${totalRows}, failed_windows=${failedWindows}`,
+      `derivatives context backfill done: rows=${totalRows}, failed_windows=${failedWindows}, skipped_windows=${skippedWindows}`,
     ),
   );
 
@@ -549,5 +622,6 @@ export const backfillDerivativesContextForBacktest = async (params: {
     matchedSymbols: matches.length,
     unmatchedSymbols: unmatched.length,
     failedWindows,
+    skippedWindows,
   };
 };

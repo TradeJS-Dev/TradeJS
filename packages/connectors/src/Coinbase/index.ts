@@ -5,8 +5,10 @@ import {
   ConnectorCreator,
   Interval,
   KlineChartData,
+  KlineRequest,
   Ticker,
 } from '@tradejs/types';
+import { createTimescaleCachedKline } from '../shared/timescaleKlineCache';
 
 const INTERVAL_MS: Record<string, number> = {
   '1': 60_000,
@@ -45,6 +47,11 @@ const toNum = (value: unknown, fallback = 0) => {
   return Number.isFinite(num) ? num : fallback;
 };
 
+const intervalToMinutes = (interval: Interval): number | null => {
+  const intervalMs = INTERVAL_MS[String(interval)];
+  return intervalMs ? Math.floor(intervalMs / 60_000) : null;
+};
+
 const toCoinbaseProduct = (symbol: string) => {
   const upper = symbol.toUpperCase();
   const quoteSuffixes = ['USDT', 'USDC', 'BUSD', 'USD'];
@@ -74,66 +81,79 @@ const MAJOR_PRODUCTS = [
 export const CoinbaseConnectorCreator: ConnectorCreator = async () => {
   let state: Record<string, unknown> = {};
 
+  const requestKline = async ({
+    symbol,
+    interval,
+    start,
+    end,
+  }: KlineRequest) => {
+    const granularity = GRANULARITY_MAP[String(interval)];
+    if (!granularity) return [];
+
+    const product = toCoinbaseProduct(symbol);
+    if (!product) return [];
+
+    const baseUrl =
+      process.env.COINBASE_BASE_URL?.trim() ||
+      'https://api.exchange.coinbase.com';
+
+    const normalizedEnd = end ?? Date.now();
+    const stepMs = granularity * 1000 * 300;
+    const fromMs =
+      start ??
+      Math.max(0, normalizedEnd - INTERVAL_MS[String(interval)] * 1000);
+    let cursorEnd = normalizedEnd;
+    const rows: KlineChartData = [];
+
+    while (cursorEnd >= fromMs) {
+      const chunkStart = Math.max(fromMs, cursorEnd - stepMs);
+      const url = new URL(`${baseUrl}/products/${product}/candles`);
+      url.searchParams.set('granularity', String(granularity));
+      url.searchParams.set('start', new Date(chunkStart).toISOString());
+      url.searchParams.set('end', new Date(cursorEnd).toISOString());
+
+      const response = await fetchWithRetry(url.toString(), {
+        headers: { 'User-Agent': 'tradejs/coinbase-connector' },
+      });
+      if (!response.ok) break;
+      const payload = (await response.json()) as unknown[];
+      if (Array.isArray(payload)) {
+        for (const item of payload) {
+          if (!Array.isArray(item)) continue;
+          const ts = toNum(item[0]) * 1000;
+          rows.push({
+            timestamp: ts,
+            low: toNum(item[1]),
+            high: toNum(item[2]),
+            open: toNum(item[3]),
+            close: toNum(item[4]),
+            volume: toNum(item[5]),
+            turnover: 0,
+            dt: new Date(ts).toISOString(),
+          });
+        }
+      }
+      cursorEnd = chunkStart - 1;
+    }
+
+    const dedup = new Map<number, KlineChartData[number]>();
+    for (const row of rows) {
+      dedup.set(row.timestamp, row);
+    }
+    return [...dedup.values()].sort((a, b) => a.timestamp - b.timestamp);
+  };
+
   return {
     getState: async () => state,
     setState: async (newState) => {
       state = { ...state, ...newState };
     },
 
-    kline: async ({ symbol, interval, start, end }) => {
-      const granularity = GRANULARITY_MAP[String(interval)];
-      if (!granularity) return [];
-
-      const product = toCoinbaseProduct(symbol);
-      if (!product) return [];
-
-      const baseUrl =
-        process.env.COINBASE_BASE_URL?.trim() ||
-        'https://api.exchange.coinbase.com';
-
-      const stepMs = granularity * 1000 * 300;
-      const fromMs =
-        start ?? Math.max(0, end - INTERVAL_MS[String(interval)] * 1000);
-      let cursorEnd = end;
-      const rows: KlineChartData = [];
-
-      while (cursorEnd >= fromMs) {
-        const chunkStart = Math.max(fromMs, cursorEnd - stepMs);
-        const url = new URL(`${baseUrl}/products/${product}/candles`);
-        url.searchParams.set('granularity', String(granularity));
-        url.searchParams.set('start', new Date(chunkStart).toISOString());
-        url.searchParams.set('end', new Date(cursorEnd).toISOString());
-
-        const response = await fetchWithRetry(url.toString(), {
-          headers: { 'User-Agent': 'tradejs/coinbase-connector' },
-        });
-        if (!response.ok) break;
-        const payload = (await response.json()) as unknown[];
-        if (Array.isArray(payload)) {
-          for (const item of payload) {
-            if (!Array.isArray(item)) continue;
-            const ts = toNum(item[0]) * 1000;
-            rows.push({
-              timestamp: ts,
-              low: toNum(item[1]),
-              high: toNum(item[2]),
-              open: toNum(item[3]),
-              close: toNum(item[4]),
-              volume: toNum(item[5]),
-              turnover: 0,
-              dt: new Date(ts).toISOString(),
-            });
-          }
-        }
-        cursorEnd = chunkStart - 1;
-      }
-
-      const dedup = new Map<number, KlineChartData[number]>();
-      for (const row of rows) {
-        dedup.set(row.timestamp, row);
-      }
-      return [...dedup.values()].sort((a, b) => a.timestamp - b.timestamp);
-    },
+    kline: createTimescaleCachedKline({
+      provider: 'coinbase',
+      request: requestKline,
+      intervalToMinutes,
+    }),
 
     getPosition: async () => null,
     getPositions: async () => [],

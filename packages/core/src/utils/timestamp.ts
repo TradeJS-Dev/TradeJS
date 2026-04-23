@@ -1,6 +1,6 @@
 import { format } from 'date-fns';
 import { getUnixTime, subDays } from 'date-fns';
-import { BACKTEST_PRELOAD_DAYS } from '../constants';
+import { BACKTEST_DEFAULT_DAYS, BACKTEST_PRELOAD_DAYS } from '../constants';
 import {
   KlineChartItem,
   KlineChartData,
@@ -9,6 +9,7 @@ import {
 } from '@tradejs/types';
 
 const TIMELINE_STEP = 86_400_000;
+const DAY_MS = 86_400_000;
 
 export const toMs = (ts: number) => (ts < 1e12 ? ts * 1000 : ts);
 
@@ -34,8 +35,13 @@ export const formatUnix = (dt: number) => {
   return format(new Date(dt), 'd MMM u HH:mm:ss');
 };
 
+export const getBacktestPreloadStart = (
+  start: number,
+  preloadDays = BACKTEST_PRELOAD_DAYS,
+) => Math.max(0, Math.trunc(start - preloadDays * DAY_MS));
+
 export const getTimeline = (
-  start = getTimestamp(BACKTEST_PRELOAD_DAYS),
+  start = getTimestamp(BACKTEST_DEFAULT_DAYS),
   end = getTimestamp(),
   step = TIMELINE_STEP,
 ) => {

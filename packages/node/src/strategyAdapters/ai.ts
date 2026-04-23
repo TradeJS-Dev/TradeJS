@@ -5,26 +5,42 @@ import {
   StrategyAiAdapter,
 } from '@tradejs/types';
 import { trimSeriesDeep } from '../aiShared';
+import { buildAiMarketContext } from '../aiMarketContext';
 import { getStrategyManifest } from '../strategy/manifests';
 
-const buildBaseAiPayload = (signal: Signal): AiPayload => ({
-  signal: {
-    symbol: signal.symbol,
-    signalId: signal.signalId,
-    interval: signal.interval,
-    direction: signal.direction,
-    timestamp: signal.timestamp,
-    strategy: signal.strategy,
-    prices: {
-      currentPrice: signal.prices.currentPrice,
-      takeProfitPrice: signal.prices.takeProfitPrice,
-      stopLossPrice: signal.prices.stopLossPrice,
+const toRecord = (value: unknown): Record<string, unknown> => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return {};
+  }
+
+  return value as Record<string, unknown>;
+};
+
+const buildBaseAiPayload = (signal: Signal): AiPayload => {
+  const additionalIndicators = {
+    ...toRecord(signal.additionalIndicators),
+    marketContext: buildAiMarketContext(signal),
+  };
+
+  return {
+    signal: {
+      symbol: signal.symbol,
+      signalId: signal.signalId,
+      interval: signal.interval,
+      direction: signal.direction,
+      timestamp: signal.timestamp,
+      strategy: signal.strategy,
+      prices: {
+        currentPrice: signal.prices.currentPrice,
+        takeProfitPrice: signal.prices.takeProfitPrice,
+        stopLossPrice: signal.prices.stopLossPrice,
+      },
     },
-  },
-  figures: trimSeriesDeep(signal.figures ?? {}),
-  indicators: trimSeriesDeep(signal.indicators),
-  additionalIndicators: trimSeriesDeep(signal.additionalIndicators ?? {}),
-});
+    figures: trimSeriesDeep(signal.figures ?? {}),
+    indicators: trimSeriesDeep(signal.indicators),
+    additionalIndicators: trimSeriesDeep(additionalIndicators),
+  };
+};
 
 const defaultAiAdapter: StrategyAiAdapter = {};
 

@@ -1,5 +1,6 @@
 export {
   formatUnix,
+  getBacktestPreloadStart,
   getDataTimestamp,
   getItemTimestamp,
   getTimestamp,

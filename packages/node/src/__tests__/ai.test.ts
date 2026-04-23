@@ -1210,6 +1210,8 @@ describe('ai helpers', () => {
   describe('buildAiPayload', () => {
     it('builds payload with trimmed indicators and full trendline', () => {
       const signal = makeSignal();
+      signal.timestamp = Date.UTC(2026, 0, 1, 14, 30);
+      signal.indicators.spread = [0.0001, null, 0.0012];
       signal.additionalIndicators = {
         ...signal.additionalIndicators,
         trendlineTiming: {
@@ -1241,6 +1243,29 @@ describe('ai helpers', () => {
       expect(
         (payload.additionalIndicators as any).trendlineContext.entryTiming,
       ).toBe('ready_breakout');
+      expect((payload.additionalIndicators as any).marketContext).toMatchObject(
+        {
+          tradingSession: {
+            timezone: 'UTC',
+            utcHour: 14,
+            utcMinute: 30,
+            primarySession: 'us',
+            activeSessions: ['europe', 'us'],
+            isOverlap: true,
+            overlap: 'europe_us_overlap',
+          },
+          binanceCoinbaseSpread: {
+            source: 'binance_coinbase_btc',
+            indicatorKey: 'payload.indicators.spread',
+            available: true,
+            value: 0.0012,
+            bps: 12,
+            absBps: 12,
+            bias: 'coinbase_premium',
+            severity: 'elevated',
+          },
+        },
+      );
     });
 
     it('uses default adapter for non-trendline strategies without trendline alias', () => {
@@ -1289,6 +1314,8 @@ describe('ai helpers', () => {
         'не пиши технический шаблон вроде "needRetest=false @ null"',
       );
       expect(prompt).toContain('payload.additionalIndicators');
+      expect(prompt).toContain('marketContext.tradingSession');
+      expect(prompt).toContain('marketContext.binanceCoinbaseSpread');
       expect(prompt).toContain('Короткие примеры (few-shot');
       expect(prompt).toContain('Не добавляй другие поля');
       expect(prompt).not.toContain('помощник крипто-трейдера');

@@ -24,7 +24,7 @@ const migrateFile = async (file: string) => {
     projectRoot,
   )) as KlineChartData;
 
-  const rows = toRows(symbol, interval, data);
+  const rows = toRows('bybit', symbol, interval, data);
 
   for (let i = 0; i < rows.length; i += BATCH) {
     await upsertCandles(rows.slice(i, i + BATCH));

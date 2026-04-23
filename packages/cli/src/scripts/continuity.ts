@@ -167,7 +167,7 @@ const continuity = async () => {
           gap.diffSeconds,
         );
 
-        await deleteCandles(symbol, interval);
+        await deleteCandles(provider.id, symbol, interval);
 
         const reloaded = await connector.kline({
           symbol,

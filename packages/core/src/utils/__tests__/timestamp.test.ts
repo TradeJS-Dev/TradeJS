@@ -1,5 +1,6 @@
 import {
   compactOrderLog,
+  getBacktestPreloadStart,
   getDataTimestamp,
   getItemTimestamp,
   getTimeline,
@@ -68,6 +69,16 @@ describe('timestamp utils', () => {
   describe('getTimeline', () => {
     it('creates inclusive timeline with custom step', () => {
       expect(getTimeline(0, 10, 5)).toEqual([0, 5, 10]);
+    });
+  });
+
+  describe('getBacktestPreloadStart', () => {
+    it('uses a warmup window before the test start', () => {
+      const start = Date.parse('2026-04-01T00:00:00.000Z');
+
+      expect(getBacktestPreloadStart(start, 30)).toBe(
+        Date.parse('2026-03-02T00:00:00.000Z'),
+      );
     });
   });
 

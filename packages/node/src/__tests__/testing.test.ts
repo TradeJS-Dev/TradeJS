@@ -120,6 +120,8 @@ jest.mock('@tradejs/infra/ml', () => ({
 }));
 
 jest.mock('@tradejs/core/time', () => ({
+  getBacktestPreloadStart: (start: number, preloadDays = 30) =>
+    Math.max(0, start - preloadDays * 24 * 60 * 60 * 1000),
   getTimestamp: () => 1_000_000,
 }));
 
@@ -203,6 +205,32 @@ describe('testing backtest flow', () => {
     expect(mockByBitConnector.kline).toHaveBeenCalledTimes(2);
     expect(mockTestConnector.checkSl).toHaveBeenCalledTimes(2);
     expect(mockTestConnector.checkTp).toHaveBeenCalledTimes(2);
+  });
+
+  it('loads kline data from the warmup window before test start', async () => {
+    const start = Date.parse('2026-04-01T00:00:00.000Z');
+    const end = Date.parse('2026-04-02T00:00:00.000Z');
+    const expectedPreloadStart = start - 30 * 24 * 60 * 60 * 1000;
+    const data = [
+      candle(expectedPreloadStart),
+      candle(start - 15 * 60 * 1000),
+      candle(start),
+      candle(start + 15 * 60 * 1000),
+    ];
+    mockByBitConnector.kline.mockResolvedValue(data);
+    mockBinanceConnector.kline.mockResolvedValue(data);
+    mockCoinbaseConnector.kline.mockResolvedValue(data);
+    mockStrategy.mockResolvedValue('HOLD');
+
+    await testing(createTest({ options: { start, end } }));
+
+    expect(mockByBitConnector.kline).toHaveBeenCalledWith(
+      expect.objectContaining({
+        symbol: 'ETHUSDT',
+        start: expectedPreloadStart,
+        end,
+      }),
+    );
   });
 
   it('writes transformed ml row when strategy returns signal object', async () => {

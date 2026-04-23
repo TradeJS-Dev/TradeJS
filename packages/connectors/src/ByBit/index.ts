@@ -7,20 +7,14 @@ import {
   MARKET_CATEGORY,
   PRELOAD_FALLBACK_DAYS,
 } from '@tradejs/core/constants';
-import { mergeData } from '@tradejs/core/data';
 import { toJson } from '@tradejs/core/data';
 import { round } from '@tradejs/core/math';
 import { normalizeTickerData } from '@tradejs/core/tickers';
-import { formatUnix, getItemTimestamp, getTimestamp } from '@tradejs/core/time';
+import { formatUnix, getTimestamp } from '@tradejs/core/time';
 import { logger } from '@tradejs/infra/logger';
-import {
-  getCandlesRange,
-  getDataEdges,
-  upsertCandles,
-  toRows,
-} from '@tradejs/infra/timescale';
 
 import { getClient } from './client';
+import { createTimescaleCachedKline } from '../shared/timescaleKlineCache';
 import {
   mapKlineToChartData,
   normalizePrice,
@@ -30,7 +24,6 @@ import {
 } from './utils';
 import {
   ClosedPnlRecord,
-  KlineChartData,
   KlineRequest,
   ConnectorCreator,
   Direction,
@@ -42,7 +35,6 @@ import {
 } from '@tradejs/types';
 
 const LIMIT = 1000;
-const CACHE_FALLBACK_WINDOW = 1_000;
 const BYBIT_RATE_LIMIT_RETCODE = 10_006;
 const BYBIT_TRADING_STOP_NOT_MODIFIED_RETCODE = 34_040;
 const KLINE_RATE_LIMIT_MAX_ATTEMPTS = 3;
@@ -92,7 +84,6 @@ const resolveKlineRetryDelayMs = (res: any, attempt: number) => {
 
 export const ByBitConnectorCreator: ConnectorCreator = async (config) => {
   let state: Record<string, unknown> = {};
-  let isTimescaleFallbackMode = false;
   let publicClientPromise: Promise<
     Awaited<ReturnType<typeof getClient>>
   > | null = null;
@@ -214,137 +205,9 @@ export const ByBitConnectorCreator: ConnectorCreator = async (config) => {
     }
   };
 
-  /** -------------------- batched loader (keeps your while) -------------------- */
-  const loadData = async (
-    direction: 'older' | 'newer',
-    pointer: number | undefined,
-    limitBoundary: number | undefined,
-    requestParams: KlineRequest,
-    intervalMs: number,
-  ): Promise<KlineChartData> => {
-    if (pointer === undefined) return [];
-
-    let accumulated: KlineChartData = [];
-    let fulfilled = false;
-
-    while (!fulfilled) {
-      const currentPointer: number = pointer;
-      const params: KlineRequest = {
-        symbol: requestParams.symbol,
-        interval: requestParams.interval,
-        silent: requestParams.silent,
-      } as KlineRequest;
-
-      if (direction === 'older') {
-        params.end = pointer;
-        if (limitBoundary !== undefined) params.start = limitBoundary;
-      } else {
-        params.start = pointer;
-        if (limitBoundary !== undefined) params.end = limitBoundary;
-      }
-
-      const partData = await request(params);
-
-      if (_.isEmpty(partData)) {
-        fulfilled = true;
-        break;
-      }
-
-      accumulated =
-        direction === 'older'
-          ? mergeData(partData, accumulated)
-          : mergeData(accumulated, partData);
-
-      const boundaryReached =
-        limitBoundary !== undefined &&
-        ((direction === 'older' && currentPointer <= limitBoundary) ||
-          (direction === 'newer' && currentPointer >= limitBoundary));
-
-      if (partData.length < LIMIT || boundaryReached) {
-        fulfilled = true;
-        break;
-      }
-
-      // Смещаем курсор на шаг интервала, чтобы не зациклиться на границах LIMIT
-      const nextPointer =
-        direction === 'older'
-          ? getItemTimestamp(partData[0]) - intervalMs
-          : getItemTimestamp(partData[partData.length - 1]) + intervalMs;
-
-      if (!Number.isFinite(nextPointer) || nextPointer === currentPointer) {
-        fulfilled = true;
-        break;
-      }
-
-      pointer = nextPointer;
-    }
-
-    return accumulated;
-  };
-
   /** -------------------- small helpers -------------------- */
-  const intervalMsOf = (interval: number) => interval * 60_000;
   const intervalToMinutes = (interval: Interval): number | null => {
     return INTERVAL_TO_MINUTES[String(interval)] ?? null;
-  };
-
-  const clampToClosedCandle = (value: number, intervalMs: number) =>
-    Math.floor(value / intervalMs) * intervalMs;
-
-  // clamp end к последней закрытой свече, чтобы не перефетчить «текущую» бесконечно
-  const normalizeRangeToClosed = (
-    intervalMs: number,
-    start?: number,
-    end?: number,
-  ) => {
-    const lastClosed = Math.floor(Date.now() / intervalMs) * intervalMs;
-    const normStart =
-      start !== undefined ? clampToClosedCandle(start, intervalMs) : 0;
-    const cappedEnd = Math.min(end ?? Date.now(), lastClosed);
-    const normEnd = clampToClosedCandle(cappedEnd, intervalMs);
-    return { normStart, normEnd, lastClosed };
-  };
-
-  const rowsToKline = (rows: Array<{ ts: Date } & any>) =>
-    rows.map(({ ts, ...data }) => ({
-      timestamp: new Date(ts).getTime(),
-      ...data,
-    })) as KlineChartData;
-
-  // Обновляем хвост из двух свечей (последняя закрытая + текущая формирующаяся)
-  const refreshTail = async ({
-    symbol,
-    interval,
-    silent,
-    tailCount = 2,
-  }: {
-    symbol: string;
-    interval: Interval;
-    silent: boolean;
-    tailCount?: number;
-  }) => {
-    const intMinutes = intervalToMinutes(interval);
-    if (!intMinutes) {
-      logger.log('error', 'refreshTail: invalid interval %s', interval);
-      return;
-    }
-    const intervalMs = intervalMsOf(intMinutes);
-
-    const lastClosed = Math.floor(Date.now() / intervalMs) * intervalMs;
-    const tailEnd = lastClosed + intervalMs; // захватываем и текущую формирующуюся
-    const tailStart = tailEnd - tailCount * intervalMs;
-
-    const part = await request({
-      symbol,
-      interval,
-      start: tailStart,
-      end: tailEnd,
-      silent,
-    });
-
-    if (part.length) {
-      await upsertCandles(toRows(symbol, intMinutes, part));
-    }
   };
 
   const getPositionSnapshot = async (
@@ -579,174 +442,12 @@ export const ByBitConnectorCreator: ConnectorCreator = async (config) => {
       state = { ...state, ...newState };
     },
 
-    kline: async ({
-      symbol,
-      interval,
-      start: defaultStart,
-      end: defaultEnd,
-      silent = false,
-      cacheOnly = false,
-      warmOnly = false,
-    }: KlineRequest) => {
-      const intMinutes = intervalToMinutes(interval);
-      if (!intMinutes) {
-        logger.log('error', 'kline: invalid interval %s', interval);
-        return [];
-      }
-
-      if (
-        defaultStart !== undefined &&
-        defaultEnd !== undefined &&
-        defaultEnd <= defaultStart
-      ) {
-        return [];
-      }
-      const intervalMs = intervalMsOf(intMinutes);
-
-      try {
-        // 1) что уже есть в БД
-        const edges = await getDataEdges(symbol, intMinutes);
-        let dataStart = edges.min; // ms | undefined
-        let dataEnd = edges.max; // ms | undefined
-
-        // 2) нормализуем требуемый диапазон к закрытым свечам
-        const { normStart, normEnd } = normalizeRangeToClosed(
-          intervalMs,
-          defaultStart,
-          defaultEnd,
-        );
-
-        // 3) cacheOnly — только из БД
-        if (cacheOnly) {
-          const base = edges.max ?? Date.now();
-          const s = Math.max(
-            defaultStart ?? base - CACHE_FALLBACK_WINDOW * intervalMs,
-            0,
-          );
-          const e = defaultEnd ?? base;
-          const dbData = await getCandlesRange(symbol, intMinutes, s, e);
-          return rowsToKline(dbData);
-        }
-
-        // 4) решаем, надо ли дозагружать
-        const needOlderData =
-          defaultStart !== undefined &&
-          (dataStart === undefined || normStart < dataStart);
-
-        const needNewerData =
-          defaultEnd !== undefined &&
-          (dataEnd === undefined || normEnd > dataEnd);
-
-        // 5) дозагрузка старого хвоста (батчами по 1000, через loadData/while)
-        if (needOlderData) {
-          const pointerForOlder = dataStart ?? normEnd ?? Date.now();
-          const olderData = await loadData(
-            'older',
-            pointerForOlder,
-            normStart,
-            {
-              symbol,
-              interval,
-              silent,
-              start: normStart,
-              end: pointerForOlder,
-            },
-            intervalMs,
-          );
-
-          if (olderData.length) {
-            await upsertCandles(toRows(symbol, intMinutes, olderData));
-            dataStart = normStart;
-          }
-        }
-
-        // 6) дозагрузка нового хвоста (батчами по 1000)
-        if (needNewerData) {
-          const pointerForNewer = dataEnd ?? normStart ?? 0;
-          const newerData = await loadData(
-            'newer',
-            pointerForNewer,
-            normEnd,
-            {
-              symbol,
-              interval,
-              silent,
-              start: pointerForNewer,
-              end: normEnd,
-            },
-            intervalMs,
-          );
-
-          if (newerData.length) {
-            await upsertCandles(toRows(symbol, intMinutes, newerData));
-            dataEnd = normEnd;
-          }
-        }
-
-        // 7) точечное «освежение хвоста» из 2 свечей, если мы запрашиваем «правый край»
-        const isRightEdgeQuery =
-          defaultEnd === undefined ||
-          (defaultEnd && defaultEnd >= Date.now() - intervalMs);
-
-        if (!cacheOnly && isRightEdgeQuery) {
-          await refreshTail({ symbol, interval, silent });
-        }
-
-        if (warmOnly) {
-          if (isTimescaleFallbackMode) {
-            isTimescaleFallbackMode = false;
-            logger.log(
-              'info',
-              'TimescaleDB connection restored for kline cache',
-            );
-          }
-          return [];
-        }
-
-        // 8) финальный SELECT из БД — источник истины
-        const rangeStart = defaultStart ?? dataStart ?? 0;
-        const rangeEnd = defaultEnd ?? dataEnd ?? Date.now();
-        const { normStart: finalStart, normEnd: finalEnd } =
-          normalizeRangeToClosed(intervalMs, rangeStart, rangeEnd);
-
-        const dbData = await getCandlesRange(
-          symbol,
-          intMinutes,
-          finalStart,
-          finalEnd,
-        );
-
-        if (isTimescaleFallbackMode) {
-          isTimescaleFallbackMode = false;
-          logger.log('info', 'TimescaleDB connection restored for kline cache');
-        }
-
-        return rowsToKline(dbData);
-      } catch (error) {
-        if (!isTimescaleFallbackMode) {
-          isTimescaleFallbackMode = true;
-          logger.log(
-            'warn',
-            'TimescaleDB unavailable for %s %s: %s. Falling back to exchange API.',
-            symbol,
-            interval,
-            String(error),
-          );
-        }
-
-        if (cacheOnly || warmOnly) {
-          return [];
-        }
-
-        return request({
-          symbol,
-          interval,
-          start: defaultStart,
-          end: defaultEnd,
-          silent,
-        });
-      }
-    },
+    kline: createTimescaleCachedKline({
+      provider: 'bybit',
+      request,
+      intervalToMinutes,
+      limit: LIMIT,
+    }),
 
     getPosition: async (symbol) => getPositionSnapshot(symbol),
 

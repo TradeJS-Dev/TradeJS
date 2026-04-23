@@ -44,7 +44,12 @@ jest.mock('@tradejs/infra/timescale', () => ({
   getCandlesRange: jest.fn(),
   getDataEdges: jest.fn(),
   upsertCandles: jest.fn(),
-  toRows: jest.fn((symbol, interval, data) => ({ symbol, interval, data })),
+  toRows: jest.fn((provider, symbol, interval, data) => ({
+    provider,
+    symbol,
+    interval,
+    data,
+  })),
 }));
 
 const mockedGetClient = getClient as jest.MockedFunction<typeof getClient>;
@@ -128,6 +133,7 @@ describe('ByBitConnectorCreator', () => {
       }),
     ]);
     expect(mockedGetCandlesRange).toHaveBeenCalledWith(
+      'bybit',
       'BTCUSDT',
       1,
       1000,
@@ -1033,8 +1039,9 @@ describe('ByBitConnectorCreator', () => {
       } as any,
     ]);
     mockedToRows.mockImplementation(
-      (symbol, interval, data) =>
+      (provider, symbol, interval, data) =>
         ({
+          provider,
           symbol,
           interval,
           data,
@@ -1053,6 +1060,7 @@ describe('ByBitConnectorCreator', () => {
     expect(client.getKline).toHaveBeenCalledTimes(3);
     expect(mockedUpsertCandles).toHaveBeenCalledTimes(3);
     expect(mockedGetCandlesRange).toHaveBeenCalledWith(
+      'bybit',
       'BTCUSDT',
       1,
       60_000,
@@ -1080,8 +1088,9 @@ describe('ByBitConnectorCreator', () => {
     mockedGetClient.mockResolvedValue(client as any);
     mockedGetDataEdges.mockResolvedValue({ min: 540_000, max: 540_000 });
     mockedToRows.mockImplementation(
-      (symbol, interval, data) =>
+      (provider, symbol, interval, data) =>
         ({
+          provider,
           symbol,
           interval,
           data,
@@ -1352,8 +1361,9 @@ describe('ByBitConnectorCreator', () => {
       } as any,
     ]);
     mockedToRows.mockImplementation(
-      (symbol, interval, data) =>
+      (provider, symbol, interval, data) =>
         ({
+          provider,
           symbol,
           interval,
           data,

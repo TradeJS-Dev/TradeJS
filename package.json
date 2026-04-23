@@ -16,6 +16,7 @@
     "bot:cron": "PROJECT_CWD=\"$PWD\" DOTENV_CONFIG_PATH=\"${DOTENV_CONFIG_PATH:-$PWD/.env}\" time bash ./bin/run-cli-dist.sh bot",
     "build": "turbo run build",
     "build:ci": "bash -lc 'rm -rf .turbo apps/*/.next apps/*/build apps/*/.turbo packages/*/dist packages/*/build packages/*/.turbo && yarn build'",
+    "candles:migrate-provider": "yarn cli candles:migrate-provider",
     "bump:packages": "node ./bin/bump-publishable-versions.mjs",
     "checks": "yarn prettify && yarn build && yarn lint && yarn typecheck && yarn unit",
     "clean-ai-export": "yarn clean-dir --dir ai/export",

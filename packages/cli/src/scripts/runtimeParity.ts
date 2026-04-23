@@ -3,7 +3,8 @@ import { randomUUID } from 'node:crypto';
 import args from 'args';
 import chalk from 'chalk';
 import { ConnectorNames } from '@tradejs/connectors';
-import { formatUnix } from '@tradejs/core/time';
+import { BACKTEST_PRELOAD_DAYS } from '@tradejs/core/constants';
+import { formatUnix, getBacktestPreloadStart } from '@tradejs/core/time';
 import { logger } from '@tradejs/infra/logger';
 import { getData, getKeys, redisKeys } from '@tradejs/infra/redis';
 import { update } from '@tradejs/node/cli';
@@ -560,10 +561,14 @@ const warmReplayHistory = async ({
   userName,
   connectorName,
   targets,
+  preloadStart,
+  preloadEnd,
 }: {
   userName: string;
   connectorName: string;
   targets: ReplayTarget[];
+  preloadStart: number;
+  preloadEnd: number;
 }) => {
   const connectorFactory = await getConnectorCreatorByName(
     connectorName,
@@ -578,6 +583,8 @@ const warmReplayHistory = async ({
 
   await update(connector, interval, symbols, undefined, {
     connectorLabel: connectorName,
+    preloadStart,
+    preloadEnd,
   });
 
   const [binanceFactory, coinbaseFactory] = await Promise.all([
@@ -591,6 +598,8 @@ const warmReplayHistory = async ({
     });
     await update(binanceConnector, interval, ['BTCUSDT'], undefined, {
       connectorLabel: ConnectorNames.Binance,
+      preloadStart,
+      preloadEnd,
     });
   } else {
     logger.warn(
@@ -604,6 +613,8 @@ const warmReplayHistory = async ({
     });
     await update(coinbaseConnector, interval, ['BTCUSDT'], undefined, {
       connectorLabel: ConnectorNames.Coinbase,
+      preloadStart,
+      preloadEnd,
     });
   } else {
     logger.warn(
@@ -1283,12 +1294,18 @@ export const runtimeParity = async () => {
     }
 
     const sourceCounts = countReplayTargetSources(replayTargets);
+    const preloadStart = getBacktestPreloadStart(
+      window.start,
+      BACKTEST_PRELOAD_DAYS,
+    );
 
     if (!flags.cacheOnly) {
       await warmReplayHistory({
         userName: flags.user,
         connectorName,
         targets: replayTargets,
+        preloadStart,
+        preloadEnd: window.end,
       });
     }
 

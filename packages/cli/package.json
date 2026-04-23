@@ -68,6 +68,7 @@
     "ai-train": "yarn run run:dist ai-train",
     "backtest": "yarn run run:dist backtest",
     "bot": "yarn run run:dist bot",
+    "candles:migrate-provider": "yarn run run:dist candles:migrate-provider",
     "signals": "yarn run run:dist signals",
     "results": "yarn run run:dist results",
     "continuity": "yarn run run:dist continuity",

@@ -9,6 +9,7 @@ const scriptLoaders: Record<string, ScriptLoader> = {
   'ai-train': () => import('./scripts/aiTrain'),
   backtest: () => import('./scripts/backtest'),
   bot: () => import('./scripts/bot'),
+  'candles:migrate-provider': () => import('./scripts/candlesMigrateProvider'),
   'clean-dir': () => import('./scripts/cleanDir'),
   'clean-redis': () => import('./scripts/cleanRedis'),
   'clean-tests': () => import('./scripts/cleanTests'),

@@ -35,6 +35,7 @@ const getPool = () => {
 };
 
 export type CandleRow = {
+  provider: string;
   symbol: string;
   interval: number;
   ts: Date;
@@ -49,13 +50,31 @@ export type CandleRow = {
 let derivativesSchemaReady = false;
 let spreadSchemaReady = false;
 
+const normalizeCandleProvider = (provider: string) =>
+  String(provider || '')
+    .trim()
+    .toLowerCase();
+
+const normalizeCandleSymbol = (symbol: string) =>
+  String(symbol || '')
+    .trim()
+    .toUpperCase();
+
 export const toRows = (
+  provider: string,
   symbol: string,
   interval: number,
   data: KlineChartData,
-): CandleRow[] =>
-  data.map((i) => ({
-    symbol,
+): CandleRow[] => {
+  const normalizedProvider = normalizeCandleProvider(provider);
+  if (!normalizedProvider) {
+    throw new Error('Candle provider is required');
+  }
+  const normalizedSymbol = normalizeCandleSymbol(symbol);
+
+  return data.map((i) => ({
+    provider: normalizedProvider,
+    symbol: normalizedSymbol,
     interval,
     ts: new Date(i.timestamp), // ms -> Date
     open: i.open,
@@ -65,12 +84,14 @@ export const toRows = (
     volume: i.volume ?? null,
     turnover: i.turnover ?? null,
   }));
+};
 
 export async function upsertCandles(rows: CandleRow[]) {
   if (!rows.length) return;
   const pool = getPool();
 
   const cols = [
+    'provider',
     'symbol',
     'interval',
     'ts',
@@ -97,7 +118,8 @@ export async function upsertCandles(rows: CandleRow[]) {
     .join(',');
 
   const flat = rows.flatMap((r) => [
-    r.symbol,
+    normalizeCandleProvider(r.provider),
+    normalizeCandleSymbol(r.symbol),
     r.interval,
     r.ts,
     r.open,
@@ -111,7 +133,7 @@ export async function upsertCandles(rows: CandleRow[]) {
   const sql = `
     INSERT INTO candles (${cols.join(',')})
     VALUES ${valuesSql}
-    ON CONFLICT (symbol, interval, ts) DO UPDATE SET
+    ON CONFLICT (provider, symbol, interval, ts) DO UPDATE SET
       open = EXCLUDED.open,
       high = EXCLUDED.high,
       low  = EXCLUDED.low,
@@ -289,6 +311,54 @@ export async function getDerivativesRangeForSymbols(
   `;
   const res = await pool.query(sql, [symbols, interval, startMs, endMs]);
   return res.rows;
+}
+
+export async function getDerivativesDataEdgesForSymbols(
+  symbols: string[],
+  interval: DerivativesInterval,
+) {
+  const normalizedSymbols = [
+    ...new Set(
+      symbols
+        .map((symbol) =>
+          String(symbol || '')
+            .trim()
+            .toUpperCase(),
+        )
+        .filter(Boolean),
+    ),
+  ];
+  const edges = new Map<string, { min?: number; max?: number }>();
+  if (!normalizedSymbols.length) return edges;
+
+  await ensureDerivativesSchema();
+  const pool = getPool();
+  const sql = `
+    SELECT
+      symbol,
+      extract(epoch from MIN(ts))*1000 AS min,
+      extract(epoch from MAX(ts))*1000 AS max
+    FROM derivatives_market
+    WHERE symbol = ANY($1)
+      AND interval = $2
+    GROUP BY symbol
+  `;
+  const res = await pool.query(sql, [normalizedSymbols, interval]);
+
+  for (const row of res.rows as Array<{
+    symbol: string;
+    min?: number | string | null;
+    max?: number | string | null;
+  }>) {
+    const min = Number(row.min);
+    const max = Number(row.max);
+    edges.set(String(row.symbol).toUpperCase(), {
+      min: Number.isFinite(min) ? min : undefined,
+      max: Number.isFinite(max) ? max : undefined,
+    });
+  }
+
+  return edges;
 }
 
 export async function getDerivativesWindow(params: {
@@ -528,44 +598,59 @@ export async function getSpreadSummary(hours = 24, limit = 500) {
 }
 
 export async function getCandlesRange(
+  provider: string,
   symbol: string,
   interval: number,
   startMs: number,
   endMs: number,
 ) {
   const pool = getPool();
+  const normalizedProvider = normalizeCandleProvider(provider);
+  const normalizedSymbol = normalizeCandleSymbol(symbol);
   const sql = `
     SELECT symbol, interval, ts,
            open, high, low, close, volume, turnover
     FROM candles
-    WHERE symbol = $1 AND interval = $2
-      AND ts >= to_timestamp($3/1000.0)
-      AND ts <= to_timestamp($4/1000.0)
+    WHERE provider = $1 AND symbol = $2 AND interval = $3
+      AND ts >= to_timestamp($4/1000.0)
+      AND ts <= to_timestamp($5/1000.0)
     ORDER BY ts ASC
   `;
-  const res = await pool.query(sql, [symbol, interval, startMs, endMs]);
+  const res = await pool.query(sql, [
+    normalizedProvider,
+    normalizedSymbol,
+    interval,
+    startMs,
+    endMs,
+  ]);
   return res.rows;
 }
 
-export async function getDataEdges(symbol: string, interval: number) {
+export async function getDataEdges(
+  provider: string,
+  symbol: string,
+  interval: number,
+) {
   const pool = getPool();
+  const normalizedProvider = normalizeCandleProvider(provider);
+  const normalizedSymbol = normalizeCandleSymbol(symbol);
   const sqlMin = `
     SELECT extract(epoch from ts)*1000 AS ms
     FROM candles
-    WHERE symbol=$1 AND interval=$2
+    WHERE provider=$1 AND symbol=$2 AND interval=$3
     ORDER BY ts ASC
     LIMIT 1
   `;
   const sqlMax = `
     SELECT extract(epoch from ts)*1000 AS ms
     FROM candles
-    WHERE symbol=$1 AND interval=$2
+    WHERE provider=$1 AND symbol=$2 AND interval=$3
     ORDER BY ts DESC
     LIMIT 1
   `;
   const [minQ, maxQ] = await Promise.all([
-    pool.query(sqlMin, [symbol, interval]),
-    pool.query(sqlMax, [symbol, interval]),
+    pool.query(sqlMin, [normalizedProvider, normalizedSymbol, interval]),
+    pool.query(sqlMax, [normalizedProvider, normalizedSymbol, interval]),
   ]);
   const minRaw = minQ.rows[0]?.ms as number | string | undefined;
   const maxRaw = maxQ.rows[0]?.ms as number | string | undefined;
@@ -594,17 +679,29 @@ export async function waitForDbReady(
   throw lastError;
 }
 
-export async function deleteCandles(symbol: string, interval: number) {
+export async function deleteCandles(
+  provider: string,
+  symbol: string,
+  interval: number,
+) {
   const pool = getPool();
+  const normalizedProvider = normalizeCandleProvider(provider);
+  const normalizedSymbol = normalizeCandleSymbol(symbol);
   const sql = `
     DELETE FROM candles
-    WHERE symbol = $1 AND interval = $2
+    WHERE provider = $1 AND symbol = $2 AND interval = $3
   `;
-  await pool.query(sql, [symbol, interval]);
+  await pool.query(sql, [normalizedProvider, normalizedSymbol, interval]);
 }
 
-export async function findContinuityGap(symbol: string, interval: number) {
+export async function findContinuityGap(
+  provider: string,
+  symbol: string,
+  interval: number,
+) {
   const pool = getPool();
+  const normalizedProvider = normalizeCandleProvider(provider);
+  const normalizedSymbol = normalizeCandleSymbol(symbol);
   const expectedSeconds = interval * 60;
   const sql = `
     WITH ordered AS (
@@ -612,7 +709,7 @@ export async function findContinuityGap(symbol: string, interval: number) {
         ts,
         LAG(ts) OVER (ORDER BY ts) AS prev_ts
       FROM candles
-      WHERE symbol = $1 AND interval = $2
+      WHERE provider = $1 AND symbol = $2 AND interval = $3
     )
     SELECT
       ts,
@@ -620,11 +717,16 @@ export async function findContinuityGap(symbol: string, interval: number) {
       EXTRACT(EPOCH FROM (ts - prev_ts))::int AS diff_seconds
     FROM ordered
     WHERE prev_ts IS NOT NULL
-      AND EXTRACT(EPOCH FROM (ts - prev_ts))::int <> $3
+      AND EXTRACT(EPOCH FROM (ts - prev_ts))::int <> $4
     ORDER BY ts ASC
     LIMIT 1
   `;
-  const res = await pool.query(sql, [symbol, interval, expectedSeconds]);
+  const res = await pool.query(sql, [
+    normalizedProvider,
+    normalizedSymbol,
+    interval,
+    expectedSeconds,
+  ]);
   const row = res.rows[0];
   if (!row) return null;
   return {

@@ -108,7 +108,21 @@ describe('strategyAdapters utils', () => {
       },
       figures: { trimmed: signal.figures },
       indicators: { trimmed: signal.indicators },
-      additionalIndicators: { trimmed: signal.additionalIndicators },
+      additionalIndicators: {
+        trimmed: expect.objectContaining({
+          ...signal.additionalIndicators,
+          marketContext: expect.objectContaining({
+            tradingSession: expect.objectContaining({
+              timezone: 'UTC',
+            }),
+            binanceCoinbaseSpread: expect.objectContaining({
+              available: true,
+              bps: 30_000,
+              bias: 'coinbase_premium',
+            }),
+          }),
+        }),
+      },
     });
     expect(mockTrimSeriesDeep).toHaveBeenCalledTimes(3);
   });

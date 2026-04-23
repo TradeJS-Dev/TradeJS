@@ -2,9 +2,15 @@ import {
   buildDerivativesContext,
   normalizeDerivativesIntervals,
 } from '@tradejs/core/indicators';
+import { DERIVATIVES_CONTEXT_REFERENCE_SYMBOLS } from '@tradejs/core/constants';
 import { getDerivativesWindow } from '@tradejs/infra/timescale';
 import { logger } from '@tradejs/infra/logger';
-import type { DerivativesInterval, Signal } from '@tradejs/types';
+import type {
+  DerivativesContext,
+  DerivativesInterval,
+  DerivativesSymbolContext,
+  Signal,
+} from '@tradejs/types';
 
 const DEFAULT_INTERVALS: DerivativesInterval[] = ['15m', '1h'];
 const DEFAULT_LOOKBACK_HOURS = 48;
@@ -36,6 +42,45 @@ const parseIntervals = (): DerivativesInterval[] => {
   return fromEnv.length ? fromEnv : DEFAULT_INTERVALS;
 };
 
+export const getDerivativesContextReferenceSymbols = () => [
+  ...DERIVATIVES_CONTEXT_REFERENCE_SYMBOLS,
+];
+
+const normalizeSymbol = (symbol: string) =>
+  String(symbol || '')
+    .trim()
+    .toUpperCase();
+
+const resolvePrimaryReferenceSymbol = (signalSymbol: string) => {
+  const symbol = normalizeSymbol(signalSymbol);
+  const referenceSymbols = getDerivativesContextReferenceSymbols();
+  return referenceSymbols.some((referenceSymbol) => referenceSymbol === symbol)
+    ? symbol
+    : referenceSymbols[0];
+};
+
+const buildReferenceDerivativesContext = (params: {
+  targetSymbol: string;
+  primaryReferenceSymbol: string;
+  referenceContexts: Record<string, DerivativesSymbolContext>;
+}): DerivativesContext => {
+  const { targetSymbol, primaryReferenceSymbol, referenceContexts } = params;
+  const primaryContext =
+    referenceContexts[primaryReferenceSymbol] ??
+    referenceContexts[getDerivativesContextReferenceSymbols()[0]];
+  if (!primaryContext) {
+    throw new Error('No derivatives reference contexts built');
+  }
+
+  return {
+    ...primaryContext,
+    targetSymbol,
+    primaryReferenceSymbol: primaryContext.symbol,
+    referenceSymbols: getDerivativesContextReferenceSymbols(),
+    referenceContexts,
+  };
+};
+
 export const isDerivativesContextEnabled = (env: string) =>
   parseEnabledFlag(process.env.DERIVATIVES_CONTEXT_ENABLED, env);
 
@@ -55,18 +100,37 @@ export const enrichSignalWithDerivativesContext = async (params: {
 
   try {
     const intervals = parseIntervals();
-    const rowsByInterval = await getDerivativesWindow({
-      symbol: signal.symbol,
-      intervals,
-      endMs: signal.timestamp,
-      lookbackMs: parseLookbackMs(),
-    });
-    const derivativesContext = buildDerivativesContext({
-      symbol: signal.symbol,
-      direction: signal.direction,
-      timestamp: signal.timestamp,
-      rowsByInterval,
-      intervals,
+    const referenceSymbols = getDerivativesContextReferenceSymbols();
+    const lookbackMs = parseLookbackMs();
+    const contexts = await Promise.all(
+      referenceSymbols.map(async (symbol) => {
+        const rowsByInterval = await getDerivativesWindow({
+          symbol,
+          intervals,
+          endMs: signal.timestamp,
+          lookbackMs,
+        });
+
+        return [
+          symbol,
+          buildDerivativesContext({
+            symbol,
+            direction: signal.direction,
+            timestamp: signal.timestamp,
+            rowsByInterval,
+            intervals,
+          }),
+        ] as const;
+      }),
+    );
+    const referenceContexts = Object.fromEntries(contexts) as Record<
+      string,
+      DerivativesSymbolContext
+    >;
+    const derivativesContext = buildReferenceDerivativesContext({
+      targetSymbol: signal.symbol,
+      primaryReferenceSymbol: resolvePrimaryReferenceSymbol(signal.symbol),
+      referenceContexts,
     });
 
     signal.additionalIndicators = {

@@ -23,13 +23,18 @@ import {
 } from '@tradejs/core/backtest';
 import { toJson } from '@tradejs/core/data';
 import {
+  BACKTEST_DEFAULT_DAYS,
   BACKTEST_PRELOAD_DAYS,
   TESTS_LIMIT,
   TESTS_TOP_LIMIT,
   TTL_1D,
   TTL_1M,
 } from '@tradejs/core/constants';
-import { formatUnix, getTimestamp } from '@tradejs/core/time';
+import {
+  formatUnix,
+  getBacktestPreloadStart,
+  getTimestamp,
+} from '@tradejs/core/time';
 import { setData, getData, redisKeys } from '@tradejs/infra/redis';
 import {
   Interval,
@@ -166,6 +171,7 @@ let topResultNames = new Set<string>();
 
 const userName = flags.user;
 const runStartedAt = Date.now();
+let testsStartedAt = runStartedAt;
 
 const createListIt = () =>
   new ListIt({
@@ -177,6 +183,31 @@ const createTable = (headers: string[], rows: string[][]) =>
   createListIt().setHeaderRow(headers).d(rows).toString();
 
 const createTimestamp = (date: Date) => format(date, 'yyyyMMddHHmm');
+
+const formatDuration = (startedAt: number) => {
+  const seconds = (Date.now() - startedAt) / 1000;
+  if (seconds < 60) return `${seconds.toFixed(1)}s`;
+  const minutes = Math.floor(seconds / 60);
+  const restSeconds = Math.round(seconds % 60);
+  return `${minutes}m ${restSeconds}s`;
+};
+
+const formatWindowDays = (startMs: number, endMs: number) => {
+  const days = Math.max(0, (endMs - startMs) / (24 * 60 * 60 * 1000));
+  return Number.isInteger(days) ? String(days) : days.toFixed(2);
+};
+
+const timeOperation = async <T>(
+  label: string,
+  operation: () => Promise<T>,
+): Promise<T> => {
+  const startedAt = Date.now();
+  try {
+    return await operation();
+  } finally {
+    console.log(chalk.gray(`${label}: done in ${formatDuration(startedAt)}`));
+  }
+};
 
 const isGoodTest = (result: TestWorkerResult) =>
   result.stat?.orders > 5 && result.stat?.profit > 10;
@@ -467,11 +498,13 @@ const backtest = async () => {
     userName: flags.user,
   });
 
-  const tickers = await getTickers(
-    marketConnector,
-    flags.tickers,
-    flags.exclude,
-    flags.tickersLimit,
+  const tickers = await timeOperation('tickers load', () =>
+    getTickers(
+      marketConnector,
+      flags.tickers,
+      flags.exclude,
+      flags.tickersLimit,
+    ),
   );
 
   if (flags.showTickersList) {
@@ -480,10 +513,26 @@ const backtest = async () => {
     return;
   }
 
+  const window = resolveTimeWindow({
+    days: flags.days,
+    startTime: flags.startTime,
+    endTime: flags.endTime,
+    defaultStartMs: getTimestamp(BACKTEST_DEFAULT_DAYS),
+    defaultEndMs: getTimestamp(),
+  });
+  const preloadStart = getBacktestPreloadStart(
+    window.start,
+    BACKTEST_PRELOAD_DAYS,
+  );
+
   if (!flags.cacheOnly) {
-    await update(marketConnector, interval, tickers, undefined, {
-      connectorLabel: connectorName,
-    });
+    await timeOperation(`update ${connectorName}`, () =>
+      update(marketConnector, interval, tickers, undefined, {
+        connectorLabel: connectorName,
+        preloadStart,
+        preloadEnd: window.end,
+      }),
+    );
 
     const binanceConnectorCreator = await getConnectorCreatorByName(
       ConnectorNames.Binance,
@@ -507,12 +556,20 @@ const backtest = async () => {
     )({
       userName: flags.user,
     });
-    await update(binanceConnector, interval, ['BTCUSDT'], undefined, {
-      connectorLabel: ConnectorNames.Binance,
-    });
-    await update(coinbaseConnector, interval, ['BTCUSDT'], undefined, {
-      connectorLabel: ConnectorNames.Coinbase,
-    });
+    await timeOperation(`update ${ConnectorNames.Binance}`, () =>
+      update(binanceConnector, interval, ['BTCUSDT'], undefined, {
+        connectorLabel: ConnectorNames.Binance,
+        preloadStart,
+        preloadEnd: window.end,
+      }),
+    );
+    await timeOperation(`update ${ConnectorNames.Coinbase}`, () =>
+      update(coinbaseConnector, interval, ['BTCUSDT'], undefined, {
+        connectorLabel: ConnectorNames.Coinbase,
+        preloadStart,
+        preloadEnd: window.end,
+      }),
+    );
   }
 
   if (flags.updateOnly) {
@@ -526,13 +583,6 @@ const backtest = async () => {
     typedBacktestConfig,
     connectorName,
   );
-  const window = resolveTimeWindow({
-    days: flags.days,
-    startTime: flags.startTime,
-    endTime: flags.endTime,
-    defaultStartMs: getTimestamp(BACKTEST_PRELOAD_DAYS),
-    defaultEndMs: getTimestamp(),
-  });
   const mlEnabled = Boolean(flags.ml);
   const aiEnabled = Boolean(flags.ai);
   testSuite = testSuite
@@ -564,13 +614,18 @@ const backtest = async () => {
       mlEnabled,
     })
   ) {
-    await backfillDerivativesContextForBacktest({
-      userName,
-      symbols: testSuite.map((test) => test.symbol),
-      startMs: window.start,
-      endMs: window.end,
-    });
+    await timeOperation('derivatives context backfill', () =>
+      backfillDerivativesContextForBacktest({
+        userName,
+        symbols: testSuite.map((test) => test.symbol),
+        startMs: window.start,
+        endMs: window.end,
+        preloadStartMs: preloadStart,
+      }),
+    );
   }
+
+  testsStartedAt = Date.now();
 
   const chunkSize = Math.ceil(testSuite.length / parseInt(flags.parallel));
   const chunks = _.chunk(testSuite, chunkSize);
@@ -611,7 +666,12 @@ const backtest = async () => {
   console.log(chalk.yellow(`tests: ${testSuite.length}`));
   console.log(
     chalk.gray(
-      `window: ${formatUnix(window.start)} -> ${formatUnix(window.end)} (${window.source})`,
+      `window: ${formatUnix(window.start)} -> ${formatUnix(window.end)} (${formatWindowDays(window.start, window.end)}d, ${window.source})`,
+    ),
+  );
+  console.log(
+    chalk.gray(
+      `preload: ${formatUnix(preloadStart)} -> ${formatUnix(window.end)} (${BACKTEST_PRELOAD_DAYS}d warmup)`,
     ),
   );
 
@@ -825,6 +885,13 @@ const finish = async () => {
   } else {
     await saveAndPrintResultsByTickers();
   }
+  console.log(
+    chalk.gray(`tests run: done in ${formatDuration(testsStartedAt)}`),
+  );
+  console.log(
+    chalk.gray(`backtest total: done in ${formatDuration(runStartedAt)}`),
+  );
+  console.log('');
 
   const bestConfig = results[0]?.test.strategyConfig;
   console.log(chalk.gray('BEST CONFIG:'));

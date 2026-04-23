@@ -8,8 +8,7 @@ import {
   TestingBox,
 } from '@tradejs/types';
 import { alignSortedCandlesByTimestamp } from '@tradejs/core/indicators';
-import { PRELOAD_DAYS } from '@tradejs/core/constants';
-import { getTimestamp } from '@tradejs/core/time';
+import { getBacktestPreloadStart } from '@tradejs/core/time';
 import { appendAiDatasetRow } from '@tradejs/infra/ai';
 import {
   appendMlDatasetRow,
@@ -27,8 +26,6 @@ import {
 } from './connectorsRegistry';
 import { createTestConnector } from './testConnector';
 import { getTradejsProjectCwd } from './tradejsConfig';
-
-const preloadStart = getTimestamp(PRELOAD_DAYS);
 
 type TestingKlineCacheState = {
   coinKlineCache: Map<string, KlineChartData>;
@@ -85,11 +82,20 @@ const getKlineCacheKey = (params: {
   userName: string;
   connectorName: string;
   symbol: string;
+  preloadStart: number;
   end: number;
   interval: string;
   cacheOnly: boolean;
 }) => {
-  const { userName, connectorName, symbol, end, interval, cacheOnly } = params;
+  const {
+    userName,
+    connectorName,
+    symbol,
+    preloadStart,
+    end,
+    interval,
+    cacheOnly,
+  } = params;
   return [
     userName,
     connectorName,
@@ -105,6 +111,7 @@ const getPreparedDataCacheKey = (params: {
   userName: string;
   connectorName: string;
   symbol: string;
+  preloadStart: number;
   start: number;
   end: number;
   interval: string;
@@ -115,6 +122,7 @@ const getPreparedDataCacheKey = (params: {
     userName,
     connectorName,
     symbol,
+    preloadStart,
     start,
     end,
     interval,
@@ -126,6 +134,7 @@ const getPreparedDataCacheKey = (params: {
     userName,
     connectorName,
     symbol,
+    preloadStart,
     start,
     end,
     interval,
@@ -142,6 +151,7 @@ const getConnectorCacheKey = (params: {
 const splitCandlesForTesting = (
   candles: KlineChartData,
   start: number,
+  preloadStart: number,
 ): {
   prevData: KlineChartData;
   testData: KlineChartData;
@@ -221,6 +231,7 @@ export const testing: TestingBox = async ({
     throw new Error('no start');
   }
   // TODO: Add explicit end validation (and consistent error handling) similar to start validation.
+  const preloadStart = getBacktestPreloadStart(start);
 
   const startedAt = Date.now();
   const formatTimeoutMessage = (stage: string) =>
@@ -319,6 +330,7 @@ export const testing: TestingBox = async ({
     userName,
     connectorName,
     symbol,
+    preloadStart,
     end,
     interval,
     cacheOnly,
@@ -327,6 +339,7 @@ export const testing: TestingBox = async ({
     userName,
     connectorName,
     symbol: 'BTCUSDT',
+    preloadStart,
     end,
     interval,
     cacheOnly,
@@ -344,6 +357,7 @@ export const testing: TestingBox = async ({
     userName,
     connectorName: btcBinanceConnectorName,
     symbol: 'BTCUSDT',
+    preloadStart,
     end,
     interval,
     cacheOnly,
@@ -352,6 +366,7 @@ export const testing: TestingBox = async ({
     userName,
     connectorName: btcCoinbaseConnectorName,
     symbol: 'BTCUSDT',
+    preloadStart,
     end,
     interval,
     cacheOnly,
@@ -364,6 +379,7 @@ export const testing: TestingBox = async ({
     userName,
     connectorName,
     symbol,
+    preloadStart,
     start,
     end,
     interval,
@@ -434,16 +450,18 @@ export const testing: TestingBox = async ({
     }
 
     const { prevData: prevDataRaw, testData: testDataRaw } =
-      splitCandlesForTesting(data, start);
+      splitCandlesForTesting(data, start, preloadStart);
     const { prevData: btcPrevDataRaw, testData: btcTestDataRaw } =
-      splitCandlesForTesting(btcData, start);
+      splitCandlesForTesting(btcData, start, preloadStart);
     const { prevData: btcBinancePrevDataRaw } = splitCandlesForTesting(
       btcBinanceData,
       start,
+      preloadStart,
     );
     const { prevData: btcCoinbasePrevDataRaw } = splitCandlesForTesting(
       btcCoinbaseData,
       start,
+      preloadStart,
     );
 
     const { alignedCoinCandles: prevData, alignedBtcCandles: btcPrevData } =

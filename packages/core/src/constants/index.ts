@@ -8,7 +8,8 @@ export const SPREAD_WINDOW = 50;
 export const PRELOAD_DAYS = 200;
 export const SIGNALS_PRELOAD_DAYS = 60;
 export const SIGNALS_CLI_PRELOAD_DAYS = 10;
-export const BACKTEST_PRELOAD_DAYS = 160;
+export const BACKTEST_DEFAULT_DAYS = 160;
+export const BACKTEST_PRELOAD_DAYS = 60;
 export const DASHBOARD_PRELOAD_DAYS = 160;
 export const BOT_PRELOAD_DAYS = 160;
 export const PRELOAD_FALLBACK_DAYS = 160;
@@ -27,6 +28,10 @@ export const TESTS_ORDERS_MIN_LIMIT = 3;
 export const MARKET_CATEGORY = 'linear';
 export const ML_CANDLE_FEATURE_WINDOW = 50;
 export const ML_BASE_CANDLES_WINDOW = 50;
+export const DERIVATIVES_CONTEXT_REFERENCE_SYMBOLS = [
+  'BTCUSDT',
+  'ETHUSDT',
+] as const;
 
 export const TRENDLINE_DEFAULTS = {
   maxLines: 20,

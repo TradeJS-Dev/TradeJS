@@ -114,11 +114,25 @@ export const update = async (
   preloadDays = PRELOAD_DAYS,
   options: {
     connectorLabel?: string;
+    preloadStart?: number;
+    preloadEnd?: number;
   } = {},
 ) => {
-  const PRELOAD_START = getTimestamp(preloadDays);
-  const PRELOAD_END = getTimestamp();
+  const preloadStart = Math.trunc(
+    options.preloadStart ?? getTimestamp(preloadDays),
+  );
+  const preloadEnd = Math.trunc(options.preloadEnd ?? getTimestamp());
   const connectorLabel = String(options.connectorLabel || '').trim();
+  const preloadLabel =
+    options.preloadStart != null || options.preloadEnd != null
+      ? `preloadStart=${preloadStart}, preloadEnd=${preloadEnd}`
+      : `preloadDays=${preloadDays}`;
+
+  if (preloadStart >= preloadEnd) {
+    throw new Error(
+      `Invalid update preload window: start (${preloadStart}) must be less than end (${preloadEnd})`,
+    );
+  }
 
   const bar = new ProgressBar(
     ':current/:total [:bar][:percent] :eta(s) :symbol',
@@ -130,7 +144,7 @@ export const update = async (
 
   logger.info(
     chalk.yellow(
-      `update: ${tickers.length} (connector=${connectorLabel || 'unknown'}, klineConcurrency=${KLINE_CONCURRENCY_LIMIT}, preloadDays=${preloadDays})`,
+      `update: ${tickers.length} (connector=${connectorLabel || 'unknown'}, klineConcurrency=${KLINE_CONCURRENCY_LIMIT}, ${preloadLabel})`,
     ),
   );
 
@@ -144,8 +158,8 @@ export const update = async (
     try {
       await connector.kline({
         symbol,
-        start: PRELOAD_START,
-        end: PRELOAD_END,
+        start: preloadStart,
+        end: preloadEnd,
         interval,
         silent: true,
         warmOnly: true,

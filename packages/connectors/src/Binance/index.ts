@@ -5,8 +5,10 @@ import {
   ConnectorCreator,
   Interval,
   KlineChartData,
+  KlineRequest,
   Ticker,
 } from '@tradejs/types';
+import { createTimescaleCachedKline } from '../shared/timescaleKlineCache';
 
 const INTERVAL_MAP: Record<string, string> = {
   '1': '1m',
@@ -45,8 +47,70 @@ const toNum = (value: unknown, fallback = 0) => {
   return Number.isFinite(num) ? num : fallback;
 };
 
+const intervalToMinutes = (interval: Interval): number | null => {
+  const intervalMs = INTERVAL_MS[String(interval)];
+  return intervalMs ? Math.floor(intervalMs / 60_000) : null;
+};
+
 export const BinanceConnectorCreator: ConnectorCreator = async () => {
   let state: Record<string, unknown> = {};
+
+  const requestKline = async ({
+    symbol,
+    interval,
+    start,
+    end,
+  }: KlineRequest) => {
+    const intervalToken = INTERVAL_MAP[String(interval)];
+    if (!intervalToken) return [];
+
+    const intervalMs = INTERVAL_MS[String(interval)] ?? 900_000;
+    const normalizedEnd = end ?? Date.now();
+    const baseUrl =
+      process.env.BINANCE_BASE_URL?.trim() || 'https://api.binance.com';
+
+    let cursor = start ?? Math.max(0, normalizedEnd - intervalMs * 1000);
+    const rows: KlineChartData = [];
+
+    while (cursor <= normalizedEnd) {
+      const url = new URL(`${baseUrl}/api/v3/klines`);
+      url.searchParams.set('symbol', symbol);
+      url.searchParams.set('interval', intervalToken);
+      url.searchParams.set('startTime', String(cursor));
+      url.searchParams.set('endTime', String(normalizedEnd));
+      url.searchParams.set('limit', '1000');
+
+      const response = await fetchWithRetry(url.toString(), {
+        headers: { 'User-Agent': 'tradejs/binance-connector' },
+      });
+      if (!response.ok) break;
+      const payload = (await response.json()) as unknown[];
+      if (!Array.isArray(payload) || !payload.length) break;
+
+      let lastTs = cursor;
+      for (const item of payload) {
+        if (!Array.isArray(item)) continue;
+        const ts = toNum(item[0], 0);
+        if (!ts) continue;
+        rows.push({
+          timestamp: ts,
+          open: toNum(item[1]),
+          high: toNum(item[2]),
+          low: toNum(item[3]),
+          close: toNum(item[4]),
+          volume: toNum(item[5]),
+          turnover: toNum(item[7]),
+          dt: new Date(ts).toISOString(),
+        });
+        lastTs = ts;
+      }
+      if (payload.length < 1000) break;
+      cursor = lastTs + intervalMs;
+    }
+
+    rows.sort((a, b) => a.timestamp - b.timestamp);
+    return rows;
+  };
 
   return {
     getState: async () => state,
@@ -54,56 +118,11 @@ export const BinanceConnectorCreator: ConnectorCreator = async () => {
       state = { ...state, ...newState };
     },
 
-    kline: async ({ symbol, interval, start, end }) => {
-      const intervalToken = INTERVAL_MAP[String(interval)];
-      if (!intervalToken) return [];
-
-      const intervalMs = INTERVAL_MS[String(interval)] ?? 900_000;
-      const baseUrl =
-        process.env.BINANCE_BASE_URL?.trim() || 'https://api.binance.com';
-
-      let cursor = start ?? Math.max(0, end - intervalMs * 1000);
-      const rows: KlineChartData = [];
-
-      while (cursor <= end) {
-        const url = new URL(`${baseUrl}/api/v3/klines`);
-        url.searchParams.set('symbol', symbol);
-        url.searchParams.set('interval', intervalToken);
-        url.searchParams.set('startTime', String(cursor));
-        url.searchParams.set('endTime', String(end));
-        url.searchParams.set('limit', '1000');
-
-        const response = await fetchWithRetry(url.toString(), {
-          headers: { 'User-Agent': 'tradejs/binance-connector' },
-        });
-        if (!response.ok) break;
-        const payload = (await response.json()) as unknown[];
-        if (!Array.isArray(payload) || !payload.length) break;
-
-        let lastTs = cursor;
-        for (const item of payload) {
-          if (!Array.isArray(item)) continue;
-          const ts = toNum(item[0], 0);
-          if (!ts) continue;
-          rows.push({
-            timestamp: ts,
-            open: toNum(item[1]),
-            high: toNum(item[2]),
-            low: toNum(item[3]),
-            close: toNum(item[4]),
-            volume: toNum(item[5]),
-            turnover: toNum(item[7]),
-            dt: new Date(ts).toISOString(),
-          });
-          lastTs = ts;
-        }
-        if (payload.length < 1000) break;
-        cursor = lastTs + intervalMs;
-      }
-
-      rows.sort((a, b) => a.timestamp - b.timestamp);
-      return rows;
-    },
+    kline: createTimescaleCachedKline({
+      provider: 'binance',
+      request: requestKline,
+      intervalToMinutes,
+    }),
 
     getPosition: async () => null,
     getPositions: async () => [],

@@ -79,7 +79,7 @@ export interface DerivativesIntervalContext {
   liqSpikeRatio: number | null;
 }
 
-export interface DerivativesContext {
+export interface DerivativesSymbolContext {
   source: 'coinalyze';
   symbol: string;
   timestamp: number;
@@ -89,6 +89,13 @@ export interface DerivativesContext {
     directionAligned: boolean | null;
     riskFlags: DerivativesContextRiskFlag[];
   };
+}
+
+export interface DerivativesContext extends DerivativesSymbolContext {
+  targetSymbol?: string;
+  primaryReferenceSymbol?: string;
+  referenceSymbols?: string[];
+  referenceContexts?: Record<string, DerivativesSymbolContext>;
 }
 
 export type SpreadRow = {
