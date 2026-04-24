@@ -269,7 +269,8 @@ describe('signals summary script', () => {
     expect(message).toContain(
       '<b>ReverseTrendLine</b>: skipped=<b>1</b>\n  • evaluated=<b>1</b>, signals=<b>1</b>',
     );
-    expect(message).toContain('skip from AI / MIN_AI_QUALITY: <b>1</b>');
+    expect(message).toContain('  • <b>skip from AI</b>:');
+    expect(message).toContain('    • MIN_AI_QUALITY: <b>1</b>');
     expect(message).toContain(
       '<b>TrendLine</b>\n• total=<b>1</b>, active=<b>1</b> (PnL <b>+12.00</b>)\n• closed=<b>0</b> (PnL <b>n/a</b>), totalPnL=<b>+12.00</b>',
     );
@@ -441,11 +442,12 @@ describe('signals summary script', () => {
     );
     expect(message).toContain('<b>ReverseTrendLine</b>: none');
     expect(message).toContain('<b>TrendLine</b>: none');
-    expect(message).toContain('<b>VolumeDivergence</b>: none');
+    expect(message).toContain('<b>VolumeDivergence</b>: signals=<b>0</b>');
     expect(message).toContain(
-      '<b>VolumeDivergence</b>: none\n  • evaluated=<b>1</b>, signals=<b>0</b>',
+      '<b>VolumeDivergence</b>: signals=<b>0</b>\n  • evaluated=<b>1</b>, signals=<b>0</b>',
     );
-    expect(message).toContain('skip from core / NO_DIVERGENCE: <b>1</b>');
+    expect(message).toContain('  • <b>skip from core</b>:');
+    expect(message).toContain('    • NO_DIVERGENCE: <b>1</b>');
     expect(message).toContain('<b>AdaptiveMomentumRibbon</b>: total=<b>0</b>');
     expect(message).toContain('<b>ReverseTrendLine</b>: total=<b>0</b>');
     expect(message).toContain('<b>TrendLine</b>: total=<b>0</b>');

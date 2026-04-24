@@ -115,7 +115,10 @@ const normalizeSkipStatsReason = (reason: string, fallbackSource: string) => {
     source = 'policy';
   }
 
-  return `skip from ${source} / ${normalizedReason}`;
+  return {
+    source: `skip from ${source}`,
+    reason: normalizedReason,
+  };
 };
 
 const isSignalRecord = (value: unknown): value is Signal => {
@@ -451,7 +454,7 @@ const buildSummaryMessage = ({
     {
       evaluated: number;
       signals: number;
-      reasons: Map<string, number>;
+      reasonGroups: Map<string, Map<string, number>>;
     }
   >();
   const tradeStats = new Map<
@@ -488,7 +491,7 @@ const buildSummaryMessage = ({
     const stats = evaluationStats.get(evaluation.strategy) ?? {
       evaluated: 0,
       signals: 0,
-      reasons: new Map<string, number>(),
+      reasonGroups: new Map<string, Map<string, number>>(),
     };
     stats.evaluated += 1;
 
@@ -518,8 +521,11 @@ const buildSummaryMessage = ({
     }
 
     if (skipReason) {
-      const reason = normalizeSkipStatsReason(skipReason, fallbackSource);
-      stats.reasons.set(reason, (stats.reasons.get(reason) ?? 0) + 1);
+      const normalized = normalizeSkipStatsReason(skipReason, fallbackSource);
+      const reasons =
+        stats.reasonGroups.get(normalized.source) ?? new Map<string, number>();
+      reasons.set(normalized.reason, (reasons.get(normalized.reason) ?? 0) + 1);
+      stats.reasonGroups.set(normalized.source, reasons);
     }
 
     evaluationStats.set(evaluation.strategy, stats);
@@ -607,19 +613,45 @@ const buildSummaryMessage = ({
     lines.push(
       `  • evaluated=<b>${evaluation.evaluated}</b>, signals=<b>${evaluation.signals}</b>`,
     );
-    const sortedReasons = [...evaluation.reasons.entries()].sort(
-      (left, right) => right[1] - left[1] || left[0].localeCompare(right[0]),
+    const sourceOrder = ['skip from core', 'skip from AI', 'skip from ML'];
+    const sortedReasonGroups = [...evaluation.reasonGroups.entries()].sort(
+      (left, right) => {
+        const leftOrder = sourceOrder.indexOf(left[0]);
+        const rightOrder = sourceOrder.indexOf(right[0]);
+        const normalizedLeftOrder =
+          leftOrder >= 0 ? leftOrder : sourceOrder.length;
+        const normalizedRightOrder =
+          rightOrder >= 0 ? rightOrder : sourceOrder.length;
+
+        return (
+          normalizedLeftOrder - normalizedRightOrder ||
+          left[0].localeCompare(right[0])
+        );
+      },
     );
-    for (const [reason, count] of sortedReasons) {
-      lines.push(`  • ${escapeHtml(reason)}: <b>${count}</b>`);
+
+    for (const [source, reasons] of sortedReasonGroups) {
+      lines.push(`  • <b>${escapeHtml(source)}</b>:`);
+      const sortedReasons = [...reasons.entries()].sort(
+        (left, right) => right[1] - left[1] || left[0].localeCompare(right[0]),
+      );
+
+      for (const [reason, count] of sortedReasons) {
+        lines.push(`    • ${escapeHtml(reason)}: <b>${count}</b>`);
+      }
     }
   };
 
   for (const strategyName of sortedStrategies) {
     const stats = signalStats.get(strategyName);
     if (!stats || stats.size === 0) {
+      const evaluation = evaluationStats.get(strategyName);
       lines.push('');
-      lines.push(`<b>${escapeHtml(strategyName)}</b>: none`);
+      lines.push(
+        evaluation?.evaluated
+          ? `<b>${escapeHtml(strategyName)}</b>: signals=<b>0</b>`
+          : `<b>${escapeHtml(strategyName)}</b>: none`,
+      );
       appendEvaluationDetails(strategyName);
       continue;
     }
