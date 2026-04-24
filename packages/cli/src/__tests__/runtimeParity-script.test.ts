@@ -8,11 +8,18 @@ const setupRuntimeParityModule = async (
   const sendTextToTG = jest.fn(
     async (_message: string, _options?: unknown) => null,
   );
+  const getTickers: jest.Mock<Promise<string[]>, []> = jest.fn(
+    async () => [],
+  );
   const update = jest.fn(async () => null);
   const getKeys = jest.fn(async (_prefix: string): Promise<string[]> => []);
   const getData = jest.fn(async (_key: string, fallback: unknown) => fallback);
   const resetTestingKlineCache = jest.fn();
   const testing = jest.fn();
+  const connector = {
+    getTickers: jest.fn(async (): Promise<string[]> => []),
+  };
+  const getConnectorCreatorByName = jest.fn(async () => async () => connector);
   const logger = {
     info: jest.fn(),
     warn: jest.fn(),
@@ -39,6 +46,7 @@ const setupRuntimeParityModule = async (
 
   jest.doMock('@tradejs/node/cli', () => ({
     __esModule: true,
+    getTickers,
     sendTextToTG,
     update,
   }));
@@ -74,7 +82,7 @@ const setupRuntimeParityModule = async (
   jest.doMock('@tradejs/node/connectors', () => ({
     __esModule: true,
     DEFAULT_CONNECTOR_NAME: 'bybit',
-    getConnectorCreatorByName: jest.fn(),
+    getConnectorCreatorByName,
     resolveConnectorName: jest.fn(async () => 'bybit'),
   }));
 
@@ -89,8 +97,10 @@ const setupRuntimeParityModule = async (
   return {
     mod,
     sendTextToTG,
+    getTickers,
     getKeys,
     getData,
+    getConnectorCreatorByName,
     resetTestingKlineCache,
     testing,
   };
@@ -127,7 +137,7 @@ describe('runtime parity script', () => {
       ],
       sourceCounts: {
         runtime: 5,
-        runtimeUniverse: 0,
+        connectorUniverse: 0,
         explicitTickers: 0,
         strategyResults: 5,
       },
@@ -144,6 +154,21 @@ describe('runtime parity script', () => {
         avgTimestampDiffMs: 60_000,
         maxTimestampDiffMs: 120_000,
       },
+      classifiedRuntimeOnly: [
+        {
+          entry: {
+            id: 'rt-1',
+            source: 'runtime',
+            strategy: 'TrendLine',
+            symbol: 'BTCUSDT',
+            direction: 'LONG',
+            timestamp: 1_700_000_000_000,
+            price: 100,
+          },
+          classification: 'gated_out',
+          reason: 'AI_QUALITY_BELOW_MIN',
+        },
+      ],
       classifiedBacktestOnly: [
         {
           entry: {
@@ -187,6 +212,9 @@ describe('runtime parity script', () => {
     );
     expect(message).toContain(
       '<b>TrendLine</b>\n• targets=<b>5</b>, compared=<b>5</b>, errors=<b>0</b>',
+    );
+    expect(message).toContain(
+      '• Runtime-only classes: <code>gated_out=1, order_failed=0, core_skipped=0, backtest_drift=0, not_evaluated=0, true_mismatch=0</code>',
     );
     expect(message).toContain(
       '• Backtest-only classes: <code>gated_out=1, order_failed=0, core_skipped=0, not_evaluated=0, true_mismatch=0</code>',
@@ -277,7 +305,10 @@ describe('runtime parity script', () => {
       }
       return fallback;
     });
-    testing.mockResolvedValue({ inlineOrderLog: [] });
+    testing.mockResolvedValue({
+      inlineOrderLog: [],
+      inlineReplaySignalEvaluations: [],
+    });
 
     await mod.runtimeParity();
 
@@ -296,6 +327,68 @@ describe('runtime parity script', () => {
         ],
       }),
     );
+
+    logSpy.mockRestore();
+  });
+
+  it('builds replay targets from the full connector universe by default', async () => {
+    const logSpy = jest
+      .spyOn(console, 'log')
+      .mockImplementation(() => undefined);
+    const startTime = 1_700_000_000_000;
+    const endTime = startTime + 86_400_000;
+    const { mod, getTickers, getKeys, getData, testing } =
+      await setupRuntimeParityModule({
+        startTime,
+        endTime,
+        runtimeGates: true,
+        cacheOnly: true,
+      });
+
+    getTickers.mockImplementation(async () => ['BTCUSDT', 'ETHUSDT']);
+    getKeys.mockImplementation(async (prefix: string) => {
+      if (prefix === 'users:root:strategies:') {
+        return [
+          'users:root:strategies:TrendLine:config',
+          'users:root:strategies:VolumeDivergence:config',
+        ];
+      }
+      return [];
+    });
+    getData.mockImplementation(async (key: string, fallback: unknown) => {
+      if (key === 'users:root:strategies:TrendLine:config') {
+        return {};
+      }
+      if (key === 'users:root:strategies:VolumeDivergence:config') {
+        return {};
+      }
+      if (key === 'users:root:strategies:TrendLine:results') {
+        return {};
+      }
+      if (key === 'users:root:strategies:VolumeDivergence:results') {
+        return {};
+      }
+      return fallback;
+    });
+    testing.mockResolvedValue({
+      inlineOrderLog: [],
+      inlineReplaySignalEvaluations: [],
+    });
+
+    await mod.runtimeParity();
+
+    expect(testing).toHaveBeenCalledTimes(4);
+    expect(
+      testing.mock.calls.map(([call]) => ({
+        strategyName: call.strategyName,
+        symbol: call.symbol,
+      })),
+    ).toEqual([
+      { strategyName: 'TrendLine', symbol: 'BTCUSDT' },
+      { strategyName: 'TrendLine', symbol: 'ETHUSDT' },
+      { strategyName: 'VolumeDivergence', symbol: 'BTCUSDT' },
+      { strategyName: 'VolumeDivergence', symbol: 'ETHUSDT' },
+    ]);
 
     logSpy.mockRestore();
   });

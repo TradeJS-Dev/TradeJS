@@ -8,6 +8,7 @@ import {
   KlineChartData,
   Order,
   OrderType,
+  RuntimeSignalEvaluationRecord,
 } from './trade';
 import { Signal } from './trade';
 
@@ -86,6 +87,7 @@ export interface TestingBoxResult {
   stat: MinimalStat;
   inlineOrderLog?: OrderLogData;
   inlinePositionLog?: PositionLogData;
+  inlineReplaySignalEvaluations?: RuntimeSignalEvaluationRecord[];
 }
 
 export type TestingBox = (test: Test) => Promise<TestingBoxResult | null>;

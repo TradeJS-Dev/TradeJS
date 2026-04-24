@@ -7,7 +7,7 @@ import { BACKTEST_PRELOAD_DAYS } from '@tradejs/core/constants';
 import { formatUnix, getBacktestPreloadStart } from '@tradejs/core/time';
 import { logger } from '@tradejs/infra/logger';
 import { getData, getKeys, redisKeys } from '@tradejs/infra/redis';
-import { update } from '@tradejs/node/cli';
+import { getTickers, update } from '@tradejs/node/cli';
 import { resetTestingKlineCache, testing } from '@tradejs/node/backtest';
 import {
   DEFAULT_CONNECTOR_NAME,
@@ -97,7 +97,7 @@ type ReplayTarget = {
   strategy: string;
   symbol: string;
   sources: Array<
-    'runtime' | 'strategyResults' | 'runtimeUniverse' | 'explicitTickers'
+    'runtime' | 'strategyResults' | 'connectorUniverse' | 'explicitTickers'
   >;
 };
 
@@ -107,7 +107,7 @@ type ReplayError = ReplayTarget & {
 
 type ReplayTargetSourceCounts = {
   runtime: number;
-  runtimeUniverse: number;
+  connectorUniverse: number;
   explicitTickers: number;
   strategyResults: number;
 };
@@ -129,6 +129,24 @@ type ClassifiedBacktestOnlyEntry = {
   evaluationTimestampDiffMs?: number;
 };
 
+type RuntimeOnlyClassification =
+  | 'gated_out'
+  | 'order_failed'
+  | 'core_skipped'
+  | 'backtest_drift'
+  | 'not_evaluated'
+  | 'true_mismatch';
+
+type ClassifiedRuntimeOnlyEntry = {
+  entry: TradeParityEntry;
+  classification: RuntimeOnlyClassification;
+  reason: string;
+  evaluation?: RuntimeSignalEvaluationRecord;
+  evaluationTimestampDiffMs?: number;
+  nearestBacktestEntry?: TradeParityEntry;
+  nearestBacktestEntryTimestampDiffMs?: number;
+};
+
 type StrategyParitySummaryRow = {
   runtime: number;
   runtimeDuplicates: number;
@@ -145,6 +163,15 @@ const BACKTEST_ONLY_CLASSIFICATIONS: BacktestOnlyClassification[] = [
   'gated_out',
   'order_failed',
   'core_skipped',
+  'not_evaluated',
+  'true_mismatch',
+];
+
+const RUNTIME_ONLY_CLASSIFICATIONS: RuntimeOnlyClassification[] = [
+  'gated_out',
+  'order_failed',
+  'core_skipped',
+  'backtest_drift',
   'not_evaluated',
   'true_mismatch',
 ];
@@ -361,8 +388,8 @@ const countReplayTargetSources = (
 ): ReplayTargetSourceCounts => ({
   runtime: targets.filter((target) => target.sources.includes('runtime'))
     .length,
-  runtimeUniverse: targets.filter((target) =>
-    target.sources.includes('runtimeUniverse'),
+  connectorUniverse: targets.filter((target) =>
+    target.sources.includes('connectorUniverse'),
   ).length,
   explicitTickers: targets.filter((target) =>
     target.sources.includes('explicitTickers'),
@@ -375,11 +402,13 @@ const countReplayTargetSources = (
 const buildReplayTargets = async ({
   userName,
   runtimeTrades,
+  connectorSymbols,
   strategyFilter,
   explicitSymbols,
 }: {
   userName: string;
   runtimeTrades: RuntimeTradeRecord[];
+  connectorSymbols: string[];
   strategyFilter?: string;
   explicitSymbols: string[];
 }) => {
@@ -411,21 +440,12 @@ const buildReplayTargets = async ({
     );
   }
 
-  const runtimeSymbols = [
-    ...new Set(
-      runtimeTrades
-        .map((trade) => trade.symbol)
-        .filter(
-          (symbol) => !explicitSymbolSet || explicitSymbolSet.has(symbol),
-        ),
-    ),
-  ].sort((left, right) => left.localeCompare(right));
   const universeSymbols = explicitSymbols.length
     ? explicitSymbols
-    : runtimeSymbols;
+    : connectorSymbols;
   const universeSource = explicitSymbols.length
     ? 'explicitTickers'
-    : 'runtimeUniverse';
+    : 'connectorUniverse';
 
   for (const strategy of configuredStrategies) {
     for (const symbol of universeSymbols) {
@@ -448,6 +468,24 @@ const buildReplayTargets = async ({
       left.strategy.localeCompare(right.strategy) ||
       left.symbol.localeCompare(right.symbol),
   );
+};
+
+const createConnector = async ({
+  userName,
+  connectorName,
+}: {
+  userName: string;
+  connectorName: string;
+}) => {
+  const connectorFactory = await getConnectorCreatorByName(
+    connectorName,
+    projectRoot,
+  );
+  if (!connectorFactory) {
+    throw new Error(`Connector "${connectorName}" is not registered`);
+  }
+
+  return await (connectorFactory as ConnectorCreator)({ userName });
 };
 
 const buildReplayAiAnalyses = ({
@@ -570,15 +608,7 @@ const warmReplayHistory = async ({
   preloadStart: number;
   preloadEnd: number;
 }) => {
-  const connectorFactory = await getConnectorCreatorByName(
-    connectorName,
-    projectRoot,
-  );
-  if (!connectorFactory) {
-    throw new Error(`Connector "${connectorName}" is not registered`);
-  }
-
-  const connector = await (connectorFactory as ConnectorCreator)({ userName });
+  const connector = await createConnector({ userName, connectorName });
   const symbols = [...new Set(targets.map((target) => target.symbol))];
 
   await update(connector, interval, symbols, undefined, {
@@ -633,27 +663,6 @@ const formatMinutes = (value: number | null) =>
 
 const formatEntryLabel = (entry: TradeParityEntry) =>
   `${entry.strategy} ${entry.symbol} ${entry.direction} ${formatUnix(entry.timestamp)}`;
-
-const printEntryDetails = (label: string, entries: TradeParityEntry[]) => {
-  if (!entries.length) {
-    return;
-  }
-
-  console.log('');
-  console.log(chalk.yellow(label));
-
-  for (const entry of entries.slice(0, DETAIL_LIMIT)) {
-    console.log(
-      `- ${formatEntryLabel(entry)} price=${
-        entry.price == null ? 'n/a' : entry.price.toFixed(6)
-      } id=${entry.id}`,
-    );
-  }
-
-  if (entries.length > DETAIL_LIMIT) {
-    console.log(`- ... ${entries.length - DETAIL_LIMIT} more`);
-  }
-};
 
 const printRuntimeDuplicateDetails = (groups: RuntimeDuplicateGroup[]) => {
   if (!groups.length) {
@@ -746,6 +755,42 @@ const findNearestRuntimeSignalEvaluation = ({
   return bestEvaluation
     ? {
         evaluation: bestEvaluation,
+        timestampDiffMs: bestDiff,
+      }
+    : null;
+};
+
+const findNearestBacktestEntryForRuntimeOnly = ({
+  entry,
+  backtestEntries,
+}: {
+  entry: TradeParityEntry;
+  backtestEntries: TradeParityEntry[];
+}) => {
+  let bestEntry: TradeParityEntry | null = null;
+  let bestDiff = Number.POSITIVE_INFINITY;
+
+  for (const backtestEntry of backtestEntries) {
+    if (
+      backtestEntry.strategy !== entry.strategy ||
+      backtestEntry.symbol !== entry.symbol ||
+      backtestEntry.direction !== entry.direction
+    ) {
+      continue;
+    }
+
+    const diff = Math.abs(backtestEntry.timestamp - entry.timestamp);
+    if (diff >= bestDiff) {
+      continue;
+    }
+
+    bestEntry = backtestEntry;
+    bestDiff = diff;
+  }
+
+  return bestEntry
+    ? {
+        entry: bestEntry,
         timestampDiffMs: bestDiff,
       }
     : null;
@@ -847,6 +892,70 @@ const buildEvaluationClassification = ({
   };
 };
 
+const buildRuntimeOnlyEvaluationClassification = ({
+  entry,
+  evaluation,
+}: {
+  entry: TradeParityEntry;
+  evaluation: RuntimeSignalEvaluationRecord;
+}): Pick<ClassifiedRuntimeOnlyEntry, 'classification' | 'reason'> => {
+  if (evaluation.status === 'skip') {
+    return {
+      classification: 'core_skipped',
+      reason: evaluation.reason || 'NO_SIGNAL',
+    };
+  }
+
+  if (evaluation.status === 'error') {
+    return {
+      classification: 'true_mismatch',
+      reason: evaluation.reason || 'replay_evaluation_error',
+    };
+  }
+
+  if (evaluation.direction && evaluation.direction !== entry.direction) {
+    return {
+      classification: 'true_mismatch',
+      reason: `replay_signal_direction=${evaluation.direction}`,
+    };
+  }
+
+  const orderStatus = normalizeSignalOrderStatus(evaluation.orderStatus);
+  if (orderStatus === 'failed') {
+    return {
+      classification: 'order_failed',
+      reason: evaluation.reason || 'orderStatus=failed',
+    };
+  }
+
+  if (
+    orderStatus === 'skipped' ||
+    orderStatus === 'canceled' ||
+    (typeof evaluation.orderSkipReason === 'string' &&
+      evaluation.orderSkipReason.trim())
+  ) {
+    return {
+      classification: 'gated_out',
+      reason:
+        evaluation.orderSkipReason ||
+        evaluation.reason ||
+        `orderStatus=${orderStatus}`,
+    };
+  }
+
+  if (orderStatus === 'completed') {
+    return {
+      classification: 'true_mismatch',
+      reason: 'completed_replay_signal_without_backtest_trade',
+    };
+  }
+
+  return {
+    classification: 'true_mismatch',
+    reason: evaluation.reason || 'runtime_trade_without_replay_trade',
+  };
+};
+
 const classifyBacktestOnlyEntries = ({
   entries,
   runtimeSignals,
@@ -925,6 +1034,60 @@ const classifyBacktestOnlyEntries = ({
     };
   });
 
+const classifyRuntimeOnlyEntries = ({
+  entries,
+  replaySignalEvaluations,
+  backtestEntries,
+  toleranceMs,
+}: {
+  entries: TradeParityEntry[];
+  replaySignalEvaluations: RuntimeSignalEvaluationRecord[];
+  backtestEntries: TradeParityEntry[];
+  toleranceMs: number;
+}): ClassifiedRuntimeOnlyEntry[] =>
+  entries.map((entry) => {
+    const nearestBacktestEntry = findNearestBacktestEntryForRuntimeOnly({
+      entry,
+      backtestEntries,
+    });
+    if (
+      nearestBacktestEntry &&
+      nearestBacktestEntry.timestampDiffMs > toleranceMs
+    ) {
+      return {
+        entry,
+        classification: 'backtest_drift',
+        reason: `nearest_backtest_entry_drift=${formatMinutes(nearestBacktestEntry.timestampDiffMs)}`,
+        nearestBacktestEntry: nearestBacktestEntry.entry,
+        nearestBacktestEntryTimestampDiffMs:
+          nearestBacktestEntry.timestampDiffMs,
+      };
+    }
+
+    const nearestEvaluation = findNearestRuntimeSignalEvaluation({
+      entry,
+      runtimeSignalEvaluations: replaySignalEvaluations,
+      toleranceMs,
+    });
+    if (!nearestEvaluation) {
+      return {
+        entry,
+        classification: 'not_evaluated',
+        reason: 'no_replay_evaluation',
+      };
+    }
+
+    return {
+      entry,
+      ...buildRuntimeOnlyEvaluationClassification({
+        entry,
+        evaluation: nearestEvaluation.evaluation,
+      }),
+      evaluation: nearestEvaluation.evaluation,
+      evaluationTimestampDiffMs: nearestEvaluation.timestampDiffMs,
+    };
+  });
+
 const summarizeBacktestOnlyClassifications = (
   classifiedEntries: ClassifiedBacktestOnlyEntry[],
 ) => {
@@ -937,6 +1100,25 @@ const summarizeBacktestOnlyClassifications = (
   }
 
   return BACKTEST_ONLY_CLASSIFICATIONS.map(
+    (classification) => `${classification}=${counts.get(classification) ?? 0}`,
+  ).join(', ');
+};
+
+const summarizeRuntimeOnlyClassifications = (
+  classifiedEntries: ClassifiedRuntimeOnlyEntry[],
+) => {
+  const counts = new Map<RuntimeOnlyClassification, number>(
+    RUNTIME_ONLY_CLASSIFICATIONS.map((classification) => [
+      classification,
+      0,
+    ]),
+  );
+
+  for (const item of classifiedEntries) {
+    counts.set(item.classification, (counts.get(item.classification) ?? 0) + 1);
+  }
+
+  return RUNTIME_ONLY_CLASSIFICATIONS.map(
     (classification) => `${classification}=${counts.get(classification) ?? 0}`,
   ).join(', ');
 };
@@ -958,6 +1140,35 @@ const printClassifiedBacktestOnlyDetails = (
         ? ` evaluationId=${item.evaluation.evaluationId} evaluationDrift=${formatMinutes(item.evaluationTimestampDiffMs ?? null)}`
         : '';
 
+    const price =
+      item.entry.price == null ? 'n/a' : item.entry.price.toFixed(6);
+
+    console.log(
+      `- [${item.classification}] ${formatEntryLabel(item.entry)} price=${price} id=${item.entry.id} reason=${item.reason}${evidenceSuffix}`,
+    );
+  }
+
+  if (classifiedEntries.length > DETAIL_LIMIT) {
+    console.log(`- ... ${classifiedEntries.length - DETAIL_LIMIT} more`);
+  }
+};
+
+const printClassifiedRuntimeOnlyDetails = (
+  classifiedEntries: ClassifiedRuntimeOnlyEntry[],
+) => {
+  if (!classifiedEntries.length) {
+    return;
+  }
+
+  console.log('');
+  console.log(chalk.yellow('Runtime only'));
+
+  for (const item of classifiedEntries.slice(0, DETAIL_LIMIT)) {
+    const evidenceSuffix = item.nearestBacktestEntry
+      ? ` nearestBacktestId=${item.nearestBacktestEntry.id} backtestDrift=${formatMinutes(item.nearestBacktestEntryTimestampDiffMs ?? null)}`
+      : item.evaluation
+        ? ` replayEvaluationId=${item.evaluation.evaluationId} replayDrift=${formatMinutes(item.evaluationTimestampDiffMs ?? null)} status=${item.evaluation.status}`
+        : '';
     const price =
       item.entry.price == null ? 'n/a' : item.entry.price.toFixed(6);
 
@@ -1063,6 +1274,7 @@ export const buildRuntimeParityMessage = ({
   runtimeOnlyCount,
   backtestOnlyCount,
   matchedSummary,
+  classifiedRuntimeOnly,
   classifiedBacktestOnly,
   runtimeSignalEvaluationsCount,
   strategyRows,
@@ -1086,6 +1298,7 @@ export const buildRuntimeParityMessage = ({
   runtimeOnlyCount: number;
   backtestOnlyCount: number;
   matchedSummary: ReturnType<typeof summarizeMatchedParity>;
+  classifiedRuntimeOnly: ClassifiedRuntimeOnlyEntry[];
   classifiedBacktestOnly: ClassifiedBacktestOnlyEntry[];
   runtimeSignalEvaluationsCount: number;
   strategyRows: Array<[string, StrategyParitySummaryRow]>;
@@ -1114,7 +1327,7 @@ export const buildRuntimeParityMessage = ({
     `• Targets: <b>${replayTargetsCount}</b> / compared <b>${comparedTargetsCount}</b> / errors <b>${replayErrors.length}</b>`,
   );
   lines.push(
-    `• Sources: runtime=<b>${sourceCounts.runtime}</b>, universe=<b>${sourceCounts.runtimeUniverse}</b>, explicit=<b>${sourceCounts.explicitTickers}</b>, results=<b>${sourceCounts.strategyResults}</b>`,
+    `• Sources: runtime=<b>${sourceCounts.runtime}</b>, universe=<b>${sourceCounts.connectorUniverse}</b>, explicit=<b>${sourceCounts.explicitTickers}</b>, results=<b>${sourceCounts.strategyResults}</b>`,
   );
   lines.push('');
   lines.push('📈 <b>Entries</b>');
@@ -1129,6 +1342,12 @@ export const buildRuntimeParityMessage = ({
   lines.push(
     `• Deltas: price <b>${escapeHtml(formatPercent(matchedSummary.avgPriceDeltaPct))} / ${escapeHtml(formatPercent(matchedSummary.maxPriceDeltaPct))}</b>, drift <b>${escapeHtml(formatMinutes(matchedSummary.avgTimestampDiffMs))} / ${escapeHtml(formatMinutes(matchedSummary.maxTimestampDiffMs))}</b>`,
   );
+
+  if (classifiedRuntimeOnly.length) {
+    lines.push(
+      `• Runtime-only classes: <code>${escapeHtml(summarizeRuntimeOnlyClassifications(classifiedRuntimeOnly))}</code>`,
+    );
+  }
 
   if (classifiedBacktestOnly.length) {
     lines.push(
@@ -1238,6 +1457,10 @@ export const runtimeParity = async () => {
   let replayErrors: ReplayError[] = [];
 
   try {
+    const parityConnector = await createConnector({
+      userName: flags.user,
+      connectorName,
+    });
     const [allRuntimeTrades, allRuntimeSignals, allRuntimeSignalEvaluations] =
       await Promise.all([
         loadRuntimeTrades(flags.user),
@@ -1264,10 +1487,14 @@ export const runtimeParity = async () => {
         (!flags.strategy || evaluation.strategy === flags.strategy) &&
         (!requestedSymbolSet || requestedSymbolSet.has(evaluation.symbol)),
     );
+    const connectorSymbols = requestedSymbols.length
+      ? requestedSymbols
+      : await getTickers(parityConnector);
 
     const replayTargets = await buildReplayTargets({
       userName: flags.user,
       runtimeTrades,
+      connectorSymbols,
       strategyFilter: String(flags.strategy || '').trim() || undefined,
       explicitSymbols: requestedSymbols,
     });
@@ -1310,6 +1537,7 @@ export const runtimeParity = async () => {
     }
 
     const backtestEntries: TradeParityEntry[] = [];
+    const replaySignalEvaluations: RuntimeSignalEvaluationRecord[] = [];
     const successfulTargetKeys = new Set<string>();
     const runtimeGateWarningCounts = new Map<string, number>();
 
@@ -1353,6 +1581,9 @@ export const runtimeParity = async () => {
         backtestEntries.push(
           ...extractBacktestEntryParityEntries(result?.inlineOrderLog),
         );
+        replaySignalEvaluations.push(
+          ...(result?.inlineReplaySignalEvaluations ?? []),
+        );
         successfulTargetKeys.add(toTargetKey(target));
       } catch (error) {
         replayErrors.push({
@@ -1381,6 +1612,12 @@ export const runtimeParity = async () => {
       runtimeSignalEvaluations,
       toleranceMs,
     });
+    const classifiedRuntimeOnly = classifyRuntimeOnlyEntries({
+      entries: comparison.runtimeOnly,
+      replaySignalEvaluations,
+      backtestEntries,
+      toleranceMs,
+    });
     const summary = summarizeMatchedParity(comparison.matched);
 
     console.log(chalk.cyan('TradeJS runtime parity'));
@@ -1402,7 +1639,7 @@ export const runtimeParity = async () => {
       `Targets: ${replayTargets.length}, compared: ${successfulTargetKeys.size}, replayErrors: ${replayErrors.length}`,
     );
     console.log(
-      `Target sources: runtime=${sourceCounts.runtime}, runtimeUniverse=${sourceCounts.runtimeUniverse}, explicitTickers=${sourceCounts.explicitTickers}, strategyResults=${sourceCounts.strategyResults}`,
+      `Target sources: runtime=${sourceCounts.runtime}, connectorUniverse=${sourceCounts.connectorUniverse}, explicitTickers=${sourceCounts.explicitTickers}, strategyResults=${sourceCounts.strategyResults}`,
     );
     console.log('');
     console.log(
@@ -1417,6 +1654,11 @@ export const runtimeParity = async () => {
     if (runtimeDedupe.duplicateGroups.length) {
       console.log(
         `Runtime duplicate groups: ${runtimeDedupe.duplicateGroups.length}, duplicate entries: ${runtimeDedupe.duplicateEntries.length}`,
+      );
+    }
+    if (classifiedRuntimeOnly.length) {
+      console.log(
+        `Runtime only classifications: ${summarizeRuntimeOnlyClassifications(classifiedRuntimeOnly)}`,
       );
     }
     if (classifiedBacktestOnly.length) {
@@ -1475,7 +1717,7 @@ export const runtimeParity = async () => {
 
     if (flags.details) {
       printRuntimeDuplicateDetails(runtimeDedupe.duplicateGroups);
-      printEntryDetails('Runtime only', comparison.runtimeOnly);
+      printClassifiedRuntimeOnlyDetails(classifiedRuntimeOnly);
       printClassifiedBacktestOnlyDetails(classifiedBacktestOnly);
     }
 
@@ -1500,6 +1742,7 @@ export const runtimeParity = async () => {
           runtimeOnlyCount: comparison.runtimeOnly.length,
           backtestOnlyCount: comparison.backtestOnly.length,
           matchedSummary: summary,
+          classifiedRuntimeOnly,
           classifiedBacktestOnly,
           runtimeSignalEvaluationsCount: runtimeSignalEvaluations.length,
           strategyRows,

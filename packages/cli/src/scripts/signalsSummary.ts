@@ -611,7 +611,7 @@ const buildSummaryMessage = ({
     }
 
     lines.push(
-      `  • evaluated=<b>${evaluation.evaluated}</b>, signals=<b>${evaluation.signals}</b>`,
+      `evaluated=<b>${evaluation.evaluated}</b>, signals=<b>${evaluation.signals}</b>`,
     );
     const sourceOrder = ['skip from core', 'skip from AI', 'skip from ML'];
     const sortedReasonGroups = [...evaluation.reasonGroups.entries()].sort(
@@ -631,13 +631,13 @@ const buildSummaryMessage = ({
     );
 
     for (const [source, reasons] of sortedReasonGroups) {
-      lines.push(`  • <b>${escapeHtml(source)}</b>:`);
+      lines.push(`<b>${escapeHtml(source)}</b>:`);
       const sortedReasons = [...reasons.entries()].sort(
         (left, right) => right[1] - left[1] || left[0].localeCompare(right[0]),
       );
 
       for (const [reason, count] of sortedReasons) {
-        lines.push(`    • ${escapeHtml(reason)}: <b>${count}</b>`);
+        lines.push(`${escapeHtml(reason)}: <b>${count}</b>`);
       }
     }
   };
@@ -649,8 +649,8 @@ const buildSummaryMessage = ({
       lines.push('');
       lines.push(
         evaluation?.evaluated
-          ? `<b>${escapeHtml(strategyName)}</b>: signals=<b>0</b>`
-          : `<b>${escapeHtml(strategyName)}</b>: none`,
+          ? `<b>${escapeHtml(strategyName)}</b>\nsignals=<b>0</b>`
+          : `<b>${escapeHtml(strategyName)}</b>\nnone`,
       );
       appendEvaluationDetails(strategyName);
       continue;
@@ -663,7 +663,8 @@ const buildSummaryMessage = ({
       })
       .filter(Boolean);
     lines.push('');
-    lines.push(`<b>${escapeHtml(strategyName)}</b>: ${parts.join(', ')}`);
+    lines.push(`<b>${escapeHtml(strategyName)}</b>`);
+    lines.push(parts.join(', '));
     appendEvaluationDetails(strategyName);
   }
 
@@ -674,7 +675,8 @@ const buildSummaryMessage = ({
     const stats = tradeStats.get(strategyName);
     if (!stats) {
       lines.push('');
-      lines.push(`<b>${escapeHtml(strategyName)}</b>: total=<b>0</b>`);
+      lines.push(`<b>${escapeHtml(strategyName)}</b>`);
+      lines.push(`total=<b>0</b>`);
       continue;
     }
 
@@ -688,10 +690,10 @@ const buildSummaryMessage = ({
     lines.push('');
     lines.push(`<b>${escapeHtml(strategyName)}</b>`);
     lines.push(
-      `• total=<b>${stats.total}</b>, active=<b>${stats.active}</b> (PnL <b>${escapeHtml(activePnlText)}</b>)`,
+      `total=<b>${stats.total}</b>, active=<b>${stats.active}</b> (PnL <b>${escapeHtml(activePnlText)}</b>)`,
     );
     lines.push(
-      `• closed=<b>${stats.closed}</b> (PnL <b>${escapeHtml(closedPnlText)}</b>), totalPnL=<b>${escapeHtml(totalPnlText)}</b>`,
+      `closed=<b>${stats.closed}</b> (PnL <b>${escapeHtml(closedPnlText)}</b>), totalPnL=<b>${escapeHtml(totalPnlText)}</b>`,
     );
   }
 
