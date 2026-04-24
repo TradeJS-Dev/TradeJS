@@ -125,6 +125,12 @@ const getDeterministicReverseTrendlineQuality = (
     conflictOnly &&
     rejectionStrengthPct >= 0.45 &&
     touches >= 5 &&
+    !(
+      context.signalDirection === 'SHORT' &&
+      biasConflictState === 'coin_only' &&
+      distance <= 180 &&
+      rejectionWickPct <= 0.45
+    ) &&
     !(context.signalDirection === 'SHORT' && biasConflictState === 'btc_only');
 
   if (quality4ConflictRejection) {
@@ -133,11 +139,31 @@ const getDeterministicReverseTrendlineQuality = (
 
   const rejectionScore =
     getDeterministicReverseTrendlineRejectionScore(context);
+  const quality4EliteShortBtcOnlyRejection =
+    context.entryTiming === 'ready_rejection' &&
+    context.signalDirection === 'SHORT' &&
+    biasConflictState === 'btc_only' &&
+    rejectionScore != null &&
+    rejectionScore >= 5 &&
+    rejectionWickPct >= 0.6 &&
+    touches >= 5 &&
+    distance <= 200;
+
+  if (quality4EliteShortBtcOnlyRejection) {
+    return 4;
+  }
+
   const quality4ScoredRejection =
     context.entryTiming === 'ready_rejection' &&
     (biasConflictState === 'none' || biasConflictState === 'both') &&
     rejectionScore != null &&
-    rejectionScore >= 7;
+    rejectionScore >= 7 &&
+    !(
+      context.signalDirection === 'SHORT' &&
+      biasConflictState === 'none' &&
+      distance <= 150 &&
+      (rejectionWickPct >= 0.7 || rejectionStrengthPct >= 1.3)
+    );
 
   if (quality4ScoredRejection) {
     return 4;

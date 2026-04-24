@@ -1102,6 +1102,37 @@ const makeReverseConflictResistanceBounceShortSignal = () => {
   signal.additionalIndicators = {
     ...signal.additionalIndicators,
     touches: 5,
+    distance: 220,
+    currentCandle: {
+      timestamp: 2,
+      open: 100.1,
+      close: 99.35,
+      high: 100.56,
+      low: 99.28,
+    },
+    reverseTrendlineTiming: {
+      entryTiming: 'ready_rejection',
+    },
+  };
+  signal.prices.currentPrice = 99.35;
+  signal.prices.takeProfitPrice = 97.5;
+  signal.prices.stopLossPrice = 100.8;
+  return signal;
+};
+
+const makeReverseWeakConflictResistanceBounceShortSignal = () => {
+  const signal = makeReverseResistanceBounceShortSignal();
+  signal.indicators = {
+    ...signal.indicators,
+    maFast: [99.7, 99.8, 100.1],
+    maSlow: [99.9, 99.95, 100],
+    btcMaFast: [100.2, 100.0, 99.7],
+    btcMaSlow: [100.15, 100.05, 99.85],
+    atrPct: [0.85],
+  };
+  signal.additionalIndicators = {
+    ...signal.additionalIndicators,
+    touches: 5,
     distance: 150,
     currentCandle: {
       timestamp: 2,
@@ -1148,6 +1179,29 @@ const makeReverseBtcOnlyResistanceBounceShortSignal = () => {
   signal.prices.currentPrice = 99.36;
   signal.prices.takeProfitPrice = 97.5;
   signal.prices.stopLossPrice = 100.8;
+  return signal;
+};
+
+const makeReverseEliteBtcOnlyResistanceBounceShortSignal = () => {
+  const signal = makeReverseBtcOnlyResistanceBounceShortSignal();
+  signal.additionalIndicators = {
+    ...signal.additionalIndicators,
+    touches: 5,
+    distance: 120,
+    currentCandle: {
+      timestamp: 2,
+      open: 100.06,
+      close: 98.95,
+      high: 100.72,
+      low: 98.88,
+    },
+    reverseTrendlineTiming: {
+      entryTiming: 'ready_rejection',
+    },
+  };
+  signal.prices.currentPrice = 98.95;
+  signal.prices.takeProfitPrice = 97.2;
+  signal.prices.stopLossPrice = 100.82;
   return signal;
 };
 
@@ -2186,6 +2240,44 @@ describe('ai helpers', () => {
       );
     });
 
+    it('keeps shallow short conflict-only resistance bounces on watch quality for ReverseTrendLine', async () => {
+      invokeMock.mockResolvedValue({
+        content: {
+          direction: null,
+          quality: 2,
+          needRetest: true,
+          retestPrice: 100,
+          takeProfitPrice: null,
+          stopLossPrice: null,
+          setup: 'Есть отскок вниз от сопротивления',
+          retestPlan: 'Можно входить сразу',
+          qualityReason: 'Модель осторожна',
+          triggerInvalidation: 'Отмена при пробое вверх',
+          comment: 'ok',
+        },
+      });
+
+      const result = await runAiPrompt(
+        {
+          systemPrompt: 'system',
+          humanPrompt: 'human',
+        },
+        {
+          signal: makeReverseWeakConflictResistanceBounceShortSignal(),
+        },
+      );
+
+      expect(result).toEqual(
+        expect.objectContaining({
+          direction: null,
+          quality: 3,
+          needRetest: true,
+          takeProfitPrice: null,
+          stopLossPrice: null,
+        }),
+      );
+    });
+
     it('keeps SHORT btc-only rejection bounces on watch quality for ReverseTrendLine', async () => {
       invokeMock.mockResolvedValue({
         content: {
@@ -2220,6 +2312,44 @@ describe('ai helpers', () => {
           needRetest: true,
           takeProfitPrice: null,
           stopLossPrice: null,
+        }),
+      );
+    });
+
+    it('approves elite SHORT btc-only rejection bounces for ReverseTrendLine', async () => {
+      invokeMock.mockResolvedValue({
+        content: {
+          direction: null,
+          quality: 2,
+          needRetest: true,
+          retestPrice: 100,
+          takeProfitPrice: null,
+          stopLossPrice: null,
+          setup: 'Есть отскок вниз от сопротивления',
+          retestPlan: 'Можно входить сразу',
+          qualityReason: 'Модель осторожна',
+          triggerInvalidation: 'Отмена при пробое вверх',
+          comment: 'ok',
+        },
+      });
+
+      const result = await runAiPrompt(
+        {
+          systemPrompt: 'system',
+          humanPrompt: 'human',
+        },
+        {
+          signal: makeReverseEliteBtcOnlyResistanceBounceShortSignal(),
+        },
+      );
+
+      expect(result).toEqual(
+        expect.objectContaining({
+          direction: 'SHORT',
+          quality: 4,
+          needRetest: false,
+          takeProfitPrice: 97.2,
+          stopLossPrice: 100.82,
         }),
       );
     });
