@@ -2,6 +2,7 @@ import {
   resolveDerivativesContextBackfillWindow,
   resolveDerivativesContextBackfillSymbols,
   shouldBackfillDerivativesContextForBacktest,
+  shouldBackfillDerivativesContextForSignals,
 } from '../lib/derivativesContextBackfill';
 
 describe('shouldBackfillDerivativesContextForBacktest', () => {
@@ -55,6 +56,72 @@ describe('shouldBackfillDerivativesContextForBacktest', () => {
         aiEnabled: false,
         cacheOnly: false,
         mlEnabled: false,
+      }),
+    ).toBe(false);
+  });
+
+  it('does not backfill backtests when derivatives context is live-only', () => {
+    process.env.DERIVATIVES_CONTEXT_ENABLED = 'live';
+
+    expect(
+      shouldBackfillDerivativesContextForBacktest({
+        aiEnabled: true,
+        cacheOnly: false,
+        mlEnabled: false,
+      }),
+    ).toBe(false);
+  });
+});
+
+describe('shouldBackfillDerivativesContextForSignals', () => {
+  const originalContextEnabled = process.env.DERIVATIVES_CONTEXT_ENABLED;
+
+  beforeEach(() => {
+    delete process.env.DERIVATIVES_CONTEXT_ENABLED;
+  });
+
+  afterAll(() => {
+    if (originalContextEnabled === undefined) {
+      delete process.env.DERIVATIVES_CONTEXT_ENABLED;
+    } else {
+      process.env.DERIVATIVES_CONTEXT_ENABLED = originalContextEnabled;
+    }
+  });
+
+  it('does not backfill signals in cache-only mode', () => {
+    process.env.DERIVATIVES_CONTEXT_ENABLED = 'true';
+
+    expect(
+      shouldBackfillDerivativesContextForSignals({
+        cacheOnly: true,
+      }),
+    ).toBe(false);
+  });
+
+  it('backfills signals when derivatives context is enabled globally', () => {
+    process.env.DERIVATIVES_CONTEXT_ENABLED = 'true';
+
+    expect(
+      shouldBackfillDerivativesContextForSignals({
+        cacheOnly: false,
+      }),
+    ).toBe(true);
+  });
+
+  it('backfills signals only when live mode is enabled', () => {
+    process.env.DERIVATIVES_CONTEXT_ENABLED = 'live';
+
+    expect(
+      shouldBackfillDerivativesContextForSignals({
+        cacheOnly: false,
+      }),
+    ).toBe(true);
+
+    process.env.DERIVATIVES_CONTEXT_ENABLED = 'backtest';
+
+    expect(
+      shouldBackfillDerivativesContextForSignals({
+        cacheOnly: false,
       }),
     ).toBe(false);
   });

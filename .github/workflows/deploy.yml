@@ -118,6 +118,9 @@ jobs:
           PG_USER=app
           PG_PASSWORD=app
           PG_DATABASE=app
+          DERIVATIVES_CONTEXT_ENABLED=true
+          DERIVATIVES_CONTEXT_INTERVALS=15m,1h
+          DERIVATIVES_CONTEXT_LOOKBACK_HOURS=48
           " > .env
 
       - name: Docker login to GHCR

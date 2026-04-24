@@ -45,6 +45,10 @@ import {
   StrategyConfig,
   StrategyCreator,
 } from '@tradejs/types';
+import {
+  backfillDerivativesContextForSignals,
+  shouldBackfillDerivativesContextForSignals,
+} from '../lib/derivativesContextBackfill';
 
 args.option(['t', 'tickers'], 'Selected tickers');
 args.option(['e', 'exclude'], 'Exclude tickers from tests');
@@ -78,6 +82,26 @@ const interval = flags.timeframe.toString() as Interval;
 
 const formatElapsed = (startedAt: number) =>
   `${((Date.now() - startedAt) / 1000).toFixed(1)}s`;
+
+const formatDuration = (startedAt: number) => {
+  const seconds = (Date.now() - startedAt) / 1000;
+  if (seconds < 60) return `${seconds.toFixed(1)}s`;
+  const minutes = Math.floor(seconds / 60);
+  const restSeconds = Math.round(seconds % 60);
+  return `${minutes}m ${restSeconds}s`;
+};
+
+const timeOperation = async <T>(
+  label: string,
+  operation: () => Promise<T>,
+): Promise<T> => {
+  const startedAt = Date.now();
+  try {
+    return await operation();
+  } finally {
+    logger.info(chalk.gray(`${label}: done in ${formatDuration(startedAt)}`));
+  }
+};
 
 interface StrategyRuntimeConfig {
   strategyName: string;
@@ -549,12 +573,14 @@ export const signals = async () => {
       }
     }
 
-    const tickers = await getTickers(
-      marketConnector,
-      flags.tickers,
-      flags.exclude,
-      flags.tickersLimit,
-      flags.chunk,
+    const tickers = await timeOperation('tickers load', () =>
+      getTickers(
+        marketConnector,
+        flags.tickers,
+        flags.exclude,
+        flags.tickersLimit,
+        flags.chunk,
+      ),
     );
 
     if (flags.showTickersList) {
@@ -567,56 +593,78 @@ export const signals = async () => {
     projectHooks = projectConfig.hooks;
 
     if (!flags.cacheOnly) {
-      await update(
-        marketConnector,
-        interval,
-        tickers,
-        SIGNALS_CLI_PRELOAD_DAYS,
-        { connectorLabel: connectorName },
+      await timeOperation(`update ${connectorName}`, () =>
+        update(marketConnector, interval, tickers, SIGNALS_CLI_PRELOAD_DAYS, {
+          connectorLabel: connectorName,
+        }),
       );
 
       if (btcBinanceConnector !== marketConnector) {
-        await update(
-          btcBinanceConnector,
-          interval,
-          ['BTCUSDT'],
-          SIGNALS_CLI_PRELOAD_DAYS,
-          { connectorLabel: ConnectorNames.Binance },
+        await timeOperation(`update ${ConnectorNames.Binance}`, () =>
+          update(
+            btcBinanceConnector,
+            interval,
+            ['BTCUSDT'],
+            SIGNALS_CLI_PRELOAD_DAYS,
+            { connectorLabel: ConnectorNames.Binance },
+          ),
         );
       }
 
       if (btcCoinbaseConnector !== marketConnector) {
-        await update(
-          btcCoinbaseConnector,
-          interval,
-          ['BTCUSDT'],
-          SIGNALS_CLI_PRELOAD_DAYS,
-          { connectorLabel: ConnectorNames.Coinbase },
+        await timeOperation(`update ${ConnectorNames.Coinbase}`, () =>
+          update(
+            btcCoinbaseConnector,
+            interval,
+            ['BTCUSDT'],
+            SIGNALS_CLI_PRELOAD_DAYS,
+            { connectorLabel: ConnectorNames.Coinbase },
+          ),
         );
       }
     }
 
     const currentTimestamp = getTimestamp();
-    const [btcBinanceData, btcCoinbaseData] = await Promise.all([
-      btcBinanceConnector.kline({
-        symbol: 'BTCUSDT',
-        start: PRELOAD_START,
-        end: currentTimestamp,
-        cacheOnly: true,
-        interval,
-      }),
-      btcCoinbaseConnector.kline({
-        symbol: 'BTCUSDT',
-        start: PRELOAD_START,
-        end: currentTimestamp,
-        cacheOnly: true,
-        interval,
-      }),
-    ]);
+    if (
+      shouldBackfillDerivativesContextForSignals({
+        cacheOnly: Boolean(flags.cacheOnly),
+      })
+    ) {
+      await timeOperation('derivatives context backfill', () =>
+        backfillDerivativesContextForSignals({
+          userName: flags.user,
+          symbols: tickers,
+          startMs: currentTimestamp,
+          endMs: currentTimestamp,
+          preloadStartMs: PRELOAD_START,
+        }),
+      );
+    }
 
     if (flags.updateOnly) {
       return;
     }
+
+    const [btcBinanceData, btcCoinbaseData] = await timeOperation(
+      'reference candles load',
+      () =>
+        Promise.all([
+          btcBinanceConnector.kline({
+            symbol: 'BTCUSDT',
+            start: PRELOAD_START,
+            end: currentTimestamp,
+            cacheOnly: true,
+            interval,
+          }),
+          btcCoinbaseConnector.kline({
+            symbol: 'BTCUSDT',
+            start: PRELOAD_START,
+            end: currentTimestamp,
+            cacheOnly: true,
+            interval,
+          }),
+        ]),
+    );
 
     const runtimeStrategies = await loadRuntimeStrategies(flags.user);
     if (!runtimeStrategies.length) {

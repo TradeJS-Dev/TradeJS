@@ -93,12 +93,25 @@ const chunkArray = <T>(items: T[], size: number): T[][] => {
 };
 
 export const isBacktestDerivativesContextEnabled = () => {
+  return isDerivativesContextBackfillEnabled('BACKTEST');
+};
+
+export const isSignalsDerivativesContextEnabled = () =>
+  isDerivativesContextBackfillEnabled('CRON');
+
+const isDerivativesContextBackfillEnabled = (env: string) => {
   const normalized = String(process.env.DERIVATIVES_CONTEXT_ENABLED ?? '')
     .trim()
     .toLowerCase();
   if (!normalized) return false;
-  if (['1', 'true', 'yes', 'on', 'backtest'].includes(normalized)) {
+  if (['1', 'true', 'yes', 'on'].includes(normalized)) {
     return true;
+  }
+  if (normalized === 'backtest') {
+    return env === 'BACKTEST';
+  }
+  if (normalized === 'live') {
+    return env !== 'BACKTEST';
   }
   return false;
 };
@@ -111,6 +124,10 @@ export const shouldBackfillDerivativesContextForBacktest = (params: {
   !params.cacheOnly &&
   (params.aiEnabled || params.mlEnabled) &&
   isBacktestDerivativesContextEnabled();
+
+export const shouldBackfillDerivativesContextForSignals = (params: {
+  cacheOnly: boolean;
+}) => !params.cacheOnly && isSignalsDerivativesContextEnabled();
 
 export const resolveDerivativesContextIntervals = (): DerivativesInterval[] => {
   const intervals = normalizeDerivativesIntervals(
@@ -385,42 +402,36 @@ const fetchMetricBatch = async (params: {
   return toSeriesMap(raw, metric);
 };
 
-export const backfillDerivativesContextForBacktest = async (params: {
-  userName: string;
-  symbols: string[];
-  startMs: number;
-  endMs: number;
-  preloadStartMs?: number;
-}): Promise<BackfillResult> => {
+const skippedBackfillResult = (): BackfillResult => ({
+  skipped: true,
+  rows: 0,
+  matchedSymbols: 0,
+  unmatchedSymbols: 0,
+  failedWindows: 0,
+  skippedWindows: 0,
+});
+
+const backfillDerivativesContext = async (
+  params: {
+    userName: string;
+    symbols: string[];
+    startMs: number;
+    endMs: number;
+    preloadStartMs?: number;
+  },
+  enabled: boolean,
+): Promise<BackfillResult> => {
   const { userName, startMs, endMs } = params;
   const requestedSymbols = normalizeSymbols(params.symbols);
   const symbols = resolveDerivativesContextBackfillSymbols(requestedSymbols);
 
-  if (
-    !isBacktestDerivativesContextEnabled() ||
-    !requestedSymbols.length ||
-    !symbols.length
-  ) {
-    return {
-      skipped: true,
-      rows: 0,
-      matchedSymbols: 0,
-      unmatchedSymbols: 0,
-      failedWindows: 0,
-      skippedWindows: 0,
-    };
+  if (!enabled || !requestedSymbols.length || !symbols.length) {
+    return skippedBackfillResult();
   }
 
   const intervals = resolveDerivativesContextIntervals();
   if (!intervals.length) {
-    return {
-      skipped: true,
-      rows: 0,
-      matchedSymbols: 0,
-      unmatchedSymbols: 0,
-      failedWindows: 0,
-      skippedWindows: 0,
-    };
+    return skippedBackfillResult();
   }
 
   const apiKey = await getCoinalyzeApiKey(userName);
@@ -440,14 +451,7 @@ export const backfillDerivativesContextForBacktest = async (params: {
     preloadStartMs: params.preloadStartMs,
   });
   if (safeEndMs <= fromMs) {
-    return {
-      skipped: true,
-      rows: 0,
-      matchedSymbols: 0,
-      unmatchedSymbols: 0,
-      failedWindows: 0,
-      skippedWindows: 0,
-    };
+    return skippedBackfillResult();
   }
 
   const exchangePriority = parseList(
@@ -625,3 +629,21 @@ export const backfillDerivativesContextForBacktest = async (params: {
     skippedWindows,
   };
 };
+
+export const backfillDerivativesContextForBacktest = async (params: {
+  userName: string;
+  symbols: string[];
+  startMs: number;
+  endMs: number;
+  preloadStartMs?: number;
+}): Promise<BackfillResult> =>
+  backfillDerivativesContext(params, isBacktestDerivativesContextEnabled());
+
+export const backfillDerivativesContextForSignals = async (params: {
+  userName: string;
+  symbols: string[];
+  startMs: number;
+  endMs: number;
+  preloadStartMs?: number;
+}): Promise<BackfillResult> =>
+  backfillDerivativesContext(params, isSignalsDerivativesContextEnabled());

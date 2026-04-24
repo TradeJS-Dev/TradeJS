@@ -24,6 +24,7 @@ type ScriptFlags = {
 
 type Scenario = {
   flags: ScriptFlags;
+  derivativesContextEnabled?: boolean;
   strategyConfig?: Record<string, unknown>;
   existingSignalKeys?: string[];
   strategyResult?: unknown;
@@ -146,6 +147,18 @@ const loadScript = async (scenario: Scenario) => {
   );
   const getTimestamp = jest.fn(() => 2000);
   const progressTick = jest.fn();
+  const backfillDerivativesContextForSignals = jest.fn(async () => ({
+    skipped: false,
+    rows: 12,
+    matchedSymbols: 2,
+    unmatchedSymbols: 0,
+    failedWindows: 0,
+    skippedWindows: 0,
+  }));
+  const shouldBackfillDerivativesContextForSignals = jest.fn(
+    ({ cacheOnly }: { cacheOnly: boolean }) =>
+      !cacheOnly && Boolean(scenario.derivativesContextEnabled),
+  );
 
   jest.doMock('args', () => ({
     __esModule: true,
@@ -215,6 +228,11 @@ const loadScript = async (scenario: Scenario) => {
     setData,
   }));
 
+  jest.doMock('../lib/derivativesContextBackfill', () => ({
+    backfillDerivativesContextForSignals,
+    shouldBackfillDerivativesContextForSignals,
+  }));
+
   const prevNodeEnv = process.env.NODE_ENV;
   (process.env as any).NODE_ENV = 'test';
   const signalsScriptModule = await import('../scripts/signals');
@@ -232,10 +250,12 @@ const loadScript = async (scenario: Scenario) => {
       loadTradejsConfig,
       makeScreenshots,
       progressTick,
+      backfillDerivativesContextForSignals,
       redisKeys,
       runWithConcurrency,
       sendToTG,
       setData,
+      shouldBackfillDerivativesContextForSignals,
       strategyCreatorMap,
       strategyFnMap,
       update,
@@ -453,6 +473,48 @@ describe('signals script', () => {
         reason: 'NO_SIGNAL',
       }),
       { expire: TTL_3D },
+    );
+  });
+
+  it('backfills derivatives context for signals and logs load timings', async () => {
+    const { signals, mocks } = await loadScript({
+      derivativesContextEnabled: true,
+      flags: {
+        timeframe: 15,
+        makeOrders: false,
+        notify: false,
+        skipScreenshots: true,
+        updateOnly: true,
+        cacheOnly: false,
+        showTickersList: false,
+        showSkipStats: false,
+        user: 'root',
+        connector: 'bybit',
+      },
+    });
+
+    await signals();
+
+    expect(
+      mocks.shouldBackfillDerivativesContextForSignals,
+    ).toHaveBeenCalledWith({
+      cacheOnly: false,
+    });
+    expect(mocks.backfillDerivativesContextForSignals).toHaveBeenCalledWith({
+      userName: 'root',
+      symbols: ['ETHUSDT'],
+      startMs: 2000,
+      endMs: 2000,
+      preloadStartMs: 2000,
+    });
+    expect(mocks.logger.info).toHaveBeenCalledWith(
+      expect.stringMatching(/^tickers load: done in /),
+    );
+    expect(mocks.logger.info).toHaveBeenCalledWith(
+      expect.stringMatching(/^update bybit: done in /),
+    );
+    expect(mocks.logger.info).toHaveBeenCalledWith(
+      expect.stringMatching(/^derivatives context backfill: done in /),
     );
   });
 
