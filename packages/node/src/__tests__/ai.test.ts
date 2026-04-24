@@ -599,6 +599,45 @@ const makeDeterministicQualityLongSignal = () => {
   return signal;
 };
 
+const makeAlignedRecentLongTrendlineSignal = () => {
+  const signal = makeSignal();
+  signal.direction = 'LONG';
+  signal.prices.currentPrice = 100.56;
+  signal.prices.takeProfitPrice = 104.5;
+  signal.prices.stopLossPrice = 98.9;
+  signal.figures.trendLine = {
+    ...signal.figures.trendLine,
+    mode: 'highs',
+    points: [
+      { timestamp: 1, value: 101.3 },
+      { timestamp: 2, value: 100 },
+    ],
+    touches: [
+      { timestamp: 1, value: 101.2 },
+      { timestamp: 1.2, value: 100.95 },
+      { timestamp: 1.4, value: 100.7 },
+      { timestamp: 1.6, value: 100.35 },
+      { timestamp: 1.8, value: 100.1 },
+    ],
+  };
+  signal.indicators = {
+    ...signal.indicators,
+    maFast: [99.9, 100.2, 100.45],
+    maSlow: [99.8, 99.95, 100],
+    btcMaFast: [100.1, 100.45, 100.75],
+    btcMaSlow: [100, 100.05, 100],
+    atrPct: [0.9],
+  };
+  signal.additionalIndicators = {
+    touches: 5,
+    distance: 370,
+    trendlineTiming: {
+      entryTiming: 'ready_follow_through',
+    },
+  };
+  return signal;
+};
+
 const makeDeterministicQualityShortSignal = () => {
   const signal = makeSignal();
   signal.direction = 'SHORT';
@@ -631,6 +670,45 @@ const makeDeterministicQualityShortSignal = () => {
   signal.additionalIndicators = {
     touches: 5,
     distance: 250,
+  };
+  return signal;
+};
+
+const makeModerateReadyBreakoutShortTrendlineSignal = () => {
+  const signal = makeSignal();
+  signal.direction = 'SHORT';
+  signal.prices.currentPrice = 99.25;
+  signal.prices.takeProfitPrice = 96;
+  signal.prices.stopLossPrice = 101.2;
+  signal.figures.trendLine = {
+    ...signal.figures.trendLine,
+    mode: 'lows',
+    points: [
+      { timestamp: 1, value: 100.6 },
+      { timestamp: 2, value: 100 },
+    ],
+    touches: [
+      { timestamp: 1, value: 100.85 },
+      { timestamp: 1.2, value: 100.65 },
+      { timestamp: 1.4, value: 100.4 },
+      { timestamp: 1.6, value: 100.2 },
+      { timestamp: 1.8, value: 100.05 },
+    ],
+  };
+  signal.indicators = {
+    ...signal.indicators,
+    maFast: [100.4, 100.1, 99.65],
+    maSlow: [100.5, 100.25, 100],
+    btcMaFast: [100.1, 100, 99.9],
+    btcMaSlow: [100.15, 100.05, 100],
+    atrPct: [1],
+  };
+  signal.additionalIndicators = {
+    touches: 5,
+    distance: 220,
+    trendlineTiming: {
+      entryTiming: 'ready_breakout',
+    },
   };
   return signal;
 };
@@ -1710,7 +1788,7 @@ describe('ai helpers', () => {
           humanPrompt: 'human',
         },
         {
-          signal: makeDeterministicQualityShortSignal(),
+          signal: makeModerateReadyBreakoutShortTrendlineSignal(),
         },
       );
 
@@ -2353,6 +2431,94 @@ describe('ai helpers', () => {
           approvalAllowedNow: false,
           deterministicQuality: 3,
           hardBlockReasons: expect.arrayContaining(['short_session_risk']),
+        }),
+      );
+
+      const result = await runAiPromptLocal(signal, { payload });
+
+      expect(result).toEqual(
+        expect.objectContaining({
+          direction: null,
+          quality: 3,
+          needRetest: true,
+          takeProfitPrice: null,
+          stopLossPrice: null,
+        }),
+      );
+      expect(chatOpenAICtorMock).not.toHaveBeenCalled();
+      expect(invokeMock).not.toHaveBeenCalled();
+    });
+
+    it('promotes aligned recent TrendLine long follow-through setups into q4 during local replay', async () => {
+      const signal = makeAlignedRecentLongTrendlineSignal();
+      const payload = buildAiPayload(signal);
+
+      expect(getDeterministicAiGateContext(payload)).toEqual(
+        expect.objectContaining({
+          approvalAllowedNow: true,
+          deterministicQuality: 4,
+          hardBlockReasons: [],
+        }),
+      );
+
+      const result = await runAiPromptLocal(signal, { payload });
+
+      expect(result).toEqual(
+        expect.objectContaining({
+          direction: 'LONG',
+          quality: 4,
+          needRetest: false,
+          takeProfitPrice: 104.5,
+          stopLossPrice: 98.9,
+        }),
+      );
+      expect(chatOpenAICtorMock).not.toHaveBeenCalled();
+      expect(invokeMock).not.toHaveBeenCalled();
+    });
+
+    it('promotes moderate TrendLine short ready-breakout setups into q4 during local replay', async () => {
+      const signal = makeModerateReadyBreakoutShortTrendlineSignal();
+      const payload = buildAiPayload(signal);
+
+      expect(getDeterministicAiGateContext(payload)).toEqual(
+        expect.objectContaining({
+          approvalAllowedNow: true,
+          deterministicQuality: 4,
+          hardBlockReasons: [],
+        }),
+      );
+
+      const result = await runAiPromptLocal(signal, { payload });
+
+      expect(result).toEqual(
+        expect.objectContaining({
+          direction: 'SHORT',
+          quality: 4,
+          needRetest: false,
+          takeProfitPrice: 96,
+          stopLossPrice: 101.2,
+        }),
+      );
+      expect(chatOpenAICtorMock).not.toHaveBeenCalled();
+      expect(invokeMock).not.toHaveBeenCalled();
+    });
+
+    it('keeps non-breakout TrendLine short setups in watch mode during local replay even when displacement is moderate', async () => {
+      const signal = makeDeterministicQualityShortSignal();
+      signal.timestamp = Date.UTC(2026, 0, 1, 10, 0);
+      signal.additionalIndicators = {
+        ...signal.additionalIndicators,
+        trendlineTiming: {
+          entryTiming: 'ready_follow_through',
+        },
+      };
+      const payload = buildAiPayload(signal);
+
+      expect(getDeterministicAiGateContext(payload)).toEqual(
+        expect.objectContaining({
+          approvalAllowedNow: false,
+          deterministicQuality: 3,
+          hardBlockReasons: [],
         }),
       );
 

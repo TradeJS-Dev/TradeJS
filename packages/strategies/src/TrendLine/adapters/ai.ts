@@ -381,10 +381,22 @@ const getDeterministicTrendlineQuality = (
       touches >= 5 &&
       distance < 600 &&
       btcMaSpreadPct >= 0.9;
+    const alignedRecentFollowThroughQuality4 =
+      (entryTiming === 'ready_follow_through' ||
+        entryTiming === 'ready_retest') &&
+      breakVsAtrRatio >= 0.58 &&
+      breakVsAtrRatio <= 0.72 &&
+      priceVsLinePctAbs >= 0.48 &&
+      priceVsLinePctAbs <= 0.7 &&
+      touches >= 5 &&
+      distance <= 420 &&
+      btcMaSpreadPct >= 0.45 &&
+      coinMaSpreadPct >= 0.25;
     return compactBreakoutQuality4 ||
       shortLineStrengthQuality4 ||
       matureLineQuality4 ||
-      extendedHighConvictionQuality4
+      extendedHighConvictionQuality4 ||
+      alignedRecentFollowThroughQuality4
       ? 4
       : 3;
   }
@@ -414,7 +426,26 @@ const getDeterministicTrendlineQuality = (
     touches >= 5 &&
     btcMaSpreadPct <= -1.0 &&
     (coinMaSpreadPct <= -1.0 || breakVsAtrRatio >= 3);
-  return quality4 || strongReadyBreakoutQuality4 ? 4 : 3;
+  const moderateReadyBreakoutQuality4 =
+    entryTiming === 'ready_breakout' &&
+    breakVsAtrRatio >= 0.65 &&
+    breakVsAtrRatio <= 1.2 &&
+    priceVsLinePctAbs >= 0.65 &&
+    priceVsLinePctAbs <= 1.0 &&
+    touches >= 5 &&
+    distance >= 150 &&
+    distance <= 320 &&
+    btcMaSpreadPct <= -0.05 &&
+    coinMaSpreadPct <= -0.25;
+
+  if (
+    (quality4 || moderateReadyBreakoutQuality4) &&
+    entryTiming === 'ready_breakout'
+  ) {
+    return 4;
+  }
+
+  return strongReadyBreakoutQuality4 ? 4 : 3;
 };
 
 const getDeterministicTrendlineQualityReason = (
