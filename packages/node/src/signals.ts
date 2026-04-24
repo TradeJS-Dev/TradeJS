@@ -73,6 +73,54 @@ const normalizeQuality = (value?: number) =>
     ? Math.max(1, Math.min(5, Math.round(value)))
     : null;
 
+const formatAnalysisLevel = (value?: number | null) => {
+  if (value == null || !Number.isFinite(value)) return null;
+
+  if (Math.abs(value) >= 1000) {
+    return value.toFixed(0);
+  }
+
+  const digits = Math.abs(value) < 1 ? 8 : 6;
+  return value.toFixed(digits).replace(/\.?0+$/, '');
+};
+
+const normalizeAnalysisText = (value?: string | null) => {
+  if (typeof value !== 'string') return null;
+  const clean = value.replace(/\s+/g, ' ').trim();
+  return clean || null;
+};
+
+const getReadableAnalysisComment = (value?: string | null) => {
+  const clean = normalizeAnalysisText(value);
+  if (!clean) return null;
+
+  if (
+    /^(ok|approved|approved by ai|historical approval|historical reject)$/i.test(
+      clean,
+    )
+  ) {
+    return null;
+  }
+
+  return clean;
+};
+
+const takeUniqueAnalysisText = (
+  usedValues: Set<string>,
+  ...values: Array<string | null | undefined>
+) => {
+  for (const value of values) {
+    const clean = normalizeAnalysisText(value);
+    if (!clean) continue;
+    const key = clean.toLowerCase();
+    if (usedValues.has(key)) continue;
+    usedValues.add(key);
+    return clean;
+  }
+
+  return null;
+};
+
 const formatOrderSkipReason = (reason?: string | null) => {
   if (!reason) return '';
 
@@ -512,51 +560,106 @@ export const formatAnalysisMessage = (
   analysis: Partial<SignalAnalysis>,
 ): string => {
   const lines: string[] = [];
-  const blocks: string[] = [];
   const quality = normalizeQuality(analysis.quality);
+  const readableComment = getReadableAnalysisComment(analysis.comment);
+  const approvedDirection =
+    analysis.direction != null &&
+    analysis.direction === signal.direction &&
+    analysis.needRetest !== true;
+  const oppositeDirection =
+    analysis.direction != null && analysis.direction !== signal.direction;
+  const verdict = approvedDirection
+    ? `Approved ${signal.direction}`
+    : oppositeDirection
+      ? `Not approved: AI prefers ${analysis.direction}`
+      : analysis.needRetest
+        ? 'Not approved yet'
+        : 'Not approved';
+  const summary = approvedDirection
+    ? `AI approves this ${signal.direction} setup right now.`
+    : oppositeDirection
+      ? `AI does not approve this ${signal.direction} setup and currently leans ${analysis.direction}.`
+      : analysis.needRetest
+        ? `The ${signal.direction} setup is visible, but confirmation is still missing before entry.`
+        : `AI does not approve this ${signal.direction} setup right now.`;
+  const usedValues = new Set<string>();
 
   lines.push(`<b>AI analysis ${signal.symbol}</b>`);
-  lines.push(`Signal direction: <b>${signal.direction}</b>`);
-  lines.push(`AI direction: <b>${analysis.direction ?? 'NO TRADE'}</b>`);
+  lines.push(`Verdict: <b>${escapeHtml(verdict)}</b>`);
+  lines.push(escapeHtml(summary));
 
   if (quality) {
     lines.push(`Quality: <b>${quality}/5</b>`);
   }
 
-  if (typeof analysis.needRetest === 'boolean') {
-    lines.push(`Need retest: <b>${analysis.needRetest ? 'YES' : 'NO'}</b>`);
+  const happeningText = takeUniqueAnalysisText(
+    usedValues,
+    analysis.setup,
+    readableComment,
+  );
+  if (happeningText) {
+    lines.push(`What's happening: ${escapeHtml(happeningText)}`);
   }
 
-  if (typeof analysis.retestPrice === 'number') {
-    lines.push(`Retest price: <b>${formatNumber(analysis.retestPrice)}</b>`);
+  const reasonText = approvedDirection
+    ? takeUniqueAnalysisText(
+        usedValues,
+        analysis.qualityReason,
+        analysis.confirmations,
+        readableComment,
+      )
+    : takeUniqueAnalysisText(
+        usedValues,
+        analysis.qualityReason,
+        analysis.confirmations,
+        readableComment,
+        analysis.btcContext,
+      );
+  if (reasonText) {
+    lines.push(
+      `${approvedDirection ? 'Why approved' : 'Why not approved'}: ${escapeHtml(reasonText)}`,
+    );
   }
+
+  const nextText = analysis.needRetest
+    ? takeUniqueAnalysisText(
+        usedValues,
+        analysis.retestPlan,
+        analysis.triggerInvalidation,
+        typeof analysis.retestPrice === 'number'
+          ? `Wait for confirmation around ${formatAnalysisLevel(analysis.retestPrice)}.`
+          : null,
+      )
+    : takeUniqueAnalysisText(
+        usedValues,
+        analysis.triggerInvalidation,
+        analysis.retestPlan,
+      );
+  if (nextText) {
+    lines.push(`Next: ${escapeHtml(nextText)}`);
+  }
+
+  const btcText = takeUniqueAnalysisText(usedValues, analysis.btcContext);
+  if (btcText) {
+    lines.push(`BTC context: ${escapeHtml(btcText)}`);
+  }
+
+  const levels: string[] = [];
 
   if (typeof analysis.takeProfitPrice === 'number') {
-    lines.push(`AI TP: <b>${formatNumber(analysis.takeProfitPrice)}</b>`);
+    levels.push(`TP <b>${formatAnalysisLevel(analysis.takeProfitPrice)}</b>`);
   }
 
   if (typeof analysis.stopLossPrice === 'number') {
-    lines.push(`AI SL: <b>${formatNumber(analysis.stopLossPrice)}</b>`);
+    levels.push(`SL <b>${formatAnalysisLevel(analysis.stopLossPrice)}</b>`);
   }
 
-  const pushBlock = (title: string, value?: string) => {
-    if (!value) return;
-    const clean = value.trim();
-    if (!clean) return;
-    blocks.push(`<b>${title}:</b>\n${escapeHtml(clean)}`);
-  };
+  if (typeof analysis.retestPrice === 'number') {
+    levels.push(`Retest <b>${formatAnalysisLevel(analysis.retestPrice)}</b>`);
+  }
 
-  pushBlock('Setup', analysis.setup);
-  pushBlock('Confirmations', analysis.confirmations);
-  pushBlock('BTC', analysis.btcContext);
-  pushBlock('Retest', analysis.retestPlan);
-  pushBlock('Risk/Levels', analysis.riskLevels);
-  pushBlock('Why Quality', analysis.qualityReason);
-  pushBlock('Trigger/Invalidation', analysis.triggerInvalidation);
-
-  if (blocks.length > 0) {
-    lines.push('');
-    lines.push(blocks.join('\n\n'));
+  if (levels.length > 0) {
+    lines.push(`Levels: ${levels.join(' | ')}`);
   }
 
   return lines.join('\n');

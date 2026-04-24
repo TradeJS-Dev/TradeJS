@@ -440,4 +440,120 @@ describe('signals', () => {
     expect(message).toContain('Skip reason: <b>AI_QUALITY_BELOW_MIN</b>');
     expect(message).not.toContain('0 &lt; 4');
   });
+
+  it('formats approved AI analysis as a short human-readable explanation', () => {
+    jest.doMock('../screenshot', () => ({
+      getScreenshotBuffer: jest.fn(async () => {
+        throw new Error('no screenshot');
+      }),
+      getScreenshotFilename: jest.fn(() => 'BTCUSDT_sig-1_15.png'),
+    }));
+
+    const { formatAnalysisMessage } = require('../signals');
+
+    const message = formatAnalysisMessage(
+      {
+        signalId: 'sig-1',
+        symbol: 'BTCUSDT',
+        strategy: 'AdaptiveMomentumRibbon',
+        interval: '15',
+        direction: 'LONG',
+        timestamp: 1_700_000_000_000,
+        indicators: {},
+        additionalIndicators: {},
+        prices: {
+          currentPrice: 100,
+          takeProfitPrice: 105,
+          stopLossPrice: 99,
+          riskRatio: 2.5,
+        },
+      },
+      {
+        direction: 'LONG',
+        quality: 4,
+        needRetest: false,
+        takeProfitPrice: 105,
+        stopLossPrice: 99,
+        setup: 'Price holds above kcUpper after the breakout.',
+        qualityReason:
+          'Momentum is aligned, invalidation has not triggered, and reward-to-risk is still acceptable.',
+        triggerInvalidation: 'If price closes back below 99.2, the setup fails.',
+        btcContext: 'BTC is neutral, so there is no extra headwind.',
+        comment: 'approved',
+      },
+    );
+
+    expect(message).toContain('<b>AI analysis BTCUSDT</b>');
+    expect(message).toContain('Verdict: <b>Approved LONG</b>');
+    expect(message).toContain('AI approves this LONG setup right now.');
+    expect(message).toContain(
+      "What's happening: Price holds above kcUpper after the breakout.",
+    );
+    expect(message).toContain(
+      'Why approved: Momentum is aligned, invalidation has not triggered, and reward-to-risk is still acceptable.',
+    );
+    expect(message).toContain(
+      'Next: If price closes back below 99.2, the setup fails.',
+    );
+    expect(message).toContain(
+      'BTC context: BTC is neutral, so there is no extra headwind.',
+    );
+    expect(message).toContain('Levels: TP <b>105</b> | SL <b>99</b>');
+    expect(message).not.toContain('Signal direction:');
+    expect(message).not.toContain('Why Quality');
+  });
+
+  it('formats pending AI analysis as not approved yet with next step', () => {
+    jest.doMock('../screenshot', () => ({
+      getScreenshotBuffer: jest.fn(async () => {
+        throw new Error('no screenshot');
+      }),
+      getScreenshotFilename: jest.fn(() => 'HMSTRUSDT_sig-1_15.png'),
+    }));
+
+    const { formatAnalysisMessage } = require('../signals');
+
+    const message = formatAnalysisMessage(
+      {
+        signalId: 'sig-1',
+        symbol: 'HMSTRUSDT',
+        strategy: 'AdaptiveMomentumRibbon',
+        interval: '15',
+        direction: 'LONG',
+        timestamp: 1_700_000_000_000,
+        indicators: {},
+        additionalIndicators: {},
+        prices: {
+          currentPrice: 0.00016,
+          takeProfitPrice: 0.000165,
+          stopLossPrice: 0.000157,
+          riskRatio: 2.9,
+        },
+      },
+      {
+        direction: null,
+        quality: 4,
+        needRetest: true,
+        retestPrice: 0.00015823,
+        setup:
+          'Price is above kcUpper, but the breakout still needs a confirming candle close.',
+        qualityReason:
+          'Momentum is strong, but the next bar still needs to confirm the move.',
+        retestPlan: 'Wait for the next candle to close above 0.00015823.',
+        comment: 'ok',
+      },
+    );
+
+    expect(message).toContain('Verdict: <b>Not approved yet</b>');
+    expect(message).toContain(
+      'The LONG setup is visible, but confirmation is still missing before entry.',
+    );
+    expect(message).toContain(
+      'Why not approved: Momentum is strong, but the next bar still needs to confirm the move.',
+    );
+    expect(message).toContain(
+      'Next: Wait for the next candle to close above 0.00015823.',
+    );
+    expect(message).toContain('Levels: Retest <b>0.00015823</b>');
+  });
 });
