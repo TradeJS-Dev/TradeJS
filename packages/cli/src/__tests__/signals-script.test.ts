@@ -1,5 +1,6 @@
 export {};
 
+const TTL_3D = 259_200;
 const TTL_1M = 2_600_000;
 
 type ScriptFlags = {
@@ -419,6 +420,39 @@ describe('signals script', () => {
         reason: 'TRENDLINE_TIMING:WAIT_RETEST',
       }),
       { expire: TTL_1M },
+    );
+  });
+
+  it('stores routine NO_SIGNAL skips with shorter retention', async () => {
+    const { signals, mocks } = await loadScript({
+      flags: {
+        timeframe: 15,
+        makeOrders: true,
+        notify: false,
+        skipScreenshots: true,
+        updateOnly: false,
+        cacheOnly: true,
+        showTickersList: false,
+        showSkipStats: false,
+        user: 'root',
+        connector: 'bybit',
+      },
+      strategyResult: 'NO_SIGNAL',
+    });
+
+    await signals();
+
+    expect(mocks.setData).toHaveBeenCalledWith(
+      mocks.redisKeys.runtimeSignalEvaluation('root', 'TrendLine:ETHUSDT:2000'),
+      expect.objectContaining({
+        evaluationId: 'TrendLine:ETHUSDT:2000',
+        strategy: 'TrendLine',
+        symbol: 'ETHUSDT',
+        timestamp: 2000,
+        status: 'skip',
+        reason: 'NO_SIGNAL',
+      }),
+      { expire: TTL_3D },
     );
   });
 

@@ -28,6 +28,7 @@ import type {
 import {
   SIGNALS_CLI_PRELOAD_DAYS,
   TTL_1D,
+  TTL_3D,
   TTL_1M,
   TTL_3M,
 } from '@tradejs/core/constants';
@@ -262,6 +263,30 @@ const buildRuntimeSignalEvaluationId = ({
   timestamp: number;
 }) => `${strategyName}:${symbol}:${timestamp}`;
 
+const hasMeaningfulEvaluationReason = (value: unknown) => {
+  const reason = typeof value === 'string' ? value.trim() : '';
+  return reason.length > 0 && reason !== 'NO_SIGNAL';
+};
+
+const resolveRuntimeSignalEvaluationTtl = (
+  evaluation: RuntimeSignalEvaluationRecord,
+) => {
+  if (evaluation.status === 'signal' || evaluation.status === 'error') {
+    return TTL_1M;
+  }
+
+  if (
+    hasMeaningfulEvaluationReason(evaluation.reason) ||
+    hasMeaningfulEvaluationReason(evaluation.orderSkipReason)
+  ) {
+    return TTL_1M;
+  }
+
+  // Keep routine NO_SIGNAL skips long enough for parity/debug windows,
+  // but avoid storing a month of low-signal evaluations.
+  return TTL_3D;
+};
+
 const saveRuntimeSignalEvaluation = async (
   evaluation: RuntimeSignalEvaluationRecord,
 ) => {
@@ -272,7 +297,7 @@ const saveRuntimeSignalEvaluation = async (
     ),
     evaluation,
     {
-      expire: TTL_1M,
+      expire: resolveRuntimeSignalEvaluationTtl(evaluation),
     },
   );
 };
