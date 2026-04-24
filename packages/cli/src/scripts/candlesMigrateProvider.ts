@@ -84,13 +84,25 @@ const printSummary = (summary: CandlesProviderMigrationSummary) => {
   );
 };
 
+const printProgress = (message: string) => {
+  const timestamp = new Date().toISOString().slice(11, 19);
+  console.log(chalk.gray(`[${timestamp}] ${message}`));
+};
+
 const run = async () => {
+  printProgress(
+    `Start candles provider migration for ${String(flags.schema || 'public')}.${String(
+      flags.table || 'candles',
+    )}${flags['dry-run'] ? ' (dry-run)' : ''}`,
+  );
+
   const summary = await runCandlesProviderMigration(pool, {
     schema: String(flags.schema || 'public'),
     table: String(flags.table || 'candles'),
     dryRun: Boolean(flags['dry-run']),
     recompress: !Boolean(flags['skip-recompress']),
     keepPolicyPaused: Boolean(flags['keep-policy-paused']),
+    onProgress: printProgress,
   });
 
   printSummary(summary);

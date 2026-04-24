@@ -18,6 +18,7 @@ export type CandlesProviderMigrationOptions = {
   dryRun?: boolean;
   recompress?: boolean;
   keepPolicyPaused?: boolean;
+  onProgress?: (message: string) => void;
 };
 
 export type CandlesProviderMigrationSummary = {
@@ -156,6 +157,11 @@ export const runCandlesProviderMigration = async (
   const recompress = options.recompress !== false;
   const keepPolicyPaused = Boolean(options.keepPolicyPaused);
   const quotedTable = quoteQualifiedName(schema, table);
+  const onProgress =
+    typeof options.onProgress === 'function' ? options.onProgress : undefined;
+  const progress = (message: string) => {
+    onProgress?.(message);
+  };
 
   const summary: CandlesProviderMigrationSummary = {
     schema,
@@ -177,9 +183,11 @@ export const runCandlesProviderMigration = async (
 
   const jobsToResume = new Set<number>();
 
+  progress(`Acquire migration lock for ${schema}.${table}`);
   await db.query('SELECT pg_advisory_lock(hashtext($1))', [LOCK_KEY]);
 
   try {
+    progress('Inspect current candles schema');
     summary.providerColumnExistsBefore = await getProviderColumnExists(
       db,
       schema,
@@ -193,18 +201,28 @@ export const runCandlesProviderMigration = async (
 
     const compressionJobs = await getCompressionJobs(db, schema, table);
     summary.compressionJobIds = compressionJobs.map((job) => job.jobId);
+    progress(
+      `Found ${summary.compressionJobIds.length} compression job(s) for ${schema}.${table}`,
+    );
     summary.compressedChunksBefore = await getCompressedChunks(
       db,
       schema,
       table,
     );
+    progress(
+      `Found ${summary.compressedChunksBefore.length} compressed chunk(s) to process`,
+    );
 
     if (dryRun) {
+      progress('Dry run finished');
       return summary;
     }
 
-    for (const job of compressionJobs) {
+    for (const [index, job] of compressionJobs.entries()) {
       if (!job.scheduled) continue;
+      progress(
+        `Pause compression job ${job.jobId} (${index + 1}/${compressionJobs.length})`,
+      );
       await db.query('SELECT alter_job($1, scheduled => false)', [job.jobId]);
       summary.pausedJobIds.push(job.jobId);
       if (!keepPolicyPaused) {
@@ -212,22 +230,28 @@ export const runCandlesProviderMigration = async (
       }
     }
 
-    for (const chunkName of summary.compressedChunksBefore) {
+    for (const [index, chunkName] of summary.compressedChunksBefore.entries()) {
+      progress(
+        `Decompress chunk ${index + 1}/${summary.compressedChunksBefore.length}: ${chunkName}`,
+      );
       await db.query('SELECT decompress_chunk($1::regclass, true)', [
         chunkName,
       ]);
       summary.decompressedChunks.push(chunkName);
     }
 
+    progress('Ensure provider column exists');
     await db.query(
       `ALTER TABLE ${quotedTable} ADD COLUMN IF NOT EXISTS provider text`,
     );
 
+    progress("Backfill provider='bybit' for existing rows");
     const updateResult = await db.query(
       `UPDATE ${quotedTable} SET provider = 'bybit' WHERE provider IS NULL`,
     );
     summary.providerBackfilledRows = Number(updateResult.rowCount ?? 0);
 
+    progress('Set provider column default and NOT NULL');
     await db.query(
       `ALTER TABLE ${quotedTable}
          ALTER COLUMN provider SET DEFAULT 'bybit',
@@ -238,6 +262,7 @@ export const runCandlesProviderMigration = async (
     if (
       summary.primaryKeyColumnsBefore.join(',') !== expectedPrimaryKey.join(',')
     ) {
+      progress('Replace primary key with provider-aware key');
       await db.query(
         `ALTER TABLE ${quotedTable} DROP CONSTRAINT IF EXISTS candles_pkey`,
       );
@@ -249,6 +274,7 @@ export const runCandlesProviderMigration = async (
       summary.primaryKeyChanged = true;
     }
 
+    progress('Recreate provider-aware candle index');
     await db.query('DROP INDEX IF EXISTS candles_symbol_interval_ts_idx');
     await db.query(
       `CREATE INDEX IF NOT EXISTS candles_provider_symbol_interval_ts_idx
@@ -256,6 +282,7 @@ export const runCandlesProviderMigration = async (
     );
     summary.indexEnsured = true;
 
+    progress('Update Timescale compression settings');
     await db.query(
       `ALTER TABLE ${quotedTable} SET (
          timescaledb.compress,
@@ -265,7 +292,10 @@ export const runCandlesProviderMigration = async (
     summary.compressionSettingsUpdated = true;
 
     if (recompress) {
-      for (const chunkName of summary.decompressedChunks) {
+      for (const [index, chunkName] of summary.decompressedChunks.entries()) {
+        progress(
+          `Recompress chunk ${index + 1}/${summary.decompressedChunks.length}: ${chunkName}`,
+        );
         await db.query('SELECT compress_chunk($1::regclass, true)', [
           chunkName,
         ]);
@@ -274,23 +304,30 @@ export const runCandlesProviderMigration = async (
     }
 
     if (!keepPolicyPaused) {
-      for (const jobId of jobsToResume) {
+      const jobIds = [...jobsToResume];
+      for (const [index, jobId] of jobIds.entries()) {
+        progress(
+          `Resume compression job ${jobId} (${index + 1}/${jobIds.length})`,
+        );
         await db.query('SELECT alter_job($1, scheduled => true)', [jobId]);
         summary.resumedJobIds.push(jobId);
       }
       jobsToResume.clear();
     }
 
+    progress('Migration finished');
     return summary;
   } finally {
     for (const jobId of jobsToResume) {
       try {
+        progress(`Best-effort resume of compression job ${jobId}`);
         await db.query('SELECT alter_job($1, scheduled => true)', [jobId]);
       } catch {
         // best effort: do not mask the original migration error
       }
     }
 
+    progress(`Release migration lock for ${schema}.${table}`);
     await db.query('SELECT pg_advisory_unlock(hashtext($1))', [LOCK_KEY]);
   }
 };

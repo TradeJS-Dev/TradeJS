@@ -74,6 +74,42 @@ describe('runCandlesProviderMigration', () => {
     );
   });
 
+  it('reports progress callbacks for visible migration stages', async () => {
+    const db = createDbMock({
+      pg_advisory_lock: { rows: [] },
+      'information_schema.columns': { rows: [{ exists: false }] },
+      'FROM pg_index i': {
+        rows: [
+          { column_name: 'symbol' },
+          { column_name: 'interval' },
+          { column_name: 'ts' },
+        ],
+      },
+      'timescaledb_information.jobs': {
+        rows: [{ job_id: 101, scheduled: true }],
+      },
+      'timescaledb_information.chunk_compression_settings': {
+        rows: [{ chunk_name: '_timescaledb_internal._hyper_1_1_chunk' }],
+      },
+      pg_advisory_unlock: { rows: [] },
+    });
+    const onProgress = jest.fn();
+
+    await runCandlesProviderMigration(db, {
+      dryRun: true,
+      onProgress,
+    });
+
+    expect(onProgress.mock.calls.map(([message]) => message)).toEqual([
+      'Acquire migration lock for public.candles',
+      'Inspect current candles schema',
+      'Found 1 compression job(s) for public.candles',
+      'Found 1 compressed chunk(s) to process',
+      'Dry run finished',
+      'Release migration lock for public.candles',
+    ]);
+  });
+
   it('pauses policy, decompresses chunks, updates schema, and resumes policy', async () => {
     const db = createDbMock({
       pg_advisory_lock: { rows: [] },
