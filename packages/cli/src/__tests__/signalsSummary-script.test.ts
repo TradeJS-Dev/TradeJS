@@ -272,10 +272,10 @@ describe('signals summary script', () => {
     expect(message).toContain('<b>skip from AI</b>:');
     expect(message).toContain('MIN_AI_QUALITY: <b>1</b>');
     expect(message).toContain(
-      '<b>TrendLine</b>\ntotal=<b>1</b>, active=<b>1</b> (PnL <b>+12.00</b>)\nclosed=<b>0</b> (PnL <b>n/a</b>), totalPnL=<b>+12.00</b>',
+      '<b>TrendLine</b>\ntotal=<b>1</b>, active=<b>1</b> (PnL <b>+12.00</b>)\nclosed=<b>0</b> (PnL <b>n/a</b>), totalPnL=<b>+12.00</b>\n- BTCUSDT: PnL <b>+12.00</b>, status=<b>active</b>',
     );
     expect(message).toContain(
-      '<b>ReverseTrendLine</b>\ntotal=<b>1</b>, active=<b>0</b> (PnL <b>n/a</b>)\nclosed=<b>1</b> (PnL <b>-4.00</b>), totalPnL=<b>-4.00</b>',
+      '<b>ReverseTrendLine</b>\ntotal=<b>1</b>, active=<b>0</b> (PnL <b>n/a</b>)\nclosed=<b>1</b> (PnL <b>-4.00</b>), totalPnL=<b>-4.00</b>\n- ETHUSDT: PnL <b>-4.00</b>, status=<b>closed</b>',
     );
     expect(setData).toHaveBeenCalledWith(
       redisKeys.runtimeTrade('root', 'ord-2'),

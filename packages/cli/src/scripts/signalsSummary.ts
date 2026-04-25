@@ -469,6 +469,13 @@ const buildSummaryMessage = ({
       closedPnlKnown: number;
       totalPnl: number;
       totalPnlKnown: number;
+      trades: Array<{
+        symbol: string;
+        status: RuntimeTradeRecord['status'];
+        pnlText: string;
+        entryTimestamp: number;
+        orderId: string;
+      }>;
     }
   >();
 
@@ -543,11 +550,16 @@ const buildSummaryMessage = ({
       closedPnlKnown: 0,
       totalPnl: 0,
       totalPnlKnown: 0,
+      trades: [],
     };
     const pnl =
       trade.status === 'active'
         ? trade.currentPnl
         : trade.closedPnl ?? trade.currentPnl;
+    const pnlText =
+      typeof pnl === 'number' && Number.isFinite(pnl)
+        ? formatSigned(pnl)
+        : 'n/a';
 
     stats.total += 1;
     if (trade.status === 'active') {
@@ -567,6 +579,13 @@ const buildSummaryMessage = ({
         stats.totalPnlKnown += 1;
       }
     }
+    stats.trades.push({
+      symbol: trade.symbol,
+      status: trade.status,
+      pnlText,
+      entryTimestamp: trade.entryTimestamp,
+      orderId: trade.orderId,
+    });
     tradeStats.set(trade.strategy, stats);
   }
 
@@ -695,6 +714,17 @@ const buildSummaryMessage = ({
     lines.push(
       `closed=<b>${stats.closed}</b> (PnL <b>${escapeHtml(closedPnlText)}</b>), totalPnL=<b>${escapeHtml(totalPnlText)}</b>`,
     );
+    const sortedTrades = [...stats.trades].sort(
+      (left, right) =>
+        left.entryTimestamp - right.entryTimestamp ||
+        left.symbol.localeCompare(right.symbol) ||
+        left.orderId.localeCompare(right.orderId),
+    );
+    for (const trade of sortedTrades) {
+      lines.push(
+        `- ${escapeHtml(trade.symbol)}: PnL <b>${escapeHtml(trade.pnlText)}</b>, status=<b>${escapeHtml(trade.status)}</b>`,
+      );
+    }
   }
 
   return lines.join('\n');
