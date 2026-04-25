@@ -289,6 +289,7 @@ Keep these conventions stable unless explicitly changing the ML pipeline.
 ## Editing Policy
 
 - Keep diffs focused.
+- After any code changes, run `yarn prettify` before further verification or committing.
 - Do not rewrite unrelated formatting.
 - Do not change public APIs without explicit intent.
 - Do not add backward-compat fallbacks unless requested.

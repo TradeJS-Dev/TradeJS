@@ -477,7 +477,8 @@ describe('signals', () => {
         setup: 'Price holds above kcUpper after the breakout.',
         qualityReason:
           'Momentum is aligned, invalidation has not triggered, and reward-to-risk is still acceptable.',
-        triggerInvalidation: 'If price closes back below 99.2, the setup fails.',
+        triggerInvalidation:
+          'If price closes back below 99.2, the setup fails.',
         btcContext: 'BTC is neutral, so there is no extra headwind.',
         comment: 'approved',
       },

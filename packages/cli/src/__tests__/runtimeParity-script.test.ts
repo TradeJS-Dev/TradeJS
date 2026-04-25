@@ -8,9 +8,7 @@ const setupRuntimeParityModule = async (
   const sendTextToTG = jest.fn(
     async (_message: string, _options?: unknown) => null,
   );
-  const getTickers: jest.Mock<Promise<string[]>, []> = jest.fn(
-    async () => [],
-  );
+  const getTickers: jest.Mock<Promise<string[]>, []> = jest.fn(async () => []);
   const update = jest.fn(async () => null);
   const getKeys = jest.fn(async (_prefix: string): Promise<string[]> => []);
   const getData = jest.fn(async (_key: string, fallback: unknown) => fallback);

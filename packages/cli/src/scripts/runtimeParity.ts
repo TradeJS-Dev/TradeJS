@@ -1108,10 +1108,7 @@ const summarizeRuntimeOnlyClassifications = (
   classifiedEntries: ClassifiedRuntimeOnlyEntry[],
 ) => {
   const counts = new Map<RuntimeOnlyClassification, number>(
-    RUNTIME_ONLY_CLASSIFICATIONS.map((classification) => [
-      classification,
-      0,
-    ]),
+    RUNTIME_ONLY_CLASSIFICATIONS.map((classification) => [classification, 0]),
   );
 
   for (const item of classifiedEntries) {
