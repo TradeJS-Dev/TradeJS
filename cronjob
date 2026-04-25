@@ -1,7 +1,6 @@
 # 0,15,30,45 * * * * cd /app && PROJECT_CWD=/app DOTENV_CONFIG_PATH=/app/.env bash ./bin/run-cli-dist.sh bot >> /var/log/cron.bot.log 2>&1
 0,15,30,45 * * * * cd /app && PROJECT_CWD=/app DOTENV_CONFIG_PATH=/app/.env NODE_OPTIONS=--max-old-space-size=8192 bash ./bin/run-cli-dist.sh signals --tickersLimit 350 --timeframe 15 --chunk 1/1 --notify --makeOrders --showSkipStats >> /var/log/cron.signals.15.log 2>&1
 CRON_TZ=Europe/Moscow
-0 0 * * * cd /app && PROJECT_CWD=/app DOTENV_CONFIG_PATH=/app/.env NODE_OPTIONS=--max-old-space-size=8192 bash ./bin/run-cli-dist.sh research:auto --user root --connector bybit --timeframe 15 --days 45 --recent 1000 >> /var/log/cron.research.auto.log 2>&1
 0 21 * * * cd /app && PROJECT_CWD=/app DOTENV_CONFIG_PATH=/app/.env NODE_OPTIONS=--max-old-space-size=8192 bash ./bin/run-cli-dist.sh runtime-parity --user root --connector bybit --days 1 --runtimeGates --notify >> /var/log/cron.runtime.parity.log 2>&1
 0 22 * * * cd /app && PROJECT_CWD=/app DOTENV_CONFIG_PATH=/app/.env NODE_OPTIONS=--max-old-space-size=8192 bash ./bin/run-cli-dist.sh signals-summary --user root --connector bybit >> /var/log/cron.signals.summary.log 2>&1
 10 22 * * 0 cd /app && PROJECT_CWD=/app DOTENV_CONFIG_PATH=/app/.env NODE_OPTIONS=--max-old-space-size=8192 bash ./bin/run-cli-dist.sh signals-summary --user root --connector bybit --hours 168 >> /var/log/cron.signals.summary.weekly.log 2>&1

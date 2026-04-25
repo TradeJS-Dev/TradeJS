@@ -130,11 +130,12 @@ jobs:
       - name: Build Docker images
         run: |
           docker-compose -f docker-compose.prod.yml build --pull app
+          docker-compose -f docker-compose.prod.yml build --pull agent
           docker-compose -f docker-compose.prod.yml build --pull --no-cache ml-infer
   
       - name: Push Docker images
         run: |
-          docker-compose -f docker-compose.prod.yml push app ml-infer
+          docker-compose -f docker-compose.prod.yml push app agent ml-infer
 
       - name: Copy compose and configs to server
         uses: appleboy/scp-action@v0.1.7
@@ -153,6 +154,23 @@ jobs:
           key: ${{ secrets.SSH_KEY }}
           script: |
             cd ~/
+            mkdir -p agent-ssh
+            cat > agent-ssh/id_ed25519 <<'EOF'
+            ${{ secrets.AGENT_GIT_SSH_KEY }}
+            EOF
+            chmod 700 agent-ssh
+            chmod 600 agent-ssh/id_ed25519
+            ssh-keyscan github.com > agent-ssh/known_hosts
+            chmod 644 agent-ssh/known_hosts
+            if [ ! -d tradejs-agent-repo/.git ]; then
+              GIT_SSH_COMMAND="ssh -i ~/agent-ssh/id_ed25519 -o StrictHostKeyChecking=yes -o UserKnownHostsFile=~/agent-ssh/known_hosts" \
+                git clone git@github.com:TradeJS-Dev/TradeJS.git ~/tradejs-agent-repo
+            else
+              GIT_SSH_COMMAND="ssh -i ~/agent-ssh/id_ed25519 -o StrictHostKeyChecking=yes -o UserKnownHostsFile=~/agent-ssh/known_hosts" \
+                git -C ~/tradejs-agent-repo fetch origin stable
+              git -C ~/tradejs-agent-repo checkout stable
+              git -C ~/tradejs-agent-repo reset --hard origin/stable
+            fi
             docker image prune -a -f
             docker compose -f docker-compose.prod.yml pull
             systemctl stop nginx

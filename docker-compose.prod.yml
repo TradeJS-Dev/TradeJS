@@ -31,6 +31,37 @@ services:
         max-size: "10m"
         max-file: "3"
 
+  agent:
+    build:
+      context: .
+      dockerfile: Dockerfile.agent
+    container_name: agent
+    restart: always
+    depends_on:
+      redis:
+        condition: service_healthy
+      timescale:
+        condition: service_healthy
+      ml-infer:
+        condition: service_started
+    image: ghcr.io/tradejs-dev/tradejs-agent:latest
+    env_file:
+      - .env
+    entrypoint: ["./entrypoint.agent.sh"]
+    volumes:
+      - ./data:/app/data
+      - ./screenshots:/app/public/screenshots
+      - ./.env:/app/.env:ro
+      - ./tradejs-agent-repo/.git:/app/.git
+      - ./agent-ssh:/root/.ssh:ro
+    networks:
+      - web
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
   site:
     container_name: site
     restart: always
@@ -133,6 +164,7 @@ services:
       - "443:443"
     depends_on:
       - app
+      - agent
       - site
       - docs
       - redis
