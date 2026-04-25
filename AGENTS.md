@@ -58,6 +58,7 @@ This rule is important and should be treated as architectural, not editorial.
 - `TradeJS-Docs` is for external package users.
 - package `README.md` files are also for external package users.
 - When a user asks to update public docs articles or site content, search and edit the external repo directly instead of adding surrogate notes in this monorepo.
+- If the user says "docs", "knowledge base", "documentation", or similar user-facing wording without explicitly saying "internal", default to the external `TradeJS-Docs` repo at `~/dev/tradejs-docs`, not to internal markdown, notes, skills, or `AGENTS.md` in this monorepo.
 - Do not document repo-only flows in `TradeJS-Docs`.
 - Do not tell external users to run monorepo-only commands like `yarn dev`, `yarn workspace @tradejs/app dev`, or similar internal workflows in public docs unless the package flow truly supports them.
 - Internal repository workflows belong in root markdown files:
