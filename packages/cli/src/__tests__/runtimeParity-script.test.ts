@@ -329,7 +329,7 @@ describe('runtime parity script', () => {
     logSpy.mockRestore();
   });
 
-  it('builds replay targets from the full connector universe by default', async () => {
+  it('builds replay targets from runtime trades and strategy results by default', async () => {
     const logSpy = jest
       .spyOn(console, 'log')
       .mockImplementation(() => undefined);
@@ -341,6 +341,87 @@ describe('runtime parity script', () => {
         endTime,
         runtimeGates: true,
         cacheOnly: true,
+      });
+
+    getTickers.mockImplementation(async () => ['BTCUSDT', 'ETHUSDT']);
+    getKeys.mockImplementation(async (prefix: string) => {
+      if (prefix === 'users:root:strategies:') {
+        return [
+          'users:root:strategies:TrendLine:config',
+          'users:root:strategies:VolumeDivergence:config',
+        ];
+      }
+      if (prefix === 'users:root:runtime:trade-records:') {
+        return ['users:root:runtime:trade-records:ord-1'];
+      }
+      return [];
+    });
+    getData.mockImplementation(async (key: string, fallback: unknown) => {
+      if (key === 'users:root:strategies:TrendLine:config') {
+        return {};
+      }
+      if (key === 'users:root:strategies:VolumeDivergence:config') {
+        return {};
+      }
+      if (key === 'users:root:strategies:TrendLine:results') {
+        return {
+          ETHUSDT: {
+            config: {},
+          },
+        };
+      }
+      if (key === 'users:root:strategies:VolumeDivergence:results') {
+        return {};
+      }
+      if (key === 'users:root:runtime:trade-records:ord-1') {
+        return {
+          orderId: 'ord-1',
+          signalId: 'sig-1',
+          strategy: 'TrendLine',
+          symbol: 'BTCUSDT',
+          direction: 'LONG',
+          qty: 1,
+          entryPrice: 100,
+          entryTimestamp: startTime + 900_000,
+          status: 'closed',
+        };
+      }
+      return fallback;
+    });
+    testing.mockResolvedValue({
+      inlineOrderLog: [],
+      inlineReplaySignalEvaluations: [],
+    });
+
+    await mod.runtimeParity();
+
+    expect(testing).toHaveBeenCalledTimes(2);
+    expect(
+      testing.mock.calls.map(([call]) => ({
+        strategyName: call.strategyName,
+        symbol: call.symbol,
+      })),
+    ).toEqual([
+      { strategyName: 'TrendLine', symbol: 'BTCUSDT' },
+      { strategyName: 'TrendLine', symbol: 'ETHUSDT' },
+    ]);
+
+    logSpy.mockRestore();
+  });
+
+  it('builds replay targets from the full connector universe when requested', async () => {
+    const logSpy = jest
+      .spyOn(console, 'log')
+      .mockImplementation(() => undefined);
+    const startTime = 1_700_000_000_000;
+    const endTime = startTime + 86_400_000;
+    const { mod, getTickers, getKeys, getData, testing } =
+      await setupRuntimeParityModule({
+        startTime,
+        endTime,
+        runtimeGates: true,
+        cacheOnly: true,
+        fullUniverse: true,
       });
 
     getTickers.mockImplementation(async () => ['BTCUSDT', 'ETHUSDT']);

@@ -1163,6 +1163,45 @@ describe('ByBitConnectorCreator', () => {
     );
   });
 
+  it('does not emit per-request kline info logs outside TTY by default', async () => {
+    mockedGetDataEdges.mockRejectedValue(new Error('db down'));
+    const client = {
+      getKline: jest.fn().mockResolvedValue({
+        result: {
+          list: [{ timestamp: 2 }, { timestamp: 1 }],
+        },
+      }),
+    };
+    mockedGetClient.mockResolvedValue(client as any);
+    const originalIsTTY = process.stdout.isTTY;
+    Object.defineProperty(process.stdout, 'isTTY', {
+      configurable: true,
+      value: false,
+    });
+
+    const connector = await ByBitConnectorCreator({ userName: 'alice' });
+    const result = await connector.kline({
+      symbol: 'BTCUSDT',
+      interval: '15',
+      end: Date.now(),
+    });
+
+    expect(result).toEqual([{ timestamp: 1 }, { timestamp: 2 }]);
+    expect(mockedLoggerLog).not.toHaveBeenCalledWith(
+      'info',
+      '%s %s %s %s',
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+    );
+
+    Object.defineProperty(process.stdout, 'isTTY', {
+      configurable: true,
+      value: originalIsTTY,
+    });
+  });
+
   it('fallback request catches exchange errors and returns []', async () => {
     mockedGetDataEdges.mockRejectedValue(new Error('db down'));
     const client = {

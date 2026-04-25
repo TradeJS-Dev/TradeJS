@@ -66,6 +66,11 @@ args.option(
   1,
 );
 args.option(
+  'fullUniverse',
+  'Replay every configured strategy across the full connector universe. By default parity replays only runtime-traded and strategy-results symbols unless --tickers is provided.',
+  false,
+);
+args.option(
   'runtimeGates',
   'Replay with runtime AI/ML gates enabled when configured. This may call external AI providers and ML inference.',
   false,
@@ -110,6 +115,17 @@ type ReplayTargetSourceCounts = {
   connectorUniverse: number;
   explicitTickers: number;
   strategyResults: number;
+};
+
+const formatDuration = (startedAt: number) => {
+  const seconds = Math.max(0, (Date.now() - startedAt) / 1000);
+  if (seconds < 60) {
+    return `${seconds.toFixed(1)}s`;
+  }
+
+  const minutes = Math.floor(seconds / 60);
+  const restSeconds = Math.round(seconds % 60);
+  return `${minutes}m ${restSeconds}s`;
 };
 
 type BacktestOnlyClassification =
@@ -405,12 +421,14 @@ const buildReplayTargets = async ({
   connectorSymbols,
   strategyFilter,
   explicitSymbols,
+  includeConnectorUniverse,
 }: {
   userName: string;
   runtimeTrades: RuntimeTradeRecord[];
   connectorSymbols: string[];
   strategyFilter?: string;
   explicitSymbols: string[];
+  includeConnectorUniverse: boolean;
 }) => {
   const targets = new Map<string, ReplayTarget>();
   let configuredStrategies = (
@@ -440,21 +458,32 @@ const buildReplayTargets = async ({
     );
   }
 
-  const universeSymbols = explicitSymbols.length
-    ? explicitSymbols
-    : connectorSymbols;
-  const universeSource = explicitSymbols.length
-    ? 'explicitTickers'
-    : 'connectorUniverse';
+  if (explicitSymbols.length || includeConnectorUniverse) {
+    const universeSymbols = explicitSymbols.length
+      ? explicitSymbols
+      : connectorSymbols;
+    const universeSource = explicitSymbols.length
+      ? 'explicitTickers'
+      : 'connectorUniverse';
 
-  for (const strategy of configuredStrategies) {
-    for (const symbol of universeSymbols) {
-      addReplayTarget(targets, { strategy, symbol }, universeSource);
+    for (const strategy of configuredStrategies) {
+      for (const symbol of universeSymbols) {
+        addReplayTarget(targets, { strategy, symbol }, universeSource);
+      }
     }
   }
 
-  for (const strategy of configuredStrategies) {
-    const symbols = await loadStrategyResultSymbols({ userName, strategy });
+  const strategySymbolsEntries = await Promise.all(
+    configuredStrategies.map(
+      async (strategy) =>
+        [
+          strategy,
+          await loadStrategyResultSymbols({ userName, strategy }),
+        ] as const,
+    ),
+  );
+
+  for (const [strategy, symbols] of strategySymbolsEntries) {
     for (const symbol of symbols) {
       if (explicitSymbolSet && !explicitSymbolSet.has(symbol)) {
         continue;
@@ -610,6 +639,13 @@ const warmReplayHistory = async ({
 }) => {
   const connector = await createConnector({ userName, connectorName });
   const symbols = [...new Set(targets.map((target) => target.symbol))];
+  const warmStartedAt = Date.now();
+
+  console.log(
+    chalk.gray(
+      `Warm history: ${symbols.length} symbol(s) on ${connectorName}, preload ${formatUnix(preloadStart)} -> ${formatUnix(preloadEnd)}`,
+    ),
+  );
 
   await update(connector, interval, symbols, undefined, {
     connectorLabel: connectorName,
@@ -651,6 +687,10 @@ const warmReplayHistory = async ({
       'Coinbase connector is unavailable. BTC reference replay may drift.',
     );
   }
+
+  console.log(
+    chalk.gray(`Warm history: done in ${formatDuration(warmStartedAt)}`),
+  );
 };
 
 const formatPercent = (value: number | null) =>
@@ -1494,6 +1534,7 @@ export const runtimeParity = async () => {
       connectorSymbols,
       strategyFilter: String(flags.strategy || '').trim() || undefined,
       explicitSymbols: requestedSymbols,
+      includeConnectorUniverse: Boolean(flags.fullUniverse),
     });
 
     if (!replayTargets.length) {
@@ -1522,6 +1563,16 @@ export const runtimeParity = async () => {
       window.start,
       BACKTEST_PRELOAD_DAYS,
     );
+    const replayStartedAt = Date.now();
+    const replaySymbolsCount = new Set(
+      replayTargets.map((target) => target.symbol),
+    ).size;
+
+    console.log(
+      chalk.gray(
+        `Replay queue: ${replayTargets.length} target(s), ${replaySymbolsCount} symbol(s), mode=${flags.fullUniverse ? 'full-universe' : requestedSymbols.length ? 'explicit-tickers' : 'runtime+results'}`,
+      ),
+    );
 
     if (!flags.cacheOnly) {
       await warmReplayHistory({
@@ -1538,7 +1589,8 @@ export const runtimeParity = async () => {
     const successfulTargetKeys = new Set<string>();
     const runtimeGateWarningCounts = new Map<string, number>();
 
-    for (const target of replayTargets) {
+    for (const [targetIndex, target] of replayTargets.entries()) {
+      const progressPosition = targetIndex + 1;
       try {
         const replayConfig = await buildReplayConfig({
           userName: flags.user,
@@ -1587,6 +1639,18 @@ export const runtimeParity = async () => {
           ...target,
           message: (error as Error)?.message || String(error),
         });
+      }
+
+      if (
+        progressPosition === 1 ||
+        progressPosition === replayTargets.length ||
+        progressPosition % 25 === 0
+      ) {
+        console.log(
+          chalk.gray(
+            `Replay progress: ${progressPosition}/${replayTargets.length}, ok=${successfulTargetKeys.size}, errors=${replayErrors.length}, current=${target.strategy} ${target.symbol}, elapsed=${formatDuration(replayStartedAt)}`,
+          ),
+        );
       }
     }
 

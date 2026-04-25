@@ -177,7 +177,11 @@ export const ByBitConnectorCreator: ConnectorCreator = async (config) => {
           return [];
         }
 
-        if (!silent) {
+        if (
+          !silent &&
+          (process.stdout.isTTY ||
+            process.env.TRADEJS_LOG_KLINE_REQUESTS === '1')
+        ) {
           logger.log(
             'info',
             '%s %s %s %s',
