@@ -289,6 +289,8 @@ Keep these conventions stable unless explicitly changing the ML pipeline.
   - if AI/ML gates matter, inspect runtime signals/evaluations or run `ai-train` separately
 - Treat `ai-train` approved cadence metrics as historical dataset averages over selected rows, not a guarantee of one live approved trade on every calendar day.
 - `ai-train --localOnly` replays the same local deterministic strategy AI gate used by `AI_MODE=gate`; it does not measure external LLM provider behavior.
+- When reporting approved quality metrics, use `qN+` to mean the effective `MIN_AI_QUALITY=N` live stream, which includes every approval with quality `>= N`.
+- Do not present plain `q1` / `q2` / `q3` / `q4` / `q5` as the default approved bucket labels unless the user explicitly asks for the isolated subset; default reporting should use `qN+` notation.
 - To compare `AI_MODE=gate` and `AI_MODE=llm`, use live/runtime signal analysis records or explicit replay artifacts that contain both gate and LLM decisions.
 - TrendLine core/runtime config uses `TRENDLINE`; `TRENDLINE_CONFIG` is used in ML payload/training contexts. When applying backtest or result configs to a live/replay strategy config, make sure detector options land in `TRENDLINE`, or the core may run with stale/default trendline detector settings.
 
