@@ -298,6 +298,13 @@ describe('redis utils', () => {
     expect(redisKeys.backtestConfig('root', 'TrendLine:base')).toBe(
       'users:root:backtests:configs:TrendLine:base',
     );
+    expect(redisKeys.researchRuns('root')).toBe('users:root:research:runs:');
+    expect(redisKeys.researchRun('root', 'run-1')).toBe(
+      'users:root:research:runs:run-1',
+    );
+    expect(redisKeys.researchLatestRun('root', 'TrendLine')).toBe(
+      'users:root:research:latest:TrendLine',
+    );
     expect(redisKeys.strategies('root')).toBe('users:root:strategies');
     expect(redisKeys.strategyConfig('root', 'TrendLine')).toBe(
       'users:root:strategies:TrendLine:config',

@@ -383,6 +383,11 @@ export const redisKeys = {
     `analysis:${symbol}:${signalId}`,
   backtestResults: (userName: string, config: string, timestamp: string) =>
     `users:${userName}:backtests:results:${config}:${timestamp}`,
+  researchRuns: (userName: string) => `users:${userName}:research:runs:`,
+  researchRun: (userName: string, runId: string) =>
+    `users:${userName}:research:runs:${runId}`,
+  researchLatestRun: (userName: string, strategyName: string) =>
+    `users:${userName}:research:latest:${strategyName}`,
   mlSignalsByStrategy: (strategyName: string) => `ml:${strategyName}:signals:`,
   mlSignals: () => 'ml:',
   mlSignal: (strategyName: string, signalId: string) =>

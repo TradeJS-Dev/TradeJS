@@ -56,6 +56,7 @@ args.option(
   'Replay deterministic adapter gate without AI provider calls',
   false,
 );
+args.option('json', 'Print structured JSON summary', false);
 
 const flags = args.parse(process.argv);
 
@@ -236,6 +237,31 @@ type DeterministicGateSummary = {
   modelFailed: number;
 };
 
+type AiTrainResult = {
+  run: {
+    strategy: string;
+    filePath: string;
+    selected: number;
+    sourceRows: number;
+    recent: number;
+    skip: number;
+    minQuality: number;
+    mode: 'local-deterministic' | 'llm';
+    model: string;
+    parallel: number;
+  };
+  outcome: ReturnType<typeof summarizeAiTrainEvaluations>;
+  byDirection: ReturnType<typeof summarizeAiTrainEvaluationsByDirection>;
+  deterministicFlow: DeterministicGateSummary;
+  qualityBreakdown: ReturnType<
+    typeof summarizeAiTrainEvaluations
+  >['qualityBuckets'];
+  errors: {
+    failed: number;
+    providerErrors: string[];
+  };
+};
+
 const resolveDeterministicGateEvaluation = (
   signal: Signal | null,
   fallbackDirection: string,
@@ -361,6 +387,7 @@ const main = async () => {
   const skip = normalizeInt(flags.skip, 0);
   const minQuality = normalizeInt(flags.minQuality, 4);
   const localOnly = Boolean(flags.localOnly);
+  const jsonOutput = Boolean(flags.json);
   const model =
     String(flags.model || DEFAULT_AI_MODEL).trim() || DEFAULT_AI_MODEL;
   const parallel = normalizePositiveInt(flags.parallel, AI_CONCURRENCY_LIMIT);
@@ -395,13 +422,12 @@ const main = async () => {
     };
   });
   const concurrency = Math.max(1, Math.min(parallel, rows.length));
-  const bar = new ProgressBar(
-    ':current/:total [:bar][:percent] :symbol :status',
-    {
-      total: rows.length,
-      width: 20,
-    },
-  );
+  const bar = jsonOutput
+    ? null
+    : new ProgressBar(':current/:total [:bar][:percent] :symbol :status', {
+        total: rows.length,
+        width: 20,
+      });
 
   let failed = 0;
   const errorMessages: string[] = [];
@@ -449,7 +475,7 @@ const main = async () => {
         modelCandidate: deterministic.modelCandidate,
       });
 
-      bar.tick(1, {
+      bar?.tick(1, {
         symbol: chalk.gray(row.symbol),
         status: isCorrect ? chalk.green('ok') : chalk.red('miss'),
       });
@@ -462,7 +488,7 @@ const main = async () => {
           }`,
         );
       }
-      bar.tick(1, {
+      bar?.tick(1, {
         symbol: chalk.gray(row.symbol),
         status: chalk.yellow('error'),
       });
@@ -477,6 +503,34 @@ const main = async () => {
     evaluations,
   );
   const evaluated = summary.correct + summary.incorrect;
+  const result: AiTrainResult = {
+    run: {
+      strategy: strategyName,
+      filePath,
+      selected: rows.length,
+      sourceRows: totalRows,
+      recent,
+      skip,
+      minQuality,
+      mode: localOnly ? 'local-deterministic' : 'llm',
+      model: localOnly ? 'local-deterministic' : model,
+      parallel: concurrency,
+    },
+    outcome: summary,
+    byDirection: directionSummaries,
+    deterministicFlow: deterministicSummary,
+    qualityBreakdown: summary.qualityBuckets,
+    errors: {
+      failed,
+      providerErrors: errorMessages,
+    },
+  };
+
+  if (jsonOutput) {
+    console.log(JSON.stringify(result));
+    process.exit(failed === rows.length ? 1 : 0);
+  }
+
   console.log('');
   console.log(chalk.green('AI train finished'));
   console.log(chalk.gray(filePath));

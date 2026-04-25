@@ -109,6 +109,14 @@ Summary reports:
 - `yarn signals:summary` builds a Telegram digest for the last 24 hours
 - production cron sends the daily report every day at `22:00` in `Europe/Moscow` timezone
 - production cron sends the weekly report on Sundays at `22:10` in `Europe/Moscow` timezone using `--hours 168`
+- production cron runs nightly research every day at `00:00` in `Europe/Moscow` timezone:
+
+```cron
+CRON_TZ=Europe/Moscow
+0 0 * * * cd /Users/aleksnick/dev/investing && /usr/bin/env bash -lc 'yarn research:auto -- --user root --connector bybit --timeframe 15 --days 45 --recent 1000'
+```
+
+- `yarn research:auto` picks the strategy with the oldest missing/stale research run, snapshots the current strategy config into backtest config `<Strategy>:research`, runs `clean-tests -> clean-dir --dir ai/export -> backtest --ai -> ai-export -> ai-train --localOnly`, stores the structured run in Redis, and always sends a Telegram report
 - summary includes per-strategy signal counts by status, plus per-strategy trade counts, active/closed status, and current/closed PnL
 - runtime trade linking uses generated `orderId`; for Bybit it is passed through as `orderLinkId`
 
