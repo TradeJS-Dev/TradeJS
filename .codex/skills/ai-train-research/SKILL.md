@@ -37,6 +37,10 @@ docker exec inv-redis redis-cli JSON.GET users:root:backtests:configs:<Strategy>
 - If the user explicitly says `without OpenRouter`, use `--localOnly`.
 - If the goal is deterministic gate research, also prefer `--localOnly`.
 - If the user explicitly wants model behavior, run normal `ai-train` with the default GPT-5 Mini model unless they name another model.
+- Interpret replay mode against runtime `AI_MODE` explicitly:
+  - `yarn ai-train --localOnly` matches `AI_MODE=gate` behavior for approval logic, because both use the local deterministic strategy AI gate and the same `MIN_AI_QUALITY` threshold.
+  - normal `yarn ai-train` is the closer proxy for `AI_MODE=llm`, because approval depends on provider/model output instead of only the local deterministic gate.
+  - do not describe `--localOnly` findings as expected `AI_MODE=llm` production behavior.
 
 4. Run the replay.
 

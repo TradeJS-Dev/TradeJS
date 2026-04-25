@@ -289,6 +289,8 @@ Keep these conventions stable unless explicitly changing the ML pipeline.
   - if AI/ML gates matter, inspect runtime signals/evaluations or run `ai-train` separately
 - Treat `ai-train` approved cadence metrics as historical dataset averages over selected rows, not a guarantee of one live approved trade on every calendar day.
 - `ai-train --localOnly` replays the same local deterministic strategy AI gate used by `AI_MODE=gate`; it does not measure external LLM provider behavior.
+- Treat `AI_MODE=gate` metrics as directly comparable to `ai-train --localOnly`, because both use the local deterministic strategy AI gate with the same `MIN_AI_QUALITY` threshold.
+- Do not present `ai-train --localOnly` results as `AI_MODE=llm` expectations; `AI_MODE=llm` depends on external model decisions and must be validated from normal `ai-train`, live runtime records, or another replay that actually includes provider output.
 - When reporting approved quality metrics, use `qN+` to mean the effective `MIN_AI_QUALITY=N` live stream, which includes every approval with quality `>= N`.
 - Do not present plain `q1` / `q2` / `q3` / `q4` / `q5` as the default approved bucket labels unless the user explicitly asks for the isolated subset; default reporting should use `qN+` notation.
 - To compare `AI_MODE=gate` and `AI_MODE=llm`, use live/runtime signal analysis records or explicit replay artifacts that contain both gate and LLM decisions.
