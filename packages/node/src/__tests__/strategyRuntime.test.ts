@@ -63,6 +63,7 @@ jest.mock('@tradejs/core/strategies', () => ({
   })),
   mapAiRuntimeFromConfig: jest.fn((config: any, extras?: any) => ({
     enabled: Boolean(config?.AI_ENABLED),
+    mode: config?.AI_MODE ?? 'llm',
     minQuality: config?.AI_MIN_QUALITY,
     ...extras,
   })),

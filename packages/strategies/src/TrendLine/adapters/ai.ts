@@ -683,6 +683,9 @@ export const trendLineAiAdapter: StrategyAiAdapter = {
   },
   mapEntryRuntimeFromConfig: (config) =>
     mapAiRuntimeFromConfig(
-      config as Pick<TrendLineConfig, 'AI_ENABLED' | 'MIN_AI_QUALITY'>,
+      config as Pick<
+        TrendLineConfig,
+        'AI_ENABLED' | 'AI_MODE' | 'MIN_AI_QUALITY'
+      >,
     ),
 };

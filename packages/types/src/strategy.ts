@@ -289,8 +289,11 @@ export interface StrategyRuntimeMlOptions {
   mlThreshold?: number;
 }
 
+export type StrategyAiMode = 'gate' | 'llm';
+
 export interface StrategyRuntimeAiOptions {
   enabled?: boolean;
+  mode?: StrategyAiMode;
   minQuality?: number;
   replayAnalyses?: RuntimeAiAnalysisSnapshot[];
 }

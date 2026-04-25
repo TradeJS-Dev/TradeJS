@@ -30,6 +30,7 @@ import { uuid } from '../uuid';
 
 type AiRuntimeConfigLike = {
   AI_ENABLED?: boolean;
+  AI_MODE?: StrategyRuntimeAiOptions['mode'];
   MIN_AI_QUALITY?: number;
   AI_REPLAY_ANALYSES?: StrategyRuntimeAiOptions['replayAnalyses'];
 };
@@ -44,6 +45,7 @@ export const mapAiRuntimeFromConfig = <TConfig extends AiRuntimeConfigLike>(
   overrides: Partial<StrategyRuntimeAiOptions> = {},
 ): StrategyRuntimeAiOptions => ({
   enabled: Boolean(config.AI_ENABLED ?? true),
+  mode: config.AI_MODE ?? 'llm',
   minQuality: Number(config.MIN_AI_QUALITY ?? 4),
   replayAnalyses: config.AI_REPLAY_ANALYSES,
   ...overrides,

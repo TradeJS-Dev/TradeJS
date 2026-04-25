@@ -21,6 +21,7 @@ export const config = {
   CLOSE_OPPOSITE_POSITIONS: false,
   BACKTEST_PRICE_MODE: 'mid' as const,
   AI_ENABLED: false,
+  AI_MODE: 'llm' as const,
   MIN_AI_QUALITY: 3,
   FEE_PERCENT: 0.005,
   MAX_LOSS_VALUE: 10,

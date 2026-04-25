@@ -26,6 +26,7 @@ const ADAPTIVE_MOMENTUM_RIBBON_PAYLOAD_PROMPT = `
 
 type Direction = 'LONG' | 'SHORT';
 type Bias = 'bullish' | 'bearish' | null;
+type PrimaryTradingSession = 'asia' | 'europe' | 'us' | 'off_hours';
 type AmrHardBlockReason =
   | 'invalidated'
   | 'inactive_signal_state'
@@ -54,6 +55,8 @@ type AdaptiveMomentumRibbonSnapshot = {
 
 type AdaptiveMomentumRibbonAiContext = {
   signalDirection: Direction | null;
+  momentumPeriod: number | null;
+  butterworthSmoothing: number | null;
   entryLong: boolean;
   entryShort: boolean;
   activeBuy: boolean;
@@ -74,6 +77,8 @@ type AdaptiveMomentumRibbonAiContext = {
   btcMaBias: Bias;
   coinBiasAligned: boolean | null;
   btcBiasAligned: boolean | null;
+  primarySession: PrimaryTradingSession | null;
+  sessionAllowsApproval: boolean | null;
   hardBlockReasons: AmrHardBlockReason[];
   structuralHardBlockReasons: string[];
   deterministicQuality: number;
@@ -128,18 +133,75 @@ const getSignalDirection = (signal: Signal): Direction | null =>
 
 const asBoolean = (value: unknown) => value === true || value === 1;
 
+const getRecord = (value: unknown): Record<string, unknown> | null =>
+  value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+
+const getPrimarySession = (
+  signal: Signal,
+  additionalIndicators?: Record<string, unknown> | null,
+): PrimaryTradingSession | null => {
+  const marketContext = getRecord(
+    additionalIndicators?.marketContext ??
+      signal.additionalIndicators?.marketContext,
+  );
+  const tradingSession = getRecord(marketContext?.tradingSession);
+  const primarySession = tradingSession?.primarySession;
+
+  if (
+    primarySession === 'asia' ||
+    primarySession === 'europe' ||
+    primarySession === 'us' ||
+    primarySession === 'off_hours'
+  ) {
+    return primarySession;
+  }
+
+  const timestamp = toFiniteNumberOrNull(signal.timestamp);
+  if (timestamp == null) {
+    return null;
+  }
+
+  const date = new Date(timestamp);
+  const minuteUtc = date.getUTCHours() * 60 + date.getUTCMinutes();
+  const activeSessions = [
+    minuteUtc >= 0 && minuteUtc < 8 * 60 ? 'asia' : null,
+    minuteUtc >= 7 * 60 && minuteUtc < 16 * 60 ? 'europe' : null,
+    minuteUtc >= 13 * 60 && minuteUtc < 22 * 60 ? 'us' : null,
+  ].filter(
+    (session): session is Exclude<PrimaryTradingSession, 'off_hours'> =>
+      session != null,
+  );
+
+  if (activeSessions.includes('us')) {
+    return 'us';
+  }
+  if (activeSessions.includes('europe')) {
+    return 'europe';
+  }
+  if (activeSessions.includes('asia')) {
+    return 'asia';
+  }
+  return 'off_hours';
+};
+
 const getAdaptiveMomentumRibbonSnapshot = (
   signal: Signal,
 ): AdaptiveMomentumRibbonSnapshot => {
-  const additional = signal.additionalIndicators as Record<
-    string,
-    unknown
-  > | null;
+  const additional = getRecord(signal.additionalIndicators);
   const amr = additional?.amr;
 
   return amr && typeof amr === 'object'
     ? (amr as AdaptiveMomentumRibbonSnapshot)
     : {};
+};
+
+const getAdaptiveMomentumRibbonConfigSnapshot = (
+  signal: Signal,
+): Record<string, unknown> | null => {
+  const additional = getRecord(signal.additionalIndicators);
+  return getRecord(additional?.amrConfigSnapshot);
 };
 
 const isAtLeast = (value: number | null, threshold: number) =>
@@ -307,11 +369,10 @@ const getDeterministicAdaptiveMomentumRibbonQuality = (
     return 2;
   }
 
-  const noBiasConflict =
-    context.coinBiasAligned === true && context.btcBiasAligned === true;
   const biasConflictCount =
     Number(context.coinBiasAligned === false) +
     Number(context.btcBiasAligned === false);
+  const noBiasConflict = biasConflictCount === 0;
   const oscillatorModerate = isAtLeast(context.oscillatorStrength, 0.3);
   const oscillatorStrong = isAtLeast(context.oscillatorStrength, 0.55);
   const oscillatorElite = isAtLeast(context.oscillatorStrength, 0.9);
@@ -336,6 +397,13 @@ const getDeterministicAdaptiveMomentumRibbonQuality = (
       ? context.channelState === 'above_upper'
       : context.channelState === 'below_lower';
   const channelExtensionStrong = isAtLeast(context.channelExtensionPct, 0.08);
+  const sessionAllowsApproval = context.sessionAllowsApproval !== false;
+  const slowestDetector =
+    context.momentumPeriod === 48 && context.butterworthSmoothing === 6;
+
+  if (!sessionAllowsApproval) {
+    return 3;
+  }
 
   if (
     channelSupportive &&
@@ -352,6 +420,7 @@ const getDeterministicAdaptiveMomentumRibbonQuality = (
   if (
     channelSupportive &&
     channelExpansion &&
+    !slowestDetector &&
     oscillatorModerate &&
     invalidationCompact &&
     structuralRrModerate &&
@@ -381,9 +450,15 @@ const getHardBlockReasonText = (reason: AmrHardBlockReason) => {
 
 const buildAdaptiveMomentumRibbonContext = (
   signal: Signal,
+  additionalIndicators?: Record<string, unknown> | null,
 ): AdaptiveMomentumRibbonAiContext => {
   const signalDirection = getSignalDirection(signal);
   const snapshot = getAdaptiveMomentumRibbonSnapshot(signal);
+  const configSnapshot = getAdaptiveMomentumRibbonConfigSnapshot(signal);
+  const momentumPeriod = toFiniteNumberOrNull(configSnapshot?.momentumPeriod);
+  const butterworthSmoothing = toFiniteNumberOrNull(
+    configSnapshot?.butterworthSmoothing,
+  );
   const currentPrice = toFiniteNumberOrNull(signal.prices?.currentPrice);
   const takeProfitPrice = toFiniteNumberOrNull(signal.prices?.takeProfitPrice);
   const signalOsc = toFiniteNumberOrNull(snapshot.signalOsc);
@@ -464,6 +539,9 @@ const buildAdaptiveMomentumRibbonContext = (
           ? null
           : btcBias === 'bearish'
         : null;
+  const primarySession = getPrimarySession(signal, additionalIndicators);
+  const sessionAllowsApproval =
+    primarySession == null ? null : primarySession === 'off_hours';
 
   const hardBlockReasons: AmrHardBlockReason[] = [];
 
@@ -495,6 +573,8 @@ const buildAdaptiveMomentumRibbonContext = (
 
   const deterministicQuality = getDeterministicAdaptiveMomentumRibbonQuality({
     signalDirection,
+    momentumPeriod,
+    butterworthSmoothing,
     entryLong,
     entryShort,
     activeBuy,
@@ -515,11 +595,15 @@ const buildAdaptiveMomentumRibbonContext = (
     btcMaBias: btcBias,
     coinBiasAligned,
     btcBiasAligned,
+    primarySession,
+    sessionAllowsApproval,
     hardBlockReasons,
   });
 
   return {
     signalDirection,
+    momentumPeriod,
+    butterworthSmoothing,
     entryLong,
     entryShort,
     activeBuy,
@@ -540,6 +624,8 @@ const buildAdaptiveMomentumRibbonContext = (
     btcMaBias: btcBias,
     coinBiasAligned,
     btcBiasAligned,
+    primarySession,
+    sessionAllowsApproval,
     hardBlockReasons,
     structuralHardBlockReasons: hardBlockReasons,
     deterministicQuality,
@@ -637,13 +723,20 @@ const postProcessAnalysis = ({
 };
 
 export const adaptiveMomentumRibbonAiAdapter: StrategyAiAdapter = {
-  buildPayload: ({ signal, basePayload }) => ({
-    ...basePayload,
-    additionalIndicators: {
-      ...(basePayload.additionalIndicators as Record<string, unknown>),
-      adaptiveMomentumRibbonContext: buildAdaptiveMomentumRibbonContext(signal),
-    } satisfies AiPayload['additionalIndicators'],
-  }),
+  buildPayload: ({ signal, basePayload }) => {
+    const additionalIndicators = getRecord(basePayload.additionalIndicators);
+
+    return {
+      ...basePayload,
+      additionalIndicators: {
+        ...(additionalIndicators ?? {}),
+        adaptiveMomentumRibbonContext: buildAdaptiveMomentumRibbonContext(
+          signal,
+          additionalIndicators,
+        ),
+      } satisfies AiPayload['additionalIndicators'],
+    };
+  },
   postProcessAnalysis,
   buildSystemPromptAddon: () =>
     `${ADAPTIVE_MOMENTUM_RIBBON_CONTEXT_PROMPT}\n${ADAPTIVE_MOMENTUM_RIBBON_PAYLOAD_PROMPT}`,
@@ -656,6 +749,8 @@ export const adaptiveMomentumRibbonAiAdapter: StrategyAiAdapter = {
     return `
 
 Доп. контекст AdaptiveMomentumRibbon:
+- momentumPeriod=${context.momentumPeriod ?? 'n/a'}
+- butterworthSmoothing=${context.butterworthSmoothing ?? 'n/a'}
 - signalOsc=${context.signalOsc?.toFixed?.(3) ?? 'n/a'}
 - oscillatorStrength=${context.oscillatorStrength?.toFixed?.(3) ?? 'n/a'}
 - channelState=${context.channelState}
@@ -665,6 +760,8 @@ export const adaptiveMomentumRibbonAiAdapter: StrategyAiAdapter = {
 - structuralRewardRiskRatio=${context.structuralRewardRiskRatio?.toFixed?.(3) ?? 'n/a'}
 - coinBiasAligned=${context.coinBiasAligned}
 - btcBiasAligned=${context.btcBiasAligned}
+- primarySession=${context.primarySession ?? 'n/a'}
+- sessionAllowsApproval=${context.sessionAllowsApproval}
 - deterministicQuality=${context.deterministicQuality}
 - approvalAllowedNow=${context.approvalAllowedNow}
 - hardBlockReasons=${context.hardBlockReasons.join(', ') || 'none'}
@@ -679,7 +776,7 @@ export const adaptiveMomentumRibbonAiAdapter: StrategyAiAdapter = {
     mapAiRuntimeFromConfig(
       config as Pick<
         AdaptiveMomentumRibbonConfig,
-        'AI_ENABLED' | 'MIN_AI_QUALITY'
+        'AI_ENABLED' | 'AI_MODE' | 'MIN_AI_QUALITY'
       >,
     ),
 };

@@ -16,16 +16,19 @@ describe('strategy adapters', () => {
       } as any),
     ).toEqual({
       enabled: false,
+      mode: 'llm',
       minQuality: 5,
     });
 
     expect(
       maStrategyAiAdapter.mapEntryRuntimeFromConfig?.({
         AI_ENABLED: true,
+        AI_MODE: 'gate',
         MIN_AI_QUALITY: 3,
       } as any),
     ).toEqual({
       enabled: true,
+      mode: 'gate',
       minQuality: 3,
     });
   });
@@ -81,6 +84,7 @@ describe('strategy adapters', () => {
       } as any),
     ).toEqual({
       enabled: true,
+      mode: 'llm',
       minQuality: 4,
     });
   });

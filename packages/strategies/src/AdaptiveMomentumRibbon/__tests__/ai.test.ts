@@ -90,8 +90,12 @@ describe('adaptiveMomentumRibbonAiAdapter', () => {
         signalDirection: 'LONG',
         channelState: 'above_upper',
         channelBiasAligned: true,
+        momentumPeriod: 32,
+        butterworthSmoothing: 4,
         coinBiasAligned: true,
         btcBiasAligned: true,
+        primarySession: 'off_hours',
+        sessionAllowsApproval: true,
         deterministicQuality: 5,
         approvalAllowedNow: true,
         structuralHardBlockReasons: [],
@@ -327,9 +331,103 @@ describe('adaptiveMomentumRibbonAiAdapter', () => {
       expect.objectContaining({
         channelState: 'above_upper',
         channelBiasAligned: true,
+        primarySession: 'off_hours',
+        sessionAllowsApproval: true,
         deterministicQuality: 4,
         approvalAllowedNow: true,
         structuralHardBlockReasons: [],
+      }),
+    );
+  });
+
+  it('keeps active-session above-upper longs in watch mode', () => {
+    const signal = makeSignal({
+      timestamp: Date.UTC(2026, 0, 1, 14, 30),
+    });
+    const payload = adaptiveMomentumRibbonAiAdapter.buildPayload?.({
+      signal,
+      basePayload: {
+        signal: {
+          symbol: signal.symbol,
+          signalId: signal.signalId,
+          interval: signal.interval,
+          direction: signal.direction,
+          timestamp: signal.timestamp,
+          strategy: signal.strategy,
+          prices: {
+            currentPrice: signal.prices.currentPrice,
+            takeProfitPrice: signal.prices.takeProfitPrice,
+            stopLossPrice: signal.prices.stopLossPrice,
+          },
+        },
+        figures: {},
+        indicators: signal.indicators,
+        additionalIndicators: signal.additionalIndicators,
+      },
+    }) as any;
+
+    expect(payload.additionalIndicators.adaptiveMomentumRibbonContext).toEqual(
+      expect.objectContaining({
+        channelState: 'above_upper',
+        primarySession: 'us',
+        sessionAllowsApproval: false,
+        deterministicQuality: 3,
+        approvalAllowedNow: false,
+        structuralHardBlockReasons: [],
+      }),
+    );
+  });
+
+  it('requires q5 for the slowest 48/6 detector point', () => {
+    const signal = makeSignal({
+      prices: {
+        currentPrice: 100.78,
+        takeProfitPrice: 103.4,
+        stopLossPrice: 99.92,
+      },
+      additionalIndicators: {
+        amr: {
+          signalOsc: 0.72,
+          kcMidline: 100.2,
+          kcUpper: 100.7,
+          kcLower: 99.6,
+          invalidationLevel: 99.92,
+        },
+        amrConfigSnapshot: {
+          momentumPeriod: 48,
+          butterworthSmoothing: 6,
+        },
+      },
+    });
+    const payload = adaptiveMomentumRibbonAiAdapter.buildPayload?.({
+      signal,
+      basePayload: {
+        signal: {
+          symbol: signal.symbol,
+          signalId: signal.signalId,
+          interval: signal.interval,
+          direction: signal.direction,
+          timestamp: signal.timestamp,
+          strategy: signal.strategy,
+          prices: {
+            currentPrice: signal.prices.currentPrice,
+            takeProfitPrice: signal.prices.takeProfitPrice,
+            stopLossPrice: signal.prices.stopLossPrice,
+          },
+        },
+        figures: {},
+        indicators: signal.indicators,
+        additionalIndicators: signal.additionalIndicators,
+      },
+    }) as any;
+
+    expect(payload.additionalIndicators.adaptiveMomentumRibbonContext).toEqual(
+      expect.objectContaining({
+        channelState: 'above_upper',
+        momentumPeriod: 48,
+        butterworthSmoothing: 6,
+        deterministicQuality: 3,
+        approvalAllowedNow: false,
       }),
     );
   });
@@ -391,6 +489,8 @@ describe('adaptiveMomentumRibbonAiAdapter', () => {
         channelState: 'below_lower',
         coinBiasAligned: true,
         btcBiasAligned: true,
+        primarySession: 'off_hours',
+        sessionAllowsApproval: true,
         deterministicQuality: 5,
         approvalAllowedNow: true,
       }),

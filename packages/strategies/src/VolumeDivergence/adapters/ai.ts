@@ -1118,6 +1118,9 @@ export const volumeDivergenceAiAdapter: StrategyAiAdapter = {
   },
   mapEntryRuntimeFromConfig: (config) =>
     mapAiRuntimeFromConfig(
-      config as Pick<VolumeDivergenceConfig, 'AI_ENABLED' | 'MIN_AI_QUALITY'>,
+      config as Pick<
+        VolumeDivergenceConfig,
+        'AI_ENABLED' | 'AI_MODE' | 'MIN_AI_QUALITY'
+      >,
     ),
 };

@@ -592,6 +592,12 @@ export const formatAnalysisMessage = (
     lines.push(`Quality: <b>${quality}/5</b>`);
   }
 
+  if (analysis.gateDecision && analysis.llmDecision) {
+    lines.push(
+      `Gate vs LLM: <b>${analysis.gateContradictsLlm ? 'conflict' : 'aligned'}</b> (gate ${analysis.gateDecision}, LLM ${analysis.llmDecision})`,
+    );
+  }
+
   const happeningText = takeUniqueAnalysisText(
     usedValues,
     analysis.setup,

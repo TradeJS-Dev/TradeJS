@@ -3,6 +3,8 @@ const mockBuildMlTrainingRow = jest.fn();
 const mockTrimMlTrainingRowWindows = jest.fn();
 const mockBuildMlFeatures = jest.fn();
 const mockAskAI = jest.fn();
+const mockRunAiPromptLocal = jest.fn();
+const mockSetData = jest.fn();
 const mockCreateRuntimeOrderId = jest.fn();
 const mockRecordRuntimeTradeOpen = jest.fn();
 
@@ -20,8 +22,17 @@ jest.mock('@tradejs/infra/logger', () => ({
   },
 }));
 
+jest.mock('@tradejs/infra/redis', () => ({
+  redisKeys: {
+    analysis: (symbol: string, signalId: string) =>
+      `analysis:${symbol}:${signalId}`,
+  },
+  setData: (...args: unknown[]) => mockSetData(...args),
+}));
+
 jest.mock('../ai', () => ({
   askAI: (...args: unknown[]) => mockAskAI(...args),
+  runAiPromptLocal: (...args: unknown[]) => mockRunAiPromptLocal(...args),
 }));
 
 jest.mock('../runtimeJournal', () => ({
@@ -56,6 +67,12 @@ describe('strategyHelpers/runtime enrichSignalWithMlAi', () => {
       direction: 'LONG',
       quality: 4,
     });
+    mockRunAiPromptLocal.mockResolvedValue({
+      direction: 'LONG',
+      quality: 4,
+      comment: 'gate approved',
+    });
+    mockSetData.mockResolvedValue(null);
     mockCreateRuntimeOrderId.mockReturnValue('tjs-order-1');
     mockRecordRuntimeTradeOpen.mockResolvedValue(null);
     mockFetchMlThreshold.mockResolvedValue({
@@ -186,6 +203,49 @@ describe('strategyHelpers/runtime enrichSignalWithMlAi', () => {
     } as any);
 
     expect(quality).toBe(0);
+  });
+
+  it('uses gate quality in gate mode while saving LLM comparison', async () => {
+    mockRunAiPromptLocal.mockResolvedValue({
+      direction: 'LONG',
+      quality: 4,
+      comment: 'gate approved',
+    });
+    mockAskAI.mockResolvedValue({
+      direction: null,
+      quality: 2,
+      comment: 'llm rejected',
+    });
+    const enrichedSignal = { ...signal };
+
+    const quality = await enrichSignalWithAi({
+      signal: enrichedSignal,
+      symbol: 'ETHUSDT',
+      direction: 'LONG',
+      env: 'LIVE',
+      ai: { enabled: true, mode: 'gate', minQuality: 4 },
+    });
+
+    expect(quality).toBe(4);
+    expect(mockRunAiPromptLocal).toHaveBeenCalledTimes(1);
+    expect(mockAskAI).toHaveBeenCalledTimes(1);
+    expect(enrichedSignal.aiAnalysis).toEqual({
+      direction: null,
+      quality: 2,
+      comment: 'llm rejected',
+      gateAnalysis: {
+        direction: 'LONG',
+        quality: 4,
+        comment: 'gate approved',
+      },
+      gateDecision: 'approved',
+      llmDecision: 'rejected',
+      gateContradictsLlm: true,
+    });
+    expect(mockSetData).toHaveBeenCalledWith(
+      'analysis:ETHUSDT:s1',
+      enrichedSignal.aiAnalysis,
+    );
   });
 
   it('uses replay AI snapshot in PARITY env without calling provider', async () => {

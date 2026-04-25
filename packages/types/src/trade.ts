@@ -399,6 +399,10 @@ export interface SignalAnalysis {
   riskLevels?: string;
   qualityReason?: string;
   triggerInvalidation?: string;
+  gateAnalysis?: Partial<SignalAnalysis>;
+  gateContradictsLlm?: boolean;
+  gateDecision?: 'approved' | 'rejected';
+  llmDecision?: 'approved' | 'rejected';
   comment: string;
 }
 

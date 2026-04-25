@@ -405,6 +405,9 @@ export const reverseTrendLineAiAdapter: StrategyAiAdapter = {
   },
   mapEntryRuntimeFromConfig: (config) =>
     mapAiRuntimeFromConfig(
-      config as Pick<ReverseTrendLineConfig, 'AI_ENABLED' | 'MIN_AI_QUALITY'>,
+      config as Pick<
+        ReverseTrendLineConfig,
+        'AI_ENABLED' | 'AI_MODE' | 'MIN_AI_QUALITY'
+      >,
     ),
 };

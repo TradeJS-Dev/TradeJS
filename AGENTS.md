@@ -150,6 +150,16 @@ Use `strategyApi` and shared runtime instead.
 
 `entryContext` is the source of truth for runtime execution fields.
 
+Runtime AI config conventions:
+
+- `AI_ENABLED` remains the primary runtime AI on/off switch, matching the existing `ML_ENABLED` convention.
+- `AI_MODE` selects the AI decision source when `AI_ENABLED=true`.
+- Supported `AI_MODE` values are:
+  - `llm` — default; runtime calls the configured AI provider and uses the LLM analysis for the AI quality gate.
+  - `gate` — runtime uses the local deterministic strategy AI gate for entry quality, while still calling the configured AI provider for Telegram commentary and later gate-vs-LLM comparison.
+- In `gate` mode, persist the LLM analysis with gate comparison metadata (`gateAnalysis`, `gateDecision`, `llmDecision`, `gateContradictsLlm`) so later research can compare live gate and LLM behavior.
+- Keep `MIN_AI_QUALITY` as the shared quality threshold for both `gate` and `llm` decisions.
+
 ### Indicator Rules
 
 - Keep shared indicator logic neutral and reusable.
@@ -278,6 +288,8 @@ Keep these conventions stable unless explicitly changing the ML pipeline.
   - `runtime=0` and `backtest=0` for a strategy means the selected replay targets produced no comparable entries in that window; it does not measure how many AI rows would be approved
   - if AI/ML gates matter, inspect runtime signals/evaluations or run `ai-train` separately
 - Treat `ai-train` approved cadence metrics as historical dataset averages over selected rows, not a guarantee of one live approved trade on every calendar day.
+- `ai-train --localOnly` replays the same local deterministic strategy AI gate used by `AI_MODE=gate`; it does not measure external LLM provider behavior.
+- To compare `AI_MODE=gate` and `AI_MODE=llm`, use live/runtime signal analysis records or explicit replay artifacts that contain both gate and LLM decisions.
 - TrendLine core/runtime config uses `TRENDLINE`; `TRENDLINE_CONFIG` is used in ML payload/training contexts. When applying backtest or result configs to a live/replay strategy config, make sure detector options land in `TRENDLINE`, or the core may run with stale/default trendline detector settings.
 
 ## Generated / Build Files

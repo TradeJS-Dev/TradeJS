@@ -504,6 +504,58 @@ describe('signals', () => {
     expect(message).not.toContain('Why Quality');
   });
 
+  it('formats gate and LLM comparison in AI analysis', () => {
+    jest.doMock('../screenshot', () => ({
+      getScreenshotBuffer: jest.fn(async () => {
+        throw new Error('no screenshot');
+      }),
+      getScreenshotFilename: jest.fn(() => 'BTCUSDT_sig-1_15.png'),
+    }));
+
+    const { formatAnalysisMessage } = require('../signals');
+
+    const message = formatAnalysisMessage(
+      {
+        signalId: 'sig-1',
+        symbol: 'BTCUSDT',
+        strategy: 'TrendLine',
+        interval: '15',
+        direction: 'LONG',
+        timestamp: 1_700_000_000_000,
+        indicators: {},
+        additionalIndicators: {},
+        prices: {
+          currentPrice: 100,
+          takeProfitPrice: 105,
+          stopLossPrice: 99,
+          riskRatio: 2.5,
+        },
+      },
+      {
+        direction: null,
+        quality: 2,
+        needRetest: true,
+        retestPrice: null,
+        takeProfitPrice: null,
+        stopLossPrice: null,
+        setup: 'LLM wants more confirmation.',
+        comment: 'llm rejected',
+        gateAnalysis: {
+          direction: 'LONG',
+          quality: 4,
+          comment: 'gate approved',
+        },
+        gateDecision: 'approved',
+        llmDecision: 'rejected',
+        gateContradictsLlm: true,
+      },
+    );
+
+    expect(message).toContain(
+      'Gate vs LLM: <b>conflict</b> (gate approved, LLM rejected)',
+    );
+  });
+
   it('formats pending AI analysis as not approved yet with next step', () => {
     jest.doMock('../screenshot', () => ({
       getScreenshotBuffer: jest.fn(async () => {

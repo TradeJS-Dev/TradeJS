@@ -215,6 +215,7 @@ exports[`strategyRuntime hook params snapshots afterEnrichAi params snapshot 1`]
     "config": {
       "enabled": true,
       "minQuality": 5,
+      "mode": "llm",
     },
     "quality": 5,
   },
@@ -340,6 +341,7 @@ exports[`strategyRuntime hook params snapshots afterEnrichAi params snapshot 1`]
         "ai": {
           "enabled": true,
           "minQuality": 5,
+          "mode": "llm",
         },
         "ml": {
           "enabled": true,
@@ -537,6 +539,7 @@ exports[`strategyRuntime hook params snapshots afterEnrichMl params snapshot 1`]
         "ai": {
           "enabled": true,
           "minQuality": 5,
+          "mode": "llm",
         },
         "ml": {
           "enabled": true,
@@ -618,6 +621,7 @@ exports[`strategyRuntime hook params snapshots afterPlaceOrder params snapshot (
     "config": {
       "enabled": true,
       "minQuality": 5,
+      "mode": "llm",
     },
     "quality": 5,
   },
@@ -743,6 +747,7 @@ exports[`strategyRuntime hook params snapshots afterPlaceOrder params snapshot (
         "ai": {
           "enabled": true,
           "minQuality": 5,
+          "mode": "llm",
         },
         "ml": {
           "enabled": true,
@@ -939,6 +944,7 @@ exports[`strategyRuntime hook params snapshots afterPlaceOrder params snapshot (
         "ai": {
           "enabled": false,
           "minQuality": undefined,
+          "mode": "llm",
         },
         "ml": {
           "enabled": false,
@@ -1048,6 +1054,7 @@ exports[`strategyRuntime hook params snapshots beforeEntryGate params snapshot (
     "config": {
       "enabled": true,
       "minQuality": 5,
+      "mode": "llm",
     },
     "quality": 5,
   },
@@ -1173,6 +1180,7 @@ exports[`strategyRuntime hook params snapshots beforeEntryGate params snapshot (
         "ai": {
           "enabled": true,
           "minQuality": 5,
+          "mode": "llm",
         },
         "ml": {
           "enabled": true,
@@ -1346,6 +1354,7 @@ exports[`strategyRuntime hook params snapshots beforeEntryGate params snapshot (
         "ai": {
           "enabled": false,
           "minQuality": undefined,
+          "mode": "llm",
         },
         "ml": {
           "enabled": false,
@@ -1399,6 +1408,7 @@ exports[`strategyRuntime hook params snapshots beforePlaceOrder params snapshot 
     "config": {
       "enabled": true,
       "minQuality": 5,
+      "mode": "llm",
     },
     "quality": 5,
   },
@@ -1524,6 +1534,7 @@ exports[`strategyRuntime hook params snapshots beforePlaceOrder params snapshot 
         "ai": {
           "enabled": true,
           "minQuality": 5,
+          "mode": "llm",
         },
         "ml": {
           "enabled": true,
@@ -1697,6 +1708,7 @@ exports[`strategyRuntime hook params snapshots beforePlaceOrder params snapshot 
         "ai": {
           "enabled": false,
           "minQuality": undefined,
+          "mode": "llm",
         },
         "ml": {
           "enabled": false,
