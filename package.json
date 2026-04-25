@@ -9,6 +9,7 @@
     "packages/*"
   ],
   "scripts": {
+    "agent-run": "yarn cli:node8g agent-run",
     "ai-export": "yarn cli ai-export",
     "ai-train": "yarn cli:node8g ai-train",
     "backtest": "yarn clean-tests --cache && yarn cli:node8g backtest",

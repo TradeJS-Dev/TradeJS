@@ -25,6 +25,7 @@ args.option(['n', 'recent'], 'AI train recent rows window', 1000);
 args.option('skip', 'AI train skip rows from end', 0);
 args.option('minQuality', 'Minimum AI quality required to approve entry', 4);
 args.option('outDir', 'AI export output directory', 'data/ai/export');
+args.option('skipAgent', 'Skip direct research agent invocation', false);
 args.option('json', 'Print structured JSON summary', false);
 
 const flags = args.parse(process.argv);
@@ -35,7 +36,8 @@ type ResearchStepName =
   | 'cleanAiExport'
   | 'backtest'
   | 'aiExport'
-  | 'aiTrainLocal';
+  | 'aiTrainLocal'
+  | 'agentRun';
 
 type ResearchStepResult = {
   status: 'pending' | 'running' | 'completed' | 'failed';
@@ -82,6 +84,7 @@ type ResearchRunRecord = {
     };
     aiExportFile?: string;
     aiTrainLocal?: unknown;
+    agentRun?: unknown;
   };
 };
 
@@ -130,6 +133,11 @@ export const createEmptySteps = (): Record<
   aiTrainLocal: {
     status: 'pending',
     command: 'ai-train',
+    args: [],
+  },
+  agentRun: {
+    status: 'pending',
+    command: 'agent-run',
     args: [],
   },
 });
@@ -396,6 +404,44 @@ export const parseJsonOutput = <T>(stdout: string, label: string): T => {
   return JSON.parse(trimmed) as T;
 };
 
+const executeNonBlockingStep = async (
+  run: ResearchRunRecord,
+  stepName: ResearchStepName,
+  command: string,
+  commandArgs: string[],
+  options: { node8g?: boolean } = {},
+) => {
+  const startedAt = new Date().toISOString();
+  run.steps[stepName] = {
+    status: 'running',
+    command,
+    args: commandArgs,
+    startedAt,
+  };
+  await saveRun(run);
+
+  const result = await runCliCommand({
+    command,
+    args: commandArgs,
+    node8g: options.node8g,
+  });
+
+  run.steps[stepName] = {
+    status: result.exitCode === 0 ? 'completed' : 'failed',
+    command,
+    args: commandArgs,
+    startedAt,
+    finishedAt: new Date().toISOString(),
+    durationMs: result.durationMs,
+    exitCode: result.exitCode,
+    stdoutTail: trimTextTail(result.stdout),
+    stderrTail: trimTextTail(result.stderr),
+  };
+  await saveRun(run);
+
+  return result;
+};
+
 const main = async () => {
   const userName = String(flags.user || 'root').trim() || 'root';
   const connector = String(flags.connector || 'bybit').trim() || 'bybit';
@@ -411,6 +457,7 @@ const main = async () => {
     Number.parseInt(String(flags.minQuality ?? 4), 10) || 4,
   );
   const jsonOutput = Boolean(flags.json);
+  const skipAgent = Boolean(flags.skipAgent);
   const outDirArg =
     String(flags.outDir || 'data/ai/export').trim() || 'data/ai/export';
   const outDir = path.resolve(projectRoot, outDirArg);
@@ -637,6 +684,40 @@ const main = async () => {
     run.finishedAt = new Date().toISOString();
     await saveRun(run);
     await sendRunReport();
+
+    if (!skipAgent) {
+      const agentResult = await executeNonBlockingStep(
+        run,
+        'agentRun',
+        'agent-run',
+        [
+          '--user',
+          userName,
+          '--runId',
+          run.runId,
+          '--strategy',
+          run.strategy,
+          '--json',
+        ],
+        { node8g: true },
+      );
+
+      try {
+        run.artifacts.agentRun = parseJsonOutput(
+          agentResult.stdout,
+          'agent-run --json',
+        );
+      } catch (error) {
+        run.artifacts.agentRun = {
+          status: 'failed',
+          error: (error as Error)?.message || String(error),
+          stdout: trimTextTail(agentResult.stdout),
+          stderr: trimTextTail(agentResult.stderr),
+        };
+      }
+
+      await saveRun(run);
+    }
 
     if (jsonOutput) {
       console.log(JSON.stringify(run));

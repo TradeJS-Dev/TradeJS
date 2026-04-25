@@ -56,6 +56,7 @@
     "typescript": "^5.1"
   },
   "scripts": {
+    "agent-run": "yarn run run:dist agent-run",
     "build": "tsup",
     "typecheck": "tsc -p ./tsconfig.json --noEmit",
     "run:src": "dotenv -e \"${DOTENV_CONFIG_PATH:-${PROJECT_CWD:-$PWD}/.env}\" -- ts-node -r tsconfig-paths/register",

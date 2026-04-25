@@ -115,6 +115,7 @@ describe('research:auto helpers', () => {
         backtest: { status: 'completed', command: '', args: [] },
         aiExport: { status: 'completed', command: '', args: [] },
         aiTrainLocal: { status: 'completed', command: '', args: [] },
+        agentRun: { status: 'pending', command: '', args: [] },
       },
       artifacts: {
         backtestResultKey: 'users:root:backtests:results:TrendLine:research:1',

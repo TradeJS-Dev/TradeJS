@@ -5,6 +5,7 @@ import 'dotenv/config';
 type ScriptLoader = () => Promise<unknown>;
 
 const scriptLoaders: Record<string, ScriptLoader> = {
+  'agent-run': () => import('./scripts/agentRun'),
   'ai-export': () => import('./scripts/aiExport'),
   'ai-train': () => import('./scripts/aiTrain'),
   backtest: () => import('./scripts/backtest'),

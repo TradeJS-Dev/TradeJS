@@ -116,7 +116,9 @@ CRON_TZ=Europe/Moscow
 0 0 * * * cd /Users/aleksnick/dev/investing && /usr/bin/env bash -lc 'yarn research:auto -- --user root --connector bybit --timeframe 15 --days 45 --recent 1000'
 ```
 
-- `yarn research:auto` picks the strategy with the oldest missing/stale research run, snapshots the current strategy config into backtest config `<Strategy>:research`, runs `clean-tests -> clean-dir --dir ai/export -> backtest --ai -> ai-export -> ai-train --localOnly`, stores the structured run in Redis, and always sends a Telegram report
+- `yarn research:auto` picks the strategy with the oldest missing/stale research run, snapshots the current strategy config into backtest config `<Strategy>:research`, runs `clean-tests -> clean-dir --dir ai/export -> backtest --ai -> ai-export -> ai-train --localOnly`, stores the structured run in Redis, always sends a Telegram report, and then directly invokes `yarn agent-run`
+- `yarn agent-run` requires `OPENAI_API_ENDPOINT` to point to OpenRouter and uses `openai/gpt-5.4` with `reasoning.effort=medium`
+- the agent runs in a dedicated `git worktree` from `origin/stable`, creates a separate review branch under `codex/research/*`, validates with `yarn prettify && yarn typecheck && yarn unit`, pushes the branch, and sends a dedicated Telegram report
 - summary includes per-strategy signal counts by status, plus per-strategy trade counts, active/closed status, and current/closed PnL
 - runtime trade linking uses generated `orderId`; for Bybit it is passed through as `orderLinkId`
 
