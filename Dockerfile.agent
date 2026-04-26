@@ -28,7 +28,7 @@ COPY entrypoint.agent.sh ./entrypoint.agent.sh
 COPY cronjob.agent ./cronjob.agent
 
 RUN yarn install --immutable
-RUN yarn workspace @tradejs/cli build
+RUN yarn turbo run build --filter=@tradejs/cli...
 
 RUN chmod +x ./entrypoint.agent.sh ./bin/*.sh
 
