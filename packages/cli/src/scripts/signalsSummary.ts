@@ -771,9 +771,15 @@ export const signalsSummary = async () => {
     (evaluation) =>
       evaluation.timestamp >= startTime && evaluation.timestamp <= endTime,
   );
+  const signalIds = new Set(
+    signals.map((signal) => signal.signalId).filter(Boolean),
+  );
   const windowTrades = syncedTrades.filter(
     (trade) =>
-      trade.entryTimestamp >= startTime && trade.entryTimestamp <= endTime,
+      trade.entryTimestamp >= startTime &&
+      trade.entryTimestamp <= endTime &&
+      trade.signalId != null &&
+      signalIds.has(trade.signalId),
   );
   const message = buildSummaryMessage({
     hours,
