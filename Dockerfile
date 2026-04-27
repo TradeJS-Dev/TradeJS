@@ -1,5 +1,9 @@
 FROM node:20-alpine
 
+LABEL org.opencontainers.image.source="https://github.com/TradeJS-Dev/TradeJS" \
+      org.opencontainers.image.description="TradeJS app" \
+      org.opencontainers.image.licenses="MIT"
+
 RUN apk add --no-cache \
     curl \
     bash \

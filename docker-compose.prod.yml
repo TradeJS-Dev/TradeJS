@@ -47,7 +47,6 @@ services:
     image: ghcr.io/tradejs-dev/tradejs-agent:latest
     env_file:
       - .env
-    entrypoint: ["./entrypoint.agent.sh"]
     volumes:
       - ./data:/app/data
       - ./screenshots:/app/public/screenshots
