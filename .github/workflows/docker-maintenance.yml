@@ -1,0 +1,24 @@
+name: Docker Maintenance
+on:
+  workflow_dispatch:
+    inputs:
+      prune_images:
+        description: "Run docker image prune -a -f on the server"
+        required: true
+        default: true
+        type: boolean
+
+jobs:
+  prune-images:
+    if: ${{ inputs.prune_images }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Prune Docker images on server
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          script: |
+            docker image prune -a -f

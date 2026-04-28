@@ -1,5 +1,3 @@
-# .github/workflows/deploy.yml
-
 name: Deploy
 on:
   push:
@@ -10,25 +8,57 @@ on:
   workflow_dispatch:
 
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      ml_infer: ${{ steps.filter.outputs.ml_infer }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Detect changed deploy targets
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            ml_infer:
+              - 'packages/ml/python/**'
+              - 'proto/**'
+              - 'Dockerfile.infer'
+
   repo-checks:
+    needs: changes
     if: ${{ github.event.act || github.repository == 'tradejs-dev/tradejs' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version-file: '.nvmrc'
+          cache: yarn
+          cache-dependency-path: yarn.lock
 
       - name: Enable Corepack
         run: |
           corepack enable
           corepack prepare yarn@4.13.0 --activate
           yarn --version
+
+      - name: Restore Turbo cache
+        uses: actions/cache@v4
+        with:
+          path: .turbo
+          key: ${{ runner.os }}-turbo-${{ github.ref_name }}-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-turbo-${{ github.ref_name }}-
+            ${{ runner.os }}-turbo-stable-
+            ${{ runner.os }}-turbo-
 
       - name: Install Dependencies
         run: yarn install --immutable
@@ -52,18 +82,30 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version-file: '.nvmrc'
+          cache: yarn
+          cache-dependency-path: yarn.lock
 
       - name: Enable Corepack
         run: |
           corepack enable
           corepack prepare yarn@4.13.0 --activate
           yarn --version
+
+      - name: Restore Turbo cache
+        uses: actions/cache@v4
+        with:
+          path: .turbo
+          key: ${{ runner.os }}-turbo-${{ github.ref_name }}-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-turbo-${{ github.ref_name }}-
+            ${{ runner.os }}-turbo-stable-
+            ${{ runner.os }}-turbo-
 
       - name: Install Dependencies
         run: yarn install --immutable
@@ -85,15 +127,19 @@ jobs:
         run: cd examples/sandbox && yarn infra-down
 
   deploy:
-    needs: sandbox-e2e
+    needs:
+      - changes
+      - sandbox-e2e
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
+    env:
+      ML_INFER_CHANGED: ${{ needs.changes.outputs.ml_infer }}
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Install Docker Compose
         run: |
@@ -134,11 +180,20 @@ jobs:
         run: |
           docker-compose -f docker-compose.prod.yml build --pull app
           docker-compose -f docker-compose.prod.yml build --pull agent
-          docker-compose -f docker-compose.prod.yml build --pull --no-cache ml-infer
-  
+          if [ "${ML_INFER_CHANGED}" = "true" ]; then
+            docker-compose -f docker-compose.prod.yml build --pull ml-infer
+          else
+            echo "Skipping ml-infer build; no matching changes detected."
+          fi
+
       - name: Push Docker images
         run: |
-          docker-compose -f docker-compose.prod.yml push app agent ml-infer
+          docker-compose -f docker-compose.prod.yml push app agent
+          if [ "${ML_INFER_CHANGED}" = "true" ]; then
+            docker-compose -f docker-compose.prod.yml push ml-infer
+          else
+            echo "Skipping ml-infer push; no matching changes detected."
+          fi
 
       - name: Copy compose and configs to server
         uses: appleboy/scp-action@v0.1.7
@@ -151,10 +206,13 @@ jobs:
 
       - name: Deploy on server
         uses: appleboy/ssh-action@v1.0.3
+        env:
+          ML_INFER_CHANGED: ${{ env.ML_INFER_CHANGED }}
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_KEY }}
+          envs: ML_INFER_CHANGED
           script: |
             cd ~/
             mkdir -p agent-ssh
@@ -174,11 +232,12 @@ jobs:
               git -C ~/tradejs-agent-repo checkout stable
               git -C ~/tradejs-agent-repo reset --hard origin/stable
             fi
-            docker image prune -a -f
             docker compose -f docker-compose.prod.yml pull
             systemctl stop nginx
             systemctl disable nginx
             docker compose -f docker-compose.prod.yml up -d --remove-orphans
-            docker compose -f docker-compose.prod.yml up -d --force-recreate ml-infer
+            if [ "${ML_INFER_CHANGED}" = "true" ]; then
+              docker compose -f docker-compose.prod.yml up -d --force-recreate ml-infer
+            fi
             docker restart nginx
             chmod 777 ./data
