@@ -96,14 +96,24 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version-file: ".nvmrc"
-          cache: yarn
-          cache-dependency-path: yarn.lock
 
       - name: Enable Corepack
         run: |
           corepack enable
           corepack prepare yarn@4.13.0 --activate
           yarn --version
+
+      - name: Restore Yarn cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            .yarn/cache
+            .yarn/install-state.gz
+            examples/sandbox/.yarn/cache
+            examples/sandbox/.yarn/install-state.gz
+          key: ${{ runner.os }}-yarn4-${{ hashFiles('yarn.lock', '.yarnrc.yml', 'package.json', 'examples/sandbox/yarn.lock', 'examples/sandbox/package.json') }}
+          restore-keys: |
+            ${{ runner.os }}-yarn4-
 
       - name: Restore Turbo cache
         uses: actions/cache@v4
@@ -143,14 +153,24 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version-file: ".nvmrc"
-          cache: yarn
-          cache-dependency-path: yarn.lock
 
       - name: Enable Corepack
         run: |
           corepack enable
           corepack prepare yarn@4.13.0 --activate
           yarn --version
+
+      - name: Restore Yarn cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            .yarn/cache
+            .yarn/install-state.gz
+            examples/sandbox/.yarn/cache
+            examples/sandbox/.yarn/install-state.gz
+          key: ${{ runner.os }}-yarn4-${{ hashFiles('yarn.lock', '.yarnrc.yml', 'package.json', 'examples/sandbox/yarn.lock', 'examples/sandbox/package.json') }}
+          restore-keys: |
+            ${{ runner.os }}-yarn4-
 
       - name: Restore Turbo cache
         uses: actions/cache@v4
