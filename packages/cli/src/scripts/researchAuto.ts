@@ -4,8 +4,8 @@ import { spawn } from 'node:child_process';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { toFileToken } from '@tradejs/infra/ai';
+import { logger } from '@tradejs/infra/logger';
 import { getData, getKeys, redisKeys, setData } from '@tradejs/infra/redis';
-import { getAvailableStrategyNames } from '@tradejs/node/strategies';
 import { StrategyConfig, StrategyConfigGrid } from '@tradejs/types';
 import { getBuiltInStrategyDefaultConfig } from '@tradejs/strategies';
 import { sendTelegramReport } from '../lib/telegramReports';
@@ -166,6 +166,38 @@ export const listMergedFiles = async (outDir: string, strategyName: string) => {
 
 export const getBacktestResultsPrefix = (userName: string, config: string) =>
   `users:${userName}:backtests:results:${config}:`;
+
+export const resolveStrategyNameByConfigKey = (
+  userName: string,
+  key: string,
+): string | null => {
+  const parts = key.split(':');
+  if (parts.length !== 5) {
+    return null;
+  }
+
+  const [users, keyUserName, strategiesKey, strategyName, configKey] = parts;
+  if (
+    users !== 'users' ||
+    keyUserName !== userName ||
+    strategiesKey !== 'strategies' ||
+    configKey !== 'config' ||
+    !strategyName
+  ) {
+    return null;
+  }
+
+  return strategyName;
+};
+
+export const listRuntimeStrategyNames = async (userName: string) => {
+  const keys = await getKeys(`${redisKeys.strategies(userName)}:`);
+  return keys
+    .filter((key) => key.endsWith(':config'))
+    .map((key) => resolveStrategyNameByConfigKey(userName, key))
+    .filter((value): value is string => Boolean(value))
+    .sort((left, right) => left.localeCompare(right));
+};
 
 export const toStrategyConfigGrid = (
   strategyConfig: StrategyConfig,
@@ -352,7 +384,7 @@ export const resolveTarget = async (): Promise<{
     };
   }
 
-  const availableStrategies = await getAvailableStrategyNames(projectRoot);
+  const availableStrategies = await listRuntimeStrategyNames(userName);
   const candidates: Array<{
     strategy: string;
     config: string;
@@ -378,7 +410,7 @@ export const resolveTarget = async (): Promise<{
 
   if (!candidates.length) {
     throw new Error(
-      `No research candidates found from registered strategies for user ${userName}.`,
+      `No research candidates found from runtime strategy configs for user ${userName}.`,
     );
   }
 
@@ -386,6 +418,15 @@ export const resolveTarget = async (): Promise<{
     (left, right) =>
       left.lastFinishedAt - right.lastFinishedAt ||
       left.strategy.localeCompare(right.strategy),
+  );
+
+  logResearch(
+    `auto candidates from runtime configs: ${candidates
+      .map(
+        ({ strategy, lastFinishedAt }) =>
+          `${strategy}=${lastFinishedAt ? new Date(lastFinishedAt).toISOString() : 'never'}`,
+      )
+      .join(', ')}`,
   );
 
   return {
@@ -404,6 +445,10 @@ export const parseJsonOutput = <T>(stdout: string, label: string): T => {
   return JSON.parse(trimmed) as T;
 };
 
+const logResearch = (message: string) => {
+  logger.info(chalk.cyan(`[research:auto] ${message}`));
+};
+
 const executeNonBlockingStep = async (
   run: ResearchRunRecord,
   stepName: ResearchStepName,
@@ -411,6 +456,9 @@ const executeNonBlockingStep = async (
   commandArgs: string[],
   options: { node8g?: boolean } = {},
 ) => {
+  logResearch(
+    `starting optional step ${stepName}: ${command} ${commandArgs.join(' ')}`.trim(),
+  );
   const startedAt = new Date().toISOString();
   run.steps[stepName] = {
     status: 'running',
@@ -438,6 +486,10 @@ const executeNonBlockingStep = async (
     stderrTail: trimTextTail(result.stderr),
   };
   await saveRun(run);
+
+  logResearch(
+    `finished optional step ${stepName}: exit=${result.exitCode}, duration=${result.durationMs}ms`,
+  );
 
   return result;
 };
@@ -490,6 +542,9 @@ const main = async () => {
     commandArgs: string[],
     options: { node8g?: boolean } = {},
   ) => {
+    logResearch(
+      `starting step ${stepName}: ${command} ${commandArgs.join(' ')}`.trim(),
+    );
     const startedAt = new Date().toISOString();
     run.steps[stepName] = {
       status: 'running',
@@ -519,6 +574,12 @@ const main = async () => {
     await saveRun(run);
 
     if (result.exitCode !== 0) {
+      logResearch(
+        `step ${stepName} failed: exit=${result.exitCode}, output=${trimTextTail(
+          result.stderr || result.stdout,
+          400,
+        )}`,
+      );
       throw new Error(
         `${stepName} failed (exitCode=${result.exitCode}): ${trimTextTail(
           result.stderr || result.stdout,
@@ -527,10 +588,17 @@ const main = async () => {
       );
     }
 
+    logResearch(
+      `finished step ${stepName}: exit=${result.exitCode}, duration=${result.durationMs}ms`,
+    );
+
     return result;
   };
 
   const prepareBacktestConfig = async () => {
+    logResearch(
+      `preparing research backtest config ${target.config} from runtime strategy ${target.strategy}`,
+    );
     const startedAt = new Date().toISOString();
     run.steps.prepareBacktestConfig = {
       status: 'running',
@@ -566,6 +634,9 @@ const main = async () => {
 
     const backtestConfig = toStrategyConfigGrid(strategyConfig);
     await setData(backtestConfigKey, backtestConfig, { expire: 0 });
+    logResearch(
+      `stored backtest config at ${backtestConfigKey} with ${Object.keys(strategyConfig).length} top-level fields`,
+    );
 
     run.artifacts.strategyConfigKey = strategyConfigKey;
     run.artifacts.backtestConfigKey = backtestConfigKey;
@@ -590,11 +661,17 @@ const main = async () => {
   await saveRun(run);
 
   try {
+    logResearch(
+      `run ${runId} selected target strategy=${target.strategy}, config=${target.config}, selectedBy=${target.selectedBy}`,
+    );
     const backtestKeysBefore = new Set(
       await getKeys(getBacktestResultsPrefix(userName, target.config)),
     );
     const aiFilesBefore = new Set(
       await listMergedFiles(outDir, target.strategy),
+    );
+    logResearch(
+      `baseline artifacts before run: backtests=${backtestKeysBefore.size}, aiMergedFiles=${aiFilesBefore.size}`,
     );
 
     await prepareBacktestConfig();
@@ -655,6 +732,7 @@ const main = async () => {
       newBacktestKeys[newBacktestKeys.length - 1] ||
       backtestKeysAfter.sort().at(-1);
     if (backtestResultKey) {
+      logResearch(`detected backtest result key ${backtestResultKey}`);
       const backtestResult = await getData(backtestResultKey, null);
       run.artifacts.backtestResultKey = backtestResultKey;
       run.artifacts.backtestResult = backtestResult
@@ -667,6 +745,8 @@ const main = async () => {
             mergedConfig: backtestResult.mergedConfig,
           }
         : undefined;
+    } else {
+      logResearch('no backtest result key detected after backtest step');
     }
 
     const aiFilesAfter = await listMergedFiles(outDir, target.strategy);
@@ -675,17 +755,26 @@ const main = async () => {
       .sort();
     run.artifacts.aiExportFile =
       newAiFiles[newAiFiles.length - 1] || aiFilesAfter.at(-1);
+    if (run.artifacts.aiExportFile) {
+      logResearch(`detected AI export file ${run.artifacts.aiExportFile}`);
+    } else {
+      logResearch('no AI export file detected after ai-export step');
+    }
     run.artifacts.aiTrainLocal = parseJsonOutput(
       aiTrainResult.stdout,
       'ai-train --json',
     );
+    logResearch('parsed ai-train --json output successfully');
 
     run.status = 'completed';
     run.finishedAt = new Date().toISOString();
     await saveRun(run);
+    logResearch(`run ${runId} completed successfully`);
     await sendRunReport();
+    logResearch(`TG report sent for run ${runId}`);
 
     if (!skipAgent) {
+      logResearch(`starting direct agent invocation for run ${runId}`);
       const agentResult = await executeNonBlockingStep(
         run,
         'agentRun',
@@ -717,6 +806,7 @@ const main = async () => {
       }
 
       await saveRun(run);
+      logResearch(`agent invocation finished for run ${runId}`);
     }
 
     if (jsonOutput) {
@@ -744,13 +834,16 @@ const main = async () => {
     run.finishedAt = new Date().toISOString();
     run.error = (error as Error)?.message || String(error);
     await saveRun(run);
+    logResearch(`run ${runId} failed: ${run.error}`);
 
     try {
       await sendRunReport();
+      logResearch(`TG report sent for failed run ${runId}`);
     } catch (reportError) {
       const suffix = (reportError as Error)?.message || String(reportError);
       run.error = `${run.error}\nTelegram report failed: ${suffix}`;
       await saveRun(run);
+      logResearch(`TG report failed for run ${runId}: ${suffix}`);
     }
 
     if (jsonOutput) {

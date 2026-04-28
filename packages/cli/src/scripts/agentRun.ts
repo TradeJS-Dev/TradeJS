@@ -11,9 +11,12 @@ import {
   assertDiffAllowed,
   buildResearchAgentBranchName,
   buildResearchAgentCommitMessage,
+  buildResearchAgentPrBody,
+  buildResearchAgentPrTitle,
   getResearchAgentAllowedPathPrefixes,
   getResearchAgentNotePath,
   normalizeDiffOutput,
+  parseGithubRepositoryFromRemote,
   RESEARCH_AGENT_MODEL,
   RESEARCH_AGENT_REASONING_EFFORT,
   ResearchAgentRunRecord,
@@ -444,6 +447,12 @@ const buildAgentTelegramReport = (agentRun: ResearchAgentRunRecord) => {
       `Commit message: <code>${escapeHtml(agentRun.commitMessage)}</code>`,
     );
   }
+  if (typeof agentRun.pullRequestNumber === 'number') {
+    lines.push(`PR: <code>#${agentRun.pullRequestNumber}</code>`);
+  }
+  if (agentRun.pullRequestUrl) {
+    lines.push(`PR URL: <code>${escapeHtml(agentRun.pullRequestUrl)}</code>`);
+  }
   if (agentRun.changedFiles?.length) {
     lines.push(
       `Changed files: <code>${escapeHtml(agentRun.changedFiles.join(', '))}</code>`,
@@ -520,6 +529,109 @@ const saveAgentRun = async (
   });
 };
 
+const resolveGithubRepository = async (worktreePath: string) => {
+  if (process.env.AGENT_GITHUB_REPOSITORY?.trim()) {
+    return process.env.AGENT_GITHUB_REPOSITORY.trim();
+  }
+
+  const remote = await runCommandOrThrow(
+    'git',
+    ['-C', worktreePath, 'remote', 'get-url', 'origin'],
+    { cwd: worktreePath },
+  );
+  const repository = parseGithubRepositoryFromRemote(remote.stdout.trim());
+  if (!repository) {
+    throw new Error(`Unable to resolve GitHub repository from origin remote`);
+  }
+  return repository;
+};
+
+const createGithubPullRequest = async (params: {
+  worktreePath: string;
+  branchName: string;
+  title: string;
+  body: string;
+}) => {
+  const token =
+    process.env.AGENT_GITHUB_TOKEN?.trim() || process.env.GITHUB_TOKEN?.trim();
+  if (!token) {
+    throw new Error('AGENT_GITHUB_TOKEN is required to create pull requests');
+  }
+
+  const repository = await resolveGithubRepository(params.worktreePath);
+  const [owner, repo] = repository.split('/');
+  if (!owner || !repo) {
+    throw new Error(`Invalid GitHub repository value: ${repository}`);
+  }
+
+  const baseBranch = process.env.AGENT_GITHUB_BASE_BRANCH?.trim() || 'stable';
+  const head = `${owner}:${params.branchName}`;
+  const headers = {
+    Authorization: `Bearer ${token}`,
+    Accept: 'application/vnd.github+json',
+    'Content-Type': 'application/json',
+    'User-Agent': 'TradeJS-Research-Agent',
+  };
+
+  const existingResponse = await fetch(
+    `https://api.github.com/repos/${owner}/${repo}/pulls?state=open&head=${encodeURIComponent(
+      head,
+    )}&base=${encodeURIComponent(baseBranch)}`,
+    { headers },
+  );
+  if (!existingResponse.ok) {
+    throw new Error(
+      `GitHub PR lookup failed (${existingResponse.status}): ${await existingResponse.text()}`,
+    );
+  }
+
+  const existing = (await existingResponse.json()) as Array<{
+    number: number;
+    html_url: string;
+    title: string;
+  }>;
+  if (existing[0]) {
+    return {
+      number: existing[0].number,
+      url: existing[0].html_url,
+      title: existing[0].title,
+      reused: true,
+    };
+  }
+
+  const response = await fetch(
+    `https://api.github.com/repos/${owner}/${repo}/pulls`,
+    {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        title: params.title,
+        head: params.branchName,
+        base: baseBranch,
+        body: params.body,
+      }),
+    },
+  );
+
+  if (!response.ok) {
+    throw new Error(
+      `GitHub PR create failed (${response.status}): ${await response.text()}`,
+    );
+  }
+
+  const payload = (await response.json()) as {
+    number: number;
+    html_url: string;
+    title: string;
+  };
+  return {
+    number: payload.number,
+    url: payload.html_url,
+    title: payload.title,
+    reused: false,
+  };
+};
+
 const createWorktree = async (branchName: string) => {
   const worktreeToken = branchName.replace(/[/:]+/g, '--');
   const worktreeRoot = path.join(projectRoot, '.agent-worktrees');
@@ -561,6 +673,7 @@ const main = async () => {
     run.strategy,
     run.runId,
   );
+  const prTitle = buildResearchAgentPrTitle(run.strategy, run.runId);
   const allowedPrefixes = getResearchAgentAllowedPathPrefixes(run.strategy);
   const agentRun: ResearchAgentRunRecord = {
     status: 'running',
@@ -568,6 +681,7 @@ const main = async () => {
     runId: run.runId,
     branchName,
     commitMessage,
+    pullRequestTitle: prTitle,
     model: RESEARCH_AGENT_MODEL,
     reasoningEffort: RESEARCH_AGENT_REASONING_EFFORT,
     summary: 'Awaiting model patch',
@@ -691,6 +805,45 @@ const main = async () => {
     agentRun.commitHash = commitHash;
     agentRun.changedFiles = effectiveChangedFiles;
     agentRun.summary = `Committed validated patch on branch ${branchName}`;
+    const prBody = buildResearchAgentPrBody({
+      strategy: run.strategy,
+      runId: run.runId,
+      config: run.config,
+      connector: run.connector,
+      timeframe: run.timeframe,
+      days: run.days,
+      recent: run.recent,
+      changedFiles: effectiveChangedFiles,
+      validation: agentRun.validation,
+      summary: agentRun.summary,
+      aiTrainLocal: (run.artifacts.aiTrainLocal ?? null) as {
+        run?: {
+          totalRows?: number;
+          approvedRows?: number;
+          minQuality?: number;
+        };
+        outcome?: {
+          approvalRate?: number;
+          precisionApproved?: number;
+          recallWinners?: number;
+          avgProfitApproved?: number;
+          avgProfitApprovedPerMonth?: number;
+          expectancyDelta?: number;
+        };
+      } | null,
+    });
+    const pr = await createGithubPullRequest({
+      worktreePath,
+      branchName,
+      title: prTitle,
+      body: prBody,
+    });
+    agentRun.pullRequestNumber = pr.number;
+    agentRun.pullRequestUrl = pr.url;
+    agentRun.pullRequestTitle = pr.title;
+    agentRun.summary = pr.reused
+      ? `Committed validated patch on branch ${branchName}; reused PR #${pr.number}`
+      : `Committed validated patch on branch ${branchName}; created PR #${pr.number}`;
     agentRun.finishedAt = new Date().toISOString();
     await saveAgentRun(userName, run.runId, run.strategy, agentRun);
     await sendTelegramReport(buildAgentTelegramReport(agentRun), {
@@ -703,6 +856,9 @@ const main = async () => {
       console.log(chalk.green(agentRun.summary));
       console.log(chalk.gray(`branch=${branchName}`));
       console.log(chalk.gray(`commit=${commitHash}`));
+      if (agentRun.pullRequestUrl) {
+        console.log(chalk.gray(`pullRequest=${agentRun.pullRequestUrl}`));
+      }
     }
   } catch (error) {
     agentRun.status = 'failed';

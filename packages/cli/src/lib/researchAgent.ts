@@ -18,6 +18,9 @@ export interface ResearchAgentRunRecord {
   branchName?: string;
   commitHash?: string;
   commitMessage?: string;
+  pullRequestNumber?: number;
+  pullRequestUrl?: string;
+  pullRequestTitle?: string;
   changedFiles?: string[];
   validation?: Record<string, 'pending' | 'passed' | 'failed' | 'skipped'>;
   model?: string;
@@ -66,6 +69,9 @@ export const buildResearchAgentCommitMessage = (
   runId: string,
 ) => `Research agent: ${strategy} follow-up for ${runId}`;
 
+export const buildResearchAgentPrTitle = (strategy: string, runId: string) =>
+  `Research agent: ${strategy} follow-up for ${runId}`;
+
 export const getResearchAgentNotePath = (strategy: string) =>
   path.join(
     'notes',
@@ -77,6 +83,100 @@ export const getResearchAgentAllowedPathPrefixes = (strategy: string) => [
   `packages/strategies/src/${strategy}/`,
   getResearchAgentNotePath(strategy),
 ];
+
+export const parseGithubRepositoryFromRemote = (value: string) => {
+  const trimmed = value.trim();
+  const sshMatch = trimmed.match(/github\.com:([^/]+\/[^/.]+)(?:\.git)?$/i);
+  if (sshMatch?.[1]) {
+    return sshMatch[1];
+  }
+
+  const httpsMatch = trimmed.match(/github\.com\/([^/]+\/[^/.]+)(?:\.git)?$/i);
+  if (httpsMatch?.[1]) {
+    return httpsMatch[1];
+  }
+
+  return null;
+};
+
+export const buildResearchAgentPrBody = (params: {
+  strategy: string;
+  runId: string;
+  config: string;
+  connector: string;
+  timeframe: string;
+  days: number;
+  recent: number;
+  changedFiles: string[];
+  validation?: Record<string, 'pending' | 'passed' | 'failed' | 'skipped'>;
+  summary?: string;
+  aiTrainLocal?: {
+    run?: {
+      totalRows?: number;
+      approvedRows?: number;
+      minQuality?: number;
+    };
+    outcome?: {
+      approvalRate?: number;
+      precisionApproved?: number;
+      recallWinners?: number;
+      avgProfitApproved?: number;
+      avgProfitApprovedPerMonth?: number;
+      expectancyDelta?: number;
+    };
+  } | null;
+}) => {
+  const validationSummary = Object.entries(params.validation || {})
+    .map(([key, value]) => `- \`${key}\`: ${value}`)
+    .join('\n');
+  const aiRun = params.aiTrainLocal?.run;
+  const aiOutcome = params.aiTrainLocal?.outcome;
+
+  const lines = [
+    '## Why',
+    `Automated research follow-up for \`${params.strategy}\` from run \`${params.runId}\`.`,
+    `Research config: \`${params.config}\`, connector \`${params.connector}\`, timeframe \`${params.timeframe}\`, window \`${params.days}d\`, recent rows \`${params.recent}\`.`,
+  ];
+
+  if (params.summary) {
+    lines.push(params.summary);
+  }
+
+  if (aiRun || aiOutcome) {
+    lines.push('');
+    lines.push('### AI train snapshot');
+    if (aiRun) {
+      lines.push(
+        `- Rows: \`${aiRun.totalRows ?? 0}\`, approved: \`${aiRun.approvedRows ?? 0}\`, minQuality: \`${aiRun.minQuality ?? 'n/a'}\``,
+      );
+    }
+    if (aiOutcome) {
+      lines.push(
+        `- approvalRate=\`${aiOutcome.approvalRate ?? 0}\`, precisionApproved=\`${aiOutcome.precisionApproved ?? 0}\`, recallWinners=\`${aiOutcome.recallWinners ?? 0}\``,
+      );
+      lines.push(
+        `- avgProfitApproved=\`${aiOutcome.avgProfitApproved ?? 0}\`, avgProfitApprovedPerMonth=\`${aiOutcome.avgProfitApprovedPerMonth ?? 0}\`, expectancyDelta=\`${aiOutcome.expectancyDelta ?? 0}\``,
+      );
+    }
+  }
+
+  lines.push('');
+  lines.push('## What changed');
+  for (const file of params.changedFiles) {
+    lines.push(`- \`${file}\``);
+  }
+
+  lines.push('');
+  lines.push('## Validation');
+  lines.push(validationSummary || '- Validation did not run');
+
+  lines.push('');
+  lines.push('## Notes');
+  lines.push('- Created automatically by the TradeJS research agent.');
+  lines.push('- Base branch: `stable`.');
+
+  return lines.join('\n');
+};
 
 export const normalizeDiffOutput = (value: string) => {
   const trimmed = value.trim();

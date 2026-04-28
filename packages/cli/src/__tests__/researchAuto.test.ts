@@ -18,26 +18,32 @@ jest.mock('args', () => ({
 }));
 
 const mockGetData = jest.fn();
-const mockGetAvailableStrategyNames = jest.fn();
+const mockGetKeys = jest.fn();
 
 jest.mock('@tradejs/infra/redis', () => ({
   getData: (...args: unknown[]) => mockGetData(...args),
-  getKeys: jest.fn(),
+  getKeys: (...args: unknown[]) => mockGetKeys(...args),
   setData: jest.fn(),
   redisKeys: {
+    strategies: (userName: string) => `users:${userName}:strategies`,
     researchLatestRun: (userName: string, strategy: string) =>
       `users:${userName}:research:latest:${strategy}`,
   },
 }));
 
-jest.mock('@tradejs/node/strategies', () => ({
-  getAvailableStrategyNames: (...args: unknown[]) =>
-    mockGetAvailableStrategyNames(...args),
+jest.mock('@tradejs/infra/logger', () => ({
+  logger: {
+    info: jest.fn(),
+    warn: jest.fn(),
+    error: jest.fn(),
+  },
 }));
 
 import {
   buildTelegramReport,
+  listRuntimeStrategyNames,
   parseJsonOutput,
+  resolveStrategyNameByConfigKey,
   resolveTarget,
   toStrategyConfigGrid,
 } from '../scripts/researchAuto';
@@ -66,10 +72,10 @@ describe('research:auto helpers', () => {
   });
 
   it('selects the strategy with the oldest or missing research run', async () => {
-    mockGetAvailableStrategyNames.mockResolvedValue([
-      'TrendLine',
-      'Breakout',
-      'VolumeDivergence',
+    mockGetKeys.mockResolvedValue([
+      'users:root:strategies:TrendLine:config',
+      'users:root:strategies:Breakout:config',
+      'users:root:strategies:VolumeDivergence:config',
     ]);
 
     mockGetData.mockImplementation(async (key: string) => {
@@ -90,6 +96,36 @@ describe('research:auto helpers', () => {
       config: 'VolumeDivergence:research',
       selectedBy: 'auto',
     });
+  });
+
+  it('lists only runtime strategy names from Redis config keys', async () => {
+    mockGetKeys.mockResolvedValue([
+      'users:root:strategies:TrendLine:config',
+      'users:root:strategies:TrendLine:results',
+      'users:root:strategies:Breakout:config',
+      'users:other:strategies:Ignored:config',
+      'broken:key',
+    ]);
+
+    await expect(listRuntimeStrategyNames('root')).resolves.toEqual([
+      'Breakout',
+      'TrendLine',
+    ]);
+  });
+
+  it('parses strategy name from runtime config key', () => {
+    expect(
+      resolveStrategyNameByConfigKey(
+        'root',
+        'users:root:strategies:TrendLine:config',
+      ),
+    ).toBe('TrendLine');
+    expect(
+      resolveStrategyNameByConfigKey(
+        'root',
+        'users:root:strategies:TrendLine:results',
+      ),
+    ).toBeNull();
   });
 
   it('renders TG report with escaped values, metrics, and agent placeholder', () => {
