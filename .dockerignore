@@ -10,9 +10,6 @@ apps/**/.next
 apps/**/dist
 packages/**/dist
 .vscode
-certbot
-nginx/*
-!nginx/nginx.docs.conf
 data
 screenshots
 x

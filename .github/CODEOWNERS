@@ -18,7 +18,4 @@
 /bin/ @aleksnick
 /docker-compose*.yml @aleksnick
 /Dockerfile* @aleksnick
-/nginx/ @aleksnick
 /sql/ @aleksnick
-/certbot/ @aleksnick
-/init-cert.sh @aleksnick

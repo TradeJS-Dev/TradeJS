@@ -1,0 +1,273 @@
+name: Publish Images
+on:
+  push:
+    branches:
+      - stable
+    tags:
+      - v**
+  workflow_dispatch:
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      app_changed: ${{ steps.resolve.outputs.app_changed }}
+      agent_changed: ${{ steps.resolve.outputs.agent_changed }}
+      ml_infer_changed: ${{ steps.resolve.outputs.ml_infer_changed }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Detect changed image inputs
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            app:
+              - 'Dockerfile'
+              - 'apps/**'
+              - 'packages/**'
+              - 'proto/**'
+              - 'bin/**'
+              - 'package.json'
+              - 'yarn.lock'
+              - '.yarn/**'
+              - '.yarnrc.yml'
+              - 'turbo.json'
+              - 'tsconfig.json'
+              - 'tsconfig.base.json'
+              - 'tsconfig.packages.json'
+              - 'tradejs.config.ts'
+              - 'entrypoint.sh'
+              - 'cronjob'
+            agent:
+              - 'Dockerfile.agent'
+              - 'apps/app/package.json'
+              - 'packages/**'
+              - 'proto/**'
+              - 'bin/**'
+              - 'package.json'
+              - 'yarn.lock'
+              - '.yarn/**'
+              - '.yarnrc.yml'
+              - 'turbo.json'
+              - 'tsconfig.json'
+              - 'tsconfig.base.json'
+              - 'tsconfig.packages.json'
+              - 'tradejs.config.ts'
+              - 'entrypoint.agent.sh'
+              - 'cronjob.agent'
+            ml_infer:
+              - 'Dockerfile.infer'
+              - 'packages/ml/python/**'
+              - 'proto/**'
+
+      - name: Resolve image changes
+        id: resolve
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          APP_FILTER: ${{ steps.filter.outputs.app }}
+          AGENT_FILTER: ${{ steps.filter.outputs.agent }}
+          ML_INFER_FILTER: ${{ steps.filter.outputs.ml_infer }}
+        run: |
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            echo "app_changed=true" >> "$GITHUB_OUTPUT"
+            echo "agent_changed=true" >> "$GITHUB_OUTPUT"
+            echo "ml_infer_changed=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "app_changed=${APP_FILTER}" >> "$GITHUB_OUTPUT"
+          echo "agent_changed=${AGENT_FILTER}" >> "$GITHUB_OUTPUT"
+          echo "ml_infer_changed=${ML_INFER_FILTER}" >> "$GITHUB_OUTPUT"
+
+  repo-checks:
+    needs: changes
+    if: ${{ github.event.act || github.repository == 'tradejs-dev/tradejs' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+          cache: yarn
+          cache-dependency-path: yarn.lock
+
+      - name: Enable Corepack
+        run: |
+          corepack enable
+          corepack prepare yarn@4.13.0 --activate
+          yarn --version
+
+      - name: Restore Turbo cache
+        uses: actions/cache@v4
+        with:
+          path: .turbo
+          key: ${{ runner.os }}-turbo-${{ github.ref_name }}-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-turbo-${{ github.ref_name }}-
+            ${{ runner.os }}-turbo-stable-
+            ${{ runner.os }}-turbo-
+
+      - name: Install dependencies
+        run: yarn install --immutable
+
+      - name: Build
+        run: yarn build
+
+      - name: Lint
+        run: yarn lint
+
+      - name: Typecheck
+        run: yarn typecheck
+
+      - name: Unit tests
+        run: yarn unit
+
+  sandbox-e2e:
+    needs: repo-checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+          cache: yarn
+          cache-dependency-path: yarn.lock
+
+      - name: Enable Corepack
+        run: |
+          corepack enable
+          corepack prepare yarn@4.13.0 --activate
+          yarn --version
+
+      - name: Restore Turbo cache
+        uses: actions/cache@v4
+        with:
+          path: .turbo
+          key: ${{ runner.os }}-turbo-${{ github.ref_name }}-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-turbo-${{ github.ref_name }}-
+            ${{ runner.os }}-turbo-stable-
+            ${{ runner.os }}-turbo-
+
+      - name: Install dependencies
+        run: yarn install --immutable
+
+      - name: Prepare sandbox env
+        run: cp examples/sandbox/.env.example examples/sandbox/.env
+
+      - name: Install sandbox dependencies
+        run: yarn sandbox:install
+
+      - name: Sandbox infra up
+        run: cd examples/sandbox && yarn infra-up
+
+      - name: Sandbox deterministic e2e
+        run: cd examples/sandbox && yarn e2e
+
+      - name: Sandbox infra down
+        if: always()
+        run: cd examples/sandbox && yarn infra-down
+
+  publish-images:
+    needs:
+      - changes
+      - sandbox-e2e
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    env:
+      APP_CHANGED: ${{ needs.changes.outputs.app_changed }}
+      AGENT_CHANGED: ${{ needs.changes.outputs.agent_changed }}
+      ML_INFER_CHANGED: ${{ needs.changes.outputs.ml_infer_changed }}
+      IMAGE_TAG: ${{ github.sha }}
+      DEPLOY_REPOSITORY: TradeJS-Dev/TradeJS-Deploy
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push app image
+        if: env.APP_CHANGED == 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: ghcr.io/tradejs-dev/tradejs-app:${{ env.IMAGE_TAG }}
+          cache-from: type=gha,scope=app
+          cache-to: type=gha,mode=max,scope=app
+
+      - name: Build and push agent image
+        if: env.AGENT_CHANGED == 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile.agent
+          push: true
+          tags: ghcr.io/tradejs-dev/tradejs-agent:${{ env.IMAGE_TAG }}
+          cache-from: type=gha,scope=agent
+          cache-to: type=gha,mode=max,scope=agent
+
+      - name: Build and push ml-infer image
+        if: env.ML_INFER_CHANGED == 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile.infer
+          push: true
+          tags: ghcr.io/tradejs-dev/tradejs-ml-infer:${{ env.IMAGE_TAG }}
+          cache-from: type=gha,scope=ml-infer
+          cache-to: type=gha,mode=max,scope=ml-infer
+
+      - name: Notify deploy repository
+        env:
+          DISPATCH_TOKEN: ${{ secrets.TRADEJS_DEPLOY_REPO_TOKEN }}
+        run: |
+          if [ -z "$DISPATCH_TOKEN" ]; then
+            echo "TRADEJS_DEPLOY_REPO_TOKEN is not configured; skipping deploy dispatch."
+            exit 0
+          fi
+
+          curl -L \
+            -X POST \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${DISPATCH_TOKEN}" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/${DEPLOY_REPOSITORY}/dispatches" \
+            -d @- <<EOF
+          {
+            "event_type": "tradejs-images-published",
+            "client_payload": {
+              "image_tag": "${IMAGE_TAG}",
+              "app_changed": ${APP_CHANGED},
+              "agent_changed": ${AGENT_CHANGED},
+              "ml_infer_changed": ${ML_INFER_CHANGED},
+              "source_repository": "${GITHUB_REPOSITORY}",
+              "source_sha": "${GITHUB_SHA}"
+            }
+          }
+          EOF
