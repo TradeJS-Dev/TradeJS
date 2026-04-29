@@ -1,0 +1,195 @@
+/** @jest-environment node */
+
+import { config as DEFAULT_CONFIG } from '../config';
+import { createTrendShiftCore } from '../core';
+
+const makeCandle = (
+  timestamp: number,
+  open: number,
+  high: number,
+  low: number,
+  close: number,
+) => ({
+  timestamp,
+  dt: new Date(timestamp).toISOString(),
+  open,
+  high,
+  low,
+  close,
+  volume: 1_000,
+  turnover: close * 1_000,
+});
+
+const makeFlatCandles = (count: number, start = 1_700_000_000_000) =>
+  Array.from({ length: count }, (_, index) =>
+    makeCandle(start + index * 60_000, 100, 101, 99, 100),
+  );
+
+const makeBullFlipCandle = (timestamp: number) =>
+  makeCandle(timestamp, 100, 150, 99, 145);
+
+const makeBearFlipCandle = (timestamp: number) =>
+  makeCandle(timestamp, 145, 146, 80, 82);
+
+const makeStrategyApi = ({
+  marketData,
+  currentPosition = null,
+}: {
+  marketData: any;
+  currentPosition?: any;
+}) =>
+  ({
+    skip: (code: string) => ({ kind: 'skip', code }),
+    getMarketData: jest.fn(async () => marketData),
+    getCurrentPosition: jest.fn(async () => currentPosition),
+    isCurrentPositionExists: jest.fn(async () =>
+      Boolean(currentPosition && currentPosition.qty > 0),
+    ),
+    getDirectionalTpSlPrices: jest.fn(({ price, direction }) => ({
+      stopLossPrice: direction === 'LONG' ? price * 0.989 : price * 1.011,
+      takeProfitPrice: direction === 'LONG' ? price * 1.028 : price * 0.972,
+      riskRatio: 2.1,
+      qty: 1,
+    })),
+    createLastTradeController: jest.fn(() => ({
+      isInCooldown: () => false,
+      markTrade: jest.fn(),
+      getLastTradeTimestamp: () => null,
+    })),
+    entry: jest.fn(async (params: any) => ({
+      kind: 'entry',
+      code: params.code,
+      entryContext: {
+        strategy: 'TrendShift',
+        symbol: 'TESTUSDT',
+        interval: '15',
+        direction: params.direction,
+        timestamp: marketData.timestamp,
+        prices: {
+          currentPrice: marketData.currentPrice,
+          takeProfitPrice: params.orderPlan.takeProfits[0].price,
+          stopLossPrice: params.orderPlan.stopLossPrice,
+          riskRatio: 2.1,
+        },
+        isConfigFromBacktest: false,
+      },
+      orderPlan: params.orderPlan,
+      signal: {
+        signalId: 'trendshift-test-signal',
+        strategy: 'TrendShift',
+        symbol: 'TESTUSDT',
+        interval: '15',
+        direction: params.direction,
+        timestamp: marketData.timestamp,
+        figures: params.figures ?? {},
+        prices: {
+          currentPrice: marketData.currentPrice,
+          takeProfitPrice: params.orderPlan.takeProfits[0].price,
+          stopLossPrice: params.orderPlan.stopLossPrice,
+          riskRatio: 2.1,
+        },
+        indicators: params.indicators ?? {},
+        additionalIndicators: params.additionalIndicators,
+      },
+    })),
+    exit: jest.fn(async (params: any) => ({
+      kind: 'exit',
+      code: params.code,
+      closePlan: {
+        direction: params.direction,
+        price: marketData.currentPrice,
+        timestamp: marketData.timestamp,
+      },
+    })),
+  }) as any;
+
+const makeIndicatorsState = () =>
+  ({
+    setCurrentBar: jest.fn(),
+    next: jest.fn(),
+    onBar: jest.fn(),
+    ensureInitializedWithCurrentBar: jest.fn(),
+    snapshot: jest.fn(() => ({
+      maFast: [120],
+      maSlow: [110],
+    })),
+    latestNumber: jest.fn(() => undefined),
+    isInitialized: jest.fn(() => true),
+  }) as any;
+
+describe('TrendShift core', () => {
+  it('creates long entry on confirmed bullish flip', async () => {
+    const initialCandles = makeFlatCandles(220);
+    const currentCandle = makeBullFlipCandle(
+      initialCandles[initialCandles.length - 1].timestamp + 60_000,
+    );
+    const marketData = {
+      fullData: [...initialCandles, currentCandle],
+      timestamp: currentCandle.timestamp,
+      currentPrice: currentCandle.close,
+    };
+    const strategyApi = makeStrategyApi({ marketData });
+
+    const core = await createTrendShiftCore({
+      userName: 'root',
+      symbol: 'TESTUSDT',
+      config: DEFAULT_CONFIG as any,
+      isConfigFromBacktest: false,
+      connector: {} as any,
+      data: initialCandles,
+      btcData: initialCandles,
+      loadPineScriptFile: jest.fn(),
+      strategyApi,
+      indicatorsState: makeIndicatorsState(),
+    });
+
+    const result = await core(currentCandle as any, currentCandle as any);
+
+    expect(result.kind).toBe('entry');
+    expect((result as any).code).toBe('TRENDSHIFT_BULLISH_FLIP');
+    expect((result as any).entryContext.direction).toBe('LONG');
+    expect(strategyApi.entry).toHaveBeenCalledTimes(1);
+  });
+
+  it('exits open long on confirmed bearish flip', async () => {
+    const initialCandles = [
+      ...makeFlatCandles(220),
+      makeBullFlipCandle(1_700_000_000_000 + 220 * 60_000),
+    ];
+    const currentCandle = makeBearFlipCandle(
+      initialCandles[initialCandles.length - 1].timestamp + 60_000,
+    );
+    const marketData = {
+      fullData: [...initialCandles, currentCandle],
+      timestamp: currentCandle.timestamp,
+      currentPrice: currentCandle.close,
+    };
+    const strategyApi = makeStrategyApi({
+      marketData,
+      currentPosition: {
+        direction: 'LONG',
+        price: 145,
+        qty: 1,
+      },
+    });
+
+    const core = await createTrendShiftCore({
+      userName: 'root',
+      symbol: 'TESTUSDT',
+      config: DEFAULT_CONFIG as any,
+      isConfigFromBacktest: false,
+      connector: {} as any,
+      data: initialCandles,
+      btcData: initialCandles,
+      loadPineScriptFile: jest.fn(),
+      strategyApi,
+      indicatorsState: makeIndicatorsState(),
+    });
+
+    const result = await core(currentCandle as any, currentCandle as any);
+
+    expect(result.kind).toBe('exit');
+    expect((result as any).code).toBe('TRENDSHIFT_OPPOSITE_FLIP_EXIT');
+    expect(strategyApi.exit).toHaveBeenCalledTimes(1);
+  });
+});

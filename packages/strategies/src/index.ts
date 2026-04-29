@@ -4,12 +4,14 @@ import { adaptiveMomentumRibbonManifest } from './AdaptiveMomentumRibbon/manifes
 import { breakoutManifest } from './Breakout/manifest';
 import { maStrategyManifest } from './MaStrategy/manifest';
 import { reverseTrendLineManifest } from './ReverseTrendLine/manifest';
+import { trendShiftManifest } from './TrendShift/manifest';
 import { trendLineManifest } from './TrendLine/manifest';
 import { volumeDivergenceManifest } from './VolumeDivergence/manifest';
 import { config as adaptiveMomentumRibbonDefaultConfig } from './AdaptiveMomentumRibbon/config';
 import { config as breakoutDefaultConfig } from './Breakout/config';
 import { config as maStrategyDefaultConfig } from './MaStrategy/config';
 import { config as reverseTrendLineDefaultConfig } from './ReverseTrendLine/config';
+import { config as trendShiftDefaultConfig } from './TrendShift/config';
 import { config as trendLineDefaultConfig } from './TrendLine/config';
 import { config as volumeDivergenceDefaultConfig } from './VolumeDivergence/config';
 import {
@@ -49,6 +51,13 @@ export const strategyEntries: StrategyRegistryEntry[] = [
     ),
   },
   {
+    manifest: trendShiftManifest,
+    creator: createLazyStrategyCreator(
+      () => import('./TrendShift/strategy'),
+      'TrendShiftStrategyCreator',
+    ),
+  },
+  {
     manifest: reverseTrendLineManifest,
     creator: createLazyStrategyCreator(
       () => import('./ReverseTrendLine/strategy'),
@@ -81,6 +90,7 @@ export const strategyEntries: StrategyRegistryEntry[] = [
 const builtInStrategyDefaultConfigs: Record<string, StrategyConfig> = {
   Breakout: breakoutDefaultConfig,
   TrendLine: trendLineDefaultConfig,
+  TrendShift: trendShiftDefaultConfig,
   ReverseTrendLine: reverseTrendLineDefaultConfig,
   MaStrategy: maStrategyDefaultConfig,
   AdaptiveMomentumRibbon: adaptiveMomentumRibbonDefaultConfig,
@@ -95,6 +105,7 @@ export { adaptiveMomentumRibbonDefaultConfig };
 export { breakoutDefaultConfig };
 export { maStrategyDefaultConfig };
 export { trendLineDefaultConfig };
+export { trendShiftDefaultConfig };
 export { reverseTrendLineDefaultConfig };
 export { volumeDivergenceDefaultConfig };
 export { adaptiveMomentumRibbonAiAdapter } from './AdaptiveMomentumRibbon/adapters/ai';
@@ -102,6 +113,7 @@ export { adaptiveMomentumRibbonMlAdapter } from './AdaptiveMomentumRibbon/adapte
 export { maStrategyAiAdapter } from './MaStrategy/adapters/ai';
 export { maStrategyMlAdapter } from './MaStrategy/adapters/ml';
 export { reverseTrendLineAiAdapter } from './ReverseTrendLine/adapters/ai';
+export { trendShiftAiAdapter } from './TrendShift/adapters/ai';
 export { volumeDivergenceAiAdapter } from './VolumeDivergence/adapters/ai';
 export { volumeDivergenceMlAdapter } from './VolumeDivergence/adapters/ml';
 
