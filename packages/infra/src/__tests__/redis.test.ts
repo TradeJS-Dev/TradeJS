@@ -363,7 +363,13 @@ describe('redis utils', () => {
     expect(redisKeys.runtimeActiveTrade('root', 'BTCUSDT')).toBe(
       'users:root:runtime:active-trades:BTCUSDT',
     );
+    expect(redisKeys.aiChatHistory('root', 'BTCUSDT')).toBe(
+      'users:root:ai:chats:BTCUSDT',
+    );
     expect(redisKeys.analysis('BTCUSDT', 's1')).toBe('analysis:BTCUSDT:s1');
+    expect(redisKeys.screenshotSessionToken('token-1')).toBe(
+      'auth:screenshot:token-1',
+    );
     expect(redisKeys.backtestResults('root', 'TrendLine:base', '123')).toBe(
       'users:root:backtests:results:TrendLine:base:123',
     );

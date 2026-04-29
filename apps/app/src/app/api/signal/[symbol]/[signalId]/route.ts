@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 import { getData, redisKeys } from '@tradejs/infra/redis';
 import { logger } from '@tradejs/infra/logger';
 import { Signal } from '@tradejs/types';
+import { getCurrentUserName } from '@app/lib/currentUser';
 
 export const dynamic = 'force-dynamic';
 
@@ -16,6 +17,11 @@ export const GET = async (
   { params }: { params: Promise<Params> },
 ) => {
   try {
+    const userName = await getCurrentUserName();
+    if (!userName) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     const { symbol, signalId } = await params;
 
     if (!symbol || !signalId) {

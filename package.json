@@ -116,10 +116,23 @@
     "@tradejs/core": "workspace:^",
     "@tradejs/infra": "workspace:^"
   },
+  "resolutions": {
+    "micromatch": "4.0.8",
+    "minimatch@npm:3.1.2": "3.1.4",
+    "minimatch@npm:9.0.3": "9.0.7",
+    "picomatch@npm:^2.3.1": "2.3.2",
+    "picomatch@npm:^4.0.0": "4.0.4",
+    "postcss": "8.5.12",
+    "protobufjs@npm:^7.5.3": "7.5.5",
+    "socks-proxy-agent@npm:^8.0.1": "8.0.5",
+    "webpack@npm:^5.4.0": "5.94.0",
+    "ws@npm:^7.3.1": "7.5.10",
+    "ws@npm:^7.4.0": "7.5.10"
+  },
   "devDependencies": {
     "@babel/core": "^7.28.0",
     "@testing-library/dom": "^10.4.1",
-    "@testing-library/jest-dom": "^6.6.3",
+    "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.0",
     "@testing-library/user-event": "^14.6.1",
     "@types/args": "^5",
@@ -133,7 +146,6 @@
     "@types/react": "^18",
     "@types/react-dom": "^18",
     "@types/react-window": "^1",
-    "@types/testing-library__jest-dom": "^6.0.0",
     "@typescript-eslint/eslint-plugin": "^8.57.0",
     "@typescript-eslint/parser": "^8.57.0",
     "autoprefixer": "^10.0.1",

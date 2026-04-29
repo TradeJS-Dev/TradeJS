@@ -5,7 +5,6 @@ const getUserSettingsMock = jest.fn(async (userName = 'root') => ({
   userName,
   BYBIT_API_KEY: '',
   BYBIT_API_SECRET: '',
-  token: '',
   COINALYZE_API_KEY: '',
   OPENAI_API_KEY: 'key_123',
   OPENAI_API_ENDPOINT: 'https://api.openai.com/v1',
@@ -3641,10 +3640,9 @@ describe('ai helpers', () => {
         userName: 'root',
         BYBIT_API_KEY: '',
         BYBIT_API_SECRET: '',
-        token: '',
         COINALYZE_API_KEY: '',
         OPENAI_API_KEY: 'key_123',
-        OPENAI_API_ENDPOINT: 'https://openrouter.example/v1',
+        OPENAI_API_ENDPOINT: 'https://openrouter.ai/api/v1',
         TG_BOT_TOKEN: 'tg-token',
         TG_CHAT_ID: 'tg-chat-id',
       });
@@ -3683,7 +3681,7 @@ describe('ai helpers', () => {
             },
           },
           configuration: expect.objectContaining({
-            baseURL: 'https://openrouter.example/v1',
+            baseURL: 'https://openrouter.ai/api/v1',
           }),
         }),
       );

@@ -1,6 +1,8 @@
 import bcrypt from 'bcryptjs';
 import { NextResponse } from 'next/server';
+import { normalizeAiEndpoint } from '@tradejs/infra/aiEndpoints';
 import {
+  getUserRecord,
   getUserSettings,
   updateUserRecord,
   type UserRecord,
@@ -16,12 +18,6 @@ type UpdateBody =
       data?: {
         apiKey?: string;
         apiSecret?: string;
-      };
-    }
-  | {
-      section: 'token';
-      data?: {
-        token?: string;
       };
     }
   | {
@@ -80,7 +76,6 @@ const toResponse = (settings: UserSettings) => ({
       apiKey: maskSecret(settings.BYBIT_API_KEY),
       apiSecret: maskSecret(settings.BYBIT_API_SECRET),
     },
-    token: maskSecret(settings.token),
     coinalyze: {
       apiKey: maskSecret(settings.COINALYZE_API_KEY),
     },
@@ -97,12 +92,22 @@ const toResponse = (settings: UserSettings) => ({
 
 const hasKeys = (patch: Partial<UserRecord>) => Object.keys(patch).length > 0;
 
+const removeLegacyPasswordlessToken = async (userName: string) => {
+  const record = await getUserRecord(userName);
+  if (!record || !Object.hasOwn(record, 'token')) {
+    return;
+  }
+
+  await updateUserRecord(userName, { token: undefined });
+};
+
 export const GET = async () => {
   const userName = await getCurrentUserName();
   if (!userName) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
+  await removeLegacyPasswordlessToken(userName);
   const settings = await getUserSettings(userName);
   return NextResponse.json(toResponse(settings));
 };
@@ -113,6 +118,7 @@ export const PATCH = async (request: Request) => {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
+  await removeLegacyPasswordlessToken(userName);
   const body = (await request.json()) as UpdateBody | null;
   if (!body || typeof body !== 'object' || !('section' in body)) {
     return NextResponse.json({ error: 'Invalid payload' }, { status: 400 });
@@ -160,14 +166,6 @@ export const PATCH = async (request: Request) => {
     }
   }
 
-  if (body.section === 'token') {
-    const token = cleanOptionalText(body.data?.token);
-
-    if (token) {
-      await updateUserRecord(userName, { token });
-    }
-  }
-
   if (body.section === 'coinalyze') {
     const apiKey = cleanOptionalText(body.data?.apiKey);
 
@@ -179,10 +177,17 @@ export const PATCH = async (request: Request) => {
   if (body.section === 'openai') {
     const patch: Partial<UserRecord> = {};
     const apiKey = cleanOptionalText(body.data?.apiKey);
-    const apiEndpoint = cleanOptionalText(body.data?.apiEndpoint);
+    const apiEndpoint = normalizeAiEndpoint(body.data?.apiEndpoint);
 
     if (apiKey) {
       patch.OPENAI_API_KEY = apiKey;
+    }
+
+    if (body.data && 'apiEndpoint' in body.data && !apiEndpoint) {
+      return NextResponse.json(
+        { error: 'Unsupported OpenAI API endpoint' },
+        { status: 400 },
+      );
     }
 
     if (apiEndpoint) {

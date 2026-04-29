@@ -14,29 +14,50 @@ import {
   ConnectorCreator,
   Filters,
 } from '@tradejs/types';
-import { getFile, setFile } from '@tradejs/infra/files';
+import { getData, redisKeys, setData } from '@tradejs/infra/redis';
 import { logger } from '@tradejs/infra/logger';
 import { getUserSettings } from '@tradejs/infra/userSettings';
 import { getCurrentUserName } from '@app/lib/currentUser';
 
 export const dynamic = 'force-dynamic';
 
-const HISTORY_DIR = 'data/chats';
 const projectRoot =
   String(process.env.PROJECT_CWD || process.cwd()).trim() || process.cwd();
 
-const getHistory = async (symbol: string): Promise<AIChatHistory> => {
-  const history = await getFile(HISTORY_DIR, symbol, [], projectRoot);
-  return history;
+const normalizeChatSymbolKey = (symbol: string): string => {
+  const normalized = symbol
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9._-]+/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 120);
+
+  if (!normalized) {
+    throw new Error('Invalid AI chat symbol');
+  }
+
+  return normalized;
+};
+
+const getHistoryKey = (userName: string, symbol: string) =>
+  redisKeys.aiChatHistory(userName, normalizeChatSymbolKey(symbol));
+
+const getHistory = async (
+  userName: string,
+  symbol: string,
+): Promise<AIChatHistory> => {
+  return (await getData(getHistoryKey(userName, symbol), [])) as AIChatHistory;
 };
 
 const appendMessagesToHistory = async (
+  userName: string,
   symbol: string,
   messages: AIChatHistory,
 ): Promise<void> => {
-  const history = await getHistory(symbol);
-  await setFile(HISTORY_DIR, symbol, [...history, ...messages], {
-    projectRoot,
+  const history = await getHistory(userName, symbol);
+  await setData(getHistoryKey(userName, symbol), [...history, ...messages], {
+    expire: 0,
   });
 };
 
@@ -107,7 +128,13 @@ export const GET = async (request: NextRequest) => {
       );
     }
 
-    const history = await getHistory(symbol);
+    try {
+      normalizeChatSymbolKey(symbol);
+    } catch {
+      return NextResponse.json({ error: 'Invalid symbol' }, { status: 400 });
+    }
+
+    const history = await getHistory(userName, symbol);
     return NextResponse.json({ history });
   } catch (error) {
     logger.log('error', `AI history error: %o`, error);
@@ -138,7 +165,13 @@ export const POST = async (request: NextRequest) => {
       );
     }
 
-    await appendMessagesToHistory(filters.symbol, [message]);
+    try {
+      normalizeChatSymbolKey(filters.symbol);
+    } catch {
+      return NextResponse.json({ error: 'Invalid symbol' }, { status: 400 });
+    }
+
+    await appendMessagesToHistory(userName, filters.symbol, [message]);
 
     const connectorCreator = await getConnectorCreatorByProvider(
       'bybit',
@@ -166,7 +199,7 @@ export const POST = async (request: NextRequest) => {
       text: response.content as string,
     };
 
-    await appendMessagesToHistory(filters.symbol, [responseMessage]);
+    await appendMessagesToHistory(userName, filters.symbol, [responseMessage]);
 
     return NextResponse.json({ message: responseMessage });
   } catch (error) {

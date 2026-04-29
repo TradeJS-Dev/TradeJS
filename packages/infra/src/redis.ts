@@ -1,6 +1,8 @@
+import { randomBytes } from 'crypto';
 import Redis from 'ioredis';
 
 const TTL_1D = 86_400;
+const SCREENSHOT_TOKEN_TTL_SECONDS = 15 * 60;
 
 const toJson = (value: unknown): string => JSON.stringify(value);
 
@@ -331,6 +333,50 @@ export const setData = async <T>(
   }
 };
 
+type ScreenshotSessionTokenRecord = {
+  userName: string;
+  createdAt: string;
+};
+
+export const createScreenshotSessionToken = async (
+  userName: string,
+): Promise<string | null> => {
+  const token = randomBytes(24).toString('hex');
+  await setData(
+    redisKeys.screenshotSessionToken(token),
+    {
+      userName,
+      createdAt: new Date().toISOString(),
+    } satisfies ScreenshotSessionTokenRecord,
+    {
+      expire: SCREENSHOT_TOKEN_TTL_SECONDS,
+    },
+  );
+  return token;
+};
+
+export const consumeScreenshotSessionToken = async (
+  token: string,
+): Promise<string | null> => {
+  const normalizedToken = token.trim();
+  if (!normalizedToken) {
+    return null;
+  }
+
+  const key = redisKeys.screenshotSessionToken(normalizedToken);
+  const payload = (await getData(
+    key,
+    null,
+  )) as ScreenshotSessionTokenRecord | null;
+
+  if (!payload?.userName) {
+    return null;
+  }
+
+  await delKey(key);
+  return payload.userName;
+};
+
 export const redisKeys = {
   users: () => 'users:index:',
   user: (userName: string) => `users:index:${userName}`,
@@ -379,8 +425,11 @@ export const redisKeys = {
     `users:${userName}:runtime:active-trades:`,
   runtimeActiveTrade: (userName: string, symbol: string) =>
     `users:${userName}:runtime:active-trades:${symbol}`,
+  aiChatHistory: (userName: string, symbolKey: string) =>
+    `users:${userName}:ai:chats:${symbolKey}`,
   analysis: (symbol: string, signalId: string) =>
     `analysis:${symbol}:${signalId}`,
+  screenshotSessionToken: (token: string) => `auth:screenshot:${token}`,
   backtestResults: (userName: string, config: string, timestamp: string) =>
     `users:${userName}:backtests:results:${config}:${timestamp}`,
   researchRuns: (userName: string) => `users:${userName}:research:runs:`,

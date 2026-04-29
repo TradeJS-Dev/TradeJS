@@ -65,8 +65,8 @@
     }
   },
   "dependencies": {
-    "@langchain/core": "^0.3.68",
-    "@langchain/openai": "^0.6.11",
+    "@langchain/core": "^1.1.42",
+    "@langchain/openai": "^1.4.5",
     "@tradejs/core": "workspace:^",
     "@tradejs/infra": "workspace:^",
     "@tradejs/types": "workspace:^",

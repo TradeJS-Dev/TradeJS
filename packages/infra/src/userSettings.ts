@@ -1,9 +1,9 @@
+import { normalizeAiEndpoint } from './aiEndpoints';
 import { getData, redisKeys, setData } from './redis';
 
 export interface UserRecord extends Record<string, unknown> {
   userName?: string;
   passwordHash?: string;
-  token?: string;
   BYBIT_API_KEY?: string;
   BYBIT_API_SECRET?: string;
   COINALYZE_API_KEY?: string;
@@ -18,7 +18,6 @@ export interface UserSettings {
   userName: string;
   BYBIT_API_KEY: string;
   BYBIT_API_SECRET: string;
-  token: string;
   COINALYZE_API_KEY: string;
   OPENAI_API_KEY: string;
   OPENAI_API_ENDPOINT: string;
@@ -52,10 +51,11 @@ export const getUserSettings = async (
     userName,
     BYBIT_API_KEY: readUserString(record, 'BYBIT_API_KEY'),
     BYBIT_API_SECRET: readUserString(record, 'BYBIT_API_SECRET'),
-    token: readUserString(record, 'token'),
     COINALYZE_API_KEY: readUserString(record, 'COINALYZE_API_KEY'),
     OPENAI_API_KEY: readUserString(record, 'OPENAI_API_KEY'),
-    OPENAI_API_ENDPOINT: readUserString(record, 'OPENAI_API_ENDPOINT'),
+    OPENAI_API_ENDPOINT: normalizeAiEndpoint(
+      readUserString(record, 'OPENAI_API_ENDPOINT'),
+    ),
     TG_BOT_TOKEN: readUserString(record, 'TG_BOT_TOKEN'),
     TG_CHAT_ID: readUserString(record, 'TG_CHAT_ID'),
   };
@@ -66,12 +66,15 @@ export const updateUserRecord = async (
   patch: Partial<UserRecord>,
 ): Promise<UserRecord> => {
   const existing = (await getUserRecord(userName)) ?? {};
-  const next: UserRecord = {
+  const merged: UserRecord = {
     ...existing,
     ...patch,
     userName,
     updatedAt: new Date().toISOString(),
   };
+  const next = Object.fromEntries(
+    Object.entries(merged).filter(([, value]) => value !== undefined),
+  ) as UserRecord;
 
   await setData(redisKeys.user(userName), next, {
     expire: 0,

@@ -3,6 +3,7 @@ import { defineConfig } from 'tsup';
 export default defineConfig({
   entry: [
     'src/ai.ts',
+    'src/aiEndpoints.ts',
     'src/files.ts',
     'src/http.ts',
     'src/logger.ts',

@@ -305,6 +305,8 @@ export const runCliCommand = async (params: {
   command: string;
   args: string[];
   node8g?: boolean;
+  liveLogPrefix?: string;
+  heartbeatMs?: number;
 }): Promise<{
   exitCode: number;
   stdout: string;
@@ -341,15 +343,55 @@ export const runCliCommand = async (params: {
 
     let stdout = '';
     let stderr = '';
+    let heartbeatTimer: NodeJS.Timeout | null = null;
+
+    const emitLines = (source: 'stdout' | 'stderr', text: string) => {
+      const prefix = params.liveLogPrefix
+        ? `[research:auto:${params.liveLogPrefix}:${source}] `
+        : `[research:auto:${source}] `;
+      for (const line of text
+        .split(/\r?\n/)
+        .map((value) => value.trimEnd())
+        .filter(Boolean)) {
+        logger.info(chalk.gray(`${prefix}${line}`));
+      }
+    };
+
+    if (params.heartbeatMs && params.heartbeatMs > 0) {
+      heartbeatTimer = setInterval(() => {
+        const elapsedMs = Date.now() - startedAt;
+        logger.info(
+          chalk.gray(
+            `[research:auto:${params.liveLogPrefix || params.command}] still running after ${Math.round(elapsedMs / 1000)}s`,
+          ),
+        );
+      }, params.heartbeatMs);
+    }
 
     child.stdout.on('data', (chunk) => {
-      stdout += chunk.toString();
+      const text = chunk.toString();
+      stdout += text;
+      if (params.liveLogPrefix) {
+        emitLines('stdout', text);
+      }
     });
     child.stderr.on('data', (chunk) => {
-      stderr += chunk.toString();
+      const text = chunk.toString();
+      stderr += text;
+      if (params.liveLogPrefix) {
+        emitLines('stderr', text);
+      }
     });
-    child.on('error', reject);
+    child.on('error', (error) => {
+      if (heartbeatTimer) {
+        clearInterval(heartbeatTimer);
+      }
+      reject(error);
+    });
     child.on('close', (code) => {
+      if (heartbeatTimer) {
+        clearInterval(heartbeatTimer);
+      }
       resolve({
         exitCode: code ?? 1,
         stdout,
@@ -454,7 +496,7 @@ const executeNonBlockingStep = async (
   stepName: ResearchStepName,
   command: string,
   commandArgs: string[],
-  options: { node8g?: boolean } = {},
+  options: { node8g?: boolean; liveLog?: boolean; heartbeatMs?: number } = {},
 ) => {
   logResearch(
     `starting optional step ${stepName}: ${command} ${commandArgs.join(' ')}`.trim(),
@@ -472,6 +514,8 @@ const executeNonBlockingStep = async (
     command,
     args: commandArgs,
     node8g: options.node8g,
+    liveLogPrefix: options.liveLog ? stepName : undefined,
+    heartbeatMs: options.liveLog ? options.heartbeatMs || 60_000 : undefined,
   });
 
   run.steps[stepName] = {
@@ -540,7 +584,7 @@ const main = async () => {
     stepName: ResearchStepName,
     command: string,
     commandArgs: string[],
-    options: { node8g?: boolean } = {},
+    options: { node8g?: boolean; liveLog?: boolean; heartbeatMs?: number } = {},
   ) => {
     logResearch(
       `starting step ${stepName}: ${command} ${commandArgs.join(' ')}`.trim(),
@@ -558,6 +602,8 @@ const main = async () => {
       command,
       args: commandArgs,
       node8g: options.node8g,
+      liveLogPrefix: options.liveLog ? stepName : undefined,
+      heartbeatMs: options.liveLog ? options.heartbeatMs || 60_000 : undefined,
     });
 
     run.steps[stepName] = {
@@ -696,7 +742,7 @@ const main = async () => {
         String(days),
         '--ai',
       ],
-      { node8g: true },
+      { node8g: true, liveLog: true, heartbeatMs: 30_000 },
     );
     await executeStep('aiExport', 'ai-export', [
       '--strategy',
@@ -788,7 +834,7 @@ const main = async () => {
           run.strategy,
           '--json',
         ],
-        { node8g: true },
+        { node8g: true, liveLog: true, heartbeatMs: 30_000 },
       );
 
       try {

@@ -4,7 +4,7 @@ import puppeteer from 'puppeteer';
 import { Signal } from '@tradejs/types';
 import { delay } from '@tradejs/core/async';
 import { logger } from '@tradejs/infra/logger';
-import { getUserSettings } from '@tradejs/infra/userSettings';
+import { createScreenshotSessionToken } from '@tradejs/infra/redis';
 import { getTradejsProjectCwd } from './tradejsConfig';
 
 const { APP_URL } = process.env;
@@ -32,7 +32,7 @@ const getScreenshotsDir = (projectRoot?: string): string =>
   path.join(getProjectRoot(projectRoot), 'data', 'screenshots');
 
 const maskTokenInUrl = (url: string) =>
-  url.replace(/([?&]token=)[^&]+/i, '$1<hidden>');
+  url.replace(/([?&]screenshotToken=)[^&]+/i, '$1<hidden>');
 
 const getErrorFields = (value: unknown) => {
   if (!value || typeof value !== 'object') {
@@ -169,13 +169,13 @@ export const screenDashboard = async (
   const { symbol, signalId, interval } = signal;
   const screenshotBaseUrl = getScreenshotRenderBaseUrl();
   const screenshotPath = getScreenshotPath(signal, projectRoot);
-  const settings = await getUserSettings(userName);
-  const token = settings.token;
-  const tokenParam =
-    typeof token === 'string' && token.length > 0
-      ? `&token=${encodeURIComponent(token)}`
-      : '';
-  const dashboardUrl = `${screenshotBaseUrl}/routes/dashboard/bybit/${symbol}/${interval}/?signalId=${signalId}&autoZoom=true&screenshot=1${tokenParam}`;
+  const screenshotToken = await createScreenshotSessionToken(userName);
+  if (!screenshotToken) {
+    throw new Error(
+      `Failed to create screenshot session token for ${userName}`,
+    );
+  }
+  const dashboardUrl = `${screenshotBaseUrl}/routes/dashboard/bybit/${symbol}/${interval}/?signalId=${signalId}&autoZoom=true&screenshot=1&screenshotToken=${encodeURIComponent(screenshotToken)}`;
   const maskedDashboardUrl = maskTokenInUrl(dashboardUrl);
 
   logger.info(

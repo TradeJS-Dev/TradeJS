@@ -17,6 +17,10 @@ import {
   Text,
 } from '@chakra-ui/react';
 import { FiEdit2, FiSettings } from 'react-icons/fi';
+import {
+  AI_ENDPOINT_OPTIONS,
+  normalizeAiEndpoint,
+} from '@tradejs/infra/aiEndpoints';
 import { toaster } from '@UI';
 
 type SettingsResponse = {
@@ -26,7 +30,6 @@ type SettingsResponse = {
       apiKey: string;
       apiSecret: string;
     };
-    token: string;
     coinalyze: {
       apiKey: string;
     };
@@ -49,7 +52,6 @@ type SettingsViewState = {
   userName: string;
   bybitApiKey: string;
   bybitApiSecret: string;
-  token: string;
   coinalyzeApiKey: string;
   openAIApiKey: string;
   openAIApiEndpoint: string;
@@ -64,17 +66,10 @@ type PasswordState = {
   confirmPassword: string;
 };
 
-type SectionName =
-  | 'bybit'
-  | 'password'
-  | 'token'
-  | 'coinalyze'
-  | 'openai'
-  | 'telegram';
+type SectionName = 'bybit' | 'password' | 'coinalyze' | 'openai' | 'telegram';
 type EditableField =
   | 'bybitApiKey'
   | 'bybitApiSecret'
-  | 'token'
   | 'coinalyzeApiKey'
   | 'openAIApiKey'
   | 'openAIApiEndpoint'
@@ -85,7 +80,6 @@ const EMPTY_SETTINGS: SettingsViewState = {
   userName: '',
   bybitApiKey: '',
   bybitApiSecret: '',
-  token: '',
   coinalyzeApiKey: '',
   openAIApiKey: '',
   openAIApiEndpoint: '',
@@ -96,7 +90,6 @@ const EMPTY_SETTINGS: SettingsViewState = {
 const EMPTY_DRAFTS: SettingsDraftState = {
   bybitApiKey: '',
   bybitApiSecret: '',
-  token: '',
   coinalyzeApiKey: '',
   openAIApiKey: '',
   openAIApiEndpoint: '',
@@ -112,7 +105,6 @@ const EMPTY_PASSWORDS: PasswordState = {
 const EMPTY_EDITING: Record<EditableField, boolean> = {
   bybitApiKey: false,
   bybitApiSecret: false,
-  token: false,
   coinalyzeApiKey: false,
   openAIApiKey: false,
   openAIApiEndpoint: false,
@@ -125,7 +117,6 @@ const SECTION_FIELDS: Record<
   EditableField[]
 > = {
   bybit: ['bybitApiKey', 'bybitApiSecret'],
-  token: ['token'],
   coinalyze: ['coinalyzeApiKey'],
   openai: ['openAIApiKey', 'openAIApiEndpoint'],
   telegram: ['tgBotToken', 'tgChatId'],
@@ -134,7 +125,6 @@ const SECTION_FIELDS: Record<
 const MASKED_FIELDS = new Set<EditableField>([
   'bybitApiKey',
   'bybitApiSecret',
-  'token',
   'coinalyzeApiKey',
   'openAIApiKey',
   'tgBotToken',
@@ -144,10 +134,11 @@ const toViewState = (payload: SettingsResponse): SettingsViewState => ({
   userName: payload.userName,
   bybitApiKey: payload.settings.bybit.apiKey || '',
   bybitApiSecret: payload.settings.bybit.apiSecret || '',
-  token: payload.settings.token || '',
   coinalyzeApiKey: payload.settings.coinalyze.apiKey || '',
   openAIApiKey: payload.settings.openai.apiKey || '',
-  openAIApiEndpoint: payload.settings.openai.apiEndpoint || '',
+  openAIApiEndpoint:
+    normalizeAiEndpoint(payload.settings.openai.apiEndpoint) ||
+    AI_ENDPOINT_OPTIONS[0].value,
   tgBotToken: payload.settings.telegram.botToken || '',
   tgChatId: payload.settings.telegram.chatId || '',
 });
@@ -360,46 +351,39 @@ export const AccountSettingsDrawer = () => {
                 apiSecret: getSecretUpdateValue('bybitApiSecret'),
               },
             }
-          : section === 'token'
+          : section === 'coinalyze'
             ? {
                 section,
                 data: {
-                  token: getSecretUpdateValue('token'),
+                  apiKey: getSecretUpdateValue('coinalyzeApiKey'),
                 },
               }
-            : section === 'coinalyze'
+            : section === 'openai'
               ? {
                   section,
                   data: {
-                    apiKey: getSecretUpdateValue('coinalyzeApiKey'),
+                    apiKey: getSecretUpdateValue('openAIApiKey'),
+                    apiEndpoint: drafts.openAIApiEndpoint,
                   },
                 }
-              : section === 'openai'
+              : section === 'telegram'
                 ? {
                     section,
                     data: {
-                      apiKey: getSecretUpdateValue('openAIApiKey'),
-                      apiEndpoint: getSecretUpdateValue('openAIApiEndpoint'),
+                      botToken: getSecretUpdateValue('tgBotToken'),
+                      chatId:
+                        drafts.tgChatId !== settings.tgChatId
+                          ? drafts.tgChatId.trim()
+                          : undefined,
                     },
                   }
-                : section === 'telegram'
-                  ? {
-                      section,
-                      data: {
-                        botToken: getSecretUpdateValue('tgBotToken'),
-                        chatId:
-                          drafts.tgChatId !== settings.tgChatId
-                            ? drafts.tgChatId.trim()
-                            : undefined,
-                      },
-                    }
-                  : {
-                      section,
-                      data: {
-                        password: passwords.password,
-                        confirmPassword: passwords.confirmPassword,
-                      },
-                    };
+                : {
+                    section,
+                    data: {
+                      password: passwords.password,
+                      confirmPassword: passwords.confirmPassword,
+                    },
+                  };
 
       const response = await fetch('/api/user/settings', {
         method: 'PATCH',
@@ -613,11 +597,30 @@ export const AccountSettingsDrawer = () => {
                           Stored in the user profile and used for AI analysis.
                         </Text>
                       </Box>
-                      {renderEditableField({
-                        label: 'OPENAI_API_ENDPOINT',
-                        field: 'openAIApiEndpoint',
-                        placeholder: 'Enter a new OpenAI API endpoint',
-                      })}
+                      <Field.Root>
+                        <Field.Label>OPENAI_API_ENDPOINT</Field.Label>
+                        <select
+                          value={drafts.openAIApiEndpoint}
+                          onChange={(event) =>
+                            updateDraft('openAIApiEndpoint', event.target.value)
+                          }
+                          style={{
+                            height: '40px',
+                            padding: '0 12px',
+                            borderWidth: '1px',
+                            borderColor: 'rgba(255, 255, 255, 0.16)',
+                            borderRadius: '0.375rem',
+                            background: 'rgba(0, 0, 0, 0.32)',
+                            color: 'rgb(229, 231, 235)',
+                          }}
+                        >
+                          {AI_ENDPOINT_OPTIONS.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+                      </Field.Root>
                       {renderEditableField({
                         label: 'OPENAI_API_KEY',
                         field: 'openAIApiKey',
@@ -760,38 +763,6 @@ export const AccountSettingsDrawer = () => {
                             Boolean(passwordError)
                           }
                           onClick={() => saveSection('password')}
-                        >
-                          Save
-                        </Button>
-                      </Flex>
-                    </Stack>
-                  </Box>
-
-                  <Box
-                    borderWidth="1px"
-                    borderColor="gray.700"
-                    borderRadius="lg"
-                    p={4}
-                    bg="gray.900"
-                  >
-                    <Stack gap={4}>
-                      <Box>
-                        <Text fontWeight="600">Passwordless auth token</Text>
-                        <Text fontSize="sm" color="gray.400">
-                          Token accepted in dashboard links for instant auth.
-                        </Text>
-                      </Box>
-                      {renderEditableField({
-                        label: 'TOKEN',
-                        field: 'token',
-                        placeholder: 'Enter a new passwordless token',
-                      })}
-                      <Flex justify="flex-end">
-                        <Button
-                          colorPalette="teal"
-                          loading={savingSection === 'token'}
-                          disabled={!isSectionDirty('token')}
-                          onClick={() => saveSection('token')}
                         >
                           Save
                         </Button>

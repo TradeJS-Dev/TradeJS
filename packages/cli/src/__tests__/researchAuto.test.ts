@@ -17,8 +17,14 @@ jest.mock('args', () => ({
   },
 }));
 
+const mockSpawn = jest.fn();
 const mockGetData = jest.fn();
 const mockGetKeys = jest.fn();
+const mockLoggerInfo = jest.fn();
+
+jest.mock('node:child_process', () => ({
+  spawn: (...args: unknown[]) => mockSpawn(...args),
+}));
 
 jest.mock('@tradejs/infra/redis', () => ({
   getData: (...args: unknown[]) => mockGetData(...args),
@@ -33,7 +39,7 @@ jest.mock('@tradejs/infra/redis', () => ({
 
 jest.mock('@tradejs/infra/logger', () => ({
   logger: {
-    info: jest.fn(),
+    info: (...args: unknown[]) => mockLoggerInfo(...args),
     warn: jest.fn(),
     error: jest.fn(),
   },
@@ -45,6 +51,7 @@ import {
   parseJsonOutput,
   resolveStrategyNameByConfigKey,
   resolveTarget,
+  runCliCommand,
   toStrategyConfigGrid,
 } from '../scripts/researchAuto';
 
@@ -196,5 +203,44 @@ describe('research:auto helpers', () => {
         approvalRate: 0.42,
       },
     });
+  });
+
+  it('streams child output into research logs when liveLogPrefix is enabled', async () => {
+    const stdoutHandlers: Record<string, (value: Buffer) => void> = {};
+    const stderrHandlers: Record<string, (value: Buffer) => void> = {};
+    const childHandlers: Record<string, (...args: any[]) => void> = {};
+
+    mockSpawn.mockReturnValue({
+      stdout: {
+        on: (event: string, handler: (value: Buffer) => void) => {
+          stdoutHandlers[event] = handler;
+        },
+      },
+      stderr: {
+        on: (event: string, handler: (value: Buffer) => void) => {
+          stderrHandlers[event] = handler;
+        },
+      },
+      on: (event: string, handler: (...args: any[]) => void) => {
+        childHandlers[event] = handler;
+      },
+    });
+
+    const pending = runCliCommand({
+      command: 'backtest',
+      args: ['--config', 'TrendLine:research'],
+      liveLogPrefix: 'backtest',
+    });
+
+    stdoutHandlers.data?.(Buffer.from('progress 1\nprogress 2\n'));
+    stderrHandlers.data?.(Buffer.from('warn 1\n'));
+    childHandlers.close?.(0);
+
+    await expect(pending).resolves.toMatchObject({
+      exitCode: 0,
+      stdout: 'progress 1\nprogress 2\n',
+      stderr: 'warn 1\n',
+    });
+    expect(mockLoggerInfo).toHaveBeenCalled();
   });
 });
