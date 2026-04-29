@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Button,
   CloseButton,
@@ -12,74 +12,42 @@ import {
   HStack,
   Stack,
   Text,
+  Alert,
   SkeletonCircle,
   SkeletonText,
 } from '@chakra-ui/react';
-import { AIChatMessage, AIChatHistory } from '@tradejs/types';
 import { GiArtificialHive } from 'react-icons/gi';
-import { useFilters } from '@store';
-import { sendMessage, getHistory } from '@actions/ai';
+import { useAiChatStore, useFilters } from '@store';
 import { Message } from './Message';
 
 export const AiDrawer = () => {
   const [open, setOpen] = useState(false);
-  const [loading, setLoading] = useState(true);
   const [input, setInput] = useState('');
-  const [messages, setMessages] = useState<AIChatHistory>([]);
   const { filters } = useFilters();
-
-  const loadHistory = useCallback(async () => {
-    setLoading(true);
-
-    const history = await getHistory(filters.symbol);
-
-    setMessages(history);
-
-    setLoading(false);
-  }, [filters.symbol]);
+  const getChat = useAiChatStore((s) => s.getChat);
+  const loadHistory = useAiChatStore((s) => s.loadHistory);
+  const sendPrompt = useAiChatStore((s) => s.sendPrompt);
+  const sendQuickCommand = useAiChatStore((s) => s.sendQuickCommand);
+  const chat = getChat(filters.symbol);
+  const { loading, sending, error, messages } = chat;
+  const isBusy = loading || sending;
+  const canSend = useMemo(
+    () => input.trim().length > 0 && !sending,
+    [input, sending],
+  );
 
   useEffect(() => {
-    void loadHistory();
-  }, [loadHistory]);
+    void loadHistory(filters.symbol);
+  }, [filters.symbol, loadHistory]);
 
   const handleSend = async () => {
     if (!input.trim()) return;
-
-    const message = {
-      from: 'user',
-      text: input,
-      command: 'prompt',
-    } as AIChatMessage;
-
-    setMessages((state) => [...state, message]);
-
-    const response = await sendMessage({ message, filters });
-
-    setMessages((state) => [...state, response]);
-
+    await sendPrompt(filters, input);
     setInput('');
   };
 
   const handleQuick = async (command: string) => {
-    let message: AIChatMessage | null = null;
-
-    if (command === '/line') {
-      message = {
-        from: 'user',
-        text: 'Какие наклонные линии можно построить на данном графике',
-        command,
-      };
-    }
-
-    if (!message) {
-      return;
-    }
-
-    setMessages((state) => [...state, message as AIChatMessage]);
-
-    const response = await sendMessage({ message, filters });
-
-    setMessages((state) => [...state, response]);
+    await sendQuickCommand(filters, command);
   };
 
   return (
@@ -106,6 +74,15 @@ export const AiDrawer = () => {
             </Drawer.Header>
 
             <Drawer.Body overflowY="auto" flex="1">
+              {error ? (
+                <Alert.Root status="error" mb={4}>
+                  <Alert.Indicator />
+                  <Alert.Content>
+                    <Alert.Title>AI chat error</Alert.Title>
+                    <Alert.Description>{error}</Alert.Description>
+                  </Alert.Content>
+                </Alert.Root>
+              ) : null}
               {loading ? (
                 <Stack gap="4" maxW="xs">
                   <HStack width="full">
@@ -128,6 +105,7 @@ export const AiDrawer = () => {
                 <Button
                   size="sm"
                   variant="outline"
+                  disabled={isBusy}
                   onClick={() => handleQuick('/line')}
                 >
                   /line
@@ -135,6 +113,7 @@ export const AiDrawer = () => {
                 <Button
                   size="sm"
                   variant="outline"
+                  disabled={isBusy}
                   onClick={() => handleQuick('/analyze')}
                 >
                   /analyze
@@ -148,10 +127,18 @@ export const AiDrawer = () => {
                 rows={3}
                 maxH="15lh"
                 value={input}
+                disabled={sending}
                 onChange={(e) => setInput(e.target.value)}
               />
 
-              <Button mt={2} size={'sm'} variant="subtle" onClick={handleSend}>
+              <Button
+                mt={2}
+                size={'sm'}
+                variant="subtle"
+                disabled={!canSend}
+                loading={sending}
+                onClick={handleSend}
+              >
                 Send
               </Button>
             </Drawer.Footer>
