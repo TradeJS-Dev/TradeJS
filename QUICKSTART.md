@@ -120,11 +120,7 @@ CRON_TZ=Europe/Moscow
 - `yarn agent-run` requires `OPENAI_API_ENDPOINT` to point to OpenRouter and uses `openai/gpt-5.4` with `reasoning.effort=medium`
 - the agent runs in a dedicated `git worktree` from `origin/stable`, creates a separate review branch under `codex/research/*`, validates with `yarn prettify && yarn typecheck && yarn unit`, pushes the branch, and sends a dedicated Telegram report
 - in production the nightly research job runs inside the separate `agent` container, not the main `app` container
-- `agent` is built from `Dockerfile.agent`, mounts `tradejs-agent-repo/.git` into `/app/.git`, and mounts `agent-ssh` into `/root/.ssh` for GitHub push access
-- deploy workflow prepares the server-side clone in `~/tradejs-agent-repo` and the SSH credentials in `~/agent-ssh`
-- required GitHub Actions secrets for the agent deploy path:
-  - `AGENT_GIT_SSH_KEY` — private SSH key used by the deploy workflow and the running `agent` container for `git fetch/push`
-  - `SSH_HOST`, `SSH_USER`, `SSH_KEY` — server deploy access already used by the main deploy job
+- hosted deploy wiring for the production `agent` container now lives in the separate `TradeJS-Deploy` repository, not in this monorepo quickstart
 - required runtime user settings in Redis for `root`:
   - `OPENAI_API_ENDPOINT=https://openrouter.ai/api/v1`
   - `OPENAI_API_KEY=<OpenRouter key>`
