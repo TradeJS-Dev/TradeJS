@@ -5,10 +5,10 @@ import { fork } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
+import { randomUUID } from 'node:crypto';
 import chalk from 'chalk';
 import _ from 'lodash';
 import { format } from 'date-fns';
-import { v4 as uuidv4 } from 'uuid';
 import { ConnectorNames } from '@tradejs/connectors';
 import {
   DEFAULT_CONNECTOR_NAME,
@@ -112,7 +112,7 @@ const progressStep = Math.max(1, parseInt(String(flags.progressStep), 10));
 const testsLimit = Math.max(0, parseInt(String(flags.tests), 10));
 const testsSkip = Math.max(0, parseInt(String(flags.skip ?? 0), 10));
 const testItemTimeoutMs = 120_000;
-const uuid = (len = 12) => uuidv4().slice(-len);
+const uuid = (len = 12) => randomUUID().slice(-len);
 const projectRoot =
   String(process.env.PROJECT_CWD || process.cwd()).trim() || process.cwd();
 const testerWorkerPathCandidates = [

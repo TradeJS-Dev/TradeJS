@@ -24,3 +24,9 @@ if (typeof global.TextEncoder === 'undefined') {
   global.TextEncoder = TextEncoder;
   global.TextDecoder = TextDecoder;
 }
+
+if (typeof global.ReadableStream === 'undefined') {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { ReadableStream } = require('node:stream/web');
+  global.ReadableStream = ReadableStream;
+}

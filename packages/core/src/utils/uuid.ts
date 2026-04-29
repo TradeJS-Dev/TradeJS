@@ -1,6 +1,6 @@
-import { v4 as uuidv4 } from 'uuid';
+import { randomUUID } from 'node:crypto';
 
 export const uuid = (len: number = 12) => {
-  const uuid = uuidv4();
+  const uuid = randomUUID();
   return uuid.slice(-len);
 };
