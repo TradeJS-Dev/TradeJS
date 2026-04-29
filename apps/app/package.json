@@ -72,7 +72,7 @@
     "dev": "node ./bin/tradejs-app.mjs dev",
     "build": "NODE_ENV=production node ./bin/tradejs-app.mjs build",
     "start": "node ./bin/tradejs-app.mjs start",
-    "lint": "yarn run -T eslint src --ext .js,.jsx,.ts,.tsx"
+    "lint": "ESLINT_USE_FLAT_CONFIG=true yarn run -T eslint src"
   },
   "license": "MIT",
   "author": "aleksnick (https://github.com/aleksnick)"
