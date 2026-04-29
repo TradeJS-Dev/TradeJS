@@ -237,7 +237,9 @@ jobs:
           context: .
           file: ./Dockerfile
           push: true
-          tags: ghcr.io/tradejs-dev/tradejs-app:${{ env.IMAGE_TAG }}
+          tags: |
+            ghcr.io/tradejs-dev/tradejs-app:${{ env.IMAGE_TAG }}
+            ghcr.io/tradejs-dev/tradejs-app:latest
           cache-from: type=gha,scope=app
           cache-to: type=gha,mode=max,scope=app
 
@@ -248,7 +250,9 @@ jobs:
           context: .
           file: ./Dockerfile.agent
           push: true
-          tags: ghcr.io/tradejs-dev/tradejs-agent:${{ env.IMAGE_TAG }}
+          tags: |
+            ghcr.io/tradejs-dev/tradejs-agent:${{ env.IMAGE_TAG }}
+            ghcr.io/tradejs-dev/tradejs-agent:latest
           cache-from: type=gha,scope=agent
           cache-to: type=gha,mode=max,scope=agent
 
@@ -259,7 +263,9 @@ jobs:
           context: .
           file: ./Dockerfile.infer
           push: true
-          tags: ghcr.io/tradejs-dev/tradejs-ml-infer:${{ env.IMAGE_TAG }}
+          tags: |
+            ghcr.io/tradejs-dev/tradejs-ml-infer:${{ env.IMAGE_TAG }}
+            ghcr.io/tradejs-dev/tradejs-ml-infer:latest
           cache-from: type=gha,scope=ml-infer
           cache-to: type=gha,mode=max,scope=ml-infer
 
