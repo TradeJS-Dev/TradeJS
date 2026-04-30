@@ -1,5 +1,6 @@
 import bcrypt from 'bcryptjs';
 import { NextResponse } from 'next/server';
+import { normalizeAiResponseLanguage } from '@tradejs/infra/aiLanguages';
 import { normalizeAiEndpoint } from '@tradejs/infra/aiEndpoints';
 import {
   getUserRecord,
@@ -27,10 +28,11 @@ type UpdateBody =
       };
     }
   | {
-      section: 'openai';
+      section: 'ai';
       data?: {
         apiKey?: string;
         apiEndpoint?: string;
+        responseLanguage?: string;
       };
     }
   | {
@@ -79,9 +81,10 @@ const toResponse = (settings: UserSettings) => ({
     coinalyze: {
       apiKey: maskSecret(settings.COINALYZE_API_KEY),
     },
-    openai: {
-      apiKey: maskSecret(settings.OPENAI_API_KEY),
-      apiEndpoint: settings.OPENAI_API_ENDPOINT,
+    ai: {
+      apiKey: maskSecret(settings.AI_API_KEY),
+      apiEndpoint: settings.AI_API_ENDPOINT,
+      responseLanguage: settings.AI_RESPONSE_LANGUAGE,
     },
     telegram: {
       botToken: maskSecret(settings.TG_BOT_TOKEN),
@@ -174,24 +177,31 @@ export const PATCH = async (request: Request) => {
     }
   }
 
-  if (body.section === 'openai') {
+  if (body.section === 'ai') {
     const patch: Partial<UserRecord> = {};
     const apiKey = cleanOptionalText(body.data?.apiKey);
     const apiEndpoint = normalizeAiEndpoint(body.data?.apiEndpoint);
+    const responseLanguage = normalizeAiResponseLanguage(
+      body.data?.responseLanguage,
+    );
 
     if (apiKey) {
-      patch.OPENAI_API_KEY = apiKey;
+      patch.AI_API_KEY = apiKey;
     }
 
     if (body.data && 'apiEndpoint' in body.data && !apiEndpoint) {
       return NextResponse.json(
-        { error: 'Unsupported OpenAI API endpoint' },
+        { error: 'Unsupported AI API endpoint' },
         { status: 400 },
       );
     }
 
     if (apiEndpoint) {
-      patch.OPENAI_API_ENDPOINT = apiEndpoint;
+      patch.AI_API_ENDPOINT = apiEndpoint;
+    }
+
+    if (body.data && 'responseLanguage' in body.data) {
+      patch.AI_RESPONSE_LANGUAGE = responseLanguage;
     }
 
     if (hasKeys(patch)) {

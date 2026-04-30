@@ -73,11 +73,11 @@ const getTrendShiftContext = (payload: AiPayload): TrendShiftAiContext => {
 const reasonText = (reason: string) => {
   switch (reason) {
     case 'unconfirmed_flip':
-      return 'внутренний разворот еще не подтвержден';
+      return 'the internal flip is not confirmed yet';
     case 'weak_flip_distance':
-      return 'цена отошла от adaptive average слишком слабо';
+      return 'price moved away from the adaptive average too weakly';
     case 'coin_bias_conflict':
-      return 'MA-bias по монете конфликтует с направлением flip';
+      return 'coin MA bias conflicts with the flip direction';
     default:
       return reason;
   }
@@ -117,13 +117,13 @@ export const trendShiftAiAdapter: StrategyAiAdapter = {
       rejectReason:
         context.hardBlockReasons.length > 0
           ? context.hardBlockReasons.map(reasonText).join('; ')
-          : 'flip еще не выглядит достаточно сильным для live approval',
+          : 'the flip still does not look strong enough for live approval',
     };
   },
   buildHumanPromptAddon: ({ payload }) => {
     const context = getTrendShiftContext(payload);
     return `
-Доп. контекст TrendShift:
+Additional TrendShift context:
 - signalDirection=${context.signalDirection ?? 'n/a'}
 - confirmedFlip=${String(context.confirmedFlip)}
 - bullFlip=${String(context.bullFlip)}
@@ -139,10 +139,10 @@ export const trendShiftAiAdapter: StrategyAiAdapter = {
 - approvalAllowedNow=${context.approvalAllowedNow}
 - hardBlockReasons=${JSON.stringify(context.hardBlockReasons)}
 
-Правило интерпретации для TrendShift:
-- Это trend-state flip стратегия, а не прогноз будущего импульса.
-- Если approvalAllowedNow=false, не описывай сигнал как fully confirmed live-entry.
-- Если hardBlockReasons не пустой, объясняй чего именно не хватает до подтверждения.
+Interpretation rules for TrendShift:
+- This is a trend-state flip strategy, not a forecast of future impulse.
+- If approvalAllowedNow=false, do not describe the signal as a fully confirmed live entry.
+- If hardBlockReasons is not empty, explain exactly what is still missing for confirmation.
 `.trim();
   },
   mapEntryRuntimeFromConfig: (config) =>

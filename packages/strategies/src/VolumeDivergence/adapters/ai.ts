@@ -11,29 +11,29 @@ import {
 } from '../setup';
 
 const VOLUME_DIVERGENCE_CONTEXT_PROMPT = `
-Дополнение для VolumeDivergence:
-- Это reversal-сетап на дивергенции цены и нормализованного объема, а не breakout-стратегия.
-- Bullish divergence: price делает lower low, а volume делает higher low.
-- Bearish divergence: price делает higher high, а volume делает lower high.
-- Для bullish-сигнала не завышай quality, если цена после pivot low так и не смогла заметно отскочить от текущего pivot low или не смогла вернуть хотя бы часть структуры.
-- Для bearish-сигнала зеркально: не завышай quality, если цена после pivot high не смогла заметно уйти вниз от текущего pivot high.
-- Если payload.additionalIndicators.volumeDivergenceContext.confirmationReady=false, обычно это еще не fully confirmed reversal; чаще quality <= 4 и часто нужен retest/confirmation.
-- Для live approve считай confirmationReady намного важнее, чем structureAdvanced: structure advance сам по себе еще не означает готовый reversal entry.
-- Для reversal-сетапа не награждай quality автоматически только за то, что MA bias по монете/BTC уже совпадает с направлением сигнала.
-- Для LONG с entryTiming=structure_advance обычно не ставь quality=5: это промежуточный этап, а не fully confirmed reversal.
-- Для SHORT будь строже, чем для LONG: bearish reversal должен требовать более чистого follow-through, а конфликт по bias/delta должен сильнее снижать quality.
-- Если deltaAtPivot конфликтует с направлением reversal или bias по монете/BTC конфликтует с сигналом, не завышай quality только из-за самой дивергенции.
-- Смотри на divergenceAmplitudeAtrRatio / reclaimPct / confirmationCandleQuality: это explicit setup-features, описывающие насколько дивергенция действительно значима относительно ATR, насколько цена вернула структуру и насколько качественной была confirmation candle.
-- confirmationDistancePct показывает, насколько далеко цена ушла за confirmation level; не завышай quality, если confirmation вроде бы есть, но закрепление за уровнем минимальное.
-- additionalIndicators.deltaAtPivot — это proxy net-volume по свече pivot, а не настоящий lower-timeframe volume delta TradingView.
-- Если payload.additionalIndicators.derivativesContext есть, используй Coinalyze-derived open interest / funding / liquidations как контекст позиционирования: liquidation flush может усиливать reversal, а crowded positioning против направления или stale/missing данные не должны механически повышать quality.
+VolumeDivergence addon:
+- This is a reversal setup built on price and normalized-volume divergence, not a breakout strategy.
+- Bullish divergence means price makes a lower low while volume makes a higher low.
+- Bearish divergence means price makes a higher high while volume makes a lower high.
+- For a bullish signal, do not overstate quality if price still failed to bounce meaningfully away from the current pivot low or failed to reclaim enough structure.
+- For a bearish signal, mirror that logic: do not overstate quality if price failed to move down meaningfully away from the current pivot high.
+- If \`payload.additionalIndicators.volumeDivergenceContext.confirmationReady=false\`, this is usually not a fully confirmed reversal yet; quality is often \`<= 4\` and a retest or confirmation is often still needed.
+- For live approval, treat \`confirmationReady\` as much more important than \`structureAdvanced\`; structure advance alone does not mean the reversal is entry-ready.
+- For a reversal setup, do not automatically reward quality just because the coin or BTC MA bias already matches the signal direction.
+- For LONG with \`entryTiming=structure_advance\`, avoid \`quality=5\`; that is an intermediate phase, not a fully confirmed reversal.
+- Be stricter for SHORT than for LONG: a bearish reversal should require cleaner follow-through, and bias or delta conflict should reduce quality more aggressively.
+- If \`deltaAtPivot\` conflicts with the reversal direction or the coin/BTC bias conflicts with the signal, do not overstate quality just because divergence exists.
+- Use \`divergenceAmplitudeAtrRatio\`, \`reclaimPct\`, and \`confirmationCandleQuality\` as explicit setup features describing how meaningful the divergence is relative to ATR, how much structure price reclaimed, and how strong the confirmation candle was.
+- \`confirmationDistancePct\` tells you how far price moved beyond the confirmation level; do not overstate quality when confirmation exists only marginally.
+- \`additionalIndicators.deltaAtPivot\` is a proxy net-volume value on the pivot candle, not true lower-timeframe TradingView volume delta.
+- If \`payload.additionalIndicators.derivativesContext\` exists, use Coinalyze-derived open interest, funding, and liquidations as positioning context: a liquidation flush can strengthen reversal odds, while crowded positioning against the trade or stale or missing data should not mechanically increase quality.
 `;
 
 const VOLUME_DIVERGENCE_PAYLOAD_PROMPT = `
-- В payload.additionalIndicators.volumeDivergenceContext передается краткая сводка по силе дивергенции:
+- \`payload.additionalIndicators.volumeDivergenceContext\` contains a compact divergence-strength summary:
   divergenceKind / confirmationPrice / confirmationReady / structureAdvanced / reboundFromPivotPct / confirmationDistancePct / priceDisplacementPct / divergenceAmplitudeAtrRatio / reclaimPct / confirmationCandleQuality / volumeDivergenceStrength / deltaAligned / coinBiasAligned / btcBiasAligned / deterministicQuality / approvalAllowedNow / structuralHardBlockReasons / maxAllowedQuality.
-- Используй этот context как explicit strategy-specific summary, а не пытайся заново вывести то же самое только по общим свечам.
-- Если есть payload.additionalIndicators.derivativesContext, это Coinalyze-derived summary по derivatives состоянию на момент сигнала; stale/missing_derivatives означает, что Coinalyze контекст нельзя использовать.
+- Use this context as the explicit strategy-specific summary instead of trying to derive the same conclusion again only from generic candles.
+- If \`payload.additionalIndicators.derivativesContext\` exists, it is a Coinalyze-derived summary of derivatives state at signal time; \`stale\` or \`missing_derivatives\` means that Coinalyze context must not be used.
 `;
 
 type Direction = 'LONG' | 'SHORT';
@@ -976,13 +976,13 @@ const clampQuality = (quality: number, maxAllowedQuality: number) =>
 const getHardBlockReasonText = (reason: HardBlockReason) => {
   switch (reason) {
     case 'no_rebound_from_pivot':
-      return 'цена не смогла уйти от pivot в сторону reversal';
+      return 'price failed to move away from the pivot in the reversal direction';
     case 'weak_divergence_amplitude':
-      return 'дивергенция слишком маленькая относительно ATR';
+      return 'divergence amplitude is too small relative to ATR';
     case 'weak_reclaim':
-      return 'цена вернула слишком мало структуры после pivot';
+      return 'price reclaimed too little structure after the pivot';
     case 'weak_confirmation_candle':
-      return 'confirmation candle слишком слабая';
+      return 'confirmation candle is too weak';
     default:
       return reason;
   }
@@ -996,10 +996,10 @@ const buildGuardrailReason = (context: VolumeDivergenceAiContext) => {
   }
 
   if (!context.confirmationReady && context.entryTiming == null) {
-    return 'VolumeDivergence guardrail: reversal уже виден, но confirmation level еще не пройден.';
+    return 'VolumeDivergence guardrail: reversal is visible, but the confirmation level has not been cleared yet.';
   }
 
-  return 'VolumeDivergence guardrail: quality ограничен подтвержденностью и силой reversal away from pivot.';
+  return 'VolumeDivergence guardrail: quality is limited by confirmation state and the strength of reversal away from the pivot.';
 };
 
 const postProcessAnalysis = ({
@@ -1043,15 +1043,15 @@ const postProcessAnalysis = ({
       triggerInvalidation:
         analysis.triggerInvalidation ||
         (context.confirmationPrice != null
-          ? `Ждать подтверждение reversal относительно уровня ${context.confirmationPrice}.`
-          : 'Ждать подтвержденный reversal после pivot.'),
+          ? `Wait for reversal confirmation relative to level ${context.confirmationPrice}.`
+          : 'Wait for a confirmed reversal after the pivot.'),
       comment:
         analysis.comment ||
         (context.hardBlockReasons.length > 0
-          ? `VolumeDivergence отклонен: ${context.hardBlockReasons
+          ? `VolumeDivergence rejected: ${context.hardBlockReasons
               .map(getHardBlockReasonText)
               .join('; ')}.`
-          : 'VolumeDivergence пока остается в стадии watch до подтверждения reversal.'),
+          : 'VolumeDivergence remains in watch mode until the reversal is confirmed.'),
     };
   }
 
@@ -1082,7 +1082,7 @@ export const volumeDivergenceAiAdapter: StrategyAiAdapter = {
 
     return `
 
-Доп. контекст VolumeDivergence:
+Additional VolumeDivergence context:
 - divergenceKind=${context.divergenceKind ?? 'n/a'}
 - confirmationPrice=${context.confirmationPrice ?? 'n/a'}
 - confirmationReady=${context.confirmationReady}
@@ -1109,11 +1109,11 @@ export const volumeDivergenceAiAdapter: StrategyAiAdapter = {
 - maxAllowedQuality=${context.maxAllowedQuality}
 - hardBlockReasons=${context.hardBlockReasons.join(', ') || 'none'}
 
-Правило интерпретации для VolumeDivergence:
-- сначала оцени, есть ли реальный reversal away from pivot, а не просто факт дивергенции;
-- confirmationReady=false обычно означает, что reversal еще не fully confirmed;
-- если цена не отскочила от текущего pivot в сторону сигнала, не считай сетап подтвержденным;
-- conflict по delta/bias должен снижать quality, а не игнорироваться.
+Interpretation rules for VolumeDivergence:
+- first evaluate whether there is a real reversal away from the pivot, not just divergence on paper;
+- \`confirmationReady=false\` usually means the reversal is not fully confirmed yet;
+- if price did not bounce away from the current pivot in the signal direction, do not treat the setup as confirmed;
+- delta or bias conflict should reduce quality, not be ignored.
 `;
   },
   mapEntryRuntimeFromConfig: (config) =>

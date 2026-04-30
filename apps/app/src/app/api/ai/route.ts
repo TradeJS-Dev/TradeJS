@@ -6,6 +6,7 @@ import {
   SystemMessage,
 } from '@langchain/core/messages';
 import { toJson } from '@tradejs/core/data';
+import { getAiResponseLanguagePromptName } from '@tradejs/infra/aiLanguages';
 import { getOpenRouterModelKwargs } from '@tradejs/node/ai';
 import { getConnectorCreatorByProvider } from '@tradejs/node/connectors';
 import {
@@ -65,18 +66,21 @@ const buildMessages = (
   filters: Filters,
   historyEntry: AIChatMessage,
   historyData: unknown,
+  responseLanguage: string,
 ) => {
   const messages = new Array<BaseMessage>();
 
   messages.push(
     new SystemMessage(
-      'Ты – помощник крипто-трейдера. Отвечай на русском языке',
+      `You are a crypto trader assistant. Reply in ${getAiResponseLanguagePromptName(
+        responseLanguage,
+      )}.`,
     ),
   );
 
   messages.push(
     new SystemMessage(
-      `Вот данные по монете ${filters.symbol}: ${toJson(historyData)}`,
+      `Here is the market data for ${filters.symbol}: ${toJson(historyData)}`,
     ),
   );
 
@@ -93,19 +97,19 @@ const buildMessages = (
 
 const invokeChatModel = async (messages: BaseMessage[], userName: string) => {
   const settings = await getUserSettings(userName);
-  if (!settings.OPENAI_API_KEY || !settings.OPENAI_API_ENDPOINT) {
+  if (!settings.AI_API_KEY || !settings.AI_API_ENDPOINT) {
     throw new Error(`AI settings are incomplete for user ${userName}`);
   }
 
-  const modelKwargs = getOpenRouterModelKwargs(settings.OPENAI_API_ENDPOINT);
+  const modelKwargs = getOpenRouterModelKwargs(settings.AI_API_ENDPOINT);
 
   const model = new ChatOpenAI({
     temperature: 0.7,
     modelName: 'gpt-4o',
-    apiKey: settings.OPENAI_API_KEY,
+    apiKey: settings.AI_API_KEY,
     ...(Object.keys(modelKwargs).length ? { modelKwargs } : {}),
     configuration: {
-      baseURL: settings.OPENAI_API_ENDPOINT,
+      baseURL: settings.AI_API_ENDPOINT,
     },
   });
 
@@ -190,7 +194,13 @@ export const POST = async (request: NextRequest) => {
       interval: '60',
     });
 
-    const chatMessages = buildMessages(filters, message, data.slice(-100));
+    const settings = await getUserSettings(userName);
+    const chatMessages = buildMessages(
+      filters,
+      message,
+      data.slice(-100),
+      settings.AI_RESPONSE_LANGUAGE,
+    );
 
     const response = await invokeChatModel(chatMessages, userName);
 

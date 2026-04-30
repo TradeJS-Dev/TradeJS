@@ -62,8 +62,8 @@ User profile settings are stored in Redis under the user record and now include:
 - `BYBIT_API_KEY`
 - `BYBIT_API_SECRET`
 - passwordless auth `token`
-- `OPENAI_API_KEY`
-- `OPENAI_API_ENDPOINT`
+- `AI_API_KEY`
+- `AI_API_ENDPOINT`
 - `TG_BOT_TOKEN`
 - `TG_CHAT_ID`
 
@@ -117,13 +117,13 @@ CRON_TZ=Europe/Moscow
 ```
 
 - `yarn research:auto` picks the strategy with the oldest missing/stale research run, snapshots the current strategy config into backtest config `<Strategy>:research`, runs `clean-tests -> clean-dir --dir ai/export -> backtest --ai -> ai-export -> ai-train --localOnly`, stores the structured run in Redis, always sends a Telegram report, and then directly invokes `yarn agent-run`
-- `yarn agent-run` requires `OPENAI_API_ENDPOINT` to point to OpenRouter and uses `openai/gpt-5.4` with `reasoning.effort=medium`
+- `yarn agent-run` requires `AI_API_ENDPOINT` to point to OpenRouter and uses `openai/gpt-5.4` with `reasoning.effort=medium`
 - the agent runs in a dedicated `git worktree` from `origin/stable`, creates a separate review branch under `codex/research/*`, validates with `yarn prettify && yarn typecheck && yarn unit`, pushes the branch, and sends a dedicated Telegram report
 - in production the nightly research job runs inside the separate `agent` container, not the main `app` container
 - hosted deploy wiring for the production `agent` container now lives in the separate `TradeJS-Deploy` repository, not in this monorepo quickstart
 - required runtime user settings in Redis for `root`:
-  - `OPENAI_API_ENDPOINT=https://openrouter.ai/api/v1`
-  - `OPENAI_API_KEY=<OpenRouter key>`
+  - `AI_API_ENDPOINT=https://openrouter.ai/api/v1`
+  - `AI_API_KEY=<OpenRouter key>`
   - `TG_BOT_TOKEN`
   - `TG_CHAT_ID`
 - summary includes per-strategy signal counts by status, plus per-strategy trade counts, active/closed status, and current/closed PnL

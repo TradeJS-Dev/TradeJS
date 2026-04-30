@@ -8,20 +8,20 @@ import {
 import { AdaptiveMomentumRibbonConfig } from '../config';
 
 const ADAPTIVE_MOMENTUM_RIBBON_CONTEXT_PROMPT = `
-Дополнение для AdaptiveMomentumRibbon:
-- Это momentum-entry на zero-cross осциллятора, а не трендлайновый breakout и не reversal от линии.
-- LONG появляется, когда signalOsc переходит выше 0 и ribbon переключается в activeBuy; SHORT зеркально.
-- invalidationLevel — это структурный уровень отмены сигнала на баре сигнала. Если invalidated=true или invalidationLevel оказался не с той стороны от текущей цены, не считай сетап подтвержденным.
-- channelState / channelBiasAligned показывают, где цена находится относительно Keltner Channel. Для LONG плохо, если цена все еще ниже kcMidline; для SHORT плохо, если цена выше kcMidline.
-- invalidationDistancePct и structuralRewardRiskRatio описывают, насколько сигнал структурно компактен. Не завышай quality, если invalidation слишком широкая или reward/risk к invalidation слабый.
-- Для quality=5 нужен очень чистый momentum: правильная сторона канала, сильный signalOsc, sane invalidationDistance и отсутствие конфликтов по bias монеты и BTC.
-- Если approvalAllowedNow=false или deterministicQuality<4, обычно это watch-mode, а не готовый live-approval.
+AdaptiveMomentumRibbon addon:
+- This is a momentum entry based on an oscillator zero-cross, not a trendline breakout and not a line-reversal setup.
+- LONG appears when \`signalOsc\` crosses above 0 and the ribbon switches into \`activeBuy\`; SHORT is the mirror case.
+- \`invalidationLevel\` is the structural invalidation level on the signal bar. If \`invalidated=true\` or \`invalidationLevel\` sits on the wrong side of the current price, do not treat the setup as confirmed.
+- \`channelState\` and \`channelBiasAligned\` describe where price sits relative to the Keltner Channel. For LONG it is a negative sign if price is still below \`kcMidline\`; for SHORT it is a negative sign if price is above \`kcMidline\`.
+- \`invalidationDistancePct\` and \`structuralRewardRiskRatio\` describe how compact the structure is. Do not overstate quality when invalidation is too wide or reward/risk versus invalidation is weak.
+- \`quality=5\` requires very clean momentum: correct channel side, strong \`signalOsc\`, sane invalidation distance, and no coin/BTC bias conflicts.
+- If \`approvalAllowedNow=false\` or \`deterministicQuality<4\`, this is usually watch mode rather than a ready live approval.
 `;
 
 const ADAPTIVE_MOMENTUM_RIBBON_PAYLOAD_PROMPT = `
-- В payload.additionalIndicators.adaptiveMomentumRibbonContext передается краткая сводка сигнала:
+- \`payload.additionalIndicators.adaptiveMomentumRibbonContext\` contains a compact signal summary:
   signalOsc / oscillatorStrength / channelState / channelExtensionPct / invalidationDistancePct / structuralRewardRiskRatio / coinBiasAligned / btcBiasAligned / deterministicQuality / approvalAllowedNow / structuralHardBlockReasons.
-- Используй этот контекст как основную strategy-specific интерпретацию, а не пытайся заново восстановить ее только по общим рядам.
+- Use this context as the primary strategy-specific interpretation instead of re-deriving it only from generic series.
 `;
 
 type Direction = 'LONG' | 'SHORT';
@@ -436,13 +436,13 @@ const getDeterministicAdaptiveMomentumRibbonQuality = (
 const getHardBlockReasonText = (reason: AmrHardBlockReason) => {
   switch (reason) {
     case 'invalidated':
-      return 'сигнал уже инвалидирован относительно invalidationLevel';
+      return 'the signal is already invalidated relative to invalidationLevel';
     case 'inactive_signal_state':
-      return 'active ribbon state не подтверждает текущее направление';
+      return 'the active ribbon state does not confirm the current direction';
     case 'oscillator_conflict':
-      return 'signalOsc конфликтует с направлением сигнала';
+      return 'signalOsc conflicts with the signal direction';
     case 'invalidation_wrong_side':
-      return 'invalidationLevel находится не с той стороны от текущей цены';
+      return 'invalidationLevel is on the wrong side of the current price';
     default:
       return reason;
   }
@@ -695,19 +695,19 @@ const postProcessAnalysis = ({
           ? `AdaptiveMomentumRibbon guardrail: ${context.hardBlockReasons
               .map(getHardBlockReasonText)
               .join('; ')}.`
-          : 'AdaptiveMomentumRibbon пока оставляет сетап в watch до более чистого momentum confirmation.'),
+          : 'AdaptiveMomentumRibbon keeps the setup in watch mode until momentum confirmation becomes cleaner.'),
       triggerInvalidation:
         analysis.triggerInvalidation ||
         (retestPrice != null
-          ? `Ждать подтверждение относительно уровня ${retestPrice}.`
-          : 'Ждать более чистое подтверждение momentum и положения цены в Keltner channel.'),
+          ? `Wait for confirmation relative to level ${retestPrice}.`
+          : 'Wait for cleaner momentum confirmation and better price positioning inside the Keltner channel.'),
       comment:
         analysis.comment ||
         (context.hardBlockReasons.length > 0
-          ? `AdaptiveMomentumRibbon отклонен: ${context.hardBlockReasons
+          ? `AdaptiveMomentumRibbon rejected: ${context.hardBlockReasons
               .map(getHardBlockReasonText)
               .join('; ')}.`
-          : 'AdaptiveMomentumRibbon пока переводит сигнал в watch до более чистого continuation confirmation.'),
+          : 'AdaptiveMomentumRibbon keeps the signal in watch mode until continuation confirmation becomes cleaner.'),
     };
   }
 
@@ -748,7 +748,7 @@ export const adaptiveMomentumRibbonAiAdapter: StrategyAiAdapter = {
 
     return `
 
-Доп. контекст AdaptiveMomentumRibbon:
+Additional AdaptiveMomentumRibbon context:
 - momentumPeriod=${context.momentumPeriod ?? 'n/a'}
 - butterworthSmoothing=${context.butterworthSmoothing ?? 'n/a'}
 - signalOsc=${context.signalOsc?.toFixed?.(3) ?? 'n/a'}
@@ -766,10 +766,10 @@ export const adaptiveMomentumRibbonAiAdapter: StrategyAiAdapter = {
 - approvalAllowedNow=${context.approvalAllowedNow}
 - hardBlockReasons=${context.hardBlockReasons.join(', ') || 'none'}
 
-Правило интерпретации для AdaptiveMomentumRibbon:
-- zero-cross сам по себе не делает quality высоким;
-- смотри на сторону Keltner channel, sane invalidation distance и bias alignment;
-- если signalOsc уже против направления или сигнал invalidated, не считать вход подтвержденным.
+Interpretation rules for AdaptiveMomentumRibbon:
+- a zero-cross alone does not make quality high;
+- pay attention to Keltner channel side, sane invalidation distance, and bias alignment;
+- if \`signalOsc\` already conflicts with direction or the signal is invalidated, do not treat the entry as confirmed.
 `;
   },
   mapEntryRuntimeFromConfig: (config) =>

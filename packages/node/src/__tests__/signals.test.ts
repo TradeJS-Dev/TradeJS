@@ -5,8 +5,9 @@ describe('signals', () => {
     BYBIT_API_KEY: '',
     BYBIT_API_SECRET: '',
     COINALYZE_API_KEY: '',
-    OPENAI_API_KEY: 'openai-key',
-    OPENAI_API_ENDPOINT: 'https://api.openai.com/v1',
+    AI_API_KEY: 'openai-key',
+    AI_API_ENDPOINT: 'https://api.openai.com/v1',
+    AI_RESPONSE_LANGUAGE: 'en',
     TG_BOT_TOKEN: 'tg-token',
     TG_CHAT_ID: 'tg-chat-id',
   }));

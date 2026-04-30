@@ -18,6 +18,10 @@ import {
 } from '@chakra-ui/react';
 import { FiEdit2, FiSettings } from 'react-icons/fi';
 import {
+  AI_RESPONSE_LANGUAGE_OPTIONS,
+  normalizeAiResponseLanguage,
+} from '@tradejs/infra/aiLanguages';
+import {
   AI_ENDPOINT_OPTIONS,
   normalizeAiEndpoint,
 } from '@tradejs/infra/aiEndpoints';
@@ -33,9 +37,10 @@ type SettingsResponse = {
     coinalyze: {
       apiKey: string;
     };
-    openai: {
+    ai: {
       apiKey: string;
       apiEndpoint: string;
+      responseLanguage: string;
     };
     telegram: {
       botToken: string;
@@ -53,8 +58,9 @@ type SettingsViewState = {
   bybitApiKey: string;
   bybitApiSecret: string;
   coinalyzeApiKey: string;
-  openAIApiKey: string;
-  openAIApiEndpoint: string;
+  aiApiKey: string;
+  aiApiEndpoint: string;
+  aiResponseLanguage: string;
   tgBotToken: string;
   tgChatId: string;
 };
@@ -66,13 +72,14 @@ type PasswordState = {
   confirmPassword: string;
 };
 
-type SectionName = 'bybit' | 'password' | 'coinalyze' | 'openai' | 'telegram';
+type SectionName = 'bybit' | 'password' | 'coinalyze' | 'ai' | 'telegram';
 type EditableField =
   | 'bybitApiKey'
   | 'bybitApiSecret'
   | 'coinalyzeApiKey'
-  | 'openAIApiKey'
-  | 'openAIApiEndpoint'
+  | 'aiApiKey'
+  | 'aiApiEndpoint'
+  | 'aiResponseLanguage'
   | 'tgBotToken'
   | 'tgChatId';
 
@@ -81,8 +88,9 @@ const EMPTY_SETTINGS: SettingsViewState = {
   bybitApiKey: '',
   bybitApiSecret: '',
   coinalyzeApiKey: '',
-  openAIApiKey: '',
-  openAIApiEndpoint: '',
+  aiApiKey: '',
+  aiApiEndpoint: '',
+  aiResponseLanguage: '',
   tgBotToken: '',
   tgChatId: '',
 };
@@ -91,8 +99,9 @@ const EMPTY_DRAFTS: SettingsDraftState = {
   bybitApiKey: '',
   bybitApiSecret: '',
   coinalyzeApiKey: '',
-  openAIApiKey: '',
-  openAIApiEndpoint: '',
+  aiApiKey: '',
+  aiApiEndpoint: '',
+  aiResponseLanguage: '',
   tgBotToken: '',
   tgChatId: '',
 };
@@ -106,8 +115,9 @@ const EMPTY_EDITING: Record<EditableField, boolean> = {
   bybitApiKey: false,
   bybitApiSecret: false,
   coinalyzeApiKey: false,
-  openAIApiKey: false,
-  openAIApiEndpoint: false,
+  aiApiKey: false,
+  aiApiEndpoint: false,
+  aiResponseLanguage: false,
   tgBotToken: false,
   tgChatId: false,
 };
@@ -118,7 +128,7 @@ const SECTION_FIELDS: Record<
 > = {
   bybit: ['bybitApiKey', 'bybitApiSecret'],
   coinalyze: ['coinalyzeApiKey'],
-  openai: ['openAIApiKey', 'openAIApiEndpoint'],
+  ai: ['aiApiKey', 'aiApiEndpoint', 'aiResponseLanguage'],
   telegram: ['tgBotToken', 'tgChatId'],
 };
 
@@ -126,7 +136,7 @@ const MASKED_FIELDS = new Set<EditableField>([
   'bybitApiKey',
   'bybitApiSecret',
   'coinalyzeApiKey',
-  'openAIApiKey',
+  'aiApiKey',
   'tgBotToken',
 ]);
 
@@ -135,17 +145,21 @@ const toViewState = (payload: SettingsResponse): SettingsViewState => ({
   bybitApiKey: payload.settings.bybit.apiKey || '',
   bybitApiSecret: payload.settings.bybit.apiSecret || '',
   coinalyzeApiKey: payload.settings.coinalyze.apiKey || '',
-  openAIApiKey: payload.settings.openai.apiKey || '',
-  openAIApiEndpoint:
-    normalizeAiEndpoint(payload.settings.openai.apiEndpoint) ||
+  aiApiKey: payload.settings.ai.apiKey || '',
+  aiApiEndpoint:
+    normalizeAiEndpoint(payload.settings.ai.apiEndpoint) ||
     AI_ENDPOINT_OPTIONS[0].value,
+  aiResponseLanguage: normalizeAiResponseLanguage(
+    payload.settings.ai.responseLanguage,
+  ),
   tgBotToken: payload.settings.telegram.botToken || '',
   tgChatId: payload.settings.telegram.chatId || '',
 });
 
 const toDraftState = (view: SettingsViewState): SettingsDraftState => ({
   ...EMPTY_DRAFTS,
-  openAIApiEndpoint: view.openAIApiEndpoint,
+  aiApiEndpoint: view.aiApiEndpoint,
+  aiResponseLanguage: view.aiResponseLanguage,
   tgChatId: view.tgChatId,
 });
 
@@ -237,10 +251,11 @@ export const AccountSettingsDrawer = () => {
         return Boolean(passwords.password || passwords.confirmPassword);
       }
 
-      if (section === 'openai') {
+      if (section === 'ai') {
         return (
-          Boolean(drafts.openAIApiKey.trim()) ||
-          drafts.openAIApiEndpoint !== settings.openAIApiEndpoint
+          Boolean(drafts.aiApiKey.trim()) ||
+          drafts.aiApiEndpoint !== settings.aiApiEndpoint ||
+          drafts.aiResponseLanguage !== settings.aiResponseLanguage
         );
       }
 
@@ -358,12 +373,13 @@ export const AccountSettingsDrawer = () => {
                   apiKey: getSecretUpdateValue('coinalyzeApiKey'),
                 },
               }
-            : section === 'openai'
+            : section === 'ai'
               ? {
                   section,
                   data: {
-                    apiKey: getSecretUpdateValue('openAIApiKey'),
-                    apiEndpoint: drafts.openAIApiEndpoint,
+                    apiKey: getSecretUpdateValue('aiApiKey'),
+                    apiEndpoint: drafts.aiApiEndpoint,
+                    responseLanguage: drafts.aiResponseLanguage,
                   },
                 }
               : section === 'telegram'
@@ -592,17 +608,18 @@ export const AccountSettingsDrawer = () => {
                   >
                     <Stack gap={4}>
                       <Box>
-                        <Text fontWeight="600">OpenAI / LLM</Text>
+                        <Text fontWeight="600">AI / LLM</Text>
                         <Text fontSize="sm" color="gray.400">
-                          Stored in the user profile and used for AI analysis.
+                          Stored in the user profile and used for AI analysis
+                          and user-facing AI replies.
                         </Text>
                       </Box>
                       <Field.Root>
-                        <Field.Label>OPENAI_API_ENDPOINT</Field.Label>
+                        <Field.Label>AI_API_ENDPOINT</Field.Label>
                         <select
-                          value={drafts.openAIApiEndpoint}
+                          value={drafts.aiApiEndpoint}
                           onChange={(event) =>
-                            updateDraft('openAIApiEndpoint', event.target.value)
+                            updateDraft('aiApiEndpoint', event.target.value)
                           }
                           style={{
                             height: '40px',
@@ -621,17 +638,44 @@ export const AccountSettingsDrawer = () => {
                           ))}
                         </select>
                       </Field.Root>
+                      <Field.Root>
+                        <Field.Label>AI_RESPONSE_LANGUAGE</Field.Label>
+                        <select
+                          value={drafts.aiResponseLanguage}
+                          onChange={(event) =>
+                            updateDraft(
+                              'aiResponseLanguage',
+                              event.target.value,
+                            )
+                          }
+                          style={{
+                            height: '40px',
+                            padding: '0 12px',
+                            borderWidth: '1px',
+                            borderColor: 'rgba(255, 255, 255, 0.16)',
+                            borderRadius: '0.375rem',
+                            background: 'rgba(0, 0, 0, 0.32)',
+                            color: 'rgb(229, 231, 235)',
+                          }}
+                        >
+                          {AI_RESPONSE_LANGUAGE_OPTIONS.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+                      </Field.Root>
                       {renderEditableField({
-                        label: 'OPENAI_API_KEY',
-                        field: 'openAIApiKey',
-                        placeholder: 'Enter a new OpenAI API key',
+                        label: 'AI_API_KEY',
+                        field: 'aiApiKey',
+                        placeholder: 'Enter a new AI API key',
                       })}
                       <Flex justify="flex-end">
                         <Button
                           colorPalette="teal"
-                          loading={savingSection === 'openai'}
-                          disabled={!isSectionDirty('openai')}
-                          onClick={() => saveSection('openai')}
+                          loading={savingSection === 'ai'}
+                          disabled={!isSectionDirty('ai')}
+                          onClick={() => saveSection('ai')}
                         >
                           Save
                         </Button>

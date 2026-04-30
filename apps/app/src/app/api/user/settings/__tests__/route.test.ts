@@ -38,8 +38,9 @@ describe('user settings route', () => {
       BYBIT_API_KEY: 'bybit-key-1234',
       BYBIT_API_SECRET: '',
       COINALYZE_API_KEY: '',
-      OPENAI_API_KEY: 'openai-key-9876',
-      OPENAI_API_ENDPOINT: 'https://openrouter.ai/api/v1',
+      AI_API_KEY: 'openai-key-9876',
+      AI_API_ENDPOINT: 'https://openrouter.ai/api/v1',
+      AI_RESPONSE_LANGUAGE: 'en',
       TG_BOT_TOKEN: '',
       TG_CHAT_ID: '12345',
     });
@@ -67,9 +68,10 @@ describe('user settings route', () => {
         coinalyze: {
           apiKey: '',
         },
-        openai: {
+        ai: {
           apiKey: '************9876',
           apiEndpoint: 'https://openrouter.ai/api/v1',
+          responseLanguage: 'en',
         },
         telegram: {
           botToken: '',
@@ -79,12 +81,12 @@ describe('user settings route', () => {
     });
   });
 
-  it('rejects unsupported openai endpoints and keeps route protected', async () => {
+  it('rejects unsupported ai endpoints and keeps route protected', async () => {
     mockGetUserRecord.mockResolvedValue(null);
 
     const response = await PATCH({
       json: async () => ({
-        section: 'openai',
+        section: 'ai',
         data: {
           apiEndpoint: 'https://internal.example.local/v1',
         },
@@ -93,7 +95,7 @@ describe('user settings route', () => {
 
     expect(response.status).toBe(400);
     expect(response.body).toEqual({
-      error: 'Unsupported OpenAI API endpoint',
+      error: 'Unsupported AI API endpoint',
     });
     expect(mockUpdateUserRecord).not.toHaveBeenCalled();
   });

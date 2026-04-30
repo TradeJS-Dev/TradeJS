@@ -19,32 +19,32 @@ import {
  * strategy-specific context so the final prompt remains complete but modular.
  */
 const TRENDLINE_CONTEXT_PROMPT = `
-Дополнение для trendline-сетапов:
-- Это сетап на основе пробоя/реакции от трендовой линии; поле payload.figures.trendline содержит геометрию этой линии, а payload.additionalIndicators.trendlineContext — краткую сводку положения цены относительно линии.
-- Для TrendLine роль геометрии/структуры цены приоритетнее индикаторных подтверждений.
-- Касания усиливают линию, но сами по себе не подтверждают сигнал. Без подтвержденного пробоя/ретеста не повышай quality только из-за количества касаний.
-- Для SHORT по rising support (trendline.mode="lows") обычно нужен либо явный уход цены ниже линии, либо ретест линии снизу с отбоем. Если цена остается над линией или прямо на ней, обычно direction=null и quality <= 2.
-- Для LONG по descending resistance (trendline.mode="highs") зеркально: нужен выход выше линии или ретест сверху. Если цена под линией или прямо на ней, обычно direction=null и quality <= 2.
-- Если payload.additionalIndicators.trendlineContext.nearLineNoise=true, не считай это подтвержденным пробоем: чаще quality <= 2-3 и ожидание ретеста/подтверждения.
-- Если payload.additionalIndicators.trendlineContext.coinBiasAligned=false или btcBiasAligned=false, трактуй это как прямой конфликт с направлением сигнала. В таком случае обычно не считай сигнал подтвержденным, если нет исключительного структурного преимущества.
-- Если payload.additionalIndicators.derivativesContext есть, используй его как Coinalyze-подтверждение/конфликт breakout: OI должен подтверждать движение, funding не должен быть экстремально crowded против качества входа, liquidation spike может означать flush/squeeze или exhaustion.
-- Если derivativesContext.summary.riskFlags содержит oi_not_confirming, считай это прямым признаком того, что breakout пока не подтвержден по open interest. Без очень сильного follow-through не повышай такой сигнал до немедленного входа.
-- Для SHORT в off_hours и во время session overlap требуй более чистый structural follow-through, чем в обычные часы: такие окна чаще шумные и хуже подходят для немедленного approval.
-- Если payload.additionalIndicators.trendlineContext.clearBreak=false и цена все еще около линии, не описывай это как "чистый пробой".
-- Если clearBreak=true, но trendlineContext.weakCleanBreak=true, трактуй это как слишком слабый формальный пробой: структуру уже задело, но запаса по displacement пока мало. Обычно здесь нужен follow-through или ретест, а не немедленное подтверждение сигнала.
-- Если clearBreak=true, но trendlineContext.compressedCleanBreak=true, это сжатый пробой после серии близких касаний на короткой линии. Даже при формальном выходе за линию здесь чаще нужен follow-through или ретест, а не немедленное подтверждение сигнала.
-- Если clearBreak=true, но trendlineContext.breakVsAtrRatio < 0.5 и при этом trendlineContext.weakBtcLedBreak=true, считай это слабым BTC-led пробоем без собственного follow-through по монете. Обычно здесь нужен ретест/подтверждение, а не немедленное подтверждение сигнала.
-- Для LONG по descending resistance, если линия очень длинная, а выход над ней пока умеренный и BTC поддерживает пробой слабо, трактуй это как ранний breakout без follow-through. В таком случае чаще нужен ретест/подтверждение, а не немедленное подтверждение сигнала.
-- Для TrendLine quality 4-5 допустим только когда одновременно: clearBreak=true, nearLineNoise=false, coinBiasAligned=true и btcBiasAligned=true. Если хотя бы одно из этих условий не выполнено, не ставь quality выше 3.
-- Редкое исключение: если trendlineContext.aggressivePreBreakPressure=true, это агрессивный pre-break pressure сетап. В таком случае допустим quality=4 даже без clearBreak, но только как раннее структурное подтверждение и только если не конфликтуют coin/BTC bias.
-- Еще одно редкое исключение: если trendlineContext.strongNearBreakPressure=true, это зрелая линия с уже начавшимся продавливанием в сторону сигнала и очень сильным aligned pressure по монете и BTC. В таком случае допустим quality=4 даже при nearLineNoise=true, но только как раннее структурное подтверждение по сильной структуре.
+TrendLine addon:
+- This setup is based on breakout or reaction around a trendline. 'payload.figures.trendline' contains the line geometry, and 'payload.additionalIndicators.trendlineContext' contains a compact summary of price location versus the line.
+- For TrendLine, geometry and price structure have higher priority than indicator confirmation.
+- Touches strengthen a line but do not confirm the signal by themselves. Without a confirmed breakout or retest, do not raise quality only because there were many touches.
+- For SHORT on rising support ('trendline.mode=\"lows\"'), you usually need either a clear move below the line or a retest from below with rejection. If price remains above the line or directly on it, use 'direction=null' and usually 'quality <= 2'.
+- For LONG on descending resistance ('trendline.mode=\"highs\"'), the mirror logic applies: you usually need a move above the line or a retest from above. If price remains below the line or directly on it, use 'direction=null' and usually 'quality <= 2'.
+- If 'payload.additionalIndicators.trendlineContext.nearLineNoise=true', do not treat that as a confirmed breakout. Quality is usually '<= 2-3', and a retest or confirmation is still needed.
+- If 'payload.additionalIndicators.trendlineContext.coinBiasAligned=false' or 'btcBiasAligned=false', treat it as a direct conflict with the signal direction. In that case, the signal is usually not confirmed unless the structural edge is exceptional.
+- If 'payload.additionalIndicators.derivativesContext' exists, use it as Coinalyze-based breakout confirmation or conflict: open interest should support the move, funding should not be extremely crowded against the entry quality, and liquidation spikes can indicate flush, squeeze, or exhaustion.
+- If 'derivativesContext.summary.riskFlags' contains 'oi_not_confirming', treat it as a direct sign that open interest does not confirm the breakout yet. Without very strong follow-through, do not elevate the signal to immediate entry.
+- For SHORT during 'off_hours' or session overlap, require cleaner structural follow-through than during normal hours; those windows are noisier and less suitable for immediate approval.
+- If 'payload.additionalIndicators.trendlineContext.clearBreak=false' and price is still near the line, do not describe it as a clean breakout.
+- If 'clearBreak=true' but 'trendlineContext.weakCleanBreak=true', treat it as a formally valid but too-weak breakout: structure has been touched, but displacement margin is still limited. This usually calls for follow-through or retest, not immediate confirmation.
+- If 'clearBreak=true' but 'trendlineContext.compressedCleanBreak=true', treat it as a compressed breakout after a cluster of close touches on a short line. Even with a formal line exit, this still usually calls for follow-through or retest rather than immediate confirmation.
+- If 'clearBreak=true', 'trendlineContext.breakVsAtrRatio < 0.5', and 'trendlineContext.weakBtcLedBreak=true', treat it as a weak BTC-led break without enough coin-specific follow-through. This usually calls for retest or extra confirmation rather than immediate confirmation.
+- For LONG on descending resistance, if the line is very long, the move above it is still modest, and BTC only weakly supports the break, treat it as an early breakout without sufficient follow-through. That usually needs retest or confirmation rather than immediate confirmation.
+- For TrendLine, quality 4-5 is only allowed when all of the following are true at once: 'clearBreak=true', 'nearLineNoise=false', 'coinBiasAligned=true', and 'btcBiasAligned=true'. If any one of these conditions is not met, do not set quality above 3.
+- Rare exception: if 'trendlineContext.aggressivePreBreakPressure=true', this is an aggressive pre-break-pressure setup. In that case 'quality=4' is allowed even without 'clearBreak', but only as early structural confirmation and only when coin/BTC bias is not conflicting.
+- Another rare exception: if 'trendlineContext.strongNearBreakPressure=true', this is a mature line with pressure already building in the signal direction and very strong aligned pressure from both the coin and BTC. In that case 'quality=4' is allowed even when 'nearLineNoise=true', but only as early structural confirmation on strong structure.
 `;
 
 const TRENDLINE_PAYLOAD_PROMPT = `
-- В payload.figures.trendline передается полная геометрия трендовой линии (без trim), чтобы можно было оценивать касания/структуру.
-- В payload.additionalIndicators.trendlineContext передается mode / touches / distance / currentLinePrice / priceVsLinePct / priceVsLineSide / clearBreak / nearLineNoise / coinMaBias / btcMaBias / maxAllowedQuality / approvalAllowedNow / hardBlockReasons.
-- Дополнительно в trendlineContext передаются atrPct / breakVsAtrRatio / coinMaSpreadPct / btcMaSpreadPct / aggressivePreBreakPressure / strongNearBreakPressure / weakCleanBreak / compressedCleanBreak / weakBtcLedBreak / weakLongFarBreak.
-- Если есть payload.additionalIndicators.derivativesContext, в нем передаются Coinalyze-derived поля по open interest / funding / liquidations на момент сигнала; не считай stale/missing_derivatives подтверждением или конфликтом.
+- 'payload.figures.trendline' contains the full trendline geometry without trimming so touches and structure can be evaluated.
+- 'payload.additionalIndicators.trendlineContext' contains 'mode / touches / distance / currentLinePrice / priceVsLinePct / priceVsLineSide / clearBreak / nearLineNoise / coinMaBias / btcMaBias / maxAllowedQuality / approvalAllowedNow / hardBlockReasons'.
+- It also includes 'atrPct / breakVsAtrRatio / coinMaSpreadPct / btcMaSpreadPct / aggressivePreBreakPressure / strongNearBreakPressure / weakCleanBreak / compressedCleanBreak / weakBtcLedBreak / weakLongFarBreak'.
+- If 'payload.additionalIndicators.derivativesContext' exists, it contains Coinalyze-derived open interest, funding, and liquidation fields for the signal moment; do not treat 'stale' or 'missing_derivatives' as confirmation or conflict.
 `;
 
 const buildTrendlineContext = (signal: {
@@ -259,25 +259,25 @@ const formatPromptNumber = (
 const getHardBlockReasonText = (reason: string) => {
   switch (reason) {
     case 'no_clear_break':
-      return 'нет чистого пробоя линии';
+      return 'there is no clean breakout of the line';
     case 'near_line_noise':
-      return 'цена слишком близко к линии и это похоже на шум';
+      return 'price is too close to the line and looks like noise';
     case 'coin_bias_conflict':
-      return 'bias по монете конфликтует с направлением';
+      return 'coin bias conflicts with the direction';
     case 'btc_bias_conflict':
-      return 'BTC-контекст конфликтует с направлением';
+      return 'BTC context conflicts with the direction';
     case 'weak_clean_break':
-      return 'формальный пробой есть, но displacement еще слишком слабый относительно ATR';
+      return 'the formal breakout exists, but displacement is still too weak relative to ATR';
     case 'compressed_clean_break':
-      return 'пробой выглядит слишком сжатым: серия близких касаний на короткой линии без достаточного follow-through';
+      return 'the breakout looks too compressed: clustered close touches on a short line without enough follow-through';
     case 'weak_btc_led_break':
-      return 'пробой слишком мелкий относительно ATR и больше похож на BTC-led движение без follow-through по монете';
+      return 'the breakout is too small relative to ATR and looks more like a BTC-led move without enough coin follow-through';
     case 'weak_long_far_break':
-      return 'для LONG пробой очень длинной линии пока слишком умеренный, а BTC поддерживает его слишком слабо';
+      return 'for LONG, the breakout of the very long line is still too modest and BTC support is too weak';
     case 'oi_not_confirming':
-      return 'open interest не подтверждает движение, поэтому breakout пока выглядит неподтвержденным по derivatives';
+      return 'open interest does not confirm the move, so the breakout still looks unconfirmed on derivatives context';
     case 'short_session_risk':
-      return 'для SHORT текущая сессия слишком шумная или тонкая (off-hours / overlap), поэтому нужен более явный follow-through';
+      return 'for SHORT, the current session is too noisy or thin (off-hours or overlap), so clearer follow-through is required';
     default:
       return reason;
   }
@@ -455,20 +455,20 @@ const getDeterministicTrendlineQualityReason = (
   >,
 ) => {
   if (trendlineContext.hardBlockReasons.length > 0) {
-    return `TrendLine guardrail: вход заблокирован, потому что ${trendlineContext.hardBlockReasons
+    return `TrendLine guardrail: entry is blocked because ${trendlineContext.hardBlockReasons
       .map(getHardBlockReasonText)
       .join('; ')}.`;
   }
 
   if (trendlineContext.signalDirection === 'LONG') {
-    return 'TrendLine deterministic quality: пробой есть, но для LONG не хватает displacement, поддержки BTC или линия слишком длинная для немедленного входа.';
+    return 'TrendLine deterministic quality: the breakout exists, but LONG still lacks enough displacement, BTC support, or a compact enough line for immediate entry.';
   }
 
   if (trendlineContext.signalDirection === 'SHORT') {
-    return 'TrendLine deterministic quality: пробой есть, но для SHORT не хватает bearish displacement или follow-through, поэтому вход пока рано одобрять.';
+    return 'TrendLine deterministic quality: the breakout exists, but SHORT still lacks enough bearish displacement or follow-through, so entry is still too early.';
   }
 
-  return 'TrendLine deterministic quality: структура еще не дотягивает до входа прямо сейчас.';
+  return 'TrendLine deterministic quality: the structure is still not strong enough for entry right now.';
 };
 
 const getTrendlineContextFromPayload = (
@@ -525,12 +525,12 @@ export const trendLineAiAdapter: StrategyAiAdapter = {
     ) {
       const fallbackReason =
         trendlineContext.strongNearBreakPressure === true
-          ? 'TrendLine strong near-break pressure: зрелая линия уже продавливается в сторону сделки, ранний вход разрешен кодом стратегии.'
-          : 'TrendLine aggressive pre-break pressure: раннее структурное подтверждение допустимо при сильном bearish pressure.';
+          ? 'TrendLine strong near-break pressure: a mature line is already compressing in the trade direction, so early entry is allowed by strategy code.'
+          : 'TrendLine aggressive pre-break pressure: early structural confirmation is allowed under strong bearish pressure.';
       const fallbackComment =
         trendlineContext.strongNearBreakPressure === true
-          ? 'TrendLine strong near-break pressure: ранний вход разрешен кодом стратегии.'
-          : 'TrendLine aggressive pre-break pressure: ранний вход разрешен кодом стратегии.';
+          ? 'TrendLine strong near-break pressure: early entry is allowed by strategy code.'
+          : 'TrendLine aggressive pre-break pressure: early entry is allowed by strategy code.';
 
       return {
         ...analysis,
@@ -572,25 +572,25 @@ export const trendLineAiAdapter: StrategyAiAdapter = {
       trendlineContext.currentLinePrice ?? analysis.retestPrice ?? null;
     const qualityReason = mergeShortText(
       getDeterministicTrendlineQualityReason(trendlineContext),
-      'TrendLine guardrail: вход заблокирован до подтверждения структуры.',
+      'TrendLine guardrail: entry is blocked until the structure is confirmed.',
       400,
     );
     const triggerInvalidation = mergeShortText(
       trendlineContext.hardBlockReasons.length > 0
-        ? `Ждать чистый пробой/ретест линии и убрать конфликты: ${trendlineContext.hardBlockReasons
+        ? `Wait for a clean breakout or retest of the line and resolve the conflicts: ${trendlineContext.hardBlockReasons
             .map(getHardBlockReasonText)
             .join('; ')}.`
-        : 'Ждать более сильный breakout/follow-through или ретест линии с подтверждением по монете и BTC.',
-      'Ждать чистый пробой/ретест линии и подтверждение по монете и BTC.',
+        : 'Wait for stronger breakout follow-through or a line retest confirmed by both the coin and BTC.',
+      'Wait for a clean line breakout or retest plus confirmation from the coin and BTC.',
       400,
     );
     const comment = mergeShortText(
       trendlineContext.hardBlockReasons.length > 0
-        ? `TrendLine guardrail заблокировал вход: ${trendlineContext.hardBlockReasons
+        ? `TrendLine guardrail blocked the entry: ${trendlineContext.hardBlockReasons
             .map(getHardBlockReasonText)
             .join('; ')}.`
-        : 'TrendLine deterministic quality опустил вход в watch/reject до появления более сильной структуры.',
-      'TrendLine guardrail заблокировал вход до подтверждения структуры.',
+        : 'TrendLine deterministic quality downgraded the entry to watch or reject until stronger structure appears.',
+      'TrendLine guardrail blocked the entry until the structure is confirmed.',
       1024,
     );
 
@@ -604,12 +604,12 @@ export const trendLineAiAdapter: StrategyAiAdapter = {
       stopLossPrice: null,
       setup: mergeShortText(
         analysis.setup ?? '',
-        'Сейчас нет подтвержденного пробоя/ретеста трендовой для входа.',
+        'There is no confirmed trendline breakout or retest for entry right now.',
         400,
       ),
       retestPlan: mergeShortText(
         analysis.retestPlan ?? '',
-        'Ждать возврат к линии и реакцию в сторону сделки перед новым входом.',
+        'Wait for a return to the line and a reaction in the trade direction before a new entry.',
         400,
       ),
       qualityReason,
@@ -633,7 +633,7 @@ export const trendLineAiAdapter: StrategyAiAdapter = {
 
     return `
 
-Доп. контекст TrendLine:
+Additional TrendLine context:
 - trendline.mode=${trendlineContext.mode ?? 'n/a'}
 - trendline.touches=${formatPromptNumber(trendlineContext.touches, 0)}
 - trendline.distance=${formatPromptNumber(trendlineContext.distance, 0)}
@@ -667,18 +667,18 @@ export const trendLineAiAdapter: StrategyAiAdapter = {
 - btc.maSpreadPct=${formatPromptNumber(trendlineContext.btcMaSpreadPct, 3)}%
 - btc.biasAligned=${String(trendlineContext.btcBiasAligned)}
 
-Правило интерпретации для TrendLine:
-- SHORT от линии lows подтверждается только явным уходом ниже линии или ретестом снизу с отбоем.
-- LONG от линии highs подтверждается только явным уходом выше линии или ретестом сверху с отбоем.
-- Если trendline.nearLineNoise=true или biasAligned=false, лучше вернуть direction=null и quality 1-3, чем считать сигнал подтвержденным без запаса.
-- Если trendline.weakCleanBreak=true, формальный пробой уже есть, но он слишком слабый по displacement: нужен follow-through или ретест, а не quality 4-5.
-- Если trendline.compressedCleanBreak=true, пробой формально есть, но линия слишком короткая и сжатая после серии близких касаний: обычно здесь нужен follow-through или ретест, а не немедленное подтверждение сигнала.
-- Если trendline.weakBtcLedBreak=true, трактуй это как мелкий пробой, который сильнее тянет BTC, чем сама монета: здесь обычно нужен ретест и quality 1-3.
-- Если clearBreak=false или любой alignment=false, не поднимай quality выше 3.
-- Если trendline.aggressivePreBreakPressure=true, можно рассматривать ранний SHORT до явного пробоя, но только как исключение: quality максимум 4 и явное описание, что структурное подтверждение пока агрессивное.
-- Если trendline.strongNearBreakPressure=true, можно рассматривать ранний SHORT при сильном давлении уже по нужную сторону линии, даже если пробой еще не дотягивает до clearBreak-порога: quality максимум 4.
-- Стратегия детерминированно нормализует итоговый quality до trendline.deterministicQuality; твоя задача — объяснить решение в этих рамках, а не спорить с tier.
-- Если trendline.approvalAllowedNow=false, не описывай это как полностью подтвержденный сигнал прямо сейчас: объясняй, чего не хватает до подтверждения.
+Interpretation rules for TrendLine:
+- SHORT from a 'lows' line is confirmed only by a clear move below the line or a retest from below with rejection.
+- LONG from a 'highs' line is confirmed only by a clear move above the line or a retest from above with rejection.
+- If 'trendline.nearLineNoise=true' or any bias alignment is false, it is better to return 'direction=null' and quality 1-3 than to describe the signal as confirmed without margin.
+- If 'trendline.weakCleanBreak=true', the formal breakout exists but is too weak in displacement; it needs follow-through or retest rather than quality 4-5.
+- If 'trendline.compressedCleanBreak=true', the breakout exists formally, but the line is too short and compressed after clustered touches; this usually needs follow-through or retest rather than immediate confirmation.
+- If 'trendline.weakBtcLedBreak=true', treat it as a small breakout driven more by BTC than by the coin itself; this usually calls for retest and quality 1-3.
+- If 'clearBreak=false' or any alignment is false, do not raise quality above 3.
+- If 'trendline.aggressivePreBreakPressure=true', an early SHORT before a clear breakout may be considered only as an exception: quality can be at most 4, and the explanation must clearly state that the structural confirmation is still aggressive.
+- If 'trendline.strongNearBreakPressure=true', an early SHORT may be considered when pressure is already strong on the correct side of the line even if the breakout still falls short of the 'clearBreak' threshold: quality can be at most 4.
+- The strategy deterministically normalizes final quality to 'trendline.deterministicQuality'; your job is to explain the decision within that frame, not to argue with the tier.
+- If 'trendline.approvalAllowedNow=false', do not describe the signal as fully confirmed right now; explain what is still missing for confirmation.
 `;
   },
   mapEntryRuntimeFromConfig: (config) =>

@@ -56,8 +56,9 @@ describe('ai route', () => {
     mockGetCurrentUserName.mockResolvedValue('alice');
     mockGetUserSettings.mockResolvedValue({
       userName: 'alice',
-      OPENAI_API_KEY: 'openai-key',
-      OPENAI_API_ENDPOINT: 'https://api.openai.com/v1',
+      AI_API_KEY: 'openai-key',
+      AI_API_ENDPOINT: 'https://api.openai.com/v1',
+      AI_RESPONSE_LANGUAGE: 'en',
     });
   });
 

@@ -11,8 +11,9 @@ describe('user settings utils', () => {
       BYBIT_API_KEY: 'bybit-key',
       BYBIT_API_SECRET: 'bybit-secret',
       COINALYZE_API_KEY: 'coinalyze-key',
-      OPENAI_API_KEY: 'user-openai',
-      OPENAI_API_ENDPOINT: 'https://openrouter.ai/api/v1',
+      AI_API_KEY: 'user-openai',
+      AI_API_ENDPOINT: 'https://openrouter.ai/api/v1',
+      AI_RESPONSE_LANGUAGE: 'es',
       TG_BOT_TOKEN: 'tg-token',
       TG_CHAT_ID: '777777',
     });
@@ -33,8 +34,9 @@ describe('user settings utils', () => {
       BYBIT_API_KEY: 'bybit-key',
       BYBIT_API_SECRET: 'bybit-secret',
       COINALYZE_API_KEY: 'coinalyze-key',
-      OPENAI_API_KEY: 'user-openai',
-      OPENAI_API_ENDPOINT: 'https://openrouter.ai/api/v1',
+      AI_API_KEY: 'user-openai',
+      AI_API_ENDPOINT: 'https://openrouter.ai/api/v1',
+      AI_RESPONSE_LANGUAGE: 'es',
       TG_BOT_TOKEN: 'tg-token',
       TG_CHAT_ID: '777777',
     });
@@ -85,7 +87,7 @@ describe('user settings utils', () => {
   it('drops unsupported AI endpoints from resolved settings', async () => {
     const getData = jest.fn().mockResolvedValue({
       userName: 'alice',
-      OPENAI_API_ENDPOINT: 'https://internal.example.local/v1',
+      AI_API_ENDPOINT: 'https://internal.example.local/v1',
     });
 
     jest.doMock('../redis', () => ({
@@ -101,7 +103,8 @@ describe('user settings utils', () => {
 
     await expect(getUserSettings('alice')).resolves.toEqual(
       expect.objectContaining({
-        OPENAI_API_ENDPOINT: '',
+        AI_API_ENDPOINT: '',
+        AI_RESPONSE_LANGUAGE: 'en',
       }),
     );
   });

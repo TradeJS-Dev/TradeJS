@@ -74,7 +74,7 @@ describe('strategy adapters', () => {
         indicators: {},
       },
     });
-    expect(addon).toContain('Дополнение для VolumeDivergence');
+    expect(addon).toContain('VolumeDivergence addon');
     expect(addon).toContain('Bullish divergence');
 
     expect(

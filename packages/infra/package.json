@@ -34,6 +34,11 @@
       "import": "./dist/aiEndpoints.mjs",
       "require": "./dist/aiEndpoints.js"
     },
+    "./aiLanguages": {
+      "types": "./dist/aiLanguages.d.ts",
+      "import": "./dist/aiLanguages.mjs",
+      "require": "./dist/aiLanguages.js"
+    },
     "./files": {
       "types": "./dist/files.d.ts",
       "import": "./dist/files.mjs",

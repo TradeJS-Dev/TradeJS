@@ -8,24 +8,24 @@ import {
 } from '../guardrails';
 
 const REVERSE_TRENDLINE_CONTEXT_PROMPT = `
-Дополнение для ReverseTrendLine:
-- Это не breakout-стратегия, а стратегия на отскок от трендовой линии.
-- Для LONG по support line (trendline.mode="lows") нужен касание/ложный прокол линии и удержание закрытия выше нее.
-- Для SHORT по resistance line (trendline.mode="highs") нужен касание/ложный прокол линии и удержание закрытия ниже нее.
-- Если цена уже уверенно пробила линию в сторону, противоположную отскоку, это не bounce setup: direction=null и quality <= 2.
-- Для bounce-сетапов приоритетнее реакция свечи на линии, rejection wick, удержание закрытия по правильную сторону и follow-through на следующем баре.
-- Если payload.additionalIndicators.reverseTrendlineContext.failedBounceBreak=true, не считай сигнал структурно подтвержденным.
-- Если payload.additionalIndicators.reverseTrendlineContext.entryTiming не равен ready_rejection или ready_follow_through, обычно quality <= 3.
-- Базовый deterministic approve для same-bar rejection дается не всем:
-  - сильный conflict-only rejection может получить quality=4;
-  - часть same-bar rejection с conflictState=none или both может получить quality=4 только при очень сильном deterministic rejection score.
-- Для SHORT bounce setup с btc_bias_conflict не завышай quality: такие кейсы обычно остаются watch, если нет гораздо более сильного подтверждения.
-- Если deterministicRejectionScore низкий или средний, не придумывай quality=4 только потому, что свеча визуально похожа на rejection.
+ReverseTrendLine addon:
+- This is a trendline bounce strategy, not a breakout strategy.
+- For LONG on a support line (\`trendline.mode="lows"\`), you need a touch or false break of the line followed by a close back above it.
+- For SHORT on a resistance line (\`trendline.mode="highs"\`), you need a touch or false break of the line followed by a close back below it.
+- If price has already broken through the line with conviction in the opposite direction, this is not a bounce setup: use \`direction=null\` and \`quality <= 2\`.
+- For bounce setups, prioritize candle reaction at the line, rejection wick quality, a close on the correct side, and next-bar follow-through.
+- If \`payload.additionalIndicators.reverseTrendlineContext.failedBounceBreak=true\`, do not treat the signal as structurally confirmed.
+- If \`payload.additionalIndicators.reverseTrendlineContext.entryTiming\` is not \`ready_rejection\` or \`ready_follow_through\`, quality is usually \`<= 3\`.
+- Baseline deterministic approval for same-bar rejection is intentionally strict:
+  - a strong conflict-only rejection may qualify for \`quality=4\`;
+  - some same-bar rejections with \`conflictState=none\` or \`both\` may reach \`quality=4\` only with a very strong deterministic rejection score.
+- For SHORT bounce setups with \`btc_bias_conflict\`, do not overstate quality; those cases usually stay in watch mode unless the structural confirmation is much stronger.
+- If \`deterministicRejectionScore\` is low or medium, do not assign \`quality=4\` just because the candle visually resembles a rejection.
 `;
 
 const REVERSE_TRENDLINE_PAYLOAD_PROMPT = `
-- В payload.figures.trendline передается геометрия линии.
-- В payload.additionalIndicators.reverseTrendlineContext передается краткая сводка bounce-логики: направление, расстояние цены до линии, был ли касание линии, была ли rejection-свеча, силу rejection, timing-stage, конфликты bias и deterministicRejectionScore.
+- \`payload.figures.trendline\` contains the line geometry.
+- \`payload.additionalIndicators.reverseTrendlineContext\` contains a compact bounce summary: direction, price distance to the line, whether the line was touched, whether there was a rejection candle, rejection strength, timing stage, bias conflicts, and \`deterministicRejectionScore\`.
 `;
 
 type ReverseTimingContext = ReturnType<
@@ -304,11 +304,11 @@ const getReverseTrendlineContextFromPayload = (
 const getHardBlockReasonText = (reason: string) => {
   switch (reason) {
     case 'failed_bounce_break':
-      return 'цена пробила линию в сторону, противоположную отскоку';
+      return 'price broke through the line against the intended bounce';
     case 'coin_bias_conflict':
-      return 'bias по монете конфликтует с направлением bounce-сделки';
+      return 'coin bias conflicts with the bounce direction';
     case 'btc_bias_conflict':
-      return 'BTC-контекст конфликтует с направлением bounce-сделки';
+      return 'BTC context conflicts with the bounce direction';
     default:
       return reason;
   }
@@ -360,19 +360,19 @@ export const reverseTrendLineAiAdapter: StrategyAiAdapter = {
           ? `ReverseTrendLine guardrail: ${context.hardBlockReasons
               .map(getHardBlockReasonText)
               .join('; ')}.`
-          : 'ReverseTrendLine deterministic quality: для bounce нужен либо сильный conflict-only rejection, либо подтвержденный aligned follow-through.',
+          : 'ReverseTrendLine deterministic quality requires either a strong conflict-only rejection or a confirmed aligned follow-through for a bounce.',
       triggerInvalidation:
         context.hardBlockReasons.length > 0
-          ? `Ждать новый bounce setup: ${context.hardBlockReasons
+          ? `Wait for a new bounce setup: ${context.hardBlockReasons
               .map(getHardBlockReasonText)
               .join('; ')}.`
-          : 'Ждать касание линии, rejection-свечу и удержание закрытия по правильную сторону линии.',
+          : 'Wait for a line touch, a rejection candle, and a close held on the correct side of the line.',
       comment:
         context.hardBlockReasons.length > 0
-          ? `ReverseTrendLine guardrail заблокировал вход: ${context.hardBlockReasons
+          ? `ReverseTrendLine guardrail blocked the entry: ${context.hardBlockReasons
               .map(getHardBlockReasonText)
               .join('; ')}.`
-          : 'ReverseTrendLine пока переводит сетап в watch до подтверждения отскока.',
+          : 'ReverseTrendLine keeps the setup in watch mode until the bounce is confirmed.',
     };
   },
   buildSystemPromptAddon: () =>
@@ -381,7 +381,7 @@ export const reverseTrendLineAiAdapter: StrategyAiAdapter = {
     const context = getReverseTrendlineContextFromPayload(payload, signal);
     return `
 
-Доп. контекст ReverseTrendLine:
+Additional ReverseTrendLine context:
 - entryTiming=${context.entryTiming}
 - lineTouchedNow=${context.lineTouchedNow}
 - closeOnBounceSide=${context.closeOnBounceSide}
@@ -396,11 +396,11 @@ export const reverseTrendLineAiAdapter: StrategyAiAdapter = {
 - approvalAllowedNow=${context.approvalAllowedNow}
 - hardBlockReasons=${context.hardBlockReasons.join(', ') || 'none'}
 
-Правило интерпретации для ReverseTrendLine:
-- искать структурное подтверждение реакции от линии, а не пробоя через линию;
-- если уже есть failedBounceBreak=true, не считать сигнал подтвержденным;
-- если setup еще в стадии wait_touch / wait_reaction_confirmation / stale_reaction, не завышать quality.
-- если deterministicRejectionScore высокий, используй его как дополнительный сигнал только вместе с правильным bounce-контекстом, а не как замену структуры.
+Interpretation rules for ReverseTrendLine:
+- look for structural confirmation of a reaction from the line, not a breakout through the line;
+- if \`failedBounceBreak=true\` is already present, do not treat the signal as confirmed;
+- if the setup is still in \`wait_touch\`, \`wait_reaction_confirmation\`, or \`stale_reaction\`, do not overstate quality;
+- if \`deterministicRejectionScore\` is high, use it only as an extra signal together with the proper bounce context, not as a replacement for structure.
 `;
   },
   mapEntryRuntimeFromConfig: (config) =>

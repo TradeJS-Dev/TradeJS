@@ -6,8 +6,9 @@ const getUserSettingsMock = jest.fn(async (userName = 'root') => ({
   BYBIT_API_KEY: '',
   BYBIT_API_SECRET: '',
   COINALYZE_API_KEY: '',
-  OPENAI_API_KEY: 'key_123',
-  OPENAI_API_ENDPOINT: 'https://api.openai.com/v1',
+  AI_API_KEY: 'key_123',
+  AI_API_ENDPOINT: 'https://api.openai.com/v1',
+  AI_RESPONSE_LANGUAGE: 'en',
   TG_BOT_TOKEN: 'tg-token',
   TG_CHAT_ID: 'tg-chat-id',
 }));
@@ -1424,31 +1425,31 @@ describe('ai helpers', () => {
       const prompt = buildAiSystemPrompt();
 
       expect(prompt).toContain(
-        'Ты — внутренний классификатор структуры рынка для уже рассчитанного системного сигнала',
-      );
-      expect(prompt).toContain('Пиши comment по-русски');
-      expect(prompt).toContain(
-        'quality" — уровень структурного подтверждения текущего сигнала ИМЕННО СЕЙЧАС',
+        'You are an internal market-structure classifier for an already computed system signal',
       );
       expect(prompt).toContain(
-        'Никогда не предлагай противоположное направление',
+        'Write all user-visible text fields in the requested response language',
       );
+      expect(prompt).toContain(
+        '`quality` is the structural confirmation level of the current signal right now',
+      );
+      expect(prompt).toContain('Never propose the opposite direction');
       expect(prompt).toContain('"needRetest": boolean');
       expect(prompt).toContain('"retestPrice": number | null');
       expect(prompt).toContain('"setup": string');
       expect(prompt).toContain('"triggerInvalidation": string');
       expect(prompt).toContain(
-        'Не оптимизируй и не пересчитывай TP/SL под "лучшую сделку"',
+        'Do not optimize or recalculate TP/SL for a "better trade"',
       );
-      expect(prompt).toContain('структурированному анализу');
+      expect(prompt).toContain('Requirements for useful structured analysis');
       expect(prompt).toContain(
-        'не пиши технический шаблон вроде "needRetest=false @ null"',
+        'avoid technical placeholders like `needRetest=false @ null`',
       );
       expect(prompt).toContain('payload.additionalIndicators');
       expect(prompt).toContain('marketContext.tradingSession');
       expect(prompt).toContain('marketContext.binanceCoinbaseSpread');
-      expect(prompt).toContain('Короткие примеры (few-shot');
-      expect(prompt).toContain('Не добавляй другие поля');
+      expect(prompt).toContain('Short few-shot examples');
+      expect(prompt).toContain('Do not add any other fields');
       expect(prompt).not.toContain('помощник крипто-трейдера');
       expect(prompt).not.toContain('runtime-нейминг');
     });
@@ -1456,7 +1457,7 @@ describe('ai helpers', () => {
     it('adds strategy-specific system prompt section for TrendLine', () => {
       const prompt = buildAiSystemPrompt(makeSignal());
 
-      expect(prompt).toContain('Дополнение для trendline-сетапов');
+      expect(prompt).toContain('TrendLine addon');
       expect(prompt).toContain('payload.figures.trendline');
       expect(prompt).toContain('trendlineContext');
     });
@@ -1467,10 +1468,12 @@ describe('ai helpers', () => {
       const prompt = buildAiHumanPrompt(signal, payload);
 
       expect(prompt).toContain(
-        'Проанализируй уже рассчитанный внутренний сигнал по ETHUSDT',
+        'Analyze the already computed internal signal for ETHUSDT',
       );
-      expect(prompt).toContain('Исходный сигнал имеет направление LONG');
-      expect(prompt).toContain('Это задача классификации/аудита структуры');
+      expect(prompt).toContain('The original signal direction is LONG');
+      expect(prompt).toContain(
+        'This is a structure-classification and audit task',
+      );
       expect(prompt).toContain('"symbol":"ETHUSDT"');
       expect(prompt).toContain('"trendline"');
       expect(prompt).toContain('trendline.currentLinePrice=');
@@ -1488,10 +1491,10 @@ describe('ai helpers', () => {
       const prompts = buildAiPrompts(makeSignal());
 
       expect(prompts.systemPrompt).toContain(
-        'Ты — внутренний классификатор структуры рынка',
+        'You are an internal market-structure classifier',
       );
       expect(prompts.humanPrompt).toContain(
-        'Проанализируй уже рассчитанный внутренний сигнал по ETHUSDT',
+        'Analyze the already computed internal signal for ETHUSDT',
       );
     });
 
@@ -1558,7 +1561,10 @@ describe('ai helpers', () => {
       expect(chatOpenAICtorMock).toHaveBeenCalledTimes(1);
       const messages = invokeMock.mock.calls[0]?.[0] as any[];
       expect(messages[0].content).toBe('system');
-      expect(messages[1].content.content[0].text).toBe('human');
+      expect(messages[1].content).toContain(
+        'Write all user-visible text fields in English',
+      );
+      expect(messages[2].content.content[0].text).toBe('human');
       expect(result).toEqual(
         expect.objectContaining({
           direction: 'LONG',
@@ -1649,7 +1655,7 @@ describe('ai helpers', () => {
         }),
       );
       expect(result.qualityReason).toContain(
-        'пробой слишком мелкий относительно ATR',
+        'the breakout is too small relative to ATR',
       );
       expect(result.comment).toContain('TrendLine guardrail');
     });
@@ -1691,7 +1697,7 @@ describe('ai helpers', () => {
           stopLossPrice: null,
         }),
       );
-      expect(result.qualityReason).toContain('слишком слабый относительно ATR');
+      expect(result.qualityReason).toContain('too weak relative to ATR');
       expect(result.comment).toContain('TrendLine guardrail');
     });
 
@@ -1732,7 +1738,7 @@ describe('ai helpers', () => {
           stopLossPrice: null,
         }),
       );
-      expect(result.qualityReason).toContain('слишком сжатым');
+      expect(result.qualityReason).toContain('too compressed');
       expect(result.comment).toContain('TrendLine guardrail');
     });
 
@@ -1774,7 +1780,7 @@ describe('ai helpers', () => {
         }),
       );
       expect(result.qualityReason).toContain(
-        'для LONG пробой очень длинной линии',
+        'for LONG, the breakout of the very long line',
       );
       expect(result.comment).toContain('TrendLine guardrail');
     });
@@ -3641,8 +3647,9 @@ describe('ai helpers', () => {
         BYBIT_API_KEY: '',
         BYBIT_API_SECRET: '',
         COINALYZE_API_KEY: '',
-        OPENAI_API_KEY: 'key_123',
-        OPENAI_API_ENDPOINT: 'https://openrouter.ai/api/v1',
+        AI_API_KEY: 'key_123',
+        AI_API_ENDPOINT: 'https://openrouter.ai/api/v1',
+        AI_RESPONSE_LANGUAGE: 'en',
         TG_BOT_TOKEN: 'tg-token',
         TG_CHAT_ID: 'tg-chat-id',
       });
@@ -3688,11 +3695,15 @@ describe('ai helpers', () => {
       expect(invokeMock).toHaveBeenCalledTimes(1);
 
       const messages = invokeMock.mock.calls[0]?.[0] as any[];
-      expect(messages).toHaveLength(2);
+      expect(messages).toHaveLength(3);
       expect(messages[0]).toBeInstanceOf(MockSystemMessage);
-      expect(messages[1]).toBeInstanceOf(MockHumanMessage);
-      expect(messages[1].content.content[0].text).toContain(
-        'Проанализируй уже рассчитанный внутренний сигнал по ETHUSDT',
+      expect(messages[1]).toBeInstanceOf(MockSystemMessage);
+      expect(messages[1].content).toContain(
+        'Write all user-visible text fields in English',
+      );
+      expect(messages[2]).toBeInstanceOf(MockHumanMessage);
+      expect(messages[2].content.content[0].text).toContain(
+        'Analyze the already computed internal signal for ETHUSDT',
       );
 
       expect(result).toEqual(
@@ -3785,7 +3796,7 @@ describe('ai helpers', () => {
         }),
       );
       expect(errorSpy).toHaveBeenCalled();
-      expect(logSpy).toHaveBeenCalledWith('🔍 Исходный текст:', 'no json here');
+      expect(logSpy).toHaveBeenCalledWith('Raw AI response:', 'no json here');
     });
 
     it('handles invalid json block and non-text array parts', async () => {

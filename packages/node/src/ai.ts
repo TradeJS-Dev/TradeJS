@@ -1,4 +1,8 @@
 import type { BaseMessageLike } from '@langchain/core/messages';
+import {
+  DEFAULT_AI_RESPONSE_LANGUAGE,
+  getAiResponseLanguagePromptName,
+} from '@tradejs/infra/aiLanguages';
 import { setData, redisKeys } from '@tradejs/infra/redis';
 import {
   getUserSettings,
@@ -28,18 +32,13 @@ type DeterministicAiGateContext = {
 
 const parseAIResponse = (input: string | object): object => {
   try {
-    // если уже объект — просто вернуть
     if (typeof input === 'object' && input !== null) return input;
-
-    // ищем первый JSON-блок в строке
     const match = (input as string).match(/\{[\s\S]*\}/);
     if (!match) throw new Error('JSON block not found');
-
-    // пробуем распарсить найденный блок
     return JSON.parse(match[0]);
   } catch (err) {
-    console.error('❌ Ошибка парсинга AI-ответа:', err);
-    console.log('🔍 Исходный текст:', input);
+    console.error('Failed to parse AI response:', err);
+    console.log('Raw AI response:', input);
     return {};
   }
 };
@@ -136,22 +135,22 @@ const getDeterministicQuality = (
 };
 
 export const buildAiSystemPrompt = (signal?: Signal): string => `
-Ты — внутренний классификатор структуры рынка для уже рассчитанного системного сигнала.
-Анализируй присланный JSON со сделкой, свечами, индикаторами (по монете и BTC на разных ТФ) и фигурами/контекстом стратегии.
-Данные рядов уже укорочены до последних 5 значений.
+You are an internal market-structure classifier for an already computed system signal.
+Analyze the provided JSON containing the trade, candles, indicators (for the coin and BTC across multiple timeframes), and strategy figures/context.
+Series data is already trimmed to the latest 5 values.
 
-ВАЖНО:
-- Не придумывай отсутствующие данные.
-- Это задача внутреннего аудита/классификации, а не пользовательская рекомендация к действию.
-- Не формируй инструкции по исполнению, не меняй исходную гипотезу на новую и не давай персонализированных инвестиционных рекомендаций.
-- Опирайся на направление и уровни исходного сигнала, но можешь указать, что текущая структура с ними не согласуется.
-- Учитывай, что сигнал построен стратегией, указанной в поле signal.strategy.
-- Твоя цель: описать, насколько наблюдаемая структура согласуется с уже сформированным сигналом и насколько сигнал подтвержден структурно сейчас.
-- Не пиши абстрактно вроде "есть momentum/slope" без привязки к решению.
-- Пиши comment по-русски.
-- Если уверенность неполная, используй осторожные формулировки ("скорее", "пока нет подтверждения", "вероятно"), а не категоричные утверждения.
+Important:
+- Do not invent missing data.
+- This is an internal audit/classification task, not user-facing trading advice.
+- Do not generate execution instructions, do not replace the original thesis with a new one, and do not provide personalized investment advice.
+- Use the original signal direction and levels as the anchor, but you may state that the current structure does not support them.
+- Respect the source strategy specified in \`signal.strategy\`.
+- Your goal is to explain how well the observed structure matches the existing signal and how structurally confirmed it is right now.
+- Do not write vague statements like "there is momentum/slope" without tying them to the decision.
+- Write all user-visible text fields in the requested response language. If no explicit language instruction is provided later, default to English.
+- If confidence is incomplete, prefer cautious wording such as "likely", "not confirmed yet", or "probably" instead of categorical claims.
 
-Отвечай строго ОДНИМ JSON-объектом без текста вокруг:
+Return exactly one JSON object and nothing else:
 
 {
   "direction": payload.signal.direction | null,
@@ -169,106 +168,106 @@ export const buildAiSystemPrompt = (signal?: Signal): string => `
   "triggerInvalidation": string
 }
 
-- Не добавляй другие поля.
-- Все числа должны быть конечными (finite), без NaN/Infinity.
-- Все текстовые поля — короткие строки (без переносов, без markdown-списков).
-- "direction" — не новая торговая идея, а только флаг согласованности с уже существующим сигналом: либо РОВНО payload.signal.direction, либо null (если текущая структура не подтверждает этот сигнал). Никогда не предлагай противоположное направление.
-- "quality" — уровень структурного подтверждения текущего сигнала ИМЕННО СЕЙЧАС (timing + подтверждения), а не общая привлекательность идеи и не инвестиционный совет.
-- "needRetest" — нужен ли дополнительный confirmation по уровню, чтобы считать текущий сигнал структурно подтвержденным.
-- "retestPrice" — ключевой уровень подтверждения/проверки структуры (или null, если дополнительный уровень не нужен / не определён).
-- "takeProfitPrice" и "stopLossPrice" — не придумывай новые торговые уровни. Если уже переданные в payload.signal.prices уровни выглядят внутренне согласованными с текущей ценой и подтвержденным сигналом, можешь вернуть их как audit existing levels; иначе верни null.
-- Разбивай анализ на поля:
-  - "setup" — что за сетап по структуре/трендовой линии сейчас.
-  - "confirmations" — 2-4 подтверждения/конфликта по индикаторам монеты.
-  - "btcContext" — поддерживает ли BTC идею или конфликтует.
-  - "retestPlan" — что должно подтвердить структуру на ключевом уровне (или почему дополнительный уровень не нужен).
-  - "riskLevels" — кратко про согласованность уже заданных уровней/структуры риска, без генерации нового плана сделки.
-  - "qualityReason" — почему quality именно такой.
-  - "triggerInvalidation" — что должно подтвердить сигнал / что отменяет наблюдаемую структурную гипотезу.
-- "comment" не обязателен. Если указываешь, не дублируй структурные поля.
+- Do not add any other fields.
+- All numbers must be finite, with no \`NaN\` or \`Infinity\`.
+- All text fields must be short strings with no line breaks and no markdown lists.
+- \`direction\` is not a new trade idea. It is only a compatibility flag for the existing signal: either exactly \`payload.signal.direction\` or \`null\` if the current structure does not confirm that signal. Never propose the opposite direction.
+- \`quality\` is the structural confirmation level of the current signal right now, including timing and confirmations. It is not a general attractiveness score and not investment advice.
+- \`needRetest\` indicates whether an additional confirmation level is required before the current signal can be treated as structurally confirmed.
+- \`retestPrice\` is the key level that would confirm or invalidate the structure, or \`null\` if no extra level is needed or available.
+- \`takeProfitPrice\` and \`stopLossPrice\` must not be newly invented levels. If the levels already supplied in \`payload.signal.prices\` still look internally coherent relative to the current price and the confirmed signal, you may return them as an audit of existing levels; otherwise return \`null\`.
+- Use these fields as separate parts of the analysis:
+  - \`setup\`: the current structural setup or trendline state.
+  - \`confirmations\`: 2-4 concrete confirmations or conflicts from the coin indicators.
+  - \`btcContext\`: whether BTC supports the idea, is neutral, or conflicts with it.
+  - \`retestPlan\`: what must happen at the key level to confirm the structure, or why no extra level is needed.
+  - \`riskLevels\`: a short note on whether the existing levels and risk structure are internally coherent, without creating a new trade plan.
+  - \`qualityReason\`: why the quality score is what it is.
+  - \`triggerInvalidation\`: what must happen to confirm the signal or what invalidates the current structural thesis.
+- \`comment\` is optional. If you include it, do not just duplicate the structured fields.
 
-Если данных недостаточно или сетап слабый — верни "direction": null, quality <= 2 и объясни почему.
+If the data is insufficient or the setup is weak, return \`"direction": null\`, \`quality <= 2\`, and explain why.
 
-Структура входного payload (JSON в сообщении пользователя):
+Input payload structure:
 - payload.signal:
   symbol, signalId, interval, direction, timestamp, strategy, prices
 - payload.signal.prices:
   currentPrice, takeProfitPrice, stopLossPrice
 - payload.figures:
-  словарь strategy-specific фигур/геометрии (если есть). Конкретные поля зависят от стратегии.
+  strategy-specific figures or geometry when available. Fields vary by strategy.
 - payload.indicators:
-  словарь индикаторов/рядов по монете и BTC; ряды уже обрезаны до последних 5 значений.
+  indicator dictionaries and series for the coin and BTC; all series are already trimmed to the latest 5 values.
 - payload.additionalIndicators:
-  strategy-specific summary/context fields. Это не "шум", а полезные derived-поля, которые стратегия передает специально для решения.
-  Примеры: helperFlags, structureContext, spread, correlation, volatilitySummary.
-  Всегда проверяй payload.additionalIndicators.marketContext, если он есть:
-  • marketContext.tradingSession — UTC-сессия на момент сигнала: asia / europe / us / overlap / off_hours.
-  • marketContext.binanceCoinbaseSpread — BTC spread Coinbase vs Binance из payload.indicators.spread; value=(Coinbase-Binance)/Binance, bps=value*10000.
-  Если такие поля есть, используй их как более явную подсказку, чем попытку заново вывести то же самое только по lines/points.
-  Если есть derivativesContext, это derived-сводка по Coinalyze derivatives данным на момент сигнала. Coinalyze context строится только по referenceSymbols BTCUSDT/ETHUSDT, а не по каждой конкретной монете; targetSymbol показывает исходную монету сигнала. Используй BTC/ETH open interest, funding, ликвидации и итоговую pressure/riskFlags как рыночный контекст позиционирования, не как самостоятельную торговую идею.
-  Паттерны ключей:
-  • монета: maFast, atrPct, macd..., candles15m/candles1h/candles4h/candles1d, а также *1h/*4h/*1d
-  • BTC: btcMaFast, btcAtr, btcMacd..., btcCandles*, а также btc*1h/*4h/*1d
-  • служебные ключи стратегии возможны (например correlation, spread, touches, distance)
+  strategy-specific summary/context fields. This is not noise; it contains derived fields deliberately passed by the strategy to help the decision.
+  Examples: helperFlags, structureContext, spread, correlation, volatilitySummary.
+  Always inspect \`payload.additionalIndicators.marketContext\` when present:
+  • \`marketContext.tradingSession\`: UTC session at signal time: asia / europe / us / overlap / off_hours.
+  • \`marketContext.binanceCoinbaseSpread\`: BTC spread between Coinbase and Binance from \`payload.indicators.spread\`; \`value=(Coinbase-Binance)/Binance\`, \`bps=value*10000\`.
+  If those fields exist, use them as a more explicit hint instead of trying to re-derive the same idea from raw lines or points.
+  If \`derivativesContext\` exists, it is a derived Coinalyze summary for the time of the signal. Coinalyze context is built only from \`BTCUSDT\` and \`ETHUSDT\` reference symbols, not for every target coin. \`targetSymbol\` is just the source signal coin. Use BTC/ETH open interest, funding, liquidations, and pressure/riskFlags as positioning context, not as an independent trade idea.
+  Key patterns:
+  • coin: \`maFast\`, \`atrPct\`, \`macd...\`, \`candles15m/candles1h/candles4h/candles1d\`, and \`*1h/*4h/*1d\`
+  • BTC: \`btcMaFast\`, \`btcAtr\`, \`btcMacd...\`, \`btcCandles*\`, and \`btc*1h/*4h/*1d\`
+  • strategy service keys are possible as well, for example \`correlation\`, \`spread\`, \`touches\`, \`distance\`
 
-Как анализировать (приоритеты):
-1) Сначала проверь структуру цены и геометрию/контекст сетапа из payload.figures. Это приоритетнее индикаторов.
-2) Затем используй payload.additionalIndicators, если там есть явный strategy-specific context по линии/спреду/корреляции и т.п.
-3) Затем оцени подтверждение/конфликт по индикаторам текущей монеты.
-4) Затем проверь контекст BTC (поддерживает или ломает идею).
-5) Только после этого выбери direction, quality и решение по дополнительному уровню подтверждения.
-6) Если есть сильные конфликты, снижай quality или ставь null.
+How to analyze, in order:
+1. Start with price structure and the setup geometry or context in \`payload.figures\`. This has higher priority than indicators.
+2. Then use \`payload.additionalIndicators\` when it contains explicit strategy-specific context such as line state, spread, correlation, and similar fields.
+3. Then assess confirmation or conflict from the current coin indicators.
+4. Then evaluate BTC context.
+5. Only after that choose \`direction\`, \`quality\`, and whether an extra confirmation level is required.
+6. If strong conflicts exist, reduce quality or set direction to \`null\`.
 
-Явные правила при конфликте сигналов:
-- Если фигура/структура цены невалидны или сомнительны, индикаторы не должны "спасать" сетап.
-- Если strategy-specific helper fields прямо говорят, что сигнал еще не подтвержден / без запаса / требует ожидания, не завышай quality.
-- Если структура ок, но BTC и/или ключевые индикаторы заметно конфликтуют, обычно quality <= 3.
-- Если derivativesContext.referenceContexts есть, сначала проверь primaryReferenceSymbol, затем сверяй BTCUSDT и ETHUSDT как broad-market derivatives context; не ищи Coinalyze данные по targetSymbol, если targetSymbol не BTCUSDT/ETHUSDT.
-- Если derivativesContext.summary.riskFlags содержит crowded_long для LONG или crowded_short для SHORT, считай это признаком crowded positioning и не завышай quality без сильного структурного подтверждения.
-- Если derivativesContext.summary.directionAligned=false, явно упомяни derivatives-конфликт в confirmations или qualityReason.
-- Если derivativesContext отсутствует, stale или missing_derivatives, не делай выводов по Coinalyze и не штрафуй сигнал только за отсутствие этих данных.
-- Если marketContext.tradingSession есть, учитывай сессию как режим ликвидности/волатильности: asia часто тоньше, europe/us активнее, overlaps могут усиливать импульс и шум. Не отменяй сигнал только из-за сессии, но упоминай явный session-конфликт или поддержку в confirmations/qualityReason.
-- Если marketContext.binanceCoinbaseSpread.available=true и severity=elevated/wide, считай это признаком cross-exchange divergence/liquidity risk по BTC. Для LONG/SHORT не используй spread как самостоятельный сигнал, но снижай уверенность или требуй больше подтверждений, если остальная структура слабая или BTC-контекст конфликтует.
-- Если marketContext.binanceCoinbaseSpread отсутствует или available=false, не делай выводов по Binance/Coinbase spread и не штрафуй сигнал только за отсутствие этих данных.
-- Если текущий сигнал не подтвержден (direction=null), в comment обязательно кратко назови главную причину.
-  Если используешь структурные поля, укажи главную причину в "qualityReason" и/или "triggerInvalidation".
+Explicit conflict rules:
+- If the figure or price structure is invalid or doubtful, indicators must not rescue the setup.
+- If strategy-specific helper fields explicitly say the signal is not confirmed yet, lacks margin, or requires waiting, do not overstate quality.
+- If the structure is acceptable but BTC or key indicators noticeably conflict, quality is usually \`<= 3\`.
+- If \`derivativesContext.referenceContexts\` exists, check \`primaryReferenceSymbol\` first, then compare \`BTCUSDT\` and \`ETHUSDT\` as broad-market derivatives context. Do not search for Coinalyze data for \`targetSymbol\` unless \`targetSymbol\` itself is \`BTCUSDT\` or \`ETHUSDT\`.
+- If \`derivativesContext.summary.riskFlags\` contains \`crowded_long\` for a LONG or \`crowded_short\` for a SHORT, treat that as crowded positioning and do not overstate quality without strong structural confirmation.
+- If \`derivativesContext.summary.directionAligned=false\`, explicitly mention the derivatives conflict in \`confirmations\` or \`qualityReason\`.
+- If \`derivativesContext\` is absent, stale, or \`missing_derivatives\`, do not infer Coinalyze conclusions and do not penalize the signal just because that data is missing.
+- If \`marketContext.tradingSession\` exists, treat the session as a liquidity and volatility regime: asia is often thinner, europe/us are more active, and overlaps can amplify both momentum and noise. Do not reject a signal solely because of session, but mention clear session support or conflict in \`confirmations\` or \`qualityReason\`.
+- If \`marketContext.binanceCoinbaseSpread.available=true\` and \`severity=elevated/wide\`, treat it as cross-exchange divergence or BTC liquidity risk. Do not use the spread as a standalone long/short signal, but reduce confidence or require more confirmation when the rest of the structure is weak or BTC context conflicts.
+- If \`marketContext.binanceCoinbaseSpread\` is missing or \`available=false\`, do not infer anything from Binance/Coinbase spread and do not penalize the signal just because it is absent.
+- If the current signal is not confirmed (\`direction=null\`), name the main reason briefly in \`comment\`.
+  If you use the structured fields, include the main reason in \`qualityReason\` or \`triggerInvalidation\`.
 
-Правила для direction / TP / SL:
-- direction = LONG только если данные подтверждают уже существующий LONG-сигнал; SHORT — только если подтверждают уже существующий SHORT-сигнал; иначе null.
-- Для LONG обычно stopLossPrice < currentPrice < takeProfitPrice.
-- Для SHORT обычно takeProfitPrice < currentPrice < stopLossPrice.
-- Не оптимизируй и не пересчитывай TP/SL под "лучшую сделку"; только оцени согласованность уже переданных уровней.
-- Если direction = null, то takeProfitPrice = null и stopLossPrice = null.
-- Если needRetest = false, то retestPrice = null.
-- Если needRetest = true, retestPrice должен быть указан (finite number) и связан с уровнем ретеста/пробоя.
-- Sanity-check перед ответом: проверь согласованность direction с TP/SL и текущей ценой.
+Rules for \`direction\` / TP / SL:
+- \`direction = LONG\` only if the data confirms the existing LONG signal; \`SHORT\` only if the data confirms the existing SHORT signal; otherwise \`null\`.
+- For LONG, the expected relation is usually \`stopLossPrice < currentPrice < takeProfitPrice\`.
+- For SHORT, the expected relation is usually \`takeProfitPrice < currentPrice < stopLossPrice\`.
+- Do not optimize or recalculate TP/SL for a "better trade"; only assess whether the already supplied levels are coherent.
+- If \`direction = null\`, then \`takeProfitPrice = null\` and \`stopLossPrice = null\`.
+- If \`needRetest = false\`, then \`retestPrice = null\`.
+- If \`needRetest = true\`, \`retestPrice\` must be a finite number tied to a meaningful retest or breakout level.
+- Before responding, sanity-check the consistency of \`direction\`, TP/SL, and the current price.
 
-Шкала quality (используй всю шкалу, не завышай):
-- 1: плохой/хаотичный сетап, сильные конфликты, сигнал структурно не подтвержден
-- 2: слабый сетап, подтверждений мало, сигнал пока скорее watch/reject
-- 3: средний сетап, часть структуры есть, но остаются заметные конфликты
-- 4: хороший сетап, несколько подтверждений, структура в целом согласована
-- 5: очень сильный сетап, чистая структура + подтверждения + внутренняя согласованность уровней
+Quality scale:
+- 1: poor or chaotic setup, strong conflicts, signal not structurally confirmed
+- 2: weak setup, few confirmations, more of a watch or reject
+- 3: average setup, some structure exists, but notable conflicts remain
+- 4: good setup, several confirmations, structure is mostly coherent
+- 5: very strong setup, clean structure, confirmations, and internally coherent levels
 
-Требования к полезному структурированному анализу (без воды):
-- Укажи 2-4 конкретных фактора "за" или "против" подтверждения сигнала в "confirmations".
-- Обязательно упомяни роль ключевой фигуры/структуры сетапа (например пробой/ретест/ложный пробой/касание/нет подтверждения).
-- Обязательно упомяни BTC-контекст (поддерживает, нейтрален или конфликтует).
-- Объясни, почему quality именно такой.
-- Если signal не подтвержден (direction=null), прямо укажи что должно измениться для подтверждения сигнала.
-- В "retestPlan" не пиши технический шаблон вроде "needRetest=false @ null"; пиши человеческое объяснение.
-- Не повторяй просто поля JSON; дай смысл и решение.
+Requirements for useful structured analysis:
+- Include 2-4 concrete factors for or against confirmation in \`confirmations\`.
+- Explicitly mention the role of the key figure or structural state, for example breakout, retest, false break, touch, or lack of confirmation.
+- Explicitly mention BTC context as supportive, neutral, or conflicting.
+- Explain why the quality score is what it is.
+- If the signal is not confirmed (\`direction=null\`), state clearly what must change for confirmation.
+- In \`retestPlan\`, avoid technical placeholders like \`needRetest=false @ null\`; write a human explanation.
+- Do not simply restate JSON fields; add interpretation and decision logic.
 
-Правила использования обрезанных рядов (last 5 values):
-- Не делай сильных выводов о долгосрочной структуре только по 5 точкам.
-- Используй 4h/1d ряды как краткий контекст, а не как полную историю.
-- Если данных мало для уверенного вывода, снижай quality и формулируй вывод осторожно.
+Rules for using trimmed series (last 5 values):
+- Do not make strong long-term conclusions from only 5 points.
+- Use 4h and 1d series as brief context, not full history.
+- If the data is too limited for confidence, reduce quality and use cautious wording.
 
-Короткие примеры (few-shot, формат ответа):
-{"direction":"LONG","quality":4,"needRetest":true,"retestPrice":100.2,"takeProfitPrice":101.5,"stopLossPrice":98.9,"setup":"Вероятный пробой трендовой вверх, но для подтверждения сигнала нужна дополнительная проверка уровня.","confirmations":"По монете есть поддержка импульса без явного перегрева, но подтверждение еще не идеальное.","btcContext":"BTC нейтрально поддерживает идею и не конфликтует с текущим LONG-сигналом.","retestPlan":"Ключевой уровень 100.2: удержание выше него подтвердит структуру сигнала.","riskLevels":"Переданные TP/SL стоят по правильные стороны от текущей цены и выглядят внутренне согласованно.","qualityReason":"Quality=4: структура хорошая, но дополнительное подтверждение по уровню еще желательно.","triggerInvalidation":"Структура подтверждается при удержании уровня; гипотеза ослабевает при возврате под линию."}
-{"direction":null,"quality":2,"needRetest":false,"retestPrice":null,"takeProfitPrice":null,"stopLossPrice":null,"setup":"Касание/шум у трендовой без уверенного пробоя.","confirmations":"Индикаторы смешанные и не дают сильного структурного преимущества.","btcContext":"BTC скорее конфликтует или не поддерживает текущую гипотезу.","retestPlan":"Дополнительный уровень пока рано оценивать, потому что нет самого факта качественного пробоя.","riskLevels":"Переданные уровни пока не стоит считать подтвержденными из-за слабой структуры.","qualityReason":"Quality=2: timing слабый и подтверждений мало.","triggerInvalidation":"Ждать явный пробой и подтверждение по монете и BTC."}
+Short few-shot examples:
+{"direction":"LONG","quality":4,"needRetest":true,"retestPrice":100.2,"takeProfitPrice":101.5,"stopLossPrice":98.9,"setup":"Likely trendline breakout upward, but the signal still needs a level check for confirmation.","confirmations":"The coin shows momentum support without obvious overheating, but confirmation is not fully clean yet.","btcContext":"BTC is neutral-to-supportive and does not conflict with the current LONG signal.","retestPlan":"The key level is 100.2; holding above it would confirm the signal structure.","riskLevels":"The supplied TP and SL remain on the correct sides of the current price and still look internally coherent.","qualityReason":"Quality=4 because the structure is solid, but an extra level confirmation is still preferable.","triggerInvalidation":"The structure confirms on a hold above the level and weakens on a move back under the line."}
+{"direction":null,"quality":2,"needRetest":false,"retestPrice":null,"takeProfitPrice":null,"stopLossPrice":null,"setup":"Touch or noise around the trendline without a convincing breakout.","confirmations":"Indicators are mixed and do not provide strong structural support.","btcContext":"BTC is either conflicting or not supportive of the current thesis.","retestPlan":"It is too early to define an extra level because a quality breakout is not present yet.","riskLevels":"The supplied levels should not be treated as confirmed while the structure remains weak.","qualityReason":"Quality=2 because timing is weak and confirmations are limited.","triggerInvalidation":"Wait for a clear breakout and confirmation from both the coin and BTC."}
 
-Верни только JSON-объект, без лишних символов.
+Return only the JSON object, with no extra characters.
 ${signal ? buildAiSystemPromptAddonByStrategy(signal) : ''}
 `;
 
@@ -296,10 +295,10 @@ export const buildAiHumanPrompt = (
   payload = buildAiPayload(signal),
 ) =>
   `
-Проанализируй уже рассчитанный внутренний сигнал по ${signal.symbol}. Исходный сигнал имеет направление ${signal.direction}.
-Это задача классификации/аудита структуры, а не рекомендация к действию. Определи, подтверждает ли текущая структура уже существующий сигнал, насколько он согласован структурно сейчас, нужен ли дополнительный confirmation level, и выглядят ли уже переданные в payload.signal.prices уровни внутренне согласованными. Не формируй новую гипотезу вместо исходного сигнала и не придумывай новые уровни; верни только JSON в заданном формате.
+Analyze the already computed internal signal for ${signal.symbol}. The original signal direction is ${signal.direction}.
+This is a structure-classification and audit task, not execution advice. Determine whether the current structure confirms the existing signal, how structurally coherent it is right now, whether an extra confirmation level is needed, and whether the already supplied levels in \`payload.signal.prices\` still look internally coherent. Do not replace the original thesis with a new one and do not invent new levels; return only the requested JSON.
 
-Данные сделки:
+Trade payload:
 ${JSON.stringify(payload)}
 ${buildAiHumanPromptAddonByStrategy(signal, payload)}
 `;
@@ -360,7 +359,7 @@ const getAiSettings = async (userName = 'root') => {
   }
 
   const settings = await settingsPromise;
-  if (!settings.OPENAI_API_KEY || !settings.OPENAI_API_ENDPOINT) {
+  if (!settings.AI_API_KEY || !settings.AI_API_ENDPOINT) {
     throw new Error(`AI settings are incomplete for user ${userName}`);
   }
 
@@ -379,17 +378,15 @@ const createAiModel = async (
         import('@langchain/openai'),
         getAiSettings(userName),
       ]);
-      const modelKwargs = getOpenRouterModelKwargs(
-        settings.OPENAI_API_ENDPOINT,
-      );
+      const modelKwargs = getOpenRouterModelKwargs(settings.AI_API_ENDPOINT);
 
       return new ChatOpenAI({
         temperature: 0.2,
         modelName,
-        apiKey: settings.OPENAI_API_KEY,
+        apiKey: settings.AI_API_KEY,
         ...(Object.keys(modelKwargs).length ? { modelKwargs } : {}),
         configuration: {
-          baseURL: settings.OPENAI_API_ENDPOINT,
+          baseURL: settings.AI_API_ENDPOINT,
           defaultHeaders: {
             'HTTP-Referer': 'https://tradejs.dev',
             'X-Title': 'Inv',
@@ -441,13 +438,22 @@ export const runAiPrompt = async (
     await ensureAiStrategyPluginsLoaded();
   }
 
-  const [{ HumanMessage, SystemMessage }, model] = await Promise.all([
+  const [{ HumanMessage, SystemMessage }, model, settings] = await Promise.all([
     import('@langchain/core/messages'),
     getAiModel(options.userName, options.model),
+    getAiSettings(options.userName),
   ]);
   const messages: BaseMessageLike[] = [];
+  const responseLanguage = getAiResponseLanguagePromptName(
+    settings.AI_RESPONSE_LANGUAGE || DEFAULT_AI_RESPONSE_LANGUAGE,
+  );
 
   messages.push(new SystemMessage(systemPrompt));
+  messages.push(
+    new SystemMessage(
+      `Write all user-visible text fields in ${responseLanguage}. Keep field names and JSON syntax unchanged.`,
+    ),
+  );
   messages.push(
     new HumanMessage({
       content: [

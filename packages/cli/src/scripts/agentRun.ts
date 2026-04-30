@@ -301,21 +301,21 @@ const requestAgentDiff = async (
   messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>,
 ) => {
   const settings = await getUserSettings(userName);
-  if (!settings.OPENAI_API_KEY || !settings.OPENAI_API_ENDPOINT) {
+  if (!settings.AI_API_KEY || !settings.AI_API_ENDPOINT) {
     throw new Error(`AI settings are incomplete for user ${userName}`);
   }
-  if (!isOpenRouterEndpoint(settings.OPENAI_API_ENDPOINT)) {
+  if (!isOpenRouterEndpoint(settings.AI_API_ENDPOINT)) {
     throw new Error(
-      `Research agent requires OpenRouter endpoint, got: ${settings.OPENAI_API_ENDPOINT}`,
+      `Research agent requires OpenRouter endpoint, got: ${settings.AI_API_ENDPOINT}`,
     );
   }
 
   const response = await fetch(
-    resolveChatCompletionsUrl(settings.OPENAI_API_ENDPOINT),
+    resolveChatCompletionsUrl(settings.AI_API_ENDPOINT),
     {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${settings.OPENAI_API_KEY}`,
+        Authorization: `Bearer ${settings.AI_API_KEY}`,
         'Content-Type': 'application/json',
         'HTTP-Referer': 'https://tradejs.dev',
         'X-Title': 'TradeJS Research Agent',

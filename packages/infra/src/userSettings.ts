@@ -1,3 +1,7 @@
+import {
+  DEFAULT_AI_RESPONSE_LANGUAGE,
+  normalizeAiResponseLanguage,
+} from './aiLanguages';
 import { normalizeAiEndpoint } from './aiEndpoints';
 import { getData, redisKeys, setData } from './redis';
 
@@ -7,8 +11,9 @@ export interface UserRecord extends Record<string, unknown> {
   BYBIT_API_KEY?: string;
   BYBIT_API_SECRET?: string;
   COINALYZE_API_KEY?: string;
-  OPENAI_API_KEY?: string;
-  OPENAI_API_ENDPOINT?: string;
+  AI_API_KEY?: string;
+  AI_API_ENDPOINT?: string;
+  AI_RESPONSE_LANGUAGE?: string;
   TG_BOT_TOKEN?: string;
   TG_CHAT_ID?: string;
   updatedAt?: string;
@@ -19,8 +24,9 @@ export interface UserSettings {
   BYBIT_API_KEY: string;
   BYBIT_API_SECRET: string;
   COINALYZE_API_KEY: string;
-  OPENAI_API_KEY: string;
-  OPENAI_API_ENDPOINT: string;
+  AI_API_KEY: string;
+  AI_API_ENDPOINT: string;
+  AI_RESPONSE_LANGUAGE: string;
   TG_BOT_TOKEN: string;
   TG_CHAT_ID: string;
 }
@@ -52,10 +58,14 @@ export const getUserSettings = async (
     BYBIT_API_KEY: readUserString(record, 'BYBIT_API_KEY'),
     BYBIT_API_SECRET: readUserString(record, 'BYBIT_API_SECRET'),
     COINALYZE_API_KEY: readUserString(record, 'COINALYZE_API_KEY'),
-    OPENAI_API_KEY: readUserString(record, 'OPENAI_API_KEY'),
-    OPENAI_API_ENDPOINT: normalizeAiEndpoint(
-      readUserString(record, 'OPENAI_API_ENDPOINT'),
+    AI_API_KEY: readUserString(record, 'AI_API_KEY'),
+    AI_API_ENDPOINT: normalizeAiEndpoint(
+      readUserString(record, 'AI_API_ENDPOINT'),
     ),
+    AI_RESPONSE_LANGUAGE:
+      normalizeAiResponseLanguage(
+        readUserString(record, 'AI_RESPONSE_LANGUAGE'),
+      ) || DEFAULT_AI_RESPONSE_LANGUAGE,
     TG_BOT_TOKEN: readUserString(record, 'TG_BOT_TOKEN'),
     TG_CHAT_ID: readUserString(record, 'TG_CHAT_ID'),
   };
