@@ -5,6 +5,7 @@ export default defineConfig({
     'src/ai.ts',
     'src/aiEndpoints.ts',
     'src/aiLanguages.ts',
+    'src/aiModels.ts',
     'src/files.ts',
     'src/http.ts',
     'src/logger.ts',

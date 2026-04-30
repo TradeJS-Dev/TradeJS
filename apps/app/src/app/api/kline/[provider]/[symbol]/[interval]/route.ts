@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { intervalToMs, mergeData } from '@tradejs/core/data';
 import {
   createIndicators,
   getRegisteredIndicatorEntries,
@@ -13,16 +14,115 @@ import {
   ConnectorCreator,
 } from '@tradejs/types';
 import { getCurrentUserName } from '@app/lib/currentUser';
+import { normalizeEndToIntervalBoundary } from '@app/lib/klineWindow';
 
 export const dynamic = 'force-dynamic';
 const projectRoot =
   String(process.env.PROJECT_CWD || process.cwd()).trim() || process.cwd();
+const DEFAULT_KLINE_CACHE_TTL_MS = 30_000;
+const MAX_KLINE_CACHE_ENTRIES = 500;
 
 interface Params {
   provider: string;
   symbol: string;
   interval: string;
 }
+
+type KlineCacheEntry = {
+  expiresAt: number;
+  value: KlineChartData;
+};
+
+declare global {
+  // eslint-disable-next-line no-var
+  var __tradejsKlineRawCache__: Map<string, KlineCacheEntry> | undefined;
+  // eslint-disable-next-line no-var
+  var __tradejsKlineBtcRawCache__: Map<string, KlineCacheEntry> | undefined;
+}
+
+const getRawKlineCache = () => {
+  if (!global.__tradejsKlineRawCache__) {
+    global.__tradejsKlineRawCache__ = new Map<string, KlineCacheEntry>();
+  }
+
+  return global.__tradejsKlineRawCache__;
+};
+
+const getBtcKlineCache = () => {
+  if (!global.__tradejsKlineBtcRawCache__) {
+    global.__tradejsKlineBtcRawCache__ = new Map<string, KlineCacheEntry>();
+  }
+
+  return global.__tradejsKlineBtcRawCache__;
+};
+
+const pruneCache = (cache: Map<string, KlineCacheEntry>, now: number) => {
+  for (const [key, entry] of cache) {
+    if (entry.expiresAt <= now) {
+      cache.delete(key);
+    }
+  }
+
+  while (cache.size > MAX_KLINE_CACHE_ENTRIES) {
+    const oldestKey = cache.keys().next().value;
+    if (!oldestKey) {
+      break;
+    }
+    cache.delete(oldestKey);
+  }
+};
+
+const getCacheTtlMs = (interval: Interval) =>
+  Math.min(intervalToMs(interval), DEFAULT_KLINE_CACHE_TTL_MS);
+
+const buildRawCacheKey = (params: {
+  provider: string;
+  symbol: string;
+  interval: Interval;
+  start: number;
+  end: number;
+  cacheOnly?: boolean;
+}) =>
+  [
+    params.provider,
+    params.symbol,
+    params.interval,
+    params.start,
+    params.end,
+    params.cacheOnly ? 'cache' : 'live',
+  ].join(':');
+
+const getCachedRawKline = (
+  cache: Map<string, KlineCacheEntry>,
+  key: string,
+  now: number,
+) => {
+  const cached = cache.get(key);
+  if (!cached) {
+    return null;
+  }
+
+  if (cached.expiresAt <= now) {
+    cache.delete(key);
+    return null;
+  }
+
+  return cached.value.map((candle) => ({ ...candle })) as KlineChartData;
+};
+
+const setCachedRawKline = (
+  cache: Map<string, KlineCacheEntry>,
+  key: string,
+  value: KlineChartData,
+  ttlMs: number,
+  now: number,
+) => {
+  cache.set(key, {
+    expiresAt: now + ttlMs,
+    value: value.map((candle) => ({ ...candle })) as KlineChartData,
+  });
+  pruneCache(cache, now);
+};
 
 const enrichWithPluginIndicators = (
   data: KlineChartData,
@@ -96,11 +196,73 @@ export const POST = async (
       userName,
     });
 
-    const baseData = await connector.kline({
-      symbol,
-      interval: interval as Interval,
-      ...options,
-    });
+    const typedInterval = interval as Interval;
+    const normalizedEnd = normalizeEndToIntervalBoundary(
+      Number(options.end),
+      typedInterval,
+    );
+    const historicalEnd = Math.min(Number(options.end), normalizedEnd);
+    const liveTailRequired = Number(options.end) > historicalEnd;
+    const liveTailStart = Math.max(Number(options.start ?? 0), historicalEnd);
+    const rawCache = getRawKlineCache();
+    const btcCache = getBtcKlineCache();
+    const now = Date.now();
+    const ttlMs = getCacheTtlMs(typedInterval);
+
+    const fetchRawSegment = async (params: {
+      symbol: string;
+      start: number;
+      end: number;
+      useBtcCache?: boolean;
+    }) => {
+      if (params.end <= params.start) {
+        return [] as KlineChartData;
+      }
+
+      const cache = params.useBtcCache ? btcCache : rawCache;
+      const cacheKey = buildRawCacheKey({
+        provider,
+        symbol: params.symbol,
+        interval: typedInterval,
+        start: params.start,
+        end: params.end,
+        cacheOnly: Boolean(options.cacheOnly),
+      });
+      const cached = getCachedRawKline(cache, cacheKey, now);
+      if (cached) {
+        return cached;
+      }
+
+      const data = await connector.kline({
+        symbol: params.symbol,
+        interval: typedInterval,
+        ...options,
+        start: params.start,
+        end: params.end,
+      });
+
+      setCachedRawKline(cache, cacheKey, data, ttlMs, now);
+      return data;
+    };
+
+    const baseHistorical =
+      historicalEnd > Number(options.start ?? 0)
+        ? await fetchRawSegment({
+            symbol,
+            start: Number(options.start ?? 0),
+            end: historicalEnd,
+          })
+        : [];
+    const baseLiveTail = liveTailRequired
+      ? await connector.kline({
+          symbol,
+          interval: typedInterval,
+          ...options,
+          start: liveTailStart,
+          end: Number(options.end),
+        })
+      : [];
+    const baseData = mergeData(baseHistorical, baseLiveTail);
 
     await ensureIndicatorPluginsLoaded(projectRoot);
     const pluginKeys = getRegisteredIndicatorEntries(projectRoot).map(
@@ -113,11 +275,25 @@ export const POST = async (
     const btcData =
       symbol === 'BTCUSDT'
         ? baseData
-        : await connector.kline({
-            symbol: 'BTCUSDT',
-            interval: interval as Interval,
-            ...options,
-          });
+        : mergeData(
+            historicalEnd > Number(options.start ?? 0)
+              ? await fetchRawSegment({
+                  symbol: 'BTCUSDT',
+                  start: Number(options.start ?? 0),
+                  end: historicalEnd,
+                  useBtcCache: true,
+                })
+              : [],
+            liveTailRequired
+              ? await connector.kline({
+                  symbol: 'BTCUSDT',
+                  interval: typedInterval,
+                  ...options,
+                  start: liveTailStart,
+                  end: Number(options.end),
+                })
+              : [],
+          );
 
     const data = enrichWithPluginIndicators(baseData, btcData, pluginKeys);
 

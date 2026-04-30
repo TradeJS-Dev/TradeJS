@@ -13,6 +13,7 @@ describe('user settings utils', () => {
       COINALYZE_API_KEY: 'coinalyze-key',
       AI_API_KEY: 'user-openai',
       AI_API_ENDPOINT: 'https://openrouter.ai/api/v1',
+      AI_MODEL: 'openai/gpt-5',
       AI_RESPONSE_LANGUAGE: 'es',
       TG_BOT_TOKEN: 'tg-token',
       TG_CHAT_ID: '777777',
@@ -36,6 +37,7 @@ describe('user settings utils', () => {
       COINALYZE_API_KEY: 'coinalyze-key',
       AI_API_KEY: 'user-openai',
       AI_API_ENDPOINT: 'https://openrouter.ai/api/v1',
+      AI_MODEL: 'openai/gpt-5',
       AI_RESPONSE_LANGUAGE: 'es',
       TG_BOT_TOKEN: 'tg-token',
       TG_CHAT_ID: '777777',
@@ -84,10 +86,10 @@ describe('user settings utils', () => {
     );
   });
 
-  it('drops unsupported AI endpoints from resolved settings', async () => {
+  it('drops invalid AI endpoints from resolved settings', async () => {
     const getData = jest.fn().mockResolvedValue({
       userName: 'alice',
-      AI_API_ENDPOINT: 'https://internal.example.local/v1',
+      AI_API_ENDPOINT: 'not-a-url',
     });
 
     jest.doMock('../redis', () => ({
@@ -104,7 +106,68 @@ describe('user settings utils', () => {
     await expect(getUserSettings('alice')).resolves.toEqual(
       expect.objectContaining({
         AI_API_ENDPOINT: '',
+        AI_MODEL: '',
         AI_RESPONSE_LANGUAGE: 'en',
+      }),
+    );
+  });
+
+  it('keeps custom valid AI endpoints in resolved settings', async () => {
+    const getData = jest.fn().mockResolvedValue({
+      userName: 'alice',
+      AI_API_ENDPOINT: 'https://api.continue.example/v1',
+    });
+
+    jest.doMock('../redis', () => ({
+      __esModule: true,
+      getData,
+      setData: jest.fn(),
+      redisKeys: {
+        user: (userName: string) => `users:index:${userName}`,
+      },
+    }));
+
+    const { getUserSettings } = await import('@tradejs/infra/userSettings');
+
+    await expect(getUserSettings('alice')).resolves.toEqual(
+      expect.objectContaining({
+        AI_API_ENDPOINT: 'https://api.continue.example/v1',
+        AI_MODEL: '',
+      }),
+    );
+  });
+
+  it('drops localhost and private-network AI endpoints from resolved settings', async () => {
+    const getData = jest
+      .fn()
+      .mockResolvedValueOnce({
+        userName: 'alice',
+        AI_API_ENDPOINT: 'https://localhost:11434/v1',
+      })
+      .mockResolvedValueOnce({
+        userName: 'alice',
+        AI_API_ENDPOINT: 'https://192.168.1.10/v1',
+      });
+
+    jest.doMock('../redis', () => ({
+      __esModule: true,
+      getData,
+      setData: jest.fn(),
+      redisKeys: {
+        user: (userName: string) => `users:index:${userName}`,
+      },
+    }));
+
+    const { getUserSettings } = await import('@tradejs/infra/userSettings');
+
+    await expect(getUserSettings('alice')).resolves.toEqual(
+      expect.objectContaining({
+        AI_API_ENDPOINT: '',
+      }),
+    );
+    await expect(getUserSettings('alice')).resolves.toEqual(
+      expect.objectContaining({
+        AI_API_ENDPOINT: '',
       }),
     );
   });

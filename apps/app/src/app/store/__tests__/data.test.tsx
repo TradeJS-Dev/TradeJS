@@ -39,8 +39,8 @@ const makeFilters = (overrides: Record<string, unknown> = {}) => ({
   provider: 'bybit',
   symbol: 'BTCUSDT_TEST',
   interval: '15',
-  start: 1,
-  end: 2,
+  start: 1_710_000_000_000,
+  end: 1_710_001_800_000,
   backtestId: null,
   backtestStrategy: null,
   ...overrides,
@@ -60,6 +60,7 @@ const Probe = ({
       data-testid={testId}
       data-fulfilled={fulfilled ? '1' : '0'}
       data-length={String(data.length)}
+      data-first-ts={data[0]?.timestamp ? String(data[0].timestamp) : ''}
     />
   );
 };
@@ -120,6 +121,67 @@ describe('store/useData', () => {
     await waitFor(() => {
       expect(getByTestId('probe-a').getAttribute('data-length')).toBe('3');
       expect(getByTestId('probe-b').getAttribute('data-length')).toBe('3');
+    });
+  });
+
+  it('filters cached idb data to the requested start/end window', async () => {
+    const cachedData = makeData();
+    idbGetMock.mockResolvedValue(cachedData);
+    klineMock.mockResolvedValue([
+      makeCandle(1_710_001_800_000, 102),
+      makeCandle(1_710_002_700_000, 103),
+    ]);
+
+    const filters = makeFilters({
+      symbol: 'BTCUSDT_WINDOW_TEST',
+      start: 1_710_000_900_000,
+      end: 1_710_001_800_000,
+    });
+
+    const { getByTestId } = render(<Probe filters={filters} />);
+
+    await waitFor(() => {
+      expect(getByTestId('probe').getAttribute('data-fulfilled')).toBe('1');
+      expect(getByTestId('probe').getAttribute('data-length')).toBe('2');
+      expect(getByTestId('probe').getAttribute('data-first-ts')).toBe(
+        '1710000900000',
+      );
+    });
+  });
+
+  it('resets fulfilled when the requested start window changes', async () => {
+    klineMock
+      .mockResolvedValueOnce(makeData())
+      .mockResolvedValueOnce([
+        makeCandle(1_710_001_800_000, 102),
+        makeCandle(1_710_002_700_000, 103),
+      ]);
+    const filters = makeFilters({ symbol: 'BTCUSDT_FULFILLED_TEST', end: 3 });
+
+    const { getByTestId, rerender } = render(<Probe filters={filters} />);
+
+    await waitFor(() => {
+      expect(getByTestId('probe').getAttribute('data-fulfilled')).toBe('1');
+    });
+
+    rerender(
+      <Probe
+        filters={{
+          ...filters,
+          start: 1_710_001_800_000,
+          end: 1_710_002_700_000,
+        }}
+      />,
+    );
+
+    expect(getByTestId('probe').getAttribute('data-fulfilled')).toBe('0');
+
+    await waitFor(() => {
+      expect(klineMock).toHaveBeenCalledTimes(2);
+      expect(getByTestId('probe').getAttribute('data-fulfilled')).toBe('1');
+      expect(getByTestId('probe').getAttribute('data-first-ts')).toBe(
+        '1710001800000',
+      );
     });
   });
 });

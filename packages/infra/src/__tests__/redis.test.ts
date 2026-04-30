@@ -325,6 +325,9 @@ describe('redis utils', () => {
     expect(redisKeys.testStat('root', 'TrendLine', 't1')).toBe(
       'users:root:tests:TrendLine:t1:stat',
     );
+    expect(redisKeys.testSummaries('root')).toBe(
+      'users:root:tests:index:summary',
+    );
     expect(redisKeys.cacheChunk('root', 'c1')).toBe(
       'users:root:cache:tests:chunks:c1',
     );

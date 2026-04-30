@@ -22,9 +22,16 @@ import {
   normalizeAiResponseLanguage,
 } from '@tradejs/infra/aiLanguages';
 import {
+  AI_CUSTOM_ENDPOINT_VALUE,
   AI_ENDPOINT_OPTIONS,
   normalizeAiEndpoint,
 } from '@tradejs/infra/aiEndpoints';
+import {
+  AI_CUSTOM_MODEL_VALUE,
+  getAiModelOptionsForEndpoint,
+  hasPresetAiModelsForEndpoint,
+  normalizeAiModel,
+} from '@tradejs/infra/aiModels';
 import { toaster } from '@UI';
 
 type SettingsResponse = {
@@ -40,6 +47,7 @@ type SettingsResponse = {
     ai: {
       apiKey: string;
       apiEndpoint: string;
+      model: string;
       responseLanguage: string;
     };
     telegram: {
@@ -60,6 +68,7 @@ type SettingsViewState = {
   coinalyzeApiKey: string;
   aiApiKey: string;
   aiApiEndpoint: string;
+  aiModel: string;
   aiResponseLanguage: string;
   tgBotToken: string;
   tgChatId: string;
@@ -79,6 +88,7 @@ type EditableField =
   | 'coinalyzeApiKey'
   | 'aiApiKey'
   | 'aiApiEndpoint'
+  | 'aiModel'
   | 'aiResponseLanguage'
   | 'tgBotToken'
   | 'tgChatId';
@@ -90,6 +100,7 @@ const EMPTY_SETTINGS: SettingsViewState = {
   coinalyzeApiKey: '',
   aiApiKey: '',
   aiApiEndpoint: '',
+  aiModel: '',
   aiResponseLanguage: '',
   tgBotToken: '',
   tgChatId: '',
@@ -101,6 +112,7 @@ const EMPTY_DRAFTS: SettingsDraftState = {
   coinalyzeApiKey: '',
   aiApiKey: '',
   aiApiEndpoint: '',
+  aiModel: '',
   aiResponseLanguage: '',
   tgBotToken: '',
   tgChatId: '',
@@ -117,6 +129,7 @@ const EMPTY_EDITING: Record<EditableField, boolean> = {
   coinalyzeApiKey: false,
   aiApiKey: false,
   aiApiEndpoint: false,
+  aiModel: false,
   aiResponseLanguage: false,
   tgBotToken: false,
   tgChatId: false,
@@ -128,7 +141,7 @@ const SECTION_FIELDS: Record<
 > = {
   bybit: ['bybitApiKey', 'bybitApiSecret'],
   coinalyze: ['coinalyzeApiKey'],
-  ai: ['aiApiKey', 'aiApiEndpoint', 'aiResponseLanguage'],
+  ai: ['aiApiKey', 'aiApiEndpoint', 'aiModel', 'aiResponseLanguage'],
   telegram: ['tgBotToken', 'tgChatId'],
 };
 
@@ -149,6 +162,14 @@ const toViewState = (payload: SettingsResponse): SettingsViewState => ({
   aiApiEndpoint:
     normalizeAiEndpoint(payload.settings.ai.apiEndpoint) ||
     AI_ENDPOINT_OPTIONS[0].value,
+  aiModel:
+    normalizeAiModel(
+      payload.settings.ai.model,
+      normalizeAiEndpoint(payload.settings.ai.apiEndpoint) ||
+        AI_ENDPOINT_OPTIONS[0].value,
+    ) ||
+    payload.settings.ai.model ||
+    '',
   aiResponseLanguage: normalizeAiResponseLanguage(
     payload.settings.ai.responseLanguage,
   ),
@@ -159,6 +180,7 @@ const toViewState = (payload: SettingsResponse): SettingsViewState => ({
 const toDraftState = (view: SettingsViewState): SettingsDraftState => ({
   ...EMPTY_DRAFTS,
   aiApiEndpoint: view.aiApiEndpoint,
+  aiModel: view.aiModel,
   aiResponseLanguage: view.aiResponseLanguage,
   tgChatId: view.tgChatId,
 });
@@ -175,6 +197,39 @@ const getErrorMessage = (
   'error' in payload && typeof payload.error === 'string' && payload.error
     ? payload.error
     : fallback;
+
+const getDraftAiEndpoint = (drafts: SettingsDraftState) =>
+  normalizeAiEndpoint(drafts.aiApiEndpoint) || drafts.aiApiEndpoint.trim();
+
+const getSelectedAiModelOption = (aiModel: string, aiEndpoint: string) => {
+  const trimmedModel = aiModel.trim();
+
+  return getAiModelOptionsForEndpoint(aiEndpoint).some(
+    (option) => option.value === trimmedModel,
+  )
+    ? trimmedModel
+    : AI_CUSTOM_MODEL_VALUE;
+};
+
+const DRAWER_SELECT_STYLE = {
+  width: '100%',
+  height: '40px',
+  paddingLeft: '12px',
+  paddingRight: '48px',
+  borderWidth: '1px',
+  borderColor: 'rgba(255, 255, 255, 0.16)',
+  borderRadius: '0.375rem',
+  background: 'rgba(0, 0, 0, 0.32)',
+  appearance: 'none',
+  WebkitAppearance: 'none',
+  MozAppearance: 'none',
+  backgroundImage:
+    "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='9' viewBox='0 0 14 9' fill='none'%3E%3Cpath d='M1 1.5L7 7.5L13 1.5' stroke='%23E5E7EB' stroke-width='1.75' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E\")",
+  backgroundRepeat: 'no-repeat',
+  backgroundPosition: 'right 16px center',
+  backgroundSize: '14px 9px',
+  color: 'rgb(229, 231, 235)',
+} as const;
 
 export const AccountSettingsDrawer = () => {
   const [open, setOpen] = useState(false);
@@ -252,9 +307,11 @@ export const AccountSettingsDrawer = () => {
       }
 
       if (section === 'ai') {
+        const draftAiEndpoint = getDraftAiEndpoint(drafts);
         return (
           Boolean(drafts.aiApiKey.trim()) ||
-          drafts.aiApiEndpoint !== settings.aiApiEndpoint ||
+          draftAiEndpoint !== settings.aiApiEndpoint ||
+          drafts.aiModel.trim() !== settings.aiModel ||
           drafts.aiResponseLanguage !== settings.aiResponseLanguage
         );
       }
@@ -379,6 +436,7 @@ export const AccountSettingsDrawer = () => {
                   data: {
                     apiKey: getSecretUpdateValue('aiApiKey'),
                     apiEndpoint: drafts.aiApiEndpoint,
+                    model: drafts.aiModel.trim(),
                     responseLanguage: drafts.aiResponseLanguage,
                   },
                 }
@@ -440,6 +498,19 @@ export const AccountSettingsDrawer = () => {
       setSavingSection(null);
     }
   };
+
+  const selectedAiEndpointOption = AI_ENDPOINT_OPTIONS.some(
+    (option) => option.value === drafts.aiApiEndpoint,
+  )
+    ? drafts.aiApiEndpoint
+    : AI_CUSTOM_ENDPOINT_VALUE;
+  const effectiveAiEndpoint = getDraftAiEndpoint(drafts);
+  const hasPresetAiModels = hasPresetAiModelsForEndpoint(effectiveAiEndpoint);
+  const aiModelOptions = getAiModelOptionsForEndpoint(effectiveAiEndpoint);
+  const selectedAiModelOption = getSelectedAiModelOption(
+    drafts.aiModel,
+    effectiveAiEndpoint,
+  );
 
   const renderEditableField = ({
     label,
@@ -553,14 +624,17 @@ export const AccountSettingsDrawer = () => {
                 </Flex>
               ) : (
                 <Stack gap={5}>
-                  <Box>
-                    <Text fontSize="sm" color="gray.400">
-                      Signed in as
-                    </Text>
-                    <Text fontSize="lg" fontWeight="600">
+                  <Text fontSize="sm" color="gray.400">
+                    Signed in as{' '}
+                    <Text
+                      as="span"
+                      fontSize="sm"
+                      fontWeight="600"
+                      color="gray.100"
+                    >
                       {settings.userName || 'Unknown user'}
                     </Text>
-                  </Box>
+                  </Text>
 
                   <Box
                     borderWidth="1px"
@@ -617,19 +691,22 @@ export const AccountSettingsDrawer = () => {
                       <Field.Root>
                         <Field.Label>AI_API_ENDPOINT</Field.Label>
                         <select
-                          value={drafts.aiApiEndpoint}
-                          onChange={(event) =>
-                            updateDraft('aiApiEndpoint', event.target.value)
-                          }
-                          style={{
-                            height: '40px',
-                            padding: '0 12px',
-                            borderWidth: '1px',
-                            borderColor: 'rgba(255, 255, 255, 0.16)',
-                            borderRadius: '0.375rem',
-                            background: 'rgba(0, 0, 0, 0.32)',
-                            color: 'rgb(229, 231, 235)',
+                          value={selectedAiEndpointOption}
+                          onChange={(event) => {
+                            const nextValue = event.target.value;
+                            setDrafts((current) => ({
+                              ...current,
+                              aiApiEndpoint:
+                                nextValue === AI_CUSTOM_ENDPOINT_VALUE
+                                  ? ''
+                                  : nextValue,
+                              aiModel:
+                                nextValue === AI_CUSTOM_ENDPOINT_VALUE
+                                  ? ''
+                                  : normalizeAiModel('', nextValue),
+                            }));
                           }}
+                          style={DRAWER_SELECT_STYLE}
                         >
                           {AI_ENDPOINT_OPTIONS.map((option) => (
                             <option key={option.value} value={option.value}>
@@ -637,7 +714,67 @@ export const AccountSettingsDrawer = () => {
                             </option>
                           ))}
                         </select>
+                        <Text mt="2" fontSize="sm" color="gray.400">
+                          {effectiveAiEndpoint || 'Endpoint is not set yet.'}
+                        </Text>
                       </Field.Root>
+                      {selectedAiEndpointOption === AI_CUSTOM_ENDPOINT_VALUE ? (
+                        <Field.Root>
+                          <Field.Label>Custom AI API endpoint URL</Field.Label>
+                          <Input
+                            value={drafts.aiApiEndpoint}
+                            placeholder="https://your-openai-compatible-endpoint/v1"
+                            onChange={(event) =>
+                              updateDraft('aiApiEndpoint', event.target.value)
+                            }
+                          />
+                        </Field.Root>
+                      ) : null}
+                      {renderEditableField({
+                        label: 'AI_API_KEY',
+                        field: 'aiApiKey',
+                        placeholder: 'Enter a new AI API key',
+                      })}
+                      {hasPresetAiModels ? (
+                        <Field.Root>
+                          <Field.Label>AI_MODEL</Field.Label>
+                          <select
+                            value={selectedAiModelOption}
+                            onChange={(event) => {
+                              const nextValue = event.target.value;
+                              if (nextValue === AI_CUSTOM_MODEL_VALUE) {
+                                updateDraft('aiModel', '');
+                                return;
+                              }
+
+                              updateDraft('aiModel', nextValue);
+                            }}
+                            style={DRAWER_SELECT_STYLE}
+                          >
+                            {aiModelOptions.map((option) => (
+                              <option key={option.value} value={option.value}>
+                                {option.label}
+                              </option>
+                            ))}
+                            <option value={AI_CUSTOM_MODEL_VALUE}>
+                              Custom model
+                            </option>
+                          </select>
+                        </Field.Root>
+                      ) : null}
+                      {!hasPresetAiModels ||
+                      selectedAiModelOption === AI_CUSTOM_MODEL_VALUE ? (
+                        <Field.Root>
+                          <Field.Label>Custom AI model name</Field.Label>
+                          <Input
+                            value={drafts.aiModel}
+                            placeholder="Enter an OpenAI-compatible model name"
+                            onChange={(event) =>
+                              updateDraft('aiModel', event.target.value)
+                            }
+                          />
+                        </Field.Root>
+                      ) : null}
                       <Field.Root>
                         <Field.Label>AI_RESPONSE_LANGUAGE</Field.Label>
                         <select
@@ -648,15 +785,7 @@ export const AccountSettingsDrawer = () => {
                               event.target.value,
                             )
                           }
-                          style={{
-                            height: '40px',
-                            padding: '0 12px',
-                            borderWidth: '1px',
-                            borderColor: 'rgba(255, 255, 255, 0.16)',
-                            borderRadius: '0.375rem',
-                            background: 'rgba(0, 0, 0, 0.32)',
-                            color: 'rgb(229, 231, 235)',
-                          }}
+                          style={DRAWER_SELECT_STYLE}
                         >
                           {AI_RESPONSE_LANGUAGE_OPTIONS.map((option) => (
                             <option key={option.value} value={option.value}>
@@ -665,11 +794,6 @@ export const AccountSettingsDrawer = () => {
                           ))}
                         </select>
                       </Field.Root>
-                      {renderEditableField({
-                        label: 'AI_API_KEY',
-                        field: 'aiApiKey',
-                        placeholder: 'Enter a new AI API key',
-                      })}
                       <Flex justify="flex-end">
                         <Button
                           colorPalette="teal"

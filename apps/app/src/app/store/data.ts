@@ -5,6 +5,7 @@ import { useSearchParams } from 'next/navigation';
 import { KlineChartData, Interval, Filters, Provider } from '@tradejs/types';
 import { kline } from '@actions/kline';
 import { isWrongData, mergeData } from '@tradejs/core/data';
+import { normalizeEndToIntervalBoundary } from '@app/lib/klineWindow';
 
 interface DataState {
   data: Map<string, KlineChartData | null>;
@@ -23,6 +24,7 @@ interface DataRequest {
   interval: Interval;
   start: number;
   end: number;
+  cacheBucketEnd: number;
   cacheOnly: boolean;
 }
 
@@ -43,12 +45,28 @@ const toRequest = (filters: Filters, cacheOnly: boolean): DataRequest => {
     interval: filters.interval,
     start: filters.start,
     end: filters.end,
+    cacheBucketEnd: normalizeEndToIntervalBoundary(
+      filters.end,
+      filters.interval,
+    ),
     cacheOnly,
   };
 };
 
-const getRequestKey = ({ key, start, end, cacheOnly }: DataRequest) =>
-  `${key}_${start}_${end}_${cacheOnly ? 'cache' : 'live'}`;
+const getRequestKey = ({
+  key,
+  start,
+  cacheBucketEnd,
+  cacheOnly,
+}: DataRequest) =>
+  `${key}_${start}_${cacheBucketEnd}_${cacheOnly ? 'cache' : 'live'}`;
+
+const filterDataToWindow = (
+  data: KlineChartData,
+  start: number,
+  end: number,
+): KlineChartData =>
+  data.filter((candle) => candle.timestamp >= start && candle.timestamp <= end);
 
 const hasContinuityData = (data: KlineChartData) =>
   data.length > MIN_CACHED_CANDLES;
@@ -211,10 +229,18 @@ export const useData = (filters: Filters) => {
       ),
     [cacheOnly, end, interval, provider, start, symbol],
   );
-  const [fulfilledKey, setFulfilledKey] = useState<string | null>(null);
+  const requestKey = useMemo(() => getRequestKey(dataRequest), [dataRequest]);
+  const [fulfilledRequestKey, setFulfilledRequestKey] = useState<string | null>(
+    null,
+  );
   const storedData = useDataStore((s) => s.data.get(dataRequest.key));
+  const windowedData = useMemo(
+    () =>
+      filterDataToWindow(storedData ?? [], dataRequest.start, dataRequest.end),
+    [dataRequest.end, dataRequest.start, storedData],
+  );
 
-  const fulfilled = fulfilledKey === dataRequest.key;
+  const fulfilled = fulfilledRequestKey === requestKey;
 
   useEffect(() => {
     let cancelled = false;
@@ -222,7 +248,7 @@ export const useData = (filters: Filters) => {
     const updateData = async () => {
       if (!dataRequest.symbol) {
         if (!cancelled) {
-          setFulfilledKey(dataRequest.key);
+          setFulfilledRequestKey(requestKey);
         }
         return;
       }
@@ -230,7 +256,7 @@ export const useData = (filters: Filters) => {
       await fetchAndStoreData(dataRequest);
 
       if (!cancelled) {
-        setFulfilledKey(dataRequest.key);
+        setFulfilledRequestKey(requestKey);
       }
     };
 
@@ -239,11 +265,11 @@ export const useData = (filters: Filters) => {
     return () => {
       cancelled = true;
     };
-  }, [dataRequest]);
+  }, [dataRequest, requestKey]);
 
   return {
     key: dataRequest.key,
-    data: storedData ?? [],
+    data: windowedData,
     fulfilled,
   };
 };

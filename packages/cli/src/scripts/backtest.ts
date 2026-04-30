@@ -20,6 +20,7 @@ import {
   calculateStatsFull,
   createTestSuite,
   mergeConfigs,
+  parseTestName,
 } from '@tradejs/core/backtest';
 import { toJson } from '@tradejs/core/data';
 import {
@@ -38,6 +39,7 @@ import {
 import { setData, getData, redisKeys } from '@tradejs/infra/redis';
 import {
   Interval,
+  Item,
   OrderLog,
   PositionLogData,
   TestStat,
@@ -54,6 +56,7 @@ import { normalizeCliArgv } from '../lib/cliArgs';
 import { resolveTimeWindow } from '../lib/timeWindow';
 
 const MAX_PARALLEL = Math.min(os.cpus().length, 6);
+const DEFAULT_WORKER_HEAP_MB = 8192;
 
 args.example(
   ' yarn backtest -t 400 --cacheOnly',
@@ -112,6 +115,21 @@ const progressStep = Math.max(1, parseInt(String(flags.progressStep), 10));
 const testsLimit = Math.max(0, parseInt(String(flags.tests), 10));
 const testsSkip = Math.max(0, parseInt(String(flags.skip ?? 0), 10));
 const testItemTimeoutMs = 120_000;
+const workerHeapMb = Math.max(
+  256,
+  parseInt(
+    String(process.env.BACKTEST_WORKER_HEAP_MB ?? DEFAULT_WORKER_HEAP_MB),
+    10,
+  ) || DEFAULT_WORKER_HEAP_MB,
+);
+const effectiveParallel = Math.max(
+  1,
+  Math.min(
+    parseInt(String(flags.parallel), 10) || MAX_PARALLEL,
+    parseInt(String(process.env.BACKTEST_MAX_PARALLEL ?? MAX_PARALLEL), 10) ||
+      MAX_PARALLEL,
+  ),
+);
 const uuid = (len = 12) => randomUUID().slice(-len);
 const projectRoot =
   String(process.env.PROJECT_CWD || process.cwd()).trim() || process.cwd();
@@ -168,6 +186,7 @@ const resultArtifactsByTestName = new Map<string, TestResultArtifacts>();
 const artifactRefCountsByTestName = new Map<string, number>();
 const bestTickerTestNameBySymbol = new Map<string, string>();
 let topResultNames = new Set<string>();
+const persistedTestSummaryByKey = new Map<string, Item>();
 
 const userName = flags.user;
 const runStartedAt = Date.now();
@@ -458,6 +477,43 @@ const setTestData = async (
       expire: TTL_1M,
     },
   );
+
+  const { testId } = parseTestName(test.name);
+  persistedTestSummaryByKey.set(`${test.strategyName}:${test.name}`, {
+    value: test.name,
+    label: `${test.symbol}_${testId}`,
+    description: `${stat.netProfit || 0}$`,
+    data: {
+      netProfit: stat.netProfit || 0,
+      strategyName: test.strategyName,
+    },
+  });
+};
+
+const persistTestSummariesIndex = async () => {
+  const existing = (await getData(redisKeys.testSummaries(userName), [])) as
+    | Item[]
+    | null;
+  const mergedByKey = new Map<string, Item>();
+
+  for (const item of existing || []) {
+    const strategyName =
+      typeof item?.data?.strategyName === 'string'
+        ? item.data.strategyName
+        : '';
+    if (!strategyName || typeof item?.value !== 'string') {
+      continue;
+    }
+    mergedByKey.set(`${strategyName}:${item.value}`, item);
+  }
+
+  for (const [key, item] of persistedTestSummaryByKey) {
+    mergedByKey.set(key, item);
+  }
+
+  await setData(redisKeys.testSummaries(userName), [...mergedByKey.values()], {
+    expire: 0,
+  });
 };
 
 const backtest = async () => {
@@ -627,7 +683,7 @@ const backtest = async () => {
 
   testsStartedAt = Date.now();
 
-  const chunkSize = Math.ceil(testSuite.length / parseInt(flags.parallel));
+  const chunkSize = Math.ceil(testSuite.length / effectiveParallel);
   const chunks = _.chunk(testSuite, chunkSize);
   let completedTests = 0;
   let isFinishing = false;
@@ -665,6 +721,9 @@ const backtest = async () => {
 
   console.log(chalk.yellow(`tests: ${testSuite.length}`));
   console.log(
+    chalk.gray(`parallel: ${effectiveParallel}, workerHeapMb: ${workerHeapMb}`),
+  );
+  console.log(
     chalk.gray(
       `window: ${formatUnix(window.start)} -> ${formatUnix(window.end)} (${formatWindowDays(window.start, window.end)}d, ${window.source})`,
     ),
@@ -690,13 +749,13 @@ const backtest = async () => {
     const tester = fork(testerWorkerPath, [], {
       execArgv: testerNeedsTsRuntime
         ? [
-            '--max-old-space-size=8192',
+            `--max-old-space-size=${workerHeapMb}`,
             '-r',
             'ts-node/register',
             '-r',
             'tsconfig-paths/register',
           ]
-        : ['--max-old-space-size=8192'],
+        : [`--max-old-space-size=${workerHeapMb}`],
     });
     workers.add(tester);
 
@@ -885,6 +944,7 @@ const finish = async () => {
   } else {
     await saveAndPrintResultsByTickers();
   }
+  await persistTestSummariesIndex();
   console.log(
     chalk.gray(`tests run: done in ${formatDuration(testsStartedAt)}`),
   );

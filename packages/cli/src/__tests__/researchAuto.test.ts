@@ -292,4 +292,83 @@ describe('research:auto helpers', () => {
     });
     expect(mockLoggerInfo).toHaveBeenCalled();
   });
+
+  it('keeps only the configured tail of stdout/stderr by default', async () => {
+    const stdoutHandlers: Record<string, (value: Buffer) => void> = {};
+    const stderrHandlers: Record<string, (value: Buffer) => void> = {};
+    const childHandlers: Record<string, (...args: any[]) => void> = {};
+
+    mockSpawn.mockReturnValue({
+      stdout: {
+        on: (event: string, handler: (value: Buffer) => void) => {
+          stdoutHandlers[event] = handler;
+        },
+      },
+      stderr: {
+        on: (event: string, handler: (value: Buffer) => void) => {
+          stderrHandlers[event] = handler;
+        },
+      },
+      on: (event: string, handler: (...args: any[]) => void) => {
+        childHandlers[event] = handler;
+      },
+    });
+
+    const pending = runCliCommand({
+      command: 'backtest',
+      args: [],
+      tailLimit: 512,
+    });
+
+    stdoutHandlers.data?.(Buffer.from('a'.repeat(400)));
+    stdoutHandlers.data?.(Buffer.from('b'.repeat(400)));
+    stderrHandlers.data?.(Buffer.from('c'.repeat(520)));
+    childHandlers.close?.(0);
+
+    await expect(pending).resolves.toMatchObject({
+      exitCode: 0,
+      stdout: `${'a'.repeat(112)}${'b'.repeat(400)}`,
+      stderr: 'c'.repeat(512),
+    });
+  });
+
+  it('captures full stdout/stderr when captureMode=full is requested', async () => {
+    const stdoutHandlers: Record<string, (value: Buffer) => void> = {};
+    const stderrHandlers: Record<string, (value: Buffer) => void> = {};
+    const childHandlers: Record<string, (...args: any[]) => void> = {};
+
+    mockSpawn.mockReturnValue({
+      stdout: {
+        on: (event: string, handler: (value: Buffer) => void) => {
+          stdoutHandlers[event] = handler;
+        },
+      },
+      stderr: {
+        on: (event: string, handler: (value: Buffer) => void) => {
+          stderrHandlers[event] = handler;
+        },
+      },
+      on: (event: string, handler: (...args: any[]) => void) => {
+        childHandlers[event] = handler;
+      },
+    });
+
+    const pending = runCliCommand({
+      command: 'ai-train',
+      args: ['--json'],
+      captureMode: 'full',
+      tailLimit: 5,
+    });
+
+    stdoutHandlers.data?.(Buffer.from('1234'));
+    stdoutHandlers.data?.(Buffer.from('56789'));
+    stderrHandlers.data?.(Buffer.from('abcdef'));
+    childHandlers.close?.(0);
+
+    await expect(pending).resolves.toMatchObject({
+      exitCode: 0,
+      stdout: '123456789',
+      stderr: 'abcdef',
+    });
+  });
 });

@@ -1,7 +1,8 @@
 'use server';
 
 import { NextResponse } from 'next/server';
-import { delKey, redisKeys } from '@tradejs/infra/redis';
+import { delKey, getData, redisKeys, setData } from '@tradejs/infra/redis';
+import { Item } from '@tradejs/types';
 import { logger } from '@tradejs/infra/logger';
 import { auth } from '@app/auth';
 
@@ -45,6 +46,22 @@ export const DELETE = async (
         { status: 404 },
       );
     }
+
+    const indexedItems = (await getData(
+      redisKeys.testSummaries(userName),
+      [],
+    )) as Item[];
+    const nextIndexedItems = indexedItems.filter(
+      (item) =>
+        !(
+          item?.value === name &&
+          typeof item?.data?.strategyName === 'string' &&
+          item.data.strategyName === strategy
+        ),
+    );
+    await setData(redisKeys.testSummaries(userName), nextIndexedItems, {
+      expire: 0,
+    });
 
     return NextResponse.json({ deleted: true, removedKeys });
   } catch (error) {

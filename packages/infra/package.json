@@ -39,6 +39,11 @@
       "import": "./dist/aiLanguages.mjs",
       "require": "./dist/aiLanguages.js"
     },
+    "./aiModels": {
+      "types": "./dist/aiModels.d.ts",
+      "import": "./dist/aiModels.mjs",
+      "require": "./dist/aiModels.js"
+    },
     "./files": {
       "types": "./dist/files.d.ts",
       "import": "./dist/files.mjs",

@@ -2,6 +2,7 @@ import bcrypt from 'bcryptjs';
 import { NextResponse } from 'next/server';
 import { normalizeAiResponseLanguage } from '@tradejs/infra/aiLanguages';
 import { normalizeAiEndpoint } from '@tradejs/infra/aiEndpoints';
+import { normalizeAiModel } from '@tradejs/infra/aiModels';
 import {
   getUserRecord,
   getUserSettings,
@@ -32,6 +33,7 @@ type UpdateBody =
       data?: {
         apiKey?: string;
         apiEndpoint?: string;
+        model?: string;
         responseLanguage?: string;
       };
     }
@@ -84,6 +86,7 @@ const toResponse = (settings: UserSettings) => ({
     ai: {
       apiKey: maskSecret(settings.AI_API_KEY),
       apiEndpoint: settings.AI_API_ENDPOINT,
+      model: settings.AI_MODEL,
       responseLanguage: settings.AI_RESPONSE_LANGUAGE,
     },
     telegram: {
@@ -178,9 +181,11 @@ export const PATCH = async (request: Request) => {
   }
 
   if (body.section === 'ai') {
+    const currentSettings = await getUserSettings(userName);
     const patch: Partial<UserRecord> = {};
     const apiKey = cleanOptionalText(body.data?.apiKey);
     const apiEndpoint = normalizeAiEndpoint(body.data?.apiEndpoint);
+    const effectiveEndpoint = apiEndpoint || currentSettings.AI_API_ENDPOINT;
     const responseLanguage = normalizeAiResponseLanguage(
       body.data?.responseLanguage,
     );
@@ -191,13 +196,21 @@ export const PATCH = async (request: Request) => {
 
     if (body.data && 'apiEndpoint' in body.data && !apiEndpoint) {
       return NextResponse.json(
-        { error: 'Unsupported AI API endpoint' },
+        { error: 'Invalid AI API endpoint URL' },
         { status: 400 },
       );
     }
 
     if (apiEndpoint) {
       patch.AI_API_ENDPOINT = apiEndpoint;
+    }
+
+    if (
+      body.data &&
+      ('apiEndpoint' in body.data || 'model' in body.data) &&
+      effectiveEndpoint
+    ) {
+      patch.AI_MODEL = normalizeAiModel(body.data?.model, effectiveEndpoint);
     }
 
     if (body.data && 'responseLanguage' in body.data) {

@@ -8,6 +8,7 @@ const getUserSettingsMock = jest.fn(async (userName = 'root') => ({
   COINALYZE_API_KEY: '',
   AI_API_KEY: 'key_123',
   AI_API_ENDPOINT: 'https://api.openai.com/v1',
+  AI_MODEL: 'gpt-5-mini',
   AI_RESPONSE_LANGUAGE: 'en',
   TG_BOT_TOKEN: 'tg-token',
   TG_CHAT_ID: 'tg-chat-id',
@@ -3594,6 +3595,44 @@ describe('ai helpers', () => {
       expect(invokeMock).toHaveBeenCalledTimes(2);
     });
 
+    it('uses the user-selected default model when no override is provided', async () => {
+      resetAiRuntimeCache();
+      getUserSettingsMock.mockResolvedValueOnce({
+        userName: 'root',
+        BYBIT_API_KEY: '',
+        BYBIT_API_SECRET: '',
+        COINALYZE_API_KEY: '',
+        AI_API_KEY: 'key_123',
+        AI_API_ENDPOINT: 'https://api.openai.com/v1',
+        AI_MODEL: 'gpt-5.2',
+        AI_RESPONSE_LANGUAGE: 'en',
+        TG_BOT_TOKEN: 'tg-token',
+        TG_CHAT_ID: 'tg-chat-id',
+      });
+      invokeMock.mockResolvedValue({
+        content: {
+          direction: 'LONG',
+          quality: 4,
+          needRetest: false,
+          retestPrice: null,
+          takeProfitPrice: 101.5,
+          stopLossPrice: 98.2,
+          comment: 'ok',
+        },
+      });
+
+      await runAiPrompt({
+        systemPrompt: 'system-1',
+        humanPrompt: 'human-1',
+      });
+
+      expect(chatOpenAICtorMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          modelName: 'gpt-5.2',
+        }),
+      );
+    });
+
     it('creates a separate client when model override changes', async () => {
       invokeMock.mockResolvedValue({
         content: {
@@ -3649,6 +3688,7 @@ describe('ai helpers', () => {
         COINALYZE_API_KEY: '',
         AI_API_KEY: 'key_123',
         AI_API_ENDPOINT: 'https://openrouter.ai/api/v1',
+        AI_MODEL: 'openai/gpt-5-mini',
         AI_RESPONSE_LANGUAGE: 'en',
         TG_BOT_TOKEN: 'tg-token',
         TG_CHAT_ID: 'tg-chat-id',

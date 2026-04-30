@@ -40,6 +40,7 @@ describe('user settings route', () => {
       COINALYZE_API_KEY: '',
       AI_API_KEY: 'openai-key-9876',
       AI_API_ENDPOINT: 'https://openrouter.ai/api/v1',
+      AI_MODEL: 'openai/gpt-5-mini',
       AI_RESPONSE_LANGUAGE: 'en',
       TG_BOT_TOKEN: '',
       TG_CHAT_ID: '12345',
@@ -71,6 +72,7 @@ describe('user settings route', () => {
         ai: {
           apiKey: '************9876',
           apiEndpoint: 'https://openrouter.ai/api/v1',
+          model: 'openai/gpt-5-mini',
           responseLanguage: 'en',
         },
         telegram: {
@@ -81,21 +83,84 @@ describe('user settings route', () => {
     });
   });
 
-  it('rejects unsupported ai endpoints and keeps route protected', async () => {
+  it('rejects invalid ai endpoints and keeps route protected', async () => {
     mockGetUserRecord.mockResolvedValue(null);
 
     const response = await PATCH({
       json: async () => ({
         section: 'ai',
         data: {
-          apiEndpoint: 'https://internal.example.local/v1',
+          apiEndpoint: 'not-a-url',
         },
       }),
     } as Request);
 
     expect(response.status).toBe(400);
     expect(response.body).toEqual({
-      error: 'Unsupported AI API endpoint',
+      error: 'Invalid AI API endpoint URL',
+    });
+    expect(mockUpdateUserRecord).not.toHaveBeenCalled();
+  });
+
+  it('stores an endpoint-specific default model when the ai endpoint changes', async () => {
+    mockGetUserRecord.mockResolvedValue(null);
+    mockGetUserSettings.mockResolvedValueOnce({
+      userName: 'alice',
+      BYBIT_API_KEY: '',
+      BYBIT_API_SECRET: '',
+      COINALYZE_API_KEY: '',
+      AI_API_KEY: 'openai-key-9876',
+      AI_API_ENDPOINT: 'https://api.openai.com/v1',
+      AI_MODEL: 'gpt-5-mini',
+      AI_RESPONSE_LANGUAGE: 'en',
+      TG_BOT_TOKEN: '',
+      TG_CHAT_ID: '12345',
+    });
+
+    await PATCH({
+      json: async () => ({
+        section: 'ai',
+        data: {
+          apiEndpoint: 'https://api.anthropic.com/v1',
+        },
+      }),
+    } as Request);
+
+    expect(mockUpdateUserRecord).toHaveBeenCalledWith('alice', {
+      AI_API_ENDPOINT: 'https://api.anthropic.com/v1',
+      AI_MODEL: 'claude-sonnet-4-20250514',
+    });
+  });
+
+  it('rejects localhost and private-network ai endpoints', async () => {
+    mockGetUserRecord.mockResolvedValue(null);
+
+    const localhostResponse = await PATCH({
+      json: async () => ({
+        section: 'ai',
+        data: {
+          apiEndpoint: 'https://localhost:11434/v1',
+        },
+      }),
+    } as Request);
+
+    expect(localhostResponse.status).toBe(400);
+    expect(localhostResponse.body).toEqual({
+      error: 'Invalid AI API endpoint URL',
+    });
+
+    const privateNetworkResponse = await PATCH({
+      json: async () => ({
+        section: 'ai',
+        data: {
+          apiEndpoint: 'https://192.168.1.10/v1',
+        },
+      }),
+    } as Request);
+
+    expect(privateNetworkResponse.status).toBe(400);
+    expect(privateNetworkResponse.body).toEqual({
+      error: 'Invalid AI API endpoint URL',
     });
     expect(mockUpdateUserRecord).not.toHaveBeenCalled();
   });

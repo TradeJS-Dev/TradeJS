@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { Item, TestStat } from '@tradejs/types';
 import { parseTestName } from '@tradejs/core/backtest';
-import { getData, getKeys, redisKeys } from '@tradejs/infra/redis';
+import { getData, getKeys, redisKeys, setData } from '@tradejs/infra/redis';
 import { logger } from '@tradejs/infra/logger';
 import { auth } from '@app/auth';
 
@@ -17,6 +17,15 @@ export const GET = async () => {
     }
 
     const result = new Array<Item>();
+    const indexedItems = (await getData(
+      redisKeys.testSummaries(userName),
+      null,
+    )) as Item[] | null;
+
+    if (Array.isArray(indexedItems) && indexedItems.length) {
+      return NextResponse.json({ items: indexedItems });
+    }
+
     const testsPrefix = redisKeys.tests(userName);
     const keys = await getKeys(testsPrefix);
     const configKeys = keys.filter((key) => key.endsWith(':config'));
@@ -48,6 +57,8 @@ export const GET = async () => {
         },
       });
     }
+
+    await setData(redisKeys.testSummaries(userName), result, { expire: 0 });
 
     return NextResponse.json({ items: result });
   } catch (error) {

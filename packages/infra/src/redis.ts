@@ -400,6 +400,7 @@ export const redisKeys = {
     `users:${userName}:tests:${strategyName}:${testName}:config`,
   testStat: (userName: string, strategyName: string, testName: string) =>
     `users:${userName}:tests:${strategyName}:${testName}:stat`,
+  testSummaries: (userName: string) => `users:${userName}:tests:index:summary`,
   cacheChunk: (userName: string, chunkId: string) =>
     `users:${userName}:cache:tests:chunks:${chunkId}`,
   cacheOrders: (userName: string, orderLogId: string) =>

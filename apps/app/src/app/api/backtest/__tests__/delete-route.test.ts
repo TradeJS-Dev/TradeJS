@@ -1,5 +1,7 @@
 const mockAuth = jest.fn();
 const mockDelKey = jest.fn();
+const mockGetData = jest.fn();
+const mockSetData = jest.fn();
 
 jest.mock('next/server', () => ({
   NextResponse: {
@@ -22,10 +24,13 @@ jest.mock('@tradejs/infra/logger', () => ({
 
 jest.mock('@tradejs/infra/redis', () => ({
   delKey: (...args: unknown[]) => mockDelKey(...args),
+  getData: (...args: unknown[]) => mockGetData(...args),
+  setData: (...args: unknown[]) => mockSetData(...args),
   redisKeys: {
     testConfig: (u: string, s: string, n: string) => `config:${u}:${s}:${n}`,
     testStat: (u: string, s: string, n: string) => `stat:${u}:${s}:${n}`,
     testOrders: (u: string, s: string, n: string) => `orders:${u}:${s}:${n}`,
+    testSummaries: (u: string) => `summaries:${u}`,
   },
 }));
 
@@ -34,6 +39,8 @@ import { DELETE } from '../test/[strategy]/[name]/route';
 describe('backtest delete route', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockGetData.mockResolvedValue([]);
+    mockSetData.mockResolvedValue(undefined);
   });
 
   it('returns 400 when params are missing', async () => {
@@ -68,6 +75,16 @@ describe('backtest delete route', () => {
 
   it('deletes test keys and returns 200', async () => {
     mockAuth.mockResolvedValue({ user: { id: 'alice' } });
+    mockGetData.mockResolvedValue([
+      {
+        value: 't1',
+        data: { strategyName: 'TrendLine' },
+      },
+      {
+        value: 't2',
+        data: { strategyName: 'Breakout' },
+      },
+    ]);
     mockDelKey
       .mockResolvedValueOnce(true)
       .mockResolvedValueOnce(false)
@@ -78,6 +95,16 @@ describe('backtest delete route', () => {
     });
 
     expect(mockDelKey).toHaveBeenCalledTimes(3);
+    expect(mockSetData).toHaveBeenCalledWith(
+      'summaries:alice',
+      [
+        {
+          value: 't2',
+          data: { strategyName: 'Breakout' },
+        },
+      ],
+      { expire: 0 },
+    );
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ deleted: true, removedKeys: 2 });
   });

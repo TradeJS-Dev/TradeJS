@@ -322,6 +322,23 @@ const aiModelCache = new Map<string, Promise<AiModel>>();
 const getAiModelCacheKey = (userName: string, modelName: string) =>
   `${userName}::${modelName}`;
 
+const resolveAiModelName = (
+  settings: UserSettings,
+  requestedModelName?: string,
+) => {
+  const explicitModelName =
+    typeof requestedModelName === 'string' ? requestedModelName.trim() : '';
+
+  if (explicitModelName) {
+    return explicitModelName;
+  }
+
+  const settingsModelName =
+    typeof settings.AI_MODEL === 'string' ? settings.AI_MODEL.trim() : '';
+
+  return settingsModelName || DEFAULT_AI_MODEL;
+};
+
 export const getOpenRouterModelKwargs = (
   apiEndpoint?: string | null,
 ): Record<string, unknown> => {
@@ -368,16 +385,15 @@ const getAiSettings = async (userName = 'root') => {
 
 const createAiModel = async (
   userName = 'root',
-  modelName = DEFAULT_AI_MODEL,
+  requestedModelName?: string,
 ) => {
+  const settings = await getAiSettings(userName);
+  const modelName = resolveAiModelName(settings, requestedModelName);
   const cacheKey = getAiModelCacheKey(userName, modelName);
   let modelPromise = aiModelCache.get(cacheKey);
   if (!modelPromise) {
     modelPromise = (async () => {
-      const [{ ChatOpenAI }, settings] = await Promise.all([
-        import('@langchain/openai'),
-        getAiSettings(userName),
-      ]);
+      const { ChatOpenAI } = await import('@langchain/openai');
       const modelKwargs = getOpenRouterModelKwargs(settings.AI_API_ENDPOINT);
 
       return new ChatOpenAI({
@@ -403,11 +419,14 @@ const createAiModel = async (
   return modelPromise;
 };
 
-const getAiModel = async (userName = 'root', modelName = DEFAULT_AI_MODEL) => {
+const getAiModel = async (userName = 'root', requestedModelName?: string) => {
+  const settings = await getAiSettings(userName);
+  const resolvedModelName = resolveAiModelName(settings, requestedModelName);
+
   try {
-    return await createAiModel(userName, modelName);
+    return await createAiModel(userName, resolvedModelName);
   } catch (error) {
-    aiModelCache.delete(getAiModelCacheKey(userName, modelName));
+    aiModelCache.delete(getAiModelCacheKey(userName, resolvedModelName));
     userSettingsCache.delete(userName);
     throw error;
   }

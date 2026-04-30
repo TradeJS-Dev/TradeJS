@@ -58,6 +58,7 @@ describe('ai route', () => {
       userName: 'alice',
       AI_API_KEY: 'openai-key',
       AI_API_ENDPOINT: 'https://api.openai.com/v1',
+      AI_MODEL: 'gpt-5-mini',
       AI_RESPONSE_LANGUAGE: 'en',
     });
   });
@@ -144,5 +145,38 @@ describe('ai route', () => {
         text: 'AI response',
       },
     });
+  });
+
+  it('uses the user-selected ai model for chat replies', async () => {
+    const { ChatOpenAI } = jest.requireMock('@langchain/openai') as {
+      ChatOpenAI: jest.Mock;
+    };
+    mockGetData.mockResolvedValue([]);
+    mockSetData.mockResolvedValue(undefined);
+    mockGetConnectorCreatorByProvider.mockResolvedValue(() =>
+      Promise.resolve({
+        kline: async () => [{ close: 100 }],
+      }),
+    );
+    mockModelInvoke.mockResolvedValue({ content: 'AI response' });
+
+    await POST({
+      json: async () => ({
+        message: {
+          from: 'human',
+          command: 'prompt',
+          text: 'Trend?',
+        },
+        filters: {
+          symbol: 'ethusdt',
+        },
+      }),
+    } as any);
+
+    expect(ChatOpenAI).toHaveBeenCalledWith(
+      expect.objectContaining({
+        modelName: 'gpt-5-mini',
+      }),
+    );
   });
 });

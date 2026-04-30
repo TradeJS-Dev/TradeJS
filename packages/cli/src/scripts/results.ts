@@ -76,6 +76,38 @@ const toStrategyResults = (rows: Iterable<BestResult>): StrategyResults =>
   );
 
 const getTestConfigs = async (userName: string) => {
+  const testSummariesKey =
+    typeof (redisKeys as { testSummaries?: unknown }).testSummaries ===
+    'function'
+      ? (
+          redisKeys as {
+            testSummaries: (value: string) => string;
+          }
+        ).testSummaries(userName)
+      : null;
+  const indexedItems = testSummariesKey
+    ? ((await getData(testSummariesKey, null)) as Array<{
+        value?: string;
+        data?: { strategyName?: string };
+      }> | null)
+    : null;
+
+  if (Array.isArray(indexedItems) && indexedItems.length) {
+    return indexedItems
+      .map((item) => {
+        const testName = typeof item?.value === 'string' ? item.value : null;
+        const strategyName =
+          typeof item?.data?.strategyName === 'string'
+            ? item.data.strategyName
+            : null;
+        if (!testName || !strategyName) {
+          return null;
+        }
+        return { strategyName, testName };
+      })
+      .filter(Boolean) as Array<{ strategyName: string; testName: string }>;
+  }
+
   const testsPrefix = redisKeys.tests(userName);
   const keys = await getKeys(testsPrefix);
   const configKeys = keys.filter((key) => key.endsWith(':config'));

@@ -27,6 +27,7 @@ const makeRedisKeys = () => ({
     `users:${userName}:tests:${strategyName}:${testName}:config`,
   testStat: (userName: string, strategyName: string, testName: string) =>
     `users:${userName}:tests:${strategyName}:${testName}:stat`,
+  testSummaries: (userName: string) => `users:${userName}:tests:index:summary`,
   strategyResults: (userName: string, strategyName: string) =>
     `users:${userName}:strategies:${strategyName}:results`,
 });
@@ -41,6 +42,9 @@ const loadScript = async (scenario: Scenario) => {
   const getData = jest.fn(async (key: string, fallback: any) => {
     if (key in scenario.testConfigs) return scenario.testConfigs[key];
     if (key in scenario.testStats) return scenario.testStats[key];
+    if (key === redisKeys.testSummaries('root')) {
+      return fallback;
+    }
     if (key === redisKeys.strategyResults('root', 'TrendLine')) {
       return scenario.currentResults ?? fallback;
     }
@@ -182,6 +186,125 @@ describe('results script', () => {
 
     expect(mocks.setData).toHaveBeenCalledWith(
       mocks.redisKeys.strategyResults(userName, 'TrendLine'),
+      {
+        BTCUSDT: {
+          config: { TP: 2, SL: 1 },
+          stats: {
+            totalReturn: 10,
+            periodMonths: 1,
+            winRate: 60,
+            ordersPerMonth: 2,
+            orders: 12,
+          },
+        },
+      },
+      { expire: 0 },
+    );
+  });
+
+  it('uses indexed summaries when available instead of scanning raw config keys', async () => {
+    jest.resetModules();
+
+    const redisKeys = makeRedisKeys();
+    const getKeys = jest.fn(async () => []);
+    const setData = jest.fn(async () => null);
+    const delKey = jest.fn(async () => 0);
+    const getData = jest.fn(async (key: string, fallback: any) => {
+      if (key === redisKeys.testSummaries('root')) {
+        return [
+          { value: 't1', data: { strategyName: 'TrendLine' } },
+          { value: 't2', data: { strategyName: 'Breakout' } },
+        ];
+      }
+      if (key === redisKeys.testConfig('root', 'TrendLine', 't1')) {
+        return {
+          strategyName: 'TrendLine',
+          symbol: 'BTCUSDT',
+          strategyConfig: { TP: 2, SL: 1 },
+        };
+      }
+      if (key === redisKeys.testStat('root', 'TrendLine', 't1')) {
+        return {
+          totalReturn: 10,
+          periodMonths: 1,
+          winRate: 60,
+          ordersPerMonth: 2,
+          orders: 12,
+        };
+      }
+      if (key === redisKeys.testConfig('root', 'Breakout', 't2')) {
+        return {
+          strategyName: 'Breakout',
+          symbol: 'ETHUSDT',
+          strategyConfig: { TP: 1, SL: 1 },
+        };
+      }
+      if (key === redisKeys.testStat('root', 'Breakout', 't2')) {
+        return {
+          totalReturn: 8,
+          periodMonths: 1,
+          winRate: 65,
+          ordersPerMonth: 2,
+          orders: 9,
+        };
+      }
+      return fallback;
+    });
+
+    jest.doMock('args', () => ({
+      __esModule: true,
+      default: {
+        example: jest.fn(),
+        option: jest.fn(),
+        parse: jest.fn(() => ({
+          strategy: 'TrendLine',
+          user: 'root',
+          coverage: false,
+          update: true,
+          merge: false,
+          clear: false,
+          verbose: false,
+        })),
+      },
+    }));
+
+    jest.doMock('chalk', () => ({
+      __esModule: true,
+      default: {
+        red: (s: string) => s,
+        green: (s: string) => s,
+        yellow: (s: string) => s,
+        blue: (s: string) => s,
+        magenta: (s: string) => s,
+        gray: (s: string) => s,
+      },
+    }));
+
+    jest.doMock('@tradejs/connectors', () => ({
+      connectors: {
+        ByBit: jest.fn(async () => ({})),
+      },
+    }));
+
+    jest.doMock('@tradejs/node/cli', () => ({
+      ...jest.requireActual('@tradejs/node/cli'),
+      getTickers: jest.fn(async () => []),
+    }));
+
+    jest.doMock('@tradejs/infra/redis', () => ({
+      getData,
+      getKeys,
+      setData,
+      delKey,
+      redisKeys,
+    }));
+
+    const module = await import('../scripts/results');
+    await module.results();
+
+    expect(getKeys).not.toHaveBeenCalled();
+    expect(setData).toHaveBeenCalledWith(
+      redisKeys.strategyResults('root', 'TrendLine'),
       {
         BTCUSDT: {
           config: { TP: 2, SL: 1 },

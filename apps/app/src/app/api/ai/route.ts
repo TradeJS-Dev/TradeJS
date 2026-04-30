@@ -7,7 +7,7 @@ import {
 } from '@langchain/core/messages';
 import { toJson } from '@tradejs/core/data';
 import { getAiResponseLanguagePromptName } from '@tradejs/infra/aiLanguages';
-import { getOpenRouterModelKwargs } from '@tradejs/node/ai';
+import { DEFAULT_AI_MODEL, getOpenRouterModelKwargs } from '@tradejs/node/ai';
 import { getConnectorCreatorByProvider } from '@tradejs/node/connectors';
 import {
   AIChatHistory,
@@ -105,7 +105,7 @@ const invokeChatModel = async (messages: BaseMessage[], userName: string) => {
 
   const model = new ChatOpenAI({
     temperature: 0.7,
-    modelName: 'gpt-4o',
+    modelName: settings.AI_MODEL || DEFAULT_AI_MODEL,
     apiKey: settings.AI_API_KEY,
     ...(Object.keys(modelKwargs).length ? { modelKwargs } : {}),
     configuration: {

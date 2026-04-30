@@ -338,6 +338,8 @@ export const runCliCommand = async (params: {
   node8g?: boolean;
   liveLogPrefix?: string;
   heartbeatMs?: number;
+  captureMode?: 'tail' | 'full';
+  tailLimit?: number;
 }): Promise<{
   exitCode: number;
   stdout: string;
@@ -345,6 +347,8 @@ export const runCliCommand = async (params: {
   durationMs: number;
 }> => {
   const startedAt = Date.now();
+  const captureMode = params.captureMode || 'tail';
+  const tailLimit = Math.max(512, params.tailLimit || 16_384);
   const env = {
     ...process.env,
     PROJECT_CWD: projectRoot,
@@ -376,6 +380,15 @@ export const runCliCommand = async (params: {
     let stderr = '';
     let heartbeatTimer: NodeJS.Timeout | null = null;
 
+    const appendChunk = (current: string, incoming: string) => {
+      if (captureMode === 'full') {
+        return current + incoming;
+      }
+
+      const next = current + incoming;
+      return next.length <= tailLimit ? next : next.slice(-tailLimit);
+    };
+
     const emitLines = (source: 'stdout' | 'stderr', text: string) => {
       const prefix = params.liveLogPrefix
         ? `[research:auto:${params.liveLogPrefix}:${source}] `
@@ -401,14 +414,14 @@ export const runCliCommand = async (params: {
 
     child.stdout.on('data', (chunk) => {
       const text = chunk.toString();
-      stdout += text;
+      stdout = appendChunk(stdout, text);
       if (params.liveLogPrefix) {
         emitLines('stdout', text);
       }
     });
     child.stderr.on('data', (chunk) => {
       const text = chunk.toString();
-      stderr += text;
+      stderr = appendChunk(stderr, text);
       if (params.liveLogPrefix) {
         emitLines('stderr', text);
       }
@@ -527,7 +540,12 @@ const executeNonBlockingStep = async (
   stepName: ResearchStepName,
   command: string,
   commandArgs: string[],
-  options: { node8g?: boolean; liveLog?: boolean; heartbeatMs?: number } = {},
+  options: {
+    node8g?: boolean;
+    liveLog?: boolean;
+    heartbeatMs?: number;
+    captureMode?: 'tail' | 'full';
+  } = {},
 ) => {
   logResearch(
     `starting optional step ${stepName}: ${command} ${commandArgs.join(' ')}`.trim(),
@@ -547,6 +565,7 @@ const executeNonBlockingStep = async (
     node8g: options.node8g,
     liveLogPrefix: options.liveLog ? stepName : undefined,
     heartbeatMs: options.liveLog ? options.heartbeatMs || 60_000 : undefined,
+    captureMode: options.captureMode,
   });
 
   run.steps[stepName] = {
@@ -615,7 +634,12 @@ const main = async () => {
     stepName: ResearchStepName,
     command: string,
     commandArgs: string[],
-    options: { node8g?: boolean; liveLog?: boolean; heartbeatMs?: number } = {},
+    options: {
+      node8g?: boolean;
+      liveLog?: boolean;
+      heartbeatMs?: number;
+      captureMode?: 'tail' | 'full';
+    } = {},
   ) => {
     logResearch(
       `starting step ${stepName}: ${command} ${commandArgs.join(' ')}`.trim(),
@@ -635,6 +659,7 @@ const main = async () => {
       node8g: options.node8g,
       liveLogPrefix: options.liveLog ? stepName : undefined,
       heartbeatMs: options.liveLog ? options.heartbeatMs || 60_000 : undefined,
+      captureMode: options.captureMode,
     });
 
     run.steps[stepName] = {
@@ -796,7 +821,7 @@ const main = async () => {
         '--localOnly',
         '--json',
       ],
-      { node8g: true },
+      { node8g: true, captureMode: 'full' },
     );
 
     const backtestKeysAfter = await getKeys(
@@ -865,7 +890,12 @@ const main = async () => {
           run.strategy,
           '--json',
         ],
-        { node8g: true, liveLog: true, heartbeatMs: 30_000 },
+        {
+          node8g: true,
+          liveLog: true,
+          heartbeatMs: 30_000,
+          captureMode: 'full',
+        },
       );
 
       try {
