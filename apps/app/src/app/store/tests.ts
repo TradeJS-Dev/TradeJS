@@ -16,6 +16,8 @@ import { parseTestName } from '@tradejs/core/backtest';
 
 const COMPARE_LOCAL_STORAGE_KEY = 'compare';
 const FAVORITE_LOCAL_STORAGE_KEY = 'favorite';
+const BACKTEST_FILES_CACHE_KEY = 'backtest-files';
+const BACKTEST_FILES_CACHE_TTL_MS = 5 * 60 * 1000;
 
 const COLORS = [
   'purple',
@@ -27,6 +29,14 @@ const COLORS = [
   'blue',
   'green',
 ];
+
+type BacktestFilesCacheRecord = {
+  savedAt: number;
+  items: Items;
+};
+
+const isFresh = (savedAt: number) =>
+  Date.now() - savedAt < BACKTEST_FILES_CACHE_TTL_MS;
 
 interface BacktestState {
   backtests: Map<string, OrderLogData | null>;
@@ -100,15 +110,26 @@ const useFavoriteTetstsStore = create<FavotiteTestsState>()(
 
 interface TestListState {
   tests: Items;
-  setTest: (tests: Items) => void;
+  loadedAt: number;
+  inFlight?: Promise<Items>;
+  setTest: (tests: Items, loadedAt?: number) => void;
+  setInFlight: (request?: Promise<Items>) => void;
   removeTest: (testName: string) => void;
 }
 
 const useTestListStore = create<TestListState>((set) => ({
   tests: [],
-  setTest: (tests) =>
+  loadedAt: 0,
+  inFlight: undefined,
+  setTest: (tests, loadedAt = Date.now()) =>
     set(() => ({
       tests,
+      loadedAt,
+      inFlight: undefined,
+    })),
+  setInFlight: (request) =>
+    set(() => ({
+      inFlight: request,
     })),
   removeTest: (testName) =>
     set(({ tests }) => ({
@@ -184,6 +205,44 @@ const useTestsStore = create<TestsState>((set) => ({
     }),
 }));
 
+const loadBacktestFilesList = async () => {
+  const { tests, loadedAt, inFlight, setInFlight, setTest } =
+    useTestListStore.getState();
+
+  if (loadedAt > 0 && isFresh(loadedAt)) {
+    return tests;
+  }
+
+  if (inFlight) {
+    return inFlight;
+  }
+
+  const pending = (async () => {
+    const cached = (await get(
+      BACKTEST_FILES_CACHE_KEY,
+    )) as BacktestFilesCacheRecord | null;
+
+    if (cached?.savedAt && isFresh(cached.savedAt)) {
+      setTest(cached.items, cached.savedAt);
+      return cached.items;
+    }
+
+    const newTests = await getBacktestFiles();
+    const savedAt = Date.now();
+    setTest(newTests, savedAt);
+    await set(BACKTEST_FILES_CACHE_KEY, {
+      savedAt,
+      items: newTests,
+    } satisfies BacktestFilesCacheRecord);
+    return newTests;
+  })().finally(() => {
+    useTestListStore.getState().setInFlight(undefined);
+  });
+
+  setInFlight(pending);
+  return pending;
+};
+
 export const useFavoriteTests = () => {
   const favotites = useFavoriteTetstsStore((s) => s.tests);
   const toggleFavorite = useFavoriteTetstsStore((s) => s.toggleFavorite);
@@ -215,14 +274,15 @@ export const useFavoriteTests = () => {
 
 interface TestListProps {
   symbol?: string;
+  enabled?: boolean;
 }
 
 export const useTestList = (filters: TestListProps = {}) => {
+  const { enabled = true } = filters;
   const [loadding, setLoading] = useState(false);
   const [fulFilled, setFulfilled] = useState(false);
   const [error, setError] = useState<unknown>(null);
   const tests = useTestListStore((s) => s.tests);
-  const setTest = useTestListStore((s) => s.setTest);
   const { favoriteItems } = useFavoriteTests();
 
   const testStrategyMap = new Map(
@@ -266,22 +326,24 @@ export const useTestList = (filters: TestListProps = {}) => {
   const noData = _.isEmpty(testItems);
 
   useEffect(() => {
+    if (!enabled) {
+      return;
+    }
+
     const loadData = async () => {
       try {
         setLoading(true);
         await delay();
-        const newTests = await getBacktestFiles();
+        await loadBacktestFilesList();
         setLoading(false);
         setFulfilled(true);
-
-        setTest(newTests);
       } catch (err) {
         setError(err);
       }
     };
 
     void loadData();
-  }, [setTest]);
+  }, [enabled]);
 
   return {
     loadding,
@@ -289,6 +351,7 @@ export const useTestList = (filters: TestListProps = {}) => {
     error,
     noData,
     tests: testItems,
+    ensureLoaded: loadBacktestFilesList,
   };
 };
 
@@ -318,7 +381,7 @@ export const useTest = (testName: string) => {
 
       let resolvedStrategy = strategyName;
       if (!resolvedStrategy) {
-        const newTests = await getBacktestFiles();
+        const newTests = await loadBacktestFilesList();
         setTestList(newTests);
         resolvedStrategy = newTests.find((item) => item.value === testName)
           ?.data?.strategyName as string | undefined;
@@ -400,6 +463,16 @@ export const useBacktestMutations = () => {
     removeFavorite(testName);
     removeFromCompare(testName);
 
+    const cache = (await get(
+      BACKTEST_FILES_CACHE_KEY,
+    )) as BacktestFilesCacheRecord | null;
+    if (cache?.items) {
+      await set(BACKTEST_FILES_CACHE_KEY, {
+        ...cache,
+        items: cache.items.filter((item) => item.value !== testName),
+      } satisfies BacktestFilesCacheRecord);
+    }
+
     await Promise.all([del(`test-${testName}`), del(`backtest-${testName}`)]);
   };
 
@@ -438,7 +511,7 @@ export const useBacktest = (id: string | undefined) => {
 
       let resolvedStrategy = strategyName;
       if (!resolvedStrategy) {
-        const newTests = await getBacktestFiles();
+        const newTests = await loadBacktestFilesList();
         setTestList(newTests);
         resolvedStrategy = newTests.find((item) => item.value === id)?.data
           ?.strategyName as string | undefined;
@@ -461,4 +534,18 @@ export const useBacktest = (id: string | undefined) => {
     backtest: backtest || [],
     loading,
   };
+};
+
+export const resetTestsStoreForTests = () => {
+  useDataStore.setState({
+    backtests: new Map<string, OrderLogData | null>(),
+  });
+  useTestListStore.setState({
+    tests: [],
+    loadedAt: 0,
+    inFlight: undefined,
+  });
+  useTestsStore.setState({
+    tests: new Map<string, TestResult | null>(),
+  });
 };

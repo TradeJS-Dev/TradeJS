@@ -11,8 +11,14 @@ import { Interval, OnChangeFilters, Provider } from '@tradejs/types';
 const Dashboard = () => {
   const searchParams = useSearchParams();
   const { filters, setFilters } = useFilters();
-  const { tickers } = useTickers(filters.provider || 'bybit');
-  const { tests } = useTestList({ symbol: filters.symbol });
+  const { tickers, ensureLoaded: ensureTickersLoaded } = useTickers(
+    filters.provider || 'bybit',
+    { enabled: false },
+  );
+  const { tests, ensureLoaded: ensureBacktestsLoaded } = useTestList({
+    symbol: filters.symbol,
+    enabled: false,
+  });
   const hasBacktestId = searchParams.has('backtestId');
   const hasBacktestStrategy = searchParams.has('backtestStrategy');
   const backtestId = searchParams.get('backtestId');
@@ -103,6 +109,8 @@ const Dashboard = () => {
             tickers={tickers}
             backtestFiles={tests}
             onChangeFilters={onChangeFilters}
+            ensureTickersLoaded={ensureTickersLoaded}
+            ensureBacktestsLoaded={ensureBacktestsLoaded}
           >
             <Flex mb={2} gap={4} alignItems="center" flexDirection="row">
               <Filters.SelectProvider />

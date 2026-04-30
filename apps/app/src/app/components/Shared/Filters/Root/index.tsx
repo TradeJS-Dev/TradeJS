@@ -9,6 +9,8 @@ interface RootProps {
   backtestFiles: Items;
   filters: UIFilters;
   onChangeFilters?: OnChangeFilters;
+  ensureTickersLoaded?: () => void | Promise<unknown>;
+  ensureBacktestsLoaded?: () => void | Promise<unknown>;
 }
 
 export const Root = ({
@@ -16,11 +18,20 @@ export const Root = ({
   tickers,
   backtestFiles,
   onChangeFilters,
+  ensureTickersLoaded,
+  ensureBacktestsLoaded,
   children,
 }: PropsWithChildren<RootProps>) => {
   return (
     <FiltersContext.Provider
-      value={{ filters, tickers, backtestFiles, onChangeFilters }}
+      value={{
+        filters,
+        tickers,
+        backtestFiles,
+        onChangeFilters,
+        ensureTickersLoaded,
+        ensureBacktestsLoaded,
+      }}
     >
       {children}
     </FiltersContext.Provider>

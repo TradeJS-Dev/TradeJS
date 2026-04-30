@@ -6,6 +6,8 @@ interface FiltersContextProps {
   tickers: Items;
   backtestFiles: Items;
   onChangeFilters?: OnChangeFilters;
+  ensureTickersLoaded?: () => void | Promise<unknown>;
+  ensureBacktestsLoaded?: () => void | Promise<unknown>;
 }
 
 export const FiltersContext = createContext<FiltersContextProps>(

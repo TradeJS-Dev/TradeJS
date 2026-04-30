@@ -23,6 +23,7 @@ interface SelectWithSearchProps {
   multiple?: boolean;
   size?: 'xs' | 'sm' | 'md' | 'lg';
   onChange?: (value: string[]) => void;
+  onOpenChange?: (open: boolean) => void;
 }
 
 export const SelectWithSearch = ({
@@ -35,6 +36,7 @@ export const SelectWithSearch = ({
   width = '320px',
   size = 'sm',
   onChange,
+  onOpenChange,
 }: SelectWithSearchProps) => {
   const { contains } = useFilter({ sensitivity: 'base' });
   const [inputValue, setInputValue] = useState(
@@ -61,6 +63,7 @@ export const SelectWithSearch = ({
         setInputValue(e.inputValue);
       }}
       onOpenChange={(details) => {
+        onOpenChange?.(details.open);
         if (details.open) {
           filter('');
           setInputValue('');

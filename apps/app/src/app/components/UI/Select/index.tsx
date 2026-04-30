@@ -19,6 +19,7 @@ interface SelectProps {
   multiple?: boolean;
   size?: 'xs' | 'sm' | 'md' | 'lg';
   onChange?: (value: string[]) => void;
+  onOpenChange?: (open: boolean) => void;
 }
 
 export const Select = ({
@@ -30,6 +31,7 @@ export const Select = ({
   width = '320px',
   size = 'sm',
   onChange,
+  onOpenChange,
 }: SelectProps) => {
   const collection = useMemo(
     () =>
@@ -44,6 +46,7 @@ export const Select = ({
       collection={collection}
       {...(value ? { value } : { defaultValue })}
       onValueChange={(details) => onChange?.(details.value)}
+      onOpenChange={(details) => onOpenChange?.(details.open)}
       size={size}
       multiple={multiple}
       width={width}

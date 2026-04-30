@@ -2,14 +2,13 @@
 
 import _ from 'lodash';
 import { SelectWithSearch } from '@UI';
-import { SkeletonText, Stack, Show } from '@chakra-ui/react';
 import { useFiltersContext } from '../context';
 
 interface SelectSymbolProps {}
 
 export const SelectSymbol = ({}: SelectSymbolProps) => {
-  const { filters, tickers, onChangeFilters } = useFiltersContext();
-  const loading = _.isEmpty(tickers);
+  const { filters, tickers, onChangeFilters, ensureTickersLoaded } =
+    useFiltersContext();
   const defaultInputValue =
     tickers.find(({ value }) => value === filters.symbol)?.label ||
     filters.symbol;
@@ -29,21 +28,17 @@ export const SelectSymbol = ({}: SelectSymbolProps) => {
   };
 
   return (
-    <Show
-      when={!loading}
-      fallback={
-        <Stack width="240px">
-          <SkeletonText height={8} noOfLines={1} />
-        </Stack>
-      }
-    >
-      <SelectWithSearch
-        defaultValue={[filters.symbol]}
-        defaultInputValue={defaultInputValue}
-        onChange={onChange}
-        items={tickers}
-        width="240px"
-      />
-    </Show>
+    <SelectWithSearch
+      defaultValue={[filters.symbol]}
+      defaultInputValue={defaultInputValue}
+      onChange={onChange}
+      onOpenChange={(open) => {
+        if (open) {
+          void ensureTickersLoaded?.();
+        }
+      }}
+      items={tickers}
+      width="240px"
+    />
   );
 };

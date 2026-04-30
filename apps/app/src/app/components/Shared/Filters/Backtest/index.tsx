@@ -6,7 +6,8 @@ import { Select } from '@UI';
 import { useFiltersContext } from '../context';
 
 export const SelectBacktest = () => {
-  const { filters, backtestFiles, onChangeFilters } = useFiltersContext();
+  const { filters, backtestFiles, onChangeFilters, ensureBacktestsLoaded } =
+    useFiltersContext();
   const STORAGE_KEY = 'backtest-strategy';
 
   const tests = useMemo(
@@ -127,10 +128,6 @@ export const SelectBacktest = () => {
     }
   };
 
-  if (_.isEmpty(tests) || _.isEmpty(strategyItems) || !selectedStrategy) {
-    return null;
-  }
-
   const strategyTests = tests.filter(
     (test) => test.data?.strategyName === selectedStrategy,
   );
@@ -142,6 +139,11 @@ export const SelectBacktest = () => {
         defaultValue={[selectedStrategy]}
         value={[selectedStrategy]}
         onChange={onChangeStrategy}
+        onOpenChange={(open) => {
+          if (open) {
+            void ensureBacktestsLoaded?.();
+          }
+        }}
         items={strategyItems}
         width="220px"
       />
@@ -150,6 +152,11 @@ export const SelectBacktest = () => {
         defaultValue={[filters.backtestId || '']}
         value={[filters.backtestId || '']}
         onChange={onChange}
+        onOpenChange={(open) => {
+          if (open) {
+            void ensureBacktestsLoaded?.();
+          }
+        }}
         items={[
           {
             label: 'Not selected',
