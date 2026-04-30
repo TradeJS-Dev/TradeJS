@@ -8,6 +8,7 @@ import { logger } from '@tradejs/infra/logger';
 import { getData, getKeys, redisKeys, setData } from '@tradejs/infra/redis';
 import { StrategyConfig, StrategyConfigGrid } from '@tradejs/types';
 import { getBuiltInStrategyDefaultConfig } from '@tradejs/strategies';
+import type { ResearchAgentRunRecord } from '../lib/researchAgent';
 import { sendTelegramReport } from '../lib/telegramReports';
 
 args.example(
@@ -246,6 +247,7 @@ export const buildTelegramReport = (run: ResearchRunRecord) => {
         };
       }
     | undefined;
+  const agentRun = run.artifacts.agentRun as ResearchAgentRunRecord | undefined;
 
   const lines = [
     `<b>Research auto: ${escapeHtml(run.strategy)}</b>`,
@@ -297,7 +299,36 @@ export const buildTelegramReport = (run: ResearchRunRecord) => {
   }
 
   lines.push('');
-  lines.push('Agent layer: <code>not implemented</code>');
+  if (agentRun) {
+    lines.push(`Agent layer: <code>${escapeHtml(agentRun.status)}</code>`);
+    if (agentRun.branchName) {
+      lines.push(
+        `Agent branch: <code>${escapeHtml(agentRun.branchName)}</code>`,
+      );
+    }
+    if (agentRun.commitHash) {
+      lines.push(
+        `Agent commit: <code>${escapeHtml(agentRun.commitHash)}</code>`,
+      );
+    }
+    if (typeof agentRun.pullRequestNumber === 'number') {
+      lines.push(`Agent PR: <code>#${agentRun.pullRequestNumber}</code>`);
+    }
+    if (agentRun.pullRequestUrl) {
+      lines.push(
+        `Agent PR URL: <code>${escapeHtml(agentRun.pullRequestUrl)}</code>`,
+      );
+    }
+    if (agentRun.summary) {
+      lines.push(`Agent summary: <code>${escapeHtml(agentRun.summary)}</code>`);
+    }
+  } else if (run.steps.agentRun?.status === 'pending') {
+    lines.push('Agent layer: <code>pending</code>');
+  } else {
+    lines.push(
+      `Agent layer: <code>${escapeHtml(run.steps.agentRun?.status || 'unknown')}</code>`,
+    );
+  }
   return lines.join('\n');
 };
 
@@ -853,6 +884,8 @@ const main = async () => {
 
       await saveRun(run);
       logResearch(`agent invocation finished for run ${runId}`);
+      await sendRunReport();
+      logResearch(`updated TG report sent after agent for run ${runId}`);
     }
 
     if (jsonOutput) {

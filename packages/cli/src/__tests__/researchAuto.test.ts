@@ -135,7 +135,7 @@ describe('research:auto helpers', () => {
     ).toBeNull();
   });
 
-  it('renders TG report with escaped values, metrics, and agent placeholder', () => {
+  it('renders TG report with escaped values, metrics, and pending agent status', () => {
     const report = buildTelegramReport({
       runId: 'run-1',
       userName: 'root',
@@ -189,7 +189,56 @@ describe('research:auto helpers', () => {
       'Rows: <code>100</code>, approved: <code>24</code>',
     );
     expect(report).toContain('Approval rate: <code>0.2400</code>');
-    expect(report).toContain('Agent layer: <code>not implemented</code>');
+    expect(report).toContain('Agent layer: <code>pending</code>');
+  });
+
+  it('renders TG report with completed agent details when agentRun exists', () => {
+    const report = buildTelegramReport({
+      runId: 'run-2',
+      userName: 'root',
+      strategy: 'ReverseTrendLine',
+      config: 'ReverseTrendLine:research',
+      connector: 'bybit',
+      timeframe: '15',
+      days: 45,
+      recent: 1000,
+      skip: 0,
+      minQuality: 4,
+      selectedBy: 'auto',
+      status: 'completed',
+      startedAt: '2026-04-29T21:00:00.000Z',
+      finishedAt: '2026-04-29T21:20:00.000Z',
+      steps: {
+        prepareBacktestConfig: { status: 'completed', command: '', args: [] },
+        cleanTests: { status: 'completed', command: '', args: [] },
+        cleanAiExport: { status: 'completed', command: '', args: [] },
+        backtest: { status: 'completed', command: '', args: [] },
+        aiExport: { status: 'completed', command: '', args: [] },
+        aiTrainLocal: { status: 'completed', command: '', args: [] },
+        agentRun: { status: 'completed', command: '', args: [] },
+      },
+      artifacts: {
+        agentRun: {
+          status: 'completed',
+          strategy: 'ReverseTrendLine',
+          runId: 'run-2',
+          branchName: 'codex/research/reverse-trend-line-run-2',
+          commitHash: 'abc123',
+          pullRequestNumber: 42,
+          pullRequestUrl: 'https://github.com/TradeJS-Dev/TradeJS/pull/42',
+          summary: 'Committed validated patch and created PR #42',
+          startedAt: '2026-04-29T21:10:00.000Z',
+          finishedAt: '2026-04-29T21:20:00.000Z',
+        },
+      },
+    });
+
+    expect(report).toContain('Agent layer: <code>completed</code>');
+    expect(report).toContain(
+      'Agent branch: <code>codex/research/reverse-trend-line-run-2</code>',
+    );
+    expect(report).toContain('Agent commit: <code>abc123</code>');
+    expect(report).toContain('Agent PR: <code>#42</code>');
   });
 
   it('parses ai-train structured JSON output', () => {
