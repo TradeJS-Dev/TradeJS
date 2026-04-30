@@ -254,6 +254,35 @@ describe('research:auto helpers', () => {
     });
   });
 
+  it('surfaces invalid structured json output errors', () => {
+    expect(() => parseJsonOutput('not-json', 'agent-run --json')).toThrow(
+      'not valid JSON',
+    );
+  });
+
+  it('treats invalid latest run timestamps as oldest candidates', async () => {
+    mockGetKeys.mockResolvedValue([
+      'users:root:strategies:TrendLine:config',
+      'users:root:strategies:Breakout:config',
+    ]);
+
+    mockGetData.mockImplementation(async (key: string) => {
+      if (key.endsWith(':TrendLine')) {
+        return { finishedAt: 'not-a-date' };
+      }
+      if (key.endsWith(':Breakout')) {
+        return { finishedAt: '2026-04-24T23:00:00.000Z' };
+      }
+      return null;
+    });
+
+    await expect(resolveTarget()).resolves.toEqual({
+      strategy: 'TrendLine',
+      config: 'TrendLine:research',
+      selectedBy: 'auto',
+    });
+  });
+
   it('streams child output into research logs when liveLogPrefix is enabled', async () => {
     const stdoutHandlers: Record<string, (value: Buffer) => void> = {};
     const stderrHandlers: Record<string, (value: Buffer) => void> = {};
@@ -370,5 +399,64 @@ describe('research:auto helpers', () => {
       stdout: '123456789',
       stderr: 'abcdef',
     });
+  });
+
+  it('returns non-zero exit codes with captured stderr for failure analysis', async () => {
+    const stdoutHandlers: Record<string, (value: Buffer) => void> = {};
+    const stderrHandlers: Record<string, (value: Buffer) => void> = {};
+    const childHandlers: Record<string, (...args: any[]) => void> = {};
+
+    mockSpawn.mockReturnValue({
+      stdout: {
+        on: (event: string, handler: (value: Buffer) => void) => {
+          stdoutHandlers[event] = handler;
+        },
+      },
+      stderr: {
+        on: (event: string, handler: (value: Buffer) => void) => {
+          stderrHandlers[event] = handler;
+        },
+      },
+      on: (event: string, handler: (...args: any[]) => void) => {
+        childHandlers[event] = handler;
+      },
+    });
+
+    const pending = runCliCommand({
+      command: 'agent-run',
+      args: ['--json'],
+      tailLimit: 512,
+    });
+
+    stdoutHandlers.data?.(Buffer.from('partial stdout\n'));
+    stderrHandlers.data?.(Buffer.from('fatal failure\n'));
+    childHandlers.close?.(2);
+
+    await expect(pending).resolves.toMatchObject({
+      exitCode: 2,
+      stdout: 'partial stdout\n',
+      stderr: 'fatal failure\n',
+    });
+  });
+
+  it('rejects when spawning the child process itself fails', async () => {
+    const childHandlers: Record<string, (...args: any[]) => void> = {};
+
+    mockSpawn.mockReturnValue({
+      stdout: { on: jest.fn() },
+      stderr: { on: jest.fn() },
+      on: (event: string, handler: (...args: any[]) => void) => {
+        childHandlers[event] = handler;
+      },
+    });
+
+    const pending = runCliCommand({
+      command: 'backtest',
+      args: ['--config', 'TrendLine:research'],
+    });
+
+    childHandlers.error?.(new Error('spawn failed'));
+
+    await expect(pending).rejects.toThrow('spawn failed');
   });
 });

@@ -58,6 +58,24 @@ import { resolveTimeWindow } from '../lib/timeWindow';
 const MAX_PARALLEL = Math.min(os.cpus().length, 6);
 const DEFAULT_WORKER_HEAP_MB = 8192;
 
+export const resolveWorkerHeapMb = (
+  value: unknown = process.env.BACKTEST_WORKER_HEAP_MB,
+  fallback = DEFAULT_WORKER_HEAP_MB,
+) => Math.max(256, parseInt(String(value ?? fallback), 10) || fallback);
+
+export const resolveEffectiveParallel = (
+  flagValue: unknown,
+  envValue: unknown = process.env.BACKTEST_MAX_PARALLEL,
+  fallback = MAX_PARALLEL,
+) =>
+  Math.max(
+    1,
+    Math.min(
+      parseInt(String(flagValue), 10) || fallback,
+      parseInt(String(envValue ?? fallback), 10) || fallback,
+    ),
+  );
+
 args.example(
   ' yarn backtest -t 400 --cacheOnly',
   'Run tests on uploaded data for 400 tickers',
@@ -115,21 +133,8 @@ const progressStep = Math.max(1, parseInt(String(flags.progressStep), 10));
 const testsLimit = Math.max(0, parseInt(String(flags.tests), 10));
 const testsSkip = Math.max(0, parseInt(String(flags.skip ?? 0), 10));
 const testItemTimeoutMs = 120_000;
-const workerHeapMb = Math.max(
-  256,
-  parseInt(
-    String(process.env.BACKTEST_WORKER_HEAP_MB ?? DEFAULT_WORKER_HEAP_MB),
-    10,
-  ) || DEFAULT_WORKER_HEAP_MB,
-);
-const effectiveParallel = Math.max(
-  1,
-  Math.min(
-    parseInt(String(flags.parallel), 10) || MAX_PARALLEL,
-    parseInt(String(process.env.BACKTEST_MAX_PARALLEL ?? MAX_PARALLEL), 10) ||
-      MAX_PARALLEL,
-  ),
-);
+const workerHeapMb = resolveWorkerHeapMb();
+const effectiveParallel = resolveEffectiveParallel(flags.parallel);
 const uuid = (len = 12) => randomUUID().slice(-len);
 const projectRoot =
   String(process.env.PROJECT_CWD || process.cwd()).trim() || process.cwd();
@@ -385,6 +390,30 @@ const isStrategyConfigGrid = (value: unknown): value is StrategyConfigGrid => {
   );
 };
 
+export const mergePersistedTestSummaries = (
+  existing: Item[] | null | undefined,
+  persisted: Map<string, Item>,
+) => {
+  const mergedByKey = new Map<string, Item>();
+
+  for (const item of existing || []) {
+    const strategyName =
+      typeof item?.data?.strategyName === 'string'
+        ? item.data.strategyName
+        : '';
+    if (!strategyName || typeof item?.value !== 'string') {
+      continue;
+    }
+    mergedByKey.set(`${strategyName}:${item.value}`, item);
+  }
+
+  for (const [key, item] of persisted) {
+    mergedByKey.set(key, item);
+  }
+
+  return [...mergedByKey.values()];
+};
+
 const resolveBacktestConnectorName = async (
   value: unknown,
 ): Promise<string> => {
@@ -494,29 +523,16 @@ const persistTestSummariesIndex = async () => {
   const existing = (await getData(redisKeys.testSummaries(userName), [])) as
     | Item[]
     | null;
-  const mergedByKey = new Map<string, Item>();
-
-  for (const item of existing || []) {
-    const strategyName =
-      typeof item?.data?.strategyName === 'string'
-        ? item.data.strategyName
-        : '';
-    if (!strategyName || typeof item?.value !== 'string') {
-      continue;
-    }
-    mergedByKey.set(`${strategyName}:${item.value}`, item);
-  }
-
-  for (const [key, item] of persistedTestSummaryByKey) {
-    mergedByKey.set(key, item);
-  }
-
-  await setData(redisKeys.testSummaries(userName), [...mergedByKey.values()], {
-    expire: 0,
-  });
+  await setData(
+    redisKeys.testSummaries(userName),
+    mergePersistedTestSummaries(existing, persistedTestSummaryByKey),
+    {
+      expire: 0,
+    },
+  );
 };
 
-const backtest = async () => {
+export const backtest = async () => {
   if (!flags.config) {
     throw new Error('Backtest config not send');
   }
@@ -999,4 +1015,6 @@ const finish = async () => {
   process.exit();
 };
 
-backtest();
+if (require.main === module) {
+  void backtest();
+}

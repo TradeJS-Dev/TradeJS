@@ -183,4 +183,117 @@ describe('/api/kline route', () => {
     expect(first).toEqual(second);
     expect(mockCreateIndicators).toHaveBeenCalledTimes(1);
   });
+
+  it('reuses cached BTCUSDT raw history across different symbols', async () => {
+    const klineMock = jest.fn(async ({ symbol }: { symbol: string }) => [
+      makeCandle(900_000, symbol === 'BTCUSDT' ? 100 : 200),
+      makeCandle(1_800_000, symbol === 'BTCUSDT' ? 101 : 201),
+    ]);
+    mockGetConnectorCreatorByProvider.mockResolvedValue(() => ({
+      kline: klineMock,
+    }));
+
+    await POST(makeRequest({ start: 900_000, end: 1_800_000 }), {
+      params: Promise.resolve({
+        provider: 'bybit',
+        symbol: 'ETHUSDT',
+        interval: '15',
+      }),
+    });
+    await POST(makeRequest({ start: 900_000, end: 1_800_000 }), {
+      params: Promise.resolve({
+        provider: 'bybit',
+        symbol: 'SOLUSDT',
+        interval: '15',
+      }),
+    });
+
+    expect(
+      klineMock.mock.calls.filter(([params]) => params.symbol === 'BTCUSDT')
+        .length,
+    ).toBe(1);
+    expect(
+      klineMock.mock.calls.filter(([params]) => params.symbol === 'ETHUSDT')
+        .length,
+    ).toBe(1);
+    expect(
+      klineMock.mock.calls.filter(([params]) => params.symbol === 'SOLUSDT')
+        .length,
+    ).toBe(1);
+  });
+
+  it('expires enriched cache entries after ttl and refetches data', async () => {
+    const nowSpy = jest.spyOn(Date, 'now');
+    nowSpy.mockReturnValue(10_000);
+
+    const klineMock = jest
+      .fn()
+      .mockResolvedValue([
+        makeCandle(900_000, 100),
+        makeCandle(1_800_000, 101),
+      ]);
+    mockGetConnectorCreatorByProvider.mockResolvedValue(() => ({
+      kline: klineMock,
+    }));
+
+    await POST(makeRequest({ start: 900_000, end: 1_800_000 }), {
+      params: Promise.resolve({
+        provider: 'bybit',
+        symbol: 'BTCUSDT',
+        interval: '15',
+      }),
+    });
+
+    nowSpy.mockReturnValue(50_001);
+
+    await POST(makeRequest({ start: 900_000, end: 1_800_000 }), {
+      params: Promise.resolve({
+        provider: 'bybit',
+        symbol: 'BTCUSDT',
+        interval: '15',
+      }),
+    });
+
+    expect(klineMock).toHaveBeenCalledTimes(2);
+    expect(mockCreateIndicators).toHaveBeenCalledTimes(2);
+
+    nowSpy.mockRestore();
+  });
+
+  it('retries plugin registry initialization after a failed attempt', async () => {
+    mockEnsureIndicatorPluginsLoaded
+      .mockRejectedValueOnce(new Error('boom'))
+      .mockResolvedValueOnce(undefined);
+    const klineMock = jest
+      .fn()
+      .mockResolvedValue([
+        makeCandle(900_000, 100),
+        makeCandle(1_800_000, 101),
+      ]);
+    mockGetConnectorCreatorByProvider.mockResolvedValue(() => ({
+      kline: klineMock,
+    }));
+
+    const failed = await POST(makeRequest({ start: 900_000, end: 1_800_000 }), {
+      params: Promise.resolve({
+        provider: 'bybit',
+        symbol: 'BTCUSDT',
+        interval: '15',
+      }),
+    });
+    const succeeded = await POST(
+      makeRequest({ start: 900_000, end: 1_800_000 }),
+      {
+        params: Promise.resolve({
+          provider: 'bybit',
+          symbol: 'BTCUSDT',
+          interval: '15',
+        }),
+      },
+    );
+
+    expect(failed.status).toBe(500);
+    expect(succeeded.status).toBe(200);
+    expect(mockEnsureIndicatorPluginsLoaded).toHaveBeenCalledTimes(2);
+  });
 });
