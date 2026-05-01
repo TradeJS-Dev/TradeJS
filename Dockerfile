@@ -24,6 +24,7 @@ WORKDIR /app
 
 COPY package.json yarn.lock .yarnrc.yml turbo.json tsconfig.json tsconfig.base.json tsconfig.packages.json tradejs.config.ts ./
 COPY .yarn ./.yarn
+COPY apps/app/package.json ./apps/app/package.json
 
 RUN corepack enable
 RUN corepack prepare yarn@4.13.0 --activate
@@ -38,9 +39,7 @@ COPY bin ./bin
 COPY entrypoint.sh ./entrypoint.sh
 COPY cronjob /etc/crontabs/root
 
-RUN yarn workspace @tradejs/cli build
-RUN yarn turbo run build --filter=@tradejs/app...
-RUN yarn install --immutable
+RUN yarn turbo run build --filter=@tradejs/cli... --filter=@tradejs/app...
 
 RUN chmod +x ./entrypoint.sh ./bin/*.sh
 

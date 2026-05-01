@@ -319,6 +319,20 @@ describe('research:auto helpers', () => {
       stdout: 'progress 1\nprogress 2\n',
       stderr: 'warn 1\n',
     });
+    expect(mockSpawn).toHaveBeenCalledWith(
+      'bash',
+      [
+        './bin/run-cli-runtime.sh',
+        'backtest',
+        '--config',
+        'TrendLine:research',
+      ],
+      expect.objectContaining({
+        cwd: expect.any(String),
+        env: expect.any(Object),
+        stdio: ['ignore', 'pipe', 'pipe'],
+      }),
+    );
     expect(mockLoggerInfo).toHaveBeenCalled();
   });
 

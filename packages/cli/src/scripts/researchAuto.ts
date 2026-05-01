@@ -368,7 +368,7 @@ export const runCliCommand = async (params: {
   return new Promise((resolve, reject) => {
     const child = spawn(
       'bash',
-      ['./bin/run-cli-dist.sh', params.command, ...params.args],
+      ['./bin/run-cli-runtime.sh', params.command, ...params.args],
       {
         cwd: projectRoot,
         env,
