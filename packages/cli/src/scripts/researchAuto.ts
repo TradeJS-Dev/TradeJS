@@ -588,7 +588,7 @@ const executeNonBlockingStep = async (
   return result;
 };
 
-const main = async () => {
+export const main = async () => {
   const userName = String(flags.user || 'root').trim() || 'root';
   const connector = String(flags.connector || 'bybit').trim() || 'bybit';
   const timeframe = String(flags.timeframe || '15').trim() || '15';

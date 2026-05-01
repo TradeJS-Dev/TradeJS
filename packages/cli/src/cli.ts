@@ -2,6 +2,10 @@
 
 import 'dotenv/config';
 
+type ScriptModule = {
+  main?: () => Promise<unknown> | unknown;
+};
+
 type ScriptLoader = () => Promise<unknown>;
 
 const scriptLoaders: Record<string, ScriptLoader> = {
@@ -44,6 +48,13 @@ const printUsage = () => {
   );
 };
 
+const runLoadedModule = async (loaded: unknown) => {
+  const record = loaded as ScriptModule | null | undefined;
+  if (typeof record?.main === 'function') {
+    await record.main();
+  }
+};
+
 const main = async () => {
   const [, scriptPath, command = '', ...args] = process.argv;
   const loader = scriptLoaders[command];
@@ -58,10 +69,15 @@ const main = async () => {
   }
 
   process.argv = [process.argv[0], scriptPath, ...nextArgs];
-  await loader();
+  const loaded = await loader();
+  await runLoadedModule(loaded);
 };
 
-main().catch((error) => {
-  console.error(error);
-  process.exit(1);
-});
+if (require.main === module) {
+  main().catch((error) => {
+    console.error(error);
+    process.exit(1);
+  });
+}
+
+export { main, printUsage, runLoadedModule };

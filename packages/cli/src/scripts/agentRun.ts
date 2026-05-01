@@ -661,7 +661,7 @@ const cleanupWorktree = async (worktreePath: string) => {
   });
 };
 
-const main = async () => {
+export const main = async () => {
   const userName = String(flags.user || 'root').trim() || 'root';
   const requestedRunId = String(flags.runId || '').trim();
   const requestedStrategy = String(flags.strategy || '').trim();
