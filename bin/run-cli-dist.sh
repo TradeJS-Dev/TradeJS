@@ -4,8 +4,45 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
-if [ ! -f "./packages/cli/dist/cli.js" ]; then
-  yarn workspace @tradejs/cli build
+CLI_DIST="./packages/cli/dist/cli.js"
+
+needs_cli_rebuild() {
+  if [ ! -f "$CLI_DIST" ]; then
+    return 0
+  fi
+
+  local rebuild_inputs=(
+    "./package.json"
+    "./yarn.lock"
+    "./.yarnrc.yml"
+    "./turbo.json"
+    "./tsconfig.json"
+    "./tsconfig.base.json"
+    "./tsconfig.packages.json"
+    "./tradejs.config.ts"
+    "./proto"
+  )
+
+  local input_path
+  for input_path in "${rebuild_inputs[@]}"; do
+    if find "$input_path" -type f -newer "$CLI_DIST" -print -quit 2>/dev/null | grep -q .; then
+      return 0
+    fi
+  done
+
+  if find ./packages \
+    \( -path '*/src/*' -o -name 'package.json' -o -name 'tsconfig*.json' -o -name 'tsup.config.ts' \) \
+    -type f \
+    -newer "$CLI_DIST" \
+    -print -quit 2>/dev/null | grep -q .; then
+    return 0
+  fi
+
+  return 1
+}
+
+if needs_cli_rebuild; then
+  yarn turbo run build --filter=@tradejs/cli...
 fi
 
 export PROJECT_CWD="${PROJECT_CWD:-$ROOT_DIR}"
