@@ -27,7 +27,7 @@
     "run:cli": "PROJECT_CWD=\"$PWD\" tradejs",
     "infra-up": "yarn run:cli infra-up",
     "infra-down": "yarn run:cli infra-down",
-    "sandbox:user-add": "yarn run:cli user-add -u sandbox -p sandbox -t sandbox-token",
+    "sandbox:user-add": "yarn run:cli user-add -u sandbox -p sandbox",
     "sandbox:seed-config": "yarn run:ts ./src/scripts/seedBacktestConfig.ts",
     "sandbox:backtest": "yarn run:ts ./src/scripts/runDeterministicBacktest.ts",
     "sandbox:assert-backtest": "yarn run:ts ./src/scripts/assertBacktestSnapshot.ts",
