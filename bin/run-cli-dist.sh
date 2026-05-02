@@ -30,11 +30,11 @@ needs_cli_rebuild() {
     fi
   done
 
+  # Test-only files should not force a CLI rebuild before runtime commands.
   if find ./packages \
-    \( -path '*/src/*' -o -name 'package.json' -o -name 'tsconfig*.json' -o -name 'tsup.config.ts' \) \
-    -type f \
-    -newer "$CLI_DIST" \
-    -print -quit 2>/dev/null | grep -q .; then
+    \( -path '*/__tests__/*' -o -name '*.test.*' -o -name '*.spec.*' -o -name '*.snap' \) -prune -o \
+    \( -type f -a -newer "$CLI_DIST" -a \( -path '*/src/*' -o -name 'package.json' -o -name 'tsconfig*.json' -o -name 'tsup.config.ts' \) -print -quit \) \
+    2>/dev/null | grep -q .; then
     return 0
   fi
 
