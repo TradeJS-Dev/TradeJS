@@ -62,4 +62,20 @@ describe('strategyHelpers/market getStrategyMarketSnapshot', () => {
     expect(snapshot.currentPrice).toBe(candle.close);
     expect(connector.kline).not.toHaveBeenCalled();
   });
+
+  it('uses cached replay data in PARITY mode without refetching connector kline', async () => {
+    const connector = {
+      kline: jest.fn(async () => [candle]),
+    } as any;
+
+    const snapshot = await getStrategyMarketSnapshot({
+      ...baseParams,
+      env: 'PARITY',
+      connector,
+    });
+
+    expect(snapshot.fullData).toEqual([candle]);
+    expect(snapshot.currentPrice).toBe(candle.close);
+    expect(connector.kline).not.toHaveBeenCalled();
+  });
 });

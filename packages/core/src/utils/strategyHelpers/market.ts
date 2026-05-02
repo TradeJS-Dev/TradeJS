@@ -30,7 +30,7 @@ export const getStrategyMarketSnapshot = async ({
   backtestPriceMode = 'mid',
 }: StrategyMarketSnapshotParams): Promise<StrategyMarketSnapshot> => {
   const fullData =
-    env === 'BACKTEST' || env === 'CRON'
+    env === 'BACKTEST' || env === 'CRON' || env === 'PARITY'
       ? cachedData
       : await connector.kline({
           symbol,
