@@ -1,3 +1,7 @@
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+
 export {};
 
 const flushMicrotasks = async (steps = 5) => {
@@ -235,5 +239,104 @@ describe('cli telegram notifications', () => {
     );
     expect(sendSignalAnalysis).not.toHaveBeenCalled();
     expect(progressTick).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('cli cleanFiles', () => {
+  beforeEach(() => {
+    jest.resetModules();
+    jest.clearAllMocks();
+  });
+
+  it('ignores ENOENT races while cleaning files', async () => {
+    const logger = {
+      info: jest.fn(),
+      error: jest.fn(),
+      warn: jest.fn(),
+    };
+    const tick = jest.fn();
+    const getFiles = jest.fn(async () => ['gone.jsonl', 'alive.jsonl']);
+    const projectRoot = await fs.mkdtemp(
+      path.join(os.tmpdir(), 'tradejs-clean-files-'),
+    );
+    const exportDir = path.join(projectRoot, 'data/ai/export');
+
+    await fs.mkdir(exportDir, { recursive: true });
+    await fs.writeFile(path.join(exportDir, 'alive.jsonl'), 'ok');
+
+    jest.doMock('progress', () => ({
+      __esModule: true,
+      default: jest.fn().mockImplementation(() => ({
+        tick,
+      })),
+    }));
+
+    jest.doMock('chalk', () => ({
+      __esModule: true,
+      default: {
+        yellow: (...values: unknown[]) => values.join(' '),
+        gray: (value: string) => value,
+      },
+    }));
+
+    jest.doMock('@tradejs/core/backtest', () => ({
+      getFormatted: jest.fn(),
+    }));
+
+    jest.doMock('@tradejs/core/tickers', () => ({
+      getTopTickers: jest.fn(),
+    }));
+
+    jest.doMock('@tradejs/core/time', () => ({
+      getTimestamp: jest.fn(() => 0),
+    }));
+
+    jest.doMock('@tradejs/infra/files', () => ({
+      getFiles,
+    }));
+
+    jest.doMock('@tradejs/infra/logger', () => ({
+      logger,
+    }));
+
+    jest.doMock('@tradejs/infra/redis', () => ({
+      RedisWriteBlockedError: class RedisWriteBlockedError extends Error {},
+      delKeyWithOptions: jest.fn(),
+      getData: jest.fn(),
+      getKeys: jest.fn(async () => []),
+      redisKeys: {},
+    }));
+
+    jest.doMock('../ai', () => ({
+      askAI: jest.fn(),
+    }));
+
+    jest.doMock('../screenshot', () => ({
+      screenDashboard: jest.fn(),
+    }));
+
+    jest.doMock('../signals', () => ({
+      sendSignal: jest.fn(),
+      sendSignalAnalysis: jest.fn(),
+      sendTextToTG: jest.fn(),
+    }));
+
+    jest.doMock('../tradejsConfig', () => ({
+      getTradejsProjectCwd: jest.fn(() => projectRoot),
+    }));
+
+    const { cleanFiles } = require('../cli');
+
+    try {
+      await expect(cleanFiles('data/ai/export')).resolves.toBeUndefined();
+
+      expect(getFiles).toHaveBeenCalledWith('data/ai/export', projectRoot);
+      await expect(
+        fs.access(path.join(exportDir, 'alive.jsonl')),
+      ).rejects.toThrow();
+      expect(tick).toHaveBeenCalledTimes(1);
+    } finally {
+      await fs.rm(projectRoot, { recursive: true, force: true });
+    }
   });
 });

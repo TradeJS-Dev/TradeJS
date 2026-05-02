@@ -1,4 +1,5 @@
 import fs from 'fs/promises';
+import path from 'path';
 import _ from 'lodash';
 import ProgressBar from 'progress';
 import chalk from 'chalk';
@@ -37,11 +38,25 @@ export { loadTradejsConfig } from './tradejsConfig';
 
 const getProjectRoot = (): string => getTradejsProjectCwd();
 
+const isEnoentError = (error: unknown) =>
+  (error as NodeJS.ErrnoException | undefined)?.code === 'ENOENT';
+
 export const cleanFiles = async (dir: string) => {
   let completed = 0;
 
   const projectRoot = getProjectRoot();
-  const files = await getFiles(dir, projectRoot);
+  let files: string[] = [];
+
+  try {
+    files = await getFiles(dir, projectRoot);
+  } catch (error) {
+    if (isEnoentError(error)) {
+      logger.info(chalk.yellow('clean:', dir));
+      logger.info('');
+      return;
+    }
+    throw error;
+  }
 
   const bar = new ProgressBar(':current/:total [:bar][:percent] :eta(s)', {
     total: files.length,
@@ -52,12 +67,19 @@ export const cleanFiles = async (dir: string) => {
 
   for await (const file of files) {
     completed++;
-    const fullPath = `${dir}/${file}`;
-    const stat = await fs.lstat(fullPath);
-    if (stat.isDirectory()) {
-      await fs.rm(fullPath, { recursive: true, force: true });
-    } else {
-      await fs.unlink(fullPath);
+    const fullPath = path.join(projectRoot, dir, file);
+
+    try {
+      const stat = await fs.lstat(fullPath);
+      if (stat.isDirectory()) {
+        await fs.rm(fullPath, { recursive: true, force: true });
+      } else {
+        await fs.unlink(fullPath);
+      }
+    } catch (error) {
+      if (!isEnoentError(error)) {
+        throw error;
+      }
     }
 
     if (completed % 100 === 0 || completed === files.length) {
