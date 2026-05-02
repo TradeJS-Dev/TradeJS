@@ -16,10 +16,17 @@ import {
 } from '@tradejs/node/connectors';
 import { sendTelegramReport } from '../lib/telegramReports';
 import {
+  loadRuntimeSignalEvaluationStatsBuckets,
+  loadRuntimeSignals,
+} from '../lib/runtimeSignalsLoader';
+import {
+  getRuntimeStorageDayKeys,
+  RuntimeSignalStatsBucket,
+} from '../lib/runtimeSignalsStorage';
+import {
   ClosedPnlRecord,
   Connector,
   ConnectorCreator,
-  RuntimeSignalEvaluationRecord,
   RuntimeTradeRecord,
   Signal,
   SignalOrderStatus,
@@ -84,76 +91,6 @@ const normalizeStatus = (
   return 'unknown';
 };
 
-const normalizeSkipStatsReason = (reason: string, fallbackSource: string) => {
-  let source = fallbackSource;
-  let normalizedReason = reason;
-
-  if (reason.startsWith('AI_QUALITY_BELOW_MIN')) {
-    source = 'AI';
-    normalizedReason = 'MIN_AI_QUALITY';
-  } else if (reason === 'AI_QUALITY_UNAVAILABLE') {
-    source = 'AI';
-    normalizedReason = 'QUALITY_UNAVAILABLE';
-  } else if (reason === 'ML_RESULT_UNAVAILABLE') {
-    source = 'ML';
-    normalizedReason = 'RESULT_UNAVAILABLE';
-  } else if (reason.startsWith('ML_THRESHOLD_NOT_MET')) {
-    source = 'ML';
-    normalizedReason = 'ML_THRESHOLD';
-  } else if (reason.startsWith('HOOK_BEFORE_ENTRY_GATE:')) {
-    source = 'hook';
-    normalizedReason = `BEFORE_ENTRY_GATE:${reason.slice(
-      'HOOK_BEFORE_ENTRY_GATE:'.length,
-    )}`;
-  } else if (reason === 'HOOK_BEFORE_ENTRY_GATE') {
-    source = 'hook';
-    normalizedReason = 'BEFORE_ENTRY_GATE';
-  } else if (
-    reason === 'MAKE_ORDERS_DISABLED' ||
-    reason === 'ENTRY_POLICY_BLOCKED'
-  ) {
-    source = 'policy';
-  }
-
-  return {
-    source: `skip from ${source}`,
-    reason: normalizedReason,
-  };
-};
-
-const isSignalRecord = (value: unknown): value is Signal => {
-  if (!value || typeof value !== 'object') {
-    return false;
-  }
-
-  const record = value as Record<string, unknown>;
-  return (
-    typeof record.signalId === 'string' &&
-    typeof record.strategy === 'string' &&
-    typeof record.symbol === 'string' &&
-    typeof record.timestamp === 'number'
-  );
-};
-
-const isRuntimeSignalEvaluationRecord = (
-  value: unknown,
-): value is RuntimeSignalEvaluationRecord => {
-  if (!value || typeof value !== 'object') {
-    return false;
-  }
-
-  const record = value as Record<string, unknown>;
-  return (
-    typeof record.evaluationId === 'string' &&
-    typeof record.strategy === 'string' &&
-    typeof record.symbol === 'string' &&
-    typeof record.timestamp === 'number' &&
-    (record.status === 'signal' ||
-      record.status === 'skip' ||
-      record.status === 'error')
-  );
-};
-
 const isRuntimeTradeRecord = (value: unknown): value is RuntimeTradeRecord => {
   if (!value || typeof value !== 'object') {
     return false;
@@ -182,26 +119,6 @@ const resolveSummaryConnectorName = async (value: unknown): Promise<string> => {
     DEFAULT_CONNECTOR_NAME,
   );
   return DEFAULT_CONNECTOR_NAME;
-};
-
-const loadRuntimeSignals = async (userName: string): Promise<Signal[]> => {
-  const keys = await getKeys(redisKeys.runtimeSignals(userName));
-  const signals = await Promise.all(keys.map((key) => getData(key, null)));
-
-  return signals
-    .filter(isSignalRecord)
-    .sort((left, right) => left.timestamp - right.timestamp);
-};
-
-const loadRuntimeSignalEvaluations = async (
-  userName: string,
-): Promise<RuntimeSignalEvaluationRecord[]> => {
-  const keys = await getKeys(redisKeys.runtimeSignalEvaluations(userName));
-  const evaluations = await Promise.all(keys.map((key) => getData(key, null)));
-
-  return evaluations
-    .filter(isRuntimeSignalEvaluationRecord)
-    .sort((left, right) => left.timestamp - right.timestamp);
 };
 
 const resolveStrategyNameByConfigKey = (
@@ -248,6 +165,31 @@ const loadRuntimeTrades = async (
   return trades
     .filter(isRuntimeTradeRecord)
     .sort((left, right) => left.entryTimestamp - right.entryTimestamp);
+};
+
+const createRuntimeSignalStats = (): RuntimeSignalStatsBucket => ({
+  evaluated: 0,
+  signals: 0,
+  reasonGroups: new Map<string, Map<string, number>>(),
+});
+
+const mergeRuntimeSignalStats = (
+  target: RuntimeSignalStatsBucket,
+  source: RuntimeSignalStatsBucket,
+) => {
+  target.evaluated += source.evaluated;
+  target.signals += source.signals;
+
+  for (const [group, reasons] of source.reasonGroups.entries()) {
+    const targetReasons =
+      target.reasonGroups.get(group) ?? new Map<string, number>();
+
+    for (const [reason, count] of reasons.entries()) {
+      targetReasons.set(reason, (targetReasons.get(reason) ?? 0) + count);
+    }
+
+    target.reasonGroups.set(group, targetReasons);
+  }
 };
 
 const loadClosedPnlRows = async ({
@@ -428,7 +370,7 @@ const buildSummaryMessage = ({
   endTime,
   configuredStrategyNames,
   signals,
-  signalEvaluations,
+  evaluationStatsByStrategy,
   trades,
 }: {
   hours: number;
@@ -436,7 +378,7 @@ const buildSummaryMessage = ({
   endTime: number;
   configuredStrategyNames: string[];
   signals: Signal[];
-  signalEvaluations: RuntimeSignalEvaluationRecord[];
+  evaluationStatsByStrategy: Map<string, RuntimeSignalStatsBucket>;
   trades: RuntimeTradeRecord[];
 }) => {
   const lines: string[] = [];
@@ -449,14 +391,6 @@ const buildSummaryMessage = ({
   ];
   const strategyNames = new Set<string>();
   const signalStats = new Map<string, Map<string, number>>();
-  const evaluationStats = new Map<
-    string,
-    {
-      evaluated: number;
-      signals: number;
-      reasonGroups: Map<string, Map<string, number>>;
-    }
-  >();
   const tradeStats = new Map<
     string,
     {
@@ -491,51 +425,6 @@ const buildSummaryMessage = ({
     const status = normalizeStatus(signal.orderStatus);
     stats.set(status, (stats.get(status) ?? 0) + 1);
     signalStats.set(signal.strategy, stats);
-  }
-
-  for (const evaluation of signalEvaluations) {
-    strategyNames.add(evaluation.strategy);
-    const stats = evaluationStats.get(evaluation.strategy) ?? {
-      evaluated: 0,
-      signals: 0,
-      reasonGroups: new Map<string, Map<string, number>>(),
-    };
-    stats.evaluated += 1;
-
-    if (evaluation.status === 'signal') {
-      stats.signals += 1;
-    }
-
-    const orderStatus = normalizeStatus(evaluation.orderStatus);
-    let skipReason: string | null = null;
-    let fallbackSource = 'core';
-
-    if (evaluation.status === 'skip') {
-      skipReason = evaluation.reason || 'NO_SIGNAL';
-      fallbackSource = 'core';
-    } else if (
-      evaluation.status === 'signal' &&
-      (orderStatus === 'skipped' || orderStatus === 'canceled')
-    ) {
-      skipReason =
-        evaluation.orderSkipReason ||
-        evaluation.reason ||
-        `orderStatus=${orderStatus}`;
-      fallbackSource = 'runtime';
-    } else if (evaluation.status === 'error') {
-      skipReason = evaluation.reason || 'EVALUATION_ERROR';
-      fallbackSource = 'runtime';
-    }
-
-    if (skipReason) {
-      const normalized = normalizeSkipStatsReason(skipReason, fallbackSource);
-      const reasons =
-        stats.reasonGroups.get(normalized.source) ?? new Map<string, number>();
-      reasons.set(normalized.reason, (reasons.get(normalized.reason) ?? 0) + 1);
-      stats.reasonGroups.set(normalized.source, reasons);
-    }
-
-    evaluationStats.set(evaluation.strategy, stats);
   }
 
   for (const trade of trades) {
@@ -624,7 +513,7 @@ const buildSummaryMessage = ({
   }
 
   const appendEvaluationDetails = (strategyName: string) => {
-    const evaluation = evaluationStats.get(strategyName);
+    const evaluation = evaluationStatsByStrategy.get(strategyName);
     if (!evaluation) {
       return;
     }
@@ -664,7 +553,7 @@ const buildSummaryMessage = ({
   for (const strategyName of sortedStrategies) {
     const stats = signalStats.get(strategyName);
     if (!stats || stats.size === 0) {
-      const evaluation = evaluationStats.get(strategyName);
+      const evaluation = evaluationStatsByStrategy.get(strategyName);
       lines.push('');
       lines.push(
         evaluation?.evaluated
@@ -750,11 +639,11 @@ export const signalsSummary = async () => {
   const connector = await (connectorFactory as ConnectorCreator)({
     userName: flags.user,
   });
-  const [configuredStrategyNames, signals, signalEvaluations, trades] =
+  const [configuredStrategyNames, signals, evaluationStatsBuckets, trades] =
     await Promise.all([
       loadRuntimeStrategyNames(flags.user),
       loadRuntimeSignals(flags.user),
-      loadRuntimeSignalEvaluations(flags.user),
+      loadRuntimeSignalEvaluationStatsBuckets(flags.user),
       loadRuntimeTrades(flags.user),
     ]);
   const syncedTrades = await syncRuntimeTrades({
@@ -765,19 +654,27 @@ export const signalsSummary = async () => {
     endTime,
   });
   const windowSignals = signals.filter(
-    (signal) => signal.timestamp >= startTime && signal.timestamp <= endTime,
+    (signal) => signal.timestamp >= startTime && signal.timestamp < endTime,
   );
-  const windowSignalEvaluations = signalEvaluations.filter(
-    (evaluation) =>
-      evaluation.timestamp >= startTime && evaluation.timestamp <= endTime,
-  );
+  const windowDayKeys = new Set(getRuntimeStorageDayKeys(startTime, endTime));
+  const windowEvaluationStats = new Map<string, RuntimeSignalStatsBucket>();
+  for (const entry of evaluationStatsBuckets) {
+    if (!windowDayKeys.has(entry.dayKey)) {
+      continue;
+    }
+
+    const stats =
+      windowEvaluationStats.get(entry.strategy) ?? createRuntimeSignalStats();
+    mergeRuntimeSignalStats(stats, entry.stats);
+    windowEvaluationStats.set(entry.strategy, stats);
+  }
   const signalIds = new Set(
     signals.map((signal) => signal.signalId).filter(Boolean),
   );
   const windowTrades = syncedTrades.filter(
     (trade) =>
       trade.entryTimestamp >= startTime &&
-      trade.entryTimestamp <= endTime &&
+      trade.entryTimestamp < endTime &&
       trade.signalId != null &&
       signalIds.has(trade.signalId),
   );
@@ -787,15 +684,19 @@ export const signalsSummary = async () => {
     endTime,
     configuredStrategyNames,
     signals: windowSignals,
-    signalEvaluations: windowSignalEvaluations,
+    evaluationStatsByStrategy: windowEvaluationStats,
     trades: windowTrades,
   });
+  const windowEvaluationsCount = [...windowEvaluationStats.values()].reduce(
+    (sum, stats) => sum + stats.evaluated,
+    0,
+  );
 
   logger.info(
     'signals summary window=%sh signals=%s evaluations=%s trades=%s connector=%s user=%s',
     hours,
     windowSignals.length,
-    windowSignalEvaluations.length,
+    windowEvaluationsCount,
     windowTrades.length,
     connectorName,
     flags.user,

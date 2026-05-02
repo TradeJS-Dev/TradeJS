@@ -1,5 +1,9 @@
 import Redis from 'ioredis';
-import { SANDBOX_E2E_SIGNALS_EXPECTED, SANDBOX_E2E_SYMBOL } from './e2eConfig';
+import {
+  SANDBOX_E2E_SIGNALS_EXPECTED,
+  SANDBOX_E2E_SYMBOL,
+  SANDBOX_E2E_USER,
+} from './e2eConfig';
 
 type SignalPayload = {
   signalId?: string;
@@ -14,6 +18,13 @@ type SignalPayload = {
     stopLossPrice?: number;
     riskRatio?: number;
   };
+};
+
+type SignalBucketRef = {
+  signalId?: string;
+  symbol?: string;
+  strategy?: string;
+  timestamp?: number;
 };
 
 const redis = new Redis({
@@ -70,6 +81,28 @@ const readRedisJson = async <T>(key: string): Promise<T | null> => {
   }
 };
 
+const readRedisHashJsonValues = async <T>(key: string): Promise<T[]> => {
+  const raw = (await redis.call('HGETALL', key)) as
+    | Record<string, string>
+    | string[]
+    | null;
+
+  if (!raw) {
+    return [];
+  }
+
+  const entries = Array.isArray(raw)
+    ? raw.reduce<Record<string, string>>((acc, value, index, list) => {
+        if (index % 2 === 0 && list[index + 1] != null) {
+          acc[String(value)] = String(list[index + 1]);
+        }
+        return acc;
+      }, {})
+    : raw;
+
+  return Object.values(entries).map((value) => JSON.parse(value) as T);
+};
+
 const assertEqual = (
   label: string,
   actual: unknown,
@@ -90,15 +123,17 @@ const assertTrue = (label: string, condition: boolean): void => {
 
 const run = async () => {
   try {
-    const runtimeSignalKeys = await scanKeys(`signals:${SANDBOX_E2E_SYMBOL}:*`);
+    const runtimeSignalBucketKeys = await scanKeys(
+      `users:${SANDBOX_E2E_USER}:runtime:signals:days:*`,
+    );
     const storeSignalKeys = await scanKeys(
       `store:signals:${SANDBOX_E2E_SYMBOL}:*`,
     );
 
     assertEqual(
-      'runtime signals count',
-      runtimeSignalKeys.length,
-      SANDBOX_E2E_SIGNALS_EXPECTED.signalsCount,
+      'runtime signal bucket count',
+      runtimeSignalBucketKeys.length,
+      SANDBOX_E2E_SIGNALS_EXPECTED.signalBucketCount,
     );
     assertEqual(
       'store signals count',
@@ -106,63 +141,67 @@ const run = async () => {
       SANDBOX_E2E_SIGNALS_EXPECTED.storeSignalsCount,
     );
 
-    const runtimeSignal = await readRedisJson<SignalPayload>(
-      runtimeSignalKeys[0],
-    );
+    const runtimeSignalRef = (
+      await readRedisHashJsonValues<SignalBucketRef>(runtimeSignalBucketKeys[0])
+    )[0];
     const storeSignal = await readRedisJson<SignalPayload>(storeSignalKeys[0]);
 
-    if (!runtimeSignal || !storeSignal) {
+    if (!runtimeSignalRef || !storeSignal) {
       throw new Error('Missing signal payload in Redis');
     }
 
     assertEqual(
       'symbol',
-      runtimeSignal.symbol,
+      storeSignal.symbol,
       SANDBOX_E2E_SIGNALS_EXPECTED.symbol,
     );
     assertEqual(
       'strategy',
-      runtimeSignal.strategy,
+      storeSignal.strategy,
       SANDBOX_E2E_SIGNALS_EXPECTED.strategy,
     );
     assertEqual(
       'direction',
-      runtimeSignal.direction,
+      storeSignal.direction,
       SANDBOX_E2E_SIGNALS_EXPECTED.direction,
     );
     assertEqual(
       'interval',
-      String(runtimeSignal.interval),
+      String(storeSignal.interval),
       SANDBOX_E2E_SIGNALS_EXPECTED.interval,
     );
-    assertEqual('store.signalId', storeSignal.signalId, runtimeSignal.signalId);
+    assertEqual(
+      'store.signalId',
+      storeSignal.signalId,
+      runtimeSignalRef.signalId,
+    );
     assertTrue(
       'signalId prefix',
-      String(runtimeSignal.signalId || '').startsWith(
+      String(storeSignal.signalId || '').startsWith(
         `sandbox-deterministic-${SANDBOX_E2E_SYMBOL}-`,
       ),
     );
     assertTrue(
       'timestamp aligned to 15m',
-      Number(runtimeSignal.timestamp || 0) % 900_000 === 0,
+      Number(storeSignal.timestamp || 0) % 900_000 === 0,
     );
     assertTrue(
       'prices relationship',
-      Number(runtimeSignal.prices?.takeProfitPrice || 0) >
-        Number(runtimeSignal.prices?.currentPrice || 0) &&
-        Number(runtimeSignal.prices?.currentPrice || 0) >
-          Number(runtimeSignal.prices?.stopLossPrice || 0),
+      Number(storeSignal.prices?.takeProfitPrice || 0) >
+        Number(storeSignal.prices?.currentPrice || 0) &&
+        Number(storeSignal.prices?.currentPrice || 0) >
+          Number(storeSignal.prices?.stopLossPrice || 0),
     );
 
     console.log(
       'Sandbox signals snapshot check passed',
       JSON.stringify(
         {
-          runtimeSignalKey: runtimeSignalKeys[0],
+          runtimeSignalBucketKey: runtimeSignalBucketKeys[0],
           storeSignalKey: storeSignalKeys[0],
-          signalId: runtimeSignal.signalId,
-          symbol: runtimeSignal.symbol,
-          strategy: runtimeSignal.strategy,
+          signalId: storeSignal.signalId,
+          symbol: storeSignal.symbol,
+          strategy: storeSignal.strategy,
         },
         null,
         2,

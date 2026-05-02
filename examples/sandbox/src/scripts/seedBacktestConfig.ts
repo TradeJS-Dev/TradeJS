@@ -71,14 +71,24 @@ const run = async () => {
     const strategyPrefix = `users:${SANDBOX_E2E_USER}:tests:${SANDBOX_E2E_STRATEGY}:*`;
     const cachePrefix = `users:${SANDBOX_E2E_USER}:cache:tests:*`;
     const resultsPrefix = `users:${SANDBOX_E2E_USER}:backtests:results:${SANDBOX_E2E_BACKTEST_CONFIG}:*`;
-    const runtimeSignalPrefix = `signals:${SANDBOX_E2E_SYMBOL}:*`;
+    const runtimeSignalBucketPrefix = `users:${SANDBOX_E2E_USER}:runtime:signals:days:*`;
+    const runtimeSignalEvaluationBucketPrefix = `users:${SANDBOX_E2E_USER}:runtime:signal-evaluations:days:*`;
+    const runtimeSignalStatsBucketPrefix = `users:${SANDBOX_E2E_USER}:runtime:signal-evaluation-stats:days:*`;
     const storeSignalPrefix = `store:signals:${SANDBOX_E2E_SYMBOL}:*`;
     const analysisPrefix = `analysis:${SANDBOX_E2E_SYMBOL}:*`;
 
     const deletedTests = await deleteByPattern(strategyPrefix);
     const deletedCache = await deleteByPattern(cachePrefix);
     const deletedResults = await deleteByPattern(resultsPrefix);
-    const deletedRuntimeSignals = await deleteByPattern(runtimeSignalPrefix);
+    const deletedRuntimeSignalBuckets = await deleteByPattern(
+      runtimeSignalBucketPrefix,
+    );
+    const deletedRuntimeSignalEvaluationBuckets = await deleteByPattern(
+      runtimeSignalEvaluationBucketPrefix,
+    );
+    const deletedRuntimeSignalStatsBuckets = await deleteByPattern(
+      runtimeSignalStatsBucketPrefix,
+    );
     const deletedStoreSignals = await deleteByPattern(storeSignalPrefix);
     const deletedAnalyses = await deleteByPattern(analysisPrefix);
 
@@ -94,7 +104,9 @@ const run = async () => {
         `Deleted tests keys: ${deletedTests}`,
         `Deleted cache keys: ${deletedCache}`,
         `Deleted backtest result keys: ${deletedResults}`,
-        `Deleted runtime signal keys: ${deletedRuntimeSignals}`,
+        `Deleted runtime signal bucket keys: ${deletedRuntimeSignalBuckets}`,
+        `Deleted runtime signal evaluation bucket keys: ${deletedRuntimeSignalEvaluationBuckets}`,
+        `Deleted runtime signal stats bucket keys: ${deletedRuntimeSignalStatsBuckets}`,
         `Deleted store signal keys: ${deletedStoreSignals}`,
         `Deleted analysis keys: ${deletedAnalyses}`,
       ].join('\n'),

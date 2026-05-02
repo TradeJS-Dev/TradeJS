@@ -19,6 +19,7 @@ export const TTL_3H = 10_800;
 export const TTL_12H = 43_300;
 export const TTL_1D = 86_400;
 export const TTL_3D = 259_200;
+export const TTL_10D = 864_000;
 export const TTL_1M = 2_600_000;
 export const TTL_3M = 7_800_000;
 

@@ -29,7 +29,7 @@ export interface ExpectedSandboxSnapshot {
 }
 
 export interface ExpectedSandboxSignalsSnapshot {
-  signalsCount: number;
+  signalBucketCount: number;
   storeSignalsCount: number;
   strategy: string;
   symbol: string;
@@ -56,7 +56,7 @@ export const SANDBOX_E2E_EXPECTED: ExpectedSandboxSnapshot = {
 };
 
 export const SANDBOX_E2E_SIGNALS_EXPECTED: ExpectedSandboxSignalsSnapshot = {
-  signalsCount: 1,
+  signalBucketCount: 1,
   storeSignalsCount: 1,
   strategy: SANDBOX_E2E_STRATEGY,
   symbol: SANDBOX_E2E_SYMBOL,

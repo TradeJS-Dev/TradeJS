@@ -1,4 +1,3 @@
-import _ from 'lodash';
 import { NextResponse } from 'next/server';
 import { getData, redisKeys } from '@tradejs/infra/redis';
 import { logger } from '@tradejs/infra/logger';
@@ -31,11 +30,9 @@ export const GET = async (
       );
     }
 
-    let signal: Signal = await getData(redisKeys.signal(symbol, signalId));
-
-    if (!signal || _.isEmpty(signal)) {
-      signal = await getData(redisKeys.storeSignal(symbol, signalId));
-    }
+    const signal: Signal = await getData(
+      redisKeys.storeSignal(symbol, signalId),
+    );
 
     return NextResponse.json({ signal });
   } catch (error) {

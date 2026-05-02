@@ -286,6 +286,66 @@ describe('redis utils', () => {
     );
   });
 
+  it('writes and reads hash-backed JSON bucket fields and string counters', async () => {
+    const { redisModule, redisClient, consoleErrorMock } = await setup();
+
+    redisClient.call.mockResolvedValueOnce(1);
+    await redisModule.setHashJsonField('bucket:1', 'field-1', { x: 1 });
+    expect(redisClient.call).toHaveBeenCalledWith(
+      'HSET',
+      'bucket:1',
+      'field-1',
+      '{"x":1}',
+    );
+    expect(redisClient.expire).toHaveBeenCalledWith('bucket:1', 86400);
+
+    redisClient.call.mockResolvedValueOnce({
+      'field-1': '{"x":1}',
+      'field-2': '{"y":2}',
+    });
+    await expect(redisModule.getHashJsonValues('bucket:1')).resolves.toEqual([
+      { x: 1 },
+      { y: 2 },
+    ]);
+
+    redisClient.call.mockResolvedValueOnce(['field-1', '2', 'field-2', '7']);
+    await expect(redisModule.getHashData('bucket:stats')).resolves.toEqual({
+      'field-1': '2',
+      'field-2': '7',
+    });
+
+    redisClient.call.mockResolvedValueOnce(1).mockResolvedValueOnce(1);
+    await redisModule.incrHashFields(
+      'bucket:stats',
+      { evaluated: 2, signals: 1 },
+      { expire: 10 },
+    );
+    expect(redisClient.call).toHaveBeenNthCalledWith(
+      4,
+      'HINCRBY',
+      'bucket:stats',
+      'evaluated',
+      2,
+    );
+    expect(redisClient.call).toHaveBeenNthCalledWith(
+      5,
+      'HINCRBY',
+      'bucket:stats',
+      'signals',
+      1,
+    );
+    expect(redisClient.expire).toHaveBeenCalledWith('bucket:stats', 10);
+
+    redisClient.call.mockRejectedValueOnce(new Error('hset-failed'));
+    await redisModule.setHashJsonField('bucket:2', 'field-2', { y: 2 });
+    expect(consoleErrorMock).toHaveBeenCalledWith(
+      '[infra:redis] failed HSET %s[%s]: %s',
+      'bucket:2',
+      'field-2',
+      'Error: hset-failed',
+    );
+  });
+
   it('builds all redis key helpers with expected format', async () => {
     const { redisModule } = await setup();
     const { redisKeys } = redisModule;
@@ -348,11 +408,39 @@ describe('redis utils', () => {
     expect(redisKeys.runtimeSignal('root', 's1')).toBe(
       'users:root:runtime:signals:s1',
     );
+    expect(redisKeys.runtimeSignalBuckets('root')).toBe(
+      'users:root:runtime:signals:days:',
+    );
+    expect(
+      redisKeys.runtimeSignalBucket('root', '2026-05-02', 'TrendLine'),
+    ).toBe('users:root:runtime:signals:days:2026-05-02:TrendLine');
     expect(redisKeys.runtimeSignalEvaluations('root')).toBe(
       'users:root:runtime:signal-evaluations:',
     );
     expect(redisKeys.runtimeSignalEvaluation('root', 'e1')).toBe(
       'users:root:runtime:signal-evaluations:e1',
+    );
+    expect(redisKeys.runtimeSignalEvaluationBuckets('root')).toBe(
+      'users:root:runtime:signal-evaluations:days:',
+    );
+    expect(
+      redisKeys.runtimeSignalEvaluationBucket(
+        'root',
+        '2026-05-02',
+        'TrendLine',
+      ),
+    ).toBe('users:root:runtime:signal-evaluations:days:2026-05-02:TrendLine');
+    expect(redisKeys.runtimeSignalEvaluationStatsBuckets('root')).toBe(
+      'users:root:runtime:signal-evaluation-stats:days:',
+    );
+    expect(
+      redisKeys.runtimeSignalEvaluationStatsBucket(
+        'root',
+        '2026-05-02',
+        'TrendLine',
+      ),
+    ).toBe(
+      'users:root:runtime:signal-evaluation-stats:days:2026-05-02:TrendLine',
     );
     expect(redisKeys.runtimeTrades('root')).toBe(
       'users:root:runtime:trade-records:',

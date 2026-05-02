@@ -35,6 +35,10 @@ import {
   TradeParityEntry,
 } from '../lib/runtimeParity';
 import { normalizeCliArgv } from '../lib/cliArgs';
+import {
+  loadRuntimeSignalEvaluations,
+  loadRuntimeSignals,
+} from '../lib/runtimeSignalsLoader';
 import { sendTelegramReport } from '../lib/telegramReports';
 import { resolveTimeWindow } from '../lib/timeWindow';
 
@@ -248,40 +252,6 @@ const isRuntimeTradeRecord = (value: unknown): value is RuntimeTradeRecord => {
   );
 };
 
-const isSignalRecord = (value: unknown): value is Signal => {
-  if (!value || typeof value !== 'object') {
-    return false;
-  }
-
-  const record = value as Record<string, unknown>;
-  return (
-    typeof record.signalId === 'string' &&
-    typeof record.strategy === 'string' &&
-    typeof record.symbol === 'string' &&
-    typeof record.timestamp === 'number' &&
-    (record.direction === 'LONG' || record.direction === 'SHORT')
-  );
-};
-
-const isRuntimeSignalEvaluationRecord = (
-  value: unknown,
-): value is RuntimeSignalEvaluationRecord => {
-  if (!value || typeof value !== 'object') {
-    return false;
-  }
-
-  const record = value as Record<string, unknown>;
-  return (
-    typeof record.evaluationId === 'string' &&
-    typeof record.strategy === 'string' &&
-    typeof record.symbol === 'string' &&
-    typeof record.timestamp === 'number' &&
-    (record.status === 'signal' ||
-      record.status === 'skip' ||
-      record.status === 'error')
-  );
-};
-
 const resolveParityConnectorName = async (value: unknown): Promise<string> => {
   const connectorName = await resolveConnectorName(value, projectRoot);
   if (connectorName) {
@@ -305,26 +275,6 @@ const loadRuntimeTrades = async (
   return trades
     .filter(isRuntimeTradeRecord)
     .sort((left, right) => left.entryTimestamp - right.entryTimestamp);
-};
-
-const loadRuntimeSignals = async (userName: string): Promise<Signal[]> => {
-  const keys = await getKeys(redisKeys.runtimeSignals(userName));
-  const signals = await Promise.all(keys.map((key) => getData(key, null)));
-
-  return signals
-    .filter(isSignalRecord)
-    .sort((left, right) => left.timestamp - right.timestamp);
-};
-
-const loadRuntimeSignalEvaluations = async (
-  userName: string,
-): Promise<RuntimeSignalEvaluationRecord[]> => {
-  const keys = await getKeys(redisKeys.runtimeSignalEvaluations(userName));
-  const evaluations = await Promise.all(keys.map((key) => getData(key, null)));
-
-  return evaluations
-    .filter(isRuntimeSignalEvaluationRecord)
-    .sort((left, right) => left.timestamp - right.timestamp);
 };
 
 const resolveStrategyNameByConfigKey = (

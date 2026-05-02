@@ -54,6 +54,7 @@ import {
   buildRuntimeSignalStatsIncrements,
   getRuntimeStorageDayKey,
   normalizeRuntimeSignalSkipReason,
+  shouldStoreDetailedRuntimeSignalEvaluation,
   toRuntimeSignalBucketRef,
 } from '../lib/runtimeSignalsStorage';
 
@@ -268,18 +269,20 @@ const saveRuntimeSignalEvaluation = async (
   evaluation: RuntimeSignalEvaluationRecord,
 ) => {
   const dayKey = getRuntimeStorageDayKey(evaluation.timestamp);
-  await setHashJsonField(
-    redisKeys.runtimeSignalEvaluationBucket(
-      evaluation.userName,
-      dayKey,
-      evaluation.strategy,
-    ),
-    evaluation.evaluationId,
-    evaluation,
-    {
-      expire: TTL_10D,
-    },
-  );
+  if (shouldStoreDetailedRuntimeSignalEvaluation(evaluation)) {
+    await setHashJsonField(
+      redisKeys.runtimeSignalEvaluationBucket(
+        evaluation.userName,
+        dayKey,
+        evaluation.strategy,
+      ),
+      evaluation.evaluationId,
+      evaluation,
+      {
+        expire: TTL_10D,
+      },
+    );
+  }
   await incrHashFields(
     redisKeys.runtimeSignalEvaluationStatsBucket(
       evaluation.userName,

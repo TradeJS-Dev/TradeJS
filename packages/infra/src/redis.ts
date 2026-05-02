@@ -169,6 +169,35 @@ const parseJsonOrDeleteKey = async (
   }
 };
 
+const parseHashMap = (value: unknown): Record<string, string> => {
+  if (!value) {
+    return {};
+  }
+
+  if (Array.isArray(value)) {
+    const result: Record<string, string> = {};
+    for (let index = 0; index < value.length; index += 2) {
+      const field = value[index];
+      const fieldValue = value[index + 1];
+      if (field == null || fieldValue == null) {
+        continue;
+      }
+      result[String(field)] = toResultString(fieldValue) ?? '';
+    }
+    return result;
+  }
+
+  if (typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>).map(
+        ([field, fieldValue]) => [field, toResultString(fieldValue) ?? ''],
+      ),
+    );
+  }
+
+  return {};
+};
+
 export const getKeys = async (prefix: string): Promise<string[]> => {
   if (redisUnavailable) return [];
 
@@ -333,6 +362,121 @@ export const setData = async <T>(
   }
 };
 
+export const setHashJsonField = async <T>(
+  key: string,
+  field: string,
+  data: T,
+  options: Options = {},
+): Promise<void> => {
+  if (redisUnavailable) return;
+
+  const { expire } = { ...DEFAULT_OPTIONS, ...options };
+  const redis = await getReadyRedis();
+  if (!redis) return;
+
+  try {
+    await redis.call('HSET', key, field, toJson(data));
+    if (expire) {
+      await redis.expire(key, expire);
+    }
+  } catch (e) {
+    if (e instanceof Error && isRedisConnectivityError(e)) {
+      markRedisUnavailable(e);
+      return;
+    }
+    logger.log('error', 'failed HSET %s[%s]: %s', key, field, String(e));
+  }
+};
+
+export const getHashJsonValues = async <T>(key: string): Promise<T[]> => {
+  if (redisUnavailable) return [];
+
+  const redis = await getReadyRedis();
+  if (!redis) return [];
+
+  try {
+    const raw = await redis.call('HGETALL', key);
+    const values = Object.values(parseHashMap(raw));
+    const parsed: T[] = [];
+
+    for (const value of values) {
+      if (!value) {
+        continue;
+      }
+      try {
+        parsed.push(JSON.parse(value) as T);
+      } catch (e) {
+        logger.log(
+          'error',
+          'failed JSON.parse(HGETALL %s value): %s',
+          key,
+          String(e),
+        );
+      }
+    }
+
+    return parsed;
+  } catch (e) {
+    if (e instanceof Error && isRedisConnectivityError(e)) {
+      markRedisUnavailable(e);
+      return [];
+    }
+    logger.log('error', 'failed HGETALL %s: %s', key, String(e));
+    return [];
+  }
+};
+
+export const incrHashFields = async (
+  key: string,
+  increments: Record<string, number>,
+  options: Options = {},
+): Promise<void> => {
+  if (redisUnavailable) return;
+
+  const { expire } = { ...DEFAULT_OPTIONS, ...options };
+  const redis = await getReadyRedis();
+  if (!redis) return;
+
+  try {
+    for (const [field, increment] of Object.entries(increments)) {
+      if (!Number.isFinite(increment) || increment === 0) {
+        continue;
+      }
+      await redis.call('HINCRBY', key, field, Math.trunc(increment));
+    }
+    if (expire) {
+      await redis.expire(key, expire);
+    }
+  } catch (e) {
+    if (e instanceof Error && isRedisConnectivityError(e)) {
+      markRedisUnavailable(e);
+      return;
+    }
+    logger.log('error', 'failed HINCRBY %s: %s', key, String(e));
+  }
+};
+
+export const getHashData = async (
+  key: string,
+): Promise<Record<string, string>> => {
+  if (redisUnavailable) return {};
+
+  const redis = await getReadyRedis();
+  if (!redis) return {};
+
+  try {
+    const raw = await redis.call('HGETALL', key);
+    return parseHashMap(raw);
+  } catch (e) {
+    if (e instanceof Error && isRedisConnectivityError(e)) {
+      markRedisUnavailable(e);
+      return {};
+    }
+    logger.log('error', 'failed HGETALL %s: %s', key, String(e));
+    return {};
+  }
+};
+
 type ScreenshotSessionTokenRecord = {
   userName: string;
   createdAt: string;
@@ -414,10 +558,33 @@ export const redisKeys = {
   runtimeSignals: (userName: string) => `users:${userName}:runtime:signals:`,
   runtimeSignal: (userName: string, signalId: string) =>
     `users:${userName}:runtime:signals:${signalId}`,
+  runtimeSignalBuckets: (userName: string) =>
+    `users:${userName}:runtime:signals:days:`,
+  runtimeSignalBucket: (
+    userName: string,
+    dayKey: string,
+    strategyName: string,
+  ) => `users:${userName}:runtime:signals:days:${dayKey}:${strategyName}`,
   runtimeSignalEvaluations: (userName: string) =>
     `users:${userName}:runtime:signal-evaluations:`,
   runtimeSignalEvaluation: (userName: string, evaluationId: string) =>
     `users:${userName}:runtime:signal-evaluations:${evaluationId}`,
+  runtimeSignalEvaluationBuckets: (userName: string) =>
+    `users:${userName}:runtime:signal-evaluations:days:`,
+  runtimeSignalEvaluationBucket: (
+    userName: string,
+    dayKey: string,
+    strategyName: string,
+  ) =>
+    `users:${userName}:runtime:signal-evaluations:days:${dayKey}:${strategyName}`,
+  runtimeSignalEvaluationStatsBuckets: (userName: string) =>
+    `users:${userName}:runtime:signal-evaluation-stats:days:`,
+  runtimeSignalEvaluationStatsBucket: (
+    userName: string,
+    dayKey: string,
+    strategyName: string,
+  ) =>
+    `users:${userName}:runtime:signal-evaluation-stats:days:${dayKey}:${strategyName}`,
   runtimeTrades: (userName: string) =>
     `users:${userName}:runtime:trade-records:`,
   runtimeTrade: (userName: string, orderId: string) =>

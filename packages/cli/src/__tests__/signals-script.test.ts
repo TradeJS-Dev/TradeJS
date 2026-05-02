@@ -441,7 +441,7 @@ describe('signals script', () => {
     );
   });
 
-  it('stores routine NO_SIGNAL skips in day buckets and counters', async () => {
+  it('stores routine NO_SIGNAL skips only in stats buckets', async () => {
     const { signals, mocks } = await loadScript({
       flags: {
         timeframe: 15,
@@ -460,19 +460,7 @@ describe('signals script', () => {
 
     await signals();
 
-    expect(mocks.setHashJsonField).toHaveBeenCalledWith(
-      mocks.redisKeys.runtimeSignalEvaluationBucket(
-        'root',
-        '1970-01-01',
-        'TrendLine',
-      ),
-      'TrendLine:ETHUSDT:2000',
-      expect.objectContaining({
-        status: 'skip',
-        reason: 'NO_SIGNAL',
-      }),
-      { expire: TTL_10D },
-    );
+    expect(mocks.setHashJsonField).not.toHaveBeenCalled();
     expect(mocks.incrHashFields).toHaveBeenCalledWith(
       mocks.redisKeys.runtimeSignalEvaluationStatsBucket(
         'root',
@@ -482,6 +470,40 @@ describe('signals script', () => {
       {
         evaluated: 1,
         'reason:skip from core:NO_SIGNAL': 1,
+      },
+      { expire: TTL_10D },
+    );
+  });
+
+  it('stores core skip reasons only in stats buckets', async () => {
+    const { signals, mocks } = await loadScript({
+      flags: {
+        timeframe: 15,
+        makeOrders: true,
+        notify: false,
+        skipScreenshots: true,
+        updateOnly: false,
+        cacheOnly: true,
+        showTickersList: false,
+        showSkipStats: false,
+        user: 'root',
+        connector: 'bybit',
+      },
+      strategyResult: 'TRENDLINE_TIMING:WAIT_RETEST',
+    });
+
+    await signals();
+
+    expect(mocks.setHashJsonField).not.toHaveBeenCalled();
+    expect(mocks.incrHashFields).toHaveBeenCalledWith(
+      mocks.redisKeys.runtimeSignalEvaluationStatsBucket(
+        'root',
+        '1970-01-01',
+        'TrendLine',
+      ),
+      {
+        evaluated: 1,
+        'reason:skip from core:TRENDLINE_TIMING:WAIT_RETEST': 1,
       },
       { expire: TTL_10D },
     );

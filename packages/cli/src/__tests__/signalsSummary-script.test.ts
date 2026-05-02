@@ -25,6 +25,68 @@ describe('signals summary script', () => {
     );
     const setData = jest.fn(async () => null);
     const delKey = jest.fn(async () => true);
+    const loadRuntimeSignals = jest.fn(async () => [
+      {
+        signalId: 'sig-1',
+        strategy: 'TrendLine',
+        symbol: 'BTCUSDT',
+        interval: '15',
+        direction: 'LONG',
+        timestamp: now - 60_000,
+        orderStatus: 'completed',
+        prices: {
+          currentPrice: 100,
+          takeProfitPrice: 110,
+          stopLossPrice: 95,
+          riskRatio: 2,
+        },
+        figures: {},
+        indicators: {},
+        additionalIndicators: {},
+      },
+      {
+        signalId: 'sig-2',
+        strategy: 'ReverseTrendLine',
+        symbol: 'ETHUSDT',
+        interval: '15',
+        direction: 'SHORT',
+        timestamp: now - 120_000,
+        orderStatus: 'skipped',
+        prices: {
+          currentPrice: 50,
+          takeProfitPrice: 45,
+          stopLossPrice: 55,
+          riskRatio: 1,
+        },
+        figures: {},
+        indicators: {},
+        additionalIndicators: {},
+      },
+    ]);
+    const loadRuntimeSignalEvaluationStatsBuckets = jest.fn(async () => [
+      {
+        key: 'users:root:runtime:signal-evaluation-stats:days:2023-11-15:TrendLine',
+        dayKey: '2023-11-15',
+        strategy: 'TrendLine',
+        stats: {
+          evaluated: 1,
+          signals: 1,
+          reasonGroups: new Map(),
+        },
+      },
+      {
+        key: 'users:root:runtime:signal-evaluation-stats:days:2023-11-15:ReverseTrendLine',
+        dayKey: '2023-11-15',
+        strategy: 'ReverseTrendLine',
+        stats: {
+          evaluated: 1,
+          signals: 1,
+          reasonGroups: new Map([
+            ['skip from AI', new Map([['MIN_AI_QUALITY', 1]])],
+          ]),
+        },
+      },
+    ]);
     const logger = {
       info: jest.fn(),
       warn: jest.fn(),
@@ -32,10 +94,6 @@ describe('signals summary script', () => {
     };
     const redisKeys = {
       strategies: (userName: string) => `users:${userName}:strategies`,
-      runtimeSignals: (userName: string) =>
-        `users:${userName}:runtime:signals:`,
-      runtimeSignalEvaluations: (userName: string) =>
-        `users:${userName}:runtime:signal-evaluations:`,
       runtimeTrades: (userName: string) =>
         `users:${userName}:runtime:trade-records:`,
       runtimeTrade: (userName: string, orderId: string) =>
@@ -43,14 +101,6 @@ describe('signals summary script', () => {
       runtimeActiveTrade: (userName: string, symbol: string) =>
         `users:${userName}:runtime:active-trades:${symbol}`,
     };
-    const runtimeSignalKeys = [
-      redisKeys.runtimeSignals('root') + 'sig-1',
-      redisKeys.runtimeSignals('root') + 'sig-2',
-    ];
-    const runtimeSignalEvaluationKeys = [
-      redisKeys.runtimeSignalEvaluations('root') + 'eval-1',
-      redisKeys.runtimeSignalEvaluations('root') + 'eval-2',
-    ];
     const runtimeTradeKeys = [
       redisKeys.runtimeTrades('root') + 'ord-1',
       redisKeys.runtimeTrades('root') + 'ord-2',
@@ -60,81 +110,6 @@ describe('signals summary script', () => {
       `${redisKeys.strategies('root')}:ReverseTrendLine:config`,
     ];
     const records = new Map<string, unknown>([
-      [
-        runtimeSignalKeys[0],
-        {
-          signalId: 'sig-1',
-          strategy: 'TrendLine',
-          symbol: 'BTCUSDT',
-          interval: '15',
-          direction: 'LONG',
-          timestamp: now - 60_000,
-          orderStatus: 'completed',
-          prices: {
-            currentPrice: 100,
-            takeProfitPrice: 110,
-            stopLossPrice: 95,
-            riskRatio: 2,
-          },
-          figures: {},
-          indicators: {},
-          additionalIndicators: {},
-        },
-      ],
-      [
-        runtimeSignalKeys[1],
-        {
-          signalId: 'sig-2',
-          strategy: 'ReverseTrendLine',
-          symbol: 'ETHUSDT',
-          interval: '15',
-          direction: 'SHORT',
-          timestamp: now - 120_000,
-          orderStatus: 'skipped',
-          prices: {
-            currentPrice: 50,
-            takeProfitPrice: 45,
-            stopLossPrice: 55,
-            riskRatio: 1,
-          },
-          figures: {},
-          indicators: {},
-          additionalIndicators: {},
-        },
-      ],
-      [
-        runtimeSignalEvaluationKeys[0],
-        {
-          evaluationId: 'eval-1',
-          userName: 'root',
-          strategy: 'TrendLine',
-          symbol: 'BTCUSDT',
-          interval: '15',
-          timestamp: now - 60_000,
-          evaluatedAt: now - 60_000,
-          status: 'signal',
-          signalId: 'sig-1',
-          direction: 'LONG',
-          orderStatus: 'completed',
-        },
-      ],
-      [
-        runtimeSignalEvaluationKeys[1],
-        {
-          evaluationId: 'eval-2',
-          userName: 'root',
-          strategy: 'ReverseTrendLine',
-          symbol: 'ETHUSDT',
-          interval: '15',
-          timestamp: now - 120_000,
-          evaluatedAt: now - 120_000,
-          status: 'signal',
-          signalId: 'sig-2',
-          direction: 'SHORT',
-          orderStatus: 'skipped',
-          orderSkipReason: 'AI_QUALITY_BELOW_MIN (2 < 3)',
-        },
-      ],
       [
         runtimeTradeKeys[0],
         {
@@ -169,12 +144,6 @@ describe('signals summary script', () => {
     const getKeys = jest.fn(async (prefix: string) => {
       if (prefix === `${redisKeys.strategies('root')}:`) {
         return strategyConfigKeys;
-      }
-      if (prefix === redisKeys.runtimeSignals('root')) {
-        return runtimeSignalKeys;
-      }
-      if (prefix === redisKeys.runtimeSignalEvaluations('root')) {
-        return runtimeSignalEvaluationKeys;
       }
       if (prefix === redisKeys.runtimeTrades('root')) {
         return runtimeTradeKeys;
@@ -235,6 +204,11 @@ describe('signals summary script', () => {
       getKeys,
       redisKeys,
       setData,
+    }));
+
+    jest.doMock('../lib/runtimeSignalsLoader', () => ({
+      loadRuntimeSignalEvaluationStatsBuckets,
+      loadRuntimeSignals,
     }));
 
     jest.doMock('@tradejs/node/cli', () => ({
@@ -302,6 +276,40 @@ describe('signals summary script', () => {
     );
     const setData = jest.fn(async () => null);
     const delKey = jest.fn(async () => true);
+    const loadRuntimeSignals = jest.fn(async () => [
+      {
+        signalId: 'sig-1',
+        strategy: 'AdaptiveMomentumRibbon',
+        symbol: 'BTCUSDT',
+        interval: '15',
+        direction: 'LONG',
+        timestamp: now - 60_000,
+        orderStatus: 'skipped',
+        prices: {
+          currentPrice: 100,
+          takeProfitPrice: 110,
+          stopLossPrice: 95,
+          riskRatio: 2,
+        },
+        figures: {},
+        indicators: {},
+        additionalIndicators: {},
+      },
+    ]);
+    const loadRuntimeSignalEvaluationStatsBuckets = jest.fn(async () => [
+      {
+        key: 'users:root:runtime:signal-evaluation-stats:days:2023-11-15:VolumeDivergence',
+        dayKey: '2023-11-15',
+        strategy: 'VolumeDivergence',
+        stats: {
+          evaluated: 1,
+          signals: 0,
+          reasonGroups: new Map([
+            ['skip from core', new Map([['NO_DIVERGENCE', 1]])],
+          ]),
+        },
+      },
+    ]);
     const logger = {
       info: jest.fn(),
       warn: jest.fn(),
@@ -309,10 +317,6 @@ describe('signals summary script', () => {
     };
     const redisKeys = {
       strategies: (userName: string) => `users:${userName}:strategies`,
-      runtimeSignals: (userName: string) =>
-        `users:${userName}:runtime:signals:`,
-      runtimeSignalEvaluations: (userName: string) =>
-        `users:${userName}:runtime:signal-evaluations:`,
       runtimeTrades: (userName: string) =>
         `users:${userName}:runtime:trade-records:`,
       runtimeTrade: (userName: string, orderId: string) =>
@@ -330,51 +334,12 @@ describe('signals summary script', () => {
       if (prefix === `${redisKeys.strategies('root')}:`) {
         return strategyConfigKeys;
       }
-      if (prefix === redisKeys.runtimeSignals('root')) {
-        return [`${redisKeys.runtimeSignals('root')}sig-1`];
-      }
-      if (prefix === redisKeys.runtimeSignalEvaluations('root')) {
-        return [`${redisKeys.runtimeSignalEvaluations('root')}eval-1`];
-      }
       if (prefix === redisKeys.runtimeTrades('root')) {
         return [];
       }
       return [];
     });
     const getData = jest.fn(async (key: string, fallback: unknown) => {
-      if (key === `${redisKeys.runtimeSignals('root')}sig-1`) {
-        return {
-          signalId: 'sig-1',
-          strategy: 'AdaptiveMomentumRibbon',
-          symbol: 'BTCUSDT',
-          interval: '15',
-          direction: 'LONG',
-          timestamp: now - 60_000,
-          orderStatus: 'skipped',
-          prices: {
-            currentPrice: 100,
-            takeProfitPrice: 110,
-            stopLossPrice: 95,
-            riskRatio: 2,
-          },
-          figures: {},
-          indicators: {},
-          additionalIndicators: {},
-        };
-      }
-      if (key === `${redisKeys.runtimeSignalEvaluations('root')}eval-1`) {
-        return {
-          evaluationId: 'eval-1',
-          userName: 'root',
-          strategy: 'VolumeDivergence',
-          symbol: 'BTCUSDT',
-          interval: '15',
-          timestamp: now - 60_000,
-          evaluatedAt: now - 60_000,
-          status: 'skip',
-          reason: 'NO_DIVERGENCE',
-        };
-      }
       return fallback;
     });
     const connector = {
@@ -409,6 +374,11 @@ describe('signals summary script', () => {
       getKeys,
       redisKeys,
       setData,
+    }));
+
+    jest.doMock('../lib/runtimeSignalsLoader', () => ({
+      loadRuntimeSignalEvaluationStatsBuckets,
+      loadRuntimeSignals,
     }));
 
     jest.doMock('@tradejs/node/cli', () => ({

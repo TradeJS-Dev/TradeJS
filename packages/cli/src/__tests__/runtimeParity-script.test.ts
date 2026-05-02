@@ -12,6 +12,12 @@ const setupRuntimeParityModule = async (
   const update = jest.fn(async () => null);
   const getKeys = jest.fn(async (_prefix: string): Promise<string[]> => []);
   const getData = jest.fn(async (_key: string, fallback: unknown) => fallback);
+  const loadRuntimeSignals = jest.fn(
+    async (_userName: string): Promise<any[]> => [],
+  );
+  const loadRuntimeSignalEvaluations = jest.fn(
+    async (_userName: string): Promise<any[]> => [],
+  );
   const resetTestingKlineCache = jest.fn();
   const testing = jest.fn();
   const connector = {
@@ -59,10 +65,6 @@ const setupRuntimeParityModule = async (
       strategies: (userName: string) => `users:${userName}:strategies`,
       runtimeTrades: (userName: string) =>
         `users:${userName}:runtime:trade-records:`,
-      runtimeSignals: (userName: string) =>
-        `users:${userName}:runtime:signals:`,
-      runtimeSignalEvaluations: (userName: string) =>
-        `users:${userName}:runtime:signal-evaluations:`,
       strategyResults: (userName: string, strategy: string) =>
         `users:${userName}:strategies:${strategy}:results`,
       strategyConfig: (userName: string, strategy: string) =>
@@ -84,6 +86,12 @@ const setupRuntimeParityModule = async (
     resolveConnectorName: jest.fn(async () => 'bybit'),
   }));
 
+  jest.doMock('../lib/runtimeSignalsLoader', () => ({
+    __esModule: true,
+    loadRuntimeSignalEvaluations,
+    loadRuntimeSignals,
+  }));
+
   jest.doMock('@tradejs/node/backtest', () => ({
     __esModule: true,
     resetTestingKlineCache,
@@ -98,6 +106,8 @@ const setupRuntimeParityModule = async (
     getTickers,
     getKeys,
     getData,
+    loadRuntimeSignalEvaluations,
+    loadRuntimeSignals,
     getConnectorCreatorByName,
     resetTestingKlineCache,
     testing,
@@ -254,14 +264,15 @@ describe('runtime parity script', () => {
       .mockImplementation(() => undefined);
     const startTime = 1_700_000_000_000;
     const endTime = startTime + 86_400_000;
-    const { mod, getKeys, getData, testing } = await setupRuntimeParityModule({
-      startTime,
-      endTime,
-      strategy: 'TrendLine',
-      tickers: 'ETHUSDT',
-      runtimeGates: true,
-      cacheOnly: true,
-    });
+    const { mod, getKeys, getData, loadRuntimeSignalEvaluations, testing } =
+      await setupRuntimeParityModule({
+        startTime,
+        endTime,
+        strategy: 'TrendLine',
+        tickers: 'ETHUSDT',
+        runtimeGates: true,
+        cacheOnly: true,
+      });
     const aiAnalysis = {
       direction: null,
       quality: 3,
@@ -272,34 +283,31 @@ describe('runtime parity script', () => {
       if (prefix === 'users:root:strategies:') {
         return ['users:root:strategies:TrendLine:config'];
       }
-      if (prefix === 'users:root:runtime:signal-evaluations:') {
-        return ['users:root:runtime:signal-evaluations:eval-1'];
-      }
       return [];
     });
+    loadRuntimeSignalEvaluations.mockResolvedValue([
+      {
+        evaluationId: 'eval-1',
+        userName: 'root',
+        strategy: 'TrendLine',
+        symbol: 'ETHUSDT',
+        interval: '15',
+        timestamp: startTime + 900_000,
+        evaluatedAt: startTime + 900_000,
+        status: 'signal',
+        signalId: 'sig-1',
+        direction: 'LONG',
+        orderStatus: 'skipped',
+        orderSkipReason: 'AI_QUALITY_BELOW_MIN (0 < 4)',
+        aiAnalysis,
+      },
+    ]);
     getData.mockImplementation(async (key: string, fallback: unknown) => {
       if (key === 'users:root:strategies:TrendLine:config') {
         return { AI_ENABLED: true };
       }
       if (key === 'users:root:strategies:TrendLine:results') {
         return {};
-      }
-      if (key === 'users:root:runtime:signal-evaluations:eval-1') {
-        return {
-          evaluationId: 'eval-1',
-          userName: 'root',
-          strategy: 'TrendLine',
-          symbol: 'ETHUSDT',
-          interval: '15',
-          timestamp: startTime + 900_000,
-          evaluatedAt: startTime + 900_000,
-          status: 'signal',
-          signalId: 'sig-1',
-          direction: 'LONG',
-          orderStatus: 'skipped',
-          orderSkipReason: 'AI_QUALITY_BELOW_MIN (0 < 4)',
-          aiAnalysis,
-        };
       }
       return fallback;
     });
@@ -335,7 +343,7 @@ describe('runtime parity script', () => {
       .mockImplementation(() => undefined);
     const startTime = 1_700_000_000_000;
     const endTime = startTime + 86_400_000;
-    const { mod, getTickers, getKeys, getData, testing } =
+    const { mod, getTickers, getKeys, getData, loadRuntimeSignals, testing } =
       await setupRuntimeParityModule({
         startTime,
         endTime,
@@ -356,6 +364,7 @@ describe('runtime parity script', () => {
       }
       return [];
     });
+    loadRuntimeSignals.mockResolvedValue([]);
     getData.mockImplementation(async (key: string, fallback: unknown) => {
       if (key === 'users:root:strategies:TrendLine:config') {
         return {};
