@@ -1767,7 +1767,7 @@ export const runtimeParity = async () => {
   }
 };
 
-if (process.env.NODE_ENV !== 'test') {
+if (require.main === module) {
   runtimeParity()
     .then(() => {
       process.exit(0);
