@@ -1,6 +1,6 @@
 {
   "name": "@tradejs/connectors",
-  "version": "1.0.8",
+  "version": "1.0.9",
   "description": "Built-in exchange connectors and market data providers for the TradeJS open-source framework.",
   "keywords": [
     "tradejs",
