@@ -85,10 +85,7 @@ yarn npm whoami
 
 if [[ "$RUN_CHECKS" -eq 1 ]]; then
   echo "[publish] Running checks..."
-  yarn typecheck
-  yarn lint
-  yarn unit
-  yarn build
+  yarn checks
 fi
 
 if [[ -n "$TARGET_PACKAGE" ]]; then

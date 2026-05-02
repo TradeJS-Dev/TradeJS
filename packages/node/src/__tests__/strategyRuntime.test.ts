@@ -5,6 +5,7 @@ const mockExecuteEntryOrder = jest.fn();
 const mockUpdatePositionProtection = jest.fn();
 const mockLoadTradejsConfig = jest.fn();
 const mockMarkRuntimeTradeClosed = jest.fn();
+const mockGetDerivativesWindow = jest.fn();
 
 jest.mock('@tradejs/core/strategies', () => ({
   createStrategyAPI: jest.fn((params: any) => ({
@@ -97,9 +98,15 @@ jest.mock('../runtimeJournal', () => ({
     mockMarkRuntimeTradeClosed(...args),
 }));
 
+jest.mock('@tradejs/infra/timescale', () => ({
+  getDerivativesWindow: (...args: unknown[]) =>
+    mockGetDerivativesWindow(...args),
+}));
+
 jest.mock('@tradejs/infra/logger', () => ({
   logger: {
     error: jest.fn(),
+    warn: jest.fn(),
   },
 }));
 
@@ -115,6 +122,7 @@ import { createStrategyRuntime } from '../strategyRuntime';
 import { logger } from '@tradejs/infra/logger';
 import * as manifestsModule from '../strategy/manifests';
 import { strategyEntries } from '@tradejs/strategies';
+import { resetDerivativesContextRuntimeState } from '../strategyHelpers/derivativesContext';
 
 const realGetStrategyManifest = (
   jest.requireActual('../strategy/manifests') as typeof manifestsModule
@@ -124,6 +132,7 @@ const mockGetStrategyManifest =
     typeof manifestsModule.getStrategyManifest
   >;
 const manifestOverrides = new Map<string, any>();
+const originalEnv = process.env;
 
 const setStrategyManifestHooks = (
   strategy: string,
@@ -245,6 +254,11 @@ const makeRuntime = async (
 describe('strategyRuntime', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    process.env = { ...originalEnv };
+    delete process.env.DERIVATIVES_CONTEXT_INTERVALS;
+    delete process.env.DERIVATIVES_CONTEXT_LOOKBACK_HOURS;
+    process.env.DERIVATIVES_CONTEXT_ENABLED = 'false';
+    resetDerivativesContextRuntimeState();
     manifestsModule.resetStrategyRegistryCache();
     manifestsModule.registerStrategyEntries(strategyEntries);
     manifestOverrides.clear();
@@ -268,9 +282,11 @@ describe('strategyRuntime', () => {
     });
     mockEnrichSignalWithAi.mockResolvedValue(5);
     mockMarkRuntimeTradeClosed.mockResolvedValue(null);
+    mockGetDerivativesWindow.mockResolvedValue({});
   });
 
   afterAll(() => {
+    process.env = originalEnv;
     manifestsModule.resetStrategyRegistryCache();
   });
 
@@ -1733,8 +1749,48 @@ describe('strategyRuntime', () => {
       return obj;
     };
 
+    const stripDerivativesContext = (obj: any): any => {
+      if (obj === null || obj === undefined) return obj;
+      if (Array.isArray(obj)) return obj.map(stripDerivativesContext);
+      if (typeof obj === 'object') {
+        const result: any = {};
+        for (const [key, value] of Object.entries(obj)) {
+          if (key === 'derivativesContext') {
+            continue;
+          }
+          result[key] = stripDerivativesContext(value);
+        }
+        return result;
+      }
+      return obj;
+    };
+
+    const firstCallArgRaw = (mock: jest.Mock) =>
+      (mock.mock.calls as any[][])[0][0];
+
     const firstCallArg = (mock: jest.Mock) =>
-      stripFunctions((mock.mock.calls as any[][])[0][0]);
+      stripDerivativesContext(stripFunctions(firstCallArgRaw(mock)));
+
+    it.each([
+      ['false', false],
+      ['true', true],
+    ])(
+      'afterEnrichAi includes derivatives context when DERIVATIVES_CONTEXT_ENABLED=%s',
+      async (enabled, expectedPresent) => {
+        process.env.DERIVATIVES_CONTEXT_ENABLED = enabled;
+        const afterEnrichAi = jest.fn(async () => {});
+        setStrategyManifestHooks('TrendLine', { afterEnrichAi });
+
+        const { strategy } = await makeRuntime(() => makeDecisionEntry());
+        await strategy(candle, btcCandle);
+
+        const params = firstCallArgRaw(afterEnrichAi);
+        expect(
+          params.decision.signal.additionalIndicators?.derivativesContext !=
+            null,
+        ).toBe(expectedPresent);
+      },
+    );
 
     it('onInit params snapshot', async () => {
       const onInit = jest.fn(async () => {});
