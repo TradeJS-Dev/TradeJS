@@ -51,7 +51,59 @@ describe('trendShiftAiAdapter', () => {
     });
   });
 
-  it('rejects weak or conflicted flips', () => {
+  it('rejects ordinary q4 flips as watch-only', () => {
+    const result = trendShiftAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makePayload({
+        signalDirection: 'LONG',
+        confirmedFlip: true,
+        bullFlip: true,
+        flipDistanceOk: true,
+        closeVsAvgPct: 0.08,
+        avgSlopePct: 0.05,
+        distanceAtrRatio: 0.5,
+        coinBiasAligned: true,
+      }),
+      analysis: {
+        direction: 'LONG',
+        quality: 5,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: null,
+      quality: 4,
+      approved: false,
+    });
+  });
+
+  it('approves q5-strength flips even with coin bias conflict', () => {
+    const result = trendShiftAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makePayload({
+        signalDirection: 'LONG',
+        confirmedFlip: true,
+        bullFlip: true,
+        flipDistanceOk: true,
+        closeVsAvgPct: 2.6,
+        avgSlopePct: 2.8,
+        distanceAtrRatio: 0.85,
+        coinBiasAligned: false,
+      }),
+      analysis: {
+        direction: 'LONG',
+        quality: 1,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: 'LONG',
+      quality: 5,
+      approved: true,
+    });
+  });
+
+  it('rejects weak flips even with coin bias conflict', () => {
     const result = trendShiftAiAdapter.postProcessAnalysis?.({
       signal: {} as any,
       payload: makePayload({
@@ -74,6 +126,6 @@ describe('trendShiftAiAdapter', () => {
       direction: null,
       approved: false,
     });
-    expect((result as any).quality).toBeLessThanOrEqual(2);
+    expect((result as any).quality).toBe(2);
   });
 });
