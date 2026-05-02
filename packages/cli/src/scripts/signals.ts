@@ -25,17 +25,18 @@ import type {
   TradejsConfigHooks,
   TradejsConfigSignalsHookContext,
 } from '@tradejs/core/config';
-import {
-  SIGNALS_CLI_PRELOAD_DAYS,
-  TTL_1D,
-  TTL_3D,
-  TTL_1M,
-  TTL_3M,
-} from '@tradejs/core/constants';
+import { SIGNALS_CLI_PRELOAD_DAYS, TTL_10D } from '@tradejs/core/constants';
 import { getStrategyCreator } from '@tradejs/node/strategies';
 import { getTimestamp } from '@tradejs/core/time';
 import { logger } from '@tradejs/infra/logger';
-import { getData, getKeys, redisKeys, setData } from '@tradejs/infra/redis';
+import {
+  getData,
+  getKeys,
+  incrHashFields,
+  redisKeys,
+  setData,
+  setHashJsonField,
+} from '@tradejs/infra/redis';
 import {
   Connector,
   ConnectorCreator,
@@ -49,6 +50,12 @@ import {
   backfillDerivativesContextForSignals,
   shouldBackfillDerivativesContextForSignals,
 } from '../lib/derivativesContextBackfill';
+import {
+  buildRuntimeSignalStatsIncrements,
+  getRuntimeStorageDayKey,
+  normalizeRuntimeSignalSkipReason,
+  toRuntimeSignalBucketRef,
+} from '../lib/runtimeSignalsStorage';
 
 args.option(['t', 'tickers'], 'Selected tickers');
 args.option(['e', 'exclude'], 'Exclude tickers from tests');
@@ -222,43 +229,6 @@ const createStrategySkipStats = (
     ]),
   );
 
-const normalizeSkipStatsReason = (
-  reason: string,
-  fallbackSource: StrategySkipSource,
-) => {
-  let source = fallbackSource;
-  let normalizedReason = reason;
-
-  if (reason.startsWith('AI_QUALITY_BELOW_MIN')) {
-    source = 'AI';
-    normalizedReason = 'MIN_AI_QUALITY';
-  } else if (reason === 'AI_QUALITY_UNAVAILABLE') {
-    source = 'AI';
-    normalizedReason = 'QUALITY_UNAVAILABLE';
-  } else if (reason === 'ML_RESULT_UNAVAILABLE') {
-    source = 'ML';
-    normalizedReason = 'RESULT_UNAVAILABLE';
-  } else if (reason.startsWith('ML_THRESHOLD_NOT_MET')) {
-    source = 'ML';
-    normalizedReason = 'ML_THRESHOLD';
-  } else if (reason.startsWith('HOOK_BEFORE_ENTRY_GATE:')) {
-    source = 'hook';
-    normalizedReason = `BEFORE_ENTRY_GATE:${reason.slice(
-      'HOOK_BEFORE_ENTRY_GATE:'.length,
-    )}`;
-  } else if (reason === 'HOOK_BEFORE_ENTRY_GATE') {
-    source = 'hook';
-    normalizedReason = 'BEFORE_ENTRY_GATE';
-  } else if (
-    reason === 'MAKE_ORDERS_DISABLED' ||
-    reason === 'ENTRY_POLICY_BLOCKED'
-  ) {
-    source = 'policy';
-  }
-
-  return `skip from ${source} / ${normalizedReason}`;
-};
-
 const recordStrategyReason = (
   strategyStats: StrategySkipStatsMap,
   strategyName: string,
@@ -270,7 +240,8 @@ const recordStrategyReason = (
     return;
   }
 
-  const normalizedReason = normalizeSkipStatsReason(reason, fallbackSource);
+  const normalized = normalizeRuntimeSignalSkipReason(reason, fallbackSource);
+  const normalizedReason = `${normalized.source} / ${normalized.reason}`;
   stats.reasons.set(
     normalizedReason,
     (stats.reasons.get(normalizedReason) ?? 0) + 1,
@@ -287,41 +258,37 @@ const buildRuntimeSignalEvaluationId = ({
   timestamp: number;
 }) => `${strategyName}:${symbol}:${timestamp}`;
 
-const hasMeaningfulEvaluationReason = (value: unknown) => {
-  const reason = typeof value === 'string' ? value.trim() : '';
-  return reason.length > 0 && reason !== 'NO_SIGNAL';
-};
-
-const resolveRuntimeSignalEvaluationTtl = (
-  evaluation: RuntimeSignalEvaluationRecord,
-) => {
-  if (evaluation.status === 'signal' || evaluation.status === 'error') {
-    return TTL_1M;
-  }
-
-  if (
-    hasMeaningfulEvaluationReason(evaluation.reason) ||
-    hasMeaningfulEvaluationReason(evaluation.orderSkipReason)
-  ) {
-    return TTL_1M;
-  }
-
-  // Keep routine NO_SIGNAL skips long enough for parity/debug windows,
-  // but avoid storing a month of low-signal evaluations.
-  return TTL_3D;
-};
+const getTelegramDeliverableSignals = (signals: Signal[]) =>
+  signals.filter(
+    (signal) =>
+      signal.orderStatus !== 'skipped' && signal.orderStatus !== 'canceled',
+  );
 
 const saveRuntimeSignalEvaluation = async (
   evaluation: RuntimeSignalEvaluationRecord,
 ) => {
-  await setData(
-    redisKeys.runtimeSignalEvaluation(
+  const dayKey = getRuntimeStorageDayKey(evaluation.timestamp);
+  await setHashJsonField(
+    redisKeys.runtimeSignalEvaluationBucket(
       evaluation.userName,
-      evaluation.evaluationId,
+      dayKey,
+      evaluation.strategy,
     ),
+    evaluation.evaluationId,
     evaluation,
     {
-      expire: resolveRuntimeSignalEvaluationTtl(evaluation),
+      expire: TTL_10D,
+    },
+  );
+  await incrHashFields(
+    redisKeys.runtimeSignalEvaluationStatsBucket(
+      evaluation.userName,
+      dayKey,
+      evaluation.strategy,
+    ),
+    buildRuntimeSignalStatsIncrements(evaluation),
+    {
+      expire: TTL_10D,
     },
   );
 };
@@ -399,6 +366,10 @@ const findSignals = async (
     }),
   ]);
 
+  // Runtime evaluates only on the last closed candle. The newest cached bar
+  // may still be forming and would otherwise break parity with backtests.
+  cachedData.pop();
+  btcCachedData.pop();
   const lastCandle = cachedData.pop();
   const btcLastCandle = btcCachedData.pop();
 
@@ -471,19 +442,20 @@ const findSignals = async (
     }
     strategySignals.push(signal);
 
-    await setData(redisKeys.signal(symbol, signal.signalId), signal, {
-      expire: TTL_1D,
-    });
-
     await setData(redisKeys.storeSignal(symbol, signal.signalId), signal, {
-      expire: TTL_3M,
+      expire: TTL_10D,
     });
 
-    await setData(
-      redisKeys.runtimeSignal(flags.user, signal.signalId),
-      signal,
+    await setHashJsonField(
+      redisKeys.runtimeSignalBucket(
+        flags.user,
+        getRuntimeStorageDayKey(signal.timestamp),
+        signal.strategy,
+      ),
+      signal.signalId,
+      toRuntimeSignalBucketRef(signal),
       {
-        expire: TTL_1M,
+        expire: TTL_10D,
       },
     );
 
@@ -737,12 +709,14 @@ export const signals = async () => {
       });
     });
 
-    if (!flags.skipScreenshots) {
-      await makeScreenshots(signals, '15', flags.user);
-    }
-
     if (flags.notify) {
-      await sendToTG(signals, '15', flags.user);
+      const telegramSignals = getTelegramDeliverableSignals(signals);
+
+      if (!flags.skipScreenshots && telegramSignals.length > 0) {
+        await makeScreenshots(telegramSignals, '15', flags.user);
+      }
+
+      await sendToTG(telegramSignals, '15', flags.user);
     }
 
     logger.info(

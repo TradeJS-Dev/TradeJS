@@ -1,7 +1,6 @@
 export {};
 
-const TTL_3D = 259_200;
-const TTL_1M = 2_600_000;
+const TTL_10D = 864_000;
 
 type ScriptFlags = {
   tickers?: string;
@@ -18,15 +17,12 @@ type ScriptFlags = {
   chunk?: string;
   user: string;
   connector: string;
-  points?: string;
-  offset?: string;
 };
 
 type Scenario = {
   flags: ScriptFlags;
   derivativesContextEnabled?: boolean;
   strategyConfig?: Record<string, unknown>;
-  existingSignalKeys?: string[];
   strategyResult?: unknown;
   projectHooks?: {
     beforeSignals?: (...args: any[]) => unknown;
@@ -41,14 +37,25 @@ type Scenario = {
 
 const makeRedisKeys = () => ({
   strategies: (userName: string) => `users:${userName}:strategies`,
-  signal: (symbol: string, signalId: string) => `signals:${symbol}:${signalId}`,
-  signalsBySymbol: (symbol: string) => `signals:${symbol}:`,
   storeSignal: (symbol: string, signalId: string) =>
     `store:signals:${symbol}:${signalId}`,
-  runtimeSignal: (userName: string, signalId: string) =>
-    `users:${userName}:runtime:signals:${signalId}`,
-  runtimeSignalEvaluation: (userName: string, evaluationId: string) =>
-    `users:${userName}:runtime:signal-evaluations:${evaluationId}`,
+  runtimeSignalBucket: (
+    userName: string,
+    dayKey: string,
+    strategyName: string,
+  ) => `users:${userName}:runtime:signals:days:${dayKey}:${strategyName}`,
+  runtimeSignalEvaluationBucket: (
+    userName: string,
+    dayKey: string,
+    strategyName: string,
+  ) =>
+    `users:${userName}:runtime:signal-evaluations:days:${dayKey}:${strategyName}`,
+  runtimeSignalEvaluationStatsBucket: (
+    userName: string,
+    dayKey: string,
+    strategyName: string,
+  ) =>
+    `users:${userName}:runtime:signal-evaluation-stats:days:${dayKey}:${strategyName}`,
 });
 
 const makeCandle = (timestamp: number, close: number) => ({
@@ -78,9 +85,6 @@ const loadScript = async (scenario: Scenario) => {
     if (key === `${redisKeys.strategies('root')}:`) {
       return strategyConfigKeys;
     }
-    if (key === redisKeys.signalsBySymbol('ETHUSDT')) {
-      return scenario.existingSignalKeys ?? [];
-    }
     return [];
   });
   const strategyConfigMap = new Map(
@@ -96,6 +100,8 @@ const loadScript = async (scenario: Scenario) => {
     return fallback;
   });
   const setData = jest.fn(async () => null);
+  const setHashJsonField = jest.fn(async () => null);
+  const incrHashFields = jest.fn(async () => null);
   const logger = {
     info: jest.fn(),
     warn: jest.fn(),
@@ -104,9 +110,13 @@ const loadScript = async (scenario: Scenario) => {
   const connector = {
     kline: jest.fn(async ({ symbol }: { symbol: string }) => {
       if (symbol === 'BTCUSDT') {
-        return [makeCandle(1000, 100), makeCandle(2000, 101)];
+        return [
+          makeCandle(1000, 100),
+          makeCandle(2000, 101),
+          makeCandle(3000, 102),
+        ];
       }
-      return [makeCandle(1000, 10), makeCandle(2000, 11)];
+      return [makeCandle(1000, 10), makeCandle(2000, 11), makeCandle(3000, 12)];
     }),
   };
   const strategyCreatorMap = new Map<string, jest.Mock>();
@@ -145,7 +155,9 @@ const loadScript = async (scenario: Scenario) => {
     async <T>(items: T[], _limit: number, worker: (item: T) => Promise<void>) =>
       Promise.all(items.map(worker)),
   );
-  const getTimestamp = jest.fn(() => 2000);
+  const getTimestamp = jest.fn((days?: number) =>
+    typeof days === 'number' && days > 0 ? 1000 : 3000,
+  );
   const progressTick = jest.fn();
   const backfillDerivativesContextForSignals = jest.fn(async () => ({
     skipped: false,
@@ -224,8 +236,10 @@ const loadScript = async (scenario: Scenario) => {
   jest.doMock('@tradejs/infra/redis', () => ({
     getData,
     getKeys,
+    incrHashFields,
     redisKeys,
     setData,
+    setHashJsonField,
   }));
 
   jest.doMock('../lib/derivativesContextBackfill', () => ({
@@ -241,20 +255,22 @@ const loadScript = async (scenario: Scenario) => {
   return {
     signals: signalsScriptModule.signals,
     mocks: {
+      backfillDerivativesContextForSignals,
       connector,
       getData,
       getKeys,
       getStrategyCreator,
       getTickers,
-      logger,
+      incrHashFields,
       loadTradejsConfig,
+      logger,
       makeScreenshots,
       progressTick,
-      backfillDerivativesContextForSignals,
       redisKeys,
       runWithConcurrency,
       sendToTG,
       setData,
+      setHashJsonField,
       shouldBackfillDerivativesContextForSignals,
       strategyCreatorMap,
       strategyFnMap,
@@ -278,7 +294,7 @@ describe('signals script', () => {
     logSpy.mockRestore();
   });
 
-  it('re-evaluates symbol even when previous signal keys exist', async () => {
+  it('stores canonical signal payload plus bucketed runtime references', async () => {
     const { signals, mocks } = await loadScript({
       flags: {
         timeframe: 15,
@@ -292,24 +308,13 @@ describe('signals script', () => {
         user: 'root',
         connector: 'bybit',
       },
-      existingSignalKeys: ['signals:ETHUSDT:old-signal'],
     });
 
     await signals();
 
-    expect(mocks.getStrategyCreator).toHaveBeenCalledWith(
-      'TrendLine',
-      expect.any(String),
-    );
-    expect(mocks.strategyCreatorMap.get('TrendLine')).toHaveBeenCalledTimes(1);
-    expect(mocks.strategyFnMap.get('TrendLine')).toHaveBeenCalledTimes(1);
-    expect(mocks.setData).toHaveBeenCalledWith(
-      mocks.redisKeys.signal('ETHUSDT', 'TrendLine-sig'),
-      expect.objectContaining({
-        signalId: 'TrendLine-sig',
-        symbol: 'ETHUSDT',
-      }),
-      { expire: expect.any(Number) },
+    expect(mocks.strategyFnMap.get('TrendLine')).toHaveBeenCalledWith(
+      expect.objectContaining({ timestamp: 2000, close: 11 }),
+      expect.objectContaining({ timestamp: 2000, close: 101 }),
     );
     expect(mocks.setData).toHaveBeenCalledWith(
       mocks.redisKeys.storeSignal('ETHUSDT', 'TrendLine-sig'),
@@ -317,18 +322,26 @@ describe('signals script', () => {
         signalId: 'TrendLine-sig',
         symbol: 'ETHUSDT',
       }),
-      { expire: expect.any(Number) },
+      { expire: TTL_10D },
     );
-    expect(mocks.setData).toHaveBeenCalledWith(
-      mocks.redisKeys.runtimeSignal('root', 'TrendLine-sig'),
-      expect.objectContaining({
+    expect(mocks.setHashJsonField).toHaveBeenCalledWith(
+      mocks.redisKeys.runtimeSignalBucket('root', '1970-01-01', 'TrendLine'),
+      'TrendLine-sig',
+      {
         signalId: 'TrendLine-sig',
         symbol: 'ETHUSDT',
-      }),
-      { expire: TTL_1M },
+        strategy: 'TrendLine',
+        timestamp: 2000,
+      },
+      { expire: TTL_10D },
     );
-    expect(mocks.setData).toHaveBeenCalledWith(
-      mocks.redisKeys.runtimeSignalEvaluation('root', 'TrendLine:ETHUSDT:2000'),
+    expect(mocks.setHashJsonField).toHaveBeenCalledWith(
+      mocks.redisKeys.runtimeSignalEvaluationBucket(
+        'root',
+        '1970-01-01',
+        'TrendLine',
+      ),
+      'TrendLine:ETHUSDT:2000',
       expect.objectContaining({
         evaluationId: 'TrendLine:ETHUSDT:2000',
         strategy: 'TrendLine',
@@ -338,14 +351,23 @@ describe('signals script', () => {
         signalId: 'TrendLine-sig',
         direction: 'LONG',
       }),
-      { expire: TTL_1M },
+      { expire: TTL_10D },
     );
-    expect(mocks.getKeys).not.toHaveBeenCalledWith(
-      mocks.redisKeys.signalsBySymbol('ETHUSDT'),
+    expect(mocks.incrHashFields).toHaveBeenCalledWith(
+      mocks.redisKeys.runtimeSignalEvaluationStatsBucket(
+        'root',
+        '1970-01-01',
+        'TrendLine',
+      ),
+      {
+        evaluated: 1,
+        signals: 1,
+      },
+      { expire: TTL_10D },
     );
   });
 
-  it('snapshots AI and ML gate payloads in runtime signal evaluations', async () => {
+  it('stores AI and ML gate metadata in evaluation buckets and stats', async () => {
     const aiAnalysis = {
       direction: null,
       quality: 3,
@@ -389,61 +411,37 @@ describe('signals script', () => {
 
     await signals();
 
-    expect(mocks.setData).toHaveBeenCalledWith(
-      mocks.redisKeys.runtimeSignalEvaluation('root', 'TrendLine:ETHUSDT:2000'),
+    expect(mocks.setHashJsonField).toHaveBeenCalledWith(
+      mocks.redisKeys.runtimeSignalEvaluationBucket(
+        'root',
+        '1970-01-01',
+        'TrendLine',
+      ),
+      'TrendLine:ETHUSDT:2000',
       expect.objectContaining({
-        evaluationId: 'TrendLine:ETHUSDT:2000',
-        status: 'signal',
         orderStatus: 'skipped',
         orderSkipReason: 'AI_QUALITY_BELOW_MIN (0 < 4)',
         aiAnalysis,
         ml,
       }),
-      { expire: TTL_1M },
+      { expire: TTL_10D },
     );
-  });
-
-  it('logs aggregated skip stats when enabled', async () => {
-    const { signals, mocks } = await loadScript({
-      flags: {
-        timeframe: 15,
-        makeOrders: false,
-        notify: false,
-        skipScreenshots: true,
-        updateOnly: false,
-        cacheOnly: true,
-        showTickersList: false,
-        showSkipStats: true,
-        user: 'root',
-        connector: 'bybit',
+    expect(mocks.incrHashFields).toHaveBeenCalledWith(
+      mocks.redisKeys.runtimeSignalEvaluationStatsBucket(
+        'root',
+        '1970-01-01',
+        'TrendLine',
+      ),
+      {
+        evaluated: 1,
+        signals: 1,
+        'reason:skip from AI:MIN_AI_QUALITY': 1,
       },
-      strategyResult: 'TRENDLINE_TIMING:WAIT_RETEST',
-    });
-
-    await signals();
-
-    expect(mocks.logger.info).toHaveBeenCalledWith('skip stats:');
-    expect(mocks.logger.info).toHaveBeenCalledWith(
-      'TrendLine: evaluated=1, signals=0',
-    );
-    expect(mocks.logger.info).toHaveBeenCalledWith(
-      '  skip from core / TRENDLINE_TIMING:WAIT_RETEST: 1',
-    );
-    expect(mocks.setData).toHaveBeenCalledWith(
-      mocks.redisKeys.runtimeSignalEvaluation('root', 'TrendLine:ETHUSDT:2000'),
-      expect.objectContaining({
-        evaluationId: 'TrendLine:ETHUSDT:2000',
-        strategy: 'TrendLine',
-        symbol: 'ETHUSDT',
-        timestamp: 2000,
-        status: 'skip',
-        reason: 'TRENDLINE_TIMING:WAIT_RETEST',
-      }),
-      { expire: TTL_1M },
+      { expire: TTL_10D },
     );
   });
 
-  it('stores routine NO_SIGNAL skips with shorter retention', async () => {
+  it('stores routine NO_SIGNAL skips in day buckets and counters', async () => {
     const { signals, mocks } = await loadScript({
       flags: {
         timeframe: 15,
@@ -462,21 +460,188 @@ describe('signals script', () => {
 
     await signals();
 
-    expect(mocks.setData).toHaveBeenCalledWith(
-      mocks.redisKeys.runtimeSignalEvaluation('root', 'TrendLine:ETHUSDT:2000'),
+    expect(mocks.setHashJsonField).toHaveBeenCalledWith(
+      mocks.redisKeys.runtimeSignalEvaluationBucket(
+        'root',
+        '1970-01-01',
+        'TrendLine',
+      ),
+      'TrendLine:ETHUSDT:2000',
       expect.objectContaining({
-        evaluationId: 'TrendLine:ETHUSDT:2000',
-        strategy: 'TrendLine',
-        symbol: 'ETHUSDT',
-        timestamp: 2000,
         status: 'skip',
         reason: 'NO_SIGNAL',
       }),
-      { expire: TTL_3D },
+      { expire: TTL_10D },
+    );
+    expect(mocks.incrHashFields).toHaveBeenCalledWith(
+      mocks.redisKeys.runtimeSignalEvaluationStatsBucket(
+        'root',
+        '1970-01-01',
+        'TrendLine',
+      ),
+      {
+        evaluated: 1,
+        'reason:skip from core:NO_SIGNAL': 1,
+      },
+      { expire: TTL_10D },
     );
   });
 
-  it('backfills derivatives context for signals and logs load timings', async () => {
+  it('logs aggregated skip stats with normalized reasons', async () => {
+    const { signals, mocks } = await loadScript({
+      flags: {
+        timeframe: 15,
+        makeOrders: true,
+        notify: false,
+        skipScreenshots: true,
+        updateOnly: false,
+        cacheOnly: true,
+        showTickersList: false,
+        showSkipStats: true,
+        user: 'root',
+        connector: 'bybit',
+      },
+      strategyConfigs: [
+        {
+          strategyName: 'AdaptiveMomentumRibbon',
+          result: {
+            signalId: 'amr-sig',
+            strategy: 'AdaptiveMomentumRibbon',
+            symbol: 'ETHUSDT',
+            interval: '15',
+            direction: 'LONG',
+            timestamp: 2000,
+            orderStatus: 'skipped',
+            orderSkipReason: 'AI_QUALITY_BELOW_MIN (2 < 3)',
+            prices: { currentPrice: 11 },
+            figures: {},
+            indicators: {},
+            additionalIndicators: {},
+          },
+        },
+        {
+          strategyName: 'TrendLine',
+          result: 'TRENDLINE_TIMING:WAIT_RETEST',
+        },
+      ],
+    });
+
+    await signals();
+
+    expect(mocks.logger.info).toHaveBeenCalledWith('skip stats:');
+    expect(mocks.logger.info).toHaveBeenCalledWith(
+      'AdaptiveMomentumRibbon: evaluated=1, signals=1',
+    );
+    expect(mocks.logger.info).toHaveBeenCalledWith(
+      '  skip from AI / MIN_AI_QUALITY: 1',
+    );
+    expect(mocks.logger.info).toHaveBeenCalledWith(
+      'TrendLine: evaluated=1, signals=0',
+    );
+    expect(mocks.logger.info).toHaveBeenCalledWith(
+      '  skip from core / TRENDLINE_TIMING:WAIT_RETEST: 1',
+    );
+  });
+
+  it('builds screenshots only for Telegram-deliverable signals', async () => {
+    const { signals, mocks } = await loadScript({
+      flags: {
+        timeframe: 15,
+        makeOrders: true,
+        notify: true,
+        skipScreenshots: false,
+        updateOnly: false,
+        cacheOnly: true,
+        showTickersList: false,
+        showSkipStats: false,
+        user: 'root',
+        connector: 'bybit',
+      },
+      strategyConfigs: [
+        {
+          strategyName: 'AdaptiveMomentumRibbon',
+          result: {
+            signalId: 'amr-sig',
+            strategy: 'AdaptiveMomentumRibbon',
+            symbol: 'ETHUSDT',
+            interval: '15',
+            direction: 'LONG',
+            timestamp: 2000,
+            orderStatus: 'skipped',
+            orderSkipReason: 'AI_QUALITY_BELOW_MIN (2 < 3)',
+            prices: { currentPrice: 11 },
+            figures: {},
+            indicators: {},
+            additionalIndicators: {},
+          },
+        },
+        {
+          strategyName: 'TrendLine',
+          result: {
+            signalId: 'trend-sig',
+            strategy: 'TrendLine',
+            symbol: 'ETHUSDT',
+            interval: '15',
+            direction: 'LONG',
+            timestamp: 2000,
+            orderStatus: 'completed',
+            prices: { currentPrice: 11 },
+            figures: {},
+            indicators: {},
+            additionalIndicators: {},
+          },
+        },
+      ],
+    });
+
+    await signals();
+
+    expect(mocks.makeScreenshots).toHaveBeenCalledTimes(1);
+    expect(mocks.makeScreenshots).toHaveBeenCalledWith(
+      [
+        expect.objectContaining({
+          signalId: 'trend-sig',
+          orderStatus: 'completed',
+        }),
+      ],
+      '15',
+      'root',
+    );
+    expect(mocks.sendToTG).toHaveBeenCalledWith(
+      [
+        expect.objectContaining({
+          signalId: 'trend-sig',
+          orderStatus: 'completed',
+        }),
+      ],
+      '15',
+      'root',
+    );
+  });
+
+  it('skips screenshot generation when Telegram delivery is disabled', async () => {
+    const { signals, mocks } = await loadScript({
+      flags: {
+        timeframe: 15,
+        makeOrders: false,
+        notify: false,
+        skipScreenshots: false,
+        updateOnly: false,
+        cacheOnly: true,
+        showTickersList: false,
+        showSkipStats: false,
+        user: 'root',
+        connector: 'bybit',
+      },
+    });
+
+    await signals();
+
+    expect(mocks.makeScreenshots).not.toHaveBeenCalled();
+    expect(mocks.sendToTG).not.toHaveBeenCalled();
+  });
+
+  it('backfills derivatives context for signals and logs timings', async () => {
     const { signals, mocks } = await loadScript({
       derivativesContextEnabled: true,
       flags: {
@@ -503,9 +668,9 @@ describe('signals script', () => {
     expect(mocks.backfillDerivativesContextForSignals).toHaveBeenCalledWith({
       userName: 'root',
       symbols: ['ETHUSDT'],
-      startMs: 2000,
-      endMs: 2000,
-      preloadStartMs: 2000,
+      startMs: 3000,
+      endMs: 3000,
+      preloadStartMs: 1000,
     });
     expect(mocks.logger.info).toHaveBeenCalledWith(
       expect.stringMatching(/^tickers load: done in /),
@@ -515,172 +680,6 @@ describe('signals script', () => {
     );
     expect(mocks.logger.info).toHaveBeenCalledWith(
       expect.stringMatching(/^derivatives context backfill: done in /),
-    );
-  });
-
-  it('logs gate skip stats for skipped signals by source', async () => {
-    const { signals, mocks } = await loadScript({
-      flags: {
-        timeframe: 15,
-        makeOrders: true,
-        notify: false,
-        skipScreenshots: true,
-        updateOnly: false,
-        cacheOnly: true,
-        showTickersList: false,
-        showSkipStats: true,
-        user: 'root',
-        connector: 'bybit',
-      },
-      strategyResult: {
-        signalId: 'TrendLine-sig',
-        strategy: 'TrendLine',
-        symbol: 'ETHUSDT',
-        interval: '15',
-        direction: 'LONG',
-        timestamp: 2000,
-        orderStatus: 'skipped',
-        orderSkipReason: 'AI_QUALITY_BELOW_MIN (2 < 3)',
-        prices: { currentPrice: 11 },
-        figures: {},
-        indicators: {},
-        additionalIndicators: {},
-      },
-    });
-
-    await signals();
-
-    expect(mocks.logger.info).toHaveBeenCalledWith(
-      'TrendLine: evaluated=1, signals=1',
-    );
-    expect(mocks.logger.info).toHaveBeenCalledWith(
-      '  skip from AI / MIN_AI_QUALITY: 1',
-    );
-  });
-
-  it('logs ML unavailable skip stats by source', async () => {
-    const { signals, mocks } = await loadScript({
-      flags: {
-        timeframe: 15,
-        makeOrders: true,
-        notify: false,
-        skipScreenshots: true,
-        updateOnly: false,
-        cacheOnly: true,
-        showTickersList: false,
-        showSkipStats: true,
-        user: 'root',
-        connector: 'bybit',
-      },
-      strategyResult: {
-        signalId: 'TrendLine-sig',
-        strategy: 'TrendLine',
-        symbol: 'ETHUSDT',
-        interval: '15',
-        direction: 'LONG',
-        timestamp: 2000,
-        orderStatus: 'skipped',
-        orderSkipReason: 'ML_RESULT_UNAVAILABLE',
-        prices: { currentPrice: 11 },
-        figures: {},
-        indicators: {},
-        additionalIndicators: {},
-      },
-    });
-
-    await signals();
-
-    expect(mocks.logger.info).toHaveBeenCalledWith(
-      'TrendLine: evaluated=1, signals=1',
-    );
-    expect(mocks.logger.info).toHaveBeenCalledWith(
-      '  skip from ML / RESULT_UNAVAILABLE: 1',
-    );
-  });
-
-  it('collects signals from multiple strategies for the same symbol', async () => {
-    const { signals, mocks } = await loadScript({
-      flags: {
-        timeframe: 15,
-        makeOrders: false,
-        notify: false,
-        skipScreenshots: true,
-        updateOnly: false,
-        cacheOnly: true,
-        showTickersList: false,
-        showSkipStats: false,
-        user: 'root',
-        connector: 'bybit',
-      },
-      strategyConfigs: [
-        {
-          strategyName: 'ReverseTrendLine',
-          result: {
-            signalId: 'rev-sig',
-            strategy: 'ReverseTrendLine',
-            symbol: 'ETHUSDT',
-            interval: '15',
-            direction: 'SHORT',
-            timestamp: 2000,
-            prices: { currentPrice: 11 },
-            figures: {},
-            indicators: {},
-            additionalIndicators: {},
-          },
-        },
-        {
-          strategyName: 'TrendLine',
-          result: {
-            signalId: 'trend-sig',
-            strategy: 'TrendLine',
-            symbol: 'ETHUSDT',
-            interval: '15',
-            direction: 'LONG',
-            timestamp: 2000,
-            prices: { currentPrice: 11 },
-            figures: {},
-            indicators: {},
-            additionalIndicators: {},
-          },
-        },
-      ],
-    });
-
-    await signals();
-
-    expect(mocks.strategyFnMap.get('ReverseTrendLine')).toHaveBeenCalledTimes(
-      1,
-    );
-    expect(mocks.strategyFnMap.get('TrendLine')).toHaveBeenCalledTimes(1);
-    expect(mocks.setData).toHaveBeenCalledWith(
-      mocks.redisKeys.signal('ETHUSDT', 'rev-sig'),
-      expect.objectContaining({ signalId: 'rev-sig' }),
-      { expire: expect.any(Number) },
-    );
-    expect(mocks.setData).toHaveBeenCalledWith(
-      mocks.redisKeys.signal('ETHUSDT', 'trend-sig'),
-      expect.objectContaining({ signalId: 'trend-sig' }),
-      { expire: expect.any(Number) },
-    );
-    expect(mocks.setData).toHaveBeenCalledWith(
-      mocks.redisKeys.runtimeSignal('root', 'rev-sig'),
-      expect.objectContaining({ signalId: 'rev-sig' }),
-      { expire: TTL_1M },
-    );
-    expect(mocks.setData).toHaveBeenCalledWith(
-      mocks.redisKeys.runtimeSignal('root', 'trend-sig'),
-      expect.objectContaining({ signalId: 'trend-sig' }),
-      { expire: TTL_1M },
-    );
-    expect(mocks.logger.info).toHaveBeenCalledWith(
-      'Signal found %s by strategy %s',
-      'ETHUSDT',
-      'ReverseTrendLine',
-    );
-    expect(mocks.logger.info).toHaveBeenCalledWith(
-      'Signal found %s by strategy %s',
-      'ETHUSDT',
-      'TrendLine',
     );
   });
 
@@ -716,6 +715,8 @@ describe('signals script', () => {
     expect(mocks.strategyFnMap.get('TrendLine')).toHaveBeenCalledTimes(0);
     expect(mocks.progressTick).not.toHaveBeenCalled();
     expect(mocks.setData).not.toHaveBeenCalled();
+    expect(mocks.setHashJsonField).not.toHaveBeenCalled();
+    expect(mocks.incrHashFields).not.toHaveBeenCalled();
     expect(afterSignals).toHaveBeenCalledTimes(1);
     expect(mocks.logger.info).toHaveBeenCalledWith(
       'signals aborted before ticker evaluation: %s',
