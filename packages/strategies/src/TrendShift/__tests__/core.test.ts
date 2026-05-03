@@ -2,6 +2,11 @@
 
 import { config as DEFAULT_CONFIG } from '../config';
 import { createTrendShiftCore } from '../core';
+import { filterByVeryVolatility } from '../filters';
+
+jest.mock('../filters', () => ({
+  filterByVeryVolatility: jest.fn(() => true),
+}));
 
 const makeCandle = (
   timestamp: number,
@@ -118,6 +123,11 @@ const makeIndicatorsState = () =>
   }) as any;
 
 describe('TrendShift core', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    (filterByVeryVolatility as jest.Mock).mockReturnValue(true);
+  });
+
   it('creates long entry on confirmed bullish flip', async () => {
     const initialCandles = makeFlatCandles(220);
     const currentCandle = makeBullFlipCandle(
@@ -149,6 +159,38 @@ describe('TrendShift core', () => {
     expect((result as any).code).toBe('TRENDSHIFT_BULLISH_FLIP');
     expect((result as any).entryContext.direction).toBe('LONG');
     expect(strategyApi.entry).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns VERY_VOLATILITY when filter rejects market data', async () => {
+    const initialCandles = makeFlatCandles(220);
+    const currentCandle = makeBullFlipCandle(
+      initialCandles[initialCandles.length - 1].timestamp + 60_000,
+    );
+    const marketData = {
+      fullData: [...initialCandles, currentCandle],
+      timestamp: currentCandle.timestamp,
+      currentPrice: currentCandle.close,
+    };
+    const strategyApi = makeStrategyApi({ marketData });
+    (filterByVeryVolatility as jest.Mock).mockReturnValueOnce(false);
+
+    const core = await createTrendShiftCore({
+      userName: 'root',
+      symbol: 'TESTUSDT',
+      config: DEFAULT_CONFIG as any,
+      isConfigFromBacktest: false,
+      connector: {} as any,
+      data: initialCandles,
+      btcData: initialCandles,
+      loadPineScriptFile: jest.fn(),
+      strategyApi,
+      indicatorsState: makeIndicatorsState(),
+    });
+
+    const result = await core(currentCandle as any, currentCandle as any);
+
+    expect(result).toEqual({ kind: 'skip', code: 'VERY_VOLATILITY' });
+    expect(strategyApi.entry).not.toHaveBeenCalled();
   });
 
   it('exits open long on confirmed bearish flip', async () => {
