@@ -1,2 +1,2 @@
 CRON_TZ=Europe/Moscow
-0 0 * * * cd /app && PROJECT_CWD=/app DOTENV_CONFIG_PATH=/app/.env NODE_OPTIONS=--max-old-space-size=8192 bash ./bin/run-cli-runtime.sh research:auto --user root --connector bybit --timeframe 15 --days 45 --recent 1000 >> /var/log/cron.research.auto.log 2>&1
+0 2 * * * cd /app && PROJECT_CWD=/app DOTENV_CONFIG_PATH=/app/.env NODE_OPTIONS=--max-old-space-size=8192 bash ./bin/run-cli-runtime.sh research:auto --user root --connector bybit --timeframe 15 --days 45 --recent 1000 >> /var/log/cron.research.auto.log 2>&1
