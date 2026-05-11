@@ -75,38 +75,6 @@ const resolveAiQuality = (
   return aiApprovedCurrentTrade ? normalizedQuality : 0;
 };
 
-const resolveAiDecision = (
-  analysis: Partial<SignalAnalysis> | undefined,
-  direction: Direction,
-  minQuality = 4,
-): 'approved' | 'rejected' => {
-  const quality = resolveAiQuality(analysis, direction);
-  return quality != null && quality >= minQuality ? 'approved' : 'rejected';
-};
-
-const withGateComparison = ({
-  llmAnalysis,
-  gateAnalysis,
-  direction,
-  minQuality,
-}: {
-  llmAnalysis: Partial<SignalAnalysis>;
-  gateAnalysis: Partial<SignalAnalysis>;
-  direction: Direction;
-  minQuality: number;
-}): Partial<SignalAnalysis> => {
-  const gateDecision = resolveAiDecision(gateAnalysis, direction, minQuality);
-  const llmDecision = resolveAiDecision(llmAnalysis, direction, minQuality);
-
-  return {
-    ...llmAnalysis,
-    gateAnalysis,
-    gateDecision,
-    llmDecision,
-    gateContradictsLlm: gateDecision !== llmDecision,
-  };
-};
-
 const findReplayAiAnalysis = ({
   signal,
   direction,
@@ -217,29 +185,10 @@ export const enrichSignalWithAi = async ({
   }
 
   if (ai?.mode === 'gate') {
-    const minQuality = ai.minQuality ?? 4;
-    const { askAI, runAiPromptLocal } = await import('../ai');
+    const { runAiPromptLocal } = await import('../ai');
     const gateAnalysis = await runAiPromptLocal(signal);
     const gateQuality = resolveAiQuality(gateAnalysis, direction);
-
-    try {
-      const llmAnalysis = await askAI(signal, { userName });
-      const comparedAnalysis = withGateComparison({
-        llmAnalysis,
-        gateAnalysis,
-        direction,
-        minQuality,
-      });
-      signal.aiAnalysis = comparedAnalysis;
-      await setData(
-        redisKeys.analysis(signal.symbol, signal.signalId),
-        comparedAnalysis,
-      );
-    } catch (err) {
-      logger.error('AI analysis error: %s %s', symbol, formatAiError(err));
-      signal.aiAnalysis = gateAnalysis;
-    }
-
+    signal.aiAnalysis = gateAnalysis;
     return gateQuality;
   }
 

@@ -205,16 +205,11 @@ describe('strategyHelpers/runtime enrichSignalWithMlAi', () => {
     expect(quality).toBe(0);
   });
 
-  it('uses gate quality in gate mode while saving LLM comparison', async () => {
+  it('uses local gate quality in gate mode without LLM request', async () => {
     mockRunAiPromptLocal.mockResolvedValue({
       direction: 'LONG',
       quality: 4,
       comment: 'gate approved',
-    });
-    mockAskAI.mockResolvedValue({
-      direction: null,
-      quality: 2,
-      comment: 'llm rejected',
     });
     const enrichedSignal = { ...signal };
 
@@ -228,24 +223,13 @@ describe('strategyHelpers/runtime enrichSignalWithMlAi', () => {
 
     expect(quality).toBe(4);
     expect(mockRunAiPromptLocal).toHaveBeenCalledTimes(1);
-    expect(mockAskAI).toHaveBeenCalledTimes(1);
+    expect(mockAskAI).not.toHaveBeenCalled();
     expect(enrichedSignal.aiAnalysis).toEqual({
-      direction: null,
-      quality: 2,
-      comment: 'llm rejected',
-      gateAnalysis: {
-        direction: 'LONG',
-        quality: 4,
-        comment: 'gate approved',
-      },
-      gateDecision: 'approved',
-      llmDecision: 'rejected',
-      gateContradictsLlm: true,
+      direction: 'LONG',
+      quality: 4,
+      comment: 'gate approved',
     });
-    expect(mockSetData).toHaveBeenCalledWith(
-      'analysis:ETHUSDT:s1',
-      enrichedSignal.aiAnalysis,
-    );
+    expect(mockSetData).not.toHaveBeenCalled();
   });
 
   it('uses replay AI snapshot in PARITY env without calling provider', async () => {
