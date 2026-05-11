@@ -330,6 +330,32 @@ export const sendToTG = async (
   imgInterval: Interval,
   userName = 'root',
 ) => {
+  const strategyConfigCache = new Map<string, any>();
+  const resolveStrategyConfig = async (strategyName: string) => {
+    if (strategyConfigCache.has(strategyName)) {
+      return strategyConfigCache.get(strategyName);
+    }
+    const config = await getData(
+      `users:${userName}:strategies:${strategyName}:config`,
+      null,
+    );
+    strategyConfigCache.set(strategyName, config);
+    return config;
+  };
+  const resolveDecision = (
+    analysis: Record<string, any> | null,
+    direction: Signal['direction'],
+    minQuality = 4,
+  ): 'approved' | 'rejected' => {
+    const quality = Number(analysis?.quality);
+    if (!Number.isFinite(quality)) {
+      return 'rejected';
+    }
+    const normalized = Math.round(quality);
+    const resolvedQuality = analysis?.direction === direction ? normalized : 0;
+    return resolvedQuality >= minQuality ? 'approved' : 'rejected';
+  };
+
   const deliverableSignals = signals.filter(
     (signal) =>
       signal.orderStatus !== 'skipped' && signal.orderStatus !== 'canceled',
@@ -354,10 +380,34 @@ export const sendToTG = async (
   // with its AI analysis in chat order.
   await runWithConcurrency(deliverableSignals, 1, async (signal) => {
     try {
-      const analysis = await getData(
+      let analysis = await getData(
         redisKeys.analysis(signal.symbol, signal.signalId),
         null,
       );
+      const strategyConfig = await resolveStrategyConfig(signal.strategy);
+      const aiMode = strategyConfig?.AI_MODE;
+      const gateAnalysis = signal.aiAnalysis;
+      if (aiMode === 'gate' && gateAnalysis) {
+        const llmAnalysis = await askAI(signal, { userName });
+        const minQuality = Number(strategyConfig?.MIN_AI_QUALITY) || 4;
+        const gateDecision = resolveDecision(
+          gateAnalysis as Record<string, any>,
+          signal.direction,
+          minQuality,
+        );
+        const llmDecision = resolveDecision(
+          llmAnalysis as Record<string, any>,
+          signal.direction,
+          minQuality,
+        );
+        analysis = {
+          ...(llmAnalysis ?? {}),
+          gateAnalysis,
+          gateDecision,
+          llmDecision,
+          gateContradictsLlm: gateDecision !== llmDecision,
+        };
+      }
 
       await sendSignal(signal, imgInterval, analysis, { userName });
 
