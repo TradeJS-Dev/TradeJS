@@ -334,7 +334,7 @@ describe('cli telegram notifications', () => {
 
     expect(askAI).toHaveBeenCalledTimes(1);
     expect(sendSignal).toHaveBeenCalledTimes(1);
-    const analysis = sendSignal.mock.calls[0]?.[2];
+    const analysis = (sendSignal.mock.calls[0] as unknown[] | undefined)?.[2];
     expect(analysis).toMatchObject({
       gateDecision: 'approved',
       llmDecision: 'rejected',
