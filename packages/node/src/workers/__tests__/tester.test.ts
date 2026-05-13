@@ -23,10 +23,18 @@ describe('worker tester', () => {
 
     jest.doMock('@tradejs/infra/redis', () => ({
       getData: jest.fn(async () => suite),
+      setData: jest.fn(async () => undefined),
       redisKeys: {
         cacheChunk: (userName: string, chunkId: string) =>
           `users:${userName}:cache:tests:chunks:${chunkId}`,
+        cacheOrders: (userName: string, orderLogId: string) =>
+          `users:${userName}:cache:tests:orders:${orderLogId}`,
+        cachePositions: (userName: string, orderLogId: string) =>
+          `users:${userName}:cache:tests:positions:${orderLogId}`,
       },
+    }));
+    jest.doMock('@tradejs/core/constants', () => ({
+      TTL_1D: 86400,
     }));
     jest.doMock('@tradejs/infra/logger', () => ({
       logger: { error: jest.fn() },
@@ -78,9 +86,12 @@ describe('worker tester', () => {
       expect.objectContaining({
         stat: { amount: 100, profit: 0, orders: 1 },
         orderLogId: 'log-1',
-        inlineOrderLog: [{ index: 0 }],
-        inlinePositionLog: [{ direction: 'LONG' }],
         test,
+      }),
+    );
+    expect(send).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        inlineOrderLog: expect.anything(),
       }),
     );
     expect(send).toHaveBeenNthCalledWith(

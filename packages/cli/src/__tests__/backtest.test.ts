@@ -61,6 +61,7 @@ jest.mock('@tradejs/core/time', () => ({
 jest.mock('@tradejs/infra/redis', () => ({
   setData: jest.fn(),
   getData: jest.fn(),
+  getKeys: jest.fn(),
   redisKeys: {
     testSummaries: (userName: string) =>
       `users:${userName}:tests:index:summary`,
@@ -81,12 +82,29 @@ jest.mock('../lib/timeWindow', () => ({
 }));
 
 import {
+  chunkTestSuiteBySymbol,
+  resolveDefaultParallel,
+  resolveDefaultWorkerHeapMb,
   mergePersistedTestSummaries,
+  resolveRequestedTestsLimit,
   resolveEffectiveParallel,
+  resolveStrategyNameByConfigKey,
   resolveWorkerHeapMb,
+  summarizeRuntimeTradesByStrategy,
+  summarizeTradeParityByStrategy,
+  toStrategyConfigGrid,
 } from '../scripts/backtest';
 
 describe('backtest script helpers', () => {
+  it('derives safer resource defaults for smaller machines', () => {
+    expect(resolveDefaultWorkerHeapMb(16 * 1024 * 1024 * 1024)).toBe(1536);
+    expect(resolveDefaultWorkerHeapMb(32 * 1024 * 1024 * 1024)).toBe(2048);
+    expect(resolveDefaultWorkerHeapMb(96 * 1024 * 1024 * 1024)).toBe(3072);
+
+    expect(resolveDefaultParallel(16 * 1024 * 1024 * 1024, 8, 1536)).toBe(4);
+    expect(resolveDefaultParallel(6 * 1024 * 1024 * 1024, 8, 1536)).toBe(2);
+  });
+
   it('clamps worker heap env to a minimum floor and falls back on invalid values', () => {
     expect(resolveWorkerHeapMb('128', 8192)).toBe(256);
     expect(resolveWorkerHeapMb('2048', 8192)).toBe(2048);
@@ -98,6 +116,227 @@ describe('backtest script helpers', () => {
     expect(resolveEffectiveParallel('0', '3', 8)).toBe(3);
     expect(resolveEffectiveParallel('bad', 'bad', 5)).toBe(5);
     expect(resolveEffectiveParallel('-10', '-2', 5)).toBe(1);
+  });
+
+  it('removes the default tests limit in live mode unless the user set it explicitly', () => {
+    expect(
+      resolveRequestedTestsLimit({
+        isLiveMode: true,
+        requestedLimit: 100,
+        hasExplicitLimit: false,
+      }),
+    ).toBe(Number.POSITIVE_INFINITY);
+
+    expect(
+      resolveRequestedTestsLimit({
+        isLiveMode: true,
+        requestedLimit: 250,
+        hasExplicitLimit: true,
+      }),
+    ).toBe(250);
+
+    expect(
+      resolveRequestedTestsLimit({
+        isLiveMode: false,
+        requestedLimit: 100,
+        hasExplicitLimit: false,
+      }),
+    ).toBe(100);
+  });
+
+  it('parses runtime strategy config keys and rejects unrelated keys', () => {
+    expect(
+      resolveStrategyNameByConfigKey(
+        'root',
+        'users:root:strategies:TrendLine:config',
+      ),
+    ).toBe('TrendLine');
+    expect(
+      resolveStrategyNameByConfigKey(
+        'root',
+        'users:other:strategies:TrendLine:config',
+      ),
+    ).toBeNull();
+    expect(
+      resolveStrategyNameByConfigKey('root', 'users:root:strategies:TrendLine'),
+    ).toBeNull();
+  });
+
+  it('wraps a live strategy config into a single-value grid for createTestSuite', () => {
+    expect(
+      toStrategyConfigGrid({
+        RISK: 2,
+        ENABLED: true,
+        TRENDLINE: { leftBars: 5 },
+      }),
+    ).toEqual({
+      RISK: [2],
+      ENABLED: [true],
+      TRENDLINE: [{ leftBars: 5 }],
+    });
+  });
+
+  it('summarizes synced runtime trades by strategy including active pnl', () => {
+    expect(
+      summarizeRuntimeTradesByStrategy([
+        {
+          orderId: 'o1',
+          strategy: 'TrendLine',
+          symbol: 'BTCUSDT',
+          direction: 'LONG',
+          qty: 1,
+          entryPrice: 100,
+          entryTimestamp: 1,
+          status: 'closed',
+          closedPnl: 12,
+        },
+        {
+          orderId: 'o2',
+          strategy: 'TrendLine',
+          symbol: 'ETHUSDT',
+          direction: 'SHORT',
+          qty: 1,
+          entryPrice: 200,
+          entryTimestamp: 2,
+          status: 'active',
+          currentPnl: -3,
+        },
+        {
+          orderId: 'o3',
+          strategy: 'Breakout',
+          symbol: 'SOLUSDT',
+          direction: 'LONG',
+          qty: 1,
+          entryPrice: 50,
+          entryTimestamp: 3,
+          status: 'closed',
+          closedPnl: 5.555,
+        },
+      ] as any),
+    ).toEqual([
+      {
+        strategyName: 'Breakout',
+        trades: 1,
+        activeTrades: 0,
+        closedTrades: 1,
+        totalPnl: 5.55,
+      },
+      {
+        strategyName: 'TrendLine',
+        trades: 2,
+        activeTrades: 1,
+        closedTrades: 1,
+        totalPnl: 9,
+      },
+    ]);
+  });
+
+  it('summarizes trade parity counts by strategy', () => {
+    expect(
+      summarizeTradeParityByStrategy({
+        runtimeEntries: [
+          {
+            id: 'r1',
+            source: 'runtime',
+            strategy: 'TrendLine',
+            symbol: 'BTCUSDT',
+            direction: 'LONG',
+            timestamp: 1,
+            price: 100,
+          },
+        ],
+        runtimeDuplicateEntries: [
+          {
+            id: 'dup1',
+            source: 'runtime',
+            strategy: 'TrendLine',
+            symbol: 'BTCUSDT',
+            direction: 'LONG',
+            timestamp: 1,
+            price: 100,
+          },
+        ],
+        backtestEntries: [
+          {
+            id: 'b1',
+            source: 'backtest',
+            strategy: 'TrendLine',
+            symbol: 'BTCUSDT',
+            direction: 'LONG',
+            timestamp: 1,
+            price: 100,
+          },
+          {
+            id: 'b2',
+            source: 'backtest',
+            strategy: 'Breakout',
+            symbol: 'ETHUSDT',
+            direction: 'SHORT',
+            timestamp: 2,
+            price: 200,
+          },
+        ],
+        matchedEntries: [
+          {
+            runtime: {
+              id: 'r1',
+              source: 'runtime',
+              strategy: 'TrendLine',
+              symbol: 'BTCUSDT',
+              direction: 'LONG',
+              timestamp: 1,
+              price: 100,
+            },
+            backtest: {
+              id: 'b1',
+              source: 'backtest',
+              strategy: 'TrendLine',
+              symbol: 'BTCUSDT',
+              direction: 'LONG',
+              timestamp: 1,
+              price: 100,
+            },
+            timestampDiffMs: 0,
+            priceDeltaPct: 0,
+          },
+        ],
+        runtimeOnlyEntries: [],
+        backtestOnlyEntries: [
+          {
+            id: 'b2',
+            source: 'backtest',
+            strategy: 'Breakout',
+            symbol: 'ETHUSDT',
+            direction: 'SHORT',
+            timestamp: 2,
+            price: 200,
+          },
+        ],
+      }),
+    ).toEqual([
+      [
+        'Breakout',
+        {
+          runtime: 0,
+          runtimeDuplicates: 0,
+          backtest: 1,
+          matched: 0,
+          runtimeOnly: 0,
+          backtestOnly: 1,
+        },
+      ],
+      [
+        'TrendLine',
+        {
+          runtime: 1,
+          runtimeDuplicates: 1,
+          backtest: 1,
+          matched: 1,
+          runtimeOnly: 0,
+          backtestOnly: 0,
+        },
+      ],
+    ]);
   });
 
   it('merges persisted summary index with valid legacy items and overrides duplicates', () => {
@@ -155,6 +394,31 @@ describe('backtest script helpers', () => {
         label: 'SOLUSDT_4',
         data: { strategyName: 'VolumeDivergence', netProfit: 15 },
       },
+    ]);
+  });
+
+  it('keeps each symbol on a single worker chunk while balancing load', () => {
+    const suite = [
+      { name: 'btc-1', symbol: 'BTCUSDT' },
+      { name: 'btc-2', symbol: 'BTCUSDT' },
+      { name: 'eth-1', symbol: 'ETHUSDT' },
+      { name: 'eth-2', symbol: 'ETHUSDT' },
+      { name: 'sol-1', symbol: 'SOLUSDT' },
+      { name: 'sol-2', symbol: 'SOLUSDT' },
+    ] as any;
+
+    const chunks = chunkTestSuiteBySymbol(suite, 2);
+
+    expect(chunks).toHaveLength(2);
+    expect(chunks[0].map((test: any) => test.symbol)).toEqual([
+      'BTCUSDT',
+      'BTCUSDT',
+      'SOLUSDT',
+      'SOLUSDT',
+    ]);
+    expect(chunks[1].map((test: any) => test.symbol)).toEqual([
+      'ETHUSDT',
+      'ETHUSDT',
     ]);
   });
 });

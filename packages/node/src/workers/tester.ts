@@ -2,10 +2,34 @@ import { testing, resetTestingKlineCache } from '../testing';
 import { TestSuite } from '@tradejs/types';
 import { closeAllAiDatasetWriters } from '@tradejs/infra/ai';
 import { closeAllMlDatasetWriters } from '@tradejs/infra/ml';
-import { getData, redisKeys } from '@tradejs/infra/redis';
+import { TTL_1D } from '@tradejs/core/constants';
+import { getData, redisKeys, setData } from '@tradejs/infra/redis';
 import { logger } from '@tradejs/infra/logger';
 
 let isProcessing = false;
+
+const cacheTestResultArtifacts = async (
+  userName: string,
+  testResult: Awaited<ReturnType<typeof testing>>,
+) => {
+  if (!testResult) {
+    return;
+  }
+
+  const { orderLogId, inlineOrderLog, inlinePositionLog } = testResult;
+  if (!Array.isArray(inlineOrderLog) || !Array.isArray(inlinePositionLog)) {
+    return;
+  }
+
+  await Promise.all([
+    setData(redisKeys.cacheOrders(userName, orderLogId), inlineOrderLog, {
+      expire: TTL_1D,
+    }),
+    setData(redisKeys.cachePositions(userName, orderLogId), inlinePositionLog, {
+      expire: TTL_1D,
+    }),
+  ]);
+};
 
 process.on(
   'message',
@@ -28,14 +52,13 @@ process.on(
             throw new Error('No result');
           }
 
-          const { stat, orderLogId, inlineOrderLog, inlinePositionLog } =
+          await cacheTestResultArtifacts(userName, testResult);
+
+          const { inlineOrderLog, inlinePositionLog, ...resultWithoutLogs } =
             testResult;
 
           process.send?.({
-            stat,
-            orderLogId,
-            inlineOrderLog,
-            inlinePositionLog,
+            ...resultWithoutLogs,
             test,
           });
         } catch (error) {

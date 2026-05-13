@@ -7,7 +7,6 @@ import path from 'path';
 import os from 'os';
 import { randomUUID } from 'node:crypto';
 import chalk from 'chalk';
-import _ from 'lodash';
 import { format } from 'date-fns';
 import { ConnectorNames } from '@tradejs/connectors';
 import {
@@ -36,12 +35,17 @@ import {
   getBacktestPreloadStart,
   getTimestamp,
 } from '@tradejs/core/time';
-import { setData, getData, redisKeys } from '@tradejs/infra/redis';
+import { setData, getData, getKeys, redisKeys } from '@tradejs/infra/redis';
 import {
   Interval,
   Item,
+  ClosedPnlRecord,
+  Connector,
   OrderLog,
   PositionLogData,
+  RuntimeTradeRecord,
+  StrategyConfig,
+  TestSuite,
   TestStat,
   Test,
   TestWorkerResult,
@@ -49,14 +53,56 @@ import {
   StrategyConfigGrid,
 } from '@tradejs/types';
 import {
+  compareTradeParityEntries,
+  dedupeRuntimeParityEntries,
+  extractBacktestEntryParityEntries,
+  extractRuntimeParityEntries,
+  type MatchedTradeParityEntry,
+  type TradeParityEntry,
+} from '../lib/runtimeParity';
+import {
   backfillDerivativesContextForBacktest,
   shouldBackfillDerivativesContextForBacktest,
 } from '../lib/derivativesContextBackfill';
 import { normalizeCliArgv } from '../lib/cliArgs';
 import { resolveTimeWindow } from '../lib/timeWindow';
 
+const BYTES_IN_MB = 1024 * 1024;
 const MAX_PARALLEL = Math.min(os.cpus().length, 6);
-const DEFAULT_WORKER_HEAP_MB = 8192;
+
+export const resolveDefaultWorkerHeapMb = (
+  totalMemoryBytes = os.totalmem(),
+) => {
+  const totalMemoryMb = Math.max(0, Math.floor(totalMemoryBytes / BYTES_IN_MB));
+  if (totalMemoryMb >= 64_000) {
+    return 3072;
+  }
+  if (totalMemoryMb >= 24_000) {
+    return 2048;
+  }
+  return 1536;
+};
+
+export const resolveDefaultParallel = (
+  totalMemoryBytes = os.totalmem(),
+  cpuCount = os.cpus().length,
+  workerHeapMb = resolveDefaultWorkerHeapMb(totalMemoryBytes),
+) => {
+  const totalMemoryMb = Math.max(0, Math.floor(totalMemoryBytes / BYTES_IN_MB));
+  const memoryBudgetMb = Math.max(workerHeapMb, totalMemoryMb - 2048);
+  const parallelByMemory = Math.max(
+    1,
+    Math.floor(memoryBudgetMb / workerHeapMb),
+  );
+  return Math.max(1, Math.min(cpuCount, MAX_PARALLEL, parallelByMemory, 4));
+};
+
+const DEFAULT_WORKER_HEAP_MB = resolveDefaultWorkerHeapMb();
+const DEFAULT_PARALLEL = resolveDefaultParallel(
+  os.totalmem(),
+  os.cpus().length,
+  DEFAULT_WORKER_HEAP_MB,
+);
 
 export const resolveWorkerHeapMb = (
   value: unknown = process.env.BACKTEST_WORKER_HEAP_MB,
@@ -76,6 +122,17 @@ export const resolveEffectiveParallel = (
     ),
   );
 
+export const resolveRequestedTestsLimit = ({
+  isLiveMode,
+  requestedLimit,
+  hasExplicitLimit,
+}: {
+  isLiveMode: boolean;
+  requestedLimit: number;
+  hasExplicitLimit: boolean;
+}) =>
+  isLiveMode && !hasExplicitLimit ? Number.POSITIVE_INFINITY : requestedLimit;
+
 args.example(
   ' yarn backtest -t 400 --cacheOnly',
   'Run tests on uploaded data for 400 tickers',
@@ -86,7 +143,7 @@ args.option(['e', 'exclude'], 'Exclude tickers from tests');
 args.option(['l', 'tickersLimit'], 'Tickers limit');
 args.option(['n', 'tests'], 'Tests limit', TESTS_LIMIT);
 args.option(['s', 'skip'], 'Skip first N tests', 0);
-args.option(['p', 'parallel'], 'Parallel tasks', MAX_PARALLEL);
+args.option(['p', 'parallel'], 'Parallel tasks', DEFAULT_PARALLEL);
 args.option(['f', 'timeframe'], 'Timeframe', 15);
 args.option(['d', 'days'], 'Run backtest only for the last N days');
 args.option('startTime', 'Explicit backtest start timestamp (ms or seconds)');
@@ -95,6 +152,11 @@ args.option(['T', 'top'], 'Return N best tests', TESTS_TOP_LIMIT);
 args.option(['u', 'updateOnly'], 'Only update tickers history', false);
 args.option(['C', 'cacheOnly'], 'Do not update tickers history', false);
 args.option(['c', 'config'], 'Backtest config', 'breakout');
+args.option(
+  'live',
+  'Run backtests for all active runtime strategies like yarn signals',
+  false,
+);
 args.option(['L', 'showTickersList'], 'Just show only ticker list', false);
 args.option(['g', 'progressStep'], 'Progress step', 100);
 args.option(['U', 'user'], 'Use user config', 'root');
@@ -128,10 +190,16 @@ const normalizedArgv = normalizeCliArgv(process.argv, {
 process.argv = normalizedArgv;
 
 const flags = args.parse(process.argv);
+const hasCliFlag = (argv: string[], names: string[]) =>
+  argv.some(
+    (arg) =>
+      names.includes(arg) || names.some((name) => arg.startsWith(`${name}=`)),
+  );
 const interval = flags.timeframe.toString() as Interval;
 const progressStep = Math.max(1, parseInt(String(flags.progressStep), 10));
 const testsLimit = Math.max(0, parseInt(String(flags.tests), 10));
 const testsSkip = Math.max(0, parseInt(String(flags.skip ?? 0), 10));
+const hasExplicitTestsLimit = hasCliFlag(normalizedArgv, ['--tests', '-n']);
 const testItemTimeoutMs = 120_000;
 const workerHeapMb = resolveWorkerHeapMb();
 const effectiveParallel = resolveEffectiveParallel(flags.parallel);
@@ -176,10 +244,80 @@ const HEADERS_RESULTS_BY_TICKERS = [
   chalk.cyan('MAX DRAWDOWN (%)'),
 ];
 
+const HEADERS_LIVE_RESULTS_BY_STRATEGY = [
+  chalk.blue('STRATEGY'),
+  chalk.yellow('TICKERS'),
+  chalk.yellow('TRADE TICKERS'),
+  chalk.cyan('ORDERS'),
+  chalk.cyan('WIN/LOSS (%)'),
+  chalk.cyan('PROFIT'),
+  chalk.cyan('AVG TRADE'),
+];
+
+const HEADERS_LIVE_RUNTIME_COMPARISON = [
+  chalk.blue('STRATEGY'),
+  chalk.cyan('BT ENTRIES'),
+  chalk.cyan('BT PNL'),
+  chalk.yellow('RT TRADES'),
+  chalk.yellow('RT PNL'),
+  chalk.green('MATCHED'),
+  chalk.yellow('RT ONLY'),
+  chalk.magenta('BT ONLY'),
+];
+
+const LIVE_BACKTEST_RESULTS_CONFIG = 'live';
+const LIVE_RUNTIME_COMPARE_TOLERANCE_BARS = 1;
+const LIVE_RUNTIME_COMPARE_TOLERANCE_MS =
+  LIVE_RUNTIME_COMPARE_TOLERANCE_BARS * 15 * 60 * 1000;
+
 type ErrorMessage = { id?: number; error?: unknown; payload?: any };
-type TestResultArtifacts = {
-  orderLog?: OrderLog[];
-  positionLog?: PositionLogData;
+type RuntimeStrategyBacktestConfig = {
+  strategyName: string;
+  strategyConfig: StrategyConfig;
+  backtestConfig: StrategyConfigGrid;
+};
+type LiveStrategySummary = {
+  strategyName: string;
+  strategyConfig: StrategyConfig;
+  tickers: number;
+  tickersWithTrades: number;
+  orders: number;
+  wins: number;
+  losses: number;
+  netProfit: number;
+  avgTradeProfit: number;
+  winRate: number;
+};
+type RuntimeTradeStrategySummary = {
+  strategyName: string;
+  trades: number;
+  activeTrades: number;
+  closedTrades: number;
+  totalPnl: number;
+};
+type LiveRuntimeParityRow = {
+  strategyName: string;
+  backtestEntries: number;
+  backtestNetProfit: number;
+  runtimeTrades: number;
+  runtimePnl: number;
+  matched: number;
+  runtimeOnly: number;
+  backtestOnly: number;
+};
+type LiveRuntimeComparisonSummary = {
+  syncedTradesCount: number;
+  windowTradesCount: number;
+  runtimeEntriesCount: number;
+  backtestEntriesCount: number;
+  matchedCount: number;
+  runtimeOnlyCount: number;
+  backtestOnlyCount: number;
+  rows: LiveRuntimeParityRow[];
+};
+type LiveStrategyResultsSnapshot = {
+  summaries: LiveStrategySummary[];
+  backtestEntries: TradeParityEntry[];
 };
 
 let successTests = 0;
@@ -187,15 +325,15 @@ let errorTests = 0;
 const errorMessages: ErrorMessage[] = [];
 let results: TestWorkerResult[] = [];
 const resultsByTickers = new Map<string, TestWorkerResult>();
-const resultArtifactsByTestName = new Map<string, TestResultArtifacts>();
-const artifactRefCountsByTestName = new Map<string, number>();
-const bestTickerTestNameBySymbol = new Map<string, string>();
-let topResultNames = new Set<string>();
+const liveResultsByStrategyAndTicker = new Map<string, TestWorkerResult>();
 const persistedTestSummaryByKey = new Map<string, Item>();
 
 const userName = flags.user;
 const runStartedAt = Date.now();
 let testsStartedAt = runStartedAt;
+let activeConnectorForRuntimeCompare: Connector | null = null;
+let activeConnectorNameForRuntimeCompare = '';
+let activeWindowForRuntimeCompare: { start: number; end: number } | null = null;
 
 const createListIt = () =>
   new ListIt({
@@ -242,48 +380,6 @@ const recordError = (error: ErrorMessage) => {
   errorMessages.push(error);
 };
 
-const stripInlineLogs = (result: TestWorkerResult): TestWorkerResult => {
-  const { inlineOrderLog, inlinePositionLog, ...resultWithoutLogs } = result;
-  return resultWithoutLogs;
-};
-
-const getInlineArtifacts = (
-  result: TestWorkerResult,
-): TestResultArtifacts | null => {
-  if (!result.inlineOrderLog && !result.inlinePositionLog) {
-    return null;
-  }
-
-  return {
-    orderLog: result.inlineOrderLog,
-    positionLog: result.inlinePositionLog,
-  };
-};
-
-const retainArtifacts = (
-  testName: string,
-  artifacts?: TestResultArtifacts | null,
-) => {
-  if (artifacts) {
-    resultArtifactsByTestName.set(testName, artifacts);
-  }
-  artifactRefCountsByTestName.set(
-    testName,
-    (artifactRefCountsByTestName.get(testName) ?? 0) + 1,
-  );
-};
-
-const releaseArtifacts = (testName: string) => {
-  const nextCount = (artifactRefCountsByTestName.get(testName) ?? 0) - 1;
-  if (nextCount <= 0) {
-    artifactRefCountsByTestName.delete(testName);
-    resultArtifactsByTestName.delete(testName);
-    return;
-  }
-
-  artifactRefCountsByTestName.set(testName, nextCount);
-};
-
 const insertTopResult = (
   currentResults: TestWorkerResult[],
   nextResult: TestWorkerResult,
@@ -327,36 +423,11 @@ const insertTopResult = (
   };
 };
 
-const updateTopResults = (
-  nextResults: TestWorkerResult[],
-  nextResult: TestWorkerResult,
-  artifacts?: TestResultArtifacts | null,
-) => {
-  const previousTopNames = topResultNames;
-  const nextTopNames = new Set(nextResults.map((result) => result.test.name));
-
-  if (
-    artifacts &&
-    !previousTopNames.has(nextResult.test.name) &&
-    nextTopNames.has(nextResult.test.name)
-  ) {
-    retainArtifacts(nextResult.test.name, artifacts);
-  }
-
-  for (const testName of previousTopNames) {
-    if (!nextTopNames.has(testName)) {
-      releaseArtifacts(testName);
-    }
-  }
-
+const updateTopResults = (nextResults: TestWorkerResult[]) => {
   results = nextResults;
-  topResultNames = nextTopNames;
 };
 
-const updateBestTickerResult = (
-  result: TestWorkerResult,
-  artifacts?: TestResultArtifacts | null,
-) => {
+const updateBestTickerResult = (result: TestWorkerResult) => {
   if (!isGoodTest(result)) {
     return false;
   }
@@ -366,18 +437,57 @@ const updateBestTickerResult = (
     return false;
   }
 
-  const previousTestName = bestTickerTestNameBySymbol.get(result.test.symbol);
-  if (previousTestName) {
-    releaseArtifacts(previousTestName);
-  }
-
   resultsByTickers.set(result.test.symbol, result);
-  bestTickerTestNameBySymbol.set(result.test.symbol, result.test.name);
-  if (artifacts) {
-    retainArtifacts(result.test.name, artifacts);
-  }
 
   return true;
+};
+
+export const chunkTestSuiteBySymbol = (
+  testSuite: TestSuite,
+  requestedChunks: number,
+): TestSuite[] => {
+  if (!testSuite.length) {
+    return [];
+  }
+
+  const chunkCount = Math.max(1, Math.min(requestedChunks, testSuite.length));
+  const testsBySymbol = new Map<string, TestSuite>();
+
+  for (const test of testSuite) {
+    const existing = testsBySymbol.get(test.symbol);
+    if (existing) {
+      existing.push(test);
+      continue;
+    }
+    testsBySymbol.set(test.symbol, [test]);
+  }
+
+  const symbolGroups = Array.from(testsBySymbol.entries())
+    .sort(([leftSymbol, leftTests], [rightSymbol, rightTests]) => {
+      if (rightTests.length !== leftTests.length) {
+        return rightTests.length - leftTests.length;
+      }
+      return leftSymbol.localeCompare(rightSymbol);
+    })
+    .map(([, tests]) => tests);
+
+  const workerCount = Math.min(chunkCount, symbolGroups.length);
+  const chunks = Array.from({ length: workerCount }, () => [] as TestSuite);
+  const chunkSizes = new Array(workerCount).fill(0);
+
+  for (const tests of symbolGroups) {
+    let targetIndex = 0;
+    for (let index = 1; index < chunks.length; index += 1) {
+      if (chunkSizes[index] < chunkSizes[targetIndex]) {
+        targetIndex = index;
+      }
+    }
+
+    chunks[targetIndex].push(...tests);
+    chunkSizes[targetIndex] += tests.length;
+  }
+
+  return chunks.filter((chunk) => chunk.length > 0);
 };
 
 const isStrategyConfigGrid = (value: unknown): value is StrategyConfigGrid => {
@@ -387,6 +497,380 @@ const isStrategyConfigGrid = (value: unknown): value is StrategyConfigGrid => {
 
   return Object.values(value as Record<string, unknown>).every((item) =>
     Array.isArray(item),
+  );
+};
+
+export const resolveStrategyNameByConfigKey = (
+  userName: string,
+  key: string,
+): string | null => {
+  const parts = key.split(':');
+  if (parts.length !== 5) {
+    return null;
+  }
+
+  const [users, keyUserName, strategiesKey, strategyName, configKey] = parts;
+  if (
+    users !== 'users' ||
+    keyUserName !== userName ||
+    strategiesKey !== 'strategies' ||
+    configKey !== 'config' ||
+    !strategyName
+  ) {
+    return null;
+  }
+
+  return strategyName;
+};
+
+export const toStrategyConfigGrid = (
+  strategyConfig: StrategyConfig,
+): StrategyConfigGrid =>
+  Object.fromEntries(
+    Object.entries(strategyConfig).map(([key, value]) => [key, [value]]),
+  );
+
+const loadRuntimeStrategyBacktestConfigs = async (
+  userName: string,
+): Promise<RuntimeStrategyBacktestConfig[]> => {
+  const keys = await getKeys(`${redisKeys.strategies(userName)}:`);
+  const configKeys = keys
+    .filter((key) => key.endsWith(':config'))
+    .sort((a, b) => a.localeCompare(b));
+
+  const configs = await Promise.all(
+    configKeys.map(
+      async (key): Promise<RuntimeStrategyBacktestConfig | null> => {
+        const strategyName = resolveStrategyNameByConfigKey(userName, key);
+        if (!strategyName) {
+          return null;
+        }
+
+        const strategyConfig = (await getData(
+          key,
+          null,
+        )) as StrategyConfig | null;
+        if (
+          !strategyConfig ||
+          typeof strategyConfig !== 'object' ||
+          Array.isArray(strategyConfig)
+        ) {
+          console.log(
+            chalk.yellow(`Skip invalid runtime strategy config: ${key}`),
+          );
+          return null;
+        }
+
+        return {
+          strategyName,
+          strategyConfig,
+          backtestConfig: toStrategyConfigGrid(strategyConfig),
+        };
+      },
+    ),
+  );
+
+  return configs.filter(Boolean) as RuntimeStrategyBacktestConfig[];
+};
+
+const getLiveStrategyResultKey = (result: Pick<TestWorkerResult, 'test'>) =>
+  `${result.test.strategyName}:${result.test.symbol}`;
+
+const isRuntimeTradeRecord = (value: unknown): value is RuntimeTradeRecord => {
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+
+  const record = value as Record<string, unknown>;
+  return (
+    typeof record.orderId === 'string' &&
+    typeof record.strategy === 'string' &&
+    typeof record.symbol === 'string' &&
+    typeof record.entryTimestamp === 'number' &&
+    typeof record.entryPrice === 'number' &&
+    typeof record.qty === 'number'
+  );
+};
+
+const loadRuntimeTrades = async (
+  userName: string,
+): Promise<RuntimeTradeRecord[]> => {
+  const keys = await getKeys(redisKeys.runtimeTrades(userName));
+  const trades = await Promise.all(keys.map((key) => getData(key, null)));
+
+  return trades
+    .filter(isRuntimeTradeRecord)
+    .sort((left, right) => left.entryTimestamp - right.entryTimestamp);
+};
+
+const loadClosedPnlRows = async ({
+  connector,
+  startTime,
+  endTime,
+}: {
+  connector: Connector;
+  startTime: number;
+  endTime: number;
+}): Promise<ClosedPnlRecord[]> => {
+  if (typeof connector.getClosedPnl !== 'function') {
+    console.log(
+      chalk.yellow(
+        'runtime compare: connector does not support getClosedPnl, using runtime trade records as-is',
+      ),
+    );
+    return [];
+  }
+
+  try {
+    const rows = await connector.getClosedPnl({
+      startTime,
+      endTime,
+      limit: 100,
+    });
+
+    if (rows.length >= 100) {
+      console.log(
+        chalk.yellow(
+          'runtime compare: exchange closed pnl returned 100 rows (connector cap); older closed trades in the window may be truncated',
+        ),
+      );
+    }
+
+    return rows.sort((left, right) => left.closedAt - right.closedAt);
+  } catch (error) {
+    console.log(
+      chalk.yellow(
+        `runtime compare: getClosedPnl failed: ${(error as Error)?.message || String(error)}`,
+      ),
+    );
+    return [];
+  }
+};
+
+const consumeClosedPnlMatch = (
+  buckets: Map<string, ClosedPnlRecord[]>,
+  trade: RuntimeTradeRecord,
+) => {
+  const rows = buckets.get(trade.symbol);
+  if (!rows?.length) {
+    return null;
+  }
+
+  const minimumClosedAt = trade.entryTimestamp - 5 * 60_000;
+  const matchIndex = rows.findIndex(
+    (row) => Number.isFinite(row.closedAt) && row.closedAt >= minimumClosedAt,
+  );
+
+  if (matchIndex < 0) {
+    return null;
+  }
+
+  const [row] = rows.splice(matchIndex, 1);
+  return row ?? null;
+};
+
+const syncRuntimeTrades = async ({
+  userName,
+  connector,
+  trades,
+  startTime,
+  endTime,
+}: {
+  userName: string;
+  connector: Connector;
+  trades: RuntimeTradeRecord[];
+  startTime: number;
+  endTime: number;
+}): Promise<RuntimeTradeRecord[]> => {
+  const openPositions =
+    typeof connector.getOpenPositionPnl === 'function'
+      ? await connector.getOpenPositionPnl()
+      : [];
+  const openPositionsBySymbol = new Map(
+    openPositions.map((position) => [position.symbol, position]),
+  );
+  const activeOrderIdBySymbol = new Map<string, string | null>();
+  const symbols = [...new Set(trades.map((trade) => trade.symbol))];
+
+  await Promise.all(
+    symbols.map(async (symbol) => {
+      const activeRef = (await getData(
+        redisKeys.runtimeActiveTrade(userName, symbol),
+        null,
+      )) as { orderId?: string } | null;
+      activeOrderIdBySymbol.set(
+        symbol,
+        typeof activeRef?.orderId === 'string' ? activeRef.orderId : null,
+      );
+    }),
+  );
+
+  const closedPnlRows = await loadClosedPnlRows({
+    connector,
+    startTime,
+    endTime,
+  });
+  const closedPnlBuckets = new Map<string, ClosedPnlRecord[]>();
+
+  for (const row of closedPnlRows) {
+    const bucket = closedPnlBuckets.get(row.symbol) ?? [];
+    bucket.push(row);
+    closedPnlBuckets.set(row.symbol, bucket);
+  }
+
+  const syncedTrades: RuntimeTradeRecord[] = [];
+
+  for (const trade of trades) {
+    if (trade.status !== 'active') {
+      syncedTrades.push(trade);
+      continue;
+    }
+
+    const openPosition = openPositionsBySymbol.get(trade.symbol);
+    const activeOrderId = activeOrderIdBySymbol.get(trade.symbol);
+    const isCurrentActiveTrade = activeOrderId === trade.orderId;
+
+    if (
+      isCurrentActiveTrade &&
+      openPosition &&
+      openPosition.direction === trade.direction
+    ) {
+      syncedTrades.push({
+        ...trade,
+        status: 'active',
+        currentPrice: openPosition.currentPrice,
+        currentPnl: openPosition.unrealizedPnl,
+        lastSyncedAt: endTime,
+      });
+      continue;
+    }
+
+    const matchedClosedPnl = consumeClosedPnlMatch(closedPnlBuckets, trade);
+    syncedTrades.push({
+      ...trade,
+      status: 'closed',
+      currentPrice: matchedClosedPnl?.exitPrice ?? trade.currentPrice ?? null,
+      currentPnl:
+        matchedClosedPnl?.closedPnl ??
+        trade.closedPnl ??
+        trade.currentPnl ??
+        null,
+      closedPnl:
+        matchedClosedPnl?.closedPnl ??
+        trade.closedPnl ??
+        trade.currentPnl ??
+        null,
+      exitPrice: matchedClosedPnl?.exitPrice ?? trade.exitPrice ?? null,
+      exitTimestamp:
+        matchedClosedPnl?.closedAt ?? trade.exitTimestamp ?? endTime,
+      lastSyncedAt: endTime,
+    });
+  }
+
+  return syncedTrades;
+};
+
+export const summarizeRuntimeTradesByStrategy = (
+  trades: RuntimeTradeRecord[],
+): RuntimeTradeStrategySummary[] => {
+  const summaryByStrategy = new Map<string, RuntimeTradeStrategySummary>();
+
+  for (const trade of trades) {
+    const summary = summaryByStrategy.get(trade.strategy) ?? {
+      strategyName: trade.strategy,
+      trades: 0,
+      activeTrades: 0,
+      closedTrades: 0,
+      totalPnl: 0,
+    };
+
+    summary.trades += 1;
+    if (trade.status === 'active') {
+      summary.activeTrades += 1;
+    } else {
+      summary.closedTrades += 1;
+    }
+
+    const pnl =
+      trade.status === 'active'
+        ? trade.currentPnl
+        : trade.closedPnl ?? trade.currentPnl;
+    if (typeof pnl === 'number' && Number.isFinite(pnl)) {
+      summary.totalPnl += pnl;
+    }
+
+    summaryByStrategy.set(trade.strategy, summary);
+  }
+
+  return [...summaryByStrategy.values()]
+    .map((summary) => ({
+      ...summary,
+      totalPnl: Number(summary.totalPnl.toFixed(2)),
+    }))
+    .sort((left, right) => left.strategyName.localeCompare(right.strategyName));
+};
+
+export const summarizeTradeParityByStrategy = ({
+  runtimeEntries,
+  runtimeDuplicateEntries,
+  backtestEntries,
+  matchedEntries,
+  runtimeOnlyEntries,
+  backtestOnlyEntries,
+}: {
+  runtimeEntries: TradeParityEntry[];
+  runtimeDuplicateEntries: TradeParityEntry[];
+  backtestEntries: TradeParityEntry[];
+  matchedEntries: MatchedTradeParityEntry[];
+  runtimeOnlyEntries: TradeParityEntry[];
+  backtestOnlyEntries: TradeParityEntry[];
+}) => {
+  const rows = new Map<
+    string,
+    {
+      runtime: number;
+      runtimeDuplicates: number;
+      backtest: number;
+      matched: number;
+      runtimeOnly: number;
+      backtestOnly: number;
+    }
+  >();
+
+  const ensureRow = (strategyName: string) => {
+    const row = rows.get(strategyName) ?? {
+      runtime: 0,
+      runtimeDuplicates: 0,
+      backtest: 0,
+      matched: 0,
+      runtimeOnly: 0,
+      backtestOnly: 0,
+    };
+    rows.set(strategyName, row);
+    return row;
+  };
+
+  for (const entry of runtimeEntries) {
+    ensureRow(entry.strategy).runtime += 1;
+  }
+  for (const entry of runtimeDuplicateEntries) {
+    ensureRow(entry.strategy).runtimeDuplicates += 1;
+  }
+  for (const entry of backtestEntries) {
+    ensureRow(entry.strategy).backtest += 1;
+  }
+  for (const entry of matchedEntries) {
+    ensureRow(entry.runtime.strategy).matched += 1;
+  }
+  for (const entry of runtimeOnlyEntries) {
+    ensureRow(entry.strategy).runtimeOnly += 1;
+  }
+  for (const entry of backtestOnlyEntries) {
+    ensureRow(entry.strategy).backtestOnly += 1;
+  }
+
+  return [...rows.entries()].sort(([left], [right]) =>
+    left.localeCompare(right),
   );
 };
 
@@ -443,44 +927,12 @@ const getLogsById = async (orderLogId: string) => {
   return { orderLog, positionLog };
 };
 
-const cacheArtifactsById = async (
-  orderLogId: string,
-  artifacts?: TestResultArtifacts | null,
-) => {
-  if (
-    !artifacts ||
-    !Array.isArray(artifacts.orderLog) ||
-    !Array.isArray(artifacts.positionLog)
-  ) {
-    return;
-  }
-
-  await Promise.all([
-    setData(redisKeys.cacheOrders(userName, orderLogId), artifacts.orderLog, {
-      expire: TTL_1D,
-    }),
-    setData(
-      redisKeys.cachePositions(userName, orderLogId),
-      artifacts.positionLog,
-      {
-        expire: TTL_1D,
-      },
-    ),
-  ]);
-};
-
-const resolveResultArtifacts = async (result: TestWorkerResult) => {
-  const inlineArtifacts = resultArtifactsByTestName.get(result.test.name);
-  if (inlineArtifacts?.orderLog && inlineArtifacts?.positionLog) {
-    return inlineArtifacts;
-  }
-
-  return getLogsById(result.orderLogId);
-};
+const resolveResultArtifacts = async (result: TestWorkerResult) =>
+  getLogsById(result.orderLogId);
 
 const setTestData = async (
   test: Test,
-  stat: TestStat,
+  stat: Partial<TestStat>,
   orderLog: OrderLog[],
 ) => {
   await setData(
@@ -533,29 +985,45 @@ const persistTestSummariesIndex = async () => {
 };
 
 export const backtest = async () => {
-  if (!flags.config) {
-    throw new Error('Backtest config not send');
-  }
+  let strategyName = '';
+  let typedBacktestConfig: StrategyConfigGrid | null = null;
+  let liveRuntimeStrategies: RuntimeStrategyBacktestConfig[] = [];
 
-  const strategyName = flags.config.split(':')[0];
+  if (flags.live) {
+    liveRuntimeStrategies = await loadRuntimeStrategyBacktestConfigs(userName);
+    if (!liveRuntimeStrategies.length) {
+      console.log(
+        chalk.yellow(
+          `No active runtime strategy configs found by users:${userName}:strategies:*:config`,
+        ),
+      );
+      return;
+    }
+  } else {
+    if (!flags.config) {
+      throw new Error('Backtest config not send');
+    }
 
-  if (!flags.config) {
-    throw new Error('Strategy name not found');
-  }
+    strategyName = flags.config.split(':')[0];
 
-  const backtestConfig = await getData(
-    redisKeys.backtestConfig(userName, flags.config),
-    null,
-  );
-  if (!backtestConfig) {
-    throw new Error(`Backtest config "${flags.config}" not found`);
-  }
+    if (!strategyName) {
+      throw new Error('Strategy name not found');
+    }
 
-  const typedBacktestConfig = backtestConfig as StrategyConfigGrid;
-  if (!isStrategyConfigGrid(typedBacktestConfig)) {
-    throw new Error(
-      `Backtest config "${flags.config}" must include strategyName and strategyConfig grid`,
+    const backtestConfig = await getData(
+      redisKeys.backtestConfig(userName, flags.config),
+      null,
     );
+    if (!backtestConfig) {
+      throw new Error(`Backtest config "${flags.config}" not found`);
+    }
+
+    typedBacktestConfig = backtestConfig as StrategyConfigGrid;
+    if (!isStrategyConfigGrid(typedBacktestConfig)) {
+      throw new Error(
+        `Backtest config "${flags.config}" must include strategyName and strategyConfig grid`,
+      );
+    }
   }
 
   const connectorName = await resolveBacktestConnectorName(flags.connector);
@@ -569,6 +1037,8 @@ export const backtest = async () => {
   const marketConnector = await (connectorFactory as ConnectorCreator)({
     userName: flags.user,
   });
+  activeConnectorForRuntimeCompare = marketConnector;
+  activeConnectorNameForRuntimeCompare = connectorName;
 
   const tickers = await timeOperation('tickers load', () =>
     getTickers(
@@ -592,6 +1062,10 @@ export const backtest = async () => {
     defaultStartMs: getTimestamp(BACKTEST_DEFAULT_DAYS),
     defaultEndMs: getTimestamp(),
   });
+  activeWindowForRuntimeCompare = {
+    start: window.start,
+    end: window.end,
+  };
   const preloadStart = getBacktestPreloadStart(
     window.start,
     BACKTEST_PRELOAD_DAYS,
@@ -648,15 +1122,31 @@ export const backtest = async () => {
     return;
   }
 
-  let testSuite = createTestSuite(
-    userName,
-    tickers,
-    strategyName,
-    typedBacktestConfig,
-    connectorName,
-  );
+  let testSuite = flags.live
+    ? liveRuntimeStrategies.flatMap(
+        ({ strategyName: runtimeStrategyName, backtestConfig }) =>
+          createTestSuite(
+            userName,
+            tickers,
+            runtimeStrategyName,
+            backtestConfig,
+            connectorName,
+          ),
+      )
+    : createTestSuite(
+        userName,
+        tickers,
+        strategyName,
+        typedBacktestConfig as StrategyConfigGrid,
+        connectorName,
+      );
   const mlEnabled = Boolean(flags.ml);
   const aiEnabled = Boolean(flags.ai);
+  const requestedTestsLimit = resolveRequestedTestsLimit({
+    isLiveMode: Boolean(flags.live),
+    requestedLimit: testsLimit,
+    hasExplicitLimit: hasExplicitTestsLimit,
+  });
   testSuite = testSuite
     .map((test) => ({
       ...test,
@@ -668,12 +1158,19 @@ export const backtest = async () => {
       ai: aiEnabled,
       timeoutMs: testItemTimeoutMs,
     }))
-    .slice(testsSkip, testsSkip + testsLimit);
+    .slice(
+      testsSkip,
+      Number.isFinite(requestedTestsLimit)
+        ? testsSkip + requestedTestsLimit
+        : undefined,
+    );
 
   if (!testSuite.length) {
     console.log(
       chalk.yellow(
-        `No tests selected (skip=${testsSkip}, limit=${testsLimit}).`,
+        `No tests selected (skip=${testsSkip}, limit=${
+          Number.isFinite(requestedTestsLimit) ? requestedTestsLimit : 'all'
+        }).`,
       ),
     );
     return;
@@ -699,8 +1196,7 @@ export const backtest = async () => {
 
   testsStartedAt = Date.now();
 
-  const chunkSize = Math.ceil(testSuite.length / effectiveParallel);
-  const chunks = _.chunk(testSuite, chunkSize);
+  const chunks = chunkTestSuiteBySymbol(testSuite, effectiveParallel);
   let completedTests = 0;
   let isFinishing = false;
   const workers = new Set<ReturnType<typeof fork>>();
@@ -736,6 +1232,15 @@ export const backtest = async () => {
   });
 
   console.log(chalk.yellow(`tests: ${testSuite.length}`));
+  if (flags.live) {
+    console.log(
+      chalk.gray(
+        `mode: live (${liveRuntimeStrategies
+          .map(({ strategyName: runtimeStrategyName }) => runtimeStrategyName)
+          .join(', ')})`,
+      ),
+    );
+  }
   console.log(
     chalk.gray(`parallel: ${effectiveParallel}, workerHeapMb: ${workerHeapMb}`),
   );
@@ -801,26 +1306,22 @@ export const backtest = async () => {
         successTests++;
       }
 
-      const fullResult = msg as TestWorkerResult;
-      const result = stripInlineLogs(fullResult);
-      const inlineArtifacts = getInlineArtifacts(fullResult);
+      const result = msg as TestWorkerResult;
 
-      const nextTopResults = insertTopResult(results, result, flags.top);
-      const shouldCacheTopArtifacts = nextTopResults.added;
-      if (nextTopResults.added || results !== nextTopResults.results) {
-        updateTopResults(nextTopResults.results, result, inlineArtifacts);
+      if (flags.live) {
+        liveResultsByStrategyAndTicker.set(
+          getLiveStrategyResultKey(result),
+          result,
+        );
       }
 
-      const updatedBestTickerResult = updateBestTickerResult(
-        result,
-        inlineArtifacts,
-      );
+      const nextTopResults = insertTopResult(results, result, flags.top);
+      if (nextTopResults.added || results !== nextTopResults.results) {
+        updateTopResults(nextTopResults.results);
+      }
 
-      if (
-        (shouldCacheTopArtifacts || updatedBestTickerResult) &&
-        inlineArtifacts
-      ) {
-        await cacheArtifactsById(result.orderLogId, inlineArtifacts);
+      if (!flags.live) {
+        updateBestTickerResult(result);
       }
 
       if (
@@ -954,8 +1455,285 @@ const saveAndPrintResultsByTickers = async () => {
   console.log('');
 };
 
+const saveAndPrintLiveResultsByStrategy =
+  async (): Promise<LiveStrategyResultsSnapshot> => {
+    const summaryByStrategy = new Map<string, LiveStrategySummary>();
+    const backtestEntries: TradeParityEntry[] = [];
+
+    for await (const result of liveResultsByStrategyAndTicker.values()) {
+      const { test } = result;
+      const { orderLog, positionLog } = await resolveResultArtifacts(result);
+      if (!orderLog || !positionLog) {
+        throw new Error(`Logs not found for live result ${test.name}`);
+      }
+
+      const stat = calculateStatsFull(positionLog) as TestStat | null;
+      if (!stat && positionLog.length > 0) {
+        throw new Error(
+          `Position log is empty for live result ${test.name} despite ${positionLog.length} positions`,
+        );
+      }
+
+      await setTestData(test, stat ?? {}, orderLog);
+      backtestEntries.push(...extractBacktestEntryParityEntries(orderLog));
+
+      const existing = summaryByStrategy.get(test.strategyName) ?? {
+        strategyName: test.strategyName,
+        strategyConfig: test.strategyConfig,
+        tickers: 0,
+        tickersWithTrades: 0,
+        orders: 0,
+        wins: 0,
+        losses: 0,
+        netProfit: 0,
+        avgTradeProfit: 0,
+        winRate: 0,
+      };
+
+      existing.tickers += 1;
+      if (stat?.orders) {
+        existing.tickersWithTrades += 1;
+        existing.orders += stat.orders ?? 0;
+        existing.wins += stat.wins ?? 0;
+        existing.losses += stat.losses ?? 0;
+        existing.netProfit += stat.netProfit ?? 0;
+      }
+
+      summaryByStrategy.set(test.strategyName, existing);
+    }
+
+    const summaries = [...summaryByStrategy.values()]
+      .map((summary) => {
+        const winRate =
+          summary.orders > 0 ? (summary.wins / summary.orders) * 100 : 0;
+        const avgTradeProfit =
+          summary.orders > 0 ? summary.netProfit / summary.orders : 0;
+
+        return {
+          ...summary,
+          netProfit: Number(summary.netProfit.toFixed(2)),
+          avgTradeProfit: Number(avgTradeProfit.toFixed(2)),
+          winRate: Number(winRate.toFixed(2)),
+        };
+      })
+      .sort(
+        (left, right) =>
+          right.netProfit - left.netProfit ||
+          left.strategyName.localeCompare(right.strategyName),
+      );
+
+    const rows = summaries.map((summary) => {
+      const profit = `${summary.netProfit.toFixed(2)}$`;
+      const avgTrade = `${summary.avgTradeProfit.toFixed(2)}$`;
+      const profitColor =
+        summary.netProfit > 0
+          ? chalk.green
+          : summary.netProfit < 0
+            ? chalk.red
+            : chalk.gray;
+      const avgTradeColor =
+        summary.avgTradeProfit > 0
+          ? chalk.green
+          : summary.avgTradeProfit < 0
+            ? chalk.red
+            : chalk.gray;
+
+      return [
+        chalk.blue(summary.strategyName),
+        chalk.yellow(String(summary.tickers)),
+        chalk.yellow(String(summary.tickersWithTrades)),
+        chalk.cyan(String(summary.orders)),
+        chalk.cyan(
+          `${summary.wins}/${summary.losses} (${summary.winRate.toFixed(2)}%)`,
+        ),
+        profitColor(profit),
+        avgTradeColor(avgTrade),
+      ];
+    });
+
+    console.log('');
+    console.log('LIVE RESULTS BY STRATEGY:');
+    console.log(createTable(HEADERS_LIVE_RESULTS_BY_STRATEGY, rows));
+    console.log('');
+
+    return {
+      summaries,
+      backtestEntries,
+    };
+  };
+
+const saveAndPrintLiveRuntimeComparison = async ({
+  liveStrategySummaries,
+  backtestEntries,
+}: {
+  liveStrategySummaries: LiveStrategySummary[];
+  backtestEntries: TradeParityEntry[];
+}): Promise<LiveRuntimeComparisonSummary | null> => {
+  if (!activeConnectorForRuntimeCompare || !activeWindowForRuntimeCompare) {
+    return null;
+  }
+
+  const relevantStrategies = new Set(
+    liveStrategySummaries.map((summary) => summary.strategyName),
+  );
+  const rawRuntimeTrades = await loadRuntimeTrades(userName);
+  const syncedRuntimeTrades = await syncRuntimeTrades({
+    userName,
+    connector: activeConnectorForRuntimeCompare,
+    trades: rawRuntimeTrades,
+    startTime: activeWindowForRuntimeCompare.start,
+    endTime: activeWindowForRuntimeCompare.end,
+  });
+  const windowRuntimeTrades = syncedRuntimeTrades.filter(
+    (trade) =>
+      trade.entryTimestamp >= activeWindowForRuntimeCompare!.start &&
+      trade.entryTimestamp < activeWindowForRuntimeCompare!.end &&
+      relevantStrategies.has(trade.strategy),
+  );
+
+  if (!windowRuntimeTrades.length) {
+    console.log('');
+    console.log(
+      chalk.yellow(
+        `LIVE VS RUNTIME: no runtime trades found for ${activeConnectorNameForRuntimeCompare} in ${formatUnix(
+          activeWindowForRuntimeCompare.start,
+        )} -> ${formatUnix(activeWindowForRuntimeCompare.end)}`,
+      ),
+    );
+    console.log('');
+    return {
+      syncedTradesCount: syncedRuntimeTrades.length,
+      windowTradesCount: 0,
+      runtimeEntriesCount: 0,
+      backtestEntriesCount: backtestEntries.length,
+      matchedCount: 0,
+      runtimeOnlyCount: 0,
+      backtestOnlyCount: backtestEntries.length,
+      rows: liveStrategySummaries.map((summary) => ({
+        strategyName: summary.strategyName,
+        backtestEntries: backtestEntries.filter(
+          (entry) => entry.strategy === summary.strategyName,
+        ).length,
+        backtestNetProfit: summary.netProfit,
+        runtimeTrades: 0,
+        runtimePnl: 0,
+        matched: 0,
+        runtimeOnly: 0,
+        backtestOnly: backtestEntries.filter(
+          (entry) => entry.strategy === summary.strategyName,
+        ).length,
+      })),
+    };
+  }
+
+  const runtimeSummaries =
+    summarizeRuntimeTradesByStrategy(windowRuntimeTrades);
+  const runtimeSummaryByStrategy = new Map(
+    runtimeSummaries.map((summary) => [summary.strategyName, summary]),
+  );
+  const rawRuntimeEntries = extractRuntimeParityEntries(windowRuntimeTrades);
+  const runtimeDedupe = dedupeRuntimeParityEntries(rawRuntimeEntries);
+  const comparison = compareTradeParityEntries({
+    runtimeEntries: runtimeDedupe.entries,
+    backtestEntries,
+    toleranceMs: LIVE_RUNTIME_COMPARE_TOLERANCE_MS,
+  });
+  const parityRows = summarizeTradeParityByStrategy({
+    runtimeEntries: runtimeDedupe.entries,
+    runtimeDuplicateEntries: runtimeDedupe.duplicateEntries,
+    backtestEntries,
+    matchedEntries: comparison.matched,
+    runtimeOnlyEntries: comparison.runtimeOnly,
+    backtestOnlyEntries: comparison.backtestOnly,
+  });
+  const parityByStrategy = new Map(parityRows);
+  const liveSummaryByStrategy = new Map(
+    liveStrategySummaries.map((summary) => [summary.strategyName, summary]),
+  );
+
+  const strategyNames = new Set<string>([
+    ...liveSummaryByStrategy.keys(),
+    ...runtimeSummaryByStrategy.keys(),
+    ...parityByStrategy.keys(),
+  ]);
+  const rows = [...strategyNames]
+    .sort((left, right) => left.localeCompare(right))
+    .map((strategyName) => {
+      const liveSummary = liveSummaryByStrategy.get(strategyName);
+      const runtimeSummary = runtimeSummaryByStrategy.get(strategyName);
+      const parity = parityByStrategy.get(strategyName);
+
+      return {
+        strategyName,
+        backtestEntries: parity?.backtest ?? 0,
+        backtestNetProfit: liveSummary?.netProfit ?? 0,
+        runtimeTrades: runtimeSummary?.trades ?? 0,
+        runtimePnl: runtimeSummary?.totalPnl ?? 0,
+        matched: parity?.matched ?? 0,
+        runtimeOnly: parity?.runtimeOnly ?? 0,
+        backtestOnly: parity?.backtestOnly ?? 0,
+      };
+    });
+
+  const colorizedRows = rows.map((row) => {
+    const btPnlColor =
+      row.backtestNetProfit > 0
+        ? chalk.green
+        : row.backtestNetProfit < 0
+          ? chalk.red
+          : chalk.gray;
+    const rtPnlColor =
+      row.runtimePnl > 0
+        ? chalk.green
+        : row.runtimePnl < 0
+          ? chalk.red
+          : chalk.gray;
+
+    return [
+      chalk.blue(row.strategyName),
+      chalk.cyan(String(row.backtestEntries)),
+      btPnlColor(`${row.backtestNetProfit.toFixed(2)}$`),
+      chalk.yellow(String(row.runtimeTrades)),
+      rtPnlColor(`${row.runtimePnl.toFixed(2)}$`),
+      chalk.green(String(row.matched)),
+      chalk.yellow(String(row.runtimeOnly)),
+      chalk.magenta(String(row.backtestOnly)),
+    ];
+  });
+
+  console.log('');
+  console.log(
+    `LIVE VS RUNTIME BY STRATEGY (connector=${activeConnectorNameForRuntimeCompare}, tolerance=${LIVE_RUNTIME_COMPARE_TOLERANCE_BARS} bar)`,
+  );
+  console.log(createTable(HEADERS_LIVE_RUNTIME_COMPARISON, colorizedRows));
+  console.log('');
+
+  return {
+    syncedTradesCount: syncedRuntimeTrades.length,
+    windowTradesCount: windowRuntimeTrades.length,
+    runtimeEntriesCount: runtimeDedupe.entries.length,
+    backtestEntriesCount: backtestEntries.length,
+    matchedCount: comparison.matched.length,
+    runtimeOnlyCount: comparison.runtimeOnly.length,
+    backtestOnlyCount: comparison.backtestOnly.length,
+    rows,
+  };
+};
+
 const finish = async () => {
-  if (flags.tickers) {
+  const liveStrategySnapshot = flags.live
+    ? await saveAndPrintLiveResultsByStrategy()
+    : null;
+  const liveRuntimeComparison = flags.live
+    ? await saveAndPrintLiveRuntimeComparison({
+        liveStrategySummaries: liveStrategySnapshot?.summaries ?? [],
+        backtestEntries: liveStrategySnapshot?.backtestEntries ?? [],
+      })
+    : null;
+
+  if (flags.live) {
+    // Live mode already persists every strategy/ticker test above.
+  } else if (flags.tickers) {
     await saveAndPrintResults();
   } else {
     await saveAndPrintResultsByTickers();
@@ -969,17 +1747,22 @@ const finish = async () => {
   );
   console.log('');
 
-  const bestConfig = results[0]?.test.strategyConfig;
-  console.log(chalk.gray('BEST CONFIG:'));
-  console.log(chalk.green(toJson(bestConfig, true)));
-  console.log('');
+  const bestConfig = flags.live ? null : results[0]?.test.strategyConfig;
+  const mergedConfig = flags.live
+    ? null
+    : mergeConfigs(
+        results.map(({ test: { strategyConfig } }) => strategyConfig),
+      );
 
-  const mergedConfig = mergeConfigs(
-    results.map(({ test: { strategyConfig } }) => strategyConfig),
-  );
-  console.log(chalk.gray('MERGED CONFIG:'));
-  console.log(chalk.blue(toJson(mergedConfig, true)));
-  console.log('');
+  if (!flags.live) {
+    console.log(chalk.gray('BEST CONFIG:'));
+    console.log(chalk.green(toJson(bestConfig, true)));
+    console.log('');
+
+    console.log(chalk.gray('MERGED CONFIG:'));
+    console.log(chalk.blue(toJson(mergedConfig, true)));
+    console.log('');
+  }
 
   console.log(`${chalk.green('SUCCESS TESTS')}: ${successTests}`);
   console.log(`${chalk.red('ERRORS')}: ${errorTests}`);
@@ -992,15 +1775,24 @@ const finish = async () => {
   const timestamp = createTimestamp(finishedAt);
 
   await setData(
-    redisKeys.backtestResults(userName, flags.config, timestamp),
+    redisKeys.backtestResults(
+      userName,
+      flags.live ? LIVE_BACKTEST_RESULTS_CONFIG : flags.config,
+      timestamp,
+    ),
     {
-      config: flags.config,
+      config: flags.live ? LIVE_BACKTEST_RESULTS_CONFIG : flags.config,
+      mode: flags.live ? 'live' : 'config',
       user: userName,
       startedAt: new Date(runStartedAt).toISOString(),
       finishedAt: finishedAt.toISOString(),
       durationSeconds,
-      results,
-      resultsByTickers: Array.from(resultsByTickers.values()),
+      results: flags.live
+        ? Array.from(liveResultsByStrategyAndTicker.values())
+        : results,
+      resultsByTickers: flags.live ? [] : Array.from(resultsByTickers.values()),
+      resultsByStrategies: liveStrategySnapshot?.summaries ?? null,
+      runtimeComparison: liveRuntimeComparison,
       bestConfig,
       mergedConfig,
       successTests,
