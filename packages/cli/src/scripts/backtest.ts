@@ -21,6 +21,7 @@ import {
   mergeConfigs,
   parseTestName,
 } from '@tradejs/core/backtest';
+import { runWithConcurrency } from '@tradejs/core/async';
 import { toJson } from '@tradejs/core/data';
 import {
   BACKTEST_DEFAULT_DAYS,
@@ -200,9 +201,13 @@ const progressStep = Math.max(1, parseInt(String(flags.progressStep), 10));
 const testsLimit = Math.max(0, parseInt(String(flags.tests), 10));
 const testsSkip = Math.max(0, parseInt(String(flags.skip ?? 0), 10));
 const hasExplicitTestsLimit = hasCliFlag(normalizedArgv, ['--tests', '-n']);
-const testItemTimeoutMs = 120_000;
+const testItemTimeoutMs = 240_000;
 const workerHeapMb = resolveWorkerHeapMb();
 const effectiveParallel = resolveEffectiveParallel(flags.parallel);
+const resultArtifactsIoConcurrency = Math.max(
+  8,
+  Math.min(32, effectiveParallel * 4),
+);
 const uuid = (len = 12) => randomUUID().slice(-len);
 const projectRoot =
   String(process.env.PROJECT_CWD || process.cwd()).trim() || process.cwd();
@@ -319,6 +324,20 @@ type LiveStrategyResultsSnapshot = {
   summaries: LiveStrategySummary[];
   backtestEntries: TradeParityEntry[];
 };
+
+export const buildLiveReplayStrategyConfig = ({
+  strategyConfig,
+  interval,
+}: {
+  strategyConfig: StrategyConfig;
+  interval: Interval;
+}): StrategyConfig => ({
+  ...strategyConfig,
+  ENV: 'PARITY',
+  MAKE_ORDERS: true,
+  INTERVAL: interval,
+  RECORD_RUNTIME_TRADES: false,
+});
 
 let successTests = 0;
 let errorTests = 0;
@@ -915,14 +934,10 @@ const resolveBacktestConnectorName = async (
 };
 
 const getLogsById = async (orderLogId: string) => {
-  const orderLog = (await getData(
-    redisKeys.cacheOrders(userName, orderLogId),
-    null,
-  )) as OrderLog[];
-  const positionLog = (await getData(
-    redisKeys.cachePositions(userName, orderLogId),
-    null,
-  )) as PositionLogData;
+  const [orderLog, positionLog] = (await Promise.all([
+    getData(redisKeys.cacheOrders(userName, orderLogId), null),
+    getData(redisKeys.cachePositions(userName, orderLogId), null),
+  ])) as [OrderLog[], PositionLogData];
 
   return { orderLog, positionLog };
 };
@@ -935,29 +950,29 @@ const setTestData = async (
   stat: Partial<TestStat>,
   orderLog: OrderLog[],
 ) => {
-  await setData(
-    redisKeys.testOrders(test.userName, test.strategyName, test.name),
-    orderLog,
-    {
-      expire: TTL_1M,
-    },
-  );
-
-  await setData(
-    redisKeys.testConfig(test.userName, test.strategyName, test.name),
-    test,
-    {
-      expire: TTL_1M,
-    },
-  );
-
-  await setData(
-    redisKeys.testStat(test.userName, test.strategyName, test.name),
-    stat,
-    {
-      expire: TTL_1M,
-    },
-  );
+  await Promise.all([
+    setData(
+      redisKeys.testOrders(test.userName, test.strategyName, test.name),
+      orderLog,
+      {
+        expire: TTL_1M,
+      },
+    ),
+    setData(
+      redisKeys.testConfig(test.userName, test.strategyName, test.name),
+      test,
+      {
+        expire: TTL_1M,
+      },
+    ),
+    setData(
+      redisKeys.testStat(test.userName, test.strategyName, test.name),
+      stat,
+      {
+        expire: TTL_1M,
+      },
+    ),
+  ]);
 
   const { testId } = parseTestName(test.name);
   persistedTestSummaryByKey.set(`${test.strategyName}:${test.name}`, {
@@ -1124,12 +1139,20 @@ export const backtest = async () => {
 
   let testSuite = flags.live
     ? liveRuntimeStrategies.flatMap(
-        ({ strategyName: runtimeStrategyName, backtestConfig }) =>
+        ({
+          strategyName: runtimeStrategyName,
+          strategyConfig: runtimeStrategyConfig,
+        }) =>
           createTestSuite(
             userName,
             tickers,
             runtimeStrategyName,
-            backtestConfig,
+            toStrategyConfigGrid(
+              buildLiveReplayStrategyConfig({
+                strategyConfig: runtimeStrategyConfig,
+                interval,
+              }),
+            ),
             connectorName,
           ),
       )
@@ -1459,23 +1482,46 @@ const saveAndPrintLiveResultsByStrategy =
   async (): Promise<LiveStrategyResultsSnapshot> => {
     const summaryByStrategy = new Map<string, LiveStrategySummary>();
     const backtestEntries: TradeParityEntry[] = [];
+    const liveResults = Array.from(liveResultsByStrategyAndTicker.values());
+    const processedResults = new Array<{
+      test: Test;
+      stat: TestStat | null;
+      extractedEntries: TradeParityEntry[];
+    }>(liveResults.length);
 
-    for await (const result of liveResultsByStrategyAndTicker.values()) {
-      const { test } = result;
-      const { orderLog, positionLog } = await resolveResultArtifacts(result);
-      if (!orderLog || !positionLog) {
-        throw new Error(`Logs not found for live result ${test.name}`);
+    await runWithConcurrency(
+      liveResults,
+      Math.min(resultArtifactsIoConcurrency, liveResults.length || 1),
+      async (result, index) => {
+        const { test } = result;
+        const { orderLog, positionLog } = await resolveResultArtifacts(result);
+        if (!orderLog || !positionLog) {
+          throw new Error(`Logs not found for live result ${test.name}`);
+        }
+
+        const stat = calculateStatsFull(positionLog) as TestStat | null;
+        if (!stat && positionLog.length > 0) {
+          throw new Error(
+            `Position log is empty for live result ${test.name} despite ${positionLog.length} positions`,
+          );
+        }
+
+        await setTestData(test, stat ?? {}, orderLog);
+        processedResults[index] = {
+          test,
+          stat,
+          extractedEntries: extractBacktestEntryParityEntries(orderLog),
+        };
+      },
+    );
+
+    for (const processedResult of processedResults) {
+      if (!processedResult) {
+        continue;
       }
 
-      const stat = calculateStatsFull(positionLog) as TestStat | null;
-      if (!stat && positionLog.length > 0) {
-        throw new Error(
-          `Position log is empty for live result ${test.name} despite ${positionLog.length} positions`,
-        );
-      }
-
-      await setTestData(test, stat ?? {}, orderLog);
-      backtestEntries.push(...extractBacktestEntryParityEntries(orderLog));
+      const { test, stat, extractedEntries } = processedResult;
+      backtestEntries.push(...extractedEntries);
 
       const existing = summaryByStrategy.get(test.strategyName) ?? {
         strategyName: test.strategyName,

@@ -228,28 +228,36 @@ describe('signals summary script', () => {
 
     await module.signalsSummary();
 
-    expect(sendTextToTG).toHaveBeenCalledTimes(1);
-    const firstCall = sendTextToTG.mock.calls[0];
-    expect(firstCall).toBeDefined();
-    const message = firstCall?.[0];
-    expect(typeof message).toBe('string');
-    if (typeof message !== 'string') {
-      throw new Error('Expected summary message to be a string');
+    expect(sendTextToTG).toHaveBeenCalledTimes(2);
+    const signalsMessage = sendTextToTG.mock.calls[0]?.[0];
+    const tradesMessage = sendTextToTG.mock.calls[1]?.[0];
+    expect(typeof signalsMessage).toBe('string');
+    expect(typeof tradesMessage).toBe('string');
+    if (
+      typeof signalsMessage !== 'string' ||
+      typeof tradesMessage !== 'string'
+    ) {
+      throw new Error('Expected summary messages to be strings');
     }
-    expect(message).toContain('TradeJS daily summary');
-    expect(message).toContain('💰 <b>24h PnL:</b> <b>+8.00</b>');
-    expect(message).toContain('<b>TrendLine</b>\ncompleted=<b>1</b>');
-    expect(message).toContain('<b>ReverseTrendLine</b>\nskipped=<b>1</b>');
-    expect(message).toContain(
+    expect(signalsMessage).toContain('TradeJS daily summary');
+    expect(signalsMessage).toContain('📡 <b>Signals</b>');
+    expect(signalsMessage).toContain('💰 <b>24h PnL:</b> <b>+8.00</b>');
+    expect(signalsMessage).toContain('<b>TrendLine</b>\ncompleted=<b>1</b>');
+    expect(signalsMessage).toContain(
+      '<b>ReverseTrendLine</b>\nskipped=<b>1</b>',
+    );
+    expect(signalsMessage).toContain(
       '<b>ReverseTrendLine</b>\nskipped=<b>1</b>\nevaluated=<b>1</b>, signals=<b>1</b>',
     );
-    expect(message).toContain('<b>skip from AI</b>:');
-    expect(message).toContain('MIN_AI_QUALITY: <b>1</b>');
-    expect(message).toContain(
-      '<b>TrendLine</b>\ntotal=<b>1</b>, active=<b>1</b> (PnL <b>+12.00</b>)\nclosed=<b>0</b> (PnL <b>n/a</b>), totalPnL=<b>+12.00</b>\n- BTCUSDT: PnL <b>+12.00</b>, status=<b>active</b>',
+    expect(signalsMessage).toContain('<b>skip from AI</b>:');
+    expect(signalsMessage).toContain('MIN_AI_QUALITY: <b>1</b>');
+    expect(tradesMessage).toContain('TradeJS daily summary');
+    expect(tradesMessage).toContain('💼 <b>Trades</b>');
+    expect(tradesMessage).toContain(
+      '<b>TrendLine</b>\ntotal=<b>1</b>, 🟢 (PnL <b>+12.00</b>)\n- BTCUSDT: PnL <b>+12.00</b> 🟢',
     );
-    expect(message).toContain(
-      '<b>ReverseTrendLine</b>\ntotal=<b>1</b>, active=<b>0</b> (PnL <b>n/a</b>)\nclosed=<b>1</b> (PnL <b>-4.00</b>), totalPnL=<b>-4.00</b>\n- ETHUSDT: PnL <b>-4.00</b>, status=<b>closed</b>',
+    expect(tradesMessage).toContain(
+      '<b>ReverseTrendLine</b>\ntotal=<b>1</b>, ✅ (PnL <b>-4.00</b>)\n- ETHUSDT: PnL <b>-4.00</b> ✅',
     );
     expect(setData).toHaveBeenCalledWith(
       redisKeys.runtimeTrade('root', 'ord-2'),
@@ -398,29 +406,42 @@ describe('signals summary script', () => {
 
     await module.signalsSummary();
 
-    const message = sendTextToTG.mock.calls[0]?.[0];
-    expect(typeof message).toBe('string');
-    if (typeof message !== 'string') {
-      throw new Error('Expected summary message to be a string');
+    expect(sendTextToTG).toHaveBeenCalledTimes(2);
+    const signalsMessage = sendTextToTG.mock.calls[0]?.[0];
+    const tradesMessage = sendTextToTG.mock.calls[1]?.[0];
+    expect(typeof signalsMessage).toBe('string');
+    expect(typeof tradesMessage).toBe('string');
+    if (
+      typeof signalsMessage !== 'string' ||
+      typeof tradesMessage !== 'string'
+    ) {
+      throw new Error('Expected summary messages to be strings');
     }
 
-    expect(message).toContain('TradeJS weekly summary');
-    expect(message).toContain('Range: <b>168h</b>');
-    expect(message).toContain('💰 <b>168h PnL:</b> <b>n/a</b>');
-    expect(message).toContain(
+    expect(signalsMessage).toContain('TradeJS weekly summary');
+    expect(signalsMessage).toContain('📡 <b>Signals</b>');
+    expect(signalsMessage).toContain('Range: <b>168h</b>');
+    expect(signalsMessage).toContain('💰 <b>168h PnL:</b> <b>n/a</b>');
+    expect(signalsMessage).toContain(
       '<b>AdaptiveMomentumRibbon</b>\nskipped=<b>1</b>',
     );
-    expect(message).toContain('<b>ReverseTrendLine</b>\nnone');
-    expect(message).toContain('<b>TrendLine</b>\nnone');
-    expect(message).toContain('<b>VolumeDivergence</b>\nsignals=<b>0</b>');
-    expect(message).toContain(
+    expect(signalsMessage).toContain('<b>ReverseTrendLine</b>\nnone');
+    expect(signalsMessage).toContain('<b>TrendLine</b>\nnone');
+    expect(signalsMessage).toContain(
+      '<b>VolumeDivergence</b>\nsignals=<b>0</b>',
+    );
+    expect(signalsMessage).toContain(
       '<b>VolumeDivergence</b>\nsignals=<b>0</b>\nevaluated=<b>1</b>, signals=<b>0</b>',
     );
-    expect(message).toContain('<b>skip from core</b>:');
-    expect(message).toContain('NO_DIVERGENCE: <b>1</b>');
-    expect(message).toContain('<b>AdaptiveMomentumRibbon</b>\ntotal=<b>0</b>');
-    expect(message).toContain('<b>ReverseTrendLine</b>\ntotal=<b>0</b>');
-    expect(message).toContain('<b>TrendLine</b>\ntotal=<b>0</b>');
-    expect(message).toContain('<b>VolumeDivergence</b>\ntotal=<b>0</b>');
+    expect(signalsMessage).toContain('<b>skip from core</b>:');
+    expect(signalsMessage).toContain('NO_DIVERGENCE: <b>1</b>');
+    expect(tradesMessage).toContain('TradeJS weekly summary');
+    expect(tradesMessage).toContain('💼 <b>Trades</b>');
+    expect(tradesMessage).toContain(
+      '<b>AdaptiveMomentumRibbon</b>\ntotal=<b>0</b>',
+    );
+    expect(tradesMessage).toContain('<b>ReverseTrendLine</b>\ntotal=<b>0</b>');
+    expect(tradesMessage).toContain('<b>TrendLine</b>\ntotal=<b>0</b>');
+    expect(tradesMessage).toContain('<b>VolumeDivergence</b>\ntotal=<b>0</b>');
   });
 });

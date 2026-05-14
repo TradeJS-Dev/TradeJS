@@ -24,7 +24,12 @@ import {
 import { logger } from '@tradejs/infra/logger';
 import { askAI } from './ai';
 import { screenDashboard } from './screenshot';
-import { sendSignal, sendSignalAnalysis, sendTextToTG } from './signals';
+import {
+  sendDocumentToTG,
+  sendSignal,
+  sendSignalAnalysis,
+  sendTextToTG,
+} from './signals';
 import {
   Connector,
   Interval,
@@ -432,4 +437,4 @@ export const sendToTG = async (
   logger.info('');
 };
 
-export { sendTextToTG };
+export { sendDocumentToTG, sendTextToTG };

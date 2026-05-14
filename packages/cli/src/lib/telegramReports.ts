@@ -1,6 +1,12 @@
-import { sendTextToTG } from '@tradejs/node/cli';
+import { sendDocumentToTG, sendTextToTG } from '@tradejs/node/cli';
 
 export const TELEGRAM_REPORT_CHUNK_LIMIT = 3_900;
+
+export type TelegramReportAttachment = {
+  filename: string;
+  content: string | Uint8Array;
+  caption?: string;
+};
 
 const buildPartHeader = (index: number, total: number) =>
   `📩 <b>Part ${index}/${total}</b>`;
@@ -59,12 +65,21 @@ export const sendTelegramReport = async (
   options: {
     userName?: string;
     markup?: Record<string, unknown>;
+    attachments?: TelegramReportAttachment[];
   } = {},
 ) => {
   const chunks = splitTelegramReport(message);
+  const sendAttachments = async () => {
+    for (const attachment of options.attachments || []) {
+      await sendDocumentToTG(attachment, {
+        userName: options.userName,
+      });
+    }
+  };
 
   if (chunks.length === 1) {
     await sendTextToTG(chunks[0], options);
+    await sendAttachments();
     return chunks.length;
   }
 
@@ -75,6 +90,7 @@ export const sendTelegramReport = async (
       markup: index === chunks.length - 1 ? options.markup : undefined,
     });
   }
+  await sendAttachments();
 
   return chunks.length;
 };

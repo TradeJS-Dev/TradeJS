@@ -251,7 +251,7 @@ const requestTelegram = async ({
   token,
   init,
 }: {
-  method: 'sendMessage' | 'sendPhoto';
+  method: 'sendMessage' | 'sendPhoto' | 'sendDocument';
   token: string;
   init: RequestInit;
 }) => {
@@ -332,6 +332,48 @@ export const sendTextToTG = async (
     token,
     chatId,
   });
+};
+
+export const sendDocumentToTG = async (
+  document: {
+    filename: string;
+    content: string | Uint8Array;
+    caption?: string;
+  },
+  options: {
+    userName?: string;
+  } = {},
+) => {
+  const { token, chatId } = await getTelegramSettings(options.userName);
+  const body = new FormData();
+
+  body.set('chat_id', String(chatId || ''));
+  body.set(
+    'document',
+    new File([document.content], document.filename, {
+      type: 'application/json',
+    }),
+  );
+
+  if (document.caption?.trim()) {
+    body.set('caption', document.caption.trim());
+    body.set('parse_mode', 'HTML');
+  }
+
+  const data = await requestTelegram({
+    method: 'sendDocument',
+    token,
+    init: {
+      method: 'POST',
+      body,
+    },
+  });
+  logger.info(
+    'tg sendDocument: %s',
+    data?.ok ? 'sent' : getTelegramErrorReason(data),
+  );
+
+  return data;
 };
 
 export const formatMessage = (

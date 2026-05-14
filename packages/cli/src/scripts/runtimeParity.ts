@@ -654,6 +654,558 @@ const formatMinutes = (value: number | null) =>
 const formatEntryLabel = (entry: TradeParityEntry) =>
   `${entry.strategy} ${entry.symbol} ${entry.direction} ${formatUnix(entry.timestamp)}`;
 
+const formatRuntimeEntriesSummary = ({
+  rawRuntimeEntriesCount,
+  runtimeEntriesCount,
+  runtimeDuplicateEntriesCount,
+}: {
+  rawRuntimeEntriesCount: number;
+  runtimeEntriesCount: number;
+  runtimeDuplicateEntriesCount: number;
+}) =>
+  runtimeDuplicateEntriesCount > 0
+    ? `${rawRuntimeEntriesCount} (deduped ${runtimeEntriesCount}, dup ${runtimeDuplicateEntriesCount})`
+    : String(runtimeEntriesCount);
+
+const formatSourceCountsSummary = (sourceCounts: ReplayTargetSourceCounts) => {
+  const parts = [
+    sourceCounts.runtime > 0 ? `runtime trades=${sourceCounts.runtime}` : null,
+    sourceCounts.strategyResults > 0
+      ? `strategy results=${sourceCounts.strategyResults}`
+      : null,
+    sourceCounts.explicitTickers > 0
+      ? `explicit tickers=${sourceCounts.explicitTickers}`
+      : null,
+    sourceCounts.connectorUniverse > 0
+      ? `full universe=${sourceCounts.connectorUniverse}`
+      : null,
+  ].filter((value): value is string => Boolean(value));
+
+  return parts.join(', ');
+};
+
+const normalizeSummaryText = (value: string, maxLength = 160) => {
+  const normalized = value.replace(/\s+/g, ' ').trim();
+  if (normalized.length <= maxLength) {
+    return normalized;
+  }
+
+  return `${normalized.slice(0, maxLength - 3)}...`;
+};
+
+const pickFirstText = (...values: unknown[]) => {
+  for (const value of values) {
+    if (typeof value === 'string' && value.trim()) {
+      return value.trim();
+    }
+  }
+
+  return null;
+};
+
+type MismatchSummaryRow = {
+  timestamp: number;
+  strategy: string;
+  line: string;
+};
+
+const buildMismatchSummaryRows = ({
+  classifiedRuntimeOnly,
+  classifiedBacktestOnly,
+}: {
+  classifiedRuntimeOnly: ClassifiedRuntimeOnlyEntry[];
+  classifiedBacktestOnly: ClassifiedBacktestOnlyEntry[];
+}): MismatchSummaryRow[] => {
+  const rows: MismatchSummaryRow[] = [];
+
+  for (const item of classifiedRuntimeOnly) {
+    const signalId = pickFirstText(
+      item.entry.signalId,
+      item.evaluation?.signalId,
+    );
+    const orderId = pickFirstText(item.entry.orderId, item.entry.id);
+    const nearestBacktestSignalId = pickFirstText(
+      item.nearestBacktestEntry?.signalId,
+      item.nearestBacktestEntry?.id,
+    );
+    const refs = [`signalId=${signalId ?? 'n/a'}`];
+    if (orderId && orderId !== signalId) {
+      refs.push(`orderId=${orderId}`);
+    }
+    if (item.evaluation?.evaluationId) {
+      refs.push(`evaluationId=${item.evaluation.evaluationId}`);
+    }
+    if (item.evaluation?.status) {
+      refs.push(`evaluationStatus=${item.evaluation.status}`);
+    }
+    if (nearestBacktestSignalId) {
+      refs.push(`nearestBacktest=${nearestBacktestSignalId}`);
+    }
+    if (item.evaluationTimestampDiffMs != null) {
+      refs.push(`replayDrift=${formatMinutes(item.evaluationTimestampDiffMs)}`);
+    }
+    if (item.nearestBacktestEntryTimestampDiffMs != null) {
+      refs.push(
+        `backtestDrift=${formatMinutes(item.nearestBacktestEntryTimestampDiffMs)}`,
+      );
+    }
+
+    rows.push({
+      timestamp: item.entry.timestamp,
+      strategy: item.entry.strategy,
+      line: `runtimeOnly [${item.classification}] ${refs.join(' ')} ${formatEntryLabel(item.entry)} reason=${normalizeSummaryText(item.reason)}`,
+    });
+  }
+
+  for (const item of classifiedBacktestOnly) {
+    const signalId = pickFirstText(
+      item.entry.signalId,
+      item.signal?.signalId,
+      item.evaluation?.signalId,
+      item.entry.id,
+    );
+    const runtimeSignalId = pickFirstText(
+      item.signal?.signalId,
+      item.evaluation?.signalId,
+    );
+    const refs = [`signalId=${signalId ?? 'n/a'}`];
+    if (runtimeSignalId && runtimeSignalId !== signalId) {
+      refs.push(`runtimeSignalId=${runtimeSignalId}`);
+    }
+    if (item.evaluation?.evaluationId) {
+      refs.push(`evaluationId=${item.evaluation.evaluationId}`);
+    }
+    if (item.signalTimestampDiffMs != null) {
+      refs.push(`signalDrift=${formatMinutes(item.signalTimestampDiffMs)}`);
+    }
+    if (item.evaluationTimestampDiffMs != null) {
+      refs.push(
+        `evaluationDrift=${formatMinutes(item.evaluationTimestampDiffMs)}`,
+      );
+    }
+
+    rows.push({
+      timestamp: item.entry.timestamp,
+      strategy: item.entry.strategy,
+      line: `backtestOnly [${item.classification}] ${refs.join(' ')} ${formatEntryLabel(item.entry)} reason=${normalizeSummaryText(item.reason)}`,
+    });
+  }
+
+  return rows.sort(
+    (left, right) =>
+      left.timestamp - right.timestamp ||
+      left.strategy.localeCompare(right.strategy) ||
+      left.line.localeCompare(right.line),
+  );
+};
+
+const buildStrategyIssueRows = (
+  strategyRows: Array<[string, StrategyParitySummaryRow]>,
+) =>
+  strategyRows
+    .map(([strategy, row]) => {
+      const issues: string[] = [];
+      if (row.runtimeOnly) {
+        issues.push(`runtimeOnly=${row.runtimeOnly}`);
+      }
+      if (row.backtestOnly) {
+        issues.push(`backtestOnly=${row.backtestOnly}`);
+      }
+      if (row.runtimeDuplicates) {
+        issues.push(`runtimeDuplicates=${row.runtimeDuplicates}`);
+      }
+      if (row.errors) {
+        issues.push(`errors=${row.errors}`);
+      }
+
+      return issues.length ? `- ${strategy}: ${issues.join(', ')}` : null;
+    })
+    .filter((line): line is string => Boolean(line));
+
+const toSerializableTradeParityEntry = (entry: TradeParityEntry | undefined) =>
+  entry
+    ? {
+        id: entry.id,
+        source: entry.source,
+        strategy: entry.strategy,
+        symbol: entry.symbol,
+        direction: entry.direction,
+        timestamp: entry.timestamp,
+        price: entry.price,
+        orderId: entry.orderId,
+        signalId: entry.signalId,
+      }
+    : undefined;
+
+const toSerializableSignal = (signal: Signal | undefined) =>
+  signal
+    ? {
+        signalId: signal.signalId,
+        orderId: signal.orderId,
+        strategy: signal.strategy,
+        symbol: signal.symbol,
+        direction: signal.direction,
+        timestamp: signal.timestamp,
+        orderStatus: signal.orderStatus,
+        orderSkipReason: signal.orderSkipReason,
+        ml: signal.ml,
+        aiAnalysis: signal.aiAnalysis,
+      }
+    : undefined;
+
+const toSerializableRuntimeSignalEvaluation = (
+  evaluation: RuntimeSignalEvaluationRecord | undefined,
+) =>
+  evaluation
+    ? {
+        evaluationId: evaluation.evaluationId,
+        strategy: evaluation.strategy,
+        symbol: evaluation.symbol,
+        direction: evaluation.direction,
+        timestamp: evaluation.timestamp,
+        evaluatedAt: evaluation.evaluatedAt,
+        status: evaluation.status,
+        reason: evaluation.reason,
+        signalId: evaluation.signalId,
+        orderStatus: evaluation.orderStatus,
+        orderSkipReason: evaluation.orderSkipReason,
+        ml: evaluation.ml,
+        aiAnalysis: evaluation.aiAnalysis,
+      }
+    : undefined;
+
+const getRuntimeOnlyLikelyCause = (
+  classification: RuntimeOnlyClassification,
+) => {
+  switch (classification) {
+    case 'gated_out':
+      return 'Replay saw the setup but blocked the trade with gate/order-skip logic.';
+    case 'order_failed':
+      return 'Replay saw the setup but order placement failed.';
+    case 'core_skipped':
+      return 'Replay strategy core did not emit a signal for this runtime trade.';
+    case 'backtest_drift':
+      return 'Replay has a nearby backtest entry, but it is outside the allowed timestamp tolerance.';
+    case 'not_evaluated':
+      return 'Replay produced no evaluation close to the runtime trade timestamp.';
+    case 'true_mismatch':
+      return 'Runtime and replay disagree after evaluation; inspect direction, statuses, and reason fields.';
+  }
+};
+
+const getBacktestOnlyLikelyCause = (
+  classification: BacktestOnlyClassification,
+) => {
+  switch (classification) {
+    case 'gated_out':
+      return 'Runtime/live path saw the setup but blocked the trade with gate/order-skip logic.';
+    case 'order_failed':
+      return 'Runtime/live path saw the setup but order placement failed.';
+    case 'core_skipped':
+      return 'Runtime evaluation skipped the setup while replay/backtest opened a trade.';
+    case 'not_evaluated':
+      return 'Runtime produced no signal or evaluation close to the backtest trade timestamp.';
+    case 'true_mismatch':
+      return 'Backtest opened a trade that runtime did not replicate; inspect signal/evaluation context.';
+  }
+};
+
+const getRuntimeOnlyRecommendedChecks = (
+  classification: RuntimeOnlyClassification,
+) => {
+  switch (classification) {
+    case 'gated_out':
+      return [
+        'Check replay evaluation.orderStatus',
+        'Check replay evaluation.orderSkipReason',
+        'Compare AI/ML gate inputs',
+      ];
+    case 'order_failed':
+      return [
+        'Check replay evaluation.orderStatus',
+        'Check replay evaluation.reason',
+        'Check connector/order simulation path',
+      ];
+    case 'core_skipped':
+      return [
+        'Check replay evaluation.status',
+        'Compare candle window and preload history',
+        'Inspect strategy core conditions at entry timestamp',
+      ];
+    case 'backtest_drift':
+      return [
+        'Check nearest backtest timestamp',
+        'Inspect toleranceBars/toleranceMs',
+        'Compare candle alignment and exchange history',
+      ];
+    case 'not_evaluated':
+      return [
+        'Check replay target coverage',
+        'Check replay evaluation generation',
+        'Inspect symbol/strategy filtering',
+      ];
+    case 'true_mismatch':
+      return [
+        'Compare runtime trade vs replay evaluation',
+        'Check direction and orderStatus',
+        'Inspect strategy inputs around entry timestamp',
+      ];
+  }
+};
+
+const getBacktestOnlyRecommendedChecks = (
+  classification: BacktestOnlyClassification,
+) => {
+  switch (classification) {
+    case 'gated_out':
+      return [
+        'Check runtime signal.orderStatus',
+        'Check runtime signal.orderSkipReason',
+        'Compare AI/ML gate inputs',
+      ];
+    case 'order_failed':
+      return [
+        'Check runtime signal.orderStatus',
+        'Check runtime evaluation.reason',
+        'Inspect live order placement path',
+      ];
+    case 'core_skipped':
+      return [
+        'Check runtime evaluation.status',
+        'Compare runtime signal direction',
+        'Inspect strategy core conditions at entry timestamp',
+      ];
+    case 'not_evaluated':
+      return [
+        'Check runtime signal persistence',
+        'Check evaluation generation',
+        'Inspect symbol/strategy filtering',
+      ];
+    case 'true_mismatch':
+      return [
+        'Compare backtest entry vs runtime signal/evaluation',
+        'Check direction and orderStatus',
+        'Inspect runtime-specific filters',
+      ];
+  }
+};
+
+const buildRuntimeParityMismatchAttachment = ({
+  window,
+  connectorName,
+  replayEnv,
+  toleranceBars,
+  toleranceMs,
+  replayTargetsCount,
+  comparedTargetsCount,
+  replayErrors,
+  sourceCounts,
+  rawRuntimeEntriesCount,
+  runtimeEntriesCount,
+  runtimeDuplicateEntriesCount,
+  backtestEntriesCount,
+  matchedCount,
+  runtimeOnlyCount,
+  backtestOnlyCount,
+  matchedSummary,
+  classifiedRuntimeOnly,
+  classifiedBacktestOnly,
+  runtimeSignalEvaluationsCount,
+  strategyRows,
+}: {
+  window: { start: number; end: number; source?: string };
+  connectorName: string;
+  replayEnv: string;
+  toleranceBars: number;
+  toleranceMs: number;
+  replayTargetsCount: number;
+  comparedTargetsCount: number;
+  replayErrors: ReplayError[];
+  sourceCounts: ReplayTargetSourceCounts;
+  rawRuntimeEntriesCount: number;
+  runtimeEntriesCount: number;
+  runtimeDuplicateEntriesCount: number;
+  backtestEntriesCount: number;
+  matchedCount: number;
+  runtimeOnlyCount: number;
+  backtestOnlyCount: number;
+  matchedSummary: ReturnType<typeof summarizeMatchedParity>;
+  classifiedRuntimeOnly: ClassifiedRuntimeOnlyEntry[];
+  classifiedBacktestOnly: ClassifiedBacktestOnlyEntry[];
+  runtimeSignalEvaluationsCount: number;
+  strategyRows: Array<[string, StrategyParitySummaryRow]>;
+}) => {
+  if (!classifiedRuntimeOnly.length && !classifiedBacktestOnly.length) {
+    return null;
+  }
+
+  const cases = [
+    ...classifiedRuntimeOnly.map((item) => ({
+      kind: 'runtimeOnly' as const,
+      strategy: item.entry.strategy,
+      symbol: item.entry.symbol,
+      direction: item.entry.direction,
+      signalRefs: {
+        signalId: item.entry.signalId ?? item.evaluation?.signalId,
+        orderId: item.entry.orderId ?? item.entry.id,
+        evaluationId: item.evaluation?.evaluationId,
+      },
+      why: {
+        classification: item.classification,
+        reason: item.reason,
+        likelyCause: getRuntimeOnlyLikelyCause(item.classification),
+      },
+      timing: {
+        entryTimestamp: item.entry.timestamp,
+        replayEvaluationTimestamp: item.evaluation?.timestamp,
+        replayEvaluatedAt: item.evaluation?.evaluatedAt,
+        nearestBacktestTimestamp: item.nearestBacktestEntry?.timestamp,
+        replayEvaluationDriftMs: item.evaluationTimestampDiffMs,
+        nearestBacktestDriftMs: item.nearestBacktestEntryTimestampDiffMs,
+      },
+      decisionTrace: {
+        replayEvaluationStatus: item.evaluation?.status,
+        replayOrderStatus: item.evaluation?.orderStatus,
+        replayOrderSkipReason: item.evaluation?.orderSkipReason,
+      },
+      recommendedChecks: getRuntimeOnlyRecommendedChecks(item.classification),
+      artifacts: {
+        runtimeEntry: toSerializableTradeParityEntry(item.entry),
+        replayEvaluation: toSerializableRuntimeSignalEvaluation(
+          item.evaluation,
+        ),
+        nearestBacktestEntry: toSerializableTradeParityEntry(
+          item.nearestBacktestEntry,
+        ),
+      },
+    })),
+    ...classifiedBacktestOnly.map((item) => ({
+      kind: 'backtestOnly' as const,
+      strategy: item.entry.strategy,
+      symbol: item.entry.symbol,
+      direction: item.entry.direction,
+      signalRefs: {
+        signalId:
+          item.entry.signalId ||
+          item.signal?.signalId ||
+          item.evaluation?.signalId ||
+          item.entry.id,
+        orderId: item.signal?.orderId,
+        evaluationId: item.evaluation?.evaluationId,
+      },
+      why: {
+        classification: item.classification,
+        reason: item.reason,
+        likelyCause: getBacktestOnlyLikelyCause(item.classification),
+      },
+      timing: {
+        entryTimestamp: item.entry.timestamp,
+        runtimeSignalTimestamp: item.signal?.timestamp,
+        runtimeEvaluationTimestamp: item.evaluation?.timestamp,
+        runtimeEvaluatedAt: item.evaluation?.evaluatedAt,
+        runtimeSignalDriftMs: item.signalTimestampDiffMs,
+        runtimeEvaluationDriftMs: item.evaluationTimestampDiffMs,
+      },
+      decisionTrace: {
+        runtimeSignalOrderStatus: item.signal?.orderStatus,
+        runtimeSignalOrderSkipReason: item.signal?.orderSkipReason,
+        runtimeEvaluationStatus: item.evaluation?.status,
+        runtimeEvaluationOrderStatus: item.evaluation?.orderStatus,
+        runtimeEvaluationOrderSkipReason: item.evaluation?.orderSkipReason,
+      },
+      recommendedChecks: getBacktestOnlyRecommendedChecks(item.classification),
+      artifacts: {
+        backtestEntry: toSerializableTradeParityEntry(item.entry),
+        runtimeSignal: toSerializableSignal(item.signal),
+        runtimeEvaluation: toSerializableRuntimeSignalEvaluation(
+          item.evaluation,
+        ),
+      },
+    })),
+  ];
+
+  const payload = {
+    kind: 'tradejs-runtime-parity-mismatches',
+    version: 1,
+    generatedAt: Date.now(),
+    codexQuestion:
+      'For each mismatch case, explain why runtime and replay/backtest diverged. Use why.classification first, then confirm with decisionTrace, timing, and artifacts.',
+    window: {
+      start: window.start,
+      end: window.end,
+      source: window.source,
+    },
+    connectorName,
+    replayEnv,
+    tolerance: {
+      bars: toleranceBars,
+      ms: toleranceMs,
+    },
+    summary: {
+      replayTargets: replayTargetsCount,
+      comparedTargets: comparedTargetsCount,
+      replayErrors: replayErrors.length,
+      sourceCounts,
+      runtimeEntriesRaw: rawRuntimeEntriesCount,
+      runtimeEntries: runtimeEntriesCount,
+      runtimeDuplicateEntries: runtimeDuplicateEntriesCount,
+      backtestEntries: backtestEntriesCount,
+      matchedEntries: matchedCount,
+      runtimeOnlyEntries: runtimeOnlyCount,
+      backtestOnlyEntries: backtestOnlyCount,
+      runtimeSignalEvaluations: runtimeSignalEvaluationsCount,
+      matchedDeltas: {
+        priceAvgPct: matchedSummary.avgPriceDeltaPct,
+        priceMaxPct: matchedSummary.maxPriceDeltaPct,
+        timeAvgMs: matchedSummary.avgTimestampDiffMs,
+        timeMaxMs: matchedSummary.maxTimestampDiffMs,
+      },
+      strategyIssues: buildStrategyIssueRows(strategyRows).map((line) =>
+        line.slice(2),
+      ),
+    },
+    replayErrors: replayErrors.map((error) => ({
+      strategy: error.strategy,
+      symbol: error.symbol,
+      sources: error.sources,
+      message: error.message,
+    })),
+    cases,
+    mismatches: {
+      runtimeOnly: classifiedRuntimeOnly.map((item) => ({
+        classification: item.classification,
+        reason: item.reason,
+        runtimeEntry: toSerializableTradeParityEntry(item.entry),
+        replayEvaluation: toSerializableRuntimeSignalEvaluation(
+          item.evaluation,
+        ),
+        replayEvaluationDriftMs: item.evaluationTimestampDiffMs,
+        nearestBacktestEntry: toSerializableTradeParityEntry(
+          item.nearestBacktestEntry,
+        ),
+        nearestBacktestDriftMs: item.nearestBacktestEntryTimestampDiffMs,
+      })),
+      backtestOnly: classifiedBacktestOnly.map((item) => ({
+        classification: item.classification,
+        reason: item.reason,
+        backtestEntry: toSerializableTradeParityEntry(item.entry),
+        runtimeSignal: toSerializableSignal(item.signal),
+        runtimeSignalDriftMs: item.signalTimestampDiffMs,
+        runtimeEvaluation: toSerializableRuntimeSignalEvaluation(
+          item.evaluation,
+        ),
+        runtimeEvaluationDriftMs: item.evaluationTimestampDiffMs,
+      })),
+    },
+  };
+
+  return {
+    filename: `runtime-parity-mismatches-${connectorName}-${window.start}-${window.end}.json`,
+    content: JSON.stringify(payload, null, 2),
+    caption: 'Runtime parity mismatch JSON',
+  };
+};
+
 const printRuntimeDuplicateDetails = (groups: RuntimeDuplicateGroup[]) => {
   if (!groups.length) {
     return;
@@ -1089,9 +1641,12 @@ const summarizeBacktestOnlyClassifications = (
     counts.set(item.classification, (counts.get(item.classification) ?? 0) + 1);
   }
 
-  return BACKTEST_ONLY_CLASSIFICATIONS.map(
-    (classification) => `${classification}=${counts.get(classification) ?? 0}`,
-  ).join(', ');
+  const nonZero = BACKTEST_ONLY_CLASSIFICATIONS.flatMap((classification) => {
+    const count = counts.get(classification) ?? 0;
+    return count > 0 ? [`${classification}=${count}`] : [];
+  });
+
+  return nonZero.join(', ');
 };
 
 const summarizeRuntimeOnlyClassifications = (
@@ -1105,9 +1660,12 @@ const summarizeRuntimeOnlyClassifications = (
     counts.set(item.classification, (counts.get(item.classification) ?? 0) + 1);
   }
 
-  return RUNTIME_ONLY_CLASSIFICATIONS.map(
-    (classification) => `${classification}=${counts.get(classification) ?? 0}`,
-  ).join(', ');
+  const nonZero = RUNTIME_ONLY_CLASSIFICATIONS.flatMap((classification) => {
+    const count = counts.get(classification) ?? 0;
+    return count > 0 ? [`${classification}=${count}`] : [];
+  });
+
+  return nonZero.join(', ');
 };
 
 const printClassifiedBacktestOnlyDetails = (
@@ -1303,9 +1861,6 @@ export const buildRuntimeParityMessage = ({
   lines.push(`🔌 Connector: <b>${escapeHtml(connectorName)}</b>`);
   lines.push(`🧬 Replay env: <b>${escapeHtml(replayEnv)}</b>`);
   lines.push(
-    `🚦 Runtime gates: <b>${runtimeGatesEnabled ? '✅ enabled' : '⛔ disabled'}</b>`,
-  );
-  lines.push(
     `🎯 Tolerance: <b>${toleranceBars} bar(s) / ${(toleranceMs / 60_000).toFixed(0)}m</b>`,
   );
   lines.push('');
@@ -1314,20 +1869,25 @@ export const buildRuntimeParityMessage = ({
     `• Targets: <b>${replayTargetsCount}</b> / compared <b>${comparedTargetsCount}</b> / errors <b>${replayErrors.length}</b>`,
   );
   lines.push(
-    `• Sources: runtime=<b>${sourceCounts.runtime}</b>, universe=<b>${sourceCounts.connectorUniverse}</b>, explicit=<b>${sourceCounts.explicitTickers}</b>, results=<b>${sourceCounts.strategyResults}</b>`,
+    `• Sources: <b>${escapeHtml(formatSourceCountsSummary(sourceCounts))}</b>`,
   );
   lines.push('');
   lines.push('📈 <b>Entries</b>');
   lines.push(
-    `• Runtime: <b>${rawRuntimeEntriesCount}</b> (deduped <b>${runtimeEntriesCount}</b>, dup <b>${runtimeDuplicateEntriesCount}</b>)`,
+    `• Runtime: <b>${escapeHtml(
+      formatRuntimeEntriesSummary({
+        rawRuntimeEntriesCount,
+        runtimeEntriesCount,
+        runtimeDuplicateEntriesCount,
+      }),
+    )}</b>`,
   );
   lines.push(`• Backtest: <b>${backtestEntriesCount}</b>`);
-  lines.push(`• Matched: <b>${matchedCount}</b>`);
   lines.push(
     `• Runtime only: <b>${runtimeOnlyCount}</b> / Backtest only: <b>${backtestOnlyCount}</b>`,
   );
   lines.push(
-    `• Deltas: price <b>${escapeHtml(formatPercent(matchedSummary.avgPriceDeltaPct))} / ${escapeHtml(formatPercent(matchedSummary.maxPriceDeltaPct))}</b>, drift <b>${escapeHtml(formatMinutes(matchedSummary.avgTimestampDiffMs))} / ${escapeHtml(formatMinutes(matchedSummary.maxTimestampDiffMs))}</b>`,
+    `• Matched deltas: price avg/max=<b>${escapeHtml(formatPercent(matchedSummary.avgPriceDeltaPct))} / ${escapeHtml(formatPercent(matchedSummary.maxPriceDeltaPct))}</b>, time avg/max=<b>${escapeHtml(formatMinutes(matchedSummary.avgTimestampDiffMs))} / ${escapeHtml(formatMinutes(matchedSummary.maxTimestampDiffMs))}</b>`,
   );
 
   if (classifiedRuntimeOnly.length) {
@@ -1348,22 +1908,35 @@ export const buildRuntimeParityMessage = ({
     );
   }
 
-  if (strategyRows.length) {
+  const mismatchRows = buildMismatchSummaryRows({
+    classifiedRuntimeOnly,
+    classifiedBacktestOnly,
+  });
+  if (mismatchRows.length) {
     lines.push('');
-    lines.push('📊 <b>By strategy</b>');
-    for (const [strategy, row] of strategyRows) {
-      lines.push('');
-      lines.push(`<b>${escapeHtml(strategy)}</b>`);
+    lines.push(`🔎 <b>Mismatches</b>`);
+    for (const item of mismatchRows.slice(0, TELEGRAM_DETAIL_LIMIT)) {
+      lines.push(`• <code>${escapeHtml(item.line)}</code>`);
+    }
+    if (mismatchRows.length > TELEGRAM_DETAIL_LIMIT) {
       lines.push(
-        `• targets=<b>${row.targets}</b>, compared=<b>${row.compared}</b>, errors=<b>${row.errors}</b>`,
-      );
-      lines.push(
-        `• runtime=<b>${row.runtime}</b> (dup <b>${row.runtimeDuplicates}</b>), backtest=<b>${row.backtest}</b>, matched=<b>${row.matched}</b>`,
-      );
-      lines.push(
-        `• runtimeOnly=<b>${row.runtimeOnly}</b>, backtestOnly=<b>${row.backtestOnly}</b>`,
+        `... <b>${mismatchRows.length - TELEGRAM_DETAIL_LIMIT}</b> more`,
       );
     }
+  }
+
+  const strategyIssueRows = buildStrategyIssueRows(strategyRows);
+  if (strategyIssueRows.length) {
+    lines.push('');
+    lines.push('📊 <b>Strategy issues</b>');
+    for (const line of strategyIssueRows) {
+      lines.push(`• ${escapeHtml(line.slice(2))}`);
+    }
+  } else if (strategyRows.length) {
+    lines.push('');
+    lines.push(
+      `📊 <b>Strategies</b>: clean <b>${strategyRows.length}</b> / total <b>${strategyRows.length}</b>`,
+    );
   }
 
   if (runtimeGateWarningCounts.size && !runtimeGatesEnabled) {
@@ -1417,7 +1990,6 @@ const buildRuntimeParityNoTargetsMessage = ({
     '',
     `🔌 Connector: <b>${escapeHtml(connectorName)}</b>`,
     `🧬 Replay env: <b>${escapeHtml(replayEnv)}</b>`,
-    `🚦 Runtime gates: <b>${runtimeGatesEnabled ? '✅ enabled' : '⛔ disabled'}</b>`,
     '',
     `⚠️ No replay targets found for user <b>${escapeHtml(userName)}</b>.`,
   ].join('\n');
@@ -1647,20 +2219,18 @@ export const runtimeParity = async () => {
       `Tolerance: ${toleranceBars} bar(s) / ${(toleranceMs / 60_000).toFixed(0)}m`,
     );
     console.log(
-      `Targets: ${replayTargets.length}, compared: ${successfulTargetKeys.size}, replayErrors: ${replayErrors.length}`,
+      `Summary: targets=${replayTargets.length}, compared=${successfulTargetKeys.size}, errors=${replayErrors.length}, runtime=${runtimeEntries.length}, backtest=${backtestEntries.length}, runtimeOnly=${comparison.runtimeOnly.length}, backtestOnly=${comparison.backtestOnly.length}, evaluations=${runtimeSignalEvaluations.length}`,
+    );
+    console.log(`Sources: ${formatSourceCountsSummary(sourceCounts)}`);
+    console.log(
+      `Runtime entries: ${formatRuntimeEntriesSummary({
+        rawRuntimeEntriesCount: rawRuntimeEntries.length,
+        runtimeEntriesCount: runtimeEntries.length,
+        runtimeDuplicateEntriesCount: runtimeDedupe.duplicateEntries.length,
+      })}`,
     );
     console.log(
-      `Target sources: runtime=${sourceCounts.runtime}, connectorUniverse=${sourceCounts.connectorUniverse}, explicitTickers=${sourceCounts.explicitTickers}, strategyResults=${sourceCounts.strategyResults}`,
-    );
-    console.log('');
-    console.log(
-      `Runtime entries: ${rawRuntimeEntries.length} (deduped: ${runtimeEntries.length}, duplicates: ${runtimeDedupe.duplicateEntries.length}), backtest entries: ${backtestEntries.length}, matched: ${comparison.matched.length}, runtimeOnly: ${comparison.runtimeOnly.length}, backtestOnly: ${comparison.backtestOnly.length}`,
-    );
-    console.log(
-      `Matched price delta avg/max: ${formatPercent(summary.avgPriceDeltaPct)} / ${formatPercent(summary.maxPriceDeltaPct)}`,
-    );
-    console.log(
-      `Matched timestamp drift avg/max: ${formatMinutes(summary.avgTimestampDiffMs)} / ${formatMinutes(summary.maxTimestampDiffMs)}`,
+      `Matched deltas: price avg/max=${formatPercent(summary.avgPriceDeltaPct)} / ${formatPercent(summary.maxPriceDeltaPct)}, time avg/max=${formatMinutes(summary.avgTimestampDiffMs)} / ${formatMinutes(summary.maxTimestampDiffMs)}`,
     );
     if (runtimeDedupe.duplicateGroups.length) {
       console.log(
@@ -1692,15 +2262,33 @@ export const runtimeParity = async () => {
       runtimeOnlyEntries: comparison.runtimeOnly,
       backtestOnlyEntries: comparison.backtestOnly,
     });
+    const mismatchRows = buildMismatchSummaryRows({
+      classifiedRuntimeOnly,
+      classifiedBacktestOnly,
+    });
+    const strategyIssueRows = buildStrategyIssueRows(strategyRows);
 
-    if (strategyRows.length) {
+    if (mismatchRows.length) {
       console.log('');
-      console.log(chalk.cyan('By strategy'));
-      for (const [strategy, row] of strategyRows) {
-        console.log(
-          `- ${strategy}: targets=${row.targets}, compared=${row.compared}, errors=${row.errors}, runtime=${row.runtime}, runtimeDuplicates=${row.runtimeDuplicates}, backtest=${row.backtest}, matched=${row.matched}, runtimeOnly=${row.runtimeOnly}, backtestOnly=${row.backtestOnly}`,
-        );
+      console.log(chalk.yellow('Signal mismatches'));
+      for (const item of mismatchRows.slice(0, DETAIL_LIMIT)) {
+        console.log(`- ${item.line}`);
       }
+      if (mismatchRows.length > DETAIL_LIMIT) {
+        console.log(`- ... ${mismatchRows.length - DETAIL_LIMIT} more`);
+      }
+    }
+
+    console.log('');
+    if (strategyIssueRows.length) {
+      console.log(chalk.cyan('Strategy issues'));
+      for (const line of strategyIssueRows) {
+        console.log(line);
+      }
+    } else if (strategyRows.length) {
+      console.log(
+        `Strategies: clean ${strategyRows.length}/${strategyRows.length}`,
+      );
     }
 
     if (runtimeGateWarningCounts.size && !flags.runtimeGates) {
@@ -1733,6 +2321,29 @@ export const runtimeParity = async () => {
     }
 
     if (flags.notify) {
+      const mismatchAttachment = buildRuntimeParityMismatchAttachment({
+        window,
+        connectorName,
+        replayEnv: REPLAY_ENV,
+        toleranceBars,
+        toleranceMs,
+        replayTargetsCount: replayTargets.length,
+        comparedTargetsCount: successfulTargetKeys.size,
+        replayErrors,
+        sourceCounts,
+        rawRuntimeEntriesCount: rawRuntimeEntries.length,
+        runtimeEntriesCount: runtimeEntries.length,
+        runtimeDuplicateEntriesCount: runtimeDedupe.duplicateEntries.length,
+        backtestEntriesCount: backtestEntries.length,
+        matchedCount: comparison.matched.length,
+        runtimeOnlyCount: comparison.runtimeOnly.length,
+        backtestOnlyCount: comparison.backtestOnly.length,
+        matchedSummary: summary,
+        classifiedRuntimeOnly,
+        classifiedBacktestOnly,
+        runtimeSignalEvaluationsCount: runtimeSignalEvaluations.length,
+        strategyRows,
+      });
       await sendTelegramReport(
         buildRuntimeParityMessage({
           window,
@@ -1759,7 +2370,10 @@ export const runtimeParity = async () => {
           strategyRows,
           runtimeGateWarningCounts,
         }),
-        { userName: flags.user },
+        {
+          userName: flags.user,
+          attachments: mismatchAttachment ? [mismatchAttachment] : undefined,
+        },
       );
     }
   } finally {

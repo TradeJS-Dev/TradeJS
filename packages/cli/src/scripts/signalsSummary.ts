@@ -64,6 +64,9 @@ const formatMskDateTime = (timestamp: number) =>
 const formatSigned = (value: number) =>
   `${value >= 0 ? '+' : ''}${value.toFixed(2)}`;
 
+const formatPnlText = (value: number, knownCount: number) =>
+  knownCount > 0 ? formatSigned(value) : 'n/a';
+
 const resolveSummaryTitle = (hours: number) => {
   if (hours === 24) {
     return 'TradeJS daily summary';
@@ -364,7 +367,90 @@ const syncRuntimeTrades = async ({
   return syncedTrades;
 };
 
-const buildSummaryMessage = ({
+const buildSummaryPrelude = ({
+  hours,
+  startTime,
+  endTime,
+  totalWindowPnlText,
+}: {
+  hours: number;
+  startTime: number;
+  endTime: number;
+  totalWindowPnlText: string;
+}) => {
+  const windowPnlLabel = hours === 24 ? '24h PnL' : `${hours}h PnL`;
+
+  return [
+    `📋 <b>${escapeHtml(resolveSummaryTitle(hours))}</b>`,
+    '',
+    '🕒 <b>Window</b>',
+    `<b>${escapeHtml(formatMskDateTime(startTime))} - ${escapeHtml(formatMskDateTime(endTime))} ${SUMMARY_TIMEZONE_LABEL}</b>`,
+    '',
+    `⏱ Range: <b>${hours}h</b>`,
+    `💰 <b>${windowPnlLabel}:</b> <b>${escapeHtml(totalWindowPnlText)}</b>`,
+  ];
+};
+
+const resolveTradeStatusEmoji = (status: RuntimeTradeRecord['status']) => {
+  if (status === 'active') {
+    return '🟢';
+  }
+
+  if (status === 'closed') {
+    return '✅';
+  }
+
+  return '❔';
+};
+
+const buildTradeSummaryLine = (stats: {
+  total: number;
+  active: number;
+  closed: number;
+  activePnl: number;
+  activePnlKnown: number;
+  closedPnl: number;
+  closedPnlKnown: number;
+  totalPnl: number;
+  totalPnlKnown: number;
+}) => {
+  if (stats.total === 0) {
+    return `total=<b>0</b>`;
+  }
+
+  const parts = [`total=<b>${stats.total}</b>`];
+  const activePnlText = formatPnlText(stats.activePnl, stats.activePnlKnown);
+  const closedPnlText = formatPnlText(stats.closedPnl, stats.closedPnlKnown);
+  const totalPnlText = formatPnlText(stats.totalPnl, stats.totalPnlKnown);
+  const hasMixedStatuses = stats.active > 0 && stats.closed > 0;
+
+  if (hasMixedStatuses) {
+    parts.push(
+      `🟢=<b>${stats.active}</b> (PnL <b>${escapeHtml(activePnlText)}</b>)`,
+    );
+    parts.push(
+      `✅=<b>${stats.closed}</b> (PnL <b>${escapeHtml(closedPnlText)}</b>)`,
+    );
+
+    if (stats.totalPnlKnown > 0) {
+      parts.push(`totalPnL=<b>${escapeHtml(totalPnlText)}</b>`);
+    }
+
+    return parts.join(', ');
+  }
+
+  if (stats.active > 0) {
+    parts.push(`🟢 (PnL <b>${escapeHtml(activePnlText)}</b>)`);
+  }
+
+  if (stats.closed > 0) {
+    parts.push(`✅ (PnL <b>${escapeHtml(closedPnlText)}</b>)`);
+  }
+
+  return parts.join(', ');
+};
+
+const buildSummaryMessages = ({
   hours,
   startTime,
   endTime,
@@ -381,7 +467,8 @@ const buildSummaryMessage = ({
   evaluationStatsByStrategy: Map<string, RuntimeSignalStatsBucket>;
   trades: RuntimeTradeRecord[];
 }) => {
-  const lines: string[] = [];
+  const signalLines: string[] = [];
+  const tradeLines: string[] = [];
   const statusOrder: Array<SignalOrderStatus | 'unknown'> = [
     'completed',
     'skipped',
@@ -491,25 +578,27 @@ const buildSummaryMessage = ({
   );
   const totalWindowPnlText =
     totalWindowPnlKnown > 0 ? formatSigned(totalWindowPnl) : 'n/a';
-  const windowPnlLabel = hours === 24 ? '24h PnL' : `${hours}h PnL`;
+  const prelude = buildSummaryPrelude({
+    hours,
+    startTime,
+    endTime,
+    totalWindowPnlText,
+  });
 
-  lines.push(`📋 <b>${escapeHtml(resolveSummaryTitle(hours))}</b>`);
-  lines.push('');
-  lines.push('🕒 <b>Window</b>');
-  lines.push(
-    `<b>${escapeHtml(formatMskDateTime(startTime))} - ${escapeHtml(formatMskDateTime(endTime))} ${SUMMARY_TIMEZONE_LABEL}</b>`,
-  );
-  lines.push('');
-  lines.push(`⏱ Range: <b>${hours}h</b>`);
-  lines.push(
-    `💰 <b>${windowPnlLabel}:</b> <b>${escapeHtml(totalWindowPnlText)}</b>`,
-  );
-  lines.push('');
-  lines.push('📡 <b>Signals</b>');
+  signalLines.push(...prelude);
+  signalLines.push('');
+  signalLines.push('📡 <b>Signals</b>');
+  tradeLines.push(...prelude);
+  tradeLines.push('');
+  tradeLines.push('💼 <b>Trades</b>');
 
   if (!sortedStrategies.length) {
-    lines.push('⚠️ No runtime data for this window.');
-    return lines.join('\n');
+    signalLines.push('⚠️ No runtime data for this window.');
+    tradeLines.push('⚠️ No runtime data for this window.');
+    return {
+      signalsMessage: signalLines.join('\n'),
+      tradesMessage: tradeLines.join('\n'),
+    };
   }
 
   const appendEvaluationDetails = (strategyName: string) => {
@@ -518,7 +607,7 @@ const buildSummaryMessage = ({
       return;
     }
 
-    lines.push(
+    signalLines.push(
       `evaluated=<b>${evaluation.evaluated}</b>, signals=<b>${evaluation.signals}</b>`,
     );
     const sourceOrder = ['skip from core', 'skip from AI', 'skip from ML'];
@@ -539,13 +628,13 @@ const buildSummaryMessage = ({
     );
 
     for (const [source, reasons] of sortedReasonGroups) {
-      lines.push(`<b>${escapeHtml(source)}</b>:`);
+      signalLines.push(`<b>${escapeHtml(source)}</b>:`);
       const sortedReasons = [...reasons.entries()].sort(
         (left, right) => right[1] - left[1] || left[0].localeCompare(right[0]),
       );
 
       for (const [reason, count] of sortedReasons) {
-        lines.push(`${escapeHtml(reason)}: <b>${count}</b>`);
+        signalLines.push(`${escapeHtml(reason)}: <b>${count}</b>`);
       }
     }
   };
@@ -554,8 +643,8 @@ const buildSummaryMessage = ({
     const stats = signalStats.get(strategyName);
     if (!stats || stats.size === 0) {
       const evaluation = evaluationStatsByStrategy.get(strategyName);
-      lines.push('');
-      lines.push(
+      signalLines.push('');
+      signalLines.push(
         evaluation?.evaluated
           ? `<b>${escapeHtml(strategyName)}</b>\nsignals=<b>0</b>`
           : `<b>${escapeHtml(strategyName)}</b>\nnone`,
@@ -570,39 +659,24 @@ const buildSummaryMessage = ({
         return count > 0 ? `${status}=<b>${count}</b>` : null;
       })
       .filter(Boolean);
-    lines.push('');
-    lines.push(`<b>${escapeHtml(strategyName)}</b>`);
-    lines.push(parts.join(', '));
+    signalLines.push('');
+    signalLines.push(`<b>${escapeHtml(strategyName)}</b>`);
+    signalLines.push(parts.join(', '));
     appendEvaluationDetails(strategyName);
   }
-
-  lines.push('');
-  lines.push('💼 <b>Trades</b>');
 
   for (const strategyName of sortedStrategies) {
     const stats = tradeStats.get(strategyName);
     if (!stats) {
-      lines.push('');
-      lines.push(`<b>${escapeHtml(strategyName)}</b>`);
-      lines.push(`total=<b>0</b>`);
+      tradeLines.push('');
+      tradeLines.push(`<b>${escapeHtml(strategyName)}</b>`);
+      tradeLines.push(`total=<b>0</b>`);
       continue;
     }
 
-    const activePnlText =
-      stats.activePnlKnown > 0 ? formatSigned(stats.activePnl) : 'n/a';
-    const closedPnlText =
-      stats.closedPnlKnown > 0 ? formatSigned(stats.closedPnl) : 'n/a';
-    const totalPnlText =
-      stats.totalPnlKnown > 0 ? formatSigned(stats.totalPnl) : 'n/a';
-
-    lines.push('');
-    lines.push(`<b>${escapeHtml(strategyName)}</b>`);
-    lines.push(
-      `total=<b>${stats.total}</b>, active=<b>${stats.active}</b> (PnL <b>${escapeHtml(activePnlText)}</b>)`,
-    );
-    lines.push(
-      `closed=<b>${stats.closed}</b> (PnL <b>${escapeHtml(closedPnlText)}</b>), totalPnL=<b>${escapeHtml(totalPnlText)}</b>`,
-    );
+    tradeLines.push('');
+    tradeLines.push(`<b>${escapeHtml(strategyName)}</b>`);
+    tradeLines.push(buildTradeSummaryLine(stats));
     const sortedTrades = [...stats.trades].sort(
       (left, right) =>
         left.entryTimestamp - right.entryTimestamp ||
@@ -610,13 +684,16 @@ const buildSummaryMessage = ({
         left.orderId.localeCompare(right.orderId),
     );
     for (const trade of sortedTrades) {
-      lines.push(
-        `- ${escapeHtml(trade.symbol)}: PnL <b>${escapeHtml(trade.pnlText)}</b>, status=<b>${escapeHtml(trade.status)}</b>`,
+      tradeLines.push(
+        `- ${escapeHtml(trade.symbol)}: PnL <b>${escapeHtml(trade.pnlText)}</b> ${resolveTradeStatusEmoji(trade.status)}`,
       );
     }
   }
 
-  return lines.join('\n');
+  return {
+    signalsMessage: signalLines.join('\n'),
+    tradesMessage: tradeLines.join('\n'),
+  };
 };
 
 export const signalsSummary = async () => {
@@ -678,7 +755,7 @@ export const signalsSummary = async () => {
       trade.signalId != null &&
       signalIds.has(trade.signalId),
   );
-  const message = buildSummaryMessage({
+  const { signalsMessage, tradesMessage } = buildSummaryMessages({
     hours,
     startTime,
     endTime,
@@ -703,11 +780,14 @@ export const signalsSummary = async () => {
   );
 
   if (flags.printOnly) {
-    console.log(message);
+    console.log(signalsMessage);
+    console.log('');
+    console.log(tradesMessage);
     return;
   }
 
-  await sendTelegramReport(message, { userName: flags.user });
+  await sendTelegramReport(signalsMessage, { userName: flags.user });
+  await sendTelegramReport(tradesMessage, { userName: flags.user });
 };
 
 if (process.env.NODE_ENV !== 'test') {

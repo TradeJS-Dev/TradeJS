@@ -82,6 +82,7 @@ jest.mock('../lib/timeWindow', () => ({
 }));
 
 import {
+  buildLiveReplayStrategyConfig,
   chunkTestSuiteBySymbol,
   resolveDefaultParallel,
   resolveDefaultWorkerHeapMb,
@@ -173,6 +174,33 @@ describe('backtest script helpers', () => {
       RISK: [2],
       ENABLED: [true],
       TRENDLINE: [{ leftBars: 5 }],
+    });
+  });
+
+  it('forces live replay configs into PARITY mode while preserving runtime gate settings', () => {
+    expect(
+      buildLiveReplayStrategyConfig({
+        interval: '15' as any,
+        strategyConfig: {
+          AI_ENABLED: true,
+          AI_MODE: 'gate',
+          MIN_AI_QUALITY: 5,
+          ML_ENABLED: false,
+          ML_THRESHOLD: 0.1,
+          MAKE_ORDERS: false,
+          ENV: 'CRON',
+        },
+      }),
+    ).toEqual({
+      AI_ENABLED: true,
+      AI_MODE: 'gate',
+      MIN_AI_QUALITY: 5,
+      ML_ENABLED: false,
+      ML_THRESHOLD: 0.1,
+      MAKE_ORDERS: true,
+      ENV: 'PARITY',
+      INTERVAL: '15',
+      RECORD_RUNTIME_TRADES: false,
     });
   });
 

@@ -7,6 +7,7 @@ import { getData, redisKeys } from '@tradejs/infra/redis';
 import { ConnectorConfig } from '@tradejs/types';
 
 const useTestnet = false;
+const PRIVATE_RECV_WINDOW_MS = 10_000;
 
 export type ByBitRestAccess = 'private' | 'public';
 
@@ -33,6 +34,8 @@ export const getClient = async (
     key: user.BYBIT_API_KEY,
     secret: user.BYBIT_API_SECRET,
     parseAPIRateLimits: true,
+    recv_window: PRIVATE_RECV_WINDOW_MS,
+    syncTimeBeforePrivateRequests: true,
     testnet: useTestnet,
   });
 

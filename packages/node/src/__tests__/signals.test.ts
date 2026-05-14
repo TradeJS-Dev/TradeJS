@@ -91,6 +91,46 @@ describe('signals', () => {
     expect(photo.type).toBe('image/png');
   });
 
+  it('uploads json document to Telegram', async () => {
+    const fetchMock = jest.fn().mockResolvedValueOnce({
+      json: async () => ({ ok: true }),
+    });
+
+    (global as any).fetch = fetchMock;
+
+    jest.doMock('@tradejs/infra/logger', () => ({
+      logger: {
+        error: jest.fn(),
+        info: jest.fn(),
+      },
+    }));
+
+    const { sendDocumentToTG } = require('../signals');
+
+    await sendDocumentToTG(
+      {
+        filename: 'runtime-parity.json',
+        content: '{"hello":"world"}',
+        caption: 'Parity artifact',
+      },
+      { userName: 'root' },
+    );
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0][0]).toContain('/sendDocument');
+
+    const payload = fetchMock.mock.calls[0][1].body;
+    expect(payload).toBeInstanceOf(FormData);
+    expect(payload.get('chat_id')).toBe('tg-chat-id');
+    expect(payload.get('caption')).toBe('Parity artifact');
+    expect(payload.get('parse_mode')).toBe('HTML');
+
+    const document = payload.get('document') as File;
+    expect(document).toBeTruthy();
+    expect(document.name).toBe('runtime-parity.json');
+    expect(document.type).toBe('application/json');
+  });
+
   it('adds sendPhoto failure reason to fallback Telegram message', async () => {
     const fetchMock = jest
       .fn()

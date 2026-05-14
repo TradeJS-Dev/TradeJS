@@ -6,10 +6,15 @@ type SendTextOptions = {
 const mockSendTextToTG = jest.fn<Promise<null>, [string, SendTextOptions?]>(
   async () => null,
 );
+const mockSendDocumentToTG = jest.fn<Promise<null>, [unknown, unknown]>(
+  async () => null,
+);
 
 jest.mock('@tradejs/node/cli', () => ({
   sendTextToTG: (message: string, options?: SendTextOptions) =>
     mockSendTextToTG(message, options),
+  sendDocumentToTG: (document: unknown, options?: unknown) =>
+    mockSendDocumentToTG(document, options),
 }));
 
 import {
@@ -78,5 +83,29 @@ describe('telegram report helpers', () => {
       userName: 'root',
       markup: { inline_keyboard: [] },
     });
+  });
+
+  it('sends attachments after the report text', async () => {
+    await sendTelegramReport('report', {
+      userName: 'root',
+      attachments: [
+        {
+          filename: 'runtime-parity.json',
+          content: '{"ok":true}',
+        },
+      ],
+    });
+
+    expect(mockSendTextToTG).toHaveBeenCalledTimes(1);
+    expect(mockSendDocumentToTG).toHaveBeenCalledTimes(1);
+    expect(mockSendDocumentToTG).toHaveBeenCalledWith(
+      {
+        filename: 'runtime-parity.json',
+        content: '{"ok":true}',
+      },
+      {
+        userName: 'root',
+      },
+    );
   });
 });
