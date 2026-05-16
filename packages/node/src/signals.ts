@@ -346,11 +346,19 @@ export const sendDocumentToTG = async (
 ) => {
   const { token, chatId } = await getTelegramSettings(options.userName);
   const body = new FormData();
+  const fileContent =
+    typeof document.content === 'string'
+      ? document.content
+      : (() => {
+          const bytes = new Uint8Array(document.content.byteLength);
+          bytes.set(document.content);
+          return bytes;
+        })();
 
   body.set('chat_id', String(chatId || ''));
   body.set(
     'document',
-    new File([document.content], document.filename, {
+    new File([fileContent], document.filename, {
       type: 'application/json',
     }),
   );

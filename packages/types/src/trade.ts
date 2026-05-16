@@ -179,6 +179,20 @@ export interface ClosedPnlRecord {
   closedPnl: number;
   closedAt: number;
   orderId?: string;
+  orderLinkId?: string;
+}
+
+export interface ExchangeEntryRecord {
+  symbol: string;
+  qty: number;
+  entryPrice: number | null;
+  entryTimestamp: number;
+  direction: Direction;
+  orderId?: string;
+  orderLinkId?: string;
+  exitPrice?: number | null;
+  exitTimestamp?: number | null;
+  closedPnl?: number | null;
 }
 
 export interface GetClosedPnlParams {
@@ -189,6 +203,9 @@ export interface GetClosedPnlParams {
 }
 
 type GetClosedPnl = (params: GetClosedPnlParams) => Promise<ClosedPnlRecord[]>;
+type GetEntryExecutions = (
+  params: GetClosedPnlParams,
+) => Promise<ExchangeEntryRecord[]>;
 type PlaceOrder = (order: Order) => Promise<boolean>;
 type ClosePosition = (order: Omit<Order, 'qty'>) => Promise<boolean>;
 type SetTakeProfits = (params: {
@@ -213,6 +230,7 @@ export interface Connector {
   getPositions: GetPositions;
   getOpenPositionPnl?: GetOpenPositionPnl;
   getClosedPnl?: GetClosedPnl;
+  getEntryExecutions?: GetEntryExecutions;
   placeOrder: PlaceOrder;
   setTakeProfits: SetTakeProfits;
   setStopLoss: SetStopLoss;

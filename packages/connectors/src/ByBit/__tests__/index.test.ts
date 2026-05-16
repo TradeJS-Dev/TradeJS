@@ -268,6 +268,7 @@ describe('ByBitConnectorCreator', () => {
               closedPnl: '12',
               updatedTime: '1700000001000',
               orderId: 'bybit-order-1',
+              orderLinkId: 'tjs-order-1',
             },
           ],
         },

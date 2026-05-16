@@ -3,7 +3,13 @@
 import { Box, Flex, IconButton, VStack } from '@chakra-ui/react';
 import { useRouter, usePathname } from 'next/navigation';
 import { signOut } from 'next-auth/react';
-import { FiActivity, FiBarChart2, FiLogOut, FiPlay } from 'react-icons/fi';
+import {
+  FiActivity,
+  FiBarChart2,
+  FiLayers,
+  FiLogOut,
+  FiPlay,
+} from 'react-icons/fi';
 import { AccountSettingsDrawer } from './AccountSettingsDrawer';
 
 export const Sidebar = () => {
@@ -20,6 +26,11 @@ export const Sidebar = () => {
       icon: FiPlay,
       label: 'Backtest',
       path: '/routes/backtest',
+    },
+    {
+      icon: FiLayers,
+      label: 'Strategies',
+      path: '/routes/strategies',
     },
     {
       icon: FiActivity,

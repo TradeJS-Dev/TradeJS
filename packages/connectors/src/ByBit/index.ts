@@ -27,6 +27,7 @@ import {
   KlineRequest,
   ConnectorCreator,
   Direction,
+  ExchangeEntryRecord,
   GetClosedPnlParams,
   Interval,
   Position,
@@ -607,6 +608,76 @@ export const ByBitConnectorCreator: ConnectorCreator = async (config) => {
           } as ClosedPnlRecord;
         })
         .filter((item): item is NonNullable<typeof item> => item != null);
+    },
+
+    getEntryExecutions: async ({
+      startTime,
+      endTime,
+      symbol,
+      limit = 100,
+    }: GetClosedPnlParams): Promise<ExchangeEntryRecord[]> => {
+      const client = await getPrivateClient();
+      if (!client) {
+        return [];
+      }
+
+      const response = await client.getExecutionList({
+        category: MARKET_CATEGORY,
+        settleCoin: 'USDT',
+        startTime,
+        endTime,
+        symbol,
+        limit: Math.min(Math.max(1, Math.trunc(limit)), 100),
+      });
+
+      if (response.retCode !== 0) {
+        logger.log(
+          'error',
+          'entryExecutions retCode: %s, %s',
+          response.retCode,
+          response.retMsg,
+        );
+        return [];
+      }
+
+      return (response.result?.list ?? [])
+        .map((item) => {
+          const qty = Number(item.execQty ?? item.orderQty ?? Number.NaN);
+          const entryPrice = Number(item.execPrice ?? Number.NaN);
+          const entryTimestamp = Number(item.execTime ?? Number.NaN);
+          const side = String(item.side ?? '');
+          const orderId =
+            typeof item.orderId === 'string' && item.orderId.trim()
+              ? item.orderId
+              : null;
+          const orderLinkId =
+            typeof item.orderLinkId === 'string' && item.orderLinkId.trim()
+              ? item.orderLinkId
+              : null;
+
+          if (
+            !String(item.symbol ?? '').trim() ||
+            !Number.isFinite(qty) ||
+            !Number.isFinite(entryTimestamp) ||
+            !Number.isFinite(entryPrice) ||
+            (side !== 'Buy' && side !== 'Sell') ||
+            !orderLinkId
+          ) {
+            return null;
+          }
+
+          return {
+            symbol: String(item.symbol),
+            qty,
+            entryPrice,
+            entryTimestamp,
+            direction: side === 'Buy' ? 'LONG' : 'SHORT',
+            ...(orderId ? { orderId } : {}),
+            ...(orderLinkId ? { orderLinkId } : {}),
+          } as ExchangeEntryRecord;
+        })
+        .filter((item): item is NonNullable<typeof item> => item != null)
+        .sort((left, right) => left.entryTimestamp - right.entryTimestamp);
     },
 
     placeOrder: async ({ symbol, price, qty, direction, isLimit, orderId }) => {

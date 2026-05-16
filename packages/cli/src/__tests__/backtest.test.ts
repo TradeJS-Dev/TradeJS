@@ -84,6 +84,7 @@ jest.mock('../lib/timeWindow', () => ({
 import {
   buildLiveReplayStrategyConfig,
   chunkTestSuiteBySymbol,
+  compareExchangeEntriesToBacktest,
   resolveDefaultParallel,
   resolveDefaultWorkerHeapMb,
   mergePersistedTestSummaries,
@@ -365,6 +366,105 @@ describe('backtest script helpers', () => {
         },
       ],
     ]);
+  });
+
+  it('matches exchange entry executions to nearest backtest entries by symbol, direction and time', () => {
+    expect(
+      compareExchangeEntriesToBacktest({
+        toleranceMs: 15 * 60 * 1000,
+        exchangeEntries: [
+          {
+            symbol: 'BTCUSDT',
+            direction: 'LONG',
+            qty: 1,
+            entryPrice: 101,
+            entryTimestamp: 1_000,
+            orderId: 'ex-1',
+            orderLinkId: 'tjs-1',
+            closedPnl: 12,
+          },
+          {
+            symbol: 'ETHUSDT',
+            direction: 'SHORT',
+            qty: 1,
+            entryPrice: 199,
+            entryTimestamp: 4_000,
+            orderId: 'ex-2',
+            orderLinkId: 'tjs-2',
+            closedPnl: -5,
+          },
+        ] as any,
+        backtestEntries: [
+          {
+            id: 'bt-1',
+            source: 'backtest',
+            strategy: 'TrendLine',
+            symbol: 'BTCUSDT',
+            direction: 'LONG',
+            timestamp: 1_500,
+            price: 100,
+          },
+          {
+            id: 'bt-2',
+            source: 'backtest',
+            strategy: 'Breakout',
+            symbol: 'SOLUSDT',
+            direction: 'LONG',
+            timestamp: 7_000,
+            price: 50,
+          },
+        ] as any,
+      }),
+    ).toEqual({
+      matched: [
+        {
+          exchange: {
+            symbol: 'BTCUSDT',
+            direction: 'LONG',
+            qty: 1,
+            entryPrice: 101,
+            entryTimestamp: 1_000,
+            orderId: 'ex-1',
+            orderLinkId: 'tjs-1',
+            closedPnl: 12,
+          },
+          backtest: {
+            id: 'bt-1',
+            source: 'backtest',
+            strategy: 'TrendLine',
+            symbol: 'BTCUSDT',
+            direction: 'LONG',
+            timestamp: 1_500,
+            price: 100,
+          },
+          timestampDiffMs: 500,
+          priceDeltaPct: 0.9900990099009901,
+        },
+      ],
+      exchangeOnly: [
+        {
+          symbol: 'ETHUSDT',
+          direction: 'SHORT',
+          qty: 1,
+          entryPrice: 199,
+          entryTimestamp: 4_000,
+          orderId: 'ex-2',
+          orderLinkId: 'tjs-2',
+          closedPnl: -5,
+        },
+      ],
+      backtestOnly: [
+        {
+          id: 'bt-2',
+          source: 'backtest',
+          strategy: 'Breakout',
+          symbol: 'SOLUSDT',
+          direction: 'LONG',
+          timestamp: 7_000,
+          price: 50,
+        },
+      ],
+    });
   });
 
   it('merges persisted summary index with valid legacy items and overrides duplicates', () => {
