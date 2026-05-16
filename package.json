@@ -99,6 +99,7 @@
     "sandbox:install": "cd examples/sandbox && yarn install --immutable",
     "sandbox:refresh": "cd examples/sandbox && yarn up -R @tradejs/cli @tradejs/core @tradejs/types @tradejs/base @tradejs/connectors @tradejs/indicators @tradejs/infra @tradejs/node @tradejs/strategies && yarn install",
     "signals": "yarn cli:node8g signals",
+    "replay": "yarn clean-tests --cache && yarn cli:backtest replay",
     "signals:cron": "yarn cli:node8g signals",
     "signals:summary": "yarn cli:node8g signals-summary",
     "signals:sandbox": "yarn signals",

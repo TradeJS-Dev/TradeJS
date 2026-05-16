@@ -247,6 +247,35 @@ describe('createMoveStopToBreakEvenOnBarHook', () => {
     expect(params.connector.getPosition).toHaveBeenCalledWith('ETHUSDT');
   });
 
+  it('moves stop beyond entry by configured share of take-profit distance', async () => {
+    const hook = createMoveStopToBreakEvenOnBarHook({
+      stopProfitMultiplier: 0.2,
+    });
+    const params = makeParams({
+      position: {
+        symbol: 'ETHUSDT',
+        qty: 1,
+        price: 100,
+        direction: 'LONG',
+        slPrice: 98,
+        signal: {
+          prices: {
+            takeProfitPrice: 110,
+          },
+        },
+      },
+    });
+
+    await expect(hook(params as any)).resolves.toEqual({
+      kind: 'protect',
+      code: 'TRENDLINE_MOVE_STOP_TO_BREAK_EVEN',
+      protectPlan: {
+        direction: 'LONG',
+        stopLossPrice: 102,
+      },
+    });
+  });
+
   it('falls back to signal stop price when position stop loss is missing', async () => {
     const hook = createMoveStopToBreakEvenOnBarHook();
 
@@ -302,6 +331,33 @@ describe('createMoveStopToBreakEvenOnBarHook', () => {
       expect.objectContaining({
         kind: 'protect',
         code: 'TRENDLINE_MOVE_STOP_TO_BREAK_EVEN',
+      }),
+    );
+  });
+
+  it('falls back to entry price when take profit is unavailable', async () => {
+    const hook = createMoveStopToBreakEvenOnBarHook({
+      stopProfitMultiplier: 0.2,
+    });
+
+    await expect(
+      hook(
+        makeParams({
+          position: {
+            symbol: 'ETHUSDT',
+            qty: 1,
+            price: 100,
+            direction: 'LONG',
+            slPrice: 98,
+          },
+        }) as any,
+      ),
+    ).resolves.toEqual(
+      expect.objectContaining({
+        kind: 'protect',
+        protectPlan: expect.objectContaining({
+          stopLossPrice: 100,
+        }),
       }),
     );
   });

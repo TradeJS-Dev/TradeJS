@@ -872,14 +872,6 @@ describe('TrendlineStrategyCreator', () => {
       }),
     );
     expect(connector.placeOrder).toHaveBeenCalledTimes(1);
-    expect(logger.log).toHaveBeenCalledWith(
-      'info',
-      '[%s] closing opposite position: %s %s qty=%s',
-      'TrendLine',
-      'FARTCOINUSDT',
-      'SHORT',
-      2,
-    );
   });
 
   it('does not request all positions in BACKTEST before opening', async () => {

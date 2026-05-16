@@ -344,6 +344,7 @@ describe('strategyHelpers/runtime enrichSignalWithMlAi', () => {
         orderId: 'tjs-order-1',
       }),
     );
+    expect(mockCreateRuntimeOrderId).toHaveBeenCalledWith('TrendLine');
     expect(placedSignal.orderId).toBe('tjs-order-1');
     expect(placedSignal.orderStatus).toBe('completed');
     expect(placedSignal.prices.currentPrice).toBe(101);

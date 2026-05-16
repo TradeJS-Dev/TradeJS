@@ -14,13 +14,15 @@ import {
   getConnectorCreatorByName,
   resolveConnectorName,
 } from '@tradejs/node/connectors';
-import { drawStatInCLI, getTickers, update } from '@tradejs/node/cli';
 import {
-  calculateStatsFull,
-  createTestSuite,
-  mergeConfigs,
-  parseTestName,
-} from '@tradejs/core/backtest';
+  drawStatInCLI,
+  getTickers,
+  loadTradejsConfig,
+  update,
+} from '@tradejs/node/cli';
+import { calculateStatsFull, parseTestName } from '@tradejs/core/backtest';
+import type { TradejsConfigHooks } from '@tradejs/core/config';
+import { createTestSuite, mergeConfigs } from '@tradejs/core/grid';
 import { runWithConcurrency } from '@tradejs/core/async';
 import { toJson } from '@tradejs/core/data';
 import {
@@ -154,11 +156,6 @@ args.option(['T', 'top'], 'Return N best tests', TESTS_TOP_LIMIT);
 args.option(['u', 'updateOnly'], 'Only update tickers history', false);
 args.option(['C', 'cacheOnly'], 'Do not update tickers history', false);
 args.option(['c', 'config'], 'Backtest config', 'breakout');
-args.option(
-  'live',
-  'Run backtests for all active runtime strategies like yarn signals',
-  false,
-);
 args.option(['L', 'showTickersList'], 'Just show only ticker list', false);
 args.option(['g', 'progressStep'], 'Progress step', 100);
 args.option(['U', 'user'], 'Use user config', 'root');
@@ -191,7 +188,18 @@ const normalizedArgv = normalizeCliArgv(process.argv, {
 
 process.argv = normalizedArgv;
 
+if (
+  normalizedArgv.some(
+    (arg) => arg === '--live' || String(arg).startsWith('--live='),
+  )
+) {
+  throw new Error(
+    '`--live` was removed from `yarn backtest`. Use `yarn replay` instead.',
+  );
+}
+
 const flags = args.parse(process.argv);
+const isReplayMode = process.env.TRADEJS_REPLAY === '1';
 const hasCliFlag = (argv: string[], names: string[]) =>
   argv.some(
     (arg) =>
@@ -271,7 +279,7 @@ const HEADERS_LIVE_RUNTIME_COMPARISON = [
   chalk.magenta('BT ONLY'),
 ];
 
-const LIVE_BACKTEST_RESULTS_CONFIG = 'live';
+const REPLAY_RESULTS_CONFIG = 'replay';
 const LIVE_RUNTIME_COMPARE_TOLERANCE_BARS = 1;
 const LIVE_RUNTIME_COMPARE_TOLERANCE_MS =
   LIVE_RUNTIME_COMPARE_TOLERANCE_BARS * 15 * 60 * 1000;
@@ -346,6 +354,28 @@ export const buildLiveReplayStrategyConfig = ({
   INTERVAL: interval,
   RECORD_RUNTIME_TRADES: false,
 });
+
+const normalizeConfigHookList = <THook extends (...args: any[]) => unknown>(
+  value: THook | THook[] | undefined,
+): THook[] => {
+  if (Array.isArray(value)) {
+    return value.filter(Boolean);
+  }
+
+  return value ? [value] : [];
+};
+
+export const getUnsupportedLiveProjectHookStages = (
+  hooks: TradejsConfigHooks | undefined,
+): string[] => {
+  const unsupportedStages: string[] = [];
+
+  if (normalizeConfigHookList(hooks?.beforeSignals as any).length > 0) {
+    unsupportedStages.push('beforeSignals');
+  }
+
+  return unsupportedStages;
+};
 
 let successTests = 0;
 let errorTests = 0;
@@ -1227,7 +1257,7 @@ export const backtest = async () => {
   let typedBacktestConfig: StrategyConfigGrid | null = null;
   let liveRuntimeStrategies: RuntimeStrategyBacktestConfig[] = [];
 
-  if (flags.live) {
+  if (isReplayMode) {
     liveRuntimeStrategies = await loadRuntimeStrategyBacktestConfigs(userName);
     if (!liveRuntimeStrategies.length) {
       console.log(
@@ -1236,6 +1266,20 @@ export const backtest = async () => {
         ),
       );
       return;
+    }
+
+    const projectConfig = await loadTradejsConfig(projectRoot);
+    const unsupportedLiveHookStages = getUnsupportedLiveProjectHookStages(
+      projectConfig.hooks,
+    );
+    if (unsupportedLiveHookStages.length > 0) {
+      throw new Error(
+        `yarn replay does not support project hooks ${unsupportedLiveHookStages.join(
+          ', ',
+        )}. These hooks change runtime behaviour in yarn signals, so replay would produce misleading results. Use a replay flow that executes project hooks or temporarily disable ${unsupportedLiveHookStages.join(
+          ', ',
+        )} for this comparison.`,
+      );
     }
   } else {
     if (!flags.config) {
@@ -1360,7 +1404,7 @@ export const backtest = async () => {
     return;
   }
 
-  let testSuite = flags.live
+  let testSuite = isReplayMode
     ? liveRuntimeStrategies.flatMap(
         ({
           strategyName: runtimeStrategyName,
@@ -1389,7 +1433,7 @@ export const backtest = async () => {
   const mlEnabled = Boolean(flags.ml);
   const aiEnabled = Boolean(flags.ai);
   const requestedTestsLimit = resolveRequestedTestsLimit({
-    isLiveMode: Boolean(flags.live),
+    isLiveMode: isReplayMode,
     requestedLimit: testsLimit,
     hasExplicitLimit: hasExplicitTestsLimit,
   });
@@ -1478,10 +1522,10 @@ export const backtest = async () => {
   });
 
   console.log(chalk.yellow(`tests: ${testSuite.length}`));
-  if (flags.live) {
+  if (isReplayMode) {
     console.log(
       chalk.gray(
-        `mode: live (${liveRuntimeStrategies
+        `mode: replay (${liveRuntimeStrategies
           .map(({ strategyName: runtimeStrategyName }) => runtimeStrategyName)
           .join(', ')})`,
       ),
@@ -1554,7 +1598,7 @@ export const backtest = async () => {
 
       const result = msg as TestWorkerResult;
 
-      if (flags.live) {
+      if (isReplayMode) {
         liveResultsByStrategyAndTicker.set(
           getLiveStrategyResultKey(result),
           result,
@@ -1566,7 +1610,7 @@ export const backtest = async () => {
         updateTopResults(nextTopResults.results);
       }
 
-      if (!flags.live) {
+      if (!isReplayMode) {
         updateBestTickerResult(result);
       }
 
@@ -1719,13 +1763,15 @@ const saveAndPrintLiveResultsByStrategy =
         const { test } = result;
         const { orderLog, positionLog } = await resolveResultArtifacts(result);
         if (!orderLog || !positionLog) {
-          throw new Error(`Logs not found for live result ${test.name}`);
+          throw new Error(
+            `Logs not found for signals replay result ${test.name}`,
+          );
         }
 
         const stat = calculateStatsFull(positionLog) as TestStat | null;
         if (!stat && positionLog.length > 0) {
           throw new Error(
-            `Position log is empty for live result ${test.name} despite ${positionLog.length} positions`,
+            `Position log is empty for signals replay result ${test.name} despite ${positionLog.length} positions`,
           );
         }
 
@@ -1821,7 +1867,7 @@ const saveAndPrintLiveResultsByStrategy =
     });
 
     console.log('');
-    console.log('LIVE RESULTS BY STRATEGY:');
+    console.log('SIGNALS REPLAY RESULTS BY STRATEGY:');
     console.log(createTable(HEADERS_LIVE_RESULTS_BY_STRATEGY, rows));
     console.log('');
 
@@ -1848,7 +1894,7 @@ const saveAndPrintLiveExchangeComparison = async ({
     console.log('');
     console.log(
       chalk.yellow(
-        `LIVE VS EXCHANGE: no exchange entry executions found for ${activeConnectorNameForRuntimeCompare} in ${formatUnix(
+        `SIGNALS REPLAY VS EXCHANGE: no exchange entry executions found for ${activeConnectorNameForRuntimeCompare} in ${formatUnix(
           activeWindowForRuntimeCompare!.start,
         )} -> ${formatUnix(activeWindowForRuntimeCompare!.end)}`,
       ),
@@ -1984,7 +2030,7 @@ const saveAndPrintLiveExchangeComparison = async ({
 
   console.log('');
   console.log(
-    `LIVE VS EXCHANGE BY STRATEGY (connector=${activeConnectorNameForRuntimeCompare}, inferredStrategy=nearest backtest entry, tolerance=${LIVE_RUNTIME_COMPARE_TOLERANCE_BARS} bar)`,
+    `SIGNALS REPLAY VS EXCHANGE BY STRATEGY (connector=${activeConnectorNameForRuntimeCompare}, inferredStrategy=nearest backtest entry, tolerance=${LIVE_RUNTIME_COMPARE_TOLERANCE_BARS} bar)`,
   );
   console.log(createTable(HEADERS_LIVE_RUNTIME_COMPARISON, colorizedRows));
   console.log('');
@@ -2035,7 +2081,7 @@ const saveAndPrintLiveRuntimeComparison = async ({
     console.log('');
     console.log(
       chalk.yellow(
-        `LIVE VS RUNTIME: no local runtime trades found for ${activeConnectorNameForRuntimeCompare} in ${formatUnix(
+        `SIGNALS REPLAY VS RUNTIME: no local runtime trades found for ${activeConnectorNameForRuntimeCompare} in ${formatUnix(
           activeWindowForRuntimeCompare.start,
         )} -> ${formatUnix(activeWindowForRuntimeCompare.end)}; falling back to direct exchange comparison`,
       ),
@@ -2124,7 +2170,7 @@ const saveAndPrintLiveRuntimeComparison = async ({
 
   console.log('');
   console.log(
-    `LIVE VS RUNTIME BY STRATEGY (connector=${activeConnectorNameForRuntimeCompare}, tolerance=${LIVE_RUNTIME_COMPARE_TOLERANCE_BARS} bar)`,
+    `SIGNALS REPLAY VS RUNTIME BY STRATEGY (connector=${activeConnectorNameForRuntimeCompare}, tolerance=${LIVE_RUNTIME_COMPARE_TOLERANCE_BARS} bar)`,
   );
   console.log(createTable(HEADERS_LIVE_RUNTIME_COMPARISON, colorizedRows));
   console.log('');
@@ -2143,18 +2189,18 @@ const saveAndPrintLiveRuntimeComparison = async ({
 };
 
 const finish = async () => {
-  const liveStrategySnapshot = flags.live
+  const liveStrategySnapshot = isReplayMode
     ? await saveAndPrintLiveResultsByStrategy()
     : null;
-  const liveRuntimeComparison = flags.live
+  const liveRuntimeComparison = isReplayMode
     ? await saveAndPrintLiveRuntimeComparison({
         liveStrategySummaries: liveStrategySnapshot?.summaries ?? [],
         backtestEntries: liveStrategySnapshot?.backtestEntries ?? [],
       })
     : null;
 
-  if (flags.live) {
-    // Live mode already persists every strategy/ticker test above.
+  if (isReplayMode) {
+    // Replay mode already persists every strategy/ticker test above.
   } else if (flags.tickers) {
     await saveAndPrintResults();
   } else {
@@ -2169,14 +2215,14 @@ const finish = async () => {
   );
   console.log('');
 
-  const bestConfig = flags.live ? null : results[0]?.test.strategyConfig;
-  const mergedConfig = flags.live
+  const bestConfig = isReplayMode ? null : results[0]?.test.strategyConfig;
+  const mergedConfig = isReplayMode
     ? null
     : mergeConfigs(
         results.map(({ test: { strategyConfig } }) => strategyConfig),
       );
 
-  if (!flags.live) {
+  if (!isReplayMode) {
     console.log(chalk.gray('BEST CONFIG:'));
     console.log(chalk.green(toJson(bestConfig, true)));
     console.log('');
@@ -2199,20 +2245,22 @@ const finish = async () => {
   await setData(
     redisKeys.backtestResults(
       userName,
-      flags.live ? LIVE_BACKTEST_RESULTS_CONFIG : flags.config,
+      isReplayMode ? REPLAY_RESULTS_CONFIG : flags.config,
       timestamp,
     ),
     {
-      config: flags.live ? LIVE_BACKTEST_RESULTS_CONFIG : flags.config,
-      mode: flags.live ? 'live' : 'config',
+      config: isReplayMode ? REPLAY_RESULTS_CONFIG : flags.config,
+      mode: isReplayMode ? 'replay' : 'config',
       user: userName,
       startedAt: new Date(runStartedAt).toISOString(),
       finishedAt: finishedAt.toISOString(),
       durationSeconds,
-      results: flags.live
+      results: isReplayMode
         ? Array.from(liveResultsByStrategyAndTicker.values())
         : results,
-      resultsByTickers: flags.live ? [] : Array.from(resultsByTickers.values()),
+      resultsByTickers: isReplayMode
+        ? []
+        : Array.from(resultsByTickers.values()),
       resultsByStrategies: liveStrategySnapshot?.summaries ?? null,
       runtimeComparison: liveRuntimeComparison,
       bestConfig,

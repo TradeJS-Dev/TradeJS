@@ -1,13 +1,14 @@
 import { randomUUID } from 'node:crypto';
 import { TTL_1M } from '@tradejs/core/constants';
+import { createRuntimeOrderLinkPrefix } from '@tradejs/core/trade';
 import { logger } from '@tradejs/infra/logger';
 import { delKey, getData, redisKeys, setData } from '@tradejs/infra/redis';
 import { Direction, RuntimeTradeRecord, SignalAnalysis } from '@tradejs/types';
 
 const now = () => Date.now();
 
-const toOrderId = () =>
-  `tjs-${randomUUID().replace(/-/g, '').slice(0, 24).toLowerCase()}`;
+const toRandomOrderSuffix = () =>
+  randomUUID().replace(/-/g, '').slice(0, 12).toLowerCase();
 
 const calculateClosedPnl = ({
   direction,
@@ -25,7 +26,15 @@ const calculateClosedPnl = ({
   return Number.isFinite(pnl) ? pnl : null;
 };
 
-export const createRuntimeOrderId = (): string => toOrderId();
+export const createRuntimeOrderId = (strategy?: string): string => {
+  const prefix = createRuntimeOrderLinkPrefix(strategy);
+
+  if (prefix === 'tjs-') {
+    return `tjs-${randomUUID().replace(/-/g, '').slice(0, 24).toLowerCase()}`;
+  }
+
+  return `${prefix}${toRandomOrderSuffix()}`;
+};
 
 export const recordRuntimeTradeOpen = async (params: {
   userName?: string;

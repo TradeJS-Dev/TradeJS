@@ -1,6 +1,5 @@
 import fs from 'fs';
 import path from 'path';
-import { createRequire } from 'module';
 import { fileURLToPath, pathToFileURL } from 'url';
 import {
   normalizeTradejsConfigHooks,
@@ -28,6 +27,10 @@ let cachedByCwd = new Map<string, TradejsProjectConfig>();
 let announcedConfigFile = new Set<string>();
 let tsNodeRegistered = false;
 let tsconfigPathsRegisteredByCwd = new Set<string>();
+let tsconfigPathMatchersByCwd = new Map<
+  string,
+  (moduleName: string) => string
+>();
 
 export const getTradejsProjectCwd = (cwd?: string): string => {
   const explicit = String(cwd ?? '').trim();
@@ -76,8 +79,26 @@ const normalizeConfig = (rawConfig: unknown): TradejsProjectConfig => {
   };
 };
 
+const getNodeCreateRequire = (): ((filename: string) => NodeJS.Require) => {
+  const builtinModule = (
+    process as typeof process & {
+      getBuiltinModule?: (name: string) => unknown;
+    }
+  ).getBuiltinModule?.('module') as
+    | {
+        createRequire?: (filename: string) => NodeJS.Require;
+      }
+    | undefined;
+
+  if (typeof builtinModule?.createRequire === 'function') {
+    return builtinModule.createRequire;
+  }
+
+  throw new TypeError('module.createRequire is not available');
+};
+
 const getRequireFn = (cwd = getTradejsProjectCwd()): NodeJS.Require =>
-  createRequire(path.join(path.resolve(cwd), '__tradejs_loader__.js'));
+  getNodeCreateRequire()(path.join(path.resolve(cwd), '__tradejs_loader__.js'));
 
 const ensureTsNodeRegistered = async () => {
   if (tsNodeRegistered) {
@@ -144,6 +165,76 @@ const ensureTsconfigPathsRegistered = async (cwd = getTradejsProjectCwd()) => {
     addMatchAll: false,
   });
   tsconfigPathsRegisteredByCwd.add(projectRoot);
+};
+
+const resolveTsconfigPathModule = async (
+  moduleName: string,
+  cwd = getTradejsProjectCwd(),
+): Promise<string | null> => {
+  const projectRoot = getTradejsProjectCwd(cwd);
+  const cachedMatcher = tsconfigPathMatchersByCwd.get(projectRoot);
+  if (cachedMatcher) {
+    const resolved = cachedMatcher(moduleName);
+    return resolved || null;
+  }
+
+  const tsconfigPathsModule = (await import('tsconfig-paths')) as {
+    createMatchPath?: (
+      absoluteBaseUrl: string,
+      paths: Record<string, string[]>,
+      mainFields?: readonly string[],
+      addMatchAll?: boolean,
+    ) => (
+      requestedModule: string,
+      readJson?: (path: string) => Record<string, unknown> | undefined,
+      fileExists?: (path: string) => boolean,
+      extensions?: readonly string[],
+    ) => string | undefined;
+    loadConfig?: (cwd: string) =>
+      | {
+          resultType: 'success';
+          absoluteBaseUrl: string;
+          paths: Record<string, string[]>;
+        }
+      | {
+          resultType: 'failed';
+          message: string;
+        };
+  };
+  const loadConfig = tsconfigPathsModule.loadConfig;
+  const createMatchPath = tsconfigPathsModule.createMatchPath;
+  if (
+    typeof loadConfig !== 'function' ||
+    typeof createMatchPath !== 'function'
+  ) {
+    return null;
+  }
+
+  const loadedConfig = loadConfig(projectRoot);
+  if (loadedConfig.resultType !== 'success') {
+    return null;
+  }
+
+  const matchPath = createMatchPath(
+    loadedConfig.absoluteBaseUrl,
+    loadedConfig.paths,
+  );
+  const matcher = (requestedModule: string) =>
+    matchPath(requestedModule, undefined, fs.existsSync, [
+      '.ts',
+      '.tsx',
+      '.mts',
+      '.cts',
+      '.js',
+      '.jsx',
+      '.mjs',
+      '.cjs',
+      '.json',
+    ]) || '';
+
+  tsconfigPathMatchersByCwd.set(projectRoot, matcher);
+  const resolved = matcher(moduleName);
+  return resolved || null;
 };
 
 const toImportSpecifier = (moduleName: string): string => {
@@ -225,7 +316,18 @@ export const importTradejsModule = async (
 
   if (isBareModuleSpecifier(normalized)) {
     await ensureTsconfigPathsRegistered(cwd);
-    return requireFn(normalized);
+    try {
+      return requireFn(normalized);
+    } catch (error) {
+      const resolvedByTsconfig = await resolveTsconfigPathModule(
+        normalized,
+        cwd,
+      );
+      if (resolvedByTsconfig && resolvedByTsconfig !== normalized) {
+        return requireFn(resolvedByTsconfig);
+      }
+      throw error;
+    }
   }
 
   try {
@@ -344,4 +446,5 @@ export const resetTradejsConfigCache = (): void => {
   announcedConfigFile = new Set<string>();
   tsNodeRegistered = false;
   tsconfigPathsRegisteredByCwd = new Set<string>();
+  tsconfigPathMatchersByCwd = new Map<string, (moduleName: string) => string>();
 };

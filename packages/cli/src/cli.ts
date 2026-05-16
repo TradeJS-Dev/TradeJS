@@ -34,6 +34,7 @@ const scriptLoaders: Record<string, ScriptLoader> = {
   results: () => import('./scripts/results'),
   'runtime-parity': () => import('./scripts/runtimeParity'),
   signals: () => import('./scripts/signals'),
+  replay: () => import('./scripts/replay'),
   'signals-summary': () => import('./scripts/signalsSummary'),
   'spread:ingest': () => import('./scripts/derivativesIngest'),
   'test-ml': () => import('./scripts/test-ml'),

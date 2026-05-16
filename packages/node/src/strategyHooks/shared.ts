@@ -6,6 +6,7 @@ import type {
 } from '@tradejs/types';
 
 export const DEFAULT_BREAK_EVEN_TRIGGER_RISK_MULTIPLIER = 0.5;
+export const DEFAULT_BREAK_EVEN_STOP_PROFIT_MULTIPLIER = 0;
 export const DEFAULT_GLOBAL_UNREALIZED_PNL_TRIGGER_RISK_MULTIPLIER = 4;
 export const GLOBAL_UNREALIZED_PNL_CLOSE_ALL_CODE =
   'GLOBAL_UNREALIZED_PNL_TARGET_REACHED_CLOSE_ALL';
@@ -66,6 +67,76 @@ export const getPositionStopLossPrice = (
   );
 
   return Number.isFinite(signalStopLossPrice) ? signalStopLossPrice : null;
+};
+
+export const getPositionTakeProfitPrice = (
+  position: Position | null | undefined,
+) => {
+  if (!position || typeof position !== 'object') {
+    return null;
+  }
+
+  const directTakeProfitPrice = Number(
+    (
+      position as Position & {
+        tpPrice?: unknown;
+        takeProfitPrice?: unknown;
+      }
+    ).tpPrice ??
+      (
+        position as Position & {
+          tpPrice?: unknown;
+          takeProfitPrice?: unknown;
+        }
+      ).takeProfitPrice ??
+      Number.NaN,
+  );
+
+  if (Number.isFinite(directTakeProfitPrice)) {
+    return directTakeProfitPrice;
+  }
+
+  const signalTakeProfitPrice = Number(
+    (
+      position as Position & {
+        signal?: { prices?: { takeProfitPrice?: unknown } };
+      }
+    ).signal?.prices?.takeProfitPrice ?? Number.NaN,
+  );
+
+  return Number.isFinite(signalTakeProfitPrice) ? signalTakeProfitPrice : null;
+};
+
+export const getBreakEvenStopPrice = ({
+  direction,
+  entryPrice,
+  takeProfitPrice,
+  stopProfitMultiplier,
+}: {
+  direction: Direction;
+  entryPrice: number;
+  takeProfitPrice: number | null;
+  stopProfitMultiplier: number;
+}) => {
+  if (!Number.isFinite(entryPrice)) {
+    return null;
+  }
+
+  const normalizedStopProfitMultiplier = Number.isFinite(stopProfitMultiplier)
+    ? Math.min(Math.max(stopProfitMultiplier, 0), 1)
+    : DEFAULT_BREAK_EVEN_STOP_PROFIT_MULTIPLIER;
+
+  if (
+    takeProfitPrice == null ||
+    !Number.isFinite(takeProfitPrice) ||
+    (direction === 'LONG' && takeProfitPrice <= entryPrice) ||
+    (direction === 'SHORT' && takeProfitPrice >= entryPrice)
+  ) {
+    return entryPrice;
+  }
+
+  const distanceToTakeProfit = takeProfitPrice - entryPrice;
+  return entryPrice + distanceToTakeProfit * normalizedStopProfitMultiplier;
 };
 
 export const getFavorableMovePct = ({

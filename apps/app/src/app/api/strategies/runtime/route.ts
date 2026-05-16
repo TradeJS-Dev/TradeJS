@@ -12,20 +12,19 @@ import {
 import type {
   Connector,
   ConnectorCreator,
-  Interval,
+  PositionPnlSnapshot,
   RuntimeTradeRecord,
 } from '@tradejs/types';
 import { getCurrentUserName } from '@app/lib/currentUser';
 import {
-  buildRuntimeStrategyStats,
-  buildStrategyTradeMarkers,
+  buildRuntimeStrategyAnalytics,
+  buildExchangeFallbackRuntimeTrades,
   isRuntimeTradeRecord,
   resolveStrategyNameByConfigKey,
   RuntimeStrategiesResponse,
-  RuntimeStrategyTradeView,
-  takeClosedPnlMatch,
-  selectFocusSymbol,
   selectTradesForWindow,
+  takeClosedPnlMatch,
+  toRuntimeTradeView,
 } from '@app/lib/runtimeStrategies';
 
 type ClosedPnlRecordWithOrderLinkId = Awaited<
@@ -52,9 +51,6 @@ const coerceHours = (value: string | null) => {
   return Math.min(MAX_HOURS, Math.max(MIN_HOURS, Math.trunc(parsed)));
 };
 
-const chartIntervalForHours = (hours: number): Interval =>
-  hours <= 72 ? '15' : '60';
-
 const loadConnectedStrategyNames = async (userName: string) => {
   const keys = await getKeys(`${redisKeys.strategies(userName)}:`);
   const names = keys
@@ -74,6 +70,21 @@ const loadRuntimeTrades = async (
   return trades
     .filter(isRuntimeTradeRecord)
     .sort((left, right) => left.entryTimestamp - right.entryTimestamp);
+};
+
+const loadActiveRuntimeOrderIds = async (userName: string) => {
+  const keys = await getKeys(redisKeys.runtimeActiveTrades(userName));
+  const refs = await Promise.all(keys.map((key) => getData(key, null)));
+
+  return new Set(
+    refs
+      .map((ref) =>
+        typeof ref?.orderId === 'string' && ref.orderId.trim()
+          ? ref.orderId.trim()
+          : null,
+      )
+      .filter((value): value is string => Boolean(value)),
+  );
 };
 
 const loadClosedPnlRows = async ({
@@ -106,23 +117,69 @@ const loadClosedPnlRows = async ({
   }
 };
 
-const syncRuntimeTrades = async ({
-  userName,
+const loadExchangeEntryRows = async ({
   connector,
-  trades,
   startTime,
   endTime,
 }: {
-  userName: string;
   connector: Connector;
-  trades: RuntimeTradeRecord[];
   startTime: number;
   endTime: number;
 }) => {
-  const openPositions =
-    typeof connector.getOpenPositionPnl === 'function'
-      ? await connector.getOpenPositionPnl()
-      : [];
+  if (typeof connector.getEntryExecutions !== 'function') {
+    return [];
+  }
+
+  try {
+    const rows = await connector.getEntryExecutions({
+      startTime,
+      endTime,
+      limit: 100,
+    });
+
+    return rows.sort(
+      (left, right) => left.entryTimestamp - right.entryTimestamp,
+    );
+  } catch (error) {
+    logger.warn(
+      'strategies runtime: getEntryExecutions failed: %s',
+      (error as Error)?.message || String(error),
+    );
+    return [];
+  }
+};
+
+const loadOpenPositions = async (
+  connector: Connector,
+): Promise<PositionPnlSnapshot[]> => {
+  if (typeof connector.getOpenPositionPnl !== 'function') {
+    return [];
+  }
+
+  try {
+    return await connector.getOpenPositionPnl();
+  } catch (error) {
+    logger.warn(
+      'strategies runtime: getOpenPositionPnl failed: %s',
+      (error as Error)?.message || String(error),
+    );
+    return [];
+  }
+};
+
+const syncRuntimeTrades = async ({
+  userName,
+  trades,
+  endTime,
+  openPositions,
+  closedPnlRows,
+}: {
+  userName: string;
+  trades: RuntimeTradeRecord[];
+  endTime: number;
+  openPositions: PositionPnlSnapshot[];
+  closedPnlRows: ClosedPnlRecordWithOrderLinkId[];
+}) => {
   const openPositionsBySymbol = new Map(
     openPositions.map((position) => [position.symbol, position]),
   );
@@ -142,11 +199,6 @@ const syncRuntimeTrades = async ({
     }),
   );
 
-  const closedPnlRows = await loadClosedPnlRows({
-    connector,
-    startTime,
-    endTime,
-  });
   const closedPnlRowsWithOrderLinkId =
     closedPnlRows as ClosedPnlRecordWithOrderLinkId[];
   const exactByOrderLinkId = new Map(
@@ -240,64 +292,6 @@ const syncRuntimeTrades = async ({
   return syncedTrades;
 };
 
-const toTradeView = (trade: RuntimeTradeRecord): RuntimeStrategyTradeView => ({
-  orderId: trade.orderId,
-  symbol: trade.symbol,
-  direction: trade.direction,
-  status: trade.status,
-  entryTimestamp: trade.entryTimestamp,
-  entryPrice: trade.entryPrice,
-  exitTimestamp:
-    typeof trade.exitTimestamp === 'number' ? trade.exitTimestamp : null,
-  exitPrice: typeof trade.exitPrice === 'number' ? trade.exitPrice : null,
-  pnl:
-    trade.status === 'closed'
-      ? trade.closedPnl ?? trade.currentPnl ?? null
-      : trade.currentPnl ?? null,
-  lastSyncedAt:
-    typeof trade.lastSyncedAt === 'number' ? trade.lastSyncedAt : null,
-});
-
-const loadStrategyChart = async ({
-  connector,
-  symbol,
-  startTime,
-  endTime,
-  hours,
-}: {
-  connector: Connector;
-  symbol: string | null;
-  startTime: number;
-  endTime: number;
-  hours: number;
-}) => {
-  if (!symbol) {
-    return [];
-  }
-
-  try {
-    const rows = await connector.kline({
-      symbol,
-      interval: chartIntervalForHours(hours),
-      start: startTime,
-      end: endTime,
-      silent: true,
-    });
-
-    return rows.map((row) => ({
-      timestamp: row.timestamp,
-      close: row.close,
-    }));
-  } catch (error) {
-    logger.warn(
-      'strategies runtime: kline failed for %s: %s',
-      symbol,
-      (error as Error)?.message || String(error),
-    );
-    return [];
-  }
-};
-
 export const GET = async (request: NextRequest) => {
   try {
     const userName = await getCurrentUserName();
@@ -322,51 +316,83 @@ export const GET = async (request: NextRequest) => {
       userName,
     });
 
-    const [connectedStrategyNames, runtimeTrades] = await Promise.all([
+    const [
+      connectedStrategyNames,
+      runtimeTrades,
+      activeOrderIds,
+      closedPnlRows,
+      entryRows,
+      openPositions,
+    ] = await Promise.all([
       loadConnectedStrategyNames(userName),
       loadRuntimeTrades(userName),
+      loadActiveRuntimeOrderIds(userName),
+      loadClosedPnlRows({
+        connector,
+        startTime,
+        endTime,
+      }),
+      loadExchangeEntryRows({
+        connector,
+        startTime,
+        endTime,
+      }),
+      loadOpenPositions(connector),
     ]);
-    const relevantTrades = selectTradesForWindow(runtimeTrades, startTime);
+    const relevantTrades = selectTradesForWindow(
+      runtimeTrades,
+      startTime,
+      activeOrderIds,
+    );
     const syncedTrades = await syncRuntimeTrades({
       userName,
-      connector,
       trades: relevantTrades,
-      startTime,
+      endTime,
+      openPositions,
+      closedPnlRows,
+    });
+    const fallbackTrades = buildExchangeFallbackRuntimeTrades({
+      entryRows,
+      closedPnlRows,
+      openPositions,
+      strategyNames: connectedStrategyNames,
+      existingTrades: syncedTrades,
       endTime,
     });
+    const allTrades = [...syncedTrades, ...fallbackTrades].filter(
+      isRuntimeTradeRecord,
+    );
     const connectedSet = new Set(connectedStrategyNames);
+    const tradeStrategyNames = allTrades
+      .map((trade) =>
+        typeof trade?.strategy === 'string' && trade.strategy.trim()
+          ? trade.strategy
+          : null,
+      )
+      .filter((value): value is string => value != null);
     const strategyNames = [
-      ...new Set([
-        ...connectedStrategyNames,
-        ...syncedTrades.map((trade) => trade.strategy).filter(Boolean),
-      ]),
+      ...new Set([...connectedStrategyNames, ...tradeStrategyNames]),
     ];
 
     const strategies = await Promise.all(
       strategyNames.map(async (strategyName) => {
-        const strategyTrades = syncedTrades
+        const strategyTrades = allTrades
           .filter((trade) => trade.strategy === strategyName)
           .sort((left, right) => right.entryTimestamp - left.entryTimestamp);
-        const focusSymbol = selectFocusSymbol(strategyTrades);
-        const chart = await loadStrategyChart({
-          connector,
-          symbol: focusSymbol,
+        const analytics = buildRuntimeStrategyAnalytics({
+          trades: strategyTrades,
           startTime,
           endTime,
-          hours,
         });
 
         return {
           strategyName,
           connected: connectedSet.has(strategyName),
           symbols: [...new Set(strategyTrades.map((trade) => trade.symbol))],
-          focusSymbol,
-          stats: buildRuntimeStrategyStats(strategyTrades),
-          chart,
-          markers: focusSymbol
-            ? buildStrategyTradeMarkers(strategyTrades, focusSymbol)
-            : [],
-          recentTrades: strategyTrades.slice(0, 8).map(toTradeView),
+          stat: analytics.stat,
+          summary: analytics.summary,
+          orderLog: analytics.orderLog,
+          recentTrades: strategyTrades.slice(0, 8).map(toRuntimeTradeView),
         };
       }),
     );
@@ -375,11 +401,11 @@ export const GET = async (request: NextRequest) => {
       if (left.connected !== right.connected) {
         return left.connected ? -1 : 1;
       }
-      if (left.stats.activeTrades !== right.stats.activeTrades) {
-        return right.stats.activeTrades - left.stats.activeTrades;
+      if (left.stat.score !== right.stat.score) {
+        return (right.stat.score ?? 0) - (left.stat.score ?? 0);
       }
-      if (left.stats.totalPnl !== right.stats.totalPnl) {
-        return right.stats.totalPnl - left.stats.totalPnl;
+      if (left.summary.totalPnl !== right.summary.totalPnl) {
+        return right.summary.totalPnl - left.summary.totalPnl;
       }
       return left.strategyName.localeCompare(right.strategyName);
     });

@@ -27,7 +27,14 @@
       "@store": ["./src/app/store/index"],
       "@shared/*": ["./src/app/components/Shared/*"],
       "@UI": ["./src/app/components/UI/index"],
-      "@components/*": ["./src/app/components/*"]
+      "@components/*": ["./src/app/components/*"],
+      "@tradejs/connectors": ["../../packages/connectors/src/index"],
+      "@tradejs/core/*": ["../../packages/core/src/*"],
+      "@tradejs/indicators": ["../../packages/indicators/src/index"],
+      "@tradejs/infra/*": ["../../packages/infra/src/*"],
+      "@tradejs/node/*": ["../../packages/node/src/*"],
+      "@tradejs/types": ["../../packages/types/src/index"],
+      "@tradejs/types/*": ["../../packages/types/src/*"]
     }
   },
   "include": [

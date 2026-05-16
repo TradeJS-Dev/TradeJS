@@ -289,7 +289,7 @@ export const executeEntryOrder = async ({
   recordRuntimeTrade = true,
 }: ExecuteEntryOrderParams): Promise<number> => {
   await beforePlaceOrder?.();
-  const orderId = signal.orderId || createRuntimeOrderId();
+  const orderId = signal.orderId || createRuntimeOrderId(signal.strategy);
   signal.orderId = orderId;
 
   const orderPlaced = await connector.placeOrder({

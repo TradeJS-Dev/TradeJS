@@ -59,6 +59,11 @@
       "import": "./dist/figures.mjs",
       "require": "./dist/figures.js"
     },
+    "./grid": {
+      "types": "./dist/grid.d.ts",
+      "import": "./dist/grid.mjs",
+      "require": "./dist/grid.js"
+    },
     "./indicators": {
       "types": "./dist/indicators.d.ts",
       "import": "./dist/indicators.mjs",
@@ -78,6 +83,11 @@
       "types": "./dist/tickers.d.ts",
       "import": "./dist/tickers.mjs",
       "require": "./dist/tickers.js"
+    },
+    "./trade": {
+      "types": "./dist/trade.d.ts",
+      "import": "./dist/trade.mjs",
+      "require": "./dist/trade.js"
     },
     "./time": {
       "types": "./dist/time.d.ts",

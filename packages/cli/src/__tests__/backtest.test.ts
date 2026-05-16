@@ -26,17 +26,21 @@ jest.mock('@tradejs/node/connectors', () => ({
 jest.mock('@tradejs/node/cli', () => ({
   drawStatInCLI: jest.fn(() => []),
   getTickers: jest.fn(),
+  loadTradejsConfig: jest.fn(),
   update: jest.fn(),
 }));
 
 jest.mock('@tradejs/core/backtest', () => ({
   calculateStatsFull: jest.fn(),
-  createTestSuite: jest.fn(),
-  mergeConfigs: jest.fn(),
   parseTestName: jest.fn((value: string) => ({
     symbol: value.split('__')[0],
     testId: value.split('__')[1] || value,
   })),
+}));
+
+jest.mock('@tradejs/core/grid', () => ({
+  createTestSuite: jest.fn(),
+  mergeConfigs: jest.fn(),
 }));
 
 jest.mock('@tradejs/core/data', () => ({
@@ -85,6 +89,7 @@ import {
   buildLiveReplayStrategyConfig,
   chunkTestSuiteBySymbol,
   compareExchangeEntriesToBacktest,
+  getUnsupportedLiveProjectHookStages,
   resolveDefaultParallel,
   resolveDefaultWorkerHeapMb,
   mergePersistedTestSummaries,
@@ -120,7 +125,7 @@ describe('backtest script helpers', () => {
     expect(resolveEffectiveParallel('-10', '-2', 5)).toBe(1);
   });
 
-  it('removes the default tests limit in live mode unless the user set it explicitly', () => {
+  it('removes the default tests limit in signals replay mode unless the user set it explicitly', () => {
     expect(
       resolveRequestedTestsLimit({
         isLiveMode: true,
@@ -178,7 +183,7 @@ describe('backtest script helpers', () => {
     });
   });
 
-  it('forces live replay configs into PARITY mode while preserving runtime gate settings', () => {
+  it('forces signals replay configs into PARITY mode while preserving runtime gate settings', () => {
     expect(
       buildLiveReplayStrategyConfig({
         interval: '15' as any,
@@ -203,6 +208,21 @@ describe('backtest script helpers', () => {
       INTERVAL: '15',
       RECORD_RUNTIME_TRADES: false,
     });
+  });
+
+  it('marks project beforeSignals hooks as unsupported in signals replay mode', () => {
+    expect(
+      getUnsupportedLiveProjectHookStages({
+        beforeSignals: [async () => undefined],
+        onBar: [async () => undefined],
+      } as any),
+    ).toEqual(['beforeSignals']);
+
+    expect(
+      getUnsupportedLiveProjectHookStages({
+        onBar: [async () => undefined],
+      } as any),
+    ).toEqual([]);
   });
 
   it('summarizes synced runtime trades by strategy including active pnl', () => {

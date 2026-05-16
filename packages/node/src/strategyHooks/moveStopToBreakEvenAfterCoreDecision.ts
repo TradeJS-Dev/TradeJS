@@ -1,9 +1,12 @@
 import type { TradejsConfigOnBarHook } from '@tradejs/core/config';
 import type { StrategyConfig } from '@tradejs/types';
 import {
+  DEFAULT_BREAK_EVEN_STOP_PROFIT_MULTIPLIER,
   DEFAULT_BREAK_EVEN_TRIGGER_RISK_MULTIPLIER,
+  getBreakEvenStopPrice,
   getConfiguredDirectionRiskPct,
   getFavorableMovePct,
+  getPositionTakeProfitPrice,
   getPositionRiskPct,
   getPositionStopLossPrice,
   isBreakEvenStopAlreadyApplied,
@@ -14,11 +17,13 @@ import {
 interface CreateMoveStopToBreakEvenOnBarHookParams {
   isEnabled?: (config: StrategyConfig) => boolean;
   triggerRiskMultiplier?: number;
+  stopProfitMultiplier?: number;
 }
 
 export const createMoveStopToBreakEvenOnBarHook = ({
   isEnabled = () => true,
   triggerRiskMultiplier = DEFAULT_BREAK_EVEN_TRIGGER_RISK_MULTIPLIER,
+  stopProfitMultiplier = DEFAULT_BREAK_EVEN_STOP_PROFIT_MULTIPLIER,
 }: CreateMoveStopToBreakEvenOnBarHookParams = {}): TradejsConfigOnBarHook => {
   return async ({ ctx, market }) => {
     if (!isEnabled(ctx.strategyConfig)) {
@@ -70,12 +75,22 @@ export const createMoveStopToBreakEvenOnBarHook = ({
       return;
     }
 
+    const stopLossPrice = getBreakEvenStopPrice({
+      direction: currentPosition.direction,
+      entryPrice: currentPosition.price,
+      takeProfitPrice: getPositionTakeProfitPrice(currentPosition),
+      stopProfitMultiplier,
+    });
+    if (stopLossPrice == null) {
+      return;
+    }
+
     return {
       kind: 'protect',
       code: `${toStrategyCodePrefix(ctx.strategyName)}_MOVE_STOP_TO_BREAK_EVEN`,
       protectPlan: {
         direction: currentPosition.direction,
-        stopLossPrice: currentPosition.price,
+        stopLossPrice,
       },
     };
   };

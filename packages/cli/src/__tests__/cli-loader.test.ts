@@ -27,4 +27,22 @@ describe('cli loader', () => {
 
     expect(commandMain).toHaveBeenCalledTimes(1);
   });
+
+  it('loads the replay command module', async () => {
+    const commandMain = jest.fn().mockResolvedValue(undefined);
+
+    jest.doMock('../scripts/replay', () => ({
+      __esModule: true,
+      main: commandMain,
+    }));
+
+    const cli = require('../cli') as {
+      main: () => Promise<void>;
+    };
+
+    process.argv = ['node', '/tmp/cli.js', 'replay', '--days', '7'];
+    await cli.main();
+
+    expect(commandMain).toHaveBeenCalledTimes(1);
+  });
 });
