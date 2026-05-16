@@ -35,7 +35,9 @@ export const getClient = async (
     secret: user.BYBIT_API_SECRET,
     parseAPIRateLimits: true,
     recv_window: PRIVATE_RECV_WINDOW_MS,
-    syncTimeBeforePrivateRequests: true,
+    // Avoid noisy bybit-api console.error dumps when its internal
+    // /v5/market/time sync probe hits transient network resets.
+    syncTimeBeforePrivateRequests: false,
     testnet: useTestnet,
   });
 
