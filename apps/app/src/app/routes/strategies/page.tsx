@@ -4,17 +4,17 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Box, ClientOnly, Flex, Text } from '@chakra-ui/react';
 import { FiFolder } from 'react-icons/fi';
 import { getRuntimeStrategies } from '@actions/strategies';
-import { TestCardSkeleton } from '@components/Backtest/TestCard/Skeleton';
 import { RuntimeStrategyCard } from '@components/Strategies/RuntimeStrategyCard';
+import { RuntimeStrategyCardSkeleton } from '@components/Strategies/RuntimeStrategyCardSkeleton';
 import type { RuntimeStrategiesResponse } from '@app/lib/runtimeStrategies';
 import { EmptyState, Select } from '@UI';
 
 const ALL_STRATEGIES = '__all__';
 const HOURS_OPTIONS = [
   { label: 'Last 24h', value: '24' },
-  { label: 'Last 72h', value: '72' },
   { label: 'Last 7d', value: '168' },
   { label: 'Last 30d', value: '720' },
+  { label: 'Last 90d', value: '2160' },
 ];
 
 const RuntimeStrategiesPage = () => {
@@ -136,8 +136,8 @@ const RuntimeStrategiesPage = () => {
           <Box flex="1" h="full" w="full">
             {loading ? (
               <>
-                <TestCardSkeleton />
-                <TestCardSkeleton />
+                <RuntimeStrategyCardSkeleton />
+                <RuntimeStrategyCardSkeleton />
               </>
             ) : null}
 

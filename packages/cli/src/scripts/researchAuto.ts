@@ -8,6 +8,10 @@ import { logger } from '@tradejs/infra/logger';
 import { getData, getKeys, redisKeys, setData } from '@tradejs/infra/redis';
 import { StrategyConfig, StrategyConfigGrid } from '@tradejs/types';
 import { getBuiltInStrategyDefaultConfig } from '@tradejs/strategies';
+import {
+  loadRuntimeStrategyNames as loadRuntimeStrategyNamesFromRedis,
+  resolveStrategyNameByConfigKey,
+} from '../lib/runtimeRedis';
 import type { ResearchAgentRunRecord } from '../lib/researchAgent';
 import { sendTelegramReport } from '../lib/telegramReports';
 
@@ -168,36 +172,10 @@ export const listMergedFiles = async (outDir: string, strategyName: string) => {
 export const getBacktestResultsPrefix = (userName: string, config: string) =>
   `users:${userName}:backtests:results:${config}:`;
 
-export const resolveStrategyNameByConfigKey = (
-  userName: string,
-  key: string,
-): string | null => {
-  const parts = key.split(':');
-  if (parts.length !== 5) {
-    return null;
-  }
-
-  const [users, keyUserName, strategiesKey, strategyName, configKey] = parts;
-  if (
-    users !== 'users' ||
-    keyUserName !== userName ||
-    strategiesKey !== 'strategies' ||
-    configKey !== 'config' ||
-    !strategyName
-  ) {
-    return null;
-  }
-
-  return strategyName;
-};
+export { resolveStrategyNameByConfigKey } from '../lib/runtimeRedis';
 
 export const listRuntimeStrategyNames = async (userName: string) => {
-  const keys = await getKeys(`${redisKeys.strategies(userName)}:`);
-  return keys
-    .filter((key) => key.endsWith(':config'))
-    .map((key) => resolveStrategyNameByConfigKey(userName, key))
-    .filter((value): value is string => Boolean(value))
-    .sort((left, right) => left.localeCompare(right));
+  return loadRuntimeStrategyNamesFromRedis(userName);
 };
 
 export const toStrategyConfigGrid = (

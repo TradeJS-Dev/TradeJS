@@ -167,6 +167,22 @@ type CreateIndicatorsOptions = {
   pluginRegistryScope?: string;
 };
 
+const cloneHistorySnapshot = (
+  record: Record<string, number[] | Candle[]>,
+): Record<string, number[] | Candle[]> =>
+  Object.fromEntries(
+    Object.entries(record).map(([key, value]) => [
+      key,
+      Array.isArray(value)
+        ? value.map((item) =>
+            item && typeof item === 'object'
+              ? ({ ...(item as Candle) } as Candle)
+              : item,
+          )
+        : value,
+    ]),
+  ) as Record<string, number[] | Candle[]>;
+
 export interface IndicatorPeriods {
   maFast: number;
   maMedium: number;
@@ -275,7 +291,31 @@ export const createIndicators = (
   });
 
   const indicatorHistory: Record<string, number[]> = {};
+  const latestIndicatorValues: Record<string, number> = {};
   const indicatorPluginErrorShown = new Set<string>();
+  let cachedHistoryResult: IndicatorsHistorySnapshot | null = null;
+  let isHistoryResultDirty = true;
+
+  const getHistoryResult = (): IndicatorsHistorySnapshot => {
+    if (isHistoryResultDirty || !cachedHistoryResult) {
+      const baseHistory = cloneArrayValues(indicatorHistory);
+      cachedHistoryResult = !includeMlPayload
+        ? (baseHistory as IndicatorsHistorySnapshot)
+        : ({
+            ...baseHistory,
+            ...buildMlTimeframeIndicators(candlesHistory, indicatorPeriods),
+            ...buildMlCandleIndicators(candlesHistory, btcCandlesHistory),
+            ...buildIndicatorSeriesByTimeframes(
+              btcCandlesHistory,
+              indicatorPeriods,
+              'btc',
+            ),
+          } as IndicatorsHistorySnapshot);
+      isHistoryResultDirty = false;
+    }
+
+    return cachedHistoryResult;
+  };
 
   const pushIndicator = (key: string, value: number | null | undefined) => {
     if (value == null) {
@@ -284,6 +324,7 @@ export const createIndicators = (
     if (!indicatorHistory[key]) {
       indicatorHistory[key] = [];
     }
+    latestIndicatorValues[key] = value;
     indicatorHistory[key].push(value);
     if (indicatorHistory[key].length > ML_BASE_CANDLES_WINDOW) {
       indicatorHistory[key].splice(
@@ -389,6 +430,7 @@ export const createIndicators = (
     candle: Candle,
     btcCandle?: Candle,
   ): IndicatorSnapshot | null => {
+    isHistoryResultDirty = true;
     candlesHistory.push(candle);
     if (btcCandle) {
       btcCandlesHistory.push(btcCandle);
@@ -626,24 +668,24 @@ export const createIndicators = (
 
   return {
     next,
-    result: (): IndicatorsHistorySnapshot => {
-      const baseHistory = cloneArrayValues(indicatorHistory);
-      if (!includeMlPayload) {
-        return baseHistory as IndicatorsHistorySnapshot;
+    latestNumber: (key: string): number | undefined => {
+      const latestValue = latestIndicatorValues[key];
+      if (typeof latestValue === 'number') {
+        return latestValue;
       }
 
-      const fullHistory = {
-        ...baseHistory,
-        ...buildMlTimeframeIndicators(candlesHistory, indicatorPeriods),
-        ...buildMlCandleIndicators(candlesHistory, btcCandlesHistory),
-        ...buildIndicatorSeriesByTimeframes(
-          btcCandlesHistory,
-          indicatorPeriods,
-          'btc',
-        ),
-      };
+      const value = getHistoryResult()[key as keyof IndicatorsHistorySnapshot];
+      if (!Array.isArray(value) || value.length === 0) {
+        return undefined;
+      }
 
-      return fullHistory as IndicatorsHistorySnapshot;
+      const last = value[value.length - 1];
+      return typeof last === 'number' ? last : undefined;
+    },
+    result: (): IndicatorsHistorySnapshot => {
+      return cloneHistorySnapshot(
+        getHistoryResult() as Record<string, number[] | Candle[]>,
+      ) as IndicatorsHistorySnapshot;
     },
   };
 };

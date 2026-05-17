@@ -42,12 +42,10 @@ import { setData, getData, getKeys, redisKeys } from '@tradejs/infra/redis';
 import {
   Interval,
   Item,
-  ClosedPnlRecord,
   Connector,
   ExchangeEntryRecord,
   OrderLog,
   PositionLogData,
-  RuntimeTradeRecord,
   StrategyConfig,
   TestSuite,
   TestStat,
@@ -61,14 +59,22 @@ import {
   dedupeRuntimeParityEntries,
   extractBacktestEntryParityEntries,
   extractRuntimeParityEntries,
-  type MatchedTradeParityEntry,
   type TradeParityEntry,
 } from '../lib/runtimeParity';
 import {
   backfillDerivativesContextForBacktest,
   shouldBackfillDerivativesContextForBacktest,
 } from '../lib/derivativesContextBackfill';
+import {
+  summarizeRuntimeTradesByStrategy,
+  summarizeTradeParityByStrategy,
+} from '../lib/paritySummary';
 import { normalizeCliArgv } from '../lib/cliArgs';
+import {
+  loadRuntimeStrategyConfigs,
+  loadRuntimeTrades,
+} from '../lib/runtimeRedis';
+import { loadClosedPnlRows, syncRuntimeTrades } from '../lib/runtimeTradeSync';
 import { resolveTimeWindow } from '../lib/timeWindow';
 
 const BYTES_IN_MB = 1024 * 1024;
@@ -301,13 +307,6 @@ type LiveStrategySummary = {
   netProfit: number;
   avgTradeProfit: number;
   winRate: number;
-};
-type RuntimeTradeStrategySummary = {
-  strategyName: string;
-  trades: number;
-  activeTrades: number;
-  closedTrades: number;
-  totalPnl: number;
 };
 type LiveRuntimeParityRow = {
   strategyName: string;
@@ -557,29 +556,6 @@ const isStrategyConfigGrid = (value: unknown): value is StrategyConfigGrid => {
   );
 };
 
-export const resolveStrategyNameByConfigKey = (
-  userName: string,
-  key: string,
-): string | null => {
-  const parts = key.split(':');
-  if (parts.length !== 5) {
-    return null;
-  }
-
-  const [users, keyUserName, strategiesKey, strategyName, configKey] = parts;
-  if (
-    users !== 'users' ||
-    keyUserName !== userName ||
-    strategiesKey !== 'strategies' ||
-    configKey !== 'config' ||
-    !strategyName
-  ) {
-    return null;
-  }
-
-  return strategyName;
-};
-
 export const toStrategyConfigGrid = (
   strategyConfig: StrategyConfig,
 ): StrategyConfigGrid =>
@@ -590,119 +566,21 @@ export const toStrategyConfigGrid = (
 const loadRuntimeStrategyBacktestConfigs = async (
   userName: string,
 ): Promise<RuntimeStrategyBacktestConfig[]> => {
-  const keys = await getKeys(`${redisKeys.strategies(userName)}:`);
-  const configKeys = keys
-    .filter((key) => key.endsWith(':config'))
-    .sort((a, b) => a.localeCompare(b));
+  const configs = await loadRuntimeStrategyConfigs(userName, {
+    onInvalidConfig: (key) => {
+      console.log(chalk.yellow(`Skip invalid runtime strategy config: ${key}`));
+    },
+  });
 
-  const configs = await Promise.all(
-    configKeys.map(
-      async (key): Promise<RuntimeStrategyBacktestConfig | null> => {
-        const strategyName = resolveStrategyNameByConfigKey(userName, key);
-        if (!strategyName) {
-          return null;
-        }
-
-        const strategyConfig = (await getData(
-          key,
-          null,
-        )) as StrategyConfig | null;
-        if (
-          !strategyConfig ||
-          typeof strategyConfig !== 'object' ||
-          Array.isArray(strategyConfig)
-        ) {
-          console.log(
-            chalk.yellow(`Skip invalid runtime strategy config: ${key}`),
-          );
-          return null;
-        }
-
-        return {
-          strategyName,
-          strategyConfig,
-          backtestConfig: toStrategyConfigGrid(strategyConfig),
-        };
-      },
-    ),
-  );
-
-  return configs.filter(Boolean) as RuntimeStrategyBacktestConfig[];
+  return configs.map(({ strategyName, strategyConfig }) => ({
+    strategyName,
+    strategyConfig,
+    backtestConfig: toStrategyConfigGrid(strategyConfig),
+  }));
 };
 
 const getLiveStrategyResultKey = (result: Pick<TestWorkerResult, 'test'>) =>
   `${result.test.strategyName}:${result.test.symbol}`;
-
-const isRuntimeTradeRecord = (value: unknown): value is RuntimeTradeRecord => {
-  if (!value || typeof value !== 'object') {
-    return false;
-  }
-
-  const record = value as Record<string, unknown>;
-  return (
-    typeof record.orderId === 'string' &&
-    typeof record.strategy === 'string' &&
-    typeof record.symbol === 'string' &&
-    typeof record.entryTimestamp === 'number' &&
-    typeof record.entryPrice === 'number' &&
-    typeof record.qty === 'number'
-  );
-};
-
-const loadRuntimeTrades = async (
-  userName: string,
-): Promise<RuntimeTradeRecord[]> => {
-  const keys = await getKeys(redisKeys.runtimeTrades(userName));
-  const trades = await Promise.all(keys.map((key) => getData(key, null)));
-
-  return trades
-    .filter(isRuntimeTradeRecord)
-    .sort((left, right) => left.entryTimestamp - right.entryTimestamp);
-};
-
-const loadClosedPnlRows = async ({
-  connector,
-  startTime,
-  endTime,
-}: {
-  connector: Connector;
-  startTime: number;
-  endTime: number;
-}): Promise<ClosedPnlRecord[]> => {
-  if (typeof connector.getClosedPnl !== 'function') {
-    console.log(
-      chalk.yellow(
-        'runtime compare: connector does not support getClosedPnl, using runtime trade records as-is',
-      ),
-    );
-    return [];
-  }
-
-  try {
-    const rows = await connector.getClosedPnl({
-      startTime,
-      endTime,
-      limit: 100,
-    });
-
-    if (rows.length >= 100) {
-      console.log(
-        chalk.yellow(
-          'runtime compare: exchange closed pnl returned 100 rows (connector cap); older closed trades in the window may be truncated',
-        ),
-      );
-    }
-
-    return rows.sort((left, right) => left.closedAt - right.closedAt);
-  } catch (error) {
-    console.log(
-      chalk.yellow(
-        `runtime compare: getClosedPnl failed: ${(error as Error)?.message || String(error)}`,
-      ),
-    );
-    return [];
-  }
-};
 
 const loadExchangeEntryRows = async ({
   connector,
@@ -767,129 +645,6 @@ const buildPriceDeltaPct = (
   return Math.abs(((rightPrice - leftPrice) / leftPrice) * 100);
 };
 
-const consumeClosedPnlMatch = (
-  buckets: Map<string, ClosedPnlRecord[]>,
-  trade: RuntimeTradeRecord,
-) => {
-  const rows = buckets.get(trade.symbol);
-  if (!rows?.length) {
-    return null;
-  }
-
-  const minimumClosedAt = trade.entryTimestamp - 5 * 60_000;
-  const matchIndex = rows.findIndex(
-    (row) => Number.isFinite(row.closedAt) && row.closedAt >= minimumClosedAt,
-  );
-
-  if (matchIndex < 0) {
-    return null;
-  }
-
-  const [row] = rows.splice(matchIndex, 1);
-  return row ?? null;
-};
-
-const syncRuntimeTrades = async ({
-  userName,
-  connector,
-  trades,
-  startTime,
-  endTime,
-}: {
-  userName: string;
-  connector: Connector;
-  trades: RuntimeTradeRecord[];
-  startTime: number;
-  endTime: number;
-}): Promise<RuntimeTradeRecord[]> => {
-  const openPositions =
-    typeof connector.getOpenPositionPnl === 'function'
-      ? await connector.getOpenPositionPnl()
-      : [];
-  const openPositionsBySymbol = new Map(
-    openPositions.map((position) => [position.symbol, position]),
-  );
-  const activeOrderIdBySymbol = new Map<string, string | null>();
-  const symbols = [...new Set(trades.map((trade) => trade.symbol))];
-
-  await Promise.all(
-    symbols.map(async (symbol) => {
-      const activeRef = (await getData(
-        redisKeys.runtimeActiveTrade(userName, symbol),
-        null,
-      )) as { orderId?: string } | null;
-      activeOrderIdBySymbol.set(
-        symbol,
-        typeof activeRef?.orderId === 'string' ? activeRef.orderId : null,
-      );
-    }),
-  );
-
-  const closedPnlRows = await loadClosedPnlRows({
-    connector,
-    startTime,
-    endTime,
-  });
-  const closedPnlBuckets = new Map<string, ClosedPnlRecord[]>();
-
-  for (const row of closedPnlRows) {
-    const bucket = closedPnlBuckets.get(row.symbol) ?? [];
-    bucket.push(row);
-    closedPnlBuckets.set(row.symbol, bucket);
-  }
-
-  const syncedTrades: RuntimeTradeRecord[] = [];
-
-  for (const trade of trades) {
-    if (trade.status !== 'active') {
-      syncedTrades.push(trade);
-      continue;
-    }
-
-    const openPosition = openPositionsBySymbol.get(trade.symbol);
-    const activeOrderId = activeOrderIdBySymbol.get(trade.symbol);
-    const isCurrentActiveTrade = activeOrderId === trade.orderId;
-
-    if (
-      isCurrentActiveTrade &&
-      openPosition &&
-      openPosition.direction === trade.direction
-    ) {
-      syncedTrades.push({
-        ...trade,
-        status: 'active',
-        currentPrice: openPosition.currentPrice,
-        currentPnl: openPosition.unrealizedPnl,
-        lastSyncedAt: endTime,
-      });
-      continue;
-    }
-
-    const matchedClosedPnl = consumeClosedPnlMatch(closedPnlBuckets, trade);
-    syncedTrades.push({
-      ...trade,
-      status: 'closed',
-      currentPrice: matchedClosedPnl?.exitPrice ?? trade.currentPrice ?? null,
-      currentPnl:
-        matchedClosedPnl?.closedPnl ??
-        trade.closedPnl ??
-        trade.currentPnl ??
-        null,
-      closedPnl:
-        matchedClosedPnl?.closedPnl ??
-        trade.closedPnl ??
-        trade.currentPnl ??
-        null,
-      exitPrice: matchedClosedPnl?.exitPrice ?? trade.exitPrice ?? null,
-      exitTimestamp:
-        matchedClosedPnl?.closedAt ?? trade.exitTimestamp ?? endTime,
-      lastSyncedAt: endTime,
-    });
-  }
-
-  return syncedTrades;
-};
-
 const loadExchangeEntriesForComparison = async ({
   connector,
   startTime,
@@ -908,6 +663,29 @@ const loadExchangeEntriesForComparison = async ({
     connector,
     startTime,
     endTime,
+    callbacks: {
+      onUnsupported: () => {
+        console.log(
+          chalk.yellow(
+            'runtime compare: connector does not support getClosedPnl, using runtime trade records as-is',
+          ),
+        );
+      },
+      onCapped: () => {
+        console.log(
+          chalk.yellow(
+            'runtime compare: exchange closed pnl returned 100 rows (connector cap); older closed trades in the window may be truncated',
+          ),
+        );
+      },
+      onError: (error) => {
+        console.log(
+          chalk.yellow(
+            `runtime compare: getClosedPnl failed: ${(error as Error)?.message || String(error)}`,
+          ),
+        );
+      },
+    },
   });
 
   const closedPnlByOrderId = new Map(
@@ -1040,110 +818,6 @@ export const compareExchangeEntriesToBacktest = ({
     exchangeOnly,
     backtestOnly,
   };
-};
-
-export const summarizeRuntimeTradesByStrategy = (
-  trades: RuntimeTradeRecord[],
-): RuntimeTradeStrategySummary[] => {
-  const summaryByStrategy = new Map<string, RuntimeTradeStrategySummary>();
-
-  for (const trade of trades) {
-    const summary = summaryByStrategy.get(trade.strategy) ?? {
-      strategyName: trade.strategy,
-      trades: 0,
-      activeTrades: 0,
-      closedTrades: 0,
-      totalPnl: 0,
-    };
-
-    summary.trades += 1;
-    if (trade.status === 'active') {
-      summary.activeTrades += 1;
-    } else {
-      summary.closedTrades += 1;
-    }
-
-    const pnl =
-      trade.status === 'active'
-        ? trade.currentPnl
-        : trade.closedPnl ?? trade.currentPnl;
-    if (typeof pnl === 'number' && Number.isFinite(pnl)) {
-      summary.totalPnl += pnl;
-    }
-
-    summaryByStrategy.set(trade.strategy, summary);
-  }
-
-  return [...summaryByStrategy.values()]
-    .map((summary) => ({
-      ...summary,
-      totalPnl: Number(summary.totalPnl.toFixed(2)),
-    }))
-    .sort((left, right) => left.strategyName.localeCompare(right.strategyName));
-};
-
-export const summarizeTradeParityByStrategy = ({
-  runtimeEntries,
-  runtimeDuplicateEntries,
-  backtestEntries,
-  matchedEntries,
-  runtimeOnlyEntries,
-  backtestOnlyEntries,
-}: {
-  runtimeEntries: TradeParityEntry[];
-  runtimeDuplicateEntries: TradeParityEntry[];
-  backtestEntries: TradeParityEntry[];
-  matchedEntries: MatchedTradeParityEntry[];
-  runtimeOnlyEntries: TradeParityEntry[];
-  backtestOnlyEntries: TradeParityEntry[];
-}) => {
-  const rows = new Map<
-    string,
-    {
-      runtime: number;
-      runtimeDuplicates: number;
-      backtest: number;
-      matched: number;
-      runtimeOnly: number;
-      backtestOnly: number;
-    }
-  >();
-
-  const ensureRow = (strategyName: string) => {
-    const row = rows.get(strategyName) ?? {
-      runtime: 0,
-      runtimeDuplicates: 0,
-      backtest: 0,
-      matched: 0,
-      runtimeOnly: 0,
-      backtestOnly: 0,
-    };
-    rows.set(strategyName, row);
-    return row;
-  };
-
-  for (const entry of runtimeEntries) {
-    ensureRow(entry.strategy).runtime += 1;
-  }
-  for (const entry of runtimeDuplicateEntries) {
-    ensureRow(entry.strategy).runtimeDuplicates += 1;
-  }
-  for (const entry of backtestEntries) {
-    ensureRow(entry.strategy).backtest += 1;
-  }
-  for (const entry of matchedEntries) {
-    ensureRow(entry.runtime.strategy).matched += 1;
-  }
-  for (const entry of runtimeOnlyEntries) {
-    ensureRow(entry.strategy).runtimeOnly += 1;
-  }
-  for (const entry of backtestOnlyEntries) {
-    ensureRow(entry.strategy).backtestOnly += 1;
-  }
-
-  return [...rows.entries()].sort(([left], [right]) =>
-    left.localeCompare(right),
-  );
 };
 
 export const mergePersistedTestSummaries = (
@@ -2069,6 +1743,29 @@ const saveAndPrintLiveRuntimeComparison = async ({
     trades: rawRuntimeTrades,
     startTime: activeWindowForRuntimeCompare.start,
     endTime: activeWindowForRuntimeCompare.end,
+    closedPnlCallbacks: {
+      onUnsupported: () => {
+        console.log(
+          chalk.yellow(
+            'runtime compare: connector does not support getClosedPnl, using runtime trade records as-is',
+          ),
+        );
+      },
+      onCapped: () => {
+        console.log(
+          chalk.yellow(
+            'runtime compare: exchange closed pnl returned 100 rows (connector cap); older closed trades in the window may be truncated',
+          ),
+        );
+      },
+      onError: (error) => {
+        console.log(
+          chalk.yellow(
+            `runtime compare: getClosedPnl failed: ${(error as Error)?.message || String(error)}`,
+          ),
+        );
+      },
+    },
   });
   const windowRuntimeTrades = syncedRuntimeTrades.filter(
     (trade) =>

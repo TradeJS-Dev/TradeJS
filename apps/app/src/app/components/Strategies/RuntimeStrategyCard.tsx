@@ -47,9 +47,6 @@ const formatDateTime = (value: number | null | undefined) => {
   return new Date(value).toLocaleString('ru-RU');
 };
 
-const formatPnl = (value: number) =>
-  `${value > 0 ? '+' : ''}${value.toFixed(2)}$`;
-
 export const RuntimeStrategyCard = ({
   strategy,
   provider,
@@ -155,21 +152,6 @@ export const RuntimeStrategyCard = ({
         <StatItem stat={strategy.stat} id="sharpeRatio" title="Sharpe" />
         <StatItem stat={strategy.stat} id="exposure" title="Exposure" />
       </SimpleGrid>
-
-      <Flex px={4} pb={3} gap={6} wrap="wrap">
-        <Text fontSize="sm" color="gray.500">
-          closed PnL: {formatPnl(strategy.summary.closedPnl)}
-        </Text>
-        <Text fontSize="sm" color="gray.500">
-          active PnL: {formatPnl(strategy.summary.activePnl)}
-        </Text>
-        <Text fontSize="sm" color="gray.500">
-          total PnL: {formatPnl(strategy.summary.totalPnl)}
-        </Text>
-        <Text fontSize="sm" color="gray.500">
-          closed trades: {strategy.summary.closedTrades}
-        </Text>
-      </Flex>
     </Box>
   );
 };

@@ -49,11 +49,11 @@ import {
   buildTelegramReport,
   listRuntimeStrategyNames,
   parseJsonOutput,
-  resolveStrategyNameByConfigKey,
   resolveTarget,
   runCliCommand,
   toStrategyConfigGrid,
 } from '../scripts/researchAuto';
+import { resolveStrategyNameByConfigKey } from '../lib/runtimeRedis';
 
 describe('research:auto helpers', () => {
   beforeEach(() => {

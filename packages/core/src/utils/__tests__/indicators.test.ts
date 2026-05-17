@@ -201,4 +201,97 @@ describe('utils indicators', () => {
     expect(first.candles15m.length).toBe(firstCandlesLen);
     expect(second.maFast[second.maFast.length - 1]).not.toBe(firstMaFastTail);
   });
+
+  it('returns independent snapshots for repeated result() calls without next()', () => {
+    const indicators = createIndicators([], [], {
+      periods: {
+        maFast: 3,
+        maMedium: 3,
+        maSlow: 3,
+        obvSma: 3,
+        atr: 3,
+        atrPctShort: 3,
+        atrPctLong: 3,
+        bb: 3,
+        bbStd: 2,
+        macdFast: 3,
+        macdSlow: 4,
+        macdSignal: 2,
+      },
+    });
+
+    for (let i = 0; i < 120; i += 1) {
+      const ts = i * INTERVAL_15M_MS;
+      indicators.next(makeCandle(ts, 100 + i), makeCandle(ts, 20000 + i));
+    }
+
+    const first = indicators.result() as Record<string, any>;
+    const second = indicators.result() as Record<string, any>;
+
+    expect(first.maFast).toEqual(second.maFast);
+    expect(first.candles15m).toEqual(second.candles15m);
+    expect(first.maFast).not.toBe(second.maFast);
+    expect(first.candles15m).not.toBe(second.candles15m);
+  });
+
+  it('returns independent candle objects for repeated result() calls without next()', () => {
+    const indicators = createIndicators([], [], {
+      periods: {
+        maFast: 3,
+        maMedium: 3,
+        maSlow: 3,
+        obvSma: 3,
+        atr: 3,
+        atrPctShort: 3,
+        atrPctLong: 3,
+        bb: 3,
+        bbStd: 2,
+        macdFast: 3,
+        macdSlow: 4,
+        macdSignal: 2,
+      },
+    });
+
+    for (let i = 0; i < 120; i += 1) {
+      const ts = i * INTERVAL_15M_MS;
+      indicators.next(makeCandle(ts, 100 + i), makeCandle(ts, 20000 + i));
+    }
+
+    const first = indicators.result() as Record<string, any>;
+    const second = indicators.result() as Record<string, any>;
+
+    expect(first.candles15m[0]).toEqual(second.candles15m[0]);
+    expect(first.candles15m[0]).not.toBe(second.candles15m[0]);
+  });
+
+  it('supports latestNumber for derived timeframe series', () => {
+    const indicators = createIndicators([], [], {
+      periods: {
+        maFast: 3,
+        maMedium: 3,
+        maSlow: 3,
+        obvSma: 3,
+        atr: 3,
+        atrPctShort: 3,
+        atrPctLong: 3,
+        bb: 3,
+        bbStd: 2,
+        macdFast: 3,
+        macdSlow: 4,
+        macdSignal: 2,
+      },
+    }) as ReturnType<typeof createIndicators> & {
+      latestNumber: (key: string) => number | undefined;
+    };
+
+    for (let i = 0; i < 160; i += 1) {
+      const ts = i * INTERVAL_15M_MS;
+      indicators.next(makeCandle(ts, 100 + i), makeCandle(ts, 20000 + i));
+    }
+
+    const result = indicators.result() as Record<string, any>;
+    const expected = result.maFast1h[result.maFast1h.length - 1];
+
+    expect(indicators.latestNumber('maFast1h')).toBe(expected);
+  });
 });

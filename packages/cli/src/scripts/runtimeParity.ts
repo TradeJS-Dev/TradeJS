@@ -6,7 +6,7 @@ import { ConnectorNames } from '@tradejs/connectors';
 import { BACKTEST_PRELOAD_DAYS } from '@tradejs/core/constants';
 import { formatUnix, getBacktestPreloadStart } from '@tradejs/core/time';
 import { logger } from '@tradejs/infra/logger';
-import { getData, getKeys, redisKeys } from '@tradejs/infra/redis';
+import { getData, redisKeys } from '@tradejs/infra/redis';
 import { getTickers, update } from '@tradejs/node/cli';
 import { resetTestingKlineCache, testing } from '@tradejs/node/backtest';
 import {
@@ -35,6 +35,12 @@ import {
   TradeParityEntry,
 } from '../lib/runtimeParity';
 import { normalizeCliArgv } from '../lib/cliArgs';
+import { summarizeTradeParityByStrategy } from '../lib/paritySummary';
+import {
+  loadRuntimeStrategyNames,
+  loadRuntimeTrades,
+  loadStrategyResultSymbols,
+} from '../lib/runtimeRedis';
 import {
   loadRuntimeSignalEvaluations,
   loadRuntimeSignals,
@@ -235,23 +241,6 @@ const normalizeSignalOrderStatus = (
   return 'unknown';
 };
 
-const isRuntimeTradeRecord = (value: unknown): value is RuntimeTradeRecord => {
-  if (!value || typeof value !== 'object') {
-    return false;
-  }
-
-  const record = value as Record<string, unknown>;
-  return (
-    typeof record.orderId === 'string' &&
-    typeof record.strategy === 'string' &&
-    typeof record.symbol === 'string' &&
-    typeof record.entryTimestamp === 'number' &&
-    typeof record.entryPrice === 'number' &&
-    typeof record.qty === 'number' &&
-    (record.direction === 'LONG' || record.direction === 'SHORT')
-  );
-};
-
 const resolveParityConnectorName = async (value: unknown): Promise<string> => {
   const connectorName = await resolveConnectorName(value, projectRoot);
   if (connectorName) {
@@ -264,67 +253,6 @@ const resolveParityConnectorName = async (value: unknown): Promise<string> => {
     DEFAULT_CONNECTOR_NAME,
   );
   return DEFAULT_CONNECTOR_NAME;
-};
-
-const loadRuntimeTrades = async (
-  userName: string,
-): Promise<RuntimeTradeRecord[]> => {
-  const keys = await getKeys(redisKeys.runtimeTrades(userName));
-  const trades = await Promise.all(keys.map((key) => getData(key, null)));
-
-  return trades
-    .filter(isRuntimeTradeRecord)
-    .sort((left, right) => left.entryTimestamp - right.entryTimestamp);
-};
-
-const resolveStrategyNameByConfigKey = (
-  userName: string,
-  key: string,
-): string | null => {
-  const parts = key.split(':');
-  if (parts.length !== 5) {
-    return null;
-  }
-
-  const [users, keyUserName, strategiesKey, strategyName, configKey] = parts;
-  if (
-    users !== 'users' ||
-    keyUserName !== userName ||
-    strategiesKey !== 'strategies' ||
-    configKey !== 'config' ||
-    !strategyName
-  ) {
-    return null;
-  }
-
-  return strategyName;
-};
-
-const loadConfiguredStrategyNames = async (userName: string) => {
-  const keys = await getKeys(`${redisKeys.strategies(userName)}:`);
-
-  return keys
-    .filter((key) => key.endsWith(':config'))
-    .map((key) => resolveStrategyNameByConfigKey(userName, key))
-    .filter((value): value is string => Boolean(value))
-    .sort((left, right) => left.localeCompare(right));
-};
-
-const loadStrategyResultSymbols = async ({
-  userName,
-  strategy,
-}: {
-  userName: string;
-  strategy: string;
-}) => {
-  const results = (await getData(
-    redisKeys.strategyResults(userName, strategy),
-    {},
-  )) as StrategyResults;
-
-  return Object.keys(results ?? {}).sort((left, right) =>
-    left.localeCompare(right),
-  );
 };
 
 const addReplayTarget = (
@@ -381,9 +309,9 @@ const buildReplayTargets = async ({
   includeConnectorUniverse: boolean;
 }) => {
   const targets = new Map<string, ReplayTarget>();
-  let configuredStrategies = (
-    await loadConfiguredStrategyNames(userName)
-  ).filter((strategy) => !strategyFilter || strategy === strategyFilter);
+  let configuredStrategies = (await loadRuntimeStrategyNames(userName)).filter(
+    (strategy) => !strategyFilter || strategy === strategyFilter,
+  );
   if (
     strategyFilter &&
     !configuredStrategies.some((strategy) => strategy === strategyFilter)
@@ -1750,6 +1678,23 @@ const summarizeByStrategy = ({
 }) => {
   const rows = new Map<string, StrategyParitySummaryRow>();
 
+  const baseRows = summarizeTradeParityByStrategy({
+    runtimeEntries,
+    runtimeDuplicateEntries,
+    backtestEntries,
+    matchedEntries,
+    runtimeOnlyEntries,
+    backtestOnlyEntries,
+  });
+  for (const [strategy, baseRow] of baseRows) {
+    rows.set(strategy, {
+      ...baseRow,
+      targets: 0,
+      compared: 0,
+      errors: 0,
+    });
+  }
+
   const ensureRow = (strategy: string) => {
     const row = rows.get(strategy) ?? {
       runtime: 0,
@@ -1775,24 +1720,6 @@ const summarizeByStrategy = ({
   }
   for (const error of replayErrors) {
     ensureRow(error.strategy).errors += 1;
-  }
-  for (const entry of runtimeEntries) {
-    ensureRow(entry.strategy).runtime += 1;
-  }
-  for (const entry of runtimeDuplicateEntries) {
-    ensureRow(entry.strategy).runtimeDuplicates += 1;
-  }
-  for (const entry of backtestEntries) {
-    ensureRow(entry.strategy).backtest += 1;
-  }
-  for (const entry of matchedEntries) {
-    ensureRow(entry.runtime.strategy).matched += 1;
-  }
-  for (const entry of runtimeOnlyEntries) {
-    ensureRow(entry.strategy).runtimeOnly += 1;
-  }
-  for (const entry of backtestOnlyEntries) {
-    ensureRow(entry.strategy).backtestOnly += 1;
   }
 
   return [...rows.entries()].sort(([left], [right]) =>

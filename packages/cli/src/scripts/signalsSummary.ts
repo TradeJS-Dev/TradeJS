@@ -1,19 +1,16 @@
 import 'dotenv/config';
 import args from 'args';
-import { TTL_1M } from '@tradejs/core/constants';
 import { logger } from '@tradejs/infra/logger';
-import {
-  delKey,
-  getData,
-  getKeys,
-  redisKeys,
-  setData,
-} from '@tradejs/infra/redis';
 import {
   DEFAULT_CONNECTOR_NAME,
   getConnectorCreatorByName,
   resolveConnectorName,
 } from '@tradejs/node/connectors';
+import {
+  loadRuntimeStrategyNames,
+  loadRuntimeTrades,
+} from '../lib/runtimeRedis';
+import { syncRuntimeTrades } from '../lib/runtimeTradeSync';
 import { sendTelegramReport } from '../lib/telegramReports';
 import {
   loadRuntimeSignalEvaluationStatsBuckets,
@@ -24,7 +21,6 @@ import {
   RuntimeSignalStatsBucket,
 } from '../lib/runtimeSignalsStorage';
 import {
-  ClosedPnlRecord,
   Connector,
   ConnectorCreator,
   RuntimeTradeRecord,
@@ -94,22 +90,6 @@ const normalizeStatus = (
   return 'unknown';
 };
 
-const isRuntimeTradeRecord = (value: unknown): value is RuntimeTradeRecord => {
-  if (!value || typeof value !== 'object') {
-    return false;
-  }
-
-  const record = value as Record<string, unknown>;
-  return (
-    typeof record.orderId === 'string' &&
-    typeof record.strategy === 'string' &&
-    typeof record.symbol === 'string' &&
-    typeof record.entryTimestamp === 'number' &&
-    typeof record.entryPrice === 'number' &&
-    typeof record.qty === 'number'
-  );
-};
-
 const resolveSummaryConnectorName = async (value: unknown): Promise<string> => {
   const connectorName = await resolveConnectorName(value, projectRoot);
   if (connectorName) {
@@ -122,52 +102,6 @@ const resolveSummaryConnectorName = async (value: unknown): Promise<string> => {
     DEFAULT_CONNECTOR_NAME,
   );
   return DEFAULT_CONNECTOR_NAME;
-};
-
-const resolveStrategyNameByConfigKey = (
-  userName: string,
-  key: string,
-): string | null => {
-  const parts = key.split(':');
-  if (parts.length !== 5) {
-    return null;
-  }
-
-  const [users, keyUserName, strategiesKey, strategyName, configKey] = parts;
-  if (
-    users !== 'users' ||
-    keyUserName !== userName ||
-    strategiesKey !== 'strategies' ||
-    configKey !== 'config' ||
-    !strategyName
-  ) {
-    return null;
-  }
-
-  return strategyName;
-};
-
-const loadRuntimeStrategyNames = async (
-  userName: string,
-): Promise<string[]> => {
-  const keys = await getKeys(`${redisKeys.strategies(userName)}:`);
-
-  return keys
-    .filter((key) => key.endsWith(':config'))
-    .map((key) => resolveStrategyNameByConfigKey(userName, key))
-    .filter((value): value is string => Boolean(value))
-    .sort((left, right) => left.localeCompare(right));
-};
-
-const loadRuntimeTrades = async (
-  userName: string,
-): Promise<RuntimeTradeRecord[]> => {
-  const keys = await getKeys(redisKeys.runtimeTrades(userName));
-  const trades = await Promise.all(keys.map((key) => getData(key, null)));
-
-  return trades
-    .filter(isRuntimeTradeRecord)
-    .sort((left, right) => left.entryTimestamp - right.entryTimestamp);
 };
 
 const createRuntimeSignalStats = (): RuntimeSignalStatsBucket => ({
@@ -193,178 +127,6 @@ const mergeRuntimeSignalStats = (
 
     target.reasonGroups.set(group, targetReasons);
   }
-};
-
-const loadClosedPnlRows = async ({
-  connector,
-  startTime,
-  endTime,
-}: {
-  connector: Connector;
-  startTime: number;
-  endTime: number;
-}): Promise<ClosedPnlRecord[]> => {
-  if (typeof connector.getClosedPnl !== 'function') {
-    return [];
-  }
-
-  try {
-    const rows = await connector.getClosedPnl({
-      startTime,
-      endTime,
-      limit: 100,
-    });
-
-    return rows.sort((left, right) => left.closedAt - right.closedAt);
-  } catch (error) {
-    logger.warn(
-      'signals summary: getClosedPnl failed: %s',
-      (error as Error)?.message || String(error),
-    );
-    return [];
-  }
-};
-
-const consumeClosedPnlMatch = (
-  buckets: Map<string, ClosedPnlRecord[]>,
-  trade: RuntimeTradeRecord,
-) => {
-  const rows = buckets.get(trade.symbol);
-  if (!rows?.length) {
-    return null;
-  }
-
-  const minimumClosedAt = trade.entryTimestamp - 5 * 60_000;
-  const matchIndex = rows.findIndex(
-    (row) => Number.isFinite(row.closedAt) && row.closedAt >= minimumClosedAt,
-  );
-
-  if (matchIndex < 0) {
-    return null;
-  }
-
-  const [row] = rows.splice(matchIndex, 1);
-  return row ?? null;
-};
-
-const syncRuntimeTrades = async ({
-  userName,
-  connector,
-  trades,
-  startTime,
-  endTime,
-}: {
-  userName: string;
-  connector: Connector;
-  trades: RuntimeTradeRecord[];
-  startTime: number;
-  endTime: number;
-}) => {
-  const openPositions =
-    typeof connector.getOpenPositionPnl === 'function'
-      ? await connector.getOpenPositionPnl()
-      : [];
-  const openPositionsBySymbol = new Map(
-    openPositions.map((position) => [position.symbol, position]),
-  );
-  const activeOrderIdBySymbol = new Map<string, string | null>();
-  const symbols = [...new Set(trades.map((trade) => trade.symbol))];
-
-  await Promise.all(
-    symbols.map(async (symbol) => {
-      const activeRef = (await getData(
-        redisKeys.runtimeActiveTrade(userName, symbol),
-        null,
-      )) as { orderId?: string } | null;
-      activeOrderIdBySymbol.set(
-        symbol,
-        typeof activeRef?.orderId === 'string' ? activeRef.orderId : null,
-      );
-    }),
-  );
-
-  const closedPnlRows = await loadClosedPnlRows({
-    connector,
-    startTime,
-    endTime,
-  });
-  const closedPnlBuckets = new Map<string, ClosedPnlRecord[]>();
-
-  for (const row of closedPnlRows) {
-    const bucket = closedPnlBuckets.get(row.symbol) ?? [];
-    bucket.push(row);
-    closedPnlBuckets.set(row.symbol, bucket);
-  }
-
-  const syncedTrades: RuntimeTradeRecord[] = [];
-
-  for (const trade of trades) {
-    if (trade.status !== 'active') {
-      syncedTrades.push(trade);
-      continue;
-    }
-
-    const openPosition = openPositionsBySymbol.get(trade.symbol);
-    const activeOrderId = activeOrderIdBySymbol.get(trade.symbol);
-    const isCurrentActiveTrade = activeOrderId === trade.orderId;
-
-    if (
-      isCurrentActiveTrade &&
-      openPosition &&
-      openPosition.direction === trade.direction
-    ) {
-      const nextTrade: RuntimeTradeRecord = {
-        ...trade,
-        status: 'active',
-        currentPrice: openPosition.currentPrice,
-        currentPnl: openPosition.unrealizedPnl,
-        lastSyncedAt: endTime,
-      };
-
-      await setData(
-        redisKeys.runtimeTrade(userName, trade.orderId),
-        nextTrade,
-        {
-          expire: 0,
-        },
-      );
-      syncedTrades.push(nextTrade);
-      continue;
-    }
-
-    const matchedClosedPnl = consumeClosedPnlMatch(closedPnlBuckets, trade);
-    const nextTrade: RuntimeTradeRecord = {
-      ...trade,
-      status: 'closed',
-      currentPrice: matchedClosedPnl?.exitPrice ?? trade.currentPrice ?? null,
-      currentPnl:
-        matchedClosedPnl?.closedPnl ??
-        trade.closedPnl ??
-        trade.currentPnl ??
-        null,
-      closedPnl:
-        matchedClosedPnl?.closedPnl ??
-        trade.closedPnl ??
-        trade.currentPnl ??
-        null,
-      exitPrice: matchedClosedPnl?.exitPrice ?? trade.exitPrice ?? null,
-      exitTimestamp:
-        matchedClosedPnl?.closedAt ?? trade.exitTimestamp ?? endTime,
-      lastSyncedAt: endTime,
-    };
-
-    await Promise.all([
-      setData(redisKeys.runtimeTrade(userName, trade.orderId), nextTrade, {
-        expire: TTL_1M,
-      }),
-      ...(isCurrentActiveTrade
-        ? [delKey(redisKeys.runtimeActiveTrade(userName, trade.symbol))]
-        : []),
-    ]);
-    syncedTrades.push(nextTrade);
-  }
-
-  return syncedTrades;
 };
 
 const buildSummaryPrelude = ({
@@ -729,6 +491,14 @@ export const signalsSummary = async () => {
     trades,
     startTime,
     endTime,
+    closedPnlCallbacks: {
+      onError: (error) => {
+        logger.warn(
+          'signals summary: getClosedPnl failed: %s',
+          (error as Error)?.message || String(error),
+        );
+      },
+    },
   });
   const windowSignals = signals.filter(
     (signal) => signal.timestamp >= startTime && signal.timestamp < endTime,

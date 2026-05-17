@@ -2,7 +2,10 @@
 
 import { trendShiftAiAdapter } from '../adapters/ai';
 
-const makePayload = (context: Record<string, unknown>) =>
+const makePayload = (
+  context: Record<string, unknown>,
+  extraIndicators: Record<string, unknown> = {},
+) =>
   ({
     signal: {
       symbol: 'TESTUSDT',
@@ -21,6 +24,7 @@ const makePayload = (context: Record<string, unknown>) =>
     indicators: {},
     additionalIndicators: {
       trendShiftContext: context,
+      ...extraIndicators,
     },
   }) as any;
 
@@ -127,5 +131,205 @@ describe('trendShiftAiAdapter', () => {
       approved: false,
     });
     expect((result as any).quality).toBe(2);
+  });
+
+  it('keeps q5 flip in watch mode when oi is not confirming and there is no flush support', () => {
+    const result = trendShiftAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makePayload(
+        {
+          signalDirection: 'LONG',
+          confirmedFlip: true,
+          bullFlip: true,
+          flipDistanceOk: true,
+          closeVsAvgPct: 0.3,
+          avgSlopePct: 0.11,
+          distanceAtrRatio: 0.95,
+          coinBiasAligned: true,
+        },
+        {
+          derivativesContext: {
+            summary: {
+              pressure: 'crowded_long',
+              directionAligned: false,
+              riskFlags: ['oi_not_confirming'],
+            },
+          },
+        },
+      ),
+      analysis: {
+        direction: 'LONG',
+        quality: 1,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: null,
+      quality: 4,
+      approved: false,
+      rejectReason: 'open interest does not confirm the flip yet',
+    });
+  });
+
+  it('still approves q5 SHORT when liquidation flush supports the reversal', () => {
+    const result = trendShiftAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makePayload(
+        {
+          signalDirection: 'SHORT',
+          confirmedFlip: true,
+          bearFlip: true,
+          flipDistanceOk: true,
+          closeVsAvgPct: 0.3,
+          avgSlopePct: 0.11,
+          distanceAtrRatio: 0.95,
+          coinBiasAligned: false,
+        },
+        {
+          derivativesContext: {
+            summary: {
+              pressure: 'long_flush',
+              directionAligned: true,
+              riskFlags: ['oi_not_confirming', 'long_liquidation_spike'],
+            },
+          },
+        },
+      ),
+      analysis: {
+        direction: 'SHORT',
+        quality: 1,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: 'SHORT',
+      quality: 5,
+      approved: true,
+    });
+  });
+
+  it('keeps overextended q5 SHORT in watch mode without long-liquidation flush support', () => {
+    const result = trendShiftAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makePayload(
+        {
+          signalDirection: 'SHORT',
+          confirmedFlip: true,
+          bearFlip: true,
+          flipDistanceOk: true,
+          closeVsAvgPct: 0.3,
+          avgSlopePct: 0.11,
+          distanceAtrRatio: 1.35,
+          coinBiasAligned: true,
+        },
+        {
+          derivativesContext: {
+            summary: {
+              pressure: 'crowded_long',
+              directionAligned: null,
+              riskFlags: [],
+            },
+          },
+        },
+      ),
+      analysis: {
+        direction: 'SHORT',
+        quality: 1,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: null,
+      quality: 4,
+      approved: false,
+      rejectReason:
+        'the SHORT flip already looks overstretched away from the average without a liquidation flush',
+    });
+  });
+
+  it('approves selective q4 SHORT when derivatives confirm bearish follow-through', () => {
+    const result = trendShiftAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makePayload(
+        {
+          signalDirection: 'SHORT',
+          confirmedFlip: true,
+          bearFlip: true,
+          flipDistanceOk: true,
+          closeVsAvgPct: 0.2,
+          avgSlopePct: 0.15,
+          distanceAtrRatio: 0.75,
+          coinBiasAligned: true,
+        },
+        {
+          derivativesContext: {
+            summary: {
+              pressure: 'long_flush',
+              directionAligned: true,
+              riskFlags: ['long_liquidation_spike'],
+            },
+          },
+          marketContext: {
+            tradingSession: {
+              primarySession: 'london',
+              isOverlap: false,
+            },
+          },
+        },
+      ),
+      analysis: {
+        direction: 'SHORT',
+        quality: 1,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: 'SHORT',
+      quality: 5,
+      approved: true,
+    });
+  });
+
+  it('keeps q4 SHORT in watch mode during overlap even with derivatives support', () => {
+    const result = trendShiftAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makePayload(
+        {
+          signalDirection: 'SHORT',
+          confirmedFlip: true,
+          bearFlip: true,
+          flipDistanceOk: true,
+          closeVsAvgPct: 0.2,
+          avgSlopePct: 0.15,
+          distanceAtrRatio: 0.75,
+          coinBiasAligned: true,
+        },
+        {
+          derivativesContext: {
+            summary: {
+              pressure: 'long_flush',
+              directionAligned: true,
+              riskFlags: ['long_liquidation_spike'],
+            },
+          },
+          marketContext: {
+            tradingSession: {
+              primarySession: 'london',
+              isOverlap: true,
+            },
+          },
+        },
+      ),
+      analysis: {
+        direction: 'SHORT',
+        quality: 1,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: null,
+      quality: 4,
+      approved: false,
+    });
   });
 });

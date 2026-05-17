@@ -55,6 +55,7 @@ export const buildDefaultIndicatorPeriods = (
 
 type IndicatorsController = ReturnType<typeof createIndicators>;
 type SnapshotController = IndicatorsController & {
+  latestNumber: (key: string) => number | undefined;
   snapshot: () => ReturnType<IndicatorsController['result']>;
 };
 
@@ -148,16 +149,6 @@ export const createStrategyIndicatorsState = ({
 
     snapshot: () => ensureControllerInitialized().snapshot(),
 
-    latestNumber: (key) => {
-      const snapshot = ensureControllerInitialized().snapshot() as
-        | Record<string, unknown>
-        | undefined;
-      const value = snapshot?.[key];
-      if (!Array.isArray(value) || value.length === 0) {
-        return undefined;
-      }
-      const last = value[value.length - 1];
-      return typeof last === 'number' ? last : undefined;
-    },
+    latestNumber: (key) => ensureControllerInitialized().latestNumber(key),
   };
 };

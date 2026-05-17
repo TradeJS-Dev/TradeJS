@@ -31,7 +31,6 @@ import { getTimestamp } from '@tradejs/core/time';
 import { logger } from '@tradejs/infra/logger';
 import {
   getData,
-  getKeys,
   incrHashFields,
   redisKeys,
   setData,
@@ -50,6 +49,7 @@ import {
   backfillDerivativesContextForSignals,
   shouldBackfillDerivativesContextForSignals,
 } from '../lib/derivativesContextBackfill';
+import { loadRuntimeStrategyConfigs } from '../lib/runtimeRedis';
 import {
   buildRuntimeSignalStatsIncrements,
   getRuntimeStorageDayKey,
@@ -163,55 +163,31 @@ const invokeAfterSignalsHooks = async (
   }
 };
 
-const resolveStrategyNameByConfigKey = (
-  userName: string,
-  key: string,
-): string | null => {
-  const parts = key.split(':');
-  if (parts.length !== 5) {
-    return null;
-  }
-  const [users, keyUserName, strategiesKey, strategyName, configKey] = parts;
-  if (
-    users !== 'users' ||
-    keyUserName !== userName ||
-    strategiesKey !== 'strategies' ||
-    configKey !== 'config' ||
-    !strategyName
-  ) {
-    return null;
-  }
-  return strategyName;
-};
-
 const loadRuntimeStrategies = async (
   userName: string,
 ): Promise<StrategyRuntimeConfig[]> => {
-  const keys = await getKeys(`${redisKeys.strategies(userName)}:`);
-  const configKeys = keys
-    .filter((key) => key.endsWith(':config'))
-    .sort((a, b) => a.localeCompare(b));
   const strategyConfigs = await Promise.all(
-    configKeys.map(async (key): Promise<StrategyRuntimeConfig | null> => {
-      const strategyName = resolveStrategyNameByConfigKey(userName, key);
-      if (!strategyName) {
-        return null;
-      }
-      const strategyCreator = await getStrategyCreator(
+    (await loadRuntimeStrategyConfigs(userName)).map(
+      async ({
+        key,
         strategyName,
-        projectRoot,
-      );
-      if (!strategyCreator) {
-        logger.warn('Skip unknown strategy config key: %s', key);
-        return null;
-      }
-      const strategyConfig = (await getData(key, {})) as StrategyConfig;
-      return {
-        strategyName,
-        strategyCreator,
         strategyConfig,
-      };
-    }),
+      }): Promise<StrategyRuntimeConfig | null> => {
+        const strategyCreator = await getStrategyCreator(
+          strategyName,
+          projectRoot,
+        );
+        if (!strategyCreator) {
+          logger.warn('Skip unknown strategy config key: %s', key);
+          return null;
+        }
+        return {
+          strategyName,
+          strategyCreator,
+          strategyConfig,
+        };
+      },
+    ),
   );
   return strategyConfigs.filter(Boolean) as StrategyRuntimeConfig[];
 };

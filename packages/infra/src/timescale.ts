@@ -430,43 +430,147 @@ export async function getDerivativesWindow(params: {
 export async function getDerivativesSummary(hours = 24, limit = 500) {
   await ensureDerivativesSchema();
   const pool = getPool();
-  const cappedHours = Math.max(1, Math.min(24 * 30, hours));
-  const cappedLimit = Math.max(50, Math.min(5000, limit));
+  const cappedHours = Math.max(1, Math.min(24 * 90, hours));
+  const cappedLimit = Math.max(10, Math.min(1000, limit));
 
-  const rowsQ = await pool.query(
+  const summaryQ = await pool.query(
     `
-      SELECT symbol, interval, ts, open_interest, funding_rate, liq_long, liq_short, liq_total
-      FROM derivatives_market
-      WHERE ts >= now() - ($1 || ' hours')::interval
-      ORDER BY ts DESC
+      WITH filtered AS (
+        SELECT
+          symbol,
+          interval,
+          ts,
+          open_interest,
+          funding_rate,
+          liq_long,
+          liq_short,
+          liq_total
+        FROM derivatives_market
+        WHERE ts >= now() - ($1 || ' hours')::interval
+      ),
+      latest AS (
+        SELECT DISTINCT ON (symbol, interval)
+          symbol,
+          interval,
+          ts AS last_ts,
+          open_interest AS latest_open_interest,
+          funding_rate AS latest_funding_rate
+        FROM filtered
+        ORDER BY symbol ASC, interval ASC, ts DESC
+      ),
+      first AS (
+        SELECT DISTINCT ON (symbol, interval)
+          symbol,
+          interval,
+          ts AS first_ts,
+          open_interest AS first_open_interest,
+          funding_rate AS first_funding_rate
+        FROM filtered
+        ORDER BY symbol ASC, interval ASC, ts ASC
+      ),
+      aggregated AS (
+        SELECT
+          symbol,
+          interval,
+          COUNT(*)::int AS points,
+          SUM(COALESCE(liq_long, 0)) AS sum_liq_long,
+          SUM(COALESCE(liq_short, 0)) AS sum_liq_short,
+          SUM(COALESCE(liq_total, 0)) AS sum_liq_total
+        FROM filtered
+        GROUP BY symbol, interval
+      )
+      SELECT
+        aggregated.symbol,
+        aggregated.interval,
+        aggregated.points,
+        latest.last_ts,
+        first.first_ts,
+        latest.latest_open_interest,
+        first.first_open_interest,
+        latest.latest_funding_rate,
+        first.first_funding_rate,
+        aggregated.sum_liq_long,
+        aggregated.sum_liq_short,
+        aggregated.sum_liq_total
+      FROM aggregated
+      JOIN latest
+        ON latest.symbol = aggregated.symbol
+       AND latest.interval = aggregated.interval
+      JOIN first
+        ON first.symbol = aggregated.symbol
+       AND first.interval = aggregated.interval
+      ORDER BY aggregated.sum_liq_total DESC, aggregated.symbol ASC
       LIMIT $2
     `,
     [String(cappedHours), cappedLimit],
   );
 
-  const aggQ = await pool.query(
-    `
-      SELECT
-        symbol,
-        interval,
-        COUNT(*)::int AS points,
-        MAX(ts) AS last_ts,
-        AVG(open_interest) AS avg_open_interest,
-        AVG(funding_rate) AS avg_funding_rate,
-        SUM(COALESCE(liq_total, 0)) AS sum_liq_total
-      FROM derivatives_market
-      WHERE ts >= now() - ($1 || ' hours')::interval
-      GROUP BY symbol, interval
-      ORDER BY points DESC, symbol ASC
-      LIMIT 500
-    `,
-    [String(cappedHours)],
-  );
+  const items = (
+    summaryQ.rows as Array<{
+      symbol: string;
+      interval: string;
+      points: number | string;
+      last_ts: Date | string;
+      first_ts: Date | string;
+      latest_open_interest: number | string | null;
+      first_open_interest: number | string | null;
+      latest_funding_rate: number | string | null;
+      first_funding_rate: number | string | null;
+      sum_liq_long: number | string | null;
+      sum_liq_short: number | string | null;
+      sum_liq_total: number | string | null;
+    }>
+  ).map((row) => {
+    const latestOpenInterest =
+      row.latest_open_interest == null
+        ? null
+        : Number(row.latest_open_interest);
+    const firstOpenInterest =
+      row.first_open_interest == null ? null : Number(row.first_open_interest);
+    const latestFundingRate =
+      row.latest_funding_rate == null ? null : Number(row.latest_funding_rate);
+    const firstFundingRate =
+      row.first_funding_rate == null ? null : Number(row.first_funding_rate);
+    const oiChange =
+      latestOpenInterest != null && firstOpenInterest != null
+        ? latestOpenInterest - firstOpenInterest
+        : null;
+    const oiChangePct =
+      oiChange != null &&
+      firstOpenInterest != null &&
+      Number.isFinite(firstOpenInterest) &&
+      Math.abs(firstOpenInterest) > 0
+        ? (oiChange / Math.abs(firstOpenInterest)) * 100
+        : null;
+    const fundingChange =
+      latestFundingRate != null && firstFundingRate != null
+        ? latestFundingRate - firstFundingRate
+        : null;
+
+    return {
+      symbol: row.symbol,
+      interval: row.interval,
+      points: Number(row.points || 0),
+      last_ts: row.last_ts,
+      first_ts: row.first_ts,
+      latest_open_interest: latestOpenInterest,
+      first_open_interest: firstOpenInterest,
+      oi_change: oiChange,
+      oi_change_pct: oiChangePct,
+      latest_funding_rate: latestFundingRate,
+      first_funding_rate: firstFundingRate,
+      funding_change: fundingChange,
+      sum_liq_long: row.sum_liq_long == null ? null : Number(row.sum_liq_long),
+      sum_liq_short:
+        row.sum_liq_short == null ? null : Number(row.sum_liq_short),
+      sum_liq_total:
+        row.sum_liq_total == null ? null : Number(row.sum_liq_total),
+    };
+  });
 
   return {
-    rows: rowsQ.rows,
-    aggregates: aggQ.rows,
     hours: cappedHours,
+    items,
   };
 }
 

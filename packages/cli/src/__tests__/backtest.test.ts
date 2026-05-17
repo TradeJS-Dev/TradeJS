@@ -95,12 +95,14 @@ import {
   mergePersistedTestSummaries,
   resolveRequestedTestsLimit,
   resolveEffectiveParallel,
-  resolveStrategyNameByConfigKey,
   resolveWorkerHeapMb,
-  summarizeRuntimeTradesByStrategy,
-  summarizeTradeParityByStrategy,
   toStrategyConfigGrid,
 } from '../scripts/backtest';
+import {
+  summarizeRuntimeTradesByStrategy,
+  summarizeTradeParityByStrategy,
+} from '../lib/paritySummary';
+import { resolveStrategyNameByConfigKey } from '../lib/runtimeRedis';
 
 describe('backtest script helpers', () => {
   it('derives safer resource defaults for smaller machines', () => {

@@ -47,7 +47,7 @@ describe('ByBit getClient', () => {
     );
   });
 
-  it('creates private client with bybit credentials, recv window and time sync', async () => {
+  it('creates private client with bybit credentials and recv window', async () => {
     mockGetData.mockResolvedValue({
       BYBIT_API_KEY: 'key',
       BYBIT_API_SECRET: 'secret',
@@ -61,7 +61,7 @@ describe('ByBit getClient', () => {
       secret: 'secret',
       parseAPIRateLimits: true,
       recv_window: 10000,
-      syncTimeBeforePrivateRequests: true,
+      syncTimeBeforePrivateRequests: false,
       testnet: false,
     });
     expect(client).toEqual(
@@ -71,7 +71,7 @@ describe('ByBit getClient', () => {
           secret: 'secret',
           parseAPIRateLimits: true,
           recv_window: 10000,
-          syncTimeBeforePrivateRequests: true,
+          syncTimeBeforePrivateRequests: false,
           testnet: false,
         },
       }),
