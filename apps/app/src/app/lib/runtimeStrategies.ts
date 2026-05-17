@@ -1,5 +1,4 @@
 import { endOfMonth, addMonths, startOfMonth } from 'date-fns';
-import { getBacktestScore } from '@tradejs/core/backtest';
 import {
   normalizeStrategyOrderLinkKey,
   parseStrategyOrderLinkKey,
@@ -511,8 +510,6 @@ export const buildRuntimeStrategyAnalytics = ({
           sharpeRatio,
           score: 0,
         };
-
-  stat.score = getBacktestScore(stat);
 
   const activeTrades = trades.filter((trade) => trade.status === 'active');
   const closedTrades = trades.filter((trade) => trade.status === 'closed');

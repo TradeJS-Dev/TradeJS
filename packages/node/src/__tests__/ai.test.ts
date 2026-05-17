@@ -388,6 +388,17 @@ const makeAdaptiveMomentumRibbonSignal = (
         atrLength: 14,
         atrMultiplier: 2,
       },
+      derivativesContext: {
+        summary: {
+          directionAligned: true,
+          riskFlags: [],
+        },
+        intervals: {
+          '15m': {
+            fundingZScore: 0.2,
+          },
+        },
+      },
     },
   };
 
@@ -416,6 +427,24 @@ const makeAdaptiveMomentumRibbonSignal = (
       amrConfigSnapshot: {
         ...base.additionalIndicators.amrConfigSnapshot,
         ...overrides.additionalIndicators?.amrConfigSnapshot,
+      },
+      derivativesContext: {
+        ...base.additionalIndicators.derivativesContext,
+        ...overrides.additionalIndicators?.derivativesContext,
+        summary: {
+          ...base.additionalIndicators.derivativesContext.summary,
+          ...overrides.additionalIndicators?.derivativesContext?.summary,
+        },
+        intervals: {
+          ...base.additionalIndicators.derivativesContext.intervals,
+          ...overrides.additionalIndicators?.derivativesContext?.intervals,
+          '15m': {
+            ...base.additionalIndicators.derivativesContext.intervals['15m'],
+            ...overrides.additionalIndicators?.derivativesContext?.intervals?.[
+              '15m'
+            ],
+          },
+        },
       },
     },
   } as any;

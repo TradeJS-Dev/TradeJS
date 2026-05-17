@@ -1,4 +1,8 @@
-import { resetTestingKlineCache, testing } from '@tradejs/node/backtest';
+import {
+  releaseTestingSymbolCache,
+  resetTestingKlineCache,
+  testing,
+} from '@tradejs/node/backtest';
 import { closeAllAiDatasetWriters } from '@tradejs/infra/ai';
 import { logger } from '@tradejs/infra/logger';
 import { closeAllMlDatasetWriters } from '@tradejs/infra/ml';
@@ -7,6 +11,24 @@ import { getData, redisKeys, setData } from '@tradejs/infra/redis';
 import { TestSuite } from '@tradejs/types';
 
 let isProcessing = false;
+
+const resolveTestSuite = async ({
+  chunk,
+  chunkId,
+  userName,
+}: {
+  chunk?: TestSuite;
+  chunkId?: string;
+  userName: string;
+}): Promise<TestSuite> => {
+  if (Array.isArray(chunk)) {
+    return chunk as TestSuite;
+  }
+
+  return (await getData(
+    redisKeys.cacheChunk(userName, String(chunkId)),
+  )) as TestSuite;
+};
 
 const cacheTestResultArtifacts = async (
   userName: string,
@@ -33,18 +55,42 @@ const cacheTestResultArtifacts = async (
 
 process.on(
   'message',
-  async ({ chunkId, userName }: { chunkId: string; userName: string }) => {
+  async ({
+    chunk,
+    chunkId,
+    userName,
+  }: {
+    chunk?: TestSuite;
+    chunkId?: string;
+    userName: string;
+  }) => {
     if (isProcessing) {
       return;
     }
     isProcessing = true;
 
     try {
-      const testSuite = (await getData(
-        redisKeys.cacheChunk(userName, chunkId),
-      )) as TestSuite;
+      const testSuite = await resolveTestSuite({
+        chunk,
+        chunkId,
+        userName,
+      });
+      let previousTest: TestSuite[number] | null = null;
 
       for await (const test of testSuite) {
+        if (
+          previousTest &&
+          (previousTest.symbol !== test.symbol ||
+            previousTest.userName !== test.userName ||
+            previousTest.connectorName !== test.connectorName)
+        ) {
+          releaseTestingSymbolCache({
+            userName: previousTest.userName,
+            connectorName: previousTest.connectorName,
+            symbol: previousTest.symbol,
+          });
+        }
+
         try {
           const testResult = await testing(test);
           if (!testResult) {
@@ -73,7 +119,17 @@ process.on(
               stack: errorStack,
             },
           });
+        } finally {
+          previousTest = test;
         }
+      }
+
+      if (previousTest) {
+        releaseTestingSymbolCache({
+          userName: previousTest.userName,
+          connectorName: previousTest.connectorName,
+          symbol: previousTest.symbol,
+        });
       }
     } finally {
       await closeAllAiDatasetWriters();

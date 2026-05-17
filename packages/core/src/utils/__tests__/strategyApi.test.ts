@@ -47,6 +47,84 @@ describe('createStrategyAPI', () => {
     expect(connector.kline).not.toHaveBeenCalled();
   });
 
+  it('getMarketData reuses one snapshot within the same BACKTEST bar and invalidates on the next bar', async () => {
+    const data: any[] = [makeCandle(1_700_000_000_000, 100)];
+    const connector = {
+      kline: jest.fn(),
+      getPosition: jest.fn(),
+    } as any;
+
+    const strategyApi = createStrategyAPI({
+      strategy: 'TrendLine' as any,
+      symbol: 'TESTUSDT',
+      interval: '15' as any,
+      env: 'BACKTEST',
+      connector,
+      cachedData: data,
+      preloadStart: 1,
+      backtestPriceMode: 'close',
+      isConfigFromBacktest: false,
+    });
+
+    const first = await strategyApi.getMarketData();
+    const second = await strategyApi.getMarketData();
+
+    expect(second).toBe(first);
+
+    data.push(makeCandle(1_700_000_060_000, 105));
+
+    const third = await strategyApi.getMarketData();
+
+    expect(third).not.toBe(second);
+    expect(third.lastCandle.close).toBe(105);
+    expect(connector.kline).not.toHaveBeenCalled();
+  });
+
+  it('getCurrentPosition reuses one connector read within the same BACKTEST bar and invalidates on the next bar', async () => {
+    const data: any[] = [makeCandle(1_700_000_000_000, 100)];
+    let currentPosition: any = {
+      symbol: 'TESTUSDT',
+      qty: 1,
+      price: 100,
+      direction: 'LONG',
+    };
+    const connector = {
+      kline: jest.fn(),
+      getPosition: jest.fn(async () => currentPosition),
+    } as any;
+
+    const strategyApi = createStrategyAPI({
+      strategy: 'TrendLine' as any,
+      symbol: 'TESTUSDT',
+      interval: '15' as any,
+      env: 'BACKTEST',
+      connector,
+      cachedData: data,
+      preloadStart: 1,
+      backtestPriceMode: 'close',
+      isConfigFromBacktest: false,
+    });
+
+    const first = await strategyApi.getCurrentPosition();
+    const second = await strategyApi.getCurrentPosition();
+
+    expect(second).toBe(first);
+    expect(connector.getPosition).toHaveBeenCalledTimes(1);
+
+    data.push(makeCandle(1_700_000_060_000, 105));
+    currentPosition = {
+      symbol: 'TESTUSDT',
+      qty: 2,
+      price: 105,
+      direction: 'LONG',
+    };
+
+    const third = await strategyApi.getCurrentPosition();
+
+    expect(third).toBe(currentPosition);
+    expect(connector.getPosition).toHaveBeenCalledTimes(2);
+  });
+
   it('entry auto-builds timestamp/currentPrice/prices and code from market data + orderPlan', async () => {
     const data = [makeCandle(1_700_000_000_000, 100)];
     const connector = {

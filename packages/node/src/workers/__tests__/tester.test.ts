@@ -3,7 +3,7 @@ describe('worker tester', () => {
   const originalExit = process.exit;
   const originalDisconnect = process.disconnect;
   let messageHandler:
-    | ((msg: { chunkId: string; userName: string }) => void)
+    | ((msg: { chunkId?: string; chunk?: any[]; userName: string }) => void)
     | null = null;
 
   const setup = async ({
@@ -15,15 +15,18 @@ describe('worker tester', () => {
   }) => {
     jest.resetModules();
     messageHandler = null;
+    const getDataMock = jest.fn(async () => suite);
+    const setDataMock = jest.fn(async () => undefined);
 
     jest.doMock('../../testing', () => ({
       testing: testingImpl,
       resetTestingKlineCache: jest.fn(),
+      releaseTestingSymbolCache: jest.fn(),
     }));
 
     jest.doMock('@tradejs/infra/redis', () => ({
-      getData: jest.fn(async () => suite),
-      setData: jest.fn(async () => undefined),
+      getData: getDataMock,
+      setData: setDataMock,
       redisKeys: {
         cacheChunk: (userName: string, chunkId: string) =>
           `users:${userName}:cache:tests:chunks:${chunkId}`,
@@ -42,6 +45,9 @@ describe('worker tester', () => {
     jest.doMock('@tradejs/infra/ml', () => ({
       closeAllMlDatasetWriters: jest.fn(async () => undefined),
     }));
+    jest.doMock('@tradejs/infra/ai', () => ({
+      closeAllAiDatasetWriters: jest.fn(async () => undefined),
+    }));
 
     jest
       .spyOn(process, 'on')
@@ -53,6 +59,8 @@ describe('worker tester', () => {
       });
 
     await import('../tester');
+
+    return { getDataMock, setDataMock };
   };
 
   afterEach(() => {
@@ -71,17 +79,27 @@ describe('worker tester', () => {
     process.exit = jest.fn() as any;
 
     const test = { name: 't1' };
+    const orderLog = [{ index: 0 }];
+    const positionLog = [{ direction: 'LONG' }];
     const testingImpl = jest.fn(async () => ({
       stat: { amount: 100, profit: 0, orders: 1 },
       orderLogId: 'log-1',
-      inlineOrderLog: [{ index: 0 }],
-      inlinePositionLog: [{ direction: 'LONG' }],
+      inlineOrderLog: orderLog,
+      inlinePositionLog: positionLog,
     }));
 
-    await setup({ suite: [test], testingImpl });
+    const { getDataMock, setDataMock } = await setup({
+      suite: [test],
+      testingImpl,
+    });
 
-    await messageHandler?.({ chunkId: 'chunk-1', userName: 'alice' });
+    await messageHandler?.({ chunk: [test], userName: 'alice' });
 
+    expect(setDataMock).toHaveBeenCalledTimes(2);
+    const firstSetDataCall = (setDataMock.mock.calls[0] ?? []) as any[];
+    const secondSetDataCall = (setDataMock.mock.calls[1] ?? []) as any[];
+    expect(firstSetDataCall[1]).toBe(orderLog);
+    expect(secondSetDataCall[1]).toBe(positionLog);
     expect(send).toHaveBeenCalledWith(
       expect.objectContaining({
         stat: { amount: 100, profit: 0, orders: 1 },
@@ -99,6 +117,7 @@ describe('worker tester', () => {
       { done: true },
       expect.any(Function),
     );
+    expect(getDataMock).not.toHaveBeenCalled();
     expect(process.disconnect).toHaveBeenCalled();
     expect(process.exit).toHaveBeenCalledWith(0);
   });
@@ -133,5 +152,44 @@ describe('worker tester', () => {
     );
     expect(process.disconnect).toHaveBeenCalled();
     expect(process.exit).toHaveBeenCalledWith(0);
+  });
+
+  it('falls back to redis chunk lookup when direct chunk payload is not provided', async () => {
+    const send = jest.fn((_message?: unknown, callback?: () => void) => {
+      callback?.();
+    });
+    process.send = send as any;
+    process.disconnect = jest.fn() as any;
+    process.exit = jest.fn() as any;
+
+    const test = { name: 't3' };
+    const orderLog = [{ index: 0 }];
+    const positionLog = [{ direction: 'SHORT' }];
+    const testingImpl = jest.fn(async () => ({
+      stat: { amount: 101, profit: 1, orders: 1 },
+      orderLogId: 'log-3',
+      inlineOrderLog: orderLog,
+      inlinePositionLog: positionLog,
+    }));
+
+    const { getDataMock, setDataMock } = await setup({
+      suite: [test],
+      testingImpl,
+    });
+
+    await messageHandler?.({ chunkId: 'chunk-3', userName: 'alice' });
+
+    expect(getDataMock).toHaveBeenCalledTimes(1);
+    const firstSetDataCall = (setDataMock.mock.calls[0] ?? []) as any[];
+    const secondSetDataCall = (setDataMock.mock.calls[1] ?? []) as any[];
+    expect(firstSetDataCall[1]).toBe(orderLog);
+    expect(secondSetDataCall[1]).toBe(positionLog);
+    expect(send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        stat: { amount: 101, profit: 1, orders: 1 },
+        orderLogId: 'log-3',
+        test,
+      }),
+    );
   });
 });

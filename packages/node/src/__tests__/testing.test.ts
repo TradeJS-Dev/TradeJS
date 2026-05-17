@@ -125,7 +125,11 @@ jest.mock('@tradejs/core/time', () => ({
   getTimestamp: () => 1_000_000,
 }));
 
-import { testing, resetTestingKlineCache } from '../testing';
+import {
+  releaseTestingSymbolCache,
+  resetTestingKlineCache,
+  testing,
+} from '../testing';
 
 const candle = (timestamp: number) => ({
   timestamp,
@@ -465,6 +469,30 @@ describe('testing backtest flow', () => {
     expect(mockBinanceConnectorCreator).toHaveBeenCalledTimes(1);
     expect(mockCoinbaseConnectorCreator).toHaveBeenCalledTimes(1);
     expect(mockAlignSortedCandlesByTimestamp).toHaveBeenCalledTimes(4);
+  });
+
+  it('releases symbol-scoped candle caches without dropping shared connectors', async () => {
+    const data = [candle(1_000_050), candle(1_000_150), candle(1_000_250)];
+    mockByBitConnector.kline.mockResolvedValue(data);
+    mockBinanceConnector.kline.mockResolvedValue(data);
+    mockCoinbaseConnector.kline.mockResolvedValue(data);
+    mockStrategy.mockResolvedValue('HOLD');
+
+    await testing(createTest());
+    releaseTestingSymbolCache({
+      userName: 'alice',
+      connectorName: 'ByBit',
+      symbol: 'ETHUSDT',
+    });
+    await testing(createTest());
+
+    expect(mockByBitConnectorCreator).toHaveBeenCalledTimes(1);
+    expect(mockBinanceConnectorCreator).toHaveBeenCalledTimes(1);
+    expect(mockCoinbaseConnectorCreator).toHaveBeenCalledTimes(1);
+    expect(mockByBitConnector.kline).toHaveBeenCalledTimes(3);
+    expect(mockBinanceConnector.kline).toHaveBeenCalledTimes(1);
+    expect(mockCoinbaseConnector.kline).toHaveBeenCalledTimes(1);
+    expect(mockAlignSortedCandlesByTimestamp).toHaveBeenCalledTimes(8);
   });
 
   it('times out a slow test item with symbol in the error message', async () => {

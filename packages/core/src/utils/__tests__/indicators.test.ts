@@ -1,5 +1,7 @@
 import { Candle } from '@tradejs/types';
 import { createIndicators } from '../indicators';
+import { CORRELATION_WINDOW } from '../../constants';
+import { calculateCoinBtcCorrelation } from '../correlation';
 import { buildDefaultIndicatorPeriods } from '../strategyHelpers/indicators';
 
 const INTERVAL_15M_MS = 15 * 60_000;
@@ -95,6 +97,48 @@ describe('utils indicators', () => {
     expect(last?.prevCandle?.close).toBe(106);
     expect(last?.highLevel).toBe(16);
     expect(last?.lowLevel).toBe(5);
+  });
+
+  it('slides breakout level window with the same lookback and delay semantics across bars', () => {
+    const indicators = createIndicators([], [], {
+      periods: {
+        maFast: 2,
+        maMedium: 2,
+        maSlow: 2,
+        obvSma: 2,
+        atr: 2,
+        atrPctShort: 2,
+        atrPctLong: 2,
+        bb: 2,
+        bbStd: 2,
+        macdFast: 3,
+        macdSlow: 4,
+        macdSignal: 2,
+        levelLookback: 3,
+        levelDelay: 1,
+      },
+    });
+
+    const highs = [12, 18, 16, 14, 20, 17];
+    const lows = [7, 4, 6, 8, 3, 5];
+    const snapshots: Array<ReturnType<typeof indicators.next> | null> = [];
+
+    for (let i = 0; i < highs.length; i += 1) {
+      snapshots.push(
+        indicators.next(
+          makeCandle(i * INTERVAL_15M_MS, 100 + i, highs[i], lows[i]),
+        ),
+      );
+    }
+
+    expect(snapshots[3]?.highLevel).toBe(18);
+    expect(snapshots[3]?.lowLevel).toBe(4);
+
+    expect(snapshots[4]?.highLevel).toBe(18);
+    expect(snapshots[4]?.lowLevel).toBe(4);
+
+    expect(snapshots[5]?.highLevel).toBe(20);
+    expect(snapshots[5]?.lowLevel).toBe(3);
   });
 
   it('returns only base history when includeMlPayload is false', () => {
@@ -293,5 +337,49 @@ describe('utils indicators', () => {
     const expected = result.maFast1h[result.maFast1h.length - 1];
 
     expect(indicators.latestNumber('maFast1h')).toBe(expected);
+  });
+
+  it('matches direct coin/btc correlation on the same sliding candle window', () => {
+    const indicators = createIndicators([], [], {
+      periods: {
+        maFast: 2,
+        maMedium: 2,
+        maSlow: 2,
+        obvSma: 2,
+        atr: 2,
+        atrPctShort: 2,
+        atrPctLong: 2,
+        bb: 2,
+        bbStd: 2,
+        macdFast: 3,
+        macdSlow: 4,
+        macdSignal: 2,
+      },
+    });
+
+    const coinHistory: Candle[] = [];
+    const btcHistory: Candle[] = [];
+
+    for (let i = 0; i < CORRELATION_WINDOW + 12; i += 1) {
+      const ts = i * INTERVAL_15M_MS;
+      const coin = makeCandle(ts, 100 + i + (i % 3), 101 + i, 99 + i);
+      const btc = makeCandle(ts, 200 + i * 2 + (i % 5), 201 + i, 199 + i);
+
+      coinHistory.push(coin);
+      btcHistory.push(btc);
+
+      const snapshot = indicators.next(coin, btc);
+      if (!snapshot) {
+        continue;
+      }
+
+      const expected =
+        calculateCoinBtcCorrelation(
+          coinHistory.slice(-CORRELATION_WINDOW) as any,
+          btcHistory.slice(-CORRELATION_WINDOW) as any,
+        ).correlation ?? 0;
+
+      expect(snapshot.correlation).toBe(expected);
+    }
   });
 });

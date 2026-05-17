@@ -366,49 +366,7 @@ const DashboardSkeleton = () => (
       ))}
     </SimpleGrid>
 
-    <SimpleGrid columns={{ base: 1, xl: 2 }} gap={4} mb={6}>
-      <Card.Root
-        bg="gray.900"
-        borderColor="gray.800"
-        borderWidth="1px"
-        size="sm"
-      >
-        <Card.Header>
-          <Skeleton height="24px" width="220px" />
-        </Card.Header>
-        <Card.Body>
-          <Skeleton height="280px" />
-        </Card.Body>
-      </Card.Root>
-      <Card.Root
-        bg="gray.900"
-        borderColor="gray.800"
-        borderWidth="1px"
-        size="sm"
-      >
-        <Card.Header>
-          <Skeleton height="24px" width="220px" />
-        </Card.Header>
-        <Card.Body>
-          <Skeleton height="280px" />
-        </Card.Body>
-      </Card.Root>
-      <Card.Root
-        bg="gray.900"
-        borderColor="gray.800"
-        borderWidth="1px"
-        size="sm"
-      >
-        <Card.Header>
-          <Skeleton height="24px" width="220px" />
-        </Card.Header>
-        <Card.Body>
-          <Skeleton height="280px" />
-        </Card.Body>
-      </Card.Root>
-    </SimpleGrid>
-
-    <SimpleGrid columns={{ base: 1, xl: 2 }} gap={4} mb={6}>
+    <SimpleGrid columns={{ base: 1, lg: 2 }} gap={4} mb={6}>
       <Card.Root
         bg="gray.900"
         borderColor="gray.800"
@@ -437,7 +395,65 @@ const DashboardSkeleton = () => (
       </Card.Root>
     </SimpleGrid>
 
-    <SimpleGrid columns={{ base: 1, xl: 2 }} gap={4} mb={6}>
+    <SimpleGrid columns={{ base: 1, lg: 2 }} gap={4} mb={6}>
+      <Card.Root
+        bg="gray.900"
+        borderColor="gray.800"
+        borderWidth="1px"
+        size="sm"
+      >
+        <Card.Header>
+          <Skeleton height="24px" width="220px" />
+        </Card.Header>
+        <Card.Body>
+          <Skeleton height="280px" />
+        </Card.Body>
+      </Card.Root>
+      <Card.Root
+        bg="gray.900"
+        borderColor="gray.800"
+        borderWidth="1px"
+        size="sm"
+      >
+        <Card.Header>
+          <Skeleton height="24px" width="220px" />
+        </Card.Header>
+        <Card.Body>
+          <Skeleton height="280px" />
+        </Card.Body>
+      </Card.Root>
+    </SimpleGrid>
+
+    <SimpleGrid columns={{ base: 1, lg: 2 }} gap={4} mb={6}>
+      <Card.Root
+        bg="gray.900"
+        borderColor="gray.800"
+        borderWidth="1px"
+        size="sm"
+      >
+        <Card.Header>
+          <Skeleton height="24px" width="220px" />
+        </Card.Header>
+        <Card.Body>
+          <Skeleton height="280px" />
+        </Card.Body>
+      </Card.Root>
+      <Card.Root
+        bg="gray.900"
+        borderColor="gray.800"
+        borderWidth="1px"
+        size="sm"
+      >
+        <Card.Header>
+          <Skeleton height="24px" width="220px" />
+        </Card.Header>
+        <Card.Body>
+          <Skeleton height="280px" />
+        </Card.Body>
+      </Card.Root>
+    </SimpleGrid>
+
+    <SimpleGrid columns={{ base: 1, lg: 2 }} gap={4} mb={6}>
       <Card.Root
         bg="gray.900"
         borderColor="gray.800"

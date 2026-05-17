@@ -256,6 +256,39 @@ export const createIndicators = (
   const spreadSmoother = createSpreadSmoother();
   let btcBinanceCursor = 0;
   let btcCoinbaseCursor = 0;
+  const createRollingCandleWindow = (windowSize: number) => {
+    const buffer = new Array<Candle | undefined>(Math.max(0, windowSize));
+    const snapshot: Candle[] = [];
+    let startIndex = 0;
+    let size = 0;
+
+    return {
+      push: (candle: Candle) => {
+        if (windowSize <= 0) {
+          return;
+        }
+
+        if (size < windowSize) {
+          buffer[(startIndex + size) % windowSize] = candle;
+          size += 1;
+          return;
+        }
+
+        buffer[startIndex] = candle;
+        startIndex = (startIndex + 1) % windowSize;
+      },
+      snapshot: (): Candle[] => {
+        snapshot.length = size;
+        for (let index = 0; index < size; index += 1) {
+          snapshot[index] = buffer[(startIndex + index) % windowSize]!;
+        }
+        return snapshot;
+      },
+      size: () => size,
+    };
+  };
+  const correlationCoinWindow = createRollingCandleWindow(CORRELATION_WINDOW);
+  const correlationBtcWindow = createRollingCandleWindow(CORRELATION_WINDOW);
 
   const obv = new OBV({ close: [], volume: [] });
   const smaObv = new SMA({ period: indicatorPeriods.obvSma, values: [] });
@@ -352,6 +385,50 @@ export const createIndicators = (
 
   let window1hStart = 0;
   let window24hStart = 0;
+  const levelHighDeque: number[] = [];
+  const levelLowDeque: number[] = [];
+
+  const pushLevelHighIndex = (index: number) => {
+    while (
+      levelHighDeque.length > 0 &&
+      highs[levelHighDeque[levelHighDeque.length - 1]] <= highs[index]
+    ) {
+      levelHighDeque.pop();
+    }
+    levelHighDeque.push(index);
+  };
+
+  const pushLevelLowIndex = (index: number) => {
+    while (
+      levelLowDeque.length > 0 &&
+      lows[levelLowDeque[levelLowDeque.length - 1]] >= lows[index]
+    ) {
+      levelLowDeque.pop();
+    }
+    levelLowDeque.push(index);
+  };
+
+  const updateLevelWindow = (currentIndex: number) => {
+    const enteringIndex = currentIndex - indicatorPeriods.levelDelay;
+    if (enteringIndex >= 0) {
+      pushLevelHighIndex(enteringIndex);
+      pushLevelLowIndex(enteringIndex);
+    }
+
+    const validStartIndex =
+      currentIndex -
+      indicatorPeriods.levelDelay -
+      indicatorPeriods.levelLookback +
+      1;
+
+    while (levelHighDeque.length > 0 && levelHighDeque[0] < validStartIndex) {
+      levelHighDeque.shift();
+    }
+
+    while (levelLowDeque.length > 0 && levelLowDeque[0] < validStartIndex) {
+      levelLowDeque.shift();
+    }
+  };
 
   const computeWindow = (
     currentTimestamp: number,
@@ -432,8 +509,10 @@ export const createIndicators = (
   ): IndicatorSnapshot | null => {
     isHistoryResultDirty = true;
     candlesHistory.push(candle);
+    correlationCoinWindow.push(candle);
     if (btcCandle) {
       btcCandlesHistory.push(btcCandle);
+      correlationBtcWindow.push(btcCandle);
     }
 
     closes.push(candle.close);
@@ -469,12 +548,18 @@ export const createIndicators = (
 
     const currentTimestamp = candle.timestamp;
     const len = candlesHistory.length;
+    const currentIndex = len - 1;
     const prevCandle = len > 1 ? candlesHistory[len - 2] : null;
+    const correlationCoinCandles = correlationCoinWindow.snapshot();
+    const correlationBtcCandles = correlationBtcWindow.snapshot();
+    if (indicatorPeriods.levelLookback > 0) {
+      updateLevelWindow(currentIndex);
+    }
     const correlation =
-      btcCandlesHistory.length > 0
+      correlationBtcWindow.size() > 0
         ? calculateCoinBtcCorrelation(
-            candlesHistory.slice(-CORRELATION_WINDOW) as any,
-            btcCandlesHistory.slice(-CORRELATION_WINDOW) as any,
+            correlationCoinCandles as any,
+            correlationBtcCandles as any,
           ).correlation ?? 0
         : 0;
 
@@ -602,7 +687,19 @@ export const createIndicators = (
 
     let highLevel: number | null = null;
     let lowLevel: number | null = null;
-    if (len >= indicatorPeriods.levelLookback + indicatorPeriods.levelDelay) {
+    if (indicatorPeriods.levelLookback > 0) {
+      if (
+        len >= indicatorPeriods.levelLookback + indicatorPeriods.levelDelay &&
+        levelHighDeque.length > 0 &&
+        levelLowDeque.length > 0
+      ) {
+        highLevel = highs[levelHighDeque[0]];
+        lowLevel = lows[levelLowDeque[0]];
+      }
+    } else if (
+      len >=
+      indicatorPeriods.levelLookback + indicatorPeriods.levelDelay
+    ) {
       const window = candlesHistory.slice(
         len - indicatorPeriods.levelLookback - indicatorPeriods.levelDelay,
         len - indicatorPeriods.levelDelay,

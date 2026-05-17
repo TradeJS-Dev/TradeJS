@@ -214,7 +214,46 @@ export const createStrategyAPI = ({
   backtestPriceMode,
   isConfigFromBacktest,
 }: CreateStrategyAPIParams): StrategyAPI => {
-  const getCurrentPosition = () => connector.getPosition(symbol);
+  const isBacktestEnv = env === 'BACKTEST';
+  const barCache = {
+    timestamp: null as number | null,
+    currentPosition: undefined as
+      | Promise<Awaited<ReturnType<Connector['getPosition']>>>
+      | undefined,
+    marketDataByKey: new Map<string, Promise<StrategyMarketSnapshot>>(),
+  };
+  const getCurrentBarTimestamp = () => {
+    const lastCandle = cachedData[cachedData.length - 1];
+    return typeof lastCandle?.timestamp === 'number'
+      ? lastCandle.timestamp
+      : null;
+  };
+  const ensureBarCache = () => {
+    if (!isBacktestEnv) {
+      return;
+    }
+
+    const currentBarTimestamp = getCurrentBarTimestamp();
+    if (barCache.timestamp === currentBarTimestamp) {
+      return;
+    }
+
+    barCache.timestamp = currentBarTimestamp;
+    barCache.currentPosition = undefined;
+    barCache.marketDataByKey.clear();
+  };
+  const getCurrentPosition = () => {
+    if (!isBacktestEnv) {
+      return connector.getPosition(symbol);
+    }
+
+    ensureBarCache();
+    if (!barCache.currentPosition) {
+      barCache.currentPosition = connector.getPosition(symbol);
+    }
+
+    return barCache.currentPosition;
+  };
   const isPositionExists = async () => {
     const position = await getCurrentPosition();
     return Boolean(
@@ -226,20 +265,43 @@ export const createStrategyAPI = ({
     params: StrategyAPIMarketDataParams = {},
   ): Promise<StrategyMarketSnapshot> => {
     const resolvedPreloadStart = params.preloadStart ?? preloadStart;
+    const resolvedBacktestPriceMode =
+      params.backtestPriceMode ?? backtestPriceMode;
 
     if (typeof resolvedPreloadStart !== 'number') {
       throw new Error('strategyApi.getMarketData requires preloadStart');
     }
 
-    const snapshot = await getStrategyMarketSnapshot({
-      env,
-      connector,
-      symbol,
-      interval,
-      cachedData,
-      preloadStart: resolvedPreloadStart,
-      backtestPriceMode: params.backtestPriceMode ?? backtestPriceMode,
-    });
+    if (!isBacktestEnv) {
+      return getStrategyMarketSnapshot({
+        env,
+        connector,
+        symbol,
+        interval,
+        cachedData,
+        preloadStart: resolvedPreloadStart,
+        backtestPriceMode: resolvedBacktestPriceMode,
+      });
+    }
+
+    ensureBarCache();
+
+    const cacheKey = `${resolvedPreloadStart}:${String(
+      resolvedBacktestPriceMode ?? '',
+    )}`;
+    let snapshot = barCache.marketDataByKey.get(cacheKey);
+    if (!snapshot) {
+      snapshot = getStrategyMarketSnapshot({
+        env,
+        connector,
+        symbol,
+        interval,
+        cachedData,
+        preloadStart: resolvedPreloadStart,
+        backtestPriceMode: resolvedBacktestPriceMode,
+      });
+      barCache.marketDataByKey.set(cacheKey, snapshot);
+    }
 
     return snapshot;
   };

@@ -90,6 +90,36 @@ describe('testConnector', () => {
     expect(setData).not.toHaveBeenCalled();
   });
 
+  it('reuses the same inline log arrays across repeated getResult calls', async () => {
+    const connector = createTestConnector(baseConnector as any, {
+      userName: 'alice',
+    });
+
+    await connector.placeOrder({
+      symbol: 'ETHUSDT',
+      qty: 1,
+      price: 100,
+      isLimit: false,
+      timestamp: 1,
+      direction: 'LONG',
+    });
+    await connector.closePosition({
+      symbol: 'ETHUSDT',
+      price: 105,
+      isLimit: false,
+      timestamp: 2,
+      direction: 'LONG',
+    });
+
+    const firstResult = await connector.getResult();
+    const secondResult = await connector.getResult();
+
+    expect(secondResult.inlineOrderLog).toBe(firstResult.inlineOrderLog);
+    expect(secondResult.inlinePositionLog).toBe(firstResult.inlinePositionLog);
+    expect(secondResult.inlineOrderLog).toHaveLength(2);
+    expect(secondResult.inlinePositionLog).toHaveLength(1);
+  });
+
   it('tracks closed signal profit for stop loss exits and drains the batch once', async () => {
     const connector = createTestConnector(baseConnector as any, {
       mlEnabled: true,

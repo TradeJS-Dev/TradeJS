@@ -398,14 +398,14 @@ export const GET = async (request: NextRequest) => {
     );
 
     strategies.sort((left, right) => {
-      if (left.connected !== right.connected) {
-        return left.connected ? -1 : 1;
-      }
-      if (left.stat.score !== right.stat.score) {
-        return (right.stat.score ?? 0) - (left.stat.score ?? 0);
+      if (left.stat.netProfit !== right.stat.netProfit) {
+        return right.stat.netProfit - left.stat.netProfit;
       }
       if (left.summary.totalPnl !== right.summary.totalPnl) {
         return right.summary.totalPnl - left.summary.totalPnl;
+      }
+      if (left.connected !== right.connected) {
+        return left.connected ? -1 : 1;
       }
       return left.strategyName.localeCompare(right.strategyName);
     });

@@ -57,6 +57,46 @@ const makeSignal = (overrides: Record<string, any> = {}) =>
         atrMultiplier: 2,
         ...overrides.additionalIndicators?.amrConfigSnapshot,
       },
+      derivativesContext: {
+        ...overrides.additionalIndicators?.derivativesContext,
+        summary: {
+          directionAligned: true,
+          riskFlags: [],
+          ...overrides.additionalIndicators?.derivativesContext?.summary,
+        },
+        intervals: {
+          ...overrides.additionalIndicators?.derivativesContext?.intervals,
+          '15m': {
+            fundingZScore: 0.2,
+            ...overrides.additionalIndicators?.derivativesContext?.intervals?.[
+              '15m'
+            ],
+          },
+        },
+      },
+    },
+  }) as any;
+
+const buildPayloadForSignal = (signal: any) =>
+  adaptiveMomentumRibbonAiAdapter.buildPayload?.({
+    signal,
+    basePayload: {
+      signal: {
+        symbol: signal.symbol,
+        signalId: signal.signalId,
+        interval: signal.interval,
+        direction: signal.direction,
+        timestamp: signal.timestamp,
+        strategy: signal.strategy,
+        prices: {
+          currentPrice: signal.prices.currentPrice,
+          takeProfitPrice: signal.prices.takeProfitPrice,
+          stopLossPrice: signal.prices.stopLossPrice,
+        },
+      },
+      figures: {},
+      indicators: signal.indicators,
+      additionalIndicators: signal.additionalIndicators,
     },
   }) as any;
 
@@ -336,6 +376,136 @@ describe('adaptiveMomentumRibbonAiAdapter', () => {
         deterministicQuality: 4,
         approvalAllowedNow: true,
         structuralHardBlockReasons: [],
+      }),
+    );
+  });
+
+  it('demotes q4 longs when derivatives direction is not aligned', () => {
+    const signal = makeSignal({
+      prices: {
+        currentPrice: 100.78,
+        takeProfitPrice: 103.4,
+        stopLossPrice: 99.92,
+      },
+      additionalIndicators: {
+        amr: {
+          signalOsc: 0.72,
+          kcMidline: 100.2,
+          kcUpper: 100.7,
+          kcLower: 99.6,
+          invalidationLevel: 99.92,
+        },
+        derivativesContext: {
+          summary: {
+            directionAligned: false,
+          },
+        },
+      },
+    });
+    const payload = buildPayloadForSignal(signal);
+
+    expect(payload.additionalIndicators.adaptiveMomentumRibbonContext).toEqual(
+      expect.objectContaining({
+        derivativesDirectionAligned: false,
+        deterministicQuality: 3,
+        approvalAllowedNow: false,
+      }),
+    );
+  });
+
+  it('demotes q4 longs when open interest does not confirm the move', () => {
+    const signal = makeSignal({
+      prices: {
+        currentPrice: 100.78,
+        takeProfitPrice: 103.4,
+        stopLossPrice: 99.92,
+      },
+      additionalIndicators: {
+        amr: {
+          signalOsc: 0.72,
+          kcMidline: 100.2,
+          kcUpper: 100.7,
+          kcLower: 99.6,
+          invalidationLevel: 99.92,
+        },
+        derivativesContext: {
+          summary: {
+            riskFlags: ['oi_not_confirming'],
+          },
+        },
+      },
+    });
+    const payload = buildPayloadForSignal(signal);
+
+    expect(payload.additionalIndicators.adaptiveMomentumRibbonContext).toEqual(
+      expect.objectContaining({
+        derivativesRiskFlags: ['oi_not_confirming'],
+        deterministicQuality: 3,
+        approvalAllowedNow: false,
+      }),
+    );
+  });
+
+  it('demotes q4 longs when funding is too crowded', () => {
+    const signal = makeSignal({
+      prices: {
+        currentPrice: 100.78,
+        takeProfitPrice: 103.4,
+        stopLossPrice: 99.92,
+      },
+      additionalIndicators: {
+        amr: {
+          signalOsc: 0.72,
+          kcMidline: 100.2,
+          kcUpper: 100.7,
+          kcLower: 99.6,
+          invalidationLevel: 99.92,
+        },
+        derivativesContext: {
+          intervals: {
+            '15m': {
+              fundingZScore: 0.9,
+            },
+          },
+        },
+      },
+    });
+    const payload = buildPayloadForSignal(signal);
+
+    expect(payload.additionalIndicators.adaptiveMomentumRibbonContext).toEqual(
+      expect.objectContaining({
+        derivativesFundingZScore: 0.9,
+        deterministicQuality: 3,
+        approvalAllowedNow: false,
+      }),
+    );
+  });
+
+  it('keeps q5 longs approved even when derivatives are crowded', () => {
+    const signal = makeSignal({
+      additionalIndicators: {
+        derivativesContext: {
+          summary: {
+            directionAligned: false,
+            riskFlags: ['oi_not_confirming'],
+          },
+          intervals: {
+            '15m': {
+              fundingZScore: 1.3,
+            },
+          },
+        },
+      },
+    });
+    const payload = buildPayloadForSignal(signal);
+
+    expect(payload.additionalIndicators.adaptiveMomentumRibbonContext).toEqual(
+      expect.objectContaining({
+        derivativesDirectionAligned: false,
+        derivativesRiskFlags: ['oi_not_confirming'],
+        derivativesFundingZScore: 1.3,
+        deterministicQuality: 5,
+        approvalAllowedNow: true,
       }),
     );
   });

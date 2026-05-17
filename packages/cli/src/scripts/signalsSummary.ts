@@ -63,6 +63,11 @@ const formatSigned = (value: number) =>
 const formatPnlText = (value: number, knownCount: number) =>
   knownCount > 0 ? formatSigned(value) : 'n/a';
 
+const formatWinRateText = (wins: number, closedKnown: number) =>
+  closedKnown > 0
+    ? `${((wins / closedKnown) * 100).toFixed(2)}% (${wins}/${closedKnown})`
+    : 'n/a';
+
 const resolveSummaryTitle = (hours: number) => {
   if (hours === 24) {
     return 'TradeJS daily summary';
@@ -134,11 +139,17 @@ const buildSummaryPrelude = ({
   startTime,
   endTime,
   totalWindowPnlText,
+  winRateText,
+  longCount,
+  shortCount,
 }: {
   hours: number;
   startTime: number;
   endTime: number;
   totalWindowPnlText: string;
+  winRateText: string;
+  longCount: number;
+  shortCount: number;
 }) => {
   const windowPnlLabel = hours === 24 ? '24h PnL' : `${hours}h PnL`;
 
@@ -150,16 +161,25 @@ const buildSummaryPrelude = ({
     '',
     `⏱ Range: <b>${hours}h</b>`,
     `💰 <b>${windowPnlLabel}:</b> <b>${escapeHtml(totalWindowPnlText)}</b>`,
+    `🏆 <b>WinRate:</b> <b>${escapeHtml(winRateText)}</b>`,
+    `↗️ <b>LONG:</b> <b>${longCount}</b>, ↘️ <b>SHORT:</b> <b>${shortCount}</b>`,
   ];
 };
 
-const resolveTradeStatusEmoji = (status: RuntimeTradeRecord['status']) => {
+const resolveTradeStatusEmoji = (
+  status: RuntimeTradeRecord['status'],
+  pnl?: number | null,
+) => {
   if (status === 'active') {
-    return '🟢';
+    return typeof pnl === 'number' && Number.isFinite(pnl) && pnl < 0
+      ? '🔴'
+      : '🟢';
   }
 
   if (status === 'closed') {
-    return '✅';
+    return typeof pnl === 'number' && Number.isFinite(pnl) && pnl < 0
+      ? '❌'
+      : '✅';
   }
 
   return '❔';
@@ -185,13 +205,21 @@ const buildTradeSummaryLine = (stats: {
   const closedPnlText = formatPnlText(stats.closedPnl, stats.closedPnlKnown);
   const totalPnlText = formatPnlText(stats.totalPnl, stats.totalPnlKnown);
   const hasMixedStatuses = stats.active > 0 && stats.closed > 0;
+  const activeEmoji = resolveTradeStatusEmoji(
+    'active',
+    stats.activePnlKnown > 0 ? stats.activePnl : null,
+  );
+  const closedEmoji = resolveTradeStatusEmoji(
+    'closed',
+    stats.closedPnlKnown > 0 ? stats.closedPnl : null,
+  );
 
   if (hasMixedStatuses) {
     parts.push(
-      `🟢=<b>${stats.active}</b> (PnL <b>${escapeHtml(activePnlText)}</b>)`,
+      `${activeEmoji}=<b>${stats.active}</b> (PnL <b>${escapeHtml(activePnlText)}</b>)`,
     );
     parts.push(
-      `✅=<b>${stats.closed}</b> (PnL <b>${escapeHtml(closedPnlText)}</b>)`,
+      `${closedEmoji}=<b>${stats.closed}</b> (PnL <b>${escapeHtml(closedPnlText)}</b>)`,
     );
 
     if (stats.totalPnlKnown > 0) {
@@ -202,11 +230,11 @@ const buildTradeSummaryLine = (stats: {
   }
 
   if (stats.active > 0) {
-    parts.push(`🟢 (PnL <b>${escapeHtml(activePnlText)}</b>)`);
+    parts.push(`${activeEmoji} (PnL <b>${escapeHtml(activePnlText)}</b>)`);
   }
 
   if (stats.closed > 0) {
-    parts.push(`✅ (PnL <b>${escapeHtml(closedPnlText)}</b>)`);
+    parts.push(`${closedEmoji} (PnL <b>${escapeHtml(closedPnlText)}</b>)`);
   }
 
   return parts.join(', ');
@@ -255,10 +283,13 @@ const buildSummaryMessages = ({
       trades: Array<{
         symbol: string;
         status: RuntimeTradeRecord['status'];
+        pnl: number | null;
         pnlText: string;
         entryTimestamp: number;
         orderId: string;
       }>;
+      closedWins: number;
+      closedKnown: number;
     }
   >();
 
@@ -289,6 +320,8 @@ const buildSummaryMessages = ({
       totalPnl: 0,
       totalPnlKnown: 0,
       trades: [],
+      closedWins: 0,
+      closedKnown: 0,
     };
     const pnl =
       trade.status === 'active'
@@ -315,11 +348,16 @@ const buildSummaryMessages = ({
         stats.closedPnlKnown += 1;
         stats.totalPnl += pnl;
         stats.totalPnlKnown += 1;
+        stats.closedKnown += 1;
+        if (pnl > 0) {
+          stats.closedWins += 1;
+        }
       }
     }
     stats.trades.push({
       symbol: trade.symbol,
       status: trade.status,
+      pnl: typeof pnl === 'number' && Number.isFinite(pnl) ? pnl : null,
       pnlText,
       entryTimestamp: trade.entryTimestamp,
       orderId: trade.orderId,
@@ -340,11 +378,27 @@ const buildSummaryMessages = ({
   );
   const totalWindowPnlText =
     totalWindowPnlKnown > 0 ? formatSigned(totalWindowPnl) : 'n/a';
+  const longCount = trades.filter((trade) => trade.direction === 'LONG').length;
+  const shortCount = trades.filter(
+    (trade) => trade.direction === 'SHORT',
+  ).length;
+  const closedWins = [...tradeStats.values()].reduce(
+    (sum, stats) => sum + stats.closedWins,
+    0,
+  );
+  const closedKnown = [...tradeStats.values()].reduce(
+    (sum, stats) => sum + stats.closedKnown,
+    0,
+  );
+  const winRateText = formatWinRateText(closedWins, closedKnown);
   const prelude = buildSummaryPrelude({
     hours,
     startTime,
     endTime,
     totalWindowPnlText,
+    winRateText,
+    longCount,
+    shortCount,
   });
 
   signalLines.push(...prelude);
@@ -447,7 +501,7 @@ const buildSummaryMessages = ({
     );
     for (const trade of sortedTrades) {
       tradeLines.push(
-        `- ${escapeHtml(trade.symbol)}: PnL <b>${escapeHtml(trade.pnlText)}</b> ${resolveTradeStatusEmoji(trade.status)}`,
+        `- ${escapeHtml(trade.symbol)}: PnL <b>${escapeHtml(trade.pnlText)}</b> ${resolveTradeStatusEmoji(trade.status, trade.pnl)}`,
       );
     }
   }

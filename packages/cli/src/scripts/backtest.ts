@@ -1325,11 +1325,7 @@ export const backtest = async () => {
       void maybeFinish();
     });
 
-    await setData(redisKeys.cacheChunk(userName, chunkId), chunkWithId, {
-      expire: TTL_1D,
-    });
-
-    tester.send({ chunkId, userName });
+    tester.send({ chunk: chunkWithId, chunkId, userName });
   }
 };
 

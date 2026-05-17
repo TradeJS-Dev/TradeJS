@@ -78,15 +78,6 @@ export const RuntimeStrategyCard = ({
 
         <Flex gap="1">
           <Text fontSize="sm" fontWeight="bold" color="gray.400" mt={1}>
-            score:
-          </Text>
-          <Text fontSize="lg" fontWeight="bold" color="teal.500">
-            {strategy.stat.score ?? 0}
-          </Text>
-        </Flex>
-
-        <Flex gap="1">
-          <Text fontSize="sm" fontWeight="bold" color="gray.400" mt={1}>
             connector:
           </Text>
           <Text fontSize="lg" fontWeight="bold" color="gray.200">

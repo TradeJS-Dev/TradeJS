@@ -106,8 +106,8 @@ export const createTestConnector: TestConnectorCreator = (
           orders: positionLog.length,
         },
         orderLogId,
-        inlineOrderLog: [...orderLog],
-        inlinePositionLog: [...positionLog],
+        inlineOrderLog: orderLog,
+        inlinePositionLog: positionLog,
       };
     },
 

@@ -160,7 +160,7 @@ describe('signals summary script', () => {
           qty: 1,
           price: 100,
           currentPrice: 112,
-          unrealizedPnl: 12,
+          unrealizedPnl: -12,
           direction: 'LONG',
         },
       ]),
@@ -241,7 +241,11 @@ describe('signals summary script', () => {
     }
     expect(signalsMessage).toContain('TradeJS daily summary');
     expect(signalsMessage).toContain('📡 <b>Signals</b>');
-    expect(signalsMessage).toContain('💰 <b>24h PnL:</b> <b>+8.00</b>');
+    expect(signalsMessage).toContain('💰 <b>24h PnL:</b> <b>-16.00</b>');
+    expect(signalsMessage).toContain('🏆 <b>WinRate:</b> <b>0.00% (0/1)</b>');
+    expect(signalsMessage).toContain(
+      '↗️ <b>LONG:</b> <b>1</b>, ↘️ <b>SHORT:</b> <b>1</b>',
+    );
     expect(signalsMessage).toContain('<b>TrendLine</b>\ncompleted=<b>1</b>');
     expect(signalsMessage).toContain(
       '<b>ReverseTrendLine</b>\nskipped=<b>1</b>',
@@ -254,10 +258,10 @@ describe('signals summary script', () => {
     expect(tradesMessage).toContain('TradeJS daily summary');
     expect(tradesMessage).toContain('💼 <b>Trades</b>');
     expect(tradesMessage).toContain(
-      '<b>TrendLine</b>\ntotal=<b>1</b>, 🟢 (PnL <b>+12.00</b>)\n- BTCUSDT: PnL <b>+12.00</b> 🟢',
+      '<b>TrendLine</b>\ntotal=<b>1</b>, 🔴 (PnL <b>-12.00</b>)\n- BTCUSDT: PnL <b>-12.00</b> 🔴',
     );
     expect(tradesMessage).toContain(
-      '<b>ReverseTrendLine</b>\ntotal=<b>1</b>, ✅ (PnL <b>-4.00</b>)\n- ETHUSDT: PnL <b>-4.00</b> ✅',
+      '<b>ReverseTrendLine</b>\ntotal=<b>1</b>, ❌ (PnL <b>-4.00</b>)\n- ETHUSDT: PnL <b>-4.00</b> ❌',
     );
     expect(setData).toHaveBeenCalledWith(
       redisKeys.runtimeTrade('root', 'ord-2'),
@@ -422,6 +426,10 @@ describe('signals summary script', () => {
     expect(signalsMessage).toContain('📡 <b>Signals</b>');
     expect(signalsMessage).toContain('Range: <b>168h</b>');
     expect(signalsMessage).toContain('💰 <b>168h PnL:</b> <b>n/a</b>');
+    expect(signalsMessage).toContain('🏆 <b>WinRate:</b> <b>n/a</b>');
+    expect(signalsMessage).toContain(
+      '↗️ <b>LONG:</b> <b>0</b>, ↘️ <b>SHORT:</b> <b>0</b>',
+    );
     expect(signalsMessage).toContain(
       '<b>AdaptiveMomentumRibbon</b>\nskipped=<b>1</b>',
     );

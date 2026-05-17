@@ -149,6 +149,14 @@ const getConnectorCacheKey = (params: {
   connectorName: string;
 }) => [params.userName, params.connectorName].join(':');
 
+const deleteMapEntriesByPrefix = <T>(map: Map<string, T>, prefix: string) => {
+  for (const key of map.keys()) {
+    if (key.startsWith(prefix)) {
+      map.delete(key);
+    }
+  }
+};
+
 const splitCandlesForTesting = (
   candles: KlineChartData,
   start: number,
@@ -211,6 +219,21 @@ export const resetTestingKlineCache = (cwd?: string) => {
   testingKlineCacheStateByProjectRoot.delete(
     getTradejsProjectCwd(normalizedCwd),
   );
+};
+
+export const releaseTestingSymbolCache = (params: {
+  cwd?: string;
+  userName: string;
+  connectorName: string;
+  symbol: string;
+}) => {
+  const { cwd, userName, connectorName, symbol } = params;
+  const { state } = getTestingKlineCacheState(cwd);
+  const symbolCacheKeyPrefix =
+    [userName, connectorName, symbol].join(':') + ':';
+
+  deleteMapEntriesByPrefix(state.coinKlineCache, symbolCacheKeyPrefix);
+  deleteMapEntriesByPrefix(state.preparedDataCache, symbolCacheKeyPrefix);
 };
 
 export const testing: TestingBox = async ({

@@ -14,13 +14,14 @@ AdaptiveMomentumRibbon addon:
 - \`invalidationLevel\` is the structural invalidation level on the signal bar. If \`invalidated=true\` or \`invalidationLevel\` sits on the wrong side of the current price, do not treat the setup as confirmed.
 - \`channelState\` and \`channelBiasAligned\` describe where price sits relative to the Keltner Channel. For LONG it is a negative sign if price is still below \`kcMidline\`; for SHORT it is a negative sign if price is above \`kcMidline\`.
 - \`invalidationDistancePct\` and \`structuralRewardRiskRatio\` describe how compact the structure is. Do not overstate quality when invalidation is too wide or reward/risk versus invalidation is weak.
+- \`derivativesDirectionAligned\`, \`derivativesRiskFlags\`, and \`derivativesFundingZScore\` are required confirmation for q4 live approvals. If derivatives are not aligned, if \`riskFlags\` contains \`oi_not_confirming\`, or if funding is too crowded, keep the setup in watch mode.
 - \`quality=5\` requires very clean momentum: correct channel side, strong \`signalOsc\`, sane invalidation distance, and no coin/BTC bias conflicts.
 - If \`approvalAllowedNow=false\` or \`deterministicQuality<4\`, this is usually watch mode rather than a ready live approval.
 `;
 
 const ADAPTIVE_MOMENTUM_RIBBON_PAYLOAD_PROMPT = `
 - \`payload.additionalIndicators.adaptiveMomentumRibbonContext\` contains a compact signal summary:
-  signalOsc / oscillatorStrength / channelState / channelExtensionPct / invalidationDistancePct / structuralRewardRiskRatio / coinBiasAligned / btcBiasAligned / deterministicQuality / approvalAllowedNow / structuralHardBlockReasons.
+  signalOsc / oscillatorStrength / channelState / channelExtensionPct / invalidationDistancePct / structuralRewardRiskRatio / coinBiasAligned / btcBiasAligned / derivativesDirectionAligned / derivativesRiskFlags / derivativesFundingZScore / deterministicQuality / approvalAllowedNow / structuralHardBlockReasons.
 - Use this context as the primary strategy-specific interpretation instead of re-deriving it only from generic series.
 `;
 
@@ -77,6 +78,9 @@ type AdaptiveMomentumRibbonAiContext = {
   btcMaBias: Bias;
   coinBiasAligned: boolean | null;
   btcBiasAligned: boolean | null;
+  derivativesDirectionAligned: boolean | null;
+  derivativesRiskFlags: string[];
+  derivativesFundingZScore: number | null;
   primarySession: PrimaryTradingSession | null;
   sessionAllowsApproval: boolean | null;
   hardBlockReasons: AmrHardBlockReason[];
@@ -137,6 +141,14 @@ const getRecord = (value: unknown): Record<string, unknown> | null =>
   value && typeof value === 'object' && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : null;
+
+const getStringArray = (value: unknown): string[] =>
+  Array.isArray(value)
+    ? value.filter(
+        (entry): entry is string =>
+          typeof entry === 'string' && entry.trim().length > 0,
+      )
+    : [];
 
 const getPrimarySession = (
   signal: Signal,
@@ -400,6 +412,11 @@ const getDeterministicAdaptiveMomentumRibbonQuality = (
   const sessionAllowsApproval = context.sessionAllowsApproval !== false;
   const slowestDetector =
     context.momentumPeriod === 48 && context.butterworthSmoothing === 6;
+  const q4DerivativesSupported =
+    context.derivativesDirectionAligned === true &&
+    !context.derivativesRiskFlags.includes('oi_not_confirming') &&
+    context.derivativesFundingZScore != null &&
+    context.derivativesFundingZScore <= 0.5;
 
   if (!sessionAllowsApproval) {
     return 3;
@@ -427,7 +444,7 @@ const getDeterministicAdaptiveMomentumRibbonQuality = (
     biasConflictCount < 2 &&
     (biasConflictCount === 0 || oscillatorStrong)
   ) {
-    return 4;
+    return q4DerivativesSupported ? 4 : 3;
   }
 
   return 3;
@@ -539,6 +556,22 @@ const buildAdaptiveMomentumRibbonContext = (
           ? null
           : btcBias === 'bearish'
         : null;
+  const derivativesContext = getRecord(
+    additionalIndicators?.derivativesContext ??
+      signal.additionalIndicators?.derivativesContext,
+  );
+  const derivativesSummary = getRecord(derivativesContext?.summary);
+  const derivativesIntervals = getRecord(derivativesContext?.intervals);
+  const derivatives15m = getRecord(derivativesIntervals?.['15m']);
+  const derivatives1h = getRecord(derivativesIntervals?.['1h']);
+  const derivativesDirectionAligned =
+    typeof derivativesSummary?.directionAligned === 'boolean'
+      ? derivativesSummary.directionAligned
+      : null;
+  const derivativesRiskFlags = getStringArray(derivativesSummary?.riskFlags);
+  const derivativesFundingZScore =
+    toFiniteNumberOrNull(derivatives15m?.fundingZScore) ??
+    toFiniteNumberOrNull(derivatives1h?.fundingZScore);
   const primarySession = getPrimarySession(signal, additionalIndicators);
   const sessionAllowsApproval =
     primarySession == null ? null : primarySession === 'off_hours';
@@ -595,6 +628,9 @@ const buildAdaptiveMomentumRibbonContext = (
     btcMaBias: btcBias,
     coinBiasAligned,
     btcBiasAligned,
+    derivativesDirectionAligned,
+    derivativesRiskFlags,
+    derivativesFundingZScore,
     primarySession,
     sessionAllowsApproval,
     hardBlockReasons,
@@ -624,6 +660,9 @@ const buildAdaptiveMomentumRibbonContext = (
     btcMaBias: btcBias,
     coinBiasAligned,
     btcBiasAligned,
+    derivativesDirectionAligned,
+    derivativesRiskFlags,
+    derivativesFundingZScore,
     primarySession,
     sessionAllowsApproval,
     hardBlockReasons,
@@ -760,6 +799,9 @@ Additional AdaptiveMomentumRibbon context:
 - structuralRewardRiskRatio=${context.structuralRewardRiskRatio?.toFixed?.(3) ?? 'n/a'}
 - coinBiasAligned=${context.coinBiasAligned}
 - btcBiasAligned=${context.btcBiasAligned}
+- derivativesDirectionAligned=${context.derivativesDirectionAligned}
+- derivativesRiskFlags=${context.derivativesRiskFlags.join(', ') || 'none'}
+- derivativesFundingZScore=${context.derivativesFundingZScore?.toFixed?.(3) ?? 'n/a'}
 - primarySession=${context.primarySession ?? 'n/a'}
 - sessionAllowsApproval=${context.sessionAllowsApproval}
 - deterministicQuality=${context.deterministicQuality}
@@ -768,7 +810,7 @@ Additional AdaptiveMomentumRibbon context:
 
 Interpretation rules for AdaptiveMomentumRibbon:
 - a zero-cross alone does not make quality high;
-- pay attention to Keltner channel side, sane invalidation distance, and bias alignment;
+- pay attention to Keltner channel side, sane invalidation distance, bias alignment, and derivatives confirmation for q4 setups;
 - if \`signalOsc\` already conflicts with direction or the signal is invalidated, do not treat the entry as confirmed.
 `;
   },
