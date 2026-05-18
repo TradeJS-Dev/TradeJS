@@ -205,7 +205,6 @@ if (
 }
 
 const flags = args.parse(process.argv);
-const isReplayMode = process.env.TRADEJS_REPLAY === '1';
 const hasCliFlag = (argv: string[], names: string[]) =>
   argv.some(
     (arg) =>
@@ -291,6 +290,22 @@ const LIVE_RUNTIME_COMPARE_TOLERANCE_MS =
   LIVE_RUNTIME_COMPARE_TOLERANCE_BARS * 15 * 60 * 1000;
 
 type ErrorMessage = { id?: number; error?: unknown; payload?: any };
+type ResolvedWindow = {
+  start: number;
+  end: number;
+  source: string;
+};
+type PreparedRunEnvironment = {
+  connectorName: string;
+  marketConnector: Connector;
+  tickers: string[];
+  window: ResolvedWindow;
+  preloadStart: number;
+};
+type LoadedBacktestConfig = {
+  strategyName: string;
+  strategyConfigGrid: StrategyConfigGrid;
+};
 type RuntimeStrategyBacktestConfig = {
   strategyName: string;
   strategyConfig: StrategyConfig;
@@ -385,11 +400,26 @@ const liveResultsByStrategyAndTicker = new Map<string, TestWorkerResult>();
 const persistedTestSummaryByKey = new Map<string, Item>();
 
 const userName = flags.user;
-const runStartedAt = Date.now();
+let runStartedAt = Date.now();
 let testsStartedAt = runStartedAt;
 let activeConnectorForRuntimeCompare: Connector | null = null;
 let activeConnectorNameForRuntimeCompare = '';
 let activeWindowForRuntimeCompare: { start: number; end: number } | null = null;
+
+const resetRunState = () => {
+  successTests = 0;
+  errorTests = 0;
+  errorMessages.length = 0;
+  results = [];
+  resultsByTickers.clear();
+  liveResultsByStrategyAndTicker.clear();
+  persistedTestSummaryByKey.clear();
+  runStartedAt = Date.now();
+  testsStartedAt = runStartedAt;
+  activeConnectorForRuntimeCompare = null;
+  activeConnectorNameForRuntimeCompare = '';
+  activeWindowForRuntimeCompare = null;
+};
 
 const createListIt = () =>
   new ListIt({
@@ -926,192 +956,188 @@ const persistTestSummariesIndex = async () => {
   );
 };
 
-export const backtest = async () => {
-  let strategyName = '';
-  let typedBacktestConfig: StrategyConfigGrid | null = null;
-  let liveRuntimeStrategies: RuntimeStrategyBacktestConfig[] = [];
-
-  if (isReplayMode) {
-    liveRuntimeStrategies = await loadRuntimeStrategyBacktestConfigs(userName);
-    if (!liveRuntimeStrategies.length) {
-      console.log(
-        chalk.yellow(
-          `No active runtime strategy configs found by users:${userName}:strategies:*:config`,
-        ),
-      );
-      return;
-    }
-
-    const projectConfig = await loadTradejsConfig(projectRoot);
-    const unsupportedLiveHookStages = getUnsupportedLiveProjectHookStages(
-      projectConfig.hooks,
-    );
-    if (unsupportedLiveHookStages.length > 0) {
-      throw new Error(
-        `yarn replay does not support project hooks ${unsupportedLiveHookStages.join(
-          ', ',
-        )}. These hooks change runtime behaviour in yarn signals, so replay would produce misleading results. Use a replay flow that executes project hooks or temporarily disable ${unsupportedLiveHookStages.join(
-          ', ',
-        )} for this comparison.`,
-      );
-    }
-  } else {
-    if (!flags.config) {
-      throw new Error('Backtest config not send');
-    }
-
-    strategyName = flags.config.split(':')[0];
-
-    if (!strategyName) {
-      throw new Error('Strategy name not found');
-    }
-
-    const backtestConfig = await getData(
-      redisKeys.backtestConfig(userName, flags.config),
-      null,
-    );
-    if (!backtestConfig) {
-      throw new Error(`Backtest config "${flags.config}" not found`);
-    }
-
-    typedBacktestConfig = backtestConfig as StrategyConfigGrid;
-    if (!isStrategyConfigGrid(typedBacktestConfig)) {
-      throw new Error(
-        `Backtest config "${flags.config}" must include strategyName and strategyConfig grid`,
-      );
-    }
+const loadBacktestConfig = async (): Promise<LoadedBacktestConfig> => {
+  if (!flags.config) {
+    throw new Error('Backtest config not send');
   }
 
-  const connectorName = await resolveBacktestConnectorName(flags.connector);
-  const connectorFactory = await getConnectorCreatorByName(
-    connectorName,
-    projectRoot,
+  const strategyName = flags.config.split(':')[0];
+  if (!strategyName) {
+    throw new Error('Strategy name not found');
+  }
+
+  const backtestConfig = await getData(
+    redisKeys.backtestConfig(userName, flags.config),
+    null,
   );
-  if (!connectorFactory) {
-    throw new Error(`Connector "${connectorName}" is not registered`);
-  }
-  const marketConnector = await (connectorFactory as ConnectorCreator)({
-    userName: flags.user,
-  });
-  activeConnectorForRuntimeCompare = marketConnector;
-  activeConnectorNameForRuntimeCompare = connectorName;
-
-  const tickers = await timeOperation('tickers load', () =>
-    getTickers(
-      marketConnector,
-      flags.tickers,
-      flags.exclude,
-      flags.tickersLimit,
-    ),
-  );
-
-  if (flags.showTickersList) {
-    console.log(chalk.gray(JSON.stringify(tickers.sort(), null, 2)));
-
-    return;
+  if (!backtestConfig) {
+    throw new Error(`Backtest config "${flags.config}" not found`);
   }
 
-  const window = resolveTimeWindow({
-    days: flags.days,
-    startTime: flags.startTime,
-    endTime: flags.endTime,
-    defaultStartMs: getTimestamp(BACKTEST_DEFAULT_DAYS),
-    defaultEndMs: getTimestamp(),
-  });
-  activeWindowForRuntimeCompare = {
-    start: window.start,
-    end: window.end,
+  const strategyConfigGrid = backtestConfig as StrategyConfigGrid;
+  if (!isStrategyConfigGrid(strategyConfigGrid)) {
+    throw new Error(
+      `Backtest config "${flags.config}" must include strategyName and strategyConfig grid`,
+    );
+  }
+
+  return {
+    strategyName,
+    strategyConfigGrid,
   };
-  const preloadStart = getBacktestPreloadStart(
-    window.start,
-    BACKTEST_PRELOAD_DAYS,
+};
+
+const loadReplayStrategies = async (): Promise<
+  RuntimeStrategyBacktestConfig[]
+> => {
+  const runtimeStrategies = await loadRuntimeStrategyBacktestConfigs(userName);
+  if (!runtimeStrategies.length) {
+    console.log(
+      chalk.yellow(
+        `No active runtime strategy configs found by users:${userName}:strategies:*:config`,
+      ),
+    );
+    return [];
+  }
+
+  const projectConfig = await loadTradejsConfig(projectRoot);
+  const unsupportedReplayHookStages = getUnsupportedLiveProjectHookStages(
+    projectConfig.hooks,
   );
-
-  if (!flags.cacheOnly) {
-    await timeOperation(`update ${connectorName}`, () =>
-      update(marketConnector, interval, tickers, undefined, {
-        connectorLabel: connectorName,
-        preloadStart,
-        preloadEnd: window.end,
-      }),
+  if (unsupportedReplayHookStages.length > 0) {
+    throw new Error(
+      `yarn replay does not support project hooks ${unsupportedReplayHookStages.join(
+        ', ',
+      )}. These hooks change runtime behaviour in yarn signals, so replay would produce misleading results. Use a replay flow that executes project hooks or temporarily disable ${unsupportedReplayHookStages.join(
+        ', ',
+      )} for this comparison.`,
     );
+  }
 
-    const binanceConnectorCreator = await getConnectorCreatorByName(
-      ConnectorNames.Binance,
+  return runtimeStrategies;
+};
+
+const prepareRunEnvironment =
+  async (): Promise<PreparedRunEnvironment | null> => {
+    const connectorName = await resolveBacktestConnectorName(flags.connector);
+    const connectorFactory = await getConnectorCreatorByName(
+      connectorName,
       projectRoot,
     );
-    const coinbaseConnectorCreator = await getConnectorCreatorByName(
-      ConnectorNames.Coinbase,
-      projectRoot,
+    if (!connectorFactory) {
+      throw new Error(`Connector "${connectorName}" is not registered`);
+    }
+    const marketConnector = await (connectorFactory as ConnectorCreator)({
+      userName: flags.user,
+    });
+    activeConnectorForRuntimeCompare = marketConnector;
+    activeConnectorNameForRuntimeCompare = connectorName;
+
+    const tickers = await timeOperation('tickers load', () =>
+      getTickers(
+        marketConnector,
+        flags.tickers,
+        flags.exclude,
+        flags.tickersLimit,
+      ),
     );
-    if (!binanceConnectorCreator || !coinbaseConnectorCreator) {
-      throw new Error('Binance/Coinbase connectors are required');
+
+    if (flags.showTickersList) {
+      console.log(chalk.gray(JSON.stringify(tickers.sort(), null, 2)));
+      return null;
     }
 
-    const binanceConnector = await (
-      binanceConnectorCreator as ConnectorCreator
-    )({
-      userName: flags.user,
+    const window = resolveTimeWindow({
+      days: flags.days,
+      startTime: flags.startTime,
+      endTime: flags.endTime,
+      defaultStartMs: getTimestamp(BACKTEST_DEFAULT_DAYS),
+      defaultEndMs: getTimestamp(),
     });
-    const coinbaseConnector = await (
-      coinbaseConnectorCreator as ConnectorCreator
-    )({
-      userName: flags.user,
-    });
-    await timeOperation(`update ${ConnectorNames.Binance}`, () =>
-      update(binanceConnector, interval, ['BTCUSDT'], undefined, {
-        connectorLabel: ConnectorNames.Binance,
-        preloadStart,
-        preloadEnd: window.end,
-      }),
+    activeWindowForRuntimeCompare = {
+      start: window.start,
+      end: window.end,
+    };
+    const preloadStart = getBacktestPreloadStart(
+      window.start,
+      BACKTEST_PRELOAD_DAYS,
     );
-    await timeOperation(`update ${ConnectorNames.Coinbase}`, () =>
-      update(coinbaseConnector, interval, ['BTCUSDT'], undefined, {
-        connectorLabel: ConnectorNames.Coinbase,
-        preloadStart,
-        preloadEnd: window.end,
-      }),
-    );
-  }
 
-  if (flags.updateOnly) {
-    return;
-  }
-
-  let testSuite = isReplayMode
-    ? liveRuntimeStrategies.flatMap(
-        ({
-          strategyName: runtimeStrategyName,
-          strategyConfig: runtimeStrategyConfig,
-        }) =>
-          createTestSuite(
-            userName,
-            tickers,
-            runtimeStrategyName,
-            toStrategyConfigGrid(
-              buildLiveReplayStrategyConfig({
-                strategyConfig: runtimeStrategyConfig,
-                interval,
-              }),
-            ),
-            connectorName,
-          ),
-      )
-    : createTestSuite(
-        userName,
-        tickers,
-        strategyName,
-        typedBacktestConfig as StrategyConfigGrid,
-        connectorName,
+    if (!flags.cacheOnly) {
+      await timeOperation(`update ${connectorName}`, () =>
+        update(marketConnector, interval, tickers, undefined, {
+          connectorLabel: connectorName,
+          preloadStart,
+          preloadEnd: window.end,
+        }),
       );
+
+      const binanceConnectorCreator = await getConnectorCreatorByName(
+        ConnectorNames.Binance,
+        projectRoot,
+      );
+      const coinbaseConnectorCreator = await getConnectorCreatorByName(
+        ConnectorNames.Coinbase,
+        projectRoot,
+      );
+      if (!binanceConnectorCreator || !coinbaseConnectorCreator) {
+        throw new Error('Binance/Coinbase connectors are required');
+      }
+
+      const binanceConnector = await (
+        binanceConnectorCreator as ConnectorCreator
+      )({
+        userName: flags.user,
+      });
+      const coinbaseConnector = await (
+        coinbaseConnectorCreator as ConnectorCreator
+      )({
+        userName: flags.user,
+      });
+      await timeOperation(`update ${ConnectorNames.Binance}`, () =>
+        update(binanceConnector, interval, ['BTCUSDT'], undefined, {
+          connectorLabel: ConnectorNames.Binance,
+          preloadStart,
+          preloadEnd: window.end,
+        }),
+      );
+      await timeOperation(`update ${ConnectorNames.Coinbase}`, () =>
+        update(coinbaseConnector, interval, ['BTCUSDT'], undefined, {
+          connectorLabel: ConnectorNames.Coinbase,
+          preloadStart,
+          preloadEnd: window.end,
+        }),
+      );
+    }
+
+    return {
+      connectorName,
+      marketConnector,
+      tickers,
+      window,
+      preloadStart,
+    };
+  };
+
+const buildPreparedTestSuite = async ({
+  testSuite,
+  window,
+  preloadStart,
+  isReplay,
+}: {
+  testSuite: TestSuite;
+  window: ResolvedWindow;
+  preloadStart: number;
+  isReplay: boolean;
+}): Promise<TestSuite | null> => {
   const mlEnabled = Boolean(flags.ml);
   const aiEnabled = Boolean(flags.ai);
   const requestedTestsLimit = resolveRequestedTestsLimit({
-    isLiveMode: isReplayMode,
+    isLiveMode: isReplay,
     requestedLimit: testsLimit,
     hasExplicitLimit: hasExplicitTestsLimit,
   });
-  testSuite = testSuite
+  const preparedSuite = testSuite
     .map((test) => ({
       ...test,
       options: {
@@ -1129,7 +1155,7 @@ export const backtest = async () => {
         : undefined,
     );
 
-  if (!testSuite.length) {
+  if (!preparedSuite.length) {
     console.log(
       chalk.yellow(
         `No tests selected (skip=${testsSkip}, limit=${
@@ -1137,7 +1163,7 @@ export const backtest = async () => {
         }).`,
       ),
     );
-    return;
+    return null;
   }
 
   if (
@@ -1150,7 +1176,7 @@ export const backtest = async () => {
     await timeOperation('derivatives context backfill', () =>
       backfillDerivativesContextForBacktest({
         userName,
-        symbols: testSuite.map((test) => test.symbol),
+        symbols: preparedSuite.map((test) => test.symbol),
         startMs: window.start,
         endMs: window.end,
         preloadStartMs: preloadStart,
@@ -1158,8 +1184,63 @@ export const backtest = async () => {
     );
   }
 
-  testsStartedAt = Date.now();
+  return preparedSuite;
+};
 
+const trackTopResult = (result: TestWorkerResult) => {
+  const nextTopResults = insertTopResult(results, result, flags.top);
+  if (nextTopResults.added || results !== nextTopResults.results) {
+    updateTopResults(nextTopResults.results);
+  }
+};
+
+const printRunIntro = ({
+  testSuite,
+  window,
+  preloadStart,
+  replayModeLabel,
+}: {
+  testSuite: TestSuite;
+  window: ResolvedWindow;
+  preloadStart: number;
+  replayModeLabel?: string;
+}) => {
+  console.log(chalk.yellow(`tests: ${testSuite.length}`));
+  if (replayModeLabel) {
+    console.log(chalk.gray(replayModeLabel));
+  }
+  console.log(
+    chalk.gray(`parallel: ${effectiveParallel}, workerHeapMb: ${workerHeapMb}`),
+  );
+  console.log(
+    chalk.gray(
+      `window: ${formatUnix(window.start)} -> ${formatUnix(window.end)} (${formatWindowDays(window.start, window.end)}d, ${window.source})`,
+    ),
+  );
+  console.log(
+    chalk.gray(
+      `preload: ${formatUnix(preloadStart)} -> ${formatUnix(window.end)} (${BACKTEST_PRELOAD_DAYS}d warmup)`,
+    ),
+  );
+  console.log('');
+};
+
+const executeTestSuite = async ({
+  testSuite,
+  window,
+  preloadStart,
+  replayModeLabel,
+  onResult,
+  onFinish,
+}: {
+  testSuite: TestSuite;
+  window: ResolvedWindow;
+  preloadStart: number;
+  replayModeLabel?: string;
+  onResult: (result: TestWorkerResult) => void;
+  onFinish: () => Promise<void>;
+}) => {
+  testsStartedAt = Date.now();
   const chunks = chunkTestSuiteBySymbol(testSuite, effectiveParallel);
   let completedTests = 0;
   let isFinishing = false;
@@ -1175,7 +1256,7 @@ export const backtest = async () => {
     }
 
     isFinishing = true;
-    await finish();
+    await onFinish();
   };
 
   const stopWorkers = () => {
@@ -1195,31 +1276,13 @@ export const backtest = async () => {
     process.exit(143);
   });
 
-  console.log(chalk.yellow(`tests: ${testSuite.length}`));
-  if (isReplayMode) {
-    console.log(
-      chalk.gray(
-        `mode: replay (${liveRuntimeStrategies
-          .map(({ strategyName: runtimeStrategyName }) => runtimeStrategyName)
-          .join(', ')})`,
-      ),
-    );
-  }
-  console.log(
-    chalk.gray(`parallel: ${effectiveParallel}, workerHeapMb: ${workerHeapMb}`),
-  );
-  console.log(
-    chalk.gray(
-      `window: ${formatUnix(window.start)} -> ${formatUnix(window.end)} (${formatWindowDays(window.start, window.end)}d, ${window.source})`,
-    ),
-  );
-  console.log(
-    chalk.gray(
-      `preload: ${formatUnix(preloadStart)} -> ${formatUnix(window.end)} (${BACKTEST_PRELOAD_DAYS}d warmup)`,
-    ),
-  );
+  printRunIntro({
+    testSuite,
+    window,
+    preloadStart,
+    replayModeLabel,
+  });
 
-  console.log('');
   const bar = new ProgressBar(
     ':current/:total [:bar][:percent] :symbol :amount :eta(s)',
     {
@@ -1264,29 +1327,11 @@ export const backtest = async () => {
         console.error(
           chalk.red(`Error in test #${msg.id}: ${JSON.stringify(msg)}`),
         );
-
         return;
-      } else {
-        successTests++;
       }
 
-      const result = msg as TestWorkerResult;
-
-      if (isReplayMode) {
-        liveResultsByStrategyAndTicker.set(
-          getLiveStrategyResultKey(result),
-          result,
-        );
-      }
-
-      const nextTopResults = insertTopResult(results, result, flags.top);
-      if (nextTopResults.added || results !== nextTopResults.results) {
-        updateTopResults(nextTopResults.results);
-      }
-
-      if (!isReplayMode) {
-        updateBestTickerResult(result);
-      }
+      successTests++;
+      onResult(msg as TestWorkerResult);
 
       if (
         completedTests % progressStep === 0 ||
@@ -1295,7 +1340,6 @@ export const backtest = async () => {
         const bestResult = results[0];
         const symbol = bestResult?.test.symbol || '-';
         const profit = bestResult?.stat.profit || 0;
-
         const profitStr = `${(profit || 0).toFixed(2)}$`;
 
         bar.tick(
@@ -1881,25 +1925,7 @@ const saveAndPrintLiveRuntimeComparison = async ({
   };
 };
 
-const finish = async () => {
-  const liveStrategySnapshot = isReplayMode
-    ? await saveAndPrintLiveResultsByStrategy()
-    : null;
-  const liveRuntimeComparison = isReplayMode
-    ? await saveAndPrintLiveRuntimeComparison({
-        liveStrategySummaries: liveStrategySnapshot?.summaries ?? [],
-        backtestEntries: liveStrategySnapshot?.backtestEntries ?? [],
-      })
-    : null;
-
-  if (isReplayMode) {
-    // Replay mode already persists every strategy/ticker test above.
-  } else if (flags.tickers) {
-    await saveAndPrintResults();
-  } else {
-    await saveAndPrintResultsByTickers();
-  }
-  await persistTestSummariesIndex();
+const printRunOutro = () => {
   console.log(
     chalk.gray(`tests run: done in ${formatDuration(testsStartedAt)}`),
   );
@@ -1907,26 +1933,30 @@ const finish = async () => {
     chalk.gray(`backtest total: done in ${formatDuration(runStartedAt)}`),
   );
   console.log('');
-
-  const bestConfig = isReplayMode ? null : results[0]?.test.strategyConfig;
-  const mergedConfig = isReplayMode
-    ? null
-    : mergeConfigs(
-        results.map(({ test: { strategyConfig } }) => strategyConfig),
-      );
-
-  if (!isReplayMode) {
-    console.log(chalk.gray('BEST CONFIG:'));
-    console.log(chalk.green(toJson(bestConfig, true)));
-    console.log('');
-
-    console.log(chalk.gray('MERGED CONFIG:'));
-    console.log(chalk.blue(toJson(mergedConfig, true)));
-    console.log('');
-  }
-
   console.log(`${chalk.green('SUCCESS TESTS')}: ${successTests}`);
   console.log(`${chalk.red('ERRORS')}: ${errorTests}`);
+  console.log('');
+};
+
+const finishBacktest = async () => {
+  if (flags.tickers) {
+    await saveAndPrintResults();
+  } else {
+    await saveAndPrintResultsByTickers();
+  }
+  await persistTestSummariesIndex();
+
+  const bestConfig = results[0]?.test.strategyConfig;
+  const mergedConfig = mergeConfigs(
+    results.map(({ test: { strategyConfig } }) => strategyConfig),
+  );
+
+  printRunOutro();
+  console.log(chalk.gray('BEST CONFIG:'));
+  console.log(chalk.green(toJson(bestConfig, true)));
+  console.log('');
+  console.log(chalk.gray('MERGED CONFIG:'));
+  console.log(chalk.blue(toJson(mergedConfig, true)));
   console.log('');
 
   const finishedAt = new Date();
@@ -1936,26 +1966,18 @@ const finish = async () => {
   const timestamp = createTimestamp(finishedAt);
 
   await setData(
-    redisKeys.backtestResults(
-      userName,
-      isReplayMode ? REPLAY_RESULTS_CONFIG : flags.config,
-      timestamp,
-    ),
+    redisKeys.backtestResults(userName, flags.config, timestamp),
     {
-      config: isReplayMode ? REPLAY_RESULTS_CONFIG : flags.config,
-      mode: isReplayMode ? 'replay' : 'config',
+      config: flags.config,
+      mode: 'config',
       user: userName,
       startedAt: new Date(runStartedAt).toISOString(),
       finishedAt: finishedAt.toISOString(),
       durationSeconds,
-      results: isReplayMode
-        ? Array.from(liveResultsByStrategyAndTicker.values())
-        : results,
-      resultsByTickers: isReplayMode
-        ? []
-        : Array.from(resultsByTickers.values()),
-      resultsByStrategies: liveStrategySnapshot?.summaries ?? null,
-      runtimeComparison: liveRuntimeComparison,
+      results,
+      resultsByTickers: Array.from(resultsByTickers.values()),
+      resultsByStrategies: null,
+      runtimeComparison: null,
       bestConfig,
       mergedConfig,
       successTests,
@@ -1968,6 +1990,139 @@ const finish = async () => {
   );
 
   process.exit();
+};
+
+const finishReplay = async () => {
+  const replayStrategySnapshot = await saveAndPrintLiveResultsByStrategy();
+  const replayRuntimeComparison = await saveAndPrintLiveRuntimeComparison({
+    liveStrategySummaries: replayStrategySnapshot.summaries,
+    backtestEntries: replayStrategySnapshot.backtestEntries,
+  });
+
+  await persistTestSummariesIndex();
+  printRunOutro();
+
+  const finishedAt = new Date();
+  const durationSeconds = Number(
+    ((Date.now() - runStartedAt) / 1000).toFixed(2),
+  );
+  const timestamp = createTimestamp(finishedAt);
+
+  await setData(
+    redisKeys.backtestResults(userName, REPLAY_RESULTS_CONFIG, timestamp),
+    {
+      config: REPLAY_RESULTS_CONFIG,
+      mode: 'replay',
+      user: userName,
+      startedAt: new Date(runStartedAt).toISOString(),
+      finishedAt: finishedAt.toISOString(),
+      durationSeconds,
+      results: Array.from(liveResultsByStrategyAndTicker.values()),
+      resultsByTickers: [],
+      resultsByStrategies: replayStrategySnapshot.summaries,
+      runtimeComparison: replayRuntimeComparison,
+      bestConfig: null,
+      mergedConfig: null,
+      successTests,
+      errors: errorMessages,
+      errorTests,
+    },
+    {
+      expire: 0,
+    },
+  );
+
+  process.exit();
+};
+
+export const backtest = async () => {
+  resetRunState();
+  const config = await loadBacktestConfig();
+  const preparedRun = await prepareRunEnvironment();
+  if (!preparedRun || flags.updateOnly) {
+    return;
+  }
+
+  const testSuite = await buildPreparedTestSuite({
+    testSuite: createTestSuite(
+      userName,
+      preparedRun.tickers,
+      config.strategyName,
+      config.strategyConfigGrid,
+      preparedRun.connectorName,
+    ),
+    window: preparedRun.window,
+    preloadStart: preparedRun.preloadStart,
+    isReplay: false,
+  });
+  if (!testSuite) {
+    return;
+  }
+
+  await executeTestSuite({
+    testSuite,
+    window: preparedRun.window,
+    preloadStart: preparedRun.preloadStart,
+    onResult: (result) => {
+      trackTopResult(result);
+      updateBestTickerResult(result);
+    },
+    onFinish: finishBacktest,
+  });
+};
+
+export const replayBacktest = async () => {
+  resetRunState();
+  const replayStrategies = await loadReplayStrategies();
+  if (!replayStrategies.length) {
+    return;
+  }
+
+  const preparedRun = await prepareRunEnvironment();
+  if (!preparedRun || flags.updateOnly) {
+    return;
+  }
+
+  const testSuite = await buildPreparedTestSuite({
+    testSuite: replayStrategies.flatMap(
+      ({ strategyName: replayStrategyName, strategyConfig }) =>
+        createTestSuite(
+          userName,
+          preparedRun.tickers,
+          replayStrategyName,
+          toStrategyConfigGrid(
+            buildLiveReplayStrategyConfig({
+              strategyConfig,
+              interval,
+            }),
+          ),
+          preparedRun.connectorName,
+        ),
+    ),
+    window: preparedRun.window,
+    preloadStart: preparedRun.preloadStart,
+    isReplay: true,
+  });
+  if (!testSuite) {
+    return;
+  }
+
+  await executeTestSuite({
+    testSuite,
+    window: preparedRun.window,
+    preloadStart: preparedRun.preloadStart,
+    replayModeLabel: `mode: replay (${replayStrategies
+      .map(({ strategyName }) => strategyName)
+      .join(', ')})`,
+    onResult: (result) => {
+      liveResultsByStrategyAndTicker.set(
+        getLiveStrategyResultKey(result),
+        result,
+      );
+      trackTopResult(result);
+    },
+    onFinish: finishReplay,
+  });
 };
 
 if (require.main === module) {

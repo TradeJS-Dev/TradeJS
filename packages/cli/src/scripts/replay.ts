@@ -1,7 +1,6 @@
 export const main = async () => {
-  process.env.TRADEJS_REPLAY = '1';
-  const { backtest } = await import('./backtest');
-  await backtest();
+  const { replayBacktest } = await import('./backtest');
+  await replayBacktest();
 };
 
 if (require.main === module) {
