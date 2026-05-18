@@ -427,11 +427,21 @@ export async function getDerivativesWindow(params: {
   return rowsByInterval;
 }
 
-export async function getDerivativesSummary(hours = 24, limit = 500) {
+export async function getDerivativesSummary(
+  hours = 24,
+  limit = 500,
+  symbols?: string[],
+) {
   await ensureDerivativesSchema();
   const pool = getPool();
   const cappedHours = Math.max(1, Math.min(24 * 90, hours));
   const cappedLimit = Math.max(10, Math.min(1000, limit));
+  const normalizedSymbols = Array.isArray(symbols)
+    ? [...new Set(symbols.map(normalizeCandleSymbol).filter(Boolean))]
+    : [];
+  const symbolsFilterSql = normalizedSymbols.length
+    ? 'AND symbol = ANY($3)'
+    : '';
 
   const summaryQ = await pool.query(
     `
@@ -447,6 +457,7 @@ export async function getDerivativesSummary(hours = 24, limit = 500) {
           liq_total
         FROM derivatives_market
         WHERE ts >= now() - ($1 || ' hours')::interval
+          ${symbolsFilterSql}
       ),
       latest AS (
         SELECT DISTINCT ON (symbol, interval)
@@ -502,7 +513,9 @@ export async function getDerivativesSummary(hours = 24, limit = 500) {
       ORDER BY aggregated.sum_liq_total DESC, aggregated.symbol ASC
       LIMIT $2
     `,
-    [String(cappedHours), cappedLimit],
+    normalizedSymbols.length
+      ? [String(cappedHours), cappedLimit, normalizedSymbols]
+      : [String(cappedHours), cappedLimit],
   );
 
   const items = (

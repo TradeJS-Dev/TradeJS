@@ -11,6 +11,13 @@ describe('backtest live flag removal', () => {
   });
 
   it('throws a migration hint when legacy --live is used', async () => {
+    jest.doMock('@tradejs/connectors', () => ({
+      ConnectorNames: {
+        Binance: 'Binance',
+        Coinbase: 'Coinbase',
+      },
+    }));
+
     jest.doMock('args', () => ({
       __esModule: true,
       default: {

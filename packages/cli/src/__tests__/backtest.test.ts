@@ -17,6 +17,13 @@ jest.mock('args', () => ({
   },
 }));
 
+jest.mock('@tradejs/connectors', () => ({
+  ConnectorNames: {
+    Binance: 'Binance',
+    Coinbase: 'Coinbase',
+  },
+}));
+
 jest.mock('@tradejs/node/connectors', () => ({
   DEFAULT_CONNECTOR_NAME: 'bybit',
   getConnectorCreatorByName: jest.fn(),
@@ -86,7 +93,6 @@ jest.mock('../lib/timeWindow', () => ({
 }));
 
 import {
-  buildLiveReplayStrategyConfig,
   chunkTestSuiteBySymbol,
   getUnsupportedLiveProjectHookStages,
   resolveDefaultParallel,
@@ -98,6 +104,7 @@ import {
   toStrategyConfigGrid,
 } from '../scripts/backtest';
 import { compareExchangeEntriesToBacktest } from '../scripts/replayRunner';
+import { buildReplayStrategyConfig } from '../scripts/replaySupport';
 import {
   summarizeRuntimeTradesByStrategy,
   summarizeTradeParityByStrategy,
@@ -187,7 +194,7 @@ describe('backtest script helpers', () => {
 
   it('forces signals replay configs into PARITY mode while preserving runtime gate settings', () => {
     expect(
-      buildLiveReplayStrategyConfig({
+      buildReplayStrategyConfig({
         interval: '15' as any,
         strategyConfig: {
           AI_ENABLED: true,

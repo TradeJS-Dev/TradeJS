@@ -93,10 +93,21 @@ export const createStrategyIndicatorsState = ({
         btcCandle: KlineChartData[number];
       }
     | undefined;
-  const withSnapshot = (value: IndicatorsController): SnapshotController =>
-    Object.assign(value, {
-      snapshot: () => value.result(),
+  const withSnapshot = (value: IndicatorsController): SnapshotController => {
+    const nextSnapshot =
+      typeof (value as IndicatorsController & { snapshot?: unknown })
+        .snapshot === 'function'
+        ? (
+            value as IndicatorsController & {
+              snapshot: () => ReturnType<IndicatorsController['result']>;
+            }
+          ).snapshot.bind(value)
+        : value.result.bind(value);
+
+    return Object.assign(value, {
+      snapshot: nextSnapshot,
     });
+  };
 
   const applyBar = (
     candle: KlineChartData[number],

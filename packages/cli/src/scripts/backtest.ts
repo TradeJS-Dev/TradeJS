@@ -1,11 +1,8 @@
 const ListIt = require('list-it');
 import args from 'args';
-import ProgressBar from 'progress';
-import { fork } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
-import { randomUUID } from 'node:crypto';
 import chalk from 'chalk';
 import { format } from 'date-fns';
 import { ConnectorNames } from '@tradejs/connectors';
@@ -43,7 +40,6 @@ import {
   Interval,
   Item,
   Connector,
-  ExchangeEntryRecord,
   OrderLog,
   PositionLogData,
   StrategyConfig,
@@ -61,6 +57,7 @@ import {
 import { normalizeCliArgv } from '../lib/cliArgs';
 import { loadRuntimeStrategyConfigs } from '../lib/runtimeRedis';
 import { resolveTimeWindow } from '../lib/timeWindow';
+import { executeBacktestWorkerPool } from './backtestWorkerPool';
 
 const BYTES_IN_MB = 1024 * 1024;
 const MAX_PARALLEL = Math.min(os.cpus().length, 6);
@@ -208,7 +205,6 @@ export const resultArtifactsIoConcurrency = Math.max(
   8,
   Math.min(32, effectiveParallel * 4),
 );
-const uuid = (len = 12) => randomUUID().slice(-len);
 const projectRoot =
   String(process.env.PROJECT_CWD || process.cwd()).trim() || process.cwd();
 const testerWorkerPathCandidates = [
@@ -249,32 +245,6 @@ const HEADERS_RESULTS_BY_TICKERS = [
   chalk.cyan('MAX DRAWDOWN (%)'),
 ];
 
-export const HEADERS_LIVE_RESULTS_BY_STRATEGY = [
-  chalk.blue('STRATEGY'),
-  chalk.yellow('TICKERS'),
-  chalk.yellow('TRADE TICKERS'),
-  chalk.cyan('ORDERS'),
-  chalk.cyan('WIN/LOSS (%)'),
-  chalk.cyan('PROFIT'),
-  chalk.cyan('AVG TRADE'),
-];
-
-export const HEADERS_LIVE_RUNTIME_COMPARISON = [
-  chalk.blue('STRATEGY'),
-  chalk.cyan('BT ENTRIES'),
-  chalk.cyan('BT PNL'),
-  chalk.yellow('RT TRADES'),
-  chalk.yellow('RT PNL'),
-  chalk.green('MATCHED'),
-  chalk.yellow('RT ONLY'),
-  chalk.magenta('BT ONLY'),
-];
-
-export const REPLAY_RESULTS_CONFIG = 'replay';
-export const LIVE_RUNTIME_COMPARE_TOLERANCE_BARS = 1;
-export const LIVE_RUNTIME_COMPARE_TOLERANCE_MS =
-  LIVE_RUNTIME_COMPARE_TOLERANCE_BARS * 15 * 60 * 1000;
-
 type ErrorMessage = { id?: number; error?: unknown; payload?: any };
 export type ResolvedWindow = {
   start: number;
@@ -297,64 +267,6 @@ export type RuntimeStrategyBacktestConfig = {
   strategyConfig: StrategyConfig;
   backtestConfig: StrategyConfigGrid;
 };
-export type LiveStrategySummary = {
-  strategyName: string;
-  strategyConfig: StrategyConfig;
-  tickers: number;
-  tickersWithTrades: number;
-  orders: number;
-  wins: number;
-  losses: number;
-  netProfit: number;
-  avgTradeProfit: number;
-  winRate: number;
-};
-export type LiveRuntimeParityRow = {
-  strategyName: string;
-  backtestEntries: number;
-  backtestNetProfit: number;
-  runtimeTrades: number;
-  runtimePnl: number;
-  matched: number;
-  runtimeOnly: number;
-  backtestOnly: number;
-};
-export type LiveRuntimeComparisonSummary = {
-  mode: 'runtime' | 'exchange';
-  syncedTradesCount: number;
-  windowTradesCount: number;
-  runtimeEntriesCount: number;
-  backtestEntriesCount: number;
-  matchedCount: number;
-  runtimeOnlyCount: number;
-  backtestOnlyCount: number;
-  rows: LiveRuntimeParityRow[];
-};
-export type LiveStrategyResultsSnapshot = {
-  summaries: LiveStrategySummary[];
-  backtestEntries: any[];
-};
-type ExchangeMatchedBacktestEntry = {
-  exchange: ExchangeEntryRecord;
-  backtest: any;
-  timestampDiffMs: number;
-  priceDeltaPct: number | null;
-};
-
-export const buildLiveReplayStrategyConfig = ({
-  strategyConfig,
-  interval,
-}: {
-  strategyConfig: StrategyConfig;
-  interval: Interval;
-}): StrategyConfig => ({
-  ...strategyConfig,
-  ENV: 'PARITY',
-  MAKE_ORDERS: true,
-  INTERVAL: interval,
-  RECORD_RUNTIME_TRADES: false,
-});
-
 const normalizeConfigHookList = <THook extends (...args: any[]) => unknown>(
   value: THook | THook[] | undefined,
 ): THook[] => {
@@ -382,7 +294,7 @@ let errorTests = 0;
 const errorMessages: ErrorMessage[] = [];
 let results: TestWorkerResult[] = [];
 const resultsByTickers = new Map<string, TestWorkerResult>();
-const liveResultsByStrategyAndTicker = new Map<string, TestWorkerResult>();
+const replayResultsByStrategyAndTicker = new Map<string, TestWorkerResult>();
 const persistedTestSummaryByKey = new Map<string, Item>();
 
 export const userName = flags.user;
@@ -393,11 +305,14 @@ let activeConnectorNameForRuntimeCompare = '';
 let activeWindowForRuntimeCompare: { start: number; end: number } | null = null;
 
 export const storeReplayResult = (result: TestWorkerResult) => {
-  liveResultsByStrategyAndTicker.set(getLiveStrategyResultKey(result), result);
+  replayResultsByStrategyAndTicker.set(
+    getReplayStrategyResultKey(result),
+    result,
+  );
 };
 
 export const getReplayResults = () =>
-  Array.from(liveResultsByStrategyAndTicker.values());
+  Array.from(replayResultsByStrategyAndTicker.values());
 
 export const getRuntimeCompareContext = () => ({
   connector: activeConnectorForRuntimeCompare,
@@ -418,7 +333,7 @@ export const resetRunState = () => {
   errorMessages.length = 0;
   results = [];
   resultsByTickers.clear();
-  liveResultsByStrategyAndTicker.clear();
+  replayResultsByStrategyAndTicker.clear();
   persistedTestSummaryByKey.clear();
   runStartedAt = Date.now();
   testsStartedAt = runStartedAt;
@@ -615,7 +530,7 @@ export const loadRuntimeStrategyBacktestConfigs = async (
   }));
 };
 
-export const getLiveStrategyResultKey = (
+export const getReplayStrategyResultKey = (
   result: Pick<TestWorkerResult, 'test'>,
 ) => `${result.test.strategyName}:${result.test.symbol}`;
 
@@ -963,7 +878,7 @@ export const trackTopResult = (result: TestWorkerResult) => {
   }
 };
 
-const printRunIntro = ({
+const buildRunIntroLines = ({
   testSuite,
   window,
   preloadStart,
@@ -974,24 +889,24 @@ const printRunIntro = ({
   preloadStart: number;
   replayModeLabel?: string;
 }) => {
-  console.log(chalk.yellow(`tests: ${testSuite.length}`));
+  const lines = [chalk.yellow(`tests: ${testSuite.length}`)];
   if (replayModeLabel) {
-    console.log(chalk.gray(replayModeLabel));
+    lines.push(chalk.gray(replayModeLabel));
   }
-  console.log(
+  lines.push(
     chalk.gray(`parallel: ${effectiveParallel}, workerHeapMb: ${workerHeapMb}`),
   );
-  console.log(
+  lines.push(
     chalk.gray(
       `window: ${formatUnix(window.start)} -> ${formatUnix(window.end)} (${formatWindowDays(window.start, window.end)}d, ${window.source})`,
     ),
   );
-  console.log(
+  lines.push(
     chalk.gray(
       `preload: ${formatUnix(preloadStart)} -> ${formatUnix(window.end)} (${BACKTEST_PRELOAD_DAYS}d warmup)`,
     ),
   );
-  console.log('');
+  return lines;
 };
 
 export const executeTestSuite = async ({
@@ -1010,81 +925,21 @@ export const executeTestSuite = async ({
   onFinish: () => Promise<void>;
 }) => {
   testsStartedAt = Date.now();
-  const chunks = chunkTestSuiteBySymbol(testSuite, effectiveParallel);
-  let completedTests = 0;
-  let isFinishing = false;
-  const workers = new Set<ReturnType<typeof fork>>();
-
-  const maybeFinish = async () => {
-    if (isFinishing) {
-      return;
-    }
-
-    if (completedTests !== testSuite.length || workers.size > 0) {
-      return;
-    }
-
-    isFinishing = true;
-    await onFinish();
-  };
-
-  const stopWorkers = () => {
-    for (const worker of workers) {
-      if (!worker.killed) {
-        worker.kill('SIGTERM');
-      }
-    }
-  };
-
-  process.once('SIGINT', () => {
-    stopWorkers();
-    process.exit(130);
-  });
-  process.once('SIGTERM', () => {
-    stopWorkers();
-    process.exit(143);
-  });
-
-  printRunIntro({
+  await executeBacktestWorkerPool({
     testSuite,
-    window,
-    preloadStart,
-    replayModeLabel,
-  });
-
-  const bar = new ProgressBar(
-    ':current/:total [:bar][:percent] :symbol :amount :eta(s)',
-    {
-      total: testSuite.length,
-      width: 20,
-    },
-  );
-
-  for (const chunk of chunks) {
-    const chunkId = uuid();
-    const chunkWithId = chunk.map((test) => ({ ...test, chunkId }));
-    const tester = fork(testerWorkerPath, [], {
-      execArgv: testerNeedsTsRuntime
-        ? [
-            `--max-old-space-size=${workerHeapMb}`,
-            '-r',
-            'ts-node/register',
-            '-r',
-            'tsconfig-paths/register',
-          ]
-        : [`--max-old-space-size=${workerHeapMb}`],
-    });
-    workers.add(tester);
-
-    tester.on('message', async (msg: any) => {
-      if (msg.done) {
-        workers.delete(tester);
-        await maybeFinish();
-        return;
-      }
-
-      completedTests++;
-
+    userName,
+    progressStep,
+    workerHeapMb,
+    testerWorkerPath,
+    testerNeedsTsRuntime,
+    introLines: buildRunIntroLines({
+      testSuite,
+      window,
+      preloadStart,
+      replayModeLabel,
+    }),
+    chunkTestSuite: (suite) => chunkTestSuiteBySymbol(suite, effectiveParallel),
+    onMessage: (msg) => {
       if (msg.error) {
         errorTests++;
         recordError({
@@ -1101,45 +956,20 @@ export const executeTestSuite = async ({
 
       successTests++;
       onResult(msg as TestWorkerResult);
-
-      if (
-        completedTests % progressStep === 0 ||
-        completedTests === testSuite.length
-      ) {
-        const bestResult = results[0];
-        const symbol = bestResult?.test.symbol || '-';
-        const profit = bestResult?.stat.profit || 0;
-        const profitStr = `${(profit || 0).toFixed(2)}$`;
-
-        bar.tick(
-          completedTests === testSuite.length
-            ? completedTests % progressStep
-            : progressStep,
-          {
-            symbol: chalk.yellow(symbol),
-            amount: profit > 0 ? chalk.green(profitStr) : chalk.red(profitStr),
-          },
-        );
-      }
-    });
-
-    tester.on('error', (err) => {
-      recordError({ error: err?.message ?? err });
-      console.error(chalk.red(`Worker error: ${err.message}`));
-    });
-
-    tester.on('exit', (code) => {
-      workers.delete(tester);
-      if (code !== 0) {
-        recordError({ error: `Worker exited with code ${code}` });
-        console.error(chalk.red(`Worker exited with code ${code}`));
-      }
-
-      void maybeFinish();
-    });
-
-    tester.send({ chunk: chunkWithId, chunkId, userName });
-  }
+    },
+    onWorkerError: (message) => {
+      recordError({ error: message });
+      console.error(chalk.red(message));
+    },
+    getProgressSnapshot: () => {
+      const bestResult = results[0];
+      return {
+        symbol: bestResult?.test.symbol || '-',
+        profit: bestResult?.stat.profit || 0,
+      };
+    },
+    onFinish,
+  });
 };
 
 const saveAndPrintResults = async () => {

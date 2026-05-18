@@ -1,6 +1,6 @@
 import { Candle } from '@tradejs/types';
 import { createIndicators } from '../indicators';
-import { CORRELATION_WINDOW } from '../../constants';
+import { CORRELATION_WINDOW, ML_BASE_CANDLES_WINDOW } from '../../constants';
 import { calculateCoinBtcCorrelation } from '../correlation';
 import { buildDefaultIndicatorPeriods } from '../strategyHelpers/indicators';
 
@@ -349,6 +349,43 @@ describe('utils indicators', () => {
     const expected = result.maFast1h[result.maFast1h.length - 1];
 
     expect(indicators.latestNumber('maFast1h')).toBe(expected);
+  });
+
+  it('keeps the last base indicator values in order after history window overflow', () => {
+    const indicators = createIndicators([], [], {
+      periods: {
+        maFast: 2,
+        maMedium: 2,
+        maSlow: 2,
+        obvSma: 2,
+        atr: 2,
+        atrPctShort: 2,
+        atrPctLong: 2,
+        bb: 2,
+        bbStd: 2,
+        macdFast: 3,
+        macdSlow: 4,
+        macdSignal: 2,
+      },
+      includeMlPayload: false,
+    });
+
+    const expectedMaFast: number[] = [];
+
+    for (let i = 0; i < ML_BASE_CANDLES_WINDOW + 25; i += 1) {
+      const ts = i * INTERVAL_15M_MS;
+      const snapshot = indicators.next(makeCandle(ts, 100 + i));
+      if (snapshot?.maFast != null) {
+        expectedMaFast.push(snapshot.maFast);
+      }
+    }
+
+    const result = indicators.result() as Record<string, number[]>;
+
+    expect(result.maFast).toEqual(
+      expectedMaFast.slice(-ML_BASE_CANDLES_WINDOW),
+    );
+    expect(result.maFast).toHaveLength(ML_BASE_CANDLES_WINDOW);
   });
 
   it('matches direct coin/btc correlation on the same sliding candle window', () => {

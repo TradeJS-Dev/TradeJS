@@ -8,7 +8,14 @@ export const GET = async (request: NextRequest) => {
   try {
     const hoursRaw = Number(request.nextUrl.searchParams.get('hours') ?? 24);
     const limitRaw = Number(request.nextUrl.searchParams.get('limit') ?? 500);
-    const summary = await getDerivativesSummary(hoursRaw, limitRaw);
+    const symbolsRaw = String(
+      request.nextUrl.searchParams.get('symbols') ?? '',
+    );
+    const symbols = symbolsRaw
+      .split(',')
+      .map((symbol) => symbol.trim().toUpperCase())
+      .filter(Boolean);
+    const summary = await getDerivativesSummary(hoursRaw, limitRaw, symbols);
     return NextResponse.json(summary);
   } catch (error) {
     logger.log('error', 'Derivatives summary error: %o', error);

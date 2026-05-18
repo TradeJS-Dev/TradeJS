@@ -891,8 +891,9 @@ const DerivativesPage = () => {
     setSummaryError('');
 
     try {
+      const symbolsParam = FIXED_SYMBOLS.join(',');
       const response = await API.get<SummaryResponse>(
-        `/api/derivatives/summary?hours=${hours}&limit=200`,
+        `/api/derivatives/summary?hours=${hours}&limit=200&symbols=${symbolsParam}`,
       );
       setSummary(response);
     } catch (err) {

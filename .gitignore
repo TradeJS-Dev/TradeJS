@@ -32,6 +32,7 @@ service.log*
 error.log*
 /logs
 .playwright-cli/
+/output
 
 # local env files
 .env*.local

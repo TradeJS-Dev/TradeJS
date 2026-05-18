@@ -26,12 +26,6 @@ import {
 import { loadRuntimeTrades } from '../lib/runtimeRedis';
 import { loadClosedPnlRows, syncRuntimeTrades } from '../lib/runtimeTradeSync';
 import {
-  HEADERS_LIVE_RESULTS_BY_STRATEGY,
-  HEADERS_LIVE_RUNTIME_COMPARISON,
-  LIVE_RUNTIME_COMPARE_TOLERANCE_BARS,
-  LIVE_RUNTIME_COMPARE_TOLERANCE_MS,
-  REPLAY_RESULTS_CONFIG,
-  buildLiveReplayStrategyConfig,
   buildPreparedTestSuite,
   createTable,
   createTimestamp,
@@ -54,11 +48,19 @@ import {
   toStrategyConfigGrid,
   trackTopResult,
   userName,
-  type LiveRuntimeComparisonSummary,
-  type LiveRuntimeParityRow,
-  type LiveStrategyResultsSnapshot,
-  type LiveStrategySummary,
 } from './backtest';
+import {
+  buildReplayStrategyConfig,
+  REPLAY_RESULTS_BY_STRATEGY_HEADERS,
+  REPLAY_RESULTS_CONFIG,
+  REPLAY_RUNTIME_COMPARISON_HEADERS,
+  REPLAY_RUNTIME_COMPARE_TOLERANCE_BARS,
+  REPLAY_RUNTIME_COMPARE_TOLERANCE_MS,
+  type ReplayRuntimeComparisonSummary,
+  type ReplayRuntimeParityRow,
+  type ReplayStrategyResultsSnapshot,
+  type ReplayStrategySummary,
+} from './replaySupport';
 
 type ExchangeMatchedBacktestEntry = {
   exchange: ExchangeEntryRecord;
@@ -306,8 +308,8 @@ export const compareExchangeEntriesToBacktest = ({
 };
 
 const saveAndPrintReplayResultsByStrategy =
-  async (): Promise<LiveStrategyResultsSnapshot> => {
-    const summaryByStrategy = new Map<string, LiveStrategySummary>();
+  async (): Promise<ReplayStrategyResultsSnapshot> => {
+    const summaryByStrategy = new Map<string, ReplayStrategySummary>();
     const backtestEntries: TradeParityEntry[] = [];
     const replayResults = getReplayResults();
     const processedResults = new Array<{
@@ -428,7 +430,7 @@ const saveAndPrintReplayResultsByStrategy =
 
     console.log('');
     console.log('SIGNALS REPLAY RESULTS BY STRATEGY:');
-    console.log(createTable(HEADERS_LIVE_RESULTS_BY_STRATEGY, rows));
+    console.log(createTable(REPLAY_RESULTS_BY_STRATEGY_HEADERS, rows));
     console.log('');
 
     return {
@@ -441,9 +443,9 @@ const saveAndPrintReplayExchangeComparison = async ({
   liveStrategySummaries,
   backtestEntries,
 }: {
-  liveStrategySummaries: LiveStrategySummary[];
+  liveStrategySummaries: ReplayStrategySummary[];
   backtestEntries: TradeParityEntry[];
-}): Promise<LiveRuntimeComparisonSummary> => {
+}): Promise<ReplayRuntimeComparisonSummary> => {
   const { connector, connectorName, window } = getRuntimeCompareContext();
   const exchangeEntries = await loadExchangeEntriesForComparison({
     connector: connector!,
@@ -491,19 +493,19 @@ const saveAndPrintReplayExchangeComparison = async ({
   const comparison = compareExchangeEntriesToBacktest({
     exchangeEntries,
     backtestEntries,
-    toleranceMs: LIVE_RUNTIME_COMPARE_TOLERANCE_MS,
+    toleranceMs: REPLAY_RUNTIME_COMPARE_TOLERANCE_MS,
   });
   const liveSummaryByStrategy = new Map(
     liveStrategySummaries.map((summary) => [summary.strategyName, summary]),
   );
-  const rowByStrategy = new Map<string, LiveRuntimeParityRow>();
+  const rowByStrategy = new Map<string, ReplayRuntimeParityRow>();
   const ensureRow = (strategyName: string) => {
     const existing = rowByStrategy.get(strategyName);
     if (existing) {
       return existing;
     }
 
-    const next: LiveRuntimeParityRow = {
+    const next: ReplayRuntimeParityRow = {
       strategyName,
       backtestEntries: 0,
       backtestNetProfit:
@@ -591,9 +593,9 @@ const saveAndPrintReplayExchangeComparison = async ({
 
   console.log('');
   console.log(
-    `SIGNALS REPLAY VS EXCHANGE BY STRATEGY (connector=${connectorName}, inferredStrategy=nearest backtest entry, tolerance=${LIVE_RUNTIME_COMPARE_TOLERANCE_BARS} bar)`,
+    `SIGNALS REPLAY VS EXCHANGE BY STRATEGY (connector=${connectorName}, inferredStrategy=nearest backtest entry, tolerance=${REPLAY_RUNTIME_COMPARE_TOLERANCE_BARS} bar)`,
   );
-  console.log(createTable(HEADERS_LIVE_RUNTIME_COMPARISON, colorizedRows));
+  console.log(createTable(REPLAY_RUNTIME_COMPARISON_HEADERS, colorizedRows));
   console.log('');
 
   return {
@@ -613,9 +615,9 @@ const saveAndPrintReplayRuntimeComparison = async ({
   liveStrategySummaries,
   backtestEntries,
 }: {
-  liveStrategySummaries: LiveStrategySummary[];
+  liveStrategySummaries: ReplayStrategySummary[];
   backtestEntries: TradeParityEntry[];
-}): Promise<LiveRuntimeComparisonSummary | null> => {
+}): Promise<ReplayRuntimeComparisonSummary | null> => {
   const { connector, connectorName, window } = getRuntimeCompareContext();
   if (!connector || !window) {
     return null;
@@ -688,7 +690,7 @@ const saveAndPrintReplayRuntimeComparison = async ({
   const comparison = compareTradeParityEntries({
     runtimeEntries: runtimeDedupe.entries,
     backtestEntries,
-    toleranceMs: LIVE_RUNTIME_COMPARE_TOLERANCE_MS,
+    toleranceMs: REPLAY_RUNTIME_COMPARE_TOLERANCE_MS,
   });
   const parityRows = summarizeTradeParityByStrategy({
     runtimeEntries: runtimeDedupe.entries,
@@ -755,9 +757,9 @@ const saveAndPrintReplayRuntimeComparison = async ({
 
   console.log('');
   console.log(
-    `SIGNALS REPLAY VS RUNTIME BY STRATEGY (connector=${connectorName}, tolerance=${LIVE_RUNTIME_COMPARE_TOLERANCE_BARS} bar)`,
+    `SIGNALS REPLAY VS RUNTIME BY STRATEGY (connector=${connectorName}, tolerance=${REPLAY_RUNTIME_COMPARE_TOLERANCE_BARS} bar)`,
   );
-  console.log(createTable(HEADERS_LIVE_RUNTIME_COMPARISON, colorizedRows));
+  console.log(createTable(REPLAY_RUNTIME_COMPARISON_HEADERS, colorizedRows));
   console.log('');
 
   return {
@@ -843,7 +845,7 @@ export const replayBacktest = async () => {
           preparedRun.tickers,
           strategyName,
           toStrategyConfigGrid(
-            buildLiveReplayStrategyConfig({
+            buildReplayStrategyConfig({
               strategyConfig,
               interval,
             }),
