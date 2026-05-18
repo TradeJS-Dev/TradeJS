@@ -1,3 +1,6 @@
+import fs from 'node:fs/promises';
+import path from 'node:path';
+
 jest.mock('args', () => ({
   __esModule: true,
   default: {
@@ -46,10 +49,14 @@ jest.mock('@tradejs/infra/logger', () => ({
 }));
 
 import {
+  acquireResearchAutoLock,
   buildNodeOptions,
   buildTelegramReport,
+  getResearchAutoLockPath,
+  isProcessAlive,
   listRuntimeStrategyNames,
   parseJsonOutput,
+  releaseResearchAutoLock,
   resolveHeapMbFromEnv,
   resolveTarget,
   runCliCommand,
@@ -60,6 +67,11 @@ import { resolveStrategyNameByConfigKey } from '../lib/runtimeRedis';
 describe('research:auto helpers', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+  });
+
+  afterEach(async () => {
+    const lockPath = getResearchAutoLockPath('research-auto-test-user');
+    await fs.unlink(lockPath).catch(() => undefined);
   });
 
   it('wraps every strategy config field into a single-value grid for :research backtests', () => {
@@ -317,6 +329,66 @@ describe('research:auto helpers', () => {
       config: 'TrendLine:research',
       selectedBy: 'auto',
     });
+  });
+
+  it('blocks a second research:auto run while a live owner lock exists', async () => {
+    const lockPath = await acquireResearchAutoLock({
+      runId: 'run-1',
+      userName: 'research-auto-test-user',
+      strategy: 'TrendShift',
+      startedAt: '2026-05-18T12:00:00.000Z',
+    });
+
+    const killSpy = jest.spyOn(process, 'kill').mockImplementation(() => true);
+
+    await expect(
+      acquireResearchAutoLock({
+        runId: 'run-2',
+        userName: 'research-auto-test-user',
+        strategy: 'TrendShift',
+        startedAt: '2026-05-18T12:00:01.000Z',
+      }),
+    ).rejects.toThrow('research:auto is already running');
+
+    killSpy.mockRestore();
+    await releaseResearchAutoLock(lockPath);
+  });
+
+  it('replaces a stale research:auto lock when the owning pid is gone', async () => {
+    const lockPath = getResearchAutoLockPath('research-auto-test-user');
+    await fs.mkdir(path.dirname(lockPath), { recursive: true });
+    await fs.writeFile(
+      lockPath,
+      JSON.stringify({
+        runId: 'stale-run',
+        userName: 'research-auto-test-user',
+        strategy: 'TrendShift',
+        pid: 999999,
+        ppid: 1,
+        hostname: 'test-host',
+        startedAt: '2026-05-18T12:00:00.000Z',
+        argv: ['node', 'cli.js', 'research:auto'],
+      }),
+    );
+
+    const killSpy = jest.spyOn(process, 'kill').mockImplementation(() => {
+      const error = new Error('missing') as NodeJS.ErrnoException;
+      error.code = 'ESRCH';
+      throw error;
+    });
+
+    const nextLockPath = await acquireResearchAutoLock({
+      runId: 'run-2',
+      userName: 'research-auto-test-user',
+      strategy: 'TrendShift',
+      startedAt: '2026-05-18T12:00:01.000Z',
+    });
+
+    expect(nextLockPath).toBe(lockPath);
+    expect(isProcessAlive(999999)).toBe(false);
+
+    killSpy.mockRestore();
+    await releaseResearchAutoLock(nextLockPath);
   });
 
   it('streams child output into research logs when liveLogPrefix is enabled', async () => {

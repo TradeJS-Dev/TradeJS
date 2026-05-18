@@ -2,6 +2,7 @@ import args from 'args';
 import chalk from 'chalk';
 import { spawn } from 'node:child_process';
 import fs from 'node:fs/promises';
+import os from 'node:os';
 import path from 'node:path';
 import { toFileToken } from '@tradejs/infra/ai';
 import { logger } from '@tradejs/infra/logger';
@@ -93,12 +94,129 @@ type ResearchRunRecord = {
   };
 };
 
+type ResearchRunLockRecord = {
+  runId: string;
+  userName: string;
+  strategy: string;
+  pid: number;
+  ppid: number;
+  hostname: string;
+  startedAt: string;
+  argv: string[];
+};
+
 const projectRoot =
   String(process.env.PROJECT_CWD || process.cwd()).trim() || process.cwd();
 const dotenvPath =
   String(
     process.env.DOTENV_CONFIG_PATH || path.join(projectRoot, '.env'),
   ).trim() || path.join(projectRoot, '.env');
+
+export const getResearchAutoLockPath = (userName: string) =>
+  path.join(
+    projectRoot,
+    'data',
+    'cache',
+    'research-auto',
+    `${toFileToken(userName)}.lock.json`,
+  );
+
+const readResearchAutoLock = async (
+  lockPath: string,
+): Promise<ResearchRunLockRecord | null> => {
+  try {
+    const raw = await fs.readFile(lockPath, 'utf8');
+    return JSON.parse(raw) as ResearchRunLockRecord;
+  } catch {
+    return null;
+  }
+};
+
+export const isProcessAlive = (pid: number) => {
+  if (!Number.isInteger(pid) || pid <= 0) {
+    return false;
+  }
+
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    const code =
+      error && typeof error === 'object' && 'code' in error
+        ? String((error as NodeJS.ErrnoException).code || '')
+        : '';
+    return code === 'EPERM';
+  }
+};
+
+export const acquireResearchAutoLock = async ({
+  runId,
+  userName,
+  strategy,
+  startedAt,
+}: Pick<
+  ResearchRunRecord,
+  'runId' | 'userName' | 'strategy' | 'startedAt'
+>) => {
+  const lockPath = getResearchAutoLockPath(userName);
+  const nextLock: ResearchRunLockRecord = {
+    runId,
+    userName,
+    strategy,
+    pid: process.pid,
+    ppid: process.ppid,
+    hostname: os.hostname(),
+    startedAt,
+    argv: [...process.argv],
+  };
+
+  await fs.mkdir(path.dirname(lockPath), { recursive: true });
+
+  const writeLock = async () => {
+    await fs.writeFile(lockPath, JSON.stringify(nextLock, null, 2), {
+      flag: 'wx',
+    });
+  };
+
+  try {
+    await writeLock();
+    return lockPath;
+  } catch (error) {
+    const code =
+      error && typeof error === 'object' && 'code' in error
+        ? String((error as NodeJS.ErrnoException).code || '')
+        : '';
+    if (code !== 'EEXIST') {
+      throw error;
+    }
+  }
+
+  const existingLock = await readResearchAutoLock(lockPath);
+  if (existingLock?.pid && isProcessAlive(existingLock.pid)) {
+    throw new Error(
+      `research:auto is already running for user ${userName} (runId=${existingLock.runId}, strategy=${existingLock.strategy}, pid=${existingLock.pid}, ppid=${existingLock.ppid}, startedAt=${existingLock.startedAt}, host=${existingLock.hostname})`,
+    );
+  }
+
+  await fs.unlink(lockPath).catch(() => undefined);
+  await writeLock();
+  return lockPath;
+};
+
+export const releaseResearchAutoLock = async (
+  lockPath: string | null | undefined,
+) => {
+  if (!lockPath) {
+    return;
+  }
+
+  const existingLock = await readResearchAutoLock(lockPath);
+  if (existingLock && existingLock.pid !== process.pid) {
+    return;
+  }
+
+  await fs.unlink(lockPath).catch(() => undefined);
+};
 
 const resolvePositiveInteger = (
   value: string | undefined,
@@ -671,6 +789,7 @@ export const main = async () => {
     steps: createEmptySteps(),
     artifacts: {},
   };
+  let lockPath: string | null = null;
 
   const executeStep = async (
     stepName: ResearchStepName,
@@ -802,9 +921,17 @@ export const main = async () => {
     await sendTelegramReport(message, { userName });
   };
 
-  await saveRun(run);
-
   try {
+    lockPath = await acquireResearchAutoLock({
+      runId,
+      userName,
+      strategy: target.strategy,
+      startedAt: run.startedAt,
+    });
+    logResearch(
+      `run ${runId} acquired lock ${lockPath} (pid=${process.pid}, ppid=${process.ppid}, host=${os.hostname()})`,
+    );
+    await saveRun(run);
     logResearch(
       `run ${runId} selected target strategy=${target.strategy}, config=${target.config}, selectedBy=${target.selectedBy}`,
     );
@@ -1013,6 +1140,8 @@ export const main = async () => {
       console.error(chalk.red(run.error));
     }
     process.exit(1);
+  } finally {
+    await releaseResearchAutoLock(lockPath);
   }
 };
 

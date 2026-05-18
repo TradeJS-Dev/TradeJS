@@ -611,6 +611,8 @@ const buildRunIntroLines = ({
 
 const resolveTesterWorker = () => {
   const testerWorkerPathCandidates = [
+    path.resolve(__dirname, './workers/testerWorker.js'),
+    path.resolve(__dirname, '../workers/testerWorker.js'),
     path.resolve(__dirname, '../../workers/testerWorker.js'),
     path.resolve(__dirname, '../../../dist/workers/testerWorker.js'),
     path.resolve(__dirname, '../../workers/testerWorker.ts'),
