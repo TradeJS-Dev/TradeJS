@@ -9,9 +9,8 @@ import {
   getConnectorCreatorByName,
   resolveConnectorName,
 } from '@tradejs/node/connectors';
-import { getTickers, loadTradejsConfig, update } from '@tradejs/node/cli';
+import { getTickers, update } from '@tradejs/node/cli';
 import { parseTestName } from '@tradejs/core/backtest';
-import type { TradejsConfigHooks } from '@tradejs/core/config';
 import { runWithConcurrency } from '@tradejs/core/async';
 import {
   BACKTEST_DEFAULT_DAYS,
@@ -79,21 +78,6 @@ import {
 } from './runState';
 import { executeBacktestWorkerPool } from './workerPool';
 
-const testerWorkerPathCandidates = [
-  path.resolve(__dirname, '../../workers/testerWorker.js'),
-  path.resolve(__dirname, '../../../dist/workers/testerWorker.js'),
-  path.resolve(__dirname, '../../workers/testerWorker.ts'),
-];
-const testerWorkerPath = testerWorkerPathCandidates.find((candidate) =>
-  fs.existsSync(candidate),
-);
-if (!testerWorkerPath) {
-  throw new Error(
-    `Tester worker file not found. Checked: ${testerWorkerPathCandidates.join(', ')}`,
-  );
-}
-const testerNeedsTsRuntime = testerWorkerPath.endsWith('.ts');
-
 export type ResolvedWindow = {
   start: number;
   end: number;
@@ -112,28 +96,6 @@ export type RuntimeStrategyBacktestConfig = {
   strategyName: string;
   strategyConfig: StrategyConfig;
   backtestConfig: StrategyConfigGrid;
-};
-
-const normalizeConfigHookList = <THook extends (...args: any[]) => unknown>(
-  value: THook | THook[] | undefined,
-): THook[] => {
-  if (Array.isArray(value)) {
-    return value.filter(Boolean);
-  }
-
-  return value ? [value] : [];
-};
-
-export const getUnsupportedLiveProjectHookStages = (
-  hooks: TradejsConfigHooks | undefined,
-): string[] => {
-  const unsupportedStages: string[] = [];
-
-  if (normalizeConfigHookList(hooks?.beforeSignals as any).length > 0) {
-    unsupportedStages.push('beforeSignals');
-  }
-
-  return unsupportedStages;
 };
 
 const createListIt = () =>
@@ -433,20 +395,6 @@ export const loadReplayStrategies = async (): Promise<
     return [];
   }
 
-  const projectConfig = await loadTradejsConfig(projectRoot);
-  const unsupportedReplayHookStages = getUnsupportedLiveProjectHookStages(
-    projectConfig.hooks,
-  );
-  if (unsupportedReplayHookStages.length > 0) {
-    throw new Error(
-      `yarn replay does not support project hooks ${unsupportedReplayHookStages.join(
-        ', ',
-      )}. These hooks change runtime behaviour in yarn signals, so replay would produce misleading results. Use a replay flow that executes project hooks or temporarily disable ${unsupportedReplayHookStages.join(
-        ', ',
-      )} for this comparison.`,
-    );
-  }
-
   return runtimeStrategies;
 };
 
@@ -661,6 +609,27 @@ const buildRunIntroLines = ({
   return lines;
 };
 
+const resolveTesterWorker = () => {
+  const testerWorkerPathCandidates = [
+    path.resolve(__dirname, '../../workers/testerWorker.js'),
+    path.resolve(__dirname, '../../../dist/workers/testerWorker.js'),
+    path.resolve(__dirname, '../../workers/testerWorker.ts'),
+  ];
+  const testerWorkerPath = testerWorkerPathCandidates.find((candidate) =>
+    fs.existsSync(candidate),
+  );
+  if (!testerWorkerPath) {
+    throw new Error(
+      `Tester worker file not found. Checked: ${testerWorkerPathCandidates.join(', ')}`,
+    );
+  }
+
+  return {
+    testerWorkerPath,
+    testerNeedsTsRuntime: testerWorkerPath.endsWith('.ts'),
+  };
+};
+
 export const executeTestSuite = async ({
   testSuite,
   window,
@@ -677,6 +646,7 @@ export const executeTestSuite = async ({
   onFinish: () => Promise<void>;
 }) => {
   markTestsStarted();
+  const { testerWorkerPath, testerNeedsTsRuntime } = resolveTesterWorker();
   await executeBacktestWorkerPool({
     testSuite,
     userName,

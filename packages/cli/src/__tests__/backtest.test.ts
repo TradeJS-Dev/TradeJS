@@ -94,7 +94,6 @@ jest.mock('../lib/timeWindow', () => ({
 
 import {
   chunkTestSuiteBySymbol,
-  getUnsupportedLiveProjectHookStages,
   resolveDefaultParallel,
   resolveDefaultWorkerHeapMb,
   mergePersistedTestSummaries,
@@ -217,21 +216,6 @@ describe('backtest script helpers', () => {
       INTERVAL: '15',
       RECORD_RUNTIME_TRADES: false,
     });
-  });
-
-  it('marks project beforeSignals hooks as unsupported in signals replay mode', () => {
-    expect(
-      getUnsupportedLiveProjectHookStages({
-        beforeSignals: [async () => undefined],
-        onBar: [async () => undefined],
-      } as any),
-    ).toEqual(['beforeSignals']);
-
-    expect(
-      getUnsupportedLiveProjectHookStages({
-        onBar: [async () => undefined],
-      } as any),
-    ).toEqual([]);
   });
 
   it('summarizes synced runtime trades by strategy including active pnl', () => {

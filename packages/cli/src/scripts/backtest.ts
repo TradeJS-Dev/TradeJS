@@ -13,7 +13,6 @@ import {
   createTable,
   executeTestSuite,
   flags,
-  getUnsupportedLiveProjectHookStages,
   interval,
   loadReplayStrategies,
   loadRuntimeStrategyBacktestConfigs,
@@ -296,7 +295,6 @@ export const backtest = async () => {
 export {
   BACKTEST_PRELOAD_DAYS,
   chunkTestSuiteBySymbol,
-  getUnsupportedLiveProjectHookStages,
   interval,
   loadReplayStrategies,
   loadRuntimeStrategyBacktestConfigs,
