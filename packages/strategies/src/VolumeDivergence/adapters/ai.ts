@@ -27,11 +27,12 @@ VolumeDivergence addon:
 - \`confirmationDistancePct\` tells you how far price moved beyond the confirmation level; do not overstate quality when confirmation exists only marginally.
 - \`additionalIndicators.deltaAtPivot\` is a proxy net-volume value on the pivot candle, not true lower-timeframe TradingView volume delta.
 - If \`payload.additionalIndicators.derivativesContext\` exists, use Coinalyze-derived open interest, funding, and liquidations as positioning context: a liquidation flush can strengthen reversal odds, while crowded positioning against the trade or stale or missing data should not mechanically increase quality.
+- Adaptive exception: a bearish \`confirmation_ready\` setup may still deserve live approval even with positive pivot delta if price already advanced structurally and derivatives show a real liquidation flush. This is a regime-sensitive reversal exception, not a blanket permission for weak SHORTs.
 `;
 
 const VOLUME_DIVERGENCE_PAYLOAD_PROMPT = `
 - \`payload.additionalIndicators.volumeDivergenceContext\` contains a compact divergence-strength summary:
-  divergenceKind / confirmationPrice / confirmationReady / structureAdvanced / reboundFromPivotPct / confirmationDistancePct / priceDisplacementPct / divergenceAmplitudeAtrRatio / reclaimPct / confirmationCandleQuality / volumeDivergenceStrength / deltaAligned / coinBiasAligned / btcBiasAligned / deterministicQuality / approvalAllowedNow / structuralHardBlockReasons / maxAllowedQuality.
+  divergenceKind / confirmationPrice / confirmationReady / structureAdvanced / reboundFromPivotPct / confirmationDistancePct / priceDisplacementPct / divergenceAmplitudeAtrRatio / reclaimPct / confirmationCandleQuality / volumeDivergenceStrength / deltaAligned / coinBiasAligned / btcBiasAligned / derivativesDirectionAligned / derivativesRiskFlags / derivativesLiqSpikeRatio / deterministicQuality / approvalAllowedNow / structuralHardBlockReasons / maxAllowedQuality.
 - Use this context as the explicit strategy-specific summary instead of trying to derive the same conclusion again only from generic candles.
 - If \`payload.additionalIndicators.derivativesContext\` exists, it is a Coinalyze-derived summary of derivatives state at signal time; \`stale\` or \`missing_derivatives\` means that Coinalyze context must not be used.
 `;
@@ -88,6 +89,10 @@ type VolumeDivergenceAiContext = {
   btcMaBias: Bias;
   coinBiasAligned: boolean | null;
   btcBiasAligned: boolean | null;
+  derivativesDirectionAligned: boolean | null;
+  derivativesRiskFlags: string[];
+  derivativesFundingZScore: number | null;
+  derivativesLiqSpikeRatio: number | null;
   hardBlockReasons: HardBlockReason[];
   structuralHardBlockReasons: string[];
   deterministicQuality: number;
@@ -121,6 +126,19 @@ const getLastFiniteNumber = (value: unknown): number | null => {
 
   return toFiniteNumberOrNull(value);
 };
+
+const getRecord = (value: unknown): Record<string, unknown> | null =>
+  value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+
+const getStringArray = (value: unknown): string[] =>
+  Array.isArray(value)
+    ? value.filter(
+        (entry): entry is string =>
+          typeof entry === 'string' && entry.trim().length > 0,
+      )
+    : [];
 
 const getBias = (fast: number | null, slow: number | null): Bias => {
   if (fast == null || slow == null) {
@@ -365,6 +383,8 @@ const getLongDeterministicQuality = ({
   barsSinceDetection,
   coinBiasAligned,
   btcBiasAligned,
+  derivativesDirectionAligned,
+  derivativesRiskFlags,
   entryThresholds,
   aiThresholds,
 }: {
@@ -383,6 +403,8 @@ const getLongDeterministicQuality = ({
   barsSinceDetection: number | null;
   coinBiasAligned: boolean | null;
   btcBiasAligned: boolean | null;
+  derivativesDirectionAligned: boolean | null;
+  derivativesRiskFlags: string[];
   entryThresholds: VolumeDivergenceEntryThresholdSnapshot;
   aiThresholds: VolumeDivergenceAiThresholds | null;
 }) => {
@@ -414,6 +436,9 @@ const getLongDeterministicQuality = ({
   const volumeRatioVeryStrong = isAtLeast(volumeDivergenceRatio, 2.2);
   const longBiasConflictCount =
     Number(coinBiasAligned === false) + Number(btcBiasAligned === false);
+  const longQ4DerivativesConflict =
+    derivativesRiskFlags.includes('oi_not_confirming') &&
+    derivativesDirectionAligned !== true;
   const longQ4Demotion = getLongQ4Demotion({
     divergenceAmplitudeAtrRatio,
     volumeDivergenceRatio,
@@ -478,7 +503,7 @@ const getLongDeterministicQuality = ({
     minimumSetupReady &&
     coinBiasAligned === true &&
     btcBiasAligned === true &&
-    reboundModerate &&
+    reboundStrong &&
     calmAtr &&
     isAtLeast(reclaimPct, 145) &&
     isAtLeast(confirmationCandleQuality, 0.8) &&
@@ -489,7 +514,7 @@ const getLongDeterministicQuality = ({
     confirmationReady &&
     minimumSetupReady &&
     (coinBiasAligned === true || btcBiasAligned === true) &&
-    reboundModerate &&
+    reboundStrong &&
     isAtLeast(reclaimPct, 140) &&
     isAtLeast(confirmationCandleQuality, 0.8) &&
     isAtMost(divergenceAmplitudeAtrRatio, 2.5) &&
@@ -535,11 +560,12 @@ const getLongDeterministicQuality = ({
     longSelectivePromotion ||
     (confirmationReady &&
       q4SetupReady &&
-      reboundModerate &&
+      reboundStrong &&
       confirmationDistanceModerate &&
       confirmationDistanceContained &&
       volumeModerate &&
       volumeRatioModerate &&
+      !longQ4DerivativesConflict &&
       !longQ4Demotion &&
       deltaAligned !== false)
   ) {
@@ -569,6 +595,7 @@ const getShortDeterministicQuality = ({
   deltaAligned,
   coinBiasAligned,
   btcBiasAligned,
+  derivativesLiqSpikeRatio,
   entryThresholds,
   aiThresholds,
 }: {
@@ -583,6 +610,7 @@ const getShortDeterministicQuality = ({
   deltaAligned: boolean | null;
   coinBiasAligned: boolean | null;
   btcBiasAligned: boolean | null;
+  derivativesLiqSpikeRatio: number | null;
   entryThresholds: VolumeDivergenceEntryThresholdSnapshot;
   aiThresholds: VolumeDivergenceAiThresholds | null;
 }) => {
@@ -628,6 +656,14 @@ const getShortDeterministicQuality = ({
       confirmationCandleQuality,
       entryThresholds.minConfirmationCandleQuality,
     );
+  const shortAdaptivePromotion =
+    confirmationReady &&
+    structureAdvanced &&
+    minimumSetupReady &&
+    reboundStrong &&
+    deltaAligned === false &&
+    isAtLeast(reclaimPct, 160) &&
+    isAtLeast(derivativesLiqSpikeRatio, 1);
 
   if (
     confirmationReady &&
@@ -648,6 +684,10 @@ const getShortDeterministicQuality = ({
     deltaAligned === true &&
     shortBiasConflictCount === 0
   ) {
+    return 4;
+  }
+
+  if (shortAdaptivePromotion) {
     return 4;
   }
 
@@ -744,6 +784,23 @@ const getVolumeDivergenceContext = (
     getLastFiniteNumber(signal.indicators?.btcMaFast),
     getLastFiniteNumber(signal.indicators?.btcMaSlow),
   );
+  const additional = getRecord(signal.additionalIndicators);
+  const derivativesContext = getRecord(additional?.derivativesContext);
+  const derivativesSummary = getRecord(derivativesContext?.summary);
+  const derivativesIntervals = getRecord(derivativesContext?.intervals);
+  const derivatives15m = getRecord(derivativesIntervals?.['15m']);
+  const derivatives1h = getRecord(derivativesIntervals?.['1h']);
+  const derivativesDirectionAligned =
+    typeof derivativesSummary?.directionAligned === 'boolean'
+      ? derivativesSummary.directionAligned
+      : null;
+  const derivativesRiskFlags = getStringArray(derivativesSummary?.riskFlags);
+  const derivativesFundingZScore =
+    toFiniteNumberOrNull(derivatives15m?.fundingZScore) ??
+    toFiniteNumberOrNull(derivatives1h?.fundingZScore);
+  const derivativesLiqSpikeRatio =
+    toFiniteNumberOrNull(derivatives15m?.liqSpikeRatio) ??
+    toFiniteNumberOrNull(derivatives1h?.liqSpikeRatio);
 
   const confirmationPrice =
     divergenceKind === 'bullish'
@@ -894,6 +951,8 @@ const getVolumeDivergenceContext = (
           barsSinceDetection,
           coinBiasAligned,
           btcBiasAligned,
+          derivativesDirectionAligned,
+          derivativesRiskFlags,
           entryThresholds,
           aiThresholds,
         })
@@ -910,6 +969,7 @@ const getVolumeDivergenceContext = (
             deltaAligned,
             coinBiasAligned,
             btcBiasAligned,
+            derivativesLiqSpikeRatio,
             entryThresholds,
             aiThresholds,
           })
@@ -946,6 +1006,10 @@ const getVolumeDivergenceContext = (
     btcMaBias,
     coinBiasAligned,
     btcBiasAligned,
+    derivativesDirectionAligned,
+    derivativesRiskFlags,
+    derivativesFundingZScore,
+    derivativesLiqSpikeRatio,
     hardBlockReasons,
     structuralHardBlockReasons: [...hardBlockReasons],
     deterministicQuality,
@@ -1099,6 +1163,10 @@ Additional VolumeDivergence context:
 - deltaAligned=${context.deltaAligned}
 - coinBiasAligned=${context.coinBiasAligned}
 - btcBiasAligned=${context.btcBiasAligned}
+- derivativesDirectionAligned=${context.derivativesDirectionAligned}
+- derivativesRiskFlags=${context.derivativesRiskFlags.join(', ') || 'none'}
+- derivativesFundingZScore=${context.derivativesFundingZScore?.toFixed?.(3) ?? 'n/a'}
+- derivativesLiqSpikeRatio=${context.derivativesLiqSpikeRatio?.toFixed?.(3) ?? 'n/a'}
 - barsSincePivot=${context.barsSincePivot ?? 'n/a'}
 - barsBetweenPivotConfirmations=${context.barsBetweenPivotConfirmations ?? 'n/a'}
 - entryTiming=${context.entryTiming ?? 'n/a'}

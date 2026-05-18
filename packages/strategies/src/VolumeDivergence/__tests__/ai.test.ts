@@ -42,6 +42,24 @@ const makeSignal = (overrides: Record<string, any> = {}) =>
         confirmationDistancePct: 1,
         ...overrides.additionalIndicators?.volumeDivergenceSetup,
       },
+      derivativesContext: {
+        ...overrides.additionalIndicators?.derivativesContext,
+        summary: {
+          directionAligned: true,
+          riskFlags: [],
+          ...overrides.additionalIndicators?.derivativesContext?.summary,
+        },
+        intervals: {
+          ...overrides.additionalIndicators?.derivativesContext?.intervals,
+          '15m': {
+            fundingZScore: 0,
+            liqSpikeRatio: 0,
+            ...overrides.additionalIndicators?.derivativesContext?.intervals?.[
+              '15m'
+            ],
+          },
+        },
+      },
       divergence: {
         kind: 'bullish',
         pivotLookbackLeft: 2,
@@ -948,6 +966,146 @@ describe('volumeDivergenceAiAdapter', () => {
         volumeDivergenceRatio: 2.2,
         deterministicQuality: 4,
         approvalAllowedNow: true,
+      }),
+    );
+  });
+
+  it('promotes structurally advanced short confirmations into q4 when liquidation flush confirms the move', () => {
+    const signal = makeSignal({
+      direction: 'SHORT',
+      prices: {
+        currentPrice: 99.5,
+        takeProfitPrice: 96,
+        stopLossPrice: 101.5,
+        riskRatio: 2,
+      },
+      indicators: {
+        maFast: [100, 99.6, 99.2],
+        maSlow: [100, 99.9, 99.7],
+        btcMaFast: [50, 50.1, 50.2],
+        btcMaSlow: [50, 50, 49.9],
+      },
+      additionalIndicators: {
+        deltaAtPivot: 120,
+        volumeDivergenceSetup: {
+          atrPct: 1.1,
+          divergenceAmplitudeAtrRatio: 1.2,
+          reclaimPct: 165,
+          confirmationCandleQuality: 0.82,
+          confirmationDistancePct: 0.9,
+        },
+        derivativesContext: {
+          summary: {
+            directionAligned: false,
+            riskFlags: ['oi_not_confirming'],
+          },
+          intervals: {
+            '15m': {
+              liqSpikeRatio: 1.4,
+            },
+          },
+        },
+        divergence: {
+          kind: 'bearish',
+          pivotLookbackLeft: 2,
+          pivotLookbackRight: 1,
+          barsBetweenPivotConfirmations: 4,
+          currentPivot: {
+            index: 6,
+            timestamp: 6,
+            priceLow: 100,
+            priceHigh: 105,
+            volumeNorm: 40,
+          },
+          previousPivot: {
+            index: 4,
+            timestamp: 4,
+            priceLow: 98,
+            priceHigh: 103,
+            volumeNorm: 100,
+          },
+        },
+      },
+    });
+    const payload = volumeDivergenceAiAdapter.buildPayload?.({
+      signal,
+      basePayload: {
+        signal: {
+          symbol: signal.symbol,
+          signalId: signal.signalId,
+          interval: signal.interval,
+          direction: signal.direction,
+          timestamp: signal.timestamp,
+          strategy: signal.strategy,
+          prices: {
+            currentPrice: signal.prices.currentPrice,
+            takeProfitPrice: signal.prices.takeProfitPrice,
+            stopLossPrice: signal.prices.stopLossPrice,
+          },
+        },
+        figures: {},
+        indicators: signal.indicators,
+        additionalIndicators: signal.additionalIndicators,
+      },
+    }) as any;
+
+    expect(
+      (payload.additionalIndicators as any).volumeDivergenceContext,
+    ).toEqual(
+      expect.objectContaining({
+        signalDirection: 'SHORT',
+        confirmationReady: true,
+        structureAdvanced: true,
+        deltaAligned: false,
+        derivativesLiqSpikeRatio: 1.4,
+        reclaimPct: 165,
+        deterministicQuality: 4,
+        approvalAllowedNow: true,
+      }),
+    );
+  });
+
+  it('demotes q4 long confirmations when derivatives show oi conflict without alignment', () => {
+    const signal = makeSignal({
+      additionalIndicators: {
+        derivativesContext: {
+          summary: {
+            directionAligned: false,
+            riskFlags: ['oi_not_confirming'],
+          },
+        },
+      },
+    });
+    const payload = volumeDivergenceAiAdapter.buildPayload?.({
+      signal,
+      basePayload: {
+        signal: {
+          symbol: signal.symbol,
+          signalId: signal.signalId,
+          interval: signal.interval,
+          direction: signal.direction,
+          timestamp: signal.timestamp,
+          strategy: signal.strategy,
+          prices: {
+            currentPrice: signal.prices.currentPrice,
+            takeProfitPrice: signal.prices.takeProfitPrice,
+            stopLossPrice: signal.prices.stopLossPrice,
+          },
+        },
+        figures: {},
+        indicators: signal.indicators,
+        additionalIndicators: signal.additionalIndicators,
+      },
+    }) as any;
+
+    expect(
+      (payload.additionalIndicators as any).volumeDivergenceContext,
+    ).toEqual(
+      expect.objectContaining({
+        derivativesDirectionAligned: false,
+        derivativesRiskFlags: ['oi_not_confirming'],
+        deterministicQuality: 3,
+        approvalAllowedNow: false,
       }),
     );
   });
