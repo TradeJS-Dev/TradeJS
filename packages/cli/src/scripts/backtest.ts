@@ -55,26 +55,11 @@ import {
   StrategyConfigGrid,
 } from '@tradejs/types';
 import {
-  compareTradeParityEntries,
-  dedupeRuntimeParityEntries,
-  extractBacktestEntryParityEntries,
-  extractRuntimeParityEntries,
-  type TradeParityEntry,
-} from '../lib/runtimeParity';
-import {
   backfillDerivativesContextForBacktest,
   shouldBackfillDerivativesContextForBacktest,
 } from '../lib/derivativesContextBackfill';
-import {
-  summarizeRuntimeTradesByStrategy,
-  summarizeTradeParityByStrategy,
-} from '../lib/paritySummary';
 import { normalizeCliArgv } from '../lib/cliArgs';
-import {
-  loadRuntimeStrategyConfigs,
-  loadRuntimeTrades,
-} from '../lib/runtimeRedis';
-import { loadClosedPnlRows, syncRuntimeTrades } from '../lib/runtimeTradeSync';
+import { loadRuntimeStrategyConfigs } from '../lib/runtimeRedis';
 import { resolveTimeWindow } from '../lib/timeWindow';
 
 const BYTES_IN_MB = 1024 * 1024;
@@ -210,15 +195,16 @@ const hasCliFlag = (argv: string[], names: string[]) =>
     (arg) =>
       names.includes(arg) || names.some((name) => arg.startsWith(`${name}=`)),
   );
-const interval = flags.timeframe.toString() as Interval;
+export const interval = flags.timeframe.toString() as Interval;
 const progressStep = Math.max(1, parseInt(String(flags.progressStep), 10));
 const testsLimit = Math.max(0, parseInt(String(flags.tests), 10));
 const testsSkip = Math.max(0, parseInt(String(flags.skip ?? 0), 10));
 const hasExplicitTestsLimit = hasCliFlag(normalizedArgv, ['--tests', '-n']);
+export const isUpdateOnlyRun = Boolean(flags.updateOnly);
 const testItemTimeoutMs = 240_000;
 const workerHeapMb = resolveWorkerHeapMb();
 const effectiveParallel = resolveEffectiveParallel(flags.parallel);
-const resultArtifactsIoConcurrency = Math.max(
+export const resultArtifactsIoConcurrency = Math.max(
   8,
   Math.min(32, effectiveParallel * 4),
 );
@@ -263,7 +249,7 @@ const HEADERS_RESULTS_BY_TICKERS = [
   chalk.cyan('MAX DRAWDOWN (%)'),
 ];
 
-const HEADERS_LIVE_RESULTS_BY_STRATEGY = [
+export const HEADERS_LIVE_RESULTS_BY_STRATEGY = [
   chalk.blue('STRATEGY'),
   chalk.yellow('TICKERS'),
   chalk.yellow('TRADE TICKERS'),
@@ -273,7 +259,7 @@ const HEADERS_LIVE_RESULTS_BY_STRATEGY = [
   chalk.cyan('AVG TRADE'),
 ];
 
-const HEADERS_LIVE_RUNTIME_COMPARISON = [
+export const HEADERS_LIVE_RUNTIME_COMPARISON = [
   chalk.blue('STRATEGY'),
   chalk.cyan('BT ENTRIES'),
   chalk.cyan('BT PNL'),
@@ -284,18 +270,18 @@ const HEADERS_LIVE_RUNTIME_COMPARISON = [
   chalk.magenta('BT ONLY'),
 ];
 
-const REPLAY_RESULTS_CONFIG = 'replay';
-const LIVE_RUNTIME_COMPARE_TOLERANCE_BARS = 1;
-const LIVE_RUNTIME_COMPARE_TOLERANCE_MS =
+export const REPLAY_RESULTS_CONFIG = 'replay';
+export const LIVE_RUNTIME_COMPARE_TOLERANCE_BARS = 1;
+export const LIVE_RUNTIME_COMPARE_TOLERANCE_MS =
   LIVE_RUNTIME_COMPARE_TOLERANCE_BARS * 15 * 60 * 1000;
 
 type ErrorMessage = { id?: number; error?: unknown; payload?: any };
-type ResolvedWindow = {
+export type ResolvedWindow = {
   start: number;
   end: number;
   source: string;
 };
-type PreparedRunEnvironment = {
+export type PreparedRunEnvironment = {
   connectorName: string;
   marketConnector: Connector;
   tickers: string[];
@@ -306,12 +292,12 @@ type LoadedBacktestConfig = {
   strategyName: string;
   strategyConfigGrid: StrategyConfigGrid;
 };
-type RuntimeStrategyBacktestConfig = {
+export type RuntimeStrategyBacktestConfig = {
   strategyName: string;
   strategyConfig: StrategyConfig;
   backtestConfig: StrategyConfigGrid;
 };
-type LiveStrategySummary = {
+export type LiveStrategySummary = {
   strategyName: string;
   strategyConfig: StrategyConfig;
   tickers: number;
@@ -323,7 +309,7 @@ type LiveStrategySummary = {
   avgTradeProfit: number;
   winRate: number;
 };
-type LiveRuntimeParityRow = {
+export type LiveRuntimeParityRow = {
   strategyName: string;
   backtestEntries: number;
   backtestNetProfit: number;
@@ -333,7 +319,7 @@ type LiveRuntimeParityRow = {
   runtimeOnly: number;
   backtestOnly: number;
 };
-type LiveRuntimeComparisonSummary = {
+export type LiveRuntimeComparisonSummary = {
   mode: 'runtime' | 'exchange';
   syncedTradesCount: number;
   windowTradesCount: number;
@@ -344,13 +330,13 @@ type LiveRuntimeComparisonSummary = {
   backtestOnlyCount: number;
   rows: LiveRuntimeParityRow[];
 };
-type LiveStrategyResultsSnapshot = {
+export type LiveStrategyResultsSnapshot = {
   summaries: LiveStrategySummary[];
-  backtestEntries: TradeParityEntry[];
+  backtestEntries: any[];
 };
 type ExchangeMatchedBacktestEntry = {
   exchange: ExchangeEntryRecord;
-  backtest: TradeParityEntry;
+  backtest: any;
   timestampDiffMs: number;
   priceDeltaPct: number | null;
 };
@@ -399,14 +385,34 @@ const resultsByTickers = new Map<string, TestWorkerResult>();
 const liveResultsByStrategyAndTicker = new Map<string, TestWorkerResult>();
 const persistedTestSummaryByKey = new Map<string, Item>();
 
-const userName = flags.user;
+export const userName = flags.user;
 let runStartedAt = Date.now();
 let testsStartedAt = runStartedAt;
 let activeConnectorForRuntimeCompare: Connector | null = null;
 let activeConnectorNameForRuntimeCompare = '';
 let activeWindowForRuntimeCompare: { start: number; end: number } | null = null;
 
-const resetRunState = () => {
+export const storeReplayResult = (result: TestWorkerResult) => {
+  liveResultsByStrategyAndTicker.set(getLiveStrategyResultKey(result), result);
+};
+
+export const getReplayResults = () =>
+  Array.from(liveResultsByStrategyAndTicker.values());
+
+export const getRuntimeCompareContext = () => ({
+  connector: activeConnectorForRuntimeCompare,
+  connectorName: activeConnectorNameForRuntimeCompare,
+  window: activeWindowForRuntimeCompare,
+});
+
+export const getRunStartedAt = () => runStartedAt;
+export const getRunCounters = () => ({
+  successTests,
+  errorTests,
+  errors: [...errorMessages],
+});
+
+export const resetRunState = () => {
   successTests = 0;
   errorTests = 0;
   errorMessages.length = 0;
@@ -427,10 +433,10 @@ const createListIt = () =>
     headerUnderline: true,
   });
 
-const createTable = (headers: string[], rows: string[][]) =>
+export const createTable = (headers: string[], rows: string[][]) =>
   createListIt().setHeaderRow(headers).d(rows).toString();
 
-const createTimestamp = (date: Date) => format(date, 'yyyyMMddHHmm');
+export const createTimestamp = (date: Date) => format(date, 'yyyyMMddHHmm');
 
 const formatDuration = (startedAt: number) => {
   const seconds = (Date.now() - startedAt) / 1000;
@@ -593,7 +599,7 @@ export const toStrategyConfigGrid = (
     Object.entries(strategyConfig).map(([key, value]) => [key, [value]]),
   );
 
-const loadRuntimeStrategyBacktestConfigs = async (
+export const loadRuntimeStrategyBacktestConfigs = async (
   userName: string,
 ): Promise<RuntimeStrategyBacktestConfig[]> => {
   const configs = await loadRuntimeStrategyConfigs(userName, {
@@ -609,246 +615,9 @@ const loadRuntimeStrategyBacktestConfigs = async (
   }));
 };
 
-const getLiveStrategyResultKey = (result: Pick<TestWorkerResult, 'test'>) =>
-  `${result.test.strategyName}:${result.test.symbol}`;
-
-const loadExchangeEntryRows = async ({
-  connector,
-  startTime,
-  endTime,
-}: {
-  connector: Connector;
-  startTime: number;
-  endTime: number;
-}): Promise<ExchangeEntryRecord[]> => {
-  if (typeof connector.getEntryExecutions !== 'function') {
-    console.log(
-      chalk.yellow(
-        'runtime compare: connector does not support entry execution history',
-      ),
-    );
-    return [];
-  }
-
-  try {
-    const rows = await connector.getEntryExecutions({
-      startTime,
-      endTime,
-      limit: 100,
-    });
-
-    if (rows.length >= 100) {
-      console.log(
-        chalk.yellow(
-          'runtime compare: exchange entry executions returned 100 rows (connector cap); older entry trades in the window may be truncated',
-        ),
-      );
-    }
-
-    return rows.sort(
-      (left, right) => left.entryTimestamp - right.entryTimestamp,
-    );
-  } catch (error) {
-    console.log(
-      chalk.yellow(
-        `runtime compare: getEntryExecutions failed: ${(error as Error)?.message || String(error)}`,
-      ),
-    );
-    return [];
-  }
-};
-
-const buildPriceDeltaPct = (
-  leftPrice: number | null,
-  rightPrice: number | null,
-) => {
-  if (
-    leftPrice == null ||
-    rightPrice == null ||
-    !Number.isFinite(leftPrice) ||
-    !Number.isFinite(rightPrice) ||
-    leftPrice === 0
-  ) {
-    return null;
-  }
-
-  return Math.abs(((rightPrice - leftPrice) / leftPrice) * 100);
-};
-
-const loadExchangeEntriesForComparison = async ({
-  connector,
-  startTime,
-  endTime,
-}: {
-  connector: Connector;
-  startTime: number;
-  endTime: number;
-}): Promise<ExchangeEntryRecord[]> => {
-  const entryRows = await loadExchangeEntryRows({
-    connector,
-    startTime,
-    endTime,
-  });
-  const closedPnlRows = await loadClosedPnlRows({
-    connector,
-    startTime,
-    endTime,
-    callbacks: {
-      onUnsupported: () => {
-        console.log(
-          chalk.yellow(
-            'runtime compare: connector does not support getClosedPnl, using runtime trade records as-is',
-          ),
-        );
-      },
-      onCapped: () => {
-        console.log(
-          chalk.yellow(
-            'runtime compare: exchange closed pnl returned 100 rows (connector cap); older closed trades in the window may be truncated',
-          ),
-        );
-      },
-      onError: (error) => {
-        console.log(
-          chalk.yellow(
-            `runtime compare: getClosedPnl failed: ${(error as Error)?.message || String(error)}`,
-          ),
-        );
-      },
-    },
-  });
-
-  const closedPnlByOrderId = new Map(
-    closedPnlRows
-      .filter((row) => typeof row.orderId === 'string' && row.orderId.trim())
-      .map((row) => [row.orderId as string, row]),
-  );
-
-  return entryRows.map((entry) => {
-    const closedPnl =
-      typeof entry.orderId === 'string'
-        ? closedPnlByOrderId.get(entry.orderId)
-        : null;
-
-    return {
-      ...entry,
-      exitPrice: closedPnl?.exitPrice ?? entry.exitPrice ?? null,
-      exitTimestamp: closedPnl?.closedAt ?? entry.exitTimestamp ?? null,
-      closedPnl: closedPnl?.closedPnl ?? entry.closedPnl ?? null,
-    };
-  });
-};
-
-export const compareExchangeEntriesToBacktest = ({
-  exchangeEntries,
-  backtestEntries,
-  toleranceMs,
-}: {
-  exchangeEntries: ExchangeEntryRecord[];
-  backtestEntries: TradeParityEntry[];
-  toleranceMs: number;
-}) => {
-  const groupedExchange = new Map<string, ExchangeEntryRecord[]>();
-  const groupedBacktest = new Map<string, TradeParityEntry[]>();
-
-  for (const entry of exchangeEntries) {
-    const key = `${entry.symbol}::${entry.direction}`;
-    const bucket = groupedExchange.get(key) ?? [];
-    bucket.push(entry);
-    groupedExchange.set(key, bucket);
-  }
-
-  for (const entry of backtestEntries) {
-    const key = `${entry.symbol}::${entry.direction}`;
-    const bucket = groupedBacktest.get(key) ?? [];
-    bucket.push(entry);
-    groupedBacktest.set(key, bucket);
-  }
-
-  const matched: ExchangeMatchedBacktestEntry[] = [];
-  const exchangeOnly: ExchangeEntryRecord[] = [];
-  const backtestOnly: TradeParityEntry[] = [];
-  const matchedBacktestEntries = new Set<TradeParityEntry>();
-  const groupKeys = new Set([
-    ...groupedExchange.keys(),
-    ...groupedBacktest.keys(),
-  ]);
-
-  for (const key of groupKeys) {
-    const exchangeGroup = [...(groupedExchange.get(key) ?? [])].sort(
-      (left, right) => left.entryTimestamp - right.entryTimestamp,
-    );
-    const availableBacktest = [...(groupedBacktest.get(key) ?? [])].sort(
-      (left, right) => left.timestamp - right.timestamp,
-    );
-    const unmatchedBacktest = availableBacktest.map((entry) => ({
-      entry,
-      used: false,
-    }));
-
-    for (const exchangeEntry of exchangeGroup) {
-      let bestIndex = -1;
-      let bestDiff = Number.POSITIVE_INFINITY;
-
-      for (let index = 0; index < unmatchedBacktest.length; index += 1) {
-        const candidate = unmatchedBacktest[index];
-        if (candidate.used) {
-          continue;
-        }
-
-        const diff = Math.abs(
-          candidate.entry.timestamp - exchangeEntry.entryTimestamp,
-        );
-        if (diff > toleranceMs || diff >= bestDiff) {
-          continue;
-        }
-
-        bestIndex = index;
-        bestDiff = diff;
-      }
-
-      if (bestIndex < 0) {
-        exchangeOnly.push(exchangeEntry);
-        continue;
-      }
-
-      unmatchedBacktest[bestIndex].used = true;
-      const backtestEntry = unmatchedBacktest[bestIndex].entry;
-      matchedBacktestEntries.add(backtestEntry);
-      matched.push({
-        exchange: exchangeEntry,
-        backtest: backtestEntry,
-        timestampDiffMs: bestDiff,
-        priceDeltaPct: buildPriceDeltaPct(
-          exchangeEntry.entryPrice,
-          backtestEntry.price,
-        ),
-      });
-    }
-  }
-
-  for (const entry of backtestEntries) {
-    if (!matchedBacktestEntries.has(entry)) {
-      backtestOnly.push(entry);
-    }
-  }
-
-  matched.sort(
-    (left, right) =>
-      left.exchange.entryTimestamp - right.exchange.entryTimestamp ||
-      left.backtest.strategy.localeCompare(right.backtest.strategy),
-  );
-  exchangeOnly.sort(
-    (left, right) => left.entryTimestamp - right.entryTimestamp,
-  );
-  backtestOnly.sort((left, right) => left.timestamp - right.timestamp);
-
-  return {
-    matched,
-    exchangeOnly,
-    backtestOnly,
-  };
-};
+export const getLiveStrategyResultKey = (
+  result: Pick<TestWorkerResult, 'test'>,
+) => `${result.test.strategyName}:${result.test.symbol}`;
 
 export const mergePersistedTestSummaries = (
   existing: Item[] | null | undefined,
@@ -899,10 +668,10 @@ const getLogsById = async (orderLogId: string) => {
   return { orderLog, positionLog };
 };
 
-const resolveResultArtifacts = async (result: TestWorkerResult) =>
+export const resolveResultArtifacts = async (result: TestWorkerResult) =>
   getLogsById(result.orderLogId);
 
-const setTestData = async (
+export const setTestData = async (
   test: Test,
   stat: Partial<TestStat>,
   orderLog: OrderLog[],
@@ -943,7 +712,7 @@ const setTestData = async (
   });
 };
 
-const persistTestSummariesIndex = async () => {
+export const persistTestSummariesIndex = async () => {
   const existing = (await getData(redisKeys.testSummaries(userName), [])) as
     | Item[]
     | null;
@@ -987,7 +756,7 @@ const loadBacktestConfig = async (): Promise<LoadedBacktestConfig> => {
   };
 };
 
-const loadReplayStrategies = async (): Promise<
+export const loadReplayStrategies = async (): Promise<
   RuntimeStrategyBacktestConfig[]
 > => {
   const runtimeStrategies = await loadRuntimeStrategyBacktestConfigs(userName);
@@ -1017,7 +786,7 @@ const loadReplayStrategies = async (): Promise<
   return runtimeStrategies;
 };
 
-const prepareRunEnvironment =
+export const prepareRunEnvironment =
   async (): Promise<PreparedRunEnvironment | null> => {
     const connectorName = await resolveBacktestConnectorName(flags.connector);
     const connectorFactory = await getConnectorCreatorByName(
@@ -1119,7 +888,7 @@ const prepareRunEnvironment =
     };
   };
 
-const buildPreparedTestSuite = async ({
+export const buildPreparedTestSuite = async ({
   testSuite,
   window,
   preloadStart,
@@ -1187,7 +956,7 @@ const buildPreparedTestSuite = async ({
   return preparedSuite;
 };
 
-const trackTopResult = (result: TestWorkerResult) => {
+export const trackTopResult = (result: TestWorkerResult) => {
   const nextTopResults = insertTopResult(results, result, flags.top);
   if (nextTopResults.added || results !== nextTopResults.results) {
     updateTopResults(nextTopResults.results);
@@ -1225,7 +994,7 @@ const printRunIntro = ({
   console.log('');
 };
 
-const executeTestSuite = async ({
+export const executeTestSuite = async ({
   testSuite,
   window,
   preloadStart,
@@ -1459,473 +1228,7 @@ const saveAndPrintResultsByTickers = async () => {
   console.log('');
 };
 
-const saveAndPrintLiveResultsByStrategy =
-  async (): Promise<LiveStrategyResultsSnapshot> => {
-    const summaryByStrategy = new Map<string, LiveStrategySummary>();
-    const backtestEntries: TradeParityEntry[] = [];
-    const liveResults = Array.from(liveResultsByStrategyAndTicker.values());
-    const processedResults = new Array<{
-      test: Test;
-      stat: TestStat | null;
-      extractedEntries: TradeParityEntry[];
-    }>(liveResults.length);
-
-    await runWithConcurrency(
-      liveResults,
-      Math.min(resultArtifactsIoConcurrency, liveResults.length || 1),
-      async (result, index) => {
-        const { test } = result;
-        const { orderLog, positionLog } = await resolveResultArtifacts(result);
-        if (!orderLog || !positionLog) {
-          throw new Error(
-            `Logs not found for signals replay result ${test.name}`,
-          );
-        }
-
-        const stat = calculateStatsFull(positionLog) as TestStat | null;
-        if (!stat && positionLog.length > 0) {
-          throw new Error(
-            `Position log is empty for signals replay result ${test.name} despite ${positionLog.length} positions`,
-          );
-        }
-
-        await setTestData(test, stat ?? {}, orderLog);
-        processedResults[index] = {
-          test,
-          stat,
-          extractedEntries: extractBacktestEntryParityEntries(orderLog),
-        };
-      },
-    );
-
-    for (const processedResult of processedResults) {
-      if (!processedResult) {
-        continue;
-      }
-
-      const { test, stat, extractedEntries } = processedResult;
-      backtestEntries.push(...extractedEntries);
-
-      const existing = summaryByStrategy.get(test.strategyName) ?? {
-        strategyName: test.strategyName,
-        strategyConfig: test.strategyConfig,
-        tickers: 0,
-        tickersWithTrades: 0,
-        orders: 0,
-        wins: 0,
-        losses: 0,
-        netProfit: 0,
-        avgTradeProfit: 0,
-        winRate: 0,
-      };
-
-      existing.tickers += 1;
-      if (stat?.orders) {
-        existing.tickersWithTrades += 1;
-        existing.orders += stat.orders ?? 0;
-        existing.wins += stat.wins ?? 0;
-        existing.losses += stat.losses ?? 0;
-        existing.netProfit += stat.netProfit ?? 0;
-      }
-
-      summaryByStrategy.set(test.strategyName, existing);
-    }
-
-    const summaries = [...summaryByStrategy.values()]
-      .map((summary) => {
-        const winRate =
-          summary.orders > 0 ? (summary.wins / summary.orders) * 100 : 0;
-        const avgTradeProfit =
-          summary.orders > 0 ? summary.netProfit / summary.orders : 0;
-
-        return {
-          ...summary,
-          netProfit: Number(summary.netProfit.toFixed(2)),
-          avgTradeProfit: Number(avgTradeProfit.toFixed(2)),
-          winRate: Number(winRate.toFixed(2)),
-        };
-      })
-      .sort(
-        (left, right) =>
-          right.netProfit - left.netProfit ||
-          left.strategyName.localeCompare(right.strategyName),
-      );
-
-    const rows = summaries.map((summary) => {
-      const profit = `${summary.netProfit.toFixed(2)}$`;
-      const avgTrade = `${summary.avgTradeProfit.toFixed(2)}$`;
-      const profitColor =
-        summary.netProfit > 0
-          ? chalk.green
-          : summary.netProfit < 0
-            ? chalk.red
-            : chalk.gray;
-      const avgTradeColor =
-        summary.avgTradeProfit > 0
-          ? chalk.green
-          : summary.avgTradeProfit < 0
-            ? chalk.red
-            : chalk.gray;
-
-      return [
-        chalk.blue(summary.strategyName),
-        chalk.yellow(String(summary.tickers)),
-        chalk.yellow(String(summary.tickersWithTrades)),
-        chalk.cyan(String(summary.orders)),
-        chalk.cyan(
-          `${summary.wins}/${summary.losses} (${summary.winRate.toFixed(2)}%)`,
-        ),
-        profitColor(profit),
-        avgTradeColor(avgTrade),
-      ];
-    });
-
-    console.log('');
-    console.log('SIGNALS REPLAY RESULTS BY STRATEGY:');
-    console.log(createTable(HEADERS_LIVE_RESULTS_BY_STRATEGY, rows));
-    console.log('');
-
-    return {
-      summaries,
-      backtestEntries,
-    };
-  };
-
-const saveAndPrintLiveExchangeComparison = async ({
-  liveStrategySummaries,
-  backtestEntries,
-}: {
-  liveStrategySummaries: LiveStrategySummary[];
-  backtestEntries: TradeParityEntry[];
-}): Promise<LiveRuntimeComparisonSummary> => {
-  const exchangeEntries = await loadExchangeEntriesForComparison({
-    connector: activeConnectorForRuntimeCompare!,
-    startTime: activeWindowForRuntimeCompare!.start,
-    endTime: activeWindowForRuntimeCompare!.end,
-  });
-
-  if (!exchangeEntries.length) {
-    console.log('');
-    console.log(
-      chalk.yellow(
-        `SIGNALS REPLAY VS EXCHANGE: no exchange entry executions found for ${activeConnectorNameForRuntimeCompare} in ${formatUnix(
-          activeWindowForRuntimeCompare!.start,
-        )} -> ${formatUnix(activeWindowForRuntimeCompare!.end)}`,
-      ),
-    );
-    console.log('');
-
-    return {
-      mode: 'exchange',
-      syncedTradesCount: 0,
-      windowTradesCount: 0,
-      runtimeEntriesCount: 0,
-      backtestEntriesCount: backtestEntries.length,
-      matchedCount: 0,
-      runtimeOnlyCount: 0,
-      backtestOnlyCount: backtestEntries.length,
-      rows: liveStrategySummaries.map((summary) => ({
-        strategyName: summary.strategyName,
-        backtestEntries: backtestEntries.filter(
-          (entry) => entry.strategy === summary.strategyName,
-        ).length,
-        backtestNetProfit: summary.netProfit,
-        runtimeTrades: 0,
-        runtimePnl: 0,
-        matched: 0,
-        runtimeOnly: 0,
-        backtestOnly: backtestEntries.filter(
-          (entry) => entry.strategy === summary.strategyName,
-        ).length,
-      })),
-    };
-  }
-
-  const comparison = compareExchangeEntriesToBacktest({
-    exchangeEntries,
-    backtestEntries,
-    toleranceMs: LIVE_RUNTIME_COMPARE_TOLERANCE_MS,
-  });
-  const liveSummaryByStrategy = new Map(
-    liveStrategySummaries.map((summary) => [summary.strategyName, summary]),
-  );
-  const rowByStrategy = new Map<string, LiveRuntimeParityRow>();
-  const ensureRow = (strategyName: string) => {
-    const existing = rowByStrategy.get(strategyName);
-    if (existing) {
-      return existing;
-    }
-
-    const next: LiveRuntimeParityRow = {
-      strategyName,
-      backtestEntries: 0,
-      backtestNetProfit:
-        liveSummaryByStrategy.get(strategyName)?.netProfit ?? 0,
-      runtimeTrades: 0,
-      runtimePnl: 0,
-      matched: 0,
-      runtimeOnly: 0,
-      backtestOnly: 0,
-    };
-    rowByStrategy.set(strategyName, next);
-    return next;
-  };
-
-  for (const summary of liveStrategySummaries) {
-    ensureRow(summary.strategyName);
-  }
-
-  for (const entry of backtestEntries) {
-    ensureRow(entry.strategy).backtestEntries += 1;
-  }
-
-  for (const item of comparison.matched) {
-    const row = ensureRow(item.backtest.strategy);
-    row.runtimeTrades += 1;
-    row.matched += 1;
-    if (
-      typeof item.exchange.closedPnl === 'number' &&
-      Number.isFinite(item.exchange.closedPnl)
-    ) {
-      row.runtimePnl += item.exchange.closedPnl;
-    }
-  }
-
-  for (const entry of comparison.backtestOnly) {
-    ensureRow(entry.strategy).backtestOnly += 1;
-  }
-
-  if (comparison.exchangeOnly.length) {
-    const unmatchedRow = ensureRow('[exchange-unmatched]');
-    for (const entry of comparison.exchangeOnly) {
-      unmatchedRow.runtimeTrades += 1;
-      unmatchedRow.runtimeOnly += 1;
-      if (
-        typeof entry.closedPnl === 'number' &&
-        Number.isFinite(entry.closedPnl)
-      ) {
-        unmatchedRow.runtimePnl += entry.closedPnl;
-      }
-    }
-  }
-
-  const rows = [...rowByStrategy.values()]
-    .map((row) => ({
-      ...row,
-      runtimePnl: Number(row.runtimePnl.toFixed(2)),
-    }))
-    .sort((left, right) => left.strategyName.localeCompare(right.strategyName));
-
-  const colorizedRows = rows.map((row) => {
-    const btPnlColor =
-      row.backtestNetProfit > 0
-        ? chalk.green
-        : row.backtestNetProfit < 0
-          ? chalk.red
-          : chalk.gray;
-    const rtPnlColor =
-      row.runtimePnl > 0
-        ? chalk.green
-        : row.runtimePnl < 0
-          ? chalk.red
-          : chalk.gray;
-
-    return [
-      chalk.blue(row.strategyName),
-      chalk.cyan(String(row.backtestEntries)),
-      btPnlColor(`${row.backtestNetProfit.toFixed(2)}$`),
-      chalk.yellow(String(row.runtimeTrades)),
-      rtPnlColor(`${row.runtimePnl.toFixed(2)}$`),
-      chalk.green(String(row.matched)),
-      chalk.yellow(String(row.runtimeOnly)),
-      chalk.magenta(String(row.backtestOnly)),
-    ];
-  });
-
-  console.log('');
-  console.log(
-    `SIGNALS REPLAY VS EXCHANGE BY STRATEGY (connector=${activeConnectorNameForRuntimeCompare}, inferredStrategy=nearest backtest entry, tolerance=${LIVE_RUNTIME_COMPARE_TOLERANCE_BARS} bar)`,
-  );
-  console.log(createTable(HEADERS_LIVE_RUNTIME_COMPARISON, colorizedRows));
-  console.log('');
-
-  return {
-    mode: 'exchange',
-    syncedTradesCount: exchangeEntries.length,
-    windowTradesCount: exchangeEntries.length,
-    runtimeEntriesCount: exchangeEntries.length,
-    backtestEntriesCount: backtestEntries.length,
-    matchedCount: comparison.matched.length,
-    runtimeOnlyCount: comparison.exchangeOnly.length,
-    backtestOnlyCount: comparison.backtestOnly.length,
-    rows,
-  };
-};
-
-const saveAndPrintLiveRuntimeComparison = async ({
-  liveStrategySummaries,
-  backtestEntries,
-}: {
-  liveStrategySummaries: LiveStrategySummary[];
-  backtestEntries: TradeParityEntry[];
-}): Promise<LiveRuntimeComparisonSummary | null> => {
-  if (!activeConnectorForRuntimeCompare || !activeWindowForRuntimeCompare) {
-    return null;
-  }
-
-  const relevantStrategies = new Set(
-    liveStrategySummaries.map((summary) => summary.strategyName),
-  );
-  const rawRuntimeTrades = await loadRuntimeTrades(userName);
-  const syncedRuntimeTrades = await syncRuntimeTrades({
-    userName,
-    connector: activeConnectorForRuntimeCompare,
-    trades: rawRuntimeTrades,
-    startTime: activeWindowForRuntimeCompare.start,
-    endTime: activeWindowForRuntimeCompare.end,
-    closedPnlCallbacks: {
-      onUnsupported: () => {
-        console.log(
-          chalk.yellow(
-            'runtime compare: connector does not support getClosedPnl, using runtime trade records as-is',
-          ),
-        );
-      },
-      onCapped: () => {
-        console.log(
-          chalk.yellow(
-            'runtime compare: exchange closed pnl returned 100 rows (connector cap); older closed trades in the window may be truncated',
-          ),
-        );
-      },
-      onError: (error) => {
-        console.log(
-          chalk.yellow(
-            `runtime compare: getClosedPnl failed: ${(error as Error)?.message || String(error)}`,
-          ),
-        );
-      },
-    },
-  });
-  const windowRuntimeTrades = syncedRuntimeTrades.filter(
-    (trade) =>
-      trade.entryTimestamp >= activeWindowForRuntimeCompare!.start &&
-      trade.entryTimestamp < activeWindowForRuntimeCompare!.end &&
-      relevantStrategies.has(trade.strategy),
-  );
-
-  if (!windowRuntimeTrades.length) {
-    console.log('');
-    console.log(
-      chalk.yellow(
-        `SIGNALS REPLAY VS RUNTIME: no local runtime trades found for ${activeConnectorNameForRuntimeCompare} in ${formatUnix(
-          activeWindowForRuntimeCompare.start,
-        )} -> ${formatUnix(activeWindowForRuntimeCompare.end)}; falling back to direct exchange comparison`,
-      ),
-    );
-    console.log('');
-    return saveAndPrintLiveExchangeComparison({
-      liveStrategySummaries,
-      backtestEntries,
-    });
-  }
-
-  const runtimeSummaries =
-    summarizeRuntimeTradesByStrategy(windowRuntimeTrades);
-  const runtimeSummaryByStrategy = new Map(
-    runtimeSummaries.map((summary) => [summary.strategyName, summary]),
-  );
-  const rawRuntimeEntries = extractRuntimeParityEntries(windowRuntimeTrades);
-  const runtimeDedupe = dedupeRuntimeParityEntries(rawRuntimeEntries);
-  const comparison = compareTradeParityEntries({
-    runtimeEntries: runtimeDedupe.entries,
-    backtestEntries,
-    toleranceMs: LIVE_RUNTIME_COMPARE_TOLERANCE_MS,
-  });
-  const parityRows = summarizeTradeParityByStrategy({
-    runtimeEntries: runtimeDedupe.entries,
-    runtimeDuplicateEntries: runtimeDedupe.duplicateEntries,
-    backtestEntries,
-    matchedEntries: comparison.matched,
-    runtimeOnlyEntries: comparison.runtimeOnly,
-    backtestOnlyEntries: comparison.backtestOnly,
-  });
-  const parityByStrategy = new Map(parityRows);
-  const liveSummaryByStrategy = new Map(
-    liveStrategySummaries.map((summary) => [summary.strategyName, summary]),
-  );
-
-  const strategyNames = new Set<string>([
-    ...liveSummaryByStrategy.keys(),
-    ...runtimeSummaryByStrategy.keys(),
-    ...parityByStrategy.keys(),
-  ]);
-  const rows = [...strategyNames]
-    .sort((left, right) => left.localeCompare(right))
-    .map((strategyName) => {
-      const liveSummary = liveSummaryByStrategy.get(strategyName);
-      const runtimeSummary = runtimeSummaryByStrategy.get(strategyName);
-      const parity = parityByStrategy.get(strategyName);
-
-      return {
-        strategyName,
-        backtestEntries: parity?.backtest ?? 0,
-        backtestNetProfit: liveSummary?.netProfit ?? 0,
-        runtimeTrades: runtimeSummary?.trades ?? 0,
-        runtimePnl: runtimeSummary?.totalPnl ?? 0,
-        matched: parity?.matched ?? 0,
-        runtimeOnly: parity?.runtimeOnly ?? 0,
-        backtestOnly: parity?.backtestOnly ?? 0,
-      };
-    });
-
-  const colorizedRows = rows.map((row) => {
-    const btPnlColor =
-      row.backtestNetProfit > 0
-        ? chalk.green
-        : row.backtestNetProfit < 0
-          ? chalk.red
-          : chalk.gray;
-    const rtPnlColor =
-      row.runtimePnl > 0
-        ? chalk.green
-        : row.runtimePnl < 0
-          ? chalk.red
-          : chalk.gray;
-
-    return [
-      chalk.blue(row.strategyName),
-      chalk.cyan(String(row.backtestEntries)),
-      btPnlColor(`${row.backtestNetProfit.toFixed(2)}$`),
-      chalk.yellow(String(row.runtimeTrades)),
-      rtPnlColor(`${row.runtimePnl.toFixed(2)}$`),
-      chalk.green(String(row.matched)),
-      chalk.yellow(String(row.runtimeOnly)),
-      chalk.magenta(String(row.backtestOnly)),
-    ];
-  });
-
-  console.log('');
-  console.log(
-    `SIGNALS REPLAY VS RUNTIME BY STRATEGY (connector=${activeConnectorNameForRuntimeCompare}, tolerance=${LIVE_RUNTIME_COMPARE_TOLERANCE_BARS} bar)`,
-  );
-  console.log(createTable(HEADERS_LIVE_RUNTIME_COMPARISON, colorizedRows));
-  console.log('');
-
-  return {
-    mode: 'runtime',
-    syncedTradesCount: syncedRuntimeTrades.length,
-    windowTradesCount: windowRuntimeTrades.length,
-    runtimeEntriesCount: runtimeDedupe.entries.length,
-    backtestEntriesCount: backtestEntries.length,
-    matchedCount: comparison.matched.length,
-    runtimeOnlyCount: comparison.runtimeOnly.length,
-    backtestOnlyCount: comparison.backtestOnly.length,
-    rows,
-  };
-};
-
-const printRunOutro = () => {
+export const printRunOutro = () => {
   console.log(
     chalk.gray(`tests run: done in ${formatDuration(testsStartedAt)}`),
   );
@@ -1992,49 +1295,6 @@ const finishBacktest = async () => {
   process.exit();
 };
 
-const finishReplay = async () => {
-  const replayStrategySnapshot = await saveAndPrintLiveResultsByStrategy();
-  const replayRuntimeComparison = await saveAndPrintLiveRuntimeComparison({
-    liveStrategySummaries: replayStrategySnapshot.summaries,
-    backtestEntries: replayStrategySnapshot.backtestEntries,
-  });
-
-  await persistTestSummariesIndex();
-  printRunOutro();
-
-  const finishedAt = new Date();
-  const durationSeconds = Number(
-    ((Date.now() - runStartedAt) / 1000).toFixed(2),
-  );
-  const timestamp = createTimestamp(finishedAt);
-
-  await setData(
-    redisKeys.backtestResults(userName, REPLAY_RESULTS_CONFIG, timestamp),
-    {
-      config: REPLAY_RESULTS_CONFIG,
-      mode: 'replay',
-      user: userName,
-      startedAt: new Date(runStartedAt).toISOString(),
-      finishedAt: finishedAt.toISOString(),
-      durationSeconds,
-      results: Array.from(liveResultsByStrategyAndTicker.values()),
-      resultsByTickers: [],
-      resultsByStrategies: replayStrategySnapshot.summaries,
-      runtimeComparison: replayRuntimeComparison,
-      bestConfig: null,
-      mergedConfig: null,
-      successTests,
-      errors: errorMessages,
-      errorTests,
-    },
-    {
-      expire: 0,
-    },
-  );
-
-  process.exit();
-};
-
 export const backtest = async () => {
   resetRunState();
   const config = await loadBacktestConfig();
@@ -2068,60 +1328,6 @@ export const backtest = async () => {
       updateBestTickerResult(result);
     },
     onFinish: finishBacktest,
-  });
-};
-
-export const replayBacktest = async () => {
-  resetRunState();
-  const replayStrategies = await loadReplayStrategies();
-  if (!replayStrategies.length) {
-    return;
-  }
-
-  const preparedRun = await prepareRunEnvironment();
-  if (!preparedRun || flags.updateOnly) {
-    return;
-  }
-
-  const testSuite = await buildPreparedTestSuite({
-    testSuite: replayStrategies.flatMap(
-      ({ strategyName: replayStrategyName, strategyConfig }) =>
-        createTestSuite(
-          userName,
-          preparedRun.tickers,
-          replayStrategyName,
-          toStrategyConfigGrid(
-            buildLiveReplayStrategyConfig({
-              strategyConfig,
-              interval,
-            }),
-          ),
-          preparedRun.connectorName,
-        ),
-    ),
-    window: preparedRun.window,
-    preloadStart: preparedRun.preloadStart,
-    isReplay: true,
-  });
-  if (!testSuite) {
-    return;
-  }
-
-  await executeTestSuite({
-    testSuite,
-    window: preparedRun.window,
-    preloadStart: preparedRun.preloadStart,
-    replayModeLabel: `mode: replay (${replayStrategies
-      .map(({ strategyName }) => strategyName)
-      .join(', ')})`,
-    onResult: (result) => {
-      liveResultsByStrategyAndTicker.set(
-        getLiveStrategyResultKey(result),
-        result,
-      );
-      trackTopResult(result);
-    },
-    onFinish: finishReplay,
   });
 };
 

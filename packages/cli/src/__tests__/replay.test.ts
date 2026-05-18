@@ -6,7 +6,7 @@ describe('replay script', () => {
   it('delegates to dedicated replay backtest runner', async () => {
     const replayBacktest = jest.fn().mockResolvedValue(undefined);
 
-    jest.doMock('../scripts/backtest', () => ({
+    jest.doMock('../scripts/replayRunner', () => ({
       __esModule: true,
       replayBacktest,
     }));

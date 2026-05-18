@@ -88,7 +88,6 @@ jest.mock('../lib/timeWindow', () => ({
 import {
   buildLiveReplayStrategyConfig,
   chunkTestSuiteBySymbol,
-  compareExchangeEntriesToBacktest,
   getUnsupportedLiveProjectHookStages,
   resolveDefaultParallel,
   resolveDefaultWorkerHeapMb,
@@ -98,6 +97,7 @@ import {
   resolveWorkerHeapMb,
   toStrategyConfigGrid,
 } from '../scripts/backtest';
+import { compareExchangeEntriesToBacktest } from '../scripts/replayRunner';
 import {
   summarizeRuntimeTradesByStrategy,
   summarizeTradeParityByStrategy,

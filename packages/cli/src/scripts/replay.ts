@@ -1,5 +1,5 @@
 export const main = async () => {
-  const { replayBacktest } = await import('./backtest');
+  const { replayBacktest } = await import('./replayRunner');
   await replayBacktest();
 };
 
