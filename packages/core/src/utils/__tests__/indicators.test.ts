@@ -21,6 +21,18 @@ const makeCandle = (
   turnover: close * 1000,
 });
 
+const percentChange = (current: number, previous: number): number | null => {
+  if (
+    !Number.isFinite(current) ||
+    !Number.isFinite(previous) ||
+    previous === 0
+  ) {
+    return null;
+  }
+
+  return ((current - previous) / previous) * 100;
+};
+
 describe('utils indicators', () => {
   it('ignores undefined strategy period overrides and preserves defaults', () => {
     const periods = buildDefaultIndicatorPeriods({
@@ -380,6 +392,164 @@ describe('utils indicators', () => {
         ).correlation ?? 0;
 
       expect(snapshot.correlation).toBe(expected);
+    }
+  });
+
+  it('preserves 1h and 24h rolling window semantics on uneven timestamps', () => {
+    const indicators = createIndicators([], [], {
+      periods: {
+        maFast: 2,
+        maMedium: 2,
+        maSlow: 2,
+        obvSma: 2,
+        atr: 2,
+        atrPctShort: 2,
+        atrPctLong: 2,
+        bb: 2,
+        bbStd: 2,
+        macdFast: 3,
+        macdSlow: 4,
+        macdSignal: 2,
+      },
+    });
+
+    const oneHourMs = 60 * 60_000;
+    const oneDayMs = 24 * oneHourMs;
+    const stepPattern = [
+      15 * 60_000,
+      15 * 60_000,
+      30 * 60_000,
+      15 * 60_000,
+      45 * 60_000,
+    ];
+    const candles: Candle[] = [];
+    let timestamp = 0;
+
+    const computeWindow = (currentTimestamp: number, windowMs: number) => {
+      const timestamps = candles.map((item) => item.timestamp);
+      const windowStart = currentTimestamp - windowMs;
+
+      if (timestamps.length === 0 || timestamps[0] > windowStart) {
+        return {
+          high: null,
+          low: null,
+          volume: null,
+          startClose: null,
+          hasFullWindow: false,
+        };
+      }
+
+      let startIdx = 0;
+      while (
+        startIdx < timestamps.length &&
+        timestamps[startIdx] < windowStart
+      ) {
+        startIdx += 1;
+      }
+
+      let high = -Infinity;
+      let low = Infinity;
+      let volume = 0;
+
+      for (let index = startIdx; index < candles.length; index += 1) {
+        high = Math.max(high, candles[index].high);
+        low = Math.min(low, candles[index].low);
+        volume += candles[index].volume;
+      }
+
+      return {
+        high,
+        low,
+        volume,
+        startClose: candles[startIdx]?.close ?? null,
+        hasFullWindow: true,
+      };
+    };
+
+    const findNearestStartClose = (
+      currentTimestamp: number,
+      windowMs: number,
+    ) => {
+      const timestamps = candles.map((item) => item.timestamp);
+
+      if (timestamps.length === 0) {
+        return null;
+      }
+
+      const windowStart = currentTimestamp - windowMs;
+      let idx = 0;
+      while (idx < timestamps.length && timestamps[idx] < windowStart) {
+        idx += 1;
+      }
+
+      if (idx <= 0) {
+        return candles[0]?.close ?? null;
+      }
+
+      if (idx >= timestamps.length) {
+        return candles[timestamps.length - 1]?.close ?? null;
+      }
+
+      const prevIdx = idx - 1;
+      const currentIdx = timestamps.length - 1;
+      if (idx === currentIdx && timestamps[idx] > windowStart) {
+        return candles[prevIdx]?.close ?? null;
+      }
+
+      const prevDiff = windowStart - timestamps[prevIdx];
+      const nextDiff = timestamps[idx] - windowStart;
+      const chosenIdx = prevDiff <= nextDiff ? prevIdx : idx;
+
+      return candles[chosenIdx]?.close ?? null;
+    };
+
+    for (let i = 0; i < 140; i += 1) {
+      timestamp += stepPattern[i % stepPattern.length];
+      const candle = makeCandle(
+        timestamp,
+        100 + i * 1.7,
+        103 + (i % 7) * 2 + i,
+        97 - (i % 5) + i * 0.3,
+      );
+      candles.push(candle);
+
+      const snapshot = indicators.next(
+        candle,
+        makeCandle(timestamp, 20_000 + i),
+      );
+      if (!snapshot) {
+        continue;
+      }
+
+      const window1h = computeWindow(timestamp, oneHourMs);
+      const window24h = computeWindow(timestamp, oneDayMs);
+      const price1hStart = findNearestStartClose(timestamp, oneHourMs);
+      const price24hStart = findNearestStartClose(timestamp, oneDayMs);
+
+      expect(snapshot.highPrice1h).toBe(
+        window1h.hasFullWindow ? window1h.high : null,
+      );
+      expect(snapshot.lowPrice1h).toBe(
+        window1h.hasFullWindow ? window1h.low : null,
+      );
+      expect(snapshot.volume1h).toBe(
+        window1h.hasFullWindow ? window1h.volume : null,
+      );
+      expect(snapshot.highPrice24h).toBe(
+        window24h.hasFullWindow ? window24h.high : null,
+      );
+      expect(snapshot.lowPrice24h).toBe(
+        window24h.hasFullWindow ? window24h.low : null,
+      );
+      expect(snapshot.volume24h).toBe(
+        window24h.hasFullWindow ? window24h.volume : null,
+      );
+      expect(snapshot.price1hPcnt).toBe(
+        percentChange(candle.close, price1hStart ?? NaN) ?? 0,
+      );
+      expect(snapshot.price24hPcnt).toBe(
+        percentChange(candle.close, price24hStart ?? NaN) ?? 0,
+      );
     }
   });
 });

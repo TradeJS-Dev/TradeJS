@@ -383,8 +383,6 @@ export const createIndicators = (
     return { close, cursor: idx };
   };
 
-  let window1hStart = 0;
-  let window24hStart = 0;
   const levelHighDeque: number[] = [];
   const levelLowDeque: number[] = [];
 
@@ -430,78 +428,117 @@ export const createIndicators = (
     }
   };
 
-  const computeWindow = (
-    currentTimestamp: number,
-    windowMs: number,
-    startIdx: number,
-  ) => {
-    const windowStart = currentTimestamp - windowMs;
-    if (timestamps.length === 0 || timestamps[0] > windowStart) {
-      return {
-        startIdx,
-        high: null,
-        low: null,
-        volume: null,
-        startClose: null,
-        hasFullWindow: false,
-      };
-    }
-    let idx = startIdx;
-    while (idx < timestamps.length && timestamps[idx] < windowStart) {
-      idx += 1;
-    }
-    let high = -Infinity;
-    let low = Infinity;
-    let volume = 0;
-    for (let i = idx; i < highs.length; i += 1) {
-      const highValue = highs[i];
-      const lowValue = lows[i];
-      const volumeValue = volumes[i];
-      if (highValue > high) high = highValue;
-      if (lowValue < low) low = lowValue;
-      volume += volumeValue;
-    }
+  const createRollingWindowTracker = (windowMs: number) => {
+    let startIdx = 0;
+    let volumeSum = 0;
+    const highDeque: number[] = [];
+    const lowDeque: number[] = [];
+
     return {
-      startIdx: idx,
-      high,
-      low,
-      volume,
-      startClose: closes[idx],
-      hasFullWindow: true,
+      push: (currentIndex: number, currentTimestamp: number) => {
+        volumeSum += volumes[currentIndex] ?? 0;
+
+        while (
+          highDeque.length > 0 &&
+          highs[highDeque[highDeque.length - 1]] <= highs[currentIndex]
+        ) {
+          highDeque.pop();
+        }
+        highDeque.push(currentIndex);
+
+        while (
+          lowDeque.length > 0 &&
+          lows[lowDeque[lowDeque.length - 1]] >= lows[currentIndex]
+        ) {
+          lowDeque.pop();
+        }
+        lowDeque.push(currentIndex);
+
+        const windowStart = currentTimestamp - windowMs;
+        while (
+          startIdx < timestamps.length &&
+          timestamps[startIdx] < windowStart
+        ) {
+          if (highDeque[0] === startIdx) {
+            highDeque.shift();
+          }
+          if (lowDeque[0] === startIdx) {
+            lowDeque.shift();
+          }
+          volumeSum -= volumes[startIdx] ?? 0;
+          startIdx += 1;
+        }
+
+        if (timestamps.length === 0 || timestamps[0] > windowStart) {
+          return {
+            startIdx,
+            high: null,
+            low: null,
+            volume: null,
+            startClose: null,
+            hasFullWindow: false,
+          };
+        }
+
+        return {
+          startIdx,
+          high: highDeque.length > 0 ? highs[highDeque[0]] : null,
+          low: lowDeque.length > 0 ? lows[lowDeque[0]] : null,
+          volume: volumeSum,
+          startClose: closes[startIdx] ?? null,
+          hasFullWindow: true,
+        };
+      },
     };
   };
 
-  const findNearestStartClose = (
-    currentTimestamp: number,
-    windowMs: number,
-  ) => {
-    if (timestamps.length === 0) {
-      return { startClose: null, startIdx: 0 };
-    }
-    const windowStart = currentTimestamp - windowMs;
-    let idx = 0;
-    while (idx < timestamps.length && timestamps[idx] < windowStart) {
-      idx += 1;
-    }
-    if (idx <= 0) {
-      return { startClose: closes[0], startIdx: 0 };
-    }
-    if (idx >= timestamps.length) {
-      const lastIdx = timestamps.length - 1;
-      return { startClose: closes[lastIdx], startIdx: lastIdx };
-    }
-    const prevIdx = idx - 1;
-    const currentIdx = timestamps.length - 1;
-    // For coarse timeframes (e.g. 4h/1d), prevent anchoring to the current bar
-    // when the target window is shorter than a single candle.
-    if (idx === currentIdx && timestamps[idx] > windowStart) {
-      return { startClose: closes[prevIdx], startIdx: prevIdx };
-    }
-    const prevDiff = windowStart - timestamps[prevIdx];
-    const nextDiff = timestamps[idx] - windowStart;
-    const chosenIdx = prevDiff <= nextDiff ? prevIdx : idx;
-    return { startClose: closes[chosenIdx], startIdx: chosenIdx };
+  const createNearestStartCloseTracker = (windowMs: number) => {
+    let lowerBoundIdx = 0;
+
+    return {
+      resolve: (currentTimestamp: number) => {
+        if (timestamps.length === 0) {
+          return { startClose: null, startIdx: 0 };
+        }
+
+        const windowStart = currentTimestamp - windowMs;
+        while (
+          lowerBoundIdx < timestamps.length &&
+          timestamps[lowerBoundIdx] < windowStart
+        ) {
+          lowerBoundIdx += 1;
+        }
+
+        const idx = lowerBoundIdx;
+        if (idx <= 0) {
+          return { startClose: closes[0], startIdx: 0 };
+        }
+        if (idx >= timestamps.length) {
+          const lastIdx = timestamps.length - 1;
+          return { startClose: closes[lastIdx], startIdx: lastIdx };
+        }
+
+        const prevIdx = idx - 1;
+        const currentIdx = timestamps.length - 1;
+        // For coarse timeframes (e.g. 4h/1d), prevent anchoring to the current bar
+        // when the target window is shorter than a single candle.
+        if (idx === currentIdx && timestamps[idx] > windowStart) {
+          return { startClose: closes[prevIdx], startIdx: prevIdx };
+        }
+
+        const prevDiff = windowStart - timestamps[prevIdx];
+        const nextDiff = timestamps[idx] - windowStart;
+        const chosenIdx = prevDiff <= nextDiff ? prevIdx : idx;
+
+        return { startClose: closes[chosenIdx], startIdx: chosenIdx };
+      },
+    };
   };
+
+  const window1hTracker = createRollingWindowTracker(ONE_HOUR_MS);
+  const window24hTracker = createRollingWindowTracker(ONE_DAY_MS);
+  const price1hStartTracker = createNearestStartCloseTracker(ONE_HOUR_MS);
+  const price24hStartTracker = createNearestStartCloseTracker(ONE_DAY_MS);
 
   const next = (
     candle: Candle,
@@ -633,6 +670,29 @@ export const createIndicators = (
       return pluginSeries;
     };
 
+    const window1h = window1hTracker.push(currentIndex, currentTimestamp);
+    const window24h = window24hTracker.push(currentIndex, currentTimestamp);
+
+    const price1hStart = price1hStartTracker.resolve(currentTimestamp);
+    const price24hStart = price24hStartTracker.resolve(currentTimestamp);
+    const price1hPcntRaw =
+      price1hStart.startClose != null
+        ? percentChange(candle.close, price1hStart.startClose)
+        : null;
+    const price24hPcntRaw =
+      price24hStart.startClose != null
+        ? percentChange(candle.close, price24hStart.startClose)
+        : null;
+    const price1hPcnt = price1hPcntRaw ?? 0;
+    const price24hPcnt = price24hPcntRaw ?? 0;
+
+    const highPrice1h = window1h.hasFullWindow ? window1h.high : null;
+    const lowPrice1h = window1h.hasFullWindow ? window1h.low : null;
+    const volume1h = window1h.hasFullWindow ? window1h.volume : null;
+    const highPrice24h = window24h.hasFullWindow ? window24h.high : null;
+    const lowPrice24h = window24h.hasFullWindow ? window24h.low : null;
+    const volume24h = window24h.hasFullWindow ? window24h.volume : null;
+
     if (
       ma14Value == null ||
       ma49Value == null ||
@@ -651,39 +711,6 @@ export const createIndicators = (
       });
       return null;
     }
-
-    const window1h = computeWindow(
-      currentTimestamp,
-      ONE_HOUR_MS,
-      window1hStart,
-    );
-    window1hStart = window1h.startIdx;
-    const window24h = computeWindow(
-      currentTimestamp,
-      ONE_DAY_MS,
-      window24hStart,
-    );
-    window24hStart = window24h.startIdx;
-
-    const price1hStart = findNearestStartClose(currentTimestamp, ONE_HOUR_MS);
-    const price24hStart = findNearestStartClose(currentTimestamp, ONE_DAY_MS);
-    const price1hPcntRaw =
-      price1hStart.startClose != null
-        ? percentChange(candle.close, price1hStart.startClose)
-        : null;
-    const price24hPcntRaw =
-      price24hStart.startClose != null
-        ? percentChange(candle.close, price24hStart.startClose)
-        : null;
-    const price1hPcnt = price1hPcntRaw ?? 0;
-    const price24hPcnt = price24hPcntRaw ?? 0;
-
-    const highPrice1h = window1h.hasFullWindow ? window1h.high : null;
-    const lowPrice1h = window1h.hasFullWindow ? window1h.low : null;
-    const volume1h = window1h.hasFullWindow ? window1h.volume : null;
-    const highPrice24h = window24h.hasFullWindow ? window24h.high : null;
-    const lowPrice24h = window24h.hasFullWindow ? window24h.low : null;
-    const volume24h = window24h.hasFullWindow ? window24h.volume : null;
 
     let highLevel: number | null = null;
     let lowLevel: number | null = null;
