@@ -1,0 +1,509 @@
+import chalk from 'chalk';
+import { alignSortedCandlesByTimestamp } from '@tradejs/core/indicators';
+import { calculateStatsFull } from '@tradejs/core/backtest';
+import { logger } from '@tradejs/infra/logger';
+import {
+  getConnectorCreatorByName,
+  DEFAULT_CONNECTOR_NAME,
+} from '@tradejs/node/connectors';
+import { loadTradejsConfig } from '@tradejs/node/cli';
+import { getStrategyCreator } from '@tradejs/node/strategies';
+import type {
+  TradejsConfigAfterSignalsHook,
+  TradejsConfigAfterSignalsHookContext,
+  TradejsConfigBeforeSignalsHook,
+  TradejsConfigBeforeSignalsHookResult,
+  TradejsConfigHooks,
+  TradejsConfigSignalsHookContext,
+} from '@tradejs/core/config';
+import {
+  Candle,
+  Connector,
+  ConnectorCreator,
+  Interval,
+  KlineChartData,
+  KlineChartItem,
+  OrderLogData,
+  PositionLogData,
+  Signal,
+  StrategyConfig,
+  StrategyCreator,
+  TestStat,
+} from '@tradejs/types';
+import {
+  PreparedRunEnvironment,
+  projectRoot,
+  userName,
+} from '../backtest/runnerCore';
+import { buildReplayStrategyConfig } from './support';
+import {
+  PortfolioReplayConnector,
+  createPortfolioReplayConnector,
+} from './portfolioReplayConnector';
+
+type ReplayRuntimeStrategy = {
+  strategyName: string;
+  strategyCreator: StrategyCreator;
+  strategyConfig: StrategyConfig;
+};
+
+type SymbolPreparedData = {
+  prevData: KlineChartData;
+  btcPrevData: KlineChartData;
+  replayData: KlineChartData;
+  btcReplayData: KlineChartData;
+  btcBinancePrevData: KlineChartData;
+  btcCoinbasePrevData: KlineChartData;
+};
+
+type SymbolReplayRuntime = {
+  symbol: string;
+  replayData: KlineChartData;
+  btcReplayData: KlineChartData;
+  currentIndex: number;
+  strategies: Array<{
+    strategyName: string;
+    strategyConfig: StrategyConfig;
+    run: (
+      candle: KlineChartItem,
+      btcCandle: KlineChartItem,
+    ) => Promise<Signal | string | undefined>;
+  }>;
+};
+
+export type ReplayStrategyRunArtifacts = {
+  strategyName: string;
+  strategyConfig: StrategyConfig;
+  orderLog: OrderLogData;
+  positionLog: PositionLogData;
+  stat: TestStat | null;
+};
+
+export type HistoricalSignalsReplayResult = {
+  strategies: ReplayStrategyRunArtifacts[];
+  signals: Signal[];
+  orderLog: OrderLogData;
+  positionLog: PositionLogData;
+  cycleCount: number;
+  abortedCycles: number;
+};
+
+const normalizeHookList = <THook extends (...args: any[]) => unknown>(
+  value: THook | THook[] | undefined,
+): THook[] => {
+  if (Array.isArray(value)) {
+    return value;
+  }
+
+  return value ? [value] : [];
+};
+
+const invokeBeforeSignalsHooks = async (
+  hooks: TradejsConfigHooks | undefined,
+  params: TradejsConfigSignalsHookContext,
+): Promise<TradejsConfigBeforeSignalsHookResult | undefined> => {
+  for (const hook of normalizeHookList(
+    hooks?.beforeSignals,
+  ) as TradejsConfigBeforeSignalsHook[]) {
+    const result = await hook(params);
+    if (result?.abort === true) {
+      return result;
+    }
+  }
+
+  return undefined;
+};
+
+const invokeAfterSignalsHooks = async (
+  hooks: TradejsConfigHooks | undefined,
+  params: TradejsConfigAfterSignalsHookContext,
+) => {
+  for (const hook of normalizeHookList(
+    hooks?.afterSignals,
+  ) as TradejsConfigAfterSignalsHook[]) {
+    await hook(params);
+  }
+};
+
+const splitCandlesForReplay = (
+  candles: KlineChartData,
+  start: number,
+  preloadStart: number,
+) => {
+  const prevData: KlineChartData = [];
+  const replayData: KlineChartData = [];
+
+  for (const candle of candles) {
+    if (candle.timestamp < preloadStart) {
+      continue;
+    }
+
+    if (candle.timestamp < start) {
+      prevData.push(candle);
+      continue;
+    }
+
+    replayData.push(candle);
+  }
+
+  return { prevData, replayData };
+};
+
+const loadRuntimeStrategies = async (
+  runtimeStrategies: Array<{
+    strategyName: string;
+    strategyConfig: StrategyConfig;
+  }>,
+): Promise<ReplayRuntimeStrategy[]> => {
+  const strategies = await Promise.all(
+    runtimeStrategies.map(async ({ strategyName, strategyConfig }) => {
+      const strategyCreator = await getStrategyCreator(
+        strategyName,
+        projectRoot,
+      );
+      if (!strategyCreator) {
+        throw new Error(`Unknown strategy: ${strategyName}`);
+      }
+
+      return {
+        strategyName,
+        strategyCreator,
+        strategyConfig,
+      };
+    }),
+  );
+
+  return strategies;
+};
+
+const loadReferenceConnector = async (connectorName: string) => {
+  const connectorFactory = await getConnectorCreatorByName(
+    connectorName,
+    projectRoot,
+  );
+  if (!connectorFactory) {
+    throw new Error(`Connector "${connectorName}" is not registered`);
+  }
+
+  return await (connectorFactory as ConnectorCreator)({ userName });
+};
+
+const buildPreparedData = ({
+  data,
+  btcData,
+  btcBinanceData,
+  btcCoinbaseData,
+  start,
+  preloadStart,
+}: {
+  data: KlineChartData;
+  btcData: KlineChartData;
+  btcBinanceData: KlineChartData;
+  btcCoinbaseData: KlineChartData;
+  start: number;
+  preloadStart: number;
+}): SymbolPreparedData => {
+  const { prevData: prevDataRaw, replayData: replayDataRaw } =
+    splitCandlesForReplay(data, start, preloadStart);
+  const { prevData: btcPrevDataRaw, replayData: btcReplayDataRaw } =
+    splitCandlesForReplay(btcData, start, preloadStart);
+  const { prevData: btcBinancePrevDataRaw } = splitCandlesForReplay(
+    btcBinanceData,
+    start,
+    preloadStart,
+  );
+  const { prevData: btcCoinbasePrevDataRaw } = splitCandlesForReplay(
+    btcCoinbaseData,
+    start,
+    preloadStart,
+  );
+
+  const { alignedCoinCandles: prevData, alignedBtcCandles: btcPrevData } =
+    alignSortedCandlesByTimestamp(prevDataRaw, btcPrevDataRaw);
+  const { alignedCoinCandles: replayData, alignedBtcCandles: btcReplayData } =
+    alignSortedCandlesByTimestamp(replayDataRaw, btcReplayDataRaw);
+  const { alignedBtcCandles: btcBinancePrevData } =
+    alignSortedCandlesByTimestamp(prevDataRaw, btcBinancePrevDataRaw);
+  const { alignedBtcCandles: btcCoinbasePrevData } =
+    alignSortedCandlesByTimestamp(prevDataRaw, btcCoinbasePrevDataRaw);
+
+  return {
+    prevData,
+    btcPrevData,
+    replayData,
+    btcReplayData,
+    btcBinancePrevData,
+    btcCoinbasePrevData,
+  };
+};
+
+const buildAfterSignalsContext = ({
+  connector,
+  connectorName,
+  tickers,
+  runtimeStrategies,
+  interval,
+}: {
+  connector: Connector;
+  connectorName: string;
+  tickers: string[];
+  runtimeStrategies: ReplayRuntimeStrategy[];
+  interval: Interval;
+}) => ({
+  connector,
+  connectorName,
+  userName,
+  interval,
+  tickers: [...tickers],
+  runtimeStrategies: runtimeStrategies.map(
+    ({ strategyName, strategyConfig }) => ({
+      strategyName,
+      strategyConfig,
+    }),
+  ),
+});
+
+export const runHistoricalSignalsReplay = async ({
+  preparedRun,
+  interval,
+  runtimeStrategies,
+}: {
+  preparedRun: PreparedRunEnvironment;
+  interval: Interval;
+  runtimeStrategies: Array<{
+    strategyName: string;
+    strategyConfig: StrategyConfig;
+  }>;
+}): Promise<HistoricalSignalsReplayResult> => {
+  const startedAt = Date.now();
+  const signals: Signal[] = [];
+  const projectConfig = await loadTradejsConfig(projectRoot);
+  const projectHooks = projectConfig.hooks;
+  const loadedStrategies = await loadRuntimeStrategies(runtimeStrategies);
+  const replayConnector = createPortfolioReplayConnector(
+    preparedRun.marketConnector,
+  );
+  const connectorName =
+    String(
+      (preparedRun.marketConnector as any)?.name || DEFAULT_CONNECTOR_NAME,
+    ).trim() || DEFAULT_CONNECTOR_NAME;
+  const binanceConnector =
+    connectorName.toLowerCase() === DEFAULT_CONNECTOR_NAME.toLowerCase()
+      ? await loadReferenceConnector('Binance')
+      : preparedRun.marketConnector;
+  const coinbaseConnector =
+    connectorName.toLowerCase() === DEFAULT_CONNECTOR_NAME.toLowerCase()
+      ? await loadReferenceConnector('Coinbase')
+      : preparedRun.marketConnector;
+
+  const [btcBinanceData, btcCoinbaseData] = await Promise.all([
+    binanceConnector.kline({
+      symbol: 'BTCUSDT',
+      start: preparedRun.preloadStart,
+      end: preparedRun.window.end,
+      cacheOnly: true,
+      interval: interval as any,
+    }),
+    coinbaseConnector.kline({
+      symbol: 'BTCUSDT',
+      start: preparedRun.preloadStart,
+      end: preparedRun.window.end,
+      cacheOnly: true,
+      interval: interval as any,
+    }),
+  ]);
+
+  const symbolRuntimes: SymbolReplayRuntime[] = [];
+  const cycleSymbolsByTimestamp = new Map<number, SymbolReplayRuntime[]>();
+
+  for (const symbol of preparedRun.tickers) {
+    const [data, btcData] = await Promise.all([
+      preparedRun.marketConnector.kline({
+        symbol,
+        start: preparedRun.preloadStart,
+        end: preparedRun.window.end,
+        cacheOnly: true,
+        interval: interval as any,
+      }),
+      preparedRun.marketConnector.kline({
+        symbol: 'BTCUSDT',
+        start: preparedRun.preloadStart,
+        end: preparedRun.window.end,
+        cacheOnly: true,
+        interval: interval as any,
+      }),
+    ]);
+
+    const preparedData = buildPreparedData({
+      data,
+      btcData,
+      btcBinanceData,
+      btcCoinbaseData,
+      start: preparedRun.window.start,
+      preloadStart: preparedRun.preloadStart,
+    });
+
+    if (!preparedData.replayData.length || !preparedData.btcReplayData.length) {
+      continue;
+    }
+
+    const strategiesForSymbol = await Promise.all(
+      loadedStrategies.map(
+        async ({ strategyName, strategyCreator, strategyConfig }) => ({
+          strategyName,
+          strategyConfig,
+          run: await strategyCreator({
+            userName,
+            config: buildReplayStrategyConfig({
+              strategyConfig,
+              interval: interval as any,
+            }),
+            symbol,
+            data: preparedData.prevData,
+            btcData: preparedData.btcPrevData,
+            btcBinanceData: preparedData.btcBinancePrevData,
+            btcCoinbaseData: preparedData.btcCoinbasePrevData,
+            connector: replayConnector,
+          }),
+        }),
+      ),
+    );
+
+    const symbolRuntime: SymbolReplayRuntime = {
+      symbol,
+      replayData: preparedData.replayData,
+      btcReplayData: preparedData.btcReplayData,
+      currentIndex: 0,
+      strategies: strategiesForSymbol,
+    };
+    symbolRuntimes.push(symbolRuntime);
+
+    for (const candle of preparedData.replayData) {
+      const bucket = cycleSymbolsByTimestamp.get(candle.timestamp) ?? [];
+      bucket.push(symbolRuntime);
+      cycleSymbolsByTimestamp.set(candle.timestamp, bucket);
+    }
+  }
+
+  const orderedTimestamps = [...cycleSymbolsByTimestamp.keys()].sort(
+    (left, right) => left - right,
+  );
+  const afterSignalsContextBase = buildAfterSignalsContext({
+    connector: replayConnector,
+    connectorName: preparedRun.connectorName,
+    tickers: preparedRun.tickers,
+    runtimeStrategies: loadedStrategies,
+    interval,
+  });
+
+  let abortedCycles = 0;
+
+  for (const timestamp of orderedTimestamps) {
+    const cycleStartedAt = Date.now();
+    const cycleSymbols = cycleSymbolsByTimestamp.get(timestamp) ?? [];
+
+    for (const symbolRuntime of cycleSymbols) {
+      const candle = symbolRuntime.replayData[symbolRuntime.currentIndex];
+      if (!candle || candle.timestamp !== timestamp) {
+        continue;
+      }
+
+      await replayConnector.advanceMarket({
+        symbol: symbolRuntime.symbol,
+        candle,
+      });
+    }
+
+    const beforeSignalsResult = await invokeBeforeSignalsHooks(
+      projectHooks,
+      afterSignalsContextBase,
+    );
+    if (beforeSignalsResult?.abort === true) {
+      abortedCycles += 1;
+      await invokeAfterSignalsHooks(projectHooks, {
+        ...afterSignalsContextBase,
+        signals: [],
+        status: 'completed',
+        durationMs: Date.now() - cycleStartedAt,
+      });
+      for (const symbolRuntime of cycleSymbols) {
+        const candle = symbolRuntime.replayData[symbolRuntime.currentIndex];
+        if (candle?.timestamp === timestamp) {
+          symbolRuntime.currentIndex += 1;
+        }
+      }
+      continue;
+    }
+
+    const cycleSignals: Signal[] = [];
+
+    for (const symbolRuntime of cycleSymbols) {
+      const candle = symbolRuntime.replayData[symbolRuntime.currentIndex];
+      const btcCandle = symbolRuntime.btcReplayData[symbolRuntime.currentIndex];
+      if (
+        !candle ||
+        !btcCandle ||
+        candle.timestamp !== timestamp ||
+        btcCandle.timestamp !== timestamp
+      ) {
+        continue;
+      }
+
+      for (const strategyRuntime of symbolRuntime.strategies) {
+        const result = await strategyRuntime.run(candle, btcCandle);
+        if (result && typeof result !== 'string') {
+          cycleSignals.push(result);
+          signals.push(result);
+        }
+      }
+
+      symbolRuntime.currentIndex += 1;
+    }
+
+    await invokeAfterSignalsHooks(projectHooks, {
+      ...afterSignalsContextBase,
+      signals: cycleSignals,
+      status: 'completed',
+      durationMs: Date.now() - cycleStartedAt,
+    });
+  }
+
+  const artifacts = replayConnector.getReplayArtifacts();
+  const strategies = loadedStrategies.map(
+    ({ strategyName, strategyConfig }) => {
+      const orderLog = artifacts.orderLogByStrategy.get(strategyName) ?? [];
+      const positionLog =
+        artifacts.positionLogByStrategy.get(strategyName) ?? [];
+      return {
+        strategyName,
+        strategyConfig,
+        orderLog,
+        positionLog,
+        stat: positionLog.length
+          ? (calculateStatsFull(positionLog) as TestStat | null)
+          : ({
+              orders: 0,
+              wins: 0,
+              losses: 0,
+              netProfit: 0,
+              amount: 0,
+            } as unknown as TestStat),
+      };
+    },
+  );
+
+  logger.info(
+    chalk.gray(
+      `signals replay historical cycles: ${orderedTimestamps.length} (aborted=${abortedCycles}) done in ${((Date.now() - startedAt) / 1000).toFixed(1)}s`,
+    ),
+  );
+
+  return {
+    strategies,
+    signals,
+    orderLog: artifacts.orderLog,
+    positionLog: artifacts.positionLog,
+    cycleCount: orderedTimestamps.length,
+    abortedCycles,
+  };
+};

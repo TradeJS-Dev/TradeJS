@@ -104,7 +104,7 @@ import {
   toStrategyConfigGrid,
 } from '../scripts/backtest';
 import { compareExchangeEntriesToBacktest } from '../scripts/replayRunner';
-import { buildReplayStrategyConfig } from '../scripts/replaySupport';
+import { buildReplayStrategyConfig } from '../lib/replay/support';
 import {
   summarizeRuntimeTradesByStrategy,
   summarizeTradeParityByStrategy,

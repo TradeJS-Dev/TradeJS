@@ -1,17 +1,7 @@
 import chalk from 'chalk';
-import { createTestSuite } from '@tradejs/core/grid';
-import { calculateStatsFull } from '@tradejs/core/backtest';
-import { runWithConcurrency } from '@tradejs/core/async';
 import { formatUnix } from '@tradejs/core/time';
 import { setData, redisKeys } from '@tradejs/infra/redis';
-import {
-  Connector,
-  ExchangeEntryRecord,
-  StrategyConfig,
-  Test,
-  TestStat,
-  TestWorkerResult,
-} from '@tradejs/types';
+import { Connector, ExchangeEntryRecord } from '@tradejs/types';
 import {
   compareTradeParityEntries,
   dedupeRuntimeParityEntries,
@@ -26,31 +16,22 @@ import {
 import { loadRuntimeTrades } from '../lib/runtimeRedis';
 import { loadClosedPnlRows, syncRuntimeTrades } from '../lib/runtimeTradeSync';
 import {
-  buildPreparedTestSuite,
   createTable,
   createTimestamp,
-  executeTestSuite,
-  getReplayResults,
-  getRunCounters,
-  getRunStartedAt,
-  getRuntimeCompareContext,
   isUpdateOnlyRun,
   interval,
   loadReplayStrategies,
-  persistTestSummariesIndex,
   prepareRunEnvironment,
-  printRunOutro,
-  resetRunState,
-  resolveResultArtifacts,
-  resultArtifactsIoConcurrency,
-  setTestData,
-  storeReplayResult,
-  toStrategyConfigGrid,
-  trackTopResult,
   userName,
-} from './backtest';
+} from '../lib/backtest/runnerCore';
 import {
-  buildReplayStrategyConfig,
+  getRunStartedAt,
+  getRuntimeCompareContext,
+  resetRunState,
+  incrementSuccessTests,
+  markTestsStarted,
+} from '../lib/backtest/runState';
+import {
   REPLAY_RESULTS_BY_STRATEGY_HEADERS,
   REPLAY_RESULTS_CONFIG,
   REPLAY_RUNTIME_COMPARISON_HEADERS,
@@ -60,7 +41,11 @@ import {
   type ReplayRuntimeParityRow,
   type ReplayStrategyResultsSnapshot,
   type ReplayStrategySummary,
-} from './replaySupport';
+} from '../lib/replay/support';
+import {
+  HistoricalSignalsReplayResult,
+  runHistoricalSignalsReplay,
+} from '../lib/replay/historicalSignalsReplay';
 
 type ExchangeMatchedBacktestEntry = {
   exchange: ExchangeEntryRecord;
@@ -307,137 +292,90 @@ export const compareExchangeEntriesToBacktest = ({
   };
 };
 
-const saveAndPrintReplayResultsByStrategy =
-  async (): Promise<ReplayStrategyResultsSnapshot> => {
-    const summaryByStrategy = new Map<string, ReplayStrategySummary>();
-    const backtestEntries: TradeParityEntry[] = [];
-    const replayResults = getReplayResults();
-    const processedResults = new Array<{
-      test: Test;
-      stat: TestStat | null;
-      extractedEntries: TradeParityEntry[];
-    }>(replayResults.length);
-
-    await runWithConcurrency(
-      replayResults,
-      Math.min(resultArtifactsIoConcurrency, replayResults.length || 1),
-      async (result, index) => {
-        const { test } = result;
-        const { orderLog, positionLog } = await resolveResultArtifacts(result);
-        if (!orderLog || !positionLog) {
-          throw new Error(
-            `Logs not found for signals replay result ${test.name}`,
-          );
-        }
-
-        const stat = calculateStatsFull(positionLog) as TestStat | null;
-        if (!stat && positionLog.length > 0) {
-          throw new Error(
-            `Position log is empty for signals replay result ${test.name} despite ${positionLog.length} positions`,
-          );
-        }
-
-        await setTestData(test, stat ?? {}, orderLog);
-        processedResults[index] = {
-          test,
-          stat,
-          extractedEntries: extractBacktestEntryParityEntries(orderLog),
-        };
-      },
-    );
-
-    for (const processedResult of processedResults) {
-      if (!processedResult) {
-        continue;
-      }
-
-      const { test, stat, extractedEntries } = processedResult;
-      backtestEntries.push(...extractedEntries);
-
-      const existing = summaryByStrategy.get(test.strategyName) ?? {
-        strategyName: test.strategyName,
-        strategyConfig: test.strategyConfig,
-        tickers: 0,
-        tickersWithTrades: 0,
-        orders: 0,
-        wins: 0,
-        losses: 0,
-        netProfit: 0,
-        avgTradeProfit: 0,
-        winRate: 0,
-      };
-
-      existing.tickers += 1;
-      if (stat?.orders) {
-        existing.tickersWithTrades += 1;
-        existing.orders += stat.orders ?? 0;
-        existing.wins += stat.wins ?? 0;
-        existing.losses += stat.losses ?? 0;
-        existing.netProfit += stat.netProfit ?? 0;
-      }
-
-      summaryByStrategy.set(test.strategyName, existing);
-    }
-
-    const summaries = [...summaryByStrategy.values()]
-      .map((summary) => {
-        const winRate =
-          summary.orders > 0 ? (summary.wins / summary.orders) * 100 : 0;
-        const avgTradeProfit =
-          summary.orders > 0 ? summary.netProfit / summary.orders : 0;
-
-        return {
-          ...summary,
-          netProfit: Number(summary.netProfit.toFixed(2)),
-          avgTradeProfit: Number(avgTradeProfit.toFixed(2)),
-          winRate: Number(winRate.toFixed(2)),
-        };
-      })
-      .sort(
-        (left, right) =>
-          right.netProfit - left.netProfit ||
-          left.strategyName.localeCompare(right.strategyName),
+const saveAndPrintReplayResultsByStrategy = async ({
+  replayResult,
+  tickers,
+}: {
+  replayResult: HistoricalSignalsReplayResult;
+  tickers: string[];
+}): Promise<ReplayStrategyResultsSnapshot> => {
+  const backtestEntries = replayResult.strategies.flatMap(({ orderLog }) =>
+    extractBacktestEntryParityEntries(orderLog),
+  );
+  const summaries = replayResult.strategies
+    .map(({ strategyName, strategyConfig, stat }) => {
+      const orders = stat?.orders ?? 0;
+      const wins = stat?.wins ?? 0;
+      const losses = stat?.losses ?? 0;
+      const netProfit = Number((stat?.netProfit ?? 0).toFixed(2));
+      const winRate =
+        orders > 0 ? Number(((wins / orders) * 100).toFixed(2)) : 0;
+      const avgTradeProfit =
+        orders > 0 ? Number((netProfit / orders).toFixed(2)) : 0;
+      const tradedSymbols = new Set(
+        backtestEntries
+          .filter((entry) => entry.strategy === strategyName)
+          .map((entry) => entry.symbol),
       );
 
-    const rows = summaries.map((summary) => {
-      const profit = `${summary.netProfit.toFixed(2)}$`;
-      const avgTrade = `${summary.avgTradeProfit.toFixed(2)}$`;
-      const profitColor =
-        summary.netProfit > 0
-          ? chalk.green
-          : summary.netProfit < 0
-            ? chalk.red
-            : chalk.gray;
-      const avgTradeColor =
-        summary.avgTradeProfit > 0
-          ? chalk.green
-          : summary.avgTradeProfit < 0
-            ? chalk.red
-            : chalk.gray;
+      return {
+        strategyName,
+        strategyConfig,
+        tickers: tickers.length,
+        tickersWithTrades: tradedSymbols.size,
+        orders,
+        wins,
+        losses,
+        netProfit,
+        avgTradeProfit,
+        winRate,
+      } satisfies ReplayStrategySummary;
+    })
+    .sort(
+      (left, right) =>
+        right.netProfit - left.netProfit ||
+        left.strategyName.localeCompare(right.strategyName),
+    );
 
-      return [
-        chalk.blue(summary.strategyName),
-        chalk.yellow(String(summary.tickers)),
-        chalk.yellow(String(summary.tickersWithTrades)),
-        chalk.cyan(String(summary.orders)),
-        chalk.cyan(
-          `${summary.wins}/${summary.losses} (${summary.winRate.toFixed(2)}%)`,
-        ),
-        profitColor(profit),
-        avgTradeColor(avgTrade),
-      ];
-    });
+  const rows = summaries.map((summary) => {
+    const profit = `${summary.netProfit.toFixed(2)}$`;
+    const avgTrade = `${summary.avgTradeProfit.toFixed(2)}$`;
+    const profitColor =
+      summary.netProfit > 0
+        ? chalk.green
+        : summary.netProfit < 0
+          ? chalk.red
+          : chalk.gray;
+    const avgTradeColor =
+      summary.avgTradeProfit > 0
+        ? chalk.green
+        : summary.avgTradeProfit < 0
+          ? chalk.red
+          : chalk.gray;
 
-    console.log('');
-    console.log('SIGNALS REPLAY RESULTS BY STRATEGY:');
-    console.log(createTable(REPLAY_RESULTS_BY_STRATEGY_HEADERS, rows));
-    console.log('');
+    return [
+      chalk.blue(summary.strategyName),
+      chalk.yellow(String(summary.tickers)),
+      chalk.yellow(String(summary.tickersWithTrades)),
+      chalk.cyan(String(summary.orders)),
+      chalk.cyan(
+        `${summary.wins}/${summary.losses} (${summary.winRate.toFixed(2)}%)`,
+      ),
+      profitColor(profit),
+      avgTradeColor(avgTrade),
+    ];
+  });
 
-    return {
-      summaries,
-      backtestEntries,
-    };
+  console.log('');
+  console.log('SIGNALS REPLAY RESULTS BY STRATEGY:');
+  console.log(createTable(REPLAY_RESULTS_BY_STRATEGY_HEADERS, rows));
+  console.log('');
+
+  return {
+    summaries,
+    backtestEntries,
   };
+};
 
 const saveAndPrintReplayExchangeComparison = async ({
   liveStrategySummaries,
@@ -775,22 +713,27 @@ const saveAndPrintReplayRuntimeComparison = async ({
   };
 };
 
-const finishReplay = async () => {
-  const replayStrategySnapshot = await saveAndPrintReplayResultsByStrategy();
+const finishReplay = async ({
+  replayResult,
+  tickers,
+}: {
+  replayResult: HistoricalSignalsReplayResult;
+  tickers: string[];
+}) => {
+  const replayStrategySnapshot = await saveAndPrintReplayResultsByStrategy({
+    replayResult,
+    tickers,
+  });
   const replayRuntimeComparison = await saveAndPrintReplayRuntimeComparison({
     liveStrategySummaries: replayStrategySnapshot.summaries,
     backtestEntries: replayStrategySnapshot.backtestEntries,
   });
-
-  await persistTestSummariesIndex();
-  printRunOutro();
 
   const finishedAt = new Date();
   const durationSeconds = Number(
     ((Date.now() - getRunStartedAt()) / 1000).toFixed(2),
   );
   const timestamp = createTimestamp(finishedAt);
-  const { successTests, errorTests, errors } = getRunCounters();
 
   await setData(
     redisKeys.backtestResults(userName, REPLAY_RESULTS_CONFIG, timestamp),
@@ -801,15 +744,18 @@ const finishReplay = async () => {
       startedAt: new Date(getRunStartedAt()).toISOString(),
       finishedAt: finishedAt.toISOString(),
       durationSeconds,
-      results: getReplayResults(),
+      results: [],
       resultsByTickers: [],
       resultsByStrategies: replayStrategySnapshot.summaries,
       runtimeComparison: replayRuntimeComparison,
       bestConfig: null,
       mergedConfig: null,
-      successTests,
-      errors,
-      errorTests,
+      successTests: replayResult.strategies.length,
+      errors: [],
+      errorTests: 0,
+      cycleCount: replayResult.cycleCount,
+      abortedCycles: replayResult.abortedCycles,
+      signalsCount: replayResult.signals.length,
     },
     {
       expire: 0,
@@ -831,47 +777,28 @@ export const replayBacktest = async () => {
     return;
   }
 
-  const testSuite = await buildPreparedTestSuite({
-    testSuite: replayStrategies.flatMap(
-      ({
-        strategyName,
-        strategyConfig,
-      }: {
-        strategyName: string;
-        strategyConfig: StrategyConfig;
-      }) =>
-        createTestSuite(
-          userName,
-          preparedRun.tickers,
-          strategyName,
-          toStrategyConfigGrid(
-            buildReplayStrategyConfig({
-              strategyConfig,
-              interval,
-            }),
-          ),
-          preparedRun.connectorName,
-        ),
+  console.log(chalk.yellow(`tickers: ${preparedRun.tickers.length}`));
+  console.log(
+    chalk.gray(
+      `mode: replay (${replayStrategies
+        .map(({ strategyName }) => strategyName)
+        .join(', ')})`,
     ),
-    window: preparedRun.window,
-    preloadStart: preparedRun.preloadStart,
-    isReplay: true,
+  );
+  markTestsStarted();
+
+  const replayResult = await runHistoricalSignalsReplay({
+    preparedRun,
+    interval,
+    runtimeStrategies: replayStrategies,
   });
-  if (!testSuite) {
-    return;
+
+  for (const _strategy of replayResult.strategies) {
+    incrementSuccessTests();
   }
 
-  await executeTestSuite({
-    testSuite,
-    window: preparedRun.window,
-    preloadStart: preparedRun.preloadStart,
-    replayModeLabel: `mode: replay (${replayStrategies
-      .map(({ strategyName }) => strategyName)
-      .join(', ')})`,
-    onResult: (result) => {
-      storeReplayResult(result);
-      trackTopResult(result);
-    },
-    onFinish: finishReplay,
+  await finishReplay({
+    replayResult,
+    tickers: preparedRun.tickers,
   });
 };

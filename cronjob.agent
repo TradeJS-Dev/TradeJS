@@ -1,2 +1,2 @@
 CRON_TZ=Europe/Moscow
-# 0 2 * * * cd /app && PROJECT_CWD=/app DOTENV_CONFIG_PATH=/app/.env NODE_OPTIONS=--max-old-space-size=8192 bash ./bin/run-cli-runtime.sh research:auto --user root --connector bybit --timeframe 15 --days 45 --recent 1000 >> /var/log/cron.research.auto.log 2>&1
+# 0 2 * * * cd /app && PROJECT_CWD=/app DOTENV_CONFIG_PATH=/app/.env NODE_OPTIONS=--max-old-space-size=1024 RESEARCH_AUTO_BACKTEST_PARENT_HEAP_MB=1536 RESEARCH_AUTO_AI_TRAIN_PARENT_HEAP_MB=2048 RESEARCH_AUTO_AGENT_PARENT_HEAP_MB=2048 BACKTEST_MAX_PARALLEL=1 BACKTEST_WORKER_HEAP_MB=768 KLINE_CONCURRENCY_LIMIT=1 bash ./bin/run-cli-runtime.sh research:auto --user root --connector bybit --timeframe 15 --days 45 --recent 1000 >> /var/log/cron.research.auto.log 2>&1

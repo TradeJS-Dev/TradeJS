@@ -100,6 +100,73 @@ const dotenvPath =
     process.env.DOTENV_CONFIG_PATH || path.join(projectRoot, '.env'),
   ).trim() || path.join(projectRoot, '.env');
 
+const resolvePositiveInteger = (
+  value: string | undefined,
+  fallback?: number,
+) => {
+  const parsed = Number.parseInt(String(value ?? ''), 10);
+  if (Number.isInteger(parsed) && parsed > 0) {
+    return parsed;
+  }
+  return fallback;
+};
+
+export const resolveHeapMbFromEnv = (envNames: string[], fallback?: number) => {
+  for (const envName of envNames) {
+    const resolved = resolvePositiveInteger(process.env[envName], undefined);
+    if (resolved != null) {
+      return resolved;
+    }
+  }
+  return fallback;
+};
+
+export const buildNodeOptions = ({
+  heapMb,
+  baseNodeOptions = String(process.env.NODE_OPTIONS || '').trim(),
+}: {
+  heapMb?: number;
+  baseNodeOptions?: string;
+}) =>
+  [
+    heapMb ? `--max-old-space-size=${Math.max(256, heapMb)}` : '',
+    ...baseNodeOptions
+      .split(/\s+/)
+      .map((value) => value.trim())
+      .filter((value) => value && !value.startsWith('--max-old-space-size=')),
+  ]
+    .filter(Boolean)
+    .join(' ');
+
+const RESEARCH_AUTO_PARENT_HEAP_MB = resolveHeapMbFromEnv(
+  ['RESEARCH_AUTO_PARENT_HEAP_MB'],
+  1024,
+);
+const RESEARCH_AUTO_BACKTEST_PARENT_HEAP_MB = resolveHeapMbFromEnv(
+  [
+    'RESEARCH_AUTO_BACKTEST_PARENT_HEAP_MB',
+    'BACKTEST_PARENT_HEAP_MB',
+    'CLI_PARENT_HEAP_MB',
+  ],
+  1536,
+);
+const RESEARCH_AUTO_AI_TRAIN_PARENT_HEAP_MB = resolveHeapMbFromEnv(
+  [
+    'RESEARCH_AUTO_AI_TRAIN_PARENT_HEAP_MB',
+    'AI_TRAIN_PARENT_HEAP_MB',
+    'CLI_PARENT_HEAP_MB',
+  ],
+  2048,
+);
+const RESEARCH_AUTO_AGENT_PARENT_HEAP_MB = resolveHeapMbFromEnv(
+  [
+    'RESEARCH_AUTO_AGENT_PARENT_HEAP_MB',
+    'AGENT_RUN_PARENT_HEAP_MB',
+    'CLI_PARENT_HEAP_MB',
+  ],
+  2048,
+);
+
 export const trimTextTail = (value: string, limit = 4000) =>
   value.length <= limit ? value : value.slice(-limit);
 
@@ -313,7 +380,7 @@ export const buildTelegramReport = (run: ResearchRunRecord) => {
 export const runCliCommand = async (params: {
   command: string;
   args: string[];
-  node8g?: boolean;
+  nodeHeapMb?: number;
   liveLogPrefix?: string;
   heartbeatMs?: number;
   captureMode?: 'tail' | 'full';
@@ -331,14 +398,11 @@ export const runCliCommand = async (params: {
     ...process.env,
     PROJECT_CWD: projectRoot,
     DOTENV_CONFIG_PATH: dotenvPath,
-    ...(params.node8g
+    ...(params.nodeHeapMb
       ? {
-          NODE_OPTIONS: [
-            '--max-old-space-size=8192',
-            String(process.env.NODE_OPTIONS || '').trim(),
-          ]
-            .filter(Boolean)
-            .join(' '),
+          NODE_OPTIONS: buildNodeOptions({
+            heapMb: params.nodeHeapMb,
+          }),
         }
       : {}),
   };
@@ -519,7 +583,7 @@ const executeNonBlockingStep = async (
   command: string,
   commandArgs: string[],
   options: {
-    node8g?: boolean;
+    nodeHeapMb?: number;
     liveLog?: boolean;
     heartbeatMs?: number;
     captureMode?: 'tail' | 'full';
@@ -540,7 +604,7 @@ const executeNonBlockingStep = async (
   const result = await runCliCommand({
     command,
     args: commandArgs,
-    node8g: options.node8g,
+    nodeHeapMb: options.nodeHeapMb,
     liveLogPrefix: options.liveLog ? stepName : undefined,
     heartbeatMs: options.liveLog ? options.heartbeatMs || 60_000 : undefined,
     captureMode: options.captureMode,
@@ -613,7 +677,7 @@ export const main = async () => {
     command: string,
     commandArgs: string[],
     options: {
-      node8g?: boolean;
+      nodeHeapMb?: number;
       liveLog?: boolean;
       heartbeatMs?: number;
       captureMode?: 'tail' | 'full';
@@ -634,7 +698,7 @@ export const main = async () => {
     const result = await runCliCommand({
       command,
       args: commandArgs,
-      node8g: options.node8g,
+      nodeHeapMb: options.nodeHeapMb,
       liveLogPrefix: options.liveLog ? stepName : undefined,
       heartbeatMs: options.liveLog ? options.heartbeatMs || 60_000 : undefined,
       captureMode: options.captureMode,
@@ -744,6 +808,9 @@ export const main = async () => {
     logResearch(
       `run ${runId} selected target strategy=${target.strategy}, config=${target.config}, selectedBy=${target.selectedBy}`,
     );
+    logResearch(
+      `resource knobs: researchAutoHeapMb=${RESEARCH_AUTO_PARENT_HEAP_MB}, backtestParentHeapMb=${RESEARCH_AUTO_BACKTEST_PARENT_HEAP_MB}, aiTrainParentHeapMb=${RESEARCH_AUTO_AI_TRAIN_PARENT_HEAP_MB}, agentParentHeapMb=${RESEARCH_AUTO_AGENT_PARENT_HEAP_MB}, backtestWorkerHeapMb=${process.env.BACKTEST_WORKER_HEAP_MB || 'auto'}, backtestMaxParallel=${process.env.BACKTEST_MAX_PARALLEL || 'auto'}, klineConcurrency=${process.env.KLINE_CONCURRENCY_LIMIT || 'default'}`,
+    );
     const backtestKeysBefore = new Set(
       await getKeys(getBacktestResultsPrefix(userName, target.config)),
     );
@@ -776,7 +843,11 @@ export const main = async () => {
         String(days),
         '--ai',
       ],
-      { node8g: true, liveLog: true, heartbeatMs: 30_000 },
+      {
+        nodeHeapMb: RESEARCH_AUTO_BACKTEST_PARENT_HEAP_MB,
+        liveLog: true,
+        heartbeatMs: 30_000,
+      },
     );
     await executeStep('aiExport', 'ai-export', [
       '--strategy',
@@ -799,7 +870,10 @@ export const main = async () => {
         '--localOnly',
         '--json',
       ],
-      { node8g: true, captureMode: 'full' },
+      {
+        nodeHeapMb: RESEARCH_AUTO_AI_TRAIN_PARENT_HEAP_MB,
+        captureMode: 'full',
+      },
     );
 
     const backtestKeysAfter = await getKeys(
@@ -869,7 +943,7 @@ export const main = async () => {
           '--json',
         ],
         {
-          node8g: true,
+          nodeHeapMb: RESEARCH_AUTO_AGENT_PARENT_HEAP_MB,
           liveLog: true,
           heartbeatMs: 30_000,
           captureMode: 'full',

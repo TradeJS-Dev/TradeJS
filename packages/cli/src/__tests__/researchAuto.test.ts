@@ -46,9 +46,11 @@ jest.mock('@tradejs/infra/logger', () => ({
 }));
 
 import {
+  buildNodeOptions,
   buildTelegramReport,
   listRuntimeStrategyNames,
   parseJsonOutput,
+  resolveHeapMbFromEnv,
   resolveTarget,
   runCliCommand,
   toStrategyConfigGrid,
@@ -260,6 +262,40 @@ describe('research:auto helpers', () => {
     );
   });
 
+  it('resolves heap limits from the first valid env name', () => {
+    const originalPrimary = process.env.PRIMARY_HEAP_MB;
+    const originalFallback = process.env.FALLBACK_HEAP_MB;
+    process.env.PRIMARY_HEAP_MB = 'bad';
+    process.env.FALLBACK_HEAP_MB = '1536';
+
+    expect(
+      resolveHeapMbFromEnv(['PRIMARY_HEAP_MB', 'FALLBACK_HEAP_MB'], 1024),
+    ).toBe(1536);
+
+    if (originalPrimary == null) {
+      delete process.env.PRIMARY_HEAP_MB;
+    } else {
+      process.env.PRIMARY_HEAP_MB = originalPrimary;
+    }
+    if (originalFallback == null) {
+      delete process.env.FALLBACK_HEAP_MB;
+    } else {
+      process.env.FALLBACK_HEAP_MB = originalFallback;
+    }
+  });
+
+  it('replaces inherited max-old-space-size when building child NODE_OPTIONS', () => {
+    expect(
+      buildNodeOptions({
+        heapMb: 1536,
+        baseNodeOptions:
+          '--trace-warnings --max-old-space-size=8192 --dns-result-order=ipv4first',
+      }),
+    ).toBe(
+      '--max-old-space-size=1536 --trace-warnings --dns-result-order=ipv4first',
+    );
+  });
+
   it('treats invalid latest run timestamps as oldest candidates', async () => {
     mockGetKeys.mockResolvedValue([
       'users:root:strategies:TrendLine:config',
@@ -334,6 +370,63 @@ describe('research:auto helpers', () => {
       }),
     );
     expect(mockLoggerInfo).toHaveBeenCalled();
+  });
+
+  it('overrides inherited heap limits for child commands when nodeHeapMb is provided', async () => {
+    const stdoutHandlers: Record<string, (value: Buffer) => void> = {};
+    const stderrHandlers: Record<string, (value: Buffer) => void> = {};
+    const childHandlers: Record<string, (...args: any[]) => void> = {};
+    const originalNodeOptions = process.env.NODE_OPTIONS;
+    process.env.NODE_OPTIONS =
+      '--max-old-space-size=8192 --dns-result-order=ipv4first';
+
+    mockSpawn.mockReturnValue({
+      stdout: {
+        on: (event: string, handler: (value: Buffer) => void) => {
+          stdoutHandlers[event] = handler;
+        },
+      },
+      stderr: {
+        on: (event: string, handler: (value: Buffer) => void) => {
+          stderrHandlers[event] = handler;
+        },
+      },
+      on: (event: string, handler: (...args: any[]) => void) => {
+        childHandlers[event] = handler;
+      },
+    });
+
+    const pending = runCliCommand({
+      command: 'backtest',
+      args: ['--config', 'TrendLine:research'],
+      nodeHeapMb: 1536,
+    });
+    childHandlers.close?.(0);
+
+    await expect(pending).resolves.toMatchObject({
+      exitCode: 0,
+    });
+    expect(mockSpawn).toHaveBeenCalledWith(
+      'bash',
+      [
+        './bin/run-cli-runtime.sh',
+        'backtest',
+        '--config',
+        'TrendLine:research',
+      ],
+      expect.objectContaining({
+        env: expect.objectContaining({
+          NODE_OPTIONS:
+            '--max-old-space-size=1536 --dns-result-order=ipv4first',
+        }),
+      }),
+    );
+
+    if (originalNodeOptions == null) {
+      delete process.env.NODE_OPTIONS;
+    } else {
+      process.env.NODE_OPTIONS = originalNodeOptions;
+    }
   });
 
   it('keeps only the configured tail of stdout/stderr by default', async () => {
