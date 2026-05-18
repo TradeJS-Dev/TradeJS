@@ -7,7 +7,7 @@ export const SPREAD_WINDOW = 50;
 
 export const PRELOAD_DAYS = 200;
 export const SIGNALS_PRELOAD_DAYS = 60;
-export const SIGNALS_CLI_PRELOAD_DAYS = 10;
+export const SIGNALS_CLI_PRELOAD_DAYS = 60;
 export const BACKTEST_DEFAULT_DAYS = 160;
 export const BACKTEST_PRELOAD_DAYS = 60;
 export const DASHBOARD_PRELOAD_DAYS = 160;
