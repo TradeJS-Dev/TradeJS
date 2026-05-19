@@ -486,6 +486,52 @@ describe('trendShiftAiAdapter', () => {
     });
   });
 
+  it('keeps core q5 SHORT in watch mode when crowded-short pressure appears on the fresh breakdown', () => {
+    const result = trendShiftAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makePayload(
+        {
+          signalDirection: 'SHORT',
+          confirmedFlip: true,
+          bearFlip: true,
+          flipDistanceOk: true,
+          closeVsAvgPct: 0.3,
+          avgSlopePct: 0.11,
+          distanceAtrRatio: 0.95,
+          coinBiasAligned: true,
+        },
+        {
+          baseContext: {
+            structure: {
+              localRange: {
+                breakoutState: 'below_low_level',
+              },
+            },
+          },
+          derivativesContext: {
+            summary: {
+              pressure: 'crowded_short',
+              directionAligned: true,
+              riskFlags: [],
+            },
+          },
+        },
+      ),
+      analysis: {
+        direction: 'SHORT',
+        quality: 1,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: null,
+      quality: 4,
+      approved: false,
+      rejectReason:
+        'the SHORT flip is running into crowded-short positioning at the breakdown, so keep it in watch mode unless a liquidation flush confirms continuation',
+    });
+  });
+
   it('approves selective q4 LONG when breakout, volume, and derivatives confirm follow-through', () => {
     const result = trendShiftAiAdapter.postProcessAnalysis?.({
       signal: {} as any,
