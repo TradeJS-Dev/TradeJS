@@ -818,6 +818,7 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
       paramsHash: indicatorCachePlan.paramsHash,
       restoreState: indicatorCachePlan.restoreState,
       replayStartIndex: indicatorCachePlan.replayStartIndex,
+      cached: indicatorCachePlan.cached,
     });
 
     const notifyRuntimeError = async ({

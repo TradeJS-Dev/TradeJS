@@ -1,5 +1,8 @@
 import { Candle } from '@tradejs/types';
-import { createIndicators } from '../indicators';
+import {
+  createIndicators,
+  getRequiredControllerSeedWindow,
+} from '../indicators';
 import { CORRELATION_WINDOW, ML_BASE_CANDLES_WINDOW } from '../../constants';
 import { calculateCoinBtcCorrelation } from '../correlation';
 import { buildDefaultIndicatorPeriods } from '../strategyHelpers/indicators';
@@ -47,6 +50,16 @@ describe('utils indicators', () => {
     });
 
     expect(() => createIndicators([], [], { periods })).not.toThrow();
+  });
+
+  it('derives controller seed window from the largest raw-history dependency', () => {
+    expect(getRequiredControllerSeedWindow()).toBe(97);
+    expect(
+      getRequiredControllerSeedWindow({
+        levelLookback: 150,
+        levelDelay: 10,
+      }),
+    ).toBe(161);
   });
 
   it('computes price1hPcnt and price24hPcnt when window is full', () => {

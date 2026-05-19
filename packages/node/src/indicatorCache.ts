@@ -8,10 +8,13 @@ import {
 import { Candle } from '@tradejs/types';
 import {
   getIndicatorCacheRange,
-  upsertIndicatorCacheRows,
+  getLatestIndicatorCacheCheckpointAtOrBefore,
+  upsertIndicatorCacheCheckpointRows,
+  upsertIndicatorCacheCoverageRows,
 } from '@tradejs/infra/timescale';
 
 const INDICATOR_CACHE_VERSION = 'v2';
+const INDICATOR_CACHE_CHECKPOINT_INTERVAL = 64;
 
 type EnsureIndicatorCacheCoverageParams = {
   provider: string;
@@ -30,6 +33,16 @@ type IndicatorCacheRestorePlan = {
   restoreState: IndicatorsControllerRuntimeState | null;
   replayStartIndex: number;
   cached: boolean;
+};
+
+type IndicatorCacheCoverageSnapshot = Pick<
+  IndicatorCacheSnapshotEntry,
+  'timestamp' | 'candleSignature' | 'btcCandleSignature' | 'ready'
+>;
+
+type IndicatorCacheCheckpointSnapshot = {
+  timestamp: number;
+  runtimeState: IndicatorsControllerRuntimeState;
 };
 
 const toStablePeriods = (periods?: Partial<IndicatorPeriods>) => ({
@@ -107,6 +120,7 @@ export const ensureIndicatorCacheCoverage = async ({
     paramsHash: restorePlan.paramsHash,
     restoreState: restorePlan.restoreState,
     replayStartIndex: restorePlan.replayStartIndex,
+    cached: restorePlan.cached,
   });
   return {
     paramsHash: restorePlan.paramsHash,
@@ -146,7 +160,41 @@ const toCacheRows = async (params: {
     endMs: params.endMs,
   });
 
-  return rows.map((row) => row.snapshot as IndicatorCacheSnapshotEntry);
+  return rows.map((row) => row.snapshot as IndicatorCacheCoverageSnapshot);
+};
+
+const toCoverageSnapshot = (
+  snapshot: IndicatorCacheSnapshotEntry,
+): IndicatorCacheCoverageSnapshot => ({
+  timestamp: snapshot.timestamp,
+  candleSignature: snapshot.candleSignature,
+  btcCandleSignature: snapshot.btcCandleSignature,
+  ready: snapshot.ready,
+});
+
+const toCheckpointSnapshot = (
+  snapshot: IndicatorCacheSnapshotEntry,
+): IndicatorCacheCheckpointSnapshot => ({
+  timestamp: snapshot.timestamp,
+  runtimeState: snapshot.runtimeState,
+});
+
+const selectCheckpointSnapshots = (
+  snapshots: IndicatorCacheSnapshotEntry[],
+): IndicatorCacheCheckpointSnapshot[] => {
+  const selected: IndicatorCacheCheckpointSnapshot[] = [];
+
+  snapshots.forEach((snapshot, index) => {
+    const isLast = index === snapshots.length - 1;
+    const isCheckpoint = index % INDICATOR_CACHE_CHECKPOINT_INTERVAL === 0;
+    if (!isCheckpoint && !isLast) {
+      return;
+    }
+
+    selected.push(toCheckpointSnapshot(snapshot));
+  });
+
+  return selected;
 };
 
 export const planIndicatorCacheRestore = async ({
@@ -204,11 +252,24 @@ export const planIndicatorCacheRestore = async ({
 
   const lastValidRow =
     validPrefixLength > 0 ? cachedRows[validPrefixLength - 1] : null;
+  const checkpoint =
+    lastValidRow == null
+      ? null
+      : await getLatestIndicatorCacheCheckpointAtOrBefore({
+          provider,
+          symbol,
+          interval,
+          paramsHash,
+          version: INDICATOR_CACHE_VERSION,
+          tsMs: lastValidRow.timestamp,
+        });
 
   return {
     paramsHash,
     version: INDICATOR_CACHE_VERSION,
-    restoreState: lastValidRow?.runtimeState ?? null,
+    restoreState:
+      (checkpoint?.snapshot as IndicatorCacheCheckpointSnapshot | null)
+        ?.runtimeState ?? null,
     replayStartIndex: validPrefixLength,
     cached: validPrefixLength === data.length && data.length > 0,
   };
@@ -218,10 +279,14 @@ export const materializeIndicatorCachePlan = async (
   params: EnsureIndicatorCacheCoverageParams &
     Pick<
       IndicatorCacheRestorePlan,
-      'paramsHash' | 'restoreState' | 'replayStartIndex'
+      'paramsHash' | 'restoreState' | 'replayStartIndex' | 'cached'
     >,
 ) => {
-  if (params.replayStartIndex >= params.data.length) {
+  if (!params.data.length) {
+    return;
+  }
+
+  if (params.cached && params.replayStartIndex >= params.data.length) {
     return;
   }
 
@@ -235,8 +300,20 @@ export const materializeIndicatorCachePlan = async (
     initialRuntimeState: params.restoreState ?? undefined,
   });
 
-  await upsertIndicatorCacheRows(
+  await upsertIndicatorCacheCoverageRows(
     snapshots.map((snapshot) => ({
+      provider: params.provider,
+      symbol: params.symbol,
+      interval: params.interval,
+      paramsHash: params.paramsHash,
+      version: INDICATOR_CACHE_VERSION,
+      ts: new Date(snapshot.timestamp),
+      snapshot: toCoverageSnapshot(snapshot),
+    })),
+  );
+
+  await upsertIndicatorCacheCheckpointRows(
+    selectCheckpointSnapshots(snapshots).map((snapshot) => ({
       provider: params.provider,
       symbol: params.symbol,
       interval: params.interval,

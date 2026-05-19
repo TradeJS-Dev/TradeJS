@@ -29,7 +29,6 @@ import {
 } from './spread';
 
 const CANDLE_WINDOW = ML_BASE_CANDLES_WINDOW;
-const CONTROLLER_STATE_CANDLE_WINDOW = 128;
 const BASE_INTERVAL_MINUTES = 15;
 const INDICATOR_TIMEFRAMES = [
   { minutes: 60, suffix: '1h' },
@@ -74,6 +73,7 @@ const resolveIndicatorPeriods = (
 
 const ONE_HOUR_MS = 3_600_000;
 const ONE_DAY_MS = 86_400_000;
+const ONE_DAY_CANDLE_WINDOW = ONE_DAY_MS / (BASE_INTERVAL_MINUTES * 60_000);
 
 const toMlCandle = (candle: Candle): Candle => ({
   open: Number(candle.open) || 0,
@@ -285,27 +285,6 @@ const calculateLineSlope = (
   return (last - first) / (window.length - 1);
 };
 
-const calculateCloseStreak = (
-  closes: number[],
-  direction: 'up' | 'down',
-): number => {
-  if (closes.length < 2) return 0;
-
-  let streak = 0;
-  for (let i = closes.length - 1; i > 0; i -= 1) {
-    const delta = closes[i] - closes[i - 1];
-    if (
-      (direction === 'up' && delta > 0) ||
-      (direction === 'down' && delta < 0)
-    ) {
-      streak += 1;
-      continue;
-    }
-    break;
-  }
-  return streak;
-};
-
 const calculateRangePosition = (
   price: number,
   low: number | null,
@@ -361,6 +340,24 @@ type IndicatorRuntimeState = {
   spreadSmoother: SpreadSmootherState;
 };
 
+type CloseStreakRuntimeState = {
+  up: number;
+  down: number;
+};
+
+export const getRequiredControllerSeedWindow = (
+  periods: Partial<IndicatorPeriods> = {},
+): number => {
+  const resolved = resolveIndicatorPeriods(periods);
+  return Math.max(
+    2,
+    ML_BASE_CANDLES_WINDOW,
+    CORRELATION_WINDOW,
+    ONE_DAY_CANDLE_WINDOW + 1,
+    resolved.levelLookback + Math.max(0, resolved.levelDelay) + 1,
+  );
+};
+
 export type IndicatorsControllerRuntimeState = {
   indicatorState: IndicatorRuntimeState;
   indicatorHistory: Record<string, NumericHistoryBuffer>;
@@ -378,6 +375,7 @@ export type IndicatorsControllerRuntimeState = {
     h4: Candle[];
     d1: Candle[];
   };
+  closeStreaks: CloseStreakRuntimeState;
   btcCloses: number[];
   btcBinanceCursor: number;
   btcCoinbaseCursor: number;
@@ -468,6 +466,7 @@ type BuildBaseContextParams = {
   };
   indicatorHistory: Record<string, NumericHistoryBuffer>;
   indicatorPeriods: IndicatorPeriods;
+  closeStreaks: CloseStreakRuntimeState;
 };
 
 const buildBaseContextMtfSnapshot = ({
@@ -509,6 +508,7 @@ const buildBaseContextSnapshot = ({
   btcResampledCandles,
   indicatorHistory,
   indicatorPeriods,
+  closeStreaks,
 }: BuildBaseContextParams): BaseStrategyContextSnapshot => {
   const atr = toNullable(baseResult.atr);
   const bbWidthPct =
@@ -801,8 +801,8 @@ const buildBaseContextSnapshot = ({
         macdHistogramSlope: calculateLineSlope(macdHistogramSeries, 5),
         bodyStrength,
         closeLocationInRange,
-        upCloseStreak: calculateCloseStreak(closeSeries, 'up'),
-        downCloseStreak: calculateCloseStreak(closeSeries, 'down'),
+        upCloseStreak: closeStreaks.up,
+        downCloseStreak: closeStreaks.down,
       },
     },
     structure: {
@@ -975,8 +975,6 @@ const BASE_HISTORY_KEYS = [
   'spread',
 ] as const;
 
-const CACHEABLE_INDICATOR_KEYS = [...BASE_HISTORY_KEYS] as const;
-
 const TIMEFRAME_SUFFIXES = ['1h', '4h', '1d'] as const;
 const CANDLE_SERIES_KEYS = [
   'candles15m',
@@ -1048,6 +1046,52 @@ const materializeNumericHistory = (buffer: NumericHistoryBuffer): number[] => {
   return materialized;
 };
 
+const getLatestHistoryNumber = (
+  latestIndicatorValues: Record<string, number>,
+  key: string,
+): number | null => {
+  const value = latestIndicatorValues[key];
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+};
+
+const buildLatestBaseResult = ({
+  latestIndicatorValues,
+  prevClose,
+}: {
+  latestIndicatorValues: Record<string, number>;
+  prevClose: number | null;
+}) => ({
+  maFast: getLatestHistoryNumber(latestIndicatorValues, 'maFast'),
+  maMedium: getLatestHistoryNumber(latestIndicatorValues, 'maMedium'),
+  maSlow: getLatestHistoryNumber(latestIndicatorValues, 'maSlow'),
+  atr: getLatestHistoryNumber(latestIndicatorValues, 'atr'),
+  atrPct: getLatestHistoryNumber(latestIndicatorValues, 'atrPct'),
+  bbUpper: getLatestHistoryNumber(latestIndicatorValues, 'bbUpper'),
+  bbMiddle: getLatestHistoryNumber(latestIndicatorValues, 'bbMiddle'),
+  bbLower: getLatestHistoryNumber(latestIndicatorValues, 'bbLower'),
+  obv: getLatestHistoryNumber(latestIndicatorValues, 'obv'),
+  smaObv: getLatestHistoryNumber(latestIndicatorValues, 'smaObv'),
+  macd: getLatestHistoryNumber(latestIndicatorValues, 'macd'),
+  macdSignal: getLatestHistoryNumber(latestIndicatorValues, 'macdSignal'),
+  macdHistogram: getLatestHistoryNumber(latestIndicatorValues, 'macdHistogram'),
+  price24hPcnt:
+    getLatestHistoryNumber(latestIndicatorValues, 'price24hPcnt') ?? 0,
+  price1hPcnt:
+    getLatestHistoryNumber(latestIndicatorValues, 'price1hPcnt') ?? 0,
+  highPrice1h: getLatestHistoryNumber(latestIndicatorValues, 'highPrice1h'),
+  lowPrice1h: getLatestHistoryNumber(latestIndicatorValues, 'lowPrice1h'),
+  volume1h: getLatestHistoryNumber(latestIndicatorValues, 'volume1h'),
+  highPrice24h: getLatestHistoryNumber(latestIndicatorValues, 'highPrice24h'),
+  lowPrice24h: getLatestHistoryNumber(latestIndicatorValues, 'lowPrice24h'),
+  volume24h: getLatestHistoryNumber(latestIndicatorValues, 'volume24h'),
+  highLevel: getLatestHistoryNumber(latestIndicatorValues, 'highLevel'),
+  lowLevel: getLatestHistoryNumber(latestIndicatorValues, 'lowLevel'),
+  prevClose,
+  correlation:
+    getLatestHistoryNumber(latestIndicatorValues, 'correlation') ?? 0,
+  spread: getLatestHistoryNumber(latestIndicatorValues, 'spread'),
+});
+
 export const createIndicators = (
   data: Candle[],
   btcData: Candle[] = [],
@@ -1060,6 +1104,8 @@ export const createIndicators = (
   );
   const includeMlPayload = options.includeMlPayload !== false;
   const indicatorPeriods = resolveIndicatorPeriods(options.periods);
+  const controllerStateCandleWindow =
+    getRequiredControllerSeedWindow(indicatorPeriods);
   const closes: number[] = [];
   const highs: number[] = [];
   const lows: number[] = [];
@@ -1191,6 +1237,10 @@ export const createIndicators = (
   };
   const latestIndicatorValues: Record<string, number> = {
     ...(restoredState?.latestIndicatorValues ?? {}),
+  };
+  const closeStreaks: CloseStreakRuntimeState = {
+    up: restoredState?.closeStreaks?.up ?? 0,
+    down: restoredState?.closeStreaks?.down ?? 0,
   };
   const indicatorPluginErrorShown = new Set<string>();
   let cachedBaseHistoryResult: Record<string, number[]> | null = null;
@@ -1541,6 +1591,19 @@ export const createIndicators = (
     const len = candlesHistory.length;
     const currentIndex = len - 1;
     const prevCandle = len > 1 ? candlesHistory[len - 2] : null;
+    if (!prevCandle) {
+      closeStreaks.up = 0;
+      closeStreaks.down = 0;
+    } else if (candle.close > prevCandle.close) {
+      closeStreaks.up += 1;
+      closeStreaks.down = 0;
+    } else if (candle.close < prevCandle.close) {
+      closeStreaks.down += 1;
+      closeStreaks.up = 0;
+    } else {
+      closeStreaks.up = 0;
+      closeStreaks.down = 0;
+    }
     const correlationCoinCandles = correlationCoinWindow.snapshot();
     const correlationBtcCandles = correlationBtcWindow.snapshot();
     if (indicatorPeriods.levelLookback > 0) {
@@ -1764,6 +1827,7 @@ export const createIndicators = (
             },
             indicatorHistory,
             indicatorPeriods,
+            closeStreaks,
           });
         }
 
@@ -1856,160 +1920,10 @@ export const createIndicators = (
               ? candlesHistory[capturedCoinLength - 2]
               : null;
 
-          const baseResult = {
-            maFast:
-              getLastFiniteValue(
-                materializeNumericHistory(
-                  indicatorHistory.maFast ?? createNumericHistoryBuffer(),
-                ),
-              ) ?? null,
-            maMedium:
-              getLastFiniteValue(
-                materializeNumericHistory(
-                  indicatorHistory.maMedium ?? createNumericHistoryBuffer(),
-                ),
-              ) ?? null,
-            maSlow:
-              getLastFiniteValue(
-                materializeNumericHistory(
-                  indicatorHistory.maSlow ?? createNumericHistoryBuffer(),
-                ),
-              ) ?? null,
-            atr:
-              getLastFiniteValue(
-                materializeNumericHistory(
-                  indicatorHistory.atr ?? createNumericHistoryBuffer(),
-                ),
-              ) ?? null,
-            atrPct:
-              getLastFiniteValue(
-                materializeNumericHistory(
-                  indicatorHistory.atrPct ?? createNumericHistoryBuffer(),
-                ),
-              ) ?? null,
-            bbUpper:
-              getLastFiniteValue(
-                materializeNumericHistory(
-                  indicatorHistory.bbUpper ?? createNumericHistoryBuffer(),
-                ),
-              ) ?? null,
-            bbMiddle:
-              getLastFiniteValue(
-                materializeNumericHistory(
-                  indicatorHistory.bbMiddle ?? createNumericHistoryBuffer(),
-                ),
-              ) ?? null,
-            bbLower:
-              getLastFiniteValue(
-                materializeNumericHistory(
-                  indicatorHistory.bbLower ?? createNumericHistoryBuffer(),
-                ),
-              ) ?? null,
-            obv:
-              getLastFiniteValue(
-                materializeNumericHistory(
-                  indicatorHistory.obv ?? createNumericHistoryBuffer(),
-                ),
-              ) ?? null,
-            smaObv:
-              getLastFiniteValue(
-                materializeNumericHistory(
-                  indicatorHistory.smaObv ?? createNumericHistoryBuffer(),
-                ),
-              ) ?? null,
-            macd:
-              getLastFiniteValue(
-                materializeNumericHistory(
-                  indicatorHistory.macd ?? createNumericHistoryBuffer(),
-                ),
-              ) ?? null,
-            macdSignal:
-              getLastFiniteValue(
-                materializeNumericHistory(
-                  indicatorHistory.macdSignal ?? createNumericHistoryBuffer(),
-                ),
-              ) ?? null,
-            macdHistogram:
-              getLastFiniteValue(
-                materializeNumericHistory(
-                  indicatorHistory.macdHistogram ??
-                    createNumericHistoryBuffer(),
-                ),
-              ) ?? null,
-            price24hPcnt:
-              getLastFiniteValue(
-                materializeNumericHistory(
-                  indicatorHistory.price24hPcnt ?? createNumericHistoryBuffer(),
-                ),
-              ) ?? 0,
-            price1hPcnt:
-              getLastFiniteValue(
-                materializeNumericHistory(
-                  indicatorHistory.price1hPcnt ?? createNumericHistoryBuffer(),
-                ),
-              ) ?? 0,
-            highPrice1h:
-              getLastFiniteValue(
-                materializeNumericHistory(
-                  indicatorHistory.highPrice1h ?? createNumericHistoryBuffer(),
-                ),
-              ) ?? null,
-            lowPrice1h:
-              getLastFiniteValue(
-                materializeNumericHistory(
-                  indicatorHistory.lowPrice1h ?? createNumericHistoryBuffer(),
-                ),
-              ) ?? null,
-            volume1h:
-              getLastFiniteValue(
-                materializeNumericHistory(
-                  indicatorHistory.volume1h ?? createNumericHistoryBuffer(),
-                ),
-              ) ?? null,
-            highPrice24h:
-              getLastFiniteValue(
-                materializeNumericHistory(
-                  indicatorHistory.highPrice24h ?? createNumericHistoryBuffer(),
-                ),
-              ) ?? null,
-            lowPrice24h:
-              getLastFiniteValue(
-                materializeNumericHistory(
-                  indicatorHistory.lowPrice24h ?? createNumericHistoryBuffer(),
-                ),
-              ) ?? null,
-            volume24h:
-              getLastFiniteValue(
-                materializeNumericHistory(
-                  indicatorHistory.volume24h ?? createNumericHistoryBuffer(),
-                ),
-              ) ?? null,
-            highLevel:
-              getLastFiniteValue(
-                materializeNumericHistory(
-                  indicatorHistory.highLevel ?? createNumericHistoryBuffer(),
-                ),
-              ) ?? null,
-            lowLevel:
-              getLastFiniteValue(
-                materializeNumericHistory(
-                  indicatorHistory.lowLevel ?? createNumericHistoryBuffer(),
-                ),
-              ) ?? null,
+          const baseResult = buildLatestBaseResult({
+            latestIndicatorValues,
             prevClose: latestPrevCandle?.close ?? null,
-            correlation:
-              getLastFiniteValue(
-                materializeNumericHistory(
-                  indicatorHistory.correlation ?? createNumericHistoryBuffer(),
-                ),
-              ) ?? 0,
-            spread:
-              getLastFiniteValue(
-                materializeNumericHistory(
-                  indicatorHistory.spread ?? createNumericHistoryBuffer(),
-                ),
-              ) ?? null,
-          };
+          });
 
           return buildBaseContextSnapshot({
             candle: latestCandle,
@@ -2024,6 +1938,7 @@ export const createIndicators = (
             btcResampledCandles: getCapturedBtcResampled(),
             indicatorHistory,
             indicatorPeriods,
+            closeStreaks,
           });
         }
 
@@ -2107,10 +2022,10 @@ export const createIndicators = (
     ),
     latestIndicatorValues: { ...latestIndicatorValues },
     rawCoinCandles: candlesHistory
-      .slice(-CONTROLLER_STATE_CANDLE_WINDOW)
+      .slice(-controllerStateCandleWindow)
       .map(cloneMlCandle),
     rawBtcCandles: btcCandlesHistory
-      .slice(-CONTROLLER_STATE_CANDLE_WINDOW)
+      .slice(-controllerStateCandleWindow)
       .map(cloneMlCandle),
     coinResampledCandles: {
       h1: coin1hCache
@@ -2140,7 +2055,8 @@ export const createIndicators = (
         .slice(-ML_BASE_CANDLES_WINDOW)
         .map(cloneMlCandle),
     },
-    btcCloses: btcCloses.slice(-CONTROLLER_STATE_CANDLE_WINDOW),
+    closeStreaks: { ...closeStreaks },
+    btcCloses: btcCloses.slice(-controllerStateCandleWindow),
     btcBinanceCursor,
     btcCoinbaseCursor,
   });
@@ -2176,29 +2092,8 @@ export type IndicatorCacheSnapshotEntry = {
   candleSignature: string | null;
   btcCandleSignature: string | null;
   ready: boolean;
-  indicatorValues: Partial<
-    Record<(typeof CACHEABLE_INDICATOR_KEYS)[number], number | null>
-  >;
-  baseContext: Omit<BaseStrategyContextSnapshot, 'mtf'> | null;
   runtimeState: IndicatorsControllerRuntimeState;
 };
-
-const stripMtfFromBaseContext = (
-  baseContext: BaseStrategyContextSnapshot,
-): Omit<BaseStrategyContextSnapshot, 'mtf'> => {
-  const { mtf: _mtf, ...rest } = baseContext;
-  return rest;
-};
-
-const toCacheableIndicatorValues = (
-  snapshot: IndicatorSnapshot,
-): IndicatorCacheSnapshotEntry['indicatorValues'] =>
-  Object.fromEntries(
-    CACHEABLE_INDICATOR_KEYS.map((key) => [
-      key,
-      toNullable(snapshot[key as keyof IndicatorSnapshot]),
-    ]),
-  ) as IndicatorCacheSnapshotEntry['indicatorValues'];
 
 export const buildIndicatorCacheSnapshots = (
   data: Candle[],
@@ -2218,12 +2113,6 @@ export const buildIndicatorCacheSnapshots = (
       candleSignature: buildCandleSignature(candle),
       btcCandleSignature: buildCandleSignature(btcCandle),
       ready: snapshot != null,
-      indicatorValues:
-        snapshot == null ? {} : toCacheableIndicatorValues(snapshot),
-      baseContext:
-        snapshot?.baseContext == null
-          ? null
-          : stripMtfFromBaseContext(snapshot.baseContext),
       runtimeState: controller.runtimeState(),
     });
   });

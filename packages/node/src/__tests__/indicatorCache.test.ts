@@ -1,6 +1,8 @@
 const mockBuildIndicatorCacheSnapshots = jest.fn();
 const mockGetIndicatorCacheRange = jest.fn();
-const mockUpsertIndicatorCacheRows = jest.fn();
+const mockGetLatestIndicatorCacheCheckpointAtOrBefore = jest.fn();
+const mockUpsertIndicatorCacheCoverageRows = jest.fn();
+const mockUpsertIndicatorCacheCheckpointRows = jest.fn();
 
 jest.mock('@tradejs/core/indicators', () => ({
   buildIndicatorCacheSnapshots: (...args: unknown[]) =>
@@ -10,8 +12,12 @@ jest.mock('@tradejs/core/indicators', () => ({
 jest.mock('@tradejs/infra/timescale', () => ({
   getIndicatorCacheRange: (...args: unknown[]) =>
     mockGetIndicatorCacheRange(...args),
-  upsertIndicatorCacheRows: (...args: unknown[]) =>
-    mockUpsertIndicatorCacheRows(...args),
+  getLatestIndicatorCacheCheckpointAtOrBefore: (...args: unknown[]) =>
+    mockGetLatestIndicatorCacheCheckpointAtOrBefore(...args),
+  upsertIndicatorCacheCoverageRows: (...args: unknown[]) =>
+    mockUpsertIndicatorCacheCoverageRows(...args),
+  upsertIndicatorCacheCheckpointRows: (...args: unknown[]) =>
+    mockUpsertIndicatorCacheCheckpointRows(...args),
 }));
 
 import {
@@ -57,8 +63,6 @@ const cacheRow = (timestamp: number, close = 100, btcClose = 200) => ({
     btcClose,
   ].join(':'),
   ready: true,
-  indicatorValues: {},
-  baseContext: null,
   runtimeState: runtimeState(timestamp),
 });
 
@@ -100,6 +104,12 @@ describe('indicatorCache', () => {
       { snapshot: cacheRow(1_000, 100, 200) },
       { snapshot: cacheRow(2_000, 101, 201) },
     ]);
+    mockGetLatestIndicatorCacheCheckpointAtOrBefore.mockResolvedValue({
+      snapshot: {
+        timestamp: 2_000,
+        runtimeState: runtimeState(2_000),
+      },
+    });
 
     const plan = await planIndicatorCacheRestore({
       provider: 'ByBit',
@@ -127,6 +137,12 @@ describe('indicatorCache', () => {
       { snapshot: cacheRow(2_000, 101, 201) },
       { snapshot: cacheRow(3_000, 102, 202) },
     ]);
+    mockGetLatestIndicatorCacheCheckpointAtOrBefore.mockResolvedValue({
+      snapshot: {
+        timestamp: 1_000,
+        runtimeState: runtimeState(1_000),
+      },
+    });
 
     const plan = await planIndicatorCacheRestore({
       provider: 'ByBit',
@@ -149,6 +165,12 @@ describe('indicatorCache', () => {
       { snapshot: cacheRow(1_000, 100, 200) },
       { snapshot: cacheRow(2_000, 101, 201) },
     ]);
+    mockGetLatestIndicatorCacheCheckpointAtOrBefore.mockResolvedValue({
+      snapshot: {
+        timestamp: 2_000,
+        runtimeState: runtimeState(2_000),
+      },
+    });
 
     const plan = await planIndicatorCacheRestore({
       provider: 'ByBit',
@@ -170,8 +192,6 @@ describe('indicatorCache', () => {
         candleSignature: 'coin-3',
         btcCandleSignature: 'btc-3',
         ready: true,
-        indicatorValues: {},
-        baseContext: null,
         runtimeState: runtimeState(3_000),
       },
     ]);
@@ -194,6 +214,7 @@ describe('indicatorCache', () => {
       paramsHash: 'hash',
       restoreState: restored,
       replayStartIndex: 2,
+      cached: false,
     });
 
     expect(mockBuildIndicatorCacheSnapshots).toHaveBeenCalledWith(
@@ -205,13 +226,30 @@ describe('indicatorCache', () => {
         initialRuntimeState: restored,
       }),
     );
-    expect(mockUpsertIndicatorCacheRows).toHaveBeenCalledWith([
+    expect(mockUpsertIndicatorCacheCoverageRows).toHaveBeenCalledWith([
       expect.objectContaining({
         provider: 'ByBit',
         symbol: 'ETHUSDT',
         interval: 15,
         paramsHash: 'hash',
-        snapshot: expect.objectContaining({ timestamp: 3_000 }),
+        snapshot: expect.objectContaining({
+          timestamp: 3_000,
+          candleSignature: 'coin-3',
+          btcCandleSignature: 'btc-3',
+          ready: true,
+        }),
+      }),
+    ]);
+    expect(mockUpsertIndicatorCacheCheckpointRows).toHaveBeenCalledWith([
+      expect.objectContaining({
+        provider: 'ByBit',
+        symbol: 'ETHUSDT',
+        interval: 15,
+        paramsHash: 'hash',
+        snapshot: expect.objectContaining({
+          timestamp: 3_000,
+          runtimeState: runtimeState(3_000),
+        }),
       }),
     ]);
   });
@@ -227,14 +265,18 @@ describe('indicatorCache', () => {
       { snapshot: cacheRow(1_000, 100, 200) },
       { snapshot: cacheRow(2_000, 101, 201) },
     ]);
+    mockGetLatestIndicatorCacheCheckpointAtOrBefore.mockResolvedValue({
+      snapshot: {
+        timestamp: 1_000,
+        runtimeState: runtimeState(1_000),
+      },
+    });
     mockBuildIndicatorCacheSnapshots.mockReturnValue([
       {
         timestamp: 2_000,
         candleSignature: 'coin-2',
         btcCandleSignature: 'btc-2',
         ready: true,
-        indicatorValues: {},
-        baseContext: null,
         runtimeState: runtimeState(2_000),
       },
       {
@@ -242,8 +284,6 @@ describe('indicatorCache', () => {
         candleSignature: 'coin-3',
         btcCandleSignature: 'btc-3',
         ready: true,
-        indicatorValues: {},
-        baseContext: null,
         runtimeState: runtimeState(3_000),
       },
     ]);
@@ -267,5 +307,24 @@ describe('indicatorCache', () => {
         initialRuntimeState: runtimeState(1_000),
       }),
     );
+  });
+
+  it('skips rematerialization when full lightweight coverage already exists', async () => {
+    await materializeIndicatorCachePlan({
+      provider: 'ByBit',
+      symbol: 'ETHUSDT',
+      interval: 15,
+      periods: { maFast: 14 },
+      data: [candle(1_000, 100), candle(2_000, 101)] as any,
+      btcData: [candle(1_000, 200), candle(2_000, 201)] as any,
+      paramsHash: 'hash',
+      restoreState: runtimeState(2_000),
+      replayStartIndex: 2,
+      cached: true,
+    });
+
+    expect(mockBuildIndicatorCacheSnapshots).not.toHaveBeenCalled();
+    expect(mockUpsertIndicatorCacheCoverageRows).not.toHaveBeenCalled();
+    expect(mockUpsertIndicatorCacheCheckpointRows).not.toHaveBeenCalled();
   });
 });

@@ -320,6 +320,7 @@ describe('strategyRuntime', () => {
         interval: 15,
         paramsHash: 'hash',
         replayStartIndex: 0,
+        cached: true,
       }),
     );
   });

@@ -162,7 +162,7 @@ describe('timescale candle helpers', () => {
     );
   });
 
-  it('stores indicator cache rows with provider/params/version scope', async () => {
+  it('stores indicator coverage rows and checkpoint rows with provider/params/version scope', async () => {
     const query = jest.fn().mockResolvedValue({ rows: [] });
 
     jest.doMock('pg', () => ({
@@ -172,11 +172,12 @@ describe('timescale candle helpers', () => {
       })),
     }));
 
-    const { upsertIndicatorCacheRows } = await import(
-      '@tradejs/infra/timescale'
-    );
+    const {
+      upsertIndicatorCacheCheckpointRows,
+      upsertIndicatorCacheCoverageRows,
+    } = await import('@tradejs/infra/timescale');
 
-    await upsertIndicatorCacheRows([
+    await upsertIndicatorCacheCoverageRows([
       {
         provider: 'ByBit',
         symbol: 'btcusdt',
@@ -185,6 +186,17 @@ describe('timescale candle helpers', () => {
         version: 'v1',
         ts: new Date(1_000),
         snapshot: { ready: true },
+      },
+    ]);
+    await upsertIndicatorCacheCheckpointRows([
+      {
+        provider: 'ByBit',
+        symbol: 'btcusdt',
+        interval: 15,
+        paramsHash: 'hash-1',
+        version: 'v1',
+        ts: new Date(1_000),
+        snapshot: { runtimeState: { seed: 1 } },
       },
     ]);
 
@@ -205,14 +217,40 @@ describe('timescale candle helpers', () => {
         JSON.stringify({ ready: true }),
       ],
     );
+    expect(query).toHaveBeenCalledWith(
+      expect.stringContaining(
+        'CREATE TABLE IF NOT EXISTS indicator_cache_checkpoint',
+      ),
+    );
+    expect(query).toHaveBeenCalledWith(
+      expect.stringContaining(
+        'ON CONFLICT (provider, symbol, interval, params_hash, version, ts)',
+      ),
+      [
+        'bybit',
+        'BTCUSDT',
+        15,
+        'hash-1',
+        'v1',
+        new Date(1_000),
+        JSON.stringify({ runtimeState: { seed: 1 } }),
+      ],
+    );
   });
 
-  it('reads indicator cache coverage and range with provider/params/version filters', async () => {
+  it('reads indicator cache coverage, range, and latest checkpoint with provider/params/version filters', async () => {
     const query = jest.fn(async (sql: string) => {
       if (sql.includes('COUNT(*)::int AS count')) {
         return { rows: [{ min: '1000', max: '2000', count: '3' }] };
       }
       if (sql.includes('SELECT ts, snapshot')) {
+        if (sql.includes('FROM indicator_cache_checkpoint')) {
+          return {
+            rows: [
+              { ts: new Date(2_000), snapshot: { runtimeState: { seed: 2 } } },
+            ],
+          };
+        }
         return {
           rows: [{ ts: new Date(1_000), snapshot: { ready: true } }],
         };
@@ -227,9 +265,11 @@ describe('timescale candle helpers', () => {
       })),
     }));
 
-    const { getIndicatorCacheCoverage, getIndicatorCacheRange } = await import(
-      '@tradejs/infra/timescale'
-    );
+    const {
+      getIndicatorCacheCoverage,
+      getIndicatorCacheRange,
+      getLatestIndicatorCacheCheckpointAtOrBefore,
+    } = await import('@tradejs/infra/timescale');
 
     await expect(
       getIndicatorCacheCoverage({
@@ -259,6 +299,19 @@ describe('timescale candle helpers', () => {
         snapshot: { ready: true },
       },
     ]);
+    await expect(
+      getLatestIndicatorCacheCheckpointAtOrBefore({
+        provider: 'ByBit',
+        symbol: 'btcusdt',
+        interval: 15,
+        paramsHash: 'hash-1',
+        version: 'v1',
+        tsMs: 2_000,
+      }),
+    ).resolves.toEqual({
+      ts: new Date(2_000),
+      snapshot: { runtimeState: { seed: 2 } },
+    });
 
     expect(query).toHaveBeenCalledWith(
       expect.stringContaining('FROM indicator_cache'),
@@ -267,6 +320,10 @@ describe('timescale candle helpers', () => {
     expect(query).toHaveBeenCalledWith(
       expect.stringContaining('FROM indicator_cache'),
       ['bybit', 'BTCUSDT', 15, 'hash-1', 'v1', 1000, 2000],
+    );
+    expect(query).toHaveBeenCalledWith(
+      expect.stringContaining('FROM indicator_cache_checkpoint'),
+      ['bybit', 'BTCUSDT', 15, 'hash-1', 'v1', 2000],
     );
   });
 });
