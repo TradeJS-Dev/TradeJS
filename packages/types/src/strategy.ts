@@ -9,6 +9,7 @@ import {
   Signal,
   Tp,
   Candle,
+  DerivativesContext,
 } from './trade';
 import { BacktestPriceMode, StrategyConfig, StrategyCreator } from './backtest';
 import { StrategyManifest } from './strategyAdapters';
@@ -139,6 +140,159 @@ export interface MlCandleIndicatorsSnapshot {
   btcCandles1d: Candle[];
 }
 
+export interface BaseRawIndicatorSnapshot {
+  trend: {
+    maFast: number | null;
+    maMedium: number | null;
+    maSlow: number | null;
+  };
+  volatility: {
+    atr: number | null;
+    atrPct: number | null;
+    bbUpper: number | null;
+    bbMiddle: number | null;
+    bbLower: number | null;
+    bbWidthPct: number | null;
+  };
+  momentum: {
+    macd: number | null;
+    macdSignal: number | null;
+    macdHistogram: number | null;
+  };
+  volume: {
+    volume: number | null;
+    turnover: number | null;
+    obv: number | null;
+    obvSma: number | null;
+    volume1h: number | null;
+    volume24h: number | null;
+  };
+  price: {
+    prevClose: number | null;
+    price1hPct: number | null;
+    price24hPct: number | null;
+    highPrice1h: number | null;
+    lowPrice1h: number | null;
+    highPrice24h: number | null;
+    lowPrice24h: number | null;
+  };
+  levels: {
+    highLevel: number | null;
+    lowLevel: number | null;
+  };
+  crossAsset: {
+    btcCorrelation: number | null;
+    venueSpread: number | null;
+  };
+}
+
+export interface BaseRegimeContext {
+  trend: {
+    bias: 'bull' | 'bear' | 'neutral';
+    maStackScore: number | null;
+    priceDistanceToMaFastAtr: number | null;
+    priceDistanceToMaSlowAtr: number | null;
+    persistence: number | null;
+  };
+  volatility: {
+    atrPctZScore: number | null;
+    bbWidthPct: number | null;
+    compressionScore: number | null;
+    expansionScore: number | null;
+    state: 'compressed' | 'normal' | 'expanded' | 'unknown';
+  };
+  momentum: {
+    roc1h: number | null;
+    roc4h: number | null;
+    roc1d: number | null;
+    macdHistogramSlope: number | null;
+    bodyStrength: number | null;
+    closeLocationInRange: number | null;
+    upCloseStreak: number | null;
+    downCloseStreak: number | null;
+  };
+}
+
+export interface BaseStructureContext {
+  localRange: {
+    rangePosition20: number | null;
+    distanceToHighLevelAtr: number | null;
+    distanceToLowLevelAtr: number | null;
+    breakoutState:
+      | 'inside_range'
+      | 'above_high_level'
+      | 'below_low_level'
+      | 'failed_high_breakout'
+      | 'failed_low_breakout'
+      | 'unknown';
+  };
+  candleQuality: {
+    upperWickPct: number | null;
+    lowerWickPct: number | null;
+    rejectionWickScore: number | null;
+  };
+}
+
+export interface BaseParticipationContext {
+  volume: {
+    volumeRel20: number | null;
+    turnoverRel20: number | null;
+    volumeTrendSlope: number | null;
+    obvSlope: number | null;
+    effortVsResult: number | null;
+  };
+}
+
+export interface BaseRelativeContext {
+  benchmark: {
+    btcCorrelation: number | null;
+    maFast: number | null;
+    maSlow: number | null;
+    bias: 'bull' | 'bear' | 'neutral';
+    spreadPct: number | null;
+    relativeStrength1h: number | null;
+    relativeStrength4h: number | null;
+    relativeStrength1d: number | null;
+    trendAlignment:
+      | 'aligned_bull'
+      | 'aligned_bear'
+      | 'against_benchmark'
+      | 'neutral'
+      | 'unknown';
+  };
+  execution: {
+    venueSpread: number | null;
+    venueSpreadZScore: number | null;
+  };
+}
+
+export interface BaseMultiTimeframeContext {
+  candles: {
+    m15: Candle[];
+    h1: Candle[];
+    h4: Candle[];
+    d1: Candle[];
+  };
+  benchmarkCandles: {
+    m15: Candle[];
+    h1: Candle[];
+    h4: Candle[];
+    d1: Candle[];
+  };
+}
+
+export interface BaseStrategyContextSnapshot {
+  candle: Candle;
+  prevCandle: Candle | null;
+  raw: BaseRawIndicatorSnapshot;
+  regime: BaseRegimeContext;
+  structure: BaseStructureContext;
+  participation: BaseParticipationContext;
+  relative: BaseRelativeContext;
+  derivatives?: DerivativesContext | null;
+  mtf: BaseMultiTimeframeContext;
+}
+
 export interface BaseIndicatorsHistorySnapshot {
   maFast?: number[];
   maMedium?: number[];
@@ -170,7 +324,9 @@ export interface BaseIndicatorsHistorySnapshot {
 
 export type IndicatorsHistorySnapshot = Record<string, number[] | Candle[]> &
   BaseIndicatorsHistorySnapshot &
-  Partial<MlCandleIndicatorsSnapshot>;
+  Partial<MlCandleIndicatorsSnapshot> & {
+    baseContext?: BaseStrategyContextSnapshot;
+  };
 
 export interface IndicatorSnapshot {
   maFast: number;
@@ -200,6 +356,7 @@ export interface IndicatorSnapshot {
   lowLevel: number | null;
   correlation: number;
   spread: number | null;
+  baseContext?: BaseStrategyContextSnapshot;
 }
 
 export interface StrategyDirectionalTpSlParams {

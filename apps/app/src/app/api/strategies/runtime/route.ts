@@ -15,7 +15,7 @@ import type {
   PositionPnlSnapshot,
   RuntimeTradeRecord,
 } from '@tradejs/types';
-import { getCurrentUserName } from '@app/lib/currentUser';
+import { getCurrentUserName } from '#app/lib/currentUser';
 import {
   buildRuntimeStrategyAnalytics,
   buildExchangeFallbackRuntimeTrades,
@@ -25,7 +25,7 @@ import {
   selectTradesForWindow,
   takeClosedPnlMatch,
   toRuntimeTradeView,
-} from '@app/lib/runtimeStrategies';
+} from '#app/lib/runtimeStrategies';
 
 type ClosedPnlRecordWithOrderLinkId = Awaited<
   ReturnType<NonNullable<Connector['getClosedPnl']>>

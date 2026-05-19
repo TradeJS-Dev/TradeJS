@@ -4,7 +4,7 @@ import { useEffect } from 'react';
 import _ from 'lodash';
 import { registerOverlay, registerIndicator, Chart } from 'klinecharts';
 import { KlineChartItem, OrderLogData } from '@tradejs/types';
-import { useBacktest as useBacktestStore } from '@store';
+import { useBacktest as useBacktestStore } from '#store';
 import {
   TradeZoneMode,
   createTradeZonePointFigure,

@@ -3,9 +3,9 @@
 import { useCallback, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Box, Flex, ClientOnly } from '@chakra-ui/react';
-import { useFilters, useTickers, useTestList } from '@store';
-import { Filters } from '@shared/Filters';
-import { MainChart } from '@app/components/Dashboard/MainChart';
+import { useFilters, useTickers, useTestList } from '#store';
+import { Filters } from '#shared/Filters';
+import { MainChart } from '#app/components/Dashboard/MainChart';
 import { Interval, OnChangeFilters, Provider } from '@tradejs/types';
 
 const Dashboard = () => {

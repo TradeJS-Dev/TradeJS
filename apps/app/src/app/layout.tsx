@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { AppShell } from '@shared/AppShell';
+import { AppShell } from '#shared/AppShell';
 import Provider from './provider';
 import './globals.css';
 

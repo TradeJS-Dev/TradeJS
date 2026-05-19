@@ -1,6 +1,6 @@
 import { useFiltersContext } from '../context';
-import { FavoriteButton } from '@shared/FavoriteButton';
-import { useTickers } from '@store';
+import { FavoriteButton } from '#shared/FavoriteButton';
+import { useTickers } from '#store';
 
 export const FavoriteIndicator = () => {
   const {

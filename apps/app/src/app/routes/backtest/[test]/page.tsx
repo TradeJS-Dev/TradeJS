@@ -3,7 +3,7 @@
 import React from 'react';
 import { Box, ClientOnly } from '@chakra-ui/react';
 import { useParams } from 'next/navigation';
-import { TestCard } from '@components/Backtest/TestCard';
+import { TestCard } from '#components/Backtest/TestCard';
 
 const BacktestReport = () => {
   const { test: testName } = useParams();

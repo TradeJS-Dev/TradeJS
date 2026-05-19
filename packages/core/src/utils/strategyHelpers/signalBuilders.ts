@@ -19,6 +19,7 @@ import {
   StrategyMarketSnapshot,
   StrategyRuntimeAiOptions,
   StrategyRuntimeMlOptions,
+  BaseStrategyContextSnapshot,
 } from '@tradejs/types';
 import {
   calculateRiskRatio,
@@ -72,19 +73,39 @@ export const buildStrategySignal = ({
   indicators = {},
   additionalIndicators,
   isConfigFromBacktest,
-}: BuildStrategySignalParams): Signal => ({
-  signalId,
-  strategy,
-  symbol,
-  interval,
-  direction,
-  timestamp,
-  figures,
-  prices,
-  indicators,
-  additionalIndicators,
-  isConfigFromBacktest,
-});
+}: BuildStrategySignalParams): Signal => {
+  const indicatorsRecord =
+    indicators && typeof indicators === 'object' ? indicators : {};
+  const baseContext = (
+    indicatorsRecord as { baseContext?: BaseStrategyContextSnapshot }
+  ).baseContext;
+  const mergedAdditionalIndicators =
+    baseContext == null
+      ? additionalIndicators
+      : {
+          ...(additionalIndicators ?? {}),
+          baseContext:
+            (
+              additionalIndicators as {
+                baseContext?: BaseStrategyContextSnapshot;
+              }
+            )?.baseContext ?? baseContext,
+        };
+
+  return {
+    signalId,
+    strategy,
+    symbol,
+    interval,
+    direction,
+    timestamp,
+    figures,
+    prices,
+    indicators,
+    additionalIndicators: mergedAdditionalIndicators,
+    isConfigFromBacktest,
+  };
+};
 
 interface BuildEntrySignalDecisionParams {
   code: string;

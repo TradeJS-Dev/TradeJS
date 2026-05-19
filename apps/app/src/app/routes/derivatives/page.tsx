@@ -39,7 +39,7 @@ import {
 import { format } from 'date-fns';
 import { FiBarChart2 } from 'react-icons/fi';
 import { API } from '@tradejs/core/api';
-import { EmptyState, Segment, Select } from '@UI';
+import { EmptyState, Segment, Select } from '#ui';
 
 type SummaryItem = {
   symbol: string;

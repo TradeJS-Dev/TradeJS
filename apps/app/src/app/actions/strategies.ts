@@ -1,5 +1,5 @@
 import { API } from '@tradejs/core/api';
-import type { RuntimeStrategiesResponse } from '@app/lib/runtimeStrategies';
+import type { RuntimeStrategiesResponse } from '#app/lib/runtimeStrategies';
 
 const API_PATH = '/api/strategies/runtime';
 

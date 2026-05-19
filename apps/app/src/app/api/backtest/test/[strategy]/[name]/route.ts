@@ -4,7 +4,7 @@ import { NextResponse } from 'next/server';
 import { delKey, getData, redisKeys, setData } from '@tradejs/infra/redis';
 import { Item } from '@tradejs/types';
 import { logger } from '@tradejs/infra/logger';
-import { auth } from '@app/auth';
+import { auth } from '#app/auth';
 
 interface Params {
   strategy: string;

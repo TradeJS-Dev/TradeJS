@@ -1,6 +1,7 @@
 import { SMA, ATR, BollingerBands, OBV, MACD } from 'technicalindicators';
 import {
   Candle,
+  BaseStrategyContextSnapshot,
   IndicatorSnapshot,
   IndicatorsHistorySnapshot,
   MlCandleIndicatorsSnapshot,
@@ -126,6 +127,131 @@ const percentChange = (current: number, previous: number): number | null => {
 
 type IndicatorValue = number | null | undefined;
 
+const isFiniteNumber = (value: unknown): value is number =>
+  typeof value === 'number' && Number.isFinite(value);
+
+const toNullable = (value: unknown): number | null =>
+  isFiniteNumber(value) ? value : null;
+
+const safeDivide = (numerator: number | null, denominator: number | null) => {
+  if (
+    numerator == null ||
+    denominator == null ||
+    !Number.isFinite(numerator) ||
+    !Number.isFinite(denominator) ||
+    denominator === 0
+  ) {
+    return null;
+  }
+
+  return numerator / denominator;
+};
+
+const calculateZScore = (
+  values: Array<number | null | undefined>,
+  current: number | null,
+) => {
+  const finite = values.filter(isFiniteNumber);
+  if (current == null || finite.length < 3) return null;
+
+  const mean = finite.reduce((sum, value) => sum + value, 0) / finite.length;
+  const variance =
+    finite.reduce((sum, value) => sum + (value - mean) ** 2, 0) / finite.length;
+  const std = Math.sqrt(variance);
+  if (!Number.isFinite(std) || std === 0) return 0;
+
+  return (current - mean) / std;
+};
+
+const getLastFiniteValue = (
+  values: Array<number | null | undefined>,
+): number | null => {
+  for (let i = values.length - 1; i >= 0; i -= 1) {
+    const value = values[i];
+    if (isFiniteNumber(value)) return value;
+  }
+  return null;
+};
+
+const getRelativeChange = (
+  current: number | null,
+  reference: number | null,
+): number | null => {
+  if (
+    current == null ||
+    reference == null ||
+    !Number.isFinite(current) ||
+    !Number.isFinite(reference) ||
+    reference === 0
+  ) {
+    return null;
+  }
+
+  return (current - reference) / Math.abs(reference);
+};
+
+const calculateLineSlope = (
+  values: Array<number | null | undefined>,
+  lookback = 5,
+) => {
+  const finite = values.filter(isFiniteNumber);
+  const window = finite.slice(-lookback);
+  if (window.length < 2) return null;
+
+  const first = window[0];
+  const last = window[window.length - 1];
+  return (last - first) / (window.length - 1);
+};
+
+const calculateCloseStreak = (
+  closes: number[],
+  direction: 'up' | 'down',
+): number => {
+  if (closes.length < 2) return 0;
+
+  let streak = 0;
+  for (let i = closes.length - 1; i > 0; i -= 1) {
+    const delta = closes[i] - closes[i - 1];
+    if (
+      (direction === 'up' && delta > 0) ||
+      (direction === 'down' && delta < 0)
+    ) {
+      streak += 1;
+      continue;
+    }
+    break;
+  }
+  return streak;
+};
+
+const calculateRangePosition = (
+  price: number,
+  low: number | null,
+  high: number | null,
+) => {
+  if (
+    !Number.isFinite(price) ||
+    low == null ||
+    high == null ||
+    !Number.isFinite(low) ||
+    !Number.isFinite(high) ||
+    high <= low
+  ) {
+    return null;
+  }
+
+  return (price - low) / (high - low);
+};
+
+const averageLastN = (values: number[], period: number): number | null => {
+  const safePeriod = Math.max(1, Math.floor(period));
+  const window = values
+    .filter((value) => Number.isFinite(value))
+    .slice(-safePeriod);
+  if (window.length < safePeriod) return null;
+  return window.reduce((sum, value) => sum + value, 0) / window.length;
+};
+
 type TrendlineIndicatorHistoryPush = (
   key: string,
   value: number | null | undefined,
@@ -171,6 +297,427 @@ type CreateIndicatorsOptions = {
   btcBinanceData?: Candle[];
   btcCoinbaseData?: Candle[];
   pluginRegistryScope?: string;
+};
+
+type BuildBaseContextParams = {
+  candle: Candle;
+  prevCandle: Candle | null;
+  baseResult: {
+    maFast: number | null;
+    maMedium: number | null;
+    maSlow: number | null;
+    atr: number | null;
+    atrPct: number | null;
+    bbUpper: number | null;
+    bbMiddle: number | null;
+    bbLower: number | null;
+    obv: number | null;
+    smaObv: number | null;
+    macd: number | null | undefined;
+    macdSignal: number | null | undefined;
+    macdHistogram: number | null | undefined;
+    price24hPcnt: number;
+    price1hPcnt: number;
+    highPrice1h: number | null;
+    lowPrice1h: number | null;
+    volume1h: number | null;
+    highPrice24h: number | null;
+    lowPrice24h: number | null;
+    volume24h: number | null;
+    highLevel: number | null;
+    lowLevel: number | null;
+    prevClose: number | null;
+    correlation: number;
+    spread: number | null;
+  };
+  candlesHistory: Candle[];
+  btcCandlesHistory: Candle[];
+  indicatorHistory: Record<string, NumericHistoryBuffer>;
+  indicatorPeriods: IndicatorPeriods;
+};
+
+const buildBaseContextSnapshot = ({
+  candle,
+  prevCandle,
+  baseResult,
+  candlesHistory,
+  btcCandlesHistory,
+  indicatorHistory,
+  indicatorPeriods,
+}: BuildBaseContextParams): BaseStrategyContextSnapshot => {
+  const atr = toNullable(baseResult.atr);
+  const bbWidthPct =
+    baseResult.bbUpper != null &&
+    baseResult.bbLower != null &&
+    baseResult.bbMiddle != null &&
+    baseResult.bbMiddle !== 0
+      ? ((baseResult.bbUpper - baseResult.bbLower) / baseResult.bbMiddle) * 100
+      : null;
+  const atrPctSeries = materializeNumericHistory(
+    indicatorHistory.atrPct ?? createNumericHistoryBuffer(),
+  );
+  const macdHistogramSeries = materializeNumericHistory(
+    indicatorHistory.macdHistogram ?? createNumericHistoryBuffer(),
+  );
+  const volumeSeries = candlesHistory.map((item) => item.volume);
+  const closeSeries = candlesHistory.map((item) => item.close);
+  const spreadSeries = materializeNumericHistory(
+    indicatorHistory.spread ?? createNumericHistoryBuffer(),
+  );
+  const recent20 = candlesHistory.slice(-20);
+  const recent20High =
+    recent20.length > 0 ? Math.max(...recent20.map((item) => item.high)) : null;
+  const recent20Low =
+    recent20.length > 0 ? Math.min(...recent20.map((item) => item.low)) : null;
+  const avgVolume20 =
+    recent20.length > 0
+      ? recent20.reduce((sum, item) => sum + item.volume, 0) / recent20.length
+      : null;
+  const avgTurnover20 =
+    recent20.length > 0
+      ? recent20.reduce((sum, item) => sum + item.turnover, 0) / recent20.length
+      : null;
+  const volumeRel20 = safeDivide(candle.volume, avgVolume20);
+  const turnoverRel20 = safeDivide(candle.turnover, avgTurnover20);
+  const effortVsResult = safeDivide(
+    volumeRel20,
+    Math.abs(getRelativeChange(candle.close, prevCandle?.close ?? null) ?? 0) ||
+      null,
+  );
+  const priceDistanceToMaFastAtr = safeDivide(
+    baseResult.maFast == null ? null : candle.close - baseResult.maFast,
+    atr,
+  );
+  const priceDistanceToMaSlowAtr = safeDivide(
+    baseResult.maSlow == null ? null : candle.close - baseResult.maSlow,
+    atr,
+  );
+  const distanceToHighLevelAtr = safeDivide(
+    baseResult.highLevel == null ? null : candle.close - baseResult.highLevel,
+    atr,
+  );
+  const distanceToLowLevelAtr = safeDivide(
+    baseResult.lowLevel == null ? null : candle.close - baseResult.lowLevel,
+    atr,
+  );
+  const maStackScore =
+    baseResult.maFast == null ||
+    baseResult.maMedium == null ||
+    baseResult.maSlow == null
+      ? null
+      : Math.sign(baseResult.maFast - baseResult.maMedium) +
+        Math.sign(baseResult.maMedium - baseResult.maSlow);
+  const trendBias =
+    maStackScore == null
+      ? 'neutral'
+      : maStackScore > 0
+        ? 'bull'
+        : maStackScore < 0
+          ? 'bear'
+          : 'neutral';
+  const persistenceWindow = closeSeries.slice(-10);
+  const directionalMoves = persistenceWindow
+    .slice(1)
+    .map((value, index) => value - persistenceWindow[index]);
+  const persistence =
+    directionalMoves.length === 0
+      ? null
+      : directionalMoves.filter((delta) =>
+          trendBias === 'bull'
+            ? delta > 0
+            : trendBias === 'bear'
+              ? delta < 0
+              : delta === 0,
+        ).length / directionalMoves.length;
+  const atrPctZScore = calculateZScore(
+    atrPctSeries,
+    toNullable(baseResult.atrPct),
+  );
+  const compressionScore = safeDivide(
+    toNullable(baseResult.atrPct),
+    getLastFiniteValue(atrPctSeries.slice(0, -1)),
+  );
+  const expansionScore =
+    compressionScore == null || compressionScore === 0
+      ? null
+      : 1 / compressionScore;
+  const volatilityState =
+    compressionScore == null
+      ? 'unknown'
+      : compressionScore <= 0.9
+        ? 'compressed'
+        : compressionScore >= 1.1
+          ? 'expanded'
+          : 'normal';
+  const highLowRange = candle.high - candle.low;
+  const bodyStrength =
+    highLowRange > 0
+      ? Math.abs(candle.close - candle.open) / highLowRange
+      : null;
+  const closeLocationInRange =
+    highLowRange > 0 ? (candle.close - candle.low) / highLowRange : null;
+  const breakoutState =
+    baseResult.highLevel == null || baseResult.lowLevel == null
+      ? 'unknown'
+      : candle.close > baseResult.highLevel
+        ? prevCandle != null && prevCandle.close <= baseResult.highLevel
+          ? 'above_high_level'
+          : 'failed_high_breakout'
+        : candle.close < baseResult.lowLevel
+          ? prevCandle != null && prevCandle.close >= baseResult.lowLevel
+            ? 'below_low_level'
+            : 'failed_low_breakout'
+          : 'inside_range';
+  const upperWick =
+    highLowRange > 0
+      ? (candle.high - Math.max(candle.open, candle.close)) / highLowRange
+      : null;
+  const lowerWick =
+    highLowRange > 0
+      ? (Math.min(candle.open, candle.close) - candle.low) / highLowRange
+      : null;
+  const rejectionWickScore =
+    trendBias === 'bull'
+      ? lowerWick
+      : trendBias === 'bear'
+        ? upperWick
+        : Math.max(upperWick ?? 0, lowerWick ?? 0);
+  const btc15m = btcCandlesHistory
+    .slice(-ML_BASE_CANDLES_WINDOW)
+    .map(toMlCandle);
+  const btcCloses = btcCandlesHistory.map((item) => item.close);
+  const benchmarkMaFast = averageLastN(btcCloses, indicatorPeriods.maFast);
+  const benchmarkMaSlow = averageLastN(btcCloses, indicatorPeriods.maSlow);
+  const btc1h = resampleCandles(btcCandlesHistory, 60).slice(
+    -ML_BASE_CANDLES_WINDOW,
+  );
+  const btc4h = resampleCandles(btcCandlesHistory, 240).slice(
+    -ML_BASE_CANDLES_WINDOW,
+  );
+  const btc1d = resampleCandles(btcCandlesHistory, 1440).slice(
+    -ML_BASE_CANDLES_WINDOW,
+  );
+  const coin1h = resampleCandles(candlesHistory, 60);
+  const coin4h = resampleCandles(candlesHistory, 240);
+  const coin1d = resampleCandles(candlesHistory, 1440);
+  const relativeStrength1h = getRelativeChange(
+    baseResult.price1hPcnt,
+    btc1h.length >= 2
+      ? percentChange(
+          btc1h[btc1h.length - 1].close,
+          btc1h[Math.max(0, btc1h.length - 2)].close,
+        )
+      : null,
+  );
+  const relativeStrength4h = getRelativeChange(
+    coin4h.length >= 2
+      ? percentChange(
+          coin4h[coin4h.length - 1].close,
+          coin4h[coin4h.length - 2].close,
+        )
+      : null,
+    btc4h.length >= 2
+      ? percentChange(
+          btc4h[btc4h.length - 1].close,
+          btc4h[btc4h.length - 2].close,
+        )
+      : null,
+  );
+  const relativeStrength1d = getRelativeChange(
+    coin1d.length >= 2
+      ? percentChange(
+          coin1d[coin1d.length - 1].close,
+          coin1d[coin1d.length - 2].close,
+        )
+      : null,
+    btc1d.length >= 2
+      ? percentChange(
+          btc1d[btc1d.length - 1].close,
+          btc1d[btc1d.length - 2].close,
+        )
+      : null,
+  );
+  const benchmarkBias =
+    btc1h.length >= 2
+      ? btc1h[btc1h.length - 1].close > btc1h[btc1h.length - 2].close
+        ? 'bull'
+        : btc1h[btc1h.length - 1].close < btc1h[btc1h.length - 2].close
+          ? 'bear'
+          : 'neutral'
+      : 'neutral';
+  const trendAlignment =
+    trendBias === 'neutral' || benchmarkBias === 'neutral'
+      ? 'neutral'
+      : trendBias === benchmarkBias
+        ? trendBias === 'bull'
+          ? 'aligned_bull'
+          : 'aligned_bear'
+        : 'against_benchmark';
+  const benchmarkTrendBias =
+    benchmarkMaFast == null || benchmarkMaSlow == null
+      ? 'neutral'
+      : benchmarkMaFast > benchmarkMaSlow
+        ? 'bull'
+        : benchmarkMaFast < benchmarkMaSlow
+          ? 'bear'
+          : 'neutral';
+  const benchmarkSpreadPct =
+    benchmarkMaFast != null && benchmarkMaSlow != null && benchmarkMaSlow !== 0
+      ? ((benchmarkMaFast - benchmarkMaSlow) / Math.abs(benchmarkMaSlow)) * 100
+      : null;
+
+  return {
+    candle,
+    prevCandle,
+    raw: {
+      trend: {
+        maFast: baseResult.maFast,
+        maMedium: baseResult.maMedium,
+        maSlow: baseResult.maSlow,
+      },
+      volatility: {
+        atr,
+        atrPct: toNullable(baseResult.atrPct),
+        bbUpper: baseResult.bbUpper,
+        bbMiddle: baseResult.bbMiddle,
+        bbLower: baseResult.bbLower,
+        bbWidthPct,
+      },
+      momentum: {
+        macd: toNullable(baseResult.macd),
+        macdSignal: toNullable(baseResult.macdSignal),
+        macdHistogram: toNullable(baseResult.macdHistogram),
+      },
+      volume: {
+        volume: candle.volume,
+        turnover: candle.turnover,
+        obv: baseResult.obv,
+        obvSma: baseResult.smaObv,
+        volume1h: baseResult.volume1h,
+        volume24h: baseResult.volume24h,
+      },
+      price: {
+        prevClose: baseResult.prevClose,
+        price1hPct: baseResult.price1hPcnt,
+        price24hPct: baseResult.price24hPcnt,
+        highPrice1h: baseResult.highPrice1h,
+        lowPrice1h: baseResult.lowPrice1h,
+        highPrice24h: baseResult.highPrice24h,
+        lowPrice24h: baseResult.lowPrice24h,
+      },
+      levels: {
+        highLevel: baseResult.highLevel,
+        lowLevel: baseResult.lowLevel,
+      },
+      crossAsset: {
+        btcCorrelation: baseResult.correlation,
+        venueSpread: baseResult.spread,
+      },
+    },
+    regime: {
+      trend: {
+        bias: trendBias,
+        maStackScore,
+        priceDistanceToMaFastAtr,
+        priceDistanceToMaSlowAtr,
+        persistence,
+      },
+      volatility: {
+        atrPctZScore,
+        bbWidthPct,
+        compressionScore,
+        expansionScore,
+        state: volatilityState,
+      },
+      momentum: {
+        roc1h: baseResult.price1hPcnt,
+        roc4h:
+          coin4h.length >= 2
+            ? percentChange(
+                coin4h[coin4h.length - 1].close,
+                coin4h[coin4h.length - 2].close,
+              )
+            : null,
+        roc1d:
+          coin1d.length >= 2
+            ? percentChange(
+                coin1d[coin1d.length - 1].close,
+                coin1d[coin1d.length - 2].close,
+              )
+            : null,
+        macdHistogramSlope: calculateLineSlope(macdHistogramSeries, 5),
+        bodyStrength,
+        closeLocationInRange,
+        upCloseStreak: calculateCloseStreak(closeSeries, 'up'),
+        downCloseStreak: calculateCloseStreak(closeSeries, 'down'),
+      },
+    },
+    structure: {
+      localRange: {
+        rangePosition20: calculateRangePosition(
+          candle.close,
+          recent20Low,
+          recent20High,
+        ),
+        distanceToHighLevelAtr,
+        distanceToLowLevelAtr,
+        breakoutState,
+      },
+      candleQuality: {
+        upperWickPct: upperWick,
+        lowerWickPct: lowerWick,
+        rejectionWickScore,
+      },
+    },
+    participation: {
+      volume: {
+        volumeRel20,
+        turnoverRel20,
+        volumeTrendSlope: calculateLineSlope(volumeSeries, 5),
+        obvSlope: calculateLineSlope(
+          materializeNumericHistory(
+            indicatorHistory.obv ?? createNumericHistoryBuffer(),
+          ),
+          5,
+        ),
+        effortVsResult,
+      },
+    },
+    relative: {
+      benchmark: {
+        btcCorrelation: baseResult.correlation,
+        maFast: benchmarkMaFast,
+        maSlow: benchmarkMaSlow,
+        bias: benchmarkTrendBias,
+        spreadPct: benchmarkSpreadPct,
+        relativeStrength1h,
+        relativeStrength4h,
+        relativeStrength1d,
+        trendAlignment,
+      },
+      execution: {
+        venueSpread: baseResult.spread,
+        venueSpreadZScore: calculateZScore(
+          spreadSeries,
+          toNullable(baseResult.spread),
+        ),
+      },
+    },
+    mtf: {
+      candles: {
+        m15: candlesHistory.slice(-ML_BASE_CANDLES_WINDOW).map(toMlCandle),
+        h1: coin1h.slice(-ML_BASE_CANDLES_WINDOW),
+        h4: coin4h.slice(-ML_BASE_CANDLES_WINDOW),
+        d1: coin1d.slice(-ML_BASE_CANDLES_WINDOW),
+      },
+      benchmarkCandles: {
+        m15: btc15m,
+        h1: btc1h,
+        h4: btc4h,
+        d1: btc1d,
+      },
+    },
+  };
 };
 
 const cloneHistorySnapshot = (
@@ -922,6 +1469,15 @@ export const createIndicators = (
       prevCandle,
       correlation,
     });
+    const baseContext = buildBaseContextSnapshot({
+      candle,
+      prevCandle,
+      baseResult,
+      candlesHistory,
+      btcCandlesHistory,
+      indicatorHistory,
+      indicatorPeriods,
+    });
 
     const result: IndicatorSnapshot = {
       ...baseResult,
@@ -931,6 +1487,7 @@ export const createIndicators = (
       highLevel,
       lowLevel,
       correlation,
+      baseContext,
     };
 
     return result;
@@ -991,6 +1548,181 @@ export const createIndicators = (
       get(target, prop, receiver) {
         if (typeof prop !== 'string') {
           return Reflect.get(target, prop, receiver);
+        }
+
+        if (prop === 'baseContext') {
+          const latestCandle = candlesHistory[capturedCoinLength - 1];
+          if (!latestCandle) return undefined;
+
+          const latestPrevCandle =
+            capturedCoinLength > 1
+              ? candlesHistory[capturedCoinLength - 2]
+              : null;
+
+          const baseResult = {
+            maFast:
+              getLastFiniteValue(
+                materializeNumericHistory(
+                  indicatorHistory.maFast ?? createNumericHistoryBuffer(),
+                ),
+              ) ?? null,
+            maMedium:
+              getLastFiniteValue(
+                materializeNumericHistory(
+                  indicatorHistory.maMedium ?? createNumericHistoryBuffer(),
+                ),
+              ) ?? null,
+            maSlow:
+              getLastFiniteValue(
+                materializeNumericHistory(
+                  indicatorHistory.maSlow ?? createNumericHistoryBuffer(),
+                ),
+              ) ?? null,
+            atr:
+              getLastFiniteValue(
+                materializeNumericHistory(
+                  indicatorHistory.atr ?? createNumericHistoryBuffer(),
+                ),
+              ) ?? null,
+            atrPct:
+              getLastFiniteValue(
+                materializeNumericHistory(
+                  indicatorHistory.atrPct ?? createNumericHistoryBuffer(),
+                ),
+              ) ?? null,
+            bbUpper:
+              getLastFiniteValue(
+                materializeNumericHistory(
+                  indicatorHistory.bbUpper ?? createNumericHistoryBuffer(),
+                ),
+              ) ?? null,
+            bbMiddle:
+              getLastFiniteValue(
+                materializeNumericHistory(
+                  indicatorHistory.bbMiddle ?? createNumericHistoryBuffer(),
+                ),
+              ) ?? null,
+            bbLower:
+              getLastFiniteValue(
+                materializeNumericHistory(
+                  indicatorHistory.bbLower ?? createNumericHistoryBuffer(),
+                ),
+              ) ?? null,
+            obv:
+              getLastFiniteValue(
+                materializeNumericHistory(
+                  indicatorHistory.obv ?? createNumericHistoryBuffer(),
+                ),
+              ) ?? null,
+            smaObv:
+              getLastFiniteValue(
+                materializeNumericHistory(
+                  indicatorHistory.smaObv ?? createNumericHistoryBuffer(),
+                ),
+              ) ?? null,
+            macd:
+              getLastFiniteValue(
+                materializeNumericHistory(
+                  indicatorHistory.macd ?? createNumericHistoryBuffer(),
+                ),
+              ) ?? null,
+            macdSignal:
+              getLastFiniteValue(
+                materializeNumericHistory(
+                  indicatorHistory.macdSignal ?? createNumericHistoryBuffer(),
+                ),
+              ) ?? null,
+            macdHistogram:
+              getLastFiniteValue(
+                materializeNumericHistory(
+                  indicatorHistory.macdHistogram ??
+                    createNumericHistoryBuffer(),
+                ),
+              ) ?? null,
+            price24hPcnt:
+              getLastFiniteValue(
+                materializeNumericHistory(
+                  indicatorHistory.price24hPcnt ?? createNumericHistoryBuffer(),
+                ),
+              ) ?? 0,
+            price1hPcnt:
+              getLastFiniteValue(
+                materializeNumericHistory(
+                  indicatorHistory.price1hPcnt ?? createNumericHistoryBuffer(),
+                ),
+              ) ?? 0,
+            highPrice1h:
+              getLastFiniteValue(
+                materializeNumericHistory(
+                  indicatorHistory.highPrice1h ?? createNumericHistoryBuffer(),
+                ),
+              ) ?? null,
+            lowPrice1h:
+              getLastFiniteValue(
+                materializeNumericHistory(
+                  indicatorHistory.lowPrice1h ?? createNumericHistoryBuffer(),
+                ),
+              ) ?? null,
+            volume1h:
+              getLastFiniteValue(
+                materializeNumericHistory(
+                  indicatorHistory.volume1h ?? createNumericHistoryBuffer(),
+                ),
+              ) ?? null,
+            highPrice24h:
+              getLastFiniteValue(
+                materializeNumericHistory(
+                  indicatorHistory.highPrice24h ?? createNumericHistoryBuffer(),
+                ),
+              ) ?? null,
+            lowPrice24h:
+              getLastFiniteValue(
+                materializeNumericHistory(
+                  indicatorHistory.lowPrice24h ?? createNumericHistoryBuffer(),
+                ),
+              ) ?? null,
+            volume24h:
+              getLastFiniteValue(
+                materializeNumericHistory(
+                  indicatorHistory.volume24h ?? createNumericHistoryBuffer(),
+                ),
+              ) ?? null,
+            highLevel:
+              getLastFiniteValue(
+                materializeNumericHistory(
+                  indicatorHistory.highLevel ?? createNumericHistoryBuffer(),
+                ),
+              ) ?? null,
+            lowLevel:
+              getLastFiniteValue(
+                materializeNumericHistory(
+                  indicatorHistory.lowLevel ?? createNumericHistoryBuffer(),
+                ),
+              ) ?? null,
+            prevClose: latestPrevCandle?.close ?? null,
+            correlation:
+              getLastFiniteValue(
+                materializeNumericHistory(
+                  indicatorHistory.correlation ?? createNumericHistoryBuffer(),
+                ),
+              ) ?? 0,
+            spread:
+              getLastFiniteValue(
+                materializeNumericHistory(
+                  indicatorHistory.spread ?? createNumericHistoryBuffer(),
+                ),
+              ) ?? null,
+          };
+
+          return buildBaseContextSnapshot({
+            candle: latestCandle,
+            prevCandle: latestPrevCandle,
+            baseResult,
+            candlesHistory: getCapturedCoinCandles(),
+            btcCandlesHistory: getCapturedBtcCandles(),
+            indicatorHistory,
+            indicatorPeriods,
+          });
         }
 
         if (Reflect.has(target, prop)) {

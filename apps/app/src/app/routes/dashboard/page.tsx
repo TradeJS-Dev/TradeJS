@@ -2,7 +2,7 @@
 
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { useFilters } from '@store';
+import { useFilters } from '#store';
 
 const DashboardIndex = () => {
   const { filters } = useFilters();

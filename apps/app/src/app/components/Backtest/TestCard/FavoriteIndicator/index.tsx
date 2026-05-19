@@ -1,5 +1,5 @@
-import { FavoriteButton } from '@shared/FavoriteButton';
-import { useFavoriteTests } from '@store';
+import { FavoriteButton } from '#shared/FavoriteButton';
+import { useFavoriteTests } from '#store';
 import { useTestContext } from '../context';
 
 export const TestCardFavoriteIndicator = () => {

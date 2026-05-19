@@ -3,6 +3,8 @@
   "compilerOptions": {
     "baseUrl": ".",
     "paths": {
+      "@constants": ["./packages/core/src/constants/index"],
+      "@utils/*": ["./packages/core/src/utils/*"],
       "@tradejs/connectors": ["./packages/connectors/src/index"],
       "@tradejs/core/api": ["./packages/core/src/api"],
       "@tradejs/core/async": ["./packages/core/src/async"],

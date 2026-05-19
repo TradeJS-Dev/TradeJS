@@ -1,3 +1,9 @@
+import {
+  getSignalAtrPct,
+  getSignalBtcMaFast,
+  getSignalBtcMaSlow,
+} from '../shared/baseContext';
+
 const TRENDLINE_CLEAR_BREAK_PCT = 0.35;
 const TRENDLINE_TIMING_WINDOW = 6;
 const WEAK_CLEAN_BREAK_ATR_RATIO_MAX = 0.45;
@@ -234,9 +240,9 @@ export const buildTrendlineStructuralContext = (
       : Array.isArray(trendLine?.touches)
         ? trendLine.touches.length
         : null;
-  const atrPct = getLastFiniteNumber(signal.indicators?.atrPct);
-  const btcMaFast = getLastFiniteNumber(signal.indicators?.btcMaFast);
-  const btcMaSlow = getLastFiniteNumber(signal.indicators?.btcMaSlow);
+  const atrPct = getSignalAtrPct(signal);
+  const btcMaFast = getSignalBtcMaFast(signal);
+  const btcMaSlow = getSignalBtcMaSlow(signal);
   const btcMaBias = getBias(btcMaFast, btcMaSlow);
   const btcMaSpreadPct = getSpreadPct(btcMaFast, btcMaSlow);
   const btcBiasAligned =

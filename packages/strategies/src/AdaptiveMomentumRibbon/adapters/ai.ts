@@ -6,6 +6,12 @@ import {
   StrategyAiAdapter,
 } from '@tradejs/types';
 import { AdaptiveMomentumRibbonConfig } from '../config';
+import {
+  getSignalBtcMaFast,
+  getSignalBtcMaSlow,
+  getSignalCoinMaFast,
+  getSignalCoinMaSlow,
+} from '../../shared/baseContext';
 
 const ADAPTIVE_MOMENTUM_RIBBON_CONTEXT_PROMPT = `
 AdaptiveMomentumRibbon addon:
@@ -529,12 +535,12 @@ const buildAdaptiveMomentumRibbonContext = (
       ? rewardPct / invalidationDistancePct
       : null;
   const coinBias = getBias(
-    getLastFiniteNumber(signal.indicators?.maFast),
-    getLastFiniteNumber(signal.indicators?.maSlow),
+    getSignalCoinMaFast(signal),
+    getSignalCoinMaSlow(signal),
   );
   const btcBias = getBias(
-    getLastFiniteNumber(signal.indicators?.btcMaFast),
-    getLastFiniteNumber(signal.indicators?.btcMaSlow),
+    getSignalBtcMaFast(signal),
+    getSignalBtcMaSlow(signal),
   );
   const coinBiasAligned =
     signalDirection === 'LONG'

@@ -1,3 +1,11 @@
+import {
+  getSignalAtrPct,
+  getSignalBtcMaFast,
+  getSignalBtcMaSlow,
+  getSignalCoinMaFast,
+  getSignalCoinMaSlow,
+} from '../shared/baseContext';
+
 const REVERSE_TRENDLINE_NEAR_LINE_PCT = 0.45;
 const REVERSE_TRENDLINE_FAILED_BOUNCE_PCT = 0.35;
 const REVERSE_TRENDLINE_TIMING_WINDOW = 6;
@@ -392,13 +400,13 @@ export const buildReverseTrendlineStructuralContext = (
       : Array.isArray(trendLine?.touches)
         ? trendLine.touches.length
         : null;
-  const atrPct = getLastFiniteNumber(signal.indicators?.atrPct);
+  const atrPct = getSignalAtrPct(signal);
   const breakVsAtrRatio =
     rejectionStrengthPct != null && atrPct != null && atrPct > 0
       ? rejectionStrengthPct / atrPct
       : null;
-  const coinMaFast = getLastFiniteNumber(signal.indicators?.maFast);
-  const coinMaSlow = getLastFiniteNumber(signal.indicators?.maSlow);
+  const coinMaFast = getSignalCoinMaFast(signal);
+  const coinMaSlow = getSignalCoinMaSlow(signal);
   const coinMaBias = getBias(coinMaFast, coinMaSlow);
   const coinMaSpreadPct = getSpreadPct(coinMaFast, coinMaSlow);
   const coinBiasAligned =
@@ -407,8 +415,8 @@ export const buildReverseTrendlineStructuralContext = (
       : signalDirection === 'LONG'
         ? coinMaBias === 'bullish'
         : coinMaBias === 'bearish';
-  const btcMaFast = getLastFiniteNumber(signal.indicators?.btcMaFast);
-  const btcMaSlow = getLastFiniteNumber(signal.indicators?.btcMaSlow);
+  const btcMaFast = getSignalBtcMaFast(signal);
+  const btcMaSlow = getSignalBtcMaSlow(signal);
   const btcMaBias = getBias(btcMaFast, btcMaSlow);
   const btcMaSpreadPct = getSpreadPct(btcMaFast, btcMaSlow);
   const btcBiasAligned =

@@ -5,8 +5,8 @@ import AutoSizer from 'react-virtualized-auto-sizer';
 import { FixedSizeList, ListChildComponentProps } from 'react-window';
 import { FiFolder } from 'react-icons/fi';
 import { Box, Checkbox, Code } from '@chakra-ui/react';
-import { TestCard } from '@components/Backtest/TestCard';
-import { EmptyState } from '@UI';
+import { TestCard } from '#components/Backtest/TestCard';
+import { EmptyState } from '#ui';
 import { Items } from '@tradejs/types';
 
 interface ListProps {

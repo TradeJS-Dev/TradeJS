@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { getHistory, sendMessage } from '@actions/ai';
+import { getHistory, sendMessage } from '#actions/ai';
 import { AIChatHistory, AIChatMessage, Filters } from '@tradejs/types';
 
 type AiChatEntry = {

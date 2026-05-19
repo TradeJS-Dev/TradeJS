@@ -19,7 +19,7 @@ jest.mock('@chakra-ui/react', () => ({
   ClientOnly: ({ children }: any) => <>{children}</>,
 }));
 
-jest.mock('@store', () => ({
+jest.mock('#store', () => ({
   useFilters: () => ({
     filters: {
       provider: 'bybit',
@@ -40,7 +40,7 @@ jest.mock('@store', () => ({
   }),
 }));
 
-jest.mock('@shared/Filters', () => ({
+jest.mock('#shared/Filters', () => ({
   Filters: {
     Root: ({ children }: any) => (
       <div data-testid="filters-root">{children}</div>
@@ -54,7 +54,7 @@ jest.mock('@shared/Filters', () => ({
   },
 }));
 
-jest.mock('@app/components/Dashboard/MainChart', () => ({
+jest.mock('#app/components/Dashboard/MainChart', () => ({
   MainChart: (props: unknown) => {
     mainChartMock(props);
     return <div data-testid="main-chart" />;

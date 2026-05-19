@@ -2,7 +2,7 @@
 
 import _ from 'lodash';
 import { useEffect } from 'react';
-import { useFilters, useIndicators } from '@store';
+import { useFilters, useIndicators } from '#store';
 import { getTimestamp } from '@tradejs/core/time';
 import { KlineChart } from '../KlineChart';
 

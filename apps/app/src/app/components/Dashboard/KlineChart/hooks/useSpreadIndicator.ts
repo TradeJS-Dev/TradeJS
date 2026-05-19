@@ -4,7 +4,7 @@ import { Chart } from 'klinecharts';
 import { Filters, Interval, Provider } from '@tradejs/types';
 import { smoothSpreadSeries } from '@tradejs/indicators';
 import { API } from '@tradejs/core/api';
-import { useData } from '@store';
+import { useData } from '#store';
 import { grayDashedLineStyle } from './indicatorShared';
 import { useManagedIndicator } from './useManagedIndicator';
 

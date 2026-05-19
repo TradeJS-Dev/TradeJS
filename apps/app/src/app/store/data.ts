@@ -3,9 +3,9 @@ import { create } from 'zustand';
 import { get, set } from 'idb-keyval';
 import { useSearchParams } from 'next/navigation';
 import { KlineChartData, Interval, Filters, Provider } from '@tradejs/types';
-import { kline } from '@actions/kline';
+import { kline } from '#actions/kline';
 import { isWrongData, mergeData } from '@tradejs/core/data';
-import { normalizeEndToIntervalBoundary } from '@app/lib/klineWindow';
+import { normalizeEndToIntervalBoundary } from '#app/lib/klineWindow';
 
 interface DataState {
   data: Map<string, KlineChartData | null>;

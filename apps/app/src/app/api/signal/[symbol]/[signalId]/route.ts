@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { getData, redisKeys } from '@tradejs/infra/redis';
 import { logger } from '@tradejs/infra/logger';
 import { Signal } from '@tradejs/types';
-import { getCurrentUserName } from '@app/lib/currentUser';
+import { getCurrentUserName } from '#app/lib/currentUser';
 
 export const dynamic = 'force-dynamic';
 

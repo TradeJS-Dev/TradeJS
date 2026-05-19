@@ -1,13 +1,6 @@
 {
   "extends": "../../tsconfig.packages.json",
   "compilerOptions": {
-    "baseUrl": "../../",
-    "paths": {
-      "@tradejs/types": ["./packages/types/src/index"],
-      "@tradejs/types/*": ["./packages/types/src/*"],
-      "@constants": ["./packages/core/src/constants/index"],
-      "@utils/*": ["./packages/core/src/utils/*"]
-    },
     "incremental": false,
     "noEmit": false
   },

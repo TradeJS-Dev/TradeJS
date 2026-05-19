@@ -2,7 +2,7 @@
 
 import { Box } from '@chakra-ui/react';
 import { usePathname } from 'next/navigation';
-import { Sidebar } from '@shared/Sidebar';
+import { Sidebar } from '#shared/Sidebar';
 
 const AUTH_ROUTES = ['/routes/signin'];
 

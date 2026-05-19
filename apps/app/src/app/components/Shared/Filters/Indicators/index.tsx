@@ -1,8 +1,8 @@
 'use client';
 
 import _ from 'lodash';
-import { useIndicators } from '@store';
-import { Select } from '@UI';
+import { useIndicators } from '#store';
+import { Select } from '#ui';
 
 export const SelectIndicator = () => {
   const { selectedIndicators, indicatorsItems, setEnabledIndicators } =

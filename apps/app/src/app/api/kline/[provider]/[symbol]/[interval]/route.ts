@@ -13,8 +13,8 @@ import {
   Interval,
   ConnectorCreator,
 } from '@tradejs/types';
-import { getCurrentUserName } from '@app/lib/currentUser';
-import { normalizeEndToIntervalBoundary } from '@app/lib/klineWindow';
+import { getCurrentUserName } from '#app/lib/currentUser';
+import { normalizeEndToIntervalBoundary } from '#app/lib/klineWindow';
 
 export const dynamic = 'force-dynamic';
 const projectRoot =

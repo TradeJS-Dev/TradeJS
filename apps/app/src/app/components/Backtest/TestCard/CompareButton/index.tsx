@@ -1,6 +1,6 @@
 import { IconButton } from '@chakra-ui/react';
 import { TbArrowsLeftRight } from 'react-icons/tb';
-import { useTestsCompare } from '@store';
+import { useTestsCompare } from '#store';
 import { useTestContext } from '../context';
 
 export const TestCardCompareButton = () => {

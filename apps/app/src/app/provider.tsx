@@ -7,7 +7,7 @@ import {
   defineConfig,
 } from '@chakra-ui/react';
 import { SessionProvider } from 'next-auth/react';
-import { AppToaster, ColorModeProvider } from '@UI';
+import { AppToaster, ColorModeProvider } from '#ui';
 
 const config = defineConfig({
   theme: {

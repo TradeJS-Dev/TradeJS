@@ -3,7 +3,7 @@ import { Item, TestStat } from '@tradejs/types';
 import { parseTestName } from '@tradejs/core/backtest';
 import { getData, getKeys, redisKeys, setData } from '@tradejs/infra/redis';
 import { logger } from '@tradejs/infra/logger';
-import { auth } from '@app/auth';
+import { auth } from '#app/auth';
 
 export const dynamic = 'force-dynamic';
 

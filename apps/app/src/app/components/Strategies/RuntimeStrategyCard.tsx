@@ -3,7 +3,7 @@
 import { Box, Flex, SimpleGrid, Stat, Text } from '@chakra-ui/react';
 import { getFormatted } from '@tradejs/core/backtest';
 import type { TestThresholdsKey } from '@tradejs/types';
-import type { RuntimeStrategyView } from '@app/lib/runtimeStrategies';
+import type { RuntimeStrategyView } from '#app/lib/runtimeStrategies';
 import { RuntimeStrategyChart } from './RuntimeStrategyChart';
 
 const getColorByLevel = (level: 'success' | 'warning' | 'error') => {

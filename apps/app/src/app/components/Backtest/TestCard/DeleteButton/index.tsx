@@ -10,9 +10,9 @@ import {
   Text,
 } from '@chakra-ui/react';
 import { FiTrash2 } from 'react-icons/fi';
-import { deleteBacktest } from '@actions/backtest';
-import { useBacktestMutations } from '@store';
-import { toaster } from '@UI';
+import { deleteBacktest } from '#actions/backtest';
+import { useBacktestMutations } from '#store';
+import { toaster } from '#ui';
 import { useTestContext } from '../context';
 
 export const TestCardDeleteButton = () => {

@@ -4,7 +4,7 @@ import { FiltersContext } from '../context';
 import { SelectSymbol } from '../Symbol';
 import { SelectBacktest } from '../Backtest';
 
-jest.mock('@UI', () => ({
+jest.mock('#ui', () => ({
   SelectWithSearch: ({
     onOpenChange,
   }: {

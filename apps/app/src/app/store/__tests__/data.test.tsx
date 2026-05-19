@@ -7,7 +7,7 @@ const idbGetMock = jest.fn();
 const idbSetMock = jest.fn();
 const useSearchParamsMock = jest.fn();
 
-jest.mock('@actions/kline', () => ({
+jest.mock('#actions/kline', () => ({
   kline: (...args: unknown[]) => klineMock(...args),
 }));
 

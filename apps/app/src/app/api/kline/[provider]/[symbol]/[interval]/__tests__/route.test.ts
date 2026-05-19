@@ -13,7 +13,7 @@ jest.mock('next/server', () => ({
   },
 }));
 
-jest.mock('@app/lib/currentUser', () => ({
+jest.mock('#app/lib/currentUser', () => ({
   getCurrentUserName: () => mockGetCurrentUserName(),
 }));
 

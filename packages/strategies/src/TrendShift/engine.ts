@@ -1,5 +1,10 @@
 import { Candle, Direction, StrategyFigurePoint } from '@tradejs/types';
 import { TrendShiftConfig } from './config';
+import {
+  getIndicatorsBaseContext,
+  getIndicatorsCoinMaFast,
+  getIndicatorsCoinMaSlow,
+} from '../shared/baseContext';
 
 export interface TrendShiftSnapshot {
   avg: number;
@@ -126,16 +131,11 @@ export const buildTrendShiftSignalContext = ({
   snapshot: TrendShiftSnapshot;
   indicators?: Record<string, unknown>;
 }) => {
-  const maFastSeries = Array.isArray(indicators?.maFast)
-    ? (indicators?.maFast as number[])
-    : [];
-  const maSlowSeries = Array.isArray(indicators?.maSlow)
-    ? (indicators?.maSlow as number[])
-    : [];
-  const maFast = maFastSeries[maFastSeries.length - 1];
-  const maSlow = maSlowSeries[maSlowSeries.length - 1];
+  const baseContext = getIndicatorsBaseContext(indicators);
+  const maFast = getIndicatorsCoinMaFast(indicators);
+  const maSlow = getIndicatorsCoinMaSlow(indicators);
   const coinBias =
-    Number.isFinite(maFast) && Number.isFinite(maSlow)
+    maFast != null && maSlow != null
       ? maFast > maSlow
         ? 'bullish'
         : maFast < maSlow
@@ -174,6 +174,7 @@ export const buildTrendShiftSignalContext = ({
     lower: snapshot.lower,
     hold: snapshot.hold,
     currentPrice: snapshot.close,
+    baseContext,
     coinMaFast: Number.isFinite(maFast) ? maFast : null,
     coinMaSlow: Number.isFinite(maSlow) ? maSlow : null,
     coinBias,

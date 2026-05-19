@@ -3,7 +3,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { get, set } from 'idb-keyval';
 import _ from 'lodash';
-import { scan } from '@actions/scanner';
+import { scan } from '#actions/scanner';
 import { Items } from '@tradejs/types';
 
 const LOCAL_STORAGE_KEY = 'tickers';

@@ -3,11 +3,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Box, ClientOnly, Flex, Text } from '@chakra-ui/react';
 import { FiFolder } from 'react-icons/fi';
-import { getRuntimeStrategies } from '@actions/strategies';
-import { RuntimeStrategyCard } from '@components/Strategies/RuntimeStrategyCard';
-import { RuntimeStrategyCardSkeleton } from '@components/Strategies/RuntimeStrategyCardSkeleton';
-import type { RuntimeStrategiesResponse } from '@app/lib/runtimeStrategies';
-import { EmptyState, Select } from '@UI';
+import { getRuntimeStrategies } from '#actions/strategies';
+import { RuntimeStrategyCard } from '#components/Strategies/RuntimeStrategyCard';
+import { RuntimeStrategyCardSkeleton } from '#components/Strategies/RuntimeStrategyCardSkeleton';
+import type { RuntimeStrategiesResponse } from '#app/lib/runtimeStrategies';
+import { EmptyState, Select } from '#ui';
 
 const ALL_STRATEGIES = '__all__';
 const HOURS_OPTIONS = [

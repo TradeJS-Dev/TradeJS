@@ -109,6 +109,8 @@ describe('utils indicators', () => {
     expect(last?.prevCandle?.close).toBe(106);
     expect(last?.highLevel).toBe(16);
     expect(last?.lowLevel).toBe(5);
+    expect(last?.baseContext?.regime.trend.bias).toBeDefined();
+    expect(last?.baseContext?.raw.levels.highLevel).toBe(16);
   });
 
   it('slides breakout level window with the same lookback and delay semantics across bars', () => {
@@ -206,6 +208,7 @@ describe('utils indicators', () => {
     }
 
     const result = indicators.result() as Record<string, any>;
+    const snapshot = indicators.snapshot() as Record<string, any>;
     expect(Array.isArray(result.candles15m)).toBe(true);
     expect(result.candles15m).toHaveLength(50);
     expect(Array.isArray(result.btcCandles1h)).toBe(true);
@@ -215,6 +218,9 @@ describe('utils indicators', () => {
     expect(Array.isArray(result.btcMaFast)).toBe(true);
     expect(Array.isArray(result.btcMaFast1h)).toBe(true);
     expect(Array.isArray(result.btcAtrPct4h)).toBe(true);
+    expect(snapshot.baseContext).toBeTruthy();
+    expect(snapshot.baseContext.raw.trend.maFast).toBeDefined();
+    expect(snapshot.baseContext.mtf.candles.m15).toHaveLength(50);
   });
 
   it('returns snapshot result that is not mutated by subsequent next() calls', () => {

@@ -6,7 +6,7 @@ const scanMock = jest.fn();
 const idbGetMock = jest.fn();
 const idbSetMock = jest.fn();
 
-jest.mock('@actions/scanner', () => ({
+jest.mock('#actions/scanner', () => ({
   scan: (...args: unknown[]) => scanMock(...args),
 }));
 

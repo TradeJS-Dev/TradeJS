@@ -1,6 +1,6 @@
 'use client';
 
-import { Select } from '@UI';
+import { Select } from '#ui';
 import { useFiltersContext } from '../context';
 
 const items = [

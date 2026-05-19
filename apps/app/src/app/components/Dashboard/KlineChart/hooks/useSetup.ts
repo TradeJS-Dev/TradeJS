@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Chart, registerOverlay } from 'klinecharts';
-import { getSignal } from '@actions/signal';
+import { getSignal } from '#actions/signal';
 import { toMs } from '@tradejs/core/time';
 import { Signal } from '@tradejs/types';
 import { createTradeZonePointFigure } from '../figures/tradeZonePointFigure';

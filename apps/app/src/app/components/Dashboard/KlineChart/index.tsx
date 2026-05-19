@@ -8,7 +8,7 @@ import {
   dispose,
   DataLoaderSubscribeBarParams,
 } from 'klinecharts';
-import { OverlaySpinner } from '@UI';
+import { OverlaySpinner } from '#ui';
 import { Indicator, UIFilters } from '@tradejs/types';
 import {
   useBbIndicator,
@@ -27,7 +27,7 @@ import {
   useSetup,
 } from './hooks';
 import { usePluginIndicators } from './hooks/usePluginIndicators';
-import { IndicatorRendererConfig, useData } from '@store';
+import { IndicatorRendererConfig, useData } from '#store';
 import { darkTheme } from './styles';
 
 interface KlineChartProps {

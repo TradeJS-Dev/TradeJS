@@ -4,6 +4,7 @@ import { BreakoutConfig } from './config';
 import { buildBreakoutFigures } from './figures';
 import {
   Candle,
+  BaseStrategyContextSnapshot,
   CreateStrategyCore,
   IndicatorSnapshot,
   StrategyConfig,
@@ -37,6 +38,7 @@ type BreakoutSignalIndicators = Omit<
   IndicatorSnapshot,
   'prevCandle' | 'highLevel' | 'lowLevel'
 > & {
+  baseContext?: BaseStrategyContextSnapshot;
   prevCandle: Candle;
   highLevel: number;
   lowLevel: number;
@@ -140,11 +142,24 @@ export const createBreakoutCore: CreateStrategyCore<
       return strategyApi.skip('NO_INDICATORS');
     }
 
-    if (
-      !indicatorValues.prevCandle ||
-      indicatorValues.highLevel == null ||
-      indicatorValues.lowLevel == null
-    ) {
+    const baseContext = indicatorValues.baseContext;
+    const highLevel =
+      baseContext?.raw.levels.highLevel ?? indicatorValues.highLevel;
+    const lowLevel =
+      baseContext?.raw.levels.lowLevel ?? indicatorValues.lowLevel;
+    const maFast = baseContext?.raw.trend.maFast ?? indicatorValues.maFast;
+    const maSlow = baseContext?.raw.trend.maSlow ?? indicatorValues.maSlow;
+    const obv = baseContext?.raw.volume.obv ?? indicatorValues.obv;
+    const smaObv = baseContext?.raw.volume.obvSma ?? indicatorValues.smaObv;
+    const atr = baseContext?.raw.volatility.atr ?? indicatorValues.atr;
+    const bbUpper =
+      baseContext?.raw.volatility.bbUpper ?? indicatorValues.bbUpper;
+    const bbLower =
+      baseContext?.raw.volatility.bbLower ?? indicatorValues.bbLower;
+    const correlation =
+      baseContext?.raw.crossAsset.btcCorrelation ?? indicatorValues.correlation;
+
+    if (!indicatorValues.prevCandle || highLevel == null || lowLevel == null) {
       return strategyApi.skip('WAIT_DATA');
     }
 
@@ -156,11 +171,16 @@ export const createBreakoutCore: CreateStrategyCore<
     const signals = getSignals(config, {
       ...indicatorValues,
       prevCandle: indicatorValues.prevCandle,
-      highLevel: indicatorValues.highLevel,
-      lowLevel: indicatorValues.lowLevel,
+      highLevel,
+      lowLevel,
+      maFast,
+      maSlow,
+      obv,
+      smaObv,
+      atr,
       bb: {
-        upper: indicatorValues.bbUpper,
-        lower: indicatorValues.bbLower,
+        upper: bbUpper,
+        lower: bbLower,
       },
     });
 
@@ -191,18 +211,19 @@ export const createBreakoutCore: CreateStrategyCore<
           direction: 'LONG',
           figures: buildBreakoutFigures(),
           indicators: {
-            maFast: indicatorValues.maFast,
-            maSlow: indicatorValues.maSlow,
-            obv: indicatorValues.obv,
-            smaObv: indicatorValues.smaObv,
-            atr: indicatorValues.atr,
-            bbUpper: indicatorValues.bbUpper,
-            bbLower: indicatorValues.bbLower,
-            correlation: indicatorValues.correlation,
+            maFast,
+            maSlow,
+            obv,
+            smaObv,
+            atr,
+            bbUpper,
+            bbLower,
+            correlation,
+            baseContext,
           },
           additionalIndicators: {
-            highLevel: indicatorValues.highLevel,
-            lowLevel: indicatorValues.lowLevel,
+            highLevel,
+            lowLevel,
             signals,
           },
           orderPlan: {
@@ -234,18 +255,19 @@ export const createBreakoutCore: CreateStrategyCore<
           direction: 'SHORT',
           figures: buildBreakoutFigures(),
           indicators: {
-            maFast: indicatorValues.maFast,
-            maSlow: indicatorValues.maSlow,
-            obv: indicatorValues.obv,
-            smaObv: indicatorValues.smaObv,
-            atr: indicatorValues.atr,
-            bbUpper: indicatorValues.bbUpper,
-            bbLower: indicatorValues.bbLower,
-            correlation: indicatorValues.correlation,
+            maFast,
+            maSlow,
+            obv,
+            smaObv,
+            atr,
+            bbUpper,
+            bbLower,
+            correlation,
+            baseContext,
           },
           additionalIndicators: {
-            highLevel: indicatorValues.highLevel,
-            lowLevel: indicatorValues.lowLevel,
+            highLevel,
+            lowLevel,
             signals,
           },
           orderPlan: {

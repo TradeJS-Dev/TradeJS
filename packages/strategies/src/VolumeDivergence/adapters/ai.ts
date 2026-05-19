@@ -3,6 +3,12 @@ import { AiPayload, StrategyAiAdapter } from '@tradejs/types';
 import type { Signal, SignalAnalysis } from '@tradejs/types';
 import type { VolumeDivergenceConfig } from '../config';
 import {
+  getSignalBtcMaFast,
+  getSignalBtcMaSlow,
+  getSignalCoinMaFast,
+  getSignalCoinMaSlow,
+} from '../../shared/baseContext';
+import {
   DEFAULT_VOLUME_DIVERGENCE_ENTRY_THRESHOLDS,
   getVolumeDivergenceAiThresholds,
   VolumeDivergenceAiThresholds,
@@ -777,12 +783,12 @@ const getVolumeDivergenceContext = (
   );
   const entryThresholds = getVolumeDivergenceThresholdSummary(signal);
   const coinMaBias = getBias(
-    getLastFiniteNumber(signal.indicators?.maFast),
-    getLastFiniteNumber(signal.indicators?.maSlow),
+    getSignalCoinMaFast(signal),
+    getSignalCoinMaSlow(signal),
   );
   const btcMaBias = getBias(
-    getLastFiniteNumber(signal.indicators?.btcMaFast),
-    getLastFiniteNumber(signal.indicators?.btcMaSlow),
+    getSignalBtcMaFast(signal),
+    getSignalBtcMaSlow(signal),
   );
   const additional = getRecord(signal.additionalIndicators);
   const derivativesContext = getRecord(additional?.derivativesContext);

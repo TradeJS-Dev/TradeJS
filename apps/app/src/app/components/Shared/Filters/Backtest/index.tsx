@@ -2,7 +2,7 @@
 
 import _ from 'lodash';
 import { useEffect, useMemo, useState } from 'react';
-import { Select } from '@UI';
+import { Select } from '#ui';
 import { useFiltersContext } from '../context';
 
 export const SelectBacktest = () => {

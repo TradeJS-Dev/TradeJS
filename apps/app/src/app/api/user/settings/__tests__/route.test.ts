@@ -23,7 +23,7 @@ jest.mock('@tradejs/infra/userSettings', () => ({
   updateUserRecord: (...args: unknown[]) => mockUpdateUserRecord(...args),
 }));
 
-jest.mock('@app/lib/currentUser', () => ({
+jest.mock('#app/lib/currentUser', () => ({
   getCurrentUserName: (...args: unknown[]) => mockGetCurrentUserName(...args),
 }));
 

@@ -5,7 +5,7 @@ const setFiltersMock = jest.fn();
 const useIndicatorsMock = jest.fn();
 const klineChartMock = jest.fn(() => null);
 
-jest.mock('@store', () => ({
+jest.mock('#store', () => ({
   useFilters: () => ({
     filters: {
       provider: 'bybit',

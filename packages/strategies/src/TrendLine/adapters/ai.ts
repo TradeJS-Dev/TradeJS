@@ -2,9 +2,12 @@ import { mapAiRuntimeFromConfig } from '@tradejs/core/strategies';
 import { AiPayload, StrategyAiAdapter } from '@tradejs/types';
 import type { TrendLineConfig } from '../config';
 import {
+  getSignalCoinMaFast,
+  getSignalCoinMaSlow,
+} from '../../shared/baseContext';
+import {
   buildTrendlineStructuralContext,
   getBias,
-  getLastFiniteNumber,
   getSpreadPct,
   getTrendLineFromPayload,
 } from '../guardrails';
@@ -98,8 +101,8 @@ const buildTrendlineContext = (signal: {
   const oiNotConfirming = derivativesRiskFlags.includes('oi_not_confirming');
   const structural = buildTrendlineStructuralContext(signal);
   const trendLine = getTrendLineFromPayload(signal);
-  const coinMaFast = getLastFiniteNumber(signal.indicators?.maFast);
-  const coinMaSlow = getLastFiniteNumber(signal.indicators?.maSlow);
+  const coinMaFast = getSignalCoinMaFast(signal);
+  const coinMaSlow = getSignalCoinMaSlow(signal);
   const coinMaBias = getBias(coinMaFast, coinMaSlow);
   const coinMaSpreadPct = getSpreadPct(coinMaFast, coinMaSlow);
   const entryTiming =

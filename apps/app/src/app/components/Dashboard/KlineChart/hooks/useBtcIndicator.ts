@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef } from 'react';
 import _ from 'lodash';
 import { Chart } from 'klinecharts';
 import { Filters, Provider } from '@tradejs/types';
-import { useData } from '@store';
+import { useData } from '#store';
 import { getCloseAtOrBefore } from './indicatorShared';
 import { useManagedIndicator } from './useManagedIndicator';
 

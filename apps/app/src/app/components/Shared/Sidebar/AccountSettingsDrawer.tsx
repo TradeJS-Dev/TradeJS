@@ -32,7 +32,7 @@ import {
   hasPresetAiModelsForEndpoint,
   normalizeAiModel,
 } from '@tradejs/infra/aiModels';
-import { toaster } from '@UI';
+import { toaster } from '#ui';
 
 type SettingsResponse = {
   userName: string;

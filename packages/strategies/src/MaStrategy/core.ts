@@ -3,6 +3,7 @@ import { round } from '@tradejs/core/math';
 import { MaStrategyConfig } from './config';
 import { buildMaStrategyFigures } from './figures';
 import { CreateStrategyCore, IndicatorsHistorySnapshot } from '@tradejs/types';
+import { getIndicatorsCorrelation } from '../shared/baseContext';
 
 interface CrossState {
   kind: 'bullish' | 'bearish';
@@ -144,7 +145,7 @@ export const createMaStrategyCore: CreateStrategyCore<
       return strategyApi.skip(`RISK_RATIO:${round(riskRatio)}`);
     }
 
-    const correlation = indicatorsState.latestNumber('correlation');
+    const correlation = getIndicatorsCorrelation(indicators);
 
     lastTradeController.markTrade(timestamp);
 

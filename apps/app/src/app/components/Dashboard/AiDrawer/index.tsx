@@ -17,7 +17,7 @@ import {
   SkeletonText,
 } from '@chakra-ui/react';
 import { GiArtificialHive } from 'react-icons/gi';
-import { useAiChatStore, useFilters } from '@store';
+import { useAiChatStore, useFilters } from '#store';
 import { Message } from './Message';
 
 export const AiDrawer = () => {

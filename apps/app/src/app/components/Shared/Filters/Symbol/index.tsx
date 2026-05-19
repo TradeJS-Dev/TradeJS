@@ -1,7 +1,7 @@
 'use client';
 
 import _ from 'lodash';
-import { SelectWithSearch } from '@UI';
+import { SelectWithSearch } from '#ui';
 import { useFiltersContext } from '../context';
 
 interface SelectSymbolProps {}

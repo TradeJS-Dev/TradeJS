@@ -5,7 +5,7 @@ import { OrderLogData, Test, TestResult, TestStat } from '@tradejs/types';
 import { compactOrderLog, getTimeline } from '@tradejs/core/backtest';
 import { getData, redisKeys } from '@tradejs/infra/redis';
 import { logger } from '@tradejs/infra/logger';
-import { auth } from '@app/auth';
+import { auth } from '#app/auth';
 
 interface Params {
   strategy: string;

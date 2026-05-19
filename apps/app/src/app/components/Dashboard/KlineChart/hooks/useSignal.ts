@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import _ from 'lodash';
 import { Chart } from 'klinecharts';
-import { getSignal } from '@actions/signal';
+import { getSignal } from '#actions/signal';
 import { Signal } from '@tradejs/types';
 import {
   drawSignalFigures,

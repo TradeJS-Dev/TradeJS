@@ -1,6 +1,6 @@
 import { For, Tag, HStack, Text } from '@chakra-ui/react';
 import _ from 'lodash';
-import { useTestsCompare } from '@store';
+import { useTestsCompare } from '#store';
 
 export const CompareList = () => {
   const { compareList, onChangeCompare } = useTestsCompare();

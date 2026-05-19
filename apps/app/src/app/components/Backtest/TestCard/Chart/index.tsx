@@ -13,7 +13,7 @@ import {
   ReferenceLine,
   ResponsiveContainer,
 } from 'recharts';
-import { useTestsCompare } from '@store';
+import { useTestsCompare } from '#store';
 import { useTestContext } from '../context';
 import { TestCompareList } from '@tradejs/types';
 import { mapOrderLogToChartData, getChartData } from './utils';

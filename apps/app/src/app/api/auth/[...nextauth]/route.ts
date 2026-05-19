@@ -1,4 +1,4 @@
-import { handlers } from '@app/auth';
+import { handlers } from '#app/auth';
 
 export const runtime = 'nodejs';
 

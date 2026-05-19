@@ -44,7 +44,7 @@ jest.mock('@tradejs/infra/logger', () => ({
   },
 }));
 
-jest.mock('@app/lib/currentUser', () => ({
+jest.mock('#app/lib/currentUser', () => ({
   getCurrentUserName: (...args: unknown[]) => mockGetCurrentUserName(...args),
 }));
 

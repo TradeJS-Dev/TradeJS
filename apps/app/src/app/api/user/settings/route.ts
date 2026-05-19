@@ -10,7 +10,7 @@ import {
   type UserRecord,
   type UserSettings,
 } from '@tradejs/infra/userSettings';
-import { getCurrentUserName } from '@app/lib/currentUser';
+import { getCurrentUserName } from '#app/lib/currentUser';
 
 export const dynamic = 'force-dynamic';
 

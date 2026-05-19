@@ -1,7 +1,7 @@
 const mockGetHistory = jest.fn();
 const mockSendMessage = jest.fn();
 
-jest.mock('@actions/ai', () => ({
+jest.mock('#actions/ai', () => ({
   getHistory: (...args: unknown[]) => mockGetHistory(...args),
   sendMessage: (...args: unknown[]) => mockSendMessage(...args),
 }));

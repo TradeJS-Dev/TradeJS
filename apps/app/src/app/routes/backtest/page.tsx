@@ -12,11 +12,11 @@ import {
   Portal,
   Text,
 } from '@chakra-ui/react';
-import { deleteBacktest } from '@actions/backtest';
-import { useBacktestMutations, useTestList } from '@store';
-import { Select, toaster } from '@UI';
-import { CompareList } from '@components/Backtest/CompareList';
-import { TestList } from '@components/Backtest/TestList';
+import { deleteBacktest } from '#actions/backtest';
+import { useBacktestMutations, useTestList } from '#store';
+import { Select, toaster } from '#ui';
+import { CompareList } from '#components/Backtest/CompareList';
+import { TestList } from '#components/Backtest/TestList';
 import { parseTestName } from '@tradejs/core/backtest';
 
 const ALL_STRATEGIES = '__all__';

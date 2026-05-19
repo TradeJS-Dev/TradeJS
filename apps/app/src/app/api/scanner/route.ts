@@ -3,7 +3,7 @@ import { getTopTickers } from '@tradejs/core/tickers';
 import { getConnectorCreatorByProvider } from '@tradejs/node/connectors';
 import { logger } from '@tradejs/infra/logger';
 import { ConnectorCreator } from '@tradejs/types';
-import { getCurrentUserName } from '@app/lib/currentUser';
+import { getCurrentUserName } from '#app/lib/currentUser';
 
 export const dynamic = 'force-dynamic';
 const projectRoot =

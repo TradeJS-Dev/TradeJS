@@ -6,7 +6,7 @@ const getBacktestFilesMock = jest.fn();
 const idbGetMock = jest.fn();
 const idbSetMock = jest.fn();
 
-jest.mock('@actions/backtest', () => ({
+jest.mock('#actions/backtest', () => ({
   getBacktestFiles: (...args: unknown[]) => getBacktestFilesMock(...args),
   getBacktest: jest.fn(),
   getOrderLog: jest.fn(),

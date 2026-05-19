@@ -5,7 +5,7 @@ import _ from 'lodash';
 import { Box } from '@chakra-ui/react';
 import { TestResultContext } from '../context';
 import { TestCardSkeleton } from '../Skeleton';
-import { useTest, useFavoriteTests } from '@store';
+import { useTest, useFavoriteTests } from '#store';
 
 interface TestRootProps {
   testName: string;

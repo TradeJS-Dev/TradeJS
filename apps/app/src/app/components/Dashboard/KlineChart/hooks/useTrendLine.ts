@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import _ from 'lodash';
 import { Chart, registerOverlay } from 'klinecharts';
-import { getSignal } from '@actions/signal';
+import { getSignal } from '#actions/signal';
 import { toMs } from '@tradejs/core/time';
 import { createTrendlineEngine } from '@tradejs/core/indicators';
 import { Signal, TrendLine } from '@tradejs/types';
