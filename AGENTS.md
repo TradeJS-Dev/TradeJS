@@ -250,6 +250,12 @@ Minimum relevant checks:
 - `yarn lint`
 - `yarn typecheck`
 - `yarn unit`
+- `yarn checks` is the preferred umbrella verification when practical
+
+Verification deduplication rule:
+
+- if `yarn checks` was run successfully for the current diff, do not also run its constituent verification commands separately just to repeat the same coverage
+- use targeted commands like package-local `typecheck`, specific `jest` paths, or standalone `yarn prettify` only when narrowing down a failure, preflighting a risky change before the full run, or verifying a package in isolation by explicit need
 
 For public docs/site changes:
 
