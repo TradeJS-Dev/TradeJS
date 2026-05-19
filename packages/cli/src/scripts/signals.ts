@@ -319,6 +319,7 @@ const resolveSignalsConnectorName = async (value: unknown): Promise<string> => {
 
 const findSignals = async (
   symbol: string,
+  connectorName: string,
   connector: Connector,
   btcBinanceData: Awaited<ReturnType<Connector['kline']>>,
   btcCoinbaseData: Awaited<ReturnType<Connector['kline']>>,
@@ -365,6 +366,7 @@ const findSignals = async (
 
     const strategy = await strategyCreator({
       userName: flags.user,
+      connectorName,
       connector,
       symbol,
       data: [...cachedData],
@@ -671,6 +673,7 @@ export const signals = async () => {
     await runWithConcurrency(tickers, 5, async (symbol) => {
       const strategySignals = await findSignals(
         symbol,
+        connectorName,
         marketConnector,
         btcBinanceData,
         btcCoinbaseData,

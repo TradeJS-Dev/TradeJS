@@ -161,4 +161,112 @@ describe('timescale candle helpers', () => {
       ['bybit', 'BTCUSDT', 2, 120],
     );
   });
+
+  it('stores indicator cache rows with provider/params/version scope', async () => {
+    const query = jest.fn().mockResolvedValue({ rows: [] });
+
+    jest.doMock('pg', () => ({
+      Pool: jest.fn().mockImplementation(() => ({
+        connect: jest.fn(),
+        query,
+      })),
+    }));
+
+    const { upsertIndicatorCacheRows } = await import(
+      '@tradejs/infra/timescale'
+    );
+
+    await upsertIndicatorCacheRows([
+      {
+        provider: 'ByBit',
+        symbol: 'btcusdt',
+        interval: 15,
+        paramsHash: 'hash-1',
+        version: 'v1',
+        ts: new Date(1_000),
+        snapshot: { ready: true },
+      },
+    ]);
+
+    expect(query).toHaveBeenCalledWith(
+      expect.stringContaining('CREATE TABLE IF NOT EXISTS indicator_cache'),
+    );
+    expect(query).toHaveBeenCalledWith(
+      expect.stringContaining(
+        'ON CONFLICT (provider, symbol, interval, params_hash, version, ts)',
+      ),
+      [
+        'bybit',
+        'BTCUSDT',
+        15,
+        'hash-1',
+        'v1',
+        new Date(1_000),
+        JSON.stringify({ ready: true }),
+      ],
+    );
+  });
+
+  it('reads indicator cache coverage and range with provider/params/version filters', async () => {
+    const query = jest.fn(async (sql: string) => {
+      if (sql.includes('COUNT(*)::int AS count')) {
+        return { rows: [{ min: '1000', max: '2000', count: '3' }] };
+      }
+      if (sql.includes('SELECT ts, snapshot')) {
+        return {
+          rows: [{ ts: new Date(1_000), snapshot: { ready: true } }],
+        };
+      }
+      return { rows: [] };
+    });
+
+    jest.doMock('pg', () => ({
+      Pool: jest.fn().mockImplementation(() => ({
+        connect: jest.fn(),
+        query,
+      })),
+    }));
+
+    const { getIndicatorCacheCoverage, getIndicatorCacheRange } = await import(
+      '@tradejs/infra/timescale'
+    );
+
+    await expect(
+      getIndicatorCacheCoverage({
+        provider: 'ByBit',
+        symbol: 'btcusdt',
+        interval: 15,
+        paramsHash: 'hash-1',
+        version: 'v1',
+        startMs: 1_000,
+        endMs: 2_000,
+      }),
+    ).resolves.toEqual({ min: 1000, max: 2000, count: 3 });
+
+    await expect(
+      getIndicatorCacheRange({
+        provider: 'ByBit',
+        symbol: 'btcusdt',
+        interval: 15,
+        paramsHash: 'hash-1',
+        version: 'v1',
+        startMs: 1_000,
+        endMs: 2_000,
+      }),
+    ).resolves.toEqual([
+      {
+        ts: new Date(1_000),
+        snapshot: { ready: true },
+      },
+    ]);
+
+    expect(query).toHaveBeenCalledWith(
+      expect.stringContaining('FROM indicator_cache'),
+      ['bybit', 'BTCUSDT', 15, 'hash-1', 'v1', 1000, 2000],
+    );
+    expect(query).toHaveBeenCalledWith(
+      expect.stringContaining('FROM indicator_cache'),
+      ['bybit', 'BTCUSDT', 15, 'hash-1', 'v1', 1000, 2000],
+    );
+  });
 });

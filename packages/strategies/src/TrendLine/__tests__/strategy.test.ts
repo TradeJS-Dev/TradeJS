@@ -190,6 +190,7 @@ describe('TrendlineStrategyCreator', () => {
 
     const strategy = await TrendlineStrategyCreator({
       userName: 'test',
+      connectorName: 'ByBit',
       config: {
         ENV: 'test',
         INTERVAL: '15',
@@ -272,6 +273,7 @@ describe('TrendlineStrategyCreator', () => {
 
     const strategy = await TrendlineStrategyCreator({
       userName: 'test',
+      connectorName: 'ByBit',
       config: {
         ENV: 'test',
         INTERVAL: '15',
@@ -353,6 +355,7 @@ describe('TrendlineStrategyCreator', () => {
 
     const strategy = await TrendlineStrategyCreator({
       userName: 'test',
+      connectorName: 'ByBit',
       config: {
         ENV: 'test',
         INTERVAL: '15',
@@ -450,6 +453,7 @@ describe('TrendlineStrategyCreator', () => {
 
     const strategy = await TrendlineStrategyCreator({
       userName: 'test',
+      connectorName: 'ByBit',
       config: {
         ENV: 'test',
         INTERVAL: '15',
@@ -564,6 +568,7 @@ describe('TrendlineStrategyCreator', () => {
 
     const strategy = await TrendlineStrategyCreator({
       userName: 'test',
+      connectorName: 'ByBit',
       config: {
         ENV: 'test',
         INTERVAL: '15',
@@ -631,6 +636,7 @@ describe('TrendlineStrategyCreator', () => {
     };
     const strategy = await TrendlineStrategyCreator({
       userName: 'test',
+      connectorName: 'ByBit',
       config: {
         ENV: 'test',
         INTERVAL: '15',
@@ -725,6 +731,7 @@ describe('TrendlineStrategyCreator', () => {
 
     const strategy = await TrendlineStrategyCreator({
       userName: 'test',
+      connectorName: 'ByBit',
       config: {
         ENV: 'BACKTEST',
         INTERVAL: '15',
@@ -829,6 +836,7 @@ describe('TrendlineStrategyCreator', () => {
 
     const strategy = await TrendlineStrategyCreator({
       userName: 'test',
+      connectorName: 'ByBit',
       config: {
         ENV: 'test',
         INTERVAL: '15',
@@ -909,6 +917,7 @@ describe('TrendlineStrategyCreator', () => {
 
     const strategy = await TrendlineStrategyCreator({
       userName: 'test',
+      connectorName: 'ByBit',
       config: {
         ENV: 'BACKTEST',
         INTERVAL: '15',
@@ -985,6 +994,7 @@ describe('TrendlineStrategyCreator', () => {
 
     const strategy = await TrendlineStrategyCreator({
       userName: 'test',
+      connectorName: 'ByBit',
       config: {
         ENV: 'test',
         INTERVAL: '15',
@@ -1065,6 +1075,7 @@ describe('TrendlineStrategyCreator', () => {
 
     const strategy = await TrendlineStrategyCreator({
       userName: 'test',
+      connectorName: 'ByBit',
       config: {
         ENV: 'test',
         INTERVAL: '15',
@@ -1144,6 +1155,7 @@ describe('TrendlineStrategyCreator', () => {
 
     const strategy = await TrendlineStrategyCreator({
       userName: 'test',
+      connectorName: 'ByBit',
       config: {
         ENV: 'test',
         INTERVAL: '15',

@@ -900,6 +900,8 @@ const BASE_HISTORY_KEYS = [
   'spread',
 ] as const;
 
+const CACHEABLE_INDICATOR_KEYS = [...BASE_HISTORY_KEYS] as const;
+
 const TIMEFRAME_SUFFIXES = ['1h', '4h', '1d'] as const;
 const CANDLE_SERIES_KEYS = [
   'candles15m',
@@ -1943,6 +1945,59 @@ export const createIndicators = (
       ) as IndicatorsHistorySnapshot;
     },
   };
+};
+
+export type IndicatorCacheSnapshotEntry = {
+  timestamp: number;
+  ready: boolean;
+  indicatorValues: Partial<
+    Record<(typeof CACHEABLE_INDICATOR_KEYS)[number], number | null>
+  >;
+  baseContext: Omit<BaseStrategyContextSnapshot, 'mtf'> | null;
+};
+
+const stripMtfFromBaseContext = (
+  baseContext: BaseStrategyContextSnapshot,
+): Omit<BaseStrategyContextSnapshot, 'mtf'> => {
+  const { mtf: _mtf, ...rest } = baseContext;
+  return rest;
+};
+
+const toCacheableIndicatorValues = (
+  snapshot: IndicatorSnapshot,
+): IndicatorCacheSnapshotEntry['indicatorValues'] =>
+  Object.fromEntries(
+    CACHEABLE_INDICATOR_KEYS.map((key) => [
+      key,
+      toNullable(snapshot[key as keyof IndicatorSnapshot]),
+    ]),
+  ) as IndicatorCacheSnapshotEntry['indicatorValues'];
+
+export const buildIndicatorCacheSnapshots = (
+  data: Candle[],
+  btcData: Candle[] = [],
+  options: CreateIndicatorsOptions & {
+    periods?: Partial<IndicatorPeriods>;
+  } = {},
+): IndicatorCacheSnapshotEntry[] => {
+  const controller = createIndicators([], [], options);
+  const entries: IndicatorCacheSnapshotEntry[] = [];
+
+  data.forEach((candle, index) => {
+    const snapshot = controller.next(candle, btcData[index]);
+    entries.push({
+      timestamp: candle.timestamp,
+      ready: snapshot != null,
+      indicatorValues:
+        snapshot == null ? {} : toCacheableIndicatorValues(snapshot),
+      baseContext:
+        snapshot?.baseContext == null
+          ? null
+          : stripMtfFromBaseContext(snapshot.baseContext),
+    });
+  });
+
+  return entries;
 };
 
 export const buildMlTimeframeIndicators = (

@@ -126,6 +126,7 @@ export const runBot = async () => {
 
         const strategy = await strategyCreator({
           userName,
+          connectorName,
           config: strategyConfig,
           symbol,
           data,

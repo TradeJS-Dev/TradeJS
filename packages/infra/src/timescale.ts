@@ -47,8 +47,19 @@ export type CandleRow = {
   turnover?: number | null;
 };
 
+export type IndicatorCacheRow = {
+  provider: string;
+  symbol: string;
+  interval: number;
+  paramsHash: string;
+  version: string;
+  ts: Date;
+  snapshot: unknown;
+};
+
 let derivativesSchemaReady = false;
 let spreadSchemaReady = false;
+let indicatorCacheSchemaReady = false;
 
 const normalizeCandleProvider = (provider: string) =>
   String(provider || '')
@@ -219,6 +230,45 @@ const ensureSpreadSchema = async () => {
     ON market_spread (symbol, interval, ts DESC)
   `);
   spreadSchemaReady = true;
+};
+
+const ensureIndicatorCacheSchema = async () => {
+  if (indicatorCacheSchemaReady) return;
+  const pool = getPool();
+  await pool.query('CREATE EXTENSION IF NOT EXISTS timescaledb');
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS indicator_cache (
+      provider text NOT NULL,
+      symbol text NOT NULL,
+      interval integer NOT NULL,
+      params_hash text NOT NULL,
+      version text NOT NULL,
+      ts timestamptz NOT NULL,
+      snapshot jsonb NOT NULL,
+      ingested_at timestamptz NOT NULL DEFAULT now(),
+      PRIMARY KEY (provider, symbol, interval, params_hash, version, ts)
+    )
+  `);
+  await pool.query(`
+    SELECT create_hypertable(
+      'indicator_cache',
+      'ts',
+      if_not_exists => TRUE,
+      chunk_time_interval => interval '14 days'
+    )
+  `);
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS indicator_cache_lookup_idx
+    ON indicator_cache (
+      provider,
+      symbol,
+      interval,
+      params_hash,
+      version,
+      ts DESC
+    )
+  `);
+  indicatorCacheSchemaReady = true;
 };
 
 export async function upsertDerivatives(rows: DerivativesRow[]) {
@@ -774,6 +824,153 @@ export async function getDataEdges(
   const min = Number.isFinite(Number(minRaw)) ? Number(minRaw) : undefined;
   const max = Number.isFinite(Number(maxRaw)) ? Number(maxRaw) : undefined;
   return { min, max };
+}
+
+export async function upsertIndicatorCacheRows(rows: IndicatorCacheRow[]) {
+  if (!rows.length) return;
+  await ensureIndicatorCacheSchema();
+
+  const pool = getPool();
+  const cols = [
+    'provider',
+    'symbol',
+    'interval',
+    'params_hash',
+    'version',
+    'ts',
+    'snapshot',
+  ] as const;
+  const maxRows = Math.floor(65_535 / cols.length);
+  if (rows.length > maxRows) {
+    for (let i = 0; i < rows.length; i += maxRows) {
+      await upsertIndicatorCacheRows(rows.slice(i, i + maxRows));
+    }
+    return;
+  }
+
+  const valuesSql = rows
+    .map(
+      (_, i) =>
+        `(${cols.map((__, j) => `$${i * cols.length + j + 1}`).join(',')})`,
+    )
+    .join(',');
+
+  const flat = rows.flatMap((row) => [
+    normalizeCandleProvider(row.provider),
+    normalizeCandleSymbol(row.symbol),
+    row.interval,
+    String(row.paramsHash),
+    String(row.version),
+    row.ts,
+    JSON.stringify(row.snapshot ?? null),
+  ]);
+
+  const sql = `
+    INSERT INTO indicator_cache (${cols.join(',')})
+    VALUES ${valuesSql}
+    ON CONFLICT (provider, symbol, interval, params_hash, version, ts) DO UPDATE SET
+      snapshot = EXCLUDED.snapshot,
+      ingested_at = now()
+  `;
+
+  await pool.query(sql, flat);
+}
+
+export async function getIndicatorCacheCoverage(params: {
+  provider: string;
+  symbol: string;
+  interval: number;
+  paramsHash: string;
+  version: string;
+  startMs: number;
+  endMs: number;
+}) {
+  await ensureIndicatorCacheSchema();
+
+  const pool = getPool();
+  const normalizedProvider = normalizeCandleProvider(params.provider);
+  const normalizedSymbol = normalizeCandleSymbol(params.symbol);
+  const sql = `
+    SELECT
+      extract(epoch from MIN(ts))*1000 AS min,
+      extract(epoch from MAX(ts))*1000 AS max,
+      COUNT(*)::int AS count
+    FROM indicator_cache
+    WHERE provider = $1
+      AND symbol = $2
+      AND interval = $3
+      AND params_hash = $4
+      AND version = $5
+      AND ts >= to_timestamp($6/1000.0)
+      AND ts <= to_timestamp($7/1000.0)
+  `;
+  const res = await pool.query(sql, [
+    normalizedProvider,
+    normalizedSymbol,
+    params.interval,
+    params.paramsHash,
+    params.version,
+    params.startMs,
+    params.endMs,
+  ]);
+  const row = res.rows[0] as
+    | {
+        min?: number | string | null;
+        max?: number | string | null;
+        count?: number | string | null;
+      }
+    | undefined;
+  const min = Number(row?.min);
+  const max = Number(row?.max);
+  const count = Number(row?.count);
+
+  return {
+    min: Number.isFinite(min) ? min : undefined,
+    max: Number.isFinite(max) ? max : undefined,
+    count: Number.isFinite(count) ? count : 0,
+  };
+}
+
+export async function getIndicatorCacheRange(params: {
+  provider: string;
+  symbol: string;
+  interval: number;
+  paramsHash: string;
+  version: string;
+  startMs: number;
+  endMs: number;
+}) {
+  await ensureIndicatorCacheSchema();
+
+  const pool = getPool();
+  const normalizedProvider = normalizeCandleProvider(params.provider);
+  const normalizedSymbol = normalizeCandleSymbol(params.symbol);
+  const sql = `
+    SELECT ts, snapshot
+    FROM indicator_cache
+    WHERE provider = $1
+      AND symbol = $2
+      AND interval = $3
+      AND params_hash = $4
+      AND version = $5
+      AND ts >= to_timestamp($6/1000.0)
+      AND ts <= to_timestamp($7/1000.0)
+    ORDER BY ts ASC
+  `;
+  const res = await pool.query(sql, [
+    normalizedProvider,
+    normalizedSymbol,
+    params.interval,
+    params.paramsHash,
+    params.version,
+    params.startMs,
+    params.endMs,
+  ]);
+
+  return (res.rows as Array<{ ts: Date; snapshot: unknown }>).map((row) => ({
+    ts: row.ts,
+    snapshot: row.snapshot,
+  }));
 }
 
 export async function waitForDbReady(

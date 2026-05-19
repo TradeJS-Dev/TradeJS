@@ -25,6 +25,7 @@ import { createPineScriptLoader } from './pine';
 import { getStrategyManifest } from './strategy/manifests';
 import { getTradejsProjectCwd, loadTradejsConfig } from './tradejsConfig';
 import { resolveStrategyConfig } from './strategyHelpers/config';
+import { ensureIndicatorCacheCoverage } from './indicatorCache';
 import {
   CreateStrategyCore,
   CreateStrategyCoreParams,
@@ -753,6 +754,7 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
 
   return async ({
     userName,
+    connectorName,
     config: baseConfig,
     symbol,
     data,
@@ -773,6 +775,7 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
     const env = String(config.ENV ?? 'BACKTEST');
     const recordRuntimeJournal = shouldRecordRuntimeJournal({ env, config });
     const strategyManifest = resolveManifest(strategyName);
+    const indicatorPeriods = buildDefaultIndicatorPeriods(config as any);
     const hookBase = {
       connector,
       strategyName,
@@ -789,6 +792,17 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
       });
     const getProjectHookList = (stage: keyof TradejsConfigHooks) =>
       normalizeConfigHookList(projectHooks?.[stage] as any);
+
+    await ensureIndicatorCacheCoverage({
+      provider: connectorName,
+      symbol,
+      interval: Number(config.INTERVAL ?? '15'),
+      periods: indicatorPeriods,
+      data,
+      btcData,
+      btcBinanceData,
+      btcCoinbaseData,
+    });
 
     const notifyRuntimeError = async ({
       stage,
@@ -1074,7 +1088,7 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
       btcData,
       btcBinanceData,
       btcCoinbaseData,
-      periods: buildDefaultIndicatorPeriods(config as any),
+      periods: indicatorPeriods,
       pluginRegistryScope: projectRoot,
     });
     const strategyApi = createStrategyAPI({

@@ -29,6 +29,7 @@ export type StrategyConfigGrid = Record<string, unknown[]>;
 
 export interface StrategyCreatorParams {
   userName: string;
+  connectorName: string;
   symbol: string;
   config: StrategyConfig;
   connector: Connector;

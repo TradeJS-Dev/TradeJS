@@ -6,6 +6,7 @@ const mockUpdatePositionProtection = jest.fn();
 const mockLoadTradejsConfig = jest.fn();
 const mockMarkRuntimeTradeClosed = jest.fn();
 const mockGetDerivativesWindow = jest.fn();
+const mockEnsureIndicatorCacheCoverage = jest.fn();
 
 jest.mock('@tradejs/core/strategies', () => ({
   createStrategyAPI: jest.fn((params: any) => ({
@@ -108,6 +109,11 @@ jest.mock('@tradejs/infra/logger', () => ({
     error: jest.fn(),
     warn: jest.fn(),
   },
+}));
+
+jest.mock('../indicatorCache', () => ({
+  ensureIndicatorCacheCoverage: (...args: unknown[]) =>
+    mockEnsureIndicatorCacheCoverage(...args),
 }));
 
 jest.mock('../strategy/manifests', () => {
@@ -241,6 +247,7 @@ const makeRuntime = async (
 
   const strategy = await strategyCreator({
     userName: 'root',
+    connectorName: 'ByBit',
     symbol: 'ETHUSDT',
     config: {},
     data: [],
@@ -283,6 +290,23 @@ describe('strategyRuntime', () => {
     mockEnrichSignalWithAi.mockResolvedValue(5);
     mockMarkRuntimeTradeClosed.mockResolvedValue(null);
     mockGetDerivativesWindow.mockResolvedValue({});
+    mockEnsureIndicatorCacheCoverage.mockResolvedValue({
+      cached: true,
+      paramsHash: 'hash',
+      version: 'v1',
+    });
+  });
+
+  it('preloads indicator cache before strategy execution starts', async () => {
+    await makeRuntime(() => ({ kind: 'skip', code: 'NOOP' }));
+
+    expect(mockEnsureIndicatorCacheCoverage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        provider: 'ByBit',
+        symbol: 'ETHUSDT',
+        interval: 15,
+      }),
+    );
   });
 
   afterAll(() => {
