@@ -46,6 +46,15 @@ export const getSignalBtcMaFast = (signal: SignalLike): number | null =>
 export const getSignalBtcMaSlow = (signal: SignalLike): number | null =>
   getSignalBaseContext(signal)?.relative.benchmark.maSlow ?? null;
 
+export const getSignalSessionContext = (signal: SignalLike) =>
+  getSignalBaseContext(signal)?.regime?.session ?? null;
+
+export const getSignalSessionPrimary = (signal: SignalLike): string | null =>
+  getSignalSessionContext(signal)?.primarySession ?? null;
+
+export const getSignalSessionIsOverlap = (signal: SignalLike): boolean =>
+  getSignalSessionContext(signal)?.isOverlap === true;
+
 export const getIndicatorsCoinMaFast = (
   indicators: IndicatorsHistorySnapshot | Record<string, unknown> | undefined,
 ): number | null =>

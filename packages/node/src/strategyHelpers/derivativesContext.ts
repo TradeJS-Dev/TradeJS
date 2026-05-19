@@ -51,6 +51,37 @@ const normalizeSymbol = (symbol: string) =>
     .trim()
     .toUpperCase();
 
+const getSignalPriceChangePct1h = (signal: Signal) => {
+  const baseContext = signal.additionalIndicators?.baseContext;
+  if (
+    !baseContext ||
+    typeof baseContext !== 'object' ||
+    Array.isArray(baseContext)
+  ) {
+    return null;
+  }
+
+  const raw =
+    typeof (baseContext as Record<string, unknown>).raw === 'object' &&
+    (baseContext as Record<string, unknown>).raw &&
+    !Array.isArray((baseContext as Record<string, unknown>).raw)
+      ? ((baseContext as Record<string, unknown>).raw as Record<
+          string,
+          unknown
+        >)
+      : null;
+  const price =
+    raw &&
+    typeof raw.price === 'object' &&
+    raw.price &&
+    !Array.isArray(raw.price)
+      ? (raw.price as Record<string, unknown>)
+      : null;
+  const value = price?.price1hPct;
+  const numeric = typeof value === 'number' ? value : Number(value);
+  return Number.isFinite(numeric) ? numeric : null;
+};
+
 const resolvePrimaryReferenceSymbol = (signalSymbol: string) => {
   const symbol = normalizeSymbol(signalSymbol);
   const referenceSymbols = getDerivativesContextReferenceSymbols();
@@ -118,6 +149,7 @@ export const enrichSignalWithDerivativesContext = async (params: {
             direction: signal.direction,
             timestamp: signal.timestamp,
             rowsByInterval,
+            priceChangePct1h: getSignalPriceChangePct1h(signal),
             intervals,
           }),
         ] as const;
@@ -136,6 +168,18 @@ export const enrichSignalWithDerivativesContext = async (params: {
     signal.additionalIndicators = {
       ...(signal.additionalIndicators ?? {}),
       derivativesContext,
+      baseContext:
+        signal.additionalIndicators?.baseContext &&
+        typeof signal.additionalIndicators.baseContext === 'object' &&
+        !Array.isArray(signal.additionalIndicators.baseContext)
+          ? {
+              ...(signal.additionalIndicators.baseContext as Record<
+                string,
+                unknown
+              >),
+              derivatives: derivativesContext,
+            }
+          : signal.additionalIndicators?.baseContext,
     };
     return true;
   } catch (error) {

@@ -300,6 +300,10 @@ describe('trendShiftAiAdapter', () => {
         {
           baseContext: {
             regime: {
+              session: {
+                primarySession: 'london',
+                isOverlap: false,
+              },
               volatility: {
                 atrPctZScore: 0.8,
               },
@@ -325,12 +329,6 @@ describe('trendShiftAiAdapter', () => {
               pressure: 'long_flush',
               directionAligned: true,
               riskFlags: ['long_liquidation_spike'],
-            },
-          },
-          marketContext: {
-            tradingSession: {
-              primarySession: 'london',
-              isOverlap: false,
             },
           },
         },
@@ -665,17 +663,19 @@ describe('trendShiftAiAdapter', () => {
           coinBiasAligned: true,
         },
         {
+          baseContext: {
+            regime: {
+              session: {
+                primarySession: 'london',
+                isOverlap: true,
+              },
+            },
+          },
           derivativesContext: {
             summary: {
               pressure: 'long_flush',
               directionAligned: true,
               riskFlags: ['long_liquidation_spike'],
-            },
-          },
-          marketContext: {
-            tradingSession: {
-              primarySession: 'london',
-              isOverlap: true,
             },
           },
         },

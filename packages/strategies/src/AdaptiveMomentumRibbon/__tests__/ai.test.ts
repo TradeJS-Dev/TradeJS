@@ -51,6 +51,26 @@ const withBaseContext = (signal: any) => ({
           maSlow: getLastFiniteNumber(signal.indicators?.btcMaSlow),
         },
       },
+      regime: {
+        ...((signal.additionalIndicators?.baseContext?.regime as Record<
+          string,
+          unknown
+        >) ?? {}),
+        session: {
+          timezone: 'UTC',
+          utcHour: 23,
+          utcMinute: 0,
+          primarySession: 'off_hours',
+          activeSessions: [],
+          isOverlap: false,
+          overlap: null,
+          minutesFromSessionOpen: null,
+          minutesToFundingWindow: 60,
+          fundingWindowNearby: true,
+          ...((signal.additionalIndicators?.baseContext?.regime
+            ?.session as Record<string, unknown>) ?? {}),
+        },
+      },
     },
   },
 });
@@ -568,6 +588,24 @@ describe('adaptiveMomentumRibbonAiAdapter', () => {
   it('keeps active-session above-upper longs in watch mode', () => {
     const signal = makeSignal({
       timestamp: Date.UTC(2026, 0, 1, 14, 30),
+      additionalIndicators: {
+        baseContext: {
+          regime: {
+            session: {
+              timezone: 'UTC',
+              utcHour: 14,
+              utcMinute: 30,
+              primarySession: 'us',
+              activeSessions: ['europe', 'us'],
+              isOverlap: true,
+              overlap: 'europe_us_overlap',
+              minutesFromSessionOpen: 90,
+              minutesToFundingWindow: 90,
+              fundingWindowNearby: false,
+            },
+          },
+        },
+      },
     });
     const payload = adaptiveMomentumRibbonAiAdapter.buildPayload?.({
       signal,

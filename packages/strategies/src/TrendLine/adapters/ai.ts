@@ -4,6 +4,8 @@ import type { TrendLineConfig } from '../config';
 import {
   getSignalCoinMaFast,
   getSignalCoinMaSlow,
+  getSignalSessionIsOverlap,
+  getSignalSessionPrimary,
 } from '../../shared/baseContext';
 import {
   buildTrendlineStructuralContext,
@@ -57,25 +59,8 @@ const buildTrendlineContext = (signal: {
   additionalIndicators?: Record<string, unknown>;
   figures?: Record<string, unknown>;
 }) => {
-  const marketContext =
-    signal.additionalIndicators &&
-    typeof signal.additionalIndicators.marketContext === 'object' &&
-    signal.additionalIndicators.marketContext &&
-    !Array.isArray(signal.additionalIndicators.marketContext)
-      ? (signal.additionalIndicators.marketContext as Record<string, unknown>)
-      : null;
-  const tradingSession =
-    marketContext &&
-    typeof marketContext.tradingSession === 'object' &&
-    marketContext.tradingSession &&
-    !Array.isArray(marketContext.tradingSession)
-      ? (marketContext.tradingSession as Record<string, unknown>)
-      : null;
-  const sessionPrimary =
-    typeof tradingSession?.primarySession === 'string'
-      ? tradingSession.primarySession
-      : null;
-  const sessionIsOverlap = tradingSession?.isOverlap === true;
+  const sessionPrimary = getSignalSessionPrimary(signal);
+  const sessionIsOverlap = getSignalSessionIsOverlap(signal);
   const derivativesContext =
     signal.additionalIndicators &&
     typeof signal.additionalIndicators.derivativesContext === 'object' &&

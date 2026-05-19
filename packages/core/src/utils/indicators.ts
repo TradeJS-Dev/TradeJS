@@ -345,6 +345,75 @@ type CloseStreakRuntimeState = {
   down: number;
 };
 
+type BreakoutRuntimeState = {
+  side: 'high' | 'low' | null;
+  barsSinceBreakout: number | null;
+};
+
+const SESSION_WINDOWS: Array<{
+  name: 'asia' | 'europe' | 'us';
+  startMinuteUtc: number;
+  endMinuteUtc: number;
+}> = [
+  { name: 'asia', startMinuteUtc: 0, endMinuteUtc: 8 * 60 },
+  { name: 'europe', startMinuteUtc: 7 * 60, endMinuteUtc: 16 * 60 },
+  { name: 'us', startMinuteUtc: 13 * 60, endMinuteUtc: 22 * 60 },
+];
+
+const FUNDING_WINDOW_STEP_MINUTES = 8 * 60;
+const FUNDING_WINDOW_NEARBY_MINUTES = 60;
+
+const isInsideSession = (
+  minuteUtc: number,
+  startMinuteUtc: number,
+  endMinuteUtc: number,
+) =>
+  startMinuteUtc <= endMinuteUtc
+    ? minuteUtc >= startMinuteUtc && minuteUtc < endMinuteUtc
+    : minuteUtc >= startMinuteUtc || minuteUtc < endMinuteUtc;
+
+const buildSessionContext = (timestamp: number) => {
+  const date = new Date(timestamp);
+  const utcHour = date.getUTCHours();
+  const utcMinute = date.getUTCMinutes();
+  const minuteUtc = utcHour * 60 + utcMinute;
+  const activeSessions = SESSION_WINDOWS.filter((session) =>
+    isInsideSession(minuteUtc, session.startMinuteUtc, session.endMinuteUtc),
+  ).map((session) => session.name);
+
+  const primarySession = activeSessions.includes('us')
+    ? 'us'
+    : activeSessions.includes('europe')
+      ? 'europe'
+      : activeSessions.includes('asia')
+        ? 'asia'
+        : 'off_hours';
+
+  const primaryWindow = SESSION_WINDOWS.find(
+    (session) => session.name === primarySession,
+  );
+  const minutesFromSessionOpen =
+    primaryWindow != null ? minuteUtc - primaryWindow.startMinuteUtc : null;
+  const minutesToFundingWindow =
+    (FUNDING_WINDOW_STEP_MINUTES - (minuteUtc % FUNDING_WINDOW_STEP_MINUTES)) %
+    FUNDING_WINDOW_STEP_MINUTES;
+
+  return {
+    timezone: 'UTC' as const,
+    utcHour,
+    utcMinute,
+    primarySession,
+    activeSessions,
+    isOverlap: activeSessions.length > 1,
+    overlap:
+      activeSessions.length > 1 ? `${activeSessions.join('_')}_overlap` : null,
+    minutesFromSessionOpen,
+    minutesToFundingWindow,
+    fundingWindowNearby:
+      minutesToFundingWindow <= FUNDING_WINDOW_NEARBY_MINUTES,
+  };
+};
+
 export const getRequiredControllerSeedWindow = (
   periods: Partial<IndicatorPeriods> = {},
 ): number => {
@@ -376,6 +445,7 @@ export type IndicatorsControllerRuntimeState = {
     d1: Candle[];
   };
   closeStreaks: CloseStreakRuntimeState;
+  breakoutState: BreakoutRuntimeState;
   btcCloses: number[];
   btcBinanceCursor: number;
   btcCoinbaseCursor: number;
@@ -467,6 +537,7 @@ type BuildBaseContextParams = {
   indicatorHistory: Record<string, NumericHistoryBuffer>;
   indicatorPeriods: IndicatorPeriods;
   closeStreaks: CloseStreakRuntimeState;
+  breakoutState: BreakoutRuntimeState;
 };
 
 const buildBaseContextMtfSnapshot = ({
@@ -509,6 +580,7 @@ const buildBaseContextSnapshot = ({
   indicatorHistory,
   indicatorPeriods,
   closeStreaks,
+  breakoutState: breakoutRuntimeState,
 }: BuildBaseContextParams): BaseStrategyContextSnapshot => {
   const atr = toNullable(baseResult.atr);
   const bbWidthPct =
@@ -528,6 +600,7 @@ const buildBaseContextSnapshot = ({
     indicatorHistory.spread ?? createNumericHistoryBuffer(),
   );
   const recent20 = candlesHistory.slice(-20);
+  const session = buildSessionContext(candle.timestamp);
   const recent20High =
     recent20.length > 0 ? Math.max(...recent20.map((item) => item.high)) : null;
   const recent20Low =
@@ -631,6 +704,26 @@ const buildBaseContextSnapshot = ({
             ? 'below_low_level'
             : 'failed_low_breakout'
           : 'inside_range';
+  const touchTolerance =
+    atr != null && Number.isFinite(atr) && atr > 0 ? atr * 0.15 : null;
+  const highLevel = baseResult.highLevel;
+  const lowLevel = baseResult.lowLevel;
+  const highTouchCount20 =
+    highLevel == null || touchTolerance == null
+      ? null
+      : recent20.filter(
+          (item) => Math.abs(item.high - highLevel) <= touchTolerance,
+        ).length;
+  const lowTouchCount20 =
+    lowLevel == null || touchTolerance == null
+      ? null
+      : recent20.filter(
+          (item) => Math.abs(item.low - lowLevel) <= touchTolerance,
+        ).length;
+  const dominantTouchCount20 =
+    highTouchCount20 == null && lowTouchCount20 == null
+      ? null
+      : Math.max(highTouchCount20 ?? 0, lowTouchCount20 ?? 0);
   const upperWick =
     highLowRange > 0
       ? (candle.high - Math.max(candle.open, candle.close)) / highLowRange
@@ -639,6 +732,42 @@ const buildBaseContextSnapshot = ({
     highLowRange > 0
       ? (Math.min(candle.open, candle.close) - candle.low) / highLowRange
       : null;
+  const breakoutRetestQuality =
+    breakoutRuntimeState.side == null ||
+    breakoutRuntimeState.barsSinceBreakout == null ||
+    breakoutRuntimeState.barsSinceBreakout < 1 ||
+    breakoutRuntimeState.barsSinceBreakout > 4 ||
+    atr == null
+      ? null
+      : breakoutRuntimeState.side === 'high'
+        ? highLevel == null
+          ? null
+          : (() => {
+              const retestDistance = Math.abs(candle.low - highLevel);
+              const wickSupport = lowerWick ?? 0;
+              const closeAcceptance = candle.close > highLevel ? 1 : 0;
+              const distanceScore = Math.max(0, 1 - retestDistance / atr);
+              return Math.min(
+                1,
+                distanceScore * 0.45 +
+                  wickSupport * 0.25 +
+                  closeAcceptance * 0.3,
+              );
+            })()
+        : lowLevel == null
+          ? null
+          : (() => {
+              const retestDistance = Math.abs(candle.high - lowLevel);
+              const wickSupport = upperWick ?? 0;
+              const closeAcceptance = candle.close < lowLevel ? 1 : 0;
+              const distanceScore = Math.max(0, 1 - retestDistance / atr);
+              return Math.min(
+                1,
+                distanceScore * 0.45 +
+                  wickSupport * 0.25 +
+                  closeAcceptance * 0.3,
+              );
+            })();
   const rejectionWickScore =
     trendBias === 'bull'
       ? lowerWick
@@ -804,6 +933,7 @@ const buildBaseContextSnapshot = ({
         upCloseStreak: closeStreaks.up,
         downCloseStreak: closeStreaks.down,
       },
+      session,
     },
     structure: {
       localRange: {
@@ -815,6 +945,13 @@ const buildBaseContextSnapshot = ({
         distanceToHighLevelAtr,
         distanceToLowLevelAtr,
         breakoutState,
+        barsSinceBreakout: breakoutRuntimeState.barsSinceBreakout,
+        breakoutRetestQuality,
+      },
+      levels: {
+        highTouchCount20,
+        lowTouchCount20,
+        dominantTouchCount20,
       },
       candleQuality: {
         upperWickPct: upperWick,
@@ -1241,6 +1378,10 @@ export const createIndicators = (
   const closeStreaks: CloseStreakRuntimeState = {
     up: restoredState?.closeStreaks?.up ?? 0,
     down: restoredState?.closeStreaks?.down ?? 0,
+  };
+  const breakoutState: BreakoutRuntimeState = {
+    side: restoredState?.breakoutState?.side ?? null,
+    barsSinceBreakout: restoredState?.breakoutState?.barsSinceBreakout ?? null,
   };
   const indicatorPluginErrorShown = new Set<string>();
   let cachedBaseHistoryResult: Record<string, number[]> | null = null;
@@ -1752,6 +1893,26 @@ export const createIndicators = (
       lowLevel = Math.min(...window.map((item) => item.low));
     }
 
+    if (
+      highLevel != null &&
+      prevCandle != null &&
+      candle.close > highLevel &&
+      prevCandle.close <= highLevel
+    ) {
+      breakoutState.side = 'high';
+      breakoutState.barsSinceBreakout = 0;
+    } else if (
+      lowLevel != null &&
+      prevCandle != null &&
+      candle.close < lowLevel &&
+      prevCandle.close >= lowLevel
+    ) {
+      breakoutState.side = 'low';
+      breakoutState.barsSinceBreakout = 0;
+    } else if (breakoutState.barsSinceBreakout != null) {
+      breakoutState.barsSinceBreakout += 1;
+    }
+
     const baseResult = {
       maFast: ma14Value,
       maMedium: ma49Value,
@@ -1828,6 +1989,7 @@ export const createIndicators = (
             indicatorHistory,
             indicatorPeriods,
             closeStreaks,
+            breakoutState,
           });
         }
 
@@ -1851,6 +2013,8 @@ export const createIndicators = (
     const capturedBtc1hLength = btc1hCache.size();
     const capturedBtc4hLength = btc4hCache.size();
     const capturedBtc1dLength = btc1dCache.size();
+    const capturedCloseStreaks = { ...closeStreaks };
+    const capturedBreakoutState = { ...breakoutState };
 
     let cachedMlCandleSnapshot: MlCandleIndicatorsSnapshot | null = null;
     let cachedCoinTimeframeSnapshot: Record<string, number[]> | null = null;
@@ -1938,7 +2102,8 @@ export const createIndicators = (
             btcResampledCandles: getCapturedBtcResampled(),
             indicatorHistory,
             indicatorPeriods,
-            closeStreaks,
+            closeStreaks: capturedCloseStreaks,
+            breakoutState: capturedBreakoutState,
           });
         }
 
@@ -2056,6 +2221,7 @@ export const createIndicators = (
         .map(cloneMlCandle),
     },
     closeStreaks: { ...closeStreaks },
+    breakoutState: { ...breakoutState },
     btcCloses: btcCloses.slice(-controllerStateCandleWindow),
     btcBinanceCursor,
     btcCoinbaseCursor,

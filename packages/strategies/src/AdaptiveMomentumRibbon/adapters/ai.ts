@@ -11,6 +11,7 @@ import {
   getSignalBtcMaSlow,
   getSignalCoinMaFast,
   getSignalCoinMaSlow,
+  getSignalSessionPrimary,
 } from '../../shared/baseContext';
 
 const ADAPTIVE_MOMENTUM_RIBBON_CONTEXT_PROMPT = `
@@ -156,52 +157,14 @@ const getStringArray = (value: unknown): string[] =>
       )
     : [];
 
-const getPrimarySession = (
-  signal: Signal,
-  additionalIndicators?: Record<string, unknown> | null,
-): PrimaryTradingSession | null => {
-  const marketContext = getRecord(
-    additionalIndicators?.marketContext ??
-      signal.additionalIndicators?.marketContext,
-  );
-  const tradingSession = getRecord(marketContext?.tradingSession);
-  const primarySession = tradingSession?.primarySession;
-
-  if (
-    primarySession === 'asia' ||
-    primarySession === 'europe' ||
-    primarySession === 'us' ||
-    primarySession === 'off_hours'
-  ) {
-    return primarySession;
-  }
-
-  const timestamp = toFiniteNumberOrNull(signal.timestamp);
-  if (timestamp == null) {
-    return null;
-  }
-
-  const date = new Date(timestamp);
-  const minuteUtc = date.getUTCHours() * 60 + date.getUTCMinutes();
-  const activeSessions = [
-    minuteUtc >= 0 && minuteUtc < 8 * 60 ? 'asia' : null,
-    minuteUtc >= 7 * 60 && minuteUtc < 16 * 60 ? 'europe' : null,
-    minuteUtc >= 13 * 60 && minuteUtc < 22 * 60 ? 'us' : null,
-  ].filter(
-    (session): session is Exclude<PrimaryTradingSession, 'off_hours'> =>
-      session != null,
-  );
-
-  if (activeSessions.includes('us')) {
-    return 'us';
-  }
-  if (activeSessions.includes('europe')) {
-    return 'europe';
-  }
-  if (activeSessions.includes('asia')) {
-    return 'asia';
-  }
-  return 'off_hours';
+const getPrimarySession = (signal: Signal): PrimaryTradingSession | null => {
+  const session = getSignalSessionPrimary(signal);
+  return session === 'asia' ||
+    session === 'europe' ||
+    session === 'us' ||
+    session === 'off_hours'
+    ? session
+    : null;
 };
 
 const getAdaptiveMomentumRibbonSnapshot = (
@@ -578,7 +541,7 @@ const buildAdaptiveMomentumRibbonContext = (
   const derivativesFundingZScore =
     toFiniteNumberOrNull(derivatives15m?.fundingZScore) ??
     toFiniteNumberOrNull(derivatives1h?.fundingZScore);
-  const primarySession = getPrimarySession(signal, additionalIndicators);
+  const primarySession = getPrimarySession(signal);
   const sessionAllowsApproval =
     primarySession == null ? null : primarySession === 'off_hours';
 

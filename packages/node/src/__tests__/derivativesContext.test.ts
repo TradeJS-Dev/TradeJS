@@ -74,6 +74,15 @@ describe('strategyHelpers/derivativesContext', () => {
       riskRatio: 2,
     },
     indicators: {},
+    additionalIndicators: {
+      baseContext: {
+        raw: {
+          price: {
+            price1hPct: 1.5,
+          },
+        },
+      },
+    },
   } as any;
 
   it('keeps derivatives context disabled by default', async () => {
@@ -134,6 +143,17 @@ describe('strategyHelpers/derivativesContext', () => {
       enrichedSignal.additionalIndicators.derivativesContext.summary
         .directionAligned,
     ).toBe(true);
+    expect(
+      enrichedSignal.additionalIndicators.derivativesContext.summary
+        .fundingChange1h,
+    ).toBe(0);
+    expect(
+      enrichedSignal.additionalIndicators.derivativesContext.summary
+        .priceOiDivergenceType,
+    ).toBe('price_up_oi_up');
+    expect(enrichedSignal.additionalIndicators.baseContext.derivatives).toEqual(
+      enrichedSignal.additionalIndicators.derivativesContext,
+    );
   });
 
   it('uses BTC as the primary derivatives context for non-reference symbols', async () => {

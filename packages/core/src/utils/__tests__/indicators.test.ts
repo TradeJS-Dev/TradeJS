@@ -123,7 +123,14 @@ describe('utils indicators', () => {
     expect(last?.highLevel).toBe(16);
     expect(last?.lowLevel).toBe(5);
     expect(last?.baseContext?.regime.trend.bias).toBeDefined();
+    expect(last?.baseContext?.regime.session.primarySession).toBeDefined();
     expect(last?.baseContext?.raw.levels.highLevel).toBe(16);
+    expect(
+      last?.baseContext?.structure.localRange.barsSinceBreakout,
+    ).toBeNull();
+    expect(
+      last?.baseContext?.structure.levels.dominantTouchCount20 ?? 0,
+    ).toBeGreaterThan(0);
   });
 
   it('slides breakout level window with the same lookback and delay semantics across bars', () => {

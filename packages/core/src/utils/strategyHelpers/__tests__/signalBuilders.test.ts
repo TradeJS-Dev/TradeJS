@@ -68,6 +68,18 @@ const baseContext: BaseStrategyContextSnapshot = {
       upCloseStreak: 2,
       downCloseStreak: 0,
     },
+    session: {
+      timezone: 'UTC',
+      utcHour: 14,
+      utcMinute: 30,
+      primarySession: 'us',
+      activeSessions: ['europe', 'us'],
+      isOverlap: true,
+      overlap: 'europe_us_overlap',
+      minutesFromSessionOpen: 90,
+      minutesToFundingWindow: 90,
+      fundingWindowNearby: false,
+    },
   },
   structure: {
     localRange: {
@@ -75,6 +87,13 @@ const baseContext: BaseStrategyContextSnapshot = {
       distanceToHighLevelAtr: -1,
       distanceToLowLevelAtr: 1,
       breakoutState: 'inside_range',
+      barsSinceBreakout: null,
+      breakoutRetestQuality: null,
+    },
+    levels: {
+      highTouchCount20: 1,
+      lowTouchCount20: 1,
+      dominantTouchCount20: 1,
     },
     candleQuality: {
       upperWickPct: 0.2,

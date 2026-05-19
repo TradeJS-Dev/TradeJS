@@ -63,12 +63,10 @@ const getTrendShiftContext = (payload: AiPayload): TrendShiftAiContext => {
     ((additional?.trendShiftContext ?? {}) as TrendShiftContext) || {};
   const derivativesContext = asRecord(additional?.derivativesContext);
   const derivativesSummary = asRecord(derivativesContext?.summary);
-  const derivativesIntervals = asRecord(derivativesContext?.intervals);
-  const marketContext = asRecord(additional?.marketContext);
-  const tradingSession = asRecord(marketContext?.tradingSession);
   const baseContext = asRecord(additional?.baseContext);
   const regime = asRecord(baseContext?.regime);
   const regimeVolatility = asRecord(regime?.volatility);
+  const regimeSession = asRecord(regime?.session);
   const structure = asRecord(baseContext?.structure);
   const localRange = asRecord(structure?.localRange);
   const participation = asRecord(baseContext?.participation);
@@ -88,10 +86,10 @@ const getTrendShiftContext = (payload: AiPayload): TrendShiftAiContext => {
       ? derivativesSummary.pressure
       : null;
   const sessionPrimary =
-    typeof tradingSession?.primarySession === 'string'
-      ? tradingSession.primarySession
+    typeof regimeSession?.primarySession === 'string'
+      ? regimeSession.primarySession
       : null;
-  const sessionIsOverlap = tradingSession?.isOverlap === true;
+  const sessionIsOverlap = regimeSession?.isOverlap === true;
   const breakoutState =
     typeof localRange?.breakoutState === 'string'
       ? localRange.breakoutState

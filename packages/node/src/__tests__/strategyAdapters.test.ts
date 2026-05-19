@@ -30,8 +30,27 @@ const makeSignal = () =>
     timestamp: 1_700_000_000_000,
     figures: { trendLine: [{ from: 1, to: 2 }] },
     additionalIndicators: {
-      spread: [1, 2, 3],
       baseContext: {
+        regime: {
+          session: {
+            timezone: 'UTC',
+            utcHour: 14,
+            utcMinute: 30,
+            primarySession: 'us',
+            activeSessions: ['europe', 'us'],
+            isOverlap: true,
+            overlap: 'europe_us_overlap',
+            minutesFromSessionOpen: 90,
+            minutesToFundingWindow: 90,
+            fundingWindowNearby: false,
+          },
+        },
+        relative: {
+          execution: {
+            venueSpread: 3,
+            venueSpreadZScore: 1.2,
+          },
+        },
         raw: {
           crossAsset: {
             venueSpread: 3,
@@ -121,13 +140,15 @@ describe('strategyAdapters utils', () => {
         trimmed: expect.objectContaining({
           ...signal.additionalIndicators,
           marketContext: expect.objectContaining({
-            tradingSession: expect.objectContaining({
+            session: expect.objectContaining({
               timezone: 'UTC',
             }),
-            binanceCoinbaseSpread: expect.objectContaining({
-              available: true,
-              bps: 30_000,
-              bias: 'coinbase_premium',
+            execution: expect.objectContaining({
+              binanceCoinbaseSpread: expect.objectContaining({
+                available: true,
+                bps: 30_000,
+                bias: 'coinbase_premium',
+              }),
             }),
           }),
         }),

@@ -211,6 +211,18 @@ export interface BaseRegimeContext {
     upCloseStreak: number | null;
     downCloseStreak: number | null;
   };
+  session: {
+    timezone: 'UTC';
+    utcHour: number;
+    utcMinute: number;
+    primarySession: 'asia' | 'europe' | 'us' | 'off_hours';
+    activeSessions: Array<'asia' | 'europe' | 'us'>;
+    isOverlap: boolean;
+    overlap: string | null;
+    minutesFromSessionOpen: number | null;
+    minutesToFundingWindow: number | null;
+    fundingWindowNearby: boolean;
+  };
 }
 
 export interface BaseStructureContext {
@@ -225,6 +237,13 @@ export interface BaseStructureContext {
       | 'failed_high_breakout'
       | 'failed_low_breakout'
       | 'unknown';
+    barsSinceBreakout: number | null;
+    breakoutRetestQuality: number | null;
+  };
+  levels: {
+    highTouchCount20: number | null;
+    lowTouchCount20: number | null;
+    dominantTouchCount20: number | null;
   };
   candleQuality: {
     upperWickPct: number | null;

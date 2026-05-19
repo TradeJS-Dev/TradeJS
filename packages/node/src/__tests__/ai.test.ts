@@ -139,6 +139,25 @@ const withBaseContext = (signal: any) => {
       ...additionalIndicators,
       baseContext: {
         ...existingBaseContext,
+        regime: {
+          ...(existingBaseContext.regime ?? {}),
+          session: {
+            timezone: 'UTC',
+            utcHour: 23,
+            utcMinute: 0,
+            primarySession: 'off_hours',
+            activeSessions: [],
+            isOverlap: false,
+            overlap: null,
+            minutesFromSessionOpen: null,
+            minutesToFundingWindow: 60,
+            fundingWindowNearby: true,
+            ...((existingBaseContext.regime?.session as Record<
+              string,
+              unknown
+            >) ?? {}),
+          },
+        },
         raw: {
           ...existingRaw,
           trend: {
@@ -162,6 +181,14 @@ const withBaseContext = (signal: any) => {
             ...(existingBaseContext.relative?.benchmark ?? {}),
             maFast: btcMaFast,
             maSlow: btcMaSlow,
+          },
+          execution: {
+            ...((existingBaseContext.relative?.execution as Record<
+              string,
+              unknown
+            >) ?? {}),
+            venueSpread,
+            venueSpreadZScore: 1.4,
           },
         },
       },
@@ -206,6 +233,7 @@ const makeSignal = () =>
     indicators: {
       maFast: [1, 2, 3, 4, 5, 6, 7],
       btcMaFast1h: [10, 11, 12, 13, 14, 15],
+      spread: [0.0008, 0.001, 0.0012],
       nested: {
         atrPct: [0.1, 0.2, 0.3, 0.4, 0.5, 0.6],
       },
@@ -219,6 +247,24 @@ const makeSignal = () =>
         [6, 66, 666],
       ],
       correlation: 0.42,
+    },
+    additionalIndicators: {
+      baseContext: {
+        regime: {
+          session: {
+            timezone: 'UTC',
+            utcHour: 14,
+            utcMinute: 30,
+            primarySession: 'us',
+            activeSessions: ['europe', 'us'],
+            isOverlap: true,
+            overlap: 'europe_us_overlap',
+            minutesFromSessionOpen: 90,
+            minutesToFundingWindow: 90,
+            fundingWindowNearby: false,
+          },
+        },
+      },
     },
   } as any);
 
@@ -1499,7 +1545,8 @@ describe('ai helpers', () => {
       ).toBe('ready_breakout');
       expect((payload.additionalIndicators as any).marketContext).toMatchObject(
         {
-          tradingSession: {
+          session: {
+            source: 'payload.additionalIndicators.baseContext.regime.session',
             timezone: 'UTC',
             utcHour: 14,
             utcMinute: 30,
@@ -1507,17 +1554,24 @@ describe('ai helpers', () => {
             activeSessions: ['europe', 'us'],
             isOverlap: true,
             overlap: 'europe_us_overlap',
+            minutesFromSessionOpen: 90,
+            minutesToFundingWindow: 90,
+            fundingWindowNearby: false,
           },
-          binanceCoinbaseSpread: {
-            source: 'binance_coinbase_btc',
-            indicatorKey:
-              'payload.additionalIndicators.baseContext.raw.crossAsset.venueSpread',
-            available: true,
-            value: 0.0012,
-            bps: 12,
-            absBps: 12,
-            bias: 'coinbase_premium',
-            severity: 'elevated',
+          execution: {
+            binanceCoinbaseSpread: {
+              source:
+                'payload.additionalIndicators.baseContext.relative.execution.venueSpread',
+              indicatorKey:
+                'payload.additionalIndicators.baseContext.relative.execution.venueSpread',
+              available: true,
+              value: 0.0012,
+              zScore: 1.4,
+              bps: 12,
+              absBps: 12,
+              bias: 'coinbase_premium',
+              severity: 'elevated',
+            },
           },
         },
       );
@@ -1570,8 +1624,8 @@ describe('ai helpers', () => {
       );
       expect(prompt).toContain('payload.additionalIndicators');
       expect(prompt).toContain('payload.additionalIndicators.baseContext');
-      expect(prompt).toContain('marketContext.tradingSession');
-      expect(prompt).toContain('marketContext.binanceCoinbaseSpread');
+      expect(prompt).toContain('marketContext.session');
+      expect(prompt).toContain('marketContext.execution.binanceCoinbaseSpread');
       expect(prompt).toContain('Short few-shot examples');
       expect(prompt).toContain('Do not add any other fields');
       expect(prompt).not.toContain('помощник крипто-трейдера');
@@ -2777,7 +2831,7 @@ describe('ai helpers', () => {
         expect.objectContaining({
           approvalAllowedNow: false,
           deterministicQuality: 3,
-          hardBlockReasons: [],
+          hardBlockReasons: expect.arrayContaining(['short_session_risk']),
         }),
       );
 

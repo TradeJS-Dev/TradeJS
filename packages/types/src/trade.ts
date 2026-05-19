@@ -51,6 +51,14 @@ export type DerivativesPressure =
   | 'long_flush'
   | 'short_flush';
 
+export type DerivativesPriceOiDivergenceType =
+  | 'price_up_oi_up'
+  | 'price_up_oi_down'
+  | 'price_down_oi_up'
+  | 'price_down_oi_down'
+  | 'flat_or_mixed'
+  | 'unknown';
+
 export type DerivativesContextRiskFlag =
   | 'missing_derivatives'
   | 'stale_derivatives'
@@ -88,6 +96,10 @@ export interface DerivativesSymbolContext {
     pressure: DerivativesPressure;
     directionAligned: boolean | null;
     riskFlags: DerivativesContextRiskFlag[];
+    fundingChange1h?: number | null;
+    oiAcceleration?: number | null;
+    priceOiDivergenceType?: DerivativesPriceOiDivergenceType;
+    crowdingPersistenceBars?: number | null;
   };
 }
 

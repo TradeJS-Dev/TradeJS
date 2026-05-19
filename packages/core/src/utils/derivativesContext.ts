@@ -3,6 +3,7 @@ import type {
   DerivativesContextRiskFlag,
   DerivativesInterval,
   DerivativesIntervalContext,
+  DerivativesPriceOiDivergenceType,
   DerivativesPressure,
   DerivativesRow,
   Direction,
@@ -322,6 +323,7 @@ export const buildDerivativesContext = (params: {
   direction: Direction;
   timestamp: number;
   rowsByInterval: Partial<Record<DerivativesInterval, DerivativesRow[]>>;
+  priceChangePct1h?: number | null;
   intervals?: DerivativesInterval[];
   staleAfterMsByInterval?: Partial<Record<DerivativesInterval, number>>;
 }): DerivativesContext => {
@@ -330,6 +332,7 @@ export const buildDerivativesContext = (params: {
     direction,
     timestamp,
     rowsByInterval,
+    priceChangePct1h = null,
     intervals = DERIVATIVES_INTERVALS,
     staleAfterMsByInterval = {},
   } = params;
@@ -354,6 +357,88 @@ export const buildDerivativesContext = (params: {
   const primary = getPrimaryContext(intervalContexts);
   const pressure = detectPressure(primary);
   const riskFlags = collectRiskFlags(contexts);
+  const fundingChange1h =
+    primary?.fundingRate != null && primary.interval === '15m'
+      ? (() => {
+          const normalizedRows = normalizeRows(
+            rowsByInterval['15m'],
+            timestamp,
+          );
+          const latest = normalizedRows[normalizedRows.length - 1];
+          const row1h = latest
+            ? findRowAtOrBefore(normalizedRows, latest.tsMs - HOUR_MS)
+            : null;
+          return latest?.fundingRate != null && row1h?.fundingRate != null
+            ? roundNullable(latest.fundingRate - row1h.fundingRate, 8)
+            : null;
+        })()
+      : null;
+  const oiAcceleration =
+    primary?.oiChangePct1h != null && primary?.oiChangePct4h != null
+      ? roundNullable(primary.oiChangePct1h - primary.oiChangePct4h / 4, 4)
+      : null;
+  let priceOiDivergenceType: DerivativesPriceOiDivergenceType = 'unknown';
+  if (
+    priceChangePct1h != null &&
+    Number.isFinite(priceChangePct1h) &&
+    primary?.oiChangePct1h != null &&
+    Number.isFinite(primary.oiChangePct1h)
+  ) {
+    const priceUp = priceChangePct1h > 0.05;
+    const priceDown = priceChangePct1h < -0.05;
+    const oiUp = primary.oiChangePct1h > 0.15;
+    const oiDown = primary.oiChangePct1h < -0.15;
+
+    priceOiDivergenceType =
+      priceUp && oiUp
+        ? 'price_up_oi_up'
+        : priceUp && oiDown
+          ? 'price_up_oi_down'
+          : priceDown && oiUp
+            ? 'price_down_oi_up'
+            : priceDown && oiDown
+              ? 'price_down_oi_down'
+              : 'flat_or_mixed';
+  }
+  const crowdingPersistenceBars =
+    primary?.interval === '15m'
+      ? (() => {
+          const normalizedRows = normalizeRows(
+            rowsByInterval['15m'],
+            timestamp,
+          );
+          if (!normalizedRows.length) return null;
+          const latestRows = normalizedRows.slice();
+          let persistence = 0;
+          const latestContext = primary;
+          const crowdedState = isCrowdedLong(latestContext)
+            ? 'crowded_long'
+            : isCrowdedShort(latestContext)
+              ? 'crowded_short'
+              : null;
+          if (!crowdedState) return 0;
+
+          for (let i = latestRows.length - 1; i >= 0; i -= 1) {
+            const candidate = latestRows[i];
+            const probe = buildIntervalContext({
+              interval: '15m',
+              rows: latestRows.slice(0, i + 1),
+              timestamp: candidate.tsMs,
+              staleAfterMs: DEFAULT_STALE_AFTER_MS['15m'],
+            });
+            if (!probe) break;
+            const probeState = isCrowdedLong(probe)
+              ? 'crowded_long'
+              : isCrowdedShort(probe)
+                ? 'crowded_short'
+                : null;
+            if (probeState !== crowdedState) break;
+            persistence += 1;
+          }
+
+          return persistence;
+        })()
+      : null;
 
   return {
     source: 'coinalyze',
@@ -369,6 +454,10 @@ export const buildDerivativesContext = (params: {
         riskFlags,
       }),
       riskFlags,
+      fundingChange1h,
+      oiAcceleration,
+      priceOiDivergenceType,
+      crowdingPersistenceBars,
     },
   };
 };

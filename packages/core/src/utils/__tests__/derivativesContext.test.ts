@@ -35,6 +35,10 @@ describe('buildDerivativesContext', () => {
       pressure: 'neutral',
       directionAligned: null,
       riskFlags: ['missing_derivatives'],
+      fundingChange1h: null,
+      oiAcceleration: null,
+      priceOiDivergenceType: 'unknown',
+      crowdingPersistenceBars: null,
     });
     expect(context.intervals).toEqual({});
   });
