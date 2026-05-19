@@ -27,6 +27,7 @@ type TrendShiftAiContext = TrendShiftContext & {
   derivativesDirectionAligned: boolean | null;
   derivativesPressure: string | null;
   derivativesFlushSupport: boolean;
+  coreLongQ5Candidate: boolean;
   q4LongBreakoutCandidate: boolean;
   q4ShortBreakoutCandidate: boolean;
   breakoutState: string | null;
@@ -115,6 +116,11 @@ const getTrendShiftContext = (payload: AiPayload): TrendShiftAiContext => {
         ? derivativesRiskFlags.includes('short_liquidation_spike')
         : false;
   const oiNotConfirming = derivativesRiskFlags.includes('oi_not_confirming');
+  const coreLongQ5Candidate =
+    raw.signalDirection === 'LONG' &&
+    distanceAtrRatio >= 0.8 &&
+    slopeAbs >= 0.09 &&
+    closeVsAvgPctAbs >= 0.12;
   const overextendedShortWithoutFlush =
     raw.signalDirection === 'SHORT' &&
     distanceAtrRatio > 1.2 &&
@@ -185,6 +191,16 @@ const getTrendShiftContext = (payload: AiPayload): TrendShiftAiContext => {
 
   if (
     deterministicQuality >= 5 &&
+    coreLongQ5Candidate &&
+    derivativesPressure === 'crowded_short' &&
+    !derivativesFlushSupport
+  ) {
+    deterministicQuality = 4;
+    hardBlockReasons.push('long_pressure_conflict');
+  }
+
+  if (
+    deterministicQuality >= 5 &&
     derivativesPressure === 'neutral' &&
     !derivativesFlushSupport
   ) {
@@ -211,6 +227,7 @@ const getTrendShiftContext = (payload: AiPayload): TrendShiftAiContext => {
     derivativesDirectionAligned,
     derivativesPressure,
     derivativesFlushSupport,
+    coreLongQ5Candidate,
     q4LongBreakoutCandidate,
     q4ShortBreakoutCandidate,
     breakoutState,
@@ -236,6 +253,8 @@ const reasonText = (reason: string) => {
       return 'the SHORT flip already looks overstretched away from the average without a liquidation flush';
     case 'thin_participation':
       return 'participation is too thin versus recent volume for live approval';
+    case 'long_pressure_conflict':
+      return 'the LONG flip is running into crowded-short derivatives pressure without a supporting short-liquidation flush';
     case 'neutral_derivatives_pressure':
       return 'derivatives pressure is neutral, so the flip still lacks conviction';
     case 'derivatives_alignment_unknown':

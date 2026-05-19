@@ -436,7 +436,53 @@ describe('trendShiftAiAdapter', () => {
       quality: 4,
       approved: false,
       rejectReason:
-        'derivatives alignment is still unclear, so keep the flip in watch mode',
+        'the LONG flip is running into crowded-short derivatives pressure without a supporting short-liquidation flush',
+    });
+  });
+
+  it('keeps core q5 LONG in watch mode when crowded-short pressure opposes the flip', () => {
+    const result = trendShiftAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makePayload(
+        {
+          signalDirection: 'LONG',
+          confirmedFlip: true,
+          bullFlip: true,
+          flipDistanceOk: true,
+          closeVsAvgPct: 0.3,
+          avgSlopePct: 0.11,
+          distanceAtrRatio: 0.95,
+          coinBiasAligned: true,
+        },
+        {
+          baseContext: {
+            participation: {
+              volume: {
+                volumeRel20: 1.2,
+              },
+            },
+          },
+          derivativesContext: {
+            summary: {
+              pressure: 'crowded_short',
+              directionAligned: true,
+              riskFlags: [],
+            },
+          },
+        },
+      ),
+      analysis: {
+        direction: 'LONG',
+        quality: 1,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: null,
+      quality: 4,
+      approved: false,
+      rejectReason:
+        'the LONG flip is running into crowded-short derivatives pressure without a supporting short-liquidation flush',
     });
   });
 
