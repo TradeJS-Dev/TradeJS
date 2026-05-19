@@ -1,7 +1,6 @@
 import { Candle, Direction, StrategyFigurePoint } from '@tradejs/types';
 import { TrendShiftConfig } from './config';
 import {
-  getIndicatorsBaseContext,
   getIndicatorsCoinMaFast,
   getIndicatorsCoinMaSlow,
 } from '../shared/baseContext';
@@ -131,7 +130,6 @@ export const buildTrendShiftSignalContext = ({
   snapshot: TrendShiftSnapshot;
   indicators?: Record<string, unknown>;
 }) => {
-  const baseContext = getIndicatorsBaseContext(indicators);
   const maFast = getIndicatorsCoinMaFast(indicators);
   const maSlow = getIndicatorsCoinMaSlow(indicators);
   const coinBias =
@@ -174,7 +172,6 @@ export const buildTrendShiftSignalContext = ({
     lower: snapshot.lower,
     hold: snapshot.hold,
     currentPrice: snapshot.close,
-    baseContext,
     coinMaFast: Number.isFinite(maFast) ? maFast : null,
     coinMaSlow: Number.isFinite(maSlow) ? maSlow : null,
     coinBias,

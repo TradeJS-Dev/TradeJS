@@ -326,6 +326,45 @@ describe('utils indicators', () => {
     expect(first.candles15m[0]).not.toBe(second.candles15m[0]);
   });
 
+  it('keeps lazy baseContext mtf snapshot stable after later bars', () => {
+    const indicators = createIndicators([], [], {
+      periods: {
+        maFast: 3,
+        maMedium: 3,
+        maSlow: 3,
+        obvSma: 3,
+        atr: 3,
+        atrPctShort: 3,
+        atrPctLong: 3,
+        bb: 3,
+        bbStd: 2,
+        macdFast: 3,
+        macdSlow: 4,
+        macdSignal: 2,
+      },
+    });
+
+    for (let i = 0; i < 120; i += 1) {
+      const ts = i * INTERVAL_15M_MS;
+      indicators.next(makeCandle(ts, 100 + i), makeCandle(ts, 20000 + i));
+    }
+
+    const snapshot = indicators.snapshot();
+    expect(snapshot.baseContext?.raw.trend.maFast).toBeDefined();
+
+    indicators.next(
+      makeCandle(120 * INTERVAL_15M_MS, 221),
+      makeCandle(120 * INTERVAL_15M_MS, 20221),
+    );
+
+    expect(snapshot.baseContext?.mtf.candles.m15).toHaveLength(50);
+    expect(
+      snapshot.baseContext?.mtf.candles.m15[
+        (snapshot.baseContext?.mtf.candles.m15.length ?? 1) - 1
+      ]?.timestamp,
+    ).toBe(119 * INTERVAL_15M_MS);
+  });
+
   it('supports latestNumber for derived timeframe series', () => {
     const indicators = createIndicators([], [], {
       periods: {

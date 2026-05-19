@@ -158,6 +158,10 @@ describe('TrendShift core', () => {
     expect(result.kind).toBe('entry');
     expect((result as any).code).toBe('TRENDSHIFT_BULLISH_FLIP');
     expect((result as any).entryContext.direction).toBe('LONG');
+    expect(
+      (result as any).signal.additionalIndicators?.trendShiftContext
+        ?.baseContext,
+    ).toBeUndefined();
     expect(strategyApi.entry).toHaveBeenCalledTimes(1);
   });
 
