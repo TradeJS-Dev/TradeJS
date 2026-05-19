@@ -71,6 +71,15 @@ let derivativesSchemaReady = false;
 let spreadSchemaReady = false;
 let indicatorCacheSchemaReady = false;
 let indicatorCacheCheckpointSchemaReady = false;
+let derivativesSchemaReadyPromise: Promise<void> | null = null;
+let spreadSchemaReadyPromise: Promise<void> | null = null;
+let indicatorCacheSchemaReadyPromise: Promise<void> | null = null;
+let indicatorCacheCheckpointSchemaReadyPromise: Promise<void> | null = null;
+
+const DERIVATIVES_SCHEMA_LOCK_KEY = 610001;
+const SPREAD_SCHEMA_LOCK_KEY = 610002;
+const INDICATOR_CACHE_SCHEMA_LOCK_KEY = 610003;
+const INDICATOR_CACHE_CHECKPOINT_SCHEMA_LOCK_KEY = 610004;
 
 const normalizeCandleProvider = (provider: string) =>
   String(provider || '')
@@ -81,6 +90,16 @@ const normalizeCandleSymbol = (symbol: string) =>
   String(symbol || '')
     .trim()
     .toUpperCase();
+
+const withSchemaLock = async (lockKey: number, work: () => Promise<void>) => {
+  const pool = getPool();
+  await pool.query('SELECT pg_advisory_lock($1)', [lockKey]);
+  try {
+    await work();
+  } finally {
+    await pool.query('SELECT pg_advisory_unlock($1)', [lockKey]);
+  }
+};
 
 export const toRows = (
   provider: string,
@@ -179,146 +198,206 @@ export async function upsertCandles(rows: CandleRow[]) {
 
 const ensureDerivativesSchema = async () => {
   if (derivativesSchemaReady) return;
+  if (derivativesSchemaReadyPromise) {
+    await derivativesSchemaReadyPromise;
+    return;
+  }
+
   const pool = getPool();
-  await pool.query('CREATE EXTENSION IF NOT EXISTS timescaledb');
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS derivatives_market (
-      symbol text NOT NULL,
-      interval text NOT NULL,
-      ts timestamptz NOT NULL,
-      open_interest double precision,
-      funding_rate double precision,
-      liq_long double precision,
-      liq_short double precision,
-      liq_total double precision,
-      source text,
-      ingested_at timestamptz NOT NULL DEFAULT now(),
-      PRIMARY KEY (symbol, interval, ts)
-    )
-  `);
-  await pool.query(`
-    SELECT create_hypertable(
-      'derivatives_market',
-      'ts',
-      if_not_exists => TRUE,
-      chunk_time_interval => interval '14 days'
-    )
-  `);
-  await pool.query(`
-    CREATE INDEX IF NOT EXISTS derivatives_market_symbol_tf_ts_idx
-    ON derivatives_market (symbol, interval, ts DESC)
-  `);
-  derivativesSchemaReady = true;
+  derivativesSchemaReadyPromise = withSchemaLock(
+    DERIVATIVES_SCHEMA_LOCK_KEY,
+    async () => {
+      if (derivativesSchemaReady) return;
+      await pool.query('CREATE EXTENSION IF NOT EXISTS timescaledb');
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS derivatives_market (
+          symbol text NOT NULL,
+          interval text NOT NULL,
+          ts timestamptz NOT NULL,
+          open_interest double precision,
+          funding_rate double precision,
+          liq_long double precision,
+          liq_short double precision,
+          liq_total double precision,
+          source text,
+          ingested_at timestamptz NOT NULL DEFAULT now(),
+          PRIMARY KEY (symbol, interval, ts)
+        )
+      `);
+      await pool.query(`
+        SELECT create_hypertable(
+          'derivatives_market',
+          'ts',
+          if_not_exists => TRUE,
+          chunk_time_interval => interval '14 days'
+        )
+      `);
+      await pool.query(`
+        CREATE INDEX IF NOT EXISTS derivatives_market_symbol_tf_ts_idx
+        ON derivatives_market (symbol, interval, ts DESC)
+      `);
+      derivativesSchemaReady = true;
+    },
+  ).finally(() => {
+    derivativesSchemaReadyPromise = null;
+  });
+
+  await derivativesSchemaReadyPromise;
 };
 
 const ensureSpreadSchema = async () => {
   if (spreadSchemaReady) return;
+  if (spreadSchemaReadyPromise) {
+    await spreadSchemaReadyPromise;
+    return;
+  }
+
   const pool = getPool();
-  await pool.query('CREATE EXTENSION IF NOT EXISTS timescaledb');
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS market_spread (
-      symbol text NOT NULL,
-      interval text NOT NULL,
-      ts timestamptz NOT NULL,
-      binance_price double precision,
-      coinbase_price double precision,
-      spread double precision,
-      source text,
-      ingested_at timestamptz NOT NULL DEFAULT now(),
-      PRIMARY KEY (symbol, interval, ts)
-    )
-  `);
-  await pool.query(`
-    SELECT create_hypertable(
-      'market_spread',
-      'ts',
-      if_not_exists => TRUE,
-      chunk_time_interval => interval '14 days'
-    )
-  `);
-  await pool.query(`
-    CREATE INDEX IF NOT EXISTS market_spread_symbol_tf_ts_idx
-    ON market_spread (symbol, interval, ts DESC)
-  `);
-  spreadSchemaReady = true;
+  spreadSchemaReadyPromise = withSchemaLock(
+    SPREAD_SCHEMA_LOCK_KEY,
+    async () => {
+      if (spreadSchemaReady) return;
+      await pool.query('CREATE EXTENSION IF NOT EXISTS timescaledb');
+      await pool.query(`
+      CREATE TABLE IF NOT EXISTS market_spread (
+        symbol text NOT NULL,
+        interval text NOT NULL,
+        ts timestamptz NOT NULL,
+        binance_price double precision,
+        coinbase_price double precision,
+        spread double precision,
+        source text,
+        ingested_at timestamptz NOT NULL DEFAULT now(),
+        PRIMARY KEY (symbol, interval, ts)
+      )
+    `);
+      await pool.query(`
+      SELECT create_hypertable(
+        'market_spread',
+        'ts',
+        if_not_exists => TRUE,
+        chunk_time_interval => interval '14 days'
+      )
+    `);
+      await pool.query(`
+      CREATE INDEX IF NOT EXISTS market_spread_symbol_tf_ts_idx
+      ON market_spread (symbol, interval, ts DESC)
+    `);
+      spreadSchemaReady = true;
+    },
+  ).finally(() => {
+    spreadSchemaReadyPromise = null;
+  });
+
+  await spreadSchemaReadyPromise;
 };
 
 const ensureIndicatorCacheSchema = async () => {
   if (indicatorCacheSchemaReady) return;
+  if (indicatorCacheSchemaReadyPromise) {
+    await indicatorCacheSchemaReadyPromise;
+    return;
+  }
+
   const pool = getPool();
-  await pool.query('CREATE EXTENSION IF NOT EXISTS timescaledb');
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS indicator_cache (
-      provider text NOT NULL,
-      symbol text NOT NULL,
-      interval integer NOT NULL,
-      params_hash text NOT NULL,
-      version text NOT NULL,
-      ts timestamptz NOT NULL,
-      snapshot jsonb NOT NULL,
-      ingested_at timestamptz NOT NULL DEFAULT now(),
-      PRIMARY KEY (provider, symbol, interval, params_hash, version, ts)
-    )
-  `);
-  await pool.query(`
-    SELECT create_hypertable(
-      'indicator_cache',
-      'ts',
-      if_not_exists => TRUE,
-      chunk_time_interval => interval '14 days'
-    )
-  `);
-  await pool.query(`
-    CREATE INDEX IF NOT EXISTS indicator_cache_lookup_idx
-    ON indicator_cache (
-      provider,
-      symbol,
-      interval,
-      params_hash,
-      version,
-      ts DESC
-    )
-  `);
-  indicatorCacheSchemaReady = true;
+  indicatorCacheSchemaReadyPromise = withSchemaLock(
+    INDICATOR_CACHE_SCHEMA_LOCK_KEY,
+    async () => {
+      if (indicatorCacheSchemaReady) return;
+      await pool.query('CREATE EXTENSION IF NOT EXISTS timescaledb');
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS indicator_cache (
+          provider text NOT NULL,
+          symbol text NOT NULL,
+          interval integer NOT NULL,
+          params_hash text NOT NULL,
+          version text NOT NULL,
+          ts timestamptz NOT NULL,
+          snapshot jsonb NOT NULL,
+          ingested_at timestamptz NOT NULL DEFAULT now(),
+          PRIMARY KEY (provider, symbol, interval, params_hash, version, ts)
+        )
+      `);
+      await pool.query(`
+        SELECT create_hypertable(
+          'indicator_cache',
+          'ts',
+          if_not_exists => TRUE,
+          chunk_time_interval => interval '14 days'
+        )
+      `);
+      await pool.query(`
+        CREATE INDEX IF NOT EXISTS indicator_cache_lookup_idx
+        ON indicator_cache (
+          provider,
+          symbol,
+          interval,
+          params_hash,
+          version,
+          ts DESC
+        )
+      `);
+      indicatorCacheSchemaReady = true;
+    },
+  ).finally(() => {
+    indicatorCacheSchemaReadyPromise = null;
+  });
+
+  await indicatorCacheSchemaReadyPromise;
 };
 
 const ensureIndicatorCacheCheckpointSchema = async () => {
   if (indicatorCacheCheckpointSchemaReady) return;
+  if (indicatorCacheCheckpointSchemaReadyPromise) {
+    await indicatorCacheCheckpointSchemaReadyPromise;
+    return;
+  }
+
   const pool = getPool();
-  await pool.query('CREATE EXTENSION IF NOT EXISTS timescaledb');
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS indicator_cache_checkpoint (
-      provider text NOT NULL,
-      symbol text NOT NULL,
-      interval integer NOT NULL,
-      params_hash text NOT NULL,
-      version text NOT NULL,
-      ts timestamptz NOT NULL,
-      snapshot jsonb NOT NULL,
-      ingested_at timestamptz NOT NULL DEFAULT now(),
-      PRIMARY KEY (provider, symbol, interval, params_hash, version, ts)
-    )
-  `);
-  await pool.query(`
-    SELECT create_hypertable(
-      'indicator_cache_checkpoint',
-      'ts',
-      if_not_exists => TRUE,
-      chunk_time_interval => interval '14 days'
-    )
-  `);
-  await pool.query(`
-    CREATE INDEX IF NOT EXISTS indicator_cache_checkpoint_lookup_idx
-    ON indicator_cache_checkpoint (
-      provider,
-      symbol,
-      interval,
-      params_hash,
-      version,
-      ts DESC
-    )
-  `);
-  indicatorCacheCheckpointSchemaReady = true;
+  indicatorCacheCheckpointSchemaReadyPromise = withSchemaLock(
+    INDICATOR_CACHE_CHECKPOINT_SCHEMA_LOCK_KEY,
+    async () => {
+      if (indicatorCacheCheckpointSchemaReady) return;
+      await pool.query('CREATE EXTENSION IF NOT EXISTS timescaledb');
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS indicator_cache_checkpoint (
+          provider text NOT NULL,
+          symbol text NOT NULL,
+          interval integer NOT NULL,
+          params_hash text NOT NULL,
+          version text NOT NULL,
+          ts timestamptz NOT NULL,
+          snapshot jsonb NOT NULL,
+          ingested_at timestamptz NOT NULL DEFAULT now(),
+          PRIMARY KEY (provider, symbol, interval, params_hash, version, ts)
+        )
+      `);
+      await pool.query(`
+        SELECT create_hypertable(
+          'indicator_cache_checkpoint',
+          'ts',
+          if_not_exists => TRUE,
+          chunk_time_interval => interval '14 days'
+        )
+      `);
+      await pool.query(`
+        CREATE INDEX IF NOT EXISTS indicator_cache_checkpoint_lookup_idx
+        ON indicator_cache_checkpoint (
+          provider,
+          symbol,
+          interval,
+          params_hash,
+          version,
+          ts DESC
+        )
+      `);
+      indicatorCacheCheckpointSchemaReady = true;
+    },
+  ).finally(() => {
+    indicatorCacheCheckpointSchemaReadyPromise = null;
+  });
+
+  await indicatorCacheCheckpointSchemaReadyPromise;
 };
 
 export const ensureIndicatorCacheTables = async () => {

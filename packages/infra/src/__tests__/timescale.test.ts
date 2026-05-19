@@ -200,9 +200,14 @@ describe('timescale candle helpers', () => {
       },
     ]);
 
+    expect(query).toHaveBeenCalledWith('SELECT pg_advisory_lock($1)', [610003]);
     expect(query).toHaveBeenCalledWith(
       expect.stringContaining('CREATE TABLE IF NOT EXISTS indicator_cache'),
     );
+    expect(query).toHaveBeenCalledWith('SELECT pg_advisory_unlock($1)', [
+      610003,
+    ]);
+    expect(query).toHaveBeenCalledWith('SELECT pg_advisory_lock($1)', [610004]);
     expect(query).toHaveBeenCalledWith(
       expect.stringContaining(
         'ON CONFLICT (provider, symbol, interval, params_hash, version, ts)',
@@ -222,6 +227,9 @@ describe('timescale candle helpers', () => {
         'CREATE TABLE IF NOT EXISTS indicator_cache_checkpoint',
       ),
     );
+    expect(query).toHaveBeenCalledWith('SELECT pg_advisory_unlock($1)', [
+      610004,
+    ]);
     expect(query).toHaveBeenCalledWith(
       expect.stringContaining(
         'ON CONFLICT (provider, symbol, interval, params_hash, version, ts)',
@@ -254,17 +262,62 @@ describe('timescale candle helpers', () => {
 
     await ensureIndicatorCacheTables();
 
+    expect(query).toHaveBeenCalledWith('SELECT pg_advisory_lock($1)', [610003]);
     expect(query).toHaveBeenCalledWith(
       'CREATE EXTENSION IF NOT EXISTS timescaledb',
     );
     expect(query).toHaveBeenCalledWith(
       expect.stringContaining('CREATE TABLE IF NOT EXISTS indicator_cache'),
     );
+    expect(query).toHaveBeenCalledWith('SELECT pg_advisory_unlock($1)', [
+      610003,
+    ]);
+    expect(query).toHaveBeenCalledWith('SELECT pg_advisory_lock($1)', [610004]);
     expect(query).toHaveBeenCalledWith(
       expect.stringContaining(
         'CREATE TABLE IF NOT EXISTS indicator_cache_checkpoint',
       ),
     );
+    expect(query).toHaveBeenCalledWith('SELECT pg_advisory_unlock($1)', [
+      610004,
+    ]);
+  });
+
+  it('serializes concurrent indicator cache schema init within one process', async () => {
+    let lockResolved = false;
+    let createTableCalls = 0;
+    const query = jest.fn().mockImplementation(async (sql: string) => {
+      if (sql === 'SELECT pg_advisory_lock($1)') {
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        lockResolved = true;
+        return { rows: [] };
+      }
+      if (sql.includes('CREATE TABLE IF NOT EXISTS indicator_cache (')) {
+        createTableCalls += 1;
+      }
+      if (sql === 'SELECT pg_advisory_unlock($1)') {
+        expect(lockResolved).toBe(true);
+      }
+      return { rows: [] };
+    });
+
+    jest.doMock('pg', () => ({
+      Pool: jest.fn().mockImplementation(() => ({
+        connect: jest.fn(),
+        query,
+      })),
+    }));
+
+    const { ensureIndicatorCacheTables } = await import(
+      '@tradejs/infra/timescale'
+    );
+
+    await Promise.all([
+      ensureIndicatorCacheTables(),
+      ensureIndicatorCacheTables(),
+    ]);
+
+    expect(createTableCalls).toBe(1);
   });
 
   it('reads indicator cache coverage, range, and latest checkpoint with provider/params/version filters', async () => {
