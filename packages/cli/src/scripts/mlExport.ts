@@ -35,7 +35,7 @@ const listChunkFiles = async (outDir: string, strategyName: string) => {
     .sort();
 };
 
-const main = async () => {
+export const main = async () => {
   const outDir = String(flags.outDir || 'data/ml/export');
 
   await fs.mkdir(outDir, { recursive: true });
@@ -87,8 +87,3 @@ const main = async () => {
   );
   process.exit(0);
 };
-
-main().catch((error) => {
-  console.error(chalk.red((error as Error)?.message || String(error)));
-  process.exit(1);
-});

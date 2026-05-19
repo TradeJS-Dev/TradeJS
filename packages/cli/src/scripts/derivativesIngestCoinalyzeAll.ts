@@ -308,7 +308,7 @@ const fetchMetricBatch = async (params: {
   return toSeriesMap(raw, metric);
 };
 
-const run = async () => {
+export const main = async () => {
   const userName = String(flags.user || 'root').trim() || 'root';
   const intervals = normalizeDerivativesIntervals(
     flags.intervals,
@@ -502,8 +502,3 @@ const run = async () => {
     process.exit(1);
   }
 };
-
-run().catch((error) => {
-  console.error(chalk.red(`derivativesIngestCoinalyzeAll failed: ${error}`));
-  process.exit(1);
-});

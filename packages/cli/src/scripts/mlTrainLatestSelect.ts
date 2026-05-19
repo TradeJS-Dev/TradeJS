@@ -904,7 +904,7 @@ const prepareTrainWindowFiles = async ({
   };
 };
 
-const run = async () => {
+export const main = async () => {
   const selectedFromCli = parseStrategy(flags.strategy);
   const selected = selectedFromCli ?? (await selectStrategy());
   const envModelType = (process.env.ML_MODEL_TYPE ?? 'random_forest')
@@ -1184,8 +1184,3 @@ const run = async () => {
 
   process.exit(process.exitCode ?? 1);
 };
-
-run().catch((err) => {
-  console.error('Failed to train:', err);
-  process.exit(1);
-});

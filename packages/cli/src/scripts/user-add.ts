@@ -9,7 +9,7 @@ args.option(['p', 'password'], 'Password (plain text)', '');
 
 const flags = args.parse(process.argv);
 
-const run = async () => {
+export const main = async () => {
   const userName = String(flags.user || '').trim();
   const password = String(flags.password || '');
 
@@ -38,5 +38,3 @@ const run = async () => {
   console.log(chalk.green(`User ${userName} updated`));
   process.exit(0);
 };
-
-run();

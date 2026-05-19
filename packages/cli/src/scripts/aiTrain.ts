@@ -382,7 +382,7 @@ const resolveDatasetFile = async () => {
   return mergedFiles[mergedFiles.length - 1];
 };
 
-const main = async () => {
+export const main = async () => {
   const recent = normalizeInt(flags.recent, 50);
   const skip = normalizeInt(flags.skip, 0);
   const minQuality = normalizeInt(flags.minQuality, 4);
@@ -734,8 +734,3 @@ const main = async () => {
 
   process.exit(failed === rows.length ? 1 : 0);
 };
-
-main().catch((error) => {
-  console.error(chalk.red((error as Error)?.message || String(error)));
-  process.exit(1);
-});

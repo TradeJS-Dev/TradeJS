@@ -740,13 +740,4 @@ export const signals = async () => {
     );
   }
 };
-
-if (process.env.NODE_ENV !== 'test') {
-  signals()
-    .then(() => {
-      process.exit(0);
-    })
-    .catch(() => {
-      process.exit(1);
-    });
-}
+export const main = signals;

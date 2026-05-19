@@ -144,7 +144,7 @@ args
 
 const flags = args.parse(process.argv);
 
-const run = async () => {
+export const main = async () => {
   const checks: CheckResult[] = [];
   checks.push(await checkRedis());
   checks.push(await checkPostgres());
@@ -194,8 +194,3 @@ const run = async () => {
   console.log('');
   console.log(chalk.green('Doctor passed.'));
 };
-
-run().catch((error) => {
-  console.error(chalk.red(`doctor failed: ${String(error)}`));
-  process.exit(1);
-});

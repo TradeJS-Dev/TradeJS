@@ -31,7 +31,7 @@ const migrateFile = async (file: string) => {
   }
 };
 
-const migration = async () => {
+export const main = async () => {
   const files = await getFiles(DIR, projectRoot);
 
   const bar = new ProgressBar(
@@ -56,5 +56,3 @@ const migration = async () => {
 
   process.exit();
 };
-
-migration();

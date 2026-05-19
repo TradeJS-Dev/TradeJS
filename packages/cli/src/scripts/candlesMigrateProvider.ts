@@ -89,32 +89,25 @@ const printProgress = (message: string) => {
   console.log(chalk.gray(`[${timestamp}] ${message}`));
 };
 
-const run = async () => {
-  printProgress(
-    `Start candles provider migration for ${String(flags.schema || 'public')}.${String(
-      flags.table || 'candles',
-    )}${flags['dry-run'] ? ' (dry-run)' : ''}`,
-  );
-
-  const summary = await runCandlesProviderMigration(pool, {
-    schema: String(flags.schema || 'public'),
-    table: String(flags.table || 'candles'),
-    dryRun: Boolean(flags['dry-run']),
-    recompress: !Boolean(flags['skip-recompress']),
-    keepPolicyPaused: Boolean(flags['keep-policy-paused']),
-    onProgress: printProgress,
-  });
-
-  printSummary(summary);
-};
-
-run()
-  .catch((error) => {
-    console.error(
-      chalk.red(`candles:migrate-provider failed: ${String(error)}`),
+export const main = async () => {
+  try {
+    printProgress(
+      `Start candles provider migration for ${String(flags.schema || 'public')}.${String(
+        flags.table || 'candles',
+      )}${flags['dry-run'] ? ' (dry-run)' : ''}`,
     );
-    process.exitCode = 1;
-  })
-  .finally(async () => {
+
+    const summary = await runCandlesProviderMigration(pool, {
+      schema: String(flags.schema || 'public'),
+      table: String(flags.table || 'candles'),
+      dryRun: Boolean(flags['dry-run']),
+      recompress: !Boolean(flags['skip-recompress']),
+      keepPolicyPaused: Boolean(flags['keep-policy-paused']),
+      onProgress: printProgress,
+    });
+
+    printSummary(summary);
+  } finally {
     await pool.end().catch(() => undefined);
-  });
+  }
+};

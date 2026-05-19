@@ -13,10 +13,8 @@ const getDir = () => {
   return 'data/cache';
 };
 
-const run = async () => {
+export const main = async () => {
   await cleanFiles(getDir());
 
   process.exit();
 };
-
-run();

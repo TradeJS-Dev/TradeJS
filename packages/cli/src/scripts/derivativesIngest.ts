@@ -40,7 +40,7 @@ const asInt = (value: unknown, fallback: number) => {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 };
 
-const run = async () => {
+export const main = async () => {
   const providerName = String(flags.provider || 'coinalyze')
     .trim()
     .toLowerCase() as MarketDataProviderName;
@@ -113,8 +113,3 @@ const run = async () => {
     ),
   );
 };
-
-run().catch((error) => {
-  console.error(chalk.red(`derivativesIngest failed: ${error}`));
-  process.exit(1);
-});

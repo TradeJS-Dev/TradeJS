@@ -1144,10 +1144,3 @@ export const main = async () => {
     await releaseResearchAutoLock(lockPath);
   }
 };
-
-if (require.main === module) {
-  main().catch((error) => {
-    console.error(chalk.red((error as Error)?.message || String(error)));
-    process.exit(1);
-  });
-}

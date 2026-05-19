@@ -14,7 +14,6 @@ import {
   executeTestSuite,
   flags,
   interval,
-  loadReplayStrategies,
   loadRuntimeStrategyBacktestConfigs,
   mergePersistedTestSummaries,
   persistTestSummariesIndex,
@@ -292,11 +291,12 @@ export const backtest = async () => {
   });
 };
 
+export const main = backtest;
+
 export {
   BACKTEST_PRELOAD_DAYS,
   chunkTestSuiteBySymbol,
   interval,
-  loadReplayStrategies,
   loadRuntimeStrategyBacktestConfigs,
   mergePersistedTestSummaries,
   normalizedArgv,
@@ -314,7 +314,3 @@ export {
 };
 
 export type { RuntimeStrategyBacktestConfig };
-
-if (require.main === module) {
-  void backtest();
-}

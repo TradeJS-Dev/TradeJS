@@ -613,13 +613,4 @@ export const signalsSummary = async () => {
   await sendTelegramReport(signalsMessage, { userName: flags.user });
   await sendTelegramReport(tradesMessage, { userName: flags.user });
 };
-
-if (process.env.NODE_ENV !== 'test') {
-  signalsSummary()
-    .then(() => {
-      process.exit(0);
-    })
-    .catch(() => {
-      process.exit(1);
-    });
-}
+export const main = signalsSummary;

@@ -45,4 +45,33 @@ describe('cli loader', () => {
 
     expect(commandMain).toHaveBeenCalledTimes(1);
   });
+
+  it('requires every CLI command module to export main without self-run side effects', () => {
+    const fs = require('fs') as typeof import('fs');
+    const path = require('path') as typeof import('path');
+    const cliSource = fs.readFileSync(
+      path.resolve(__dirname, '../cli.ts'),
+      'utf8',
+    );
+    const loaderMatches = [
+      ...cliSource.matchAll(
+        /(?:['"]([^'"]+)['"]|([A-Za-z0-9_-]+)):\s*\(\)\s*=>\s*import\('\.\/scripts\/([^']+)'\)/g,
+      ),
+    ];
+
+    const commandFiles = loaderMatches.map((match) =>
+      path.resolve(__dirname, `../scripts/${match[3]}.ts`),
+    );
+
+    for (const commandFile of commandFiles) {
+      const source = fs.readFileSync(commandFile, 'utf8');
+      expect(source).toMatch(
+        /export const main|export async function main|export \{\s*main\s*\}/,
+      );
+      expect(source).not.toMatch(/require\.main === module/);
+      expect(source).not.toMatch(/main\(\)\.catch/);
+      expect(source).not.toMatch(/void main\(/);
+      expect(source).not.toMatch(/main\(\);/);
+    }
+  });
 });

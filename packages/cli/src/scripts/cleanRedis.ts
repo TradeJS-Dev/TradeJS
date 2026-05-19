@@ -13,10 +13,8 @@ const getArea = () => {
   return 'cache';
 };
 
-const run = async () => {
+export const main = async () => {
   await cleanRedis(getArea());
 
   process.exit();
 };
-
-run();

@@ -1,6 +1,8 @@
 import chalk from 'chalk';
+import ProgressBar from 'progress';
 import { alignSortedCandlesByTimestamp } from '@tradejs/core/indicators';
 import { calculateStatsFull } from '@tradejs/core/backtest';
+import { formatUnix } from '@tradejs/core/time';
 import { logger } from '@tradejs/infra/logger';
 import {
   getConnectorCreatorByName,
@@ -30,11 +32,8 @@ import {
   StrategyCreator,
   TestStat,
 } from '@tradejs/types';
-import {
-  PreparedRunEnvironment,
-  projectRoot,
-  userName,
-} from '../backtest/runnerCore';
+import { PreparedRunEnvironment } from '../runEnvironment';
+import { replayProjectRoot, replayUserName } from './cliConfig';
 import { buildReplayStrategyConfig } from './support';
 import {
   PortfolioReplayConnector,
@@ -159,7 +158,7 @@ const loadRuntimeStrategies = async (
     runtimeStrategies.map(async ({ strategyName, strategyConfig }) => {
       const strategyCreator = await getStrategyCreator(
         strategyName,
-        projectRoot,
+        replayProjectRoot,
       );
       if (!strategyCreator) {
         throw new Error(`Unknown strategy: ${strategyName}`);
@@ -179,13 +178,15 @@ const loadRuntimeStrategies = async (
 const loadReferenceConnector = async (connectorName: string) => {
   const connectorFactory = await getConnectorCreatorByName(
     connectorName,
-    projectRoot,
+    replayProjectRoot,
   );
   if (!connectorFactory) {
     throw new Error(`Connector "${connectorName}" is not registered`);
   }
 
-  return await (connectorFactory as ConnectorCreator)({ userName });
+  return await (connectorFactory as ConnectorCreator)({
+    userName: replayUserName,
+  });
 };
 
 const buildPreparedData = ({
@@ -252,7 +253,7 @@ const buildAfterSignalsContext = ({
 }) => ({
   connector,
   connectorName,
-  userName,
+  userName: replayUserName,
   interval,
   tickers: [...tickers],
   runtimeStrategies: runtimeStrategies.map(
@@ -277,7 +278,7 @@ export const runHistoricalSignalsReplay = async ({
 }): Promise<HistoricalSignalsReplayResult> => {
   const startedAt = Date.now();
   const signals: Signal[] = [];
-  const projectConfig = await loadTradejsConfig(projectRoot);
+  const projectConfig = await loadTradejsConfig(replayProjectRoot);
   const projectHooks = projectConfig.hooks;
   const loadedStrategies = await loadRuntimeStrategies(runtimeStrategies);
   const replayConnector = createPortfolioReplayConnector(
@@ -312,31 +313,37 @@ export const runHistoricalSignalsReplay = async ({
       interval: interval as any,
     }),
   ]);
+  const btcMarketData = await preparedRun.marketConnector.kline({
+    symbol: 'BTCUSDT',
+    start: preparedRun.preloadStart,
+    end: preparedRun.window.end,
+    cacheOnly: true,
+    interval: interval as any,
+  });
 
-  const symbolRuntimes: SymbolReplayRuntime[] = [];
   const cycleSymbolsByTimestamp = new Map<number, SymbolReplayRuntime[]>();
+  let preparedSymbols = 0;
+  let skippedSymbols = 0;
+  const prepareBar = new ProgressBar(
+    'prepare :current/:total [:bar][:percent] skipped=:skipped :etas(s) :symbol',
+    {
+      total: preparedRun.tickers.length,
+      width: 30,
+    },
+  );
 
   for (const symbol of preparedRun.tickers) {
-    const [data, btcData] = await Promise.all([
-      preparedRun.marketConnector.kline({
-        symbol,
-        start: preparedRun.preloadStart,
-        end: preparedRun.window.end,
-        cacheOnly: true,
-        interval: interval as any,
-      }),
-      preparedRun.marketConnector.kline({
-        symbol: 'BTCUSDT',
-        start: preparedRun.preloadStart,
-        end: preparedRun.window.end,
-        cacheOnly: true,
-        interval: interval as any,
-      }),
-    ]);
+    const data = await preparedRun.marketConnector.kline({
+      symbol,
+      start: preparedRun.preloadStart,
+      end: preparedRun.window.end,
+      cacheOnly: true,
+      interval: interval as any,
+    });
 
     const preparedData = buildPreparedData({
       data,
-      btcData,
+      btcData: btcMarketData,
       btcBinanceData,
       btcCoinbaseData,
       start: preparedRun.window.start,
@@ -344,6 +351,11 @@ export const runHistoricalSignalsReplay = async ({
     });
 
     if (!preparedData.replayData.length || !preparedData.btcReplayData.length) {
+      skippedSymbols += 1;
+      prepareBar.tick(1, {
+        skipped: chalk.yellow(skippedSymbols),
+        symbol: chalk.gray(symbol),
+      });
       continue;
     }
 
@@ -353,7 +365,7 @@ export const runHistoricalSignalsReplay = async ({
           strategyName,
           strategyConfig,
           run: await strategyCreator({
-            userName,
+            userName: replayUserName,
             config: buildReplayStrategyConfig({
               strategyConfig,
               interval: interval as any,
@@ -376,7 +388,11 @@ export const runHistoricalSignalsReplay = async ({
       currentIndex: 0,
       strategies: strategiesForSymbol,
     };
-    symbolRuntimes.push(symbolRuntime);
+    preparedSymbols += 1;
+    prepareBar.tick(1, {
+      skipped: chalk.yellow(skippedSymbols),
+      symbol: chalk.gray(symbol),
+    });
 
     for (const candle of preparedData.replayData) {
       const bucket = cycleSymbolsByTimestamp.get(candle.timestamp) ?? [];
@@ -397,8 +413,15 @@ export const runHistoricalSignalsReplay = async ({
   });
 
   let abortedCycles = 0;
+  const cycleBar = new ProgressBar(
+    'cycles  :current/:total [:bar][:percent] sig=:signals abort=:aborted :etas(s) :ts',
+    {
+      total: orderedTimestamps.length,
+      width: 30,
+    },
+  );
 
-  for (const timestamp of orderedTimestamps) {
+  for (const [cycleIndex, timestamp] of orderedTimestamps.entries()) {
     const cycleStartedAt = Date.now();
     const cycleSymbols = cycleSymbolsByTimestamp.get(timestamp) ?? [];
 
@@ -432,6 +455,11 @@ export const runHistoricalSignalsReplay = async ({
           symbolRuntime.currentIndex += 1;
         }
       }
+      cycleBar.tick(1, {
+        signals: chalk.cyan(signals.length),
+        aborted: chalk.yellow(abortedCycles),
+        ts: chalk.gray(formatUnix(timestamp)),
+      });
       continue;
     }
 
@@ -465,6 +493,11 @@ export const runHistoricalSignalsReplay = async ({
       signals: cycleSignals,
       status: 'completed',
       durationMs: Date.now() - cycleStartedAt,
+    });
+    cycleBar.tick(1, {
+      signals: chalk.cyan(signals.length),
+      aborted: chalk.yellow(abortedCycles),
+      ts: chalk.gray(formatUnix(timestamp)),
     });
   }
 

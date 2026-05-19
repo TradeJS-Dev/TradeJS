@@ -75,7 +75,7 @@ const findGapInData = (data: KlineChartData, expectedMs: number) => {
   return null;
 };
 
-const continuity = async () => {
+export const main = async () => {
   if (!Number.isFinite(interval) || interval <= 0) {
     logger.error('Invalid timeframe: %s', flags.timeframe);
     process.exit(1);
@@ -199,5 +199,3 @@ const continuity = async () => {
 
   process.exit();
 };
-
-continuity();

@@ -1,32 +1,12 @@
-const ListIt = require('list-it');
 import fs from 'fs';
 import path from 'path';
 import chalk from 'chalk';
-import { format } from 'date-fns';
-import { ConnectorNames } from '@tradejs/connectors';
-import {
-  DEFAULT_CONNECTOR_NAME,
-  getConnectorCreatorByName,
-  resolveConnectorName,
-} from '@tradejs/node/connectors';
-import { getTickers, update } from '@tradejs/node/cli';
 import { parseTestName } from '@tradejs/core/backtest';
 import { runWithConcurrency } from '@tradejs/core/async';
-import {
-  BACKTEST_DEFAULT_DAYS,
-  BACKTEST_PRELOAD_DAYS,
-  TTL_1M,
-} from '@tradejs/core/constants';
-import {
-  formatUnix,
-  getBacktestPreloadStart,
-  getTimestamp,
-} from '@tradejs/core/time';
+import { BACKTEST_PRELOAD_DAYS, TTL_1M } from '@tradejs/core/constants';
+import { formatUnix, getBacktestPreloadStart } from '@tradejs/core/time';
 import { getData, setData, redisKeys } from '@tradejs/infra/redis';
 import {
-  Connector,
-  ConnectorCreator,
-  Interval,
   Item,
   OrderLog,
   PositionLogData,
@@ -41,8 +21,18 @@ import {
   backfillDerivativesContextForBacktest,
   shouldBackfillDerivativesContextForBacktest,
 } from '../derivativesContextBackfill';
-import { loadRuntimeStrategyConfigs } from '../runtimeRedis';
-import { resolveTimeWindow } from '../timeWindow';
+import { createTable, createTimestamp } from '../runFormatting';
+import {
+  loadReplayStrategies as loadReplayStrategiesShared,
+  prepareRunEnvironment as prepareRunEnvironmentShared,
+  type PreparedRunEnvironment,
+  type ResolvedWindow,
+} from '../runEnvironment';
+import {
+  loadRuntimeStrategyBacktestConfigs,
+  toStrategyConfigGrid,
+  type RuntimeStrategyBacktestConfig,
+} from '../runtimeStrategyBacktest';
 import {
   effectiveParallel,
   flags,
@@ -77,37 +67,6 @@ import {
   type ErrorMessage,
 } from './runState';
 import { executeBacktestWorkerPool } from './workerPool';
-
-export type ResolvedWindow = {
-  start: number;
-  end: number;
-  source: string;
-};
-
-export type PreparedRunEnvironment = {
-  connectorName: string;
-  marketConnector: Connector;
-  tickers: string[];
-  window: ResolvedWindow;
-  preloadStart: number;
-};
-
-export type RuntimeStrategyBacktestConfig = {
-  strategyName: string;
-  strategyConfig: StrategyConfig;
-  backtestConfig: StrategyConfigGrid;
-};
-
-const createListIt = () =>
-  new ListIt({
-    autoAlign: true,
-    headerUnderline: true,
-  });
-
-export const createTable = (headers: string[], rows: string[][]) =>
-  createListIt().setHeaderRow(headers).d(rows).toString();
-
-export const createTimestamp = (date: Date) => format(date, 'yyyyMMddHHmm');
 
 const formatDuration = (startedAt: number) => {
   const seconds = (Date.now() - startedAt) / 1000;
@@ -253,29 +212,6 @@ export const chunkTestSuiteBySymbol = (
   return chunks.filter((chunk) => chunk.length > 0);
 };
 
-export const toStrategyConfigGrid = (
-  strategyConfig: StrategyConfig,
-): StrategyConfigGrid =>
-  Object.fromEntries(
-    Object.entries(strategyConfig).map(([key, value]) => [key, [value]]),
-  );
-
-export const loadRuntimeStrategyBacktestConfigs = async (
-  userName: string,
-): Promise<RuntimeStrategyBacktestConfig[]> => {
-  const configs = await loadRuntimeStrategyConfigs(userName, {
-    onInvalidConfig: (key) => {
-      console.log(chalk.yellow(`Skip invalid runtime strategy config: ${key}`));
-    },
-  });
-
-  return configs.map(({ strategyName, strategyConfig }) => ({
-    strategyName,
-    strategyConfig,
-    backtestConfig: toStrategyConfigGrid(strategyConfig),
-  }));
-};
-
 export const mergePersistedTestSummaries = (
   existing: Item[] | null | undefined,
   persisted: Map<string, Item>,
@@ -298,22 +234,6 @@ export const mergePersistedTestSummaries = (
   }
 
   return [...mergedByKey.values()];
-};
-
-const resolveBacktestConnectorName = async (
-  value: unknown,
-): Promise<string> => {
-  const connectorName = await resolveConnectorName(value, projectRoot);
-  if (connectorName) {
-    return connectorName;
-  }
-
-  console.log(
-    chalk.yellow(
-      `Unknown connector "${String(value || '').trim() || String(value)}". Fallback to ${DEFAULT_CONNECTOR_NAME}.`,
-    ),
-  );
-  return DEFAULT_CONNECTOR_NAME;
 };
 
 const getLogsById = async (orderLogId: string) => {
@@ -384,122 +304,38 @@ export const persistTestSummariesIndex = async () => {
 
 export const loadReplayStrategies = async (): Promise<
   RuntimeStrategyBacktestConfig[]
-> => {
-  const runtimeStrategies = await loadRuntimeStrategyBacktestConfigs(userName);
-  if (!runtimeStrategies.length) {
-    console.log(
-      chalk.yellow(
-        `No active runtime strategy configs found by users:${userName}:strategies:*:config`,
-      ),
-    );
-    return [];
-  }
-
-  return runtimeStrategies;
-};
+> => loadReplayStrategiesShared(userName);
 
 export const prepareRunEnvironment =
   async (): Promise<PreparedRunEnvironment | null> => {
-    const connectorName = await resolveBacktestConnectorName(flags.connector);
-    const connectorFactory = await getConnectorCreatorByName(
-      connectorName,
-      projectRoot,
-    );
-    if (!connectorFactory) {
-      throw new Error(`Connector "${connectorName}" is not registered`);
-    }
-    const marketConnector = await (connectorFactory as ConnectorCreator)({
-      userName: flags.user,
-    });
-    const tickers = await timeOperation('tickers load', () =>
-      getTickers(
-        marketConnector,
-        flags.tickers,
-        flags.exclude,
-        flags.tickersLimit,
-      ),
-    );
-
-    if (flags.showTickersList) {
-      console.log(chalk.gray(JSON.stringify(tickers.sort(), null, 2)));
-      return null;
-    }
-
-    const window = resolveTimeWindow({
+    const preparedRun = await prepareRunEnvironmentShared({
+      connector: flags.connector,
+      userName,
+      tickers: flags.tickers,
+      exclude: flags.exclude,
+      tickersLimit: flags.tickersLimit,
+      showTickersList: flags.showTickersList,
       days: flags.days,
       startTime: flags.startTime,
       endTime: flags.endTime,
-      defaultStartMs: getTimestamp(BACKTEST_DEFAULT_DAYS),
-      defaultEndMs: getTimestamp(),
+      cacheOnly: flags.cacheOnly,
+      interval,
+      projectRoot,
     });
-    const preloadStart = getBacktestPreloadStart(
-      window.start,
-      BACKTEST_PRELOAD_DAYS,
-    );
-
-    if (!flags.cacheOnly) {
-      await timeOperation(`update ${connectorName}`, () =>
-        update(marketConnector, interval, tickers, undefined, {
-          connectorLabel: connectorName,
-          preloadStart,
-          preloadEnd: window.end,
-        }),
-      );
-
-      const binanceConnectorCreator = await getConnectorCreatorByName(
-        ConnectorNames.Binance,
-        projectRoot,
-      );
-      const coinbaseConnectorCreator = await getConnectorCreatorByName(
-        ConnectorNames.Coinbase,
-        projectRoot,
-      );
-      if (!binanceConnectorCreator || !coinbaseConnectorCreator) {
-        throw new Error('Binance/Coinbase connectors are required');
-      }
-
-      const binanceConnector = await (
-        binanceConnectorCreator as ConnectorCreator
-      )({
-        userName: flags.user,
-      });
-      const coinbaseConnector = await (
-        coinbaseConnectorCreator as ConnectorCreator
-      )({
-        userName: flags.user,
-      });
-      await timeOperation(`update ${ConnectorNames.Binance}`, () =>
-        update(binanceConnector, interval, ['BTCUSDT'], undefined, {
-          connectorLabel: ConnectorNames.Binance,
-          preloadStart,
-          preloadEnd: window.end,
-        }),
-      );
-      await timeOperation(`update ${ConnectorNames.Coinbase}`, () =>
-        update(coinbaseConnector, interval, ['BTCUSDT'], undefined, {
-          connectorLabel: ConnectorNames.Coinbase,
-          preloadStart,
-          preloadEnd: window.end,
-        }),
-      );
+    if (!preparedRun) {
+      return null;
     }
 
     setRuntimeCompareContext({
-      connector: marketConnector,
-      connectorName,
+      connector: preparedRun.marketConnector,
+      connectorName: preparedRun.connectorName,
       window: {
-        start: window.start,
-        end: window.end,
+        start: preparedRun.window.start,
+        end: preparedRun.window.end,
       },
     });
 
-    return {
-      connectorName,
-      marketConnector,
-      tickers,
-      window,
-      preloadStart,
-    };
+    return preparedRun;
   };
 
 export const buildPreparedTestSuite = async ({
@@ -711,11 +547,17 @@ export const printRunOutro = () => {
 };
 
 export {
+  createTable,
+  createTimestamp,
   effectiveParallel,
   flags,
   interval,
   isUpdateOnlyRun,
+  loadRuntimeStrategyBacktestConfigs,
   projectRoot,
   resultArtifactsIoConcurrency,
+  toStrategyConfigGrid,
   userName,
 };
+
+export type { RuntimeStrategyBacktestConfig };

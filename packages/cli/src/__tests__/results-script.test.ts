@@ -101,6 +101,7 @@ const loadScript = async (scenario: Scenario) => {
 
   return {
     results: module.results,
+    main: module.main,
     mocks: { getData, getKeys, setData, delKey, byBit, getTickers, redisKeys },
   };
 };
@@ -838,7 +839,25 @@ describe('results script', () => {
     );
   });
 
-  it('auto-runs script when NODE_ENV is not test', async () => {
+  it('does not auto-run on import and exposes main', async () => {
+    const { results, main } = await loadScript({
+      flags: {
+        strategy: 'TrendLine',
+        user: 'root',
+        coverage: false,
+        update: false,
+        merge: false,
+        clear: false,
+        verbose: false,
+      },
+      configKeys: [],
+      testConfigs: {},
+      testStats: {},
+    });
+    expect(main).toBe(results);
+  });
+
+  it('does not auto-run script when NODE_ENV is not test', async () => {
     await loadScript({
       flags: {
         strategy: 'TrendLine',
@@ -857,6 +876,6 @@ describe('results script', () => {
 
     await new Promise((resolve) => setTimeout(resolve, 0));
 
-    expect(exitSpy).toHaveBeenCalled();
+    expect(exitSpy).not.toHaveBeenCalled();
   });
 });

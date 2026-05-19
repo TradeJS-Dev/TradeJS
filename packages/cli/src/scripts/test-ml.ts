@@ -68,7 +68,7 @@ const buildTrendline = (entryTs: number, price: number): TrendLine => ({
   ],
 });
 
-const main = async () => {
+export const main = async () => {
   const startTs = now - CANDLES * INTERVAL_MIN * 60_000;
   const candles = makeCandles(120, startTs);
   const btcCandles = makeCandles(42000, startTs);
@@ -155,9 +155,3 @@ const main = async () => {
 
   console.log('ML result:', mlResult);
 };
-
-main().catch((err) => {
-  // eslint-disable-next-line no-console
-  console.error('test-ml failed:', err);
-  process.exit(1);
-});

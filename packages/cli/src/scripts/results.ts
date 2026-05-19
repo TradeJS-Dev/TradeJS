@@ -416,7 +416,4 @@ export const results = async () => {
 
   process.exit();
 };
-
-if (process.env.NODE_ENV !== 'test') {
-  void results();
-}
+export const main = results;

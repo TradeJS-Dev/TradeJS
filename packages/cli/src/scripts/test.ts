@@ -57,7 +57,7 @@ const closeOrder = async (connector: Connector) => {
   console.log('res', res);
 };
 
-const main = async () => {
+export const main = async () => {
   const byBitConnector = await connectors.ByBit({
     userName: 'root',
   });
@@ -66,5 +66,3 @@ const main = async () => {
   // await closeOrder(byBitConnector);
   await getPositions(byBitConnector);
 };
-
-main();

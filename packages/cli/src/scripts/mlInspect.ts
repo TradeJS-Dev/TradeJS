@@ -599,7 +599,7 @@ const runYDataInspect = async (params: {
   console.log(chalk.green(`Profile report saved: ${reportPath}`));
 };
 
-const main = async () => {
+export const main = async () => {
   const dir = String(flags.dir || 'data/ml/export');
   const rowsToInspect = asPositiveInt(flags.rows, 10000);
   const mode = toMode(flags.mode);
@@ -641,8 +641,3 @@ const main = async () => {
     minFieldValues,
   });
 };
-
-main().catch((err) => {
-  console.error('ml-inspect failed:', err);
-  process.exit(1);
-});

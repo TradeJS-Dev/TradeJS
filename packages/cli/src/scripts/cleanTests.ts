@@ -53,7 +53,7 @@ const cleanUserTests = async (userName: string) => {
   await cleanRedis(testsCachePrefix);
 };
 
-const run = async () => {
+export const main = async () => {
   const users = await getUsersToClean();
 
   if (users.length === 0) {
@@ -67,5 +67,3 @@ const run = async () => {
 
   process.exit();
 };
-
-run();

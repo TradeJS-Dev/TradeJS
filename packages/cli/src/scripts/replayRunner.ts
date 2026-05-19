@@ -15,22 +15,26 @@ import {
 } from '../lib/paritySummary';
 import { loadRuntimeTrades } from '../lib/runtimeRedis';
 import { loadClosedPnlRows, syncRuntimeTrades } from '../lib/runtimeTradeSync';
+import { createTable, createTimestamp } from '../lib/runFormatting';
 import {
-  createTable,
-  createTimestamp,
-  isUpdateOnlyRun,
-  interval,
   loadReplayStrategies,
   prepareRunEnvironment,
-  userName,
-} from '../lib/backtest/runnerCore';
+} from '../lib/runEnvironment';
 import {
+  setRuntimeCompareContext,
   getRunStartedAt,
   getRuntimeCompareContext,
   resetRunState,
   incrementSuccessTests,
   markTestsStarted,
 } from '../lib/backtest/runState';
+import {
+  isReplayUpdateOnlyRun,
+  replayFlags,
+  replayInterval,
+  replayProjectRoot,
+  replayUserName,
+} from '../lib/replay/cliConfig';
 import {
   REPLAY_RESULTS_BY_STRATEGY_HEADERS,
   REPLAY_RESULTS_CONFIG,
@@ -564,9 +568,9 @@ const saveAndPrintReplayRuntimeComparison = async ({
   const relevantStrategies = new Set(
     liveStrategySummaries.map((summary) => summary.strategyName),
   );
-  const rawRuntimeTrades = await loadRuntimeTrades(userName);
+  const rawRuntimeTrades = await loadRuntimeTrades(replayUserName);
   const syncedRuntimeTrades = await syncRuntimeTrades({
-    userName,
+    userName: replayUserName,
     connector,
     trades: rawRuntimeTrades,
     startTime: window.start,
@@ -736,11 +740,11 @@ const finishReplay = async ({
   const timestamp = createTimestamp(finishedAt);
 
   await setData(
-    redisKeys.backtestResults(userName, REPLAY_RESULTS_CONFIG, timestamp),
+    redisKeys.backtestResults(replayUserName, REPLAY_RESULTS_CONFIG, timestamp),
     {
       config: REPLAY_RESULTS_CONFIG,
       mode: 'replay',
-      user: userName,
+      user: replayUserName,
       startedAt: new Date(getRunStartedAt()).toISOString(),
       finishedAt: finishedAt.toISOString(),
       durationSeconds,
@@ -767,13 +771,34 @@ const finishReplay = async ({
 
 export const replayBacktest = async () => {
   resetRunState();
-  const replayStrategies = await loadReplayStrategies();
-  if (!replayStrategies.length) {
+  const preparedRun = await prepareRunEnvironment({
+    connector: replayFlags.connector,
+    userName: replayUserName,
+    tickers: replayFlags.tickers,
+    exclude: replayFlags.exclude,
+    tickersLimit: replayFlags.tickersLimit,
+    showTickersList: replayFlags.showTickersList,
+    days: replayFlags.days,
+    startTime: replayFlags.startTime,
+    endTime: replayFlags.endTime,
+    cacheOnly: replayFlags.cacheOnly,
+    interval: replayInterval,
+    projectRoot: replayProjectRoot,
+  });
+  if (!preparedRun || isReplayUpdateOnlyRun) {
     return;
   }
+  setRuntimeCompareContext({
+    connector: preparedRun.marketConnector,
+    connectorName: preparedRun.connectorName,
+    window: {
+      start: preparedRun.window.start,
+      end: preparedRun.window.end,
+    },
+  });
 
-  const preparedRun = await prepareRunEnvironment();
-  if (!preparedRun || isUpdateOnlyRun) {
+  const replayStrategies = await loadReplayStrategies(replayUserName);
+  if (!replayStrategies.length) {
     return;
   }
 
@@ -789,7 +814,7 @@ export const replayBacktest = async () => {
 
   const replayResult = await runHistoricalSignalsReplay({
     preparedRun,
-    interval,
+    interval: replayInterval,
     runtimeStrategies: replayStrategies,
   });
 
