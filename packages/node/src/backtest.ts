@@ -3,5 +3,6 @@ export {
   releaseTestingSymbolCache,
   resetTestingKlineCache,
   testing,
+  warmBacktestIndicatorCache,
 } from './testing';
 export { createTestConnector } from './testConnector';

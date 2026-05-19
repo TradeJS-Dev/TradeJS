@@ -64,6 +64,7 @@
     "clean-redis": "yarn run run:dist clean-redis",
     "clean-tests": "yarn run run:dist clean-tests",
     "doctor": "yarn run run:dist doctor",
+    "indicator-cache:migrate": "yarn run run:dist indicator-cache:migrate",
     "ai-export": "yarn run run:dist ai-export",
     "ai-train": "yarn run run:dist ai-train",
     "backtest": "yarn run run:dist backtest",

@@ -46,6 +46,24 @@ describe('cli loader', () => {
     expect(commandMain).toHaveBeenCalledTimes(1);
   });
 
+  it('loads the indicator cache migration command module', async () => {
+    const commandMain = jest.fn().mockResolvedValue(undefined);
+
+    jest.doMock('../scripts/indicatorCacheMigrate', () => ({
+      __esModule: true,
+      main: commandMain,
+    }));
+
+    const cli = require('../cli') as {
+      main: () => Promise<void>;
+    };
+
+    process.argv = ['node', '/tmp/cli.js', 'indicator-cache:migrate'];
+    await cli.main();
+
+    expect(commandMain).toHaveBeenCalledTimes(1);
+  });
+
   it('requires every CLI command module to export main without self-run side effects', () => {
     const fs = require('fs') as typeof import('fs');
     const path = require('path') as typeof import('path');

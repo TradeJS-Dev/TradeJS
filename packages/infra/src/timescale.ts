@@ -321,6 +321,11 @@ const ensureIndicatorCacheCheckpointSchema = async () => {
   indicatorCacheCheckpointSchemaReady = true;
 };
 
+export const ensureIndicatorCacheTables = async () => {
+  await ensureIndicatorCacheSchema();
+  await ensureIndicatorCacheCheckpointSchema();
+};
+
 export async function upsertDerivatives(rows: DerivativesRow[]) {
   if (!rows.length) return;
   await ensureDerivativesSchema();

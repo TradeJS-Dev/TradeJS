@@ -1,5 +1,8 @@
 import chalk from 'chalk';
+import ProgressBar from 'progress';
 import { drawStatInCLI } from '@tradejs/node/cli';
+import { warmBacktestIndicatorCache } from '@tradejs/node/backtest';
+import { runWithConcurrency } from '@tradejs/core/async';
 import { calculateStatsFull } from '@tradejs/core/backtest';
 import { createTestSuite, mergeConfigs } from '@tradejs/core/grid';
 import { toJson } from '@tradejs/core/data';
@@ -7,6 +10,7 @@ import { getData, setData, redisKeys } from '@tradejs/infra/redis';
 import { StrategyConfigGrid, TestStat } from '@tradejs/types';
 import { BACKTEST_PRELOAD_DAYS } from '@tradejs/core/constants';
 import {
+  effectiveParallel,
   buildPreparedTestSuite,
   chunkTestSuiteBySymbol,
   createTimestamp,
@@ -78,6 +82,38 @@ const HEADERS_RESULTS_BY_TICKERS = [
 type LoadedBacktestConfig = {
   strategyName: string;
   strategyConfigGrid: StrategyConfigGrid;
+};
+
+export const warmIndicatorCacheForBacktest = async (
+  testSuite: Parameters<typeof executeTestSuite>[0]['testSuite'],
+) => {
+  if (!testSuite.length) {
+    return;
+  }
+
+  console.log(chalk.gray('indicator cache warmup:'));
+  const bar = new ProgressBar(
+    ':current/:total [:bar][:percent] :eta(s) :symbol :status',
+    {
+      total: testSuite.length,
+      width: 20,
+    },
+  );
+  const concurrency = Math.max(1, Math.min(effectiveParallel, 4));
+
+  await runWithConcurrency(testSuite, concurrency, async (test) => {
+    const result = await warmBacktestIndicatorCache(test);
+    bar.tick(1, {
+      symbol: chalk.yellow(test.symbol),
+      status: result.cached
+        ? chalk.gray('cached')
+        : chalk.cyan(
+            `replayed ${Math.max(0, result.totalCandles - result.replayStartIndex)}`,
+          ),
+    });
+  });
+
+  console.log('');
 };
 
 const isStrategyConfigGrid = (value: unknown): value is StrategyConfigGrid => {
@@ -279,6 +315,7 @@ export const backtest = async () => {
     return;
   }
 
+  await warmIndicatorCacheForBacktest(testSuite);
   await executeTestSuite({
     testSuite,
     window: preparedRun.window,

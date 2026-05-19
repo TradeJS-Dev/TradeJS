@@ -50,6 +50,26 @@ jest.mock('@tradejs/core/grid', () => ({
   mergeConfigs: jest.fn(),
 }));
 
+const mockRunWithConcurrency = jest.fn(
+  async (
+    items: unknown[],
+    _concurrency: number,
+    iteratee: (item: unknown) => Promise<unknown>,
+  ) => {
+    for (const item of items) {
+      await iteratee(item);
+    }
+  },
+);
+
+jest.mock('@tradejs/core/async', () => ({
+  runWithConcurrency: (
+    items: unknown[],
+    concurrency: number,
+    iteratee: (item: unknown) => Promise<unknown>,
+  ) => mockRunWithConcurrency(items, concurrency, iteratee),
+}));
+
 jest.mock('@tradejs/core/data', () => ({
   toJson: jest.fn(),
 }));
@@ -68,6 +88,27 @@ jest.mock('@tradejs/core/time', () => ({
   getBacktestPreloadStart: jest.fn(),
   getTimestamp: jest.fn(),
 }));
+
+const mockWarmBacktestIndicatorCache = jest.fn(async (_test?: unknown) => ({
+  cached: false,
+  replayStartIndex: 10,
+  totalCandles: 20,
+  paramsHash: 'hash-1',
+  version: 'v2',
+}));
+
+jest.mock('@tradejs/node/backtest', () => ({
+  warmBacktestIndicatorCache: (test: unknown) =>
+    mockWarmBacktestIndicatorCache(test),
+}));
+
+const mockProgressBarTick = jest.fn();
+jest.mock('progress', () =>
+  jest.fn().mockImplementation(() => ({
+    tick: (step: number, payload?: unknown) =>
+      mockProgressBarTick(step, payload),
+  })),
+);
 
 import { normalizeStrategyOrderLinkKey } from '@tradejs/core/trade';
 
@@ -95,6 +136,7 @@ jest.mock('../lib/timeWindow', () => ({
 }));
 
 import {
+  warmIndicatorCacheForBacktest,
   chunkTestSuiteBySymbol,
   resolveDefaultParallel,
   resolveDefaultWorkerHeapMb,
@@ -116,6 +158,12 @@ import {
 import { resolveStrategyNameByConfigKey } from '../lib/runtimeRedis';
 
 describe('backtest script helpers', () => {
+  beforeEach(() => {
+    mockRunWithConcurrency.mockClear();
+    mockWarmBacktestIndicatorCache.mockClear();
+    mockProgressBarTick.mockClear();
+  });
+
   it('derives safer resource defaults for smaller machines', () => {
     expect(resolveDefaultWorkerHeapMb(16 * 1024 * 1024 * 1024)).toBe(1536);
     expect(resolveDefaultWorkerHeapMb(32 * 1024 * 1024 * 1024)).toBe(2048);
@@ -483,6 +531,34 @@ describe('backtest script helpers', () => {
         },
       ],
     });
+  });
+
+  it('warms indicator cache with a dedicated progress bar before worker execution', async () => {
+    await warmIndicatorCacheForBacktest([
+      {
+        symbol: 'BTCUSDT',
+        strategyConfig: { MA_FAST: 21 },
+        connectorName: 'ByBit',
+        options: { start: 1_000, end: 2_000 },
+      },
+      {
+        symbol: 'ETHUSDT',
+        strategyConfig: { MA_FAST: 34 },
+        connectorName: 'ByBit',
+        options: { start: 1_000, end: 2_000 },
+      },
+    ] as any);
+
+    expect(mockRunWithConcurrency).toHaveBeenCalledTimes(1);
+    expect(mockWarmBacktestIndicatorCache).toHaveBeenCalledTimes(2);
+    expect(mockProgressBarTick).toHaveBeenCalledTimes(2);
+    expect(mockProgressBarTick).toHaveBeenLastCalledWith(
+      1,
+      expect.objectContaining({
+        symbol: expect.any(String),
+        status: expect.any(String),
+      }),
+    );
   });
 
   it('resolves replay strategy from exchange orderLinkId', () => {

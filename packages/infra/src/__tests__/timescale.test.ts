@@ -238,6 +238,35 @@ describe('timescale candle helpers', () => {
     );
   });
 
+  it('creates both indicator cache tables through the explicit migration helper', async () => {
+    const query = jest.fn().mockResolvedValue({ rows: [] });
+
+    jest.doMock('pg', () => ({
+      Pool: jest.fn().mockImplementation(() => ({
+        connect: jest.fn(),
+        query,
+      })),
+    }));
+
+    const { ensureIndicatorCacheTables } = await import(
+      '@tradejs/infra/timescale'
+    );
+
+    await ensureIndicatorCacheTables();
+
+    expect(query).toHaveBeenCalledWith(
+      'CREATE EXTENSION IF NOT EXISTS timescaledb',
+    );
+    expect(query).toHaveBeenCalledWith(
+      expect.stringContaining('CREATE TABLE IF NOT EXISTS indicator_cache'),
+    );
+    expect(query).toHaveBeenCalledWith(
+      expect.stringContaining(
+        'CREATE TABLE IF NOT EXISTS indicator_cache_checkpoint',
+      ),
+    );
+  });
+
   it('reads indicator cache coverage, range, and latest checkpoint with provider/params/version filters', async () => {
     const query = jest.fn(async (sql: string) => {
       if (sql.includes('COUNT(*)::int AS count')) {
