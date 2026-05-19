@@ -499,6 +499,65 @@ describe('trendShiftAiAdapter', () => {
     });
   });
 
+  it('keeps q4 LONG in watch mode when derivatives are aligned but there is no flush confirmation', () => {
+    const result = trendShiftAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makePayload(
+        {
+          signalDirection: 'LONG',
+          confirmedFlip: true,
+          bullFlip: true,
+          flipDistanceOk: true,
+          closeVsAvgPct: 0.08,
+          avgSlopePct: 0.05,
+          distanceAtrRatio: 0.55,
+          coinBiasAligned: true,
+        },
+        {
+          baseContext: {
+            regime: {
+              volatility: {
+                atrPctZScore: 0.7,
+              },
+            },
+            structure: {
+              localRange: {
+                breakoutState: 'above_high_level',
+              },
+            },
+            participation: {
+              volume: {
+                volumeRel20: 1.35,
+              },
+            },
+            relative: {
+              benchmark: {
+                relativeStrength1h: 0.2,
+              },
+            },
+          },
+          derivativesContext: {
+            summary: {
+              pressure: 'crowded_short',
+              directionAligned: true,
+              riskFlags: [],
+            },
+          },
+        },
+      ),
+      analysis: {
+        direction: 'LONG',
+        quality: 1,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: null,
+      quality: 4,
+      approved: false,
+    });
+  });
+
   it('keeps q4 SHORT in watch mode during overlap even with derivatives support', () => {
     const result = trendShiftAiAdapter.postProcessAnalysis?.({
       signal: {} as any,

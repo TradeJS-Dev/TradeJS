@@ -128,8 +128,7 @@ const getTrendShiftContext = (payload: AiPayload): TrendShiftAiContext => {
     atrPctZScore >= 0 &&
     relativeStrength1h != null &&
     relativeStrength1h > -1 &&
-    (derivativesDirectionAligned === true ||
-      derivativesPressure === 'short_flush');
+    derivativesPressure === 'short_flush';
   const q4ShortBreakoutCandidate =
     raw.signalDirection === 'SHORT' &&
     breakoutState === 'below_low_level' &&
@@ -139,8 +138,7 @@ const getTrendShiftContext = (payload: AiPayload): TrendShiftAiContext => {
     atrPctZScore >= 0 &&
     relativeStrength1h != null &&
     relativeStrength1h < 1 &&
-    (derivativesDirectionAligned === true ||
-      derivativesPressure === 'long_flush');
+    derivativesPressure === 'long_flush';
 
   let deterministicQuality = 3;
   if (hardBlockReasons.length > 0) {
