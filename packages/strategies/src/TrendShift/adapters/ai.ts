@@ -27,7 +27,12 @@ type TrendShiftAiContext = TrendShiftContext & {
   derivativesDirectionAligned: boolean | null;
   derivativesPressure: string | null;
   derivativesFlushSupport: boolean;
-  q4ShortFollowThroughCandidate: boolean;
+  q4LongBreakoutCandidate: boolean;
+  q4ShortBreakoutCandidate: boolean;
+  breakoutState: string | null;
+  volumeRel20: number | null;
+  atrPctZScore: number | null;
+  relativeStrength1h: number | null;
   sessionPrimary: string | null;
   sessionIsOverlap: boolean;
 };
@@ -45,6 +50,11 @@ const getStringArray = (value: unknown): string[] =>
       )
     : [];
 
+const getFiniteNumber = (value: unknown): number | null => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
 const getTrendShiftContext = (payload: AiPayload): TrendShiftAiContext => {
   const additional = asRecord(payload.additionalIndicators);
   const raw =
@@ -54,6 +64,15 @@ const getTrendShiftContext = (payload: AiPayload): TrendShiftAiContext => {
   const derivativesIntervals = asRecord(derivativesContext?.intervals);
   const marketContext = asRecord(additional?.marketContext);
   const tradingSession = asRecord(marketContext?.tradingSession);
+  const baseContext = asRecord(additional?.baseContext);
+  const regime = asRecord(baseContext?.regime);
+  const regimeVolatility = asRecord(regime?.volatility);
+  const structure = asRecord(baseContext?.structure);
+  const localRange = asRecord(structure?.localRange);
+  const participation = asRecord(baseContext?.participation);
+  const participationVolume = asRecord(participation?.volume);
+  const relative = asRecord(baseContext?.relative);
+  const benchmark = asRecord(relative?.benchmark);
   const hardBlockReasons: string[] = [];
   const coinBiasConflict = raw.coinBiasAligned === false;
   const derivativesRiskFlags = getStringArray(derivativesSummary?.riskFlags);
@@ -71,6 +90,13 @@ const getTrendShiftContext = (payload: AiPayload): TrendShiftAiContext => {
       ? tradingSession.primarySession
       : null;
   const sessionIsOverlap = tradingSession?.isOverlap === true;
+  const breakoutState =
+    typeof localRange?.breakoutState === 'string'
+      ? localRange.breakoutState
+      : null;
+  const volumeRel20 = getFiniteNumber(participationVolume?.volumeRel20);
+  const atrPctZScore = getFiniteNumber(regimeVolatility?.atrPctZScore);
+  const relativeStrength1h = getFiniteNumber(benchmark?.relativeStrength1h);
 
   if (!raw.confirmedFlip) {
     hardBlockReasons.push('unconfirmed_flip');
@@ -93,16 +119,28 @@ const getTrendShiftContext = (payload: AiPayload): TrendShiftAiContext => {
     raw.signalDirection === 'SHORT' &&
     distanceAtrRatio > 1.2 &&
     !derivativesFlushSupport;
-  const q4ShortFollowThroughCandidate =
+  const q4LongBreakoutCandidate =
+    raw.signalDirection === 'LONG' &&
+    breakoutState === 'above_high_level' &&
+    volumeRel20 != null &&
+    volumeRel20 >= 1.2 &&
+    atrPctZScore != null &&
+    atrPctZScore >= 0 &&
+    relativeStrength1h != null &&
+    relativeStrength1h > -1 &&
+    (derivativesDirectionAligned === true ||
+      derivativesPressure === 'short_flush');
+  const q4ShortBreakoutCandidate =
     raw.signalDirection === 'SHORT' &&
-    distanceAtrRatio >= 0.7 &&
-    distanceAtrRatio < 0.8 &&
-    slopeAbs >= 0.12 &&
-    closeVsAvgPctAbs >= 0.16 &&
-    derivativesFlushSupport &&
-    derivativesDirectionAligned === true &&
-    !oiNotConfirming &&
-    !sessionIsOverlap;
+    breakoutState === 'below_low_level' &&
+    volumeRel20 != null &&
+    volumeRel20 >= 1.2 &&
+    atrPctZScore != null &&
+    atrPctZScore >= 0 &&
+    relativeStrength1h != null &&
+    relativeStrength1h < 1 &&
+    (derivativesDirectionAligned === true ||
+      derivativesPressure === 'long_flush');
 
   let deterministicQuality = 3;
   if (hardBlockReasons.length > 0) {
@@ -121,8 +159,16 @@ const getTrendShiftContext = (payload: AiPayload): TrendShiftAiContext => {
     deterministicQuality = 4;
   }
 
-  if (deterministicQuality === 4 && q4ShortFollowThroughCandidate) {
+  if (
+    deterministicQuality === 4 &&
+    (q4LongBreakoutCandidate || q4ShortBreakoutCandidate)
+  ) {
     deterministicQuality = 5;
+  }
+
+  if (deterministicQuality >= 5 && volumeRel20 != null && volumeRel20 < 0.8) {
+    deterministicQuality = 4;
+    hardBlockReasons.push('thin_participation');
   }
 
   if (
@@ -139,6 +185,24 @@ const getTrendShiftContext = (payload: AiPayload): TrendShiftAiContext => {
     hardBlockReasons.push('overextended_without_flush');
   }
 
+  if (
+    deterministicQuality >= 5 &&
+    derivativesPressure === 'neutral' &&
+    !derivativesFlushSupport
+  ) {
+    deterministicQuality = 4;
+    hardBlockReasons.push('neutral_derivatives_pressure');
+  }
+
+  if (
+    deterministicQuality >= 5 &&
+    derivativesDirectionAligned == null &&
+    !derivativesFlushSupport
+  ) {
+    deterministicQuality = 4;
+    hardBlockReasons.push('derivatives_alignment_unknown');
+  }
+
   return {
     ...raw,
     deterministicQuality,
@@ -149,7 +213,12 @@ const getTrendShiftContext = (payload: AiPayload): TrendShiftAiContext => {
     derivativesDirectionAligned,
     derivativesPressure,
     derivativesFlushSupport,
-    q4ShortFollowThroughCandidate,
+    q4LongBreakoutCandidate,
+    q4ShortBreakoutCandidate,
+    breakoutState,
+    volumeRel20,
+    atrPctZScore,
+    relativeStrength1h,
     sessionPrimary,
     sessionIsOverlap,
   };
@@ -167,6 +236,12 @@ const reasonText = (reason: string) => {
       return 'open interest does not confirm the flip yet';
     case 'overextended_without_flush':
       return 'the SHORT flip already looks overstretched away from the average without a liquidation flush';
+    case 'thin_participation':
+      return 'participation is too thin versus recent volume for live approval';
+    case 'neutral_derivatives_pressure':
+      return 'derivatives pressure is neutral, so the flip still lacks conviction';
+    case 'derivatives_alignment_unknown':
+      return 'derivatives alignment is still unclear, so keep the flip in watch mode';
     default:
       return reason;
   }
@@ -229,7 +304,12 @@ Additional TrendShift context:
 - derivativesPressure=${context.derivativesPressure ?? 'n/a'}
 - derivativesDirectionAligned=${String(context.derivativesDirectionAligned)}
 - derivativesFlushSupport=${String(context.derivativesFlushSupport)}
-- q4ShortFollowThroughCandidate=${String(context.q4ShortFollowThroughCandidate)}
+- breakoutState=${context.breakoutState ?? 'n/a'}
+- volumeRel20=${String(context.volumeRel20 ?? 'n/a')}
+- atrPctZScore=${String(context.atrPctZScore ?? 'n/a')}
+- relativeStrength1h=${String(context.relativeStrength1h ?? 'n/a')}
+- q4LongBreakoutCandidate=${String(context.q4LongBreakoutCandidate)}
+- q4ShortBreakoutCandidate=${String(context.q4ShortBreakoutCandidate)}
 - derivativesRiskFlags=${JSON.stringify(context.derivativesRiskFlags)}
 - sessionPrimary=${context.sessionPrimary ?? 'n/a'}
 - sessionIsOverlap=${String(context.sessionIsOverlap)}
@@ -242,9 +322,11 @@ Interpretation rules for TrendShift:
 - This is a trend-state flip strategy, not a forecast of future impulse.
 - If approvalAllowedNow=false, do not describe the signal as a fully confirmed live entry.
 - Ordinary q4 strength is watch-only; only q5-strength flips qualify for live approval.
+- Exception: a q4 breakout can be promoted to q5 when market structure, relative strength, volume participation, and derivatives context confirm the follow-through.
 - If derivatives risk flags include 'oi_not_confirming' and there is no supporting liquidation flush, keep the setup in watch mode even when price geometry looks q5-strong.
 - For SHORT, if the move is already very far from the adaptive average without a long-liquidation flush, treat it as overextended and keep it in watch mode.
-- Rare exception: a q4 SHORT may still qualify for live approval when derivatives explicitly confirm bearish follow-through: strong flush support, derivatives alignment, no oi_not_confirming, no overlap session, and distance still below the normal q5 threshold.
+- Thin participation (volumeRel20 < 0.8) is a live hard downgrade even for otherwise q5-looking flips.
+- If derivatives pressure is neutral or derivatives alignment is still unknown, keep the flip in watch mode unless there is explicit liquidation-flush support.
 - If hardBlockReasons is not empty, explain exactly what is still missing for confirmation.
 `.trim();
   },

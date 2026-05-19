@@ -32,16 +32,34 @@ describe('trendShiftAiAdapter', () => {
   it('approves strong confirmed flips', () => {
     const result = trendShiftAiAdapter.postProcessAnalysis?.({
       signal: {} as any,
-      payload: makePayload({
-        signalDirection: 'LONG',
-        confirmedFlip: true,
-        bullFlip: true,
-        flipDistanceOk: true,
-        closeVsAvgPct: 0.3,
-        avgSlopePct: 0.11,
-        distanceAtrRatio: 0.95,
-        coinBiasAligned: true,
-      }),
+      payload: makePayload(
+        {
+          signalDirection: 'LONG',
+          confirmedFlip: true,
+          bullFlip: true,
+          flipDistanceOk: true,
+          closeVsAvgPct: 0.3,
+          avgSlopePct: 0.11,
+          distanceAtrRatio: 0.95,
+          coinBiasAligned: true,
+        },
+        {
+          baseContext: {
+            participation: {
+              volume: {
+                volumeRel20: 1.4,
+              },
+            },
+          },
+          derivativesContext: {
+            summary: {
+              pressure: 'short_flush',
+              directionAligned: true,
+              riskFlags: ['short_liquidation_spike'],
+            },
+          },
+        },
+      ),
       analysis: {
         direction: 'LONG',
         quality: 1,
@@ -84,16 +102,34 @@ describe('trendShiftAiAdapter', () => {
   it('approves q5-strength flips even with coin bias conflict', () => {
     const result = trendShiftAiAdapter.postProcessAnalysis?.({
       signal: {} as any,
-      payload: makePayload({
-        signalDirection: 'LONG',
-        confirmedFlip: true,
-        bullFlip: true,
-        flipDistanceOk: true,
-        closeVsAvgPct: 2.6,
-        avgSlopePct: 2.8,
-        distanceAtrRatio: 0.85,
-        coinBiasAligned: false,
-      }),
+      payload: makePayload(
+        {
+          signalDirection: 'LONG',
+          confirmedFlip: true,
+          bullFlip: true,
+          flipDistanceOk: true,
+          closeVsAvgPct: 2.6,
+          avgSlopePct: 2.8,
+          distanceAtrRatio: 0.85,
+          coinBiasAligned: false,
+        },
+        {
+          baseContext: {
+            participation: {
+              volume: {
+                volumeRel20: 1.5,
+              },
+            },
+          },
+          derivativesContext: {
+            summary: {
+              pressure: 'short_flush',
+              directionAligned: true,
+              riskFlags: ['short_liquidation_spike'],
+            },
+          },
+        },
+      ),
       analysis: {
         direction: 'LONG',
         quality: 1,
@@ -262,6 +298,28 @@ describe('trendShiftAiAdapter', () => {
           coinBiasAligned: true,
         },
         {
+          baseContext: {
+            regime: {
+              volatility: {
+                atrPctZScore: 0.8,
+              },
+            },
+            structure: {
+              localRange: {
+                breakoutState: 'below_low_level',
+              },
+            },
+            participation: {
+              volume: {
+                volumeRel20: 1.4,
+              },
+            },
+            relative: {
+              benchmark: {
+                relativeStrength1h: -0.4,
+              },
+            },
+          },
           derivativesContext: {
             summary: {
               pressure: 'long_flush',
@@ -285,6 +343,157 @@ describe('trendShiftAiAdapter', () => {
 
     expect(result).toMatchObject({
       direction: 'SHORT',
+      quality: 5,
+      approved: true,
+    });
+  });
+
+  it('downgrades q5-looking flip when participation is too thin', () => {
+    const result = trendShiftAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makePayload(
+        {
+          signalDirection: 'LONG',
+          confirmedFlip: true,
+          bullFlip: true,
+          flipDistanceOk: true,
+          closeVsAvgPct: 0.3,
+          avgSlopePct: 0.11,
+          distanceAtrRatio: 0.95,
+          coinBiasAligned: true,
+        },
+        {
+          baseContext: {
+            participation: {
+              volume: {
+                volumeRel20: 0.6,
+              },
+            },
+          },
+          derivativesContext: {
+            summary: {
+              pressure: 'short_flush',
+              directionAligned: true,
+              riskFlags: ['short_liquidation_spike'],
+            },
+          },
+        },
+      ),
+      analysis: {
+        direction: 'LONG',
+        quality: 1,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: null,
+      quality: 4,
+      approved: false,
+      rejectReason:
+        'participation is too thin versus recent volume for live approval',
+    });
+  });
+
+  it('downgrades q5-looking flip when derivatives alignment stays unknown without flush support', () => {
+    const result = trendShiftAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makePayload(
+        {
+          signalDirection: 'LONG',
+          confirmedFlip: true,
+          bullFlip: true,
+          flipDistanceOk: true,
+          closeVsAvgPct: 0.3,
+          avgSlopePct: 0.11,
+          distanceAtrRatio: 0.95,
+          coinBiasAligned: true,
+        },
+        {
+          baseContext: {
+            participation: {
+              volume: {
+                volumeRel20: 1.3,
+              },
+            },
+          },
+          derivativesContext: {
+            summary: {
+              pressure: 'crowded_short',
+              directionAligned: null,
+              riskFlags: [],
+            },
+          },
+        },
+      ),
+      analysis: {
+        direction: 'LONG',
+        quality: 1,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: null,
+      quality: 4,
+      approved: false,
+      rejectReason:
+        'derivatives alignment is still unclear, so keep the flip in watch mode',
+    });
+  });
+
+  it('approves selective q4 LONG when breakout, volume, and derivatives confirm follow-through', () => {
+    const result = trendShiftAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makePayload(
+        {
+          signalDirection: 'LONG',
+          confirmedFlip: true,
+          bullFlip: true,
+          flipDistanceOk: true,
+          closeVsAvgPct: 0.08,
+          avgSlopePct: 0.05,
+          distanceAtrRatio: 0.55,
+          coinBiasAligned: true,
+        },
+        {
+          baseContext: {
+            regime: {
+              volatility: {
+                atrPctZScore: 0.7,
+              },
+            },
+            structure: {
+              localRange: {
+                breakoutState: 'above_high_level',
+              },
+            },
+            participation: {
+              volume: {
+                volumeRel20: 1.35,
+              },
+            },
+            relative: {
+              benchmark: {
+                relativeStrength1h: 0.2,
+              },
+            },
+          },
+          derivativesContext: {
+            summary: {
+              pressure: 'short_flush',
+              directionAligned: true,
+              riskFlags: ['short_liquidation_spike'],
+            },
+          },
+        },
+      ),
+      analysis: {
+        direction: 'LONG',
+        quality: 1,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: 'LONG',
       quality: 5,
       approved: true,
     });
