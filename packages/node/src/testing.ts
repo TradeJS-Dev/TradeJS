@@ -46,6 +46,18 @@ type PreparedTestingData = {
   btcCoinbasePrevData: KlineChartData;
 };
 
+type TestingProgressMessage = {
+  progress: true;
+  testName: string;
+  symbol: string;
+  strategyName: string;
+  stage: string;
+  candleIndex?: number;
+  candleTotal?: number;
+  elapsedMs: number;
+  stageElapsedMs: number;
+};
+
 const createTestingKlineCacheState = (): TestingKlineCacheState => ({
   coinKlineCache: new Map<string, KlineChartData>(),
   btcKlineCache: new Map<string, KlineChartData>(),
@@ -258,8 +270,59 @@ export const testing: TestingBox = async ({
   const preloadStart = getBacktestPreloadStart(start);
 
   const startedAt = Date.now();
+  let activeStageStartedAt = startedAt;
+  let lastProgressSentAt = 0;
+  let lastProgressSignature = '';
+  let currentCandleIndex = 0;
+  let totalCandles = 0;
   const formatTimeoutMessage = (stage: string) =>
     `Test ${name} (${symbol}) timed out after ${timeoutMs}ms during ${stage}`;
+  const emitProgress = (
+    stage: string,
+    options: {
+      force?: boolean;
+      candleIndex?: number;
+      candleTotal?: number;
+    } = {},
+  ) => {
+    const now = Date.now();
+    const candleIndex =
+      typeof options.candleIndex === 'number'
+        ? options.candleIndex
+        : currentCandleIndex;
+    const candleTotal =
+      typeof options.candleTotal === 'number'
+        ? options.candleTotal
+        : totalCandles;
+    const signature = [
+      stage,
+      candleIndex,
+      candleTotal,
+      Math.floor((now - activeStageStartedAt) / 5000),
+    ].join(':');
+    if (!options.force) {
+      if (signature === lastProgressSignature) {
+        return;
+      }
+      if (now - lastProgressSentAt < 4000) {
+        return;
+      }
+    }
+
+    lastProgressSentAt = now;
+    lastProgressSignature = signature;
+    process.send?.({
+      progress: true,
+      testName: name,
+      symbol,
+      strategyName,
+      stage,
+      candleIndex,
+      candleTotal,
+      elapsedMs: now - startedAt,
+      stageElapsedMs: now - activeStageStartedAt,
+    } satisfies TestingProgressMessage);
+  };
   const getRemainingTimeoutMs = (stage: string) => {
     if (!timeoutMs || timeoutMs <= 0) {
       return null;
@@ -279,22 +342,30 @@ export const testing: TestingBox = async ({
     stage: string,
     promise: Promise<T>,
   ): Promise<T> => {
+    activeStageStartedAt = Date.now();
+    emitProgress(stage, { force: true });
     const remainingMs = getRemainingTimeoutMs(stage);
     if (remainingMs == null) {
       return promise;
     }
 
     return await new Promise<T>((resolve, reject) => {
+      const heartbeat = setInterval(() => {
+        emitProgress(stage);
+      }, 5000);
       const timer = setTimeout(() => {
+        clearInterval(heartbeat);
         reject(new Error(formatTimeoutMessage(stage)));
       }, remainingMs);
 
       promise.then(
         (value) => {
+          clearInterval(heartbeat);
           clearTimeout(timer);
           resolve(value);
         },
         (error) => {
+          clearInterval(heartbeat);
           clearTimeout(timer);
           reject(error);
         },
@@ -520,6 +591,7 @@ export const testing: TestingBox = async ({
     btcBinancePrevData,
     btcCoinbasePrevData,
   } = preparedData;
+  totalCandles = testData.length;
 
   const testConnector = createTestConnector(connector, {
     userName,
@@ -592,6 +664,10 @@ export const testing: TestingBox = async ({
     if (candleIndex % 25 === 0) {
       throwIfTimedOut('candle loop');
     }
+    currentCandleIndex = candleIndex + 1;
+    emitProgress('candle loop', {
+      force: candleIndex === 0 || currentCandleIndex === totalCandles,
+    });
 
     const candle = testData[candleIndex];
     const btcCandle = btcTestData[candleIndex];

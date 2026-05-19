@@ -191,6 +191,11 @@ describe('testing backtest flow', () => {
     process.env.PROJECT_CWD = originalProjectCwd;
   });
 
+  afterEach(() => {
+    jest.useRealTimers();
+    process.send = undefined as any;
+  });
+
   it('throws when start is missing', async () => {
     await expect(
       testing(createTest({ options: { start: undefined, end: 1_000_500 } })),
@@ -234,6 +239,47 @@ describe('testing backtest flow', () => {
         start: expectedPreloadStart,
         end,
       }),
+    );
+  });
+
+  it('emits progress heartbeat while strategy signal is still running', async () => {
+    jest.useFakeTimers();
+    const send = jest.fn();
+    process.send = send as any;
+    const data = [candle(1_000_050), candle(1_000_150)];
+    mockByBitConnector.kline.mockResolvedValue(data);
+    mockBinanceConnector.kline.mockResolvedValue(data);
+    mockCoinbaseConnector.kline.mockResolvedValue(data);
+    mockStrategy.mockImplementation(
+      () => new Promise<string>(() => undefined as never),
+    );
+
+    const runPromise = testing(createTest({ timeoutMs: 12_000 }));
+    for (let index = 0; index < 20; index += 1) {
+      await Promise.resolve();
+    }
+
+    jest.advanceTimersByTime(6_000);
+    for (let index = 0; index < 20; index += 1) {
+      await Promise.resolve();
+    }
+
+    expect(send.mock.calls.flat()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          progress: true,
+          symbol: 'ETHUSDT',
+          strategyName: 'TrendLine',
+          stage: 'strategy signal',
+          candleIndex: 1,
+          candleTotal: 1,
+        }),
+      ]),
+    );
+
+    jest.advanceTimersByTime(6_000);
+    await expect(runPromise).rejects.toThrow(
+      'Test ETH_suite_1 (ETHUSDT) timed out after 12000ms during strategy signal',
     );
   });
 
