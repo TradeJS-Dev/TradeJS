@@ -4,26 +4,11 @@ import {
 } from '@tradejs/types';
 
 type SignalLike = {
-  indicators?: Record<string, unknown>;
   additionalIndicators?: Record<string, unknown>;
 };
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
-
-const isFiniteNumber = (value: unknown): value is number =>
-  typeof value === 'number' && Number.isFinite(value);
-
-const getLastFiniteNumber = (value: unknown): number | null => {
-  if (isFiniteNumber(value)) return value;
-  if (!Array.isArray(value)) return null;
-
-  for (let i = value.length - 1; i >= 0; i -= 1) {
-    if (isFiniteNumber(value[i])) return value[i];
-  }
-
-  return null;
-};
 
 export const getSignalBaseContext = (
   signal: Pick<SignalLike, 'additionalIndicators'>,
@@ -47,39 +32,31 @@ export const getIndicatorsBaseContext = (
 };
 
 export const getSignalCoinMaFast = (signal: SignalLike): number | null =>
-  getSignalBaseContext(signal)?.raw.trend.maFast ??
-  getLastFiniteNumber(signal.indicators?.maFast);
+  getSignalBaseContext(signal)?.raw.trend.maFast ?? null;
 
 export const getSignalCoinMaSlow = (signal: SignalLike): number | null =>
-  getSignalBaseContext(signal)?.raw.trend.maSlow ??
-  getLastFiniteNumber(signal.indicators?.maSlow);
+  getSignalBaseContext(signal)?.raw.trend.maSlow ?? null;
 
 export const getSignalAtrPct = (signal: SignalLike): number | null =>
-  getSignalBaseContext(signal)?.raw.volatility.atrPct ??
-  getLastFiniteNumber(signal.indicators?.atrPct);
+  getSignalBaseContext(signal)?.raw.volatility.atrPct ?? null;
 
 export const getSignalBtcMaFast = (signal: SignalLike): number | null =>
-  getSignalBaseContext(signal)?.relative.benchmark.maFast ??
-  getLastFiniteNumber(signal.indicators?.btcMaFast);
+  getSignalBaseContext(signal)?.relative.benchmark.maFast ?? null;
 
 export const getSignalBtcMaSlow = (signal: SignalLike): number | null =>
-  getSignalBaseContext(signal)?.relative.benchmark.maSlow ??
-  getLastFiniteNumber(signal.indicators?.btcMaSlow);
+  getSignalBaseContext(signal)?.relative.benchmark.maSlow ?? null;
 
 export const getIndicatorsCoinMaFast = (
   indicators: IndicatorsHistorySnapshot | Record<string, unknown> | undefined,
 ): number | null =>
-  getIndicatorsBaseContext(indicators)?.raw.trend.maFast ??
-  getLastFiniteNumber(isRecord(indicators) ? indicators.maFast : null);
+  getIndicatorsBaseContext(indicators)?.raw.trend.maFast ?? null;
 
 export const getIndicatorsCoinMaSlow = (
   indicators: IndicatorsHistorySnapshot | Record<string, unknown> | undefined,
 ): number | null =>
-  getIndicatorsBaseContext(indicators)?.raw.trend.maSlow ??
-  getLastFiniteNumber(isRecord(indicators) ? indicators.maSlow : null);
+  getIndicatorsBaseContext(indicators)?.raw.trend.maSlow ?? null;
 
 export const getIndicatorsCorrelation = (
   indicators: IndicatorsHistorySnapshot | Record<string, unknown> | undefined,
 ): number | null =>
-  getIndicatorsBaseContext(indicators)?.raw.crossAsset.btcCorrelation ??
-  getLastFiniteNumber(isRecord(indicators) ? indicators.correlation : null);
+  getIndicatorsBaseContext(indicators)?.raw.crossAsset.btcCorrelation ?? null;

@@ -2,7 +2,7 @@ import {
   getTopTickers,
   getVolatilityTickers,
   normalizeTickerData,
-} from '@utils/tickers';
+} from '../tickers';
 import { Ticker } from '@tradejs/types';
 
 const makeTicker = (overrides: Partial<Ticker>): Ticker => ({

@@ -481,6 +481,53 @@ describe('signals', () => {
     expect(message).not.toContain('0 &lt; 4');
   });
 
+  it('formats shared market stats from additionalIndicators.baseContext', () => {
+    jest.doMock('../screenshot', () => ({
+      getScreenshotBuffer: jest.fn(async () => {
+        throw new Error('no screenshot');
+      }),
+      getScreenshotFilename: jest.fn(() => 'BTCUSDT_sig-1_15.png'),
+    }));
+
+    const { formatMessage } = require('../signals');
+
+    const message = formatMessage(
+      {
+        signalId: 'sig-1',
+        symbol: 'BTCUSDT',
+        strategy: 'TrendLine',
+        interval: '15',
+        direction: 'LONG',
+        timestamp: 1_700_000_000_000,
+        indicators: {},
+        additionalIndicators: {
+          baseContext: {
+            raw: {
+              volatility: {
+                atrPct: 1.23,
+              },
+              crossAsset: {
+                btcCorrelation: 0.42,
+                venueSpread: 0.0012,
+              },
+            },
+          },
+        },
+        prices: {
+          currentPrice: 100,
+          takeProfitPrice: 110,
+          stopLossPrice: 95,
+          riskRatio: 2,
+        },
+      },
+      null,
+    );
+
+    expect(message).toContain('BTC correlation: 0.42');
+    expect(message).toContain('Volatility: 1.230000%');
+    expect(message).toContain('Spread: 0.120000%');
+  });
+
   it('formats approved AI analysis as a short human-readable explanation', () => {
     jest.doMock('../screenshot', () => ({
       getScreenshotBuffer: jest.fn(async () => {

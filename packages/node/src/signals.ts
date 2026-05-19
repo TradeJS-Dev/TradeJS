@@ -148,6 +148,36 @@ const getLastNumber = (value: unknown): number | undefined => {
   return typeof value === 'number' ? value : undefined;
 };
 
+const getBaseContextRecord = (
+  signal: Signal,
+): Record<string, unknown> | null => {
+  const baseContext = signal.additionalIndicators?.baseContext;
+  return baseContext &&
+    typeof baseContext === 'object' &&
+    !Array.isArray(baseContext)
+    ? (baseContext as Record<string, unknown>)
+    : null;
+};
+
+const getBaseContextNumber = (
+  signal: Signal,
+  ...path: string[]
+): number | undefined => {
+  let current: unknown = getBaseContextRecord(signal);
+
+  for (const segment of path) {
+    if (!current || typeof current !== 'object' || Array.isArray(current)) {
+      return undefined;
+    }
+
+    current = (current as Record<string, unknown>)[segment];
+  }
+
+  return typeof current === 'number' && Number.isFinite(current)
+    ? current
+    : undefined;
+};
+
 const getAiQualityLine = (analysis?: Partial<SignalAnalysis> | null) => {
   const quality = normalizeQuality(analysis?.quality);
   if (!quality) return null;
@@ -397,7 +427,6 @@ export const formatMessage = (
     isConfigFromBacktest,
     ml,
     prices: { currentPrice, takeProfitPrice, stopLossPrice, riskRatio },
-    indicators,
     additionalIndicators,
   } = signal;
 
@@ -405,9 +434,19 @@ export const formatMessage = (
     const lines: string[] = [];
     const distance = additionalIndicators?.distance as number | undefined;
     const touches = additionalIndicators?.touches as number | undefined;
-    const correlation = getLastNumber(indicators.correlation);
-    const atrPct = getLastNumber(indicators.atrPct);
-    const spread = getLastNumber(indicators.spread);
+    const correlation = getBaseContextNumber(
+      signal,
+      'raw',
+      'crossAsset',
+      'btcCorrelation',
+    );
+    const atrPct = getBaseContextNumber(signal, 'raw', 'volatility', 'atrPct');
+    const spread = getBaseContextNumber(
+      signal,
+      'raw',
+      'crossAsset',
+      'venueSpread',
+    );
 
     const formatPrices = () => {
       const tpPercent =
@@ -487,6 +526,14 @@ export const formatMessage = (
 
       if (correlation) {
         lines.push(`BTC correlation: ${correlation}`);
+      }
+
+      if (atrPct != null) {
+        lines.push(`Volatility: ${formatNumber(atrPct)}%`);
+      }
+
+      if (spread != null) {
+        lines.push(`Spread: ${formatNumber(spread * 100)}%`);
       }
 
       const prices = formatPrices();

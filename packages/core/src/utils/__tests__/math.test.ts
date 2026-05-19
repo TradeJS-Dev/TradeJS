@@ -7,7 +7,7 @@ import {
   relReturns,
   round,
   sum,
-} from '@utils/math';
+} from '../math';
 import { PositionLogData } from '@tradejs/types';
 
 describe('math utils', () => {

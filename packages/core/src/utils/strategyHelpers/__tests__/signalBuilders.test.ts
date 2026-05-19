@@ -140,5 +140,8 @@ describe('buildStrategySignal', () => {
 
     expect(signal.additionalIndicators?.touches).toBe(3);
     expect(signal.additionalIndicators?.baseContext).toEqual(baseContext);
+    expect(signal.indicators).toEqual({
+      maFast: [100],
+    });
   });
 });

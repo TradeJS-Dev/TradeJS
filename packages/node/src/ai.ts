@@ -196,24 +196,33 @@ Input payload structure:
 - payload.figures:
   strategy-specific figures or geometry when available. Fields vary by strategy.
 - payload.indicators:
-  indicator dictionaries and series for the coin and BTC; all series are already trimmed to the latest 5 values.
+  historical indicator dictionaries and series for the coin and BTC; all series are already trimmed to the latest 5 values. Treat this block as recent-history transport, not as the primary source of the current shared context.
 - payload.additionalIndicators:
-  strategy-specific summary/context fields. This is not noise; it contains derived fields deliberately passed by the strategy to help the decision.
-  Examples: helperFlags, structureContext, spread, correlation, volatilitySummary.
+  strategy-specific summary/context fields plus the canonical current shared context snapshot.
+  This is not noise; it contains derived fields deliberately passed by the strategy to help the decision.
+  Examples: baseContext, helperFlags, structureContext, volatilitySummary.
+  Always inspect \`payload.additionalIndicators.baseContext\` first for the current shared state:
+  • \`baseContext.raw\`: current MA, ATR, BB, OBV, price stats, levels, BTC correlation, venue spread.
+  • \`baseContext.regime\`: derived trend / volatility / momentum regime fields.
+  • \`baseContext.structure\`: local range position, level distance, breakout state, rejection wick context.
+  • \`baseContext.participation\`: volume/turnover participation and effort-vs-result context.
+  • \`baseContext.relative\`: BTC relative-strength and benchmark MA bias context.
+  • \`baseContext.derivatives\`: Coinalyze-aligned derivatives summary when available.
+  • \`baseContext.mtf\`: compact multi-timeframe candle snapshots.
   Always inspect \`payload.additionalIndicators.marketContext\` when present:
   • \`marketContext.tradingSession\`: UTC session at signal time: asia / europe / us / overlap / off_hours.
-  • \`marketContext.binanceCoinbaseSpread\`: BTC spread between Coinbase and Binance from \`payload.indicators.spread\`; \`value=(Coinbase-Binance)/Binance\`, \`bps=value*10000\`.
+  • \`marketContext.binanceCoinbaseSpread\`: BTC spread between Coinbase and Binance from \`payload.additionalIndicators.baseContext.raw.crossAsset.venueSpread\`; \`value=(Coinbase-Binance)/Binance\`, \`bps=value*10000\`.
   If those fields exist, use them as a more explicit hint instead of trying to re-derive the same idea from raw lines or points.
   If \`derivativesContext\` exists, it is a derived Coinalyze summary for the time of the signal. Coinalyze context is built only from \`BTCUSDT\` and \`ETHUSDT\` reference symbols, not for every target coin. \`targetSymbol\` is just the source signal coin. Use BTC/ETH open interest, funding, liquidations, and pressure/riskFlags as positioning context, not as an independent trade idea.
   Key patterns:
-  • coin: \`maFast\`, \`atrPct\`, \`macd...\`, \`candles15m/candles1h/candles4h/candles1d\`, and \`*1h/*4h/*1d\`
-  • BTC: \`btcMaFast\`, \`btcAtr\`, \`btcMacd...\`, \`btcCandles*\`, and \`btc*1h/*4h/*1d\`
-  • strategy service keys are possible as well, for example \`correlation\`, \`spread\`, \`touches\`, \`distance\`
+  • current shared state: prefer \`payload.additionalIndicators.baseContext\`
+  • recent historical series: \`payload.indicators\`
+  • strategy service keys are possible as well, for example \`touches\`, \`distance\`, timing flags, and other setup-specific summaries
 
 How to analyze, in order:
 1. Start with price structure and the setup geometry or context in \`payload.figures\`. This has higher priority than indicators.
-2. Then use \`payload.additionalIndicators\` when it contains explicit strategy-specific context such as line state, spread, correlation, and similar fields.
-3. Then assess confirmation or conflict from the current coin indicators.
+2. Then use \`payload.additionalIndicators.baseContext\` and other explicit strategy-specific context fields.
+3. Then assess confirmation or conflict from the current shared state and recent coin indicator history.
 4. Then evaluate BTC context.
 5. Only after that choose \`direction\`, \`quality\`, and whether an extra confirmation level is required.
 6. If strong conflicts exist, reduce quality or set direction to \`null\`.

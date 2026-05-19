@@ -1,7 +1,7 @@
 'use strict';
 Object.defineProperty(exports, '__esModule', { value: true });
 const grid_1 = require('../grid');
-const toJson_1 = require('@utils/toJson');
+const toJson_1 = require('../toJson');
 describe('generateParamGrid', () => {
   it('returns correct number of combinations for 2 parameters', () => {
     const grid = (0, grid_1.generateParamGrid)({

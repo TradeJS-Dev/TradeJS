@@ -114,20 +114,74 @@ const makeStrategyApi = (overrides: Record<string, any> = {}) =>
 const makeIndicatorSnapshot = (
   candle: any,
   overrides: Record<string, any> = {},
-) => ({
-  candle,
-  prevCandle: makeCandle(candle.timestamp - 60_000, candle.close - 1),
-  highLevel: candle.close - 2,
-  lowLevel: candle.close + 2,
-  maFast: candle.close + 1,
-  maSlow: candle.close - 1,
-  smaObv: 100,
-  obv: 200,
-  atr: 1,
-  bbUpper: candle.close - 1,
-  bbLower: candle.close + 1,
-  ...overrides,
-});
+) => {
+  const snapshot = {
+    candle,
+    prevCandle: makeCandle(candle.timestamp - 60_000, candle.close - 1),
+    highLevel: candle.close - 2,
+    lowLevel: candle.close + 2,
+    maFast: candle.close + 1,
+    maSlow: candle.close - 1,
+    smaObv: 100,
+    obv: 200,
+    atr: 1,
+    bbUpper: candle.close - 1,
+    bbLower: candle.close + 1,
+    correlation: 0.1,
+    ...overrides,
+  };
+
+  return {
+    ...snapshot,
+    baseContext: {
+      raw: {
+        trend: {
+          maFast: snapshot.maFast,
+          maMedium: null,
+          maSlow: snapshot.maSlow,
+        },
+        volatility: {
+          atr: snapshot.atr,
+          atrPct: null,
+          bbUpper: snapshot.bbUpper,
+          bbMiddle: null,
+          bbLower: snapshot.bbLower,
+          bbWidthPct: null,
+        },
+        momentum: {
+          macd: null,
+          macdSignal: null,
+          macdHistogram: null,
+        },
+        volume: {
+          volume: snapshot.candle.volume,
+          turnover: snapshot.candle.turnover,
+          obv: snapshot.obv,
+          obvSma: snapshot.smaObv,
+          volume1h: null,
+          volume24h: null,
+        },
+        price: {
+          prevClose: snapshot.prevCandle.close,
+          price1hPct: null,
+          price24hPct: null,
+          highPrice1h: null,
+          lowPrice1h: null,
+          highPrice24h: null,
+          lowPrice24h: null,
+        },
+        levels: {
+          highLevel: snapshot.highLevel,
+          lowLevel: snapshot.lowLevel,
+        },
+        crossAsset: {
+          btcCorrelation: snapshot.correlation,
+          venueSpread: null,
+        },
+      },
+    },
+  };
+};
 
 describe('createBreakoutCore', () => {
   beforeEach(() => {

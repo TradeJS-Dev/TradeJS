@@ -4,7 +4,7 @@ import {
   classifyMetric,
   getBacktestScore,
   getFormatted,
-} from '@utils/stat';
+} from '../stat';
 import { PositionLogData } from '@tradejs/types';
 
 describe('stat utils', () => {

@@ -79,6 +79,14 @@ export const buildStrategySignal = ({
   const baseContext = (
     indicatorsRecord as { baseContext?: BaseStrategyContextSnapshot }
   ).baseContext;
+  const normalizedIndicators =
+    baseContext == null
+      ? indicators
+      : Object.fromEntries(
+          Object.entries(indicatorsRecord).filter(
+            ([key]) => key !== 'baseContext',
+          ),
+        );
   const mergedAdditionalIndicators =
     baseContext == null
       ? additionalIndicators
@@ -101,7 +109,7 @@ export const buildStrategySignal = ({
     timestamp,
     figures,
     prices,
-    indicators,
+    indicators: normalizedIndicators,
     additionalIndicators: mergedAdditionalIndicators,
     isConfigFromBacktest,
   };

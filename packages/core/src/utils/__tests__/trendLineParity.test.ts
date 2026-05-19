@@ -1,5 +1,5 @@
 import { KLineData } from 'klinecharts';
-import { createTrendlineEngine } from '@utils/trendLine/engine';
+import { createTrendlineEngine } from '../trendLine/engine';
 import {
   findTrendlinesByHighs,
   findTrendlinesByLows,

@@ -114,12 +114,15 @@ For production code:
 - import Node runtime helpers from public `@tradejs/node/*` subpaths
 - import infra adapters from public `@tradejs/infra/*` subpaths
 - import shared contracts from `@tradejs/types`
+- inside `packages/core`, import core-internal helpers through package-local `imports` such as `#utils/*` and `#constants`
+- inside `apps/app`, prefer app-local `imports` such as `#app/*`, `#actions/*`, `#store`, `#shared/*`, `#ui`, `#components/*`
 
 Do not:
 
 - use non-public deep imports like `@tradejs/core/src/*` or `@tradejs/node/src/*`
 - use non-public deep imports like `@tradejs/infra/src/*`
 - reintroduce root imports like `@tradejs/core`, `@tradejs/node`, or `@tradejs/infra`
+- add global root-level TypeScript aliases for package-internal modules like `@utils/*` or `@constants`; keep package-internal aliases package-local
 
 ### Build Isolation Rules
 
@@ -166,6 +169,17 @@ Runtime AI config conventions:
 - Keep shared indicator logic neutral and reusable.
 - Do not add strategy-specific branches inside shared indicator modules unless explicitly requested and architecturally justified.
 - If a strategy needs extra series, prefer general-purpose derived fields that other strategies can reuse.
+- `additionalIndicators.baseContext` is the canonical current shared indicator snapshot for runtime AI/gate/Telegram/prompt logic.
+- `signal.indicators` is the historical indicator/series transport for backtest, replay, and ML transforms. Do not treat it as the primary current-value source for AI/runtime decisions when `baseContext` is available.
+- Avoid current-value fallback chains from `additionalIndicators.baseContext` back to legacy flat fields; migrate call sites to the canonical context instead.
+- Base shared context should stay grouped by purpose:
+  - `raw`: current MA / ATR / BB / OBV / price stats / levels / BTC correlation / venue spread
+  - `regime`: trend, volatility, and momentum state
+  - `structure`: level distance, range position, breakout/rejection state
+  - `participation`: volume, turnover, OBV slope, effort-vs-result
+  - `relative`: BTC relative strength and benchmark MA bias
+  - `derivatives`: Coinalyze-derived positioning summary
+  - `mtf`: compact MTF candle snapshots
 
 ### Plugin Rules
 

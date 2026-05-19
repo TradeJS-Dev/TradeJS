@@ -143,23 +143,29 @@ export const createBreakoutCore: CreateStrategyCore<
     }
 
     const baseContext = indicatorValues.baseContext;
-    const highLevel =
-      baseContext?.raw.levels.highLevel ?? indicatorValues.highLevel;
-    const lowLevel =
-      baseContext?.raw.levels.lowLevel ?? indicatorValues.lowLevel;
-    const maFast = baseContext?.raw.trend.maFast ?? indicatorValues.maFast;
-    const maSlow = baseContext?.raw.trend.maSlow ?? indicatorValues.maSlow;
-    const obv = baseContext?.raw.volume.obv ?? indicatorValues.obv;
-    const smaObv = baseContext?.raw.volume.obvSma ?? indicatorValues.smaObv;
-    const atr = baseContext?.raw.volatility.atr ?? indicatorValues.atr;
-    const bbUpper =
-      baseContext?.raw.volatility.bbUpper ?? indicatorValues.bbUpper;
-    const bbLower =
-      baseContext?.raw.volatility.bbLower ?? indicatorValues.bbLower;
-    const correlation =
-      baseContext?.raw.crossAsset.btcCorrelation ?? indicatorValues.correlation;
+    const highLevel = baseContext?.raw.levels.highLevel ?? null;
+    const lowLevel = baseContext?.raw.levels.lowLevel ?? null;
+    const maFast = baseContext?.raw.trend.maFast ?? null;
+    const maSlow = baseContext?.raw.trend.maSlow ?? null;
+    const obv = baseContext?.raw.volume.obv ?? null;
+    const smaObv = baseContext?.raw.volume.obvSma ?? null;
+    const atr = baseContext?.raw.volatility.atr ?? null;
+    const bbUpper = baseContext?.raw.volatility.bbUpper ?? null;
+    const bbLower = baseContext?.raw.volatility.bbLower ?? null;
+    const correlation = baseContext?.raw.crossAsset.btcCorrelation ?? null;
 
-    if (!indicatorValues.prevCandle || highLevel == null || lowLevel == null) {
+    if (
+      !indicatorValues.prevCandle ||
+      highLevel == null ||
+      lowLevel == null ||
+      maFast == null ||
+      maSlow == null ||
+      obv == null ||
+      smaObv == null ||
+      atr == null ||
+      bbUpper == null ||
+      bbLower == null
+    ) {
       return strategyApi.skip('WAIT_DATA');
     }
 

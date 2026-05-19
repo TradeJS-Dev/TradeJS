@@ -69,6 +69,8 @@ jest.mock('@tradejs/core/time', () => ({
   getTimestamp: jest.fn(),
 }));
 
+import { normalizeStrategyOrderLinkKey } from '@tradejs/core/trade';
+
 jest.mock('@tradejs/infra/redis', () => ({
   setData: jest.fn(),
   getData: jest.fn(),
@@ -102,7 +104,10 @@ import {
   resolveWorkerHeapMb,
   toStrategyConfigGrid,
 } from '../scripts/backtest';
-import { compareExchangeEntriesToBacktest } from '../scripts/replayRunner';
+import {
+  compareExchangeEntriesToBacktest,
+  resolveReplayStrategyNameFromExchangeEntry,
+} from '../scripts/replayRunner';
 import { buildReplayStrategyConfig } from '../lib/replay/support';
 import {
   summarizeRuntimeTradesByStrategy,
@@ -478,6 +483,32 @@ describe('backtest script helpers', () => {
         },
       ],
     });
+  });
+
+  it('resolves replay strategy from exchange orderLinkId', () => {
+    const trendShiftKey = normalizeStrategyOrderLinkKey('TrendShift');
+
+    expect(
+      resolveReplayStrategyNameFromExchangeEntry({
+        exchangeEntry: {
+          orderLinkId: `tjs-${trendShiftKey}--abc123def456`,
+        } as any,
+        strategyNameByOrderLinkKey: new Map([
+          [String(trendShiftKey), 'TrendShift'],
+        ]),
+      }),
+    ).toBe('TrendShift');
+
+    expect(
+      resolveReplayStrategyNameFromExchangeEntry({
+        exchangeEntry: {
+          orderLinkId: 'tjs-legacy-id',
+        } as any,
+        strategyNameByOrderLinkKey: new Map([
+          [String(trendShiftKey), 'TrendShift'],
+        ]),
+      }),
+    ).toBeNull();
   });
 
   it('merges persisted summary index with valid legacy items and overrides duplicates', () => {

@@ -1,4 +1,4 @@
-import { getStrategyMarketSnapshot } from '@utils/strategyHelpers/market';
+import { getStrategyMarketSnapshot } from '../strategyHelpers/market';
 
 describe('strategyHelpers/market getStrategyMarketSnapshot', () => {
   const candle = {

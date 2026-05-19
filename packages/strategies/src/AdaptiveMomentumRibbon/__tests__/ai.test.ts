@@ -1,7 +1,62 @@
 import { adaptiveMomentumRibbonAiAdapter } from '../adapters/ai';
 
+const getLastFiniteNumber = (value: unknown): number | null => {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value;
+  }
+
+  if (!Array.isArray(value)) {
+    return null;
+  }
+
+  for (let i = value.length - 1; i >= 0; i -= 1) {
+    const current = value[i];
+    if (typeof current === 'number' && Number.isFinite(current)) {
+      return current;
+    }
+  }
+
+  return null;
+};
+
+const withBaseContext = (signal: any) => ({
+  ...signal,
+  additionalIndicators: {
+    ...signal.additionalIndicators,
+    baseContext: {
+      ...(signal.additionalIndicators?.baseContext ?? {}),
+      raw: {
+        ...((signal.additionalIndicators?.baseContext?.raw as Record<
+          string,
+          unknown
+        >) ?? {}),
+        trend: {
+          ...((signal.additionalIndicators?.baseContext?.raw?.trend as Record<
+            string,
+            unknown
+          >) ?? {}),
+          maFast: getLastFiniteNumber(signal.indicators?.maFast),
+          maSlow: getLastFiniteNumber(signal.indicators?.maSlow),
+        },
+      },
+      relative: {
+        ...((signal.additionalIndicators?.baseContext?.relative as Record<
+          string,
+          unknown
+        >) ?? {}),
+        benchmark: {
+          ...((signal.additionalIndicators?.baseContext?.relative
+            ?.benchmark as Record<string, unknown>) ?? {}),
+          maFast: getLastFiniteNumber(signal.indicators?.btcMaFast),
+          maSlow: getLastFiniteNumber(signal.indicators?.btcMaSlow),
+        },
+      },
+    },
+  },
+});
+
 const makeSignal = (overrides: Record<string, any> = {}) =>
-  ({
+  withBaseContext({
     signalId: 'amr-1',
     symbol: 'TESTUSDT',
     strategy: 'AdaptiveMomentumRibbon',
@@ -75,7 +130,7 @@ const makeSignal = (overrides: Record<string, any> = {}) =>
         },
       },
     },
-  }) as any;
+  } as any);
 
 const buildPayloadForSignal = (signal: any) =>
   adaptiveMomentumRibbonAiAdapter.buildPayload?.({

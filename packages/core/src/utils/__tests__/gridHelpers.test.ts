@@ -1,12 +1,12 @@
-import { createTestSuite, generateName, mergeConfigs } from '@utils/grid';
-import { getTimestamp } from '@utils/timestamp';
-import { uuid } from '@utils/uuid';
+import { createTestSuite, generateName, mergeConfigs } from '../grid';
+import { getTimestamp } from '../timestamp';
+import { uuid } from '../uuid';
 
-jest.mock('@utils/timestamp', () => ({
+jest.mock('../timestamp', () => ({
   getTimestamp: jest.fn(),
 }));
 
-jest.mock('@utils/uuid', () => ({
+jest.mock('../uuid', () => ({
   uuid: jest.fn(),
 }));
 

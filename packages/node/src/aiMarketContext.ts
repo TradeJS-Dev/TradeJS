@@ -17,7 +17,7 @@ type TradingSessionContext = {
 
 type BinanceCoinbaseSpreadContext = {
   source: 'binance_coinbase_btc';
-  indicatorKey: 'payload.indicators.spread';
+  indicatorKey: 'payload.additionalIndicators.baseContext.raw.crossAsset.venueSpread';
   available: boolean;
   value: number | null;
   bps: number | null;
@@ -127,7 +127,8 @@ export const buildTradingSessionContext = (
 
 const buildMissingSpreadContext = (): BinanceCoinbaseSpreadContext => ({
   source: 'binance_coinbase_btc',
-  indicatorKey: 'payload.indicators.spread',
+  indicatorKey:
+    'payload.additionalIndicators.baseContext.raw.crossAsset.venueSpread',
   available: false,
   value: null,
   bps: null,
@@ -153,7 +154,8 @@ const buildSpreadContextFromValue = (
 
   return {
     source: 'binance_coinbase_btc',
-    indicatorKey: 'payload.indicators.spread',
+    indicatorKey:
+      'payload.additionalIndicators.baseContext.raw.crossAsset.venueSpread',
     available: true,
     value,
     bps,
@@ -164,12 +166,10 @@ const buildSpreadContextFromValue = (
 };
 
 const readSpreadFromSignal = (signal: Signal) => {
-  const indicatorSpread = getLastFiniteNumber(signal.indicators?.spread);
-  if (indicatorSpread != null) {
-    return indicatorSpread;
-  }
-
-  return getLastFiniteNumber(signal.additionalIndicators?.spread);
+  const baseContext = toRecord(signal.additionalIndicators?.baseContext);
+  const raw = toRecord(baseContext?.raw);
+  const crossAsset = toRecord(raw?.crossAsset);
+  return getLastFiniteNumber(crossAsset?.venueSpread);
 };
 
 export const buildAiMarketContext = (signal: Signal): AiMarketContext => {

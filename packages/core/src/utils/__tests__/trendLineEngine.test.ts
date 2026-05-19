@@ -1,5 +1,5 @@
 import { KLineData } from 'klinecharts';
-import { createTrendlineEngine } from '@utils/trendLine/engine';
+import { createTrendlineEngine } from '../trendLine/engine';
 
 const buildCandles = (lows: number[]): KLineData[] => {
   const start = 1_700_000_000_000;

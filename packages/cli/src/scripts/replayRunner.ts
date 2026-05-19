@@ -1,4 +1,8 @@
 import chalk from 'chalk';
+import {
+  normalizeStrategyOrderLinkKey,
+  parseStrategyOrderLinkKey,
+} from '@tradejs/core/trade';
 import { formatUnix } from '@tradejs/core/time';
 import { setData, redisKeys } from '@tradejs/infra/redis';
 import { Connector, ExchangeEntryRecord } from '@tradejs/types';
@@ -56,6 +60,29 @@ type ExchangeMatchedBacktestEntry = {
   backtest: TradeParityEntry;
   timestampDiffMs: number;
   priceDeltaPct: number | null;
+};
+
+const buildStrategyNameByOrderLinkKey = (strategyNames: string[]) =>
+  new Map(
+    strategyNames.flatMap((strategyName) => {
+      const strategyKey = normalizeStrategyOrderLinkKey(strategyName);
+      return strategyKey ? [[strategyKey, strategyName] as const] : [];
+    }),
+  );
+
+export const resolveReplayStrategyNameFromExchangeEntry = ({
+  exchangeEntry,
+  strategyNameByOrderLinkKey,
+}: {
+  exchangeEntry: Pick<ExchangeEntryRecord, 'orderLinkId'>;
+  strategyNameByOrderLinkKey: Map<string, string>;
+}) => {
+  const strategyKey = parseStrategyOrderLinkKey(exchangeEntry.orderLinkId);
+  if (!strategyKey) {
+    return null;
+  }
+
+  return strategyNameByOrderLinkKey.get(strategyKey) ?? null;
 };
 
 const loadExchangeEntryRows = async ({
@@ -441,6 +468,9 @@ const saveAndPrintReplayExchangeComparison = async ({
     liveStrategySummaries.map((summary) => [summary.strategyName, summary]),
   );
   const rowByStrategy = new Map<string, ReplayRuntimeParityRow>();
+  const strategyNameByOrderLinkKey = buildStrategyNameByOrderLinkKey(
+    liveStrategySummaries.map((summary) => summary.strategyName),
+  );
   const ensureRow = (strategyName: string) => {
     const existing = rowByStrategy.get(strategyName);
     if (existing) {
@@ -487,15 +517,20 @@ const saveAndPrintReplayExchangeComparison = async ({
   }
 
   if (comparison.exchangeOnly.length) {
-    const unmatchedRow = ensureRow('[exchange-unmatched]');
     for (const entry of comparison.exchangeOnly) {
-      unmatchedRow.runtimeTrades += 1;
-      unmatchedRow.runtimeOnly += 1;
+      const strategyName =
+        resolveReplayStrategyNameFromExchangeEntry({
+          exchangeEntry: entry,
+          strategyNameByOrderLinkKey,
+        }) ?? '[exchange-unmatched]';
+      const row = ensureRow(strategyName);
+      row.runtimeTrades += 1;
+      row.runtimeOnly += 1;
       if (
         typeof entry.closedPnl === 'number' &&
         Number.isFinite(entry.closedPnl)
       ) {
-        unmatchedRow.runtimePnl += entry.closedPnl;
+        row.runtimePnl += entry.closedPnl;
       }
     }
   }
@@ -535,7 +570,7 @@ const saveAndPrintReplayExchangeComparison = async ({
 
   console.log('');
   console.log(
-    `SIGNALS REPLAY VS EXCHANGE BY STRATEGY (connector=${connectorName}, inferredStrategy=nearest backtest entry, tolerance=${REPLAY_RUNTIME_COMPARE_TOLERANCE_BARS} bar)`,
+    `SIGNALS REPLAY VS EXCHANGE BY STRATEGY (connector=${connectorName}, inferredStrategy=orderLinkId | nearest backtest entry, tolerance=${REPLAY_RUNTIME_COMPARE_TOLERANCE_BARS} bar)`,
   );
   console.log(createTable(REPLAY_RUNTIME_COMPARISON_HEADERS, colorizedRows));
   console.log('');

@@ -1,4 +1,4 @@
-import { escapeHtml } from '@utils/str';
+import { escapeHtml } from '../str';
 
 describe('str utils', () => {
   describe('escapeHtml', () => {

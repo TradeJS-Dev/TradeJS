@@ -1,4 +1,4 @@
-import { parseTestName } from '@utils/tests';
+import { parseTestName } from '../tests';
 
 describe('tests utils', () => {
   describe('parseTestName', () => {

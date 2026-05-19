@@ -87,8 +87,90 @@ const makeCandle = (timestamp: number) => ({
   turnover: 15,
 });
 
+const getLastFiniteNumber = (value: unknown): number | null => {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value;
+  }
+
+  if (!Array.isArray(value)) {
+    return null;
+  }
+
+  for (let i = value.length - 1; i >= 0; i -= 1) {
+    const current = value[i];
+    if (typeof current === 'number' && Number.isFinite(current)) {
+      return current;
+    }
+  }
+
+  return null;
+};
+
+const withBaseContext = (signal: any) => {
+  const indicators = signal?.indicators ?? {};
+  const additionalIndicators = signal?.additionalIndicators ?? {};
+  const existingBaseContext = additionalIndicators.baseContext ?? {};
+  const existingRaw = existingBaseContext.raw ?? {};
+  const existingCrossAsset = existingRaw.crossAsset ?? {};
+  const setupAtrPct =
+    additionalIndicators.volumeDivergenceSetup?.atrPct ??
+    additionalIndicators.baseContext?.raw?.volatility?.atrPct;
+  const atrPct = getLastFiniteNumber(indicators.atrPct) ?? setupAtrPct ?? null;
+  const maFast = getLastFiniteNumber(indicators.maFast);
+  const maSlow = getLastFiniteNumber(indicators.maSlow);
+  const btcMaFast =
+    getLastFiniteNumber(indicators.btcMaFast) ??
+    getLastFiniteNumber(indicators.btcMaFast1h);
+  const btcMaSlow =
+    getLastFiniteNumber(indicators.btcMaSlow) ??
+    getLastFiniteNumber(indicators.btcMaSlow1h);
+  const btcCorrelation =
+    getLastFiniteNumber(indicators.correlation) ??
+    existingCrossAsset.btcCorrelation ??
+    null;
+  const venueSpread =
+    getLastFiniteNumber(indicators.spread) ??
+    existingCrossAsset.venueSpread ??
+    null;
+
+  return {
+    ...signal,
+    additionalIndicators: {
+      ...additionalIndicators,
+      baseContext: {
+        ...existingBaseContext,
+        raw: {
+          ...existingRaw,
+          trend: {
+            ...(existingRaw.trend ?? {}),
+            maFast,
+            maSlow,
+          },
+          volatility: {
+            ...(existingRaw.volatility ?? {}),
+            atrPct,
+          },
+          crossAsset: {
+            ...existingCrossAsset,
+            btcCorrelation,
+            venueSpread,
+          },
+        },
+        relative: {
+          ...(existingBaseContext.relative ?? {}),
+          benchmark: {
+            ...(existingBaseContext.relative?.benchmark ?? {}),
+            maFast: btcMaFast,
+            maSlow: btcMaSlow,
+          },
+        },
+      },
+    },
+  };
+};
+
 const makeSignal = () =>
-  ({
+  withBaseContext({
     signalId: 'sig-1',
     symbol: 'ETHUSDT',
     strategy: 'TrendLine',
@@ -138,7 +220,7 @@ const makeSignal = () =>
       ],
       correlation: 0.42,
     },
-  }) as any;
+  } as any);
 
 const makeBlockedTrendlineSignal = () => {
   const signal = makeSignal();
@@ -165,7 +247,7 @@ const makeBlockedTrendlineSignal = () => {
     touches: 4,
     distance: 12,
   };
-  return signal;
+  return withBaseContext(signal);
 };
 
 const makeAggressivePreBreakTrendlineSignal = () => {
@@ -200,7 +282,7 @@ const makeAggressivePreBreakTrendlineSignal = () => {
     touches: 5,
     distance: 100,
   };
-  return signal;
+  return withBaseContext(signal);
 };
 
 const makeStrongNearBreakPressureTrendlineSignal = () => {
@@ -236,7 +318,7 @@ const makeStrongNearBreakPressureTrendlineSignal = () => {
     touches: 5,
     distance: 748,
   };
-  return signal;
+  return withBaseContext(signal);
 };
 
 const makeVolumeDivergenceSignal = (overrides: Record<string, any> = {}) => {
@@ -298,7 +380,7 @@ const makeVolumeDivergenceSignal = (overrides: Record<string, any> = {}) => {
     },
   };
 
-  return {
+  return withBaseContext({
     ...base,
     ...overrides,
     prices: {
@@ -333,7 +415,7 @@ const makeVolumeDivergenceSignal = (overrides: Record<string, any> = {}) => {
         },
       },
     },
-  } as any;
+  } as any);
 };
 
 const makeAdaptiveMomentumRibbonSignal = (
@@ -402,7 +484,7 @@ const makeAdaptiveMomentumRibbonSignal = (
     },
   };
 
-  return {
+  return withBaseContext({
     ...base,
     ...overrides,
     prices: {
@@ -447,7 +529,7 @@ const makeAdaptiveMomentumRibbonSignal = (
         },
       },
     },
-  } as any;
+  } as any);
 };
 
 const makeWeakBtcLedBreakTrendlineSignal = () => {
@@ -483,7 +565,7 @@ const makeWeakBtcLedBreakTrendlineSignal = () => {
     touches: 5,
     distance: 293,
   };
-  return signal;
+  return withBaseContext(signal);
 };
 
 const makeWeakCleanBreakTrendlineSignal = () => {
@@ -518,7 +600,7 @@ const makeWeakCleanBreakTrendlineSignal = () => {
     touches: 4,
     distance: 132,
   };
-  return signal;
+  return withBaseContext(signal);
 };
 
 const makeCompressedCleanBreakTrendlineSignal = () => {
@@ -554,7 +636,7 @@ const makeCompressedCleanBreakTrendlineSignal = () => {
     touches: 5,
     distance: 96,
   };
-  return signal;
+  return withBaseContext(signal);
 };
 
 const makeWeakLongFarBreakTrendlineSignal = () => {
@@ -590,7 +672,7 @@ const makeWeakLongFarBreakTrendlineSignal = () => {
     touches: 5,
     distance: 1687,
   };
-  return signal;
+  return withBaseContext(signal);
 };
 
 const makeDeterministicQualityLongSignal = () => {
@@ -626,7 +708,7 @@ const makeDeterministicQualityLongSignal = () => {
     touches: 5,
     distance: 220,
   };
-  return signal;
+  return withBaseContext(signal);
 };
 
 const makeAlignedRecentLongTrendlineSignal = () => {
@@ -665,7 +747,7 @@ const makeAlignedRecentLongTrendlineSignal = () => {
       entryTiming: 'ready_follow_through',
     },
   };
-  return signal;
+  return withBaseContext(signal);
 };
 
 const makeDeterministicQualityShortSignal = () => {
@@ -701,7 +783,7 @@ const makeDeterministicQualityShortSignal = () => {
     touches: 5,
     distance: 250,
   };
-  return signal;
+  return withBaseContext(signal);
 };
 
 const makeModerateReadyBreakoutShortTrendlineSignal = () => {
@@ -740,7 +822,7 @@ const makeModerateReadyBreakoutShortTrendlineSignal = () => {
       entryTiming: 'ready_breakout',
     },
   };
-  return signal;
+  return withBaseContext(signal);
 };
 
 const makeOverextendedShortTrendlineSignal = () => {
@@ -777,7 +859,7 @@ const makeOverextendedShortTrendlineSignal = () => {
     touches: 6,
     distance: 700,
   };
-  return signal;
+  return withBaseContext(signal);
 };
 
 const makeDeterministicWatchShortSignal = () => {
@@ -812,7 +894,7 @@ const makeDeterministicWatchShortSignal = () => {
     touches: 4,
     distance: 140,
   };
-  return signal;
+  return withBaseContext(signal);
 };
 
 const makeStrongReadyBreakoutShortSignal = () => {
@@ -851,7 +933,7 @@ const makeStrongReadyBreakoutShortSignal = () => {
       entryTiming: 'ready_breakout',
     },
   };
-  return signal;
+  return withBaseContext(signal);
 };
 
 const makeFollowThroughLongTrendlineSignal = () => {
@@ -889,7 +971,7 @@ const makeFollowThroughLongTrendlineSignal = () => {
       entryTiming: 'ready_follow_through',
     },
   };
-  return signal;
+  return withBaseContext(signal);
 };
 
 const makeRetestLongTrendlineSignal = () => {
@@ -929,7 +1011,7 @@ const makeRetestLongTrendlineSignal = () => {
       entryTiming: 'ready_retest',
     },
   };
-  return signal;
+  return withBaseContext(signal);
 };
 
 const makeReverseSupportBounceLongSignal = () => {
@@ -976,7 +1058,7 @@ const makeReverseSupportBounceLongSignal = () => {
       entryTiming: 'ready_rejection',
     },
   };
-  return signal;
+  return withBaseContext(signal);
 };
 
 const makeReverseConflictSupportBounceLongSignal = () => {
@@ -1007,7 +1089,7 @@ const makeReverseConflictSupportBounceLongSignal = () => {
   signal.prices.currentPrice = 100.55;
   signal.prices.takeProfitPrice = 102.4;
   signal.prices.stopLossPrice = 99.1;
-  return signal;
+  return withBaseContext(signal);
 };
 
 const makeReverseScoredBothSupportBounceLongSignal = () => {
@@ -1038,7 +1120,7 @@ const makeReverseScoredBothSupportBounceLongSignal = () => {
   signal.prices.currentPrice = 100.72;
   signal.prices.takeProfitPrice = 102.6;
   signal.prices.stopLossPrice = 99.15;
-  return signal;
+  return withBaseContext(signal);
 };
 
 const makeReverseResistanceBounceShortSignal = () => {
@@ -1085,7 +1167,7 @@ const makeReverseResistanceBounceShortSignal = () => {
       entryTiming: 'ready_rejection',
     },
   };
-  return signal;
+  return withBaseContext(signal);
 };
 
 const makeReverseScoredAlignedResistanceBounceShortSignal = () => {
@@ -1116,7 +1198,7 @@ const makeReverseScoredAlignedResistanceBounceShortSignal = () => {
   signal.prices.currentPrice = 99.34;
   signal.prices.takeProfitPrice = 97.4;
   signal.prices.stopLossPrice = 100.82;
-  return signal;
+  return withBaseContext(signal);
 };
 
 const makeReverseConflictResistanceBounceShortSignal = () => {
@@ -1147,7 +1229,7 @@ const makeReverseConflictResistanceBounceShortSignal = () => {
   signal.prices.currentPrice = 99.35;
   signal.prices.takeProfitPrice = 97.5;
   signal.prices.stopLossPrice = 100.8;
-  return signal;
+  return withBaseContext(signal);
 };
 
 const makeReverseWeakConflictResistanceBounceShortSignal = () => {
@@ -1178,7 +1260,7 @@ const makeReverseWeakConflictResistanceBounceShortSignal = () => {
   signal.prices.currentPrice = 99.35;
   signal.prices.takeProfitPrice = 97.5;
   signal.prices.stopLossPrice = 100.8;
-  return signal;
+  return withBaseContext(signal);
 };
 
 const makeReverseBtcOnlyResistanceBounceShortSignal = () => {
@@ -1209,7 +1291,7 @@ const makeReverseBtcOnlyResistanceBounceShortSignal = () => {
   signal.prices.currentPrice = 99.36;
   signal.prices.takeProfitPrice = 97.5;
   signal.prices.stopLossPrice = 100.8;
-  return signal;
+  return withBaseContext(signal);
 };
 
 const makeReverseEliteBtcOnlyResistanceBounceShortSignal = () => {
@@ -1232,7 +1314,7 @@ const makeReverseEliteBtcOnlyResistanceBounceShortSignal = () => {
   signal.prices.currentPrice = 98.95;
   signal.prices.takeProfitPrice = 97.2;
   signal.prices.stopLossPrice = 100.82;
-  return signal;
+  return withBaseContext(signal);
 };
 
 const makeReverseAlignedFollowThroughLongSignal = () => {
@@ -1263,7 +1345,7 @@ const makeReverseAlignedFollowThroughLongSignal = () => {
   signal.prices.currentPrice = 100.42;
   signal.prices.takeProfitPrice = 102.6;
   signal.prices.stopLossPrice = 99.2;
-  return signal;
+  return withBaseContext(signal);
 };
 
 const makeFailedReverseBounceLongSignal = () => {
@@ -1309,7 +1391,7 @@ const makeFailedReverseBounceLongSignal = () => {
       entryTiming: 'wait_touch',
     },
   };
-  return signal;
+  return withBaseContext(signal);
 };
 
 describe('ai helpers', () => {
@@ -1376,6 +1458,16 @@ describe('ai helpers', () => {
       signal.indicators.spread = [0.0001, null, 0.0012];
       signal.additionalIndicators = {
         ...signal.additionalIndicators,
+        baseContext: {
+          ...signal.additionalIndicators.baseContext,
+          raw: {
+            ...signal.additionalIndicators.baseContext.raw,
+            crossAsset: {
+              ...signal.additionalIndicators.baseContext.raw.crossAsset,
+              venueSpread: 0.0012,
+            },
+          },
+        },
         trendlineTiming: {
           entryTiming: 'ready_breakout',
         },
@@ -1418,7 +1510,8 @@ describe('ai helpers', () => {
           },
           binanceCoinbaseSpread: {
             source: 'binance_coinbase_btc',
-            indicatorKey: 'payload.indicators.spread',
+            indicatorKey:
+              'payload.additionalIndicators.baseContext.raw.crossAsset.venueSpread',
             available: true,
             value: 0.0012,
             bps: 12,
@@ -1476,6 +1569,7 @@ describe('ai helpers', () => {
         'avoid technical placeholders like `needRetest=false @ null`',
       );
       expect(prompt).toContain('payload.additionalIndicators');
+      expect(prompt).toContain('payload.additionalIndicators.baseContext');
       expect(prompt).toContain('marketContext.tradingSession');
       expect(prompt).toContain('marketContext.binanceCoinbaseSpread');
       expect(prompt).toContain('Short few-shot examples');

@@ -1,5 +1,5 @@
 import { generateParamGrid } from '../grid';
-import { toJson } from '@utils/toJson';
+import { toJson } from '../toJson';
 
 describe('generateParamGrid', () => {
   it('returns correct number of combinations for 2 parameters', () => {

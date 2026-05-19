@@ -1,4 +1,4 @@
-import { asPositiveInt, asPositiveNumber } from '@utils/number';
+import { asPositiveInt, asPositiveNumber } from '../number';
 
 describe('number utils', () => {
   it('asPositiveInt returns floored positive numbers', () => {

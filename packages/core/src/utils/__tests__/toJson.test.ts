@@ -1,4 +1,4 @@
-import { toJson } from '@utils/toJson';
+import { toJson } from '../toJson';
 
 describe('toJson utils', () => {
   it('serializes object in compact mode by default', () => {

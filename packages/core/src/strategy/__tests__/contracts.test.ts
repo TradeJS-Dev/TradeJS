@@ -1,4 +1,4 @@
-jest.mock('@utils/strategyHelpers', () => ({
+jest.mock('../../utils/strategyHelpers', () => ({
   buildEntrySignalDecision: (params: any) => ({
     kind: 'entry',
     code: params.code,
@@ -21,7 +21,7 @@ jest.mock('@utils/strategyHelpers', () => ({
   }),
 }));
 
-import { buildEntrySignalDecision } from '@utils/strategyHelpers';
+import { buildEntrySignalDecision } from '../../utils/strategyHelpers';
 
 describe('strategy decision contracts', () => {
   test('TrendLine entry decision uses entryContext as source and minimal orderPlan', () => {

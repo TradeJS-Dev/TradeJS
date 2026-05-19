@@ -1,6 +1,16 @@
 {
   "extends": "../../tsconfig.packages.json",
   "compilerOptions": {
+    "baseUrl": ".",
+    "resolvePackageJsonImports": true,
+    "paths": {
+      "#app/*": ["./src/app/*"],
+      "#actions/*": ["./src/app/actions/*"],
+      "#store": ["./src/app/store/index.ts"],
+      "#shared/*": ["./src/app/components/Shared/*"],
+      "#ui": ["./src/app/components/UI/index.ts"],
+      "#components/*": ["./src/app/components/*"]
+    },
     "plugins": [
       {
         "name": "next"

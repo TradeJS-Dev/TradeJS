@@ -1,7 +1,7 @@
 describe('constants/index', () => {
   it('exports browser-safe static constants', () => {
     jest.isolateModules(() => {
-      const constants = require('@constants');
+      const constants = require('../index');
 
       expect(constants.FEE_PERCENT).toBe(0.005);
       expect(constants.TTL_1D).toBe(86_400);

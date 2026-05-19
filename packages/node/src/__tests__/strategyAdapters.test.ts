@@ -29,7 +29,16 @@ const makeSignal = () =>
     direction: 'LONG',
     timestamp: 1_700_000_000_000,
     figures: { trendLine: [{ from: 1, to: 2 }] },
-    additionalIndicators: { spread: [1, 2, 3] },
+    additionalIndicators: {
+      spread: [1, 2, 3],
+      baseContext: {
+        raw: {
+          crossAsset: {
+            venueSpread: 3,
+          },
+        },
+      },
+    },
     indicators: { maFast: [10, 11, 12] },
     prices: {
       currentPrice: 100,

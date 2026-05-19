@@ -3,7 +3,7 @@ import {
   intervalToMs,
   isWrongData,
   mergeData,
-} from '@utils/array';
+} from '../array';
 import { Interval, KlineChartItem } from '@tradejs/types';
 
 const createCandle = (timestamp: number, close: number): KlineChartItem => ({
