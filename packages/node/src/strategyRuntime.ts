@@ -25,7 +25,10 @@ import { createPineScriptLoader } from './pine';
 import { getStrategyManifest } from './strategy/manifests';
 import { getTradejsProjectCwd, loadTradejsConfig } from './tradejsConfig';
 import { resolveStrategyConfig } from './strategyHelpers/config';
-import { ensureIndicatorCacheCoverage } from './indicatorCache';
+import {
+  materializeIndicatorCachePlan,
+  planIndicatorCacheRestore,
+} from './indicatorCache';
 import {
   CreateStrategyCore,
   CreateStrategyCoreParams,
@@ -793,7 +796,7 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
     const getProjectHookList = (stage: keyof TradejsConfigHooks) =>
       normalizeConfigHookList(projectHooks?.[stage] as any);
 
-    await ensureIndicatorCacheCoverage({
+    const indicatorCachePlan = await planIndicatorCacheRestore({
       provider: connectorName,
       symbol,
       interval: Number(config.INTERVAL ?? '15'),
@@ -802,6 +805,19 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
       btcData,
       btcBinanceData,
       btcCoinbaseData,
+    });
+    await materializeIndicatorCachePlan({
+      provider: connectorName,
+      symbol,
+      interval: Number(config.INTERVAL ?? '15'),
+      periods: indicatorPeriods,
+      data,
+      btcData,
+      btcBinanceData,
+      btcCoinbaseData,
+      paramsHash: indicatorCachePlan.paramsHash,
+      restoreState: indicatorCachePlan.restoreState,
+      replayStartIndex: indicatorCachePlan.replayStartIndex,
     });
 
     const notifyRuntimeError = async ({
@@ -1090,6 +1106,8 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
       btcCoinbaseData,
       periods: indicatorPeriods,
       pluginRegistryScope: projectRoot,
+      initialRuntimeState: indicatorCachePlan.restoreState,
+      replayStartIndex: indicatorCachePlan.replayStartIndex,
     });
     const strategyApi = createStrategyAPI({
       strategy: strategyName as any,

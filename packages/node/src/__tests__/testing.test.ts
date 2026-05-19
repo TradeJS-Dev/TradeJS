@@ -32,7 +32,6 @@ const mockTestConnector = {
 const mockStrategy = jest.fn();
 const mockStrategyCreator = jest.fn(async (_config?: unknown) => mockStrategy);
 const mockBuildMlPayload = jest.fn((data) => data);
-const mockEnsureIndicatorCacheCoverage = jest.fn();
 const mockBuildAiPayload: jest.Mock = jest.fn((_signal?: unknown) => ({
   signal: { strategy: 'TrendLine' },
   figures: {},
@@ -104,11 +103,6 @@ jest.mock('../ai', () => ({
   buildAiPayload: (signal: unknown) => mockBuildAiPayload(signal),
 }));
 
-jest.mock('../indicatorCache', () => ({
-  ensureIndicatorCacheCoverage: (params: unknown) =>
-    mockEnsureIndicatorCacheCoverage(params),
-}));
-
 jest.mock('../strategyHelpers/derivativesContext', () => ({
   enrichSignalWithDerivativesContext: (params: unknown) =>
     mockEnrichSignalWithDerivativesContext(params),
@@ -176,12 +170,6 @@ describe('testing backtest flow', () => {
     mockAlignSortedCandlesByTimestamp.mockClear();
     mockStrategyCreator.mockClear();
     mockStrategy.mockReset();
-    mockEnsureIndicatorCacheCoverage.mockReset();
-    mockEnsureIndicatorCacheCoverage.mockResolvedValue({
-      cached: true,
-      paramsHash: 'hash',
-      version: 'v1',
-    });
     mockBuildAiPayload.mockClear();
     mockEnrichSignalWithDerivativesContext.mockClear();
     mockTestConnector.checkSl.mockClear();
@@ -221,13 +209,6 @@ describe('testing backtest flow', () => {
     expect(mockByBitConnector.kline).toHaveBeenCalledTimes(2);
     expect(mockTestConnector.checkSl).toHaveBeenCalledTimes(2);
     expect(mockTestConnector.checkTp).toHaveBeenCalledTimes(2);
-    expect(mockEnsureIndicatorCacheCoverage).toHaveBeenCalledWith(
-      expect.objectContaining({
-        provider: 'ByBit',
-        symbol: 'ETHUSDT',
-        interval: 15,
-      }),
-    );
   });
 
   it('loads kline data from the warmup window before test start', async () => {

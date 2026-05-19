@@ -6,7 +6,8 @@ const mockUpdatePositionProtection = jest.fn();
 const mockLoadTradejsConfig = jest.fn();
 const mockMarkRuntimeTradeClosed = jest.fn();
 const mockGetDerivativesWindow = jest.fn();
-const mockEnsureIndicatorCacheCoverage = jest.fn();
+const mockPlanIndicatorCacheRestore = jest.fn();
+const mockMaterializeIndicatorCachePlan = jest.fn();
 
 jest.mock('@tradejs/core/strategies', () => ({
   createStrategyAPI: jest.fn((params: any) => ({
@@ -112,8 +113,10 @@ jest.mock('@tradejs/infra/logger', () => ({
 }));
 
 jest.mock('../indicatorCache', () => ({
-  ensureIndicatorCacheCoverage: (...args: unknown[]) =>
-    mockEnsureIndicatorCacheCoverage(...args),
+  planIndicatorCacheRestore: (...args: unknown[]) =>
+    mockPlanIndicatorCacheRestore(...args),
+  materializeIndicatorCachePlan: (...args: unknown[]) =>
+    mockMaterializeIndicatorCachePlan(...args),
 }));
 
 jest.mock('../strategy/manifests', () => {
@@ -290,21 +293,88 @@ describe('strategyRuntime', () => {
     mockEnrichSignalWithAi.mockResolvedValue(5);
     mockMarkRuntimeTradeClosed.mockResolvedValue(null);
     mockGetDerivativesWindow.mockResolvedValue({});
-    mockEnsureIndicatorCacheCoverage.mockResolvedValue({
+    mockPlanIndicatorCacheRestore.mockResolvedValue({
       cached: true,
       paramsHash: 'hash',
-      version: 'v1',
+      version: 'v2',
+      restoreState: null,
+      replayStartIndex: 0,
     });
+    mockMaterializeIndicatorCachePlan.mockResolvedValue(undefined);
   });
 
-  it('preloads indicator cache before strategy execution starts', async () => {
+  it('plans and materializes indicator cache before strategy execution starts', async () => {
     await makeRuntime(() => ({ kind: 'skip', code: 'NOOP' }));
 
-    expect(mockEnsureIndicatorCacheCoverage).toHaveBeenCalledWith(
+    expect(mockPlanIndicatorCacheRestore).toHaveBeenCalledWith(
       expect.objectContaining({
         provider: 'ByBit',
         symbol: 'ETHUSDT',
         interval: 15,
+      }),
+    );
+    expect(mockMaterializeIndicatorCachePlan).toHaveBeenCalledWith(
+      expect.objectContaining({
+        provider: 'ByBit',
+        symbol: 'ETHUSDT',
+        interval: 15,
+        paramsHash: 'hash',
+        replayStartIndex: 0,
+      }),
+    );
+  });
+
+  it('hydrates indicators from cached runtime state and replays only the uncached suffix', async () => {
+    const cachedState = { restored: true } as any;
+    mockPlanIndicatorCacheRestore.mockResolvedValue({
+      cached: false,
+      paramsHash: 'hash',
+      version: 'v2',
+      restoreState: cachedState,
+      replayStartIndex: 2,
+    });
+    const createStrategyIndicatorsStateMock = jest.requireMock(
+      '@tradejs/core/strategies',
+    ).createStrategyIndicatorsState as jest.Mock;
+    const strategyCreator = createStrategyRuntime({
+      strategyName: 'TrendLine',
+      defaults: {} as any,
+      createCore: async () => async () => ({ kind: 'skip', code: 'NOOP' }),
+    });
+    const data = [
+      { timestamp: 1, close: 101 },
+      { timestamp: 2, close: 102 },
+      { timestamp: 3, close: 103 },
+      { timestamp: 4, close: 104 },
+    ] as any;
+    const btcData = [
+      { timestamp: 1, close: 201 },
+      { timestamp: 2, close: 202 },
+      { timestamp: 3, close: 203 },
+      { timestamp: 4, close: 204 },
+    ] as any;
+
+    await strategyCreator({
+      userName: 'root',
+      connectorName: 'ByBit',
+      symbol: 'ETHUSDT',
+      config: {},
+      data,
+      btcData,
+      connector: {
+        placeOrder: jest.fn(),
+        setTakeProfits: jest.fn(),
+        setStopLoss: jest.fn(),
+        closePosition: jest.fn(),
+      },
+    } as any);
+
+    expect(createStrategyIndicatorsStateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data,
+        btcData,
+        initialRuntimeState: cachedState,
+        replayStartIndex: 2,
       }),
     );
   });

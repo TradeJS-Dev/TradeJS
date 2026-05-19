@@ -9,7 +9,6 @@ import {
   TestingBox,
 } from '@tradejs/types';
 import { alignSortedCandlesByTimestamp } from '@tradejs/core/indicators';
-import { buildDefaultIndicatorPeriods } from '@tradejs/core/strategies';
 import { getBacktestPreloadStart } from '@tradejs/core/time';
 import { appendAiDatasetRow } from '@tradejs/infra/ai';
 import {
@@ -28,7 +27,6 @@ import {
 } from './connectorsRegistry';
 import { createTestConnector } from './testConnector';
 import { getTradejsProjectCwd } from './tradejsConfig';
-import { ensureIndicatorCacheCoverage } from './indicatorCache';
 
 type TestingKlineCacheState = {
   coinKlineCache: Map<string, KlineChartData>;
@@ -522,21 +520,6 @@ export const testing: TestingBox = async ({
     btcBinancePrevData,
     btcCoinbasePrevData,
   } = preparedData;
-  const indicatorPeriods = buildDefaultIndicatorPeriods(strategyConfig as any);
-
-  await withTimeout(
-    'indicator cache preload',
-    ensureIndicatorCacheCoverage({
-      provider: connectorName,
-      symbol,
-      interval: Number(interval),
-      periods: indicatorPeriods,
-      data: prevData,
-      btcData: btcPrevData,
-      btcBinanceData: btcBinancePrevData,
-      btcCoinbaseData: btcCoinbasePrevData,
-    }),
-  );
 
   const testConnector = createTestConnector(connector, {
     userName,

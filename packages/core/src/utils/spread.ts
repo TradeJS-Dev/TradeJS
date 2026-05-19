@@ -65,6 +65,71 @@ export const createSpreadSmoother = (window = DEFAULT_SPREAD_WINDOW) => {
   return { next };
 };
 
+export type SpreadSmootherState = {
+  binanceWindow: number[];
+  coinbaseWindow: number[];
+  binanceSum: number;
+  coinbaseSum: number;
+};
+
+export const createSerializableSpreadSmoother = (
+  window = DEFAULT_SPREAD_WINDOW,
+  state?: Partial<SpreadSmootherState>,
+) => {
+  const binanceWindow = [...(state?.binanceWindow ?? [])];
+  const coinbaseWindow = [...(state?.coinbaseWindow ?? [])];
+  let binanceSum =
+    typeof state?.binanceSum === 'number'
+      ? state.binanceSum
+      : binanceWindow.reduce((acc, value) => acc + value, 0);
+  let coinbaseSum =
+    typeof state?.coinbaseSum === 'number'
+      ? state.coinbaseSum
+      : coinbaseWindow.reduce((acc, value) => acc + value, 0);
+
+  const next = (params: {
+    binancePrice?: SpreadValue;
+    coinbasePrice?: SpreadValue;
+    fallbackSpread?: SpreadValue;
+  }): number | null => {
+    const binance = toFinitePrice(params.binancePrice);
+    const coinbase = toFinitePrice(params.coinbasePrice);
+
+    if (binance != null && coinbase != null) {
+      binanceWindow.push(binance);
+      coinbaseWindow.push(coinbase);
+      binanceSum += binance;
+      coinbaseSum += coinbase;
+
+      if (binanceWindow.length > window) {
+        binanceSum -= binanceWindow.shift() ?? 0;
+        coinbaseSum -= coinbaseWindow.shift() ?? 0;
+      }
+    }
+
+    let spread = toFiniteSpread(params.fallbackSpread);
+    if (binanceWindow.length > 0 && coinbaseWindow.length > 0) {
+      const avgBinance = binanceSum / binanceWindow.length;
+      const avgCoinbase = coinbaseSum / coinbaseWindow.length;
+      if (Number.isFinite(avgBinance) && avgBinance > 0) {
+        spread = (avgCoinbase - avgBinance) / avgBinance;
+      }
+    }
+
+    return toFiniteSpread(spread);
+  };
+
+  return {
+    next,
+    snapshot: (): SpreadSmootherState => ({
+      binanceWindow: [...binanceWindow],
+      coinbaseWindow: [...coinbaseWindow],
+      binanceSum,
+      coinbaseSum,
+    }),
+  };
+};
+
 export const smoothSpreadSeries = (
   points: SpreadPointInput[],
   window = DEFAULT_SPREAD_WINDOW,

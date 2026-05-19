@@ -1,4 +1,3 @@
-import { SMA, ATR, BollingerBands, OBV, MACD } from 'technicalindicators';
 import {
   Candle,
   BaseStrategyContextSnapshot,
@@ -10,9 +9,27 @@ import { ML_BASE_CANDLES_WINDOW, CORRELATION_WINDOW } from '../constants';
 import { cloneArrayValues } from './array';
 import { calculateCoinBtcCorrelation } from './correlation';
 import { getRegisteredIndicatorEntries } from './indicatorPlugins';
-import { createSpreadSmoother } from './spread';
+import {
+  createSerializableAtr,
+  createSerializableBollinger,
+  createSerializableMacd,
+  createSerializableObv,
+  createSerializableSma,
+  SerializableAtrState,
+  SerializableBollingerState,
+  SerializableEmaState,
+  SerializableMacdState,
+  SerializableObvState,
+  SerializableSdState,
+  SerializableSmaState,
+} from './serializableIndicators';
+import {
+  createSerializableSpreadSmoother,
+  SpreadSmootherState,
+} from './spread';
 
 const CANDLE_WINDOW = ML_BASE_CANDLES_WINDOW;
+const CONTROLLER_STATE_CANDLE_WINDOW = 128;
 const BASE_INTERVAL_MINUTES = 15;
 const INDICATOR_TIMEFRAMES = [
   { minutes: 60, suffix: '1h' },
@@ -78,6 +95,19 @@ const cloneMlCandle = (candle: Candle): Candle => ({
   timestamp: candle.timestamp,
 });
 
+const buildCandleSignature = (candle: Candle | undefined): string | null => {
+  if (!candle) return null;
+  return [
+    candle.timestamp,
+    candle.open,
+    candle.high,
+    candle.low,
+    candle.close,
+    candle.volume,
+    candle.turnover,
+  ].join(':');
+};
+
 const resampleCandles = (
   candles: Candle[],
   targetMinutes: number,
@@ -115,6 +145,12 @@ const createIncrementalResampleCache = (targetMinutes: number) => {
   const candles: Candle[] = [];
 
   return {
+    restore: (seedCandles: Candle[]) => {
+      candles.length = 0;
+      seedCandles.forEach((candle) => {
+        candles.push(cloneMlCandle(candle));
+      });
+    },
     push: (raw: Candle) => {
       const candle = toMlCandle(raw);
       const ts = candle.timestamp;
@@ -309,6 +345,44 @@ type NumericHistoryBuffer = {
   size: number;
 };
 
+type IndicatorRuntimeState = {
+  maFast: SerializableSmaState;
+  maMedium: SerializableSmaState;
+  maSlow: SerializableSmaState;
+  atr: SerializableAtrState;
+  atrPctShort: SerializableSmaState;
+  atrPctLong: SerializableSmaState;
+  bb: SerializableBollingerState;
+  obv: SerializableObvState;
+  smaObv: SerializableSmaState;
+  macd: SerializableMacdState;
+  btcMaFast: SerializableSmaState;
+  btcMaSlow: SerializableSmaState;
+  spreadSmoother: SpreadSmootherState;
+};
+
+export type IndicatorsControllerRuntimeState = {
+  indicatorState: IndicatorRuntimeState;
+  indicatorHistory: Record<string, NumericHistoryBuffer>;
+  btcRuntimeHistory: Record<string, NumericHistoryBuffer>;
+  latestIndicatorValues: Record<string, number>;
+  rawCoinCandles: Candle[];
+  rawBtcCandles: Candle[];
+  coinResampledCandles: {
+    h1: Candle[];
+    h4: Candle[];
+    d1: Candle[];
+  };
+  btcResampledCandles: {
+    h1: Candle[];
+    h4: Candle[];
+    d1: Candle[];
+  };
+  btcCloses: number[];
+  btcBinanceCursor: number;
+  btcCoinbaseCursor: number;
+};
+
 type TrendlineIndicators = {
   maFast: IndicatorValue;
   maMedium: IndicatorValue;
@@ -343,6 +417,7 @@ type CreateIndicatorsOptions = {
   btcBinanceData?: Candle[];
   btcCoinbaseData?: Candle[];
   pluginRegistryScope?: string;
+  initialRuntimeState?: IndicatorsControllerRuntimeState;
 };
 
 type BuildBaseContextParams = {
@@ -942,6 +1017,14 @@ const createNumericHistoryBuffer = (): NumericHistoryBuffer => ({
   size: 0,
 });
 
+const cloneNumericHistoryBuffer = (
+  buffer: NumericHistoryBuffer,
+): NumericHistoryBuffer => ({
+  values: [...buffer.values],
+  start: buffer.start,
+  size: buffer.size,
+});
+
 const appendNumericHistory = (buffer: NumericHistoryBuffer, value: number) => {
   if (buffer.size < ML_BASE_CANDLES_WINDOW) {
     buffer.values[(buffer.start + buffer.size) % ML_BASE_CANDLES_WINDOW] =
@@ -987,9 +1070,13 @@ export const createIndicators = (
   const btcCandlesHistory: Candle[] = [];
   const btcBinanceCandles = (options.btcBinanceData ?? []).map(toMlCandle);
   const btcCoinbaseCandles = (options.btcCoinbaseData ?? []).map(toMlCandle);
-  const spreadSmoother = createSpreadSmoother();
-  let btcBinanceCursor = 0;
-  let btcCoinbaseCursor = 0;
+  const restoredState = options.initialRuntimeState;
+  const spreadSmoother = createSerializableSpreadSmoother(
+    undefined,
+    restoredState?.indicatorState.spreadSmoother,
+  );
+  let btcBinanceCursor = restoredState?.btcBinanceCursor ?? 0;
+  let btcCoinbaseCursor = restoredState?.btcCoinbaseCursor ?? 0;
   const createRollingCandleWindow = (windowSize: number) => {
     const buffer = new Array<Candle | undefined>(Math.max(0, windowSize));
     const snapshot: Candle[] = [];
@@ -1030,50 +1117,81 @@ export const createIndicators = (
   const btc4hCache = createIncrementalResampleCache(240);
   const btc1dCache = createIncrementalResampleCache(1440);
 
-  const obv = new OBV({ close: [], volume: [] });
-  const smaObv = new SMA({ period: indicatorPeriods.obvSma, values: [] });
-  const ma14 = new SMA({ period: indicatorPeriods.maFast, values: [] });
-  const ma49 = new SMA({ period: indicatorPeriods.maMedium, values: [] });
-  const ma50 = new SMA({ period: indicatorPeriods.maSlow, values: [] });
-  const atr = new ATR({
-    period: indicatorPeriods.atr,
-    high: [],
-    low: [],
-    close: [],
-  });
-  const atrPctShort = new SMA({
-    period: indicatorPeriods.atrPctShort,
-    values: [],
-  });
-  const atrPctLong = new SMA({
-    period: indicatorPeriods.atrPctLong,
-    values: [],
-  });
-  const bb = new BollingerBands({
-    period: indicatorPeriods.bb,
-    values: [],
-    stdDev: indicatorPeriods.bbStd,
-  });
-  const macd = new MACD({
-    fastPeriod: indicatorPeriods.macdFast,
-    slowPeriod: indicatorPeriods.macdSlow,
-    signalPeriod: indicatorPeriods.macdSignal,
-    values: [],
-    SimpleMAOscillator: false,
-    SimpleMASignal: false,
-  });
-  const btcMaFast = new SMA({ period: indicatorPeriods.maFast, values: [] });
-  const btcMaSlow = new SMA({ period: indicatorPeriods.maSlow, values: [] });
+  const obv = createSerializableObv(restoredState?.indicatorState.obv);
+  const smaObv = createSerializableSma(
+    indicatorPeriods.obvSma,
+    restoredState?.indicatorState.smaObv,
+  );
+  const ma14 = createSerializableSma(
+    indicatorPeriods.maFast,
+    restoredState?.indicatorState.maFast,
+  );
+  const ma49 = createSerializableSma(
+    indicatorPeriods.maMedium,
+    restoredState?.indicatorState.maMedium,
+  );
+  const ma50 = createSerializableSma(
+    indicatorPeriods.maSlow,
+    restoredState?.indicatorState.maSlow,
+  );
+  const atr = createSerializableAtr(
+    indicatorPeriods.atr,
+    restoredState?.indicatorState.atr,
+  );
+  const atrPctShort = createSerializableSma(
+    indicatorPeriods.atrPctShort,
+    restoredState?.indicatorState.atrPctShort,
+  );
+  const atrPctLong = createSerializableSma(
+    indicatorPeriods.atrPctLong,
+    restoredState?.indicatorState.atrPctLong,
+  );
+  const bb = createSerializableBollinger(
+    indicatorPeriods.bb,
+    indicatorPeriods.bbStd,
+    restoredState?.indicatorState.bb,
+  );
+  const macd = createSerializableMacd(
+    {
+      fastPeriod: indicatorPeriods.macdFast,
+      slowPeriod: indicatorPeriods.macdSlow,
+      signalPeriod: indicatorPeriods.macdSignal,
+      simpleOscillator: false,
+      simpleSignal: false,
+    },
+    restoredState?.indicatorState.macd,
+  );
+  const btcMaFast = createSerializableSma(
+    indicatorPeriods.maFast,
+    restoredState?.indicatorState.btcMaFast,
+  );
+  const btcMaSlow = createSerializableSma(
+    indicatorPeriods.maSlow,
+    restoredState?.indicatorState.btcMaSlow,
+  );
 
-  const indicatorHistory: Record<string, NumericHistoryBuffer> = {};
+  const indicatorHistory: Record<string, NumericHistoryBuffer> =
+    Object.fromEntries(
+      Object.entries(restoredState?.indicatorHistory ?? {}).map(
+        ([key, buffer]) => [key, cloneNumericHistoryBuffer(buffer)],
+      ),
+    );
   const btcRuntimeHistory: Record<
     (typeof BTC_RUNTIME_KEYS)[number],
     NumericHistoryBuffer
   > = {
-    btcMaFast: createNumericHistoryBuffer(),
-    btcMaSlow: createNumericHistoryBuffer(),
+    btcMaFast: cloneNumericHistoryBuffer(
+      restoredState?.btcRuntimeHistory?.btcMaFast ??
+        createNumericHistoryBuffer(),
+    ),
+    btcMaSlow: cloneNumericHistoryBuffer(
+      restoredState?.btcRuntimeHistory?.btcMaSlow ??
+        createNumericHistoryBuffer(),
+    ),
   };
-  const latestIndicatorValues: Record<string, number> = {};
+  const latestIndicatorValues: Record<string, number> = {
+    ...(restoredState?.latestIndicatorValues ?? {}),
+  };
   const indicatorPluginErrorShown = new Set<string>();
   let cachedBaseHistoryResult: Record<string, number[]> | null = null;
   let cachedBtcRuntimeHistoryResult: Record<string, number[]> | null = null;
@@ -1081,6 +1199,29 @@ export const createIndicators = (
   let isBaseHistoryDirty = true;
   let isBtcRuntimeHistoryDirty = true;
   let isHistoryResultDirty = true;
+
+  restoredState?.rawCoinCandles.forEach((candle) => {
+    const normalized = toMlCandle(candle);
+    candlesHistory.push(normalized);
+    closes.push(normalized.close);
+    highs.push(normalized.high);
+    lows.push(normalized.low);
+    volumes.push(normalized.volume);
+    timestamps.push(normalized.timestamp);
+  });
+  restoredState?.rawBtcCandles.forEach((candle) => {
+    const normalized = toMlCandle(candle);
+    btcCandlesHistory.push(normalized);
+  });
+  restoredState?.btcCloses.forEach((value) => {
+    btcCloses.push(value);
+  });
+  coin1hCache.restore(restoredState?.coinResampledCandles.h1 ?? []);
+  coin4hCache.restore(restoredState?.coinResampledCandles.h4 ?? []);
+  coin1dCache.restore(restoredState?.coinResampledCandles.d1 ?? []);
+  btc1hCache.restore(restoredState?.btcResampledCandles.h1 ?? []);
+  btc4hCache.restore(restoredState?.btcResampledCandles.h4 ?? []);
+  btc1dCache.restore(restoredState?.btcResampledCandles.d1 ?? []);
 
   const getBaseHistoryResult = (): Record<string, number[]> => {
     if (isBaseHistoryDirty || !cachedBaseHistoryResult) {
@@ -1316,6 +1457,20 @@ export const createIndicators = (
   const window24hTracker = createRollingWindowTracker(ONE_DAY_MS);
   const price1hStartTracker = createNearestStartCloseTracker(ONE_HOUR_MS);
   const price24hStartTracker = createNearestStartCloseTracker(ONE_DAY_MS);
+
+  candlesHistory.forEach((candle, index) => {
+    correlationCoinWindow.push(candle);
+    if (indicatorPeriods.levelLookback > 0) {
+      updateLevelWindow(index);
+    }
+    window1hTracker.push(index, candle.timestamp);
+    window24hTracker.push(index, candle.timestamp);
+    price1hStartTracker.resolve(candle.timestamp);
+    price24hStartTracker.resolve(candle.timestamp);
+  });
+  btcCandlesHistory.forEach((candle) => {
+    correlationBtcWindow.push(candle);
+  });
 
   const next = (
     candle: Candle,
@@ -1922,9 +2077,78 @@ export const createIndicators = (
     next(candle, btcData[index]);
   });
 
+  const runtimeState = (): IndicatorsControllerRuntimeState => ({
+    indicatorState: {
+      maFast: ma14.snapshot(),
+      maMedium: ma49.snapshot(),
+      maSlow: ma50.snapshot(),
+      atr: atr.snapshot(),
+      atrPctShort: atrPctShort.snapshot(),
+      atrPctLong: atrPctLong.snapshot(),
+      bb: bb.snapshot(),
+      obv: obv.snapshot(),
+      smaObv: smaObv.snapshot(),
+      macd: macd.snapshot(),
+      btcMaFast: btcMaFast.snapshot(),
+      btcMaSlow: btcMaSlow.snapshot(),
+      spreadSmoother: spreadSmoother.snapshot(),
+    },
+    indicatorHistory: Object.fromEntries(
+      Object.entries(indicatorHistory).map(([key, buffer]) => [
+        key,
+        cloneNumericHistoryBuffer(buffer),
+      ]),
+    ),
+    btcRuntimeHistory: Object.fromEntries(
+      Object.entries(btcRuntimeHistory).map(([key, buffer]) => [
+        key,
+        cloneNumericHistoryBuffer(buffer),
+      ]),
+    ),
+    latestIndicatorValues: { ...latestIndicatorValues },
+    rawCoinCandles: candlesHistory
+      .slice(-CONTROLLER_STATE_CANDLE_WINDOW)
+      .map(cloneMlCandle),
+    rawBtcCandles: btcCandlesHistory
+      .slice(-CONTROLLER_STATE_CANDLE_WINDOW)
+      .map(cloneMlCandle),
+    coinResampledCandles: {
+      h1: coin1hCache
+        .snapshot()
+        .slice(-ML_BASE_CANDLES_WINDOW)
+        .map(cloneMlCandle),
+      h4: coin4hCache
+        .snapshot()
+        .slice(-ML_BASE_CANDLES_WINDOW)
+        .map(cloneMlCandle),
+      d1: coin1dCache
+        .snapshot()
+        .slice(-ML_BASE_CANDLES_WINDOW)
+        .map(cloneMlCandle),
+    },
+    btcResampledCandles: {
+      h1: btc1hCache
+        .snapshot()
+        .slice(-ML_BASE_CANDLES_WINDOW)
+        .map(cloneMlCandle),
+      h4: btc4hCache
+        .snapshot()
+        .slice(-ML_BASE_CANDLES_WINDOW)
+        .map(cloneMlCandle),
+      d1: btc1dCache
+        .snapshot()
+        .slice(-ML_BASE_CANDLES_WINDOW)
+        .map(cloneMlCandle),
+    },
+    btcCloses: btcCloses.slice(-CONTROLLER_STATE_CANDLE_WINDOW),
+    btcBinanceCursor,
+    btcCoinbaseCursor,
+  });
+
   return {
     next,
     snapshot: (): IndicatorsHistorySnapshot => buildStrategySnapshot(),
+    runtimeState,
     latestNumber: (key: string): number | undefined => {
       const latestValue = latestIndicatorValues[key];
       if (typeof latestValue === 'number') {
@@ -1949,11 +2173,14 @@ export const createIndicators = (
 
 export type IndicatorCacheSnapshotEntry = {
   timestamp: number;
+  candleSignature: string | null;
+  btcCandleSignature: string | null;
   ready: boolean;
   indicatorValues: Partial<
     Record<(typeof CACHEABLE_INDICATOR_KEYS)[number], number | null>
   >;
   baseContext: Omit<BaseStrategyContextSnapshot, 'mtf'> | null;
+  runtimeState: IndicatorsControllerRuntimeState;
 };
 
 const stripMtfFromBaseContext = (
@@ -1984,9 +2211,12 @@ export const buildIndicatorCacheSnapshots = (
   const entries: IndicatorCacheSnapshotEntry[] = [];
 
   data.forEach((candle, index) => {
-    const snapshot = controller.next(candle, btcData[index]);
+    const btcCandle = btcData[index];
+    const snapshot = controller.next(candle, btcCandle);
     entries.push({
       timestamp: candle.timestamp,
+      candleSignature: buildCandleSignature(candle),
+      btcCandleSignature: buildCandleSignature(btcCandle),
       ready: snapshot != null,
       indicatorValues:
         snapshot == null ? {} : toCacheableIndicatorValues(snapshot),
@@ -1994,6 +2224,7 @@ export const buildIndicatorCacheSnapshots = (
         snapshot?.baseContext == null
           ? null
           : stripMtfFromBaseContext(snapshot.baseContext),
+      runtimeState: controller.runtimeState(),
     });
   });
 

@@ -1,4 +1,8 @@
-import { createIndicators, IndicatorPeriods } from '../../indicators';
+import {
+  createIndicators,
+  IndicatorPeriods,
+  IndicatorsControllerRuntimeState,
+} from '../../indicators';
 import { KlineChartData, StrategyIndicatorsState } from '@tradejs/types';
 
 type IndicatorPeriodsConfig = Partial<
@@ -67,6 +71,8 @@ export interface StrategyIndicatorsStateParams {
   btcCoinbaseData?: KlineChartData;
   periods?: Partial<IndicatorPeriods>;
   pluginRegistryScope?: string;
+  initialRuntimeState?: IndicatorsControllerRuntimeState | null;
+  replayStartIndex?: number;
 }
 
 export const createStrategyIndicatorsState = ({
@@ -77,15 +83,22 @@ export const createStrategyIndicatorsState = ({
   btcCoinbaseData,
   periods,
   pluginRegistryScope,
+  initialRuntimeState,
+  replayStartIndex = 0,
 }: StrategyIndicatorsStateParams): StrategyIndicatorsState => {
   let controller: IndicatorsController | null =
     env === 'BACKTEST'
-      ? createIndicators(data, btcData, {
-          periods,
-          btcBinanceData,
-          btcCoinbaseData,
-          pluginRegistryScope,
-        })
+      ? createIndicators(
+          data.slice(replayStartIndex),
+          btcData.slice(replayStartIndex),
+          {
+            periods,
+            btcBinanceData,
+            btcCoinbaseData,
+            pluginRegistryScope,
+            initialRuntimeState: initialRuntimeState ?? undefined,
+          },
+        )
       : null;
   let currentBarPair:
     | {
@@ -120,12 +133,17 @@ export const createStrategyIndicatorsState = ({
   const ensureControllerInitialized = (): SnapshotController => {
     if (controller) return withSnapshot(controller);
 
-    controller = createIndicators(data.slice(0, -1), btcData.slice(0, -1), {
-      periods,
-      btcBinanceData,
-      btcCoinbaseData,
-      pluginRegistryScope,
-    });
+    controller = createIndicators(
+      data.slice(replayStartIndex, -1),
+      btcData.slice(replayStartIndex, -1),
+      {
+        periods,
+        btcBinanceData,
+        btcCoinbaseData,
+        pluginRegistryScope,
+        initialRuntimeState: initialRuntimeState ?? undefined,
+      },
+    );
 
     const lastCandle = data[data.length - 1];
     const lastBtcCandle = btcData[btcData.length - 1];
