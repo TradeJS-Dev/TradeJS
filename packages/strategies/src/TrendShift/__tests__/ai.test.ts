@@ -316,7 +316,7 @@ describe('trendShiftAiAdapter', () => {
           baseContext: {
             regime: {
               session: {
-                primarySession: 'london',
+                sessionPhase: 'europe',
                 isOverlap: false,
               },
               volatility: {
@@ -681,7 +681,7 @@ describe('trendShiftAiAdapter', () => {
           baseContext: {
             regime: {
               session: {
-                primarySession: 'london',
+                sessionPhase: 'europe',
                 isOverlap: true,
               },
             },

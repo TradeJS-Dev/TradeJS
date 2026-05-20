@@ -194,6 +194,7 @@ export interface BaseRegimeContext {
     persistence: number | null;
   };
   volatility: {
+    atrSlope: number | null;
     atrPctZScore: number | null;
     bbWidthPct: number | null;
     compressionScore: number | null;
@@ -211,11 +212,14 @@ export interface BaseRegimeContext {
     downCloseStreak: number | null;
   };
   session: {
-    primarySession: 'asia' | 'europe' | 'us' | 'off_hours';
+    sessionPhase: 'asia' | 'europe' | 'us' | 'off_hours';
     isOverlap: boolean;
     minutesFromSessionOpen: number | null;
     minutesToFundingWindow: number | null;
     fundingWindowNearby: boolean;
+  };
+  memory: {
+    recentFalseBreakoutDensity: number | null;
   };
 }
 

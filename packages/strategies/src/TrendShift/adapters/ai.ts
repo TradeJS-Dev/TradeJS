@@ -86,8 +86,8 @@ const getTrendShiftContext = (payload: AiPayload): TrendShiftAiContext => {
       ? derivativesSummary.pressure
       : null;
   const sessionPrimary =
-    typeof regimeSession?.primarySession === 'string'
-      ? regimeSession.primarySession
+    typeof regimeSession?.sessionPhase === 'string'
+      ? regimeSession.sessionPhase
       : null;
   const sessionIsOverlap = regimeSession?.isOverlap === true;
   const breakoutState =

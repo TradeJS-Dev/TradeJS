@@ -1,4 +1,5 @@
 const mockBuildIndicatorCacheSnapshots = jest.fn();
+const mockDeleteIndicatorCacheObsoleteVersions = jest.fn();
 const mockGetIndicatorCacheRange = jest.fn();
 const mockGetLatestIndicatorCacheCheckpointAtOrBefore = jest.fn();
 const mockUpsertIndicatorCacheCoverageRows = jest.fn();
@@ -10,6 +11,8 @@ jest.mock('@tradejs/core/indicators', () => ({
 }));
 
 jest.mock('@tradejs/infra/timescale', () => ({
+  deleteIndicatorCacheObsoleteVersions: (...args: unknown[]) =>
+    mockDeleteIndicatorCacheObsoleteVersions(...args),
   getIndicatorCacheRange: (...args: unknown[]) =>
     mockGetIndicatorCacheRange(...args),
   getLatestIndicatorCacheCheckpointAtOrBefore: (...args: unknown[]) =>
@@ -69,6 +72,7 @@ const cacheRow = (timestamp: number, close = 100, btcClose = 200) => ({
 describe('indicatorCache', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockDeleteIndicatorCacheObsoleteVersions.mockResolvedValue(undefined);
   });
 
   it('returns stable params hash for the same inputs', () => {
@@ -123,6 +127,12 @@ describe('indicatorCache', () => {
     expect(plan.cached).toBe(false);
     expect(plan.replayStartIndex).toBe(2);
     expect(plan.restoreState).toEqual(runtimeState(2_000));
+    expect(mockDeleteIndicatorCacheObsoleteVersions).toHaveBeenCalledWith({
+      provider: 'ByBit',
+      symbol: 'ETHUSDT',
+      interval: 15,
+      keepVersion: 'v4',
+    });
   });
 
   it('invalidates cache from the first changed candle and keeps the last valid runtime state', async () => {

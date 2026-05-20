@@ -124,7 +124,11 @@ describe('utils indicators', () => {
     expect(last?.highLevel).toBe(16);
     expect(last?.lowLevel).toBe(5);
     expect(last?.baseContext?.regime.trend.bias).toBeDefined();
-    expect(last?.baseContext?.regime.session.primarySession).toBeDefined();
+    expect(last?.baseContext?.regime.session.sessionPhase).toBeDefined();
+    expect(last?.baseContext?.regime.volatility.atrSlope).toBeDefined();
+    expect(
+      last?.baseContext?.regime.memory.recentFalseBreakoutDensity,
+    ).toBeDefined();
     expect(last?.baseContext?.raw.levels.highLevel).toBe(16);
     expect(
       last?.baseContext?.structure.localRange.barsSinceBreakout,

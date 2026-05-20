@@ -7,13 +7,14 @@ import {
 } from '@tradejs/core/indicators';
 import { Candle } from '@tradejs/types';
 import {
+  deleteIndicatorCacheObsoleteVersions,
   getIndicatorCacheRange,
   getLatestIndicatorCacheCheckpointAtOrBefore,
   upsertIndicatorCacheCheckpointRows,
   upsertIndicatorCacheCoverageRows,
 } from '@tradejs/infra/timescale';
 
-const INDICATOR_CACHE_VERSION = 'v3';
+const INDICATOR_CACHE_VERSION = 'v4';
 const INDICATOR_CACHE_CHECKPOINT_INTERVAL = 64;
 
 type EnsureIndicatorCacheCoverageParams = {
@@ -213,6 +214,13 @@ export const planIndicatorCacheRestore = async ({
   btcBinanceData,
   btcCoinbaseData,
 }: EnsureIndicatorCacheCoverageParams): Promise<IndicatorCacheRestorePlan> => {
+  await deleteIndicatorCacheObsoleteVersions({
+    provider,
+    symbol,
+    interval,
+    keepVersion: INDICATOR_CACHE_VERSION,
+  });
+
   const paramsHash = buildIndicatorCacheParamsHash({
     provider,
     interval,

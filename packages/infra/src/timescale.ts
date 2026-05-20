@@ -1064,6 +1064,44 @@ export async function upsertIndicatorCacheCheckpointRows(
   await pool.query(sql, flat);
 }
 
+export async function deleteIndicatorCacheObsoleteVersions(params: {
+  provider: string;
+  symbol: string;
+  interval: number;
+  keepVersion: string;
+}) {
+  await Promise.all([
+    ensureIndicatorCacheSchema(),
+    ensureIndicatorCacheCheckpointSchema(),
+  ]);
+
+  const pool = getPool();
+  const normalizedProvider = normalizeCandleProvider(params.provider);
+  const normalizedSymbol = normalizeCandleSymbol(params.symbol);
+
+  await pool.query(
+    `
+      DELETE FROM indicator_cache
+      WHERE provider = $1
+        AND symbol = $2
+        AND interval = $3
+        AND version <> $4
+    `,
+    [normalizedProvider, normalizedSymbol, params.interval, params.keepVersion],
+  );
+
+  await pool.query(
+    `
+      DELETE FROM indicator_cache_checkpoint
+      WHERE provider = $1
+        AND symbol = $2
+        AND interval = $3
+        AND version <> $4
+    `,
+    [normalizedProvider, normalizedSymbol, params.interval, params.keepVersion],
+  );
+}
+
 export async function getIndicatorCacheCoverage(params: {
   provider: string;
   symbol: string;

@@ -51,7 +51,7 @@ export const getSignalSessionContext = (signal: SignalLike) =>
   getSignalBaseContext(signal)?.regime?.session ?? null;
 
 export const getSignalSessionPrimary = (signal: SignalLike): string | null =>
-  getSignalSessionContext(signal)?.primarySession ?? null;
+  getSignalSessionContext(signal)?.sessionPhase ?? null;
 
 export const getSignalSessionIsOverlap = (signal: SignalLike): boolean =>
   getSignalSessionContext(signal)?.isOverlap === true;

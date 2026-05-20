@@ -60,7 +60,7 @@ export const buildSessionContext = (timestamp: number) => {
     isInsideSession(minuteUtc, session.startMinuteUtc, session.endMinuteUtc),
   ).map((session) => session.name);
 
-  const primarySession = activeSessions.includes('us')
+  const sessionPhase = activeSessions.includes('us')
     ? 'us'
     : activeSessions.includes('europe')
       ? 'europe'
@@ -69,7 +69,7 @@ export const buildSessionContext = (timestamp: number) => {
         : 'off_hours';
 
   const primaryWindow = SESSION_WINDOWS.find(
-    (session) => session.name === primarySession,
+    (session) => session.name === sessionPhase,
   );
   const minutesFromSessionOpen =
     primaryWindow != null ? minuteUtc - primaryWindow.startMinuteUtc : null;
@@ -78,7 +78,7 @@ export const buildSessionContext = (timestamp: number) => {
     FUNDING_WINDOW_STEP_MINUTES;
 
   return {
-    primarySession,
+    sessionPhase,
     isOverlap: activeSessions.length > 1,
     minutesFromSessionOpen,
     minutesToFundingWindow,
@@ -270,6 +270,7 @@ export const buildBaseContextSnapshot = ({
     atrPctSeries,
     toNullable(baseResult.atrPct),
   );
+  const atrSlope = calculateLineSlope(atrPctSeries, 5);
   const compressionScore = safeDivide(
     toNullable(baseResult.atrPct),
     getLastFiniteValue(atrPctSeries.slice(0, -1)),
@@ -369,6 +370,30 @@ export const buildBaseContextSnapshot = ({
                   closeAcceptance * 0.3,
               );
             })();
+  const recentFalseBreakoutDensity =
+    highLevel == null || lowLevel == null || recent20.length < 2
+      ? null
+      : recent20.reduce((count, item, index) => {
+          if (index === 0) {
+            return count;
+          }
+
+          const prevItem = recent20[index - 1];
+          if (!prevItem) {
+            return count;
+          }
+
+          if (prevItem.close > highLevel && item.close <= highLevel) {
+            return count + 1;
+          }
+
+          if (prevItem.close < lowLevel && item.close >= lowLevel) {
+            return count + 1;
+          }
+
+          return count;
+        }, 0) /
+        (recent20.length - 1);
   const rejectionWickScore =
     trendBias === 'bull'
       ? lowerWick
@@ -499,6 +524,7 @@ export const buildBaseContextSnapshot = ({
         persistence,
       },
       volatility: {
+        atrSlope,
         atrPctZScore,
         bbWidthPct,
         compressionScore,
@@ -528,6 +554,9 @@ export const buildBaseContextSnapshot = ({
         downCloseStreak: closeStreaks.down,
       },
       session,
+      memory: {
+        recentFalseBreakoutDensity,
+      },
     },
     structure: {
       localRange: {

@@ -52,6 +52,7 @@ const baseContext: BaseStrategyContextSnapshot = {
       persistence: 0.7,
     },
     volatility: {
+      atrSlope: 0.2,
       atrPctZScore: 0.5,
       bbWidthPct: 2,
       compressionScore: 1,
@@ -69,11 +70,14 @@ const baseContext: BaseStrategyContextSnapshot = {
       downCloseStreak: 0,
     },
     session: {
-      primarySession: 'us',
+      sessionPhase: 'us',
       isOverlap: true,
       minutesFromSessionOpen: 90,
       minutesToFundingWindow: 90,
       fundingWindowNearby: false,
+    },
+    memory: {
+      recentFalseBreakoutDensity: 0.1,
     },
   },
   structure: {

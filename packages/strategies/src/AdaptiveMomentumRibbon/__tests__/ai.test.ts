@@ -57,7 +57,7 @@ const withBaseContext = (signal: any) => ({
           unknown
         >) ?? {}),
         session: {
-          primarySession: 'off_hours',
+          sessionPhase: 'off_hours',
           isOverlap: false,
           minutesFromSessionOpen: null,
           minutesToFundingWindow: 60,
@@ -211,7 +211,7 @@ describe('adaptiveMomentumRibbonAiAdapter', () => {
         butterworthSmoothing: 4,
         coinBiasAligned: true,
         btcBiasAligned: true,
-        primarySession: 'off_hours',
+        sessionPhase: 'off_hours',
         sessionAllowsApproval: true,
         deterministicQuality: 5,
         approvalAllowedNow: true,
@@ -448,7 +448,7 @@ describe('adaptiveMomentumRibbonAiAdapter', () => {
       expect.objectContaining({
         channelState: 'above_upper',
         channelBiasAligned: true,
-        primarySession: 'off_hours',
+        sessionPhase: 'off_hours',
         sessionAllowsApproval: true,
         deterministicQuality: 4,
         approvalAllowedNow: true,
@@ -594,7 +594,7 @@ describe('adaptiveMomentumRibbonAiAdapter', () => {
         baseContext: {
           regime: {
             session: {
-              primarySession: 'us',
+              sessionPhase: 'us',
               isOverlap: true,
               minutesFromSessionOpen: 90,
               minutesToFundingWindow: 90,
@@ -629,7 +629,7 @@ describe('adaptiveMomentumRibbonAiAdapter', () => {
     expect(payload.additionalIndicators.adaptiveMomentumRibbonContext).toEqual(
       expect.objectContaining({
         channelState: 'above_upper',
-        primarySession: 'us',
+        sessionPhase: 'us',
         sessionAllowsApproval: false,
         deterministicQuality: 3,
         approvalAllowedNow: false,
@@ -749,7 +749,7 @@ describe('adaptiveMomentumRibbonAiAdapter', () => {
         channelState: 'below_lower',
         coinBiasAligned: true,
         btcBiasAligned: true,
-        primarySession: 'off_hours',
+        sessionPhase: 'off_hours',
         sessionAllowsApproval: true,
         deterministicQuality: 5,
         approvalAllowedNow: true,

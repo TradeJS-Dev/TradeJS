@@ -145,7 +145,7 @@ const withBaseContext = (signal: any) => {
         regime: {
           ...(existingBaseContext.regime ?? {}),
           session: {
-            primarySession: 'off_hours',
+            sessionPhase: 'off_hours',
             isOverlap: false,
             minutesFromSessionOpen: null,
             minutesToFundingWindow: 60,
@@ -247,7 +247,7 @@ const makeSignal = () =>
       baseContext: {
         regime: {
           session: {
-            primarySession: 'us',
+            sessionPhase: 'us',
             isOverlap: true,
             minutesFromSessionOpen: 90,
             minutesToFundingWindow: 90,

@@ -33,7 +33,7 @@ const makeSignal = () =>
       baseContext: {
         regime: {
           session: {
-            primarySession: 'us',
+            sessionPhase: 'us',
             isOverlap: true,
             minutesFromSessionOpen: 90,
             minutesToFundingWindow: 90,
