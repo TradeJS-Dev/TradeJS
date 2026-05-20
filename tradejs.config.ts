@@ -1,17 +1,9 @@
 import { defineConfig } from '@tradejs/core/config';
 import { basePreset } from '@tradejs/base';
-import { getBuiltInStrategyDefaultConfig } from '@tradejs/strategies';
-import {
-  createCloseAllOnGlobalProfitBeforeSignalsHook,
-  createMoveStopToBreakEvenOnBarHook,
-} from '@tradejs/node/strategies';
+import { createMoveStopToBreakEvenOnBarHook } from '@tradejs/node/strategies';
 
 export default defineConfig(basePreset, {
   hooks: {
-    beforeSignals: createCloseAllOnGlobalProfitBeforeSignalsHook({
-      getStrategyDefaultConfig: getBuiltInStrategyDefaultConfig,
-      profitRiskMultiplier: 4,
-    }),
     onBar: createMoveStopToBreakEvenOnBarHook({
       triggerRiskMultiplier: 0.8,
       stopProfitMultiplier: 0.2,
