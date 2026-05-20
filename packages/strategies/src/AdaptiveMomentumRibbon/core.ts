@@ -17,7 +17,7 @@ const resolveLinePlots = (value: unknown): string[] => {
 
 export const createAdaptiveMomentumRibbonCore: CreateStrategyCore<
   AdaptiveMomentumRibbonConfig
-> = async ({ config, symbol, strategyApi }) => {
+> = async ({ config, symbol, strategyApi, indicatorsState }) => {
   const { LONG, SHORT, AMR_EXIT_ON_INVALIDATION, MAX_LOSS_VALUE, FEE_PERCENT } =
     config;
   const linePlots = resolveLinePlots(config.AMR_LINE_PLOTS);
@@ -117,6 +117,8 @@ export const createAdaptiveMomentumRibbonCore: CreateStrategyCore<
       return strategyApi.skip('INVALID_QTY');
     }
 
+    const indicators = indicatorsState.snapshot();
+
     return strategyApi.entry({
       code: amr.entryLong ? 'AMR_ENTRY_LONG' : 'AMR_ENTRY_SHORT',
       direction: modeConfig.direction,
@@ -127,6 +129,7 @@ export const createAdaptiveMomentumRibbonCore: CreateStrategyCore<
         entryTimestamp: timestamp,
         entryPrice: currentPrice,
       }),
+      indicators,
       additionalIndicators: {
         amr,
         amrSignalTiming: {

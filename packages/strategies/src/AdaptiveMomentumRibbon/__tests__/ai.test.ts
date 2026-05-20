@@ -558,6 +558,95 @@ describe('adaptiveMomentumRibbonAiAdapter', () => {
     );
   });
 
+  it('promotes strong local expansion longs even without derivatives context', () => {
+    const signal = makeSignal({
+      prices: {
+        currentPrice: 100.8,
+        takeProfitPrice: 104.3,
+        stopLossPrice: 99.2,
+      },
+      additionalIndicators: {
+        baseContext: {
+          derivatives: {
+            summary: {
+              directionAligned: null,
+              riskFlags: [],
+            },
+            intervals: {
+              '15m': {
+                fundingZScore: null,
+              },
+            },
+          },
+        },
+        amr: {
+          signalOsc: 1.18,
+          kcMidline: 100.2,
+          kcUpper: 100.7,
+          kcLower: 99.6,
+          invalidationLevel: 99.2,
+        },
+      },
+    });
+    const payload = buildPayloadForSignal(signal);
+
+    expect(payload.additionalIndicators.adaptiveMomentumRibbonContext).toEqual(
+      expect.objectContaining({
+        channelState: 'above_upper',
+        invalidationDistancePct: expect.any(Number),
+        deterministicQuality: 4,
+        approvalAllowedNow: true,
+      }),
+    );
+  });
+
+  it('keeps the weak 48/4 local expansion pocket in watch mode', () => {
+    const signal = makeSignal({
+      prices: {
+        currentPrice: 100.8,
+        takeProfitPrice: 104.3,
+        stopLossPrice: 99.2,
+      },
+      additionalIndicators: {
+        baseContext: {
+          derivatives: {
+            summary: {
+              directionAligned: null,
+              riskFlags: [],
+            },
+            intervals: {
+              '15m': {
+                fundingZScore: null,
+              },
+            },
+          },
+        },
+        amr: {
+          signalOsc: 1.18,
+          kcMidline: 100.2,
+          kcUpper: 100.7,
+          kcLower: 99.6,
+          invalidationLevel: 99.2,
+        },
+        amrConfigSnapshot: {
+          momentumPeriod: 48,
+          butterworthSmoothing: 4,
+        },
+      },
+    });
+    const payload = buildPayloadForSignal(signal);
+
+    expect(payload.additionalIndicators.adaptiveMomentumRibbonContext).toEqual(
+      expect.objectContaining({
+        channelState: 'above_upper',
+        momentumPeriod: 48,
+        butterworthSmoothing: 4,
+        deterministicQuality: 3,
+        approvalAllowedNow: false,
+      }),
+    );
+  });
+
   it('keeps q5 longs approved even when derivatives are crowded', () => {
     const signal = makeSignal({
       additionalIndicators: {
@@ -587,7 +676,7 @@ describe('adaptiveMomentumRibbonAiAdapter', () => {
     );
   });
 
-  it('keeps active-session above-upper longs in watch mode', () => {
+  it('keeps active us-session above-upper longs approved', () => {
     const signal = makeSignal({
       timestamp: Date.UTC(2026, 0, 1, 14, 30),
       additionalIndicators: {
@@ -630,10 +719,41 @@ describe('adaptiveMomentumRibbonAiAdapter', () => {
       expect.objectContaining({
         channelState: 'above_upper',
         primarySession: 'us',
-        sessionAllowsApproval: false,
-        deterministicQuality: 3,
-        approvalAllowedNow: false,
+        sessionAllowsApproval: true,
+        deterministicQuality: 5,
+        approvalAllowedNow: true,
         structuralHardBlockReasons: [],
+      }),
+    );
+  });
+
+  it('keeps clean asia-session longs approved but marks the thin session risk', () => {
+    const signal = makeSignal({
+      timestamp: Date.UTC(2026, 0, 1, 3, 30),
+      additionalIndicators: {
+        baseContext: {
+          regime: {
+            session: {
+              sessionPhase: 'asia',
+              isOverlap: false,
+              minutesFromSessionOpen: 90,
+              minutesToFundingWindow: 180,
+              fundingWindowNearby: false,
+            },
+          },
+        },
+      },
+    });
+    const payload = buildPayloadForSignal(signal);
+
+    expect(payload.additionalIndicators.adaptiveMomentumRibbonContext).toEqual(
+      expect.objectContaining({
+        channelState: 'above_upper',
+        primarySession: 'asia',
+        sessionAllowsApproval: false,
+        deterministicQuality: 5,
+        approvalAllowedNow: true,
+        structuralHardBlockReasons: ['session_thin'],
       }),
     );
   });
@@ -688,6 +808,141 @@ describe('adaptiveMomentumRibbonAiAdapter', () => {
         butterworthSmoothing: 6,
         deterministicQuality: 3,
         approvalAllowedNow: false,
+      }),
+    );
+  });
+
+  it('demotes q5 longs into watch mode when benchmark, participation, and venue spread conflict', () => {
+    const signal = makeSignal({
+      additionalIndicators: {
+        baseContext: {
+          relative: {
+            benchmark: {
+              relativeStrength1h: -1.6,
+              trendAlignment: 'against_benchmark',
+            },
+          },
+          participation: {
+            volume: {
+              volumeRel20: 0.72,
+              effortVsResult: -0.24,
+            },
+          },
+          structure: {
+            localRange: {
+              breakoutRetestQuality: 0.18,
+            },
+          },
+        },
+        marketContext: {
+          execution: {
+            binanceCoinbaseSpread: {
+              available: true,
+              bps: 8.4,
+              bias: 'coinbase_premium',
+              severity: 'elevated',
+            },
+          },
+        },
+      },
+    });
+    const payload = buildPayloadForSignal(signal);
+
+    expect(payload.additionalIndicators.adaptiveMomentumRibbonContext).toEqual(
+      expect.objectContaining({
+        benchmarkTrendAlignment: 'against_benchmark',
+        benchmarkRelativeStrength1h: -1.6,
+        volumeRel20: 0.72,
+        effortVsResult: -0.24,
+        breakoutRetestQuality: 0.18,
+        spreadBps: 8.4,
+        spreadSeverity: 'elevated',
+        deterministicQuality: 3,
+        approvalAllowedNow: false,
+        structuralHardBlockReasons: expect.arrayContaining([
+          'benchmark_conflict',
+          'weak_participation',
+          'weak_retest_quality',
+          'elevated_venue_spread',
+        ]),
+      }),
+    );
+  });
+
+  it('demotes q4 longs to watch mode when market conflicts stack on a thin session', () => {
+    const signal = makeSignal({
+      prices: {
+        currentPrice: 100.78,
+        takeProfitPrice: 103.4,
+        stopLossPrice: 99.92,
+      },
+      additionalIndicators: {
+        amr: {
+          signalOsc: 0.72,
+          kcMidline: 100.2,
+          kcUpper: 100.7,
+          kcLower: 99.6,
+          invalidationLevel: 99.92,
+        },
+        baseContext: {
+          regime: {
+            session: {
+              sessionPhase: 'asia',
+              isOverlap: false,
+              minutesFromSessionOpen: 90,
+              minutesToFundingWindow: 180,
+              fundingWindowNearby: false,
+            },
+          },
+          relative: {
+            benchmark: {
+              relativeStrength1h: -1.1,
+              trendAlignment: 'against_benchmark',
+            },
+          },
+          participation: {
+            volume: {
+              volumeRel20: 0.8,
+            },
+          },
+        },
+        derivativesContext: {
+          summary: {
+            directionAligned: true,
+            riskFlags: [],
+          },
+          intervals: {
+            '15m': {
+              fundingZScore: 0.2,
+            },
+          },
+        },
+        marketContext: {
+          execution: {
+            binanceCoinbaseSpread: {
+              available: true,
+              bps: 22.4,
+              bias: 'coinbase_premium',
+              severity: 'wide',
+            },
+          },
+        },
+      },
+    });
+    const payload = buildPayloadForSignal(signal);
+
+    expect(payload.additionalIndicators.adaptiveMomentumRibbonContext).toEqual(
+      expect.objectContaining({
+        sessionAllowsApproval: false,
+        spreadSeverity: 'wide',
+        deterministicQuality: 3,
+        approvalAllowedNow: false,
+        structuralHardBlockReasons: expect.arrayContaining([
+          'session_thin',
+          'benchmark_conflict',
+          'weak_participation',
+          'elevated_venue_spread',
+        ]),
       }),
     );
   });

@@ -113,7 +113,20 @@ const makeIndicatorsState = () =>
     next: jest.fn(),
     onBar: jest.fn(),
     ensureInitializedWithCurrentBar: jest.fn(),
-    snapshot: jest.fn(() => ({ correlation: [0.1] })),
+    snapshot: jest.fn(() => ({
+      correlation: [0.1],
+      baseContext: {
+        regime: {
+          session: {
+            sessionPhase: 'us',
+            isOverlap: true,
+            minutesFromSessionOpen: 90,
+            minutesToFundingWindow: 90,
+            fundingWindowNearby: false,
+          },
+        },
+      },
+    })),
     latestNumber: jest.fn(() => 0.1),
     isInitialized: jest.fn(() => true),
   }) as any;
@@ -292,6 +305,18 @@ describe('createAdaptiveMomentumRibbonCore', () => {
           kcLength: 20,
           atrLength: 14,
           atrMultiplier: 2,
+        }),
+      }),
+    );
+    expect(decision.signal?.indicators).toEqual(
+      expect.objectContaining({
+        correlation: [0.1],
+        baseContext: expect.objectContaining({
+          regime: expect.objectContaining({
+            session: expect.objectContaining({
+              sessionPhase: 'us',
+            }),
+          }),
         }),
       }),
     );

@@ -41,6 +41,8 @@ type AmrHardBlockReason =
   | 'inactive_signal_state'
   | 'oscillator_conflict'
   | 'invalidation_wrong_side';
+type SpreadSeverity = 'normal' | 'elevated' | 'wide' | null;
+type SpreadBias = 'coinbase_premium' | 'binance_premium' | 'flat' | null;
 type AmrChannelState =
   | 'above_upper'
   | 'above_midline'
@@ -48,6 +50,14 @@ type AmrChannelState =
   | 'below_midline'
   | 'below_lower'
   | 'unknown';
+type AmrStructuralReason =
+  | AmrHardBlockReason
+  | 'session_thin'
+  | 'benchmark_conflict'
+  | 'weak_participation'
+  | 'weak_retest_quality'
+  | 'elevated_venue_spread'
+  | 'derivatives_pressure_conflict';
 
 type AdaptiveMomentumRibbonSnapshot = {
   entryLong?: unknown;
@@ -89,10 +99,22 @@ type AdaptiveMomentumRibbonAiContext = {
   derivativesDirectionAligned: boolean | null;
   derivativesRiskFlags: string[];
   derivativesFundingZScore: number | null;
+  derivativesPressure: string | null;
   primarySession: PrimaryTradingSession | null;
+  sessionIsOverlap: boolean;
+  fundingWindowNearby: boolean;
   sessionAllowsApproval: boolean | null;
+  benchmarkRelativeStrength1h: number | null;
+  benchmarkTrendAlignment: string | null;
+  breakoutState: string | null;
+  breakoutRetestQuality: number | null;
+  volumeRel20: number | null;
+  effortVsResult: number | null;
+  spreadBps: number | null;
+  spreadBias: SpreadBias;
+  spreadSeverity: SpreadSeverity;
   hardBlockReasons: AmrHardBlockReason[];
-  structuralHardBlockReasons: string[];
+  structuralHardBlockReasons: AmrStructuralReason[];
   deterministicQuality: number;
   approvalAllowedNow: boolean;
   maxAllowedQuality: number;
@@ -167,6 +189,25 @@ const getPrimarySession = (signal: Signal): PrimaryTradingSession | null => {
     ? session
     : null;
 };
+
+const getDirectionalAlignment = ({
+  signalDirection,
+  value,
+}: {
+  signalDirection: Direction | null;
+  value: number | null;
+}) => {
+  if (signalDirection == null || value == null) {
+    return null;
+  }
+
+  return signalDirection === 'LONG' ? value > 0 : value < 0;
+};
+
+const getAdditionalIndicators = (
+  signal: Signal,
+  additionalIndicators?: Record<string, unknown> | null,
+) => additionalIndicators ?? getRecord(signal.additionalIndicators);
 
 const getAdaptiveMomentumRibbonSnapshot = (
   signal: Signal,
@@ -345,7 +386,10 @@ const getDeterministicAdaptiveMomentumRibbonQuality = (
     | 'maxAllowedQuality'
     | 'hardBlockReasons'
     | 'structuralHardBlockReasons'
-  > & { hardBlockReasons: AmrHardBlockReason[] },
+  > & {
+    hardBlockReasons: AmrHardBlockReason[];
+    structuralHardBlockReasons: AmrStructuralReason[];
+  },
 ) => {
   if (context.hardBlockReasons.length > 0) {
     return 2;
@@ -382,17 +426,112 @@ const getDeterministicAdaptiveMomentumRibbonQuality = (
   const sessionAllowsApproval = context.sessionAllowsApproval !== false;
   const slowestDetector =
     context.momentumPeriod === 48 && context.butterworthSmoothing === 6;
+  const benchmarkConflict =
+    context.benchmarkTrendAlignment === 'against_benchmark' ||
+    getDirectionalAlignment({
+      signalDirection: context.signalDirection,
+      value: context.benchmarkRelativeStrength1h,
+    }) === false;
+  const weakParticipation =
+    (context.volumeRel20 != null && context.volumeRel20 < 0.85) ||
+    (context.effortVsResult != null && context.effortVsResult < -0.1);
+  const weakRetestQuality =
+    context.breakoutRetestQuality != null &&
+    context.breakoutRetestQuality < 0.25;
+  const elevatedVenueSpread =
+    context.spreadSeverity === 'wide' ||
+    (context.spreadSeverity === 'elevated' &&
+      (benchmarkConflict || weakParticipation));
+  const derivativesPressureConflict =
+    (context.signalDirection === 'LONG' &&
+      context.derivativesPressure === 'crowded_long') ||
+    (context.signalDirection === 'SHORT' &&
+      context.derivativesPressure === 'crowded_short');
   const q4DerivativesSupported =
     context.derivativesDirectionAligned === true &&
     !context.derivativesRiskFlags.includes('oi_not_confirming') &&
     context.derivativesFundingZScore != null &&
     context.derivativesFundingZScore <= 0.5;
+  const localExpansionPromotionCandidate =
+    channelSupportive &&
+    channelExpansion &&
+    oscillatorElite &&
+    invalidationCompact &&
+    structuralRrStrong &&
+    biasConflictCount < 2 &&
+    !(context.momentumPeriod === 48 && context.butterworthSmoothing === 4) &&
+    !(
+      context.momentumPeriod === 48 &&
+      context.butterworthSmoothing === 6 &&
+      !invalidationTight &&
+      !isAtLeast(context.structuralRewardRiskRatio, 3)
+    ) &&
+    !context.derivativesRiskFlags.includes('oi_not_confirming') &&
+    context.derivativesPressure !== 'crowded_long' &&
+    context.derivativesPressure !== 'crowded_short';
 
-  if (!sessionAllowsApproval) {
+  if (!sessionAllowsApproval && !q4DerivativesSupported) {
     return 3;
   }
 
+  let quality =
+    channelSupportive &&
+    channelExpansion &&
+    channelExtensionStrong &&
+    oscillatorElite &&
+    invalidationTight &&
+    structuralRrStrong &&
+    noBiasConflict
+      ? 5
+      : channelSupportive &&
+          channelExpansion &&
+          !slowestDetector &&
+          oscillatorModerate &&
+          invalidationCompact &&
+          structuralRrModerate &&
+          biasConflictCount < 2 &&
+          (biasConflictCount === 0 || oscillatorStrong)
+        ? q4DerivativesSupported
+          ? 4
+          : localExpansionPromotionCandidate
+            ? 4
+            : 3
+        : 3;
+
   if (
+    quality >= 4 &&
+    (benchmarkConflict ||
+      weakParticipation ||
+      weakRetestQuality ||
+      elevatedVenueSpread ||
+      derivativesPressureConflict)
+  ) {
+    quality -= 1;
+  }
+
+  if (
+    quality >= 4 &&
+    (!sessionAllowsApproval || elevatedVenueSpread) &&
+    (benchmarkConflict || weakParticipation)
+  ) {
+    quality = 3;
+  }
+
+  if (
+    quality === 5 &&
+    q4DerivativesSupported &&
+    sessionAllowsApproval &&
+    !benchmarkConflict &&
+    !weakParticipation &&
+    !weakRetestQuality &&
+    !elevatedVenueSpread &&
+    !derivativesPressureConflict
+  ) {
+    return 5;
+  }
+
+  if (
+    quality === 5 &&
     channelSupportive &&
     channelExpansion &&
     channelExtensionStrong &&
@@ -401,23 +540,10 @@ const getDeterministicAdaptiveMomentumRibbonQuality = (
     structuralRrStrong &&
     noBiasConflict
   ) {
-    return 5;
+    return quality;
   }
 
-  if (
-    channelSupportive &&
-    channelExpansion &&
-    !slowestDetector &&
-    oscillatorModerate &&
-    invalidationCompact &&
-    structuralRrModerate &&
-    biasConflictCount < 2 &&
-    (biasConflictCount === 0 || oscillatorStrong)
-  ) {
-    return q4DerivativesSupported ? 4 : 3;
-  }
-
-  return 3;
+  return Math.max(3, quality);
 };
 
 const getHardBlockReasonText = (reason: AmrHardBlockReason) => {
@@ -439,6 +565,7 @@ const buildAdaptiveMomentumRibbonContext = (
   signal: Signal,
   additionalIndicators?: Record<string, unknown> | null,
 ): AdaptiveMomentumRibbonAiContext => {
+  const additional = getAdditionalIndicators(signal, additionalIndicators);
   const signalDirection = getSignalDirection(signal);
   const snapshot = getAdaptiveMomentumRibbonSnapshot(signal);
   const configSnapshot = getAdaptiveMomentumRibbonConfigSnapshot(signal);
@@ -536,12 +663,64 @@ const buildAdaptiveMomentumRibbonContext = (
       ? derivativesSummary.directionAligned
       : null;
   const derivativesRiskFlags = getStringArray(derivativesSummary?.riskFlags);
+  const derivativesPressure =
+    typeof derivativesSummary?.pressure === 'string' &&
+    derivativesSummary.pressure.trim().length > 0
+      ? derivativesSummary.pressure
+      : null;
   const derivativesFundingZScore =
     toFiniteNumberOrNull(derivatives15m?.fundingZScore) ??
     toFiniteNumberOrNull(derivatives1h?.fundingZScore);
+  const baseContext = getRecord(additional?.baseContext);
+  const regime = getRecord(baseContext?.regime);
+  const regimeSession = getRecord(regime?.session);
+  const structure = getRecord(baseContext?.structure);
+  const localRange = getRecord(structure?.localRange);
+  const participation = getRecord(baseContext?.participation);
+  const volumeContext = getRecord(participation?.volume);
+  const relative = getRecord(baseContext?.relative);
+  const benchmark = getRecord(relative?.benchmark);
+  const marketContext = getRecord(additional?.marketContext);
+  const marketExecution = getRecord(marketContext?.execution);
+  const spreadContext = getRecord(marketExecution?.binanceCoinbaseSpread);
   const primarySession = getPrimarySession(signal);
+  const sessionIsOverlap = regimeSession?.isOverlap === true;
+  const fundingWindowNearby = regimeSession?.fundingWindowNearby === true;
   const sessionAllowsApproval =
-    primarySession == null ? null : primarySession === 'off_hours';
+    primarySession == null
+      ? null
+      : primarySession === 'asia' && !sessionIsOverlap && !fundingWindowNearby
+        ? false
+        : true;
+  const benchmarkRelativeStrength1h = toFiniteNumberOrNull(
+    benchmark?.relativeStrength1h,
+  );
+  const benchmarkTrendAlignment =
+    typeof benchmark?.trendAlignment === 'string'
+      ? benchmark.trendAlignment
+      : null;
+  const breakoutState =
+    typeof localRange?.breakoutState === 'string'
+      ? localRange.breakoutState
+      : null;
+  const breakoutRetestQuality = toFiniteNumberOrNull(
+    localRange?.breakoutRetestQuality,
+  );
+  const volumeRel20 = toFiniteNumberOrNull(volumeContext?.volumeRel20);
+  const effortVsResult = toFiniteNumberOrNull(volumeContext?.effortVsResult);
+  const spreadBps = toFiniteNumberOrNull(spreadContext?.bps);
+  const spreadBias =
+    spreadContext?.bias === 'coinbase_premium' ||
+    spreadContext?.bias === 'binance_premium' ||
+    spreadContext?.bias === 'flat'
+      ? spreadContext.bias
+      : null;
+  const spreadSeverity =
+    spreadContext?.severity === 'normal' ||
+    spreadContext?.severity === 'elevated' ||
+    spreadContext?.severity === 'wide'
+      ? spreadContext.severity
+      : null;
 
   const hardBlockReasons: AmrHardBlockReason[] = [];
 
@@ -571,6 +750,54 @@ const buildAdaptiveMomentumRibbonContext = (
     hardBlockReasons.push('invalidation_wrong_side');
   }
 
+  const structuralHardBlockReasons: AmrStructuralReason[] = [
+    ...hardBlockReasons,
+  ];
+
+  if (sessionAllowsApproval === false) {
+    structuralHardBlockReasons.push('session_thin');
+  }
+
+  if (
+    benchmarkTrendAlignment === 'against_benchmark' ||
+    getDirectionalAlignment({
+      signalDirection,
+      value: benchmarkRelativeStrength1h,
+    }) === false
+  ) {
+    structuralHardBlockReasons.push('benchmark_conflict');
+  }
+
+  if (
+    (volumeRel20 != null && volumeRel20 < 0.85) ||
+    (effortVsResult != null && effortVsResult < -0.1)
+  ) {
+    structuralHardBlockReasons.push('weak_participation');
+  }
+
+  if (breakoutRetestQuality != null && breakoutRetestQuality < 0.25) {
+    structuralHardBlockReasons.push('weak_retest_quality');
+  }
+
+  if (
+    spreadSeverity === 'wide' ||
+    (spreadSeverity === 'elevated' &&
+      (benchmarkTrendAlignment === 'against_benchmark' ||
+        getDirectionalAlignment({
+          signalDirection,
+          value: benchmarkRelativeStrength1h,
+        }) === false))
+  ) {
+    structuralHardBlockReasons.push('elevated_venue_spread');
+  }
+
+  if (
+    (signalDirection === 'LONG' && derivativesPressure === 'crowded_long') ||
+    (signalDirection === 'SHORT' && derivativesPressure === 'crowded_short')
+  ) {
+    structuralHardBlockReasons.push('derivatives_pressure_conflict');
+  }
+
   const deterministicQuality = getDeterministicAdaptiveMomentumRibbonQuality({
     signalDirection,
     momentumPeriod,
@@ -598,9 +825,22 @@ const buildAdaptiveMomentumRibbonContext = (
     derivativesDirectionAligned,
     derivativesRiskFlags,
     derivativesFundingZScore,
+    derivativesPressure,
     primarySession,
+    sessionIsOverlap,
+    fundingWindowNearby,
     sessionAllowsApproval,
+    benchmarkRelativeStrength1h,
+    benchmarkTrendAlignment,
+    breakoutState,
+    breakoutRetestQuality,
+    volumeRel20,
+    effortVsResult,
+    spreadBps,
+    spreadBias,
+    spreadSeverity,
     hardBlockReasons,
+    structuralHardBlockReasons,
   });
 
   return {
@@ -630,10 +870,22 @@ const buildAdaptiveMomentumRibbonContext = (
     derivativesDirectionAligned,
     derivativesRiskFlags,
     derivativesFundingZScore,
+    derivativesPressure,
     primarySession,
+    sessionIsOverlap,
+    fundingWindowNearby,
     sessionAllowsApproval,
+    benchmarkRelativeStrength1h,
+    benchmarkTrendAlignment,
+    breakoutState,
+    breakoutRetestQuality,
+    volumeRel20,
+    effortVsResult,
+    spreadBps,
+    spreadBias,
+    spreadSeverity,
     hardBlockReasons,
-    structuralHardBlockReasons: hardBlockReasons,
+    structuralHardBlockReasons,
     deterministicQuality,
     approvalAllowedNow: deterministicQuality >= 4,
     maxAllowedQuality: deterministicQuality,
@@ -701,7 +953,11 @@ const postProcessAnalysis = ({
           ? `AdaptiveMomentumRibbon guardrail: ${context.hardBlockReasons
               .map(getHardBlockReasonText)
               .join('; ')}.`
-          : 'AdaptiveMomentumRibbon keeps the setup in watch mode until momentum confirmation becomes cleaner.'),
+          : context.structuralHardBlockReasons.length > 0
+            ? `AdaptiveMomentumRibbon watch mode: ${context.structuralHardBlockReasons.join(
+                ', ',
+              )}.`
+            : 'AdaptiveMomentumRibbon keeps the setup in watch mode until momentum confirmation becomes cleaner.'),
       triggerInvalidation:
         analysis.triggerInvalidation ||
         (retestPrice != null
@@ -713,7 +969,11 @@ const postProcessAnalysis = ({
           ? `AdaptiveMomentumRibbon rejected: ${context.hardBlockReasons
               .map(getHardBlockReasonText)
               .join('; ')}.`
-          : 'AdaptiveMomentumRibbon keeps the signal in watch mode until continuation confirmation becomes cleaner.'),
+          : context.structuralHardBlockReasons.length > 0
+            ? `AdaptiveMomentumRibbon waiting: ${context.structuralHardBlockReasons.join(
+                ', ',
+              )}.`
+            : 'AdaptiveMomentumRibbon keeps the signal in watch mode until continuation confirmation becomes cleaner.'),
     };
   }
 
@@ -769,11 +1029,24 @@ Additional AdaptiveMomentumRibbon context:
 - derivativesDirectionAligned=${context.derivativesDirectionAligned}
 - derivativesRiskFlags=${context.derivativesRiskFlags.join(', ') || 'none'}
 - derivativesFundingZScore=${context.derivativesFundingZScore?.toFixed?.(3) ?? 'n/a'}
+- derivativesPressure=${context.derivativesPressure ?? 'n/a'}
 - primarySession=${context.primarySession ?? 'n/a'}
+- sessionIsOverlap=${context.sessionIsOverlap}
+- fundingWindowNearby=${context.fundingWindowNearby}
 - sessionAllowsApproval=${context.sessionAllowsApproval}
+- benchmarkRelativeStrength1h=${context.benchmarkRelativeStrength1h?.toFixed?.(3) ?? 'n/a'}
+- benchmarkTrendAlignment=${context.benchmarkTrendAlignment ?? 'n/a'}
+- breakoutState=${context.breakoutState ?? 'n/a'}
+- breakoutRetestQuality=${context.breakoutRetestQuality?.toFixed?.(3) ?? 'n/a'}
+- volumeRel20=${context.volumeRel20?.toFixed?.(3) ?? 'n/a'}
+- effortVsResult=${context.effortVsResult?.toFixed?.(3) ?? 'n/a'}
+- spreadBps=${context.spreadBps?.toFixed?.(2) ?? 'n/a'}
+- spreadBias=${context.spreadBias ?? 'n/a'}
+- spreadSeverity=${context.spreadSeverity ?? 'n/a'}
 - deterministicQuality=${context.deterministicQuality}
 - approvalAllowedNow=${context.approvalAllowedNow}
 - hardBlockReasons=${context.hardBlockReasons.join(', ') || 'none'}
+- structuralHardBlockReasons=${context.structuralHardBlockReasons.join(', ') || 'none'}
 
 Interpretation rules for AdaptiveMomentumRibbon:
 - a zero-cross alone does not make quality high;
