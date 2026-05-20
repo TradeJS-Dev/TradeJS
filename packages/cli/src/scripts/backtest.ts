@@ -115,6 +115,44 @@ const buildWarmupPeriodsKey = (
   });
 };
 
+const resolveRenderableStat = async (
+  result: Parameters<typeof resolveResultArtifacts>[0],
+): Promise<{
+  stat: Partial<TestStat>;
+  orderLog: Awaited<ReturnType<typeof resolveResultArtifacts>>['orderLog'];
+  hasArtifacts: boolean;
+}> => {
+  const { test, stat: fallbackStat } = result;
+  const { name } = test;
+  const { orderLog, positionLog } = await resolveResultArtifacts(result);
+
+  if (!orderLog || !positionLog) {
+    console.log(
+      chalk.yellow(
+        `warning: logs not found for ${name}; using cached stat only`,
+      ),
+    );
+    return {
+      stat: fallbackStat,
+      orderLog,
+      hasArtifacts: false,
+    };
+  }
+
+  const stat = calculateStatsFull(positionLog) as TestStat;
+  if (!stat && fallbackStat.orders > 0) {
+    throw new Error(
+      `Position log is empty for ${name} despite ${fallbackStat.orders} closed orders`,
+    );
+  }
+
+  return {
+    stat: stat ?? fallbackStat,
+    orderLog,
+    hasArtifacts: true,
+  };
+};
+
 export const warmIndicatorCacheForBacktest = async (
   testSuite: Parameters<typeof executeTestSuite>[0]['testSuite'],
 ) => {
@@ -213,19 +251,12 @@ const saveAndPrintResults = async () => {
   for await (const result of getTopResults()) {
     const { test } = result;
     const { symbol, name } = test;
-    const { orderLog, positionLog } = await resolveResultArtifacts(result);
-    if (!orderLog || !positionLog) {
-      throw new Error(`Logs not found for test ${name}`);
-    }
+    const { stat, orderLog, hasArtifacts } =
+      await resolveRenderableStat(result);
 
-    const stat = calculateStatsFull(positionLog) as TestStat;
-    if (!stat && result.stat.orders > 0) {
-      throw new Error(
-        `Position log is empty for test ${name} despite ${result.stat.orders} closed orders`,
-      );
+    if (hasArtifacts && orderLog) {
+      await setTestData(test, stat, orderLog);
     }
-
-    await setTestData(test, stat, orderLog);
 
     colorizedResults.push([
       chalk.blue(name),
@@ -251,19 +282,12 @@ const saveAndPrintResultsByTickers = async () => {
   for await (const result of getBestTickerResults()) {
     const { test } = result;
     const { symbol, name } = test;
-    const { orderLog, positionLog } = await resolveResultArtifacts(result);
-    if (!orderLog || !positionLog) {
-      throw new Error(`Logs not found for ticker result ${name}`);
-    }
+    const { stat, orderLog, hasArtifacts } =
+      await resolveRenderableStat(result);
 
-    const stat = calculateStatsFull(positionLog) as TestStat;
-    if (!stat && result.stat.orders > 0) {
-      throw new Error(
-        `Position log is empty for ticker result ${name} despite ${result.stat.orders} closed orders`,
-      );
+    if (hasArtifacts && orderLog) {
+      await setTestData(test, stat, orderLog);
     }
-
-    await setTestData(test, stat, orderLog);
 
     colorizedResultsByTickers.push([
       chalk.blue(name),
@@ -383,6 +407,7 @@ export const main = backtest;
 
 export {
   BACKTEST_PRELOAD_DAYS,
+  resolveRenderableStat,
   chunkTestSuiteBySymbol,
   interval,
   loadRuntimeStrategyBacktestConfigs,

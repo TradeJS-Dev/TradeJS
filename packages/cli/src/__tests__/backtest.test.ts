@@ -127,6 +127,10 @@ jest.mock('@tradejs/infra/redis', () => ({
   getData: jest.fn(),
   getKeys: jest.fn(),
   redisKeys: {
+    cacheOrders: (userName: string, orderLogId: string) =>
+      `users:${userName}:cache:orders:${orderLogId}`,
+    cachePositions: (userName: string, orderLogId: string) =>
+      `users:${userName}:cache:positions:${orderLogId}`,
     testSummaries: (userName: string) =>
       `users:${userName}:tests:index:summary`,
   },
@@ -151,6 +155,7 @@ import {
   resolveDefaultParallel,
   resolveDefaultWorkerHeapMb,
   mergePersistedTestSummaries,
+  resolveRenderableStat,
   resolveRequestedTestsLimit,
   resolveEffectiveParallel,
   resolveWorkerHeapMb,
@@ -166,6 +171,8 @@ import {
   summarizeTradeParityByStrategy,
 } from '../lib/paritySummary';
 import { resolveStrategyNameByConfigKey } from '../lib/runtimeRedis';
+import { getData } from '@tradejs/infra/redis';
+import { calculateStatsFull } from '@tradejs/core/backtest';
 
 describe('backtest script helpers', () => {
   let consoleLogSpy: jest.SpyInstance;
@@ -175,6 +182,8 @@ describe('backtest script helpers', () => {
     mockWarmBacktestIndicatorCache.mockClear();
     mockProgressBarTick.mockClear();
     consoleLogSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
+    (getData as jest.Mock).mockReset();
+    (calculateStatsFull as jest.Mock).mockReset();
   });
 
   afterEach(() => {
@@ -587,6 +596,43 @@ describe('backtest script helpers', () => {
     );
     expect(consoleLogSpy).toHaveBeenCalledWith(
       expect.stringMatching(/^indicator cache warmup: done in /),
+    );
+  });
+
+  it('falls back to cached stat when result artifacts are missing', async () => {
+    (getData as jest.Mock)
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(null);
+
+    const result = await resolveRenderableStat({
+      orderLogId: 'log-1',
+      stat: {
+        amount: 123,
+        profit: 45,
+        orders: 6,
+        winRate: 50,
+      },
+      test: {
+        userName: 'root',
+        name: 'BTCUSDT_suite_test',
+        strategyName: 'TrendLine',
+      },
+    } as any);
+
+    expect(result.hasArtifacts).toBe(false);
+    expect(result.orderLog).toBeNull();
+    expect(result.stat).toEqual(
+      expect.objectContaining({
+        amount: 123,
+        profit: 45,
+        orders: 6,
+      }),
+    );
+    expect(calculateStatsFull).not.toHaveBeenCalled();
+    expect(consoleLogSpy).toHaveBeenCalledWith(
+      expect.stringContaining(
+        'warning: logs not found for BTCUSDT_suite_test; using cached stat only',
+      ),
     );
   });
 
