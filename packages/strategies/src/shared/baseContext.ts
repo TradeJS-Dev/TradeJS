@@ -1,5 +1,6 @@
 import {
   BaseStrategyContextSnapshot,
+  DerivativesContext,
   IndicatorsHistorySnapshot,
 } from '@tradejs/types';
 
@@ -54,6 +55,11 @@ export const getSignalSessionPrimary = (signal: SignalLike): string | null =>
 
 export const getSignalSessionIsOverlap = (signal: SignalLike): boolean =>
   getSignalSessionContext(signal)?.isOverlap === true;
+
+export const getSignalDerivativesContext = (
+  signal: SignalLike,
+): DerivativesContext | null =>
+  getSignalBaseContext(signal)?.derivatives ?? null;
 
 export const getIndicatorsCoinMaFast = (
   indicators: IndicatorsHistorySnapshot | Record<string, unknown> | undefined,

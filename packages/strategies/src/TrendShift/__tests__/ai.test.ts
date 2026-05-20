@@ -5,8 +5,16 @@ import { trendShiftAiAdapter } from '../adapters/ai';
 const makePayload = (
   context: Record<string, unknown>,
   extraIndicators: Record<string, unknown> = {},
-) =>
-  ({
+) => {
+  const {
+    derivativesContext,
+    baseContext: baseContextInput,
+    ...restExtraIndicators
+  } = extraIndicators as Record<string, unknown>;
+  const baseContext =
+    (baseContextInput as Record<string, unknown> | undefined) ?? {};
+
+  return {
     signal: {
       symbol: 'TESTUSDT',
       signalId: 'signal-1',
@@ -24,9 +32,16 @@ const makePayload = (
     indicators: {},
     additionalIndicators: {
       trendShiftContext: context,
-      ...extraIndicators,
+      ...restExtraIndicators,
+      baseContext: {
+        ...baseContext,
+        derivatives:
+          (derivativesContext as Record<string, unknown> | undefined) ??
+          baseContext.derivatives,
+      },
     },
-  }) as any;
+  } as any;
+};
 
 describe('trendShiftAiAdapter', () => {
   it('approves strong confirmed flips', () => {

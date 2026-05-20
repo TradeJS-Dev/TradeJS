@@ -41,7 +41,7 @@ const baseContext: BaseStrategyContextSnapshot = {
       lowPrice24h: 95,
     },
     levels: { highLevel: 101, lowLevel: 99 },
-    crossAsset: { btcCorrelation: 0.5, venueSpread: 0.1 },
+    crossAsset: { btcCorrelation: 0.5 },
   },
   regime: {
     trend: {
@@ -112,7 +112,6 @@ const baseContext: BaseStrategyContextSnapshot = {
   },
   relative: {
     benchmark: {
-      btcCorrelation: 0.5,
       maFast: 200,
       maSlow: 198,
       bias: 'bull',

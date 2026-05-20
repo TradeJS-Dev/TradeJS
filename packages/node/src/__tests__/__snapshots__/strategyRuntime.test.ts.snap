@@ -60,6 +60,9 @@ exports[`strategyRuntime hook params snapshots afterCoreDecision params snapshot
       },
     },
     "signal": {
+      "additionalIndicators": {
+        "baseContext": {},
+      },
       "direction": "LONG",
       "figures": {},
       "indicators": {},
@@ -277,6 +280,9 @@ exports[`strategyRuntime hook params snapshots afterEnrichAi params snapshot 1`]
       },
     },
     "signal": {
+      "additionalIndicators": {
+        "baseContext": {},
+      },
       "direction": "LONG",
       "figures": {},
       "indicators": {},
@@ -353,6 +359,9 @@ exports[`strategyRuntime hook params snapshots afterEnrichAi params snapshot 1`]
       },
     },
     "signal": {
+      "additionalIndicators": {
+        "baseContext": {},
+      },
       "direction": "LONG",
       "figures": {},
       "indicators": {},
@@ -475,6 +484,9 @@ exports[`strategyRuntime hook params snapshots afterEnrichMl params snapshot 1`]
       },
     },
     "signal": {
+      "additionalIndicators": {
+        "baseContext": {},
+      },
       "direction": "LONG",
       "figures": {},
       "indicators": {},
@@ -551,6 +563,9 @@ exports[`strategyRuntime hook params snapshots afterEnrichMl params snapshot 1`]
       },
     },
     "signal": {
+      "additionalIndicators": {
+        "baseContext": {},
+      },
       "direction": "LONG",
       "figures": {},
       "indicators": {},
@@ -683,6 +698,9 @@ exports[`strategyRuntime hook params snapshots afterPlaceOrder params snapshot (
       },
     },
     "signal": {
+      "additionalIndicators": {
+        "baseContext": {},
+      },
       "direction": "LONG",
       "figures": {},
       "indicators": {},
@@ -759,6 +777,9 @@ exports[`strategyRuntime hook params snapshots afterPlaceOrder params snapshot (
       },
     },
     "signal": {
+      "additionalIndicators": {
+        "baseContext": {},
+      },
       "direction": "LONG",
       "figures": {},
       "indicators": {},
@@ -820,6 +841,9 @@ exports[`strategyRuntime hook params snapshots afterPlaceOrder params snapshot (
   },
   "order": {
     "result": {
+      "additionalIndicators": {
+        "baseContext": {},
+      },
       "direction": "LONG",
       "figures": {},
       "indicators": {},
@@ -1116,6 +1140,9 @@ exports[`strategyRuntime hook params snapshots beforeEntryGate params snapshot (
       },
     },
     "signal": {
+      "additionalIndicators": {
+        "baseContext": {},
+      },
       "direction": "LONG",
       "figures": {},
       "indicators": {},
@@ -1192,6 +1219,9 @@ exports[`strategyRuntime hook params snapshots beforeEntryGate params snapshot (
       },
     },
     "signal": {
+      "additionalIndicators": {
+        "baseContext": {},
+      },
       "direction": "LONG",
       "figures": {},
       "indicators": {},
@@ -1470,6 +1500,9 @@ exports[`strategyRuntime hook params snapshots beforePlaceOrder params snapshot 
       },
     },
     "signal": {
+      "additionalIndicators": {
+        "baseContext": {},
+      },
       "direction": "LONG",
       "figures": {},
       "indicators": {},
@@ -1546,6 +1579,9 @@ exports[`strategyRuntime hook params snapshots beforePlaceOrder params snapshot 
       },
     },
     "signal": {
+      "additionalIndicators": {
+        "baseContext": {},
+      },
       "direction": "LONG",
       "figures": {},
       "indicators": {},

@@ -443,8 +443,8 @@ export const formatMessage = (
     const atrPct = getBaseContextNumber(signal, 'raw', 'volatility', 'atrPct');
     const spread = getBaseContextNumber(
       signal,
-      'raw',
-      'crossAsset',
+      'relative',
+      'execution',
       'venueSpread',
     );
 

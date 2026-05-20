@@ -7,6 +7,7 @@ import {
   getSignalBtcMaSlow,
   getSignalCoinMaFast,
   getSignalCoinMaSlow,
+  getSignalDerivativesContext,
 } from '../../shared/baseContext';
 import {
   DEFAULT_VOLUME_DIVERGENCE_ENTRY_THRESHOLDS,
@@ -32,7 +33,7 @@ VolumeDivergence addon:
 - Use \`divergenceAmplitudeAtrRatio\`, \`reclaimPct\`, and \`confirmationCandleQuality\` as explicit setup features describing how meaningful the divergence is relative to ATR, how much structure price reclaimed, and how strong the confirmation candle was.
 - \`confirmationDistancePct\` tells you how far price moved beyond the confirmation level; do not overstate quality when confirmation exists only marginally.
 - \`additionalIndicators.deltaAtPivot\` is a proxy net-volume value on the pivot candle, not true lower-timeframe TradingView volume delta.
-- If \`payload.additionalIndicators.derivativesContext\` exists, use Coinalyze-derived open interest, funding, and liquidations as positioning context: a liquidation flush can strengthen reversal odds, while crowded positioning against the trade or stale or missing data should not mechanically increase quality.
+- If \`payload.additionalIndicators.baseContext.derivatives\` exists, use Coinalyze-derived open interest, funding, and liquidations as positioning context: a liquidation flush can strengthen reversal odds, while crowded positioning against the trade or stale or missing data should not mechanically increase quality.
 - Adaptive exception: a bearish \`confirmation_ready\` setup may still deserve live approval even with positive pivot delta if price already advanced structurally and derivatives show a real liquidation flush. This is a regime-sensitive reversal exception, not a blanket permission for weak SHORTs.
 `;
 
@@ -40,7 +41,7 @@ const VOLUME_DIVERGENCE_PAYLOAD_PROMPT = `
 - \`payload.additionalIndicators.volumeDivergenceContext\` contains a compact divergence-strength summary:
   divergenceKind / confirmationPrice / confirmationReady / structureAdvanced / reboundFromPivotPct / confirmationDistancePct / priceDisplacementPct / divergenceAmplitudeAtrRatio / reclaimPct / confirmationCandleQuality / volumeDivergenceStrength / deltaAligned / coinBiasAligned / btcBiasAligned / derivativesDirectionAligned / derivativesRiskFlags / derivativesLiqSpikeRatio / deterministicQuality / approvalAllowedNow / structuralHardBlockReasons / maxAllowedQuality.
 - Use this context as the explicit strategy-specific summary instead of trying to derive the same conclusion again only from generic candles.
-- If \`payload.additionalIndicators.derivativesContext\` exists, it is a Coinalyze-derived summary of derivatives state at signal time; \`stale\` or \`missing_derivatives\` means that Coinalyze context must not be used.
+- If \`payload.additionalIndicators.baseContext.derivatives\` exists, it is a Coinalyze-derived summary of derivatives state at signal time; \`stale\` or \`missing_derivatives\` means that Coinalyze context must not be used.
 `;
 
 type Direction = 'LONG' | 'SHORT';
@@ -791,7 +792,7 @@ const getVolumeDivergenceContext = (
     getSignalBtcMaSlow(signal),
   );
   const additional = getRecord(signal.additionalIndicators);
-  const derivativesContext = getRecord(additional?.derivativesContext);
+  const derivativesContext = getRecord(getSignalDerivativesContext(signal));
   const derivativesSummary = getRecord(derivativesContext?.summary);
   const derivativesIntervals = getRecord(derivativesContext?.intervals);
   const derivatives15m = getRecord(derivativesIntervals?.['15m']);

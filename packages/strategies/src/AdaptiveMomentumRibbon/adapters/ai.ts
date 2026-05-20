@@ -11,6 +11,7 @@ import {
   getSignalBtcMaSlow,
   getSignalCoinMaFast,
   getSignalCoinMaSlow,
+  getSignalDerivativesContext,
   getSignalSessionPrimary,
 } from '../../shared/baseContext';
 
@@ -525,10 +526,7 @@ const buildAdaptiveMomentumRibbonContext = (
           ? null
           : btcBias === 'bearish'
         : null;
-  const derivativesContext = getRecord(
-    additionalIndicators?.derivativesContext ??
-      signal.additionalIndicators?.derivativesContext,
-  );
+  const derivativesContext = getRecord(getSignalDerivativesContext(signal));
   const derivativesSummary = getRecord(derivativesContext?.summary);
   const derivativesIntervals = getRecord(derivativesContext?.intervals);
   const derivatives15m = getRecord(derivativesIntervals?.['15m']);

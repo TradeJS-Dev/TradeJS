@@ -508,6 +508,10 @@ describe('signals', () => {
               },
               crossAsset: {
                 btcCorrelation: 0.42,
+              },
+            },
+            relative: {
+              execution: {
                 venueSpread: 0.0012,
               },
             },

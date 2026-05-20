@@ -57,9 +57,12 @@ const mockMaterializeIndicatorCachePlan = jest.fn(
 const mockEnrichSignalWithDerivativesContext = jest.fn(async (params: any) => {
   params.signal.additionalIndicators = {
     ...(params.signal.additionalIndicators ?? {}),
-    derivativesContext: {
-      source: 'coinalyze',
-      summary: { pressure: 'neutral', riskFlags: [] },
+    baseContext: {
+      ...(params.signal.additionalIndicators?.baseContext ?? {}),
+      derivatives: {
+        source: 'coinalyze',
+        summary: { pressure: 'neutral', riskFlags: [] },
+      },
     },
   };
   return true;
@@ -380,8 +383,10 @@ describe('testing backtest flow', () => {
       expect.objectContaining({
         signal: expect.objectContaining({
           additionalIndicators: expect.objectContaining({
-            derivativesContext: expect.objectContaining({
-              source: 'coinalyze',
+            baseContext: expect.objectContaining({
+              derivatives: expect.objectContaining({
+                source: 'coinalyze',
+              }),
             }),
           }),
         }),

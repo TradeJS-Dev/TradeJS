@@ -127,7 +127,7 @@ describe('strategyHelpers/derivativesContext', () => {
       endMs: signal.timestamp,
       lookbackMs: 48 * 60 * 60 * 1000,
     });
-    expect(enrichedSignal.additionalIndicators.derivativesContext).toEqual(
+    expect(enrichedSignal.additionalIndicators.baseContext.derivatives).toEqual(
       expect.objectContaining({
         symbol: 'ETHUSDT',
         targetSymbol: 'ETHUSDT',
@@ -140,20 +140,17 @@ describe('strategyHelpers/derivativesContext', () => {
       }),
     );
     expect(
-      enrichedSignal.additionalIndicators.derivativesContext.summary
+      enrichedSignal.additionalIndicators.baseContext.derivatives.summary
         .directionAligned,
     ).toBe(true);
     expect(
-      enrichedSignal.additionalIndicators.derivativesContext.summary
+      enrichedSignal.additionalIndicators.baseContext.derivatives.summary
         .fundingChange1h,
     ).toBe(0);
     expect(
-      enrichedSignal.additionalIndicators.derivativesContext.summary
+      enrichedSignal.additionalIndicators.baseContext.derivatives.summary
         .priceOiDivergenceType,
     ).toBe('price_up_oi_up');
-    expect(enrichedSignal.additionalIndicators.baseContext.derivatives).toEqual(
-      enrichedSignal.additionalIndicators.derivativesContext,
-    );
   });
 
   it('uses BTC as the primary derivatives context for non-reference symbols', async () => {
@@ -171,7 +168,7 @@ describe('strategyHelpers/derivativesContext', () => {
     expect(
       mockGetDerivativesWindow.mock.calls.map((call) => call[0].symbol),
     ).toEqual(['BTCUSDT', 'ETHUSDT']);
-    expect(enrichedSignal.additionalIndicators.derivativesContext).toEqual(
+    expect(enrichedSignal.additionalIndicators.baseContext.derivatives).toEqual(
       expect.objectContaining({
         symbol: 'BTCUSDT',
         targetSymbol: 'SOLUSDT',

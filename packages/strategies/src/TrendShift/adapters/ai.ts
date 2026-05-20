@@ -61,9 +61,9 @@ const getTrendShiftContext = (payload: AiPayload): TrendShiftAiContext => {
   const additional = asRecord(payload.additionalIndicators);
   const raw =
     ((additional?.trendShiftContext ?? {}) as TrendShiftContext) || {};
-  const derivativesContext = asRecord(additional?.derivativesContext);
-  const derivativesSummary = asRecord(derivativesContext?.summary);
   const baseContext = asRecord(additional?.baseContext);
+  const derivativesContext = asRecord(baseContext?.derivatives);
+  const derivativesSummary = asRecord(derivativesContext?.summary);
   const regime = asRecord(baseContext?.regime);
   const regimeVolatility = asRecord(regime?.volatility);
   const regimeSession = asRecord(regime?.session);

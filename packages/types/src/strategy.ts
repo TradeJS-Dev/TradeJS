@@ -182,7 +182,6 @@ export interface BaseRawIndicatorSnapshot {
   };
   crossAsset: {
     btcCorrelation: number | null;
-    venueSpread: number | null;
   };
 }
 
@@ -264,7 +263,6 @@ export interface BaseParticipationContext {
 
 export interface BaseRelativeContext {
   benchmark: {
-    btcCorrelation: number | null;
     maFast: number | null;
     maSlow: number | null;
     bias: 'bull' | 'bear' | 'neutral';

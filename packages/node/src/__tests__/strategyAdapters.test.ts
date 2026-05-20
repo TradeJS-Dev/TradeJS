@@ -140,9 +140,6 @@ describe('strategyAdapters utils', () => {
         trimmed: expect.objectContaining({
           ...signal.additionalIndicators,
           marketContext: expect.objectContaining({
-            session: expect.objectContaining({
-              timezone: 'UTC',
-            }),
             execution: expect.objectContaining({
               binanceCoinbaseSpread: expect.objectContaining({
                 available: true,

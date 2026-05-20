@@ -112,6 +112,9 @@ const withBaseContext = (signal: any) => {
   const existingBaseContext = additionalIndicators.baseContext ?? {};
   const existingRaw = existingBaseContext.raw ?? {};
   const existingCrossAsset = existingRaw.crossAsset ?? {};
+  const existingRelative = existingBaseContext.relative ?? {};
+  const existingExecution = existingRelative.execution ?? {};
+  const existingDerivatives = existingBaseContext.derivatives;
   const setupAtrPct =
     additionalIndicators.volumeDivergenceSetup?.atrPct ??
     additionalIndicators.baseContext?.raw?.volatility?.atrPct;
@@ -130,7 +133,7 @@ const withBaseContext = (signal: any) => {
     null;
   const venueSpread =
     getLastFiniteNumber(indicators.spread) ??
-    existingCrossAsset.venueSpread ??
+    existingExecution.venueSpread ??
     null;
 
   return {
@@ -172,25 +175,22 @@ const withBaseContext = (signal: any) => {
           crossAsset: {
             ...existingCrossAsset,
             btcCorrelation,
-            venueSpread,
           },
         },
         relative: {
-          ...(existingBaseContext.relative ?? {}),
+          ...existingRelative,
           benchmark: {
-            ...(existingBaseContext.relative?.benchmark ?? {}),
+            ...(existingRelative.benchmark ?? {}),
             maFast: btcMaFast,
             maSlow: btcMaSlow,
           },
           execution: {
-            ...((existingBaseContext.relative?.execution as Record<
-              string,
-              unknown
-            >) ?? {}),
+            ...(existingExecution as Record<string, unknown>),
             venueSpread,
             venueSpreadZScore: 1.4,
           },
         },
+        derivatives: existingDerivatives,
       },
     },
   };
@@ -516,14 +516,16 @@ const makeAdaptiveMomentumRibbonSignal = (
         atrLength: 14,
         atrMultiplier: 2,
       },
-      derivativesContext: {
-        summary: {
-          directionAligned: true,
-          riskFlags: [],
-        },
-        intervals: {
-          '15m': {
-            fundingZScore: 0.2,
+      baseContext: {
+        derivatives: {
+          summary: {
+            directionAligned: true,
+            riskFlags: [],
+          },
+          intervals: {
+            '15m': {
+              fundingZScore: 0.2,
+            },
           },
         },
       },
@@ -556,21 +558,28 @@ const makeAdaptiveMomentumRibbonSignal = (
         ...base.additionalIndicators.amrConfigSnapshot,
         ...overrides.additionalIndicators?.amrConfigSnapshot,
       },
-      derivativesContext: {
-        ...base.additionalIndicators.derivativesContext,
-        ...overrides.additionalIndicators?.derivativesContext,
-        summary: {
-          ...base.additionalIndicators.derivativesContext.summary,
-          ...overrides.additionalIndicators?.derivativesContext?.summary,
-        },
-        intervals: {
-          ...base.additionalIndicators.derivativesContext.intervals,
-          ...overrides.additionalIndicators?.derivativesContext?.intervals,
-          '15m': {
-            ...base.additionalIndicators.derivativesContext.intervals['15m'],
-            ...overrides.additionalIndicators?.derivativesContext?.intervals?.[
-              '15m'
-            ],
+      baseContext: {
+        ...base.additionalIndicators.baseContext,
+        ...overrides.additionalIndicators?.baseContext,
+        derivatives: {
+          ...base.additionalIndicators.baseContext.derivatives,
+          ...overrides.additionalIndicators?.baseContext?.derivatives,
+          summary: {
+            ...base.additionalIndicators.baseContext.derivatives.summary,
+            ...overrides.additionalIndicators?.baseContext?.derivatives
+              ?.summary,
+          },
+          intervals: {
+            ...base.additionalIndicators.baseContext.derivatives.intervals,
+            ...overrides.additionalIndicators?.baseContext?.derivatives
+              ?.intervals,
+            '15m': {
+              ...base.additionalIndicators.baseContext.derivatives.intervals[
+                '15m'
+              ],
+              ...overrides.additionalIndicators?.baseContext?.derivatives
+                ?.intervals?.['15m'],
+            },
           },
         },
       },
@@ -1506,10 +1515,10 @@ describe('ai helpers', () => {
         ...signal.additionalIndicators,
         baseContext: {
           ...signal.additionalIndicators.baseContext,
-          raw: {
-            ...signal.additionalIndicators.baseContext.raw,
-            crossAsset: {
-              ...signal.additionalIndicators.baseContext.raw.crossAsset,
+          relative: {
+            ...signal.additionalIndicators.baseContext.relative,
+            execution: {
+              ...signal.additionalIndicators.baseContext.relative.execution,
               venueSpread: 0.0012,
             },
           },
@@ -1545,19 +1554,6 @@ describe('ai helpers', () => {
       ).toBe('ready_breakout');
       expect((payload.additionalIndicators as any).marketContext).toMatchObject(
         {
-          session: {
-            source: 'payload.additionalIndicators.baseContext.regime.session',
-            timezone: 'UTC',
-            utcHour: 14,
-            utcMinute: 30,
-            primarySession: 'us',
-            activeSessions: ['europe', 'us'],
-            isOverlap: true,
-            overlap: 'europe_us_overlap',
-            minutesFromSessionOpen: 90,
-            minutesToFundingWindow: 90,
-            fundingWindowNearby: false,
-          },
           execution: {
             binanceCoinbaseSpread: {
               source:
@@ -1624,7 +1620,6 @@ describe('ai helpers', () => {
       );
       expect(prompt).toContain('payload.additionalIndicators');
       expect(prompt).toContain('payload.additionalIndicators.baseContext');
-      expect(prompt).toContain('marketContext.session');
       expect(prompt).toContain('marketContext.execution.binanceCoinbaseSpread');
       expect(prompt).toContain('Short few-shot examples');
       expect(prompt).toContain('Do not add any other fields');
@@ -2854,15 +2849,18 @@ describe('ai helpers', () => {
       const signal = makeDeterministicQualityShortSignal();
       signal.additionalIndicators = {
         ...signal.additionalIndicators,
-        derivativesContext: {
-          source: 'coinalyze',
-          symbol: 'BTCUSDT',
-          timestamp: signal.timestamp,
-          intervals: {},
-          summary: {
-            pressure: 'neutral',
-            directionAligned: null,
-            riskFlags: ['oi_not_confirming'],
+        baseContext: {
+          ...signal.additionalIndicators.baseContext,
+          derivatives: {
+            source: 'coinalyze',
+            symbol: 'BTCUSDT',
+            timestamp: signal.timestamp,
+            intervals: {},
+            summary: {
+              pressure: 'neutral',
+              directionAligned: null,
+              riskFlags: ['oi_not_confirming'],
+            },
           },
         },
       };

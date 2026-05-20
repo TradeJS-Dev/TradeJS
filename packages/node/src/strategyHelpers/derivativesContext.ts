@@ -167,7 +167,6 @@ export const enrichSignalWithDerivativesContext = async (params: {
 
     signal.additionalIndicators = {
       ...(signal.additionalIndicators ?? {}),
-      derivativesContext,
       baseContext:
         signal.additionalIndicators?.baseContext &&
         typeof signal.additionalIndicators.baseContext === 'object' &&

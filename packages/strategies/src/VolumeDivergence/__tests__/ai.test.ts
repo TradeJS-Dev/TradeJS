@@ -57,6 +57,9 @@ const withBaseContext = (signal: any) => ({
           maSlow: getLastFiniteNumber(signal.indicators?.btcMaSlow),
         },
       },
+      derivatives:
+        signal.additionalIndicators?.derivativesContext ??
+        signal.additionalIndicators?.baseContext?.derivatives,
     },
   },
 });
@@ -103,21 +106,25 @@ const makeSignal = (overrides: Record<string, any> = {}) =>
         confirmationDistancePct: 1,
         ...overrides.additionalIndicators?.volumeDivergenceSetup,
       },
-      derivativesContext: {
-        ...overrides.additionalIndicators?.derivativesContext,
-        summary: {
-          directionAligned: true,
-          riskFlags: [],
-          ...overrides.additionalIndicators?.derivativesContext?.summary,
-        },
-        intervals: {
-          ...overrides.additionalIndicators?.derivativesContext?.intervals,
-          '15m': {
-            fundingZScore: 0,
-            liqSpikeRatio: 0,
-            ...overrides.additionalIndicators?.derivativesContext?.intervals?.[
-              '15m'
-            ],
+      baseContext: {
+        ...overrides.additionalIndicators?.baseContext,
+        derivatives: {
+          ...overrides.additionalIndicators?.baseContext?.derivatives,
+          summary: {
+            directionAligned: true,
+            riskFlags: [],
+            ...overrides.additionalIndicators?.baseContext?.derivatives
+              ?.summary,
+          },
+          intervals: {
+            ...overrides.additionalIndicators?.baseContext?.derivatives
+              ?.intervals,
+            '15m': {
+              fundingZScore: 0,
+              liqSpikeRatio: 0,
+              ...overrides.additionalIndicators?.baseContext?.derivatives
+                ?.intervals?.['15m'],
+            },
           },
         },
       },

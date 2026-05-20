@@ -4,6 +4,7 @@ import type { TrendLineConfig } from '../config';
 import {
   getSignalCoinMaFast,
   getSignalCoinMaSlow,
+  getSignalDerivativesContext,
   getSignalSessionIsOverlap,
   getSignalSessionPrimary,
 } from '../../shared/baseContext';
@@ -32,8 +33,8 @@ TrendLine addon:
 - For LONG on descending resistance ('trendline.mode=\"highs\"'), the mirror logic applies: you usually need a move above the line or a retest from above. If price remains below the line or directly on it, use 'direction=null' and usually 'quality <= 2'.
 - If 'payload.additionalIndicators.trendlineContext.nearLineNoise=true', do not treat that as a confirmed breakout. Quality is usually '<= 2-3', and a retest or confirmation is still needed.
 - If 'payload.additionalIndicators.trendlineContext.coinBiasAligned=false' or 'btcBiasAligned=false', treat it as a direct conflict with the signal direction. In that case, the signal is usually not confirmed unless the structural edge is exceptional.
-- If 'payload.additionalIndicators.derivativesContext' exists, use it as Coinalyze-based breakout confirmation or conflict: open interest should support the move, funding should not be extremely crowded against the entry quality, and liquidation spikes can indicate flush, squeeze, or exhaustion.
-- If 'derivativesContext.summary.riskFlags' contains 'oi_not_confirming', treat it as a direct sign that open interest does not confirm the breakout yet. Without very strong follow-through, do not elevate the signal to immediate entry.
+- If 'payload.additionalIndicators.baseContext.derivatives' exists, use it as Coinalyze-based breakout confirmation or conflict: open interest should support the move, funding should not be extremely crowded against the entry quality, and liquidation spikes can indicate flush, squeeze, or exhaustion.
+- If 'baseContext.derivatives.summary.riskFlags' contains 'oi_not_confirming', treat it as a direct sign that open interest does not confirm the breakout yet. Without very strong follow-through, do not elevate the signal to immediate entry.
 - For SHORT during 'off_hours' or session overlap, require cleaner structural follow-through than during normal hours; those windows are noisier and less suitable for immediate approval.
 - If 'payload.additionalIndicators.trendlineContext.clearBreak=false' and price is still near the line, do not describe it as a clean breakout.
 - If 'clearBreak=true' but 'trendlineContext.weakCleanBreak=true', treat it as a formally valid but too-weak breakout: structure has been touched, but displacement margin is still limited. This usually calls for follow-through or retest, not immediate confirmation.
@@ -49,7 +50,7 @@ const TRENDLINE_PAYLOAD_PROMPT = `
 - 'payload.figures.trendline' contains the full trendline geometry without trimming so touches and structure can be evaluated.
 - 'payload.additionalIndicators.trendlineContext' contains 'mode / touches / distance / currentLinePrice / priceVsLinePct / priceVsLineSide / clearBreak / nearLineNoise / coinMaBias / btcMaBias / maxAllowedQuality / approvalAllowedNow / hardBlockReasons'.
 - It also includes 'atrPct / breakVsAtrRatio / coinMaSpreadPct / btcMaSpreadPct / aggressivePreBreakPressure / strongNearBreakPressure / weakCleanBreak / compressedCleanBreak / weakBtcLedBreak / weakLongFarBreak'.
-- If 'payload.additionalIndicators.derivativesContext' exists, it contains Coinalyze-derived open interest, funding, and liquidation fields for the signal moment; do not treat 'stale' or 'missing_derivatives' as confirmation or conflict.
+- If 'payload.additionalIndicators.baseContext.derivatives' exists, it contains Coinalyze-derived open interest, funding, and liquidation fields for the signal moment; do not treat 'stale' or 'missing_derivatives' as confirmation or conflict.
 `;
 
 const buildTrendlineContext = (signal: {
@@ -61,16 +62,10 @@ const buildTrendlineContext = (signal: {
 }) => {
   const sessionPrimary = getSignalSessionPrimary(signal);
   const sessionIsOverlap = getSignalSessionIsOverlap(signal);
-  const derivativesContext =
-    signal.additionalIndicators &&
-    typeof signal.additionalIndicators.derivativesContext === 'object' &&
-    signal.additionalIndicators.derivativesContext &&
-    !Array.isArray(signal.additionalIndicators.derivativesContext)
-      ? (signal.additionalIndicators.derivativesContext as Record<
-          string,
-          unknown
-        >)
-      : null;
+  const derivativesContext = getSignalDerivativesContext(signal) as Record<
+    string,
+    unknown
+  > | null;
   const derivativesSummary =
     derivativesContext &&
     typeof derivativesContext.summary === 'object' &&

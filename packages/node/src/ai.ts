@@ -202,7 +202,7 @@ Input payload structure:
   This is not noise; it contains derived fields deliberately passed by the strategy to help the decision.
   Examples: baseContext, helperFlags, structureContext, volatilitySummary.
   Always inspect \`payload.additionalIndicators.baseContext\` first for the current shared state:
-  • \`baseContext.raw\`: current MA, ATR, BB, OBV, price stats, levels, BTC correlation, venue spread.
+  • \`baseContext.raw\`: current MA, ATR, BB, OBV, price stats, levels, BTC correlation.
   • \`baseContext.regime\`: derived trend / volatility / momentum / session regime fields.
   • \`baseContext.structure\`: local range position, breakout freshness/quality, level-touch counts, rejection wick context.
   • \`baseContext.participation\`: volume/turnover participation and effort-vs-result context.
@@ -210,10 +210,9 @@ Input payload structure:
   • \`baseContext.derivatives\`: Coinalyze-aligned derivatives summary when available.
   • \`baseContext.mtf\`: compact multi-timeframe candle snapshots.
   Always inspect \`payload.additionalIndicators.marketContext\` when present:
-  • \`marketContext.session\`: AI-friendly session view projected from \`payload.additionalIndicators.baseContext.regime.session\`.
   • \`marketContext.execution.binanceCoinbaseSpread\`: AI-friendly BTC spread view projected from \`payload.additionalIndicators.baseContext.relative.execution.venueSpread\`; \`value=(Coinbase-Binance)/Binance\`, \`bps=value*10000\`.
   If those fields exist, use them as a more explicit hint instead of trying to re-derive the same idea from raw lines or points.
-  If \`derivativesContext\` exists, it is a derived Coinalyze summary for the time of the signal. Coinalyze context is built only from \`BTCUSDT\` and \`ETHUSDT\` reference symbols, not for every target coin. \`targetSymbol\` is just the source signal coin. Use BTC/ETH open interest, funding, liquidations, and pressure/riskFlags as positioning context, not as an independent trade idea.
+  If \`baseContext.derivatives\` exists, it is a derived Coinalyze summary for the time of the signal. Coinalyze context is built only from \`BTCUSDT\` and \`ETHUSDT\` reference symbols, not for every target coin. \`targetSymbol\` is just the source signal coin. Use BTC/ETH open interest, funding, liquidations, and pressure/riskFlags as positioning context, not as an independent trade idea.
   Key patterns:
   • current shared state: prefer \`payload.additionalIndicators.baseContext\`
   • recent historical series: \`payload.indicators\`
@@ -231,11 +230,11 @@ Explicit conflict rules:
 - If the figure or price structure is invalid or doubtful, indicators must not rescue the setup.
 - If strategy-specific helper fields explicitly say the signal is not confirmed yet, lacks margin, or requires waiting, do not overstate quality.
 - If the structure is acceptable but BTC or key indicators noticeably conflict, quality is usually \`<= 3\`.
-- If \`derivativesContext.referenceContexts\` exists, check \`primaryReferenceSymbol\` first, then compare \`BTCUSDT\` and \`ETHUSDT\` as broad-market derivatives context. Do not search for Coinalyze data for \`targetSymbol\` unless \`targetSymbol\` itself is \`BTCUSDT\` or \`ETHUSDT\`.
-- If \`derivativesContext.summary.riskFlags\` contains \`crowded_long\` for a LONG or \`crowded_short\` for a SHORT, treat that as crowded positioning and do not overstate quality without strong structural confirmation.
-- If \`derivativesContext.summary.directionAligned=false\`, explicitly mention the derivatives conflict in \`confirmations\` or \`qualityReason\`.
-- If \`derivativesContext\` is absent, stale, or \`missing_derivatives\`, do not infer Coinalyze conclusions and do not penalize the signal just because that data is missing.
-- If \`marketContext.session\` exists, treat the session as a liquidity and volatility regime: asia is often thinner, europe/us are more active, and overlaps can amplify both momentum and noise. Do not reject a signal solely because of session, but mention clear session support or conflict in \`confirmations\` or \`qualityReason\`.
+- If \`baseContext.derivatives.referenceContexts\` exists, check \`primaryReferenceSymbol\` first, then compare \`BTCUSDT\` and \`ETHUSDT\` as broad-market derivatives context. Do not search for Coinalyze data for \`targetSymbol\` unless \`targetSymbol\` itself is \`BTCUSDT\` or \`ETHUSDT\`.
+- If \`baseContext.derivatives.summary.riskFlags\` contains \`crowded_long\` for a LONG or \`crowded_short\` for a SHORT, treat that as crowded positioning and do not overstate quality without strong structural confirmation.
+- If \`baseContext.derivatives.summary.directionAligned=false\`, explicitly mention the derivatives conflict in \`confirmations\` or \`qualityReason\`.
+- If \`baseContext.derivatives\` is absent, stale, or \`missing_derivatives\`, do not infer Coinalyze conclusions and do not penalize the signal just because that data is missing.
+- Use \`baseContext.regime.session\` directly as the canonical session/liquidity regime: asia is often thinner, europe/us are more active, and overlaps can amplify both momentum and noise. Do not reject a signal solely because of session, but mention clear session support or conflict in \`confirmations\` or \`qualityReason\`.
 - If \`marketContext.execution.binanceCoinbaseSpread.available=true\` and \`severity=elevated/wide\`, treat it as cross-exchange divergence or BTC liquidity risk. Do not use the spread as a standalone long/short signal, but reduce confidence or require more confirmation when the rest of the structure is weak or BTC context conflicts.
 - If \`marketContext.execution.binanceCoinbaseSpread\` is missing or \`available=false\`, do not infer anything from Binance/Coinbase spread and do not penalize the signal just because it is absent.
 - If the current signal is not confirmed (\`direction=null\`), name the main reason briefly in \`comment\`.

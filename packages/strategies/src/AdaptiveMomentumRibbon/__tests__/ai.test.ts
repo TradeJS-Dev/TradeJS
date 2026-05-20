@@ -71,6 +71,9 @@ const withBaseContext = (signal: any) => ({
             ?.session as Record<string, unknown>) ?? {}),
         },
       },
+      derivatives:
+        signal.additionalIndicators?.derivativesContext ??
+        signal.additionalIndicators?.baseContext?.derivatives,
     },
   },
 });
@@ -132,20 +135,24 @@ const makeSignal = (overrides: Record<string, any> = {}) =>
         atrMultiplier: 2,
         ...overrides.additionalIndicators?.amrConfigSnapshot,
       },
-      derivativesContext: {
-        ...overrides.additionalIndicators?.derivativesContext,
-        summary: {
-          directionAligned: true,
-          riskFlags: [],
-          ...overrides.additionalIndicators?.derivativesContext?.summary,
-        },
-        intervals: {
-          ...overrides.additionalIndicators?.derivativesContext?.intervals,
-          '15m': {
-            fundingZScore: 0.2,
-            ...overrides.additionalIndicators?.derivativesContext?.intervals?.[
-              '15m'
-            ],
+      baseContext: {
+        ...overrides.additionalIndicators?.baseContext,
+        derivatives: {
+          ...overrides.additionalIndicators?.baseContext?.derivatives,
+          summary: {
+            directionAligned: true,
+            riskFlags: [],
+            ...overrides.additionalIndicators?.baseContext?.derivatives
+              ?.summary,
+          },
+          intervals: {
+            ...overrides.additionalIndicators?.baseContext?.derivatives
+              ?.intervals,
+            '15m': {
+              fundingZScore: 0.2,
+              ...overrides.additionalIndicators?.baseContext?.derivatives
+                ?.intervals?.['15m'],
+            },
           },
         },
       },

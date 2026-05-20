@@ -173,6 +173,9 @@ const makeSignal = (strategy = 'TrendLine') =>
       riskRatio: 2,
     },
     indicators: {},
+    additionalIndicators: {
+      baseContext: {},
+    },
   }) as any;
 
 const makeDecisionEntry = (
@@ -1853,6 +1856,9 @@ describe('strategyRuntime', () => {
           if (key === 'derivativesContext') {
             continue;
           }
+          if (key === 'derivatives' && 'baseContext' in obj) {
+            continue;
+          }
           result[key] = stripDerivativesContext(value);
         }
         return result;
@@ -1881,8 +1887,8 @@ describe('strategyRuntime', () => {
 
         const params = firstCallArgRaw(afterEnrichAi);
         expect(
-          params.decision.signal.additionalIndicators?.derivativesContext !=
-            null,
+          params.decision.signal.additionalIndicators?.baseContext
+            ?.derivatives != null,
         ).toBe(expectedPresent);
       },
     );
