@@ -211,13 +211,8 @@ export interface BaseRegimeContext {
     downCloseStreak: number | null;
   };
   session: {
-    timezone: 'UTC';
-    utcHour: number;
-    utcMinute: number;
     primarySession: 'asia' | 'europe' | 'us' | 'off_hours';
-    activeSessions: Array<'asia' | 'europe' | 'us'>;
     isOverlap: boolean;
-    overlap: string | null;
     minutesFromSessionOpen: number | null;
     minutesToFundingWindow: number | null;
     fundingWindowNearby: boolean;
@@ -266,7 +261,6 @@ export interface BaseRelativeContext {
     maFast: number | null;
     maSlow: number | null;
     bias: 'bull' | 'bear' | 'neutral';
-    spreadPct: number | null;
     relativeStrength1h: number | null;
     relativeStrength4h: number | null;
     relativeStrength1d: number | null;

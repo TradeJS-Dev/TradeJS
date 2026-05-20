@@ -46,7 +46,7 @@ const mockAppendMlDatasetRow = jest.fn((_params?: unknown) => undefined);
 const mockAppendAiDatasetRow = jest.fn((_params?: unknown) => undefined);
 const mockPlanIndicatorCacheRestore = jest.fn(async (_params?: unknown) => ({
   paramsHash: 'hash-1',
-  version: 'v2',
+  version: 'v3',
   restoreState: { runtimeState: true },
   replayStartIndex: 2,
   cached: false,
@@ -316,7 +316,7 @@ describe('testing backtest flow', () => {
       replayStartIndex: 2,
       totalCandles: 4,
       paramsHash: 'hash-1',
-      version: 'v2',
+      version: 'v3',
     });
   });
 

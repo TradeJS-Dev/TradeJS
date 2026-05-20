@@ -94,7 +94,7 @@ const mockWarmBacktestIndicatorCache = jest.fn(async (_test?: unknown) => ({
   replayStartIndex: 10,
   totalCandles: 20,
   paramsHash: 'hash-1',
-  version: 'v2',
+  version: 'v3',
 }));
 
 jest.mock('@tradejs/node/backtest', () => ({

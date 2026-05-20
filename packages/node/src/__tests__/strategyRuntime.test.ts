@@ -299,7 +299,7 @@ describe('strategyRuntime', () => {
     mockPlanIndicatorCacheRestore.mockResolvedValue({
       cached: true,
       paramsHash: 'hash',
-      version: 'v2',
+      version: 'v3',
       restoreState: null,
       replayStartIndex: 0,
     });
@@ -333,7 +333,7 @@ describe('strategyRuntime', () => {
     mockPlanIndicatorCacheRestore.mockResolvedValue({
       cached: false,
       paramsHash: 'hash',
-      version: 'v2',
+      version: 'v3',
       restoreState: cachedState,
       replayStartIndex: 2,
     });

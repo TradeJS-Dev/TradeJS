@@ -78,14 +78,8 @@ export const buildSessionContext = (timestamp: number) => {
     FUNDING_WINDOW_STEP_MINUTES;
 
   return {
-    timezone: 'UTC' as const,
-    utcHour,
-    utcMinute,
     primarySession,
-    activeSessions,
     isOverlap: activeSessions.length > 1,
-    overlap:
-      activeSessions.length > 1 ? `${activeSessions.join('_')}_overlap` : null,
     minutesFromSessionOpen,
     minutesToFundingWindow,
     fundingWindowNearby:
@@ -449,11 +443,6 @@ export const buildBaseContextSnapshot = ({
         : benchmarkMaFast < benchmarkMaSlow
           ? 'bear'
           : 'neutral';
-  const benchmarkSpreadPct =
-    benchmarkMaFast != null && benchmarkMaSlow != null && benchmarkMaSlow !== 0
-      ? ((benchmarkMaFast - benchmarkMaSlow) / Math.abs(benchmarkMaSlow)) * 100
-      : null;
-
   const snapshot = {
     candle,
     prevCandle,
@@ -583,7 +572,6 @@ export const buildBaseContextSnapshot = ({
         maFast: benchmarkMaFast,
         maSlow: benchmarkMaSlow,
         bias: benchmarkTrendBias,
-        spreadPct: benchmarkSpreadPct,
         relativeStrength1h,
         relativeStrength4h,
         relativeStrength1d,

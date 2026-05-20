@@ -145,13 +145,8 @@ const withBaseContext = (signal: any) => {
         regime: {
           ...(existingBaseContext.regime ?? {}),
           session: {
-            timezone: 'UTC',
-            utcHour: 23,
-            utcMinute: 0,
             primarySession: 'off_hours',
-            activeSessions: [],
             isOverlap: false,
-            overlap: null,
             minutesFromSessionOpen: null,
             minutesToFundingWindow: 60,
             fundingWindowNearby: true,
@@ -252,13 +247,8 @@ const makeSignal = () =>
       baseContext: {
         regime: {
           session: {
-            timezone: 'UTC',
-            utcHour: 14,
-            utcMinute: 30,
             primarySession: 'us',
-            activeSessions: ['europe', 'us'],
             isOverlap: true,
-            overlap: 'europe_us_overlap',
             minutesFromSessionOpen: 90,
             minutesToFundingWindow: 90,
             fundingWindowNearby: false,
