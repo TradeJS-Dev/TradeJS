@@ -46,6 +46,8 @@ const DEV_COMPOSE_TEMPLATE = `services:
   redis:
     image: redis/redis-stack:latest
     container_name: tradejs-redis
+    environment:
+      REDIS_ARGS: --save "" --appendonly no --stop-writes-on-bgsave-error no
     ports:
       - "6379:6379"
       - "5540:8001"
