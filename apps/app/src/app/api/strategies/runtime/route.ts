@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { TTL_1M } from '@tradejs/core/constants';
-import { getConnectorCreatorByProvider } from '@tradejs/node/connectors';
 import { logger } from '@tradejs/infra/logger';
 import {
   delKey,
@@ -15,6 +14,10 @@ import type {
   PositionPnlSnapshot,
   RuntimeTradeRecord,
 } from '@tradejs/types';
+import {
+  DEFAULT_CONNECTOR_PROVIDER,
+  resolveConnectorCreatorByProvider,
+} from '#app/lib/connectorCreator';
 import { getCurrentUserName } from '#app/lib/currentUser';
 import {
   buildRuntimeStrategyAnalytics,
@@ -37,7 +40,7 @@ export const dynamic = 'force-dynamic';
 
 const projectRoot =
   String(process.env.PROJECT_CWD || process.cwd()).trim() || process.cwd();
-const DEFAULT_PROVIDER = 'bybit';
+const DEFAULT_PROVIDER = DEFAULT_CONNECTOR_PROVIDER;
 const DEFAULT_HOURS = 168;
 const MIN_HOURS = 6;
 const MAX_HOURS = 24 * 30;
@@ -304,9 +307,11 @@ export const GET = async (request: NextRequest) => {
     const hours = coerceHours(request.nextUrl.searchParams.get('hours'));
     const endTime = Date.now();
     const startTime = endTime - hours * 60 * 60 * 1000;
-    const connectorCreator =
-      (await getConnectorCreatorByProvider(provider, projectRoot)) ||
-      (await getConnectorCreatorByProvider(DEFAULT_PROVIDER, projectRoot));
+    const connectorCreator = await resolveConnectorCreatorByProvider(
+      provider,
+      projectRoot,
+      DEFAULT_PROVIDER,
+    );
 
     if (!connectorCreator) {
       throw new Error(`No connector available for provider "${provider}"`);

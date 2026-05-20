@@ -4,7 +4,6 @@ import {
   createIndicators,
   getRegisteredIndicatorEntries,
 } from '@tradejs/core/indicators';
-import { getConnectorCreatorByProvider } from '@tradejs/node/connectors';
 import { ensureIndicatorPluginsLoaded } from '@tradejs/node/registry';
 import { logger } from '@tradejs/infra/logger';
 import {
@@ -13,6 +12,7 @@ import {
   Interval,
   ConnectorCreator,
 } from '@tradejs/types';
+import { resolveConnectorCreatorByProvider } from '#app/lib/connectorCreator';
 import { getCurrentUserName } from '#app/lib/currentUser';
 import { normalizeEndToIntervalBoundary } from '#app/lib/klineWindow';
 
@@ -332,9 +332,10 @@ export const POST = async (
     }
 
     const pending = (async () => {
-      const connectorCreator =
-        (await getConnectorCreatorByProvider(provider, projectRoot)) ||
-        (await getConnectorCreatorByProvider('bybit', projectRoot));
+      const connectorCreator = await resolveConnectorCreatorByProvider(
+        provider,
+        projectRoot,
+      );
       if (!connectorCreator) {
         throw new Error('No connector available for provider');
       }

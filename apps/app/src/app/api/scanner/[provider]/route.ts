@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server';
 import { ConnectorCreator } from '@tradejs/types';
-import { getConnectorCreatorByProvider } from '@tradejs/node/connectors';
 import { getTopTickers } from '@tradejs/core/tickers';
 import { logger } from '@tradejs/infra/logger';
+import { resolveConnectorCreatorByProvider } from '#app/lib/connectorCreator';
 import { getCurrentUserName } from '#app/lib/currentUser';
 
 export const dynamic = 'force-dynamic';
@@ -24,9 +24,10 @@ export const GET = async (
     }
 
     const { provider } = await params;
-    const connectorCreator =
-      (await getConnectorCreatorByProvider(provider, projectRoot)) ||
-      (await getConnectorCreatorByProvider('bybit', projectRoot));
+    const connectorCreator = await resolveConnectorCreatorByProvider(
+      provider,
+      projectRoot,
+    );
     if (!connectorCreator) {
       throw new Error('No connector available for provider');
     }

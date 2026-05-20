@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server';
 import { getTopTickers } from '@tradejs/core/tickers';
-import { getConnectorCreatorByProvider } from '@tradejs/node/connectors';
 import { logger } from '@tradejs/infra/logger';
 import { ConnectorCreator } from '@tradejs/types';
+import { resolveConnectorCreatorByProvider } from '#app/lib/connectorCreator';
 import { getCurrentUserName } from '#app/lib/currentUser';
 
 export const dynamic = 'force-dynamic';
@@ -16,7 +16,7 @@ export const GET = async () => {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const connectorCreator = await getConnectorCreatorByProvider(
+    const connectorCreator = await resolveConnectorCreatorByProvider(
       'bybit',
       projectRoot,
     );

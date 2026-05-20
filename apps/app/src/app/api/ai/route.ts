@@ -8,7 +8,6 @@ import {
 import { toJson } from '@tradejs/core/data';
 import { getAiResponseLanguagePromptName } from '@tradejs/infra/aiLanguages';
 import { DEFAULT_AI_MODEL, getOpenRouterModelKwargs } from '@tradejs/node/ai';
-import { getConnectorCreatorByProvider } from '@tradejs/node/connectors';
 import {
   AIChatHistory,
   AIChatMessage,
@@ -18,6 +17,7 @@ import {
 import { getData, redisKeys, setData } from '@tradejs/infra/redis';
 import { logger } from '@tradejs/infra/logger';
 import { getUserSettings } from '@tradejs/infra/userSettings';
+import { resolveConnectorCreatorByProvider } from '#app/lib/connectorCreator';
 import { getCurrentUserName } from '#app/lib/currentUser';
 
 export const dynamic = 'force-dynamic';
@@ -177,7 +177,7 @@ export const POST = async (request: NextRequest) => {
 
     await appendMessagesToHistory(userName, filters.symbol, [message]);
 
-    const connectorCreator = await getConnectorCreatorByProvider(
+    const connectorCreator = await resolveConnectorCreatorByProvider(
       'bybit',
       projectRoot,
     );
