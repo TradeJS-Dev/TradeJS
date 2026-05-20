@@ -594,9 +594,13 @@ describe('backtest script helpers', () => {
         status: expect.any(String),
       }),
     );
-    expect(consoleLogSpy).toHaveBeenCalledWith(
-      expect.stringMatching(/^indicator cache warmup: done in /),
-    );
+    expect(
+      consoleLogSpy.mock.calls.some(
+        ([message]) =>
+          typeof message === 'string' &&
+          /^indicator cache warmup: done in /.test(message),
+      ),
+    ).toBe(true);
   });
 
   it('falls back to cached stat when result artifacts are missing', async () => {
