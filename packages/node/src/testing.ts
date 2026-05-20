@@ -523,39 +523,47 @@ export const warmBacktestIndicatorCache = async (
     end,
   });
   const periods = buildDefaultIndicatorPeriods((strategyConfig ?? {}) as any);
-  const plan = await planIndicatorCacheRestore({
-    provider: connectorName,
-    symbol,
-    interval: Number(BACKTEST_INTERVAL),
-    periods,
-    data: preparedData.data,
-    btcData: preparedData.btcData,
-    btcBinanceData: preparedData.btcBinanceData,
-    btcCoinbaseData: preparedData.btcCoinbaseData,
-  });
+  try {
+    const plan = await planIndicatorCacheRestore({
+      provider: connectorName,
+      symbol,
+      interval: Number(BACKTEST_INTERVAL),
+      periods,
+      data: preparedData.data,
+      btcData: preparedData.btcData,
+      btcBinanceData: preparedData.btcBinanceData,
+      btcCoinbaseData: preparedData.btcCoinbaseData,
+    });
 
-  await materializeIndicatorCachePlan({
-    provider: connectorName,
-    symbol,
-    interval: Number(BACKTEST_INTERVAL),
-    periods,
-    data: preparedData.data,
-    btcData: preparedData.btcData,
-    btcBinanceData: preparedData.btcBinanceData,
-    btcCoinbaseData: preparedData.btcCoinbaseData,
-    paramsHash: plan.paramsHash,
-    restoreState: plan.restoreState,
-    replayStartIndex: plan.replayStartIndex,
-    cached: plan.cached,
-  });
+    await materializeIndicatorCachePlan({
+      provider: connectorName,
+      symbol,
+      interval: Number(BACKTEST_INTERVAL),
+      periods,
+      data: preparedData.data,
+      btcData: preparedData.btcData,
+      btcBinanceData: preparedData.btcBinanceData,
+      btcCoinbaseData: preparedData.btcCoinbaseData,
+      paramsHash: plan.paramsHash,
+      restoreState: plan.restoreState,
+      replayStartIndex: plan.replayStartIndex,
+      cached: plan.cached,
+    });
 
-  return {
-    cached: plan.cached,
-    replayStartIndex: plan.replayStartIndex,
-    totalCandles: preparedData.data.length,
-    paramsHash: plan.paramsHash,
-    version: plan.version,
-  };
+    return {
+      cached: plan.cached,
+      replayStartIndex: plan.replayStartIndex,
+      totalCandles: preparedData.data.length,
+      paramsHash: plan.paramsHash,
+      version: plan.version,
+    };
+  } finally {
+    releaseTestingSymbolCache({
+      userName,
+      connectorName,
+      symbol,
+    });
+  }
 };
 
 export const testing: TestingBox = async ({

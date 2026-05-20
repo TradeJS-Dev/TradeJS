@@ -320,6 +320,30 @@ describe('testing backtest flow', () => {
     });
   });
 
+  it('releases symbol-scoped warmup data after cache materialization', async () => {
+    const data = [
+      candle(1_000_050),
+      candle(1_000_150),
+      candle(1_000_250),
+      candle(1_000_350),
+    ];
+    mockByBitConnector.kline.mockResolvedValue(data);
+    mockBinanceConnector.kline.mockResolvedValue(data);
+    mockCoinbaseConnector.kline.mockResolvedValue(data);
+
+    await warmBacktestIndicatorCache(createTest());
+    await warmBacktestIndicatorCache(createTest());
+
+    expect(mockByBitConnectorCreator).toHaveBeenCalledTimes(1);
+    expect(mockBinanceConnectorCreator).toHaveBeenCalledTimes(1);
+    expect(mockCoinbaseConnectorCreator).toHaveBeenCalledTimes(1);
+    expect(mockByBitConnector.kline).toHaveBeenCalledTimes(3);
+    expect(mockBinanceConnector.kline).toHaveBeenCalledTimes(1);
+    expect(mockCoinbaseConnector.kline).toHaveBeenCalledTimes(1);
+    expect(mockPlanIndicatorCacheRestore).toHaveBeenCalledTimes(2);
+    expect(mockMaterializeIndicatorCachePlan).toHaveBeenCalledTimes(2);
+  });
+
   it('emits progress heartbeat while strategy signal is still running', async () => {
     jest.useFakeTimers();
     const send = jest.fn();
