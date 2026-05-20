@@ -1,5 +1,6 @@
 import { Candle } from '@tradejs/types';
 import {
+  buildIndicatorCacheSnapshots,
   createIndicators,
   getRequiredControllerSeedWindow,
 } from '../indicators';
@@ -243,6 +244,34 @@ describe('utils indicators', () => {
     expect(snapshot.baseContext.mtf.candles.m15).toHaveLength(50);
   });
 
+  it('memoizes baseContext for a captured snapshot', () => {
+    const indicators = createIndicators([], [], {
+      periods: {
+        maFast: 3,
+        maMedium: 3,
+        maSlow: 3,
+        obvSma: 3,
+        atr: 3,
+        atrPctShort: 3,
+        atrPctLong: 3,
+        bb: 3,
+        bbStd: 2,
+        macdFast: 3,
+        macdSlow: 4,
+        macdSignal: 2,
+      },
+    });
+
+    for (let i = 0; i < 160; i += 1) {
+      const ts = i * INTERVAL_15M_MS;
+      indicators.next(makeCandle(ts, 100 + i), makeCandle(ts, 20000 + i));
+    }
+
+    const snapshot = indicators.snapshot();
+    expect(snapshot.baseContext).toBeDefined();
+    expect(snapshot.baseContext).toBe(snapshot.baseContext);
+  });
+
   it('returns snapshot result that is not mutated by subsequent next() calls', () => {
     const indicators = createIndicators([], [], {
       periods: {
@@ -383,6 +412,40 @@ describe('utils indicators', () => {
         (snapshot.baseContext?.mtf.candles.m15.length ?? 1) - 1
       ]?.timestamp,
     ).toBe(119 * INTERVAL_15M_MS);
+  });
+
+  it('captures runtime state only for checkpoint bars and the last bar in cache snapshots', () => {
+    const data = Array.from({ length: 5 }, (_, index) =>
+      makeCandle(index * INTERVAL_15M_MS, 100 + index),
+    );
+    const btcData = Array.from({ length: 5 }, (_, index) =>
+      makeCandle(index * INTERVAL_15M_MS, 200 + index),
+    );
+
+    const snapshots = buildIndicatorCacheSnapshots(data, btcData, {
+      periods: {
+        maFast: 2,
+        maMedium: 2,
+        maSlow: 2,
+        obvSma: 2,
+        atr: 2,
+        atrPctShort: 2,
+        atrPctLong: 2,
+        bb: 2,
+        bbStd: 2,
+        macdFast: 3,
+        macdSlow: 4,
+        macdSignal: 2,
+      },
+      checkpointInterval: 2,
+    });
+
+    expect(snapshots).toHaveLength(5);
+    expect(snapshots[0].runtimeState).not.toBeNull();
+    expect(snapshots[1].runtimeState).toBeNull();
+    expect(snapshots[2].runtimeState).not.toBeNull();
+    expect(snapshots[3].runtimeState).toBeNull();
+    expect(snapshots[4].runtimeState).not.toBeNull();
   });
 
   it('supports latestNumber for derived timeframe series', () => {

@@ -174,10 +174,13 @@ const toCoverageSnapshot = (
 
 const toCheckpointSnapshot = (
   snapshot: IndicatorCacheSnapshotEntry,
-): IndicatorCacheCheckpointSnapshot => ({
-  timestamp: snapshot.timestamp,
-  runtimeState: snapshot.runtimeState,
-});
+): IndicatorCacheCheckpointSnapshot | null =>
+  snapshot.runtimeState == null
+    ? null
+    : {
+        timestamp: snapshot.timestamp,
+        runtimeState: snapshot.runtimeState,
+      };
 
 const selectCheckpointSnapshots = (
   snapshots: IndicatorCacheSnapshotEntry[],
@@ -191,7 +194,10 @@ const selectCheckpointSnapshots = (
       return;
     }
 
-    selected.push(toCheckpointSnapshot(snapshot));
+    const checkpointSnapshot = toCheckpointSnapshot(snapshot);
+    if (checkpointSnapshot) {
+      selected.push(checkpointSnapshot);
+    }
   });
 
   return selected;
@@ -295,6 +301,7 @@ export const materializeIndicatorCachePlan = async (
   const snapshots = buildIndicatorCacheSnapshots(replayData, replayBtcData, {
     includeMlPayload: false,
     periods: params.periods,
+    checkpointInterval: INDICATOR_CACHE_CHECKPOINT_INTERVAL,
     btcBinanceData: params.btcBinanceData,
     btcCoinbaseData: params.btcCoinbaseData,
     initialRuntimeState: params.restoreState ?? undefined,

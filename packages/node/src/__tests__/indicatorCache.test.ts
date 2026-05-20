@@ -223,6 +223,7 @@ describe('indicatorCache', () => {
       expect.objectContaining({
         includeMlPayload: false,
         periods: { maFast: 14 },
+        checkpointInterval: 64,
         initialRuntimeState: restored,
       }),
     );
@@ -304,6 +305,7 @@ describe('indicatorCache', () => {
       expect.objectContaining({
         includeMlPayload: false,
         periods: { maFast: 14 },
+        checkpointInterval: 64,
         initialRuntimeState: runtimeState(1_000),
       }),
     );

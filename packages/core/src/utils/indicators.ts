@@ -1149,6 +1149,7 @@ export const createIndicators = (
     let cachedMlCandleSnapshot: MlCandleIndicatorsSnapshot | null = null;
     let cachedCoinTimeframeSnapshot: Record<string, number[]> | null = null;
     let cachedBtcSnapshot: Record<string, number[]> | null = null;
+    let cachedBaseContextSnapshot: BaseStrategyContextSnapshot | undefined;
 
     const getCapturedCoinCandles = () =>
       candlesHistory.slice(0, capturedCoinLength);
@@ -1206,6 +1207,10 @@ export const createIndicators = (
         }
 
         if (prop === 'baseContext') {
+          if (cachedBaseContextSnapshot) {
+            return cachedBaseContextSnapshot;
+          }
+
           const latestCandle = candlesHistory[capturedCoinLength - 1];
           if (!latestCandle) return undefined;
 
@@ -1219,7 +1224,7 @@ export const createIndicators = (
             prevClose: latestPrevCandle?.close ?? null,
           });
 
-          return buildBaseContextSnapshot({
+          cachedBaseContextSnapshot = buildBaseContextSnapshot({
             candle: latestCandle,
             prevCandle: latestPrevCandle,
             baseResult,
@@ -1235,6 +1240,8 @@ export const createIndicators = (
             closeStreaks: capturedCloseStreaks,
             breakoutState: capturedBreakoutState,
           });
+
+          return cachedBaseContextSnapshot;
         }
 
         if (Reflect.has(target, prop)) {
@@ -1388,7 +1395,7 @@ export type IndicatorCacheSnapshotEntry = {
   candleSignature: string | null;
   btcCandleSignature: string | null;
   ready: boolean;
-  runtimeState: IndicatorsControllerRuntimeState;
+  runtimeState: IndicatorsControllerRuntimeState | null;
 };
 
 export const buildIndicatorCacheSnapshots = (
@@ -1396,20 +1403,33 @@ export const buildIndicatorCacheSnapshots = (
   btcData: Candle[] = [],
   options: CreateIndicatorsOptions & {
     periods?: Partial<IndicatorPeriods>;
+    checkpointInterval?: number;
   } = {},
 ): IndicatorCacheSnapshotEntry[] => {
   const controller = createIndicators([], [], options);
   const entries: IndicatorCacheSnapshotEntry[] = [];
+  const checkpointInterval =
+    typeof options.checkpointInterval === 'number' &&
+    Number.isFinite(options.checkpointInterval) &&
+    options.checkpointInterval > 0
+      ? Math.floor(options.checkpointInterval)
+      : null;
 
   data.forEach((candle, index) => {
     const btcCandle = btcData[index];
     const snapshot = controller.next(candle, btcCandle);
+    const shouldCaptureRuntimeState =
+      checkpointInterval == null ||
+      index === data.length - 1 ||
+      index % checkpointInterval === 0;
     entries.push({
       timestamp: candle.timestamp,
       candleSignature: buildCandleSignature(candle),
       btcCandleSignature: buildCandleSignature(btcCandle),
       ready: snapshot != null,
-      runtimeState: controller.runtimeState(),
+      runtimeState: shouldCaptureRuntimeState
+        ? controller.runtimeState()
+        : null,
     });
   });
 
