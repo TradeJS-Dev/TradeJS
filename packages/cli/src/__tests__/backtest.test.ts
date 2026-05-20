@@ -598,7 +598,7 @@ describe('backtest script helpers', () => {
       consoleLogSpy.mock.calls.some(
         ([message]) =>
           typeof message === 'string' &&
-          /^indicator cache warmup: done in /.test(message),
+          message.includes('indicator cache warmup: done in '),
       ),
     ).toBe(true);
   });
