@@ -6,6 +6,7 @@ import { runWithConcurrency } from '@tradejs/core/async';
 import { calculateStatsFull } from '@tradejs/core/backtest';
 import { createTestSuite, mergeConfigs } from '@tradejs/core/grid';
 import { toJson } from '@tradejs/core/data';
+import { buildDefaultIndicatorPeriods } from '@tradejs/core/strategies';
 import { getData, setData, redisKeys } from '@tradejs/infra/redis';
 import { StrategyConfigGrid, TestStat } from '@tradejs/types';
 import { BACKTEST_PRELOAD_DAYS } from '@tradejs/core/constants';
@@ -84,6 +85,36 @@ type LoadedBacktestConfig = {
   strategyConfigGrid: StrategyConfigGrid;
 };
 
+const formatDuration = (startedAt: number) => {
+  const seconds = (Date.now() - startedAt) / 1000;
+  if (seconds < 60) return `${seconds.toFixed(1)}s`;
+  const minutes = Math.floor(seconds / 60);
+  const restSeconds = Math.round(seconds % 60);
+  return `${minutes}m ${restSeconds}s`;
+};
+
+const buildWarmupPeriodsKey = (
+  strategyConfig: Record<string, unknown> | undefined,
+) => {
+  const periods = buildDefaultIndicatorPeriods((strategyConfig ?? {}) as any);
+  return JSON.stringify({
+    maFast: periods.maFast ?? null,
+    maMedium: periods.maMedium ?? null,
+    maSlow: periods.maSlow ?? null,
+    obvSma: periods.obvSma ?? null,
+    atr: periods.atr ?? null,
+    atrPctShort: periods.atrPctShort ?? null,
+    atrPctLong: periods.atrPctLong ?? null,
+    bb: periods.bb ?? null,
+    bbStd: periods.bbStd ?? null,
+    macdFast: periods.macdFast ?? null,
+    macdSlow: periods.macdSlow ?? null,
+    macdSignal: periods.macdSignal ?? null,
+    levelLookback: periods.levelLookback ?? null,
+    levelDelay: periods.levelDelay ?? null,
+  });
+};
+
 export const warmIndicatorCacheForBacktest = async (
   testSuite: Parameters<typeof executeTestSuite>[0]['testSuite'],
 ) => {
@@ -91,17 +122,34 @@ export const warmIndicatorCacheForBacktest = async (
     return;
   }
 
+  const startedAt = Date.now();
+  const uniqueWarmupTests = Array.from(
+    new Map(
+      testSuite.map((test) => [
+        [
+          test.userName,
+          test.connectorName,
+          test.symbol,
+          buildWarmupPeriodsKey(
+            (test.strategyConfig ?? {}) as Record<string, unknown>,
+          ),
+        ].join(':'),
+        test,
+      ]),
+    ).values(),
+  );
+
   console.log(chalk.gray('indicator cache warmup:'));
   const bar = new ProgressBar(
     ':current/:total [:bar][:percent] :eta(s) :symbol :status',
     {
-      total: testSuite.length,
+      total: uniqueWarmupTests.length,
       width: 20,
     },
   );
   const concurrency = Math.max(1, Math.min(effectiveParallel, 4));
 
-  await runWithConcurrency(testSuite, concurrency, async (test) => {
+  await runWithConcurrency(uniqueWarmupTests, concurrency, async (test) => {
     const result = await warmBacktestIndicatorCache(test);
     bar.tick(1, {
       symbol: chalk.yellow(test.symbol),
@@ -114,6 +162,9 @@ export const warmIndicatorCacheForBacktest = async (
   });
 
   console.log('');
+  console.log(
+    chalk.gray(`indicator cache warmup: done in ${formatDuration(startedAt)}`),
+  );
 };
 
 const isStrategyConfigGrid = (value: unknown): value is StrategyConfigGrid => {

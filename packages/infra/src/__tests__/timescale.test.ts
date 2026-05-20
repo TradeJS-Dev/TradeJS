@@ -246,6 +246,100 @@ describe('timescale candle helpers', () => {
     );
   });
 
+  it('deduplicates indicator cache rows inside one upsert batch by conflict key', async () => {
+    const query = jest.fn().mockResolvedValue({ rows: [] });
+
+    jest.doMock('pg', () => ({
+      Pool: jest.fn().mockImplementation(() => ({
+        connect: jest.fn(),
+        query,
+      })),
+    }));
+
+    const {
+      upsertIndicatorCacheCheckpointRows,
+      upsertIndicatorCacheCoverageRows,
+    } = await import('@tradejs/infra/timescale');
+
+    await upsertIndicatorCacheCoverageRows([
+      {
+        provider: 'ByBit',
+        symbol: 'btcusdt',
+        interval: 15,
+        paramsHash: 'hash-1',
+        version: 'v1',
+        ts: new Date(1_000),
+        snapshot: { ready: false },
+      },
+      {
+        provider: 'bybit',
+        symbol: 'BTCUSDT',
+        interval: 15,
+        paramsHash: 'hash-1',
+        version: 'v1',
+        ts: new Date(1_000),
+        snapshot: { ready: true },
+      },
+    ]);
+
+    await upsertIndicatorCacheCheckpointRows([
+      {
+        provider: 'ByBit',
+        symbol: 'btcusdt',
+        interval: 15,
+        paramsHash: 'hash-1',
+        version: 'v1',
+        ts: new Date(2_000),
+        snapshot: { runtimeState: { seed: 1 } },
+      },
+      {
+        provider: 'bybit',
+        symbol: 'BTCUSDT',
+        interval: 15,
+        paramsHash: 'hash-1',
+        version: 'v1',
+        ts: new Date(2_000),
+        snapshot: { runtimeState: { seed: 2 } },
+      },
+    ]);
+
+    const coverageInsertCall = query.mock.calls.find(
+      ([sql]) =>
+        typeof sql === 'string' &&
+        sql.includes('INSERT INTO indicator_cache') &&
+        sql.includes(
+          'ON CONFLICT (provider, symbol, interval, params_hash, version, ts)',
+        ),
+    );
+    expect(coverageInsertCall?.[1]).toEqual([
+      'bybit',
+      'BTCUSDT',
+      15,
+      'hash-1',
+      'v1',
+      new Date(1_000),
+      JSON.stringify({ ready: true }),
+    ]);
+
+    const checkpointInsertCall = query.mock.calls.find(
+      ([sql]) =>
+        typeof sql === 'string' &&
+        sql.includes('INSERT INTO indicator_cache_checkpoint') &&
+        sql.includes(
+          'ON CONFLICT (provider, symbol, interval, params_hash, version, ts)',
+        ),
+    );
+    expect(checkpointInsertCall?.[1]).toEqual([
+      'bybit',
+      'BTCUSDT',
+      15,
+      'hash-1',
+      'v1',
+      new Date(2_000),
+      JSON.stringify({ runtimeState: { seed: 2 } }),
+    ]);
+  });
+
   it('creates both indicator cache tables through the explicit migration helper', async () => {
     const query = jest.fn().mockResolvedValue({ rows: [] });
 

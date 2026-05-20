@@ -966,6 +966,22 @@ export async function upsertIndicatorCacheCoverageRows(
   if (!rows.length) return;
   await ensureIndicatorCacheSchema();
 
+  const dedupedRows = Array.from(
+    new Map(
+      rows.map((row) => [
+        [
+          normalizeCandleProvider(row.provider),
+          normalizeCandleSymbol(row.symbol),
+          row.interval,
+          String(row.paramsHash),
+          String(row.version),
+          row.ts.toISOString(),
+        ].join(':'),
+        row,
+      ]),
+    ).values(),
+  );
+
   const pool = getPool();
   const cols = [
     'provider',
@@ -977,21 +993,21 @@ export async function upsertIndicatorCacheCoverageRows(
     'snapshot',
   ] as const;
   const maxRows = Math.floor(65_535 / cols.length);
-  if (rows.length > maxRows) {
-    for (let i = 0; i < rows.length; i += maxRows) {
-      await upsertIndicatorCacheCoverageRows(rows.slice(i, i + maxRows));
+  if (dedupedRows.length > maxRows) {
+    for (let i = 0; i < dedupedRows.length; i += maxRows) {
+      await upsertIndicatorCacheCoverageRows(dedupedRows.slice(i, i + maxRows));
     }
     return;
   }
 
-  const valuesSql = rows
+  const valuesSql = dedupedRows
     .map(
       (_, i) =>
         `(${cols.map((__, j) => `$${i * cols.length + j + 1}`).join(',')})`,
     )
     .join(',');
 
-  const flat = rows.flatMap((row) => [
+  const flat = dedupedRows.flatMap((row) => [
     normalizeCandleProvider(row.provider),
     normalizeCandleSymbol(row.symbol),
     row.interval,
@@ -1018,6 +1034,22 @@ export async function upsertIndicatorCacheCheckpointRows(
   if (!rows.length) return;
   await ensureIndicatorCacheCheckpointSchema();
 
+  const dedupedRows = Array.from(
+    new Map(
+      rows.map((row) => [
+        [
+          normalizeCandleProvider(row.provider),
+          normalizeCandleSymbol(row.symbol),
+          row.interval,
+          String(row.paramsHash),
+          String(row.version),
+          row.ts.toISOString(),
+        ].join(':'),
+        row,
+      ]),
+    ).values(),
+  );
+
   const pool = getPool();
   const cols = [
     'provider',
@@ -1029,21 +1061,23 @@ export async function upsertIndicatorCacheCheckpointRows(
     'snapshot',
   ] as const;
   const maxRows = Math.floor(65_535 / cols.length);
-  if (rows.length > maxRows) {
-    for (let i = 0; i < rows.length; i += maxRows) {
-      await upsertIndicatorCacheCheckpointRows(rows.slice(i, i + maxRows));
+  if (dedupedRows.length > maxRows) {
+    for (let i = 0; i < dedupedRows.length; i += maxRows) {
+      await upsertIndicatorCacheCheckpointRows(
+        dedupedRows.slice(i, i + maxRows),
+      );
     }
     return;
   }
 
-  const valuesSql = rows
+  const valuesSql = dedupedRows
     .map(
       (_, i) =>
         `(${cols.map((__, j) => `$${i * cols.length + j + 1}`).join(',')})`,
     )
     .join(',');
 
-  const flat = rows.flatMap((row) => [
+  const flat = dedupedRows.flatMap((row) => [
     normalizeCandleProvider(row.provider),
     normalizeCandleSymbol(row.symbol),
     row.interval,

@@ -74,6 +74,16 @@ jest.mock('@tradejs/core/data', () => ({
   toJson: jest.fn(),
 }));
 
+jest.mock('@tradejs/core/strategies', () => ({
+  buildDefaultIndicatorPeriods: jest.fn((config?: Record<string, unknown>) => ({
+    maFast:
+      typeof config?.MA_FAST === 'number' ? Number(config.MA_FAST) : undefined,
+    maSlow:
+      typeof config?.MA_SLOW === 'number' ? Number(config.MA_SLOW) : undefined,
+    atr: typeof config?.ATR === 'number' ? Number(config.ATR) : undefined,
+  })),
+}));
+
 jest.mock('@tradejs/core/constants', () => ({
   BACKTEST_DEFAULT_DAYS: 30,
   BACKTEST_PRELOAD_DAYS: 5,
@@ -158,10 +168,17 @@ import {
 import { resolveStrategyNameByConfigKey } from '../lib/runtimeRedis';
 
 describe('backtest script helpers', () => {
+  let consoleLogSpy: jest.SpyInstance;
+
   beforeEach(() => {
     mockRunWithConcurrency.mockClear();
     mockWarmBacktestIndicatorCache.mockClear();
     mockProgressBarTick.mockClear();
+    consoleLogSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    consoleLogSpy.mockRestore();
   });
 
   it('derives safer resource defaults for smaller machines', () => {
@@ -533,19 +550,28 @@ describe('backtest script helpers', () => {
     });
   });
 
-  it('warms indicator cache with a dedicated progress bar before worker execution', async () => {
+  it('warms indicator cache once per unique symbol/indicator-period set and prints timing', async () => {
     await warmIndicatorCacheForBacktest([
       {
         symbol: 'BTCUSDT',
         strategyConfig: { MA_FAST: 21 },
         connectorName: 'ByBit',
         options: { start: 1_000, end: 2_000 },
+        userName: 'root',
+      },
+      {
+        symbol: 'BTCUSDT',
+        strategyConfig: { MA_FAST: 21 },
+        connectorName: 'ByBit',
+        options: { start: 1_000, end: 2_000 },
+        userName: 'root',
       },
       {
         symbol: 'ETHUSDT',
         strategyConfig: { MA_FAST: 34 },
         connectorName: 'ByBit',
         options: { start: 1_000, end: 2_000 },
+        userName: 'root',
       },
     ] as any);
 
@@ -558,6 +584,9 @@ describe('backtest script helpers', () => {
         symbol: expect.any(String),
         status: expect.any(String),
       }),
+    );
+    expect(consoleLogSpy).toHaveBeenCalledWith(
+      expect.stringMatching(/^indicator cache warmup: done in /),
     );
   });
 
