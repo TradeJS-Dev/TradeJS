@@ -37,6 +37,7 @@ type TrendShiftAiContext = TrendShiftContext & {
   relativeStrength1h: number | null;
   sessionPrimary: string | null;
   sessionIsOverlap: boolean;
+  priceOiDivergenceType: string | null;
 };
 
 const asRecord = (value: unknown): Record<string, unknown> | null =>
@@ -97,6 +98,10 @@ const getTrendShiftContext = (payload: AiPayload): TrendShiftAiContext => {
   const volumeRel20 = getFiniteNumber(participationVolume?.volumeRel20);
   const atrPctZScore = getFiniteNumber(regimeVolatility?.atrPctZScore);
   const relativeStrength1h = getFiniteNumber(benchmark?.relativeStrength1h);
+  const priceOiDivergenceType =
+    typeof derivativesSummary?.priceOiDivergenceType === 'string'
+      ? derivativesSummary.priceOiDivergenceType
+      : null;
 
   if (!raw.confirmedFlip) {
     hardBlockReasons.push('unconfirmed_flip');
@@ -149,6 +154,18 @@ const getTrendShiftContext = (payload: AiPayload): TrendShiftAiContext => {
     relativeStrength1h != null &&
     relativeStrength1h < 1 &&
     derivativesPressure === 'long_flush';
+  const q4LongFailedHighCandidate =
+    raw.signalDirection === 'LONG' &&
+    breakoutState === 'failed_high_breakout' &&
+    priceOiDivergenceType === 'price_up_oi_down' &&
+    sessionPrimary === 'us';
+  const q4ShortFailedLowCandidate =
+    raw.signalDirection === 'SHORT' &&
+    breakoutState === 'failed_low_breakout' &&
+    priceOiDivergenceType === 'price_down_oi_down' &&
+    sessionPrimary === 'europe';
+  const q4PocketPromotionCandidate =
+    q4LongFailedHighCandidate || q4ShortFailedLowCandidate;
 
   let deterministicQuality = 3;
   if (hardBlockReasons.length > 0) {
@@ -174,7 +191,17 @@ const getTrendShiftContext = (payload: AiPayload): TrendShiftAiContext => {
     deterministicQuality = 5;
   }
 
-  if (deterministicQuality >= 5 && volumeRel20 != null && volumeRel20 < 0.8) {
+  if (deterministicQuality >= 5 && priceOiDivergenceType === 'flat_or_mixed') {
+    deterministicQuality = 4;
+    hardBlockReasons.push('flat_or_mixed_oi');
+  }
+
+  if (
+    deterministicQuality >= 5 &&
+    volumeRel20 != null &&
+    volumeRel20 < 0.8 &&
+    !q4PocketPromotionCandidate
+  ) {
     deterministicQuality = 4;
     hardBlockReasons.push('thin_participation');
   }
@@ -182,7 +209,8 @@ const getTrendShiftContext = (payload: AiPayload): TrendShiftAiContext => {
   if (
     deterministicQuality >= 5 &&
     oiNotConfirming &&
-    !derivativesFlushSupport
+    !derivativesFlushSupport &&
+    !q4PocketPromotionCandidate
   ) {
     deterministicQuality = 4;
     hardBlockReasons.push('oi_not_confirming');
@@ -197,7 +225,8 @@ const getTrendShiftContext = (payload: AiPayload): TrendShiftAiContext => {
     deterministicQuality >= 5 &&
     coreLongQ5Candidate &&
     derivativesPressure === 'crowded_short' &&
-    !derivativesFlushSupport
+    !derivativesFlushSupport &&
+    !q4PocketPromotionCandidate
   ) {
     deterministicQuality = 4;
     hardBlockReasons.push('long_pressure_conflict');
@@ -208,7 +237,8 @@ const getTrendShiftContext = (payload: AiPayload): TrendShiftAiContext => {
     coreShortQ5Candidate &&
     breakoutState === 'below_low_level' &&
     derivativesPressure === 'crowded_short' &&
-    !derivativesFlushSupport
+    !derivativesFlushSupport &&
+    !q4PocketPromotionCandidate
   ) {
     deterministicQuality = 4;
     hardBlockReasons.push('short_pressure_conflict');
@@ -217,7 +247,8 @@ const getTrendShiftContext = (payload: AiPayload): TrendShiftAiContext => {
   if (
     deterministicQuality >= 5 &&
     derivativesPressure === 'neutral' &&
-    !derivativesFlushSupport
+    !derivativesFlushSupport &&
+    !q4PocketPromotionCandidate
   ) {
     deterministicQuality = 4;
     hardBlockReasons.push('neutral_derivatives_pressure');
@@ -226,10 +257,16 @@ const getTrendShiftContext = (payload: AiPayload): TrendShiftAiContext => {
   if (
     deterministicQuality >= 5 &&
     derivativesDirectionAligned == null &&
-    !derivativesFlushSupport
+    !derivativesFlushSupport &&
+    !q4PocketPromotionCandidate
   ) {
     deterministicQuality = 4;
     hardBlockReasons.push('derivatives_alignment_unknown');
+  }
+
+  if (deterministicQuality === 4 && q4PocketPromotionCandidate) {
+    deterministicQuality = 5;
+    hardBlockReasons.length = 0;
   }
 
   return {
@@ -252,6 +289,7 @@ const getTrendShiftContext = (payload: AiPayload): TrendShiftAiContext => {
     relativeStrength1h,
     sessionPrimary,
     sessionIsOverlap,
+    priceOiDivergenceType,
   };
 };
 
@@ -277,6 +315,8 @@ const reasonText = (reason: string) => {
       return 'derivatives pressure is neutral, so the flip still lacks conviction';
     case 'derivatives_alignment_unknown':
       return 'derivatives alignment is still unclear, so keep the flip in watch mode';
+    case 'flat_or_mixed_oi':
+      return 'price and open-interest divergence still looks mixed, so keep the flip in watch mode';
     default:
       return reason;
   }
@@ -346,6 +386,7 @@ Additional TrendShift context:
 - q4LongBreakoutCandidate=${String(context.q4LongBreakoutCandidate)}
 - q4ShortBreakoutCandidate=${String(context.q4ShortBreakoutCandidate)}
 - derivativesRiskFlags=${JSON.stringify(context.derivativesRiskFlags)}
+- priceOiDivergenceType=${context.priceOiDivergenceType ?? 'n/a'}
 - sessionPrimary=${context.sessionPrimary ?? 'n/a'}
 - sessionIsOverlap=${String(context.sessionIsOverlap)}
 - deterministicQuality=${context.deterministicQuality}

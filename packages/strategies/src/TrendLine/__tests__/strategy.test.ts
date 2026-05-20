@@ -63,6 +63,7 @@ jest.mock('@tradejs/infra/timescale', () => ({
   getLatestIndicatorCacheCheckpointAtOrBefore: jest.fn(async () => null),
   upsertIndicatorCacheCoverageRows: jest.fn(async () => undefined),
   upsertIndicatorCacheCheckpointRows: jest.fn(async () => undefined),
+  deleteIndicatorCacheObsoleteVersions: jest.fn(async () => undefined),
 }));
 
 jest.mock('../filters', () => ({

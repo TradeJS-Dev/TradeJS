@@ -707,4 +707,153 @@ describe('trendShiftAiAdapter', () => {
       approved: false,
     });
   });
+
+  it('downgrades q5 flip when price and open interest divergence stays flat_or_mixed', () => {
+    const result = trendShiftAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makePayload(
+        {
+          signalDirection: 'LONG',
+          confirmedFlip: true,
+          bullFlip: true,
+          flipDistanceOk: true,
+          closeVsAvgPct: 0.3,
+          avgSlopePct: 0.11,
+          distanceAtrRatio: 0.95,
+          coinBiasAligned: true,
+        },
+        {
+          baseContext: {
+            participation: {
+              volume: {
+                volumeRel20: 1.3,
+              },
+            },
+          },
+          derivativesContext: {
+            summary: {
+              pressure: 'short_flush',
+              directionAligned: true,
+              riskFlags: ['short_liquidation_spike'],
+              priceOiDivergenceType: 'flat_or_mixed',
+            },
+          },
+        },
+      ),
+      analysis: {
+        direction: 'LONG',
+        quality: 1,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: null,
+      quality: 4,
+      approved: false,
+      rejectReason:
+        'price and open-interest divergence still looks mixed, so keep the flip in watch mode',
+    });
+  });
+
+  it('promotes q4 LONG failed_high_breakout when oi divergence and session match the strong pocket', () => {
+    const result = trendShiftAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makePayload(
+        {
+          signalDirection: 'LONG',
+          confirmedFlip: true,
+          bullFlip: true,
+          flipDistanceOk: true,
+          closeVsAvgPct: 0.08,
+          avgSlopePct: 0.05,
+          distanceAtrRatio: 0.55,
+          coinBiasAligned: true,
+        },
+        {
+          baseContext: {
+            regime: {
+              session: {
+                sessionPhase: 'us',
+                isOverlap: false,
+              },
+            },
+            structure: {
+              localRange: {
+                breakoutState: 'failed_high_breakout',
+              },
+            },
+          },
+          derivativesContext: {
+            summary: {
+              pressure: 'crowded_short',
+              directionAligned: true,
+              riskFlags: [],
+              priceOiDivergenceType: 'price_up_oi_down',
+            },
+          },
+        },
+      ),
+      analysis: {
+        direction: 'LONG',
+        quality: 1,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: 'LONG',
+      quality: 5,
+      approved: true,
+    });
+  });
+
+  it('promotes q4 SHORT failed_low_breakout when oi divergence and session match the strong pocket', () => {
+    const result = trendShiftAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makePayload(
+        {
+          signalDirection: 'SHORT',
+          confirmedFlip: true,
+          bearFlip: true,
+          flipDistanceOk: true,
+          closeVsAvgPct: 0.08,
+          avgSlopePct: 0.05,
+          distanceAtrRatio: 0.55,
+          coinBiasAligned: true,
+        },
+        {
+          baseContext: {
+            regime: {
+              session: {
+                sessionPhase: 'europe',
+                isOverlap: false,
+              },
+            },
+            structure: {
+              localRange: {
+                breakoutState: 'failed_low_breakout',
+              },
+            },
+          },
+          derivativesContext: {
+            summary: {
+              pressure: 'crowded_long',
+              directionAligned: true,
+              riskFlags: [],
+              priceOiDivergenceType: 'price_down_oi_down',
+            },
+          },
+        },
+      ),
+      analysis: {
+        direction: 'SHORT',
+        quality: 1,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: 'SHORT',
+      quality: 5,
+      approved: true,
+    });
+  });
 });

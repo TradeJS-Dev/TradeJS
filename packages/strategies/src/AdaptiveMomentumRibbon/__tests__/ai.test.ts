@@ -211,7 +211,7 @@ describe('adaptiveMomentumRibbonAiAdapter', () => {
         butterworthSmoothing: 4,
         coinBiasAligned: true,
         btcBiasAligned: true,
-        sessionPhase: 'off_hours',
+        primarySession: 'off_hours',
         sessionAllowsApproval: true,
         deterministicQuality: 5,
         approvalAllowedNow: true,
@@ -448,7 +448,7 @@ describe('adaptiveMomentumRibbonAiAdapter', () => {
       expect.objectContaining({
         channelState: 'above_upper',
         channelBiasAligned: true,
-        sessionPhase: 'off_hours',
+        primarySession: 'off_hours',
         sessionAllowsApproval: true,
         deterministicQuality: 4,
         approvalAllowedNow: true,
@@ -629,7 +629,7 @@ describe('adaptiveMomentumRibbonAiAdapter', () => {
     expect(payload.additionalIndicators.adaptiveMomentumRibbonContext).toEqual(
       expect.objectContaining({
         channelState: 'above_upper',
-        sessionPhase: 'us',
+        primarySession: 'us',
         sessionAllowsApproval: false,
         deterministicQuality: 3,
         approvalAllowedNow: false,
@@ -749,7 +749,7 @@ describe('adaptiveMomentumRibbonAiAdapter', () => {
         channelState: 'below_lower',
         coinBiasAligned: true,
         btcBiasAligned: true,
-        sessionPhase: 'off_hours',
+        primarySession: 'off_hours',
         sessionAllowsApproval: true,
         deterministicQuality: 5,
         approvalAllowedNow: true,
