@@ -298,7 +298,7 @@ describe('trendShiftAiAdapter', () => {
     });
   });
 
-  it('approves selective q4 SHORT when derivatives confirm bearish follow-through', () => {
+  it('keeps selective q4 SHORT in watch mode even when derivatives confirm bearish follow-through', () => {
     const result = trendShiftAiAdapter.postProcessAnalysis?.({
       signal: {} as any,
       payload: makePayload(
@@ -355,9 +355,9 @@ describe('trendShiftAiAdapter', () => {
     });
 
     expect(result).toMatchObject({
-      direction: 'SHORT',
-      quality: 5,
-      approved: true,
+      direction: null,
+      quality: 4,
+      approved: false,
     });
   });
 
@@ -545,7 +545,7 @@ describe('trendShiftAiAdapter', () => {
     });
   });
 
-  it('approves selective q4 LONG when breakout, volume, and derivatives confirm follow-through', () => {
+  it('keeps selective q4 LONG in watch mode even when breakout, volume, and derivatives confirm follow-through', () => {
     const result = trendShiftAiAdapter.postProcessAnalysis?.({
       signal: {} as any,
       payload: makePayload(
@@ -598,9 +598,9 @@ describe('trendShiftAiAdapter', () => {
     });
 
     expect(result).toMatchObject({
-      direction: 'LONG',
-      quality: 5,
-      approved: true,
+      direction: null,
+      quality: 4,
+      approved: false,
     });
   });
 
@@ -708,6 +708,51 @@ describe('trendShiftAiAdapter', () => {
     });
   });
 
+  it('approves narrow asia-session q4 SHORT when neutral pressure still has a real long-liquidation flush', () => {
+    const result = trendShiftAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makePayload(
+        {
+          signalDirection: 'SHORT',
+          confirmedFlip: true,
+          bearFlip: true,
+          flipDistanceOk: true,
+          closeVsAvgPct: 0.13,
+          avgSlopePct: 0.09,
+          distanceAtrRatio: 0.62,
+          coinBiasAligned: true,
+        },
+        {
+          baseContext: {
+            regime: {
+              session: {
+                sessionPhase: 'asia',
+                isOverlap: false,
+              },
+            },
+          },
+          derivativesContext: {
+            summary: {
+              pressure: 'neutral',
+              directionAligned: null,
+              riskFlags: ['long_liquidation_spike'],
+            },
+          },
+        },
+      ),
+      analysis: {
+        direction: 'SHORT',
+        quality: 1,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: 'SHORT',
+      quality: 5,
+      approved: true,
+    });
+  });
+
   it('downgrades q5 flip when price and open interest divergence stays flat_or_mixed', () => {
     const result = trendShiftAiAdapter.postProcessAnalysis?.({
       signal: {} as any,
@@ -755,7 +800,7 @@ describe('trendShiftAiAdapter', () => {
     });
   });
 
-  it('promotes q4 LONG failed_high_breakout when oi divergence and session match the strong pocket', () => {
+  it('keeps q4 LONG failed_high_breakout in watch mode even when oi divergence and session match the old pocket', () => {
     const result = trendShiftAiAdapter.postProcessAnalysis?.({
       signal: {} as any,
       payload: makePayload(
@@ -800,13 +845,13 @@ describe('trendShiftAiAdapter', () => {
     });
 
     expect(result).toMatchObject({
-      direction: 'LONG',
-      quality: 5,
-      approved: true,
+      direction: null,
+      quality: 4,
+      approved: false,
     });
   });
 
-  it('promotes q4 SHORT failed_low_breakout when oi divergence and session match the strong pocket', () => {
+  it('keeps q4 SHORT failed_low_breakout in watch mode even when oi divergence and session match the old pocket', () => {
     const result = trendShiftAiAdapter.postProcessAnalysis?.({
       signal: {} as any,
       payload: makePayload(
@@ -851,9 +896,9 @@ describe('trendShiftAiAdapter', () => {
     });
 
     expect(result).toMatchObject({
-      direction: 'SHORT',
-      quality: 5,
-      approved: true,
+      direction: null,
+      quality: 4,
+      approved: false,
     });
   });
 });

@@ -154,19 +154,15 @@ const getTrendShiftContext = (payload: AiPayload): TrendShiftAiContext => {
     relativeStrength1h != null &&
     relativeStrength1h < 1 &&
     derivativesPressure === 'long_flush';
-  const q4LongFailedHighCandidate =
-    raw.signalDirection === 'LONG' &&
-    breakoutState === 'failed_high_breakout' &&
-    priceOiDivergenceType === 'price_up_oi_down' &&
-    sessionPrimary === 'us';
-  const q4ShortFailedLowCandidate =
+  const q4ShortAsiaFlushCandidate =
     raw.signalDirection === 'SHORT' &&
-    breakoutState === 'failed_low_breakout' &&
-    priceOiDivergenceType === 'price_down_oi_down' &&
-    sessionPrimary === 'europe';
-  const q4PocketPromotionCandidate =
-    q4LongFailedHighCandidate || q4ShortFailedLowCandidate;
-
+    derivativesPressure === 'neutral' &&
+    derivativesFlushSupport &&
+    sessionPrimary === 'asia' &&
+    !sessionIsOverlap &&
+    distanceAtrRatio < 0.7 &&
+    slopeAbs >= 0.08 &&
+    closeVsAvgPctAbs >= 0.12;
   let deterministicQuality = 3;
   if (hardBlockReasons.length > 0) {
     deterministicQuality = raw.confirmedFlip ? 2 : 1;
@@ -184,10 +180,7 @@ const getTrendShiftContext = (payload: AiPayload): TrendShiftAiContext => {
     deterministicQuality = 4;
   }
 
-  if (
-    deterministicQuality === 4 &&
-    (q4LongBreakoutCandidate || q4ShortBreakoutCandidate)
-  ) {
+  if (deterministicQuality === 4 && q4ShortAsiaFlushCandidate) {
     deterministicQuality = 5;
   }
 
@@ -196,12 +189,7 @@ const getTrendShiftContext = (payload: AiPayload): TrendShiftAiContext => {
     hardBlockReasons.push('flat_or_mixed_oi');
   }
 
-  if (
-    deterministicQuality >= 5 &&
-    volumeRel20 != null &&
-    volumeRel20 < 0.8 &&
-    !q4PocketPromotionCandidate
-  ) {
+  if (deterministicQuality >= 5 && volumeRel20 != null && volumeRel20 < 0.8) {
     deterministicQuality = 4;
     hardBlockReasons.push('thin_participation');
   }
@@ -209,8 +197,7 @@ const getTrendShiftContext = (payload: AiPayload): TrendShiftAiContext => {
   if (
     deterministicQuality >= 5 &&
     oiNotConfirming &&
-    !derivativesFlushSupport &&
-    !q4PocketPromotionCandidate
+    !derivativesFlushSupport
   ) {
     deterministicQuality = 4;
     hardBlockReasons.push('oi_not_confirming');
@@ -225,8 +212,7 @@ const getTrendShiftContext = (payload: AiPayload): TrendShiftAiContext => {
     deterministicQuality >= 5 &&
     coreLongQ5Candidate &&
     derivativesPressure === 'crowded_short' &&
-    !derivativesFlushSupport &&
-    !q4PocketPromotionCandidate
+    !derivativesFlushSupport
   ) {
     deterministicQuality = 4;
     hardBlockReasons.push('long_pressure_conflict');
@@ -237,8 +223,7 @@ const getTrendShiftContext = (payload: AiPayload): TrendShiftAiContext => {
     coreShortQ5Candidate &&
     breakoutState === 'below_low_level' &&
     derivativesPressure === 'crowded_short' &&
-    !derivativesFlushSupport &&
-    !q4PocketPromotionCandidate
+    !derivativesFlushSupport
   ) {
     deterministicQuality = 4;
     hardBlockReasons.push('short_pressure_conflict');
@@ -247,8 +232,7 @@ const getTrendShiftContext = (payload: AiPayload): TrendShiftAiContext => {
   if (
     deterministicQuality >= 5 &&
     derivativesPressure === 'neutral' &&
-    !derivativesFlushSupport &&
-    !q4PocketPromotionCandidate
+    !derivativesFlushSupport
   ) {
     deterministicQuality = 4;
     hardBlockReasons.push('neutral_derivatives_pressure');
@@ -257,16 +241,10 @@ const getTrendShiftContext = (payload: AiPayload): TrendShiftAiContext => {
   if (
     deterministicQuality >= 5 &&
     derivativesDirectionAligned == null &&
-    !derivativesFlushSupport &&
-    !q4PocketPromotionCandidate
+    !derivativesFlushSupport
   ) {
     deterministicQuality = 4;
     hardBlockReasons.push('derivatives_alignment_unknown');
-  }
-
-  if (deterministicQuality === 4 && q4PocketPromotionCandidate) {
-    deterministicQuality = 5;
-    hardBlockReasons.length = 0;
   }
 
   return {
@@ -397,8 +375,9 @@ Additional TrendShift context:
 Interpretation rules for TrendShift:
 - This is a trend-state flip strategy, not a forecast of future impulse.
 - If approvalAllowedNow=false, do not describe the signal as a fully confirmed live entry.
-- Ordinary q4 strength is watch-only; only q5-strength flips qualify for live approval.
-- Exception: a q4 breakout can be promoted to q5 when market structure, relative strength, volume participation, and derivatives context confirm the follow-through.
+- Ordinary q4 strength is watch-only; only core q5-strength flips qualify for live approval.
+- Even if a q4 breakout or failed-breakout pocket looks interesting, keep it as research/watch-only until it proves robust across wider history.
+- Exception: a very narrow SHORT q4 pocket may still pass when Asia-session reversal pressure looks neutral but a real long-liquidation flush is already visible and geometry is near-q5 strong.
 - If derivatives risk flags include 'oi_not_confirming' and there is no supporting liquidation flush, keep the setup in watch mode even when price geometry looks q5-strong.
 - For SHORT, if the move is already very far from the adaptive average without a long-liquidation flush, treat it as overextended and keep it in watch mode.
 - Thin participation (volumeRel20 < 0.8) is a live hard downgrade even for otherwise q5-looking flips.
