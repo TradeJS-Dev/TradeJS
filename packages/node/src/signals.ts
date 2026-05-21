@@ -73,6 +73,30 @@ const normalizeQuality = (value?: number) =>
     ? Math.max(1, Math.min(5, Math.round(value)))
     : null;
 
+const getDisplayDecision = (
+  signalDirection: Signal['direction'],
+  analysis?: Partial<SignalAnalysis>,
+  fallback?: 'approved' | 'rejected',
+): 'approved' | 'rejected' | 'pending' | undefined => {
+  if (!analysis && !fallback) {
+    return undefined;
+  }
+
+  if (analysis?.direction != null && analysis.direction !== signalDirection) {
+    return 'rejected';
+  }
+
+  if (analysis?.needRetest === true) {
+    return 'pending';
+  }
+
+  if (analysis?.direction != null && analysis.direction === signalDirection) {
+    return 'approved';
+  }
+
+  return fallback;
+};
+
 const formatAnalysisLevel = (value?: number | null) => {
   if (value == null || !Number.isFinite(value)) return null;
 
@@ -178,7 +202,10 @@ const getBaseContextNumber = (
     : undefined;
 };
 
-const getAiQualityLine = (analysis?: Partial<SignalAnalysis> | null) => {
+const getAiQualityLine = (
+  analysis?: Partial<SignalAnalysis> | null,
+  label = 'AI Quality',
+) => {
   const quality = normalizeQuality(analysis?.quality);
   if (!quality) return null;
 
@@ -186,14 +213,14 @@ const getAiQualityLine = (analysis?: Partial<SignalAnalysis> | null) => {
     analysis?.direction != null && analysis.direction !== null;
 
   if (quality >= 4 && approvedCurrentDirection) {
-    return `🟢 AI Quality: ${quality}/5`;
+    return `🟢 ${label}: ${quality}/5`;
   }
 
   if (quality === 3 && approvedCurrentDirection) {
-    return `🟡 AI Quality: ${quality}/5`;
+    return `🟡 ${label}: ${quality}/5`;
   }
 
-  return `🔴 AI Quality: ${quality}/5`;
+  return `🔴 ${label}: ${quality}/5`;
 };
 
 const getTelegramErrorReason = (data: unknown): string => {
@@ -517,9 +544,28 @@ export const formatMessage = (
         );
       }
 
-      const aiQualityLine = getAiQualityLine(analysis);
-      if (aiQualityLine) {
-        lines.push(aiQualityLine);
+      const gateAnalysis =
+        analysis?.gateAnalysis &&
+        typeof analysis.gateAnalysis === 'object' &&
+        !Array.isArray(analysis.gateAnalysis)
+          ? (analysis.gateAnalysis as Partial<SignalAnalysis>)
+          : null;
+
+      if (gateAnalysis) {
+        const gateQualityLine = getAiQualityLine(gateAnalysis, 'Gate Quality');
+        if (gateQualityLine) {
+          lines.push(gateQualityLine);
+        }
+
+        const llmQualityLine = getAiQualityLine(analysis, 'LLM Quality');
+        if (llmQualityLine) {
+          lines.push(llmQualityLine);
+        }
+      } else {
+        const aiQualityLine = getAiQualityLine(analysis);
+        if (aiQualityLine) {
+          lines.push(aiQualityLine);
+        }
       }
 
       lines.push('');
@@ -689,9 +735,20 @@ export const formatAnalysisMessage = (
     lines.push(`Quality: <b>${quality}/5</b>`);
   }
 
-  if (analysis.gateDecision && analysis.llmDecision) {
+  const gateDecision = getDisplayDecision(
+    signal.direction,
+    analysis.gateAnalysis,
+    analysis.gateDecision,
+  );
+  const llmDecision = getDisplayDecision(
+    signal.direction,
+    analysis,
+    analysis.llmDecision,
+  );
+
+  if (gateDecision && llmDecision) {
     lines.push(
-      `Gate vs LLM: <b>${analysis.gateContradictsLlm ? 'conflict' : 'aligned'}</b> (gate ${analysis.gateDecision}, LLM ${analysis.llmDecision})`,
+      `Gate vs LLM: <b>${gateDecision === llmDecision ? 'aligned' : 'conflict'}</b> (gate ${gateDecision}, LLM ${llmDecision})`,
     );
   }
 
@@ -745,24 +802,6 @@ export const formatAnalysisMessage = (
   const btcText = takeUniqueAnalysisText(usedValues, analysis.btcContext);
   if (btcText) {
     lines.push(`BTC context: ${escapeHtml(btcText)}`);
-  }
-
-  const levels: string[] = [];
-
-  if (typeof analysis.takeProfitPrice === 'number') {
-    levels.push(`TP <b>${formatAnalysisLevel(analysis.takeProfitPrice)}</b>`);
-  }
-
-  if (typeof analysis.stopLossPrice === 'number') {
-    levels.push(`SL <b>${formatAnalysisLevel(analysis.stopLossPrice)}</b>`);
-  }
-
-  if (typeof analysis.retestPrice === 'number') {
-    levels.push(`Retest <b>${formatAnalysisLevel(analysis.retestPrice)}</b>`);
-  }
-
-  if (levels.length > 0) {
-    lines.push(`Levels: ${levels.join(' | ')}`);
   }
 
   return lines.join('\n');

@@ -532,6 +532,54 @@ describe('signals', () => {
     expect(message).toContain('Spread: 0.120000%');
   });
 
+  it('formats separate gate and llm quality lines in Telegram signal card', () => {
+    jest.doMock('../screenshot', () => ({
+      getScreenshotBuffer: jest.fn(async () => {
+        throw new Error('no screenshot');
+      }),
+      getScreenshotFilename: jest.fn(() => 'TLMUSDT_sig-1_15.png'),
+    }));
+
+    const { formatMessage } = require('../signals');
+
+    const message = formatMessage(
+      {
+        signalId: 'sig-1',
+        symbol: 'TLMUSDT',
+        strategy: 'AdaptiveMomentumRibbon',
+        interval: '15',
+        direction: 'LONG',
+        orderStatus: 'completed',
+        timestamp: 1_700_000_000_000,
+        indicators: {},
+        additionalIndicators: {},
+        prices: {
+          currentPrice: 0.001792,
+          takeProfitPrice: 0.00187,
+          stopLossPrice: 0.001773,
+          riskRatio: 3.5,
+        },
+      },
+      {
+        direction: null,
+        quality: 3,
+        comment: 'llm rejected',
+        gateAnalysis: {
+          direction: 'LONG',
+          quality: 4,
+          comment: 'gate approved',
+        },
+        gateDecision: 'approved',
+        llmDecision: 'rejected',
+        gateContradictsLlm: true,
+      },
+    );
+
+    expect(message).toContain('🟢 Gate Quality: 4/5');
+    expect(message).toContain('🔴 LLM Quality: 3/5');
+    expect(message).not.toContain('AI Quality: 3/5');
+  });
+
   it('formats approved AI analysis as a short human-readable explanation', () => {
     jest.doMock('../screenshot', () => ({
       getScreenshotBuffer: jest.fn(async () => {
@@ -590,8 +638,8 @@ describe('signals', () => {
     expect(message).toContain(
       'BTC context: BTC is neutral, so there is no extra headwind.',
     );
-    expect(message).toContain('Levels: TP <b>105</b> | SL <b>99</b>');
     expect(message).not.toContain('Signal direction:');
+    expect(message).not.toContain('Levels:');
     expect(message).not.toContain('Why Quality');
   });
 
@@ -643,7 +691,7 @@ describe('signals', () => {
     );
 
     expect(message).toContain(
-      'Gate vs LLM: <b>conflict</b> (gate approved, LLM rejected)',
+      'Gate vs LLM: <b>conflict</b> (gate approved, LLM pending)',
     );
   });
 
@@ -698,6 +746,60 @@ describe('signals', () => {
     expect(message).toContain(
       'Next: Wait for the next candle to close above 0.00015823.',
     );
-    expect(message).toContain('Levels: Retest <b>0.00015823</b>');
+    expect(message).not.toContain('Levels:');
+  });
+
+  it('formats gate and LLM approvals with retest as pending alignment', () => {
+    jest.doMock('../screenshot', () => ({
+      getScreenshotBuffer: jest.fn(async () => {
+        throw new Error('no screenshot');
+      }),
+      getScreenshotFilename: jest.fn(() => 'LRCUSDT_sig-1_15.png'),
+    }));
+
+    const { formatAnalysisMessage } = require('../signals');
+
+    const message = formatAnalysisMessage(
+      {
+        signalId: 'sig-1',
+        symbol: 'LRCUSDT',
+        strategy: 'TrendShift',
+        interval: '15',
+        direction: 'LONG',
+        timestamp: 1_700_000_000_000,
+        indicators: {},
+        additionalIndicators: {},
+        prices: {
+          currentPrice: 0.0169,
+          takeProfitPrice: 0.0174,
+          stopLossPrice: 0.0167,
+          riskRatio: 2.1,
+        },
+      },
+      {
+        direction: 'LONG',
+        quality: 5,
+        needRetest: true,
+        retestPrice: 0.01673172,
+        setup: 'TrendShift bull flip is visible, but the retest still matters.',
+        qualityReason:
+          'Quality stays high, but confirmation still depends on the retest holding.',
+        gateAnalysis: {
+          direction: 'LONG',
+          quality: 5,
+          needRetest: true,
+          comment: 'gate approved',
+        },
+        gateDecision: 'approved',
+        llmDecision: 'approved',
+        gateContradictsLlm: false,
+        comment: 'llm approved',
+      },
+    );
+
+    expect(message).toContain('Verdict: <b>Not approved yet</b>');
+    expect(message).toContain(
+      'Gate vs LLM: <b>aligned</b> (gate pending, LLM pending)',
+    );
   });
 });

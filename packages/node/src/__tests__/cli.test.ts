@@ -343,6 +343,107 @@ describe('cli telegram notifications', () => {
     expect(sendSignalAnalysis).toHaveBeenCalledTimes(1);
   });
 
+  it('treats retest-required gate or LLM analyses as rejected for comparison metadata', async () => {
+    const logger = {
+      info: jest.fn(),
+      error: jest.fn(),
+      warn: jest.fn(),
+    };
+    const getData = jest.fn().mockImplementation(async (key: string) => {
+      if (key === 'users:root:strategies:TrendShift:config') {
+        return { AI_MODE: 'gate', MIN_AI_QUALITY: 5 };
+      }
+      return null;
+    });
+    const askAI = jest.fn(async () => ({
+      direction: 'LONG',
+      quality: 5,
+      needRetest: true,
+      comment: 'llm pending',
+    }));
+    const sendSignal = jest.fn(async () => undefined);
+    const sendSignalAnalysis = jest.fn(async () => undefined);
+
+    jest.doMock('progress', () => ({
+      __esModule: true,
+      default: jest.fn().mockImplementation(() => ({
+        tick: jest.fn(),
+      })),
+    }));
+    jest.doMock('chalk', () => ({
+      __esModule: true,
+      default: {
+        yellow: (...values: unknown[]) => values.join(' '),
+        gray: (value: string) => value,
+      },
+    }));
+    jest.doMock('@tradejs/core/backtest', () => ({ getFormatted: jest.fn() }));
+    jest.doMock('@tradejs/core/tickers', () => ({ getTopTickers: jest.fn() }));
+    jest.doMock('@tradejs/core/time', () => ({
+      getTimestamp: jest.fn(() => 0),
+    }));
+    jest.doMock('@tradejs/infra/files', () => ({ getFiles: jest.fn() }));
+    jest.doMock('@tradejs/infra/logger', () => ({ logger }));
+    jest.doMock('@tradejs/infra/redis', () => ({
+      RedisWriteBlockedError: class RedisWriteBlockedError extends Error {},
+      delKeyWithOptions: jest.fn(),
+      getData,
+      getKeys: jest.fn(async () => []),
+      redisKeys: {
+        analysis: (symbol: string, signalId: string) =>
+          `analysis:${symbol}:${signalId}`,
+      },
+    }));
+    jest.doMock('../ai', () => ({ askAI }));
+    jest.doMock('../screenshot', () => ({ screenDashboard: jest.fn() }));
+    jest.doMock('../signals', () => ({
+      sendSignal,
+      sendSignalAnalysis,
+      sendTextToTG: jest.fn(),
+    }));
+    jest.doMock('../tradejsConfig', () => ({
+      getTradejsProjectCwd: jest.fn(() => '/tmp/tradejs'),
+    }));
+
+    const { sendToTG } = require('../cli');
+
+    await sendToTG(
+      [
+        {
+          signalId: 'sig-1',
+          symbol: 'LRCUSDT',
+          strategy: 'TrendShift',
+          direction: 'LONG',
+          interval: '15',
+          timestamp: 1,
+          figures: {},
+          prices: {
+            currentPrice: 1,
+            takeProfitPrice: 2,
+            stopLossPrice: 0.5,
+            riskRatio: 2,
+          },
+          indicators: {},
+          aiAnalysis: {
+            direction: 'LONG',
+            quality: 5,
+            needRetest: true,
+            comment: 'gate pending',
+          },
+        },
+      ] as any,
+      '15',
+      'root',
+    );
+
+    const analysis = (sendSignal.mock.calls[0] as unknown[] | undefined)?.[2];
+    expect(analysis).toMatchObject({
+      gateDecision: 'rejected',
+      llmDecision: 'rejected',
+      gateContradictsLlm: false,
+    });
+  });
+
   it('does not request LLM for non-gate mode signals', async () => {
     const logger = {
       info: jest.fn(),

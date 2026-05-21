@@ -352,6 +352,10 @@ export const sendToTG = async (
     direction: Signal['direction'],
     minQuality = 4,
   ): 'approved' | 'rejected' => {
+    if (analysis?.needRetest === true) {
+      return 'rejected';
+    }
+
     const quality = Number(analysis?.quality);
     if (!Number.isFinite(quality)) {
       return 'rejected';
