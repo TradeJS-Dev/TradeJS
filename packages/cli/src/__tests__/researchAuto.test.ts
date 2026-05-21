@@ -100,6 +100,15 @@ describe('research:auto helpers', () => {
     ]);
 
     mockGetData.mockImplementation(async (key: string) => {
+      if (key === 'users:root:strategies:TrendLine:config') {
+        return { INTERVAL: '15' };
+      }
+      if (key === 'users:root:strategies:Breakout:config') {
+        return { INTERVAL: '15' };
+      }
+      if (key === 'users:root:strategies:VolumeDivergence:config') {
+        return { INTERVAL: '15' };
+      }
       if (key.endsWith(':TrendLine')) {
         return { finishedAt: '2026-04-24T21:00:00.000Z' };
       }
@@ -127,10 +136,39 @@ describe('research:auto helpers', () => {
       'users:other:strategies:Ignored:config',
       'broken:key',
     ]);
+    mockGetData.mockImplementation(async (key: string) => {
+      if (key === 'users:root:strategies:TrendLine:config') {
+        return { INTERVAL: '15' };
+      }
+      if (key === 'users:root:strategies:Breakout:config') {
+        return { INTERVAL: '15' };
+      }
+      return null;
+    });
 
     await expect(listRuntimeStrategyNames('root')).resolves.toEqual([
       'Breakout',
       'TrendLine',
+    ]);
+  });
+
+  it('skips runtime strategies with ENABLE=false from research:auto candidates', async () => {
+    mockGetKeys.mockResolvedValue([
+      'users:root:strategies:TrendLine:config',
+      'users:root:strategies:Breakout:config',
+    ]);
+    mockGetData.mockImplementation(async (key: string) => {
+      if (key === 'users:root:strategies:TrendLine:config') {
+        return { INTERVAL: '15', ENABLE: false };
+      }
+      if (key === 'users:root:strategies:Breakout:config') {
+        return { INTERVAL: '15' };
+      }
+      return null;
+    });
+
+    await expect(listRuntimeStrategyNames('root')).resolves.toEqual([
+      'Breakout',
     ]);
   });
 
@@ -315,6 +353,12 @@ describe('research:auto helpers', () => {
     ]);
 
     mockGetData.mockImplementation(async (key: string) => {
+      if (key === 'users:root:strategies:TrendLine:config') {
+        return { INTERVAL: '15' };
+      }
+      if (key === 'users:root:strategies:Breakout:config') {
+        return { INTERVAL: '15' };
+      }
       if (key.endsWith(':TrendLine')) {
         return { finishedAt: 'not-a-date' };
       }
