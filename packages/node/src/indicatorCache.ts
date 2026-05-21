@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import {
   buildIndicatorCacheSnapshots,
   IndicatorCacheSnapshotEntry,
-  IndicatorsControllerRuntimeState,
+  IndicatorsControllerCheckpointState,
   IndicatorPeriods,
 } from '@tradejs/core/indicators';
 import { Candle } from '@tradejs/types';
@@ -14,8 +14,8 @@ import {
   upsertIndicatorCacheCoverageRows,
 } from '@tradejs/infra/timescale';
 
-const INDICATOR_CACHE_VERSION = 'v4';
-const INDICATOR_CACHE_CHECKPOINT_INTERVAL = 64;
+const INDICATOR_CACHE_VERSION = 'v5';
+const INDICATOR_CACHE_CHECKPOINT_INTERVAL = 256;
 
 type EnsureIndicatorCacheCoverageParams = {
   provider: string;
@@ -31,7 +31,7 @@ type EnsureIndicatorCacheCoverageParams = {
 type IndicatorCacheRestorePlan = {
   paramsHash: string;
   version: string;
-  restoreState: IndicatorsControllerRuntimeState | null;
+  restoreState: IndicatorsControllerCheckpointState | null;
   replayStartIndex: number;
   cached: boolean;
 };
@@ -43,7 +43,7 @@ type IndicatorCacheCoverageSnapshot = Pick<
 
 type IndicatorCacheCheckpointSnapshot = {
   timestamp: number;
-  runtimeState: IndicatorsControllerRuntimeState;
+  runtimeState: IndicatorsControllerCheckpointState;
 };
 
 const toStablePeriods = (periods?: Partial<IndicatorPeriods>) => ({

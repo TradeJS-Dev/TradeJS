@@ -131,7 +131,7 @@ describe('indicatorCache', () => {
       provider: 'ByBit',
       symbol: 'ETHUSDT',
       interval: 15,
-      keepVersion: 'v4',
+      keepVersion: 'v5',
     });
   });
 
@@ -233,7 +233,7 @@ describe('indicatorCache', () => {
       expect.objectContaining({
         includeMlPayload: false,
         periods: { maFast: 14 },
-        checkpointInterval: 64,
+        checkpointInterval: 256,
         initialRuntimeState: restored,
       }),
     );
@@ -315,7 +315,7 @@ describe('indicatorCache', () => {
       expect.objectContaining({
         includeMlPayload: false,
         periods: { maFast: 14 },
-        checkpointInterval: 64,
+        checkpointInterval: 256,
         initialRuntimeState: runtimeState(1_000),
       }),
     );

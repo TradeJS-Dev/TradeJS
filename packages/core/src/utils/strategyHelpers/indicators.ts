@@ -1,5 +1,6 @@
 import {
   createIndicators,
+  IndicatorsControllerCheckpointState,
   IndicatorPeriods,
   IndicatorsControllerRuntimeState,
 } from '../../indicators';
@@ -71,7 +72,10 @@ export interface StrategyIndicatorsStateParams {
   btcCoinbaseData?: KlineChartData;
   periods?: Partial<IndicatorPeriods>;
   pluginRegistryScope?: string;
-  initialRuntimeState?: IndicatorsControllerRuntimeState | null;
+  initialRuntimeState?:
+    | IndicatorsControllerRuntimeState
+    | IndicatorsControllerCheckpointState
+    | null;
   replayStartIndex?: number;
 }
 

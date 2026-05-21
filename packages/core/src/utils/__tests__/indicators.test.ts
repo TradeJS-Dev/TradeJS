@@ -528,9 +528,69 @@ describe('utils indicators', () => {
     const fullSnapshot = full.snapshot() as Record<string, any>;
     const restoredSnapshot = restored.snapshot() as Record<string, any>;
 
-    expect(restoredSnapshot.maFast).toEqual(fullSnapshot.maFast);
-    expect(restoredSnapshot.atrPct).toEqual(fullSnapshot.atrPct);
-    expect(restoredSnapshot.btcMaFast).toEqual(fullSnapshot.btcMaFast);
+    expect(restored.latestNumber('maFast')).toBe(full.latestNumber('maFast'));
+    expect(restored.latestNumber('atrPct')).toBe(full.latestNumber('atrPct'));
+    expect(restored.latestNumber('btcMaFast')).toBe(
+      full.latestNumber('btcMaFast'),
+    );
+    expect(restoredSnapshot.baseContext).toEqual(fullSnapshot.baseContext);
+  });
+
+  it('restores compact checkpoint runtime state and preserves indicator parity after suffix replay', () => {
+    const periods = {
+      maFast: 3,
+      maMedium: 3,
+      maSlow: 3,
+      obvSma: 3,
+      atr: 3,
+      atrPctShort: 3,
+      atrPctLong: 3,
+      bb: 3,
+      bbStd: 2,
+      macdFast: 3,
+      macdSlow: 4,
+      macdSignal: 2,
+    };
+    const coinData = Array.from({ length: 160 }, (_, index) =>
+      makeCandle(index * INTERVAL_15M_MS, 100 + index, 101 + index, 99 + index),
+    );
+    const btcData = Array.from({ length: 160 }, (_, index) =>
+      makeCandle(
+        index * INTERVAL_15M_MS,
+        20_000 + index,
+        20_001 + index,
+        19_999 + index,
+      ),
+    );
+
+    const full = createIndicators([], [], { periods });
+    coinData.forEach((candle, index) => {
+      full.next(candle, btcData[index]);
+    });
+
+    const prefix = createIndicators([], [], { periods });
+    coinData.slice(0, 120).forEach((candle, index) => {
+      prefix.next(candle, btcData[index]);
+    });
+
+    const checkpointState = prefix.checkpointRuntimeState();
+    expect(checkpointState.indicatorHistory).toBeUndefined();
+    expect(checkpointState.btcRuntimeHistory).toBeUndefined();
+    expect(checkpointState.latestIndicatorValues).toBeUndefined();
+
+    const restored = createIndicators(coinData.slice(120), btcData.slice(120), {
+      periods,
+      initialRuntimeState: checkpointState,
+    });
+
+    const fullSnapshot = full.snapshot() as Record<string, any>;
+    const restoredSnapshot = restored.snapshot() as Record<string, any>;
+
+    expect(restored.latestNumber('maFast')).toBe(full.latestNumber('maFast'));
+    expect(restored.latestNumber('atrPct')).toBe(full.latestNumber('atrPct'));
+    expect(restored.latestNumber('btcMaFast')).toBe(
+      full.latestNumber('btcMaFast'),
+    );
     expect(restoredSnapshot.baseContext).toEqual(fullSnapshot.baseContext);
   });
 

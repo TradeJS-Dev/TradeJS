@@ -156,6 +156,26 @@ export type IndicatorsControllerRuntimeState = {
   btcCoinbaseCursor: number;
 };
 
+export type IndicatorsControllerCheckpointState = Pick<
+  IndicatorsControllerRuntimeState,
+  | 'indicatorState'
+  | 'rawCoinCandles'
+  | 'rawBtcCandles'
+  | 'coinResampledCandles'
+  | 'btcResampledCandles'
+  | 'closeStreaks'
+  | 'breakoutState'
+  | 'btcCloses'
+  | 'btcBinanceCursor'
+  | 'btcCoinbaseCursor'
+> &
+  Partial<
+    Pick<
+      IndicatorsControllerRuntimeState,
+      'indicatorHistory' | 'btcRuntimeHistory' | 'latestIndicatorValues'
+    >
+  >;
+
 type TrendlineIndicators = {
   maFast: IndicatorValue;
   maMedium: IndicatorValue;
@@ -190,7 +210,9 @@ type CreateIndicatorsOptions = {
   btcBinanceData?: Candle[];
   btcCoinbaseData?: Candle[];
   pluginRegistryScope?: string;
-  initialRuntimeState?: IndicatorsControllerRuntimeState;
+  initialRuntimeState?:
+    | IndicatorsControllerRuntimeState
+    | IndicatorsControllerCheckpointState;
 };
 
 const cloneHistorySnapshot = (
@@ -1364,9 +1386,67 @@ export const createIndicators = (
     btcCoinbaseCursor,
   });
 
+  const checkpointRuntimeState = (): IndicatorsControllerCheckpointState => ({
+    indicatorState: {
+      maFast: ma14.snapshot(),
+      maMedium: ma49.snapshot(),
+      maSlow: ma50.snapshot(),
+      atr: atr.snapshot(),
+      atrPctShort: atrPctShort.snapshot(),
+      atrPctLong: atrPctLong.snapshot(),
+      bb: bb.snapshot(),
+      obv: obv.snapshot(),
+      smaObv: smaObv.snapshot(),
+      macd: macd.snapshot(),
+      btcMaFast: btcMaFast.snapshot(),
+      btcMaSlow: btcMaSlow.snapshot(),
+      spreadSmoother: spreadSmoother.snapshot(),
+    },
+    rawCoinCandles: candlesHistory
+      .slice(-controllerStateCandleWindow)
+      .map(cloneMlCandle),
+    rawBtcCandles: btcCandlesHistory
+      .slice(-controllerStateCandleWindow)
+      .map(cloneMlCandle),
+    coinResampledCandles: {
+      h1: coin1hCache
+        .snapshot()
+        .slice(-ML_BASE_CANDLES_WINDOW)
+        .map(cloneMlCandle),
+      h4: coin4hCache
+        .snapshot()
+        .slice(-ML_BASE_CANDLES_WINDOW)
+        .map(cloneMlCandle),
+      d1: coin1dCache
+        .snapshot()
+        .slice(-ML_BASE_CANDLES_WINDOW)
+        .map(cloneMlCandle),
+    },
+    btcResampledCandles: {
+      h1: btc1hCache
+        .snapshot()
+        .slice(-ML_BASE_CANDLES_WINDOW)
+        .map(cloneMlCandle),
+      h4: btc4hCache
+        .snapshot()
+        .slice(-ML_BASE_CANDLES_WINDOW)
+        .map(cloneMlCandle),
+      d1: btc1dCache
+        .snapshot()
+        .slice(-ML_BASE_CANDLES_WINDOW)
+        .map(cloneMlCandle),
+    },
+    closeStreaks: { ...closeStreaks },
+    breakoutState: { ...breakoutState },
+    btcCloses: btcCloses.slice(-controllerStateCandleWindow),
+    btcBinanceCursor,
+    btcCoinbaseCursor,
+  });
+
   return {
     next,
     snapshot: (): IndicatorsHistorySnapshot => buildStrategySnapshot(),
+    checkpointRuntimeState,
     runtimeState,
     latestNumber: (key: string): number | undefined => {
       const latestValue = latestIndicatorValues[key];
@@ -1395,7 +1475,7 @@ export type IndicatorCacheSnapshotEntry = {
   candleSignature: string | null;
   btcCandleSignature: string | null;
   ready: boolean;
-  runtimeState: IndicatorsControllerRuntimeState | null;
+  runtimeState: IndicatorsControllerCheckpointState | null;
 };
 
 export const buildIndicatorCacheSnapshots = (
@@ -1428,7 +1508,7 @@ export const buildIndicatorCacheSnapshots = (
       btcCandleSignature: buildCandleSignature(btcCandle),
       ready: snapshot != null,
       runtimeState: shouldCaptureRuntimeState
-        ? controller.runtimeState()
+        ? controller.checkpointRuntimeState()
         : null,
     });
   });
