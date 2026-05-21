@@ -159,6 +159,7 @@ import {
   resolveRequestedTestsLimit,
   resolveEffectiveParallel,
   resolveWorkerHeapMb,
+  toPersistedBacktestResultEntry,
   toStrategyConfigGrid,
 } from '../scripts/backtest';
 import {
@@ -638,6 +639,58 @@ describe('backtest script helpers', () => {
         'warning: logs not found for BTCUSDT_suite_test; using cached stat only',
       ),
     );
+  });
+
+  it('strips heavy inline artifacts from persisted backtest results', () => {
+    const persisted = toPersistedBacktestResultEntry({
+      orderLogId: 'log-1',
+      stat: {
+        amount: 123,
+        profit: 45,
+        orders: 6,
+      },
+      inlineOrderLog: [{ timestamp: 1 }] as any,
+      inlinePositionLog: [{ open: { timestamp: 1 } }] as any,
+      inlineReplaySignalEvaluations: [{ evaluationId: 'eval-1' }] as any,
+      test: {
+        userName: 'root',
+        name: 'BTCUSDT_suite_test',
+        testId: 'test',
+        testSuiteId: 'suite',
+        symbol: 'BTCUSDT',
+        strategyName: 'TrendLine',
+        strategyConfig: { MA_FAST: 21 },
+        connectorName: 'bybit',
+        options: { start: 1_000, end: 2_000 },
+        ml: false,
+        ai: true,
+      },
+    } as any);
+
+    expect(persisted).toEqual({
+      orderLogId: 'log-1',
+      stat: {
+        amount: 123,
+        profit: 45,
+        orders: 6,
+      },
+      test: {
+        userName: 'root',
+        name: 'BTCUSDT_suite_test',
+        testId: 'test',
+        testSuiteId: 'suite',
+        symbol: 'BTCUSDT',
+        strategyName: 'TrendLine',
+        strategyConfig: { MA_FAST: 21 },
+        connectorName: 'bybit',
+        options: { start: 1_000, end: 2_000 },
+        ml: false,
+        ai: true,
+      },
+    });
+    expect('inlineOrderLog' in persisted).toBe(false);
+    expect('inlinePositionLog' in persisted).toBe(false);
+    expect('inlineReplaySignalEvaluations' in persisted).toBe(false);
   });
 
   it('resolves replay strategy from exchange orderLinkId', () => {

@@ -8,7 +8,7 @@ import { createTestSuite, mergeConfigs } from '@tradejs/core/grid';
 import { toJson } from '@tradejs/core/data';
 import { buildDefaultIndicatorPeriods } from '@tradejs/core/strategies';
 import { getData, setData, redisKeys } from '@tradejs/infra/redis';
-import { StrategyConfigGrid, TestStat } from '@tradejs/types';
+import { StrategyConfigGrid, TestStat, TestWorkerResult } from '@tradejs/types';
 import { BACKTEST_PRELOAD_DAYS } from '@tradejs/core/constants';
 import {
   effectiveParallel,
@@ -85,6 +85,26 @@ type LoadedBacktestConfig = {
   strategyConfigGrid: StrategyConfigGrid;
 };
 
+type PersistedBacktestResultEntry = Pick<
+  TestWorkerResult,
+  'orderLogId' | 'stat'
+> & {
+  test: Pick<
+    TestWorkerResult['test'],
+    | 'userName'
+    | 'name'
+    | 'testId'
+    | 'testSuiteId'
+    | 'symbol'
+    | 'strategyName'
+    | 'strategyConfig'
+    | 'connectorName'
+    | 'options'
+    | 'ml'
+    | 'ai'
+  >;
+};
+
 const formatDuration = (startedAt: number) => {
   const seconds = (Date.now() - startedAt) / 1000;
   if (seconds < 60) return `${seconds.toFixed(1)}s`;
@@ -114,6 +134,31 @@ const buildWarmupPeriodsKey = (
     levelDelay: periods.levelDelay ?? null,
   });
 };
+
+export const toPersistedBacktestResultEntry = (
+  result: TestWorkerResult,
+): PersistedBacktestResultEntry => ({
+  orderLogId: result.orderLogId,
+  stat: result.stat,
+  test: {
+    userName: result.test.userName,
+    name: result.test.name,
+    testId: result.test.testId,
+    testSuiteId: result.test.testSuiteId,
+    symbol: result.test.symbol,
+    strategyName: result.test.strategyName,
+    strategyConfig: result.test.strategyConfig,
+    connectorName: result.test.connectorName,
+    options: result.test.options,
+    ml: result.test.ml,
+    ai: result.test.ai,
+  },
+});
+
+export const toPersistedBacktestResultEntries = (
+  results: TestWorkerResult[],
+): PersistedBacktestResultEntry[] =>
+  results.map((result) => toPersistedBacktestResultEntry(result));
 
 const resolveRenderableStat = async (
   result: Parameters<typeof resolveResultArtifacts>[0],
@@ -348,8 +393,10 @@ const finishBacktest = async () => {
       startedAt: new Date(getRunStartedAt()).toISOString(),
       finishedAt: finishedAt.toISOString(),
       durationSeconds,
-      results: topResults,
-      resultsByTickers: getBestTickerResults(),
+      results: toPersistedBacktestResultEntries(topResults),
+      resultsByTickers: toPersistedBacktestResultEntries(
+        getBestTickerResults(),
+      ),
       resultsByStrategies: null,
       runtimeComparison: null,
       bestConfig,
