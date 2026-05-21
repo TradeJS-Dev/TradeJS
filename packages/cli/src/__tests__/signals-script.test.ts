@@ -367,6 +367,55 @@ describe('signals script', () => {
     );
   });
 
+  it('treats strategy config with ENABLE=false as inactive for signals', async () => {
+    const { signals, mocks } = await loadScript({
+      flags: {
+        timeframe: 15,
+        makeOrders: false,
+        notify: false,
+        skipScreenshots: true,
+        updateOnly: false,
+        cacheOnly: true,
+        showTickersList: false,
+        showSkipStats: false,
+        user: 'root',
+        connector: 'bybit',
+      },
+      strategyConfigs: [
+        {
+          strategyName: 'TrendLine',
+          config: {
+            INTERVAL: '15',
+            ENABLE: false,
+          },
+        },
+        {
+          strategyName: 'TrendShift',
+          config: {
+            INTERVAL: '15',
+          },
+        },
+      ],
+    });
+
+    await signals();
+
+    expect(mocks.getStrategyCreator).toHaveBeenCalledTimes(1);
+    expect(mocks.getStrategyCreator).toHaveBeenCalledWith(
+      'TrendShift',
+      expect.any(String),
+    );
+    expect(mocks.strategyFnMap.get('TrendLine')).not.toHaveBeenCalled();
+    expect(mocks.strategyFnMap.get('TrendShift')).toHaveBeenCalled();
+    expect(mocks.logger.info).toHaveBeenCalledWith(
+      'Skip inactive strategy config by ENABLE=false: %s',
+      'TrendLine',
+    );
+    expect(mocks.logger.info).toHaveBeenCalledWith(
+      expect.stringContaining('loaded strategies (user=root): TrendShift'),
+    );
+  });
+
   it('stores AI and ML gate metadata in evaluation buckets and stats', async () => {
     const aiAnalysis = {
       direction: null,

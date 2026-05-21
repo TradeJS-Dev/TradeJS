@@ -206,16 +206,20 @@ describe('ByBitConnectorCreator', () => {
   });
 
   it('deduplicates concurrent getPosition requests for the same symbol', async () => {
-    let resolvePositionInfo:
-      | ((value: {
-          retCode: number;
-          result: { list: Array<{ raw: boolean }> };
-        }) => void)
-      | null = null;
+    type PositionInfoResult = {
+      retCode: number;
+      result: { list: Array<{ raw: boolean }> };
+    };
+
+    let resolvePositionInfo: (value: PositionInfoResult) => void = () => {
+      throw new Error(
+        'Expected getPositionInfo promise resolver to be captured',
+      );
+    };
     const client = {
       getPositionInfo: jest.fn(
         () =>
-          new Promise((resolve) => {
+          new Promise<PositionInfoResult>((resolve) => {
             resolvePositionInfo = resolve;
           }),
       ),
@@ -232,7 +236,7 @@ describe('ByBitConnectorCreator', () => {
 
     expect(client.getPositionInfo).toHaveBeenCalledTimes(1);
 
-    resolvePositionInfo?.({
+    resolvePositionInfo({
       retCode: 0,
       result: { list: [{ raw: true }] },
     });

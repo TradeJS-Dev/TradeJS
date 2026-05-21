@@ -5,6 +5,72 @@ import type { AdaptiveMomentumRibbonConfig } from './config';
 import { evaluateAdaptiveMomentumRibbon } from './engine';
 import { buildAdaptiveMomentumRibbonFigures } from './figures';
 
+const getRecord = (value: unknown): Record<string, unknown> | null =>
+  value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+
+const getNumberOrNull = (value: unknown): number | null =>
+  typeof value === 'number' && Number.isFinite(value) ? value : null;
+
+const getStringOrNull = (value: unknown): string | null =>
+  typeof value === 'string' && value.trim().length > 0 ? value : null;
+
+const getDerivativesPressure = (
+  indicators: Record<string, unknown>,
+): string | null => {
+  const baseContext = getRecord(indicators.baseContext);
+  const derivatives = getRecord(baseContext?.derivatives);
+  const summary = getRecord(derivatives?.summary);
+  return getStringOrNull(summary?.pressure);
+};
+
+const shouldRejectByStructure = ({
+  indicators,
+  direction,
+}: {
+  indicators: Record<string, unknown>;
+  direction: 'LONG' | 'SHORT';
+}) => {
+  const baseContext = getRecord(indicators.baseContext);
+  const structure = getRecord(baseContext?.structure);
+  const localRange = getRecord(structure?.localRange);
+  const participation = getRecord(baseContext?.participation);
+  const volume = getRecord(participation?.volume);
+  const relative = getRecord(baseContext?.relative);
+  const benchmark = getRecord(relative?.benchmark);
+  const breakoutState = getStringOrNull(localRange?.breakoutState);
+  const volumeRel20 = getNumberOrNull(volume?.volumeRel20);
+  const benchmarkTrendAlignment = getStringOrNull(benchmark?.trendAlignment);
+  const derivativesPressure = getDerivativesPressure(indicators);
+
+  const breakoutConfirmed =
+    direction === 'LONG'
+      ? breakoutState === 'above_high_level'
+      : breakoutState === 'below_low_level';
+
+  if (breakoutState != null && !breakoutConfirmed) {
+    return 'AMR_RANGE_BOUND_STRUCTURE';
+  }
+
+  if (volumeRel20 != null && volumeRel20 < 0.8) {
+    return 'AMR_WEAK_PARTICIPATION';
+  }
+
+  if (benchmarkTrendAlignment === 'against_benchmark') {
+    return 'AMR_BENCHMARK_CONFLICT';
+  }
+
+  if (
+    (direction === 'LONG' && derivativesPressure === 'crowded_long') ||
+    (direction === 'SHORT' && derivativesPressure === 'crowded_short')
+  ) {
+    return 'AMR_DERIVATIVES_PRESSURE_CONFLICT';
+  }
+
+  return null;
+};
+
 const resolveLinePlots = (value: unknown): string[] => {
   if (!Array.isArray(value)) {
     return [];
@@ -102,6 +168,16 @@ export const createAdaptiveMomentumRibbonCore: CreateStrategyCore<
       return strategyApi.skip('STRATEGY_DISABLED');
     }
 
+    const indicators = indicatorsState.snapshot() ?? {};
+    const structuralRejectCode = shouldRejectByStructure({
+      indicators,
+      direction: modeConfig.direction,
+    });
+
+    if (structuralRejectCode != null) {
+      return strategyApi.skip(structuralRejectCode);
+    }
+
     const { stopLossPrice, takeProfitPrice, qty } =
       strategyApi.getDirectionalTpSlPrices({
         price: currentPrice,
@@ -116,8 +192,6 @@ export const createAdaptiveMomentumRibbonCore: CreateStrategyCore<
     if (!qty || !Number.isFinite(qty) || qty <= 0) {
       return strategyApi.skip('INVALID_QTY');
     }
-
-    const indicators = indicatorsState.snapshot();
 
     return strategyApi.entry({
       code: amr.entryLong ? 'AMR_ENTRY_LONG' : 'AMR_ENTRY_SHORT',

@@ -53,6 +53,8 @@ type AmrChannelState =
 type AmrStructuralReason =
   | AmrHardBlockReason
   | 'session_thin'
+  | 'missing_base_context'
+  | 'range_bound_structure'
   | 'benchmark_conflict'
   | 'weak_participation'
   | 'weak_retest_quality'
@@ -100,6 +102,7 @@ type AdaptiveMomentumRibbonAiContext = {
   derivativesRiskFlags: string[];
   derivativesFundingZScore: number | null;
   derivativesPressure: string | null;
+  baseContextAvailable: boolean;
   primarySession: PrimaryTradingSession | null;
   sessionIsOverlap: boolean;
   fundingWindowNearby: boolean;
@@ -433,8 +436,10 @@ const getDeterministicAdaptiveMomentumRibbonQuality = (
       value: context.benchmarkRelativeStrength1h,
     }) === false;
   const weakParticipation =
-    (context.volumeRel20 != null && context.volumeRel20 < 0.85) ||
-    (context.effortVsResult != null && context.effortVsResult < -0.1);
+    (context.volumeRel20 != null &&
+      (context.volumeRel20 < 0.8 || context.volumeRel20 > 1.5)) ||
+    (context.effortVsResult != null &&
+      (context.effortVsResult < -0.1 || context.effortVsResult > 500));
   const weakRetestQuality =
     context.breakoutRetestQuality != null &&
     context.breakoutRetestQuality < 0.25;
@@ -452,12 +457,27 @@ const getDeterministicAdaptiveMomentumRibbonQuality = (
     !context.derivativesRiskFlags.includes('oi_not_confirming') &&
     context.derivativesFundingZScore != null &&
     context.derivativesFundingZScore <= 0.5;
+  const directionalBreakoutConfirmed =
+    context.signalDirection === 'LONG'
+      ? context.breakoutState === 'above_high_level'
+      : context.signalDirection === 'SHORT'
+        ? context.breakoutState === 'below_low_level'
+        : false;
+  const participationSweetSpot =
+    isInRange(context.volumeRel20, 1.05, 1.5) &&
+    isInRange(context.effortVsResult, 100, 500);
+  const rangeBoundStructure =
+    context.baseContextAvailable &&
+    context.breakoutState != null &&
+    !directionalBreakoutConfirmed;
   const localExpansionPromotionCandidate =
+    context.baseContextAvailable &&
     channelSupportive &&
     channelExpansion &&
     oscillatorElite &&
     invalidationCompact &&
     structuralRrStrong &&
+    directionalBreakoutConfirmed &&
     biasConflictCount < 2 &&
     !(context.momentumPeriod === 48 && context.butterworthSmoothing === 4) &&
     !(
@@ -469,6 +489,29 @@ const getDeterministicAdaptiveMomentumRibbonQuality = (
     !context.derivativesRiskFlags.includes('oi_not_confirming') &&
     context.derivativesPressure !== 'crowded_long' &&
     context.derivativesPressure !== 'crowded_short';
+  const confirmedBreakoutSweetSpotCandidate =
+    context.baseContextAvailable &&
+    directionalBreakoutConfirmed &&
+    participationSweetSpot &&
+    channelSupportive &&
+    channelExpansion &&
+    oscillatorStrong &&
+    invalidationCompact &&
+    structuralRrStrong &&
+    noBiasConflict &&
+    !(context.momentumPeriod === 48 && context.butterworthSmoothing === 4) &&
+    context.derivativesDirectionAligned !== false &&
+    !context.derivativesRiskFlags.includes('oi_not_confirming') &&
+    (context.derivativesFundingZScore == null ||
+      context.derivativesFundingZScore <= 0.5) &&
+    !benchmarkConflict &&
+    !weakRetestQuality &&
+    !elevatedVenueSpread &&
+    !derivativesPressureConflict;
+
+  if (derivativesPressureConflict) {
+    return 3;
+  }
 
   if (!sessionAllowsApproval && !q4DerivativesSupported) {
     return 3;
@@ -493,14 +536,23 @@ const getDeterministicAdaptiveMomentumRibbonQuality = (
           (biasConflictCount === 0 || oscillatorStrong)
         ? q4DerivativesSupported
           ? 4
-          : localExpansionPromotionCandidate
+          : localExpansionPromotionCandidate ||
+              confirmedBreakoutSweetSpotCandidate
             ? 4
             : 3
         : 3;
 
   if (
     quality >= 4 &&
+    (!context.baseContextAvailable || rangeBoundStructure || weakParticipation)
+  ) {
+    quality = 3;
+  }
+
+  if (
+    quality >= 4 &&
     (benchmarkConflict ||
+      rangeBoundStructure ||
       weakParticipation ||
       weakRetestQuality ||
       elevatedVenueSpread ||
@@ -672,6 +724,7 @@ const buildAdaptiveMomentumRibbonContext = (
     toFiniteNumberOrNull(derivatives15m?.fundingZScore) ??
     toFiniteNumberOrNull(derivatives1h?.fundingZScore);
   const baseContext = getRecord(additional?.baseContext);
+  const baseContextAvailable = baseContext != null;
   const regime = getRecord(baseContext?.regime);
   const regimeSession = getRecord(regime?.session);
   const structure = getRecord(baseContext?.structure);
@@ -754,8 +807,23 @@ const buildAdaptiveMomentumRibbonContext = (
     ...hardBlockReasons,
   ];
 
+  if (!baseContextAvailable) {
+    structuralHardBlockReasons.push('missing_base_context');
+  }
+
   if (sessionAllowsApproval === false) {
     structuralHardBlockReasons.push('session_thin');
+  }
+
+  if (
+    baseContextAvailable &&
+    breakoutState != null &&
+    !(
+      (signalDirection === 'LONG' && breakoutState === 'above_high_level') ||
+      (signalDirection === 'SHORT' && breakoutState === 'below_low_level')
+    )
+  ) {
+    structuralHardBlockReasons.push('range_bound_structure');
   }
 
   if (
@@ -769,8 +837,8 @@ const buildAdaptiveMomentumRibbonContext = (
   }
 
   if (
-    (volumeRel20 != null && volumeRel20 < 0.85) ||
-    (effortVsResult != null && effortVsResult < -0.1)
+    (volumeRel20 != null && (volumeRel20 < 0.8 || volumeRel20 > 1.5)) ||
+    (effortVsResult != null && (effortVsResult < -0.1 || effortVsResult > 500))
   ) {
     structuralHardBlockReasons.push('weak_participation');
   }
@@ -826,6 +894,7 @@ const buildAdaptiveMomentumRibbonContext = (
     derivativesRiskFlags,
     derivativesFundingZScore,
     derivativesPressure,
+    baseContextAvailable,
     primarySession,
     sessionIsOverlap,
     fundingWindowNearby,
@@ -871,6 +940,7 @@ const buildAdaptiveMomentumRibbonContext = (
     derivativesRiskFlags,
     derivativesFundingZScore,
     derivativesPressure,
+    baseContextAvailable,
     primarySession,
     sessionIsOverlap,
     fundingWindowNearby,

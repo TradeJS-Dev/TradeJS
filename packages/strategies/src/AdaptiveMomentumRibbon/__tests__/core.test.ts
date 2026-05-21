@@ -107,7 +107,7 @@ const makeStrategyApi = (marketData: any, currentPosition: any = null) =>
     },
   }) as any;
 
-const makeIndicatorsState = () =>
+const makeIndicatorsState = (snapshotOverrides: Record<string, unknown> = {}) =>
   ({
     setCurrentBar: jest.fn(),
     next: jest.fn(),
@@ -116,6 +116,26 @@ const makeIndicatorsState = () =>
     snapshot: jest.fn(() => ({
       correlation: [0.1],
       baseContext: {
+        structure: {
+          localRange: {
+            breakoutState: 'above_high_level',
+          },
+        },
+        participation: {
+          volume: {
+            volumeRel20: 1.2,
+          },
+        },
+        relative: {
+          benchmark: {
+            trendAlignment: 'aligned_bull',
+          },
+        },
+        derivatives: {
+          summary: {
+            pressure: null,
+          },
+        },
         regime: {
           session: {
             sessionPhase: 'us',
@@ -126,6 +146,7 @@ const makeIndicatorsState = () =>
           },
         },
       },
+      ...snapshotOverrides,
     })),
     latestNumber: jest.fn(() => 0.1),
     isInitialized: jest.fn(() => true),
@@ -179,12 +200,14 @@ describe('createAdaptiveMomentumRibbonCore', () => {
     candles = makeCandles({ bullishLast: true }),
     marketDataOverrides = {},
     directionalTpSlPrices,
+    indicatorsSnapshotOverrides = {},
   }: {
     configOverrides?: Record<string, unknown>;
     currentPosition?: any;
     candles?: ReturnType<typeof makeCandles>;
     marketDataOverrides?: Record<string, unknown>;
     directionalTpSlPrices?: (params: any) => any;
+    indicatorsSnapshotOverrides?: Record<string, unknown>;
   } = {}) => {
     const marketData = {
       fullData: candles,
@@ -213,7 +236,7 @@ describe('createAdaptiveMomentumRibbonCore', () => {
       btcData: candles.slice(0, -1),
       loadPineScriptFile: jest.fn(() => 'mock-pine-script'),
       strategyApi,
-      indicatorsState: makeIndicatorsState(),
+      indicatorsState: makeIndicatorsState(indicatorsSnapshotOverrides),
     });
 
     return { core, candles, marketData, strategyApi };
@@ -642,6 +665,177 @@ describe('createAdaptiveMomentumRibbonCore', () => {
     expect(decision).toEqual({
       kind: 'skip',
       code: 'INVALID_QTY',
+    });
+  });
+
+  it('skips new long entries when breakout stays inside range', async () => {
+    mockedEvaluateAdaptiveMomentumRibbon.mockReturnValue(
+      makeEvaluation({
+        entryLong: true,
+        activeBuy: true,
+      }),
+    );
+
+    const candles = makeCandles({ bullishLast: true });
+    const { core } = await makeRuntime({
+      candles,
+      indicatorsSnapshotOverrides: {
+        baseContext: {
+          structure: {
+            localRange: {
+              breakoutState: 'inside_range',
+            },
+          },
+          participation: {
+            volume: {
+              volumeRel20: 1.2,
+            },
+          },
+          relative: {
+            benchmark: {
+              trendAlignment: 'aligned_bull',
+            },
+          },
+          derivatives: {
+            summary: {
+              pressure: null,
+            },
+          },
+          regime: {
+            session: {
+              sessionPhase: 'us',
+              isOverlap: true,
+              minutesFromSessionOpen: 90,
+              minutesToFundingWindow: 90,
+              fundingWindowNearby: false,
+            },
+          },
+        },
+      },
+    });
+
+    const decision = await core(
+      candles[candles.length - 1],
+      candles[candles.length - 1],
+    );
+
+    expect(decision).toEqual({
+      kind: 'skip',
+      code: 'AMR_RANGE_BOUND_STRUCTURE',
+    });
+  });
+
+  it('skips new long entries when participation is too weak', async () => {
+    mockedEvaluateAdaptiveMomentumRibbon.mockReturnValue(
+      makeEvaluation({
+        entryLong: true,
+        activeBuy: true,
+      }),
+    );
+
+    const candles = makeCandles({ bullishLast: true });
+    const { core } = await makeRuntime({
+      candles,
+      indicatorsSnapshotOverrides: {
+        baseContext: {
+          structure: {
+            localRange: {
+              breakoutState: 'above_high_level',
+            },
+          },
+          participation: {
+            volume: {
+              volumeRel20: 0.62,
+            },
+          },
+          relative: {
+            benchmark: {
+              trendAlignment: 'aligned_bull',
+            },
+          },
+          derivatives: {
+            summary: {
+              pressure: null,
+            },
+          },
+          regime: {
+            session: {
+              sessionPhase: 'us',
+              isOverlap: true,
+              minutesFromSessionOpen: 90,
+              minutesToFundingWindow: 90,
+              fundingWindowNearby: false,
+            },
+          },
+        },
+      },
+    });
+
+    const decision = await core(
+      candles[candles.length - 1],
+      candles[candles.length - 1],
+    );
+
+    expect(decision).toEqual({
+      kind: 'skip',
+      code: 'AMR_WEAK_PARTICIPATION',
+    });
+  });
+
+  it('skips new long entries when derivatives pressure is crowded', async () => {
+    mockedEvaluateAdaptiveMomentumRibbon.mockReturnValue(
+      makeEvaluation({
+        entryLong: true,
+        activeBuy: true,
+      }),
+    );
+
+    const candles = makeCandles({ bullishLast: true });
+    const { core } = await makeRuntime({
+      candles,
+      indicatorsSnapshotOverrides: {
+        baseContext: {
+          structure: {
+            localRange: {
+              breakoutState: 'above_high_level',
+            },
+          },
+          participation: {
+            volume: {
+              volumeRel20: 1.2,
+            },
+          },
+          relative: {
+            benchmark: {
+              trendAlignment: 'aligned_bull',
+            },
+          },
+          derivatives: {
+            summary: {
+              pressure: 'crowded_long',
+            },
+          },
+          regime: {
+            session: {
+              sessionPhase: 'us',
+              isOverlap: true,
+              minutesFromSessionOpen: 90,
+              minutesToFundingWindow: 90,
+              fundingWindowNearby: false,
+            },
+          },
+        },
+      },
+    });
+
+    const decision = await core(
+      candles[candles.length - 1],
+      candles[candles.length - 1],
+    );
+
+    expect(decision).toEqual({
+      kind: 'skip',
+      code: 'AMR_DERIVATIVES_PRESSURE_CONFLICT',
     });
   });
 });

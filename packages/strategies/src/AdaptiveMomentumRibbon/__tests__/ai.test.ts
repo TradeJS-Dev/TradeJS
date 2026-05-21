@@ -132,6 +132,23 @@ const makeSignal = (overrides: Record<string, any> = {}) =>
       },
       baseContext: {
         ...overrides.additionalIndicators?.baseContext,
+        structure: {
+          localRange: {
+            breakoutState: 'above_high_level',
+            ...overrides.additionalIndicators?.baseContext?.structure
+              ?.localRange,
+          },
+          ...overrides.additionalIndicators?.baseContext?.structure,
+        },
+        participation: {
+          volume: {
+            volumeRel20: 1.2,
+            effortVsResult: 150,
+            ...overrides.additionalIndicators?.baseContext?.participation
+              ?.volume,
+          },
+          ...overrides.additionalIndicators?.baseContext?.participation,
+        },
         derivatives: {
           ...overrides.additionalIndicators?.baseContext?.derivatives,
           summary: {
@@ -647,13 +664,14 @@ describe('adaptiveMomentumRibbonAiAdapter', () => {
     );
   });
 
-  it('keeps q5 longs approved even when derivatives are crowded', () => {
+  it('demotes crowded-derivatives longs back to watch mode even from q5 geometry', () => {
     const signal = makeSignal({
       additionalIndicators: {
         derivativesContext: {
           summary: {
             directionAligned: false,
             riskFlags: ['oi_not_confirming'],
+            pressure: 'crowded_long',
           },
           intervals: {
             '15m': {
@@ -670,8 +688,12 @@ describe('adaptiveMomentumRibbonAiAdapter', () => {
         derivativesDirectionAligned: false,
         derivativesRiskFlags: ['oi_not_confirming'],
         derivativesFundingZScore: 1.3,
-        deterministicQuality: 5,
-        approvalAllowedNow: true,
+        derivativesPressure: 'crowded_long',
+        deterministicQuality: 3,
+        approvalAllowedNow: false,
+        structuralHardBlockReasons: expect.arrayContaining([
+          'derivatives_pressure_conflict',
+        ]),
       }),
     );
   });
@@ -940,7 +962,6 @@ describe('adaptiveMomentumRibbonAiAdapter', () => {
         structuralHardBlockReasons: expect.arrayContaining([
           'session_thin',
           'benchmark_conflict',
-          'weak_participation',
           'elevated_venue_spread',
         ]),
       }),
@@ -962,6 +983,13 @@ describe('adaptiveMomentumRibbonAiAdapter', () => {
         btcMaSlow: [50.1, 50.0, 49.8],
       },
       additionalIndicators: {
+        baseContext: {
+          structure: {
+            localRange: {
+              breakoutState: 'below_low_level',
+            },
+          },
+        },
         amr: {
           entryLong: 0,
           entryShort: 1,
@@ -1028,6 +1056,125 @@ describe('adaptiveMomentumRibbonAiAdapter', () => {
         retestPrice: null,
         takeProfitPrice: 96.6,
         stopLossPrice: 99.9,
+      }),
+    );
+  });
+
+  it('caps strong longs at q3 when baseContext is missing', () => {
+    const signal = makeSignal();
+    delete signal.additionalIndicators.baseContext;
+    const payload = buildPayloadForSignal(signal);
+
+    expect(payload.additionalIndicators.adaptiveMomentumRibbonContext).toEqual(
+      expect.objectContaining({
+        baseContextAvailable: false,
+        deterministicQuality: 3,
+        approvalAllowedNow: false,
+        structuralHardBlockReasons: ['missing_base_context'],
+      }),
+    );
+  });
+
+  it('demotes above-upper longs back to watch mode when breakout state stays inside range', () => {
+    const signal = makeSignal({
+      additionalIndicators: {
+        baseContext: {
+          structure: {
+            localRange: {
+              breakoutState: 'inside_range',
+            },
+          },
+        },
+      },
+    });
+    const payload = buildPayloadForSignal(signal);
+
+    expect(payload.additionalIndicators.adaptiveMomentumRibbonContext).toEqual(
+      expect.objectContaining({
+        breakoutState: 'inside_range',
+        deterministicQuality: 3,
+        approvalAllowedNow: false,
+        structuralHardBlockReasons: expect.arrayContaining([
+          'range_bound_structure',
+        ]),
+      }),
+    );
+  });
+
+  it('demotes crowded participation pockets even when momentum is strong', () => {
+    const signal = makeSignal({
+      additionalIndicators: {
+        baseContext: {
+          participation: {
+            volume: {
+              volumeRel20: 1.84,
+              effortVsResult: 640,
+            },
+          },
+        },
+      },
+    });
+    const payload = buildPayloadForSignal(signal);
+
+    expect(payload.additionalIndicators.adaptiveMomentumRibbonContext).toEqual(
+      expect.objectContaining({
+        volumeRel20: 1.84,
+        effortVsResult: 640,
+        deterministicQuality: 3,
+        approvalAllowedNow: false,
+        structuralHardBlockReasons: expect.arrayContaining([
+          'weak_participation',
+        ]),
+      }),
+    );
+  });
+
+  it('promotes confirmed breakout sweet-spot longs into q4', () => {
+    const signal = makeSignal({
+      prices: {
+        currentPrice: 100.78,
+        takeProfitPrice: 103.9,
+        stopLossPrice: 99.92,
+      },
+      additionalIndicators: {
+        baseContext: {
+          participation: {
+            volume: {
+              volumeRel20: 1.22,
+              effortVsResult: 220,
+            },
+          },
+          derivatives: {
+            summary: {
+              directionAligned: null,
+              riskFlags: [],
+            },
+            intervals: {
+              '15m': {
+                fundingZScore: null,
+              },
+            },
+          },
+        },
+        amr: {
+          signalOsc: 0.81,
+          kcMidline: 100.2,
+          kcUpper: 100.7,
+          kcLower: 99.6,
+          invalidationLevel: 99.92,
+        },
+      },
+    });
+    const payload = buildPayloadForSignal(signal);
+
+    expect(payload.additionalIndicators.adaptiveMomentumRibbonContext).toEqual(
+      expect.objectContaining({
+        breakoutState: 'above_high_level',
+        volumeRel20: 1.22,
+        effortVsResult: 220,
+        derivativesDirectionAligned: null,
+        deterministicQuality: 4,
+        approvalAllowedNow: true,
       }),
     );
   });

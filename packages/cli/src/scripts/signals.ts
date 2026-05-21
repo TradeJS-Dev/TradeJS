@@ -163,6 +163,11 @@ const invokeAfterSignalsHooks = async (
   }
 };
 
+const isStrategyRuntimeEnabled = (strategyConfig: StrategyConfig) => {
+  const enabled = (strategyConfig as Record<string, unknown>).ENABLE;
+  return enabled !== false;
+};
+
 const loadRuntimeStrategies = async (
   userName: string,
 ): Promise<StrategyRuntimeConfig[]> => {
@@ -173,6 +178,13 @@ const loadRuntimeStrategies = async (
         strategyName,
         strategyConfig,
       }): Promise<StrategyRuntimeConfig | null> => {
+        if (!isStrategyRuntimeEnabled(strategyConfig)) {
+          logger.info(
+            'Skip inactive strategy config by ENABLE=false: %s',
+            strategyName,
+          );
+          return null;
+        }
         const strategyCreator = await getStrategyCreator(
           strategyName,
           projectRoot,
