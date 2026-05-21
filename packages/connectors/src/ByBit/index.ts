@@ -42,6 +42,14 @@ const KLINE_RATE_LIMIT_MAX_ATTEMPTS = 3;
 const KLINE_RATE_LIMIT_BASE_DELAY_MS = 800;
 const KLINE_RATE_LIMIT_MAX_DELAY_MS = 10_000;
 const KLINE_RATE_LIMIT_RESET_BUFFER_MS = 50;
+const POSITION_SNAPSHOT_TIMEOUT_MS = Math.max(
+  1_000,
+  Number(process.env.TRADEJS_BYBIT_POSITION_TIMEOUT_MS ?? 10_000),
+);
+const POSITION_SNAPSHOT_CACHE_TTL_MS = Math.max(
+  250,
+  Number(process.env.TRADEJS_BYBIT_POSITION_CACHE_TTL_MS ?? 1_500),
+);
 const INTERVAL_TO_MINUTES: Record<string, number> = {
   '1': 1,
   '3': 3,
@@ -91,6 +99,11 @@ export const ByBitConnectorCreator: ConnectorCreator = async (config) => {
   let privateClientPromise: Promise<
     Awaited<ReturnType<typeof getClient>>
   > | null = null;
+  const positionSnapshotCache = new Map<
+    string,
+    { expiresAt: number; value: Position | null }
+  >();
+  const inflightPositionSnapshots = new Map<string, Promise<Position | null>>();
 
   const getPublicClient = async () => {
     publicClientPromise ??= getClient(config, 'public');
@@ -100,6 +113,66 @@ export const ByBitConnectorCreator: ConnectorCreator = async (config) => {
   const getPrivateClient = async () => {
     privateClientPromise ??= getClient(config, 'private');
     return privateClientPromise;
+  };
+
+  const withTimeout = async <T>(
+    promise: Promise<T>,
+    timeoutMs: number,
+    label: string,
+  ): Promise<T> => {
+    let timeoutHandle: NodeJS.Timeout | null = null;
+
+    try {
+      return await Promise.race([
+        promise,
+        new Promise<T>((_, reject) => {
+          timeoutHandle = setTimeout(() => {
+            reject(new Error(`${label} timed out after ${timeoutMs}ms`));
+          }, timeoutMs);
+        }),
+      ]);
+    } finally {
+      if (timeoutHandle) {
+        clearTimeout(timeoutHandle);
+      }
+    }
+  };
+
+  const setCachedPositionSnapshot = (
+    symbol: string,
+    value: Position | null,
+  ) => {
+    positionSnapshotCache.set(symbol, {
+      value,
+      expiresAt: Date.now() + POSITION_SNAPSHOT_CACHE_TTL_MS,
+    });
+  };
+
+  const getCachedPositionSnapshot = (
+    symbol: string,
+  ): Position | null | undefined => {
+    const cached = positionSnapshotCache.get(symbol);
+    if (!cached) {
+      return undefined;
+    }
+
+    if (cached.expiresAt <= Date.now()) {
+      positionSnapshotCache.delete(symbol);
+      return undefined;
+    }
+
+    return cached.value;
+  };
+
+  const invalidatePositionSnapshot = (symbol?: string) => {
+    if (typeof symbol === 'string' && symbol.length > 0) {
+      positionSnapshotCache.delete(symbol);
+      inflightPositionSnapshots.delete(symbol);
+      return;
+    }
+
+    positionSnapshotCache.clear();
+    inflightPositionSnapshots.clear();
   };
 
   /** -------------------- low-level fetch from exchange -------------------- */
@@ -215,50 +288,85 @@ export const ByBitConnectorCreator: ConnectorCreator = async (config) => {
     return INTERVAL_TO_MINUTES[String(interval)] ?? null;
   };
 
+  const fetchPositionSnapshot = async (
+    symbol: string,
+  ): Promise<Position | null> => {
+    try {
+      const client = await getPrivateClient();
+
+      if (!client) {
+        return null;
+      }
+
+      const positionRes = await withTimeout(
+        client.getPositionInfo({
+          symbol,
+          category: MARKET_CATEGORY,
+        }),
+        POSITION_SNAPSHOT_TIMEOUT_MS,
+        `bybit getPositionInfo ${symbol}`,
+      );
+
+      if (positionRes.retCode !== 0) {
+        logger.log(
+          getLogLevel(positionRes),
+          'position retCode: %s, %s',
+          symbol,
+          positionRes.retCode,
+        );
+        return null;
+      }
+
+      const positions = mapPositionData(positionRes.result.list);
+
+      if (!positions || _.isEmpty(positions)) {
+        return null;
+      }
+
+      const position = positions[0] as Position;
+
+      logger.log(
+        'debug',
+        'position: %s %s qty=%s price=%s',
+        position.symbol,
+        position.direction,
+        position.qty,
+        position.price,
+      );
+
+      return {
+        ...position,
+      };
+    } catch (error) {
+      logger.log('error', 'getPositionSnapshot failed: %s %s', symbol, error);
+      return null;
+    }
+  };
+
   const getPositionSnapshot = async (
     symbol: string,
   ): Promise<Position | null> => {
-    const client = await getPrivateClient();
-
-    if (!client) {
-      return null;
+    const cached = getCachedPositionSnapshot(symbol);
+    if (cached !== undefined) {
+      return cached;
     }
 
-    const positionRes = await client.getPositionInfo({
-      symbol,
-      category: MARKET_CATEGORY,
-    });
-
-    if (positionRes.retCode !== 0) {
-      logger.log(
-        getLogLevel(positionRes),
-        'position retCode: %s, %s',
-        symbol,
-        positionRes.retCode,
-      );
-      return null;
+    const inflight = inflightPositionSnapshots.get(symbol);
+    if (inflight) {
+      return inflight;
     }
 
-    const positions = mapPositionData(positionRes.result.list);
+    const nextSnapshotPromise = fetchPositionSnapshot(symbol)
+      .then((position) => {
+        setCachedPositionSnapshot(symbol, position);
+        return position;
+      })
+      .finally(() => {
+        inflightPositionSnapshots.delete(symbol);
+      });
 
-    if (!positions || _.isEmpty(positions)) {
-      return null;
-    }
-
-    const position = positions[0] as Position;
-
-    logger.log(
-      'debug',
-      'position: %s %s qty=%s price=%s',
-      position.symbol,
-      position.direction,
-      position.qty,
-      position.price,
-    );
-
-    return {
-      ...position,
-    };
+    inflightPositionSnapshots.set(symbol, nextSnapshotPromise);
+    return nextSnapshotPromise;
   };
 
   const setTakeProfits = async ({
@@ -681,6 +789,7 @@ export const ByBitConnectorCreator: ConnectorCreator = async (config) => {
     },
 
     placeOrder: async ({ symbol, price, qty, direction, isLimit, orderId }) => {
+      invalidatePositionSnapshot(symbol);
       const client = await getPrivateClient();
       const marketDataClient = await getPublicClient();
 
@@ -755,6 +864,7 @@ export const ByBitConnectorCreator: ConnectorCreator = async (config) => {
         return false;
       }
 
+      invalidatePositionSnapshot(symbol);
       return true;
     },
 
@@ -763,6 +873,7 @@ export const ByBitConnectorCreator: ConnectorCreator = async (config) => {
     setStopLoss,
 
     closePosition: async ({ symbol, direction }) => {
+      invalidatePositionSnapshot(symbol);
       const client = await getPrivateClient();
 
       if (!client) {
@@ -790,6 +901,7 @@ export const ByBitConnectorCreator: ConnectorCreator = async (config) => {
         return false;
       }
 
+      invalidatePositionSnapshot(symbol);
       return true;
     },
 

@@ -205,6 +205,64 @@ describe('ByBitConnectorCreator', () => {
     );
   });
 
+  it('deduplicates concurrent getPosition requests for the same symbol', async () => {
+    let resolvePositionInfo:
+      | ((value: {
+          retCode: number;
+          result: { list: Array<{ raw: boolean }> };
+        }) => void)
+      | null = null;
+    const client = {
+      getPositionInfo: jest.fn(
+        () =>
+          new Promise((resolve) => {
+            resolvePositionInfo = resolve;
+          }),
+      ),
+    };
+    mockedGetClient.mockResolvedValue(client as any);
+    mockedMapPositionData.mockReturnValue([
+      { symbol: 'BTCUSDT', price: 100, qty: 1, direction: 'LONG' } as any,
+    ]);
+
+    const connector = await ByBitConnectorCreator({ userName: 'alice' });
+    const firstPromise = connector.getPosition('BTCUSDT');
+    const secondPromise = connector.getPosition('BTCUSDT');
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(client.getPositionInfo).toHaveBeenCalledTimes(1);
+
+    resolvePositionInfo?.({
+      retCode: 0,
+      result: { list: [{ raw: true }] },
+    });
+
+    await expect(firstPromise).resolves.toEqual(
+      expect.objectContaining({ symbol: 'BTCUSDT', direction: 'LONG' }),
+    );
+    await expect(secondPromise).resolves.toEqual(
+      expect.objectContaining({ symbol: 'BTCUSDT', direction: 'LONG' }),
+    );
+  });
+
+  it('returns null from getPosition when exchange request throws', async () => {
+    const client = {
+      getPositionInfo: jest.fn().mockRejectedValue(new Error('socket hang up')),
+    };
+    mockedGetClient.mockResolvedValue(client as any);
+
+    const connector = await ByBitConnectorCreator({ userName: 'alice' });
+    const position = await connector.getPosition('BTCUSDT');
+
+    expect(position).toBeNull();
+    expect(mockedLoggerLog).toHaveBeenCalledWith(
+      'error',
+      'getPositionSnapshot failed: %s %s',
+      'BTCUSDT',
+      expect.any(Error),
+    );
+  });
+
   it('maps open position pnl snapshots from exchange response', async () => {
     const client = {
       getPositionInfo: jest.fn().mockResolvedValue({
@@ -890,6 +948,54 @@ describe('ByBitConnectorCreator', () => {
     });
 
     expect(ok).toBe(false);
+  });
+
+  it('invalidates cached position snapshot after a successful placeOrder', async () => {
+    const client = {
+      getPositionInfo: jest
+        .fn()
+        .mockResolvedValueOnce({
+          retCode: 0,
+          result: { list: [{ raw: false }] },
+        })
+        .mockResolvedValueOnce({
+          retCode: 0,
+          result: { list: [{ raw: true }] },
+        }),
+      setLeverage: jest.fn().mockResolvedValue({}),
+      submitOrder: jest.fn().mockResolvedValue({ retCode: 0 }),
+    };
+    mockedGetClient.mockResolvedValue(client as any);
+    mockedGetSymbolMeta.mockResolvedValue({
+      tickSize: 0.1,
+      qtyStep: 0.001,
+      minOrderQty: 0.001,
+    } as any);
+    mockedNormalizeQty.mockReturnValue({ qtyNum: 1, qtyStr: '1.000' } as any);
+    mockedMapPositionData
+      .mockReturnValueOnce([])
+      .mockReturnValueOnce([
+        { symbol: 'BTCUSDT', price: 100, qty: 1, direction: 'LONG' } as any,
+      ]);
+
+    const connector = await ByBitConnectorCreator({ userName: 'alice' });
+
+    expect(await connector.getPosition('BTCUSDT')).toBeNull();
+
+    await expect(
+      connector.placeOrder({
+        symbol: 'BTCUSDT',
+        price: 100,
+        qty: 1,
+        direction: 'LONG',
+        timestamp: Date.now(),
+      } as any),
+    ).resolves.toBe(true);
+
+    await expect(connector.getPosition('BTCUSDT')).resolves.toEqual(
+      expect.objectContaining({ symbol: 'BTCUSDT', direction: 'LONG' }),
+    );
+    expect(client.getPositionInfo).toHaveBeenCalledTimes(2);
   });
 
   it('returns true from closePosition and uses opposite side', async () => {

@@ -33,6 +33,7 @@ const scriptLoaders: Record<string, ScriptLoader> = {
   'ml-train:latest': () => import('./scripts/mlTrainLatestSelect'),
   'research:auto': () => import('./scripts/researchAuto'),
   results: () => import('./scripts/results'),
+  'server-health': () => import('./scripts/serverHealth'),
   'runtime-parity': () => import('./scripts/runtimeParity'),
   signals: () => import('./scripts/signals'),
   replay: () => import('./scripts/replay'),
