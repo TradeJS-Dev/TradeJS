@@ -1,6 +1,7 @@
 import {
   collectServerHealthSnapshot,
   evaluateServerHealth,
+  resolveServerHealthThresholds,
   type ServerHealthThresholds,
 } from '../scripts/serverHealth';
 
@@ -75,5 +76,18 @@ describe('serverHealth', () => {
     expect(Number.isFinite(snapshot.loadPerCpu1)).toBe(true);
     expect(Number.isFinite(snapshot.loadPerCpu5)).toBe(true);
     expect(snapshot.memoryUsedPct).toBeGreaterThanOrEqual(0);
+  });
+
+  it('falls back to decimal defaults when args-style flags produce zero thresholds', () => {
+    expect(
+      resolveServerHealthThresholds({
+        loadPerCpuWarn: 0,
+        loadPerCpuRecover: 0,
+        memoryWarnPct: 0,
+        memoryRecoverPct: 0,
+        diskWarnPct: 0,
+        diskRecoverPct: 0,
+      }),
+    ).toEqual(thresholds);
   });
 });

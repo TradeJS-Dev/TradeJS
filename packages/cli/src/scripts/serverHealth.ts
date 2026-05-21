@@ -59,6 +59,14 @@ const DEFAULT_STATE: ServerHealthState = {
   lastOkAt: null,
   activeIssueCodes: [],
 };
+const DEFAULT_THRESHOLDS: ServerHealthThresholds = {
+  loadPerCpuWarn: 0.9,
+  loadPerCpuRecover: 0.7,
+  memoryWarnPct: 92,
+  memoryRecoverPct: 88,
+  diskWarnPct: 95,
+  diskRecoverPct: 92,
+};
 
 const escapeHtml = (value: string) =>
   value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -245,6 +253,49 @@ const buildRecoveryMessage = ({
 const getStateKey = (userName: string, hostname: string) =>
   `ops:server-health:${userName}:${hostname}`;
 
+const toFiniteNumber = (value: unknown): number | null => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
+export const resolveServerHealthThresholds = (
+  raw: Partial<Record<keyof ServerHealthThresholds, unknown>>,
+): ServerHealthThresholds => {
+  const loadPerCpuWarn = toFiniteNumber(raw.loadPerCpuWarn);
+  const loadPerCpuRecover = toFiniteNumber(raw.loadPerCpuRecover);
+  const memoryWarnPct = toFiniteNumber(raw.memoryWarnPct);
+  const memoryRecoverPct = toFiniteNumber(raw.memoryRecoverPct);
+  const diskWarnPct = toFiniteNumber(raw.diskWarnPct);
+  const diskRecoverPct = toFiniteNumber(raw.diskRecoverPct);
+
+  return {
+    loadPerCpuWarn:
+      loadPerCpuWarn != null && loadPerCpuWarn > 0
+        ? loadPerCpuWarn
+        : DEFAULT_THRESHOLDS.loadPerCpuWarn,
+    loadPerCpuRecover:
+      loadPerCpuRecover != null && loadPerCpuRecover > 0
+        ? loadPerCpuRecover
+        : DEFAULT_THRESHOLDS.loadPerCpuRecover,
+    memoryWarnPct:
+      memoryWarnPct != null && memoryWarnPct > 0
+        ? memoryWarnPct
+        : DEFAULT_THRESHOLDS.memoryWarnPct,
+    memoryRecoverPct:
+      memoryRecoverPct != null && memoryRecoverPct > 0
+        ? memoryRecoverPct
+        : DEFAULT_THRESHOLDS.memoryRecoverPct,
+    diskWarnPct:
+      diskWarnPct != null && diskWarnPct > 0
+        ? diskWarnPct
+        : DEFAULT_THRESHOLDS.diskWarnPct,
+    diskRecoverPct:
+      diskRecoverPct != null && diskRecoverPct > 0
+        ? diskRecoverPct
+        : DEFAULT_THRESHOLDS.diskRecoverPct,
+  };
+};
+
 args.option(['u', 'user'], 'Use user config', 'root');
 args.option(['P', 'printOnly'], 'Print report instead of Telegram', false);
 args.option('diskPath', 'Filesystem path to inspect for disk pressure', '/');
@@ -256,36 +307,37 @@ args.option(
 args.option(
   'loadPerCpuWarn',
   'Alert when 1m load per CPU reaches this value',
-  0.9,
+  String(DEFAULT_THRESHOLDS.loadPerCpuWarn),
 );
-args.option('loadPerCpuRecover', 'Recovery threshold for 1m load per CPU', 0.7);
+args.option(
+  'loadPerCpuRecover',
+  'Recovery threshold for 1m load per CPU',
+  String(DEFAULT_THRESHOLDS.loadPerCpuRecover),
+);
 args.option(
   'memoryWarnPct',
   'Alert when memory used percent reaches this value',
-  92,
+  String(DEFAULT_THRESHOLDS.memoryWarnPct),
 );
 args.option(
   'memoryRecoverPct',
   'Recovery threshold for memory used percent',
-  88,
+  String(DEFAULT_THRESHOLDS.memoryRecoverPct),
 );
 args.option(
   'diskWarnPct',
   'Alert when disk used percent reaches this value',
-  95,
+  String(DEFAULT_THRESHOLDS.diskWarnPct),
 );
-args.option('diskRecoverPct', 'Recovery threshold for disk used percent', 92);
+args.option(
+  'diskRecoverPct',
+  'Recovery threshold for disk used percent',
+  String(DEFAULT_THRESHOLDS.diskRecoverPct),
+);
 
 export const main = async () => {
   const flags = args.parse(process.argv);
-  const thresholds: ServerHealthThresholds = {
-    loadPerCpuWarn: Number(flags.loadPerCpuWarn),
-    loadPerCpuRecover: Number(flags.loadPerCpuRecover),
-    memoryWarnPct: Number(flags.memoryWarnPct),
-    memoryRecoverPct: Number(flags.memoryRecoverPct),
-    diskWarnPct: Number(flags.diskWarnPct),
-    diskRecoverPct: Number(flags.diskRecoverPct),
-  };
+  const thresholds = resolveServerHealthThresholds(flags);
   const snapshot = collectServerHealthSnapshot(String(flags.diskPath || '/'));
   const stateKey = getStateKey(String(flags.user), snapshot.hostname);
   const prevState = ((await getData(stateKey, DEFAULT_STATE)) ??
