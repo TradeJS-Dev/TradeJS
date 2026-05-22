@@ -117,8 +117,8 @@ const ensureTsNodeRegistered = async () => {
   tsNode.register?.({
     transpileOnly: true,
     compilerOptions: {
-      module: 'commonjs',
-      moduleResolution: 'node',
+      module: 'Node16',
+      moduleResolution: 'node16',
     },
   });
   tsNodeRegistered = true;

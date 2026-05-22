@@ -64,6 +64,36 @@ describe('tradejsConfig utils', () => {
     );
   });
 
+  it('loads .ts config when tsconfig enables resolvePackageJsonImports', async () => {
+    const cwd = createTempDir();
+    const configPath = path.join(cwd, 'tradejs.config.ts');
+
+    fs.writeFileSync(
+      path.join(cwd, 'tsconfig.json'),
+      JSON.stringify({
+        compilerOptions: {
+          module: 'Node16',
+          moduleResolution: 'node16',
+          resolvePackageJsonImports: true,
+        },
+      }),
+      'utf8',
+    );
+    fs.writeFileSync(
+      configPath,
+      `export default { strategies: ['node16-config'] };`,
+      'utf8',
+    );
+
+    const config = await loadTradejsConfig(cwd);
+
+    expect(config).toEqual({
+      strategies: ['node16-config'],
+      indicators: [],
+      connectors: [],
+    });
+  });
+
   it('preserves function hooks from config files', async () => {
     const cwd = createTempDir();
     const configPath = path.join(cwd, 'tradejs.config.ts');
