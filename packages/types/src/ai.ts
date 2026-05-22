@@ -25,5 +25,6 @@ export interface AiDatasetRow {
   testId?: string;
   testSuiteId?: string;
   testName?: string;
+  configId?: string;
   connectorName?: string;
 }

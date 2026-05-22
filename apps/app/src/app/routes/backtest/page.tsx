@@ -21,6 +21,7 @@ import { parseTestName } from '@tradejs/core/backtest';
 
 const ALL_STRATEGIES = '__all__';
 const ALL_SUITES = '__all__';
+const ALL_CONFIGS = '__all__';
 
 const Backtest = () => {
   const { tests, loadding, fulFilled } = useTestList();
@@ -75,6 +76,41 @@ const Backtest = () => {
     ];
   }, [tests, selectedStrategy]);
   const [selectedSuite, setSelectedSuite] = useState(ALL_SUITES);
+  const configItems = useMemo(() => {
+    const names = new Set<string>();
+    for (const test of tests) {
+      if (
+        selectedStrategy !== ALL_STRATEGIES &&
+        test.data?.strategyName !== selectedStrategy
+      ) {
+        continue;
+      }
+
+      if (selectedSuite !== ALL_SUITES) {
+        const { testSuiteId } = parseTestName(test.value);
+        if (testSuiteId !== selectedSuite) {
+          continue;
+        }
+      }
+
+      const configId =
+        typeof test.data?.configId === 'string' ? test.data.configId : '';
+      if (configId) {
+        names.add(configId);
+      }
+    }
+
+    return [
+      { label: 'All configs', value: ALL_CONFIGS },
+      ...Array.from(names)
+        .sort()
+        .map((configId) => ({
+          label: configId,
+          value: configId,
+        })),
+    ];
+  }, [tests, selectedStrategy, selectedSuite]);
+  const [selectedConfigId, setSelectedConfigId] = useState(ALL_CONFIGS);
 
   useEffect(() => {
     if (!strategyItems.some((item) => item.value === selectedStrategy)) {
@@ -88,6 +124,12 @@ const Backtest = () => {
     }
   }, [suiteItems, selectedSuite]);
 
+  useEffect(() => {
+    if (!configItems.some((item) => item.value === selectedConfigId)) {
+      setSelectedConfigId(configItems[0]?.value || ALL_CONFIGS);
+    }
+  }, [configItems, selectedConfigId]);
+
   const filteredTests = useMemo(() => {
     return tests.filter((test) => {
       if (
@@ -99,12 +141,18 @@ const Backtest = () => {
 
       if (selectedSuite !== ALL_SUITES) {
         const { testSuiteId } = parseTestName(test.value);
-        return testSuiteId === selectedSuite;
+        if (testSuiteId !== selectedSuite) {
+          return false;
+        }
+      }
+
+      if (selectedConfigId !== ALL_CONFIGS) {
+        return test.data?.configId === selectedConfigId;
       }
 
       return true;
     });
-  }, [tests, selectedStrategy, selectedSuite]);
+  }, [tests, selectedStrategy, selectedSuite, selectedConfigId]);
 
   const filteredTestNames = useMemo(
     () => filteredTests.map((test) => test.value),
@@ -272,6 +320,16 @@ const Backtest = () => {
                 defaultValue={[selectedSuite]}
                 onChange={(value) => setSelectedSuite(value[0] || ALL_SUITES)}
                 items={suiteItems}
+                width="180px"
+              />
+              <Select
+                placeholder="ConfigId"
+                value={[selectedConfigId]}
+                defaultValue={[selectedConfigId]}
+                onChange={(value) =>
+                  setSelectedConfigId(value[0] || ALL_CONFIGS)
+                }
+                items={configItems}
                 width="180px"
               />
             </Flex>

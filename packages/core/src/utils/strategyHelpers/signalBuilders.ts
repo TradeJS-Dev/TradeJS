@@ -41,6 +41,23 @@ type MlRuntimeConfigLike = {
   ML_THRESHOLD?: number;
 };
 
+const materializeSignalPayloadValue = (value: unknown): unknown => {
+  if (Array.isArray(value)) {
+    return value.map((item) => materializeSignalPayloadValue(item));
+  }
+
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, nested]) => [
+        key,
+        materializeSignalPayloadValue(nested),
+      ]),
+    );
+  }
+
+  return value;
+};
+
 export const mapAiRuntimeFromConfig = <TConfig extends AiRuntimeConfigLike>(
   config: TConfig,
   overrides: Partial<StrategyRuntimeAiOptions> = {},
@@ -99,6 +116,12 @@ export const buildStrategySignal = ({
               }
             )?.baseContext ?? baseContext,
         };
+  const normalizedAdditionalIndicators =
+    mergedAdditionalIndicators == null
+      ? mergedAdditionalIndicators
+      : (materializeSignalPayloadValue(
+          mergedAdditionalIndicators,
+        ) as typeof mergedAdditionalIndicators);
 
   return {
     signalId,
@@ -110,7 +133,7 @@ export const buildStrategySignal = ({
     figures,
     prices,
     indicators: normalizedIndicators,
-    additionalIndicators: mergedAdditionalIndicators,
+    additionalIndicators: normalizedAdditionalIndicators,
     isConfigFromBacktest,
   };
 };

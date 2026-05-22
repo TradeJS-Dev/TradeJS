@@ -20,6 +20,7 @@ export type MlSignalPayload = {
     testId?: string;
     testSuiteId?: string;
     testName?: string;
+    configId?: string;
     connectorName?: string;
   };
 };

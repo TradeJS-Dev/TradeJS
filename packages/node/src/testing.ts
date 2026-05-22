@@ -573,6 +573,7 @@ export const testing: TestingBox = async ({
   name,
   testId,
   testSuiteId,
+  configId,
   strategyName,
   strategyConfig,
   connectorName,
@@ -893,6 +894,7 @@ export const testing: TestingBox = async ({
           testId,
           testSuiteId,
           testName: name,
+          configId,
           symbol,
           strategyName,
           strategyConfig,
@@ -912,6 +914,7 @@ export const testing: TestingBox = async ({
         testId,
         testSuiteId,
         testName: name,
+        configId,
         connectorName,
       });
     }

@@ -146,6 +146,7 @@ export const toPersistedBacktestResultEntry = (
     name: result.test.name,
     testId: result.test.testId,
     testSuiteId: result.test.testSuiteId,
+    ...(result.test.configId ? { configId: result.test.configId } : {}),
     symbol: result.test.symbol,
     strategyName: result.test.strategyName,
     strategyConfig: result.test.strategyConfig,

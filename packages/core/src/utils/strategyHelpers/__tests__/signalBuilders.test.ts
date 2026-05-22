@@ -160,4 +160,189 @@ describe('buildStrategySignal', () => {
       maFast: [100],
     });
   });
+
+  it('materializes baseContext into plain data before storing it in the signal', () => {
+    let mtfGetterCalls = 0;
+    const liveBaseContext = {
+      candle: {
+        open: 100,
+        high: 101,
+        low: 99,
+        close: 100,
+        volume: 1,
+        timestamp: 1,
+        turnover: 100,
+      },
+      prevCandle: null,
+      raw: {
+        price: {
+          currentPrice: 100,
+          priceChange1hPct: null,
+          priceChange24hPct: null,
+          candleBodyPct: null,
+        },
+        trend: {
+          maFast: 100,
+          maMedium: null,
+          maSlow: null,
+          slopeFastPct: null,
+          slopeMediumPct: null,
+          slopeSlowPct: null,
+        },
+        volatility: {
+          atr: null,
+          atrPct: null,
+          bbUpper: null,
+          bbMiddle: null,
+          bbLower: null,
+          bbWidthPct: null,
+        },
+        momentum: {
+          macd: null,
+          macdSignal: null,
+          macdHistogram: null,
+        },
+        volume: {
+          obv: null,
+          smaObv: null,
+          volume: null,
+          volumeUsd: null,
+        },
+        levels: {
+          rangeHigh20: null,
+          rangeLow20: null,
+          localHigh20: null,
+          localLow20: null,
+        },
+      },
+      regime: {
+        trend: {
+          maStack: 'mixed',
+          slopeState: 'flat',
+          trendStrength: null,
+        },
+        volatility: {
+          atrPctRegime: 'normal',
+          bbWidthRegime: 'normal',
+          atrPctZScore: null,
+        },
+        momentum: {
+          macdState: 'neutral',
+          momentumBias: 'neutral',
+        },
+        session: {
+          primary: null,
+          isOverlap: false,
+        },
+      },
+      structure: {
+        levels: {
+          distanceToRangeHighPct: null,
+          distanceToRangeLowPct: null,
+          rangePositionPct: null,
+        },
+        localRange: {
+          localHighBreakout: false,
+          localLowBreakdown: false,
+          localHighRejection: false,
+          localLowReclaim: false,
+        },
+        levelsMeta: {
+          highTouchCount20: null,
+          lowTouchCount20: null,
+          dominantTouchCount20: null,
+        },
+        candleQuality: {
+          upperWickPct: null,
+          lowerWickPct: null,
+          rejectionWickScore: null,
+        },
+      },
+      participation: {
+        volume: {
+          volumeRel20: null,
+          turnoverRel20: null,
+          volumeTrendSlope: null,
+          obvSlope: null,
+          effortVsResult: null,
+        },
+      },
+      relative: {
+        benchmark: {
+          maFast: null,
+          maSlow: null,
+          bias: 'neutral',
+          relativeStrength1h: null,
+          relativeStrength4h: null,
+          relativeStrength1d: null,
+          trendAlignment: 'neutral',
+        },
+        execution: {
+          venueSpread: null,
+          venueSpreadZScore: null,
+        },
+      },
+      get mtf() {
+        mtfGetterCalls += 1;
+        return {
+          candles: {
+            m15: [{ close: 101, timestamp: 1 }],
+            h1: [],
+            h4: [],
+            d1: [],
+          },
+          benchmarkCandles: {
+            m15: [],
+            h1: [],
+            h4: [],
+            d1: [],
+          },
+        };
+      },
+    } as unknown as BaseStrategyContextSnapshot;
+
+    const signal = buildStrategySignal({
+      signalId: 's2',
+      strategy: 'TrendShift',
+      symbol: 'ETHUSDT',
+      interval: '15' as any,
+      direction: 'SHORT',
+      timestamp: 2,
+      prices: {
+        currentPrice: 100,
+        takeProfitPrice: 90,
+        stopLossPrice: 105,
+        riskRatio: 2,
+      },
+      indicators: {
+        baseContext: liveBaseContext,
+      },
+    });
+
+    expect(mtfGetterCalls).toBe(1);
+    expect(signal.additionalIndicators?.baseContext).not.toBe(liveBaseContext);
+    expect(signal.additionalIndicators?.baseContext).toEqual(
+      expect.objectContaining({
+        raw: expect.objectContaining({
+          trend: expect.objectContaining({
+            maFast: 100,
+          }),
+        }),
+        mtf: {
+          candles: {
+            m15: [{ close: 101, timestamp: 1 }],
+            h1: [],
+            h4: [],
+            d1: [],
+          },
+          benchmarkCandles: {
+            m15: [],
+            h1: [],
+            h4: [],
+            d1: [],
+          },
+        },
+      }),
+    );
+  });
 });

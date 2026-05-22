@@ -144,14 +144,16 @@ export const buildTrendShiftSignalContext = ({
 } => {
   const maFast = getIndicatorsCoinMaFast(indicators);
   const maSlow = getIndicatorsCoinMaSlow(indicators);
-  const coinBias: TrendShiftSignalContext['coinBias'] =
-    maFast != null && maSlow != null
-      ? maFast > maSlow
-        ? 'bullish'
-        : maFast < maSlow
-          ? 'bearish'
-          : 'neutral'
-      : 'unknown';
+  let coinBias: TrendShiftSignalContext['coinBias'] = 'unknown';
+  if (maFast != null && maSlow != null) {
+    if (maFast > maSlow) {
+      coinBias = 'bullish';
+    } else if (maFast < maSlow) {
+      coinBias = 'bearish';
+    } else {
+      coinBias = 'neutral';
+    }
+  }
   const signalDirection = snapshot.bullFlip
     ? 'LONG'
     : snapshot.bearFlip

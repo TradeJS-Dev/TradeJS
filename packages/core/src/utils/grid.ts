@@ -100,12 +100,14 @@ export const createTestSuite = (
 
   return tickers.flatMap((symbol) =>
     paramGrid.map((params) => {
-      const testId = buildConfigTestId(params);
+      const testId = uuid(6);
+      const configId = buildConfigTestId(params);
       return {
         userName,
         name: `${symbol}_${testSuiteId}_${testId}`,
         testId,
         testSuiteId,
+        configId,
         symbol,
         options: { start, end },
         strategyName,

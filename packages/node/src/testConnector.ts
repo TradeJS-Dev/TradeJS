@@ -26,6 +26,7 @@ export const createTestConnector: TestConnectorCreator = (
   let amount = INITIAL_BACKTEST_AMOUNT;
   let originalQty = 0;
   let currentPositionProfit = 0;
+  let currentSignalId: string | null = null;
   let takeProfits: Tp[] = [];
   let stopLossPrice: Sl = null;
   const closedSignalResults: Array<{ signalId: string; profit: number }> = [];
@@ -60,10 +61,9 @@ export const createTestConnector: TestConnectorCreator = (
     }
 
     if (context?.mlEnabled || context?.aiEnabled) {
-      const signalId = currentPosition.signal?.signalId;
-      if (signalId) {
+      if (currentSignalId) {
         closedSignalResults.push({
-          signalId,
+          signalId: currentSignalId,
           profit: round(currentPositionProfit),
         });
       }
@@ -82,6 +82,7 @@ export const createTestConnector: TestConnectorCreator = (
     });
 
     currentPosition = null;
+    currentSignalId = null;
     currentPositionProfit = 0;
   };
 
@@ -262,6 +263,10 @@ export const createTestConnector: TestConnectorCreator = (
       const isLong = order.direction === 'LONG';
 
       currentPosition = { ...order, amount };
+      currentSignalId =
+        typeof order.signal?.signalId === 'string' && order.signal.signalId
+          ? order.signal.signalId
+          : null;
       originalQty = order.qty;
 
       const { fee, profit } = getNetProfit({

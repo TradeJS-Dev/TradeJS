@@ -466,6 +466,39 @@ describe('testing backtest flow', () => {
     );
   });
 
+  it('still writes AI dataset rows in fast mode', async () => {
+    const data = [candle(1_000_050), candle(1_000_150), candle(1_000_250)];
+    mockByBitConnector.kline.mockResolvedValue(data);
+    mockBinanceConnector.kline.mockResolvedValue(data);
+    mockCoinbaseConnector.kline.mockResolvedValue(data);
+    mockStrategy
+      .mockResolvedValueOnce({
+        signalId: 's-fast',
+        symbol: 'ETHUSDT',
+        strategy: 'TrendLine',
+        direction: 'LONG',
+        timestamp: 1_000_150,
+      })
+      .mockResolvedValueOnce('HOLD');
+    mockTestConnector.drainMlResultsBatch.mockResolvedValueOnce([
+      { signalId: 's-fast', profit: 6.5 },
+    ]);
+
+    await testing(createTest({ ai: true, fast: true, chunkId: 'worker-fast' }));
+
+    expect(mockAppendAiDatasetRow).toHaveBeenCalledWith(
+      expect.objectContaining({
+        strategyName: 'TrendLine',
+        chunkId: 'worker-fast',
+        row: expect.objectContaining({
+          signalId: 's-fast',
+          symbol: 'ETHUSDT',
+          profit: 6.5,
+        }),
+      }),
+    );
+  });
+
   it('does not write ml row when strategy returns string', async () => {
     const data = [candle(1_000_050), candle(1_000_150), candle(1_000_250)];
     mockByBitConnector.kline.mockResolvedValue(data);

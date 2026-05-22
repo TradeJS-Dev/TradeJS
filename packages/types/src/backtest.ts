@@ -56,6 +56,7 @@ export interface Test extends BacktestRunConfig {
   name: string;
   testId: string;
   testSuiteId: string;
+  configId?: string;
   symbol: string;
   options: TestingOptions;
   ml?: boolean;

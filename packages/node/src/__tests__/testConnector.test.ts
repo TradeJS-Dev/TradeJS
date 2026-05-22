@@ -403,4 +403,36 @@ describe('testConnector', () => {
       }),
     );
   });
+
+  it('still tracks closed signal results in fast mode for AI/ML dataset writers', async () => {
+    const connector = createTestConnector(baseConnector as any, {
+      userName: 'alice',
+      aiEnabled: true,
+      fastMode: true,
+    });
+
+    await connector.placeOrder({
+      symbol: 'ETHUSDT',
+      qty: 1,
+      price: 100,
+      isLimit: false,
+      timestamp: 1,
+      direction: 'LONG',
+      signal: {
+        signalId: 'sig-fast-ai',
+      } as any,
+    });
+    await connector.closePosition({
+      symbol: 'ETHUSDT',
+      price: 105,
+      isLimit: false,
+      timestamp: 2,
+      direction: 'LONG',
+    });
+
+    expect(await connector.drainMlResultsBatch()).toEqual([
+      { signalId: 'sig-fast-ai', profit: 4.39 },
+    ]);
+    expect(await connector.drainMlResultsBatch()).toEqual([]);
+  });
 });
