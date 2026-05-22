@@ -91,6 +91,7 @@ const buildReplayChartSnapshot = (params: {
   const strategies: StrategyChartSnapshot[] = replayResult.strategies.map(
     ({ strategyName, strategyConfig, orderLog, stat }) => ({
       cardId: `${strategyName}-${generatedAt}`,
+      generatedAt,
       strategyName,
       title: strategyName,
       subtitle: runLabel,
@@ -908,12 +909,16 @@ const finishReplay = async ({
   );
 
   if (replayChartSnapshot) {
-    await setData(
-      redisKeys.strategyCharts(replayUserName, 'replay'),
-      replayChartSnapshot,
-      {
-        expire: 0,
-      },
+    await Promise.all(
+      replayChartSnapshot.strategies.map((card) =>
+        setData(
+          redisKeys.strategyChartCard(replayUserName, 'replay', card.cardId),
+          card,
+          {
+            expire: 0,
+          },
+        ),
+      ),
     );
   }
 

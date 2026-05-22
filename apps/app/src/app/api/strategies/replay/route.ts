@@ -1,23 +1,36 @@
 import { NextResponse } from 'next/server';
-import type { StrategyChartsSnapshotResponse } from '@tradejs/types';
-import { getData, redisKeys } from '@tradejs/infra/redis';
+import type {
+  StrategyChartSnapshot,
+  StrategyChartsSnapshotResponse,
+} from '@tradejs/types';
+import { getData, getKeys, redisKeys } from '@tradejs/infra/redis';
 import { getCurrentUserName } from '#app/lib/currentUser';
 
 export const dynamic = 'force-dynamic';
 
-const EMPTY_RESPONSE: StrategyChartsSnapshotResponse = {
-  mode: 'replay',
-  generatedAt: 0,
-  runLabel: '',
-  strategies: [],
-};
-
 export async function GET() {
   const userName = (await getCurrentUserName()) || 'root';
-  const data = (await getData(
-    redisKeys.strategyCharts(userName, 'replay'),
-    EMPTY_RESPONSE,
-  )) as StrategyChartsSnapshotResponse;
+  const keys = await getKeys(redisKeys.strategyChartCards(userName, 'replay'));
+  const strategies = (
+    await Promise.all(
+      keys.map(
+        (key) => getData(key, null) as Promise<StrategyChartSnapshot | null>,
+      ),
+    )
+  )
+    .filter((card): card is StrategyChartSnapshot => Boolean(card))
+    .sort(
+      (left, right) =>
+        right.generatedAt - left.generatedAt ||
+        left.title.localeCompare(right.title),
+    );
 
-  return NextResponse.json(data || EMPTY_RESPONSE);
+  const data: StrategyChartsSnapshotResponse = {
+    mode: 'replay',
+    generatedAt: strategies[0]?.generatedAt ?? 0,
+    runLabel: '',
+    strategies,
+  };
+
+  return NextResponse.json(data);
 }

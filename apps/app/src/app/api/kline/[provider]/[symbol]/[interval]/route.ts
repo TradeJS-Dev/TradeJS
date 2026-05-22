@@ -46,17 +46,12 @@ type PluginRegistrySnapshot = {
 };
 
 declare global {
-  // eslint-disable-next-line no-var
   var __tradejsKlineRawCache__: ManagedKlineCache | undefined;
-  // eslint-disable-next-line no-var
   var __tradejsKlineBtcRawCache__: ManagedKlineCache | undefined;
-  // eslint-disable-next-line no-var
   var __tradejsKlineEnrichedCache__: ManagedKlineCache | undefined;
-  // eslint-disable-next-line no-var
   var __tradejsKlineInflightRequests__:
     | Map<string, Promise<KlineChartData>>
     | undefined;
-  // eslint-disable-next-line no-var
   var __tradejsPluginRegistrySnapshotPromise__:
     | Promise<PluginRegistrySnapshot>
     | undefined;

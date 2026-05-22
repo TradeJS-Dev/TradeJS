@@ -1,9 +1,5 @@
-const { FlatCompat } = require('@eslint/eslintrc');
+const nextCoreWebVitals = require('eslint-config-next/core-web-vitals');
 const typescriptEslintPlugin = require('@typescript-eslint/eslint-plugin');
-
-const compat = new FlatCompat({
-  baseDirectory: __dirname,
-});
 
 const unusedVarsOptions = {
   argsIgnorePattern: '^_',
@@ -16,11 +12,14 @@ module.exports = [
   {
     ignores: ['**/dist/**', '**/.next/**'],
   },
-  ...compat.extends('next/core-web-vitals'),
+  ...nextCoreWebVitals,
   {
     rules: {
       'no-duplicate-imports': 'error',
       'no-unused-vars': ['warn', unusedVarsOptions],
+      'react-hooks/preserve-manual-memoization': 'off',
+      'react-hooks/refs': 'off',
+      'react-hooks/set-state-in-effect': 'off',
     },
   },
   {

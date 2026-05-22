@@ -121,6 +121,21 @@ const RuntimeStrategiesPage = () => {
     );
   }, [snapshotData?.strategies, selectedStrategy]);
 
+  const handleSnapshotDeleted = useCallback((cardId: string) => {
+    setSnapshotData((prev) => {
+      if (!prev) {
+        return prev;
+      }
+
+      return {
+        ...prev,
+        strategies: prev.strategies.filter(
+          (strategy) => strategy.cardId !== cardId,
+        ),
+      };
+    });
+  }, []);
+
   const noData =
     fulfilled &&
     !loading &&
@@ -196,12 +211,6 @@ const RuntimeStrategiesPage = () => {
             </Flex>
           </Flex>
 
-          {mode !== 'runtime' && snapshotData?.runLabel ? (
-            <Text pl={4} mb={3} fontSize="sm" color="gray.500">
-              {snapshotData.runLabel}
-            </Text>
-          ) : null}
-
           {error ? (
             <Box
               ml={2}
@@ -248,6 +257,8 @@ const RuntimeStrategiesPage = () => {
                 <StrategySnapshotCard
                   key={strategy.cardId}
                   snapshot={strategy}
+                  mode={mode}
+                  onDeleted={handleSnapshotDeleted}
                   emptyText={
                     mode === 'replay'
                       ? 'No replay trades for the selected run.'

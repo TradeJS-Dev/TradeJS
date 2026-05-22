@@ -10,6 +10,17 @@ import {
 } from '../scripts/serverHealth';
 
 describe('serverHealth', () => {
+  const memory = {
+    totalBytes: 12 * 1024 ** 3,
+    availableBytes: 3 * 1024 ** 3,
+    freeBytes: 1 * 1024 ** 3,
+    buffersBytes: 256 * 1024 ** 2,
+    cachedBytes: 2 * 1024 ** 3,
+    shmemBytes: 512 * 1024 ** 2,
+    slabBytes: 768 * 1024 ** 2,
+    reclaimableBytes: 384 * 1024 ** 2,
+  };
+
   const thresholds: ServerHealthThresholds = {
     loadPerCpuWarn: 0.9,
     loadPerCpuRecover: 0.7,
@@ -31,6 +42,7 @@ describe('serverHealth', () => {
         loadPerCpu1: 1,
         loadPerCpu5: 0.9,
         memoryUsedPct: 96,
+        memory,
         uptimeSec: 123,
         disk: {
           path: '/',
@@ -61,6 +73,7 @@ describe('serverHealth', () => {
         loadPerCpu1: 0.25,
         loadPerCpu5: 0.1875,
         memoryUsedPct: 71,
+        memory,
         uptimeSec: 123,
         disk: {
           path: '/',
@@ -107,6 +120,7 @@ describe('serverHealth', () => {
       loadPerCpu1: 14.63,
       loadPerCpu5: 12.33,
       memoryUsedPct: 86.5,
+      memory,
       uptimeSec: 3 * 3600 + 54 * 60,
       disk: {
         path: '/',
@@ -127,6 +141,8 @@ describe('serverHealth', () => {
     expect(content).toContain('host: prod-1');
     expect(content).toContain('=== top processes by cpu ===');
     expect(content).toContain('=== top processes by memory ===');
+    expect(content).toContain('=== memory breakdown ===');
+    expect(content).toContain('available: 3.0 GB');
     expect(attachment.filename).toContain('server-health-prod-1-2026-05-21');
     expect(typeof attachment.content).toBe('string');
   });
@@ -142,6 +158,7 @@ describe('serverHealth', () => {
       loadPerCpu1: 14.63,
       loadPerCpu5: 12.33,
       memoryUsedPct: 86.5,
+      memory,
       uptimeSec: 3 * 3600 + 54 * 60,
       disk: {
         path: '/',
@@ -191,6 +208,7 @@ describe('serverHealth', () => {
       loadPerCpu1: 0.05,
       loadPerCpu5: 0.04375,
       memoryUsedPct: 44,
+      memory,
       uptimeSec: 4 * 3600,
       disk: {
         path: '/',

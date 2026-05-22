@@ -4,6 +4,7 @@ import {
   getIndicatorsCoinMaFast,
   getIndicatorsCoinMaSlow,
 } from '../shared/baseContext';
+import { TrendShiftSignalContext } from './guardrails';
 
 export interface TrendShiftSnapshot {
   avg: number;
@@ -129,10 +130,21 @@ export const buildTrendShiftSignalContext = ({
 }: {
   snapshot: TrendShiftSnapshot;
   indicators?: Record<string, unknown>;
-}) => {
+}): TrendShiftSignalContext & {
+  trendState: 1 | -1;
+  rawTrend: 1 | -1;
+  bullFlipRaw: boolean;
+  bearFlipRaw: boolean;
+  adaptiveAtr: number;
+  upper: number;
+  lower: number;
+  hold: number;
+  coinMaFast: number | null;
+  coinMaSlow: number | null;
+} => {
   const maFast = getIndicatorsCoinMaFast(indicators);
   const maSlow = getIndicatorsCoinMaSlow(indicators);
-  const coinBias =
+  const coinBias: TrendShiftSignalContext['coinBias'] =
     maFast != null && maSlow != null
       ? maFast > maSlow
         ? 'bullish'

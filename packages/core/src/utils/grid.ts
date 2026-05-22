@@ -2,6 +2,7 @@ import _ from 'lodash';
 import { BACKTEST_DEFAULT_DAYS } from '../constants';
 import { TestSuite, StrategyConfig, StrategyConfigGrid } from '@tradejs/types';
 import { getTimestamp } from './timestamp';
+import { toJson } from './toJson';
 import { uuid } from './uuid';
 
 type GenericConfig = StrategyConfig;
@@ -36,6 +37,19 @@ export const generateParamGrid = <T extends StrategyConfig>(
 };
 
 export const generateName = (prefix: string): string => `${prefix}_${uuid(6)}`;
+
+const toBase36Hash = (value: string) => {
+  let hash = 0;
+
+  for (let index = 0; index < value.length; index += 1) {
+    hash = (hash * 31 + value.charCodeAt(index)) >>> 0;
+  }
+
+  return hash.toString(36).padStart(6, '0');
+};
+
+const buildConfigTestId = (config: StrategyConfig) =>
+  toBase36Hash(toJson(config)).slice(0, 6);
 
 export const mergeConfigs = (
   configs: GenericConfig[],
@@ -86,7 +100,7 @@ export const createTestSuite = (
 
   return tickers.flatMap((symbol) =>
     paramGrid.map((params) => {
-      const testId = uuid(6);
+      const testId = buildConfigTestId(params);
       return {
         userName,
         name: `${symbol}_${testSuiteId}_${testId}`,

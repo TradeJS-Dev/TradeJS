@@ -22,3 +22,18 @@ export const getReplayStrategies = async () =>
 
 export const getAiStrategies = async () =>
   API.get<StrategyChartsSnapshotResponse>(AI_API_PATH);
+
+export const deleteStrategyCard = async (
+  mode: 'replay' | 'ai',
+  cardId: string | undefined,
+): Promise<boolean> => {
+  if (!cardId) {
+    return false;
+  }
+
+  const data = await API.delete<{ deleted?: boolean }>(
+    `/api/strategies/${encodeURIComponent(mode)}/${encodeURIComponent(cardId)}`,
+  );
+
+  return data.deleted === true;
+};

@@ -1,7 +1,7 @@
 import 'dotenv/config';
 import { execFileSync } from 'node:child_process';
 import os from 'node:os';
-import { statfsSync } from 'node:fs';
+import { readFileSync, statfsSync } from 'node:fs';
 import args from 'args';
 import { getData, setData } from '@tradejs/infra/redis';
 import { sendTelegramReport } from '../lib/telegramReports';
@@ -19,6 +19,17 @@ type DiskSnapshot = {
   usedPct: number | null;
 };
 
+type MemorySnapshot = {
+  totalBytes: number;
+  availableBytes: number;
+  freeBytes: number;
+  buffersBytes: number | null;
+  cachedBytes: number | null;
+  shmemBytes: number | null;
+  slabBytes: number | null;
+  reclaimableBytes: number | null;
+};
+
 type ServerHealthSnapshot = {
   hostname: string;
   timestamp: number;
@@ -29,6 +40,7 @@ type ServerHealthSnapshot = {
   loadPerCpu1: number;
   loadPerCpu5: number;
   memoryUsedPct: number;
+  memory: MemorySnapshot;
   uptimeSec: number;
   disk: DiskSnapshot;
 };
@@ -116,23 +128,102 @@ const readDiskUsage = (path: string): DiskSnapshot => {
   }
 };
 
-const runDiagnosticCommand = (
-  command: string,
-  args: string[],
+const parseMeminfoBytes = (value: string): number | null => {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return null;
+  }
+  const [amountRaw, unitRaw = 'kB'] = trimmed.split(/\s+/, 2);
+  const amount = Number(amountRaw);
+  if (!Number.isFinite(amount)) {
+    return null;
+  }
+  const unit = unitRaw.toLowerCase();
+  if (unit === 'kb') {
+    return Math.round(amount * 1024);
+  }
+  if (unit === 'mb') {
+    return Math.round(amount * 1024 ** 2);
+  }
+  if (unit === 'gb') {
+    return Math.round(amount * 1024 ** 3);
+  }
+  return Math.round(amount);
+};
+
+const readMemorySnapshot = (): MemorySnapshot => {
+  const totalMem = os.totalmem();
+  const freeMem = os.freemem();
+
+  try {
+    const meminfo = readFileSync('/proc/meminfo', 'utf8');
+    const values = new Map<string, number>();
+    for (const line of meminfo.split('\n')) {
+      const match = line.match(/^([^:]+):\s*(.+)$/);
+      if (!match) {
+        continue;
+      }
+      const parsed = parseMeminfoBytes(match[2]);
+      if (parsed != null) {
+        values.set(match[1], parsed);
+      }
+    }
+
+    return {
+      totalBytes: values.get('MemTotal') ?? totalMem,
+      availableBytes: values.get('MemAvailable') ?? freeMem,
+      freeBytes: values.get('MemFree') ?? freeMem,
+      buffersBytes: values.get('Buffers') ?? null,
+      cachedBytes: values.get('Cached') ?? null,
+      shmemBytes: values.get('Shmem') ?? null,
+      slabBytes: values.get('Slab') ?? null,
+      reclaimableBytes: values.get('SReclaimable') ?? null,
+    };
+  } catch {
+    return {
+      totalBytes: totalMem,
+      availableBytes: freeMem,
+      freeBytes: freeMem,
+      buffersBytes: null,
+      cachedBytes: null,
+      shmemBytes: null,
+      slabBytes: null,
+      reclaimableBytes: null,
+    };
+  }
+};
+
+const runDiagnosticCommand = (command: string, args: string[]): string => {
+  const output = execFileSync(command, args, {
+    encoding: 'utf8',
+    timeout: 5_000,
+    maxBuffer: 1024 * 1024,
+    stdio: ['ignore', 'pipe', 'pipe'],
+  }).trim();
+
+  return output || 'no output';
+};
+
+const runDiagnosticCommands = (
+  commands: Array<{
+    command: string;
+    args: string[];
+  }>,
   fallbackLabel: string,
 ): string => {
-  try {
-    const output = execFileSync(command, args, {
-      encoding: 'utf8',
-      timeout: 5_000,
-      maxBuffer: 1024 * 1024,
-      stdio: ['ignore', 'pipe', 'pipe'],
-    }).trim();
+  const errors: string[] = [];
 
-    return output || `${fallbackLabel}: no output`;
-  } catch (error) {
-    return `${fallbackLabel}: ${String(error)}`;
+  for (const candidate of commands) {
+    try {
+      return runDiagnosticCommand(candidate.command, candidate.args);
+    } catch (error) {
+      errors.push(
+        `${candidate.command} ${candidate.args.join(' ')} -> ${String(error)}`,
+      );
+    }
   }
+
+  return `${fallbackLabel}: ${errors.join('\n')}`;
 };
 
 export const collectServerHealthSnapshot = (
@@ -140,9 +231,11 @@ export const collectServerHealthSnapshot = (
 ): ServerHealthSnapshot => {
   const [load1, load5, load15] = os.loadavg();
   const cpuCount = Math.max(1, os.cpus().length);
-  const totalMem = os.totalmem();
-  const freeMem = os.freemem();
-  const usedMemPct = totalMem > 0 ? ((totalMem - freeMem) / totalMem) * 100 : 0;
+  const memory = readMemorySnapshot();
+  const usedMemPct =
+    memory.totalBytes > 0
+      ? ((memory.totalBytes - memory.availableBytes) / memory.totalBytes) * 100
+      : 0;
 
   return {
     hostname: os.hostname(),
@@ -154,20 +247,22 @@ export const collectServerHealthSnapshot = (
     loadPerCpu1: load1 / cpuCount,
     loadPerCpu5: load5 / cpuCount,
     memoryUsedPct: usedMemPct,
+    memory,
     uptimeSec: os.uptime(),
     disk: readDiskUsage(diskPath),
   };
 };
 
 const buildHumanSummaryLines = (snapshot: ServerHealthSnapshot) => {
-  const totalMem = os.totalmem();
-  const freeMem = os.freemem();
-  const usedMem = Math.max(0, totalMem - freeMem);
+  const usedMem = Math.max(
+    0,
+    snapshot.memory.totalBytes - snapshot.memory.availableBytes,
+  );
 
   return [
     `• vCPU: <b>${escapeHtml(formatPctValue(Math.min(100, snapshot.loadPerCpu1 * 100)))}</b>`,
     `• RAM: <b>${escapeHtml(formatPctValue(snapshot.memoryUsedPct))}</b> (${escapeHtml(
-      `${formatGiB(usedMem)} / ${formatGiB(totalMem)}`,
+      `${formatGiB(usedMem)} / ${formatGiB(snapshot.memory.totalBytes)}`,
     )})`,
     `• Storage: <b>${escapeHtml(
       snapshot.disk.usedPct == null
@@ -297,19 +392,80 @@ export const buildServerHealthDiagnostics = ({
   snapshot: ServerHealthSnapshot;
   diskPath: string;
 }) => {
-  const topCpu = runDiagnosticCommand(
-    'ps',
-    ['axo', 'pid,ppid,%cpu,%mem,etime,state,comm,args', '--sort=-%cpu'],
+  const topCpu = runDiagnosticCommands(
+    [
+      {
+        command: 'ps',
+        args: [
+          'axo',
+          'pid,ppid,%cpu,%mem,etime,state,comm,args',
+          '--sort=-%cpu',
+        ],
+      },
+      {
+        command: 'sh',
+        args: [
+          '-lc',
+          'ps -o pid,ppid,%cpu,%mem,etime,state,comm,args | sort -k3 -nr | head -20',
+        ],
+      },
+    ],
     'ps cpu failed',
   );
-  const topMemory = runDiagnosticCommand(
-    'ps',
-    ['axo', 'pid,ppid,%mem,%cpu,etime,state,comm,args', '--sort=-%mem'],
+  const topMemory = runDiagnosticCommands(
+    [
+      {
+        command: 'ps',
+        args: [
+          'axo',
+          'pid,ppid,%mem,%cpu,etime,state,comm,args',
+          '--sort=-%mem',
+        ],
+      },
+      {
+        command: 'sh',
+        args: [
+          '-lc',
+          'ps -o pid,ppid,%mem,%cpu,etime,state,comm,args | sort -k3 -nr | head -20',
+        ],
+      },
+    ],
     'ps memory failed',
   );
-  const freeMemory = runDiagnosticCommand('free', ['-m'], 'free failed');
-  const diskUsage = runDiagnosticCommand('df', ['-h', diskPath], 'df failed');
-  const uptimeText = runDiagnosticCommand('uptime', [], 'uptime failed');
+  const freeMemory = runDiagnosticCommands(
+    [{ command: 'free', args: ['-m'] }],
+    'free failed',
+  );
+  const diskUsage = runDiagnosticCommands(
+    [{ command: 'df', args: ['-h', diskPath] }],
+    'df failed',
+  );
+  const uptimeText = runDiagnosticCommands(
+    [{ command: 'uptime', args: [] }],
+    'uptime failed',
+  );
+  const memoryDetails = [
+    `total: ${formatGiB(snapshot.memory.totalBytes)}`,
+    `available: ${formatGiB(snapshot.memory.availableBytes)}`,
+    `free: ${formatGiB(snapshot.memory.freeBytes)}`,
+    snapshot.memory.buffersBytes == null
+      ? null
+      : `buffers: ${formatGiB(snapshot.memory.buffersBytes)}`,
+    snapshot.memory.cachedBytes == null
+      ? null
+      : `cached: ${formatGiB(snapshot.memory.cachedBytes)}`,
+    snapshot.memory.shmemBytes == null
+      ? null
+      : `shmem: ${formatGiB(snapshot.memory.shmemBytes)}`,
+    snapshot.memory.reclaimableBytes == null
+      ? null
+      : `sreclaimable: ${formatGiB(snapshot.memory.reclaimableBytes)}`,
+    snapshot.memory.slabBytes == null
+      ? null
+      : `slab: ${formatGiB(snapshot.memory.slabBytes)}`,
+  ]
+    .filter(Boolean)
+    .join('\n');
 
   return [
     `TradeJS server health diagnostics`,
@@ -330,6 +486,9 @@ export const buildServerHealthDiagnostics = ({
     '',
     '=== free -m ===',
     freeMemory,
+    '',
+    '=== memory breakdown ===',
+    memoryDetails,
     '',
     `=== df -h ${diskPath} ===`,
     diskUsage,

@@ -64,12 +64,7 @@ describe('grid helpers', () => {
       .mockReturnValueOnce(1_700_000_000_000)
       .mockReturnValueOnce(1_700_000_100_000);
 
-    mockedUuid
-      .mockReturnValueOnce('suite01')
-      .mockReturnValueOnce('test01')
-      .mockReturnValueOnce('test02')
-      .mockReturnValueOnce('test03')
-      .mockReturnValueOnce('test04');
+    mockedUuid.mockReturnValueOnce('suite01');
 
     const suite = createTestSuite(
       'alice',
@@ -88,8 +83,6 @@ describe('grid helpers', () => {
         symbol: 'BTCUSDT',
         strategyName: 'TrendLine',
         testSuiteId: 'suite01',
-        testId: 'test01',
-        name: 'BTCUSDT_suite01_test01',
         options: {
           start: 1_700_000_000_000,
           end: 1_700_000_100_000,
@@ -98,14 +91,16 @@ describe('grid helpers', () => {
         connectorName: 'ByBit',
       }),
     );
+    expect(suite[0]?.testId).toMatch(/^[a-z0-9]{6}$/);
+    expect(suite[0]?.name).toBe(`BTCUSDT_suite01_${suite[0]?.testId}`);
 
     expect(suite[1]?.strategyConfig).toEqual({ MA_FAST: 20 });
     expect(suite[2]?.symbol).toBe('ETHUSDT');
     expect(new Set(suite.map((item) => item.testSuiteId))).toEqual(
       new Set(['suite01']),
     );
-    expect(new Set(suite.map((item) => item.testId))).toEqual(
-      new Set(['test01', 'test02', 'test03', 'test04']),
-    );
+    expect(suite[0]?.testId).toBe(suite[2]?.testId);
+    expect(suite[1]?.testId).toBe(suite[3]?.testId);
+    expect(suite[0]?.testId).not.toBe(suite[1]?.testId);
   });
 });

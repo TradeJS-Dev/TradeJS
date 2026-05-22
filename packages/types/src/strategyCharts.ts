@@ -22,6 +22,7 @@ export interface StrategyChartDetail {
 
 export interface StrategyChartSnapshot {
   cardId: string;
+  generatedAt: number;
   strategyName: string;
   title: string;
   subtitle?: string;

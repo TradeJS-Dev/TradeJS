@@ -4,17 +4,23 @@ import {
   Box,
   Button,
   CloseButton,
+  Dialog,
   Drawer,
   Flex,
+  IconButton,
   Portal,
   SimpleGrid,
   Stat,
   Text,
 } from '@chakra-ui/react';
+import { useState } from 'react';
+import { FiTrash2 } from 'react-icons/fi';
 import type {
   StrategyChartMetric,
   StrategyChartSnapshot,
 } from '@tradejs/types';
+import { deleteStrategyCard } from '#actions/strategies';
+import { toaster } from '#ui';
 import { StrategySnapshotChart } from './StrategySnapshotChart';
 
 const getMetricColor = (tone: StrategyChartMetric['tone']) => {
@@ -113,14 +119,52 @@ const StrategySnapshotDetailsDrawer = ({
 export const StrategySnapshotCard = ({
   snapshot,
   emptyText,
+  mode,
+  onDeleted,
 }: {
   snapshot: StrategyChartSnapshot;
   emptyText: string;
+  mode: 'replay' | 'ai';
+  onDeleted?: (cardId: string) => void;
 }) => {
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const symbolsLabel =
     snapshot.symbols.length > 3
       ? `${snapshot.symbols.slice(0, 3).join(', ')} +${snapshot.symbols.length - 3}`
       : snapshot.symbols.join(', ') || 'n/a';
+
+  const handleDelete = async () => {
+    if (isDeleting) {
+      return;
+    }
+
+    setIsDeleting(true);
+    try {
+      const deleted = await deleteStrategyCard(mode, snapshot.cardId);
+      if (!deleted) {
+        toaster.error({
+          title: 'Delete failed',
+          description: 'Strategy card was not deleted.',
+        });
+        return;
+      }
+
+      onDeleted?.(snapshot.cardId);
+      setDeleteOpen(false);
+      toaster.success({
+        title: 'Strategy card deleted',
+        description: snapshot.title,
+      });
+    } catch {
+      toaster.error({
+        title: 'Delete failed',
+        description: 'Unexpected error while deleting strategy card.',
+      });
+    } finally {
+      setIsDeleting(false);
+    }
+  };
 
   return (
     <Box
@@ -154,6 +198,58 @@ export const StrategySnapshotCard = ({
         </Flex>
 
         <StrategySnapshotDetailsDrawer snapshot={snapshot} />
+
+        <Dialog.Root
+          open={deleteOpen}
+          onOpenChange={(e) => setDeleteOpen(e.open)}
+        >
+          <Dialog.Trigger asChild>
+            <IconButton
+              size="sm"
+              colorPalette="red"
+              variant="outline"
+              aria-label="Delete strategy card"
+            >
+              <FiTrash2 />
+            </IconButton>
+          </Dialog.Trigger>
+          <Portal>
+            <Dialog.Backdrop />
+            <Dialog.Positioner>
+              <Dialog.Content>
+                <Dialog.Header>
+                  <Dialog.Title>Delete card</Dialog.Title>
+                  <Dialog.CloseTrigger asChild>
+                    <CloseButton position="absolute" right="3" top="3" />
+                  </Dialog.CloseTrigger>
+                </Dialog.Header>
+                <Dialog.Body>
+                  <Text fontSize="sm" color="gray.200">
+                    Delete strategy card <b>{snapshot.title}</b>?
+                  </Text>
+                  <Text fontSize="sm" color="gray.400" mt={2}>
+                    This action cannot be undone.
+                  </Text>
+                </Dialog.Body>
+                <Dialog.Footer>
+                  <Dialog.ActionTrigger asChild>
+                    <Button variant="outline" size="sm" disabled={isDeleting}>
+                      Cancel
+                    </Button>
+                  </Dialog.ActionTrigger>
+                  <Button
+                    colorPalette="red"
+                    size="sm"
+                    onClick={handleDelete}
+                    loading={isDeleting}
+                  >
+                    Delete
+                  </Button>
+                </Dialog.Footer>
+              </Dialog.Content>
+            </Dialog.Positioner>
+          </Portal>
+        </Dialog.Root>
 
         {snapshot.tags?.length ? (
           <Text fontSize="sm" color="gray.500">

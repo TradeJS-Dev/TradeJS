@@ -10,6 +10,7 @@ import {
   toFileToken,
 } from '@tradejs/infra/ai';
 import { redisKeys, setData } from '@tradejs/infra/redis';
+import { parseTestName } from '@tradejs/core/backtest';
 import {
   DEFAULT_AI_MODEL,
   buildAiPayload,
@@ -692,29 +693,70 @@ const buildStrategyWideEquityCurve = (evaluations: AiTrainEvaluatedRow[]) => {
   return orderLog;
 };
 
+const resolveAiVariantGroup = (testName: string) => {
+  const normalized = testName.trim();
+  if (!normalized) {
+    return null;
+  }
+
+  const { testSuiteId, testId } = parseTestName(normalized);
+  if (!testId) {
+    return {
+      key: normalized,
+      label: normalized,
+    };
+  }
+
+  const variantId = testSuiteId ? `${testSuiteId}_${testId}` : testId;
+  return {
+    key: variantId,
+    label: `config ${testId}`,
+  };
+};
+
 const buildAiChartSnapshot = (params: {
   evaluatedRows: AiTrainEvaluatedRow[];
   strategyName: string;
   generatedAt: number;
   runLabel: string;
+  minQuality: number;
 }) => {
-  const { evaluatedRows, strategyName, generatedAt, runLabel } = params;
-  const variantNames = [
-    ...new Set(
-      evaluatedRows
-        .map((evaluation) => evaluation.testName.trim())
-        .filter(Boolean),
-    ),
-  ].sort();
-  const groupByVariant = variantNames.length > 1;
+  const { evaluatedRows, strategyName, generatedAt, runLabel, minQuality } =
+    params;
+  const groupsByVariant = new Map<
+    string,
+    {
+      key: string;
+      label: string;
+      rows: AiTrainEvaluatedRow[];
+    }
+  >();
+
+  for (const evaluation of evaluatedRows) {
+    const variantGroup = resolveAiVariantGroup(evaluation.testName);
+    if (!variantGroup) {
+      continue;
+    }
+
+    const existingGroup = groupsByVariant.get(variantGroup.key);
+    if (existingGroup) {
+      existingGroup.rows.push(evaluation);
+      continue;
+    }
+
+    groupsByVariant.set(variantGroup.key, {
+      key: variantGroup.key,
+      label: variantGroup.label,
+      rows: [evaluation],
+    });
+  }
+
+  const variantGroups = [...groupsByVariant.values()].sort((left, right) =>
+    left.label.localeCompare(right.label),
+  );
+  const groupByVariant = variantGroups.length > 1;
   const groups = groupByVariant
-    ? variantNames.map((variantName) => ({
-        key: variantName,
-        label: variantName,
-        rows: evaluatedRows.filter(
-          (evaluation) => evaluation.testName.trim() === variantName,
-        ),
-      }))
+    ? variantGroups
     : [
         {
           key: strategyName,
@@ -724,7 +766,7 @@ const buildAiChartSnapshot = (params: {
       ];
 
   const cards: StrategyChartSnapshot[] = [];
-  for (const threshold of [1, 2, 3, 4, 5]) {
+  for (const threshold of [minQuality]) {
     for (const group of groups) {
       const thresholdEvaluations = group.rows.map((evaluation) => ({
         ...evaluation,
@@ -739,12 +781,13 @@ const buildAiChartSnapshot = (params: {
       );
 
       cards.push({
-        cardId: `${toFileToken(strategyName)}-${toFileToken(group.key)}-q${threshold}`,
+        cardId: `${toFileToken(strategyName)}-${toFileToken(group.key)}-q${threshold}-${generatedAt}`,
+        generatedAt,
         strategyName,
         title: groupByVariant
           ? `${strategyName} · ${group.label}`
           : strategyName,
-        subtitle: `q${threshold}+ · ${runLabel}`,
+        subtitle: runLabel ? `q${threshold}+ · ${runLabel}` : `q${threshold}+`,
         symbols: [
           ...new Set(
             group.rows.map((evaluation) => evaluation.symbol).filter(Boolean),
@@ -781,20 +824,27 @@ const persistAiChartSnapshot = async (params: {
   model: string;
   mode: 'local-deterministic' | 'llm';
   userName: string;
+  minQuality: number;
 }) => {
-  const { strategyName, evaluatedRows, model, mode, userName } = params;
+  const { strategyName, evaluatedRows, model, mode, userName, minQuality } =
+    params;
   const generatedAt = Date.now();
-  const runLabel = `${mode}:${model}`;
+  const runLabel = mode === model ? '' : `${mode}:${model}`;
   const snapshot = buildAiChartSnapshot({
     evaluatedRows,
     strategyName,
     generatedAt,
     runLabel,
+    minQuality,
   });
 
-  await setData(redisKeys.strategyCharts(userName, 'ai'), snapshot, {
-    expire: 0,
-  });
+  await Promise.all(
+    snapshot.strategies.map((card) =>
+      setData(redisKeys.strategyChartCard(userName, 'ai', card.cardId), card, {
+        expire: 0,
+      }),
+    ),
+  );
 
   return snapshot;
 };
@@ -1005,6 +1055,7 @@ export const main = async () => {
     await persistAiChartSnapshot({
       strategyName,
       evaluatedRows,
+      minQuality,
       model: localOnly ? 'local-deterministic' : model,
       mode: localOnly ? 'local-deterministic' : 'llm',
       userName,
