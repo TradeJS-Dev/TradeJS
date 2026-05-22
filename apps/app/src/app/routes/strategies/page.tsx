@@ -75,11 +75,15 @@ const RuntimeStrategiesPage = () => {
   }, [load]);
 
   const strategyItems = useMemo(() => {
-    const names =
-      mode === 'runtime'
-        ? runtimeData?.strategies.map((strategy) => strategy.strategyName) ?? []
-        : snapshotData?.strategies.map((strategy) => strategy.strategyName) ??
-          [];
+    const names = [
+      ...new Set(
+        mode === 'runtime'
+          ? runtimeData?.strategies.map((strategy) => strategy.strategyName) ??
+            []
+          : snapshotData?.strategies.map((strategy) => strategy.strategyName) ??
+            [],
+      ),
+    ].sort((left, right) => left.localeCompare(right));
 
     return [
       { label: 'All strategies', value: ALL_STRATEGIES },
@@ -137,7 +141,7 @@ const RuntimeStrategiesPage = () => {
       ? 'No connected strategies or runtime trades were found for the selected window.'
       : mode === 'replay'
         ? 'Run `yarn replay --chart` to save replay strategy cards for this page.'
-        : 'Run `yarn ai-train --chart` to save AI quality cards for this page.';
+        : 'Run `yarn ai-train --chart` to save strategy-wide AI cards for this page.';
 
   return (
     <ClientOnly>

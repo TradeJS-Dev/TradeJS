@@ -1,6 +1,16 @@
 'use client';
 
-import { Box, Flex, SimpleGrid, Stat, Text } from '@chakra-ui/react';
+import {
+  Box,
+  Button,
+  CloseButton,
+  Drawer,
+  Flex,
+  Portal,
+  SimpleGrid,
+  Stat,
+  Text,
+} from '@chakra-ui/react';
 import type {
   StrategyChartMetric,
   StrategyChartSnapshot,
@@ -18,6 +28,86 @@ const getMetricColor = (tone: StrategyChartMetric['tone']) => {
     default:
       return 'gray.200';
   }
+};
+
+const StrategySnapshotDetailsDrawer = ({
+  snapshot,
+}: {
+  snapshot: StrategyChartSnapshot;
+}) => {
+  if (!snapshot.details?.length) {
+    return null;
+  }
+
+  return (
+    <Drawer.Root size="md">
+      <Drawer.Trigger asChild>
+        <Button size="sm" variant="outline" ml="auto">
+          Details
+        </Button>
+      </Drawer.Trigger>
+      <Portal>
+        <Drawer.Backdrop />
+        <Drawer.Positioner>
+          <Drawer.Content display="flex" flexDirection="column">
+            <Drawer.Header>
+              <Drawer.Title>{snapshot.title}</Drawer.Title>
+              <Drawer.CloseTrigger asChild>
+                <CloseButton size="sm" />
+              </Drawer.CloseTrigger>
+            </Drawer.Header>
+
+            <Drawer.Body overflowY="auto">
+              <Box
+                p={4}
+                borderWidth="1px"
+                borderColor="gray.800"
+                borderRadius="xl"
+                bg="gray.950"
+              >
+                <Text fontSize="sm" color="gray.500" mb={4}>
+                  {snapshot.subtitle || 'AI train details'}
+                </Text>
+
+                <SimpleGrid columns={1} gap={3}>
+                  {snapshot.details.map((detail) => (
+                    <Flex
+                      key={detail.id}
+                      justify="space-between"
+                      align="flex-start"
+                      gap={4}
+                      p={3}
+                      borderRadius="lg"
+                      bg="blackAlpha.400"
+                    >
+                      <Text
+                        fontSize="sm"
+                        color="gray.400"
+                        fontFamily="mono"
+                        flex="0 0 220px"
+                      >
+                        {detail.label}
+                      </Text>
+                      <Text
+                        fontSize="sm"
+                        color={getMetricColor(detail.tone)}
+                        fontWeight="semibold"
+                        textAlign="right"
+                        fontFamily="mono"
+                        whiteSpace="pre-wrap"
+                      >
+                        {detail.value}
+                      </Text>
+                    </Flex>
+                  ))}
+                </SimpleGrid>
+              </Box>
+            </Drawer.Body>
+          </Drawer.Content>
+        </Drawer.Positioner>
+      </Portal>
+    </Drawer.Root>
+  );
 };
 
 export const StrategySnapshotCard = ({
@@ -63,8 +153,10 @@ export const StrategySnapshotCard = ({
           </Text>
         </Flex>
 
+        <StrategySnapshotDetailsDrawer snapshot={snapshot} />
+
         {snapshot.tags?.length ? (
-          <Text ml="auto" fontSize="sm" color="gray.500">
+          <Text fontSize="sm" color="gray.500">
             {snapshot.tags.join(' · ')}
           </Text>
         ) : null}

@@ -21,6 +21,7 @@ import {
   AiDatasetRow,
   Signal,
   SignalAnalysis,
+  StrategyChartDetail,
   StrategyChartMetric,
   StrategyChartSnapshot,
   StrategyChartsSnapshotResponse,
@@ -478,6 +479,17 @@ const formatSigned = (value: number | null) =>
 const formatNumber = (value: number | null) =>
   value == null ? 'n/a' : value.toFixed(2);
 
+const formatUtcWindowTimestamp = (timestamp: number | null) => {
+  if (timestamp == null || !Number.isFinite(timestamp)) {
+    return 'n/a';
+  }
+
+  return new Date(timestamp)
+    .toISOString()
+    .replace('T', ' ')
+    .replace('.000Z', ' UTC');
+};
+
 const resolveMetricTone = (
   value: number | null,
 ): StrategyChartMetric['tone'] => {
@@ -550,7 +562,91 @@ const buildAiChartMetrics = (params: {
   return metrics;
 };
 
-const buildSimpleEquityCurve = (evaluations: AiTrainEvaluatedRow[]) => {
+const buildAiChartDetails = (params: {
+  summary: ReturnType<typeof summarizeAiTrainEvaluations>;
+  rows: AiTrainEvaluatedRow[];
+}) => {
+  const { summary, rows } = params;
+  const timestamps = rows
+    .map((row) => row.timestamp)
+    .filter(
+      (value): value is number => value != null && Number.isFinite(value),
+    );
+  const windowStart = timestamps.length ? Math.min(...timestamps) : null;
+  const windowEnd = timestamps.length ? Math.max(...timestamps) : null;
+
+  const details: StrategyChartDetail[] = [
+    {
+      id: 'window',
+      label: 'window',
+      value: `${formatUtcWindowTimestamp(windowStart)} -> ${formatUtcWindowTimestamp(windowEnd)}`,
+    },
+    {
+      id: 'approved',
+      label: 'approved',
+      value: String(summary.approved),
+    },
+    {
+      id: 'confusion',
+      label: 'TP / FP / TN / FN',
+      value: `${summary.truePositive} / ${summary.falsePositive} / ${summary.trueNegative} / ${summary.falseNegative}`,
+    },
+    {
+      id: 'precisionApproved',
+      label: 'precision_approved',
+      value: formatRatio(summary.precisionApproved),
+    },
+    {
+      id: 'recallWinners',
+      label: 'recall_winners',
+      value: formatRatio(summary.recallWinners),
+    },
+    {
+      id: 'avgProfitAll',
+      label: 'avg_profit_all',
+      value: formatSigned(summary.avgProfitAll),
+      tone: resolveMetricTone(summary.avgProfitAll),
+    },
+    {
+      id: 'avgProfitApproved',
+      label: 'avg_profit_approved',
+      value: formatSigned(summary.avgProfitApproved),
+      tone: resolveMetricTone(summary.avgProfitApproved),
+    },
+    {
+      id: 'avgProfitApprovedPerDay',
+      label: 'avg_profit_approved_per_day',
+      value: formatSigned(summary.avgProfitApprovedPerDay),
+      tone: resolveMetricTone(summary.avgProfitApprovedPerDay),
+    },
+    {
+      id: 'avgProfitApprovedPerMonth',
+      label: 'avg_profit_approved_per_month',
+      value: formatSigned(summary.avgProfitApprovedPerMonth),
+      tone: resolveMetricTone(summary.avgProfitApprovedPerMonth),
+    },
+    {
+      id: 'avgApprovedTradesPerDay',
+      label: 'avg_approved_trades_per_day',
+      value: formatNumber(summary.avgApprovedTradesPerDay),
+    },
+    {
+      id: 'avgApprovedTradesPerWeek',
+      label: 'avg_approved_trades_per_week',
+      value: formatNumber(summary.avgApprovedTradesPerWeek),
+    },
+    {
+      id: 'expectancyDelta',
+      label: 'expectancy_delta',
+      value: formatSigned(summary.expectancyDelta),
+      tone: resolveMetricTone(summary.expectancyDelta),
+    },
+  ];
+
+  return details;
+};
+
+const buildStrategyWideEquityCurve = (evaluations: AiTrainEvaluatedRow[]) => {
   if (!evaluations.length) {
     return [] as Array<[number, number]>;
   }
@@ -613,7 +709,7 @@ const buildAiChartSnapshot = (params: {
       ];
 
   const cards: StrategyChartSnapshot[] = [];
-  for (const threshold of [4, 5]) {
+  for (const threshold of [1, 2, 3, 4, 5]) {
     for (const group of groups) {
       const thresholdEvaluations = group.rows.map((evaluation) => ({
         ...evaluation,
@@ -632,8 +728,8 @@ const buildAiChartSnapshot = (params: {
         strategyName,
         title: groupByVariant
           ? `${strategyName} · ${group.label}`
-          : `${strategyName} · q${threshold}+`,
-        subtitle: groupByVariant ? `q${threshold}+` : runLabel,
+          : strategyName,
+        subtitle: `q${threshold}+ · ${runLabel}`,
         symbols: [
           ...new Set(
             group.rows
@@ -641,11 +737,15 @@ const buildAiChartSnapshot = (params: {
               .filter(Boolean),
           ),
         ].sort(),
-        orderLog: buildSimpleEquityCurve(approvedRows),
+        orderLog: buildStrategyWideEquityCurve(approvedRows),
         stat: null,
         metrics: buildAiChartMetrics({
           summary,
           threshold,
+        }),
+        details: buildAiChartDetails({
+          summary,
+          rows: thresholdEvaluations,
         }),
         tags: groupByVariant
           ? [`q${threshold}+`, group.label]

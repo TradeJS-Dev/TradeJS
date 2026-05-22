@@ -13,6 +13,13 @@ export interface StrategyChartMetric {
   tone?: StrategyChartMetricTone;
 }
 
+export interface StrategyChartDetail {
+  id: string;
+  label: string;
+  value: string;
+  tone?: StrategyChartMetricTone;
+}
+
 export interface StrategyChartSnapshot {
   cardId: string;
   strategyName: string;
@@ -22,6 +29,7 @@ export interface StrategyChartSnapshot {
   orderLog: SimpleOrderLogData;
   stat?: Partial<TestStat> | null;
   metrics: StrategyChartMetric[];
+  details?: StrategyChartDetail[];
   tags?: string[];
 }
 

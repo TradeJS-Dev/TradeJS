@@ -13,7 +13,11 @@ const EMPTY_RESPONSE: StrategyChartsSnapshotResponse = {
 };
 
 export async function GET() {
-  const userName = (await getCurrentUserName()) || 'root';
+  const userName = await getCurrentUserName();
+  if (!userName) {
+    return NextResponse.json(EMPTY_RESPONSE);
+  }
+
   const data = (await getData(
     redisKeys.strategyCharts(userName, 'ai'),
     EMPTY_RESPONSE,
