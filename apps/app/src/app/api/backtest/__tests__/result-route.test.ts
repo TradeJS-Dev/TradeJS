@@ -2,6 +2,7 @@ const mockAuth = jest.fn();
 const mockGetData = jest.fn();
 const mockGetTimeline = jest.fn();
 const mockCompactOrderLog = jest.fn();
+const mockReadPersistedBacktestOrderLog = jest.fn();
 
 jest.mock('next/server', () => ({
   NextResponse: {
@@ -29,6 +30,17 @@ jest.mock('@tradejs/infra/logger', () => ({
   logger: {
     log: jest.fn(),
   },
+}));
+
+jest.mock('@tradejs/infra/backtestArtifacts', () => ({
+  parseBacktestArtifactRef: (value: unknown) =>
+    value &&
+    typeof value === 'object' &&
+    (value as { kind?: string }).kind === 'file'
+      ? value
+      : null,
+  readPersistedBacktestOrderLog: (...args: unknown[]) =>
+    mockReadPersistedBacktestOrderLog(...args),
 }));
 
 jest.mock('@tradejs/infra/redis', () => ({
@@ -68,9 +80,16 @@ describe('backtest result route', () => {
   it('returns compacted result payload', async () => {
     mockAuth.mockResolvedValue({ user: { id: 'alice' } });
     mockGetData
-      .mockResolvedValueOnce([{ timestamp: 1000, amount: 100 }])
+      .mockResolvedValueOnce({
+        kind: 'file',
+        version: 1,
+        path: 'data/backtests/tests/alice/TrendLine/t1.json',
+      })
       .mockResolvedValueOnce({ options: { start: 1000, end: 2000 } })
       .mockResolvedValueOnce({ amount: 110 });
+    mockReadPersistedBacktestOrderLog.mockResolvedValue([
+      { timestamp: 1000, amount: 100 },
+    ]);
     mockGetTimeline.mockReturnValue([1000, 2000]);
     mockCompactOrderLog.mockReturnValue([
       [1000, 100],
@@ -92,6 +111,40 @@ describe('backtest result route', () => {
         stat: { amount: 110 },
       },
     });
+  });
+
+  it('returns 404 when redis does not contain a file ref', async () => {
+    mockAuth.mockResolvedValue({ user: { id: 'alice' } });
+    mockGetData
+      .mockResolvedValueOnce([{ timestamp: 1000, amount: 100 }])
+      .mockResolvedValueOnce({ options: { start: 1000, end: 2000 } })
+      .mockResolvedValueOnce({ amount: 110 });
+
+    const res = await GET({} as Request, {
+      params: Promise.resolve({ strategy: 'TrendLine', name: 't1' }),
+    });
+
+    expect(mockReadPersistedBacktestOrderLog).not.toHaveBeenCalled();
+    expect(res.status).toBe(404);
+  });
+
+  it('returns 404 when file ref exists but artifact is missing', async () => {
+    mockAuth.mockResolvedValue({ user: { id: 'alice' } });
+    mockGetData
+      .mockResolvedValueOnce({
+        kind: 'file',
+        version: 1,
+        path: 'data/backtests/tests/alice/TrendLine/t1.json',
+      })
+      .mockResolvedValueOnce({ options: { start: 1000, end: 2000 } })
+      .mockResolvedValueOnce({ amount: 110 });
+    mockReadPersistedBacktestOrderLog.mockResolvedValue(null);
+
+    const res = await GET({} as Request, {
+      params: Promise.resolve({ strategy: 'TrendLine', name: 't1' }),
+    });
+
+    expect(res.status).toBe(404);
   });
 
   it('returns 500 on unexpected error', async () => {

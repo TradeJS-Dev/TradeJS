@@ -1,5 +1,6 @@
 const mockAuth = jest.fn();
 const mockGetData = jest.fn();
+const mockReadPersistedBacktestOrderLog = jest.fn();
 
 jest.mock('next/server', () => ({
   NextResponse: {
@@ -18,6 +19,17 @@ jest.mock('@tradejs/infra/logger', () => ({
   logger: {
     log: jest.fn(),
   },
+}));
+
+jest.mock('@tradejs/infra/backtestArtifacts', () => ({
+  parseBacktestArtifactRef: (value: unknown) =>
+    value &&
+    typeof value === 'object' &&
+    (value as { kind?: string }).kind === 'file'
+      ? value
+      : null,
+  readPersistedBacktestOrderLog: (...args: unknown[]) =>
+    mockReadPersistedBacktestOrderLog(...args),
 }));
 
 jest.mock('@tradejs/infra/redis', () => ({
@@ -54,7 +66,14 @@ describe('backtest order-log route', () => {
 
   it('returns order log for authorized user', async () => {
     mockAuth.mockResolvedValue({ user: { id: 'alice' } });
-    mockGetData.mockResolvedValue([{ timestamp: 1000, amount: 100 }]);
+    mockGetData.mockResolvedValue({
+      kind: 'file',
+      version: 1,
+      path: 'data/backtests/tests/alice/TrendLine/t1.json',
+    });
+    mockReadPersistedBacktestOrderLog.mockResolvedValue([
+      { timestamp: 1000, amount: 100 },
+    ]);
 
     const res = await GET({} as Request, {
       params: Promise.resolve({ strategy: 'TrendLine', name: 't1' }),
@@ -64,6 +83,34 @@ describe('backtest order-log route', () => {
     expect(res.body).toEqual({
       orderLog: [{ timestamp: 1000, amount: 100 }],
     });
+  });
+
+  it('returns 404 when redis does not contain a file ref', async () => {
+    mockAuth.mockResolvedValue({ user: { id: 'alice' } });
+    mockGetData.mockResolvedValue([{ timestamp: 2000, amount: 200 }]);
+
+    const res = await GET({} as Request, {
+      params: Promise.resolve({ strategy: 'TrendLine', name: 't1' }),
+    });
+
+    expect(mockReadPersistedBacktestOrderLog).not.toHaveBeenCalled();
+    expect(res.status).toBe(404);
+  });
+
+  it('returns 404 when file ref exists but artifact is missing', async () => {
+    mockAuth.mockResolvedValue({ user: { id: 'alice' } });
+    mockGetData.mockResolvedValue({
+      kind: 'file',
+      version: 1,
+      path: 'data/backtests/tests/alice/TrendLine/t1.json',
+    });
+    mockReadPersistedBacktestOrderLog.mockResolvedValue(null);
+
+    const res = await GET({} as Request, {
+      params: Promise.resolve({ strategy: 'TrendLine', name: 't1' }),
+    });
+
+    expect(res.status).toBe(404);
   });
 
   it('returns 500 on unexpected error', async () => {

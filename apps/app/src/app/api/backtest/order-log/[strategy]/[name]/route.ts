@@ -2,6 +2,10 @@
 
 import { NextResponse } from 'next/server';
 import { OrderLogData } from '@tradejs/types';
+import {
+  parseBacktestArtifactRef,
+  readPersistedBacktestOrderLog,
+} from '@tradejs/infra/backtestArtifacts';
 import { getData, redisKeys } from '@tradejs/infra/redis';
 import { logger } from '@tradejs/infra/logger';
 import { auth } from '#app/auth';
@@ -32,9 +36,29 @@ export const GET = async (
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const orderLog: OrderLogData = await getData(
+    const storedOrderLog = await getData(
       redisKeys.testOrders(userName, strategy, name),
     );
+    const orderLogRef = parseBacktestArtifactRef(storedOrderLog);
+    if (!orderLogRef) {
+      return NextResponse.json(
+        { error: 'Backtest order log not found' },
+        { status: 404 },
+      );
+    }
+
+    const orderLog: OrderLogData | null = await readPersistedBacktestOrderLog({
+      userName,
+      strategyName: strategy,
+      testName: name,
+      ref: orderLogRef,
+    });
+    if (!orderLog) {
+      return NextResponse.json(
+        { error: 'Backtest order log not found' },
+        { status: 404 },
+      );
+    }
 
     return NextResponse.json({ orderLog });
   } catch (error) {

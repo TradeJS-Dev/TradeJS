@@ -3,11 +3,12 @@ import {
   resetTestingKlineCache,
   testing,
 } from '../testing';
+import { calculateStatsFull } from '@tradejs/core/backtest';
+import { writeCachedBacktestArtifacts } from '@tradejs/infra/backtestArtifacts';
 import { TestSuite } from '@tradejs/types';
 import { closeAllAiDatasetWriters } from '@tradejs/infra/ai';
 import { closeAllMlDatasetWriters } from '@tradejs/infra/ml';
-import { TTL_1D } from '@tradejs/core/constants';
-import { getData, redisKeys, setData } from '@tradejs/infra/redis';
+import { getData, redisKeys } from '@tradejs/infra/redis';
 import { logger } from '@tradejs/infra/logger';
 
 let isProcessing = false;
@@ -43,14 +44,25 @@ const cacheTestResultArtifacts = async (
     return;
   }
 
-  await Promise.all([
-    setData(redisKeys.cacheOrders(userName, orderLogId), inlineOrderLog, {
-      expire: TTL_1D,
-    }),
-    setData(redisKeys.cachePositions(userName, orderLogId), inlinePositionLog, {
-      expire: TTL_1D,
-    }),
-  ]);
+  await writeCachedBacktestArtifacts({
+    userName,
+    orderLogId,
+    orderLog: inlineOrderLog,
+    positionLog: inlinePositionLog,
+  });
+};
+
+const buildResultStat = (testResult: Awaited<ReturnType<typeof testing>>) => {
+  if (!testResult) {
+    return testResult;
+  }
+
+  const { inlinePositionLog, stat } = testResult;
+  if (!Array.isArray(inlinePositionLog) || inlinePositionLog.length === 0) {
+    return stat;
+  }
+
+  return calculateStatsFull(inlinePositionLog) ?? stat;
 };
 
 process.on(
@@ -100,11 +112,17 @@ process.on(
 
           await cacheTestResultArtifacts(userName, testResult);
 
-          const { inlineOrderLog, inlinePositionLog, ...resultWithoutLogs } =
-            testResult;
+          const stat = buildResultStat(testResult);
+          const {
+            inlineOrderLog,
+            inlinePositionLog,
+            stat: _rawStat,
+            ...resultWithoutLogs
+          } = testResult;
 
           process.send?.({
             ...resultWithoutLogs,
+            stat,
             test,
           });
         } catch (error) {

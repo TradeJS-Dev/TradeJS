@@ -16,7 +16,24 @@ describe('worker tester', () => {
     jest.resetModules();
     messageHandler = null;
     const getDataMock = jest.fn(async () => suite);
-    const setDataMock = jest.fn(async () => undefined);
+    const calculateStatsFullMock = jest.fn(() => ({
+      amount: 120,
+      netProfit: 20,
+      orders: 1,
+      winRate: 100,
+    }));
+    const writeCachedBacktestArtifactsMock = jest.fn(async () => ({
+      orderLog: {
+        kind: 'file',
+        version: 1,
+        path: 'data/backtests/cache/alice/orders/log-1.json',
+      },
+      positionLog: {
+        kind: 'file',
+        version: 1,
+        path: 'data/backtests/cache/alice/positions/log-1.json',
+      },
+    }));
 
     jest.doMock('../../testing', () => ({
       testing: testingImpl,
@@ -26,18 +43,16 @@ describe('worker tester', () => {
 
     jest.doMock('@tradejs/infra/redis', () => ({
       getData: getDataMock,
-      setData: setDataMock,
       redisKeys: {
         cacheChunk: (userName: string, chunkId: string) =>
           `users:${userName}:cache:tests:chunks:${chunkId}`,
-        cacheOrders: (userName: string, orderLogId: string) =>
-          `users:${userName}:cache:tests:orders:${orderLogId}`,
-        cachePositions: (userName: string, orderLogId: string) =>
-          `users:${userName}:cache:tests:positions:${orderLogId}`,
       },
     }));
-    jest.doMock('@tradejs/core/constants', () => ({
-      TTL_1D: 86400,
+    jest.doMock('@tradejs/infra/backtestArtifacts', () => ({
+      writeCachedBacktestArtifacts: writeCachedBacktestArtifactsMock,
+    }));
+    jest.doMock('@tradejs/core/backtest', () => ({
+      calculateStatsFull: calculateStatsFullMock,
     }));
     jest.doMock('@tradejs/infra/logger', () => ({
       logger: { error: jest.fn() },
@@ -60,7 +75,11 @@ describe('worker tester', () => {
 
     await import('../tester');
 
-    return { getDataMock, setDataMock };
+    return {
+      calculateStatsFullMock,
+      getDataMock,
+      writeCachedBacktestArtifactsMock,
+    };
   };
 
   afterEach(() => {
@@ -88,25 +107,31 @@ describe('worker tester', () => {
       inlinePositionLog: positionLog,
     }));
 
-    const { getDataMock, setDataMock } = await setup({
+    const {
+      calculateStatsFullMock,
+      getDataMock,
+      writeCachedBacktestArtifactsMock,
+    } = await setup({
       suite: [test],
       testingImpl,
     });
 
     await messageHandler?.({ chunk: [test], userName: 'alice' });
 
-    expect(setDataMock).toHaveBeenCalledTimes(2);
-    const firstSetDataCall = (setDataMock.mock.calls[0] ?? []) as any[];
-    const secondSetDataCall = (setDataMock.mock.calls[1] ?? []) as any[];
-    expect(firstSetDataCall[1]).toBe(orderLog);
-    expect(secondSetDataCall[1]).toBe(positionLog);
+    expect(writeCachedBacktestArtifactsMock).toHaveBeenCalledWith({
+      userName: 'alice',
+      orderLogId: 'log-1',
+      orderLog,
+      positionLog,
+    });
     expect(send).toHaveBeenCalledWith(
       expect.objectContaining({
-        stat: { amount: 100, profit: 0, orders: 1 },
+        stat: { amount: 120, netProfit: 20, orders: 1, winRate: 100 },
         orderLogId: 'log-1',
         test,
       }),
     );
+    expect(calculateStatsFullMock).toHaveBeenCalledWith(positionLog);
     expect(send).not.toHaveBeenCalledWith(
       expect.objectContaining({
         inlineOrderLog: expect.anything(),
@@ -172,7 +197,11 @@ describe('worker tester', () => {
       inlinePositionLog: positionLog,
     }));
 
-    const { getDataMock, setDataMock } = await setup({
+    const {
+      calculateStatsFullMock,
+      getDataMock,
+      writeCachedBacktestArtifactsMock,
+    } = await setup({
       suite: [test],
       testingImpl,
     });
@@ -180,16 +209,19 @@ describe('worker tester', () => {
     await messageHandler?.({ chunkId: 'chunk-3', userName: 'alice' });
 
     expect(getDataMock).toHaveBeenCalledTimes(1);
-    const firstSetDataCall = (setDataMock.mock.calls[0] ?? []) as any[];
-    const secondSetDataCall = (setDataMock.mock.calls[1] ?? []) as any[];
-    expect(firstSetDataCall[1]).toBe(orderLog);
-    expect(secondSetDataCall[1]).toBe(positionLog);
+    expect(writeCachedBacktestArtifactsMock).toHaveBeenCalledWith({
+      userName: 'alice',
+      orderLogId: 'log-3',
+      orderLog,
+      positionLog,
+    });
     expect(send).toHaveBeenCalledWith(
       expect.objectContaining({
-        stat: { amount: 101, profit: 1, orders: 1 },
+        stat: { amount: 120, netProfit: 20, orders: 1, winRate: 100 },
         orderLogId: 'log-3',
         test,
       }),
     );
+    expect(calculateStatsFullMock).toHaveBeenCalledWith(positionLog);
   });
 });

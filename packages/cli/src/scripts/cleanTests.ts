@@ -1,6 +1,12 @@
 import args from 'args';
+import fs from 'fs/promises';
+import path from 'path';
 import chalk from 'chalk';
-import { cleanRedis } from '@tradejs/node/cli';
+import { cleanFiles, cleanRedis } from '@tradejs/node/cli';
+import {
+  getBacktestCacheArtifactsDirForUser,
+  getPersistedBacktestArtifactsDirForUser,
+} from '@tradejs/infra/backtestArtifacts';
 import { getKeys, redisKeys } from '@tradejs/infra/redis';
 
 args.option(['U', 'user'], 'Clean tests for user', '');
@@ -41,16 +47,36 @@ const getUsersToClean = async (): Promise<string[]> => {
 const cleanUserTests = async (userName: string) => {
   const testsPrefix = `users:${userName}:tests:`;
   const testsCachePrefix = `users:${userName}:cache:tests:`;
+  const projectRoot = process.env.PROJECT_CWD || process.cwd();
+  const persistedArtifactsDir = path.relative(
+    projectRoot,
+    getPersistedBacktestArtifactsDirForUser(userName, projectRoot),
+  );
+  const cacheArtifactsDir = path.relative(
+    projectRoot,
+    getBacktestCacheArtifactsDirForUser(userName, projectRoot),
+  );
 
   if (flags.cache) {
     console.log(chalk.yellow(`clean user cache: ${userName}`));
     await cleanRedis(testsCachePrefix);
+    await cleanFiles(cacheArtifactsDir);
     return;
   }
 
   console.log(chalk.yellow(`clean user tests: ${userName}`));
   await cleanRedis(testsPrefix);
   await cleanRedis(testsCachePrefix);
+  await cleanFiles(persistedArtifactsDir);
+  await cleanFiles(cacheArtifactsDir);
+  await fs.rm(path.join(projectRoot, persistedArtifactsDir), {
+    recursive: true,
+    force: true,
+  });
+  await fs.rm(path.join(projectRoot, cacheArtifactsDir), {
+    recursive: true,
+    force: true,
+  });
 };
 
 export const main = async () => {

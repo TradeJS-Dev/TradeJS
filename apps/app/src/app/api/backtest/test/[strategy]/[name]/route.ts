@@ -1,6 +1,10 @@
 'use server';
 
 import { NextResponse } from 'next/server';
+import {
+  deletePersistedBacktestOrderLog,
+  parseBacktestArtifactRef,
+} from '@tradejs/infra/backtestArtifacts';
 import { delKey, getData, redisKeys, setData } from '@tradejs/infra/redis';
 import { Item } from '@tradejs/types';
 import { logger } from '@tradejs/infra/logger';
@@ -32,10 +36,22 @@ export const DELETE = async (
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    const storedOrderLog = await getData(
+      redisKeys.testOrders(userName, strategy, name),
+      null,
+    );
+    const orderLogRef = parseBacktestArtifactRef(storedOrderLog);
+
     const removeResults = await Promise.all([
       delKey(redisKeys.testConfig(userName, strategy, name)),
       delKey(redisKeys.testStat(userName, strategy, name)),
       delKey(redisKeys.testOrders(userName, strategy, name)),
+      deletePersistedBacktestOrderLog({
+        userName,
+        strategyName: strategy,
+        testName: name,
+        ref: orderLogRef,
+      }),
     ]);
 
     const removedKeys = removeResults.filter(Boolean).length;

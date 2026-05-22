@@ -2,6 +2,7 @@ const mockAuth = jest.fn();
 const mockDelKey = jest.fn();
 const mockGetData = jest.fn();
 const mockSetData = jest.fn();
+const mockDeletePersistedBacktestOrderLog = jest.fn();
 
 jest.mock('next/server', () => ({
   NextResponse: {
@@ -20,6 +21,17 @@ jest.mock('@tradejs/infra/logger', () => ({
   logger: {
     log: jest.fn(),
   },
+}));
+
+jest.mock('@tradejs/infra/backtestArtifacts', () => ({
+  deletePersistedBacktestOrderLog: (...args: unknown[]) =>
+    mockDeletePersistedBacktestOrderLog(...args),
+  parseBacktestArtifactRef: (value: unknown) =>
+    value &&
+    typeof value === 'object' &&
+    (value as { kind?: string }).kind === 'file'
+      ? value
+      : null,
 }));
 
 jest.mock('@tradejs/infra/redis', () => ({
@@ -41,6 +53,7 @@ describe('backtest delete route', () => {
     jest.clearAllMocks();
     mockGetData.mockResolvedValue([]);
     mockSetData.mockResolvedValue(undefined);
+    mockDeletePersistedBacktestOrderLog.mockResolvedValue(false);
   });
 
   it('returns 400 when params are missing', async () => {
@@ -64,6 +77,7 @@ describe('backtest delete route', () => {
   it('returns 404 when no keys were deleted', async () => {
     mockAuth.mockResolvedValue({ user: { id: 'alice' } });
     mockDelKey.mockResolvedValue(false);
+    mockGetData.mockResolvedValue(null);
 
     const res = await DELETE({} as Request, {
       params: Promise.resolve({ strategy: 'TrendLine', name: 't1' }),
@@ -89,12 +103,39 @@ describe('backtest delete route', () => {
       .mockResolvedValueOnce(true)
       .mockResolvedValueOnce(false)
       .mockResolvedValueOnce(true);
+    mockGetData
+      .mockResolvedValueOnce({
+        kind: 'file',
+        version: 1,
+        path: 'data/backtests/tests/alice/TrendLine/t1.json',
+      })
+      .mockResolvedValueOnce([
+        {
+          value: 't1',
+          data: { strategyName: 'TrendLine' },
+        },
+        {
+          value: 't2',
+          data: { strategyName: 'Breakout' },
+        },
+      ]);
+    mockDeletePersistedBacktestOrderLog.mockResolvedValue(true);
 
     const res = await DELETE({} as Request, {
       params: Promise.resolve({ strategy: 'TrendLine', name: 't1' }),
     });
 
     expect(mockDelKey).toHaveBeenCalledTimes(3);
+    expect(mockDeletePersistedBacktestOrderLog).toHaveBeenCalledWith({
+      userName: 'alice',
+      strategyName: 'TrendLine',
+      testName: 't1',
+      ref: {
+        kind: 'file',
+        version: 1,
+        path: 'data/backtests/tests/alice/TrendLine/t1.json',
+      },
+    });
     expect(mockSetData).toHaveBeenCalledWith(
       'summaries:alice',
       [
@@ -106,7 +147,7 @@ describe('backtest delete route', () => {
       { expire: 0 },
     );
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ deleted: true, removedKeys: 2 });
+    expect(res.body).toEqual({ deleted: true, removedKeys: 3 });
   });
 
   it('returns 500 on unexpected error', async () => {

@@ -44,6 +44,11 @@
       "import": "./dist/aiModels.mjs",
       "require": "./dist/aiModels.js"
     },
+    "./backtestArtifacts": {
+      "types": "./dist/backtestArtifacts.d.ts",
+      "import": "./dist/backtestArtifacts.mjs",
+      "require": "./dist/backtestArtifacts.js"
+    },
     "./files": {
       "types": "./dist/files.d.ts",
       "import": "./dist/files.mjs",

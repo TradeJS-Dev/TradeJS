@@ -5,6 +5,10 @@ import { parseTestName } from '@tradejs/core/backtest';
 import { runWithConcurrency } from '@tradejs/core/async';
 import { BACKTEST_PRELOAD_DAYS, TTL_1M } from '@tradejs/core/constants';
 import { formatUnix, getBacktestPreloadStart } from '@tradejs/core/time';
+import {
+  readCachedBacktestArtifacts,
+  writePersistedBacktestOrderLog,
+} from '@tradejs/infra/backtestArtifacts';
 import { getData, setData, redisKeys } from '@tradejs/infra/redis';
 import {
   Item,
@@ -237,12 +241,14 @@ export const mergePersistedTestSummaries = (
 };
 
 const getLogsById = async (orderLogId: string) => {
-  const [orderLog, positionLog] = (await Promise.all([
-    getData(redisKeys.cacheOrders(userName, orderLogId), null),
-    getData(redisKeys.cachePositions(userName, orderLogId), null),
-  ])) as [OrderLog[], PositionLogData];
-
-  return { orderLog, positionLog };
+  return (await readCachedBacktestArtifacts({
+    userName,
+    orderLogId,
+    projectRoot,
+  })) as {
+    orderLog: OrderLog[] | null;
+    positionLog: PositionLogData | null;
+  };
 };
 
 export const resolveResultArtifacts = async (result: TestWorkerResult) =>
@@ -253,10 +259,18 @@ export const setTestData = async (
   stat: Partial<TestStat>,
   orderLog: OrderLog[],
 ) => {
+  const orderLogRef = await writePersistedBacktestOrderLog({
+    userName: test.userName,
+    strategyName: test.strategyName,
+    testName: test.name,
+    orderLog,
+    projectRoot,
+  });
+
   await Promise.all([
     setData(
       redisKeys.testOrders(test.userName, test.strategyName, test.name),
-      orderLog,
+      orderLogRef,
       {
         expire: TTL_1M,
       },

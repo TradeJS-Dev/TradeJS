@@ -6,6 +6,7 @@ export default defineConfig({
     'src/aiEndpoints.ts',
     'src/aiLanguages.ts',
     'src/aiModels.ts',
+    'src/backtestArtifacts.ts',
     'src/files.ts',
     'src/http.ts',
     'src/logger.ts',
