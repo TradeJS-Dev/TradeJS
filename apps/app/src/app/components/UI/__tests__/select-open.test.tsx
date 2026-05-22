@@ -12,11 +12,13 @@ jest.mock('@chakra-ui/react', () => {
   const SelectRoot = ({
     children,
     onOpenChange,
+    disabled,
   }: {
     children: React.ReactNode;
     onOpenChange?: (details: { open: boolean }) => void;
+    disabled?: boolean;
   }) => {
-    selectRootMock({ onOpenChange });
+    selectRootMock({ onOpenChange, disabled });
     return (
       <div>
         <button
@@ -121,6 +123,14 @@ describe('select wrappers', () => {
 
     expect(onOpenChange).toHaveBeenNthCalledWith(1, true);
     expect(onOpenChange).toHaveBeenNthCalledWith(2, false);
+  });
+
+  it('passes disabled state to Select root', () => {
+    render(<Select defaultValue={['']} items={[]} disabled />);
+
+    expect(selectRootMock).toHaveBeenCalledWith(
+      expect.objectContaining({ disabled: true }),
+    );
   });
 
   it('propagates open state from SelectWithSearch root', () => {

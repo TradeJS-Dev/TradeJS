@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { FEE_PERCENT, INITIAL_BACKTEST_AMOUNT } from '@tradejs/core/constants';
+import { calculateStatsFull } from '@tradejs/core/backtest';
 import {
   Candle,
   Sl,
@@ -20,6 +21,7 @@ export const createTestConnector: TestConnectorCreator = (
   let state = {};
   const orderLog: OrderLogData = [];
   const positionLog: PositionLogData = [];
+  const fastMode = Boolean(context?.fastMode);
   let currentPosition: (Order & { amount: number }) | null = null;
   let amount = INITIAL_BACKTEST_AMOUNT;
   let originalQty = 0;
@@ -43,7 +45,9 @@ export const createTestConnector: TestConnectorCreator = (
       nextEntry.signal = signalWithoutIndicators as any;
     }
 
-    orderLog.push(nextEntry);
+    if (!fastMode) {
+      orderLog.push(nextEntry);
+    }
   };
 
   const clearPosition = (timestamp: number) => {
@@ -112,16 +116,26 @@ export const createTestConnector: TestConnectorCreator = (
 
     getResult: async () => {
       const orderLogId = randomUUID().slice(-12);
+      const fullStat = fastMode ? calculateStatsFull(positionLog) : null;
 
       return {
-        stat: {
-          amount: round(amount),
-          profit: round(amount - INITIAL_BACKTEST_AMOUNT),
-          orders: positionLog.length,
-        },
+        stat: fullStat
+          ? ({
+              ...fullStat,
+              profit: fullStat.netProfit,
+            } as typeof fullStat & { profit: number })
+          : {
+              amount: round(amount),
+              profit: round(amount - INITIAL_BACKTEST_AMOUNT),
+              orders: positionLog.length,
+            },
         orderLogId,
-        inlineOrderLog: orderLog,
-        inlinePositionLog: positionLog,
+        ...(fastMode
+          ? {}
+          : {
+              inlineOrderLog: orderLog,
+              inlinePositionLog: positionLog,
+            }),
       };
     },
 

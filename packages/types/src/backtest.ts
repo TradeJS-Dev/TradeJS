@@ -60,6 +60,8 @@ export interface Test extends BacktestRunConfig {
   options: TestingOptions;
   ml?: boolean;
   ai?: boolean;
+  fast?: boolean;
+  collectReplaySignalEvaluations?: boolean;
   chunkId?: string;
   timeoutMs?: number;
 }
@@ -142,6 +144,7 @@ export interface TestConnectorContext {
   userName?: string;
   mlEnabled?: boolean;
   aiEnabled?: boolean;
+  fastMode?: boolean;
 }
 
 export type TestConnectorCreator = (

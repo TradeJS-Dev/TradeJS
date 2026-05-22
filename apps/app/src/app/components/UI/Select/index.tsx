@@ -15,8 +15,10 @@ interface SelectProps {
   value?: string[];
   items: Items;
   placeholder?: string;
+  emptyState?: string;
   width?: string | number;
   multiple?: boolean;
+  disabled?: boolean;
   size?: 'xs' | 'sm' | 'md' | 'lg';
   onChange?: (value: string[]) => void;
   onOpenChange?: (open: boolean) => void;
@@ -28,7 +30,9 @@ export const Select = ({
   items,
   multiple = false,
   placeholder = 'Select',
+  emptyState = 'No items found',
   width = '320px',
+  disabled = false,
   size = 'sm',
   onChange,
   onOpenChange,
@@ -50,6 +54,7 @@ export const Select = ({
       size={size}
       multiple={multiple}
       width={width}
+      disabled={disabled}
     >
       <UISelect.HiddenSelect />
       <UISelect.Control>
@@ -63,19 +68,25 @@ export const Select = ({
       <Portal>
         <UISelect.Positioner>
           <UISelect.Content>
-            {collection.items.map((item) => (
-              <UISelect.Item item={item} key={item.value}>
-                <Stack gap="0">
-                  <UISelect.ItemText>{item.label}</UISelect.ItemText>
-                  {item.description && (
-                    <Span color="fg.muted" textStyle="xs">
-                      {item.description}
-                    </Span>
-                  )}
-                </Stack>
-                <UISelect.ItemIndicator />
-              </UISelect.Item>
-            ))}
+            {collection.items.length === 0 ? (
+              <Span color="fg.muted" px="3" py="2" textStyle="sm">
+                {emptyState}
+              </Span>
+            ) : (
+              collection.items.map((item) => (
+                <UISelect.Item item={item} key={item.value}>
+                  <Stack gap="0">
+                    <UISelect.ItemText>{item.label}</UISelect.ItemText>
+                    {item.description && (
+                      <Span color="fg.muted" textStyle="xs">
+                        {item.description}
+                      </Span>
+                    )}
+                  </Stack>
+                  <UISelect.ItemIndicator />
+                </UISelect.Item>
+              ))
+            )}
           </UISelect.Content>
         </UISelect.Positioner>
       </Portal>

@@ -19,6 +19,7 @@ import {
   executeTestSuite,
   flags,
   interval,
+  isFastMode,
   loadRuntimeStrategyBacktestConfigs,
   mergePersistedTestSummaries,
   persistTestSummariesIndex,
@@ -296,11 +297,14 @@ const saveAndPrintResults = async () => {
   for await (const result of getTopResults()) {
     const { test } = result;
     const { symbol, name } = test;
-    const { stat, orderLog, hasArtifacts } =
-      await resolveRenderableStat(result);
+    const rendered = isFastMode ? null : await resolveRenderableStat(result);
+    const stat = rendered?.stat ?? result.stat;
 
-    if (hasArtifacts && orderLog) {
-      await setTestData(test, stat, orderLog);
+    if (rendered) {
+      const { orderLog, hasArtifacts } = rendered;
+      if (hasArtifacts && orderLog) {
+        await setTestData(test, stat, orderLog);
+      }
     }
 
     colorizedResults.push([
@@ -327,11 +331,14 @@ const saveAndPrintResultsByTickers = async () => {
   for await (const result of getBestTickerResults()) {
     const { test } = result;
     const { symbol, name } = test;
-    const { stat, orderLog, hasArtifacts } =
-      await resolveRenderableStat(result);
+    const rendered = isFastMode ? null : await resolveRenderableStat(result);
+    const stat = rendered?.stat ?? result.stat;
 
-    if (hasArtifacts && orderLog) {
-      await setTestData(test, stat, orderLog);
+    if (rendered) {
+      const { orderLog, hasArtifacts } = rendered;
+      if (hasArtifacts && orderLog) {
+        await setTestData(test, stat, orderLog);
+      }
     }
 
     colorizedResultsByTickers.push([
@@ -361,7 +368,9 @@ const finishBacktest = async () => {
   } else {
     await saveAndPrintResultsByTickers();
   }
-  await persistTestSummariesIndex();
+  if (!isFastMode) {
+    await persistTestSummariesIndex();
+  }
 
   const topResults = getTopResults();
   const bestConfig = topResults[0]?.test.strategyConfig;
@@ -384,31 +393,33 @@ const finishBacktest = async () => {
   );
   const timestamp = createTimestamp(finishedAt);
 
-  await setData(
-    redisKeys.backtestResults(userName, flags.config, timestamp),
-    {
-      config: flags.config,
-      mode: 'config',
-      user: userName,
-      startedAt: new Date(getRunStartedAt()).toISOString(),
-      finishedAt: finishedAt.toISOString(),
-      durationSeconds,
-      results: toPersistedBacktestResultEntries(topResults),
-      resultsByTickers: toPersistedBacktestResultEntries(
-        getBestTickerResults(),
-      ),
-      resultsByStrategies: null,
-      runtimeComparison: null,
-      bestConfig,
-      mergedConfig,
-      successTests,
-      errors,
-      errorTests,
-    },
-    {
-      expire: 0,
-    },
-  );
+  if (!isFastMode) {
+    await setData(
+      redisKeys.backtestResults(userName, flags.config, timestamp),
+      {
+        config: flags.config,
+        mode: 'config',
+        user: userName,
+        startedAt: new Date(getRunStartedAt()).toISOString(),
+        finishedAt: finishedAt.toISOString(),
+        durationSeconds,
+        results: toPersistedBacktestResultEntries(topResults),
+        resultsByTickers: toPersistedBacktestResultEntries(
+          getBestTickerResults(),
+        ),
+        resultsByStrategies: null,
+        runtimeComparison: null,
+        bestConfig,
+        mergedConfig,
+        successTests,
+        errors,
+        errorTests,
+      },
+      {
+        expire: 0,
+      },
+    );
+  }
 
   process.exit();
 };

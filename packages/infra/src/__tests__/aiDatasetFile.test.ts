@@ -3,6 +3,7 @@ import os from 'os';
 import path from 'path';
 import {
   appendAiDatasetRow,
+  countAiDatasetRows,
   closeAiDatasetWriter,
   closeAllAiDatasetWriters,
   flushAiDatasetWriter,
@@ -11,6 +12,7 @@ import {
   listAiChunkStrategies,
   mergeAiJsonlFiles,
   readAiDatasetRows,
+  streamAiDatasetRows,
   toFileToken,
 } from '@tradejs/infra/ai';
 
@@ -227,6 +229,58 @@ describe('aiDatasetFile', () => {
     expect(allRows.rows.map((row) => row.signalId)).toEqual(['b', 'c', 'a']);
     expect(recentRows.totalRows).toBe(3);
     expect(recentRows.rows.map((row) => row.signalId)).toEqual(['c', 'a']);
+  });
+
+  it('counts and streams selected rows without loading the whole file into memory', async () => {
+    const merged = path.join(tempDir, 'ai-dataset-trendline-windowed.jsonl');
+    await fs.writeFile(
+      merged,
+      [
+        { signalId: 'a', timestamp: 1 },
+        { signalId: 'b', timestamp: 2 },
+        { signalId: 'c', timestamp: 3 },
+        { signalId: 'd', timestamp: 4 },
+      ]
+        .map((entry) =>
+          JSON.stringify({
+            strategyName: 'TrendLine',
+            symbol: 'ETHUSDT',
+            direction: 'LONG',
+            profit: 1,
+            payload: makePayload({
+              signalId: entry.signalId,
+              symbol: 'ETHUSDT',
+              direction: 'LONG',
+              timestamp: entry.timestamp,
+            }),
+            ...entry,
+          }),
+        )
+        .join('\n') + '\n',
+      'utf8',
+    );
+
+    await expect(
+      countAiDatasetRows({
+        filePath: merged,
+        limitFromEnd: 2,
+        skipFromEnd: 1,
+      }),
+    ).resolves.toEqual({
+      totalRows: 4,
+      selectedRows: 2,
+    });
+
+    const streamedSignalIds: string[] = [];
+    await streamAiDatasetRows({
+      filePath: merged,
+      limitFromEnd: 2,
+      skipFromEnd: 1,
+      onRow: (row) => {
+        streamedSignalIds.push(row.signalId);
+      },
+    });
+    expect(streamedSignalIds).toEqual(['b', 'c']);
   });
 
   it('supports skipping rows from the end before selecting recent rows', async () => {

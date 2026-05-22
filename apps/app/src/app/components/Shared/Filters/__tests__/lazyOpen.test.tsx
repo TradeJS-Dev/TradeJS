@@ -21,11 +21,16 @@ jest.mock('#ui', () => ({
   Select: ({
     placeholder,
     onOpenChange,
+    disabled,
   }: {
     placeholder?: string;
     onOpenChange?: (open: boolean) => void;
+    disabled?: boolean;
   }) => (
     <div>
+      <span data-testid={`${placeholder}-disabled`}>
+        {disabled ? 'true' : 'false'}
+      </span>
       <button
         onClick={() => onOpenChange?.(true)}
         data-testid={`${placeholder}-open`}
@@ -99,5 +104,25 @@ describe('filters lazy open', () => {
     fireEvent.click(getByTestId('Strategy-open'));
     fireEvent.click(getByTestId('Backtest-open'));
     expect(ensureBacktestsLoaded).toHaveBeenCalledTimes(2);
+  });
+
+  it('disables strategy select when there are no backtests for the symbol', () => {
+    const { getByTestId } = render(
+      <FiltersContext.Provider
+        value={{
+          filters: {
+            provider: 'bybit',
+            symbol: 'BTCUSDT',
+            interval: '15',
+          },
+          tickers: [],
+          backtestFiles: [],
+        }}
+      >
+        <SelectBacktest />
+      </FiltersContext.Provider>,
+    );
+
+    expect(getByTestId('No strategies-disabled').textContent).toBe('true');
   });
 });

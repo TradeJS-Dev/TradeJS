@@ -56,21 +56,30 @@ const DAYS_PER_WEEK = 7;
 const DAYS_PER_MONTH = 30.4375;
 
 const getEvaluationPeriodDays = (evaluations: AiTrainEvaluation[]) => {
-  const timestamps = evaluations
-    .map((evaluation) =>
+  let minTimestamp: number | null = null;
+  let maxTimestamp: number | null = null;
+
+  for (const evaluation of evaluations) {
+    const timestamp =
       typeof evaluation.timestamp === 'number' &&
       Number.isFinite(evaluation.timestamp)
         ? evaluation.timestamp
-        : null,
-    )
-    .filter((timestamp): timestamp is number => timestamp != null);
+        : null;
+    if (timestamp == null) {
+      continue;
+    }
 
-  if (!timestamps.length) {
-    return null;
+    if (minTimestamp == null || timestamp < minTimestamp) {
+      minTimestamp = timestamp;
+    }
+    if (maxTimestamp == null || timestamp > maxTimestamp) {
+      maxTimestamp = timestamp;
+    }
   }
 
-  const minTimestamp = Math.min(...timestamps);
-  const maxTimestamp = Math.max(...timestamps);
+  if (minTimestamp == null || maxTimestamp == null) {
+    return null;
+  }
 
   return Math.max((maxTimestamp - minTimestamp) / DAY_MS, 1);
 };

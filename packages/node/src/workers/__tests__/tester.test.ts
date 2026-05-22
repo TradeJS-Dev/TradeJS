@@ -224,4 +224,47 @@ describe('worker tester', () => {
     );
     expect(calculateStatsFullMock).toHaveBeenCalledWith(positionLog);
   });
+
+  it('skips artifact cache writes when fast-mode test results have no inline logs', async () => {
+    const send = jest.fn((_message?: unknown, callback?: () => void) => {
+      callback?.();
+    });
+    process.send = send as any;
+    process.disconnect = jest.fn() as any;
+    process.exit = jest.fn() as any;
+
+    const test = { name: 't-fast', fast: true };
+    const testingImpl = jest.fn(async () => ({
+      stat: {
+        amount: 120,
+        netProfit: 20,
+        orders: 1,
+        winRate: 100,
+      },
+      orderLogId: 'log-fast',
+    }));
+
+    const { calculateStatsFullMock, writeCachedBacktestArtifactsMock } =
+      await setup({
+        suite: [test],
+        testingImpl,
+      });
+
+    await messageHandler?.({ chunk: [test], userName: 'alice' });
+
+    expect(writeCachedBacktestArtifactsMock).not.toHaveBeenCalled();
+    expect(calculateStatsFullMock).not.toHaveBeenCalled();
+    expect(send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        stat: {
+          amount: 120,
+          netProfit: 20,
+          orders: 1,
+          winRate: 100,
+        },
+        orderLogId: 'log-fast',
+        test,
+      }),
+    );
+  });
 });

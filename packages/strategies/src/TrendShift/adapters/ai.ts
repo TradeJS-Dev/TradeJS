@@ -1,303 +1,33 @@
 import { mapAiRuntimeFromConfig } from '@tradejs/core/strategies';
-import { AiPayload, StrategyAiAdapter } from '@tradejs/types';
+import {
+  AiPayload,
+  BaseStrategyContextSnapshot,
+  StrategyAiAdapter,
+} from '@tradejs/types';
 import { TrendShiftConfig } from '../config';
-
-type TrendShiftContext = {
-  signalDirection?: 'LONG' | 'SHORT';
-  confirmedFlip?: boolean;
-  bullFlip?: boolean;
-  bearFlip?: boolean;
-  flipDistanceOk?: boolean;
-  closeVsAvgPct?: number;
-  bandWidthPct?: number;
-  avgSlopePct?: number;
-  distanceAtrRatio?: number;
-  coinBias?: 'bullish' | 'bearish' | 'neutral' | 'unknown';
-  coinBiasAligned?: boolean | null;
-  currentPrice?: number;
-  avg?: number;
-};
-
-type TrendShiftAiContext = TrendShiftContext & {
-  deterministicQuality: number;
-  approvalAllowedNow: boolean;
-  hardBlockReasons: string[];
-  coinBiasConflict: boolean;
-  derivativesRiskFlags: string[];
-  derivativesDirectionAligned: boolean | null;
-  derivativesPressure: string | null;
-  derivativesFlushSupport: boolean;
-  coreLongQ5Candidate: boolean;
-  coreShortQ5Candidate: boolean;
-  q4LongBreakoutCandidate: boolean;
-  q4ShortBreakoutCandidate: boolean;
-  breakoutState: string | null;
-  volumeRel20: number | null;
-  atrPctZScore: number | null;
-  relativeStrength1h: number | null;
-  sessionPrimary: string | null;
-  sessionIsOverlap: boolean;
-  priceOiDivergenceType: string | null;
-};
+import {
+  buildTrendShiftGuardrailContext,
+  getTrendShiftGuardrailRejectReason,
+  TrendShiftSignalContext,
+} from '../guardrails';
 
 const asRecord = (value: unknown): Record<string, unknown> | null =>
   typeof value === 'object' && value != null && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : null;
 
-const getStringArray = (value: unknown): string[] =>
-  Array.isArray(value)
-    ? value.filter(
-        (entry): entry is string =>
-          typeof entry === 'string' && entry.trim().length > 0,
-      )
-    : [];
-
-const getFiniteNumber = (value: unknown): number | null => {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : null;
-};
-
-const getTrendShiftContext = (payload: AiPayload): TrendShiftAiContext => {
+const getTrendShiftContext = (payload: AiPayload) => {
   const additional = asRecord(payload.additionalIndicators);
   const raw =
-    ((additional?.trendShiftContext ?? {}) as TrendShiftContext) || {};
-  const baseContext = asRecord(additional?.baseContext);
-  const derivativesContext = asRecord(baseContext?.derivatives);
-  const derivativesSummary = asRecord(derivativesContext?.summary);
-  const regime = asRecord(baseContext?.regime);
-  const regimeVolatility = asRecord(regime?.volatility);
-  const regimeSession = asRecord(regime?.session);
-  const structure = asRecord(baseContext?.structure);
-  const localRange = asRecord(structure?.localRange);
-  const participation = asRecord(baseContext?.participation);
-  const participationVolume = asRecord(participation?.volume);
-  const relative = asRecord(baseContext?.relative);
-  const benchmark = asRecord(relative?.benchmark);
-  const hardBlockReasons: string[] = [];
-  const coinBiasConflict = raw.coinBiasAligned === false;
-  const derivativesRiskFlags = getStringArray(derivativesSummary?.riskFlags);
-  const derivativesDirectionAligned =
-    typeof derivativesSummary?.directionAligned === 'boolean'
-      ? derivativesSummary.directionAligned
-      : null;
-  const derivativesPressure =
-    typeof derivativesSummary?.pressure === 'string' &&
-    derivativesSummary.pressure.trim().length > 0
-      ? derivativesSummary.pressure
-      : null;
-  const sessionPrimary =
-    typeof regimeSession?.sessionPhase === 'string'
-      ? regimeSession.sessionPhase
-      : null;
-  const sessionIsOverlap = regimeSession?.isOverlap === true;
-  const breakoutState =
-    typeof localRange?.breakoutState === 'string'
-      ? localRange.breakoutState
-      : null;
-  const volumeRel20 = getFiniteNumber(participationVolume?.volumeRel20);
-  const atrPctZScore = getFiniteNumber(regimeVolatility?.atrPctZScore);
-  const relativeStrength1h = getFiniteNumber(benchmark?.relativeStrength1h);
-  const priceOiDivergenceType =
-    typeof derivativesSummary?.priceOiDivergenceType === 'string'
-      ? derivativesSummary.priceOiDivergenceType
-      : null;
+    ((additional?.trendShiftContext ?? {}) as TrendShiftSignalContext) || {};
+  const baseContext = (additional?.baseContext ??
+    null) as BaseStrategyContextSnapshot | null;
 
-  if (!raw.confirmedFlip) {
-    hardBlockReasons.push('unconfirmed_flip');
-  }
-  if (!raw.flipDistanceOk) {
-    hardBlockReasons.push('weak_flip_distance');
-  }
-
-  const slopeAbs = Math.abs(raw.avgSlopePct ?? 0);
-  const distanceAtrRatio = raw.distanceAtrRatio ?? 0;
-  const closeVsAvgPctAbs = Math.abs(raw.closeVsAvgPct ?? 0);
-  const derivativesFlushSupport =
-    raw.signalDirection === 'SHORT'
-      ? derivativesRiskFlags.includes('long_liquidation_spike')
-      : raw.signalDirection === 'LONG'
-        ? derivativesRiskFlags.includes('short_liquidation_spike')
-        : false;
-  const oiNotConfirming = derivativesRiskFlags.includes('oi_not_confirming');
-  const coreLongQ5Candidate =
-    raw.signalDirection === 'LONG' &&
-    distanceAtrRatio >= 0.8 &&
-    slopeAbs >= 0.09 &&
-    closeVsAvgPctAbs >= 0.12;
-  const coreShortQ5Candidate =
-    raw.signalDirection === 'SHORT' &&
-    distanceAtrRatio >= 0.8 &&
-    slopeAbs >= 0.09 &&
-    closeVsAvgPctAbs >= 0.12;
-  const overextendedShortWithoutFlush =
-    raw.signalDirection === 'SHORT' &&
-    distanceAtrRatio > 1.2 &&
-    !derivativesFlushSupport;
-  const q4LongBreakoutCandidate =
-    raw.signalDirection === 'LONG' &&
-    breakoutState === 'above_high_level' &&
-    volumeRel20 != null &&
-    volumeRel20 >= 1.2 &&
-    atrPctZScore != null &&
-    atrPctZScore >= 0 &&
-    relativeStrength1h != null &&
-    relativeStrength1h > -1 &&
-    derivativesPressure === 'short_flush';
-  const q4ShortBreakoutCandidate =
-    raw.signalDirection === 'SHORT' &&
-    breakoutState === 'below_low_level' &&
-    volumeRel20 != null &&
-    volumeRel20 >= 1.2 &&
-    atrPctZScore != null &&
-    atrPctZScore >= 0 &&
-    relativeStrength1h != null &&
-    relativeStrength1h < 1 &&
-    derivativesPressure === 'long_flush';
-  const q4ShortAsiaFlushCandidate =
-    raw.signalDirection === 'SHORT' &&
-    derivativesPressure === 'neutral' &&
-    derivativesFlushSupport &&
-    sessionPrimary === 'asia' &&
-    !sessionIsOverlap &&
-    distanceAtrRatio < 0.7 &&
-    slopeAbs >= 0.08 &&
-    closeVsAvgPctAbs >= 0.12;
-  let deterministicQuality = 3;
-  if (hardBlockReasons.length > 0) {
-    deterministicQuality = raw.confirmedFlip ? 2 : 1;
-  } else if (
-    distanceAtrRatio >= 0.8 &&
-    slopeAbs >= 0.09 &&
-    closeVsAvgPctAbs >= 0.12
-  ) {
-    deterministicQuality = 5;
-  } else if (
-    distanceAtrRatio >= 0.45 &&
-    slopeAbs >= 0.04 &&
-    closeVsAvgPctAbs >= 0.05
-  ) {
-    deterministicQuality = 4;
-  }
-
-  if (deterministicQuality === 4 && q4ShortAsiaFlushCandidate) {
-    deterministicQuality = 5;
-  }
-
-  if (deterministicQuality >= 5 && priceOiDivergenceType === 'flat_or_mixed') {
-    deterministicQuality = 4;
-    hardBlockReasons.push('flat_or_mixed_oi');
-  }
-
-  if (deterministicQuality >= 5 && volumeRel20 != null && volumeRel20 < 0.8) {
-    deterministicQuality = 4;
-    hardBlockReasons.push('thin_participation');
-  }
-
-  if (
-    deterministicQuality >= 5 &&
-    oiNotConfirming &&
-    !derivativesFlushSupport
-  ) {
-    deterministicQuality = 4;
-    hardBlockReasons.push('oi_not_confirming');
-  }
-
-  if (deterministicQuality >= 5 && overextendedShortWithoutFlush) {
-    deterministicQuality = 4;
-    hardBlockReasons.push('overextended_without_flush');
-  }
-
-  if (
-    deterministicQuality >= 5 &&
-    coreLongQ5Candidate &&
-    derivativesPressure === 'crowded_short' &&
-    !derivativesFlushSupport
-  ) {
-    deterministicQuality = 4;
-    hardBlockReasons.push('long_pressure_conflict');
-  }
-
-  if (
-    deterministicQuality >= 5 &&
-    coreShortQ5Candidate &&
-    breakoutState === 'below_low_level' &&
-    derivativesPressure === 'crowded_short' &&
-    !derivativesFlushSupport
-  ) {
-    deterministicQuality = 4;
-    hardBlockReasons.push('short_pressure_conflict');
-  }
-
-  if (
-    deterministicQuality >= 5 &&
-    derivativesPressure === 'neutral' &&
-    !derivativesFlushSupport
-  ) {
-    deterministicQuality = 4;
-    hardBlockReasons.push('neutral_derivatives_pressure');
-  }
-
-  if (
-    deterministicQuality >= 5 &&
-    derivativesDirectionAligned == null &&
-    !derivativesFlushSupport
-  ) {
-    deterministicQuality = 4;
-    hardBlockReasons.push('derivatives_alignment_unknown');
-  }
-
-  return {
-    ...raw,
-    deterministicQuality,
-    approvalAllowedNow: deterministicQuality >= 5,
-    hardBlockReasons,
-    coinBiasConflict,
-    derivativesRiskFlags,
-    derivativesDirectionAligned,
-    derivativesPressure,
-    derivativesFlushSupport,
-    coreLongQ5Candidate,
-    coreShortQ5Candidate,
-    q4LongBreakoutCandidate,
-    q4ShortBreakoutCandidate,
-    breakoutState,
-    volumeRel20,
-    atrPctZScore,
-    relativeStrength1h,
-    sessionPrimary,
-    sessionIsOverlap,
-    priceOiDivergenceType,
-  };
-};
-
-const reasonText = (reason: string) => {
-  switch (reason) {
-    case 'unconfirmed_flip':
-      return 'the internal flip is not confirmed yet';
-    case 'weak_flip_distance':
-      return 'price moved away from the adaptive average too weakly';
-    case 'coin_bias_conflict':
-      return 'coin MA bias conflicts with the flip direction';
-    case 'oi_not_confirming':
-      return 'open interest does not confirm the flip yet';
-    case 'overextended_without_flush':
-      return 'the SHORT flip already looks overstretched away from the average without a liquidation flush';
-    case 'thin_participation':
-      return 'participation is too thin versus recent volume for live approval';
-    case 'long_pressure_conflict':
-      return 'the LONG flip is running into crowded-short derivatives pressure without a supporting short-liquidation flush';
-    case 'short_pressure_conflict':
-      return 'the SHORT flip is running into crowded-short positioning at the breakdown, so keep it in watch mode unless a liquidation flush confirms continuation';
-    case 'neutral_derivatives_pressure':
-      return 'derivatives pressure is neutral, so the flip still lacks conviction';
-    case 'derivatives_alignment_unknown':
-      return 'derivatives alignment is still unclear, so keep the flip in watch mode';
-    case 'flat_or_mixed_oi':
-      return 'price and open-interest divergence still looks mixed, so keep the flip in watch mode';
-    default:
-      return reason;
-  }
+  return buildTrendShiftGuardrailContext({
+    signalContext: raw,
+    baseContext,
+    includeCoreTransferredFilters: false,
+  });
 };
 
 export const trendShiftAiAdapter: StrategyAiAdapter = {
@@ -331,12 +61,7 @@ export const trendShiftAiAdapter: StrategyAiAdapter = {
       direction: null,
       quality: context.deterministicQuality,
       approved: false,
-      rejectReason:
-        context.hardBlockReasons.length > 0
-          ? context.hardBlockReasons.map(reasonText).join('; ')
-          : context.coinBiasConflict
-            ? 'coin MA bias still conflicts with the flip; require q5-strength continuation to override it'
-            : 'the flip still does not look strong enough for live approval',
+      rejectReason: getTrendShiftGuardrailRejectReason(context),
     };
   },
   buildHumanPromptAddon: ({ payload }) => {

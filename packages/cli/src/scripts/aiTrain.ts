@@ -4,8 +4,11 @@ const ListIt = require('list-it');
 import fs from 'fs/promises';
 import path from 'path';
 import ProgressBar from 'progress';
-import { runWithConcurrency } from '@tradejs/core/async';
-import { readAiDatasetRows, toFileToken } from '@tradejs/infra/ai';
+import {
+  countAiDatasetRows,
+  streamAiDatasetRows,
+  toFileToken,
+} from '@tradejs/infra/ai';
 import { redisKeys, setData } from '@tradejs/infra/redis';
 import {
   DEFAULT_AI_MODEL,
@@ -368,8 +371,10 @@ type AiTrainResult = {
 };
 
 type AiTrainEvaluatedRow = AiTrainEvaluation & {
-  row: AiDatasetRow;
   signalId: string;
+  symbol: string;
+  testName: string;
+  modelDirection: string | null;
 };
 
 const resolveDeterministicGateEvaluation = (
@@ -567,13 +572,24 @@ const buildAiChartDetails = (params: {
   rows: AiTrainEvaluatedRow[];
 }) => {
   const { summary, rows } = params;
-  const timestamps = rows
-    .map((row) => row.timestamp)
-    .filter(
-      (value): value is number => value != null && Number.isFinite(value),
-    );
-  const windowStart = timestamps.length ? Math.min(...timestamps) : null;
-  const windowEnd = timestamps.length ? Math.max(...timestamps) : null;
+  let windowStart: number | null = null;
+  let windowEnd: number | null = null;
+  for (const row of rows) {
+    const timestamp =
+      row.timestamp != null && Number.isFinite(row.timestamp)
+        ? row.timestamp
+        : null;
+    if (timestamp == null) {
+      continue;
+    }
+
+    if (windowStart == null || timestamp < windowStart) {
+      windowStart = timestamp;
+    }
+    if (windowEnd == null || timestamp > windowEnd) {
+      windowEnd = timestamp;
+    }
+  }
 
   const details: StrategyChartDetail[] = [
     {
@@ -654,7 +670,7 @@ const buildStrategyWideEquityCurve = (evaluations: AiTrainEvaluatedRow[]) => {
   const sorted = [...evaluations].sort(
     (left, right) =>
       (left.timestamp ?? 0) - (right.timestamp ?? 0) ||
-      left.row.symbol.localeCompare(right.row.symbol) ||
+      left.symbol.localeCompare(right.symbol) ||
       left.signalId.localeCompare(right.signalId),
   );
   let amount = 100;
@@ -686,7 +702,7 @@ const buildAiChartSnapshot = (params: {
   const variantNames = [
     ...new Set(
       evaluatedRows
-        .map((evaluation) => evaluation.row.testName?.trim() || '')
+        .map((evaluation) => evaluation.testName.trim())
         .filter(Boolean),
     ),
   ].sort();
@@ -696,8 +712,7 @@ const buildAiChartSnapshot = (params: {
         key: variantName,
         label: variantName,
         rows: evaluatedRows.filter(
-          (evaluation) =>
-            (evaluation.row.testName?.trim() || '') === variantName,
+          (evaluation) => evaluation.testName.trim() === variantName,
         ),
       }))
     : [
@@ -714,7 +729,7 @@ const buildAiChartSnapshot = (params: {
       const thresholdEvaluations = group.rows.map((evaluation) => ({
         ...evaluation,
         aiApproved:
-          evaluation.direction === evaluation.row.direction &&
+          evaluation.modelDirection === evaluation.direction &&
           evaluation.quality != null &&
           evaluation.quality >= threshold,
       }));
@@ -732,9 +747,7 @@ const buildAiChartSnapshot = (params: {
         subtitle: `q${threshold}+ · ${runLabel}`,
         symbols: [
           ...new Set(
-            group.rows
-              .map((evaluation) => evaluation.row.symbol)
-              .filter(Boolean),
+            group.rows.map((evaluation) => evaluation.symbol).filter(Boolean),
           ),
         ].sort(),
         orderLog: buildStrategyWideEquityCurve(approvedRows),
@@ -811,13 +824,13 @@ export const main = async () => {
   const parallel = normalizePositiveInt(flags.parallel, AI_CONCURRENCY_LIMIT);
   await ensureAiStrategyPluginsLoaded();
   const filePaths = await resolveDatasetFiles();
-  const { rows, totalRows } = await readAiDatasetRows({
+  const { totalRows, selectedRows } = await countAiDatasetRows({
     filePaths,
     limitFromEnd: recent,
     skipFromEnd: skip,
   });
 
-  if (!rows.length) {
+  if (!selectedRows) {
     console.log(
       chalk.yellow(
         `No AI prompt rows selected in ${filePaths.join(', ')} (recent=${recent || 'all'}, skip=${skip})`,
@@ -826,24 +839,12 @@ export const main = async () => {
     process.exit(0);
   }
 
-  const strategyName =
-    rows[0]?.strategyName || deriveStrategyNameFromFile(filePaths[0] || '');
-  const preparedRows = rows.map((row) => {
-    const { promptPair, signal } = resolvePromptRunContext(row);
-    const payload = buildAiPayload(signal);
-    return {
-      row,
-      promptPair,
-      payload,
-      signal,
-      deterministic: resolveDeterministicGateEvaluation(signal, row.direction),
-    };
-  });
-  const concurrency = Math.max(1, Math.min(parallel, rows.length));
+  let strategyName = deriveStrategyNameFromFile(filePaths[0] || '');
+  const concurrency = Math.max(1, Math.min(parallel, selectedRows));
   const bar = jsonOutput
     ? null
     : new ProgressBar(':current/:total [:bar][:percent] :symbol :status', {
-        total: rows.length,
+        total: selectedRows,
         width: 20,
       });
 
@@ -859,11 +860,20 @@ export const main = async () => {
     modelCandidate: boolean;
   }> = [];
   const evaluatedRows: AiTrainEvaluatedRow[] = [];
+  const deterministicEvaluations: DeterministicGateEvaluation[] = [];
+  const activeTasks = new Set<Promise<void>>();
 
-  await runWithConcurrency(preparedRows, concurrency, async (preparedRow) => {
-    const { row, promptPair, payload, signal, deterministic } = preparedRow;
+  const processRow = async (row: AiDatasetRow) => {
+    const { promptPair, signal } = resolvePromptRunContext(row);
+    const payload = buildAiPayload(signal);
+    const deterministic = resolveDeterministicGateEvaluation(
+      signal,
+      row.direction,
+    );
     const profit = Number(row.profit);
     const profitableTrade = isProfitableTrade(row);
+
+    deterministicEvaluations.push(deterministic);
 
     try {
       const analysis = localOnly
@@ -880,31 +890,39 @@ export const main = async () => {
           );
       const aiApproved = isAiApproval(row, analysis, minQuality);
       const quality = normalizeQuality(analysis);
-
+      const timestamp = Number.isFinite(Number(row.timestamp))
+        ? Number(row.timestamp)
+        : null;
+      const modelDirection =
+        typeof analysis.direction === 'string' && analysis.direction.trim()
+          ? analysis.direction
+          : null;
       const isCorrect = aiApproved === profitableTrade;
+
       evaluations.push({
         profit,
         profitableTrade,
         aiApproved,
         quality,
         direction: row.direction,
-        timestamp: Number.isFinite(Number(row.timestamp))
-          ? Number(row.timestamp)
-          : null,
+        timestamp,
         modelCandidate: deterministic.modelCandidate,
       });
-      evaluatedRows.push({
-        row,
-        signalId: row.signalId,
-        profit,
-        profitableTrade,
-        aiApproved,
-        quality,
-        direction: row.direction,
-        timestamp: Number.isFinite(Number(row.timestamp))
-          ? Number(row.timestamp)
-          : null,
-      });
+
+      if (saveChart) {
+        evaluatedRows.push({
+          signalId: row.signalId,
+          symbol: row.symbol,
+          testName: row.testName?.trim() || '',
+          modelDirection,
+          profit,
+          profitableTrade,
+          aiApproved,
+          quality,
+          direction: row.direction,
+          timestamp,
+        });
+      }
 
       bar?.tick(1, {
         symbol: chalk.gray(row.symbol),
@@ -924,13 +942,39 @@ export const main = async () => {
         status: chalk.yellow('error'),
       });
     }
+  };
+
+  await streamAiDatasetRows({
+    filePaths,
+    limitFromEnd: recent,
+    skipFromEnd: skip,
+    onRow: async (row) => {
+      if (
+        strategyName === 'unknown' &&
+        typeof row.strategyName === 'string' &&
+        row.strategyName.trim()
+      ) {
+        strategyName = row.strategyName.trim();
+      }
+
+      const task = processRow(row).finally(() => {
+        activeTasks.delete(task);
+      });
+      activeTasks.add(task);
+
+      if (activeTasks.size >= concurrency) {
+        await Promise.race(activeTasks);
+      }
+    },
   });
+
+  await Promise.all(activeTasks);
 
   const summary = summarizeAiTrainEvaluations(evaluations);
   const directionSummaries =
     summarizeAiTrainEvaluationsByDirection(evaluations);
   const deterministicSummary = summarizeDeterministicGateEvaluations(
-    preparedRows.map((preparedRow) => preparedRow.deterministic),
+    deterministicEvaluations,
     evaluations,
   );
   const evaluated = summary.correct + summary.incorrect;
@@ -938,7 +982,7 @@ export const main = async () => {
     run: {
       strategy: strategyName,
       filePath: filePaths.join(','),
-      selected: rows.length,
+      selected: selectedRows,
       sourceRows: totalRows,
       recent,
       skip,
@@ -969,7 +1013,7 @@ export const main = async () => {
 
   if (jsonOutput) {
     console.log(JSON.stringify(result));
-    process.exit(failed === rows.length ? 1 : 0);
+    process.exit(failed === selectedRows ? 1 : 0);
   }
 
   console.log('');
@@ -985,7 +1029,7 @@ export const main = async () => {
       [chalk.gray('FIELD'), chalk.gray('VALUE')],
       [
         ['strategy', chalk.yellow(strategyName)],
-        ['selected', chalk.blue(String(rows.length))],
+        ['selected', chalk.blue(String(selectedRows))],
         ['source_rows', chalk.blue(String(totalRows))],
         ['recent', chalk.blue(recent === 0 ? 'all' : String(recent))],
         ['skip', chalk.blue(String(skip))],
@@ -1175,5 +1219,5 @@ export const main = async () => {
     });
   }
 
-  process.exit(failed === rows.length ? 1 : 0);
+  process.exit(failed === selectedRows ? 1 : 0);
 };

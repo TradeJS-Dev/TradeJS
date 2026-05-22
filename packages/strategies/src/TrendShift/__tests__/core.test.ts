@@ -108,15 +108,54 @@ const makeStrategyApi = ({
     })),
   }) as any;
 
-const makeIndicatorsState = () =>
+const makeIndicatorsState = (overrides: Record<string, unknown> = {}) =>
   ({
     setCurrentBar: jest.fn(),
     next: jest.fn(),
     onBar: jest.fn(),
     ensureInitializedWithCurrentBar: jest.fn(),
     snapshot: jest.fn(() => ({
-      maFast: [120],
-      maSlow: [110],
+      baseContext: {
+        raw: {
+          trend: {
+            maFast: 120,
+            maSlow: 110,
+          },
+        },
+        regime: {
+          session: {
+            sessionPhase: 'off_hours',
+            isOverlap: false,
+          },
+          volatility: {
+            atrPctZScore: 0.6,
+          },
+        },
+        structure: {
+          localRange: {
+            breakoutState: 'above_high_level',
+          },
+        },
+        participation: {
+          volume: {
+            volumeRel20: 1.4,
+          },
+        },
+        relative: {
+          benchmark: {
+            relativeStrength1h: 0.2,
+          },
+        },
+        derivatives: {
+          summary: {
+            pressure: 'short_flush',
+            directionAligned: true,
+            riskFlags: ['short_liquidation_spike'],
+            priceOiDivergenceType: 'price_up_oi_up',
+          },
+        },
+      },
+      ...overrides,
     })),
     latestNumber: jest.fn(() => undefined),
     isInitialized: jest.fn(() => true),
@@ -237,5 +276,158 @@ describe('TrendShift core', () => {
     expect(result.kind).toBe('exit');
     expect((result as any).code).toBe('TRENDSHIFT_OPPOSITE_FLIP_EXIT');
     expect(strategyApi.exit).toHaveBeenCalledTimes(1);
+  });
+
+  it('skips long entry when crowded-long derivatives are anti-aligned', async () => {
+    const initialCandles = makeFlatCandles(220);
+    const currentCandle = makeBullFlipCandle(
+      initialCandles[initialCandles.length - 1].timestamp + 60_000,
+    );
+    const marketData = {
+      fullData: [...initialCandles, currentCandle],
+      timestamp: currentCandle.timestamp,
+      currentPrice: currentCandle.close,
+    };
+    const strategyApi = makeStrategyApi({ marketData });
+
+    const core = await createTrendShiftCore({
+      userName: 'root',
+      symbol: 'TESTUSDT',
+      config: DEFAULT_CONFIG as any,
+      isConfigFromBacktest: false,
+      connector: {} as any,
+      data: initialCandles,
+      btcData: initialCandles,
+      loadPineScriptFile: jest.fn(),
+      strategyApi,
+      indicatorsState: makeIndicatorsState({
+        baseContext: {
+          raw: {
+            trend: {
+              maFast: 120,
+              maSlow: 110,
+            },
+          },
+          regime: {
+            session: {
+              sessionPhase: 'us',
+              isOverlap: false,
+            },
+            volatility: {
+              atrPctZScore: 0.7,
+            },
+          },
+          structure: {
+            localRange: {
+              breakoutState: 'above_high_level',
+            },
+          },
+          participation: {
+            volume: {
+              volumeRel20: 1.5,
+            },
+          },
+          relative: {
+            benchmark: {
+              relativeStrength1h: 0.3,
+            },
+          },
+          derivatives: {
+            summary: {
+              pressure: 'crowded_long',
+              directionAligned: false,
+              riskFlags: [],
+              priceOiDivergenceType: 'price_up_oi_down',
+            },
+          },
+        },
+      }),
+    });
+
+    const result = await core(currentCandle as any, currentCandle as any);
+
+    expect(result).toEqual({
+      kind: 'skip',
+      code: 'TRENDSHIFT_GUARDRAIL_LONG_CROWDED_PRESSURE',
+    });
+    expect(strategyApi.entry).not.toHaveBeenCalled();
+  });
+
+  it('skips US short entry when long-flush move lacks downside OI expansion', async () => {
+    const initialCandles = [
+      ...makeFlatCandles(220),
+      makeBullFlipCandle(1_700_000_000_000 + 220 * 60_000),
+    ];
+    const currentCandle = makeBearFlipCandle(
+      initialCandles[initialCandles.length - 1].timestamp + 60_000,
+    );
+    const marketData = {
+      fullData: [...initialCandles, currentCandle],
+      timestamp: currentCandle.timestamp,
+      currentPrice: currentCandle.close,
+    };
+    const strategyApi = makeStrategyApi({ marketData });
+
+    const core = await createTrendShiftCore({
+      userName: 'root',
+      symbol: 'TESTUSDT',
+      config: DEFAULT_CONFIG as any,
+      isConfigFromBacktest: false,
+      connector: {} as any,
+      data: initialCandles,
+      btcData: initialCandles,
+      loadPineScriptFile: jest.fn(),
+      strategyApi,
+      indicatorsState: makeIndicatorsState({
+        baseContext: {
+          raw: {
+            trend: {
+              maFast: 90,
+              maSlow: 110,
+            },
+          },
+          regime: {
+            session: {
+              sessionPhase: 'us',
+              isOverlap: false,
+            },
+            volatility: {
+              atrPctZScore: 0.7,
+            },
+          },
+          structure: {
+            localRange: {
+              breakoutState: 'below_low_level',
+            },
+          },
+          participation: {
+            volume: {
+              volumeRel20: 1.5,
+            },
+          },
+          relative: {
+            benchmark: {
+              relativeStrength1h: -0.3,
+            },
+          },
+          derivatives: {
+            summary: {
+              pressure: 'long_flush',
+              directionAligned: true,
+              riskFlags: ['long_liquidation_spike'],
+              priceOiDivergenceType: 'price_down_oi_down',
+            },
+          },
+        },
+      }),
+    });
+
+    const result = await core(currentCandle as any, currentCandle as any);
+
+    expect(result).toEqual({
+      kind: 'skip',
+      code: 'TRENDSHIFT_GUARDRAIL_US_SHORT_OI_NOT_EXPANDING',
+    });
+    expect(strategyApi.entry).not.toHaveBeenCalled();
   });
 });

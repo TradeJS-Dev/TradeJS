@@ -8,6 +8,11 @@ import { TrendShiftConfig } from './config';
 import { buildTrendShiftSignalContext, createTrendShiftEngine } from './engine';
 import { filterByVeryVolatility } from './filters';
 import { buildTrendShiftFigures } from './figures';
+import {
+  buildTrendShiftGuardrailContext,
+  getTrendShiftGuardrailSkipCode,
+} from './guardrails';
+import { getIndicatorsBaseContext } from '../shared/baseContext';
 
 const isOpenPosition = (position: Position | null): position is Position =>
   Boolean(
@@ -90,6 +95,16 @@ export const createTrendShiftCore: CreateStrategyCore<
       },
       indicators: indicators as Record<string, unknown>,
     });
+    const guardrailContext = buildTrendShiftGuardrailContext({
+      signalContext,
+      baseContext: getIndicatorsBaseContext(
+        indicators as Record<string, unknown>,
+      ),
+    });
+
+    if (!guardrailContext.approvalAllowedNow) {
+      return strategyApi.skip(getTrendShiftGuardrailSkipCode(guardrailContext));
+    }
 
     const { stopLossPrice, takeProfitPrice, riskRatio, qty } =
       strategyApi.getDirectionalTpSlPrices({

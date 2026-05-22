@@ -584,14 +584,8 @@ export const readAiDatasetRows = async (params: {
   limitFromEnd?: number;
   skipFromEnd?: number;
 }) => {
-  const { filePath, filePaths, limitFromEnd = 0, skipFromEnd = 0 } = params;
-  const resolvedFilePaths = (
-    Array.isArray(filePaths) && filePaths.length
-      ? filePaths
-      : filePath
-        ? [filePath]
-        : []
-  ).map((item) => path.resolve(item));
+  const { limitFromEnd = 0, skipFromEnd = 0 } = params;
+  const resolvedFilePaths = resolveAiDatasetFilePaths(params);
   if (!resolvedFilePaths.length) {
     return {
       rows: [] as AiDatasetRow[],
@@ -645,5 +639,163 @@ export const readAiDatasetRows = async (params: {
   return {
     rows: selectedRows,
     totalRows,
+  };
+};
+
+const resolveAiDatasetFilePaths = (params: {
+  filePath?: string;
+  filePaths?: string[];
+}) =>
+  (Array.isArray(params.filePaths) && params.filePaths.length
+    ? params.filePaths
+    : params.filePath
+      ? [params.filePath]
+      : []
+  ).map((item) => path.resolve(item));
+
+const countNonEmptyAiDatasetRows = async (filePath: string) => {
+  let totalRows = 0;
+  const reader = readline.createInterface({
+    input: createReadStream(filePath, { encoding: 'utf8' }),
+    crlfDelay: Infinity,
+  });
+
+  for await (const line of reader) {
+    if (line.trim()) {
+      totalRows += 1;
+    }
+  }
+
+  reader.close();
+  return totalRows;
+};
+
+export const countAiDatasetRows = async (params: {
+  filePath?: string;
+  filePaths?: string[];
+  limitFromEnd?: number;
+  skipFromEnd?: number;
+}) => {
+  const { limitFromEnd = 0, skipFromEnd = 0 } = params;
+  const resolvedFilePaths = resolveAiDatasetFilePaths(params);
+  let totalRows = 0;
+
+  for (const filePath of resolvedFilePaths) {
+    totalRows += await countNonEmptyAiDatasetRows(filePath);
+  }
+
+  const effectiveSkip = Math.max(0, skipFromEnd);
+  const selectedRows =
+    limitFromEnd > 0
+      ? Math.min(limitFromEnd, Math.max(0, totalRows - effectiveSkip))
+      : Math.max(0, totalRows - effectiveSkip);
+
+  return {
+    totalRows,
+    selectedRows,
+  };
+};
+
+export const streamAiDatasetRows = async (params: {
+  filePath?: string;
+  filePaths?: string[];
+  limitFromEnd?: number;
+  skipFromEnd?: number;
+  onRow: (row: AiDatasetRow, index: number) => Promise<void> | void;
+}) => {
+  const { limitFromEnd = 0, skipFromEnd = 0, onRow } = params;
+  const resolvedFilePaths = resolveAiDatasetFilePaths(params);
+  if (!resolvedFilePaths.length) {
+    return {
+      totalRows: 0,
+      selectedRows: 0,
+    };
+  }
+
+  const effectiveSkip = Math.max(0, skipFromEnd);
+  let totalRows = 0;
+  let selectedRows = 0;
+
+  if (limitFromEnd > 0) {
+    const recentLines: string[] = [];
+    const recentWindowLimit = limitFromEnd + effectiveSkip;
+
+    for (const currentFilePath of resolvedFilePaths) {
+      const reader = readline.createInterface({
+        input: createReadStream(currentFilePath, { encoding: 'utf8' }),
+        crlfDelay: Infinity,
+      });
+
+      for await (const line of reader) {
+        const trimmed = line.trim();
+        if (!trimmed) {
+          continue;
+        }
+
+        totalRows += 1;
+        if (recentLines.length === recentWindowLimit) {
+          recentLines.shift();
+        }
+        recentLines.push(trimmed);
+      }
+
+      reader.close();
+    }
+
+    const selectedRecentLines =
+      effectiveSkip > 0
+        ? recentLines.slice(0, Math.max(0, recentLines.length - effectiveSkip))
+        : recentLines;
+
+    for (const line of selectedRecentLines) {
+      await onRow(JSON.parse(line) as AiDatasetRow, selectedRows);
+      selectedRows += 1;
+    }
+
+    return {
+      totalRows,
+      selectedRows,
+    };
+  }
+
+  const trailingSkipBuffer: string[] = [];
+  for (const currentFilePath of resolvedFilePaths) {
+    const reader = readline.createInterface({
+      input: createReadStream(currentFilePath, { encoding: 'utf8' }),
+      crlfDelay: Infinity,
+    });
+
+    for await (const line of reader) {
+      const trimmed = line.trim();
+      if (!trimmed) {
+        continue;
+      }
+
+      totalRows += 1;
+      if (effectiveSkip > 0) {
+        trailingSkipBuffer.push(trimmed);
+        if (trailingSkipBuffer.length <= effectiveSkip) {
+          continue;
+        }
+
+        const selectedLine = trailingSkipBuffer.shift();
+        if (!selectedLine) {
+          continue;
+        }
+        await onRow(JSON.parse(selectedLine) as AiDatasetRow, selectedRows);
+        selectedRows += 1;
+        continue;
+      }
+
+      await onRow(JSON.parse(trimmed) as AiDatasetRow, selectedRows);
+      selectedRows += 1;
+    }
+
+    reader.close();
+  }
+
+  return {
+    totalRows,
+    selectedRows,
   };
 };

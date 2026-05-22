@@ -116,6 +116,7 @@ process.on(
           const {
             inlineOrderLog,
             inlinePositionLog,
+            inlineReplaySignalEvaluations,
             stat: _rawStat,
             ...resultWithoutLogs
           } = testResult;

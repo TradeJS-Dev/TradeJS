@@ -24,6 +24,45 @@ Prefer:
 node -e "const fs=require('fs');const p='data/ai/export';const f=fs.readdirSync(p).filter(x=>x.startsWith('ai-dataset-<token>-merged-')&&x.endsWith('.jsonl')).sort().at(-1); console.log(f?require('path').join(p,f):'');"
 ```
 
+Important shard-aware rule:
+
+- merged exports may now be split into `-part1 ... -partN` files
+- treat all files with the same `strategy token + merge id` as one logical export
+- do not assume the latest export is a single `...-merged-<ts>.jsonl` file
+- `yarn ai-train` already groups matching part files automatically when:
+  - no explicit `--file` is given and it selects the latest merge id
+  - or `--file` points to any one shard like `...-part1.jsonl`
+- when reporting the export used, list the merge id and shard count, not only the first shard path
+
+Useful check:
+
+```bash
+node - <<'NODE'
+const fs=require('fs');
+const path=require('path');
+const p='data/ai/export';
+const entries=fs.readdirSync(p).filter(x=>x.endsWith('.jsonl'));
+const groups=new Map();
+for (const name of entries) {
+  const m=name.match(/^ai-dataset-(.+)-merged-(\d+)(?:-part(\d+))?\.jsonl$/);
+  if (!m) continue;
+  const key=`${m[1]}:${m[2]}`;
+  const row=groups.get(key) ?? {strategy:m[1], mergeId:m[2], files:[]};
+  row.files.push(name);
+  groups.set(key,row);
+}
+for (const row of [...groups.values()].sort((a,b)=>a.mergeId.localeCompare(b.mergeId))) {
+  row.files.sort((a,b)=>{
+    const ap=Number(a.match(/-part(\d+)\.jsonl$/)?.[1] ?? 0);
+    const bp=Number(b.match(/-part(\d+)\.jsonl$/)?.[1] ?? 0);
+    return ap-bp || a.localeCompare(b);
+  });
+  console.log(`${row.strategy} merge=${row.mergeId} shards=${row.files.length}`);
+  for (const file of row.files) console.log(`  ${path.join(p,file)}`);
+}
+NODE
+```
+
 2. If the user wants config analysis, read the real Redis config instead of guessing from defaults.
 
 Use:
@@ -51,6 +90,18 @@ yarn ai-train --strategy TrendLine -n 500 --localOnly
 yarn ai-train --strategy ReverseTrendLine -n 500 --localOnly
 yarn ai-train --strategy VolumeDivergence -n 500 --localOnly
 ```
+
+Shard-aware examples:
+
+```bash
+yarn ai-train --strategy TrendShift --localOnly --json -n 0
+yarn ai-train --strategy TrendShift --file data/ai/export/ai-dataset-trendshift-merged-1779459438806-part1.jsonl --localOnly --json -n 0
+```
+
+Interpretation:
+
+- both commands above should evaluate the full shard group for that merge id, not only `part1`
+- if you need a truly partial replay, create an explicit temp slice first instead of assuming one shard equals one isolated window
 
 5. Read these sections first:
 
@@ -83,14 +134,15 @@ Use the same period logic as `packages/cli/src/lib/aiTrainMetrics.ts`: `(max tim
 
 For large exports:
 
-- use `tail -n <N>` or another streaming slice
+- if the export is sharded, stream across shards in part order first
+- use `tail -n <N>` or another streaming slice on the combined stream
 - then run a small local script against only the selected window
 
 Preferred pattern:
 
 ```bash
 tmp=$(mktemp)
-tail -n 500 data/ai/export/ai-dataset-<token>-merged-<ts>.jsonl > "$tmp"
+cat data/ai/export/ai-dataset-<token>-merged-<ts>-part*.jsonl | tail -n 500 > "$tmp"
 TMP_PATH="$tmp" node --input-type=commonjs <<'NODE'
 // read only TMP_PATH, reconstruct signal from row.payload,
 // use buildAiPayload / runAiPromptLocal from packages/node/dist/ai.js,

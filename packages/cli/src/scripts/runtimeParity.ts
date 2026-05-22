@@ -2123,6 +2123,7 @@ export const runtimeParity = async () => {
           strategyName: target.strategy,
           strategyConfig: replayConfig,
           connectorName,
+          collectReplaySignalEvaluations: true,
           timeoutMs: 120_000,
         });
 

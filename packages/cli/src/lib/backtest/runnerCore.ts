@@ -42,6 +42,7 @@ import {
   flags,
   hasExplicitTestsLimit,
   interval,
+  isFastMode,
   isUpdateOnlyRun,
   progressStep,
   projectRoot,
@@ -98,6 +99,10 @@ const timeOperation = async <T>(
 };
 
 const getResultAmount = (result: TestWorkerResult) => result.stat.amount ?? 0;
+const getResultNetProfit = (result: TestWorkerResult) => {
+  const stat = result.stat as typeof result.stat & { netProfit?: number };
+  return Number(stat.netProfit ?? stat.profit ?? 0);
+};
 
 const recordError = (error: ErrorMessage) => {
   recordRunError(error);
@@ -156,7 +161,10 @@ export const updateBestTickerResult = (result: TestWorkerResult) => {
   }
 
   const previousResult = getBestTickerResultForSymbol(result.test.symbol);
-  if (previousResult && previousResult.stat.profit >= result.stat.profit) {
+  if (
+    previousResult &&
+    getResultNetProfit(previousResult) >= getResultNetProfit(result)
+  ) {
     return false;
   }
 
@@ -376,6 +384,7 @@ export const buildPreparedTestSuite = async ({
       },
       ml: mlEnabled,
       ai: aiEnabled,
+      fast: isFastMode,
       timeoutMs: testItemTimeoutMs,
     }))
     .slice(
@@ -536,7 +545,7 @@ export const executeTestSuite = async ({
       const bestResult = getTopResults()[0];
       return {
         symbol: bestResult?.test.symbol || '-',
-        profit: bestResult?.stat.profit || 0,
+        profit: bestResult ? getResultNetProfit(bestResult) : 0,
       };
     },
     onFinish,
@@ -564,6 +573,7 @@ export {
   flags,
   interval,
   isUpdateOnlyRun,
+  isFastMode,
   loadRuntimeStrategyBacktestConfigs,
   projectRoot,
   resultArtifactsIoConcurrency,

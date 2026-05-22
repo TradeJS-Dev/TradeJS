@@ -479,6 +479,59 @@ describe('testing backtest flow', () => {
     expect(mockAppendAiDatasetRow).not.toHaveBeenCalled();
   });
 
+  it('does not collect replay signal evaluations by default', async () => {
+    const data = [candle(1_000_050), candle(1_000_150), candle(1_000_250)];
+    mockByBitConnector.kline.mockResolvedValue(data);
+    mockBinanceConnector.kline.mockResolvedValue(data);
+    mockCoinbaseConnector.kline.mockResolvedValue(data);
+    mockStrategy
+      .mockResolvedValueOnce({
+        signalId: 's1',
+        symbol: 'ETHUSDT',
+        strategy: 'TrendLine',
+        direction: 'LONG',
+        timestamp: 1_000_150,
+      })
+      .mockResolvedValueOnce('NO_SIGNAL');
+
+    const result = await testing(createTest());
+
+    expect(result?.inlineReplaySignalEvaluations).toBeUndefined();
+  });
+
+  it('collects replay signal evaluations when explicitly requested', async () => {
+    const data = [candle(1_000_050), candle(1_000_150), candle(1_000_250)];
+    mockByBitConnector.kline.mockResolvedValue(data);
+    mockBinanceConnector.kline.mockResolvedValue(data);
+    mockCoinbaseConnector.kline.mockResolvedValue(data);
+    mockStrategy
+      .mockResolvedValueOnce({
+        signalId: 's1',
+        symbol: 'ETHUSDT',
+        strategy: 'TrendLine',
+        direction: 'LONG',
+        timestamp: 1_000_150,
+      })
+      .mockResolvedValueOnce('NO_SIGNAL');
+
+    const result = await testing(
+      createTest({ collectReplaySignalEvaluations: true }),
+    );
+
+    expect(result?.inlineReplaySignalEvaluations).toEqual([
+      expect.objectContaining({
+        evaluationId: 's1:TrendLine:ETHUSDT:1000150',
+        status: 'signal',
+        signalId: 's1',
+      }),
+      expect.objectContaining({
+        evaluationId: '1:TrendLine:ETHUSDT:1000250',
+        status: 'skip',
+        reason: 'NO_SIGNAL',
+      }),
+    ]);
+  });
+
   it('does not pass legacy candle arrays into ml payload builder', async () => {
     const prev = Array.from({ length: 60 }, (_, i) => candle(1_000_000 + i));
     const testPart = [candle(2_000_200)];

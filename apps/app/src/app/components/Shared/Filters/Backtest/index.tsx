@@ -131,11 +131,13 @@ export const SelectBacktest = () => {
   const strategyTests = tests.filter(
     (test) => test.data?.strategyName === selectedStrategy,
   );
+  const hasStrategyItems = !_.isEmpty(strategyItems);
 
   return (
     <>
       <Select
-        placeholder="Strategy"
+        placeholder={hasStrategyItems ? 'Strategy' : 'No strategies'}
+        emptyState="No strategies for this symbol"
         defaultValue={[selectedStrategy]}
         value={[selectedStrategy]}
         onChange={onChangeStrategy}
@@ -145,6 +147,7 @@ export const SelectBacktest = () => {
           }
         }}
         items={strategyItems}
+        disabled={!hasStrategyItems}
         width="220px"
       />
       <Select

@@ -111,6 +111,11 @@ args.option(
   'Write AI prompt rows to per-worker JSONL chunks',
   false,
 );
+args.option(
+  'fast',
+  'Skip per-test artifact persistence and keep only in-memory summary/AI-ML dataset output',
+  false,
+);
 
 const hasCliFlag = (argv: string[], names: string[]) =>
   argv.some(
@@ -148,6 +153,7 @@ export const hasExplicitTestsLimit = hasCliFlag(normalizedArgv, [
   '-n',
 ]);
 export const isUpdateOnlyRun = Boolean(flags.updateOnly);
+export const isFastMode = Boolean(flags.fast);
 export const testItemTimeoutMs = 240_000;
 export const workerHeapMb = resolveWorkerHeapMb();
 export const effectiveParallel = resolveEffectiveParallel(flags.parallel);

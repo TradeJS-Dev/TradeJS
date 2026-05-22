@@ -365,4 +365,42 @@ describe('testConnector', () => {
       },
     ]);
   });
+
+  it('omits inline logs in fast mode but still returns full summary stats', async () => {
+    const connector = createTestConnector(baseConnector as any, {
+      userName: 'alice',
+      fastMode: true,
+    });
+
+    await connector.placeOrder({
+      symbol: 'ETHUSDT',
+      qty: 1,
+      price: 100,
+      isLimit: false,
+      timestamp: 1,
+      direction: 'LONG',
+    });
+    await connector.closePosition({
+      symbol: 'ETHUSDT',
+      price: 105,
+      isLimit: false,
+      timestamp: 2,
+      direction: 'LONG',
+    });
+
+    const result = await connector.getResult();
+
+    expect(result.inlineOrderLog).toBeUndefined();
+    expect(result.inlinePositionLog).toBeUndefined();
+    expect(result.stat).toEqual(
+      expect.objectContaining({
+        amount: 104.39,
+        netProfit: 4.39,
+        orders: 1,
+        wins: 1,
+        losses: 0,
+        winRate: 100,
+      }),
+    );
+  });
 });

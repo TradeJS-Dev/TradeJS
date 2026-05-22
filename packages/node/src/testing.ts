@@ -578,6 +578,8 @@ export const testing: TestingBox = async ({
   connectorName,
   ml = false,
   ai = false,
+  fast = false,
+  collectReplaySignalEvaluations = false,
   chunkId = 'single',
   timeoutMs,
 }) => {
@@ -745,6 +747,7 @@ export const testing: TestingBox = async ({
     userName,
     mlEnabled: ml,
     aiEnabled: ai,
+    fastMode: fast,
   });
 
   const strategy = await withTimeout(
@@ -770,7 +773,9 @@ export const testing: TestingBox = async ({
     string,
     Omit<AiDatasetRow, 'profit'>
   >();
-  const replaySignalEvaluations: RuntimeSignalEvaluationRecord[] = [];
+  const replaySignalEvaluations = collectReplaySignalEvaluations
+    ? ([] as RuntimeSignalEvaluationRecord[])
+    : null;
 
   const flushClosedResultsBatch = async () => {
     if (!ml && !ai) return;
@@ -830,40 +835,44 @@ export const testing: TestingBox = async ({
       strategy(candle, btcCandle),
     );
     if (!signal || typeof signal === 'string') {
-      replaySignalEvaluations.push({
-        evaluationId: `${testId}:${strategyName}:${symbol}:${candle.timestamp}`,
-        userName,
-        strategy: strategyName,
-        symbol,
-        interval,
-        timestamp: candle.timestamp,
-        evaluatedAt: candle.timestamp,
-        status: 'skip',
-        reason:
-          typeof signal === 'string' && signal.trim() ? signal : 'NO_SIGNAL',
-      });
+      if (replaySignalEvaluations) {
+        replaySignalEvaluations.push({
+          evaluationId: `${testId}:${strategyName}:${symbol}:${candle.timestamp}`,
+          userName,
+          strategy: strategyName,
+          symbol,
+          interval,
+          timestamp: candle.timestamp,
+          evaluatedAt: candle.timestamp,
+          status: 'skip',
+          reason:
+            typeof signal === 'string' && signal.trim() ? signal : 'NO_SIGNAL',
+        });
+      }
     } else {
-      replaySignalEvaluations.push({
-        evaluationId: `${signal.signalId || testId}:${strategyName}:${symbol}:${signal.timestamp || candle.timestamp}`,
-        userName,
-        strategy: signal.strategy || strategyName,
-        symbol: signal.symbol || symbol,
-        interval: signal.interval || interval,
-        timestamp:
-          typeof signal.timestamp === 'number' &&
-          Number.isFinite(signal.timestamp)
-            ? signal.timestamp
-            : candle.timestamp,
-        evaluatedAt: candle.timestamp,
-        status: 'signal',
-        reason: signal.orderSkipReason || signal.orderStatus,
-        signalId: signal.signalId,
-        direction: signal.direction,
-        orderStatus: signal.orderStatus,
-        orderSkipReason: signal.orderSkipReason,
-        aiAnalysis: signal.aiAnalysis ?? null,
-        ml: signal.ml,
-      });
+      if (replaySignalEvaluations) {
+        replaySignalEvaluations.push({
+          evaluationId: `${signal.signalId || testId}:${strategyName}:${symbol}:${signal.timestamp || candle.timestamp}`,
+          userName,
+          strategy: signal.strategy || strategyName,
+          symbol: signal.symbol || symbol,
+          interval: signal.interval || interval,
+          timestamp:
+            typeof signal.timestamp === 'number' &&
+            Number.isFinite(signal.timestamp)
+              ? signal.timestamp
+              : candle.timestamp,
+          evaluatedAt: candle.timestamp,
+          status: 'signal',
+          reason: signal.orderSkipReason || signal.orderStatus,
+          signalId: signal.signalId,
+          direction: signal.direction,
+          orderStatus: signal.orderStatus,
+          orderSkipReason: signal.orderSkipReason,
+          aiAnalysis: signal.aiAnalysis ?? null,
+          ml: signal.ml,
+        });
+      }
     }
     const shouldCapturePayload =
       signal && typeof signal !== 'string' && signal.signalId && (ml || ai);
@@ -912,8 +921,10 @@ export const testing: TestingBox = async ({
 
   const result = await withTimeout('collect result', testConnector.getResult());
 
-  return {
-    ...result,
-    inlineReplaySignalEvaluations: replaySignalEvaluations,
-  };
+  return replaySignalEvaluations
+    ? {
+        ...result,
+        inlineReplaySignalEvaluations: replaySignalEvaluations,
+      }
+    : result;
 };
