@@ -589,6 +589,10 @@ export const redisKeys = {
     `users:${userName}:runtime:trade-records:`,
   runtimeTrade: (userName: string, orderId: string) =>
     `users:${userName}:runtime:trade-records:${orderId}`,
+  runtimeTradeBuckets: (userName: string) =>
+    `users:${userName}:runtime:trade-records:days:`,
+  runtimeTradeBucket: (userName: string, dayKey: string) =>
+    `users:${userName}:runtime:trade-records:days:${dayKey}`,
   runtimeActiveTrades: (userName: string) =>
     `users:${userName}:runtime:active-trades:`,
   runtimeActiveTrade: (userName: string, symbol: string) =>

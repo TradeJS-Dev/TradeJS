@@ -448,6 +448,12 @@ describe('redis utils', () => {
     expect(redisKeys.runtimeTrade('root', 'o1')).toBe(
       'users:root:runtime:trade-records:o1',
     );
+    expect(redisKeys.runtimeTradeBuckets('root')).toBe(
+      'users:root:runtime:trade-records:days:',
+    );
+    expect(redisKeys.runtimeTradeBucket('root', '2026-05-02')).toBe(
+      'users:root:runtime:trade-records:days:2026-05-02',
+    );
     expect(redisKeys.runtimeActiveTrades('root')).toBe(
       'users:root:runtime:active-trades:',
     );

@@ -1,8 +1,15 @@
 import { randomUUID } from 'node:crypto';
 import { TTL_1M } from '@tradejs/core/constants';
+import { getRuntimeStorageDayKey } from '@tradejs/core/time';
 import { createRuntimeOrderLinkPrefix } from '@tradejs/core/trade';
 import { logger } from '@tradejs/infra/logger';
-import { delKey, getData, redisKeys, setData } from '@tradejs/infra/redis';
+import {
+  delKey,
+  getData,
+  redisKeys,
+  setData,
+  setHashJsonField,
+} from '@tradejs/infra/redis';
 import { Direction, RuntimeTradeRecord, SignalAnalysis } from '@tradejs/types';
 
 const now = () => Date.now();
@@ -63,12 +70,19 @@ export const recordRuntimeTradeOpen = async (params: {
     exitTimestamp: null,
     lastSyncedAt: now(),
   };
+  const dayKey = getRuntimeStorageDayKey(record.entryTimestamp);
 
   try {
     await Promise.all([
       setData(redisKeys.runtimeTrade(userName, record.orderId), record, {
         expire: 0,
       }),
+      setHashJsonField(
+        redisKeys.runtimeTradeBucket(userName, dayKey),
+        record.orderId,
+        record,
+        { expire: 0 },
+      ),
       setData(
         redisKeys.runtimeActiveTrade(userName, record.symbol),
         { orderId: record.orderId },
@@ -152,12 +166,19 @@ export const markRuntimeTradeClosed = async (params: {
         : now(),
     lastSyncedAt: now(),
   };
+  const dayKey = getRuntimeStorageDayKey(existing.entryTimestamp);
 
   try {
     await Promise.all([
       setData(redisKeys.runtimeTrade(userName, orderId), next, {
         expire: TTL_1M,
       }),
+      setHashJsonField(
+        redisKeys.runtimeTradeBucket(userName, dayKey),
+        orderId,
+        next,
+        { expire: TTL_1M },
+      ),
       delKey(redisKeys.runtimeActiveTrade(userName, symbol)),
     ]);
   } catch (error) {

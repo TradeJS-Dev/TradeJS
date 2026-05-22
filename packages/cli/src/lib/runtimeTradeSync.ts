@@ -1,5 +1,12 @@
 import { TTL_1M } from '@tradejs/core/constants';
-import { delKey, getData, redisKeys, setData } from '@tradejs/infra/redis';
+import { getRuntimeStorageDayKey } from '@tradejs/core/time';
+import {
+  delKey,
+  getData,
+  redisKeys,
+  setData,
+  setHashJsonField,
+} from '@tradejs/infra/redis';
 import { ClosedPnlRecord, Connector, RuntimeTradeRecord } from '@tradejs/types';
 
 type ClosedPnlLoadCallbacks = {
@@ -150,6 +157,15 @@ export const syncRuntimeTrades = async ({
           expire: 0,
         },
       );
+      await setHashJsonField(
+        redisKeys.runtimeTradeBucket(
+          userName,
+          getRuntimeStorageDayKey(trade.entryTimestamp),
+        ),
+        trade.orderId,
+        nextTrade,
+        { expire: 0 },
+      );
       syncedTrades.push(nextTrade);
       continue;
     }
@@ -179,6 +195,15 @@ export const syncRuntimeTrades = async ({
       setData(redisKeys.runtimeTrade(userName, trade.orderId), nextTrade, {
         expire: TTL_1M,
       }),
+      setHashJsonField(
+        redisKeys.runtimeTradeBucket(
+          userName,
+          getRuntimeStorageDayKey(trade.entryTimestamp),
+        ),
+        trade.orderId,
+        nextTrade,
+        { expire: TTL_1M },
+      ),
       ...(isCurrentActiveTrade
         ? [delKey(redisKeys.runtimeActiveTrade(userName, trade.symbol))]
         : []),

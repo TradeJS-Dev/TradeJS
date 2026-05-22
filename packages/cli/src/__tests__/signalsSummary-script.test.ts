@@ -24,6 +24,7 @@ describe('signals summary script', () => {
       async (_message: string, _options?: unknown) => null,
     );
     const setData = jest.fn(async () => null);
+    const setHashJsonField = jest.fn(async () => null);
     const delKey = jest.fn(async () => true);
     const loadRuntimeSignals = jest.fn(async () => [
       {
@@ -98,6 +99,8 @@ describe('signals summary script', () => {
         `users:${userName}:runtime:trade-records:`,
       runtimeTrade: (userName: string, orderId: string) =>
         `users:${userName}:runtime:trade-records:${orderId}`,
+      runtimeTradeBucket: (userName: string, dayKey: string) =>
+        `users:${userName}:runtime:trade-records:days:${dayKey}`,
       runtimeActiveTrade: (userName: string, symbol: string) =>
         `users:${userName}:runtime:active-trades:${symbol}`,
     };
@@ -204,6 +207,7 @@ describe('signals summary script', () => {
       getKeys,
       redisKeys,
       setData,
+      setHashJsonField,
     }));
 
     jest.doMock('../lib/runtimeSignalsLoader', () => ({
@@ -287,6 +291,7 @@ describe('signals summary script', () => {
       async (_message: string, _options?: unknown) => null,
     );
     const setData = jest.fn(async () => null);
+    const setHashJsonField = jest.fn(async () => null);
     const delKey = jest.fn(async () => true);
     const loadRuntimeSignals = jest.fn(async () => [
       {
@@ -333,6 +338,8 @@ describe('signals summary script', () => {
         `users:${userName}:runtime:trade-records:`,
       runtimeTrade: (userName: string, orderId: string) =>
         `users:${userName}:runtime:trade-records:${orderId}`,
+      runtimeTradeBucket: (userName: string, dayKey: string) =>
+        `users:${userName}:runtime:trade-records:days:${dayKey}`,
       runtimeActiveTrade: (userName: string, symbol: string) =>
         `users:${userName}:runtime:active-trades:${symbol}`,
     };
@@ -386,6 +393,7 @@ describe('signals summary script', () => {
       getKeys,
       redisKeys,
       setData,
+      setHashJsonField,
     }));
 
     jest.doMock('../lib/runtimeSignalsLoader', () => ({

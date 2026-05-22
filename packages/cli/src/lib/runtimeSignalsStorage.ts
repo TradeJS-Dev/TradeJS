@@ -1,7 +1,10 @@
 import { RuntimeSignalEvaluationRecord, Signal } from '@tradejs/types';
+import {
+  getRuntimeStorageDayKey,
+  getRuntimeStorageDayKeys,
+} from '@tradejs/core/time';
 
-const DAY_MS = 86_400_000;
-const RUNTIME_STORAGE_DAY_OFFSET_MS = 5 * 60 * 60 * 1000;
+export { getRuntimeStorageDayKey, getRuntimeStorageDayKeys };
 
 export type RuntimeSignalBucketRef = Pick<
   Signal,
@@ -22,38 +25,8 @@ export type RuntimeSignalStatsBucket = {
   reasonGroups: Map<string, Map<string, number>>;
 };
 
-const toIsoDayKey = (timestamp: number) =>
-  new Date(timestamp).toISOString().slice(0, 10);
-
-const toRuntimeStorageDayTimestamp = (timestamp: number) =>
-  Math.floor((timestamp + RUNTIME_STORAGE_DAY_OFFSET_MS) / DAY_MS) * DAY_MS;
-
 // Runtime summary cron runs at 22:00 Europe/Moscow. Shift the logical
 // bucket boundary so one stored "day" maps to exactly one summary window.
-export const getRuntimeStorageDayKey = (timestamp: number) =>
-  toIsoDayKey(toRuntimeStorageDayTimestamp(timestamp));
-
-export const getRuntimeStorageDayKeys = (
-  startTime: number,
-  endTime: number,
-): string[] => {
-  if (!Number.isFinite(startTime) || !Number.isFinite(endTime)) {
-    return [];
-  }
-
-  const start = Math.min(startTime, endTime);
-  const endExclusive = Math.max(startTime, endTime);
-  const normalizedEnd = Math.max(start, endExclusive - 1);
-  const keys: string[] = [];
-  const startDay = toRuntimeStorageDayTimestamp(start);
-  const endDay = toRuntimeStorageDayTimestamp(normalizedEnd);
-
-  for (let current = startDay; current <= endDay; current += DAY_MS) {
-    keys.push(toIsoDayKey(current));
-  }
-
-  return keys;
-};
 
 export const toRuntimeSignalBucketRef = (
   signal: Signal,

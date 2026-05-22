@@ -8,7 +8,11 @@ import { formatUnix, getBacktestPreloadStart } from '@tradejs/core/time';
 import { logger } from '@tradejs/infra/logger';
 import { getData, redisKeys } from '@tradejs/infra/redis';
 import { getTickers, update } from '@tradejs/node/cli';
-import { resetTestingKlineCache, testing } from '@tradejs/node/backtest';
+import {
+  releaseTestingSymbolCache,
+  resetTestingKlineCache,
+  testing,
+} from '@tradejs/node/backtest';
 import {
   DEFAULT_CONNECTOR_NAME,
   getConnectorCreatorByName,
@@ -116,6 +120,14 @@ type ReplayTarget = {
   >;
 };
 
+type ReplayInputsIndex = Map<
+  string,
+  {
+    runtimeTrades: RuntimeTradeRecord[];
+    runtimeSignalEvaluations: RuntimeSignalEvaluationRecord[];
+  }
+>;
+
 type ReplayError = ReplayTarget & {
   message: string;
 };
@@ -211,6 +223,38 @@ const parseSymbolsFromCLI = (symbols = '') =>
 
 const toTargetKey = (target: Pick<ReplayTarget, 'strategy' | 'symbol'>) =>
   `${target.strategy}::${target.symbol}`;
+
+const buildReplayInputsIndex = ({
+  runtimeTrades,
+  runtimeSignalEvaluations,
+}: {
+  runtimeTrades: RuntimeTradeRecord[];
+  runtimeSignalEvaluations: RuntimeSignalEvaluationRecord[];
+}): ReplayInputsIndex => {
+  const index: ReplayInputsIndex = new Map();
+
+  for (const trade of runtimeTrades) {
+    const key = toTargetKey(trade);
+    const bucket = index.get(key) ?? {
+      runtimeTrades: [],
+      runtimeSignalEvaluations: [],
+    };
+    bucket.runtimeTrades.push(trade);
+    index.set(key, bucket);
+  }
+
+  for (const evaluation of runtimeSignalEvaluations) {
+    const key = toTargetKey(evaluation);
+    const bucket = index.get(key) ?? {
+      runtimeTrades: [],
+      runtimeSignalEvaluations: [],
+    };
+    bucket.runtimeSignalEvaluations.push(evaluation);
+    index.set(key, bucket);
+  }
+
+  return index;
+};
 
 const escapeHtml = (value: string) =>
   value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -410,8 +454,6 @@ const buildReplayAiAnalyses = ({
     ...runtimeTrades
       .filter(
         (trade) =>
-          trade.strategy === strategy &&
-          trade.symbol === symbol &&
           trade.aiAnalysis &&
           typeof trade.entryTimestamp === 'number' &&
           Number.isFinite(trade.entryTimestamp),
@@ -427,8 +469,6 @@ const buildReplayAiAnalyses = ({
     ...runtimeSignalEvaluations
       .filter(
         (evaluation) =>
-          evaluation.strategy === strategy &&
-          evaluation.symbol === symbol &&
           evaluation.aiAnalysis &&
           evaluation.direction &&
           typeof evaluation.timestamp === 'number' &&
@@ -459,13 +499,11 @@ const buildReplayConfig = async ({
   userName,
   strategy,
   symbol,
-  runtimeTrades,
-  runtimeSignalEvaluations,
+  replayInputsIndex,
   toleranceMs,
 }: Pick<ReplayTarget, 'strategy' | 'symbol'> & {
   userName: string;
-  runtimeTrades: RuntimeTradeRecord[];
-  runtimeSignalEvaluations: RuntimeSignalEvaluationRecord[];
+  replayInputsIndex: ReplayInputsIndex;
   toleranceMs: number;
 }): Promise<StrategyConfig> => {
   const [userConfig, strategyResults] = await Promise.all([
@@ -481,9 +519,10 @@ const buildReplayConfig = async ({
     typeof symbolResult.config === 'object'
       ? symbolResult.config
       : {};
+  const replayInputs = replayInputsIndex.get(toTargetKey({ strategy, symbol }));
   const aiReplayAnalyses = buildReplayAiAnalyses({
-    runtimeTrades,
-    runtimeSignalEvaluations,
+    runtimeTrades: replayInputs?.runtimeTrades ?? [],
+    runtimeSignalEvaluations: replayInputs?.runtimeSignalEvaluations ?? [],
     strategy,
     symbol,
     toleranceMs,
@@ -1949,15 +1988,23 @@ export const runtimeParity = async () => {
     });
     const [allRuntimeTrades, allRuntimeSignals, allRuntimeSignalEvaluations] =
       await Promise.all([
-        loadRuntimeTrades(flags.user),
-        loadRuntimeSignals(flags.user),
-        loadRuntimeSignalEvaluations(flags.user),
+        loadRuntimeTrades(flags.user, {
+          startTime: window.start,
+          endTime: window.end,
+        }),
+        loadRuntimeSignals(flags.user, {
+          startTime: window.start,
+          endTime: window.end,
+        }),
+        loadRuntimeSignalEvaluations(flags.user, {
+          startTime: window.start,
+          endTime: window.end,
+        }),
       ]);
     const runtimeTrades = allRuntimeTrades.filter(
       (trade) =>
-        trade.entryTimestamp >= window.start &&
-        trade.entryTimestamp <= window.end &&
-        (!flags.strategy || trade.strategy === flags.strategy),
+        (!flags.strategy || trade.strategy === flags.strategy) &&
+        (!requestedSymbolSet || requestedSymbolSet.has(trade.symbol)),
     );
     const runtimeSignals = allRuntimeSignals.filter(
       (signal) =>
@@ -1976,6 +2023,10 @@ export const runtimeParity = async () => {
     const connectorSymbols = requestedSymbols.length
       ? requestedSymbols
       : await getTickers(parityConnector);
+    const replayInputsIndex = buildReplayInputsIndex({
+      runtimeTrades,
+      runtimeSignalEvaluations,
+    });
 
     const replayTargets = await buildReplayTargets({
       userName: flags.user,
@@ -2045,8 +2096,7 @@ export const runtimeParity = async () => {
           userName: flags.user,
           strategy: target.strategy,
           symbol: target.symbol,
-          runtimeTrades,
-          runtimeSignalEvaluations,
+          replayInputsIndex,
           toleranceMs,
         });
 
@@ -2087,6 +2137,13 @@ export const runtimeParity = async () => {
         replayErrors.push({
           ...target,
           message: (error as Error)?.message || String(error),
+        });
+      } finally {
+        releaseTestingSymbolCache({
+          cwd: projectRoot,
+          userName: flags.user,
+          connectorName,
+          symbol: target.symbol,
         });
       }
 

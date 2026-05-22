@@ -187,4 +187,104 @@ describe('runtimeSignalsLoader', () => {
       },
     ]);
   });
+
+  it('limits runtime signal bucket reads to the requested time window', async () => {
+    const getKeys = jest.fn(async (prefix: string) => {
+      if (prefix === 'users:root:runtime:signals:days:') {
+        return [
+          'users:root:runtime:signals:days:2026-05-01:TrendLine',
+          'users:root:runtime:signals:days:2026-05-02:TrendLine',
+          'users:root:runtime:signals:days:2026-05-03:TrendLine',
+        ];
+      }
+      if (prefix === 'users:root:runtime:signal-evaluations:days:') {
+        return [
+          'users:root:runtime:signal-evaluations:days:2026-05-01:TrendLine',
+          'users:root:runtime:signal-evaluations:days:2026-05-02:TrendLine',
+          'users:root:runtime:signal-evaluations:days:2026-05-03:TrendLine',
+        ];
+      }
+      return [];
+    });
+    const getHashJsonValues = jest.fn(async (key: string) => {
+      if (key.startsWith('users:root:runtime:signals:days:')) {
+        return [
+          {
+            signalId: 'sig-2',
+            symbol: 'BTCUSDT',
+            strategy: 'TrendLine',
+            timestamp: Date.parse('2026-05-02T12:00:00.000Z'),
+          },
+        ];
+      }
+
+      return [
+        {
+          evaluationId: 'eval-2',
+          userName: 'root',
+          strategy: 'TrendLine',
+          symbol: 'BTCUSDT',
+          interval: '15',
+          timestamp: Date.parse('2026-05-02T12:00:00.000Z'),
+          evaluatedAt: Date.parse('2026-05-02T12:00:00.000Z'),
+          status: 'skip',
+          reason: 'NO_SIGNAL',
+        },
+      ];
+    });
+    const getData = jest.fn(async () => ({
+      signalId: 'sig-2',
+      strategy: 'TrendLine',
+      symbol: 'BTCUSDT',
+      direction: 'LONG',
+      timestamp: Date.parse('2026-05-02T12:00:00.000Z'),
+    }));
+
+    jest.doMock('@tradejs/infra/redis', () => ({
+      getData,
+      getHashData: jest.fn(),
+      getHashJsonValues,
+      getKeys,
+      redisKeys: {
+        runtimeSignalBuckets: (userName: string) =>
+          `users:${userName}:runtime:signals:days:`,
+        runtimeSignalEvaluationBuckets: (userName: string) =>
+          `users:${userName}:runtime:signal-evaluations:days:`,
+        runtimeSignalEvaluationStatsBuckets: (userName: string) =>
+          `users:${userName}:runtime:signal-evaluation-stats:days:`,
+        storeSignal: (symbol: string, signalId: string) =>
+          `store:signals:${symbol}:${signalId}`,
+      },
+    }));
+
+    const { loadRuntimeSignals, loadRuntimeSignalEvaluations } = await import(
+      '../lib/runtimeSignalsLoader'
+    );
+
+    const startTime = Date.parse('2026-05-02T00:00:00.000Z');
+    const endTime = Date.parse('2026-05-03T00:00:00.000Z');
+
+    await loadRuntimeSignals('root', { startTime, endTime });
+    await loadRuntimeSignalEvaluations('root', { startTime, endTime });
+
+    expect(getHashJsonValues).toHaveBeenCalledTimes(4);
+    expect(getHashJsonValues).toHaveBeenCalledWith(
+      'users:root:runtime:signals:days:2026-05-02:TrendLine',
+    );
+    expect(getHashJsonValues).toHaveBeenCalledWith(
+      'users:root:runtime:signals:days:2026-05-03:TrendLine',
+    );
+    expect(getHashJsonValues).toHaveBeenCalledWith(
+      'users:root:runtime:signal-evaluations:days:2026-05-02:TrendLine',
+    );
+    expect(getHashJsonValues).toHaveBeenCalledWith(
+      'users:root:runtime:signal-evaluations:days:2026-05-03:TrendLine',
+    );
+    expect(getHashJsonValues).not.toHaveBeenCalledWith(
+      'users:root:runtime:signals:days:2026-05-01:TrendLine',
+    );
+    expect(getHashJsonValues).not.toHaveBeenCalledWith(
+      'users:root:runtime:signal-evaluations:days:2026-05-01:TrendLine',
+    );
+  });
 });

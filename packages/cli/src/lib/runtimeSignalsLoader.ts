@@ -8,6 +8,7 @@ import {
 import { RuntimeSignalEvaluationRecord, Signal } from '@tradejs/types';
 import {
   isRuntimeSignalBucketRef,
+  getRuntimeStorageDayKeys,
   parseRuntimeSignalStatsBucket,
   RuntimeSignalStatsBucket,
 } from './runtimeSignalsStorage';
@@ -48,10 +49,54 @@ export const isRuntimeSignalEvaluationRecord = (
 const sortByTimestamp = <T extends { timestamp: number }>(records: T[]) =>
   [...records].sort((left, right) => left.timestamp - right.timestamp);
 
+const filterBucketKeysByWindow = (
+  bucketKeys: string[],
+  prefix: string,
+  startTime?: number,
+  endTime?: number,
+) => {
+  if (
+    !Number.isFinite(startTime) ||
+    !Number.isFinite(endTime) ||
+    startTime == null ||
+    endTime == null
+  ) {
+    return bucketKeys;
+  }
+
+  const allowedDayKeys = new Set(getRuntimeStorageDayKeys(startTime, endTime));
+  if (!allowedDayKeys.size) {
+    return [];
+  }
+
+  return bucketKeys.filter((key) => {
+    const suffix = key.slice(prefix.length);
+    const firstColon = suffix.indexOf(':');
+    if (firstColon <= 0) {
+      return false;
+    }
+
+    return allowedDayKeys.has(suffix.slice(0, firstColon));
+  });
+};
+
 export const loadRuntimeSignals = async (
   userName: string,
+  {
+    startTime,
+    endTime,
+  }: {
+    startTime?: number;
+    endTime?: number;
+  } = {},
 ): Promise<Signal[]> => {
-  const bucketKeys = await getKeys(redisKeys.runtimeSignalBuckets(userName));
+  const bucketPrefix = redisKeys.runtimeSignalBuckets(userName);
+  const bucketKeys = filterBucketKeysByWindow(
+    await getKeys(bucketPrefix),
+    bucketPrefix,
+    startTime,
+    endTime,
+  );
   const refs = (
     await Promise.all(bucketKeys.map((key) => getHashJsonValues(key)))
   )
@@ -81,9 +126,20 @@ export const loadRuntimeSignals = async (
 
 export const loadRuntimeSignalEvaluations = async (
   userName: string,
+  {
+    startTime,
+    endTime,
+  }: {
+    startTime?: number;
+    endTime?: number;
+  } = {},
 ): Promise<RuntimeSignalEvaluationRecord[]> => {
-  const bucketKeys = await getKeys(
-    redisKeys.runtimeSignalEvaluationBuckets(userName),
+  const bucketPrefix = redisKeys.runtimeSignalEvaluationBuckets(userName);
+  const bucketKeys = filterBucketKeysByWindow(
+    await getKeys(bucketPrefix),
+    bucketPrefix,
+    startTime,
+    endTime,
   );
   const evaluations = (
     await Promise.all(bucketKeys.map((key) => getHashJsonValues(key)))

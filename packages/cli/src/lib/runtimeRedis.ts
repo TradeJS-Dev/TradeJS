@@ -1,4 +1,10 @@
-import { getData, getKeys, redisKeys } from '@tradejs/infra/redis';
+import {
+  getData,
+  getHashJsonValues,
+  getKeys,
+  redisKeys,
+} from '@tradejs/infra/redis';
+import { getRuntimeStorageDayKeys } from '@tradejs/core/time';
 import {
   RuntimeTradeRecord,
   StrategyConfig,
@@ -112,7 +118,51 @@ export const loadRuntimeStrategyConfigs = async (
 
 export const loadRuntimeTrades = async (
   userName: string,
+  {
+    startTime,
+    endTime,
+  }: {
+    startTime?: number;
+    endTime?: number;
+  } = {},
 ): Promise<RuntimeTradeRecord[]> => {
+  if (
+    Number.isFinite(startTime) &&
+    Number.isFinite(endTime) &&
+    startTime != null &&
+    endTime != null
+  ) {
+    const dayKeys = getRuntimeStorageDayKeys(startTime, endTime);
+    const bucketTrades = (
+      await Promise.all(
+        dayKeys.map((dayKey) =>
+          getHashJsonValues<RuntimeTradeRecord>(
+            redisKeys.runtimeTradeBucket(userName, dayKey),
+          ),
+        ),
+      )
+    ).flat();
+
+    const dedupedBucketTrades = new Map<string, RuntimeTradeRecord>();
+    for (const trade of bucketTrades) {
+      if (!isRuntimeTradeRecord(trade)) {
+        continue;
+      }
+      dedupedBucketTrades.set(trade.orderId, trade);
+    }
+
+    const windowedTrades = [...dedupedBucketTrades.values()]
+      .filter(
+        (trade) =>
+          trade.entryTimestamp >= startTime && trade.entryTimestamp <= endTime,
+      )
+      .sort((left, right) => left.entryTimestamp - right.entryTimestamp);
+
+    if (windowedTrades.length > 0 || dayKeys.length === 0) {
+      return windowedTrades;
+    }
+  }
+
   const keys = await getKeys(redisKeys.runtimeTrades(userName));
   const trades = await Promise.all(keys.map((key) => getData(key, null)));
 

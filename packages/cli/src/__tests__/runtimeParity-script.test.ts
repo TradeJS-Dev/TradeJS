@@ -15,12 +15,14 @@ const setupRuntimeParityModule = async (
   const update = jest.fn(async () => null);
   const getKeys = jest.fn(async (_prefix: string): Promise<string[]> => []);
   const getData = jest.fn(async (_key: string, fallback: unknown) => fallback);
+  const getHashJsonValues = jest.fn(async () => []);
   const loadRuntimeSignals = jest.fn(
     async (_userName: string): Promise<any[]> => [],
   );
   const loadRuntimeSignalEvaluations = jest.fn(
     async (_userName: string): Promise<any[]> => [],
   );
+  const releaseTestingSymbolCache = jest.fn();
   const resetTestingKlineCache = jest.fn();
   const testing = jest.fn();
   const connector = {
@@ -69,6 +71,8 @@ const setupRuntimeParityModule = async (
       strategies: (userName: string) => `users:${userName}:strategies`,
       runtimeTrades: (userName: string) =>
         `users:${userName}:runtime:trade-records:`,
+      runtimeTradeBucket: (userName: string, dayKey: string) =>
+        `users:${userName}:runtime:trade-records:days:${dayKey}`,
       strategyResults: (userName: string, strategy: string) =>
         `users:${userName}:strategies:${strategy}:results`,
       strategyConfig: (userName: string, strategy: string) =>
@@ -79,6 +83,7 @@ const setupRuntimeParityModule = async (
       __esModule: true,
       getKeys,
       getData,
+      getHashJsonValues,
       redisKeys,
     };
   });
@@ -98,6 +103,7 @@ const setupRuntimeParityModule = async (
 
   jest.doMock('@tradejs/node/backtest', () => ({
     __esModule: true,
+    releaseTestingSymbolCache,
     resetTestingKlineCache,
     testing,
   }));
@@ -114,6 +120,7 @@ const setupRuntimeParityModule = async (
     loadRuntimeSignalEvaluations,
     loadRuntimeSignals,
     getConnectorCreatorByName,
+    releaseTestingSymbolCache,
     resetTestingKlineCache,
     testing,
   };

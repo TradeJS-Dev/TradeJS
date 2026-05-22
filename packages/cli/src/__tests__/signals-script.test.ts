@@ -158,6 +158,7 @@ const loadScript = async (scenario: Scenario) => {
   const getTimestamp = jest.fn((days?: number) =>
     typeof days === 'number' && days > 0 ? 1000 : 3000,
   );
+  const getRuntimeStorageDayKey = jest.fn(() => '1970-01-01');
   const progressTick = jest.fn();
   const backfillDerivativesContextForSignals = jest.fn(async () => ({
     skipped: false,
@@ -227,6 +228,7 @@ const loadScript = async (scenario: Scenario) => {
 
   jest.doMock('@tradejs/core/time', () => ({
     getTimestamp,
+    getRuntimeStorageDayKey,
   }));
 
   jest.doMock('@tradejs/infra/logger', () => ({
