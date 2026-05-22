@@ -53,6 +53,11 @@ args.option('startTime', 'Explicit replay start timestamp (ms or seconds)');
 args.option('endTime', 'Explicit replay end timestamp (ms or seconds)');
 args.option(['u', 'updateOnly'], 'Only update tickers history', false);
 args.option(['C', 'cacheOnly'], 'Do not update tickers history', false);
+args.option(
+  'chart',
+  'Save compact replay chart data for the strategies UI',
+  false,
+);
 args.option(['L', 'showTickersList'], 'Just show only ticker list', false);
 args.option(['U', 'user'], 'Use user config', 'root');
 args.option(

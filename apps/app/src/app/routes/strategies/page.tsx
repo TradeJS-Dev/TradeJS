@@ -3,13 +3,24 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Box, ClientOnly, Flex, Text } from '@chakra-ui/react';
 import { FiFolder } from 'react-icons/fi';
-import { getRuntimeStrategies } from '#actions/strategies';
+import type { StrategyChartsSnapshotResponse } from '@tradejs/types';
+import {
+  getAiStrategies,
+  getReplayStrategies,
+  getRuntimeStrategies,
+} from '#actions/strategies';
 import { RuntimeStrategyCard } from '#components/Strategies/RuntimeStrategyCard';
 import { RuntimeStrategyCardSkeleton } from '#components/Strategies/RuntimeStrategyCardSkeleton';
+import { StrategySnapshotCard } from '#components/Strategies/StrategySnapshotCard';
 import type { RuntimeStrategiesResponse } from '#app/lib/runtimeStrategies';
-import { EmptyState, Select } from '#ui';
+import { EmptyState, Segment, Select } from '#ui';
 
 const ALL_STRATEGIES = '__all__';
+const MODE_ITEMS = [
+  { label: 'Runtime', value: 'runtime' },
+  { label: 'Replay', value: 'replay' },
+  { label: 'AI', value: 'ai' },
+];
 const HOURS_OPTIONS = [
   { label: 'Last 24h', value: '24' },
   { label: 'Last 7d', value: '168' },
@@ -18,28 +29,46 @@ const HOURS_OPTIONS = [
 ];
 
 const RuntimeStrategiesPage = () => {
+  const [mode, setMode] = useState<'runtime' | 'replay' | 'ai'>('runtime');
   const [hours, setHours] = useState('168');
   const [selectedStrategy, setSelectedStrategy] = useState(ALL_STRATEGIES);
   const [loading, setLoading] = useState(false);
   const [fulfilled, setFulfilled] = useState(false);
   const [error, setError] = useState('');
-  const [data, setData] = useState<RuntimeStrategiesResponse | null>(null);
+  const [runtimeData, setRuntimeData] =
+    useState<RuntimeStrategiesResponse | null>(null);
+  const [snapshotData, setSnapshotData] =
+    useState<StrategyChartsSnapshotResponse | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError('');
 
     try {
-      const response = await getRuntimeStrategies({ hours: Number(hours) });
-      setData(response);
+      if (mode === 'runtime') {
+        const response = await getRuntimeStrategies({ hours: Number(hours) });
+        setRuntimeData(response);
+        setSnapshotData(null);
+      } else if (mode === 'replay') {
+        const response = await getReplayStrategies();
+        setSnapshotData(response);
+        setRuntimeData(null);
+      } else {
+        const response = await getAiStrategies();
+        setSnapshotData(response);
+        setRuntimeData(null);
+      }
       setFulfilled(true);
     } catch (err) {
-      setError((err as Error)?.message || 'Failed to load runtime strategies');
+      setError(
+        (err as Error)?.message ||
+          `Failed to load ${mode === 'runtime' ? 'runtime strategies' : `${mode} strategy charts`}`,
+      );
       setFulfilled(true);
     } finally {
       setLoading(false);
     }
-  }, [hours]);
+  }, [hours, mode]);
 
   useEffect(() => {
     void load();
@@ -47,13 +76,16 @@ const RuntimeStrategiesPage = () => {
 
   const strategyItems = useMemo(() => {
     const names =
-      data?.strategies.map((strategy) => strategy.strategyName) ?? [];
+      mode === 'runtime'
+        ? runtimeData?.strategies.map((strategy) => strategy.strategyName) ?? []
+        : snapshotData?.strategies.map((strategy) => strategy.strategyName) ??
+          [];
 
     return [
       { label: 'All strategies', value: ALL_STRATEGIES },
       ...names.map((name) => ({ label: name, value: name })),
     ];
-  }, [data?.strategies]);
+  }, [mode, runtimeData?.strategies, snapshotData?.strategies]);
 
   useEffect(() => {
     if (!strategyItems.some((item) => item.value === selectedStrategy)) {
@@ -61,8 +93,8 @@ const RuntimeStrategiesPage = () => {
     }
   }, [selectedStrategy, strategyItems]);
 
-  const filteredStrategies = useMemo(() => {
-    const strategies = data?.strategies ?? [];
+  const filteredRuntimeStrategies = useMemo(() => {
+    const strategies = runtimeData?.strategies ?? [];
 
     if (selectedStrategy === ALL_STRATEGIES) {
       return strategies;
@@ -71,10 +103,41 @@ const RuntimeStrategiesPage = () => {
     return strategies.filter(
       (strategy) => strategy.strategyName === selectedStrategy,
     );
-  }, [data?.strategies, selectedStrategy]);
+  }, [runtimeData?.strategies, selectedStrategy]);
+
+  const filteredSnapshotStrategies = useMemo(() => {
+    const strategies = snapshotData?.strategies ?? [];
+
+    if (selectedStrategy === ALL_STRATEGIES) {
+      return strategies;
+    }
+
+    return strategies.filter(
+      (strategy) => strategy.strategyName === selectedStrategy,
+    );
+  }, [snapshotData?.strategies, selectedStrategy]);
 
   const noData =
-    fulfilled && !loading && !error && filteredStrategies.length === 0;
+    fulfilled &&
+    !loading &&
+    !error &&
+    (mode === 'runtime'
+      ? filteredRuntimeStrategies.length === 0
+      : filteredSnapshotStrategies.length === 0);
+
+  const emptyTitle =
+    mode === 'runtime'
+      ? 'No runtime strategies found'
+      : mode === 'replay'
+        ? 'No replay charts found'
+        : 'No AI charts found';
+
+  const emptyDescription =
+    mode === 'runtime'
+      ? 'No connected strategies or runtime trades were found for the selected window.'
+      : mode === 'replay'
+        ? 'Run `yarn replay --chart` to save replay strategy cards for this page.'
+        : 'Run `yarn ai-train --chart` to save AI quality cards for this page.';
 
   return (
     <ClientOnly>
@@ -98,6 +161,14 @@ const RuntimeStrategiesPage = () => {
             alignItems="center"
           >
             <Flex gap={3} alignItems="center">
+              <Segment
+                defaultValue="runtime"
+                value={mode}
+                onChange={(value) =>
+                  setMode((value as 'runtime' | 'replay' | 'ai') || 'runtime')
+                }
+                items={MODE_ITEMS}
+              />
               <Select
                 placeholder="Strategy"
                 value={[selectedStrategy]}
@@ -108,16 +179,24 @@ const RuntimeStrategiesPage = () => {
                 items={strategyItems}
                 width="220px"
               />
-              <Select
-                placeholder="Window"
-                value={[hours]}
-                defaultValue={[hours]}
-                onChange={(value) => setHours(value[0] || '168')}
-                items={HOURS_OPTIONS}
-                width="180px"
-              />
+              {mode === 'runtime' ? (
+                <Select
+                  placeholder="Window"
+                  value={[hours]}
+                  defaultValue={[hours]}
+                  onChange={(value) => setHours(value[0] || '168')}
+                  items={HOURS_OPTIONS}
+                  width="180px"
+                />
+              ) : null}
             </Flex>
           </Flex>
+
+          {mode !== 'runtime' && snapshotData?.runLabel ? (
+            <Text pl={4} mb={3} fontSize="sm" color="gray.500">
+              {snapshotData.runLabel}
+            </Text>
+          ) : null}
 
           {error ? (
             <Box
@@ -144,17 +223,32 @@ const RuntimeStrategiesPage = () => {
             {noData ? (
               <EmptyState
                 icon={FiFolder}
-                title="No runtime strategies found"
-                description="No connected strategies or runtime trades were found for the selected window."
+                title={emptyTitle}
+                description={emptyDescription}
               />
             ) : null}
 
             {!loading &&
-              filteredStrategies.map((strategy) => (
+              mode === 'runtime' &&
+              filteredRuntimeStrategies.map((strategy) => (
                 <RuntimeStrategyCard
                   key={strategy.strategyName}
                   strategy={strategy}
-                  provider={data?.provider || 'bybit'}
+                  provider={runtimeData?.provider || 'bybit'}
+                />
+              ))}
+
+            {!loading &&
+              mode !== 'runtime' &&
+              filteredSnapshotStrategies.map((strategy) => (
+                <StrategySnapshotCard
+                  key={strategy.cardId}
+                  snapshot={strategy}
+                  emptyText={
+                    mode === 'replay'
+                      ? 'No replay trades for the selected run.'
+                      : 'No approved trades for this quality bucket.'
+                  }
                 />
               ))}
           </Box>

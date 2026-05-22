@@ -6,3 +6,4 @@ export * from './ui';
 export * from './ai';
 export * from './strategy';
 export * from './strategyAdapters';
+export * from './strategyCharts';

@@ -6,6 +6,7 @@ import {
   listAiChunkFiles,
   listAiChunkStrategies,
   mergeAiJsonlFiles,
+  splitAiMergedDatasetFile,
   toFileToken,
 } from '@tradejs/infra/ai';
 import { resolveExportStrategy } from './resolveExportStrategy';
@@ -21,6 +22,11 @@ args.option(
   ['k', 'keepChunks'],
   'Keep source chunk files after successful merge',
   false,
+);
+args.option(
+  'partMonths',
+  'Split merged AI dataset into time windows of N months (0 = disable split)',
+  2,
 );
 
 const flags = args.parse(process.argv);
@@ -62,6 +68,18 @@ export const main = async () => {
     filePaths: chunkFiles,
     outPath: mergedPath,
   });
+  const partMonths = Math.max(0, Math.trunc(Number(flags.partMonths) || 0));
+  const splitResult =
+    partMonths > 0
+      ? await splitAiMergedDatasetFile({
+          filePath: mergedPath,
+          monthsPerPart: partMonths,
+        })
+      : {
+          partPaths: [mergedPath],
+          partCount: 1,
+          splitApplied: false,
+        };
 
   const shouldDeleteChunks = !Boolean(flags.keepChunks);
   if (shouldDeleteChunks) {
@@ -70,12 +88,21 @@ export const main = async () => {
     }
   }
 
-  console.log(chalk.green(`Merged AI dataset saved: ${mergedPath}`));
+  console.log(
+    chalk.green(
+      splitResult.splitApplied
+        ? `Merged AI dataset saved as ${splitResult.partCount} part files`
+        : `Merged AI dataset saved: ${splitResult.partPaths[0]}`,
+    ),
+  );
+  splitResult.partPaths.forEach((filePath, index) => {
+    console.log(chalk.gray(`part${index + 1}: ${filePath}`));
+  });
   console.log(
     chalk.gray(
       `strategy=${strategyName}, source_chunks=${chunkFiles.length}, deleteChunks=${Boolean(
         shouldDeleteChunks,
-      )}`,
+      )}, partMonths=${partMonths}, partCount=${splitResult.partCount}`,
     ),
   );
   process.exit(0);

@@ -1,9 +1,10 @@
 import { once } from 'events';
-import { createWriteStream } from 'fs';
+import { createWriteStream, type WriteStream } from 'fs';
 import fs from 'fs/promises';
 import path from 'path';
 import { createReadStream } from 'node:fs';
 import readline from 'node:readline';
+import { addMonths, startOfMonth } from 'date-fns';
 import type { AiDatasetRow } from '@tradejs/types';
 import { mergeJsonlFiles, toFileToken } from './mlDatasetFile';
 
@@ -457,38 +458,176 @@ export const mergeAiJsonlFiles = async (params: {
   }
 };
 
-export const readAiDatasetRows = async (params: {
+const getAiDatasetPartPath = (filePath: string, partIndex: number) => {
+  const parsed = path.parse(filePath);
+  return path.join(parsed.dir, `${parsed.name}-part${partIndex}${parsed.ext}`);
+};
+
+const getPartWindowEndExclusive = (
+  timestamp: number,
+  monthsPerPart: number,
+): number => {
+  const partStart = startOfMonth(new Date(timestamp));
+  return addMonths(partStart, Math.max(1, monthsPerPart)).getTime();
+};
+
+export const splitAiMergedDatasetFile = async (params: {
   filePath: string;
-  limitFromEnd?: number;
-  skipFromEnd?: number;
+  monthsPerPart?: number;
 }) => {
-  const { filePath, limitFromEnd = 0, skipFromEnd = 0 } = params;
-  const rows: AiDatasetRow[] = [];
-  const recentLines: string[] = [];
-  let totalRows = 0;
-  const recentWindowLimit =
-    limitFromEnd > 0 ? limitFromEnd + Math.max(0, skipFromEnd) : 0;
+  const { filePath, monthsPerPart = 2 } = params;
+  const resolvedMonthsPerPart = Math.max(1, Math.trunc(monthsPerPart));
   const reader = readline.createInterface({
     input: createReadStream(filePath, { encoding: 'utf8' }),
     crlfDelay: Infinity,
   });
 
-  for await (const line of reader) {
-    const trimmed = line.trim();
-    if (!trimmed) {
-      continue;
+  const partPaths: string[] = [];
+  let currentPartIndex = 0;
+  let currentPartPath = '';
+  let currentPartEndExclusive = Number.NaN;
+  let currentWriter: WriteStream | null = null;
+  let currentWriterDone: Promise<unknown[]> | null = null;
+  let rowCount = 0;
+
+  const openPart = async (timestamp: number) => {
+    currentPartIndex += 1;
+    currentPartPath = getAiDatasetPartPath(filePath, currentPartIndex);
+    currentPartEndExclusive = getPartWindowEndExclusive(
+      timestamp,
+      resolvedMonthsPerPart,
+    );
+    currentWriter = createWriteStream(currentPartPath, { encoding: 'utf8' });
+    currentWriterDone = Promise.all([
+      once(currentWriter, 'finish'),
+      once(currentWriter, 'close'),
+    ]);
+    partPaths.push(currentPartPath);
+  };
+
+  const closeCurrentWriter = async () => {
+    if (!currentWriter || !currentWriterDone) {
+      return;
     }
 
-    totalRows += 1;
-    if (limitFromEnd > 0) {
-      if (recentLines.length === recentWindowLimit) {
-        recentLines.shift();
-      }
-      recentLines.push(trimmed);
-    } else {
-      const row = JSON.parse(trimmed) as AiDatasetRow;
-      rows.push(row);
+    currentWriter.end();
+    await currentWriterDone;
+    currentWriter = null;
+    currentWriterDone = null;
+  };
+
+  const getCurrentWriter = () => {
+    if (!currentWriter) {
+      throw new Error(
+        `AI dataset part writer was not initialized for ${filePath}`,
+      );
     }
+
+    return currentWriter;
+  };
+
+  try {
+    for await (const line of reader) {
+      const trimmed = line.trim();
+      if (!trimmed) {
+        continue;
+      }
+
+      const row = parseAiDatasetLine(trimmed, filePath);
+      const timestamp = Number(row.timestamp);
+      const safeTimestamp = Number.isFinite(timestamp) ? timestamp : Date.now();
+
+      if (
+        !currentWriter ||
+        !Number.isFinite(currentPartEndExclusive) ||
+        safeTimestamp >= currentPartEndExclusive
+      ) {
+        await closeCurrentWriter();
+        await openPart(safeTimestamp);
+      }
+
+      const writer = getCurrentWriter();
+      if (!writer.write(`${trimmed}\n`)) {
+        await once(writer, 'drain');
+      }
+      rowCount += 1;
+    }
+  } finally {
+    reader.close();
+    await closeCurrentWriter();
+  }
+
+  if (partPaths.length <= 1) {
+    for (const partPath of partPaths) {
+      await fs.rm(partPath, { force: true });
+    }
+    return {
+      partPaths: [filePath],
+      partCount: partPaths.length || (rowCount > 0 ? 1 : 0),
+      rowCount,
+      splitApplied: false,
+    };
+  }
+
+  await fs.rm(filePath, { force: true });
+  return {
+    partPaths,
+    partCount: partPaths.length,
+    rowCount,
+    splitApplied: true,
+  };
+};
+
+export const readAiDatasetRows = async (params: {
+  filePath?: string;
+  filePaths?: string[];
+  limitFromEnd?: number;
+  skipFromEnd?: number;
+}) => {
+  const { filePath, filePaths, limitFromEnd = 0, skipFromEnd = 0 } = params;
+  const resolvedFilePaths = (
+    Array.isArray(filePaths) && filePaths.length
+      ? filePaths
+      : filePath
+        ? [filePath]
+        : []
+  ).map((item) => path.resolve(item));
+  if (!resolvedFilePaths.length) {
+    return {
+      rows: [] as AiDatasetRow[],
+      totalRows: 0,
+    };
+  }
+  const rows: AiDatasetRow[] = [];
+  const recentLines: string[] = [];
+  let totalRows = 0;
+  const recentWindowLimit =
+    limitFromEnd > 0 ? limitFromEnd + Math.max(0, skipFromEnd) : 0;
+  for (const currentFilePath of resolvedFilePaths) {
+    const reader = readline.createInterface({
+      input: createReadStream(currentFilePath, { encoding: 'utf8' }),
+      crlfDelay: Infinity,
+    });
+
+    for await (const line of reader) {
+      const trimmed = line.trim();
+      if (!trimmed) {
+        continue;
+      }
+
+      totalRows += 1;
+      if (limitFromEnd > 0) {
+        if (recentLines.length === recentWindowLimit) {
+          recentLines.shift();
+        }
+        recentLines.push(trimmed);
+      } else {
+        const row = JSON.parse(trimmed) as AiDatasetRow;
+        rows.push(row);
+      }
+    }
+
+    reader.close();
   }
 
   const effectiveSkip = Math.max(0, skipFromEnd);

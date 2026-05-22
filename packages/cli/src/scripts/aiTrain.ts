@@ -6,6 +6,7 @@ import path from 'path';
 import ProgressBar from 'progress';
 import { runWithConcurrency } from '@tradejs/core/async';
 import { readAiDatasetRows, toFileToken } from '@tradejs/infra/ai';
+import { redisKeys, setData } from '@tradejs/infra/redis';
 import {
   DEFAULT_AI_MODEL,
   buildAiPayload,
@@ -16,8 +17,16 @@ import {
   runAiPromptLocal,
 } from '@tradejs/node/ai';
 import { AI_CONCURRENCY_LIMIT } from '@tradejs/node/constants';
-import { AiDatasetRow, Signal, SignalAnalysis } from '@tradejs/types';
 import {
+  AiDatasetRow,
+  Signal,
+  SignalAnalysis,
+  StrategyChartMetric,
+  StrategyChartSnapshot,
+  StrategyChartsSnapshotResponse,
+} from '@tradejs/types';
+import {
+  AiTrainEvaluation,
   summarizeAiTrainEvaluations,
   summarizeAiTrainEvaluationsByDirection,
 } from '../lib/aiTrainMetrics';
@@ -54,6 +63,12 @@ args.option('minQuality', 'Minimum AI quality required to approve entry', 4);
 args.option(
   'localOnly',
   'Replay deterministic adapter gate without AI provider calls',
+  false,
+);
+args.option(['U', 'user'], 'Use user config', 'root');
+args.option(
+  'chart',
+  'Save compact AI approval chart data for the strategies UI',
   false,
 );
 args.option('json', 'Print structured JSON summary', false);
@@ -178,7 +193,16 @@ const listMergedFiles = async (params: {
 
   return entries
     .filter((name) => name.startsWith(prefix))
-    .filter((name) => name.includes('-merged-') && name.endsWith('.jsonl'))
+    .filter((name) => {
+      if (!name.endsWith('.jsonl') || !name.includes('-merged-')) {
+        return false;
+      }
+
+      return (
+        /-merged-\d+\.jsonl$/.test(name) ||
+        /-merged-\d+-part\d+\.jsonl$/.test(name)
+      );
+    })
     .sort()
     .map((name) => path.join(outDir, name));
 };
@@ -186,8 +210,88 @@ const listMergedFiles = async (params: {
 const deriveStrategyNameFromFile = (filePath: string) => {
   const match = path
     .basename(filePath)
-    .match(/^ai-dataset-(.+)-merged-\d+\.jsonl$/);
+    .match(/^ai-dataset-(.+)-merged-\d+(?:-part\d+)?\.jsonl$/);
   return match?.[1] ? match[1] : 'unknown';
+};
+
+const getMergedGroupId = (filePath: string) => {
+  const match = path
+    .basename(filePath)
+    .match(/^ai-dataset-(.+)-merged-(\d+)(?:-part(\d+))?\.jsonl$/);
+  if (!match) {
+    return null;
+  }
+
+  return {
+    strategyToken: match[1],
+    mergeId: match[2],
+  };
+};
+
+const sortDatasetPartPaths = (filePaths: string[]) =>
+  [...filePaths].sort((left, right) => {
+    const leftMatch = path.basename(left).match(/-part(\d+)\.jsonl$/);
+    const rightMatch = path.basename(right).match(/-part(\d+)\.jsonl$/);
+    const leftPart = leftMatch ? Number(leftMatch[1]) : 0;
+    const rightPart = rightMatch ? Number(rightMatch[1]) : 0;
+    return leftPart - rightPart || left.localeCompare(right);
+  });
+
+const resolveMergedDatasetFiles = async ({
+  outDir,
+  strategyName,
+  explicitFile,
+}: {
+  outDir: string;
+  strategyName?: string;
+  explicitFile?: string;
+}) => {
+  const mergedFiles = await listMergedFiles({
+    outDir,
+    strategyName,
+  });
+  if (!mergedFiles.length) {
+    throw new Error(
+      strategyName
+        ? `No merged AI dataset found for strategy "${strategyName}" in ${outDir}. Run yarn ai-export first.`
+        : `No merged AI dataset found in ${outDir}. Run yarn ai-export first.`,
+    );
+  }
+
+  const resolvedExplicitFile = explicitFile ? path.resolve(explicitFile) : null;
+  if (resolvedExplicitFile) {
+    const groupId = getMergedGroupId(resolvedExplicitFile);
+    if (!groupId) {
+      return [resolvedExplicitFile];
+    }
+
+    const groupedFiles = sortDatasetPartPaths(
+      mergedFiles.filter((candidate) => {
+        const candidateGroup = getMergedGroupId(candidate);
+        return (
+          candidateGroup?.strategyToken === groupId.strategyToken &&
+          candidateGroup?.mergeId === groupId.mergeId
+        );
+      }),
+    );
+    return groupedFiles.length ? groupedFiles : [resolvedExplicitFile];
+  }
+
+  const latestFile = mergedFiles[mergedFiles.length - 1];
+  const latestGroupId = getMergedGroupId(latestFile);
+  if (!latestGroupId) {
+    return [latestFile];
+  }
+
+  return sortDatasetPartPaths(
+    mergedFiles.filter((candidate) => {
+      const candidateGroup = getMergedGroupId(candidate);
+      return (
+        candidateGroup?.strategyToken === latestGroupId.strategyToken &&
+        candidateGroup?.mergeId === latestGroupId.mergeId
+      );
+    }),
+  );
 };
 
 const extractSignalFromDatasetRow = (row: AiDatasetRow) => {
@@ -260,6 +364,11 @@ type AiTrainResult = {
     failed: number;
     providerErrors: string[];
   };
+};
+
+type AiTrainEvaluatedRow = AiTrainEvaluation & {
+  row: AiDatasetRow;
+  signalId: string;
 };
 
 const resolveDeterministicGateEvaluation = (
@@ -360,26 +469,233 @@ const printSection = (title: string, table: string) => {
   console.log('');
 };
 
-const resolveDatasetFile = async () => {
-  const explicitFile = String(flags.file || '').trim();
-  if (explicitFile) {
-    return path.resolve(explicitFile);
+const formatPercent = (value: number | null) =>
+  value == null ? 'n/a' : `${(value * 100).toFixed(1)}%`;
+
+const formatSigned = (value: number | null) =>
+  value == null ? 'n/a' : `${value >= 0 ? '+' : ''}${value.toFixed(2)}`;
+
+const formatNumber = (value: number | null) =>
+  value == null ? 'n/a' : value.toFixed(2);
+
+const resolveMetricTone = (
+  value: number | null,
+): StrategyChartMetric['tone'] => {
+  if (value == null) {
+    return 'default';
+  }
+  if (value > 0) {
+    return 'success';
+  }
+  if (value < 0) {
+    return 'error';
+  }
+  return 'warning';
+};
+
+const buildAiChartMetrics = (params: {
+  summary: ReturnType<typeof summarizeAiTrainEvaluations>;
+  threshold: number;
+}) => {
+  const { summary, threshold } = params;
+  const metrics: StrategyChartMetric[] = [
+    {
+      id: 'quality',
+      label: 'Quality',
+      value: `q${threshold}+`,
+    },
+    {
+      id: 'approved',
+      label: 'Approved',
+      value: String(summary.approved),
+    },
+    {
+      id: 'accuracy',
+      label: 'Accuracy',
+      value: formatPercent(
+        summary.correct + summary.incorrect > 0
+          ? summary.correct / (summary.correct + summary.incorrect)
+          : null,
+      ),
+    },
+    {
+      id: 'precision',
+      label: 'Precision',
+      value: formatPercent(summary.precisionApproved),
+    },
+    {
+      id: 'recall',
+      label: 'Recall',
+      value: formatPercent(summary.recallWinners),
+    },
+    {
+      id: 'pnl',
+      label: 'P&L',
+      value: formatSigned(summary.avgProfitApprovedPerMonth),
+      tone: resolveMetricTone(summary.avgProfitApprovedPerMonth),
+    },
+    {
+      id: 'approvedPerDay',
+      label: 'Approved/Day',
+      value: formatNumber(summary.avgApprovedTradesPerDay),
+    },
+    {
+      id: 'avgProfit',
+      label: 'Avg Profit',
+      value: formatSigned(summary.avgProfitApproved),
+      tone: resolveMetricTone(summary.avgProfitApproved),
+    },
+  ];
+
+  return metrics;
+};
+
+const buildSimpleEquityCurve = (evaluations: AiTrainEvaluatedRow[]) => {
+  if (!evaluations.length) {
+    return [] as Array<[number, number]>;
   }
 
+  const sorted = [...evaluations].sort(
+    (left, right) =>
+      (left.timestamp ?? 0) - (right.timestamp ?? 0) ||
+      left.row.symbol.localeCompare(right.row.symbol) ||
+      left.signalId.localeCompare(right.signalId),
+  );
+  let amount = 100;
+  const firstTimestamp = sorted[0]?.timestamp ?? Date.now();
+  const orderLog: Array<[number, number]> = [[firstTimestamp, amount]];
+
+  for (const evaluation of sorted) {
+    amount += evaluation.profit;
+    orderLog.push([
+      evaluation.timestamp ?? firstTimestamp,
+      Number(amount.toFixed(4)),
+    ]);
+  }
+
+  if (orderLog.length === 1) {
+    orderLog.push([firstTimestamp, amount]);
+  }
+
+  return orderLog;
+};
+
+const buildAiChartSnapshot = (params: {
+  evaluatedRows: AiTrainEvaluatedRow[];
+  strategyName: string;
+  generatedAt: number;
+  runLabel: string;
+}) => {
+  const { evaluatedRows, strategyName, generatedAt, runLabel } = params;
+  const variantNames = [
+    ...new Set(
+      evaluatedRows
+        .map((evaluation) => evaluation.row.testName?.trim() || '')
+        .filter(Boolean),
+    ),
+  ].sort();
+  const groupByVariant = variantNames.length > 1;
+  const groups = groupByVariant
+    ? variantNames.map((variantName) => ({
+        key: variantName,
+        label: variantName,
+        rows: evaluatedRows.filter(
+          (evaluation) =>
+            (evaluation.row.testName?.trim() || '') === variantName,
+        ),
+      }))
+    : [
+        {
+          key: strategyName,
+          label: '',
+          rows: evaluatedRows,
+        },
+      ];
+
+  const cards: StrategyChartSnapshot[] = [];
+  for (const threshold of [4, 5]) {
+    for (const group of groups) {
+      const thresholdEvaluations = group.rows.map((evaluation) => ({
+        ...evaluation,
+        aiApproved:
+          evaluation.direction === evaluation.row.direction &&
+          evaluation.quality != null &&
+          evaluation.quality >= threshold,
+      }));
+      const summary = summarizeAiTrainEvaluations(thresholdEvaluations);
+      const approvedRows = thresholdEvaluations.filter(
+        (evaluation) => evaluation.aiApproved,
+      );
+
+      cards.push({
+        cardId: `${toFileToken(strategyName)}-${toFileToken(group.key)}-q${threshold}`,
+        strategyName,
+        title: groupByVariant
+          ? `${strategyName} · ${group.label}`
+          : `${strategyName} · q${threshold}+`,
+        subtitle: groupByVariant ? `q${threshold}+` : runLabel,
+        symbols: [
+          ...new Set(
+            group.rows
+              .map((evaluation) => evaluation.row.symbol)
+              .filter(Boolean),
+          ),
+        ].sort(),
+        orderLog: buildSimpleEquityCurve(approvedRows),
+        stat: null,
+        metrics: buildAiChartMetrics({
+          summary,
+          threshold,
+        }),
+        tags: groupByVariant
+          ? [`q${threshold}+`, group.label]
+          : [`q${threshold}+`],
+      });
+    }
+  }
+
+  return {
+    mode: 'ai',
+    generatedAt,
+    runLabel,
+    strategies: cards,
+  } satisfies StrategyChartsSnapshotResponse;
+};
+
+const persistAiChartSnapshot = async (params: {
+  strategyName: string;
+  evaluatedRows: AiTrainEvaluatedRow[];
+  model: string;
+  mode: 'local-deterministic' | 'llm';
+  userName: string;
+}) => {
+  const { strategyName, evaluatedRows, model, mode, userName } = params;
+  const generatedAt = Date.now();
+  const runLabel = `${mode}:${model}`;
+  const snapshot = buildAiChartSnapshot({
+    evaluatedRows,
+    strategyName,
+    generatedAt,
+    runLabel,
+  });
+
+  await setData(redisKeys.strategyCharts(userName, 'ai'), snapshot, {
+    expire: 0,
+  });
+
+  return snapshot;
+};
+
+const resolveDatasetFiles = async () => {
+  const explicitFile = String(flags.file || '').trim();
   const outDir = String(flags.outDir || 'data/ai/export');
   const strategyName = String(flags.strategy || '').trim() || undefined;
-  const mergedFiles = await listMergedFiles({
+
+  return resolveMergedDatasetFiles({
     outDir,
     strategyName,
+    explicitFile,
   });
-  if (!mergedFiles.length) {
-    throw new Error(
-      strategyName
-        ? `No merged AI dataset found for strategy "${strategyName}" in ${outDir}. Run yarn ai-export first.`
-        : `No merged AI dataset found in ${outDir}. Run yarn ai-export first.`,
-    );
-  }
-  return mergedFiles[mergedFiles.length - 1];
 };
 
 export const main = async () => {
@@ -387,14 +703,16 @@ export const main = async () => {
   const skip = normalizeInt(flags.skip, 0);
   const minQuality = normalizeInt(flags.minQuality, 4);
   const localOnly = Boolean(flags.localOnly);
+  const saveChart = Boolean(flags.chart);
   const jsonOutput = Boolean(flags.json);
+  const userName = String(flags.user || 'root').trim() || 'root';
   const model =
     String(flags.model || DEFAULT_AI_MODEL).trim() || DEFAULT_AI_MODEL;
   const parallel = normalizePositiveInt(flags.parallel, AI_CONCURRENCY_LIMIT);
   await ensureAiStrategyPluginsLoaded();
-  const filePath = await resolveDatasetFile();
+  const filePaths = await resolveDatasetFiles();
   const { rows, totalRows } = await readAiDatasetRows({
-    filePath,
+    filePaths,
     limitFromEnd: recent,
     skipFromEnd: skip,
   });
@@ -402,14 +720,14 @@ export const main = async () => {
   if (!rows.length) {
     console.log(
       chalk.yellow(
-        `No AI prompt rows selected in ${filePath} (recent=${recent || 'all'}, skip=${skip})`,
+        `No AI prompt rows selected in ${filePaths.join(', ')} (recent=${recent || 'all'}, skip=${skip})`,
       ),
     );
     process.exit(0);
   }
 
   const strategyName =
-    rows[0]?.strategyName || deriveStrategyNameFromFile(filePath);
+    rows[0]?.strategyName || deriveStrategyNameFromFile(filePaths[0] || '');
   const preparedRows = rows.map((row) => {
     const { promptPair, signal } = resolvePromptRunContext(row);
     const payload = buildAiPayload(signal);
@@ -440,6 +758,7 @@ export const main = async () => {
     timestamp: number | null;
     modelCandidate: boolean;
   }> = [];
+  const evaluatedRows: AiTrainEvaluatedRow[] = [];
 
   await runWithConcurrency(preparedRows, concurrency, async (preparedRow) => {
     const { row, promptPair, payload, signal, deterministic } = preparedRow;
@@ -474,6 +793,18 @@ export const main = async () => {
           : null,
         modelCandidate: deterministic.modelCandidate,
       });
+      evaluatedRows.push({
+        row,
+        signalId: row.signalId,
+        profit,
+        profitableTrade,
+        aiApproved,
+        quality,
+        direction: row.direction,
+        timestamp: Number.isFinite(Number(row.timestamp))
+          ? Number(row.timestamp)
+          : null,
+      });
 
       bar?.tick(1, {
         symbol: chalk.gray(row.symbol),
@@ -506,7 +837,7 @@ export const main = async () => {
   const result: AiTrainResult = {
     run: {
       strategy: strategyName,
-      filePath,
+      filePath: filePaths.join(','),
       selected: rows.length,
       sourceRows: totalRows,
       recent,
@@ -526,6 +857,16 @@ export const main = async () => {
     },
   };
 
+  if (saveChart) {
+    await persistAiChartSnapshot({
+      strategyName,
+      evaluatedRows,
+      model: localOnly ? 'local-deterministic' : model,
+      mode: localOnly ? 'local-deterministic' : 'llm',
+      userName,
+    });
+  }
+
   if (jsonOutput) {
     console.log(JSON.stringify(result));
     process.exit(failed === rows.length ? 1 : 0);
@@ -533,7 +874,9 @@ export const main = async () => {
 
   console.log('');
   console.log(chalk.green('AI train finished'));
-  console.log(chalk.gray(filePath));
+  filePaths.forEach((filePath) => {
+    console.log(chalk.gray(filePath));
+  });
   console.log('');
 
   printSection(

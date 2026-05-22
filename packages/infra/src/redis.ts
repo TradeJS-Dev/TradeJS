@@ -534,6 +534,8 @@ export const redisKeys = {
     `users:${userName}:strategies:${strategyName}:config`,
   strategyResults: (userName: string, strategyName: string) =>
     `users:${userName}:strategies:${strategyName}:results`,
+  strategyCharts: (userName: string, mode: string) =>
+    `users:${userName}:strategies:charts:${mode}`,
   tests: (userName: string, strategyName?: string) =>
     strategyName
       ? `users:${userName}:tests:${strategyName}`
