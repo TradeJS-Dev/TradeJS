@@ -121,16 +121,16 @@ describe('portfolio replay connector', () => {
     expect(artifacts.orderLog[0]).toEqual(
       expect.objectContaining({
         type: 'OPEN_LONG',
-        fee: 0.5,
-        profit: -0.5,
+        fee: 0.3,
+        profit: -0.3,
       }),
     );
     expect(artifacts.orderLog[1]).toEqual(
       expect.objectContaining({
         type: 'TAKE_PROFIT_LONG',
-        fee: 0.55,
-        profit: 9.45,
-        amount: 108.95,
+        fee: 0.33,
+        profit: 9.67,
+        amount: 109.37,
       }),
     );
   });

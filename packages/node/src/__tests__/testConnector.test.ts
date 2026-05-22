@@ -75,14 +75,14 @@ describe('testConnector', () => {
     const result = await connector.getResult();
 
     expect(result.stat).toEqual({
-      amount: 113.93,
-      profit: 13.92,
+      amount: 114.35,
+      profit: 14.35,
       orders: 1,
     });
     expect(result.inlineOrderLog).toHaveLength(3);
     expect(result.inlinePositionLog).toHaveLength(1);
     expect(result.inlineOrderLog?.map(({ fee }) => fee)).toEqual([
-      0.5, 0.275, 0.3,
+      0.3, 0.165, 0.18,
     ]);
     expect(result.inlineOrderLog?.[0].signal).toEqual(
       expect.objectContaining({ signalId: 'sig-1' }),
@@ -147,8 +147,8 @@ describe('testConnector', () => {
     const result = await connector.getResult();
 
     expect(result.stat).toEqual({
-      amount: 103.98,
-      profit: 3.97,
+      amount: 104.39,
+      profit: 4.39,
       orders: 1,
     });
     expect(result.inlineOrderLog?.[1]).toEqual(
@@ -156,8 +156,8 @@ describe('testConnector', () => {
         type: 'CLOSE_LONG',
         price: 105,
         qty: 1,
-        fee: 0.525,
-        profit: 4.47,
+        fee: 0.315,
+        profit: 4.68,
       }),
     );
   });
@@ -195,14 +195,14 @@ describe('testConnector', () => {
     });
 
     expect(await connector.drainMlResultsBatch()).toEqual([
-      { signalId: 'sig-stop', profit: -5.97 },
+      { signalId: 'sig-stop', profit: -5.58 },
     ]);
     expect(await connector.drainMlResultsBatch()).toEqual([]);
 
     const result = await connector.getResult();
     expect(result.stat).toEqual({
-      amount: 94.03,
-      profit: -5.97,
+      amount: 94.42,
+      profit: -5.58,
       orders: 1,
     });
     expect(result.inlineOrderLog).toHaveLength(2);
@@ -241,8 +241,8 @@ describe('testConnector', () => {
     const result = await connector.getResult();
 
     expect(result.stat).toEqual({
-      amount: 109.05,
-      profit: 9.05,
+      amount: 109.43,
+      profit: 9.43,
       orders: 1,
     });
     expect(result.inlineOrderLog?.[1]).toEqual(
@@ -250,8 +250,8 @@ describe('testConnector', () => {
         type: 'TAKE_PROFIT_SHORT',
         price: 90,
         qty: 1,
-        fee: 0.45,
-        profit: 9.55,
+        fee: 0.27,
+        profit: 9.73,
       }),
     );
   });
@@ -296,8 +296,8 @@ describe('testConnector', () => {
     const result = await connector.getResult();
 
     expect(result.stat).toEqual({
-      amount: 94.03,
-      profit: -5.97,
+      amount: 94.42,
+      profit: -5.58,
       orders: 1,
     });
     expect(result.inlineOrderLog?.map(({ type }) => type)).toEqual([

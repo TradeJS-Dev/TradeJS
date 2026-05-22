@@ -308,7 +308,7 @@ describe('createAdaptiveMomentumRibbonCore', () => {
         stopLossDelta: 1,
         unit: 'percent',
         maxLossValue: 10,
-        feePercent: 0.005,
+        feePercent: 0.003,
       }),
     );
     expect(decision.signal?.additionalIndicators).toEqual(

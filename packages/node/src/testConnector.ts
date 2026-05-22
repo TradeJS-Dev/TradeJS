@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { FEE_PERCENT, INITIAL_BACKTEST_AMOUNT } from '@tradejs/core/constants';
 import {
   Candle,
   Sl,
@@ -12,9 +13,6 @@ import {
 } from '@tradejs/types';
 import { round } from '@tradejs/core/math';
 
-const FEE = 0.005;
-const INITIAL_AMOUNT = 100;
-
 export const createTestConnector: TestConnectorCreator = (
   connector,
   context,
@@ -23,7 +21,7 @@ export const createTestConnector: TestConnectorCreator = (
   const orderLog: OrderLogData = [];
   const positionLog: PositionLogData = [];
   let currentPosition: (Order & { amount: number }) | null = null;
-  let amount = INITIAL_AMOUNT;
+  let amount = INITIAL_BACKTEST_AMOUNT;
   let originalQty = 0;
   let currentPositionProfit = 0;
   let takeProfits: Tp[] = [];
@@ -92,7 +90,7 @@ export const createTestConnector: TestConnectorCreator = (
     price: number;
     qty: number;
   }) => {
-    const fee = price * qty * FEE;
+    const fee = price * qty * FEE_PERCENT;
     return {
       fee,
       profit: grossProfit - fee,
@@ -118,7 +116,7 @@ export const createTestConnector: TestConnectorCreator = (
       return {
         stat: {
           amount: round(amount),
-          profit: round(amount - INITIAL_AMOUNT),
+          profit: round(amount - INITIAL_BACKTEST_AMOUNT),
           orders: positionLog.length,
         },
         orderLogId,

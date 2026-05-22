@@ -1,3 +1,4 @@
+import { FEE_PERCENT, INITIAL_BACKTEST_AMOUNT } from '@tradejs/core/constants';
 import { round } from '@tradejs/core/math';
 import {
   Candle,
@@ -13,9 +14,6 @@ import {
   Sl,
   Tp,
 } from '@tradejs/types';
-
-const FEE = 0.005;
-const INITIAL_AMOUNT = 100;
 const UNKNOWN_STRATEGY = '[unknown]';
 
 type ReplayPosition = Order & {
@@ -91,7 +89,7 @@ export const createPortfolioReplayConnector = (
   connector: Connector,
 ): PortfolioReplayConnector => {
   let state = {};
-  let amount = INITIAL_AMOUNT;
+  let amount = INITIAL_BACKTEST_AMOUNT;
   const positionsBySymbol = new Map<string, PositionState>();
   const currentPriceBySymbol = new Map<string, number>();
   const orderLog: OrderLogData = [];
@@ -169,7 +167,7 @@ export const createPortfolioReplayConnector = (
     price: number;
     qty: number;
   }) => {
-    const fee = price * qty * FEE;
+    const fee = price * qty * FEE_PERCENT;
     return {
       fee,
       profit: grossProfit - fee,

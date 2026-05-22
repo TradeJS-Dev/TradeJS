@@ -97,9 +97,6 @@ const timeOperation = async <T>(
   }
 };
 
-const isGoodTest = (result: TestWorkerResult) =>
-  result.stat?.orders > 5 && result.stat?.profit > 10;
-
 const getResultAmount = (result: TestWorkerResult) => result.stat.amount ?? 0;
 
 const recordError = (error: ErrorMessage) => {
@@ -154,7 +151,7 @@ const updateTopResults = (nextResults: TestWorkerResult[]) => {
 };
 
 export const updateBestTickerResult = (result: TestWorkerResult) => {
-  if (!isGoodTest(result)) {
+  if (!result?.test?.symbol || !result?.stat) {
     return false;
   }
 

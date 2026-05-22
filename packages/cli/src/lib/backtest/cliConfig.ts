@@ -85,7 +85,11 @@ args.option(['f', 'timeframe'], 'Timeframe', 15);
 args.option(['d', 'days'], 'Run backtest only for the last N days');
 args.option('startTime', 'Explicit backtest start timestamp (ms or seconds)');
 args.option('endTime', 'Explicit backtest end timestamp (ms or seconds)');
-args.option(['T', 'top'], 'Return N best tests', TESTS_TOP_LIMIT);
+args.option(
+  ['T', 'top'],
+  'Return N best tests for single-ticker grid runs (defaults to 50)',
+  TESTS_TOP_LIMIT,
+);
 args.option(['u', 'updateOnly'], 'Only update tickers history', false);
 args.option(['C', 'cacheOnly'], 'Do not update tickers history', false);
 args.option(['c', 'config'], 'Backtest config', 'breakout');

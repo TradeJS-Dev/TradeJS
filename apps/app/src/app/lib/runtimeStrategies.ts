@@ -1,4 +1,5 @@
 import { endOfMonth, addMonths, startOfMonth } from 'date-fns';
+import { INITIAL_BACKTEST_AMOUNT } from '@tradejs/core/constants';
 import {
   normalizeStrategyOrderLinkKey,
   parseStrategyOrderLinkKey,
@@ -12,7 +13,6 @@ import type {
   TestStat,
 } from '@tradejs/types';
 
-const INITIAL_AMOUNT = 100;
 const MS_IN_DAY = 24 * 60 * 60 * 1000;
 const AVG_DAYS_IN_MONTH = 30.4375;
 
@@ -172,7 +172,7 @@ const calculateSharpeRatio = (
   let pointIndex = 0;
   let monthCursor = startOfMonth(new Date(startTime));
   const lastMonth = endOfMonth(new Date(endTime));
-  let lastAmount = points[0]?.amount ?? INITIAL_AMOUNT;
+  let lastAmount = points[0]?.amount ?? INITIAL_BACKTEST_AMOUNT;
 
   while (monthCursor <= lastMonth) {
     const eomTs = endOfMonth(monthCursor).getTime();
@@ -304,9 +304,9 @@ const createEmptyRuntimeStat = (
     losses: 0,
     ordersPerMonth: 0,
     exposure: 0,
-    amount: INITIAL_AMOUNT,
-    maxAmount: INITIAL_AMOUNT,
-    minAmount: INITIAL_AMOUNT,
+    amount: INITIAL_BACKTEST_AMOUNT,
+    maxAmount: INITIAL_BACKTEST_AMOUNT,
+    minAmount: INITIAL_BACKTEST_AMOUNT,
     netProfit: 0,
     totalReturn: 0,
     cagr: 0,
@@ -414,9 +414,9 @@ export const buildRuntimeStrategyAnalytics = ({
   endTime: number;
 }) => {
   const resolvedTrades = resolveTradesWithKnownPnl(trades, endTime);
-  const orderLog: SimpleOrderLogData = [[startTime, INITIAL_AMOUNT]];
+  const orderLog: SimpleOrderLogData = [[startTime, INITIAL_BACKTEST_AMOUNT]];
   const tradePnls = resolvedTrades.map((trade) => trade.resolvedPnl);
-  let runningAmount = INITIAL_AMOUNT;
+  let runningAmount = INITIAL_BACKTEST_AMOUNT;
 
   for (const trade of resolvedTrades) {
     runningAmount = roundValue(runningAmount + trade.resolvedPnl);
@@ -444,7 +444,7 @@ export const buildRuntimeStrategyAnalytics = ({
         )
       : 0;
   const returnSeries: number[] = [];
-  let amountBeforeTrade = INITIAL_AMOUNT;
+  let amountBeforeTrade = INITIAL_BACKTEST_AMOUNT;
 
   for (const trade of resolvedTrades) {
     returnSeries.push(
@@ -455,13 +455,16 @@ export const buildRuntimeStrategyAnalytics = ({
 
   const periodDays = Math.max(0, (endTime - startTime) / MS_IN_DAY);
   const periodMonths = periodDays / AVG_DAYS_IN_MONTH;
-  const amount = amounts[amounts.length - 1] ?? INITIAL_AMOUNT;
-  const netProfit = amount - INITIAL_AMOUNT;
+  const amount = amounts[amounts.length - 1] ?? INITIAL_BACKTEST_AMOUNT;
+  const netProfit = amount - INITIAL_BACKTEST_AMOUNT;
   const totalReturn =
-    INITIAL_AMOUNT > 0 ? ((amount - INITIAL_AMOUNT) / INITIAL_AMOUNT) * 100 : 0;
+    INITIAL_BACKTEST_AMOUNT > 0
+      ? ((amount - INITIAL_BACKTEST_AMOUNT) / INITIAL_BACKTEST_AMOUNT) * 100
+      : 0;
   const cagr =
     periodMonths > 0
-      ? (Math.pow(amount / INITIAL_AMOUNT, 12 / periodMonths) - 1) * 100
+      ? (Math.pow(amount / INITIAL_BACKTEST_AMOUNT, 12 / periodMonths) - 1) *
+        100
       : 0;
   const maxDrawdown = calculateMaxDrawdown(amounts);
   const calmar = maxDrawdown > 0 ? cagr / maxDrawdown : null;

@@ -120,6 +120,7 @@ jest.mock('progress', () =>
   })),
 );
 
+import args from 'args';
 import { normalizeStrategyOrderLinkKey } from '@tradejs/core/trade';
 
 jest.mock('@tradejs/infra/redis', () => ({
@@ -162,6 +163,11 @@ import {
   toPersistedBacktestResultEntry,
   toStrategyConfigGrid,
 } from '../scripts/backtest';
+import { updateBestTickerResult } from '../lib/backtest/runnerCore';
+import {
+  getBestTickerResultForSymbol,
+  resetRunState,
+} from '../lib/backtest/runState';
 import {
   compareExchangeEntriesToBacktest,
   resolveReplayStrategyNameFromExchangeEntry,
@@ -185,6 +191,7 @@ describe('backtest script helpers', () => {
     consoleLogSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
     (getData as jest.Mock).mockReset();
     (calculateStatsFull as jest.Mock).mockReset();
+    resetRunState();
   });
 
   afterEach(() => {
@@ -237,6 +244,46 @@ describe('backtest script helpers', () => {
         hasExplicitLimit: false,
       }),
     ).toBe(100);
+  });
+
+  it('describes --top as a single-ticker grid helper', () => {
+    expect(args.option).toHaveBeenCalledWith(
+      ['T', 'top'],
+      'Return N best tests for single-ticker grid runs (defaults to 50)',
+      10,
+    );
+  });
+
+  it('tracks the best result per ticker even for low-profit or zero-trade runs', () => {
+    const first = {
+      test: { symbol: 'BTCUSDT', name: 'BTCUSDT__1' },
+      stat: { profit: 0, amount: 0, orders: 0 },
+    } as any;
+    const second = {
+      test: { symbol: 'BTCUSDT', name: 'BTCUSDT__2' },
+      stat: { profit: 3, amount: 3, orders: 1 },
+    } as any;
+
+    expect(updateBestTickerResult(first)).toBe(true);
+    expect(getBestTickerResultForSymbol('BTCUSDT')).toBe(first);
+
+    expect(updateBestTickerResult(second)).toBe(true);
+    expect(getBestTickerResultForSymbol('BTCUSDT')).toBe(second);
+  });
+
+  it('does not replace a ticker result when the next profit is worse', () => {
+    const best = {
+      test: { symbol: 'ETHUSDT', name: 'ETHUSDT__1' },
+      stat: { profit: 12, amount: 12, orders: 2 },
+    } as any;
+    const worse = {
+      test: { symbol: 'ETHUSDT', name: 'ETHUSDT__2' },
+      stat: { profit: -4, amount: -4, orders: 7 },
+    } as any;
+
+    expect(updateBestTickerResult(best)).toBe(true);
+    expect(updateBestTickerResult(worse)).toBe(false);
+    expect(getBestTickerResultForSymbol('ETHUSDT')).toBe(best);
   });
 
   it('parses runtime strategy config keys and rejects unrelated keys', () => {

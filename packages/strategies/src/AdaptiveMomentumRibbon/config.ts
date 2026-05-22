@@ -1,3 +1,4 @@
+import { FEE_PERCENT } from '@tradejs/core/constants';
 import {
   BacktestPriceMode,
   Direction,
@@ -30,7 +31,7 @@ export const config = {
   ML_ENABLED: false,
   ML_THRESHOLD: 0.1,
   MIN_AI_QUALITY: 3,
-  FEE_PERCENT: 0.005,
+  FEE_PERCENT,
   MAX_LOSS_VALUE: 10,
   AMR_LOOKBACK_BARS: 200,
   AMR_MOMENTUM_PERIOD: 32,

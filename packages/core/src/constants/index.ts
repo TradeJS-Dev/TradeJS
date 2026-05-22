@@ -1,6 +1,7 @@
 import type { TestThresholds } from '@tradejs/types';
 
-export const FEE_PERCENT = 0.005;
+export const FEE_PERCENT = 0.003;
+export const INITIAL_BACKTEST_AMOUNT = 100;
 
 export const CORRELATION_WINDOW = 50;
 export const SPREAD_WINDOW = 50;
