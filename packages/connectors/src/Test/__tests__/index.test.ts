@@ -99,7 +99,7 @@ describe('TestConnectorCreator', () => {
     });
 
     await expect(connector.drainMlResultsBatch()).resolves.toEqual([
-      { signalId: 'sig-1', profit: 19 },
+      { signalId: 'sig-1', profit: 17.9 },
     ]);
     await expect(connector.drainMlResultsBatch()).resolves.toEqual([]);
 
@@ -109,8 +109,8 @@ describe('TestConnectorCreator', () => {
 
     expect(result.orderLogId).toBe('order-log-id');
     expect(result.stat.orders).toBe(1);
-    expect(result.stat.amount).toBe(119);
-    expect(result.stat.profit).toBe(19);
+    expect(result.stat.amount).toBe(117.9);
+    expect(result.stat.profit).toBe(17.9);
 
     expect(mockedSetData).not.toHaveBeenCalled();
     expect(result.inlineOrderLog?.[0]?.signal?.indicators).toBeUndefined();
@@ -147,8 +147,8 @@ describe('TestConnectorCreator', () => {
     const result = await connector.getResult();
 
     expect(result.stat.orders).toBe(1);
-    expect(result.stat.amount).toBe(94.5);
-    expect(result.stat.profit).toBe(-5.5);
+    expect(result.stat.amount).toBe(93.98);
+    expect(result.stat.profit).toBe(-6.03);
   });
 
   it('updates stop loss for an open position', async () => {
@@ -186,8 +186,8 @@ describe('TestConnectorCreator', () => {
 
     const result = await connector.getResult();
 
-    expect(result.stat.amount).toBe(100.5);
-    expect(result.stat.profit).toBe(0.5);
+    expect(result.stat.amount).toBe(100);
+    expect(result.stat.profit).toBeCloseTo(0, 2);
   });
 
   it('falls back to root user cache when userName is missing', async () => {

@@ -160,6 +160,22 @@ export const createPortfolioReplayConnector = (
     positionsBySymbol.delete(symbol);
   };
 
+  const getNetProfit = ({
+    grossProfit,
+    price,
+    qty,
+  }: {
+    grossProfit: number;
+    price: number;
+    qty: number;
+  }) => {
+    const fee = price * qty * FEE;
+    return {
+      fee,
+      profit: grossProfit - fee,
+    };
+  };
+
   const checkTp = async ({
     symbol,
     candle,
@@ -187,9 +203,14 @@ export const createPortfolioReplayConnector = (
       }
 
       const qty = positionState.originalQty * tp.rate;
-      const profit = isLong
+      const grossProfit = isLong
         ? (tp.price - entryPrice) * qty
         : (entryPrice - tp.price) * qty;
+      const { fee, profit } = getNetProfit({
+        grossProfit,
+        price: tp.price,
+        qty,
+      });
 
       amount += profit;
       positionState.currentProfit += profit;
@@ -202,6 +223,7 @@ export const createPortfolioReplayConnector = (
           qty,
           price: tp.price,
           profit,
+          fee,
           type: isLong ? 'TAKE_PROFIT_LONG' : 'TAKE_PROFIT_SHORT',
         },
       });
@@ -241,9 +263,14 @@ export const createPortfolioReplayConnector = (
     }
 
     const qty = position.qty;
-    const profit = isLong
+    const grossProfit = isLong
       ? (stopLossPrice - position.price) * qty
       : (position.price - stopLossPrice) * qty;
+    const { fee, profit } = getNetProfit({
+      grossProfit,
+      price: stopLossPrice,
+      qty,
+    });
 
     amount += profit;
     positionState.currentProfit += profit;
@@ -255,6 +282,7 @@ export const createPortfolioReplayConnector = (
         qty,
         profit,
         price: stopLossPrice,
+        fee,
         type: isLong ? 'STOP_LOSS_LONG' : 'STOP_LOSS_SHORT',
       },
     });
@@ -315,8 +343,11 @@ export const createPortfolioReplayConnector = (
         amount,
         strategyName,
       };
-      const fee = order.price * order.qty * FEE;
-      const profit = fee * -1;
+      const { fee, profit } = getNetProfit({
+        grossProfit: 0,
+        price: order.price,
+        qty: order.qty,
+      });
 
       amount += profit;
       currentPriceBySymbol.set(order.symbol, order.price);
@@ -377,9 +408,14 @@ export const createPortfolioReplayConnector = (
 
       const { position } = positionState;
       const isLong = position.direction === 'LONG';
-      const profit = isLong
+      const grossProfit = isLong
         ? (order.price - position.price) * position.qty
         : (position.price - order.price) * position.qty;
+      const { fee, profit } = getNetProfit({
+        grossProfit,
+        price: order.price,
+        qty: position.qty,
+      });
 
       amount += profit;
       positionState.currentProfit += profit;
@@ -391,6 +427,7 @@ export const createPortfolioReplayConnector = (
           ...order,
           qty: position.qty,
           profit,
+          fee,
           type: isLong ? 'CLOSE_LONG' : 'CLOSE_SHORT',
         },
       });

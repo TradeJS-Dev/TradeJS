@@ -75,12 +75,15 @@ describe('testConnector', () => {
     const result = await connector.getResult();
 
     expect(result.stat).toEqual({
-      amount: 114.5,
-      profit: 14.5,
+      amount: 113.93,
+      profit: 13.92,
       orders: 1,
     });
     expect(result.inlineOrderLog).toHaveLength(3);
     expect(result.inlinePositionLog).toHaveLength(1);
+    expect(result.inlineOrderLog?.map(({ fee }) => fee)).toEqual([
+      0.5, 0.275, 0.3,
+    ]);
     expect(result.inlineOrderLog?.[0].signal).toEqual(
       expect.objectContaining({ signalId: 'sig-1' }),
     );
@@ -120,6 +123,45 @@ describe('testConnector', () => {
     expect(secondResult.inlinePositionLog).toHaveLength(1);
   });
 
+  it('subtracts exit fee on manual close', async () => {
+    const connector = createTestConnector(baseConnector as any, {
+      userName: 'alice',
+    });
+
+    await connector.placeOrder({
+      symbol: 'ETHUSDT',
+      qty: 1,
+      price: 100,
+      isLimit: false,
+      timestamp: 1,
+      direction: 'LONG',
+    });
+    await connector.closePosition({
+      symbol: 'ETHUSDT',
+      price: 105,
+      isLimit: false,
+      timestamp: 2,
+      direction: 'LONG',
+    });
+
+    const result = await connector.getResult();
+
+    expect(result.stat).toEqual({
+      amount: 103.98,
+      profit: 3.97,
+      orders: 1,
+    });
+    expect(result.inlineOrderLog?.[1]).toEqual(
+      expect.objectContaining({
+        type: 'CLOSE_LONG',
+        price: 105,
+        qty: 1,
+        fee: 0.525,
+        profit: 4.47,
+      }),
+    );
+  });
+
   it('tracks closed signal profit for stop loss exits and drains the batch once', async () => {
     const connector = createTestConnector(baseConnector as any, {
       mlEnabled: true,
@@ -153,18 +195,115 @@ describe('testConnector', () => {
     });
 
     expect(await connector.drainMlResultsBatch()).toEqual([
-      { signalId: 'sig-stop', profit: -5.5 },
+      { signalId: 'sig-stop', profit: -5.97 },
     ]);
     expect(await connector.drainMlResultsBatch()).toEqual([]);
 
     const result = await connector.getResult();
     expect(result.stat).toEqual({
-      amount: 94.5,
-      profit: -5.5,
+      amount: 94.03,
+      profit: -5.97,
       orders: 1,
     });
     expect(result.inlineOrderLog).toHaveLength(2);
     expect(result.inlinePositionLog).toHaveLength(1);
+  });
+
+  it('computes short take profit with exit fee', async () => {
+    const connector = createTestConnector(baseConnector as any, {
+      userName: 'alice',
+    });
+
+    await connector.placeOrder({
+      symbol: 'ETHUSDT',
+      qty: 1,
+      price: 100,
+      isLimit: false,
+      timestamp: 1,
+      direction: 'SHORT',
+    });
+    await connector.setTakeProfits({
+      symbol: 'ETHUSDT',
+      direction: 'SHORT',
+      takeProfits: [{ price: 90, rate: 1 }],
+    } as any);
+
+    await connector.checkTp({
+      timestamp: 2,
+      open: 100,
+      high: 101,
+      low: 89,
+      close: 90,
+      volume: 1,
+      turnover: 1,
+    });
+
+    const result = await connector.getResult();
+
+    expect(result.stat).toEqual({
+      amount: 109.05,
+      profit: 9.05,
+      orders: 1,
+    });
+    expect(result.inlineOrderLog?.[1]).toEqual(
+      expect.objectContaining({
+        type: 'TAKE_PROFIT_SHORT',
+        price: 90,
+        qty: 1,
+        fee: 0.45,
+        profit: 9.55,
+      }),
+    );
+  });
+
+  it('respects stop loss priority over take profit on the same candle', async () => {
+    const connector = createTestConnector(baseConnector as any, {
+      userName: 'alice',
+    });
+
+    await connector.placeOrder({
+      symbol: 'ETHUSDT',
+      qty: 1,
+      price: 100,
+      isLimit: false,
+      timestamp: 1,
+      direction: 'LONG',
+    });
+    await connector.setTakeProfits({
+      symbol: 'ETHUSDT',
+      direction: 'LONG',
+      takeProfits: [{ price: 110, rate: 1 }],
+    } as any);
+    await connector.setStopLoss({
+      symbol: 'ETHUSDT',
+      direction: 'LONG',
+      stopLossPrice: 95,
+    } as any);
+
+    const candle = {
+      timestamp: 2,
+      open: 100,
+      high: 111,
+      low: 94,
+      close: 108,
+      volume: 1,
+      turnover: 1,
+    };
+
+    await connector.checkSl(candle);
+    await connector.checkTp(candle);
+
+    const result = await connector.getResult();
+
+    expect(result.stat).toEqual({
+      amount: 94.03,
+      profit: -5.97,
+      orders: 1,
+    });
+    expect(result.inlineOrderLog?.map(({ type }) => type)).toEqual([
+      'OPEN_LONG',
+      'STOP_LOSS_LONG',
+    ]);
   });
 
   it('delegates unrealized pnl snapshots to the underlying connector when available', async () => {

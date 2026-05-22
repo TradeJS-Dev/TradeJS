@@ -62,7 +62,7 @@ export const createTestConnector: TestConnectorCreator = (
       if (signalId) {
         closedSignalResults.push({
           signalId,
-          profit: currentPositionProfit,
+          profit: round(currentPositionProfit),
         });
       }
     }
@@ -83,6 +83,22 @@ export const createTestConnector: TestConnectorCreator = (
     currentPositionProfit = 0;
   };
 
+  const getNetProfit = ({
+    grossProfit,
+    price,
+    qty,
+  }: {
+    grossProfit: number;
+    price: number;
+    qty: number;
+  }) => {
+    const fee = price * qty * FEE;
+    return {
+      fee,
+      profit: grossProfit - fee,
+    };
+  };
+
   return {
     __tradejsTestConnector: true,
 
@@ -101,8 +117,8 @@ export const createTestConnector: TestConnectorCreator = (
 
       return {
         stat: {
-          amount,
-          profit: amount - INITIAL_AMOUNT,
+          amount: round(amount),
+          profit: round(amount - INITIAL_AMOUNT),
           orders: positionLog.length,
         },
         orderLogId,
@@ -153,9 +169,14 @@ export const createTestConnector: TestConnectorCreator = (
 
         if (reached) {
           const qty = originalQty * tp.rate;
-          const profit = isLong
+          const grossProfit = isLong
             ? (targetPrice - entryPrice) * qty
             : (entryPrice - targetPrice) * qty;
+          const { fee, profit } = getNetProfit({
+            grossProfit,
+            price: targetPrice,
+            qty,
+          });
 
           amount += profit;
           currentPositionProfit += profit;
@@ -169,6 +190,7 @@ export const createTestConnector: TestConnectorCreator = (
             qty,
             price: targetPrice,
             profit,
+            fee,
             type: isLong ? 'TAKE_PROFIT_LONG' : 'TAKE_PROFIT_SHORT',
           });
 
@@ -195,9 +217,14 @@ export const createTestConnector: TestConnectorCreator = (
 
       if (hitStop) {
         const qty = currentPosition.qty;
-        const profit = isLong
+        const grossProfit = isLong
           ? (stopLossPrice - currentPosition.price) * qty
           : (currentPosition.price - stopLossPrice) * qty;
+        const { fee, profit } = getNetProfit({
+          grossProfit,
+          price: stopLossPrice,
+          qty,
+        });
 
         amount += profit;
         currentPositionProfit += profit;
@@ -207,6 +234,7 @@ export const createTestConnector: TestConnectorCreator = (
           qty,
           profit,
           price: stopLossPrice,
+          fee,
           type: isLong ? 'STOP_LOSS_LONG' : 'STOP_LOSS_SHORT',
         });
 
@@ -224,8 +252,11 @@ export const createTestConnector: TestConnectorCreator = (
       currentPosition = { ...order, amount };
       originalQty = order.qty;
 
-      const fee = order.price * order.qty * FEE;
-      const profit = fee * -1;
+      const { fee, profit } = getNetProfit({
+        grossProfit: 0,
+        price: order.price,
+        qty: order.qty,
+      });
 
       amount += profit;
       currentPositionProfit = profit;
@@ -270,9 +301,14 @@ export const createTestConnector: TestConnectorCreator = (
       }
 
       const isLong = currentPosition.direction === 'LONG';
-      const profit = isLong
+      const grossProfit = isLong
         ? (order.price - currentPosition.price) * currentPosition.qty
         : (currentPosition.price - order.price) * currentPosition.qty;
+      const { fee, profit } = getNetProfit({
+        grossProfit,
+        price: order.price,
+        qty: currentPosition.qty,
+      });
 
       amount += profit;
       currentPositionProfit += profit;
@@ -281,6 +317,7 @@ export const createTestConnector: TestConnectorCreator = (
         ...order,
         qty: currentPosition.qty,
         profit,
+        fee,
         type: isLong ? 'CLOSE_LONG' : 'CLOSE_SHORT',
       });
 

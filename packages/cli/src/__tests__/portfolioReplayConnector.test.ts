@@ -118,5 +118,20 @@ describe('portfolio replay connector', () => {
     expect(artifacts.positionLog).toHaveLength(1);
     expect(artifacts.orderLogByStrategy.get('TrendLine')).toHaveLength(2);
     expect(artifacts.positionLogByStrategy.get('TrendLine')).toHaveLength(1);
+    expect(artifacts.orderLog[0]).toEqual(
+      expect.objectContaining({
+        type: 'OPEN_LONG',
+        fee: 0.5,
+        profit: -0.5,
+      }),
+    );
+    expect(artifacts.orderLog[1]).toEqual(
+      expect.objectContaining({
+        type: 'TAKE_PROFIT_LONG',
+        fee: 0.55,
+        profit: 9.45,
+        amount: 108.95,
+      }),
+    );
   });
 });
