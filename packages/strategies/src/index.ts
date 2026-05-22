@@ -8,82 +8,49 @@ import { trendShiftManifest } from './TrendShift/manifest';
 import { trendLineManifest } from './TrendLine/manifest';
 import { volumeDivergenceManifest } from './VolumeDivergence/manifest';
 import { config as adaptiveMomentumRibbonDefaultConfig } from './AdaptiveMomentumRibbon/config';
+import { AdaptiveMomentumRibbonStrategyCreator } from './AdaptiveMomentumRibbon/strategy';
 import { config as breakoutDefaultConfig } from './Breakout/config';
+import { BreakoutStrategyCreator } from './Breakout/strategy';
 import { config as maStrategyDefaultConfig } from './MaStrategy/config';
+import { MaStrategyCreator } from './MaStrategy/strategy';
 import { config as reverseTrendLineDefaultConfig } from './ReverseTrendLine/config';
+import { ReverseTrendLineStrategyCreator } from './ReverseTrendLine/strategy';
 import { config as trendShiftDefaultConfig } from './TrendShift/config';
+import { TrendShiftStrategyCreator } from './TrendShift/strategy';
 import { config as trendLineDefaultConfig } from './TrendLine/config';
+import { TrendlineStrategyCreator } from './TrendLine/strategy';
 import { config as volumeDivergenceDefaultConfig } from './VolumeDivergence/config';
-import {
-  type StrategyCreator,
-  type StrategyRegistryEntry,
-} from '@tradejs/types';
-
-const createLazyStrategyCreator = <TModule extends Record<string, unknown>>(
-  loader: () => Promise<TModule>,
-  exportName: keyof TModule,
-): StrategyCreator => {
-  return async (params) => {
-    const module = await loader();
-    const creator = module[exportName];
-    if (typeof creator !== 'function') {
-      throw new Error(
-        `Strategy creator export "${String(exportName)}" is missing`,
-      );
-    }
-    return (creator as StrategyCreator)(params);
-  };
-};
+import { VolumeDivergenceStrategyCreator } from './VolumeDivergence/strategy';
+import { type StrategyRegistryEntry } from '@tradejs/types';
 
 export const strategyEntries: StrategyRegistryEntry[] = [
   {
     manifest: breakoutManifest,
-    creator: createLazyStrategyCreator(
-      () => import('./Breakout/strategy'),
-      'BreakoutStrategyCreator',
-    ),
+    creator: BreakoutStrategyCreator,
   },
   {
     manifest: trendLineManifest,
-    creator: createLazyStrategyCreator(
-      () => import('./TrendLine/strategy'),
-      'TrendlineStrategyCreator',
-    ),
+    creator: TrendlineStrategyCreator,
   },
   {
     manifest: trendShiftManifest,
-    creator: createLazyStrategyCreator(
-      () => import('./TrendShift/strategy'),
-      'TrendShiftStrategyCreator',
-    ),
+    creator: TrendShiftStrategyCreator,
   },
   {
     manifest: reverseTrendLineManifest,
-    creator: createLazyStrategyCreator(
-      () => import('./ReverseTrendLine/strategy'),
-      'ReverseTrendLineStrategyCreator',
-    ),
+    creator: ReverseTrendLineStrategyCreator,
   },
   {
     manifest: maStrategyManifest,
-    creator: createLazyStrategyCreator(
-      () => import('./MaStrategy/strategy'),
-      'MaStrategyCreator',
-    ),
+    creator: MaStrategyCreator,
   },
   {
     manifest: adaptiveMomentumRibbonManifest,
-    creator: createLazyStrategyCreator(
-      () => import('./AdaptiveMomentumRibbon/strategy'),
-      'AdaptiveMomentumRibbonStrategyCreator',
-    ),
+    creator: AdaptiveMomentumRibbonStrategyCreator,
   },
   {
     manifest: volumeDivergenceManifest,
-    creator: createLazyStrategyCreator(
-      () => import('./VolumeDivergence/strategy'),
-      'VolumeDivergenceStrategyCreator',
-    ),
+    creator: VolumeDivergenceStrategyCreator,
   },
 ];
 
