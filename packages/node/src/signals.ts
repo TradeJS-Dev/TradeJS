@@ -451,6 +451,7 @@ export const formatMessage = (
     strategy,
     orderStatus,
     orderSkipReason,
+    orderFailureReason,
     isConfigFromBacktest,
     ml,
     prices: { currentPrice, takeProfitPrice, stopLossPrice, riskRatio },
@@ -529,6 +530,8 @@ export const formatMessage = (
           lines.push(
             `Skip reason: <b>${escapeHtml(formatOrderSkipReason(orderSkipReason))}</b>`,
           );
+        } else if (orderStatus === 'failed' && orderFailureReason) {
+          lines.push(`Reason: <code>${escapeHtml(orderFailureReason)}</code>`);
         }
       }
 

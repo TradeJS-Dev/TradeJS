@@ -1658,7 +1658,10 @@ describe('strategyRuntime', () => {
       onRuntimeError,
     });
     const orderError = new Error('order-failed');
-    mockExecuteEntryOrder.mockRejectedValueOnce(orderError);
+    mockExecuteEntryOrder.mockImplementationOnce(async ({ signal }: any) => {
+      signal.orderFailureReason = 'exchange rejected order';
+      throw orderError;
+    });
 
     const { strategy } = await makeRuntime(() => makeDecisionEntry());
 
@@ -1668,6 +1671,7 @@ describe('strategyRuntime', () => {
     );
 
     expect((result as any).orderStatus).toBe('failed');
+    expect((result as any).orderFailureReason).toBe('exchange rejected order');
     expect(onRuntimeError).toHaveBeenCalledWith(
       expect.objectContaining({
         error: expect.objectContaining({

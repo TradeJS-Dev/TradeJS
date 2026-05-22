@@ -481,6 +481,48 @@ describe('signals', () => {
     expect(message).not.toContain('0 &lt; 4');
   });
 
+  it('includes failed order reason in Telegram signal card', () => {
+    jest.doMock('../screenshot', () => ({
+      getScreenshotBuffer: jest.fn(async () => {
+        throw new Error('no screenshot');
+      }),
+      getScreenshotFilename: jest.fn(() => 'EDUUSDT_sig-1_15.png'),
+    }));
+
+    const { formatMessage } = require('../signals');
+
+    const message = formatMessage(
+      {
+        signalId: 'sig-1',
+        symbol: 'EDUUSDT',
+        strategy: 'ReverseTrendLine',
+        interval: '15',
+        direction: 'SHORT',
+        orderStatus: 'failed',
+        orderFailureReason:
+          'cannot set leverage [1000] gt maxLeverage [500] by risk limit',
+        timestamp: 1_700_000_000_000,
+        indicators: {},
+        additionalIndicators: {},
+        prices: {
+          currentPrice: 0.04718,
+          takeProfitPrice: 0.045963,
+          stopLossPrice: 0.047746,
+          riskRatio: 2.15,
+        },
+      },
+      {
+        quality: 4,
+        direction: 'SHORT',
+      },
+    );
+
+    expect(message).toContain('🔴 Order failed');
+    expect(message).toContain(
+      'Reason: <code>cannot set leverage [1000] gt maxLeverage [500] by risk limit</code>',
+    );
+  });
+
   it('formats shared market stats from additionalIndicators.baseContext', () => {
     jest.doMock('../screenshot', () => ({
       getScreenshotBuffer: jest.fn(async () => {

@@ -707,6 +707,16 @@ const executeEntryDecision = async ({
   } catch (err) {
     if (signal) {
       signal.orderStatus = 'failed';
+      if (
+        typeof signal.orderFailureReason !== 'string' ||
+        !signal.orderFailureReason.trim()
+      ) {
+        signal.orderFailureReason =
+          typeof (err as Error)?.message === 'string' &&
+          (err as Error).message.trim()
+            ? (err as Error).message.trim()
+            : undefined;
+      }
     }
     await notifyRuntimeError({
       stage: 'placeOrder',

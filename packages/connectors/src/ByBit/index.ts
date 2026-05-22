@@ -788,12 +788,23 @@ export const ByBitConnectorCreator: ConnectorCreator = async (config) => {
         .sort((left, right) => left.entryTimestamp - right.entryTimestamp);
     },
 
-    placeOrder: async ({ symbol, price, qty, direction, isLimit, orderId }) => {
+    placeOrder: async ({
+      symbol,
+      price,
+      qty,
+      direction,
+      isLimit,
+      orderId,
+      signal,
+    }) => {
       invalidatePositionSnapshot(symbol);
       const client = await getPrivateClient();
       const marketDataClient = await getPublicClient();
 
       if (!client || !marketDataClient) {
+        if (signal) {
+          signal.orderFailureReason = 'BYBIT_CLIENT_UNAVAILABLE';
+        }
         return false;
       }
 
@@ -804,6 +815,9 @@ export const ByBitConnectorCreator: ConnectorCreator = async (config) => {
       const { qtyNum: orderQty, qtyStr: orderQtyStr } = normalizeQty(qty, meta);
 
       if (orderQty < meta.minOrderQty) {
+        if (signal) {
+          signal.orderFailureReason = 'ORDER_QTY_BELOW_MIN';
+        }
         logger.log(
           'warn',
           'placeOrder: qty too small: %s',
@@ -861,9 +875,18 @@ export const ByBitConnectorCreator: ConnectorCreator = async (config) => {
       );
 
       if (orderRes.retCode !== 0) {
+        if (signal) {
+          signal.orderFailureReason =
+            typeof orderRes.retMsg === 'string' && orderRes.retMsg.trim()
+              ? orderRes.retMsg.trim()
+              : `BYBIT_RETCODE_${orderRes.retCode}`;
+        }
         return false;
       }
 
+      if (signal) {
+        signal.orderFailureReason = undefined;
+      }
       invalidatePositionSnapshot(symbol);
       return true;
     },

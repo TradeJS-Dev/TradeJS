@@ -794,7 +794,9 @@ describe('ByBitConnectorCreator', () => {
   it('returns false from placeOrder when submitOrder retCode is non-zero', async () => {
     const client = {
       setLeverage: jest.fn().mockResolvedValue({}),
-      submitOrder: jest.fn().mockResolvedValue({ retCode: 10001 }),
+      submitOrder: jest
+        .fn()
+        .mockResolvedValue({ retCode: 10001, retMsg: 'symbol is invalid' }),
     };
     mockedGetClient.mockResolvedValue(client as any);
     mockedGetSymbolMeta.mockResolvedValue({
@@ -812,6 +814,7 @@ describe('ByBitConnectorCreator', () => {
       priceNum: price,
       priceStr: price.toFixed(1),
     }));
+    const signal = {} as any;
 
     const connector = await ByBitConnectorCreator({ userName: 'alice' });
     const ok = await connector.placeOrder({
@@ -820,11 +823,13 @@ describe('ByBitConnectorCreator', () => {
       qty: 1,
       direction: 'LONG',
       timestamp: Date.now(),
+      signal,
     } as any);
 
     expect(ok).toBe(false);
     expect(client.setLeverage).toHaveBeenCalledTimes(1);
     expect(client.submitOrder).toHaveBeenCalledTimes(1);
+    expect(signal.orderFailureReason).toBe('symbol is invalid');
   });
 
   it('submits limit order without immediate TP/SL binding', async () => {

@@ -291,6 +291,7 @@ export const executeEntryOrder = async ({
   await beforePlaceOrder?.();
   const orderId = signal.orderId || createRuntimeOrderId(signal.strategy);
   signal.orderId = orderId;
+  signal.orderFailureReason = undefined;
 
   const orderPlaced = await connector.placeOrder({
     symbol,
@@ -326,6 +327,9 @@ export const executeEntryOrder = async ({
 
   signal.orderStatus = orderPlaced ? 'completed' : 'failed';
   signal.orderSkipReason = undefined;
+  if (orderPlaced) {
+    signal.orderFailureReason = undefined;
+  }
 
   const currentPosition = await connector.getPosition(symbol);
   const entryPrice =
