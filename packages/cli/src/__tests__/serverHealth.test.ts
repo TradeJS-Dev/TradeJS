@@ -1,4 +1,6 @@
 import {
+  buildServerHealthAttachment,
+  buildServerHealthDiagnostics,
   collectServerHealthSnapshot,
   evaluateServerHealth,
   resolveServerHealthThresholds,
@@ -89,5 +91,40 @@ describe('serverHealth', () => {
         diskRecoverPct: 0,
       }),
     ).toEqual(thresholds);
+  });
+
+  it('builds diagnostics attachment with host and process sections', () => {
+    const snapshot = {
+      hostname: 'prod-1',
+      timestamp: Date.parse('2026-05-21T22:28:14.096Z'),
+      cpuCount: 8,
+      load1: 117.04,
+      load5: 98.64,
+      load15: 55.4,
+      loadPerCpu1: 14.63,
+      loadPerCpu5: 12.33,
+      memoryUsedPct: 86.5,
+      uptimeSec: 3 * 3600 + 54 * 60,
+      disk: {
+        path: '/',
+        usedPct: 53.8,
+      },
+    };
+
+    const content = buildServerHealthDiagnostics({
+      snapshot,
+      diskPath: '/',
+    });
+    const attachment = buildServerHealthAttachment({
+      snapshot,
+      diskPath: '/',
+    });
+
+    expect(content).toContain('TradeJS server health diagnostics');
+    expect(content).toContain('host: prod-1');
+    expect(content).toContain('=== top processes by cpu ===');
+    expect(content).toContain('=== top processes by memory ===');
+    expect(attachment.filename).toContain('server-health-prod-1-2026-05-21');
+    expect(typeof attachment.content).toBe('string');
   });
 });

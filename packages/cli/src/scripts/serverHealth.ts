@@ -1,9 +1,11 @@
 import 'dotenv/config';
+import { execFileSync } from 'node:child_process';
 import os from 'node:os';
 import { statfsSync } from 'node:fs';
 import args from 'args';
 import { getData, setData } from '@tradejs/infra/redis';
 import { sendTelegramReport } from '../lib/telegramReports';
+import type { TelegramReportAttachment } from '../lib/telegramReports';
 
 type HealthIssueCode = 'load' | 'memory' | 'disk';
 
@@ -110,6 +112,25 @@ const readDiskUsage = (path: string): DiskSnapshot => {
     };
   } catch {
     return { path, usedPct: null };
+  }
+};
+
+const runDiagnosticCommand = (
+  command: string,
+  args: string[],
+  fallbackLabel: string,
+): string => {
+  try {
+    const output = execFileSync(command, args, {
+      encoding: 'utf8',
+      timeout: 5_000,
+      maxBuffer: 1024 * 1024,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    }).trim();
+
+    return output || `${fallbackLabel}: no output`;
+  } catch (error) {
+    return `${fallbackLabel}: ${String(error)}`;
   }
 };
 
@@ -250,6 +271,77 @@ const buildRecoveryMessage = ({
       : '• Alert started: <b>unknown</b>',
   ].join('\n');
 
+export const buildServerHealthDiagnostics = ({
+  snapshot,
+  diskPath,
+}: {
+  snapshot: ServerHealthSnapshot;
+  diskPath: string;
+}) => {
+  const topCpu = runDiagnosticCommand(
+    'ps',
+    ['axo', 'pid,ppid,%cpu,%mem,etime,state,comm,args', '--sort=-%cpu'],
+    'ps cpu failed',
+  );
+  const topMemory = runDiagnosticCommand(
+    'ps',
+    ['axo', 'pid,ppid,%mem,%cpu,etime,state,comm,args', '--sort=-%mem'],
+    'ps memory failed',
+  );
+  const freeMemory = runDiagnosticCommand('free', ['-m'], 'free failed');
+  const diskUsage = runDiagnosticCommand('df', ['-h', diskPath], 'df failed');
+  const uptimeText = runDiagnosticCommand('uptime', [], 'uptime failed');
+
+  return [
+    `TradeJS server health diagnostics`,
+    `host: ${snapshot.hostname}`,
+    `time: ${new Date(snapshot.timestamp).toISOString()}`,
+    `uptime: ${formatDuration(snapshot.uptimeSec)}`,
+    `load: ${snapshot.load1.toFixed(2)} / ${snapshot.load5.toFixed(2)} / ${snapshot.load15.toFixed(2)}`,
+    `load_per_core: ${formatPercent(snapshot.loadPerCpu1)} (1m), ${formatPercent(snapshot.loadPerCpu5)} (5m)`,
+    `memory_used: ${formatPctValue(snapshot.memoryUsedPct)}`,
+    `disk_used: ${
+      snapshot.disk.usedPct == null
+        ? `${snapshot.disk.path} n/a`
+        : `${snapshot.disk.path} ${formatPctValue(snapshot.disk.usedPct)}`
+    }`,
+    '',
+    '=== uptime ===',
+    uptimeText,
+    '',
+    '=== free -m ===',
+    freeMemory,
+    '',
+    `=== df -h ${diskPath} ===`,
+    diskUsage,
+    '',
+    '=== top processes by cpu ===',
+    topCpu,
+    '',
+    '=== top processes by memory ===',
+    topMemory,
+    '',
+  ].join('\n');
+};
+
+export const buildServerHealthAttachment = ({
+  snapshot,
+  diskPath,
+}: {
+  snapshot: ServerHealthSnapshot;
+  diskPath: string;
+}): TelegramReportAttachment => {
+  const timestamp = new Date(snapshot.timestamp)
+    .toISOString()
+    .replace(/[:]/g, '-');
+
+  return {
+    filename: `server-health-${snapshot.hostname}-${timestamp}.txt`,
+    content: buildServerHealthDiagnostics({ snapshot, diskPath }),
+    caption: 'TradeJS server health diagnostics',
+  };
+};
+
 const getStateKey = (userName: string, hostname: string) =>
   `ops:server-health:${userName}:${hostname}`;
 
@@ -338,7 +430,8 @@ args.option(
 export const main = async () => {
   const flags = args.parse(process.argv);
   const thresholds = resolveServerHealthThresholds(flags);
-  const snapshot = collectServerHealthSnapshot(String(flags.diskPath || '/'));
+  const diskPath = String(flags.diskPath || '/');
+  const snapshot = collectServerHealthSnapshot(diskPath);
   const stateKey = getStateKey(String(flags.user), snapshot.hostname);
   const prevState = ((await getData(stateKey, DEFAULT_STATE)) ??
     DEFAULT_STATE) as ServerHealthState;
@@ -375,8 +468,23 @@ export const main = async () => {
       });
       if (flags.printOnly) {
         console.log(message);
+        console.log('');
+        console.log(
+          buildServerHealthDiagnostics({
+            snapshot,
+            diskPath,
+          }),
+        );
       } else {
-        await sendTelegramReport(message, { userName: flags.user });
+        await sendTelegramReport(message, {
+          userName: flags.user,
+          attachments: [
+            buildServerHealthAttachment({
+              snapshot,
+              diskPath,
+            }),
+          ],
+        });
       }
     }
     return;
