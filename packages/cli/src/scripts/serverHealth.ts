@@ -73,8 +73,9 @@ const DEFAULT_THRESHOLDS: ServerHealthThresholds = {
 const escapeHtml = (value: string) =>
   value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
-const formatPercent = (value: number) => `${(value * 100).toFixed(0)}%`;
 const formatPctValue = (value: number) => `${value.toFixed(1)}%`;
+const formatLoadPerCore = (value: number) => value.toFixed(2);
+const formatGiB = (bytes: number) => `${(bytes / 1024 ** 3).toFixed(1)} GB`;
 
 const formatDuration = (uptimeSec: number) => {
   const total = Math.max(0, Math.floor(uptimeSec));
@@ -158,6 +159,24 @@ export const collectServerHealthSnapshot = (
   };
 };
 
+const buildHumanSummaryLines = (snapshot: ServerHealthSnapshot) => {
+  const totalMem = os.totalmem();
+  const freeMem = os.freemem();
+  const usedMem = Math.max(0, totalMem - freeMem);
+
+  return [
+    `• vCPU: <b>${escapeHtml(formatPctValue(Math.min(100, snapshot.loadPerCpu1 * 100)))}</b>`,
+    `• RAM: <b>${escapeHtml(formatPctValue(snapshot.memoryUsedPct))}</b> (${escapeHtml(
+      `${formatGiB(usedMem)} / ${formatGiB(totalMem)}`,
+    )})`,
+    `• Storage: <b>${escapeHtml(
+      snapshot.disk.usedPct == null
+        ? 'n/a'
+        : formatPctValue(snapshot.disk.usedPct),
+    )}</b>`,
+  ];
+};
+
 export const evaluateServerHealth = (
   snapshot: ServerHealthSnapshot,
   thresholds: ServerHealthThresholds,
@@ -167,7 +186,9 @@ export const evaluateServerHealth = (
   if (snapshot.loadPerCpu1 >= thresholds.loadPerCpuWarn) {
     issues.push({
       code: 'load',
-      summary: `CPU load high: 1m/core=${formatPercent(snapshot.loadPerCpu1)} (${snapshot.load1.toFixed(2)} on ${snapshot.cpuCount} cores), 5m/core=${formatPercent(snapshot.loadPerCpu5)}`,
+      summary: `CPU load high: 1m/core=${formatLoadPerCore(
+        snapshot.loadPerCpu1,
+      )} (${snapshot.load1.toFixed(2)} on ${snapshot.cpuCount} cores), 5m/core=${formatLoadPerCore(snapshot.loadPerCpu5)}`,
     });
   }
 
@@ -204,7 +225,7 @@ const shouldRecover = (
   (snapshot.disk.usedPct == null ||
     snapshot.disk.usedPct < thresholds.diskRecoverPct);
 
-const buildAlertMessage = ({
+export const buildAlertMessage = ({
   evaluation,
   prevState,
   reminder,
@@ -225,25 +246,24 @@ const buildAlertMessage = ({
     `Time: <b>${escapeHtml(new Date(snapshot.timestamp).toISOString())}</b>`,
     `Uptime: <b>${escapeHtml(formatDuration(snapshot.uptimeSec))}</b>`,
     '',
+    'Summary:',
+    ...buildHumanSummaryLines(snapshot),
+    '',
     'Issues:',
     ...issues.map((issue) => `• ${escapeHtml(issue.summary)}`),
     '',
-    'Snapshot:',
-    `• CPU load: <b>${snapshot.load1.toFixed(2)} / ${snapshot.load5.toFixed(2)} / ${snapshot.load15.toFixed(2)}</b>`,
-    `• Load per core: <b>${formatPercent(snapshot.loadPerCpu1)}</b> (1m), <b>${formatPercent(snapshot.loadPerCpu5)}</b> (5m)`,
-    `• Memory used: <b>${escapeHtml(formatPctValue(snapshot.memoryUsedPct))}</b>`,
-    `• Disk used: <b>${escapeHtml(
-      snapshot.disk.usedPct == null
-        ? `${snapshot.disk.path} n/a`
-        : `${snapshot.disk.path} ${formatPctValue(snapshot.disk.usedPct)}`,
-    )}</b>`,
+    'Pressure:',
+    `• Load avg: <b>${snapshot.load1.toFixed(2)} / ${snapshot.load5.toFixed(2)} / ${snapshot.load15.toFixed(2)}</b>`,
+    `• Load per core: <b>${formatLoadPerCore(
+      snapshot.loadPerCpu1,
+    )}</b> (1m), <b>${formatLoadPerCore(snapshot.loadPerCpu5)}</b> (5m)`,
     prevState.lastAlertAt
       ? `• Previous alert: <b>${escapeHtml(new Date(prevState.lastAlertAt).toISOString())}</b>`
       : '• Previous alert: <b>none</b>',
   ].join('\n');
 };
 
-const buildRecoveryMessage = ({
+export const buildRecoveryMessage = ({
   snapshot,
   prevState,
 }: {
@@ -257,15 +277,14 @@ const buildRecoveryMessage = ({
     `Time: <b>${escapeHtml(new Date(snapshot.timestamp).toISOString())}</b>`,
     `Uptime: <b>${escapeHtml(formatDuration(snapshot.uptimeSec))}</b>`,
     '',
-    'Snapshot:',
-    `• CPU load: <b>${snapshot.load1.toFixed(2)} / ${snapshot.load5.toFixed(2)} / ${snapshot.load15.toFixed(2)}</b>`,
-    `• Load per core: <b>${formatPercent(snapshot.loadPerCpu1)}</b> (1m), <b>${formatPercent(snapshot.loadPerCpu5)}</b> (5m)`,
-    `• Memory used: <b>${escapeHtml(formatPctValue(snapshot.memoryUsedPct))}</b>`,
-    `• Disk used: <b>${escapeHtml(
-      snapshot.disk.usedPct == null
-        ? `${snapshot.disk.path} n/a`
-        : `${snapshot.disk.path} ${formatPctValue(snapshot.disk.usedPct)}`,
-    )}</b>`,
+    'Summary:',
+    ...buildHumanSummaryLines(snapshot),
+    '',
+    'Pressure:',
+    `• Load avg: <b>${snapshot.load1.toFixed(2)} / ${snapshot.load5.toFixed(2)} / ${snapshot.load15.toFixed(2)}</b>`,
+    `• Load per core: <b>${formatLoadPerCore(
+      snapshot.loadPerCpu1,
+    )}</b> (1m), <b>${formatLoadPerCore(snapshot.loadPerCpu5)}</b> (5m)`,
     prevState.lastAlertAt
       ? `• Alert started: <b>${escapeHtml(new Date(prevState.lastAlertAt).toISOString())}</b>`
       : '• Alert started: <b>unknown</b>',
@@ -298,7 +317,7 @@ export const buildServerHealthDiagnostics = ({
     `time: ${new Date(snapshot.timestamp).toISOString()}`,
     `uptime: ${formatDuration(snapshot.uptimeSec)}`,
     `load: ${snapshot.load1.toFixed(2)} / ${snapshot.load5.toFixed(2)} / ${snapshot.load15.toFixed(2)}`,
-    `load_per_core: ${formatPercent(snapshot.loadPerCpu1)} (1m), ${formatPercent(snapshot.loadPerCpu5)} (5m)`,
+    `load_per_core: ${formatLoadPerCore(snapshot.loadPerCpu1)} (1m), ${formatLoadPerCore(snapshot.loadPerCpu5)} (5m)`,
     `memory_used: ${formatPctValue(snapshot.memoryUsedPct)}`,
     `disk_used: ${
       snapshot.disk.usedPct == null

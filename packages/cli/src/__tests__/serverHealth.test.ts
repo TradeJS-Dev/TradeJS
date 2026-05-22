@@ -1,4 +1,6 @@
 import {
+  buildAlertMessage,
+  buildRecoveryMessage,
   buildServerHealthAttachment,
   buildServerHealthDiagnostics,
   collectServerHealthSnapshot,
@@ -39,6 +41,7 @@ describe('serverHealth', () => {
     );
 
     expect(evaluation.isHealthy).toBe(false);
+    expect(evaluation.issues[0]?.summary).toContain('1m/core=1.00');
     expect(evaluation.issues.map((issue) => issue.code)).toEqual([
       'load',
       'memory',
@@ -126,5 +129,89 @@ describe('serverHealth', () => {
     expect(content).toContain('=== top processes by memory ===');
     expect(attachment.filename).toContain('server-health-prod-1-2026-05-21');
     expect(typeof attachment.content).toBe('string');
+  });
+
+  it('renders alert message with summary and pressure sections', () => {
+    const snapshot = {
+      hostname: 'prod-1',
+      timestamp: Date.parse('2026-05-21T22:28:14.096Z'),
+      cpuCount: 8,
+      load1: 117.04,
+      load5: 98.64,
+      load15: 55.4,
+      loadPerCpu1: 14.63,
+      loadPerCpu5: 12.33,
+      memoryUsedPct: 86.5,
+      uptimeSec: 3 * 3600 + 54 * 60,
+      disk: {
+        path: '/',
+        usedPct: 53.8,
+      },
+    };
+    const message = buildAlertMessage({
+      evaluation: {
+        snapshot,
+        issues: [
+          {
+            code: 'load',
+            summary:
+              'CPU load high: 1m/core=14.63 (117.04 on 8 cores), 5m/core=12.33',
+          },
+        ],
+        isHealthy: false,
+      },
+      prevState: {
+        status: 'alerting',
+        lastAlertAt: Date.parse('2026-05-21T22:06:00.317Z'),
+        lastOkAt: null,
+        activeIssueCodes: ['load'],
+      },
+      reminder: true,
+    });
+
+    expect(message).toContain('Summary:');
+    expect(message).toContain('• vCPU: <b>100.0%</b>');
+    expect(message).toContain('• RAM: <b>86.5%</b>');
+    expect(message).toContain('• Storage: <b>53.8%</b>');
+    expect(message).toContain('Pressure:');
+    expect(message).toContain('• Load avg: <b>117.04 / 98.64 / 55.40</b>');
+    expect(message).toContain(
+      '• Load per core: <b>14.63</b> (1m), <b>12.33</b> (5m)',
+    );
+  });
+
+  it('renders recovery message with summary and pressure sections', () => {
+    const snapshot = {
+      hostname: 'prod-1',
+      timestamp: Date.parse('2026-05-22T00:00:00.000Z'),
+      cpuCount: 8,
+      load1: 0.4,
+      load5: 0.35,
+      load15: 0.3,
+      loadPerCpu1: 0.05,
+      loadPerCpu5: 0.04375,
+      memoryUsedPct: 44,
+      uptimeSec: 4 * 3600,
+      disk: {
+        path: '/',
+        usedPct: 49,
+      },
+    };
+    const message = buildRecoveryMessage({
+      snapshot,
+      prevState: {
+        status: 'alerting',
+        lastAlertAt: Date.parse('2026-05-21T22:06:00.317Z'),
+        lastOkAt: null,
+        activeIssueCodes: ['load'],
+      },
+    });
+
+    expect(message).toContain('Summary:');
+    expect(message).toContain('• vCPU: <b>5.0%</b>');
+    expect(message).toContain('• RAM: <b>44.0%</b>');
+    expect(message).toContain('• Storage: <b>49.0%</b>');
+    expect(message).toContain('Pressure:');
+    expect(message).toContain('• Load avg: <b>0.40 / 0.35 / 0.30</b>');
   });
 });
