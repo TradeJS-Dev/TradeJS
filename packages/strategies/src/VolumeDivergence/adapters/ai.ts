@@ -358,6 +358,11 @@ const getLongQ4Demotion = ({
     btcBiasAligned === true &&
     isAtLeast(barsSinceDetection, 5) &&
     (!isAtLeast(confirmationDistancePct, 1.2) || !isAtLeast(reclaimPct, 170));
+  const longFullyAlignedEarlyShallowConfirmation =
+    coinBiasAligned === true &&
+    btcBiasAligned === true &&
+    barsSinceDetection === 2 &&
+    !isAtLeast(confirmationDistancePct, 0.7);
   const longLateExtendedConfirmation =
     isAtLeast(barsSinceDetection, 6) &&
     isAtLeast(confirmationDistancePct, 1.5) &&
@@ -369,6 +374,7 @@ const getLongQ4Demotion = ({
     longDoubleConflictWithoutMaturity ||
     longDoubleConflictOverextended ||
     longDoubleConflictStaleConfirmation ||
+    longFullyAlignedEarlyShallowConfirmation ||
     longFullyAlignedLateWeakConfirmation ||
     longLateExtendedConfirmation
   );
@@ -600,6 +606,7 @@ const getShortDeterministicQuality = ({
   reboundFromPivotPct,
   volumeDivergenceStrength,
   deltaAligned,
+  barsSinceDetection,
   coinBiasAligned,
   btcBiasAligned,
   derivativesLiqSpikeRatio,
@@ -615,6 +622,7 @@ const getShortDeterministicQuality = ({
   reboundFromPivotPct: number | null;
   volumeDivergenceStrength: number | null;
   deltaAligned: boolean | null;
+  barsSinceDetection: number | null;
   coinBiasAligned: boolean | null;
   btcBiasAligned: boolean | null;
   derivativesLiqSpikeRatio: number | null;
@@ -671,6 +679,11 @@ const getShortDeterministicQuality = ({
     deltaAligned === false &&
     isAtLeast(reclaimPct, 160) &&
     isAtLeast(derivativesLiqSpikeRatio, 1);
+  const shortAdaptiveConflictDemotion =
+    shortBiasConflictCount === 2 &&
+    isInRange(barsSinceDetection, 1, 2) &&
+    isAtLeast(reclaimPct, 180) &&
+    !isAtLeast(derivativesLiqSpikeRatio, 1.5);
 
   if (
     confirmationReady &&
@@ -694,7 +707,7 @@ const getShortDeterministicQuality = ({
     return 4;
   }
 
-  if (shortAdaptivePromotion) {
+  if (shortAdaptivePromotion && !shortAdaptiveConflictDemotion) {
     return 4;
   }
 
@@ -974,6 +987,7 @@ const getVolumeDivergenceContext = (
             reboundFromPivotPct,
             volumeDivergenceStrength,
             deltaAligned,
+            barsSinceDetection,
             coinBiasAligned,
             btcBiasAligned,
             derivativesLiqSpikeRatio,
