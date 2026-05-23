@@ -181,6 +181,14 @@ Runtime AI config conventions:
   - `derivatives`: Coinalyze-derived positioning summary
   - `mtf`: compact MTF candle snapshots
 
+### Signals / Backtest Parity Rules
+
+- `yarn signals` evaluates only the last closed candle; do not include the still-forming newest candle in strategy decisions.
+- Keep `yarn backtest`, `yarn replay`, and `yarn signals` using the same strategy runtime path where practical. Avoid separate indicator or AI/ML payload logic for only one execution mode.
+- Backtest indicator warmup may use cached coverage, but replay must resume from the actual restored checkpoint timestamp, not from the end of a coverage-only prefix. Coverage rows without a matching checkpoint are not a complete runtime state.
+- BTC reference series used for relative strength or venue spread may be passed as the full aligned available series, but consumers must resolve values at or before the evaluated candle timestamp to avoid lookahead.
+- When checking indicator correctness, compare `additionalIndicators.baseContext`, `signal.indicators` history arrays, and ML/AI payload builders separately; they have different purposes and should not be collapsed into one transport.
+
 ### Plugin Rules
 
 Expected public plugin exports:

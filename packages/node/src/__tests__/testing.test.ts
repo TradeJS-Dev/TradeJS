@@ -274,6 +274,42 @@ describe('testing backtest flow', () => {
     );
   });
 
+  it('passes full BTC reference data into strategy runtime for timestamp-safe spread resolution', async () => {
+    const start = 1_000_200;
+    const end = 1_000_500;
+    const bybitData = [
+      candle(1_000_050),
+      candle(1_000_150),
+      candle(1_000_250),
+      candle(1_000_350),
+    ];
+    const binanceData = bybitData.map((item) => ({
+      ...item,
+      close: item.close + 10,
+    }));
+    const coinbaseData = bybitData.map((item) => ({
+      ...item,
+      close: item.close - 10,
+    }));
+    mockByBitConnector.kline.mockImplementation(({ symbol }: any) =>
+      Promise.resolve(symbol === 'BTCUSDT' ? bybitData : bybitData),
+    );
+    mockBinanceConnector.kline.mockResolvedValue(binanceData);
+    mockCoinbaseConnector.kline.mockResolvedValue(coinbaseData);
+    mockStrategy.mockResolvedValue('HOLD');
+
+    await testing(createTest({ options: { start, end } }));
+
+    expect(mockStrategyCreator).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: bybitData.slice(0, 2),
+        btcData: bybitData.slice(0, 2),
+        btcBinanceData: binanceData,
+        btcCoinbaseData: coinbaseData,
+      }),
+    );
+  });
+
   it('warms indicator cache from aligned preload and test candles', async () => {
     const data = [
       candle(1_000_050),

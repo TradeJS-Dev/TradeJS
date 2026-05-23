@@ -738,8 +738,8 @@ export const testing: TestingBox = async ({
     btcPrevData,
     testData,
     btcTestData,
-    btcBinancePrevData,
-    btcCoinbasePrevData,
+    btcBinanceData,
+    btcCoinbaseData,
   } = preparedData;
   const interval = BACKTEST_INTERVAL;
   totalCandles = testData.length;
@@ -760,8 +760,8 @@ export const testing: TestingBox = async ({
       symbol,
       data: prevData,
       btcData: btcPrevData,
-      btcBinanceData: btcBinancePrevData,
-      btcCoinbaseData: btcCoinbasePrevData,
+      btcBinanceData,
+      btcCoinbaseData,
       connector: testConnector,
     }),
   );

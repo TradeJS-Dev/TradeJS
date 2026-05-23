@@ -277,15 +277,31 @@ export const planIndicatorCacheRestore = async ({
           version: INDICATOR_CACHE_VERSION,
           tsMs: lastValidRow.timestamp,
         });
+  const checkpointSnapshot =
+    (checkpoint?.snapshot as IndicatorCacheCheckpointSnapshot | null) ?? null;
+  const checkpointIndex =
+    checkpointSnapshot == null
+      ? -1
+      : data.findIndex(
+          (item) => item.timestamp === checkpointSnapshot.timestamp,
+        );
+  const canRestoreFromCheckpoint =
+    checkpointSnapshot?.runtimeState != null &&
+    checkpointIndex >= 0 &&
+    checkpointIndex < validPrefixLength;
+  const replayStartIndex = canRestoreFromCheckpoint ? checkpointIndex + 1 : 0;
 
   return {
     paramsHash,
     version: INDICATOR_CACHE_VERSION,
-    restoreState:
-      (checkpoint?.snapshot as IndicatorCacheCheckpointSnapshot | null)
-        ?.runtimeState ?? null,
-    replayStartIndex: validPrefixLength,
-    cached: validPrefixLength === data.length && data.length > 0,
+    restoreState: canRestoreFromCheckpoint
+      ? checkpointSnapshot.runtimeState
+      : null,
+    replayStartIndex,
+    cached:
+      validPrefixLength === data.length &&
+      data.length > 0 &&
+      replayStartIndex === data.length,
   };
 };
 

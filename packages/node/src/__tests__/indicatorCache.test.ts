@@ -135,6 +135,45 @@ describe('indicatorCache', () => {
     });
   });
 
+  it('replays from the restored checkpoint rather than from uncaptured cached coverage', async () => {
+    const data = [
+      candle(1_000, 100),
+      candle(2_000, 101),
+      candle(3_000, 102),
+      candle(4_000, 103),
+    ];
+    const btcData = [
+      candle(1_000, 200),
+      candle(2_000, 201),
+      candle(3_000, 202),
+      candle(4_000, 203),
+    ];
+    mockGetIndicatorCacheRange.mockResolvedValue([
+      { snapshot: cacheRow(1_000, 100, 200) },
+      { snapshot: cacheRow(2_000, 101, 201) },
+      { snapshot: cacheRow(3_000, 102, 202) },
+    ]);
+    mockGetLatestIndicatorCacheCheckpointAtOrBefore.mockResolvedValue({
+      snapshot: {
+        timestamp: 1_000,
+        runtimeState: runtimeState(1_000),
+      },
+    });
+
+    const plan = await planIndicatorCacheRestore({
+      provider: 'ByBit',
+      symbol: 'ETHUSDT',
+      interval: 15,
+      periods: { maFast: 14 },
+      data: data as any,
+      btcData: btcData as any,
+    });
+
+    expect(plan.cached).toBe(false);
+    expect(plan.replayStartIndex).toBe(1);
+    expect(plan.restoreState).toEqual(runtimeState(1_000));
+  });
+
   it('invalidates cache from the first changed candle and keeps the last valid runtime state', async () => {
     const data = [candle(1_000, 100), candle(2_000, 555), candle(3_000, 102)];
     const btcData = [
