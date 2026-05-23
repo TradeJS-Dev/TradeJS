@@ -5,7 +5,6 @@ import { readFileSync, statfsSync } from 'node:fs';
 import args from 'args';
 import { getData, setData } from '@tradejs/infra/redis';
 import { sendTelegramReport } from '../lib/telegramReports';
-import type { TelegramReportAttachment } from '../lib/telegramReports';
 
 type HealthIssueCode = 'load' | 'memory' | 'disk';
 
@@ -502,24 +501,6 @@ export const buildServerHealthDiagnostics = ({
   ].join('\n');
 };
 
-export const buildServerHealthAttachment = ({
-  snapshot,
-  diskPath,
-}: {
-  snapshot: ServerHealthSnapshot;
-  diskPath: string;
-}): TelegramReportAttachment => {
-  const timestamp = new Date(snapshot.timestamp)
-    .toISOString()
-    .replace(/[:]/g, '-');
-
-  return {
-    filename: `server-health-${snapshot.hostname}-${timestamp}.txt`,
-    content: buildServerHealthDiagnostics({ snapshot, diskPath }),
-    caption: 'TradeJS server health diagnostics',
-  };
-};
-
 const getStateKey = (userName: string, hostname: string) =>
   `ops:server-health:${userName}:${hostname}`;
 
@@ -654,15 +635,7 @@ export const main = async () => {
           }),
         );
       } else {
-        await sendTelegramReport(message, {
-          userName: flags.user,
-          attachments: [
-            buildServerHealthAttachment({
-              snapshot,
-              diskPath,
-            }),
-          ],
-        });
+        await sendTelegramReport(message, { userName: flags.user });
       }
     }
     return;

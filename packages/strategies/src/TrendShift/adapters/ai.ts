@@ -26,7 +26,6 @@ const getTrendShiftContext = (payload: AiPayload) => {
   return buildTrendShiftGuardrailContext({
     signalContext: raw,
     baseContext,
-    includeCoreTransferredFilters: false,
   });
 };
 

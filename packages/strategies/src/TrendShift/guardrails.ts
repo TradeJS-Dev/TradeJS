@@ -61,6 +61,7 @@ export const buildTrendShiftGuardrailContext = ({
   includeCoreTransferredFilters?: boolean;
 }): TrendShiftGuardrailContext => {
   const derivativesSummary = baseContext?.derivatives?.summary ?? null;
+  const hasDerivativesSummary = derivativesSummary != null;
   const session = baseContext?.regime?.session ?? null;
   const localRange = baseContext?.structure?.localRange ?? null;
   const volume = baseContext?.participation?.volume ?? null;
@@ -242,6 +243,7 @@ export const buildTrendShiftGuardrailContext = ({
 
   if (
     deterministicQuality >= 5 &&
+    hasDerivativesSummary &&
     derivativesPressure === 'neutral' &&
     !derivativesFlushSupport
   ) {
@@ -251,6 +253,7 @@ export const buildTrendShiftGuardrailContext = ({
 
   if (
     deterministicQuality >= 5 &&
+    hasDerivativesSummary &&
     derivativesDirectionAligned == null &&
     !derivativesFlushSupport
   ) {

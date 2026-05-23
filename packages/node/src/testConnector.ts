@@ -41,9 +41,12 @@ export const createTestConnector: TestConnectorCreator = (
     } as OrderLog;
 
     if (nextEntry.signal) {
-      const { indicators: _indicators, ...signalWithoutIndicators } =
-        nextEntry.signal as unknown as Record<string, unknown>;
-      nextEntry.signal = signalWithoutIndicators as any;
+      const {
+        additionalIndicators: _additionalIndicators,
+        indicators: _indicators,
+        ...signalWithoutHeavyContext
+      } = nextEntry.signal as unknown as Record<string, unknown>;
+      nextEntry.signal = signalWithoutHeavyContext as any;
     }
 
     if (!fastMode) {

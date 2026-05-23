@@ -90,6 +90,9 @@ describe('testConnector', () => {
     expect(
       (result.inlineOrderLog?.[0].signal as any).indicators,
     ).toBeUndefined();
+    expect(
+      (result.inlineOrderLog?.[0].signal as any).additionalIndicators,
+    ).toBeUndefined();
     expect(setData).not.toHaveBeenCalled();
   });
 

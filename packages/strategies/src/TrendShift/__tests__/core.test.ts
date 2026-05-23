@@ -204,6 +204,70 @@ describe('TrendShift core', () => {
     expect(strategyApi.entry).toHaveBeenCalledTimes(1);
   });
 
+  it('creates entry when derivatives context is absent but flip is q5-strong', async () => {
+    const initialCandles = makeFlatCandles(220);
+    const currentCandle = makeBullFlipCandle(
+      initialCandles[initialCandles.length - 1].timestamp + 60_000,
+    );
+    const marketData = {
+      fullData: [...initialCandles, currentCandle],
+      timestamp: currentCandle.timestamp,
+      currentPrice: currentCandle.close,
+    };
+    const strategyApi = makeStrategyApi({ marketData });
+
+    const core = await createTrendShiftCore({
+      userName: 'root',
+      symbol: 'TESTUSDT',
+      config: DEFAULT_CONFIG as any,
+      isConfigFromBacktest: false,
+      connector: {} as any,
+      data: initialCandles,
+      btcData: initialCandles,
+      loadPineScriptFile: jest.fn(),
+      strategyApi,
+      indicatorsState: makeIndicatorsState({
+        baseContext: {
+          raw: {
+            trend: {
+              maFast: 120,
+              maSlow: 110,
+            },
+          },
+          regime: {
+            session: {
+              sessionPhase: 'off_hours',
+              isOverlap: false,
+            },
+            volatility: {
+              atrPctZScore: 0.6,
+            },
+          },
+          structure: {
+            localRange: {
+              breakoutState: 'above_high_level',
+            },
+          },
+          participation: {
+            volume: {
+              volumeRel20: 1.4,
+            },
+          },
+          relative: {
+            benchmark: {
+              relativeStrength1h: 0.2,
+            },
+          },
+        },
+      }),
+    });
+
+    const result = await core(currentCandle as any, currentCandle as any);
+
+    expect(result.kind).toBe('entry');
+    expect(strategyApi.entry).toHaveBeenCalledTimes(1);
+  });
+
   it('returns VERY_VOLATILITY when filter rejects market data', async () => {
     const initialCandles = makeFlatCandles(220);
     const currentCandle = makeBullFlipCandle(

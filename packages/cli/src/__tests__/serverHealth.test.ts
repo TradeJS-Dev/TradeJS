@@ -1,7 +1,6 @@
 import {
   buildAlertMessage,
   buildRecoveryMessage,
-  buildServerHealthAttachment,
   buildServerHealthDiagnostics,
   collectServerHealthSnapshot,
   evaluateServerHealth,
@@ -109,7 +108,7 @@ describe('serverHealth', () => {
     ).toEqual(thresholds);
   });
 
-  it('builds diagnostics attachment with host and process sections', () => {
+  it('builds diagnostics text with host and process sections', () => {
     const snapshot = {
       hostname: 'prod-1',
       timestamp: Date.parse('2026-05-21T22:28:14.096Z'),
@@ -132,10 +131,6 @@ describe('serverHealth', () => {
       snapshot,
       diskPath: '/',
     });
-    const attachment = buildServerHealthAttachment({
-      snapshot,
-      diskPath: '/',
-    });
 
     expect(content).toContain('TradeJS server health diagnostics');
     expect(content).toContain('host: prod-1');
@@ -143,8 +138,6 @@ describe('serverHealth', () => {
     expect(content).toContain('=== top processes by memory ===');
     expect(content).toContain('=== memory breakdown ===');
     expect(content).toContain('available: 3.0 GB');
-    expect(attachment.filename).toContain('server-health-prod-1-2026-05-21');
-    expect(typeof attachment.content).toBe('string');
   });
 
   it('renders alert message with summary and pressure sections', () => {

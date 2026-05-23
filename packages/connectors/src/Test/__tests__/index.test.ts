@@ -114,6 +114,9 @@ describe('TestConnectorCreator', () => {
 
     expect(mockedSetData).not.toHaveBeenCalled();
     expect(result.inlineOrderLog?.[0]?.signal?.indicators).toBeUndefined();
+    expect(
+      result.inlineOrderLog?.[0]?.signal?.additionalIndicators,
+    ).toBeUndefined();
   });
 
   it('applies stop loss for short position and updates final stats', async () => {

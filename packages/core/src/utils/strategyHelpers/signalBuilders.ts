@@ -41,21 +41,67 @@ type MlRuntimeConfigLike = {
   ML_THRESHOLD?: number;
 };
 
-const materializeSignalPayloadValue = (value: unknown): unknown => {
+const cloneSignalPayloadDataProperties = (
+  value: unknown,
+  seen = new WeakMap<object, unknown>(),
+): unknown => {
   if (Array.isArray(value)) {
-    return value.map((item) => materializeSignalPayloadValue(item));
+    return value.map((item) => cloneSignalPayloadDataProperties(item, seen));
   }
 
-  if (value && typeof value === 'object') {
-    return Object.fromEntries(
-      Object.entries(value).map(([key, nested]) => [
-        key,
-        materializeSignalPayloadValue(nested),
-      ]),
-    );
+  if (!value || typeof value !== 'object') {
+    return value;
   }
 
-  return value;
+  const objectValue = value as Record<string, unknown>;
+  const cached = seen.get(objectValue);
+  if (cached) {
+    return cached;
+  }
+
+  const clone: Record<string, unknown> = {};
+  seen.set(objectValue, clone);
+
+  for (const [key, descriptor] of Object.entries(
+    Object.getOwnPropertyDescriptors(objectValue),
+  )) {
+    if (!descriptor.enumerable || !('value' in descriptor)) {
+      continue;
+    }
+
+    clone[key] = cloneSignalPayloadDataProperties(descriptor.value, seen);
+  }
+
+  return clone;
+};
+
+const cloneBaseContextData = (
+  baseContext: BaseStrategyContextSnapshot,
+): BaseStrategyContextSnapshot =>
+  cloneSignalPayloadDataProperties(baseContext) as BaseStrategyContextSnapshot;
+
+const normalizeAdditionalIndicatorsBaseContext = (
+  additionalIndicators: BuildStrategySignalParams['additionalIndicators'],
+): BuildStrategySignalParams['additionalIndicators'] => {
+  if (
+    !additionalIndicators ||
+    typeof additionalIndicators !== 'object' ||
+    Array.isArray(additionalIndicators)
+  ) {
+    return additionalIndicators;
+  }
+
+  const baseContext = (
+    additionalIndicators as { baseContext?: BaseStrategyContextSnapshot }
+  ).baseContext;
+  if (baseContext == null) {
+    return additionalIndicators;
+  }
+
+  return {
+    ...(additionalIndicators as Record<string, unknown>),
+    baseContext: cloneBaseContextData(baseContext),
+  } as BuildStrategySignalParams['additionalIndicators'];
 };
 
 export const mapAiRuntimeFromConfig = <TConfig extends AiRuntimeConfigLike>(
@@ -117,11 +163,7 @@ export const buildStrategySignal = ({
             )?.baseContext ?? baseContext,
         };
   const normalizedAdditionalIndicators =
-    mergedAdditionalIndicators == null
-      ? mergedAdditionalIndicators
-      : (materializeSignalPayloadValue(
-          mergedAdditionalIndicators,
-        ) as typeof mergedAdditionalIndicators);
+    normalizeAdditionalIndicatorsBaseContext(mergedAdditionalIndicators);
 
   return {
     signalId,

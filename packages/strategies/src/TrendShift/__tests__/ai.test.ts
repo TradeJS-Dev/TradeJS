@@ -545,7 +545,7 @@ describe('trendShiftAiAdapter', () => {
     });
   });
 
-  it('still approves core q5 LONG in ai-gate even when crowded-long pressure is explicitly anti-aligned', () => {
+  it('keeps core q5 LONG in watch mode when crowded-long pressure is explicitly anti-aligned', () => {
     const result = trendShiftAiAdapter.postProcessAnalysis?.({
       signal: {} as any,
       payload: makePayload(
@@ -576,9 +576,11 @@ describe('trendShiftAiAdapter', () => {
     });
 
     expect(result).toMatchObject({
-      direction: 'LONG',
-      quality: 5,
-      approved: true,
+      direction: null,
+      quality: 4,
+      approved: false,
+      rejectReason:
+        'the LONG flip is running into crowded-long positioning while derivatives still disagree, so keep it in watch mode',
     });
   });
 
@@ -790,7 +792,7 @@ describe('trendShiftAiAdapter', () => {
     });
   });
 
-  it('still approves US-session q5 SHORT in ai-gate when long-flush pressure lacks expanding OI confirmation', () => {
+  it('keeps US-session q5 SHORT in watch mode when long-flush pressure lacks expanding OI confirmation', () => {
     const result = trendShiftAiAdapter.postProcessAnalysis?.({
       signal: {} as any,
       payload: makePayload(
@@ -830,9 +832,11 @@ describe('trendShiftAiAdapter', () => {
     });
 
     expect(result).toMatchObject({
-      direction: 'SHORT',
-      quality: 5,
-      approved: true,
+      direction: null,
+      quality: 4,
+      approved: false,
+      rejectReason:
+        'the US-session SHORT flush still lacks expanding OI confirmation, so keep it in watch mode',
     });
   });
 
