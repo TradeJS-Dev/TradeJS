@@ -29,6 +29,7 @@ export type TrendShiftGuardrailContext = TrendShiftSignalContext & {
   coreShortQ5Candidate: boolean;
   q4LongBreakoutCandidate: boolean;
   q4ShortBreakoutCandidate: boolean;
+  selectiveNeutralQ4Candidate: boolean;
   breakoutState: string | null;
   volumeRel20: number | null;
   atrPctZScore: number | null;
@@ -150,6 +151,18 @@ export const buildTrendShiftGuardrailContext = ({
     distanceAtrRatio < 0.7 &&
     slopeAbs >= 0.08 &&
     closeVsAvgPctAbs >= 0.12;
+  const selectiveNeutralQ4Candidate =
+    hasDerivativesSummary &&
+    derivativesPressure === 'neutral' &&
+    !sessionIsOverlap &&
+    ((signalContext.signalDirection === 'LONG' &&
+      sessionPrimary === 'europe' &&
+      (breakoutState === 'above_high_level' ||
+        breakoutState === 'failed_high_breakout')) ||
+      (signalContext.signalDirection === 'SHORT' &&
+        (sessionPrimary === 'off_hours' || sessionPrimary === 'asia') &&
+        (breakoutState === 'below_low_level' ||
+          breakoutState === 'failed_low_breakout')));
   let deterministicQuality = 3;
   if (hardBlockReasons.length > 0) {
     deterministicQuality = signalContext.confirmedFlip ? 2 : 1;
@@ -168,6 +181,10 @@ export const buildTrendShiftGuardrailContext = ({
   }
 
   if (deterministicQuality === 4 && q4ShortAsiaFlushCandidate) {
+    deterministicQuality = 5;
+  }
+
+  if (deterministicQuality === 4 && selectiveNeutralQ4Candidate) {
     deterministicQuality = 5;
   }
 
@@ -203,6 +220,45 @@ export const buildTrendShiftGuardrailContext = ({
   ) {
     deterministicQuality = 4;
     hardBlockReasons.push('long_pressure_conflict');
+  }
+
+  if (
+    deterministicQuality >= 5 &&
+    coreShortQ5Candidate &&
+    derivativesPressure === 'crowded_long'
+  ) {
+    deterministicQuality = 4;
+    hardBlockReasons.push('short_crowded_long_pressure');
+  }
+
+  if (
+    deterministicQuality >= 5 &&
+    coreLongQ5Candidate &&
+    breakoutState === 'inside_range'
+  ) {
+    deterministicQuality = 4;
+    hardBlockReasons.push('long_inside_range');
+  }
+
+  if (
+    deterministicQuality >= 5 &&
+    coreLongQ5Candidate &&
+    sessionPrimary === 'us' &&
+    derivativesPressure === 'short_flush' &&
+    priceOiDivergenceType === 'price_up_oi_down'
+  ) {
+    deterministicQuality = 4;
+    hardBlockReasons.push('long_us_oi_not_confirming');
+  }
+
+  if (
+    deterministicQuality >= 5 &&
+    coreLongQ5Candidate &&
+    sessionPrimary === 'asia' &&
+    derivativesPressure === 'short_flush'
+  ) {
+    deterministicQuality = 4;
+    hardBlockReasons.push('long_asia_short_flush');
   }
 
   if (
@@ -244,6 +300,7 @@ export const buildTrendShiftGuardrailContext = ({
   if (
     deterministicQuality >= 5 &&
     hasDerivativesSummary &&
+    !selectiveNeutralQ4Candidate &&
     derivativesPressure === 'neutral' &&
     !derivativesFlushSupport
   ) {
@@ -254,6 +311,7 @@ export const buildTrendShiftGuardrailContext = ({
   if (
     deterministicQuality >= 5 &&
     hasDerivativesSummary &&
+    !selectiveNeutralQ4Candidate &&
     derivativesDirectionAligned == null &&
     !derivativesFlushSupport
   ) {
@@ -275,6 +333,7 @@ export const buildTrendShiftGuardrailContext = ({
     coreShortQ5Candidate,
     q4LongBreakoutCandidate,
     q4ShortBreakoutCandidate,
+    selectiveNeutralQ4Candidate,
     breakoutState,
     volumeRel20,
     atrPctZScore,
@@ -303,6 +362,14 @@ export const getTrendShiftGuardrailReasonText = (reason: string) => {
       return 'the LONG flip is running into crowded-short derivatives pressure without a supporting short-liquidation flush';
     case 'short_pressure_conflict':
       return 'the SHORT flip is running into crowded-short positioning at the breakdown, so keep it in watch mode unless a liquidation flush confirms continuation';
+    case 'short_crowded_long_pressure':
+      return 'the SHORT flip is running into crowded-long derivatives pressure, so keep it in watch mode';
+    case 'long_inside_range':
+      return 'the LONG flip is still inside the local range, so keep it in watch mode';
+    case 'long_us_oi_not_confirming':
+      return 'the US-session LONG flush still lacks expanding OI confirmation, so keep it in watch mode';
+    case 'long_asia_short_flush':
+      return 'the Asia-session LONG short-flush pocket is too weak for live approval';
     case 'long_crowded_pressure':
       return 'the LONG flip is running into crowded-long positioning while derivatives still disagree, so keep it in watch mode';
     case 'us_short_oi_not_expanding':
