@@ -64,6 +64,60 @@ describe('cli loader', () => {
     expect(commandMain).toHaveBeenCalledTimes(1);
   });
 
+  it('closes shared infra resources after command completion', async () => {
+    const commandMain = jest.fn().mockResolvedValue(undefined);
+    const closeRedisConnection = jest.fn().mockResolvedValue(undefined);
+    const closeTimescalePool = jest.fn().mockResolvedValue(undefined);
+
+    jest.doMock('@tradejs/infra/redis', () => ({
+      closeRedisConnection,
+    }));
+    jest.doMock('@tradejs/infra/timescale', () => ({
+      closeTimescalePool,
+    }));
+    jest.doMock('../scripts/agentRun', () => ({
+      __esModule: true,
+      main: commandMain,
+    }));
+
+    const cli = require('../cli') as {
+      main: () => Promise<void>;
+    };
+
+    process.argv = ['node', '/tmp/cli.js', 'agent-run'];
+    await cli.main();
+
+    expect(commandMain).toHaveBeenCalledTimes(1);
+    expect(closeRedisConnection).toHaveBeenCalledTimes(1);
+    expect(closeTimescalePool).toHaveBeenCalledTimes(1);
+  });
+
+  it('closes shared infra resources when command throws', async () => {
+    const closeRedisConnection = jest.fn().mockResolvedValue(undefined);
+    const closeTimescalePool = jest.fn().mockResolvedValue(undefined);
+
+    jest.doMock('@tradejs/infra/redis', () => ({
+      closeRedisConnection,
+    }));
+    jest.doMock('@tradejs/infra/timescale', () => ({
+      closeTimescalePool,
+    }));
+    jest.doMock('../scripts/agentRun', () => ({
+      __esModule: true,
+      main: jest.fn().mockRejectedValue(new Error('boom')),
+    }));
+
+    const cli = require('../cli') as {
+      main: () => Promise<void>;
+    };
+
+    process.argv = ['node', '/tmp/cli.js', 'agent-run'];
+    await expect(cli.main()).rejects.toThrow('boom');
+
+    expect(closeRedisConnection).toHaveBeenCalledTimes(1);
+    expect(closeTimescalePool).toHaveBeenCalledTimes(1);
+  });
+
   it('requires every CLI command module to export main without self-run side effects', () => {
     const fs = require('fs') as typeof import('fs');
     const path = require('path') as typeof import('path');

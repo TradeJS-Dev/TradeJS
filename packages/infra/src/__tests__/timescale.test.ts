@@ -92,6 +92,32 @@ describe('timescale candle helpers', () => {
     expect(client.release).toHaveBeenCalledTimes(1);
   });
 
+  it('closes singleton pool so one-shot CLI commands can exit', async () => {
+    const end = jest.fn().mockResolvedValue(undefined);
+    const query = jest.fn().mockResolvedValue({ rows: [] });
+
+    jest.doMock('pg', () => ({
+      Pool: jest.fn().mockImplementation(() => ({
+        connect: jest.fn(),
+        query,
+        end,
+      })),
+    }));
+
+    const { closeTimescalePool, getCandlesRange } = await import(
+      '@tradejs/infra/timescale'
+    );
+
+    await getCandlesRange('ByBit', 'btcusdt', 15, 1_000, 2_000);
+    await closeTimescalePool();
+    await closeTimescalePool();
+
+    expect(end).toHaveBeenCalledTimes(1);
+    expect(
+      (global as typeof globalThis & { __pgPool__?: unknown }).__pgPool__,
+    ).toBeUndefined();
+  });
+
   it('scopes candle reads and deletes by provider', async () => {
     const query = jest
       .fn()

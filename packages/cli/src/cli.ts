@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 
 import 'dotenv/config';
+import { closeRedisConnection } from '@tradejs/infra/redis';
+import { closeTimescalePool } from '@tradejs/infra/timescale';
 
 type ScriptModule = {
   main?: () => Promise<unknown> | unknown;
@@ -58,6 +60,10 @@ const runLoadedModule = async (loaded: unknown) => {
   }
 };
 
+const cleanupCliResources = async () => {
+  await Promise.allSettled([closeRedisConnection(), closeTimescalePool()]);
+};
+
 const main = async () => {
   const [, scriptPath, command = '', ...args] = process.argv;
   const loader = scriptLoaders[command];
@@ -72,8 +78,12 @@ const main = async () => {
   }
 
   process.argv = [process.argv[0], scriptPath, ...nextArgs];
-  const loaded = await loader();
-  await runLoadedModule(loaded);
+  try {
+    const loaded = await loader();
+    await runLoadedModule(loaded);
+  } finally {
+    await cleanupCliResources();
+  }
 };
 
 if (require.main === module) {
@@ -83,4 +93,4 @@ if (require.main === module) {
   });
 }
 
-export { main, printUsage, runLoadedModule };
+export { cleanupCliResources, main, printUsage, runLoadedModule };

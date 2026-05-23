@@ -6,6 +6,7 @@ type MockRedisClient = {
   del: jest.Mock;
   expire: jest.Mock;
   set: jest.Mock;
+  disconnect: jest.Mock;
   emit: (event: string, payload?: any) => void;
 };
 
@@ -22,6 +23,7 @@ const createMockRedisClient = (): MockRedisClient => {
     del: jest.fn(),
     expire: jest.fn(),
     set: jest.fn(),
+    disconnect: jest.fn(),
     emit: (event: string, payload?: any) => {
       handlers[event]?.(payload);
     },
@@ -100,6 +102,19 @@ describe('redis utils', () => {
     );
     expect(redisClient.on).toHaveBeenCalledWith('error', expect.any(Function));
     expect(redisClient.on).toHaveBeenCalledWith('ready', expect.any(Function));
+  });
+
+  it('closes singleton redis client so one-shot CLI commands can exit', async () => {
+    const { redisModule, redisClient, redisCtorMock } = await setup();
+    redisClient.call.mockResolvedValue('{"ok":1}');
+
+    await redisModule.getData('k1', null);
+    await redisModule.closeRedisConnection();
+    await redisModule.closeRedisConnection();
+
+    expect(redisClient.disconnect).toHaveBeenCalledTimes(1);
+    expect((global as any).__redis__).toBeUndefined();
+    expect(redisCtorMock).toHaveBeenCalledTimes(1);
   });
 
   it('handles redis connectivity and generic error events with warning suppression/recovery', async () => {

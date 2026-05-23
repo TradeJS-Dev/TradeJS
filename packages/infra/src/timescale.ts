@@ -76,6 +76,24 @@ let spreadSchemaReadyPromise: Promise<void> | null = null;
 let indicatorCacheSchemaReadyPromise: Promise<void> | null = null;
 let indicatorCacheCheckpointSchemaReadyPromise: Promise<void> | null = null;
 
+export const closeTimescalePool = async (): Promise<void> => {
+  const pool = global.__pgPool__;
+  if (!pool) {
+    return;
+  }
+
+  global.__pgPool__ = undefined;
+  derivativesSchemaReady = false;
+  spreadSchemaReady = false;
+  indicatorCacheSchemaReady = false;
+  indicatorCacheCheckpointSchemaReady = false;
+  derivativesSchemaReadyPromise = null;
+  spreadSchemaReadyPromise = null;
+  indicatorCacheSchemaReadyPromise = null;
+  indicatorCacheCheckpointSchemaReadyPromise = null;
+  await pool.end();
+};
+
 const DERIVATIVES_SCHEMA_LOCK_KEY = 610001;
 const SPREAD_SCHEMA_LOCK_KEY = 610002;
 const INDICATOR_CACHE_SCHEMA_LOCK_KEY = 610003;

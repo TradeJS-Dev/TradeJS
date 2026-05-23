@@ -89,6 +89,18 @@ const getRedis = () => {
   return global.__redis__;
 };
 
+export const closeRedisConnection = async (): Promise<void> => {
+  const redis = global.__redis__;
+  if (!redis) {
+    return;
+  }
+
+  global.__redis__ = undefined;
+  redisUnavailable = false;
+  redisConnectionWarningShown = false;
+  redis.disconnect();
+};
+
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const getRedisStatus = (redis: Redis): string =>
