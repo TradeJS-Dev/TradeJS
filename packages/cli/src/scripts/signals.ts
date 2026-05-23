@@ -383,8 +383,8 @@ const findSignals = async (
       symbol,
       data: [...cachedData],
       btcData: [...btcCachedData],
-      btcBinanceData: [...btcBinanceData],
-      btcCoinbaseData: [...btcCoinbaseData],
+      btcBinanceData,
+      btcCoinbaseData,
       config: {
         ...strategyConfig,
         ENV: 'CRON',

@@ -52,8 +52,6 @@ type PreparedTestingData = {
   btcTestData: KlineChartData;
   btcBinanceData: KlineChartData;
   btcCoinbaseData: KlineChartData;
-  btcBinancePrevData: KlineChartData;
-  btcCoinbasePrevData: KlineChartData;
 };
 
 export type BacktestIndicatorCacheWarmupResult = {
@@ -461,17 +459,6 @@ const prepareTestingData = async (params: {
   );
   const { prevData: btcPrevData, testData: btcTestData } =
     splitCandlesForTesting(btcData, start, preloadStart);
-  const { prevData: btcBinancePrevData } = splitCandlesForTesting(
-    btcBinanceData,
-    start,
-    preloadStart,
-  );
-  const { prevData: btcCoinbasePrevData } = splitCandlesForTesting(
-    btcCoinbaseData,
-    start,
-    preloadStart,
-  );
-
   const preparedData = {
     data,
     btcData,
@@ -481,8 +468,6 @@ const prepareTestingData = async (params: {
     btcTestData,
     btcBinanceData,
     btcCoinbaseData,
-    btcBinancePrevData,
-    btcCoinbasePrevData,
   };
   state.preparedDataCache.set(preparedDataCacheKey, preparedData);
 
