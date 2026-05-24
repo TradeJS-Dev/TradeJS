@@ -182,7 +182,7 @@ const withBaseContext = (signal: any) => {
           execution: {
             ...(existingExecution as Record<string, unknown>),
             venueSpread,
-            venueSpreadZScore: 1.4,
+            venueSpreadZScore: existingExecution.venueSpreadZScore ?? 1.4,
           },
         },
         derivatives: existingDerivatives,
@@ -752,6 +752,13 @@ const makeDeterministicQualityLongSignal = () => {
   signal.additionalIndicators = {
     touches: 5,
     distance: 220,
+    baseContext: {
+      relative: {
+        execution: {
+          venueSpreadZScore: -1.2,
+        },
+      },
+    },
   };
   return withBaseContext(signal);
 };
@@ -788,6 +795,13 @@ const makeAlignedRecentLongTrendlineSignal = () => {
   signal.additionalIndicators = {
     touches: 5,
     distance: 370,
+    baseContext: {
+      relative: {
+        execution: {
+          venueSpreadZScore: -1.2,
+        },
+      },
+    },
     trendlineTiming: {
       entryTiming: 'ready_follow_through',
     },
@@ -3136,7 +3150,7 @@ describe('ai helpers', () => {
 
       expect(getDeterministicAiGateContext(payload)).toEqual(
         expect.objectContaining({
-          approvalAllowedNow: true,
+          approvalAllowedNow: false,
           deterministicQuality: 4,
           structuralHardBlockReasons: [],
         }),
@@ -3146,12 +3160,12 @@ describe('ai helpers', () => {
 
       expect(result).toEqual(
         expect.objectContaining({
-          direction: 'LONG',
+          direction: null,
           quality: 4,
-          needRetest: false,
-          retestPrice: null,
-          takeProfitPrice: 104,
-          stopLossPrice: 98,
+          needRetest: true,
+          retestPrice: 100,
+          takeProfitPrice: null,
+          stopLossPrice: null,
         }),
       );
       expect(chatOpenAICtorMock).not.toHaveBeenCalled();
@@ -3313,7 +3327,7 @@ describe('ai helpers', () => {
 
       expect(getDeterministicAiGateContext(payload)).toEqual(
         expect.objectContaining({
-          approvalAllowedNow: true,
+          approvalAllowedNow: false,
           deterministicQuality: 4,
           volumeDivergenceRatio: 110 / 60,
         }),
@@ -3323,12 +3337,12 @@ describe('ai helpers', () => {
 
       expect(result).toEqual(
         expect.objectContaining({
-          direction: 'LONG',
+          direction: null,
           quality: 4,
-          needRetest: false,
-          retestPrice: null,
-          takeProfitPrice: 104,
-          stopLossPrice: 98,
+          needRetest: true,
+          retestPrice: 100,
+          takeProfitPrice: null,
+          stopLossPrice: null,
         }),
       );
       expect(chatOpenAICtorMock).not.toHaveBeenCalled();
@@ -3375,7 +3389,7 @@ describe('ai helpers', () => {
           divergenceAmplitudeAtrRatio: 1.6,
           reclaimPct: 145,
           confirmationCandleQuality: 0.82,
-          approvalAllowedNow: true,
+          approvalAllowedNow: false,
           deterministicQuality: 4,
         }),
       );
@@ -3384,12 +3398,12 @@ describe('ai helpers', () => {
 
       expect(result).toEqual(
         expect.objectContaining({
-          direction: 'LONG',
+          direction: null,
           quality: 4,
-          needRetest: false,
-          retestPrice: null,
-          takeProfitPrice: 104,
-          stopLossPrice: 98,
+          needRetest: true,
+          retestPrice: 100,
+          takeProfitPrice: null,
+          stopLossPrice: null,
         }),
       );
       expect(chatOpenAICtorMock).not.toHaveBeenCalled();
@@ -3713,7 +3727,7 @@ describe('ai helpers', () => {
           confirmationDistancePct: 0.8,
           volumeDivergenceRatio: 2.2,
           deterministicQuality: 4,
-          approvalAllowedNow: true,
+          approvalAllowedNow: false,
         }),
       );
 
@@ -3721,12 +3735,12 @@ describe('ai helpers', () => {
 
       expect(result).toEqual(
         expect.objectContaining({
-          direction: 'LONG',
+          direction: null,
           quality: 4,
-          needRetest: false,
-          retestPrice: null,
-          takeProfitPrice: 104,
-          stopLossPrice: 98,
+          needRetest: true,
+          retestPrice: 100,
+          takeProfitPrice: null,
+          stopLossPrice: null,
         }),
       );
       expect(chatOpenAICtorMock).not.toHaveBeenCalled();

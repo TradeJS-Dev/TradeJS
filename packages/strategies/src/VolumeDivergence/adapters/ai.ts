@@ -100,6 +100,8 @@ type VolumeDivergenceAiContext = {
   derivativesRiskFlags: string[];
   derivativesFundingZScore: number | null;
   derivativesLiqSpikeRatio: number | null;
+  venueSpreadZScore: number | null;
+  sessionPhase: string | null;
   hardBlockReasons: HardBlockReason[];
   structuralHardBlockReasons: string[];
   deterministicQuality: number;
@@ -234,6 +236,34 @@ const isAtMost = (value: number | null, threshold: number) =>
 
 const isInRange = (value: number | null, min: number, max: number) =>
   value != null && value >= min && value <= max;
+
+const getNestedRecord = (
+  source: Record<string, unknown> | null,
+  path: string[],
+) => {
+  let current: Record<string, unknown> | null = source;
+
+  for (const key of path) {
+    current = getRecord(current?.[key]);
+    if (current == null) {
+      return null;
+    }
+  }
+
+  return current;
+};
+
+const getNestedNumber = (
+  source: Record<string, unknown> | null,
+  path: string[],
+) => {
+  if (path.length === 0) {
+    return null;
+  }
+
+  const parent = getNestedRecord(source, path.slice(0, -1));
+  return toFiniteNumberOrNull(parent?.[path[path.length - 1]]);
+};
 
 const getConfirmationDistancePct = ({
   signalDirection,
@@ -605,6 +635,8 @@ const getShortDeterministicQuality = ({
   confirmationCandleQuality,
   reboundFromPivotPct,
   volumeDivergenceStrength,
+  venueSpreadZScore,
+  sessionPhase,
   deltaAligned,
   barsSinceDetection,
   coinBiasAligned,
@@ -621,6 +653,8 @@ const getShortDeterministicQuality = ({
   confirmationCandleQuality: number | null;
   reboundFromPivotPct: number | null;
   volumeDivergenceStrength: number | null;
+  venueSpreadZScore: number | null;
+  sessionPhase: string | null;
   deltaAligned: boolean | null;
   barsSinceDetection: number | null;
   coinBiasAligned: boolean | null;
@@ -639,6 +673,11 @@ const getShortDeterministicQuality = ({
   const volumeVeryStrong = isAtLeast(volumeDivergenceStrength, 30);
   const shortBiasConflictCount =
     Number(coinBiasAligned === false) + Number(btcBiasAligned === false);
+  const weakAmplitudeBand = isInRange(divergenceAmplitudeAtrRatio, 1, 1.5);
+  const shortQ4ApprovalPocket =
+    sessionPhase !== 'us' &&
+    !isAtLeast(venueSpreadZScore, 1) &&
+    !weakAmplitudeBand;
   const q4SetupReady =
     aiThresholds != null &&
     isAtLeast(
@@ -691,7 +730,8 @@ const getShortDeterministicQuality = ({
     reboundVeryStrong &&
     volumeVeryStrong &&
     deltaAligned === true &&
-    shortBiasConflictCount === 0
+    shortBiasConflictCount === 0 &&
+    shortQ4ApprovalPocket
   ) {
     return 5;
   }
@@ -702,12 +742,17 @@ const getShortDeterministicQuality = ({
     reboundStrong &&
     volumeVeryStrong &&
     deltaAligned === true &&
-    shortBiasConflictCount === 0
+    shortBiasConflictCount === 0 &&
+    shortQ4ApprovalPocket
   ) {
     return 4;
   }
 
-  if (shortAdaptivePromotion && !shortAdaptiveConflictDemotion) {
+  if (
+    shortAdaptivePromotion &&
+    shortQ4ApprovalPocket &&
+    !shortAdaptiveConflictDemotion
+  ) {
     return 4;
   }
 
@@ -821,6 +866,33 @@ const getVolumeDivergenceContext = (
   const derivativesLiqSpikeRatio =
     toFiniteNumberOrNull(derivatives15m?.liqSpikeRatio) ??
     toFiniteNumberOrNull(derivatives1h?.liqSpikeRatio);
+  const marketContext = getRecord(additional?.marketContext);
+  const venueSpreadZScore =
+    getNestedNumber(marketContext, [
+      'execution',
+      'binanceCoinbaseSpread',
+      'zScore',
+    ]) ??
+    getNestedNumber(additional, [
+      'baseContext',
+      'relative',
+      'execution',
+      'venueSpreadZScore',
+    ]) ??
+    getNestedNumber(additional, [
+      'baseContext',
+      'relative',
+      'execution',
+      'venueSpread',
+      'zScore',
+    ]);
+  const session = getNestedRecord(additional, [
+    'baseContext',
+    'regime',
+    'session',
+  ]);
+  const sessionPhase =
+    typeof session?.sessionPhase === 'string' ? session.sessionPhase : null;
 
   const confirmationPrice =
     divergenceKind === 'bullish'
@@ -986,6 +1058,8 @@ const getVolumeDivergenceContext = (
             confirmationCandleQuality,
             reboundFromPivotPct,
             volumeDivergenceStrength,
+            venueSpreadZScore,
+            sessionPhase,
             deltaAligned,
             barsSinceDetection,
             coinBiasAligned,
@@ -997,10 +1071,18 @@ const getVolumeDivergenceContext = (
         : hardBlockReasons.length > 0
           ? 2
           : 3;
+  const longApprovalPocket = signalDirection !== 'LONG';
+  const shortApprovalPocket =
+    signalDirection !== 'SHORT' ||
+    (sessionPhase !== 'us' &&
+      !isAtLeast(venueSpreadZScore, 1) &&
+      !isInRange(divergenceAmplitudeAtrRatio, 1, 1.5));
   const approvalAllowedNow =
     hardBlockReasons.length === 0 &&
     deterministicQuality >= 4 &&
-    confirmationReady;
+    confirmationReady &&
+    longApprovalPocket &&
+    shortApprovalPocket;
 
   return {
     signalDirection,
@@ -1031,6 +1113,8 @@ const getVolumeDivergenceContext = (
     derivativesRiskFlags,
     derivativesFundingZScore,
     derivativesLiqSpikeRatio,
+    venueSpreadZScore,
+    sessionPhase,
     hardBlockReasons,
     structuralHardBlockReasons: [...hardBlockReasons],
     deterministicQuality,

@@ -195,7 +195,7 @@ describe('volumeDivergenceAiAdapter', () => {
         coinBiasAligned: true,
         btcBiasAligned: true,
         deterministicQuality: 4,
-        approvalAllowedNow: true,
+        approvalAllowedNow: false,
         structuralHardBlockReasons: [],
         maxAllowedQuality: 4,
       }),
@@ -546,7 +546,7 @@ describe('volumeDivergenceAiAdapter', () => {
         divergenceAmplitudeAtrRatio: 0.42,
         volumeDivergenceRatio: 110 / 60,
         deterministicQuality: 4,
-        approvalAllowedNow: true,
+        approvalAllowedNow: false,
       }),
     );
 
@@ -561,12 +561,12 @@ describe('volumeDivergenceAiAdapter', () => {
 
     expect(analysis).toEqual(
       expect.objectContaining({
-        direction: 'LONG',
+        direction: null,
         quality: 4,
-        needRetest: false,
-        retestPrice: null,
-        takeProfitPrice: 104,
-        stopLossPrice: 98,
+        needRetest: true,
+        retestPrice: 100,
+        takeProfitPrice: null,
+        stopLossPrice: null,
       }),
     );
   });
@@ -634,7 +634,7 @@ describe('volumeDivergenceAiAdapter', () => {
         reclaimPct: 145,
         confirmationCandleQuality: 0.82,
         deterministicQuality: 4,
-        approvalAllowedNow: true,
+        approvalAllowedNow: false,
       }),
     );
 
@@ -649,12 +649,12 @@ describe('volumeDivergenceAiAdapter', () => {
 
     expect(analysis).toEqual(
       expect.objectContaining({
-        direction: 'LONG',
+        direction: null,
         quality: 4,
-        needRetest: false,
-        retestPrice: null,
-        takeProfitPrice: 104,
-        stopLossPrice: 98,
+        needRetest: true,
+        retestPrice: 100,
+        takeProfitPrice: null,
+        stopLossPrice: null,
       }),
     );
   });
@@ -1085,7 +1085,7 @@ describe('volumeDivergenceAiAdapter', () => {
         confirmationDistancePct: 0.8,
         volumeDivergenceRatio: 2.2,
         deterministicQuality: 4,
-        approvalAllowedNow: true,
+        approvalAllowedNow: false,
       }),
     );
   });
@@ -1109,7 +1109,7 @@ describe('volumeDivergenceAiAdapter', () => {
         deltaAtPivot: 120,
         volumeDivergenceSetup: {
           atrPct: 1.1,
-          divergenceAmplitudeAtrRatio: 1.2,
+          divergenceAmplitudeAtrRatio: 1.6,
           reclaimPct: 165,
           confirmationCandleQuality: 0.82,
           confirmationDistancePct: 0.9,

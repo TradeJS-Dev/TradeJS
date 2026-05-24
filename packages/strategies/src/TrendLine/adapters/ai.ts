@@ -53,6 +53,40 @@ const TRENDLINE_PAYLOAD_PROMPT = `
 - If 'payload.additionalIndicators.baseContext.derivatives' exists, it contains Coinalyze-derived open interest, funding, and liquidation fields for the signal moment; do not treat 'stale' or 'missing_derivatives' as confirmation or conflict.
 `;
 
+const getRecord = (value: unknown): Record<string, unknown> | null =>
+  value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+
+const getNestedRecord = (
+  source: Record<string, unknown> | null,
+  path: string[],
+) => {
+  let current = source;
+
+  for (const key of path) {
+    current = getRecord(current?.[key]);
+    if (current == null) {
+      return null;
+    }
+  }
+
+  return current;
+};
+
+const toFiniteNumberOrNull = (value: unknown): number | null => {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value;
+  }
+
+  if (typeof value === 'string' && value.trim()) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+
+  return null;
+};
+
 const buildTrendlineContext = (signal: {
   direction?: unknown;
   prices?: { currentPrice?: unknown };
@@ -62,6 +96,28 @@ const buildTrendlineContext = (signal: {
 }) => {
   const sessionPrimary = getSignalSessionPrimary(signal);
   const sessionIsOverlap = getSignalSessionIsOverlap(signal);
+  const additionalIndicators = getRecord(signal.additionalIndicators);
+  const baseContext = getRecord(additionalIndicators?.baseContext);
+  const participationVolume = getNestedRecord(baseContext, [
+    'participation',
+    'volume',
+  ]);
+  const benchmarkContext = getNestedRecord(baseContext, [
+    'relative',
+    'benchmark',
+  ]);
+  const volumeRel20 = toFiniteNumberOrNull(participationVolume?.volumeRel20);
+  const benchmarkTrendAlignment =
+    typeof benchmarkContext?.trendAlignment === 'string'
+      ? benchmarkContext.trendAlignment
+      : null;
+  const executionContext = getNestedRecord(baseContext, [
+    'relative',
+    'execution',
+  ]);
+  const venueSpreadZScore = toFiniteNumberOrNull(
+    executionContext?.venueSpreadZScore,
+  );
   const derivativesContext = getSignalDerivativesContext(signal) as Record<
     string,
     unknown
@@ -205,7 +261,21 @@ const buildTrendlineContext = (signal: {
     coinMaSpreadPct,
   });
   const maxAllowedQuality = deterministicQuality;
-  const approvalAllowedNow = deterministicQuality >= 4;
+  const longBaseContextApprovalPocket =
+    structural.signalDirection !== 'LONG' ||
+    (venueSpreadZScore != null && venueSpreadZScore <= -1) ||
+    (sessionPrimary !== 'europe' &&
+      !derivativesRiskFlags.includes('missing_derivatives') &&
+      !(
+        structural.breakVsAtrRatio != null &&
+        structural.breakVsAtrRatio >= 0.8 &&
+        structural.breakVsAtrRatio < 1.2
+      ) &&
+      volumeRel20 != null &&
+      volumeRel20 >= 0.8 &&
+      benchmarkTrendAlignment !== 'against_benchmark');
+  const approvalAllowedNow =
+    deterministicQuality >= 4 && longBaseContextApprovalPocket;
 
   return {
     ...structural,
@@ -220,6 +290,9 @@ const buildTrendlineContext = (signal: {
     weakBtcLedBreak,
     sessionPrimary,
     sessionIsOverlap,
+    volumeRel20,
+    benchmarkTrendAlignment,
+    venueSpreadZScore,
     derivativesRiskFlags,
     oiNotConfirming,
     deterministicQuality,
