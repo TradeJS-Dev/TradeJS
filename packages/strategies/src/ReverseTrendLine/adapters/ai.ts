@@ -42,6 +42,7 @@ type ReverseTrendlineAiContext = ReverseStructuralContext &
     deterministicRejectionScore: number | null;
     approvalAllowedNow: boolean;
     hardBlockReasons: string[];
+    approvalBlockReasons: string[];
   };
 
 type ReverseTrendlineQualityContext = ReverseStructuralContext &
@@ -72,6 +73,115 @@ const getReverseTrendlineBiasConflictState = (
   }
 
   return 'unknown';
+};
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null;
+
+const getNestedRecord = (
+  value: unknown,
+  path: string[],
+): Record<string, unknown> | null => {
+  let current = value;
+
+  for (const segment of path) {
+    if (!isRecord(current)) {
+      return null;
+    }
+    current = current[segment];
+  }
+
+  return isRecord(current) ? current : null;
+};
+
+const getNestedNumber = (value: unknown, path: string[]) => {
+  let current = value;
+
+  for (const segment of path) {
+    if (!isRecord(current)) {
+      return null;
+    }
+    current = current[segment];
+  }
+
+  return typeof current === 'number' && Number.isFinite(current)
+    ? current
+    : null;
+};
+
+const getBaseContextApprovalBlockReasons = (
+  context: ReverseTrendlineQualityContext & { deterministicQuality: number },
+  signal: Parameters<typeof buildReverseTrendlineAiContext>[0],
+) => {
+  const baseContext = isRecord(signal.additionalIndicators?.baseContext)
+    ? signal.additionalIndicators.baseContext
+    : null;
+  if (!baseContext) {
+    return [];
+  }
+
+  const riskFlags = getNestedRecord(baseContext, [
+    'derivatives',
+    'summary',
+  ])?.riskFlags;
+  const hasMissingDerivatives =
+    Array.isArray(riskFlags) && riskFlags.includes('missing_derivatives');
+  const volumeRel20 = getNestedNumber(baseContext, [
+    'participation',
+    'volume',
+    'volumeRel20',
+  ]);
+  const rangePosition20 = getNestedNumber(baseContext, [
+    'structure',
+    'localRange',
+    'rangePosition20',
+  ]);
+  const atrPctZScore = getNestedNumber(baseContext, [
+    'regime',
+    'volatility',
+    'atrPctZScore',
+  ]);
+  const biasConflictState = getReverseTrendlineBiasConflictState(context);
+  const reasons: string[] = [];
+
+  if (hasMissingDerivatives) {
+    reasons.push('missing_derivatives');
+  }
+  if (volumeRel20 != null && volumeRel20 < 0.8) {
+    reasons.push('weak_volume_participation');
+  }
+  if (
+    context.signalDirection === 'SHORT' &&
+    atrPctZScore != null &&
+    atrPctZScore >= 2
+  ) {
+    reasons.push('short_extreme_volatility');
+  }
+  if (
+    context.signalDirection === 'SHORT' &&
+    rangePosition20 != null &&
+    rangePosition20 < 0.2
+  ) {
+    reasons.push('short_low_range_position');
+  }
+  if (
+    context.signalDirection === 'LONG' &&
+    context.distance != null &&
+    context.distance > 150 &&
+    context.distance <= 250
+  ) {
+    reasons.push('long_weak_mid_distance');
+  }
+  if (
+    context.signalDirection === 'SHORT' &&
+    context.entryTiming === 'ready_follow_through' &&
+    biasConflictState === 'none' &&
+    context.deterministicQuality >= 5
+  ) {
+    reasons.push('short_follow_through_overrated');
+  }
+
+  return reasons;
 };
 
 const getDeterministicReverseTrendlineQuality = (
@@ -276,14 +386,25 @@ const buildReverseTrendlineAiContext = (signal: {
     ...timing,
     hardBlockReasons,
   });
+  const approvalBlockReasons = getBaseContextApprovalBlockReasons(
+    {
+      ...structural,
+      ...timing,
+      hardBlockReasons,
+      deterministicQuality,
+    },
+    signal,
+  );
 
   return {
     ...structural,
     ...timing,
     deterministicQuality,
     deterministicRejectionScore,
-    approvalAllowedNow: deterministicQuality >= 4,
+    approvalAllowedNow:
+      deterministicQuality >= 4 && approvalBlockReasons.length === 0,
     hardBlockReasons,
+    approvalBlockReasons,
   };
 };
 
@@ -309,6 +430,18 @@ const getHardBlockReasonText = (reason: string) => {
       return 'coin bias conflicts with the bounce direction';
     case 'btc_bias_conflict':
       return 'BTC context conflicts with the bounce direction';
+    case 'missing_derivatives':
+      return 'derivatives context is missing';
+    case 'weak_volume_participation':
+      return 'volume participation is too weak for this bounce';
+    case 'short_extreme_volatility':
+      return 'SHORT bounce appears in an extreme volatility regime';
+    case 'short_low_range_position':
+      return 'SHORT bounce starts too low in the local range';
+    case 'long_weak_mid_distance':
+      return 'LONG bounce distance sits in a weak mid-distance pocket';
+    case 'short_follow_through_overrated':
+      return 'SHORT follow-through bounce is not reliable enough for quality 5';
     default:
       return reason;
   }
@@ -360,19 +493,31 @@ export const reverseTrendLineAiAdapter: StrategyAiAdapter = {
           ? `ReverseTrendLine guardrail: ${context.hardBlockReasons
               .map(getHardBlockReasonText)
               .join('; ')}.`
-          : 'ReverseTrendLine deterministic quality requires either a strong conflict-only rejection or a confirmed aligned follow-through for a bounce.',
+          : context.approvalBlockReasons.length > 0
+            ? `ReverseTrendLine base-context filter: ${context.approvalBlockReasons
+                .map(getHardBlockReasonText)
+                .join('; ')}.`
+            : 'ReverseTrendLine deterministic quality requires either a strong conflict-only rejection or a confirmed aligned follow-through for a bounce.',
       triggerInvalidation:
         context.hardBlockReasons.length > 0
           ? `Wait for a new bounce setup: ${context.hardBlockReasons
               .map(getHardBlockReasonText)
               .join('; ')}.`
-          : 'Wait for a line touch, a rejection candle, and a close held on the correct side of the line.',
+          : context.approvalBlockReasons.length > 0
+            ? `Wait for a cleaner bounce context: ${context.approvalBlockReasons
+                .map(getHardBlockReasonText)
+                .join('; ')}.`
+            : 'Wait for a line touch, a rejection candle, and a close held on the correct side of the line.',
       comment:
         context.hardBlockReasons.length > 0
           ? `ReverseTrendLine guardrail blocked the entry: ${context.hardBlockReasons
               .map(getHardBlockReasonText)
               .join('; ')}.`
-          : 'ReverseTrendLine keeps the setup in watch mode until the bounce is confirmed.',
+          : context.approvalBlockReasons.length > 0
+            ? `ReverseTrendLine base-context filter blocked the entry: ${context.approvalBlockReasons
+                .map(getHardBlockReasonText)
+                .join('; ')}.`
+            : 'ReverseTrendLine keeps the setup in watch mode until the bounce is confirmed.',
     };
   },
   buildSystemPromptAddon: () =>
@@ -395,6 +540,7 @@ Additional ReverseTrendLine context:
 - deterministicRejectionScore=${context.deterministicRejectionScore ?? 'n/a'}
 - approvalAllowedNow=${context.approvalAllowedNow}
 - hardBlockReasons=${context.hardBlockReasons.join(', ') || 'none'}
+- approvalBlockReasons=${context.approvalBlockReasons.join(', ') || 'none'}
 
 Interpretation rules for ReverseTrendLine:
 - look for structural confirmation of a reaction from the line, not a breakout through the line;

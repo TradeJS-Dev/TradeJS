@@ -1164,7 +1164,7 @@ const makeReverseScoredBothSupportBounceLongSignal = () => {
   signal.additionalIndicators = {
     ...signal.additionalIndicators,
     touches: 5,
-    distance: 210,
+    distance: 145,
     currentCandle: {
       timestamp: 2,
       open: 99.92,
@@ -1389,7 +1389,7 @@ const makeReverseAlignedFollowThroughLongSignal = () => {
   signal.additionalIndicators = {
     ...signal.additionalIndicators,
     touches: 5,
-    distance: 180,
+    distance: 145,
     currentCandle: {
       timestamp: 2,
       open: 100.1,
