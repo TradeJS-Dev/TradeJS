@@ -802,6 +802,59 @@ export const main = async () => {
     ),
   );
 
+  printSection(
+    'APPROVED RISK',
+    createTable(
+      [chalk.gray('METRIC'), chalk.gray('VALUE')],
+      [
+        ['trades', chalk.cyan(String(summary.approvedRisk.trades))],
+        ['total_profit', colorizeProfit(summary.approvedRisk.totalProfit)],
+        ['gross_profit', colorizeProfit(summary.approvedRisk.grossProfit)],
+        ['gross_loss', colorizeProfit(-summary.approvedRisk.grossLoss)],
+        [
+          'profit_factor',
+          colorizeMetricNumber(summary.approvedRisk.profitFactor),
+        ],
+        [
+          'payoff_ratio',
+          colorizeMetricNumber(summary.approvedRisk.payoffRatio),
+        ],
+        ['avg_win', colorizeProfit(summary.approvedRisk.avgWin)],
+        [
+          'avg_loss',
+          summary.approvedRisk.avgLoss == null
+            ? chalk.gray('n/a')
+            : colorizeProfit(-summary.approvedRisk.avgLoss),
+        ],
+        ['largest_win', colorizeProfit(summary.approvedRisk.largestWin)],
+        ['largest_loss', colorizeProfit(summary.approvedRisk.largestLoss)],
+        ['win_rate', colorizeRatio(summary.approvedRisk.winRate)],
+        ['max_drawdown', colorizeProfit(-summary.approvedRisk.maxDrawdown)],
+        [
+          'max_drawdown_pct_of_gross_profit',
+          colorizeRatio(summary.approvedRisk.maxDrawdownPctOfGrossProfit),
+        ],
+        [
+          'max_drawdown_pct_of_total_profit',
+          colorizeRatio(summary.approvedRisk.maxDrawdownPctOfTotalProfit),
+        ],
+        [
+          'recovery_factor',
+          colorizeMetricNumber(summary.approvedRisk.recoveryFactor),
+        ],
+        ['ulcer_index', colorizeMetricNumber(summary.approvedRisk.ulcerIndex)],
+        [
+          'max_consecutive_wins',
+          chalk.green(String(summary.approvedRisk.maxConsecutiveWins)),
+        ],
+        [
+          'max_consecutive_losses',
+          chalk.red(String(summary.approvedRisk.maxConsecutiveLosses)),
+        ],
+      ],
+    ),
+  );
+
   if (directionSummaries.length) {
     printSection(
       'BY DIRECTION',

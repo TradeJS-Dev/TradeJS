@@ -393,14 +393,10 @@ describe('testing backtest flow', () => {
     );
 
     const runPromise = testing(createTest({ timeoutMs: 12_000 }));
-    for (let index = 0; index < 20; index += 1) {
-      await Promise.resolve();
-    }
-
-    jest.advanceTimersByTime(6_000);
-    for (let index = 0; index < 20; index += 1) {
-      await Promise.resolve();
-    }
+    const rejection = expect(runPromise).rejects.toThrow(
+      'Test ETH_suite_1 (ETHUSDT) timed out after 12000ms during strategy signal',
+    );
+    await jest.advanceTimersByTimeAsync(6_000);
 
     expect(send.mock.calls.flat()).toEqual(
       expect.arrayContaining([
@@ -415,10 +411,8 @@ describe('testing backtest flow', () => {
       ]),
     );
 
-    jest.advanceTimersByTime(6_000);
-    await expect(runPromise).rejects.toThrow(
-      'Test ETH_suite_1 (ETHUSDT) timed out after 12000ms during strategy signal',
-    );
+    await jest.advanceTimersByTimeAsync(6_000);
+    await rejection;
   });
 
   it('writes transformed ml row when strategy returns signal object', async () => {
@@ -787,6 +781,32 @@ describe('testing backtest flow', () => {
     );
     await jest.advanceTimersByTimeAsync(20);
     await rejection;
+
+    jest.useRealTimers();
+  });
+
+  it('does not apply the item timeout as a total runtime cap', async () => {
+    jest.useFakeTimers();
+
+    const data = [candle(1_000_050), candle(1_000_150), candle(1_000_250)];
+    mockByBitConnector.kline.mockResolvedValue(data);
+    mockBinanceConnector.kline.mockResolvedValue(data);
+    mockCoinbaseConnector.kline.mockResolvedValue(data);
+    mockStrategy.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          setTimeout(() => resolve('HOLD'), 6);
+        }),
+    );
+
+    const promise = testing(createTest({ timeoutMs: 10 }));
+    await jest.advanceTimersByTimeAsync(50);
+
+    await expect(promise).resolves.toEqual(
+      expect.objectContaining({
+        orderLogId: 'log-1',
+      }),
+    );
 
     jest.useRealTimers();
   });

@@ -15,6 +15,27 @@ export type AiTrainQualityBucket = {
   totalProfit: number;
 };
 
+export type AiTrainRiskSummary = {
+  trades: number;
+  totalProfit: number;
+  grossProfit: number;
+  grossLoss: number;
+  profitFactor: number | null;
+  payoffRatio: number | null;
+  avgWin: number | null;
+  avgLoss: number | null;
+  largestWin: number | null;
+  largestLoss: number | null;
+  winRate: number | null;
+  maxDrawdown: number;
+  maxDrawdownPctOfGrossProfit: number | null;
+  maxDrawdownPctOfTotalProfit: number | null;
+  recoveryFactor: number | null;
+  ulcerIndex: number | null;
+  maxConsecutiveWins: number;
+  maxConsecutiveLosses: number;
+};
+
 export type AiTrainSummary = {
   approved: number;
   rejected: number;
@@ -36,6 +57,7 @@ export type AiTrainSummary = {
   avgApprovedTradesPerDay: number | null;
   avgApprovedTradesPerWeek: number | null;
   expectancyDelta: number | null;
+  approvedRisk: AiTrainRiskSummary;
   qualityBuckets: AiTrainQualityBucket[];
 };
 
@@ -86,6 +108,125 @@ const getEvaluationPeriodDays = (evaluations: AiTrainEvaluation[]) => {
 
 const qualitySortKey = (quality: number | null) =>
   quality == null ? Number.POSITIVE_INFINITY : quality;
+
+const emptyRiskSummary = (): AiTrainRiskSummary => ({
+  trades: 0,
+  totalProfit: 0,
+  grossProfit: 0,
+  grossLoss: 0,
+  profitFactor: null,
+  payoffRatio: null,
+  avgWin: null,
+  avgLoss: null,
+  largestWin: null,
+  largestLoss: null,
+  winRate: null,
+  maxDrawdown: 0,
+  maxDrawdownPctOfGrossProfit: null,
+  maxDrawdownPctOfTotalProfit: null,
+  recoveryFactor: null,
+  ulcerIndex: null,
+  maxConsecutiveWins: 0,
+  maxConsecutiveLosses: 0,
+});
+
+const summarizeApprovedRisk = (
+  evaluations: AiTrainEvaluation[],
+): AiTrainRiskSummary => {
+  const approvedEvaluations = evaluations
+    .filter((evaluation) => evaluation.aiApproved)
+    .sort((left, right) => {
+      const leftTimestamp =
+        typeof left.timestamp === 'number' && Number.isFinite(left.timestamp)
+          ? left.timestamp
+          : Number.POSITIVE_INFINITY;
+      const rightTimestamp =
+        typeof right.timestamp === 'number' && Number.isFinite(right.timestamp)
+          ? right.timestamp
+          : Number.POSITIVE_INFINITY;
+      return leftTimestamp - rightTimestamp;
+    });
+
+  if (!approvedEvaluations.length) {
+    return emptyRiskSummary();
+  }
+
+  let grossProfit = 0;
+  let grossLoss = 0;
+  let wins = 0;
+  let losses = 0;
+  let largestWin: number | null = null;
+  let largestLoss: number | null = null;
+  let equity = 0;
+  let peakEquity = 0;
+  let maxDrawdown = 0;
+  let drawdownSquares = 0;
+  let currentWinStreak = 0;
+  let currentLossStreak = 0;
+  let maxConsecutiveWins = 0;
+  let maxConsecutiveLosses = 0;
+
+  for (const evaluation of approvedEvaluations) {
+    const profit = evaluation.profit;
+
+    if (profit > 0) {
+      grossProfit += profit;
+      wins += 1;
+      largestWin = largestWin == null ? profit : Math.max(largestWin, profit);
+      currentWinStreak += 1;
+      currentLossStreak = 0;
+    } else if (profit < 0) {
+      grossLoss += Math.abs(profit);
+      losses += 1;
+      largestLoss =
+        largestLoss == null ? profit : Math.min(largestLoss, profit);
+      currentLossStreak += 1;
+      currentWinStreak = 0;
+    } else {
+      currentWinStreak = 0;
+      currentLossStreak = 0;
+    }
+
+    maxConsecutiveWins = Math.max(maxConsecutiveWins, currentWinStreak);
+    maxConsecutiveLosses = Math.max(maxConsecutiveLosses, currentLossStreak);
+
+    equity += profit;
+    peakEquity = Math.max(peakEquity, equity);
+    const drawdown = Math.max(0, peakEquity - equity);
+    maxDrawdown = Math.max(maxDrawdown, drawdown);
+    drawdownSquares += drawdown * drawdown;
+  }
+
+  const totalProfit = grossProfit - grossLoss;
+  const avgWin = divideOrNull(grossProfit, wins);
+  const avgLoss = divideOrNull(grossLoss, losses);
+
+  return {
+    trades: approvedEvaluations.length,
+    totalProfit,
+    grossProfit,
+    grossLoss,
+    profitFactor: grossLoss > 0 ? grossProfit / grossLoss : null,
+    payoffRatio:
+      avgWin != null && avgLoss != null && avgLoss > 0
+        ? avgWin / avgLoss
+        : null,
+    avgWin,
+    avgLoss,
+    largestWin,
+    largestLoss,
+    winRate: divideOrNull(wins, approvedEvaluations.length),
+    maxDrawdown,
+    maxDrawdownPctOfGrossProfit:
+      grossProfit > 0 ? maxDrawdown / grossProfit : null,
+    maxDrawdownPctOfTotalProfit:
+      totalProfit > 0 ? maxDrawdown / totalProfit : null,
+    recoveryFactor: maxDrawdown > 0 ? totalProfit / maxDrawdown : null,
+    ulcerIndex: Math.sqrt(drawdownSquares / approvedEvaluations.length),
+    maxConsecutiveWins,
+    maxConsecutiveLosses,
+  };
+};
 
 export const summarizeAiTrainEvaluations = (
   evaluations: AiTrainEvaluation[],
@@ -202,6 +343,7 @@ export const summarizeAiTrainEvaluations = (
     avgApprovedTradesPerDay,
     avgApprovedTradesPerWeek,
     expectancyDelta,
+    approvedRisk: summarizeApprovedRisk(evaluations),
     qualityBuckets: [...bucketMap.values()].sort(
       (a, b) => qualitySortKey(a.quality) - qualitySortKey(b.quality),
     ),

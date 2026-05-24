@@ -65,6 +65,26 @@ describe('aiTrainMetrics', () => {
         avgApprovedTradesPerDay: 0.5,
         avgApprovedTradesPerWeek: 3.5,
         expectancyDelta: 1,
+        approvedRisk: expect.objectContaining({
+          trades: 2,
+          totalProfit: 6,
+          grossProfit: 10,
+          grossLoss: 4,
+          profitFactor: 2.5,
+          payoffRatio: 2.5,
+          avgWin: 10,
+          avgLoss: 4,
+          largestWin: 10,
+          largestLoss: -4,
+          winRate: 0.5,
+          maxDrawdown: 4,
+          maxDrawdownPctOfGrossProfit: 0.4,
+          maxDrawdownPctOfTotalProfit: 4 / 6,
+          recoveryFactor: 1.5,
+          ulcerIndex: Math.sqrt(16 / 2),
+          maxConsecutiveWins: 1,
+          maxConsecutiveLosses: 1,
+        }),
       }),
     );
 
@@ -113,6 +133,26 @@ describe('aiTrainMetrics', () => {
     expect(summary.avgApprovedTradesPerDay).toBeNull();
     expect(summary.avgApprovedTradesPerWeek).toBeNull();
     expect(summary.expectancyDelta).toBeNull();
+    expect(summary.approvedRisk).toEqual({
+      trades: 0,
+      totalProfit: 0,
+      grossProfit: 0,
+      grossLoss: 0,
+      profitFactor: null,
+      payoffRatio: null,
+      avgWin: null,
+      avgLoss: null,
+      largestWin: null,
+      largestLoss: null,
+      winRate: null,
+      maxDrawdown: 0,
+      maxDrawdownPctOfGrossProfit: null,
+      maxDrawdownPctOfTotalProfit: null,
+      recoveryFactor: null,
+      ulcerIndex: null,
+      maxConsecutiveWins: 0,
+      maxConsecutiveLosses: 0,
+    });
   });
 
   it('splits summaries by direction', () => {

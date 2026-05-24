@@ -629,20 +629,19 @@ export const testing: TestingBox = async ({
       stageElapsedMs: now - activeStageStartedAt,
     } satisfies TestingProgressMessage);
   };
-  const getRemainingTimeoutMs = (stage: string) => {
+  const getStageTimeoutMs = () => {
     if (!timeoutMs || timeoutMs <= 0) {
       return null;
     }
 
-    const remainingMs = timeoutMs - (Date.now() - startedAt);
-    if (remainingMs <= 0) {
-      throw new Error(formatTimeoutMessage(stage));
-    }
-
-    return remainingMs;
+    return timeoutMs;
   };
   const throwIfTimedOut = (stage: string) => {
-    getRemainingTimeoutMs(stage);
+    if (getStageTimeoutMs() == null) {
+      return;
+    }
+
+    emitProgress(stage);
   };
   const withTimeout = async <T>(
     stage: string,
@@ -650,8 +649,8 @@ export const testing: TestingBox = async ({
   ): Promise<T> => {
     activeStageStartedAt = Date.now();
     emitProgress(stage, { force: true });
-    const remainingMs = getRemainingTimeoutMs(stage);
-    if (remainingMs == null) {
+    const stageTimeoutMs = getStageTimeoutMs();
+    if (stageTimeoutMs == null) {
       return promise;
     }
 
@@ -662,7 +661,7 @@ export const testing: TestingBox = async ({
       const timer = setTimeout(() => {
         clearInterval(heartbeat);
         reject(new Error(formatTimeoutMessage(stage)));
-      }, remainingMs);
+      }, stageTimeoutMs);
 
       promise.then(
         (value) => {
