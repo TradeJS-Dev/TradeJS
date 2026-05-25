@@ -22,6 +22,7 @@ type ScriptFlags = {
 type Scenario = {
   flags: ScriptFlags;
   derivativesContextEnabled?: boolean;
+  includeOpenCandle?: boolean;
   strategyConfig?: Record<string, unknown>;
   strategyResult?: unknown;
   projectHooks?: {
@@ -34,6 +35,13 @@ type Scenario = {
     result?: unknown;
   }>;
 };
+
+const INTERVAL_MS = 15 * 60_000;
+const CURRENT_OPEN_TS = 1_700_000_100_000;
+const CURRENT_TS = CURRENT_OPEN_TS + 60_000;
+const CLOSED_1_TS = CURRENT_OPEN_TS - 2 * INTERVAL_MS;
+const CLOSED_2_TS = CURRENT_OPEN_TS - INTERVAL_MS;
+const PRELOAD_TS = CURRENT_TS - 7 * 24 * 60 * 60 * 1000;
 
 const makeRedisKeys = () => ({
   strategies: (userName: string) => `users:${userName}:strategies`,
@@ -109,14 +117,18 @@ const loadScript = async (scenario: Scenario) => {
   };
   const connector = {
     kline: jest.fn(async ({ symbol }: { symbol: string }) => {
+      const timestamps =
+        scenario.includeOpenCandle === false
+          ? [CLOSED_1_TS, CLOSED_2_TS]
+          : [CLOSED_1_TS, CLOSED_2_TS, CURRENT_OPEN_TS];
       if (symbol === 'BTCUSDT') {
-        return [
-          makeCandle(1000, 100),
-          makeCandle(2000, 101),
-          makeCandle(3000, 102),
-        ];
+        return timestamps.map((timestamp, index) =>
+          makeCandle(timestamp, 100 + index),
+        );
       }
-      return [makeCandle(1000, 10), makeCandle(2000, 11), makeCandle(3000, 12)];
+      return timestamps.map((timestamp, index) =>
+        makeCandle(timestamp, 10 + index),
+      );
     }),
   };
   const strategyCreatorMap = new Map<string, jest.Mock>();
@@ -129,7 +141,7 @@ const loadScript = async (scenario: Scenario) => {
       symbol: 'ETHUSDT',
       interval: '15',
       direction: 'LONG',
-      timestamp: 2000,
+      timestamp: CLOSED_2_TS,
       prices: { currentPrice: 11 },
       figures: {},
       indicators: {},
@@ -156,7 +168,7 @@ const loadScript = async (scenario: Scenario) => {
       Promise.all(items.map(worker)),
   );
   const getTimestamp = jest.fn((days?: number) =>
-    typeof days === 'number' && days > 0 ? 1000 : 3000,
+    typeof days === 'number' && days > 0 ? PRELOAD_TS : CURRENT_TS,
   );
   const getRuntimeStorageDayKey = jest.fn(() => '1970-01-01');
   const progressTick = jest.fn();
@@ -315,8 +327,8 @@ describe('signals script', () => {
     await signals();
 
     expect(mocks.strategyFnMap.get('TrendLine')).toHaveBeenCalledWith(
-      expect.objectContaining({ timestamp: 2000, close: 11 }),
-      expect.objectContaining({ timestamp: 2000, close: 101 }),
+      expect.objectContaining({ timestamp: CLOSED_2_TS, close: 11 }),
+      expect.objectContaining({ timestamp: CLOSED_2_TS, close: 101 }),
     );
     expect(mocks.setData).toHaveBeenCalledWith(
       mocks.redisKeys.storeSignal('ETHUSDT', 'TrendLine-sig'),
@@ -333,7 +345,7 @@ describe('signals script', () => {
         signalId: 'TrendLine-sig',
         symbol: 'ETHUSDT',
         strategy: 'TrendLine',
-        timestamp: 2000,
+        timestamp: CLOSED_2_TS,
       },
       { expire: TTL_10D },
     );
@@ -343,12 +355,12 @@ describe('signals script', () => {
         '1970-01-01',
         'TrendLine',
       ),
-      'TrendLine:ETHUSDT:2000',
+      `TrendLine:ETHUSDT:${CLOSED_2_TS}`,
       expect.objectContaining({
-        evaluationId: 'TrendLine:ETHUSDT:2000',
+        evaluationId: `TrendLine:ETHUSDT:${CLOSED_2_TS}`,
         strategy: 'TrendLine',
         symbol: 'ETHUSDT',
-        timestamp: 2000,
+        timestamp: CLOSED_2_TS,
         status: 'signal',
         signalId: 'TrendLine-sig',
         direction: 'LONG',
@@ -366,6 +378,31 @@ describe('signals script', () => {
         signals: 1,
       },
       { expire: TTL_10D },
+    );
+  });
+
+  it('uses the latest closed candle even when cache-only data has no forming candle', async () => {
+    const { signals, mocks } = await loadScript({
+      includeOpenCandle: false,
+      flags: {
+        timeframe: 15,
+        makeOrders: false,
+        notify: false,
+        skipScreenshots: true,
+        updateOnly: false,
+        cacheOnly: true,
+        showTickersList: false,
+        showSkipStats: false,
+        user: 'root',
+        connector: 'bybit',
+      },
+    });
+
+    await signals();
+
+    expect(mocks.strategyFnMap.get('TrendLine')).toHaveBeenCalledWith(
+      expect.objectContaining({ timestamp: CLOSED_2_TS, close: 11 }),
+      expect.objectContaining({ timestamp: CLOSED_2_TS, close: 101 }),
     );
   });
 
@@ -448,7 +485,7 @@ describe('signals script', () => {
         symbol: 'ETHUSDT',
         interval: '15',
         direction: 'LONG',
-        timestamp: 2000,
+        timestamp: CLOSED_2_TS,
         orderStatus: 'skipped',
         orderSkipReason: 'AI_QUALITY_BELOW_MIN (0 < 4)',
         aiAnalysis,
@@ -468,7 +505,7 @@ describe('signals script', () => {
         '1970-01-01',
         'TrendLine',
       ),
-      'TrendLine:ETHUSDT:2000',
+      `TrendLine:ETHUSDT:${CLOSED_2_TS}`,
       expect.objectContaining({
         orderStatus: 'skipped',
         orderSkipReason: 'AI_QUALITY_BELOW_MIN (0 < 4)',
@@ -583,7 +620,7 @@ describe('signals script', () => {
             symbol: 'ETHUSDT',
             interval: '15',
             direction: 'LONG',
-            timestamp: 2000,
+            timestamp: CLOSED_2_TS,
             orderStatus: 'skipped',
             orderSkipReason: 'AI_QUALITY_BELOW_MIN (2 < 3)',
             prices: { currentPrice: 11 },
@@ -639,7 +676,7 @@ describe('signals script', () => {
             symbol: 'ETHUSDT',
             interval: '15',
             direction: 'LONG',
-            timestamp: 2000,
+            timestamp: CLOSED_2_TS,
             orderStatus: 'skipped',
             orderSkipReason: 'AI_QUALITY_BELOW_MIN (2 < 3)',
             prices: { currentPrice: 11 },
@@ -656,7 +693,7 @@ describe('signals script', () => {
             symbol: 'ETHUSDT',
             interval: '15',
             direction: 'LONG',
-            timestamp: 2000,
+            timestamp: CLOSED_2_TS,
             orderStatus: 'completed',
             prices: { currentPrice: 11 },
             figures: {},
@@ -741,9 +778,9 @@ describe('signals script', () => {
     expect(mocks.backfillDerivativesContextForSignals).toHaveBeenCalledWith({
       userName: 'root',
       symbols: ['ETHUSDT'],
-      startMs: 3000,
-      endMs: 3000,
-      preloadStartMs: 1000,
+      startMs: CURRENT_TS,
+      endMs: CURRENT_TS,
+      preloadStartMs: PRELOAD_TS,
     });
     expect(mocks.logger.info).toHaveBeenCalledWith(
       expect.stringMatching(/^tickers load: done in /),

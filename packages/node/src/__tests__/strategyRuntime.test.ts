@@ -409,6 +409,34 @@ describe('strategyRuntime', () => {
     );
   });
 
+  it('keeps BACKTEST execution ungated by AI quality while runtime envs apply the gate', async () => {
+    mockEnrichSignalWithAi.mockResolvedValue(1);
+
+    const backtestRuntime = await makeRuntime(() => makeDecisionEntry(), {
+      ENV: 'BACKTEST',
+    });
+    await backtestRuntime.strategy(
+      { timestamp: 1 } as any,
+      { timestamp: 1 } as any,
+    );
+    expect(mockExecuteEntryOrder).toHaveBeenCalledTimes(1);
+
+    mockExecuteEntryOrder.mockClear();
+    const cronRuntime = await makeRuntime(() => makeDecisionEntry(), {
+      ENV: 'CRON',
+    });
+    const result = await cronRuntime.strategy(
+      { timestamp: 1 } as any,
+      { timestamp: 1 } as any,
+    );
+
+    expect(mockExecuteEntryOrder).not.toHaveBeenCalled();
+    expect((result as any).orderStatus).toBe('skipped');
+    expect((result as any).orderSkipReason).toBe(
+      'AI_QUALITY_BELOW_MIN (1 < 5)',
+    );
+  });
+
   it('gates entry by ML threshold when runtime ML result does not pass', async () => {
     mockEnrichSignalWithMl.mockImplementation(async ({ signal }: any) => {
       signal.ml = {

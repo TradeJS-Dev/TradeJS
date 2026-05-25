@@ -137,6 +137,29 @@ const STRUCTURE_LOOKBACK = 80;
 const PIVOT_LEFT_RIGHT = 2;
 const ZONE_ATR_FACTOR = 0.5;
 const PROFILE_BIN_COUNT = 24;
+export const BASE_CONTEXT_MA_LAYER_PERIODS = [
+  [5, 12],
+  [9, 13],
+  [34, 50],
+  [72, 89],
+  [180, 200],
+] as const;
+
+export type BaseContextMaLayerInput = {
+  fastPeriod: number;
+  slowPeriod: number;
+  fast: number | null;
+  slow: number | null;
+};
+
+export type BaseContextContextMaInput = {
+  baseline: number | null;
+};
+
+export type BaseContextAdaptiveChannelInput = {
+  centerline: number | null;
+  previousCenterline: number | null;
+};
 
 const getTypicalPrice = (candle: Candle) =>
   (candle.high + candle.low + candle.close) / 3;
@@ -190,14 +213,21 @@ const calculatePercentRank = (
 const calculateRsiContext = (closes: number[], period = 14) => {
   const values = rsi({ values: closes, period });
   const value = values.length > 0 ? values[values.length - 1] : null;
+  return (
+    buildRsiContext(value) ?? {
+      rsi: null,
+      rsiState: 'unknown',
+    }
+  );
+};
+
+const buildRsiContext = (value: number | null | undefined) => {
+  if (value == null || !Number.isFinite(value)) {
+    return null;
+  }
+
   const rsiState =
-    value == null
-      ? 'unknown'
-      : value >= 70
-        ? 'overbought'
-        : value <= 30
-          ? 'oversold'
-          : 'neutral';
+    value >= 70 ? 'overbought' : value <= 30 ? 'oversold' : 'neutral';
 
   return {
     rsi: value,
@@ -205,17 +235,23 @@ const calculateRsiContext = (closes: number[], period = 14) => {
   };
 };
 
-const calculateAdxContext = (candles: Candle[], period = 14) => {
-  const values = adx({
-    close: candles.map((item) => item.close),
-    high: candles.map((item) => item.high),
-    low: candles.map((item) => item.low),
-    period,
-  });
-  const latest = values.length > 0 ? values[values.length - 1] : null;
-  const adxValue = latest?.adx ?? null;
-  const diPlus = latest?.pdi ?? null;
-  const diMinus = latest?.mdi ?? null;
+const buildAdxContext = (
+  latest:
+    | {
+        adx?: number;
+        pdi?: number;
+        mdi?: number;
+      }
+    | null
+    | undefined,
+) => {
+  if (!latest) {
+    return null;
+  }
+
+  const adxValue = toNullable(latest.adx);
+  const diPlus = toNullable(latest.pdi);
+  const diMinus = toNullable(latest.mdi);
   const direction =
     diPlus == null || diMinus == null
       ? 'unknown'
@@ -242,6 +278,25 @@ const calculateAdxContext = (candles: Candle[], period = 14) => {
   };
 };
 
+const calculateAdxContext = (candles: Candle[], period = 14) => {
+  const values = adx({
+    close: candles.map((item) => item.close),
+    high: candles.map((item) => item.high),
+    low: candles.map((item) => item.low),
+    period,
+  });
+  const latest = values.length > 0 ? values[values.length - 1] : null;
+  return (
+    buildAdxContext(latest) ?? {
+      adx: null,
+      diPlus: null,
+      diMinus: null,
+      direction: 'unknown',
+      strength: 'unknown',
+    }
+  );
+};
+
 const calculateTrueRange = (current: Candle, previous: Candle | null) =>
   previous == null
     ? current.high - current.low
@@ -251,16 +306,43 @@ const calculateTrueRange = (current: Candle, previous: Candle | null) =>
         Math.abs(current.low - previous.close),
       );
 
-const calculateRealizedVolatility = (closes: number[], period = 20) => {
-  const window = closes.slice(-(period + 1));
-  if (window.length < period + 1) {
+const calculateRecentFiniteSeries = (
+  length: number,
+  lookback: number,
+  calculateAt: (index: number) => number | null,
+) => {
+  const values: number[] = [];
+
+  for (
+    let index = length - 1;
+    index >= 0 && values.length < lookback;
+    index -= 1
+  ) {
+    const value = calculateAt(index);
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      values.push(value);
+    }
+  }
+
+  return values.reverse();
+};
+
+const calculateRealizedVolatilityAt = (
+  closes: number[],
+  index: number,
+  period = 20,
+) => {
+  if (index < period) {
     return null;
   }
 
-  const returns = window.slice(1).map((close, index) => {
-    const previous = window[index];
-    return previous > 0 ? Math.log(close / previous) : 0;
-  });
+  const startIndex = index - period;
+  const returns = closes
+    .slice(startIndex + 1, index + 1)
+    .map((close, offset) => {
+      const previous = closes[startIndex + offset];
+      return previous > 0 ? Math.log(close / previous) : 0;
+    });
   const mean = returns.reduce((sum, value) => sum + value, 0) / returns.length;
   const variance =
     returns.reduce((sum, value) => sum + (value - mean) ** 2, 0) /
@@ -269,47 +351,90 @@ const calculateRealizedVolatility = (closes: number[], period = 20) => {
   return Math.sqrt(variance);
 };
 
-const calculateRealizedVolatilitySeries = (closes: number[], period = 20) =>
-  closes.map((_, index) =>
-    calculateRealizedVolatility(closes.slice(0, index + 1), period),
+const calculateRealizedVolatility = (closes: number[], period = 20) =>
+  calculateRealizedVolatilityAt(closes, closes.length - 1, period);
+
+const calculateRecentRealizedVolatilitySeries = (
+  closes: number[],
+  lookback: number,
+  period = 20,
+) =>
+  calculateRecentFiniteSeries(closes.length, lookback, (index) =>
+    calculateRealizedVolatilityAt(closes, index, period),
   );
 
-const calculateBbWidthPctSeries = (
+const calculateBbWidthPctAt = (
   closes: number[],
+  index: number,
+  period = 20,
+  stdMultiplier = 2,
+) => {
+  const windowStart = index + 1 - period;
+  if (windowStart < 0) {
+    return null;
+  }
+
+  const window = closes.slice(windowStart, index + 1);
+  const mean = window.reduce((sum, value) => sum + value, 0) / window.length;
+  const variance =
+    window.reduce((sum, value) => sum + (value - mean) ** 2, 0) / window.length;
+  const std = Math.sqrt(variance);
+
+  return mean === 0 ? null : ((std * stdMultiplier * 2) / mean) * 100;
+};
+
+const calculateRecentBbWidthPctSeries = (
+  closes: number[],
+  lookback: number,
   period = 20,
   stdMultiplier = 2,
 ) =>
-  closes.map((_, index) => {
-    const window = closes.slice(Math.max(0, index + 1 - period), index + 1);
-    if (window.length < period) {
-      return null;
-    }
+  calculateRecentFiniteSeries(closes.length, lookback, (index) =>
+    calculateBbWidthPctAt(closes, index, period, stdMultiplier),
+  );
 
-    const mean = window.reduce((sum, value) => sum + value, 0) / window.length;
-    const variance =
-      window.reduce((sum, value) => sum + (value - mean) ** 2, 0) /
-      window.length;
-    const std = Math.sqrt(variance);
+const calculateAtrPctAt = (candles: Candle[], index: number, period = 14) => {
+  const windowStart = index + 1 - period;
+  if (windowStart < 0) {
+    return null;
+  }
 
-    return mean === 0 ? null : ((std * stdMultiplier * 2) / mean) * 100;
-  });
+  const atrValue =
+    candles.slice(windowStart, index + 1).reduce((sum, item, windowIndex) => {
+      const absoluteIndex = windowStart + windowIndex;
+      const previous = absoluteIndex > 0 ? candles[absoluteIndex - 1] : null;
+      return sum + calculateTrueRange(item, previous);
+    }, 0) / period;
 
-const calculateAtrPctSeries = (candles: Candle[], period = 14) =>
-  candles.map((_, index) => {
-    const window = candles.slice(Math.max(0, index + 1 - period), index + 1);
-    if (window.length < period) {
-      return null;
-    }
+  return safeDivide(atrValue, candles[index].close);
+};
 
-    const atrValue =
-      window.reduce((sum, item, windowIndex) => {
-        const absoluteIndex = index + 1 - window.length + windowIndex;
-        const previous = absoluteIndex > 0 ? candles[absoluteIndex - 1] : null;
-        return sum + calculateTrueRange(item, previous);
-      }, 0) / period;
+const calculateRecentAtrPctSeries = (
+  candles: Candle[],
+  lookback: number,
+  period = 14,
+) =>
+  calculateRecentFiniteSeries(candles.length, lookback, (index) =>
+    calculateAtrPctAt(candles, index, period),
+  );
 
-    return safeDivide(atrValue, candles[index].close);
-  });
+const calculateRangeExpansionAt = (candles: Candle[], index: number) => {
+  const item = candles[index];
+  if (!item) {
+    return null;
+  }
+
+  const previous = index > 0 ? candles[index - 1] : null;
+  return safeDivide(item.high - item.low, calculateTrueRange(item, previous));
+};
+
+const calculateRecentRangeExpansionSeries = (
+  candles: Candle[],
+  lookback: number,
+) =>
+  calculateRecentFiniteSeries(candles.length, lookback, (index) =>
+    calculateRangeExpansionAt(candles, index),
+  );
 
 const buildMtfTrendBias = (
   candles: Candle[],
@@ -620,34 +745,41 @@ const buildPriceVolumeProfileContext = (
   };
 };
 
-const buildMaLayersContext = (sourceSeries: number[]) => {
-  const periods = [
-    [5, 12],
-    [9, 13],
-    [34, 50],
-    [72, 89],
-    [180, 200],
-  ] as const;
-  const layers = periods.map(([fastPeriod, slowPeriod]) => {
-    const fast = calculateEma(sourceSeries, fastPeriod);
-    const slow = calculateEma(sourceSeries, slowPeriod);
-    const bias =
-      fast == null || slow == null
-        ? 'unknown'
-        : fast > slow
-          ? 'bull'
-          : fast < slow
-            ? 'bear'
-            : 'neutral';
+const buildMaLayersContext = (
+  sourceSeries: number[],
+  precomputedLayers?: BaseContextMaLayerInput[] | null,
+) => {
+  const layers = BASE_CONTEXT_MA_LAYER_PERIODS.map(
+    ([fastPeriod, slowPeriod], index) => {
+      const precomputed = precomputedLayers?.[index];
+      const fast =
+        precomputed?.fastPeriod === fastPeriod &&
+        precomputed?.slowPeriod === slowPeriod
+          ? normalizeContextNumber(precomputed.fast)
+          : calculateEma(sourceSeries, fastPeriod);
+      const slow =
+        precomputed?.fastPeriod === fastPeriod &&
+        precomputed?.slowPeriod === slowPeriod
+          ? normalizeContextNumber(precomputed.slow)
+          : calculateEma(sourceSeries, slowPeriod);
+      const bias =
+        fast == null || slow == null
+          ? 'unknown'
+          : fast > slow
+            ? 'bull'
+            : fast < slow
+              ? 'bear'
+              : 'neutral';
 
-    return {
-      fastPeriod,
-      slowPeriod,
-      fast,
-      slow,
-      bias,
-    };
-  });
+      return {
+        fastPeriod,
+        slowPeriod,
+        fast,
+        slow,
+        bias,
+      };
+    },
+  );
   const knownLayers = layers.filter((layer) => layer.bias !== 'unknown');
   const bullishLayerCount = knownLayers.filter(
     (layer) => layer.bias === 'bull',
@@ -682,8 +814,12 @@ const buildContextMaContext = (
   closeSeries: number[],
   price: number,
   atr: number | null,
+  precomputed?: BaseContextContextMaInput | null,
 ) => {
-  const baseline = calculateEma(closeSeries, 34);
+  const baseline =
+    precomputed === undefined
+      ? calculateEma(closeSeries, 34)
+      : normalizeContextNumber(precomputed?.baseline ?? null);
   const boundaryWidth = atr == null ? null : atr * 1.2;
   const upperBoundary =
     baseline == null || boundaryWidth == null ? null : baseline + boundaryWidth;
@@ -718,10 +854,18 @@ const buildAdaptiveChannelContext = (
   candles: Candle[],
   price: number,
   atr: number | null,
+  precomputed?: BaseContextAdaptiveChannelInput | null,
 ) => {
-  const typicalSeries = candles.map(getTypicalPrice);
-  const centerline = calculateSma(typicalSeries, 20);
-  const previousCenterline = calculateSma(typicalSeries.slice(0, -1), 20);
+  const typicalSeries =
+    precomputed === undefined ? candles.map(getTypicalPrice) : null;
+  const centerline =
+    precomputed === undefined
+      ? calculateSma(typicalSeries ?? [], 20)
+      : normalizeContextNumber(precomputed?.centerline ?? null);
+  const previousCenterline =
+    precomputed === undefined
+      ? calculateSma((typicalSeries ?? []).slice(0, -1), 20)
+      : normalizeContextNumber(precomputed?.previousCenterline ?? null);
   const width = atr == null ? null : atr * 1.5;
   const upper = centerline == null || width == null ? null : centerline + width;
   const lower = centerline == null || width == null ? null : centerline - width;
@@ -894,6 +1038,15 @@ export type BuildBaseContextParams = {
   indicatorPeriods: IndicatorPeriods;
   closeStreaks: CloseStreakRuntimeState;
   breakoutState: BreakoutRuntimeState;
+  rsiValue?: number | null;
+  adxValue?: {
+    adx: number;
+    pdi: number;
+    mdi: number;
+  } | null;
+  maLayers?: BaseContextMaLayerInput[] | null;
+  contextMa?: BaseContextContextMaInput | null;
+  adaptiveChannel?: BaseContextAdaptiveChannelInput | null;
 };
 
 export const buildBaseContextMtfSnapshot = ({
@@ -941,6 +1094,11 @@ export const buildBaseContextSnapshot = ({
   indicatorPeriods,
   closeStreaks,
   breakoutState: breakoutRuntimeState,
+  rsiValue,
+  adxValue,
+  maLayers: precomputedMaLayers,
+  contextMa: precomputedContextMa,
+  adaptiveChannel: precomputedAdaptiveChannel,
 }: BuildBaseContextParams): BaseStrategyContextSnapshot => {
   const atr = toNullable(baseResult.atr);
   const bbWidthPct =
@@ -1040,16 +1198,18 @@ export const buildBaseContextSnapshot = ({
     compressionScore == null || compressionScore === 0
       ? null
       : 1 / compressionScore;
-  const bbWidthPctSeries = calculateBbWidthPctSeries(closeSeries);
-  const rawAtrPctSeries = calculateAtrPctSeries(candlesHistory);
+  const bbWidthPctSeries = calculateRecentBbWidthPctSeries(closeSeries, 100);
+  const rawAtrPctSeries = calculateRecentAtrPctSeries(candlesHistory, 100);
   const rawAtrPct = safeDivide(atr, candle.close);
   const realizedVolatility = calculateRealizedVolatility(closeSeries);
-  const realizedVolatilitySeries =
-    calculateRealizedVolatilitySeries(closeSeries);
-  const rangeExpansionSeries = candlesHistory.map((item, index) => {
-    const previous = index > 0 ? candlesHistory[index - 1] : null;
-    return safeDivide(item.high - item.low, calculateTrueRange(item, previous));
-  });
+  const realizedVolatilitySeries = calculateRecentRealizedVolatilitySeries(
+    closeSeries,
+    100,
+  );
+  const rangeExpansionSeries = calculateRecentRangeExpansionSeries(
+    candlesHistory,
+    20,
+  );
   const rangeExpansion =
     rangeExpansionSeries[rangeExpansionSeries.length - 1] ?? null;
   const volatilityState =
@@ -1173,8 +1333,10 @@ export const buildBaseContextSnapshot = ({
       : trendBias === 'bear'
         ? upperWick
         : Math.max(upperWick ?? 0, lowerWick ?? 0);
-  const adxContext = calculateAdxContext(candlesHistory);
-  const rsiContext = calculateRsiContext(closeSeries);
+  const adxContext =
+    buildAdxContext(adxValue) ?? calculateAdxContext(candlesHistory);
+  const rsiContext =
+    buildRsiContext(rsiValue) ?? calculateRsiContext(closeSeries);
   const benchmarkMaFast = averageLastN(btcCloseSeries, indicatorPeriods.maFast);
   const benchmarkMaSlow = averageLastN(btcCloseSeries, indicatorPeriods.maSlow);
   const btc1h = btcResampledCandles.h1;
@@ -1372,13 +1534,22 @@ export const buildBaseContextSnapshot = ({
     candle.close,
     atr,
   );
-  const hl2Series = candlesHistory.map((item) => (item.high + item.low) / 2);
-  const maLayers = buildMaLayersContext(hl2Series);
-  const contextMa = buildContextMaContext(closeSeries, candle.close, atr);
+  const hl2Series =
+    precomputedMaLayers === undefined
+      ? candlesHistory.map((item) => (item.high + item.low) / 2)
+      : [];
+  const maLayers = buildMaLayersContext(hl2Series, precomputedMaLayers);
+  const contextMa = buildContextMaContext(
+    closeSeries,
+    candle.close,
+    atr,
+    precomputedContextMa,
+  );
   const adaptiveChannel = buildAdaptiveChannelContext(
     structureWindow,
     candle.close,
     atr,
+    precomputedAdaptiveChannel,
   );
   const deltaContext = buildDeltaContext(structureWindow);
   const snapshot = {

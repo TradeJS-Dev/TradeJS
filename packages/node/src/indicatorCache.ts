@@ -9,11 +9,12 @@ import {
   deleteAllIndicatorCacheObsoleteVersions,
   getIndicatorCacheRange,
   getLatestIndicatorCacheCheckpointAtOrBefore,
+  resetIndicatorCacheTables,
   upsertIndicatorCacheCheckpointRows,
   upsertIndicatorCacheCoverageRows,
 } from '@tradejs/infra/timescale';
 
-const INDICATOR_CACHE_VERSION = 'v8';
+const INDICATOR_CACHE_VERSION = 'v10';
 const INDICATOR_CACHE_CHECKPOINT_INTERVAL = 256;
 
 type IndicatorCacheObsoleteCleanupOptions = Omit<
@@ -28,6 +29,8 @@ export const cleanIndicatorCacheObsoleteVersions = (
     ...options,
     keepVersion: INDICATOR_CACHE_VERSION,
   });
+
+export const resetIndicatorCache = () => resetIndicatorCacheTables();
 
 type EnsureIndicatorCacheCoverageParams = {
   provider: string;

@@ -3,11 +3,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import chalk from 'chalk';
 import ProgressBar from 'progress';
-import {
-  cleanFiles,
-  cleanIndicatorCacheObsoleteVersions,
-  cleanRedis,
-} from '@tradejs/node/cli';
+import { cleanFiles, cleanRedis, resetIndicatorCache } from '@tradejs/node/cli';
 import {
   getBacktestCacheArtifactsDirForUser,
   getPersistedBacktestArtifactsDirForUser,
@@ -84,94 +80,28 @@ const cleanUserTests = async (userName: string) => {
   });
 };
 
-const cleanObsoleteIndicatorCacheVersions = async () => {
-  console.log(chalk.yellow('clean indicator cache obsolete versions'));
-
-  const bars = new Map<string, ProgressBar>();
-  const previousDeletedRows = new Map<string, number>();
-  const batchSize = Math.max(
-    1,
-    Number.parseInt(
-      String(process.env.INDICATOR_CACHE_CLEAN_BATCH_SIZE ?? '50000'),
-      10,
-    ) || 50_000,
-  );
-
-  const result = await cleanIndicatorCacheObsoleteVersions({
-    batchSize,
-    onProgress: (progress) => {
-      if (progress.phase === 'index') {
-        const key = 'indexes';
-        let bar = bars.get(key);
-        if (!bar) {
-          console.log(
-            chalk.gray(
-              'preparing indicator cache cleanup indexes (first run can take a while)...',
-            ),
-          );
-          bar = new ProgressBar(
-            'indexes :current/:total [:bar][:percent] :eta(s)',
-            {
-              total: Math.max(1, progress.totalRows),
-              width: 24,
-            },
-          );
-          bars.set(key, bar);
-          previousDeletedRows.set(key, 0);
-        }
-
-        const previousDeleted = previousDeletedRows.get(key) ?? 0;
-        const nextDeleted = Math.min(progress.deletedRows, progress.totalRows);
-        const delta = Math.max(0, nextDeleted - previousDeleted);
-        if (delta > 0) {
-          bar.tick(delta);
-          previousDeletedRows.set(key, nextDeleted);
-        }
-        return;
-      }
-
-      const label = progress.table === 'coverage' ? 'coverage' : 'checkpoints';
-      if (progress.phase === 'count' && progress.totalRows === 0) {
-        return;
-      }
-      if (progress.phase === 'done' && progress.totalRows === 0) {
-        console.log(chalk.gray(`${label}: no obsolete rows`));
-        return;
-      }
-
-      let bar = bars.get(progress.table);
-      if (!bar) {
-        bar = new ProgressBar(
-          `${label} :current/:total [:bar][:percent] :eta(s)`,
-          {
-            total: Math.max(1, progress.totalRows),
-            width: 24,
-          },
-        );
-        bars.set(progress.table, bar);
-        previousDeletedRows.set(progress.table, 0);
-      }
-
-      const previousDeleted = previousDeletedRows.get(progress.table) ?? 0;
-      const nextDeleted = Math.min(progress.deletedRows, progress.totalRows);
-      const delta = Math.max(0, nextDeleted - previousDeleted);
-      if (delta > 0) {
-        bar.tick(delta);
-        previousDeletedRows.set(progress.table, nextDeleted);
-      }
+const resetIndicatorCacheTables = async () => {
+  console.log(chalk.yellow('reset indicator cache tables'));
+  const bar = new ProgressBar(
+    'indicator cache :current/:total [:bar][:percent]',
+    {
+      total: 2,
+      width: 24,
     },
-  });
-  console.log(
-    chalk.gray(
-      `indicator cache obsolete versions cleaned: coverage=${result.coverageRows}, checkpoints=${result.checkpointRows}`,
-    ),
   );
+
+  bar.tick();
+  await resetIndicatorCache();
+  bar.tick();
+  console.log(chalk.gray('indicator cache tables recreated'));
 };
 
 export const main = async () => {
   const users = await getUsersToClean();
 
-  await cleanObsoleteIndicatorCacheVersions();
+  if (!flags.cache) {
+    await resetIndicatorCacheTables();
+  }
 
   if (users.length === 0) {
     console.log(chalk.yellow('No users found to clean tests.'));

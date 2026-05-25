@@ -178,6 +178,7 @@ const getConnectorCacheKey = (params: {
 }) => [params.userName, params.connectorName].join(':');
 
 const BACKTEST_INTERVAL = '15';
+const BACKTEST_INTERVAL_MS = Number(BACKTEST_INTERVAL) * 60_000;
 
 const deleteMapEntriesByPrefix = <T>(map: Map<string, T>, prefix: string) => {
   for (const key of map.keys()) {
@@ -208,6 +209,36 @@ const splitCandlesForTesting = (
   }
 
   return { prevData, testData };
+};
+
+const getCurrentOpenTimestamp = () =>
+  Math.floor(Date.now() / BACKTEST_INTERVAL_MS) * BACKTEST_INTERVAL_MS;
+
+const filterClosedAlignedCandles = (
+  data: KlineChartData,
+  btcData: KlineChartData,
+): {
+  data: KlineChartData;
+  btcData: KlineChartData;
+} => {
+  const currentOpenTimestamp = getCurrentOpenTimestamp();
+  const closedData: KlineChartData = [];
+  const closedBtcData: KlineChartData = [];
+
+  for (let index = 0; index < data.length; index += 1) {
+    const candle = data[index];
+    const btcCandle = btcData[index];
+    if (!candle || !btcCandle || candle.timestamp >= currentOpenTimestamp) {
+      continue;
+    }
+    closedData.push(candle);
+    closedBtcData.push(btcCandle);
+  }
+
+  return {
+    data: closedData,
+    btcData: closedBtcData,
+  };
 };
 
 const getCachedConnector = async (params: {
@@ -449,8 +480,11 @@ const prepareTestingData = async (params: {
     state.btcCoinbaseKlineCache.set(btcCoinbaseCacheKey, btcCoinbaseDataRaw);
   }
 
-  const { alignedCoinCandles: data, alignedBtcCandles: btcData } =
-    alignSortedCandlesByTimestamp(dataRaw, btcDataRaw);
+  const aligned = alignSortedCandlesByTimestamp(dataRaw, btcDataRaw);
+  const { data, btcData } = filterClosedAlignedCandles(
+    aligned.alignedCoinCandles,
+    aligned.alignedBtcCandles,
+  );
   const { alignedBtcCandles: btcBinanceData } = alignSortedCandlesByTimestamp(
     data,
     btcBinanceDataRaw,

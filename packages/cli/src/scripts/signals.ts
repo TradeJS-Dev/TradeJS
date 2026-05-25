@@ -17,6 +17,7 @@ import {
   update,
 } from '@tradejs/node/cli';
 import { runWithConcurrency } from '@tradejs/core/async';
+import { alignSortedCandlesByTimestamp } from '@tradejs/core/indicators';
 import type {
   TradejsConfigAfterSignalsHook,
   TradejsConfigAfterSignalsHookContext,
@@ -87,6 +88,20 @@ const projectRoot =
 
 const flags = args.parse(process.argv);
 const interval = flags.timeframe.toString() as Interval;
+const intervalMs = Number(interval) * 60_000;
+
+const getCurrentOpenTimestamp = (timestamp: number) =>
+  Number.isFinite(intervalMs) && intervalMs > 0
+    ? Math.floor(timestamp / intervalMs) * intervalMs
+    : timestamp;
+
+const getClosedCandles = <T extends { timestamp: number }>(
+  candles: T[],
+  currentTimestamp: number,
+) => {
+  const currentOpenTimestamp = getCurrentOpenTimestamp(currentTimestamp);
+  return candles.filter((candle) => candle.timestamp < currentOpenTimestamp);
+};
 
 const formatElapsed = (startedAt: number) =>
   `${((Date.now() - startedAt) / 1000).toFixed(1)}s`;
@@ -358,16 +373,21 @@ const findSignals = async (
     }),
   ]);
 
-  // Runtime evaluates only on the last closed candle. The newest cached bar
-  // may still be forming and would otherwise break parity with backtests.
-  cachedData.pop();
-  btcCachedData.pop();
-  const lastCandle = cachedData.pop();
-  const btcLastCandle = btcCachedData.pop();
+  // Runtime evaluates only on the last closed candle. Timestamp filtering keeps
+  // cache-only runs from accidentally stepping one closed bar back when the
+  // newest forming bar is absent from Timescale.
+  const closedData = getClosedCandles(cachedData, currentTimestamp);
+  const closedBtcData = getClosedCandles(btcCachedData, currentTimestamp);
+  const { alignedCoinCandles, alignedBtcCandles } =
+    alignSortedCandlesByTimestamp(closedData, closedBtcData);
+  const lastCandle = alignedCoinCandles.at(-1);
+  const btcLastCandle = alignedBtcCandles.at(-1);
 
   if (!lastCandle || !btcLastCandle) {
     return strategySignals;
   }
+  const previousData = alignedCoinCandles.slice(0, -1);
+  const previousBtcData = alignedBtcCandles.slice(0, -1);
 
   for (const runtimeStrategy of runtimeStrategies) {
     const { strategyName, strategyCreator, strategyConfig } = runtimeStrategy;
@@ -381,8 +401,8 @@ const findSignals = async (
       connectorName,
       connector,
       symbol,
-      data: [...cachedData],
-      btcData: [...btcCachedData],
+      data: [...previousData],
+      btcData: [...previousBtcData],
       btcBinanceData,
       btcCoinbaseData,
       config: {

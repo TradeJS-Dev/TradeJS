@@ -263,6 +263,22 @@ const ensureDerivativesSchema = async () => {
         CREATE INDEX IF NOT EXISTS derivatives_market_symbol_tf_ts_idx
         ON derivatives_market (symbol, interval, ts DESC)
       `);
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS derivatives_backfill_coverage (
+          source text NOT NULL,
+          symbol text NOT NULL,
+          interval text NOT NULL,
+          from_ts timestamptz NOT NULL,
+          to_ts timestamptz NOT NULL,
+          rows_count integer NOT NULL DEFAULT 0,
+          checked_at timestamptz NOT NULL DEFAULT now(),
+          PRIMARY KEY (source, symbol, interval, from_ts, to_ts)
+        )
+      `);
+      await pool.query(`
+        CREATE INDEX IF NOT EXISTS derivatives_backfill_coverage_lookup_idx
+        ON derivatives_backfill_coverage (source, symbol, interval, from_ts, to_ts)
+      `);
       derivativesSchemaReady = true;
     },
   ).finally(() => {
@@ -570,6 +586,133 @@ export async function getDerivativesDataEdgesForSymbols(
   }
 
   return edges;
+}
+
+export async function getDerivativesBackfillCoverage(params: {
+  source: string;
+  symbols: string[];
+  interval: DerivativesInterval;
+  fromMs: number;
+  toMs: number;
+}) {
+  const normalizedSource = String(params.source || '')
+    .trim()
+    .toLowerCase();
+  const normalizedSymbols = [
+    ...new Set(
+      params.symbols
+        .map((symbol) =>
+          String(symbol || '')
+            .trim()
+            .toUpperCase(),
+        )
+        .filter(Boolean),
+    ),
+  ];
+  if (!normalizedSource || !normalizedSymbols.length) {
+    return [] as Array<{
+      symbol: string;
+      interval: DerivativesInterval;
+      fromMs: number;
+      toMs: number;
+      rowsCount: number;
+    }>;
+  }
+
+  await ensureDerivativesSchema();
+  const pool = getPool();
+  const res = await pool.query(
+    `
+      SELECT
+        symbol,
+        interval,
+        extract(epoch from from_ts)*1000 AS from_ms,
+        extract(epoch from to_ts)*1000 AS to_ms,
+        rows_count
+      FROM derivatives_backfill_coverage
+      WHERE source = $1
+        AND symbol = ANY($2)
+        AND interval = $3
+        AND from_ts >= to_timestamp($4/1000.0)
+        AND to_ts <= to_timestamp($5/1000.0)
+    `,
+    [
+      normalizedSource,
+      normalizedSymbols,
+      params.interval,
+      params.fromMs,
+      params.toMs,
+    ],
+  );
+
+  return (
+    res.rows as Array<{
+      symbol: string;
+      interval: DerivativesInterval;
+      from_ms: number | string;
+      to_ms: number | string;
+      rows_count: number | string;
+    }>
+  ).map((row) => ({
+    symbol: String(row.symbol).toUpperCase(),
+    interval: row.interval,
+    fromMs: Number(row.from_ms),
+    toMs: Number(row.to_ms),
+    rowsCount: Number(row.rows_count ?? 0),
+  }));
+}
+
+export async function upsertDerivativesBackfillCoverage(
+  rows: Array<{
+    source: string;
+    symbol: string;
+    interval: DerivativesInterval;
+    fromMs: number;
+    toMs: number;
+    rowsCount: number;
+  }>,
+) {
+  if (!rows.length) return;
+
+  await ensureDerivativesSchema();
+  const pool = getPool();
+  const cols = [
+    'source',
+    'symbol',
+    'interval',
+    'from_ts',
+    'to_ts',
+    'rows_count',
+  ] as const;
+  const valuesSql = rows
+    .map(
+      (_, i) =>
+        `(${cols.map((__, j) => `$${i * cols.length + j + 1}`).join(',')})`,
+    )
+    .join(',');
+  const flat = rows.flatMap((row) => [
+    String(row.source || '')
+      .trim()
+      .toLowerCase(),
+    String(row.symbol || '')
+      .trim()
+      .toUpperCase(),
+    row.interval,
+    new Date(row.fromMs),
+    new Date(row.toMs),
+    Math.max(0, Math.trunc(row.rowsCount)),
+  ]);
+
+  await pool.query(
+    `
+      INSERT INTO derivatives_backfill_coverage (${cols.join(',')})
+      VALUES ${valuesSql}
+      ON CONFLICT (source, symbol, interval, from_ts, to_ts) DO UPDATE SET
+        rows_count = EXCLUDED.rows_count,
+        checked_at = now()
+    `,
+    flat,
+  );
 }
 
 export async function getDerivativesWindow(params: {
@@ -1325,6 +1468,32 @@ export async function deleteAllIndicatorCacheObsoleteVersions(params: {
     coverageRows,
     checkpointRows,
   };
+}
+
+export async function resetIndicatorCacheTables() {
+  const pool = getPool();
+
+  await withSchemaLock(INDICATOR_CACHE_SCHEMA_LOCK_KEY, async () => {
+    await withSchemaLock(
+      INDICATOR_CACHE_CHECKPOINT_SCHEMA_LOCK_KEY,
+      async () => {
+        indicatorCacheSchemaReady = false;
+        indicatorCacheCheckpointSchemaReady = false;
+        indicatorCacheSchemaReadyPromise = null;
+        indicatorCacheCheckpointSchemaReadyPromise = null;
+
+        await pool.query(
+          'DROP TABLE IF EXISTS indicator_cache_checkpoint CASCADE',
+        );
+        await pool.query('DROP TABLE IF EXISTS indicator_cache CASCADE');
+      },
+    );
+  });
+
+  await Promise.all([
+    ensureIndicatorCacheSchema(),
+    ensureIndicatorCacheCheckpointSchema(),
+  ]);
 }
 
 export async function getIndicatorCacheCoverage(params: {

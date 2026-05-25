@@ -193,6 +193,267 @@ export const createSerializableAtr = (
   };
 };
 
+export type SerializableRsiState = {
+  period: number;
+  previousValue: number | null;
+  gains: number[];
+  losses: number[];
+  avgGain: number;
+  avgLoss: number;
+  initialized: boolean;
+};
+
+export const createSerializableRsi = (
+  period: number,
+  state?: Partial<SerializableRsiState>,
+) => {
+  const safePeriod = Math.max(1, Math.floor(period));
+  let previousValue =
+    typeof state?.previousValue === 'number' &&
+    Number.isFinite(state.previousValue)
+      ? state.previousValue
+      : null;
+  const gains = [...(state?.gains ?? [])];
+  const losses = [...(state?.losses ?? [])];
+  let avgGain =
+    typeof state?.avgGain === 'number' && Number.isFinite(state.avgGain)
+      ? state.avgGain
+      : 0;
+  let avgLoss =
+    typeof state?.avgLoss === 'number' && Number.isFinite(state.avgLoss)
+      ? state.avgLoss
+      : 0;
+  let initialized = Boolean(state?.initialized ?? false);
+
+  const calculateValue = () => {
+    const rs = avgLoss === 0 ? 100 : avgGain / avgLoss;
+    return parseFloat((100 - 100 / (1 + rs)).toFixed(2));
+  };
+
+  return {
+    nextValue: (value: number) => {
+      if (previousValue == null) {
+        previousValue = value;
+        return undefined;
+      }
+
+      const difference = value - previousValue;
+      previousValue = value;
+      const gain = difference > 0 ? difference : 0;
+      const loss = difference < 0 ? Math.abs(difference) : 0;
+
+      if (!initialized) {
+        gains.push(gain);
+        losses.push(loss);
+        if (gains.length < safePeriod) {
+          return undefined;
+        }
+
+        avgGain = gains.reduce((sum, item) => sum + item, 0) / safePeriod;
+        avgLoss = losses.reduce((sum, item) => sum + item, 0) / safePeriod;
+        initialized = true;
+        return calculateValue();
+      }
+
+      avgGain = (avgGain * (safePeriod - 1) + gain) / safePeriod;
+      avgLoss = (avgLoss * (safePeriod - 1) + loss) / safePeriod;
+      return calculateValue();
+    },
+    snapshot: (): SerializableRsiState => ({
+      period: safePeriod,
+      previousValue,
+      gains: initialized ? [] : [...gains],
+      losses: initialized ? [] : [...losses],
+      avgGain,
+      avgLoss,
+      initialized,
+    }),
+  };
+};
+
+export type SerializableAdxOutput = {
+  adx: number;
+  pdi: number;
+  mdi: number;
+};
+
+export type SerializableAdxState = {
+  period: number;
+  smoothingPeriod: number;
+  previousHigh: number | null;
+  previousLow: number | null;
+  previousClose: number | null;
+  plusDMValues: number[];
+  minusDMValues: number[];
+  trValues: number[];
+  smoothedPlusDM: number | null;
+  smoothedMinusDM: number | null;
+  smoothedTR: number | null;
+  smaSum: number;
+  smaCount: number;
+  adxEMA: number | null;
+};
+
+export const createSerializableAdx = (
+  period: number,
+  state?: Partial<SerializableAdxState>,
+  smoothingPeriod = period,
+) => {
+  const safePeriod = Math.max(1, Math.floor(period));
+  const safeSmoothingPeriod = Math.max(1, Math.floor(smoothingPeriod));
+  const exponent = 1 / safeSmoothingPeriod;
+  let previousHigh =
+    typeof state?.previousHigh === 'number' &&
+    Number.isFinite(state.previousHigh)
+      ? state.previousHigh
+      : null;
+  let previousLow =
+    typeof state?.previousLow === 'number' && Number.isFinite(state.previousLow)
+      ? state.previousLow
+      : null;
+  let previousClose =
+    typeof state?.previousClose === 'number' &&
+    Number.isFinite(state.previousClose)
+      ? state.previousClose
+      : null;
+  const plusDMValues = [...(state?.plusDMValues ?? [])];
+  const minusDMValues = [...(state?.minusDMValues ?? [])];
+  const trValues = [...(state?.trValues ?? [])];
+  let smoothedPlusDM =
+    typeof state?.smoothedPlusDM === 'number' &&
+    Number.isFinite(state.smoothedPlusDM)
+      ? state.smoothedPlusDM
+      : null;
+  let smoothedMinusDM =
+    typeof state?.smoothedMinusDM === 'number' &&
+    Number.isFinite(state.smoothedMinusDM)
+      ? state.smoothedMinusDM
+      : null;
+  let smoothedTR =
+    typeof state?.smoothedTR === 'number' && Number.isFinite(state.smoothedTR)
+      ? state.smoothedTR
+      : null;
+  let smaSum =
+    typeof state?.smaSum === 'number' && Number.isFinite(state.smaSum)
+      ? state.smaSum
+      : 0;
+  let smaCount =
+    typeof state?.smaCount === 'number' && Number.isFinite(state.smaCount)
+      ? state.smaCount
+      : 0;
+  let adxEMA =
+    typeof state?.adxEMA === 'number' && Number.isFinite(state.adxEMA)
+      ? state.adxEMA
+      : null;
+
+  return {
+    nextValue: ({
+      high,
+      low,
+      close,
+    }: {
+      high: number;
+      low: number;
+      close: number;
+    }): SerializableAdxOutput | undefined => {
+      if (
+        previousHigh == null ||
+        previousLow == null ||
+        previousClose == null
+      ) {
+        previousHigh = high;
+        previousLow = low;
+        previousClose = close;
+        return undefined;
+      }
+
+      const upMove = high - previousHigh;
+      const downMove = previousLow - low;
+      const plusDMValue = upMove > downMove && upMove > 0 ? upMove : 0;
+      const minusDMValue = downMove > upMove && downMove > 0 ? downMove : 0;
+      const highLow = high - low;
+      const highPrevClose = Math.abs(high - previousClose);
+      const lowPrevClose = Math.abs(low - previousClose);
+      const trValue = Math.max(highLow, highPrevClose, lowPrevClose);
+
+      previousHigh = high;
+      previousLow = low;
+      previousClose = close;
+
+      if (
+        smoothedPlusDM == null ||
+        smoothedMinusDM == null ||
+        smoothedTR == null
+      ) {
+        plusDMValues.push(plusDMValue);
+        minusDMValues.push(minusDMValue);
+        trValues.push(trValue);
+        if (plusDMValues.length < safePeriod) {
+          return undefined;
+        }
+
+        smoothedPlusDM = plusDMValues
+          .slice(0, safePeriod)
+          .reduce((sum, item) => sum + item, 0);
+        smoothedMinusDM = minusDMValues
+          .slice(0, safePeriod)
+          .reduce((sum, item) => sum + item, 0);
+        smoothedTR = trValues
+          .slice(0, safePeriod)
+          .reduce((sum, item) => sum + item, 0);
+      } else {
+        smoothedPlusDM =
+          smoothedPlusDM - smoothedPlusDM / safePeriod + plusDMValue;
+        smoothedMinusDM =
+          smoothedMinusDM - smoothedMinusDM / safePeriod + minusDMValue;
+        smoothedTR = smoothedTR - smoothedTR / safePeriod + trValue;
+      }
+
+      const plusDI = (smoothedPlusDM * 100) / smoothedTR;
+      const minusDI = (smoothedMinusDM * 100) / smoothedTR;
+      const diDiff = Math.abs(plusDI - minusDI);
+      const diSum = plusDI + minusDI;
+      const dx = diSum !== 0 ? (diDiff / diSum) * 100 : 0;
+
+      if (adxEMA == null) {
+        smaSum += dx;
+        smaCount += 1;
+        if (smaCount < safeSmoothingPeriod) {
+          return undefined;
+        }
+
+        adxEMA = smaSum / safeSmoothingPeriod;
+      } else {
+        adxEMA = (dx - adxEMA) * exponent + adxEMA;
+      }
+
+      return {
+        adx: adxEMA,
+        pdi: plusDI,
+        mdi: minusDI,
+      };
+    },
+    snapshot: (): SerializableAdxState => ({
+      period: safePeriod,
+      smoothingPeriod: safeSmoothingPeriod,
+      previousHigh,
+      previousLow,
+      previousClose,
+      plusDMValues:
+        smoothedPlusDM == null ? plusDMValues.slice(0, safePeriod) : [],
+      minusDMValues:
+        smoothedMinusDM == null ? minusDMValues.slice(0, safePeriod) : [],
+      trValues: smoothedTR == null ? trValues.slice(0, safePeriod) : [],
+      smoothedPlusDM,
+      smoothedMinusDM,
+      smoothedTR,
+      smaSum,
+      smaCount,
+      adxEMA,
+    }),
+  };
+};
+
 export type SerializableSdState = {
   period: number;
   values: number[];

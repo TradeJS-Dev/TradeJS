@@ -9,7 +9,11 @@ import { ML_BASE_CANDLES_WINDOW, CORRELATION_WINDOW } from '../constants';
 import { cloneArrayValues } from './array';
 import { calculateCoinBtcCorrelation } from './correlation';
 import {
+  BASE_CONTEXT_MA_LAYER_PERIODS,
   buildBaseContextSnapshot,
+  type BaseContextAdaptiveChannelInput,
+  type BaseContextContextMaInput,
+  type BaseContextMaLayerInput,
   type BreakoutRuntimeState,
   type CloseStreakRuntimeState,
 } from './indicatorBaseContext';
@@ -42,15 +46,21 @@ import {
 import { getRegisteredIndicatorEntries } from './indicatorPlugins';
 import {
   createSerializableAtr,
+  createSerializableAdx,
   createSerializableBollinger,
+  createSerializableEma,
   createSerializableMacd,
   createSerializableObv,
+  createSerializableRsi,
+  SerializableAdxState,
+  SerializableAdxOutput,
   createSerializableSma,
   SerializableAtrState,
   SerializableBollingerState,
   SerializableEmaState,
   SerializableMacdState,
   SerializableObvState,
+  SerializableRsiState,
   SerializableSdState,
   SerializableSmaState,
 } from './serializableIndicators';
@@ -98,6 +108,17 @@ const resolveIndicatorPeriods = (
 
 const ONE_HOUR_MS = 3_600_000;
 const BASE_CONTEXT_RAW_HISTORY_WINDOW = 200;
+const BASE_CONTEXT_CONTEXT_MA_PERIOD = 34;
+const BASE_CONTEXT_ADAPTIVE_CHANNEL_PERIOD = 20;
+
+const baseContextEmaKey = (period: number) => String(period);
+
+const deriveSmaValue = (
+  state: SerializableSmaState | undefined,
+): number | null =>
+  state && state.values.length >= state.period
+    ? state.sum / state.period
+    : null;
 
 type TrendlineIndicatorHistoryPush = (
   key: string,
@@ -115,6 +136,12 @@ type IndicatorRuntimeState = {
   obv: SerializableObvState;
   smaObv: SerializableSmaState;
   macd: SerializableMacdState;
+  rsi: SerializableRsiState;
+  adx: SerializableAdxState;
+  baseContextHl2Ema: Record<string, SerializableEmaState>;
+  baseContextCloseEma34: SerializableEmaState;
+  baseContextTypicalSma20: SerializableSmaState;
+  baseContextAdaptivePreviousCenterline: number | null;
   btcMaFast: SerializableSmaState;
   btcMaSlow: SerializableSmaState;
   spreadSmoother: SpreadSmootherState;
@@ -500,6 +527,38 @@ export const createIndicators = (
     },
     restoredState?.indicatorState.macd,
   );
+  const rsiIndicator = createSerializableRsi(
+    14,
+    restoredState?.indicatorState.rsi,
+  );
+  const adxIndicator = createSerializableAdx(
+    14,
+    restoredState?.indicatorState.adx,
+  );
+  const restoredBaseContextHl2Ema =
+    restoredState?.indicatorState.baseContextHl2Ema ?? {};
+  const baseContextHl2EmaPeriods = [
+    ...new Set(
+      BASE_CONTEXT_MA_LAYER_PERIODS.flatMap(([fast, slow]) => [fast, slow]),
+    ),
+  ];
+  const baseContextHl2Ema = Object.fromEntries(
+    baseContextHl2EmaPeriods.map((period) => [
+      baseContextEmaKey(period),
+      createSerializableEma(
+        period,
+        restoredBaseContextHl2Ema[baseContextEmaKey(period)],
+      ),
+    ]),
+  );
+  const baseContextCloseEma34 = createSerializableEma(
+    BASE_CONTEXT_CONTEXT_MA_PERIOD,
+    restoredState?.indicatorState.baseContextCloseEma34,
+  );
+  const baseContextTypicalSma20 = createSerializableSma(
+    BASE_CONTEXT_ADAPTIVE_CHANNEL_PERIOD,
+    restoredState?.indicatorState.baseContextTypicalSma20,
+  );
   const btcMaFast = createSerializableSma(
     indicatorPeriods.maFast,
     restoredState?.indicatorState.btcMaFast,
@@ -531,6 +590,22 @@ export const createIndicators = (
   const latestIndicatorValues: Record<string, number> = {
     ...(restoredState?.latestIndicatorValues ?? {}),
   };
+  let latestRsiValue: number | null = null;
+  let latestAdxValue: SerializableAdxOutput | null = null;
+  const latestBaseContextHl2EmaValues: Record<string, number | null> =
+    Object.fromEntries(
+      baseContextHl2EmaPeriods.map((period) => [
+        baseContextEmaKey(period),
+        restoredBaseContextHl2Ema[baseContextEmaKey(period)]?.current ?? null,
+      ]),
+    );
+  let latestBaseContextCloseEma34 =
+    restoredState?.indicatorState.baseContextCloseEma34?.current ?? null;
+  let latestBaseContextAdaptiveCenterline = deriveSmaValue(
+    restoredState?.indicatorState.baseContextTypicalSma20,
+  );
+  let latestBaseContextAdaptivePreviousCenterline =
+    restoredState?.indicatorState.baseContextAdaptivePreviousCenterline ?? null;
   const closeStreaks: CloseStreakRuntimeState = {
     up: restoredState?.closeStreaks?.up ?? 0,
     down: restoredState?.closeStreaks?.down ?? 0,
@@ -569,6 +644,26 @@ export const createIndicators = (
   btc1hCache.restore(restoredState?.btcResampledCandles.h1 ?? []);
   btc4hCache.restore(restoredState?.btcResampledCandles.h4 ?? []);
   btc1dCache.restore(restoredState?.btcResampledCandles.d1 ?? []);
+
+  const buildBaseContextMaLayers = (): BaseContextMaLayerInput[] =>
+    BASE_CONTEXT_MA_LAYER_PERIODS.map(([fastPeriod, slowPeriod]) => ({
+      fastPeriod,
+      slowPeriod,
+      fast:
+        latestBaseContextHl2EmaValues[baseContextEmaKey(fastPeriod)] ?? null,
+      slow:
+        latestBaseContextHl2EmaValues[baseContextEmaKey(slowPeriod)] ?? null,
+    }));
+
+  const buildBaseContextContextMa = (): BaseContextContextMaInput => ({
+    baseline: latestBaseContextCloseEma34,
+  });
+
+  const buildBaseContextAdaptiveChannel =
+    (): BaseContextAdaptiveChannelInput => ({
+      centerline: latestBaseContextAdaptiveCenterline,
+      previousCenterline: latestBaseContextAdaptivePreviousCenterline,
+    });
 
   const getBaseHistoryResult = (): Record<string, number[]> => {
     if (isBaseHistoryDirty || !cachedBaseHistoryResult) {
@@ -893,6 +988,33 @@ export const createIndicators = (
     const obvValue = obv.nextValue(candle);
     const smaObvValue = obvValue == null ? null : smaObv.nextValue(obvValue);
     const macdValue = macd.nextValue(candle.close);
+    const rsiValue = rsiIndicator.nextValue(candle.close);
+    const adxValue = adxIndicator.nextValue(candle);
+    if (typeof rsiValue === 'number') {
+      latestRsiValue = rsiValue;
+    }
+    if (adxValue) {
+      latestAdxValue = adxValue;
+    }
+    const hl2Value = (candle.high + candle.low) / 2;
+    for (const period of baseContextHl2EmaPeriods) {
+      const key = baseContextEmaKey(period);
+      const emaValue = baseContextHl2Ema[key]?.nextValue(hl2Value);
+      latestBaseContextHl2EmaValues[key] =
+        typeof emaValue === 'number' ? emaValue : null;
+    }
+    const closeEma34Value = baseContextCloseEma34.nextValue(candle.close);
+    latestBaseContextCloseEma34 =
+      typeof closeEma34Value === 'number' ? closeEma34Value : null;
+    const previousAdaptiveCenterline = latestBaseContextAdaptiveCenterline;
+    const typicalPrice = (candle.high + candle.low + candle.close) / 3;
+    const adaptiveCenterline = baseContextTypicalSma20.nextValue(typicalPrice);
+    latestBaseContextAdaptiveCenterline =
+      typeof adaptiveCenterline === 'number' ? adaptiveCenterline : null;
+    latestBaseContextAdaptivePreviousCenterline =
+      latestBaseContextAdaptiveCenterline == null
+        ? null
+        : previousAdaptiveCenterline;
 
     const currentTimestamp = candle.timestamp;
     const len = candlesHistory.length;
@@ -1197,6 +1319,11 @@ export const createIndicators = (
             indicatorPeriods,
             closeStreaks,
             breakoutState,
+            rsiValue,
+            adxValue,
+            maLayers: buildBaseContextMaLayers(),
+            contextMa: buildBaseContextContextMa(),
+            adaptiveChannel: buildBaseContextAdaptiveChannel(),
           });
         }
 
@@ -1222,6 +1349,13 @@ export const createIndicators = (
     const capturedBtc1dLength = btc1dCache.size();
     const capturedCloseStreaks = { ...closeStreaks };
     const capturedBreakoutState = { ...breakoutState };
+    const capturedRsiValue = latestRsiValue;
+    const capturedAdxValue = latestAdxValue ? { ...latestAdxValue } : null;
+    const capturedMaLayers = buildBaseContextMaLayers().map((layer) => ({
+      ...layer,
+    }));
+    const capturedContextMa = { ...buildBaseContextContextMa() };
+    const capturedAdaptiveChannel = { ...buildBaseContextAdaptiveChannel() };
 
     let cachedMlCandleSnapshot: MlCandleIndicatorsSnapshot | null = null;
     let cachedCoinTimeframeSnapshot: Record<string, number[]> | null = null;
@@ -1316,6 +1450,11 @@ export const createIndicators = (
             indicatorPeriods,
             closeStreaks: capturedCloseStreaks,
             breakoutState: capturedBreakoutState,
+            rsiValue: capturedRsiValue,
+            adxValue: capturedAdxValue,
+            maLayers: capturedMaLayers,
+            contextMa: capturedContextMa,
+            adaptiveChannel: capturedAdaptiveChannel,
           });
 
           return cachedBaseContextSnapshot;
@@ -1383,6 +1522,18 @@ export const createIndicators = (
       obv: obv.snapshot(),
       smaObv: smaObv.snapshot(),
       macd: macd.snapshot(),
+      rsi: rsiIndicator.snapshot(),
+      adx: adxIndicator.snapshot(),
+      baseContextHl2Ema: Object.fromEntries(
+        Object.entries(baseContextHl2Ema).map(([key, ema]) => [
+          key,
+          ema.snapshot(),
+        ]),
+      ),
+      baseContextCloseEma34: baseContextCloseEma34.snapshot(),
+      baseContextTypicalSma20: baseContextTypicalSma20.snapshot(),
+      baseContextAdaptivePreviousCenterline:
+        latestBaseContextAdaptivePreviousCenterline,
       btcMaFast: btcMaFast.snapshot(),
       btcMaSlow: btcMaSlow.snapshot(),
       spreadSmoother: spreadSmoother.snapshot(),
@@ -1453,6 +1604,18 @@ export const createIndicators = (
       obv: obv.snapshot(),
       smaObv: smaObv.snapshot(),
       macd: macd.snapshot(),
+      rsi: rsiIndicator.snapshot(),
+      adx: adxIndicator.snapshot(),
+      baseContextHl2Ema: Object.fromEntries(
+        Object.entries(baseContextHl2Ema).map(([key, ema]) => [
+          key,
+          ema.snapshot(),
+        ]),
+      ),
+      baseContextCloseEma34: baseContextCloseEma34.snapshot(),
+      baseContextTypicalSma20: baseContextTypicalSma20.snapshot(),
+      baseContextAdaptivePreviousCenterline:
+        latestBaseContextAdaptivePreviousCenterline,
       btcMaFast: btcMaFast.snapshot(),
       btcMaSlow: btcMaSlow.snapshot(),
       spreadSmoother: spreadSmoother.snapshot(),

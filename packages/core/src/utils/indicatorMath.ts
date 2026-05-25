@@ -221,8 +221,18 @@ export const calculateLineSlope = (
   values: Array<number | null | undefined>,
   lookback = 5,
 ) => {
-  const finite = values.filter(isFiniteNumber);
-  const window = finite.slice(-lookback);
+  const window: number[] = [];
+  for (let index = values.length - 1; index >= 0; index -= 1) {
+    const value = values[index];
+    if (isFiniteNumber(value)) {
+      window.push(value);
+      if (window.length >= lookback) {
+        break;
+      }
+    }
+  }
+
+  window.reverse();
   if (window.length < 2) return null;
 
   const first = window[0];
@@ -254,9 +264,21 @@ export const averageLastN = (
   period: number,
 ): number | null => {
   const safePeriod = Math.max(1, Math.floor(period));
-  const window = values
-    .filter((value) => Number.isFinite(value))
-    .slice(-safePeriod);
-  if (window.length < safePeriod) return null;
-  return window.reduce((sum, value) => sum + value, 0) / window.length;
+  let sum = 0;
+  let count = 0;
+
+  for (let index = values.length - 1; index >= 0; index -= 1) {
+    const value = values[index];
+    if (!Number.isFinite(value)) {
+      continue;
+    }
+
+    sum += value;
+    count += 1;
+    if (count >= safePeriod) {
+      break;
+    }
+  }
+
+  return count < safePeriod ? null : sum / count;
 };

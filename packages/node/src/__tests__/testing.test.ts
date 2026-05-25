@@ -171,6 +171,12 @@ const candle = (timestamp: number) => ({
   dt: String(timestamp),
 });
 
+const INTERVAL_MS = 15 * 60_000;
+const CURRENT_OPEN_TS = 1_700_000_100_000;
+const CURRENT_TS = CURRENT_OPEN_TS + 60_000;
+const CLOSED_1_TS = CURRENT_OPEN_TS - 2 * INTERVAL_MS;
+const CLOSED_2_TS = CURRENT_OPEN_TS - INTERVAL_MS;
+
 const createTest = (overrides: Partial<Test> = {}): Test =>
   ({
     userName: 'alice',
@@ -246,6 +252,40 @@ describe('testing backtest flow', () => {
     expect(mockByBitConnector.kline).toHaveBeenCalledTimes(2);
     expect(mockTestConnector.checkSl).toHaveBeenCalledTimes(2);
     expect(mockTestConnector.checkTp).toHaveBeenCalledTimes(2);
+  });
+
+  it('excludes the current forming candle from backtest replay data', async () => {
+    const nowSpy = jest.spyOn(Date, 'now').mockReturnValue(CURRENT_TS);
+    const data = [
+      candle(CLOSED_1_TS - INTERVAL_MS),
+      candle(CLOSED_1_TS),
+      candle(CLOSED_2_TS),
+      candle(CURRENT_OPEN_TS),
+    ];
+    mockByBitConnector.kline.mockResolvedValue(data);
+    mockBinanceConnector.kline.mockResolvedValue(data);
+    mockCoinbaseConnector.kline.mockResolvedValue(data);
+    mockStrategy.mockResolvedValue('HOLD');
+
+    try {
+      await testing(
+        createTest({
+          options: {
+            start: CLOSED_1_TS,
+            end: CURRENT_TS,
+          },
+        }),
+      );
+    } finally {
+      nowSpy.mockRestore();
+    }
+
+    expect(mockTestConnector.checkSl).toHaveBeenCalledTimes(2);
+    expect(mockTestConnector.checkTp).toHaveBeenCalledTimes(2);
+    expect(mockStrategy).toHaveBeenLastCalledWith(
+      expect.objectContaining({ timestamp: CLOSED_2_TS }),
+      expect.objectContaining({ timestamp: CLOSED_2_TS }),
+    );
   });
 
   it('loads kline data from the warmup window before test start', async () => {

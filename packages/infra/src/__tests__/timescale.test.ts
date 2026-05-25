@@ -529,6 +529,75 @@ describe('timescale candle helpers', () => {
     );
   });
 
+  it('stores and reads derivatives backfill coverage markers', async () => {
+    const query = jest.fn(async (sql: string) => {
+      if (sql.includes('FROM derivatives_backfill_coverage')) {
+        return {
+          rows: [
+            {
+              symbol: 'BTCUSDT',
+              interval: '1h',
+              from_ms: '1000',
+              to_ms: '2000',
+              rows_count: '0',
+            },
+          ],
+        };
+      }
+      return { rows: [] };
+    });
+
+    jest.doMock('pg', () => ({
+      Pool: jest.fn().mockImplementation(() => ({
+        connect: jest.fn(),
+        query,
+      })),
+    }));
+
+    const {
+      getDerivativesBackfillCoverage,
+      upsertDerivativesBackfillCoverage,
+    } = await import('@tradejs/infra/timescale');
+
+    await upsertDerivativesBackfillCoverage([
+      {
+        source: 'Coinalyze',
+        symbol: 'btcusdt',
+        interval: '1h',
+        fromMs: 1_000,
+        toMs: 2_000,
+        rowsCount: 0,
+      },
+    ]);
+
+    await expect(
+      getDerivativesBackfillCoverage({
+        source: 'coinalyze',
+        symbols: ['btcusdt'],
+        interval: '1h',
+        fromMs: 1_000,
+        toMs: 2_000,
+      }),
+    ).resolves.toEqual([
+      {
+        symbol: 'BTCUSDT',
+        interval: '1h',
+        fromMs: 1_000,
+        toMs: 2_000,
+        rowsCount: 0,
+      },
+    ]);
+
+    expect(query).toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO derivatives_backfill_coverage'),
+      ['coinalyze', 'BTCUSDT', '1h', new Date(1_000), new Date(2_000), 0],
+    );
+    expect(query).toHaveBeenCalledWith(
+      expect.stringContaining('FROM derivatives_backfill_coverage'),
+      ['coinalyze', ['BTCUSDT'], '1h', 1_000, 2_000],
+    );
+  });
+
   it('deletes all obsolete indicator cache versions by keep version', async () => {
     const progress = jest.fn();
     const query = jest.fn(async (sql: string) => {
@@ -600,6 +669,40 @@ describe('timescale candle helpers', () => {
         deletedRows: 3,
         totalRows: 3,
       }),
+    );
+  });
+
+  it('resets indicator cache tables by dropping and recreating hypertables', async () => {
+    const query = jest.fn(async () => ({ rows: [] }));
+
+    jest.doMock('pg', () => ({
+      Pool: jest.fn().mockImplementation(() => ({
+        connect: jest.fn(),
+        query,
+      })),
+    }));
+
+    const { resetIndicatorCacheTables } = await import(
+      '@tradejs/infra/timescale'
+    );
+
+    await expect(resetIndicatorCacheTables()).resolves.toBeUndefined();
+
+    expect(query).toHaveBeenCalledWith('SELECT pg_advisory_lock($1)', [610003]);
+    expect(query).toHaveBeenCalledWith('SELECT pg_advisory_lock($1)', [610004]);
+    expect(query).toHaveBeenCalledWith(
+      'DROP TABLE IF EXISTS indicator_cache_checkpoint CASCADE',
+    );
+    expect(query).toHaveBeenCalledWith(
+      'DROP TABLE IF EXISTS indicator_cache CASCADE',
+    );
+    expect(query).toHaveBeenCalledWith(
+      expect.stringContaining('CREATE TABLE IF NOT EXISTS indicator_cache'),
+    );
+    expect(query).toHaveBeenCalledWith(
+      expect.stringContaining(
+        'CREATE TABLE IF NOT EXISTS indicator_cache_checkpoint',
+      ),
     );
   });
 });

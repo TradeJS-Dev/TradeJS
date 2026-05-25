@@ -1,4 +1,5 @@
 import { Candle } from '@tradejs/types';
+import { adx, rsi } from 'fast-technical-indicators';
 import {
   buildIndicatorCacheSnapshots,
   createIndicators,
@@ -7,6 +8,10 @@ import {
 import { buildBaseContextMtfSnapshot } from '../indicatorBaseContext';
 import { CORRELATION_WINDOW, ML_BASE_CANDLES_WINDOW } from '../../constants';
 import { calculateCoinBtcCorrelation } from '../correlation';
+import {
+  averageLastN as indicatorAverageLastN,
+  calculateLineSlope,
+} from '../indicatorMath';
 import { buildDefaultIndicatorPeriods } from '../strategyHelpers/indicators';
 
 const INTERVAL_15M_MS = 15 * 60_000;
@@ -39,7 +44,175 @@ const percentChange = (current: number, previous: number): number | null => {
   return ((current - previous) / previous) * 100;
 };
 
+const safeDivide = (
+  numerator: number | null | undefined,
+  denominator: number | null | undefined,
+) =>
+  numerator == null ||
+  denominator == null ||
+  !Number.isFinite(numerator) ||
+  !Number.isFinite(denominator) ||
+  denominator === 0
+    ? null
+    : numerator / denominator;
+
+const normalizeContextNumber = (value: number | null): number | null =>
+  value == null || !Number.isFinite(value) ? value : Number(value.toFixed(12));
+
+const averageLastN = (values: number[], period: number): number | null => {
+  if (values.length < period) {
+    return null;
+  }
+
+  const window = values.slice(-period);
+  return window.reduce((sum, value) => sum + value, 0) / period;
+};
+
+const calculateFullEma = (values: number[], period: number): number | null => {
+  if (values.length < period) {
+    return null;
+  }
+
+  const seed =
+    values.slice(0, period).reduce((sum, value) => sum + value, 0) / period;
+  const multiplier = 2 / (period + 1);
+  return normalizeContextNumber(
+    values
+      .slice(period)
+      .reduce(
+        (emaValue, value) => value * multiplier + emaValue * (1 - multiplier),
+        seed,
+      ),
+  );
+};
+
+const calculateTrueRange = (current: Candle, previous: Candle | null) =>
+  previous == null
+    ? current.high - current.low
+    : Math.max(
+        current.high - current.low,
+        Math.abs(current.high - previous.close),
+        Math.abs(current.low - previous.close),
+      );
+
+const calculateFullPercentRank = (
+  values: Array<number | null | undefined>,
+  current: number | null,
+  lookback: number,
+) => {
+  const finite = values.filter(
+    (value): value is number =>
+      typeof value === 'number' && Number.isFinite(value),
+  );
+  const window = finite.slice(-lookback);
+  if (current == null || window.length < 3) {
+    return null;
+  }
+
+  return (
+    (window.filter((value) => value <= current).length / window.length) * 100
+  );
+};
+
+const calculateFullRealizedVolatility = (closes: number[], period = 20) => {
+  const window = closes.slice(-(period + 1));
+  if (window.length < period + 1) {
+    return null;
+  }
+
+  const returns = window.slice(1).map((close, index) => {
+    const previous = window[index];
+    return previous > 0 ? Math.log(close / previous) : 0;
+  });
+  const mean = returns.reduce((sum, value) => sum + value, 0) / returns.length;
+  const variance =
+    returns.reduce((sum, value) => sum + (value - mean) ** 2, 0) /
+    returns.length;
+
+  return Math.sqrt(variance);
+};
+
+const calculateFullRealizedVolatilitySeries = (closes: number[], period = 20) =>
+  closes.map((_, index) =>
+    calculateFullRealizedVolatility(closes.slice(0, index + 1), period),
+  );
+
+const calculateFullBbWidthPctSeries = (
+  closes: number[],
+  period = 20,
+  stdMultiplier = 2,
+) =>
+  closes.map((_, index) => {
+    const window = closes.slice(Math.max(0, index + 1 - period), index + 1);
+    if (window.length < period) {
+      return null;
+    }
+
+    const mean = window.reduce((sum, value) => sum + value, 0) / window.length;
+    const variance =
+      window.reduce((sum, value) => sum + (value - mean) ** 2, 0) /
+      window.length;
+    const std = Math.sqrt(variance);
+
+    return mean === 0 ? null : ((std * stdMultiplier * 2) / mean) * 100;
+  });
+
+const calculateFullAtrPctSeries = (candles: Candle[], period = 14) =>
+  candles.map((_, index) => {
+    const window = candles.slice(Math.max(0, index + 1 - period), index + 1);
+    if (window.length < period) {
+      return null;
+    }
+
+    const atrValue =
+      window.reduce((sum, item, windowIndex) => {
+        const absoluteIndex = index + 1 - window.length + windowIndex;
+        const previous = absoluteIndex > 0 ? candles[absoluteIndex - 1] : null;
+        return sum + calculateTrueRange(item, previous);
+      }, 0) / period;
+
+    return safeDivide(atrValue, candles[index].close);
+  });
+
+const calculateFullRangeExpansionSeries = (candles: Candle[]) =>
+  candles.map((item, index) => {
+    const previous = index > 0 ? candles[index - 1] : null;
+    return safeDivide(item.high - item.low, calculateTrueRange(item, previous));
+  });
+
+const expectNullableClose = (
+  actual: number | null | undefined,
+  expected: number | null,
+) => {
+  if (expected == null) {
+    expect(actual).toBeNull();
+    return;
+  }
+
+  expect(actual).toBeCloseTo(expected, 12);
+};
+
 describe('utils indicators', () => {
+  it('calculates line slope from the last finite values only', () => {
+    expect(
+      calculateLineSlope(
+        [1, null, 2, Number.NaN, undefined, 4, Number.POSITIVE_INFINITY, 7],
+        3,
+      ),
+    ).toBeCloseTo(2.5, 12);
+    expect(calculateLineSlope([null, Number.NaN, 5], 3)).toBeNull();
+  });
+
+  it('averages the last finite values without requiring contiguous data', () => {
+    expect(
+      indicatorAverageLastN(
+        [1, Number.NaN, 3, Number.POSITIVE_INFINITY, 5, 7],
+        3,
+      ),
+    ).toBe(5);
+    expect(indicatorAverageLastN([1, Number.NaN], 2)).toBeNull();
+  });
+
   it('ignores undefined strategy period overrides and preserves defaults', () => {
     const periods = buildDefaultIndicatorPeriods({
       MA_FAST: undefined,
@@ -368,6 +541,190 @@ describe('utils indicators', () => {
     expect(context?.regime.trend.adx?.strength).toBe('developing');
   });
 
+  it('matches rolling baseContext RSI and ADX with fast-technical-indicators batch calculations', () => {
+    const indicators = createIndicators([], [], {
+      periods: {
+        maFast: 5,
+        maMedium: 10,
+        maSlow: 20,
+        atr: 14,
+        atrPctShort: 7,
+        atrPctLong: 30,
+        bb: 20,
+        bbStd: 2,
+        obvSma: 10,
+        macdFast: 12,
+        macdSlow: 26,
+        macdSignal: 9,
+      },
+    });
+    const candles: Candle[] = [];
+
+    for (let i = 0; i < 280; i += 1) {
+      const close =
+        120 +
+        Math.sin(i / 6) * 8 +
+        Math.cos(i / 11) * 3 +
+        i * 0.04 +
+        ((i % 9) - 4) * 0.21;
+      const candle = makeCandle(
+        i * INTERVAL_15M_MS,
+        close,
+        close + 1.4 + (i % 7) * 0.11,
+        close - 1.2 - (i % 6) * 0.09,
+        1_000 + (i % 23) * 17,
+      );
+      candles.push(candle);
+      indicators.next(candle);
+    }
+
+    const context = indicators.snapshot().baseContext;
+    const closes = candles.map((item) => item.close);
+    const expectedRsi = rsi({ values: closes, period: 14 }).at(-1);
+    const expectedAdx = adx({
+      close: closes,
+      high: candles.map((item) => item.high),
+      low: candles.map((item) => item.low),
+      period: 14,
+    }).at(-1);
+
+    expect(expectedRsi).toBeDefined();
+    expect(expectedAdx).toBeDefined();
+    expect(context?.regime.momentum.rsi).toBeCloseTo(expectedRsi ?? 0, 12);
+    expect(context?.regime.trend.adx?.adx).toBeCloseTo(
+      expectedAdx?.adx ?? 0,
+      12,
+    );
+    expect(context?.regime.trend.adx?.diPlus).toBeCloseTo(
+      expectedAdx?.pdi ?? 0,
+      12,
+    );
+    expect(context?.regime.trend.adx?.diMinus).toBeCloseTo(
+      expectedAdx?.mdi ?? 0,
+      12,
+    );
+  });
+
+  it('matches rolling baseContext trend contexts with full-series calculations', () => {
+    const indicators = createIndicators([], [], {
+      periods: {
+        maFast: 5,
+        maMedium: 10,
+        maSlow: 20,
+        atr: 14,
+        atrPctShort: 7,
+        atrPctLong: 30,
+        bb: 20,
+        bbStd: 2,
+        obvSma: 10,
+        macdFast: 12,
+        macdSlow: 26,
+        macdSignal: 9,
+      },
+    });
+    const candles: Candle[] = [];
+
+    for (let i = 0; i < 260; i += 1) {
+      const close =
+        90 +
+        Math.sin(i / 5) * 5 +
+        Math.cos(i / 17) * 9 +
+        i * 0.05 +
+        ((i % 11) - 5) * 0.18;
+      const candle = makeCandle(
+        i * INTERVAL_15M_MS,
+        close,
+        close + 1.3 + (i % 5) * 0.16,
+        close - 1.0 - (i % 4) * 0.14,
+        800 + (i % 29) * 23,
+      );
+      candles.push(candle);
+      indicators.next(candle);
+    }
+
+    const trend = indicators.snapshot().baseContext?.regime.trend;
+    const closes = candles.map((item) => item.close);
+    const hl2 = candles.map((item) => (item.high + item.low) / 2);
+    const latestClose = closes[closes.length - 1];
+    const atr = indicators.snapshot().baseContext?.raw.volatility.atr ?? null;
+    const expectedLayerPeriods = [
+      [5, 12],
+      [9, 13],
+      [34, 50],
+      [72, 89],
+      [180, 200],
+    ] as const;
+
+    expectedLayerPeriods.forEach(([fastPeriod, slowPeriod], index) => {
+      const layer = trend?.maLayers?.layers[index];
+      expect(layer?.fast).toBeCloseTo(
+        calculateFullEma(hl2, fastPeriod) ?? 0,
+        12,
+      );
+      expect(layer?.slow).toBeCloseTo(
+        calculateFullEma(hl2, slowPeriod) ?? 0,
+        12,
+      );
+    });
+
+    const expectedContextBaseline = calculateFullEma(closes, 34);
+    const expectedBoundaryWidth = atr == null ? null : atr * 1.2;
+    const expectedUpperBoundary =
+      expectedContextBaseline == null || expectedBoundaryWidth == null
+        ? null
+        : expectedContextBaseline + expectedBoundaryWidth;
+    const expectedLowerBoundary =
+      expectedContextBaseline == null || expectedBoundaryWidth == null
+        ? null
+        : expectedContextBaseline - expectedBoundaryWidth;
+    const expectedNearestBoundary =
+      latestClose > (expectedUpperBoundary ?? Number.POSITIVE_INFINITY)
+        ? expectedUpperBoundary
+        : latestClose < (expectedLowerBoundary ?? Number.NEGATIVE_INFINITY)
+          ? expectedLowerBoundary
+          : expectedContextBaseline;
+
+    expectNullableClose(trend?.contextMa?.baseline, expectedContextBaseline);
+    expectNullableClose(trend?.contextMa?.upperBoundary, expectedUpperBoundary);
+    expectNullableClose(trend?.contextMa?.lowerBoundary, expectedLowerBoundary);
+    expectNullableClose(
+      trend?.contextMa?.distanceToBoundaryAtr,
+      expectedNearestBoundary == null
+        ? null
+        : safeDivide(latestClose - expectedNearestBoundary, atr),
+    );
+
+    const structureWindow = candles.slice(-80);
+    const typicalPrices = structureWindow.map(
+      (item) => (item.high + item.low + item.close) / 3,
+    );
+    const expectedCenterline = normalizeContextNumber(
+      averageLastN(typicalPrices, 20),
+    );
+    const expectedPreviousCenterline = normalizeContextNumber(
+      averageLastN(typicalPrices.slice(0, -1), 20),
+    );
+    const expectedChannelWidth = atr == null ? null : atr * 1.5;
+    const expectedChannelUpper =
+      expectedCenterline == null || expectedChannelWidth == null
+        ? null
+        : expectedCenterline + expectedChannelWidth;
+    const expectedChannelLower =
+      expectedCenterline == null || expectedChannelWidth == null
+        ? null
+        : expectedCenterline - expectedChannelWidth;
+
+    expectNullableClose(trend?.adaptiveChannel?.centerline, expectedCenterline);
+    expectNullableClose(
+      trend?.adaptiveChannel?.centerlineSlope,
+      expectedCenterline == null || expectedPreviousCenterline == null
+        ? null
+        : expectedCenterline - expectedPreviousCenterline,
+    );
+    expectNullableClose(trend?.adaptiveChannel?.upper, expectedChannelUpper);
+    expectNullableClose(trend?.adaptiveChannel?.lower, expectedChannelLower);
+  });
+
   it('ranks ATR percentile against current raw ATR percent, not ATR regime ratio', () => {
     const indicators = createIndicators([], [], {
       periods: {
@@ -405,6 +762,87 @@ describe('utils indicators', () => {
 
     expect(rank).not.toBeNull();
     expect(rank ?? 100).toBeLessThan(40);
+  });
+
+  it('keeps volatility percentile ranks equal to full-series calculations', () => {
+    const indicators = createIndicators([], [], {
+      periods: {
+        maFast: 5,
+        maMedium: 10,
+        maSlow: 20,
+        atr: 14,
+        atrPctShort: 7,
+        atrPctLong: 30,
+        bb: 20,
+        bbStd: 2,
+        obvSma: 10,
+        macdFast: 12,
+        macdSlow: 26,
+        macdSignal: 9,
+      },
+    });
+    const candles: Candle[] = [];
+    let last: ReturnType<typeof indicators.next> | null = null;
+
+    for (let i = 0; i < 360; i += 1) {
+      const close =
+        100 +
+        Math.sin(i / 5) * 4 +
+        Math.cos(i / 19) * 7 +
+        i * 0.03 +
+        ((i % 17) - 8) * 0.09;
+      const candle = makeCandle(
+        i * INTERVAL_15M_MS,
+        close,
+        close + 1.2 + (i % 6) * 0.19,
+        close - 1.1 - (i % 5) * 0.17,
+        900 + (i % 37) * 31,
+      );
+      candles.push(candle);
+      last = indicators.next(candle);
+    }
+
+    const context = last?.baseContext;
+    const percentiles = context?.regime.volatility.percentiles;
+    const closes = candles.map((item) => item.close);
+    const latestCandle = candles[candles.length - 1];
+    const currentRawAtrPct = safeDivide(
+      context?.raw.volatility.atr,
+      latestCandle.close,
+    );
+    const realizedVolatility = calculateFullRealizedVolatility(closes);
+    const rangeExpansionSeries = calculateFullRangeExpansionSeries(candles);
+    const rangeExpansion =
+      rangeExpansionSeries[rangeExpansionSeries.length - 1] ?? null;
+
+    expectNullableClose(
+      percentiles?.atrPctRank100,
+      calculateFullPercentRank(
+        calculateFullAtrPctSeries(candles),
+        currentRawAtrPct,
+        100,
+      ),
+    );
+    expectNullableClose(
+      percentiles?.bbWidthRank100,
+      calculateFullPercentRank(
+        calculateFullBbWidthPctSeries(closes),
+        context?.raw.volatility.bbWidthPct ?? null,
+        100,
+      ),
+    );
+    expectNullableClose(
+      percentiles?.realizedVolRank100,
+      calculateFullPercentRank(
+        calculateFullRealizedVolatilitySeries(closes),
+        realizedVolatility,
+        100,
+      ),
+    );
+    expectNullableClose(
+      percentiles?.rangeExpansionRank20,
+      calculateFullPercentRank(rangeExpansionSeries, rangeExpansion, 20),
+    );
   });
 
   it('marks MTF alignment mixed when current 15m trend conflicts with bullish higher timeframes', () => {

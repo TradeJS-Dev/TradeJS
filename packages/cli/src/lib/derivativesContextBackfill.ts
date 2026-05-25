@@ -8,8 +8,10 @@ import {
   normalizeDerivativesIntervals,
 } from '@tradejs/core/indicators';
 import {
+  getDerivativesBackfillCoverage,
   getDerivativesDataEdgesForSymbols,
   upsertDerivatives,
+  upsertDerivativesBackfillCoverage,
   waitForDbReady,
 } from '@tradejs/infra/timescale';
 import { getUserSettings } from '@tradejs/infra/userSettings';
@@ -224,6 +226,22 @@ const countBackfillWindows = (params: {
   return count;
 };
 
+const buildBackfillWindows = (params: {
+  fromMs: number;
+  toMs: number;
+  batchMs: number;
+  intervalMs: number;
+}) => {
+  const windows: Array<{ fromMs: number; toMs: number }> = [];
+  let cursor = params.fromMs;
+  while (cursor < params.toMs) {
+    const toMs = Math.min(params.toMs, cursor + params.batchMs);
+    windows.push({ fromMs: cursor, toMs });
+    cursor = toMs + params.intervalMs;
+  }
+  return windows;
+};
+
 const hasDerivativesWindowCoverage = (params: {
   edges?: { min?: number; max?: number };
   fromMs: number;
@@ -233,6 +251,29 @@ const hasDerivativesWindowCoverage = (params: {
   params.edges?.max != null &&
   params.edges.min <= params.fromMs &&
   params.edges.max >= params.toMs;
+
+const coverageKey = (params: {
+  symbol: string;
+  interval: DerivativesInterval;
+  fromMs: number;
+  toMs: number;
+}) =>
+  [
+    params.symbol.trim().toUpperCase(),
+    params.interval,
+    Math.trunc(params.fromMs),
+    Math.trunc(params.toMs),
+  ].join(':');
+
+const extendEdges = (
+  current: { min?: number; max?: number } | undefined,
+  fromMs: number,
+  toMs: number,
+) => ({
+  min:
+    current?.min == null ? fromMs : Math.min(current.min, Math.trunc(fromMs)),
+  max: current?.max == null ? toMs : Math.max(current.max, Math.trunc(toMs)),
+});
 
 const getCoinalyzeApiKey = async (userName: string) => {
   const settings = await getUserSettings(userName);
@@ -542,6 +583,31 @@ const backfillDerivativesContext = async (
       );
     }),
   );
+  const coverageKeysByInterval = new Map<DerivativesInterval, Set<string>>();
+  await Promise.all(
+    intervalWindows.map(async (window) => {
+      const coverageRows = await getDerivativesBackfillCoverage({
+        source: 'coinalyze',
+        symbols,
+        interval: window.interval,
+        fromMs: window.fromMs,
+        toMs: window.toMs,
+      });
+      coverageKeysByInterval.set(
+        window.interval,
+        new Set(
+          coverageRows.map((row) =>
+            coverageKey({
+              symbol: row.symbol,
+              interval: row.interval,
+              fromMs: row.fromMs,
+              toMs: row.toMs,
+            }),
+          ),
+        ),
+      );
+    }),
+  );
 
   const cachedWindows = intervalWindows.reduce(
     (sum, window) =>
@@ -556,11 +622,31 @@ const backfillDerivativesContext = async (
   );
   const allReferenceWindowsCached = intervalWindows.every((window) => {
     const edgesBySymbol = edgesByInterval.get(window.interval);
+    const coverageKeys = coverageKeysByInterval.get(window.interval);
+    const backfillWindows = buildBackfillWindows({
+      fromMs: window.fromMs,
+      toMs: window.toMs,
+      batchMs,
+      intervalMs: window.intervalMs,
+    });
     return symbols.every((symbol) =>
-      hasDerivativesWindowCoverage({
-        edges: edgesBySymbol?.get(symbol.toUpperCase()),
-        fromMs: window.fromMs,
-        toMs: window.toMs,
+      backfillWindows.every((backfillWindow) => {
+        const normalizedSymbol = symbol.toUpperCase();
+        return (
+          hasDerivativesWindowCoverage({
+            edges: edgesBySymbol?.get(normalizedSymbol),
+            fromMs: backfillWindow.fromMs,
+            toMs: backfillWindow.toMs,
+          }) ||
+          coverageKeys?.has(
+            coverageKey({
+              symbol: normalizedSymbol,
+              interval: window.interval,
+              fromMs: backfillWindow.fromMs,
+              toMs: backfillWindow.toMs,
+            }),
+          )
+        );
       }),
     );
   });
@@ -660,6 +746,9 @@ const backfillDerivativesContext = async (
         matches.map((item) => item.symbol),
         interval,
       ));
+    const coverageKeys =
+      coverageKeysByInterval.get(interval) ?? new Set<string>();
+    coverageKeysByInterval.set(interval, coverageKeys);
 
     for (let batchIdx = 0; batchIdx < symbolBatches.length; batchIdx += 1) {
       const batch = symbolBatches[batchIdx];
@@ -669,6 +758,16 @@ const backfillDerivativesContext = async (
         const toMs = Math.min(window.toMs, cursor + batchMs);
         const missingRanges = batch
           .map((item) => {
+            const key = coverageKey({
+              symbol: item.symbol,
+              interval,
+              fromMs: cursor,
+              toMs,
+            });
+            if (coverageKeys.has(key)) {
+              return null;
+            }
+
             const edges = edgesBySymbol.get(item.symbol.toUpperCase());
             const fromMs = resolveDerivativesContextMissingFetchFromMs({
               edges,
@@ -734,6 +833,37 @@ const backfillDerivativesContext = async (
             if (rows.length) {
               await upsertDerivatives(rows);
               totalRows += rows.length;
+            }
+            await upsertDerivativesBackfillCoverage(
+              missingBatch.map((item) => {
+                const rowsCount = rows.filter(
+                  (row) =>
+                    row.symbol.toUpperCase() === item.symbol.toUpperCase(),
+                ).length;
+                return {
+                  source: 'coinalyze',
+                  symbol: item.symbol,
+                  interval,
+                  fromMs: cursor,
+                  toMs,
+                  rowsCount,
+                };
+              }),
+            );
+            for (const item of missingBatch) {
+              const symbol = item.symbol.toUpperCase();
+              edgesBySymbol.set(
+                symbol,
+                extendEdges(edgesBySymbol.get(symbol), cursor, toMs),
+              );
+              coverageKeys.add(
+                coverageKey({
+                  symbol,
+                  interval,
+                  fromMs: cursor,
+                  toMs,
+                }),
+              );
             }
           }
         } catch (error) {
