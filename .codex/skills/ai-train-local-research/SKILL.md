@@ -1,15 +1,18 @@
 ---
-name: ai-train-research
-description: Run repo-specific ai-train investigations for TradeJS strategies, especially when the task is to replay latest N rows, compare local deterministic gate vs LLM mode, analyze TP/FP/TN/FN patterns, inspect the active backtest config in Redis, and write or update notes/AI_*_REPLAY_NOTES.md.
+name: ai-train-local-research
+description: Run strategy-neutral TradeJS ai-train investigations, especially local deterministic gate research with `yarn ai-train --localOnly`, qN+ metrics, drawdown/winrate analysis, time/symbol stability checks, and gate-vs-LLM comparison when needed.
 ---
 
-# AI Train Research
+# AI Train Local Research
 
 Use this skill when the user asks to:
 
 - run `ai-train` for a strategy
+- research or tune a local deterministic AI gate
 - analyze `latest N` or `skip K`
 - do the replay without OpenRouter
+- inspect qN+ approval streams, drawdown, winrate, profit factor, or cadence
+- check time stability, symbol concentration, or direction-specific pockets
 - compare current results with previous TrendLine / ReverseTrendLine style investigations
 - break down false positives / false negatives
 - save conclusions in `notes/AI_*_REPLAY_NOTES.md`
@@ -123,6 +126,11 @@ Default naming convention:
 
 For the default `q4+` approved stream, report:
 
+- `winrate` / `precision_approved`
+- `profit_factor`
+- `max_drawdown`
+- `max_drawdown_pct_of_gross_profit`
+- `max_drawdown_pct_of_total_profit`
 - `avg_profit_approved_per_day`
 - `avg_profit_approved_per_month`
 - `avg_approved_trades_per_day`
@@ -158,9 +166,23 @@ exit $rc
 - Is the strategy core firing earlier than the adapter wants?
 - Is a stricter threshold such as `q5+` actually better than the broader default stream such as `q4+`?
 - Is one direction much worse than the other?
+- Is one direction responsible for most drawdown?
 - Are the best pockets counter-trend or aligned?
 - Is there a field mismatch between `core.ts` and `adapters/ai.ts`?
 - Is the backtest config exploring the detector or only TP/SL?
+
+9. For gate tuning, validate candidate rules beyond aggregate profit.
+
+Minimum checks:
+
+- compare q4+ and q5+ separately
+- report winrate as a percentage
+- report max drawdown both as an absolute value and as percentages of gross profit and total profit
+- split by direction
+- split by quarter or month when the export spans enough time
+- check symbol concentration; avoid rules where most profit comes from only a few symbols
+- prefer candidate pockets that improve profit factor or drawdown without destroying cadence
+- treat tiny added slices as unstable even when aggregate profit improves
 
 ## Notes format
 
@@ -178,6 +200,11 @@ Keep the structure similar:
 3. replay mode used
 4. latest window metrics
 5. `q4+` approved cadence/profit metrics:
+   - `winrate`
+   - `profit_factor`
+   - `max_drawdown`
+   - `max_drawdown_pct_of_gross_profit`
+   - `max_drawdown_pct_of_total_profit`
    - `avg_profit_approved_per_day`
    - `avg_profit_approved_per_month`
    - `avg_approved_trades_per_day`

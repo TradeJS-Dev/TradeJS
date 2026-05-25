@@ -332,7 +332,8 @@ Keep these conventions stable unless explicitly changing the ML pipeline.
 - Do not present plain `q1` / `q2` / `q3` / `q4` / `q5` as the default approved bucket labels unless the user explicitly asks for the isolated subset; default reporting should use `qN+` notation.
 - To compare `AI_MODE=gate` and `AI_MODE=llm`, use live/runtime signal analysis records or explicit replay artifacts that contain both gate and LLM decisions.
 - TrendLine core/runtime config uses `TRENDLINE`; `TRENDLINE_CONFIG` is used in ML payload/training contexts. When applying backtest or result configs to a live/replay strategy config, make sure detector options land in `TRENDLINE`, or the core may run with stale/default trendline detector settings.
-- DoubleTap strategy work has a dedicated local skill at `.codex/skills/doubletap-strategy-research/SKILL.md`. Use it for future DoubleTap tuning, cache-only backtest sweeps, yearly `--ai` export prep, and local AI gate research.
+- Strategy backtest/config work has a dedicated local skill at `.codex/skills/strategy-backtest-research/SKILL.md`. Use it for strategy implementation, figures, cache-only backtest sweeps, and year-scale `--ai` export prep.
+- Local deterministic AI gate research has a strategy-neutral skill at `.codex/skills/ai-train-local-research/SKILL.md`. Use it for `yarn ai-train --localOnly`, qN+ metrics, drawdown/winrate reporting, direction/time/symbol stability checks, and gate-vs-LLM analysis.
 
 ## Generated / Build Files
 
