@@ -1,6 +1,8 @@
 import { useEffect } from 'react';
-import { EMA } from 'technicalindicators';
 import { registerIndicator, Chart } from 'klinecharts';
+
+const { EMA } =
+  require('fast-technical-indicators') as typeof import('fast-technical-indicators');
 
 export const useEmaIndicator = (
   chart: Chart | null,

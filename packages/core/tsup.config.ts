@@ -23,12 +23,6 @@ export default defineConfig({
   clean: true,
   outDir: 'dist',
   target: 'node20',
-  external: [
-    '@tradejs/types',
-    'date-fns',
-    'klinecharts',
-    'lodash',
-    'technicalindicators',
-    'uuid',
-  ],
+  noExternal: ['fast-technical-indicators'],
+  external: ['@tradejs/types', 'date-fns', 'klinecharts', 'lodash', 'uuid'],
 });

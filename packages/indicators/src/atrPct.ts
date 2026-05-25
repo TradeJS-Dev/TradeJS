@@ -1,4 +1,4 @@
-import { ATR } from 'technicalindicators';
+import { ATR } from 'fast-technical-indicators';
 import { KLineData } from 'klinecharts';
 import { smaAligned } from './smaAligned';
 

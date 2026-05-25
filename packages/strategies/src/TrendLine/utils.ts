@@ -1,14 +1,16 @@
-import { SMA } from 'technicalindicators';
-
 import { KlineChartData, TrendLineMode } from '@tradejs/types';
+import { SMA } from 'technicalindicators';
 
 export const getSma = (period: number, data: KlineChartData) => {
   const currentPeriod = Math.min(period, data.length - 1);
+  if (currentPeriod <= 0) {
+    return { values: [Infinity], last: Infinity };
+  }
 
-  const values = new SMA({
+  const values = SMA.calculate({
     period: currentPeriod,
     values: data.map((candle) => candle.close),
-  }).getResult() as number[];
+  }) as number[];
 
   const last = values[values.length - 1];
 

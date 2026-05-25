@@ -1,5 +1,5 @@
 import type { BaseStrategyContextSnapshot, Candle } from '@tradejs/types';
-import { adx, rsi } from 'technicalindicators';
+import { adx, rsi } from 'fast-technical-indicators';
 import { ML_BASE_CANDLES_WINDOW } from '../constants';
 import {
   createNumericHistoryBuffer,

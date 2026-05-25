@@ -320,6 +320,54 @@ describe('utils indicators', () => {
     ).toBeGreaterThan(0);
   });
 
+  it('keeps baseContext RSI and ADX calculations stable', () => {
+    const indicators = createIndicators([], [], {
+      periods: {
+        maFast: 5,
+        maMedium: 10,
+        maSlow: 20,
+        atr: 14,
+        atrPctShort: 7,
+        atrPctLong: 30,
+        bb: 20,
+        bbStd: 2,
+        obvSma: 10,
+        macdFast: 12,
+        macdSlow: 26,
+        macdSignal: 9,
+      },
+    });
+
+    for (let i = 0; i < 230; i += 1) {
+      const close =
+        100 + Math.sin(i / 4) * 5 + Math.cos(i / 9) * 2 + ((i % 13) - 6) * 0.12;
+      indicators.next(
+        makeCandle(
+          i * INTERVAL_15M_MS,
+          close,
+          close + 1.1 + (i % 4) * 0.17,
+          close - 1.0 - (i % 5) * 0.13,
+        ),
+      );
+    }
+
+    const context = indicators.snapshot().baseContext;
+
+    expect(context?.regime.momentum.rsi).toBeCloseTo(70.93, 12);
+    expect(context?.regime.momentum.rsiState).toBe('overbought');
+    expect(context?.regime.trend.adx?.adx).toBeCloseTo(23.07381929824377, 12);
+    expect(context?.regime.trend.adx?.diPlus).toBeCloseTo(
+      24.805756461698213,
+      12,
+    );
+    expect(context?.regime.trend.adx?.diMinus).toBeCloseTo(
+      10.847435115794926,
+      12,
+    );
+    expect(context?.regime.trend.adx?.direction).toBe('bull');
+    expect(context?.regime.trend.adx?.strength).toBe('developing');
+  });
+
   it('ranks ATR percentile against current raw ATR percent, not ATR regime ratio', () => {
     const indicators = createIndicators([], [], {
       periods: {

@@ -1,7 +1,9 @@
 import _ from 'lodash';
 import { useEffect } from 'react';
-import { BollingerBands } from 'technicalindicators';
 import { registerIndicator, Chart } from 'klinecharts';
+
+const { BollingerBands } =
+  require('fast-technical-indicators') as typeof import('fast-technical-indicators');
 
 export const useBbIndicator = (
   chart: Chart | null,
@@ -43,10 +45,13 @@ export const useBbIndicator = (
             const bb: Record<string, number> = {};
             periods.forEach((period, periodIndex) => {
               if (candleIndex >= period - 1) {
-                bb[`BBUpper${period}`] =
-                  values[periodIndex][candleIndex - (period - 1)].upper;
-                bb[`BBLower${period}`] =
-                  values[periodIndex][candleIndex - (period - 1)].lower;
+                const value = values[periodIndex][candleIndex - (period - 1)];
+                if (value.upper != null) {
+                  bb[`BBUpper${period}`] = value.upper;
+                }
+                if (value.lower != null) {
+                  bb[`BBLower${period}`] = value.lower;
+                }
               }
             });
 

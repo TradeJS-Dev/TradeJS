@@ -1,6 +1,8 @@
 import { useEffect } from 'react';
-import { WMA } from 'technicalindicators';
 import { registerIndicator, Chart } from 'klinecharts';
+
+const { WMA } =
+  require('fast-technical-indicators') as typeof import('fast-technical-indicators');
 
 export const useWmaIndicator = (
   chart: Chart | null,

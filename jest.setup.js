@@ -25,6 +25,14 @@ if (typeof global.TextEncoder === 'undefined') {
   global.TextDecoder = TextDecoder;
 }
 
+if (typeof global.setImmediate === 'undefined') {
+  global.setImmediate = (callback, ...args) => setTimeout(callback, 0, ...args);
+}
+
+if (typeof global.clearImmediate === 'undefined') {
+  global.clearImmediate = (handle) => clearTimeout(handle);
+}
+
 if (typeof global.ReadableStream === 'undefined') {
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   const { ReadableStream } = require('node:stream/web');

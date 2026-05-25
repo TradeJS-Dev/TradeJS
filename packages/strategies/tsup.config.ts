@@ -13,5 +13,6 @@ export default defineConfig({
     '@tradejs/indicators',
     '@tradejs/node',
     '@tradejs/types',
+    'technicalindicators',
   ],
 });

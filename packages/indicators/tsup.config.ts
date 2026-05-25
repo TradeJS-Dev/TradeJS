@@ -8,6 +8,7 @@ export default defineConfig({
   clean: true,
   outDir: 'dist',
   target: 'node20',
+  noExternal: ['fast-technical-indicators'],
   external: [
     '@tradejs/core',
     '@tradejs/types',

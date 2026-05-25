@@ -2862,6 +2862,7 @@ __metadata:
     "@tradejs/types": "workspace:^"
     bcryptjs: "npm:^2.4.3"
     date-fns: "npm:^3.3.1"
+    fast-technical-indicators: "npm:^1.1.4"
     idb-keyval: "npm:^6.2.2"
     klinecharts: "npm:10.0.0-alpha9"
     lodash: "npm:^4.18.1"
@@ -2950,9 +2951,9 @@ __metadata:
   dependencies:
     "@tradejs/types": "workspace:^"
     date-fns: "npm:^3.3.1"
+    fast-technical-indicators: "npm:^1.1.4"
     klinecharts: "npm:10.0.0-alpha9"
     lodash: "npm:^4.18.1"
-    technicalindicators: "npm:^3.1.0"
     tsup: "npm:^8.5.1"
     typescript: "npm:^5.1"
   languageName: unknown
@@ -2964,6 +2965,7 @@ __metadata:
   dependencies:
     "@tradejs/core": "workspace:^"
     "@tradejs/types": "workspace:^"
+    fast-technical-indicators: "npm:^1.1.4"
     klinecharts: "npm:10.0.0-alpha9"
     technicalindicators: "npm:^3.1.0"
     tsup: "npm:^8.5.1"
@@ -3023,6 +3025,7 @@ __metadata:
     "@tradejs/indicators": "workspace:^"
     "@tradejs/node": "workspace:^"
     "@tradejs/types": "workspace:^"
+    technicalindicators: "npm:^3.1.0"
     tsup: "npm:^8.5.1"
     typescript: "npm:^5.1"
   languageName: unknown
@@ -7590,6 +7593,13 @@ __metadata:
   version: 2.1.1
   resolution: "fast-safe-stringify@npm:2.1.1"
   checksum: 10c0/d90ec1c963394919828872f21edaa3ad6f1dddd288d2bd4e977027afff09f5db40f94e39536d4646f7e01761d704d72d51dce5af1b93717f3489ef808f5f4e4d
+  languageName: node
+  linkType: hard
+
+"fast-technical-indicators@npm:^1.1.4":
+  version: 1.1.4
+  resolution: "fast-technical-indicators@npm:1.1.4"
+  checksum: 10c0/c8539c443dc1fb524d620a33b359df4308c7618b189c0891a5f6dc31c855f61f364db9c5ca3fc6ae1fab02b70204bfa03da6be4e8807282a5fb049cd5db4b8ba
   languageName: node
   linkType: hard
 
