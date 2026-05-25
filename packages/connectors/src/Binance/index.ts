@@ -47,6 +47,11 @@ const toNum = (value: unknown, fallback = 0) => {
   return Number.isFinite(num) ? num : fallback;
 };
 
+const toNullableNum = (value: unknown) => {
+  const num = Number(value);
+  return Number.isFinite(num) ? num : null;
+};
+
 const intervalToMinutes = (interval: Interval): number | null => {
   const intervalMs = INTERVAL_MS[String(interval)];
   return intervalMs ? Math.floor(intervalMs / 60_000) : null;
@@ -92,14 +97,28 @@ export const BinanceConnectorCreator: ConnectorCreator = async () => {
         if (!Array.isArray(item)) continue;
         const ts = toNum(item[0], 0);
         if (!ts) continue;
+        const volume = toNum(item[5]);
+        const turnover = toNum(item[7]);
+        const takerBuyBaseVolume = toNullableNum(item[9]);
+        const takerBuyQuoteVolume = toNullableNum(item[10]);
         rows.push({
           timestamp: ts,
           open: toNum(item[1]),
           high: toNum(item[2]),
           low: toNum(item[3]),
           close: toNum(item[4]),
-          volume: toNum(item[5]),
-          turnover: toNum(item[7]),
+          volume,
+          turnover,
+          takerBuyBaseVolume,
+          takerBuyQuoteVolume,
+          takerSellBaseVolume:
+            takerBuyBaseVolume == null
+              ? null
+              : Math.max(0, volume - takerBuyBaseVolume),
+          takerSellQuoteVolume:
+            takerBuyQuoteVolume == null
+              ? null
+              : Math.max(0, turnover - takerBuyQuoteVolume),
           dt: new Date(ts).toISOString(),
         });
         lastTs = ts;

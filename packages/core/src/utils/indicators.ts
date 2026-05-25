@@ -97,6 +97,7 @@ const resolveIndicatorPeriods = (
 };
 
 const ONE_HOUR_MS = 3_600_000;
+const BASE_CONTEXT_RAW_HISTORY_WINDOW = 200;
 
 type TrendlineIndicatorHistoryPush = (
   key: string,
@@ -127,6 +128,7 @@ export const getRequiredControllerSeedWindow = (
     2,
     ML_BASE_CANDLES_WINDOW,
     CORRELATION_WINDOW,
+    BASE_CONTEXT_RAW_HISTORY_WINDOW,
     ONE_DAY_CANDLE_WINDOW + 1,
     resolved.levelLookback + Math.max(0, resolved.levelDelay) + 1,
   );

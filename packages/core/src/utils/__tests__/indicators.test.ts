@@ -4,6 +4,7 @@ import {
   createIndicators,
   getRequiredControllerSeedWindow,
 } from '../indicators';
+import { buildBaseContextMtfSnapshot } from '../indicatorBaseContext';
 import { CORRELATION_WINDOW, ML_BASE_CANDLES_WINDOW } from '../../constants';
 import { calculateCoinBtcCorrelation } from '../correlation';
 import { buildDefaultIndicatorPeriods } from '../strategyHelpers/indicators';
@@ -15,14 +16,15 @@ const makeCandle = (
   close: number,
   high = close,
   low = close,
+  volume = 1000,
 ): Candle => ({
   timestamp,
   open: close,
   high,
   low,
   close,
-  volume: 1000,
-  turnover: close * 1000,
+  volume,
+  turnover: close * volume,
 });
 
 const percentChange = (current: number, previous: number): number | null => {
@@ -54,13 +56,13 @@ describe('utils indicators', () => {
   });
 
   it('derives controller seed window from the largest raw-history dependency', () => {
-    expect(getRequiredControllerSeedWindow()).toBe(97);
+    expect(getRequiredControllerSeedWindow()).toBe(200);
     expect(
       getRequiredControllerSeedWindow({
         levelLookback: 150,
         levelDelay: 10,
       }),
-    ).toBe(161);
+    ).toBe(200);
   });
 
   it('computes price1hPcnt and price24hPcnt when window is full', () => {
@@ -136,6 +138,254 @@ describe('utils indicators', () => {
     expect(
       last?.baseContext?.structure.levels.dominantTouchCount20 ?? 0,
     ).toBeGreaterThan(0);
+  });
+
+  it('derives deterministic structure zones, liquidity sweep, and volume profile context', () => {
+    const periods = {
+      maFast: 3,
+      maMedium: 5,
+      maSlow: 8,
+      obvSma: 3,
+      atr: 5,
+      atrPctShort: 3,
+      atrPctLong: 8,
+      bb: 8,
+      bbStd: 2,
+      macdFast: 3,
+      macdSlow: 6,
+      macdSignal: 3,
+    };
+    const pattern = [
+      { close: 100, high: 101, low: 99, volume: 900 },
+      { close: 111, high: 113, low: 109, volume: 1000 },
+      { close: 105, high: 106, low: 104, volume: 5000 },
+      { close: 96, high: 98, low: 94, volume: 1100 },
+      { close: 104, high: 105, low: 103, volume: 5200 },
+      { close: 112, high: 114, low: 110, volume: 1000 },
+      { close: 106, high: 107, low: 105, volume: 4800 },
+      { close: 95, high: 97, low: 93, volume: 1200 },
+      { close: 105, high: 106, low: 104, volume: 5300 },
+      { close: 110, high: 112, low: 108, volume: 1000 },
+    ];
+    const candles = Array.from({ length: 90 }, (_, index) => {
+      const item = pattern[index % pattern.length];
+      return makeCandle(
+        index * INTERVAL_15M_MS,
+        item.close,
+        item.high,
+        item.low,
+        item.volume,
+      );
+    });
+    candles.push({
+      ...makeCandle(90 * INTERVAL_15M_MS, 110, 121, 109, 1800),
+      open: 113,
+    });
+
+    const first = createIndicators([], [], { periods });
+    const second = createIndicators([], [], { periods });
+
+    candles.forEach((candle) => {
+      first.next(candle);
+      second.next(candle);
+    });
+
+    const context = first.snapshot().baseContext;
+    expect(context?.structure.zones?.support.level).toBeGreaterThan(90);
+    expect(context?.structure.zones?.support.level).toBeLessThan(100);
+    expect(context?.structure.zones?.resistance.level).toBeGreaterThan(108);
+    expect(context?.structure.zones?.resistance.level).toBeLessThan(115);
+    expect(context?.structure.zones?.support.touches ?? 0).toBeGreaterThan(2);
+    expect(context?.structure.zones?.resistance.touches ?? 0).toBeGreaterThan(
+      2,
+    );
+    expect(context?.structure.liquidity?.sweepState).toBe('swept_high');
+    expect(context?.structure.liquidity?.side).toBe('high');
+    expect(context?.structure.liquidity?.referenceZoneSide).toBe('resistance');
+    expect(context?.structure.liquidity?.sweepHigh20).toBe(true);
+    expect(context?.structure.liquidity?.closeBackInsideRange).toBe(true);
+    expect(context?.structure.liquidity?.stopRunDirection).toBe('up');
+    expect(context?.structure.liquidity?.sweepWickPct ?? 0).toBeGreaterThan(0);
+    expect(context?.structure.pivots?.lastSwingHigh).toBeGreaterThan(108);
+    expect(context?.structure.pivots?.lastSwingLow).toBeLessThan(100);
+    expect(context?.structure.pivots?.swingAmplitudeAtr ?? 0).toBeGreaterThan(
+      0,
+    );
+    expect(context?.structure.pivots?.pivotDensity20 ?? 0).toBeGreaterThan(0);
+    expect(context?.structure.acceptance?.breakoutBodyAtr ?? 0).toBeGreaterThan(
+      0,
+    );
+    expect(
+      context?.structure.zones?.resistance.volumeShare ?? 0,
+    ).toBeGreaterThan(0);
+    expect(
+      context?.participation.priceVolumeProfile?.pointOfControl,
+    ).toBeGreaterThan(102);
+    expect(
+      context?.participation.priceVolumeProfile?.pointOfControl,
+    ).toBeLessThan(108);
+    expect(
+      context?.participation.priceVolumeProfile?.pointOfControlVolumeShare ?? 0,
+    ).toBeGreaterThan(0.15);
+    expect(context?.participation.delta?.buyPressurePct).toBeLessThan(0.2);
+    expect(context?.participation.delta?.signedVolume).toBeDefined();
+    expect(context?.participation.delta?.deltaDivergenceVsPrice).not.toBe(
+      'unknown',
+    );
+    expect(first.snapshot().baseContext).toEqual(second.snapshot().baseContext);
+  });
+
+  it('uses Binance kline taker buy volume for participation delta when available', () => {
+    const indicators = createIndicators([], [], {
+      periods: buildDefaultIndicatorPeriods({ ATR: 3 }),
+    });
+
+    [
+      makeCandle(0, 100, 102, 98, 10),
+      makeCandle(INTERVAL_15M_MS, 101, 103, 99, 10),
+      makeCandle(INTERVAL_15M_MS * 2, 102, 104, 100, 10),
+      {
+        ...makeCandle(INTERVAL_15M_MS * 3, 103, 105, 101, 10),
+        takerBuyBaseVolume: 8,
+        takerSellBaseVolume: 2,
+        takerBuyQuoteVolume: 824,
+        takerSellQuoteVolume: 206,
+      },
+    ].forEach((candle) => indicators.next(candle));
+
+    const delta = indicators.snapshot().baseContext?.participation.delta;
+
+    expect(delta).toMatchObject({
+      source: 'kline_taker_volume',
+      buyPressurePct: 0.8,
+      buyVolume: 8,
+      sellVolume: 2,
+      netDelta: 6,
+      deltaPct: 0.6,
+      signedVolume: 6,
+    });
+  });
+
+  it('derives layered trend, context boundary, and adaptive channel from trend history', () => {
+    const indicators = createIndicators([], [], {
+      periods: {
+        maFast: 5,
+        maMedium: 13,
+        maSlow: 34,
+        obvSma: 5,
+        atr: 14,
+        atrPctShort: 5,
+        atrPctLong: 14,
+        bb: 20,
+        bbStd: 2,
+        macdFast: 12,
+        macdSlow: 26,
+        macdSignal: 9,
+      },
+    });
+
+    for (let i = 0; i < 230; i += 1) {
+      const close = 100 + i * 0.4;
+      indicators.next(
+        makeCandle(i * INTERVAL_15M_MS, close, close + 1.5, close - 1.5),
+      );
+    }
+
+    const context = indicators.snapshot().baseContext;
+    const trend = context?.regime.trend;
+    expect(trend?.maLayers?.bullishLayerCount).toBe(5);
+    expect(trend?.maLayers?.bearishLayerCount).toBe(0);
+    expect(trend?.maLayers?.alignment).toBe('bull');
+    expect(trend?.adx?.direction).toBe('bull');
+    expect(trend?.adx?.strength).toBe('strong');
+    expect(trend?.adx?.diPlus ?? 0).toBeGreaterThan(trend?.adx?.diMinus ?? 0);
+    expect(trend?.maLayers?.fastImpulseBias).toBe('bull');
+    expect(trend?.maLayers?.macroBias).toBe('bull');
+    expect(trend?.maLayers?.layerConflict).toBe(false);
+    expect(trend?.contextMa?.contextBias).toBe('bull');
+    expect(trend?.contextMa?.distanceToBoundaryAtr ?? 0).toBeGreaterThan(0);
+    expect(trend?.adaptiveChannel?.direction).toBe('bull');
+    expect(trend?.adaptiveChannel?.centerlineSlope ?? 0).toBeGreaterThan(0);
+    expect(trend?.adaptiveChannel?.channelWidthAtr).toBeCloseTo(3, 6);
+    expect(trend?.adaptiveChannel?.pricePositionInChannel ?? 0).toBeGreaterThan(
+      0.5,
+    );
+    expect(context?.regime.momentum.rsi).toBeGreaterThan(70);
+    expect(context?.regime.momentum.rsiState).toBe('overbought');
+    expect(
+      context?.regime.volatility.percentiles?.atrPctRank100,
+    ).toBeGreaterThan(0);
+    expect(
+      context?.regime.volatility.percentiles?.rangeExpansionRank20,
+    ).toBeGreaterThan(0);
+  });
+
+  it('ranks ATR percentile against current raw ATR percent, not ATR regime ratio', () => {
+    const indicators = createIndicators([], [], {
+      periods: {
+        maFast: 3,
+        maMedium: 5,
+        maSlow: 8,
+        obvSma: 3,
+        atr: 14,
+        atrPctShort: 3,
+        atrPctLong: 14,
+        bb: 20,
+        bbStd: 2,
+        macdFast: 3,
+        macdSlow: 4,
+        macdSignal: 2,
+      },
+    });
+
+    for (let i = 0; i < 120; i += 1) {
+      const close = 100 + i * 0.01;
+      const range = i < 95 ? 10 : 0.2;
+      indicators.next(
+        makeCandle(
+          i * INTERVAL_15M_MS,
+          close,
+          close + range / 2,
+          close - range / 2,
+        ),
+      );
+    }
+
+    const rank =
+      indicators.snapshot().baseContext?.regime.volatility.percentiles
+        ?.atrPctRank100;
+
+    expect(rank).not.toBeNull();
+    expect(rank ?? 100).toBeLessThan(40);
+  });
+
+  it('marks MTF alignment mixed when current 15m trend conflicts with bullish higher timeframes', () => {
+    const makeTrendCandles = (count: number, start: number, step: number) =>
+      Array.from({ length: count }, (_, index) => {
+        const close = start + index * step;
+        return makeCandle(index * INTERVAL_15M_MS, close, close + 1, close - 1);
+      });
+
+    const mtf = buildBaseContextMtfSnapshot({
+      candlesHistory: makeTrendCandles(80, 100, -1),
+      btcCandlesHistory: makeTrendCandles(80, 200, 1),
+      coinResampledCandles: {
+        h1: makeTrendCandles(80, 100, 1),
+        h4: makeTrendCandles(80, 100, 1),
+        d1: makeTrendCandles(80, 100, 1),
+      },
+      btcResampledCandles: {
+        h1: makeTrendCandles(80, 200, 1),
+        h4: makeTrendCandles(80, 200, 1),
+        d1: makeTrendCandles(80, 200, 1),
+      },
+      currentTrendBias: 'bear',
+    });
+
+    expect(mtf.summary?.h1TrendBias).toBe('bull');
+    expect(mtf.summary?.h4TrendBias).toBe('bull');
+    expect(mtf.summary?.d1TrendBias).toBe('bull');
+    expect(mtf.summary?.mtfAlignment).toBe('mixed');
   });
 
   it('slides breakout level window with the same lookback and delay semantics across bars', () => {
@@ -246,6 +496,8 @@ describe('utils indicators', () => {
     expect(snapshot.baseContext).toBeTruthy();
     expect(snapshot.baseContext.raw.trend.maFast).toBeDefined();
     expect(snapshot.baseContext.mtf.candles.m15).toHaveLength(50);
+    expect(snapshot.baseContext.mtf.summary.h1TrendBias).toBeDefined();
+    expect(snapshot.baseContext.mtf.summary.mtfAlignment).toBeDefined();
   });
 
   it('memoizes baseContext for a captured snapshot', () => {

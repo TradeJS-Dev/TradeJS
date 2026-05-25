@@ -2,6 +2,7 @@ import { defineStrategyPlugin } from '@tradejs/core/config';
 import { type StrategyConfig } from '@tradejs/types';
 import { adaptiveMomentumRibbonManifest } from './AdaptiveMomentumRibbon/manifest';
 import { breakoutManifest } from './Breakout/manifest';
+import { doubleTapManifest } from './DoubleTap/manifest';
 import { maStrategyManifest } from './MaStrategy/manifest';
 import { reverseTrendLineManifest } from './ReverseTrendLine/manifest';
 import { trendShiftManifest } from './TrendShift/manifest';
@@ -11,6 +12,8 @@ import { config as adaptiveMomentumRibbonDefaultConfig } from './AdaptiveMomentu
 import { AdaptiveMomentumRibbonStrategyCreator } from './AdaptiveMomentumRibbon/strategy';
 import { config as breakoutDefaultConfig } from './Breakout/config';
 import { BreakoutStrategyCreator } from './Breakout/strategy';
+import { config as doubleTapDefaultConfig } from './DoubleTap/config';
+import { DoubleTapStrategyCreator } from './DoubleTap/strategy';
 import { config as maStrategyDefaultConfig } from './MaStrategy/config';
 import { MaStrategyCreator } from './MaStrategy/strategy';
 import { config as reverseTrendLineDefaultConfig } from './ReverseTrendLine/config';
@@ -37,6 +40,10 @@ export const strategyEntries: StrategyRegistryEntry[] = [
     creator: TrendShiftStrategyCreator,
   },
   {
+    manifest: doubleTapManifest,
+    creator: DoubleTapStrategyCreator,
+  },
+  {
     manifest: reverseTrendLineManifest,
     creator: ReverseTrendLineStrategyCreator,
   },
@@ -58,6 +65,7 @@ const builtInStrategyDefaultConfigs: Record<string, StrategyConfig> = {
   Breakout: breakoutDefaultConfig,
   TrendLine: trendLineDefaultConfig,
   TrendShift: trendShiftDefaultConfig,
+  DoubleTap: doubleTapDefaultConfig,
   ReverseTrendLine: reverseTrendLineDefaultConfig,
   MaStrategy: maStrategyDefaultConfig,
   AdaptiveMomentumRibbon: adaptiveMomentumRibbonDefaultConfig,
@@ -73,6 +81,7 @@ export { breakoutDefaultConfig };
 export { maStrategyDefaultConfig };
 export { trendLineDefaultConfig };
 export { trendShiftDefaultConfig };
+export { doubleTapDefaultConfig };
 export { reverseTrendLineDefaultConfig };
 export { volumeDivergenceDefaultConfig };
 export { adaptiveMomentumRibbonAiAdapter } from './AdaptiveMomentumRibbon/adapters/ai';
@@ -81,6 +90,7 @@ export { maStrategyAiAdapter } from './MaStrategy/adapters/ai';
 export { maStrategyMlAdapter } from './MaStrategy/adapters/ml';
 export { reverseTrendLineAiAdapter } from './ReverseTrendLine/adapters/ai';
 export { trendShiftAiAdapter } from './TrendShift/adapters/ai';
+export { doubleTapAiAdapter } from './DoubleTap/adapters/ai';
 export { volumeDivergenceAiAdapter } from './VolumeDivergence/adapters/ai';
 export { volumeDivergenceMlAdapter } from './VolumeDivergence/adapters/ml';
 

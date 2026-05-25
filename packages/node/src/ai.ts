@@ -211,6 +211,8 @@ Input payload structure:
   • \`baseContext.mtf\`: compact multi-timeframe candle snapshots.
   Always inspect \`payload.additionalIndicators.marketContext\` when present:
   • \`marketContext.execution.binanceCoinbaseSpread\`: AI-friendly BTC spread view projected from \`payload.additionalIndicators.baseContext.relative.execution.venueSpread\`; \`value=(Coinbase-Binance)/Binance\`, \`bps=value*10000\`.
+  • \`marketContext.execution.targetVenue\`: live top-of-book bid/ask, spread and top bid/ask size when the connector provides Binance-style ticker data.
+  • \`marketContext.participation.trueDelta\`: Binance taker buy/sell volume delta from kline payload when \`source=kline_taker_volume\`; otherwise absent/unavailable.
   If those fields exist, use them as a more explicit hint instead of trying to re-derive the same idea from raw lines or points.
   If \`baseContext.derivatives\` exists, it is a derived Coinalyze summary for the time of the signal. Coinalyze context is built only from \`BTCUSDT\` and \`ETHUSDT\` reference symbols, not for every target coin. \`targetSymbol\` is just the source signal coin. Use BTC/ETH open interest, funding, liquidations, and pressure/riskFlags as positioning context, not as an independent trade idea.
   Key patterns:
@@ -237,6 +239,8 @@ Explicit conflict rules:
 - Use \`baseContext.regime.session\` directly as the canonical session/liquidity regime: asia is often thinner, europe/us are more active, and overlaps can amplify both momentum and noise. Do not reject a signal solely because of session, but mention clear session support or conflict in \`confirmations\` or \`qualityReason\`.
 - If \`marketContext.execution.binanceCoinbaseSpread.available=true\` and \`severity=elevated/wide\`, treat it as cross-exchange divergence or BTC liquidity risk. Do not use the spread as a standalone long/short signal, but reduce confidence or require more confirmation when the rest of the structure is weak or BTC context conflicts.
 - If \`marketContext.execution.binanceCoinbaseSpread\` is missing or \`available=false\`, do not infer anything from Binance/Coinbase spread and do not penalize the signal just because it is absent.
+- If \`marketContext.participation.trueDelta.available=true\`, use it as better participation evidence than OHLCV-derived proxy delta; still do not let delta override invalid price structure.
+- If \`marketContext.execution.targetVenue.available=true\` and spread is wide for the symbol/timeframe, treat it as execution/liquidity friction rather than as a standalone directional signal.
 - If the current signal is not confirmed (\`direction=null\`), name the main reason briefly in \`comment\`.
   If you use the structured fields, include the main reason in \`qualityReason\` or \`triggerInvalidation\`.
 

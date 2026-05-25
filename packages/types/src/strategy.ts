@@ -127,6 +127,7 @@ export interface StrategyMarketSnapshot {
   lastCandle: KlineChartItem;
   timestamp: number;
   currentPrice: number;
+  targetVenue?: BaseRelativeContext['execution']['targetVenue'];
 }
 
 export interface MlCandleIndicatorsSnapshot {
@@ -192,6 +193,44 @@ export interface BaseRegimeContext {
     priceDistanceToMaFastAtr: number | null;
     priceDistanceToMaSlowAtr: number | null;
     persistence: number | null;
+    adx?: {
+      adx: number | null;
+      diPlus: number | null;
+      diMinus: number | null;
+      direction: 'bull' | 'bear' | 'neutral' | 'unknown';
+      strength: 'weak' | 'developing' | 'strong' | 'unknown';
+    };
+    maLayers?: {
+      bullishLayerCount: number | null;
+      bearishLayerCount: number | null;
+      alignment: 'bull' | 'bear' | 'mixed' | 'unknown';
+      fastImpulseBias: 'bull' | 'bear' | 'neutral' | 'unknown';
+      macroBias: 'bull' | 'bear' | 'neutral' | 'unknown';
+      layerConflict: boolean | null;
+      layers: Array<{
+        fastPeriod: number;
+        slowPeriod: number;
+        fast: number | null;
+        slow: number | null;
+        bias: 'bull' | 'bear' | 'neutral' | 'unknown';
+      }>;
+    };
+    contextMa?: {
+      baseline: number | null;
+      upperBoundary: number | null;
+      lowerBoundary: number | null;
+      contextBias: 'bull' | 'bear' | 'neutral' | 'unknown';
+      distanceToBoundaryAtr: number | null;
+    };
+    adaptiveChannel?: {
+      centerline: number | null;
+      upper: number | null;
+      lower: number | null;
+      direction: 'bull' | 'bear' | 'neutral' | 'unknown';
+      centerlineSlope: number | null;
+      channelWidthAtr: number | null;
+      pricePositionInChannel: number | null;
+    };
   };
   volatility: {
     atrSlope: number | null;
@@ -200,11 +239,19 @@ export interface BaseRegimeContext {
     compressionScore: number | null;
     expansionScore: number | null;
     state: 'compressed' | 'normal' | 'expanded' | 'unknown';
+    percentiles?: {
+      atrPctRank100: number | null;
+      bbWidthRank100: number | null;
+      realizedVolRank100: number | null;
+      rangeExpansionRank20: number | null;
+    };
   };
   momentum: {
     roc1h: number | null;
     roc4h: number | null;
     roc1d: number | null;
+    rsi?: number | null;
+    rsiState?: 'oversold' | 'neutral' | 'overbought' | 'unknown';
     macdHistogramSlope: number | null;
     bodyStrength: number | null;
     closeLocationInRange: number | null;
@@ -224,6 +271,70 @@ export interface BaseRegimeContext {
 }
 
 export interface BaseStructureContext {
+  swing?: {
+    state: 'trend' | 'range' | 'transition' | 'unknown';
+    bias: 'bull' | 'bear' | 'neutral' | 'unknown';
+    higherHighCount: number | null;
+    higherLowCount: number | null;
+    lowerHighCount: number | null;
+    lowerLowCount: number | null;
+  };
+  zones?: {
+    support: {
+      level: number | null;
+      lower: number | null;
+      upper: number | null;
+      touches: number | null;
+      ageBars: number | null;
+      volumeShare: number | null;
+      distanceAtr: number | null;
+    };
+    resistance: {
+      level: number | null;
+      lower: number | null;
+      upper: number | null;
+      touches: number | null;
+      ageBars: number | null;
+      volumeShare: number | null;
+      distanceAtr: number | null;
+    };
+    active: {
+      side: 'support' | 'resistance' | null;
+      priceInZone: boolean | null;
+    };
+  };
+  liquidity?: {
+    sweepState:
+      | 'none'
+      | 'swept_high'
+      | 'swept_low'
+      | 'broken_high'
+      | 'broken_low'
+      | 'unknown';
+    side: 'high' | 'low' | null;
+    referenceZoneSide: 'support' | 'resistance' | null;
+    sweepHigh20: boolean | null;
+    sweepLow20: boolean | null;
+    closeBackInsideRange: boolean | null;
+    stopRunDirection: 'up' | 'down' | null;
+    sweepWickPct: number | null;
+  };
+  pivots?: {
+    lastSwingHigh: number | null;
+    lastSwingLow: number | null;
+    barsSinceSwingHigh: number | null;
+    barsSinceSwingLow: number | null;
+    swingAmplitudeAtr: number | null;
+    pivotDensity20: number | null;
+    pivotDensity50: number | null;
+  };
+  acceptance?: {
+    closesAboveHighLevel3: number | null;
+    closesBelowLowLevel3: number | null;
+    failedAcceptanceBars: number | null;
+    acceptanceScore: number | null;
+    breakoutBodyAtr: number | null;
+  };
   localRange: {
     rangePosition20: number | null;
     distanceToHighLevelAtr: number | null;
@@ -258,6 +369,25 @@ export interface BaseParticipationContext {
     obvSlope: number | null;
     effortVsResult: number | null;
   };
+  priceVolumeProfile?: {
+    pointOfControl: number | null;
+    distanceToPointOfControlAtr: number | null;
+    pointOfControlVolumeShare: number | null;
+    priceAbovePointOfControl: boolean | null;
+    nearPointOfControl: boolean | null;
+  };
+  delta?: {
+    source?: 'ohlcv_proxy' | 'kline_taker_volume' | 'agg_trades' | 'trades';
+    buyPressurePct: number | null;
+    buyVolume?: number | null;
+    sellVolume?: number | null;
+    netDelta?: number | null;
+    deltaPct?: number | null;
+    signedVolume: number | null;
+    signedVolumeZScore: number | null;
+    deltaSlope: number | null;
+    deltaDivergenceVsPrice: 'bullish' | 'bearish' | 'none' | 'unknown';
+  };
 }
 
 export interface BaseRelativeContext {
@@ -278,6 +408,19 @@ export interface BaseRelativeContext {
   execution: {
     venueSpread: number | null;
     venueSpreadZScore: number | null;
+    targetVenue?: {
+      source: 'ticker_top_of_book';
+      venue: string | null;
+      symbol: string;
+      bid: number | null;
+      ask: number | null;
+      mid: number | null;
+      spreadBps: number | null;
+      topBidQty: number | null;
+      topAskQty: number | null;
+      snapshotTimestamp: number | null;
+      stale: boolean;
+    } | null;
   };
 }
 
@@ -293,6 +436,19 @@ export interface BaseMultiTimeframeContext {
     h1: Candle[];
     h4: Candle[];
     d1: Candle[];
+  };
+  summary?: {
+    h1TrendBias: 'bull' | 'bear' | 'neutral' | 'unknown';
+    h4TrendBias: 'bull' | 'bear' | 'neutral' | 'unknown';
+    d1TrendBias: 'bull' | 'bear' | 'neutral' | 'unknown';
+    h1RangePosition: number | null;
+    h4VolatilityState: 'compressed' | 'normal' | 'expanded' | 'unknown';
+    mtfAlignment:
+      | 'aligned_bull'
+      | 'aligned_bear'
+      | 'mixed'
+      | 'neutral'
+      | 'unknown';
   };
 }
 

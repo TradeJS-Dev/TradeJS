@@ -131,7 +131,7 @@ describe('indicatorCache', () => {
       provider: 'ByBit',
       symbol: 'ETHUSDT',
       interval: 15,
-      keepVersion: 'v5',
+      keepVersion: 'v6',
     });
   });
 

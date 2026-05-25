@@ -104,6 +104,42 @@ const normalizeAdditionalIndicatorsBaseContext = (
   } as BuildStrategySignalParams['additionalIndicators'];
 };
 
+const withTargetVenueContext = (
+  additionalIndicators: BuildEntrySignalDecisionParams['additionalIndicators'],
+  targetVenue: StrategyMarketSnapshot['targetVenue'],
+): BuildEntrySignalDecisionParams['additionalIndicators'] => {
+  if (
+    targetVenue == null ||
+    !additionalIndicators ||
+    typeof additionalIndicators !== 'object' ||
+    Array.isArray(additionalIndicators)
+  ) {
+    return additionalIndicators;
+  }
+
+  const additionalRecord = additionalIndicators as Record<string, unknown>;
+  const baseContext = additionalRecord.baseContext as
+    | BaseStrategyContextSnapshot
+    | undefined;
+  if (!baseContext?.relative?.execution) {
+    return additionalIndicators;
+  }
+
+  return {
+    ...additionalRecord,
+    baseContext: {
+      ...baseContext,
+      relative: {
+        ...baseContext.relative,
+        execution: {
+          ...baseContext.relative.execution,
+          targetVenue,
+        },
+      },
+    },
+  } as BuildEntrySignalDecisionParams['additionalIndicators'];
+};
+
 export const mapAiRuntimeFromConfig = <TConfig extends AiRuntimeConfigLike>(
   config: TConfig,
   overrides: Partial<StrategyRuntimeAiOptions> = {},
@@ -415,6 +451,10 @@ export const createStrategyAPI = ({
       const marketData = await getMarketData();
       const currentPrice = marketData.currentPrice;
       const timestamp = marketData.timestamp;
+      const resolvedAdditionalIndicators = withTargetVenueContext(
+        additionalIndicators,
+        marketData.targetVenue,
+      );
       const stopLossPrice = orderPlan.stopLossPrice;
       const takeProfitPrice = resolveTakeProfitPrice({
         direction,
@@ -454,7 +494,7 @@ export const createStrategyAPI = ({
         },
         figures,
         indicators,
-        additionalIndicators,
+        additionalIndicators: resolvedAdditionalIndicators,
         signalId,
         orderPlan,
         runtime,

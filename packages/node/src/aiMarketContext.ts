@@ -18,6 +18,30 @@ type BinanceCoinbaseSpreadContext = {
 export type AiMarketContext = {
   execution: {
     binanceCoinbaseSpread: BinanceCoinbaseSpreadContext;
+    targetVenue: {
+      source: string | null;
+      available: boolean;
+      symbol: string | null;
+      bid: number | null;
+      ask: number | null;
+      mid: number | null;
+      spreadBps: number | null;
+      topBidQty: number | null;
+      topAskQty: number | null;
+      stale: boolean | null;
+    };
+  };
+  participation: {
+    trueDelta: {
+      source: string | null;
+      available: boolean;
+      buyPressurePct: number | null;
+      buyVolume: number | null;
+      sellVolume: number | null;
+      netDelta: number | null;
+      deltaPct: number | null;
+      signedVolumeZScore: number | null;
+    };
   };
 };
 
@@ -95,8 +119,84 @@ const buildSpreadContextFromSignal = (
   };
 };
 
+const buildTargetVenueContextFromSignal = (signal: Signal) => {
+  const baseContext = toRecord(signal.additionalIndicators?.baseContext);
+  const relative = toRecord(baseContext?.relative);
+  const execution = toRecord(relative?.execution);
+  const targetVenue = toRecord(execution?.targetVenue);
+  const bid = toFiniteNumber(targetVenue?.bid);
+  const ask = toFiniteNumber(targetVenue?.ask);
+
+  if (!targetVenue || (bid == null && ask == null)) {
+    return {
+      source: null,
+      available: false,
+      symbol: null,
+      bid: null,
+      ask: null,
+      mid: null,
+      spreadBps: null,
+      topBidQty: null,
+      topAskQty: null,
+      stale: null,
+    };
+  }
+
+  return {
+    source: String(targetVenue.source ?? ''),
+    available: true,
+    symbol: String(targetVenue.symbol ?? signal.symbol),
+    bid,
+    ask,
+    mid: toFiniteNumber(targetVenue.mid),
+    spreadBps: toFiniteNumber(targetVenue.spreadBps),
+    topBidQty: toFiniteNumber(targetVenue.topBidQty),
+    topAskQty: toFiniteNumber(targetVenue.topAskQty),
+    stale: typeof targetVenue.stale === 'boolean' ? targetVenue.stale : null,
+  };
+};
+
+const buildTrueDeltaContextFromSignal = (signal: Signal) => {
+  const baseContext = toRecord(signal.additionalIndicators?.baseContext);
+  const participation = toRecord(baseContext?.participation);
+  const delta = toRecord(participation?.delta);
+  const source = String(delta?.source ?? '');
+  const isTrueDeltaSource =
+    source === 'kline_taker_volume' ||
+    source === 'agg_trades' ||
+    source === 'trades';
+
+  if (!delta || !isTrueDeltaSource) {
+    return {
+      source: source || null,
+      available: false,
+      buyPressurePct: null,
+      buyVolume: null,
+      sellVolume: null,
+      netDelta: null,
+      deltaPct: null,
+      signedVolumeZScore: null,
+    };
+  }
+
+  return {
+    source,
+    available: true,
+    buyPressurePct: toFiniteNumber(delta.buyPressurePct),
+    buyVolume: toFiniteNumber(delta.buyVolume),
+    sellVolume: toFiniteNumber(delta.sellVolume),
+    netDelta: toFiniteNumber(delta.netDelta),
+    deltaPct: toFiniteNumber(delta.deltaPct),
+    signedVolumeZScore: toFiniteNumber(delta.signedVolumeZScore),
+  };
+};
+
 export const buildAiMarketContext = (signal: Signal): AiMarketContext => ({
   execution: {
     binanceCoinbaseSpread: buildSpreadContextFromSignal(signal),
+    targetVenue: buildTargetVenueContextFromSignal(signal),
+  },
+  participation: {
+    trueDelta: buildTrueDeltaContextFromSignal(signal),
   },
 });

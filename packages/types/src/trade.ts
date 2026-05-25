@@ -11,6 +11,10 @@ export interface Candle {
   volume: number;
   timestamp: number;
   turnover: number;
+  takerBuyBaseVolume?: number | null;
+  takerBuyQuoteVolume?: number | null;
+  takerSellBaseVolume?: number | null;
+  takerSellQuoteVolume?: number | null;
 }
 
 export interface KlineChartItem extends Candle {

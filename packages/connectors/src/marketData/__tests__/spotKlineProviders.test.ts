@@ -40,7 +40,7 @@ describe('spotKlineProviders mapping', () => {
 
   test('mapBinanceKline maps, filters invalid rows and sorts by timestamp', () => {
     const rows = mapBinanceKline([
-      [1700000001000, '100', '110', '90', '105', '12', 0, '123'],
+      [1700000001000, '100', '110', '90', '105', '12', 0, '123', 0, '7', '72'],
       'invalid-row',
       [1700000000000, '90', '100', '80', '95', '10'],
       [1700000002000, 'oops', '120', '100', '110', '9'],
@@ -61,6 +61,10 @@ describe('spotKlineProviders mapping', () => {
       }),
     );
     expect(rows[1]?.turnover).toBe(123);
+    expect(rows[1]?.takerBuyBaseVolume).toBe(7);
+    expect(rows[1]?.takerSellBaseVolume).toBe(5);
+    expect(rows[1]?.takerBuyQuoteVolume).toBe(72);
+    expect(rows[1]?.takerSellQuoteVolume).toBe(51);
   });
 
   test('mapCoinbaseKline maps, filters invalid rows and sorts by timestamp', () => {

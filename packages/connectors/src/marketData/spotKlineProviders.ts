@@ -25,18 +25,34 @@ export const mapBinanceKline = (payload: unknown[]): KlineChartData =>
       const low = Number(item[3]);
       const close = Number(item[4]);
       const volume = Number(item[5]);
+      const turnover = Number(item[7]) || 0;
+      const takerBuyBaseVolume = Number(item[9]);
+      const takerBuyQuoteVolume = Number(item[10]);
       if (![ts, open, high, low, close, volume].every(Number.isFinite))
         return null;
-      return {
+      const row: KlineChartData[number] = {
         timestamp: ts,
         open,
         high,
         low,
         close,
         volume,
-        turnover: Number(item[7]) || 0,
+        turnover,
+        takerBuyBaseVolume: Number.isFinite(takerBuyBaseVolume)
+          ? takerBuyBaseVolume
+          : null,
+        takerBuyQuoteVolume: Number.isFinite(takerBuyQuoteVolume)
+          ? takerBuyQuoteVolume
+          : null,
+        takerSellBaseVolume: Number.isFinite(takerBuyBaseVolume)
+          ? Math.max(0, volume - takerBuyBaseVolume)
+          : null,
+        takerSellQuoteVolume: Number.isFinite(takerBuyQuoteVolume)
+          ? Math.max(0, turnover - takerBuyQuoteVolume)
+          : null,
         dt: new Date(ts).toISOString(),
       };
+      return row;
     })
     .filter((item): item is KlineChartData[number] => item != null)
     .sort((a, b) => a.timestamp - b.timestamp);

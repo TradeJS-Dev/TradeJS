@@ -77,6 +77,7 @@ If a feature is not publish-ready for external users, document that limitation e
   - `notes/ML_PIPELINE_AUDIT.md`
   - `notes/ML_TRANSFORM_README_RU.md`
 - Keep root markdown focused on stable repository guidance and runnable internal workflows.
+- Strategy-specific agent workflows may live under `.codex/skills/` when they capture repeatable internal research or tuning procedures.
 
 ## Architecture Rules
 
@@ -137,6 +138,7 @@ Do not:
 
 - evaluate entry/exit logic
 - return `skip`, `entry`, or `exit`
+- generate `figures` for visual inspection when a strategy depends on recognizable chart geometry such as trendlines, pivots, breakouts, bands, or double-top/double-bottom patterns
 
 `core.ts` should not:
 
@@ -153,6 +155,12 @@ Use `strategyApi` and shared runtime instead.
 - runtime resolves `timestamp`, `currentPrice`, `takeProfitPrice`, `riskRatio`
 
 `entryContext` is the source of truth for runtime execution fields.
+
+Geometry-based strategies should keep visual artifacts in the strategy package:
+
+- build figures from deterministic runtime state, not from UI-only code
+- include enough lines/points to inspect why a trade happened in backtest artifacts
+- avoid relying on Pine drawings as the source of truth after a strategy is ported to TypeScript
 
 Runtime AI config conventions:
 
@@ -324,6 +332,7 @@ Keep these conventions stable unless explicitly changing the ML pipeline.
 - Do not present plain `q1` / `q2` / `q3` / `q4` / `q5` as the default approved bucket labels unless the user explicitly asks for the isolated subset; default reporting should use `qN+` notation.
 - To compare `AI_MODE=gate` and `AI_MODE=llm`, use live/runtime signal analysis records or explicit replay artifacts that contain both gate and LLM decisions.
 - TrendLine core/runtime config uses `TRENDLINE`; `TRENDLINE_CONFIG` is used in ML payload/training contexts. When applying backtest or result configs to a live/replay strategy config, make sure detector options land in `TRENDLINE`, or the core may run with stale/default trendline detector settings.
+- DoubleTap strategy work has a dedicated local skill at `.codex/skills/doubletap-strategy-research/SKILL.md`. Use it for future DoubleTap tuning, cache-only backtest sweeps, yearly `--ai` export prep, and local AI gate research.
 
 ## Generated / Build Files
 

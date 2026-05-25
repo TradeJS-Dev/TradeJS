@@ -8,6 +8,7 @@ import {
   KlineChartData,
   KlineChartItem,
   StrategyMarketSnapshot,
+  Ticker,
 } from '@tradejs/types';
 
 export interface StrategyMarketSnapshotParams {
@@ -19,6 +20,48 @@ export interface StrategyMarketSnapshotParams {
   preloadStart: number;
   backtestPriceMode?: BacktestPriceMode;
 }
+
+const getTopOfBookTargetVenue = async ({
+  connector,
+  symbol,
+}: {
+  connector: Connector;
+  symbol: string;
+}): Promise<StrategyMarketSnapshot['targetVenue']> => {
+  let tickers: Ticker[] = [];
+  try {
+    tickers = await connector.getTickers();
+  } catch {
+    return null;
+  }
+
+  const ticker = tickers.find((item) => item.symbol === symbol);
+  if (!ticker) {
+    return null;
+  }
+
+  const bid = Number.isFinite(ticker.bid1Price) ? ticker.bid1Price : null;
+  const ask = Number.isFinite(ticker.ask1Price) ? ticker.ask1Price : null;
+  const mid = bid != null && ask != null ? (bid + ask) / 2 : null;
+  const spreadBps =
+    bid != null && ask != null && mid != null && mid > 0
+      ? ((ask - bid) / mid) * 10_000
+      : null;
+
+  return {
+    source: 'ticker_top_of_book',
+    venue: null,
+    symbol,
+    bid,
+    ask,
+    mid,
+    spreadBps,
+    topBidQty: Number.isFinite(ticker.bid1Size) ? ticker.bid1Size : null,
+    topAskQty: Number.isFinite(ticker.ask1Size) ? ticker.ask1Size : null,
+    snapshotTimestamp: Date.now(),
+    stale: false,
+  };
+};
 
 export const getStrategyMarketSnapshot = async ({
   env,
@@ -60,6 +103,10 @@ export const getStrategyMarketSnapshot = async ({
     lastCandle,
     timestamp: lastCandle.timestamp,
     currentPrice,
+    targetVenue:
+      env === 'BACKTEST' || env === 'PARITY'
+        ? null
+        : await getTopOfBookTargetVenue({ connector, symbol }),
   };
 };
 

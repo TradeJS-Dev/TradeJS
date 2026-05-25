@@ -78,4 +78,37 @@ describe('strategyHelpers/market getStrategyMarketSnapshot', () => {
     expect(snapshot.currentPrice).toBe(candle.close);
     expect(connector.kline).not.toHaveBeenCalled();
   });
+
+  it('adds live top-of-book target venue from connector tickers', async () => {
+    const connector = {
+      kline: jest.fn(async () => [candle]),
+      getTickers: jest.fn(async () => [
+        {
+          symbol: 'BTCUSDT',
+          bid1Price: 99,
+          ask1Price: 101,
+          bid1Size: 3,
+          ask1Size: 2,
+        },
+      ]),
+    } as any;
+
+    const snapshot = await getStrategyMarketSnapshot({
+      ...baseParams,
+      env: 'SIGNALS',
+      connector,
+    });
+
+    expect(snapshot.targetVenue).toMatchObject({
+      source: 'ticker_top_of_book',
+      symbol: 'BTCUSDT',
+      bid: 99,
+      ask: 101,
+      mid: 100,
+      spreadBps: 200,
+      topBidQty: 3,
+      topAskQty: 2,
+      stale: false,
+    });
+  });
 });
