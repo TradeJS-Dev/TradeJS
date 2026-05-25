@@ -67,6 +67,15 @@ export type IndicatorCacheCheckpointRow = {
   snapshot: unknown;
 };
 
+export type IndicatorCacheCleanupTable = 'coverage' | 'checkpoint';
+export type IndicatorCacheCleanupProgress = {
+  table: IndicatorCacheCleanupTable;
+  phase: 'index' | 'count' | 'delete' | 'done';
+  deletedRows: number;
+  totalRows: number;
+  batchRows?: number;
+};
+
 let derivativesSchemaReady = false;
 let spreadSchemaReady = false;
 let indicatorCacheSchemaReady = false;
@@ -1152,6 +1161,170 @@ export async function deleteIndicatorCacheObsoleteVersions(params: {
     `,
     [normalizedProvider, normalizedSymbol, params.interval, params.keepVersion],
   );
+}
+
+const countObsoleteIndicatorCacheRows = async (params: {
+  tableName: 'indicator_cache' | 'indicator_cache_checkpoint';
+  keepVersion: string;
+}) => {
+  const pool = getPool();
+  const result = await pool.query(
+    `
+      SELECT COUNT(*)::int AS count
+      FROM ${params.tableName}
+      WHERE version <> $1
+    `,
+    [params.keepVersion],
+  );
+  return Number(result.rows[0]?.count ?? 0);
+};
+
+const deleteObsoleteIndicatorCacheBatch = async (params: {
+  tableName: 'indicator_cache' | 'indicator_cache_checkpoint';
+  keepVersion: string;
+  batchSize: number;
+}) => {
+  const pool = getPool();
+  const result = await pool.query(
+    `
+      DELETE FROM ${params.tableName}
+      WHERE (tableoid, ctid) IN (
+        SELECT tableoid, ctid
+        FROM ${params.tableName}
+        WHERE version <> $1
+        LIMIT $2
+      )
+    `,
+    [params.keepVersion, params.batchSize],
+  );
+  return result.rowCount ?? 0;
+};
+
+const deleteObsoleteIndicatorCacheTable = async (params: {
+  table: IndicatorCacheCleanupTable;
+  tableName: 'indicator_cache' | 'indicator_cache_checkpoint';
+  keepVersion: string;
+  batchSize: number;
+  onProgress?: (progress: IndicatorCacheCleanupProgress) => void;
+}) => {
+  params.onProgress?.({
+    table: params.table,
+    phase: 'count',
+    deletedRows: 0,
+    totalRows: 0,
+  });
+  const totalRows = await countObsoleteIndicatorCacheRows({
+    tableName: params.tableName,
+    keepVersion: params.keepVersion,
+  });
+  params.onProgress?.({
+    table: params.table,
+    phase: 'count',
+    deletedRows: 0,
+    totalRows,
+  });
+
+  let deletedRows = 0;
+  while (deletedRows < totalRows) {
+    const batchRows = await deleteObsoleteIndicatorCacheBatch({
+      tableName: params.tableName,
+      keepVersion: params.keepVersion,
+      batchSize: params.batchSize,
+    });
+    if (batchRows <= 0) {
+      break;
+    }
+
+    deletedRows += batchRows;
+    params.onProgress?.({
+      table: params.table,
+      phase: 'delete',
+      deletedRows,
+      totalRows,
+      batchRows,
+    });
+
+    if (batchRows < params.batchSize) {
+      break;
+    }
+  }
+
+  params.onProgress?.({
+    table: params.table,
+    phase: 'done',
+    deletedRows,
+    totalRows,
+  });
+
+  return deletedRows;
+};
+
+export async function deleteAllIndicatorCacheObsoleteVersions(params: {
+  keepVersion: string;
+  batchSize?: number;
+  onProgress?: (progress: IndicatorCacheCleanupProgress) => void;
+}) {
+  await Promise.all([
+    ensureIndicatorCacheSchema(),
+    ensureIndicatorCacheCheckpointSchema(),
+  ]);
+
+  const pool = getPool();
+  params.onProgress?.({
+    table: 'coverage',
+    phase: 'index',
+    deletedRows: 0,
+    totalRows: 2,
+  });
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS indicator_cache_version_cleanup_idx
+    ON indicator_cache (version)
+  `);
+  params.onProgress?.({
+    table: 'coverage',
+    phase: 'index',
+    deletedRows: 1,
+    totalRows: 2,
+    batchRows: 1,
+  });
+  params.onProgress?.({
+    table: 'checkpoint',
+    phase: 'index',
+    deletedRows: 1,
+    totalRows: 2,
+  });
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS indicator_cache_checkpoint_version_cleanup_idx
+    ON indicator_cache_checkpoint (version)
+  `);
+  params.onProgress?.({
+    table: 'checkpoint',
+    phase: 'index',
+    deletedRows: 2,
+    totalRows: 2,
+    batchRows: 1,
+  });
+
+  const batchSize = Math.max(1, Math.trunc(params.batchSize ?? 50_000));
+  const coverageRows = await deleteObsoleteIndicatorCacheTable({
+    table: 'coverage',
+    tableName: 'indicator_cache',
+    keepVersion: params.keepVersion,
+    batchSize,
+    onProgress: params.onProgress,
+  });
+  const checkpointRows = await deleteObsoleteIndicatorCacheTable({
+    table: 'checkpoint',
+    tableName: 'indicator_cache_checkpoint',
+    keepVersion: params.keepVersion,
+    batchSize,
+    onProgress: params.onProgress,
+  });
+
+  return {
+    coverageRows,
+    checkpointRows,
+  };
 }
 
 export async function getIndicatorCacheCoverage(params: {

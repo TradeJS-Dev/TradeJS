@@ -136,12 +136,7 @@ describe('indicatorCache', () => {
     expect(plan.cached).toBe(false);
     expect(plan.replayStartIndex).toBe(2);
     expect(plan.restoreState).toEqual(runtimeState(2_000));
-    expect(mockDeleteIndicatorCacheObsoleteVersions).toHaveBeenCalledWith({
-      provider: 'ByBit',
-      symbol: 'ETHUSDT',
-      interval: 15,
-      keepVersion: 'v8',
-    });
+    expect(mockDeleteIndicatorCacheObsoleteVersions).not.toHaveBeenCalled();
   });
 
   it('replays from the restored checkpoint rather than from uncaptured cached coverage', async () => {
@@ -270,6 +265,7 @@ describe('indicatorCache', () => {
       [],
       expect.objectContaining({
         includeMlPayload: false,
+        runtimeOnly: true,
         periods: { maFast: 14 },
         initialRuntimeState: restored,
       }),
@@ -334,6 +330,7 @@ describe('indicatorCache', () => {
       [],
       expect.objectContaining({
         includeMlPayload: false,
+        runtimeOnly: true,
         periods: { maFast: 14 },
         initialRuntimeState: runtimeState(1_000),
       }),

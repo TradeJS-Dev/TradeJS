@@ -528,4 +528,78 @@ describe('timescale candle helpers', () => {
       ['bybit', 'BTCUSDT', 15, 'hash-1', 'v1', 2000],
     );
   });
+
+  it('deletes all obsolete indicator cache versions by keep version', async () => {
+    const progress = jest.fn();
+    const query = jest.fn(async (sql: string) => {
+      if (
+        sql.includes('COUNT(*)::int AS count') &&
+        sql.includes('FROM indicator_cache_checkpoint')
+      ) {
+        return { rows: [{ count: 2 }] };
+      }
+      if (
+        sql.includes('COUNT(*)::int AS count') &&
+        sql.includes('FROM indicator_cache')
+      ) {
+        return { rows: [{ count: 3 }] };
+      }
+      if (
+        sql.includes('DELETE FROM indicator_cache_checkpoint') &&
+        sql.includes('version <> $1')
+      ) {
+        return { rows: [], rowCount: 2 };
+      }
+      if (
+        sql.includes('DELETE FROM indicator_cache') &&
+        sql.includes('version <> $1')
+      ) {
+        return { rows: [], rowCount: 3 };
+      }
+      return { rows: [] };
+    });
+
+    jest.doMock('pg', () => ({
+      Pool: jest.fn().mockImplementation(() => ({
+        connect: jest.fn(),
+        query,
+      })),
+    }));
+
+    const { deleteAllIndicatorCacheObsoleteVersions } = await import(
+      '@tradejs/infra/timescale'
+    );
+
+    await expect(
+      deleteAllIndicatorCacheObsoleteVersions({
+        keepVersion: 'v8',
+        batchSize: 10,
+        onProgress: progress,
+      }),
+    ).resolves.toEqual({
+      coverageRows: 3,
+      checkpointRows: 2,
+    });
+    expect(query).toHaveBeenCalledWith(
+      expect.stringMatching(
+        /CREATE INDEX IF NOT EXISTS indicator_cache_version_cleanup_idx/,
+      ),
+    );
+    expect(query).toHaveBeenCalledWith(
+      expect.stringContaining('DELETE FROM indicator_cache'),
+      ['v8', 10],
+    );
+    expect(query).toHaveBeenCalledWith(
+      expect.stringContaining('DELETE FROM indicator_cache_checkpoint'),
+      ['v8', 10],
+    );
+    expect(progress).toHaveBeenCalledWith(
+      expect.objectContaining({
+        table: 'coverage',
+        phase: 'delete',
+        deletedRows: 3,
+        totalRows: 3,
+      }),
+    );
+  });
 });

@@ -55,6 +55,9 @@ const coinalyzeIntervalMap: Record<DerivativesInterval, string> = {
   '1h': '1hour',
 };
 
+const derivativesIntervalMs = (interval: DerivativesInterval) =>
+  interval === '1h' ? HOUR_MS : 15 * 60 * 1000;
+
 let lastRequestTs = 0;
 
 const asInt = (value: unknown, fallback: number) => {
@@ -171,6 +174,65 @@ export const resolveDerivativesContextBackfillWindow = (params: {
     testStartMs: Math.trunc(safeStartMs),
   };
 };
+
+export const resolveDerivativesContextIntervalBackfillWindow = (params: {
+  fromMs: number;
+  toMs: number;
+  interval: DerivativesInterval;
+}) => {
+  const intervalMs = derivativesIntervalMs(params.interval);
+  return {
+    fromMs: Math.floor(params.fromMs / intervalMs) * intervalMs,
+    toMs: Math.floor(params.toMs / intervalMs) * intervalMs,
+    intervalMs,
+  };
+};
+
+export const resolveDerivativesContextMissingFetchFromMs = (params: {
+  edges?: { min?: number; max?: number };
+  fromMs: number;
+  toMs: number;
+  intervalMs: number;
+}) => {
+  const min = params.edges?.min;
+  const max = params.edges?.max;
+  if (min == null || max == null) {
+    return params.fromMs;
+  }
+  if (min > params.fromMs) {
+    return params.fromMs;
+  }
+  if (max < params.toMs) {
+    return Math.max(params.fromMs, max + params.intervalMs);
+  }
+  return null;
+};
+
+const countBackfillWindows = (params: {
+  fromMs: number;
+  toMs: number;
+  batchMs: number;
+  intervalMs: number;
+}) => {
+  let count = 0;
+  let cursor = params.fromMs;
+  while (cursor < params.toMs) {
+    const toMs = Math.min(params.toMs, cursor + params.batchMs);
+    count += 1;
+    cursor = toMs + params.intervalMs;
+  }
+  return count;
+};
+
+const hasDerivativesWindowCoverage = (params: {
+  edges?: { min?: number; max?: number };
+  fromMs: number;
+  toMs: number;
+}) =>
+  params.edges?.min != null &&
+  params.edges?.max != null &&
+  params.edges.min <= params.fromMs &&
+  params.edges.max >= params.toMs;
 
 const getCoinalyzeApiKey = async (userName: string) => {
   const settings = await getUserSettings(userName);
@@ -434,13 +496,6 @@ const backfillDerivativesContext = async (
     return skippedBackfillResult();
   }
 
-  const apiKey = await getCoinalyzeApiKey(userName);
-  if (!apiKey) {
-    throw new Error(
-      `Missing COINALYZE_API_KEY for derivatives context backfill (user=${userName})`,
-    );
-  }
-
   const {
     fromMs,
     toMs: safeEndMs,
@@ -452,6 +507,86 @@ const backfillDerivativesContext = async (
   });
   if (safeEndMs <= fromMs) {
     return skippedBackfillResult();
+  }
+
+  const batchDays = asInt(
+    process.env.DERIVATIVES_CONTEXT_BACKFILL_BATCH_DAYS,
+    30,
+  );
+  const batchMs = batchDays * DAY_MS;
+  const intervalWindows = intervals
+    .map((interval) => ({
+      interval,
+      ...resolveDerivativesContextIntervalBackfillWindow({
+        fromMs,
+        toMs: safeEndMs,
+        interval,
+      }),
+    }))
+    .filter((item) => item.toMs > item.fromMs);
+  if (!intervalWindows.length) {
+    return skippedBackfillResult();
+  }
+
+  await waitForDbReady();
+
+  const edgesByInterval = new Map<
+    DerivativesInterval,
+    Awaited<ReturnType<typeof getDerivativesDataEdgesForSymbols>>
+  >();
+  await Promise.all(
+    intervalWindows.map(async ({ interval }) => {
+      edgesByInterval.set(
+        interval,
+        await getDerivativesDataEdgesForSymbols(symbols, interval),
+      );
+    }),
+  );
+
+  const cachedWindows = intervalWindows.reduce(
+    (sum, window) =>
+      sum +
+      countBackfillWindows({
+        fromMs: window.fromMs,
+        toMs: window.toMs,
+        batchMs,
+        intervalMs: window.intervalMs,
+      }),
+    0,
+  );
+  const allReferenceWindowsCached = intervalWindows.every((window) => {
+    const edgesBySymbol = edgesByInterval.get(window.interval);
+    return symbols.every((symbol) =>
+      hasDerivativesWindowCoverage({
+        edges: edgesBySymbol?.get(symbol.toUpperCase()),
+        fromMs: window.fromMs,
+        toMs: window.toMs,
+      }),
+    );
+  });
+
+  if (allReferenceWindowsCached) {
+    console.log(
+      chalk.gray(
+        `derivatives context backfill: cached referenceSymbols=${symbols.length}, requestedSymbols=${requestedSymbols.length}, intervals=${intervals.join(',')}, window=${new Date(fromMs).toISOString()}..${new Date(safeEndMs).toISOString()}`,
+      ),
+    );
+
+    return {
+      skipped: false,
+      rows: 0,
+      matchedSymbols: symbols.length,
+      unmatchedSymbols: 0,
+      failedWindows: 0,
+      skippedWindows: cachedWindows,
+    };
+  }
+
+  const apiKey = await getCoinalyzeApiKey(userName);
+  if (!apiKey) {
+    throw new Error(
+      `Missing COINALYZE_API_KEY for derivatives context backfill (user=${userName})`,
+    );
   }
 
   const exchangePriority = parseList(
@@ -475,19 +610,23 @@ const backfillDerivativesContext = async (
     );
   }
 
-  await waitForDbReady();
-
-  const batchDays = asInt(
-    process.env.DERIVATIVES_CONTEXT_BACKFILL_BATCH_DAYS,
-    30,
-  );
   const symbolBatchSize = asInt(
     process.env.DERIVATIVES_CONTEXT_BACKFILL_SYMBOL_BATCH_SIZE,
     8,
   );
   const symbolBatches = chunkArray(matches, symbolBatchSize);
-  const windowsPerPair = Math.ceil((safeEndMs - fromMs) / (batchDays * DAY_MS));
-  const totalWindows = symbolBatches.length * intervals.length * windowsPerPair;
+  const windowsPerPair = intervalWindows.reduce(
+    (sum, window) =>
+      sum +
+      countBackfillWindows({
+        fromMs: window.fromMs,
+        toMs: window.toMs,
+        batchMs,
+        intervalMs: window.intervalMs,
+      }),
+    0,
+  );
+  const totalWindows = symbolBatches.length * windowsPerPair;
   const bar = new ProgressBar(
     ':current/:total [:bar][:percent] :eta(s) :batch rows=:rows fail=:fail skip=:skip',
     {
@@ -513,32 +652,45 @@ const backfillDerivativesContext = async (
     ),
   );
 
-  for (const interval of intervals) {
-    const edgesBySymbol = await getDerivativesDataEdgesForSymbols(
-      matches.map((item) => item.symbol),
-      interval,
-    );
+  for (const window of intervalWindows) {
+    const { interval, intervalMs } = window;
+    const edgesBySymbol =
+      edgesByInterval.get(interval) ??
+      (await getDerivativesDataEdgesForSymbols(
+        matches.map((item) => item.symbol),
+        interval,
+      ));
 
     for (let batchIdx = 0; batchIdx < symbolBatches.length; batchIdx += 1) {
       const batch = symbolBatches[batchIdx];
-      let cursor = fromMs;
+      let cursor = window.fromMs;
 
-      while (cursor < safeEndMs) {
-        const toMs = Math.min(safeEndMs, cursor + batchDays * DAY_MS);
-        const missingBatch = batch.filter((item) => {
-          const edges = edgesBySymbol.get(item.symbol.toUpperCase());
-          return (
-            edges?.min == null ||
-            edges?.max == null ||
-            edges.min > cursor ||
-            edges.max < toMs
+      while (cursor < window.toMs) {
+        const toMs = Math.min(window.toMs, cursor + batchMs);
+        const missingRanges = batch
+          .map((item) => {
+            const edges = edgesBySymbol.get(item.symbol.toUpperCase());
+            const fromMs = resolveDerivativesContextMissingFetchFromMs({
+              edges,
+              fromMs: cursor,
+              toMs,
+              intervalMs,
+            });
+            return fromMs == null ? null : { item, fromMs };
+          })
+          .filter(
+            (item): item is { item: SymbolMatch; fromMs: number } =>
+              item != null,
           );
-        });
 
         try {
-          if (!missingBatch.length) {
+          if (!missingRanges.length) {
             skippedWindows += 1;
           } else {
+            const fetchFromMs = Math.min(
+              ...missingRanges.map((item) => item.fromMs),
+            );
+            const missingBatch = missingRanges.map((item) => item.item);
             const marketSymbols = missingBatch.map((item) => item.marketSymbol);
             const oiMap = await fetchMetricBatch({
               endpoint: oiPath,
@@ -546,7 +698,7 @@ const backfillDerivativesContext = async (
               marketSymbols,
               apiKey,
               interval,
-              fromMs: cursor,
+              fromMs: fetchFromMs,
               toMs,
             });
             const fundingMap = await fetchMetricBatch({
@@ -555,7 +707,7 @@ const backfillDerivativesContext = async (
               marketSymbols,
               apiKey,
               interval,
-              fromMs: cursor,
+              fromMs: fetchFromMs,
               toMs,
             });
             const liqMap = await fetchMetricBatch({
@@ -564,7 +716,7 @@ const backfillDerivativesContext = async (
               marketSymbols,
               apiKey,
               interval,
-              fromMs: cursor,
+              fromMs: fetchFromMs,
               toMs,
             });
 
@@ -602,7 +754,7 @@ const backfillDerivativesContext = async (
           });
         }
 
-        cursor = toMs + 1;
+        cursor = toMs + intervalMs;
       }
     }
   }

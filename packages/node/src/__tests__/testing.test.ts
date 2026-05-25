@@ -356,6 +356,40 @@ describe('testing backtest flow', () => {
     });
   });
 
+  it('reuses the primary BTC preload for matching Binance reference venue', async () => {
+    const ethData = [candle(1_000_050), candle(1_000_150), candle(1_000_250)];
+    const btcData = ethData.map((item) => ({
+      ...item,
+      close: item.close + 10,
+    }));
+    const coinbaseData = ethData.map((item) => ({
+      ...item,
+      close: item.close - 10,
+    }));
+    mockBinanceConnector.kline.mockImplementation(({ symbol }: any) =>
+      Promise.resolve(symbol === 'BTCUSDT' ? btcData : ethData),
+    );
+    mockCoinbaseConnector.kline.mockResolvedValue(coinbaseData);
+
+    await warmBacktestIndicatorCache(createTest({ connectorName: 'Binance' }));
+
+    expect(mockBinanceConnector.kline).toHaveBeenCalledTimes(2);
+    expect(
+      mockBinanceConnector.kline.mock.calls.filter(
+        ([params]) => params.symbol === 'BTCUSDT',
+      ),
+    ).toHaveLength(1);
+    expect(mockPlanIndicatorCacheRestore).toHaveBeenCalledWith(
+      expect.objectContaining({
+        provider: 'Binance',
+        data: ethData,
+        btcData,
+        btcBinanceData: btcData,
+        btcCoinbaseData: coinbaseData,
+      }),
+    );
+  });
+
   it('releases symbol-scoped warmup data after cache materialization', async () => {
     const data = [
       candle(1_000_050),

@@ -40,6 +40,7 @@ import {
 } from '@tradejs/types';
 import { getTradejsProjectCwd } from './tradejsConfig';
 export { loadTradejsConfig } from './tradejsConfig';
+export { cleanIndicatorCacheObsoleteVersions } from './indicatorCache';
 
 const getProjectRoot = (): string => getTradejsProjectCwd();
 

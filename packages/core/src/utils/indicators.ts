@@ -209,6 +209,7 @@ type TrendlineIndicators = {
 
 type CreateIndicatorsOptions = {
   includeMlPayload?: boolean;
+  runtimeOnly?: boolean;
   btcBinanceData?: Candle[];
   btcCoinbaseData?: Candle[];
   pluginRegistryScope?: string;
@@ -390,9 +391,10 @@ export const createIndicators = (
     periods?: Partial<IndicatorPeriods>;
   } = {},
 ) => {
-  const indicatorPluginEntries = getRegisteredIndicatorEntries(
-    options.pluginRegistryScope,
-  );
+  const runtimeOnly = options.runtimeOnly === true;
+  const indicatorPluginEntries = runtimeOnly
+    ? []
+    : getRegisteredIndicatorEntries(options.pluginRegistryScope);
   const includeMlPayload = options.includeMlPayload !== false;
   const indicatorPeriods = resolveIndicatorPeriods(options.periods);
   const controllerStateCandleWindow =
@@ -804,18 +806,24 @@ export const createIndicators = (
   const price24hStartTracker = createNearestStartCloseTracker(ONE_DAY_MS);
 
   candlesHistory.forEach((candle, index) => {
-    correlationCoinWindow.push(candle);
+    if (!runtimeOnly) {
+      correlationCoinWindow.push(candle);
+    }
     if (indicatorPeriods.levelLookback > 0) {
       updateLevelWindow(index);
     }
-    window1hTracker.push(index, candle.timestamp);
-    window24hTracker.push(index, candle.timestamp);
-    price1hStartTracker.resolve(candle.timestamp);
-    price24hStartTracker.resolve(candle.timestamp);
+    if (!runtimeOnly) {
+      window1hTracker.push(index, candle.timestamp);
+      window24hTracker.push(index, candle.timestamp);
+      price1hStartTracker.resolve(candle.timestamp);
+      price24hStartTracker.resolve(candle.timestamp);
+    }
   });
-  btcCandlesHistory.forEach((candle) => {
-    correlationBtcWindow.push(candle);
-  });
+  if (!runtimeOnly) {
+    btcCandlesHistory.forEach((candle) => {
+      correlationBtcWindow.push(candle);
+    });
+  }
 
   const next = (
     candle: Candle,
@@ -826,14 +834,18 @@ export const createIndicators = (
     coin1hCache.push(candle);
     coin4hCache.push(candle);
     coin1dCache.push(candle);
-    correlationCoinWindow.push(candle);
+    if (!runtimeOnly) {
+      correlationCoinWindow.push(candle);
+    }
     if (btcCandle) {
       btcCandlesHistory.push(btcCandle);
       btcCloses.push(btcCandle.close);
       btc1hCache.push(btcCandle);
       btc4hCache.push(btcCandle);
       btc1dCache.push(btcCandle);
-      correlationBtcWindow.push(btcCandle);
+      if (!runtimeOnly) {
+        correlationBtcWindow.push(btcCandle);
+      }
 
       const btcMaFastValue = btcMaFast.nextValue(btcCandle.close);
       const btcMaSlowValue = btcMaSlow.nextValue(btcCandle.close);
@@ -899,16 +911,14 @@ export const createIndicators = (
       closeStreaks.up = 0;
       closeStreaks.down = 0;
     }
-    const correlationCoinCandles = correlationCoinWindow.snapshot();
-    const correlationBtcCandles = correlationBtcWindow.snapshot();
     if (indicatorPeriods.levelLookback > 0) {
       updateLevelWindow(currentIndex);
     }
     const correlation =
-      correlationBtcWindow.size() > 0
+      !runtimeOnly && correlationBtcWindow.size() > 0
         ? calculateCoinBtcCorrelation(
-            correlationCoinCandles as any,
-            correlationBtcCandles as any,
+            correlationCoinWindow.snapshot() as any,
+            correlationBtcWindow.snapshot() as any,
           ).correlation ?? 0
         : 0;
 
@@ -982,28 +992,36 @@ export const createIndicators = (
       return pluginSeries;
     };
 
-    const window1h = window1hTracker.push(currentIndex, currentTimestamp);
-    const window24h = window24hTracker.push(currentIndex, currentTimestamp);
+    const window1h = runtimeOnly
+      ? null
+      : window1hTracker.push(currentIndex, currentTimestamp);
+    const window24h = runtimeOnly
+      ? null
+      : window24hTracker.push(currentIndex, currentTimestamp);
 
-    const price1hStart = price1hStartTracker.resolve(currentTimestamp);
-    const price24hStart = price24hStartTracker.resolve(currentTimestamp);
+    const price1hStart = runtimeOnly
+      ? null
+      : price1hStartTracker.resolve(currentTimestamp);
+    const price24hStart = runtimeOnly
+      ? null
+      : price24hStartTracker.resolve(currentTimestamp);
     const price1hPcntRaw =
-      price1hStart.startClose != null
+      price1hStart?.startClose != null
         ? percentChange(candle.close, price1hStart.startClose)
         : null;
     const price24hPcntRaw =
-      price24hStart.startClose != null
+      price24hStart?.startClose != null
         ? percentChange(candle.close, price24hStart.startClose)
         : null;
     const price1hPcnt = price1hPcntRaw ?? 0;
     const price24hPcnt = price24hPcntRaw ?? 0;
 
-    const highPrice1h = window1h.hasFullWindow ? window1h.high : null;
-    const lowPrice1h = window1h.hasFullWindow ? window1h.low : null;
-    const volume1h = window1h.hasFullWindow ? window1h.volume : null;
-    const highPrice24h = window24h.hasFullWindow ? window24h.high : null;
-    const lowPrice24h = window24h.hasFullWindow ? window24h.low : null;
-    const volume24h = window24h.hasFullWindow ? window24h.volume : null;
+    const highPrice1h = window1h?.hasFullWindow ? window1h.high : null;
+    const lowPrice1h = window1h?.hasFullWindow ? window1h.low : null;
+    const volume1h = window1h?.hasFullWindow ? window1h.volume : null;
+    const highPrice24h = window24h?.hasFullWindow ? window24h.high : null;
+    const lowPrice24h = window24h?.hasFullWindow ? window24h.low : null;
+    const volume24h = window24h?.hasFullWindow ? window24h.volume : null;
 
     if (
       ma14Value == null ||
@@ -1015,12 +1033,14 @@ export const createIndicators = (
       smaObvValue == null ||
       !macdValue
     ) {
-      computePluginSeries({
-        prevCandle,
-        correlation,
-        spread,
-        candle,
-      });
+      if (!runtimeOnly) {
+        computePluginSeries({
+          prevCandle,
+          correlation,
+          spread,
+          candle,
+        });
+      }
       return null;
     }
 
@@ -1065,6 +1085,39 @@ export const createIndicators = (
       breakoutState.barsSinceBreakout = 0;
     } else if (breakoutState.barsSinceBreakout != null) {
       breakoutState.barsSinceBreakout += 1;
+    }
+
+    if (runtimeOnly) {
+      return {
+        maFast: ma14Value,
+        maMedium: ma49Value,
+        maSlow: ma50Value,
+        atr: atrValue,
+        atrPct: atrPctRatio,
+        bbUpper: bbValue.upper,
+        bbMiddle: bbValue.middle,
+        bbLower: bbValue.lower,
+        obv: obvValue,
+        smaObv: smaObvValue,
+        macd: macdValue.MACD,
+        macdSignal: macdValue.signal,
+        macdHistogram: macdValue.histogram,
+        price24hPcnt,
+        price1hPcnt,
+        highPrice1h,
+        lowPrice1h,
+        volume1h,
+        highPrice24h,
+        lowPrice24h,
+        volume24h,
+        highLevel,
+        lowLevel,
+        prevClose: prevCandle?.close ?? null,
+        correlation,
+        spread,
+        candle,
+        prevCandle,
+      } as IndicatorSnapshot;
     }
 
     const baseResult = {

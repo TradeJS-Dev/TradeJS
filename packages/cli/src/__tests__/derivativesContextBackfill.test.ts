@@ -1,4 +1,6 @@
 import {
+  resolveDerivativesContextIntervalBackfillWindow,
+  resolveDerivativesContextMissingFetchFromMs,
   resolveDerivativesContextBackfillWindow,
   resolveDerivativesContextBackfillSymbols,
   shouldBackfillDerivativesContextForBacktest,
@@ -210,5 +212,60 @@ describe('resolveDerivativesContextBackfillWindow', () => {
       toMs: endMs,
       testStartMs: startMs,
     });
+  });
+});
+
+describe('resolveDerivativesContextIntervalBackfillWindow', () => {
+  it('aligns backfill bounds to closed derivatives intervals', () => {
+    const fromMs = Date.parse('2026-05-25T09:32:31.000Z');
+    const toMs = Date.parse('2026-05-25T10:37:31.000Z');
+
+    expect(
+      resolveDerivativesContextIntervalBackfillWindow({
+        fromMs,
+        toMs,
+        interval: '15m',
+      }),
+    ).toEqual({
+      fromMs: Date.parse('2026-05-25T09:30:00.000Z'),
+      toMs: Date.parse('2026-05-25T10:30:00.000Z'),
+      intervalMs: 15 * 60 * 1000,
+    });
+
+    expect(
+      resolveDerivativesContextIntervalBackfillWindow({
+        fromMs,
+        toMs,
+        interval: '1h',
+      }),
+    ).toEqual({
+      fromMs: Date.parse('2026-05-25T09:00:00.000Z'),
+      toMs: Date.parse('2026-05-25T10:00:00.000Z'),
+      intervalMs: 60 * 60 * 1000,
+    });
+  });
+});
+
+describe('resolveDerivativesContextMissingFetchFromMs', () => {
+  it('fetches only the missing tail when a window is partially covered', () => {
+    expect(
+      resolveDerivativesContextMissingFetchFromMs({
+        edges: { min: 1_000, max: 10_000 },
+        fromMs: 1_000,
+        toMs: 20_000,
+        intervalMs: 1_000,
+      }),
+    ).toBe(11_000);
+  });
+
+  it('returns null when the existing derivatives data covers the window', () => {
+    expect(
+      resolveDerivativesContextMissingFetchFromMs({
+        edges: { min: 1_000, max: 20_000 },
+        fromMs: 2_000,
+        toMs: 20_000,
+        intervalMs: 1_000,
+      }),
+    ).toBeNull();
   });
 });

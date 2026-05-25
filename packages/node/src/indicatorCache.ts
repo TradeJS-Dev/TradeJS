@@ -6,7 +6,7 @@ import {
 } from '@tradejs/core/indicators';
 import { Candle } from '@tradejs/types';
 import {
-  deleteIndicatorCacheObsoleteVersions,
+  deleteAllIndicatorCacheObsoleteVersions,
   getIndicatorCacheRange,
   getLatestIndicatorCacheCheckpointAtOrBefore,
   upsertIndicatorCacheCheckpointRows,
@@ -15,6 +15,19 @@ import {
 
 const INDICATOR_CACHE_VERSION = 'v8';
 const INDICATOR_CACHE_CHECKPOINT_INTERVAL = 256;
+
+type IndicatorCacheObsoleteCleanupOptions = Omit<
+  Parameters<typeof deleteAllIndicatorCacheObsoleteVersions>[0],
+  'keepVersion'
+>;
+
+export const cleanIndicatorCacheObsoleteVersions = (
+  options: IndicatorCacheObsoleteCleanupOptions = {},
+) =>
+  deleteAllIndicatorCacheObsoleteVersions({
+    ...options,
+    keepVersion: INDICATOR_CACHE_VERSION,
+  });
 
 type EnsureIndicatorCacheCoverageParams = {
   provider: string;
@@ -175,13 +188,6 @@ export const planIndicatorCacheRestore = async ({
   btcBinanceData,
   btcCoinbaseData,
 }: EnsureIndicatorCacheCoverageParams): Promise<IndicatorCacheRestorePlan> => {
-  await deleteIndicatorCacheObsoleteVersions({
-    provider,
-    symbol,
-    interval,
-    keepVersion: INDICATOR_CACHE_VERSION,
-  });
-
   const paramsHash = buildIndicatorCacheParamsHash({
     provider,
     interval,
@@ -283,6 +289,7 @@ export const materializeIndicatorCachePlan = async (
 
   const controller = createIndicators([], [], {
     includeMlPayload: false,
+    runtimeOnly: true,
     periods: params.periods,
     btcBinanceData: params.btcBinanceData,
     btcCoinbaseData: params.btcCoinbaseData,

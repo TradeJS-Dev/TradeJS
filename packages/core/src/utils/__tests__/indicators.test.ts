@@ -846,6 +846,64 @@ describe('utils indicators', () => {
     expect(restoredSnapshot.baseContext).toEqual(fullSnapshot.baseContext);
   });
 
+  it('keeps runtime-only checkpoint state equal to the full indicator controller', () => {
+    const periods = {
+      maFast: 3,
+      maMedium: 3,
+      maSlow: 3,
+      obvSma: 3,
+      atr: 3,
+      atrPctShort: 3,
+      atrPctLong: 3,
+      bb: 3,
+      bbStd: 2,
+      macdFast: 3,
+      macdSlow: 4,
+      macdSignal: 2,
+    };
+    const coinData = Array.from({ length: 140 }, (_, index) =>
+      makeCandle(index * INTERVAL_15M_MS, 100 + index, 101 + index, 99 + index),
+    );
+    const btcData = Array.from({ length: 140 }, (_, index) =>
+      makeCandle(
+        index * INTERVAL_15M_MS,
+        20_000 + index,
+        20_001 + index,
+        19_999 + index,
+      ),
+    );
+    const btcBinanceData = btcData.map((candle) => ({
+      ...candle,
+      close: candle.close - 10,
+    }));
+    const btcCoinbaseData = btcData.map((candle) => ({
+      ...candle,
+      close: candle.close + 10,
+    }));
+
+    const full = createIndicators([], [], {
+      periods,
+      btcBinanceData,
+      btcCoinbaseData,
+    });
+    const runtimeOnly = createIndicators([], [], {
+      periods,
+      btcBinanceData,
+      btcCoinbaseData,
+      includeMlPayload: false,
+      runtimeOnly: true,
+    });
+
+    coinData.forEach((candle, index) => {
+      full.next(candle, btcData[index]);
+      runtimeOnly.next(candle, btcData[index]);
+    });
+
+    expect(runtimeOnly.checkpointRuntimeState()).toEqual(
+      full.checkpointRuntimeState(),
+    );
+  });
+
   it('keeps the last base indicator values in order after history window overflow', () => {
     const indicators = createIndicators([], [], {
       periods: {

@@ -384,6 +384,41 @@ const prepareTestingData = async (params: {
     return cachedPreparedData;
   }
 
+  const btcDataPromise: Promise<KlineChartData> = cachedBtcData
+    ? Promise.resolve(cachedBtcData)
+    : connector.kline({
+        symbol: 'BTCUSDT',
+        start: preloadStart,
+        end,
+        interval: BACKTEST_INTERVAL,
+        silent: true,
+        cacheOnly,
+      });
+  const btcBinanceDataPromise: Promise<KlineChartData> = cachedBtcBinanceData
+    ? Promise.resolve(cachedBtcBinanceData)
+    : btcBinanceCacheKey === btcCacheKey
+      ? btcDataPromise
+      : (binanceConnector ?? connector).kline({
+          symbol: 'BTCUSDT',
+          start: preloadStart,
+          end,
+          interval: BACKTEST_INTERVAL,
+          silent: true,
+          cacheOnly,
+        });
+  const btcCoinbaseDataPromise: Promise<KlineChartData> = cachedBtcCoinbaseData
+    ? Promise.resolve(cachedBtcCoinbaseData)
+    : btcCoinbaseCacheKey === btcCacheKey
+      ? btcDataPromise
+      : (coinbaseConnector ?? connector).kline({
+          symbol: 'BTCUSDT',
+          start: preloadStart,
+          end,
+          interval: BACKTEST_INTERVAL,
+          silent: true,
+          cacheOnly,
+        });
+
   const [dataRaw, btcDataRaw, btcBinanceDataRaw, btcCoinbaseDataRaw] =
     await Promise.all([
       cachedCoinData
@@ -396,36 +431,9 @@ const prepareTestingData = async (params: {
             silent: true,
             cacheOnly,
           }),
-      cachedBtcData
-        ? Promise.resolve(cachedBtcData)
-        : connector.kline({
-            symbol: 'BTCUSDT',
-            start: preloadStart,
-            end,
-            interval: BACKTEST_INTERVAL,
-            silent: true,
-            cacheOnly,
-          }),
-      cachedBtcBinanceData
-        ? Promise.resolve(cachedBtcBinanceData)
-        : (binanceConnector ?? connector).kline({
-            symbol: 'BTCUSDT',
-            start: preloadStart,
-            end,
-            interval: BACKTEST_INTERVAL,
-            silent: true,
-            cacheOnly,
-          }),
-      cachedBtcCoinbaseData
-        ? Promise.resolve(cachedBtcCoinbaseData)
-        : (coinbaseConnector ?? connector).kline({
-            symbol: 'BTCUSDT',
-            start: preloadStart,
-            end,
-            interval: BACKTEST_INTERVAL,
-            silent: true,
-            cacheOnly,
-          }),
+      btcDataPromise,
+      btcBinanceDataPromise,
+      btcCoinbaseDataPromise,
     ]);
 
   if (!cachedCoinData) {
