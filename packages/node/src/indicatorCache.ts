@@ -1,7 +1,6 @@
 import { createHash } from 'node:crypto';
 import {
-  buildIndicatorCacheSnapshots,
-  IndicatorCacheSnapshotEntry,
+  createIndicators,
   IndicatorsControllerCheckpointState,
   IndicatorPeriods,
 } from '@tradejs/core/indicators';
@@ -14,7 +13,7 @@ import {
   upsertIndicatorCacheCoverageRows,
 } from '@tradejs/infra/timescale';
 
-const INDICATOR_CACHE_VERSION = 'v7';
+const INDICATOR_CACHE_VERSION = 'v8';
 const INDICATOR_CACHE_CHECKPOINT_INTERVAL = 256;
 
 type EnsureIndicatorCacheCoverageParams = {
@@ -36,10 +35,12 @@ type IndicatorCacheRestorePlan = {
   cached: boolean;
 };
 
-type IndicatorCacheCoverageSnapshot = Pick<
-  IndicatorCacheSnapshotEntry,
-  'timestamp' | 'candleSignature' | 'btcCandleSignature' | 'ready'
->;
+type IndicatorCacheCoverageSnapshot = {
+  timestamp: number;
+  candleSignature: string | null;
+  btcCandleSignature: string | null;
+  ready: boolean;
+};
 
 type IndicatorCacheCheckpointSnapshot = {
   timestamp: number;
@@ -164,46 +165,6 @@ const toCacheRows = async (params: {
   return rows.map((row) => row.snapshot as IndicatorCacheCoverageSnapshot);
 };
 
-const toCoverageSnapshot = (
-  snapshot: IndicatorCacheSnapshotEntry,
-): IndicatorCacheCoverageSnapshot => ({
-  timestamp: snapshot.timestamp,
-  candleSignature: snapshot.candleSignature,
-  btcCandleSignature: snapshot.btcCandleSignature,
-  ready: snapshot.ready,
-});
-
-const toCheckpointSnapshot = (
-  snapshot: IndicatorCacheSnapshotEntry,
-): IndicatorCacheCheckpointSnapshot | null =>
-  snapshot.runtimeState == null
-    ? null
-    : {
-        timestamp: snapshot.timestamp,
-        runtimeState: snapshot.runtimeState,
-      };
-
-const selectCheckpointSnapshots = (
-  snapshots: IndicatorCacheSnapshotEntry[],
-): IndicatorCacheCheckpointSnapshot[] => {
-  const selected: IndicatorCacheCheckpointSnapshot[] = [];
-
-  snapshots.forEach((snapshot, index) => {
-    const isLast = index === snapshots.length - 1;
-    const isCheckpoint = index % INDICATOR_CACHE_CHECKPOINT_INTERVAL === 0;
-    if (!isCheckpoint && !isLast) {
-      return;
-    }
-
-    const checkpointSnapshot = toCheckpointSnapshot(snapshot);
-    if (checkpointSnapshot) {
-      selected.push(checkpointSnapshot);
-    }
-  });
-
-  return selected;
-};
-
 export const planIndicatorCacheRestore = async ({
   provider,
   symbol,
@@ -320,38 +281,70 @@ export const materializeIndicatorCachePlan = async (
     return;
   }
 
-  const replayData = params.data.slice(params.replayStartIndex);
-  const replayBtcData = params.btcData.slice(params.replayStartIndex);
-  const snapshots = buildIndicatorCacheSnapshots(replayData, replayBtcData, {
+  const controller = createIndicators([], [], {
     includeMlPayload: false,
     periods: params.periods,
-    checkpointInterval: INDICATOR_CACHE_CHECKPOINT_INTERVAL,
     btcBinanceData: params.btcBinanceData,
     btcCoinbaseData: params.btcCoinbaseData,
     initialRuntimeState: params.restoreState ?? undefined,
   });
+  if (typeof controller.checkpointRuntimeState !== 'function') {
+    return;
+  }
 
-  await upsertIndicatorCacheCoverageRows(
-    snapshots.map((snapshot) => ({
+  const coverageRows: Parameters<typeof upsertIndicatorCacheCoverageRows>[0] =
+    [];
+  const checkpointRows: Parameters<
+    typeof upsertIndicatorCacheCheckpointRows
+  >[0] = [];
+
+  for (
+    let absoluteIndex = params.replayStartIndex;
+    absoluteIndex < params.data.length;
+    absoluteIndex += 1
+  ) {
+    const index = absoluteIndex - params.replayStartIndex;
+    const candle = params.data[absoluteIndex];
+    const btcCandle = params.btcData[absoluteIndex];
+    const snapshot = controller.next(candle, btcCandle);
+    const coverageSnapshot: IndicatorCacheCoverageSnapshot = {
+      timestamp: candle.timestamp,
+      candleSignature: buildCandleSignature(candle),
+      btcCandleSignature: buildCandleSignature(btcCandle),
+      ready: snapshot != null,
+    };
+
+    coverageRows.push({
       provider: params.provider,
       symbol: params.symbol,
       interval: params.interval,
       paramsHash: params.paramsHash,
       version: INDICATOR_CACHE_VERSION,
-      ts: new Date(snapshot.timestamp),
-      snapshot: toCoverageSnapshot(snapshot),
-    })),
-  );
+      ts: new Date(candle.timestamp),
+      snapshot: coverageSnapshot,
+    });
 
-  await upsertIndicatorCacheCheckpointRows(
-    selectCheckpointSnapshots(snapshots).map((snapshot) => ({
+    const isLast = absoluteIndex === params.data.length - 1;
+    const isCheckpoint = index % INDICATOR_CACHE_CHECKPOINT_INTERVAL === 0;
+    if (!isCheckpoint && !isLast) {
+      continue;
+    }
+
+    const checkpointSnapshot: IndicatorCacheCheckpointSnapshot = {
+      timestamp: candle.timestamp,
+      runtimeState: controller.checkpointRuntimeState(),
+    };
+    checkpointRows.push({
       provider: params.provider,
       symbol: params.symbol,
       interval: params.interval,
       paramsHash: params.paramsHash,
       version: INDICATOR_CACHE_VERSION,
-      ts: new Date(snapshot.timestamp),
-      snapshot,
-    })),
-  );
+      ts: new Date(candle.timestamp),
+      snapshot: checkpointSnapshot,
+    });
+  }
+
+  await upsertIndicatorCacheCoverageRows(coverageRows);
+  await upsertIndicatorCacheCheckpointRows(checkpointRows);
 };

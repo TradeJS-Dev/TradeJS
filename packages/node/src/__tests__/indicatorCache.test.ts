@@ -1,4 +1,4 @@
-const mockBuildIndicatorCacheSnapshots = jest.fn();
+const mockCreateIndicators = jest.fn();
 const mockDeleteIndicatorCacheObsoleteVersions = jest.fn();
 const mockGetIndicatorCacheRange = jest.fn();
 const mockGetLatestIndicatorCacheCheckpointAtOrBefore = jest.fn();
@@ -6,8 +6,7 @@ const mockUpsertIndicatorCacheCoverageRows = jest.fn();
 const mockUpsertIndicatorCacheCheckpointRows = jest.fn();
 
 jest.mock('@tradejs/core/indicators', () => ({
-  buildIndicatorCacheSnapshots: (...args: unknown[]) =>
-    mockBuildIndicatorCacheSnapshots(...args),
+  createIndicators: (...args: unknown[]) => mockCreateIndicators(...args),
 }));
 
 jest.mock('@tradejs/infra/timescale', () => ({
@@ -73,6 +72,16 @@ describe('indicatorCache', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockDeleteIndicatorCacheObsoleteVersions.mockResolvedValue(undefined);
+    mockCreateIndicators.mockImplementation(() => {
+      let lastTimestamp = 0;
+      return {
+        next: (nextCandle: { timestamp: number }) => {
+          lastTimestamp = nextCandle.timestamp;
+          return {};
+        },
+        checkpointRuntimeState: () => runtimeState(lastTimestamp),
+      };
+    });
   });
 
   it('returns stable params hash for the same inputs', () => {
@@ -131,7 +140,7 @@ describe('indicatorCache', () => {
       provider: 'ByBit',
       symbol: 'ETHUSDT',
       interval: 15,
-      keepVersion: 'v7',
+      keepVersion: 'v8',
     });
   });
 
@@ -235,16 +244,6 @@ describe('indicatorCache', () => {
   });
 
   it('materializes only the replay suffix and passes the restored controller state', async () => {
-    mockBuildIndicatorCacheSnapshots.mockReturnValue([
-      {
-        timestamp: 3_000,
-        candleSignature: 'coin-3',
-        btcCandleSignature: 'btc-3',
-        ready: true,
-        runtimeState: runtimeState(3_000),
-      },
-    ]);
-
     const data = [candle(1_000, 100), candle(2_000, 101), candle(3_000, 102)];
     const btcData = [
       candle(1_000, 200),
@@ -266,13 +265,12 @@ describe('indicatorCache', () => {
       cached: false,
     });
 
-    expect(mockBuildIndicatorCacheSnapshots).toHaveBeenCalledWith(
-      [data[2]],
-      [btcData[2]],
+    expect(mockCreateIndicators).toHaveBeenCalledWith(
+      [],
+      [],
       expect.objectContaining({
         includeMlPayload: false,
         periods: { maFast: 14 },
-        checkpointInterval: 256,
         initialRuntimeState: restored,
       }),
     );
@@ -284,8 +282,8 @@ describe('indicatorCache', () => {
         paramsHash: 'hash',
         snapshot: expect.objectContaining({
           timestamp: 3_000,
-          candleSignature: 'coin-3',
-          btcCandleSignature: 'btc-3',
+          candleSignature: cacheRow(3_000, 102, 202).candleSignature,
+          btcCandleSignature: cacheRow(3_000, 102, 202).btcCandleSignature,
           ready: true,
         }),
       }),
@@ -321,23 +319,6 @@ describe('indicatorCache', () => {
         runtimeState: runtimeState(1_000),
       },
     });
-    mockBuildIndicatorCacheSnapshots.mockReturnValue([
-      {
-        timestamp: 2_000,
-        candleSignature: 'coin-2',
-        btcCandleSignature: 'btc-2',
-        ready: true,
-        runtimeState: runtimeState(2_000),
-      },
-      {
-        timestamp: 3_000,
-        candleSignature: 'coin-3',
-        btcCandleSignature: 'btc-3',
-        ready: true,
-        runtimeState: runtimeState(3_000),
-      },
-    ]);
-
     const result = await ensureIndicatorCacheCoverage({
       provider: 'ByBit',
       symbol: 'ETHUSDT',
@@ -348,13 +329,12 @@ describe('indicatorCache', () => {
     });
 
     expect(result.cached).toBe(false);
-    expect(mockBuildIndicatorCacheSnapshots).toHaveBeenCalledWith(
-      data.slice(1),
-      btcData.slice(1),
+    expect(mockCreateIndicators).toHaveBeenCalledWith(
+      [],
+      [],
       expect.objectContaining({
         includeMlPayload: false,
         periods: { maFast: 14 },
-        checkpointInterval: 256,
         initialRuntimeState: runtimeState(1_000),
       }),
     );
@@ -374,7 +354,7 @@ describe('indicatorCache', () => {
       cached: true,
     });
 
-    expect(mockBuildIndicatorCacheSnapshots).not.toHaveBeenCalled();
+    expect(mockCreateIndicators).not.toHaveBeenCalled();
     expect(mockUpsertIndicatorCacheCoverageRows).not.toHaveBeenCalled();
     expect(mockUpsertIndicatorCacheCheckpointRows).not.toHaveBeenCalled();
   });
