@@ -8,6 +8,9 @@ const createBaseContext = (overrides: Record<string, unknown> = {}) => ({
     trend: {
       bias: 'bull',
     },
+    momentum: {
+      bodyStrength: 0.75,
+    },
   },
   structure: {
     swing: {
@@ -27,6 +30,9 @@ const createBaseContext = (overrides: Record<string, unknown> = {}) => ({
     benchmark: {
       trendAlignment: 'aligned_bull',
       bias: 'bull',
+    },
+    execution: {
+      venueSpreadZScore: 1.5,
     },
   },
   derivatives: {
@@ -142,5 +148,82 @@ describe('doubleTapAiAdapter', () => {
 
     expect(result?.quality).toBe(1);
     expect(result?.direction).toBeNull();
+  });
+
+  it('downgrades q4 approval pockets with neutral venue spread', () => {
+    const result = doubleTapAiAdapter.postProcessAnalysis?.({
+      payload: {
+        additionalIndicators: {
+          baseContext: createBaseContext({
+            relative: {
+              benchmark: {
+                trendAlignment: 'aligned_bull',
+                bias: 'bull',
+              },
+              execution: {
+                venueSpreadZScore: 0.2,
+              },
+            },
+          }),
+          doubleTapContext: {
+            signalDirection: 'LONG',
+            height: 10,
+            breakoutDistancePct: 0.4,
+          },
+        },
+      },
+      analysis: {
+        approved: true,
+        quality: 4,
+        direction: 'LONG',
+      },
+    } as any);
+
+    expect(result?.quality).toBe(3);
+    expect(result?.direction).toBeNull();
+  });
+
+  it('keeps q5 high precision pockets despite neutral venue spread', () => {
+    const result = doubleTapAiAdapter.postProcessAnalysis?.({
+      payload: {
+        additionalIndicators: {
+          baseContext: createBaseContext({
+            regime: {
+              session: {
+                sessionPhase: 'off_hours',
+              },
+              trend: {
+                bias: 'bull',
+              },
+              momentum: {
+                bodyStrength: 0.75,
+              },
+            },
+            relative: {
+              benchmark: {
+                trendAlignment: 'aligned_bull',
+                bias: 'bull',
+              },
+              execution: {
+                venueSpreadZScore: 0.2,
+              },
+            },
+          }),
+          doubleTapContext: {
+            signalDirection: 'LONG',
+            height: 10,
+            breakoutDistancePct: 0.6,
+          },
+        },
+      },
+      analysis: {
+        approved: false,
+        quality: 1,
+        direction: null,
+      },
+    } as any);
+
+    expect(result?.quality).toBe(5);
+    expect(result?.direction).toBe('LONG');
   });
 });

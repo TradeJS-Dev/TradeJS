@@ -17,7 +17,10 @@ type DoubleTapAiContext = Partial<DoubleTapSignalContext> & {
   benchmarkBias: string | null;
   derivativesDirectionAligned: boolean | null;
   derivativesRiskFlags: string[];
+  bodyStrength: number | null;
+  venueSpreadZScore: number | null;
   structuralHardBlockReasons: string[];
+  softBlockReasons: string[];
   deterministicQuality: number;
   approvalAllowedNow: boolean;
   maxAllowedQuality: number;
@@ -175,6 +178,16 @@ const buildDoubleTapAiContext = (payload: AiPayload): DoubleTapAiContext => {
       ? derivativesSummary.directionAligned
       : null;
   const derivativesRiskFlags = getStringArray(derivativesSummary?.riskFlags);
+  const bodyStrength = getNestedNumber(baseContext, [
+    'regime',
+    'momentum',
+    'bodyStrength',
+  ]);
+  const venueSpreadZScore = getNestedNumber(baseContext, [
+    'relative',
+    'execution',
+    'venueSpreadZScore',
+  ]);
 
   const structuralHardBlockReasons: string[] = [];
   if (!baseContextAvailable) {
@@ -257,13 +270,27 @@ const buildDoubleTapAiContext = (payload: AiPayload): DoubleTapAiContext => {
   const approvalPocket =
     baseContextAvailable &&
     (longApprovalPocket || shortApprovalPocket || highPrecisionPocket);
+  const neutralVenueSpread =
+    venueSpreadZScore != null &&
+    venueSpreadZScore > -1 &&
+    venueSpreadZScore < 1;
+  const weakSignalBody = bodyStrength != null && bodyStrength < 0.35;
+  const softBlockReasons = [
+    ...(approvalPocket && !highPrecisionPocket && neutralVenueSpread
+      ? ['neutral_venue_spread']
+      : []),
+    ...(approvalPocket && !highPrecisionPocket && weakSignalBody
+      ? ['weak_signal_body']
+      : []),
+  ];
+  const q4ApprovalBlocked = softBlockReasons.length > 0;
 
   const deterministicQuality =
     structuralHardBlockReasons.length > 0
       ? Math.min(geometryQuality, 2)
       : approvalPocket && highPrecisionPocket
         ? 5
-        : approvalPocket
+        : approvalPocket && !q4ApprovalBlocked
           ? 4
           : Math.min(geometryQuality, 3);
 
@@ -280,9 +307,13 @@ const buildDoubleTapAiContext = (payload: AiPayload): DoubleTapAiContext => {
     benchmarkBias,
     derivativesDirectionAligned,
     derivativesRiskFlags,
+    bodyStrength,
+    venueSpreadZScore,
     structuralHardBlockReasons,
+    softBlockReasons,
     deterministicQuality,
-    approvalAllowedNow: deterministicQuality >= 4 && approvalPocket,
+    approvalAllowedNow:
+      deterministicQuality >= 4 && approvalPocket && !q4ApprovalBlocked,
     maxAllowedQuality: deterministicQuality,
   };
 };
@@ -348,9 +379,12 @@ Additional DoubleTap context:
 - benchmarkTrendAlignment=${context.benchmarkTrendAlignment ?? 'n/a'}
 - derivativesDirectionAligned=${String(context.derivativesDirectionAligned ?? 'n/a')}
 - derivativesRiskFlags=${JSON.stringify(context.derivativesRiskFlags)}
+- bodyStrength=${String(context.bodyStrength ?? 'n/a')}
+- venueSpreadZScore=${String(context.venueSpreadZScore ?? 'n/a')}
 - deterministicQuality=${String(context.deterministicQuality)}
 - approvalAllowedNow=${String(context.approvalAllowedNow)}
 - structuralHardBlockReasons=${JSON.stringify(context.structuralHardBlockReasons)}
+- softBlockReasons=${JSON.stringify(context.softBlockReasons)}
 - pivots=${JSON.stringify(context.pivots ?? [])}
 
 Interpretation rules for DoubleTap:
