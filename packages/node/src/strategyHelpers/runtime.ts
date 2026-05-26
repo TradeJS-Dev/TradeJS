@@ -15,6 +15,7 @@ import {
   StrategyRuntimeMlOptions,
   Tp,
 } from '@tradejs/types';
+import { askAI, runAiPromptLocal } from '../ai';
 import { buildMlPayload } from '../mlPayload';
 import { getTradejsProjectCwd } from '../tradejsConfig';
 import {
@@ -185,7 +186,6 @@ export const enrichSignalWithAi = async ({
   }
 
   if (ai?.mode === 'gate') {
-    const { runAiPromptLocal } = await import('../ai');
     const gateAnalysis = await runAiPromptLocal(signal);
     const gateQuality = resolveAiQuality(gateAnalysis, direction);
     signal.aiAnalysis = gateAnalysis;
@@ -193,7 +193,6 @@ export const enrichSignalWithAi = async ({
   }
 
   try {
-    const { askAI } = await import('../ai');
     const analysis = await askAI(signal, { userName });
     signal.aiAnalysis = analysis;
     return resolveAiQuality(analysis, direction);
