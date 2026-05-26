@@ -1,0 +1,121 @@
+import { mapAiRuntimeFromConfig } from '@tradejs/core/strategies';
+import {
+  AiPayload,
+  BaseStrategyContextSnapshot,
+  StrategyAiAdapter,
+} from '@tradejs/types';
+import { MSLLiquidityTailsConfig } from '../config';
+import { MSLLiquidityTailsSignalContext } from '../engine';
+import { buildMSLLiquidityTailsGuardrailContext } from '../guardrails';
+
+const asRecord = (value: unknown): Record<string, unknown> | null =>
+  typeof value === 'object' && value != null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+
+const getMSLLiquidityTailsContext = (payload: AiPayload) => {
+  const additional = asRecord(payload.additionalIndicators);
+  const signalContext = ((additional?.mslLiquidityTailsContext ?? {}) ||
+    {}) as Partial<MSLLiquidityTailsSignalContext>;
+  const baseContext = (additional?.baseContext ??
+    null) as BaseStrategyContextSnapshot | null;
+
+  return buildMSLLiquidityTailsGuardrailContext({
+    signalContext,
+    baseContext,
+  });
+};
+
+export const mslLiquidityTailsAiAdapter: StrategyAiAdapter = {
+  buildPayload: ({ signal, basePayload }) => {
+    const payload = {
+      ...basePayload,
+      additionalIndicators: {
+        ...(basePayload.additionalIndicators as Record<string, unknown>),
+        mslLiquidityTailsContext: (
+          signal.additionalIndicators as Record<string, unknown> | undefined
+        )?.mslLiquidityTailsContext,
+      },
+    };
+
+    return {
+      ...payload,
+      additionalIndicators: {
+        ...(payload.additionalIndicators as Record<string, unknown>),
+        mslLiquidityTailsContext: getMSLLiquidityTailsContext(payload),
+      },
+    };
+  },
+  postProcessAnalysis: ({ payload, analysis }) => {
+    const context = getMSLLiquidityTailsContext(payload);
+    const requestedDirection =
+      analysis.direction === 'LONG' || analysis.direction === 'SHORT'
+        ? analysis.direction
+        : context.signalDirection;
+    const approved =
+      context.approvalAllowedNow === true && requestedDirection != null;
+
+    return {
+      ...analysis,
+      direction: approved ? requestedDirection : null,
+      quality: context.deterministicQuality,
+      approved,
+      rejectReason: approved
+        ? undefined
+        : [...context.hardBlockReasons, ...context.softBlockReasons].join(
+            '; ',
+          ) || 'MSL Liquidity Tails retest lacks confirmation.',
+    };
+  },
+  buildHumanPromptAddon: ({ payload }) => {
+    const context = getMSLLiquidityTailsContext(payload);
+    return `
+Additional MSL Liquidity Tails context:
+- signalDirection=${context.signalDirection ?? 'n/a'}
+- zoneKind=${context.zoneKind ?? 'n/a'}
+- zoneTop=${String(context.zoneTop ?? 'n/a')}
+- zoneBottom=${String(context.zoneBottom ?? 'n/a')}
+- zoneMid=${String(context.zoneMid ?? 'n/a')}
+- zoneHeight=${String(context.zoneHeight ?? 'n/a')}
+- zoneAgeBars=${String(context.zoneAgeBars ?? 'n/a')}
+- zoneTouches=${String(context.zoneTouches ?? 'n/a')}
+- originVolume=${String(context.originVolume ?? 'n/a')}
+- currentPrice=${String(context.currentPrice ?? 'n/a')}
+- atr=${String(context.atr ?? 'n/a')}
+- wickBodyRatio=${String(context.wickBodyRatio ?? 'n/a')}
+- wickDominanceRatio=${String(context.wickDominanceRatio ?? 'n/a')}
+- retestPenetrationPct=${String(context.retestPenetrationPct ?? 'n/a')}
+- reactionCloseDistancePct=${String(context.reactionCloseDistancePct ?? 'n/a')}
+- reactionBodyAligned=${String(context.reactionBodyAligned ?? 'n/a')}
+- primarySession=${context.primarySession ?? 'n/a'}
+- trendBias=${context.trendBias ?? 'n/a'}
+- breakoutState=${context.breakoutState ?? 'n/a'}
+- volumeRel20=${String(context.volumeRel20 ?? 'n/a')}
+- bodyStrength=${String(context.bodyStrength ?? 'n/a')}
+- benchmarkTrendAlignment=${context.benchmarkTrendAlignment ?? 'n/a'}
+- derivativesPressure=${context.derivativesPressure ?? 'n/a'}
+- derivativesDirectionAligned=${String(context.derivativesDirectionAligned ?? 'n/a')}
+- derivativesRiskFlags=${JSON.stringify(context.derivativesRiskFlags)}
+- deterministicQuality=${context.deterministicQuality}
+- approvalAllowedNow=${String(context.approvalAllowedNow)}
+- hardBlockReasons=${JSON.stringify(context.hardBlockReasons)}
+- softBlockReasons=${JSON.stringify(context.softBlockReasons)}
+
+Interpretation rules for MSL Liquidity Tails:
+- This is a liquidity-rejection retest strategy, not a breakout-following strategy.
+- LONG comes from an active green buy-pressure lower-wick zone retest that holds and closes back above the zone.
+- SHORT comes from an active red sell-pressure upper-wick zone retest that holds and closes back below the zone.
+- Prefer clean pin-bar origins with high wick/body ratio and dominant active wick.
+- Prefer retests with aligned reaction body, reasonable penetration into the zone, and participation that is not thin.
+- Broken gray ghost zones are historical context only; live entries use active zones.
+- Treat deterministicQuality and approvalAllowedNow as the local normalized gate result.
+`.trim();
+  },
+  mapEntryRuntimeFromConfig: (config) =>
+    mapAiRuntimeFromConfig(
+      config as Pick<
+        MSLLiquidityTailsConfig,
+        'AI_ENABLED' | 'AI_MODE' | 'MIN_AI_QUALITY'
+      >,
+    ),
+};
