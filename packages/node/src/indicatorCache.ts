@@ -149,15 +149,7 @@ export const ensureIndicatorCacheCoverage = async ({
 
 const buildCandleSignature = (candle: Candle | undefined): string | null => {
   if (!candle) return null;
-  return [
-    candle.timestamp,
-    candle.open,
-    candle.high,
-    candle.low,
-    candle.close,
-    candle.volume,
-    candle.turnover,
-  ].join(':');
+  return `${candle.timestamp}:${candle.open}:${candle.high}:${candle.low}:${candle.close}:${candle.volume}:${candle.turnover}`;
 };
 
 const toCacheRows = async (params: {

@@ -76,6 +76,8 @@ export type IndicatorCacheCleanupProgress = {
   batchRows?: number;
 };
 
+type IndicatorCacheBulkRow = IndicatorCacheRow | IndicatorCacheCheckpointRow;
+
 let derivativesSchemaReady = false;
 let spreadSchemaReady = false;
 let indicatorCacheSchemaReady = false;
@@ -84,6 +86,8 @@ let derivativesSchemaReadyPromise: Promise<void> | null = null;
 let spreadSchemaReadyPromise: Promise<void> | null = null;
 let indicatorCacheSchemaReadyPromise: Promise<void> | null = null;
 let indicatorCacheCheckpointSchemaReadyPromise: Promise<void> | null = null;
+
+const INDICATOR_CACHE_JSONB_UPSERT_MAX_ROWS = 50_000;
 
 export const closeTimescalePool = async (): Promise<void> => {
   const pool = global.__pgPool__;
@@ -1130,13 +1134,10 @@ export async function getDataEdges(
   return { min, max };
 }
 
-export async function upsertIndicatorCacheCoverageRows(
-  rows: IndicatorCacheRow[],
-) {
-  if (!rows.length) return;
-  await ensureIndicatorCacheSchema();
-
-  const dedupedRows = Array.from(
+const dedupeIndicatorCacheRows = <TRow extends IndicatorCacheBulkRow>(
+  rows: TRow[],
+) =>
+  Array.from(
     new Map(
       rows.map((row) => [
         [
@@ -1152,50 +1153,84 @@ export async function upsertIndicatorCacheCoverageRows(
     ).values(),
   );
 
-  const pool = getPool();
-  const cols = [
-    'provider',
-    'symbol',
-    'interval',
-    'params_hash',
-    'version',
-    'ts',
-    'snapshot',
-  ] as const;
-  const maxRows = Math.floor(65_535 / cols.length);
-  if (dedupedRows.length > maxRows) {
-    for (let i = 0; i < dedupedRows.length; i += maxRows) {
-      await upsertIndicatorCacheCoverageRows(dedupedRows.slice(i, i + maxRows));
+const upsertIndicatorCacheRowsJsonb = async (
+  tableName: 'indicator_cache' | 'indicator_cache_checkpoint',
+  rows: IndicatorCacheBulkRow[],
+) => {
+  if (!rows.length) return;
+
+  if (rows.length > INDICATOR_CACHE_JSONB_UPSERT_MAX_ROWS) {
+    for (
+      let i = 0;
+      i < rows.length;
+      i += INDICATOR_CACHE_JSONB_UPSERT_MAX_ROWS
+    ) {
+      await upsertIndicatorCacheRowsJsonb(
+        tableName,
+        rows.slice(i, i + INDICATOR_CACHE_JSONB_UPSERT_MAX_ROWS),
+      );
     }
     return;
   }
 
-  const valuesSql = dedupedRows
-    .map(
-      (_, i) =>
-        `(${cols.map((__, j) => `$${i * cols.length + j + 1}`).join(',')})`,
-    )
-    .join(',');
-
-  const flat = dedupedRows.flatMap((row) => [
-    normalizeCandleProvider(row.provider),
-    normalizeCandleSymbol(row.symbol),
-    row.interval,
-    String(row.paramsHash),
-    String(row.version),
-    row.ts,
-    JSON.stringify(row.snapshot ?? null),
-  ]);
+  const pool = getPool();
+  const payload = JSON.stringify(
+    rows.map((row) => ({
+      provider: normalizeCandleProvider(row.provider),
+      symbol: normalizeCandleSymbol(row.symbol),
+      interval: row.interval,
+      params_hash: String(row.paramsHash),
+      version: String(row.version),
+      ts: row.ts.toISOString(),
+      snapshot: row.snapshot ?? null,
+    })),
+  );
 
   const sql = `
-    INSERT INTO indicator_cache (${cols.join(',')})
-    VALUES ${valuesSql}
+    INSERT INTO ${tableName} (
+      provider,
+      symbol,
+      interval,
+      params_hash,
+      version,
+      ts,
+      snapshot
+    )
+    SELECT
+      provider,
+      symbol,
+      interval,
+      params_hash,
+      version,
+      ts::timestamptz,
+      snapshot
+    FROM jsonb_to_recordset($1::jsonb) AS x(
+      provider text,
+      symbol text,
+      interval integer,
+      params_hash text,
+      version text,
+      ts text,
+      snapshot jsonb
+    )
     ON CONFLICT (provider, symbol, interval, params_hash, version, ts) DO UPDATE SET
       snapshot = EXCLUDED.snapshot,
       ingested_at = now()
   `;
 
-  await pool.query(sql, flat);
+  await pool.query(sql, [payload]);
+};
+
+export async function upsertIndicatorCacheCoverageRows(
+  rows: IndicatorCacheRow[],
+) {
+  if (!rows.length) return;
+  await ensureIndicatorCacheSchema();
+
+  await upsertIndicatorCacheRowsJsonb(
+    'indicator_cache',
+    dedupeIndicatorCacheRows(rows),
+  );
 }
 
 export async function upsertIndicatorCacheCheckpointRows(
@@ -1204,68 +1239,10 @@ export async function upsertIndicatorCacheCheckpointRows(
   if (!rows.length) return;
   await ensureIndicatorCacheCheckpointSchema();
 
-  const dedupedRows = Array.from(
-    new Map(
-      rows.map((row) => [
-        [
-          normalizeCandleProvider(row.provider),
-          normalizeCandleSymbol(row.symbol),
-          row.interval,
-          String(row.paramsHash),
-          String(row.version),
-          row.ts.toISOString(),
-        ].join(':'),
-        row,
-      ]),
-    ).values(),
+  await upsertIndicatorCacheRowsJsonb(
+    'indicator_cache_checkpoint',
+    dedupeIndicatorCacheRows(rows),
   );
-
-  const pool = getPool();
-  const cols = [
-    'provider',
-    'symbol',
-    'interval',
-    'params_hash',
-    'version',
-    'ts',
-    'snapshot',
-  ] as const;
-  const maxRows = Math.floor(65_535 / cols.length);
-  if (dedupedRows.length > maxRows) {
-    for (let i = 0; i < dedupedRows.length; i += maxRows) {
-      await upsertIndicatorCacheCheckpointRows(
-        dedupedRows.slice(i, i + maxRows),
-      );
-    }
-    return;
-  }
-
-  const valuesSql = dedupedRows
-    .map(
-      (_, i) =>
-        `(${cols.map((__, j) => `$${i * cols.length + j + 1}`).join(',')})`,
-    )
-    .join(',');
-
-  const flat = dedupedRows.flatMap((row) => [
-    normalizeCandleProvider(row.provider),
-    normalizeCandleSymbol(row.symbol),
-    row.interval,
-    String(row.paramsHash),
-    String(row.version),
-    row.ts,
-    JSON.stringify(row.snapshot ?? null),
-  ]);
-
-  const sql = `
-    INSERT INTO indicator_cache_checkpoint (${cols.join(',')})
-    VALUES ${valuesSql}
-    ON CONFLICT (provider, symbol, interval, params_hash, version, ts) DO UPDATE SET
-      snapshot = EXCLUDED.snapshot,
-      ingested_at = now()
-  `;
-
-  await pool.query(sql, flat);
 }
 
 export async function deleteIndicatorCacheObsoleteVersions(params: {

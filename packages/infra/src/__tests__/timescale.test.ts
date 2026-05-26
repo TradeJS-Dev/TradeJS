@@ -234,19 +234,27 @@ describe('timescale candle helpers', () => {
       610003,
     ]);
     expect(query).toHaveBeenCalledWith('SELECT pg_advisory_lock($1)', [610004]);
-    expect(query).toHaveBeenCalledWith(
-      expect.stringContaining(
-        'ON CONFLICT (provider, symbol, interval, params_hash, version, ts)',
-      ),
-      [
-        'bybit',
-        'BTCUSDT',
-        15,
-        'hash-1',
-        'v1',
-        new Date(1_000),
-        JSON.stringify({ ready: true }),
-      ],
+    const coverageInsertCall = query.mock.calls.find(
+      ([sql]) =>
+        typeof sql === 'string' &&
+        sql.includes('INSERT INTO indicator_cache') &&
+        sql.includes(
+          'ON CONFLICT (provider, symbol, interval, params_hash, version, ts)',
+        ),
+    );
+    expect(JSON.parse(coverageInsertCall?.[1]?.[0] as string)).toEqual([
+      {
+        provider: 'bybit',
+        symbol: 'BTCUSDT',
+        interval: 15,
+        params_hash: 'hash-1',
+        version: 'v1',
+        ts: new Date(1_000).toISOString(),
+        snapshot: { ready: true },
+      },
+    ]);
+    expect(coverageInsertCall?.[0]).toEqual(
+      expect.stringContaining('FROM jsonb_to_recordset($1::jsonb)'),
     );
     expect(query).toHaveBeenCalledWith(
       expect.stringContaining(
@@ -256,19 +264,27 @@ describe('timescale candle helpers', () => {
     expect(query).toHaveBeenCalledWith('SELECT pg_advisory_unlock($1)', [
       610004,
     ]);
-    expect(query).toHaveBeenCalledWith(
-      expect.stringContaining(
-        'ON CONFLICT (provider, symbol, interval, params_hash, version, ts)',
-      ),
-      [
-        'bybit',
-        'BTCUSDT',
-        15,
-        'hash-1',
-        'v1',
-        new Date(1_000),
-        JSON.stringify({ runtimeState: { seed: 1 } }),
-      ],
+    const checkpointInsertCall = query.mock.calls.find(
+      ([sql]) =>
+        typeof sql === 'string' &&
+        sql.includes('INSERT INTO indicator_cache_checkpoint') &&
+        sql.includes(
+          'ON CONFLICT (provider, symbol, interval, params_hash, version, ts)',
+        ),
+    );
+    expect(JSON.parse(checkpointInsertCall?.[1]?.[0] as string)).toEqual([
+      {
+        provider: 'bybit',
+        symbol: 'BTCUSDT',
+        interval: 15,
+        params_hash: 'hash-1',
+        version: 'v1',
+        ts: new Date(1_000).toISOString(),
+        snapshot: { runtimeState: { seed: 1 } },
+      },
+    ]);
+    expect(checkpointInsertCall?.[0]).toEqual(
+      expect.stringContaining('FROM jsonb_to_recordset($1::jsonb)'),
     );
   });
 
@@ -337,14 +353,16 @@ describe('timescale candle helpers', () => {
           'ON CONFLICT (provider, symbol, interval, params_hash, version, ts)',
         ),
     );
-    expect(coverageInsertCall?.[1]).toEqual([
-      'bybit',
-      'BTCUSDT',
-      15,
-      'hash-1',
-      'v1',
-      new Date(1_000),
-      JSON.stringify({ ready: true }),
+    expect(JSON.parse(coverageInsertCall?.[1]?.[0] as string)).toEqual([
+      {
+        provider: 'bybit',
+        symbol: 'BTCUSDT',
+        interval: 15,
+        params_hash: 'hash-1',
+        version: 'v1',
+        ts: new Date(1_000).toISOString(),
+        snapshot: { ready: true },
+      },
     ]);
 
     const checkpointInsertCall = query.mock.calls.find(
@@ -355,14 +373,16 @@ describe('timescale candle helpers', () => {
           'ON CONFLICT (provider, symbol, interval, params_hash, version, ts)',
         ),
     );
-    expect(checkpointInsertCall?.[1]).toEqual([
-      'bybit',
-      'BTCUSDT',
-      15,
-      'hash-1',
-      'v1',
-      new Date(2_000),
-      JSON.stringify({ runtimeState: { seed: 2 } }),
+    expect(JSON.parse(checkpointInsertCall?.[1]?.[0] as string)).toEqual([
+      {
+        provider: 'bybit',
+        symbol: 'BTCUSDT',
+        interval: 15,
+        params_hash: 'hash-1',
+        version: 'v1',
+        ts: new Date(2_000).toISOString(),
+        snapshot: { runtimeState: { seed: 2 } },
+      },
     ]);
   });
 
