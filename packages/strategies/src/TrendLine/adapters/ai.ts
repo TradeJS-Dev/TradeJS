@@ -261,9 +261,17 @@ const buildTrendlineContext = (signal: {
     coinMaSpreadPct,
   });
   const maxAllowedQuality = deterministicQuality;
+  const longUsLowVolumeCrowdedShortSqueeze =
+    structural.signalDirection === 'LONG' &&
+    sessionPrimary === 'us' &&
+    volumeRel20 != null &&
+    volumeRel20 < 0.8 &&
+    derivativesRiskFlags.includes('crowded_short') &&
+    benchmarkTrendAlignment !== 'against_benchmark';
   const longBaseContextApprovalPocket =
     structural.signalDirection !== 'LONG' ||
     (venueSpreadZScore != null && venueSpreadZScore <= -1) ||
+    longUsLowVolumeCrowdedShortSqueeze ||
     (sessionPrimary !== 'europe' &&
       !derivativesRiskFlags.includes('missing_derivatives') &&
       !(
@@ -295,6 +303,7 @@ const buildTrendlineContext = (signal: {
     venueSpreadZScore,
     derivativesRiskFlags,
     oiNotConfirming,
+    longUsLowVolumeCrowdedShortSqueeze,
     deterministicQuality,
     maxAllowedQuality,
     approvalAllowedNow,
@@ -703,6 +712,7 @@ Additional TrendLine context:
 - trendline.breakVsAtrRatio=${formatPromptNumber(trendlineContext.breakVsAtrRatio, 3)}
 - trendline.aggressivePreBreakPressure=${String(trendlineContext.aggressivePreBreakPressure)}
 - trendline.strongNearBreakPressure=${String(trendlineContext.strongNearBreakPressure)}
+- trendline.longUsLowVolumeCrowdedShortSqueeze=${String(trendlineContext.longUsLowVolumeCrowdedShortSqueeze)}
 - trendline.weakCleanBreak=${String(trendlineContext.weakCleanBreak)}
 - trendline.compressedCleanBreak=${String(trendlineContext.compressedCleanBreak)}
 - trendline.weakBtcLedBreak=${String(trendlineContext.weakBtcLedBreak)}

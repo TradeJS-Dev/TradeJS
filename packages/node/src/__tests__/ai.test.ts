@@ -2788,6 +2788,65 @@ describe('ai helpers', () => {
       expect(invokeMock).not.toHaveBeenCalled();
     });
 
+    it('allows US low-volume crowded-short TrendLine long squeeze setups during local replay', async () => {
+      const signal = makeAlignedRecentLongTrendlineSignal();
+      signal.additionalIndicators.baseContext = {
+        ...signal.additionalIndicators.baseContext,
+        regime: {
+          ...signal.additionalIndicators.baseContext.regime,
+          session: {
+            ...signal.additionalIndicators.baseContext.regime.session,
+            sessionPhase: 'us',
+          },
+        },
+        participation: {
+          volume: {
+            volumeRel20: 0.6,
+          },
+        },
+        relative: {
+          ...signal.additionalIndicators.baseContext.relative,
+          benchmark: {
+            ...signal.additionalIndicators.baseContext.relative.benchmark,
+            trendAlignment: 'aligned_bull',
+          },
+          execution: {
+            ...signal.additionalIndicators.baseContext.relative.execution,
+            venueSpreadZScore: 1.6,
+          },
+        },
+        derivatives: {
+          summary: {
+            riskFlags: ['crowded_short'],
+          },
+        },
+      };
+      const payload = buildAiPayload(signal);
+
+      expect(getDeterministicAiGateContext(payload)).toEqual(
+        expect.objectContaining({
+          approvalAllowedNow: true,
+          deterministicQuality: 4,
+          hardBlockReasons: [],
+          longUsLowVolumeCrowdedShortSqueeze: true,
+        }),
+      );
+
+      const result = await runAiPromptLocal(signal, { payload });
+
+      expect(result).toEqual(
+        expect.objectContaining({
+          direction: 'LONG',
+          quality: 4,
+          needRetest: false,
+          takeProfitPrice: 104.5,
+          stopLossPrice: 98.9,
+        }),
+      );
+      expect(chatOpenAICtorMock).not.toHaveBeenCalled();
+      expect(invokeMock).not.toHaveBeenCalled();
+    });
+
     it('promotes moderate TrendLine short ready-breakout setups into q4 during local replay', async () => {
       const signal = makeModerateReadyBreakoutShortTrendlineSignal();
       const payload = buildAiPayload(signal);
