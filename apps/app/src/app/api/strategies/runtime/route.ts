@@ -14,6 +14,7 @@ import type {
   PositionPnlSnapshot,
   RuntimeTradeRecord,
 } from '@tradejs/types';
+import { getAvailableStrategyNames } from '@tradejs/node/strategies';
 import {
   DEFAULT_CONNECTOR_PROVIDER,
   resolveConnectorCreatorByProvider,
@@ -62,6 +63,18 @@ const loadConnectedStrategyNames = async (userName: string) => {
     .filter((value): value is string => Boolean(value));
 
   return [...new Set(names)].sort((left, right) => left.localeCompare(right));
+};
+
+const loadConfiguredStrategyNames = async () => {
+  try {
+    return await getAvailableStrategyNames(projectRoot);
+  } catch (error) {
+    logger.warn(
+      'strategies runtime: failed to load configured strategies: %s',
+      (error as Error)?.message || String(error),
+    );
+    return [];
+  }
 };
 
 const loadRuntimeTrades = async (
@@ -323,6 +336,7 @@ export const GET = async (request: NextRequest) => {
 
     const [
       connectedStrategyNames,
+      configuredStrategyNames,
       runtimeTrades,
       activeOrderIds,
       closedPnlRows,
@@ -330,6 +344,7 @@ export const GET = async (request: NextRequest) => {
       openPositions,
     ] = await Promise.all([
       loadConnectedStrategyNames(userName),
+      loadConfiguredStrategyNames(),
       loadRuntimeTrades(userName),
       loadActiveRuntimeOrderIds(userName),
       loadClosedPnlRows({
@@ -356,11 +371,14 @@ export const GET = async (request: NextRequest) => {
       openPositions,
       closedPnlRows,
     });
+    const fallbackStrategyNames = [
+      ...new Set([...connectedStrategyNames, ...configuredStrategyNames]),
+    ];
     const fallbackTrades = buildExchangeFallbackRuntimeTrades({
       entryRows,
       closedPnlRows,
       openPositions,
-      strategyNames: connectedStrategyNames,
+      strategyNames: fallbackStrategyNames,
       existingTrades: syncedTrades,
       endTime,
     });

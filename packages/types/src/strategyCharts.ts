@@ -26,6 +26,7 @@ export interface StrategyChartSnapshot {
   strategyName: string;
   title: string;
   subtitle?: string;
+  datasetId?: string;
   symbols: string[];
   orderLog: SimpleOrderLogData;
   stat?: Partial<TestStat> | null;

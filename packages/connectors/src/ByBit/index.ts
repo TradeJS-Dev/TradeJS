@@ -74,6 +74,18 @@ const isTradingStopAccepted = (res: any) =>
 const isKlineRateLimited = (res: any) =>
   res?.retCode === BYBIT_RATE_LIMIT_RETCODE;
 
+const getOptionalStringField = (
+  source: unknown,
+  key: string,
+): string | null => {
+  if (!source || typeof source !== 'object') {
+    return null;
+  }
+
+  const value = (source as Record<string, unknown>)[key];
+  return typeof value === 'string' && value.trim() ? value : null;
+};
+
 const resolveKlineRetryDelayMs = (res: any, attempt: number) => {
   const resetAtRaw = Number(res?.rateLimitApi?.resetAtTimestamp);
   if (Number.isFinite(resetAtRaw) && resetAtRaw > 0) {
@@ -695,6 +707,7 @@ export const ByBitConnectorCreator: ConnectorCreator = async (config) => {
             typeof item.orderId === 'string' && item.orderId.trim()
               ? item.orderId
               : null;
+          const orderLinkId = getOptionalStringField(item, 'orderLinkId');
 
           if (
             !String(item.symbol ?? '').trim() ||
@@ -713,6 +726,7 @@ export const ByBitConnectorCreator: ConnectorCreator = async (config) => {
             closedPnl,
             closedAt,
             ...(orderId ? { orderId } : {}),
+            ...(orderLinkId ? { orderLinkId } : {}),
           } as ClosedPnlRecord;
         })
         .filter((item): item is NonNullable<typeof item> => item != null);

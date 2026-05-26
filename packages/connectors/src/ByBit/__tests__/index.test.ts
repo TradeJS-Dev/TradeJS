@@ -360,6 +360,7 @@ describe('ByBitConnectorCreator', () => {
         closedPnl: 12,
         closedAt: 1_700_000_001_000,
         orderId: 'bybit-order-1',
+        orderLinkId: 'tjs-order-1',
       },
     ]);
   });

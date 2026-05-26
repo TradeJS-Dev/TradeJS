@@ -12,9 +12,12 @@ import {
 export type AiTrainEvaluatedRowForChart = AiTrainEvaluation & {
   signalId: string;
   symbol: string;
+  strategy?: string;
   testName: string;
   configId: string;
   modelDirection: string | null;
+  rawAiApproved?: boolean;
+  sequence?: number;
 };
 
 const formatRatio = (value: number | null) =>
@@ -22,6 +25,9 @@ const formatRatio = (value: number | null) =>
 
 const formatPercent = (value: number | null) =>
   value == null ? 'n/a' : `${(value * 100).toFixed(1)}%`;
+
+const formatPercentValue = (value: number | null) =>
+  value == null ? 'n/a' : `${value.toFixed(1)}%`;
 
 const formatSigned = (value: number | null) =>
   value == null ? 'n/a' : `${value >= 0 ? '+' : ''}${value.toFixed(2)}`;
@@ -57,14 +63,20 @@ const resolveMetricTone = (
 
 const buildAiChartMetrics = (params: {
   summary: ReturnType<typeof summarizeAiTrainEvaluations>;
-  threshold: number;
+  maxDrawdownPercent: number | null;
 }) => {
-  const { summary, threshold } = params;
+  const { summary, maxDrawdownPercent } = params;
   const metrics: StrategyChartMetric[] = [
     {
-      id: 'quality',
-      label: 'Quality',
-      value: `q${threshold}+`,
+      id: 'maxDrawdown',
+      label: 'Max drawdown',
+      value: formatPercentValue(maxDrawdownPercent),
+      tone:
+        maxDrawdownPercent == null
+          ? 'default'
+          : maxDrawdownPercent > 0
+            ? 'warning'
+            : 'success',
     },
     {
       id: 'approved',
@@ -239,6 +251,31 @@ const buildStrategyWideEquityCurve = (
   return orderLog;
 };
 
+const calculateMaxDrawdownPercent = (orderLog: Array<[number, number]>) => {
+  if (!orderLog.length) {
+    return null;
+  }
+
+  let peak = orderLog[0]?.[1] ?? 0;
+  let maxDrawdownPercent = 0;
+
+  for (const [, amount] of orderLog) {
+    if (!Number.isFinite(amount)) {
+      continue;
+    }
+
+    peak = Math.max(peak, amount);
+    if (peak <= 0) {
+      continue;
+    }
+
+    const drawdownPercent = ((peak - amount) / peak) * 100;
+    maxDrawdownPercent = Math.max(maxDrawdownPercent, drawdownPercent);
+  }
+
+  return Number(maxDrawdownPercent.toFixed(1));
+};
+
 const resolveAiVariantGroup = (params: { configId: string }) => {
   const normalizedConfigId = params.configId.trim();
   if (!normalizedConfigId) {
@@ -257,9 +294,16 @@ export const buildAiChartSnapshot = (params: {
   generatedAt: number;
   runLabel: string;
   minQuality: number;
+  datasetId?: string;
 }) => {
-  const { evaluatedRows, strategyName, generatedAt, runLabel, minQuality } =
-    params;
+  const {
+    evaluatedRows,
+    strategyName,
+    generatedAt,
+    runLabel,
+    minQuality,
+    datasetId,
+  } = params;
   const groupsByVariant = new Map<
     string,
     {
@@ -318,6 +362,7 @@ export const buildAiChartSnapshot = (params: {
       const approvedRows = thresholdEvaluations.filter(
         (evaluation) => evaluation.aiApproved,
       );
+      const orderLog = buildStrategyWideEquityCurve(approvedRows);
 
       cards.push({
         cardId: `${strategyName}-${group.key}-q${threshold}-${generatedAt}`,
@@ -327,16 +372,17 @@ export const buildAiChartSnapshot = (params: {
           ? `${strategyName} · ${group.label}`
           : strategyName,
         subtitle: runLabel ? `q${threshold}+ · ${runLabel}` : `q${threshold}+`,
+        datasetId,
         symbols: [
           ...new Set(
             group.rows.map((evaluation) => evaluation.symbol).filter(Boolean),
           ),
         ].sort(),
-        orderLog: buildStrategyWideEquityCurve(approvedRows),
+        orderLog,
         stat: null,
         metrics: buildAiChartMetrics({
           summary,
-          threshold,
+          maxDrawdownPercent: calculateMaxDrawdownPercent(orderLog),
         }),
         details: buildAiChartDetails({
           summary,

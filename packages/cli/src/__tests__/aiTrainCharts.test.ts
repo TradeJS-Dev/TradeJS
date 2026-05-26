@@ -16,6 +16,7 @@ describe('aiTrainCharts', () => {
       generatedAt: 1_700_000_000_000,
       runLabel: '',
       minQuality: 5,
+      datasetId: '1779773352013',
       evaluatedRows: [
         {
           ...baseRow,
@@ -43,6 +44,7 @@ describe('aiTrainCharts', () => {
       expect.objectContaining({
         title: 'trendshift',
         subtitle: 'q5+',
+        datasetId: '1779773352013',
         symbols: ['BTCUSDT', 'ETHUSDT'],
       }),
     );
@@ -104,17 +106,30 @@ describe('aiTrainCharts', () => {
           timestamp: 1_700_000_000_000,
           profit: 10,
         },
+        {
+          ...baseRow,
+          signalId: 's2',
+          symbol: 'ETHUSDT',
+          testName: 'ETHUSDT_suiteA_test02',
+          configId: 'cfg123',
+          timestamp: 1_700_000_100_000,
+          profit: -5,
+        },
       ],
     });
 
     expect(snapshot.strategies).toHaveLength(1);
     expect(snapshot.strategies[0]?.subtitle).toBe('q5+ · llm:model');
     expect(
-      snapshot.strategies[0]?.metrics.find((item) => item.id === 'quality'),
+      snapshot.strategies[0]?.metrics.find((item) => item.id === 'maxDrawdown'),
     ).toEqual(
       expect.objectContaining({
-        value: 'q5+',
+        label: 'Max drawdown',
+        value: '4.5%',
       }),
     );
+    expect(
+      snapshot.strategies[0]?.metrics.find((item) => item.id === 'quality'),
+    ).toBeUndefined();
   });
 });

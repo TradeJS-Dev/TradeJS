@@ -1,10 +1,22 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Box, ClientOnly, Flex, Text } from '@chakra-ui/react';
+import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  Box,
+  Button,
+  Checkbox,
+  ClientOnly,
+  CloseButton,
+  Dialog,
+  Flex,
+  Portal,
+  Text,
+} from '@chakra-ui/react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { FiFolder } from 'react-icons/fi';
 import type { StrategyChartsSnapshotResponse } from '@tradejs/types';
 import {
+  deleteStrategyCard,
   getAiStrategies,
   getReplayStrategies,
   getRuntimeStrategies,
@@ -13,9 +25,11 @@ import { RuntimeStrategyCard } from '#components/Strategies/RuntimeStrategyCard'
 import { RuntimeStrategyCardSkeleton } from '#components/Strategies/RuntimeStrategyCardSkeleton';
 import { StrategySnapshotCard } from '#components/Strategies/StrategySnapshotCard';
 import type { RuntimeStrategiesResponse } from '#app/lib/runtimeStrategies';
-import { EmptyState, Segment, Select } from '#ui';
+import { EmptyState, Segment, Select, toaster } from '#ui';
 
 const ALL_STRATEGIES = '__all__';
+type StrategyMode = 'runtime' | 'replay' | 'ai';
+
 const MODE_ITEMS = [
   { label: 'Runtime', value: 'runtime' },
   { label: 'Replay', value: 'replay' },
@@ -28,10 +42,23 @@ const HOURS_OPTIONS = [
   { label: 'Last 90d', value: '2160' },
 ];
 
-const RuntimeStrategiesPage = () => {
-  const [mode, setMode] = useState<'runtime' | 'replay' | 'ai'>('runtime');
+const normalizeMode = (value: string | null | undefined): StrategyMode =>
+  value === 'replay' || value === 'ai' ? value : 'runtime';
+
+const RuntimeStrategiesContent = () => {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const routeMode = normalizeMode(
+    searchParams.get('tab') ?? searchParams.get('mode'),
+  );
+  const [mode, setMode] = useState<StrategyMode>(routeMode);
   const [hours, setHours] = useState('168');
   const [selectedStrategy, setSelectedStrategy] = useState(ALL_STRATEGIES);
+  const [selectedSnapshotCardIds, setSelectedSnapshotCardIds] = useState<
+    string[]
+  >([]);
+  const [isDeleteSelectedOpen, setIsDeleteSelectedOpen] = useState(false);
+  const [isDeletingSelected, setIsDeletingSelected] = useState(false);
   const [loading, setLoading] = useState(false);
   const [fulfilled, setFulfilled] = useState(false);
   const [error, setError] = useState('');
@@ -39,6 +66,37 @@ const RuntimeStrategiesPage = () => {
     useState<RuntimeStrategiesResponse | null>(null);
   const [snapshotData, setSnapshotData] =
     useState<StrategyChartsSnapshotResponse | null>(null);
+
+  useEffect(() => {
+    setMode(routeMode);
+  }, [routeMode]);
+
+  const updateMode = useCallback(
+    (value: string | null) => {
+      const nextMode = normalizeMode(value);
+      const params = new URLSearchParams(searchParams.toString());
+
+      setMode(nextMode);
+      setSelectedStrategy(ALL_STRATEGIES);
+      setSelectedSnapshotCardIds([]);
+
+      if (nextMode === 'runtime') {
+        params.delete('tab');
+      } else {
+        params.set('tab', nextMode);
+      }
+      params.delete('mode');
+
+      const queryString = params.toString();
+      router.replace(
+        `/routes/strategies${queryString ? `?${queryString}` : ''}`,
+        {
+          scroll: false,
+        },
+      );
+    },
+    [router, searchParams],
+  );
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -134,7 +192,145 @@ const RuntimeStrategiesPage = () => {
         ),
       };
     });
+    setSelectedSnapshotCardIds((prev) => prev.filter((id) => id !== cardId));
   }, []);
+
+  const filteredSnapshotCardIds = useMemo(
+    () => filteredSnapshotStrategies.map((strategy) => strategy.cardId),
+    [filteredSnapshotStrategies],
+  );
+
+  const selectedFilteredCount = useMemo(() => {
+    const filteredSet = new Set(filteredSnapshotCardIds);
+    return selectedSnapshotCardIds.filter((cardId) => filteredSet.has(cardId))
+      .length;
+  }, [filteredSnapshotCardIds, selectedSnapshotCardIds]);
+
+  const allFilteredSelected =
+    mode === 'ai' &&
+    filteredSnapshotStrategies.length > 0 &&
+    selectedFilteredCount === filteredSnapshotStrategies.length;
+  const hasSelectedInFilter = mode === 'ai' && selectedFilteredCount > 0;
+
+  useEffect(() => {
+    if (mode !== 'ai') {
+      setSelectedSnapshotCardIds([]);
+      return;
+    }
+
+    const actual = new Set(snapshotData?.strategies.map((item) => item.cardId));
+    setSelectedSnapshotCardIds((prev) => {
+      const next = prev.filter((cardId) => actual.has(cardId));
+
+      if (
+        next.length === prev.length &&
+        next.every((cardId, index) => cardId === prev[index])
+      ) {
+        return prev;
+      }
+
+      return next;
+    });
+  }, [mode, snapshotData?.strategies]);
+
+  const handleToggleSnapshotSelection = (cardId: string, checked: boolean) => {
+    setSelectedSnapshotCardIds((prev) => {
+      if (checked) {
+        if (prev.includes(cardId)) {
+          return prev;
+        }
+        return [...prev, cardId];
+      }
+
+      return prev.filter((id) => id !== cardId);
+    });
+  };
+
+  const handleSelectAllFilteredSnapshots = (checked: boolean) => {
+    setSelectedSnapshotCardIds((prev) => {
+      const filteredSet = new Set(filteredSnapshotCardIds);
+
+      if (!checked) {
+        return prev.filter((cardId) => !filteredSet.has(cardId));
+      }
+
+      const next = new Set(prev);
+      for (const cardId of filteredSnapshotCardIds) {
+        next.add(cardId);
+      }
+      return Array.from(next);
+    });
+  };
+
+  const handleDeleteSelectedSnapshots = async () => {
+    const selectedSet = new Set(selectedSnapshotCardIds);
+    const targets = filteredSnapshotStrategies.filter((strategy) =>
+      selectedSet.has(strategy.cardId),
+    );
+
+    if (mode !== 'ai' || targets.length === 0 || isDeletingSelected) {
+      setIsDeleteSelectedOpen(false);
+      return;
+    }
+
+    setIsDeletingSelected(true);
+
+    try {
+      const results = await Promise.allSettled(
+        targets.map(async (strategy) => {
+          const deleted = await deleteStrategyCard('ai', strategy.cardId);
+          if (!deleted) {
+            throw new Error(`Delete failed for ${strategy.cardId}`);
+          }
+
+          return strategy.cardId;
+        }),
+      );
+
+      const deletedIds = results
+        .filter((item) => item.status === 'fulfilled')
+        .map((item) => item.value);
+      const successCount = deletedIds.length;
+      const failedCount = results.length - successCount;
+
+      if (successCount > 0) {
+        const deletedSet = new Set(deletedIds);
+        setSnapshotData((prev) =>
+          prev
+            ? {
+                ...prev,
+                strategies: prev.strategies.filter(
+                  (strategy) => !deletedSet.has(strategy.cardId),
+                ),
+              }
+            : prev,
+        );
+        setSelectedSnapshotCardIds((prev) =>
+          prev.filter((cardId) => !deletedSet.has(cardId)),
+        );
+      }
+
+      if (failedCount === 0) {
+        toaster.success({
+          title: 'AI cards deleted',
+          description: `Deleted: ${successCount}`,
+        });
+      } else {
+        toaster.error({
+          title: 'Bulk delete finished with errors',
+          description: `Deleted: ${successCount} of ${targets.length}`,
+        });
+      }
+    } catch {
+      toaster.error({
+        title: 'Delete failed',
+        description: 'Failed to delete selected AI cards.',
+      });
+    } finally {
+      setIsDeletingSelected(false);
+      setIsDeleteSelectedOpen(false);
+    }
+  };
 
   const noData =
     fulfilled &&
@@ -183,9 +379,7 @@ const RuntimeStrategiesPage = () => {
               <Segment
                 defaultValue="runtime"
                 value={mode}
-                onChange={(value) =>
-                  setMode((value as 'runtime' | 'replay' | 'ai') || 'runtime')
-                }
+                onChange={updateMode}
                 items={MODE_ITEMS}
               />
               <Select
@@ -210,6 +404,94 @@ const RuntimeStrategiesPage = () => {
               ) : null}
             </Flex>
           </Flex>
+
+          {mode === 'ai' ? (
+            <Flex
+              mb={4}
+              pl={2}
+              gap={4}
+              alignItems="center"
+              w="full"
+              minH="32px"
+            >
+              <Checkbox.Root
+                size="sm"
+                colorPalette="teal"
+                checked={
+                  allFilteredSelected
+                    ? true
+                    : hasSelectedInFilter
+                      ? 'indeterminate'
+                      : false
+                }
+                onCheckedChange={(details) =>
+                  handleSelectAllFilteredSnapshots(details.checked === true)
+                }
+              >
+                <Checkbox.HiddenInput />
+                <Checkbox.Control bg="gray.800" borderColor="gray.500" />
+              </Checkbox.Root>
+              <Text color="gray.200" fontWeight="semibold">
+                Selected: {selectedFilteredCount}
+              </Text>
+
+              <Dialog.Root
+                open={isDeleteSelectedOpen}
+                onOpenChange={(e) => setIsDeleteSelectedOpen(e.open)}
+              >
+                <Dialog.Trigger asChild>
+                  <Button
+                    size="sm"
+                    colorPalette="red"
+                    variant="outline"
+                    disabled={!hasSelectedInFilter || isDeletingSelected}
+                  >
+                    Delete
+                  </Button>
+                </Dialog.Trigger>
+                <Portal>
+                  <Dialog.Backdrop />
+                  <Dialog.Positioner>
+                    <Dialog.Content>
+                      <Dialog.Header>
+                        <Dialog.Title>Delete selected AI cards</Dialog.Title>
+                        <Dialog.CloseTrigger asChild>
+                          <CloseButton position="absolute" right="3" top="3" />
+                        </Dialog.CloseTrigger>
+                      </Dialog.Header>
+                      <Dialog.Body>
+                        <Text fontSize="sm" color="gray.200">
+                          Delete selected AI cards ({selectedFilteredCount})?
+                        </Text>
+                        <Text fontSize="sm" color="gray.400" mt={2}>
+                          This action cannot be undone.
+                        </Text>
+                      </Dialog.Body>
+                      <Dialog.Footer>
+                        <Dialog.ActionTrigger asChild>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            disabled={isDeletingSelected}
+                          >
+                            Cancel
+                          </Button>
+                        </Dialog.ActionTrigger>
+                        <Button
+                          colorPalette="red"
+                          size="sm"
+                          onClick={handleDeleteSelectedSnapshots}
+                          loading={isDeletingSelected}
+                        >
+                          Delete
+                        </Button>
+                      </Dialog.Footer>
+                    </Dialog.Content>
+                  </Dialog.Positioner>
+                </Portal>
+              </Dialog.Root>
+            </Flex>
+          ) : null}
 
           {error ? (
             <Box
@@ -259,6 +541,10 @@ const RuntimeStrategiesPage = () => {
                   snapshot={strategy}
                   mode={mode}
                   onDeleted={handleSnapshotDeleted}
+                  selected={selectedSnapshotCardIds.includes(strategy.cardId)}
+                  onToggleSelection={
+                    mode === 'ai' ? handleToggleSnapshotSelection : undefined
+                  }
                   emptyText={
                     mode === 'replay'
                       ? 'No replay trades for the selected run.'
@@ -272,5 +558,11 @@ const RuntimeStrategiesPage = () => {
     </ClientOnly>
   );
 };
+
+const RuntimeStrategiesPage = () => (
+  <Suspense fallback={null}>
+    <RuntimeStrategiesContent />
+  </Suspense>
+);
 
 export default RuntimeStrategiesPage;

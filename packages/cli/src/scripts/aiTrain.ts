@@ -26,10 +26,15 @@ import {
   type AiTrainEvaluatedRowForChart,
 } from '../lib/aiTrainCharts';
 import {
-  AiTrainEvaluation,
   summarizeAiTrainEvaluations,
   summarizeAiTrainEvaluationsByDirection,
 } from '../lib/aiTrainMetrics';
+import {
+  applyAiTrainSymbolQuarantine,
+  summarizeAiTrainDuplicateSignals,
+  type AiTrainDuplicateSignalRow,
+  type AiTrainSymbolQuarantineSummary,
+} from '../lib/aiTrainQuarantine';
 
 args.example(
   'yarn ai-train -n 50 --minQuality 4',
@@ -72,6 +77,26 @@ args.option(
   false,
 );
 args.option('json', 'Print structured JSON summary', false);
+args.option(
+  'symbolQuarantine',
+  'Apply ordered per-strategy/per-symbol quarantine overlay to approved rows',
+  false,
+);
+args.option(
+  'symbolQuarantineMinLosses',
+  'Approved losses required before symbol quarantine can trigger',
+  5,
+);
+args.option(
+  'symbolQuarantineMinProfitFactor',
+  'Minimum symbol profit factor required to avoid quarantine',
+  1,
+);
+args.option(
+  'symbolQuarantineDays',
+  'How many days to keep a symbol quarantined after trigger',
+  14,
+);
 
 const flags = args.parse(process.argv);
 
@@ -153,6 +178,11 @@ const normalizeInt = (value: unknown, fallback: number) => {
 const normalizePositiveInt = (value: unknown, fallback: number) => {
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed > 0 ? Math.trunc(parsed) : fallback;
+};
+
+const normalizeNonNegativeNumber = (value: unknown, fallback: number) => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
 };
 
 const normalizeQuality = (analysis: Partial<SignalAnalysis>) => {
@@ -360,6 +390,8 @@ type AiTrainResult = {
   qualityBreakdown: ReturnType<
     typeof summarizeAiTrainEvaluations
   >['qualityBuckets'];
+  symbolQuarantine: AiTrainSymbolQuarantineSummary;
+  duplicates: ReturnType<typeof summarizeAiTrainDuplicateSignals>;
   errors: {
     failed: number;
     providerErrors: string[];
@@ -473,9 +505,17 @@ const persistAiChartSnapshot = async (params: {
   mode: 'local-deterministic' | 'llm';
   userName: string;
   minQuality: number;
+  datasetId?: string;
 }) => {
-  const { strategyName, evaluatedRows, model, mode, userName, minQuality } =
-    params;
+  const {
+    strategyName,
+    evaluatedRows,
+    model,
+    mode,
+    userName,
+    minQuality,
+    datasetId,
+  } = params;
   const generatedAt = Date.now();
   const runLabel = mode === model ? '' : `${mode}:${model}`;
   const snapshot = buildAiChartSnapshot({
@@ -484,6 +524,7 @@ const persistAiChartSnapshot = async (params: {
     generatedAt,
     runLabel,
     minQuality,
+    datasetId,
   });
 
   await Promise.all(
@@ -516,12 +557,26 @@ export const main = async () => {
   const localOnly = Boolean(flags.localOnly);
   const saveChart = Boolean(flags.chart);
   const jsonOutput = Boolean(flags.json);
+  const symbolQuarantineEnabled = Boolean(flags.symbolQuarantine);
+  const symbolQuarantineMinLosses = normalizePositiveInt(
+    flags.symbolQuarantineMinLosses,
+    5,
+  );
+  const symbolQuarantineMinProfitFactor = normalizeNonNegativeNumber(
+    flags.symbolQuarantineMinProfitFactor,
+    1,
+  );
+  const symbolQuarantineDays = normalizeNonNegativeNumber(
+    flags.symbolQuarantineDays,
+    14,
+  );
   const userName = String(flags.user || 'root').trim() || 'root';
   const model =
     String(flags.model || DEFAULT_AI_MODEL).trim() || DEFAULT_AI_MODEL;
   const parallel = normalizePositiveInt(flags.parallel, AI_CONCURRENCY_LIMIT);
   await ensureAiStrategyPluginsLoaded();
   const filePaths = await resolveDatasetFiles();
+  const datasetId = getMergedGroupId(filePaths[0] || '')?.mergeId;
   const { totalRows, selectedRows } = await countAiDatasetRows({
     filePaths,
     limitFromEnd: recent,
@@ -552,16 +607,21 @@ export const main = async () => {
     profit: number;
     profitableTrade: boolean;
     aiApproved: boolean;
+    rawAiApproved: boolean;
     quality: number | null;
     direction: string | null;
     timestamp: number | null;
     modelCandidate: boolean;
+    strategy: string;
+    symbol: string;
+    sequence: number;
   }> = [];
   const evaluatedRows: AiTrainEvaluatedRow[] = [];
+  const duplicateSignalRows: AiTrainDuplicateSignalRow[] = [];
   const deterministicEvaluations: DeterministicGateEvaluation[] = [];
   const activeTasks = new Set<Promise<void>>();
 
-  const processRow = async (row: AiDatasetRow) => {
+  const processRow = async (row: AiDatasetRow, sequence: number) => {
     const { promptPair, signal } = resolvePromptRunContext(row);
     const payload = buildAiPayload(signal);
     const deterministic = resolveDeterministicGateEvaluation(
@@ -601,10 +661,14 @@ export const main = async () => {
         profit,
         profitableTrade,
         aiApproved,
+        rawAiApproved: aiApproved,
         quality,
         direction: row.direction,
         timestamp,
         modelCandidate: deterministic.modelCandidate,
+        strategy: row.strategyName,
+        symbol: row.symbol,
+        sequence,
       });
 
       if (saveChart) {
@@ -620,6 +684,9 @@ export const main = async () => {
           quality,
           direction: row.direction,
           timestamp,
+          strategy: row.strategyName,
+          rawAiApproved: aiApproved,
+          sequence,
         });
       }
 
@@ -656,9 +723,12 @@ export const main = async () => {
         strategyName = row.strategyName.trim();
       }
 
-      const task = processRow(row).finally(() => {
-        activeTasks.delete(task);
-      });
+      duplicateSignalRows.push(row);
+      const task = processRow(row, duplicateSignalRows.length - 1).finally(
+        () => {
+          activeTasks.delete(task);
+        },
+      );
       activeTasks.add(task);
 
       if (activeTasks.size >= concurrency) {
@@ -669,12 +739,38 @@ export const main = async () => {
 
   await Promise.all(activeTasks);
 
-  const summary = summarizeAiTrainEvaluations(evaluations);
+  const quarantine = applyAiTrainSymbolQuarantine(evaluations, {
+    enabled: symbolQuarantineEnabled,
+    minApprovedLosses: symbolQuarantineMinLosses,
+    minProfitFactor: symbolQuarantineMinProfitFactor,
+    cooldownDays: symbolQuarantineDays,
+  });
+  const finalEvaluations = quarantine.evaluations;
+  const duplicateSummary =
+    summarizeAiTrainDuplicateSignals(duplicateSignalRows);
+  if (saveChart && symbolQuarantineEnabled) {
+    const approvalByKey = new Map(
+      finalEvaluations.map((evaluation) => [
+        evaluation.sequence,
+        evaluation.aiApproved,
+      ]),
+    );
+    for (const row of evaluatedRows) {
+      if (row.sequence != null) {
+        row.aiApproved = approvalByKey.get(row.sequence) ?? row.aiApproved;
+      }
+    }
+  }
+
+  const summary = summarizeAiTrainEvaluations(finalEvaluations);
   const directionSummaries =
-    summarizeAiTrainEvaluationsByDirection(evaluations);
+    summarizeAiTrainEvaluationsByDirection(finalEvaluations);
   const deterministicSummary = summarizeDeterministicGateEvaluations(
     deterministicEvaluations,
-    evaluations,
+    finalEvaluations.map((evaluation) => ({
+      aiApproved: evaluation.rawAiApproved ?? evaluation.aiApproved,
+      modelCandidate: evaluation.modelCandidate,
+    })),
   );
   const evaluated = summary.correct + summary.incorrect;
   const result: AiTrainResult = {
@@ -694,6 +790,8 @@ export const main = async () => {
     byDirection: directionSummaries,
     deterministicFlow: deterministicSummary,
     qualityBreakdown: summary.qualityBuckets,
+    symbolQuarantine: quarantine.summary,
+    duplicates: duplicateSummary,
     errors: {
       failed,
       providerErrors: errorMessages,
@@ -708,6 +806,7 @@ export const main = async () => {
       model: localOnly ? 'local-deterministic' : model,
       mode: localOnly ? 'local-deterministic' : 'llm',
       userName,
+      datasetId,
     });
   }
 
@@ -740,6 +839,10 @@ export const main = async () => {
         ],
         ['model', chalk.yellow(localOnly ? 'local-deterministic' : model)],
         ['parallel', chalk.magenta(String(concurrency))],
+        [
+          'symbol_quarantine',
+          symbolQuarantineEnabled ? chalk.green('enabled') : chalk.gray('off'),
+        ],
       ],
     ),
   );
@@ -940,6 +1043,90 @@ export const main = async () => {
       ],
     ),
   );
+
+  printSection(
+    'SYMBOL QUARANTINE',
+    createTable(
+      [chalk.gray('FIELD'), chalk.gray('VALUE')],
+      [
+        [
+          'enabled',
+          quarantine.summary.enabled
+            ? chalk.green('true')
+            : chalk.gray('false'),
+        ],
+        [
+          'min_approved_losses',
+          chalk.cyan(String(quarantine.summary.minApprovedLosses)),
+        ],
+        [
+          'min_profit_factor',
+          chalk.cyan(String(quarantine.summary.minProfitFactor)),
+        ],
+        ['cooldown_days', chalk.cyan(String(quarantine.summary.cooldownDays))],
+        ['blocked', chalk.yellow(String(quarantine.summary.blocked))],
+        ['events', chalk.yellow(String(quarantine.summary.events.length))],
+      ],
+    ),
+  );
+
+  if (quarantine.summary.events.length) {
+    printSection(
+      'SYMBOL QUARANTINE EVENTS',
+      createTable(
+        [
+          chalk.gray('SYMBOL'),
+          chalk.gray('STARTED'),
+          chalk.gray('UNTIL'),
+          chalk.gray('LOSSES'),
+          chalk.gray('PF'),
+        ],
+        quarantine.summary.events
+          .slice(0, 20)
+          .map((event) => [
+            chalk.yellow(event.symbol),
+            chalk.gray(new Date(event.startedAt).toISOString()),
+            chalk.gray(new Date(event.until).toISOString()),
+            chalk.red(String(event.approvedLosses)),
+            colorizeMetricNumber(event.profitFactor),
+          ]),
+      ),
+    );
+  }
+
+  printSection(
+    'DUPLICATE SIGNALS',
+    createTable(
+      [chalk.gray('FIELD'), chalk.gray('VALUE')],
+      [
+        ['groups', chalk.yellow(String(duplicateSummary.groups))],
+        ['rows', chalk.yellow(String(duplicateSummary.rows))],
+        ['max_group_size', chalk.yellow(String(duplicateSummary.maxGroupSize))],
+      ],
+    ),
+  );
+
+  if (duplicateSummary.worstGroups.length) {
+    printSection(
+      'WORST DUPLICATE GROUPS',
+      createTable(
+        [
+          chalk.gray('SYMBOL'),
+          chalk.gray('DIR'),
+          chalk.gray('TIME'),
+          chalk.gray('COUNT'),
+          chalk.gray('TOTAL_PROFIT'),
+        ],
+        duplicateSummary.worstGroups.map((group) => [
+          chalk.yellow(group.symbol),
+          chalk.gray(group.direction),
+          chalk.gray(new Date(group.timestamp).toISOString()),
+          chalk.cyan(String(group.count)),
+          colorizeProfit(group.totalProfit),
+        ]),
+      ),
+    );
+  }
 
   if (summary.qualityBuckets.length) {
     printSection(
