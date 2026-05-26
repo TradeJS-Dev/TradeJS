@@ -29,7 +29,12 @@ export type TrendShiftGuardrailContext = TrendShiftSignalContext & {
   coreShortQ5Candidate: boolean;
   q4LongBreakoutCandidate: boolean;
   q4ShortBreakoutCandidate: boolean;
+  q4ShortFailedLowBreakoutCandidate: boolean;
   selectiveNeutralQ4Candidate: boolean;
+  longRelativeStrengthOverextended: boolean;
+  longPriceUpOiDivergence: boolean;
+  shortUsLongFlushRisk: boolean;
+  shortFailedLowOiNotConfirming: boolean;
   breakoutState: string | null;
   volumeRel20: number | null;
   atrPctZScore: number | null;
@@ -161,8 +166,7 @@ export const buildTrendShiftGuardrailContext = ({
         breakoutState === 'failed_high_breakout')) ||
       (signalContext.signalDirection === 'SHORT' &&
         (sessionPrimary === 'off_hours' || sessionPrimary === 'asia') &&
-        (breakoutState === 'below_low_level' ||
-          breakoutState === 'failed_low_breakout')));
+        breakoutState === 'below_low_level'));
   let deterministicQuality = 3;
   if (hardBlockReasons.length > 0) {
     deterministicQuality = signalContext.confirmedFlip ? 2 : 1;
@@ -319,6 +323,46 @@ export const buildTrendShiftGuardrailContext = ({
     hardBlockReasons.push('derivatives_alignment_unknown');
   }
 
+  const q4ShortFailedLowBreakoutCandidate =
+    deterministicQuality === 4 &&
+    signalContext.signalDirection === 'SHORT' &&
+    breakoutState === 'failed_low_breakout';
+  const longRelativeStrengthOverextended =
+    signalContext.signalDirection === 'LONG' &&
+    relativeStrength1h != null &&
+    relativeStrength1h >= 5;
+  const longPriceUpOiDivergence =
+    signalContext.signalDirection === 'LONG' &&
+    priceOiDivergenceType === 'price_up_oi_down';
+  const shortUsLongFlushRisk =
+    signalContext.signalDirection === 'SHORT' &&
+    sessionPrimary === 'us' &&
+    derivativesPressure === 'long_flush';
+  const shortFailedLowOiNotConfirming =
+    signalContext.signalDirection === 'SHORT' &&
+    breakoutState === 'failed_low_breakout' &&
+    priceOiDivergenceType === 'price_down_oi_down';
+
+  if (deterministicQuality >= 5 && longRelativeStrengthOverextended) {
+    deterministicQuality = 4;
+    hardBlockReasons.push('long_relative_strength_overextended');
+  }
+
+  if (deterministicQuality >= 5 && longPriceUpOiDivergence) {
+    deterministicQuality = 4;
+    hardBlockReasons.push('long_price_up_oi_down');
+  }
+
+  if (deterministicQuality >= 5 && shortUsLongFlushRisk) {
+    deterministicQuality = 4;
+    hardBlockReasons.push('short_us_long_flush');
+  }
+
+  if (deterministicQuality >= 5 && shortFailedLowOiNotConfirming) {
+    deterministicQuality = 4;
+    hardBlockReasons.push('short_failed_low_oi_not_confirming');
+  }
+
   return {
     ...signalContext,
     deterministicQuality,
@@ -333,7 +377,12 @@ export const buildTrendShiftGuardrailContext = ({
     coreShortQ5Candidate,
     q4LongBreakoutCandidate,
     q4ShortBreakoutCandidate,
+    q4ShortFailedLowBreakoutCandidate,
     selectiveNeutralQ4Candidate,
+    longRelativeStrengthOverextended,
+    longPriceUpOiDivergence,
+    shortUsLongFlushRisk,
+    shortFailedLowOiNotConfirming,
     breakoutState,
     volumeRel20,
     atrPctZScore,
@@ -380,6 +429,14 @@ export const getTrendShiftGuardrailReasonText = (reason: string) => {
       return 'derivatives alignment is still unclear, so keep the flip in watch mode';
     case 'flat_or_mixed_oi':
       return 'price and open-interest divergence still looks mixed, so keep the flip in watch mode';
+    case 'long_relative_strength_overextended':
+      return 'the LONG flip is already too extended versus BTC on the 1h relative-strength read';
+    case 'long_price_up_oi_down':
+      return 'the LONG flip is rising while open interest falls, so continuation confirmation is weak';
+    case 'short_us_long_flush':
+      return 'the US-session SHORT long-flush pocket has not been reliable enough for live approval';
+    case 'short_failed_low_oi_not_confirming':
+      return 'the SHORT failed-low-breakout setup lacks expanding open-interest confirmation';
     default:
       return reason;
   }

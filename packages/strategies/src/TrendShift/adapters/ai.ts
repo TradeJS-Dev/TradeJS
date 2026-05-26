@@ -87,7 +87,12 @@ Additional TrendShift context:
 - relativeStrength1h=${String(context.relativeStrength1h ?? 'n/a')}
 - q4LongBreakoutCandidate=${String(context.q4LongBreakoutCandidate)}
 - q4ShortBreakoutCandidate=${String(context.q4ShortBreakoutCandidate)}
+- q4ShortFailedLowBreakoutCandidate=${String(context.q4ShortFailedLowBreakoutCandidate)}
 - selectiveNeutralQ4Candidate=${String(context.selectiveNeutralQ4Candidate)}
+- longRelativeStrengthOverextended=${String(context.longRelativeStrengthOverextended)}
+- longPriceUpOiDivergence=${String(context.longPriceUpOiDivergence)}
+- shortUsLongFlushRisk=${String(context.shortUsLongFlushRisk)}
+- shortFailedLowOiNotConfirming=${String(context.shortFailedLowOiNotConfirming)}
 - derivativesRiskFlags=${JSON.stringify(context.derivativesRiskFlags)}
 - priceOiDivergenceType=${context.priceOiDivergenceType ?? 'n/a'}
 - sessionPrimary=${context.sessionPrimary ?? 'n/a'}
@@ -108,6 +113,9 @@ Interpretation rules for TrendShift:
 - For SHORT, if the move is already very far from the adaptive average without a long-liquidation flush, treat it as overextended and keep it in watch mode.
 - Thin participation (volumeRel20 < 0.8) is a live hard downgrade even for otherwise q5-looking flips.
 - If derivatives pressure is neutral or derivatives alignment is still unknown, keep the flip in watch mode unless there is explicit liquidation-flush support.
+- SHORT failed-low-breakout setups are watch-only at q4 strength; require true q5 geometry and expanding OI before live approval.
+- For LONG, strong positive relativeStrength1h can mean the flip is already overextended versus BTC; falling OI during a price rise is also a watch-only warning.
+- For SHORT, US-session long-flush setups are watch-only unless later research revalidates that pocket.
 - If hardBlockReasons is not empty, explain exactly what is still missing for confirmation.
 `.trim();
   },
