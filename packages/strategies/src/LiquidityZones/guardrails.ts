@@ -61,8 +61,7 @@ export const buildLiquidityZonesGuardrailContext = ({
   const trendBias = baseContext?.regime?.trend?.bias ?? null;
   const breakoutState =
     baseContext?.structure?.localRange?.breakoutState ?? null;
-  const liquidityZoneRetestDirection =
-    baseContext?.structure?.liquidityZones?.activeRetestDirection ?? null;
+  const liquidityZoneRetestDirection = signalContext.signalDirection ?? null;
   const volumeRel20 = asFiniteNumber(
     baseContext?.participation?.volume?.volumeRel20,
   );
@@ -115,7 +114,8 @@ export const buildLiquidityZonesGuardrailContext = ({
     bearishValue: 'failed_high_breakout',
     value: breakoutState,
   });
-  const baseLiquidityZoneAligned = direction === liquidityZoneRetestDirection;
+  const strategyLiquidityZoneAligned =
+    direction === liquidityZoneRetestDirection;
   const flushSupport =
     direction === 'LONG'
       ? derivativesRiskFlags.includes('short_liquidation_spike') ||
@@ -157,11 +157,13 @@ export const buildLiquidityZonesGuardrailContext = ({
     (trendAligned ||
       benchmarkAligned ||
       failedBreakoutAligned ||
-      baseLiquidityZoneAligned ||
+      strategyLiquidityZoneAligned ||
       flushSupport)
   ) {
     deterministicQuality =
-      flushSupport || failedBreakoutAligned || baseLiquidityZoneAligned ? 5 : 4;
+      flushSupport || failedBreakoutAligned || strategyLiquidityZoneAligned
+        ? 5
+        : 4;
   } else if (
     filterMetric >= 1 &&
     reactionCloseDistancePct > 0 &&

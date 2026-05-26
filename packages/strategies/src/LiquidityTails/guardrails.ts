@@ -62,8 +62,7 @@ export const buildLiquidityTailsGuardrailContext = ({
   const trendBias = baseContext?.regime?.trend?.bias ?? null;
   const breakoutState =
     baseContext?.structure?.localRange?.breakoutState ?? null;
-  const liquidityTailRetestDirection =
-    baseContext?.structure?.liquidityTails?.activeRetestDirection ?? null;
+  const liquidityTailRetestDirection = signalContext.signalDirection ?? null;
   const volumeRel20 = asFiniteNumber(
     baseContext?.participation?.volume?.volumeRel20,
   );
@@ -119,7 +118,8 @@ export const buildLiquidityTailsGuardrailContext = ({
     bearishValue: 'failed_high_breakout',
     value: breakoutState,
   });
-  const baseLiquidityTailAligned = direction === liquidityTailRetestDirection;
+  const strategyLiquidityTailAligned =
+    direction === liquidityTailRetestDirection;
   const flushSupport =
     direction === 'LONG'
       ? derivativesRiskFlags.includes('short_liquidation_spike') ||
@@ -165,11 +165,11 @@ export const buildLiquidityTailsGuardrailContext = ({
     (trendAligned ||
       benchmarkAligned ||
       breakoutAligned ||
-      baseLiquidityTailAligned ||
+      strategyLiquidityTailAligned ||
       flushSupport)
   ) {
     deterministicQuality =
-      zoneTouches >= 2 || flushSupport || baseLiquidityTailAligned ? 5 : 4;
+      zoneTouches >= 2 || flushSupport || strategyLiquidityTailAligned ? 5 : 4;
   } else if (
     wickBodyRatio >= 1.5 &&
     wickDominanceRatio >= 1.25 &&

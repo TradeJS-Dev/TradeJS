@@ -99,7 +99,7 @@ Interpretation rules for AdaptiveTrendChannel:
 - LONG appears when the channel regime flips from bearish to bullish.
 - SHORT appears when the channel regime flips from bullish to bearish.
 - The centerline is the adaptive rail; floor/roof are volatility-scaled invalidation bands.
-- Prefer flips with reasonable distance from the centerline and confirmation from trend/baseContext.
+- Prefer flips with reasonable distance from the centerline and confirmation from shared market context.
 - Thin participation, crowded positioning, or derivatives disagreement should downgrade the setup.
 - Treat deterministicQuality and approvalAllowedNow as the local normalized gate result.
 `.trim();

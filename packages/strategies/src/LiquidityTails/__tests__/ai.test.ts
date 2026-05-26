@@ -97,4 +97,38 @@ describe('liquidityTailsAiAdapter', () => {
       approved: false,
     });
   });
+
+  it('uses tuned strategy context instead of conflicting shared liquidity-tail context', () => {
+    const result = liquidityTailsAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makePayload(
+        {
+          signalDirection: 'LONG',
+          zoneKind: 'buy_pressure',
+          zoneHeight: 5,
+          zoneTouches: 0,
+          wickBodyRatio: 2.5,
+          wickDominanceRatio: 2,
+          retestPenetrationPct: 30,
+          reactionCloseDistancePct: 0.12,
+          reactionBodyAligned: true,
+        },
+        {
+          structure: {
+            liquidityTails: { activeRetestDirection: 'SHORT' },
+          },
+        },
+      ),
+      analysis: {
+        direction: 'LONG',
+        quality: 1,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: 'LONG',
+      quality: 5,
+      approved: true,
+    });
+  });
 });

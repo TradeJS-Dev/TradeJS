@@ -100,7 +100,7 @@ Interpretation rules for TrendFollow:
 - LONG appears when close crosses above the latest confirmed pivot high.
 - SHORT appears when close crosses below the latest confirmed pivot low.
 - The ATR trailing stop is the structural invalidation line and also updates while a position is open.
-- Prefer breakouts aligned with trend/baseContext and backed by participation.
+- Prefer breakouts aligned with shared market context and backed by participation.
 - Late, thin, or crowded breakouts should be downgraded even if the pivot cross is valid.
 - Treat deterministicQuality and approvalAllowedNow as the local normalized gate result.
 `.trim();

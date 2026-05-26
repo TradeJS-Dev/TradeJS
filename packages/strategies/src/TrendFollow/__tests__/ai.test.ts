@@ -99,4 +99,39 @@ describe('trendFollowAiAdapter', () => {
       approved: false,
     });
   });
+
+  it('uses tuned strategy context instead of conflicting shared trend-follow context', () => {
+    const result = trendFollowAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makePayload(
+        {
+          signalDirection: 'LONG',
+          entryLevel: 100,
+          trailStop: 96,
+          atr: 1.5,
+          pivotKind: 'high',
+          breakoutDistancePct: 0.8,
+          distanceToStopPct: 4,
+          currentPrice: 101,
+        },
+        {
+          regime: {
+            trend: {
+              trendFollow: { state: 'bear' },
+            },
+          },
+        },
+      ),
+      analysis: {
+        direction: 'LONG',
+        quality: 1,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: 'LONG',
+      quality: 5,
+      approved: true,
+    });
+  });
 });

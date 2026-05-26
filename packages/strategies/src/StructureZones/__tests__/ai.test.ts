@@ -98,4 +98,44 @@ describe('structureZonesAiAdapter', () => {
       approved: false,
     });
   });
+
+  it('uses tuned strategy context instead of conflicting shared structure-zone context', () => {
+    const result = structureZonesAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makePayload(
+        {
+          signalDirection: 'LONG',
+          signalKind: 'support_reaction',
+          marketState: 'Trend',
+          structureBias: 'up',
+          zoneKind: 'support',
+          zoneHeight: 2,
+          reactionCloseDistancePct: 0.15,
+          reactionBodyAligned: true,
+          currentPrice: 100,
+        },
+        {
+          regime: {
+            trend: { bias: 'bull' },
+          },
+          structure: {
+            structureZones: {
+              state: 'transition',
+              bias: 'bear',
+            },
+          },
+        },
+      ),
+      analysis: {
+        direction: 'LONG',
+        quality: 1,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: 'LONG',
+      quality: 4,
+      approved: true,
+    });
+  });
 });

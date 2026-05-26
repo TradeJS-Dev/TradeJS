@@ -14,7 +14,7 @@ import {
   upsertIndicatorCacheCoverageRows,
 } from '@tradejs/infra/timescale';
 
-const INDICATOR_CACHE_VERSION = 'v10';
+const INDICATOR_CACHE_VERSION = 'v11';
 const INDICATOR_CACHE_CHECKPOINT_INTERVAL = 256;
 
 type IndicatorCacheObsoleteCleanupOptions = Omit<

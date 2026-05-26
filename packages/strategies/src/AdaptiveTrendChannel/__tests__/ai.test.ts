@@ -104,4 +104,41 @@ describe('adaptiveTrendChannelAiAdapter', () => {
       approved: false,
     });
   });
+
+  it('uses tuned strategy context instead of conflicting shared adaptive channel context', () => {
+    const result = adaptiveTrendChannelAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makePayload(
+        {
+          signalDirection: 'LONG',
+          regime: 1,
+          centerline: 100,
+          roof: 103,
+          floor: 97,
+          halfChannel: 3,
+          atr: 3,
+          breakoutDistancePct: 0.2,
+          channelWidthPct: 6,
+          currentPrice: 100.2,
+        },
+        {
+          regime: {
+            trend: {
+              adaptiveChannel: { regime: 'bear' },
+            },
+          },
+        },
+      ),
+      analysis: {
+        direction: 'LONG',
+        quality: 1,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: 'LONG',
+      quality: 5,
+      approved: true,
+    });
+  });
 });

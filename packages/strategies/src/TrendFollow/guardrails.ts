@@ -59,7 +59,11 @@ export const buildTrendFollowGuardrailContext = ({
   const primarySession = baseContext?.regime?.session?.sessionPhase ?? null;
   const trendBias = baseContext?.regime?.trend?.bias ?? null;
   const trendFollowState =
-    baseContext?.regime?.trend?.trendFollow?.state ?? null;
+    signalContext.signalDirection === 'LONG'
+      ? 'bull'
+      : signalContext.signalDirection === 'SHORT'
+        ? 'bear'
+        : null;
   const breakoutState =
     baseContext?.structure?.localRange?.breakoutState ?? null;
   const volumeRel20 = asFiniteNumber(
@@ -114,7 +118,7 @@ export const buildTrendFollowGuardrailContext = ({
     bearishValue: 'below_low_level',
     value: breakoutState,
   });
-  const baseTrendFollowAligned = isDirectionAligned({
+  const strategyTrendFollowAligned = isDirectionAligned({
     direction,
     bullishValue: 'bull',
     bearishValue: 'bear',
@@ -156,13 +160,13 @@ export const buildTrendFollowGuardrailContext = ({
     breakoutDistancePct <= 2.5 &&
     distanceToStopPct >= 0.25 &&
     (trendAligned ||
-      baseTrendFollowAligned ||
+      strategyTrendFollowAligned ||
       benchmarkAligned ||
       breakoutAligned ||
       flushSupport)
   ) {
     deterministicQuality =
-      flushSupport || breakoutAligned || baseTrendFollowAligned ? 5 : 4;
+      flushSupport || breakoutAligned || strategyTrendFollowAligned ? 5 : 4;
   } else if (breakoutDistancePct > 0 && distanceToStopPct > 0) {
     deterministicQuality = 4;
   }

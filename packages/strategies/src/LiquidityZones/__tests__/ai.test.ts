@@ -98,4 +98,39 @@ describe('liquidityZonesAiAdapter', () => {
       approved: false,
     });
   });
+
+  it('uses tuned strategy context instead of conflicting shared liquidity-zone context', () => {
+    const result = liquidityZonesAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makePayload(
+        {
+          signalDirection: 'SHORT',
+          zoneKind: 'swing_high_liquidity',
+          zoneHeight: 8,
+          hitCount: 3,
+          hitVolume: 4_000,
+          filterMode: 'count',
+          filterMetric: 3,
+          retestPenetrationPct: 55,
+          reactionCloseDistancePct: 0.12,
+          reactionBodyAligned: true,
+        },
+        {
+          structure: {
+            liquidityZones: { activeRetestDirection: 'LONG' },
+          },
+        },
+      ),
+      analysis: {
+        direction: 'SHORT',
+        quality: 1,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: 'SHORT',
+      quality: 5,
+      approved: true,
+    });
+  });
 });

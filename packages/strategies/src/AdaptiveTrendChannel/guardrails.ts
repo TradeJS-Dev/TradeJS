@@ -60,7 +60,11 @@ export const buildAdaptiveTrendChannelGuardrailContext = ({
   const primarySession = baseContext?.regime?.session?.sessionPhase ?? null;
   const trendBias = baseContext?.regime?.trend?.bias ?? null;
   const adaptiveChannelRegime =
-    baseContext?.regime?.trend?.adaptiveChannel?.regime ?? null;
+    signalContext.regime === 1
+      ? 'bull'
+      : signalContext.regime === -1
+        ? 'bear'
+        : null;
   const breakoutState =
     baseContext?.structure?.localRange?.breakoutState ?? null;
   const volumeRel20 = asFiniteNumber(
@@ -112,7 +116,7 @@ export const buildAdaptiveTrendChannelGuardrailContext = ({
     bearishValue: 'below_low_level',
     value: breakoutState,
   });
-  const baseAdaptiveChannelAligned = isDirectionAligned({
+  const strategyAdaptiveChannelAligned = isDirectionAligned({
     direction,
     bullishValue: 'bull',
     bearishValue: 'bear',
@@ -153,13 +157,13 @@ export const buildAdaptiveTrendChannelGuardrailContext = ({
     breakoutDistancePct >= 0.05 &&
     breakoutDistancePct <= Math.max(channelWidthPct * 1.5, 0.4) &&
     (trendAligned ||
-      baseAdaptiveChannelAligned ||
+      strategyAdaptiveChannelAligned ||
       benchmarkAligned ||
       breakoutAligned ||
       flushSupport)
   ) {
     deterministicQuality =
-      breakoutAligned || flushSupport || baseAdaptiveChannelAligned ? 5 : 4;
+      breakoutAligned || flushSupport || strategyAdaptiveChannelAligned ? 5 : 4;
   } else if (breakoutDistancePct > 0) {
     deterministicQuality = 4;
   }

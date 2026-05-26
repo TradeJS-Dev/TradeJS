@@ -869,7 +869,8 @@ const buildVolumeStructureContext = (
   price: number,
   atr: number | null,
 ) => {
-  const profileCandles = candles.slice(-VOLUME_STRUCTURE_CALC_BARS);
+  const startIndex = Math.max(0, candles.length - VOLUME_STRUCTURE_CALC_BARS);
+  const calcBars = candles.length - startIndex;
   const empty = {
     pointOfControl: null,
     pocIndex: null,
@@ -881,15 +882,21 @@ const buildVolumeStructureContext = (
     priceAbovePointOfControl: null,
     distanceToPointOfControlAtr: null,
     rowCount: VOLUME_STRUCTURE_ROW_COUNT,
-    calcBars: profileCandles.length,
+    calcBars,
   };
 
-  if (profileCandles.length === 0) {
+  if (calcBars === 0) {
     return empty;
   }
 
-  const top = Math.max(...profileCandles.map((item) => item.high));
-  const bottom = Math.min(...profileCandles.map((item) => item.low));
+  let top = Number.NEGATIVE_INFINITY;
+  let bottom = Number.POSITIVE_INFINITY;
+  for (let index = startIndex; index < candles.length; index += 1) {
+    const candle = candles[index];
+    top = Math.max(top, candle.high);
+    bottom = Math.min(bottom, candle.low);
+  }
+
   const range = top - bottom;
   if (range <= 0) {
     return {
@@ -908,8 +915,8 @@ const buildVolumeStructureContext = (
 
   const rowCount = VOLUME_STRUCTURE_ROW_COUNT;
   const step = range / rowCount;
-  const upVolumes = Array.from({ length: rowCount }, () => 0);
-  const downVolumes = Array.from({ length: rowCount }, () => 0);
+  const upVolumes = new Array<number>(rowCount).fill(0);
+  const downVolumes = new Array<number>(rowCount).fill(0);
   const distributeSegmentVolume = (
     segmentLow: number,
     segmentHigh: number,
@@ -943,7 +950,8 @@ const buildVolumeStructureContext = (
     }
   };
 
-  for (const candle of profileCandles) {
+  for (let index = startIndex; index < candles.length; index += 1) {
+    const candle = candles[index];
     const bodyTop = Math.max(candle.close, candle.open);
     const bodyBottom = Math.min(candle.close, candle.open);
     const body = bodyTop - bodyBottom;
@@ -970,18 +978,28 @@ const buildVolumeStructureContext = (
     distributeSegmentVolume(candle.low, bodyBottom, bottomWickVolume, 0.5, 0.5);
   }
 
-  const totalVolumes = upVolumes.map(
-    (value, index) => value + downVolumes[index],
-  );
-  const totalVolume = totalVolumes.reduce((sum, value) => sum + value, 0);
-  const maxVolume = Math.max(...totalVolumes);
-  const pocIndex = totalVolumes.indexOf(maxVolume);
+  let totalVolume = 0;
+  let maxVolume = Number.NEGATIVE_INFINITY;
+  let pocIndex = 0;
+  let totalUpVolume = 0;
+  let totalDownVolume = 0;
+  for (let index = 0; index < rowCount; index += 1) {
+    const upVolume = upVolumes[index];
+    const downVolume = downVolumes[index];
+    const totalRowVolume = upVolume + downVolume;
+    totalVolume += totalRowVolume;
+    totalUpVolume += upVolume;
+    totalDownVolume += downVolume;
+    if (totalRowVolume > maxVolume) {
+      maxVolume = totalRowVolume;
+      pocIndex = index;
+    }
+  }
+
   const pointOfControl = bottom + step * (pocIndex + 0.5);
-  const totalUpVolume = upVolumes.reduce((sum, value) => sum + value, 0);
-  const totalDownVolume = downVolumes.reduce((sum, value) => sum + value, 0);
-  const pocTotalVolume = totalVolumes[pocIndex] ?? null;
-  const pocUpVolume = upVolumes[pocIndex] ?? null;
-  const pocDownVolume = downVolumes[pocIndex] ?? null;
+  const pocTotalVolume = upVolumes[pocIndex] + downVolumes[pocIndex];
+  const pocUpVolume = upVolumes[pocIndex];
+  const pocDownVolume = downVolumes[pocIndex];
 
   return {
     pointOfControl,
@@ -994,7 +1012,7 @@ const buildVolumeStructureContext = (
     priceAbovePointOfControl: price > pointOfControl,
     distanceToPointOfControlAtr: safeDivide(price - pointOfControl, atr),
     rowCount,
-    calcBars: profileCandles.length,
+    calcBars,
   };
 };
 
@@ -1571,16 +1589,18 @@ const calculateLinregNow = (
     return null;
   }
 
-  const window = values.slice(start, index + 1);
   const xMean = (period - 1) / 2;
-  const yMean = window.reduce((sum, value) => sum + value, 0) / period;
+  let ySum = 0;
   let numerator = 0;
   let denominator = 0;
   for (let x = 0; x < period; x += 1) {
-    numerator += (x - xMean) * (window[x] - yMean);
+    const value = values[start + x];
+    ySum += value;
+    numerator += (x - xMean) * value;
     denominator += (x - xMean) ** 2;
   }
 
+  const yMean = ySum / period;
   const slope = denominator === 0 ? 0 : numerator / denominator;
   const intercept = yMean - slope * xMean;
   return intercept + slope * (period - 1);
@@ -1638,25 +1658,41 @@ const buildAdaptiveTrendChannelContext = (candles: Candle[], price: number) => {
       ADAPTIVE_CHANNEL_REGRESSION_BARS,
     );
 
-    const highWindow = regHigh
-      .slice(Math.max(0, index + 1 - ADAPTIVE_CHANNEL_ENVELOPE_BARS), index + 1)
-      .filter((value): value is number => value != null);
-    const lowWindow = regLow
-      .slice(Math.max(0, index + 1 - ADAPTIVE_CHANNEL_ENVELOPE_BARS), index + 1)
-      .filter((value): value is number => value != null);
+    let highCount = 0;
+    let lowCount = 0;
+    let highSum = 0;
+    let lowSum = 0;
+    let windowPeak = Number.NEGATIVE_INFINITY;
+    let windowTrough = Number.POSITIVE_INFINITY;
+    const envelopeStart = Math.max(
+      0,
+      index + 1 - ADAPTIVE_CHANNEL_ENVELOPE_BARS,
+    );
+    for (let cursor = envelopeStart; cursor <= index; cursor += 1) {
+      const highValue = regHigh[cursor];
+      if (highValue != null) {
+        highCount += 1;
+        highSum += highValue;
+        windowPeak = Math.max(windowPeak, highValue);
+      }
+
+      const lowValue = regLow[cursor];
+      if (lowValue != null) {
+        lowCount += 1;
+        lowSum += lowValue;
+        windowTrough = Math.min(windowTrough, lowValue);
+      }
+    }
+
     if (
-      highWindow.length < ADAPTIVE_CHANNEL_ENVELOPE_BARS ||
-      lowWindow.length < ADAPTIVE_CHANNEL_ENVELOPE_BARS
+      highCount < ADAPTIVE_CHANNEL_ENVELOPE_BARS ||
+      lowCount < ADAPTIVE_CHANNEL_ENVELOPE_BARS
     ) {
       continue;
     }
 
-    const upperReaction =
-      highWindow.reduce((sum, value) => sum + value, 0) / highWindow.length;
-    const lowerReaction =
-      lowWindow.reduce((sum, value) => sum + value, 0) / lowWindow.length;
-    const windowPeak = Math.max(...highWindow);
-    const windowTrough = Math.min(...lowWindow);
+    const upperReaction = highSum / highCount;
+    const lowerReaction = lowSum / lowCount;
     const previousRegLow = regLow[index - 1];
     const previousRegHigh = regHigh[index - 1];
     const currentRegClose = regClose[index];
