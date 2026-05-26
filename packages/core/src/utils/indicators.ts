@@ -14,6 +14,7 @@ import {
   type BaseContextAdaptiveChannelInput,
   type BaseContextContextMaInput,
   type BaseContextMaLayerInput,
+  type BaseContextPsarInput,
   type BreakoutRuntimeState,
   type CloseStreakRuntimeState,
 } from './indicatorBaseContext';
@@ -51,6 +52,7 @@ import {
   createSerializableEma,
   createSerializableMacd,
   createSerializableObv,
+  createSerializablePsar,
   createSerializableRsi,
   SerializableAdxState,
   SerializableAdxOutput,
@@ -60,6 +62,7 @@ import {
   SerializableEmaState,
   SerializableMacdState,
   SerializableObvState,
+  SerializablePsarState,
   SerializableRsiState,
   SerializableSdState,
   SerializableSmaState,
@@ -110,6 +113,12 @@ const ONE_HOUR_MS = 3_600_000;
 const BASE_CONTEXT_RAW_HISTORY_WINDOW = 200;
 const BASE_CONTEXT_CONTEXT_MA_PERIOD = 34;
 const BASE_CONTEXT_ADAPTIVE_CHANNEL_PERIOD = 20;
+const BASE_CONTEXT_PSAR_START = 0.02;
+const BASE_CONTEXT_PSAR_INCREMENT = 0.02;
+const BASE_CONTEXT_PSAR_MAXIMUM = 0.2;
+const BASE_CONTEXT_PSAR_EMA_PERIOD = 50;
+const BASE_CONTEXT_PSAR_ADX_MIN = 15;
+const BASE_CONTEXT_PSAR_COOLDOWN_BARS = 1;
 
 const baseContextEmaKey = (period: number) => String(period);
 
@@ -142,6 +151,9 @@ type IndicatorRuntimeState = {
   baseContextCloseEma34: SerializableEmaState;
   baseContextTypicalSma20: SerializableSmaState;
   baseContextAdaptivePreviousCenterline: number | null;
+  baseContextPsar: SerializablePsarState;
+  baseContextPsarEma50: SerializableEmaState;
+  baseContextPsarFilterBarsSinceSignal: number | null;
   btcMaFast: SerializableSmaState;
   btcMaSlow: SerializableSmaState;
   spreadSmoother: SpreadSmootherState;
@@ -559,6 +571,18 @@ export const createIndicators = (
     BASE_CONTEXT_ADAPTIVE_CHANNEL_PERIOD,
     restoredState?.indicatorState.baseContextTypicalSma20,
   );
+  const baseContextPsar = createSerializablePsar(
+    {
+      start: BASE_CONTEXT_PSAR_START,
+      increment: BASE_CONTEXT_PSAR_INCREMENT,
+      maximum: BASE_CONTEXT_PSAR_MAXIMUM,
+    },
+    restoredState?.indicatorState.baseContextPsar,
+  );
+  const baseContextPsarEma50 = createSerializableEma(
+    BASE_CONTEXT_PSAR_EMA_PERIOD,
+    restoredState?.indicatorState.baseContextPsarEma50,
+  );
   const btcMaFast = createSerializableSma(
     indicatorPeriods.maFast,
     restoredState?.indicatorState.btcMaFast,
@@ -606,6 +630,34 @@ export const createIndicators = (
   );
   let latestBaseContextAdaptivePreviousCenterline =
     restoredState?.indicatorState.baseContextAdaptivePreviousCenterline ?? null;
+  let latestBaseContextPsarValue =
+    restoredState?.indicatorState.baseContextPsar?.sar ?? null;
+  let latestBaseContextPsarEma50 =
+    restoredState?.indicatorState.baseContextPsarEma50?.current ?? null;
+  let baseContextPsarFilterBarsSinceSignal =
+    restoredState?.indicatorState.baseContextPsarFilterBarsSinceSignal ?? null;
+  let latestBaseContextPsar: BaseContextPsarInput = {
+    value: latestBaseContextPsarValue,
+    direction:
+      latestBaseContextPsarValue == null
+        ? 'unknown'
+        : candlesHistory[candlesHistory.length - 1]?.close >
+            latestBaseContextPsarValue
+          ? 'bull'
+          : 'bear',
+    rawBuySignal: null,
+    rawSellSignal: null,
+    buySignal: null,
+    sellSignal: null,
+    emaFilter: latestBaseContextPsarEma50,
+    trendLongOk: null,
+    trendShortOk: null,
+    adxOk: null,
+    candleLongOk: null,
+    candleShortOk: null,
+    cooldownOk: null,
+    barsSinceSignal: baseContextPsarFilterBarsSinceSignal,
+  };
   const closeStreaks: CloseStreakRuntimeState = {
     up: restoredState?.closeStreaks?.up ?? 0,
     down: restoredState?.closeStreaks?.down ?? 0,
@@ -1020,6 +1072,84 @@ export const createIndicators = (
     const len = candlesHistory.length;
     const currentIndex = len - 1;
     const prevCandle = len > 1 ? candlesHistory[len - 2] : null;
+    const previousPsarValue = latestBaseContextPsarValue;
+    const psarValue = baseContextPsar.nextValue(candle);
+    latestBaseContextPsarValue =
+      typeof psarValue === 'number' ? psarValue : latestBaseContextPsarValue;
+    const psarEma50Value = baseContextPsarEma50.nextValue(candle.close);
+    latestBaseContextPsarEma50 =
+      typeof psarEma50Value === 'number' ? psarEma50Value : null;
+    const psarReady =
+      typeof psarValue === 'number' &&
+      Number.isFinite(psarValue) &&
+      previousPsarValue != null &&
+      prevCandle != null;
+    const psarDirection =
+      typeof psarValue === 'number'
+        ? candle.close > psarValue
+          ? 'bull'
+          : 'bear'
+        : 'unknown';
+    const psarRawBuySignal = psarReady
+      ? prevCandle.close <= previousPsarValue && candle.close > psarValue
+      : null;
+    const psarRawSellSignal = psarReady
+      ? prevCandle.close >= previousPsarValue && candle.close < psarValue
+      : null;
+    const psarTrendLongOk =
+      latestBaseContextPsarEma50 == null
+        ? null
+        : candle.close > latestBaseContextPsarEma50;
+    const psarTrendShortOk =
+      latestBaseContextPsarEma50 == null
+        ? null
+        : candle.close < latestBaseContextPsarEma50;
+    const psarAdxOk =
+      latestAdxValue?.adx == null
+        ? null
+        : latestAdxValue.adx >= BASE_CONTEXT_PSAR_ADX_MIN;
+    const psarCandleLongOk = candle.close > candle.open;
+    const psarCandleShortOk = candle.close < candle.open;
+    const psarCooldownOk =
+      baseContextPsarFilterBarsSinceSignal == null
+        ? true
+        : baseContextPsarFilterBarsSinceSignal >
+          BASE_CONTEXT_PSAR_COOLDOWN_BARS;
+    const psarBuySignal =
+      psarRawBuySignal == null
+        ? null
+        : psarRawBuySignal &&
+          psarTrendLongOk === true &&
+          psarAdxOk === true &&
+          psarCooldownOk;
+    const psarSellSignal =
+      psarRawSellSignal == null
+        ? null
+        : psarRawSellSignal &&
+          psarTrendShortOk === true &&
+          psarAdxOk === true &&
+          psarCooldownOk;
+    if (psarBuySignal || psarSellSignal) {
+      baseContextPsarFilterBarsSinceSignal = 0;
+    } else if (baseContextPsarFilterBarsSinceSignal != null) {
+      baseContextPsarFilterBarsSinceSignal += 1;
+    }
+    latestBaseContextPsar = {
+      value: typeof psarValue === 'number' ? psarValue : null,
+      direction: psarDirection,
+      rawBuySignal: psarRawBuySignal,
+      rawSellSignal: psarRawSellSignal,
+      buySignal: psarBuySignal,
+      sellSignal: psarSellSignal,
+      emaFilter: latestBaseContextPsarEma50,
+      trendLongOk: psarTrendLongOk,
+      trendShortOk: psarTrendShortOk,
+      adxOk: psarAdxOk,
+      candleLongOk: psarCandleLongOk,
+      candleShortOk: psarCandleShortOk,
+      cooldownOk: psarCooldownOk,
+      barsSinceSignal: baseContextPsarFilterBarsSinceSignal,
+    };
     if (!prevCandle) {
       closeStreaks.up = 0;
       closeStreaks.down = 0;
@@ -1324,6 +1454,7 @@ export const createIndicators = (
             maLayers: buildBaseContextMaLayers(),
             contextMa: buildBaseContextContextMa(),
             adaptiveChannel: buildBaseContextAdaptiveChannel(),
+            psar: latestBaseContextPsar,
           });
         }
 
@@ -1356,6 +1487,7 @@ export const createIndicators = (
     }));
     const capturedContextMa = { ...buildBaseContextContextMa() };
     const capturedAdaptiveChannel = { ...buildBaseContextAdaptiveChannel() };
+    const capturedPsar = { ...latestBaseContextPsar };
 
     let cachedMlCandleSnapshot: MlCandleIndicatorsSnapshot | null = null;
     let cachedCoinTimeframeSnapshot: Record<string, number[]> | null = null;
@@ -1455,6 +1587,7 @@ export const createIndicators = (
             maLayers: capturedMaLayers,
             contextMa: capturedContextMa,
             adaptiveChannel: capturedAdaptiveChannel,
+            psar: capturedPsar,
           });
 
           return cachedBaseContextSnapshot;
@@ -1534,6 +1667,9 @@ export const createIndicators = (
       baseContextTypicalSma20: baseContextTypicalSma20.snapshot(),
       baseContextAdaptivePreviousCenterline:
         latestBaseContextAdaptivePreviousCenterline,
+      baseContextPsar: baseContextPsar.snapshot(),
+      baseContextPsarEma50: baseContextPsarEma50.snapshot(),
+      baseContextPsarFilterBarsSinceSignal,
       btcMaFast: btcMaFast.snapshot(),
       btcMaSlow: btcMaSlow.snapshot(),
       spreadSmoother: spreadSmoother.snapshot(),
@@ -1616,6 +1752,9 @@ export const createIndicators = (
       baseContextTypicalSma20: baseContextTypicalSma20.snapshot(),
       baseContextAdaptivePreviousCenterline:
         latestBaseContextAdaptivePreviousCenterline,
+      baseContextPsar: baseContextPsar.snapshot(),
+      baseContextPsarEma50: baseContextPsarEma50.snapshot(),
+      baseContextPsarFilterBarsSinceSignal,
       btcMaFast: btcMaFast.snapshot(),
       btcMaSlow: btcMaSlow.snapshot(),
       spreadSmoother: spreadSmoother.snapshot(),

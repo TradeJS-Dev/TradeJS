@@ -1,12 +1,13 @@
 import { BaseStrategyContextSnapshot } from '@tradejs/types';
-import { MSLLiquidityZonesSignalContext } from './engine';
+import { LiquidityZonesSignalContext } from './engine';
 
-export type MSLLiquidityZonesGuardrailContext =
-  Partial<MSLLiquidityZonesSignalContext> & {
+export type LiquidityZonesGuardrailContext =
+  Partial<LiquidityZonesSignalContext> & {
     baseContextAvailable: boolean;
     primarySession: string | null;
     trendBias: string | null;
     breakoutState: string | null;
+    liquidityZoneRetestDirection: string | null;
     volumeRel20: number | null;
     benchmarkTrendAlignment: string | null;
     derivativesPressure: string | null;
@@ -48,18 +49,20 @@ const isDirectionAligned = ({
       ? value === bearishValue
       : false;
 
-export const buildMSLLiquidityZonesGuardrailContext = ({
+export const buildLiquidityZonesGuardrailContext = ({
   signalContext,
   baseContext,
 }: {
-  signalContext: Partial<MSLLiquidityZonesSignalContext>;
+  signalContext: Partial<LiquidityZonesSignalContext>;
   baseContext?: BaseStrategyContextSnapshot | null;
-}): MSLLiquidityZonesGuardrailContext => {
+}): LiquidityZonesGuardrailContext => {
   const derivativesSummary = baseContext?.derivatives?.summary ?? null;
   const primarySession = baseContext?.regime?.session?.sessionPhase ?? null;
   const trendBias = baseContext?.regime?.trend?.bias ?? null;
   const breakoutState =
     baseContext?.structure?.localRange?.breakoutState ?? null;
+  const liquidityZoneRetestDirection =
+    baseContext?.structure?.liquidityZones?.activeRetestDirection ?? null;
   const volumeRel20 = asFiniteNumber(
     baseContext?.participation?.volume?.volumeRel20,
   );
@@ -112,6 +115,7 @@ export const buildMSLLiquidityZonesGuardrailContext = ({
     bearishValue: 'failed_high_breakout',
     value: breakoutState,
   });
+  const baseLiquidityZoneAligned = direction === liquidityZoneRetestDirection;
   const flushSupport =
     direction === 'LONG'
       ? derivativesRiskFlags.includes('short_liquidation_spike') ||
@@ -150,9 +154,14 @@ export const buildMSLLiquidityZonesGuardrailContext = ({
     hitCount >= 2 &&
     reactionCloseDistancePct >= 0.08 &&
     retestPenetrationPct <= 90 &&
-    (trendAligned || benchmarkAligned || failedBreakoutAligned || flushSupport)
+    (trendAligned ||
+      benchmarkAligned ||
+      failedBreakoutAligned ||
+      baseLiquidityZoneAligned ||
+      flushSupport)
   ) {
-    deterministicQuality = flushSupport || failedBreakoutAligned ? 5 : 4;
+    deterministicQuality =
+      flushSupport || failedBreakoutAligned || baseLiquidityZoneAligned ? 5 : 4;
   } else if (
     filterMetric >= 1 &&
     reactionCloseDistancePct > 0 &&
@@ -171,6 +180,7 @@ export const buildMSLLiquidityZonesGuardrailContext = ({
     primarySession,
     trendBias,
     breakoutState,
+    liquidityZoneRetestDirection,
     volumeRel20,
     benchmarkTrendAlignment,
     derivativesPressure,

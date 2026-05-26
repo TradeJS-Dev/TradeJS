@@ -4,37 +4,37 @@ import {
   BaseStrategyContextSnapshot,
   StrategyAiAdapter,
 } from '@tradejs/types';
-import { MSLLiquidityZonesConfig } from '../config';
-import { MSLLiquidityZonesSignalContext } from '../engine';
-import { buildMSLLiquidityZonesGuardrailContext } from '../guardrails';
+import { LiquidityZonesConfig } from '../config';
+import { LiquidityZonesSignalContext } from '../engine';
+import { buildLiquidityZonesGuardrailContext } from '../guardrails';
 
 const asRecord = (value: unknown): Record<string, unknown> | null =>
   typeof value === 'object' && value != null && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : null;
 
-const getMSLLiquidityZonesContext = (payload: AiPayload) => {
+const getLiquidityZonesContext = (payload: AiPayload) => {
   const additional = asRecord(payload.additionalIndicators);
-  const signalContext = ((additional?.mslLiquidityZonesContext ?? {}) ||
-    {}) as Partial<MSLLiquidityZonesSignalContext>;
+  const signalContext = ((additional?.liquidityZonesContext ?? {}) ||
+    {}) as Partial<LiquidityZonesSignalContext>;
   const baseContext = (additional?.baseContext ??
     null) as BaseStrategyContextSnapshot | null;
 
-  return buildMSLLiquidityZonesGuardrailContext({
+  return buildLiquidityZonesGuardrailContext({
     signalContext,
     baseContext,
   });
 };
 
-export const mslLiquidityZonesAiAdapter: StrategyAiAdapter = {
+export const liquidityZonesAiAdapter: StrategyAiAdapter = {
   buildPayload: ({ signal, basePayload }) => {
     const payload = {
       ...basePayload,
       additionalIndicators: {
         ...(basePayload.additionalIndicators as Record<string, unknown>),
-        mslLiquidityZonesContext: (
+        liquidityZonesContext: (
           signal.additionalIndicators as Record<string, unknown> | undefined
-        )?.mslLiquidityZonesContext,
+        )?.liquidityZonesContext,
       },
     };
 
@@ -42,12 +42,12 @@ export const mslLiquidityZonesAiAdapter: StrategyAiAdapter = {
       ...payload,
       additionalIndicators: {
         ...(payload.additionalIndicators as Record<string, unknown>),
-        mslLiquidityZonesContext: getMSLLiquidityZonesContext(payload),
+        liquidityZonesContext: getLiquidityZonesContext(payload),
       },
     };
   },
   postProcessAnalysis: ({ payload, analysis }) => {
-    const context = getMSLLiquidityZonesContext(payload);
+    const context = getLiquidityZonesContext(payload);
     const requestedDirection =
       analysis.direction === 'LONG' || analysis.direction === 'SHORT'
         ? analysis.direction
@@ -64,13 +64,13 @@ export const mslLiquidityZonesAiAdapter: StrategyAiAdapter = {
         ? undefined
         : [...context.hardBlockReasons, ...context.softBlockReasons].join(
             '; ',
-          ) || 'MSL Liquidity Zones retest lacks confirmation.',
+          ) || 'Liquidity Zones retest lacks confirmation.',
     };
   },
   buildHumanPromptAddon: ({ payload }) => {
-    const context = getMSLLiquidityZonesContext(payload);
+    const context = getLiquidityZonesContext(payload);
     return `
-Additional MSL Liquidity Zones context:
+Additional Liquidity Zones context:
 - signalDirection=${context.signalDirection ?? 'n/a'}
 - zoneKind=${context.zoneKind ?? 'n/a'}
 - zoneTop=${String(context.zoneTop ?? 'n/a')}
@@ -100,7 +100,7 @@ Additional MSL Liquidity Zones context:
 - hardBlockReasons=${JSON.stringify(context.hardBlockReasons)}
 - softBlockReasons=${JSON.stringify(context.softBlockReasons)}
 
-Interpretation rules for MSL Liquidity Zones:
+Interpretation rules for Liquidity Zones:
 - This strategy trades retests of active pivot-derived liquidity zones.
 - LONG comes from a swing-low liquidity zone retest that holds and closes back above the zone.
 - SHORT comes from a swing-high liquidity zone retest that holds and closes back below the zone.
@@ -113,7 +113,7 @@ Interpretation rules for MSL Liquidity Zones:
   mapEntryRuntimeFromConfig: (config) =>
     mapAiRuntimeFromConfig(
       config as Pick<
-        MSLLiquidityZonesConfig,
+        LiquidityZonesConfig,
         'AI_ENABLED' | 'AI_MODE' | 'MIN_AI_QUALITY'
       >,
     ),

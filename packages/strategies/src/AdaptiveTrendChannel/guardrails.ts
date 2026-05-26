@@ -6,6 +6,7 @@ export type AdaptiveTrendChannelGuardrailContext =
     baseContextAvailable: boolean;
     primarySession: string | null;
     trendBias: string | null;
+    adaptiveChannelRegime: string | null;
     breakoutState: string | null;
     volumeRel20: number | null;
     benchmarkTrendAlignment: string | null;
@@ -58,6 +59,8 @@ export const buildAdaptiveTrendChannelGuardrailContext = ({
   const derivativesSummary = baseContext?.derivatives?.summary ?? null;
   const primarySession = baseContext?.regime?.session?.sessionPhase ?? null;
   const trendBias = baseContext?.regime?.trend?.bias ?? null;
+  const adaptiveChannelRegime =
+    baseContext?.regime?.trend?.adaptiveChannel?.regime ?? null;
   const breakoutState =
     baseContext?.structure?.localRange?.breakoutState ?? null;
   const volumeRel20 = asFiniteNumber(
@@ -109,6 +112,12 @@ export const buildAdaptiveTrendChannelGuardrailContext = ({
     bearishValue: 'below_low_level',
     value: breakoutState,
   });
+  const baseAdaptiveChannelAligned = isDirectionAligned({
+    direction,
+    bullishValue: 'bull',
+    bearishValue: 'bear',
+    value: adaptiveChannelRegime,
+  });
   const flushSupport =
     direction === 'LONG'
       ? derivativesRiskFlags.includes('short_liquidation_spike') ||
@@ -143,9 +152,14 @@ export const buildAdaptiveTrendChannelGuardrailContext = ({
   } else if (
     breakoutDistancePct >= 0.05 &&
     breakoutDistancePct <= Math.max(channelWidthPct * 1.5, 0.4) &&
-    (trendAligned || benchmarkAligned || breakoutAligned || flushSupport)
+    (trendAligned ||
+      baseAdaptiveChannelAligned ||
+      benchmarkAligned ||
+      breakoutAligned ||
+      flushSupport)
   ) {
-    deterministicQuality = breakoutAligned || flushSupport ? 5 : 4;
+    deterministicQuality =
+      breakoutAligned || flushSupport || baseAdaptiveChannelAligned ? 5 : 4;
   } else if (breakoutDistancePct > 0) {
     deterministicQuality = 4;
   }
@@ -159,6 +173,7 @@ export const buildAdaptiveTrendChannelGuardrailContext = ({
     baseContextAvailable: Boolean(baseContext),
     primarySession,
     trendBias,
+    adaptiveChannelRegime,
     breakoutState,
     volumeRel20,
     benchmarkTrendAlignment,

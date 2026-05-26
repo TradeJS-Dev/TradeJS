@@ -1,7 +1,7 @@
 /** @jest-environment node */
 
 import { config as DEFAULT_CONFIG } from '../config';
-import { createMSLLiquidityTailsEngine } from '../engine';
+import { createLiquidityZonesEngine } from '../engine';
 
 const makeCandle = (
   index: number,
@@ -23,49 +23,44 @@ const makeCandle = (
 const makeConfig = (overrides: Record<string, unknown> = {}) =>
   ({
     ...DEFAULT_CONFIG,
-    MSLTAILS_ATR_LENGTH: 2,
-    MSLTAILS_ATR_MULT: 0.3,
-    MSLTAILS_MIN_WICK_RATIO: 1,
-    MSLTAILS_WICK_DOMINANCE: 1.1,
-    MSLTAILS_MIN_GAP: 1,
+    LIQUIDITY_ZONES_PIVOT_LOOKBACK: 1,
+    LIQUIDITY_ZONES_MIN_FILTER_VALUE: 0,
     ...overrides,
   }) as any;
 
-describe('MSL Liquidity Tails engine', () => {
-  it('detects buy pressure zone retests with bullish reaction', () => {
-    const engine = createMSLLiquidityTailsEngine({ config: makeConfig() });
+describe('Liquidity Zones engine', () => {
+  it('detects swing-low liquidity zone retests', () => {
+    const engine = createLiquidityZonesEngine({ config: makeConfig() });
     const candles = [
-      makeCandle(0, 100, 101, 99, 100),
-      makeCandle(1, 100, 101, 99, 100),
-      makeCandle(2, 100, 102, 95, 101),
-      makeCandle(3, 99.5, 102, 99, 101),
+      makeCandle(0, 102, 105, 100, 103),
+      makeCandle(1, 100, 102, 90, 101),
+      makeCandle(2, 99, 105, 99, 104),
     ];
 
     const states = candles.map((candle) => engine.next(candle as any));
     const signal = states[states.length - 1].signal;
 
     expect(signal?.direction).toBe('LONG');
-    expect(signal?.zone.kind).toBe('buy_pressure');
+    expect(signal?.zone.kind).toBe('swing_low_liquidity');
     expect(signal?.zone.top).toBe(100);
-    expect(signal?.zone.bottom).toBe(95);
+    expect(signal?.zone.bottom).toBe(90);
     expect(signal?.reactionBodyAligned).toBe(true);
   });
 
-  it('detects sell pressure zone retests with bearish reaction', () => {
-    const engine = createMSLLiquidityTailsEngine({ config: makeConfig() });
+  it('detects swing-high liquidity zone retests', () => {
+    const engine = createLiquidityZonesEngine({ config: makeConfig() });
     const candles = [
-      makeCandle(0, 100, 101, 99, 100),
-      makeCandle(1, 100, 101, 99, 100),
-      makeCandle(2, 101, 107, 100, 100),
-      makeCandle(3, 101.5, 106, 99, 100),
+      makeCandle(0, 98, 100, 95, 97),
+      makeCandle(1, 100, 110, 99, 101),
+      makeCandle(2, 106, 107, 96, 100),
     ];
 
     const states = candles.map((candle) => engine.next(candle as any));
     const signal = states[states.length - 1].signal;
 
     expect(signal?.direction).toBe('SHORT');
-    expect(signal?.zone.kind).toBe('sell_pressure');
-    expect(signal?.zone.top).toBe(107);
+    expect(signal?.zone.kind).toBe('swing_high_liquidity');
+    expect(signal?.zone.top).toBe(110);
     expect(signal?.zone.bottom).toBe(101);
     expect(signal?.reactionBodyAligned).toBe(true);
   });

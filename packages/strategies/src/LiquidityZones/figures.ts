@@ -4,9 +4,9 @@ import {
   StrategyFigurePoints,
   StrategyFigureZone,
 } from '@tradejs/types';
-import { MSLLiquidityZone, MSLLiquidityZonesSignal } from './engine';
+import { LiquidityZone, LiquidityZonesSignal } from './engine';
 
-export const buildMSLLiquidityZonesFigures = ({
+export const buildLiquidityZonesFigures = ({
   signal,
   zones,
   entryTimestamp,
@@ -15,8 +15,8 @@ export const buildMSLLiquidityZonesFigures = ({
   takeProfitPrice,
   maxZones,
 }: {
-  signal: MSLLiquidityZonesSignal;
-  zones: MSLLiquidityZone[];
+  signal: LiquidityZonesSignal;
+  zones: LiquidityZone[];
   entryTimestamp: number;
   entryPrice: number;
   stopLossPrice: number;

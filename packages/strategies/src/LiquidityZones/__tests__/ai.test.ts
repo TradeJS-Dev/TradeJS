@@ -1,6 +1,6 @@
 /** @jest-environment node */
 
-import { mslLiquidityTailsAiAdapter } from '../adapters/ai';
+import { liquidityZonesAiAdapter } from '../adapters/ai';
 
 const makePayload = (
   context: Record<string, unknown>,
@@ -13,7 +13,7 @@ const makePayload = (
       interval: '15',
       direction: context.signalDirection ?? 'LONG',
       timestamp: 1_700_000_000_000,
-      strategy: 'LiquidityTails',
+      strategy: 'LiquidityZones',
       prices: {
         currentPrice: 100,
         takeProfitPrice: 104,
@@ -23,70 +23,71 @@ const makePayload = (
     figures: {},
     indicators: {},
     additionalIndicators: {
-      mslLiquidityTailsContext: context,
+      liquidityZonesContext: context,
       baseContext,
     },
   }) as any;
 
-describe('mslLiquidityTailsAiAdapter', () => {
-  it('approves clean liquidity-zone retests', () => {
-    const result = mslLiquidityTailsAiAdapter.postProcessAnalysis?.({
+describe('liquidityZonesAiAdapter', () => {
+  it('approves clean pivot-zone retests', () => {
+    const result = liquidityZonesAiAdapter.postProcessAnalysis?.({
       signal: {} as any,
       payload: makePayload(
         {
-          signalDirection: 'LONG',
-          zoneKind: 'buy_pressure',
-          zoneHeight: 5,
-          zoneTouches: 2,
-          wickBodyRatio: 2.5,
-          wickDominanceRatio: 2,
-          retestPenetrationPct: 30,
+          signalDirection: 'SHORT',
+          zoneKind: 'swing_high_liquidity',
+          zoneHeight: 8,
+          hitCount: 3,
+          hitVolume: 4_000,
+          filterMode: 'count',
+          filterMetric: 3,
+          retestPenetrationPct: 55,
           reactionCloseDistancePct: 0.12,
           reactionBodyAligned: true,
         },
         {
           regime: {
-            trend: { bias: 'bull' },
+            trend: { bias: 'bear' },
           },
           participation: {
             volume: { volumeRel20: 1.2 },
           },
           derivatives: {
             summary: {
-              pressure: 'short_flush',
+              pressure: 'long_flush',
               directionAligned: true,
-              riskFlags: ['short_liquidation_spike'],
+              riskFlags: ['long_liquidation_spike'],
             },
           },
         },
       ),
       analysis: {
-        direction: 'LONG',
+        direction: 'SHORT',
         quality: 1,
       },
     });
 
     expect(result).toMatchObject({
-      direction: 'LONG',
+      direction: 'SHORT',
       quality: 5,
       approved: true,
     });
   });
 
-  it('rejects retests without a directional reaction body', () => {
-    const result = mslLiquidityTailsAiAdapter.postProcessAnalysis?.({
+  it('rejects retests without reaction body alignment', () => {
+    const result = liquidityZonesAiAdapter.postProcessAnalysis?.({
       signal: {} as any,
       payload: makePayload({
-        signalDirection: 'SHORT',
-        zoneKind: 'sell_pressure',
-        zoneHeight: 5,
-        wickBodyRatio: 2.5,
-        wickDominanceRatio: 2,
-        reactionCloseDistancePct: 0.12,
+        signalDirection: 'LONG',
+        zoneKind: 'swing_low_liquidity',
+        zoneHeight: 8,
+        filterMetric: 2,
+        retestPenetrationPct: 40,
+        reactionCloseDistancePct: 0.1,
         reactionBodyAligned: false,
       }),
       analysis: {
-        direction: 'SHORT',
+        direction: 'LONG',
         quality: 5,
       },
     });

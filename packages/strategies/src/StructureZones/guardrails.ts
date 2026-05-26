@@ -6,6 +6,8 @@ export type StructureZonesGuardrailContext =
     baseContextAvailable: boolean;
     primarySession: string | null;
     trendBias: string | null;
+    baseStructureZoneState: string | null;
+    baseStructureZoneBias: string | null;
     breakoutState: string | null;
     volumeRel20: number | null;
     benchmarkTrendAlignment: string | null;
@@ -58,6 +60,10 @@ export const buildStructureZonesGuardrailContext = ({
   const derivativesSummary = baseContext?.derivatives?.summary ?? null;
   const primarySession = baseContext?.regime?.session?.sessionPhase ?? null;
   const trendBias = baseContext?.regime?.trend?.bias ?? null;
+  const baseStructureZoneState =
+    baseContext?.structure?.structureZones?.state ?? null;
+  const baseStructureZoneBias =
+    baseContext?.structure?.structureZones?.bias ?? null;
   const breakoutState =
     baseContext?.structure?.localRange?.breakoutState ?? null;
   const volumeRel20 = asFiniteNumber(
@@ -135,12 +141,22 @@ export const buildStructureZonesGuardrailContext = ({
       : direction === 'SHORT'
         ? signalContext.structureBias === 'down'
         : false;
+  const baseStructureAligned =
+    direction === 'LONG'
+      ? baseStructureZoneBias === 'bull'
+      : direction === 'SHORT'
+        ? baseStructureZoneBias === 'bear'
+        : false;
+  const baseTransitionSignal = baseStructureZoneState === 'transition';
   let deterministicQuality = 3;
 
   if (hardBlockReasons.length > 0) {
     deterministicQuality = 1;
   } else if (
-    (structureAligned || transitionSignal) &&
+    (structureAligned ||
+      baseStructureAligned ||
+      transitionSignal ||
+      baseTransitionSignal) &&
     (trendAligned || benchmarkAligned || breakoutAligned || flushSupport)
   ) {
     deterministicQuality = breakoutAligned || flushSupport ? 5 : 4;
@@ -157,6 +173,8 @@ export const buildStructureZonesGuardrailContext = ({
     baseContextAvailable: Boolean(baseContext),
     primarySession,
     trendBias,
+    baseStructureZoneState,
+    baseStructureZoneBias,
     breakoutState,
     volumeRel20,
     benchmarkTrendAlignment,

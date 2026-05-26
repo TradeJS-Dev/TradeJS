@@ -4,12 +4,12 @@ import type {
   IndicatorsHistorySnapshot,
   Position,
 } from '@tradejs/types';
-import { MSLLiquidityZonesConfig } from './config';
+import { LiquidityZonesConfig } from './config';
 import {
-  buildMSLLiquidityZonesSignalContext,
-  createMSLLiquidityZonesEngine,
+  buildLiquidityZonesSignalContext,
+  createLiquidityZonesEngine,
 } from './engine';
-import { buildMSLLiquidityZonesFigures } from './figures';
+import { buildLiquidityZonesFigures } from './figures';
 
 const isOpenPosition = (position: Position | null): position is Position =>
   Boolean(
@@ -22,11 +22,11 @@ const isOpenPosition = (position: Position | null): position is Position =>
       (position.direction === 'LONG' || position.direction === 'SHORT'),
   );
 
-export const createMSLLiquidityZonesCore: CreateStrategyCore<
-  MSLLiquidityZonesConfig,
+export const createLiquidityZonesCore: CreateStrategyCore<
+  LiquidityZonesConfig,
   IndicatorsHistorySnapshot | undefined
 > = async ({ config, data: initialData, strategyApi, indicatorsState }) => {
-  const engine = createMSLLiquidityZonesEngine({
+  const engine = createLiquidityZonesEngine({
     config,
     initialCandles: initialData,
   });
@@ -48,9 +48,12 @@ export const createMSLLiquidityZonesCore: CreateStrategyCore<
           ? signal.direction === 'SHORT'
           : signal.direction === 'LONG';
 
-      if (Boolean(config.MSLZONES_EXIT_ON_OPPOSITE_RETEST) && oppositeSignal) {
+      if (
+        Boolean(config.LIQUIDITY_ZONES_EXIT_ON_OPPOSITE_RETEST) &&
+        oppositeSignal
+      ) {
         return strategyApi.exit({
-          code: 'MSLZONES_OPPOSITE_RETEST_EXIT',
+          code: 'LIQUIDITY_ZONES_OPPOSITE_RETEST_EXIT',
           direction: position.direction,
         });
       }
@@ -71,17 +74,21 @@ export const createMSLLiquidityZonesCore: CreateStrategyCore<
     const indicators = indicatorsState.snapshot();
     const zoneBuffer =
       signal.zoneHeight *
-      Math.max(0, Number(config.MSLZONES_STOP_ZONE_BUFFER_MULT ?? 0.2));
+      Math.max(0, Number(config.LIQUIDITY_ZONES_STOP_ZONE_BUFFER_MULT ?? 0.2));
     const percentBuffer =
       currentPrice *
-      (Math.max(0, Number(config.MSLZONES_STOP_BUFFER_PCT ?? 0.03)) / 100);
+      (Math.max(0, Number(config.LIQUIDITY_ZONES_STOP_BUFFER_PCT ?? 0.03)) /
+        100);
     const buffer = Math.max(zoneBuffer, percentBuffer);
     const stopLossPrice =
       signal.direction === 'LONG'
         ? signal.zone.bottom - buffer
         : signal.zone.top + buffer;
     const riskDistance = Math.abs(currentPrice - stopLossPrice);
-    const targetR = Math.max(0, Number(config.MSLZONES_TARGET_R_MULT ?? 2));
+    const targetR = Math.max(
+      0,
+      Number(config.LIQUIDITY_ZONES_TARGET_R_MULT ?? 2),
+    );
     const takeProfitPrice =
       signal.direction === 'LONG'
         ? currentPrice + riskDistance * targetR
@@ -112,24 +119,27 @@ export const createMSLLiquidityZonesCore: CreateStrategyCore<
     return strategyApi.entry({
       code:
         signal.direction === 'LONG'
-          ? 'MSLZONES_SWING_LOW_RETEST'
-          : 'MSLZONES_SWING_HIGH_RETEST',
+          ? 'LIQUIDITY_ZONES_SWING_LOW_RETEST'
+          : 'LIQUIDITY_ZONES_SWING_HIGH_RETEST',
       direction: modeConfig.direction,
       indicators,
       additionalIndicators: {
-        mslLiquidityZonesContext: buildMSLLiquidityZonesSignalContext({
+        liquidityZonesContext: buildLiquidityZonesSignalContext({
           ...signal,
           close: currentPrice,
         }),
       },
-      figures: buildMSLLiquidityZonesFigures({
+      figures: buildLiquidityZonesFigures({
         signal,
         zones: runtimeState.zones,
         entryTimestamp: timestamp,
         entryPrice: currentPrice,
         stopLossPrice,
         takeProfitPrice,
-        maxZones: Math.max(1, Number(config.MSLZONES_MAX_FIGURE_ZONES ?? 24)),
+        maxZones: Math.max(
+          1,
+          Number(config.LIQUIDITY_ZONES_MAX_FIGURE_ZONES ?? 24),
+        ),
       }),
       orderPlan: {
         qty,

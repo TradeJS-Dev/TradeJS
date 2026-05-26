@@ -137,6 +137,31 @@ const STRUCTURE_LOOKBACK = 80;
 const PIVOT_LEFT_RIGHT = 2;
 const ZONE_ATR_FACTOR = 0.5;
 const PROFILE_BIN_COUNT = 24;
+const SR_ZONE_PIVOT_PERIOD = 9;
+const SR_ZONE_MIN_STRENGTH = 2;
+const SR_ZONE_MAX_PIVOTS = 15;
+const SR_ZONE_CHANNEL_WIDTH_PCT = 8;
+const SR_ZONE_MAX_LEVELS = 6;
+const VOLUME_STRUCTURE_CALC_BARS = 180;
+const VOLUME_STRUCTURE_ROW_COUNT = 20;
+const LIQUIDITY_ZONE_LOOKBACK = 15;
+const LIQUIDITY_ZONE_MAX_AGE = 120;
+const LIQUIDITY_TAIL_ATR_LENGTH = 14;
+const LIQUIDITY_TAIL_ATR_MULT = 0.8;
+const LIQUIDITY_TAIL_MIN_WICK_RATIO = 1.3;
+const LIQUIDITY_TAIL_WICK_DOMINANCE = 1.2;
+const LIQUIDITY_TAIL_MIN_GAP = 5;
+const LIQUIDITY_TAIL_MAX_AGE = 120;
+const TREND_FOLLOW_PIVOT_LENGTH = 10;
+const TREND_FOLLOW_ATR_LENGTH = 14;
+const TREND_FOLLOW_ATR_MULT = 4;
+const ADAPTIVE_CHANNEL_REGRESSION_BARS = 7;
+const ADAPTIVE_CHANNEL_ENVELOPE_BARS = 2;
+const ADAPTIVE_CHANNEL_ATR_STRETCH = 2;
+const ADAPTIVE_CHANNEL_VOLATILITY_LOOKBACK = 100;
+const ADAPTIVE_CHANNEL_CALC_LOOKBACK = 220;
+const STRUCTURE_ZONES_ZONE_WIDTH_ATR = 0.5;
+const STRUCTURE_ZONES_ACCEPT_BARS = 2;
 export const BASE_CONTEXT_MA_LAYER_PERIODS = [
   [5, 12],
   [9, 13],
@@ -159,6 +184,53 @@ export type BaseContextContextMaInput = {
 export type BaseContextAdaptiveChannelInput = {
   centerline: number | null;
   previousCenterline: number | null;
+};
+
+export type BaseContextPsarInput = {
+  value: number | null;
+  direction: 'bull' | 'bear' | 'unknown';
+  rawBuySignal: boolean | null;
+  rawSellSignal: boolean | null;
+  buySignal: boolean | null;
+  sellSignal: boolean | null;
+  emaFilter: number | null;
+  trendLongOk: boolean | null;
+  trendShortOk: boolean | null;
+  adxOk: boolean | null;
+  candleLongOk: boolean | null;
+  candleShortOk: boolean | null;
+  cooldownOk: boolean | null;
+  barsSinceSignal: number | null;
+};
+
+type SrZoneLevel = {
+  level: number;
+  upper: number;
+  lower: number;
+  strength: number;
+  distancePct: number | null;
+  side: 'support' | 'resistance';
+};
+
+type LiquidityZoneSnapshot = {
+  kind: 'swing_high_liquidity' | 'swing_low_liquidity';
+  top: number;
+  bottom: number;
+  level: number;
+  mid: number;
+  startIndex: number;
+  hitCount: number;
+  crossed: boolean;
+};
+
+type LiquidityTailZoneSnapshot = {
+  kind: 'buy_pressure' | 'sell_pressure';
+  top: number;
+  bottom: number;
+  mid: number;
+  startIndex: number;
+  touches: number;
+  spent: boolean;
 };
 
 const getTypicalPrice = (candle: Candle) =>
@@ -407,6 +479,43 @@ const calculateAtrPctAt = (candles: Candle[], index: number, period = 14) => {
     }, 0) / period;
 
   return safeDivide(atrValue, candles[index].close);
+};
+
+const calculateAtrAt = (candles: Candle[], index: number, period = 14) => {
+  const windowStart = index + 1 - period;
+  if (windowStart < 0) {
+    return null;
+  }
+
+  return (
+    candles.slice(windowStart, index + 1).reduce((sum, item, windowIndex) => {
+      const absoluteIndex = windowStart + windowIndex;
+      const previous = absoluteIndex > 0 ? candles[absoluteIndex - 1] : null;
+      return sum + calculateTrueRange(item, previous);
+    }, 0) / period
+  );
+};
+
+const calculateAtrSeries = (candles: Candle[], period = 14) => {
+  const result: Array<number | null> = [];
+  let rollingSum = 0;
+  const ranges: number[] = [];
+
+  for (let index = 0; index < candles.length; index += 1) {
+    const range = calculateTrueRange(
+      candles[index],
+      candles[index - 1] ?? null,
+    );
+    ranges.push(range);
+    rollingSum += range;
+    if (ranges.length > period) {
+      rollingSum -= ranges[ranges.length - period - 1] ?? 0;
+    }
+
+    result[index] = ranges.length >= period ? rollingSum / period : null;
+  }
+
+  return result;
 };
 
 const calculateRecentAtrPctSeries = (
@@ -745,6 +854,1052 @@ const buildPriceVolumeProfileContext = (
   };
 };
 
+const getOverlapHeight = (
+  bandLow: number,
+  bandHigh: number,
+  areaLow: number,
+  areaHigh: number,
+) => Math.max(Math.min(bandHigh, areaHigh) - Math.max(bandLow, areaLow), 0);
+
+const clampIndex = (value: number, maxIndex: number) =>
+  Math.max(0, Math.min(maxIndex, value));
+
+const buildVolumeStructureContext = (
+  candles: Candle[],
+  price: number,
+  atr: number | null,
+) => {
+  const profileCandles = candles.slice(-VOLUME_STRUCTURE_CALC_BARS);
+  const empty = {
+    pointOfControl: null,
+    pocIndex: null,
+    pointOfControlVolumeShare: null,
+    pocUpVolumeShare: null,
+    pocDownVolumeShare: null,
+    totalUpVolumeShare: null,
+    totalDownVolumeShare: null,
+    priceAbovePointOfControl: null,
+    distanceToPointOfControlAtr: null,
+    rowCount: VOLUME_STRUCTURE_ROW_COUNT,
+    calcBars: profileCandles.length,
+  };
+
+  if (profileCandles.length === 0) {
+    return empty;
+  }
+
+  const top = Math.max(...profileCandles.map((item) => item.high));
+  const bottom = Math.min(...profileCandles.map((item) => item.low));
+  const range = top - bottom;
+  if (range <= 0) {
+    return {
+      ...empty,
+      pointOfControl: price,
+      pocIndex: 0,
+      pointOfControlVolumeShare: 1,
+      pocUpVolumeShare: null,
+      pocDownVolumeShare: null,
+      totalUpVolumeShare: null,
+      totalDownVolumeShare: null,
+      priceAbovePointOfControl: false,
+      distanceToPointOfControlAtr: safeDivide(price - price, atr),
+    };
+  }
+
+  const rowCount = VOLUME_STRUCTURE_ROW_COUNT;
+  const step = range / rowCount;
+  const upVolumes = Array.from({ length: rowCount }, () => 0);
+  const downVolumes = Array.from({ length: rowCount }, () => 0);
+  const distributeSegmentVolume = (
+    segmentLow: number,
+    segmentHigh: number,
+    segmentVolume: number,
+    upShare: number,
+    downShare: number,
+  ) => {
+    const segmentHeight = segmentHigh - segmentLow;
+    if (segmentHeight <= 0 || segmentVolume <= 0) {
+      return;
+    }
+
+    const startIndex = clampIndex(
+      Math.floor((segmentLow - bottom) / step),
+      rowCount - 1,
+    );
+    const endIndex = clampIndex(
+      Math.floor((segmentHigh - bottom) / step),
+      rowCount - 1,
+    );
+
+    for (let index = startIndex; index <= endIndex; index += 1) {
+      const bandLow = bottom + step * index;
+      const bandHigh = bandLow + step;
+      const allocatedVolume =
+        (getOverlapHeight(bandLow, bandHigh, segmentLow, segmentHigh) /
+          segmentHeight) *
+        segmentVolume;
+      upVolumes[index] += allocatedVolume * upShare;
+      downVolumes[index] += allocatedVolume * downShare;
+    }
+  };
+
+  for (const candle of profileCandles) {
+    const bodyTop = Math.max(candle.close, candle.open);
+    const bodyBottom = Math.min(candle.close, candle.open);
+    const body = bodyTop - bodyBottom;
+    const topWick = candle.high - bodyTop;
+    const bottomWick = bodyBottom - candle.low;
+    const weightedRange = 2 * topWick + 2 * bottomWick + body;
+    if (weightedRange <= 0) {
+      continue;
+    }
+
+    const bodyVolume = (body * candle.volume) / weightedRange;
+    const topWickVolume = (2 * topWick * candle.volume) / weightedRange;
+    const bottomWickVolume = (2 * bottomWick * candle.volume) / weightedRange;
+    const isUpBar = candle.close >= candle.open;
+
+    distributeSegmentVolume(
+      bodyBottom,
+      bodyTop,
+      bodyVolume,
+      isUpBar ? 1 : 0,
+      isUpBar ? 0 : 1,
+    );
+    distributeSegmentVolume(bodyTop, candle.high, topWickVolume, 0.5, 0.5);
+    distributeSegmentVolume(candle.low, bodyBottom, bottomWickVolume, 0.5, 0.5);
+  }
+
+  const totalVolumes = upVolumes.map(
+    (value, index) => value + downVolumes[index],
+  );
+  const totalVolume = totalVolumes.reduce((sum, value) => sum + value, 0);
+  const maxVolume = Math.max(...totalVolumes);
+  const pocIndex = totalVolumes.indexOf(maxVolume);
+  const pointOfControl = bottom + step * (pocIndex + 0.5);
+  const totalUpVolume = upVolumes.reduce((sum, value) => sum + value, 0);
+  const totalDownVolume = downVolumes.reduce((sum, value) => sum + value, 0);
+  const pocTotalVolume = totalVolumes[pocIndex] ?? null;
+  const pocUpVolume = upVolumes[pocIndex] ?? null;
+  const pocDownVolume = downVolumes[pocIndex] ?? null;
+
+  return {
+    pointOfControl,
+    pocIndex,
+    pointOfControlVolumeShare: safeDivide(maxVolume, totalVolume),
+    pocUpVolumeShare: safeDivide(pocUpVolume, pocTotalVolume),
+    pocDownVolumeShare: safeDivide(pocDownVolume, pocTotalVolume),
+    totalUpVolumeShare: safeDivide(totalUpVolume, totalVolume),
+    totalDownVolumeShare: safeDivide(totalDownVolume, totalVolume),
+    priceAbovePointOfControl: price > pointOfControl,
+    distanceToPointOfControlAtr: safeDivide(price - pointOfControl, atr),
+    rowCount,
+    calcBars: profileCandles.length,
+  };
+};
+
+const buildSrZonesContext = (
+  candles: Candle[],
+  price: number,
+  previousPrice: number | null,
+  atr: number | null,
+) => {
+  const empty = {
+    levels: [] as SrZoneLevel[],
+    nearestSupport: {
+      level: null,
+      strength: null,
+      distanceAtr: null,
+    },
+    nearestResistance: {
+      level: null,
+      strength: null,
+      distanceAtr: null,
+    },
+    crossedAbove: null,
+    crossedBelow: null,
+  };
+
+  if (candles.length < SR_ZONE_PIVOT_PERIOD * 2 + 1) {
+    return empty;
+  }
+
+  const pivotValues: number[] = [];
+  for (
+    let index = SR_ZONE_PIVOT_PERIOD;
+    index < candles.length - SR_ZONE_PIVOT_PERIOD;
+    index += 1
+  ) {
+    const candle = candles[index];
+    const left = candles.slice(index - SR_ZONE_PIVOT_PERIOD, index);
+    const right = candles.slice(index + 1, index + SR_ZONE_PIVOT_PERIOD + 1);
+    const surrounding = [...left, ...right];
+    const isPivotHigh = surrounding.every((item) => candle.high >= item.high);
+    const isPivotLow = surrounding.every((item) => candle.low <= item.low);
+
+    if (isPivotHigh || isPivotLow) {
+      pivotValues.unshift(isPivotHigh ? candle.high : candle.low);
+      if (pivotValues.length > SR_ZONE_MAX_PIVOTS) {
+        pivotValues.pop();
+      }
+    }
+  }
+
+  if (pivotValues.length === 0) {
+    return empty;
+  }
+
+  const highest = Math.max(...candles.map((item) => item.high));
+  const lowest = Math.min(...candles.map((item) => item.low));
+  const channelWidth = ((highest - lowest) * SR_ZONE_CHANNEL_WIDTH_PCT) / 100;
+  const srLevels: Array<{ upper: number; lower: number; strength: number }> =
+    [];
+
+  for (const pivotValue of pivotValues) {
+    let lower = pivotValue;
+    let upper = pivotValue;
+    let strength = 0;
+
+    for (const candidate of pivotValues) {
+      const width = candidate <= lower ? upper - candidate : candidate - lower;
+      if (width <= channelWidth) {
+        lower = Math.min(lower, candidate);
+        upper = Math.max(upper, candidate);
+        strength += 1;
+      }
+    }
+
+    const overlapIndex = srLevels.findIndex(
+      (level) =>
+        (level.upper >= lower && level.upper <= upper) ||
+        (level.lower >= lower && level.lower <= upper),
+    );
+
+    if (overlapIndex >= 0) {
+      if (strength >= srLevels[overlapIndex].strength) {
+        srLevels.splice(overlapIndex, 1);
+      } else {
+        continue;
+      }
+    }
+
+    if (strength >= SR_ZONE_MIN_STRENGTH) {
+      srLevels.push({ upper, lower, strength });
+      srLevels.sort((left, right) => right.strength - left.strength);
+      srLevels.splice(SR_ZONE_MAX_LEVELS);
+    }
+  }
+
+  const levels = srLevels.map((level) => {
+    const mid = (level.upper + level.lower) / 2;
+    return {
+      level: mid,
+      upper: level.upper,
+      lower: level.lower,
+      strength: level.strength,
+      distancePct: price === 0 ? null : ((mid - price) / price) * 100,
+      side: mid >= price ? 'resistance' : 'support',
+    } satisfies SrZoneLevel;
+  });
+
+  const nearestSupport = levels
+    .filter((level) => level.level <= price)
+    .reduce<SrZoneLevel | null>(
+      (nearest, level) =>
+        nearest == null ||
+        Math.abs(price - level.level) < Math.abs(price - nearest.level)
+          ? level
+          : nearest,
+      null,
+    );
+  const nearestResistance = levels
+    .filter((level) => level.level >= price)
+    .reduce<SrZoneLevel | null>(
+      (nearest, level) =>
+        nearest == null ||
+        Math.abs(level.level - price) < Math.abs(nearest.level - price)
+          ? level
+          : nearest,
+      null,
+    );
+
+  const crossedAbove =
+    previousPrice == null
+      ? null
+      : levels.some(
+          (level) => previousPrice <= level.level && price > level.level,
+        );
+  const crossedBelow =
+    previousPrice == null
+      ? null
+      : levels.some(
+          (level) => previousPrice >= level.level && price < level.level,
+        );
+
+  return {
+    levels,
+    nearestSupport: {
+      level: nearestSupport?.level ?? null,
+      strength: nearestSupport?.strength ?? null,
+      distanceAtr: safeDivide(
+        nearestSupport == null ? null : price - nearestSupport.level,
+        atr,
+      ),
+    },
+    nearestResistance: {
+      level: nearestResistance?.level ?? null,
+      strength: nearestResistance?.strength ?? null,
+      distanceAtr: safeDivide(
+        nearestResistance == null ? null : nearestResistance.level - price,
+        atr,
+      ),
+    },
+    crossedAbove,
+    crossedBelow,
+  };
+};
+
+const isConfirmedPivotHigh = (
+  candles: Candle[],
+  index: number,
+  lookback: number,
+) => {
+  const candidate = candles[index];
+  if (!candidate) {
+    return false;
+  }
+
+  for (
+    let cursor = Math.max(0, index - lookback);
+    cursor <= Math.min(candles.length - 1, index + lookback);
+    cursor += 1
+  ) {
+    if (cursor !== index && candles[cursor].high > candidate.high) {
+      return false;
+    }
+  }
+
+  return true;
+};
+
+const isConfirmedPivotLow = (
+  candles: Candle[],
+  index: number,
+  lookback: number,
+) => {
+  const candidate = candles[index];
+  if (!candidate) {
+    return false;
+  }
+
+  for (
+    let cursor = Math.max(0, index - lookback);
+    cursor <= Math.min(candles.length - 1, index + lookback);
+    cursor += 1
+  ) {
+    if (cursor !== index && candles[cursor].low < candidate.low) {
+      return false;
+    }
+  }
+
+  return true;
+};
+
+const buildLiquidityZonesContext = (
+  candles: Candle[],
+  price: number,
+  previousPrice: number | null,
+  atr: number | null,
+) => {
+  const emptyZone = {
+    top: null,
+    bottom: null,
+    level: null,
+    ageBars: null,
+    hitCount: null,
+    distanceAtr: null,
+  };
+  const empty = {
+    activeCount: 0,
+    nearestSupport: { ...emptyZone },
+    nearestResistance: { ...emptyZone },
+    activeRetestDirection: null,
+    retestPenetrationPct: null,
+    crossedAbove: null,
+    crossedBelow: null,
+  };
+
+  if (candles.length < LIQUIDITY_ZONE_LOOKBACK * 2 + 1) {
+    return empty;
+  }
+
+  const zones: LiquidityZoneSnapshot[] = [];
+  for (
+    let index = LIQUIDITY_ZONE_LOOKBACK;
+    index < candles.length - LIQUIDITY_ZONE_LOOKBACK;
+    index += 1
+  ) {
+    const candle = candles[index];
+    for (const zone of zones) {
+      if (!zone.crossed && candle.low < zone.top && candle.high > zone.bottom) {
+        zone.hitCount += 1;
+      }
+    }
+
+    if (isConfirmedPivotHigh(candles, index, LIQUIDITY_ZONE_LOOKBACK)) {
+      const top = candle.high;
+      const bottom = Math.max(candle.open, candle.close);
+      zones.push({
+        kind: 'swing_high_liquidity',
+        top,
+        bottom,
+        level: top,
+        mid: (top + bottom) / 2,
+        startIndex: index,
+        hitCount: 0,
+        crossed: false,
+      });
+    }
+
+    if (isConfirmedPivotLow(candles, index, LIQUIDITY_ZONE_LOOKBACK)) {
+      const top = Math.min(candle.open, candle.close);
+      const bottom = candle.low;
+      zones.push({
+        kind: 'swing_low_liquidity',
+        top,
+        bottom,
+        level: bottom,
+        mid: (top + bottom) / 2,
+        startIndex: index,
+        hitCount: 0,
+        crossed: false,
+      });
+    }
+  }
+
+  const lastIndex = candles.length - 1;
+  const current = candles[lastIndex];
+  const activeZones = zones.filter((zone) => {
+    if (lastIndex - zone.startIndex > LIQUIDITY_ZONE_MAX_AGE) {
+      return false;
+    }
+
+    const crossed =
+      zone.crossed ||
+      (zone.kind === 'swing_high_liquidity'
+        ? current.close > zone.top
+        : current.close < zone.bottom);
+    zone.crossed = crossed;
+    return !crossed;
+  });
+  const supports = activeZones.filter(
+    (zone) => zone.kind === 'swing_low_liquidity',
+  );
+  const resistances = activeZones.filter(
+    (zone) => zone.kind === 'swing_high_liquidity',
+  );
+  const nearestSupport =
+    supports.reduce<LiquidityZoneSnapshot | null>(
+      (nearest, zone) =>
+        nearest == null ||
+        Math.abs(price - zone.level) < Math.abs(price - nearest.level)
+          ? zone
+          : nearest,
+      null,
+    ) ?? null;
+  const nearestResistance =
+    resistances.reduce<LiquidityZoneSnapshot | null>(
+      (nearest, zone) =>
+        nearest == null ||
+        Math.abs(zone.level - price) < Math.abs(nearest.level - price)
+          ? zone
+          : nearest,
+      null,
+    ) ?? null;
+  const supportRetest =
+    nearestSupport != null && current.low <= nearestSupport.top;
+  const resistanceRetest =
+    nearestResistance != null && current.high >= nearestResistance.bottom;
+  const retestZone = supportRetest
+    ? nearestSupport
+    : resistanceRetest
+      ? nearestResistance
+      : null;
+  const retestPenetration =
+    retestZone == null
+      ? null
+      : retestZone.kind === 'swing_low_liquidity'
+        ? Math.max(0, retestZone.top - current.low)
+        : Math.max(0, current.high - retestZone.bottom);
+  const retestHeight =
+    retestZone == null ? null : Math.max(retestZone.top - retestZone.bottom, 0);
+
+  return {
+    activeCount: activeZones.length,
+    nearestSupport: {
+      top: nearestSupport?.top ?? null,
+      bottom: nearestSupport?.bottom ?? null,
+      level: nearestSupport?.level ?? null,
+      ageBars:
+        nearestSupport == null ? null : lastIndex - nearestSupport.startIndex,
+      hitCount: nearestSupport?.hitCount ?? null,
+      distanceAtr: safeDivide(
+        nearestSupport == null ? null : price - nearestSupport.level,
+        atr,
+      ),
+    },
+    nearestResistance: {
+      top: nearestResistance?.top ?? null,
+      bottom: nearestResistance?.bottom ?? null,
+      level: nearestResistance?.level ?? null,
+      ageBars:
+        nearestResistance == null
+          ? null
+          : lastIndex - nearestResistance.startIndex,
+      hitCount: nearestResistance?.hitCount ?? null,
+      distanceAtr: safeDivide(
+        nearestResistance == null ? null : nearestResistance.level - price,
+        atr,
+      ),
+    },
+    activeRetestDirection: supportRetest
+      ? 'LONG'
+      : resistanceRetest
+        ? 'SHORT'
+        : null,
+    retestPenetrationPct:
+      retestPenetration == null || retestHeight == null || retestHeight <= 0
+        ? null
+        : (retestPenetration / retestHeight) * 100,
+    crossedAbove:
+      previousPrice == null || nearestResistance == null
+        ? null
+        : previousPrice <= nearestResistance.level &&
+          price > nearestResistance.level,
+    crossedBelow:
+      previousPrice == null || nearestSupport == null
+        ? null
+        : previousPrice >= nearestSupport.level && price < nearestSupport.level,
+  };
+};
+
+const buildLiquidityTailsContext = (
+  candles: Candle[],
+  price: number,
+  atr: number | null,
+) => {
+  const emptyTailZone = {
+    top: null,
+    bottom: null,
+    mid: null,
+    touches: null,
+    ageBars: null,
+    distanceAtr: null,
+  };
+  const empty = {
+    activeCount: 0,
+    nearestBuyPressure: { ...emptyTailZone },
+    nearestSellPressure: { ...emptyTailZone },
+    currentTail: {
+      side: null,
+      wickAtr: null,
+      wickBodyRatio: null,
+      dominance: null,
+    },
+    activeRetestDirection: null,
+  };
+
+  if (candles.length === 0) {
+    return empty;
+  }
+
+  const zones: LiquidityTailZoneSnapshot[] = [];
+  const atrSeries = calculateAtrSeries(candles, LIQUIDITY_TAIL_ATR_LENGTH);
+  let lastFireIndex = -Infinity;
+  for (let index = 0; index < candles.length; index += 1) {
+    const candle = candles[index];
+    const atrAtIndex = atrSeries[index];
+    const topShadow = candle.high - Math.max(candle.open, candle.close);
+    const bottomShadow = Math.min(candle.open, candle.close) - candle.low;
+    const body = Math.max(Math.abs(candle.close - candle.open), 1e-9);
+    const canFire =
+      atrAtIndex != null && index - lastFireIndex > LIQUIDITY_TAIL_MIN_GAP;
+    const sellFire =
+      canFire &&
+      topShadow >= LIQUIDITY_TAIL_ATR_MULT * atrAtIndex &&
+      topShadow >= LIQUIDITY_TAIL_MIN_WICK_RATIO * body &&
+      topShadow > bottomShadow * LIQUIDITY_TAIL_WICK_DOMINANCE;
+    const buyFire =
+      canFire &&
+      bottomShadow >= LIQUIDITY_TAIL_ATR_MULT * atrAtIndex &&
+      bottomShadow >= LIQUIDITY_TAIL_MIN_WICK_RATIO * body &&
+      bottomShadow > topShadow * LIQUIDITY_TAIL_WICK_DOMINANCE;
+
+    if (sellFire) {
+      lastFireIndex = index;
+      const top = candle.high;
+      const bottom = Math.max(candle.open, candle.close);
+      zones.push({
+        kind: 'sell_pressure',
+        top,
+        bottom,
+        mid: (top + bottom) / 2,
+        startIndex: index,
+        touches: 0,
+        spent: false,
+      });
+    } else if (buyFire) {
+      lastFireIndex = index;
+      const top = Math.min(candle.open, candle.close);
+      const bottom = candle.low;
+      zones.push({
+        kind: 'buy_pressure',
+        top,
+        bottom,
+        mid: (top + bottom) / 2,
+        startIndex: index,
+        touches: 0,
+        spent: false,
+      });
+    }
+
+    for (const zone of zones) {
+      if (index <= zone.startIndex || zone.spent) {
+        continue;
+      }
+
+      if (
+        zone.kind === 'sell_pressure'
+          ? candle.low >= zone.top
+          : candle.high <= zone.bottom
+      ) {
+        zone.spent = true;
+        continue;
+      }
+
+      const entry = zone.kind === 'sell_pressure' ? zone.bottom : zone.top;
+      const inZone =
+        zone.kind === 'sell_pressure'
+          ? candle.high >= entry
+          : candle.low <= entry;
+      if (inZone) {
+        zone.touches += 1;
+      }
+    }
+  }
+
+  const lastIndex = candles.length - 1;
+  const current = candles[lastIndex];
+  const activeZones = zones.filter(
+    (zone) =>
+      !zone.spent && lastIndex - zone.startIndex <= LIQUIDITY_TAIL_MAX_AGE,
+  );
+  const buyZones = activeZones.filter((zone) => zone.kind === 'buy_pressure');
+  const sellZones = activeZones.filter((zone) => zone.kind === 'sell_pressure');
+  const nearestBuy =
+    buyZones.reduce<LiquidityTailZoneSnapshot | null>(
+      (nearest, zone) =>
+        nearest == null ||
+        Math.abs(price - zone.mid) < Math.abs(price - nearest.mid)
+          ? zone
+          : nearest,
+      null,
+    ) ?? null;
+  const nearestSell =
+    sellZones.reduce<LiquidityTailZoneSnapshot | null>(
+      (nearest, zone) =>
+        nearest == null ||
+        Math.abs(zone.mid - price) < Math.abs(nearest.mid - price)
+          ? zone
+          : nearest,
+      null,
+    ) ?? null;
+  const topShadow = current.high - Math.max(current.open, current.close);
+  const bottomShadow = Math.min(current.open, current.close) - current.low;
+  const body = Math.max(Math.abs(current.close - current.open), 1e-9);
+  const activeRetestDirection =
+    nearestBuy != null && current.low <= nearestBuy.top
+      ? 'LONG'
+      : nearestSell != null && current.high >= nearestSell.bottom
+        ? 'SHORT'
+        : null;
+  const dominantUpper = topShadow > bottomShadow;
+  const dominantWick = dominantUpper ? topShadow : bottomShadow;
+  const oppositeWick = dominantUpper ? bottomShadow : topShadow;
+
+  return {
+    activeCount: activeZones.length,
+    nearestBuyPressure: {
+      top: nearestBuy?.top ?? null,
+      bottom: nearestBuy?.bottom ?? null,
+      mid: nearestBuy?.mid ?? null,
+      touches: nearestBuy?.touches ?? null,
+      ageBars: nearestBuy == null ? null : lastIndex - nearestBuy.startIndex,
+      distanceAtr: safeDivide(
+        nearestBuy == null ? null : price - nearestBuy.mid,
+        atr,
+      ),
+    },
+    nearestSellPressure: {
+      top: nearestSell?.top ?? null,
+      bottom: nearestSell?.bottom ?? null,
+      mid: nearestSell?.mid ?? null,
+      touches: nearestSell?.touches ?? null,
+      ageBars: nearestSell == null ? null : lastIndex - nearestSell.startIndex,
+      distanceAtr: safeDivide(
+        nearestSell == null ? null : nearestSell.mid - price,
+        atr,
+      ),
+    },
+    currentTail: {
+      side: dominantWick <= 0 ? null : dominantUpper ? 'upper' : 'lower',
+      wickAtr: safeDivide(dominantWick, atr),
+      wickBodyRatio: safeDivide(dominantWick, body),
+      dominance: safeDivide(dominantWick, oppositeWick || null),
+    },
+    activeRetestDirection,
+  };
+};
+
+const calculateLinregNow = (
+  values: number[],
+  index: number,
+  period: number,
+): number | null => {
+  const start = index + 1 - period;
+  if (start < 0) {
+    return null;
+  }
+
+  const window = values.slice(start, index + 1);
+  const xMean = (period - 1) / 2;
+  const yMean = window.reduce((sum, value) => sum + value, 0) / period;
+  let numerator = 0;
+  let denominator = 0;
+  for (let x = 0; x < period; x += 1) {
+    numerator += (x - xMean) * (window[x] - yMean);
+    denominator += (x - xMean) ** 2;
+  }
+
+  const slope = denominator === 0 ? 0 : numerator / denominator;
+  const intercept = yMean - slope * xMean;
+  return intercept + slope * (period - 1);
+};
+
+const buildAdaptiveTrendChannelContext = (candles: Candle[], price: number) => {
+  const window = candles.slice(-ADAPTIVE_CHANNEL_CALC_LOOKBACK);
+  const empty = {
+    centerline: null,
+    upper: null,
+    lower: null,
+    direction: 'unknown',
+    regime: 'unknown',
+    roof: null,
+    floor: null,
+    flipUp: null,
+    flipDown: null,
+    halfChannelAtr: null,
+    centerlineSlope: null,
+    channelWidthAtr: null,
+    pricePositionInChannel: null,
+  } as const;
+
+  if (window.length <= ADAPTIVE_CHANNEL_REGRESSION_BARS) {
+    return empty;
+  }
+
+  const highs = window.map((item) => item.high);
+  const lows = window.map((item) => item.low);
+  const closes = window.map((item) => item.close);
+  const regHigh: Array<number | null> = [];
+  const regLow: Array<number | null> = [];
+  const regClose: Array<number | null> = [];
+  let regime: 1 | -1 | null = null;
+  let previousRegime: 1 | -1 | null = null;
+  let centerline: number | null = null;
+  let previousCenterline: number | null = null;
+  let bullSupportTrail = window[0].low;
+  let bearResistanceTrail = window[0].high;
+
+  for (let index = 0; index < window.length; index += 1) {
+    regHigh[index] = calculateLinregNow(
+      highs,
+      index,
+      ADAPTIVE_CHANNEL_REGRESSION_BARS,
+    );
+    regLow[index] = calculateLinregNow(
+      lows,
+      index,
+      ADAPTIVE_CHANNEL_REGRESSION_BARS,
+    );
+    regClose[index] = calculateLinregNow(
+      closes,
+      index,
+      ADAPTIVE_CHANNEL_REGRESSION_BARS,
+    );
+
+    const highWindow = regHigh
+      .slice(Math.max(0, index + 1 - ADAPTIVE_CHANNEL_ENVELOPE_BARS), index + 1)
+      .filter((value): value is number => value != null);
+    const lowWindow = regLow
+      .slice(Math.max(0, index + 1 - ADAPTIVE_CHANNEL_ENVELOPE_BARS), index + 1)
+      .filter((value): value is number => value != null);
+    if (
+      highWindow.length < ADAPTIVE_CHANNEL_ENVELOPE_BARS ||
+      lowWindow.length < ADAPTIVE_CHANNEL_ENVELOPE_BARS
+    ) {
+      continue;
+    }
+
+    const upperReaction =
+      highWindow.reduce((sum, value) => sum + value, 0) / highWindow.length;
+    const lowerReaction =
+      lowWindow.reduce((sum, value) => sum + value, 0) / lowWindow.length;
+    const windowPeak = Math.max(...highWindow);
+    const windowTrough = Math.min(...lowWindow);
+    const previousRegLow = regLow[index - 1];
+    const previousRegHigh = regHigh[index - 1];
+    const currentRegClose = regClose[index];
+
+    previousRegime = regime;
+    previousCenterline = centerline;
+    if (regime == null && index > ADAPTIVE_CHANNEL_REGRESSION_BARS) {
+      regime = 1;
+      centerline = windowTrough;
+    } else if (regime === 1) {
+      bullSupportTrail = Math.max(bullSupportTrail, windowTrough);
+      if (
+        upperReaction < bullSupportTrail &&
+        currentRegClose != null &&
+        previousRegLow != null &&
+        currentRegClose < previousRegLow
+      ) {
+        regime = -1;
+        centerline = windowPeak;
+        bearResistanceTrail = regHigh[index] ?? window[index].high;
+      }
+    } else if (regime === -1) {
+      bearResistanceTrail = Math.min(bearResistanceTrail, windowPeak);
+      if (
+        lowerReaction > bearResistanceTrail &&
+        currentRegClose != null &&
+        previousRegHigh != null &&
+        currentRegClose > previousRegHigh
+      ) {
+        regime = 1;
+        centerline = windowTrough;
+        bullSupportTrail = regLow[index] ?? window[index].low;
+      }
+    }
+
+    if (regime === 1) {
+      centerline = Math.max(centerline ?? windowTrough, windowTrough);
+    } else if (regime === -1) {
+      centerline = Math.min(centerline ?? windowPeak, windowPeak);
+    }
+  }
+
+  const lastIndex = window.length - 1;
+  const atr100 = calculateAtrAt(
+    window,
+    lastIndex,
+    Math.min(ADAPTIVE_CHANNEL_VOLATILITY_LOOKBACK, window.length),
+  );
+  const halfChannel =
+    atr100 == null ? null : ADAPTIVE_CHANNEL_ATR_STRETCH * atr100 * 0.5;
+  const roof =
+    centerline == null || halfChannel == null ? null : centerline + halfChannel;
+  const floor =
+    centerline == null || halfChannel == null ? null : centerline - halfChannel;
+  const centerlineSlope =
+    centerline == null || previousCenterline == null
+      ? null
+      : centerline - previousCenterline;
+  const regimeText =
+    regime == null ? 'unknown' : regime === 1 ? 'bull' : 'bear';
+  const direction =
+    centerlineSlope == null
+      ? regimeText
+      : centerlineSlope > 0
+        ? 'bull'
+        : centerlineSlope < 0
+          ? 'bear'
+          : 'neutral';
+
+  return {
+    centerline,
+    upper: roof,
+    lower: floor,
+    direction,
+    regime: regimeText,
+    roof,
+    floor,
+    flipUp: previousRegime === -1 && regime === 1,
+    flipDown: previousRegime === 1 && regime === -1,
+    halfChannelAtr: safeDivide(halfChannel, atr100),
+    centerlineSlope,
+    channelWidthAtr: safeDivide(
+      halfChannel == null ? null : halfChannel * 2,
+      atr100,
+    ),
+    pricePositionInChannel:
+      floor == null || roof == null
+        ? null
+        : calculateRangePosition(price, floor, roof),
+  };
+};
+
+const buildTrendFollowContext = (
+  candles: Candle[],
+  price: number,
+  atr: number | null,
+) => {
+  let trendState: 1 | -1 | 0 = 0;
+  let lastPivotHigh: number | null = null;
+  let lastPivotLow: number | null = null;
+  let lastSignalIndex: number | null = null;
+  let lastSignalDirection: 'LONG' | 'SHORT' | null = null;
+  let trailStop: number | null = null;
+  let breakoutConfirmed: boolean | null = null;
+  const atrSeries = calculateAtrSeries(candles, TREND_FOLLOW_ATR_LENGTH);
+
+  for (let index = 0; index < candles.length; index += 1) {
+    const candidateIndex = index - TREND_FOLLOW_PIVOT_LENGTH;
+    if (candidateIndex >= TREND_FOLLOW_PIVOT_LENGTH) {
+      if (
+        isConfirmedPivotHigh(candles, candidateIndex, TREND_FOLLOW_PIVOT_LENGTH)
+      ) {
+        lastPivotHigh = candles[candidateIndex].high;
+      }
+      if (
+        isConfirmedPivotLow(candles, candidateIndex, TREND_FOLLOW_PIVOT_LENGTH)
+      ) {
+        lastPivotLow = candles[candidateIndex].low;
+      }
+    }
+
+    const candle = candles[index];
+    const currentAtr = atrSeries[index] ?? atr;
+    const previous = candles[index - 1] ?? null;
+    const bullCross =
+      previous != null &&
+      lastPivotHigh != null &&
+      previous.close <= lastPivotHigh &&
+      candle.close > lastPivotHigh &&
+      trendState !== 1;
+    const bearCross =
+      previous != null &&
+      lastPivotLow != null &&
+      previous.close >= lastPivotLow &&
+      candle.close < lastPivotLow &&
+      trendState !== -1;
+
+    if (bullCross) {
+      trendState = 1;
+      trailStop =
+        currentAtr == null
+          ? null
+          : candle.close - currentAtr * TREND_FOLLOW_ATR_MULT;
+      lastSignalIndex = index;
+      lastSignalDirection = 'LONG';
+      breakoutConfirmed = true;
+    } else if (bearCross) {
+      trendState = -1;
+      trailStop =
+        currentAtr == null
+          ? null
+          : candle.close + currentAtr * TREND_FOLLOW_ATR_MULT;
+      lastSignalIndex = index;
+      lastSignalDirection = 'SHORT';
+      breakoutConfirmed = true;
+    } else if (trendState === 1 && currentAtr != null) {
+      const newStop = candle.close - currentAtr * TREND_FOLLOW_ATR_MULT;
+      trailStop = trailStop == null ? newStop : Math.max(trailStop, newStop);
+    } else if (trendState === -1 && currentAtr != null) {
+      const newStop = candle.close + currentAtr * TREND_FOLLOW_ATR_MULT;
+      trailStop = trailStop == null ? newStop : Math.min(trailStop, newStop);
+    }
+  }
+
+  return {
+    state: trendState === 1 ? 'bull' : trendState === -1 ? 'bear' : 'neutral',
+    lastSignalDirection,
+    signalAgeBars:
+      lastSignalIndex == null ? null : candles.length - 1 - lastSignalIndex,
+    trailStop,
+    distanceToTrailStopAtr: safeDivide(
+      trailStop == null ? null : price - trailStop,
+      atr,
+    ),
+    distanceToTrailStopPct:
+      trailStop == null || price === 0
+        ? null
+        : ((price - trailStop) / price) * 100,
+    lastPivotHigh,
+    lastPivotLow,
+    breakoutConfirmed,
+  };
+};
+
+const buildStructureZonesContext = (
+  swingContext: ReturnType<typeof buildSwingContext>,
+  pivotContext: ReturnType<typeof buildPivotContext>,
+  price: number,
+  atr: number | null,
+  recentCandles: Candle[],
+) => {
+  const halfWidth =
+    atr == null || !Number.isFinite(atr)
+      ? null
+      : atr * STRUCTURE_ZONES_ZONE_WIDTH_ATR;
+  const high = pivotContext.lastSwingHigh;
+  const low = pivotContext.lastSwingLow;
+  const resistanceTop =
+    high == null || halfWidth == null ? null : high + halfWidth;
+  const resistanceBottom =
+    high == null || halfWidth == null ? null : high - halfWidth;
+  const supportTop = low == null || halfWidth == null ? null : low + halfWidth;
+  const supportBottom =
+    low == null || halfWidth == null ? null : low - halfWidth;
+  const acceptWindow = recentCandles.slice(-STRUCTURE_ZONES_ACCEPT_BARS);
+  const acceptAboveResistance =
+    resistanceTop == null || acceptWindow.length < STRUCTURE_ZONES_ACCEPT_BARS
+      ? null
+      : acceptWindow.every((item) => item.close > resistanceTop);
+  const acceptBelowSupport =
+    supportBottom == null || acceptWindow.length < STRUCTURE_ZONES_ACCEPT_BARS
+      ? null
+      : acceptWindow.every((item) => item.close < supportBottom);
+  const state =
+    swingContext.state === 'unknown'
+      ? 'unknown'
+      : (swingContext.bias === 'bull' && acceptBelowSupport) ||
+          (swingContext.bias === 'bear' && acceptAboveResistance)
+        ? 'transition'
+        : swingContext.state === 'trend'
+          ? 'trend'
+          : 'range';
+
+  return {
+    state,
+    bias: swingContext.bias,
+    support: {
+      top: supportTop,
+      bottom: supportBottom,
+      level: low,
+      distanceAtr: safeDivide(low == null ? null : price - low, atr),
+    },
+    resistance: {
+      top: resistanceTop,
+      bottom: resistanceBottom,
+      level: high,
+      distanceAtr: safeDivide(high == null ? null : high - price, atr),
+    },
+    acceptAboveResistance,
+    acceptBelowSupport,
+  };
+};
+
 const buildMaLayersContext = (
   sourceSeries: number[],
   precomputedLayers?: BaseContextMaLayerInput[] | null,
@@ -799,6 +1954,15 @@ const buildMaLayersContext = (
   return {
     bullishLayerCount: knownLayers.length === 0 ? null : bullishLayerCount,
     bearishLayerCount: knownLayers.length === 0 ? null : bearishLayerCount,
+    stackScore: knownLayers.length === 0 ? null : bullishLayerCount,
+    trendState:
+      knownLayers.length === 0
+        ? ('unknown' as const)
+        : bullishLayerCount >= 4
+          ? ('bull' as const)
+          : bearishLayerCount >= 4
+            ? ('bear' as const)
+            : ('sideways' as const),
     alignment,
     fastImpulseBias: layers[0].bias,
     macroBias: layers[4].bias,
@@ -856,16 +2020,15 @@ const buildAdaptiveChannelContext = (
   atr: number | null,
   precomputed?: BaseContextAdaptiveChannelInput | null,
 ) => {
-  const typicalSeries =
-    precomputed === undefined ? candles.map(getTypicalPrice) : null;
-  const centerline =
-    precomputed === undefined
-      ? calculateSma(typicalSeries ?? [], 20)
-      : normalizeContextNumber(precomputed?.centerline ?? null);
-  const previousCenterline =
-    precomputed === undefined
-      ? calculateSma((typicalSeries ?? []).slice(0, -1), 20)
-      : normalizeContextNumber(precomputed?.previousCenterline ?? null);
+  const fullChannel = buildAdaptiveTrendChannelContext(candles, price);
+  if (fullChannel.centerline != null) {
+    return fullChannel;
+  }
+
+  const centerline = normalizeContextNumber(precomputed?.centerline ?? null);
+  const previousCenterline = normalizeContextNumber(
+    precomputed?.previousCenterline ?? null,
+  );
   const width = atr == null ? null : atr * 1.5;
   const upper = centerline == null || width == null ? null : centerline + width;
   const lower = centerline == null || width == null ? null : centerline - width;
@@ -887,6 +2050,12 @@ const buildAdaptiveChannelContext = (
     upper,
     lower,
     direction,
+    regime: direction,
+    roof: upper,
+    floor: lower,
+    flipUp: null,
+    flipDown: null,
+    halfChannelAtr: safeDivide(width, atr),
     centerlineSlope,
     channelWidthAtr: safeDivide(width == null ? null : width * 2, atr),
     pricePositionInChannel:
@@ -1047,6 +2216,7 @@ export type BuildBaseContextParams = {
   maLayers?: BaseContextMaLayerInput[] | null;
   contextMa?: BaseContextContextMaInput | null;
   adaptiveChannel?: BaseContextAdaptiveChannelInput | null;
+  psar?: BaseContextPsarInput | null;
 };
 
 export const buildBaseContextMtfSnapshot = ({
@@ -1099,6 +2269,7 @@ export const buildBaseContextSnapshot = ({
   maLayers: precomputedMaLayers,
   contextMa: precomputedContextMa,
   adaptiveChannel: precomputedAdaptiveChannel,
+  psar: precomputedPsar,
 }: BuildBaseContextParams): BaseStrategyContextSnapshot => {
   const atr = toNullable(baseResult.atr);
   const bbWidthPct =
@@ -1534,6 +2705,40 @@ export const buildBaseContextSnapshot = ({
     candle.close,
     atr,
   );
+  const volumeStructure = buildVolumeStructureContext(
+    candlesHistory,
+    candle.close,
+    atr,
+  );
+  const srZones = buildSrZonesContext(
+    structureWindow,
+    candle.close,
+    prevCandle?.close ?? null,
+    atr,
+  );
+  const liquidityZones = buildLiquidityZonesContext(
+    candlesHistory.slice(-180),
+    candle.close,
+    prevCandle?.close ?? null,
+    atr,
+  );
+  const liquidityTails = buildLiquidityTailsContext(
+    candlesHistory.slice(-180),
+    candle.close,
+    atr,
+  );
+  const trendFollow = buildTrendFollowContext(
+    candlesHistory.slice(-220),
+    candle.close,
+    atr,
+  );
+  const structureZonesContext = buildStructureZonesContext(
+    swingContext,
+    pivotContext,
+    candle.close,
+    atr,
+    structureWindow,
+  );
   const hl2Series =
     precomputedMaLayers === undefined
       ? candlesHistory.map((item) => (item.high + item.low) / 2)
@@ -1546,7 +2751,7 @@ export const buildBaseContextSnapshot = ({
     precomputedContextMa,
   );
   const adaptiveChannel = buildAdaptiveChannelContext(
-    structureWindow,
+    candlesHistory,
     candle.close,
     atr,
     precomputedAdaptiveChannel,
@@ -1610,6 +2815,23 @@ export const buildBaseContextSnapshot = ({
         maLayers,
         contextMa,
         adaptiveChannel,
+        trendFollow,
+        psar: precomputedPsar ?? {
+          value: null,
+          direction: 'unknown',
+          rawBuySignal: null,
+          rawSellSignal: null,
+          buySignal: null,
+          sellSignal: null,
+          emaFilter: null,
+          trendLongOk: null,
+          trendShortOk: null,
+          adxOk: null,
+          candleLongOk: null,
+          candleShortOk: null,
+          cooldownOk: null,
+          barsSinceSignal: null,
+        },
       },
       volatility: {
         atrSlope,
@@ -1700,6 +2922,7 @@ export const buildBaseContextSnapshot = ({
           priceInZone,
         },
       },
+      srZones,
       liquidity: {
         sweepState,
         side: liquiditySide,
@@ -1710,6 +2933,9 @@ export const buildBaseContextSnapshot = ({
         stopRunDirection,
         sweepWickPct,
       },
+      liquidityZones,
+      liquidityTails,
+      structureZones: structureZonesContext,
       pivots: pivotContext,
       acceptance: {
         closesAboveHighLevel3,
@@ -1755,6 +2981,7 @@ export const buildBaseContextSnapshot = ({
         effortVsResult,
       },
       priceVolumeProfile,
+      volumeStructure,
       delta: deltaContext,
     },
     relative: {

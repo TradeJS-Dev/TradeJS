@@ -1,12 +1,13 @@
 import { BaseStrategyContextSnapshot } from '@tradejs/types';
-import { MSLLiquidityTailsSignalContext } from './engine';
+import { LiquidityTailsSignalContext } from './engine';
 
-export type MSLLiquidityTailsGuardrailContext =
-  Partial<MSLLiquidityTailsSignalContext> & {
+export type LiquidityTailsGuardrailContext =
+  Partial<LiquidityTailsSignalContext> & {
     baseContextAvailable: boolean;
     primarySession: string | null;
     trendBias: string | null;
     breakoutState: string | null;
+    liquidityTailRetestDirection: string | null;
     volumeRel20: number | null;
     bodyStrength: number | null;
     benchmarkTrendAlignment: string | null;
@@ -49,18 +50,20 @@ const isDirectionAligned = ({
       ? value === bearishValue
       : false;
 
-export const buildMSLLiquidityTailsGuardrailContext = ({
+export const buildLiquidityTailsGuardrailContext = ({
   signalContext,
   baseContext,
 }: {
-  signalContext: Partial<MSLLiquidityTailsSignalContext>;
+  signalContext: Partial<LiquidityTailsSignalContext>;
   baseContext?: BaseStrategyContextSnapshot | null;
-}): MSLLiquidityTailsGuardrailContext => {
+}): LiquidityTailsGuardrailContext => {
   const derivativesSummary = baseContext?.derivatives?.summary ?? null;
   const primarySession = baseContext?.regime?.session?.sessionPhase ?? null;
   const trendBias = baseContext?.regime?.trend?.bias ?? null;
   const breakoutState =
     baseContext?.structure?.localRange?.breakoutState ?? null;
+  const liquidityTailRetestDirection =
+    baseContext?.structure?.liquidityTails?.activeRetestDirection ?? null;
   const volumeRel20 = asFiniteNumber(
     baseContext?.participation?.volume?.volumeRel20,
   );
@@ -116,6 +119,7 @@ export const buildMSLLiquidityTailsGuardrailContext = ({
     bearishValue: 'failed_high_breakout',
     value: breakoutState,
   });
+  const baseLiquidityTailAligned = direction === liquidityTailRetestDirection;
   const flushSupport =
     direction === 'LONG'
       ? derivativesRiskFlags.includes('short_liquidation_spike') ||
@@ -158,9 +162,14 @@ export const buildMSLLiquidityTailsGuardrailContext = ({
     wickDominanceRatio >= 1.8 &&
     reactionCloseDistancePct >= 0.08 &&
     retestPenetrationPct <= 95 &&
-    (trendAligned || benchmarkAligned || breakoutAligned || flushSupport)
+    (trendAligned ||
+      benchmarkAligned ||
+      breakoutAligned ||
+      baseLiquidityTailAligned ||
+      flushSupport)
   ) {
-    deterministicQuality = zoneTouches >= 2 || flushSupport ? 5 : 4;
+    deterministicQuality =
+      zoneTouches >= 2 || flushSupport || baseLiquidityTailAligned ? 5 : 4;
   } else if (
     wickBodyRatio >= 1.5 &&
     wickDominanceRatio >= 1.25 &&
@@ -179,6 +188,7 @@ export const buildMSLLiquidityTailsGuardrailContext = ({
     primarySession,
     trendBias,
     breakoutState,
+    liquidityTailRetestDirection,
     volumeRel20,
     bodyStrength,
     benchmarkTrendAlignment,

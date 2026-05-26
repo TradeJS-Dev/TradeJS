@@ -4,12 +4,12 @@ import type {
   IndicatorsHistorySnapshot,
   Position,
 } from '@tradejs/types';
-import { MSLLiquidityTailsConfig } from './config';
+import { LiquidityTailsConfig } from './config';
 import {
-  buildMSLLiquidityTailsSignalContext,
-  createMSLLiquidityTailsEngine,
+  buildLiquidityTailsSignalContext,
+  createLiquidityTailsEngine,
 } from './engine';
-import { buildMSLLiquidityTailsFigures } from './figures';
+import { buildLiquidityTailsFigures } from './figures';
 
 const isOpenPosition = (position: Position | null): position is Position =>
   Boolean(
@@ -22,11 +22,11 @@ const isOpenPosition = (position: Position | null): position is Position =>
       (position.direction === 'LONG' || position.direction === 'SHORT'),
   );
 
-export const createMSLLiquidityTailsCore: CreateStrategyCore<
-  MSLLiquidityTailsConfig,
+export const createLiquidityTailsCore: CreateStrategyCore<
+  LiquidityTailsConfig,
   IndicatorsHistorySnapshot | undefined
 > = async ({ config, data: initialData, strategyApi, indicatorsState }) => {
-  const engine = createMSLLiquidityTailsEngine({
+  const engine = createLiquidityTailsEngine({
     config,
     initialCandles: initialData,
   });
@@ -48,9 +48,12 @@ export const createMSLLiquidityTailsCore: CreateStrategyCore<
           ? signal.direction === 'SHORT'
           : signal.direction === 'LONG';
 
-      if (Boolean(config.MSLTAILS_EXIT_ON_OPPOSITE_RETEST) && oppositeSignal) {
+      if (
+        Boolean(config.LIQUIDITY_TAILS_EXIT_ON_OPPOSITE_RETEST) &&
+        oppositeSignal
+      ) {
         return strategyApi.exit({
-          code: 'MSLTAILS_OPPOSITE_RETEST_EXIT',
+          code: 'LIQUIDITY_TAILS_OPPOSITE_RETEST_EXIT',
           direction: position.direction,
         });
       }
@@ -70,16 +73,20 @@ export const createMSLLiquidityTailsCore: CreateStrategyCore<
     const { timestamp, currentPrice } = await strategyApi.getMarketData();
     const indicators = indicatorsState.snapshot();
     const buffer = Math.max(
-      signal.atr * Math.max(0, Number(config.MSLTAILS_STOP_ATR_BUFFER_MULT)),
+      signal.atr *
+        Math.max(0, Number(config.LIQUIDITY_TAILS_STOP_ATR_BUFFER_MULT)),
       currentPrice *
-        (Math.max(0, Number(config.MSLTAILS_STOP_BUFFER_PCT)) / 100),
+        (Math.max(0, Number(config.LIQUIDITY_TAILS_STOP_BUFFER_PCT)) / 100),
     );
     const stopLossPrice =
       signal.direction === 'LONG'
         ? signal.zone.bottom - buffer
         : signal.zone.top + buffer;
     const riskDistance = Math.abs(currentPrice - stopLossPrice);
-    const targetR = Math.max(0, Number(config.MSLTAILS_TARGET_R_MULT ?? 2));
+    const targetR = Math.max(
+      0,
+      Number(config.LIQUIDITY_TAILS_TARGET_R_MULT ?? 2),
+    );
     const takeProfitPrice =
       signal.direction === 'LONG'
         ? currentPrice + riskDistance * targetR
@@ -110,24 +117,27 @@ export const createMSLLiquidityTailsCore: CreateStrategyCore<
     return strategyApi.entry({
       code:
         signal.direction === 'LONG'
-          ? 'MSLTAILS_BUY_PRESSURE_RETEST'
-          : 'MSLTAILS_SELL_PRESSURE_RETEST',
+          ? 'LIQUIDITY_TAILS_BUY_PRESSURE_RETEST'
+          : 'LIQUIDITY_TAILS_SELL_PRESSURE_RETEST',
       direction: modeConfig.direction,
       indicators,
       additionalIndicators: {
-        mslLiquidityTailsContext: buildMSLLiquidityTailsSignalContext({
+        liquidityTailsContext: buildLiquidityTailsSignalContext({
           ...signal,
           close: currentPrice,
         }),
       },
-      figures: buildMSLLiquidityTailsFigures({
+      figures: buildLiquidityTailsFigures({
         signal,
         zones: runtimeState.zones,
         entryTimestamp: timestamp,
         entryPrice: currentPrice,
         stopLossPrice,
         takeProfitPrice,
-        maxZones: Math.max(1, Number(config.MSLTAILS_MAX_FIGURE_ZONES ?? 24)),
+        maxZones: Math.max(
+          1,
+          Number(config.LIQUIDITY_TAILS_MAX_FIGURE_ZONES ?? 24),
+        ),
       }),
       orderPlan: {
         qty,

@@ -5,6 +5,7 @@ export type TrendFollowGuardrailContext = Partial<TrendFollowSignalContext> & {
   baseContextAvailable: boolean;
   primarySession: string | null;
   trendBias: string | null;
+  trendFollowState: string | null;
   breakoutState: string | null;
   volumeRel20: number | null;
   benchmarkTrendAlignment: string | null;
@@ -57,6 +58,8 @@ export const buildTrendFollowGuardrailContext = ({
   const derivativesSummary = baseContext?.derivatives?.summary ?? null;
   const primarySession = baseContext?.regime?.session?.sessionPhase ?? null;
   const trendBias = baseContext?.regime?.trend?.bias ?? null;
+  const trendFollowState =
+    baseContext?.regime?.trend?.trendFollow?.state ?? null;
   const breakoutState =
     baseContext?.structure?.localRange?.breakoutState ?? null;
   const volumeRel20 = asFiniteNumber(
@@ -111,6 +114,12 @@ export const buildTrendFollowGuardrailContext = ({
     bearishValue: 'below_low_level',
     value: breakoutState,
   });
+  const baseTrendFollowAligned = isDirectionAligned({
+    direction,
+    bullishValue: 'bull',
+    bearishValue: 'bear',
+    value: trendFollowState,
+  });
   const flushSupport =
     direction === 'LONG'
       ? derivativesRiskFlags.includes('short_liquidation_spike') ||
@@ -146,9 +155,14 @@ export const buildTrendFollowGuardrailContext = ({
     breakoutDistancePct >= 0.25 &&
     breakoutDistancePct <= 2.5 &&
     distanceToStopPct >= 0.25 &&
-    (trendAligned || benchmarkAligned || breakoutAligned || flushSupport)
+    (trendAligned ||
+      baseTrendFollowAligned ||
+      benchmarkAligned ||
+      breakoutAligned ||
+      flushSupport)
   ) {
-    deterministicQuality = flushSupport || breakoutAligned ? 5 : 4;
+    deterministicQuality =
+      flushSupport || breakoutAligned || baseTrendFollowAligned ? 5 : 4;
   } else if (breakoutDistancePct > 0 && distanceToStopPct > 0) {
     deterministicQuality = 4;
   }
@@ -162,6 +176,7 @@ export const buildTrendFollowGuardrailContext = ({
     baseContextAvailable: Boolean(baseContext),
     primarySession,
     trendBias,
+    trendFollowState,
     breakoutState,
     volumeRel20,
     benchmarkTrendAlignment,

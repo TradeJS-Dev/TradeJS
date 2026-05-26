@@ -203,6 +203,8 @@ export interface BaseRegimeContext {
     maLayers?: {
       bullishLayerCount: number | null;
       bearishLayerCount: number | null;
+      stackScore?: number | null;
+      trendState?: 'bull' | 'bear' | 'sideways' | 'unknown';
       alignment: 'bull' | 'bear' | 'mixed' | 'unknown';
       fastImpulseBias: 'bull' | 'bear' | 'neutral' | 'unknown';
       macroBias: 'bull' | 'bear' | 'neutral' | 'unknown';
@@ -227,9 +229,42 @@ export interface BaseRegimeContext {
       upper: number | null;
       lower: number | null;
       direction: 'bull' | 'bear' | 'neutral' | 'unknown';
+      regime?: 'bull' | 'bear' | 'neutral' | 'unknown';
+      roof?: number | null;
+      floor?: number | null;
+      flipUp?: boolean | null;
+      flipDown?: boolean | null;
+      halfChannelAtr?: number | null;
       centerlineSlope: number | null;
       channelWidthAtr: number | null;
       pricePositionInChannel: number | null;
+    };
+    trendFollow?: {
+      state: 'bull' | 'bear' | 'neutral' | 'unknown';
+      lastSignalDirection: Direction | null;
+      signalAgeBars: number | null;
+      trailStop: number | null;
+      distanceToTrailStopAtr: number | null;
+      distanceToTrailStopPct: number | null;
+      lastPivotHigh: number | null;
+      lastPivotLow: number | null;
+      breakoutConfirmed: boolean | null;
+    };
+    psar?: {
+      value: number | null;
+      direction: 'bull' | 'bear' | 'unknown';
+      rawBuySignal: boolean | null;
+      rawSellSignal: boolean | null;
+      buySignal: boolean | null;
+      sellSignal: boolean | null;
+      emaFilter: number | null;
+      trendLongOk: boolean | null;
+      trendShortOk: boolean | null;
+      adxOk: boolean | null;
+      candleLongOk: boolean | null;
+      candleShortOk: boolean | null;
+      cooldownOk: boolean | null;
+      barsSinceSignal: number | null;
     };
   };
   volatility: {
@@ -303,6 +338,28 @@ export interface BaseStructureContext {
       priceInZone: boolean | null;
     };
   };
+  srZones?: {
+    levels: Array<{
+      level: number;
+      upper: number;
+      lower: number;
+      strength: number;
+      distancePct: number | null;
+      side: 'support' | 'resistance';
+    }>;
+    nearestSupport: {
+      level: number | null;
+      strength: number | null;
+      distanceAtr: number | null;
+    };
+    nearestResistance: {
+      level: number | null;
+      strength: number | null;
+      distanceAtr: number | null;
+    };
+    crossedAbove: boolean | null;
+    crossedBelow: boolean | null;
+  };
   liquidity?: {
     sweepState:
       | 'none'
@@ -318,6 +375,73 @@ export interface BaseStructureContext {
     closeBackInsideRange: boolean | null;
     stopRunDirection: 'up' | 'down' | null;
     sweepWickPct: number | null;
+  };
+  liquidityZones?: {
+    activeCount: number;
+    nearestSupport: {
+      top: number | null;
+      bottom: number | null;
+      level: number | null;
+      ageBars: number | null;
+      hitCount: number | null;
+      distanceAtr: number | null;
+    };
+    nearestResistance: {
+      top: number | null;
+      bottom: number | null;
+      level: number | null;
+      ageBars: number | null;
+      hitCount: number | null;
+      distanceAtr: number | null;
+    };
+    activeRetestDirection: Direction | null;
+    retestPenetrationPct: number | null;
+    crossedAbove: boolean | null;
+    crossedBelow: boolean | null;
+  };
+  liquidityTails?: {
+    activeCount: number;
+    nearestBuyPressure: {
+      top: number | null;
+      bottom: number | null;
+      mid: number | null;
+      touches: number | null;
+      ageBars: number | null;
+      distanceAtr: number | null;
+    };
+    nearestSellPressure: {
+      top: number | null;
+      bottom: number | null;
+      mid: number | null;
+      touches: number | null;
+      ageBars: number | null;
+      distanceAtr: number | null;
+    };
+    currentTail: {
+      side: 'upper' | 'lower' | null;
+      wickAtr: number | null;
+      wickBodyRatio: number | null;
+      dominance: number | null;
+    };
+    activeRetestDirection: Direction | null;
+  };
+  structureZones?: {
+    state: 'trend' | 'range' | 'transition' | 'unknown';
+    bias: 'bull' | 'bear' | 'neutral' | 'unknown';
+    support: {
+      top: number | null;
+      bottom: number | null;
+      level: number | null;
+      distanceAtr: number | null;
+    };
+    resistance: {
+      top: number | null;
+      bottom: number | null;
+      level: number | null;
+      distanceAtr: number | null;
+    };
+    acceptAboveResistance: boolean | null;
+    acceptBelowSupport: boolean | null;
   };
   pivots?: {
     lastSwingHigh: number | null;
@@ -375,6 +499,19 @@ export interface BaseParticipationContext {
     pointOfControlVolumeShare: number | null;
     priceAbovePointOfControl: boolean | null;
     nearPointOfControl: boolean | null;
+  };
+  volumeStructure?: {
+    pointOfControl: number | null;
+    pocIndex: number | null;
+    pointOfControlVolumeShare: number | null;
+    pocUpVolumeShare: number | null;
+    pocDownVolumeShare: number | null;
+    totalUpVolumeShare: number | null;
+    totalDownVolumeShare: number | null;
+    priceAbovePointOfControl: boolean | null;
+    distanceToPointOfControlAtr: number | null;
+    rowCount: number;
+    calcBars: number;
   };
   delta?: {
     source?: 'ohlcv_proxy' | 'kline_taker_volume' | 'agg_trades' | 'trades';

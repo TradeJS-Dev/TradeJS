@@ -6,7 +6,7 @@ import {
   StrategyConfig,
 } from '@tradejs/types';
 
-export interface MSLLiquidityTailsSideConfig {
+export interface LiquidityTailsSideConfig {
   enable: boolean;
   direction: Direction;
   minRiskRatio: number;
@@ -37,21 +37,21 @@ export const config = {
   MACD_FAST: 12,
   MACD_SLOW: 26,
   MACD_SIGNAL: 9,
-  MSLTAILS_ATR_LENGTH: 14,
-  MSLTAILS_ATR_MULT: 0.8,
-  MSLTAILS_MIN_WICK_RATIO: 1.3,
-  MSLTAILS_WICK_DOMINANCE: 1.2,
-  MSLTAILS_MIN_GAP: 5,
-  MSLTAILS_MAX_AGE: 500,
-  MSLTAILS_KEEP_BROKEN: true,
-  MSLTAILS_REACTION_CLOSE_BEYOND_ZONE: true,
-  MSLTAILS_REQUIRE_REACTION_BODY: true,
-  MSLTAILS_MAX_RETEST_DISTANCE_PCT: 1.2,
-  MSLTAILS_STOP_ATR_BUFFER_MULT: 0.12,
-  MSLTAILS_STOP_BUFFER_PCT: 0.03,
-  MSLTAILS_TARGET_R_MULT: 2,
-  MSLTAILS_EXIT_ON_OPPOSITE_RETEST: true,
-  MSLTAILS_MAX_FIGURE_ZONES: 24,
+  LIQUIDITY_TAILS_ATR_LENGTH: 14,
+  LIQUIDITY_TAILS_ATR_MULT: 0.8,
+  LIQUIDITY_TAILS_MIN_WICK_RATIO: 1.3,
+  LIQUIDITY_TAILS_WICK_DOMINANCE: 1.2,
+  LIQUIDITY_TAILS_MIN_GAP: 5,
+  LIQUIDITY_TAILS_MAX_AGE: 500,
+  LIQUIDITY_TAILS_KEEP_BROKEN: true,
+  LIQUIDITY_TAILS_REACTION_CLOSE_BEYOND_ZONE: true,
+  LIQUIDITY_TAILS_REQUIRE_REACTION_BODY: true,
+  LIQUIDITY_TAILS_MAX_RETEST_DISTANCE_PCT: 1.2,
+  LIQUIDITY_TAILS_STOP_ATR_BUFFER_MULT: 0.12,
+  LIQUIDITY_TAILS_STOP_BUFFER_PCT: 0.03,
+  LIQUIDITY_TAILS_TARGET_R_MULT: 2,
+  LIQUIDITY_TAILS_EXIT_ON_OPPOSITE_RETEST: true,
+  LIQUIDITY_TAILS_MAX_FIGURE_ZONES: 24,
   LONG: {
     enable: true,
     direction: 'LONG',
@@ -64,9 +64,9 @@ export const config = {
   },
 } as const;
 
-export type MSLLiquidityTailsConfig = StrategyConfig &
+export type LiquidityTailsConfig = StrategyConfig &
   Omit<typeof config, 'BACKTEST_PRICE_MODE' | 'LONG' | 'SHORT'> & {
     BACKTEST_PRICE_MODE: BacktestPriceMode;
-    LONG: MSLLiquidityTailsSideConfig;
-    SHORT: MSLLiquidityTailsSideConfig;
+    LONG: LiquidityTailsSideConfig;
+    SHORT: LiquidityTailsSideConfig;
   };

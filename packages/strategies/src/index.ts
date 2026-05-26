@@ -5,8 +5,8 @@ import { adaptiveTrendChannelManifest } from './AdaptiveTrendChannel/manifest';
 import { breakoutManifest } from './Breakout/manifest';
 import { doubleTapManifest } from './DoubleTap/manifest';
 import { maStrategyManifest } from './MaStrategy/manifest';
-import { mslLiquidityTailsManifest } from './MSLLiquidityTails/manifest';
-import { mslLiquidityZonesManifest } from './MSLLiquidityZones/manifest';
+import { liquidityTailsManifest } from './LiquidityTails/manifest';
+import { liquidityZonesManifest } from './LiquidityZones/manifest';
 import { reverseTrendLineManifest } from './ReverseTrendLine/manifest';
 import { structureZonesManifest } from './StructureZones/manifest';
 import { trendFollowManifest } from './TrendFollow/manifest';
@@ -23,10 +23,10 @@ import { config as doubleTapDefaultConfig } from './DoubleTap/config';
 import { DoubleTapStrategyCreator } from './DoubleTap/strategy';
 import { config as maStrategyDefaultConfig } from './MaStrategy/config';
 import { MaStrategyCreator } from './MaStrategy/strategy';
-import { config as liquidityTailsDefaultConfig } from './MSLLiquidityTails/config';
-import { MSLLiquidityTailsStrategyCreator } from './MSLLiquidityTails/strategy';
-import { config as liquidityZonesDefaultConfig } from './MSLLiquidityZones/config';
-import { MSLLiquidityZonesStrategyCreator } from './MSLLiquidityZones/strategy';
+import { config as liquidityTailsDefaultConfig } from './LiquidityTails/config';
+import { LiquidityTailsStrategyCreator } from './LiquidityTails/strategy';
+import { config as liquidityZonesDefaultConfig } from './LiquidityZones/config';
+import { LiquidityZonesStrategyCreator } from './LiquidityZones/strategy';
 import { config as reverseTrendLineDefaultConfig } from './ReverseTrendLine/config';
 import { ReverseTrendLineStrategyCreator } from './ReverseTrendLine/strategy';
 import { config as structureZonesDefaultConfig } from './StructureZones/config';
@@ -59,12 +59,12 @@ export const strategyEntries: StrategyRegistryEntry[] = [
     creator: DoubleTapStrategyCreator,
   },
   {
-    manifest: mslLiquidityTailsManifest,
-    creator: MSLLiquidityTailsStrategyCreator,
+    manifest: liquidityTailsManifest,
+    creator: LiquidityTailsStrategyCreator,
   },
   {
-    manifest: mslLiquidityZonesManifest,
-    creator: MSLLiquidityZonesStrategyCreator,
+    manifest: liquidityZonesManifest,
+    creator: LiquidityZonesStrategyCreator,
   },
   {
     manifest: trendFollowManifest,
@@ -137,8 +137,8 @@ export { maStrategyMlAdapter } from './MaStrategy/adapters/ml';
 export { reverseTrendLineAiAdapter } from './ReverseTrendLine/adapters/ai';
 export { trendShiftAiAdapter } from './TrendShift/adapters/ai';
 export { doubleTapAiAdapter } from './DoubleTap/adapters/ai';
-export { mslLiquidityTailsAiAdapter as liquidityTailsAiAdapter } from './MSLLiquidityTails/adapters/ai';
-export { mslLiquidityZonesAiAdapter as liquidityZonesAiAdapter } from './MSLLiquidityZones/adapters/ai';
+export { liquidityTailsAiAdapter } from './LiquidityTails/adapters/ai';
+export { liquidityZonesAiAdapter } from './LiquidityZones/adapters/ai';
 export { structureZonesAiAdapter } from './StructureZones/adapters/ai';
 export { trendFollowAiAdapter } from './TrendFollow/adapters/ai';
 export { volumeDivergenceAiAdapter } from './VolumeDivergence/adapters/ai';

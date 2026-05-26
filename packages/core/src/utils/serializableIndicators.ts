@@ -193,6 +193,177 @@ export const createSerializableAtr = (
   };
 };
 
+export type SerializablePsarState = {
+  start: number;
+  increment: number;
+  maximum: number;
+  initialized: boolean;
+  isLong: boolean | null;
+  sar: number | null;
+  extremePoint: number | null;
+  acceleration: number;
+  previousHigh: number | null;
+  previousLow: number | null;
+  previousPreviousHigh: number | null;
+  previousPreviousLow: number | null;
+  previousClose: number | null;
+};
+
+export const createSerializablePsar = (
+  params: {
+    start?: number;
+    increment?: number;
+    maximum?: number;
+  } = {},
+  state?: Partial<SerializablePsarState>,
+) => {
+  const start = params.start ?? state?.start ?? 0.02;
+  const increment = params.increment ?? state?.increment ?? 0.02;
+  const maximum = params.maximum ?? state?.maximum ?? 0.2;
+  let initialized = Boolean(state?.initialized ?? false);
+  let isLong =
+    typeof state?.isLong === 'boolean'
+      ? state.isLong
+      : (null as boolean | null);
+  let sar =
+    typeof state?.sar === 'number' && Number.isFinite(state.sar)
+      ? state.sar
+      : null;
+  let extremePoint =
+    typeof state?.extremePoint === 'number' &&
+    Number.isFinite(state.extremePoint)
+      ? state.extremePoint
+      : null;
+  let acceleration =
+    typeof state?.acceleration === 'number' &&
+    Number.isFinite(state.acceleration)
+      ? state.acceleration
+      : start;
+  let previousHigh =
+    typeof state?.previousHigh === 'number' &&
+    Number.isFinite(state.previousHigh)
+      ? state.previousHigh
+      : null;
+  let previousLow =
+    typeof state?.previousLow === 'number' && Number.isFinite(state.previousLow)
+      ? state.previousLow
+      : null;
+  let previousPreviousHigh =
+    typeof state?.previousPreviousHigh === 'number' &&
+    Number.isFinite(state.previousPreviousHigh)
+      ? state.previousPreviousHigh
+      : null;
+  let previousPreviousLow =
+    typeof state?.previousPreviousLow === 'number' &&
+    Number.isFinite(state.previousPreviousLow)
+      ? state.previousPreviousLow
+      : null;
+  let previousClose =
+    typeof state?.previousClose === 'number' &&
+    Number.isFinite(state.previousClose)
+      ? state.previousClose
+      : null;
+
+  const shiftPreviousCandles = (candle: {
+    high: number;
+    low: number;
+    close: number;
+  }) => {
+    previousPreviousHigh = previousHigh;
+    previousPreviousLow = previousLow;
+    previousHigh = candle.high;
+    previousLow = candle.low;
+    previousClose = candle.close;
+  };
+
+  return {
+    nextValue: (candle: { high: number; low: number; close: number }) => {
+      if (
+        previousHigh == null ||
+        previousLow == null ||
+        previousClose == null
+      ) {
+        shiftPreviousCandles(candle);
+        return undefined;
+      }
+
+      if (
+        !initialized ||
+        sar == null ||
+        extremePoint == null ||
+        isLong == null
+      ) {
+        isLong = candle.close >= previousClose;
+        sar = isLong
+          ? Math.min(previousLow, candle.low)
+          : Math.max(previousHigh, candle.high);
+        extremePoint = isLong
+          ? Math.max(previousHigh, candle.high)
+          : Math.min(previousLow, candle.low);
+        acceleration = start;
+        initialized = true;
+        shiftPreviousCandles(candle);
+        return sar;
+      }
+
+      let nextSar = sar + acceleration * (extremePoint - sar);
+
+      if (isLong) {
+        nextSar = Math.min(
+          nextSar,
+          previousLow ?? nextSar,
+          previousPreviousLow ?? nextSar,
+        );
+
+        if (candle.low < nextSar) {
+          isLong = false;
+          nextSar = extremePoint;
+          extremePoint = candle.low;
+          acceleration = start;
+        } else if (candle.high > extremePoint) {
+          extremePoint = candle.high;
+          acceleration = Math.min(maximum, acceleration + increment);
+        }
+      } else {
+        nextSar = Math.max(
+          nextSar,
+          previousHigh ?? nextSar,
+          previousPreviousHigh ?? nextSar,
+        );
+
+        if (candle.high > nextSar) {
+          isLong = true;
+          nextSar = extremePoint;
+          extremePoint = candle.high;
+          acceleration = start;
+        } else if (candle.low < extremePoint) {
+          extremePoint = candle.low;
+          acceleration = Math.min(maximum, acceleration + increment);
+        }
+      }
+
+      sar = nextSar;
+      shiftPreviousCandles(candle);
+      return sar;
+    },
+    snapshot: (): SerializablePsarState => ({
+      start,
+      increment,
+      maximum,
+      initialized,
+      isLong,
+      sar,
+      extremePoint,
+      acceleration,
+      previousHigh,
+      previousLow,
+      previousPreviousHigh,
+      previousPreviousLow,
+      previousClose,
+    }),
+  };
+};
+
 export type SerializableRsiState = {
   period: number;
   previousValue: number | null;

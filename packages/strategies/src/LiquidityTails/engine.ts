@@ -1,11 +1,11 @@
 import { Candle, Direction } from '@tradejs/types';
-import { MSLLiquidityTailsConfig } from './config';
+import { LiquidityTailsConfig } from './config';
 
-export type MSLLiquidityTailsZoneKind = 'buy_pressure' | 'sell_pressure';
+export type LiquidityTailsZoneKind = 'buy_pressure' | 'sell_pressure';
 
-export interface MSLLiquidityTailsZone {
+export interface LiquidityTailsZone {
   id: string;
-  kind: MSLLiquidityTailsZoneKind;
+  kind: LiquidityTailsZoneKind;
   direction: Direction;
   top: number;
   bottom: number;
@@ -19,9 +19,9 @@ export interface MSLLiquidityTailsZone {
   traded: boolean;
 }
 
-export interface MSLLiquidityTailsSignal {
+export interface LiquidityTailsSignal {
   direction: Direction;
-  zone: MSLLiquidityTailsZone;
+  zone: LiquidityTailsZone;
   timestamp: number;
   close: number;
   atr: number;
@@ -36,9 +36,9 @@ export interface MSLLiquidityTailsSignal {
   reactionBodyAligned: boolean;
 }
 
-export interface MSLLiquidityTailsRuntimeState {
-  signal: MSLLiquidityTailsSignal | null;
-  zones: MSLLiquidityTailsZone[];
+export interface LiquidityTailsRuntimeState {
+  signal: LiquidityTailsSignal | null;
+  zones: LiquidityTailsZone[];
 }
 
 type AtrState = {
@@ -51,8 +51,8 @@ type EngineState = {
   prevClose: number | null;
   atrState: AtrState;
   lastFireIndex: number;
-  zones: MSLLiquidityTailsZone[];
-  signal: MSLLiquidityTailsSignal | null;
+  zones: LiquidityTailsZone[];
+  signal: LiquidityTailsSignal | null;
 };
 
 const asFiniteNumber = (value: unknown): number | null => {
@@ -110,27 +110,29 @@ const updateAtrState = ({
   };
 };
 
-const getConfigNumbers = (config: MSLLiquidityTailsConfig) => ({
-  atrLength: Math.max(2, Math.floor(config.MSLTAILS_ATR_LENGTH ?? 14)),
-  atrMult: clampPositive(config.MSLTAILS_ATR_MULT, 0.8),
-  minWickRatio: clampPositive(config.MSLTAILS_MIN_WICK_RATIO, 1.3),
-  wickDominance: clampPositive(config.MSLTAILS_WICK_DOMINANCE, 1.2),
-  minGap: Math.max(1, Math.floor(config.MSLTAILS_MIN_GAP ?? 5)),
-  maxAge: Math.max(50, Math.floor(config.MSLTAILS_MAX_AGE ?? 500)),
-  keepBroken: Boolean(config.MSLTAILS_KEEP_BROKEN),
-  reactionCloseBeyondZone: Boolean(config.MSLTAILS_REACTION_CLOSE_BEYOND_ZONE),
-  requireReactionBody: Boolean(config.MSLTAILS_REQUIRE_REACTION_BODY),
+const getConfigNumbers = (config: LiquidityTailsConfig) => ({
+  atrLength: Math.max(2, Math.floor(config.LIQUIDITY_TAILS_ATR_LENGTH ?? 14)),
+  atrMult: clampPositive(config.LIQUIDITY_TAILS_ATR_MULT, 0.8),
+  minWickRatio: clampPositive(config.LIQUIDITY_TAILS_MIN_WICK_RATIO, 1.3),
+  wickDominance: clampPositive(config.LIQUIDITY_TAILS_WICK_DOMINANCE, 1.2),
+  minGap: Math.max(1, Math.floor(config.LIQUIDITY_TAILS_MIN_GAP ?? 5)),
+  maxAge: Math.max(50, Math.floor(config.LIQUIDITY_TAILS_MAX_AGE ?? 500)),
+  keepBroken: Boolean(config.LIQUIDITY_TAILS_KEEP_BROKEN),
+  reactionCloseBeyondZone: Boolean(
+    config.LIQUIDITY_TAILS_REACTION_CLOSE_BEYOND_ZONE,
+  ),
+  requireReactionBody: Boolean(config.LIQUIDITY_TAILS_REQUIRE_REACTION_BODY),
   maxRetestDistancePct: Math.max(
     0,
-    Number(config.MSLTAILS_MAX_RETEST_DISTANCE_PCT ?? 1.2),
+    Number(config.LIQUIDITY_TAILS_MAX_RETEST_DISTANCE_PCT ?? 1.2),
   ),
 });
 
-const cloneZone = (zone: MSLLiquidityTailsZone): MSLLiquidityTailsZone => ({
+const cloneZone = (zone: LiquidityTailsZone): LiquidityTailsZone => ({
   ...zone,
 });
 
-const isBroken = (zone: MSLLiquidityTailsZone, candle: Candle) =>
+const isBroken = (zone: LiquidityTailsZone, candle: Candle) =>
   zone.kind === 'sell_pressure'
     ? Number(candle.low) >= zone.top
     : Number(candle.high) <= zone.bottom;
@@ -147,7 +149,7 @@ const buildRetestSignal = ({
   requireReactionBody,
   maxRetestDistancePct,
 }: {
-  zone: MSLLiquidityTailsZone;
+  zone: LiquidityTailsZone;
   candle: Candle;
   index: number;
   atr: number;
@@ -157,7 +159,7 @@ const buildRetestSignal = ({
   reactionCloseBeyondZone: boolean;
   requireReactionBody: boolean;
   maxRetestDistancePct: number;
-}): MSLLiquidityTailsSignal | null => {
+}): LiquidityTailsSignal | null => {
   const open = Number(candle.open);
   const high = Number(candle.high);
   const low = Number(candle.low);
@@ -217,8 +219,8 @@ const buildRetestSignal = ({
   };
 };
 
-export const buildMSLLiquidityTailsSignalContext = (
-  signal: MSLLiquidityTailsSignal,
+export const buildLiquidityTailsSignalContext = (
+  signal: LiquidityTailsSignal,
 ) => ({
   signalDirection: signal.direction,
   zoneKind: signal.zone.kind,
@@ -238,19 +240,19 @@ export const buildMSLLiquidityTailsSignalContext = (
   reactionBodyAligned: signal.reactionBodyAligned,
 });
 
-export type MSLLiquidityTailsSignalContext = ReturnType<
-  typeof buildMSLLiquidityTailsSignalContext
+export type LiquidityTailsSignalContext = ReturnType<
+  typeof buildLiquidityTailsSignalContext
 >;
 
-export const createMSLLiquidityTailsEngine = ({
+export const createLiquidityTailsEngine = ({
   config,
   initialCandles = [],
 }: {
-  config: MSLLiquidityTailsConfig;
+  config: LiquidityTailsConfig;
   initialCandles?: Candle[];
 }): {
-  next: (candle: Candle) => MSLLiquidityTailsRuntimeState;
-  getState: () => MSLLiquidityTailsRuntimeState;
+  next: (candle: Candle) => LiquidityTailsRuntimeState;
+  getState: () => LiquidityTailsRuntimeState;
 } => {
   const {
     atrLength,
@@ -273,7 +275,7 @@ export const createMSLLiquidityTailsEngine = ({
     signal: null,
   };
 
-  const apply = (candle: Candle): MSLLiquidityTailsRuntimeState => {
+  const apply = (candle: Candle): LiquidityTailsRuntimeState => {
     state.index += 1;
     state.signal = null;
 

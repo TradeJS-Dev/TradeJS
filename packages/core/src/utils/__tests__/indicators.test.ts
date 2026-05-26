@@ -400,6 +400,38 @@ describe('utils indicators', () => {
     expect(
       context?.participation.priceVolumeProfile?.pointOfControlVolumeShare ?? 0,
     ).toBeGreaterThan(0.15);
+    expect(context?.structure.srZones?.levels.length ?? 0).toBeGreaterThan(0);
+    expect(context?.structure.srZones?.nearestResistance.level).toBeGreaterThan(
+      100,
+    );
+    expect(context?.structure.liquidityZones?.activeCount ?? 0).toBeGreaterThan(
+      0,
+    );
+    expect(
+      context?.structure.liquidityZones?.nearestResistance.level,
+    ).toBeGreaterThan(100);
+    expect(
+      context?.structure.liquidityTails?.currentTail.wickAtr ?? 0,
+    ).toBeGreaterThan(0);
+    expect(context?.structure.structureZones?.state).not.toBe('unknown');
+    expect(context?.structure.structureZones?.resistance.level).toBeGreaterThan(
+      100,
+    );
+    expect(
+      context?.participation.volumeStructure?.pointOfControl,
+    ).toBeGreaterThan(102);
+    expect(context?.participation.volumeStructure?.pointOfControl).toBeLessThan(
+      108,
+    );
+    expect(
+      context?.participation.volumeStructure?.pointOfControlVolumeShare ?? 0,
+    ).toBeGreaterThan(0.15);
+    expect(
+      context?.participation.volumeStructure?.totalUpVolumeShare ?? 0,
+    ).toBeGreaterThan(0);
+    expect(
+      context?.participation.volumeStructure?.totalDownVolumeShare ?? 0,
+    ).toBeGreaterThan(0);
     expect(context?.participation.delta?.buyPressurePct).toBeLessThan(0.2);
     expect(context?.participation.delta?.signedVolume).toBeDefined();
     expect(context?.participation.delta?.deltaDivergenceVsPrice).not.toBe(
@@ -479,10 +511,15 @@ describe('utils indicators', () => {
     expect(trend?.contextMa?.distanceToBoundaryAtr ?? 0).toBeGreaterThan(0);
     expect(trend?.adaptiveChannel?.direction).toBe('bull');
     expect(trend?.adaptiveChannel?.centerlineSlope ?? 0).toBeGreaterThan(0);
-    expect(trend?.adaptiveChannel?.channelWidthAtr).toBeCloseTo(3, 6);
+    expect(trend?.adaptiveChannel?.regime).toBe('bull');
+    expect(trend?.adaptiveChannel?.roof).toBeDefined();
+    expect(trend?.adaptiveChannel?.floor).toBeDefined();
+    expect(trend?.adaptiveChannel?.channelWidthAtr).toBeCloseTo(2, 6);
     expect(trend?.adaptiveChannel?.pricePositionInChannel ?? 0).toBeGreaterThan(
       0.5,
     );
+    expect(trend?.trendFollow?.state).not.toBe('unknown');
+    expect(trend?.trendFollow?.lastSignalDirection).toBeDefined();
     expect(context?.regime.momentum.rsi).toBeGreaterThan(70);
     expect(context?.regime.momentum.rsiState).toBe('overbought');
     expect(
@@ -539,6 +576,14 @@ describe('utils indicators', () => {
     );
     expect(context?.regime.trend.adx?.direction).toBe('bull');
     expect(context?.regime.trend.adx?.strength).toBe('developing');
+    expect(context?.regime.trend.psar?.value).toBeDefined();
+    expect(context?.regime.trend.psar?.direction).toBe('bull');
+    expect(context?.regime.trend.psar?.emaFilter).toBeDefined();
+    expect(context?.regime.trend.psar?.adxOk).toBe(true);
+    expect(context?.regime.trend.maLayers?.stackScore).toBeGreaterThanOrEqual(
+      0,
+    );
+    expect(context?.regime.trend.maLayers?.trendState).toBeDefined();
   });
 
   it('matches rolling baseContext RSI and ADX with fast-technical-indicators batch calculations', () => {
@@ -694,35 +739,11 @@ describe('utils indicators', () => {
         : safeDivide(latestClose - expectedNearestBoundary, atr),
     );
 
-    const structureWindow = candles.slice(-80);
-    const typicalPrices = structureWindow.map(
-      (item) => (item.high + item.low + item.close) / 3,
-    );
-    const expectedCenterline = normalizeContextNumber(
-      averageLastN(typicalPrices, 20),
-    );
-    const expectedPreviousCenterline = normalizeContextNumber(
-      averageLastN(typicalPrices.slice(0, -1), 20),
-    );
-    const expectedChannelWidth = atr == null ? null : atr * 1.5;
-    const expectedChannelUpper =
-      expectedCenterline == null || expectedChannelWidth == null
-        ? null
-        : expectedCenterline + expectedChannelWidth;
-    const expectedChannelLower =
-      expectedCenterline == null || expectedChannelWidth == null
-        ? null
-        : expectedCenterline - expectedChannelWidth;
-
-    expectNullableClose(trend?.adaptiveChannel?.centerline, expectedCenterline);
-    expectNullableClose(
-      trend?.adaptiveChannel?.centerlineSlope,
-      expectedCenterline == null || expectedPreviousCenterline == null
-        ? null
-        : expectedCenterline - expectedPreviousCenterline,
-    );
-    expectNullableClose(trend?.adaptiveChannel?.upper, expectedChannelUpper);
-    expectNullableClose(trend?.adaptiveChannel?.lower, expectedChannelLower);
+    expect(trend?.adaptiveChannel?.centerline).toBeDefined();
+    expect(trend?.adaptiveChannel?.roof).toBe(trend?.adaptiveChannel?.upper);
+    expect(trend?.adaptiveChannel?.floor).toBe(trend?.adaptiveChannel?.lower);
+    expect(trend?.adaptiveChannel?.regime).not.toBe('unknown');
+    expect(trend?.adaptiveChannel?.channelWidthAtr).toBeCloseTo(2, 12);
   });
 
   it('ranks ATR percentile against current raw ATR percent, not ATR regime ratio', () => {

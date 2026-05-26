@@ -4,37 +4,37 @@ import {
   BaseStrategyContextSnapshot,
   StrategyAiAdapter,
 } from '@tradejs/types';
-import { MSLLiquidityTailsConfig } from '../config';
-import { MSLLiquidityTailsSignalContext } from '../engine';
-import { buildMSLLiquidityTailsGuardrailContext } from '../guardrails';
+import { LiquidityTailsConfig } from '../config';
+import { LiquidityTailsSignalContext } from '../engine';
+import { buildLiquidityTailsGuardrailContext } from '../guardrails';
 
 const asRecord = (value: unknown): Record<string, unknown> | null =>
   typeof value === 'object' && value != null && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : null;
 
-const getMSLLiquidityTailsContext = (payload: AiPayload) => {
+const getLiquidityTailsContext = (payload: AiPayload) => {
   const additional = asRecord(payload.additionalIndicators);
-  const signalContext = ((additional?.mslLiquidityTailsContext ?? {}) ||
-    {}) as Partial<MSLLiquidityTailsSignalContext>;
+  const signalContext = ((additional?.liquidityTailsContext ?? {}) ||
+    {}) as Partial<LiquidityTailsSignalContext>;
   const baseContext = (additional?.baseContext ??
     null) as BaseStrategyContextSnapshot | null;
 
-  return buildMSLLiquidityTailsGuardrailContext({
+  return buildLiquidityTailsGuardrailContext({
     signalContext,
     baseContext,
   });
 };
 
-export const mslLiquidityTailsAiAdapter: StrategyAiAdapter = {
+export const liquidityTailsAiAdapter: StrategyAiAdapter = {
   buildPayload: ({ signal, basePayload }) => {
     const payload = {
       ...basePayload,
       additionalIndicators: {
         ...(basePayload.additionalIndicators as Record<string, unknown>),
-        mslLiquidityTailsContext: (
+        liquidityTailsContext: (
           signal.additionalIndicators as Record<string, unknown> | undefined
-        )?.mslLiquidityTailsContext,
+        )?.liquidityTailsContext,
       },
     };
 
@@ -42,12 +42,12 @@ export const mslLiquidityTailsAiAdapter: StrategyAiAdapter = {
       ...payload,
       additionalIndicators: {
         ...(payload.additionalIndicators as Record<string, unknown>),
-        mslLiquidityTailsContext: getMSLLiquidityTailsContext(payload),
+        liquidityTailsContext: getLiquidityTailsContext(payload),
       },
     };
   },
   postProcessAnalysis: ({ payload, analysis }) => {
-    const context = getMSLLiquidityTailsContext(payload);
+    const context = getLiquidityTailsContext(payload);
     const requestedDirection =
       analysis.direction === 'LONG' || analysis.direction === 'SHORT'
         ? analysis.direction
@@ -64,13 +64,13 @@ export const mslLiquidityTailsAiAdapter: StrategyAiAdapter = {
         ? undefined
         : [...context.hardBlockReasons, ...context.softBlockReasons].join(
             '; ',
-          ) || 'MSL Liquidity Tails retest lacks confirmation.',
+          ) || 'Liquidity Tails retest lacks confirmation.',
     };
   },
   buildHumanPromptAddon: ({ payload }) => {
-    const context = getMSLLiquidityTailsContext(payload);
+    const context = getLiquidityTailsContext(payload);
     return `
-Additional MSL Liquidity Tails context:
+Additional Liquidity Tails context:
 - signalDirection=${context.signalDirection ?? 'n/a'}
 - zoneKind=${context.zoneKind ?? 'n/a'}
 - zoneTop=${String(context.zoneTop ?? 'n/a')}
@@ -101,7 +101,7 @@ Additional MSL Liquidity Tails context:
 - hardBlockReasons=${JSON.stringify(context.hardBlockReasons)}
 - softBlockReasons=${JSON.stringify(context.softBlockReasons)}
 
-Interpretation rules for MSL Liquidity Tails:
+Interpretation rules for Liquidity Tails:
 - This is a liquidity-rejection retest strategy, not a breakout-following strategy.
 - LONG comes from an active green buy-pressure lower-wick zone retest that holds and closes back above the zone.
 - SHORT comes from an active red sell-pressure upper-wick zone retest that holds and closes back below the zone.
@@ -114,7 +114,7 @@ Interpretation rules for MSL Liquidity Tails:
   mapEntryRuntimeFromConfig: (config) =>
     mapAiRuntimeFromConfig(
       config as Pick<
-        MSLLiquidityTailsConfig,
+        LiquidityTailsConfig,
         'AI_ENABLED' | 'AI_MODE' | 'MIN_AI_QUALITY'
       >,
     ),

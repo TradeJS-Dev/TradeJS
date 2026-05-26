@@ -1,17 +1,15 @@
 import { Candle, Direction } from '@tradejs/types';
 import {
-  MSLLiquidityZonesConfig,
-  MSLLiquidityZonesFilterMode,
-  MSLLiquidityZonesSwingAreaMode,
+  LiquidityZonesConfig,
+  LiquidityZonesFilterMode,
+  LiquidityZonesSwingAreaMode,
 } from './config';
 
-export type MSLLiquidityZonesKind =
-  | 'swing_high_liquidity'
-  | 'swing_low_liquidity';
+export type LiquidityZonesKind = 'swing_high_liquidity' | 'swing_low_liquidity';
 
-export interface MSLLiquidityZone {
+export interface LiquidityZone {
   id: string;
-  kind: MSLLiquidityZonesKind;
+  kind: LiquidityZonesKind;
   direction: Direction;
   top: number;
   bottom: number;
@@ -26,29 +24,29 @@ export interface MSLLiquidityZone {
   lastTouchIndex: number;
 }
 
-export interface MSLLiquidityZonesSignal {
+export interface LiquidityZonesSignal {
   direction: Direction;
-  zone: MSLLiquidityZone;
+  zone: LiquidityZone;
   timestamp: number;
   close: number;
   zoneAgeBars: number;
   zoneHeight: number;
-  filterMode: MSLLiquidityZonesFilterMode;
+  filterMode: LiquidityZonesFilterMode;
   filterMetric: number;
   retestPenetrationPct: number;
   reactionCloseDistancePct: number;
   reactionBodyAligned: boolean;
 }
 
-export interface MSLLiquidityZonesRuntimeState {
-  signal: MSLLiquidityZonesSignal | null;
-  zones: MSLLiquidityZone[];
+export interface LiquidityZonesRuntimeState {
+  signal: LiquidityZonesSignal | null;
+  zones: LiquidityZone[];
 }
 
 type EngineState = {
   candles: Candle[];
-  zones: MSLLiquidityZone[];
-  signal: MSLLiquidityZonesSignal | null;
+  zones: LiquidityZone[];
+  signal: LiquidityZonesSignal | null;
 };
 
 const asFiniteNumber = (value: unknown): number | null => {
@@ -56,27 +54,35 @@ const asFiniteNumber = (value: unknown): number | null => {
   return Number.isFinite(parsed) ? parsed : null;
 };
 
-const getConfigNumbers = (config: MSLLiquidityZonesConfig) => ({
-  pivotLookback: Math.max(1, Math.floor(config.MSLZONES_PIVOT_LOOKBACK ?? 15)),
-  swingAreaMode: config.MSLZONES_SWING_AREA_MODE,
-  filterMode: config.MSLZONES_FILTER_MODE,
-  minFilterValue: Math.max(0, Number(config.MSLZONES_MIN_FILTER_VALUE ?? 0)),
-  showSwingHighZones: Boolean(config.MSLZONES_SHOW_SWING_HIGH_ZONES),
-  showSwingLowZones: Boolean(config.MSLZONES_SHOW_SWING_LOW_ZONES),
-  maxAge: Math.max(1, Math.floor(config.MSLZONES_MAX_AGE ?? 500)),
-  reactionCloseBeyondZone: Boolean(config.MSLZONES_REACTION_CLOSE_BEYOND_ZONE),
-  requireReactionBody: Boolean(config.MSLZONES_REQUIRE_REACTION_BODY),
+const getConfigNumbers = (config: LiquidityZonesConfig) => ({
+  pivotLookback: Math.max(
+    1,
+    Math.floor(config.LIQUIDITY_ZONES_PIVOT_LOOKBACK ?? 15),
+  ),
+  swingAreaMode: config.LIQUIDITY_ZONES_SWING_AREA_MODE,
+  filterMode: config.LIQUIDITY_ZONES_FILTER_MODE,
+  minFilterValue: Math.max(
+    0,
+    Number(config.LIQUIDITY_ZONES_MIN_FILTER_VALUE ?? 0),
+  ),
+  showSwingHighZones: Boolean(config.LIQUIDITY_ZONES_SHOW_SWING_HIGH_ZONES),
+  showSwingLowZones: Boolean(config.LIQUIDITY_ZONES_SHOW_SWING_LOW_ZONES),
+  maxAge: Math.max(1, Math.floor(config.LIQUIDITY_ZONES_MAX_AGE ?? 500)),
+  reactionCloseBeyondZone: Boolean(
+    config.LIQUIDITY_ZONES_REACTION_CLOSE_BEYOND_ZONE,
+  ),
+  requireReactionBody: Boolean(config.LIQUIDITY_ZONES_REQUIRE_REACTION_BODY),
   maxRetestPenetrationPct: Math.max(
     0,
-    Number(config.MSLZONES_MAX_RETEST_PENETRATION_PCT ?? 125),
+    Number(config.LIQUIDITY_ZONES_MAX_RETEST_PENETRATION_PCT ?? 125),
   ),
 });
 
-const cloneZone = (zone: MSLLiquidityZone): MSLLiquidityZone => ({ ...zone });
+const cloneZone = (zone: LiquidityZone): LiquidityZone => ({ ...zone });
 
 const getFilterMetric = (
-  zone: MSLLiquidityZone,
-  mode: MSLLiquidityZonesFilterMode,
+  zone: LiquidityZone,
+  mode: LiquidityZonesFilterMode,
 ) => (mode === 'volume' ? zone.hitVolume : zone.hitCount);
 
 const getWindow = (
@@ -125,9 +131,9 @@ const createZoneFromPivot = ({
 }: {
   candle: Candle;
   index: number;
-  kind: MSLLiquidityZonesKind;
-  swingAreaMode: MSLLiquidityZonesSwingAreaMode;
-}): MSLLiquidityZone => {
+  kind: LiquidityZonesKind;
+  swingAreaMode: LiquidityZonesSwingAreaMode;
+}): LiquidityZone => {
   const open = Number(candle.open);
   const high = Number(candle.high);
   const low = Number(candle.low);
@@ -163,10 +169,10 @@ const createZoneFromPivot = ({
   };
 };
 
-const overlapsZone = (candle: Candle, zone: MSLLiquidityZone) =>
+const overlapsZone = (candle: Candle, zone: LiquidityZone) =>
   Number(candle.low) < zone.top && Number(candle.high) > zone.bottom;
 
-const isZoneCrossed = (candle: Candle, zone: MSLLiquidityZone) =>
+const isZoneCrossed = (candle: Candle, zone: LiquidityZone) =>
   zone.kind === 'swing_high_liquidity'
     ? Number(candle.close) > zone.top
     : Number(candle.close) < zone.bottom;
@@ -180,14 +186,14 @@ const buildRetestSignal = ({
   requireReactionBody,
   maxRetestPenetrationPct,
 }: {
-  zone: MSLLiquidityZone;
+  zone: LiquidityZone;
   candle: Candle;
   index: number;
-  filterMode: MSLLiquidityZonesFilterMode;
+  filterMode: LiquidityZonesFilterMode;
   reactionCloseBeyondZone: boolean;
   requireReactionBody: boolean;
   maxRetestPenetrationPct: number;
-}): MSLLiquidityZonesSignal | null => {
+}): LiquidityZonesSignal | null => {
   const open = Number(candle.open);
   const high = Number(candle.high);
   const low = Number(candle.low);
@@ -240,8 +246,8 @@ const buildRetestSignal = ({
   };
 };
 
-export const buildMSLLiquidityZonesSignalContext = (
-  signal: MSLLiquidityZonesSignal,
+export const buildLiquidityZonesSignalContext = (
+  signal: LiquidityZonesSignal,
 ) => ({
   signalDirection: signal.direction,
   zoneKind: signal.zone.kind,
@@ -261,19 +267,19 @@ export const buildMSLLiquidityZonesSignalContext = (
   reactionBodyAligned: signal.reactionBodyAligned,
 });
 
-export type MSLLiquidityZonesSignalContext = ReturnType<
-  typeof buildMSLLiquidityZonesSignalContext
+export type LiquidityZonesSignalContext = ReturnType<
+  typeof buildLiquidityZonesSignalContext
 >;
 
-export const createMSLLiquidityZonesEngine = ({
+export const createLiquidityZonesEngine = ({
   config,
   initialCandles = [],
 }: {
-  config: MSLLiquidityZonesConfig;
+  config: LiquidityZonesConfig;
   initialCandles?: Candle[];
 }): {
-  next: (candle: Candle) => MSLLiquidityZonesRuntimeState;
-  getState: () => MSLLiquidityZonesRuntimeState;
+  next: (candle: Candle) => LiquidityZonesRuntimeState;
+  getState: () => LiquidityZonesRuntimeState;
 } => {
   const {
     pivotLookback,
@@ -293,7 +299,7 @@ export const createMSLLiquidityZonesEngine = ({
     signal: null,
   };
 
-  const apply = (candle: Candle): MSLLiquidityZonesRuntimeState => {
+  const apply = (candle: Candle): LiquidityZonesRuntimeState => {
     state.signal = null;
     state.candles.push(candle);
     const currentIndex = state.candles.length - 1;
