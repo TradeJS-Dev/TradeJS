@@ -30,7 +30,8 @@ export const Sidebar = () => {
     {
       icon: FiLayers,
       label: 'Strategies',
-      path: '/routes/strategies',
+      path: '/routes/strategies/runtime',
+      activePath: '/routes/strategies',
     },
     {
       icon: FiActivity,
@@ -54,14 +55,16 @@ export const Sidebar = () => {
     >
       <Flex direction="column" h="100%" justify="space-between">
         <VStack>
-          {navItems.map(({ icon: Icon, label, path }) => (
+          {navItems.map(({ icon: Icon, label, path, activePath }) => (
             <IconButton
               key={path}
               mb={2}
               aria-label={label}
               size="md"
               colorPalette="teal"
-              variant={pathname.includes(path) ? 'solid' : 'outline'}
+              variant={
+                pathname.includes(activePath ?? path) ? 'solid' : 'outline'
+              }
               onClick={() => router.push(path)}
             >
               <Icon />

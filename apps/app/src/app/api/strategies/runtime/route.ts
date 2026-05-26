@@ -44,7 +44,9 @@ const projectRoot =
 const DEFAULT_PROVIDER = DEFAULT_CONNECTOR_PROVIDER;
 const DEFAULT_HOURS = 168;
 const MIN_HOURS = 6;
-const MAX_HOURS = 24 * 30;
+const MAX_HOURS = 24 * 90;
+const BYBIT_MAX_TIME_RANGE_MS = 7 * 24 * 60 * 60 * 1000 - 1_000;
+const EXCHANGE_REQUEST_TIMEOUT_MS = 15_000;
 
 const coerceHours = (value: string | null) => {
   const parsed = Number(value ?? Number.NaN);
@@ -88,6 +90,55 @@ const loadRuntimeTrades = async (
     .sort((left, right) => left.entryTimestamp - right.entryTimestamp);
 };
 
+const buildExchangeTimeRanges = (startTime: number, endTime: number) => {
+  const ranges: Array<{ startTime: number; endTime: number }> = [];
+  let cursor = startTime;
+
+  while (cursor < endTime) {
+    const rangeEnd = Math.min(endTime, cursor + BYBIT_MAX_TIME_RANGE_MS);
+    ranges.push({ startTime: cursor, endTime: rangeEnd });
+    cursor = rangeEnd + 1;
+  }
+
+  return ranges;
+};
+
+const loadExchangeRange = async <T>({
+  label,
+  startTime,
+  endTime,
+  load,
+}: {
+  label: string;
+  startTime: number;
+  endTime: number;
+  load: () => Promise<T[]>;
+}) => {
+  try {
+    return await Promise.race([
+      load(),
+      new Promise<T[]>((_, reject) => {
+        setTimeout(
+          () =>
+            reject(
+              new Error(
+                `${label} timed out for ${new Date(startTime).toISOString()} - ${new Date(endTime).toISOString()}`,
+              ),
+            ),
+          EXCHANGE_REQUEST_TIMEOUT_MS,
+        );
+      }),
+    ]);
+  } catch (error) {
+    logger.warn(
+      'strategies runtime: %s failed: %s',
+      label,
+      (error as Error)?.message || String(error),
+    );
+    return [];
+  }
+};
+
 const loadActiveRuntimeOrderIds = async (userName: string) => {
   const keys = await getKeys(redisKeys.runtimeActiveTrades(userName));
   const refs = await Promise.all(keys.map((key) => getData(key, null)));
@@ -117,11 +168,21 @@ const loadClosedPnlRows = async ({
   }
 
   try {
-    const rows = await connector.getClosedPnl({
-      startTime,
-      endTime,
-      limit: 100,
-    });
+    const rows = (
+      await Promise.all(
+        buildExchangeTimeRanges(startTime, endTime).map((range) =>
+          loadExchangeRange({
+            label: 'getClosedPnl',
+            ...range,
+            load: () =>
+              connector.getClosedPnl?.({
+                ...range,
+                limit: 100,
+              }) ?? Promise.resolve([]),
+          }),
+        ),
+      )
+    ).flatMap((items) => items ?? []);
 
     return rows.sort((left, right) => left.closedAt - right.closedAt);
   } catch (error) {
@@ -147,11 +208,21 @@ const loadExchangeEntryRows = async ({
   }
 
   try {
-    const rows = await connector.getEntryExecutions({
-      startTime,
-      endTime,
-      limit: 100,
-    });
+    const rows = (
+      await Promise.all(
+        buildExchangeTimeRanges(startTime, endTime).map((range) =>
+          loadExchangeRange({
+            label: 'getEntryExecutions',
+            ...range,
+            load: () =>
+              connector.getEntryExecutions?.({
+                ...range,
+                limit: 100,
+              }) ?? Promise.resolve([]),
+          }),
+        ),
+      )
+    ).flatMap((items) => items ?? []);
 
     return rows.sort(
       (left, right) => left.entryTimestamp - right.entryTimestamp,

@@ -194,6 +194,8 @@ export interface ClosedPnlRecord {
   exitPrice: number | null;
   closedPnl: number;
   closedAt: number;
+  direction?: Direction;
+  entryTimestamp?: number;
   orderId?: string;
   orderLinkId?: string;
 }

@@ -26,6 +26,26 @@ const getProjectRoot = () =>
 const compareNumericString = (left: string, right: string) =>
   left.length - right.length || left.localeCompare(right);
 
+const resolveTotalPnl = (card: StrategyChartSnapshot) => {
+  const statNetProfit = Number(card.stat?.netProfit ?? Number.NaN);
+  if (Number.isFinite(statNetProfit)) {
+    return statNetProfit;
+  }
+
+  const firstAmount = card.orderLog[0]?.[1];
+  const lastAmount = card.orderLog.at(-1)?.[1];
+  if (
+    typeof firstAmount === 'number' &&
+    typeof lastAmount === 'number' &&
+    Number.isFinite(firstAmount) &&
+    Number.isFinite(lastAmount)
+  ) {
+    return lastAmount - firstAmount;
+  }
+
+  return 0;
+};
+
 const loadLatestDatasetIds = async () => {
   const idsByStrategy = new Map<string, string>();
   let entries: string[] = [];
@@ -94,6 +114,7 @@ export async function GET() {
     .filter((card): card is StrategyChartSnapshot => Boolean(card))
     .sort(
       (left, right) =>
+        resolveTotalPnl(right) - resolveTotalPnl(left) ||
         right.generatedAt - left.generatedAt ||
         left.title.localeCompare(right.title),
     );

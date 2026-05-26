@@ -251,4 +251,42 @@ describe('runtimeStrategies helpers', () => {
     ]);
     expect(trades[0]?.entryPrice).toBeCloseTo(1.06, 8);
   });
+
+  it('builds exchange fallback trades from closed pnl rows when entry executions are missing', () => {
+    const orderLinkId = `${createRuntimeOrderLinkPrefix('DoubleTap')}abc123def456`;
+    const trades = buildExchangeFallbackRuntimeTrades({
+      entryRows: [],
+      closedPnlRows: [
+        {
+          symbol: 'ETHUSDT',
+          qty: 0.5,
+          entryPrice: 2000,
+          exitPrice: 2100,
+          closedPnl: 50,
+          closedAt: 2_000,
+          direction: 'LONG',
+          entryTimestamp: 1_000,
+          orderId: 'bybit-closed-1',
+          orderLinkId,
+        },
+      ],
+      openPositions: [],
+      strategyNames: ['DoubleTap'],
+      existingTrades: [],
+      endTime: 3_000,
+    });
+
+    expect(trades).toEqual([
+      expect.objectContaining({
+        orderId: orderLinkId,
+        strategy: 'DoubleTap',
+        symbol: 'ETHUSDT',
+        direction: 'LONG',
+        status: 'closed',
+        closedPnl: 50,
+        entryTimestamp: 1_000,
+        exitTimestamp: 2_000,
+      }),
+    ]);
+  });
 });

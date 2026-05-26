@@ -86,6 +86,27 @@ const getOptionalStringField = (
   return typeof value === 'string' && value.trim() ? value : null;
 };
 
+const inferClosedPnlDirection = ({
+  entryPrice,
+  exitPrice,
+  closedPnl,
+}: {
+  entryPrice: number;
+  exitPrice: number;
+  closedPnl: number;
+}): Direction | null => {
+  const priceDelta = exitPrice - entryPrice;
+  if (!Number.isFinite(priceDelta) || priceDelta === 0) {
+    return null;
+  }
+
+  if (closedPnl === 0) {
+    return priceDelta > 0 ? 'LONG' : 'SHORT';
+  }
+
+  return priceDelta * closedPnl > 0 ? 'LONG' : 'SHORT';
+};
+
 const resolveKlineRetryDelayMs = (res: any, attempt: number) => {
   const resetAtRaw = Number(res?.rateLimitApi?.resetAtTimestamp);
   if (Number.isFinite(resetAtRaw) && resetAtRaw > 0) {
@@ -703,11 +724,20 @@ export const ByBitConnectorCreator: ConnectorCreator = async (config) => {
           const closedAt = Number(
             item.updatedTime ?? item.createdTime ?? Number.NaN,
           );
+          const entryTimestamp = Number(item.createdTime ?? Number.NaN);
           const orderId =
             typeof item.orderId === 'string' && item.orderId.trim()
               ? item.orderId
               : null;
           const orderLinkId = getOptionalStringField(item, 'orderLinkId');
+          const direction =
+            Number.isFinite(entryPrice) && Number.isFinite(exitPrice)
+              ? inferClosedPnlDirection({
+                  entryPrice,
+                  exitPrice,
+                  closedPnl,
+                })
+              : null;
 
           if (
             !String(item.symbol ?? '').trim() ||
@@ -725,6 +755,8 @@ export const ByBitConnectorCreator: ConnectorCreator = async (config) => {
             exitPrice: Number.isFinite(exitPrice) ? exitPrice : null,
             closedPnl,
             closedAt,
+            ...(direction ? { direction } : {}),
+            ...(Number.isFinite(entryTimestamp) ? { entryTimestamp } : {}),
             ...(orderId ? { orderId } : {}),
             ...(orderLinkId ? { orderLinkId } : {}),
           } as ClosedPnlRecord;

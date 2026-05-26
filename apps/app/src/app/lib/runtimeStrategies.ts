@@ -17,6 +17,8 @@ const MS_IN_DAY = 24 * 60 * 60 * 1000;
 const AVG_DAYS_IN_MONTH = 30.4375;
 
 type ClosedPnlRecordWithOrderLinkId = ClosedPnlRecord & {
+  direction?: RuntimeTradeRecord['direction'];
+  entryTimestamp?: number;
   orderLinkId?: string;
 };
 
@@ -829,7 +831,7 @@ export const buildExchangeFallbackRuntimeTrades = ({
   existingTrades: RuntimeTradeRecord[];
   endTime: number;
 }) => {
-  if (!entryRows.length) {
+  if (!entryRows.length && !closedPnlRows.length) {
     return [];
   }
 
@@ -958,7 +960,70 @@ export const buildExchangeFallbackRuntimeTrades = ({
     })
     .filter((trade): trade is RuntimeTradeRecord => trade != null);
 
-  return fallbackTrades.sort(
+  const fallbackOrderIds = new Set([
+    ...existingOrderIds,
+    ...fallbackTrades.map((trade) => trade.orderId),
+  ]);
+  const remainingClosedPnlRows = [...symbolBuckets.values()].flat();
+  const closedPnlFallbackTrades = remainingClosedPnlRows
+    .map<RuntimeTradeRecord | null>((row) => {
+      const normalizedOrderLinkId = toNonEmptyString(row.orderLinkId);
+      const normalizedOrderId = toNonEmptyString(row.orderId);
+      const runtimeOrderId = normalizedOrderLinkId ?? normalizedOrderId;
+
+      if (!runtimeOrderId || fallbackOrderIds.has(runtimeOrderId)) {
+        return null;
+      }
+
+      const strategyName =
+        (normalizedOrderLinkId
+          ? strategyNameByOrderId.get(normalizedOrderLinkId)
+          : null) ??
+        (normalizedOrderId
+          ? strategyNameByOrderId.get(normalizedOrderId)
+          : null) ??
+        resolveStrategyNameByOrderLinkId({
+          orderLinkId: normalizedOrderLinkId,
+          strategyNames: strategyNamesPool,
+        });
+
+      if (
+        !strategyName ||
+        row.entryPrice == null ||
+        !Number.isFinite(row.entryPrice)
+      ) {
+        return null;
+      }
+
+      const direction = row.direction ?? null;
+      if (!direction) {
+        return null;
+      }
+
+      return {
+        orderId: runtimeOrderId,
+        strategy: strategyName,
+        symbol: row.symbol,
+        direction,
+        qty: row.qty,
+        entryPrice: row.entryPrice,
+        entryTimestamp:
+          typeof row.entryTimestamp === 'number' &&
+          Number.isFinite(row.entryTimestamp)
+            ? row.entryTimestamp
+            : row.closedAt,
+        status: 'closed',
+        currentPrice: row.exitPrice,
+        currentPnl: row.closedPnl,
+        closedPnl: row.closedPnl,
+        exitPrice: row.exitPrice,
+        exitTimestamp: row.closedAt,
+        lastSyncedAt: endTime,
+      };
+    })
+    .filter((trade): trade is RuntimeTradeRecord => trade != null);
+
+  return [...fallbackTrades, ...closedPnlFallbackTrades].sort(
     (left, right) => left.entryTimestamp - right.entryTimestamp,
   );
 };
