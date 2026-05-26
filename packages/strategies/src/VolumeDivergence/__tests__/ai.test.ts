@@ -571,6 +571,91 @@ describe('volumeDivergenceAiAdapter', () => {
     );
   });
 
+  it('allows deep long confirmations when relative volume supports the reversal', () => {
+    const signal = makeSignal({
+      additionalIndicators: {
+        volumeDivergenceSetup: {
+          atrPct: 0.85,
+          divergenceAmplitudeAtrRatio: 0.8,
+          reclaimPct: 180,
+          confirmationCandleQuality: 0.82,
+          confirmationDistancePct: 2.2,
+        },
+        volumeDivergenceSignalTiming: {
+          entryTiming: 'confirmation_ready',
+          barsSinceDetection: 3,
+        },
+        baseContext: {
+          participation: {
+            volume: {
+              volumeRel20: 1.2,
+            },
+          },
+        },
+        divergence: {
+          currentPivot: {
+            volumeNorm: 120,
+          },
+          previousPivot: {
+            volumeNorm: 60,
+          },
+        },
+      },
+    });
+    const payload = volumeDivergenceAiAdapter.buildPayload?.({
+      signal,
+      basePayload: {
+        signal: {
+          symbol: signal.symbol,
+          signalId: signal.signalId,
+          interval: signal.interval,
+          direction: signal.direction,
+          timestamp: signal.timestamp,
+          strategy: signal.strategy,
+          prices: {
+            currentPrice: signal.prices.currentPrice,
+            takeProfitPrice: signal.prices.takeProfitPrice,
+            stopLossPrice: signal.prices.stopLossPrice,
+          },
+        },
+        figures: {},
+        indicators: signal.indicators,
+        additionalIndicators: signal.additionalIndicators,
+      },
+    }) as any;
+
+    expect(
+      (payload.additionalIndicators as any).volumeDivergenceContext,
+    ).toEqual(
+      expect.objectContaining({
+        confirmationDistancePct: 2.2,
+        volumeRel20: 1.2,
+        deterministicQuality: 4,
+        approvalAllowedNow: true,
+      }),
+    );
+
+    const analysis = volumeDivergenceAiAdapter.postProcessAnalysis?.({
+      signal,
+      payload,
+      analysis: {
+        direction: 'LONG',
+        quality: 4,
+      },
+    });
+
+    expect(analysis).toEqual(
+      expect.objectContaining({
+        direction: 'LONG',
+        quality: 4,
+        needRetest: false,
+        retestPrice: null,
+        takeProfitPrice: 104,
+        stopLossPrice: 98,
+      }),
+    );
+  });
+
   it('promotes semi-aligned long q3 confirmations when reclaim and candle quality are strong', () => {
     const signal = makeSignal({
       indicators: {
