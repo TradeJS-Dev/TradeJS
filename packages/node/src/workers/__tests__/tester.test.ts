@@ -36,7 +36,9 @@ describe('worker tester', () => {
     }));
 
     jest.doMock('../../testing', () => ({
+      canRunTestsInSharedCandleLoop: jest.fn(() => false),
       testing: testingImpl,
+      testingGroupInSharedCandleLoop: jest.fn(),
       resetTestingKlineCache: jest.fn(),
       releaseTestingSymbolCache: jest.fn(),
     }));

@@ -37,6 +37,7 @@ export interface StrategyCreatorParams {
   btcData: KlineChartData;
   btcBinanceData?: KlineChartData;
   btcCoinbaseData?: KlineChartData;
+  sharedIndicatorsReplayKey?: string;
 }
 
 export type StrategyCreator = (

@@ -776,6 +776,7 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
     btcBinanceData,
     btcCoinbaseData,
     connector,
+    sharedIndicatorsReplayKey,
   }) => {
     const { config, isConfigFromBacktest } = await resolveStrategyConfig({
       strategyName,
@@ -1137,6 +1138,10 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
       pluginRegistryScope: projectRoot,
       initialRuntimeState: runtimeIndicatorCachePlan.restoreState,
       replayStartIndex: runtimeIndicatorCachePlan.replayStartIndex,
+      sharedReplayKey:
+        env === 'BACKTEST' && sharedIndicatorsReplayKey
+          ? `${sharedIndicatorsReplayKey}:${runtimeIndicatorCachePlan.paramsHash}`
+          : undefined,
     });
     const strategyApi = createStrategyAPI({
       strategy: strategyName as any,

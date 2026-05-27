@@ -8,9 +8,13 @@ import {
   Signal,
   Test,
   TestingBox,
+  TestingBoxResult,
 } from '@tradejs/types';
 import { alignSortedCandlesByTimestamp } from '@tradejs/core/indicators';
-import { buildDefaultIndicatorPeriods } from '@tradejs/core/strategies';
+import {
+  buildDefaultIndicatorPeriods,
+  releaseStrategyIndicatorsReplayCache,
+} from '@tradejs/core/strategies';
 import { getBacktestPreloadStart } from '@tradejs/core/time';
 import { appendAiDatasetRow } from '@tradejs/infra/ai';
 import {
@@ -72,6 +76,11 @@ type TestingProgressMessage = {
   candleTotal?: number;
   elapsedMs: number;
   stageElapsedMs: number;
+};
+
+type TestingGroupResult = {
+  test: Test;
+  result: TestingBoxResult;
 };
 
 const createTestingKlineCacheState = (): TestingKlineCacheState => ({
@@ -593,6 +602,31 @@ export const warmBacktestIndicatorCache = async (
   }
 };
 
+export const canRunTestsInSharedCandleLoop = (tests: Test[]): boolean => {
+  if (tests.length <= 1) {
+    return false;
+  }
+
+  const first = tests[0];
+  const firstStart = first.options?.start;
+  const firstEnd = first.options?.end;
+  return tests.every(
+    (test) =>
+      test.userName === first.userName &&
+      test.connectorName === first.connectorName &&
+      test.symbol === first.symbol &&
+      test.strategyName === first.strategyName &&
+      test.options?.start === firstStart &&
+      test.options?.end === firstEnd &&
+      Boolean(test.ml) === Boolean(first.ml) &&
+      Boolean(test.ai) === Boolean(first.ai) &&
+      Boolean(test.fast) === Boolean(first.fast) &&
+      Boolean(test.collectReplaySignalEvaluations) ===
+        Boolean(first.collectReplaySignalEvaluations) &&
+      (test.timeoutMs ?? null) === (first.timeoutMs ?? null),
+  );
+};
+
 export const testing: TestingBox = async ({
   userName,
   symbol,
@@ -964,4 +998,438 @@ export const testing: TestingBox = async ({
         inlineReplaySignalEvaluations: replaySignalEvaluations,
       }
     : result;
+};
+
+export const testingGroupInSharedCandleLoop = async (
+  tests: Test[],
+): Promise<TestingGroupResult[]> => {
+  if (!canRunTestsInSharedCandleLoop(tests)) {
+    const results: TestingGroupResult[] = [];
+    for (const test of tests) {
+      const result = await testing(test);
+      if (result) {
+        results.push({ test, result });
+      }
+    }
+    return results;
+  }
+
+  const first = tests[0];
+  const {
+    userName,
+    symbol,
+    options: { start, end },
+    strategyName,
+    connectorName,
+    ml = false,
+    ai = false,
+    fast = false,
+    collectReplaySignalEvaluations = false,
+    chunkId = 'single',
+    timeoutMs,
+  } = first;
+  if (!start) {
+    throw new Error('no start');
+  }
+
+  const preloadStart = getBacktestPreloadStart(start);
+  const startedAt = Date.now();
+  let activeStageStartedAt = startedAt;
+  let lastProgressSentAt = 0;
+  let lastProgressSignature = '';
+  let currentCandleIndex = 0;
+  let totalCandles = 0;
+  const formatTimeoutMessage = (stage: string) =>
+    `Test group ${strategyName}/${symbol} timed out after ${timeoutMs}ms during ${stage}`;
+  const emitProgress = (
+    stage: string,
+    options: {
+      force?: boolean;
+      candleIndex?: number;
+      candleTotal?: number;
+    } = {},
+  ) => {
+    const now = Date.now();
+    const candleIndex =
+      typeof options.candleIndex === 'number'
+        ? options.candleIndex
+        : currentCandleIndex;
+    const candleTotal =
+      typeof options.candleTotal === 'number'
+        ? options.candleTotal
+        : totalCandles;
+    const signature = [
+      stage,
+      candleIndex,
+      candleTotal,
+      Math.floor((now - activeStageStartedAt) / 5000),
+    ].join(':');
+    if (!options.force) {
+      if (signature === lastProgressSignature) {
+        return;
+      }
+      if (now - lastProgressSentAt < 4000) {
+        return;
+      }
+    }
+
+    lastProgressSentAt = now;
+    lastProgressSignature = signature;
+    process.send?.({
+      progress: true,
+      testName: first.name,
+      symbol,
+      strategyName,
+      stage,
+      candleIndex,
+      candleTotal,
+      elapsedMs: now - startedAt,
+      stageElapsedMs: now - activeStageStartedAt,
+    } satisfies TestingProgressMessage);
+  };
+  const getStageTimeoutMs = () => {
+    if (!timeoutMs || timeoutMs <= 0) {
+      return null;
+    }
+
+    return timeoutMs;
+  };
+  const throwIfTimedOut = (stage: string) => {
+    if (getStageTimeoutMs() == null) {
+      return;
+    }
+
+    emitProgress(stage);
+  };
+  const withTimeout = async <T>(
+    stage: string,
+    promise: Promise<T>,
+  ): Promise<T> => {
+    const stageTimeoutMs = getStageTimeoutMs();
+    if (stageTimeoutMs == null) {
+      return promise;
+    }
+
+    activeStageStartedAt = Date.now();
+    emitProgress(stage, { force: true });
+
+    return await new Promise<T>((resolve, reject) => {
+      const heartbeat = setInterval(() => {
+        emitProgress(stage);
+      }, 5000);
+      const timer = setTimeout(() => {
+        clearInterval(heartbeat);
+        reject(new Error(formatTimeoutMessage(stage)));
+      }, stageTimeoutMs);
+
+      promise.then(
+        (value) => {
+          clearInterval(heartbeat);
+          clearTimeout(timer);
+          resolve(value);
+        },
+        (error) => {
+          clearInterval(heartbeat);
+          clearTimeout(timer);
+          reject(error);
+        },
+      );
+    });
+  };
+  const runStage = <T>(stage: string, fn: () => Promise<T>): Promise<T> => {
+    if (getStageTimeoutMs() == null) {
+      return fn();
+    }
+    return withTimeout(stage, fn());
+  };
+
+  const { projectRoot, state } = getTestingKlineCacheState();
+  const connector = await withTimeout(
+    'connector init',
+    getCachedConnector({
+      state,
+      projectRoot,
+      userName,
+      connectorName,
+    }),
+  );
+  if (!connector) {
+    throw new Error(`Unknown connector: ${connectorName}`);
+  }
+  const strategyCreator = await withTimeout(
+    'strategy lookup',
+    getStrategyCreator(strategyName, projectRoot),
+  );
+  if (!strategyCreator) {
+    throw new Error(`Unknown strategy: ${strategyName}`);
+  }
+  const preparedData = await withTimeout(
+    'kline preload',
+    prepareTestingData({
+      state,
+      projectRoot,
+      userName,
+      connectorName,
+      symbol,
+      preloadStart,
+      start,
+      end,
+    }),
+  );
+  if (!preparedData) {
+    throw new Error('Prepared backtest data not available');
+  }
+
+  const {
+    prevData,
+    btcPrevData,
+    testData,
+    btcTestData,
+    btcBinanceData,
+    btcCoinbaseData,
+  } = preparedData;
+  totalCandles = testData.length;
+
+  const sharedIndicatorsReplayKey = [
+    'shared',
+    userName,
+    connectorName,
+    strategyName,
+    symbol,
+    start,
+    end,
+    chunkId,
+  ].join(':');
+
+  type Runner = {
+    test: Test;
+    strategy: Awaited<ReturnType<typeof strategyCreator>>;
+    testConnector: ReturnType<typeof createTestConnector>;
+    pendingMlPayloadBySignalId: Map<string, ReturnType<typeof buildMlPayload>>;
+    pendingAiRowBySignalId: Map<string, Omit<AiDatasetRow, 'profit'>>;
+    replaySignalEvaluations: RuntimeSignalEvaluationRecord[] | null;
+  };
+
+  const runners: Runner[] = [];
+  try {
+    for (const test of tests) {
+      const testConnector = createTestConnector(connector, {
+        userName: test.userName,
+        mlEnabled: test.ml,
+        aiEnabled: test.ai,
+        fastMode: test.fast,
+      });
+      const strategy = await withTimeout(
+        'strategy init',
+        strategyCreator({
+          userName: test.userName,
+          connectorName: test.connectorName,
+          config: test.strategyConfig,
+          symbol: test.symbol,
+          data: prevData.slice(),
+          btcData: btcPrevData.slice(),
+          btcBinanceData,
+          btcCoinbaseData,
+          connector: testConnector,
+          sharedIndicatorsReplayKey,
+        }),
+      );
+
+      runners.push({
+        test,
+        strategy,
+        testConnector,
+        pendingMlPayloadBySignalId: new Map(),
+        pendingAiRowBySignalId: new Map(),
+        replaySignalEvaluations: collectReplaySignalEvaluations ? [] : null,
+      });
+    }
+
+    const flushClosedResultsBatch = async (runner: Runner) => {
+      if (!runner.test.ml && !runner.test.ai) return;
+      const batch = await runner.testConnector.drainMlResultsBatch();
+      if (!batch.length) return;
+
+      for (const resultRecord of batch) {
+        const payload = runner.pendingMlPayloadBySignalId.get(
+          resultRecord.signalId,
+        );
+        if (payload) {
+          runner.pendingMlPayloadBySignalId.delete(resultRecord.signalId);
+
+          const fullRow = buildMlTrainingRow(payload, {
+            profit: resultRecord.profit,
+          });
+          const row = trimMlTrainingRowWindows(fullRow, 5);
+          await appendMlDatasetRow({
+            strategyName: runner.test.strategyName,
+            chunkId: runner.test.chunkId ?? 'single',
+            row,
+          });
+        }
+
+        const aiRowBase = runner.pendingAiRowBySignalId.get(
+          resultRecord.signalId,
+        );
+        if (aiRowBase) {
+          runner.pendingAiRowBySignalId.delete(resultRecord.signalId);
+          await appendAiDatasetRow({
+            strategyName: runner.test.strategyName,
+            chunkId: runner.test.chunkId ?? 'single',
+            row: {
+              ...aiRowBase,
+              profit: resultRecord.profit,
+            },
+          });
+        }
+      }
+    };
+
+    for (let candleIndex = 0; candleIndex < testData.length; candleIndex++) {
+      if (candleIndex % 25 === 0) {
+        throwIfTimedOut('candle loop');
+      }
+      currentCandleIndex = candleIndex + 1;
+      emitProgress('candle loop', {
+        force: candleIndex === 0 || currentCandleIndex === totalCandles,
+      });
+
+      const candle = testData[candleIndex];
+      const btcCandle = btcTestData[candleIndex];
+
+      for (const runner of runners) {
+        const { test, testConnector, strategy } = runner;
+        await runStage('stop-loss check', () => testConnector.checkSl(candle));
+        await runStage('take-profit check', () =>
+          testConnector.checkTp(candle),
+        );
+
+        const signal = await runStage('strategy signal', () =>
+          strategy(candle, btcCandle),
+        );
+        if (!signal || typeof signal === 'string') {
+          if (runner.replaySignalEvaluations) {
+            runner.replaySignalEvaluations.push({
+              evaluationId: `${test.testId}:${test.strategyName}:${test.symbol}:${candle.timestamp}`,
+              userName: test.userName,
+              strategy: test.strategyName,
+              symbol: test.symbol,
+              interval: BACKTEST_INTERVAL,
+              timestamp: candle.timestamp,
+              evaluatedAt: candle.timestamp,
+              status: 'skip',
+              reason:
+                typeof signal === 'string' && signal.trim()
+                  ? signal
+                  : 'NO_SIGNAL',
+            });
+          }
+        } else if (runner.replaySignalEvaluations) {
+          runner.replaySignalEvaluations.push({
+            evaluationId: `${signal.signalId || test.testId}:${test.strategyName}:${test.symbol}:${signal.timestamp || candle.timestamp}`,
+            userName: test.userName,
+            strategy: signal.strategy || test.strategyName,
+            symbol: signal.symbol || test.symbol,
+            interval: BACKTEST_INTERVAL,
+            timestamp:
+              typeof signal.timestamp === 'number' &&
+              Number.isFinite(signal.timestamp)
+                ? signal.timestamp
+                : candle.timestamp,
+            evaluatedAt: candle.timestamp,
+            status: 'signal',
+            reason: signal.orderSkipReason || signal.orderStatus,
+            signalId: signal.signalId,
+            direction: signal.direction,
+            orderStatus: signal.orderStatus,
+            orderSkipReason: signal.orderSkipReason,
+            aiAnalysis: signal.aiAnalysis ?? null,
+            ml: signal.ml,
+          });
+        }
+
+        const shouldCapturePayload =
+          signal &&
+          typeof signal !== 'string' &&
+          signal.signalId &&
+          (test.ml || test.ai);
+        if (shouldCapturePayload) {
+          await withTimeout(
+            'derivatives context',
+            enrichSignalWithDerivativesContext({
+              signal: signal as Signal,
+              env: 'BACKTEST',
+            }),
+          );
+        }
+        if (
+          test.ml &&
+          signal &&
+          typeof signal !== 'string' &&
+          signal.signalId
+        ) {
+          const payload = buildMlPayload({
+            signal,
+            context: {
+              userName: test.userName,
+              testId: test.testId,
+              testSuiteId: test.testSuiteId,
+              testName: test.name,
+              configId: test.configId,
+              symbol: test.symbol,
+              strategyName: test.strategyName,
+              strategyConfig: test.strategyConfig,
+              connectorName: test.connectorName,
+            },
+          });
+          runner.pendingMlPayloadBySignalId.set(signal.signalId, payload);
+        }
+        if (
+          test.ai &&
+          signal &&
+          typeof signal !== 'string' &&
+          signal.signalId
+        ) {
+          runner.pendingAiRowBySignalId.set(signal.signalId, {
+            signalId: signal.signalId,
+            strategyName: signal.strategy || test.strategyName,
+            symbol: signal.symbol || test.symbol,
+            direction: signal.direction,
+            timestamp: signal.timestamp,
+            payload: buildAiPayload(signal as Signal),
+            testId: test.testId,
+            testSuiteId: test.testSuiteId,
+            testName: test.name,
+            configId: test.configId,
+            connectorName: test.connectorName,
+          });
+        }
+      }
+    }
+
+    const results: TestingGroupResult[] = [];
+    for (const runner of runners) {
+      await withTimeout(
+        'flush closed results',
+        flushClosedResultsBatch(runner),
+      );
+      const result = await withTimeout(
+        'collect result',
+        runner.testConnector.getResult(),
+      );
+      results.push({
+        test: runner.test,
+        result: runner.replaySignalEvaluations
+          ? {
+              ...result,
+              inlineReplaySignalEvaluations: runner.replaySignalEvaluations,
+            }
+          : result,
+      });
+    }
+
+    return results;
+  } finally {
+    releaseStrategyIndicatorsReplayCache(sharedIndicatorsReplayKey);
+  }
 };

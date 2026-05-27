@@ -114,6 +114,7 @@ jest.mock('@tradejs/core/indicators', () => ({
 jest.mock('@tradejs/core/strategies', () => ({
   buildDefaultIndicatorPeriods: (config: unknown) =>
     mockBuildDefaultIndicatorPeriods(config),
+  releaseStrategyIndicatorsReplayCache: jest.fn(),
 }));
 
 jest.mock('../mlPayload', () => ({
@@ -157,6 +158,7 @@ import {
   releaseTestingSymbolCache,
   resetTestingKlineCache,
   testing,
+  testingGroupInSharedCandleLoop,
   warmBacktestIndicatorCache,
 } from '../testing';
 
@@ -274,6 +276,38 @@ describe('testing backtest flow', () => {
     await testing(createTest({ name: 'ETH_suite_2', configId: 'b' }));
 
     expect(receivedWarmupLengths).toEqual([1, 1]);
+  });
+
+  it('runs compatible configs in one candle loop with a shared indicators replay key', async () => {
+    const data = [candle(1_000_050), candle(1_000_150), candle(1_000_250)];
+    const strategies = [
+      jest.fn(async () => 'HOLD'),
+      jest.fn(async () => 'HOLD'),
+    ];
+    const receivedSharedKeys: Array<string | undefined> = [];
+    mockByBitConnector.kline.mockResolvedValue(data);
+    mockBinanceConnector.kline.mockResolvedValue(data);
+    mockCoinbaseConnector.kline.mockResolvedValue(data);
+    mockTestConnector.getResult.mockResolvedValue({
+      orderLogId: 'log-1',
+      stat: { amount: 100, profit: 0, orders: 0 },
+    });
+    mockStrategyCreator.mockImplementation(async (params: any) => {
+      receivedSharedKeys.push(params.sharedIndicatorsReplayKey);
+      return strategies[receivedSharedKeys.length - 1];
+    });
+
+    const results = await testingGroupInSharedCandleLoop([
+      createTest({ name: 'ETH_suite_1', configId: 'a' }),
+      createTest({ name: 'ETH_suite_2', configId: 'b' }),
+    ]);
+
+    expect(results).toHaveLength(2);
+    expect(strategies[0]).toHaveBeenCalledTimes(2);
+    expect(strategies[1]).toHaveBeenCalledTimes(2);
+    expect(receivedSharedKeys).toHaveLength(2);
+    expect(receivedSharedKeys[0]).toBeTruthy();
+    expect(receivedSharedKeys[1]).toBe(receivedSharedKeys[0]);
   });
 
   it('excludes the current forming candle from backtest replay data', async () => {

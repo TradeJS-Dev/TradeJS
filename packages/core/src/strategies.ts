@@ -1,6 +1,7 @@
 export {
   buildDefaultIndicatorPeriods,
   createStrategyIndicatorsState,
+  releaseStrategyIndicatorsReplayCache,
 } from './utils/strategyHelpers/indicators';
 export {
   calculateRiskRatio,

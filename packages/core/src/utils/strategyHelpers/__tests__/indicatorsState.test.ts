@@ -1,4 +1,7 @@
-import { createStrategyIndicatorsState } from '../indicators';
+import {
+  createStrategyIndicatorsState,
+  releaseStrategyIndicatorsReplayCache,
+} from '../indicators';
 import { createIndicators } from '../../../indicators';
 
 jest.mock('../../../indicators', () => ({
@@ -8,6 +11,11 @@ jest.mock('../../../indicators', () => ({
 describe('strategy indicators state latestNumber', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    releaseStrategyIndicatorsReplayCache('test');
+  });
+
+  afterEach(() => {
+    releaseStrategyIndicatorsReplayCache('test');
   });
 
   it('delegates latestNumber to the indicators controller without building snapshot', () => {
@@ -30,6 +38,49 @@ describe('strategy indicators state latestNumber', () => {
     expect(state.latestNumber('correlation' as any)).toBe(0.2);
     expect(latestNumber).toHaveBeenCalledWith('correlation');
     expect(result).not.toHaveBeenCalled();
+  });
+
+  it('shares a backtest replay controller across states with the same key', () => {
+    const next = jest.fn(() => ({ maFast: 10 }));
+    const result = jest.fn(() => ({ correlation: [0.1, 0.2] }));
+    const latestNumber = jest.fn(() => 0.2);
+
+    (createIndicators as jest.Mock).mockReturnValue({
+      next,
+      result,
+      latestNumber,
+    });
+
+    const candle = {
+      timestamp: 1,
+      open: 1,
+      high: 1,
+      low: 1,
+      close: 1,
+      volume: 1,
+      turnover: 1,
+    };
+    const btcCandle = { ...candle, close: 2 };
+    const first = createStrategyIndicatorsState({
+      env: 'BACKTEST',
+      data: [],
+      btcData: [],
+      sharedReplayKey: 'test:shared',
+    });
+    const second = createStrategyIndicatorsState({
+      env: 'BACKTEST',
+      data: [],
+      btcData: [],
+      sharedReplayKey: 'test:shared',
+    });
+
+    first.onBar(candle as any, btcCandle as any);
+    second.onBar(candle as any, btcCandle as any);
+
+    expect(createIndicators).toHaveBeenCalledTimes(1);
+    expect(next).toHaveBeenCalledTimes(1);
+    expect(first.snapshot()).toEqual({ correlation: [0.1, 0.2] });
+    expect(second.latestNumber('correlation' as any)).toBe(0.2);
   });
 
   it('initializes live controller once and reuses latestNumber for repeated reads', () => {

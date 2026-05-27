@@ -1,7 +1,9 @@
 import {
+  canRunTestsInSharedCandleLoop,
   releaseTestingSymbolCache,
   resetTestingKlineCache,
   testing,
+  testingGroupInSharedCandleLoop,
 } from '@tradejs/node/backtest';
 import { calculateStatsFull } from '@tradejs/core/backtest';
 import { writeCachedBacktestArtifacts } from '@tradejs/infra/backtestArtifacts';
@@ -65,6 +67,44 @@ const buildResultStat = (testResult: Awaited<ReturnType<typeof testing>>) => {
   return calculateStatsFull(inlinePositionLog) ?? stat;
 };
 
+const sendTestResult = async ({
+  userName,
+  test,
+  testResult,
+}: {
+  userName: string;
+  test: TestSuite[number];
+  testResult: NonNullable<Awaited<ReturnType<typeof testing>>>;
+}) => {
+  await cacheTestResultArtifacts(userName, testResult);
+
+  const stat = buildResultStat(testResult);
+  const {
+    inlineOrderLog,
+    inlinePositionLog,
+    inlineReplaySignalEvaluations,
+    stat: _rawStat,
+    ...resultWithoutLogs
+  } = testResult;
+  process.send?.({
+    ...resultWithoutLogs,
+    stat,
+    test,
+  });
+};
+
+const collectSharedLoopGroup = (testSuite: TestSuite, startIndex: number) => {
+  const group = [testSuite[startIndex]];
+  for (let index = startIndex + 1; index < testSuite.length; index += 1) {
+    const nextGroup = [...group, testSuite[index]];
+    if (!canRunTestsInSharedCandleLoop(nextGroup)) {
+      break;
+    }
+    group.push(testSuite[index]);
+  }
+  return group;
+};
+
 process.on(
   'message',
   async ({
@@ -89,7 +129,8 @@ process.on(
       });
       let previousTest: TestSuite[number] | null = null;
 
-      for await (const test of testSuite) {
+      for (let index = 0; index < testSuite.length; ) {
+        const test = testSuite[index];
         if (
           previousTest &&
           (previousTest.symbol !== test.symbol ||
@@ -103,27 +144,33 @@ process.on(
           });
         }
 
+        let completedTest = test;
         try {
+          const group = collectSharedLoopGroup(testSuite, index);
+          if (group.length > 1) {
+            completedTest = group[group.length - 1];
+            const groupResults = await testingGroupInSharedCandleLoop(group);
+            for (const { test: groupTest, result } of groupResults) {
+              await sendTestResult({
+                userName,
+                test: groupTest,
+                testResult: result,
+              });
+            }
+            index += group.length;
+            continue;
+          }
+
           const testResult = await testing(test);
           if (!testResult) {
             throw new Error('No result');
           }
-
-          await cacheTestResultArtifacts(userName, testResult);
-
-          const stat = buildResultStat(testResult);
-          const {
-            inlineOrderLog,
-            inlinePositionLog,
-            inlineReplaySignalEvaluations,
-            stat: _rawStat,
-            ...resultWithoutLogs
-          } = testResult;
-          process.send?.({
-            ...resultWithoutLogs,
-            stat,
+          await sendTestResult({
+            userName,
             test,
+            testResult,
           });
+          index += 1;
         } catch (error) {
           const errorMessage =
             error instanceof Error ? error.message : String(error);
@@ -138,8 +185,9 @@ process.on(
               stack: errorStack,
             },
           });
+          index += 1;
         } finally {
-          previousTest = test;
+          previousTest = completedTest;
         }
       }
 

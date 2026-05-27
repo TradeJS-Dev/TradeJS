@@ -64,6 +64,40 @@ type SnapshotController = IndicatorsController & {
   snapshot: () => ReturnType<IndicatorsController['result']>;
 };
 
+type SharedReplayControllerState = {
+  controller: IndicatorsController;
+  lastTimestamp: number | null;
+  lastResult: ReturnType<IndicatorsController['next']> | undefined;
+};
+
+const sharedReplayControllers = new Map<string, SharedReplayControllerState>();
+
+const createSnapshotController = (
+  value: IndicatorsController,
+): SnapshotController => {
+  const nextSnapshot =
+    typeof (value as IndicatorsController & { snapshot?: unknown }).snapshot ===
+    'function'
+      ? (
+          value as IndicatorsController & {
+            snapshot: () => ReturnType<IndicatorsController['result']>;
+          }
+        ).snapshot.bind(value)
+      : value.result.bind(value);
+
+  return Object.assign(value, {
+    snapshot: nextSnapshot,
+  });
+};
+
+export const releaseStrategyIndicatorsReplayCache = (keyPrefix: string) => {
+  for (const key of sharedReplayControllers.keys()) {
+    if (key === keyPrefix || key.startsWith(`${keyPrefix}:`)) {
+      sharedReplayControllers.delete(key);
+    }
+  }
+};
+
 export interface StrategyIndicatorsStateParams {
   env: string;
   data: KlineChartData;
@@ -77,6 +111,7 @@ export interface StrategyIndicatorsStateParams {
     | IndicatorsControllerCheckpointState
     | null;
   replayStartIndex?: number;
+  sharedReplayKey?: string;
 }
 
 export const createStrategyIndicatorsState = ({
@@ -89,57 +124,16 @@ export const createStrategyIndicatorsState = ({
   pluginRegistryScope,
   initialRuntimeState,
   replayStartIndex = 0,
+  sharedReplayKey,
 }: StrategyIndicatorsStateParams): StrategyIndicatorsState => {
-  let controller: IndicatorsController | null =
-    env === 'BACKTEST'
-      ? createIndicators(
-          data.slice(replayStartIndex),
-          btcData.slice(replayStartIndex),
-          {
-            periods,
-            btcBinanceData,
-            btcCoinbaseData,
-            pluginRegistryScope,
-            initialRuntimeState: initialRuntimeState ?? undefined,
-          },
-        )
-      : null;
-  let currentBarPair:
-    | {
-        candle: KlineChartData[number];
-        btcCandle: KlineChartData[number];
-      }
-    | undefined;
-  const withSnapshot = (value: IndicatorsController): SnapshotController => {
-    const nextSnapshot =
-      typeof (value as IndicatorsController & { snapshot?: unknown })
-        .snapshot === 'function'
-        ? (
-            value as IndicatorsController & {
-              snapshot: () => ReturnType<IndicatorsController['result']>;
-            }
-          ).snapshot.bind(value)
-        : value.result.bind(value);
-
-    return Object.assign(value, {
-      snapshot: nextSnapshot,
-    });
-  };
-
-  const applyBar = (
-    candle: KlineChartData[number],
-    btcCandle: KlineChartData[number],
-  ) => {
-    if (!controller) return;
-    controller.next(candle, btcCandle);
-  };
-
-  const ensureControllerInitialized = (): SnapshotController => {
-    if (controller) return withSnapshot(controller);
-
-    controller = createIndicators(
-      data.slice(replayStartIndex, -1),
-      btcData.slice(replayStartIndex, -1),
+  const createController = (initialDataEnd?: number) =>
+    createIndicators(
+      initialDataEnd == null
+        ? data.slice(replayStartIndex)
+        : data.slice(replayStartIndex, initialDataEnd),
+      initialDataEnd == null
+        ? btcData.slice(replayStartIndex)
+        : btcData.slice(replayStartIndex, initialDataEnd),
       {
         periods,
         btcBinanceData,
@@ -148,6 +142,67 @@ export const createStrategyIndicatorsState = ({
         initialRuntimeState: initialRuntimeState ?? undefined,
       },
     );
+  const sharedReplayState =
+    env === 'BACKTEST' && sharedReplayKey
+      ? (() => {
+          let existing = sharedReplayControllers.get(sharedReplayKey);
+          if (!existing) {
+            existing = {
+              controller: createController(),
+              lastTimestamp: null,
+              lastResult: undefined,
+            };
+            sharedReplayControllers.set(sharedReplayKey, existing);
+          }
+          return existing;
+        })()
+      : null;
+  let controller: IndicatorsController | null =
+    sharedReplayState?.controller ??
+    (env === 'BACKTEST' ? createController() : null);
+  let currentBarPair:
+    | {
+        candle: KlineChartData[number];
+        btcCandle: KlineChartData[number];
+      }
+    | undefined;
+  const applyBar = (
+    candle: KlineChartData[number],
+    btcCandle: KlineChartData[number],
+  ) => {
+    if (sharedReplayState) {
+      if (sharedReplayState.lastTimestamp === candle.timestamp) {
+        return sharedReplayState.lastResult;
+      }
+      if (
+        sharedReplayState.lastTimestamp != null &&
+        candle.timestamp < sharedReplayState.lastTimestamp
+      ) {
+        throw new Error(
+          `Shared replay indicators received non-monotonic candle timestamp ${candle.timestamp} after ${sharedReplayState.lastTimestamp}`,
+        );
+      }
+
+      sharedReplayState.lastTimestamp = candle.timestamp;
+      sharedReplayState.lastResult = sharedReplayState.controller.next(
+        candle,
+        btcCandle,
+      );
+      return sharedReplayState.lastResult;
+    }
+
+    if (!controller) return undefined;
+    return controller.next(candle, btcCandle);
+  };
+
+  const ensureControllerInitialized = (): SnapshotController => {
+    if (sharedReplayState) {
+      return createSnapshotController(sharedReplayState.controller);
+    }
+
+    if (controller) return createSnapshotController(controller);
+
+    controller = createController(-1);
 
     const lastCandle = data[data.length - 1];
     const lastBtcCandle = btcData[btcData.length - 1];
@@ -155,7 +210,7 @@ export const createStrategyIndicatorsState = ({
       controller.next(lastCandle, lastBtcCandle);
     }
 
-    return withSnapshot(controller);
+    return createSnapshotController(controller);
   };
 
   return {
@@ -173,8 +228,7 @@ export const createStrategyIndicatorsState = ({
     },
 
     next: (candle, btcCandle) => {
-      if (!controller) return undefined;
-      return controller.next(candle, btcCandle);
+      return applyBar(candle, btcCandle);
     },
 
     // Lazy bootstrap for live mode: initialize on history before current bar and then apply current bar once.
