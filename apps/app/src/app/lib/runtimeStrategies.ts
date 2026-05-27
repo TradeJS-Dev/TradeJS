@@ -48,6 +48,8 @@ export interface RuntimeStrategyTradeView {
   exitTimestamp: number | null;
   exitPrice: number | null;
   pnl: number | null;
+  takeProfitPercent: number | null;
+  stopLossPercent: number | null;
   lastSyncedAt: number | null;
 }
 
@@ -59,6 +61,7 @@ export interface RuntimeStrategyView {
   summary: RuntimeStrategyTradeSummary;
   orderLog: SimpleOrderLogData;
   recentTrades: RuntimeStrategyTradeView[];
+  orders: RuntimeStrategyTradeView[];
 }
 
 export interface RuntimeStrategiesResponse {
@@ -84,6 +87,35 @@ const getTradePnl = (trade: RuntimeTradeRecord) =>
   trade.status === 'closed'
     ? trade.closedPnl ?? trade.currentPnl ?? null
     : trade.currentPnl ?? null;
+
+const getTradeLevelPercent = ({
+  direction,
+  entryPrice,
+  levelPrice,
+  kind,
+}: {
+  direction: RuntimeTradeRecord['direction'];
+  entryPrice: number;
+  levelPrice: unknown;
+  kind: 'takeProfit' | 'stopLoss';
+}) => {
+  if (
+    typeof levelPrice !== 'number' ||
+    !Number.isFinite(levelPrice) ||
+    !Number.isFinite(entryPrice) ||
+    entryPrice <= 0
+  ) {
+    return null;
+  }
+
+  const rawPercent =
+    direction === 'LONG'
+      ? ((levelPrice - entryPrice) / entryPrice) * 100
+      : ((entryPrice - levelPrice) / entryPrice) * 100;
+  const percent = kind === 'stopLoss' ? Math.abs(rawPercent) : rawPercent;
+
+  return Number.isFinite(percent) ? roundValue(percent) : null;
+};
 
 const getTradeResolvedTimestamp = (
   trade: RuntimeTradeRecord,
@@ -572,6 +604,18 @@ export const toRuntimeTradeView = (
     typeof trade.exitTimestamp === 'number' ? trade.exitTimestamp : null,
   exitPrice: typeof trade.exitPrice === 'number' ? trade.exitPrice : null,
   pnl: getTradePnl(trade),
+  takeProfitPercent: getTradeLevelPercent({
+    direction: trade.direction,
+    entryPrice: trade.entryPrice,
+    levelPrice: trade.aiAnalysis?.takeProfitPrice,
+    kind: 'takeProfit',
+  }),
+  stopLossPercent: getTradeLevelPercent({
+    direction: trade.direction,
+    entryPrice: trade.entryPrice,
+    levelPrice: trade.aiAnalysis?.stopLossPrice,
+    kind: 'stopLoss',
+  }),
   lastSyncedAt:
     typeof trade.lastSyncedAt === 'number' ? trade.lastSyncedAt : null,
 });

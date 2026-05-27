@@ -132,6 +132,8 @@ const cloneZone = (zone: LiquidityTailsZone): LiquidityTailsZone => ({
   ...zone,
 });
 
+const snapshotZones = (zones: LiquidityTailsZone[]) => zones.map(cloneZone);
+
 const isBroken = (zone: LiquidityTailsZone, candle: Candle) =>
   zone.kind === 'sell_pressure'
     ? Number(candle.low) >= zone.top
@@ -292,7 +294,7 @@ export const createLiquidityTailsEngine = ({
     ) {
       return {
         signal: state.signal,
-        zones: state.zones.map(cloneZone),
+        zones: state.zones,
       };
     }
 
@@ -424,7 +426,7 @@ export const createLiquidityTailsEngine = ({
 
     return {
       signal: state.signal,
-      zones: state.zones.map(cloneZone),
+      zones: state.signal ? snapshotZones(state.zones) : state.zones,
     };
   };
 
@@ -436,7 +438,7 @@ export const createLiquidityTailsEngine = ({
     next: apply,
     getState: () => ({
       signal: state.signal,
-      zones: state.zones.map(cloneZone),
+      zones: snapshotZones(state.zones),
     }),
   };
 };

@@ -28,6 +28,7 @@ import { resolveStrategyConfig } from './strategyHelpers/config';
 import {
   materializeIndicatorCachePlan,
   planIndicatorCacheRestore,
+  resolveIndicatorCacheRuntimeState,
 } from './indicatorCache';
 import {
   CreateStrategyCore,
@@ -816,20 +817,37 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
       btcBinanceData,
       btcCoinbaseData,
     });
-    await materializeIndicatorCachePlan({
-      provider: connectorName,
-      symbol,
-      interval: Number(config.INTERVAL ?? '15'),
-      periods: indicatorPeriods,
-      data,
-      btcData,
-      btcBinanceData,
-      btcCoinbaseData,
-      paramsHash: indicatorCachePlan.paramsHash,
-      restoreState: indicatorCachePlan.restoreState,
-      replayStartIndex: indicatorCachePlan.replayStartIndex,
-      cached: indicatorCachePlan.cached,
-    });
+    const runtimeIndicatorCachePlan =
+      env === 'BACKTEST'
+        ? resolveIndicatorCacheRuntimeState({
+            provider: connectorName,
+            symbol,
+            interval: Number(config.INTERVAL ?? '15'),
+            periods: indicatorPeriods,
+            data,
+            btcData,
+            btcBinanceData,
+            btcCoinbaseData,
+            ...indicatorCachePlan,
+          })
+        : indicatorCachePlan;
+
+    if (env !== 'BACKTEST') {
+      await materializeIndicatorCachePlan({
+        provider: connectorName,
+        symbol,
+        interval: Number(config.INTERVAL ?? '15'),
+        periods: indicatorPeriods,
+        data,
+        btcData,
+        btcBinanceData,
+        btcCoinbaseData,
+        paramsHash: runtimeIndicatorCachePlan.paramsHash,
+        restoreState: runtimeIndicatorCachePlan.restoreState,
+        replayStartIndex: runtimeIndicatorCachePlan.replayStartIndex,
+        cached: runtimeIndicatorCachePlan.cached,
+      });
+    }
 
     const notifyRuntimeError = async ({
       stage,
@@ -1117,8 +1135,8 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
       btcCoinbaseData,
       periods: indicatorPeriods,
       pluginRegistryScope: projectRoot,
-      initialRuntimeState: indicatorCachePlan.restoreState,
-      replayStartIndex: indicatorCachePlan.replayStartIndex,
+      initialRuntimeState: runtimeIndicatorCachePlan.restoreState,
+      replayStartIndex: runtimeIndicatorCachePlan.replayStartIndex,
     });
     const strategyApi = createStrategyAPI({
       strategy: strategyName as any,

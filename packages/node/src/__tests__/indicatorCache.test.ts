@@ -27,6 +27,7 @@ import {
   ensureIndicatorCacheCoverage,
   materializeIndicatorCachePlan,
   planIndicatorCacheRestore,
+  resolveIndicatorCacheRuntimeState,
 } from '../indicatorCache';
 
 const candle = (timestamp: number, close = 100) => ({
@@ -352,6 +353,49 @@ describe('indicatorCache', () => {
     });
 
     expect(mockCreateIndicators).not.toHaveBeenCalled();
+    expect(mockUpsertIndicatorCacheCoverageRows).not.toHaveBeenCalled();
+    expect(mockUpsertIndicatorCacheCheckpointRows).not.toHaveBeenCalled();
+  });
+
+  it('resolves a replay suffix to an in-memory runtime checkpoint without cache writes', () => {
+    const data = [candle(1_000, 100), candle(2_000, 101), candle(3_000, 102)];
+    const btcData = [
+      candle(1_000, 200),
+      candle(2_000, 201),
+      candle(3_000, 202),
+    ];
+
+    const result = resolveIndicatorCacheRuntimeState({
+      provider: 'ByBit',
+      symbol: 'ETHUSDT',
+      interval: 15,
+      periods: { maFast: 14 },
+      data: data as any,
+      btcData: btcData as any,
+      paramsHash: 'hash',
+      version: 'v-test',
+      restoreState: runtimeState(1_000),
+      replayStartIndex: 1,
+      cached: false,
+    });
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        cached: true,
+        replayStartIndex: 3,
+        restoreState: runtimeState(3_000),
+      }),
+    );
+    expect(mockCreateIndicators).toHaveBeenCalledWith(
+      [],
+      [],
+      expect.objectContaining({
+        includeMlPayload: false,
+        runtimeOnly: true,
+        periods: { maFast: 14 },
+        initialRuntimeState: runtimeState(1_000),
+      }),
+    );
     expect(mockUpsertIndicatorCacheCoverageRows).not.toHaveBeenCalled();
     expect(mockUpsertIndicatorCacheCheckpointRows).not.toHaveBeenCalled();
   });

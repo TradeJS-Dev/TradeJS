@@ -8,6 +8,7 @@ const mockMarkRuntimeTradeClosed = jest.fn();
 const mockGetDerivativesWindow = jest.fn();
 const mockPlanIndicatorCacheRestore = jest.fn();
 const mockMaterializeIndicatorCachePlan = jest.fn();
+const mockResolveIndicatorCacheRuntimeState = jest.fn();
 
 jest.mock('@tradejs/core/strategies', () => ({
   createStrategyAPI: jest.fn((params: any) => ({
@@ -117,6 +118,8 @@ jest.mock('../indicatorCache', () => ({
     mockPlanIndicatorCacheRestore(...args),
   materializeIndicatorCachePlan: (...args: unknown[]) =>
     mockMaterializeIndicatorCachePlan(...args),
+  resolveIndicatorCacheRuntimeState: (...args: unknown[]) =>
+    mockResolveIndicatorCacheRuntimeState(...args),
 }));
 
 jest.mock('../strategy/manifests', () => {
@@ -304,9 +307,10 @@ describe('strategyRuntime', () => {
       replayStartIndex: 0,
     });
     mockMaterializeIndicatorCachePlan.mockResolvedValue(undefined);
+    mockResolveIndicatorCacheRuntimeState.mockImplementation((plan) => plan);
   });
 
-  it('plans and materializes indicator cache before strategy execution starts', async () => {
+  it('plans and materializes indicator cache before runtime strategy execution starts', async () => {
     await makeRuntime(() => ({ kind: 'skip', code: 'NOOP' }));
 
     expect(mockPlanIndicatorCacheRestore).toHaveBeenCalledWith(
@@ -324,6 +328,31 @@ describe('strategyRuntime', () => {
         paramsHash: 'hash',
         replayStartIndex: 0,
         cached: true,
+      }),
+    );
+  });
+
+  it('uses planned indicator cache state without materializing cache rows in backtests', async () => {
+    await makeRuntime(
+      () => ({ kind: 'skip', code: 'NOOP' }),
+      { ENV: 'BACKTEST' },
+      { testConnector: true },
+    );
+
+    expect(mockPlanIndicatorCacheRestore).toHaveBeenCalledWith(
+      expect.objectContaining({
+        provider: 'ByBit',
+        symbol: 'ETHUSDT',
+        interval: 15,
+      }),
+    );
+    expect(mockMaterializeIndicatorCachePlan).not.toHaveBeenCalled();
+    expect(mockResolveIndicatorCacheRuntimeState).toHaveBeenCalledWith(
+      expect.objectContaining({
+        provider: 'ByBit',
+        symbol: 'ETHUSDT',
+        interval: 15,
+        paramsHash: 'hash',
       }),
     );
   });

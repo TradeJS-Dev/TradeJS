@@ -7,6 +7,7 @@ import {
   resolveStrategyNameByOrderLinkId,
   selectTradesForWindow,
   takeClosedPnlMatch,
+  toRuntimeTradeView,
 } from '../runtimeStrategies';
 
 describe('runtimeStrategies helpers', () => {
@@ -143,6 +144,44 @@ describe('runtimeStrategies helpers', () => {
       closedPnl: 12,
       totalPnl: 9,
     });
+  });
+
+  it('maps runtime trade take-profit and stop-loss percentages', () => {
+    const longView = toRuntimeTradeView({
+      orderId: 'long-1',
+      strategy: 'TrendLine',
+      symbol: 'BTCUSDT',
+      direction: 'LONG',
+      qty: 1,
+      entryPrice: 100,
+      entryTimestamp: 100,
+      status: 'closed',
+      closedPnl: 10,
+      aiAnalysis: {
+        takeProfitPrice: 105,
+        stopLossPrice: 98,
+      },
+    } as RuntimeTradeRecord);
+    const shortView = toRuntimeTradeView({
+      orderId: 'short-1',
+      strategy: 'TrendLine',
+      symbol: 'ETHUSDT',
+      direction: 'SHORT',
+      qty: 1,
+      entryPrice: 100,
+      entryTimestamp: 100,
+      status: 'closed',
+      closedPnl: -2,
+      aiAnalysis: {
+        takeProfitPrice: 96,
+        stopLossPrice: 102,
+      },
+    } as RuntimeTradeRecord);
+
+    expect(longView.takeProfitPercent).toBe(5);
+    expect(longView.stopLossPercent).toBe(2);
+    expect(shortView.takeProfitPercent).toBe(4);
+    expect(shortView.stopLossPercent).toBe(2);
   });
 
   it('matches closed pnl by orderLinkId before symbol/time fallback', () => {

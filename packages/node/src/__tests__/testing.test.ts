@@ -203,7 +203,10 @@ describe('testing backtest flow', () => {
     mockBinanceConnectorCreator.mockClear();
     mockCoinbaseConnectorCreator.mockClear();
     mockAlignSortedCandlesByTimestamp.mockClear();
-    mockStrategyCreator.mockClear();
+    mockStrategyCreator.mockReset();
+    mockStrategyCreator.mockImplementation(
+      async (_config?: unknown) => mockStrategy,
+    );
     mockStrategy.mockReset();
     mockBuildAiPayload.mockClear();
     mockBuildDefaultIndicatorPeriods.mockClear();
@@ -252,6 +255,25 @@ describe('testing backtest flow', () => {
     expect(mockByBitConnector.kline).toHaveBeenCalledTimes(2);
     expect(mockTestConnector.checkSl).toHaveBeenCalledTimes(2);
     expect(mockTestConnector.checkTp).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not reuse mutable warmup arrays between configs for the same symbol', async () => {
+    const data = [candle(1_000_050), candle(1_000_150), candle(1_000_250)];
+    const receivedWarmupLengths: number[] = [];
+    mockByBitConnector.kline.mockResolvedValue(data);
+    mockBinanceConnector.kline.mockResolvedValue(data);
+    mockCoinbaseConnector.kline.mockResolvedValue(data);
+    mockStrategy.mockResolvedValue('HOLD');
+    mockStrategyCreator.mockImplementation(async (params: any) => {
+      receivedWarmupLengths.push(params.data.length);
+      params.data.push(candle(9_999_999));
+      return mockStrategy;
+    });
+
+    await testing(createTest({ name: 'ETH_suite_1', configId: 'a' }));
+    await testing(createTest({ name: 'ETH_suite_2', configId: 'b' }));
+
+    expect(receivedWarmupLengths).toEqual([1, 1]);
   });
 
   it('excludes the current forming candle from backtest replay data', async () => {

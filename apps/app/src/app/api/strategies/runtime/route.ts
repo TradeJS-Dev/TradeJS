@@ -473,6 +473,15 @@ export const GET = async (request: NextRequest) => {
         const strategyTrades = allTrades
           .filter((trade) => trade.strategy === strategyName)
           .sort((left, right) => right.entryTimestamp - left.entryTimestamp);
+        const orders = strategyTrades
+          .filter((trade) => trade.status === 'closed')
+          .sort((left, right) => {
+            const leftDate = left.exitTimestamp ?? left.entryTimestamp;
+            const rightDate = right.exitTimestamp ?? right.entryTimestamp;
+
+            return rightDate - leftDate;
+          })
+          .map(toRuntimeTradeView);
         const analytics = buildRuntimeStrategyAnalytics({
           trades: strategyTrades,
           startTime,
@@ -487,6 +496,7 @@ export const GET = async (request: NextRequest) => {
           summary: analytics.summary,
           orderLog: analytics.orderLog,
           recentTrades: strategyTrades.slice(0, 8).map(toRuntimeTradeView),
+          orders,
         };
       }),
     );

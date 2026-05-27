@@ -14,8 +14,19 @@ import {
   upsertIndicatorCacheCoverageRows,
 } from '@tradejs/infra/timescale';
 
-const INDICATOR_CACHE_VERSION = 'v11';
+const INDICATOR_CACHE_VERSION = 'v12';
 const INDICATOR_CACHE_CHECKPOINT_INTERVAL = 256;
+const indicatorRestorePlanCache = new Map<string, IndicatorCacheRestorePlan>();
+const indicatorRuntimeStatePlanCache = new Map<
+  string,
+  IndicatorCacheRestorePlan
+>();
+const objectCacheIds = new WeakMap<object, number>();
+const referenceCandleSignatureCache = new WeakMap<
+  Candle[],
+  Array<string | null | undefined>
+>();
+let nextObjectCacheId = 1;
 
 type IndicatorCacheObsoleteCleanupOptions = Omit<
   Parameters<typeof deleteAllIndicatorCacheObsoleteVersions>[0],
@@ -62,6 +73,51 @@ type IndicatorCacheCheckpointSnapshot = {
   timestamp: number;
   runtimeState: IndicatorsControllerCheckpointState;
 };
+
+const getObjectCacheId = (value: object | null | undefined) => {
+  if (!value) return 'none';
+  const existing = objectCacheIds.get(value);
+  if (existing != null) return String(existing);
+  const next = nextObjectCacheId;
+  nextObjectCacheId += 1;
+  objectCacheIds.set(value, next);
+  return String(next);
+};
+
+const cloneRestoreState = (
+  value: IndicatorsControllerCheckpointState | null,
+) => (value == null ? null : structuredClone(value));
+
+const cloneIndicatorCacheRestorePlan = (
+  plan: IndicatorCacheRestorePlan,
+): IndicatorCacheRestorePlan => ({
+  ...plan,
+  restoreState: cloneRestoreState(plan.restoreState),
+});
+
+const buildRestorePlanCacheKey = (params: {
+  provider: string;
+  symbol: string;
+  interval: number;
+  paramsHash: string;
+  data: Candle[];
+  btcData: Candle[];
+  btcBinanceData?: Candle[];
+  btcCoinbaseData?: Candle[];
+}) =>
+  [
+    params.provider,
+    params.symbol,
+    params.interval,
+    params.paramsHash,
+    params.data.length,
+    params.data[0]?.timestamp ?? 'none',
+    params.data[params.data.length - 1]?.timestamp ?? 'none',
+    getObjectCacheId(params.data),
+    getObjectCacheId(params.btcData),
+    getObjectCacheId(params.btcBinanceData),
+    getObjectCacheId(params.btcCoinbaseData),
+  ].join(':');
 
 const toStablePeriods = (periods?: Partial<IndicatorPeriods>) => ({
   atr: periods?.atr ?? null,
@@ -152,6 +208,40 @@ const buildCandleSignature = (candle: Candle | undefined): string | null => {
   return `${candle.timestamp}:${candle.open}:${candle.high}:${candle.low}:${candle.close}:${candle.volume}:${candle.turnover}`;
 };
 
+const getReferenceCandleSignatureAt = (
+  candles: Candle[],
+  index: number,
+): string | null => {
+  const candle = candles[index];
+  if (!candle) return null;
+  let signatures = referenceCandleSignatureCache.get(candles);
+  if (!signatures) {
+    signatures = [];
+    referenceCandleSignatureCache.set(candles, signatures);
+  }
+  const cached = signatures[index];
+  if (cached !== undefined) return cached;
+  const signature = buildCandleSignature(candle);
+  signatures[index] = signature;
+  return signature;
+};
+
+const findCandleIndexByTimestamp = (candles: Candle[], timestamp: number) => {
+  let left = 0;
+  let right = candles.length - 1;
+  while (left <= right) {
+    const mid = Math.floor((left + right) / 2);
+    const value = candles[mid].timestamp;
+    if (value === timestamp) return mid;
+    if (value < timestamp) {
+      left = mid + 1;
+    } else {
+      right = mid - 1;
+    }
+  }
+  return -1;
+};
+
 const toCacheRows = async (params: {
   provider: string;
   symbol: string;
@@ -202,6 +292,21 @@ export const planIndicatorCacheRestore = async ({
     };
   }
 
+  const planCacheKey = buildRestorePlanCacheKey({
+    provider,
+    symbol,
+    interval,
+    paramsHash,
+    data,
+    btcData,
+    btcBinanceData,
+    btcCoinbaseData,
+  });
+  const cachedPlan = indicatorRestorePlanCache.get(planCacheKey);
+  if (cachedPlan) {
+    return cloneIndicatorCacheRestorePlan(cachedPlan);
+  }
+
   const cachedRows = await toCacheRows({
     provider,
     symbol,
@@ -218,7 +323,7 @@ export const planIndicatorCacheRestore = async ({
     if (
       row.timestamp !== data[index].timestamp ||
       row.candleSignature !== buildCandleSignature(data[index]) ||
-      row.btcCandleSignature !== buildCandleSignature(btcData[index])
+      row.btcCandleSignature !== getReferenceCandleSignatureAt(btcData, index)
     ) {
       break;
     }
@@ -244,16 +349,14 @@ export const planIndicatorCacheRestore = async ({
   const checkpointIndex =
     checkpointSnapshot == null
       ? -1
-      : data.findIndex(
-          (item) => item.timestamp === checkpointSnapshot.timestamp,
-        );
+      : findCandleIndexByTimestamp(data, checkpointSnapshot.timestamp);
   const canRestoreFromCheckpoint =
     checkpointSnapshot?.runtimeState != null &&
     checkpointIndex >= 0 &&
     checkpointIndex < validPrefixLength;
   const replayStartIndex = canRestoreFromCheckpoint ? checkpointIndex + 1 : 0;
 
-  return {
+  const plan: IndicatorCacheRestorePlan = {
     paramsHash,
     version: INDICATOR_CACHE_VERSION,
     restoreState: canRestoreFromCheckpoint
@@ -265,6 +368,15 @@ export const planIndicatorCacheRestore = async ({
       data.length > 0 &&
       replayStartIndex === data.length,
   };
+
+  if (plan.cached) {
+    indicatorRestorePlanCache.set(
+      planCacheKey,
+      cloneIndicatorCacheRestorePlan(plan),
+    );
+  }
+
+  return cloneIndicatorCacheRestorePlan(plan);
 };
 
 export const materializeIndicatorCachePlan = async (
@@ -349,4 +461,57 @@ export const materializeIndicatorCachePlan = async (
 
   await upsertIndicatorCacheCoverageRows(coverageRows);
   await upsertIndicatorCacheCheckpointRows(checkpointRows);
+};
+
+export const resolveIndicatorCacheRuntimeState = (
+  params: EnsureIndicatorCacheCoverageParams & IndicatorCacheRestorePlan,
+): IndicatorCacheRestorePlan => {
+  if (!params.data.length || params.replayStartIndex >= params.data.length) {
+    return cloneIndicatorCacheRestorePlan(params);
+  }
+
+  const cacheKey = [
+    buildRestorePlanCacheKey({
+      provider: params.provider,
+      symbol: params.symbol,
+      interval: params.interval,
+      paramsHash: params.paramsHash,
+      data: params.data,
+      btcData: params.btcData,
+      btcBinanceData: params.btcBinanceData,
+      btcCoinbaseData: params.btcCoinbaseData,
+    }),
+    params.replayStartIndex,
+  ].join(':');
+  const cachedPlan = indicatorRuntimeStatePlanCache.get(cacheKey);
+  if (cachedPlan) {
+    return cachedPlan;
+  }
+
+  const controller = createIndicators([], [], {
+    includeMlPayload: false,
+    runtimeOnly: true,
+    periods: params.periods,
+    btcBinanceData: params.btcBinanceData,
+    btcCoinbaseData: params.btcCoinbaseData,
+    initialRuntimeState: params.restoreState ?? undefined,
+  });
+
+  for (
+    let absoluteIndex = params.replayStartIndex;
+    absoluteIndex < params.data.length;
+    absoluteIndex += 1
+  ) {
+    controller.next(params.data[absoluteIndex], params.btcData[absoluteIndex]);
+  }
+
+  const plan: IndicatorCacheRestorePlan = {
+    paramsHash: params.paramsHash,
+    version: params.version,
+    restoreState: controller.checkpointRuntimeState?.() ?? null,
+    replayStartIndex: params.data.length,
+    cached: true,
+  };
+  indicatorRuntimeStatePlanCache.set(cacheKey, plan);
+  return plan;
 };

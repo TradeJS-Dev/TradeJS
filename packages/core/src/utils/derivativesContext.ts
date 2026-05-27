@@ -17,7 +17,7 @@ const DEFAULT_STALE_AFTER_MS: Record<DerivativesInterval, number> = {
 
 const DERIVATIVES_INTERVALS: DerivativesInterval[] = ['15m', '1h'];
 
-type NormalizedDerivativesRow = DerivativesRow & {
+type NormalizedDerivativesRow = {
   tsMs: number;
   openInterest: number | null;
   fundingRate: number | null;
@@ -69,21 +69,28 @@ const pctChange = (current: number | null, previous: number | null) => {
 const normalizeRows = (
   rows: DerivativesRow[] | undefined,
   timestamp: number,
-): NormalizedDerivativesRow[] =>
-  (rows ?? [])
-    .map((row) => ({
-      ...row,
-      tsMs: toTimestampMs(row.ts),
+): NormalizedDerivativesRow[] => {
+  const normalized: NormalizedDerivativesRow[] = [];
+
+  for (const row of rows ?? []) {
+    const tsMs = toTimestampMs(row.ts);
+    if (tsMs == null || tsMs > timestamp) {
+      continue;
+    }
+
+    normalized.push({
+      tsMs,
       openInterest: toFiniteNumberOrNull(row.openInterest),
       fundingRate: toFiniteNumberOrNull(row.fundingRate),
       liqLong: toFiniteNumberOrNull(row.liqLong),
       liqShort: toFiniteNumberOrNull(row.liqShort),
       liqTotal: toFiniteNumberOrNull(row.liqTotal),
-    }))
-    .filter((row): row is NormalizedDerivativesRow => {
-      return row.tsMs != null && row.tsMs <= timestamp;
-    })
-    .sort((a, b) => a.tsMs - b.tsMs);
+    });
+  }
+
+  normalized.sort((a, b) => a.tsMs - b.tsMs);
+  return normalized;
+};
 
 const findRowAtOrBefore = <
   TRow extends {
@@ -92,8 +99,9 @@ const findRowAtOrBefore = <
 >(
   rows: TRow[],
   targetTs: number,
+  endIndex = rows.length - 1,
 ): TRow | null => {
-  for (let i = rows.length - 1; i >= 0; i -= 1) {
+  for (let i = Math.min(endIndex, rows.length - 1); i >= 0; i -= 1) {
     if (rows[i].tsMs <= targetTs) {
       return rows[i];
     }
@@ -101,56 +109,93 @@ const findRowAtOrBefore = <
   return null;
 };
 
-const calculateZScore = (
-  values: Array<number | null>,
-  current: number | null,
+const calculateAverageLiquidationsBefore = (
+  rows: NormalizedDerivativesRow[],
+  endIndex: number,
 ) => {
-  const finite = values.filter(
-    (value): value is number =>
-      typeof value === 'number' && Number.isFinite(value),
-  );
-  if (current == null || finite.length < 3) return null;
+  let sum = 0;
+  let count = 0;
 
-  const mean = finite.reduce((sum, value) => sum + value, 0) / finite.length;
-  const variance =
-    finite.reduce((sum, value) => sum + (value - mean) ** 2, 0) / finite.length;
-  const std = Math.sqrt(variance);
-  if (!Number.isFinite(std) || std === 0) return 0;
+  for (let index = 0; index < endIndex; index += 1) {
+    const row = rows[index];
+    const value = row.liqTotal ?? (row.liqLong ?? 0) + (row.liqShort ?? 0);
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      sum += value;
+      count += 1;
+    }
+  }
 
-  return (current - mean) / std;
+  return count > 0 ? sum / count : null;
 };
 
-const calculateAverage = (values: Array<number | null>) => {
-  const finite = values.filter(
-    (value): value is number =>
-      typeof value === 'number' && Number.isFinite(value),
-  );
-  if (!finite.length) return null;
-  return finite.reduce((sum, value) => sum + value, 0) / finite.length;
+const calculateFundingZScore = (
+  rows: NormalizedDerivativesRow[],
+  current: number | null,
+  endIndex: number,
+) => {
+  if (current == null) return null;
+
+  let sum = 0;
+  let count = 0;
+  for (let index = 0; index <= endIndex; index += 1) {
+    const value = rows[index].fundingRate;
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      sum += value;
+      count += 1;
+    }
+  }
+  if (count < 3) return null;
+
+  const mean = sum / count;
+  let varianceSum = 0;
+  for (let index = 0; index <= endIndex; index += 1) {
+    const value = rows[index].fundingRate;
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      varianceSum += (value - mean) ** 2;
+    }
+  }
+
+  const std = Math.sqrt(varianceSum / count);
+  if (!Number.isFinite(std) || std === 0) return 0;
+  return (current - mean) / std;
 };
 
 const buildIntervalContext = (params: {
   interval: DerivativesInterval;
-  rows: DerivativesRow[] | undefined;
+  rows: NormalizedDerivativesRow[];
   timestamp: number;
   staleAfterMs: number;
+  latestIndex?: number;
 }): DerivativesIntervalContext | null => {
   const { interval, rows, timestamp, staleAfterMs } = params;
-  const normalizedRows = normalizeRows(rows, timestamp);
-  const latest = normalizedRows[normalizedRows.length - 1];
+  const latestIndex =
+    params.latestIndex ??
+    (() => {
+      for (let index = rows.length - 1; index >= 0; index -= 1) {
+        if (rows[index].tsMs <= timestamp) {
+          return index;
+        }
+      }
+      return -1;
+    })();
+  const latest = latestIndex >= 0 ? rows[latestIndex] : null;
   if (!latest) return null;
 
   const openInterest = latest.openInterest;
-  const row1h = findRowAtOrBefore(normalizedRows, latest.tsMs - HOUR_MS);
-  const row4h = findRowAtOrBefore(normalizedRows, latest.tsMs - 4 * HOUR_MS);
-  const row24h = findRowAtOrBefore(normalizedRows, latest.tsMs - 24 * HOUR_MS);
+  const row1h = findRowAtOrBefore(rows, latest.tsMs - HOUR_MS, latestIndex);
+  const row4h = findRowAtOrBefore(rows, latest.tsMs - 4 * HOUR_MS, latestIndex);
+  const row24h = findRowAtOrBefore(
+    rows,
+    latest.tsMs - 24 * HOUR_MS,
+    latestIndex,
+  );
   const liqLong = latest.liqLong;
   const liqShort = latest.liqShort;
   const liqTotal = latest.liqTotal ?? (liqLong ?? 0) + (liqShort ?? 0);
-  const previousLiquidations = normalizedRows
-    .slice(0, -1)
-    .map((row) => row.liqTotal ?? (row.liqLong ?? 0) + (row.liqShort ?? 0));
-  const avgPreviousLiquidations = calculateAverage(previousLiquidations);
+  const avgPreviousLiquidations = calculateAverageLiquidationsBefore(
+    rows,
+    latestIndex,
+  );
   const liqSpikeRatio =
     liqTotal != null &&
     avgPreviousLiquidations != null &&
@@ -166,7 +211,7 @@ const buildIntervalContext = (params: {
     interval,
     asOfTs: latest.tsMs,
     stale: timestamp - latest.tsMs > staleAfterMs,
-    points: normalizedRows.length,
+    points: latestIndex + 1,
     openInterest: roundNullable(openInterest),
     oiChangePct1h: roundNullable(
       pctChange(openInterest, row1h?.openInterest ?? null),
@@ -182,10 +227,7 @@ const buildIntervalContext = (params: {
     ),
     fundingRate: roundNullable(latest.fundingRate, 8),
     fundingZScore: roundNullable(
-      calculateZScore(
-        normalizedRows.map((row) => row.fundingRate),
-        latest.fundingRate,
-      ),
+      calculateFundingZScore(rows, latest.fundingRate, latestIndex),
       4,
     ),
     liqLong: roundNullable(liqLong),
@@ -339,11 +381,16 @@ export const buildDerivativesContext = (params: {
   const intervalContexts: Partial<
     Record<DerivativesInterval, DerivativesIntervalContext>
   > = {};
+  const normalizedRowsByInterval: Partial<
+    Record<DerivativesInterval, NormalizedDerivativesRow[]>
+  > = {};
 
   for (const interval of intervals) {
+    const normalizedRows = normalizeRows(rowsByInterval[interval], timestamp);
+    normalizedRowsByInterval[interval] = normalizedRows;
     const context = buildIntervalContext({
       interval,
-      rows: rowsByInterval[interval],
+      rows: normalizedRows,
       timestamp,
       staleAfterMs:
         staleAfterMsByInterval[interval] ?? DEFAULT_STALE_AFTER_MS[interval],
@@ -360,10 +407,7 @@ export const buildDerivativesContext = (params: {
   const fundingChange1h =
     primary?.fundingRate != null && primary.interval === '15m'
       ? (() => {
-          const normalizedRows = normalizeRows(
-            rowsByInterval['15m'],
-            timestamp,
-          );
+          const normalizedRows = normalizedRowsByInterval['15m'] ?? [];
           const latest = normalizedRows[normalizedRows.length - 1];
           const row1h = latest
             ? findRowAtOrBefore(normalizedRows, latest.tsMs - HOUR_MS)
@@ -403,12 +447,8 @@ export const buildDerivativesContext = (params: {
   const crowdingPersistenceBars =
     primary?.interval === '15m'
       ? (() => {
-          const normalizedRows = normalizeRows(
-            rowsByInterval['15m'],
-            timestamp,
-          );
+          const normalizedRows = normalizedRowsByInterval['15m'] ?? [];
           if (!normalizedRows.length) return null;
-          const latestRows = normalizedRows.slice();
           let persistence = 0;
           const latestContext = primary;
           const crowdedState = isCrowdedLong(latestContext)
@@ -418,13 +458,14 @@ export const buildDerivativesContext = (params: {
               : null;
           if (!crowdedState) return 0;
 
-          for (let i = latestRows.length - 1; i >= 0; i -= 1) {
-            const candidate = latestRows[i];
+          for (let i = normalizedRows.length - 1; i >= 0; i -= 1) {
+            const candidate = normalizedRows[i];
             const probe = buildIntervalContext({
               interval: '15m',
-              rows: latestRows.slice(0, i + 1),
+              rows: normalizedRows,
               timestamp: candidate.tsMs,
               staleAfterMs: DEFAULT_STALE_AFTER_MS['15m'],
+              latestIndex: i,
             });
             if (!probe) break;
             const probeState = isCrowdedLong(probe)

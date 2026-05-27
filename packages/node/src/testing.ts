@@ -689,12 +689,13 @@ export const testing: TestingBox = async ({
     stage: string,
     promise: Promise<T>,
   ): Promise<T> => {
-    activeStageStartedAt = Date.now();
-    emitProgress(stage, { force: true });
     const stageTimeoutMs = getStageTimeoutMs();
     if (stageTimeoutMs == null) {
       return promise;
     }
+
+    activeStageStartedAt = Date.now();
+    emitProgress(stage, { force: true });
 
     return await new Promise<T>((resolve, reject) => {
       const heartbeat = setInterval(() => {
@@ -718,6 +719,12 @@ export const testing: TestingBox = async ({
         },
       );
     });
+  };
+  const runStage = <T>(stage: string, fn: () => Promise<T>): Promise<T> => {
+    if (getStageTimeoutMs() == null) {
+      return fn();
+    }
+    return withTimeout(stage, fn());
   };
 
   const { projectRoot, state } = getTestingKlineCacheState();
@@ -767,6 +774,8 @@ export const testing: TestingBox = async ({
     btcBinanceData,
     btcCoinbaseData,
   } = preparedData;
+  const runtimePrevData = prevData.slice();
+  const runtimeBtcPrevData = btcPrevData.slice();
   const interval = BACKTEST_INTERVAL;
   totalCandles = testData.length;
 
@@ -784,8 +793,8 @@ export const testing: TestingBox = async ({
       connectorName,
       config: strategyConfig,
       symbol,
-      data: prevData,
-      btcData: btcPrevData,
+      data: runtimePrevData,
+      btcData: runtimeBtcPrevData,
       btcBinanceData,
       btcCoinbaseData,
       connector: testConnector,
@@ -854,11 +863,10 @@ export const testing: TestingBox = async ({
 
     // Process exits on the current candle first. Any position opened below
     // can only be closed starting from the next candle to avoid same-bar lookahead.
-    await withTimeout('stop-loss check', testConnector.checkSl(candle));
-    await withTimeout('take-profit check', testConnector.checkTp(candle));
+    await runStage('stop-loss check', () => testConnector.checkSl(candle));
+    await runStage('take-profit check', () => testConnector.checkTp(candle));
 
-    const signal = await withTimeout(
-      'strategy signal',
+    const signal = await runStage('strategy signal', () =>
       strategy(candle, btcCandle),
     );
     if (!signal || typeof signal === 'string') {
