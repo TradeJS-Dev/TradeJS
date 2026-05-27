@@ -30,6 +30,16 @@ export type BreakoutRuntimeState = {
   barsSinceBreakout: number | null;
 };
 
+export type BaseContextNativeOverlay = {
+  adaptiveChannel?: BaseStrategyContextSnapshot['regime']['trend']['adaptiveChannel'];
+  trendFollow?: BaseStrategyContextSnapshot['regime']['trend']['trendFollow'];
+  srZones?: BaseStrategyContextSnapshot['structure']['srZones'];
+  liquidityZones?: BaseStrategyContextSnapshot['structure']['liquidityZones'];
+  liquidityTails?: BaseStrategyContextSnapshot['structure']['liquidityTails'];
+  volumeStructure?: BaseStrategyContextSnapshot['participation']['volumeStructure'];
+  delta?: BaseStrategyContextSnapshot['participation']['delta'];
+};
+
 const SESSION_WINDOWS: Array<{
   name: 'asia' | 'europe' | 'us';
   startMinuteUtc: number;
@@ -2253,6 +2263,7 @@ export type BuildBaseContextParams = {
   contextMa?: BaseContextContextMaInput | null;
   adaptiveChannel?: BaseContextAdaptiveChannelInput | null;
   psar?: BaseContextPsarInput | null;
+  nativeOverlay?: BaseContextNativeOverlay | null;
 };
 
 export const buildBaseContextMtfSnapshot = ({
@@ -2306,6 +2317,7 @@ export const buildBaseContextSnapshot = ({
   contextMa: precomputedContextMa,
   adaptiveChannel: precomputedAdaptiveChannel,
   psar: precomputedPsar,
+  nativeOverlay,
 }: BuildBaseContextParams): BaseStrategyContextSnapshot => {
   const atr = toNullable(baseResult.atr);
   const bbWidthPct =
@@ -2741,33 +2753,31 @@ export const buildBaseContextSnapshot = ({
     candle.close,
     atr,
   );
-  const volumeStructure = buildVolumeStructureContext(
-    candlesHistory,
-    candle.close,
-    atr,
-  );
-  const srZones = buildSrZonesContext(
-    structureWindow,
-    candle.close,
-    prevCandle?.close ?? null,
-    atr,
-  );
-  const liquidityZones = buildLiquidityZonesContext(
-    candlesHistory.slice(-180),
-    candle.close,
-    prevCandle?.close ?? null,
-    atr,
-  );
-  const liquidityTails = buildLiquidityTailsContext(
-    candlesHistory.slice(-180),
-    candle.close,
-    atr,
-  );
-  const trendFollow = buildTrendFollowContext(
-    candlesHistory.slice(-220),
-    candle.close,
-    atr,
-  );
+  const volumeStructure =
+    nativeOverlay?.volumeStructure ??
+    buildVolumeStructureContext(candlesHistory, candle.close, atr);
+  const srZones =
+    nativeOverlay?.srZones ??
+    buildSrZonesContext(
+      structureWindow,
+      candle.close,
+      prevCandle?.close ?? null,
+      atr,
+    );
+  const liquidityZones =
+    nativeOverlay?.liquidityZones ??
+    buildLiquidityZonesContext(
+      candlesHistory.slice(-180),
+      candle.close,
+      prevCandle?.close ?? null,
+      atr,
+    );
+  const liquidityTails =
+    nativeOverlay?.liquidityTails ??
+    buildLiquidityTailsContext(candlesHistory.slice(-180), candle.close, atr);
+  const trendFollow =
+    nativeOverlay?.trendFollow ??
+    buildTrendFollowContext(candlesHistory.slice(-220), candle.close, atr);
   const structureZonesContext = buildStructureZonesContext(
     swingContext,
     pivotContext,
@@ -2786,13 +2796,16 @@ export const buildBaseContextSnapshot = ({
     atr,
     precomputedContextMa,
   );
-  const adaptiveChannel = buildAdaptiveChannelContext(
-    candlesHistory,
-    candle.close,
-    atr,
-    precomputedAdaptiveChannel,
-  );
-  const deltaContext = buildDeltaContext(structureWindow);
+  const adaptiveChannel =
+    nativeOverlay?.adaptiveChannel ??
+    buildAdaptiveChannelContext(
+      candlesHistory,
+      candle.close,
+      atr,
+      precomputedAdaptiveChannel,
+    );
+  const deltaContext =
+    nativeOverlay?.delta ?? buildDeltaContext(structureWindow);
   const snapshot = {
     candle,
     prevCandle,

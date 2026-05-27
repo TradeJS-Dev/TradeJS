@@ -44,6 +44,8 @@ error.log*
 # typescript
 *.tsbuildinfo
 apps/app/next-env.d.ts
+packages/native/*.node
+packages/native/target/
 
 # app
 /data

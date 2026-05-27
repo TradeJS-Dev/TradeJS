@@ -22,6 +22,7 @@ export default defineConfig({
     '@langchain/openai',
     '@tradejs/core',
     '@tradejs/infra',
+    '@tradejs/native',
     '@tradejs/types',
     'chalk',
     'ioredis',

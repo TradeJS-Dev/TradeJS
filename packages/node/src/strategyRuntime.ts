@@ -30,6 +30,7 @@ import {
   planIndicatorCacheRestore,
   resolveIndicatorCacheRuntimeState,
 } from './indicatorCache';
+import { createBaseContextBackend } from './native/baseContextBackend';
 import {
   CreateStrategyCore,
   CreateStrategyCoreParams,
@@ -791,6 +792,7 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
     const recordRuntimeJournal = shouldRecordRuntimeJournal({ env, config });
     const strategyManifest = resolveManifest(strategyName);
     const indicatorPeriods = buildDefaultIndicatorPeriods(config as any);
+    const baseContextBackend = createBaseContextBackend();
     const hookBase = {
       connector,
       strategyName,
@@ -1136,6 +1138,7 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
       btcCoinbaseData,
       periods: indicatorPeriods,
       pluginRegistryScope: projectRoot,
+      baseContextBackend,
       initialRuntimeState: runtimeIndicatorCachePlan.restoreState,
       replayStartIndex: runtimeIndicatorCachePlan.replayStartIndex,
       sharedReplayKey:
