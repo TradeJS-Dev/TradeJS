@@ -35,6 +35,7 @@ import {
   materializeIndicatorCachePlan,
   planIndicatorCacheRestore,
 } from './indicatorCache';
+import { createBaseContextBackend } from './native/baseContextBackend';
 import { createTestConnector } from './testConnector';
 import { getTradejsProjectCwd } from './tradejsConfig';
 
@@ -559,6 +560,7 @@ export const warmBacktestIndicatorCache = async (
     end,
   });
   const periods = buildDefaultIndicatorPeriods((strategyConfig ?? {}) as any);
+  const baseContextBackend = createBaseContextBackend();
   try {
     const plan = await planIndicatorCacheRestore({
       provider: connectorName,
@@ -580,6 +582,7 @@ export const warmBacktestIndicatorCache = async (
       btcData: preparedData.btcData,
       btcBinanceData: preparedData.btcBinanceData,
       btcCoinbaseData: preparedData.btcCoinbaseData,
+      baseContextBackend,
       paramsHash: plan.paramsHash,
       restoreState: plan.restoreState,
       replayStartIndex: plan.replayStartIndex,

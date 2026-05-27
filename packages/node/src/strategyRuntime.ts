@@ -831,6 +831,7 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
             btcData,
             btcBinanceData,
             btcCoinbaseData,
+            baseContextBackend,
             ...indicatorCachePlan,
           })
         : indicatorCachePlan;
@@ -845,6 +846,7 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
         btcData,
         btcBinanceData,
         btcCoinbaseData,
+        baseContextBackend,
         paramsHash: runtimeIndicatorCachePlan.paramsHash,
         restoreState: runtimeIndicatorCachePlan.restoreState,
         replayStartIndex: runtimeIndicatorCachePlan.replayStartIndex,

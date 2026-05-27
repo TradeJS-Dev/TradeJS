@@ -247,6 +247,7 @@ describe('indicatorCache', () => {
       candle(3_000, 202),
     ];
     const restored = runtimeState(2_000);
+    const baseContextBackend = jest.fn();
 
     await materializeIndicatorCachePlan({
       provider: 'ByBit',
@@ -259,6 +260,7 @@ describe('indicatorCache', () => {
       restoreState: restored,
       replayStartIndex: 2,
       cached: false,
+      baseContextBackend,
     });
 
     expect(mockCreateIndicators).toHaveBeenCalledWith(
@@ -269,6 +271,7 @@ describe('indicatorCache', () => {
         runtimeOnly: true,
         periods: { maFast: 14 },
         initialRuntimeState: restored,
+        baseContextBackend,
       }),
     );
     expect(mockUpsertIndicatorCacheCoverageRows).toHaveBeenCalledWith([
@@ -364,6 +367,7 @@ describe('indicatorCache', () => {
       candle(2_000, 201),
       candle(3_000, 202),
     ];
+    const baseContextBackend = jest.fn();
 
     const result = resolveIndicatorCacheRuntimeState({
       provider: 'ByBit',
@@ -377,6 +381,7 @@ describe('indicatorCache', () => {
       restoreState: runtimeState(1_000),
       replayStartIndex: 1,
       cached: false,
+      baseContextBackend,
     });
 
     expect(result).toEqual(
@@ -394,6 +399,7 @@ describe('indicatorCache', () => {
         runtimeOnly: true,
         periods: { maFast: 14 },
         initialRuntimeState: runtimeState(1_000),
+        baseContextBackend,
       }),
     );
     expect(mockUpsertIndicatorCacheCoverageRows).not.toHaveBeenCalled();

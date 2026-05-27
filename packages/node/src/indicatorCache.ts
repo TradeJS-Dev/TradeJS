@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import {
+  BaseContextBackend,
   createIndicators,
   IndicatorsControllerCheckpointState,
   IndicatorPeriods,
@@ -52,6 +53,7 @@ type EnsureIndicatorCacheCoverageParams = {
   btcData: Candle[];
   btcBinanceData?: Candle[];
   btcCoinbaseData?: Candle[];
+  baseContextBackend?: BaseContextBackend;
 };
 
 type IndicatorCacheRestorePlan = {
@@ -400,6 +402,7 @@ export const materializeIndicatorCachePlan = async (
     periods: params.periods,
     btcBinanceData: params.btcBinanceData,
     btcCoinbaseData: params.btcCoinbaseData,
+    baseContextBackend: params.baseContextBackend,
     initialRuntimeState: params.restoreState ?? undefined,
   });
   if (typeof controller.checkpointRuntimeState !== 'function') {
@@ -494,6 +497,7 @@ export const resolveIndicatorCacheRuntimeState = (
     periods: params.periods,
     btcBinanceData: params.btcBinanceData,
     btcCoinbaseData: params.btcCoinbaseData,
+    baseContextBackend: params.baseContextBackend,
     initialRuntimeState: params.restoreState ?? undefined,
   });
 
