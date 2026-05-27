@@ -51,6 +51,13 @@ const mockPlanIndicatorCacheRestore = jest.fn(async (_params?: unknown) => ({
   replayStartIndex: 2,
   cached: false,
 }));
+const mockResolveIndicatorCacheRuntimeState = jest.fn((params?: any) => ({
+  paramsHash: params?.paramsHash ?? 'hash-1',
+  version: params?.version ?? 'v3',
+  restoreState: { runtimeState: 'resolved' },
+  replayStartIndex: 3,
+  cached: true,
+}));
 const mockMaterializeIndicatorCachePlan = jest.fn(
   async (_params?: unknown) => undefined,
 );
@@ -144,6 +151,8 @@ jest.mock('@tradejs/infra/ml', () => ({
 jest.mock('../indicatorCache', () => ({
   planIndicatorCacheRestore: (params: unknown) =>
     mockPlanIndicatorCacheRestore(params),
+  resolveIndicatorCacheRuntimeState: (params: unknown) =>
+    mockResolveIndicatorCacheRuntimeState(params),
   materializeIndicatorCachePlan: (params: unknown) =>
     mockMaterializeIndicatorCachePlan(params),
 }));
@@ -213,6 +222,7 @@ describe('testing backtest flow', () => {
     mockBuildAiPayload.mockClear();
     mockBuildDefaultIndicatorPeriods.mockClear();
     mockPlanIndicatorCacheRestore.mockClear();
+    mockResolveIndicatorCacheRuntimeState.mockClear();
     mockMaterializeIndicatorCachePlan.mockClear();
     mockEnrichSignalWithDerivativesContext.mockClear();
     mockTestConnector.checkSl.mockClear();
@@ -285,6 +295,7 @@ describe('testing backtest flow', () => {
       jest.fn(async () => 'HOLD'),
     ];
     const receivedSharedKeys: Array<string | undefined> = [];
+    const receivedIndicatorCachePlans: unknown[] = [];
     mockByBitConnector.kline.mockResolvedValue(data);
     mockBinanceConnector.kline.mockResolvedValue(data);
     mockCoinbaseConnector.kline.mockResolvedValue(data);
@@ -294,6 +305,7 @@ describe('testing backtest flow', () => {
     });
     mockStrategyCreator.mockImplementation(async (params: any) => {
       receivedSharedKeys.push(params.sharedIndicatorsReplayKey);
+      receivedIndicatorCachePlans.push(params.indicatorCachePlan);
       return strategies[receivedSharedKeys.length - 1];
     });
 
@@ -308,6 +320,23 @@ describe('testing backtest flow', () => {
     expect(receivedSharedKeys).toHaveLength(2);
     expect(receivedSharedKeys[0]).toBeTruthy();
     expect(receivedSharedKeys[1]).toBe(receivedSharedKeys[0]);
+    expect(mockPlanIndicatorCacheRestore).toHaveBeenCalledTimes(1);
+    expect(mockResolveIndicatorCacheRuntimeState).toHaveBeenCalledTimes(1);
+    expect(receivedIndicatorCachePlans).toEqual([
+      expect.objectContaining({
+        restoreState: { runtimeState: 'resolved' },
+        replayStartIndex: 3,
+        cached: true,
+      }),
+      expect.objectContaining({
+        restoreState: { runtimeState: 'resolved' },
+        replayStartIndex: 3,
+        cached: true,
+      }),
+    ]);
+    expect(receivedIndicatorCachePlans[0]).not.toBe(
+      receivedIndicatorCachePlans[1],
+    );
   });
 
   it('excludes the current forming candle from backtest replay data', async () => {

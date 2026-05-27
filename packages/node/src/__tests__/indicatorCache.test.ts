@@ -27,6 +27,7 @@ import {
   ensureIndicatorCacheCoverage,
   materializeIndicatorCachePlan,
   planIndicatorCacheRestore,
+  resetIndicatorCacheInMemoryState,
   resolveIndicatorCacheRuntimeState,
 } from '../indicatorCache';
 
@@ -72,6 +73,7 @@ const cacheRow = (timestamp: number, close = 100, btcClose = 200) => ({
 describe('indicatorCache', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    resetIndicatorCacheInMemoryState();
     mockDeleteIndicatorCacheObsoleteVersions.mockResolvedValue(undefined);
     mockCreateIndicators.mockImplementation(() => {
       let lastTimestamp = 0;
@@ -404,5 +406,44 @@ describe('indicatorCache', () => {
     );
     expect(mockUpsertIndicatorCacheCoverageRows).not.toHaveBeenCalled();
     expect(mockUpsertIndicatorCacheCheckpointRows).not.toHaveBeenCalled();
+  });
+
+  it('reuses runtime checkpoints for equivalent candle ranges with different array instances', () => {
+    const data = [candle(1_000, 100), candle(2_000, 101), candle(3_000, 102)];
+    const btcData = [
+      candle(1_000, 200),
+      candle(2_000, 201),
+      candle(3_000, 202),
+    ];
+
+    const first = resolveIndicatorCacheRuntimeState({
+      provider: 'ByBit',
+      symbol: 'ETHUSDT',
+      interval: 15,
+      periods: { maFast: 14 },
+      data: data as any,
+      btcData: btcData as any,
+      paramsHash: 'hash',
+      version: 'v-test',
+      restoreState: runtimeState(1_000),
+      replayStartIndex: 1,
+      cached: false,
+    });
+    const second = resolveIndicatorCacheRuntimeState({
+      provider: 'ByBit',
+      symbol: 'ETHUSDT',
+      interval: 15,
+      periods: { maFast: 14 },
+      data: data.slice() as any,
+      btcData: btcData.slice() as any,
+      paramsHash: 'hash',
+      version: 'v-test',
+      restoreState: runtimeState(1_000),
+      replayStartIndex: 1,
+      cached: false,
+    });
+
+    expect(first).toEqual(second);
+    expect(mockCreateIndicators).toHaveBeenCalledTimes(1);
   });
 });

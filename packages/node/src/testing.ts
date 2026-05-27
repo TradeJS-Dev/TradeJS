@@ -34,7 +34,9 @@ import {
 import {
   materializeIndicatorCachePlan,
   planIndicatorCacheRestore,
+  resolveIndicatorCacheRuntimeState,
 } from './indicatorCache';
+import type { IndicatorCacheRestorePlan } from './indicatorCache';
 import { createBaseContextBackend } from './native/baseContextBackend';
 import { createTestConnector } from './testConnector';
 import { getTradejsProjectCwd } from './tradejsConfig';
@@ -1203,6 +1205,59 @@ export const testingGroupInSharedCandleLoop = async (
     end,
     chunkId,
   ].join(':');
+  const baseContextBackend = createBaseContextBackend();
+  const runtimeIndicatorCachePlans = new Map<
+    string,
+    IndicatorCacheRestorePlan
+  >();
+  const cloneRuntimeIndicatorCachePlan = (
+    plan: IndicatorCacheRestorePlan,
+  ): IndicatorCacheRestorePlan => ({
+    ...plan,
+    restoreState:
+      plan.restoreState == null ? null : structuredClone(plan.restoreState),
+  });
+  const getRuntimeIndicatorCachePlan = async (test: Test) => {
+    const periods = buildDefaultIndicatorPeriods(
+      (test.strategyConfig ?? {}) as any,
+    );
+    const planKey = JSON.stringify({
+      periods,
+      backend: baseContextBackend ? 'rust' : 'ts',
+    });
+    const cachedPlan = runtimeIndicatorCachePlans.get(planKey);
+    if (cachedPlan) {
+      return cloneRuntimeIndicatorCachePlan(cachedPlan);
+    }
+
+    const restorePlan = await planIndicatorCacheRestore({
+      provider: connectorName,
+      symbol,
+      interval: Number(BACKTEST_INTERVAL),
+      periods,
+      data: prevData,
+      btcData: btcPrevData,
+      btcBinanceData,
+      btcCoinbaseData,
+    });
+    const runtimePlan = resolveIndicatorCacheRuntimeState({
+      provider: connectorName,
+      symbol,
+      interval: Number(BACKTEST_INTERVAL),
+      periods,
+      data: prevData,
+      btcData: btcPrevData,
+      btcBinanceData,
+      btcCoinbaseData,
+      baseContextBackend,
+      ...restorePlan,
+    });
+    runtimeIndicatorCachePlans.set(
+      planKey,
+      cloneRuntimeIndicatorCachePlan(runtimePlan),
+    );
+    return cloneRuntimeIndicatorCachePlan(runtimePlan);
+  };
 
   type Runner = {
     test: Test;
@@ -1235,6 +1290,7 @@ export const testingGroupInSharedCandleLoop = async (
           btcCoinbaseData,
           connector: testConnector,
           sharedIndicatorsReplayKey,
+          indicatorCachePlan: await getRuntimeIndicatorCachePlan(test),
         }),
       );
 

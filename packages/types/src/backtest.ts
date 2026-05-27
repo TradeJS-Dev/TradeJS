@@ -38,6 +38,13 @@ export interface StrategyCreatorParams {
   btcBinanceData?: KlineChartData;
   btcCoinbaseData?: KlineChartData;
   sharedIndicatorsReplayKey?: string;
+  indicatorCachePlan?: {
+    paramsHash: string;
+    version: string;
+    restoreState: unknown;
+    replayStartIndex: number;
+    cached: boolean;
+  };
 }
 
 export type StrategyCreator = (

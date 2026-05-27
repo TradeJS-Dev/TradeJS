@@ -30,6 +30,7 @@ import {
   planIndicatorCacheRestore,
   resolveIndicatorCacheRuntimeState,
 } from './indicatorCache';
+import type { IndicatorCacheRestorePlan } from './indicatorCache';
 import { createBaseContextBackend } from './native/baseContextBackend';
 import {
   CreateStrategyCore,
@@ -778,6 +779,7 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
     btcCoinbaseData,
     connector,
     sharedIndicatorsReplayKey,
+    indicatorCachePlan: precomputedIndicatorCachePlan,
   }) => {
     const { config, isConfigFromBacktest } = await resolveStrategyConfig({
       strategyName,
@@ -810,22 +812,30 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
     const getProjectHookList = (stage: keyof TradejsConfigHooks) =>
       normalizeConfigHookList(projectHooks?.[stage] as any);
 
-    const indicatorCachePlan = await planIndicatorCacheRestore({
-      provider: connectorName,
-      symbol,
-      interval: Number(config.INTERVAL ?? '15'),
-      periods: indicatorPeriods,
-      data,
-      btcData,
-      btcBinanceData,
-      btcCoinbaseData,
-    });
+    const interval = Number(config.INTERVAL ?? '15');
+    const resolvedPrecomputedIndicatorCachePlan =
+      env === 'BACKTEST' && precomputedIndicatorCachePlan
+        ? (precomputedIndicatorCachePlan as IndicatorCacheRestorePlan)
+        : null;
+    const indicatorCachePlan =
+      resolvedPrecomputedIndicatorCachePlan ??
+      (await planIndicatorCacheRestore({
+        provider: connectorName,
+        symbol,
+        interval,
+        periods: indicatorPeriods,
+        data,
+        btcData,
+        btcBinanceData,
+        btcCoinbaseData,
+      }));
     const runtimeIndicatorCachePlan =
-      env === 'BACKTEST'
+      resolvedPrecomputedIndicatorCachePlan ??
+      (env === 'BACKTEST'
         ? resolveIndicatorCacheRuntimeState({
             provider: connectorName,
             symbol,
-            interval: Number(config.INTERVAL ?? '15'),
+            interval,
             periods: indicatorPeriods,
             data,
             btcData,
@@ -834,13 +844,13 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
             baseContextBackend,
             ...indicatorCachePlan,
           })
-        : indicatorCachePlan;
+        : indicatorCachePlan);
 
     if (env !== 'BACKTEST') {
       await materializeIndicatorCachePlan({
         provider: connectorName,
         symbol,
-        interval: Number(config.INTERVAL ?? '15'),
+        interval,
         periods: indicatorPeriods,
         data,
         btcData,
