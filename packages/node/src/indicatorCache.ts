@@ -8,11 +8,13 @@ import {
 import { Candle } from '@tradejs/types';
 import {
   deleteAllIndicatorCacheObsoleteVersions,
+  getIndicatorCacheManifest,
   getIndicatorCacheRange,
   getLatestIndicatorCacheCheckpointAtOrBefore,
   resetIndicatorCacheTables,
   upsertIndicatorCacheCheckpointRows,
   upsertIndicatorCacheCoverageRows,
+  upsertIndicatorCacheManifest,
 } from '@tradejs/infra/timescale';
 
 const INDICATOR_CACHE_VERSION = 'v12';
@@ -33,6 +35,9 @@ const candleRangeDigestCache = new WeakMap<Candle[], string>();
 type IndicatorCacheProfileStats = {
   planCalls: number;
   planCacheHits: number;
+  manifestHits: number;
+  manifestReadMs: number;
+  manifestUpsertMs: number;
   planMs: number;
   cacheReadMs: number;
   compareMs: number;
@@ -60,6 +65,9 @@ type IndicatorCacheProfileStats = {
 const indicatorCacheProfile: IndicatorCacheProfileStats = {
   planCalls: 0,
   planCacheHits: 0,
+  manifestHits: 0,
+  manifestReadMs: 0,
+  manifestUpsertMs: 0,
   planMs: 0,
   cacheReadMs: 0,
   compareMs: 0,
@@ -102,6 +110,8 @@ if (INDICATOR_CACHE_PROFILE) {
             plan: {
               calls: stats.planCalls,
               cacheHits: stats.planCacheHits,
+              manifestHits: stats.manifestHits,
+              manifestReadMs: round(stats.manifestReadMs),
               totalMs: round(stats.planMs),
               cacheReadMs: round(stats.cacheReadMs),
               compareMs: round(stats.compareMs),
@@ -117,6 +127,7 @@ if (INDICATOR_CACHE_PROFILE) {
               checkpointBuildMs: round(stats.checkpointBuildMs),
               coverageUpsertMs: round(stats.coverageUpsertMs),
               checkpointUpsertMs: round(stats.checkpointUpsertMs),
+              manifestUpsertMs: round(stats.manifestUpsertMs),
               replayCandles: stats.replayCandles,
               coverageRows: stats.coverageRows,
               checkpointRows: stats.checkpointRows,
@@ -190,6 +201,7 @@ export type IndicatorCacheRestorePlan = {
   restoreState: IndicatorsControllerCheckpointState | null;
   replayStartIndex: number;
   cached: boolean;
+  manifestCached?: boolean;
 };
 
 type IndicatorCacheCoverageSnapshot = {
@@ -261,23 +273,26 @@ export const buildIndicatorCacheParamsHash = (
     btcProvider?: string;
     btcBinanceProvider?: string;
     btcCoinbaseProvider?: string;
+    baseContextBackend?: BaseContextBackend;
   },
-) =>
-  createHash('sha256')
-    .update(
-      JSON.stringify({
-        version: INDICATOR_CACHE_VERSION,
-        provider: params.provider,
-        interval: params.interval,
-        periods: toStablePeriods(params.periods),
-        references: {
-          btcProvider: params.btcProvider ?? null,
-          btcBinanceProvider: params.btcBinanceProvider ?? null,
-          btcCoinbaseProvider: params.btcCoinbaseProvider ?? null,
-        },
-      }),
-    )
-    .digest('hex');
+) => {
+  const payload: Record<string, unknown> = {
+    version: INDICATOR_CACHE_VERSION,
+    provider: params.provider,
+    interval: params.interval,
+    periods: toStablePeriods(params.periods),
+    references: {
+      btcProvider: params.btcProvider ?? null,
+      btcBinanceProvider: params.btcBinanceProvider ?? null,
+      btcCoinbaseProvider: params.btcCoinbaseProvider ?? null,
+    },
+  };
+  if (params.baseContextBackend) {
+    payload.baseContextBackend = 'rust';
+  }
+
+  return createHash('sha256').update(JSON.stringify(payload)).digest('hex');
+};
 
 export const ensureIndicatorCacheCoverage = async ({
   provider,
@@ -312,6 +327,7 @@ export const ensureIndicatorCacheCoverage = async ({
     restoreState: restorePlan.restoreState,
     replayStartIndex: restorePlan.replayStartIndex,
     cached: restorePlan.cached,
+    manifestCached: restorePlan.manifestCached,
   });
   return {
     paramsHash: restorePlan.paramsHash,
@@ -340,6 +356,54 @@ const buildCandleRangeDigest = (candles: Candle[] | undefined): string => {
   const digest = hash.digest('hex');
   candleRangeDigestCache.set(candles, digest);
   return digest;
+};
+
+const buildIndicatorCacheRangeDigest = (params: {
+  data: Candle[];
+  btcData: Candle[];
+  btcBinanceData?: Candle[];
+  btcCoinbaseData?: Candle[];
+}) =>
+  createHash('sha1')
+    .update(
+      [
+        buildCandleRangeDigest(params.data),
+        buildCandleRangeDigest(params.btcData),
+        buildCandleRangeDigest(params.btcBinanceData),
+        buildCandleRangeDigest(params.btcCoinbaseData),
+      ].join(':'),
+    )
+    .digest('hex');
+
+const upsertFullRangeManifest = async (params: {
+  provider: string;
+  symbol: string;
+  interval: number;
+  paramsHash: string;
+  data: Candle[];
+  btcData: Candle[];
+  btcBinanceData?: Candle[];
+  btcCoinbaseData?: Candle[];
+}) => {
+  if (!params.data.length) return;
+
+  const startedAt = INDICATOR_CACHE_PROFILE ? profileNow() : PROFILE_ZERO;
+  const lastCandle = params.data[params.data.length - 1];
+  await upsertIndicatorCacheManifest({
+    provider: params.provider,
+    symbol: params.symbol,
+    interval: params.interval,
+    paramsHash: params.paramsHash,
+    version: INDICATOR_CACHE_VERSION,
+    startTs: new Date(params.data[0].timestamp),
+    endTs: new Date(lastCandle.timestamp),
+    rowCount: params.data.length,
+    rangeDigest: buildIndicatorCacheRangeDigest(params),
+    lastCheckpointTs: new Date(lastCandle.timestamp),
+  });
+  if (INDICATOR_CACHE_PROFILE) {
+    indicatorCacheProfile.manifestUpsertMs += profileElapsedMs(startedAt);
+  }
 };
 
 const getReferenceCandleSignatureAt = (
@@ -406,6 +470,7 @@ export const planIndicatorCacheRestore = async ({
   btcData,
   btcBinanceData,
   btcCoinbaseData,
+  baseContextBackend,
 }: EnsureIndicatorCacheCoverageParams): Promise<IndicatorCacheRestorePlan> => {
   const profileStartedAt = INDICATOR_CACHE_PROFILE
     ? profileNow()
@@ -420,6 +485,7 @@ export const planIndicatorCacheRestore = async ({
     btcProvider: provider,
     btcBinanceProvider: btcBinanceData?.length ? 'binance' : undefined,
     btcCoinbaseProvider: btcCoinbaseData?.length ? 'coinbase' : undefined,
+    baseContextBackend,
   });
 
   if (!data.length) {
@@ -449,6 +515,75 @@ export const planIndicatorCacheRestore = async ({
       indicatorCacheProfile.planMs += profileElapsedMs(profileStartedAt);
     }
     return cloneIndicatorCacheRestorePlan(cachedPlan);
+  }
+
+  const expectedRangeDigest = buildIndicatorCacheRangeDigest({
+    data,
+    btcData,
+    btcBinanceData,
+    btcCoinbaseData,
+  });
+  const manifestReadStartedAt = INDICATOR_CACHE_PROFILE
+    ? profileNow()
+    : PROFILE_ZERO;
+  const manifest = await getIndicatorCacheManifest({
+    provider,
+    symbol,
+    interval,
+    paramsHash,
+    version: INDICATOR_CACHE_VERSION,
+    startMs: data[0].timestamp,
+    endMs: data[data.length - 1].timestamp,
+    rowCount: data.length,
+  });
+  if (INDICATOR_CACHE_PROFILE) {
+    indicatorCacheProfile.manifestReadMs += profileElapsedMs(
+      manifestReadStartedAt,
+    );
+  }
+  if (manifest?.rangeDigest === expectedRangeDigest) {
+    const checkpointReadStartedAt = INDICATOR_CACHE_PROFILE
+      ? profileNow()
+      : PROFILE_ZERO;
+    const checkpoint = await getLatestIndicatorCacheCheckpointAtOrBefore({
+      provider,
+      symbol,
+      interval,
+      paramsHash,
+      version: INDICATOR_CACHE_VERSION,
+      tsMs: manifest.lastCheckpointTs.getTime(),
+    });
+    if (INDICATOR_CACHE_PROFILE) {
+      indicatorCacheProfile.checkpointReadMs += profileElapsedMs(
+        checkpointReadStartedAt,
+      );
+    }
+    const checkpointSnapshot =
+      (checkpoint?.snapshot as IndicatorCacheCheckpointSnapshot | null) ?? null;
+    const lastTimestamp = data[data.length - 1].timestamp;
+    if (
+      checkpointSnapshot?.runtimeState != null &&
+      checkpointSnapshot.timestamp === lastTimestamp &&
+      manifest.lastCheckpointTs.getTime() === lastTimestamp
+    ) {
+      const plan: IndicatorCacheRestorePlan = {
+        paramsHash,
+        version: INDICATOR_CACHE_VERSION,
+        restoreState: checkpointSnapshot.runtimeState,
+        replayStartIndex: data.length,
+        cached: true,
+        manifestCached: true,
+      };
+      indicatorRestorePlanCache.set(
+        planCacheKey,
+        cloneIndicatorCacheRestorePlan(plan),
+      );
+      if (INDICATOR_CACHE_PROFILE) {
+        indicatorCacheProfile.manifestHits += 1;
+        indicatorCacheProfile.planMs += profileElapsedMs(profileStartedAt);
+      }
+      return cloneIndicatorCacheRestorePlan(plan);
+    }
   }
 
   const cacheReadStartedAt = INDICATOR_CACHE_PROFILE
@@ -549,7 +684,11 @@ export const materializeIndicatorCachePlan = async (
   params: EnsureIndicatorCacheCoverageParams &
     Pick<
       IndicatorCacheRestorePlan,
-      'paramsHash' | 'restoreState' | 'replayStartIndex' | 'cached'
+      | 'paramsHash'
+      | 'restoreState'
+      | 'replayStartIndex'
+      | 'cached'
+      | 'manifestCached'
     >,
 ) => {
   const profileStartedAt = INDICATOR_CACHE_PROFILE
@@ -563,6 +702,12 @@ export const materializeIndicatorCachePlan = async (
   }
 
   if (params.cached && params.replayStartIndex >= params.data.length) {
+    if (!params.manifestCached) {
+      await upsertFullRangeManifest(params);
+    }
+    if (INDICATOR_CACHE_PROFILE) {
+      indicatorCacheProfile.materializeMs += profileElapsedMs(profileStartedAt);
+    }
     return;
   }
 
@@ -686,6 +831,9 @@ export const materializeIndicatorCachePlan = async (
     indicatorCacheProfile.checkpointUpsertMs += profileElapsedMs(
       checkpointUpsertStartedAt,
     );
+  }
+  await upsertFullRangeManifest(params);
+  if (INDICATOR_CACHE_PROFILE) {
     indicatorCacheProfile.materializeMs += profileElapsedMs(profileStartedAt);
   }
 };

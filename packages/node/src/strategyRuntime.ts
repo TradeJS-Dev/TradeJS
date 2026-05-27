@@ -828,6 +828,7 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
         btcData,
         btcBinanceData,
         btcCoinbaseData,
+        baseContextBackend,
       }));
     const runtimeIndicatorCachePlan =
       resolvedPrecomputedIndicatorCachePlan ??
@@ -861,6 +862,7 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
         restoreState: runtimeIndicatorCachePlan.restoreState,
         replayStartIndex: runtimeIndicatorCachePlan.replayStartIndex,
         cached: runtimeIndicatorCachePlan.cached,
+        manifestCached: runtimeIndicatorCachePlan.manifestCached,
       });
     }
 

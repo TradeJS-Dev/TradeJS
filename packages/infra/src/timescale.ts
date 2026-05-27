@@ -67,7 +67,20 @@ export type IndicatorCacheCheckpointRow = {
   snapshot: unknown;
 };
 
-export type IndicatorCacheCleanupTable = 'coverage' | 'checkpoint';
+export type IndicatorCacheManifestRow = {
+  provider: string;
+  symbol: string;
+  interval: number;
+  paramsHash: string;
+  version: string;
+  startTs: Date;
+  endTs: Date;
+  rowCount: number;
+  rangeDigest: string;
+  lastCheckpointTs: Date;
+};
+
+export type IndicatorCacheCleanupTable = 'coverage' | 'checkpoint' | 'manifest';
 export type IndicatorCacheCleanupProgress = {
   table: IndicatorCacheCleanupTable;
   phase: 'index' | 'count' | 'delete' | 'done';
@@ -82,10 +95,12 @@ let derivativesSchemaReady = false;
 let spreadSchemaReady = false;
 let indicatorCacheSchemaReady = false;
 let indicatorCacheCheckpointSchemaReady = false;
+let indicatorCacheManifestSchemaReady = false;
 let derivativesSchemaReadyPromise: Promise<void> | null = null;
 let spreadSchemaReadyPromise: Promise<void> | null = null;
 let indicatorCacheSchemaReadyPromise: Promise<void> | null = null;
 let indicatorCacheCheckpointSchemaReadyPromise: Promise<void> | null = null;
+let indicatorCacheManifestSchemaReadyPromise: Promise<void> | null = null;
 
 const INDICATOR_CACHE_JSONB_UPSERT_MAX_ROWS = 50_000;
 
@@ -100,10 +115,12 @@ export const closeTimescalePool = async (): Promise<void> => {
   spreadSchemaReady = false;
   indicatorCacheSchemaReady = false;
   indicatorCacheCheckpointSchemaReady = false;
+  indicatorCacheManifestSchemaReady = false;
   derivativesSchemaReadyPromise = null;
   spreadSchemaReadyPromise = null;
   indicatorCacheSchemaReadyPromise = null;
   indicatorCacheCheckpointSchemaReadyPromise = null;
+  indicatorCacheManifestSchemaReadyPromise = null;
   await pool.end();
 };
 
@@ -111,6 +128,7 @@ const DERIVATIVES_SCHEMA_LOCK_KEY = 610001;
 const SPREAD_SCHEMA_LOCK_KEY = 610002;
 const INDICATOR_CACHE_SCHEMA_LOCK_KEY = 610003;
 const INDICATOR_CACHE_CHECKPOINT_SCHEMA_LOCK_KEY = 610004;
+const INDICATOR_CACHE_MANIFEST_SCHEMA_LOCK_KEY = 610005;
 
 const normalizeCandleProvider = (provider: string) =>
   String(provider || '')
@@ -447,9 +465,69 @@ const ensureIndicatorCacheCheckpointSchema = async () => {
   await indicatorCacheCheckpointSchemaReadyPromise;
 };
 
+const ensureIndicatorCacheManifestSchema = async () => {
+  if (indicatorCacheManifestSchemaReady) return;
+  if (indicatorCacheManifestSchemaReadyPromise) {
+    await indicatorCacheManifestSchemaReadyPromise;
+    return;
+  }
+
+  const pool = getPool();
+  indicatorCacheManifestSchemaReadyPromise = withSchemaLock(
+    INDICATOR_CACHE_MANIFEST_SCHEMA_LOCK_KEY,
+    async () => {
+      if (indicatorCacheManifestSchemaReady) return;
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS indicator_cache_manifest (
+          provider text NOT NULL,
+          symbol text NOT NULL,
+          interval integer NOT NULL,
+          params_hash text NOT NULL,
+          version text NOT NULL,
+          start_ts timestamptz NOT NULL,
+          end_ts timestamptz NOT NULL,
+          row_count integer NOT NULL,
+          range_digest text NOT NULL,
+          last_checkpoint_ts timestamptz NOT NULL,
+          ingested_at timestamptz NOT NULL DEFAULT now(),
+          PRIMARY KEY (
+            provider,
+            symbol,
+            interval,
+            params_hash,
+            version,
+            start_ts,
+            end_ts,
+            row_count
+          )
+        )
+      `);
+      await pool.query(`
+        CREATE INDEX IF NOT EXISTS indicator_cache_manifest_lookup_idx
+        ON indicator_cache_manifest (
+          provider,
+          symbol,
+          interval,
+          params_hash,
+          version,
+          start_ts,
+          end_ts,
+          row_count
+        )
+      `);
+      indicatorCacheManifestSchemaReady = true;
+    },
+  ).finally(() => {
+    indicatorCacheManifestSchemaReadyPromise = null;
+  });
+
+  await indicatorCacheManifestSchemaReadyPromise;
+};
+
 export const ensureIndicatorCacheTables = async () => {
   await ensureIndicatorCacheSchema();
   await ensureIndicatorCacheCheckpointSchema();
+  await ensureIndicatorCacheManifestSchema();
 };
 
 export async function upsertDerivatives(rows: DerivativesRow[]) {
@@ -1245,6 +1323,56 @@ export async function upsertIndicatorCacheCheckpointRows(
   );
 }
 
+export async function upsertIndicatorCacheManifest(
+  row: IndicatorCacheManifestRow,
+) {
+  await ensureIndicatorCacheManifestSchema();
+
+  const pool = getPool();
+  await pool.query(
+    `
+      INSERT INTO indicator_cache_manifest (
+        provider,
+        symbol,
+        interval,
+        params_hash,
+        version,
+        start_ts,
+        end_ts,
+        row_count,
+        range_digest,
+        last_checkpoint_ts
+      )
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+      ON CONFLICT (
+        provider,
+        symbol,
+        interval,
+        params_hash,
+        version,
+        start_ts,
+        end_ts,
+        row_count
+      ) DO UPDATE SET
+        range_digest = EXCLUDED.range_digest,
+        last_checkpoint_ts = EXCLUDED.last_checkpoint_ts,
+        ingested_at = now()
+    `,
+    [
+      normalizeCandleProvider(row.provider),
+      normalizeCandleSymbol(row.symbol),
+      row.interval,
+      String(row.paramsHash),
+      String(row.version),
+      row.startTs,
+      row.endTs,
+      row.rowCount,
+      row.rangeDigest,
+      row.lastCheckpointTs,
+    ],
+  );
+}
+
 export async function deleteIndicatorCacheObsoleteVersions(params: {
   provider: string;
   symbol: string;
@@ -1254,6 +1382,7 @@ export async function deleteIndicatorCacheObsoleteVersions(params: {
   await Promise.all([
     ensureIndicatorCacheSchema(),
     ensureIndicatorCacheCheckpointSchema(),
+    ensureIndicatorCacheManifestSchema(),
   ]);
 
   const pool = getPool();
@@ -1281,10 +1410,24 @@ export async function deleteIndicatorCacheObsoleteVersions(params: {
     `,
     [normalizedProvider, normalizedSymbol, params.interval, params.keepVersion],
   );
+
+  await pool.query(
+    `
+      DELETE FROM indicator_cache_manifest
+      WHERE provider = $1
+        AND symbol = $2
+        AND interval = $3
+        AND version <> $4
+    `,
+    [normalizedProvider, normalizedSymbol, params.interval, params.keepVersion],
+  );
 }
 
 const countObsoleteIndicatorCacheRows = async (params: {
-  tableName: 'indicator_cache' | 'indicator_cache_checkpoint';
+  tableName:
+    | 'indicator_cache'
+    | 'indicator_cache_checkpoint'
+    | 'indicator_cache_manifest';
   keepVersion: string;
 }) => {
   const pool = getPool();
@@ -1300,7 +1443,10 @@ const countObsoleteIndicatorCacheRows = async (params: {
 };
 
 const deleteObsoleteIndicatorCacheBatch = async (params: {
-  tableName: 'indicator_cache' | 'indicator_cache_checkpoint';
+  tableName:
+    | 'indicator_cache'
+    | 'indicator_cache_checkpoint'
+    | 'indicator_cache_manifest';
   keepVersion: string;
   batchSize: number;
 }) => {
@@ -1322,7 +1468,10 @@ const deleteObsoleteIndicatorCacheBatch = async (params: {
 
 const deleteObsoleteIndicatorCacheTable = async (params: {
   table: IndicatorCacheCleanupTable;
-  tableName: 'indicator_cache' | 'indicator_cache_checkpoint';
+  tableName:
+    | 'indicator_cache'
+    | 'indicator_cache_checkpoint'
+    | 'indicator_cache_manifest';
   keepVersion: string;
   batchSize: number;
   onProgress?: (progress: IndicatorCacheCleanupProgress) => void;
@@ -1387,6 +1536,7 @@ export async function deleteAllIndicatorCacheObsoleteVersions(params: {
   await Promise.all([
     ensureIndicatorCacheSchema(),
     ensureIndicatorCacheCheckpointSchema(),
+    ensureIndicatorCacheManifestSchema(),
   ]);
 
   const pool = getPool();
@@ -1424,6 +1574,23 @@ export async function deleteAllIndicatorCacheObsoleteVersions(params: {
     totalRows: 2,
     batchRows: 1,
   });
+  params.onProgress?.({
+    table: 'manifest',
+    phase: 'index',
+    deletedRows: 2,
+    totalRows: 3,
+  });
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS indicator_cache_manifest_version_cleanup_idx
+    ON indicator_cache_manifest (version)
+  `);
+  params.onProgress?.({
+    table: 'manifest',
+    phase: 'index',
+    deletedRows: 3,
+    totalRows: 3,
+    batchRows: 1,
+  });
 
   const batchSize = Math.max(1, Math.trunc(params.batchSize ?? 50_000));
   const coverageRows = await deleteObsoleteIndicatorCacheTable({
@@ -1440,10 +1607,18 @@ export async function deleteAllIndicatorCacheObsoleteVersions(params: {
     batchSize,
     onProgress: params.onProgress,
   });
+  const manifestRows = await deleteObsoleteIndicatorCacheTable({
+    table: 'manifest',
+    tableName: 'indicator_cache_manifest',
+    keepVersion: params.keepVersion,
+    batchSize,
+    onProgress: params.onProgress,
+  });
 
   return {
     coverageRows,
     checkpointRows,
+    manifestRows,
   };
 }
 
@@ -1454,15 +1629,25 @@ export async function resetIndicatorCacheTables() {
     await withSchemaLock(
       INDICATOR_CACHE_CHECKPOINT_SCHEMA_LOCK_KEY,
       async () => {
-        indicatorCacheSchemaReady = false;
-        indicatorCacheCheckpointSchemaReady = false;
-        indicatorCacheSchemaReadyPromise = null;
-        indicatorCacheCheckpointSchemaReadyPromise = null;
+        await withSchemaLock(
+          INDICATOR_CACHE_MANIFEST_SCHEMA_LOCK_KEY,
+          async () => {
+            indicatorCacheSchemaReady = false;
+            indicatorCacheCheckpointSchemaReady = false;
+            indicatorCacheManifestSchemaReady = false;
+            indicatorCacheSchemaReadyPromise = null;
+            indicatorCacheCheckpointSchemaReadyPromise = null;
+            indicatorCacheManifestSchemaReadyPromise = null;
 
-        await pool.query(
-          'DROP TABLE IF EXISTS indicator_cache_checkpoint CASCADE',
+            await pool.query(
+              'DROP TABLE IF EXISTS indicator_cache_checkpoint CASCADE',
+            );
+            await pool.query(
+              'DROP TABLE IF EXISTS indicator_cache_manifest CASCADE',
+            );
+            await pool.query('DROP TABLE IF EXISTS indicator_cache CASCADE');
+          },
         );
-        await pool.query('DROP TABLE IF EXISTS indicator_cache CASCADE');
       },
     );
   });
@@ -1470,6 +1655,7 @@ export async function resetIndicatorCacheTables() {
   await Promise.all([
     ensureIndicatorCacheSchema(),
     ensureIndicatorCacheCheckpointSchema(),
+    ensureIndicatorCacheManifestSchema(),
   ]);
 }
 
@@ -1568,6 +1754,72 @@ export async function getIndicatorCacheRange(params: {
     ts: row.ts,
     snapshot: row.snapshot,
   }));
+}
+
+export async function getIndicatorCacheManifest(params: {
+  provider: string;
+  symbol: string;
+  interval: number;
+  paramsHash: string;
+  version: string;
+  startMs: number;
+  endMs: number;
+  rowCount: number;
+}) {
+  await ensureIndicatorCacheManifestSchema();
+
+  const pool = getPool();
+  const normalizedProvider = normalizeCandleProvider(params.provider);
+  const normalizedSymbol = normalizeCandleSymbol(params.symbol);
+  const sql = `
+    SELECT
+      start_ts,
+      end_ts,
+      row_count,
+      range_digest,
+      last_checkpoint_ts
+    FROM indicator_cache_manifest
+    WHERE provider = $1
+      AND symbol = $2
+      AND interval = $3
+      AND params_hash = $4
+      AND version = $5
+      AND start_ts = to_timestamp($6/1000.0)
+      AND end_ts = to_timestamp($7/1000.0)
+      AND row_count = $8
+    LIMIT 1
+  `;
+  const res = await pool.query(sql, [
+    normalizedProvider,
+    normalizedSymbol,
+    params.interval,
+    params.paramsHash,
+    params.version,
+    params.startMs,
+    params.endMs,
+    params.rowCount,
+  ]);
+
+  const row = (
+    res.rows as Array<{
+      start_ts: Date;
+      end_ts: Date;
+      row_count: number | string;
+      range_digest: string;
+      last_checkpoint_ts: Date;
+    }>
+  )[0];
+  if (!row) {
+    return null;
+  }
+
+  return {
+    startTs: row.start_ts,
+    endTs: row.end_ts,
+    rowCount: Number(row.row_count),
+    rangeDigest: row.range_digest,
+    lastCheckpointTs: row.last_checkpoint_ts,
+  };
 }
 
 export async function getLatestIndicatorCacheCheckpointAtOrBefore(params: {

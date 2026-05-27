@@ -201,6 +201,7 @@ describe('timescale candle helpers', () => {
     const {
       upsertIndicatorCacheCheckpointRows,
       upsertIndicatorCacheCoverageRows,
+      upsertIndicatorCacheManifest,
     } = await import('@tradejs/infra/timescale');
 
     await upsertIndicatorCacheCoverageRows([
@@ -225,6 +226,18 @@ describe('timescale candle helpers', () => {
         snapshot: { runtimeState: { seed: 1 } },
       },
     ]);
+    await upsertIndicatorCacheManifest({
+      provider: 'ByBit',
+      symbol: 'btcusdt',
+      interval: 15,
+      paramsHash: 'hash-1',
+      version: 'v1',
+      startTs: new Date(1_000),
+      endTs: new Date(2_000),
+      rowCount: 2,
+      rangeDigest: 'digest-1',
+      lastCheckpointTs: new Date(2_000),
+    });
 
     expect(query).toHaveBeenCalledWith('SELECT pg_advisory_lock($1)', [610003]);
     expect(query).toHaveBeenCalledWith(
@@ -285,6 +298,21 @@ describe('timescale candle helpers', () => {
     ]);
     expect(checkpointInsertCall?.[0]).toEqual(
       expect.stringContaining('FROM jsonb_to_recordset($1::jsonb)'),
+    );
+    expect(query).toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO indicator_cache_manifest'),
+      [
+        'bybit',
+        'BTCUSDT',
+        15,
+        'hash-1',
+        'v1',
+        new Date(1_000),
+        new Date(2_000),
+        2,
+        'digest-1',
+        new Date(2_000),
+      ],
     );
   });
 
@@ -386,7 +414,7 @@ describe('timescale candle helpers', () => {
     ]);
   });
 
-  it('creates both indicator cache tables through the explicit migration helper', async () => {
+  it('creates indicator cache tables through the explicit migration helper', async () => {
     const query = jest.fn().mockResolvedValue({ rows: [] });
 
     jest.doMock('pg', () => ({
@@ -420,6 +448,15 @@ describe('timescale candle helpers', () => {
     );
     expect(query).toHaveBeenCalledWith('SELECT pg_advisory_unlock($1)', [
       610004,
+    ]);
+    expect(query).toHaveBeenCalledWith('SELECT pg_advisory_lock($1)', [610005]);
+    expect(query).toHaveBeenCalledWith(
+      expect.stringContaining(
+        'CREATE TABLE IF NOT EXISTS indicator_cache_manifest',
+      ),
+    );
+    expect(query).toHaveBeenCalledWith('SELECT pg_advisory_unlock($1)', [
+      610005,
     ]);
   });
 
@@ -460,8 +497,21 @@ describe('timescale candle helpers', () => {
     expect(createTableCalls).toBe(1);
   });
 
-  it('reads indicator cache coverage, range, and latest checkpoint with provider/params/version filters', async () => {
+  it('reads indicator cache coverage, range, manifest, and latest checkpoint with provider/params/version filters', async () => {
     const query = jest.fn(async (sql: string) => {
+      if (sql.includes('FROM indicator_cache_manifest')) {
+        return {
+          rows: [
+            {
+              start_ts: new Date(1_000),
+              end_ts: new Date(2_000),
+              row_count: '2',
+              range_digest: 'digest-1',
+              last_checkpoint_ts: new Date(2_000),
+            },
+          ],
+        };
+      }
       if (sql.includes('COUNT(*)::int AS count')) {
         return { rows: [{ min: '1000', max: '2000', count: '3' }] };
       }
@@ -489,6 +539,7 @@ describe('timescale candle helpers', () => {
 
     const {
       getIndicatorCacheCoverage,
+      getIndicatorCacheManifest,
       getIndicatorCacheRange,
       getLatestIndicatorCacheCheckpointAtOrBefore,
     } = await import('@tradejs/infra/timescale');
@@ -522,6 +573,25 @@ describe('timescale candle helpers', () => {
       },
     ]);
     await expect(
+      getIndicatorCacheManifest({
+        provider: 'ByBit',
+        symbol: 'btcusdt',
+        interval: 15,
+        paramsHash: 'hash-1',
+        version: 'v1',
+        startMs: 1_000,
+        endMs: 2_000,
+        rowCount: 2,
+      }),
+    ).resolves.toEqual({
+      startTs: new Date(1_000),
+      endTs: new Date(2_000),
+      rowCount: 2,
+      rangeDigest: 'digest-1',
+      lastCheckpointTs: new Date(2_000),
+    });
+
+    await expect(
       getLatestIndicatorCacheCheckpointAtOrBefore({
         provider: 'ByBit',
         symbol: 'btcusdt',
@@ -542,6 +612,10 @@ describe('timescale candle helpers', () => {
     expect(query).toHaveBeenCalledWith(
       expect.stringContaining('FROM indicator_cache'),
       ['bybit', 'BTCUSDT', 15, 'hash-1', 'v1', 1000, 2000],
+    );
+    expect(query).toHaveBeenCalledWith(
+      expect.stringContaining('FROM indicator_cache_manifest'),
+      ['bybit', 'BTCUSDT', 15, 'hash-1', 'v1', 1000, 2000, 2],
     );
     expect(query).toHaveBeenCalledWith(
       expect.stringContaining('FROM indicator_cache_checkpoint'),
@@ -623,6 +697,12 @@ describe('timescale candle helpers', () => {
     const query = jest.fn(async (sql: string) => {
       if (
         sql.includes('COUNT(*)::int AS count') &&
+        sql.includes('FROM indicator_cache_manifest')
+      ) {
+        return { rows: [{ count: 1 }] };
+      }
+      if (
+        sql.includes('COUNT(*)::int AS count') &&
         sql.includes('FROM indicator_cache_checkpoint')
       ) {
         return { rows: [{ count: 2 }] };
@@ -638,6 +718,12 @@ describe('timescale candle helpers', () => {
         sql.includes('version <> $1')
       ) {
         return { rows: [], rowCount: 2 };
+      }
+      if (
+        sql.includes('DELETE FROM indicator_cache_manifest') &&
+        sql.includes('version <> $1')
+      ) {
+        return { rows: [], rowCount: 1 };
       }
       if (
         sql.includes('DELETE FROM indicator_cache') &&
@@ -668,6 +754,7 @@ describe('timescale candle helpers', () => {
     ).resolves.toEqual({
       coverageRows: 3,
       checkpointRows: 2,
+      manifestRows: 1,
     });
     expect(query).toHaveBeenCalledWith(
       expect.stringMatching(
@@ -680,6 +767,10 @@ describe('timescale candle helpers', () => {
     );
     expect(query).toHaveBeenCalledWith(
       expect.stringContaining('DELETE FROM indicator_cache_checkpoint'),
+      ['v8', 10],
+    );
+    expect(query).toHaveBeenCalledWith(
+      expect.stringContaining('DELETE FROM indicator_cache_manifest'),
       ['v8', 10],
     );
     expect(progress).toHaveBeenCalledWith(
@@ -710,8 +801,12 @@ describe('timescale candle helpers', () => {
 
     expect(query).toHaveBeenCalledWith('SELECT pg_advisory_lock($1)', [610003]);
     expect(query).toHaveBeenCalledWith('SELECT pg_advisory_lock($1)', [610004]);
+    expect(query).toHaveBeenCalledWith('SELECT pg_advisory_lock($1)', [610005]);
     expect(query).toHaveBeenCalledWith(
       'DROP TABLE IF EXISTS indicator_cache_checkpoint CASCADE',
+    );
+    expect(query).toHaveBeenCalledWith(
+      'DROP TABLE IF EXISTS indicator_cache_manifest CASCADE',
     );
     expect(query).toHaveBeenCalledWith(
       'DROP TABLE IF EXISTS indicator_cache CASCADE',
@@ -722,6 +817,11 @@ describe('timescale candle helpers', () => {
     expect(query).toHaveBeenCalledWith(
       expect.stringContaining(
         'CREATE TABLE IF NOT EXISTS indicator_cache_checkpoint',
+      ),
+    );
+    expect(query).toHaveBeenCalledWith(
+      expect.stringContaining(
+        'CREATE TABLE IF NOT EXISTS indicator_cache_manifest',
       ),
     );
   });

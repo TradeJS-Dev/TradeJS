@@ -573,6 +573,7 @@ export const warmBacktestIndicatorCache = async (
       btcData: preparedData.btcData,
       btcBinanceData: preparedData.btcBinanceData,
       btcCoinbaseData: preparedData.btcCoinbaseData,
+      baseContextBackend,
     });
 
     await materializeIndicatorCachePlan({
@@ -589,6 +590,7 @@ export const warmBacktestIndicatorCache = async (
       restoreState: plan.restoreState,
       replayStartIndex: plan.replayStartIndex,
       cached: plan.cached,
+      manifestCached: plan.manifestCached,
     });
 
     return {
@@ -1239,6 +1241,7 @@ export const testingGroupInSharedCandleLoop = async (
       btcData: btcPrevData,
       btcBinanceData,
       btcCoinbaseData,
+      baseContextBackend,
     });
     const runtimePlan = resolveIndicatorCacheRuntimeState({
       provider: connectorName,
