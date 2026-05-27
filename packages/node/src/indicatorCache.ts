@@ -17,6 +17,8 @@ import {
 
 const INDICATOR_CACHE_VERSION = 'v12';
 const INDICATOR_CACHE_CHECKPOINT_INTERVAL = 256;
+const INDICATOR_CACHE_PROFILE =
+  process.env.TRADEJS_INDICATOR_CACHE_PROFILE === '1';
 const indicatorRestorePlanCache = new Map<string, IndicatorCacheRestorePlan>();
 const indicatorRuntimeStatePlanCache = new Map<
   string,
@@ -28,6 +30,118 @@ const referenceCandleSignatureCache = new WeakMap<
   Array<string | null | undefined>
 >();
 let nextObjectCacheId = 1;
+
+type IndicatorCacheProfileStats = {
+  planCalls: number;
+  planMs: number;
+  cacheReadMs: number;
+  compareMs: number;
+  checkpointReadMs: number;
+  materializeCalls: number;
+  materializeMs: number;
+  controllerInitMs: number;
+  replayLoopMs: number;
+  nextMs: number;
+  coverageBuildMs: number;
+  checkpointBuildMs: number;
+  coverageUpsertMs: number;
+  checkpointUpsertMs: number;
+  replayCandles: number;
+  coverageRows: number;
+  checkpointRows: number;
+  runtimeResolveCalls: number;
+  runtimeResolveMs: number;
+  runtimeResolveReplayMs: number;
+  runtimeResolveNextMs: number;
+  runtimeResolveCandles: number;
+};
+
+const indicatorCacheProfile: IndicatorCacheProfileStats = {
+  planCalls: 0,
+  planMs: 0,
+  cacheReadMs: 0,
+  compareMs: 0,
+  checkpointReadMs: 0,
+  materializeCalls: 0,
+  materializeMs: 0,
+  controllerInitMs: 0,
+  replayLoopMs: 0,
+  nextMs: 0,
+  coverageBuildMs: 0,
+  checkpointBuildMs: 0,
+  coverageUpsertMs: 0,
+  checkpointUpsertMs: 0,
+  replayCandles: 0,
+  coverageRows: 0,
+  checkpointRows: 0,
+  runtimeResolveCalls: 0,
+  runtimeResolveMs: 0,
+  runtimeResolveReplayMs: 0,
+  runtimeResolveNextMs: 0,
+  runtimeResolveCandles: 0,
+};
+
+const profileNow = () => process.hrtime.bigint();
+
+const profileElapsedMs = (startedAt: bigint) =>
+  Number(process.hrtime.bigint() - startedAt) / 1_000_000;
+
+if (INDICATOR_CACHE_PROFILE) {
+  process.once('exit', () => {
+    const round = (value: number) => Number(value.toFixed(2));
+    const stats = indicatorCacheProfile;
+    // eslint-disable-next-line no-console
+    console.log(
+      JSON.stringify(
+        {
+          indicatorCacheProfile: {
+            plan: {
+              calls: stats.planCalls,
+              totalMs: round(stats.planMs),
+              cacheReadMs: round(stats.cacheReadMs),
+              compareMs: round(stats.compareMs),
+              checkpointReadMs: round(stats.checkpointReadMs),
+            },
+            materialize: {
+              calls: stats.materializeCalls,
+              totalMs: round(stats.materializeMs),
+              controllerInitMs: round(stats.controllerInitMs),
+              replayLoopMs: round(stats.replayLoopMs),
+              nextMs: round(stats.nextMs),
+              coverageBuildMs: round(stats.coverageBuildMs),
+              checkpointBuildMs: round(stats.checkpointBuildMs),
+              coverageUpsertMs: round(stats.coverageUpsertMs),
+              checkpointUpsertMs: round(stats.checkpointUpsertMs),
+              replayCandles: stats.replayCandles,
+              coverageRows: stats.coverageRows,
+              checkpointRows: stats.checkpointRows,
+              avgNextUs:
+                stats.replayCandles > 0
+                  ? round((stats.nextMs * 1_000) / stats.replayCandles)
+                  : null,
+            },
+            runtimeResolve: {
+              calls: stats.runtimeResolveCalls,
+              totalMs: round(stats.runtimeResolveMs),
+              replayMs: round(stats.runtimeResolveReplayMs),
+              nextMs: round(stats.runtimeResolveNextMs),
+              candles: stats.runtimeResolveCandles,
+              avgNextUs:
+                stats.runtimeResolveCandles > 0
+                  ? round(
+                      (stats.runtimeResolveNextMs * 1_000) /
+                        stats.runtimeResolveCandles,
+                    )
+                  : null,
+            },
+          },
+        },
+        null,
+        2,
+      ),
+    );
+  });
+}
 
 type IndicatorCacheObsoleteCleanupOptions = Omit<
   Parameters<typeof deleteAllIndicatorCacheObsoleteVersions>[0],
@@ -275,6 +389,10 @@ export const planIndicatorCacheRestore = async ({
   btcBinanceData,
   btcCoinbaseData,
 }: EnsureIndicatorCacheCoverageParams): Promise<IndicatorCacheRestorePlan> => {
+  const profileStartedAt = INDICATOR_CACHE_PROFILE ? profileNow() : 0n;
+  if (INDICATOR_CACHE_PROFILE) {
+    indicatorCacheProfile.planCalls += 1;
+  }
   const paramsHash = buildIndicatorCacheParamsHash({
     provider,
     interval,
@@ -309,6 +427,7 @@ export const planIndicatorCacheRestore = async ({
     return cloneIndicatorCacheRestorePlan(cachedPlan);
   }
 
+  const cacheReadStartedAt = INDICATOR_CACHE_PROFILE ? profileNow() : 0n;
   const cachedRows = await toCacheRows({
     provider,
     symbol,
@@ -317,7 +436,11 @@ export const planIndicatorCacheRestore = async ({
     startMs: data[0].timestamp,
     endMs: data[data.length - 1].timestamp,
   });
+  if (INDICATOR_CACHE_PROFILE) {
+    indicatorCacheProfile.cacheReadMs += profileElapsedMs(cacheReadStartedAt);
+  }
 
+  const compareStartedAt = INDICATOR_CACHE_PROFILE ? profileNow() : 0n;
   let validPrefixLength = 0;
   const comparableLength = Math.min(cachedRows.length, data.length);
   for (let index = 0; index < comparableLength; index += 1) {
@@ -332,9 +455,13 @@ export const planIndicatorCacheRestore = async ({
 
     validPrefixLength += 1;
   }
+  if (INDICATOR_CACHE_PROFILE) {
+    indicatorCacheProfile.compareMs += profileElapsedMs(compareStartedAt);
+  }
 
   const lastValidRow =
     validPrefixLength > 0 ? cachedRows[validPrefixLength - 1] : null;
+  const checkpointReadStartedAt = INDICATOR_CACHE_PROFILE ? profileNow() : 0n;
   const checkpoint =
     lastValidRow == null
       ? null
@@ -346,6 +473,11 @@ export const planIndicatorCacheRestore = async ({
           version: INDICATOR_CACHE_VERSION,
           tsMs: lastValidRow.timestamp,
         });
+  if (INDICATOR_CACHE_PROFILE) {
+    indicatorCacheProfile.checkpointReadMs += profileElapsedMs(
+      checkpointReadStartedAt,
+    );
+  }
   const checkpointSnapshot =
     (checkpoint?.snapshot as IndicatorCacheCheckpointSnapshot | null) ?? null;
   const checkpointIndex =
@@ -378,7 +510,11 @@ export const planIndicatorCacheRestore = async ({
     );
   }
 
-  return cloneIndicatorCacheRestorePlan(plan);
+  const result = cloneIndicatorCacheRestorePlan(plan);
+  if (INDICATOR_CACHE_PROFILE) {
+    indicatorCacheProfile.planMs += profileElapsedMs(profileStartedAt);
+  }
+  return result;
 };
 
 export const materializeIndicatorCachePlan = async (
@@ -388,6 +524,10 @@ export const materializeIndicatorCachePlan = async (
       'paramsHash' | 'restoreState' | 'replayStartIndex' | 'cached'
     >,
 ) => {
+  const profileStartedAt = INDICATOR_CACHE_PROFILE ? profileNow() : 0n;
+  if (INDICATOR_CACHE_PROFILE) {
+    indicatorCacheProfile.materializeCalls += 1;
+  }
   if (!params.data.length) {
     return;
   }
@@ -396,6 +536,7 @@ export const materializeIndicatorCachePlan = async (
     return;
   }
 
+  const controllerInitStartedAt = INDICATOR_CACHE_PROFILE ? profileNow() : 0n;
   const controller = createIndicators([], [], {
     includeMlPayload: false,
     runtimeOnly: true,
@@ -405,6 +546,11 @@ export const materializeIndicatorCachePlan = async (
     baseContextBackend: params.baseContextBackend,
     initialRuntimeState: params.restoreState ?? undefined,
   });
+  if (INDICATOR_CACHE_PROFILE) {
+    indicatorCacheProfile.controllerInitMs += profileElapsedMs(
+      controllerInitStartedAt,
+    );
+  }
   if (typeof controller.checkpointRuntimeState !== 'function') {
     return;
   }
@@ -415,6 +561,7 @@ export const materializeIndicatorCachePlan = async (
     typeof upsertIndicatorCacheCheckpointRows
   >[0] = [];
 
+  const replayLoopStartedAt = INDICATOR_CACHE_PROFILE ? profileNow() : 0n;
   for (
     let absoluteIndex = params.replayStartIndex;
     absoluteIndex < params.data.length;
@@ -423,7 +570,13 @@ export const materializeIndicatorCachePlan = async (
     const index = absoluteIndex - params.replayStartIndex;
     const candle = params.data[absoluteIndex];
     const btcCandle = params.btcData[absoluteIndex];
+    const nextStartedAt = INDICATOR_CACHE_PROFILE ? profileNow() : 0n;
     const snapshot = controller.next(candle, btcCandle);
+    if (INDICATOR_CACHE_PROFILE) {
+      indicatorCacheProfile.nextMs += profileElapsedMs(nextStartedAt);
+      indicatorCacheProfile.replayCandles += 1;
+    }
+    const coverageBuildStartedAt = INDICATOR_CACHE_PROFILE ? profileNow() : 0n;
     const coverageSnapshot: IndicatorCacheCoverageSnapshot = {
       timestamp: candle.timestamp,
       candleSignature: buildCandleSignature(candle),
@@ -440,6 +593,12 @@ export const materializeIndicatorCachePlan = async (
       ts: new Date(candle.timestamp),
       snapshot: coverageSnapshot,
     });
+    if (INDICATOR_CACHE_PROFILE) {
+      indicatorCacheProfile.coverageBuildMs += profileElapsedMs(
+        coverageBuildStartedAt,
+      );
+      indicatorCacheProfile.coverageRows += 1;
+    }
 
     const isLast = absoluteIndex === params.data.length - 1;
     const isCheckpoint = index % INDICATOR_CACHE_CHECKPOINT_INTERVAL === 0;
@@ -447,6 +606,9 @@ export const materializeIndicatorCachePlan = async (
       continue;
     }
 
+    const checkpointBuildStartedAt = INDICATOR_CACHE_PROFILE
+      ? profileNow()
+      : 0n;
     const checkpointSnapshot: IndicatorCacheCheckpointSnapshot = {
       timestamp: candle.timestamp,
       runtimeState: controller.checkpointRuntimeState(),
@@ -460,15 +622,41 @@ export const materializeIndicatorCachePlan = async (
       ts: new Date(candle.timestamp),
       snapshot: checkpointSnapshot,
     });
+    if (INDICATOR_CACHE_PROFILE) {
+      indicatorCacheProfile.checkpointBuildMs += profileElapsedMs(
+        checkpointBuildStartedAt,
+      );
+      indicatorCacheProfile.checkpointRows += 1;
+    }
+  }
+  if (INDICATOR_CACHE_PROFILE) {
+    indicatorCacheProfile.replayLoopMs += profileElapsedMs(replayLoopStartedAt);
   }
 
+  const coverageUpsertStartedAt = INDICATOR_CACHE_PROFILE ? profileNow() : 0n;
   await upsertIndicatorCacheCoverageRows(coverageRows);
+  if (INDICATOR_CACHE_PROFILE) {
+    indicatorCacheProfile.coverageUpsertMs += profileElapsedMs(
+      coverageUpsertStartedAt,
+    );
+  }
+  const checkpointUpsertStartedAt = INDICATOR_CACHE_PROFILE ? profileNow() : 0n;
   await upsertIndicatorCacheCheckpointRows(checkpointRows);
+  if (INDICATOR_CACHE_PROFILE) {
+    indicatorCacheProfile.checkpointUpsertMs += profileElapsedMs(
+      checkpointUpsertStartedAt,
+    );
+    indicatorCacheProfile.materializeMs += profileElapsedMs(profileStartedAt);
+  }
 };
 
 export const resolveIndicatorCacheRuntimeState = (
   params: EnsureIndicatorCacheCoverageParams & IndicatorCacheRestorePlan,
 ): IndicatorCacheRestorePlan => {
+  const profileStartedAt = INDICATOR_CACHE_PROFILE ? profileNow() : 0n;
+  if (INDICATOR_CACHE_PROFILE) {
+    indicatorCacheProfile.runtimeResolveCalls += 1;
+  }
   if (!params.data.length || params.replayStartIndex >= params.data.length) {
     return cloneIndicatorCacheRestorePlan(params);
   }
@@ -501,12 +689,23 @@ export const resolveIndicatorCacheRuntimeState = (
     initialRuntimeState: params.restoreState ?? undefined,
   });
 
+  const replayStartedAt = INDICATOR_CACHE_PROFILE ? profileNow() : 0n;
   for (
     let absoluteIndex = params.replayStartIndex;
     absoluteIndex < params.data.length;
     absoluteIndex += 1
   ) {
+    const nextStartedAt = INDICATOR_CACHE_PROFILE ? profileNow() : 0n;
     controller.next(params.data[absoluteIndex], params.btcData[absoluteIndex]);
+    if (INDICATOR_CACHE_PROFILE) {
+      indicatorCacheProfile.runtimeResolveNextMs +=
+        profileElapsedMs(nextStartedAt);
+      indicatorCacheProfile.runtimeResolveCandles += 1;
+    }
+  }
+  if (INDICATOR_CACHE_PROFILE) {
+    indicatorCacheProfile.runtimeResolveReplayMs +=
+      profileElapsedMs(replayStartedAt);
   }
 
   const plan: IndicatorCacheRestorePlan = {
@@ -517,5 +716,9 @@ export const resolveIndicatorCacheRuntimeState = (
     cached: true,
   };
   indicatorRuntimeStatePlanCache.set(cacheKey, plan);
+  if (INDICATOR_CACHE_PROFILE) {
+    indicatorCacheProfile.runtimeResolveMs +=
+      profileElapsedMs(profileStartedAt);
+  }
   return plan;
 };

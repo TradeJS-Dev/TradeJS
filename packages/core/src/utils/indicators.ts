@@ -123,6 +123,126 @@ const BASE_CONTEXT_PSAR_COOLDOWN_BARS = 1;
 
 const baseContextEmaKey = (period: number) => String(period);
 
+type IndicatorNextProfileKey =
+  | 'pushMs'
+  | 'btcMs'
+  | 'coreMs'
+  | 'baseContextStateMs'
+  | 'structureMs'
+  | 'correlationMs'
+  | 'spreadMs'
+  | 'windowStatsMs'
+  | 'pluginMs'
+  | 'historyMs'
+  | 'resultMs'
+  | 'maMs'
+  | 'atrMs'
+  | 'atrPctMs'
+  | 'bbMs'
+  | 'obvMs'
+  | 'macdMs'
+  | 'rsiMs'
+  | 'adxMs'
+  | 'baseContextMaMs'
+  | 'baseContextPsarMs';
+
+type IndicatorNextProfileStats = Record<IndicatorNextProfileKey, number> & {
+  calls: number;
+  totalMs: number;
+  runtimeOnlyCalls: number;
+  nullReturns: number;
+};
+
+const processLike = (
+  globalThis as {
+    process?: {
+      env?: Record<string, string | undefined>;
+      once?: (event: string, listener: () => void) => void;
+    };
+  }
+).process;
+const INDICATOR_NEXT_PROFILE =
+  processLike?.env?.TRADEJS_INDICATOR_NEXT_PROFILE === '1';
+const indicatorNextProfileStats: IndicatorNextProfileStats = {
+  calls: 0,
+  totalMs: 0,
+  runtimeOnlyCalls: 0,
+  nullReturns: 0,
+  pushMs: 0,
+  btcMs: 0,
+  coreMs: 0,
+  baseContextStateMs: 0,
+  structureMs: 0,
+  correlationMs: 0,
+  spreadMs: 0,
+  windowStatsMs: 0,
+  pluginMs: 0,
+  historyMs: 0,
+  resultMs: 0,
+  maMs: 0,
+  atrMs: 0,
+  atrPctMs: 0,
+  bbMs: 0,
+  obvMs: 0,
+  macdMs: 0,
+  rsiMs: 0,
+  adxMs: 0,
+  baseContextMaMs: 0,
+  baseContextPsarMs: 0,
+};
+
+const indicatorNextProfileNow = () =>
+  globalThis.performance?.now?.() ?? Date.now();
+
+if (INDICATOR_NEXT_PROFILE) {
+  processLike?.once?.('exit', () => {
+    const round = (value: number) => Number(value.toFixed(2));
+    const stats = indicatorNextProfileStats;
+    // eslint-disable-next-line no-console
+    console.log(
+      JSON.stringify(
+        {
+          indicatorNextProfile: {
+            calls: stats.calls,
+            runtimeOnlyCalls: stats.runtimeOnlyCalls,
+            nullReturns: stats.nullReturns,
+            totalMs: round(stats.totalMs),
+            avgUs:
+              stats.calls > 0
+                ? round((stats.totalMs * 1_000) / stats.calls)
+                : null,
+            sections: {
+              pushMs: round(stats.pushMs),
+              btcMs: round(stats.btcMs),
+              coreMs: round(stats.coreMs),
+              baseContextStateMs: round(stats.baseContextStateMs),
+              structureMs: round(stats.structureMs),
+              correlationMs: round(stats.correlationMs),
+              spreadMs: round(stats.spreadMs),
+              windowStatsMs: round(stats.windowStatsMs),
+              pluginMs: round(stats.pluginMs),
+              historyMs: round(stats.historyMs),
+              resultMs: round(stats.resultMs),
+              maMs: round(stats.maMs),
+              atrMs: round(stats.atrMs),
+              atrPctMs: round(stats.atrPctMs),
+              bbMs: round(stats.bbMs),
+              obvMs: round(stats.obvMs),
+              macdMs: round(stats.macdMs),
+              rsiMs: round(stats.rsiMs),
+              adxMs: round(stats.adxMs),
+              baseContextMaMs: round(stats.baseContextMaMs),
+              baseContextPsarMs: round(stats.baseContextPsarMs),
+            },
+          },
+        },
+        null,
+        2,
+      ),
+    );
+  });
+}
+
 const deriveSmaValue = (
   state: SerializableSmaState | undefined,
 ): number | null =>
@@ -990,6 +1110,35 @@ export const createIndicators = (
     candle: Candle,
     btcCandle?: Candle,
   ): IndicatorSnapshot | null => {
+    const profileEnabled = INDICATOR_NEXT_PROFILE;
+    const profileStartedAt = profileEnabled ? indicatorNextProfileNow() : 0;
+    let profileLastAt = profileStartedAt;
+    const recordProfile = (key: IndicatorNextProfileKey) => {
+      if (!profileEnabled) return;
+      const now = indicatorNextProfileNow();
+      indicatorNextProfileStats[key] += now - profileLastAt;
+      profileLastAt = now;
+    };
+    const recordElapsedProfile = (
+      key: IndicatorNextProfileKey,
+      startedAt: number,
+    ) => {
+      if (!profileEnabled) return;
+      indicatorNextProfileStats[key] += indicatorNextProfileNow() - startedAt;
+    };
+    const finishProfile = (returnedNull: boolean) => {
+      if (!profileEnabled) return;
+      const now = indicatorNextProfileNow();
+      indicatorNextProfileStats.calls += 1;
+      indicatorNextProfileStats.totalMs += now - profileStartedAt;
+      if (runtimeOnly) {
+        indicatorNextProfileStats.runtimeOnlyCalls += 1;
+      }
+      if (returnedNull) {
+        indicatorNextProfileStats.nullReturns += 1;
+      }
+    };
+
     isHistoryResultDirty = true;
     candlesHistory.push(candle);
     coin1hCache.push(candle);
@@ -998,6 +1147,7 @@ export const createIndicators = (
     if (!runtimeOnly) {
       correlationCoinWindow.push(candle);
     }
+    recordProfile('pushMs');
     if (btcCandle) {
       btcCandlesHistory.push(btcCandle);
       btcCloses.push(btcCandle.close);
@@ -1023,6 +1173,7 @@ export const createIndicators = (
         isBtcRuntimeHistoryDirty = true;
       }
     }
+    recordProfile('btcMs');
 
     closes.push(candle.close);
     highs.push(candle.high);
@@ -1030,10 +1181,15 @@ export const createIndicators = (
     volumes.push(candle.volume);
     timestamps.push(candle.timestamp);
 
+    let sectionStartedAt = profileEnabled ? indicatorNextProfileNow() : 0;
     const ma14Value = ma14.nextValue(candle.close);
     const ma49Value = ma49.nextValue(candle.close);
     const ma50Value = ma50.nextValue(candle.close);
+    recordElapsedProfile('maMs', sectionStartedAt);
+    sectionStartedAt = profileEnabled ? indicatorNextProfileNow() : 0;
     const atrValue = atr.nextValue(candle);
+    recordElapsedProfile('atrMs', sectionStartedAt);
+    sectionStartedAt = profileEnabled ? indicatorNextProfileNow() : 0;
     const atrPctValue =
       atrValue != null && Number.isFinite(atrValue) && candle.close
         ? (atrValue / candle.close) * 100
@@ -1050,18 +1206,31 @@ export const createIndicators = (
       atrPctLongValue !== 0
         ? atrPctShortValue / atrPctLongValue
         : null;
+    recordElapsedProfile('atrPctMs', sectionStartedAt);
+    sectionStartedAt = profileEnabled ? indicatorNextProfileNow() : 0;
     const bbValue = bb.nextValue(candle.close);
+    recordElapsedProfile('bbMs', sectionStartedAt);
+    sectionStartedAt = profileEnabled ? indicatorNextProfileNow() : 0;
     const obvValue = obv.nextValue(candle);
     const smaObvValue = obvValue == null ? null : smaObv.nextValue(obvValue);
+    recordElapsedProfile('obvMs', sectionStartedAt);
+    sectionStartedAt = profileEnabled ? indicatorNextProfileNow() : 0;
     const macdValue = macd.nextValue(candle.close);
+    recordElapsedProfile('macdMs', sectionStartedAt);
+    sectionStartedAt = profileEnabled ? indicatorNextProfileNow() : 0;
     const rsiValue = rsiIndicator.nextValue(candle.close);
+    recordElapsedProfile('rsiMs', sectionStartedAt);
+    sectionStartedAt = profileEnabled ? indicatorNextProfileNow() : 0;
     const adxValue = adxIndicator.nextValue(candle);
+    recordElapsedProfile('adxMs', sectionStartedAt);
     if (typeof rsiValue === 'number') {
       latestRsiValue = rsiValue;
     }
     if (adxValue) {
       latestAdxValue = adxValue;
     }
+    recordProfile('coreMs');
+    sectionStartedAt = profileEnabled ? indicatorNextProfileNow() : 0;
     const hl2Value = (candle.high + candle.low) / 2;
     for (const period of baseContextHl2EmaPeriods) {
       const key = baseContextEmaKey(period);
@@ -1081,11 +1250,13 @@ export const createIndicators = (
       latestBaseContextAdaptiveCenterline == null
         ? null
         : previousAdaptiveCenterline;
+    recordElapsedProfile('baseContextMaMs', sectionStartedAt);
 
     const currentTimestamp = candle.timestamp;
     const len = candlesHistory.length;
     const currentIndex = len - 1;
     const prevCandle = len > 1 ? candlesHistory[len - 2] : null;
+    sectionStartedAt = profileEnabled ? indicatorNextProfileNow() : 0;
     const previousPsarValue = latestBaseContextPsarValue;
     const psarValue = baseContextPsar.nextValue(candle);
     latestBaseContextPsarValue =
@@ -1164,6 +1335,8 @@ export const createIndicators = (
       cooldownOk: psarCooldownOk,
       barsSinceSignal: baseContextPsarFilterBarsSinceSignal,
     };
+    recordElapsedProfile('baseContextPsarMs', sectionStartedAt);
+    recordProfile('baseContextStateMs');
     if (!prevCandle) {
       closeStreaks.up = 0;
       closeStreaks.down = 0;
@@ -1180,6 +1353,7 @@ export const createIndicators = (
     if (indicatorPeriods.levelLookback > 0) {
       updateLevelWindow(currentIndex);
     }
+    recordProfile('structureMs');
     const correlation =
       !runtimeOnly && correlationBtcWindow.size() > 0
         ? calculateCoinBtcCorrelation(
@@ -1187,6 +1361,7 @@ export const createIndicators = (
             correlationBtcWindow.snapshot() as any,
           ).correlation ?? 0
         : 0;
+    recordProfile('correlationMs');
 
     let spread: number | null = null;
     if (btcBinanceCandles.length > 0 && btcCoinbaseCandles.length > 0) {
@@ -1216,6 +1391,7 @@ export const createIndicators = (
         });
       }
     }
+    recordProfile('spreadMs');
 
     const computePluginSeries = (baseResult: Partial<IndicatorSnapshot>) => {
       const pluginSeries: Record<string, number> = {};
@@ -1288,6 +1464,7 @@ export const createIndicators = (
     const highPrice24h = window24h?.hasFullWindow ? window24h.high : null;
     const lowPrice24h = window24h?.hasFullWindow ? window24h.low : null;
     const volume24h = window24h?.hasFullWindow ? window24h.volume : null;
+    recordProfile('windowStatsMs');
 
     if (
       ma14Value == null ||
@@ -1306,7 +1483,9 @@ export const createIndicators = (
           spread,
           candle,
         });
+        recordProfile('pluginMs');
       }
+      finishProfile(true);
       return null;
     }
 
@@ -1354,6 +1533,8 @@ export const createIndicators = (
     }
 
     if (runtimeOnly) {
+      recordProfile('resultMs');
+      finishProfile(false);
       return {
         maFast: ma14Value,
         maMedium: ma49Value,
@@ -1416,6 +1597,7 @@ export const createIndicators = (
     };
 
     applyIndicatorsToHistory(baseResult, pushIndicator);
+    recordProfile('historyMs');
 
     const pluginSeries = computePluginSeries({
       ...baseResult,
@@ -1423,6 +1605,7 @@ export const createIndicators = (
       prevCandle,
       correlation,
     });
+    recordProfile('pluginMs');
     let cachedBaseContext: BaseStrategyContextSnapshot | null = null;
 
     const result = {
@@ -1484,6 +1667,8 @@ export const createIndicators = (
       },
     });
 
+    recordProfile('resultMs');
+    finishProfile(false);
     return result;
   };
 
