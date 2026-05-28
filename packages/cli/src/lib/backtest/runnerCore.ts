@@ -480,7 +480,7 @@ const buildRunIntroLines = ({
   );
   lines.push(
     chalk.gray(
-      `preload: ${formatUnix(preloadStart)} -> ${formatUnix(window.end)} (${BACKTEST_PRELOAD_DAYS}d warmup)`,
+      `preload: ${formatUnix(preloadStart)} -> ${formatUnix(window.end)} (${BACKTEST_PRELOAD_DAYS}d preload)`,
     ),
   );
   return lines;

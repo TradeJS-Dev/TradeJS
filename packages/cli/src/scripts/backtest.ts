@@ -1,18 +1,13 @@
 import fs from 'fs';
 import path from 'path';
 import chalk from 'chalk';
-import ProgressBar from 'progress';
-import { warmBacktestIndicatorCache } from '@tradejs/node/backtest';
-import { runWithConcurrency } from '@tradejs/core/async';
 import { calculateStatsFull } from '@tradejs/core/backtest';
 import { createTestSuite, mergeConfigs } from '@tradejs/core/grid';
 import { toJson } from '@tradejs/core/data';
-import { buildDefaultIndicatorPeriods } from '@tradejs/core/strategies';
 import { getData, setData, redisKeys } from '@tradejs/infra/redis';
 import { StrategyConfigGrid, TestStat, TestWorkerResult } from '@tradejs/types';
 import { BACKTEST_PRELOAD_DAYS } from '@tradejs/core/constants';
 import {
-  effectiveParallel,
   buildPreparedTestSuite,
   chunkTestSuiteBySymbol,
   createTimestamp,
@@ -102,36 +97,6 @@ type PersistedBacktestResultEntry = Pick<
   >;
 };
 
-const formatDuration = (startedAt: number) => {
-  const seconds = (Date.now() - startedAt) / 1000;
-  if (seconds < 60) return `${seconds.toFixed(1)}s`;
-  const minutes = Math.floor(seconds / 60);
-  const restSeconds = Math.round(seconds % 60);
-  return `${minutes}m ${restSeconds}s`;
-};
-
-const buildWarmupPeriodsKey = (
-  strategyConfig: Record<string, unknown> | undefined,
-) => {
-  const periods = buildDefaultIndicatorPeriods((strategyConfig ?? {}) as any);
-  return JSON.stringify({
-    maFast: periods.maFast ?? null,
-    maMedium: periods.maMedium ?? null,
-    maSlow: periods.maSlow ?? null,
-    obvSma: periods.obvSma ?? null,
-    atr: periods.atr ?? null,
-    atrPctShort: periods.atrPctShort ?? null,
-    atrPctLong: periods.atrPctLong ?? null,
-    bb: periods.bb ?? null,
-    bbStd: periods.bbStd ?? null,
-    macdFast: periods.macdFast ?? null,
-    macdSlow: periods.macdSlow ?? null,
-    macdSignal: periods.macdSignal ?? null,
-    levelLookback: periods.levelLookback ?? null,
-    levelDelay: periods.levelDelay ?? null,
-  });
-};
-
 const normalizeIndicatorBackendName = (value: unknown) => {
   const normalized = String(value ?? 'ts')
     .trim()
@@ -139,58 +104,15 @@ const normalizeIndicatorBackendName = (value: unknown) => {
   return normalized === 'rust' || normalized === 'native' ? 'rust' : 'ts';
 };
 
-const normalizeIndicatorCacheMode = (value: unknown) => {
-  const normalized = String(value ?? '')
-    .trim()
-    .toLowerCase();
-  return normalized || null;
-};
-
-export const resolveBacktestIndicatorCacheMode = ({
-  currentMode = process.env.TRADEJS_INDICATOR_CACHE_MODE,
-  indicatorBackend = process.env.TRADEJS_INDICATOR_BACKEND,
-  fast = isFastMode,
-  cacheOnly = Boolean(flags.cacheOnly),
-}: {
-  currentMode?: unknown;
-  indicatorBackend?: unknown;
-  fast?: boolean;
-  cacheOnly?: boolean;
-} = {}) => {
-  void indicatorBackend;
-  void fast;
-  void cacheOnly;
-  const explicitMode = normalizeIndicatorCacheMode(currentMode);
-  if (explicitMode) {
-    return explicitMode;
-  }
-
-  return 'off';
-};
-
-const applyBacktestIndicatorCacheMode = () => {
-  const explicitMode = normalizeIndicatorCacheMode(
-    process.env.TRADEJS_INDICATOR_CACHE_MODE,
-  );
-  const mode = resolveBacktestIndicatorCacheMode();
-  if (!explicitMode && mode === 'off') {
-    process.env.TRADEJS_INDICATOR_CACHE_MODE = mode;
-  }
-
+const printBacktestIndicatorBackend = () => {
   console.log(
     chalk.gray(
-      `indicator cache mode: ${mode} (${explicitMode ? 'env' : 'auto'}), indicator backend: ${normalizeIndicatorBackendName(
+      `indicator backend: ${normalizeIndicatorBackendName(
         process.env.TRADEJS_INDICATOR_BACKEND,
       )}`,
     ),
   );
 };
-
-const isIndicatorCacheModeOff = () =>
-  resolveBacktestIndicatorCacheMode({
-    fast: false,
-    cacheOnly: false,
-  }) === 'off';
 
 export const toPersistedBacktestResultEntry = (
   result: TestWorkerResult,
@@ -333,62 +255,6 @@ const renderReportRowsTable = (rows: BacktestReportRow[]) =>
 
 const safeFileToken = (value: string) =>
   value.replace(/[^a-zA-Z0-9._-]+/g, '-').replace(/^-+|-+$/g, '') || 'backtest';
-
-export const warmIndicatorCacheForBacktest = async (
-  testSuite: Parameters<typeof executeTestSuite>[0]['testSuite'],
-) => {
-  if (!testSuite.length) {
-    return;
-  }
-  if (isIndicatorCacheModeOff()) {
-    console.log(chalk.gray('indicator cache warmup: skipped'));
-    return;
-  }
-
-  const startedAt = Date.now();
-  const uniqueWarmupTests = Array.from(
-    new Map(
-      testSuite.map((test) => [
-        [
-          test.userName,
-          test.connectorName,
-          test.symbol,
-          buildWarmupPeriodsKey(
-            (test.strategyConfig ?? {}) as Record<string, unknown>,
-          ),
-        ].join(':'),
-        test,
-      ]),
-    ).values(),
-  );
-
-  console.log(chalk.gray('indicator cache warmup:'));
-  const bar = new ProgressBar(
-    ':current/:total [:bar][:percent] :eta(s) :symbol :status',
-    {
-      total: uniqueWarmupTests.length,
-      width: 20,
-    },
-  );
-  const concurrency = Math.max(1, Math.min(effectiveParallel, 4));
-
-  await runWithConcurrency(uniqueWarmupTests, concurrency, async (test) => {
-    const result = await warmBacktestIndicatorCache(test);
-    bar.tick(1, {
-      symbol: chalk.yellow(test.symbol),
-      status: result.cached
-        ? chalk.gray('cached')
-        : chalk.cyan(
-            `replayed ${Math.max(0, result.totalCandles - result.replayStartIndex)}`,
-          ),
-    });
-  });
-
-  console.log('');
-  console.log(
-    chalk.gray(`indicator cache warmup: done in ${formatDuration(startedAt)}`),
-  );
-};
 
 const isStrategyConfigGrid = (value: unknown): value is StrategyConfigGrid => {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
@@ -649,8 +515,7 @@ export const backtest = async () => {
     return;
   }
 
-  applyBacktestIndicatorCacheMode();
-  await warmIndicatorCacheForBacktest(testSuite);
+  printBacktestIndicatorBackend();
   await executeTestSuite({
     testSuite,
     window: preparedRun.window,

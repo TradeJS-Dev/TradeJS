@@ -46,24 +46,6 @@ describe('cli loader', () => {
     expect(commandMain).toHaveBeenCalledTimes(1);
   });
 
-  it('loads the indicator cache migration command module', async () => {
-    const commandMain = jest.fn().mockResolvedValue(undefined);
-
-    jest.doMock('../scripts/indicatorCacheMigrate', () => ({
-      __esModule: true,
-      main: commandMain,
-    }));
-
-    const cli = require('../cli') as {
-      main: () => Promise<void>;
-    };
-
-    process.argv = ['node', '/tmp/cli.js', 'indicator-cache:migrate'];
-    await cli.main();
-
-    expect(commandMain).toHaveBeenCalledTimes(1);
-  });
-
   it('closes shared infra resources after command completion', async () => {
     const commandMain = jest.fn().mockResolvedValue(undefined);
     const closeRedisConnection = jest.fn().mockResolvedValue(undefined);

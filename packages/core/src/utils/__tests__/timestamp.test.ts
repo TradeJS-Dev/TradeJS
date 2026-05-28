@@ -73,7 +73,7 @@ describe('timestamp utils', () => {
   });
 
   describe('getBacktestPreloadStart', () => {
-    it('uses a warmup window before the test start', () => {
+    it('uses a preload window before the test start', () => {
       const start = Date.parse('2026-04-01T00:00:00.000Z');
 
       expect(getBacktestPreloadStart(start, 30)).toBe(

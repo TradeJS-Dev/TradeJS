@@ -13,7 +13,6 @@ import {
 } from '@tradejs/types';
 import { alignSortedCandlesByTimestamp } from '@tradejs/core/indicators';
 import {
-  buildDefaultIndicatorPeriods,
   releaseStrategyIndicatorsReplayCache,
   releaseStrategyReplayCache,
 } from '@tradejs/core/strategies';
@@ -33,13 +32,6 @@ import {
   BUILTIN_CONNECTOR_NAMES,
   getConnectorCreatorByName,
 } from './connectorsRegistry';
-import {
-  materializeIndicatorCachePlan,
-  planIndicatorCacheRestore,
-  resolveIndicatorCacheRuntimeState,
-} from './indicatorCache';
-import type { IndicatorCacheRestorePlan } from './indicatorCache';
-import { createBaseContextBackend } from './native/baseContextBackend';
 import { createTestConnector } from './testConnector';
 import { getTradejsProjectCwd } from './tradejsConfig';
 
@@ -61,14 +53,6 @@ type PreparedTestingData = {
   btcTestData: KlineChartData;
   btcBinanceData: KlineChartData;
   btcCoinbaseData: KlineChartData;
-};
-
-export type BacktestIndicatorCacheWarmupResult = {
-  cached: boolean;
-  replayStartIndex: number;
-  totalCandles: number;
-  paramsHash: string;
-  version: string;
 };
 
 type TestingProgressMessage = {
@@ -528,87 +512,6 @@ const prepareTestingData = async (params: {
   state.preparedDataCache.set(preparedDataCacheKey, preparedData);
 
   return preparedData;
-};
-
-export const warmBacktestIndicatorCache = async (
-  test: Pick<
-    Test,
-    | 'userName'
-    | 'symbol'
-    | 'options'
-    | 'strategyConfig'
-    | 'connectorName'
-    | 'name'
-  >,
-): Promise<BacktestIndicatorCacheWarmupResult> => {
-  const { userName, symbol, options, strategyConfig, connectorName } = test;
-  const start = options?.start;
-  const end = options?.end;
-  if (!start) {
-    throw new Error('no start');
-  }
-  if (!end) {
-    throw new Error('no end');
-  }
-
-  const preloadStart = getBacktestPreloadStart(start);
-  const { projectRoot, state } = getTestingKlineCacheState();
-  const preparedData = await prepareTestingData({
-    state,
-    projectRoot,
-    userName,
-    connectorName,
-    symbol,
-    preloadStart,
-    start,
-    end,
-  });
-  const periods = buildDefaultIndicatorPeriods((strategyConfig ?? {}) as any);
-  const baseContextBackend = createBaseContextBackend();
-  try {
-    const plan = await planIndicatorCacheRestore({
-      provider: connectorName,
-      symbol,
-      interval: Number(BACKTEST_INTERVAL),
-      periods,
-      data: preparedData.data,
-      btcData: preparedData.btcData,
-      btcBinanceData: preparedData.btcBinanceData,
-      btcCoinbaseData: preparedData.btcCoinbaseData,
-      baseContextBackend,
-    });
-
-    await materializeIndicatorCachePlan({
-      provider: connectorName,
-      symbol,
-      interval: Number(BACKTEST_INTERVAL),
-      periods,
-      data: preparedData.data,
-      btcData: preparedData.btcData,
-      btcBinanceData: preparedData.btcBinanceData,
-      btcCoinbaseData: preparedData.btcCoinbaseData,
-      baseContextBackend,
-      paramsHash: plan.paramsHash,
-      restoreState: plan.restoreState,
-      replayStartIndex: plan.replayStartIndex,
-      cached: plan.cached,
-      manifestCached: plan.manifestCached,
-    });
-
-    return {
-      cached: plan.cached,
-      replayStartIndex: plan.replayStartIndex,
-      totalCandles: preparedData.data.length,
-      paramsHash: plan.paramsHash,
-      version: plan.version,
-    };
-  } finally {
-    releaseTestingSymbolCache({
-      userName,
-      connectorName,
-      symbol,
-    });
-  }
 };
 
 export const canRunTestsInSharedCandleLoop = (tests: Test[]): boolean => {
@@ -1209,60 +1112,6 @@ export const testingGroupInSharedCandleLoop = async (
     end,
     chunkId,
   ].join(':');
-  const baseContextBackend = createBaseContextBackend();
-  const runtimeIndicatorCachePlans = new Map<
-    string,
-    IndicatorCacheRestorePlan
-  >();
-  const cloneRuntimeIndicatorCachePlan = (
-    plan: IndicatorCacheRestorePlan,
-  ): IndicatorCacheRestorePlan => ({
-    ...plan,
-    restoreState:
-      plan.restoreState == null ? null : structuredClone(plan.restoreState),
-  });
-  const getRuntimeIndicatorCachePlan = async (test: Test) => {
-    const periods = buildDefaultIndicatorPeriods(
-      (test.strategyConfig ?? {}) as any,
-    );
-    const planKey = JSON.stringify({
-      periods,
-      backend: baseContextBackend ? 'rust' : 'ts',
-    });
-    const cachedPlan = runtimeIndicatorCachePlans.get(planKey);
-    if (cachedPlan) {
-      return cloneRuntimeIndicatorCachePlan(cachedPlan);
-    }
-
-    const restorePlan = await planIndicatorCacheRestore({
-      provider: connectorName,
-      symbol,
-      interval: Number(BACKTEST_INTERVAL),
-      periods,
-      data: prevData,
-      btcData: btcPrevData,
-      btcBinanceData,
-      btcCoinbaseData,
-      baseContextBackend,
-    });
-    const runtimePlan = resolveIndicatorCacheRuntimeState({
-      provider: connectorName,
-      symbol,
-      interval: Number(BACKTEST_INTERVAL),
-      periods,
-      data: prevData,
-      btcData: btcPrevData,
-      btcBinanceData,
-      btcCoinbaseData,
-      baseContextBackend,
-      ...restorePlan,
-    });
-    runtimeIndicatorCachePlans.set(
-      planKey,
-      cloneRuntimeIndicatorCachePlan(runtimePlan),
-    );
-    return cloneRuntimeIndicatorCachePlan(runtimePlan);
-  };
 
   type Runner = {
     test: Test;
@@ -1295,7 +1144,6 @@ export const testingGroupInSharedCandleLoop = async (
           btcCoinbaseData,
           connector: testConnector,
           sharedIndicatorsReplayKey,
-          indicatorCachePlan: await getRuntimeIndicatorCachePlan(test),
         }),
       )) as BacktestDetectorOptimizedStrategy;
 

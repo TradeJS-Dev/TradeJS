@@ -2,8 +2,7 @@ import args from 'args';
 import fs from 'fs/promises';
 import path from 'path';
 import chalk from 'chalk';
-import ProgressBar from 'progress';
-import { cleanFiles, cleanRedis, resetIndicatorCache } from '@tradejs/node/cli';
+import { cleanFiles, cleanRedis } from '@tradejs/node/cli';
 import {
   getBacktestCacheArtifactsDirForUser,
   getPersistedBacktestArtifactsDirForUser,
@@ -80,28 +79,8 @@ const cleanUserTests = async (userName: string) => {
   });
 };
 
-const resetIndicatorCacheTables = async () => {
-  console.log(chalk.yellow('reset indicator cache tables'));
-  const bar = new ProgressBar(
-    'indicator cache :current/:total [:bar][:percent]',
-    {
-      total: 2,
-      width: 24,
-    },
-  );
-
-  bar.tick();
-  await resetIndicatorCache();
-  bar.tick();
-  console.log(chalk.gray('indicator cache tables recreated'));
-};
-
 export const main = async () => {
   const users = await getUsersToClean();
-
-  if (!flags.cache) {
-    await resetIndicatorCacheTables();
-  }
 
   if (users.length === 0) {
     console.log(chalk.yellow('No users found to clean tests.'));

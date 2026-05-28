@@ -6,9 +6,6 @@ const mockUpdatePositionProtection = jest.fn();
 const mockLoadTradejsConfig = jest.fn();
 const mockMarkRuntimeTradeClosed = jest.fn();
 const mockGetDerivativesWindow = jest.fn();
-const mockPlanIndicatorCacheRestore = jest.fn();
-const mockMaterializeIndicatorCachePlan = jest.fn();
-const mockResolveIndicatorCacheRuntimeState = jest.fn();
 
 jest.mock('@tradejs/core/strategies', () => ({
   createStrategyAPI: jest.fn((params: any) => ({
@@ -111,15 +108,6 @@ jest.mock('@tradejs/infra/logger', () => ({
     error: jest.fn(),
     warn: jest.fn(),
   },
-}));
-
-jest.mock('../indicatorCache', () => ({
-  planIndicatorCacheRestore: (...args: unknown[]) =>
-    mockPlanIndicatorCacheRestore(...args),
-  materializeIndicatorCachePlan: (...args: unknown[]) =>
-    mockMaterializeIndicatorCachePlan(...args),
-  resolveIndicatorCacheRuntimeState: (...args: unknown[]) =>
-    mockResolveIndicatorCacheRuntimeState(...args),
 }));
 
 jest.mock('../strategy/manifests', () => {
@@ -299,72 +287,12 @@ describe('strategyRuntime', () => {
     mockEnrichSignalWithAi.mockResolvedValue(5);
     mockMarkRuntimeTradeClosed.mockResolvedValue(null);
     mockGetDerivativesWindow.mockResolvedValue({});
-    mockPlanIndicatorCacheRestore.mockResolvedValue({
-      cached: true,
-      paramsHash: 'hash',
-      version: 'v3',
-      restoreState: null,
-      replayStartIndex: 0,
-    });
-    mockMaterializeIndicatorCachePlan.mockResolvedValue(undefined);
-    mockResolveIndicatorCacheRuntimeState.mockImplementation((plan) => plan);
   });
 
-  it('plans and materializes indicator cache before runtime strategy execution starts', async () => {
-    await makeRuntime(() => ({ kind: 'skip', code: 'NOOP' }));
-
-    expect(mockPlanIndicatorCacheRestore).toHaveBeenCalledWith(
-      expect.objectContaining({
-        provider: 'ByBit',
-        symbol: 'ETHUSDT',
-        interval: 15,
-      }),
-    );
-    expect(mockMaterializeIndicatorCachePlan).toHaveBeenCalledWith(
-      expect.objectContaining({
-        provider: 'ByBit',
-        symbol: 'ETHUSDT',
-        interval: 15,
-        paramsHash: 'hash',
-        replayStartIndex: 0,
-        cached: true,
-      }),
-    );
-  });
-
-  it('uses planned indicator cache state without materializing cache rows in backtests', async () => {
-    await makeRuntime(
-      () => ({ kind: 'skip', code: 'NOOP' }),
-      { ENV: 'BACKTEST' },
-      { testConnector: true },
-    );
-
-    expect(mockPlanIndicatorCacheRestore).toHaveBeenCalledWith(
-      expect.objectContaining({
-        provider: 'ByBit',
-        symbol: 'ETHUSDT',
-        interval: 15,
-      }),
-    );
-    expect(mockMaterializeIndicatorCachePlan).not.toHaveBeenCalled();
-    expect(mockResolveIndicatorCacheRuntimeState).toHaveBeenCalledWith(
-      expect.objectContaining({
-        provider: 'ByBit',
-        symbol: 'ETHUSDT',
-        interval: 15,
-        paramsHash: 'hash',
-      }),
-    );
-  });
-
-  it('hydrates indicators from cached runtime state and replays only the uncached suffix', async () => {
-    const cachedState = { restored: true } as any;
-    mockPlanIndicatorCacheRestore.mockResolvedValue({
-      cached: false,
-      paramsHash: 'hash',
-      version: 'v3',
-      restoreState: cachedState,
-      replayStartIndex: 2,
+  it('initializes indicators on the fly without cached restore state', async () => {
+    mockResolveStrategyConfig.mockResolvedValue({
+      config: { ENV: 'LIVE' },
+      isConfigFromBacktest: false,
     });
     const createStrategyIndicatorsStateMock = jest.requireMock(
       '@tradejs/core/strategies',
@@ -406,10 +334,14 @@ describe('strategyRuntime', () => {
       expect.objectContaining({
         data,
         btcData,
-        initialRuntimeState: cachedState,
-        replayStartIndex: 2,
       }),
     );
+    const lastCall =
+      createStrategyIndicatorsStateMock.mock.calls[
+        createStrategyIndicatorsStateMock.mock.calls.length - 1
+      ]?.[0];
+    expect(lastCall).not.toHaveProperty('initialRuntimeState');
+    expect(lastCall).not.toHaveProperty('replayStartIndex');
   });
 
   afterAll(() => {

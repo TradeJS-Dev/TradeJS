@@ -58,16 +58,6 @@ jest.mock('@tradejs/infra/logger', () => ({
   },
 }));
 
-jest.mock('@tradejs/infra/timescale', () => ({
-  getIndicatorCacheManifest: jest.fn(async () => null),
-  getIndicatorCacheRange: jest.fn(async () => []),
-  getLatestIndicatorCacheCheckpointAtOrBefore: jest.fn(async () => null),
-  upsertIndicatorCacheCoverageRows: jest.fn(async () => undefined),
-  upsertIndicatorCacheCheckpointRows: jest.fn(async () => undefined),
-  upsertIndicatorCacheManifest: jest.fn(async () => undefined),
-  deleteIndicatorCacheObsoleteVersions: jest.fn(async () => undefined),
-}));
-
 jest.mock('../filters', () => ({
   filterByVeryVolatility: jest.fn(() => true),
 }));

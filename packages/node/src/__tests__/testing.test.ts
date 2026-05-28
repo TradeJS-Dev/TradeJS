@@ -32,9 +32,6 @@ const mockTestConnector = {
 const mockStrategy = jest.fn();
 const mockStrategyCreator = jest.fn(async (_config?: unknown) => mockStrategy);
 const mockBuildMlPayload = jest.fn((data) => data);
-const mockBuildDefaultIndicatorPeriods = jest.fn((_config?: unknown) => ({
-  maFast: 21,
-}));
 const mockBuildAiPayload: jest.Mock = jest.fn((_signal?: unknown) => ({
   signal: { strategy: 'TrendLine' },
   figures: {},
@@ -44,23 +41,6 @@ const mockBuildAiPayload: jest.Mock = jest.fn((_signal?: unknown) => ({
 const mockBuildMlTrainingRow: jest.Mock = jest.fn(() => ({ featureA: 1 }));
 const mockAppendMlDatasetRow = jest.fn((_params?: unknown) => undefined);
 const mockAppendAiDatasetRow = jest.fn((_params?: unknown) => undefined);
-const mockPlanIndicatorCacheRestore = jest.fn(async (_params?: unknown) => ({
-  paramsHash: 'hash-1',
-  version: 'v3',
-  restoreState: { runtimeState: true },
-  replayStartIndex: 2,
-  cached: false,
-}));
-const mockResolveIndicatorCacheRuntimeState = jest.fn((params?: any) => ({
-  paramsHash: params?.paramsHash ?? 'hash-1',
-  version: params?.version ?? 'v3',
-  restoreState: { runtimeState: 'resolved' },
-  replayStartIndex: 3,
-  cached: true,
-}));
-const mockMaterializeIndicatorCachePlan = jest.fn(
-  async (_params?: unknown) => undefined,
-);
 const mockEnrichSignalWithDerivativesContext = jest.fn(async (params: any) => {
   params.signal.additionalIndicators = {
     ...(params.signal.additionalIndicators ?? {}),
@@ -119,8 +99,6 @@ jest.mock('@tradejs/core/indicators', () => ({
 }));
 
 jest.mock('@tradejs/core/strategies', () => ({
-  buildDefaultIndicatorPeriods: (config: unknown) =>
-    mockBuildDefaultIndicatorPeriods(config),
   releaseStrategyIndicatorsReplayCache: jest.fn(),
   releaseStrategyReplayCache: jest.fn(),
 }));
@@ -149,15 +127,6 @@ jest.mock('@tradejs/infra/ml', () => ({
   appendMlDatasetRow: (params: unknown) => mockAppendMlDatasetRow(params),
 }));
 
-jest.mock('../indicatorCache', () => ({
-  planIndicatorCacheRestore: (params: unknown) =>
-    mockPlanIndicatorCacheRestore(params),
-  resolveIndicatorCacheRuntimeState: (params: unknown) =>
-    mockResolveIndicatorCacheRuntimeState(params),
-  materializeIndicatorCachePlan: (params: unknown) =>
-    mockMaterializeIndicatorCachePlan(params),
-}));
-
 jest.mock('@tradejs/core/time', () => ({
   getBacktestPreloadStart: (start: number, preloadDays = 30) =>
     Math.max(0, start - preloadDays * 24 * 60 * 60 * 1000),
@@ -169,7 +138,6 @@ import {
   resetTestingKlineCache,
   testing,
   testingGroupInSharedCandleLoop,
-  warmBacktestIndicatorCache,
 } from '../testing';
 
 const candle = (timestamp: number) => ({
@@ -221,10 +189,6 @@ describe('testing backtest flow', () => {
     );
     mockStrategy.mockReset();
     mockBuildAiPayload.mockClear();
-    mockBuildDefaultIndicatorPeriods.mockClear();
-    mockPlanIndicatorCacheRestore.mockClear();
-    mockResolveIndicatorCacheRuntimeState.mockClear();
-    mockMaterializeIndicatorCachePlan.mockClear();
     mockEnrichSignalWithDerivativesContext.mockClear();
     mockTestConnector.checkSl.mockClear();
     mockTestConnector.checkTp.mockClear();
@@ -270,15 +234,15 @@ describe('testing backtest flow', () => {
     expect(mockTestConnector.checkTp).toHaveBeenCalledTimes(2);
   });
 
-  it('does not reuse mutable warmup arrays between configs for the same symbol', async () => {
+  it('does not reuse mutable preload arrays between configs for the same symbol', async () => {
     const data = [candle(1_000_050), candle(1_000_150), candle(1_000_250)];
-    const receivedWarmupLengths: number[] = [];
+    const receivedPreloadLengths: number[] = [];
     mockByBitConnector.kline.mockResolvedValue(data);
     mockBinanceConnector.kline.mockResolvedValue(data);
     mockCoinbaseConnector.kline.mockResolvedValue(data);
     mockStrategy.mockResolvedValue('HOLD');
     mockStrategyCreator.mockImplementation(async (params: any) => {
-      receivedWarmupLengths.push(params.data.length);
+      receivedPreloadLengths.push(params.data.length);
       params.data.push(candle(9_999_999));
       return mockStrategy;
     });
@@ -286,7 +250,7 @@ describe('testing backtest flow', () => {
     await testing(createTest({ name: 'ETH_suite_1', configId: 'a' }));
     await testing(createTest({ name: 'ETH_suite_2', configId: 'b' }));
 
-    expect(receivedWarmupLengths).toEqual([1, 1]);
+    expect(receivedPreloadLengths).toEqual([1, 1]);
   });
 
   it('runs compatible configs in one candle loop with a shared indicators replay key', async () => {
@@ -296,7 +260,6 @@ describe('testing backtest flow', () => {
       jest.fn(async () => 'HOLD'),
     ];
     const receivedSharedKeys: Array<string | undefined> = [];
-    const receivedIndicatorCachePlans: unknown[] = [];
     mockByBitConnector.kline.mockResolvedValue(data);
     mockBinanceConnector.kline.mockResolvedValue(data);
     mockCoinbaseConnector.kline.mockResolvedValue(data);
@@ -306,7 +269,6 @@ describe('testing backtest flow', () => {
     });
     mockStrategyCreator.mockImplementation(async (params: any) => {
       receivedSharedKeys.push(params.sharedIndicatorsReplayKey);
-      receivedIndicatorCachePlans.push(params.indicatorCachePlan);
       return strategies[receivedSharedKeys.length - 1];
     });
 
@@ -321,23 +283,6 @@ describe('testing backtest flow', () => {
     expect(receivedSharedKeys).toHaveLength(2);
     expect(receivedSharedKeys[0]).toBeTruthy();
     expect(receivedSharedKeys[1]).toBe(receivedSharedKeys[0]);
-    expect(mockPlanIndicatorCacheRestore).toHaveBeenCalledTimes(1);
-    expect(mockResolveIndicatorCacheRuntimeState).toHaveBeenCalledTimes(1);
-    expect(receivedIndicatorCachePlans).toEqual([
-      expect.objectContaining({
-        restoreState: { runtimeState: 'resolved' },
-        replayStartIndex: 3,
-        cached: true,
-      }),
-      expect.objectContaining({
-        restoreState: { runtimeState: 'resolved' },
-        replayStartIndex: 3,
-        cached: true,
-      }),
-    ]);
-    expect(receivedIndicatorCachePlans[0]).not.toBe(
-      receivedIndicatorCachePlans[1],
-    );
   });
 
   it('fans out detector no-signal skips without re-running strategy core for matching detector keys', async () => {
@@ -418,7 +363,7 @@ describe('testing backtest flow', () => {
     );
   });
 
-  it('loads kline data from the warmup window before test start', async () => {
+  it('loads kline data from the preload window before test start', async () => {
     const start = Date.parse('2026-04-01T00:00:00.000Z');
     const end = Date.parse('2026-04-02T00:00:00.000Z');
     const expectedPreloadStart = start - 30 * 24 * 60 * 60 * 1000;
@@ -478,110 +423,6 @@ describe('testing backtest flow', () => {
         btcCoinbaseData: coinbaseData,
       }),
     );
-  });
-
-  it('warms indicator cache from aligned preload and test candles', async () => {
-    const data = [
-      candle(1_000_050),
-      candle(1_000_150),
-      candle(1_000_250),
-      candle(1_000_350),
-    ];
-    mockByBitConnector.kline.mockResolvedValue(data);
-    mockBinanceConnector.kline.mockResolvedValue(data);
-    mockCoinbaseConnector.kline.mockResolvedValue(data);
-
-    const result = await warmBacktestIndicatorCache(createTest());
-
-    expect(mockBuildDefaultIndicatorPeriods).toHaveBeenCalledWith({ a: 1 });
-    expect(mockPlanIndicatorCacheRestore).toHaveBeenCalledWith(
-      expect.objectContaining({
-        provider: 'ByBit',
-        symbol: 'ETHUSDT',
-        interval: 15,
-        periods: { maFast: 21 },
-        data,
-        btcData: data,
-        btcBinanceData: data,
-        btcCoinbaseData: data,
-      }),
-    );
-    expect(mockMaterializeIndicatorCachePlan).toHaveBeenCalledWith(
-      expect.objectContaining({
-        provider: 'ByBit',
-        symbol: 'ETHUSDT',
-        interval: 15,
-        paramsHash: 'hash-1',
-        restoreState: { runtimeState: true },
-        replayStartIndex: 2,
-        cached: false,
-      }),
-    );
-    expect(result).toEqual({
-      cached: false,
-      replayStartIndex: 2,
-      totalCandles: 4,
-      paramsHash: 'hash-1',
-      version: 'v3',
-    });
-  });
-
-  it('reuses the primary BTC preload for matching Binance reference venue', async () => {
-    const ethData = [candle(1_000_050), candle(1_000_150), candle(1_000_250)];
-    const btcData = ethData.map((item) => ({
-      ...item,
-      close: item.close + 10,
-    }));
-    const coinbaseData = ethData.map((item) => ({
-      ...item,
-      close: item.close - 10,
-    }));
-    mockBinanceConnector.kline.mockImplementation(({ symbol }: any) =>
-      Promise.resolve(symbol === 'BTCUSDT' ? btcData : ethData),
-    );
-    mockCoinbaseConnector.kline.mockResolvedValue(coinbaseData);
-
-    await warmBacktestIndicatorCache(createTest({ connectorName: 'Binance' }));
-
-    expect(mockBinanceConnector.kline).toHaveBeenCalledTimes(2);
-    expect(
-      mockBinanceConnector.kline.mock.calls.filter(
-        ([params]) => params.symbol === 'BTCUSDT',
-      ),
-    ).toHaveLength(1);
-    expect(mockPlanIndicatorCacheRestore).toHaveBeenCalledWith(
-      expect.objectContaining({
-        provider: 'Binance',
-        data: ethData,
-        btcData,
-        btcBinanceData: btcData,
-        btcCoinbaseData: coinbaseData,
-      }),
-    );
-  });
-
-  it('releases symbol-scoped warmup data after cache materialization', async () => {
-    const data = [
-      candle(1_000_050),
-      candle(1_000_150),
-      candle(1_000_250),
-      candle(1_000_350),
-    ];
-    mockByBitConnector.kline.mockResolvedValue(data);
-    mockBinanceConnector.kline.mockResolvedValue(data);
-    mockCoinbaseConnector.kline.mockResolvedValue(data);
-
-    await warmBacktestIndicatorCache(createTest());
-    await warmBacktestIndicatorCache(createTest());
-
-    expect(mockByBitConnectorCreator).toHaveBeenCalledTimes(1);
-    expect(mockBinanceConnectorCreator).toHaveBeenCalledTimes(1);
-    expect(mockCoinbaseConnectorCreator).toHaveBeenCalledTimes(1);
-    expect(mockByBitConnector.kline).toHaveBeenCalledTimes(3);
-    expect(mockBinanceConnector.kline).toHaveBeenCalledTimes(1);
-    expect(mockCoinbaseConnector.kline).toHaveBeenCalledTimes(1);
-    expect(mockPlanIndicatorCacheRestore).toHaveBeenCalledTimes(2);
-    expect(mockMaterializeIndicatorCachePlan).toHaveBeenCalledTimes(2);
   });
 
   it('emits progress heartbeat while strategy signal is still running', async () => {

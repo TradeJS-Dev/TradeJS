@@ -5,6 +5,5 @@ export {
   resetTestingKlineCache,
   testing,
   testingGroupInSharedCandleLoop,
-  warmBacktestIndicatorCache,
 } from './testing';
 export { createTestConnector } from './testConnector';

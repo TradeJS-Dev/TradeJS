@@ -37,7 +37,6 @@
     "dev:sandbox": "yarn dev",
     "dev:with-infra": "yarn infra-up && yarn dev",
     "doctor": "yarn cli:node8g doctor",
-    "indicator-cache:migrate": "yarn cli:node8g indicator-cache:migrate",
     "infra-down": "yarn cli:node8g infra-down",
     "infra-init": "yarn cli:node8g infra-init",
     "infra-up": "yarn cli:node8g infra-up",

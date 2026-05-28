@@ -50,26 +50,6 @@ jest.mock('@tradejs/core/grid', () => ({
   mergeConfigs: jest.fn(),
 }));
 
-const mockRunWithConcurrency = jest.fn(
-  async (
-    items: unknown[],
-    _concurrency: number,
-    iteratee: (item: unknown) => Promise<unknown>,
-  ) => {
-    for (const item of items) {
-      await iteratee(item);
-    }
-  },
-);
-
-jest.mock('@tradejs/core/async', () => ({
-  runWithConcurrency: (
-    items: unknown[],
-    concurrency: number,
-    iteratee: (item: unknown) => Promise<unknown>,
-  ) => mockRunWithConcurrency(items, concurrency, iteratee),
-}));
-
 jest.mock('@tradejs/core/data', () => ({
   toJson: jest.fn(),
 }));
@@ -98,27 +78,6 @@ jest.mock('@tradejs/core/time', () => ({
   getBacktestPreloadStart: jest.fn(),
   getTimestamp: jest.fn(),
 }));
-
-const mockWarmBacktestIndicatorCache = jest.fn(async (_test?: unknown) => ({
-  cached: false,
-  replayStartIndex: 10,
-  totalCandles: 20,
-  paramsHash: 'hash-1',
-  version: 'v3',
-}));
-
-jest.mock('@tradejs/node/backtest', () => ({
-  warmBacktestIndicatorCache: (test: unknown) =>
-    mockWarmBacktestIndicatorCache(test),
-}));
-
-const mockProgressBarTick = jest.fn();
-jest.mock('progress', () =>
-  jest.fn().mockImplementation(() => ({
-    tick: (step: number, payload?: unknown) =>
-      mockProgressBarTick(step, payload),
-  })),
-);
 
 import args from 'args';
 import { normalizeStrategyOrderLinkKey } from '@tradejs/core/trade';
@@ -151,9 +110,7 @@ jest.mock('../lib/timeWindow', () => ({
 }));
 
 import {
-  warmIndicatorCacheForBacktest,
   chunkTestSuiteBySymbol,
-  resolveBacktestIndicatorCacheMode,
   resolveDefaultParallel,
   resolveDefaultWorkerHeapMb,
   mergePersistedTestSummaries,
@@ -191,11 +148,7 @@ describe('backtest script helpers', () => {
   let consoleLogSpy: jest.SpyInstance;
 
   beforeEach(() => {
-    delete process.env.TRADEJS_INDICATOR_CACHE_MODE;
     delete process.env.TRADEJS_BACKTEST_SYMBOL_GROUP_MAX_TESTS;
-    mockRunWithConcurrency.mockClear();
-    mockWarmBacktestIndicatorCache.mockClear();
-    mockProgressBarTick.mockClear();
     consoleLogSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
     (getData as jest.Mock).mockReset();
     (calculateStatsFull as jest.Mock).mockReset();
@@ -203,7 +156,6 @@ describe('backtest script helpers', () => {
   });
 
   afterEach(() => {
-    delete process.env.TRADEJS_INDICATOR_CACHE_MODE;
     delete process.env.TRADEJS_BACKTEST_SYMBOL_GROUP_MAX_TESTS;
     consoleLogSpy.mockRestore();
   });
@@ -667,103 +619,6 @@ describe('backtest script helpers', () => {
         },
       ],
     });
-  });
-
-  it('warms indicator cache once per unique symbol/indicator-period set and prints timing', async () => {
-    process.env.TRADEJS_INDICATOR_CACHE_MODE = 'cache';
-
-    await warmIndicatorCacheForBacktest([
-      {
-        symbol: 'BTCUSDT',
-        strategyConfig: { MA_FAST: 21 },
-        connectorName: 'ByBit',
-        options: { start: 1_000, end: 2_000 },
-        userName: 'root',
-      },
-      {
-        symbol: 'BTCUSDT',
-        strategyConfig: { MA_FAST: 21 },
-        connectorName: 'ByBit',
-        options: { start: 1_000, end: 2_000 },
-        userName: 'root',
-      },
-      {
-        symbol: 'ETHUSDT',
-        strategyConfig: { MA_FAST: 34 },
-        connectorName: 'ByBit',
-        options: { start: 1_000, end: 2_000 },
-        userName: 'root',
-      },
-    ] as any);
-
-    expect(mockRunWithConcurrency).toHaveBeenCalledTimes(1);
-    expect(mockWarmBacktestIndicatorCache).toHaveBeenCalledTimes(2);
-    expect(mockProgressBarTick).toHaveBeenCalledTimes(2);
-    expect(mockProgressBarTick).toHaveBeenLastCalledWith(
-      1,
-      expect.objectContaining({
-        symbol: expect.any(String),
-        status: expect.any(String),
-      }),
-    );
-    expect(
-      consoleLogSpy.mock.calls.some(
-        ([message]) =>
-          typeof message === 'string' &&
-          message.includes('indicator cache warmup: done in '),
-      ),
-    ).toBe(true);
-  });
-
-  it('defaults indicator cache mode to off unless explicitly enabled', () => {
-    expect(
-      resolveBacktestIndicatorCacheMode({
-        currentMode: undefined,
-        indicatorBackend: 'rust',
-        fast: true,
-        cacheOnly: true,
-      }),
-    ).toBe('off');
-    expect(
-      resolveBacktestIndicatorCacheMode({
-        currentMode: undefined,
-        indicatorBackend: 'rust',
-        fast: true,
-        cacheOnly: false,
-      }),
-    ).toBe('off');
-    expect(
-      resolveBacktestIndicatorCacheMode({
-        currentMode: 'cache',
-        indicatorBackend: 'rust',
-        fast: true,
-        cacheOnly: true,
-      }),
-    ).toBe('cache');
-  });
-
-  it('skips indicator cache warmup when disabled by env', async () => {
-    process.env.TRADEJS_INDICATOR_CACHE_MODE = 'off';
-
-    await warmIndicatorCacheForBacktest([
-      {
-        symbol: 'BTCUSDT',
-        strategyConfig: { MA_FAST: 21 },
-        connectorName: 'ByBit',
-        options: { start: 1_000, end: 2_000 },
-        userName: 'root',
-      },
-    ] as any);
-
-    expect(mockRunWithConcurrency).not.toHaveBeenCalled();
-    expect(mockWarmBacktestIndicatorCache).not.toHaveBeenCalled();
-    expect(
-      consoleLogSpy.mock.calls.some(
-        ([message]) =>
-          typeof message === 'string' &&
-          message.includes('indicator cache warmup: skipped'),
-      ),
-    ).toBe(true);
   });
 
   it('falls back to cached stat when result artifacts are missing', async () => {

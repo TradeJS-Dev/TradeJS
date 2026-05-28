@@ -26,12 +26,6 @@ import { createPineScriptLoader } from './pine';
 import { getStrategyManifest } from './strategy/manifests';
 import { getTradejsProjectCwd, loadTradejsConfig } from './tradejsConfig';
 import { resolveStrategyConfig } from './strategyHelpers/config';
-import {
-  materializeIndicatorCachePlan,
-  planIndicatorCacheRestore,
-  resolveIndicatorCacheRuntimeState,
-} from './indicatorCache';
-import type { IndicatorCacheRestorePlan } from './indicatorCache';
 import { createBaseContextBackend } from './native/baseContextBackend';
 import {
   CreateStrategyCore,
@@ -784,7 +778,6 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
     btcCoinbaseData,
     connector,
     sharedIndicatorsReplayKey,
-    indicatorCachePlan: precomputedIndicatorCachePlan,
   }) => {
     const { config, isConfigFromBacktest } = await resolveStrategyConfig({
       strategyName,
@@ -817,59 +810,10 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
     const getProjectHookList = (stage: keyof TradejsConfigHooks) =>
       normalizeConfigHookList(projectHooks?.[stage] as any);
 
-    const interval = Number(config.INTERVAL ?? '15');
-    const resolvedPrecomputedIndicatorCachePlan =
-      env === 'BACKTEST' && precomputedIndicatorCachePlan
-        ? (precomputedIndicatorCachePlan as IndicatorCacheRestorePlan)
-        : null;
-    const indicatorCachePlan =
-      resolvedPrecomputedIndicatorCachePlan ??
-      (await planIndicatorCacheRestore({
-        provider: connectorName,
-        symbol,
-        interval,
-        periods: indicatorPeriods,
-        data,
-        btcData,
-        btcBinanceData,
-        btcCoinbaseData,
-        baseContextBackend,
-      }));
-    const runtimeIndicatorCachePlan =
-      resolvedPrecomputedIndicatorCachePlan ??
-      (env === 'BACKTEST'
-        ? resolveIndicatorCacheRuntimeState({
-            provider: connectorName,
-            symbol,
-            interval,
-            periods: indicatorPeriods,
-            data,
-            btcData,
-            btcBinanceData,
-            btcCoinbaseData,
-            baseContextBackend,
-            ...indicatorCachePlan,
-          })
-        : indicatorCachePlan);
-
-    if (env !== 'BACKTEST') {
-      await materializeIndicatorCachePlan({
-        provider: connectorName,
-        symbol,
-        interval,
-        periods: indicatorPeriods,
-        data,
-        btcData,
-        btcBinanceData,
-        btcCoinbaseData,
-        baseContextBackend,
-        paramsHash: runtimeIndicatorCachePlan.paramsHash,
-        restoreState: runtimeIndicatorCachePlan.restoreState,
-        replayStartIndex: runtimeIndicatorCachePlan.replayStartIndex,
-        cached: runtimeIndicatorCachePlan.cached,
-        manifestCached: runtimeIndicatorCachePlan.manifestCached,
-      });
-    }
+    const indicatorReplayKey = JSON.stringify({
+      periods: indicatorPeriods,
+      backend: baseContextBackend ? 'rust' : 'ts',
+    });
 
     const notifyRuntimeError = async ({
       stage,
@@ -1158,11 +1102,9 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
       periods: indicatorPeriods,
       pluginRegistryScope: projectRoot,
       baseContextBackend,
-      initialRuntimeState: runtimeIndicatorCachePlan.restoreState,
-      replayStartIndex: runtimeIndicatorCachePlan.replayStartIndex,
       sharedReplayKey:
         env === 'BACKTEST' && sharedIndicatorsReplayKey
-          ? `${sharedIndicatorsReplayKey}:${runtimeIndicatorCachePlan.paramsHash}`
+          ? `${sharedIndicatorsReplayKey}:${indicatorReplayKey}`
           : undefined,
     });
     const strategyApi = createStrategyAPI({

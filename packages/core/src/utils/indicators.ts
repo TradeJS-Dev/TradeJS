@@ -29,7 +29,6 @@ import {
 } from './indicatorHistory';
 import {
   BASE_INTERVAL_MINUTES,
-  buildCandleSignature,
   buildMlCandleIndicators,
   calculateZScore,
   cloneMlCandle,
@@ -2040,52 +2039,6 @@ export const createIndicators = (
       ) as IndicatorsHistorySnapshot;
     },
   };
-};
-
-export type IndicatorCacheSnapshotEntry = {
-  timestamp: number;
-  candleSignature: string | null;
-  btcCandleSignature: string | null;
-  ready: boolean;
-  runtimeState: IndicatorsControllerCheckpointState | null;
-};
-
-export const buildIndicatorCacheSnapshots = (
-  data: Candle[],
-  btcData: Candle[] = [],
-  options: CreateIndicatorsOptions & {
-    periods?: Partial<IndicatorPeriods>;
-    checkpointInterval?: number;
-  } = {},
-): IndicatorCacheSnapshotEntry[] => {
-  const controller = createIndicators([], [], options);
-  const entries: IndicatorCacheSnapshotEntry[] = [];
-  const checkpointInterval =
-    typeof options.checkpointInterval === 'number' &&
-    Number.isFinite(options.checkpointInterval) &&
-    options.checkpointInterval > 0
-      ? Math.floor(options.checkpointInterval)
-      : null;
-
-  data.forEach((candle, index) => {
-    const btcCandle = btcData[index];
-    const snapshot = controller.next(candle, btcCandle);
-    const shouldCaptureRuntimeState =
-      checkpointInterval == null ||
-      index === data.length - 1 ||
-      index % checkpointInterval === 0;
-    entries.push({
-      timestamp: candle.timestamp,
-      candleSignature: buildCandleSignature(candle),
-      btcCandleSignature: buildCandleSignature(btcCandle),
-      ready: snapshot != null,
-      runtimeState: shouldCaptureRuntimeState
-        ? controller.checkpointRuntimeState()
-        : null,
-    });
-  });
-
-  return entries;
 };
 
 export const buildMlTimeframeIndicators = (
