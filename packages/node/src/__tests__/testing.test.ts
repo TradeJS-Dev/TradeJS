@@ -122,6 +122,7 @@ jest.mock('@tradejs/core/strategies', () => ({
   buildDefaultIndicatorPeriods: (config: unknown) =>
     mockBuildDefaultIndicatorPeriods(config),
   releaseStrategyIndicatorsReplayCache: jest.fn(),
+  releaseStrategyReplayCache: jest.fn(),
 }));
 
 jest.mock('../mlPayload', () => ({
@@ -337,6 +338,50 @@ describe('testing backtest flow', () => {
     expect(receivedIndicatorCachePlans[0]).not.toBe(
       receivedIndicatorCachePlans[1],
     );
+  });
+
+  it('fans out detector no-signal skips without re-running strategy core for matching detector keys', async () => {
+    const data = [candle(1_000_050), candle(1_000_150), candle(1_000_250)];
+    const noSignalCode = 'NO_LIQUIDITY_ZONE_RETEST';
+    const firstStrategy = Object.assign(
+      jest.fn(async () => noSignalCode),
+      {
+        detectorFanoutKey: 'LiquidityZones:detector-a',
+        detectorNoSignalSkipReason: noSignalCode,
+        canFastAdvanceDetectorNoSignal: true,
+        advanceDetectorNoSignal: jest.fn(async () => noSignalCode),
+        skipDetectorNoSignal: jest.fn(async () => noSignalCode),
+      },
+    );
+    const secondStrategy = Object.assign(
+      jest.fn(async () => noSignalCode),
+      {
+        detectorFanoutKey: 'LiquidityZones:detector-a',
+        detectorNoSignalSkipReason: noSignalCode,
+        canFastAdvanceDetectorNoSignal: true,
+        advanceDetectorNoSignal: jest.fn(async () => noSignalCode),
+        skipDetectorNoSignal: jest.fn(async () => noSignalCode),
+      },
+    );
+    mockByBitConnector.kline.mockResolvedValue(data);
+    mockBinanceConnector.kline.mockResolvedValue(data);
+    mockCoinbaseConnector.kline.mockResolvedValue(data);
+    mockStrategyCreator.mockImplementationOnce(async () => firstStrategy);
+    mockStrategyCreator.mockImplementationOnce(async () => secondStrategy);
+
+    await testingGroupInSharedCandleLoop([
+      createTest({ name: 'ETH_suite_1', configId: 'a' }),
+      createTest({ name: 'ETH_suite_2', configId: 'b' }),
+    ]);
+
+    expect(firstStrategy).toHaveBeenCalledTimes(2);
+    expect(firstStrategy.advanceDetectorNoSignal).not.toHaveBeenCalled();
+    expect(firstStrategy.skipDetectorNoSignal).not.toHaveBeenCalled();
+    expect(secondStrategy).not.toHaveBeenCalled();
+    expect(secondStrategy.advanceDetectorNoSignal).toHaveBeenCalledTimes(2);
+    expect(secondStrategy.skipDetectorNoSignal).not.toHaveBeenCalled();
+    expect(mockTestConnector.checkSl).toHaveBeenCalledTimes(4);
+    expect(mockTestConnector.checkTp).toHaveBeenCalledTimes(4);
   });
 
   it('excludes the current forming candle from backtest replay data', async () => {

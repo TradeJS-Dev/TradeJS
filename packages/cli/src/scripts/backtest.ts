@@ -1,6 +1,7 @@
+import fs from 'fs';
+import path from 'path';
 import chalk from 'chalk';
 import ProgressBar from 'progress';
-import { drawStatInCLI } from '@tradejs/node/cli';
 import { warmBacktestIndicatorCache } from '@tradejs/node/backtest';
 import { runWithConcurrency } from '@tradejs/core/async';
 import { calculateStatsFull } from '@tradejs/core/backtest';
@@ -45,8 +46,11 @@ import {
 } from '../lib/backtest/cliConfig';
 import {
   getBestTickerResults,
+  getAggregateAverageProfit,
+  getAggregateWinRate,
   getRunCounters,
   getRunStartedAt,
+  getTopConfigResultBuckets,
   getTopResults,
   resetRunState,
 } from '../lib/backtest/runState';
@@ -61,29 +65,20 @@ if (
   );
 }
 
-const HEADERS_RESULTS = [
-  chalk.blue('ID'),
-  chalk.yellow('SYMBOL'),
-  chalk.cyan('PROFIT'),
-  chalk.cyan('ORDERS'),
-  chalk.cyan('WIN/LOSS (%)'),
-  chalk.cyan('RISK'),
-  chalk.cyan('MAX DRAWDOWN (%)'),
-];
-
-const HEADERS_RESULTS_BY_TICKERS = [
-  chalk.blue('ID'),
-  chalk.yellow('SYMBOL'),
-  chalk.cyan('PROFIT'),
-  chalk.cyan('ORDERS'),
-  chalk.cyan('WIN/LOSS (%)'),
-  chalk.cyan('RISK'),
-  chalk.cyan('MAX DRAWDOWN (%)'),
-];
-
 type LoadedBacktestConfig = {
   strategyName: string;
   strategyConfigGrid: StrategyConfigGrid;
+};
+
+type BacktestReportRow = {
+  id: string;
+  symbol: string;
+  configId: string;
+  netProfit: number;
+  orders: number;
+  winRate: number;
+  riskRewardRatio: number | null;
+  maxDrawdown: number;
 };
 
 type PersistedBacktestResultEntry = Pick<
@@ -136,6 +131,66 @@ const buildWarmupPeriodsKey = (
     levelDelay: periods.levelDelay ?? null,
   });
 };
+
+const normalizeIndicatorBackendName = (value: unknown) => {
+  const normalized = String(value ?? 'ts')
+    .trim()
+    .toLowerCase();
+  return normalized === 'rust' || normalized === 'native' ? 'rust' : 'ts';
+};
+
+const normalizeIndicatorCacheMode = (value: unknown) => {
+  const normalized = String(value ?? '')
+    .trim()
+    .toLowerCase();
+  return normalized || null;
+};
+
+export const resolveBacktestIndicatorCacheMode = ({
+  currentMode = process.env.TRADEJS_INDICATOR_CACHE_MODE,
+  indicatorBackend = process.env.TRADEJS_INDICATOR_BACKEND,
+  fast = isFastMode,
+  cacheOnly = Boolean(flags.cacheOnly),
+}: {
+  currentMode?: unknown;
+  indicatorBackend?: unknown;
+  fast?: boolean;
+  cacheOnly?: boolean;
+} = {}) => {
+  void indicatorBackend;
+  void fast;
+  void cacheOnly;
+  const explicitMode = normalizeIndicatorCacheMode(currentMode);
+  if (explicitMode) {
+    return explicitMode;
+  }
+
+  return 'off';
+};
+
+const applyBacktestIndicatorCacheMode = () => {
+  const explicitMode = normalizeIndicatorCacheMode(
+    process.env.TRADEJS_INDICATOR_CACHE_MODE,
+  );
+  const mode = resolveBacktestIndicatorCacheMode();
+  if (!explicitMode && mode === 'off') {
+    process.env.TRADEJS_INDICATOR_CACHE_MODE = mode;
+  }
+
+  console.log(
+    chalk.gray(
+      `indicator cache mode: ${mode} (${explicitMode ? 'env' : 'auto'}), indicator backend: ${normalizeIndicatorBackendName(
+        process.env.TRADEJS_INDICATOR_BACKEND,
+      )}`,
+    ),
+  );
+};
+
+const isIndicatorCacheModeOff = () =>
+  resolveBacktestIndicatorCacheMode({
+    fast: false,
+    cacheOnly: false,
+  }) === 'off';
 
 export const toPersistedBacktestResultEntry = (
   result: TestWorkerResult,
@@ -201,10 +256,92 @@ const resolveRenderableStat = async (
   };
 };
 
+const toFiniteNumber = (value: unknown, fallback = 0) => {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : fallback;
+};
+
+const toReportRow = (
+  result: TestWorkerResult,
+  stat: Partial<TestStat>,
+): BacktestReportRow => ({
+  id: result.test.name,
+  symbol: result.test.symbol,
+  configId: result.test.configId || '',
+  netProfit: toFiniteNumber(
+    (stat as Partial<TestStat> & { profit?: number }).netProfit ??
+      (stat as Partial<TestStat> & { profit?: number }).profit,
+  ),
+  orders: toFiniteNumber(stat.orders),
+  winRate: toFiniteNumber(stat.winRate),
+  riskRewardRatio:
+    stat.riskRewardRatio == null ? null : toFiniteNumber(stat.riskRewardRatio),
+  maxDrawdown: toFiniteNumber(stat.maxDrawdown),
+});
+
+const collectReportRows = async (
+  results: TestWorkerResult[],
+): Promise<BacktestReportRow[]> => {
+  const rows: BacktestReportRow[] = [];
+  for (const result of results) {
+    const rendered = isFastMode ? null : await resolveRenderableStat(result);
+    const stat = rendered?.stat ?? result.stat;
+
+    if (rendered) {
+      const { orderLog, hasArtifacts } = rendered;
+      if (hasArtifacts && orderLog) {
+        await setTestData(result.test, stat, orderLog);
+      }
+    }
+
+    rows.push(toReportRow(result, stat));
+  }
+  return rows;
+};
+
+const escapeMdCell = (value: unknown) =>
+  String(value ?? '')
+    .replace(/\|/g, '\\|')
+    .replace(/\n/g, '<br>');
+
+const formatMoney = (value: number) => `${value.toFixed(2)}$`;
+const formatPercent = (value: number) => `${value.toFixed(1)}%`;
+const formatRatio = (value: number | null) =>
+  value == null ? '-' : value.toFixed(2);
+
+const createMarkdownTable = (headers: string[], rows: unknown[][]) => {
+  const header = `| ${headers.map(escapeMdCell).join(' |')} |`;
+  const separator = `| ${headers.map(() => '---').join(' |')} |`;
+  const body = rows.map((row) => `| ${row.map(escapeMdCell).join(' |')} |`);
+  return [header, separator, ...body].join('\n');
+};
+
+const renderReportRowsTable = (rows: BacktestReportRow[]) =>
+  createMarkdownTable(
+    ['ID', 'Symbol', 'Config', 'P&L', 'Orders', 'Winrate', 'Risk', 'Max DD'],
+    rows.map((row) => [
+      row.id,
+      row.symbol,
+      row.configId || '-',
+      formatMoney(row.netProfit),
+      row.orders,
+      formatPercent(row.winRate),
+      formatRatio(row.riskRewardRatio),
+      formatPercent(row.maxDrawdown),
+    ]),
+  );
+
+const safeFileToken = (value: string) =>
+  value.replace(/[^a-zA-Z0-9._-]+/g, '-').replace(/^-+|-+$/g, '') || 'backtest';
+
 export const warmIndicatorCacheForBacktest = async (
   testSuite: Parameters<typeof executeTestSuite>[0]['testSuite'],
 ) => {
   if (!testSuite.length) {
+    return;
+  }
+  if (isIndicatorCacheModeOff()) {
+    console.log(chalk.gray('indicator cache warmup: skipped'));
     return;
   }
 
@@ -294,99 +431,134 @@ const loadBacktestConfig = async (): Promise<LoadedBacktestConfig> => {
   };
 };
 
-const saveAndPrintResults = async () => {
-  const colorizedResults: string[][] = [];
-  for await (const result of getTopResults()) {
-    const { test } = result;
-    const { symbol, name } = test;
-    const rendered = isFastMode ? null : await resolveRenderableStat(result);
-    const stat = rendered?.stat ?? result.stat;
+const hasSingleSymbol = (
+  testSuite: Parameters<typeof executeTestSuite>[0]['testSuite'],
+) => new Set(testSuite.map((test) => test.symbol)).size === 1;
 
-    if (rendered) {
-      const { orderLog, hasArtifacts } = rendered;
-      if (hasArtifacts && orderLog) {
-        await setTestData(test, stat, orderLog);
-      }
-    }
+const writeBacktestMarkdownReport = async ({
+  timestamp,
+  testSuite,
+  topRows,
+  bestTickerRows,
+  bestConfig,
+  mergedConfig,
+  useConfigAverageRanking,
+  durationSeconds,
+}: {
+  timestamp: string;
+  testSuite: Parameters<typeof executeTestSuite>[0]['testSuite'];
+  topRows: BacktestReportRow[];
+  bestTickerRows: BacktestReportRow[];
+  bestConfig: unknown;
+  mergedConfig: unknown;
+  useConfigAverageRanking: boolean;
+  durationSeconds: number;
+}) => {
+  const outputDir = path.resolve(projectRoot, 'data/backtests/output');
+  await fs.promises.mkdir(outputDir, { recursive: true });
 
-    colorizedResults.push([
-      chalk.blue(name),
-      chalk.yellow(symbol),
-      ...drawStatInCLI(stat, [
-        'netProfit',
-        'orders',
-        'winRate',
-        'riskRewardRatio',
-        'maxDrawdown',
-      ]),
-    ]);
-  }
-
-  console.log('');
-  console.log('RESULTS:');
-  console.log(createTable(HEADERS_RESULTS, colorizedResults));
-  console.log('');
-};
-
-const saveAndPrintResultsByTickers = async () => {
-  const colorizedResultsByTickers: string[][] = [];
-  for await (const result of getBestTickerResults()) {
-    const { test } = result;
-    const { symbol, name } = test;
-    const rendered = isFastMode ? null : await resolveRenderableStat(result);
-    const stat = rendered?.stat ?? result.stat;
-
-    if (rendered) {
-      const { orderLog, hasArtifacts } = rendered;
-      if (hasArtifacts && orderLog) {
-        await setTestData(test, stat, orderLog);
-      }
-    }
-
-    colorizedResultsByTickers.push([
-      chalk.blue(name),
-      chalk.yellow(symbol),
-      ...drawStatInCLI(stat, [
-        'netProfit',
-        'orders',
-        'winRate',
-        'riskRewardRatio',
-        'maxDrawdown',
-      ]),
-    ]);
-  }
-
-  console.log('');
-  console.log('RESULTS BY TICKERS:');
-  console.log(
-    createTable(HEADERS_RESULTS_BY_TICKERS, colorizedResultsByTickers),
+  const outputPath = path.join(
+    outputDir,
+    `${timestamp}-${safeFileToken(flags.config)}.md`,
   );
-  console.log('');
+  const { successTests, errorTests, errors } = getRunCounters();
+  const topConfigBuckets = getTopConfigResultBuckets(flags.top);
+
+  const lines = [
+    `# Backtest ${flags.config}`,
+    '',
+    '## Summary',
+    '',
+    createMarkdownTable(
+      ['Metric', 'Value'],
+      [
+        ['Config', flags.config],
+        ['User', userName],
+        ['Connector', flags.connector],
+        ['Interval', String(interval)],
+        ['Tests planned', testSuite.length],
+        ['Success tests', successTests],
+        ['Errors', errorTests],
+        ['Duration', `${durationSeconds.toFixed(2)}s`],
+        ['Started at', new Date(getRunStartedAt()).toISOString()],
+        ['Finished at', new Date().toISOString()],
+        [
+          'Ranking mode',
+          useConfigAverageRanking
+            ? 'avg P&L by config'
+            : 'single-symbol top tests',
+        ],
+        ['Command', `\`${process.argv.join(' ')}\``],
+      ],
+    ),
+    '',
+    '## Config Ranking',
+    '',
+    topConfigBuckets.length
+      ? createMarkdownTable(
+          ['Config', 'Avg P&L', 'Winrate', 'Tests'],
+          topConfigBuckets.map((bucket) => [
+            bucket.configId,
+            formatMoney(getAggregateAverageProfit(bucket)),
+            formatPercent(getAggregateWinRate(bucket)),
+            bucket.count,
+          ]),
+        )
+      : '_No config ranking data._',
+    '',
+    '## Top Results',
+    '',
+    topRows.length ? renderReportRowsTable(topRows) : '_No top results._',
+    '',
+    '## Best Result By Ticker',
+    '',
+    bestTickerRows.length
+      ? renderReportRowsTable(bestTickerRows)
+      : '_No ticker results._',
+    '',
+    '## Best Config',
+    '',
+    '```json',
+    toJson(bestConfig, true),
+    '```',
+    '',
+    '## Merged Config',
+    '',
+    '```json',
+    toJson(mergedConfig, true),
+    '```',
+    '',
+    '## Errors',
+    '',
+    errors.length
+      ? ['```json', toJson(errors, true), '```'].join('\n')
+      : '_No errors._',
+    '',
+  ];
+
+  await fs.promises.writeFile(outputPath, lines.join('\n'), 'utf8');
+  return outputPath;
 };
 
-const finishBacktest = async () => {
-  if (flags.tickers) {
-    await saveAndPrintResults();
-  } else {
-    await saveAndPrintResultsByTickers();
-  }
+const finishBacktest = async (
+  testSuite: Parameters<typeof executeTestSuite>[0]['testSuite'],
+) => {
+  const topResults = getTopResults();
+  const bestTickerResults = getBestTickerResults();
+  const topRows = await collectReportRows(topResults);
+  const bestTickerRows = await collectReportRows(bestTickerResults);
+
   if (!isFastMode) {
     await persistTestSummariesIndex();
   }
 
-  const topResults = getTopResults();
-  const bestConfig = topResults[0]?.test.strategyConfig;
-  const mergedConfig = mergeConfigs(
-    topResults.map(({ test: { strategyConfig } }) => strategyConfig),
-  );
-
-  printRunOutro();
-  console.log(chalk.gray('BEST CONFIG:'));
-  console.log(chalk.green(toJson(bestConfig, true)));
-  console.log('');
-  console.log(chalk.gray('MERGED CONFIG:'));
-  console.log(chalk.blue(toJson(mergedConfig, true)));
-  console.log('');
+  const topConfigBuckets = getTopConfigResultBuckets(flags.top);
+  const useConfigAverageRanking = !hasSingleSymbol(testSuite);
+  const rankedConfigs = useConfigAverageRanking
+    ? topConfigBuckets.map((bucket) => bucket.strategyConfig)
+    : topResults.map(({ test: { strategyConfig } }) => strategyConfig);
+  const bestConfig = rankedConfigs[0];
+  const mergedConfig = mergeConfigs(rankedConfigs);
 
   const finishedAt = new Date();
   const { successTests, errorTests, errors } = getRunCounters();
@@ -394,6 +566,34 @@ const finishBacktest = async () => {
     ((Date.now() - getRunStartedAt()) / 1000).toFixed(2),
   );
   const timestamp = createTimestamp(finishedAt);
+  const markdownReportPath = await writeBacktestMarkdownReport({
+    timestamp,
+    testSuite,
+    topRows,
+    bestTickerRows,
+    bestConfig,
+    mergedConfig,
+    useConfigAverageRanking,
+    durationSeconds,
+  });
+
+  printRunOutro();
+  if (useConfigAverageRanking) {
+    const bestBucket = topConfigBuckets[0];
+    if (bestBucket) {
+      console.log(
+        chalk.gray(
+          `config ranking: avg P&L across symbols (best avg ${formatMoney(
+            getAggregateAverageProfit(bestBucket),
+          )}, win ${formatPercent(getAggregateWinRate(bestBucket))}, tests ${
+            bestBucket.count
+          })`,
+        ),
+      );
+    }
+  }
+  console.log(chalk.gray(`full report: ${markdownReportPath}`));
+  console.log('');
 
   if (!isFastMode) {
     await setData(
@@ -406,13 +606,12 @@ const finishBacktest = async () => {
         finishedAt: finishedAt.toISOString(),
         durationSeconds,
         results: toPersistedBacktestResultEntries(topResults),
-        resultsByTickers: toPersistedBacktestResultEntries(
-          getBestTickerResults(),
-        ),
+        resultsByTickers: toPersistedBacktestResultEntries(bestTickerResults),
         resultsByStrategies: null,
         runtimeComparison: null,
         bestConfig,
         mergedConfig,
+        markdownReportPath,
         successTests,
         errors,
         errorTests,
@@ -450,6 +649,7 @@ export const backtest = async () => {
     return;
   }
 
+  applyBacktestIndicatorCacheMode();
   await warmIndicatorCacheForBacktest(testSuite);
   await executeTestSuite({
     testSuite,
@@ -459,7 +659,7 @@ export const backtest = async () => {
       trackTopResult(result);
       updateBestTickerResult(result);
     },
-    onFinish: finishBacktest,
+    onFinish: () => finishBacktest(testSuite),
   });
 };
 

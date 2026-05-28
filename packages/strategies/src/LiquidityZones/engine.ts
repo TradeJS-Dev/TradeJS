@@ -78,22 +78,19 @@ const getConfigNumbers = (config: LiquidityZonesConfig) => ({
   ),
 });
 
+export const buildLiquidityZonesDetectorKey = (
+  config: LiquidityZonesConfig,
+) => {
+  const values = getConfigNumbers(config);
+  return JSON.stringify(values);
+};
+
 const cloneZone = (zone: LiquidityZone): LiquidityZone => ({ ...zone });
 
 const getFilterMetric = (
   zone: LiquidityZone,
   mode: LiquidityZonesFilterMode,
 ) => (mode === 'volume' ? zone.hitVolume : zone.hitCount);
-
-const getWindow = (
-  candles: Candle[],
-  candidateIndex: number,
-  lookback: number,
-) =>
-  candles.slice(
-    Math.max(0, candidateIndex - lookback),
-    candidateIndex + lookback + 1,
-  );
 
 const isPivotHigh = (
   candles: Candle[],
@@ -105,8 +102,14 @@ const isPivotHigh = (
   if (candidateHigh == null) {
     return false;
   }
-  const window = getWindow(candles, candidateIndex, lookback);
-  return window.every((candle) => candidateHigh >= Number(candle.high));
+  const from = Math.max(0, candidateIndex - lookback);
+  const to = Math.min(candles.length - 1, candidateIndex + lookback);
+  for (let index = from; index <= to; index += 1) {
+    if (candidateHigh < Number(candles[index]?.high)) {
+      return false;
+    }
+  }
+  return true;
 };
 
 const isPivotLow = (
@@ -119,8 +122,14 @@ const isPivotLow = (
   if (candidateLow == null) {
     return false;
   }
-  const window = getWindow(candles, candidateIndex, lookback);
-  return window.every((candle) => candidateLow <= Number(candle.low));
+  const from = Math.max(0, candidateIndex - lookback);
+  const to = Math.min(candles.length - 1, candidateIndex + lookback);
+  for (let index = from; index <= to; index += 1) {
+    if (candidateLow > Number(candles[index]?.low)) {
+      return false;
+    }
+  }
+  return true;
 };
 
 const createZoneFromPivot = ({
@@ -393,7 +402,7 @@ export const createLiquidityZonesEngine = ({
 
     return {
       signal: state.signal,
-      zones: state.zones.map(cloneZone),
+      zones: state.signal ? state.zones.map(cloneZone) : [],
     };
   };
 

@@ -10,6 +10,7 @@ import {
   buildDefaultIndicatorPeriods,
   createStrategyAPI,
   createStrategyIndicatorsState,
+  getSharedStrategyReplayState,
 } from '@tradejs/core/strategies';
 import { getTimestamp } from '@tradejs/core/time';
 import { logger } from '@tradejs/infra/logger';
@@ -56,6 +57,8 @@ interface CreateStrategyRuntimeParams<TConfig extends StrategyConfig> {
   createCore: CreateStrategyCore<TConfig, any, any>;
   manifest?: StrategyManifest;
   strategyDirectory?: string;
+  detectorKey?: (config: TConfig) => string | undefined;
+  detectorNoSignalSkipReason?: string;
 }
 
 type EntryDecision = Extract<StrategyDecision, { kind: 'entry' }>;
@@ -741,6 +744,8 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
   createCore,
   manifest: staticManifest,
   strategyDirectory,
+  detectorKey,
+  detectorNoSignalSkipReason,
 }: CreateStrategyRuntimeParams<TConfig>): StrategyCreator => {
   const projectRoot = getTradejsProjectCwd();
 
@@ -768,7 +773,7 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
         ),
   );
 
-  return async ({
+  const creator: StrategyCreator = async ({
     userName,
     connectorName,
     config: baseConfig,
@@ -1184,6 +1189,9 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
       loadPineScriptFile,
       strategyApi,
       indicatorsState,
+      sharedReplayKey:
+        env === 'BACKTEST' ? sharedIndicatorsReplayKey : undefined,
+      getSharedReplayState: getSharedStrategyReplayState,
     });
 
     await invokeStageHooks('onInit', strategyManifest?.hooks?.onInit, {
@@ -1194,7 +1202,11 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
       },
     });
 
-    return async (candle, btcCandle) => {
+    const runWithDecisionOverride = async (
+      candle: Parameters<Awaited<ReturnType<typeof createCore>>>[0],
+      btcCandle: Parameters<Awaited<ReturnType<typeof createCore>>>[1],
+      coreDecisionOverride?: StrategyDecision,
+    ) => {
       data.push(candle);
       btcData.push(btcCandle);
       indicatorsState.setCurrentBar(candle, btcCandle);
@@ -1227,7 +1239,7 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
         if (isStrategyDecision(manifestOnBarDecision)) {
           decision = manifestOnBarDecision;
         } else {
-          decision = await core(candle, btcCandle);
+          decision = coreDecisionOverride ?? (await core(candle, btcCandle));
           shouldInvokeAfterCoreDecisionHook = true;
         }
       }
@@ -1546,5 +1558,57 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
         notifyRuntimeError,
       });
     };
+
+    const strategy = (async (
+      candle: KlineChartItem,
+      btcCandle: KlineChartItem,
+    ) => runWithDecisionOverride(candle, btcCandle)) as any;
+
+    const resolvedDetectorKey = detectorKey?.(config);
+    if (resolvedDetectorKey && detectorNoSignalSkipReason) {
+      const canFastAdvanceDetectorNoSignal =
+        env === 'BACKTEST' &&
+        getProjectHookList('onBar').length === 0 &&
+        getProjectHookList('afterCoreDecision').length === 0 &&
+        getProjectHookList('afterBarDecision').length === 0 &&
+        getProjectHookList('onSkip').length === 0 &&
+        !strategyManifest?.hooks?.onBar &&
+        !strategyManifest?.hooks?.afterCoreDecision &&
+        !strategyManifest?.hooks?.afterBarDecision &&
+        !strategyManifest?.hooks?.onSkip;
+      strategy.detectorFanoutKey = [strategyName, resolvedDetectorKey].join(
+        ':',
+      );
+      strategy.detectorNoSignalSkipReason = detectorNoSignalSkipReason;
+      strategy.canFastAdvanceDetectorNoSignal = canFastAdvanceDetectorNoSignal;
+      if (canFastAdvanceDetectorNoSignal) {
+        strategy.advanceDetectorNoSignal = (
+          candle: KlineChartItem,
+          btcCandle: KlineChartItem,
+          code: string,
+        ) => {
+          data.push(candle);
+          btcData.push(btcCandle);
+          indicatorsState.setCurrentBar(candle, btcCandle);
+          return Promise.resolve(code);
+        };
+      }
+      strategy.skipDetectorNoSignal = (
+        candle: KlineChartItem,
+        btcCandle: KlineChartItem,
+        code: string,
+      ) => runWithDecisionOverride(candle, btcCandle, strategyApi.skip(code));
+    }
+
+    return strategy;
   };
+
+  if (detectorKey) {
+    creator.detectorKey = detectorKey as StrategyCreator['detectorKey'];
+  }
+  if (detectorNoSignalSkipReason) {
+    creator.detectorNoSignalSkipReason = detectorNoSignalSkipReason;
+  }
+
+  return creator;
 };

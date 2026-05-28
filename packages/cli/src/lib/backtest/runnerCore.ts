@@ -61,9 +61,13 @@ import {
   getRunStartedAt,
   getTestsStartedAt,
   getTopResults,
+  getAggregateAverageProfit,
+  getAggregateWinRate,
+  getProgressStats,
   incrementErrorTests,
   incrementSuccessTests,
   markTestsStarted,
+  recordResultAggregates,
   recordRunError,
   replaceTopResults,
   setBestTickerResultForSymbol,
@@ -182,6 +186,13 @@ export const chunkTestSuiteBySymbol = (
   }
 
   const chunkCount = Math.max(1, Math.min(requestedChunks, testSuite.length));
+  const maxSymbolGroupSize = Math.max(
+    1,
+    Number.parseInt(
+      String(process.env.TRADEJS_BACKTEST_SYMBOL_GROUP_MAX_TESTS ?? '16'),
+      10,
+    ) || 16,
+  );
   const testsBySymbol = new Map<string, TestSuite>();
 
   for (const test of testSuite) {
@@ -200,7 +211,17 @@ export const chunkTestSuiteBySymbol = (
       }
       return leftSymbol.localeCompare(rightSymbol);
     })
-    .map(([, tests]) => tests);
+    .flatMap(([, tests]) => {
+      if (tests.length <= maxSymbolGroupSize) {
+        return [tests];
+      }
+
+      const groups: TestSuite[] = [];
+      for (let index = 0; index < tests.length; index += maxSymbolGroupSize) {
+        groups.push(tests.slice(index, index + maxSymbolGroupSize));
+      }
+      return groups;
+    });
 
   const workerCount = Math.min(chunkCount, symbolGroups.length);
   const chunks = Array.from({ length: workerCount }, () => [] as TestSuite);
@@ -535,6 +556,7 @@ export const executeTestSuite = async ({
       }
 
       incrementSuccessTests();
+      recordResultAggregates(msg as TestWorkerResult);
       onResult(msg as TestWorkerResult);
     },
     onWorkerError: (message) => {
@@ -542,10 +564,10 @@ export const executeTestSuite = async ({
       console.error(chalk.red(message));
     },
     getProgressSnapshot: () => {
-      const bestResult = getTopResults()[0];
+      const aggregate = getProgressStats();
       return {
-        symbol: bestResult?.test.symbol || '-',
-        profit: bestResult ? getResultNetProfit(bestResult) : 0,
+        averageProfit: getAggregateAverageProfit(aggregate),
+        winRate: getAggregateWinRate(aggregate),
       };
     },
     onFinish,

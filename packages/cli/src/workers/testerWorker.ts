@@ -131,6 +131,7 @@ process.on(
 
       for (let index = 0; index < testSuite.length; ) {
         const test = testSuite[index];
+        const group = collectSharedLoopGroup(testSuite, index);
         if (
           previousTest &&
           (previousTest.symbol !== test.symbol ||
@@ -144,11 +145,9 @@ process.on(
           });
         }
 
-        let completedTest = test;
+        let completedTest = group[group.length - 1] ?? test;
         try {
-          const group = collectSharedLoopGroup(testSuite, index);
           if (group.length > 1) {
-            completedTest = group[group.length - 1];
             const groupResults = await testingGroupInSharedCandleLoop(group);
             for (const { test: groupTest, result } of groupResults) {
               await sendTestResult({
@@ -176,16 +175,18 @@ process.on(
             error instanceof Error ? error.message : String(error);
           const errorStack = error instanceof Error ? error.stack : undefined;
           logger.error('tester worker error: %s', errorMessage);
-          process.send?.({
-            error: true,
-            id: test.name,
-            symbol: test.symbol,
-            msg: {
-              message: errorMessage,
-              stack: errorStack,
-            },
-          });
-          index += 1;
+          for (const failedTest of group) {
+            process.send?.({
+              error: true,
+              id: failedTest.name,
+              symbol: failedTest.symbol,
+              msg: {
+                message: errorMessage,
+                stack: errorStack,
+              },
+            });
+          }
+          index += group.length;
         } finally {
           previousTest = completedTest;
         }

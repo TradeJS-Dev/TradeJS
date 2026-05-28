@@ -653,11 +653,21 @@ const detectConfirmedPivots = (
     index += 1
   ) {
     const candle = candles[index];
-    const left = candles.slice(index - PIVOT_LEFT_RIGHT, index);
-    const right = candles.slice(index + 1, index + PIVOT_LEFT_RIGHT + 1);
-    const surrounding = [...left, ...right];
-    const maxOtherHigh = Math.max(...surrounding.map((item) => item.high));
-    const minOtherLow = Math.min(...surrounding.map((item) => item.low));
+    let maxOtherHigh = Number.NEGATIVE_INFINITY;
+    let minOtherLow = Number.POSITIVE_INFINITY;
+
+    for (
+      let cursor = index - PIVOT_LEFT_RIGHT;
+      cursor <= index + PIVOT_LEFT_RIGHT;
+      cursor += 1
+    ) {
+      if (cursor === index) {
+        continue;
+      }
+      const surrounding = candles[cursor];
+      maxOtherHigh = Math.max(maxOtherHigh, surrounding.high);
+      minOtherLow = Math.min(minOtherLow, surrounding.low);
+    }
 
     if (candle.high >= maxOtherHigh + deviation) {
       pivots.push({ type: 'high', index, price: candle.high });
@@ -1059,11 +1069,27 @@ const buildSrZonesContext = (
     index += 1
   ) {
     const candle = candles[index];
-    const left = candles.slice(index - SR_ZONE_PIVOT_PERIOD, index);
-    const right = candles.slice(index + 1, index + SR_ZONE_PIVOT_PERIOD + 1);
-    const surrounding = [...left, ...right];
-    const isPivotHigh = surrounding.every((item) => candle.high >= item.high);
-    const isPivotLow = surrounding.every((item) => candle.low <= item.low);
+    let isPivotHigh = true;
+    let isPivotLow = true;
+    for (
+      let cursor = index - SR_ZONE_PIVOT_PERIOD;
+      cursor <= index + SR_ZONE_PIVOT_PERIOD;
+      cursor += 1
+    ) {
+      if (cursor === index) {
+        continue;
+      }
+      const surrounding = candles[cursor];
+      if (candle.high < surrounding.high) {
+        isPivotHigh = false;
+      }
+      if (candle.low > surrounding.low) {
+        isPivotLow = false;
+      }
+      if (!isPivotHigh && !isPivotLow) {
+        break;
+      }
+    }
 
     if (isPivotHigh || isPivotLow) {
       pivotValues.unshift(isPivotHigh ? candle.high : candle.low);
@@ -1077,8 +1103,12 @@ const buildSrZonesContext = (
     return empty;
   }
 
-  const highest = Math.max(...candles.map((item) => item.high));
-  const lowest = Math.min(...candles.map((item) => item.low));
+  let highest = Number.NEGATIVE_INFINITY;
+  let lowest = Number.POSITIVE_INFINITY;
+  for (const candle of candles) {
+    highest = Math.max(highest, candle.high);
+    lowest = Math.min(lowest, candle.low);
+  }
   const channelWidth = ((highest - lowest) * SR_ZONE_CHANNEL_WIDTH_PCT) / 100;
   const srLevels: Array<{ upper: number; lower: number; strength: number }> =
     [];
@@ -2116,8 +2146,20 @@ const buildPivotContext = (
   candlesCount: number,
   atr: number | null,
 ) => {
-  const lastHigh = [...pivots].reverse().find((pivot) => pivot.type === 'high');
-  const lastLow = [...pivots].reverse().find((pivot) => pivot.type === 'low');
+  let lastHigh: PivotPoint | undefined;
+  let lastLow: PivotPoint | undefined;
+  for (let index = pivots.length - 1; index >= 0; index -= 1) {
+    const pivot = pivots[index];
+    if (!lastHigh && pivot.type === 'high') {
+      lastHigh = pivot;
+    }
+    if (!lastLow && pivot.type === 'low') {
+      lastLow = pivot;
+    }
+    if (lastHigh && lastLow) {
+      break;
+    }
+  }
   const pivotDensity = (lookback: number) =>
     candlesCount === 0
       ? null

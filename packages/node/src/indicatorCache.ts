@@ -21,6 +21,9 @@ const INDICATOR_CACHE_VERSION = 'v12';
 const INDICATOR_CACHE_CHECKPOINT_INTERVAL = 256;
 const INDICATOR_CACHE_PROFILE =
   process.env.TRADEJS_INDICATOR_CACHE_PROFILE === '1';
+const isIndicatorCacheDisabled = () =>
+  String(process.env.TRADEJS_INDICATOR_CACHE_MODE ?? '').toLowerCase() ===
+  'off';
 const indicatorRestorePlanCache = new Map<string, IndicatorCacheRestorePlan>();
 const indicatorRuntimeStatePlanCache = new Map<
   string,
@@ -488,7 +491,7 @@ export const planIndicatorCacheRestore = async ({
     baseContextBackend,
   });
 
-  if (!data.length) {
+  if (!data.length || isIndicatorCacheDisabled()) {
     return {
       paramsHash,
       version: INDICATOR_CACHE_VERSION,
@@ -696,6 +699,12 @@ export const materializeIndicatorCachePlan = async (
     : PROFILE_ZERO;
   if (INDICATOR_CACHE_PROFILE) {
     indicatorCacheProfile.materializeCalls += 1;
+  }
+  if (isIndicatorCacheDisabled()) {
+    if (INDICATOR_CACHE_PROFILE) {
+      indicatorCacheProfile.materializeMs += profileElapsedMs(profileStartedAt);
+    }
+    return;
   }
   if (!params.data.length) {
     return;

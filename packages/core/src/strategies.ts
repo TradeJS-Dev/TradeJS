@@ -15,4 +15,8 @@ export {
   mapAiRuntimeFromConfig,
   mapMlRuntimeFromConfig,
 } from './utils/strategyHelpers/signalBuilders';
+export {
+  getSharedStrategyReplayState,
+  releaseStrategyReplayCache,
+} from './utils/strategyHelpers/sharedReplay';
 export { createLastTradeController } from './utils/strategyHelpers/state';

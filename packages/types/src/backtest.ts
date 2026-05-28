@@ -17,6 +17,22 @@ export type Strategy = (
   btcCandle: KlineChartItem,
 ) => Promise<string | Signal>;
 
+export type BacktestDetectorOptimizedStrategy = Strategy & {
+  detectorFanoutKey?: string;
+  detectorNoSignalSkipReason?: string;
+  canFastAdvanceDetectorNoSignal?: boolean;
+  advanceDetectorNoSignal?: (
+    candle: KlineChartItem,
+    btcCandle: KlineChartItem,
+    code: string,
+  ) => Promise<string | Signal>;
+  skipDetectorNoSignal?: (
+    candle: KlineChartItem,
+    btcCandle: KlineChartItem,
+    code: string,
+  ) => Promise<string | Signal>;
+};
+
 export type BacktestPriceMode = 'mid' | 'close' | 'open' | 'rand';
 
 export interface StrategyConfig {
@@ -47,9 +63,11 @@ export interface StrategyCreatorParams {
   };
 }
 
-export type StrategyCreator = (
-  params: StrategyCreatorParams,
-) => Promise<Strategy>;
+export interface StrategyCreator {
+  (params: StrategyCreatorParams): Promise<Strategy>;
+  detectorKey?: (config: StrategyConfig) => string | undefined;
+  detectorNoSignalSkipReason?: string;
+}
 
 export type TestingOptions = Pick<KlineRequest, 'start' | 'end'>;
 

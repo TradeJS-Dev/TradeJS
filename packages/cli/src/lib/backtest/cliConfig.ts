@@ -87,7 +87,7 @@ args.option('startTime', 'Explicit backtest start timestamp (ms or seconds)');
 args.option('endTime', 'Explicit backtest end timestamp (ms or seconds)');
 args.option(
   ['T', 'top'],
-  'Return N best tests for single-ticker grid runs (defaults to 50)',
+  'Return N best tests/config buckets for grid runs (defaults to 50)',
   TESTS_TOP_LIMIT,
 );
 args.option(['u', 'updateOnly'], 'Only update tickers history', false);

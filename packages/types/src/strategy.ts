@@ -819,6 +819,11 @@ export interface CreateStrategyCoreParams<
   loadPineScriptFile: (fileNameOrPath: string, fallback?: string) => string;
   strategyApi: StrategyAPI;
   indicatorsState: TIndicatorsState;
+  sharedReplayKey?: string;
+  getSharedReplayState?: <TState>(
+    key: string | undefined,
+    createState: () => TState,
+  ) => TState;
 }
 
 export type StrategyCoreRunner = (

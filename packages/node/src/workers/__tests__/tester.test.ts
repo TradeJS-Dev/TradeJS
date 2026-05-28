@@ -9,9 +9,13 @@ describe('worker tester', () => {
   const setup = async ({
     suite,
     testingImpl,
+    canRunTestsInSharedCandleLoopImpl = jest.fn(() => false),
+    testingGroupInSharedCandleLoopImpl = jest.fn(),
   }: {
     suite: any[];
     testingImpl: jest.Mock;
+    canRunTestsInSharedCandleLoopImpl?: jest.Mock;
+    testingGroupInSharedCandleLoopImpl?: jest.Mock;
   }) => {
     jest.resetModules();
     messageHandler = null;
@@ -36,9 +40,9 @@ describe('worker tester', () => {
     }));
 
     jest.doMock('../../testing', () => ({
-      canRunTestsInSharedCandleLoop: jest.fn(() => false),
+      canRunTestsInSharedCandleLoop: canRunTestsInSharedCandleLoopImpl,
       testing: testingImpl,
-      testingGroupInSharedCandleLoop: jest.fn(),
+      testingGroupInSharedCandleLoop: testingGroupInSharedCandleLoopImpl,
       resetTestingKlineCache: jest.fn(),
       releaseTestingSymbolCache: jest.fn(),
     }));
@@ -179,6 +183,84 @@ describe('worker tester', () => {
     );
     expect(process.disconnect).toHaveBeenCalled();
     expect(process.exit).toHaveBeenCalledWith(0);
+  });
+
+  it('marks every shared candle-loop group test failed when the group throws', async () => {
+    const send = jest.fn((_message?: unknown, callback?: () => void) => {
+      callback?.();
+    });
+    process.send = send as any;
+    process.disconnect = jest.fn() as any;
+    process.exit = jest.fn() as any;
+
+    const first = {
+      name: 'group-1',
+      symbol: 'ETHUSDT',
+      userName: 'alice',
+      connectorName: 'ByBit',
+    };
+    const second = {
+      name: 'group-2',
+      symbol: 'ETHUSDT',
+      userName: 'alice',
+      connectorName: 'ByBit',
+    };
+    const third = {
+      name: 'solo-1',
+      symbol: 'BTCUSDT',
+      userName: 'alice',
+      connectorName: 'ByBit',
+    };
+    const testingImpl = jest.fn(async () => ({
+      stat: { amount: 100, profit: 0, orders: 0 },
+      orderLogId: 'solo-log',
+    }));
+    const canRunTestsInSharedCandleLoopImpl = jest.fn(
+      (tests: unknown[]) => tests.length <= 2,
+    );
+    const testingGroupInSharedCandleLoopImpl = jest.fn(async () => {
+      throw new Error('group timeout');
+    });
+
+    await setup({
+      suite: [first, second, third],
+      testingImpl,
+      canRunTestsInSharedCandleLoopImpl,
+      testingGroupInSharedCandleLoopImpl,
+    });
+
+    await messageHandler?.({
+      chunk: [first, second, third],
+      userName: 'alice',
+    });
+
+    expect(testingGroupInSharedCandleLoopImpl).toHaveBeenCalledTimes(1);
+    expect(testingGroupInSharedCandleLoopImpl).toHaveBeenCalledWith([
+      first,
+      second,
+    ]);
+    expect(testingImpl).toHaveBeenCalledTimes(1);
+    expect(testingImpl).toHaveBeenCalledWith(third);
+    expect(send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        error: true,
+        id: 'group-1',
+        symbol: 'ETHUSDT',
+      }),
+    );
+    expect(send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        error: true,
+        id: 'group-2',
+        symbol: 'ETHUSDT',
+      }),
+    );
+    expect(send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        test: third,
+      }),
+    );
+    expect(send).toHaveBeenLastCalledWith({ done: true }, expect.any(Function));
   });
 
   it('falls back to redis chunk lookup when direct chunk payload is not provided', async () => {

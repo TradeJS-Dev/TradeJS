@@ -1,5 +1,6 @@
 import {
   AiDatasetRow,
+  BacktestDetectorOptimizedStrategy,
   Candle,
   Connector,
   ConnectorCreator,
@@ -14,6 +15,7 @@ import { alignSortedCandlesByTimestamp } from '@tradejs/core/indicators';
 import {
   buildDefaultIndicatorPeriods,
   releaseStrategyIndicatorsReplayCache,
+  releaseStrategyReplayCache,
 } from '@tradejs/core/strategies';
 import { getBacktestPreloadStart } from '@tradejs/core/time';
 import { appendAiDatasetRow } from '@tradejs/infra/ai';
@@ -1264,7 +1266,7 @@ export const testingGroupInSharedCandleLoop = async (
 
   type Runner = {
     test: Test;
-    strategy: Awaited<ReturnType<typeof strategyCreator>>;
+    strategy: BacktestDetectorOptimizedStrategy;
     testConnector: ReturnType<typeof createTestConnector>;
     pendingMlPayloadBySignalId: Map<string, ReturnType<typeof buildMlPayload>>;
     pendingAiRowBySignalId: Map<string, Omit<AiDatasetRow, 'profit'>>;
@@ -1280,7 +1282,7 @@ export const testingGroupInSharedCandleLoop = async (
         aiEnabled: test.ai,
         fastMode: test.fast,
       });
-      const strategy = await withTimeout(
+      const strategy = (await withTimeout(
         'strategy init',
         strategyCreator({
           userName: test.userName,
@@ -1295,7 +1297,7 @@ export const testingGroupInSharedCandleLoop = async (
           sharedIndicatorsReplayKey,
           indicatorCachePlan: await getRuntimeIndicatorCachePlan(test),
         }),
-      );
+      )) as BacktestDetectorOptimizedStrategy;
 
       runners.push({
         test,
@@ -1358,6 +1360,7 @@ export const testingGroupInSharedCandleLoop = async (
 
       const candle = testData[candleIndex];
       const btcCandle = btcTestData[candleIndex];
+      const detectorNoSignalByKey = new Map<string, string>();
 
       for (const runner of runners) {
         const { test, testConnector, strategy } = runner;
@@ -1366,9 +1369,37 @@ export const testingGroupInSharedCandleLoop = async (
           testConnector.checkTp(candle),
         );
 
-        const signal = await runStage('strategy signal', () =>
-          strategy(candle, btcCandle),
+        const detectorFanoutKey = strategy.detectorFanoutKey;
+        const detectorSkipCode = detectorFanoutKey
+          ? detectorNoSignalByKey.get(detectorFanoutKey)
+          : undefined;
+        const signal = await runStage(
+          detectorSkipCode ? 'strategy detector skip' : 'strategy signal',
+          () =>
+            detectorSkipCode &&
+            strategy.canFastAdvanceDetectorNoSignal &&
+            strategy.advanceDetectorNoSignal
+              ? strategy.advanceDetectorNoSignal(
+                  candle,
+                  btcCandle,
+                  detectorSkipCode,
+                )
+              : detectorSkipCode && strategy.skipDetectorNoSignal
+                ? strategy.skipDetectorNoSignal(
+                    candle,
+                    btcCandle,
+                    detectorSkipCode,
+                  )
+                : strategy(candle, btcCandle),
         );
+        if (
+          detectorFanoutKey &&
+          strategy.detectorNoSignalSkipReason &&
+          typeof signal === 'string' &&
+          signal === strategy.detectorNoSignalSkipReason
+        ) {
+          detectorNoSignalByKey.set(detectorFanoutKey, signal);
+        }
         if (!signal || typeof signal === 'string') {
           if (runner.replaySignalEvaluations) {
             runner.replaySignalEvaluations.push({
@@ -1493,5 +1524,6 @@ export const testingGroupInSharedCandleLoop = async (
     return results;
   } finally {
     releaseStrategyIndicatorsReplayCache(sharedIndicatorsReplayKey);
+    releaseStrategyReplayCache(sharedIndicatorsReplayKey);
   }
 };

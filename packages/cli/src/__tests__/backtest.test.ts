@@ -153,6 +153,7 @@ jest.mock('../lib/timeWindow', () => ({
 import {
   warmIndicatorCacheForBacktest,
   chunkTestSuiteBySymbol,
+  resolveBacktestIndicatorCacheMode,
   resolveDefaultParallel,
   resolveDefaultWorkerHeapMb,
   mergePersistedTestSummaries,
@@ -166,6 +167,11 @@ import {
 import { updateBestTickerResult } from '../lib/backtest/runnerCore';
 import {
   getBestTickerResultForSymbol,
+  getAggregateAverageProfit,
+  getAggregateWinRate,
+  getProgressStats,
+  getTopConfigResultBuckets,
+  recordResultAggregates,
   resetRunState,
 } from '../lib/backtest/runState';
 import {
@@ -185,6 +191,8 @@ describe('backtest script helpers', () => {
   let consoleLogSpy: jest.SpyInstance;
 
   beforeEach(() => {
+    delete process.env.TRADEJS_INDICATOR_CACHE_MODE;
+    delete process.env.TRADEJS_BACKTEST_SYMBOL_GROUP_MAX_TESTS;
     mockRunWithConcurrency.mockClear();
     mockWarmBacktestIndicatorCache.mockClear();
     mockProgressBarTick.mockClear();
@@ -195,6 +203,8 @@ describe('backtest script helpers', () => {
   });
 
   afterEach(() => {
+    delete process.env.TRADEJS_INDICATOR_CACHE_MODE;
+    delete process.env.TRADEJS_BACKTEST_SYMBOL_GROUP_MAX_TESTS;
     consoleLogSpy.mockRestore();
   });
 
@@ -246,10 +256,10 @@ describe('backtest script helpers', () => {
     ).toBe(100);
   });
 
-  it('describes --top as a single-ticker grid helper', () => {
+  it('describes --top as a grid helper', () => {
     expect(args.option).toHaveBeenCalledWith(
       ['T', 'top'],
-      'Return N best tests for single-ticker grid runs (defaults to 50)',
+      'Return N best tests/config buckets for grid runs (defaults to 50)',
       10,
     );
   });
@@ -284,6 +294,58 @@ describe('backtest script helpers', () => {
     expect(updateBestTickerResult(best)).toBe(true);
     expect(updateBestTickerResult(worse)).toBe(false);
     expect(getBestTickerResultForSymbol('ETHUSDT')).toBe(best);
+  });
+
+  it('aggregates progress and ranks configs by average profit', () => {
+    const cfgLow = { PARAM: 1 };
+    const cfgHigh = { PARAM: 2 };
+    recordResultAggregates({
+      test: {
+        name: 'BTCUSDT_suite_1',
+        symbol: 'BTCUSDT',
+        configId: 'cfg-low',
+        strategyConfig: cfgLow,
+      },
+      stat: { netProfit: 100, wins: 1, losses: 1, winRate: 50 },
+    } as any);
+    recordResultAggregates({
+      test: {
+        name: 'ETHUSDT_suite_2',
+        symbol: 'ETHUSDT',
+        configId: 'cfg-low',
+        strategyConfig: cfgLow,
+      },
+      stat: { netProfit: -50, wins: 0, losses: 1, winRate: 0 },
+    } as any);
+    recordResultAggregates({
+      test: {
+        name: 'BTCUSDT_suite_3',
+        symbol: 'BTCUSDT',
+        configId: 'cfg-high',
+        strategyConfig: cfgHigh,
+      },
+      stat: { netProfit: 40, wins: 1, losses: 0, winRate: 100 },
+    } as any);
+    recordResultAggregates({
+      test: {
+        name: 'ETHUSDT_suite_4',
+        symbol: 'ETHUSDT',
+        configId: 'cfg-high',
+        strategyConfig: cfgHigh,
+      },
+      stat: { netProfit: 30, wins: 1, losses: 1, winRate: 50 },
+    } as any);
+
+    const progress = getProgressStats();
+    expect(getAggregateAverageProfit(progress)).toBe(30);
+    expect(getAggregateWinRate(progress)).toBe(50);
+
+    const topConfigs = getTopConfigResultBuckets(2);
+    expect(topConfigs[0]?.configId).toBe('cfg-high');
+    expect(getAggregateAverageProfit(topConfigs[0]!)).toBe(35);
+    expect(topConfigs[0]?.strategyConfig).toBe(cfgHigh);
+    expect(topConfigs[1]?.configId).toBe('cfg-low');
+    expect(getAggregateAverageProfit(topConfigs[1]!)).toBe(25);
   });
 
   it('parses runtime strategy config keys and rejects unrelated keys', () => {
@@ -608,6 +670,8 @@ describe('backtest script helpers', () => {
   });
 
   it('warms indicator cache once per unique symbol/indicator-period set and prints timing', async () => {
+    process.env.TRADEJS_INDICATOR_CACHE_MODE = 'cache';
+
     await warmIndicatorCacheForBacktest([
       {
         symbol: 'BTCUSDT',
@@ -647,6 +711,57 @@ describe('backtest script helpers', () => {
         ([message]) =>
           typeof message === 'string' &&
           message.includes('indicator cache warmup: done in '),
+      ),
+    ).toBe(true);
+  });
+
+  it('defaults indicator cache mode to off unless explicitly enabled', () => {
+    expect(
+      resolveBacktestIndicatorCacheMode({
+        currentMode: undefined,
+        indicatorBackend: 'rust',
+        fast: true,
+        cacheOnly: true,
+      }),
+    ).toBe('off');
+    expect(
+      resolveBacktestIndicatorCacheMode({
+        currentMode: undefined,
+        indicatorBackend: 'rust',
+        fast: true,
+        cacheOnly: false,
+      }),
+    ).toBe('off');
+    expect(
+      resolveBacktestIndicatorCacheMode({
+        currentMode: 'cache',
+        indicatorBackend: 'rust',
+        fast: true,
+        cacheOnly: true,
+      }),
+    ).toBe('cache');
+  });
+
+  it('skips indicator cache warmup when disabled by env', async () => {
+    process.env.TRADEJS_INDICATOR_CACHE_MODE = 'off';
+
+    await warmIndicatorCacheForBacktest([
+      {
+        symbol: 'BTCUSDT',
+        strategyConfig: { MA_FAST: 21 },
+        connectorName: 'ByBit',
+        options: { start: 1_000, end: 2_000 },
+        userName: 'root',
+      },
+    ] as any);
+
+    expect(mockRunWithConcurrency).not.toHaveBeenCalled();
+    expect(mockWarmBacktestIndicatorCache).not.toHaveBeenCalled();
+    expect(
+      consoleLogSpy.mock.calls.some(
+        ([message]) =>
+          typeof message === 'string' &&
+          message.includes('indicator cache warmup: skipped'),
       ),
     ).toBe(true);
   });
@@ -847,5 +962,22 @@ describe('backtest script helpers', () => {
       'ETHUSDT',
       'ETHUSDT',
     ]);
+  });
+
+  it('splits very large symbol groups so one symbol cannot occupy a single worker', () => {
+    process.env.TRADEJS_BACKTEST_SYMBOL_GROUP_MAX_TESTS = '2';
+    const suite = [
+      { name: 'btc-1', symbol: 'BTCUSDT' },
+      { name: 'btc-2', symbol: 'BTCUSDT' },
+      { name: 'btc-3', symbol: 'BTCUSDT' },
+      { name: 'btc-4', symbol: 'BTCUSDT' },
+      { name: 'eth-1', symbol: 'ETHUSDT' },
+      { name: 'eth-2', symbol: 'ETHUSDT' },
+    ] as any;
+
+    const chunks = chunkTestSuiteBySymbol(suite, 3);
+
+    expect(chunks).toHaveLength(3);
+    expect(chunks.map((chunk) => chunk.length)).toEqual([2, 2, 2]);
   });
 });

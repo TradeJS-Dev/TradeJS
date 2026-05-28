@@ -6,8 +6,10 @@ import type {
 } from '@tradejs/types';
 import { LiquidityZonesConfig } from './config';
 import {
+  buildLiquidityZonesDetectorKey,
   buildLiquidityZonesSignalContext,
   createLiquidityZonesEngine,
+  type LiquidityZonesRuntimeState,
 } from './engine';
 import { buildLiquidityZonesFigures } from './figures';
 
@@ -25,16 +27,57 @@ const isOpenPosition = (position: Position | null): position is Position =>
 export const createLiquidityZonesCore: CreateStrategyCore<
   LiquidityZonesConfig,
   IndicatorsHistorySnapshot | undefined
-> = async ({ config, data: initialData, strategyApi, indicatorsState }) => {
-  const engine = createLiquidityZonesEngine({
-    config,
-    initialCandles: initialData,
+> = async ({
+  config,
+  data: initialData,
+  strategyApi,
+  indicatorsState,
+  sharedReplayKey,
+  getSharedReplayState,
+}) => {
+  const detectorKey = buildLiquidityZonesDetectorKey(config);
+  const createSharedEngineState = () => ({
+    engine: createLiquidityZonesEngine({
+      config,
+      initialCandles: initialData,
+    }),
+    lastTimestamp: null as number | null,
+    lastResult: undefined as LiquidityZonesRuntimeState | undefined,
   });
+  const sharedEngineState = getSharedReplayState
+    ? getSharedReplayState(
+        sharedReplayKey
+          ? `${sharedReplayKey}:LiquidityZones:${detectorKey}`
+          : undefined,
+        createSharedEngineState,
+      )
+    : createSharedEngineState();
   const lastTradeController = strategyApi.createLastTradeController();
+  const nextDetectorState = (
+    candle: Parameters<typeof sharedEngineState.engine.next>[0],
+  ) => {
+    if (sharedEngineState.lastTimestamp === candle.timestamp) {
+      return (
+        sharedEngineState.lastResult ?? sharedEngineState.engine.getState()
+      );
+    }
+    if (
+      sharedEngineState.lastTimestamp != null &&
+      candle.timestamp < sharedEngineState.lastTimestamp
+    ) {
+      throw new Error(
+        `LiquidityZones shared detector received non-monotonic candle timestamp ${candle.timestamp} after ${sharedEngineState.lastTimestamp}`,
+      );
+    }
+
+    sharedEngineState.lastTimestamp = candle.timestamp;
+    sharedEngineState.lastResult = sharedEngineState.engine.next(candle);
+    return sharedEngineState.lastResult;
+  };
 
   return async (candle) => {
     indicatorsState.onBar();
-    const runtimeState = engine.next(candle);
+    const runtimeState = nextDetectorState(candle);
     const signal = runtimeState.signal;
 
     if (!signal) {

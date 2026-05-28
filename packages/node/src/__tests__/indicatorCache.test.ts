@@ -113,6 +113,7 @@ const manifestDigest = (params: {
 
 describe('indicatorCache', () => {
   beforeEach(() => {
+    delete process.env.TRADEJS_INDICATOR_CACHE_MODE;
     jest.clearAllMocks();
     resetIndicatorCacheInMemoryState();
     mockDeleteIndicatorCacheObsoleteVersions.mockResolvedValue(undefined);
@@ -128,6 +129,10 @@ describe('indicatorCache', () => {
         checkpointRuntimeState: () => runtimeState(lastTimestamp),
       };
     });
+  });
+
+  afterEach(() => {
+    delete process.env.TRADEJS_INDICATOR_CACHE_MODE;
   });
 
   it('returns stable params hash for the same inputs', () => {
@@ -330,6 +335,43 @@ describe('indicatorCache', () => {
     expect(
       mockGetLatestIndicatorCacheCheckpointAtOrBefore,
     ).toHaveBeenCalledWith(expect.objectContaining({ tsMs: 2_000 }));
+  });
+
+  it('disables restore planning and materialization when cache mode is off', async () => {
+    process.env.TRADEJS_INDICATOR_CACHE_MODE = 'off';
+    const data = [candle(1_000, 100), candle(2_000, 101)];
+    const btcData = [candle(1_000, 200), candle(2_000, 201)];
+
+    const plan = await planIndicatorCacheRestore({
+      provider: 'ByBit',
+      symbol: 'ETHUSDT',
+      interval: 15,
+      periods: { maFast: 14 },
+      data: data as any,
+      btcData: btcData as any,
+    });
+    await materializeIndicatorCachePlan({
+      provider: 'ByBit',
+      symbol: 'ETHUSDT',
+      interval: 15,
+      periods: { maFast: 14 },
+      data: data as any,
+      btcData: btcData as any,
+      paramsHash: plan.paramsHash,
+      restoreState: plan.restoreState,
+      replayStartIndex: plan.replayStartIndex,
+      cached: plan.cached,
+    });
+
+    expect(plan.cached).toBe(false);
+    expect(plan.replayStartIndex).toBe(0);
+    expect(plan.restoreState).toBeNull();
+    expect(mockGetIndicatorCacheManifest).not.toHaveBeenCalled();
+    expect(mockGetIndicatorCacheRange).not.toHaveBeenCalled();
+    expect(mockCreateIndicators).not.toHaveBeenCalled();
+    expect(mockUpsertIndicatorCacheCoverageRows).not.toHaveBeenCalled();
+    expect(mockUpsertIndicatorCacheCheckpointRows).not.toHaveBeenCalled();
+    expect(mockUpsertIndicatorCacheManifest).not.toHaveBeenCalled();
   });
 
   it('falls back to coverage comparison when the manifest digest is stale', async () => {
