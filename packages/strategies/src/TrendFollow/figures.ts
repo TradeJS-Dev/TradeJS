@@ -26,7 +26,7 @@ export const buildTrendFollowFigures = ({
     {
       id: `trendfollow-trail-${entryTimestamp}`,
       kind: 'trendfollow_trailing_stop',
-      points: series.trailStop,
+      points: series.trailStop.slice(),
       color,
       width: 2,
       style: 'solid' as const,

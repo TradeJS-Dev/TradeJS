@@ -29,7 +29,7 @@ export const buildAdaptiveTrendChannelFigures = ({
     {
       id: `adaptive-trend-channel-center-${entryTimestamp}`,
       kind: 'adaptive_trend_channel_centerline',
-      points: series.centerline,
+      points: series.centerline.slice(),
       color,
       width: 2,
       style: 'solid' as const,
@@ -37,7 +37,7 @@ export const buildAdaptiveTrendChannelFigures = ({
     {
       id: `adaptive-trend-channel-roof-${entryTimestamp}`,
       kind: 'adaptive_trend_channel_roof',
-      points: series.roof,
+      points: series.roof.slice(),
       color: '#f67171',
       width: 1,
       style: 'dashed' as const,
@@ -45,7 +45,7 @@ export const buildAdaptiveTrendChannelFigures = ({
     {
       id: `adaptive-trend-channel-floor-${entryTimestamp}`,
       kind: 'adaptive_trend_channel_floor',
-      points: series.floor,
+      points: series.floor.slice(),
       color: '#40d98f',
       width: 1,
       style: 'dashed' as const,

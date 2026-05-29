@@ -23,7 +23,7 @@ export const buildTrendShiftFigures = ({
     {
       id: 'trendshift-upper',
       kind: 'trendshift_upper',
-      points: series.upper,
+      points: series.upper.slice(),
       color: trendColor,
       width: 1,
       style: 'dashed' as const,
@@ -31,7 +31,7 @@ export const buildTrendShiftFigures = ({
     {
       id: 'trendshift-avg',
       kind: 'trendshift_avg',
-      points: series.avg,
+      points: series.avg.slice(),
       color: trendColor,
       width: 2,
       style: 'solid' as const,
@@ -39,7 +39,7 @@ export const buildTrendShiftFigures = ({
     {
       id: 'trendshift-lower',
       kind: 'trendshift_lower',
-      points: series.lower,
+      points: series.lower.slice(),
       color: trendColor,
       width: 1,
       style: 'dashed' as const,
