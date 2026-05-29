@@ -97,23 +97,6 @@ type PersistedBacktestResultEntry = Pick<
   >;
 };
 
-const normalizeIndicatorBackendName = (value: unknown) => {
-  const normalized = String(value ?? 'ts')
-    .trim()
-    .toLowerCase();
-  return normalized === 'rust' || normalized === 'native' ? 'rust' : 'ts';
-};
-
-const printBacktestIndicatorBackend = () => {
-  console.log(
-    chalk.gray(
-      `indicator backend: ${normalizeIndicatorBackendName(
-        process.env.TRADEJS_INDICATOR_BACKEND,
-      )}`,
-    ),
-  );
-};
-
 export const toPersistedBacktestResultEntry = (
   result: TestWorkerResult,
 ): PersistedBacktestResultEntry => ({
@@ -516,7 +499,6 @@ export const backtest = async () => {
     return;
   }
 
-  printBacktestIndicatorBackend();
   await executeTestSuite({
     testSuite,
     window: preparedRun.window,

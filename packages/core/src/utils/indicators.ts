@@ -14,7 +14,6 @@ import {
   type BaseContextAdaptiveChannelInput,
   type BaseContextContextMaInput,
   type BaseContextMaLayerInput,
-  type BaseContextNativeOverlay,
   type BaseContextPsarInput,
   type BreakoutRuntimeState,
   type CloseStreakRuntimeState,
@@ -372,23 +371,10 @@ type CreateIndicatorsOptions = {
   btcBinanceData?: Candle[];
   btcCoinbaseData?: Candle[];
   pluginRegistryScope?: string;
-  baseContextBackend?: BaseContextBackend;
   initialRuntimeState?:
     | IndicatorsControllerRuntimeState
     | IndicatorsControllerCheckpointState;
 };
-
-export type BaseContextBackendParams = {
-  candlesHistory: Candle[];
-  candle: Candle;
-  prevCandle: Candle | null;
-  baseResult: Record<string, number | null | undefined>;
-  atr: number | null;
-};
-
-export type BaseContextBackend = (
-  params: BaseContextBackendParams,
-) => BaseContextNativeOverlay | null | undefined;
 
 const cloneHistorySnapshot = (
   record: Record<string, number[] | Candle[]>,
@@ -1622,13 +1608,6 @@ export const createIndicators = (
       enumerable: true,
       get() {
         if (!cachedBaseContext) {
-          const nativeOverlay = options.baseContextBackend?.({
-            candlesHistory,
-            candle,
-            prevCandle,
-            baseResult,
-            atr: toNullable(baseResult.atr),
-          });
           cachedBaseContext = buildBaseContextSnapshot({
             candle,
             prevCandle,
@@ -1658,7 +1637,6 @@ export const createIndicators = (
             contextMa: buildBaseContextContextMa(),
             adaptiveChannel: buildBaseContextAdaptiveChannel(),
             psar: latestBaseContextPsar,
-            nativeOverlay,
           });
         }
 
@@ -1772,14 +1750,6 @@ export const createIndicators = (
             latestIndicatorValues,
             prevClose: latestPrevCandle?.close ?? null,
           });
-          const nativeOverlay = options.baseContextBackend?.({
-            candlesHistory: getCapturedCoinCandles(),
-            candle: latestCandle,
-            prevCandle: latestPrevCandle,
-            baseResult,
-            atr: toNullable(baseResult.atr),
-          });
-
           cachedBaseContextSnapshot = buildBaseContextSnapshot({
             candle: latestCandle,
             prevCandle: latestPrevCandle,
@@ -1801,7 +1771,6 @@ export const createIndicators = (
             contextMa: capturedContextMa,
             adaptiveChannel: capturedAdaptiveChannel,
             psar: capturedPsar,
-            nativeOverlay,
           });
 
           return cachedBaseContextSnapshot;

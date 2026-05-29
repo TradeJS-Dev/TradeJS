@@ -1034,67 +1034,6 @@ describe('utils indicators', () => {
     expect(snapshot.baseContext).toBe(snapshot.baseContext);
   });
 
-  it('can overlay heavy baseContext sections from an injected backend', () => {
-    const baseContextBackend = jest.fn(() => ({
-      volumeStructure: {
-        pointOfControl: 123,
-        pocIndex: 7,
-        pointOfControlVolumeShare: 0.4,
-        pocUpVolumeShare: 0.6,
-        pocDownVolumeShare: 0.4,
-        totalUpVolumeShare: 0.55,
-        totalDownVolumeShare: 0.45,
-        priceAbovePointOfControl: true,
-        distanceToPointOfControlAtr: 1.2,
-        rowCount: 20,
-        calcBars: 180,
-      },
-      srZones: {
-        levels: [],
-        nearestSupport: {
-          level: 120,
-          strength: 2,
-          distanceAtr: 1,
-        },
-        nearestResistance: {
-          level: 130,
-          strength: 3,
-          distanceAtr: 1.5,
-        },
-        crossedAbove: false,
-        crossedBelow: false,
-      },
-    }));
-    const indicators = createIndicators([], [], {
-      baseContextBackend,
-      periods: {
-        maFast: 3,
-        maMedium: 3,
-        maSlow: 3,
-        obvSma: 3,
-        atr: 3,
-        atrPctShort: 3,
-        atrPctLong: 3,
-        bb: 3,
-        bbStd: 2,
-        macdFast: 3,
-        macdSlow: 4,
-        macdSignal: 2,
-      },
-    });
-
-    for (let i = 0; i < 40; i += 1) {
-      indicators.next(
-        makeCandle(i * INTERVAL_15M_MS, 100 + i, 101 + i, 99 + i),
-      );
-    }
-
-    const context = indicators.snapshot().baseContext;
-    expect(baseContextBackend).toHaveBeenCalledTimes(1);
-    expect(context?.participation.volumeStructure?.pointOfControl).toBe(123);
-    expect(context?.structure.srZones?.nearestResistance.level).toBe(130);
-  });
-
   it('returns snapshot result that is not mutated by subsequent next() calls', () => {
     const indicators = createIndicators([], [], {
       periods: {

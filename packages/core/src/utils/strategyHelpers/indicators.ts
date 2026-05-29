@@ -1,5 +1,4 @@
 import {
-  BaseContextBackend,
   createIndicators,
   IndicatorsControllerCheckpointState,
   IndicatorPeriods,
@@ -107,7 +106,6 @@ export interface StrategyIndicatorsStateParams {
   btcCoinbaseData?: KlineChartData;
   periods?: Partial<IndicatorPeriods>;
   pluginRegistryScope?: string;
-  baseContextBackend?: BaseContextBackend;
   initialRuntimeState?:
     | IndicatorsControllerRuntimeState
     | IndicatorsControllerCheckpointState
@@ -124,7 +122,6 @@ export const createStrategyIndicatorsState = ({
   btcCoinbaseData,
   periods,
   pluginRegistryScope,
-  baseContextBackend,
   initialRuntimeState,
   replayStartIndex = 0,
   sharedReplayKey,
@@ -142,7 +139,6 @@ export const createStrategyIndicatorsState = ({
         btcBinanceData,
         btcCoinbaseData,
         pluginRegistryScope,
-        baseContextBackend,
         initialRuntimeState: initialRuntimeState ?? undefined,
       },
     );

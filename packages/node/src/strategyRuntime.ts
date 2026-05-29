@@ -26,7 +26,6 @@ import { createPineScriptLoader } from './pine';
 import { getStrategyManifest } from './strategy/manifests';
 import { getTradejsProjectCwd, loadTradejsConfig } from './tradejsConfig';
 import { resolveStrategyConfig } from './strategyHelpers/config';
-import { createBaseContextBackend } from './native/baseContextBackend';
 import {
   CreateStrategyCore,
   CreateStrategyCoreParams,
@@ -792,7 +791,6 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
     const recordRuntimeJournal = shouldRecordRuntimeJournal({ env, config });
     const strategyManifest = resolveManifest(strategyName);
     const indicatorPeriods = buildDefaultIndicatorPeriods(config as any);
-    const baseContextBackend = createBaseContextBackend();
     const hookBase = {
       connector,
       strategyName,
@@ -810,10 +808,7 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
     const getProjectHookList = (stage: keyof TradejsConfigHooks) =>
       normalizeConfigHookList(projectHooks?.[stage] as any);
 
-    const indicatorReplayKey = JSON.stringify({
-      periods: indicatorPeriods,
-      backend: baseContextBackend ? 'rust' : 'ts',
-    });
+    const indicatorReplayKey = JSON.stringify({ periods: indicatorPeriods });
 
     const notifyRuntimeError = async ({
       stage,
@@ -1101,7 +1096,6 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
       btcCoinbaseData,
       periods: indicatorPeriods,
       pluginRegistryScope: projectRoot,
-      baseContextBackend,
       sharedReplayKey:
         env === 'BACKTEST' && sharedIndicatorsReplayKey
           ? `${sharedIndicatorsReplayKey}:${indicatorReplayKey}`

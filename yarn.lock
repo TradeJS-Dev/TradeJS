@@ -2188,15 +2188,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@napi-rs/cli@npm:2.18.4":
-  version: 2.18.4
-  resolution: "@napi-rs/cli@npm:2.18.4"
-  bin:
-    napi: scripts/index.js
-  checksum: 10c0/cb80bc86687ba01077a0faa8d38198bc632b7caacf3a42ec42c3ec04700084ca26be9eec13bf7ac7da90e6afb46c65a39de8a86825a53b74dec2f2f459c0a7ea
-  languageName: node
-  linkType: hard
-
 "@next/env@npm:16.2.4":
   version: 16.2.4
   resolution: "@next/env@npm:16.2.4"
@@ -3004,15 +2995,6 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@tradejs/native@workspace:^, @tradejs/native@workspace:packages/native":
-  version: 0.0.0-use.local
-  resolution: "@tradejs/native@workspace:packages/native"
-  dependencies:
-    "@napi-rs/cli": "npm:2.18.4"
-    typescript: "npm:^5.1"
-  languageName: unknown
-  linkType: soft
-
 "@tradejs/node@workspace:^, @tradejs/node@workspace:packages/node":
   version: 0.0.0-use.local
   resolution: "@tradejs/node@workspace:packages/node"
@@ -3021,7 +3003,6 @@ __metadata:
     "@langchain/openai": "npm:^1.4.5"
     "@tradejs/core": "workspace:^"
     "@tradejs/infra": "workspace:^"
-    "@tradejs/native": "workspace:^"
     "@tradejs/types": "workspace:^"
     "@types/node": "npm:^20"
     chalk: "npm:4.1.2"
