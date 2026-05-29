@@ -129,11 +129,13 @@ describe('strategy indicators state latestNumber', () => {
     const next = jest.fn(() => ({ maFast: 10 }));
     const result = jest.fn(() => ({ correlation: [0.1, 0.2] }));
     const latestNumber = jest.fn(() => 0.2);
+    const latestSnapshot = jest.fn(() => ({ maFast: 10 }));
 
     (createIndicators as jest.Mock).mockReturnValue({
       next,
       result,
       latestNumber,
+      latestSnapshot,
     });
 
     const previous = {
@@ -165,6 +167,97 @@ describe('strategy indicators state latestNumber', () => {
     );
     expect(next).toHaveBeenCalledTimes(1);
     expect(next).toHaveBeenCalledWith(current, currentBtc);
+  });
+
+  it('returns the current snapshot without replaying when snapshot already synced current candle', () => {
+    const next = jest.fn(() => ({ maFast: 10 }));
+    const result = jest.fn(() => ({ correlation: [0.1, 0.2] }));
+    const latestNumber = jest.fn(() => 0.2);
+    const latestSnapshot = jest.fn(() => ({ maFast: 20 }));
+
+    (createIndicators as jest.Mock).mockReturnValue({
+      next,
+      result,
+      latestNumber,
+      latestSnapshot,
+    });
+
+    const previous = {
+      timestamp: 1,
+      open: 1,
+      high: 1,
+      low: 1,
+      close: 1,
+      volume: 1,
+      turnover: 1,
+    };
+    const current = { ...previous, timestamp: 2, close: 2 };
+    const previousBtc = { ...previous, close: 101 };
+    const currentBtc = { ...current, close: 102 };
+    const state = createStrategyIndicatorsState({
+      env: 'BACKTEST',
+      data: [previous as any, current as any],
+      btcData: [previousBtc as any, currentBtc as any],
+    });
+
+    expect(state.snapshot()).toEqual({ correlation: [0.1, 0.2] });
+    expect(state.next(current as any, currentBtc as any)).toEqual({
+      maFast: 20,
+    });
+
+    expect(createIndicators).toHaveBeenCalledWith(
+      [previous, current],
+      [previousBtc, currentBtc],
+      expect.any(Object),
+    );
+    expect(next).not.toHaveBeenCalled();
+    expect(latestSnapshot).toHaveBeenCalledTimes(1);
+  });
+
+  it('shares the current snapshot after a shared replay snapshot sync', () => {
+    const next = jest.fn(() => ({ maFast: 10 }));
+    const result = jest.fn(() => ({ correlation: [0.1, 0.2] }));
+    const latestNumber = jest.fn(() => 0.2);
+    const latestSnapshot = jest.fn(() => ({ maFast: 20 }));
+
+    (createIndicators as jest.Mock).mockReturnValue({
+      next,
+      result,
+      latestNumber,
+      latestSnapshot,
+    });
+
+    const current = {
+      timestamp: 2,
+      open: 1,
+      high: 1,
+      low: 1,
+      close: 2,
+      volume: 1,
+      turnover: 1,
+    };
+    const currentBtc = { ...current, close: 102 };
+    const first = createStrategyIndicatorsState({
+      env: 'BACKTEST',
+      data: [current as any],
+      btcData: [currentBtc as any],
+      sharedReplayKey: 'test:shared-current',
+    });
+    const second = createStrategyIndicatorsState({
+      env: 'BACKTEST',
+      data: [current as any],
+      btcData: [currentBtc as any],
+      sharedReplayKey: 'test:shared-current',
+    });
+
+    expect(first.snapshot()).toEqual({ correlation: [0.1, 0.2] });
+    expect(second.next(current as any, currentBtc as any)).toEqual({
+      maFast: 20,
+    });
+
+    expect(createIndicators).toHaveBeenCalledTimes(1);
+    expect(next).not.toHaveBeenCalled();
+    expect(latestSnapshot).toHaveBeenCalledTimes(1);
   });
 
   it('initializes live controller once and reuses latestNumber for repeated reads', () => {

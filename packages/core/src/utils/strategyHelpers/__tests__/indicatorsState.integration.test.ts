@@ -148,4 +148,65 @@ describe('strategy indicators state snapshot integration', () => {
     expect(compact.baseContext).toBeTruthy();
     expect(compact.baseContext.raw.trend.maFast).toBeDefined();
   });
+
+  it('keeps next current snapshot equal after snapshot synced current candle', () => {
+    const data = Array.from({ length: 160 }, (_, index) =>
+      makeCandle(index * INTERVAL_15M_MS, 100 + index),
+    );
+    const btcData = Array.from({ length: 160 }, (_, index) =>
+      makeCandle(index * INTERVAL_15M_MS, 20_000 + index),
+    );
+    const periods = {
+      maFast: 3,
+      maMedium: 3,
+      maSlow: 3,
+      obvSma: 3,
+      atr: 3,
+      atrPctShort: 3,
+      atrPctLong: 3,
+      bb: 3,
+      bbStd: 2,
+      macdFast: 3,
+      macdSlow: 4,
+      macdSignal: 2,
+    };
+    const current = data.at(-1)!;
+    const currentBtc = btcData.at(-1)!;
+
+    const prefixState = createStrategyIndicatorsState({
+      env: 'BACKTEST',
+      data: data.slice(0, -1) as any,
+      btcData: btcData.slice(0, -1) as any,
+      periods,
+    });
+    const expected = prefixState.next(
+      current as any,
+      currentBtc as any,
+    ) as Record<string, any> | null;
+
+    const syncedState = createStrategyIndicatorsState({
+      env: 'BACKTEST',
+      data: data as any,
+      btcData: btcData as any,
+      periods,
+    });
+    syncedState.snapshot();
+    const actual = syncedState.next(
+      current as any,
+      currentBtc as any,
+    ) as Record<string, any> | null;
+
+    expect(actual).toBeTruthy();
+    expect(expected).toBeTruthy();
+    expect(actual?.candle.timestamp).toBe(current.timestamp);
+    expect(actual?.maFast).toBeCloseTo(expected?.maFast);
+    expect(actual?.atr).toBeCloseTo(expected?.atr);
+    expect(actual?.bbUpper).toBeCloseTo(expected?.bbUpper);
+    expect(actual?.baseContext.raw.trend.maFast).toBeCloseTo(
+      expected?.baseContext.raw.trend.maFast,
+    );
+    expect(actual?.baseContext.raw.volatility.atr).toBeCloseTo(
+      expected?.baseContext.raw.volatility.atr,
+    );
+  });
 });

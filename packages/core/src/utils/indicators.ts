@@ -1097,6 +1097,8 @@ export const createIndicators = (
     });
   }
 
+  let latestSnapshot: IndicatorSnapshot | null = null;
+
   const next = (
     candle: Candle,
     btcCandle?: Candle,
@@ -1477,6 +1479,7 @@ export const createIndicators = (
         recordProfile('pluginMs');
       }
       finishProfile(true);
+      latestSnapshot = null;
       return null;
     }
 
@@ -1526,7 +1529,7 @@ export const createIndicators = (
     if (runtimeOnly) {
       recordProfile('resultMs');
       finishProfile(false);
-      return {
+      const runtimeResult = {
         maFast: ma14Value,
         maMedium: ma49Value,
         maSlow: ma50Value,
@@ -1556,6 +1559,8 @@ export const createIndicators = (
         candle,
         prevCandle,
       } as IndicatorSnapshot;
+      latestSnapshot = runtimeResult;
+      return runtimeResult;
     }
 
     const baseResult = {
@@ -1652,6 +1657,7 @@ export const createIndicators = (
 
     recordProfile('resultMs');
     finishProfile(false);
+    latestSnapshot = result;
     return result;
   };
 
@@ -2038,6 +2044,7 @@ export const createIndicators = (
           }) as IndicatorsHistorySnapshot)
         : buildStrategySnapshot(),
     checkpointRuntimeState,
+    latestSnapshot: (): IndicatorSnapshot | null => latestSnapshot,
     runtimeState,
     latestNumber: (key: string): number | undefined => {
       const latestValue = latestIndicatorValues[key];

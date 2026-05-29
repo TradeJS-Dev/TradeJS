@@ -61,6 +61,7 @@ export const buildDefaultIndicatorPeriods = (
 type IndicatorsController = ReturnType<typeof createIndicators>;
 type SnapshotController = IndicatorsController & {
   latestNumber: (key: string) => number | undefined;
+  latestSnapshot: () => ReturnType<IndicatorsController['next']>;
   snapshot: (options?: {
     compact?: boolean;
     limit?: number;
@@ -179,7 +180,10 @@ export const createStrategyIndicatorsState = ({
   ) => {
     if (sharedReplayState) {
       if (sharedReplayState.lastTimestamp === candle.timestamp) {
-        return sharedReplayState.lastResult;
+        return (
+          sharedReplayState.lastResult ??
+          sharedReplayState.controller?.latestSnapshot()
+        );
       }
       if (
         sharedReplayState.lastTimestamp != null &&
@@ -334,11 +338,15 @@ export const createStrategyIndicatorsState = ({
     },
 
     next: (candle, btcCandle) => {
-      const explicitCandleDataEnd =
+      const explicitCurrent =
         data[data.length - 1]?.timestamp === candle.timestamp &&
-        btcData[btcData.length - 1]?.timestamp === btcCandle.timestamp
-          ? data.length - 1
-          : data.length;
+        btcData[btcData.length - 1]?.timestamp === btcCandle.timestamp;
+      if (explicitCurrent && getAppliedDataEnd() >= data.length) {
+        return ensureControllerInitialized().latestSnapshot();
+      }
+      const explicitCandleDataEnd = explicitCurrent
+        ? data.length - 1
+        : data.length;
       syncDataRange(explicitCandleDataEnd);
       const result = applyBar(candle, btcCandle);
       if (explicitCandleDataEnd === data.length - 1) {
