@@ -105,4 +105,47 @@ describe('strategy indicators state snapshot integration', () => {
     expect(Array.isArray(spread.maFast1h)).toBe(true);
     expect(Array.isArray(spread.btcMaFast1h)).toBe(true);
   });
+
+  it('builds a compact snapshot with bounded series and full baseContext', () => {
+    const data = Array.from({ length: 160 }, (_, index) =>
+      makeCandle(index * INTERVAL_15M_MS, 100 + index),
+    );
+    const btcData = Array.from({ length: 160 }, (_, index) =>
+      makeCandle(index * INTERVAL_15M_MS, 20_000 + index),
+    );
+
+    const state = createStrategyIndicatorsState({
+      env: 'BACKTEST',
+      data: data as any,
+      btcData: btcData as any,
+      periods: {
+        maFast: 3,
+        maMedium: 3,
+        maSlow: 3,
+        obvSma: 3,
+        atr: 3,
+        atrPctShort: 3,
+        atrPctLong: 3,
+        bb: 3,
+        bbStd: 2,
+        macdFast: 3,
+        macdSlow: 4,
+        macdSignal: 2,
+      },
+    });
+
+    const compact = state.snapshot({
+      compact: true,
+      limit: 5,
+    }) as Record<string, any>;
+
+    expect(compact.maFast).toHaveLength(5);
+    expect(compact.candles15m).toHaveLength(5);
+    expect(compact.btcCandles15m).toHaveLength(5);
+    expect(compact.maFast.at(-1)).toBeCloseTo(
+      (state.snapshot() as Record<string, any>).maFast.at(-1),
+    );
+    expect(compact.baseContext).toBeTruthy();
+    expect(compact.baseContext.raw.trend.maFast).toBeDefined();
+  });
 });

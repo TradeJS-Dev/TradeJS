@@ -76,7 +76,6 @@ export const createLiquidityZonesCore: CreateStrategyCore<
   };
 
   return async (candle) => {
-    indicatorsState.onBar();
     const runtimeState = nextDetectorState(candle);
     const signal = runtimeState.signal;
 

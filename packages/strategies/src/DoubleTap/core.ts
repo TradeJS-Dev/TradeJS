@@ -30,7 +30,6 @@ export const createDoubleTapCore: CreateStrategyCore<
   const lastTradeController = strategyApi.createLastTradeController();
 
   return async (candle) => {
-    indicatorsState.onBar();
     const runtimeState = engine.next(candle);
     const pattern = runtimeState.pattern;
 

@@ -741,8 +741,10 @@ export interface StrategyIndicatorsState<
     candle: KlineChartData[number],
     btcCandle: KlineChartData[number],
   ) => TNext;
-  ensureInitializedWithCurrentBar: () => { snapshot: () => TSnapshot };
-  snapshot: () => TSnapshot;
+  ensureInitializedWithCurrentBar: () => {
+    snapshot: (options?: { compact?: boolean; limit?: number }) => TSnapshot;
+  };
+  snapshot: (options?: { compact?: boolean; limit?: number }) => TSnapshot;
   latestNumber: <K extends Extract<keyof NonNullable<TSnapshot>, string>>(
     key: K,
   ) => number | undefined;

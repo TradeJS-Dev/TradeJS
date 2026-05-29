@@ -4,7 +4,7 @@ import {
   SignalAnalysis,
   StrategyAiAdapter,
 } from '@tradejs/types';
-import { trimSeriesDeep } from '../aiShared';
+import { buildCompactAiIndicatorsSnapshot, trimSeriesDeep } from '../aiShared';
 import { buildAiMarketContext } from '../aiMarketContext';
 import { getStrategyManifest } from '../strategy/manifests';
 
@@ -37,7 +37,7 @@ const buildBaseAiPayload = (signal: Signal): AiPayload => {
       },
     },
     figures: trimSeriesDeep(signal.figures ?? {}),
-    indicators: trimSeriesDeep(signal.indicators),
+    indicators: buildCompactAiIndicatorsSnapshot(signal.indicators),
     additionalIndicators: trimSeriesDeep(additionalIndicators),
   };
 };

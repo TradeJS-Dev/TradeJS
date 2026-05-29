@@ -61,11 +61,15 @@ export const buildDefaultIndicatorPeriods = (
 type IndicatorsController = ReturnType<typeof createIndicators>;
 type SnapshotController = IndicatorsController & {
   latestNumber: (key: string) => number | undefined;
-  snapshot: () => ReturnType<IndicatorsController['result']>;
+  snapshot: (options?: {
+    compact?: boolean;
+    limit?: number;
+  }) => ReturnType<IndicatorsController['result']>;
 };
 
 type SharedReplayControllerState = {
-  controller: IndicatorsController;
+  controller: IndicatorsController | null;
+  appliedDataEnd: number;
   lastTimestamp: number | null;
   lastResult: ReturnType<IndicatorsController['next']> | undefined;
 };
@@ -80,7 +84,10 @@ const createSnapshotController = (
     'function'
       ? (
           value as IndicatorsController & {
-            snapshot: () => ReturnType<IndicatorsController['result']>;
+            snapshot: (options?: {
+              compact?: boolean;
+              limit?: number;
+            }) => ReturnType<IndicatorsController['result']>;
           }
         ).snapshot.bind(value)
       : value.result.bind(value);
@@ -148,7 +155,8 @@ export const createStrategyIndicatorsState = ({
           let existing = sharedReplayControllers.get(sharedReplayKey);
           if (!existing) {
             existing = {
-              controller: createController(),
+              controller: null,
+              appliedDataEnd: replayStartIndex,
               lastTimestamp: null,
               lastResult: undefined,
             };
@@ -157,9 +165,8 @@ export const createStrategyIndicatorsState = ({
           return existing;
         })()
       : null;
-  let controller: IndicatorsController | null =
-    sharedReplayState?.controller ??
-    (env === 'BACKTEST' ? createController() : null);
+  let controller: IndicatorsController | null = null;
+  let appliedDataEnd = replayStartIndex;
   let currentBarPair:
     | {
         candle: KlineChartData[number];
@@ -182,6 +189,11 @@ export const createStrategyIndicatorsState = ({
           `Shared replay indicators received non-monotonic candle timestamp ${candle.timestamp} after ${sharedReplayState.lastTimestamp}`,
         );
       }
+      if (!sharedReplayState.controller) {
+        sharedReplayState.controller = createController(
+          sharedReplayState.appliedDataEnd,
+        );
+      }
 
       sharedReplayState.lastTimestamp = candle.timestamp;
       sharedReplayState.lastResult = sharedReplayState.controller.next(
@@ -191,30 +203,112 @@ export const createStrategyIndicatorsState = ({
       return sharedReplayState.lastResult;
     }
 
-    if (!controller) return undefined;
-    return controller.next(candle, btcCandle);
+    if (!controller) {
+      controller = createController(appliedDataEnd);
+    }
+
+    const result = controller.next(candle, btcCandle);
+    return result;
+  };
+
+  const syncDataRange = (targetDataEnd: number) => {
+    const safeTargetDataEnd = Math.max(replayStartIndex, targetDataEnd);
+
+    if (sharedReplayState) {
+      if (!sharedReplayState.controller) {
+        sharedReplayState.controller = createController(safeTargetDataEnd);
+        sharedReplayState.appliedDataEnd = safeTargetDataEnd;
+        const lastCandle = data[safeTargetDataEnd - 1];
+        sharedReplayState.lastTimestamp = lastCandle?.timestamp ?? null;
+        sharedReplayState.lastResult = undefined;
+        return;
+      }
+
+      if (safeTargetDataEnd < sharedReplayState.appliedDataEnd) {
+        throw new Error(
+          `Shared replay indicators cannot rewind from index ${sharedReplayState.appliedDataEnd} to ${safeTargetDataEnd}`,
+        );
+      }
+
+      for (
+        let index = sharedReplayState.appliedDataEnd;
+        index < safeTargetDataEnd;
+        index += 1
+      ) {
+        const candle = data[index];
+        const btcCandle = btcData[index];
+        if (!candle || !btcCandle) continue;
+        sharedReplayState.lastTimestamp = candle.timestamp;
+        sharedReplayState.lastResult = sharedReplayState.controller.next(
+          candle,
+          btcCandle,
+        );
+      }
+      sharedReplayState.appliedDataEnd = safeTargetDataEnd;
+      return;
+    }
+
+    if (!controller) {
+      controller = createController(safeTargetDataEnd);
+      appliedDataEnd = safeTargetDataEnd;
+      return;
+    }
+
+    if (safeTargetDataEnd < appliedDataEnd) {
+      throw new Error(
+        `Indicators cannot rewind from index ${appliedDataEnd} to ${safeTargetDataEnd}`,
+      );
+    }
+
+    for (let index = appliedDataEnd; index < safeTargetDataEnd; index += 1) {
+      const candle = data[index];
+      const btcCandle = btcData[index];
+      if (!candle || !btcCandle) continue;
+      controller.next(candle, btcCandle);
+    }
+    appliedDataEnd = safeTargetDataEnd;
+  };
+
+  const syncToCurrentData = () => {
+    syncDataRange(data.length);
+  };
+  const getAppliedDataEnd = () =>
+    sharedReplayState ? sharedReplayState.appliedDataEnd : appliedDataEnd;
+  const markAppliedDataEnd = (value: number) => {
+    if (sharedReplayState) {
+      sharedReplayState.appliedDataEnd = Math.max(
+        sharedReplayState.appliedDataEnd,
+        value,
+      );
+    } else {
+      appliedDataEnd = Math.max(appliedDataEnd, value);
+    }
   };
 
   const ensureControllerInitialized = (): SnapshotController => {
+    syncToCurrentData();
+
     if (sharedReplayState) {
+      if (!sharedReplayState.controller) {
+        sharedReplayState.controller = createController(
+          sharedReplayState.appliedDataEnd,
+        );
+      }
       return createSnapshotController(sharedReplayState.controller);
     }
 
-    if (controller) return createSnapshotController(controller);
-
-    controller = createController(-1);
-
-    const lastCandle = data[data.length - 1];
-    const lastBtcCandle = btcData[btcData.length - 1];
-    if (lastCandle && lastBtcCandle) {
-      controller.next(lastCandle, lastBtcCandle);
+    if (!controller) {
+      controller = createController(appliedDataEnd);
     }
 
     return createSnapshotController(controller);
   };
 
   return {
-    isInitialized: () => controller != null,
+    isInitialized: () =>
+      sharedReplayState
+        ? sharedReplayState.controller != null
+        : controller != null,
 
     setCurrentBar: (candle, btcCandle) => {
       currentBarPair = { candle, btcCandle };
@@ -224,17 +318,39 @@ export const createStrategyIndicatorsState = ({
       const resolvedCandle = candle ?? currentBarPair?.candle;
       const resolvedBtcCandle = btcCandle ?? currentBarPair?.btcCandle;
       if (!resolvedCandle || !resolvedBtcCandle) return;
+      if (
+        data[data.length - 1]?.timestamp === resolvedCandle.timestamp &&
+        btcData[btcData.length - 1]?.timestamp === resolvedBtcCandle.timestamp
+      ) {
+        if (getAppliedDataEnd() >= data.length) {
+          return;
+        }
+        syncDataRange(data.length - 1);
+        applyBar(resolvedCandle, resolvedBtcCandle);
+        markAppliedDataEnd(data.length);
+        return;
+      }
       applyBar(resolvedCandle, resolvedBtcCandle);
     },
 
     next: (candle, btcCandle) => {
-      return applyBar(candle, btcCandle);
+      const explicitCandleDataEnd =
+        data[data.length - 1]?.timestamp === candle.timestamp &&
+        btcData[btcData.length - 1]?.timestamp === btcCandle.timestamp
+          ? data.length - 1
+          : data.length;
+      syncDataRange(explicitCandleDataEnd);
+      const result = applyBar(candle, btcCandle);
+      if (explicitCandleDataEnd === data.length - 1) {
+        markAppliedDataEnd(data.length);
+      }
+      return result;
     },
 
     // Lazy bootstrap for live mode: initialize on history before current bar and then apply current bar once.
     ensureInitializedWithCurrentBar: ensureControllerInitialized,
 
-    snapshot: () => ensureControllerInitialized().snapshot(),
+    snapshot: (options) => ensureControllerInitialized().snapshot(options),
 
     latestNumber: (key) => ensureControllerInitialized().latestNumber(key),
   };

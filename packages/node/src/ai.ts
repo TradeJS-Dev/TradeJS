@@ -21,7 +21,11 @@ import {
   Signal,
   SignalAnalysis,
 } from '@tradejs/types';
-export { MAX_AI_SERIES_POINTS, trimSeriesDeep } from './aiShared';
+export {
+  buildCompactAiIndicatorsSnapshot,
+  MAX_AI_SERIES_POINTS,
+  trimSeriesDeep,
+} from './aiShared';
 
 type DeterministicAiGateContext = {
   approvalAllowedNow?: boolean;

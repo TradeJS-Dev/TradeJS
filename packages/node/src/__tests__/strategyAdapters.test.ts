@@ -8,6 +8,8 @@ jest.mock('../strategy/manifests', () => ({
 }));
 
 jest.mock('../aiShared', () => ({
+  buildCompactAiIndicatorsSnapshot: (value: unknown) =>
+    mockTrimSeriesDeep(value),
   trimSeriesDeep: (value: unknown) => mockTrimSeriesDeep(value),
 }));
 

@@ -33,7 +33,6 @@ export const createAdaptiveTrendChannelCore: CreateStrategyCore<
   const lastTradeController = strategyApi.createLastTradeController();
 
   return async (candle) => {
-    indicatorsState.onBar();
     const runtimeState = engine.next(candle);
     const signal = runtimeState.signal;
     const snapshot = runtimeState.snapshot;

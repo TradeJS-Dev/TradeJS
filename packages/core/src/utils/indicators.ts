@@ -376,6 +376,12 @@ type CreateIndicatorsOptions = {
     | IndicatorsControllerCheckpointState;
 };
 
+export const COMPACT_INDICATORS_SNAPSHOT_SYMBOL = Symbol.for(
+  'tradejs.indicators.compactSnapshot',
+);
+export const COMPACT_INDICATORS_SNAPSHOT_KEY =
+  '__tradejsCompactIndicatorsSnapshot';
+
 const cloneHistorySnapshot = (
   record: Record<string, number[] | Candle[]>,
 ): Record<string, number[] | Candle[]> =>
@@ -1692,6 +1698,34 @@ export const createIndicators = (
       h4: btc4hCache.snapshot(capturedBtc4hLength),
       d1: btc1dCache.snapshot(capturedBtc1dLength),
     });
+    const buildCompactSnapshot = ({
+      limit = 5,
+    }: {
+      limit?: number;
+    } = {}) => {
+      const snapshot = buildStrategySnapshot() as Record<PropertyKey, any>;
+      const compact: Record<string, unknown> = {};
+      const normalizedLimit =
+        Number.isFinite(limit) && limit > 0 ? Math.trunc(limit) : 5;
+      const keys = new Set<string>([
+        ...BASE_HISTORY_KEYS,
+        ...BTC_RUNTIME_KEYS,
+        ...CANDLE_SERIES_KEYS,
+        ...Array.from(STRATEGY_SNAPSHOT_LAZY_KEYS),
+      ]);
+
+      for (const key of keys) {
+        const value = snapshot[key];
+        if (Array.isArray(value)) {
+          compact[key] = value.slice(-normalizedLimit);
+        } else if (value !== undefined) {
+          compact[key] = value;
+        }
+      }
+
+      compact.baseContext = snapshot.baseContext;
+      return compact;
+    };
 
     const resolveMlCandleSnapshot = () => {
       if (!cachedMlCandleSnapshot) {
@@ -1729,6 +1763,13 @@ export const createIndicators = (
 
     return new Proxy(baseSnapshot, {
       get(target, prop, receiver) {
+        if (
+          prop === COMPACT_INDICATORS_SNAPSHOT_SYMBOL ||
+          prop === COMPACT_INDICATORS_SNAPSHOT_KEY
+        ) {
+          return buildCompactSnapshot;
+        }
+
         if (typeof prop !== 'string') {
           return Reflect.get(target, prop, receiver);
         }
@@ -1985,7 +2026,17 @@ export const createIndicators = (
 
   return {
     next,
-    snapshot: (): IndicatorsHistorySnapshot => buildStrategySnapshot(),
+    snapshot: (options?: {
+      compact?: boolean;
+      limit?: number;
+    }): IndicatorsHistorySnapshot =>
+      options?.compact
+        ? ((buildStrategySnapshot() as Record<PropertyKey, any>)[
+            COMPACT_INDICATORS_SNAPSHOT_SYMBOL
+          ]({
+            limit: options.limit,
+          }) as IndicatorsHistorySnapshot)
+        : buildStrategySnapshot(),
     checkpointRuntimeState,
     runtimeState,
     latestNumber: (key: string): number | undefined => {

@@ -60,6 +60,7 @@ jest.mock('@tradejs/infra/userSettings', () => ({
 const {
   MAX_AI_SERIES_POINTS,
   askAI,
+  buildCompactAiIndicatorsSnapshot,
   buildAiPrompts,
   buildAiHumanPrompt,
   buildAiPayload,
@@ -1507,6 +1508,42 @@ describe('ai helpers', () => {
 
       expect(result).toEqual(matrix.slice(-MAX_AI_SERIES_POINTS));
       expect(result[0]).toHaveLength(6);
+    });
+  });
+
+  describe('buildCompactAiIndicatorsSnapshot', () => {
+    it('uses compact snapshot hook without enumerating proxy keys', () => {
+      const compactSnapshot = jest.fn(() => ({
+        maFast: [3, 4, 5],
+        baseContext: { raw: { trend: { maFast: 5 } } },
+      }));
+      const indicators = new Proxy(
+        {},
+        {
+          get(_target, prop) {
+            if (
+              prop === Symbol.for('tradejs.indicators.compactSnapshot') ||
+              prop === '__tradejsCompactIndicatorsSnapshot'
+            ) {
+              return compactSnapshot;
+            }
+            return undefined;
+          },
+          ownKeys() {
+            throw new Error('ownKeys should not be used for compact snapshot');
+          },
+        },
+      );
+
+      const result = buildCompactAiIndicatorsSnapshot(indicators);
+
+      expect(result).toEqual({
+        maFast: [3, 4, 5],
+        baseContext: { raw: { trend: { maFast: 5 } } },
+      });
+      expect(compactSnapshot).toHaveBeenCalledWith({
+        limit: MAX_AI_SERIES_POINTS,
+      });
     });
   });
 

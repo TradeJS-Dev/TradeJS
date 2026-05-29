@@ -36,7 +36,6 @@ export const createTrendShiftCore: CreateStrategyCore<
   const lastTradeController = strategyApi.createLastTradeController();
 
   return async (candle) => {
-    indicatorsState.onBar();
     const runtimeState = engine.next(candle);
     const snapshot = runtimeState.snapshot;
 
