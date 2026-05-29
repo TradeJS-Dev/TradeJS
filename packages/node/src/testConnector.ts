@@ -258,6 +258,97 @@ export const createTestConnector: TestConnectorCreator = (
       }
     },
 
+    checkExits: async (candle: Candle) => {
+      if (!candle || !currentPosition) {
+        return;
+      }
+
+      if (stopLossPrice) {
+        const isLong = currentPosition.direction === 'LONG';
+        const hitStop = isLong
+          ? candle.low <= stopLossPrice
+          : candle.high >= stopLossPrice;
+
+        if (hitStop) {
+          const qty = currentPosition.qty;
+          const grossProfit = isLong
+            ? (stopLossPrice - currentPosition.price) * qty
+            : (currentPosition.price - stopLossPrice) * qty;
+          const { fee, profit } = getNetProfit({
+            grossProfit,
+            price: stopLossPrice,
+            qty,
+          });
+
+          amount += profit;
+          currentPositionProfit += profit;
+
+          logOrder({
+            timestamp: candle.timestamp,
+            qty,
+            profit,
+            price: stopLossPrice,
+            fee,
+            type: isLong ? 'STOP_LOSS_LONG' : 'STOP_LOSS_SHORT',
+          });
+
+          clearPosition(candle.timestamp);
+        }
+      }
+
+      if (!currentPosition || !currentPosition.qty) {
+        return;
+      }
+
+      const isLong = currentPosition.direction === 'LONG';
+      const entryPrice = currentPosition.price;
+      const high = candle.high;
+      const low = candle.low;
+
+      for (const tp of takeProfits) {
+        if (!currentPosition || currentPosition.qty <= 0) break;
+
+        const targetPrice = tp.price;
+        const reached = isLong ? high >= targetPrice : low <= targetPrice;
+
+        if (reached) {
+          const qty = originalQty * tp.rate;
+          const grossProfit = isLong
+            ? (targetPrice - entryPrice) * qty
+            : (entryPrice - targetPrice) * qty;
+          const { fee, profit } = getNetProfit({
+            grossProfit,
+            price: targetPrice,
+            qty,
+          });
+
+          amount += profit;
+          currentPositionProfit += profit;
+
+          currentPosition.qty = parseFloat(
+            (currentPosition.qty - qty).toFixed(8),
+          );
+
+          logOrder({
+            timestamp: candle.timestamp,
+            qty,
+            price: targetPrice,
+            profit,
+            fee,
+            type: isLong ? 'TAKE_PROFIT_LONG' : 'TAKE_PROFIT_SHORT',
+          });
+
+          tp.done = true;
+        }
+      }
+
+      takeProfits = takeProfits.filter(({ done }) => !done);
+
+      if (currentPosition && currentPosition.qty <= 0) {
+        clearPosition(candle.timestamp);
+      }
+    },
+
     placeOrder: async (order) => {
       if (currentPosition) {
         return false;

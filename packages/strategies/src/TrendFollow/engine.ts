@@ -123,11 +123,16 @@ const updateAtrState = ({
   };
 };
 
-const trimSeries = (
+const pushBoundedPoint = (
   series: StrategyFigurePoint[],
+  point: StrategyFigurePoint,
   maxPoints: number,
-): StrategyFigurePoint[] =>
-  series.length <= maxPoints ? series : series.slice(series.length - maxPoints);
+) => {
+  series.push(point);
+  if (series.length > maxPoints) {
+    series.splice(0, series.length - maxPoints);
+  }
+};
 
 const getConfigNumbers = (config: TrendFollowConfig) => ({
   pivotLength: Math.max(2, Math.floor(config.TRENDFOLLOW_PIVOT_LENGTH ?? 10)),
@@ -355,11 +360,9 @@ export const createTrendFollowEngine = ({
         : null;
 
     if (state.trailStop != null && state.trendState !== 0) {
-      state.series.trailStop = trimSeries(
-        [
-          ...state.series.trailStop,
-          { timestamp: candle.timestamp, value: state.trailStop },
-        ],
+      pushBoundedPoint(
+        state.series.trailStop,
+        { timestamp: candle.timestamp, value: state.trailStop },
         maxFigurePoints,
       );
     }

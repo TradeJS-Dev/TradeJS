@@ -138,11 +138,16 @@ const updateAtrState = ({
   };
 };
 
-const trimSeries = (
+const pushBoundedPoint = (
   series: StrategyFigurePoint[],
+  point: StrategyFigurePoint,
   maxPoints: number,
-): StrategyFigurePoint[] =>
-  series.length <= maxPoints ? series : series.slice(series.length - maxPoints);
+) => {
+  series.push(point);
+  if (series.length > maxPoints) {
+    series.splice(0, series.length - maxPoints);
+  }
+};
 
 const getConfigNumbers = (config: StructureZonesConfig) => ({
   pivotLength: Math.max(
@@ -379,11 +384,9 @@ export const createStructureZonesEngine = ({
           kind: 'high',
         };
         state.lastOppForLow = newHigh;
-        state.swingPoints = trimSeries(
-          [
-            ...state.swingPoints,
-            { timestamp: candidate.timestamp, value: newHigh },
-          ],
+        pushBoundedPoint(
+          state.swingPoints,
+          { timestamp: candidate.timestamp, value: newHigh },
           maxFigurePoints,
         );
         structureUpdated = true;
@@ -408,11 +411,9 @@ export const createStructureZonesEngine = ({
           kind: 'low',
         };
         state.lastOppForHigh = newLow;
-        state.swingPoints = trimSeries(
-          [
-            ...state.swingPoints,
-            { timestamp: candidate.timestamp, value: newLow },
-          ],
+        pushBoundedPoint(
+          state.swingPoints,
+          { timestamp: candidate.timestamp, value: newLow },
           maxFigurePoints,
         );
         structureUpdated = true;

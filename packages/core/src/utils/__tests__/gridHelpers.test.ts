@@ -96,6 +96,7 @@ describe('grid helpers', () => {
         },
         strategyConfig: { MA_FAST: 10 },
         connectorName: 'ByBit',
+        interval: '15',
       }),
     );
 
@@ -111,6 +112,33 @@ describe('grid helpers', () => {
     expect(suite[0]?.configId).toBe(suite[2]?.configId);
     expect(suite[1]?.configId).toBe(suite[3]?.configId);
     expect(suite[0]?.configId).not.toBe(suite[1]?.configId);
+  });
+
+  it('createTestSuite stores an explicit runtime interval on each test', () => {
+    mockedGetTimestamp
+      .mockReturnValueOnce(1_700_000_000_000)
+      .mockReturnValueOnce(1_700_000_100_000);
+
+    mockedUuid.mockReturnValueOnce('suite60').mockReturnValueOnce('test60');
+
+    const suite = createTestSuite(
+      'alice',
+      ['BTCUSDT'],
+      'TrendLine',
+      {
+        MA_FAST: [10],
+      } as any,
+      'ByBit' as any,
+      '60' as any,
+    );
+
+    expect(suite).toHaveLength(1);
+    expect(suite[0]).toEqual(
+      expect.objectContaining({
+        interval: '60',
+        strategyConfig: { MA_FAST: 10 },
+      }),
+    );
   });
 
   it('assigns one shared configId per param combination for the AMR config grid', () => {

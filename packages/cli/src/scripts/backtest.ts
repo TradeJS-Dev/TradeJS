@@ -506,6 +506,7 @@ export const backtest = async () => {
       config.strategyName,
       config.strategyConfigGrid,
       preparedRun.connectorName,
+      interval,
     ),
     window: preparedRun.window,
     preloadStart: preparedRun.preloadStart,

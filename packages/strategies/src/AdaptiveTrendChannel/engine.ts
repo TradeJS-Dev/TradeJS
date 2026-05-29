@@ -56,7 +56,7 @@ type AtrState = {
 };
 
 type EngineState = {
-  candles: Candle[];
+  barsSeen: number;
   atrState: AtrState;
   prevClose: number | null;
   regime: 1 | -1 | null;
@@ -124,11 +124,27 @@ const updateAtrState = ({
   };
 };
 
-const trimSeries = (
-  series: StrategyFigurePoint[],
+const pushBoundedNumber = (
+  series: number[],
+  value: number,
   maxPoints: number,
-): StrategyFigurePoint[] =>
-  series.length <= maxPoints ? series : series.slice(series.length - maxPoints);
+) => {
+  series.push(value);
+  if (series.length > maxPoints) {
+    series.splice(0, series.length - maxPoints);
+  }
+};
+
+const pushBoundedPoint = (
+  series: StrategyFigurePoint[],
+  point: StrategyFigurePoint,
+  maxPoints: number,
+) => {
+  series.push(point);
+  if (series.length > maxPoints) {
+    series.splice(0, series.length - maxPoints);
+  }
+};
 
 const getConfigNumbers = (config: AdaptiveTrendChannelConfig) => ({
   regressionBars: Math.max(
@@ -210,7 +226,7 @@ export const createAdaptiveTrendChannelEngine = ({
     maxFigurePoints,
   } = getConfigNumbers(config);
   const state: EngineState = {
-    candles: [],
+    barsSeen: 0,
     atrState: { value: null, count: 0 },
     prevClose: null,
     regime: null,
@@ -226,9 +242,14 @@ export const createAdaptiveTrendChannelEngine = ({
       floor: [],
     },
   };
+  const highSeries: number[] = [];
+  const lowSeries: number[] = [];
+  const closeSeries: number[] = [];
   const regHighSeries: number[] = [];
   const regLowSeries: number[] = [];
   const regCloseSeries: number[] = [];
+  const regressionSourceLimit = regressionBars;
+  const regressionOutputLimit = Math.max(envelopeBars + 1, 2);
 
   const apply = (candle: Candle): AdaptiveTrendChannelRuntimeState => {
     state.signal = null;
@@ -240,15 +261,15 @@ export const createAdaptiveTrendChannelEngine = ({
       period: volatilityLookback,
     });
     state.prevClose = close;
-    state.candles.push(candle);
-    const currentIndex = state.candles.length - 1;
+    state.barsSeen += 1;
+    pushBoundedNumber(highSeries, Number(candle.high), regressionSourceLimit);
+    pushBoundedNumber(lowSeries, Number(candle.low), regressionSourceLimit);
+    pushBoundedNumber(closeSeries, close, regressionSourceLimit);
+    const currentIndex = state.barsSeen - 1;
     const historyReady = currentIndex > regressionBars;
-    const highs = state.candles.map((row) => Number(row.high));
-    const lows = state.candles.map((row) => Number(row.low));
-    const closes = state.candles.map((row) => Number(row.close));
-    const regHigh = linearRegressionNow(highs, regressionBars);
-    const regLow = linearRegressionNow(lows, regressionBars);
-    const regClose = linearRegressionNow(closes, regressionBars);
+    const regHigh = linearRegressionNow(highSeries, regressionBars);
+    const regLow = linearRegressionNow(lowSeries, regressionBars);
+    const regClose = linearRegressionNow(closeSeries, regressionBars);
 
     if (regHigh == null || regLow == null || regClose == null) {
       return {
@@ -258,9 +279,9 @@ export const createAdaptiveTrendChannelEngine = ({
       };
     }
 
-    regHighSeries.push(regHigh);
-    regLowSeries.push(regLow);
-    regCloseSeries.push(regClose);
+    pushBoundedNumber(regHighSeries, regHigh, regressionOutputLimit);
+    pushBoundedNumber(regLowSeries, regLow, regressionOutputLimit);
+    pushBoundedNumber(regCloseSeries, regClose, regressionOutputLimit);
     const highWindow = regHighSeries.slice(
       Math.max(0, regHighSeries.length - envelopeBars),
     );
@@ -350,19 +371,19 @@ export const createAdaptiveTrendChannelEngine = ({
           : ((state.centerline - close) / Math.abs(state.centerline)) * 100
         : null;
 
-    state.series.centerline = trimSeries(
-      [
-        ...state.series.centerline,
-        { timestamp: candle.timestamp, value: state.centerline },
-      ],
+    pushBoundedPoint(
+      state.series.centerline,
+      { timestamp: candle.timestamp, value: state.centerline },
       maxFigurePoints,
     );
-    state.series.roof = trimSeries(
-      [...state.series.roof, { timestamp: candle.timestamp, value: roof }],
+    pushBoundedPoint(
+      state.series.roof,
+      { timestamp: candle.timestamp, value: roof },
       maxFigurePoints,
     );
-    state.series.floor = trimSeries(
-      [...state.series.floor, { timestamp: candle.timestamp, value: floor }],
+    pushBoundedPoint(
+      state.series.floor,
+      { timestamp: candle.timestamp, value: floor },
       maxFigurePoints,
     );
 

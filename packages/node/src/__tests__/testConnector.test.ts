@@ -293,8 +293,7 @@ describe('testConnector', () => {
       turnover: 1,
     };
 
-    await connector.checkSl(candle);
-    await connector.checkTp(candle);
+    await connector.checkExits(candle);
 
     const result = await connector.getResult();
 

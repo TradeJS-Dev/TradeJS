@@ -1,6 +1,7 @@
 import { Metrics, MetricThreshold } from './metrics';
 import {
   Candle,
+  Interval,
   KlineChartItem,
   Direction,
   Connector,
@@ -77,6 +78,7 @@ export interface Test extends BacktestRunConfig {
   testSuiteId: string;
   configId?: string;
   symbol: string;
+  interval?: Interval;
   options: TestingOptions;
   ml?: boolean;
   ai?: boolean;
@@ -155,6 +157,7 @@ export interface TestConnector extends Connector {
   getResult: () => Promise<TestingBoxResult>;
   checkTp: (candle: Candle) => Promise<void>;
   checkSl: (candle: Candle) => Promise<void>;
+  checkExits: (candle: Candle) => Promise<void>;
   drainMlResultsBatch: () => Promise<
     Array<{ signalId: string; profit: number }>
   >;

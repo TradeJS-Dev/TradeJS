@@ -115,11 +115,16 @@ const updateAtrState = ({
   };
 };
 
-const trimSeries = (
+const pushBoundedPoint = (
   series: StrategyFigurePoint[],
+  point: StrategyFigurePoint,
   maxPoints: number,
-): StrategyFigurePoint[] =>
-  series.length <= maxPoints ? series : series.slice(series.length - maxPoints);
+) => {
+  series.push(point);
+  if (series.length > maxPoints) {
+    series.splice(0, series.length - maxPoints);
+  }
+};
 
 const asDirection = (trendState: 1 | -1): Direction =>
   trendState === 1 ? 'LONG' : 'SHORT';
@@ -301,16 +306,19 @@ export const createTrendShiftEngine = ({
     state.rawTrend = rawTrend;
     state.trendState = trendState;
     state.prevClose = close;
-    state.series.avg = trimSeries(
-      [...state.series.avg, { timestamp: candle.timestamp, value: avg }],
+    pushBoundedPoint(
+      state.series.avg,
+      { timestamp: candle.timestamp, value: avg },
       maxFigurePoints,
     );
-    state.series.upper = trimSeries(
-      [...state.series.upper, { timestamp: candle.timestamp, value: upper }],
+    pushBoundedPoint(
+      state.series.upper,
+      { timestamp: candle.timestamp, value: upper },
       maxFigurePoints,
     );
-    state.series.lower = trimSeries(
-      [...state.series.lower, { timestamp: candle.timestamp, value: lower }],
+    pushBoundedPoint(
+      state.series.lower,
+      { timestamp: candle.timestamp, value: lower },
       maxFigurePoints,
     );
     state.snapshot = {

@@ -399,6 +399,11 @@ export const buildPreparedTestSuite = async ({
   const preparedSuite = testSuite
     .map((test) => ({
       ...test,
+      interval,
+      strategyConfig: {
+        ...test.strategyConfig,
+        INTERVAL: interval,
+      },
       options: {
         start: window.start,
         end: window.end,

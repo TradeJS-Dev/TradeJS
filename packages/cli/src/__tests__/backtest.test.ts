@@ -121,7 +121,10 @@ import {
   toPersistedBacktestResultEntry,
   toStrategyConfigGrid,
 } from '../scripts/backtest';
-import { updateBestTickerResult } from '../lib/backtest/runnerCore';
+import {
+  buildPreparedTestSuite,
+  updateBestTickerResult,
+} from '../lib/backtest/runnerCore';
 import {
   getBestTickerResultForSymbol,
   getAggregateAverageProfit,
@@ -330,6 +333,38 @@ describe('backtest script helpers', () => {
       ENABLED: [true],
       TRENDLINE: [{ leftBars: 5 }],
     });
+  });
+
+  it('propagates the parsed timeframe into prepared worker tests', async () => {
+    const preparedSuite = await buildPreparedTestSuite({
+      testSuite: [
+        {
+          userName: 'root',
+          name: 'BTCUSDT_suite_test',
+          testId: 'test',
+          testSuiteId: 'suite',
+          symbol: 'BTCUSDT',
+          strategyName: 'TrendLine',
+          strategyConfig: { MA_FAST: 10 },
+          connectorName: 'ByBit',
+          options: { start: 1, end: 2 },
+        } as any,
+      ],
+      window: { start: 100, end: 200, source: 'explicit' } as any,
+      preloadStart: 50,
+      isReplay: false,
+    });
+
+    expect(preparedSuite).toEqual([
+      expect.objectContaining({
+        interval: '15',
+        options: { start: 100, end: 200 },
+        strategyConfig: {
+          MA_FAST: 10,
+          INTERVAL: '15',
+        },
+      }),
+    ]);
   });
 
   it('forces signals replay configs into PARITY mode while preserving runtime gate settings', () => {

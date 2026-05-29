@@ -4,6 +4,7 @@ import {
   Candle,
   Connector,
   ConnectorCreator,
+  Interval,
   KlineChartData,
   RuntimeSignalEvaluationRecord,
   Signal,
@@ -72,6 +73,89 @@ type TestingGroupResult = {
   result: TestingBoxResult;
 };
 
+const CLOSED_RESULT_FLUSH_INTERVAL = 500;
+
+type PendingAiDatasetRow = Omit<AiDatasetRow, 'payload' | 'profit'> & {
+  signal: Signal;
+};
+
+const cloneAiPayloadSignal = (signal: Signal): Signal => {
+  const cloneValue = <T>(value: T): T => {
+    if (value == null) {
+      return value;
+    }
+
+    if (typeof structuredClone === 'function') {
+      return structuredClone(value);
+    }
+
+    return JSON.parse(JSON.stringify(value)) as T;
+  };
+
+  return {
+    ...signal,
+    figures: cloneValue(signal.figures),
+    indicators: cloneValue(signal.indicators),
+    additionalIndicators: cloneValue(signal.additionalIndicators),
+  };
+};
+
+const buildReplaySignalEvaluationRecord = ({
+  signal,
+  testId,
+  userName,
+  strategyName,
+  symbol,
+  interval,
+  candle,
+}: {
+  signal: Signal | string | null | undefined;
+  testId: string;
+  userName: string;
+  strategyName: string;
+  symbol: string;
+  interval: Interval;
+  candle: Candle;
+}): RuntimeSignalEvaluationRecord => {
+  if (!signal || typeof signal === 'string') {
+    return {
+      evaluationId: `${testId}:${strategyName}:${symbol}:${candle.timestamp}`,
+      userName,
+      strategy: strategyName,
+      symbol,
+      interval,
+      timestamp: candle.timestamp,
+      evaluatedAt: candle.timestamp,
+      status: 'skip',
+      reason:
+        typeof signal === 'string' && signal.trim() ? signal : 'NO_SIGNAL',
+    };
+  }
+
+  const signalTimestamp =
+    typeof signal.timestamp === 'number' && Number.isFinite(signal.timestamp)
+      ? signal.timestamp
+      : candle.timestamp;
+
+  return {
+    evaluationId: `${signal.signalId || testId}:${strategyName}:${symbol}:${signalTimestamp}`,
+    userName,
+    strategy: signal.strategy || strategyName,
+    symbol: signal.symbol || symbol,
+    interval: signal.interval || interval,
+    timestamp: signalTimestamp,
+    evaluatedAt: candle.timestamp,
+    status: 'signal',
+    reason: signal.orderSkipReason || signal.orderStatus,
+    signalId: signal.signalId,
+    direction: signal.direction,
+    orderStatus: signal.orderStatus,
+    orderSkipReason: signal.orderSkipReason,
+    aiAnalysis: signal.aiAnalysis ?? null,
+    ml: signal.ml,
+  };
+};
+
 const createTestingKlineCacheState = (): TestingKlineCacheState => ({
   coinKlineCache: new Map<string, KlineChartData>(),
   btcKlineCache: new Map<string, KlineChartData>(),
@@ -111,7 +195,7 @@ const getKlineCacheKey = (params: {
   symbol: string;
   preloadStart: number;
   end: number;
-  interval: string;
+  interval: Interval;
   cacheOnly: boolean;
 }) => {
   const {
@@ -141,7 +225,7 @@ const getPreparedDataCacheKey = (params: {
   preloadStart: number;
   start: number;
   end: number;
-  interval: string;
+  interval: Interval;
   btcBinanceConnectorName: string;
   btcCoinbaseConnectorName: string;
 }) => {
@@ -175,8 +259,14 @@ const getConnectorCacheKey = (params: {
   connectorName: string;
 }) => [params.userName, params.connectorName].join(':');
 
-const BACKTEST_INTERVAL = '15';
-const BACKTEST_INTERVAL_MS = Number(BACKTEST_INTERVAL) * 60_000;
+const BACKTEST_INTERVAL: Interval = '15';
+
+const resolveIntervalMs = (interval: Interval) => {
+  const intervalMinutes = Number(interval);
+  return Number.isFinite(intervalMinutes) && intervalMinutes > 0
+    ? intervalMinutes * 60_000
+    : Number(BACKTEST_INTERVAL) * 60_000;
+};
 
 const deleteMapEntriesByPrefix = <T>(map: Map<string, T>, prefix: string) => {
   for (const key of map.keys()) {
@@ -209,17 +299,20 @@ const splitCandlesForTesting = (
   return { prevData, testData };
 };
 
-const getCurrentOpenTimestamp = () =>
-  Math.floor(Date.now() / BACKTEST_INTERVAL_MS) * BACKTEST_INTERVAL_MS;
+const getCurrentOpenTimestamp = (interval: Interval) => {
+  const intervalMs = resolveIntervalMs(interval);
+  return Math.floor(Date.now() / intervalMs) * intervalMs;
+};
 
 const filterClosedAlignedCandles = (
   data: KlineChartData,
   btcData: KlineChartData,
+  interval: Interval,
 ): {
   data: KlineChartData;
   btcData: KlineChartData;
 } => {
-  const currentOpenTimestamp = getCurrentOpenTimestamp();
+  const currentOpenTimestamp = getCurrentOpenTimestamp(interval);
   const closedData: KlineChartData = [];
   const closedBtcData: KlineChartData = [];
 
@@ -304,6 +397,7 @@ const prepareTestingData = async (params: {
   preloadStart: number;
   start: number;
   end: number;
+  interval: Interval;
 }) => {
   const {
     state,
@@ -314,6 +408,7 @@ const prepareTestingData = async (params: {
     preloadStart,
     start,
     end,
+    interval,
   } = params;
   const binanceConnector = await getCachedConnector({
     state,
@@ -346,7 +441,6 @@ const prepareTestingData = async (params: {
     );
   }
 
-  const interval = BACKTEST_INTERVAL;
   const coinCacheKey = getKlineCacheKey({
     userName,
     connectorName,
@@ -419,7 +513,7 @@ const prepareTestingData = async (params: {
         symbol: 'BTCUSDT',
         start: preloadStart,
         end,
-        interval: BACKTEST_INTERVAL,
+        interval,
         silent: true,
         cacheOnly,
       });
@@ -431,7 +525,7 @@ const prepareTestingData = async (params: {
           symbol: 'BTCUSDT',
           start: preloadStart,
           end,
-          interval: BACKTEST_INTERVAL,
+          interval,
           silent: true,
           cacheOnly,
         });
@@ -443,7 +537,7 @@ const prepareTestingData = async (params: {
           symbol: 'BTCUSDT',
           start: preloadStart,
           end,
-          interval: BACKTEST_INTERVAL,
+          interval,
           silent: true,
           cacheOnly,
         });
@@ -456,7 +550,7 @@ const prepareTestingData = async (params: {
             symbol,
             start: preloadStart,
             end,
-            interval: BACKTEST_INTERVAL,
+            interval,
             silent: true,
             cacheOnly,
           }),
@@ -482,6 +576,7 @@ const prepareTestingData = async (params: {
   const { data, btcData } = filterClosedAlignedCandles(
     aligned.alignedCoinCandles,
     aligned.alignedBtcCandles,
+    interval,
   );
   const { alignedBtcCandles: btcBinanceData } = alignSortedCandlesByTimestamp(
     data,
@@ -535,6 +630,8 @@ export const canRunTestsInSharedCandleLoop = (tests: Test[]): boolean => {
       Boolean(test.fast) === Boolean(first.fast) &&
       Boolean(test.collectReplaySignalEvaluations) ===
         Boolean(first.collectReplaySignalEvaluations) &&
+      (test.interval ?? BACKTEST_INTERVAL) ===
+        (first.interval ?? BACKTEST_INTERVAL) &&
       (test.timeoutMs ?? null) === (first.timeoutMs ?? null),
   );
 };
@@ -550,6 +647,7 @@ export const testing: TestingBox = async ({
   strategyName,
   strategyConfig,
   connectorName,
+  interval = BACKTEST_INTERVAL,
   ml = false,
   ai = false,
   fast = false,
@@ -705,6 +803,7 @@ export const testing: TestingBox = async ({
       preloadStart,
       start,
       end,
+      interval,
     }),
   );
 
@@ -722,7 +821,6 @@ export const testing: TestingBox = async ({
   } = preparedData;
   const runtimePrevData = prevData.slice();
   const runtimeBtcPrevData = btcPrevData.slice();
-  const interval = BACKTEST_INTERVAL;
   totalCandles = testData.length;
 
   const testConnector = createTestConnector(connector, {
@@ -737,7 +835,10 @@ export const testing: TestingBox = async ({
     strategyCreator({
       userName,
       connectorName,
-      config: strategyConfig,
+      config: {
+        ...strategyConfig,
+        INTERVAL: interval,
+      },
       symbol,
       data: runtimePrevData,
       btcData: runtimeBtcPrevData,
@@ -751,10 +852,7 @@ export const testing: TestingBox = async ({
     string,
     ReturnType<typeof buildMlPayload>
   >();
-  const pendingAiRowBySignalId = new Map<
-    string,
-    Omit<AiDatasetRow, 'profit'>
-  >();
+  const pendingAiRowBySignalId = new Map<string, PendingAiDatasetRow>();
   const replaySignalEvaluations = collectReplaySignalEvaluations
     ? ([] as RuntimeSignalEvaluationRecord[])
     : null;
@@ -783,11 +881,13 @@ export const testing: TestingBox = async ({
       const aiRowBase = pendingAiRowBySignalId.get(resultRecord.signalId);
       if (aiRowBase) {
         pendingAiRowBySignalId.delete(resultRecord.signalId);
+        const { signal: aiSignal, ...rowBase } = aiRowBase;
         await appendAiDatasetRow({
           strategyName,
           chunkId,
           row: {
-            ...aiRowBase,
+            ...rowBase,
+            payload: buildAiPayload(aiSignal),
             profit: resultRecord.profit,
           },
         });
@@ -809,51 +909,23 @@ export const testing: TestingBox = async ({
 
     // Process exits on the current candle first. Any position opened below
     // can only be closed starting from the next candle to avoid same-bar lookahead.
-    await runStage('stop-loss check', () => testConnector.checkSl(candle));
-    await runStage('take-profit check', () => testConnector.checkTp(candle));
+    await runStage('exit checks', () => testConnector.checkExits(candle));
 
     const signal = await runStage('strategy signal', () =>
       strategy(candle, btcCandle),
     );
-    if (!signal || typeof signal === 'string') {
-      if (replaySignalEvaluations) {
-        replaySignalEvaluations.push({
-          evaluationId: `${testId}:${strategyName}:${symbol}:${candle.timestamp}`,
+    if (replaySignalEvaluations) {
+      replaySignalEvaluations.push(
+        buildReplaySignalEvaluationRecord({
+          signal,
+          testId,
           userName,
-          strategy: strategyName,
+          strategyName,
           symbol,
           interval,
-          timestamp: candle.timestamp,
-          evaluatedAt: candle.timestamp,
-          status: 'skip',
-          reason:
-            typeof signal === 'string' && signal.trim() ? signal : 'NO_SIGNAL',
-        });
-      }
-    } else {
-      if (replaySignalEvaluations) {
-        replaySignalEvaluations.push({
-          evaluationId: `${signal.signalId || testId}:${strategyName}:${symbol}:${signal.timestamp || candle.timestamp}`,
-          userName,
-          strategy: signal.strategy || strategyName,
-          symbol: signal.symbol || symbol,
-          interval: signal.interval || interval,
-          timestamp:
-            typeof signal.timestamp === 'number' &&
-            Number.isFinite(signal.timestamp)
-              ? signal.timestamp
-              : candle.timestamp,
-          evaluatedAt: candle.timestamp,
-          status: 'signal',
-          reason: signal.orderSkipReason || signal.orderStatus,
-          signalId: signal.signalId,
-          direction: signal.direction,
-          orderStatus: signal.orderStatus,
-          orderSkipReason: signal.orderSkipReason,
-          aiAnalysis: signal.aiAnalysis ?? null,
-          ml: signal.ml,
-        });
-      }
+          candle,
+        }),
+      );
     }
     const shouldCapturePayload =
       signal && typeof signal !== 'string' && signal.signalId && (ml || ai);
@@ -890,13 +962,17 @@ export const testing: TestingBox = async ({
         symbol: signal.symbol || symbol,
         direction: signal.direction,
         timestamp: signal.timestamp,
-        payload: buildAiPayload(signal as Signal),
+        signal: cloneAiPayloadSignal(signal as Signal),
         testId,
         testSuiteId,
         testName: name,
         configId,
         connectorName,
       });
+    }
+
+    if ((candleIndex + 1) % CLOSED_RESULT_FLUSH_INTERVAL === 0) {
+      await withTimeout('flush closed results', flushClosedResultsBatch());
     }
   }
 
@@ -933,6 +1009,7 @@ export const testingGroupInSharedCandleLoop = async (
     options: { start, end },
     strategyName,
     connectorName,
+    interval = BACKTEST_INTERVAL,
     ml = false,
     ai = false,
     fast = false,
@@ -1086,6 +1163,7 @@ export const testingGroupInSharedCandleLoop = async (
       preloadStart,
       start,
       end,
+      interval,
     }),
   );
   if (!preparedData) {
@@ -1108,6 +1186,7 @@ export const testingGroupInSharedCandleLoop = async (
     connectorName,
     strategyName,
     symbol,
+    interval,
     start,
     end,
     chunkId,
@@ -1118,7 +1197,7 @@ export const testingGroupInSharedCandleLoop = async (
     strategy: BacktestDetectorOptimizedStrategy;
     testConnector: ReturnType<typeof createTestConnector>;
     pendingMlPayloadBySignalId: Map<string, ReturnType<typeof buildMlPayload>>;
-    pendingAiRowBySignalId: Map<string, Omit<AiDatasetRow, 'profit'>>;
+    pendingAiRowBySignalId: Map<string, PendingAiDatasetRow>;
     replaySignalEvaluations: RuntimeSignalEvaluationRecord[] | null;
   };
 
@@ -1136,7 +1215,10 @@ export const testingGroupInSharedCandleLoop = async (
         strategyCreator({
           userName: test.userName,
           connectorName: test.connectorName,
-          config: test.strategyConfig,
+          config: {
+            ...test.strategyConfig,
+            INTERVAL: test.interval ?? interval,
+          },
           symbol: test.symbol,
           data: prevData.slice(),
           btcData: btcPrevData.slice(),
@@ -1185,11 +1267,13 @@ export const testingGroupInSharedCandleLoop = async (
         );
         if (aiRowBase) {
           runner.pendingAiRowBySignalId.delete(resultRecord.signalId);
+          const { signal: aiSignal, ...rowBase } = aiRowBase;
           await appendAiDatasetRow({
             strategyName: runner.test.strategyName,
             chunkId: runner.test.chunkId ?? 'single',
             row: {
-              ...aiRowBase,
+              ...rowBase,
+              payload: buildAiPayload(aiSignal),
               profit: resultRecord.profit,
             },
           });
@@ -1212,10 +1296,7 @@ export const testingGroupInSharedCandleLoop = async (
 
       for (const runner of runners) {
         const { test, testConnector, strategy } = runner;
-        await runStage('stop-loss check', () => testConnector.checkSl(candle));
-        await runStage('take-profit check', () =>
-          testConnector.checkTp(candle),
-        );
+        await runStage('exit checks', () => testConnector.checkExits(candle));
 
         const detectorFanoutKey = strategy.detectorFanoutKey;
         const detectorSkipCode = detectorFanoutKey
@@ -1248,45 +1329,18 @@ export const testingGroupInSharedCandleLoop = async (
         ) {
           detectorNoSignalByKey.set(detectorFanoutKey, signal);
         }
-        if (!signal || typeof signal === 'string') {
-          if (runner.replaySignalEvaluations) {
-            runner.replaySignalEvaluations.push({
-              evaluationId: `${test.testId}:${test.strategyName}:${test.symbol}:${candle.timestamp}`,
+        if (runner.replaySignalEvaluations) {
+          runner.replaySignalEvaluations.push(
+            buildReplaySignalEvaluationRecord({
+              signal,
+              testId: test.testId,
               userName: test.userName,
-              strategy: test.strategyName,
+              strategyName: test.strategyName,
               symbol: test.symbol,
-              interval: BACKTEST_INTERVAL,
-              timestamp: candle.timestamp,
-              evaluatedAt: candle.timestamp,
-              status: 'skip',
-              reason:
-                typeof signal === 'string' && signal.trim()
-                  ? signal
-                  : 'NO_SIGNAL',
-            });
-          }
-        } else if (runner.replaySignalEvaluations) {
-          runner.replaySignalEvaluations.push({
-            evaluationId: `${signal.signalId || test.testId}:${test.strategyName}:${test.symbol}:${signal.timestamp || candle.timestamp}`,
-            userName: test.userName,
-            strategy: signal.strategy || test.strategyName,
-            symbol: signal.symbol || test.symbol,
-            interval: BACKTEST_INTERVAL,
-            timestamp:
-              typeof signal.timestamp === 'number' &&
-              Number.isFinite(signal.timestamp)
-                ? signal.timestamp
-                : candle.timestamp,
-            evaluatedAt: candle.timestamp,
-            status: 'signal',
-            reason: signal.orderSkipReason || signal.orderStatus,
-            signalId: signal.signalId,
-            direction: signal.direction,
-            orderStatus: signal.orderStatus,
-            orderSkipReason: signal.orderSkipReason,
-            aiAnalysis: signal.aiAnalysis ?? null,
-            ml: signal.ml,
-          });
+              interval: test.interval ?? interval,
+              candle,
+            }),
+          );
         }
 
         const shouldCapturePayload =
@@ -1337,7 +1391,7 @@ export const testingGroupInSharedCandleLoop = async (
             symbol: signal.symbol || test.symbol,
             direction: signal.direction,
             timestamp: signal.timestamp,
-            payload: buildAiPayload(signal as Signal),
+            signal: cloneAiPayloadSignal(signal as Signal),
             testId: test.testId,
             testSuiteId: test.testSuiteId,
             testName: test.name,
@@ -1345,6 +1399,13 @@ export const testingGroupInSharedCandleLoop = async (
             connectorName: test.connectorName,
           });
         }
+      }
+
+      if ((candleIndex + 1) % CLOSED_RESULT_FLUSH_INTERVAL === 0) {
+        await withTimeout(
+          'flush closed results',
+          Promise.all(runners.map((runner) => flushClosedResultsBatch(runner))),
+        );
       }
     }
 

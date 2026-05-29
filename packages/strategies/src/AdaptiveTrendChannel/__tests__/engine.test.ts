@@ -50,4 +50,37 @@ describe('AdaptiveTrendChannel engine', () => {
     expect(latest.series.roof.length).toBeGreaterThan(0);
     expect(latest.series.floor.length).toBeGreaterThan(0);
   });
+
+  it('processes long histories without retaining unbounded figure series', () => {
+    const maxFigurePoints = 64;
+    const engine = createAdaptiveTrendChannelEngine({
+      config: makeConfig({
+        ADAPTIVE_TREND_CHANNEL_REGRESSION_BARS: 10,
+        ADAPTIVE_TREND_CHANNEL_ENVELOPE_BARS: 2,
+        ADAPTIVE_TREND_CHANNEL_VOLATILITY_LOOKBACK: 100,
+        ADAPTIVE_TREND_CHANNEL_MAX_FIGURE_POINTS: maxFigurePoints,
+      }),
+    });
+
+    let latest = engine.getState();
+    for (let index = 0; index < 40_000; index += 1) {
+      const base = 100 + Math.sin(index / 20) * 3 + index * 0.001;
+      latest = engine.next(
+        makeCandle(
+          index,
+          base,
+          base + 1 + Math.sin(index / 17) * 0.2,
+          base - 1 - Math.cos(index / 19) * 0.2,
+          base + Math.sin(index / 11) * 0.5,
+        ) as any,
+      );
+    }
+
+    expect(latest.snapshot?.centerline).toBeGreaterThan(0);
+    expect(latest.series.centerline.length).toBeLessThanOrEqual(
+      maxFigurePoints,
+    );
+    expect(latest.series.roof.length).toBeLessThanOrEqual(maxFigurePoints);
+    expect(latest.series.floor.length).toBeLessThanOrEqual(maxFigurePoints);
+  });
 });

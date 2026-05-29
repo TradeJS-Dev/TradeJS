@@ -22,6 +22,7 @@ const mockAlignSortedCandlesByTimestamp = jest.fn(
 const mockTestConnector = {
   checkSl: jest.fn().mockResolvedValue(undefined),
   checkTp: jest.fn().mockResolvedValue(undefined),
+  checkExits: jest.fn().mockResolvedValue(undefined),
   drainMlResultsBatch: jest.fn().mockResolvedValue([]),
   getResult: jest.fn().mockResolvedValue({
     orderLogId: 'log-1',
@@ -192,6 +193,7 @@ describe('testing backtest flow', () => {
     mockEnrichSignalWithDerivativesContext.mockClear();
     mockTestConnector.checkSl.mockClear();
     mockTestConnector.checkTp.mockClear();
+    mockTestConnector.checkExits.mockClear();
     mockTestConnector.drainMlResultsBatch.mockReset();
     mockTestConnector.drainMlResultsBatch.mockResolvedValue([]);
     mockTestConnector.getResult.mockResolvedValue({
@@ -220,7 +222,7 @@ describe('testing backtest flow', () => {
     ).rejects.toThrow('no start');
   });
 
-  it('calls checkSl/checkTp for each test candle', async () => {
+  it('calls checkExits for each test candle', async () => {
     const data = [candle(1_000_050), candle(1_000_150), candle(1_000_250)];
     mockByBitConnector.kline.mockResolvedValue(data);
     mockBinanceConnector.kline.mockResolvedValue(data);
@@ -230,8 +232,7 @@ describe('testing backtest flow', () => {
     await testing(createTest({ ml: true }));
 
     expect(mockByBitConnector.kline).toHaveBeenCalledTimes(2);
-    expect(mockTestConnector.checkSl).toHaveBeenCalledTimes(2);
-    expect(mockTestConnector.checkTp).toHaveBeenCalledTimes(2);
+    expect(mockTestConnector.checkExits).toHaveBeenCalledTimes(2);
   });
 
   it('does not reuse mutable preload arrays between configs for the same symbol', async () => {
@@ -325,8 +326,7 @@ describe('testing backtest flow', () => {
     expect(secondStrategy).not.toHaveBeenCalled();
     expect(secondStrategy.advanceDetectorNoSignal).toHaveBeenCalledTimes(2);
     expect(secondStrategy.skipDetectorNoSignal).not.toHaveBeenCalled();
-    expect(mockTestConnector.checkSl).toHaveBeenCalledTimes(4);
-    expect(mockTestConnector.checkTp).toHaveBeenCalledTimes(4);
+    expect(mockTestConnector.checkExits).toHaveBeenCalledTimes(4);
   });
 
   it('excludes the current forming candle from backtest replay data', async () => {
@@ -355,8 +355,7 @@ describe('testing backtest flow', () => {
       nowSpy.mockRestore();
     }
 
-    expect(mockTestConnector.checkSl).toHaveBeenCalledTimes(2);
-    expect(mockTestConnector.checkTp).toHaveBeenCalledTimes(2);
+    expect(mockTestConnector.checkExits).toHaveBeenCalledTimes(2);
     expect(mockStrategy).toHaveBeenLastCalledWith(
       expect.objectContaining({ timestamp: CLOSED_2_TS }),
       expect.objectContaining({ timestamp: CLOSED_2_TS }),
@@ -385,6 +384,49 @@ describe('testing backtest flow', () => {
         symbol: 'ETHUSDT',
         start: expectedPreloadStart,
         end,
+      }),
+    );
+  });
+
+  it('uses the test interval for market data requests and strategy runtime config', async () => {
+    const data = [candle(1_000_050), candle(1_000_150), candle(1_000_250)];
+    mockByBitConnector.kline.mockResolvedValue(data);
+    mockBinanceConnector.kline.mockResolvedValue(data);
+    mockCoinbaseConnector.kline.mockResolvedValue(data);
+    mockStrategy.mockResolvedValue('HOLD');
+
+    await testing(createTest({ interval: '60' as any }));
+
+    expect(mockByBitConnector.kline).toHaveBeenCalledWith(
+      expect.objectContaining({
+        symbol: 'ETHUSDT',
+        interval: '60',
+      }),
+    );
+    expect(mockByBitConnector.kline).toHaveBeenCalledWith(
+      expect.objectContaining({
+        symbol: 'BTCUSDT',
+        interval: '60',
+      }),
+    );
+    expect(mockBinanceConnector.kline).toHaveBeenCalledWith(
+      expect.objectContaining({
+        symbol: 'BTCUSDT',
+        interval: '60',
+      }),
+    );
+    expect(mockCoinbaseConnector.kline).toHaveBeenCalledWith(
+      expect.objectContaining({
+        symbol: 'BTCUSDT',
+        interval: '60',
+      }),
+    );
+    expect(mockStrategyCreator).toHaveBeenCalledWith(
+      expect.objectContaining({
+        config: expect.objectContaining({
+          a: 1,
+          INTERVAL: '60',
+        }),
       }),
     );
   });
@@ -537,6 +579,46 @@ describe('testing backtest flow', () => {
           }),
           profit: -3.5,
         }),
+      }),
+    );
+  });
+
+  it('snapshots AI payload source before later strategy mutations', async () => {
+    const data = [candle(1_000_050), candle(1_000_150), candle(1_000_250)];
+    const signal = {
+      signalId: 's-mutable',
+      symbol: 'ETHUSDT',
+      strategy: 'TrendLine',
+      direction: 'LONG',
+      timestamp: 1_000_150,
+      figures: {
+        line: {
+          points: [{ timestamp: 1_000_150, value: 100 }],
+        },
+      },
+    };
+    mockByBitConnector.kline.mockResolvedValue(data);
+    mockBinanceConnector.kline.mockResolvedValue(data);
+    mockCoinbaseConnector.kline.mockResolvedValue(data);
+    mockStrategy
+      .mockResolvedValueOnce(signal)
+      .mockImplementationOnce(async () => {
+        signal.figures.line.points[0].value = 999;
+        return 'HOLD';
+      });
+    mockTestConnector.drainMlResultsBatch.mockResolvedValueOnce([
+      { signalId: 's-mutable', profit: 1.5 },
+    ]);
+
+    await testing(createTest({ ai: true }));
+
+    expect(mockBuildAiPayload).toHaveBeenCalledWith(
+      expect.objectContaining({
+        figures: {
+          line: {
+            points: [{ timestamp: 1_000_150, value: 100 }],
+          },
+        },
       }),
     );
   });

@@ -1,6 +1,11 @@
 import _ from 'lodash';
 import { BACKTEST_DEFAULT_DAYS } from '../constants';
-import { TestSuite, StrategyConfig, StrategyConfigGrid } from '@tradejs/types';
+import {
+  Interval,
+  TestSuite,
+  StrategyConfig,
+  StrategyConfigGrid,
+} from '@tradejs/types';
 import { getTimestamp } from './timestamp';
 import { toJson } from './toJson';
 import { uuid } from './uuid';
@@ -92,6 +97,7 @@ export const createTestSuite = (
   strategyName: string,
   backtestConfig: StrategyConfigGrid,
   connectorName: string,
+  interval: Interval = '15' as Interval,
 ): TestSuite => {
   const start = getTimestamp(BACKTEST_DEFAULT_DAYS);
   const end = getTimestamp();
@@ -109,6 +115,7 @@ export const createTestSuite = (
         testSuiteId,
         configId,
         symbol,
+        interval,
         options: { start, end },
         strategyName,
         strategyConfig: params,
