@@ -70,6 +70,8 @@ type AtrState = {
 
 type EngineState = {
   candles: Candle[];
+  candleStartIndex: number;
+  currentIndex: number;
   atrState: AtrState;
   prevClose: number | null;
   lastHigh: StructureZonesPivot | null;
@@ -149,6 +151,34 @@ const pushBoundedPoint = (
   }
 };
 
+const pushBoundedCandle = (
+  state: Pick<EngineState, 'candles' | 'candleStartIndex' | 'currentIndex'>,
+  candle: Candle,
+  maxCandles: number,
+) => {
+  state.currentIndex += 1;
+  state.candles.push(candle);
+  if (state.candles.length > maxCandles) {
+    const overflow = state.candles.length - maxCandles;
+    state.candles.splice(0, overflow);
+    state.candleStartIndex += overflow;
+  }
+  return state.currentIndex;
+};
+
+const getBufferedCandle = (
+  state: Pick<EngineState, 'candles' | 'candleStartIndex'>,
+  absoluteIndex: number,
+) => state.candles[absoluteIndex - state.candleStartIndex] ?? null;
+
+const getRecentBufferedCandles = (
+  state: Pick<EngineState, 'candles'>,
+  count: number,
+) =>
+  count <= 0
+    ? []
+    : state.candles.slice(Math.max(0, state.candles.length - count));
+
 const getConfigNumbers = (config: StructureZonesConfig) => ({
   pivotLength: Math.max(
     2,
@@ -178,42 +208,56 @@ const getConfigNumbers = (config: StructureZonesConfig) => ({
 });
 
 const getWindow = (
-  candles: Candle[],
-  candidateIndex: number,
-  lookback: number,
-) =>
-  candles.slice(
-    Math.max(0, candidateIndex - lookback),
-    candidateIndex + lookback + 1,
-  );
-
-const isPivotHigh = (
-  candles: Candle[],
+  state: Pick<EngineState, 'candles' | 'candleStartIndex'>,
   candidateIndex: number,
   lookback: number,
 ) => {
-  const candidate = candles[candidateIndex];
+  const window: Candle[] = [];
+  for (
+    let index = candidateIndex - lookback;
+    index <= candidateIndex + lookback;
+    index += 1
+  ) {
+    const candle = getBufferedCandle(state, index);
+    if (!candle) {
+      return [];
+    }
+    window.push(candle);
+  }
+  return window;
+};
+
+const isPivotHigh = (
+  state: Pick<EngineState, 'candles' | 'candleStartIndex'>,
+  candidateIndex: number,
+  lookback: number,
+) => {
+  const candidate = getBufferedCandle(state, candidateIndex);
   const candidateHigh = asFiniteNumber(candidate?.high);
   if (candidateHigh == null) {
     return false;
   }
-  return getWindow(candles, candidateIndex, lookback).every(
-    (candle) => candidateHigh >= Number(candle.high),
+  const window = getWindow(state, candidateIndex, lookback);
+  return (
+    window.length === lookback * 2 + 1 &&
+    window.every((candle) => candidateHigh >= Number(candle.high))
   );
 };
 
 const isPivotLow = (
-  candles: Candle[],
+  state: Pick<EngineState, 'candles' | 'candleStartIndex'>,
   candidateIndex: number,
   lookback: number,
 ) => {
-  const candidate = candles[candidateIndex];
+  const candidate = getBufferedCandle(state, candidateIndex);
   const candidateLow = asFiniteNumber(candidate?.low);
   if (candidateLow == null) {
     return false;
   }
-  return getWindow(candles, candidateIndex, lookback).every(
-    (candle) => candidateLow <= Number(candle.low),
+  const window = getWindow(state, candidateIndex, lookback);
+  return (
+    window.length === lookback * 2 + 1 &&
+    window.every((candle) => candidateLow <= Number(candle.low))
   );
 };
 
@@ -330,8 +374,11 @@ export const createStructureZonesEngine = ({
     tradeTransitionBreakouts,
     maxFigurePoints,
   } = getConfigNumbers(config);
+  const maxCandles = Math.max(pivotLength * 2 + 1, acceptBars);
   const state: EngineState = {
     candles: [],
+    candleStartIndex: 0,
+    currentIndex: -1,
     atrState: { value: null, count: 0 },
     prevClose: null,
     lastHigh: null,
@@ -358,15 +405,16 @@ export const createStructureZonesEngine = ({
       period: atrLength,
     });
     state.prevClose = close;
-    state.candles.push(candle);
-    const currentIndex = state.candles.length - 1;
+    const currentIndex = pushBoundedCandle(state, candle, maxCandles);
     const candidateIndex = currentIndex - pivotLength;
     const candidate =
-      candidateIndex >= pivotLength ? state.candles[candidateIndex] : null;
+      candidateIndex >= pivotLength
+        ? getBufferedCandle(state, candidateIndex)
+        : null;
     const atr = state.atrState.value ?? 0;
     let structureUpdated = false;
 
-    if (candidate && isPivotHigh(state.candles, candidateIndex, pivotLength)) {
+    if (candidate && isPivotHigh(state, candidateIndex, pivotLength)) {
       const newHigh = Number(candidate.high);
       if (
         isValidSwing({
@@ -393,7 +441,7 @@ export const createStructureZonesEngine = ({
       }
     }
 
-    if (candidate && isPivotLow(state.candles, candidateIndex, pivotLength)) {
+    if (candidate && isPivotLow(state, candidateIndex, pivotLength)) {
       const newLow = Number(candidate.low);
       if (
         isValidSwing({
@@ -457,9 +505,7 @@ export const createStructureZonesEngine = ({
       : isDownStructure
         ? 'down'
         : 'range';
-    const recent = state.candles.slice(
-      Math.max(0, state.candles.length - acceptBars),
-    );
+    const recent = getRecentBufferedCandles(state, acceptBars);
     const canDraw = Boolean(state.supportZone && state.resistanceZone);
     const acceptBelowLower =
       canDraw &&

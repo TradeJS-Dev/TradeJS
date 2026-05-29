@@ -51,4 +51,31 @@ describe('StructureZones engine', () => {
     expect(latest?.supportZone?.level).toBe(94);
     expect(latest?.marketState).toBe('Range');
   });
+
+  it('keeps absolute swing indexes after the rolling candle buffer trims history', () => {
+    const engine = createStructureZonesEngine({ config: makeConfig() });
+    for (let index = 0; index < 40; index += 1) {
+      engine.next(makeCandle(index, 100, 101, 99, 100) as any);
+    }
+
+    const base = 40;
+    const candles = [
+      makeCandle(base, 100, 102, 98, 100),
+      makeCandle(base + 1, 101, 104, 99, 102),
+      makeCandle(base + 2, 102, 110, 100, 108),
+      makeCandle(base + 3, 108, 106, 101, 103),
+      makeCandle(base + 4, 103, 105, 96, 99),
+      makeCandle(base + 5, 99, 104, 94, 96),
+      makeCandle(base + 6, 96, 103, 95, 101),
+      makeCandle(base + 7, 101, 105, 97, 103),
+    ];
+
+    const states = candles.map((candle) => engine.next(candle as any));
+    const latest = states[states.length - 1].snapshot;
+
+    expect(latest?.lastHigh?.index).toBe(base + 2);
+    expect(latest?.lastLow?.index).toBe(base + 5);
+    expect(latest?.resistanceZone?.level).toBe(110);
+    expect(latest?.supportZone?.level).toBe(94);
+  });
 });

@@ -55,6 +55,8 @@ type AtrState = {
 
 type EngineState = {
   candles: Candle[];
+  candleStartIndex: number;
+  currentIndex: number;
   atrState: AtrState;
   prevClose: number | null;
   trendState: 1 | -1 | 0;
@@ -134,6 +136,26 @@ const pushBoundedPoint = (
   }
 };
 
+const pushBoundedCandle = (
+  state: Pick<EngineState, 'candles' | 'candleStartIndex' | 'currentIndex'>,
+  candle: Candle,
+  maxCandles: number,
+) => {
+  state.currentIndex += 1;
+  state.candles.push(candle);
+  if (state.candles.length > maxCandles) {
+    const overflow = state.candles.length - maxCandles;
+    state.candles.splice(0, overflow);
+    state.candleStartIndex += overflow;
+  }
+  return state.currentIndex;
+};
+
+const getBufferedCandle = (
+  state: Pick<EngineState, 'candles' | 'candleStartIndex'>,
+  absoluteIndex: number,
+) => state.candles[absoluteIndex - state.candleStartIndex] ?? null;
+
 const getConfigNumbers = (config: TrendFollowConfig) => ({
   pivotLength: Math.max(2, Math.floor(config.TRENDFOLLOW_PIVOT_LENGTH ?? 10)),
   minBarsBetween: Math.max(
@@ -149,42 +171,56 @@ const getConfigNumbers = (config: TrendFollowConfig) => ({
 });
 
 const getWindow = (
-  candles: Candle[],
-  candidateIndex: number,
-  lookback: number,
-) =>
-  candles.slice(
-    Math.max(0, candidateIndex - lookback),
-    candidateIndex + lookback + 1,
-  );
-
-const isPivotHigh = (
-  candles: Candle[],
+  state: Pick<EngineState, 'candles' | 'candleStartIndex'>,
   candidateIndex: number,
   lookback: number,
 ) => {
-  const candidate = candles[candidateIndex];
+  const window: Candle[] = [];
+  for (
+    let index = candidateIndex - lookback;
+    index <= candidateIndex + lookback;
+    index += 1
+  ) {
+    const candle = getBufferedCandle(state, index);
+    if (!candle) {
+      return [];
+    }
+    window.push(candle);
+  }
+  return window;
+};
+
+const isPivotHigh = (
+  state: Pick<EngineState, 'candles' | 'candleStartIndex'>,
+  candidateIndex: number,
+  lookback: number,
+) => {
+  const candidate = getBufferedCandle(state, candidateIndex);
   const candidateHigh = asFiniteNumber(candidate?.high);
   if (candidateHigh == null) {
     return false;
   }
-  return getWindow(candles, candidateIndex, lookback).every(
-    (candle) => candidateHigh >= Number(candle.high),
+  const window = getWindow(state, candidateIndex, lookback);
+  return (
+    window.length === lookback * 2 + 1 &&
+    window.every((candle) => candidateHigh >= Number(candle.high))
   );
 };
 
 const isPivotLow = (
-  candles: Candle[],
+  state: Pick<EngineState, 'candles' | 'candleStartIndex'>,
   candidateIndex: number,
   lookback: number,
 ) => {
-  const candidate = candles[candidateIndex];
+  const candidate = getBufferedCandle(state, candidateIndex);
   const candidateLow = asFiniteNumber(candidate?.low);
   if (candidateLow == null) {
     return false;
   }
-  return getWindow(candles, candidateIndex, lookback).every(
-    (candle) => candidateLow <= Number(candle.low),
+  const window = getWindow(state, candidateIndex, lookback);
+  return (
+    window.length === lookback * 2 + 1 &&
+    window.every((candle) => candidateLow <= Number(candle.low))
   );
 };
 
@@ -218,8 +254,11 @@ export const createTrendFollowEngine = ({
 } => {
   const { pivotLength, minBarsBetween, atrLength, atrMult, maxFigurePoints } =
     getConfigNumbers(config);
+  const maxCandles = pivotLength * 2 + 1;
   const state: EngineState = {
     candles: [],
+    candleStartIndex: 0,
+    currentIndex: -1,
     atrState: { value: null, count: 0 },
     prevClose: null,
     trendState: 0,
@@ -245,13 +284,14 @@ export const createTrendFollowEngine = ({
     });
     const atr = state.atrState.value ?? 0;
 
-    state.candles.push(candle);
-    const currentIndex = state.candles.length - 1;
+    const currentIndex = pushBoundedCandle(state, candle, maxCandles);
     const candidateIndex = currentIndex - pivotLength;
     const candidate =
-      candidateIndex >= pivotLength ? state.candles[candidateIndex] : null;
+      candidateIndex >= pivotLength
+        ? getBufferedCandle(state, candidateIndex)
+        : null;
 
-    if (candidate && isPivotHigh(state.candles, candidateIndex, pivotLength)) {
+    if (candidate && isPivotHigh(state, candidateIndex, pivotLength)) {
       state.lastPivotHigh = {
         timestamp: candidate.timestamp,
         index: candidateIndex,
@@ -260,7 +300,7 @@ export const createTrendFollowEngine = ({
       };
     }
 
-    if (candidate && isPivotLow(state.candles, candidateIndex, pivotLength)) {
+    if (candidate && isPivotLow(state, candidateIndex, pivotLength)) {
       state.lastPivotLow = {
         timestamp: candidate.timestamp,
         index: candidateIndex,

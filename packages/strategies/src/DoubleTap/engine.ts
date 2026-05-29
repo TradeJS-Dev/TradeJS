@@ -34,6 +34,7 @@ type SwingDirection = 1 | 0 | null;
 
 interface EngineState {
   candles: Candle[];
+  currentIndex: number;
   pivots: DoubleTapPivot[];
   dir: SwingDirection;
   pattern: DoubleTapPattern | null;
@@ -71,8 +72,18 @@ const highest = (candles: Candle[]) =>
 const lowest = (candles: Candle[]) =>
   candles.reduce((min, candle) => Math.min(min, Number(candle.low)), Infinity);
 
-const getRecentWindow = (candles: Candle[], length: number) =>
-  candles.slice(Math.max(0, candles.length - length));
+const pushBoundedCandle = (
+  state: Pick<EngineState, 'candles' | 'currentIndex'>,
+  candle: Candle,
+  maxCandles: number,
+) => {
+  state.currentIndex += 1;
+  state.candles.push(candle);
+  if (state.candles.length > maxCandles) {
+    state.candles.splice(0, state.candles.length - maxCandles);
+  }
+  return state.currentIndex;
+};
 
 const isCurrentWindowHigh = (candle: Candle, window: Candle[]) => {
   const high = asNumber(candle.high);
@@ -278,6 +289,7 @@ export const createDoubleTapEngine = ({
   } = getConfigNumbers(config);
   const state: EngineState = {
     candles: [],
+    currentIndex: -1,
     pivots: [],
     dir: null,
     pattern: null,
@@ -286,9 +298,8 @@ export const createDoubleTapEngine = ({
   const apply = (candle: Candle): DoubleTapRuntimeState => {
     const prevCandle = state.candles[state.candles.length - 1];
     const prevClose = prevCandle ? asNumber(prevCandle.close) : null;
-    state.candles.push(candle);
-    const window = getRecentWindow(state.candles, pivotLength);
-    const currentIndex = state.candles.length - 1;
+    const currentIndex = pushBoundedCandle(state, candle, pivotLength);
+    const window = state.candles;
     const high = asNumber(candle.high);
     const low = asNumber(candle.low);
     const currentIsHigh = isCurrentWindowHigh(candle, window);

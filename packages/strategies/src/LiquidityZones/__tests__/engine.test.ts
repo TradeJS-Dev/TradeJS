@@ -64,4 +64,25 @@ describe('Liquidity Zones engine', () => {
     expect(signal?.zone.bottom).toBe(101);
     expect(signal?.reactionBodyAligned).toBe(true);
   });
+
+  it('keeps absolute zone indexes after the rolling candle buffer trims history', () => {
+    const engine = createLiquidityZonesEngine({ config: makeConfig() });
+    for (let index = 0; index < 20; index += 1) {
+      engine.next(makeCandle(index, 100, 101, 99, 100) as any);
+    }
+
+    const base = 20;
+    const candles = [
+      makeCandle(base, 102, 105, 100, 103),
+      makeCandle(base + 1, 100, 102, 90, 101),
+      makeCandle(base + 2, 99, 105, 99, 104),
+    ];
+
+    const states = candles.map((candle) => engine.next(candle as any));
+    const signal = states[states.length - 1].signal;
+
+    expect(signal?.direction).toBe('LONG');
+    expect(signal?.zone.startIndex).toBe(base + 1);
+    expect(signal?.zoneAgeBars).toBe(1);
+  });
 });

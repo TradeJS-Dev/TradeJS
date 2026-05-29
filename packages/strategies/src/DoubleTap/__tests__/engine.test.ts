@@ -75,4 +75,30 @@ describe('DoubleTap engine', () => {
     expect(pattern?.targetPrice).toBeLessThan(94);
     expect(pattern?.stopLossPrice).toBeGreaterThan(107);
   });
+
+  it('keeps absolute pivot indexes after the rolling candle buffer trims history', () => {
+    const engine = createDoubleTapEngine({ config: makeConfig() });
+    for (let index = 0; index < 30; index += 1) {
+      engine.next(makeCandle(index, 100, 101, 99, 100) as any);
+    }
+
+    const base = 30;
+    const candles = [
+      makeCandle(base, 100, 101, 95, 100),
+      makeCandle(base + 1, 100, 100, 88, 90),
+      makeCandle(base + 2, 90, 111, 89, 110),
+      makeCandle(base + 3, 110, 99, 85, 90),
+      makeCandle(base + 4, 92, 106, 86, 104),
+      makeCandle(base + 5, 104, 104, 86, 100),
+      makeCandle(base + 6, 100, 105, 86, 104),
+      makeCandle(base + 7, 104, 104, 86, 104),
+      makeCandle(base + 8, 104, 108, 90, 107),
+    ];
+
+    const states = candles.map((candle) => engine.next(candle as any));
+    const pattern = states[states.length - 1].pattern;
+
+    expect(pattern?.kind).toBe('double_bottom');
+    expect(pattern?.pivots.every((pivot) => pivot.index >= base)).toBe(true);
+  });
 });

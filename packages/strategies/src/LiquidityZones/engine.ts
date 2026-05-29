@@ -45,6 +45,8 @@ export interface LiquidityZonesRuntimeState {
 
 type EngineState = {
   candles: Candle[];
+  candleStartIndex: number;
+  currentIndex: number;
   zones: LiquidityZone[];
   signal: LiquidityZonesSignal | null;
 };
@@ -92,20 +94,41 @@ const getFilterMetric = (
   mode: LiquidityZonesFilterMode,
 ) => (mode === 'volume' ? zone.hitVolume : zone.hitCount);
 
+const pushBoundedCandle = (
+  state: Pick<EngineState, 'candles' | 'candleStartIndex' | 'currentIndex'>,
+  candle: Candle,
+  maxCandles: number,
+) => {
+  state.currentIndex += 1;
+  state.candles.push(candle);
+  if (state.candles.length > maxCandles) {
+    const overflow = state.candles.length - maxCandles;
+    state.candles.splice(0, overflow);
+    state.candleStartIndex += overflow;
+  }
+  return state.currentIndex;
+};
+
+const getBufferedCandle = (
+  state: Pick<EngineState, 'candles' | 'candleStartIndex'>,
+  absoluteIndex: number,
+) => state.candles[absoluteIndex - state.candleStartIndex] ?? null;
+
 const isPivotHigh = (
-  candles: Candle[],
+  state: Pick<EngineState, 'candles' | 'candleStartIndex'>,
   candidateIndex: number,
   lookback: number,
 ) => {
-  const candidate = candles[candidateIndex];
+  const candidate = getBufferedCandle(state, candidateIndex);
   const candidateHigh = asFiniteNumber(candidate?.high);
   if (candidateHigh == null) {
     return false;
   }
-  const from = Math.max(0, candidateIndex - lookback);
-  const to = Math.min(candles.length - 1, candidateIndex + lookback);
+  const from = candidateIndex - lookback;
+  const to = candidateIndex + lookback;
   for (let index = from; index <= to; index += 1) {
-    if (candidateHigh < Number(candles[index]?.high)) {
+    const candle = getBufferedCandle(state, index);
+    if (!candle || candidateHigh < Number(candle.high)) {
       return false;
     }
   }
@@ -113,19 +136,20 @@ const isPivotHigh = (
 };
 
 const isPivotLow = (
-  candles: Candle[],
+  state: Pick<EngineState, 'candles' | 'candleStartIndex'>,
   candidateIndex: number,
   lookback: number,
 ) => {
-  const candidate = candles[candidateIndex];
+  const candidate = getBufferedCandle(state, candidateIndex);
   const candidateLow = asFiniteNumber(candidate?.low);
   if (candidateLow == null) {
     return false;
   }
-  const from = Math.max(0, candidateIndex - lookback);
-  const to = Math.min(candles.length - 1, candidateIndex + lookback);
+  const from = candidateIndex - lookback;
+  const to = candidateIndex + lookback;
   for (let index = from; index <= to; index += 1) {
-    if (candidateLow > Number(candles[index]?.low)) {
+    const candle = getBufferedCandle(state, index);
+    if (!candle || candidateLow > Number(candle.low)) {
       return false;
     }
   }
@@ -302,27 +326,31 @@ export const createLiquidityZonesEngine = ({
     requireReactionBody,
     maxRetestPenetrationPct,
   } = getConfigNumbers(config);
+  const maxCandles = pivotLookback * 2 + 1;
   const state: EngineState = {
     candles: [],
+    candleStartIndex: 0,
+    currentIndex: -1,
     zones: [],
     signal: null,
   };
 
   const apply = (candle: Candle): LiquidityZonesRuntimeState => {
     state.signal = null;
-    state.candles.push(candle);
-    const currentIndex = state.candles.length - 1;
+    const currentIndex = pushBoundedCandle(state, candle, maxCandles);
     const candidateIndex = currentIndex - pivotLookback;
     const canConfirmPivot = candidateIndex >= pivotLookback;
-    const candidate = canConfirmPivot ? state.candles[candidateIndex] : null;
+    const candidate = canConfirmPivot
+      ? getBufferedCandle(state, candidateIndex)
+      : null;
     const highPivotDetected =
       Boolean(candidate) &&
       showSwingHighZones &&
-      isPivotHigh(state.candles, candidateIndex, pivotLookback);
+      isPivotHigh(state, candidateIndex, pivotLookback);
     const lowPivotDetected =
       Boolean(candidate) &&
       showSwingLowZones &&
-      isPivotLow(state.candles, candidateIndex, pivotLookback);
+      isPivotLow(state, candidateIndex, pivotLookback);
 
     if (candidate) {
       for (const zone of state.zones) {
