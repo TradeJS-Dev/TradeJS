@@ -30,6 +30,7 @@ export type TrendShiftGuardrailContext = TrendShiftSignalContext & {
   q4LongBreakoutCandidate: boolean;
   q4ShortBreakoutCandidate: boolean;
   q4ShortFailedLowBreakoutCandidate: boolean;
+  shortNeutralBearChannelBreakdownCandidate: boolean;
   selectiveNeutralQ4Candidate: boolean;
   longRelativeStrengthOverextended: boolean;
   longPriceUpOiDivergence: boolean;
@@ -38,6 +39,7 @@ export type TrendShiftGuardrailContext = TrendShiftSignalContext & {
   breakoutState: string | null;
   volumeRel20: number | null;
   atrPctZScore: number | null;
+  adaptiveChannelDirection: string | null;
   relativeStrength1h: number | null;
   sessionPrimary: string | null;
   sessionIsOverlap: boolean;
@@ -73,6 +75,7 @@ export const buildTrendShiftGuardrailContext = ({
   const volume = baseContext?.participation?.volume ?? null;
   const benchmark = baseContext?.relative?.benchmark ?? null;
   const volatility = baseContext?.regime?.volatility ?? null;
+  const adaptiveChannel = baseContext?.regime?.trend?.adaptiveChannel ?? null;
   const hardBlockReasons: string[] = [];
   const coinBiasConflict = signalContext.coinBiasAligned === false;
   const derivativesRiskFlags = asStringArray(derivativesSummary?.riskFlags);
@@ -90,6 +93,10 @@ export const buildTrendShiftGuardrailContext = ({
   const breakoutState = localRange?.breakoutState ?? null;
   const volumeRel20 = asFiniteNumber(volume?.volumeRel20);
   const atrPctZScore = asFiniteNumber(volatility?.atrPctZScore);
+  const adaptiveChannelDirection =
+    typeof adaptiveChannel?.direction === 'string'
+      ? adaptiveChannel.direction
+      : null;
   const relativeStrength1h = asFiniteNumber(benchmark?.relativeStrength1h);
   const priceOiDivergenceType =
     typeof derivativesSummary?.priceOiDivergenceType === 'string'
@@ -167,6 +174,14 @@ export const buildTrendShiftGuardrailContext = ({
       (signalContext.signalDirection === 'SHORT' &&
         (sessionPrimary === 'off_hours' || sessionPrimary === 'asia') &&
         breakoutState === 'below_low_level'));
+  const shortNeutralBearChannelBreakdownCandidate =
+    signalContext.signalDirection === 'SHORT' &&
+    breakoutState === 'below_low_level' &&
+    derivativesPressure === 'neutral' &&
+    atrPctZScore != null &&
+    atrPctZScore >= 0 &&
+    atrPctZScore < 1 &&
+    adaptiveChannelDirection === 'bear';
   let deterministicQuality = 3;
   if (hardBlockReasons.length > 0) {
     deterministicQuality = signalContext.confirmedFlip ? 2 : 1;
@@ -189,6 +204,10 @@ export const buildTrendShiftGuardrailContext = ({
   }
 
   if (deterministicQuality === 4 && selectiveNeutralQ4Candidate) {
+    deterministicQuality = 5;
+  }
+
+  if (deterministicQuality === 4 && shortNeutralBearChannelBreakdownCandidate) {
     deterministicQuality = 5;
   }
 
@@ -305,6 +324,7 @@ export const buildTrendShiftGuardrailContext = ({
     deterministicQuality >= 5 &&
     hasDerivativesSummary &&
     !selectiveNeutralQ4Candidate &&
+    !shortNeutralBearChannelBreakdownCandidate &&
     derivativesPressure === 'neutral' &&
     !derivativesFlushSupport
   ) {
@@ -316,6 +336,7 @@ export const buildTrendShiftGuardrailContext = ({
     deterministicQuality >= 5 &&
     hasDerivativesSummary &&
     !selectiveNeutralQ4Candidate &&
+    !shortNeutralBearChannelBreakdownCandidate &&
     derivativesDirectionAligned == null &&
     !derivativesFlushSupport
   ) {
@@ -378,6 +399,7 @@ export const buildTrendShiftGuardrailContext = ({
     q4LongBreakoutCandidate,
     q4ShortBreakoutCandidate,
     q4ShortFailedLowBreakoutCandidate,
+    shortNeutralBearChannelBreakdownCandidate,
     selectiveNeutralQ4Candidate,
     longRelativeStrengthOverextended,
     longPriceUpOiDivergence,
@@ -386,6 +408,7 @@ export const buildTrendShiftGuardrailContext = ({
     breakoutState,
     volumeRel20,
     atrPctZScore,
+    adaptiveChannelDirection,
     relativeStrength1h,
     sessionPrimary,
     sessionIsOverlap,

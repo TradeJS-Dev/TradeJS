@@ -109,6 +109,19 @@ const getNestedNumber = (value: unknown, path: string[]) => {
     : null;
 };
 
+const getNestedString = (value: unknown, path: string[]) => {
+  let current = value;
+
+  for (const segment of path) {
+    if (!isRecord(current)) {
+      return null;
+    }
+    current = current[segment];
+  }
+
+  return typeof current === 'string' ? current : null;
+};
+
 const getBaseContextApprovalBlockReasons = (
   context: ReverseTrendlineQualityContext & { deterministicQuality: number },
   signal: Parameters<typeof buildReverseTrendlineAiContext>[0],
@@ -141,6 +154,11 @@ const getBaseContextApprovalBlockReasons = (
     'volatility',
     'atrPctZScore',
   ]);
+  const benchmarkTrendAlignment = getNestedString(baseContext, [
+    'relative',
+    'benchmark',
+    'trendAlignment',
+  ]);
   const biasConflictState = getReverseTrendlineBiasConflictState(context);
   const reasons: string[] = [];
 
@@ -163,6 +181,12 @@ const getBaseContextApprovalBlockReasons = (
     rangePosition20 < 0.2
   ) {
     reasons.push('short_low_range_position');
+  }
+  if (
+    context.signalDirection === 'LONG' &&
+    benchmarkTrendAlignment === 'against_benchmark'
+  ) {
+    reasons.push('long_against_benchmark');
   }
   if (
     context.signalDirection === 'LONG' &&
@@ -438,6 +462,8 @@ const getHardBlockReasonText = (reason: string) => {
       return 'SHORT bounce appears in an extreme volatility regime';
     case 'short_low_range_position':
       return 'SHORT bounce starts too low in the local range';
+    case 'long_against_benchmark':
+      return 'LONG bounce is weak while the coin underperforms the benchmark';
     case 'long_weak_mid_distance':
       return 'LONG bounce distance sits in a weak mid-distance pocket';
     case 'short_follow_through_overrated':

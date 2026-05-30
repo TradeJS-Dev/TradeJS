@@ -86,6 +86,10 @@ Additional TrendFollow context:
 - trendBias=${context.trendBias ?? 'n/a'}
 - breakoutState=${context.breakoutState ?? 'n/a'}
 - volumeRel20=${String(context.volumeRel20 ?? 'n/a')}
+- deltaDivergenceVsPrice=${context.deltaDivergenceVsPrice ?? 'n/a'}
+- volumeStructureDirectionalShare=${String(context.volumeStructureDirectionalShare ?? 'n/a')}
+- volumeStructureDirectionAligned=${String(context.volumeStructureDirectionAligned ?? 'n/a')}
+- highConvictionApprovalPocket=${String(context.highConvictionApprovalPocket)}
 - benchmarkTrendAlignment=${context.benchmarkTrendAlignment ?? 'n/a'}
 - derivativesPressure=${context.derivativesPressure ?? 'n/a'}
 - derivativesDirectionAligned=${String(context.derivativesDirectionAligned ?? 'n/a')}
@@ -101,7 +105,8 @@ Interpretation rules for TrendFollow:
 - SHORT appears when close crosses below the latest confirmed pivot low.
 - The ATR trailing stop is the structural invalidation line and also updates while a position is open.
 - Prefer breakouts aligned with shared market context and backed by participation.
-- Late, thin, or crowded breakouts should be downgraded even if the pivot cross is valid.
+- Late, thin, crowded, inside-range, adverse-delta, or weak-volume-structure breakouts should be downgraded even if the pivot cross is valid.
+- Live approval is reserved for the high-conviction cadence pocket; other structurally valid breakouts remain watch mode.
 - Treat deterministicQuality and approvalAllowedNow as the local normalized gate result.
 `.trim();
   },

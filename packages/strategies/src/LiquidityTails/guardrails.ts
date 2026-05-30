@@ -10,6 +10,10 @@ export type LiquidityTailsGuardrailContext =
     liquidityTailRetestDirection: string | null;
     volumeRel20: number | null;
     bodyStrength: number | null;
+    adxValue: number | null;
+    adxStrength: string | null;
+    roc1h: number | null;
+    roc4h: number | null;
     benchmarkTrendAlignment: string | null;
     derivativesPressure: string | null;
     derivativesDirectionAligned: boolean | null;
@@ -33,23 +37,6 @@ const asStringArray = (value: unknown): string[] =>
       )
     : [];
 
-const isDirectionAligned = ({
-  direction,
-  bullishValue,
-  bearishValue,
-  value,
-}: {
-  direction: unknown;
-  bullishValue: string;
-  bearishValue: string;
-  value: string | null;
-}) =>
-  direction === 'LONG'
-    ? value === bullishValue
-    : direction === 'SHORT'
-      ? value === bearishValue
-      : false;
-
 export const buildLiquidityTailsGuardrailContext = ({
   signalContext,
   baseContext,
@@ -69,6 +56,13 @@ export const buildLiquidityTailsGuardrailContext = ({
   const bodyStrength = asFiniteNumber(
     baseContext?.regime?.momentum?.bodyStrength,
   );
+  const adxValue = asFiniteNumber(baseContext?.regime?.trend?.adx?.adx);
+  const adxStrength =
+    typeof baseContext?.regime?.trend?.adx?.strength === 'string'
+      ? baseContext.regime.trend.adx.strength
+      : null;
+  const roc1h = asFiniteNumber(baseContext?.regime?.momentum?.roc1h);
+  const roc4h = asFiniteNumber(baseContext?.regime?.momentum?.roc4h);
   const benchmarkTrendAlignment =
     baseContext?.relative?.benchmark?.trendAlignment ?? null;
   const derivativesPressure =
@@ -100,26 +94,6 @@ export const buildLiquidityTailsGuardrailContext = ({
   }
 
   const direction = signalContext.signalDirection;
-  const trendAligned = isDirectionAligned({
-    direction,
-    bullishValue: 'bull',
-    bearishValue: 'bear',
-    value: trendBias,
-  });
-  const benchmarkAligned = isDirectionAligned({
-    direction,
-    bullishValue: 'aligned_bull',
-    bearishValue: 'aligned_bear',
-    value: benchmarkTrendAlignment,
-  });
-  const breakoutAligned = isDirectionAligned({
-    direction,
-    bullishValue: 'failed_low_breakout',
-    bearishValue: 'failed_high_breakout',
-    value: breakoutState,
-  });
-  const strategyLiquidityTailAligned =
-    direction === liquidityTailRetestDirection;
   const flushSupport =
     direction === 'LONG'
       ? derivativesRiskFlags.includes('short_liquidation_spike') ||
@@ -148,34 +122,24 @@ export const buildLiquidityTailsGuardrailContext = ({
     softBlockReasons.push('derivatives_not_aligned');
   }
 
-  const wickBodyRatio = signalContext.wickBodyRatio ?? 0;
-  const wickDominanceRatio = signalContext.wickDominanceRatio ?? 0;
   const reactionCloseDistancePct = signalContext.reactionCloseDistancePct ?? 0;
-  const zoneTouches = signalContext.zoneTouches ?? 0;
-  const retestPenetrationPct = signalContext.retestPenetrationPct ?? 999;
+  const strongCloseAwayReaction = reactionCloseDistancePct >= 2;
+  const nonBullTrendContext = trendBias === 'bear' || trendBias === 'neutral';
+  const strongAdxExpansion =
+    (adxValue != null && adxValue >= 26.7) || adxStrength === 'strong';
+  const momentumExpansion =
+    (roc4h != null && roc4h >= 0.7) ||
+    (roc1h != null && (roc1h >= 1.25 || roc1h <= -1.2));
+  const actionableCloseAwayReaction =
+    strongCloseAwayReaction &&
+    nonBullTrendContext &&
+    (strongAdxExpansion || momentumExpansion);
   let deterministicQuality = 3;
 
   if (hardBlockReasons.length > 0) {
     deterministicQuality = 1;
-  } else if (
-    wickBodyRatio >= 2.2 &&
-    wickDominanceRatio >= 1.8 &&
-    reactionCloseDistancePct >= 0.08 &&
-    retestPenetrationPct <= 95 &&
-    (trendAligned ||
-      benchmarkAligned ||
-      breakoutAligned ||
-      strategyLiquidityTailAligned ||
-      flushSupport)
-  ) {
-    deterministicQuality =
-      zoneTouches >= 2 || flushSupport || strategyLiquidityTailAligned ? 5 : 4;
-  } else if (
-    wickBodyRatio >= 1.5 &&
-    wickDominanceRatio >= 1.25 &&
-    reactionCloseDistancePct > 0
-  ) {
-    deterministicQuality = 4;
+  } else if (actionableCloseAwayReaction) {
+    deterministicQuality = adxStrength === 'strong' ? 5 : 4;
   }
 
   if (deterministicQuality >= 5 && softBlockReasons.length > 0) {
@@ -191,6 +155,10 @@ export const buildLiquidityTailsGuardrailContext = ({
     liquidityTailRetestDirection,
     volumeRel20,
     bodyStrength,
+    adxValue,
+    adxStrength,
+    roc1h,
+    roc4h,
     benchmarkTrendAlignment,
     derivativesPressure,
     derivativesDirectionAligned,

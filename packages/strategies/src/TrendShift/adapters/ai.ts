@@ -84,10 +84,12 @@ Additional TrendShift context:
 - breakoutState=${context.breakoutState ?? 'n/a'}
 - volumeRel20=${String(context.volumeRel20 ?? 'n/a')}
 - atrPctZScore=${String(context.atrPctZScore ?? 'n/a')}
+- adaptiveChannelDirection=${context.adaptiveChannelDirection ?? 'n/a'}
 - relativeStrength1h=${String(context.relativeStrength1h ?? 'n/a')}
 - q4LongBreakoutCandidate=${String(context.q4LongBreakoutCandidate)}
 - q4ShortBreakoutCandidate=${String(context.q4ShortBreakoutCandidate)}
 - q4ShortFailedLowBreakoutCandidate=${String(context.q4ShortFailedLowBreakoutCandidate)}
+- shortNeutralBearChannelBreakdownCandidate=${String(context.shortNeutralBearChannelBreakdownCandidate)}
 - selectiveNeutralQ4Candidate=${String(context.selectiveNeutralQ4Candidate)}
 - longRelativeStrengthOverextended=${String(context.longRelativeStrengthOverextended)}
 - longPriceUpOiDivergence=${String(context.longPriceUpOiDivergence)}
@@ -109,6 +111,7 @@ Interpretation rules for TrendShift:
 - Even if a q4 breakout or failed-breakout pocket looks interesting, keep it as research/watch-only until it proves robust across wider history.
 - Exception: a very narrow SHORT q4 pocket may still pass when Asia-session reversal pressure looks neutral but a real long-liquidation flush is already visible and geometry is near-q5 strong.
 - Exception: selective neutral-derivatives q4 pockets may still pass only in the explicitly tested session/structure combinations surfaced by selectiveNeutralQ4Candidate.
+- Exception: a narrow SHORT breakdown may still pass through neutral derivatives when shortNeutralBearChannelBreakdownCandidate=true: price is below the local low, ATR z-score is normal, and the adaptive channel already points bear.
 - If derivatives risk flags include 'oi_not_confirming' and there is no supporting liquidation flush, keep the setup in watch mode even when price geometry looks q5-strong.
 - For SHORT, if the move is already very far from the adaptive average without a long-liquidation flush, treat it as overextended and keep it in watch mode.
 - Thin participation (volumeRel20 < 0.8) is a live hard downgrade even for otherwise q5-looking flips.

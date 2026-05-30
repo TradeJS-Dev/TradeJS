@@ -92,6 +92,10 @@ Additional Liquidity Tails context:
 - breakoutState=${context.breakoutState ?? 'n/a'}
 - volumeRel20=${String(context.volumeRel20 ?? 'n/a')}
 - bodyStrength=${String(context.bodyStrength ?? 'n/a')}
+- adxValue=${String(context.adxValue ?? 'n/a')}
+- adxStrength=${context.adxStrength ?? 'n/a'}
+- roc1h=${String(context.roc1h ?? 'n/a')}
+- roc4h=${String(context.roc4h ?? 'n/a')}
 - benchmarkTrendAlignment=${context.benchmarkTrendAlignment ?? 'n/a'}
 - derivativesPressure=${context.derivativesPressure ?? 'n/a'}
 - derivativesDirectionAligned=${String(context.derivativesDirectionAligned ?? 'n/a')}

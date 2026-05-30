@@ -10,6 +10,7 @@ import {
   createAdaptiveTrendChannelEngine,
 } from './engine';
 import { buildAdaptiveTrendChannelFigures } from './figures';
+import { getAdaptiveTrendChannelFilterSkipCode } from './filters';
 
 const isOpenPosition = (position: Position | null): position is Position =>
   Boolean(
@@ -86,8 +87,17 @@ export const createAdaptiveTrendChannelCore: CreateStrategyCore<
       return strategyApi.skip('STRATEGY_DISABLED');
     }
 
+    const indicators = indicatorsState.snapshot() ?? {};
+    const filterSkipCode = getAdaptiveTrendChannelFilterSkipCode({
+      signal,
+      config,
+      baseContext: indicators.baseContext,
+    });
+    if (filterSkipCode) {
+      return strategyApi.skip(filterSkipCode);
+    }
+
     const { timestamp, currentPrice } = await strategyApi.getMarketData();
-    const indicators = indicatorsState.snapshot();
     const stopLossPrice =
       signal.direction === 'LONG' ? signal.floor : signal.roof;
     const riskDistance = Math.abs(currentPrice - stopLossPrice);

@@ -8,6 +8,10 @@ export type TrendFollowGuardrailContext = Partial<TrendFollowSignalContext> & {
   trendFollowState: string | null;
   breakoutState: string | null;
   volumeRel20: number | null;
+  deltaDivergenceVsPrice: string | null;
+  volumeStructureDirectionalShare: number | null;
+  volumeStructureDirectionAligned: boolean | null;
+  highConvictionApprovalPocket: boolean;
   benchmarkTrendAlignment: string | null;
   derivativesPressure: string | null;
   derivativesDirectionAligned: boolean | null;
@@ -68,6 +72,14 @@ export const buildTrendFollowGuardrailContext = ({
     baseContext?.structure?.localRange?.breakoutState ?? null;
   const volumeRel20 = asFiniteNumber(
     baseContext?.participation?.volume?.volumeRel20,
+  );
+  const deltaDivergenceVsPrice =
+    baseContext?.participation?.delta?.deltaDivergenceVsPrice ?? null;
+  const totalUpVolumeShare = asFiniteNumber(
+    baseContext?.participation?.volumeStructure?.totalUpVolumeShare,
+  );
+  const totalDownVolumeShare = asFiniteNumber(
+    baseContext?.participation?.volumeStructure?.totalDownVolumeShare,
   );
   const benchmarkTrendAlignment =
     baseContext?.relative?.benchmark?.trendAlignment ?? null;
@@ -138,6 +150,31 @@ export const buildTrendFollowGuardrailContext = ({
       : direction === 'SHORT'
         ? derivativesRiskFlags.includes('crowded_short')
         : false;
+  const adverseDeltaDivergence =
+    direction === 'LONG'
+      ? deltaDivergenceVsPrice === 'bearish'
+      : direction === 'SHORT'
+        ? deltaDivergenceVsPrice === 'bullish'
+        : false;
+  const volumeStructureDirectionalShare =
+    direction === 'LONG'
+      ? totalUpVolumeShare
+      : direction === 'SHORT'
+        ? totalDownVolumeShare
+        : null;
+  const volumeStructureDirectionAligned =
+    volumeStructureDirectionalShare == null
+      ? null
+      : volumeStructureDirectionalShare >= 0.48;
+  const breakoutDistancePct = signalContext.breakoutDistancePct ?? 0;
+  const distanceToStopPct = signalContext.distanceToStopPct ?? 0;
+  const highConvictionApprovalPocket =
+    direction === 'SHORT' &&
+    (primarySession === 'off_hours' || primarySession === 'asia') &&
+    breakoutDistancePct >= 0.5 &&
+    breakoutDistancePct <= 2 &&
+    distanceToStopPct >= 0.5 &&
+    distanceToStopPct <= 3;
 
   if (volumeRel20 != null && volumeRel20 < 0.8) {
     softBlockReasons.push('thin_participation');
@@ -148,9 +185,19 @@ export const buildTrendFollowGuardrailContext = ({
   if (derivativesDirectionAligned === false && !flushSupport) {
     softBlockReasons.push('derivatives_not_aligned');
   }
+  if (breakoutState === 'inside_range') {
+    softBlockReasons.push('inside_range_breakout');
+  }
+  if (adverseDeltaDivergence) {
+    softBlockReasons.push('adverse_delta_divergence');
+  }
+  if (volumeStructureDirectionAligned === false) {
+    softBlockReasons.push('weak_volume_structure');
+  }
+  if (!highConvictionApprovalPocket) {
+    softBlockReasons.push('outside_high_conviction_cadence_pocket');
+  }
 
-  const breakoutDistancePct = signalContext.breakoutDistancePct ?? 0;
-  const distanceToStopPct = signalContext.distanceToStopPct ?? 0;
   let deterministicQuality = 3;
 
   if (hardBlockReasons.length > 0) {
@@ -183,6 +230,10 @@ export const buildTrendFollowGuardrailContext = ({
     trendFollowState,
     breakoutState,
     volumeRel20,
+    deltaDivergenceVsPrice,
+    volumeStructureDirectionalShare,
+    volumeStructureDirectionAligned,
+    highConvictionApprovalPocket,
     benchmarkTrendAlignment,
     derivativesPressure,
     derivativesDirectionAligned,
@@ -191,6 +242,8 @@ export const buildTrendFollowGuardrailContext = ({
     softBlockReasons,
     deterministicQuality,
     approvalAllowedNow:
-      deterministicQuality >= 4 && hardBlockReasons.length === 0,
+      deterministicQuality >= 5 &&
+      hardBlockReasons.length === 0 &&
+      highConvictionApprovalPocket,
   };
 };

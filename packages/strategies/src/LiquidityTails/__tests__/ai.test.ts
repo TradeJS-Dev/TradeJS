@@ -29,7 +29,7 @@ const makePayload = (
   }) as any;
 
 describe('liquidityTailsAiAdapter', () => {
-  it('approves clean liquidity-zone retests', () => {
+  it('approves strong close-away liquidity-zone retests', () => {
     const result = liquidityTailsAiAdapter.postProcessAnalysis?.({
       signal: {} as any,
       payload: makePayload(
@@ -41,12 +41,16 @@ describe('liquidityTailsAiAdapter', () => {
           wickBodyRatio: 2.5,
           wickDominanceRatio: 2,
           retestPenetrationPct: 30,
-          reactionCloseDistancePct: 0.12,
+          reactionCloseDistancePct: 2.1,
           reactionBodyAligned: true,
         },
         {
           regime: {
-            trend: { bias: 'bull' },
+            trend: {
+              bias: 'bear',
+              adx: { adx: 35, strength: 'strong' },
+            },
+            momentum: { roc1h: 1.4, roc4h: 0.8 },
           },
           participation: {
             volume: { volumeRel20: 1.2 },
@@ -70,6 +74,82 @@ describe('liquidityTailsAiAdapter', () => {
       direction: 'LONG',
       quality: 5,
       approved: true,
+    });
+  });
+
+  it('rejects shallow wick-only retests without close-away impulse', () => {
+    const result = liquidityTailsAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makePayload(
+        {
+          signalDirection: 'LONG',
+          zoneKind: 'buy_pressure',
+          zoneHeight: 5,
+          zoneTouches: 2,
+          wickBodyRatio: 2.5,
+          wickDominanceRatio: 2,
+          retestPenetrationPct: 30,
+          reactionCloseDistancePct: 0.12,
+          reactionBodyAligned: true,
+        },
+        {
+          regime: {
+            trend: {
+              bias: 'bear',
+              adx: { adx: 35, strength: 'strong' },
+            },
+            momentum: { roc1h: 1.4, roc4h: 0.8 },
+          },
+        },
+      ),
+      analysis: {
+        direction: 'LONG',
+        quality: 5,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: null,
+      quality: 3,
+      approved: false,
+    });
+  });
+
+  it('rejects medium close-away reactions below the approval threshold', () => {
+    const result = liquidityTailsAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makePayload(
+        {
+          signalDirection: 'LONG',
+          zoneKind: 'buy_pressure',
+          zoneHeight: 5,
+          zoneTouches: 2,
+          wickBodyRatio: 2.5,
+          wickDominanceRatio: 2,
+          retestPenetrationPct: 30,
+          reactionCloseDistancePct: 1.6,
+          reactionBodyAligned: true,
+        },
+        {
+          regime: {
+            trend: {
+              bias: 'bear',
+              adx: { adx: 35, strength: 'strong' },
+            },
+            momentum: { roc1h: 1.4, roc4h: 0.8 },
+          },
+        },
+      ),
+      analysis: {
+        direction: 'LONG',
+        quality: 5,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: null,
+      quality: 3,
+      approved: false,
     });
   });
 
@@ -110,10 +190,17 @@ describe('liquidityTailsAiAdapter', () => {
           wickBodyRatio: 2.5,
           wickDominanceRatio: 2,
           retestPenetrationPct: 30,
-          reactionCloseDistancePct: 0.12,
+          reactionCloseDistancePct: 2.1,
           reactionBodyAligned: true,
         },
         {
+          regime: {
+            trend: {
+              bias: 'bear',
+              adx: { adx: 35, strength: 'strong' },
+            },
+            momentum: { roc1h: 1.4, roc4h: 0.8 },
+          },
           structure: {
             liquidityTails: { activeRetestDirection: 'SHORT' },
           },

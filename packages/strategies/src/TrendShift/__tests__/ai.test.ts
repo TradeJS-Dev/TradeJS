@@ -924,6 +924,122 @@ describe('trendShiftAiAdapter', () => {
     });
   });
 
+  it('approves narrow neutral q4 SHORT breakdowns when the adaptive channel is bearish', () => {
+    const result = trendShiftAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makePayload(
+        {
+          signalDirection: 'SHORT',
+          confirmedFlip: true,
+          bearFlip: true,
+          flipDistanceOk: true,
+          closeVsAvgPct: 0.08,
+          avgSlopePct: 0.05,
+          distanceAtrRatio: 0.55,
+          coinBiasAligned: true,
+        },
+        {
+          baseContext: {
+            regime: {
+              session: {
+                sessionPhase: 'europe',
+                isOverlap: false,
+              },
+              volatility: {
+                atrPctZScore: 0.5,
+              },
+              trend: {
+                adaptiveChannel: {
+                  direction: 'bear',
+                },
+              },
+            },
+            structure: {
+              localRange: {
+                breakoutState: 'below_low_level',
+              },
+            },
+          },
+          derivativesContext: {
+            summary: {
+              pressure: 'neutral',
+              directionAligned: null,
+              riskFlags: [],
+            },
+          },
+        },
+      ),
+      analysis: {
+        direction: 'SHORT',
+        quality: 1,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: 'SHORT',
+      quality: 5,
+      approved: true,
+    });
+  });
+
+  it('keeps neutral q4 SHORT failed-low breakouts in watch mode even when the adaptive channel is bearish', () => {
+    const result = trendShiftAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makePayload(
+        {
+          signalDirection: 'SHORT',
+          confirmedFlip: true,
+          bearFlip: true,
+          flipDistanceOk: true,
+          closeVsAvgPct: 0.08,
+          avgSlopePct: 0.05,
+          distanceAtrRatio: 0.55,
+          coinBiasAligned: true,
+        },
+        {
+          baseContext: {
+            regime: {
+              session: {
+                sessionPhase: 'europe',
+                isOverlap: false,
+              },
+              volatility: {
+                atrPctZScore: 0.5,
+              },
+              trend: {
+                adaptiveChannel: {
+                  direction: 'bear',
+                },
+              },
+            },
+            structure: {
+              localRange: {
+                breakoutState: 'failed_low_breakout',
+              },
+            },
+          },
+          derivativesContext: {
+            summary: {
+              pressure: 'neutral',
+              directionAligned: null,
+              riskFlags: [],
+            },
+          },
+        },
+      ),
+      analysis: {
+        direction: 'SHORT',
+        quality: 1,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: null,
+      quality: 4,
+      approved: false,
+    });
+  });
+
   it('keeps q4 LONG in watch mode when derivatives are aligned but there is no flush confirmation', () => {
     const result = trendShiftAiAdapter.postProcessAnalysis?.({
       signal: {} as any,

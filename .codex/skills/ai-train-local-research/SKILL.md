@@ -16,6 +16,7 @@ Use this skill when the user asks to:
 - compare current results with previous TrendLine / ReverseTrendLine style investigations
 - break down false positives / false negatives
 - save conclusions in `notes/AI_*_REPLAY_NOTES.md`
+- tune approval cadence toward roughly 2-3 approved trades per day when possible; if a gate approves more, look for filters that lower approvals and raise winrate
 
 ## Workflow
 
@@ -182,6 +183,7 @@ Minimum checks:
 - split by quarter or month when the export spans enough time
 - check symbol concentration; avoid rules where most profit comes from only a few symbols
 - prefer candidate pockets that improve profit factor or drawdown without destroying cadence
+- for live-style approval gates, usually aim for about 2-3 approved trades per day; if a strategy approves substantially more, assume there is likely room to lower approvals and raise winrate with additional filters
 - treat tiny added slices as unstable even when aggregate profit improves
 
 ## Notes format

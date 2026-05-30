@@ -29,47 +29,50 @@ const makePayload = (
   }) as any;
 
 describe('trendFollowAiAdapter', () => {
-  it('approves clean structure breakouts', () => {
+  it('approves high-conviction short flush breakouts', () => {
     const result = trendFollowAiAdapter.postProcessAnalysis?.({
       signal: {} as any,
       payload: makePayload(
         {
-          signalDirection: 'LONG',
+          signalDirection: 'SHORT',
           entryLevel: 100,
-          trailStop: 96,
+          trailStop: 104,
           atr: 1.5,
-          pivotKind: 'high',
+          pivotKind: 'low',
           breakoutDistancePct: 0.8,
-          distanceToStopPct: 4,
-          currentPrice: 101,
+          distanceToStopPct: 2,
+          currentPrice: 99,
         },
         {
           regime: {
+            session: { sessionPhase: 'off_hours' },
             trend: { bias: 'bull' },
           },
           participation: {
             volume: { volumeRel20: 1.2 },
+            volumeStructure: { totalDownVolumeShare: 0.55 },
+            delta: { deltaDivergenceVsPrice: 'none' },
           },
           structure: {
-            localRange: { breakoutState: 'above_high_level' },
+            localRange: { breakoutState: 'below_low_level' },
           },
           derivatives: {
             summary: {
-              pressure: 'short_flush',
+              pressure: 'long_flush',
               directionAligned: true,
-              riskFlags: ['short_liquidation_spike'],
+              riskFlags: ['long_liquidation_spike'],
             },
           },
         },
       ),
       analysis: {
-        direction: 'LONG',
+        direction: 'SHORT',
         quality: 1,
       },
     });
 
     expect(result).toMatchObject({
-      direction: 'LONG',
+      direction: 'SHORT',
       quality: 5,
       approved: true,
     });
@@ -100,7 +103,7 @@ describe('trendFollowAiAdapter', () => {
     });
   });
 
-  it('uses tuned strategy context instead of conflicting shared trend-follow context', () => {
+  it('keeps q4 soft-blocked breakouts in watch mode', () => {
     const result = trendFollowAiAdapter.postProcessAnalysis?.({
       signal: {} as any,
       payload: makePayload(
@@ -111,25 +114,118 @@ describe('trendFollowAiAdapter', () => {
           atr: 1.5,
           pivotKind: 'high',
           breakoutDistancePct: 0.8,
-          distanceToStopPct: 4,
+          distanceToStopPct: 2,
           currentPrice: 101,
         },
         {
-          regime: {
-            trend: {
-              trendFollow: { state: 'bear' },
-            },
+          participation: {
+            volume: { volumeRel20: 0.5 },
+          },
+          structure: {
+            localRange: { breakoutState: 'above_high_level' },
           },
         },
       ),
       analysis: {
         direction: 'LONG',
+        quality: 5,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: null,
+      quality: 4,
+      approved: false,
+    });
+    expect((result as any)?.rejectReason).toContain('thin_participation');
+  });
+
+  it('downgrades adverse delta and weak volume structure', () => {
+    const result = trendFollowAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makePayload(
+        {
+          signalDirection: 'SHORT',
+          entryLevel: 100,
+          trailStop: 104,
+          atr: 1.5,
+          pivotKind: 'low',
+          breakoutDistancePct: 0.8,
+          distanceToStopPct: 2,
+          currentPrice: 99,
+        },
+        {
+          participation: {
+            volume: { volumeRel20: 1.2 },
+            volumeStructure: { totalDownVolumeShare: 0.44 },
+            delta: { deltaDivergenceVsPrice: 'bullish' },
+          },
+          structure: {
+            localRange: { breakoutState: 'below_low_level' },
+          },
+        },
+      ),
+      analysis: {
+        direction: 'SHORT',
+        quality: 5,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: null,
+      quality: 4,
+      approved: false,
+    });
+    expect((result as any)?.rejectReason).toContain('adverse_delta_divergence');
+    expect((result as any)?.rejectReason).toContain('weak_volume_structure');
+  });
+
+  it('uses tuned strategy context instead of conflicting shared trend-follow context', () => {
+    const result = trendFollowAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makePayload(
+        {
+          signalDirection: 'SHORT',
+          entryLevel: 100,
+          trailStop: 104,
+          atr: 1.5,
+          pivotKind: 'low',
+          breakoutDistancePct: 0.8,
+          distanceToStopPct: 2,
+          currentPrice: 99,
+        },
+        {
+          regime: {
+            session: { sessionPhase: 'asia' },
+            trend: {
+              trendFollow: { state: 'bull' },
+            },
+          },
+          participation: {
+            volume: { volumeRel20: 1.2 },
+            volumeStructure: { totalDownVolumeShare: 0.55 },
+            delta: { deltaDivergenceVsPrice: 'none' },
+          },
+          structure: {
+            localRange: { breakoutState: 'below_low_level' },
+          },
+          derivatives: {
+            summary: {
+              pressure: 'long_flush',
+              directionAligned: true,
+              riskFlags: ['long_liquidation_spike'],
+            },
+          },
+        },
+      ),
+      analysis: {
+        direction: 'SHORT',
         quality: 1,
       },
     });
 
     expect(result).toMatchObject({
-      direction: 'LONG',
+      direction: 'SHORT',
       quality: 5,
       approved: true,
     });
