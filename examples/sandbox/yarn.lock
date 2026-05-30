@@ -2859,8 +2859,8 @@ __metadata:
   linkType: hard
 
 "langsmith@npm:>=0.5.0 <1.0.0":
-  version: 0.5.26
-  resolution: "langsmith@npm:0.5.26"
+  version: 0.7.3
+  resolution: "langsmith@npm:0.7.3"
   dependencies:
     p-queue: "npm:6.6.2"
   peerDependencies:
@@ -2880,7 +2880,7 @@ __metadata:
       optional: true
     ws:
       optional: true
-  checksum: 10c0/7260bb3b7f0a8432ab8ad5e05eb8a8e9f76a7714721e1878008e53ea544c7641cf6351c49d9d94a31e494dd9c8bfd8788bb5cc38e38194ee3fc9d3b65e25b507
+  checksum: 10c0/e5e1849982a3b96743911fe14a30fc901dfa3f1495070349318ded9bc4567f3ec57e644c808478b52c9f95f8f92a8f98750e8db44316f4eadb4de23c92ae97c0
   languageName: node
   linkType: hard
 
