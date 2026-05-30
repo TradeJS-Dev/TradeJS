@@ -14,6 +14,7 @@ type ScriptFlags = {
   cacheOnly: boolean;
   showTickersList: boolean;
   showSkipStats: boolean;
+  parallel?: number | string;
   chunk?: string;
   user: string;
   connector: string;
@@ -378,6 +379,57 @@ describe('signals script', () => {
         signals: 1,
       },
       { expire: TTL_10D },
+    );
+  });
+
+  it('evaluates tickers with four signal workers by default', async () => {
+    const { signals, mocks } = await loadScript({
+      flags: {
+        timeframe: 15,
+        makeOrders: false,
+        notify: false,
+        skipScreenshots: true,
+        updateOnly: false,
+        cacheOnly: true,
+        showTickersList: false,
+        showSkipStats: false,
+        user: 'root',
+        connector: 'bybit',
+      },
+    });
+
+    await signals();
+
+    expect(mocks.runWithConcurrency).toHaveBeenCalledWith(
+      ['ETHUSDT'],
+      4,
+      expect.any(Function),
+    );
+  });
+
+  it('allows overriding signal worker count', async () => {
+    const { signals, mocks } = await loadScript({
+      flags: {
+        timeframe: 15,
+        makeOrders: false,
+        notify: false,
+        skipScreenshots: true,
+        updateOnly: false,
+        cacheOnly: true,
+        showTickersList: false,
+        showSkipStats: false,
+        parallel: 2,
+        user: 'root',
+        connector: 'bybit',
+      },
+    });
+
+    await signals();
+
+    expect(mocks.runWithConcurrency).toHaveBeenCalledWith(
+      ['ETHUSDT'],
+      2,
+      expect.any(Function),
     );
   });
 

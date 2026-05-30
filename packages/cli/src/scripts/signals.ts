@@ -70,6 +70,11 @@ args.option(['u', 'updateOnly'], 'Only update tickers history', false);
 args.option(['C', 'cacheOnly'], 'Do not update tickers history', false);
 args.option(['L', 'showTickersList'], 'Just show only ticker list', false);
 args.option(
+  ['p', 'parallel'],
+  'Signal evaluation worker count',
+  Number(process.env.SIGNALS_PARALLEL || 4),
+);
+args.option(
   ['R', 'showSkipStats'],
   'Show aggregated skip stats by strategy',
   false,
@@ -112,6 +117,15 @@ const formatDuration = (startedAt: number) => {
   const minutes = Math.floor(seconds / 60);
   const restSeconds = Math.round(seconds % 60);
   return `${minutes}m ${restSeconds}s`;
+};
+
+const resolvePositiveInteger = (value: unknown, fallback: number) => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) {
+    return fallback;
+  }
+  const normalized = Math.floor(parsed);
+  return normalized > 0 ? normalized : fallback;
 };
 
 const timeOperation = async <T>(
@@ -701,8 +715,10 @@ export const signals = async () => {
     );
 
     logger.info(chalk.yellow(`tickers: ${tickers.length}`));
+    const signalsParallel = resolvePositiveInteger(flags.parallel, 4);
+    logger.info(chalk.yellow(`signal workers: ${signalsParallel}`));
 
-    await runWithConcurrency(tickers, 5, async (symbol) => {
+    await runWithConcurrency(tickers, signalsParallel, async (symbol) => {
       const strategySignals = await findSignals(
         symbol,
         connectorName,

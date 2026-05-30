@@ -1,6 +1,11 @@
 /** @jest-environment node */
 
-import { Candle, Signal, Test } from '@tradejs/types';
+import {
+  Candle,
+  RuntimeSignalEvaluationRecord,
+  Signal,
+  Test,
+} from '@tradejs/types';
 
 const INTERVAL_MS = 15 * 60_000;
 const CURRENT_OPEN_TS = 1_700_000_100_000;
@@ -15,7 +20,34 @@ type StrategyTranscript = {
   calls: Array<{
     candle: Candle;
     btcCandle: Candle;
+    result: StrategyCallResult;
   }>;
+};
+
+type StrategyCallResult =
+  | {
+      status: 'skip';
+      reason: string;
+    }
+  | {
+      status: 'signal';
+      signal: SignalSnapshot;
+    };
+
+type SignalSnapshot = {
+  signalId: string;
+  strategy: string;
+  symbol: string;
+  interval: string;
+  direction: string;
+  signalTimestamp: number;
+  currentPrice: number;
+};
+
+type SignalParityRow = SignalSnapshot & {
+  evaluatedCandleTimestamp: number;
+  evaluatedCandleClose: number;
+  evaluatedBtcCandleTimestamp: number;
 };
 
 const makeCandle = (timestamp: number, close: number): Candle => ({
@@ -41,6 +73,69 @@ const btcCandles = [
   makeCandle(CLOSED_2_TS, 102),
   makeCandle(CURRENT_OPEN_TS, 103),
 ];
+
+const sortRows = <T>(rows: T[]): T[] =>
+  [...rows].sort((left, right) =>
+    JSON.stringify(left).localeCompare(JSON.stringify(right)),
+  );
+
+const expectSameRowsBothWays = <T>(
+  leftName: string,
+  leftRows: T[],
+  rightName: string,
+  rightRows: T[],
+) => {
+  const countRows = (rows: T[]) => {
+    const counts = new Map<string, number>();
+    for (const row of rows) {
+      const key = JSON.stringify(row);
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+    return counts;
+  };
+  const leftCounts = countRows(leftRows);
+  const rightCounts = countRows(rightRows);
+
+  const diffRows = (
+    sourceRows: T[],
+    sourceCounts: Map<string, number>,
+    targetCounts: Map<string, number>,
+  ) => {
+    const emittedCounts = new Map<string, number>();
+    return sourceRows.filter((row) => {
+      const key = JSON.stringify(row);
+      const excess =
+        (sourceCounts.get(key) ?? 0) - (targetCounts.get(key) ?? 0);
+      const emitted = emittedCounts.get(key) ?? 0;
+      if (emitted >= excess) {
+        return false;
+      }
+      emittedCounts.set(key, emitted + 1);
+      return true;
+    });
+  };
+
+  const leftOnly = sortRows(diffRows(leftRows, leftCounts, rightCounts));
+  const rightOnly = sortRows(diffRows(rightRows, rightCounts, leftCounts));
+
+  expect({
+    [`${leftName}Only`]: leftOnly,
+    [`${rightName}Only`]: rightOnly,
+  }).toEqual({
+    [`${leftName}Only`]: [],
+    [`${rightName}Only`]: [],
+  });
+};
+
+const toSignalSnapshot = (signal: Signal): SignalSnapshot => ({
+  signalId: signal.signalId,
+  strategy: signal.strategy,
+  symbol: signal.symbol,
+  interval: signal.interval,
+  direction: signal.direction,
+  signalTimestamp: signal.timestamp,
+  currentPrice: signal.prices.currentPrice,
+});
 
 const normalizeEffectiveLastEvaluation = (transcript: StrategyTranscript) => {
   const lastCall = transcript.calls.at(-1);
@@ -70,15 +165,55 @@ const normalizeEffectiveLastEvaluation = (transcript: StrategyTranscript) => {
   };
 };
 
-const makeSignal = (timestamp: number): Signal =>
+const normalizeSignalRows = (
+  transcript: StrategyTranscript,
+): SignalParityRow[] =>
+  sortRows(
+    transcript.calls.flatMap(({ candle, btcCandle, result }) =>
+      result.status === 'signal'
+        ? [
+            {
+              ...result.signal,
+              evaluatedCandleTimestamp: candle.timestamp,
+              evaluatedCandleClose: candle.close,
+              evaluatedBtcCandleTimestamp: btcCandle.timestamp,
+            },
+          ]
+        : [],
+    ),
+  );
+
+const normalizeSignalEvaluationRows = (
+  evaluations: RuntimeSignalEvaluationRecord[],
+) =>
+  sortRows(
+    evaluations
+      .filter((evaluation) => evaluation.status === 'signal')
+      .map((evaluation) => ({
+        strategy: evaluation.strategy,
+        symbol: evaluation.symbol,
+        interval: evaluation.interval,
+        direction: evaluation.direction,
+        signalId: evaluation.signalId,
+        signalTimestamp: evaluation.timestamp,
+        status: evaluation.status,
+      })),
+  );
+
+const makeSignal = (candle: Candle): Signal =>
   ({
-    signalId: `parity-signal-${timestamp}`,
+    signalId: `parity-signal-${candle.timestamp}`,
     strategy: 'ParityStrategy',
     symbol: 'ETHUSDT',
     interval: '15',
     direction: 'LONG',
-    timestamp,
-    prices: { currentPrice: 12 },
+    timestamp: candle.timestamp,
+    prices: {
+      currentPrice: candle.close,
+      takeProfitPrice: candle.close + 2,
+      stopLossPrice: candle.close - 1,
+      riskRatio: 2,
+    },
     figures: {},
     indicators: {},
     additionalIndicators: {},
@@ -86,10 +221,17 @@ const makeSignal = (timestamp: number): Signal =>
 
 const createTranscriptStrategy = (transcript: StrategyTranscript) => {
   const strategy = jest.fn(async (candle: Candle, btcCandle: Candle) => {
-    transcript.calls.push({ candle, btcCandle });
-    return candle.timestamp === CLOSED_2_TS
-      ? makeSignal(candle.timestamp)
-      : 'NO_SIGNAL';
+    const signal =
+      candle.timestamp === CLOSED_2_TS ? makeSignal(candle) : 'NO_SIGNAL';
+    transcript.calls.push({
+      candle,
+      btcCandle,
+      result:
+        typeof signal === 'string'
+          ? { status: 'skip', reason: signal }
+          : { status: 'signal', signal: toSignalSnapshot(signal) },
+    });
+    return signal;
   });
 
   return jest.fn(async (params: any) => {
@@ -225,6 +367,7 @@ const runSignalsPath = async () => {
       symbol === 'BTCUSDT' ? btcCandles : coinCandles,
     ),
   };
+  const setDataMock = jest.fn(async () => null);
   const setHashJsonField = jest.fn(async () => null);
 
   jest.doMock('args', () => ({
@@ -333,7 +476,7 @@ const runSignalsPath = async () => {
       ) =>
         `users:${userName}:runtime:signal-evaluation-stats:days:${dayKey}:${strategyName}`,
     },
-    setData: jest.fn(),
+    setData: setDataMock,
     setHashJsonField,
   }));
   jest.doMock('../lib/derivativesContextBackfill', () => ({
@@ -366,9 +509,12 @@ const runSignalsPath = async () => {
 
   return {
     transcript,
-    storedEvaluations: (setHashJsonField.mock.calls as unknown[][]).map(
-      (call) => call[2],
-    ),
+    storedSignals: (setDataMock.mock.calls as unknown[][])
+      .filter(([key]) => String(key).startsWith('store:signals:'))
+      .map((call) => call[1]) as Signal[],
+    storedEvaluations: (setHashJsonField.mock.calls as unknown[][])
+      .filter(([key]) => String(key).includes(':runtime:signal-evaluations:'))
+      .map((call) => call[2]) as RuntimeSignalEvaluationRecord[],
   };
 };
 
@@ -383,6 +529,20 @@ describe('backtest/signals runtime parity', () => {
 
     expect(normalizeEffectiveLastEvaluation(backtestRun.transcript)).toEqual(
       normalizeEffectiveLastEvaluation(signalsRun.transcript),
+    );
+
+    expectSameRowsBothWays(
+      'backtest',
+      normalizeSignalRows(backtestRun.transcript),
+      'signals',
+      normalizeSignalRows(signalsRun.transcript),
+    );
+
+    expectSameRowsBothWays(
+      'backtestEvaluations',
+      normalizeSignalEvaluationRows(backtestRun.evaluations),
+      'signalsEvaluations',
+      normalizeSignalEvaluationRows(signalsRun.storedEvaluations),
     );
 
     expect(backtestRun.evaluations).toEqual([
@@ -407,10 +567,22 @@ describe('backtest/signals runtime parity', () => {
           strategy: 'ParityStrategy',
           symbol: 'ETHUSDT',
           timestamp: CLOSED_2_TS,
+          evaluatedAt: expect.any(Number),
           status: 'signal',
           signalId: `parity-signal-${CLOSED_2_TS}`,
         }),
       ]),
     );
+    expect(signalsRun.storedSignals.map(toSignalSnapshot)).toEqual([
+      {
+        signalId: `parity-signal-${CLOSED_2_TS}`,
+        strategy: 'ParityStrategy',
+        symbol: 'ETHUSDT',
+        interval: '15',
+        direction: 'LONG',
+        signalTimestamp: CLOSED_2_TS,
+        currentPrice: 12,
+      },
+    ]);
   });
 });
