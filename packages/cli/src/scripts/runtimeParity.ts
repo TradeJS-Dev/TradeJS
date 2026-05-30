@@ -2003,6 +2003,8 @@ export const runtimeParity = async () => {
       ]);
     const runtimeTrades = allRuntimeTrades.filter(
       (trade) =>
+        trade.entryTimestamp >= window.start &&
+        trade.entryTimestamp <= window.end &&
         (!flags.strategy || trade.strategy === flags.strategy) &&
         (!requestedSymbolSet || requestedSymbolSet.has(trade.symbol)),
     );

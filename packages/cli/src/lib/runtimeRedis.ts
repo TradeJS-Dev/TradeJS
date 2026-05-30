@@ -126,12 +126,16 @@ export const loadRuntimeTrades = async (
     endTime?: number;
   } = {},
 ): Promise<RuntimeTradeRecord[]> => {
-  if (
+  const hasWindow =
     Number.isFinite(startTime) &&
     Number.isFinite(endTime) &&
     startTime != null &&
-    endTime != null
-  ) {
+    endTime != null;
+  const filterByWindow = (trade: RuntimeTradeRecord) =>
+    !hasWindow ||
+    (trade.entryTimestamp >= startTime! && trade.entryTimestamp <= endTime!);
+
+  if (hasWindow) {
     const dayKeys = getRuntimeStorageDayKeys(startTime, endTime);
     const bucketTrades = (
       await Promise.all(
@@ -152,10 +156,7 @@ export const loadRuntimeTrades = async (
     }
 
     const windowedTrades = [...dedupedBucketTrades.values()]
-      .filter(
-        (trade) =>
-          trade.entryTimestamp >= startTime && trade.entryTimestamp <= endTime,
-      )
+      .filter(filterByWindow)
       .sort((left, right) => left.entryTimestamp - right.entryTimestamp);
 
     if (windowedTrades.length > 0 || dayKeys.length === 0) {
@@ -168,6 +169,7 @@ export const loadRuntimeTrades = async (
 
   return trades
     .filter(isRuntimeTradeRecord)
+    .filter(filterByWindow)
     .sort((left, right) => left.entryTimestamp - right.entryTimestamp);
 };
 

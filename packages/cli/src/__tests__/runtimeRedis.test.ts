@@ -77,10 +77,13 @@ describe('runtimeRedis', () => {
     expect(getKeys).not.toHaveBeenCalled();
   });
 
-  it('falls back to legacy runtime trade scan when day buckets are empty', async () => {
+  it('filters legacy runtime trade fallback by the requested time window', async () => {
     const getKeys = jest.fn(async (prefix: string) => {
       if (prefix === 'users:root:runtime:trade-records:') {
-        return ['users:root:runtime:trade-records:ord-legacy'];
+        return [
+          'users:root:runtime:trade-records:ord-legacy',
+          'users:root:runtime:trade-records:ord-old',
+        ];
       }
       return [];
     });
@@ -94,6 +97,18 @@ describe('runtimeRedis', () => {
           qty: 1,
           entryPrice: 100,
           entryTimestamp: Date.parse('2026-05-02T12:00:00.000Z'),
+        };
+      }
+
+      if (key === 'users:root:runtime:trade-records:ord-old') {
+        return {
+          orderId: 'ord-old',
+          strategy: 'TrendLine',
+          symbol: 'ETHUSDT',
+          direction: 'SHORT',
+          qty: 1,
+          entryPrice: 50,
+          entryTimestamp: Date.parse('2026-04-02T12:00:00.000Z'),
         };
       }
 
