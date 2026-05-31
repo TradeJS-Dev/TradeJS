@@ -25,7 +25,7 @@ services:
     container_name: inv-redis
     stop_grace_period: 2m
     environment:
-      REDIS_ARGS: --save "" --appendonly no --stop-writes-on-bgsave-error no
+      REDIS_ARGS: --appendonly yes --appendfsync everysec --save 60 1 --stop-writes-on-bgsave-error no
     ports:
       - "6379:6379"
       - "5540:8001"
