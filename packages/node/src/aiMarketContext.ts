@@ -29,6 +29,17 @@ export type AiMarketContext = {
       topBidQty: number | null;
       topAskQty: number | null;
       stale: boolean | null;
+      orderBookImbalance: number | null;
+      depthLevels: unknown[] | null;
+    };
+    orderBookDepth: {
+      source: string | null;
+      available: boolean;
+      symbol: string | null;
+      stale: boolean | null;
+      spreadBps: number | null;
+      orderBookImbalance: number | null;
+      depthLevels: unknown[] | null;
     };
   };
   participation: {
@@ -41,6 +52,42 @@ export type AiMarketContext = {
       netDelta: number | null;
       deltaPct: number | null;
       signedVolumeZScore: number | null;
+    };
+    tradeFlow: {
+      source: string | null;
+      available: boolean;
+      interval: string | null;
+      stale: boolean | null;
+      trades: number | null;
+      buyPressurePct: number | null;
+      netBaseDelta: number | null;
+      netQuoteDelta: number | null;
+    };
+  };
+  relative: {
+    marketBreadth: {
+      source: string | null;
+      available: boolean;
+      universe: string | null;
+      interval: string | null;
+      stale: boolean | null;
+      symbolsCount: number | null;
+      advanceDeclineRatio: number | null;
+      pctAboveMa20: number | null;
+      pctAboveMa50: number | null;
+      equalWeightedReturn: number | null;
+      volumeWeightedReturn: number | null;
+      dispersion: number | null;
+    };
+    marketReferences: {
+      source: string | null;
+      available: boolean;
+      primaryReferenceSymbol: string | null;
+      referenceSymbols: string[];
+      primaryTradeFlowBuyPressurePct: number | null;
+      primaryTradeFlowStale: boolean | null;
+      primaryOrderBookImbalance: number | null;
+      primaryOrderBookStale: boolean | null;
     };
   };
 };
@@ -139,8 +186,15 @@ const buildTargetVenueContextFromSignal = (signal: Signal) => {
       topBidQty: null,
       topAskQty: null,
       stale: null,
+      orderBookImbalance: null,
+      depthLevels: null,
     };
   }
+
+  const depthLevels = Array.isArray(targetVenue.depthLevels)
+    ? targetVenue.depthLevels
+    : null;
+  const firstDepthLevel = toRecord(depthLevels?.[0]);
 
   return {
     source: String(targetVenue.source ?? ''),
@@ -153,6 +207,24 @@ const buildTargetVenueContextFromSignal = (signal: Signal) => {
     topBidQty: toFiniteNumber(targetVenue.topBidQty),
     topAskQty: toFiniteNumber(targetVenue.topAskQty),
     stale: typeof targetVenue.stale === 'boolean' ? targetVenue.stale : null,
+    orderBookImbalance: toFiniteNumber(firstDepthLevel?.imbalance),
+    depthLevels,
+  };
+};
+
+const buildOrderBookDepthContextFromSignal = (signal: Signal) => {
+  const targetVenue = buildTargetVenueContextFromSignal(signal);
+  return {
+    source: targetVenue.source,
+    available:
+      targetVenue.available &&
+      targetVenue.source === 'binance_depth_snapshot' &&
+      Array.isArray(targetVenue.depthLevels),
+    symbol: targetVenue.symbol,
+    stale: targetVenue.stale,
+    spreadBps: targetVenue.spreadBps,
+    orderBookImbalance: targetVenue.orderBookImbalance,
+    depthLevels: targetVenue.depthLevels,
   };
 };
 
@@ -191,12 +263,142 @@ const buildTrueDeltaContextFromSignal = (signal: Signal) => {
   };
 };
 
+const buildTradeFlowContextFromSignal = (signal: Signal) => {
+  const baseContext = toRecord(signal.additionalIndicators?.baseContext);
+  const participation = toRecord(baseContext?.participation);
+  const tradeFlow = toRecord(participation?.tradeFlow);
+
+  if (!tradeFlow) {
+    return {
+      source: null,
+      available: false,
+      interval: null,
+      stale: null,
+      trades: null,
+      buyPressurePct: null,
+      netBaseDelta: null,
+      netQuoteDelta: null,
+    };
+  }
+
+  return {
+    source: String(tradeFlow.source ?? ''),
+    available: true,
+    interval: String(tradeFlow.interval ?? ''),
+    stale: typeof tradeFlow.stale === 'boolean' ? tradeFlow.stale : null,
+    trades: toFiniteNumber(tradeFlow.trades),
+    buyPressurePct: toFiniteNumber(tradeFlow.buyPressurePct),
+    netBaseDelta: toFiniteNumber(tradeFlow.netBaseDelta),
+    netQuoteDelta: toFiniteNumber(tradeFlow.netQuoteDelta),
+  };
+};
+
+const buildMarketBreadthContextFromSignal = (signal: Signal) => {
+  const baseContext = toRecord(signal.additionalIndicators?.baseContext);
+  const relative = toRecord(baseContext?.relative);
+  const breadth = toRecord(relative?.marketBreadth);
+
+  if (!breadth) {
+    return {
+      source: null,
+      available: false,
+      universe: null,
+      interval: null,
+      stale: null,
+      symbolsCount: null,
+      advanceDeclineRatio: null,
+      pctAboveMa20: null,
+      pctAboveMa50: null,
+      equalWeightedReturn: null,
+      volumeWeightedReturn: null,
+      dispersion: null,
+    };
+  }
+
+  return {
+    source: String(breadth.source ?? ''),
+    available: true,
+    universe: String(breadth.universe ?? ''),
+    interval: String(breadth.interval ?? ''),
+    stale: typeof breadth.stale === 'boolean' ? breadth.stale : null,
+    symbolsCount: toFiniteNumber(breadth.symbolsCount),
+    advanceDeclineRatio: toFiniteNumber(breadth.advanceDeclineRatio),
+    pctAboveMa20: toFiniteNumber(breadth.pctAboveMa20),
+    pctAboveMa50: toFiniteNumber(breadth.pctAboveMa50),
+    equalWeightedReturn: toFiniteNumber(breadth.equalWeightedReturn),
+    volumeWeightedReturn: toFiniteNumber(breadth.volumeWeightedReturn),
+    dispersion: toFiniteNumber(breadth.dispersion),
+  };
+};
+
+const buildMarketReferencesContextFromSignal = (signal: Signal) => {
+  const baseContext = toRecord(signal.additionalIndicators?.baseContext);
+  const relative = toRecord(baseContext?.relative);
+  const refs = toRecord(relative?.marketReferences);
+  const primaryReferenceSymbol =
+    typeof refs?.primaryReferenceSymbol === 'string'
+      ? refs.primaryReferenceSymbol
+      : null;
+  const tradeFlowBySymbol = toRecord(refs?.tradeFlowBySymbol);
+  const depthBySymbol = toRecord(refs?.depthBySymbol);
+  const primaryTradeFlow =
+    primaryReferenceSymbol != null
+      ? toRecord(tradeFlowBySymbol?.[primaryReferenceSymbol])
+      : null;
+  const primaryDepth =
+    primaryReferenceSymbol != null
+      ? toRecord(depthBySymbol?.[primaryReferenceSymbol])
+      : null;
+  const primaryDepthLevels = Array.isArray(primaryDepth?.depthLevels)
+    ? primaryDepth.depthLevels
+    : null;
+  const primaryDepthLevel = toRecord(primaryDepthLevels?.[0]);
+
+  if (!refs) {
+    return {
+      source: null,
+      available: false,
+      primaryReferenceSymbol: null,
+      referenceSymbols: [],
+      primaryTradeFlowBuyPressurePct: null,
+      primaryTradeFlowStale: null,
+      primaryOrderBookImbalance: null,
+      primaryOrderBookStale: null,
+    };
+  }
+
+  return {
+    source: String(refs.source ?? ''),
+    available: true,
+    primaryReferenceSymbol,
+    referenceSymbols: Array.isArray(refs.referenceSymbols)
+      ? refs.referenceSymbols.map(String)
+      : [],
+    primaryTradeFlowBuyPressurePct: toFiniteNumber(
+      primaryTradeFlow?.buyPressurePct,
+    ),
+    primaryTradeFlowStale:
+      typeof primaryTradeFlow?.stale === 'boolean'
+        ? primaryTradeFlow.stale
+        : null,
+    primaryOrderBookImbalance: toFiniteNumber(primaryDepthLevel?.imbalance),
+    primaryOrderBookStale:
+      typeof primaryDepth?.stale === 'boolean' ? primaryDepth.stale : null,
+  };
+};
+
 export const buildAiMarketContext = (signal: Signal): AiMarketContext => ({
   execution: {
     binanceCoinbaseSpread: buildSpreadContextFromSignal(signal),
     targetVenue: buildTargetVenueContextFromSignal(signal),
+    orderBookDepth: buildOrderBookDepthContextFromSignal(signal),
   },
   participation: {
     trueDelta: buildTrueDeltaContextFromSignal(signal),
+    tradeFlow: buildTradeFlowContextFromSignal(signal),
+  },
+  relative: {
+    marketBreadth: buildMarketBreadthContextFromSignal(signal),
+    marketReferences: buildMarketReferencesContextFromSignal(signal),
   },
 });

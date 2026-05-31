@@ -23,6 +23,7 @@ type ScriptFlags = {
 type Scenario = {
   flags: ScriptFlags;
   derivativesContextEnabled?: boolean;
+  binanceMarketContextBackfillEnabled?: boolean;
   includeOpenCandle?: boolean;
   strategyConfig?: Record<string, unknown>;
   strategyResult?: unknown;
@@ -185,6 +186,32 @@ const loadScript = async (scenario: Scenario) => {
     ({ cacheOnly }: { cacheOnly: boolean }) =>
       !cacheOnly && Boolean(scenario.derivativesContextEnabled),
   );
+  const backfillBinanceMarketContextForSignals = jest.fn(async () => ({
+    skipped: false,
+    tradeFlowRows: 0,
+    depthRows: 0,
+    breadthRows: 0,
+    skippedSymbols: 0,
+  }));
+  const shouldBackfillBinanceMarketContextForSignals = jest.fn(
+    ({ cacheOnly }: { cacheOnly: boolean }) =>
+      !cacheOnly && Boolean(scenario.binanceMarketContextBackfillEnabled),
+  );
+  const enrichSignalWithBinanceMarketContext = jest.fn(async (params: any) => {
+    params.signal.additionalIndicators = {
+      ...(params.signal.additionalIndicators ?? {}),
+      baseContext: {
+        ...(params.signal.additionalIndicators?.baseContext ?? {}),
+        relative: {
+          marketReferences: {
+            source: 'binance_reference_market',
+            primaryReferenceSymbol: 'BTCUSDT',
+          },
+        },
+      },
+    };
+    return true;
+  });
 
   jest.doMock('args', () => ({
     __esModule: true,
@@ -236,6 +263,7 @@ const loadScript = async (scenario: Scenario) => {
   }));
 
   jest.doMock('@tradejs/node/strategies', () => ({
+    enrichSignalWithBinanceMarketContext,
     getStrategyCreator,
   }));
 
@@ -262,6 +290,11 @@ const loadScript = async (scenario: Scenario) => {
     shouldBackfillDerivativesContextForSignals,
   }));
 
+  jest.doMock('../lib/binanceMarketContextBackfill', () => ({
+    backfillBinanceMarketContextForSignals,
+    shouldBackfillBinanceMarketContextForSignals,
+  }));
+
   const prevNodeEnv = process.env.NODE_ENV;
   (process.env as any).NODE_ENV = 'test';
   const signalsScriptModule = await import('../scripts/signals');
@@ -271,6 +304,8 @@ const loadScript = async (scenario: Scenario) => {
     signals: signalsScriptModule.signals,
     mocks: {
       backfillDerivativesContextForSignals,
+      backfillBinanceMarketContextForSignals,
+      enrichSignalWithBinanceMarketContext,
       connector,
       getData,
       getKeys,
@@ -286,6 +321,7 @@ const loadScript = async (scenario: Scenario) => {
       sendToTG,
       setData,
       setHashJsonField,
+      shouldBackfillBinanceMarketContextForSignals,
       shouldBackfillDerivativesContextForSignals,
       strategyCreatorMap,
       strategyFnMap,
@@ -842,6 +878,44 @@ describe('signals script', () => {
     );
     expect(mocks.logger.info).toHaveBeenCalledWith(
       expect.stringMatching(/^derivatives context backfill: done in /),
+    );
+  });
+
+  it('prepares Binance market context for signals before updateOnly return', async () => {
+    const { signals, mocks } = await loadScript({
+      binanceMarketContextBackfillEnabled: true,
+      flags: {
+        timeframe: 15,
+        makeOrders: false,
+        notify: false,
+        skipScreenshots: true,
+        updateOnly: true,
+        cacheOnly: false,
+        showTickersList: false,
+        showSkipStats: false,
+        user: 'root',
+        connector: 'bybit',
+      },
+    });
+
+    await signals();
+
+    expect(
+      mocks.shouldBackfillBinanceMarketContextForSignals,
+    ).toHaveBeenCalledWith({
+      cacheOnly: false,
+    });
+    expect(mocks.backfillBinanceMarketContextForSignals).toHaveBeenCalledWith({
+      userName: 'root',
+      projectRoot: expect.any(String),
+      symbols: ['ETHUSDT'],
+      interval: '15',
+      startMs: CURRENT_TS,
+      endMs: CURRENT_TS,
+      preloadStartMs: PRELOAD_TS,
+    });
+    expect(mocks.logger.info).toHaveBeenCalledWith(
+      expect.stringMatching(/^binance market context backfill: done in /),
     );
   });
 

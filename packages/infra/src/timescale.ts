@@ -4,6 +4,7 @@ import {
   DerivativesInterval,
   DerivativesRow,
   MarketBreadthRow,
+  MarketFeatureInterval,
   MarketOrderBookDepthRow,
   MarketTradeFlowRow,
   SpreadRow,
@@ -1218,6 +1219,218 @@ export async function upsertMarketBreadthRows(rows: MarketBreadthRow[]) {
     `,
     flat,
   );
+}
+
+export type MarketFeatureAsOf<T> = T & {
+  ageMs: number | null;
+  stale: boolean;
+};
+
+const toMarketFeatureAge = (rowTs: Date, atMs: number) => {
+  const ageMs = atMs - rowTs.getTime();
+  return Number.isFinite(ageMs) ? ageMs : null;
+};
+
+export async function getLatestMarketTradeFlow(params: {
+  symbol: string;
+  interval: MarketFeatureInterval;
+  atMs: number;
+  maxAgeMs?: number;
+}): Promise<MarketFeatureAsOf<MarketTradeFlowRow> | null> {
+  await ensureBinanceMarketSchema();
+  const pool = getPool();
+  const res = await pool.query(
+    `
+      SELECT
+        symbol,
+        interval,
+        ts,
+        trades::int AS trades,
+        buy_base_volume AS "buyBaseVolume",
+        sell_base_volume AS "sellBaseVolume",
+        buy_quote_volume AS "buyQuoteVolume",
+        sell_quote_volume AS "sellQuoteVolume",
+        net_base_delta AS "netBaseDelta",
+        net_quote_delta AS "netQuoteDelta",
+        buy_pressure_pct AS "buyPressurePct",
+        source
+      FROM market_trade_flow
+      WHERE symbol = $1
+        AND interval = $2
+        AND ts <= to_timestamp($3/1000.0)
+      ORDER BY ts DESC
+      LIMIT 1
+    `,
+    [params.symbol.toUpperCase(), params.interval, params.atMs],
+  );
+  const row = res.rows[0] as MarketTradeFlowRow | undefined;
+  if (!row) return null;
+  const ageMs = toMarketFeatureAge(row.ts, params.atMs);
+  return {
+    ...row,
+    ageMs,
+    stale:
+      ageMs == null || (params.maxAgeMs != null && ageMs > params.maxAgeMs),
+  };
+}
+
+export async function getLatestMarketOrderBookDepth(params: {
+  venue: string;
+  symbol: string;
+  atMs: number;
+  maxAgeMs?: number;
+}): Promise<MarketFeatureAsOf<MarketOrderBookDepthRow> | null> {
+  await ensureBinanceMarketSchema();
+  const pool = getPool();
+  const res = await pool.query(
+    `
+      SELECT
+        venue,
+        symbol,
+        ts,
+        last_update_id AS "lastUpdateId",
+        bid,
+        ask,
+        mid,
+        spread_bps AS "spreadBps",
+        levels,
+        raw_bid_levels AS "rawBidLevels",
+        raw_ask_levels AS "rawAskLevels",
+        source
+      FROM market_order_book_depth
+      WHERE venue = $1
+        AND symbol = $2
+        AND ts <= to_timestamp($3/1000.0)
+      ORDER BY ts DESC
+      LIMIT 1
+    `,
+    [params.venue.toLowerCase(), params.symbol.toUpperCase(), params.atMs],
+  );
+  const row = res.rows[0] as MarketOrderBookDepthRow | undefined;
+  if (!row) return null;
+  const ageMs = toMarketFeatureAge(row.ts, params.atMs);
+  return {
+    ...row,
+    ageMs,
+    stale:
+      ageMs == null || (params.maxAgeMs != null && ageMs > params.maxAgeMs),
+  };
+}
+
+export async function getLatestMarketBreadth(params: {
+  universe: string;
+  interval: MarketFeatureInterval;
+  atMs: number;
+  maxAgeMs?: number;
+}): Promise<MarketFeatureAsOf<MarketBreadthRow> | null> {
+  await ensureBinanceMarketSchema();
+  const pool = getPool();
+  const res = await pool.query(
+    `
+      SELECT
+        universe,
+        interval,
+        ts,
+        symbols_count::int AS "symbolsCount",
+        advancers::int AS advancers,
+        decliners::int AS decliners,
+        unchanged::int AS unchanged,
+        advance_decline_ratio AS "advanceDeclineRatio",
+        pct_above_ma20 AS "pctAboveMa20",
+        pct_above_ma50 AS "pctAboveMa50",
+        equal_weighted_return AS "equalWeightedReturn",
+        volume_weighted_return AS "volumeWeightedReturn",
+        dispersion,
+        source
+      FROM market_breadth
+      WHERE universe = $1
+        AND interval = $2
+        AND ts <= to_timestamp($3/1000.0)
+      ORDER BY ts DESC
+      LIMIT 1
+    `,
+    [params.universe, params.interval, params.atMs],
+  );
+  const row = res.rows[0] as MarketBreadthRow | undefined;
+  if (!row) return null;
+  const ageMs = toMarketFeatureAge(row.ts, params.atMs);
+  return {
+    ...row,
+    ageMs,
+    stale:
+      ageMs == null || (params.maxAgeMs != null && ageMs > params.maxAgeMs),
+  };
+}
+
+export async function getMarketTradeFlowCoverage(params: {
+  symbols: string[];
+  interval: MarketFeatureInterval;
+  startMs: number;
+  endMs: number;
+}): Promise<Map<string, { firstMs: number; lastMs: number; rows: number }>> {
+  const symbols = [
+    ...new Set(params.symbols.map((item) => item.toUpperCase())),
+  ];
+  if (!symbols.length) return new Map();
+  await ensureBinanceMarketSchema();
+  const pool = getPool();
+  const res = await pool.query(
+    `
+      SELECT
+        symbol,
+        MIN(ts) AS first_ts,
+        MAX(ts) AS last_ts,
+        COUNT(*)::int AS rows
+      FROM market_trade_flow
+      WHERE symbol = ANY($1)
+        AND interval = $2
+        AND ts >= to_timestamp($3/1000.0)
+        AND ts <= to_timestamp($4/1000.0)
+      GROUP BY symbol
+    `,
+    [symbols, params.interval, params.startMs, params.endMs],
+  );
+  return new Map(
+    res.rows.map((row) => [
+      String(row.symbol).toUpperCase(),
+      {
+        firstMs: new Date(row.first_ts).getTime(),
+        lastMs: new Date(row.last_ts).getTime(),
+        rows: Number(row.rows) || 0,
+      },
+    ]),
+  );
+}
+
+export async function getMarketBreadthCoverage(params: {
+  universe: string;
+  interval: MarketFeatureInterval;
+  startMs: number;
+  endMs: number;
+}): Promise<{ firstMs: number; lastMs: number; rows: number } | null> {
+  await ensureBinanceMarketSchema();
+  const pool = getPool();
+  const res = await pool.query(
+    `
+      SELECT
+        MIN(ts) AS first_ts,
+        MAX(ts) AS last_ts,
+        COUNT(*)::int AS rows
+      FROM market_breadth
+      WHERE universe = $1
+        AND interval = $2
+        AND ts >= to_timestamp($3/1000.0)
+        AND ts <= to_timestamp($4/1000.0)
+    `,
+    [params.universe, params.interval, params.startMs, params.endMs],
+  );
+  const row = res.rows[0];
+  if (!row?.first_ts || !row?.last_ts) return null;
+  return {
+    firstMs: new Date(row.first_ts).getTime(),
+    lastMs: new Date(row.last_ts).getTime(),
+    rows: Number(row.rows) || 0,
+  };
 }
 
 export async function getSpreadRangeForSymbols(

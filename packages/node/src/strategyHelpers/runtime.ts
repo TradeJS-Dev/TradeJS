@@ -23,6 +23,7 @@ import {
   recordRuntimeTradeOpen,
 } from '../runtimeJournal';
 import { enrichSignalWithDerivativesContext } from './derivativesContext';
+import { enrichSignalWithBinanceMarketContext } from './binanceMarketContext';
 
 interface EnrichSignalWithMlAiParams {
   signal: Signal;
@@ -212,6 +213,7 @@ export const enrichSignalWithMlAi = async ({
   ml,
   ai,
 }: EnrichSignalWithMlAiParams): Promise<number | undefined> => {
+  await enrichSignalWithBinanceMarketContext({ signal, env });
   await enrichSignalWithDerivativesContext({ signal, env });
   await enrichSignalWithMl({ signal, env, ml });
   return enrichSignalWithAi({ signal, userName, symbol, direction, env, ai });

@@ -27,7 +27,10 @@ import type {
   TradejsConfigSignalsHookContext,
 } from '@tradejs/core/config';
 import { SIGNALS_CLI_PRELOAD_DAYS, TTL_10D } from '@tradejs/core/constants';
-import { getStrategyCreator } from '@tradejs/node/strategies';
+import {
+  enrichSignalWithBinanceMarketContext,
+  getStrategyCreator,
+} from '@tradejs/node/strategies';
 import { getTimestamp } from '@tradejs/core/time';
 import { logger } from '@tradejs/infra/logger';
 import {
@@ -50,6 +53,10 @@ import {
   backfillDerivativesContextForSignals,
   shouldBackfillDerivativesContextForSignals,
 } from '../lib/derivativesContextBackfill';
+import {
+  backfillBinanceMarketContextForSignals,
+  shouldBackfillBinanceMarketContextForSignals,
+} from '../lib/binanceMarketContextBackfill';
 import { loadRuntimeStrategyConfigs } from '../lib/runtimeRedis';
 import {
   buildRuntimeSignalStatsIncrements,
@@ -455,6 +462,10 @@ const findSignals = async (
     if (stats) {
       stats.signals += 1;
     }
+    await enrichSignalWithBinanceMarketContext({
+      signal,
+      env: 'CRON',
+    });
     if (
       signal.orderStatus === 'skipped' &&
       typeof signal.orderSkipReason === 'string' &&
@@ -633,6 +644,24 @@ export const signals = async () => {
         backfillDerivativesContextForSignals({
           userName: flags.user,
           symbols: tickers,
+          startMs: currentTimestamp,
+          endMs: currentTimestamp,
+          preloadStartMs: PRELOAD_START,
+        }),
+      );
+    }
+
+    if (
+      shouldBackfillBinanceMarketContextForSignals({
+        cacheOnly: Boolean(flags.cacheOnly),
+      })
+    ) {
+      await timeOperation('binance market context backfill', () =>
+        backfillBinanceMarketContextForSignals({
+          userName: flags.user,
+          projectRoot,
+          symbols: tickers,
+          interval,
           startMs: currentTimestamp,
           endMs: currentTimestamp,
           preloadStartMs: PRELOAD_START,

@@ -117,6 +117,10 @@ jest.mock('../strategyHelpers/derivativesContext', () => ({
     mockEnrichSignalWithDerivativesContext(params),
 }));
 
+jest.mock('../strategyHelpers/binanceMarketContext', () => ({
+  enrichSignalWithBinanceMarketContext: jest.fn(async () => false),
+}));
+
 jest.mock('@tradejs/infra/ai', () => ({
   appendAiDatasetRow: (params: unknown) => mockAppendAiDatasetRow(params),
 }));

@@ -20,6 +20,7 @@ import {
   executeEntryOrder,
   updatePositionProtection,
 } from './strategyHelpers/runtime';
+import { enrichSignalWithBinanceMarketContext } from './strategyHelpers/binanceMarketContext';
 import { enrichSignalWithDerivativesContext } from './strategyHelpers/derivativesContext';
 import { markRuntimeTradeClosed } from './runtimeJournal';
 import { createPineScriptLoader } from './pine';
@@ -1377,6 +1378,10 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
       let ai: StrategyHookAiContext | undefined;
       if (signal) {
         try {
+          await enrichSignalWithBinanceMarketContext({
+            signal,
+            env,
+          });
           await enrichSignalWithDerivativesContext({
             signal,
             env,

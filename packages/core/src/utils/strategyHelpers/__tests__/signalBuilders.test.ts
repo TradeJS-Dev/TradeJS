@@ -131,6 +131,317 @@ const baseContext: BaseStrategyContextSnapshot = {
 };
 
 describe('buildStrategySignal', () => {
+  it('derives gate features from Binance market context fields', () => {
+    const signal = buildStrategySignal({
+      signalId: 's-market',
+      strategy: 'TrendLine',
+      symbol: 'BTCUSDT',
+      interval: '15' as any,
+      direction: 'LONG',
+      timestamp: 1,
+      prices: {
+        currentPrice: 100,
+        takeProfitPrice: 110,
+        stopLossPrice: 95,
+        riskRatio: 2,
+      },
+      indicators: {
+        baseContext: {
+          ...baseContext,
+          participation: {
+            ...baseContext.participation,
+            tradeFlow: {
+              source: 'binance_agg_trades',
+              interval: '15m',
+              asOfTs: 1,
+              ageMs: 0,
+              stale: false,
+              trades: 10,
+              buyPressurePct: 0.7,
+              buyBaseVolume: 7,
+              sellBaseVolume: 3,
+              buyQuoteVolume: 700,
+              sellQuoteVolume: 300,
+              netBaseDelta: 4,
+              netQuoteDelta: 400,
+            },
+          },
+          relative: {
+            ...baseContext.relative,
+            marketBreadth: {
+              source: 'binance_klines',
+              universe: 'binance_top30_usdt',
+              interval: '15m',
+              asOfTs: 1,
+              ageMs: 0,
+              stale: false,
+              symbolsCount: 30,
+              advancers: 20,
+              decliners: 10,
+              unchanged: 0,
+              advanceDeclineRatio: 2,
+              pctAboveMa20: 0.6,
+              pctAboveMa50: 0.55,
+              equalWeightedReturn: 0.01,
+              volumeWeightedReturn: 0.02,
+              dispersion: 0.03,
+            },
+            execution: {
+              ...baseContext.relative.execution,
+              targetVenue: {
+                source: 'binance_depth_snapshot',
+                venue: 'binance',
+                symbol: 'BTCUSDT',
+                bid: 99,
+                ask: 101,
+                mid: 100,
+                spreadBps: 200,
+                topBidQty: 1,
+                topAskQty: 2,
+                snapshotTimestamp: 1,
+                stale: false,
+                depthLevels: [
+                  {
+                    levels: 5,
+                    bidBaseVolume: 3,
+                    askBaseVolume: 1,
+                    bidQuoteVolume: 300,
+                    askQuoteVolume: 100,
+                    imbalance: 0.5,
+                  },
+                ],
+              },
+            },
+          },
+        },
+      },
+    });
+
+    expect(
+      signal.additionalIndicators?.baseContext?.gateFeatures,
+    ).toMatchObject({
+      setup: {
+        riskRatio: 2,
+        rewardToVolatility: 10,
+        stopDistanceAtr: 5,
+        tpDistanceAtr: 10,
+        entryLocation: 'mid_range',
+      },
+      confirmations: {
+        count: 4,
+        items: [
+          'trade_flow_aligned',
+          'market_breadth_aligned',
+          'benchmark_aligned',
+          'order_book_aligned',
+        ],
+      },
+      conflicts: {
+        count: 0,
+        items: [],
+      },
+      scores: {
+        structure: 47,
+        participation: 47,
+        relative: 86,
+        mtf: null,
+        execution: 86,
+        derivatives: null,
+        totalContext: 67,
+      },
+      risk: {
+        regimeRisk: 'medium',
+        liquidityRisk: 'low',
+        volatilityRisk: 'unknown',
+        crowdingRisk: 'unknown',
+        chaseRisk: 'low',
+      },
+      decisionHints: {
+        approveBias: 'support',
+        maxReasonableQuality: 5,
+        needsExtraConfirmation: false,
+        primaryIssue: 'none',
+      },
+      participation: {
+        tradeFlowBuyPressurePct: 0.7,
+        tradeFlowAligned: true,
+      },
+      relative: {
+        marketBreadthReturn: 0.01,
+        marketBreadthAligned: true,
+        marketBreadthStale: false,
+      },
+      execution: {
+        orderBookImbalance: 0.5,
+        orderBookImbalanceAligned: true,
+      },
+    });
+  });
+
+  it('turns conflicting normalized context into reject-oriented gate hints', () => {
+    const signal = buildStrategySignal({
+      signalId: 's-conflict',
+      strategy: 'TrendLine',
+      symbol: 'SOLUSDT',
+      interval: '15' as any,
+      direction: 'SHORT',
+      timestamp: 1,
+      prices: {
+        currentPrice: 100,
+        takeProfitPrice: 90,
+        stopLossPrice: 105,
+        riskRatio: 2,
+      },
+      indicators: {
+        baseContext: {
+          ...baseContext,
+          mtf: {
+            ...baseContext.mtf,
+            summary: {
+              h1TrendBias: 'bull',
+              h4TrendBias: 'bull',
+              d1TrendBias: 'neutral',
+              h1RangePosition: 0.8,
+              h4VolatilityState: 'expanded',
+              mtfAlignment: 'aligned_bull',
+            },
+          },
+          regime: {
+            ...baseContext.regime,
+            volatility: {
+              ...baseContext.regime.volatility,
+              atrPctZScore: 2.5,
+            },
+          },
+          participation: {
+            ...baseContext.participation,
+            delta: {
+              buyPressurePct: 0.8,
+              sellPressurePct: 0.2,
+              deltaDivergenceVsPrice: 'none',
+            },
+            tradeFlow: {
+              source: 'binance_agg_trades',
+              interval: '15m',
+              asOfTs: 1,
+              ageMs: 0,
+              stale: false,
+              trades: 10,
+              buyPressurePct: 0.8,
+              buyBaseVolume: 8,
+              sellBaseVolume: 2,
+              buyQuoteVolume: 800,
+              sellQuoteVolume: 200,
+              netBaseDelta: 6,
+              netQuoteDelta: 600,
+            },
+          },
+          relative: {
+            ...baseContext.relative,
+            benchmark: {
+              ...baseContext.relative.benchmark,
+              trendAlignment: 'aligned_bull',
+              relativeStrength1h: 2,
+            },
+            marketBreadth: {
+              source: 'binance_klines',
+              universe: 'binance_top30_usdt',
+              interval: '15m',
+              asOfTs: 1,
+              ageMs: 0,
+              stale: false,
+              symbolsCount: 30,
+              advancers: 24,
+              decliners: 6,
+              unchanged: 0,
+              advanceDeclineRatio: 4,
+              pctAboveMa20: 0.8,
+              pctAboveMa50: 0.7,
+              equalWeightedReturn: 0.03,
+              volumeWeightedReturn: 0.04,
+              dispersion: 0.02,
+            },
+            execution: {
+              ...baseContext.relative.execution,
+              venueSpreadZScore: 2.5,
+              targetVenue: {
+                source: 'binance_depth_snapshot',
+                venue: 'binance',
+                symbol: 'SOLUSDT',
+                bid: 99,
+                ask: 101,
+                mid: 100,
+                spreadBps: 200,
+                topBidQty: 1,
+                topAskQty: 2,
+                snapshotTimestamp: 1,
+                stale: true,
+                depthLevels: [
+                  {
+                    levels: 5,
+                    bidBaseVolume: 3,
+                    askBaseVolume: 1,
+                    bidQuoteVolume: 300,
+                    askQuoteVolume: 100,
+                    imbalance: 0.5,
+                  },
+                ],
+              },
+            },
+          },
+          derivatives: {
+            source: 'coinalyze',
+            symbol: 'BTCUSDT',
+            targetSymbol: 'SOLUSDT',
+            timestamp: 1,
+            intervals: {},
+            summary: {
+              pressure: 'crowded_short',
+              directionAligned: false,
+              riskFlags: ['crowded_short'],
+            },
+          },
+        },
+      },
+    });
+
+    expect(
+      signal.additionalIndicators?.baseContext?.gateFeatures,
+    ).toMatchObject({
+      mtf: {
+        alignmentForDirection: 'against',
+        higherTimeframeConflict: true,
+      },
+      conflicts: {
+        items: expect.arrayContaining([
+          'mtf_against',
+          'benchmark_against',
+          'relative_strength_against',
+          'market_breadth_against',
+          'delta_against',
+          'trade_flow_against',
+          'extreme_volatility',
+          'wide_spread',
+          'target_venue_stale',
+          'derivatives_against',
+          'derivatives_crowded',
+        ]),
+      },
+      risk: {
+        regimeRisk: 'high',
+        liquidityRisk: 'high',
+        volatilityRisk: 'high',
+        crowdingRisk: 'high',
+      },
+      decisionHints: {
+        approveBias: 'reject',
+        maxReasonableQuality: 2,
+        needsExtraConfirmation: true,
+        primaryIssue: 'crowded_derivatives',
+      },
+    });
+  });
+
   it('copies baseContext from indicators into additionalIndicators', () => {
     const signal = buildStrategySignal({
       signalId: 's1',

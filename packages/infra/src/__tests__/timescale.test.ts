@@ -414,4 +414,119 @@ describe('timescale candle helpers', () => {
       expect.arrayContaining(['top30_usdt', '15m', new Date(3_000), 30]),
     );
   });
+
+  it('reads latest Binance market feature rows as-of a timestamp', async () => {
+    const atMs = 10_000;
+    const query = jest.fn(async (sql: string) => {
+      if (sql.includes('FROM market_trade_flow')) {
+        return {
+          rows: [
+            {
+              symbol: 'BTCUSDT',
+              interval: '15m',
+              ts: new Date(9_000),
+              trades: 3,
+              buyBaseVolume: '2',
+              sellBaseVolume: '1',
+              buyPressurePct: '0.6667',
+              source: 'binance_agg_trades',
+            },
+          ],
+        };
+      }
+      if (sql.includes('FROM market_order_book_depth')) {
+        return {
+          rows: [
+            {
+              venue: 'binance',
+              symbol: 'BTCUSDT',
+              ts: new Date(8_000),
+              bid: '99',
+              ask: '101',
+              mid: '100',
+              spreadBps: '200',
+              levels: [{ levels: 5, imbalance: 0.25 }],
+              source: 'binance_depth',
+            },
+          ],
+        };
+      }
+      if (sql.includes('FROM market_breadth')) {
+        return {
+          rows: [
+            {
+              universe: 'binance_top30_usdt',
+              interval: '15m',
+              ts: new Date(7_000),
+              symbolsCount: 30,
+              advancers: 20,
+              decliners: 8,
+              unchanged: 2,
+              equalWeightedReturn: '0.01',
+              source: 'binance_klines',
+            },
+          ],
+        };
+      }
+      return { rows: [] };
+    });
+
+    jest.doMock('pg', () => ({
+      Pool: jest.fn().mockImplementation(() => ({
+        connect: jest.fn(),
+        query,
+      })),
+    }));
+
+    const {
+      getLatestMarketBreadth,
+      getLatestMarketOrderBookDepth,
+      getLatestMarketTradeFlow,
+    } = await import('@tradejs/infra/timescale');
+
+    await expect(
+      getLatestMarketTradeFlow({
+        symbol: 'btcusdt',
+        interval: '15m',
+        atMs,
+        maxAgeMs: 2_000,
+      }),
+    ).resolves.toMatchObject({
+      symbol: 'BTCUSDT',
+      ageMs: 1_000,
+      stale: false,
+      buyPressurePct: '0.6667',
+    });
+    await expect(
+      getLatestMarketOrderBookDepth({
+        venue: 'binance',
+        symbol: 'BTCUSDT',
+        atMs,
+        maxAgeMs: 1_000,
+      }),
+    ).resolves.toMatchObject({
+      symbol: 'BTCUSDT',
+      ageMs: 2_000,
+      stale: true,
+      levels: [{ levels: 5, imbalance: 0.25 }],
+    });
+    await expect(
+      getLatestMarketBreadth({
+        universe: 'binance_top30_usdt',
+        interval: '15m',
+        atMs,
+        maxAgeMs: 5_000,
+      }),
+    ).resolves.toMatchObject({
+      universe: 'binance_top30_usdt',
+      ageMs: 3_000,
+      stale: false,
+      equalWeightedReturn: '0.01',
+    });
+
+    expect(query).toHaveBeenCalledWith(
+      expect.stringContaining('ts <= to_timestamp($3/1000.0)'),
+      ['BTCUSDT', '15m', atMs],
+    );
+  });
 });

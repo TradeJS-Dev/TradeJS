@@ -20,6 +20,11 @@ import {
   StrategyRuntimeAiOptions,
   StrategyRuntimeMlOptions,
   BaseStrategyContextSnapshot,
+  BaseContextGateFeatures,
+  BaseGateFeatureConfirmation,
+  BaseGateFeatureConflict,
+  BaseGateFeatureEntryLocation,
+  StrategySignalPriceParams,
 } from '@tradejs/types';
 import {
   calculateRiskRatio,
@@ -238,12 +243,67 @@ const toRelativeStrengthBucket = ({
   return 'neutral';
 };
 
-const buildBaseContextGateFeatures = ({
+const toPressureBias = (value: number | null) =>
+  value == null
+    ? 'unknown'
+    : value >= 0.55
+      ? 'bull'
+      : value <= 0.45
+        ? 'bear'
+        : 'neutral';
+
+const toBiasAligned = ({
+  direction,
+  bias,
+}: {
+  direction: Direction | null;
+  bias: 'bull' | 'bear' | 'neutral' | 'unknown';
+}) =>
+  direction == null || bias === 'unknown' || bias === 'neutral'
+    ? null
+    : direction === 'LONG'
+      ? bias === 'bull'
+      : bias === 'bear';
+
+const clampScore = (value: number): number =>
+  Math.max(0, Math.min(100, Math.round(value)));
+
+const scoreEvidence = (
+  evidence: Array<boolean | null | undefined>,
+): number | null => {
+  const known = evidence.filter((item) => typeof item === 'boolean');
+  if (known.length === 0) return null;
+
+  const positives = known.filter(Boolean).length;
+  const negatives = known.length - positives;
+  return clampScore(50 + positives * 12 - negatives * 15);
+};
+
+const averageScores = (scores: Array<number | null | undefined>) => {
+  const known = scores.filter(
+    (score): score is number =>
+      typeof score === 'number' && Number.isFinite(score),
+  );
+  if (known.length === 0) return null;
+  return clampScore(
+    known.reduce((sum, score) => sum + score, 0) / known.length,
+  );
+};
+
+const pushWhen = <T>(items: T[], condition: boolean, item: T) => {
+  if (condition) {
+    items.push(item);
+  }
+};
+
+export const buildBaseContextGateFeatures = ({
   baseContext,
   direction,
+  prices,
 }: {
   baseContext: BaseStrategyContextSnapshot;
   direction: Direction | null;
+  prices?: StrategySignalPriceParams | null;
 }): NonNullable<BaseStrategyContextSnapshot['gateFeatures']> => {
   const mtfSummary = baseContext.mtf?.summary;
   const mtfAlignmentForDirection = toMtfAlignmentForDirection({
@@ -256,10 +316,22 @@ const buildBaseContextGateFeatures = ({
   const liquidity = baseContext.structure?.liquidity;
   const volume = baseContext.participation?.volume;
   const delta = baseContext.participation?.delta;
+  const tradeFlow = baseContext.participation?.tradeFlow;
   const volumeStructure = baseContext.participation?.volumeStructure;
   const relative = baseContext.relative?.benchmark;
+  const marketBreadth = baseContext.relative?.marketBreadth;
+  const marketReferences = baseContext.relative?.marketReferences;
   const execution = baseContext.relative?.execution;
   const targetVenue = execution?.targetVenue;
+  const primaryReferenceSymbol = marketReferences?.primaryReferenceSymbol;
+  const primaryReferenceTradeFlow =
+    primaryReferenceSymbol != null
+      ? marketReferences?.tradeFlowBySymbol?.[primaryReferenceSymbol]
+      : undefined;
+  const primaryReferenceDepth =
+    primaryReferenceSymbol != null
+      ? marketReferences?.depthBySymbol?.[primaryReferenceSymbol]
+      : undefined;
   const atrPctRankBucket = toRankBucket(
     asFiniteNumberOrNull(volatilityPercentiles?.atrPctRank100),
   );
@@ -268,23 +340,64 @@ const buildBaseContextGateFeatures = ({
   );
   const atrPctZScore = asFiniteNumberOrNull(volatility?.atrPctZScore);
   const breakoutState = localRange?.breakoutState ?? 'unknown';
+  const rangePosition20 = asFiniteNumberOrNull(localRange?.rangePosition20);
+  const rangePositionBucket = toRangePositionBucket(rangePosition20);
+  const breakoutWithDirection = toDirectionalAlignment({
+    direction,
+    bullValue: 'above_high_level',
+    bearValue: 'below_low_level',
+    value: breakoutState,
+  });
+  const failedBreakoutForDirection = toDirectionalAlignment({
+    direction,
+    bullValue: 'failed_low_breakout',
+    bearValue: 'failed_high_breakout',
+    value: breakoutState,
+  });
+  const liquiditySweepForDirection =
+    !liquidity || direction == null
+      ? null
+      : direction === 'LONG'
+        ? liquidity?.sweepState === 'swept_low'
+        : liquidity?.sweepState === 'swept_high';
+  const nearPointOfControl =
+    baseContext.participation?.priceVolumeProfile?.nearPointOfControl ?? null;
   const volumeRel20 = asFiniteNumberOrNull(volume?.volumeRel20);
   const buyPressurePct = asFiniteNumberOrNull(delta?.buyPressurePct);
+  const tradeFlowBuyPressurePct = asFiniteNumberOrNull(
+    tradeFlow?.buyPressurePct,
+  );
+  const referenceTradeFlowBuyPressurePct = asFiniteNumberOrNull(
+    primaryReferenceTradeFlow?.buyPressurePct,
+  );
   const deltaDivergenceVsPrice = asStringOrNull(delta?.deltaDivergenceVsPrice);
   const deltaBias =
     deltaDivergenceVsPrice === 'bullish' || deltaDivergenceVsPrice === 'bearish'
       ? deltaDivergenceVsPrice === 'bullish'
         ? 'bull'
         : 'bear'
-      : buyPressurePct == null
-        ? 'unknown'
-        : buyPressurePct >= 0.55
-          ? 'bull'
-          : buyPressurePct <= 0.45
-            ? 'bear'
-            : 'neutral';
+      : toPressureBias(buyPressurePct);
+  const tradeFlowBias = tradeFlow?.stale
+    ? 'unknown'
+    : toPressureBias(tradeFlowBuyPressurePct);
+  const referenceTradeFlowBias = primaryReferenceTradeFlow?.stale
+    ? 'unknown'
+    : toPressureBias(referenceTradeFlowBuyPressurePct);
+  const deltaAligned = toBiasAligned({ direction, bias: deltaBias });
+  const tradeFlowAligned = toBiasAligned({
+    direction,
+    bias: tradeFlowBias,
+  });
+  const referenceTradeFlowAligned = toBiasAligned({
+    direction,
+    bias: referenceTradeFlowBias,
+  });
   const benchmarkTrendAlignment = relative?.trendAlignment ?? 'unknown';
   const relativeStrength1h = asFiniteNumberOrNull(relative?.relativeStrength1h);
+  const relativeStrengthBucket = toRelativeStrengthBucket({
+    direction,
+    value: relativeStrength1h,
+  });
   const benchmarkAligned =
     benchmarkTrendAlignment === 'against_benchmark'
       ? false
@@ -306,16 +419,345 @@ const buildBaseContextGateFeatures = ({
       : direction === 'SHORT'
         ? totalDownVolumeShare
         : null;
+  const volumeStructureAligned =
+    directionalVolumeShare == null ? null : directionalVolumeShare >= 0.5;
+  const marketBreadthReturn = asFiniteNumberOrNull(
+    marketBreadth?.equalWeightedReturn,
+  );
+  const marketBreadthAligned =
+    direction == null || marketBreadthReturn == null || marketBreadth?.stale
+      ? null
+      : direction === 'LONG'
+        ? marketBreadthReturn >= 0
+        : marketBreadthReturn <= 0;
+  const orderBookImbalance = asFiniteNumberOrNull(
+    targetVenue?.depthLevels?.[0]?.imbalance,
+  );
+  const referenceOrderBookImbalance = asFiniteNumberOrNull(
+    primaryReferenceDepth?.depthLevels?.[0]?.imbalance,
+  );
+  const orderBookImbalanceAligned =
+    direction == null || orderBookImbalance == null || targetVenue?.stale
+      ? null
+      : direction === 'LONG'
+        ? orderBookImbalance >= 0
+        : orderBookImbalance <= 0;
+  const referenceOrderBookImbalanceAligned =
+    direction == null ||
+    referenceOrderBookImbalance == null ||
+    primaryReferenceDepth?.stale
+      ? null
+      : direction === 'LONG'
+        ? referenceOrderBookImbalance >= 0
+        : referenceOrderBookImbalance <= 0;
+  const venueSpreadZScore = asFiniteNumberOrNull(execution?.venueSpreadZScore);
+  const venueSpreadSeverity = toVenueSpreadSeverity(venueSpreadZScore);
+  const targetVenueSpreadBps = asFiniteNumberOrNull(targetVenue?.spreadBps);
+  const targetVenueStale =
+    typeof targetVenue?.stale === 'boolean' ? targetVenue.stale : null;
+  const higherTimeframeConflict =
+    mtfAlignmentForDirection === 'unknown'
+      ? null
+      : mtfAlignmentForDirection === 'against' ||
+        mtfAlignmentForDirection === 'mixed';
+  const extremeVolatilityRisk =
+    Math.abs(atrPctZScore ?? 0) >= 2 || atrPctRankBucket === 'extreme';
+  const compressionBreakoutSupport =
+    (volatility?.state === 'compressed' || bbWidthRankBucket === 'low') &&
+    breakoutState !== 'inside_range' &&
+    breakoutState !== 'unknown';
+  const benchmarkConflict =
+    benchmarkAligned === false || relativeStrengthBucket.endsWith('_against');
+  const derivativesSummary = baseContext.derivatives?.summary;
+  const derivativesDirectionAligned =
+    typeof derivativesSummary?.directionAligned === 'boolean'
+      ? derivativesSummary.directionAligned
+      : null;
+  const derivativesRiskFlags = Array.isArray(derivativesSummary?.riskFlags)
+    ? derivativesSummary.riskFlags
+    : [];
+  const derivativesCrowdedForDirection =
+    direction === 'LONG'
+      ? derivativesRiskFlags.includes('crowded_long')
+      : direction === 'SHORT'
+        ? derivativesRiskFlags.includes('crowded_short')
+        : false;
+  const derivativesCrowdedAny =
+    derivativesRiskFlags.includes('crowded_long') ||
+    derivativesRiskFlags.includes('crowded_short');
+  const atr = asFiniteNumberOrNull(baseContext.raw?.volatility?.atr);
+  const currentPrice = asFiniteNumberOrNull(prices?.currentPrice);
+  const takeProfitPrice = asFiniteNumberOrNull(prices?.takeProfitPrice);
+  const stopLossPrice = asFiniteNumberOrNull(prices?.stopLossPrice);
+  const stopDistanceAtr =
+    direction == null ||
+    atr == null ||
+    atr <= 0 ||
+    currentPrice == null ||
+    stopLossPrice == null
+      ? null
+      : direction === 'LONG'
+        ? (currentPrice - stopLossPrice) / atr
+        : (stopLossPrice - currentPrice) / atr;
+  const tpDistanceAtr =
+    direction == null ||
+    atr == null ||
+    atr <= 0 ||
+    currentPrice == null ||
+    takeProfitPrice == null
+      ? null
+      : direction === 'LONG'
+        ? (takeProfitPrice - currentPrice) / atr
+        : (currentPrice - takeProfitPrice) / atr;
+  const entryLocation: BaseGateFeatureEntryLocation =
+    breakoutWithDirection === true
+      ? direction === 'SHORT'
+        ? 'breakdown'
+        : 'breakout'
+      : rangePosition20 == null
+        ? 'unknown'
+        : rangePosition20 <= 0.25
+          ? 'near_support'
+          : rangePosition20 >= 0.75
+            ? 'near_resistance'
+            : 'mid_range';
+  const confirmations: BaseGateFeatureConfirmation[] = [];
+  pushWhen(
+    confirmations,
+    mtfAlignmentForDirection === 'aligned',
+    'mtf_aligned',
+  );
+  pushWhen(confirmations, (volumeRel20 ?? 0) >= 1.5, 'volume_expansion');
+  pushWhen(confirmations, deltaAligned === true, 'delta_aligned');
+  pushWhen(confirmations, tradeFlowAligned === true, 'trade_flow_aligned');
+  pushWhen(
+    confirmations,
+    referenceTradeFlowAligned === true,
+    'reference_trade_flow_aligned',
+  );
+  pushWhen(
+    confirmations,
+    marketBreadthAligned === true,
+    'market_breadth_aligned',
+  );
+  pushWhen(confirmations, benchmarkAligned === true, 'benchmark_aligned');
+  pushWhen(confirmations, breakoutWithDirection === true, 'breakout_confirmed');
+  pushWhen(
+    confirmations,
+    liquiditySweepForDirection === true,
+    'liquidity_sweep_aligned',
+  );
+  pushWhen(
+    confirmations,
+    orderBookImbalanceAligned === true,
+    'order_book_aligned',
+  );
+  pushWhen(
+    confirmations,
+    referenceOrderBookImbalanceAligned === true,
+    'reference_order_book_aligned',
+  );
+  pushWhen(
+    confirmations,
+    derivativesDirectionAligned === true,
+    'derivatives_aligned',
+  );
+  const conflicts: BaseGateFeatureConflict[] = [];
+  pushWhen(conflicts, mtfAlignmentForDirection === 'against', 'mtf_against');
+  pushWhen(conflicts, mtfAlignmentForDirection === 'mixed', 'mtf_mixed');
+  pushWhen(conflicts, benchmarkAligned === false, 'benchmark_against');
+  pushWhen(
+    conflicts,
+    relativeStrengthBucket.endsWith('_against'),
+    'relative_strength_against',
+  );
+  pushWhen(conflicts, marketBreadthAligned === false, 'market_breadth_against');
+  pushWhen(conflicts, deltaAligned === false, 'delta_against');
+  pushWhen(conflicts, tradeFlowAligned === false, 'trade_flow_against');
+  pushWhen(
+    conflicts,
+    referenceTradeFlowAligned === false,
+    'reference_trade_flow_against',
+  );
+  pushWhen(conflicts, failedBreakoutForDirection === true, 'failed_breakout');
+  pushWhen(conflicts, extremeVolatilityRisk, 'extreme_volatility');
+  pushWhen(conflicts, venueSpreadSeverity === 'wide', 'wide_spread');
+  pushWhen(conflicts, targetVenueStale === true, 'target_venue_stale');
+  pushWhen(
+    conflicts,
+    orderBookImbalanceAligned === false,
+    'order_book_against',
+  );
+  pushWhen(
+    conflicts,
+    referenceOrderBookImbalanceAligned === false,
+    'reference_order_book_against',
+  );
+  pushWhen(
+    conflicts,
+    derivativesDirectionAligned === false,
+    'derivatives_against',
+  );
+  pushWhen(conflicts, derivativesCrowdedForDirection, 'derivatives_crowded');
+  const scores: NonNullable<BaseContextGateFeatures['scores']> = {
+    structure: scoreEvidence([
+      breakoutWithDirection,
+      failedBreakoutForDirection == null
+        ? null
+        : failedBreakoutForDirection === false,
+      liquiditySweepForDirection,
+      nearPointOfControl,
+    ]),
+    participation: scoreEvidence([
+      volumeRel20 == null ? null : volumeRel20 >= 1.5,
+      deltaAligned,
+      tradeFlowAligned,
+      referenceTradeFlowAligned,
+      volumeStructureAligned,
+    ]),
+    relative: scoreEvidence([
+      benchmarkAligned,
+      marketBreadthAligned,
+      relativeStrengthBucket === 'unknown'
+        ? null
+        : !relativeStrengthBucket.endsWith('_against'),
+    ]),
+    mtf: scoreEvidence([
+      mtfAlignmentForDirection === 'unknown'
+        ? null
+        : mtfAlignmentForDirection === 'aligned',
+    ]),
+    execution: scoreEvidence([
+      venueSpreadSeverity === 'unknown' ? null : venueSpreadSeverity !== 'wide',
+      targetVenueStale == null ? null : !targetVenueStale,
+      orderBookImbalanceAligned,
+      referenceOrderBookImbalanceAligned,
+    ]),
+    derivatives: scoreEvidence([derivativesDirectionAligned]),
+    totalContext: null,
+  };
+  scores.totalContext = averageScores([
+    scores.structure,
+    scores.participation,
+    scores.relative,
+    scores.mtf,
+    scores.execution,
+    scores.derivatives,
+  ]);
+  const volatilityRisk = extremeVolatilityRisk
+    ? 'high'
+    : atrPctRankBucket === 'high' || bbWidthRankBucket === 'high'
+      ? 'medium'
+      : atrPctRankBucket === 'unknown' && bbWidthRankBucket === 'unknown'
+        ? 'unknown'
+        : 'low';
+  const liquidityRisk =
+    targetVenueStale === true || venueSpreadSeverity === 'wide'
+      ? 'high'
+      : venueSpreadSeverity === 'elevated'
+        ? 'medium'
+        : venueSpreadSeverity === 'unknown'
+          ? 'unknown'
+          : 'low';
+  const regimeRisk =
+    higherTimeframeConflict === true
+      ? 'high'
+      : mtfAlignmentForDirection === 'neutral' ||
+          mtfAlignmentForDirection === 'unknown'
+        ? 'medium'
+        : 'low';
+  const crowdingRisk = derivativesCrowdedForDirection
+    ? 'high'
+    : derivativesCrowdedAny
+      ? 'medium'
+      : derivativesSummary
+        ? 'low'
+        : 'unknown';
+  const chaseRisk =
+    (direction === 'LONG' &&
+      rangePositionBucket === 'high' &&
+      breakoutWithDirection !== true) ||
+    (direction === 'SHORT' &&
+      rangePositionBucket === 'low' &&
+      breakoutWithDirection !== true)
+      ? 'high'
+      : (tpDistanceAtr != null && tpDistanceAtr < 1) ||
+          rangePositionBucket === 'high' ||
+          rangePositionBucket === 'low'
+        ? 'medium'
+        : rangePositionBucket === 'unknown'
+          ? 'unknown'
+          : 'low';
+  const primaryIssue = derivativesCrowdedForDirection
+    ? 'crowded_derivatives'
+    : higherTimeframeConflict === true
+      ? 'mtf_conflict'
+      : venueSpreadSeverity === 'wide' || targetVenueStale === true
+        ? 'bad_execution'
+        : extremeVolatilityRisk
+          ? 'extreme_volatility'
+          : benchmarkConflict || marketBreadthAligned === false
+            ? 'market_context_against'
+            : (scores.participation ?? 100) < 45
+              ? 'weak_participation'
+              : (scores.structure ?? 100) < 45
+                ? 'weak_structure'
+                : 'none';
+  const needsExtraConfirmation =
+    conflicts.length > 0 ||
+    (scores.totalContext != null && scores.totalContext < 60);
+  const approveBias =
+    conflicts.length >= 3 ||
+    primaryIssue === 'crowded_derivatives' ||
+    primaryIssue === 'bad_execution' ||
+    primaryIssue === 'mtf_conflict'
+      ? 'reject'
+      : confirmations.length >= 3 && conflicts.length === 0
+        ? 'support'
+        : 'neutral';
+  const maxReasonableQuality =
+    approveBias === 'reject'
+      ? 2
+      : conflicts.length >= 2 || needsExtraConfirmation
+        ? 3
+        : approveBias === 'support'
+          ? 5
+          : 4;
 
   return {
     direction,
+    setup: {
+      riskRatio: asFiniteNumberOrNull(prices?.riskRatio),
+      rewardToVolatility: tpDistanceAtr,
+      stopDistanceAtr,
+      tpDistanceAtr,
+      entryLocation,
+    },
+    scores,
+    confirmations: {
+      count: confirmations.length,
+      items: confirmations,
+    },
+    conflicts: {
+      count: conflicts.length,
+      items: conflicts,
+    },
+    risk: {
+      regimeRisk,
+      liquidityRisk,
+      volatilityRisk,
+      crowdingRisk,
+      chaseRisk,
+    },
+    decisionHints: {
+      approveBias,
+      maxReasonableQuality,
+      needsExtraConfirmation,
+      primaryIssue,
+    },
     mtf: {
       alignmentForDirection: mtfAlignmentForDirection,
-      higherTimeframeConflict:
-        mtfAlignmentForDirection === 'unknown'
-          ? null
-          : mtfAlignmentForDirection === 'against' ||
-            mtfAlignmentForDirection === 'mixed',
+      higherTimeframeConflict,
       h1TrendBias: mtfSummary?.h1TrendBias ?? 'unknown',
       h4TrendBias: mtfSummary?.h4TrendBias ?? 'unknown',
       d1TrendBias: mtfSummary?.d1TrendBias ?? 'unknown',
@@ -327,76 +769,48 @@ const buildBaseContextGateFeatures = ({
       atrPctZScore,
       atrPctRankBucket,
       bbWidthRankBucket,
-      extremeVolatilityRisk:
-        Math.abs(atrPctZScore ?? 0) >= 2 || atrPctRankBucket === 'extreme',
-      compressionBreakoutSupport:
-        (volatility?.state === 'compressed' || bbWidthRankBucket === 'low') &&
-        breakoutState !== 'inside_range' &&
-        breakoutState !== 'unknown',
+      extremeVolatilityRisk,
+      compressionBreakoutSupport,
     },
     structure: {
       breakoutState,
-      rangePositionBucket: toRangePositionBucket(
-        asFiniteNumberOrNull(localRange?.rangePosition20),
-      ),
-      breakoutWithDirection: toDirectionalAlignment({
-        direction,
-        bullValue: 'above_high_level',
-        bearValue: 'below_low_level',
-        value: breakoutState,
-      }),
-      failedBreakoutForDirection: toDirectionalAlignment({
-        direction,
-        bullValue: 'failed_low_breakout',
-        bearValue: 'failed_high_breakout',
-        value: breakoutState,
-      }),
-      liquiditySweepForDirection:
-        direction === 'LONG'
-          ? liquidity?.sweepState === 'swept_low'
-          : direction === 'SHORT'
-            ? liquidity?.sweepState === 'swept_high'
-            : null,
-      nearPointOfControl:
-        baseContext.participation?.priceVolumeProfile?.nearPointOfControl ??
-        null,
+      rangePositionBucket,
+      breakoutWithDirection,
+      failedBreakoutForDirection,
+      liquiditySweepForDirection,
+      nearPointOfControl,
     },
     participation: {
       volumeRel20,
       volumeBucket: toVolumeBucket(volumeRel20),
       deltaBias,
-      deltaAligned:
-        direction == null || deltaBias === 'unknown' || deltaBias === 'neutral'
-          ? null
-          : direction === 'LONG'
-            ? deltaBias === 'bull'
-            : deltaBias === 'bear',
-      volumeStructureAligned:
-        directionalVolumeShare == null ? null : directionalVolumeShare >= 0.5,
+      deltaAligned,
+      tradeFlowBuyPressurePct,
+      tradeFlowAligned,
+      referenceTradeFlowBuyPressurePct,
+      referenceTradeFlowAligned,
+      volumeStructureAligned,
     },
     relative: {
       benchmarkTrendAlignment,
       benchmarkAligned,
-      benchmarkConflict:
-        benchmarkAligned === false ||
-        toRelativeStrengthBucket({
-          direction,
-          value: relativeStrength1h,
-        }).endsWith('_against'),
+      benchmarkConflict,
       relativeStrength1h,
-      relativeStrengthBucket: toRelativeStrengthBucket({
-        direction,
-        value: relativeStrength1h,
-      }),
+      relativeStrengthBucket,
+      marketBreadthReturn,
+      marketBreadthAligned,
+      marketBreadthStale:
+        typeof marketBreadth?.stale === 'boolean' ? marketBreadth.stale : null,
     },
     execution: {
-      venueSpreadZScore: asFiniteNumberOrNull(execution?.venueSpreadZScore),
-      venueSpreadSeverity: toVenueSpreadSeverity(
-        asFiniteNumberOrNull(execution?.venueSpreadZScore),
-      ),
-      targetVenueSpreadBps: asFiniteNumberOrNull(targetVenue?.spreadBps),
-      targetVenueStale:
-        typeof targetVenue?.stale === 'boolean' ? targetVenue.stale : null,
+      venueSpreadZScore,
+      venueSpreadSeverity,
+      targetVenueSpreadBps,
+      targetVenueStale,
+      orderBookImbalance,
+      orderBookImbalanceAligned,
+      referenceOrderBookImbalance,
+      referenceOrderBookImbalanceAligned,
     },
   };
 };
@@ -404,6 +818,7 @@ const buildBaseContextGateFeatures = ({
 const cloneBaseContextData = (
   baseContext: BaseStrategyContextSnapshot,
   direction: Direction | null,
+  prices?: StrategySignalPriceParams | null,
 ): BaseStrategyContextSnapshot => {
   const clone = cloneSignalPayloadDataProperties(
     baseContext,
@@ -417,6 +832,7 @@ const cloneBaseContextData = (
   clone.gateFeatures = buildBaseContextGateFeatures({
     baseContext: clone,
     direction,
+    prices,
   });
 
   return clone;
@@ -425,6 +841,7 @@ const cloneBaseContextData = (
 const normalizeAdditionalIndicatorsBaseContext = (
   additionalIndicators: BuildStrategySignalParams['additionalIndicators'],
   direction: Direction | null,
+  prices?: StrategySignalPriceParams | null,
 ): BuildStrategySignalParams['additionalIndicators'] => {
   if (
     !additionalIndicators ||
@@ -443,8 +860,33 @@ const normalizeAdditionalIndicatorsBaseContext = (
 
   return {
     ...(additionalIndicators as Record<string, unknown>),
-    baseContext: cloneBaseContextData(baseContext, direction),
+    baseContext: cloneBaseContextData(baseContext, direction, prices),
   } as BuildStrategySignalParams['additionalIndicators'];
+};
+
+export const refreshSignalBaseContextGateFeatures = (signal: Signal) => {
+  const baseContext = signal.additionalIndicators?.baseContext;
+  if (
+    !baseContext ||
+    typeof baseContext !== 'object' ||
+    Array.isArray(baseContext)
+  ) {
+    return signal;
+  }
+
+  signal.additionalIndicators = {
+    ...(signal.additionalIndicators ?? {}),
+    baseContext: {
+      ...(baseContext as BaseStrategyContextSnapshot),
+      gateFeatures: buildBaseContextGateFeatures({
+        baseContext: baseContext as BaseStrategyContextSnapshot,
+        direction: signal.direction,
+        prices: signal.prices,
+      }),
+    },
+  };
+
+  return signal;
 };
 
 const withTargetVenueContext = (
@@ -545,6 +987,7 @@ export const buildStrategySignal = ({
     normalizeAdditionalIndicatorsBaseContext(
       mergedAdditionalIndicators,
       direction,
+      prices,
     );
 
   return {

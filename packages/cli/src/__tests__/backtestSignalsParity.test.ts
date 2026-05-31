@@ -219,6 +219,80 @@ const makeSignal = (candle: Candle): Signal =>
     additionalIndicators: {},
   }) as Signal;
 
+const attachBinanceParityBaseContext = async ({
+  signal,
+}: {
+  signal: Signal;
+}) => {
+  signal.additionalIndicators = {
+    ...(signal.additionalIndicators ?? {}),
+    baseContext: {
+      ...(signal.additionalIndicators?.baseContext ?? {}),
+      participation: {
+        tradeFlow: {
+          source: 'binance_agg_trades',
+          interval: '15m',
+          asOfTs: signal.timestamp,
+          ageMs: 0,
+          stale: false,
+          trades: 12,
+          buyPressurePct: 0.6,
+          buyBaseVolume: 6,
+          sellBaseVolume: 4,
+          buyQuoteVolume: 600,
+          sellQuoteVolume: 400,
+          netBaseDelta: 2,
+          netQuoteDelta: 200,
+        },
+      },
+      relative: {
+        marketBreadth: {
+          source: 'binance_klines',
+          universe: 'binance_top30_usdt',
+          interval: '15m',
+          asOfTs: signal.timestamp,
+          ageMs: 0,
+          stale: false,
+          symbolsCount: 30,
+          advancers: 20,
+          decliners: 8,
+          unchanged: 2,
+          advanceDeclineRatio: 2.5,
+          pctAboveMa20: 0.6,
+          pctAboveMa50: 0.55,
+          equalWeightedReturn: 0.01,
+          volumeWeightedReturn: 0.02,
+          dispersion: 0.03,
+        },
+        marketReferences: {
+          source: 'binance_reference_market',
+          primaryReferenceSymbol: 'BTCUSDT',
+          referenceSymbols: ['BTCUSDT', 'ETHUSDT'],
+          tradeFlowBySymbol: {
+            BTCUSDT: {
+              source: 'binance_agg_trades',
+              interval: '15m',
+              asOfTs: signal.timestamp,
+              ageMs: 0,
+              stale: false,
+              trades: 12,
+              buyPressurePct: 0.6,
+              buyBaseVolume: 6,
+              sellBaseVolume: 4,
+              buyQuoteVolume: 600,
+              sellQuoteVolume: 400,
+              netBaseDelta: 2,
+              netQuoteDelta: 200,
+            },
+          },
+          depthBySymbol: {},
+        },
+      },
+    },
+  };
+  return true;
+};
+
 const createTranscriptStrategy = (transcript: StrategyTranscript) => {
   const strategy = jest.fn(async (candle: Candle, btcCandle: Candle) => {
     const signal =
@@ -263,6 +337,7 @@ const createBacktestCase = (): Test =>
     strategyConfig: { INTERVAL: '15' },
     connectorName: 'ByBit',
     interval: '15',
+    ai: true,
     collectReplaySignalEvaluations: true,
   }) as Test;
 
@@ -284,6 +359,11 @@ const runBacktestPath = async () => {
       stat: { amount: 100, profit: 0, orders: 0 },
     }),
   };
+  const enrichedSignals: Signal[] = [];
+  const buildAiPayload = jest.fn((signal: Signal) => ({
+    signal,
+    additionalIndicators: signal.additionalIndicators,
+  }));
 
   jest.doMock('../../../node/src/tradejsConfig', () => ({
     getTradejsProjectCwd: () => '/tmp/tradejs-parity',
@@ -305,8 +385,15 @@ const runBacktestPath = async () => {
   jest.doMock('../../../node/src/strategyHelpers/derivativesContext', () => ({
     enrichSignalWithDerivativesContext: jest.fn(async () => true),
   }));
+  jest.doMock('../../../node/src/strategyHelpers/binanceMarketContext', () => ({
+    enrichSignalWithBinanceMarketContext: jest.fn(async (params) => {
+      await attachBinanceParityBaseContext(params);
+      enrichedSignals.push(params.signal);
+      return true;
+    }),
+  }));
   jest.doMock('../../../node/src/ai', () => ({
-    buildAiPayload: jest.fn(),
+    buildAiPayload,
   }));
   jest.doMock('../../../node/src/mlPayload', () => ({
     buildMlPayload: jest.fn(),
@@ -351,6 +438,7 @@ const runBacktestPath = async () => {
     return {
       transcript,
       evaluations: (result as any).inlineReplaySignalEvaluations,
+      enrichedSignals,
     };
   } finally {
     dateSpy.mockRestore();
@@ -419,6 +507,9 @@ const runSignalsPath = async () => {
     update: jest.fn(),
   }));
   jest.doMock('@tradejs/node/strategies', () => ({
+    enrichSignalWithBinanceMarketContext: jest.fn(
+      attachBinanceParityBaseContext,
+    ),
     getStrategyCreator: jest.fn(async () => strategyCreator),
   }));
   jest.doMock('@tradejs/core/async', () => ({
@@ -584,5 +675,9 @@ describe('backtest/signals runtime parity', () => {
         currentPrice: 12,
       },
     ]);
+    expect(backtestRun.enrichedSignals).toHaveLength(1);
+    expect(
+      backtestRun.enrichedSignals[0]?.additionalIndicators?.baseContext,
+    ).toEqual(signalsRun.storedSignals[0]?.additionalIndicators?.baseContext);
   });
 });

@@ -25,6 +25,10 @@ import {
   backfillDerivativesContextForBacktest,
   shouldBackfillDerivativesContextForBacktest,
 } from '../derivativesContextBackfill';
+import {
+  backfillBinanceMarketContextForBacktest,
+  shouldBackfillBinanceMarketContextForBacktest,
+} from '../binanceMarketContextBackfill';
 import { createTable, createTimestamp } from '../runFormatting';
 import {
   loadReplayStrategies as loadReplayStrategiesShared,
@@ -442,6 +446,26 @@ export const buildPreparedTestSuite = async ({
       backfillDerivativesContextForBacktest({
         userName,
         symbols: preparedSuite.map((test) => test.symbol),
+        startMs: window.start,
+        endMs: window.end,
+        preloadStartMs: preloadStart,
+      }),
+    );
+  }
+
+  if (
+    shouldBackfillBinanceMarketContextForBacktest({
+      aiEnabled,
+      cacheOnly: Boolean(flags.cacheOnly),
+      mlEnabled,
+    })
+  ) {
+    await timeOperation('binance market context backfill', () =>
+      backfillBinanceMarketContextForBacktest({
+        userName,
+        projectRoot,
+        symbols: preparedSuite.map((test) => test.symbol),
+        interval,
         startMs: window.start,
         endMs: window.end,
         preloadStartMs: preloadStart,

@@ -10,6 +10,8 @@ import {
   Tp,
   Candle,
   DerivativesContext,
+  MarketDepthLevelSummary,
+  MarketFeatureInterval,
 } from './trade';
 import { BacktestPriceMode, StrategyConfig, StrategyCreator } from './backtest';
 import { StrategyManifest } from './strategyAdapters';
@@ -485,6 +487,41 @@ export interface BaseStructureContext {
   };
 }
 
+export interface BaseMarketTradeFlowContext {
+  source: 'binance_agg_trades';
+  interval: MarketFeatureInterval;
+  asOfTs: number | null;
+  ageMs: number | null;
+  stale: boolean;
+  trades: number | null;
+  buyPressurePct: number | null;
+  buyBaseVolume: number | null;
+  sellBaseVolume: number | null;
+  buyQuoteVolume: number | null;
+  sellQuoteVolume: number | null;
+  netBaseDelta: number | null;
+  netQuoteDelta: number | null;
+}
+
+export interface BaseTargetVenueContext {
+  source: 'ticker_top_of_book' | 'binance_depth_snapshot';
+  venue: string | null;
+  symbol: string;
+  bid: number | null;
+  ask: number | null;
+  mid: number | null;
+  spreadBps: number | null;
+  topBidQty: number | null;
+  topAskQty: number | null;
+  snapshotTimestamp: number | null;
+  stale: boolean;
+  ageMs?: number | null;
+  lastUpdateId?: number | null;
+  depthLevels?: MarketDepthLevelSummary[];
+  rawBidLevels?: number | null;
+  rawAskLevels?: number | null;
+}
+
 export interface BaseParticipationContext {
   volume: {
     volumeRel20: number | null;
@@ -525,6 +562,7 @@ export interface BaseParticipationContext {
     deltaSlope: number | null;
     deltaDivergenceVsPrice: 'bullish' | 'bearish' | 'none' | 'unknown';
   };
+  tradeFlow?: BaseMarketTradeFlowContext;
 }
 
 export interface BaseRelativeContext {
@@ -545,19 +583,32 @@ export interface BaseRelativeContext {
   execution: {
     venueSpread: number | null;
     venueSpreadZScore: number | null;
-    targetVenue?: {
-      source: 'ticker_top_of_book';
-      venue: string | null;
-      symbol: string;
-      bid: number | null;
-      ask: number | null;
-      mid: number | null;
-      spreadBps: number | null;
-      topBidQty: number | null;
-      topAskQty: number | null;
-      snapshotTimestamp: number | null;
-      stale: boolean;
-    } | null;
+    targetVenue?: BaseTargetVenueContext | null;
+  };
+  marketBreadth?: {
+    source: 'binance_klines';
+    universe: string;
+    interval: MarketFeatureInterval;
+    asOfTs: number | null;
+    ageMs: number | null;
+    stale: boolean;
+    symbolsCount: number | null;
+    advancers: number | null;
+    decliners: number | null;
+    unchanged: number | null;
+    advanceDeclineRatio: number | null;
+    pctAboveMa20: number | null;
+    pctAboveMa50: number | null;
+    equalWeightedReturn: number | null;
+    volumeWeightedReturn: number | null;
+    dispersion: number | null;
+  };
+  marketReferences?: {
+    source: 'binance_reference_market';
+    primaryReferenceSymbol: string;
+    referenceSymbols: string[];
+    tradeFlowBySymbol: Record<string, BaseMarketTradeFlowContext>;
+    depthBySymbol: Record<string, BaseTargetVenueContext>;
   };
 }
 
@@ -590,8 +641,100 @@ export interface BaseMultiTimeframeContext {
   };
 }
 
+export type BaseGateFeatureEntryLocation =
+  | 'near_support'
+  | 'near_resistance'
+  | 'mid_range'
+  | 'breakout'
+  | 'breakdown'
+  | 'unknown';
+
+export type BaseGateFeatureScoreKey =
+  | 'structure'
+  | 'participation'
+  | 'relative'
+  | 'mtf'
+  | 'execution'
+  | 'derivatives'
+  | 'totalContext';
+
+export type BaseGateFeatureConfirmation =
+  | 'mtf_aligned'
+  | 'volume_expansion'
+  | 'delta_aligned'
+  | 'trade_flow_aligned'
+  | 'reference_trade_flow_aligned'
+  | 'market_breadth_aligned'
+  | 'benchmark_aligned'
+  | 'breakout_confirmed'
+  | 'liquidity_sweep_aligned'
+  | 'order_book_aligned'
+  | 'reference_order_book_aligned'
+  | 'derivatives_aligned';
+
+export type BaseGateFeatureConflict =
+  | 'mtf_against'
+  | 'mtf_mixed'
+  | 'benchmark_against'
+  | 'relative_strength_against'
+  | 'market_breadth_against'
+  | 'delta_against'
+  | 'trade_flow_against'
+  | 'reference_trade_flow_against'
+  | 'failed_breakout'
+  | 'extreme_volatility'
+  | 'wide_spread'
+  | 'target_venue_stale'
+  | 'order_book_against'
+  | 'reference_order_book_against'
+  | 'derivatives_against'
+  | 'derivatives_crowded';
+
+export type BaseGateFeatureRiskLevel = 'low' | 'medium' | 'high' | 'unknown';
+
+export type BaseGateFeatureApproveBias = 'support' | 'neutral' | 'reject';
+
+export type BaseGateFeaturePrimaryIssue =
+  | 'none'
+  | 'mtf_conflict'
+  | 'weak_structure'
+  | 'weak_participation'
+  | 'bad_execution'
+  | 'market_context_against'
+  | 'extreme_volatility'
+  | 'crowded_derivatives';
+
 export interface BaseContextGateFeatures {
   direction: Direction | null;
+  setup?: {
+    riskRatio: number | null;
+    rewardToVolatility: number | null;
+    stopDistanceAtr: number | null;
+    tpDistanceAtr: number | null;
+    entryLocation: BaseGateFeatureEntryLocation;
+  };
+  scores?: Record<BaseGateFeatureScoreKey, number | null>;
+  confirmations?: {
+    count: number;
+    items: BaseGateFeatureConfirmation[];
+  };
+  conflicts?: {
+    count: number;
+    items: BaseGateFeatureConflict[];
+  };
+  risk?: {
+    regimeRisk: BaseGateFeatureRiskLevel;
+    liquidityRisk: BaseGateFeatureRiskLevel;
+    volatilityRisk: BaseGateFeatureRiskLevel;
+    crowdingRisk: BaseGateFeatureRiskLevel;
+    chaseRisk: BaseGateFeatureRiskLevel;
+  };
+  decisionHints?: {
+    approveBias: BaseGateFeatureApproveBias;
+    maxReasonableQuality: 1 | 2 | 3 | 4 | 5;
+    needsExtraConfirmation: boolean;
+    primaryIssue: BaseGateFeaturePrimaryIssue;
+  };
   mtf?: {
     alignmentForDirection:
       | 'aligned'
@@ -627,6 +770,10 @@ export interface BaseContextGateFeatures {
     volumeBucket: 'thin' | 'normal' | 'elevated' | 'spike' | 'unknown';
     deltaBias: 'bull' | 'bear' | 'neutral' | 'unknown';
     deltaAligned: boolean | null;
+    tradeFlowBuyPressurePct: number | null;
+    tradeFlowAligned: boolean | null;
+    referenceTradeFlowBuyPressurePct: number | null;
+    referenceTradeFlowAligned: boolean | null;
     volumeStructureAligned: boolean | null;
   };
   relative: {
@@ -641,12 +788,19 @@ export interface BaseContextGateFeatures {
       | 'mild_with'
       | 'strong_with'
       | 'unknown';
+    marketBreadthReturn: number | null;
+    marketBreadthAligned: boolean | null;
+    marketBreadthStale: boolean | null;
   };
   execution: {
     venueSpreadZScore: number | null;
     venueSpreadSeverity: 'normal' | 'elevated' | 'wide' | 'unknown';
     targetVenueSpreadBps: number | null;
     targetVenueStale: boolean | null;
+    orderBookImbalance: number | null;
+    orderBookImbalanceAligned: boolean | null;
+    referenceOrderBookImbalance: number | null;
+    referenceOrderBookImbalanceAligned: boolean | null;
   };
 }
 

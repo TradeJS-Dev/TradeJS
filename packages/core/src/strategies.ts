@@ -10,10 +10,12 @@ export {
 } from './utils/strategyHelpers/market';
 export {
   buildEntrySignalDecision,
+  buildBaseContextGateFeatures,
   buildStrategySignal,
   createStrategyAPI,
   mapAiRuntimeFromConfig,
   mapMlRuntimeFromConfig,
+  refreshSignalBaseContextGateFeatures,
 } from './utils/strategyHelpers/signalBuilders';
 export {
   getSharedStrategyReplayState,

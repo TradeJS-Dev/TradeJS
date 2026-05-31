@@ -101,6 +101,11 @@ jest.mock('../lib/derivativesContextBackfill', () => ({
   shouldBackfillDerivativesContextForBacktest: jest.fn(),
 }));
 
+jest.mock('../lib/binanceMarketContextBackfill', () => ({
+  backfillBinanceMarketContextForBacktest: jest.fn(),
+  shouldBackfillBinanceMarketContextForBacktest: jest.fn(),
+}));
+
 jest.mock('../lib/cliArgs', () => ({
   normalizeCliArgv: jest.fn((argv: string[]) => argv),
 }));

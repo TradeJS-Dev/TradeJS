@@ -21,6 +21,7 @@ export {
   enrichSignalWithMlAi,
   executeEntryOrder,
 } from './strategyHelpers/runtime';
+export { enrichSignalWithBinanceMarketContext } from './strategyHelpers/binanceMarketContext';
 export {
   closeOppositePositionsBeforeOpen,
   createCloseOppositeBeforePlaceOrderHook,
