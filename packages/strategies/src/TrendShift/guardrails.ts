@@ -34,13 +34,20 @@ export type TrendShiftGuardrailContext = TrendShiftSignalContext & {
   selectiveNeutralQ4Candidate: boolean;
   longRelativeStrengthOverextended: boolean;
   longPriceUpOiDivergence: boolean;
+  longLowerTailPriceUpOiDivergence: boolean;
   shortUsLongFlushRisk: boolean;
   shortFailedLowOiNotConfirming: boolean;
+  shortBelowLowOiFallingLongFlushRisk: boolean;
+  q4GateFeaturesRecoveryCandidate: boolean;
   breakoutState: string | null;
   volumeRel20: number | null;
   atrPctZScore: number | null;
   adaptiveChannelDirection: string | null;
+  liquidityTailSide: string | null;
   relativeStrength1h: number | null;
+  gateRelativeStrengthBucket: string | null;
+  gateConflictCount: number | null;
+  gateMtfAlignment: string | null;
   sessionPrimary: string | null;
   sessionIsOverlap: boolean;
   priceOiDivergenceType: string | null;
@@ -76,6 +83,9 @@ export const buildTrendShiftGuardrailContext = ({
   const benchmark = baseContext?.relative?.benchmark ?? null;
   const volatility = baseContext?.regime?.volatility ?? null;
   const adaptiveChannel = baseContext?.regime?.trend?.adaptiveChannel ?? null;
+  const gateFeatures = baseContext?.gateFeatures ?? null;
+  const liquidityTail =
+    baseContext?.structure?.liquidityTails?.currentTail ?? null;
   const hardBlockReasons: string[] = [];
   const coinBiasConflict = signalContext.coinBiasAligned === false;
   const derivativesRiskFlags = asStringArray(derivativesSummary?.riskFlags);
@@ -97,7 +107,18 @@ export const buildTrendShiftGuardrailContext = ({
     typeof adaptiveChannel?.direction === 'string'
       ? adaptiveChannel.direction
       : null;
+  const liquidityTailSide =
+    typeof liquidityTail?.side === 'string' ? liquidityTail.side : null;
   const relativeStrength1h = asFiniteNumber(benchmark?.relativeStrength1h);
+  const gateRelativeStrengthBucket =
+    typeof gateFeatures?.relative?.relativeStrengthBucket === 'string'
+      ? gateFeatures.relative.relativeStrengthBucket
+      : null;
+  const gateConflictCount = asFiniteNumber(gateFeatures?.conflicts?.count);
+  const gateMtfAlignment =
+    typeof gateFeatures?.mtf?.alignmentForDirection === 'string'
+      ? gateFeatures.mtf.alignmentForDirection
+      : null;
   const priceOiDivergenceType =
     typeof derivativesSummary?.priceOiDivergenceType === 'string'
       ? derivativesSummary.priceOiDivergenceType
@@ -120,6 +141,10 @@ export const buildTrendShiftGuardrailContext = ({
         ? derivativesRiskFlags.includes('short_liquidation_spike')
         : false;
   const oiNotConfirming = derivativesRiskFlags.includes('oi_not_confirming');
+  const hasOnlyOiFallingLongLiquidationSpike =
+    derivativesRiskFlags.length === 2 &&
+    derivativesRiskFlags.includes('oi_falling') &&
+    derivativesRiskFlags.includes('long_liquidation_spike');
   const coreLongQ5Candidate =
     signalContext.signalDirection === 'LONG' &&
     distanceAtrRatio >= 0.8 &&
@@ -355,6 +380,10 @@ export const buildTrendShiftGuardrailContext = ({
   const longPriceUpOiDivergence =
     signalContext.signalDirection === 'LONG' &&
     priceOiDivergenceType === 'price_up_oi_down';
+  const longLowerTailPriceUpOiDivergence =
+    signalContext.signalDirection === 'LONG' &&
+    liquidityTailSide === 'lower' &&
+    priceOiDivergenceType === 'price_up_oi_up';
   const shortUsLongFlushRisk =
     signalContext.signalDirection === 'SHORT' &&
     sessionPrimary === 'us' &&
@@ -363,6 +392,14 @@ export const buildTrendShiftGuardrailContext = ({
     signalContext.signalDirection === 'SHORT' &&
     breakoutState === 'failed_low_breakout' &&
     priceOiDivergenceType === 'price_down_oi_down';
+  const shortBelowLowOiFallingLongFlushRisk =
+    signalContext.signalDirection === 'SHORT' &&
+    breakoutState === 'below_low_level' &&
+    sessionPrimary != null &&
+    sessionPrimary !== 'asia' &&
+    derivativesPressure === 'long_flush' &&
+    priceOiDivergenceType === 'price_down_oi_down' &&
+    hasOnlyOiFallingLongLiquidationSpike;
 
   if (deterministicQuality >= 5 && longRelativeStrengthOverextended) {
     deterministicQuality = 4;
@@ -374,6 +411,11 @@ export const buildTrendShiftGuardrailContext = ({
     hardBlockReasons.push('long_price_up_oi_down');
   }
 
+  if (deterministicQuality >= 5 && longLowerTailPriceUpOiDivergence) {
+    deterministicQuality = 4;
+    hardBlockReasons.push('long_lower_tail_price_up_oi_up');
+  }
+
   if (deterministicQuality >= 5 && shortUsLongFlushRisk) {
     deterministicQuality = 4;
     hardBlockReasons.push('short_us_long_flush');
@@ -382,6 +424,32 @@ export const buildTrendShiftGuardrailContext = ({
   if (deterministicQuality >= 5 && shortFailedLowOiNotConfirming) {
     deterministicQuality = 4;
     hardBlockReasons.push('short_failed_low_oi_not_confirming');
+  }
+
+  if (deterministicQuality >= 5 && shortBelowLowOiFallingLongFlushRisk) {
+    deterministicQuality = 4;
+    hardBlockReasons.push('short_below_low_oi_falling_long_flush');
+  }
+
+  const gateFeaturesRecoveryAllowedReasons = [
+    'neutral_derivatives_pressure',
+    'us_short_oi_not_expanding',
+  ];
+  const q4GateFeaturesRecoveryCandidate =
+    deterministicQuality === 4 &&
+    signalContext.confirmedFlip === true &&
+    signalContext.flipDistanceOk === true &&
+    gateRelativeStrengthBucket === 'neutral' &&
+    gateConflictCount === 2 &&
+    gateMtfAlignment !== 'against' &&
+    hardBlockReasons.length > 0 &&
+    hardBlockReasons.every((reason) =>
+      gateFeaturesRecoveryAllowedReasons.includes(reason),
+    );
+
+  if (q4GateFeaturesRecoveryCandidate) {
+    deterministicQuality = 5;
+    hardBlockReasons.length = 0;
   }
 
   return {
@@ -403,13 +471,20 @@ export const buildTrendShiftGuardrailContext = ({
     selectiveNeutralQ4Candidate,
     longRelativeStrengthOverextended,
     longPriceUpOiDivergence,
+    longLowerTailPriceUpOiDivergence,
     shortUsLongFlushRisk,
     shortFailedLowOiNotConfirming,
+    shortBelowLowOiFallingLongFlushRisk,
+    q4GateFeaturesRecoveryCandidate,
     breakoutState,
     volumeRel20,
     atrPctZScore,
     adaptiveChannelDirection,
+    liquidityTailSide,
     relativeStrength1h,
+    gateRelativeStrengthBucket,
+    gateConflictCount,
+    gateMtfAlignment,
     sessionPrimary,
     sessionIsOverlap,
     priceOiDivergenceType,
@@ -456,10 +531,14 @@ export const getTrendShiftGuardrailReasonText = (reason: string) => {
       return 'the LONG flip is already too extended versus BTC on the 1h relative-strength read';
     case 'long_price_up_oi_down':
       return 'the LONG flip is rising while open interest falls, so continuation confirmation is weak';
+    case 'long_lower_tail_price_up_oi_up':
+      return 'the LONG flip is chasing a lower liquidity tail after price and open interest already expanded';
     case 'short_us_long_flush':
       return 'the US-session SHORT long-flush pocket has not been reliable enough for live approval';
     case 'short_failed_low_oi_not_confirming':
       return 'the SHORT failed-low-breakout setup lacks expanding open-interest confirmation';
+    case 'short_below_low_oi_falling_long_flush':
+      return 'the SHORT breakdown is a long-liquidation flush with falling open interest, so continuation confirmation is weak outside Asia';
     default:
       return reason;
   }

@@ -982,6 +982,168 @@ describe('trendShiftAiAdapter', () => {
     });
   });
 
+  it('recovers a q5 downgrade when gateFeatures show a neutral low-conflict context', () => {
+    const result = trendShiftAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makePayload(
+        {
+          signalDirection: 'LONG',
+          confirmedFlip: true,
+          bullFlip: true,
+          flipDistanceOk: true,
+          closeVsAvgPct: 0.3,
+          avgSlopePct: 0.11,
+          distanceAtrRatio: 0.95,
+          coinBiasAligned: true,
+        },
+        {
+          baseContext: {
+            gateFeatures: {
+              relative: {
+                relativeStrengthBucket: 'neutral',
+              },
+              conflicts: {
+                count: 2,
+                items: ['mtf_mixed', 'benchmark_against'],
+              },
+              mtf: {
+                alignmentForDirection: 'mixed',
+              },
+            },
+          },
+          derivativesContext: {
+            summary: {
+              pressure: 'neutral',
+              directionAligned: null,
+              riskFlags: [],
+            },
+          },
+        },
+      ),
+      analysis: {
+        direction: 'LONG',
+        quality: 1,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: 'LONG',
+      quality: 5,
+      approved: true,
+    });
+  });
+
+  it('keeps the gateFeatures recovery pocket in watch mode when MTF is against the trade', () => {
+    const result = trendShiftAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makePayload(
+        {
+          signalDirection: 'LONG',
+          confirmedFlip: true,
+          bullFlip: true,
+          flipDistanceOk: true,
+          closeVsAvgPct: 0.3,
+          avgSlopePct: 0.11,
+          distanceAtrRatio: 0.95,
+          coinBiasAligned: true,
+        },
+        {
+          baseContext: {
+            gateFeatures: {
+              relative: {
+                relativeStrengthBucket: 'neutral',
+              },
+              conflicts: {
+                count: 2,
+                items: ['mtf_against', 'benchmark_against'],
+              },
+              mtf: {
+                alignmentForDirection: 'against',
+              },
+            },
+          },
+          derivativesContext: {
+            summary: {
+              pressure: 'neutral',
+              directionAligned: null,
+              riskFlags: [],
+            },
+          },
+        },
+      ),
+      analysis: {
+        direction: 'LONG',
+        quality: 1,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: null,
+      quality: 4,
+      approved: false,
+      rejectReason:
+        'derivatives pressure is neutral, so the flip still lacks conviction',
+    });
+  });
+
+  it('recovers US-session SHORT OI non-expansion only when gateFeatures agree', () => {
+    const result = trendShiftAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makePayload(
+        {
+          signalDirection: 'SHORT',
+          confirmedFlip: true,
+          bearFlip: true,
+          flipDistanceOk: true,
+          closeVsAvgPct: 0.3,
+          avgSlopePct: 0.11,
+          distanceAtrRatio: 0.95,
+          coinBiasAligned: true,
+        },
+        {
+          baseContext: {
+            regime: {
+              session: {
+                sessionPhase: 'us',
+                isOverlap: false,
+              },
+            },
+            gateFeatures: {
+              relative: {
+                relativeStrengthBucket: 'neutral',
+              },
+              conflicts: {
+                count: 2,
+                items: ['mtf_mixed', 'benchmark_against'],
+              },
+              mtf: {
+                alignmentForDirection: 'mixed',
+              },
+            },
+          },
+          derivativesContext: {
+            summary: {
+              pressure: 'long_flush',
+              directionAligned: true,
+              priceOiDivergenceType: 'price_down_oi_down',
+              riskFlags: ['long_liquidation_spike'],
+            },
+          },
+        },
+      ),
+      analysis: {
+        direction: 'SHORT',
+        quality: 1,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: 'SHORT',
+      quality: 5,
+      approved: true,
+    });
+  });
+
   it('keeps neutral q4 SHORT failed-low breakouts in watch mode even when the adaptive channel is bearish', () => {
     const result = trendShiftAiAdapter.postProcessAnalysis?.({
       signal: {} as any,
@@ -1376,6 +1538,171 @@ describe('trendShiftAiAdapter', () => {
       approved: false,
       rejectReason:
         'the LONG flip is rising while open interest falls, so continuation confirmation is weak',
+    });
+  });
+
+  it('keeps q5 LONG in watch mode when a lower liquidity tail follows rising price and OI', () => {
+    const result = trendShiftAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makePayload(
+        {
+          signalDirection: 'LONG',
+          confirmedFlip: true,
+          bullFlip: true,
+          flipDistanceOk: true,
+          closeVsAvgPct: 0.3,
+          avgSlopePct: 0.11,
+          distanceAtrRatio: 0.95,
+          coinBiasAligned: true,
+        },
+        {
+          baseContext: {
+            structure: {
+              liquidityTails: {
+                currentTail: {
+                  side: 'lower',
+                },
+              },
+            },
+            gateFeatures: {
+              relative: {
+                relativeStrengthBucket: 'neutral',
+              },
+              conflicts: {
+                count: 2,
+                items: ['mtf_mixed', 'benchmark_against'],
+              },
+              mtf: {
+                alignmentForDirection: 'mixed',
+              },
+            },
+          },
+          derivativesContext: {
+            summary: {
+              pressure: 'short_flush',
+              directionAligned: true,
+              riskFlags: ['short_liquidation_spike'],
+              priceOiDivergenceType: 'price_up_oi_up',
+            },
+          },
+        },
+      ),
+      analysis: {
+        direction: 'LONG',
+        quality: 1,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: null,
+      quality: 4,
+      approved: false,
+      rejectReason:
+        'the LONG flip is chasing a lower liquidity tail after price and open interest already expanded',
+    });
+  });
+
+  it('keeps q5 SHORT below-low long-liquidation flushes in watch mode when OI is falling outside Asia', () => {
+    const result = trendShiftAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makePayload(
+        {
+          signalDirection: 'SHORT',
+          confirmedFlip: true,
+          bearFlip: true,
+          flipDistanceOk: true,
+          closeVsAvgPct: 0.3,
+          avgSlopePct: 0.11,
+          distanceAtrRatio: 0.95,
+          coinBiasAligned: true,
+        },
+        {
+          baseContext: {
+            regime: {
+              session: {
+                sessionPhase: 'europe',
+                isOverlap: false,
+              },
+            },
+            structure: {
+              localRange: {
+                breakoutState: 'below_low_level',
+              },
+            },
+          },
+          derivativesContext: {
+            summary: {
+              pressure: 'long_flush',
+              directionAligned: false,
+              riskFlags: ['oi_falling', 'long_liquidation_spike'],
+              priceOiDivergenceType: 'price_down_oi_down',
+            },
+          },
+        },
+      ),
+      analysis: {
+        direction: 'SHORT',
+        quality: 1,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: null,
+      quality: 4,
+      approved: false,
+      rejectReason:
+        'the SHORT breakdown is a long-liquidation flush with falling open interest, so continuation confirmation is weak outside Asia',
+    });
+  });
+
+  it('still approves q5 SHORT below-low long-liquidation flushes with falling OI in Asia', () => {
+    const result = trendShiftAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makePayload(
+        {
+          signalDirection: 'SHORT',
+          confirmedFlip: true,
+          bearFlip: true,
+          flipDistanceOk: true,
+          closeVsAvgPct: 0.3,
+          avgSlopePct: 0.11,
+          distanceAtrRatio: 0.95,
+          coinBiasAligned: true,
+        },
+        {
+          baseContext: {
+            regime: {
+              session: {
+                sessionPhase: 'asia',
+                isOverlap: false,
+              },
+            },
+            structure: {
+              localRange: {
+                breakoutState: 'below_low_level',
+              },
+            },
+          },
+          derivativesContext: {
+            summary: {
+              pressure: 'long_flush',
+              directionAligned: false,
+              riskFlags: ['oi_falling', 'long_liquidation_spike'],
+              priceOiDivergenceType: 'price_down_oi_down',
+            },
+          },
+        },
+      ),
+      analysis: {
+        direction: 'SHORT',
+        quality: 1,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: 'SHORT',
+      quality: 5,
+      approved: true,
     });
   });
 
