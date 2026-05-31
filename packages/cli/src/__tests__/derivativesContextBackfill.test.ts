@@ -3,6 +3,7 @@ import {
   resolveDerivativesContextMissingFetchFromMs,
   resolveDerivativesContextBackfillWindow,
   resolveDerivativesContextBackfillSymbols,
+  formatCoinalyzeRequestError,
   shouldBackfillDerivativesContextForBacktest,
   shouldBackfillDerivativesContextForSignals,
 } from '../lib/derivativesContextBackfill';
@@ -267,5 +268,30 @@ describe('resolveDerivativesContextMissingFetchFromMs', () => {
         intervalMs: 1_000,
       }),
     ).toBeNull();
+  });
+});
+
+describe('formatCoinalyzeRequestError', () => {
+  it('formats nested fetch timeout errors without raw undici stack noise', () => {
+    const error = Object.assign(new TypeError('fetch failed'), {
+      cause: Object.assign(new Error('Connect Timeout Error'), {
+        code: 'UND_ERR_CONNECT_TIMEOUT',
+      }),
+    });
+    const message = formatCoinalyzeRequestError({
+      url: 'https://api.coinalyze.net/v1/future-markets',
+      error,
+      attempts: 5,
+      timeoutMs: 10_000,
+    });
+
+    expect(message).toContain(
+      'Coinalyze request failed: https://api.coinalyze.net/v1/future-markets',
+    );
+    expect(message).toContain('cause=UND_ERR_CONNECT_TIMEOUT');
+    expect(message).toContain('attempts=5');
+    expect(message).toContain('timeout=10000ms');
+    expect(message).toContain('DERIVATIVES_CONTEXT_ENABLED=live');
+    expect(message).not.toContain('at ');
   });
 });

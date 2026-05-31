@@ -299,10 +299,91 @@ const getRequestDelayMs = () =>
 const getRequestTimeoutMs = () =>
   Math.max(5_000, asInt(process.env.COINALYZE_REQUEST_TIMEOUT_MS, 45_000));
 
+const networkErrorCodes = new Set([
+  'UND_ERR_CONNECT_TIMEOUT',
+  'ETIMEDOUT',
+  'ECONNRESET',
+  'ECONNREFUSED',
+  'ENOTFOUND',
+  'EAI_AGAIN',
+  'EHOSTUNREACH',
+]);
+
+const getNestedErrorValue = (
+  error: unknown,
+  key: 'code' | 'name' | 'message',
+): string | null => {
+  let current = error;
+  const seen = new Set<unknown>();
+
+  while (current && typeof current === 'object' && !seen.has(current)) {
+    seen.add(current);
+    const record = current as Record<string, unknown>;
+    const value = record[key];
+    if (typeof value === 'string' && value.trim()) {
+      return value.trim();
+    }
+    current = record.cause;
+  }
+
+  return null;
+};
+
+const getCoinalyzeErrorCause = (error: unknown) => {
+  const code = getNestedErrorValue(error, 'code');
+  const message =
+    getNestedErrorValue(error, 'message') ?? String(error || 'unknown error');
+
+  return code ? `${code}: ${message}` : message;
+};
+
+const isRetryableCoinalyzeFetchError = (error: unknown) => {
+  const name = getNestedErrorValue(error, 'name');
+  const code = getNestedErrorValue(error, 'code');
+  const message = getNestedErrorValue(error, 'message')?.toLowerCase() ?? '';
+
+  return (
+    name === 'AbortError' ||
+    (code != null && networkErrorCodes.has(code)) ||
+    message.includes('aborted') ||
+    message.includes('fetch failed')
+  );
+};
+
+export const formatCoinalyzeRequestError = ({
+  url,
+  error,
+  attempts,
+  timeoutMs,
+}: {
+  url: string;
+  error: unknown;
+  attempts: number;
+  timeoutMs: number;
+}) => {
+  const endpoint = (() => {
+    try {
+      const parsed = new URL(url);
+      return `${parsed.origin}${parsed.pathname}`;
+    } catch {
+      return url;
+    }
+  })();
+
+  return [
+    `Coinalyze request failed: ${endpoint}`,
+    `cause=${getCoinalyzeErrorCause(error)}`,
+    `attempts=${attempts}`,
+    `timeout=${timeoutMs}ms`,
+    'Set COINALYZE_REQUEST_TIMEOUT_MS/COINALYZE_MAX_RETRIES to retry longer, or DERIVATIVES_CONTEXT_ENABLED=live to skip derivatives backfill during backtests.',
+  ].join('; ');
+};
+
 const fetchJsonWithRateLimit = async (url: string, apiKey: string) => {
   const requestDelayMs = getRequestDelayMs();
   const requestTimeoutMs = getRequestTimeoutMs();
   const maxRetries = asInt(process.env.COINALYZE_MAX_RETRIES, 4);
+  let lastError: unknown = null;
 
   for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
     const waitMs = Math.max(0, lastRequestTs + requestDelayMs - Date.now());
@@ -325,15 +406,19 @@ const fetchJsonWithRateLimit = async (url: string, apiKey: string) => {
       });
     } catch (error) {
       clearTimeout(timer);
-      const abortError =
-        error instanceof Error &&
-        (error.name === 'AbortError' ||
-          String(error.message).toLowerCase().includes('aborted'));
-      if (attempt < maxRetries && abortError) {
+      lastError = error;
+      if (attempt < maxRetries && isRetryableCoinalyzeFetchError(error)) {
         await delay(Math.min(12_000, 800 * 2 ** attempt));
         continue;
       }
-      throw error;
+      throw new Error(
+        formatCoinalyzeRequestError({
+          url,
+          error,
+          attempts: attempt + 1,
+          timeoutMs: requestTimeoutMs,
+        }),
+      );
     } finally {
       clearTimeout(timer);
     }
@@ -357,7 +442,14 @@ const fetchJsonWithRateLimit = async (url: string, apiKey: string) => {
     throw new Error(`Coinalyze ${response.status}: ${text}`);
   }
 
-  throw new Error('Coinalyze request failed after retries');
+  throw new Error(
+    formatCoinalyzeRequestError({
+      url,
+      error: lastError,
+      attempts: maxRetries + 1,
+      timeoutMs: requestTimeoutMs,
+    }),
+  );
 };
 
 const fetchCoinalyzeMarkets = async (
