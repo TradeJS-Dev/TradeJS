@@ -155,13 +155,30 @@ describe('buildStrategySignal', () => {
     });
 
     expect(signal.additionalIndicators?.touches).toBe(3);
-    expect(signal.additionalIndicators?.baseContext).toEqual(baseContext);
+    expect(signal.additionalIndicators?.baseContext).toMatchObject({
+      ...baseContext,
+      mtf: {
+        compact: true,
+        candles: baseContext.mtf.candles,
+        benchmarkCandles: baseContext.mtf.benchmarkCandles,
+      },
+      gateFeatures: expect.objectContaining({
+        direction: 'LONG',
+        mtf: expect.objectContaining({
+          alignmentForDirection: 'unknown',
+        }),
+        relative: expect.objectContaining({
+          benchmarkAligned: true,
+          benchmarkConflict: false,
+        }),
+      }),
+    });
     expect(signal.indicators).toEqual({
       maFast: [100],
     });
   });
 
-  it('copies baseContext data without evaluating lazy mtf getters', () => {
+  it('copies compact baseContext mtf data by evaluating lazy mtf getters once', () => {
     let mtfGetterCalls = 0;
     const liveBaseContext = {
       raw: {
@@ -178,7 +195,12 @@ describe('buildStrategySignal', () => {
         mtfGetterCalls += 1;
         return {
           candles: {
-            m15: [{ close: 101, timestamp: 1 }],
+            m15: [
+              { close: 100, timestamp: 0 },
+              { close: 101, timestamp: 1 },
+              { close: 102, timestamp: 2 },
+              { close: 103, timestamp: 3 },
+            ],
             h1: [],
             h4: [],
             d1: [],
@@ -188,6 +210,14 @@ describe('buildStrategySignal', () => {
             h1: [],
             h4: [],
             d1: [],
+          },
+          summary: {
+            h1TrendBias: 'bear',
+            h4TrendBias: 'bear',
+            d1TrendBias: 'neutral',
+            h1RangePosition: 0.25,
+            h4VolatilityState: 'normal',
+            mtfAlignment: 'aligned_bear',
           },
         };
       },
@@ -211,9 +241,9 @@ describe('buildStrategySignal', () => {
       },
     });
 
-    expect(mtfGetterCalls).toBe(0);
+    expect(mtfGetterCalls).toBe(1);
     expect(signal.additionalIndicators?.baseContext).not.toBe(liveBaseContext);
-    expect(signal.additionalIndicators?.baseContext).toEqual({
+    expect(signal.additionalIndicators?.baseContext).toMatchObject({
       raw: {
         trend: {
           maFast: 100,
@@ -223,6 +253,26 @@ describe('buildStrategySignal', () => {
         session: {
           sessionPhase: 'us',
         },
+      },
+      mtf: {
+        compact: true,
+        candles: {
+          m15: [
+            { close: 101, timestamp: 1 },
+            { close: 102, timestamp: 2 },
+            { close: 103, timestamp: 3 },
+          ],
+        },
+        summary: {
+          mtfAlignment: 'aligned_bear',
+        },
+      },
+      gateFeatures: {
+        direction: 'SHORT',
+        mtf: expect.objectContaining({
+          alignmentForDirection: 'aligned',
+          higherTimeframeConflict: false,
+        }),
       },
     });
   });

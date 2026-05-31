@@ -12,6 +12,10 @@ CREATE TABLE IF NOT EXISTS candles (
   close      double precision NOT NULL,
   volume     double precision,
   turnover   double precision,
+  taker_buy_base_volume   double precision,
+  taker_buy_quote_volume  double precision,
+  taker_sell_base_volume  double precision,
+  taker_sell_quote_volume double precision,
   PRIMARY KEY (provider, symbol, interval, ts)
 );
 

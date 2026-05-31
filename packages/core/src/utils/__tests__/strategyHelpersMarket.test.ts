@@ -111,4 +111,42 @@ describe('strategyHelpers/market getStrategyMarketSnapshot', () => {
       stale: false,
     });
   });
+
+  it('prefers connector top-of-book endpoint over full ticker list', async () => {
+    const nowSpy = jest.spyOn(Date, 'now').mockReturnValue(1_700_000_000_000);
+    const connector = {
+      kline: jest.fn(async () => [candle]),
+      getTopOfBookTicker: jest.fn(async () => ({
+        symbol: 'BTCUSDT',
+        bidPrice: 99,
+        askPrice: 101,
+        bidQty: 3,
+        askQty: 2,
+        timestamp: 1_699_999_999_000,
+      })),
+      getTickers: jest.fn(async () => []),
+    } as any;
+
+    const snapshot = await getStrategyMarketSnapshot({
+      ...baseParams,
+      env: 'SIGNALS',
+      connector,
+    });
+
+    expect(snapshot.targetVenue).toMatchObject({
+      source: 'ticker_top_of_book',
+      symbol: 'BTCUSDT',
+      bid: 99,
+      ask: 101,
+      mid: 100,
+      spreadBps: 200,
+      topBidQty: 3,
+      topAskQty: 2,
+      snapshotTimestamp: 1_699_999_999_000,
+      stale: false,
+    });
+    expect(connector.getTopOfBookTicker).toHaveBeenCalledWith('BTCUSDT');
+    expect(connector.getTickers).not.toHaveBeenCalled();
+    nowSpy.mockRestore();
+  });
 });

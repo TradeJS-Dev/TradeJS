@@ -193,5 +193,32 @@ export const BinanceConnectorCreator: ConnectorCreator = async () => {
         } as Ticker;
       });
     },
+
+    getTopOfBookTicker: async (symbol) => {
+      const normalizedSymbol = String(symbol || '')
+        .trim()
+        .toUpperCase();
+      if (!normalizedSymbol) return null;
+
+      const baseUrl =
+        process.env.BINANCE_BASE_URL?.trim() || 'https://api.binance.com';
+      const url = new URL(`${baseUrl}/api/v3/ticker/bookTicker`);
+      url.searchParams.set('symbol', normalizedSymbol);
+
+      const response = await fetchWithRetry(url.toString(), {
+        headers: { 'User-Agent': 'tradejs/binance-connector' },
+      });
+      if (!response.ok) return null;
+
+      const row = (await response.json()) as Record<string, unknown>;
+      return {
+        symbol: String(row.symbol ?? normalizedSymbol),
+        bidPrice: toNum(row.bidPrice),
+        bidQty: toNum(row.bidQty),
+        askPrice: toNum(row.askPrice),
+        askQty: toNum(row.askQty),
+        timestamp: Date.now(),
+      };
+    },
   };
 };

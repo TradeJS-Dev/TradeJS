@@ -562,6 +562,7 @@ export interface BaseRelativeContext {
 }
 
 export interface BaseMultiTimeframeContext {
+  compact?: boolean;
   candles: {
     m15: Candle[];
     h1: Candle[];
@@ -589,6 +590,66 @@ export interface BaseMultiTimeframeContext {
   };
 }
 
+export interface BaseContextGateFeatures {
+  direction: Direction | null;
+  mtf?: {
+    alignmentForDirection:
+      | 'aligned'
+      | 'against'
+      | 'mixed'
+      | 'neutral'
+      | 'unknown';
+    higherTimeframeConflict: boolean | null;
+    h1TrendBias: 'bull' | 'bear' | 'neutral' | 'unknown';
+    h4TrendBias: 'bull' | 'bear' | 'neutral' | 'unknown';
+    d1TrendBias: 'bull' | 'bear' | 'neutral' | 'unknown';
+    h1RangePosition: number | null;
+    h4VolatilityState: 'compressed' | 'normal' | 'expanded' | 'unknown';
+  };
+  volatility: {
+    state: 'compressed' | 'normal' | 'expanded' | 'unknown';
+    atrPctZScore: number | null;
+    atrPctRankBucket: 'low' | 'normal' | 'high' | 'extreme' | 'unknown';
+    bbWidthRankBucket: 'low' | 'normal' | 'high' | 'extreme' | 'unknown';
+    extremeVolatilityRisk: boolean;
+    compressionBreakoutSupport: boolean;
+  };
+  structure: {
+    breakoutState: BaseStructureContext['localRange']['breakoutState'];
+    rangePositionBucket: 'low' | 'middle' | 'high' | 'unknown';
+    breakoutWithDirection: boolean | null;
+    failedBreakoutForDirection: boolean | null;
+    liquiditySweepForDirection: boolean | null;
+    nearPointOfControl: boolean | null;
+  };
+  participation: {
+    volumeRel20: number | null;
+    volumeBucket: 'thin' | 'normal' | 'elevated' | 'spike' | 'unknown';
+    deltaBias: 'bull' | 'bear' | 'neutral' | 'unknown';
+    deltaAligned: boolean | null;
+    volumeStructureAligned: boolean | null;
+  };
+  relative: {
+    benchmarkTrendAlignment: BaseRelativeContext['benchmark']['trendAlignment'];
+    benchmarkAligned: boolean | null;
+    benchmarkConflict: boolean;
+    relativeStrength1h: number | null;
+    relativeStrengthBucket:
+      | 'strong_against'
+      | 'mild_against'
+      | 'neutral'
+      | 'mild_with'
+      | 'strong_with'
+      | 'unknown';
+  };
+  execution: {
+    venueSpreadZScore: number | null;
+    venueSpreadSeverity: 'normal' | 'elevated' | 'wide' | 'unknown';
+    targetVenueSpreadBps: number | null;
+    targetVenueStale: boolean | null;
+  };
+}
+
 export interface BaseStrategyContextSnapshot {
   candle: Candle;
   prevCandle: Candle | null;
@@ -599,6 +660,7 @@ export interface BaseStrategyContextSnapshot {
   relative: BaseRelativeContext;
   derivatives?: DerivativesContext | null;
   mtf: BaseMultiTimeframeContext;
+  gateFeatures?: BaseContextGateFeatures;
 }
 
 export interface BaseIndicatorsHistorySnapshot {

@@ -45,10 +45,16 @@ export type CandleRow = {
   close: number;
   volume?: number | null;
   turnover?: number | null;
+  takerBuyBaseVolume?: number | null;
+  takerBuyQuoteVolume?: number | null;
+  takerSellBaseVolume?: number | null;
+  takerSellQuoteVolume?: number | null;
 };
 
+let candlesSchemaReady = false;
 let derivativesSchemaReady = false;
 let spreadSchemaReady = false;
+let candlesSchemaReadyPromise: Promise<void> | null = null;
 let derivativesSchemaReadyPromise: Promise<void> | null = null;
 let spreadSchemaReadyPromise: Promise<void> | null = null;
 
@@ -59,13 +65,16 @@ export const closeTimescalePool = async (): Promise<void> => {
   }
 
   global.__pgPool__ = undefined;
+  candlesSchemaReady = false;
   derivativesSchemaReady = false;
   spreadSchemaReady = false;
+  candlesSchemaReadyPromise = null;
   derivativesSchemaReadyPromise = null;
   spreadSchemaReadyPromise = null;
   await pool.end();
 };
 
+const CANDLES_SCHEMA_LOCK_KEY = 610000;
 const DERIVATIVES_SCHEMA_LOCK_KEY = 610001;
 const SPREAD_SCHEMA_LOCK_KEY = 610002;
 
@@ -87,6 +96,33 @@ const withSchemaLock = async (lockKey: number, work: () => Promise<void>) => {
   } finally {
     await pool.query('SELECT pg_advisory_unlock($1)', [lockKey]);
   }
+};
+
+const ensureCandlesSchema = async () => {
+  if (candlesSchemaReady) return;
+  if (candlesSchemaReadyPromise) {
+    await candlesSchemaReadyPromise;
+    return;
+  }
+
+  candlesSchemaReadyPromise = withSchemaLock(
+    CANDLES_SCHEMA_LOCK_KEY,
+    async () => {
+      const pool = getPool();
+      await pool.query(`
+      ALTER TABLE candles
+        ADD COLUMN IF NOT EXISTS taker_buy_base_volume double precision,
+        ADD COLUMN IF NOT EXISTS taker_buy_quote_volume double precision,
+        ADD COLUMN IF NOT EXISTS taker_sell_base_volume double precision,
+        ADD COLUMN IF NOT EXISTS taker_sell_quote_volume double precision
+    `);
+      candlesSchemaReady = true;
+    },
+  ).finally(() => {
+    candlesSchemaReadyPromise = null;
+  });
+
+  await candlesSchemaReadyPromise;
 };
 
 export const toRows = (
@@ -112,11 +148,16 @@ export const toRows = (
     close: i.close,
     volume: i.volume ?? null,
     turnover: i.turnover ?? null,
+    takerBuyBaseVolume: i.takerBuyBaseVolume ?? null,
+    takerBuyQuoteVolume: i.takerBuyQuoteVolume ?? null,
+    takerSellBaseVolume: i.takerSellBaseVolume ?? null,
+    takerSellQuoteVolume: i.takerSellQuoteVolume ?? null,
   }));
 };
 
 export async function upsertCandles(rows: CandleRow[]) {
   if (!rows.length) return;
+  await ensureCandlesSchema();
   const pool = getPool();
 
   const cols = [
@@ -130,6 +171,10 @@ export async function upsertCandles(rows: CandleRow[]) {
     'close',
     'volume',
     'turnover',
+    'taker_buy_base_volume',
+    'taker_buy_quote_volume',
+    'taker_sell_base_volume',
+    'taker_sell_quote_volume',
   ] as const;
   const maxRows = Math.floor(65_535 / cols.length);
   if (rows.length > maxRows) {
@@ -157,6 +202,10 @@ export async function upsertCandles(rows: CandleRow[]) {
     r.close,
     r.volume ?? null,
     r.turnover ?? null,
+    r.takerBuyBaseVolume ?? null,
+    r.takerBuyQuoteVolume ?? null,
+    r.takerSellBaseVolume ?? null,
+    r.takerSellQuoteVolume ?? null,
   ]);
 
   const sql = `
@@ -168,7 +217,11 @@ export async function upsertCandles(rows: CandleRow[]) {
       low  = EXCLUDED.low,
       close = EXCLUDED.close,
       volume = COALESCE(EXCLUDED.volume, candles.volume),
-      turnover = COALESCE(EXCLUDED.turnover, candles.turnover)
+      turnover = COALESCE(EXCLUDED.turnover, candles.turnover),
+      taker_buy_base_volume = COALESCE(EXCLUDED.taker_buy_base_volume, candles.taker_buy_base_volume),
+      taker_buy_quote_volume = COALESCE(EXCLUDED.taker_buy_quote_volume, candles.taker_buy_quote_volume),
+      taker_sell_base_volume = COALESCE(EXCLUDED.taker_sell_base_volume, candles.taker_sell_base_volume),
+      taker_sell_quote_volume = COALESCE(EXCLUDED.taker_sell_quote_volume, candles.taker_sell_quote_volume)
   `;
 
   const client = await pool.connect();
@@ -923,12 +976,17 @@ export async function getCandlesRange(
   startMs: number,
   endMs: number,
 ) {
+  await ensureCandlesSchema();
   const pool = getPool();
   const normalizedProvider = normalizeCandleProvider(provider);
   const normalizedSymbol = normalizeCandleSymbol(symbol);
   const sql = `
     SELECT symbol, interval, ts,
-           open, high, low, close, volume, turnover
+           open, high, low, close, volume, turnover,
+           taker_buy_base_volume AS "takerBuyBaseVolume",
+           taker_buy_quote_volume AS "takerBuyQuoteVolume",
+           taker_sell_base_volume AS "takerSellBaseVolume",
+           taker_sell_quote_volume AS "takerSellQuoteVolume"
     FROM candles
     WHERE provider = $1 AND symbol = $2 AND interval = $3
       AND ts >= to_timestamp($4/1000.0)

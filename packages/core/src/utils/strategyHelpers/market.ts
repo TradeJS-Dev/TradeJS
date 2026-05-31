@@ -28,6 +28,45 @@ const getTopOfBookTargetVenue = async ({
   connector: Connector;
   symbol: string;
 }): Promise<StrategyMarketSnapshot['targetVenue']> => {
+  if (connector.getTopOfBookTicker) {
+    try {
+      const topOfBook = await connector.getTopOfBookTicker(symbol);
+      if (topOfBook) {
+        const bid = Number.isFinite(topOfBook.bidPrice)
+          ? topOfBook.bidPrice
+          : null;
+        const ask = Number.isFinite(topOfBook.askPrice)
+          ? topOfBook.askPrice
+          : null;
+        const mid = bid != null && ask != null ? (bid + ask) / 2 : null;
+        const spreadBps =
+          bid != null && ask != null && mid != null && mid > 0
+            ? ((ask - bid) / mid) * 10_000
+            : null;
+
+        return {
+          source: 'ticker_top_of_book',
+          venue: null,
+          symbol: topOfBook.symbol || symbol,
+          bid,
+          ask,
+          mid,
+          spreadBps,
+          topBidQty: Number.isFinite(topOfBook.bidQty)
+            ? topOfBook.bidQty
+            : null,
+          topAskQty: Number.isFinite(topOfBook.askQty)
+            ? topOfBook.askQty
+            : null,
+          snapshotTimestamp: topOfBook.timestamp ?? Date.now(),
+          stale: false,
+        };
+      }
+    } catch {
+      return null;
+    }
+  }
+
   let tickers: Ticker[] = [];
   try {
     tickers = await connector.getTickers();

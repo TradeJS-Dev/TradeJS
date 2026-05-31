@@ -212,7 +212,8 @@ Input payload structure:
   • \`baseContext.participation\`: volume/turnover participation and effort-vs-result context.
   • \`baseContext.relative\`: BTC relative-strength and benchmark MA bias context.
   • \`baseContext.derivatives\`: Coinalyze-aligned derivatives summary when available.
-  • \`baseContext.mtf\`: compact multi-timeframe candle snapshots.
+  • \`baseContext.mtf\`: compact multi-timeframe summary plus only the latest few candles for each timeframe.
+  • \`baseContext.gateFeatures\`: direction-aware, normalized fields derived from baseContext; prefer these for quick gate checks before inspecting raw nested context.
   Always inspect \`payload.additionalIndicators.marketContext\` when present:
   • \`marketContext.execution.binanceCoinbaseSpread\`: AI-friendly BTC spread view projected from \`payload.additionalIndicators.baseContext.relative.execution.venueSpread\`; \`value=(Coinbase-Binance)/Binance\`, \`bps=value*10000\`.
   • \`marketContext.execution.targetVenue\`: live top-of-book bid/ask, spread and top bid/ask size when the connector provides Binance-style ticker data.

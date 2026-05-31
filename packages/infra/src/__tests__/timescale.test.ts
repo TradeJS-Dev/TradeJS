@@ -34,8 +34,40 @@ describe('timescale candle helpers', () => {
         close: 1.5,
         volume: 10,
         turnover: 20,
+        takerBuyBaseVolume: null,
+        takerBuyQuoteVolume: null,
+        takerSellBaseVolume: null,
+        takerSellQuoteVolume: null,
       },
     ]);
+  });
+
+  it('preserves Binance taker volume fields in toRows', async () => {
+    const { toRows } = await import('@tradejs/infra/timescale');
+
+    const rows = toRows('binance', 'ETHUSDT', 15, [
+      {
+        timestamp: 1_000,
+        open: 1,
+        high: 2,
+        low: 0.5,
+        close: 1.5,
+        volume: 10,
+        turnover: 20,
+        takerBuyBaseVolume: 7,
+        takerBuyQuoteVolume: 14,
+        takerSellBaseVolume: 3,
+        takerSellQuoteVolume: 6,
+        dt: '1970-01-01T00:00:01.000Z',
+      },
+    ]);
+
+    expect(rows[0]).toMatchObject({
+      takerBuyBaseVolume: 7,
+      takerBuyQuoteVolume: 14,
+      takerSellBaseVolume: 3,
+      takerSellQuoteVolume: 6,
+    });
   });
 
   it('throws when provider is empty in toRows', async () => {
@@ -60,7 +92,7 @@ describe('timescale candle helpers', () => {
     jest.doMock('pg', () => ({
       Pool: jest.fn().mockImplementation(() => ({
         connect,
-        query: jest.fn(),
+        query: jest.fn().mockResolvedValue({ rows: [] }),
       })),
     }));
 
@@ -78,6 +110,10 @@ describe('timescale candle helpers', () => {
         close: 1.5,
         volume: 10,
         turnover: 20,
+        takerBuyBaseVolume: 7,
+        takerBuyQuoteVolume: 14,
+        takerSellBaseVolume: 3,
+        takerSellQuoteVolume: 6,
       },
     ]);
 
@@ -86,7 +122,22 @@ describe('timescale candle helpers', () => {
     expect(client.query).toHaveBeenNthCalledWith(
       2,
       expect.stringContaining('ON CONFLICT (provider, symbol, interval, ts)'),
-      ['coinbase', 'BTCUSDT', 15, new Date(1_000), 1, 2, 0.5, 1.5, 10, 20],
+      [
+        'coinbase',
+        'BTCUSDT',
+        15,
+        new Date(1_000),
+        1,
+        2,
+        0.5,
+        1.5,
+        10,
+        20,
+        7,
+        14,
+        3,
+        6,
+      ],
     );
     expect(client.query).toHaveBeenNthCalledWith(3, 'COMMIT');
     expect(client.release).toHaveBeenCalledTimes(1);
@@ -119,17 +170,29 @@ describe('timescale candle helpers', () => {
   });
 
   it('scopes candle reads and deletes by provider', async () => {
-    const query = jest
-      .fn()
-      .mockResolvedValueOnce({ rows: [{ ts: new Date(1_000) }] })
-      .mockResolvedValueOnce({ rows: [{ ms: '1000' }] })
-      .mockResolvedValueOnce({ rows: [{ ms: '2000' }] })
-      .mockResolvedValueOnce({ rows: [] })
-      .mockResolvedValueOnce({
-        rows: [
-          { ts: new Date(2_000), prev_ts: new Date(1_000), diff_seconds: 120 },
-        ],
-      });
+    const query = jest.fn(async (sql: string) => {
+      if (sql.includes('pg_advisory_lock')) return { rows: [] };
+      if (sql.includes('ALTER TABLE candles')) return { rows: [] };
+      if (sql.includes('pg_advisory_unlock')) return { rows: [] };
+      if (sql.includes('diff_seconds')) {
+        return {
+          rows: [
+            {
+              ts: new Date(2_000),
+              prev_ts: new Date(1_000),
+              diff_seconds: 120,
+            },
+          ],
+        };
+      }
+      if (sql.includes('SELECT symbol, interval, ts')) {
+        return { rows: [{ ts: new Date(1_000) }] };
+      }
+      if (sql.includes('ORDER BY ts ASC')) return { rows: [{ ms: '1000' }] };
+      if (sql.includes('ORDER BY ts DESC')) return { rows: [{ ms: '2000' }] };
+      if (sql.includes('DELETE FROM candles')) return { rows: [] };
+      return { rows: [] };
+    });
 
     jest.doMock('pg', () => ({
       Pool: jest.fn().mockImplementation(() => ({
@@ -153,34 +216,29 @@ describe('timescale candle helpers', () => {
       diffSeconds: 120,
     });
 
-    expect(query).toHaveBeenNthCalledWith(
-      1,
+    expect(query).toHaveBeenCalledWith(
       expect.stringContaining(
         'WHERE provider = $1 AND symbol = $2 AND interval = $3',
       ),
       ['bybit', 'BTCUSDT', 15, 1_000, 2_000],
     );
-    expect(query).toHaveBeenNthCalledWith(
-      2,
+    expect(query).toHaveBeenCalledWith(
       expect.stringContaining(
         'WHERE provider=$1 AND symbol=$2 AND interval=$3',
       ),
       ['bybit', 'BTCUSDT', 15],
     );
-    expect(query).toHaveBeenNthCalledWith(
-      3,
+    expect(query).toHaveBeenCalledWith(
       expect.stringContaining(
         'WHERE provider=$1 AND symbol=$2 AND interval=$3',
       ),
       ['bybit', 'BTCUSDT', 15],
     );
-    expect(query).toHaveBeenNthCalledWith(
-      4,
+    expect(query).toHaveBeenCalledWith(
       expect.stringContaining('DELETE FROM candles'),
       ['bybit', 'BTCUSDT', 15],
     );
-    expect(query).toHaveBeenNthCalledWith(
-      5,
+    expect(query).toHaveBeenCalledWith(
       expect.stringContaining(
         'WHERE provider = $1 AND symbol = $2 AND interval = $3',
       ),

@@ -239,6 +239,9 @@ type SetStopLoss = (params: {
 }) => Promise<boolean>;
 export type Kline = (options: KlineRequest) => Promise<KlineChartData>;
 export type GetTickers = () => Promise<Ticker[]>;
+export type GetTopOfBookTicker = (
+  symbol: string,
+) => Promise<TopOfBookTicker | null>;
 
 export interface Connector {
   kline: Kline;
@@ -254,6 +257,7 @@ export interface Connector {
   setStopLoss: SetStopLoss;
   closePosition: ClosePosition;
   getTickers: GetTickers;
+  getTopOfBookTicker?: GetTopOfBookTicker;
 }
 
 export interface Indicator {
@@ -300,6 +304,15 @@ export interface Ticker {
   basis: string;
   preOpenPrice: string;
   preQty: string;
+}
+
+export interface TopOfBookTicker {
+  symbol: string;
+  bidPrice: number;
+  bidQty: number;
+  askPrice: number;
+  askQty: number;
+  timestamp?: number | null;
 }
 
 export type TrendLineMode = 'lows' | 'highs';
