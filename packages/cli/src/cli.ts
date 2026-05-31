@@ -15,6 +15,7 @@ const scriptLoaders: Record<string, ScriptLoader> = {
   'ai-export': () => import('./scripts/aiExport'),
   'ai-train': () => import('./scripts/aiTrain'),
   backtest: () => import('./scripts/backtest'),
+  'binance:market-ingest': () => import('./scripts/binanceMarketIngest'),
   bot: () => import('./scripts/bot'),
   'candles:migrate-provider': () => import('./scripts/candlesMigrateProvider'),
   'clean-dir': () => import('./scripts/cleanDir'),

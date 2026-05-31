@@ -314,4 +314,104 @@ describe('timescale candle helpers', () => {
       ['coinalyze', ['BTCUSDT'], '1h', 1_000, 2_000],
     );
   });
+
+  it('upserts Binance market feature rows into compact tables', async () => {
+    const query = jest.fn().mockResolvedValue({ rows: [] });
+
+    jest.doMock('pg', () => ({
+      Pool: jest.fn().mockImplementation(() => ({
+        connect: jest.fn(),
+        query,
+      })),
+    }));
+
+    const {
+      upsertMarketBreadthRows,
+      upsertMarketOrderBookDepthRows,
+      upsertMarketTradeFlowRows,
+    } = await import('@tradejs/infra/timescale');
+
+    await upsertMarketTradeFlowRows([
+      {
+        symbol: 'BTCUSDT',
+        interval: '1m',
+        ts: new Date(1_000),
+        trades: 2,
+        buyBaseVolume: 3,
+        sellBaseVolume: 1,
+        buyQuoteVolume: 300,
+        sellQuoteVolume: 100,
+        netBaseDelta: 2,
+        netQuoteDelta: 200,
+        buyPressurePct: 0.75,
+        source: 'binance_agg_trades',
+      },
+    ]);
+    await upsertMarketOrderBookDepthRows([
+      {
+        venue: 'binance',
+        symbol: 'BTCUSDT',
+        ts: new Date(2_000),
+        lastUpdateId: 7,
+        bid: 99,
+        ask: 101,
+        mid: 100,
+        spreadBps: 200,
+        levels: [
+          {
+            levels: 5,
+            bidBaseVolume: 1,
+            askBaseVolume: 2,
+            bidQuoteVolume: 99,
+            askQuoteVolume: 202,
+            imbalance: -0.34,
+          },
+        ],
+        rawBidLevels: 5,
+        rawAskLevels: 5,
+        source: 'binance_depth',
+      },
+    ]);
+    await upsertMarketBreadthRows([
+      {
+        universe: 'top30_usdt',
+        interval: '15m',
+        ts: new Date(3_000),
+        symbolsCount: 30,
+        advancers: 20,
+        decliners: 8,
+        unchanged: 2,
+        advanceDeclineRatio: 2.5,
+        pctAboveMa20: 0.6,
+        pctAboveMa50: 0.5,
+        equalWeightedReturn: 0.01,
+        volumeWeightedReturn: 0.02,
+        dispersion: 0.03,
+        source: 'binance_klines',
+      },
+    ]);
+
+    expect(query).toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO market_trade_flow'),
+      expect.arrayContaining(['BTCUSDT', '1m', new Date(1_000), 2]),
+    );
+    expect(query).toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO market_order_book_depth'),
+      expect.arrayContaining([
+        'binance',
+        'BTCUSDT',
+        new Date(2_000),
+        7,
+        99,
+        101,
+        100,
+        200,
+        expect.any(String),
+      ]),
+    );
+    expect(query).toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO market_breadth'),
+      expect.arrayContaining(['top30_usdt', '15m', new Date(3_000), 30]),
+    );
+  });
 });

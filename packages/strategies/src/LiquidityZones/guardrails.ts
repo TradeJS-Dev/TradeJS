@@ -9,6 +9,9 @@ export type LiquidityZonesGuardrailContext =
     breakoutState: string | null;
     liquidityZoneRetestDirection: string | null;
     volumeRel20: number | null;
+    turnoverRel20: number | null;
+    effortVsResult: number | null;
+    venueSpreadZScore: number | null;
     benchmarkTrendAlignment: string | null;
     derivativesPressure: string | null;
     derivativesDirectionAligned: boolean | null;
@@ -65,6 +68,15 @@ export const buildLiquidityZonesGuardrailContext = ({
   const volumeRel20 = asFiniteNumber(
     baseContext?.participation?.volume?.volumeRel20,
   );
+  const turnoverRel20 = asFiniteNumber(
+    baseContext?.participation?.volume?.turnoverRel20,
+  );
+  const effortVsResult = asFiniteNumber(
+    baseContext?.participation?.volume?.effortVsResult,
+  );
+  const venueSpreadZScore = asFiniteNumber(
+    baseContext?.relative?.execution?.venueSpreadZScore,
+  );
   const benchmarkTrendAlignment =
     baseContext?.relative?.benchmark?.trendAlignment ?? null;
   const derivativesPressure =
@@ -114,8 +126,6 @@ export const buildLiquidityZonesGuardrailContext = ({
     bearishValue: 'failed_high_breakout',
     value: breakoutState,
   });
-  const strategyLiquidityZoneAligned =
-    direction === liquidityZoneRetestDirection;
   const flushSupport =
     direction === 'LONG'
       ? derivativesRiskFlags.includes('short_liquidation_spike') ||
@@ -145,31 +155,43 @@ export const buildLiquidityZonesGuardrailContext = ({
   const hitCount = signalContext.hitCount ?? 0;
   const reactionCloseDistancePct = signalContext.reactionCloseDistancePct ?? 0;
   const retestPenetrationPct = signalContext.retestPenetrationPct ?? 999;
+  const hasVolumeConfirmation =
+    volumeRel20 != null &&
+    volumeRel20 >= 1 &&
+    effortVsResult != null &&
+    effortVsResult <= 100;
+  const hasStrongVolumeConfirmation =
+    hasVolumeConfirmation && volumeRel20 >= 1.5;
+  const hasLongBreakoutConfirmation =
+    direction === 'LONG' &&
+    (breakoutState === 'below_low_level' ||
+      breakoutState === 'above_high_level') &&
+    reactionCloseDistancePct >= 1 &&
+    volumeRel20 != null &&
+    volumeRel20 >= 2 &&
+    venueSpreadZScore != null &&
+    venueSpreadZScore >= 0;
+  const hasShortContinuationConfirmation =
+    direction === 'SHORT' && hasVolumeConfirmation;
   let deterministicQuality = 3;
 
   if (hardBlockReasons.length > 0) {
     deterministicQuality = 1;
   } else if (
+    hasLongBreakoutConfirmation ||
+    (direction === 'SHORT' && hasStrongVolumeConfirmation)
+  ) {
+    deterministicQuality = 5;
+  } else if (hasShortContinuationConfirmation) {
+    deterministicQuality = 4;
+  } else if (
     filterMetric >= 3 &&
     hitCount >= 2 &&
     reactionCloseDistancePct >= 0.08 &&
     retestPenetrationPct <= 90 &&
-    (trendAligned ||
-      benchmarkAligned ||
-      failedBreakoutAligned ||
-      strategyLiquidityZoneAligned ||
-      flushSupport)
+    (trendAligned || benchmarkAligned || failedBreakoutAligned || flushSupport)
   ) {
-    deterministicQuality =
-      flushSupport || failedBreakoutAligned || strategyLiquidityZoneAligned
-        ? 5
-        : 4;
-  } else if (
-    filterMetric >= 1 &&
-    reactionCloseDistancePct > 0 &&
-    retestPenetrationPct <= 125
-  ) {
-    deterministicQuality = 4;
+    deterministicQuality = 3;
   }
 
   if (deterministicQuality >= 5 && softBlockReasons.length > 0) {
@@ -184,6 +206,9 @@ export const buildLiquidityZonesGuardrailContext = ({
     breakoutState,
     liquidityZoneRetestDirection,
     volumeRel20,
+    turnoverRel20,
+    effortVsResult,
+    venueSpreadZScore,
     benchmarkTrendAlignment,
     derivativesPressure,
     derivativesDirectionAligned,

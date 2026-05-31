@@ -3,6 +3,9 @@ import {
   KlineChartData,
   DerivativesInterval,
   DerivativesRow,
+  MarketBreadthRow,
+  MarketOrderBookDepthRow,
+  MarketTradeFlowRow,
   SpreadRow,
 } from '@tradejs/types';
 
@@ -54,9 +57,11 @@ export type CandleRow = {
 let candlesSchemaReady = false;
 let derivativesSchemaReady = false;
 let spreadSchemaReady = false;
+let binanceMarketSchemaReady = false;
 let candlesSchemaReadyPromise: Promise<void> | null = null;
 let derivativesSchemaReadyPromise: Promise<void> | null = null;
 let spreadSchemaReadyPromise: Promise<void> | null = null;
+let binanceMarketSchemaReadyPromise: Promise<void> | null = null;
 
 export const closeTimescalePool = async (): Promise<void> => {
   const pool = global.__pgPool__;
@@ -68,15 +73,18 @@ export const closeTimescalePool = async (): Promise<void> => {
   candlesSchemaReady = false;
   derivativesSchemaReady = false;
   spreadSchemaReady = false;
+  binanceMarketSchemaReady = false;
   candlesSchemaReadyPromise = null;
   derivativesSchemaReadyPromise = null;
   spreadSchemaReadyPromise = null;
+  binanceMarketSchemaReadyPromise = null;
   await pool.end();
 };
 
 const CANDLES_SCHEMA_LOCK_KEY = 610000;
 const DERIVATIVES_SCHEMA_LOCK_KEY = 610001;
 const SPREAD_SCHEMA_LOCK_KEY = 610002;
+const BINANCE_MARKET_SCHEMA_LOCK_KEY = 610003;
 
 const normalizeCandleProvider = (provider: string) =>
   String(provider || '')
@@ -347,6 +355,123 @@ const ensureSpreadSchema = async () => {
   });
 
   await spreadSchemaReadyPromise;
+};
+
+const ensureBinanceMarketSchema = async () => {
+  if (binanceMarketSchemaReady) return;
+  if (binanceMarketSchemaReadyPromise) {
+    await binanceMarketSchemaReadyPromise;
+    return;
+  }
+
+  const pool = getPool();
+  binanceMarketSchemaReadyPromise = withSchemaLock(
+    BINANCE_MARKET_SCHEMA_LOCK_KEY,
+    async () => {
+      if (binanceMarketSchemaReady) return;
+      await pool.query('CREATE EXTENSION IF NOT EXISTS timescaledb');
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS market_trade_flow (
+          symbol text NOT NULL,
+          interval text NOT NULL,
+          ts timestamptz NOT NULL,
+          trades integer NOT NULL,
+          buy_base_volume double precision,
+          sell_base_volume double precision,
+          buy_quote_volume double precision,
+          sell_quote_volume double precision,
+          net_base_delta double precision,
+          net_quote_delta double precision,
+          buy_pressure_pct double precision,
+          source text,
+          ingested_at timestamptz NOT NULL DEFAULT now(),
+          PRIMARY KEY (symbol, interval, ts)
+        )
+      `);
+      await pool.query(`
+        SELECT create_hypertable(
+          'market_trade_flow',
+          'ts',
+          if_not_exists => TRUE,
+          chunk_time_interval => interval '7 days'
+        )
+      `);
+      await pool.query(`
+        CREATE INDEX IF NOT EXISTS market_trade_flow_symbol_tf_ts_idx
+        ON market_trade_flow (symbol, interval, ts DESC)
+      `);
+
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS market_order_book_depth (
+          venue text NOT NULL,
+          symbol text NOT NULL,
+          ts timestamptz NOT NULL,
+          last_update_id bigint,
+          bid double precision,
+          ask double precision,
+          mid double precision,
+          spread_bps double precision,
+          levels jsonb NOT NULL,
+          raw_bid_levels integer,
+          raw_ask_levels integer,
+          source text,
+          ingested_at timestamptz NOT NULL DEFAULT now(),
+          PRIMARY KEY (venue, symbol, ts)
+        )
+      `);
+      await pool.query(`
+        SELECT create_hypertable(
+          'market_order_book_depth',
+          'ts',
+          if_not_exists => TRUE,
+          chunk_time_interval => interval '7 days'
+        )
+      `);
+      await pool.query(`
+        CREATE INDEX IF NOT EXISTS market_order_book_depth_venue_symbol_ts_idx
+        ON market_order_book_depth (venue, symbol, ts DESC)
+      `);
+
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS market_breadth (
+          universe text NOT NULL,
+          interval text NOT NULL,
+          ts timestamptz NOT NULL,
+          symbols_count integer NOT NULL,
+          advancers integer NOT NULL,
+          decliners integer NOT NULL,
+          unchanged integer NOT NULL,
+          advance_decline_ratio double precision,
+          pct_above_ma20 double precision,
+          pct_above_ma50 double precision,
+          equal_weighted_return double precision,
+          volume_weighted_return double precision,
+          dispersion double precision,
+          source text,
+          ingested_at timestamptz NOT NULL DEFAULT now(),
+          PRIMARY KEY (universe, interval, ts)
+        )
+      `);
+      await pool.query(`
+        SELECT create_hypertable(
+          'market_breadth',
+          'ts',
+          if_not_exists => TRUE,
+          chunk_time_interval => interval '14 days'
+        )
+      `);
+      await pool.query(`
+        CREATE INDEX IF NOT EXISTS market_breadth_universe_tf_ts_idx
+        ON market_breadth (universe, interval, ts DESC)
+      `);
+
+      binanceMarketSchemaReady = true;
+    },
+  ).finally(() => {
+    binanceMarketSchemaReadyPromise = null;
+  });
+
+  await binanceMarketSchemaReadyPromise;
 };
 
 export async function upsertDerivatives(rows: DerivativesRow[]) {
@@ -894,6 +1019,205 @@ export async function upsertSpreadRows(rows: SpreadRow[]) {
   `;
 
   await pool.query(sql, flat);
+}
+
+export async function upsertMarketTradeFlowRows(rows: MarketTradeFlowRow[]) {
+  if (!rows.length) return;
+  await ensureBinanceMarketSchema();
+
+  const pool = getPool();
+  const cols = [
+    'symbol',
+    'interval',
+    'ts',
+    'trades',
+    'buy_base_volume',
+    'sell_base_volume',
+    'buy_quote_volume',
+    'sell_quote_volume',
+    'net_base_delta',
+    'net_quote_delta',
+    'buy_pressure_pct',
+    'source',
+  ] as const;
+
+  const maxRows = Math.floor(65_535 / cols.length);
+  if (rows.length > maxRows) {
+    for (let i = 0; i < rows.length; i += maxRows) {
+      await upsertMarketTradeFlowRows(rows.slice(i, i + maxRows));
+    }
+    return;
+  }
+
+  const valuesSql = rows
+    .map(
+      (_, i) =>
+        `(${cols.map((__, j) => `$${i * cols.length + j + 1}`).join(',')})`,
+    )
+    .join(',');
+  const flat = rows.flatMap((row) => [
+    row.symbol,
+    row.interval,
+    row.ts,
+    row.trades,
+    row.buyBaseVolume ?? null,
+    row.sellBaseVolume ?? null,
+    row.buyQuoteVolume ?? null,
+    row.sellQuoteVolume ?? null,
+    row.netBaseDelta ?? null,
+    row.netQuoteDelta ?? null,
+    row.buyPressurePct ?? null,
+    row.source ?? null,
+  ]);
+
+  await pool.query(
+    `
+      INSERT INTO market_trade_flow (${cols.join(',')})
+      VALUES ${valuesSql}
+      ON CONFLICT (symbol, interval, ts) DO UPDATE SET
+        trades = EXCLUDED.trades,
+        buy_base_volume = COALESCE(EXCLUDED.buy_base_volume, market_trade_flow.buy_base_volume),
+        sell_base_volume = COALESCE(EXCLUDED.sell_base_volume, market_trade_flow.sell_base_volume),
+        buy_quote_volume = COALESCE(EXCLUDED.buy_quote_volume, market_trade_flow.buy_quote_volume),
+        sell_quote_volume = COALESCE(EXCLUDED.sell_quote_volume, market_trade_flow.sell_quote_volume),
+        net_base_delta = COALESCE(EXCLUDED.net_base_delta, market_trade_flow.net_base_delta),
+        net_quote_delta = COALESCE(EXCLUDED.net_quote_delta, market_trade_flow.net_quote_delta),
+        buy_pressure_pct = COALESCE(EXCLUDED.buy_pressure_pct, market_trade_flow.buy_pressure_pct),
+        source = COALESCE(EXCLUDED.source, market_trade_flow.source),
+        ingested_at = now()
+    `,
+    flat,
+  );
+}
+
+export async function upsertMarketOrderBookDepthRows(
+  rows: MarketOrderBookDepthRow[],
+) {
+  if (!rows.length) return;
+  await ensureBinanceMarketSchema();
+
+  const pool = getPool();
+  const cols = [
+    'venue',
+    'symbol',
+    'ts',
+    'last_update_id',
+    'bid',
+    'ask',
+    'mid',
+    'spread_bps',
+    'levels',
+    'raw_bid_levels',
+    'raw_ask_levels',
+    'source',
+  ] as const;
+
+  const valuesSql = rows
+    .map(
+      (_, i) =>
+        `(${cols.map((__, j) => `$${i * cols.length + j + 1}`).join(',')})`,
+    )
+    .join(',');
+  const flat = rows.flatMap((row) => [
+    row.venue,
+    row.symbol,
+    row.ts,
+    row.lastUpdateId ?? null,
+    row.bid ?? null,
+    row.ask ?? null,
+    row.mid ?? null,
+    row.spreadBps ?? null,
+    JSON.stringify(row.levels),
+    row.rawBidLevels ?? null,
+    row.rawAskLevels ?? null,
+    row.source ?? null,
+  ]);
+
+  await pool.query(
+    `
+      INSERT INTO market_order_book_depth (${cols.join(',')})
+      VALUES ${valuesSql}
+      ON CONFLICT (venue, symbol, ts) DO UPDATE SET
+        last_update_id = COALESCE(EXCLUDED.last_update_id, market_order_book_depth.last_update_id),
+        bid = COALESCE(EXCLUDED.bid, market_order_book_depth.bid),
+        ask = COALESCE(EXCLUDED.ask, market_order_book_depth.ask),
+        mid = COALESCE(EXCLUDED.mid, market_order_book_depth.mid),
+        spread_bps = COALESCE(EXCLUDED.spread_bps, market_order_book_depth.spread_bps),
+        levels = EXCLUDED.levels,
+        raw_bid_levels = COALESCE(EXCLUDED.raw_bid_levels, market_order_book_depth.raw_bid_levels),
+        raw_ask_levels = COALESCE(EXCLUDED.raw_ask_levels, market_order_book_depth.raw_ask_levels),
+        source = COALESCE(EXCLUDED.source, market_order_book_depth.source),
+        ingested_at = now()
+    `,
+    flat,
+  );
+}
+
+export async function upsertMarketBreadthRows(rows: MarketBreadthRow[]) {
+  if (!rows.length) return;
+  await ensureBinanceMarketSchema();
+
+  const pool = getPool();
+  const cols = [
+    'universe',
+    'interval',
+    'ts',
+    'symbols_count',
+    'advancers',
+    'decliners',
+    'unchanged',
+    'advance_decline_ratio',
+    'pct_above_ma20',
+    'pct_above_ma50',
+    'equal_weighted_return',
+    'volume_weighted_return',
+    'dispersion',
+    'source',
+  ] as const;
+
+  const valuesSql = rows
+    .map(
+      (_, i) =>
+        `(${cols.map((__, j) => `$${i * cols.length + j + 1}`).join(',')})`,
+    )
+    .join(',');
+  const flat = rows.flatMap((row) => [
+    row.universe,
+    row.interval,
+    row.ts,
+    row.symbolsCount,
+    row.advancers,
+    row.decliners,
+    row.unchanged,
+    row.advanceDeclineRatio ?? null,
+    row.pctAboveMa20 ?? null,
+    row.pctAboveMa50 ?? null,
+    row.equalWeightedReturn ?? null,
+    row.volumeWeightedReturn ?? null,
+    row.dispersion ?? null,
+    row.source ?? null,
+  ]);
+
+  await pool.query(
+    `
+      INSERT INTO market_breadth (${cols.join(',')})
+      VALUES ${valuesSql}
+      ON CONFLICT (universe, interval, ts) DO UPDATE SET
+        symbols_count = EXCLUDED.symbols_count,
+        advancers = EXCLUDED.advancers,
+        decliners = EXCLUDED.decliners,
+        unchanged = EXCLUDED.unchanged,
+        advance_decline_ratio = COALESCE(EXCLUDED.advance_decline_ratio, market_breadth.advance_decline_ratio),
+        pct_above_ma20 = COALESCE(EXCLUDED.pct_above_ma20, market_breadth.pct_above_ma20),
+        pct_above_ma50 = COALESCE(EXCLUDED.pct_above_ma50, market_breadth.pct_above_ma50),
+        equal_weighted_return = COALESCE(EXCLUDED.equal_weighted_return, market_breadth.equal_weighted_return),
+        volume_weighted_return = COALESCE(EXCLUDED.volume_weighted_return, market_breadth.volume_weighted_return),
+        dispersion = COALESCE(EXCLUDED.dispersion, market_breadth.dispersion),
+        source = COALESCE(EXCLUDED.source, market_breadth.source),
+        ingested_at = now()
+    `,
+    flat,
+  );
 }
 
 export async function getSpreadRangeForSymbols(

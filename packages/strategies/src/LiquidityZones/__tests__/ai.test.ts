@@ -50,7 +50,10 @@ describe('liquidityZonesAiAdapter', () => {
             trend: { bias: 'bear' },
           },
           participation: {
-            volume: { volumeRel20: 1.2 },
+            volume: {
+              volumeRel20: 1.6,
+              effortVsResult: 80,
+            },
           },
           derivatives: {
             summary: {
@@ -119,6 +122,12 @@ describe('liquidityZonesAiAdapter', () => {
           structure: {
             liquidityZones: { activeRetestDirection: 'LONG' },
           },
+          participation: {
+            volume: {
+              volumeRel20: 1.6,
+              effortVsResult: 80,
+            },
+          },
         },
       ),
       analysis: {
@@ -129,6 +138,95 @@ describe('liquidityZonesAiAdapter', () => {
 
     expect(result).toMatchObject({
       direction: 'SHORT',
+      quality: 5,
+      approved: true,
+    });
+  });
+
+  it('rejects ordinary self-aligned retests without participation confirmation', () => {
+    const result = liquidityZonesAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makePayload(
+        {
+          signalDirection: 'SHORT',
+          zoneKind: 'swing_high_liquidity',
+          zoneHeight: 8,
+          hitCount: 5,
+          hitVolume: 4_000,
+          filterMode: 'count',
+          filterMetric: 5,
+          retestPenetrationPct: 40,
+          reactionCloseDistancePct: 0.3,
+          reactionBodyAligned: true,
+        },
+        {
+          structure: {
+            liquidityZones: { activeRetestDirection: 'SHORT' },
+          },
+          participation: {
+            volume: {
+              volumeRel20: 0.7,
+              effortVsResult: 220,
+            },
+          },
+        },
+      ),
+      analysis: {
+        direction: 'SHORT',
+        quality: 5,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: null,
+      quality: 3,
+      approved: false,
+    });
+  });
+
+  it('approves high-volume long breakout retests with supportive venue spread', () => {
+    const result = liquidityZonesAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makePayload(
+        {
+          signalDirection: 'LONG',
+          zoneKind: 'swing_low_liquidity',
+          zoneHeight: 8,
+          hitCount: 2,
+          hitVolume: 4_000,
+          filterMode: 'count',
+          filterMetric: 2,
+          retestPenetrationPct: 20,
+          reactionCloseDistancePct: 1.1,
+          reactionBodyAligned: true,
+        },
+        {
+          structure: {
+            localRange: {
+              breakoutState: 'below_low_level',
+            },
+          },
+          participation: {
+            volume: {
+              volumeRel20: 2.1,
+              effortVsResult: 180,
+            },
+          },
+          relative: {
+            execution: {
+              venueSpreadZScore: 0.4,
+            },
+          },
+        },
+      ),
+      analysis: {
+        direction: 'LONG',
+        quality: 1,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: 'LONG',
       quality: 5,
       approved: true,
     });

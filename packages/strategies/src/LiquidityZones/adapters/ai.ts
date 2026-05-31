@@ -91,6 +91,9 @@ Additional Liquidity Zones context:
 - trendBias=${context.trendBias ?? 'n/a'}
 - breakoutState=${context.breakoutState ?? 'n/a'}
 - volumeRel20=${String(context.volumeRel20 ?? 'n/a')}
+- turnoverRel20=${String(context.turnoverRel20 ?? 'n/a')}
+- effortVsResult=${String(context.effortVsResult ?? 'n/a')}
+- venueSpreadZScore=${String(context.venueSpreadZScore ?? 'n/a')}
 - benchmarkTrendAlignment=${context.benchmarkTrendAlignment ?? 'n/a'}
 - derivativesPressure=${context.derivativesPressure ?? 'n/a'}
 - derivativesDirectionAligned=${String(context.derivativesDirectionAligned ?? 'n/a')}

@@ -220,5 +220,93 @@ export const BinanceConnectorCreator: ConnectorCreator = async () => {
         timestamp: Date.now(),
       };
     },
+
+    getAggTrades: async ({ symbol, startTime, endTime, limit = 1000 }) => {
+      const normalizedSymbol = String(symbol || '')
+        .trim()
+        .toUpperCase();
+      if (!normalizedSymbol) return [];
+
+      const safeLimit = Math.min(Math.max(Math.floor(limit), 1), 1000);
+      const baseUrl =
+        process.env.BINANCE_BASE_URL?.trim() || 'https://api.binance.com';
+      const url = new URL(`${baseUrl}/api/v3/aggTrades`);
+      url.searchParams.set('symbol', normalizedSymbol);
+      url.searchParams.set('startTime', String(Math.floor(startTime)));
+      url.searchParams.set('endTime', String(Math.floor(endTime)));
+      url.searchParams.set('limit', String(safeLimit));
+
+      const response = await fetchWithRetry(url.toString(), {
+        headers: { 'User-Agent': 'tradejs/binance-connector' },
+      });
+      if (!response.ok) return [];
+
+      const payload = (await response.json()) as Array<Record<string, unknown>>;
+      if (!Array.isArray(payload)) return [];
+
+      return payload
+        .map((row) => ({
+          aggregateTradeId: toNum(row.a, Number.NaN),
+          price: toNum(row.p, Number.NaN),
+          quantity: toNum(row.q, Number.NaN),
+          firstTradeId: toNum(row.f, Number.NaN),
+          lastTradeId: toNum(row.l, Number.NaN),
+          timestamp: toNum(row.T, Number.NaN),
+          isBuyerMaker: Boolean(row.m),
+        }))
+        .filter(
+          (row) =>
+            Number.isFinite(row.aggregateTradeId) &&
+            Number.isFinite(row.price) &&
+            Number.isFinite(row.quantity) &&
+            Number.isFinite(row.timestamp),
+        );
+    },
+
+    getOrderBookDepth: async ({ symbol, limit = 100 }) => {
+      const normalizedSymbol = String(symbol || '')
+        .trim()
+        .toUpperCase();
+      if (!normalizedSymbol) return null;
+
+      const allowedLimits = [5, 10, 20, 50, 100, 500, 1000, 5000] as const;
+      const safeLimit = allowedLimits.includes(limit as any) ? limit : 100;
+      const baseUrl =
+        process.env.BINANCE_BASE_URL?.trim() || 'https://api.binance.com';
+      const url = new URL(`${baseUrl}/api/v3/depth`);
+      url.searchParams.set('symbol', normalizedSymbol);
+      url.searchParams.set('limit', String(safeLimit));
+
+      const response = await fetchWithRetry(url.toString(), {
+        headers: { 'User-Agent': 'tradejs/binance-connector' },
+      });
+      if (!response.ok) return null;
+
+      const payload = (await response.json()) as Record<string, unknown>;
+      const parseLevels = (levels: unknown) =>
+        (Array.isArray(levels) ? levels : [])
+          .map((level) =>
+            Array.isArray(level)
+              ? ([toNum(level[0], Number.NaN), toNum(level[1], Number.NaN)] as [
+                  number,
+                  number,
+                ])
+              : null,
+          )
+          .filter(
+            (level): level is [number, number] =>
+              level != null &&
+              Number.isFinite(level[0]) &&
+              Number.isFinite(level[1]),
+          );
+
+      return {
+        symbol: normalizedSymbol,
+        lastUpdateId: toNullableNum(payload.lastUpdateId),
+        bids: parseLevels(payload.bids),
+        asks: parseLevels(payload.asks),
+        timestamp: Date.now(),
+      };
+    },
   };
 };

@@ -124,6 +124,64 @@ export type SpreadRow = {
   source?: string | null;
 };
 
+export type MarketFeatureInterval = '1m' | '5m' | '15m' | '1h';
+
+export type MarketBreadthRow = {
+  universe: string;
+  interval: MarketFeatureInterval;
+  ts: Date;
+  symbolsCount: number;
+  advancers: number;
+  decliners: number;
+  unchanged: number;
+  advanceDeclineRatio?: number | null;
+  pctAboveMa20?: number | null;
+  pctAboveMa50?: number | null;
+  equalWeightedReturn?: number | null;
+  volumeWeightedReturn?: number | null;
+  dispersion?: number | null;
+  source?: string | null;
+};
+
+export type MarketTradeFlowRow = {
+  symbol: string;
+  interval: MarketFeatureInterval;
+  ts: Date;
+  trades: number;
+  buyBaseVolume?: number | null;
+  sellBaseVolume?: number | null;
+  buyQuoteVolume?: number | null;
+  sellQuoteVolume?: number | null;
+  netBaseDelta?: number | null;
+  netQuoteDelta?: number | null;
+  buyPressurePct?: number | null;
+  source?: string | null;
+};
+
+export type MarketDepthLevelSummary = {
+  levels: number;
+  bidBaseVolume: number | null;
+  askBaseVolume: number | null;
+  bidQuoteVolume: number | null;
+  askQuoteVolume: number | null;
+  imbalance: number | null;
+};
+
+export type MarketOrderBookDepthRow = {
+  venue: string;
+  symbol: string;
+  ts: Date;
+  lastUpdateId?: number | null;
+  bid?: number | null;
+  ask?: number | null;
+  mid?: number | null;
+  spreadBps?: number | null;
+  levels: MarketDepthLevelSummary[];
+  rawBidLevels?: number | null;
+  rawAskLevels?: number | null;
+  source?: string | null;
+};
+
 export interface Tp {
   price: number;
   rate: number;
@@ -242,6 +300,10 @@ export type GetTickers = () => Promise<Ticker[]>;
 export type GetTopOfBookTicker = (
   symbol: string,
 ) => Promise<TopOfBookTicker | null>;
+export type GetAggTrades = (request: AggTradesRequest) => Promise<AggTrade[]>;
+export type GetOrderBookDepth = (
+  request: OrderBookDepthRequest,
+) => Promise<OrderBookDepth | null>;
 
 export interface Connector {
   kline: Kline;
@@ -258,6 +320,8 @@ export interface Connector {
   closePosition: ClosePosition;
   getTickers: GetTickers;
   getTopOfBookTicker?: GetTopOfBookTicker;
+  getAggTrades?: GetAggTrades;
+  getOrderBookDepth?: GetOrderBookDepth;
 }
 
 export interface Indicator {
@@ -313,6 +377,36 @@ export interface TopOfBookTicker {
   askPrice: number;
   askQty: number;
   timestamp?: number | null;
+}
+
+export interface AggTradesRequest {
+  symbol: string;
+  startTime: number;
+  endTime: number;
+  limit?: number;
+}
+
+export interface AggTrade {
+  aggregateTradeId: number;
+  price: number;
+  quantity: number;
+  firstTradeId: number;
+  lastTradeId: number;
+  timestamp: number;
+  isBuyerMaker: boolean;
+}
+
+export interface OrderBookDepthRequest {
+  symbol: string;
+  limit?: 5 | 10 | 20 | 50 | 100 | 500 | 1000 | 5000;
+}
+
+export interface OrderBookDepth {
+  symbol: string;
+  lastUpdateId: number | null;
+  bids: Array<[price: number, quantity: number]>;
+  asks: Array<[price: number, quantity: number]>;
+  timestamp: number;
 }
 
 export type TrendLineMode = 'lows' | 'highs';
