@@ -245,6 +245,16 @@ export const shouldBackfillBinanceMarketContextForSignals = ({
     !cacheOnly,
   );
 
+export const shouldBackfillBinanceMarketContextForReplay = ({
+  cacheOnly,
+}: {
+  cacheOnly: boolean;
+}) =>
+  parseEnabledFlag(
+    process.env.BINANCE_MARKET_CONTEXT_BACKFILL_ENABLED,
+    !cacheOnly,
+  );
+
 const skippedBackfillResult = (): BinanceMarketBackfillResult => ({
   skipped: true,
   tradeFlowRows: 0,
@@ -467,3 +477,6 @@ export const backfillBinanceMarketContextForBacktest = (
 export const backfillBinanceMarketContextForSignals = (
   params: BackfillParams,
 ) => backfillBinanceMarketContext(params, true);
+
+export const backfillBinanceMarketContextForReplay = (params: BackfillParams) =>
+  backfillBinanceMarketContext(params, true);

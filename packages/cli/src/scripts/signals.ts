@@ -2,7 +2,6 @@ import 'dotenv/config';
 import args from 'args';
 import ProgressBar from 'progress';
 import _ from 'lodash';
-import { ConnectorNames } from '@tradejs/connectors';
 import chalk from 'chalk';
 import {
   getConnectorCreatorByName,
@@ -14,17 +13,11 @@ import {
   loadTradejsConfig,
   makeScreenshots,
   sendToTG,
-  update,
 } from '@tradejs/node/cli';
 import { runWithConcurrency } from '@tradejs/core/async';
-import { alignSortedCandlesByTimestamp } from '@tradejs/core/indicators';
 import type {
-  TradejsConfigAfterSignalsHook,
   TradejsConfigAfterSignalsHookContext,
-  TradejsConfigBeforeSignalsHook,
-  TradejsConfigBeforeSignalsHookResult,
   TradejsConfigHooks,
-  TradejsConfigSignalsHookContext,
 } from '@tradejs/core/config';
 import { SIGNALS_CLI_PRELOAD_DAYS, TTL_10D } from '@tradejs/core/constants';
 import {
@@ -49,14 +42,6 @@ import {
   StrategyConfig,
   StrategyCreator,
 } from '@tradejs/types';
-import {
-  backfillDerivativesContextForSignals,
-  shouldBackfillDerivativesContextForSignals,
-} from '../lib/derivativesContextBackfill';
-import {
-  backfillBinanceMarketContextForSignals,
-  shouldBackfillBinanceMarketContextForSignals,
-} from '../lib/binanceMarketContextBackfill';
 import { loadRuntimeStrategyConfigs } from '../lib/runtimeRedis';
 import {
   buildRuntimeSignalStatsIncrements,
@@ -65,6 +50,20 @@ import {
   shouldStoreDetailedRuntimeSignalEvaluation,
   toRuntimeSignalBucketRef,
 } from '../lib/runtimeSignalsStorage';
+import {
+  alignSymbolWithBtcReference,
+  getClosedCandlesForInterval,
+} from '../lib/marketData/windows';
+import { timeOperation as runTimedOperation } from '../lib/runFormatting';
+import {
+  invokeAfterSignalsHooks,
+  invokeBeforeSignalsHooks,
+} from '../lib/signals/hooks';
+import { prepareMarketContextForRun } from '../lib/marketContextPrepare';
+import {
+  loadBtcReferenceConnectors,
+  updateMarketHistoryWithBtcReferences,
+} from '../lib/marketData/historyPrepare';
 
 args.option(['t', 'tickers'], 'Selected tickers');
 args.option(['e', 'exclude'], 'Exclude tickers from tests');
@@ -102,29 +101,8 @@ const flags = args.parse(process.argv);
 const interval = flags.timeframe.toString() as Interval;
 const intervalMs = Number(interval) * 60_000;
 
-const getCurrentOpenTimestamp = (timestamp: number) =>
-  Number.isFinite(intervalMs) && intervalMs > 0
-    ? Math.floor(timestamp / intervalMs) * intervalMs
-    : timestamp;
-
-const getClosedCandles = <T extends { timestamp: number }>(
-  candles: T[],
-  currentTimestamp: number,
-) => {
-  const currentOpenTimestamp = getCurrentOpenTimestamp(currentTimestamp);
-  return candles.filter((candle) => candle.timestamp < currentOpenTimestamp);
-};
-
 const formatElapsed = (startedAt: number) =>
   `${((Date.now() - startedAt) / 1000).toFixed(1)}s`;
-
-const formatDuration = (startedAt: number) => {
-  const seconds = (Date.now() - startedAt) / 1000;
-  if (seconds < 60) return `${seconds.toFixed(1)}s`;
-  const minutes = Math.floor(seconds / 60);
-  const restSeconds = Math.round(seconds % 60);
-  return `${minutes}m ${restSeconds}s`;
-};
 
 const resolvePositiveInteger = (value: unknown, fallback: number) => {
   const parsed = Number(value);
@@ -135,17 +113,10 @@ const resolvePositiveInteger = (value: unknown, fallback: number) => {
   return normalized > 0 ? normalized : fallback;
 };
 
-const timeOperation = async <T>(
-  label: string,
-  operation: () => Promise<T>,
-): Promise<T> => {
-  const startedAt = Date.now();
-  try {
-    return await operation();
-  } finally {
-    logger.info(chalk.gray(`${label}: done in ${formatDuration(startedAt)}`));
-  }
-};
+const timeOperation = <T>(label: string, operation: () => Promise<T>) =>
+  runTimedOperation(label, operation, (message) =>
+    logger.info(chalk.gray(message)),
+  );
 
 interface StrategyRuntimeConfig {
   strategyName: string;
@@ -161,43 +132,6 @@ interface StrategySkipStats {
 
 type StrategySkipStatsMap = Map<string, StrategySkipStats>;
 type StrategySkipSource = 'core' | 'AI' | 'ML' | 'hook' | 'policy' | 'runtime';
-
-const normalizeHookList = <THook extends (...args: any[]) => unknown>(
-  value: THook | THook[] | undefined,
-): THook[] => {
-  if (Array.isArray(value)) {
-    return value;
-  }
-
-  return value ? [value] : [];
-};
-
-const invokeBeforeSignalsHooks = async (
-  hooks: TradejsConfigHooks | undefined,
-  params: TradejsConfigSignalsHookContext,
-): Promise<TradejsConfigBeforeSignalsHookResult | undefined> => {
-  for (const hook of normalizeHookList(
-    hooks?.beforeSignals,
-  ) as TradejsConfigBeforeSignalsHook[]) {
-    const result = await hook(params);
-    if (result?.abort === true) {
-      return result;
-    }
-  }
-
-  return undefined;
-};
-
-const invokeAfterSignalsHooks = async (
-  hooks: TradejsConfigHooks | undefined,
-  params: TradejsConfigAfterSignalsHookContext,
-) => {
-  for (const hook of normalizeHookList(
-    hooks?.afterSignals,
-  ) as TradejsConfigAfterSignalsHook[]) {
-    await hook(params);
-  }
-};
 
 const isStrategyRuntimeEnabled = (strategyConfig: StrategyConfig) => {
   const enabled = (strategyConfig as Record<string, unknown>).ENABLE;
@@ -397,10 +331,20 @@ const findSignals = async (
   // Runtime evaluates only on the last closed candle. Timestamp filtering keeps
   // cache-only runs from accidentally stepping one closed bar back when the
   // newest forming bar is absent from Timescale.
-  const closedData = getClosedCandles(cachedData, currentTimestamp);
-  const closedBtcData = getClosedCandles(btcCachedData, currentTimestamp);
-  const { alignedCoinCandles, alignedBtcCandles } =
-    alignSortedCandlesByTimestamp(closedData, closedBtcData);
+  const closedData = getClosedCandlesForInterval(
+    cachedData,
+    currentTimestamp,
+    intervalMs,
+  );
+  const closedBtcData = getClosedCandlesForInterval(
+    btcCachedData,
+    currentTimestamp,
+    intervalMs,
+  );
+  const { alignedCoinCandles, alignedBtcCandles } = alignSymbolWithBtcReference(
+    closedData,
+    closedBtcData,
+  );
   const lastCandle = alignedCoinCandles.at(-1);
   const btcLastCandle = alignedBtcCandles.at(-1);
 
@@ -548,40 +492,15 @@ export const signals = async () => {
       userName: flags.user,
     });
 
-    let btcBinanceConnector: Connector = marketConnector;
-    let btcCoinbaseConnector: Connector = marketConnector;
-
-    if (connectorName.toLowerCase() === DEFAULT_CONNECTOR_NAME.toLowerCase()) {
-      const binanceFactory = await getConnectorCreatorByName(
-        ConnectorNames.Binance,
-        projectRoot,
-      );
-      if (binanceFactory) {
-        btcBinanceConnector = await (binanceFactory as ConnectorCreator)({
-          userName: flags.user,
-        });
-      } else {
-        logger.warn(
-          'Binance connector is unavailable. Reusing %s.',
-          connectorName,
-        );
-      }
-
-      const coinbaseFactory = await getConnectorCreatorByName(
-        ConnectorNames.Coinbase,
-        projectRoot,
-      );
-      if (coinbaseFactory) {
-        btcCoinbaseConnector = await (coinbaseFactory as ConnectorCreator)({
-          userName: flags.user,
-        });
-      } else {
-        logger.warn(
-          'Coinbase connector is unavailable. Reusing %s.',
-          connectorName,
-        );
-      }
-    }
+    const btcReferences = await loadBtcReferenceConnectors({
+      connectorName,
+      marketConnector,
+      userName: flags.user,
+      projectRoot,
+      shouldUseDedicatedReferences:
+        connectorName.toLowerCase() === DEFAULT_CONNECTOR_NAME.toLowerCase(),
+      warn: (message) => logger.warn(message),
+    });
 
     const tickers = await timeOperation('tickers load', () =>
       getTickers(
@@ -603,71 +522,30 @@ export const signals = async () => {
     projectHooks = projectConfig.hooks;
 
     if (!flags.cacheOnly) {
-      await timeOperation(`update ${connectorName}`, () =>
-        update(marketConnector, interval, tickers, SIGNALS_CLI_PRELOAD_DAYS, {
-          connectorLabel: connectorName,
-        }),
-      );
-
-      if (btcBinanceConnector !== marketConnector) {
-        await timeOperation(`update ${ConnectorNames.Binance}`, () =>
-          update(
-            btcBinanceConnector,
-            interval,
-            ['BTCUSDT'],
-            SIGNALS_CLI_PRELOAD_DAYS,
-            { connectorLabel: ConnectorNames.Binance },
-          ),
-        );
-      }
-
-      if (btcCoinbaseConnector !== marketConnector) {
-        await timeOperation(`update ${ConnectorNames.Coinbase}`, () =>
-          update(
-            btcCoinbaseConnector,
-            interval,
-            ['BTCUSDT'],
-            SIGNALS_CLI_PRELOAD_DAYS,
-            { connectorLabel: ConnectorNames.Coinbase },
-          ),
-        );
-      }
+      await updateMarketHistoryWithBtcReferences({
+        marketConnector,
+        connectorName,
+        btcReferences,
+        interval,
+        symbols: tickers,
+        preloadDays: SIGNALS_CLI_PRELOAD_DAYS,
+        log: (message) => logger.info(chalk.gray(message)),
+      });
     }
 
     const currentTimestamp = getTimestamp();
-    if (
-      shouldBackfillDerivativesContextForSignals({
-        cacheOnly: Boolean(flags.cacheOnly),
-      })
-    ) {
-      await timeOperation('derivatives context backfill', () =>
-        backfillDerivativesContextForSignals({
-          userName: flags.user,
-          symbols: tickers,
-          startMs: currentTimestamp,
-          endMs: currentTimestamp,
-          preloadStartMs: PRELOAD_START,
-        }),
-      );
-    }
-
-    if (
-      shouldBackfillBinanceMarketContextForSignals({
-        cacheOnly: Boolean(flags.cacheOnly),
-      })
-    ) {
-      await timeOperation('binance market context backfill', () =>
-        backfillBinanceMarketContextForSignals({
-          userName: flags.user,
-          projectRoot,
-          symbols: tickers,
-          interval,
-          startMs: currentTimestamp,
-          endMs: currentTimestamp,
-          preloadStartMs: PRELOAD_START,
-        }),
-      );
-    }
+    await prepareMarketContextForRun({
+      mode: 'signals',
+      userName: flags.user,
+      projectRoot,
+      symbols: tickers,
+      interval,
+      startMs: currentTimestamp,
+      endMs: currentTimestamp,
+      preloadStartMs: PRELOAD_START,
+      cacheOnly: Boolean(flags.cacheOnly),
+      log: (message) => logger.info(chalk.gray(message)),
+    });
 
     if (flags.updateOnly) {
       return;
@@ -677,14 +555,14 @@ export const signals = async () => {
       'reference candles load',
       () =>
         Promise.all([
-          btcBinanceConnector.kline({
+          btcReferences.binance.kline({
             symbol: 'BTCUSDT',
             start: PRELOAD_START,
             end: currentTimestamp,
             cacheOnly: true,
             interval,
           }),
-          btcCoinbaseConnector.kline({
+          btcReferences.coinbase.kline({
             symbol: 'BTCUSDT',
             start: PRELOAD_START,
             end: currentTimestamp,

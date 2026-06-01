@@ -196,6 +196,8 @@ export const createTrendLineCore: CreateStrategyCore<
     const riskPlan = buildTrendlineRiskPlan({
       direction,
       modeConfig,
+      baseStopLossDelta: Number(config.TRENDLINE_STOP_BASE_PCT ?? 1.3),
+      baseTargetRiskRatio: Number(config.TRENDLINE_TARGET_R_MULT ?? 2.6),
       structuralContext,
       timingContext,
     });

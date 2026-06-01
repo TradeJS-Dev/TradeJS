@@ -1,8 +1,4 @@
 import chalk from 'chalk';
-import {
-  normalizeStrategyOrderLinkKey,
-  parseStrategyOrderLinkKey,
-} from '@tradejs/core/trade';
 import { formatUnix } from '@tradejs/core/time';
 import { setData, redisKeys } from '@tradejs/infra/redis';
 import {
@@ -29,6 +25,14 @@ import {
   loadReplayStrategies,
   prepareRunEnvironment,
 } from '../lib/runEnvironment';
+import {
+  buildReplayExchangeComparisonDetails,
+  buildReplayRuntimeComparisonDetails,
+  buildStrategyNameByOrderLinkKey,
+  resolveReplayStrategyNameFromExchangeEntry,
+  type ExchangeMatchedBacktestEntry,
+} from '../lib/runtimeParityDetails';
+import { prepareMarketContextForRun } from '../lib/marketContextPrepare';
 import {
   setRuntimeCompareContext,
   getRunStartedAt,
@@ -60,12 +64,11 @@ import {
   runHistoricalSignalsReplay,
 } from '../lib/replay/historicalSignalsReplay';
 
-type ExchangeMatchedBacktestEntry = {
-  exchange: ExchangeEntryRecord;
-  backtest: TradeParityEntry;
-  timestampDiffMs: number;
-  priceDeltaPct: number | null;
-};
+export {
+  buildReplayExchangeComparisonDetails,
+  buildReplayRuntimeComparisonDetails,
+  resolveReplayStrategyNameFromExchangeEntry,
+} from '../lib/runtimeParityDetails';
 
 const formatPercent = (value: number | null | undefined) =>
   typeof value === 'number' && Number.isFinite(value)
@@ -81,6 +84,29 @@ const toSimpleOrderLog = (
   orderLog: HistoricalSignalsReplayResult['strategies'][number]['orderLog'],
 ) =>
   orderLog.map((entry) => [entry.timestamp, entry.amount] as [number, number]);
+
+export const prepareReplayBinanceMarketContext = async (preparedRun: {
+  tickers: string[];
+  window: { start: number; end: number };
+  preloadStart: number;
+  aiEnabled?: boolean;
+  mlEnabled?: boolean;
+}) => {
+  await prepareMarketContextForRun({
+    mode: 'replay',
+    userName: replayUserName,
+    projectRoot: replayProjectRoot,
+    symbols: preparedRun.tickers,
+    interval: replayInterval,
+    startMs: preparedRun.window.start,
+    endMs: preparedRun.window.end,
+    preloadStartMs: preparedRun.preloadStart,
+    cacheOnly: Boolean(replayFlags.cacheOnly),
+    aiEnabled: preparedRun.aiEnabled,
+    mlEnabled: preparedRun.mlEnabled,
+    log: (message) => console.log(chalk.gray(message)),
+  });
+};
 
 const buildReplayChartSnapshot = (params: {
   replayResult: HistoricalSignalsReplayResult;
@@ -154,29 +180,6 @@ const buildReplayChartSnapshot = (params: {
     runLabel,
     strategies,
   } satisfies StrategyChartsSnapshotResponse;
-};
-
-const buildStrategyNameByOrderLinkKey = (strategyNames: string[]) =>
-  new Map(
-    strategyNames.flatMap((strategyName) => {
-      const strategyKey = normalizeStrategyOrderLinkKey(strategyName);
-      return strategyKey ? [[strategyKey, strategyName] as const] : [];
-    }),
-  );
-
-export const resolveReplayStrategyNameFromExchangeEntry = ({
-  exchangeEntry,
-  strategyNameByOrderLinkKey,
-}: {
-  exchangeEntry: Pick<ExchangeEntryRecord, 'orderLinkId'>;
-  strategyNameByOrderLinkKey: Map<string, string>;
-}) => {
-  const strategyKey = parseStrategyOrderLinkKey(exchangeEntry.orderLinkId);
-  if (!strategyKey) {
-    return null;
-  }
-
-  return strategyNameByOrderLinkKey.get(strategyKey) ?? null;
 };
 
 const loadExchangeEntryRows = async ({
@@ -302,6 +305,10 @@ const loadExchangeEntriesForComparison = async ({
       exitPrice: closedPnl?.exitPrice ?? entry.exitPrice ?? null,
       exitTimestamp: closedPnl?.closedAt ?? entry.exitTimestamp ?? null,
       closedPnl: closedPnl?.closedPnl ?? entry.closedPnl ?? null,
+      openFee: closedPnl?.openFee ?? entry.openFee ?? null,
+      closeFee: closedPnl?.closeFee ?? entry.closeFee ?? null,
+      fundingFee: closedPnl?.fundingFee ?? entry.fundingFee ?? null,
+      totalFee: closedPnl?.totalFee ?? entry.totalFee ?? null,
     };
   });
 };
@@ -515,6 +522,9 @@ const saveAndPrintReplayExchangeComparison = async ({
     startTime: window!.start,
     endTime: window!.end,
   });
+  const strategyNameByOrderLinkKey = buildStrategyNameByOrderLinkKey(
+    liveStrategySummaries.map((summary) => summary.strategyName),
+  );
 
   if (!exchangeEntries.length) {
     console.log('');
@@ -536,6 +546,15 @@ const saveAndPrintReplayExchangeComparison = async ({
       matchedCount: 0,
       runtimeOnlyCount: 0,
       backtestOnlyCount: backtestEntries.length,
+      details: buildReplayExchangeComparisonDetails({
+        matched: [],
+        exchangeOnly: [],
+        backtestOnly: backtestEntries,
+        exchangeEntries: [],
+        backtestEntries,
+        strategyNameByOrderLinkKey,
+        toleranceMs: REPLAY_RUNTIME_COMPARE_TOLERANCE_MS,
+      }),
       rows: liveStrategySummaries.map((summary) => ({
         strategyName: summary.strategyName,
         backtestEntries: backtestEntries.filter(
@@ -562,9 +581,6 @@ const saveAndPrintReplayExchangeComparison = async ({
     liveStrategySummaries.map((summary) => [summary.strategyName, summary]),
   );
   const rowByStrategy = new Map<string, ReplayRuntimeParityRow>();
-  const strategyNameByOrderLinkKey = buildStrategyNameByOrderLinkKey(
-    liveStrategySummaries.map((summary) => summary.strategyName),
-  );
   const ensureRow = (strategyName: string) => {
     const existing = rowByStrategy.get(strategyName);
     if (existing) {
@@ -679,6 +695,15 @@ const saveAndPrintReplayExchangeComparison = async ({
     runtimeOnlyCount: comparison.exchangeOnly.length,
     backtestOnlyCount: comparison.backtestOnly.length,
     rows,
+    details: buildReplayExchangeComparisonDetails({
+      matched: comparison.matched,
+      exchangeOnly: comparison.exchangeOnly,
+      backtestOnly: comparison.backtestOnly,
+      exchangeEntries,
+      backtestEntries,
+      strategyNameByOrderLinkKey,
+      toleranceMs: REPLAY_RUNTIME_COMPARE_TOLERANCE_MS,
+    }),
   };
 };
 
@@ -843,6 +868,14 @@ const saveAndPrintReplayRuntimeComparison = async ({
     runtimeOnlyCount: comparison.runtimeOnly.length,
     backtestOnlyCount: comparison.backtestOnly.length,
     rows,
+    details: buildReplayRuntimeComparisonDetails({
+      matched: comparison.matched,
+      runtimeOnly: comparison.runtimeOnly,
+      backtestOnly: comparison.backtestOnly,
+      runtimeEntries: runtimeDedupe.entries,
+      backtestEntries,
+      toleranceMs: REPLAY_RUNTIME_COMPARE_TOLERANCE_MS,
+    }),
   };
 };
 
@@ -957,6 +990,15 @@ export const replayBacktest = async () => {
   if (!replayStrategies.length) {
     return;
   }
+  await prepareReplayBinanceMarketContext({
+    ...preparedRun,
+    aiEnabled: replayStrategies.some(({ strategyConfig }) =>
+      Boolean(strategyConfig.AI_ENABLED),
+    ),
+    mlEnabled: replayStrategies.some(({ strategyConfig }) =>
+      Boolean(strategyConfig.ML_ENABLED),
+    ),
+  });
 
   console.log(chalk.yellow(`tickers: ${preparedRun.tickers.length}`));
   console.log(

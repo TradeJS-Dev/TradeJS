@@ -4,6 +4,10 @@ import type { CreateStrategyCore } from '@tradejs/types';
 import type { AdaptiveMomentumRibbonConfig } from './config';
 import { evaluateAdaptiveMomentumRibbon } from './engine';
 import { buildAdaptiveMomentumRibbonFigures } from './figures';
+import {
+  buildStructureRiskPlan,
+  isStopLossOnCorrectSide,
+} from '../shared/structureRisk';
 
 const getRecord = (value: unknown): Record<string, unknown> | null =>
   value && typeof value === 'object' && !Array.isArray(value)
@@ -178,19 +182,47 @@ export const createAdaptiveMomentumRibbonCore: CreateStrategyCore<
       return strategyApi.skip(structuralRejectCode);
     }
 
-    const { stopLossPrice, takeProfitPrice, qty } =
-      strategyApi.getDirectionalTpSlPrices({
-        price: currentPrice,
+    const structuralStopBase =
+      modeConfig.direction === 'LONG'
+        ? amr.invalidationLevel ?? amr.kcLower
+        : amr.invalidationLevel ?? amr.kcUpper;
+    const stopBuffer =
+      currentPrice *
+      (Math.max(0, Number(config.AMR_STOP_BUFFER_PCT ?? 0.03)) / 100);
+    const stopLossPrice =
+      structuralStopBase == null
+        ? null
+        : modeConfig.direction === 'LONG'
+          ? structuralStopBase - stopBuffer
+          : structuralStopBase + stopBuffer;
+
+    if (
+      stopLossPrice == null ||
+      !Number.isFinite(stopLossPrice) ||
+      !isStopLossOnCorrectSide({
         direction: modeConfig.direction,
-        takeProfitDelta: modeConfig.TP,
-        stopLossDelta: modeConfig.SL,
-        unit: 'percent',
-        maxLossValue: MAX_LOSS_VALUE,
-        feePercent: Number(FEE_PERCENT ?? 0),
-      });
+        currentPrice,
+        stopLossPrice,
+      })
+    ) {
+      return strategyApi.skip('INVALID_STOP');
+    }
+
+    const { takeProfitPrice, riskRatio, qty } = buildStructureRiskPlan({
+      currentPrice,
+      direction: modeConfig.direction,
+      stopLossPrice,
+      targetR: Number(config.AMR_TARGET_R_MULT ?? 2),
+      maxLossValue: MAX_LOSS_VALUE,
+      feePercent: Number(FEE_PERCENT ?? 0),
+    });
 
     if (!qty || !Number.isFinite(qty) || qty <= 0) {
       return strategyApi.skip('INVALID_QTY');
+    }
+
+    if (riskRatio <= modeConfig.minRiskRatio) {
+      return strategyApi.skip(`RISK_RATIO:${riskRatio.toFixed(2)}`);
     }
 
     return strategyApi.entry({

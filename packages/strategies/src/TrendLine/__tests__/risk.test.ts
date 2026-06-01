@@ -24,6 +24,8 @@ describe('buildTrendlineRiskPlan', () => {
     const breakoutPlan = buildTrendlineRiskPlan({
       direction: 'SHORT',
       modeConfig: DEFAULT_CONFIG.LOWS,
+      baseStopLossDelta: DEFAULT_CONFIG.TRENDLINE_STOP_BASE_PCT,
+      baseTargetRiskRatio: DEFAULT_CONFIG.TRENDLINE_TARGET_R_MULT,
       structuralContext,
       timingContext: makeTimingContext({
         entryTiming: 'ready_breakout',
@@ -32,6 +34,8 @@ describe('buildTrendlineRiskPlan', () => {
     const retestPlan = buildTrendlineRiskPlan({
       direction: 'SHORT',
       modeConfig: DEFAULT_CONFIG.LOWS,
+      baseStopLossDelta: DEFAULT_CONFIG.TRENDLINE_STOP_BASE_PCT,
+      baseTargetRiskRatio: DEFAULT_CONFIG.TRENDLINE_TARGET_R_MULT,
       structuralContext,
       timingContext: makeTimingContext({
         entryTiming: 'ready_retest',
@@ -52,6 +56,8 @@ describe('buildTrendlineRiskPlan', () => {
     const compactPlan = buildTrendlineRiskPlan({
       direction: 'SHORT',
       modeConfig: DEFAULT_CONFIG.LOWS,
+      baseStopLossDelta: DEFAULT_CONFIG.TRENDLINE_STOP_BASE_PCT,
+      baseTargetRiskRatio: DEFAULT_CONFIG.TRENDLINE_TARGET_R_MULT,
       structuralContext: makeStructuralContext({
         priceVsLinePctAbs: 2.4,
         atrPct: 0.5,
@@ -63,6 +69,8 @@ describe('buildTrendlineRiskPlan', () => {
     const overextendedPlan = buildTrendlineRiskPlan({
       direction: 'SHORT',
       modeConfig: DEFAULT_CONFIG.LOWS,
+      baseStopLossDelta: DEFAULT_CONFIG.TRENDLINE_STOP_BASE_PCT,
+      baseTargetRiskRatio: DEFAULT_CONFIG.TRENDLINE_TARGET_R_MULT,
       structuralContext: makeStructuralContext({
         priceVsLinePctAbs: 2.4,
         atrPct: 0.5,
@@ -91,12 +99,16 @@ describe('buildTrendlineRiskPlan', () => {
     const longPlan = buildTrendlineRiskPlan({
       direction: 'LONG',
       modeConfig: DEFAULT_CONFIG.HIGHS,
+      baseStopLossDelta: DEFAULT_CONFIG.TRENDLINE_STOP_BASE_PCT,
+      baseTargetRiskRatio: DEFAULT_CONFIG.TRENDLINE_TARGET_R_MULT,
       structuralContext,
       timingContext: makeTimingContext(),
     });
     const shortPlan = buildTrendlineRiskPlan({
       direction: 'SHORT',
       modeConfig: DEFAULT_CONFIG.LOWS,
+      baseStopLossDelta: DEFAULT_CONFIG.TRENDLINE_STOP_BASE_PCT,
+      baseTargetRiskRatio: DEFAULT_CONFIG.TRENDLINE_TARGET_R_MULT,
       structuralContext,
       timingContext: makeTimingContext(),
     });

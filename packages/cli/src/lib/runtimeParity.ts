@@ -1,15 +1,33 @@
 import { Direction, OrderLogData, RuntimeTradeRecord } from '@tradejs/types';
 
+export type TradeParityExitType =
+  | 'exit'
+  | 'tp'
+  | 'sl'
+  | 'mixed'
+  | 'open'
+  | 'unknown';
+
 export interface TradeParityEntry {
   id: string;
   source: 'runtime' | 'backtest';
   strategy: string;
   symbol: string;
   direction: Direction;
+  qty?: number | null;
   timestamp: number;
   price: number | null;
   orderId?: string;
   signalId?: string;
+  exitType?: TradeParityExitType | null;
+  exitTimestamp?: number | null;
+  exitPrice?: number | null;
+  expectedPnl?: number | null;
+  realizedPnl?: number | null;
+  entryFee?: number | null;
+  exitFee?: number | null;
+  fundingFee?: number | null;
+  totalFee?: number | null;
 }
 
 export interface MatchedTradeParityEntry {
@@ -81,6 +99,22 @@ const buildPriceDeltaPct = (
   return Math.abs(((rightPrice - leftPrice) / leftPrice) * 100);
 };
 
+const toExitType = (type: string | undefined): TradeParityExitType | null => {
+  if (!type) return null;
+  if (type === 'CLOSE_LONG' || type === 'CLOSE_SHORT') return 'exit';
+  if (type === 'TAKE_PROFIT_LONG' || type === 'TAKE_PROFIT_SHORT') return 'tp';
+  if (type === 'STOP_LOSS_LONG' || type === 'STOP_LOSS_SHORT') return 'sl';
+  return null;
+};
+
+const resolveBacktestExitType = (
+  values: Array<TradeParityExitType | null>,
+): TradeParityExitType | null => {
+  const unique = [...new Set(values.filter(Boolean))] as TradeParityExitType[];
+  if (!unique.length) return 'open';
+  return unique.length === 1 ? unique[0] : 'mixed';
+};
+
 export const extractBacktestEntryParityEntries = (
   orderLog: OrderLogData | null | undefined,
 ): TradeParityEntry[] => {
@@ -88,39 +122,80 @@ export const extractBacktestEntryParityEntries = (
     return [];
   }
 
-  return orderLog
-    .filter(
-      (item) =>
-        (item.type === 'OPEN_LONG' || item.type === 'OPEN_SHORT') &&
-        item.signal &&
-        typeof item.signal.strategy === 'string' &&
-        typeof item.signal.symbol === 'string' &&
-        (item.signal.direction === 'LONG' || item.signal.direction === 'SHORT'),
-    )
-    .map((item, index) => {
-      const signal = item.signal!;
-      const timestamp =
-        typeof signal.timestamp === 'number' &&
-        Number.isFinite(signal.timestamp)
-          ? signal.timestamp
-          : item.timestamp;
+  const entries: TradeParityEntry[] = [];
+  for (let index = 0; index < orderLog.length; index += 1) {
+    const item = orderLog[index];
+    if (item.type !== 'OPEN_LONG' && item.type !== 'OPEN_SHORT') {
+      continue;
+    }
+    if (
+      !item.signal ||
+      typeof item.signal.strategy !== 'string' ||
+      typeof item.signal.symbol !== 'string' ||
+      (item.signal.direction !== 'LONG' && item.signal.direction !== 'SHORT')
+    ) {
+      continue;
+    }
 
-      return {
-        id:
-          typeof signal.signalId === 'string' && signal.signalId.trim()
-            ? signal.signalId
-            : `backtest-${index}-${timestamp}`,
-        source: 'backtest' as const,
-        strategy: signal.strategy,
-        symbol: signal.symbol,
-        direction: signal.direction,
-        timestamp,
-        price: toFiniteNumberOrNull(item.price),
-        signalId:
-          typeof signal.signalId === 'string' ? signal.signalId : undefined,
-      };
-    })
-    .sort((left, right) => left.timestamp - right.timestamp);
+    const signal = item.signal!;
+    const timestamp =
+      typeof signal.timestamp === 'number' && Number.isFinite(signal.timestamp)
+        ? signal.timestamp
+        : item.timestamp;
+
+    const exitItems = [];
+    for (const candidate of orderLog.slice(index + 1)) {
+      if (candidate.symbol !== item.symbol) {
+        continue;
+      }
+      if (candidate.type === 'OPEN_LONG' || candidate.type === 'OPEN_SHORT') {
+        break;
+      }
+      exitItems.push(candidate);
+    }
+    const closingExitItems = exitItems.filter((candidate) =>
+      toExitType(candidate.type),
+    );
+    const finalExit = closingExitItems[closingExitItems.length - 1] ?? null;
+    const entryFee = toFiniteNumberOrNull(item.fee);
+    const exitFee = closingExitItems.reduce((sum, candidate) => {
+      const fee = toFiniteNumberOrNull(candidate.fee);
+      return sum + (fee ?? 0);
+    }, 0);
+    const expectedPnl = [item, ...closingExitItems].reduce((sum, candidate) => {
+      const profit = toFiniteNumberOrNull(candidate.profit);
+      return sum + (profit ?? 0);
+    }, 0);
+    const totalFee = (entryFee ?? 0) + exitFee;
+
+    entries.push({
+      id:
+        typeof signal.signalId === 'string' && signal.signalId.trim()
+          ? signal.signalId
+          : `backtest-${index}-${timestamp}`,
+      source: 'backtest' as const,
+      strategy: signal.strategy,
+      symbol: signal.symbol,
+      direction: signal.direction,
+      qty: toFiniteNumberOrNull(item.qty),
+      timestamp,
+      price: toFiniteNumberOrNull(item.price),
+      signalId:
+        typeof signal.signalId === 'string' ? signal.signalId : undefined,
+      exitType: resolveBacktestExitType(
+        closingExitItems.map((candidate) => toExitType(candidate.type)),
+      ),
+      exitTimestamp: finalExit?.timestamp ?? null,
+      exitPrice: toFiniteNumberOrNull(finalExit?.price),
+      expectedPnl,
+      entryFee,
+      exitFee,
+      fundingFee: 0,
+      totalFee,
+    });
+  }
+
+  return entries.sort((left, right) => left.timestamp - right.timestamp);
 };
 
 export const extractRuntimeParityEntries = (
@@ -141,10 +216,19 @@ export const extractRuntimeParityEntries = (
       strategy: trade.strategy,
       symbol: trade.symbol,
       direction: trade.direction,
+      qty: toFiniteNumberOrNull(trade.qty),
       timestamp: trade.entryTimestamp,
       price: toFiniteNumberOrNull(trade.entryPrice),
       orderId: trade.orderId,
       signalId: typeof trade.signalId === 'string' ? trade.signalId : undefined,
+      exitType: trade.exitType ?? null,
+      exitTimestamp: trade.exitTimestamp ?? null,
+      exitPrice: trade.exitPrice ?? null,
+      realizedPnl: trade.closedPnl ?? trade.currentPnl ?? null,
+      entryFee: trade.openFee ?? null,
+      exitFee: trade.closeFee ?? null,
+      fundingFee: trade.fundingFee ?? null,
+      totalFee: trade.totalFee ?? null,
     }))
     .sort((left, right) => left.timestamp - right.timestamp);
 

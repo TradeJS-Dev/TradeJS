@@ -287,11 +287,11 @@ describe('createTrendLineCore', () => {
 
     const config = makeConfig({
       ENV: 'BACKTEST',
+      TRENDLINE_STOP_BASE_PCT: 1,
+      TRENDLINE_TARGET_R_MULT: 2.6,
       LOWS: {
         enable: true,
         direction: 'SHORT',
-        TP: 4,
-        SL: 1,
         minRiskRatio: 2,
       },
     });

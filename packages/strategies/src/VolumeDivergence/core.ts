@@ -15,6 +15,10 @@ import {
   IndicatorsHistorySnapshot,
   Position,
 } from '@tradejs/types';
+import {
+  buildStructureRiskPlan,
+  isStopLossOnCorrectSide,
+} from '../shared/structureRisk';
 
 type PivotDivergence = {
   currentPivotIndex: number;
@@ -759,16 +763,38 @@ export const createVolumeDivergenceCore: CreateStrategyCore<
       return strategyApi.skip('WAIT_CONFIRMATION_CANDLE_QUALITY');
     }
 
-    const { stopLossPrice, takeProfitPrice, riskRatio, qty } =
-      strategyApi.getDirectionalTpSlPrices({
-        price: currentPrice,
+    const atrBuffer =
+      (setupFeatures.atrAbsolute ?? 0) *
+      Math.max(0, Number(config.VOLUME_DIVERGENCE_STOP_ATR_BUFFER_MULT ?? 0.2));
+    const percentBuffer =
+      currentPrice *
+      (Math.max(0, Number(config.VOLUME_DIVERGENCE_STOP_BUFFER_PCT ?? 0.03)) /
+        100);
+    const stopBuffer = Math.max(atrBuffer, percentBuffer);
+    const stopLossPrice =
+      modeConfig.direction === 'LONG'
+        ? pendingCandidate.currentPivotLow - stopBuffer
+        : pendingCandidate.currentPivotHigh + stopBuffer;
+
+    if (
+      !Number.isFinite(stopLossPrice) ||
+      !isStopLossOnCorrectSide({
         direction: modeConfig.direction,
-        takeProfitDelta: modeConfig.TP,
-        stopLossDelta: modeConfig.SL,
-        unit: 'percent',
-        maxLossValue: MAX_LOSS_VALUE,
-        feePercent: Number(FEE_PERCENT ?? 0),
-      });
+        currentPrice,
+        stopLossPrice,
+      })
+    ) {
+      return strategyApi.skip('INVALID_STOP');
+    }
+
+    const { takeProfitPrice, riskRatio, qty } = buildStructureRiskPlan({
+      currentPrice,
+      direction: modeConfig.direction,
+      stopLossPrice,
+      targetR: Number(config.VOLUME_DIVERGENCE_TARGET_R_MULT ?? 3),
+      maxLossValue: MAX_LOSS_VALUE,
+      feePercent: Number(FEE_PERCENT ?? 0),
+    });
 
     if (!qty || !Number.isFinite(qty) || qty <= 0) {
       return strategyApi.skip('INVALID_QTY');

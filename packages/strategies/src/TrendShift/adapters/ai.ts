@@ -30,15 +30,25 @@ const getTrendShiftContext = (payload: AiPayload) => {
 };
 
 export const trendShiftAiAdapter: StrategyAiAdapter = {
-  buildPayload: ({ signal, basePayload }) => ({
-    ...basePayload,
-    additionalIndicators: {
-      ...(basePayload.additionalIndicators as Record<string, unknown>),
-      trendShiftContext: (
-        signal.additionalIndicators as Record<string, unknown> | undefined
-      )?.trendShiftContext,
-    },
-  }),
+  buildPayload: ({ signal, basePayload }) => {
+    const payload = {
+      ...basePayload,
+      additionalIndicators: {
+        ...(basePayload.additionalIndicators as Record<string, unknown>),
+        trendShiftContext: (
+          signal.additionalIndicators as Record<string, unknown> | undefined
+        )?.trendShiftContext,
+      },
+    };
+
+    return {
+      ...payload,
+      additionalIndicators: {
+        ...(payload.additionalIndicators as Record<string, unknown>),
+        trendShiftContext: getTrendShiftContext(payload),
+      },
+    };
+  },
   postProcessAnalysis: ({ payload, analysis }) => {
     const context = getTrendShiftContext(payload);
     const requestedDirection =
@@ -88,9 +98,15 @@ Additional TrendShift context:
 - liquidityTailSide=${context.liquidityTailSide ?? 'n/a'}
 - nearPointOfControl=${String(context.nearPointOfControl ?? 'n/a')}
 - relativeStrength1h=${String(context.relativeStrength1h ?? 'n/a')}
-- gateRelativeStrengthBucket=${context.gateRelativeStrengthBucket ?? 'n/a'}
-- gateConflictCount=${String(context.gateConflictCount ?? 'n/a')}
-- gateMtfAlignment=${context.gateMtfAlignment ?? 'n/a'}
+- trendShiftGateReversalConfirmation=${context.trendShiftGateFeatures.reversalConfirmation}
+- trendShiftGateExhaustionSignal=${context.trendShiftGateFeatures.exhaustionSignal}
+- trendShiftGateOiConfirmation=${context.trendShiftGateFeatures.oiConfirmation}
+- trendShiftGateFlipStretch=${context.trendShiftGateFeatures.flipStretch}
+- trendShiftGateQ4RecoveryProfile=${context.trendShiftGateFeatures.q4RecoveryProfile}
+- trendShiftGateDerivativesReversalAlignment=${context.trendShiftGateFeatures.derivativesReversalAlignment}
+- trendShiftGateRelativeStrengthBucket=${context.trendShiftGateFeatures.relativeStrengthBucket}
+- trendShiftGateConflictCount=${String(context.trendShiftGateFeatures.conflictCount)}
+- trendShiftGateMtfAlignment=${context.trendShiftGateFeatures.mtfAlignment}
 - q4LongBreakoutCandidate=${String(context.q4LongBreakoutCandidate)}
 - q4ShortBreakoutCandidate=${String(context.q4ShortBreakoutCandidate)}
 - q4ShortFailedLowBreakoutCandidate=${String(context.q4ShortFailedLowBreakoutCandidate)}
@@ -103,7 +119,7 @@ Additional TrendShift context:
 - shortFailedLowOiNotConfirming=${String(context.shortFailedLowOiNotConfirming)}
 - shortBelowLowOiFallingLongFlushRisk=${String(context.shortBelowLowOiFallingLongFlushRisk)}
 - shortNearPointOfControlRisk=${String(context.shortNearPointOfControlRisk)}
-- q4GateFeaturesRecoveryCandidate=${String(context.q4GateFeaturesRecoveryCandidate)}
+- q4TrendShiftGateFeaturesRecoveryCandidate=${String(context.q4TrendShiftGateFeaturesRecoveryCandidate)}
 - derivativesRiskFlags=${JSON.stringify(context.derivativesRiskFlags)}
 - priceOiDivergenceType=${context.priceOiDivergenceType ?? 'n/a'}
 - sessionPrimary=${context.sessionPrimary ?? 'n/a'}
@@ -121,7 +137,7 @@ Interpretation rules for TrendShift:
 - Exception: a very narrow SHORT q4 pocket may still pass when Asia-session reversal pressure looks neutral but a real long-liquidation flush is already visible and geometry is near-q5 strong.
 - Exception: selective neutral-derivatives q4 pockets may still pass only in the explicitly tested session/structure combinations surfaced by selectiveNeutralQ4Candidate.
 - Exception: a narrow SHORT breakdown may still pass through neutral derivatives when shortNeutralBearChannelBreakdownCandidate=true: price is below the local low, ATR z-score is normal, and the adaptive channel already points bear.
-- Exception: q4GateFeaturesRecoveryCandidate=true may pass only when gateFeatures shows neutral relative strength, exactly two conflicts, MTF is not against the trade, and the only recovered veto is neutral derivatives pressure or US-session SHORT OI non-expansion.
+- Exception: q4TrendShiftGateFeaturesRecoveryCandidate=true may pass only when TrendShift-local gate features show neutral relative strength, exactly two conflicts, MTF is not against the trade, and the only recovered veto is neutral derivatives pressure or US-session SHORT OI non-expansion.
 - If derivatives risk flags include 'oi_not_confirming' and there is no supporting liquidation flush, keep the setup in watch mode even when price geometry looks q5-strong.
 - For SHORT, if the move is already very far from the adaptive average without a long-liquidation flush, treat it as overextended and keep it in watch mode.
 - Thin participation (volumeRel20 < 0.8) is a live hard downgrade even for otherwise q5-looking flips.

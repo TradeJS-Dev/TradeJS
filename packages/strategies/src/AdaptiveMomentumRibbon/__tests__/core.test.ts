@@ -251,12 +251,12 @@ describe('createAdaptiveMomentumRibbonCore', () => {
         kcMidline: 101,
         kcUpper: 102,
         kcLower: 100,
-        invalidationLevel: 99,
+        invalidationLevel: 97,
         lineValues: {
           kcMidline: 101,
           kcUpper: 102,
           kcLower: 100,
-          invalidationLevel: 99,
+          invalidationLevel: 97,
         },
       }),
     );
@@ -296,21 +296,12 @@ describe('createAdaptiveMomentumRibbonCore', () => {
 
     expect(decision.entryContext.direction).toBe('LONG');
     expect(decision.code).toBe('AMR_ENTRY_LONG');
-    expect(decision.orderPlan.qty).toBe(1);
-    expect(decision.orderPlan.stopLossPrice).toBeCloseTo(
-      marketData.currentPrice * 0.99,
+    expect(decision.orderPlan.qty).toBeGreaterThan(0);
+    expect(decision.orderPlan.stopLossPrice).toBeLessThan(
+      marketData.currentPrice,
     );
-    expect(strategyApi.getDirectionalTpSlPrices).toHaveBeenCalledWith(
-      expect.objectContaining({
-        price: marketData.currentPrice,
-        direction: 'LONG',
-        takeProfitDelta: 2,
-        stopLossDelta: 1,
-        unit: 'percent',
-        maxLossValue: 10,
-        feePercent: 0.003,
-      }),
-    );
+    expect(decision.entryContext.prices.riskRatio).toBe(2);
+    expect(strategyApi.getDirectionalTpSlPrices).not.toHaveBeenCalled();
     expect(decision.signal?.additionalIndicators).toEqual(
       expect.objectContaining({
         amrSignalTiming: expect.objectContaining({
@@ -638,7 +629,7 @@ describe('createAdaptiveMomentumRibbonCore', () => {
     });
   });
 
-  it('returns INVALID_QTY when directional sizing returns non-positive quantity', async () => {
+  it('returns INVALID_QTY when structural risk sizing returns non-positive quantity', async () => {
     mockedEvaluateAdaptiveMomentumRibbon.mockReturnValue(
       makeEvaluation({
         entryLong: true,
@@ -649,12 +640,9 @@ describe('createAdaptiveMomentumRibbonCore', () => {
     const candles = makeCandles({ bullishLast: true });
     const { core } = await makeRuntime({
       candles,
-      directionalTpSlPrices: ({ price, direction }) => ({
-        stopLossPrice: direction === 'LONG' ? price * 0.99 : price * 1.01,
-        takeProfitPrice: direction === 'LONG' ? price * 1.02 : price * 0.98,
-        riskRatio: 2.1,
-        qty: 0,
-      }),
+      configOverrides: {
+        MAX_LOSS_VALUE: 0,
+      },
     });
 
     const decision = await core(

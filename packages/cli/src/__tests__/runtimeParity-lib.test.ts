@@ -64,6 +64,14 @@ describe('runtime parity helpers', () => {
       entryPrice: 100,
       entryTimestamp: 1_000,
       status: 'closed',
+      exitType: 'exit',
+      exitPrice: 106,
+      exitTimestamp: 2_000,
+      closedPnl: 5,
+      openFee: 0.1,
+      closeFee: 0.2,
+      fundingFee: -0.01,
+      totalFee: 0.29,
     },
     {
       orderId: 'ord-2',
@@ -87,6 +95,7 @@ describe('runtime parity helpers', () => {
       direction: 'LONG',
       type: 'OPEN_LONG',
       profit: -1,
+      fee: 1,
       amount: 99,
       index: 0,
       signal: {
@@ -114,6 +123,7 @@ describe('runtime parity helpers', () => {
       direction: 'LONG',
       type: 'OPEN_LONG',
       profit: -1,
+      fee: 1,
       amount: 98,
       index: 1,
       signal: {
@@ -141,6 +151,7 @@ describe('runtime parity helpers', () => {
       direction: 'LONG',
       type: 'TAKE_PROFIT_LONG',
       profit: 20,
+      fee: 2,
       amount: 118,
       index: 2,
     },
@@ -156,6 +167,11 @@ describe('runtime parity helpers', () => {
         direction: 'LONG',
         timestamp: 1_000,
         price: 101,
+        exitType: 'open',
+        expectedPnl: -1,
+        entryFee: 1,
+        exitFee: 0,
+        totalFee: 1,
       }),
       expect.objectContaining({
         id: 'bt-2',
@@ -165,6 +181,101 @@ describe('runtime parity helpers', () => {
         direction: 'LONG',
         timestamp: 4_500,
         price: 109,
+        exitType: 'tp',
+        exitTimestamp: 7_000,
+        exitPrice: 120,
+        expectedPnl: 19,
+        entryFee: 1,
+        exitFee: 2,
+        totalFee: 3,
+      }),
+    ]);
+  });
+
+  it('extracts runtime exit, pnl, and cost fields', () => {
+    expect(extractRuntimeParityEntries(runtimeTrades)[0]).toEqual(
+      expect.objectContaining({
+        id: 'ord-1',
+        exitType: 'exit',
+        exitTimestamp: 2_000,
+        exitPrice: 106,
+        realizedPnl: 5,
+        entryFee: 0.1,
+        exitFee: 0.2,
+        fundingFee: -0.01,
+        totalFee: 0.29,
+      }),
+    );
+  });
+
+  it('marks mixed backtest exit type when a trade has tp and sl closing rows', () => {
+    const mixedOrderLog: OrderLogData = [
+      {
+        symbol: 'ETHUSDT',
+        qty: 3,
+        price: 100,
+        timestamp: 1_000,
+        direction: 'SHORT',
+        type: 'OPEN_SHORT',
+        profit: -0.5,
+        fee: 0.1,
+        amount: 999.5,
+        index: 0,
+        signal: {
+          signalId: 'mixed-1',
+          symbol: 'ETHUSDT',
+          interval: '15',
+          strategy: 'TrendLine',
+          direction: 'SHORT',
+          timestamp: 1_000,
+          figures: {},
+          prices: {
+            currentPrice: 100,
+            takeProfitPrice: 90,
+            stopLossPrice: 105,
+            riskRatio: 2,
+          },
+          indicators: {},
+        },
+      },
+      {
+        symbol: 'ETHUSDT',
+        qty: 1,
+        price: 90,
+        timestamp: 2_000,
+        direction: 'SHORT',
+        type: 'TAKE_PROFIT_SHORT',
+        profit: 10,
+        fee: 0.2,
+        amount: 1009.3,
+        index: 1,
+      },
+      {
+        symbol: 'ETHUSDT',
+        qty: 2,
+        price: 105,
+        timestamp: 3_000,
+        direction: 'SHORT',
+        type: 'STOP_LOSS_SHORT',
+        profit: -10,
+        fee: 0.3,
+        amount: 999,
+        index: 2,
+      },
+    ];
+
+    expect(extractBacktestEntryParityEntries(mixedOrderLog)).toEqual([
+      expect.objectContaining({
+        id: 'mixed-1',
+        direction: 'SHORT',
+        qty: 3,
+        exitType: 'mixed',
+        exitTimestamp: 3_000,
+        exitPrice: 105,
+        expectedPnl: -0.5,
+        entryFee: 0.1,
+        exitFee: 0.5,
+        totalFee: 0.6,
       }),
     ]);
   });

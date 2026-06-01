@@ -77,6 +77,9 @@ type SharedReplayControllerState = {
 
 const sharedReplayControllers = new Map<string, SharedReplayControllerState>();
 
+const canUseSharedReplayController = (env: string, sharedReplayKey?: string) =>
+  (env === 'BACKTEST' || env === 'PARITY') && Boolean(sharedReplayKey);
+
 const createSnapshotController = (
   value: IndicatorsController,
 ): SnapshotController => {
@@ -151,7 +154,7 @@ export const createStrategyIndicatorsState = ({
       },
     );
   const sharedReplayState =
-    env === 'BACKTEST' && sharedReplayKey
+    canUseSharedReplayController(env, sharedReplayKey) && sharedReplayKey
       ? (() => {
           let existing = sharedReplayControllers.get(sharedReplayKey);
           if (!existing) {

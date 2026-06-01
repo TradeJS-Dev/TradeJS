@@ -38,6 +38,7 @@ type ReplayArtifacts = {
 
 export type PortfolioReplayConnector = Connector & {
   __tradejsReplayConnector: true;
+  __tradejsTestConnector: true;
   advanceMarket: (params: { symbol: string; candle: Candle }) => Promise<void>;
   getReplayArtifacts: () => ReplayArtifacts;
 };
@@ -290,6 +291,7 @@ export const createPortfolioReplayConnector = (
 
   return {
     __tradejsReplayConnector: true,
+    __tradejsTestConnector: true,
 
     getState: async () => state,
     setState: async (newState: object) => {

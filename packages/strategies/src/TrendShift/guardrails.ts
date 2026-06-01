@@ -16,6 +16,33 @@ export type TrendShiftSignalContext = {
   avg?: number;
 };
 
+export type TrendShiftGateFeatures = {
+  reversalConfirmation: 'noise' | 'weak' | 'confirmed' | 'strong';
+  exhaustionSignal:
+    | 'none'
+    | 'liquidation_flush'
+    | 'oi_falling_flush'
+    | 'crowded_pressure'
+    | 'mixed_oi';
+  oiConfirmation: 'expanding' | 'falling' | 'mixed' | 'unknown';
+  flipStretch: 'too_small' | 'clean' | 'extended' | 'overextended';
+  q4RecoveryProfile: 'none' | 'geometry_only' | 'context_supported' | 'blocked';
+  derivativesReversalAlignment:
+    | 'supports_reversal'
+    | 'conflicts'
+    | 'neutral'
+    | 'unknown';
+  relativeStrengthBucket:
+    | 'strong_against'
+    | 'mild_against'
+    | 'neutral'
+    | 'mild_with'
+    | 'strong_with'
+    | 'unknown';
+  conflictCount: number;
+  mtfAlignment: 'aligned' | 'against' | 'mixed' | 'neutral' | 'unknown';
+};
+
 export type TrendShiftGuardrailContext = TrendShiftSignalContext & {
   deterministicQuality: number;
   approvalAllowedNow: boolean;
@@ -39,7 +66,7 @@ export type TrendShiftGuardrailContext = TrendShiftSignalContext & {
   shortFailedLowOiNotConfirming: boolean;
   shortBelowLowOiFallingLongFlushRisk: boolean;
   shortNearPointOfControlRisk: boolean;
-  q4GateFeaturesRecoveryCandidate: boolean;
+  q4TrendShiftGateFeaturesRecoveryCandidate: boolean;
   breakoutState: string | null;
   volumeRel20: number | null;
   atrPctZScore: number | null;
@@ -47,9 +74,7 @@ export type TrendShiftGuardrailContext = TrendShiftSignalContext & {
   liquidityTailSide: string | null;
   nearPointOfControl: boolean | null;
   relativeStrength1h: number | null;
-  gateRelativeStrengthBucket: string | null;
-  gateConflictCount: number | null;
-  gateMtfAlignment: string | null;
+  trendShiftGateFeatures: TrendShiftGateFeatures;
   sessionPrimary: string | null;
   sessionIsOverlap: boolean;
   priceOiDivergenceType: string | null;
@@ -66,6 +91,350 @@ const asStringArray = (value: unknown): string[] =>
 const asFiniteNumber = (value: unknown): number | null => {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
+};
+
+const toMtfAlignmentForTrendShift = ({
+  direction,
+  mtfAlignment,
+}: {
+  direction: TrendShiftSignalContext['signalDirection'];
+  mtfAlignment: string | null;
+}): TrendShiftGateFeatures['mtfAlignment'] => {
+  if (!direction || !mtfAlignment || mtfAlignment === 'unknown') {
+    return 'unknown';
+  }
+  if (mtfAlignment === 'mixed') return 'mixed';
+  if (mtfAlignment === 'neutral') return 'neutral';
+  if (direction === 'LONG') {
+    return mtfAlignment === 'aligned_bull'
+      ? 'aligned'
+      : mtfAlignment === 'aligned_bear'
+        ? 'against'
+        : 'unknown';
+  }
+  return mtfAlignment === 'aligned_bear'
+    ? 'aligned'
+    : mtfAlignment === 'aligned_bull'
+      ? 'against'
+      : 'unknown';
+};
+
+const toTrendShiftRelativeStrengthBucket = ({
+  direction,
+  value,
+}: {
+  direction: TrendShiftSignalContext['signalDirection'];
+  value: number | null;
+}): TrendShiftGateFeatures['relativeStrengthBucket'] => {
+  if (!direction || value == null) return 'unknown';
+  const signed = direction === 'LONG' ? value : -value;
+  if (signed <= -3) return 'strong_against';
+  if (signed < -1) return 'mild_against';
+  if (signed >= 3) return 'strong_with';
+  if (signed > 1) return 'mild_with';
+  return 'neutral';
+};
+
+const toPressureBias = (value: number | null) =>
+  value == null
+    ? 'unknown'
+    : value >= 0.55
+      ? 'bull'
+      : value <= 0.45
+        ? 'bear'
+        : 'neutral';
+
+const toBiasAligned = ({
+  direction,
+  bias,
+}: {
+  direction: TrendShiftSignalContext['signalDirection'];
+  bias: 'bull' | 'bear' | 'neutral' | 'unknown';
+}) =>
+  direction == null || bias === 'unknown' || bias === 'neutral'
+    ? null
+    : direction === 'LONG'
+      ? bias === 'bull'
+      : bias === 'bear';
+
+const toDirectionalAlignment = ({
+  direction,
+  bullValue,
+  bearValue,
+  value,
+}: {
+  direction: TrendShiftSignalContext['signalDirection'];
+  bullValue: string;
+  bearValue: string;
+  value: string | null;
+}): boolean | null => {
+  if (!direction || !value) return null;
+  return direction === 'LONG' ? value === bullValue : value === bearValue;
+};
+
+const toTrendShiftOiConfirmation = ({
+  direction,
+  priceOiDivergenceType,
+}: {
+  direction: TrendShiftSignalContext['signalDirection'];
+  priceOiDivergenceType: string | null;
+}): TrendShiftGateFeatures['oiConfirmation'] => {
+  if (
+    !direction ||
+    !priceOiDivergenceType ||
+    priceOiDivergenceType === 'unknown'
+  ) {
+    return 'unknown';
+  }
+  if (priceOiDivergenceType === 'flat_or_mixed') return 'mixed';
+  if (direction === 'LONG') {
+    if (priceOiDivergenceType === 'price_up_oi_up') return 'expanding';
+    if (priceOiDivergenceType === 'price_up_oi_down') return 'falling';
+  }
+  if (direction === 'SHORT') {
+    if (priceOiDivergenceType === 'price_down_oi_up') return 'expanding';
+    if (priceOiDivergenceType === 'price_down_oi_down') return 'falling';
+  }
+  return 'mixed';
+};
+
+const toTrendShiftReversalConfirmation = ({
+  signalContext,
+}: {
+  signalContext: TrendShiftSignalContext;
+}): TrendShiftGateFeatures['reversalConfirmation'] => {
+  if (signalContext.confirmedFlip !== true) return 'noise';
+  if (signalContext.flipDistanceOk !== true) return 'weak';
+
+  const slopeAbs = Math.abs(signalContext.avgSlopePct ?? 0);
+  const distanceAtrRatio = signalContext.distanceAtrRatio ?? 0;
+  const closeVsAvgPctAbs = Math.abs(signalContext.closeVsAvgPct ?? 0);
+
+  if (distanceAtrRatio >= 0.8 && slopeAbs >= 0.09 && closeVsAvgPctAbs >= 0.12) {
+    return 'strong';
+  }
+  if (
+    distanceAtrRatio >= 0.45 &&
+    slopeAbs >= 0.04 &&
+    closeVsAvgPctAbs >= 0.05
+  ) {
+    return 'confirmed';
+  }
+  return 'weak';
+};
+
+const toTrendShiftFlipStretch = ({
+  signalContext,
+}: {
+  signalContext: TrendShiftSignalContext;
+}): TrendShiftGateFeatures['flipStretch'] => {
+  const distanceAtrRatio = signalContext.distanceAtrRatio ?? 0;
+  const closeVsAvgPctAbs = Math.abs(signalContext.closeVsAvgPct ?? 0);
+
+  if (distanceAtrRatio < 0.45 || closeVsAvgPctAbs < 0.05) {
+    return 'too_small';
+  }
+  if (distanceAtrRatio > 1.2 || closeVsAvgPctAbs > 0.45) {
+    return 'overextended';
+  }
+  if (distanceAtrRatio >= 0.8 || closeVsAvgPctAbs >= 0.12) {
+    return 'extended';
+  }
+  return 'clean';
+};
+
+const buildTrendShiftGateFeatures = ({
+  baseContext,
+  signalContext,
+}: {
+  baseContext?: BaseStrategyContextSnapshot | null;
+  signalContext: TrendShiftSignalContext;
+}): TrendShiftGateFeatures => {
+  const direction = signalContext.signalDirection;
+  const reversalConfirmation = toTrendShiftReversalConfirmation({
+    signalContext,
+  });
+  const flipStretch = toTrendShiftFlipStretch({ signalContext });
+
+  if (!baseContext || !direction) {
+    return {
+      reversalConfirmation,
+      exhaustionSignal: 'none',
+      oiConfirmation: 'unknown',
+      flipStretch,
+      q4RecoveryProfile: 'none',
+      derivativesReversalAlignment: 'unknown',
+      relativeStrengthBucket: 'unknown',
+      conflictCount: 0,
+      mtfAlignment: 'unknown',
+    };
+  }
+
+  const mtfAlignment = toMtfAlignmentForTrendShift({
+    direction,
+    mtfAlignment: baseContext.mtf?.summary?.mtfAlignment ?? null,
+  });
+  const benchmark = baseContext.relative?.benchmark;
+  const relativeStrength1h = asFiniteNumber(benchmark?.relativeStrength1h);
+  const relativeStrengthBucket = toTrendShiftRelativeStrengthBucket({
+    direction,
+    value: relativeStrength1h,
+  });
+  const benchmarkTrendAlignment = benchmark?.trendAlignment ?? null;
+  const benchmarkAligned =
+    benchmarkTrendAlignment === 'against_benchmark'
+      ? false
+      : toDirectionalAlignment({
+          direction,
+          bullValue: 'aligned_bull',
+          bearValue: 'aligned_bear',
+          value: benchmarkTrendAlignment,
+        });
+  const marketBreadth = baseContext.relative?.marketBreadth;
+  const marketBreadthReturn = asFiniteNumber(
+    marketBreadth?.equalWeightedReturn,
+  );
+  const marketBreadthAligned =
+    marketBreadthReturn == null || marketBreadth?.stale
+      ? null
+      : direction === 'LONG'
+        ? marketBreadthReturn >= 0
+        : marketBreadthReturn <= 0;
+  const delta = baseContext.participation?.delta;
+  const deltaDivergenceVsPrice =
+    typeof delta?.deltaDivergenceVsPrice === 'string'
+      ? delta.deltaDivergenceVsPrice
+      : null;
+  const buyPressurePct = asFiniteNumber(delta?.buyPressurePct);
+  const deltaBias =
+    deltaDivergenceVsPrice === 'bullish' || deltaDivergenceVsPrice === 'bearish'
+      ? deltaDivergenceVsPrice === 'bullish'
+        ? 'bull'
+        : 'bear'
+      : toPressureBias(buyPressurePct);
+  const deltaAligned = toBiasAligned({ direction, bias: deltaBias });
+  const tradeFlow = baseContext.participation?.tradeFlow;
+  const tradeFlowBias = tradeFlow?.stale
+    ? 'unknown'
+    : toPressureBias(asFiniteNumber(tradeFlow?.buyPressurePct));
+  const tradeFlowAligned = toBiasAligned({ direction, bias: tradeFlowBias });
+  const primaryReferenceSymbol =
+    baseContext.relative?.marketReferences?.primaryReferenceSymbol;
+  const primaryReferenceTradeFlow =
+    primaryReferenceSymbol != null
+      ? baseContext.relative?.marketReferences?.tradeFlowBySymbol?.[
+          primaryReferenceSymbol
+        ]
+      : undefined;
+  const referenceTradeFlowBias = primaryReferenceTradeFlow?.stale
+    ? 'unknown'
+    : toPressureBias(asFiniteNumber(primaryReferenceTradeFlow?.buyPressurePct));
+  const referenceTradeFlowAligned = toBiasAligned({
+    direction,
+    bias: referenceTradeFlowBias,
+  });
+  const localRange = baseContext.structure?.localRange;
+  const breakoutState = localRange?.breakoutState ?? null;
+  const failedBreakoutForDirection = toDirectionalAlignment({
+    direction,
+    bullValue: 'failed_low_breakout',
+    bearValue: 'failed_high_breakout',
+    value: breakoutState,
+  });
+  const volatility = baseContext.regime?.volatility;
+  const atrPctZScore = asFiniteNumber(volatility?.atrPctZScore);
+  const extremeVolatilityRisk = Math.abs(atrPctZScore ?? 0) >= 2;
+  const derivativesSummary = baseContext.derivatives?.summary;
+  const derivativesPressure =
+    typeof derivativesSummary?.pressure === 'string'
+      ? derivativesSummary.pressure
+      : null;
+  const priceOiDivergenceType =
+    typeof derivativesSummary?.priceOiDivergenceType === 'string'
+      ? derivativesSummary.priceOiDivergenceType
+      : null;
+  const oiConfirmation = toTrendShiftOiConfirmation({
+    direction,
+    priceOiDivergenceType,
+  });
+  const derivativesDirectionAligned =
+    typeof derivativesSummary?.directionAligned === 'boolean'
+      ? derivativesSummary.directionAligned
+      : null;
+  const derivativesRiskFlags = asStringArray(derivativesSummary?.riskFlags);
+  const derivativesCrowdedForDirection =
+    direction === 'LONG'
+      ? derivativesRiskFlags.includes('crowded_long')
+      : derivativesRiskFlags.includes('crowded_short');
+  const derivativesFlushSupport =
+    direction === 'SHORT'
+      ? derivativesRiskFlags.includes('long_liquidation_spike') ||
+        derivativesPressure === 'long_flush'
+      : derivativesRiskFlags.includes('short_liquidation_spike') ||
+        derivativesPressure === 'short_flush';
+  const oiNotConfirming = derivativesRiskFlags.includes('oi_not_confirming');
+  const exhaustionSignal: TrendShiftGateFeatures['exhaustionSignal'] =
+    derivativesFlushSupport && oiConfirmation === 'falling'
+      ? 'oi_falling_flush'
+      : derivativesFlushSupport
+        ? 'liquidation_flush'
+        : derivativesCrowdedForDirection
+          ? 'crowded_pressure'
+          : oiConfirmation === 'mixed'
+            ? 'mixed_oi'
+            : 'none';
+  const derivativesReversalAlignment: TrendShiftGateFeatures['derivativesReversalAlignment'] =
+    derivativesSummary == null
+      ? 'unknown'
+      : derivativesFlushSupport ||
+          (derivativesDirectionAligned === true && !oiNotConfirming)
+        ? 'supports_reversal'
+        : derivativesDirectionAligned === false ||
+            oiNotConfirming ||
+            oiConfirmation === 'mixed'
+          ? 'conflicts'
+          : derivativesPressure === 'neutral'
+            ? 'neutral'
+            : 'unknown';
+  const conflicts: boolean[] = [];
+  conflicts.push(mtfAlignment === 'against');
+  conflicts.push(mtfAlignment === 'mixed');
+  conflicts.push(benchmarkAligned === false);
+  conflicts.push(relativeStrengthBucket.endsWith('_against'));
+  conflicts.push(marketBreadthAligned === false);
+  conflicts.push(deltaAligned === false);
+  conflicts.push(tradeFlowAligned === false);
+  conflicts.push(referenceTradeFlowAligned === false);
+  conflicts.push(failedBreakoutForDirection === true);
+  conflicts.push(extremeVolatilityRisk);
+  conflicts.push(derivativesDirectionAligned === false);
+  conflicts.push(derivativesCrowdedForDirection);
+  const conflictCount = conflicts.filter(Boolean).length;
+  const volumeRel20 = asFiniteNumber(
+    baseContext.participation?.volume?.volumeRel20,
+  );
+  const q4GeometryCandidate = reversalConfirmation === 'confirmed';
+  const q4RecoveryProfile: TrendShiftGateFeatures['q4RecoveryProfile'] =
+    !q4GeometryCandidate
+      ? 'none'
+      : mtfAlignment === 'against' || conflictCount > 2
+        ? 'blocked'
+        : derivativesReversalAlignment === 'supports_reversal' &&
+            (volumeRel20 == null || volumeRel20 >= 0.8)
+          ? 'context_supported'
+          : 'geometry_only';
+
+  return {
+    reversalConfirmation,
+    exhaustionSignal,
+    oiConfirmation,
+    flipStretch,
+    q4RecoveryProfile,
+    derivativesReversalAlignment,
+    relativeStrengthBucket,
+    conflictCount,
+    mtfAlignment,
+  };
 };
 
 export const buildTrendShiftGuardrailContext = ({
@@ -85,7 +454,10 @@ export const buildTrendShiftGuardrailContext = ({
   const benchmark = baseContext?.relative?.benchmark ?? null;
   const volatility = baseContext?.regime?.volatility ?? null;
   const adaptiveChannel = baseContext?.regime?.trend?.adaptiveChannel ?? null;
-  const gateFeatures = baseContext?.gateFeatures ?? null;
+  const trendShiftGateFeatures = buildTrendShiftGateFeatures({
+    baseContext,
+    signalContext,
+  });
   const priceVolumeProfile =
     baseContext?.participation?.priceVolumeProfile ?? null;
   const liquidityTail =
@@ -118,15 +490,6 @@ export const buildTrendShiftGuardrailContext = ({
       ? priceVolumeProfile.nearPointOfControl
       : null;
   const relativeStrength1h = asFiniteNumber(benchmark?.relativeStrength1h);
-  const gateRelativeStrengthBucket =
-    typeof gateFeatures?.relative?.relativeStrengthBucket === 'string'
-      ? gateFeatures.relative.relativeStrengthBucket
-      : null;
-  const gateConflictCount = asFiniteNumber(gateFeatures?.conflicts?.count);
-  const gateMtfAlignment =
-    typeof gateFeatures?.mtf?.alignmentForDirection === 'string'
-      ? gateFeatures.mtf.alignmentForDirection
-      : null;
   const priceOiDivergenceType =
     typeof derivativesSummary?.priceOiDivergenceType === 'string'
       ? derivativesSummary.priceOiDivergenceType
@@ -446,23 +809,23 @@ export const buildTrendShiftGuardrailContext = ({
     hardBlockReasons.push('short_near_point_of_control');
   }
 
-  const gateFeaturesRecoveryAllowedReasons = [
+  const trendShiftGateFeaturesRecoveryAllowedReasons = [
     'neutral_derivatives_pressure',
     'us_short_oi_not_expanding',
   ];
-  const q4GateFeaturesRecoveryCandidate =
+  const q4TrendShiftGateFeaturesRecoveryCandidate =
     deterministicQuality === 4 &&
     signalContext.confirmedFlip === true &&
     signalContext.flipDistanceOk === true &&
-    gateRelativeStrengthBucket === 'neutral' &&
-    gateConflictCount === 2 &&
-    gateMtfAlignment !== 'against' &&
+    trendShiftGateFeatures.relativeStrengthBucket === 'neutral' &&
+    trendShiftGateFeatures.conflictCount === 2 &&
+    trendShiftGateFeatures.mtfAlignment !== 'against' &&
     hardBlockReasons.length > 0 &&
     hardBlockReasons.every((reason) =>
-      gateFeaturesRecoveryAllowedReasons.includes(reason),
+      trendShiftGateFeaturesRecoveryAllowedReasons.includes(reason),
     );
 
-  if (q4GateFeaturesRecoveryCandidate) {
+  if (q4TrendShiftGateFeaturesRecoveryCandidate) {
     deterministicQuality = 5;
     hardBlockReasons.length = 0;
   }
@@ -491,7 +854,7 @@ export const buildTrendShiftGuardrailContext = ({
     shortFailedLowOiNotConfirming,
     shortBelowLowOiFallingLongFlushRisk,
     shortNearPointOfControlRisk,
-    q4GateFeaturesRecoveryCandidate,
+    q4TrendShiftGateFeaturesRecoveryCandidate,
     breakoutState,
     volumeRel20,
     atrPctZScore,
@@ -499,9 +862,7 @@ export const buildTrendShiftGuardrailContext = ({
     liquidityTailSide,
     nearPointOfControl,
     relativeStrength1h,
-    gateRelativeStrengthBucket,
-    gateConflictCount,
-    gateMtfAlignment,
+    trendShiftGateFeatures,
     sessionPrimary,
     sessionIsOverlap,
     priceOiDivergenceType,

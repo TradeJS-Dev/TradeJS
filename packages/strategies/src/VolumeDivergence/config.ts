@@ -9,8 +9,6 @@ import {
 export interface VolumeDivergenceModeConfig {
   enable: boolean;
   direction: Direction;
-  TP: number;
-  SL: number;
   minRiskRatio: number;
 }
 
@@ -50,18 +48,17 @@ export const config = {
   MIN_DIVERGENCE_AMPLITUDE_ATR_RATIO: 0.35,
   MIN_RECLAIM_PCT: 105,
   MIN_CONFIRMATION_CANDLE_QUALITY: 0.58,
+  VOLUME_DIVERGENCE_STOP_ATR_BUFFER_MULT: 0.2,
+  VOLUME_DIVERGENCE_STOP_BUFFER_PCT: 0.03,
+  VOLUME_DIVERGENCE_TARGET_R_MULT: 3,
   BULLISH: {
     enable: true,
     direction: 'LONG',
-    TP: 4,
-    SL: 1.3,
     minRiskRatio: 2,
   },
   BEARISH: {
     enable: true,
     direction: 'SHORT',
-    TP: 4,
-    SL: 1.3,
     minRiskRatio: 2,
   },
 } as const;

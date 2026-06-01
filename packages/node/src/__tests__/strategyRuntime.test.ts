@@ -348,6 +348,46 @@ describe('strategyRuntime', () => {
     expect(lastCall).not.toHaveProperty('replayStartIndex');
   });
 
+  it('does not append a duplicate candle when shared replay data already advanced', async () => {
+    mockResolveStrategyConfig.mockResolvedValue({
+      config: { ENV: 'PARITY', MAKE_ORDERS: false },
+      isConfigFromBacktest: false,
+    });
+    const strategyCreator = createStrategyRuntime({
+      strategyName: 'TrendLine',
+      defaults: {} as any,
+      createCore: async () => async () => ({ kind: 'skip', code: 'NOOP' }),
+    });
+    const data = [
+      { timestamp: 1, close: 101 },
+      { timestamp: 2, close: 102 },
+    ] as any;
+    const btcData = [
+      { timestamp: 1, close: 201 },
+      { timestamp: 2, close: 202 },
+    ] as any;
+    const strategy = await strategyCreator({
+      userName: 'root',
+      connectorName: 'ByBit',
+      symbol: 'ETHUSDT',
+      config: {},
+      data,
+      btcData,
+      connector: {} as any,
+    } as any);
+
+    await strategy(
+      { timestamp: 2, close: 102 } as any,
+      {
+        timestamp: 2,
+        close: 202,
+      } as any,
+    );
+
+    expect(data).toHaveLength(2);
+    expect(btcData).toHaveLength(2);
+  });
+
   afterAll(() => {
     process.env = originalEnv;
     manifestsModule.resetStrategyRegistryCache();
@@ -1359,6 +1399,14 @@ describe('strategyRuntime', () => {
     );
 
     expect(connector.closePosition).toHaveBeenCalledTimes(1);
+    expect(mockMarkRuntimeTradeClosed).toHaveBeenCalledWith(
+      expect.objectContaining({
+        symbol: 'ETHUSDT',
+        exitPrice: 100,
+        exitTimestamp: 1_700_000_123_000,
+        exitType: 'exit',
+      }),
+    );
     expect(result).toBe('CLOSE_BY_SIGNAL');
   });
 

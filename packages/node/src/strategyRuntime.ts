@@ -332,6 +332,14 @@ const isTestConnector = (
       .__tradejsTestConnector,
   );
 
+const canUseSharedReplayState = ({
+  env,
+  sharedReplayKey,
+}: {
+  env: string;
+  sharedReplayKey?: string;
+}) => (env === 'BACKTEST' || env === 'PARITY') && Boolean(sharedReplayKey);
+
 const buildMlHookContext = ({
   signal,
   env,
@@ -489,6 +497,7 @@ const handleExitDecision = async ({
       symbol,
       exitPrice: decision.closePlan.price,
       exitTimestamp: decision.closePlan.timestamp,
+      exitType: 'exit',
     });
   } catch (err) {
     await onRuntimeError?.({
@@ -810,6 +819,18 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
       normalizeConfigHookList(projectHooks?.[stage] as any);
 
     const indicatorReplayKey = JSON.stringify({ periods: indicatorPeriods });
+    const sharedReplayEnabled = canUseSharedReplayState({
+      env,
+      sharedReplayKey: sharedIndicatorsReplayKey,
+    });
+    const indicatorSharedReplayKey =
+      sharedReplayEnabled && sharedIndicatorsReplayKey
+        ? `${sharedIndicatorsReplayKey}:indicators:${indicatorReplayKey}`
+        : undefined;
+    const strategySharedReplayKey =
+      sharedReplayEnabled && sharedIndicatorsReplayKey
+        ? `${sharedIndicatorsReplayKey}:strategy:${strategyName}`
+        : undefined;
 
     const notifyRuntimeError = async ({
       stage,
@@ -1097,10 +1118,7 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
       btcCoinbaseData,
       periods: indicatorPeriods,
       pluginRegistryScope: projectRoot,
-      sharedReplayKey:
-        env === 'BACKTEST' && sharedIndicatorsReplayKey
-          ? `${sharedIndicatorsReplayKey}:${indicatorReplayKey}`
-          : undefined,
+      sharedReplayKey: indicatorSharedReplayKey,
     });
     const strategyApi = createStrategyAPI({
       strategy: strategyName as any,
@@ -1126,8 +1144,7 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
       loadPineScriptFile,
       strategyApi,
       indicatorsState,
-      sharedReplayKey:
-        env === 'BACKTEST' ? sharedIndicatorsReplayKey : undefined,
+      sharedReplayKey: strategySharedReplayKey,
       getSharedReplayState: getSharedStrategyReplayState,
     });
 
@@ -1139,13 +1156,24 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
       },
     });
 
+    const appendCurrentMarketData = (
+      candle: Parameters<Awaited<ReturnType<typeof createCore>>>[0],
+      btcCandle: Parameters<Awaited<ReturnType<typeof createCore>>>[1],
+    ) => {
+      if (data[data.length - 1]?.timestamp !== candle.timestamp) {
+        data.push(candle);
+      }
+      if (btcData[btcData.length - 1]?.timestamp !== btcCandle.timestamp) {
+        btcData.push(btcCandle);
+      }
+    };
+
     const runWithDecisionOverride = async (
       candle: Parameters<Awaited<ReturnType<typeof createCore>>>[0],
       btcCandle: Parameters<Awaited<ReturnType<typeof createCore>>>[1],
       coreDecisionOverride?: StrategyDecision,
     ) => {
-      data.push(candle);
-      btcData.push(btcCandle);
+      appendCurrentMarketData(candle, btcCandle);
       indicatorsState.setCurrentBar(candle, btcCandle);
       const market: HookCandleMarket = {
         candle,
@@ -1528,8 +1556,7 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
           btcCandle: KlineChartItem,
           code: string,
         ) => {
-          data.push(candle);
-          btcData.push(btcCandle);
+          appendCurrentMarketData(candle, btcCandle);
           indicatorsState.setCurrentBar(candle, btcCandle);
           return Promise.resolve(code);
         };

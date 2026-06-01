@@ -256,6 +256,10 @@ export interface ClosedPnlRecord {
   entryTimestamp?: number;
   orderId?: string;
   orderLinkId?: string;
+  openFee?: number | null;
+  closeFee?: number | null;
+  fundingFee?: number | null;
+  totalFee?: number | null;
 }
 
 export interface ExchangeEntryRecord {
@@ -269,6 +273,10 @@ export interface ExchangeEntryRecord {
   exitPrice?: number | null;
   exitTimestamp?: number | null;
   closedPnl?: number | null;
+  openFee?: number | null;
+  closeFee?: number | null;
+  fundingFee?: number | null;
+  totalFee?: number | null;
 }
 
 export interface GetClosedPnlParams {
@@ -562,6 +570,7 @@ export interface RuntimeAiAnalysisSnapshot {
 export type SignalOrderStatus = 'completed' | 'failed' | 'skipped' | 'canceled';
 
 export type RuntimeTradeStatus = 'active' | 'closed';
+export type RuntimeTradeExitType = 'exit' | 'tp' | 'sl' | 'unknown';
 
 export interface RuntimeTradeRecord {
   orderId: string;
@@ -578,6 +587,11 @@ export interface RuntimeTradeRecord {
   closedPnl?: number | null;
   exitPrice?: number | null;
   exitTimestamp?: number | null;
+  exitType?: RuntimeTradeExitType | null;
+  openFee?: number | null;
+  closeFee?: number | null;
+  fundingFee?: number | null;
+  totalFee?: number | null;
   aiAnalysis?: Partial<SignalAnalysis> | null;
   lastSyncedAt?: number;
 }

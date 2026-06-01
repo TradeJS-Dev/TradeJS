@@ -1,11 +1,10 @@
 import chalk from 'chalk';
-import { ConnectorNames } from '@tradejs/connectors';
 import {
   DEFAULT_CONNECTOR_NAME,
   getConnectorCreatorByName,
   resolveConnectorName,
 } from '@tradejs/node/connectors';
-import { getTickers, update } from '@tradejs/node/cli';
+import { getTickers } from '@tradejs/node/cli';
 import {
   BACKTEST_DEFAULT_DAYS,
   BACKTEST_PRELOAD_DAYS,
@@ -17,6 +16,11 @@ import {
   loadRuntimeStrategyBacktestConfigs,
   RuntimeStrategyBacktestConfig,
 } from './runtimeStrategyBacktest';
+import { timeOperation as runTimedOperation } from './runFormatting';
+import {
+  loadBtcReferenceConnectors,
+  updateMarketHistoryWithBtcReferences,
+} from './marketData/historyPrepare';
 
 export type ResolvedWindow = {
   start: number;
@@ -32,25 +36,13 @@ export type PreparedRunEnvironment = {
   preloadStart: number;
 };
 
-const formatDuration = (startedAt: number) => {
-  const seconds = (Date.now() - startedAt) / 1000;
-  if (seconds < 60) return `${seconds.toFixed(1)}s`;
-  const minutes = Math.floor(seconds / 60);
-  const restSeconds = Math.round(seconds % 60);
-  return `${minutes}m ${restSeconds}s`;
-};
-
 const timeOperation = async <T>(
   label: string,
   operation: () => Promise<T>,
-): Promise<T> => {
-  const startedAt = Date.now();
-  try {
-    return await operation();
-  } finally {
-    console.log(chalk.gray(`${label}: done in ${formatDuration(startedAt)}`));
-  }
-};
+): Promise<T> =>
+  runTimedOperation(label, operation, (message) =>
+    console.log(chalk.gray(message)),
+  );
 
 const resolveRunConnectorName = async ({
   value,
@@ -163,50 +155,25 @@ export const prepareRunEnvironment = async ({
   );
 
   if (!cacheOnly) {
-    await timeOperation(`update ${connectorName}`, () =>
-      update(marketConnector, interval, loadedTickers, undefined, {
-        connectorLabel: connectorName,
-        preloadStart,
-        preloadEnd: window.end,
-      }),
-    );
-
-    const binanceConnectorCreator = await getConnectorCreatorByName(
-      ConnectorNames.Binance,
-      projectRoot,
-    );
-    const coinbaseConnectorCreator = await getConnectorCreatorByName(
-      ConnectorNames.Coinbase,
-      projectRoot,
-    );
-    if (!binanceConnectorCreator || !coinbaseConnectorCreator) {
-      throw new Error('Binance/Coinbase connectors are required');
-    }
-
-    const binanceConnector = await (
-      binanceConnectorCreator as ConnectorCreator
-    )({
+    const btcReferences = await loadBtcReferenceConnectors({
+      connectorName,
+      marketConnector,
       userName,
+      projectRoot,
+      shouldUseDedicatedReferences: true,
+      requireDedicatedReferences: true,
+      warn: (message) => console.log(chalk.yellow(message)),
     });
-    const coinbaseConnector = await (
-      coinbaseConnectorCreator as ConnectorCreator
-    )({
-      userName,
+    await updateMarketHistoryWithBtcReferences({
+      marketConnector,
+      connectorName,
+      btcReferences,
+      interval,
+      symbols: loadedTickers,
+      preloadStart,
+      preloadEnd: window.end,
+      log: (message) => console.log(chalk.gray(message)),
     });
-    await timeOperation(`update ${ConnectorNames.Binance}`, () =>
-      update(binanceConnector, interval, ['BTCUSDT'], undefined, {
-        connectorLabel: ConnectorNames.Binance,
-        preloadStart,
-        preloadEnd: window.end,
-      }),
-    );
-    await timeOperation(`update ${ConnectorNames.Coinbase}`, () =>
-      update(coinbaseConnector, interval, ['BTCUSDT'], undefined, {
-        connectorLabel: ConnectorNames.Coinbase,
-        preloadStart,
-        preloadEnd: window.end,
-      }),
-    );
   }
 
   return {

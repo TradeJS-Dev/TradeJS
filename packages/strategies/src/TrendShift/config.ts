@@ -9,8 +9,6 @@ import {
 export interface TrendShiftSideConfig {
   enable: boolean;
   direction: Direction;
-  TP: number;
-  SL: number;
   minRiskRatio: number;
 }
 
@@ -45,20 +43,19 @@ export const config = {
   TRENDSHIFT_WIDTH_PCT: 75,
   TRENDSHIFT_CONFIRM_FLIP_WITH_CLOSE: true,
   TRENDSHIFT_MIN_FLIP_DISTANCE_ATR: 0.15,
+  TRENDSHIFT_STOP_ATR_BUFFER_MULT: 0.1,
+  TRENDSHIFT_STOP_BUFFER_PCT: 0.03,
+  TRENDSHIFT_TARGET_R_MULT: 2.5,
   TRENDSHIFT_EXIT_ON_OPPOSITE_FLIP: true,
   TRENDSHIFT_MAX_FIGURE_POINTS: 180,
   LONG: {
     enable: true,
     direction: 'LONG',
-    TP: 2.8,
-    SL: 1.1,
     minRiskRatio: 1.6,
   },
   SHORT: {
     enable: true,
     direction: 'SHORT',
-    TP: 2.8,
-    SL: 1.1,
     minRiskRatio: 1.6,
   },
 } as const;

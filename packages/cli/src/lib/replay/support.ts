@@ -51,6 +51,80 @@ export type ReplayRuntimeParityRow = {
   backtestOnly: number;
 };
 
+export type ReplayParityEntryDetail = {
+  source: 'runtime' | 'exchange' | 'backtest';
+  strategy?: string | null;
+  inferredStrategy?: string | null;
+  symbol: string;
+  direction: string;
+  qty?: number | null;
+  timestamp: number;
+  price: number | null;
+  exitType?: string | null;
+  exitTimestamp?: number | null;
+  exitPrice?: number | null;
+  pnl?: number | null;
+  costs?: {
+    entryFee: number | null;
+    exitFee: number | null;
+    fundingFee: number | null;
+    totalFee: number | null;
+  };
+  orderId?: string;
+  orderLinkId?: string;
+  signalId?: string;
+};
+
+export type ReplayParityMatchedPnlComparison = {
+  expectedPnl: number | null;
+  realizedPnl: number | null;
+  delta: number | null;
+};
+
+export type ReplayParityMatchedSlippage = {
+  entryPriceDeltaPct: number | null;
+  exitPriceDeltaPct: number | null;
+  entryCost: number | null;
+  exitCost: number | null;
+  totalCost: number | null;
+};
+
+export type ReplayParityMatchedExitType = {
+  expected: string | null;
+  actual: string | null;
+  matches: boolean | null;
+};
+
+export type ReplayParityNearestCandidate = {
+  entry: ReplayParityEntryDetail;
+  nearest: ReplayParityEntryDetail | null;
+  timestampDiffMs: number | null;
+  priceDeltaPct: number | null;
+  reason:
+    | 'no_candidate_same_symbol_direction'
+    | 'outside_tolerance'
+    | 'candidate_already_matched';
+};
+
+export type ReplayRuntimeComparisonDetails = {
+  capped: boolean;
+  limit: number;
+  matched: Array<{
+    runtime: ReplayParityEntryDetail;
+    backtest: ReplayParityEntryDetail;
+    timestampDiffMs: number;
+    priceDeltaPct: number | null;
+    exitTimestampDiffMs: number | null;
+    exitPriceDeltaPct: number | null;
+    exitType: ReplayParityMatchedExitType;
+    pnl: ReplayParityMatchedPnlComparison;
+    slippage: ReplayParityMatchedSlippage;
+  }>;
+  runtimeOnly: ReplayParityEntryDetail[];
+  backtestOnly: ReplayParityEntryDetail[];
+  nearestCandidates: ReplayParityNearestCandidate[];
+};
+
 export type ReplayRuntimeComparisonSummary = {
   mode: 'runtime' | 'exchange';
   syncedTradesCount: number;
@@ -61,6 +135,7 @@ export type ReplayRuntimeComparisonSummary = {
   runtimeOnlyCount: number;
   backtestOnlyCount: number;
   rows: ReplayRuntimeParityRow[];
+  details?: ReplayRuntimeComparisonDetails;
 };
 
 export type ReplayStrategyResultsSnapshot = {

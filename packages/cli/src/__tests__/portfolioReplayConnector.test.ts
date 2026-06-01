@@ -14,6 +14,13 @@ describe('portfolio replay connector', () => {
     getTickers: jest.fn(async () => []),
   } as any;
 
+  it('marks itself as a replay test connector for parity order execution', () => {
+    const connector = createPortfolioReplayConnector(baseConnector);
+
+    expect(connector.__tradejsReplayConnector).toBe(true);
+    expect(connector.__tradejsTestConnector).toBe(true);
+  });
+
   it('tracks multiple open positions and open pnl across symbols', async () => {
     const connector = createPortfolioReplayConnector(baseConnector);
 

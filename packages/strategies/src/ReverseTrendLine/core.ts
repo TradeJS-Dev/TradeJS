@@ -312,6 +312,10 @@ export const createReverseTrendLineCore: CreateStrategyCore<
     const riskPlan = buildReverseTrendlineRiskPlan({
       direction,
       modeConfig,
+      baseStopLossDelta: Number(config.REVERSE_TRENDLINE_STOP_BASE_PCT ?? 1.1),
+      baseTargetRiskRatio: Number(
+        config.REVERSE_TRENDLINE_TARGET_R_MULT ?? 2.05,
+      ),
       structuralContext,
       timingContext,
     });

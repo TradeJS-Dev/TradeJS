@@ -125,6 +125,47 @@ describe('strategy indicators state latestNumber', () => {
     expect(second.latestNumber('correlation' as any)).toBe(0.2);
   });
 
+  it('shares a parity replay controller across states with the same key', () => {
+    const next = jest.fn(() => ({ maFast: 10 }));
+    const result = jest.fn(() => ({ correlation: [0.1, 0.2] }));
+    const latestNumber = jest.fn(() => 0.2);
+
+    (createIndicators as jest.Mock).mockReturnValue({
+      next,
+      result,
+      latestNumber,
+    });
+
+    const candle = {
+      timestamp: 1,
+      open: 1,
+      high: 1,
+      low: 1,
+      close: 1,
+      volume: 1,
+      turnover: 1,
+    };
+    const btcCandle = { ...candle, close: 2 };
+    const first = createStrategyIndicatorsState({
+      env: 'PARITY',
+      data: [],
+      btcData: [],
+      sharedReplayKey: 'test:shared-parity',
+    });
+    const second = createStrategyIndicatorsState({
+      env: 'PARITY',
+      data: [],
+      btcData: [],
+      sharedReplayKey: 'test:shared-parity',
+    });
+
+    first.onBar(candle as any, btcCandle as any);
+    second.onBar(candle as any, btcCandle as any);
+
+    expect(createIndicators).toHaveBeenCalledTimes(1);
+    expect(next).toHaveBeenCalledTimes(1);
+  });
+
   it('replays only history before an explicit current candle in next()', () => {
     const next = jest.fn(() => ({ maFast: 10 }));
     const result = jest.fn(() => ({ correlation: [0.1, 0.2] }));

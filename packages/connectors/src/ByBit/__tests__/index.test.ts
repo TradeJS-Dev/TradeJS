@@ -328,6 +328,8 @@ describe('ByBitConnectorCreator', () => {
               avgEntryPrice: '100',
               avgExitPrice: '112',
               closedPnl: '12',
+              openFee: '0.1',
+              closeFee: '0.2',
               createdTime: '1700000000000',
               updatedTime: '1700000001000',
               orderId: 'bybit-order-1',
@@ -336,6 +338,33 @@ describe('ByBitConnectorCreator', () => {
           ],
         },
       }),
+      getTransactionLog: jest
+        .fn()
+        .mockResolvedValueOnce({
+          retCode: 0,
+          result: {
+            nextPageCursor: 'page-2',
+            list: [
+              {
+                symbol: 'BTCUSDT',
+                transactionTime: '1700000000500',
+                funding: '-0.03',
+              },
+            ],
+          },
+        })
+        .mockResolvedValueOnce({
+          retCode: 0,
+          result: {
+            list: [
+              {
+                symbol: 'BTCUSDT',
+                transactionTime: '1700000000750',
+                funding: '-0.02',
+              },
+            ],
+          },
+        }),
     };
     mockedGetClient.mockResolvedValue(client as any);
 
@@ -352,6 +381,11 @@ describe('ByBitConnectorCreator', () => {
         endTime: 1_700_000_100_000,
       }),
     );
+    expect(client.getTransactionLog).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        cursor: 'page-2',
+      }),
+    );
     expect(rows).toEqual([
       {
         symbol: 'BTCUSDT',
@@ -364,8 +398,34 @@ describe('ByBitConnectorCreator', () => {
         entryTimestamp: 1_700_000_000_000,
         orderId: 'bybit-order-1',
         orderLinkId: 'tjs-order-1',
+        openFee: 0.1,
+        closeFee: 0.2,
+        fundingFee: -0.05,
+        totalFee: 0.25,
       },
     ]);
+  });
+
+  it('does not request funding rows when closed pnl response is empty', async () => {
+    const client = {
+      getClosedPnL: jest.fn().mockResolvedValue({
+        retCode: 0,
+        result: {
+          list: [],
+        },
+      }),
+      getTransactionLog: jest.fn(),
+    };
+    mockedGetClient.mockResolvedValue(client as any);
+
+    const connector = await ByBitConnectorCreator({ userName: 'alice' });
+    const rows = await connector.getClosedPnl?.({
+      startTime: 1_700_000_000_000,
+      endTime: 1_700_000_100_000,
+    });
+
+    expect(rows).toEqual([]);
+    expect(client.getTransactionLog).not.toHaveBeenCalled();
   });
 
   it('returns false in placeOrder when normalized qty is below min', async () => {

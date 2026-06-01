@@ -75,16 +75,27 @@ export interface TrendlineRiskPlan {
 export const buildTrendlineRiskPlan = ({
   direction,
   modeConfig,
+  baseStopLossDelta,
+  baseTargetRiskRatio,
   structuralContext,
   timingContext,
 }: {
   direction: Direction;
   modeConfig: TrendLineConfig['HIGHS'];
+  baseStopLossDelta: number;
+  baseTargetRiskRatio: number;
   structuralContext: TrendlineStructuralContext;
   timingContext: TrendlineTimingContext;
 }): TrendlineRiskPlan => {
-  const baseStopLossDelta = modeConfig.SL;
-  const atrPct = structuralContext.atrPct ?? baseStopLossDelta;
+  const normalizedBaseStopLossDelta =
+    Number.isFinite(baseStopLossDelta) && baseStopLossDelta > 0
+      ? baseStopLossDelta
+      : 1;
+  const normalizedBaseTargetRiskRatio =
+    Number.isFinite(baseTargetRiskRatio) && baseTargetRiskRatio > 0
+      ? baseTargetRiskRatio
+      : modeConfig.minRiskRatio + 0.5;
+  const atrPct = structuralContext.atrPct ?? normalizedBaseStopLossDelta;
   const priceVsLinePctAbs = structuralContext.priceVsLinePctAbs ?? 0;
   const breakVsAtrRatio = structuralContext.breakVsAtrRatio ?? 0;
   const touches = structuralContext.touches ?? 0;
@@ -92,13 +103,13 @@ export const buildTrendlineRiskPlan = ({
 
   const lineBufferPct = Math.max(
     atrPct * LINE_BUFFER_ATR_FACTOR,
-    baseStopLossDelta * LINE_BUFFER_BASE_SL_FACTOR,
+    normalizedBaseStopLossDelta * LINE_BUFFER_BASE_SL_FACTOR,
     MIN_STOP_BUFFER_PCT,
   );
   const lineInvalidationPct = priceVsLinePctAbs + lineBufferPct;
   const volatilityFloorPct = Math.max(
     atrPct * ATR_STOP_FLOOR_FACTOR,
-    baseStopLossDelta * MIN_STOP_LOSS_FACTOR,
+    normalizedBaseStopLossDelta * MIN_STOP_LOSS_FACTOR,
   );
 
   let stopLossDelta = Math.max(lineInvalidationPct, volatilityFloorPct);
@@ -127,14 +138,16 @@ export const buildTrendlineRiskPlan = ({
 
   stopLossDelta = clampNumber(
     stopLossDelta,
-    baseStopLossDelta * MIN_STOP_LOSS_FACTOR,
-    baseStopLossDelta * MAX_STOP_LOSS_FACTOR,
+    normalizedBaseStopLossDelta * MIN_STOP_LOSS_FACTOR,
+    normalizedBaseStopLossDelta * MAX_STOP_LOSS_FACTOR,
   );
 
-  let targetRiskRatio = getTimingTargetRiskRatio({
+  const timingBaseRiskRatio = getTimingTargetRiskRatio({
     direction,
     entryTiming: timingContext.entryTiming,
   });
+  let targetRiskRatio =
+    timingBaseRiskRatio + (normalizedBaseTargetRiskRatio - 2.6);
 
   if (breakVsAtrRatio >= 1.25) {
     targetRiskRatio += 0.2;
@@ -160,7 +173,7 @@ export const buildTrendlineRiskPlan = ({
 
   const minTargetRiskRatio = modeConfig.minRiskRatio + 0.05;
   const maxTargetRiskRatio =
-    Math.max(modeConfig.TP / modeConfig.SL, minTargetRiskRatio) + 0.4;
+    Math.max(normalizedBaseTargetRiskRatio, minTargetRiskRatio) + 0.4;
 
   targetRiskRatio = clampNumber(
     targetRiskRatio,

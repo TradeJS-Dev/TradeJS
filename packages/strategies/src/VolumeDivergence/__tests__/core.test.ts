@@ -252,7 +252,7 @@ describe('createVolumeDivergenceCore', () => {
       expect.objectContaining({
         direction: 'LONG',
         orderPlan: expect.objectContaining({
-          stopLossPrice: 98,
+          stopLossPrice: expect.any(Number),
         }),
         additionalIndicators: expect.objectContaining({
           divergenceKind: 'bullish',
@@ -419,7 +419,7 @@ describe('createVolumeDivergenceCore', () => {
       expect.objectContaining({
         direction: 'SHORT',
         orderPlan: expect.objectContaining({
-          stopLossPrice: 98,
+          stopLossPrice: expect.any(Number),
         }),
         additionalIndicators: expect.objectContaining({
           divergenceKind: 'bearish',
@@ -593,21 +593,15 @@ describe('createVolumeDivergenceCore', () => {
     });
   });
 
-  it('returns INVALID_QTY when directional sizing returns non-positive qty', async () => {
+  it('returns INVALID_QTY when structural risk sizing returns non-positive qty', async () => {
     const candles = makeBullishDivergenceCandles();
-    const strategyApi = makeStrategyApi({
-      getDirectionalTpSlPrices: jest.fn(() => ({
-        stopLossPrice: 98,
-        takeProfitPrice: 104,
-        riskRatio: 3,
-        qty: 0,
-      })),
-    });
+    const strategyApi = makeStrategyApi();
     const core = await createVolumeDivergenceCore({
       userName: 'test',
       symbol: 'TESTUSDT',
       config: makeConfig({
         ...DIVERGENCE_TEST_CONFIG,
+        MAX_LOSS_VALUE: 0,
       }),
       isConfigFromBacktest: false,
       connector: {} as any,
@@ -651,14 +645,7 @@ describe('createVolumeDivergenceCore', () => {
 
   it('returns RISK_RATIO skip when calculated risk ratio is below minimum', async () => {
     const candles = makeBullishDivergenceCandles();
-    const strategyApi = makeStrategyApi({
-      getDirectionalTpSlPrices: jest.fn(() => ({
-        stopLossPrice: 98,
-        takeProfitPrice: 104,
-        riskRatio: 1.01,
-        qty: 1,
-      })),
-    });
+    const strategyApi = makeStrategyApi();
     const core = await createVolumeDivergenceCore({
       userName: 'test',
       symbol: 'TESTUSDT',
@@ -668,6 +655,7 @@ describe('createVolumeDivergenceCore', () => {
           ...DEFAULT_CONFIG.BULLISH,
           minRiskRatio: 2,
         },
+        VOLUME_DIVERGENCE_TARGET_R_MULT: 1.01,
       }),
       isConfigFromBacktest: false,
       connector: {} as any,

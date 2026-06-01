@@ -10,8 +10,6 @@ import {
 export interface TrendLineModeConfig {
   enable: boolean;
   direction: Direction;
-  TP: number;
-  SL: number;
   minRiskRatio: number;
 }
 
@@ -48,18 +46,16 @@ export const config = {
     epsilon: 0.003,
     epsilonOffset: 0.004,
   } as Partial<TrendLineOptions>,
+  TRENDLINE_STOP_BASE_PCT: 1.3,
+  TRENDLINE_TARGET_R_MULT: 2.6,
   HIGHS: {
     enable: true,
     direction: 'LONG',
-    TP: 4,
-    SL: 1.3,
     minRiskRatio: 2,
   },
   LOWS: {
     enable: true,
     direction: 'SHORT',
-    TP: 4,
-    SL: 1.3,
     minRiskRatio: 2,
   },
 } as const;

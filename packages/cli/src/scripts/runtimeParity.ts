@@ -2,12 +2,11 @@ import 'dotenv/config';
 import { randomUUID } from 'node:crypto';
 import args from 'args';
 import chalk from 'chalk';
-import { ConnectorNames } from '@tradejs/connectors';
 import { BACKTEST_PRELOAD_DAYS } from '@tradejs/core/constants';
 import { formatUnix, getBacktestPreloadStart } from '@tradejs/core/time';
 import { logger } from '@tradejs/infra/logger';
 import { getData, redisKeys } from '@tradejs/infra/redis';
-import { getTickers, update } from '@tradejs/node/cli';
+import { getTickers } from '@tradejs/node/cli';
 import {
   releaseTestingSymbolCache,
   resetTestingKlineCache,
@@ -51,6 +50,12 @@ import {
 } from '../lib/runtimeSignalsLoader';
 import { sendTelegramReport } from '../lib/telegramReports';
 import { resolveTimeWindow } from '../lib/timeWindow';
+import { formatDuration } from '../lib/runFormatting';
+import { prepareMarketContextForRun } from '../lib/marketContextPrepare';
+import {
+  loadBtcReferenceConnectors,
+  updateMarketHistoryWithBtcReferences,
+} from '../lib/marketData/historyPrepare';
 
 args.option(['u', 'user'], 'Use user config', 'root');
 args.option(
@@ -137,17 +142,6 @@ type ReplayTargetSourceCounts = {
   connectorUniverse: number;
   explicitTickers: number;
   strategyResults: number;
-};
-
-const formatDuration = (startedAt: number) => {
-  const seconds = Math.max(0, (Date.now() - startedAt) / 1000);
-  if (seconds < 60) {
-    return `${seconds.toFixed(1)}s`;
-  }
-
-  const minutes = Math.floor(seconds / 60);
-  const restSeconds = Math.round(seconds % 60);
-  return `${minutes}m ${restSeconds}s`;
 };
 
 type BacktestOnlyClassification =
@@ -564,46 +558,24 @@ const warmReplayHistory = async ({
     ),
   );
 
-  await update(connector, interval, symbols, undefined, {
-    connectorLabel: connectorName,
+  const btcReferences = await loadBtcReferenceConnectors({
+    connectorName,
+    marketConnector: connector,
+    userName,
+    projectRoot,
+    shouldUseDedicatedReferences: true,
+    warn: (message) => logger.warn(message),
+  });
+  await updateMarketHistoryWithBtcReferences({
+    marketConnector: connector,
+    connectorName,
+    btcReferences,
+    interval,
+    symbols,
     preloadStart,
     preloadEnd,
+    log: (message) => console.log(chalk.gray(message)),
   });
-
-  const [binanceFactory, coinbaseFactory] = await Promise.all([
-    getConnectorCreatorByName(ConnectorNames.Binance, projectRoot),
-    getConnectorCreatorByName(ConnectorNames.Coinbase, projectRoot),
-  ]);
-
-  if (binanceFactory) {
-    const binanceConnector = await (binanceFactory as ConnectorCreator)({
-      userName,
-    });
-    await update(binanceConnector, interval, ['BTCUSDT'], undefined, {
-      connectorLabel: ConnectorNames.Binance,
-      preloadStart,
-      preloadEnd,
-    });
-  } else {
-    logger.warn(
-      'Binance connector is unavailable. BTC reference replay may drift.',
-    );
-  }
-
-  if (coinbaseFactory) {
-    const coinbaseConnector = await (coinbaseFactory as ConnectorCreator)({
-      userName,
-    });
-    await update(coinbaseConnector, interval, ['BTCUSDT'], undefined, {
-      connectorLabel: ConnectorNames.Coinbase,
-      preloadStart,
-      preloadEnd,
-    });
-  } else {
-    logger.warn(
-      'Coinbase connector is unavailable. BTC reference replay may drift.',
-    );
-  }
 
   console.log(
     chalk.gray(`Warm history: done in ${formatDuration(warmStartedAt)}`),
@@ -2075,6 +2047,21 @@ export const runtimeParity = async () => {
         `Replay queue: ${replayTargets.length} target(s), ${replaySymbolsCount} symbol(s), mode=${flags.fullUniverse ? 'full-universe' : requestedSymbols.length ? 'explicit-tickers' : 'runtime+results'}`,
       ),
     );
+
+    await prepareMarketContextForRun({
+      mode: 'parity',
+      userName: flags.user,
+      projectRoot,
+      symbols: replayTargets.map((target) => target.symbol),
+      interval,
+      startMs: window.start,
+      endMs: window.end,
+      preloadStartMs: preloadStart,
+      cacheOnly: Boolean(flags.cacheOnly),
+      aiEnabled: Boolean(flags.runtimeGates),
+      mlEnabled: Boolean(flags.runtimeGates),
+      log: (message) => console.log(chalk.gray(message)),
+    });
 
     if (!flags.cacheOnly) {
       await warmReplayHistory({

@@ -103,7 +103,9 @@ jest.mock('../lib/derivativesContextBackfill', () => ({
 
 jest.mock('../lib/binanceMarketContextBackfill', () => ({
   backfillBinanceMarketContextForBacktest: jest.fn(),
+  backfillBinanceMarketContextForReplay: jest.fn(),
   shouldBackfillBinanceMarketContextForBacktest: jest.fn(),
+  shouldBackfillBinanceMarketContextForReplay: jest.fn(),
 }));
 
 jest.mock('../lib/cliArgs', () => ({
@@ -140,9 +142,16 @@ import {
   resetRunState,
 } from '../lib/backtest/runState';
 import {
+  buildReplayExchangeComparisonDetails,
+  buildReplayRuntimeComparisonDetails,
   compareExchangeEntriesToBacktest,
+  prepareReplayBinanceMarketContext,
   resolveReplayStrategyNameFromExchangeEntry,
 } from '../scripts/replayRunner';
+import {
+  backfillBinanceMarketContextForReplay,
+  shouldBackfillBinanceMarketContextForReplay,
+} from '../lib/binanceMarketContextBackfill';
 import { buildReplayStrategyConfig } from '../lib/replay/support';
 import {
   summarizeRuntimeTradesByStrategy,
@@ -661,6 +670,224 @@ describe('backtest script helpers', () => {
     });
   });
 
+  it('builds replay parity details with nearest unmatched candidates', () => {
+    const details = buildReplayExchangeComparisonDetails({
+      matched: [],
+      exchangeOnly: [
+        {
+          symbol: 'ETHUSDT',
+          direction: 'LONG',
+          qty: 1,
+          entryPrice: 100,
+          entryTimestamp: 1_000,
+          orderId: 'ex-1',
+          orderLinkId: 'tjs-trendfollow--abc',
+        },
+      ] as any,
+      backtestOnly: [
+        {
+          id: 'bt-1',
+          source: 'backtest',
+          strategy: 'TrendFollow',
+          symbol: 'ETHUSDT',
+          direction: 'LONG',
+          timestamp: 3_000,
+          price: 101,
+          signalId: 'sig-1',
+        },
+      ] as any,
+      exchangeEntries: [
+        {
+          symbol: 'ETHUSDT',
+          direction: 'LONG',
+          qty: 1,
+          entryPrice: 100,
+          entryTimestamp: 1_000,
+          orderId: 'ex-1',
+          orderLinkId: 'tjs-trendfollow--abc',
+        },
+      ] as any,
+      backtestEntries: [
+        {
+          id: 'bt-1',
+          source: 'backtest',
+          strategy: 'TrendFollow',
+          symbol: 'ETHUSDT',
+          direction: 'LONG',
+          timestamp: 3_000,
+          price: 101,
+          signalId: 'sig-1',
+        },
+      ] as any,
+      strategyNameByOrderLinkKey: new Map([['trendfollow', 'TrendFollow']]),
+      toleranceMs: 1_000,
+      limit: 10,
+    });
+
+    expect(details.runtimeOnly).toEqual([
+      expect.objectContaining({
+        source: 'exchange',
+        inferredStrategy: 'TrendFollow',
+        symbol: 'ETHUSDT',
+        timestamp: 1_000,
+        orderId: 'ex-1',
+      }),
+    ]);
+    expect(details.backtestOnly).toEqual([
+      expect.objectContaining({
+        source: 'backtest',
+        strategy: 'TrendFollow',
+        signalId: 'sig-1',
+      }),
+    ]);
+    expect(details.nearestCandidates).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          timestampDiffMs: 2_000,
+          reason: 'outside_tolerance',
+        }),
+      ]),
+    );
+  });
+
+  it('builds matched replay parity cost, exit, and pnl diagnostics', () => {
+    const details = buildReplayRuntimeComparisonDetails({
+      matched: [
+        {
+          runtime: {
+            id: 'rt-1',
+            source: 'runtime',
+            strategy: 'TrendLine',
+            symbol: 'BTCUSDT',
+            direction: 'LONG',
+            qty: 2,
+            timestamp: 1_000,
+            price: 101,
+            exitType: 'exit',
+            exitTimestamp: 2_100,
+            exitPrice: 109,
+            realizedPnl: 14,
+            entryFee: 0.1,
+            exitFee: 0.2,
+            fundingFee: -0.01,
+            totalFee: 0.29,
+          },
+          backtest: {
+            id: 'bt-1',
+            source: 'backtest',
+            strategy: 'TrendLine',
+            symbol: 'BTCUSDT',
+            direction: 'LONG',
+            qty: 2,
+            timestamp: 1_000,
+            price: 100,
+            exitType: 'tp',
+            exitTimestamp: 2_000,
+            exitPrice: 110,
+            expectedPnl: 20,
+            entryFee: 0.05,
+            exitFee: 0.05,
+            fundingFee: 0,
+            totalFee: 0.1,
+          },
+          timestampDiffMs: 0,
+          priceDeltaPct: 0.9900990099009901,
+        },
+      ],
+      runtimeOnly: [],
+      backtestOnly: [],
+      runtimeEntries: [],
+      backtestEntries: [],
+      toleranceMs: 1_000,
+      limit: 10,
+    });
+
+    expect(details.matched[0]).toEqual(
+      expect.objectContaining({
+        exitTimestampDiffMs: 100,
+        exitType: {
+          expected: 'tp',
+          actual: 'exit',
+          matches: false,
+        },
+        pnl: {
+          expectedPnl: 20,
+          realizedPnl: 14,
+          delta: -6,
+        },
+        slippage: {
+          entryPriceDeltaPct: 0.9900990099009901,
+          exitPriceDeltaPct: 0.9174311926605505,
+          entryCost: 2,
+          exitCost: 2,
+          totalCost: 4,
+        },
+      }),
+    );
+    expect(details.matched[0].runtime.costs).toEqual({
+      entryFee: 0.1,
+      exitFee: 0.2,
+      fundingFee: -0.01,
+      totalFee: 0.29,
+    });
+  });
+
+  it('calculates short-side replay slippage cost with correct sign', () => {
+    const details = buildReplayRuntimeComparisonDetails({
+      matched: [
+        {
+          runtime: {
+            id: 'rt-short',
+            source: 'runtime',
+            strategy: 'TrendLine',
+            symbol: 'ETHUSDT',
+            direction: 'SHORT',
+            qty: 2,
+            timestamp: 1_000,
+            price: 99,
+            exitTimestamp: 2_000,
+            exitPrice: 111,
+            realizedPnl: -24,
+          },
+          backtest: {
+            id: 'bt-short',
+            source: 'backtest',
+            strategy: 'TrendLine',
+            symbol: 'ETHUSDT',
+            direction: 'SHORT',
+            qty: 2,
+            timestamp: 1_000,
+            price: 100,
+            exitTimestamp: 2_000,
+            exitPrice: 110,
+            expectedPnl: -20,
+          },
+          timestampDiffMs: 0,
+          priceDeltaPct: 1.0101010101010102,
+        },
+      ],
+      runtimeOnly: [],
+      backtestOnly: [],
+      runtimeEntries: [],
+      backtestEntries: [],
+      toleranceMs: 1_000,
+      limit: 10,
+    });
+
+    expect(details.matched[0].slippage).toEqual({
+      entryPriceDeltaPct: 1.0101010101010102,
+      exitPriceDeltaPct: 0.9009009009009009,
+      entryCost: 2,
+      exitCost: 2,
+      totalCost: 4,
+    });
+    expect(details.matched[0].pnl).toEqual({
+      expectedPnl: -20,
+      realizedPnl: -24,
+      delta: -4,
+    });
+  });
+
   it('falls back to cached stat when result artifacts are missing', async () => {
     (getData as jest.Mock)
       .mockResolvedValueOnce(null)
@@ -774,6 +1001,38 @@ describe('backtest script helpers', () => {
         ]),
       }),
     ).toBeNull();
+  });
+
+  it('prepares Binance market context for replay from the prepared run window', async () => {
+    (shouldBackfillBinanceMarketContextForReplay as jest.Mock).mockReturnValue(
+      true,
+    );
+    (backfillBinanceMarketContextForReplay as jest.Mock).mockResolvedValue({
+      skipped: false,
+      tradeFlowRows: 1,
+      depthRows: 1,
+      breadthRows: 1,
+      skippedSymbols: 0,
+    });
+
+    await prepareReplayBinanceMarketContext({
+      tickers: ['ETHUSDT', 'SOLUSDT'],
+      window: { start: 1_000, end: 2_000 },
+      preloadStart: 500,
+    });
+
+    expect(shouldBackfillBinanceMarketContextForReplay).toHaveBeenCalledWith({
+      cacheOnly: false,
+    });
+    expect(backfillBinanceMarketContextForReplay).toHaveBeenCalledWith({
+      userName: 'root',
+      projectRoot: String(process.env.PROJECT_CWD || process.cwd()).trim(),
+      symbols: ['ETHUSDT', 'SOLUSDT'],
+      interval: '15',
+      startMs: 1_000,
+      endMs: 2_000,
+      preloadStartMs: 500,
+    });
   });
 
   it('merges persisted summary index with valid legacy items and overrides duplicates', () => {

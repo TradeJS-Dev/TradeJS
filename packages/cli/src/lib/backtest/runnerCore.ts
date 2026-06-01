@@ -21,15 +21,8 @@ import {
   TestSuite,
   TestWorkerResult,
 } from '@tradejs/types';
-import {
-  backfillDerivativesContextForBacktest,
-  shouldBackfillDerivativesContextForBacktest,
-} from '../derivativesContextBackfill';
-import {
-  backfillBinanceMarketContextForBacktest,
-  shouldBackfillBinanceMarketContextForBacktest,
-} from '../binanceMarketContextBackfill';
-import { createTable, createTimestamp } from '../runFormatting';
+import { createTable, createTimestamp, formatDuration } from '../runFormatting';
+import { prepareMarketContextForRun } from '../marketContextPrepare';
 import {
   loadReplayStrategies as loadReplayStrategiesShared,
   prepareRunEnvironment as prepareRunEnvironmentShared,
@@ -81,29 +74,9 @@ import {
 } from './runState';
 import { executeBacktestWorkerPool } from './workerPool';
 
-const formatDuration = (startedAt: number) => {
-  const seconds = (Date.now() - startedAt) / 1000;
-  if (seconds < 60) return `${seconds.toFixed(1)}s`;
-  const minutes = Math.floor(seconds / 60);
-  const restSeconds = Math.round(seconds % 60);
-  return `${minutes}m ${restSeconds}s`;
-};
-
 const formatWindowDays = (startMs: number, endMs: number) => {
   const days = Math.max(0, (endMs - startMs) / (24 * 60 * 60 * 1000));
   return Number.isInteger(days) ? String(days) : days.toFixed(2);
-};
-
-const timeOperation = async <T>(
-  label: string,
-  operation: () => Promise<T>,
-): Promise<T> => {
-  const startedAt = Date.now();
-  try {
-    return await operation();
-  } finally {
-    console.log(chalk.gray(`${label}: done in ${formatDuration(startedAt)}`));
-  }
 };
 
 const getResultAmount = (result: TestWorkerResult) => result.stat.amount ?? 0;
@@ -435,43 +408,20 @@ export const buildPreparedTestSuite = async ({
     return null;
   }
 
-  if (
-    shouldBackfillDerivativesContextForBacktest({
-      aiEnabled,
-      cacheOnly: Boolean(flags.cacheOnly),
-      mlEnabled,
-    })
-  ) {
-    await timeOperation('derivatives context backfill', () =>
-      backfillDerivativesContextForBacktest({
-        userName,
-        symbols: preparedSuite.map((test) => test.symbol),
-        startMs: window.start,
-        endMs: window.end,
-        preloadStartMs: preloadStart,
-      }),
-    );
-  }
-
-  if (
-    shouldBackfillBinanceMarketContextForBacktest({
-      aiEnabled,
-      cacheOnly: Boolean(flags.cacheOnly),
-      mlEnabled,
-    })
-  ) {
-    await timeOperation('binance market context backfill', () =>
-      backfillBinanceMarketContextForBacktest({
-        userName,
-        projectRoot,
-        symbols: preparedSuite.map((test) => test.symbol),
-        interval,
-        startMs: window.start,
-        endMs: window.end,
-        preloadStartMs: preloadStart,
-      }),
-    );
-  }
+  await prepareMarketContextForRun({
+    mode: 'backtest',
+    userName,
+    projectRoot,
+    symbols: preparedSuite.map((test) => test.symbol),
+    interval,
+    startMs: window.start,
+    endMs: window.end,
+    preloadStartMs: preloadStart,
+    cacheOnly: Boolean(flags.cacheOnly),
+    aiEnabled,
+    mlEnabled,
+    log: (message) => console.log(chalk.gray(message)),
+  });
 
   return preparedSuite;
 };

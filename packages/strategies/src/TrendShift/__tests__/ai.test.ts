@@ -1,6 +1,7 @@
 /** @jest-environment node */
 
 import { trendShiftAiAdapter } from '../adapters/ai';
+import { buildTrendShiftGuardrailContext } from '../guardrails';
 
 const makePayload = (
   context: Record<string, unknown>,
@@ -44,6 +45,93 @@ const makePayload = (
 };
 
 describe('trendShiftAiAdapter', () => {
+  it('builds strategy-local gate features for narrow q4 recovery discovery', () => {
+    const context = buildTrendShiftGuardrailContext({
+      signalContext: {
+        signalDirection: 'SHORT',
+        confirmedFlip: true,
+        bearFlip: true,
+        flipDistanceOk: true,
+        closeVsAvgPct: 0.12,
+        avgSlopePct: 0.08,
+        distanceAtrRatio: 0.65,
+        coinBiasAligned: true,
+      },
+      baseContext: {
+        mtf: {
+          summary: {
+            mtfAlignment: 'mixed',
+          },
+        },
+        relative: {
+          benchmark: {
+            relativeStrength1h: 0,
+            trendAlignment: 'aligned_bull',
+          },
+        },
+        participation: {
+          volume: {
+            volumeRel20: 1.2,
+          },
+        },
+        derivatives: {
+          summary: {
+            pressure: 'long_flush',
+            directionAligned: true,
+            priceOiDivergenceType: 'price_down_oi_up',
+            riskFlags: ['long_liquidation_spike'],
+          },
+        },
+      } as any,
+    });
+
+    expect(context.trendShiftGateFeatures).toMatchObject({
+      reversalConfirmation: 'confirmed',
+      exhaustionSignal: 'liquidation_flush',
+      oiConfirmation: 'expanding',
+      flipStretch: 'extended',
+      q4RecoveryProfile: 'context_supported',
+      derivativesReversalAlignment: 'supports_reversal',
+      relativeStrengthBucket: 'neutral',
+      conflictCount: 2,
+      mtfAlignment: 'mixed',
+    });
+  });
+
+  it('flags noisy overextended flips with conflicting derivatives', () => {
+    const context = buildTrendShiftGuardrailContext({
+      signalContext: {
+        signalDirection: 'SHORT',
+        confirmedFlip: false,
+        bearFlip: true,
+        flipDistanceOk: false,
+        closeVsAvgPct: 0.5,
+        avgSlopePct: 0.02,
+        distanceAtrRatio: 1.35,
+        coinBiasAligned: true,
+      },
+      baseContext: {
+        derivatives: {
+          summary: {
+            pressure: 'neutral',
+            directionAligned: false,
+            priceOiDivergenceType: 'flat_or_mixed',
+            riskFlags: ['oi_not_confirming'],
+          },
+        },
+      } as any,
+    });
+
+    expect(context.trendShiftGateFeatures).toMatchObject({
+      reversalConfirmation: 'noise',
+      exhaustionSignal: 'mixed_oi',
+      oiConfirmation: 'mixed',
+      flipStretch: 'overextended',
+      q4RecoveryProfile: 'none',
+      derivativesReversalAlignment: 'conflicts',
+    });
+  });
+
   it('approves strong confirmed flips', () => {
     const result = trendShiftAiAdapter.postProcessAnalysis?.({
       signal: {} as any,
@@ -982,7 +1070,7 @@ describe('trendShiftAiAdapter', () => {
     });
   });
 
-  it('recovers a q5 downgrade when gateFeatures show a neutral low-conflict context', () => {
+  it('recovers a q5 downgrade when trendShiftGateFeatures show a neutral low-conflict context', () => {
     const result = trendShiftAiAdapter.postProcessAnalysis?.({
       signal: {} as any,
       payload: makePayload(
@@ -998,16 +1086,15 @@ describe('trendShiftAiAdapter', () => {
         },
         {
           baseContext: {
-            gateFeatures: {
-              relative: {
-                relativeStrengthBucket: 'neutral',
+            mtf: {
+              summary: {
+                mtfAlignment: 'mixed',
               },
-              conflicts: {
-                count: 2,
-                items: ['mtf_mixed', 'benchmark_against'],
-              },
-              mtf: {
-                alignmentForDirection: 'mixed',
+            },
+            relative: {
+              benchmark: {
+                relativeStrength1h: 0,
+                trendAlignment: 'aligned_bear',
               },
             },
           },
@@ -1033,7 +1120,7 @@ describe('trendShiftAiAdapter', () => {
     });
   });
 
-  it('keeps the gateFeatures recovery pocket in watch mode when MTF is against the trade', () => {
+  it('keeps the trendShiftGateFeatures recovery pocket in watch mode when MTF is against the trade', () => {
     const result = trendShiftAiAdapter.postProcessAnalysis?.({
       signal: {} as any,
       payload: makePayload(
@@ -1049,16 +1136,15 @@ describe('trendShiftAiAdapter', () => {
         },
         {
           baseContext: {
-            gateFeatures: {
-              relative: {
-                relativeStrengthBucket: 'neutral',
+            mtf: {
+              summary: {
+                mtfAlignment: 'aligned_bear',
               },
-              conflicts: {
-                count: 2,
-                items: ['mtf_against', 'benchmark_against'],
-              },
-              mtf: {
-                alignmentForDirection: 'against',
+            },
+            relative: {
+              benchmark: {
+                relativeStrength1h: 0,
+                trendAlignment: 'aligned_bear',
               },
             },
           },
@@ -1086,7 +1172,7 @@ describe('trendShiftAiAdapter', () => {
     });
   });
 
-  it('recovers US-session SHORT OI non-expansion only when gateFeatures agree', () => {
+  it('recovers US-session SHORT OI non-expansion only when trendShiftGateFeatures agree', () => {
     const result = trendShiftAiAdapter.postProcessAnalysis?.({
       signal: {} as any,
       payload: makePayload(
@@ -1108,16 +1194,15 @@ describe('trendShiftAiAdapter', () => {
                 isOverlap: false,
               },
             },
-            gateFeatures: {
-              relative: {
-                relativeStrengthBucket: 'neutral',
+            mtf: {
+              summary: {
+                mtfAlignment: 'mixed',
               },
-              conflicts: {
-                count: 2,
-                items: ['mtf_mixed', 'benchmark_against'],
-              },
-              mtf: {
-                alignmentForDirection: 'mixed',
+            },
+            relative: {
+              benchmark: {
+                relativeStrength1h: 0,
+                trendAlignment: 'aligned_bull',
               },
             },
           },
@@ -1562,18 +1647,6 @@ describe('trendShiftAiAdapter', () => {
                 currentTail: {
                   side: 'lower',
                 },
-              },
-            },
-            gateFeatures: {
-              relative: {
-                relativeStrengthBucket: 'neutral',
-              },
-              conflicts: {
-                count: 2,
-                items: ['mtf_mixed', 'benchmark_against'],
-              },
-              mtf: {
-                alignmentForDirection: 'mixed',
               },
             },
           },

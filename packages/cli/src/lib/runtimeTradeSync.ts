@@ -188,6 +188,11 @@ export const syncRuntimeTrades = async ({
       exitPrice: matchedClosedPnl?.exitPrice ?? trade.exitPrice ?? null,
       exitTimestamp:
         matchedClosedPnl?.closedAt ?? trade.exitTimestamp ?? endTime,
+      exitType: trade.exitType ?? null,
+      openFee: matchedClosedPnl?.openFee ?? trade.openFee ?? null,
+      closeFee: matchedClosedPnl?.closeFee ?? trade.closeFee ?? null,
+      fundingFee: matchedClosedPnl?.fundingFee ?? trade.fundingFee ?? null,
+      totalFee: matchedClosedPnl?.totalFee ?? trade.totalFee ?? null,
       lastSyncedAt: endTime,
     };
 

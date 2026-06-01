@@ -16,8 +16,7 @@ export type AdaptiveMomentumRibbonKcMaType =
 export interface AdaptiveMomentumRibbonSideConfig {
   enable: boolean;
   direction: Direction;
-  TP: number;
-  SL: number;
+  minRiskRatio: number;
 }
 
 export const config = {
@@ -47,19 +46,19 @@ export const config = {
   AMR_KC_MA_TYPE: 'EMA' as AdaptiveMomentumRibbonKcMaType,
   AMR_ATR_LENGTH: 14,
   AMR_ATR_MULTIPLIER: 2,
+  AMR_STOP_BUFFER_PCT: 0.03,
+  AMR_TARGET_R_MULT: 2,
   AMR_EXIT_ON_INVALIDATION: true,
   AMR_LINE_PLOTS: ['kcMidline', 'kcUpper', 'kcLower', 'invalidationLevel'],
   LONG: {
     enable: true,
     direction: 'LONG',
-    TP: 2,
-    SL: 1,
+    minRiskRatio: 1.2,
   },
   SHORT: {
     enable: true,
     direction: 'SHORT',
-    TP: 2,
-    SL: 1,
+    minRiskRatio: 1.2,
   },
 } as const;
 

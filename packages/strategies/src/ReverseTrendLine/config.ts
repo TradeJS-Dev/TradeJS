@@ -10,8 +10,6 @@ import {
 export interface ReverseTrendLineModeConfig {
   enable: boolean;
   direction: Direction;
-  TP: number;
-  SL: number;
   minRiskRatio: number;
 }
 
@@ -44,18 +42,16 @@ export const config = {
     epsilon: 0.003,
     epsilonOffset: 0.004,
   } as Partial<TrendLineOptions>,
+  REVERSE_TRENDLINE_STOP_BASE_PCT: 1.1,
+  REVERSE_TRENDLINE_TARGET_R_MULT: 2.05,
   HIGHS: {
     enable: true,
     direction: 'SHORT',
-    TP: 3.2,
-    SL: 1.1,
     minRiskRatio: 1.6,
   },
   LOWS: {
     enable: true,
     direction: 'LONG',
-    TP: 3.2,
-    SL: 1.1,
     minRiskRatio: 1.6,
   },
 } as const;

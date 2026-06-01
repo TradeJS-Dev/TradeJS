@@ -107,9 +107,17 @@ export const markRuntimeTradeClosed = async (params: {
   exitPrice?: number | null;
   exitTimestamp?: number | null;
   closedPnl?: number | null;
+  exitType?: RuntimeTradeRecord['exitType'];
 }) => {
-  const { userName, symbol, strategy, exitPrice, exitTimestamp, closedPnl } =
-    params;
+  const {
+    userName,
+    symbol,
+    strategy,
+    exitPrice,
+    exitTimestamp,
+    closedPnl,
+    exitType,
+  } = params;
   if (!userName) {
     return null;
   }
@@ -164,6 +172,7 @@ export const markRuntimeTradeClosed = async (params: {
       typeof exitTimestamp === 'number' && Number.isFinite(exitTimestamp)
         ? exitTimestamp
         : now(),
+    exitType: exitType ?? existing.exitType ?? null,
     lastSyncedAt: now(),
   };
   const dayKey = getRuntimeStorageDayKey(existing.entryTimestamp);

@@ -86,6 +86,139 @@ const getOptionalStringField = (
   return typeof value === 'string' && value.trim() ? value : null;
 };
 
+const toFiniteNumberOrNull = (value: unknown): number | null => {
+  const parsed = Number(value ?? Number.NaN);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
+const sumOptionalFees = (
+  values: Array<number | null | undefined>,
+): number | null => {
+  const finiteValues = values.filter(
+    (value): value is number =>
+      typeof value === 'number' && Number.isFinite(value),
+  );
+  return finiteValues.length
+    ? Number(finiteValues.reduce((sum, value) => sum + value, 0).toFixed(12))
+    : null;
+};
+
+type FundingFeeRow = {
+  symbol: string;
+  timestamp: number;
+  fundingFee: number;
+};
+
+const FUNDING_TRANSACTION_LOG_PAGE_LIMIT = 100;
+const FUNDING_TRANSACTION_LOG_MAX_PAGES = 20;
+
+const loadFundingFeeRows = async ({
+  client,
+  startTime,
+  endTime,
+  symbol,
+}: {
+  client: { getTransactionLog?: (params?: any) => Promise<any> };
+  startTime: number;
+  endTime: number;
+  symbol?: string;
+}): Promise<FundingFeeRow[]> => {
+  if (typeof client.getTransactionLog !== 'function') {
+    return [];
+  }
+
+  try {
+    const rows: FundingFeeRow[] = [];
+    let cursor: string | undefined;
+
+    for (let page = 0; page < FUNDING_TRANSACTION_LOG_MAX_PAGES; page += 1) {
+      const response = await client.getTransactionLog({
+        accountType: 'UNIFIED',
+        category: MARKET_CATEGORY,
+        type: 'SETTLEMENT',
+        startTime,
+        endTime,
+        limit: FUNDING_TRANSACTION_LOG_PAGE_LIMIT,
+        ...(cursor ? { cursor } : {}),
+      });
+
+      if (response?.retCode !== 0) {
+        logger.log(
+          'debug',
+          'funding transaction log retCode: %s, %s',
+          response?.retCode,
+          response?.retMsg,
+        );
+        return rows;
+      }
+
+      const pageRows: Array<FundingFeeRow | null> = (
+        response.result?.list ?? []
+      ).map((item: Record<string, unknown>) => {
+        const rowSymbol = String(item.symbol ?? '').trim();
+        const timestamp = Number(item.transactionTime ?? Number.NaN);
+        const fundingFee = Number(item.funding ?? Number.NaN);
+
+        if (
+          !rowSymbol ||
+          !Number.isFinite(timestamp) ||
+          !Number.isFinite(fundingFee) ||
+          (symbol && rowSymbol !== symbol)
+        ) {
+          return null;
+        }
+
+        return {
+          symbol: rowSymbol,
+          timestamp,
+          fundingFee,
+        } satisfies FundingFeeRow;
+      });
+
+      rows.push(
+        ...pageRows.filter((item): item is FundingFeeRow => item != null),
+      );
+
+      const nextCursor = String(response.result?.nextPageCursor ?? '').trim();
+      if (!nextCursor || nextCursor === cursor) {
+        break;
+      }
+      cursor = nextCursor;
+    }
+
+    return rows;
+  } catch (error) {
+    logger.log('debug', 'funding transaction log failed: %s', error);
+    return [];
+  }
+};
+
+const sumFundingFeeForTrade = ({
+  rows,
+  symbol,
+  entryTimestamp,
+  closedAt,
+}: {
+  rows: FundingFeeRow[];
+  symbol: string;
+  entryTimestamp: number | null;
+  closedAt: number;
+}) => {
+  if (entryTimestamp == null || !Number.isFinite(entryTimestamp)) {
+    return null;
+  }
+
+  const matched = rows.filter(
+    (row) =>
+      row.symbol === symbol &&
+      row.timestamp >= entryTimestamp &&
+      row.timestamp <= closedAt,
+  );
+  return matched.length
+    ? Number(matched.reduce((sum, row) => sum + row.fundingFee, 0).toFixed(12))
+    : null;
+};
+
 const inferClosedPnlDirection = ({
   entryPrice,
   exitPrice,
@@ -715,7 +848,19 @@ export const ByBitConnectorCreator: ConnectorCreator = async (config) => {
         return [];
       }
 
-      return (response.result?.list ?? [])
+      const closedPnlRows = response.result?.list ?? [];
+      if (!closedPnlRows.length) {
+        return [];
+      }
+
+      const fundingRows = await loadFundingFeeRows({
+        client,
+        startTime,
+        endTime,
+        symbol,
+      });
+
+      return closedPnlRows
         .map((item) => {
           const qty = Number(item.qty ?? item.closedSize ?? Number.NaN);
           const entryPrice = Number(item.avgEntryPrice ?? Number.NaN);
@@ -730,6 +875,17 @@ export const ByBitConnectorCreator: ConnectorCreator = async (config) => {
               ? item.orderId
               : null;
           const orderLinkId = getOptionalStringField(item, 'orderLinkId');
+          const openFee = toFiniteNumberOrNull(item.openFee);
+          const closeFee = toFiniteNumberOrNull(item.closeFee);
+          const fundingFee = sumFundingFeeForTrade({
+            rows: fundingRows,
+            symbol: String(item.symbol ?? ''),
+            entryTimestamp: Number.isFinite(entryTimestamp)
+              ? entryTimestamp
+              : null,
+            closedAt,
+          });
+          const totalFee = sumOptionalFees([openFee, closeFee, fundingFee]);
           const direction =
             Number.isFinite(entryPrice) && Number.isFinite(exitPrice)
               ? inferClosedPnlDirection({
@@ -759,6 +915,10 @@ export const ByBitConnectorCreator: ConnectorCreator = async (config) => {
             ...(Number.isFinite(entryTimestamp) ? { entryTimestamp } : {}),
             ...(orderId ? { orderId } : {}),
             ...(orderLinkId ? { orderLinkId } : {}),
+            ...(openFee != null ? { openFee } : {}),
+            ...(closeFee != null ? { closeFee } : {}),
+            ...(fundingFee != null ? { fundingFee } : {}),
+            ...(totalFee != null ? { totalFee } : {}),
           } as ClosedPnlRecord;
         })
         .filter((item): item is NonNullable<typeof item> => item != null);
@@ -808,6 +968,7 @@ export const ByBitConnectorCreator: ConnectorCreator = async (config) => {
             typeof item.orderLinkId === 'string' && item.orderLinkId.trim()
               ? item.orderLinkId
               : null;
+          const openFee = toFiniteNumberOrNull(item.execFeeV2 ?? item.execFee);
 
           if (
             !String(item.symbol ?? '').trim() ||
@@ -828,6 +989,7 @@ export const ByBitConnectorCreator: ConnectorCreator = async (config) => {
             direction: side === 'Buy' ? 'LONG' : 'SHORT',
             ...(orderId ? { orderId } : {}),
             ...(orderLinkId ? { orderLinkId } : {}),
+            ...(openFee != null ? { openFee, totalFee: openFee } : {}),
           } as ExchangeEntryRecord;
         })
         .filter((item): item is NonNullable<typeof item> => item != null)

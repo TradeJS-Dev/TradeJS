@@ -13,6 +13,10 @@ import {
   getTrendShiftGuardrailSkipCode,
 } from './guardrails';
 import { getIndicatorsBaseContext } from '../shared/baseContext';
+import {
+  buildStructureRiskPlan,
+  isStopLossOnCorrectSide,
+} from '../shared/structureRisk';
 
 const isOpenPosition = (position: Position | null): position is Position =>
   Boolean(
@@ -105,16 +109,38 @@ export const createTrendShiftCore: CreateStrategyCore<
       return strategyApi.skip(getTrendShiftGuardrailSkipCode(guardrailContext));
     }
 
-    const { stopLossPrice, takeProfitPrice, riskRatio, qty } =
-      strategyApi.getDirectionalTpSlPrices({
-        price: currentPrice,
+    const structuralStopBase =
+      direction === 'LONG' ? snapshot.lower : snapshot.upper;
+    const stopBuffer = Math.max(
+      snapshot.adaptiveAtr *
+        Math.max(0, Number(config.TRENDSHIFT_STOP_ATR_BUFFER_MULT ?? 0.1)),
+      currentPrice *
+        (Math.max(0, Number(config.TRENDSHIFT_STOP_BUFFER_PCT ?? 0.03)) / 100),
+    );
+    const stopLossPrice =
+      direction === 'LONG'
+        ? structuralStopBase - stopBuffer
+        : structuralStopBase + stopBuffer;
+
+    if (
+      !Number.isFinite(stopLossPrice) ||
+      !isStopLossOnCorrectSide({
         direction,
-        takeProfitDelta: modeConfig.TP,
-        stopLossDelta: modeConfig.SL,
-        unit: 'percent',
-        maxLossValue: config.MAX_LOSS_VALUE,
-        feePercent: Number(config.FEE_PERCENT ?? 0),
-      });
+        currentPrice,
+        stopLossPrice,
+      })
+    ) {
+      return strategyApi.skip('INVALID_STOP');
+    }
+
+    const { takeProfitPrice, riskRatio, qty } = buildStructureRiskPlan({
+      currentPrice,
+      direction,
+      stopLossPrice,
+      targetR: Number(config.TRENDSHIFT_TARGET_R_MULT ?? 2.5),
+      maxLossValue: config.MAX_LOSS_VALUE,
+      feePercent: Number(config.FEE_PERCENT ?? 0),
+    });
 
     if (!qty || !Number.isFinite(qty) || qty <= 0) {
       return strategyApi.skip('INVALID_QTY');
