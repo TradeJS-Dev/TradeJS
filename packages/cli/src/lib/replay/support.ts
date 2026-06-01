@@ -24,9 +24,14 @@ export const REPLAY_RUNTIME_COMPARISON_HEADERS = [
 ];
 
 export const REPLAY_RESULTS_CONFIG = 'replay';
-export const REPLAY_RUNTIME_COMPARE_TOLERANCE_BARS = 1;
+export const REPLAY_RUNTIME_COMPARE_TOLERANCE_BARS: number = 2;
 export const REPLAY_RUNTIME_COMPARE_TOLERANCE_MS =
   REPLAY_RUNTIME_COMPARE_TOLERANCE_BARS * 15 * 60 * 1000;
+
+export const formatReplayRuntimeCompareTolerance = () =>
+  `${REPLAY_RUNTIME_COMPARE_TOLERANCE_BARS} ${
+    REPLAY_RUNTIME_COMPARE_TOLERANCE_BARS === 1 ? 'bar' : 'bars'
+  }`;
 
 export type ReplayStrategySummary = {
   strategyName: string;
@@ -60,6 +65,7 @@ export type ReplayParityEntryDetail = {
   direction: string;
   qty?: number | null;
   timestamp: number;
+  comparisonTimestamp?: number | null;
   price: number | null;
   exitType?: string | null;
   exitTimestamp?: number | null;
@@ -107,6 +113,68 @@ export type ReplayParityNearestCandidate = {
     | 'candidate_already_matched';
 };
 
+export type ReplayMismatchAiDiagnostic = {
+  direction: string | null;
+  quality: number | null;
+  needRetest: boolean | null;
+  gateDecision: string | null;
+  llmDecision: string | null;
+  qualityReason: string | null;
+};
+
+export type ReplayMismatchSignalDiagnostic = {
+  signalId?: string;
+  timestamp: number;
+  timestampDiffMs: number;
+  direction?: string;
+  orderStatus?: string;
+  orderSkipReason?: string;
+  ai: ReplayMismatchAiDiagnostic | null;
+  ml: {
+    probability: number;
+    threshold: number;
+    passed: boolean;
+  } | null;
+};
+
+export type ReplayMismatchEvaluationDiagnostic = {
+  evaluationId: string;
+  timestamp: number;
+  timestampDiffMs: number;
+  status: string;
+  reason?: string;
+  signalId?: string;
+  direction?: string;
+  orderStatus?: string;
+  orderSkipReason?: string;
+  ai: ReplayMismatchAiDiagnostic | null;
+  ml: {
+    probability: number;
+    threshold: number;
+    passed: boolean;
+  } | null;
+};
+
+export type ReplayMismatchDiagnostic = {
+  entry: ReplayParityEntryDetail;
+  classification: string;
+  reason: string;
+  nearestCandidate?: ReplayParityNearestCandidate;
+  runtimeSignal?: ReplayMismatchSignalDiagnostic;
+  runtimeEvaluation?: ReplayMismatchEvaluationDiagnostic;
+  replaySignal?: ReplayMismatchSignalDiagnostic;
+  replayEvaluation?: ReplayMismatchEvaluationDiagnostic;
+};
+
+export type ReplayMismatchDrilldown = {
+  runtimeOnly: ReplayMismatchDiagnostic[];
+  backtestOnly: ReplayMismatchDiagnostic[];
+  summary: {
+    runtimeOnly: Record<string, number>;
+    backtestOnly: Record<string, number>;
+  };
+};
+
 export type ReplayRuntimeComparisonDetails = {
   capped: boolean;
   limit: number;
@@ -124,6 +192,7 @@ export type ReplayRuntimeComparisonDetails = {
   runtimeOnly: ReplayParityEntryDetail[];
   backtestOnly: ReplayParityEntryDetail[];
   nearestCandidates: ReplayParityNearestCandidate[];
+  mismatchDrilldown?: ReplayMismatchDrilldown;
 };
 
 export type ReplayRuntimeComparisonSummary = {

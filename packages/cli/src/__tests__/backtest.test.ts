@@ -152,7 +152,12 @@ import {
   backfillBinanceMarketContextForReplay,
   shouldBackfillBinanceMarketContextForReplay,
 } from '../lib/binanceMarketContextBackfill';
-import { buildReplayStrategyConfig } from '../lib/replay/support';
+import {
+  REPLAY_RUNTIME_COMPARE_TOLERANCE_BARS,
+  REPLAY_RUNTIME_COMPARE_TOLERANCE_MS,
+  buildReplayStrategyConfig,
+  formatReplayRuntimeCompareTolerance,
+} from '../lib/replay/support';
 import {
   summarizeRuntimeTradesByStrategy,
   summarizeTradeParityByStrategy,
@@ -670,6 +675,51 @@ describe('backtest script helpers', () => {
     });
   });
 
+  it('matches replay exchange entries against the backtest candle close timestamp', () => {
+    const intervalMs = 15 * 60 * 1000;
+    const result = compareExchangeEntriesToBacktest({
+      toleranceMs: 2 * intervalMs,
+      backtestTimestampOffsetMs: intervalMs,
+      exchangeEntries: [
+        {
+          symbol: 'ARIAUSDT',
+          direction: 'SHORT',
+          qty: 29,
+          entryPrice: 0.04228,
+          entryTimestamp: intervalMs + 95_478,
+          orderId: 'ex-1',
+          orderLinkId: 'tjs-doubletap--abc',
+        },
+      ] as any,
+      backtestEntries: [
+        {
+          id: 'bt-1',
+          source: 'backtest',
+          strategy: 'DoubleTap',
+          symbol: 'ARIAUSDT',
+          direction: 'SHORT',
+          timestamp: 0,
+          price: 0.04215,
+        },
+      ] as any,
+    });
+
+    expect(result.matched).toHaveLength(1);
+    expect(result.matched[0]).toEqual(
+      expect.objectContaining({
+        timestampDiffMs: 95_478,
+      }),
+    );
+    expect(result.exchangeOnly).toEqual([]);
+    expect(result.backtestOnly).toEqual([]);
+  });
+
+  it('uses two bars as replay runtime comparison tolerance', () => {
+    expect(REPLAY_RUNTIME_COMPARE_TOLERANCE_BARS).toBe(2);
+    expect(REPLAY_RUNTIME_COMPARE_TOLERANCE_MS).toBe(30 * 60 * 1000);
+    expect(formatReplayRuntimeCompareTolerance()).toBe('2 bars');
+  });
+
   it('builds replay parity details with nearest unmatched candidates', () => {
     const details = buildReplayExchangeComparisonDetails({
       matched: [],
@@ -721,6 +771,28 @@ describe('backtest script helpers', () => {
       ] as any,
       strategyNameByOrderLinkKey: new Map([['trendfollow', 'TrendFollow']]),
       toleranceMs: 1_000,
+      backtestTimestampOffsetMs: 15 * 60_000,
+      runtimeSignals: [
+        {
+          signalId: 'rt-sig-1',
+          strategy: 'TrendFollow',
+          symbol: 'ETHUSDT',
+          direction: 'LONG',
+          interval: '15',
+          timestamp: 3_000,
+          orderStatus: 'skipped',
+          orderSkipReason: 'AI_QUALITY_BELOW_MIN (2 < 4)',
+          aiAnalysis: {
+            direction: 'LONG',
+            quality: 2,
+            needRetest: true,
+            qualityReason: 'weak gate',
+          },
+          prices: {},
+          figures: {},
+          indicators: {},
+        },
+      ] as any,
       limit: 10,
     });
 
@@ -743,10 +815,92 @@ describe('backtest script helpers', () => {
     expect(details.nearestCandidates).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          timestampDiffMs: 2_000,
+          timestampDiffMs: 902_000,
           reason: 'outside_tolerance',
         }),
       ]),
+    );
+    expect(details.backtestOnly[0]).toEqual(
+      expect.objectContaining({
+        timestamp: 3_000,
+        comparisonTimestamp: 903_000,
+      }),
+    );
+    expect(details.mismatchDrilldown?.summary).toEqual({
+      runtimeOnly: {
+        timing_or_price_drift: 1,
+      },
+      backtestOnly: {
+        gated_or_policy_blocked: 1,
+      },
+    });
+    expect(details.mismatchDrilldown?.backtestOnly[0]).toEqual(
+      expect.objectContaining({
+        classification: 'gated_or_policy_blocked',
+        reason: 'AI_QUALITY_BELOW_MIN (2 < 4)',
+        runtimeSignal: expect.objectContaining({
+          signalId: 'rt-sig-1',
+          timestampDiffMs: 0,
+          ai: expect.objectContaining({
+            quality: 2,
+            qualityReason: 'weak gate',
+          }),
+        }),
+      }),
+    );
+  });
+
+  it('adds replay-side gate diagnostics for exchange-only replay mismatches', () => {
+    const details = buildReplayExchangeComparisonDetails({
+      matched: [],
+      exchangeOnly: [
+        {
+          symbol: 'ARIAUSDT',
+          direction: 'SHORT',
+          qty: 1,
+          entryPrice: 0.04228,
+          entryTimestamp: 903_000,
+          orderId: 'ex-1',
+          orderLinkId: 'tjs-doubletap--abc',
+        },
+      ] as any,
+      backtestOnly: [],
+      exchangeEntries: [],
+      backtestEntries: [],
+      strategyNameByOrderLinkKey: new Map([['doubletap', 'DoubleTap']]),
+      toleranceMs: 1_000,
+      backtestTimestampOffsetMs: 15 * 60_000,
+      replaySignals: [
+        {
+          signalId: 'replay-sig-1',
+          strategy: 'DoubleTap',
+          symbol: 'ARIAUSDT',
+          direction: 'SHORT',
+          interval: '15',
+          timestamp: 3_000,
+          orderStatus: 'skipped',
+          orderSkipReason: 'ENTRY_POLICY_BLOCKED',
+          prices: {},
+          figures: {},
+          indicators: {},
+        },
+      ] as any,
+      limit: 10,
+    });
+
+    expect(details.mismatchDrilldown?.summary.runtimeOnly).toEqual({
+      gated_or_policy_blocked: 1,
+    });
+    expect(details.mismatchDrilldown?.runtimeOnly[0]).toEqual(
+      expect.objectContaining({
+        classification: 'gated_or_policy_blocked',
+        reason: 'ENTRY_POLICY_BLOCKED',
+        replaySignal: expect.objectContaining({
+          signalId: 'replay-sig-1',
+          timestampDiffMs: 0,
+          orderStatus: 'skipped',
+        }),
+      }),
     );
   });
 

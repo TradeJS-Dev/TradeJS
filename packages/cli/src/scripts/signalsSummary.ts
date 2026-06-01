@@ -10,7 +10,10 @@ import {
   loadRuntimeStrategyNames,
   loadRuntimeTrades,
 } from '../lib/runtimeRedis';
-import { syncRuntimeTrades } from '../lib/runtimeTradeSync';
+import {
+  formatRuntimeTradeSyncError,
+  syncRuntimeTrades,
+} from '../lib/runtimeTradeSync';
 import { sendTelegramReport } from '../lib/telegramReports';
 import {
   loadRuntimeSignalEvaluationStatsBuckets,
@@ -545,11 +548,19 @@ export const signalsSummary = async () => {
     trades,
     startTime,
     endTime,
+    openPositionCallbacks: {
+      onError: (error) => {
+        logger.warn(
+          'signals summary: getOpenPositionPnl failed: %s',
+          formatRuntimeTradeSyncError(error),
+        );
+      },
+    },
     closedPnlCallbacks: {
       onError: (error) => {
         logger.warn(
           'signals summary: getClosedPnl failed: %s',
-          (error as Error)?.message || String(error),
+          formatRuntimeTradeSyncError(error),
         );
       },
     },

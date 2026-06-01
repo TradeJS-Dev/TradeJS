@@ -80,6 +80,7 @@ const finishReplay = async ({
   const replayRuntimeComparison = await saveAndPrintReplayRuntimeComparison({
     liveStrategySummaries: replayStrategySnapshot.summaries,
     backtestEntries: replayStrategySnapshot.backtestEntries,
+    replaySignals: replayResult.signals,
   });
 
   const finishedAt = new Date();

@@ -300,7 +300,7 @@ describe('createAdaptiveMomentumRibbonCore', () => {
     expect(decision.orderPlan.stopLossPrice).toBeLessThan(
       marketData.currentPrice,
     );
-    expect(decision.entryContext.prices.riskRatio).toBe(2);
+    expect(decision.entryContext.prices.riskRatio).toBeCloseTo(2.4);
     expect(strategyApi.getDirectionalTpSlPrices).not.toHaveBeenCalled();
     expect(decision.signal?.additionalIndicators).toEqual(
       expect.objectContaining({

@@ -302,10 +302,12 @@ export const compareTradeParityEntries = ({
   runtimeEntries,
   backtestEntries,
   toleranceMs,
+  backtestTimestampOffsetMs = 0,
 }: {
   runtimeEntries: TradeParityEntry[];
   backtestEntries: TradeParityEntry[];
   toleranceMs: number;
+  backtestTimestampOffsetMs?: number;
 }): CompareTradeParityResult => {
   const matched: MatchedTradeParityEntry[] = [];
   const runtimeOnly: TradeParityEntry[] = [];
@@ -356,7 +358,9 @@ export const compareTradeParityEntries = ({
         }
 
         const diff = Math.abs(
-          candidate.entry.timestamp - runtimeEntry.timestamp,
+          candidate.entry.timestamp +
+            backtestTimestampOffsetMs -
+            runtimeEntry.timestamp,
         );
         if (diff > toleranceMs || diff >= bestDiff) {
           continue;

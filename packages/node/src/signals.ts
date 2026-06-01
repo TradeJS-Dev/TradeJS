@@ -1,7 +1,9 @@
 import { Signal, Interval, SignalAnalysis } from '@tradejs/types';
 import { delay } from '@tradejs/core/async';
 import { formatNumber } from '@tradejs/core/math';
+import { getRuntimeStorageDayKey } from '@tradejs/core/time';
 import { logger } from '@tradejs/infra/logger';
+import { redisKeys } from '@tradejs/infra/redis';
 import { getUserSettings } from '@tradejs/infra/userSettings';
 import { getScreenshotBuffer, getScreenshotFilename } from './screenshot';
 
@@ -72,6 +74,23 @@ const normalizeQuality = (value?: number) =>
   typeof value === 'number'
     ? Math.max(1, Math.min(5, Math.round(value)))
     : null;
+
+const buildRuntimeDebugKeyLines = (signal: Signal, userName: string) => {
+  if (signal.orderStatus !== 'completed' || !signal.orderId) {
+    return [];
+  }
+
+  const dayKey = getRuntimeStorageDayKey(signal.timestamp);
+  const evaluationId = `${signal.strategy}:${signal.symbol}:${signal.timestamp}`;
+  return [
+    '<b>Redis debug</b>',
+    `trade: <code>${escapeHtml(redisKeys.runtimeTrade(userName, signal.orderId))}</code>`,
+    `tradeBucket: <code>${escapeHtml(redisKeys.runtimeTradeBucket(userName, dayKey))}</code> field <code>${escapeHtml(signal.orderId)}</code>`,
+    `activeTrade: <code>${escapeHtml(redisKeys.runtimeActiveTrade(userName, signal.symbol))}</code>`,
+    `signal: <code>${escapeHtml(redisKeys.storeSignal(signal.symbol, signal.signalId))}</code>`,
+    `evaluation: <code>${escapeHtml(redisKeys.runtimeSignalEvaluationBucket(userName, dayKey, signal.strategy))}</code> field <code>${escapeHtml(evaluationId)}</code>`,
+  ];
+};
 
 const getDisplayDecision = (
   signalDirection: Signal['direction'],
@@ -444,6 +463,9 @@ export const sendDocumentToTG = async (
 export const formatMessage = (
   signal: Signal,
   analysis?: Partial<SignalAnalysis> | null,
+  options: {
+    userName?: string;
+  } = {},
 ): string => {
   const {
     symbol,
@@ -457,6 +479,7 @@ export const formatMessage = (
     prices: { currentPrice, takeProfitPrice, stopLossPrice, riskRatio },
     additionalIndicators,
   } = signal;
+  const userName = options.userName || 'root';
 
   try {
     const lines: string[] = [];
@@ -541,6 +564,12 @@ export const formatMessage = (
         lines.push('🟡 Using base config');
       }
 
+      const runtimeDebugKeyLines = buildRuntimeDebugKeyLines(signal, userName);
+      if (runtimeDebugKeyLines.length) {
+        lines.push('');
+        lines.push(...runtimeDebugKeyLines);
+      }
+
       if (ml) {
         lines.push(
           `${ml.passed ? '🟢 ML: PASS' : '🔴 ML: FAIL'} (${ml.probability.toFixed(3)} / ${ml.threshold.toFixed(2)})`,
@@ -612,7 +641,9 @@ export const sendSignal = async (
   const { symbol, signalId, interval } = signal;
   const { token, chatId } = await getTelegramSettings(options.userName);
 
-  const message = formatMessage(signal, analysis);
+  const message = formatMessage(signal, analysis, {
+    userName: options.userName,
+  });
 
   const publicAppUrl = APP_URL?.startsWith('https') ? APP_URL : null;
   const dashboardUrl = publicAppUrl

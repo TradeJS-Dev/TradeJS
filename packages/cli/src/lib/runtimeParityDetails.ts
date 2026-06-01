@@ -2,9 +2,17 @@ import {
   normalizeStrategyOrderLinkKey,
   parseStrategyOrderLinkKey,
 } from '@tradejs/core/trade';
-import type { ExchangeEntryRecord } from '@tradejs/types';
+import type {
+  ExchangeEntryRecord,
+  RuntimeSignalEvaluationRecord,
+  Signal,
+} from '@tradejs/types';
 import type { TradeParityEntry } from './runtimeParity';
 import type {
+  ReplayMismatchAiDiagnostic,
+  ReplayMismatchDrilldown,
+  ReplayMismatchEvaluationDiagnostic,
+  ReplayMismatchSignalDiagnostic,
   ReplayParityEntryDetail,
   ReplayParityNearestCandidate,
   ReplayRuntimeComparisonDetails,
@@ -69,22 +77,27 @@ const buildCostDetail = (entry: {
 
 const toBacktestParityDetail = (
   entry: TradeParityEntry,
-): ReplayParityEntryDetail => ({
-  source: 'backtest',
-  strategy: entry.strategy,
-  symbol: entry.symbol,
-  direction: entry.direction,
-  qty: entry.qty ?? null,
-  timestamp: entry.timestamp,
-  price: entry.price,
-  exitType: entry.exitType ?? null,
-  exitTimestamp: entry.exitTimestamp ?? null,
-  exitPrice: entry.exitPrice ?? null,
-  pnl: entry.expectedPnl ?? null,
-  costs: buildCostDetail(entry),
-  orderId: entry.orderId,
-  signalId: entry.signalId,
-});
+  timestampOffsetMs = 0,
+): ReplayParityEntryDetail => {
+  const comparisonTimestamp = entry.timestamp + timestampOffsetMs;
+  return {
+    source: 'backtest',
+    strategy: entry.strategy,
+    symbol: entry.symbol,
+    direction: entry.direction,
+    qty: entry.qty ?? null,
+    timestamp: entry.timestamp,
+    comparisonTimestamp: timestampOffsetMs === 0 ? null : comparisonTimestamp,
+    price: entry.price,
+    exitType: entry.exitType ?? null,
+    exitTimestamp: entry.exitTimestamp ?? null,
+    exitPrice: entry.exitPrice ?? null,
+    pnl: entry.expectedPnl ?? null,
+    costs: buildCostDetail(entry),
+    orderId: entry.orderId,
+    signalId: entry.signalId,
+  };
+};
 
 const toRuntimeParityDetail = (
   entry: TradeParityEntry,
@@ -144,6 +157,223 @@ const buildTimestampDelta = (
     ? Math.abs(left - right)
     : null;
 
+const getComparisonTimestamp = (entry: ReplayParityEntryDetail) =>
+  typeof entry.comparisonTimestamp === 'number' &&
+  Number.isFinite(entry.comparisonTimestamp)
+    ? entry.comparisonTimestamp
+    : entry.timestamp;
+
+const getEntryStrategy = (entry: ReplayParityEntryDetail) =>
+  entry.strategy ?? entry.inferredStrategy ?? null;
+
+const findNearestSignal = ({
+  entry,
+  signals,
+  toleranceMs,
+  timestampOffsetMs,
+  entryTimestampOffsetMs = 0,
+}: {
+  entry: ReplayParityEntryDetail;
+  signals: Signal[];
+  toleranceMs: number;
+  timestampOffsetMs: number;
+  entryTimestampOffsetMs?: number;
+}) => {
+  const entryStrategy = getEntryStrategy(entry);
+  if (!entryStrategy) {
+    return null;
+  }
+
+  let bestSignal: Signal | null = null;
+  let bestDiff = Number.POSITIVE_INFINITY;
+  const entryTimestamp = entry.timestamp + entryTimestampOffsetMs;
+
+  for (const signal of signals) {
+    if (
+      signal.strategy !== entryStrategy ||
+      signal.symbol !== entry.symbol ||
+      signal.direction !== entry.direction
+    ) {
+      continue;
+    }
+
+    const diff = Math.abs(
+      signal.timestamp + timestampOffsetMs - entryTimestamp,
+    );
+    if (diff > toleranceMs || diff >= bestDiff) {
+      continue;
+    }
+
+    bestSignal = signal;
+    bestDiff = diff;
+  }
+
+  return bestSignal
+    ? {
+        signal: bestSignal,
+        timestampDiffMs: bestDiff,
+      }
+    : null;
+};
+
+const findNearestEvaluation = ({
+  entry,
+  evaluations,
+  toleranceMs,
+  timestampOffsetMs,
+  entryTimestampOffsetMs = 0,
+}: {
+  entry: ReplayParityEntryDetail;
+  evaluations: RuntimeSignalEvaluationRecord[];
+  toleranceMs: number;
+  timestampOffsetMs: number;
+  entryTimestampOffsetMs?: number;
+}) => {
+  const entryStrategy = getEntryStrategy(entry);
+  if (!entryStrategy) {
+    return null;
+  }
+
+  let bestEvaluation: RuntimeSignalEvaluationRecord | null = null;
+  let bestDiff = Number.POSITIVE_INFINITY;
+  const entryTimestamp = entry.timestamp + entryTimestampOffsetMs;
+
+  for (const evaluation of evaluations) {
+    if (
+      evaluation.strategy !== entryStrategy ||
+      evaluation.symbol !== entry.symbol
+    ) {
+      continue;
+    }
+
+    const diff = Math.abs(
+      evaluation.timestamp + timestampOffsetMs - entryTimestamp,
+    );
+    if (diff > toleranceMs || diff >= bestDiff) {
+      continue;
+    }
+
+    bestEvaluation = evaluation;
+    bestDiff = diff;
+  }
+
+  return bestEvaluation
+    ? {
+        evaluation: bestEvaluation,
+        timestampDiffMs: bestDiff,
+      }
+    : null;
+};
+
+const classifySignalDiagnostic = (
+  signal: Signal,
+): { classification: string; reason: string } => {
+  if (signal.orderStatus === 'failed') {
+    return {
+      classification: 'order_failed',
+      reason: signal.orderFailureReason || signal.orderSkipReason || 'failed',
+    };
+  }
+
+  if (
+    signal.orderStatus === 'skipped' ||
+    signal.orderStatus === 'canceled' ||
+    (typeof signal.orderSkipReason === 'string' &&
+      signal.orderSkipReason.trim()) ||
+    signal.ml?.passed === false
+  ) {
+    return {
+      classification: 'gated_or_policy_blocked',
+      reason:
+        signal.orderSkipReason ||
+        (signal.ml?.passed === false
+          ? `ml_probability=${signal.ml.probability} threshold=${signal.ml.threshold}`
+          : `orderStatus=${signal.orderStatus ?? 'skipped'}`),
+    };
+  }
+
+  if (signal.orderStatus === 'completed') {
+    return {
+      classification: 'completed_signal_without_match',
+      reason: 'completed_signal_without_matching_trade',
+    };
+  }
+
+  return {
+    classification: 'signal_without_order_status',
+    reason: 'signal_found_without_order_status',
+  };
+};
+
+const classifyEvaluationDiagnostic = (
+  evaluation: RuntimeSignalEvaluationRecord,
+): { classification: string; reason: string } => {
+  if (evaluation.status === 'skip') {
+    return {
+      classification: 'core_skipped',
+      reason: evaluation.reason || 'NO_SIGNAL',
+    };
+  }
+
+  if (evaluation.status === 'error') {
+    return {
+      classification: 'evaluation_error',
+      reason: evaluation.reason || 'runtime_evaluation_error',
+    };
+  }
+
+  if (evaluation.orderStatus === 'failed') {
+    return {
+      classification: 'order_failed',
+      reason: evaluation.reason || 'orderStatus=failed',
+    };
+  }
+
+  if (
+    evaluation.orderStatus === 'skipped' ||
+    evaluation.orderStatus === 'canceled' ||
+    (typeof evaluation.orderSkipReason === 'string' &&
+      evaluation.orderSkipReason.trim())
+  ) {
+    return {
+      classification: 'gated_or_policy_blocked',
+      reason:
+        evaluation.orderSkipReason ||
+        evaluation.reason ||
+        `orderStatus=${evaluation.orderStatus}`,
+    };
+  }
+
+  if (evaluation.orderStatus === 'completed') {
+    return {
+      classification: 'completed_signal_without_match',
+      reason: 'completed_signal_without_matching_trade',
+    };
+  }
+
+  return {
+    classification: 'signal_evaluation_without_order_status',
+    reason: evaluation.reason || 'signal_evaluation_without_order_status',
+  };
+};
+
+const summarizeMismatchDiagnostics = (
+  items: Array<{ classification: string }>,
+) =>
+  Object.fromEntries(
+    [
+      ...items
+        .reduce((counts, item) => {
+          counts.set(
+            item.classification,
+            (counts.get(item.classification) ?? 0) + 1,
+          );
+          return counts;
+        }, new Map<string, number>())
+        .entries(),
+    ].sort(([left], [right]) => left.localeCompare(right)),
+  );
+
 const buildPnlDelta = (
   expectedPnl: number | null | undefined,
   realizedPnl: number | null | undefined,
@@ -171,6 +401,70 @@ const buildPriceDeltaPct = (
 
   return Math.abs(((rightPrice - leftPrice) / leftPrice) * 100);
 };
+
+const toFiniteNumberOrNull = (value: unknown): number | null =>
+  typeof value === 'number' && Number.isFinite(value) ? value : null;
+
+const toAiDiagnostic = (
+  analysis: Signal['aiAnalysis'] | RuntimeSignalEvaluationRecord['aiAnalysis'],
+): ReplayMismatchAiDiagnostic | null => {
+  if (!analysis || typeof analysis !== 'object') {
+    return null;
+  }
+
+  return {
+    direction:
+      typeof analysis.direction === 'string' ? analysis.direction : null,
+    quality: toFiniteNumberOrNull(analysis.quality),
+    needRetest:
+      typeof analysis.needRetest === 'boolean' ? analysis.needRetest : null,
+    gateDecision:
+      typeof analysis.gateDecision === 'string' ? analysis.gateDecision : null,
+    llmDecision:
+      typeof analysis.llmDecision === 'string' ? analysis.llmDecision : null,
+    qualityReason:
+      typeof analysis.qualityReason === 'string'
+        ? analysis.qualityReason
+        : null,
+  };
+};
+
+const toSignalDiagnostic = ({
+  signal,
+  timestampDiffMs,
+}: {
+  signal: Signal;
+  timestampDiffMs: number;
+}): ReplayMismatchSignalDiagnostic => ({
+  signalId: signal.signalId,
+  timestamp: signal.timestamp,
+  timestampDiffMs,
+  direction: signal.direction,
+  orderStatus: signal.orderStatus,
+  orderSkipReason: signal.orderSkipReason,
+  ai: toAiDiagnostic(signal.aiAnalysis),
+  ml: signal.ml ?? null,
+});
+
+const toEvaluationDiagnostic = ({
+  evaluation,
+  timestampDiffMs,
+}: {
+  evaluation: RuntimeSignalEvaluationRecord;
+  timestampDiffMs: number;
+}): ReplayMismatchEvaluationDiagnostic => ({
+  evaluationId: evaluation.evaluationId,
+  timestamp: evaluation.timestamp,
+  timestampDiffMs,
+  status: evaluation.status,
+  reason: evaluation.reason,
+  signalId: evaluation.signalId,
+  direction: evaluation.direction,
+  orderStatus: evaluation.orderStatus,
+  orderSkipReason: evaluation.orderSkipReason,
+  ai: toAiDiagnostic(evaluation.aiAnalysis),
+  ml: evaluation.ml ?? null,
+});
 
 const buildSlippageCost = ({
   direction,
@@ -304,7 +598,9 @@ const buildNearestCandidates = ({
     const nearest = comparable
       .map((candidate) => ({
         candidate,
-        timestampDiffMs: Math.abs(candidate.timestamp - entry.timestamp),
+        timestampDiffMs: Math.abs(
+          getComparisonTimestamp(candidate) - getComparisonTimestamp(entry),
+        ),
       }))
       .sort((left, right) => left.timestampDiffMs - right.timestampDiffMs)[0];
 
@@ -334,6 +630,147 @@ const buildNearestCandidates = ({
     };
   });
 
+export const buildReplayMismatchDrilldown = ({
+  runtimeOnly,
+  backtestOnly,
+  nearestCandidates,
+  runtimeSignals = [],
+  runtimeSignalEvaluations = [],
+  replaySignals = [],
+  replaySignalEvaluations = [],
+  toleranceMs,
+  backtestTimestampOffsetMs,
+  limit,
+}: {
+  runtimeOnly: ReplayParityEntryDetail[];
+  backtestOnly: ReplayParityEntryDetail[];
+  nearestCandidates: ReplayParityNearestCandidate[];
+  runtimeSignals?: Signal[];
+  runtimeSignalEvaluations?: RuntimeSignalEvaluationRecord[];
+  replaySignals?: Signal[];
+  replaySignalEvaluations?: RuntimeSignalEvaluationRecord[];
+  toleranceMs: number;
+  backtestTimestampOffsetMs: number;
+  limit: number;
+}): ReplayMismatchDrilldown => {
+  const nearestByEntry = new Map(
+    nearestCandidates.map((candidate) => [candidate.entry, candidate]),
+  );
+
+  const runtimeOnlyDiagnostics = runtimeOnly.map((entry) => {
+    const nearestCandidate = nearestByEntry.get(entry);
+    const nearestReplaySignal = findNearestSignal({
+      entry,
+      signals: replaySignals,
+      toleranceMs,
+      timestampOffsetMs: backtestTimestampOffsetMs,
+    });
+    const nearestReplayEvaluation = findNearestEvaluation({
+      entry,
+      evaluations: replaySignalEvaluations,
+      toleranceMs,
+      timestampOffsetMs: backtestTimestampOffsetMs,
+    });
+
+    const classification = nearestReplaySignal
+      ? classifySignalDiagnostic(nearestReplaySignal.signal)
+      : nearestReplayEvaluation
+        ? classifyEvaluationDiagnostic(nearestReplayEvaluation.evaluation)
+        : nearestCandidate?.nearest
+          ? {
+              classification: 'timing_or_price_drift',
+              reason: nearestCandidate.reason,
+            }
+          : {
+              classification: 'no_replay_candidate',
+              reason: 'no_replay_signal_or_backtest_candidate',
+            };
+
+    return {
+      entry,
+      ...classification,
+      ...(nearestCandidate ? { nearestCandidate } : {}),
+      ...(nearestReplaySignal
+        ? {
+            replaySignal: toSignalDiagnostic({
+              signal: nearestReplaySignal.signal,
+              timestampDiffMs: nearestReplaySignal.timestampDiffMs,
+            }),
+          }
+        : {}),
+      ...(nearestReplayEvaluation
+        ? {
+            replayEvaluation: toEvaluationDiagnostic({
+              evaluation: nearestReplayEvaluation.evaluation,
+              timestampDiffMs: nearestReplayEvaluation.timestampDiffMs,
+            }),
+          }
+        : {}),
+    };
+  });
+
+  const backtestOnlyDiagnostics = backtestOnly.map((entry) => {
+    const nearestCandidate = nearestByEntry.get(entry);
+    const nearestRuntimeSignal = findNearestSignal({
+      entry,
+      signals: runtimeSignals,
+      toleranceMs,
+      timestampOffsetMs: 0,
+    });
+    const nearestRuntimeEvaluation = findNearestEvaluation({
+      entry,
+      evaluations: runtimeSignalEvaluations,
+      toleranceMs,
+      timestampOffsetMs: 0,
+    });
+
+    const classification = nearestRuntimeSignal
+      ? classifySignalDiagnostic(nearestRuntimeSignal.signal)
+      : nearestRuntimeEvaluation
+        ? classifyEvaluationDiagnostic(nearestRuntimeEvaluation.evaluation)
+        : nearestCandidate?.nearest
+          ? {
+              classification: 'timing_or_price_drift',
+              reason: nearestCandidate.reason,
+            }
+          : {
+              classification: 'no_runtime_evaluation',
+              reason: 'no_runtime_signal_or_evaluation',
+            };
+
+    return {
+      entry,
+      ...classification,
+      ...(nearestCandidate ? { nearestCandidate } : {}),
+      ...(nearestRuntimeSignal
+        ? {
+            runtimeSignal: toSignalDiagnostic({
+              signal: nearestRuntimeSignal.signal,
+              timestampDiffMs: nearestRuntimeSignal.timestampDiffMs,
+            }),
+          }
+        : {}),
+      ...(nearestRuntimeEvaluation
+        ? {
+            runtimeEvaluation: toEvaluationDiagnostic({
+              evaluation: nearestRuntimeEvaluation.evaluation,
+              timestampDiffMs: nearestRuntimeEvaluation.timestampDiffMs,
+            }),
+          }
+        : {}),
+    };
+  });
+
+  return {
+    runtimeOnly: capReplayDetails(runtimeOnlyDiagnostics, limit),
+    backtestOnly: capReplayDetails(backtestOnlyDiagnostics, limit),
+    summary: {
+      runtimeOnly: summarizeMismatchDiagnostics(runtimeOnlyDiagnostics),
+      backtestOnly: summarizeMismatchDiagnostics(backtestOnlyDiagnostics),
+    },
+  };
+};
+
 export const buildReplayRuntimeComparisonDetails = ({
   matched,
   runtimeOnly,
@@ -342,6 +779,11 @@ export const buildReplayRuntimeComparisonDetails = ({
   backtestEntries,
   toleranceMs,
   limit = resolveReplayParityDetailsLimit(),
+  backtestTimestampOffsetMs = 0,
+  runtimeSignals,
+  runtimeSignalEvaluations,
+  replaySignals,
+  replaySignalEvaluations,
 }: {
   matched: Array<{
     runtime: TradeParityEntry;
@@ -355,11 +797,20 @@ export const buildReplayRuntimeComparisonDetails = ({
   backtestEntries: TradeParityEntry[];
   toleranceMs: number;
   limit?: number;
+  backtestTimestampOffsetMs?: number;
+  runtimeSignals?: Signal[];
+  runtimeSignalEvaluations?: RuntimeSignalEvaluationRecord[];
+  replaySignals?: Signal[];
+  replaySignalEvaluations?: RuntimeSignalEvaluationRecord[];
 }): ReplayRuntimeComparisonDetails => {
   const runtimeDetails = runtimeEntries.map(toRuntimeParityDetail);
-  const backtestDetails = backtestEntries.map(toBacktestParityDetail);
+  const backtestDetails = backtestEntries.map((entry) =>
+    toBacktestParityDetail(entry, backtestTimestampOffsetMs),
+  );
   const runtimeOnlyDetails = runtimeOnly.map(toRuntimeParityDetail);
-  const backtestOnlyDetails = backtestOnly.map(toBacktestParityDetail);
+  const backtestOnlyDetails = backtestOnly.map((entry) =>
+    toBacktestParityDetail(entry, backtestTimestampOffsetMs),
+  );
   const nearestCandidates = [
     ...buildNearestCandidates({
       entries: runtimeOnlyDetails,
@@ -375,6 +826,13 @@ export const buildReplayRuntimeComparisonDetails = ({
     }),
   ];
 
+  const cappedNearestCandidates = capReplayDetails(nearestCandidates, limit);
+  const cappedRuntimeOnlyDetails = capReplayDetails(runtimeOnlyDetails, limit);
+  const cappedBacktestOnlyDetails = capReplayDetails(
+    backtestOnlyDetails,
+    limit,
+  );
+
   return {
     capped:
       matched.length > limit ||
@@ -386,16 +844,31 @@ export const buildReplayRuntimeComparisonDetails = ({
       matched.map((item) =>
         buildMatchedReplayDetail({
           runtime: toRuntimeParityDetail(item.runtime),
-          backtest: toBacktestParityDetail(item.backtest),
+          backtest: toBacktestParityDetail(
+            item.backtest,
+            backtestTimestampOffsetMs,
+          ),
           timestampDiffMs: item.timestampDiffMs,
           priceDeltaPct: item.priceDeltaPct,
         }),
       ),
       limit,
     ),
-    runtimeOnly: capReplayDetails(runtimeOnlyDetails, limit),
-    backtestOnly: capReplayDetails(backtestOnlyDetails, limit),
-    nearestCandidates: capReplayDetails(nearestCandidates, limit),
+    runtimeOnly: cappedRuntimeOnlyDetails,
+    backtestOnly: cappedBacktestOnlyDetails,
+    nearestCandidates: cappedNearestCandidates,
+    mismatchDrilldown: buildReplayMismatchDrilldown({
+      runtimeOnly: runtimeOnlyDetails,
+      backtestOnly: backtestOnlyDetails,
+      nearestCandidates,
+      runtimeSignals,
+      runtimeSignalEvaluations,
+      replaySignals,
+      replaySignalEvaluations,
+      toleranceMs,
+      backtestTimestampOffsetMs,
+      limit,
+    }),
   };
 };
 
@@ -408,6 +881,11 @@ export const buildReplayExchangeComparisonDetails = ({
   strategyNameByOrderLinkKey,
   toleranceMs,
   limit = resolveReplayParityDetailsLimit(),
+  backtestTimestampOffsetMs = 0,
+  runtimeSignals,
+  runtimeSignalEvaluations,
+  replaySignals,
+  replaySignalEvaluations,
 }: {
   matched: ExchangeMatchedBacktestEntry[];
   exchangeOnly: ExchangeEntryRecord[];
@@ -417,6 +895,11 @@ export const buildReplayExchangeComparisonDetails = ({
   strategyNameByOrderLinkKey: Map<string, string>;
   toleranceMs: number;
   limit?: number;
+  backtestTimestampOffsetMs?: number;
+  runtimeSignals?: Signal[];
+  runtimeSignalEvaluations?: RuntimeSignalEvaluationRecord[];
+  replaySignals?: Signal[];
+  replaySignalEvaluations?: RuntimeSignalEvaluationRecord[];
 }): ReplayRuntimeComparisonDetails => {
   const toExchangeDetail = (entry: ExchangeEntryRecord) =>
     toExchangeParityDetail({
@@ -427,9 +910,13 @@ export const buildReplayExchangeComparisonDetails = ({
       }),
     });
   const exchangeDetails = exchangeEntries.map(toExchangeDetail);
-  const backtestDetails = backtestEntries.map(toBacktestParityDetail);
+  const backtestDetails = backtestEntries.map((entry) =>
+    toBacktestParityDetail(entry, backtestTimestampOffsetMs),
+  );
   const exchangeOnlyDetails = exchangeOnly.map(toExchangeDetail);
-  const backtestOnlyDetails = backtestOnly.map(toBacktestParityDetail);
+  const backtestOnlyDetails = backtestOnly.map((entry) =>
+    toBacktestParityDetail(entry, backtestTimestampOffsetMs),
+  );
   const nearestCandidates = [
     ...buildNearestCandidates({
       entries: exchangeOnlyDetails,
@@ -443,6 +930,16 @@ export const buildReplayExchangeComparisonDetails = ({
     }),
   ];
 
+  const cappedNearestCandidates = capReplayDetails(nearestCandidates, limit);
+  const cappedExchangeOnlyDetails = capReplayDetails(
+    exchangeOnlyDetails,
+    limit,
+  );
+  const cappedBacktestOnlyDetails = capReplayDetails(
+    backtestOnlyDetails,
+    limit,
+  );
+
   return {
     capped:
       matched.length > limit ||
@@ -454,15 +951,30 @@ export const buildReplayExchangeComparisonDetails = ({
       matched.map((item) =>
         buildMatchedReplayDetail({
           runtime: toExchangeDetail(item.exchange),
-          backtest: toBacktestParityDetail(item.backtest),
+          backtest: toBacktestParityDetail(
+            item.backtest,
+            backtestTimestampOffsetMs,
+          ),
           timestampDiffMs: item.timestampDiffMs,
           priceDeltaPct: item.priceDeltaPct,
         }),
       ),
       limit,
     ),
-    runtimeOnly: capReplayDetails(exchangeOnlyDetails, limit),
-    backtestOnly: capReplayDetails(backtestOnlyDetails, limit),
-    nearestCandidates: capReplayDetails(nearestCandidates, limit),
+    runtimeOnly: cappedExchangeOnlyDetails,
+    backtestOnly: cappedBacktestOnlyDetails,
+    nearestCandidates: cappedNearestCandidates,
+    mismatchDrilldown: buildReplayMismatchDrilldown({
+      runtimeOnly: exchangeOnlyDetails,
+      backtestOnly: backtestOnlyDetails,
+      nearestCandidates,
+      runtimeSignals,
+      runtimeSignalEvaluations,
+      replaySignals,
+      replaySignalEvaluations,
+      toleranceMs,
+      backtestTimestampOffsetMs,
+      limit,
+    }),
   };
 };

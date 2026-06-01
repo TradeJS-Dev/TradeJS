@@ -46,8 +46,8 @@ export const config = {
     epsilon: 0.003,
     epsilonOffset: 0.004,
   } as Partial<TrendLineOptions>,
-  TRENDLINE_STOP_BASE_PCT: 1.3,
-  TRENDLINE_TARGET_R_MULT: 2.6,
+  TRENDLINE_STOP_BASE_PCT: 1.6,
+  TRENDLINE_TARGET_R_MULT: 2.2,
   HIGHS: {
     enable: true,
     direction: 'LONG',

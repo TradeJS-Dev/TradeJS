@@ -17,6 +17,57 @@ type ClosedPnlLoadCallbacks = {
 
 const CLOSED_PNL_LIMIT = 100;
 
+export const formatRuntimeTradeSyncError = (error: unknown): string => {
+  if (!error || typeof error !== 'object') {
+    return String(error || 'unknown error');
+  }
+
+  const record = error as Record<string, unknown>;
+  const message =
+    typeof record.message === 'string' && record.message.trim()
+      ? record.message.trim()
+      : String(error);
+  const code =
+    typeof record.code === 'string' && record.code.trim()
+      ? record.code.trim()
+      : null;
+  const isAxiosError = record.isAxiosError === true;
+  const config =
+    record.config && typeof record.config === 'object'
+      ? (record.config as Record<string, unknown>)
+      : null;
+  const response =
+    record.response && typeof record.response === 'object'
+      ? (record.response as Record<string, unknown>)
+      : null;
+  const method =
+    typeof config?.method === 'string' && config.method.trim()
+      ? config.method.toUpperCase()
+      : null;
+  const url =
+    typeof config?.url === 'string' && config.url.trim()
+      ? config.url.trim()
+      : null;
+  const timeout =
+    typeof config?.timeout === 'number' && Number.isFinite(config.timeout)
+      ? config.timeout
+      : null;
+  const status =
+    typeof response?.status === 'number' && Number.isFinite(response.status)
+      ? response.status
+      : null;
+
+  const details = [
+    isAxiosError ? 'axios' : null,
+    code,
+    status == null ? null : `status=${status}`,
+    method && url ? `${method} ${url}` : url,
+    timeout == null ? null : `timeout=${timeout}ms`,
+  ].filter(Boolean);
+
+  return details.length > 0 ? `${message} (${details.join(', ')})` : message;
+};
+
 export const loadClosedPnlRows = async ({
   connector,
   startTime,
@@ -80,6 +131,7 @@ export const syncRuntimeTrades = async ({
   startTime,
   endTime,
   closedPnlCallbacks,
+  openPositionCallbacks,
 }: {
   userName: string;
   connector: Connector;
@@ -87,11 +139,21 @@ export const syncRuntimeTrades = async ({
   startTime: number;
   endTime: number;
   closedPnlCallbacks?: ClosedPnlLoadCallbacks;
+  openPositionCallbacks?: Pick<ClosedPnlLoadCallbacks, 'onError'>;
 }) => {
-  const openPositions =
-    typeof connector.getOpenPositionPnl === 'function'
-      ? await connector.getOpenPositionPnl()
-      : [];
+  let openPositions: Awaited<
+    ReturnType<NonNullable<Connector['getOpenPositionPnl']>>
+  > = [];
+  let openPositionsReliable = true;
+  if (typeof connector.getOpenPositionPnl === 'function') {
+    try {
+      openPositions = await connector.getOpenPositionPnl();
+    } catch (error) {
+      openPositionCallbacks?.onError?.(error);
+      openPositionsReliable = false;
+      openPositions = [];
+    }
+  }
   const openPositionsBySymbol = new Map(
     openPositions.map((position) => [position.symbol, position]),
   );
@@ -136,6 +198,15 @@ export const syncRuntimeTrades = async ({
     const openPosition = openPositionsBySymbol.get(trade.symbol);
     const activeOrderId = activeOrderIdBySymbol.get(trade.symbol);
     const isCurrentActiveTrade = activeOrderId === trade.orderId;
+
+    if (!openPositionsReliable) {
+      syncedTrades.push({
+        ...trade,
+        status: 'active',
+        lastSyncedAt: endTime,
+      });
+      continue;
+    }
 
     if (
       isCurrentActiveTrade &&

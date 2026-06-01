@@ -1,6 +1,11 @@
 import chalk from 'chalk';
 import { formatUnix } from '@tradejs/core/time';
-import type { Connector, ExchangeEntryRecord } from '@tradejs/types';
+import type {
+  Connector,
+  ExchangeEntryRecord,
+  RuntimeSignalEvaluationRecord,
+  Signal,
+} from '@tradejs/types';
 import {
   compareTradeParityEntries,
   dedupeRuntimeParityEntries,
@@ -12,7 +17,15 @@ import {
   summarizeTradeParityByStrategy,
 } from '../paritySummary';
 import { loadRuntimeTrades } from '../runtimeRedis';
-import { loadClosedPnlRows, syncRuntimeTrades } from '../runtimeTradeSync';
+import {
+  loadRuntimeSignalEvaluations,
+  loadRuntimeSignals,
+} from '../runtimeSignalsLoader';
+import {
+  formatRuntimeTradeSyncError,
+  loadClosedPnlRows,
+  syncRuntimeTrades,
+} from '../runtimeTradeSync';
 import { createTable } from '../runFormatting';
 import {
   buildReplayExchangeComparisonDetails,
@@ -22,15 +35,49 @@ import {
   type ExchangeMatchedBacktestEntry,
 } from '../runtimeParityDetails';
 import { getRuntimeCompareContext } from '../backtest/runState';
-import { replayUserName } from './cliConfig';
+import { replayInterval, replayUserName } from './cliConfig';
 import {
   REPLAY_RUNTIME_COMPARISON_HEADERS,
-  REPLAY_RUNTIME_COMPARE_TOLERANCE_BARS,
   REPLAY_RUNTIME_COMPARE_TOLERANCE_MS,
+  formatReplayRuntimeCompareTolerance,
   type ReplayRuntimeComparisonSummary,
   type ReplayRuntimeParityRow,
   type ReplayStrategySummary,
 } from './support';
+
+const getReplayEntryTimestampCompareOffsetMs = () => {
+  const intervalMinutes = Number(replayInterval);
+  return Number.isFinite(intervalMinutes) && intervalMinutes > 0
+    ? intervalMinutes * 60 * 1000
+    : 15 * 60 * 1000;
+};
+
+const buildReplaySignalEvaluations = (
+  signals: Signal[],
+): RuntimeSignalEvaluationRecord[] =>
+  signals.map((signal) => ({
+    evaluationId: `${signal.strategy}:${signal.symbol}:${signal.timestamp}`,
+    userName: replayUserName,
+    strategy: signal.strategy,
+    symbol: signal.symbol,
+    interval: signal.interval,
+    timestamp: signal.timestamp,
+    evaluatedAt: signal.timestamp,
+    status: 'signal',
+    reason: signal.orderSkipReason || signal.orderStatus || 'SIGNAL',
+    signalId: signal.signalId,
+    direction: signal.direction,
+    orderStatus: signal.orderStatus,
+    orderSkipReason: signal.orderSkipReason,
+    ...(signal.aiAnalysis ? { aiAnalysis: signal.aiAnalysis } : {}),
+    ...(signal.ml ? { ml: signal.ml } : {}),
+  }));
+
+const formatDrilldownSummary = (summary: Record<string, number>) =>
+  Object.entries(summary)
+    .filter(([, count]) => count > 0)
+    .map(([classification, count]) => `${classification}=${count}`)
+    .join(', ');
 
 const loadExchangeEntryRows = async ({
   connector,
@@ -71,7 +118,7 @@ const loadExchangeEntryRows = async ({
   } catch (error) {
     console.log(
       chalk.yellow(
-        `runtime compare: getEntryExecutions failed: ${(error as Error)?.message || String(error)}`,
+        `runtime compare: getEntryExecutions failed: ${formatRuntimeTradeSyncError(error)}`,
       ),
     );
     return [];
@@ -131,7 +178,7 @@ const loadExchangeEntriesForComparison = async ({
       onError: (error) => {
         console.log(
           chalk.yellow(
-            `runtime compare: getClosedPnl failed: ${(error as Error)?.message || String(error)}`,
+            `runtime compare: getClosedPnl failed: ${formatRuntimeTradeSyncError(error)}`,
           ),
         );
       },
@@ -167,10 +214,12 @@ export const compareExchangeEntriesToBacktest = ({
   exchangeEntries,
   backtestEntries,
   toleranceMs,
+  backtestTimestampOffsetMs = 0,
 }: {
   exchangeEntries: ExchangeEntryRecord[];
   backtestEntries: TradeParityEntry[];
   toleranceMs: number;
+  backtestTimestampOffsetMs?: number;
 }) => {
   const groupedExchange = new Map<string, ExchangeEntryRecord[]>();
   const groupedBacktest = new Map<string, TradeParityEntry[]>();
@@ -221,7 +270,9 @@ export const compareExchangeEntriesToBacktest = ({
         }
 
         const diff = Math.abs(
-          candidate.entry.timestamp - exchangeEntry.entryTimestamp,
+          candidate.entry.timestamp +
+            backtestTimestampOffsetMs -
+            exchangeEntry.entryTimestamp,
         );
         if (diff > toleranceMs || diff >= bestDiff) {
           continue;
@@ -277,9 +328,17 @@ export const compareExchangeEntriesToBacktest = ({
 const saveAndPrintReplayExchangeComparison = async ({
   liveStrategySummaries,
   backtestEntries,
+  replaySignals,
+  replaySignalEvaluations,
+  runtimeSignals,
+  runtimeSignalEvaluations,
 }: {
   liveStrategySummaries: ReplayStrategySummary[];
   backtestEntries: TradeParityEntry[];
+  replaySignals: Signal[];
+  replaySignalEvaluations: RuntimeSignalEvaluationRecord[];
+  runtimeSignals: Signal[];
+  runtimeSignalEvaluations: RuntimeSignalEvaluationRecord[];
 }): Promise<ReplayRuntimeComparisonSummary> => {
   const { connector, connectorName, window } = getRuntimeCompareContext();
   const exchangeEntries = await loadExchangeEntriesForComparison({
@@ -302,6 +361,21 @@ const saveAndPrintReplayExchangeComparison = async ({
     );
     console.log('');
 
+    const details = buildReplayExchangeComparisonDetails({
+      matched: [],
+      exchangeOnly: [],
+      backtestOnly: backtestEntries,
+      exchangeEntries: [],
+      backtestEntries,
+      strategyNameByOrderLinkKey,
+      toleranceMs: REPLAY_RUNTIME_COMPARE_TOLERANCE_MS,
+      backtestTimestampOffsetMs: getReplayEntryTimestampCompareOffsetMs(),
+      runtimeSignals,
+      runtimeSignalEvaluations,
+      replaySignals,
+      replaySignalEvaluations,
+    });
+
     return {
       mode: 'exchange',
       syncedTradesCount: 0,
@@ -311,15 +385,7 @@ const saveAndPrintReplayExchangeComparison = async ({
       matchedCount: 0,
       runtimeOnlyCount: 0,
       backtestOnlyCount: backtestEntries.length,
-      details: buildReplayExchangeComparisonDetails({
-        matched: [],
-        exchangeOnly: [],
-        backtestOnly: backtestEntries,
-        exchangeEntries: [],
-        backtestEntries,
-        strategyNameByOrderLinkKey,
-        toleranceMs: REPLAY_RUNTIME_COMPARE_TOLERANCE_MS,
-      }),
+      details,
       rows: liveStrategySummaries.map((summary) => ({
         strategyName: summary.strategyName,
         backtestEntries: backtestEntries.filter(
@@ -341,6 +407,7 @@ const saveAndPrintReplayExchangeComparison = async ({
     exchangeEntries,
     backtestEntries,
     toleranceMs: REPLAY_RUNTIME_COMPARE_TOLERANCE_MS,
+    backtestTimestampOffsetMs: getReplayEntryTimestampCompareOffsetMs(),
   });
   const liveSummaryByStrategy = new Map(
     liveStrategySummaries.map((summary) => [summary.strategyName, summary]),
@@ -410,6 +477,21 @@ const saveAndPrintReplayExchangeComparison = async ({
     }
   }
 
+  const details = buildReplayExchangeComparisonDetails({
+    matched: comparison.matched,
+    exchangeOnly: comparison.exchangeOnly,
+    backtestOnly: comparison.backtestOnly,
+    exchangeEntries,
+    backtestEntries,
+    strategyNameByOrderLinkKey,
+    toleranceMs: REPLAY_RUNTIME_COMPARE_TOLERANCE_MS,
+    backtestTimestampOffsetMs: getReplayEntryTimestampCompareOffsetMs(),
+    runtimeSignals,
+    runtimeSignalEvaluations,
+    replaySignals,
+    replaySignalEvaluations,
+  });
+
   const rows = [...rowByStrategy.values()]
     .map((row) => ({
       ...row,
@@ -445,9 +527,22 @@ const saveAndPrintReplayExchangeComparison = async ({
 
   console.log('');
   console.log(
-    `SIGNALS REPLAY VS EXCHANGE BY STRATEGY (connector=${connectorName}, inferredStrategy=orderLinkId | nearest backtest entry, tolerance=${REPLAY_RUNTIME_COMPARE_TOLERANCE_BARS} bar)`,
+    `SIGNALS REPLAY VS EXCHANGE BY STRATEGY (connector=${connectorName}, inferredStrategy=orderLinkId | nearest backtest entry, tolerance=${formatReplayRuntimeCompareTolerance()})`,
   );
   console.log(createTable(REPLAY_RUNTIME_COMPARISON_HEADERS, colorizedRows));
+  const runtimeOnlyDrilldownSummary = formatDrilldownSummary(
+    details.mismatchDrilldown?.summary.runtimeOnly ?? {},
+  );
+  const backtestOnlyDrilldownSummary = formatDrilldownSummary(
+    details.mismatchDrilldown?.summary.backtestOnly ?? {},
+  );
+  if (runtimeOnlyDrilldownSummary || backtestOnlyDrilldownSummary) {
+    console.log(
+      chalk.gray(
+        `Mismatch drilldown: exchangeOnly=[${runtimeOnlyDrilldownSummary || 'none'}], backtestOnly=[${backtestOnlyDrilldownSummary || 'none'}]`,
+      ),
+    );
+  }
   console.log('');
 
   return {
@@ -460,24 +555,18 @@ const saveAndPrintReplayExchangeComparison = async ({
     runtimeOnlyCount: comparison.exchangeOnly.length,
     backtestOnlyCount: comparison.backtestOnly.length,
     rows,
-    details: buildReplayExchangeComparisonDetails({
-      matched: comparison.matched,
-      exchangeOnly: comparison.exchangeOnly,
-      backtestOnly: comparison.backtestOnly,
-      exchangeEntries,
-      backtestEntries,
-      strategyNameByOrderLinkKey,
-      toleranceMs: REPLAY_RUNTIME_COMPARE_TOLERANCE_MS,
-    }),
+    details,
   };
 };
 
 export const saveAndPrintReplayRuntimeComparison = async ({
   liveStrategySummaries,
   backtestEntries,
+  replaySignals,
 }: {
   liveStrategySummaries: ReplayStrategySummary[];
   backtestEntries: TradeParityEntry[];
+  replaySignals: Signal[];
 }): Promise<ReplayRuntimeComparisonSummary | null> => {
   const { connector, connectorName, window } = getRuntimeCompareContext();
   if (!connector || !window) {
@@ -487,13 +576,34 @@ export const saveAndPrintReplayRuntimeComparison = async ({
   const relevantStrategies = new Set(
     liveStrategySummaries.map((summary) => summary.strategyName),
   );
-  const rawRuntimeTrades = await loadRuntimeTrades(replayUserName);
+  const replaySignalEvaluations = buildReplaySignalEvaluations(replaySignals);
+  const [rawRuntimeTrades, runtimeSignals, runtimeSignalEvaluations] =
+    await Promise.all([
+      loadRuntimeTrades(replayUserName),
+      loadRuntimeSignals(replayUserName, {
+        startTime: window.start,
+        endTime: window.end,
+      }),
+      loadRuntimeSignalEvaluations(replayUserName, {
+        startTime: window.start,
+        endTime: window.end,
+      }),
+    ]);
   const syncedRuntimeTrades = await syncRuntimeTrades({
     userName: replayUserName,
     connector,
     trades: rawRuntimeTrades,
     startTime: window.start,
     endTime: window.end,
+    openPositionCallbacks: {
+      onError: (error) => {
+        console.log(
+          chalk.yellow(
+            `runtime compare: getOpenPositionPnl failed: ${formatRuntimeTradeSyncError(error)}; continuing without open-position mark prices`,
+          ),
+        );
+      },
+    },
     closedPnlCallbacks: {
       onUnsupported: () => {
         console.log(
@@ -512,7 +622,7 @@ export const saveAndPrintReplayRuntimeComparison = async ({
       onError: (error) => {
         console.log(
           chalk.yellow(
-            `runtime compare: getClosedPnl failed: ${(error as Error)?.message || String(error)}`,
+            `runtime compare: getClosedPnl failed: ${formatRuntimeTradeSyncError(error)}`,
           ),
         );
       },
@@ -538,6 +648,10 @@ export const saveAndPrintReplayRuntimeComparison = async ({
     return saveAndPrintReplayExchangeComparison({
       liveStrategySummaries,
       backtestEntries,
+      replaySignals,
+      replaySignalEvaluations,
+      runtimeSignals,
+      runtimeSignalEvaluations,
     });
   }
 
@@ -552,6 +666,20 @@ export const saveAndPrintReplayRuntimeComparison = async ({
     runtimeEntries: runtimeDedupe.entries,
     backtestEntries,
     toleranceMs: REPLAY_RUNTIME_COMPARE_TOLERANCE_MS,
+    backtestTimestampOffsetMs: getReplayEntryTimestampCompareOffsetMs(),
+  });
+  const details = buildReplayRuntimeComparisonDetails({
+    matched: comparison.matched,
+    runtimeOnly: comparison.runtimeOnly,
+    backtestOnly: comparison.backtestOnly,
+    runtimeEntries: runtimeDedupe.entries,
+    backtestEntries,
+    toleranceMs: REPLAY_RUNTIME_COMPARE_TOLERANCE_MS,
+    backtestTimestampOffsetMs: getReplayEntryTimestampCompareOffsetMs(),
+    runtimeSignals,
+    runtimeSignalEvaluations,
+    replaySignals,
+    replaySignalEvaluations,
   });
   const parityRows = summarizeTradeParityByStrategy({
     runtimeEntries: runtimeDedupe.entries,
@@ -618,9 +746,22 @@ export const saveAndPrintReplayRuntimeComparison = async ({
 
   console.log('');
   console.log(
-    `SIGNALS REPLAY VS RUNTIME BY STRATEGY (connector=${connectorName}, tolerance=${REPLAY_RUNTIME_COMPARE_TOLERANCE_BARS} bar)`,
+    `SIGNALS REPLAY VS RUNTIME BY STRATEGY (connector=${connectorName}, tolerance=${formatReplayRuntimeCompareTolerance()})`,
   );
   console.log(createTable(REPLAY_RUNTIME_COMPARISON_HEADERS, colorizedRows));
+  const runtimeOnlyDrilldownSummary = formatDrilldownSummary(
+    details.mismatchDrilldown?.summary.runtimeOnly ?? {},
+  );
+  const backtestOnlyDrilldownSummary = formatDrilldownSummary(
+    details.mismatchDrilldown?.summary.backtestOnly ?? {},
+  );
+  if (runtimeOnlyDrilldownSummary || backtestOnlyDrilldownSummary) {
+    console.log(
+      chalk.gray(
+        `Mismatch drilldown: runtimeOnly=[${runtimeOnlyDrilldownSummary || 'none'}], backtestOnly=[${backtestOnlyDrilldownSummary || 'none'}]`,
+      ),
+    );
+  }
   console.log('');
 
   return {
@@ -633,13 +774,6 @@ export const saveAndPrintReplayRuntimeComparison = async ({
     runtimeOnlyCount: comparison.runtimeOnly.length,
     backtestOnlyCount: comparison.backtestOnly.length,
     rows,
-    details: buildReplayRuntimeComparisonDetails({
-      matched: comparison.matched,
-      runtimeOnly: comparison.runtimeOnly,
-      backtestOnly: comparison.backtestOnly,
-      runtimeEntries: runtimeDedupe.entries,
-      backtestEntries,
-      toleranceMs: REPLAY_RUNTIME_COMPARE_TOLERANCE_MS,
-    }),
+    details,
   };
 };

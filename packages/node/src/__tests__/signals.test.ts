@@ -622,6 +622,60 @@ describe('signals', () => {
     expect(message).not.toContain('AI Quality: 3/5');
   });
 
+  it('includes runtime Redis debug keys for completed entry orders', () => {
+    jest.doMock('../screenshot', () => ({
+      getScreenshotBuffer: jest.fn(async () => {
+        throw new Error('no screenshot');
+      }),
+      getScreenshotFilename: jest.fn(() => 'TLMUSDT_sig-1_15.png'),
+    }));
+
+    const { formatMessage } = require('../signals');
+
+    const message = formatMessage(
+      {
+        signalId: 'sig-1',
+        orderId: 'ord-1',
+        symbol: 'TLMUSDT',
+        strategy: 'AdaptiveMomentumRibbon',
+        interval: '15',
+        direction: 'LONG',
+        orderStatus: 'completed',
+        timestamp: Date.UTC(2026, 4, 2, 12, 0, 0),
+        indicators: {},
+        additionalIndicators: {},
+        prices: {
+          currentPrice: 0.001792,
+          takeProfitPrice: 0.00187,
+          stopLossPrice: 0.001773,
+          riskRatio: 3.5,
+        },
+      },
+      {
+        direction: 'LONG',
+        quality: 4,
+      },
+      { userName: 'root' },
+    );
+
+    expect(message).toContain('<b>Redis debug</b>');
+    expect(message).toContain(
+      'trade: <code>users:root:runtime:trade-records:ord-1</code>',
+    );
+    expect(message).toContain(
+      'tradeBucket: <code>users:root:runtime:trade-records:days:2026-05-02</code> field <code>ord-1</code>',
+    );
+    expect(message).toContain(
+      'activeTrade: <code>users:root:runtime:active-trades:TLMUSDT</code>',
+    );
+    expect(message).toContain(
+      'signal: <code>store:signals:TLMUSDT:sig-1</code>',
+    );
+    expect(message).toContain(
+      'evaluation: <code>users:root:runtime:signal-evaluations:days:2026-05-02:AdaptiveMomentumRibbon</code> field <code>AdaptiveMomentumRibbon:TLMUSDT:1777723200000</code>',
+    );
+  });
+
   it('formats approved AI analysis as a short human-readable explanation', () => {
     jest.doMock('../screenshot', () => ({
       getScreenshotBuffer: jest.fn(async () => {

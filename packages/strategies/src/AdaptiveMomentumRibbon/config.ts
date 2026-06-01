@@ -46,8 +46,8 @@ export const config = {
   AMR_KC_MA_TYPE: 'EMA' as AdaptiveMomentumRibbonKcMaType,
   AMR_ATR_LENGTH: 14,
   AMR_ATR_MULTIPLIER: 2,
-  AMR_STOP_BUFFER_PCT: 0.03,
-  AMR_TARGET_R_MULT: 2,
+  AMR_STOP_BUFFER_PCT: 0.05,
+  AMR_TARGET_R_MULT: 2.4,
   AMR_EXIT_ON_INVALIDATION: true,
   AMR_LINE_PLOTS: ['kcMidline', 'kcUpper', 'kcLower', 'invalidationLevel'],
   LONG: {
