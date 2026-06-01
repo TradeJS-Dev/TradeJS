@@ -20,34 +20,13 @@ import type {
   TradejsConfigHooks,
 } from '@tradejs/core/config';
 import { SIGNALS_CLI_PRELOAD_DAYS, TTL_10D } from '@tradejs/core/constants';
-import {
-  enrichSignalWithBinanceMarketContext,
-  getStrategyCreator,
-} from '@tradejs/node/strategies';
+import { enrichSignalWithBinanceMarketContext } from '@tradejs/node/strategies';
 import { getTimestamp } from '@tradejs/core/time';
 import { logger } from '@tradejs/infra/logger';
+import { redisKeys, setData, setHashJsonField } from '@tradejs/infra/redis';
+import { Connector, ConnectorCreator, Interval, Signal } from '@tradejs/types';
 import {
-  getData,
-  incrHashFields,
-  redisKeys,
-  setData,
-  setHashJsonField,
-} from '@tradejs/infra/redis';
-import {
-  Connector,
-  ConnectorCreator,
-  Interval,
-  RuntimeSignalEvaluationRecord,
-  Signal,
-  StrategyConfig,
-  StrategyCreator,
-} from '@tradejs/types';
-import { loadRuntimeStrategyConfigs } from '../lib/runtimeRedis';
-import {
-  buildRuntimeSignalStatsIncrements,
   getRuntimeStorageDayKey,
-  normalizeRuntimeSignalSkipReason,
-  shouldStoreDetailedRuntimeSignalEvaluation,
   toRuntimeSignalBucketRef,
 } from '../lib/runtimeSignalsStorage';
 import {
@@ -64,6 +43,21 @@ import {
   loadBtcReferenceConnectors,
   updateMarketHistoryWithBtcReferences,
 } from '../lib/marketData/historyPrepare';
+import {
+  loadRuntimeStrategies,
+  type StrategyRuntimeConfig,
+} from '../lib/signals/runtimeStrategies';
+import {
+  createStrategySkipStats,
+  logStrategySkipStats,
+  recordStrategyReason,
+  type StrategySkipStatsMap,
+} from '../lib/signals/skipStats';
+import {
+  buildRuntimeSignalEvaluationId,
+  saveRuntimeSignalEvaluation,
+} from '../lib/signals/evaluations';
+import { getTelegramDeliverableSignals } from '../lib/signals/telegram';
 
 args.option(['t', 'tickers'], 'Selected tickers');
 args.option(['e', 'exclude'], 'Exclude tickers from tests');
@@ -117,173 +111,6 @@ const timeOperation = <T>(label: string, operation: () => Promise<T>) =>
   runTimedOperation(label, operation, (message) =>
     logger.info(chalk.gray(message)),
   );
-
-interface StrategyRuntimeConfig {
-  strategyName: string;
-  strategyCreator: StrategyCreator;
-  strategyConfig: StrategyConfig;
-}
-
-interface StrategySkipStats {
-  evaluated: number;
-  signals: number;
-  reasons: Map<string, number>;
-}
-
-type StrategySkipStatsMap = Map<string, StrategySkipStats>;
-type StrategySkipSource = 'core' | 'AI' | 'ML' | 'hook' | 'policy' | 'runtime';
-
-const isStrategyRuntimeEnabled = (strategyConfig: StrategyConfig) => {
-  const enabled = (strategyConfig as Record<string, unknown>).ENABLE;
-  return enabled !== false;
-};
-
-const loadRuntimeStrategies = async (
-  userName: string,
-): Promise<StrategyRuntimeConfig[]> => {
-  const strategyConfigs = await Promise.all(
-    (await loadRuntimeStrategyConfigs(userName)).map(
-      async ({
-        key,
-        strategyName,
-        strategyConfig,
-      }): Promise<StrategyRuntimeConfig | null> => {
-        if (!isStrategyRuntimeEnabled(strategyConfig)) {
-          logger.info(
-            'Skip inactive strategy config by ENABLE=false: %s',
-            strategyName,
-          );
-          return null;
-        }
-        const strategyCreator = await getStrategyCreator(
-          strategyName,
-          projectRoot,
-        );
-        if (!strategyCreator) {
-          logger.warn('Skip unknown strategy config key: %s', key);
-          return null;
-        }
-        return {
-          strategyName,
-          strategyCreator,
-          strategyConfig,
-        };
-      },
-    ),
-  );
-  return strategyConfigs.filter(Boolean) as StrategyRuntimeConfig[];
-};
-
-const createStrategySkipStats = (
-  runtimeStrategies: StrategyRuntimeConfig[],
-): StrategySkipStatsMap =>
-  new Map(
-    runtimeStrategies.map(({ strategyName }) => [
-      strategyName,
-      {
-        evaluated: 0,
-        signals: 0,
-        reasons: new Map<string, number>(),
-      },
-    ]),
-  );
-
-const recordStrategyReason = (
-  strategyStats: StrategySkipStatsMap,
-  strategyName: string,
-  reason: string,
-  fallbackSource: StrategySkipSource = 'core',
-) => {
-  const stats = strategyStats.get(strategyName);
-  if (!stats) {
-    return;
-  }
-
-  const normalized = normalizeRuntimeSignalSkipReason(reason, fallbackSource);
-  const normalizedReason = `${normalized.source} / ${normalized.reason}`;
-  stats.reasons.set(
-    normalizedReason,
-    (stats.reasons.get(normalizedReason) ?? 0) + 1,
-  );
-};
-
-const buildRuntimeSignalEvaluationId = ({
-  strategyName,
-  symbol,
-  timestamp,
-}: {
-  strategyName: string;
-  symbol: string;
-  timestamp: number;
-}) => `${strategyName}:${symbol}:${timestamp}`;
-
-const getTelegramDeliverableSignals = (signals: Signal[]) =>
-  signals.filter(
-    (signal) =>
-      signal.orderStatus !== 'skipped' && signal.orderStatus !== 'canceled',
-  );
-
-const saveRuntimeSignalEvaluation = async (
-  evaluation: RuntimeSignalEvaluationRecord,
-) => {
-  const dayKey = getRuntimeStorageDayKey(evaluation.timestamp);
-  if (shouldStoreDetailedRuntimeSignalEvaluation(evaluation)) {
-    await setHashJsonField(
-      redisKeys.runtimeSignalEvaluationBucket(
-        evaluation.userName,
-        dayKey,
-        evaluation.strategy,
-      ),
-      evaluation.evaluationId,
-      evaluation,
-      {
-        expire: TTL_10D,
-      },
-    );
-  }
-  await incrHashFields(
-    redisKeys.runtimeSignalEvaluationStatsBucket(
-      evaluation.userName,
-      dayKey,
-      evaluation.strategy,
-    ),
-    buildRuntimeSignalStatsIncrements(evaluation),
-    {
-      expire: TTL_10D,
-    },
-  );
-};
-
-const logStrategySkipStats = (
-  runtimeStrategies: StrategyRuntimeConfig[],
-  strategyStats: StrategySkipStatsMap,
-) => {
-  logger.info(chalk.yellow('skip stats:'));
-
-  for (const { strategyName } of runtimeStrategies) {
-    const stats = strategyStats.get(strategyName);
-    if (!stats) {
-      continue;
-    }
-
-    logger.info(
-      `${strategyName}: evaluated=${stats.evaluated}, signals=${stats.signals}`,
-    );
-
-    const sortedReasons = [...stats.reasons.entries()].sort(
-      (left, right) => right[1] - left[1] || left[0].localeCompare(right[0]),
-    );
-
-    if (!sortedReasons.length) {
-      logger.info('  none');
-      continue;
-    }
-
-    for (const [reason, count] of sortedReasons) {
-      logger.info(`  ${reason}: ${count}`);
-    }
-  }
-};
 
 const resolveSignalsConnectorName = async (value: unknown): Promise<string> => {
   const connectorName = await resolveConnectorName(value, projectRoot);
@@ -572,7 +399,10 @@ export const signals = async () => {
         ]),
     );
 
-    const runtimeStrategies = await loadRuntimeStrategies(flags.user);
+    const runtimeStrategies = await loadRuntimeStrategies({
+      userName: flags.user,
+      projectRoot,
+    });
     if (!runtimeStrategies.length) {
       logger.warn(
         'No strategy configs found by users:%s:strategies:*:config',
