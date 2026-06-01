@@ -7,6 +7,7 @@ export type TrendFollowGuardrailContext = Partial<TrendFollowSignalContext> & {
   trendBias: string | null;
   trendFollowState: string | null;
   breakoutState: string | null;
+  momentumRsi: number | null;
   volumeRel20: number | null;
   deltaDivergenceVsPrice: string | null;
   volumeStructureDirectionalShare: number | null;
@@ -70,6 +71,7 @@ export const buildTrendFollowGuardrailContext = ({
         : null;
   const breakoutState =
     baseContext?.structure?.localRange?.breakoutState ?? null;
+  const momentumRsi = asFiniteNumber(baseContext?.regime?.momentum?.rsi);
   const volumeRel20 = asFiniteNumber(
     baseContext?.participation?.volume?.volumeRel20,
   );
@@ -178,6 +180,11 @@ export const buildTrendFollowGuardrailContext = ({
 
   if (volumeRel20 != null && volumeRel20 < 0.8) {
     softBlockReasons.push('thin_participation');
+  } else if (volumeRel20 != null && volumeRel20 < 1.5) {
+    softBlockReasons.push('weak_relative_volume');
+  }
+  if (direction === 'SHORT' && momentumRsi != null && momentumRsi > 36.35) {
+    softBlockReasons.push('weak_downside_momentum');
   }
   if (directionalCrowding && !flushSupport) {
     softBlockReasons.push('directional_crowding');
@@ -229,6 +236,7 @@ export const buildTrendFollowGuardrailContext = ({
     trendBias,
     trendFollowState,
     breakoutState,
+    momentumRsi,
     volumeRel20,
     deltaDivergenceVsPrice,
     volumeStructureDirectionalShare,

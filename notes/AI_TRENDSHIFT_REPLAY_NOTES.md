@@ -31,6 +31,7 @@ Tested new-context hypotheses:
 - pure `gateFeatures` gates did not beat the current hybrid policy. A fresh geometry+gateFeatures gate stayed around PF `2.3-2.6` with materially worse drawdown, while broad direct `approveBias`/`primaryIssue` filters either destroyed cadence or removed profitable current approvals.
 - broad q4 promotion `relativeStrengthBucket=neutral & conflictCount=2` was positive on this export, but it re-approved too many rows that existing hard downgrades intentionally blocked (`flat_or_mixed`, pressure conflict, US SHORT flush).
 - refined q4/q5-downgrade recovery was robust enough to implement: only recover when `gateFeatures.relative.relativeStrengthBucket=neutral`, `gateFeatures.conflicts.count=2`, MTF is not against the trade, and the only recovered veto is `neutral_derivatives_pressure` or `us_short_oi_not_expanding`. This adds `21` rows, `90.5%` winrate, `+6.50` total, PF `20.12`, maxDD `0.30`.
+- `baseContext.participation.priceVolumeProfile.nearPointOfControl=true` is a stable defensive signal for SHORT only. Removed SHORT near-POC approvals were weak (`32` rows, `56.3%` winrate, `+2.98` total, PF `1.94`), while LONG near-POC approvals were strong enough to keep.
 - q5 defensive cuts reproduced on both this export and the previous `1780121146050` export:
   - `LONG + liquidityTails.currentTail.side=lower + priceOiDivergenceType=price_up_oi_up`
   - `SHORT + below_low_level + long_flush + price_down_oi_down + exactly [oi_falling,long_liquidation_spike] + non-Asia session`
@@ -40,20 +41,21 @@ Implemented gate changes:
 1. Downgrade q5 LONG when price and OI are already rising but the current candle has a lower liquidity tail.
 2. Downgrade q5 SHORT below-low long-liquidation flushes outside Asia when OI is falling and the only derivative flags are `oi_falling` and `long_liquidation_spike`.
 3. Add `q4GateFeaturesRecoveryCandidate` as a narrow recovery overlay for otherwise-confirmed q4/q5-downgraded rows where normalized `gateFeatures` shows neutral relative strength, exactly two conflicts, and MTF not against the trade; recovery is limited to neutral derivatives pressure and US SHORT OI non-expansion vetoes.
+4. Downgrade q5 SHORT when the entry is near the price-volume point of control; do not apply this to LONG.
 
 Replay after rebuild on `1780255602426`:
 
 | window | approved | winrate | avg | total | PF | maxDD | max loss streak |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| full `1205` | `440` | `79.1%` | `+0.238` | `+104.65` | `7.23` | `0.93` | `4` |
-| latest `1000` | `358` | `77.7%` | `+0.229` | `+81.90` | `6.92` | `0.75` | `4` |
-| latest `500` | `148` | `69.6%` | `+0.171` | `+25.34` | `4.50` | `0.66` | `4` |
+| full `1205` | `408` | `80.9%` | `+0.249` | `+101.67` | `8.45` | `0.93` | `4` |
+| latest `1000` | `328` | `79.3%` | `+0.240` | `+78.62` | `8.16` | `0.83` | `4` |
+| latest `500` | `133` | `72.2%` | `+0.190` | `+25.30` | `5.76` | `0.56` | `4` |
 
 Net effect on the same export:
 
-- full: approved `463 -> 440`, winrate `71.9% -> 79.1%`, total `+92.03 -> +104.65`, PF `4.96 -> 7.23`, maxDD `3.54 -> 0.93`
-- latest `1000`: approved `382 -> 358`, winrate `69.1% -> 77.7%`, total `+69.66 -> +81.90`, PF `4.44 -> 6.92`, maxDD `3.54 -> 0.75`
-- latest `500`: approved `183 -> 148`, winrate `55.2% -> 69.6%`, total `+18.05 -> +25.34`, PF `2.38 -> 4.50`, maxDD `3.54 -> 0.66`
+- full: approved `463 -> 408`, winrate `71.9% -> 80.9%`, total `+92.03 -> +101.67`, PF `4.96 -> 8.45`, maxDD `3.54 -> 0.93`
+- latest `1000`: approved `382 -> 328`, winrate `69.1% -> 79.3%`, total `+69.66 -> +78.62`, PF `4.44 -> 8.16`, maxDD `3.54 -> 0.83`
+- latest `500`: approved `183 -> 133`, winrate `55.2% -> 72.2%`, total `+18.05 -> +25.30`, PF `2.38 -> 5.76`, maxDD `3.54 -> 0.56`
 
 Net effect after the narrow `gateFeatures` recovery overlay versus the defensive-cut gate:
 
@@ -61,33 +63,40 @@ Net effect after the narrow `gateFeatures` recovery overlay versus the defensive
 - latest `1000`: approved `338 -> 358`, winrate `76.9% -> 77.7%`, total `+75.78 -> +81.90`, PF `6.61 -> 6.92`, maxDD `0.81 -> 0.75`
 - latest `500`: approved `141 -> 148`, winrate `68.8% -> 69.6%`, total `+23.57 -> +25.34`, PF `4.40 -> 4.50`, maxDD `0.61 -> 0.66`
 
+Net effect after the SHORT near-POC cut versus the `gateFeatures` recovery gate:
+
+- full: approved `440 -> 408`, winrate `79.1% -> 80.9%`, total `+104.65 -> +101.67`, PF `7.23 -> 8.45`, maxDD unchanged at `0.93`
+- latest `1000`: approved `358 -> 328`, winrate `77.7% -> 79.3%`, total `+81.90 -> +78.62`, PF `6.92 -> 8.16`, maxDD `0.75 -> 0.83`
+- latest `500`: approved `148 -> 133`, winrate `69.6% -> 72.2%`, total `+25.34 -> +25.30`, PF `4.50 -> 5.76`, maxDD `0.66 -> 0.56`
+
 Stability checks:
 
 - monthly approved stream is positive in `11 / 12` months; only `2025-07` is slightly negative (`6` approvals, `-0.25` total)
-- `2026-05` remains the weakest live-style month, but it is now positive (`35` approvals, `+3.83`, PF `2.34`) instead of a major drawdown pocket
+- `2026-05` remains the weakest live-style month, but it is now positive (`30` approvals, `+4.38`, PF `3.28`) instead of a major drawdown pocket
 - recovery overlay is not symbol-concentrated: the largest symbol count is `2` approvals; `2026-05` recovery adds `7` approvals, `+1.77`, PF `6.90`
-- `1000BTTUSDT` is no longer the dominant failure mode on this export: `4` approvals, `1/3` W/L, `-0.27` total
+- `1000BTTUSDT` is no longer the dominant failure mode on this export: `3` approvals, `1/2` W/L, `+0.03` total
 
 Replay of the same rebuilt gate on previous export `1780121146050`:
 
 | window | approved | winrate | avg | total | PF | maxDD | max loss streak |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| full `1203` | `420` | `78.8%` | `+12.322` | `+5175.14` | `7.09` | `47.45` | `4` |
-| latest `1000` | `339` | `77.0%` | `+11.845` | `+4015.30` | `6.76` | `40.70` | `4` |
-| latest `500` | `141` | `68.8%` | `+8.827` | `+1244.67` | `4.47` | `30.94` | `4` |
+| full `1203` | `388` | `80.4%` | `+12.925` | `+5015.00` | `8.30` | `47.45` | `4` |
+| latest `1000` | `309` | `78.6%` | `+12.427` | `+3839.83` | `7.99` | `45.28` | `4` |
+| latest `500` | `126` | `71.4%` | `+9.848` | `+1240.79` | `5.78` | `29.49` | `4` |
 
 Compared with the previous `1780121146050` gate result before these two cuts:
 
-- full total `+4858.65 -> +5175.14`, PF `5.05 -> 7.09`, maxDD `183.78 -> 47.45`
-- latest `1000` total `+3698.81 -> +4015.30`, PF `4.53 -> 6.76`, maxDD `183.78 -> 40.70`
-- latest `500` total `+958.94 -> +1244.67`, PF `2.41 -> 4.47`, maxDD `183.78 -> 30.94`
+- full total `+4858.65 -> +5015.00`, PF `5.05 -> 8.30`, maxDD `183.78 -> 47.45`
+- latest `1000` total `+3698.81 -> +3839.83`, PF `4.53 -> 7.99`, maxDD `183.78 -> 45.28`
+- latest `500` total `+958.94 -> +1240.79`, PF `2.41 -> 5.78`, maxDD `183.78 -> 29.49`
 
 Current conclusion:
 
 - keep the two defensive q5 cuts
 - keep the narrow `q4GateFeaturesRecoveryCandidate`; it improves all tested windows on `1780255602426` and is a no-op on the previous `1780121146050` export because the older context does not trigger the same normalized feature pocket
+- keep the SHORT near-POC cut when the goal is approval quality/PF; it sacrifices a small profitable slice but materially improves PF and latest-window winrate on both exports
 - do not broaden the q4 `gateFeatures` pocket yet; the wider version adds profit but also reopens weaker hard-block groups (`flat_or_mixed`, long pressure conflict, US short flush)
-- the rebuilt gate remains selective at about `1.23` approvals/day on the normalized export; quality improved more than cadence
+- the rebuilt gate remains selective at about `1.14` approvals/day on the normalized export; quality improved more than cadence
 
 ## Clean Full-Universe Export Gate Rebuild (`2026-05-26`)
 

@@ -415,6 +415,47 @@ describe('timescale candle helpers', () => {
     );
   });
 
+  it('chunks large Binance market breadth upserts below the pg bind limit', async () => {
+    const query = jest.fn().mockResolvedValue({ rows: [] });
+
+    jest.doMock('pg', () => ({
+      Pool: jest.fn().mockImplementation(() => ({
+        connect: jest.fn(),
+        query,
+      })),
+    }));
+
+    const { upsertMarketBreadthRows } = await import(
+      '@tradejs/infra/timescale'
+    );
+    const rows = Array.from({ length: 2_200 }, (_, index) => ({
+      universe: 'top30_usdt',
+      interval: '15m' as const,
+      ts: new Date(3_000 + index * 60_000),
+      symbolsCount: 30,
+      advancers: 20,
+      decliners: 8,
+      unchanged: 2,
+      advanceDeclineRatio: 2.5,
+      pctAboveMa20: 0.6,
+      pctAboveMa50: 0.5,
+      equalWeightedReturn: 0.01,
+      volumeWeightedReturn: 0.02,
+      dispersion: 0.03,
+      source: 'binance_klines' as const,
+    }));
+
+    await upsertMarketBreadthRows(rows);
+
+    const insertCalls = query.mock.calls.filter(([sql]) =>
+      String(sql).includes('INSERT INTO market_breadth'),
+    );
+    expect(insertCalls).toHaveLength(2);
+    for (const [, params] of insertCalls) {
+      expect((params as unknown[]).length).toBeLessThanOrEqual(30_000);
+    }
+  });
+
   it('reads latest Binance market feature rows as-of a timestamp', async () => {
     const atMs = 10_000;
     const query = jest.fn(async (sql: string) => {

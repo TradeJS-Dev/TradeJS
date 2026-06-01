@@ -38,12 +38,14 @@ export type TrendShiftGuardrailContext = TrendShiftSignalContext & {
   shortUsLongFlushRisk: boolean;
   shortFailedLowOiNotConfirming: boolean;
   shortBelowLowOiFallingLongFlushRisk: boolean;
+  shortNearPointOfControlRisk: boolean;
   q4GateFeaturesRecoveryCandidate: boolean;
   breakoutState: string | null;
   volumeRel20: number | null;
   atrPctZScore: number | null;
   adaptiveChannelDirection: string | null;
   liquidityTailSide: string | null;
+  nearPointOfControl: boolean | null;
   relativeStrength1h: number | null;
   gateRelativeStrengthBucket: string | null;
   gateConflictCount: number | null;
@@ -84,6 +86,8 @@ export const buildTrendShiftGuardrailContext = ({
   const volatility = baseContext?.regime?.volatility ?? null;
   const adaptiveChannel = baseContext?.regime?.trend?.adaptiveChannel ?? null;
   const gateFeatures = baseContext?.gateFeatures ?? null;
+  const priceVolumeProfile =
+    baseContext?.participation?.priceVolumeProfile ?? null;
   const liquidityTail =
     baseContext?.structure?.liquidityTails?.currentTail ?? null;
   const hardBlockReasons: string[] = [];
@@ -109,6 +113,10 @@ export const buildTrendShiftGuardrailContext = ({
       : null;
   const liquidityTailSide =
     typeof liquidityTail?.side === 'string' ? liquidityTail.side : null;
+  const nearPointOfControl =
+    typeof priceVolumeProfile?.nearPointOfControl === 'boolean'
+      ? priceVolumeProfile.nearPointOfControl
+      : null;
   const relativeStrength1h = asFiniteNumber(benchmark?.relativeStrength1h);
   const gateRelativeStrengthBucket =
     typeof gateFeatures?.relative?.relativeStrengthBucket === 'string'
@@ -400,6 +408,8 @@ export const buildTrendShiftGuardrailContext = ({
     derivativesPressure === 'long_flush' &&
     priceOiDivergenceType === 'price_down_oi_down' &&
     hasOnlyOiFallingLongLiquidationSpike;
+  const shortNearPointOfControlRisk =
+    signalContext.signalDirection === 'SHORT' && nearPointOfControl === true;
 
   if (deterministicQuality >= 5 && longRelativeStrengthOverextended) {
     deterministicQuality = 4;
@@ -429,6 +439,11 @@ export const buildTrendShiftGuardrailContext = ({
   if (deterministicQuality >= 5 && shortBelowLowOiFallingLongFlushRisk) {
     deterministicQuality = 4;
     hardBlockReasons.push('short_below_low_oi_falling_long_flush');
+  }
+
+  if (deterministicQuality >= 5 && shortNearPointOfControlRisk) {
+    deterministicQuality = 4;
+    hardBlockReasons.push('short_near_point_of_control');
   }
 
   const gateFeaturesRecoveryAllowedReasons = [
@@ -475,12 +490,14 @@ export const buildTrendShiftGuardrailContext = ({
     shortUsLongFlushRisk,
     shortFailedLowOiNotConfirming,
     shortBelowLowOiFallingLongFlushRisk,
+    shortNearPointOfControlRisk,
     q4GateFeaturesRecoveryCandidate,
     breakoutState,
     volumeRel20,
     atrPctZScore,
     adaptiveChannelDirection,
     liquidityTailSide,
+    nearPointOfControl,
     relativeStrength1h,
     gateRelativeStrengthBucket,
     gateConflictCount,
@@ -539,6 +556,8 @@ export const getTrendShiftGuardrailReasonText = (reason: string) => {
       return 'the SHORT failed-low-breakout setup lacks expanding open-interest confirmation';
     case 'short_below_low_oi_falling_long_flush':
       return 'the SHORT breakdown is a long-liquidation flush with falling open interest, so continuation confirmation is weak outside Asia';
+    case 'short_near_point_of_control':
+      return 'the SHORT flip is too close to the price-volume point of control, where continuation has been less reliable';
     default:
       return reason;
   }

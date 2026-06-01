@@ -86,6 +86,7 @@ const CANDLES_SCHEMA_LOCK_KEY = 610000;
 const DERIVATIVES_SCHEMA_LOCK_KEY = 610001;
 const SPREAD_SCHEMA_LOCK_KEY = 610002;
 const BINANCE_MARKET_SCHEMA_LOCK_KEY = 610003;
+const PG_SAFE_MAX_BIND_PARAMS = 30_000;
 
 const normalizeCandleProvider = (provider: string) =>
   String(provider || '')
@@ -96,6 +97,9 @@ const normalizeCandleSymbol = (symbol: string) =>
   String(symbol || '')
     .trim()
     .toUpperCase();
+
+const getSafeBulkInsertRows = (columnsCount: number) =>
+  Math.max(1, Math.floor(PG_SAFE_MAX_BIND_PARAMS / columnsCount));
 
 const withSchemaLock = async (lockKey: number, work: () => Promise<void>) => {
   const pool = getPool();
@@ -1042,7 +1046,7 @@ export async function upsertMarketTradeFlowRows(rows: MarketTradeFlowRow[]) {
     'source',
   ] as const;
 
-  const maxRows = Math.floor(65_535 / cols.length);
+  const maxRows = getSafeBulkInsertRows(cols.length);
   if (rows.length > maxRows) {
     for (let i = 0; i < rows.length; i += maxRows) {
       await upsertMarketTradeFlowRows(rows.slice(i, i + maxRows));
@@ -1113,6 +1117,14 @@ export async function upsertMarketOrderBookDepthRows(
     'source',
   ] as const;
 
+  const maxRows = getSafeBulkInsertRows(cols.length);
+  if (rows.length > maxRows) {
+    for (let i = 0; i < rows.length; i += maxRows) {
+      await upsertMarketOrderBookDepthRows(rows.slice(i, i + maxRows));
+    }
+    return;
+  }
+
   const valuesSql = rows
     .map(
       (_, i) =>
@@ -1175,6 +1187,14 @@ export async function upsertMarketBreadthRows(rows: MarketBreadthRow[]) {
     'dispersion',
     'source',
   ] as const;
+
+  const maxRows = getSafeBulkInsertRows(cols.length);
+  if (rows.length > maxRows) {
+    for (let i = 0; i < rows.length; i += maxRows) {
+      await upsertMarketBreadthRows(rows.slice(i, i + maxRows));
+    }
+    return;
+  }
 
   const valuesSql = rows
     .map(

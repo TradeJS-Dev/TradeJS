@@ -86,6 +86,7 @@ Additional TrendShift context:
 - atrPctZScore=${String(context.atrPctZScore ?? 'n/a')}
 - adaptiveChannelDirection=${context.adaptiveChannelDirection ?? 'n/a'}
 - liquidityTailSide=${context.liquidityTailSide ?? 'n/a'}
+- nearPointOfControl=${String(context.nearPointOfControl ?? 'n/a')}
 - relativeStrength1h=${String(context.relativeStrength1h ?? 'n/a')}
 - gateRelativeStrengthBucket=${context.gateRelativeStrengthBucket ?? 'n/a'}
 - gateConflictCount=${String(context.gateConflictCount ?? 'n/a')}
@@ -101,6 +102,7 @@ Additional TrendShift context:
 - shortUsLongFlushRisk=${String(context.shortUsLongFlushRisk)}
 - shortFailedLowOiNotConfirming=${String(context.shortFailedLowOiNotConfirming)}
 - shortBelowLowOiFallingLongFlushRisk=${String(context.shortBelowLowOiFallingLongFlushRisk)}
+- shortNearPointOfControlRisk=${String(context.shortNearPointOfControlRisk)}
 - q4GateFeaturesRecoveryCandidate=${String(context.q4GateFeaturesRecoveryCandidate)}
 - derivativesRiskFlags=${JSON.stringify(context.derivativesRiskFlags)}
 - priceOiDivergenceType=${context.priceOiDivergenceType ?? 'n/a'}
@@ -129,6 +131,7 @@ Interpretation rules for TrendShift:
 - For LONG, a lower liquidity tail after price and OI already expanded is a watch-only warning even when geometry is q5-strong.
 - For SHORT, US-session long-flush setups are watch-only unless later research revalidates that pocket.
 - For SHORT, a below-low long-liquidation flush with falling OI is watch-only outside Asia because it lacks continuation OI.
+- For SHORT, being near the price-volume point of control is a watch-only warning; LONG near-POC flips are not blocked by this rule.
 - If hardBlockReasons is not empty, explain exactly what is still missing for confirmation.
 `.trim();
   },

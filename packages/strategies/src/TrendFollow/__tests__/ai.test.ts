@@ -47,9 +47,10 @@ describe('trendFollowAiAdapter', () => {
           regime: {
             session: { sessionPhase: 'off_hours' },
             trend: { bias: 'bull' },
+            momentum: { rsi: 32 },
           },
           participation: {
-            volume: { volumeRel20: 1.2 },
+            volume: { volumeRel20: 1.6 },
             volumeStructure: { totalDownVolumeShare: 0.55 },
             delta: { deltaDivergenceVsPrice: 'none' },
           },
@@ -140,6 +141,91 @@ describe('trendFollowAiAdapter', () => {
     expect((result as any)?.rejectReason).toContain('thin_participation');
   });
 
+  it('keeps weak relative volume breakouts in watch mode', () => {
+    const result = trendFollowAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makePayload(
+        {
+          signalDirection: 'SHORT',
+          entryLevel: 100,
+          trailStop: 104,
+          atr: 1.5,
+          pivotKind: 'low',
+          breakoutDistancePct: 0.8,
+          distanceToStopPct: 2,
+          currentPrice: 99,
+        },
+        {
+          regime: {
+            session: { sessionPhase: 'asia' },
+          },
+          participation: {
+            volume: { volumeRel20: 1.2 },
+            volumeStructure: { totalDownVolumeShare: 0.55 },
+            delta: { deltaDivergenceVsPrice: 'none' },
+          },
+          structure: {
+            localRange: { breakoutState: 'below_low_level' },
+          },
+        },
+      ),
+      analysis: {
+        direction: 'SHORT',
+        quality: 5,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: null,
+      quality: 4,
+      approved: false,
+    });
+    expect((result as any)?.rejectReason).toContain('weak_relative_volume');
+  });
+
+  it('keeps weak downside momentum breakouts in watch mode', () => {
+    const result = trendFollowAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makePayload(
+        {
+          signalDirection: 'SHORT',
+          entryLevel: 100,
+          trailStop: 104,
+          atr: 1.5,
+          pivotKind: 'low',
+          breakoutDistancePct: 0.8,
+          distanceToStopPct: 2,
+          currentPrice: 99,
+        },
+        {
+          regime: {
+            session: { sessionPhase: 'asia' },
+            momentum: { rsi: 42 },
+          },
+          participation: {
+            volume: { volumeRel20: 1.6 },
+            volumeStructure: { totalDownVolumeShare: 0.55 },
+            delta: { deltaDivergenceVsPrice: 'none' },
+          },
+          structure: {
+            localRange: { breakoutState: 'below_low_level' },
+          },
+        },
+      ),
+      analysis: {
+        direction: 'SHORT',
+        quality: 5,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: null,
+      quality: 4,
+      approved: false,
+    });
+    expect((result as any)?.rejectReason).toContain('weak_downside_momentum');
+  });
+
   it('downgrades adverse delta and weak volume structure', () => {
     const result = trendFollowAiAdapter.postProcessAnalysis?.({
       signal: {} as any,
@@ -156,7 +242,7 @@ describe('trendFollowAiAdapter', () => {
         },
         {
           participation: {
-            volume: { volumeRel20: 1.2 },
+            volume: { volumeRel20: 1.6 },
             volumeStructure: { totalDownVolumeShare: 0.44 },
             delta: { deltaDivergenceVsPrice: 'bullish' },
           },
@@ -197,12 +283,13 @@ describe('trendFollowAiAdapter', () => {
         {
           regime: {
             session: { sessionPhase: 'asia' },
+            momentum: { rsi: 32 },
             trend: {
               trendFollow: { state: 'bull' },
             },
           },
           participation: {
-            volume: { volumeRel20: 1.2 },
+            volume: { volumeRel20: 1.6 },
             volumeStructure: { totalDownVolumeShare: 0.55 },
             delta: { deltaDivergenceVsPrice: 'none' },
           },
