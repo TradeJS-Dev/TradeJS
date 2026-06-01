@@ -1,5 +1,6 @@
 import chalk from 'chalk';
 import { Interval, StrategyConfig } from '@tradejs/types';
+import { buildRuntimeModeStrategyConfig } from '../runtimeModeConfig';
 
 export const REPLAY_RESULTS_BY_STRATEGY_HEADERS = [
   chalk.blue('STRATEGY'),
@@ -149,10 +150,11 @@ export const buildReplayStrategyConfig = ({
 }: {
   strategyConfig: StrategyConfig;
   interval: Interval;
-}): StrategyConfig => ({
-  ...strategyConfig,
-  ENV: 'PARITY',
-  MAKE_ORDERS: true,
-  INTERVAL: interval,
-  RECORD_RUNTIME_TRADES: false,
-});
+}): StrategyConfig =>
+  buildRuntimeModeStrategyConfig({
+    strategyConfig,
+    env: 'PARITY',
+    interval,
+    makeOrders: true,
+    recordRuntimeTrades: false,
+  });

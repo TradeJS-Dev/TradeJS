@@ -72,6 +72,7 @@ import {
   type ClassifiedRuntimeOnlyEntry,
   type RuntimeOnlyClassification,
 } from '../lib/runtimeParity/classification';
+import { buildRuntimeModeStrategyConfig } from '../lib/runtimeModeConfig';
 
 args.option(['u', 'user'], 'Use user config', 'root');
 args.option(
@@ -280,17 +281,17 @@ const buildReplayConfig = async ({
     toleranceMs,
   });
 
-  return {
-    ...(userConfig as StrategyConfig),
-    ...(symbolConfig as StrategyConfig),
-    ENV: REPLAY_ENV,
-    MAKE_ORDERS: true,
-    INTERVAL: interval,
-    RECORD_RUNTIME_TRADES: false,
-    ...(aiReplayAnalyses.length
-      ? { AI_REPLAY_ANALYSES: aiReplayAnalyses }
-      : {}),
-  };
+  return buildRuntimeModeStrategyConfig({
+    strategyConfig: {
+      ...(userConfig as StrategyConfig),
+      ...(symbolConfig as StrategyConfig),
+    },
+    env: REPLAY_ENV,
+    interval,
+    makeOrders: true,
+    recordRuntimeTrades: false,
+    aiReplayAnalyses,
+  });
 };
 
 const warmReplayHistory = async ({

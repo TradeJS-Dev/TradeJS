@@ -58,6 +58,7 @@ import {
   saveRuntimeSignalEvaluation,
 } from '../lib/signals/evaluations';
 import { getTelegramDeliverableSignals } from '../lib/signals/telegram';
+import { buildRuntimeModeStrategyConfig } from '../lib/runtimeModeConfig';
 
 args.option(['t', 'tickers'], 'Selected tickers');
 args.option(['e', 'exclude'], 'Exclude tickers from tests');
@@ -197,12 +198,12 @@ const findSignals = async (
       btcData: [...previousBtcData],
       btcBinanceData,
       btcCoinbaseData,
-      config: {
-        ...strategyConfig,
-        ENV: 'CRON',
-        INTERVAL: interval,
-        MAKE_ORDERS: flags.makeOrders,
-      },
+      config: buildRuntimeModeStrategyConfig({
+        strategyConfig,
+        env: 'CRON',
+        interval,
+        makeOrders: flags.makeOrders,
+      }),
     });
 
     const signal = await strategy(lastCandle, btcLastCandle);
