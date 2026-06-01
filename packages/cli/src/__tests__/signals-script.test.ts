@@ -443,6 +443,33 @@ describe('signals script', () => {
     );
   });
 
+  it('does not limit signal tickers when tickersLimit is omitted', async () => {
+    const { signals, mocks } = await loadScript({
+      flags: {
+        timeframe: 15,
+        makeOrders: false,
+        notify: false,
+        skipScreenshots: true,
+        updateOnly: false,
+        cacheOnly: true,
+        showTickersList: false,
+        showSkipStats: false,
+        user: 'root',
+        connector: 'bybit',
+      },
+    });
+
+    await signals();
+
+    expect(mocks.getTickers).toHaveBeenCalledWith(
+      expect.any(Object),
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+    );
+  });
+
   it('allows overriding signal worker count', async () => {
     const { signals, mocks } = await loadScript({
       flags: {
