@@ -5,6 +5,7 @@ import {
   buildReverseTrendlineStructuralContext,
   buildReverseTrendlineTimingContext,
 } from './guardrails';
+import { clampNumber, normalizePositiveNumber } from '../shared/risk';
 
 type ReverseStructuralContext = ReturnType<
   typeof buildReverseTrendlineStructuralContext
@@ -19,9 +20,6 @@ const LINE_BUFFER_BASE_SL_FACTOR = 0.1;
 const ATR_STOP_FLOOR_FACTOR = 0.65;
 const MIN_STOP_LOSS_FACTOR = 0.8;
 const MAX_STOP_LOSS_FACTOR = 2.0;
-
-const clampNumber = (value: number, min: number, max: number) =>
-  Math.min(Math.max(value, min), max);
 
 const getTimingStopFactor = (
   entryTiming: ReverseTimingContext['entryTiming'],
@@ -68,14 +66,14 @@ export const buildReverseTrendlineRiskPlan = ({
   structuralContext: ReverseStructuralContext;
   timingContext: ReverseTimingContext;
 }): ReverseTrendlineRiskPlan => {
-  const normalizedBaseStopLossDelta =
-    Number.isFinite(baseStopLossDelta) && baseStopLossDelta > 0
-      ? baseStopLossDelta
-      : 1;
-  const normalizedBaseTargetRiskRatio =
-    Number.isFinite(baseTargetRiskRatio) && baseTargetRiskRatio > 0
-      ? baseTargetRiskRatio
-      : modeConfig.minRiskRatio + 0.4;
+  const normalizedBaseStopLossDelta = normalizePositiveNumber(
+    baseStopLossDelta,
+    1,
+  );
+  const normalizedBaseTargetRiskRatio = normalizePositiveNumber(
+    baseTargetRiskRatio,
+    modeConfig.minRiskRatio + 0.4,
+  );
   const atrPct = structuralContext.atrPct ?? normalizedBaseStopLossDelta;
   const priceVsLinePctAbs = structuralContext.priceVsLinePctAbs ?? 0;
   const rejectionStrengthPct = structuralContext.rejectionStrengthPct ?? 0;

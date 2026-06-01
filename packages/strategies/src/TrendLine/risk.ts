@@ -6,6 +6,7 @@ import {
 } from './guardrails';
 import { TrendLineConfig } from './config';
 import { Direction } from '@tradejs/types';
+import { clampNumber, normalizePositiveNumber } from '../shared/risk';
 
 type TrendlineStructuralContext = ReturnType<
   typeof buildTrendlineStructuralContext
@@ -18,9 +19,6 @@ const LINE_BUFFER_BASE_SL_FACTOR = 0.15;
 const ATR_STOP_FLOOR_FACTOR = 0.8;
 const MIN_STOP_LOSS_FACTOR = 0.75;
 const MAX_STOP_LOSS_FACTOR = 2.25;
-
-const clampNumber = (value: number, min: number, max: number) =>
-  Math.min(Math.max(value, min), max);
 
 const getTimingStopFactor = (
   entryTiming: TrendlineTimingContext['entryTiming'],
@@ -87,14 +85,14 @@ export const buildTrendlineRiskPlan = ({
   structuralContext: TrendlineStructuralContext;
   timingContext: TrendlineTimingContext;
 }): TrendlineRiskPlan => {
-  const normalizedBaseStopLossDelta =
-    Number.isFinite(baseStopLossDelta) && baseStopLossDelta > 0
-      ? baseStopLossDelta
-      : 1;
-  const normalizedBaseTargetRiskRatio =
-    Number.isFinite(baseTargetRiskRatio) && baseTargetRiskRatio > 0
-      ? baseTargetRiskRatio
-      : modeConfig.minRiskRatio + 0.5;
+  const normalizedBaseStopLossDelta = normalizePositiveNumber(
+    baseStopLossDelta,
+    1,
+  );
+  const normalizedBaseTargetRiskRatio = normalizePositiveNumber(
+    baseTargetRiskRatio,
+    modeConfig.minRiskRatio + 0.5,
+  );
   const atrPct = structuralContext.atrPct ?? normalizedBaseStopLossDelta;
   const priceVsLinePctAbs = structuralContext.priceVsLinePctAbs ?? 0;
   const breakVsAtrRatio = structuralContext.breakVsAtrRatio ?? 0;
