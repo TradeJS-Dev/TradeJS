@@ -23,6 +23,7 @@ const getTrendFollowContext = (payload: AiPayload) => {
   return buildTrendFollowGuardrailContext({
     signalContext,
     baseContext,
+    prices: payload.signal?.prices,
   });
 };
 
@@ -91,6 +92,20 @@ Additional TrendFollow context:
 - volumeStructureDirectionalShare=${String(context.volumeStructureDirectionalShare ?? 'n/a')}
 - volumeStructureDirectionAligned=${String(context.volumeStructureDirectionAligned ?? 'n/a')}
 - highConvictionApprovalPocket=${String(context.highConvictionApprovalPocket)}
+- trendFollowGateSetupStopDistanceAtr=${String(context.trendFollowGateFeatures.setupStopDistanceAtr ?? 'n/a')}
+- trendFollowGateSetupTpDistanceAtr=${String(context.trendFollowGateFeatures.setupTpDistanceAtr ?? 'n/a')}
+- trendFollowGateSetupRewardToVolatility=${String(context.trendFollowGateFeatures.setupRewardToVolatility ?? 'n/a')}
+- trendFollowGateSetupRiskShape=${context.trendFollowGateFeatures.setupRiskShape}
+- trendFollowGateBreakoutBodyAtr=${String(context.trendFollowGateFeatures.breakoutBodyAtr ?? 'n/a')}
+- trendFollowGateBreakoutAcceptance=${context.trendFollowGateFeatures.breakoutAcceptance}
+- trendFollowGateContinuationState=${context.trendFollowGateFeatures.continuationState}
+- trendFollowGateParticipationState=${context.trendFollowGateFeatures.participationState}
+- trendFollowGateDirectionalVolumeAligned=${String(context.trendFollowGateFeatures.directionalVolumeAligned ?? 'n/a')}
+- trendFollowGateDerivativesContinuation=${context.trendFollowGateFeatures.derivativesContinuation}
+- trendFollowGateRelativeContinuation=${context.trendFollowGateFeatures.relativeContinuation}
+- trendFollowGateMarketBreadthContinuation=${context.trendFollowGateFeatures.marketBreadthContinuation}
+- trendFollowGateMarketBreadthDispersion=${String(context.trendFollowGateFeatures.marketBreadthDispersion ?? 'n/a')}
+- trendFollowGateHighQualityCadencePocket=${String(context.trendFollowGateFeatures.highQualityCadencePocket)}
 - benchmarkTrendAlignment=${context.benchmarkTrendAlignment ?? 'n/a'}
 - derivativesPressure=${context.derivativesPressure ?? 'n/a'}
 - derivativesDirectionAligned=${String(context.derivativesDirectionAligned ?? 'n/a')}
