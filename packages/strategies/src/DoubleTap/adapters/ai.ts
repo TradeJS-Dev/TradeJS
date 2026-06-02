@@ -23,6 +23,7 @@ type DoubleTapAiContext = Partial<DoubleTapSignalContext> & {
   derivativesRiskFlags: string[];
   bodyStrength: number | null;
   venueSpreadZScore: number | null;
+  rewardToVolatility: number | null;
   doubleTapGateFeatures: DoubleTapGateFeatures;
   structuralHardBlockReasons: string[];
   softBlockReasons: string[];
@@ -43,7 +44,12 @@ type DoubleTapGateFeatures = {
   participationState: 'thin' | 'normal' | 'strong' | 'unknown';
   derivativesState: 'aligned' | 'crowded' | 'conflict' | 'neutral' | 'unknown';
   executionSpreadState: 'supportive' | 'neutral' | 'adverse' | 'unknown';
-  approvalPocket: 'high_precision' | 'q4' | 'q4_blocked' | 'watch';
+  approvalPocket:
+    | 'high_precision'
+    | 'high_precision_blocked'
+    | 'q4'
+    | 'q4_blocked'
+    | 'watch';
   highQualityCadencePocket: boolean;
 };
 
@@ -156,6 +162,7 @@ const buildDoubleTapGateFeatures = ({
   directionalCrowding,
   approvalPocket,
   highPrecisionPocket,
+  highPrecisionApprovalBlocked,
   q4ApprovalBlocked,
 }: {
   signalDirection: Direction | null;
@@ -170,6 +177,7 @@ const buildDoubleTapGateFeatures = ({
   directionalCrowding: boolean;
   approvalPocket: boolean;
   highPrecisionPocket: boolean;
+  highPrecisionApprovalBlocked: boolean;
   q4ApprovalBlocked: boolean;
 }): DoubleTapGateFeatures => {
   const patternGeometry =
@@ -231,7 +239,9 @@ const buildDoubleTapGateFeatures = ({
     derivativesState,
     executionSpreadState,
     approvalPocket: highPrecisionPocket
-      ? 'high_precision'
+      ? highPrecisionApprovalBlocked
+        ? 'high_precision_blocked'
+        : 'high_precision'
       : approvalPocket && q4ApprovalBlocked
         ? 'q4_blocked'
         : approvalPocket
@@ -306,6 +316,11 @@ const buildDoubleTapAiContext = (payload: AiPayload): DoubleTapAiContext => {
     'relative',
     'execution',
     'venueSpreadZScore',
+  ]);
+  const rewardToVolatility = getNestedNumber(baseContext, [
+    'gateFeatures',
+    'setup',
+    'rewardToVolatility',
   ]);
 
   const structuralHardBlockReasons: string[] = [];
@@ -392,6 +407,11 @@ const buildDoubleTapAiContext = (payload: AiPayload): DoubleTapAiContext => {
   const lacksPositiveVenueSpread =
     venueSpreadZScore == null || venueSpreadZScore < 1;
   const weakSignalBody = bodyStrength != null && bodyStrength < 0.35;
+  const insufficientRewardToVolatility =
+    rewardToVolatility == null || rewardToVolatility < 8;
+  const insufficientHighPrecisionVolume =
+    volumeRel20 == null || volumeRel20 < 3;
+  const nonNeutralTrend = trendBias !== 'neutral';
   const softBlockReasons = [
     ...(approvalPocket && !highPrecisionPocket && lacksPositiveVenueSpread
       ? ['lacks_positive_venue_spread']
@@ -399,8 +419,27 @@ const buildDoubleTapAiContext = (payload: AiPayload): DoubleTapAiContext => {
     ...(approvalPocket && !highPrecisionPocket && weakSignalBody
       ? ['weak_signal_body']
       : []),
+    ...(approvalPocket && !highPrecisionPocket && nonNeutralTrend
+      ? ['non_neutral_trend']
+      : []),
+    ...(approvalPocket && highPrecisionPocket && insufficientHighPrecisionVolume
+      ? ['insufficient_high_precision_volume']
+      : []),
+    ...(approvalPocket && insufficientRewardToVolatility
+      ? ['insufficient_reward_to_volatility']
+      : []),
   ];
-  const q4ApprovalBlocked = softBlockReasons.length > 0;
+  const highPrecisionApprovalBlocked =
+    highPrecisionPocket &&
+    (insufficientHighPrecisionVolume || insufficientRewardToVolatility);
+  const q4ApprovalBlocked =
+    approvalPocket &&
+    !highPrecisionPocket &&
+    (lacksPositiveVenueSpread ||
+      weakSignalBody ||
+      nonNeutralTrend ||
+      insufficientRewardToVolatility);
+  const approvalBlocked = highPrecisionApprovalBlocked || q4ApprovalBlocked;
   const doubleTapGateFeatures = buildDoubleTapGateFeatures({
     signalDirection,
     height,
@@ -414,15 +453,16 @@ const buildDoubleTapAiContext = (payload: AiPayload): DoubleTapAiContext => {
     directionalCrowding,
     approvalPocket,
     highPrecisionPocket,
+    highPrecisionApprovalBlocked,
     q4ApprovalBlocked,
   });
 
   const deterministicQuality =
     structuralHardBlockReasons.length > 0
       ? Math.min(geometryQuality, 2)
-      : approvalPocket && highPrecisionPocket
+      : approvalPocket && highPrecisionPocket && !highPrecisionApprovalBlocked
         ? 5
-        : approvalPocket && !q4ApprovalBlocked
+        : approvalPocket && !highPrecisionPocket && !q4ApprovalBlocked
           ? 4
           : Math.min(geometryQuality, 3);
 
@@ -441,12 +481,13 @@ const buildDoubleTapAiContext = (payload: AiPayload): DoubleTapAiContext => {
     derivativesRiskFlags,
     bodyStrength,
     venueSpreadZScore,
+    rewardToVolatility,
     doubleTapGateFeatures,
     structuralHardBlockReasons,
     softBlockReasons,
     deterministicQuality,
     approvalAllowedNow:
-      deterministicQuality >= 4 && approvalPocket && !q4ApprovalBlocked,
+      deterministicQuality >= 4 && approvalPocket && !approvalBlocked,
     maxAllowedQuality: deterministicQuality,
   };
 };
@@ -460,12 +501,10 @@ const withDoubleTapGateFeatures = ({
 }) =>
   baseContext == null
     ? baseContext
-    : ({
-        ...(baseContext as unknown as Record<string, unknown>),
+    : {
+        ...baseContext,
         doubleTapGateFeatures: context.doubleTapGateFeatures,
-      } as BaseStrategyContextSnapshot & {
-        doubleTapGateFeatures: DoubleTapGateFeatures;
-      });
+      };
 
 export const doubleTapAiAdapter: StrategyAiAdapter = {
   buildPayload: ({ signal, basePayload }) => {
@@ -541,6 +580,7 @@ Additional DoubleTap context:
 - derivativesRiskFlags=${JSON.stringify(context.derivativesRiskFlags)}
 - bodyStrength=${String(context.bodyStrength ?? 'n/a')}
 - venueSpreadZScore=${String(context.venueSpreadZScore ?? 'n/a')}
+- rewardToVolatility=${String(context.rewardToVolatility ?? 'n/a')}
 - doubleTapGatePatternGeometry=${context.doubleTapGateFeatures.patternGeometry}
 - doubleTapGateNecklineBreakout=${context.doubleTapGateFeatures.necklineBreakout}
 - doubleTapGateTrendContext=${context.doubleTapGateFeatures.trendContext}

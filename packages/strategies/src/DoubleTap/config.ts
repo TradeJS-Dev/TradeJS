@@ -22,7 +22,7 @@ export const config = {
   AI_MODE: 'llm' as const,
   ML_ENABLED: false,
   ML_THRESHOLD: 0.1,
-  MIN_AI_QUALITY: 3,
+  MIN_AI_QUALITY: 4,
   FEE_PERCENT,
   MAX_LOSS_VALUE: 10,
   MA_FAST: 14,
@@ -57,8 +57,12 @@ export const config = {
 } as const;
 
 export type DoubleTapConfig = StrategyConfig &
-  Omit<typeof config, 'BACKTEST_PRICE_MODE' | 'LONG' | 'SHORT'> & {
+  Omit<
+    typeof config,
+    'BACKTEST_PRICE_MODE' | 'LONG' | 'SHORT' | 'MIN_AI_QUALITY'
+  > & {
     BACKTEST_PRICE_MODE: BacktestPriceMode;
+    MIN_AI_QUALITY: number;
     LONG: DoubleTapSideConfig;
     SHORT: DoubleTapSideConfig;
   };

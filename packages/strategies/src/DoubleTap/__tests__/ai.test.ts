@@ -41,6 +41,11 @@ const createBaseContext = (overrides: Record<string, unknown> = {}) => ({
       riskFlags: [],
     },
   },
+  gateFeatures: {
+    setup: {
+      rewardToVolatility: 10,
+    },
+  },
   ...overrides,
 });
 
@@ -83,7 +88,7 @@ describe('doubleTapAiAdapter', () => {
     });
   });
 
-  it('approves compact neckline breakouts when baseContext supports the gate', () => {
+  it('approves strict high precision breakouts when baseContext supports the gate', () => {
     const result = doubleTapAiAdapter.postProcessAnalysis?.({
       payload: {
         additionalIndicators: {
@@ -94,6 +99,9 @@ describe('doubleTapAiAdapter', () => {
               },
               trend: {
                 bias: 'bull',
+              },
+              momentum: {
+                bodyStrength: 0.75,
               },
             },
           }),
@@ -112,6 +120,41 @@ describe('doubleTapAiAdapter', () => {
     } as any);
 
     expect(result?.quality).toBe(5);
+    expect(result?.direction).toBe('LONG');
+  });
+
+  it('approves q4 pockets only when trend is neutral', () => {
+    const result = doubleTapAiAdapter.postProcessAnalysis?.({
+      payload: {
+        additionalIndicators: {
+          baseContext: createBaseContext({
+            regime: {
+              session: {
+                sessionPhase: 'europe',
+              },
+              trend: {
+                bias: 'neutral',
+              },
+              momentum: {
+                bodyStrength: 0.75,
+              },
+            },
+          }),
+          doubleTapContext: {
+            signalDirection: 'LONG',
+            height: 10,
+            breakoutDistancePct: 0.4,
+          },
+        },
+      },
+      analysis: {
+        approved: false,
+        quality: 1,
+        direction: null,
+      },
+    } as any);
+
+    expect(result?.quality).toBe(4);
     expect(result?.direction).toBe('LONG');
   });
 
@@ -226,7 +269,120 @@ describe('doubleTapAiAdapter', () => {
     expect(result?.direction).toBeNull();
   });
 
-  it('keeps q5 high precision pockets despite neutral venue spread', () => {
+  it('downgrades q4 approval pockets with non-neutral trend', () => {
+    const result = doubleTapAiAdapter.postProcessAnalysis?.({
+      payload: {
+        additionalIndicators: {
+          baseContext: createBaseContext({
+            relative: {
+              benchmark: {
+                trendAlignment: 'aligned_bull',
+                bias: 'bull',
+              },
+              execution: {
+                venueSpreadZScore: 1.5,
+              },
+            },
+          }),
+          doubleTapContext: {
+            signalDirection: 'LONG',
+            height: 10,
+            breakoutDistancePct: 0.4,
+          },
+        },
+      },
+      analysis: {
+        approved: true,
+        quality: 4,
+        direction: 'LONG',
+      },
+    } as any);
+
+    expect(result?.quality).toBe(3);
+    expect(result?.direction).toBeNull();
+  });
+
+  it('downgrades high precision pockets when volume is below strict threshold', () => {
+    const result = doubleTapAiAdapter.postProcessAnalysis?.({
+      payload: {
+        additionalIndicators: {
+          baseContext: createBaseContext({
+            regime: {
+              session: {
+                sessionPhase: 'off_hours',
+              },
+              trend: {
+                bias: 'bull',
+              },
+              momentum: {
+                bodyStrength: 0.75,
+              },
+            },
+            participation: {
+              volume: {
+                volumeRel20: 2.5,
+              },
+            },
+          }),
+          doubleTapContext: {
+            signalDirection: 'LONG',
+            height: 10,
+            breakoutDistancePct: 0.6,
+          },
+        },
+      },
+      analysis: {
+        approved: false,
+        quality: 1,
+        direction: null,
+      },
+    } as any);
+
+    expect(result?.quality).toBe(3);
+    expect(result?.direction).toBeNull();
+  });
+
+  it('downgrades high precision pockets when reward-to-volatility is below strict threshold', () => {
+    const result = doubleTapAiAdapter.postProcessAnalysis?.({
+      payload: {
+        additionalIndicators: {
+          baseContext: createBaseContext({
+            regime: {
+              session: {
+                sessionPhase: 'off_hours',
+              },
+              trend: {
+                bias: 'bull',
+              },
+              momentum: {
+                bodyStrength: 0.75,
+              },
+            },
+            gateFeatures: {
+              setup: {
+                rewardToVolatility: 7.9,
+              },
+            },
+          }),
+          doubleTapContext: {
+            signalDirection: 'LONG',
+            height: 10,
+            breakoutDistancePct: 0.6,
+          },
+        },
+      },
+      analysis: {
+        approved: false,
+        quality: 1,
+        direction: null,
+      },
+    } as any);
+
+    expect(result?.quality).toBe(3);
+    expect(result?.direction).toBeNull();
+  });
+
+  it('keeps strict q5 high precision pockets despite neutral venue spread', () => {
     const result = doubleTapAiAdapter.postProcessAnalysis?.({
       payload: {
         additionalIndicators: {
