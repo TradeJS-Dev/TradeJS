@@ -1,4 +1,8 @@
-import { buildRuntimeModeStrategyConfig } from '../lib/runtimeModeConfig';
+import {
+  buildRuntimeModeStrategyConfig,
+  hasRuntimeEntryGateEnabled,
+  resolveReplayStrategyEnv,
+} from '../lib/runtimeModeConfig';
 
 describe('runtimeModeConfig', () => {
   it('builds replay/parity config with runtime trade recording disabled', () => {
@@ -51,5 +55,39 @@ describe('runtimeModeConfig', () => {
         aiReplayAnalyses: [{ id: 'analysis-1' }],
       }).AI_REPLAY_ANALYSES,
     ).toEqual([{ id: 'analysis-1' }]);
+  });
+
+  it('resolves PARITY replay env when runtime entry gates are enabled', () => {
+    expect(
+      resolveReplayStrategyEnv({
+        strategyConfig: { AI_ENABLED: true, AI_MODE: 'gate' },
+      }),
+    ).toBe('PARITY');
+    expect(
+      resolveReplayStrategyEnv({
+        strategyConfig: { AI_ENABLED: true, AI_MODE: 'llm' },
+      }),
+    ).toBe('PARITY');
+    expect(
+      resolveReplayStrategyEnv({
+        strategyConfig: { ML_ENABLED: true },
+      }),
+    ).toBe('PARITY');
+    expect(resolveReplayStrategyEnv({ strategyConfig: {} })).toBe('BACKTEST');
+  });
+
+  it('forces PARITY replay env when runtime gates flag is enabled', () => {
+    expect(
+      resolveReplayStrategyEnv({
+        strategyConfig: {},
+        forceRuntimeGates: true,
+      }),
+    ).toBe('PARITY');
+  });
+
+  it('detects runtime entry gates from AI or ML config', () => {
+    expect(hasRuntimeEntryGateEnabled({ AI_ENABLED: true })).toBe(true);
+    expect(hasRuntimeEntryGateEnabled({ ML_ENABLED: true })).toBe(true);
+    expect(hasRuntimeEntryGateEnabled({ AI_ENABLED: false })).toBe(false);
   });
 });

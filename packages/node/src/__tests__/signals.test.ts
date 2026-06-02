@@ -523,7 +523,7 @@ describe('signals', () => {
     );
   });
 
-  it('formats shared market stats from additionalIndicators.baseContext', () => {
+  it('omits shared market stats from Telegram signal card', () => {
     jest.doMock('../screenshot', () => ({
       getScreenshotBuffer: jest.fn(async () => {
         throw new Error('no screenshot');
@@ -569,9 +569,9 @@ describe('signals', () => {
       null,
     );
 
-    expect(message).toContain('BTC correlation: 0.42');
-    expect(message).toContain('Volatility: 1.230000%');
-    expect(message).toContain('Spread: 0.120000%');
+    expect(message).not.toContain('BTC correlation:');
+    expect(message).not.toContain('Volatility:');
+    expect(message).not.toContain('Spread:');
   });
 
   it('formats separate gate and llm quality lines in Telegram signal card', () => {
@@ -674,6 +674,10 @@ describe('signals', () => {
     expect(message).toContain(
       'evaluation: <code>users:root:runtime:signal-evaluations:days:2026-05-02:AdaptiveMomentumRibbon</code> field <code>AdaptiveMomentumRibbon:TLMUSDT:1777723200000</code>',
     );
+    expect(message.indexOf('<b>Redis debug</b>')).toBeGreaterThan(
+      message.indexOf('R:R = <b>3.50</b>'),
+    );
+    expect(message.trim().endsWith('</code>')).toBe(true);
   });
 
   it('formats approved AI analysis as a short human-readable explanation', () => {

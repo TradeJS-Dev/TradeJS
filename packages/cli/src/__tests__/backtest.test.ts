@@ -122,6 +122,7 @@ import {
   resolveDefaultWorkerHeapMb,
   mergePersistedTestSummaries,
   resolveRenderableStat,
+  resolveBacktestPriceMode,
   resolveRequestedTestsLimit,
   resolveEffectiveParallel,
   resolveWorkerHeapMb,
@@ -202,6 +203,15 @@ describe('backtest script helpers', () => {
     expect(resolveEffectiveParallel('0', '3', 8)).toBe(3);
     expect(resolveEffectiveParallel('bad', 'bad', 5)).toBe(5);
     expect(resolveEffectiveParallel('-10', '-2', 5)).toBe(1);
+  });
+
+  it('normalizes backtest price mode CLI values', () => {
+    expect(resolveBacktestPriceMode('open')).toBe('open');
+    expect(resolveBacktestPriceMode('close')).toBe('close');
+    expect(resolveBacktestPriceMode('mid')).toBe('mid');
+    expect(resolveBacktestPriceMode('rand')).toBe('rand');
+    expect(resolveBacktestPriceMode('bad')).toBe('open');
+    expect(resolveBacktestPriceMode(undefined)).toBe('open');
   });
 
   it('removes the default tests limit in signals replay mode unless the user set it explicitly', () => {
@@ -345,6 +355,11 @@ describe('backtest script helpers', () => {
       toStrategyConfigGrid({
         RISK: 2,
         ENABLED: true,
+        ENV: 'BACKTEST',
+        INTERVAL: '15',
+        MAKE_ORDERS: true,
+        CLOSE_OPPOSITE_POSITIONS: false,
+        BACKTEST_PRICE_MODE: 'open',
         TRENDLINE: { leftBars: 5 },
       }),
     ).toEqual({
@@ -354,7 +369,7 @@ describe('backtest script helpers', () => {
     });
   });
 
-  it('propagates the parsed timeframe into prepared worker tests', async () => {
+  it('injects CLI runtime fields into prepared worker tests', async () => {
     const preparedSuite = await buildPreparedTestSuite({
       testSuite: [
         {
@@ -364,7 +379,14 @@ describe('backtest script helpers', () => {
           testSuiteId: 'suite',
           symbol: 'BTCUSDT',
           strategyName: 'TrendLine',
-          strategyConfig: { MA_FAST: 10 },
+          strategyConfig: {
+            MA_FAST: 10,
+            ENV: 'CRON',
+            INTERVAL: '60',
+            MAKE_ORDERS: false,
+            CLOSE_OPPOSITE_POSITIONS: true,
+            BACKTEST_PRICE_MODE: 'mid',
+          },
           connectorName: 'ByBit',
           options: { start: 1, end: 2 },
         } as any,
@@ -380,7 +402,11 @@ describe('backtest script helpers', () => {
         options: { start: 100, end: 200 },
         strategyConfig: {
           MA_FAST: 10,
+          ENV: 'BACKTEST',
           INTERVAL: '15',
+          MAKE_ORDERS: true,
+          CLOSE_OPPOSITE_POSITIONS: false,
+          BACKTEST_PRICE_MODE: 'open',
         },
       }),
     ]);

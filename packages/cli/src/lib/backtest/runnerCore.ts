@@ -36,6 +36,7 @@ import {
 } from '../runtimeStrategyBacktest';
 import {
   effectiveParallel,
+  backtestPriceMode,
   flags,
   hasExplicitTestsLimit,
   interval,
@@ -379,7 +380,11 @@ export const buildPreparedTestSuite = async ({
       interval,
       strategyConfig: {
         ...test.strategyConfig,
+        ENV: 'BACKTEST',
         INTERVAL: interval,
+        MAKE_ORDERS: true,
+        CLOSE_OPPOSITE_POSITIONS: false,
+        BACKTEST_PRICE_MODE: backtestPriceMode,
       },
       options: {
         start: window.start,

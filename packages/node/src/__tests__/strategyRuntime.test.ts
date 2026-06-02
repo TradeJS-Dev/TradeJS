@@ -97,6 +97,10 @@ jest.mock('../strategyHelpers/binanceMarketContext', () => ({
   enrichSignalWithBinanceMarketContext: jest.fn(async () => false),
 }));
 
+jest.mock('../strategyHelpers/globalMarketContext', () => ({
+  enrichSignalWithGlobalMarketContext: jest.fn(async () => false),
+}));
+
 jest.mock('../runtimeJournal', () => ({
   markRuntimeTradeClosed: (...args: unknown[]) =>
     mockMarkRuntimeTradeClosed(...args),

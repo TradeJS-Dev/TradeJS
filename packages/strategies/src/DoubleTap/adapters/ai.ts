@@ -270,14 +270,12 @@ const buildDoubleTapAiContext = (payload: AiPayload): DoubleTapAiContext => {
   const approvalPocket =
     baseContextAvailable &&
     (longApprovalPocket || shortApprovalPocket || highPrecisionPocket);
-  const neutralVenueSpread =
-    venueSpreadZScore != null &&
-    venueSpreadZScore > -1 &&
-    venueSpreadZScore < 1;
+  const lacksPositiveVenueSpread =
+    venueSpreadZScore == null || venueSpreadZScore < 1;
   const weakSignalBody = bodyStrength != null && bodyStrength < 0.35;
   const softBlockReasons = [
-    ...(approvalPocket && !highPrecisionPocket && neutralVenueSpread
-      ? ['neutral_venue_spread']
+    ...(approvalPocket && !highPrecisionPocket && lacksPositiveVenueSpread
+      ? ['lacks_positive_venue_spread']
       : []),
     ...(approvalPocket && !highPrecisionPocket && weakSignalBody
       ? ['weak_signal_body']

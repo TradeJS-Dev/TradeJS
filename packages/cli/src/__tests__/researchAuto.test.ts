@@ -79,6 +79,11 @@ describe('research:auto helpers', () => {
       AI_ENABLED: true,
       AI_MODE: 'llm',
       MIN_AI_QUALITY: 4,
+      ENV: 'BACKTEST',
+      INTERVAL: '15',
+      MAKE_ORDERS: true,
+      CLOSE_OPPOSITE_POSITIONS: false,
+      BACKTEST_PRICE_MODE: 'open' as const,
       TRENDLINE: { minTouches: 3, maxDistancePct: 0.8 },
       TAGS: ['a', 'b'],
     };

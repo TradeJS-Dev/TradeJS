@@ -17,7 +17,7 @@ export const config = {
   INTERVAL: '15' as Interval,
   MAKE_ORDERS: true,
   CLOSE_OPPOSITE_POSITIONS: false,
-  BACKTEST_PRICE_MODE: 'mid' as const,
+  BACKTEST_PRICE_MODE: 'open' as const,
   AI_ENABLED: false,
   AI_MODE: 'llm' as const,
   ML_ENABLED: false,

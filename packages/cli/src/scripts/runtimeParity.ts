@@ -72,7 +72,11 @@ import {
   type ClassifiedRuntimeOnlyEntry,
   type RuntimeOnlyClassification,
 } from '../lib/runtimeParity/classification';
-import { buildRuntimeModeStrategyConfig } from '../lib/runtimeModeConfig';
+import {
+  buildRuntimeModeStrategyConfig,
+  hasRuntimeEntryGateEnabled,
+  resolveReplayStrategyEnv,
+} from '../lib/runtimeModeConfig';
 
 args.option(['u', 'user'], 'Use user config', 'root');
 args.option(
@@ -108,7 +112,7 @@ args.option(
 );
 args.option(
   'runtimeGates',
-  'Replay with runtime AI/ML gates enabled when configured. This may call external AI providers and ML inference.',
+  'Force runtime AI/ML gates for all replay targets. Runtime-gated configs are replayed with gates by default.',
   false,
 );
 args.option(['N', 'notify'], 'Send parity summary to Telegram', false);
@@ -132,7 +136,7 @@ const DETAIL_LIMIT = 10;
 const TELEGRAM_DETAIL_LIMIT = 5;
 const SUMMARY_TIMEZONE = 'Europe/Moscow';
 const SUMMARY_TIMEZONE_LABEL = 'MSK';
-const REPLAY_ENV = flags.runtimeGates ? 'PARITY' : 'BACKTEST';
+const DEFAULT_REPLAY_ENV = flags.runtimeGates ? 'PARITY' : 'BACKTEST';
 
 type StrategyParitySummaryRow = {
   runtime: number;
@@ -248,6 +252,27 @@ const buildReplayAiAnalyses = ({
   });
 };
 
+const formatReplayEnvSummary = (configs: Iterable<StrategyConfig>) => {
+  let backtest = 0;
+  let parity = 0;
+
+  for (const config of configs) {
+    if (config.ENV === 'PARITY') {
+      parity += 1;
+    } else {
+      backtest += 1;
+    }
+  }
+
+  if (parity > 0 && backtest > 0) {
+    return `MIXED (PARITY=${parity}, BACKTEST=${backtest})`;
+  }
+  if (parity > 0) {
+    return 'PARITY';
+  }
+  return 'BACKTEST';
+};
+
 const buildReplayConfig = async ({
   userName,
   strategy,
@@ -280,13 +305,17 @@ const buildReplayConfig = async ({
     symbol,
     toleranceMs,
   });
+  const strategyConfig = {
+    ...(userConfig as StrategyConfig),
+    ...(symbolConfig as StrategyConfig),
+  };
 
   return buildRuntimeModeStrategyConfig({
-    strategyConfig: {
-      ...(userConfig as StrategyConfig),
-      ...(symbolConfig as StrategyConfig),
-    },
-    env: REPLAY_ENV,
+    strategyConfig,
+    env: resolveReplayStrategyEnv({
+      strategyConfig,
+      forceRuntimeGates: Boolean(flags.runtimeGates),
+    }),
     interval,
     makeOrders: true,
     recordRuntimeTrades: false,
@@ -1340,7 +1369,7 @@ export const runtimeParity = async () => {
           buildRuntimeParityNoTargetsMessage({
             window,
             connectorName,
-            replayEnv: REPLAY_ENV,
+            replayEnv: DEFAULT_REPLAY_ENV,
             runtimeGatesEnabled: Boolean(flags.runtimeGates),
             userName: String(flags.user),
           }),
@@ -1366,6 +1395,25 @@ export const runtimeParity = async () => {
       ),
     );
 
+    const replayConfigs = new Map<string, StrategyConfig>();
+    for (const target of replayTargets) {
+      const replayConfig = await buildReplayConfig({
+        userName: flags.user,
+        strategy: target.strategy,
+        symbol: target.symbol,
+        replayInputsIndex,
+        toleranceMs,
+      });
+      replayConfigs.set(toTargetKey(target), replayConfig);
+    }
+    const replayEnvSummary = formatReplayEnvSummary(replayConfigs.values());
+    const hasParityAiTargets = [...replayConfigs.values()].some(
+      (config) => config.ENV === 'PARITY' && config.AI_ENABLED === true,
+    );
+    const hasParityMlTargets = [...replayConfigs.values()].some(
+      (config) => config.ENV === 'PARITY' && config.ML_ENABLED === true,
+    );
+
     await prepareMarketContextForRun({
       mode: 'parity',
       userName: flags.user,
@@ -1376,8 +1424,8 @@ export const runtimeParity = async () => {
       endMs: window.end,
       preloadStartMs: preloadStart,
       cacheOnly: Boolean(flags.cacheOnly),
-      aiEnabled: Boolean(flags.runtimeGates),
-      mlEnabled: Boolean(flags.runtimeGates),
+      aiEnabled: hasParityAiTargets,
+      mlEnabled: hasParityMlTargets,
       log: (message) => console.log(chalk.gray(message)),
     });
 
@@ -1399,17 +1447,16 @@ export const runtimeParity = async () => {
     for (const [targetIndex, target] of replayTargets.entries()) {
       const progressPosition = targetIndex + 1;
       try {
-        const replayConfig = await buildReplayConfig({
-          userName: flags.user,
-          strategy: target.strategy,
-          symbol: target.symbol,
-          replayInputsIndex,
-          toleranceMs,
-        });
+        const replayConfig = replayConfigs.get(toTargetKey(target));
+        if (!replayConfig) {
+          throw new Error(
+            `Replay config not prepared for ${toTargetKey(target)}`,
+          );
+        }
 
         if (
-          replayConfig.AI_ENABLED === true ||
-          replayConfig.ML_ENABLED === true
+          replayConfig.ENV !== 'PARITY' &&
+          hasRuntimeEntryGateEnabled(replayConfig)
         ) {
           runtimeGateWarningCounts.set(
             target.strategy,
@@ -1501,8 +1548,8 @@ export const runtimeParity = async () => {
     );
     console.log(`Connector: ${connectorName}`);
     console.log(
-      `Replay env: ${REPLAY_ENV}${
-        flags.runtimeGates
+      `Replay env: ${replayEnvSummary}${
+        flags.runtimeGates || replayEnvSummary.includes('PARITY')
           ? ' (runtime AI/ML gates enabled)'
           : ' (core/backtest gates only)'
       }`,
@@ -1616,7 +1663,7 @@ export const runtimeParity = async () => {
       const mismatchAttachment = buildRuntimeParityMismatchAttachment({
         window,
         connectorName,
-        replayEnv: REPLAY_ENV,
+        replayEnv: replayEnvSummary,
         toleranceBars,
         toleranceMs,
         replayTargetsCount: replayTargets.length,
@@ -1640,8 +1687,9 @@ export const runtimeParity = async () => {
         buildRuntimeParityMessage({
           window,
           connectorName,
-          replayEnv: REPLAY_ENV,
-          runtimeGatesEnabled: Boolean(flags.runtimeGates),
+          replayEnv: replayEnvSummary,
+          runtimeGatesEnabled:
+            Boolean(flags.runtimeGates) || replayEnvSummary.includes('PARITY'),
           toleranceBars,
           toleranceMs,
           replayTargetsCount: replayTargets.length,

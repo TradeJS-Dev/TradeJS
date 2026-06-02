@@ -603,6 +603,21 @@ export interface BaseRelativeContext {
     volumeWeightedReturn: number | null;
     dispersion: number | null;
   };
+  btcDominance?: {
+    source: 'coingecko_global';
+    asOfTs: number | null;
+    updatedAtTs: number | null;
+    ageMs: number | null;
+    stale: boolean;
+    btcDominancePct: number | null;
+    ethDominancePct: number | null;
+    altMarketCapUsd: number | null;
+    totalMarketCapUsd: number | null;
+    btcToAltMarketCapRatio: number | null;
+    btcDominanceChange24hPct: number | null;
+    altLiquidityRegime: 'alt_friendly' | 'btc_favored' | 'neutral' | 'unknown';
+    marketCapChangePct24hUsd: number | null;
+  };
   marketReferences?: {
     source: 'binance_reference_market';
     primaryReferenceSymbol: string;
@@ -665,6 +680,7 @@ export type BaseGateFeatureConfirmation =
   | 'trade_flow_aligned'
   | 'reference_trade_flow_aligned'
   | 'market_breadth_aligned'
+  | 'btc_dominance_aligned'
   | 'benchmark_aligned'
   | 'breakout_confirmed'
   | 'liquidity_sweep_aligned'
@@ -678,6 +694,7 @@ export type BaseGateFeatureConflict =
   | 'benchmark_against'
   | 'relative_strength_against'
   | 'market_breadth_against'
+  | 'btc_dominance_alt_pressure'
   | 'delta_against'
   | 'trade_flow_against'
   | 'reference_trade_flow_against'
@@ -791,6 +808,15 @@ export interface BaseContextGateFeatures {
     marketBreadthReturn: number | null;
     marketBreadthAligned: boolean | null;
     marketBreadthStale: boolean | null;
+    btcDominancePct: number | null;
+    btcDominanceChange24hPct: number | null;
+    btcDominanceAltLiquidityRegime:
+      | 'alt_friendly'
+      | 'btc_favored'
+      | 'neutral'
+      | 'unknown';
+    btcDominanceAligned: boolean | null;
+    btcDominanceStale: boolean | null;
   };
   execution: {
     venueSpreadZScore: number | null;

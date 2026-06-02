@@ -182,45 +182,6 @@ const formatOrderSkipReason = (reason?: string | null) => {
   return reason;
 };
 
-const getLastNumber = (value: unknown): number | undefined => {
-  if (Array.isArray(value)) {
-    const last = value[value.length - 1];
-    return typeof last === 'number' ? last : undefined;
-  }
-
-  return typeof value === 'number' ? value : undefined;
-};
-
-const getBaseContextRecord = (
-  signal: Signal,
-): Record<string, unknown> | null => {
-  const baseContext = signal.additionalIndicators?.baseContext;
-  return baseContext &&
-    typeof baseContext === 'object' &&
-    !Array.isArray(baseContext)
-    ? (baseContext as Record<string, unknown>)
-    : null;
-};
-
-const getBaseContextNumber = (
-  signal: Signal,
-  ...path: string[]
-): number | undefined => {
-  let current: unknown = getBaseContextRecord(signal);
-
-  for (const segment of path) {
-    if (!current || typeof current !== 'object' || Array.isArray(current)) {
-      return undefined;
-    }
-
-    current = (current as Record<string, unknown>)[segment];
-  }
-
-  return typeof current === 'number' && Number.isFinite(current)
-    ? current
-    : undefined;
-};
-
 const getAiQualityLine = (
   analysis?: Partial<SignalAnalysis> | null,
   label = 'AI Quality',
@@ -485,19 +446,6 @@ export const formatMessage = (
     const lines: string[] = [];
     const distance = additionalIndicators?.distance as number | undefined;
     const touches = additionalIndicators?.touches as number | undefined;
-    const correlation = getBaseContextNumber(
-      signal,
-      'raw',
-      'crossAsset',
-      'btcCorrelation',
-    );
-    const atrPct = getBaseContextNumber(signal, 'raw', 'volatility', 'atrPct');
-    const spread = getBaseContextNumber(
-      signal,
-      'relative',
-      'execution',
-      'venueSpread',
-    );
 
     const formatPrices = () => {
       const tpPercent =
@@ -565,10 +513,6 @@ export const formatMessage = (
       }
 
       const runtimeDebugKeyLines = buildRuntimeDebugKeyLines(signal, userName);
-      if (runtimeDebugKeyLines.length) {
-        lines.push('');
-        lines.push(...runtimeDebugKeyLines);
-      }
 
       if (ml) {
         lines.push(
@@ -602,23 +546,15 @@ export const formatMessage = (
 
       lines.push('');
 
-      if (correlation) {
-        lines.push(`BTC correlation: ${correlation}`);
-      }
-
-      if (atrPct != null) {
-        lines.push(`Volatility: ${formatNumber(atrPct)}%`);
-      }
-
-      if (spread != null) {
-        lines.push(`Spread: ${formatNumber(spread * 100)}%`);
-      }
-
       const prices = formatPrices();
 
       if (prices) {
-        lines.push('');
         lines.push(prices);
+      }
+
+      if (runtimeDebugKeyLines.length) {
+        lines.push('');
+        lines.push(...runtimeDebugKeyLines);
       }
     };
 

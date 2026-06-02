@@ -212,6 +212,24 @@ const loadScript = async (scenario: Scenario) => {
     };
     return true;
   });
+  const enrichSignalWithGlobalMarketContext = jest.fn(async (params: any) => {
+    params.signal.additionalIndicators = {
+      ...(params.signal.additionalIndicators ?? {}),
+      baseContext: {
+        ...(params.signal.additionalIndicators?.baseContext ?? {}),
+        relative: {
+          ...(params.signal.additionalIndicators?.baseContext?.relative ?? {}),
+          btcDominance: {
+            source: 'coingecko_global',
+            stale: false,
+            btcDominancePct: 55,
+            altLiquidityRegime: 'neutral',
+          },
+        },
+      },
+    };
+    return true;
+  });
 
   jest.doMock('args', () => ({
     __esModule: true,
@@ -264,6 +282,7 @@ const loadScript = async (scenario: Scenario) => {
 
   jest.doMock('@tradejs/node/strategies', () => ({
     enrichSignalWithBinanceMarketContext,
+    enrichSignalWithGlobalMarketContext,
     getStrategyCreator,
   }));
 

@@ -79,6 +79,23 @@ export type AiMarketContext = {
       volumeWeightedReturn: number | null;
       dispersion: number | null;
     };
+    btcDominance: {
+      source: string | null;
+      available: boolean;
+      stale: boolean | null;
+      btcDominancePct: number | null;
+      btcDominanceChange24hPct: number | null;
+      altLiquidityRegime:
+        | 'alt_friendly'
+        | 'btc_favored'
+        | 'neutral'
+        | 'unknown'
+        | null;
+      totalMarketCapUsd: number | null;
+      altMarketCapUsd: number | null;
+      btcToAltMarketCapRatio: number | null;
+      marketCapChangePct24hUsd: number | null;
+    };
     marketReferences: {
       source: string | null;
       available: boolean;
@@ -331,6 +348,51 @@ const buildMarketBreadthContextFromSignal = (signal: Signal) => {
   };
 };
 
+const buildBtcDominanceContextFromSignal = (signal: Signal) => {
+  const baseContext = toRecord(signal.additionalIndicators?.baseContext);
+  const relative = toRecord(baseContext?.relative);
+  const btcDominance = toRecord(relative?.btcDominance);
+
+  if (!btcDominance) {
+    return {
+      source: null,
+      available: false,
+      stale: null,
+      btcDominancePct: null,
+      btcDominanceChange24hPct: null,
+      altLiquidityRegime: null,
+      totalMarketCapUsd: null,
+      altMarketCapUsd: null,
+      btcToAltMarketCapRatio: null,
+      marketCapChangePct24hUsd: null,
+    };
+  }
+
+  return {
+    source: String(btcDominance.source ?? ''),
+    available: true,
+    stale: typeof btcDominance.stale === 'boolean' ? btcDominance.stale : null,
+    btcDominancePct: toFiniteNumber(btcDominance.btcDominancePct),
+    btcDominanceChange24hPct: toFiniteNumber(
+      btcDominance.btcDominanceChange24hPct,
+    ),
+    altLiquidityRegime:
+      typeof btcDominance.altLiquidityRegime === 'string'
+        ? (btcDominance.altLiquidityRegime as
+            | 'alt_friendly'
+            | 'btc_favored'
+            | 'neutral'
+            | 'unknown')
+        : null,
+    totalMarketCapUsd: toFiniteNumber(btcDominance.totalMarketCapUsd),
+    altMarketCapUsd: toFiniteNumber(btcDominance.altMarketCapUsd),
+    btcToAltMarketCapRatio: toFiniteNumber(btcDominance.btcToAltMarketCapRatio),
+    marketCapChangePct24hUsd: toFiniteNumber(
+      btcDominance.marketCapChangePct24hUsd,
+    ),
+  };
+};
+
 const buildMarketReferencesContextFromSignal = (signal: Signal) => {
   const baseContext = toRecord(signal.additionalIndicators?.baseContext);
   const relative = toRecord(baseContext?.relative);
@@ -399,6 +461,7 @@ export const buildAiMarketContext = (signal: Signal): AiMarketContext => ({
   },
   relative: {
     marketBreadth: buildMarketBreadthContextFromSignal(signal),
+    btcDominance: buildBtcDominanceContextFromSignal(signal),
     marketReferences: buildMarketReferencesContextFromSignal(signal),
   },
 });

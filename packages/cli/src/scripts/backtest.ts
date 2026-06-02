@@ -36,6 +36,7 @@ import {
   resolveDefaultParallel,
   resolveDefaultWorkerHeapMb,
   resolveEffectiveParallel,
+  resolveBacktestPriceMode,
   resolveRequestedTestsLimit,
   resolveWorkerHeapMb,
 } from '../lib/backtest/cliConfig';
@@ -525,6 +526,7 @@ export {
   resolveDefaultParallel,
   resolveDefaultWorkerHeapMb,
   resolveEffectiveParallel,
+  resolveBacktestPriceMode,
   resolveRequestedTestsLimit,
   resolveResultArtifacts,
   resolveWorkerHeapMb,

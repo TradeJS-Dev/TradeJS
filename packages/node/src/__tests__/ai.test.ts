@@ -1558,6 +1558,17 @@ describe('ai helpers', () => {
           ...signal.additionalIndicators.baseContext,
           relative: {
             ...signal.additionalIndicators.baseContext.relative,
+            btcDominance: {
+              source: 'coingecko_global',
+              stale: false,
+              btcDominancePct: 54.5,
+              btcDominanceChange24hPct: -0.4,
+              altLiquidityRegime: 'alt_friendly',
+              totalMarketCapUsd: 2_600_000_000_000,
+              altMarketCapUsd: 1_200_000_000_000,
+              btcToAltMarketCapRatio: 1.18,
+              marketCapChangePct24hUsd: 1.2,
+            },
             execution: {
               ...signal.additionalIndicators.baseContext.relative.execution,
               venueSpread: 0.0012,
@@ -1608,6 +1619,20 @@ describe('ai helpers', () => {
               absBps: 12,
               bias: 'coinbase_premium',
               severity: 'elevated',
+            },
+          },
+          relative: {
+            btcDominance: {
+              source: 'coingecko_global',
+              available: true,
+              stale: false,
+              btcDominancePct: 54.5,
+              btcDominanceChange24hPct: -0.4,
+              altLiquidityRegime: 'alt_friendly',
+              totalMarketCapUsd: 2_600_000_000_000,
+              altMarketCapUsd: 1_200_000_000_000,
+              btcToAltMarketCapRatio: 1.18,
+              marketCapChangePct24hUsd: 1.2,
             },
           },
         },
@@ -1662,6 +1687,7 @@ describe('ai helpers', () => {
       expect(prompt).toContain('payload.additionalIndicators');
       expect(prompt).toContain('payload.additionalIndicators.baseContext');
       expect(prompt).toContain('marketContext.execution.binanceCoinbaseSpread');
+      expect(prompt).toContain('marketContext.relative.btcDominance');
       expect(prompt).toContain('Short few-shot examples');
       expect(prompt).toContain('Do not add any other fields');
       expect(prompt).not.toContain('помощник крипто-трейдера');

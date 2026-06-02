@@ -22,6 +22,7 @@ export {
   executeEntryOrder,
 } from './strategyHelpers/runtime';
 export { enrichSignalWithBinanceMarketContext } from './strategyHelpers/binanceMarketContext';
+export { enrichSignalWithGlobalMarketContext } from './strategyHelpers/globalMarketContext';
 export {
   closeOppositePositionsBeforeOpen,
   createCloseOppositeBeforePlaceOrderHook,

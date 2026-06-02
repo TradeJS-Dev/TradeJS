@@ -320,6 +320,7 @@ export const buildBaseContextGateFeatures = ({
   const volumeStructure = baseContext.participation?.volumeStructure;
   const relative = baseContext.relative?.benchmark;
   const marketBreadth = baseContext.relative?.marketBreadth;
+  const btcDominance = baseContext.relative?.btcDominance;
   const marketReferences = baseContext.relative?.marketReferences;
   const execution = baseContext.relative?.execution;
   const targetVenue = execution?.targetVenue;
@@ -430,6 +431,23 @@ export const buildBaseContextGateFeatures = ({
       : direction === 'LONG'
         ? marketBreadthReturn >= 0
         : marketBreadthReturn <= 0;
+  const btcDominancePct = asFiniteNumberOrNull(btcDominance?.btcDominancePct);
+  const btcDominanceChange24hPct = asFiniteNumberOrNull(
+    btcDominance?.btcDominanceChange24hPct,
+  );
+  const btcDominanceAltLiquidityRegime =
+    btcDominance?.altLiquidityRegime ?? 'unknown';
+  const btcDominanceStale =
+    typeof btcDominance?.stale === 'boolean' ? btcDominance.stale : null;
+  const btcDominanceAligned =
+    direction == null ||
+    btcDominanceStale === true ||
+    btcDominanceAltLiquidityRegime === 'unknown' ||
+    btcDominanceAltLiquidityRegime === 'neutral'
+      ? null
+      : direction === 'LONG'
+        ? btcDominanceAltLiquidityRegime === 'alt_friendly'
+        : btcDominanceAltLiquidityRegime === 'btc_favored';
   const orderBookImbalance = asFiniteNumberOrNull(
     targetVenue?.depthLevels?.[0]?.imbalance,
   );
@@ -540,6 +558,11 @@ export const buildBaseContextGateFeatures = ({
     marketBreadthAligned === true,
     'market_breadth_aligned',
   );
+  pushWhen(
+    confirmations,
+    btcDominanceAligned === true,
+    'btc_dominance_aligned',
+  );
   pushWhen(confirmations, benchmarkAligned === true, 'benchmark_aligned');
   pushWhen(confirmations, breakoutWithDirection === true, 'breakout_confirmed');
   pushWhen(
@@ -572,6 +595,11 @@ export const buildBaseContextGateFeatures = ({
     'relative_strength_against',
   );
   pushWhen(conflicts, marketBreadthAligned === false, 'market_breadth_against');
+  pushWhen(
+    conflicts,
+    btcDominanceAligned === false,
+    'btc_dominance_alt_pressure',
+  );
   pushWhen(conflicts, deltaAligned === false, 'delta_against');
   pushWhen(conflicts, tradeFlowAligned === false, 'trade_flow_against');
   pushWhen(
@@ -618,6 +646,7 @@ export const buildBaseContextGateFeatures = ({
     relative: scoreEvidence([
       benchmarkAligned,
       marketBreadthAligned,
+      btcDominanceAligned,
       relativeStrengthBucket === 'unknown'
         ? null
         : !relativeStrengthBucket.endsWith('_against'),
@@ -696,7 +725,9 @@ export const buildBaseContextGateFeatures = ({
         ? 'bad_execution'
         : extremeVolatilityRisk
           ? 'extreme_volatility'
-          : benchmarkConflict || marketBreadthAligned === false
+          : benchmarkConflict ||
+              marketBreadthAligned === false ||
+              btcDominanceAligned === false
             ? 'market_context_against'
             : (scores.participation ?? 100) < 45
               ? 'weak_participation'
@@ -801,6 +832,11 @@ export const buildBaseContextGateFeatures = ({
       marketBreadthAligned,
       marketBreadthStale:
         typeof marketBreadth?.stale === 'boolean' ? marketBreadth.stale : null,
+      btcDominancePct,
+      btcDominanceChange24hPct,
+      btcDominanceAltLiquidityRegime,
+      btcDominanceAligned,
+      btcDominanceStale,
     },
     execution: {
       venueSpreadZScore,

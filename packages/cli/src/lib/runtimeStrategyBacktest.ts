@@ -8,11 +8,21 @@ export type RuntimeStrategyBacktestConfig = {
   backtestConfig: StrategyConfigGrid;
 };
 
+export const BACKTEST_CLI_RUNTIME_CONFIG_KEYS = new Set([
+  'ENV',
+  'INTERVAL',
+  'MAKE_ORDERS',
+  'CLOSE_OPPOSITE_POSITIONS',
+  'BACKTEST_PRICE_MODE',
+]);
+
 export const toStrategyConfigGrid = (
   strategyConfig: StrategyConfig,
 ): StrategyConfigGrid =>
   Object.fromEntries(
-    Object.entries(strategyConfig).map(([key, value]) => [key, [value]]),
+    Object.entries(strategyConfig)
+      .filter(([key]) => !BACKTEST_CLI_RUNTIME_CONFIG_KEYS.has(key))
+      .map(([key, value]) => [key, [value]]),
   );
 
 export const loadRuntimeStrategyBacktestConfigs = async (

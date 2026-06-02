@@ -210,7 +210,7 @@ Input payload structure:
   • \`baseContext.regime\`: derived trend / volatility / momentum / session regime fields.
   • \`baseContext.structure\`: local range position, breakout freshness/quality, level-touch counts, rejection wick context.
   • \`baseContext.participation\`: volume/turnover participation, effort-vs-result context, and Binance aggTrades trade-flow when available.
-  • \`baseContext.relative\`: BTC relative-strength, benchmark MA bias context, and Binance alt-basket breadth when available.
+  • \`baseContext.relative\`: BTC relative-strength, benchmark MA bias context, Binance alt-basket breadth, and CoinGecko BTC dominance when available.
   • \`baseContext.derivatives\`: Coinalyze-aligned derivatives summary when available.
   • \`baseContext.mtf\`: compact multi-timeframe summary plus only the latest few candles for each timeframe.
   • \`baseContext.gateFeatures\`: direction-aware, normalized fields derived from baseContext; prefer \`setup\`, \`scores\`, \`confirmations\`, \`conflicts\`, \`risk\`, and \`decisionHints\` for quick gate checks before inspecting raw nested context.
@@ -221,6 +221,7 @@ Input payload structure:
   • \`marketContext.participation.trueDelta\`: Binance taker buy/sell volume delta from kline payload when \`source=kline_taker_volume\`; otherwise absent/unavailable.
   • \`marketContext.participation.tradeFlow\`: Binance aggTrades buy/sell pressure buckets when available.
   • \`marketContext.relative.marketBreadth\`: equal/volume-weighted alt-basket return, advance/decline ratio, and MA breadth for the configured Binance breadth universe.
+  • \`marketContext.relative.btcDominance\`: CoinGecko global BTC market-cap dominance over the rest of crypto, 24h dominance change when enough snapshots exist, and an AI-ready \`altLiquidityRegime\` pocket: \`alt_friendly\`, \`btc_favored\`, \`neutral\`, or \`unknown\`.
   • \`marketContext.relative.marketReferences\`: BTC/ETH reference trade-flow and depth summary used for broad market pressure when the target symbol itself is not BTC/ETH.
   If those fields exist, use them as a more explicit hint instead of trying to re-derive the same idea from raw lines or points.
   If \`baseContext.derivatives\` exists, it is a derived Coinalyze summary for the time of the signal. Coinalyze context is built only from \`BTCUSDT\` and \`ETHUSDT\` reference symbols, not for every target coin. \`targetSymbol\` is just the source signal coin. Use BTC/ETH open interest, funding, liquidations, and pressure/riskFlags as positioning context, not as an independent trade idea.
@@ -251,6 +252,7 @@ Explicit conflict rules:
 - If \`marketContext.participation.trueDelta.available=true\`, use it as better participation evidence than OHLCV-derived proxy delta; still do not let delta override invalid price structure.
 - If \`marketContext.participation.tradeFlow.available=true\` and \`stale=false\`, use it as direct lower-timeframe participation evidence. Treat stale or missing tradeFlow as absent, not as negative evidence.
 - If \`marketContext.relative.marketBreadth.available=true\` and \`stale=false\`, use it as broad alt-market support/conflict. Breadth is contextual; do not let it override the target symbol structure.
+- If \`marketContext.relative.btcDominance.available=true\` and \`stale=false\`, use \`altLiquidityRegime\` as a broad-market pocket: \`btc_favored\` is pressure against alt LONGs and support for cautious alt SHORTs; \`alt_friendly\` supports alt LONGs. Do not apply it as a standalone signal, and ignore it when stale or unknown.
 - If \`marketContext.relative.marketReferences.available=true\`, treat BTC/ETH trade-flow/depth as broad market context only. For alt symbols, do not describe it as the target coin's own flow or order book.
 - If \`marketContext.execution.targetVenue.available=true\` and spread is wide for the symbol/timeframe, treat it as execution/liquidity friction rather than as a standalone directional signal.
 - If \`marketContext.execution.orderBookDepth.available=true\` and \`stale=false\`, use imbalance/spread as execution and short-horizon pressure context only. Ignore stale depth for historical decisions.

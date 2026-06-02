@@ -183,6 +183,39 @@ describe('doubleTapAiAdapter', () => {
     expect(result?.direction).toBeNull();
   });
 
+  it('downgrades q4 approval pockets with negative venue spread', () => {
+    const result = doubleTapAiAdapter.postProcessAnalysis?.({
+      payload: {
+        additionalIndicators: {
+          baseContext: createBaseContext({
+            relative: {
+              benchmark: {
+                trendAlignment: 'aligned_bull',
+                bias: 'bull',
+              },
+              execution: {
+                venueSpreadZScore: -1.5,
+              },
+            },
+          }),
+          doubleTapContext: {
+            signalDirection: 'LONG',
+            height: 10,
+            breakoutDistancePct: 0.4,
+          },
+        },
+      },
+      analysis: {
+        approved: true,
+        quality: 4,
+        direction: 'LONG',
+      },
+    } as any);
+
+    expect(result?.quality).toBe(3);
+    expect(result?.direction).toBeNull();
+  });
+
   it('keeps q5 high precision pockets despite neutral venue spread', () => {
     const result = doubleTapAiAdapter.postProcessAnalysis?.({
       payload: {

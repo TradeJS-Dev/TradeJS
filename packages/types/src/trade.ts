@@ -126,6 +126,21 @@ export type SpreadRow = {
 
 export type MarketFeatureInterval = '1m' | '5m' | '15m' | '1h';
 
+export type MarketGlobalContextRow = {
+  source: 'coingecko_global';
+  ts: Date;
+  updatedAt?: Date | null;
+  activeCryptocurrencies?: number | null;
+  markets?: number | null;
+  totalMarketCapUsd?: number | null;
+  totalVolumeUsd?: number | null;
+  btcDominancePct?: number | null;
+  ethDominancePct?: number | null;
+  altMarketCapUsd?: number | null;
+  btcToAltMarketCapRatio?: number | null;
+  marketCapChangePct24hUsd?: number | null;
+};
+
 export type MarketBreadthRow = {
   universe: string;
   interval: MarketFeatureInterval;

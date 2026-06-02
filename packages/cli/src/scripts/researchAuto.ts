@@ -14,6 +14,7 @@ import {
   loadRuntimeStrategyNames as loadRuntimeStrategyNamesFromRedis,
   resolveStrategyNameByConfigKey,
 } from '../lib/runtimeRedis';
+import { BACKTEST_CLI_RUNTIME_CONFIG_KEYS } from '../lib/runtimeStrategyBacktest';
 import type { ResearchAgentRunRecord } from '../lib/researchAgent';
 import { sendTelegramReport } from '../lib/telegramReports';
 
@@ -377,7 +378,9 @@ export const toStrategyConfigGrid = (
   strategyConfig: StrategyConfig,
 ): StrategyConfigGrid => {
   return Object.fromEntries(
-    Object.entries(strategyConfig).map(([key, value]) => [key, [value]]),
+    Object.entries(strategyConfig)
+      .filter(([key]) => !BACKTEST_CLI_RUNTIME_CONFIG_KEYS.has(key))
+      .map(([key, value]) => [key, [value]]),
   );
 };
 

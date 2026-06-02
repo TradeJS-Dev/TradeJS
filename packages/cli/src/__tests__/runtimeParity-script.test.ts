@@ -615,6 +615,55 @@ describe('runtime parity script', () => {
     logSpy.mockRestore();
   });
 
+  it('auto-replays runtime-gated configs in PARITY env without runtimeGates flag', async () => {
+    const logSpy = jest
+      .spyOn(console, 'log')
+      .mockImplementation(() => undefined);
+    const startTime = 1_700_000_000_000;
+    const endTime = startTime + 86_400_000;
+    const { mod, getKeys, getData, testing } = await setupRuntimeParityModule({
+      startTime,
+      endTime,
+      strategy: 'TrendLine',
+      tickers: 'ETHUSDT',
+      runtimeGates: false,
+      cacheOnly: true,
+    });
+
+    getKeys.mockImplementation(async (prefix: string) => {
+      if (prefix === 'users:root:strategies:') {
+        return ['users:root:strategies:TrendLine:config'];
+      }
+      return [];
+    });
+    getData.mockImplementation(async (key: string, fallback: unknown) => {
+      if (key === 'users:root:strategies:TrendLine:config') {
+        return { AI_ENABLED: true, AI_MODE: 'llm' };
+      }
+      if (key === 'users:root:strategies:TrendLine:results') {
+        return {};
+      }
+      return fallback;
+    });
+    testing.mockResolvedValue({
+      inlineOrderLog: [],
+      inlineReplaySignalEvaluations: [],
+    });
+
+    await mod.runtimeParity();
+
+    expect(testing).toHaveBeenCalledTimes(1);
+    expect(testing.mock.calls[0]?.[0]?.strategyConfig).toEqual(
+      expect.objectContaining({
+        AI_ENABLED: true,
+        AI_MODE: 'llm',
+        ENV: 'PARITY',
+      }),
+    );
+
+    logSpy.mockRestore();
+  });
+
   it('builds replay targets from runtime trades and strategy results by default', async () => {
     const logSpy = jest
       .spyOn(console, 'log')

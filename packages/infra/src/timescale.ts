@@ -5,6 +5,7 @@ import {
   DerivativesRow,
   MarketBreadthRow,
   MarketFeatureInterval,
+  MarketGlobalContextRow,
   MarketOrderBookDepthRow,
   MarketTradeFlowRow,
   SpreadRow,
@@ -468,6 +469,37 @@ const ensureBinanceMarketSchema = async () => {
       await pool.query(`
         CREATE INDEX IF NOT EXISTS market_breadth_universe_tf_ts_idx
         ON market_breadth (universe, interval, ts DESC)
+      `);
+
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS market_global_context (
+          source text NOT NULL,
+          ts timestamptz NOT NULL,
+          updated_at_ts timestamptz,
+          active_cryptocurrencies integer,
+          markets integer,
+          total_market_cap_usd double precision,
+          total_volume_usd double precision,
+          btc_dominance_pct double precision,
+          eth_dominance_pct double precision,
+          alt_market_cap_usd double precision,
+          btc_to_alt_market_cap_ratio double precision,
+          market_cap_change_pct_24h_usd double precision,
+          ingested_at timestamptz NOT NULL DEFAULT now(),
+          PRIMARY KEY (source, ts)
+        )
+      `);
+      await pool.query(`
+        SELECT create_hypertable(
+          'market_global_context',
+          'ts',
+          if_not_exists => TRUE,
+          chunk_time_interval => interval '30 days'
+        )
+      `);
+      await pool.query(`
+        CREATE INDEX IF NOT EXISTS market_global_context_source_ts_idx
+        ON market_global_context (source, ts DESC)
       `);
 
       binanceMarketSchemaReady = true;
@@ -1241,6 +1273,78 @@ export async function upsertMarketBreadthRows(rows: MarketBreadthRow[]) {
   );
 }
 
+export async function upsertMarketGlobalContextRows(
+  rows: MarketGlobalContextRow[],
+) {
+  if (!rows.length) return;
+  await ensureBinanceMarketSchema();
+
+  const pool = getPool();
+  const cols = [
+    'source',
+    'ts',
+    'updated_at_ts',
+    'active_cryptocurrencies',
+    'markets',
+    'total_market_cap_usd',
+    'total_volume_usd',
+    'btc_dominance_pct',
+    'eth_dominance_pct',
+    'alt_market_cap_usd',
+    'btc_to_alt_market_cap_ratio',
+    'market_cap_change_pct_24h_usd',
+  ] as const;
+
+  const maxRows = getSafeBulkInsertRows(cols.length);
+  if (rows.length > maxRows) {
+    for (let i = 0; i < rows.length; i += maxRows) {
+      await upsertMarketGlobalContextRows(rows.slice(i, i + maxRows));
+    }
+    return;
+  }
+
+  const valuesSql = rows
+    .map(
+      (_, i) =>
+        `(${cols.map((__, j) => `$${i * cols.length + j + 1}`).join(',')})`,
+    )
+    .join(',');
+  const flat = rows.flatMap((row) => [
+    row.source,
+    row.ts,
+    row.updatedAt ?? null,
+    row.activeCryptocurrencies ?? null,
+    row.markets ?? null,
+    row.totalMarketCapUsd ?? null,
+    row.totalVolumeUsd ?? null,
+    row.btcDominancePct ?? null,
+    row.ethDominancePct ?? null,
+    row.altMarketCapUsd ?? null,
+    row.btcToAltMarketCapRatio ?? null,
+    row.marketCapChangePct24hUsd ?? null,
+  ]);
+
+  await pool.query(
+    `
+      INSERT INTO market_global_context (${cols.join(',')})
+      VALUES ${valuesSql}
+      ON CONFLICT (source, ts) DO UPDATE SET
+        updated_at_ts = COALESCE(EXCLUDED.updated_at_ts, market_global_context.updated_at_ts),
+        active_cryptocurrencies = COALESCE(EXCLUDED.active_cryptocurrencies, market_global_context.active_cryptocurrencies),
+        markets = COALESCE(EXCLUDED.markets, market_global_context.markets),
+        total_market_cap_usd = COALESCE(EXCLUDED.total_market_cap_usd, market_global_context.total_market_cap_usd),
+        total_volume_usd = COALESCE(EXCLUDED.total_volume_usd, market_global_context.total_volume_usd),
+        btc_dominance_pct = COALESCE(EXCLUDED.btc_dominance_pct, market_global_context.btc_dominance_pct),
+        eth_dominance_pct = COALESCE(EXCLUDED.eth_dominance_pct, market_global_context.eth_dominance_pct),
+        alt_market_cap_usd = COALESCE(EXCLUDED.alt_market_cap_usd, market_global_context.alt_market_cap_usd),
+        btc_to_alt_market_cap_ratio = COALESCE(EXCLUDED.btc_to_alt_market_cap_ratio, market_global_context.btc_to_alt_market_cap_ratio),
+        market_cap_change_pct_24h_usd = COALESCE(EXCLUDED.market_cap_change_pct_24h_usd, market_global_context.market_cap_change_pct_24h_usd),
+        ingested_at = now()
+    `,
+    flat,
+  );
+}
+
 export type MarketFeatureAsOf<T> = T & {
   ageMs: number | null;
   stale: boolean;
@@ -1379,6 +1483,77 @@ export async function getLatestMarketBreadth(params: {
     ageMs,
     stale:
       ageMs == null || (params.maxAgeMs != null && ageMs > params.maxAgeMs),
+  };
+}
+
+export async function getLatestMarketGlobalContext(params: {
+  source?: MarketGlobalContextRow['source'];
+  atMs: number;
+  maxAgeMs?: number;
+}): Promise<
+  | (MarketFeatureAsOf<MarketGlobalContextRow> & {
+      btcDominanceChange24hPct: number | null;
+    })
+  | null
+> {
+  await ensureBinanceMarketSchema();
+  const pool = getPool();
+  const source = params.source ?? 'coingecko_global';
+  const res = await pool.query(
+    `
+      SELECT
+        source,
+        ts,
+        updated_at_ts AS "updatedAt",
+        active_cryptocurrencies::int AS "activeCryptocurrencies",
+        markets::int AS markets,
+        total_market_cap_usd AS "totalMarketCapUsd",
+        total_volume_usd AS "totalVolumeUsd",
+        btc_dominance_pct AS "btcDominancePct",
+        eth_dominance_pct AS "ethDominancePct",
+        alt_market_cap_usd AS "altMarketCapUsd",
+        btc_to_alt_market_cap_ratio AS "btcToAltMarketCapRatio",
+        market_cap_change_pct_24h_usd AS "marketCapChangePct24hUsd"
+      FROM market_global_context
+      WHERE source = $1
+        AND ts <= to_timestamp($2/1000.0)
+      ORDER BY ts DESC
+      LIMIT 1
+    `,
+    [source, params.atMs],
+  );
+  const row = res.rows[0] as MarketGlobalContextRow | undefined;
+  if (!row) return null;
+
+  const previousRes = await pool.query(
+    `
+      SELECT btc_dominance_pct AS "btcDominancePct"
+      FROM market_global_context
+      WHERE source = $1
+        AND ts <= $2::timestamptz - interval '24 hours'
+        AND btc_dominance_pct IS NOT NULL
+      ORDER BY ts DESC
+      LIMIT 1
+    `,
+    [source, row.ts],
+  );
+  const previousDominance =
+    previousRes.rows[0]?.btcDominancePct == null
+      ? null
+      : Number(previousRes.rows[0].btcDominancePct);
+  const currentDominance =
+    row.btcDominancePct == null ? null : Number(row.btcDominancePct);
+  const ageMs = toMarketFeatureAge(row.ts, params.atMs);
+
+  return {
+    ...row,
+    ageMs,
+    stale:
+      ageMs == null || (params.maxAgeMs != null && ageMs > params.maxAgeMs),
+    btcDominanceChange24hPct:
+      currentDominance != null && previousDominance != null
+        ? currentDominance - previousDominance
+        : null,
   };
 }
 

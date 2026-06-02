@@ -1,6 +1,6 @@
 import args from 'args';
 import os from 'os';
-import { Interval } from '@tradejs/types';
+import { BacktestPriceMode, Interval } from '@tradejs/types';
 import { TESTS_LIMIT, TESTS_TOP_LIMIT } from '@tradejs/core/constants';
 import { normalizeCliArgv } from '../cliArgs';
 
@@ -82,6 +82,11 @@ args.option(['n', 'tests'], 'Tests limit', TESTS_LIMIT);
 args.option(['s', 'skip'], 'Skip first N tests', 0);
 args.option(['p', 'parallel'], 'Parallel tasks', DEFAULT_PARALLEL);
 args.option(['f', 'timeframe'], 'Timeframe', 15);
+args.option(
+  'backtestPriceMode',
+  'Backtest entry price mode: open, close, mid, or rand',
+  'open',
+);
 args.option(['d', 'days'], 'Run backtest only for the last N days');
 args.option('startTime', 'Explicit backtest start timestamp (ms or seconds)');
 args.option('endTime', 'Explicit backtest end timestamp (ms or seconds)');
@@ -142,6 +147,20 @@ export const normalizedArgv = normalizeCliArgv(
 
 export const flags = args.parse(normalizedArgv);
 export const interval = String(flags.timeframe ?? 15) as Interval;
+export const resolveBacktestPriceMode = (value: unknown): BacktestPriceMode => {
+  const normalized = String(value ?? 'open')
+    .trim()
+    .toLowerCase();
+  return normalized === 'close' ||
+    normalized === 'mid' ||
+    normalized === 'rand' ||
+    normalized === 'open'
+    ? normalized
+    : 'open';
+};
+export const backtestPriceMode = resolveBacktestPriceMode(
+  flags.backtestPriceMode,
+);
 export const progressStep = Math.max(
   1,
   parseInt(String(flags.progressStep ?? 100), 10),

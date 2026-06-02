@@ -20,7 +20,10 @@ import type {
   TradejsConfigHooks,
 } from '@tradejs/core/config';
 import { SIGNALS_CLI_PRELOAD_DAYS, TTL_10D } from '@tradejs/core/constants';
-import { enrichSignalWithBinanceMarketContext } from '@tradejs/node/strategies';
+import {
+  enrichSignalWithBinanceMarketContext,
+  enrichSignalWithGlobalMarketContext,
+} from '@tradejs/node/strategies';
 import { getTimestamp } from '@tradejs/core/time';
 import { logger } from '@tradejs/infra/logger';
 import { redisKeys, setData, setHashJsonField } from '@tradejs/infra/redis';
@@ -235,6 +238,10 @@ const findSignals = async (
       stats.signals += 1;
     }
     await enrichSignalWithBinanceMarketContext({
+      signal,
+      env: 'CRON',
+    });
+    await enrichSignalWithGlobalMarketContext({
       signal,
       env: 'CRON',
     });

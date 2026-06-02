@@ -28,6 +28,7 @@ import { logger } from '@tradejs/infra/logger';
 import { buildAiPayload } from './ai';
 import { enrichSignalWithBinanceMarketContext } from './strategyHelpers/binanceMarketContext';
 import { enrichSignalWithDerivativesContext } from './strategyHelpers/derivativesContext';
+import { enrichSignalWithGlobalMarketContext } from './strategyHelpers/globalMarketContext';
 import { getStrategyCreator } from './strategy/manifests';
 import { buildMlPayload } from './mlPayload';
 import {
@@ -939,6 +940,13 @@ export const testing: TestingBox = async ({
         }),
       );
       await withTimeout(
+        'global market context',
+        enrichSignalWithGlobalMarketContext({
+          signal: signal as Signal,
+          env: 'BACKTEST',
+        }),
+      );
+      await withTimeout(
         'derivatives context',
         enrichSignalWithDerivativesContext({
           signal: signal as Signal,
@@ -1360,6 +1368,13 @@ export const testingGroupInSharedCandleLoop = async (
           await withTimeout(
             'binance market context',
             enrichSignalWithBinanceMarketContext({
+              signal: signal as Signal,
+              env: 'BACKTEST',
+            }),
+          );
+          await withTimeout(
+            'global market context',
+            enrichSignalWithGlobalMarketContext({
               signal: signal as Signal,
               env: 'BACKTEST',
             }),

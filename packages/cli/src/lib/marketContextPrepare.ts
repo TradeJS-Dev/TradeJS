@@ -14,6 +14,14 @@ import {
   shouldBackfillDerivativesContextForBacktest,
   shouldBackfillDerivativesContextForSignals,
 } from './derivativesContextBackfill';
+import {
+  backfillCoingeckoGlobalContextForBacktest,
+  backfillCoingeckoGlobalContextForReplay,
+  backfillCoingeckoGlobalContextForSignals,
+  shouldBackfillCoingeckoGlobalContextForBacktest,
+  shouldBackfillCoingeckoGlobalContextForReplay,
+  shouldBackfillCoingeckoGlobalContextForSignals,
+} from './coingeckoGlobalMarketContextBackfill';
 import { timeOperation as runTimedOperation } from './runFormatting';
 
 export type MarketContextRunMode = 'backtest' | 'signals' | 'replay' | 'parity';
@@ -77,6 +85,31 @@ export const shouldPrepareBinanceMarketContextForRun = (
   });
 };
 
+export const shouldPrepareCoingeckoGlobalContextForRun = (
+  params: Pick<
+    PrepareMarketContextForRunParams,
+    'mode' | 'cacheOnly' | 'aiEnabled' | 'mlEnabled'
+  >,
+) => {
+  if (params.mode === 'backtest') {
+    return shouldBackfillCoingeckoGlobalContextForBacktest({
+      aiEnabled: Boolean(params.aiEnabled),
+      cacheOnly: params.cacheOnly,
+      mlEnabled: Boolean(params.mlEnabled),
+    });
+  }
+
+  if (params.mode === 'signals') {
+    return shouldBackfillCoingeckoGlobalContextForSignals({
+      cacheOnly: params.cacheOnly,
+    });
+  }
+
+  return shouldBackfillCoingeckoGlobalContextForReplay({
+    cacheOnly: params.cacheOnly,
+  });
+};
+
 export const prepareMarketContextForRun = async (
   params: PrepareMarketContextForRunParams,
 ) => {
@@ -119,6 +152,22 @@ export const prepareMarketContextForRun = async (
         startMs: params.startMs,
         endMs: params.endMs,
         preloadStartMs: params.preloadStartMs,
+      });
+    });
+  }
+
+  if (shouldPrepareCoingeckoGlobalContextForRun(params)) {
+    await timeOperation('coingecko global market context backfill', () => {
+      const backfill =
+        params.mode === 'backtest'
+          ? backfillCoingeckoGlobalContextForBacktest
+          : params.mode === 'signals'
+            ? backfillCoingeckoGlobalContextForSignals
+            : backfillCoingeckoGlobalContextForReplay;
+
+      return backfill({
+        startMs: params.startMs,
+        endMs: params.endMs,
       });
     });
   }

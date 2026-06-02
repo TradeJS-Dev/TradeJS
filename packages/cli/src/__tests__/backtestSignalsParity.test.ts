@@ -392,6 +392,9 @@ const runBacktestPath = async () => {
       return true;
     }),
   }));
+  jest.doMock('../../../node/src/strategyHelpers/globalMarketContext', () => ({
+    enrichSignalWithGlobalMarketContext: jest.fn(async () => false),
+  }));
   jest.doMock('../../../node/src/ai', () => ({
     buildAiPayload,
   }));
@@ -510,6 +513,7 @@ const runSignalsPath = async () => {
     enrichSignalWithBinanceMarketContext: jest.fn(
       attachBinanceParityBaseContext,
     ),
+    enrichSignalWithGlobalMarketContext: jest.fn(async () => false),
     getStrategyCreator: jest.fn(async () => strategyCreator),
   }));
   jest.doMock('@tradejs/core/async', () => ({
