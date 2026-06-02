@@ -213,6 +213,45 @@ describe('trendShiftAiAdapter', () => {
     });
   });
 
+  it('keeps low reward-to-volatility flips in watch mode after costs', () => {
+    const result = trendShiftAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makePayload(
+        {
+          signalDirection: 'LONG',
+          confirmedFlip: true,
+          bullFlip: true,
+          flipDistanceOk: true,
+          closeVsAvgPct: 0.3,
+          avgSlopePct: 0.11,
+          distanceAtrRatio: 0.95,
+          coinBiasAligned: true,
+        },
+        {
+          baseContext: {
+            gateFeatures: {
+              setup: {
+                rewardToVolatility: 0.2,
+              },
+            },
+          },
+        },
+      ),
+      analysis: {
+        direction: 'LONG',
+        quality: 1,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: null,
+      quality: 4,
+      approved: false,
+      rejectReason:
+        'the expected reward is too small relative to current volatility after costs, so keep the flip in watch mode',
+    });
+  });
+
   it('approves strong confirmed flips', () => {
     const result = trendShiftAiAdapter.postProcessAnalysis?.({
       signal: {} as any,

@@ -67,6 +67,7 @@ export type TrendShiftGuardrailContext = TrendShiftSignalContext & {
   shortBelowLowOiFallingLongFlushRisk: boolean;
   shortNearPointOfControlRisk: boolean;
   shortExtremeAtrHighBbRisk: boolean;
+  lowRewardToVolatilityRisk: boolean;
   q4TrendShiftGateFeaturesRecoveryCandidate: boolean;
   breakoutState: string | null;
   volumeRel20: number | null;
@@ -495,6 +496,9 @@ export const buildTrendShiftGuardrailContext = ({
     typeof derivativesSummary?.priceOiDivergenceType === 'string'
       ? derivativesSummary.priceOiDivergenceType
       : null;
+  const rewardToVolatility = asFiniteNumber(
+    baseContext?.gateFeatures?.setup?.rewardToVolatility,
+  );
   const gateVolatility = baseContext?.gateFeatures?.volatility;
 
   if (!signalContext.confirmedFlip) {
@@ -780,6 +784,8 @@ export const buildTrendShiftGuardrailContext = ({
     gateVolatility?.state === 'normal' &&
     gateVolatility.atrPctRankBucket === 'extreme' &&
     gateVolatility.bbWidthRankBucket === 'high';
+  const lowRewardToVolatilityRisk =
+    rewardToVolatility != null && rewardToVolatility < 0.25;
 
   if (deterministicQuality >= 5 && longRelativeStrengthOverextended) {
     deterministicQuality = 4;
@@ -819,6 +825,11 @@ export const buildTrendShiftGuardrailContext = ({
   if (deterministicQuality >= 5 && shortExtremeAtrHighBbRisk) {
     deterministicQuality = 4;
     hardBlockReasons.push('short_extreme_atr_high_bb');
+  }
+
+  if (deterministicQuality >= 5 && lowRewardToVolatilityRisk) {
+    deterministicQuality = 4;
+    hardBlockReasons.push('low_reward_to_volatility');
   }
 
   const trendShiftGateFeaturesRecoveryAllowedReasons = [
@@ -867,6 +878,7 @@ export const buildTrendShiftGuardrailContext = ({
     shortBelowLowOiFallingLongFlushRisk,
     shortNearPointOfControlRisk,
     shortExtremeAtrHighBbRisk,
+    lowRewardToVolatilityRisk,
     q4TrendShiftGateFeaturesRecoveryCandidate,
     breakoutState,
     volumeRel20,
@@ -934,6 +946,8 @@ export const getTrendShiftGuardrailReasonText = (reason: string) => {
       return 'the SHORT flip is too close to the price-volume point of control, where continuation has been less reliable';
     case 'short_extreme_atr_high_bb':
       return 'the SHORT flip is in a normal-volatility regime but ATR is already extreme with a high Bollinger width, so keep it in watch mode';
+    case 'low_reward_to_volatility':
+      return 'the expected reward is too small relative to current volatility after costs, so keep the flip in watch mode';
     default:
       return reason;
   }
