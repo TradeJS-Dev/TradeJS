@@ -275,7 +275,27 @@ describe('testConnector', () => {
     });
 
     expect(await connector.drainMlResultsBatch()).toEqual([
-      { signalId: 'sig-stop', profit: -5.78 },
+      {
+        signalId: 'sig-stop',
+        profit: -5.78,
+        tradeResult: expect.objectContaining({
+          signalId: 'sig-stop',
+          direction: 'LONG',
+          exitReason: 'stop_loss',
+          requestedEntryPrice: 100,
+          entryPrice: 100.2,
+          requestedExitPrice: 95,
+          exitPrice: 94.81,
+          grossProfit: -5.39,
+          netProfit: -5.78,
+          openFee: 0.2,
+          closeFee: 0.19,
+          totalFee: 0.39,
+          entrySlippageCost: 0.2,
+          exitSlippageCost: 0.19,
+          totalSlippageCost: 0.39,
+        }),
+      },
     ]);
     expect(await connector.drainMlResultsBatch()).toEqual([]);
 
@@ -510,7 +530,17 @@ describe('testConnector', () => {
     });
 
     expect(await connector.drainMlResultsBatch()).toEqual([
-      { signalId: 'sig-fast-ai', profit: 4.18 },
+      {
+        signalId: 'sig-fast-ai',
+        profit: 4.18,
+        tradeResult: expect.objectContaining({
+          signalId: 'sig-fast-ai',
+          exitReason: 'exit',
+          netProfit: 4.18,
+          totalFee: 0.41,
+          totalSlippageCost: 0.41,
+        }),
+      },
     ]);
     expect(await connector.drainMlResultsBatch()).toEqual([]);
   });

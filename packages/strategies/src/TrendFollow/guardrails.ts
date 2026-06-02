@@ -324,7 +324,11 @@ const buildTrendFollowGateFeatures = ({
     marketBreadthContinuation,
     marketBreadthDispersion: asFiniteNumber(marketBreadth?.dispersion),
     highQualityCadencePocket:
-      highConvictionApprovalPocket && setupRiskShape !== 'too_tight',
+      highConvictionApprovalPocket &&
+      setupStopDistanceAtr != null &&
+      setupStopDistanceAtr >= 1.15 &&
+      setupTpDistanceAtr != null &&
+      setupTpDistanceAtr >= 1.5,
   };
 };
 
@@ -471,8 +475,17 @@ export const buildTrendFollowGuardrailContext = ({
   }
   if (trendFollowGateFeatures.setupRiskShape === 'unknown') {
     softBlockReasons.push('missing_setup_stop_distance_atr');
-  } else if (trendFollowGateFeatures.setupRiskShape === 'too_tight') {
+  } else if (
+    trendFollowGateFeatures.setupStopDistanceAtr != null &&
+    trendFollowGateFeatures.setupStopDistanceAtr < 1.15
+  ) {
     softBlockReasons.push('tight_setup_stop_distance_atr');
+  }
+  if (
+    trendFollowGateFeatures.setupTpDistanceAtr != null &&
+    trendFollowGateFeatures.setupTpDistanceAtr < 1.5
+  ) {
+    softBlockReasons.push('weak_setup_tp_distance_atr');
   }
   if (direction === 'SHORT' && momentumRsi != null && momentumRsi > 36.35) {
     softBlockReasons.push('weak_downside_momentum');

@@ -891,6 +891,7 @@ export const testing: TestingBox = async ({
             ...rowBase,
             payload: buildAiPayload(aiSignal),
             profit: resultRecord.profit,
+            tradeResult: resultRecord.tradeResult,
           },
         });
       }
@@ -1292,6 +1293,7 @@ export const testingGroupInSharedCandleLoop = async (
               ...rowBase,
               payload: buildAiPayload(aiSignal),
               profit: resultRecord.profit,
+              tradeResult: resultRecord.tradeResult,
             },
           });
         }

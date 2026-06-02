@@ -158,9 +158,42 @@ export interface TestConnector extends Connector {
   checkTp: (candle: Candle) => Promise<void>;
   checkSl: (candle: Candle) => Promise<void>;
   checkExits: (candle: Candle) => Promise<void>;
-  drainMlResultsBatch: () => Promise<
-    Array<{ signalId: string; profit: number }>
-  >;
+  drainMlResultsBatch: () => Promise<TestClosedSignalResult[]>;
+}
+
+export type TestTradeExitReason = 'take_profit' | 'stop_loss' | 'exit';
+
+export interface TestTradeResult {
+  signalId: string;
+  direction: Direction;
+  qty: number;
+  closedQty: number;
+  entryTimestamp: number;
+  exitTimestamp: number;
+  exitReason: TestTradeExitReason;
+  requestedEntryPrice: number;
+  entryPrice: number;
+  requestedExitPrice: number | null;
+  exitPrice: number | null;
+  grossProfit: number;
+  netProfit: number;
+  openFee: number;
+  closeFee: number;
+  fundingFee: number | null;
+  totalFee: number;
+  entrySlippagePrice: number;
+  entrySlippageBps: number;
+  entrySlippageCost: number;
+  exitSlippagePrice: number | null;
+  exitSlippageBps: number | null;
+  exitSlippageCost: number;
+  totalSlippageCost: number;
+}
+
+export interface TestClosedSignalResult {
+  signalId: string;
+  profit: number;
+  tradeResult?: TestTradeResult;
 }
 
 export interface TestConnectorContext {

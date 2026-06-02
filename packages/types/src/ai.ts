@@ -1,5 +1,6 @@
 import type { Direction } from './trade';
 import type { AiPayload } from './strategyAdapters';
+import type { TestTradeResult } from './backtest';
 
 export interface AIChatMessage {
   from: 'user' | 'ai';
@@ -21,6 +22,7 @@ export interface AiDatasetRow {
   direction: Direction;
   timestamp: number;
   profit: number;
+  tradeResult?: TestTradeResult;
   payload: AiPayload;
   testId?: string;
   testSuiteId?: string;

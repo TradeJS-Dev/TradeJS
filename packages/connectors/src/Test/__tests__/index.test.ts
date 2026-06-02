@@ -99,7 +99,27 @@ describe('TestConnectorCreator', () => {
     });
 
     await expect(connector.drainMlResultsBatch()).resolves.toEqual([
-      { signalId: 'sig-1', profit: 18.32 },
+      {
+        signalId: 'sig-1',
+        profit: 18.32,
+        tradeResult: expect.objectContaining({
+          signalId: 'sig-1',
+          direction: 'LONG',
+          exitReason: 'take_profit',
+          requestedEntryPrice: 100,
+          entryPrice: 100.2,
+          requestedExitPrice: 110,
+          exitPrice: 109.78,
+          grossProfit: 19.16,
+          netProfit: 18.32,
+          openFee: 0.4,
+          closeFee: 0.44,
+          totalFee: 0.84,
+          entrySlippageCost: 0.4,
+          exitSlippageCost: 0.44,
+          totalSlippageCost: 0.84,
+        }),
+      },
     ]);
     await expect(connector.drainMlResultsBatch()).resolves.toEqual([]);
 

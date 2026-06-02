@@ -565,8 +565,16 @@ describe('testing backtest flow', () => {
         timestamp: 1_000_150,
       })
       .mockResolvedValueOnce('HOLD');
+    const tradeResult = {
+      signalId: 's1',
+      direction: 'LONG',
+      exitReason: 'stop_loss',
+      netProfit: -3.5,
+      totalFee: 0.4,
+      totalSlippageCost: 0.4,
+    };
     mockTestConnector.drainMlResultsBatch.mockResolvedValueOnce([
-      { signalId: 's1', profit: -3.5 },
+      { signalId: 's1', profit: -3.5, tradeResult },
     ]);
 
     await testing(createTest({ ai: true, chunkId: 'worker-7' }));
@@ -586,6 +594,7 @@ describe('testing backtest flow', () => {
             signal: expect.objectContaining({ strategy: 'TrendLine' }),
           }),
           profit: -3.5,
+          tradeResult,
         }),
       }),
     );
