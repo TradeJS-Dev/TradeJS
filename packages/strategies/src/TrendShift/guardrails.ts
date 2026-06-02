@@ -66,6 +66,7 @@ export type TrendShiftGuardrailContext = TrendShiftSignalContext & {
   shortFailedLowOiNotConfirming: boolean;
   shortBelowLowOiFallingLongFlushRisk: boolean;
   shortNearPointOfControlRisk: boolean;
+  shortExtremeAtrHighBbRisk: boolean;
   q4TrendShiftGateFeaturesRecoveryCandidate: boolean;
   breakoutState: string | null;
   volumeRel20: number | null;
@@ -494,6 +495,7 @@ export const buildTrendShiftGuardrailContext = ({
     typeof derivativesSummary?.priceOiDivergenceType === 'string'
       ? derivativesSummary.priceOiDivergenceType
       : null;
+  const gateVolatility = baseContext?.gateFeatures?.volatility;
 
   if (!signalContext.confirmedFlip) {
     hardBlockReasons.push('unconfirmed_flip');
@@ -773,6 +775,11 @@ export const buildTrendShiftGuardrailContext = ({
     hasOnlyOiFallingLongLiquidationSpike;
   const shortNearPointOfControlRisk =
     signalContext.signalDirection === 'SHORT' && nearPointOfControl === true;
+  const shortExtremeAtrHighBbRisk =
+    signalContext.signalDirection === 'SHORT' &&
+    gateVolatility?.state === 'normal' &&
+    gateVolatility.atrPctRankBucket === 'extreme' &&
+    gateVolatility.bbWidthRankBucket === 'high';
 
   if (deterministicQuality >= 5 && longRelativeStrengthOverextended) {
     deterministicQuality = 4;
@@ -807,6 +814,11 @@ export const buildTrendShiftGuardrailContext = ({
   if (deterministicQuality >= 5 && shortNearPointOfControlRisk) {
     deterministicQuality = 4;
     hardBlockReasons.push('short_near_point_of_control');
+  }
+
+  if (deterministicQuality >= 5 && shortExtremeAtrHighBbRisk) {
+    deterministicQuality = 4;
+    hardBlockReasons.push('short_extreme_atr_high_bb');
   }
 
   const trendShiftGateFeaturesRecoveryAllowedReasons = [
@@ -854,6 +866,7 @@ export const buildTrendShiftGuardrailContext = ({
     shortFailedLowOiNotConfirming,
     shortBelowLowOiFallingLongFlushRisk,
     shortNearPointOfControlRisk,
+    shortExtremeAtrHighBbRisk,
     q4TrendShiftGateFeaturesRecoveryCandidate,
     breakoutState,
     volumeRel20,
@@ -919,6 +932,8 @@ export const getTrendShiftGuardrailReasonText = (reason: string) => {
       return 'the SHORT breakdown is a long-liquidation flush with falling open interest, so continuation confirmation is weak outside Asia';
     case 'short_near_point_of_control':
       return 'the SHORT flip is too close to the price-volume point of control, where continuation has been less reliable';
+    case 'short_extreme_atr_high_bb':
+      return 'the SHORT flip is in a normal-volatility regime but ATR is already extreme with a high Bollinger width, so keep it in watch mode';
     default:
       return reason;
   }

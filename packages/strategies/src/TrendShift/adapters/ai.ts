@@ -29,23 +29,50 @@ const getTrendShiftContext = (payload: AiPayload) => {
   });
 };
 
+const withTrendShiftGateFeatures = ({
+  baseContext,
+  context,
+}: {
+  baseContext: BaseStrategyContextSnapshot | null;
+  context: ReturnType<typeof buildTrendShiftGuardrailContext>;
+}) =>
+  baseContext == null
+    ? baseContext
+    : ({
+        ...(baseContext as unknown as Record<string, unknown>),
+        trendShiftGateFeatures: context.trendShiftGateFeatures,
+      } as BaseStrategyContextSnapshot & {
+        trendShiftGateFeatures: typeof context.trendShiftGateFeatures;
+      });
+
 export const trendShiftAiAdapter: StrategyAiAdapter = {
   buildPayload: ({ signal, basePayload }) => {
+    const baseAdditional = basePayload.additionalIndicators as Record<
+      string,
+      unknown
+    >;
     const payload = {
       ...basePayload,
       additionalIndicators: {
-        ...(basePayload.additionalIndicators as Record<string, unknown>),
+        ...baseAdditional,
         trendShiftContext: (
           signal.additionalIndicators as Record<string, unknown> | undefined
         )?.trendShiftContext,
       },
     };
+    const context = getTrendShiftContext(payload);
+    const baseContext = (baseAdditional.baseContext ??
+      null) as BaseStrategyContextSnapshot | null;
 
     return {
       ...payload,
       additionalIndicators: {
         ...(payload.additionalIndicators as Record<string, unknown>),
-        trendShiftContext: getTrendShiftContext(payload),
+        baseContext: withTrendShiftGateFeatures({
+          baseContext,
+          context,
+        }),
+        trendShiftContext: context,
       },
     };
   },

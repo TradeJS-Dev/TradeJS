@@ -132,6 +132,87 @@ describe('trendShiftAiAdapter', () => {
     });
   });
 
+  it('adds TrendShift-local gate features to baseContext payload', () => {
+    const trendShiftContext = {
+      signalDirection: 'SHORT',
+      confirmedFlip: true,
+      bearFlip: true,
+      flipDistanceOk: true,
+      closeVsAvgPct: 0.12,
+      avgSlopePct: 0.08,
+      distanceAtrRatio: 0.65,
+      coinBiasAligned: true,
+    };
+    const basePayload = makePayload(trendShiftContext, {
+      baseContext: {
+        gateFeatures: {
+          volatility: {
+            state: 'normal',
+            atrPctRankBucket: 'normal',
+            bbWidthRankBucket: 'normal',
+          },
+        },
+      },
+    });
+
+    const payload = trendShiftAiAdapter.buildPayload?.({
+      signal: {
+        additionalIndicators: {
+          trendShiftContext,
+        },
+      } as any,
+      basePayload,
+    });
+
+    expect(
+      (payload?.additionalIndicators as any).baseContext.trendShiftGateFeatures,
+    ).toMatchObject({
+      reversalConfirmation: 'confirmed',
+      flipStretch: 'extended',
+    });
+  });
+
+  it('keeps SHORT extreme ATR and high BB-width flips in watch mode', () => {
+    const result = trendShiftAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makePayload(
+        {
+          signalDirection: 'SHORT',
+          confirmedFlip: true,
+          bearFlip: true,
+          flipDistanceOk: true,
+          closeVsAvgPct: 0.3,
+          avgSlopePct: 0.11,
+          distanceAtrRatio: 0.95,
+          coinBiasAligned: true,
+        },
+        {
+          baseContext: {
+            gateFeatures: {
+              volatility: {
+                state: 'normal',
+                atrPctRankBucket: 'extreme',
+                bbWidthRankBucket: 'high',
+              },
+            },
+          },
+        },
+      ),
+      analysis: {
+        direction: 'SHORT',
+        quality: 1,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: null,
+      quality: 4,
+      approved: false,
+      rejectReason:
+        'the SHORT flip is in a normal-volatility regime but ATR is already extreme with a high Bollinger width, so keep it in watch mode',
+    });
+  });
+
   it('approves strong confirmed flips', () => {
     const result = trendShiftAiAdapter.postProcessAnalysis?.({
       signal: {} as any,
