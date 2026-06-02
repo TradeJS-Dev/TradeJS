@@ -354,6 +354,51 @@ export const enrichSignalWithBinanceMarketContext = async (params: {
                   ),
                   dispersion: toFiniteNumberOrNull(breadth.dispersion),
                 },
+                btcAltRegime: {
+                  source: 'binance_klines' as const,
+                  universe: breadth.universe,
+                  interval,
+                  asOfTs: breadth.ts.getTime(),
+                  ageMs: breadth.ageMs,
+                  stale: breadth.stale,
+                  btcReturn1h: toFiniteNumberOrNull(breadth.btcReturn1h),
+                  btcReturn4h: toFiniteNumberOrNull(breadth.btcReturn4h),
+                  btcReturn24h: toFiniteNumberOrNull(breadth.btcReturn24h),
+                  altBasketReturn1h: toFiniteNumberOrNull(
+                    breadth.altBasketReturn1h,
+                  ),
+                  altBasketReturn4h: toFiniteNumberOrNull(
+                    breadth.altBasketReturn4h,
+                  ),
+                  altBasketReturn24h: toFiniteNumberOrNull(
+                    breadth.altBasketReturn24h,
+                  ),
+                  btcVsAltReturn1h: toFiniteNumberOrNull(
+                    breadth.btcVsAltReturn1h,
+                  ),
+                  btcVsAltReturn4h: toFiniteNumberOrNull(
+                    breadth.btcVsAltReturn4h,
+                  ),
+                  btcVsAltReturn24h: toFiniteNumberOrNull(
+                    breadth.btcVsAltReturn24h,
+                  ),
+                  btcTurnoverShare1h: toFiniteNumberOrNull(
+                    breadth.btcTurnoverShare1h,
+                  ),
+                  btcTurnoverShare24h: toFiniteNumberOrNull(
+                    breadth.btcTurnoverShare24h,
+                  ),
+                  btcTurnoverShareChange24h: toFiniteNumberOrNull(
+                    breadth.btcTurnoverShareChange24h,
+                  ),
+                  altVolToBtcVol24h: toFiniteNumberOrNull(
+                    breadth.altVolToBtcVol24h,
+                  ),
+                  altDispersion24h: toFiniteNumberOrNull(
+                    breadth.altDispersion24h,
+                  ),
+                  regime: breadth.btcAltRegime ?? 'unknown',
+                },
               }
             : {}),
         },

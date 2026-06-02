@@ -1,6 +1,7 @@
 import type { BaseStrategyContextSnapshot, Candle } from '@tradejs/types';
 import { adx, rsi } from 'fast-technical-indicators';
 import { ML_BASE_CANDLES_WINDOW } from '../constants';
+import { calculatePearsonCorrelation } from './correlation';
 import {
   createNumericHistoryBuffer,
   materializeNumericHistory,
@@ -172,6 +173,167 @@ const ADAPTIVE_CHANNEL_VOLATILITY_LOOKBACK = 100;
 const ADAPTIVE_CHANNEL_CALC_LOOKBACK = 220;
 const STRUCTURE_ZONES_ZONE_WIDTH_ATR = 0.5;
 const STRUCTURE_ZONES_ACCEPT_BARS = 2;
+
+type TargetVsBtcContext = NonNullable<
+  BaseStrategyContextSnapshot['relative']['targetVsBtc']
+>;
+
+const calculateReturnPctFromCandles = (candles: Candle[]) => {
+  if (candles.length < 2) return null;
+  const previous = candles[candles.length - 2];
+  const current = candles[candles.length - 1];
+  return percentChange(current.close, previous.close);
+};
+
+const calculateRatioReturnPct = (
+  coinCandles: Candle[],
+  btcCandles: Candle[],
+) => {
+  if (coinCandles.length < 2 || btcCandles.length < 2) return null;
+  const currentCoin = coinCandles[coinCandles.length - 1];
+  const previousCoin = coinCandles[coinCandles.length - 2];
+  const currentBtc = btcCandles[btcCandles.length - 1];
+  const previousBtc = btcCandles[btcCandles.length - 2];
+  if (currentBtc.close <= 0 || previousBtc.close <= 0) return null;
+  return percentChange(
+    currentCoin.close / currentBtc.close,
+    previousCoin.close / previousBtc.close,
+  );
+};
+
+const alignRecentCandlesByTimestamp = (
+  coinCandles: Candle[],
+  btcCandles: Candle[],
+) => {
+  const alignedCoinCandles: Candle[] = [];
+  const alignedBtcCandles: Candle[] = [];
+  let coinIndex = Math.max(0, coinCandles.length - 80);
+  let btcIndex = Math.max(0, btcCandles.length - 80);
+
+  while (coinIndex < coinCandles.length && btcIndex < btcCandles.length) {
+    const coinTimestamp = coinCandles[coinIndex].timestamp;
+    const btcTimestamp = btcCandles[btcIndex].timestamp;
+    if (coinTimestamp === btcTimestamp) {
+      alignedCoinCandles.push(coinCandles[coinIndex]);
+      alignedBtcCandles.push(btcCandles[btcIndex]);
+      coinIndex += 1;
+      btcIndex += 1;
+    } else if (coinTimestamp < btcTimestamp) {
+      coinIndex += 1;
+    } else {
+      btcIndex += 1;
+    }
+  }
+
+  return { alignedCoinCandles, alignedBtcCandles };
+};
+
+const buildReturnPctSeries = (candles: Candle[], limit: number) => {
+  const returns: number[] = [];
+  const startIndex = Math.max(1, candles.length - limit);
+  for (let index = startIndex; index < candles.length; index += 1) {
+    const previous = candles[index - 1];
+    const current = candles[index];
+    if (previous.close <= 0) continue;
+    const ret = percentChange(current.close, previous.close);
+    if (ret != null && Number.isFinite(ret)) returns.push(ret);
+  }
+  return returns;
+};
+
+const calculateBetaToReference = (
+  targetReturns: number[],
+  referenceReturns: number[],
+) => {
+  const length = Math.min(targetReturns.length, referenceReturns.length);
+  if (length < 2) return null;
+  const target = targetReturns.slice(-length);
+  const reference = referenceReturns.slice(-length);
+  const referenceMean =
+    reference.reduce((sum, value) => sum + value, 0) / reference.length;
+  const targetMean =
+    target.reduce((sum, value) => sum + value, 0) / target.length;
+  let covariance = 0;
+  let referenceVariance = 0;
+  for (let index = 0; index < length; index += 1) {
+    const referenceDelta = reference[index] - referenceMean;
+    covariance += (target[index] - targetMean) * referenceDelta;
+    referenceVariance += referenceDelta * referenceDelta;
+  }
+  return referenceVariance > 0 ? covariance / referenceVariance : null;
+};
+
+const classifyRatioTrend = (
+  ratioReturn24h: number | null,
+  ratioReturn4h: number | null,
+): TargetVsBtcContext['ratioTrend'] => {
+  const value = ratioReturn24h ?? ratioReturn4h;
+  if (value == null) return 'unknown';
+  if (value > 0.15) return 'up';
+  if (value < -0.15) return 'down';
+  return 'flat';
+};
+
+export const buildTargetVsBtcContext = ({
+  coin1h,
+  btc1h,
+  coin4h,
+  btc4h,
+  coin1d,
+  btc1d,
+  coinCandles,
+  btcCandles,
+}: {
+  coin1h: Candle[];
+  btc1h: Candle[];
+  coin4h: Candle[];
+  btc4h: Candle[];
+  coin1d: Candle[];
+  btc1d: Candle[];
+  coinCandles: Candle[];
+  btcCandles: Candle[];
+}): TargetVsBtcContext => {
+  const ratioReturn1h = calculateRatioReturnPct(coin1h, btc1h);
+  const ratioReturn4h = calculateRatioReturnPct(coin4h, btc4h);
+  const ratioReturn24h = calculateRatioReturnPct(coin1d, btc1d);
+  const coinReturn1h = calculateReturnPctFromCandles(coin1h);
+  const coinReturn4h = calculateReturnPctFromCandles(coin4h);
+  const coinReturn24h = calculateReturnPctFromCandles(coin1d);
+  const btcReturn1h = calculateReturnPctFromCandles(btc1h);
+  const btcReturn4h = calculateReturnPctFromCandles(btc4h);
+  const btcReturn24h = calculateReturnPctFromCandles(btc1d);
+  const { alignedCoinCandles, alignedBtcCandles } =
+    alignRecentCandlesByTimestamp(coinCandles, btcCandles);
+  const coinReturns20 = buildReturnPctSeries(alignedCoinCandles, 21).slice(-20);
+  const btcReturns20 = buildReturnPctSeries(alignedBtcCandles, 21).slice(-20);
+  const correlationToBtc20 =
+    coinReturns20.length === btcReturns20.length && coinReturns20.length >= 2
+      ? calculatePearsonCorrelation(coinReturns20, btcReturns20)
+      : null;
+
+  return {
+    source: 'aligned_ohlcv',
+    ratioReturn1h,
+    ratioReturn4h,
+    ratioReturn24h,
+    alphaVsBtc1h:
+      coinReturn1h == null || btcReturn1h == null
+        ? null
+        : coinReturn1h - btcReturn1h,
+    alphaVsBtc4h:
+      coinReturn4h == null || btcReturn4h == null
+        ? null
+        : coinReturn4h - btcReturn4h,
+    alphaVsBtc24h:
+      coinReturn24h == null || btcReturn24h == null
+        ? null
+        : coinReturn24h - btcReturn24h,
+    betaToBtc20: calculateBetaToReference(coinReturns20, btcReturns20),
+    correlationToBtc20,
+    ratioTrend: classifyRatioTrend(ratioReturn24h, ratioReturn4h),
+  };
+};
+
 export const BASE_CONTEXT_MA_LAYER_PERIODS = [
   [5, 12],
   [9, 13],
@@ -2422,11 +2584,22 @@ export const buildBaseContextSnapshot = ({
     buildRsiContext(rsiValue) ?? calculateRsiContext(closeSeries);
   const benchmarkMaFast = averageLastN(btcCloseSeries, indicatorPeriods.maFast);
   const benchmarkMaSlow = averageLastN(btcCloseSeries, indicatorPeriods.maSlow);
+  const coin1h = coinResampledCandles.h1;
   const btc1h = btcResampledCandles.h1;
   const btc4h = btcResampledCandles.h4;
   const btc1d = btcResampledCandles.d1;
   const coin4h = coinResampledCandles.h4;
   const coin1d = coinResampledCandles.d1;
+  const targetVsBtc = buildTargetVsBtcContext({
+    coin1h,
+    btc1h,
+    coin4h,
+    btc4h,
+    coin1d,
+    btc1d,
+    coinCandles: candlesHistory,
+    btcCandles: btcCandlesHistory,
+  });
   const relativeStrength1h = getRelativeChange(
     baseResult.price1hPcnt,
     btc1h.length >= 2
@@ -2913,6 +3086,7 @@ export const buildBaseContextSnapshot = ({
           toNullable(baseResult.spread),
         ),
       },
+      targetVsBtc,
     },
   } as Omit<BaseStrategyContextSnapshot, 'mtf'> & {
     mtf?: BaseStrategyContextSnapshot['mtf'];

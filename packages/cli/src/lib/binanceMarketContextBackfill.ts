@@ -413,13 +413,17 @@ const backfillBinanceMarketContext = async (
       startMs: breadthStartMs,
       endMs,
     });
+    const hasBtcAltMetrics =
+      (coverage?.btcAltMetricsRows ?? 0) >=
+      Math.floor(Math.max(1, coverage?.rows ?? 0) * 0.9);
     if (
       !hasCoverage({
         coverage,
         startMs: breadthStartMs,
         endMs,
         intervalMs,
-      })
+      }) ||
+      !hasBtcAltMetrics
     ) {
       const connectorInterval = marketIntervalToConnectorInterval(interval);
       const candlesBySymbol: Record<string, KlineChartData> = {};
@@ -443,10 +447,18 @@ const backfillBinanceMarketContext = async (
         candlesRead += candles.length;
         bar.tick(1, { candles: candlesRead, symbol });
       }
+      const btcCandles = await connector.kline({
+        symbol: 'BTCUSDT',
+        interval: connectorInterval as Interval,
+        start: breadthStartMs,
+        end: endMs,
+        silent: true,
+      });
       const rows = buildMarketBreadthRows({
         universe,
         interval,
         candlesBySymbol,
+        btcCandles,
       });
       await upsertMarketBreadthRows(rows);
       breadthRows += rows.length;

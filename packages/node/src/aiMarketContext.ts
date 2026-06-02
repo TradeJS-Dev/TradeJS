@@ -79,6 +79,42 @@ export type AiMarketContext = {
       volumeWeightedReturn: number | null;
       dispersion: number | null;
     };
+    targetVsBtc: {
+      source: string | null;
+      available: boolean;
+      ratioReturn1h: number | null;
+      ratioReturn4h: number | null;
+      ratioReturn24h: number | null;
+      alphaVsBtc1h: number | null;
+      alphaVsBtc4h: number | null;
+      alphaVsBtc24h: number | null;
+      betaToBtc20: number | null;
+      correlationToBtc20: number | null;
+      ratioTrend: 'up' | 'down' | 'flat' | 'unknown' | null;
+    };
+    btcAltRegime: {
+      source: string | null;
+      available: boolean;
+      universe: string | null;
+      interval: string | null;
+      stale: boolean | null;
+      regime:
+        | 'btc_lead'
+        | 'alt_lead'
+        | 'risk_off'
+        | 'risk_on'
+        | 'mixed'
+        | 'neutral'
+        | 'unknown'
+        | null;
+      btcReturn24h: number | null;
+      altBasketReturn24h: number | null;
+      btcVsAltReturn24h: number | null;
+      btcTurnoverShare24h: number | null;
+      btcTurnoverShareChange24h: number | null;
+      altVolToBtcVol24h: number | null;
+      altDispersion24h: number | null;
+    };
     btcDominance: {
       source: string | null;
       available: boolean;
@@ -348,6 +384,97 @@ const buildMarketBreadthContextFromSignal = (signal: Signal) => {
   };
 };
 
+const buildTargetVsBtcContextFromSignal = (signal: Signal) => {
+  const baseContext = toRecord(signal.additionalIndicators?.baseContext);
+  const relative = toRecord(baseContext?.relative);
+  const targetVsBtc = toRecord(relative?.targetVsBtc);
+
+  if (!targetVsBtc) {
+    return {
+      source: null,
+      available: false,
+      ratioReturn1h: null,
+      ratioReturn4h: null,
+      ratioReturn24h: null,
+      alphaVsBtc1h: null,
+      alphaVsBtc4h: null,
+      alphaVsBtc24h: null,
+      betaToBtc20: null,
+      correlationToBtc20: null,
+      ratioTrend: null,
+    };
+  }
+
+  return {
+    source: String(targetVsBtc.source ?? ''),
+    available: true,
+    ratioReturn1h: toFiniteNumber(targetVsBtc.ratioReturn1h),
+    ratioReturn4h: toFiniteNumber(targetVsBtc.ratioReturn4h),
+    ratioReturn24h: toFiniteNumber(targetVsBtc.ratioReturn24h),
+    alphaVsBtc1h: toFiniteNumber(targetVsBtc.alphaVsBtc1h),
+    alphaVsBtc4h: toFiniteNumber(targetVsBtc.alphaVsBtc4h),
+    alphaVsBtc24h: toFiniteNumber(targetVsBtc.alphaVsBtc24h),
+    betaToBtc20: toFiniteNumber(targetVsBtc.betaToBtc20),
+    correlationToBtc20: toFiniteNumber(targetVsBtc.correlationToBtc20),
+    ratioTrend:
+      typeof targetVsBtc.ratioTrend === 'string'
+        ? (targetVsBtc.ratioTrend as 'up' | 'down' | 'flat' | 'unknown')
+        : null,
+  };
+};
+
+const buildBtcAltRegimeContextFromSignal = (signal: Signal) => {
+  const baseContext = toRecord(signal.additionalIndicators?.baseContext);
+  const relative = toRecord(baseContext?.relative);
+  const btcAltRegime = toRecord(relative?.btcAltRegime);
+
+  if (!btcAltRegime) {
+    return {
+      source: null,
+      available: false,
+      universe: null,
+      interval: null,
+      stale: null,
+      regime: null,
+      btcReturn24h: null,
+      altBasketReturn24h: null,
+      btcVsAltReturn24h: null,
+      btcTurnoverShare24h: null,
+      btcTurnoverShareChange24h: null,
+      altVolToBtcVol24h: null,
+      altDispersion24h: null,
+    };
+  }
+
+  return {
+    source: String(btcAltRegime.source ?? ''),
+    available: true,
+    universe: String(btcAltRegime.universe ?? ''),
+    interval: String(btcAltRegime.interval ?? ''),
+    stale: typeof btcAltRegime.stale === 'boolean' ? btcAltRegime.stale : null,
+    regime:
+      typeof btcAltRegime.regime === 'string'
+        ? (btcAltRegime.regime as
+            | 'btc_lead'
+            | 'alt_lead'
+            | 'risk_off'
+            | 'risk_on'
+            | 'mixed'
+            | 'neutral'
+            | 'unknown')
+        : null,
+    btcReturn24h: toFiniteNumber(btcAltRegime.btcReturn24h),
+    altBasketReturn24h: toFiniteNumber(btcAltRegime.altBasketReturn24h),
+    btcVsAltReturn24h: toFiniteNumber(btcAltRegime.btcVsAltReturn24h),
+    btcTurnoverShare24h: toFiniteNumber(btcAltRegime.btcTurnoverShare24h),
+    btcTurnoverShareChange24h: toFiniteNumber(
+      btcAltRegime.btcTurnoverShareChange24h,
+    ),
+    altVolToBtcVol24h: toFiniteNumber(btcAltRegime.altVolToBtcVol24h),
+    altDispersion24h: toFiniteNumber(btcAltRegime.altDispersion24h),
+  };
+};
+
 const buildBtcDominanceContextFromSignal = (signal: Signal) => {
   const baseContext = toRecord(signal.additionalIndicators?.baseContext);
   const relative = toRecord(baseContext?.relative);
@@ -461,6 +588,8 @@ export const buildAiMarketContext = (signal: Signal): AiMarketContext => ({
   },
   relative: {
     marketBreadth: buildMarketBreadthContextFromSignal(signal),
+    targetVsBtc: buildTargetVsBtcContextFromSignal(signal),
+    btcAltRegime: buildBtcAltRegimeContextFromSignal(signal),
     btcDominance: buildBtcDominanceContextFromSignal(signal),
     marketReferences: buildMarketReferencesContextFromSignal(signal),
   },

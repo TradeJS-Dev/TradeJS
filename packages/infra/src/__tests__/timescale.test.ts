@@ -450,7 +450,7 @@ describe('timescale candle helpers', () => {
     const insertCalls = query.mock.calls.filter(([sql]) =>
       String(sql).includes('INSERT INTO market_breadth'),
     );
-    expect(insertCalls).toHaveLength(2);
+    expect(insertCalls).toHaveLength(3);
     for (const [, params] of insertCalls) {
       expect((params as unknown[]).length).toBeLessThanOrEqual(30_000);
     }

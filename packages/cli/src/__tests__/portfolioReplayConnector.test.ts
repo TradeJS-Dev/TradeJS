@@ -1,6 +1,9 @@
+import { BACKTEST_SLIPPAGE_BPS } from '@tradejs/core/constants';
 import { createPortfolioReplayConnector } from '../lib/replay/portfolioReplayConnector';
 
 describe('portfolio replay connector', () => {
+  const backtestSlippageRate = BACKTEST_SLIPPAGE_BPS / 10_000;
+
   const baseConnector = {
     kline: jest.fn(),
     getState: jest.fn(async () => ({})),
@@ -19,6 +22,83 @@ describe('portfolio replay connector', () => {
 
     expect(connector.__tradejsReplayConnector).toBe(true);
     expect(connector.__tradejsTestConnector).toBe(true);
+  });
+
+  it('applies BACKTEST_SLIPPAGE_BPS adversely to long and short entry/exit prices', async () => {
+    const connector = createPortfolioReplayConnector(baseConnector);
+
+    await connector.placeOrder({
+      symbol: 'BTCUSDT',
+      qty: 1,
+      price: 100,
+      timestamp: 1,
+      direction: 'LONG',
+      signal: {
+        strategy: 'TrendLine',
+      } as any,
+    });
+    await connector.placeOrder({
+      symbol: 'ETHUSDT',
+      qty: 1,
+      price: 100,
+      timestamp: 1,
+      direction: 'SHORT',
+      signal: {
+        strategy: 'TrendShift',
+      } as any,
+    });
+    await connector.closePosition({
+      symbol: 'BTCUSDT',
+      qty: 1,
+      price: 110,
+      timestamp: 2,
+      direction: 'LONG',
+    } as any);
+    await connector.closePosition({
+      symbol: 'ETHUSDT',
+      qty: 1,
+      price: 90,
+      timestamp: 2,
+      direction: 'SHORT',
+    } as any);
+
+    const artifacts = connector.getReplayArtifacts();
+    expect(artifacts.orderLog[0]).toEqual(
+      expect.objectContaining({
+        type: 'OPEN_LONG',
+        profit: -0.2,
+      }),
+    );
+    expect(artifacts.orderLog[0].price).toBeCloseTo(
+      100 * (1 + backtestSlippageRate),
+    );
+    expect(artifacts.orderLog[1]).toEqual(
+      expect.objectContaining({
+        type: 'OPEN_SHORT',
+        profit: -0.2,
+      }),
+    );
+    expect(artifacts.orderLog[1].price).toBeCloseTo(
+      100 * (1 - backtestSlippageRate),
+    );
+    expect(artifacts.orderLog[2]).toEqual(
+      expect.objectContaining({
+        type: 'CLOSE_LONG',
+        profit: 9.36,
+      }),
+    );
+    expect(artifacts.orderLog[2].price).toBeCloseTo(
+      110 * (1 - backtestSlippageRate),
+    );
+    expect(artifacts.orderLog[3]).toEqual(
+      expect.objectContaining({
+        type: 'CLOSE_SHORT',
+        profit: 9.44,
+      }),
+    );
+    expect(artifacts.orderLog[3].price).toBeCloseTo(
+      90 * (1 + backtestSlippageRate),
+    );
   });
 
   it('tracks multiple open positions and open pnl across symbols', async () => {

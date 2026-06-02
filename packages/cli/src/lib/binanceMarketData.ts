@@ -45,6 +45,70 @@ const standardDeviation = (values: number[]) => {
   return Math.sqrt(variance);
 };
 
+const buildPrefixSum = (values: number[]) => {
+  const prefix = [0];
+  for (const value of values) prefix.push(prefix[prefix.length - 1] + value);
+  return prefix;
+};
+
+const sumPrefixRange = (
+  prefix: number[],
+  startIndex: number,
+  endIndexInclusive: number,
+) => {
+  if (endIndexInclusive < startIndex) return 0;
+  const start = Math.max(0, startIndex);
+  const end = Math.min(prefix.length - 2, endIndexInclusive);
+  if (end < start) return 0;
+  return prefix[end + 1] - prefix[start];
+};
+
+const windowReturn = (
+  candles: KlineChartData,
+  index: number,
+  lookbackBars: number,
+) => {
+  const previous = candles[index - lookbackBars];
+  const current = candles[index];
+  return previous && previous.close > 0
+    ? (current.close - previous.close) / previous.close
+    : null;
+};
+
+type BtcAltRegime = NonNullable<MarketBreadthRow['btcAltRegime']>;
+
+export const classifyBtcAltRegime = ({
+  btcReturn24h,
+  altBasketReturn24h,
+  btcVsAltReturn24h,
+}: {
+  btcReturn24h?: number | null;
+  altBasketReturn24h?: number | null;
+  btcVsAltReturn24h?: number | null;
+}): BtcAltRegime => {
+  if (
+    btcReturn24h == null ||
+    altBasketReturn24h == null ||
+    btcVsAltReturn24h == null
+  ) {
+    return 'unknown';
+  }
+
+  if (btcReturn24h < -0.015 && altBasketReturn24h < -0.025) {
+    return 'risk_off';
+  }
+  if (
+    btcReturn24h > 0.005 &&
+    altBasketReturn24h > 0.005 &&
+    altBasketReturn24h > btcReturn24h
+  ) {
+    return 'risk_on';
+  }
+  if (btcVsAltReturn24h > 0.005) return 'btc_lead';
+  if (btcVsAltReturn24h < -0.005) return 'alt_lead';
+  return 'neutral';
+};
+
 export const normalizeMarketFeatureInterval = (
   value: unknown,
 ): MarketFeatureInterval => {
@@ -250,14 +314,42 @@ export const buildMarketBreadthRows = ({
   universe,
   interval,
   candlesBySymbol,
+  btcCandles,
   source = 'binance_klines',
 }: {
   universe: string;
   interval: MarketFeatureInterval;
   candlesBySymbol: Record<string, KlineChartData>;
+  btcCandles?: KlineChartData;
   source?: string;
 }): MarketBreadthRow[] => {
   const timestamps = new Set<number>();
+  const indexedSymbols = Object.values(candlesBySymbol).map((candles) => ({
+    candles,
+    byTimestamp: new Map(
+      candles.map((candle, index) => [candle.timestamp, index]),
+    ),
+    turnoverPrefix: buildPrefixSum(
+      candles.map((candle) => Math.max(0, candle.turnover ?? 0)),
+    ),
+    closePrefix: buildPrefixSum(candles.map((candle) => candle.close)),
+  }));
+  const btcIndexed = btcCandles
+    ? {
+        candles: btcCandles,
+        byTimestamp: new Map(
+          btcCandles.map((candle, index) => [candle.timestamp, index]),
+        ),
+        turnoverPrefix: buildPrefixSum(
+          btcCandles.map((candle) => Math.max(0, candle.turnover ?? 0)),
+        ),
+      }
+    : null;
+  const intervalMs = MARKET_FEATURE_INTERVAL_MS[interval];
+  const bars1h = Math.max(1, Math.round(3_600_000 / intervalMs));
+  const bars4h = Math.max(1, Math.round(14_400_000 / intervalMs));
+  const bars24h = Math.max(1, Math.round(86_400_000 / intervalMs));
+
   for (const candles of Object.values(candlesBySymbol)) {
     for (const candle of candles) timestamps.add(candle.timestamp);
   }
@@ -274,12 +366,17 @@ export const buildMarketBreadthRows = ({
       let aboveMa20Eligible = 0;
       let aboveMa50 = 0;
       let aboveMa50Eligible = 0;
+      const altReturns1h: number[] = [];
+      const altReturns4h: number[] = [];
+      const altReturns24h: number[] = [];
+      let altTurnover1h = 0;
+      let altTurnover24h = 0;
+      let previousAltTurnover24h = 0;
 
-      for (const candles of Object.values(candlesBySymbol)) {
-        const index = candles.findIndex(
-          (candle) => candle.timestamp === timestamp,
-        );
-        if (index < 0) continue;
+      for (const indexed of indexedSymbols) {
+        const { candles, byTimestamp, turnoverPrefix, closePrefix } = indexed;
+        const index = byTimestamp.get(timestamp);
+        if (index == null) continue;
         const candle = candles[index];
         const previous = candles[index - 1];
         const ret =
@@ -296,19 +393,41 @@ export const buildMarketBreadthRows = ({
           weight: Math.max(0, candle.turnover ?? 0),
         });
 
-        const ma20Window = candles.slice(Math.max(0, index - 19), index + 1);
-        if (ma20Window.length >= 20) {
+        const ma20Start = index - 19;
+        if (ma20Start >= 0) {
           aboveMa20Eligible += 1;
-          const ma20 = mean(ma20Window.map((item) => item.close));
-          if (ma20 != null && candle.close > ma20) aboveMa20 += 1;
+          const ma20 = sumPrefixRange(closePrefix, ma20Start, index) / 20;
+          if (candle.close > ma20) aboveMa20 += 1;
         }
 
-        const ma50Window = candles.slice(Math.max(0, index - 49), index + 1);
-        if (ma50Window.length >= 50) {
+        const ma50Start = index - 49;
+        if (ma50Start >= 0) {
           aboveMa50Eligible += 1;
-          const ma50 = mean(ma50Window.map((item) => item.close));
-          if (ma50 != null && candle.close > ma50) aboveMa50 += 1;
+          const ma50 = sumPrefixRange(closePrefix, ma50Start, index) / 50;
+          if (candle.close > ma50) aboveMa50 += 1;
         }
+
+        const altReturn1h = windowReturn(candles, index, bars1h);
+        const altReturn4h = windowReturn(candles, index, bars4h);
+        const altReturn24h = windowReturn(candles, index, bars24h);
+        if (altReturn1h != null) altReturns1h.push(altReturn1h);
+        if (altReturn4h != null) altReturns4h.push(altReturn4h);
+        if (altReturn24h != null) altReturns24h.push(altReturn24h);
+        altTurnover1h += sumPrefixRange(
+          turnoverPrefix,
+          index - bars1h + 1,
+          index,
+        );
+        altTurnover24h += sumPrefixRange(
+          turnoverPrefix,
+          index - bars24h + 1,
+          index,
+        );
+        previousAltTurnover24h += sumPrefixRange(
+          turnoverPrefix,
+          index - bars24h * 2 + 1,
+          index - bars24h,
+        );
       }
 
       const weightSum = weightedReturns.reduce(
@@ -322,6 +441,78 @@ export const buildMarketBreadthRows = ({
               0,
             ) / weightSum
           : null;
+
+      const btcIndex = btcIndexed?.byTimestamp.get(timestamp);
+      const btcReturn1h =
+        btcIndexed && btcIndex != null
+          ? windowReturn(btcIndexed.candles, btcIndex, bars1h)
+          : null;
+      const btcReturn4h =
+        btcIndexed && btcIndex != null
+          ? windowReturn(btcIndexed.candles, btcIndex, bars4h)
+          : null;
+      const btcReturn24h =
+        btcIndexed && btcIndex != null
+          ? windowReturn(btcIndexed.candles, btcIndex, bars24h)
+          : null;
+      const btcTurnover1h =
+        btcIndexed && btcIndex != null
+          ? sumPrefixRange(
+              btcIndexed.turnoverPrefix,
+              btcIndex - bars1h + 1,
+              btcIndex,
+            )
+          : null;
+      const btcTurnover24h =
+        btcIndexed && btcIndex != null
+          ? sumPrefixRange(
+              btcIndexed.turnoverPrefix,
+              btcIndex - bars24h + 1,
+              btcIndex,
+            )
+          : null;
+      const previousBtcTurnover24h =
+        btcIndexed && btcIndex != null
+          ? sumPrefixRange(
+              btcIndexed.turnoverPrefix,
+              btcIndex - bars24h * 2 + 1,
+              btcIndex - bars24h,
+            )
+          : null;
+      const altBasketReturn1h = mean(altReturns1h);
+      const altBasketReturn4h = mean(altReturns4h);
+      const altBasketReturn24h = mean(altReturns24h);
+      const btcVsAltReturn1h =
+        btcReturn1h == null || altBasketReturn1h == null
+          ? null
+          : btcReturn1h - altBasketReturn1h;
+      const btcVsAltReturn4h =
+        btcReturn4h == null || altBasketReturn4h == null
+          ? null
+          : btcReturn4h - altBasketReturn4h;
+      const btcVsAltReturn24h =
+        btcReturn24h == null || altBasketReturn24h == null
+          ? null
+          : btcReturn24h - altBasketReturn24h;
+      const btcTurnoverShare1h =
+        btcTurnover1h == null
+          ? null
+          : safeDivide(btcTurnover1h, btcTurnover1h + altTurnover1h);
+      const btcTurnoverShare24h =
+        btcTurnover24h == null
+          ? null
+          : safeDivide(btcTurnover24h, btcTurnover24h + altTurnover24h);
+      const previousBtcTurnoverShare24h =
+        previousBtcTurnover24h == null
+          ? null
+          : safeDivide(
+              previousBtcTurnover24h,
+              previousBtcTurnover24h + previousAltTurnover24h,
+            );
+      const btcTurnoverShareChange24h =
+        btcTurnoverShare24h == null || previousBtcTurnoverShare24h == null
+          ? null
+          : btcTurnoverShare24h - previousBtcTurnoverShare24h;
 
       return {
         universe,
@@ -337,6 +528,28 @@ export const buildMarketBreadthRows = ({
         equalWeightedReturn: mean(returns),
         volumeWeightedReturn,
         dispersion: standardDeviation(returns),
+        btcReturn1h,
+        btcReturn4h,
+        btcReturn24h,
+        altBasketReturn1h,
+        altBasketReturn4h,
+        altBasketReturn24h,
+        btcVsAltReturn1h,
+        btcVsAltReturn4h,
+        btcVsAltReturn24h,
+        btcTurnoverShare1h,
+        btcTurnoverShare24h,
+        btcTurnoverShareChange24h,
+        altVolToBtcVol24h:
+          btcTurnover24h == null
+            ? null
+            : safeDivide(altTurnover24h, btcTurnover24h),
+        altDispersion24h: standardDeviation(altReturns24h),
+        btcAltRegime: classifyBtcAltRegime({
+          btcReturn24h,
+          altBasketReturn24h,
+          btcVsAltReturn24h,
+        }),
         source,
       };
     })

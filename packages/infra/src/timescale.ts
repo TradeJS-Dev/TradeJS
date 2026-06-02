@@ -453,10 +453,43 @@ const ensureBinanceMarketSchema = async () => {
           equal_weighted_return double precision,
           volume_weighted_return double precision,
           dispersion double precision,
+          btc_return_1h double precision,
+          btc_return_4h double precision,
+          btc_return_24h double precision,
+          alt_basket_return_1h double precision,
+          alt_basket_return_4h double precision,
+          alt_basket_return_24h double precision,
+          btc_vs_alt_return_1h double precision,
+          btc_vs_alt_return_4h double precision,
+          btc_vs_alt_return_24h double precision,
+          btc_turnover_share_1h double precision,
+          btc_turnover_share_24h double precision,
+          btc_turnover_share_change_24h double precision,
+          alt_vol_to_btc_vol_24h double precision,
+          alt_dispersion_24h double precision,
+          btc_alt_regime text,
           source text,
           ingested_at timestamptz NOT NULL DEFAULT now(),
           PRIMARY KEY (universe, interval, ts)
         )
+      `);
+      await pool.query(`
+        ALTER TABLE market_breadth
+          ADD COLUMN IF NOT EXISTS btc_return_1h double precision,
+          ADD COLUMN IF NOT EXISTS btc_return_4h double precision,
+          ADD COLUMN IF NOT EXISTS btc_return_24h double precision,
+          ADD COLUMN IF NOT EXISTS alt_basket_return_1h double precision,
+          ADD COLUMN IF NOT EXISTS alt_basket_return_4h double precision,
+          ADD COLUMN IF NOT EXISTS alt_basket_return_24h double precision,
+          ADD COLUMN IF NOT EXISTS btc_vs_alt_return_1h double precision,
+          ADD COLUMN IF NOT EXISTS btc_vs_alt_return_4h double precision,
+          ADD COLUMN IF NOT EXISTS btc_vs_alt_return_24h double precision,
+          ADD COLUMN IF NOT EXISTS btc_turnover_share_1h double precision,
+          ADD COLUMN IF NOT EXISTS btc_turnover_share_24h double precision,
+          ADD COLUMN IF NOT EXISTS btc_turnover_share_change_24h double precision,
+          ADD COLUMN IF NOT EXISTS alt_vol_to_btc_vol_24h double precision,
+          ADD COLUMN IF NOT EXISTS alt_dispersion_24h double precision,
+          ADD COLUMN IF NOT EXISTS btc_alt_regime text
       `);
       await pool.query(`
         SELECT create_hypertable(
@@ -1217,6 +1250,21 @@ export async function upsertMarketBreadthRows(rows: MarketBreadthRow[]) {
     'equal_weighted_return',
     'volume_weighted_return',
     'dispersion',
+    'btc_return_1h',
+    'btc_return_4h',
+    'btc_return_24h',
+    'alt_basket_return_1h',
+    'alt_basket_return_4h',
+    'alt_basket_return_24h',
+    'btc_vs_alt_return_1h',
+    'btc_vs_alt_return_4h',
+    'btc_vs_alt_return_24h',
+    'btc_turnover_share_1h',
+    'btc_turnover_share_24h',
+    'btc_turnover_share_change_24h',
+    'alt_vol_to_btc_vol_24h',
+    'alt_dispersion_24h',
+    'btc_alt_regime',
     'source',
   ] as const;
 
@@ -1248,6 +1296,21 @@ export async function upsertMarketBreadthRows(rows: MarketBreadthRow[]) {
     row.equalWeightedReturn ?? null,
     row.volumeWeightedReturn ?? null,
     row.dispersion ?? null,
+    row.btcReturn1h ?? null,
+    row.btcReturn4h ?? null,
+    row.btcReturn24h ?? null,
+    row.altBasketReturn1h ?? null,
+    row.altBasketReturn4h ?? null,
+    row.altBasketReturn24h ?? null,
+    row.btcVsAltReturn1h ?? null,
+    row.btcVsAltReturn4h ?? null,
+    row.btcVsAltReturn24h ?? null,
+    row.btcTurnoverShare1h ?? null,
+    row.btcTurnoverShare24h ?? null,
+    row.btcTurnoverShareChange24h ?? null,
+    row.altVolToBtcVol24h ?? null,
+    row.altDispersion24h ?? null,
+    row.btcAltRegime ?? null,
     row.source ?? null,
   ]);
 
@@ -1266,6 +1329,21 @@ export async function upsertMarketBreadthRows(rows: MarketBreadthRow[]) {
         equal_weighted_return = COALESCE(EXCLUDED.equal_weighted_return, market_breadth.equal_weighted_return),
         volume_weighted_return = COALESCE(EXCLUDED.volume_weighted_return, market_breadth.volume_weighted_return),
         dispersion = COALESCE(EXCLUDED.dispersion, market_breadth.dispersion),
+        btc_return_1h = COALESCE(EXCLUDED.btc_return_1h, market_breadth.btc_return_1h),
+        btc_return_4h = COALESCE(EXCLUDED.btc_return_4h, market_breadth.btc_return_4h),
+        btc_return_24h = COALESCE(EXCLUDED.btc_return_24h, market_breadth.btc_return_24h),
+        alt_basket_return_1h = COALESCE(EXCLUDED.alt_basket_return_1h, market_breadth.alt_basket_return_1h),
+        alt_basket_return_4h = COALESCE(EXCLUDED.alt_basket_return_4h, market_breadth.alt_basket_return_4h),
+        alt_basket_return_24h = COALESCE(EXCLUDED.alt_basket_return_24h, market_breadth.alt_basket_return_24h),
+        btc_vs_alt_return_1h = COALESCE(EXCLUDED.btc_vs_alt_return_1h, market_breadth.btc_vs_alt_return_1h),
+        btc_vs_alt_return_4h = COALESCE(EXCLUDED.btc_vs_alt_return_4h, market_breadth.btc_vs_alt_return_4h),
+        btc_vs_alt_return_24h = COALESCE(EXCLUDED.btc_vs_alt_return_24h, market_breadth.btc_vs_alt_return_24h),
+        btc_turnover_share_1h = COALESCE(EXCLUDED.btc_turnover_share_1h, market_breadth.btc_turnover_share_1h),
+        btc_turnover_share_24h = COALESCE(EXCLUDED.btc_turnover_share_24h, market_breadth.btc_turnover_share_24h),
+        btc_turnover_share_change_24h = COALESCE(EXCLUDED.btc_turnover_share_change_24h, market_breadth.btc_turnover_share_change_24h),
+        alt_vol_to_btc_vol_24h = COALESCE(EXCLUDED.alt_vol_to_btc_vol_24h, market_breadth.alt_vol_to_btc_vol_24h),
+        alt_dispersion_24h = COALESCE(EXCLUDED.alt_dispersion_24h, market_breadth.alt_dispersion_24h),
+        btc_alt_regime = COALESCE(EXCLUDED.btc_alt_regime, market_breadth.btc_alt_regime),
         source = COALESCE(EXCLUDED.source, market_breadth.source),
         ingested_at = now()
     `,
@@ -1465,6 +1543,21 @@ export async function getLatestMarketBreadth(params: {
         equal_weighted_return AS "equalWeightedReturn",
         volume_weighted_return AS "volumeWeightedReturn",
         dispersion,
+        btc_return_1h AS "btcReturn1h",
+        btc_return_4h AS "btcReturn4h",
+        btc_return_24h AS "btcReturn24h",
+        alt_basket_return_1h AS "altBasketReturn1h",
+        alt_basket_return_4h AS "altBasketReturn4h",
+        alt_basket_return_24h AS "altBasketReturn24h",
+        btc_vs_alt_return_1h AS "btcVsAltReturn1h",
+        btc_vs_alt_return_4h AS "btcVsAltReturn4h",
+        btc_vs_alt_return_24h AS "btcVsAltReturn24h",
+        btc_turnover_share_1h AS "btcTurnoverShare1h",
+        btc_turnover_share_24h AS "btcTurnoverShare24h",
+        btc_turnover_share_change_24h AS "btcTurnoverShareChange24h",
+        alt_vol_to_btc_vol_24h AS "altVolToBtcVol24h",
+        alt_dispersion_24h AS "altDispersion24h",
+        btc_alt_regime AS "btcAltRegime",
         source
       FROM market_breadth
       WHERE universe = $1
@@ -1602,7 +1695,12 @@ export async function getMarketBreadthCoverage(params: {
   interval: MarketFeatureInterval;
   startMs: number;
   endMs: number;
-}): Promise<{ firstMs: number; lastMs: number; rows: number } | null> {
+}): Promise<{
+  firstMs: number;
+  lastMs: number;
+  rows: number;
+  btcAltMetricsRows: number;
+} | null> {
   await ensureBinanceMarketSchema();
   const pool = getPool();
   const res = await pool.query(
@@ -1610,7 +1708,12 @@ export async function getMarketBreadthCoverage(params: {
       SELECT
         MIN(ts) AS first_ts,
         MAX(ts) AS last_ts,
-        COUNT(*)::int AS rows
+        COUNT(*)::int AS rows,
+        COUNT(*) FILTER (
+          WHERE btc_alt_regime IS NOT NULL
+            AND btc_return_24h IS NOT NULL
+            AND alt_basket_return_24h IS NOT NULL
+        )::int AS btc_alt_metrics_rows
       FROM market_breadth
       WHERE universe = $1
         AND interval = $2
@@ -1625,6 +1728,7 @@ export async function getMarketBreadthCoverage(params: {
     firstMs: new Date(row.first_ts).getTime(),
     lastMs: new Date(row.last_ts).getTime(),
     rows: Number(row.rows) || 0,
+    btcAltMetricsRows: Number(row.btc_alt_metrics_rows) || 0,
   };
 }
 

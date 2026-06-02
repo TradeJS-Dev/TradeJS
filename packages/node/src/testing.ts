@@ -944,6 +944,7 @@ export const testing: TestingBox = async ({
         enrichSignalWithGlobalMarketContext({
           signal: signal as Signal,
           env: 'BACKTEST',
+          enabled: Boolean(ml || ai),
         }),
       );
       await withTimeout(
@@ -1377,6 +1378,7 @@ export const testingGroupInSharedCandleLoop = async (
             enrichSignalWithGlobalMarketContext({
               signal: signal as Signal,
               env: 'BACKTEST',
+              enabled: Boolean(test.ml || test.ai),
             }),
           );
           await withTimeout(

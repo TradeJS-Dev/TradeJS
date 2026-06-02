@@ -155,6 +155,29 @@ export type MarketBreadthRow = {
   equalWeightedReturn?: number | null;
   volumeWeightedReturn?: number | null;
   dispersion?: number | null;
+  btcReturn1h?: number | null;
+  btcReturn4h?: number | null;
+  btcReturn24h?: number | null;
+  altBasketReturn1h?: number | null;
+  altBasketReturn4h?: number | null;
+  altBasketReturn24h?: number | null;
+  btcVsAltReturn1h?: number | null;
+  btcVsAltReturn4h?: number | null;
+  btcVsAltReturn24h?: number | null;
+  btcTurnoverShare1h?: number | null;
+  btcTurnoverShare24h?: number | null;
+  btcTurnoverShareChange24h?: number | null;
+  altVolToBtcVol24h?: number | null;
+  altDispersion24h?: number | null;
+  btcAltRegime?:
+    | 'btc_lead'
+    | 'alt_lead'
+    | 'risk_off'
+    | 'risk_on'
+    | 'mixed'
+    | 'neutral'
+    | 'unknown'
+    | null;
   source?: string | null;
 };
 

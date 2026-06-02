@@ -1,10 +1,26 @@
 import {
   aggregateAggTradesToRows,
   buildMarketBreadthRows,
+  classifyBtcAltRegime,
   estimateBinanceMarketDataVolume,
   selectBreadthUniverseFromTickers,
   summarizeOrderBookDepth,
 } from '../lib/binanceMarketData';
+
+const makeKline = (
+  timestamp: number,
+  close: number,
+  turnover = close * 10,
+) => ({
+  timestamp,
+  open: close,
+  high: close,
+  low: close,
+  close,
+  volume: 10,
+  turnover,
+  dt: '',
+});
 
 describe('binanceMarketData helpers', () => {
   it('aggregates Binance aggTrades into interval trade-flow rows', () => {
@@ -159,6 +175,72 @@ describe('binanceMarketData helpers', () => {
       advanceDeclineRatio: 1,
       equalWeightedReturn: 0,
     });
+  });
+
+  it('adds BTC-vs-alt regime metrics to market breadth rows', () => {
+    const timestamps = Array.from(
+      { length: 98 },
+      (_, index) => index * 900_000,
+    );
+    const ethCandles = timestamps.map((timestamp, index) =>
+      makeKline(timestamp, 100 + index * 2, 1_000 + index),
+    );
+    const solCandles = timestamps.map((timestamp, index) =>
+      makeKline(timestamp, 100 + index * 3, 900 + index),
+    );
+    const btcCandles = timestamps.map((timestamp, index) =>
+      makeKline(timestamp, 100 + index, 5_000 + index),
+    );
+
+    const rows = buildMarketBreadthRows({
+      universe: 'top2_usdt',
+      interval: '15m',
+      candlesBySymbol: {
+        ETHUSDT: ethCandles,
+        SOLUSDT: solCandles,
+      },
+      btcCandles,
+    });
+    const lastRow = rows[rows.length - 1];
+
+    expect(lastRow.btcReturn24h).toBeCloseTo(
+      (btcCandles[97].close - btcCandles[1].close) / btcCandles[1].close,
+      12,
+    );
+    expect(lastRow.altBasketReturn24h).toBeCloseTo(
+      ((ethCandles[97].close - ethCandles[1].close) / ethCandles[1].close +
+        (solCandles[97].close - solCandles[1].close) / solCandles[1].close) /
+        2,
+      12,
+    );
+    expect(lastRow.btcVsAltReturn24h).toBeLessThan(0);
+    expect(lastRow.btcTurnoverShare24h).toBeGreaterThan(0);
+    expect(lastRow.altVolToBtcVol24h).toBeGreaterThan(0);
+    expect(lastRow.btcAltRegime).toBe('risk_on');
+  });
+
+  it('classifies BTC-alt regimes from 24h relative returns', () => {
+    expect(
+      classifyBtcAltRegime({
+        btcReturn24h: 0.04,
+        altBasketReturn24h: 0.01,
+        btcVsAltReturn24h: 0.03,
+      }),
+    ).toBe('btc_lead');
+    expect(
+      classifyBtcAltRegime({
+        btcReturn24h: -0.02,
+        altBasketReturn24h: -0.04,
+        btcVsAltReturn24h: 0.02,
+      }),
+    ).toBe('risk_off');
+    expect(
+      classifyBtcAltRegime({
+        btcReturn24h: null,
+        altBasketReturn24h: 0.01,
+        btcVsAltReturn24h: -0.01,
+      }),
+    ).toBe('unknown');
   });
 
   it('selects liquid non-stable USDT symbols for breadth universe', () => {

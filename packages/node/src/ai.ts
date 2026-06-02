@@ -221,6 +221,8 @@ Input payload structure:
   • \`marketContext.participation.trueDelta\`: Binance taker buy/sell volume delta from kline payload when \`source=kline_taker_volume\`; otherwise absent/unavailable.
   • \`marketContext.participation.tradeFlow\`: Binance aggTrades buy/sell pressure buckets when available.
   • \`marketContext.relative.marketBreadth\`: equal/volume-weighted alt-basket return, advance/decline ratio, and MA breadth for the configured Binance breadth universe.
+  • \`marketContext.relative.targetVsBtc\`: target/BTC ratio returns, alpha, beta, and short-window correlation; use it to decide whether the target is leading or lagging BTC in the signal direction.
+  • \`marketContext.relative.btcAltRegime\`: Binance-derived BTC-vs-alt basket regime, BTC/alt 24h returns, BTC turnover share, and alt dispersion; use it as a broad alt-market risk pocket.
   • \`marketContext.relative.btcDominance\`: CoinGecko global BTC market-cap dominance over the rest of crypto, 24h dominance change when enough snapshots exist, and an AI-ready \`altLiquidityRegime\` pocket: \`alt_friendly\`, \`btc_favored\`, \`neutral\`, or \`unknown\`.
   • \`marketContext.relative.marketReferences\`: BTC/ETH reference trade-flow and depth summary used for broad market pressure when the target symbol itself is not BTC/ETH.
   If those fields exist, use them as a more explicit hint instead of trying to re-derive the same idea from raw lines or points.
@@ -252,6 +254,8 @@ Explicit conflict rules:
 - If \`marketContext.participation.trueDelta.available=true\`, use it as better participation evidence than OHLCV-derived proxy delta; still do not let delta override invalid price structure.
 - If \`marketContext.participation.tradeFlow.available=true\` and \`stale=false\`, use it as direct lower-timeframe participation evidence. Treat stale or missing tradeFlow as absent, not as negative evidence.
 - If \`marketContext.relative.marketBreadth.available=true\` and \`stale=false\`, use it as broad alt-market support/conflict. Breadth is contextual; do not let it override the target symbol structure.
+- If \`marketContext.relative.targetVsBtc.available=true\`, treat positive target/BTC ratio trend as support for alt LONGs and negative ratio trend as support for alt SHORTs; ignore it when the target structure is stronger and clearly explains the setup.
+- If \`marketContext.relative.btcAltRegime.available=true\` and \`stale=false\`, treat \`alt_lead\`/\`risk_on\` as broad support for alt LONGs and \`btc_lead\`/\`risk_off\` as pressure against alt LONGs or support for cautious alt SHORTs. Do not use it as a standalone entry reason.
 - If \`marketContext.relative.btcDominance.available=true\` and \`stale=false\`, use \`altLiquidityRegime\` as a broad-market pocket: \`btc_favored\` is pressure against alt LONGs and support for cautious alt SHORTs; \`alt_friendly\` supports alt LONGs. Do not apply it as a standalone signal, and ignore it when stale or unknown.
 - If \`marketContext.relative.marketReferences.available=true\`, treat BTC/ETH trade-flow/depth as broad market context only. For alt symbols, do not describe it as the target coin's own flow or order book.
 - If \`marketContext.execution.targetVenue.available=true\` and spread is wide for the symbol/timeframe, treat it as execution/liquidity friction rather than as a standalone directional signal.

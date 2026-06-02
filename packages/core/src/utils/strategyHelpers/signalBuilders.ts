@@ -321,6 +321,8 @@ export const buildBaseContextGateFeatures = ({
   const relative = baseContext.relative?.benchmark;
   const marketBreadth = baseContext.relative?.marketBreadth;
   const btcDominance = baseContext.relative?.btcDominance;
+  const targetVsBtc = baseContext.relative?.targetVsBtc;
+  const btcAltRegime = baseContext.relative?.btcAltRegime;
   const marketReferences = baseContext.relative?.marketReferences;
   const execution = baseContext.relative?.execution;
   const targetVenue = execution?.targetVenue;
@@ -448,6 +450,42 @@ export const buildBaseContextGateFeatures = ({
       : direction === 'LONG'
         ? btcDominanceAltLiquidityRegime === 'alt_friendly'
         : btcDominanceAltLiquidityRegime === 'btc_favored';
+  const targetVsBtcRatioReturn24h = asFiniteNumberOrNull(
+    targetVsBtc?.ratioReturn24h,
+  );
+  const targetVsBtcAlpha24h = asFiniteNumberOrNull(targetVsBtc?.alphaVsBtc24h);
+  const targetVsBtcBeta20 = asFiniteNumberOrNull(targetVsBtc?.betaToBtc20);
+  const targetVsBtcCorrelation20 = asFiniteNumberOrNull(
+    targetVsBtc?.correlationToBtc20,
+  );
+  const targetVsBtcRatioTrend = targetVsBtc?.ratioTrend ?? 'unknown';
+  const targetVsBtcDirectionValue =
+    targetVsBtcRatioReturn24h ?? targetVsBtcAlpha24h;
+  const targetVsBtcAligned =
+    direction == null || targetVsBtcDirectionValue == null
+      ? null
+      : direction === 'LONG'
+        ? targetVsBtcDirectionValue >= 0
+        : targetVsBtcDirectionValue <= 0;
+  const btcAltRegimeValue = btcAltRegime?.regime ?? 'unknown';
+  const btcAltRegimeStale =
+    typeof btcAltRegime?.stale === 'boolean' ? btcAltRegime.stale : null;
+  const btcAltRegimeAligned =
+    direction == null ||
+    btcAltRegimeStale === true ||
+    btcAltRegimeValue === 'unknown' ||
+    btcAltRegimeValue === 'neutral' ||
+    btcAltRegimeValue === 'mixed'
+      ? null
+      : direction === 'LONG'
+        ? btcAltRegimeValue === 'alt_lead' || btcAltRegimeValue === 'risk_on'
+        : btcAltRegimeValue === 'btc_lead' || btcAltRegimeValue === 'risk_off';
+  const btcVsAltReturn24h = asFiniteNumberOrNull(
+    btcAltRegime?.btcVsAltReturn24h,
+  );
+  const btcTurnoverShare24h = asFiniteNumberOrNull(
+    btcAltRegime?.btcTurnoverShare24h,
+  );
   const orderBookImbalance = asFiniteNumberOrNull(
     targetVenue?.depthLevels?.[0]?.imbalance,
   );
@@ -563,6 +601,12 @@ export const buildBaseContextGateFeatures = ({
     btcDominanceAligned === true,
     'btc_dominance_aligned',
   );
+  pushWhen(confirmations, targetVsBtcAligned === true, 'target_vs_btc_aligned');
+  pushWhen(
+    confirmations,
+    btcAltRegimeAligned === true,
+    'btc_alt_regime_aligned',
+  );
   pushWhen(confirmations, benchmarkAligned === true, 'benchmark_aligned');
   pushWhen(confirmations, breakoutWithDirection === true, 'breakout_confirmed');
   pushWhen(
@@ -600,6 +644,8 @@ export const buildBaseContextGateFeatures = ({
     btcDominanceAligned === false,
     'btc_dominance_alt_pressure',
   );
+  pushWhen(conflicts, targetVsBtcAligned === false, 'target_vs_btc_against');
+  pushWhen(conflicts, btcAltRegimeAligned === false, 'btc_alt_regime_against');
   pushWhen(conflicts, deltaAligned === false, 'delta_against');
   pushWhen(conflicts, tradeFlowAligned === false, 'trade_flow_against');
   pushWhen(
@@ -647,6 +693,8 @@ export const buildBaseContextGateFeatures = ({
       benchmarkAligned,
       marketBreadthAligned,
       btcDominanceAligned,
+      targetVsBtcAligned,
+      btcAltRegimeAligned,
       relativeStrengthBucket === 'unknown'
         ? null
         : !relativeStrengthBucket.endsWith('_against'),
@@ -727,7 +775,9 @@ export const buildBaseContextGateFeatures = ({
           ? 'extreme_volatility'
           : benchmarkConflict ||
               marketBreadthAligned === false ||
-              btcDominanceAligned === false
+              btcDominanceAligned === false ||
+              targetVsBtcAligned === false ||
+              btcAltRegimeAligned === false
             ? 'market_context_against'
             : (scores.participation ?? 100) < 45
               ? 'weak_participation'
@@ -837,6 +887,17 @@ export const buildBaseContextGateFeatures = ({
       btcDominanceAltLiquidityRegime,
       btcDominanceAligned,
       btcDominanceStale,
+      targetVsBtcRatioReturn24h,
+      targetVsBtcAlpha24h,
+      targetVsBtcBeta20,
+      targetVsBtcCorrelation20,
+      targetVsBtcRatioTrend,
+      targetVsBtcAligned,
+      btcAltRegime: btcAltRegimeValue,
+      btcAltRegimeAligned,
+      btcAltRegimeStale,
+      btcVsAltReturn24h,
+      btcTurnoverShare24h,
     },
     execution: {
       venueSpreadZScore,

@@ -278,6 +278,90 @@ describe('buildStrategySignal', () => {
     });
   });
 
+  it('derives BTC-relative gate features from target and alt-basket context', () => {
+    const signal = buildStrategySignal({
+      signalId: 's-relative-btc',
+      strategy: 'TrendLine',
+      symbol: 'ETHUSDT',
+      interval: '15' as any,
+      direction: 'LONG',
+      timestamp: 1,
+      prices: {
+        currentPrice: 100,
+        takeProfitPrice: 110,
+        stopLossPrice: 95,
+        riskRatio: 2,
+      },
+      indicators: {
+        baseContext: {
+          ...baseContext,
+          relative: {
+            ...baseContext.relative,
+            targetVsBtc: {
+              source: 'aligned_ohlcv',
+              ratioReturn1h: 0.5,
+              ratioReturn4h: 1.2,
+              ratioReturn24h: 2.5,
+              alphaVsBtc1h: 0.5,
+              alphaVsBtc4h: 1.2,
+              alphaVsBtc24h: 2.5,
+              betaToBtc20: 1.1,
+              correlationToBtc20: 0.8,
+              ratioTrend: 'up',
+            },
+            btcAltRegime: {
+              source: 'binance_klines',
+              universe: 'binance_top30_usdt',
+              interval: '15m',
+              asOfTs: 1,
+              ageMs: 0,
+              stale: false,
+              btcReturn1h: 0.001,
+              btcReturn4h: 0.002,
+              btcReturn24h: 0.01,
+              altBasketReturn1h: 0.002,
+              altBasketReturn4h: 0.004,
+              altBasketReturn24h: 0.03,
+              btcVsAltReturn1h: -0.001,
+              btcVsAltReturn4h: -0.002,
+              btcVsAltReturn24h: -0.02,
+              btcTurnoverShare1h: 0.4,
+              btcTurnoverShare24h: 0.35,
+              btcTurnoverShareChange24h: -0.05,
+              altVolToBtcVol24h: 1.8,
+              altDispersion24h: 0.02,
+              regime: 'risk_on',
+            },
+          },
+        },
+      },
+    });
+
+    expect(
+      signal.additionalIndicators?.baseContext?.gateFeatures,
+    ).toMatchObject({
+      confirmations: {
+        items: expect.arrayContaining([
+          'target_vs_btc_aligned',
+          'btc_alt_regime_aligned',
+        ]),
+      },
+      relative: {
+        targetVsBtcRatioReturn24h: 2.5,
+        targetVsBtcAlpha24h: 2.5,
+        targetVsBtcBeta20: 1.1,
+        targetVsBtcCorrelation20: 0.8,
+        targetVsBtcRatioTrend: 'up',
+        targetVsBtcAligned: true,
+        btcAltRegime: 'risk_on',
+        btcAltRegimeAligned: true,
+        btcAltRegimeStale: false,
+        btcVsAltReturn24h: -0.02,
+        btcTurnoverShare24h: 0.35,
+      },
+    });
+  });
+
   it('turns conflicting normalized context into reject-oriented gate hints', () => {
     const signal = buildStrategySignal({
       signalId: 's-conflict',

@@ -102,10 +102,30 @@ describe('strategyHelpers/globalMarketContext', () => {
     });
   });
 
-  it('is enabled by default for backtest and signals environments', () => {
-    expect(isGlobalMarketContextEnabled('BACKTEST')).toBe(true);
+  it('is disabled by default for backtest and enabled by default for cron', () => {
+    expect(isGlobalMarketContextEnabled('BACKTEST')).toBe(false);
     expect(isGlobalMarketContextEnabled('CRON')).toBe(true);
     expect(isGlobalMarketContextEnabled('LIVE')).toBe(false);
+  });
+
+  it('allows explicitly enabling backtest context with env flag', () => {
+    process.env.COINGECKO_GLOBAL_CONTEXT_ENABLED = 'backtest';
+
+    expect(isGlobalMarketContextEnabled('BACKTEST')).toBe(true);
+    expect(isGlobalMarketContextEnabled('CRON')).toBe(false);
+  });
+
+  it('does not query Timescale for default backtest enrichment', async () => {
+    const signal = makeSignal();
+
+    await expect(
+      enrichSignalWithGlobalMarketContext({
+        signal,
+        env: 'BACKTEST',
+      }),
+    ).resolves.toBe(false);
+
+    expect(mockGetLatestMarketGlobalContext).not.toHaveBeenCalled();
   });
 
   it('attaches as-of CoinGecko BTC dominance context and refreshes gate features', async () => {
@@ -115,6 +135,7 @@ describe('strategyHelpers/globalMarketContext', () => {
       enrichSignalWithGlobalMarketContext({
         signal,
         env: 'BACKTEST',
+        enabled: true,
       }),
     ).resolves.toBe(true);
 
@@ -162,6 +183,7 @@ describe('strategyHelpers/globalMarketContext', () => {
       enrichSignalWithGlobalMarketContext({
         signal,
         env: 'BACKTEST',
+        enabled: true,
       }),
     ).resolves.toBe(false);
 

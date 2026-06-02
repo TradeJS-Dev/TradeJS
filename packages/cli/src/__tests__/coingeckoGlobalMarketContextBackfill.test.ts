@@ -54,7 +54,7 @@ describe('coingeckoGlobalMarketContextBackfill', () => {
     });
   });
 
-  it('uses AI/ML-aware defaults for backtest and live defaults for signals/replay', () => {
+  it('uses AI/ML-aware defaults for backtest/replay and keeps signals opt-in', () => {
     expect(
       shouldBackfillCoingeckoGlobalContextForBacktest({
         aiEnabled: true,
@@ -71,12 +71,23 @@ describe('coingeckoGlobalMarketContextBackfill', () => {
     ).toBe(false);
     expect(
       shouldBackfillCoingeckoGlobalContextForSignals({ cacheOnly: false }),
-    ).toBe(true);
+    ).toBe(false);
     expect(
       shouldBackfillCoingeckoGlobalContextForReplay({ cacheOnly: false }),
     ).toBe(true);
     expect(
       shouldBackfillCoingeckoGlobalContextForReplay({ cacheOnly: true }),
+    ).toBe(false);
+  });
+
+  it('allows explicitly enabling CoinGecko context for signals with env flag', () => {
+    process.env.COINGECKO_GLOBAL_CONTEXT_ENABLED = '1';
+
+    expect(
+      shouldBackfillCoingeckoGlobalContextForSignals({ cacheOnly: false }),
+    ).toBe(true);
+    expect(
+      shouldBackfillCoingeckoGlobalContextForSignals({ cacheOnly: true }),
     ).toBe(false);
   });
 

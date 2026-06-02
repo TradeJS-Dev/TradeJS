@@ -4,7 +4,10 @@ import {
   createIndicators,
   getRequiredControllerSeedWindow,
 } from '../indicators';
-import { buildBaseContextMtfSnapshot } from '../indicatorBaseContext';
+import {
+  buildBaseContextMtfSnapshot,
+  buildTargetVsBtcContext,
+} from '../indicatorBaseContext';
 import { CORRELATION_WINDOW, ML_BASE_CANDLES_WINDOW } from '../../constants';
 import { calculateCoinBtcCorrelation } from '../correlation';
 import {
@@ -29,6 +32,52 @@ const makeCandle = (
   close,
   volume,
   turnover: close * volume,
+});
+
+describe('buildTargetVsBtcContext', () => {
+  it('computes target ratio returns, alpha, beta, and correlation from aligned candles', () => {
+    const coin1h = [makeCandle(1, 100), makeCandle(2, 112)];
+    const btc1h = [makeCandle(1, 100), makeCandle(2, 104)];
+    const coin4h = [makeCandle(1, 100), makeCandle(2, 120)];
+    const btc4h = [makeCandle(1, 100), makeCandle(2, 105)];
+    const coin1d = [makeCandle(1, 100), makeCandle(2, 130)];
+    const btc1d = [makeCandle(1, 100), makeCandle(2, 110)];
+    const coinCandles = Array.from({ length: 24 }, (_, index) =>
+      makeCandle(index * INTERVAL_15M_MS, 100 + index * 2),
+    );
+    const btcCandles = Array.from({ length: 24 }, (_, index) =>
+      makeCandle(index * INTERVAL_15M_MS, 100 + index),
+    );
+
+    const context = buildTargetVsBtcContext({
+      coin1h,
+      btc1h,
+      coin4h,
+      btc4h,
+      coin1d,
+      btc1d,
+      coinCandles,
+      btcCandles,
+    });
+
+    expect(context).toMatchObject({
+      source: 'aligned_ohlcv',
+      ratioTrend: 'up',
+      alphaVsBtc1h: 8,
+      alphaVsBtc4h: 15,
+      alphaVsBtc24h: 20,
+    });
+    expect(context.ratioReturn1h).toBeCloseTo(
+      percentChange(112 / 104, 100 / 100) ?? 0,
+      8,
+    );
+    expect(context.ratioReturn24h).toBeCloseTo(
+      percentChange(130 / 110, 100 / 100) ?? 0,
+      8,
+    );
+    expect(context.betaToBtc20).toBeGreaterThan(1);
+    expect(context.correlationToBtc20).toBeGreaterThan(0.99);
+  });
 });
 
 const percentChange = (current: number, previous: number): number | null => {

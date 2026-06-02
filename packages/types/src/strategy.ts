@@ -585,6 +585,18 @@ export interface BaseRelativeContext {
     venueSpreadZScore: number | null;
     targetVenue?: BaseTargetVenueContext | null;
   };
+  targetVsBtc?: {
+    source: 'aligned_ohlcv';
+    ratioReturn1h: number | null;
+    ratioReturn4h: number | null;
+    ratioReturn24h: number | null;
+    alphaVsBtc1h: number | null;
+    alphaVsBtc4h: number | null;
+    alphaVsBtc24h: number | null;
+    betaToBtc20: number | null;
+    correlationToBtc20: number | null;
+    ratioTrend: 'up' | 'down' | 'flat' | 'unknown';
+  };
   marketBreadth?: {
     source: 'binance_klines';
     universe: string;
@@ -602,6 +614,36 @@ export interface BaseRelativeContext {
     equalWeightedReturn: number | null;
     volumeWeightedReturn: number | null;
     dispersion: number | null;
+  };
+  btcAltRegime?: {
+    source: 'binance_klines';
+    universe: string;
+    interval: MarketFeatureInterval;
+    asOfTs: number | null;
+    ageMs: number | null;
+    stale: boolean;
+    btcReturn1h: number | null;
+    btcReturn4h: number | null;
+    btcReturn24h: number | null;
+    altBasketReturn1h: number | null;
+    altBasketReturn4h: number | null;
+    altBasketReturn24h: number | null;
+    btcVsAltReturn1h: number | null;
+    btcVsAltReturn4h: number | null;
+    btcVsAltReturn24h: number | null;
+    btcTurnoverShare1h: number | null;
+    btcTurnoverShare24h: number | null;
+    btcTurnoverShareChange24h: number | null;
+    altVolToBtcVol24h: number | null;
+    altDispersion24h: number | null;
+    regime:
+      | 'btc_lead'
+      | 'alt_lead'
+      | 'risk_off'
+      | 'risk_on'
+      | 'mixed'
+      | 'neutral'
+      | 'unknown';
   };
   btcDominance?: {
     source: 'coingecko_global';
@@ -681,6 +723,8 @@ export type BaseGateFeatureConfirmation =
   | 'reference_trade_flow_aligned'
   | 'market_breadth_aligned'
   | 'btc_dominance_aligned'
+  | 'target_vs_btc_aligned'
+  | 'btc_alt_regime_aligned'
   | 'benchmark_aligned'
   | 'breakout_confirmed'
   | 'liquidity_sweep_aligned'
@@ -695,6 +739,8 @@ export type BaseGateFeatureConflict =
   | 'relative_strength_against'
   | 'market_breadth_against'
   | 'btc_dominance_alt_pressure'
+  | 'target_vs_btc_against'
+  | 'btc_alt_regime_against'
   | 'delta_against'
   | 'trade_flow_against'
   | 'reference_trade_flow_against'
@@ -817,6 +863,24 @@ export interface BaseContextGateFeatures {
       | 'unknown';
     btcDominanceAligned: boolean | null;
     btcDominanceStale: boolean | null;
+    targetVsBtcRatioReturn24h: number | null;
+    targetVsBtcAlpha24h: number | null;
+    targetVsBtcBeta20: number | null;
+    targetVsBtcCorrelation20: number | null;
+    targetVsBtcRatioTrend: 'up' | 'down' | 'flat' | 'unknown';
+    targetVsBtcAligned: boolean | null;
+    btcAltRegime:
+      | 'btc_lead'
+      | 'alt_lead'
+      | 'risk_off'
+      | 'risk_on'
+      | 'mixed'
+      | 'neutral'
+      | 'unknown';
+    btcAltRegimeAligned: boolean | null;
+    btcAltRegimeStale: boolean | null;
+    btcVsAltReturn24h: number | null;
+    btcTurnoverShare24h: number | null;
   };
   execution: {
     venueSpreadZScore: number | null;

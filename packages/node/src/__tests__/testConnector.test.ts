@@ -7,6 +7,7 @@ jest.mock('@tradejs/infra/redis', () => ({
 }));
 
 import { setData } from '@tradejs/infra/redis';
+import { BACKTEST_SLIPPAGE_BPS } from '@tradejs/core/constants';
 import { createTestConnector } from '../testConnector';
 
 const baseConnector = {
@@ -17,8 +18,84 @@ const baseConnector = {
 };
 
 describe('testConnector', () => {
+  const backtestSlippageRate = BACKTEST_SLIPPAGE_BPS / 10_000;
+
   beforeEach(() => {
     jest.clearAllMocks();
+  });
+
+  it('applies BACKTEST_SLIPPAGE_BPS adversely to long and short entry/exit prices', async () => {
+    const longConnector = createTestConnector(baseConnector as any, {
+      userName: 'alice',
+    });
+
+    await longConnector.placeOrder({
+      symbol: 'ETHUSDT',
+      qty: 1,
+      price: 100,
+      isLimit: false,
+      timestamp: 1,
+      direction: 'LONG',
+    });
+    await longConnector.closePosition({
+      symbol: 'ETHUSDT',
+      price: 110,
+      isLimit: false,
+      timestamp: 2,
+      direction: 'LONG',
+    });
+
+    const longOrders = (await longConnector.getResult()).inlineOrderLog ?? [];
+    expect(longOrders[0]).toEqual(
+      expect.objectContaining({
+        type: 'OPEN_LONG',
+        profit: -0.2,
+      }),
+    );
+    expect(longOrders[0].price).toBeCloseTo(100 * (1 + backtestSlippageRate));
+    expect(longOrders[1]).toEqual(
+      expect.objectContaining({
+        type: 'CLOSE_LONG',
+        profit: 9.36,
+      }),
+    );
+    expect(longOrders[1].price).toBeCloseTo(110 * (1 - backtestSlippageRate));
+
+    const shortConnector = createTestConnector(baseConnector as any, {
+      userName: 'alice',
+    });
+
+    await shortConnector.placeOrder({
+      symbol: 'ETHUSDT',
+      qty: 1,
+      price: 100,
+      isLimit: false,
+      timestamp: 1,
+      direction: 'SHORT',
+    });
+    await shortConnector.closePosition({
+      symbol: 'ETHUSDT',
+      price: 90,
+      isLimit: false,
+      timestamp: 2,
+      direction: 'SHORT',
+    });
+
+    const shortOrders = (await shortConnector.getResult()).inlineOrderLog ?? [];
+    expect(shortOrders[0]).toEqual(
+      expect.objectContaining({
+        type: 'OPEN_SHORT',
+        profit: -0.2,
+      }),
+    );
+    expect(shortOrders[0].price).toBeCloseTo(100 * (1 - backtestSlippageRate));
+    expect(shortOrders[1]).toEqual(
+      expect.objectContaining({
+        type: 'CLOSE_SHORT',
+        profit: 9.44,
+      }),
+    );
+    expect(shortOrders[1].price).toBeCloseTo(90 * (1 + backtestSlippageRate));
   });
 
   it('returns inline logs and final stat after take profits', async () => {

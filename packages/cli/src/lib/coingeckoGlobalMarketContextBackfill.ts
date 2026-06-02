@@ -185,7 +185,8 @@ export const shouldBackfillCoingeckoGlobalContextForSignals = ({
 }: {
   cacheOnly: boolean;
 }) =>
-  parseEnabledFlag(process.env.COINGECKO_GLOBAL_CONTEXT_ENABLED, !cacheOnly);
+  parseEnabledFlag(process.env.COINGECKO_GLOBAL_CONTEXT_ENABLED, false) &&
+  !cacheOnly;
 
 export const shouldBackfillCoingeckoGlobalContextForReplay = ({
   cacheOnly,
