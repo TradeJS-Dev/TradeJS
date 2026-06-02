@@ -108,6 +108,13 @@ jest.mock('../lib/binanceMarketContextBackfill', () => ({
   shouldBackfillBinanceMarketContextForReplay: jest.fn(),
 }));
 
+jest.mock('../lib/coingeckoGlobalMarketContextBackfill', () => ({
+  backfillCoingeckoGlobalContextForBacktest: jest.fn(),
+  backfillCoingeckoGlobalContextForReplay: jest.fn(),
+  shouldBackfillCoingeckoGlobalContextForBacktest: jest.fn(() => false),
+  shouldBackfillCoingeckoGlobalContextForReplay: jest.fn(() => false),
+}));
+
 jest.mock('../lib/cliArgs', () => ({
   normalizeCliArgv: jest.fn((argv: string[]) => argv),
 }));
