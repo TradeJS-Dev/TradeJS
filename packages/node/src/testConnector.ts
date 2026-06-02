@@ -1,5 +1,9 @@
 import { randomUUID } from 'node:crypto';
-import { FEE_PERCENT, INITIAL_BACKTEST_AMOUNT } from '@tradejs/core/constants';
+import {
+  BACKTEST_SLIPPAGE_BPS,
+  FEE_PERCENT,
+  INITIAL_BACKTEST_AMOUNT,
+} from '@tradejs/core/constants';
 import { calculateStatsFull } from '@tradejs/core/backtest';
 import {
   Candle,
@@ -30,6 +34,7 @@ export const createTestConnector: TestConnectorCreator = (
   let takeProfits: Tp[] = [];
   let stopLossPrice: Sl = null;
   const closedSignalResults: Array<{ signalId: string; profit: number }> = [];
+  const backtestSlippageRate = Math.max(0, BACKTEST_SLIPPAGE_BPS) / 10_000;
 
   const logOrder = (data: Partial<OrderLog>) => {
     const nextEntry = {
@@ -103,6 +108,30 @@ export const createTestConnector: TestConnectorCreator = (
       fee,
       profit: grossProfit - fee,
     };
+  };
+
+  const applyExecutionSlippage = ({
+    price,
+    direction,
+    stage,
+  }: {
+    price: number;
+    direction: 'LONG' | 'SHORT';
+    stage: 'entry' | 'exit';
+  }) => {
+    if (!backtestSlippageRate) {
+      return price;
+    }
+
+    const sign =
+      direction === 'LONG'
+        ? stage === 'entry'
+          ? 1
+          : -1
+        : stage === 'entry'
+          ? -1
+          : 1;
+    return price * (1 + sign * backtestSlippageRate);
   };
 
   return {
@@ -185,12 +214,17 @@ export const createTestConnector: TestConnectorCreator = (
 
         if (reached) {
           const qty = originalQty * tp.rate;
+          const executionPrice = applyExecutionSlippage({
+            price: targetPrice,
+            direction: currentPosition.direction,
+            stage: 'exit',
+          });
           const grossProfit = isLong
-            ? (targetPrice - entryPrice) * qty
-            : (entryPrice - targetPrice) * qty;
+            ? (executionPrice - entryPrice) * qty
+            : (entryPrice - executionPrice) * qty;
           const { fee, profit } = getNetProfit({
             grossProfit,
-            price: targetPrice,
+            price: executionPrice,
             qty,
           });
 
@@ -204,7 +238,7 @@ export const createTestConnector: TestConnectorCreator = (
           logOrder({
             timestamp: candle.timestamp,
             qty,
-            price: targetPrice,
+            price: executionPrice,
             profit,
             fee,
             type: isLong ? 'TAKE_PROFIT_LONG' : 'TAKE_PROFIT_SHORT',
@@ -233,12 +267,17 @@ export const createTestConnector: TestConnectorCreator = (
 
       if (hitStop) {
         const qty = currentPosition.qty;
+        const executionPrice = applyExecutionSlippage({
+          price: stopLossPrice,
+          direction: currentPosition.direction,
+          stage: 'exit',
+        });
         const grossProfit = isLong
-          ? (stopLossPrice - currentPosition.price) * qty
-          : (currentPosition.price - stopLossPrice) * qty;
+          ? (executionPrice - currentPosition.price) * qty
+          : (currentPosition.price - executionPrice) * qty;
         const { fee, profit } = getNetProfit({
           grossProfit,
-          price: stopLossPrice,
+          price: executionPrice,
           qty,
         });
 
@@ -249,7 +288,7 @@ export const createTestConnector: TestConnectorCreator = (
           timestamp: candle.timestamp,
           qty,
           profit,
-          price: stopLossPrice,
+          price: executionPrice,
           fee,
           type: isLong ? 'STOP_LOSS_LONG' : 'STOP_LOSS_SHORT',
         });
@@ -271,12 +310,17 @@ export const createTestConnector: TestConnectorCreator = (
 
         if (hitStop) {
           const qty = currentPosition.qty;
+          const executionPrice = applyExecutionSlippage({
+            price: stopLossPrice,
+            direction: currentPosition.direction,
+            stage: 'exit',
+          });
           const grossProfit = isLong
-            ? (stopLossPrice - currentPosition.price) * qty
-            : (currentPosition.price - stopLossPrice) * qty;
+            ? (executionPrice - currentPosition.price) * qty
+            : (currentPosition.price - executionPrice) * qty;
           const { fee, profit } = getNetProfit({
             grossProfit,
-            price: stopLossPrice,
+            price: executionPrice,
             qty,
           });
 
@@ -287,7 +331,7 @@ export const createTestConnector: TestConnectorCreator = (
             timestamp: candle.timestamp,
             qty,
             profit,
-            price: stopLossPrice,
+            price: executionPrice,
             fee,
             type: isLong ? 'STOP_LOSS_LONG' : 'STOP_LOSS_SHORT',
           });
@@ -313,12 +357,17 @@ export const createTestConnector: TestConnectorCreator = (
 
         if (reached) {
           const qty = originalQty * tp.rate;
+          const executionPrice = applyExecutionSlippage({
+            price: targetPrice,
+            direction: currentPosition.direction,
+            stage: 'exit',
+          });
           const grossProfit = isLong
-            ? (targetPrice - entryPrice) * qty
-            : (entryPrice - targetPrice) * qty;
+            ? (executionPrice - entryPrice) * qty
+            : (entryPrice - executionPrice) * qty;
           const { fee, profit } = getNetProfit({
             grossProfit,
-            price: targetPrice,
+            price: executionPrice,
             qty,
           });
 
@@ -332,7 +381,7 @@ export const createTestConnector: TestConnectorCreator = (
           logOrder({
             timestamp: candle.timestamp,
             qty,
-            price: targetPrice,
+            price: executionPrice,
             profit,
             fee,
             type: isLong ? 'TAKE_PROFIT_LONG' : 'TAKE_PROFIT_SHORT',
@@ -356,7 +405,12 @@ export const createTestConnector: TestConnectorCreator = (
 
       const isLong = order.direction === 'LONG';
 
-      currentPosition = { ...order, amount };
+      const entryPrice = applyExecutionSlippage({
+        price: order.price,
+        direction: order.direction,
+        stage: 'entry',
+      });
+      currentPosition = { ...order, price: entryPrice, amount };
       currentSignalId =
         typeof order.signal?.signalId === 'string' && order.signal.signalId
           ? order.signal.signalId
@@ -365,7 +419,7 @@ export const createTestConnector: TestConnectorCreator = (
 
       const { fee, profit } = getNetProfit({
         grossProfit: 0,
-        price: order.price,
+        price: entryPrice,
         qty: order.qty,
       });
 
@@ -374,6 +428,7 @@ export const createTestConnector: TestConnectorCreator = (
 
       logOrder({
         ...order,
+        price: entryPrice,
         profit,
         fee,
         type: isLong ? 'OPEN_LONG' : 'OPEN_SHORT',
@@ -412,12 +467,17 @@ export const createTestConnector: TestConnectorCreator = (
       }
 
       const isLong = currentPosition.direction === 'LONG';
+      const executionPrice = applyExecutionSlippage({
+        price: order.price,
+        direction: currentPosition.direction,
+        stage: 'exit',
+      });
       const grossProfit = isLong
-        ? (order.price - currentPosition.price) * currentPosition.qty
-        : (currentPosition.price - order.price) * currentPosition.qty;
+        ? (executionPrice - currentPosition.price) * currentPosition.qty
+        : (currentPosition.price - executionPrice) * currentPosition.qty;
       const { fee, profit } = getNetProfit({
         grossProfit,
-        price: order.price,
+        price: executionPrice,
         qty: currentPosition.qty,
       });
 
@@ -426,6 +486,7 @@ export const createTestConnector: TestConnectorCreator = (
 
       logOrder({
         ...order,
+        price: executionPrice,
         qty: currentPosition.qty,
         profit,
         fee,

@@ -1,4 +1,8 @@
-import { FEE_PERCENT, INITIAL_BACKTEST_AMOUNT } from '@tradejs/core/constants';
+import {
+  BACKTEST_SLIPPAGE_BPS,
+  FEE_PERCENT,
+  INITIAL_BACKTEST_AMOUNT,
+} from '@tradejs/core/constants';
 import { round } from '@tradejs/core/math';
 import {
   Candle,
@@ -97,6 +101,7 @@ export const createPortfolioReplayConnector = (
   const positionLog: PositionLogData = [];
   const orderLogByStrategy = new Map<string, OrderLogData>();
   const positionLogByStrategy = new Map<string, PositionLogData>();
+  const backtestSlippageRate = Math.max(0, BACKTEST_SLIPPAGE_BPS) / 10_000;
 
   const appendStrategyOrderLog = (strategyName: string, entry: OrderLog) => {
     const bucket = orderLogByStrategy.get(strategyName) ?? [];
@@ -175,6 +180,30 @@ export const createPortfolioReplayConnector = (
     };
   };
 
+  const applyExecutionSlippage = ({
+    price,
+    direction,
+    stage,
+  }: {
+    price: number;
+    direction: 'LONG' | 'SHORT';
+    stage: 'entry' | 'exit';
+  }) => {
+    if (!backtestSlippageRate) {
+      return price;
+    }
+
+    const sign =
+      direction === 'LONG'
+        ? stage === 'entry'
+          ? 1
+          : -1
+        : stage === 'entry'
+          ? -1
+          : 1;
+    return price * (1 + sign * backtestSlippageRate);
+  };
+
   const checkTp = async ({
     symbol,
     candle,
@@ -202,12 +231,17 @@ export const createPortfolioReplayConnector = (
       }
 
       const qty = positionState.originalQty * tp.rate;
+      const executionPrice = applyExecutionSlippage({
+        price: tp.price,
+        direction: position.direction,
+        stage: 'exit',
+      });
       const grossProfit = isLong
-        ? (tp.price - entryPrice) * qty
-        : (entryPrice - tp.price) * qty;
+        ? (executionPrice - entryPrice) * qty
+        : (entryPrice - executionPrice) * qty;
       const { fee, profit } = getNetProfit({
         grossProfit,
-        price: tp.price,
+        price: executionPrice,
         qty,
       });
 
@@ -220,7 +254,7 @@ export const createPortfolioReplayConnector = (
         data: {
           timestamp: candle.timestamp,
           qty,
-          price: tp.price,
+          price: executionPrice,
           profit,
           fee,
           type: isLong ? 'TAKE_PROFIT_LONG' : 'TAKE_PROFIT_SHORT',
@@ -262,12 +296,17 @@ export const createPortfolioReplayConnector = (
     }
 
     const qty = position.qty;
+    const executionPrice = applyExecutionSlippage({
+      price: stopLossPrice,
+      direction: position.direction,
+      stage: 'exit',
+    });
     const grossProfit = isLong
-      ? (stopLossPrice - position.price) * qty
-      : (position.price - stopLossPrice) * qty;
+      ? (executionPrice - position.price) * qty
+      : (position.price - executionPrice) * qty;
     const { fee, profit } = getNetProfit({
       grossProfit,
-      price: stopLossPrice,
+      price: executionPrice,
       qty,
     });
 
@@ -280,7 +319,7 @@ export const createPortfolioReplayConnector = (
         timestamp: candle.timestamp,
         qty,
         profit,
-        price: stopLossPrice,
+        price: executionPrice,
         fee,
         type: isLong ? 'STOP_LOSS_LONG' : 'STOP_LOSS_SHORT',
       },
@@ -337,20 +376,26 @@ export const createPortfolioReplayConnector = (
       const strategyName = getStrategyName({
         signal: order.signal,
       });
+      const entryPrice = applyExecutionSlippage({
+        price: order.price,
+        direction: order.direction,
+        stage: 'entry',
+      });
       const nextPosition: ReplayPosition = {
         ...order,
+        price: entryPrice,
         signal: getSignalWithoutIndicators(order.signal),
         amount,
         strategyName,
       };
       const { fee, profit } = getNetProfit({
         grossProfit: 0,
-        price: order.price,
+        price: entryPrice,
         qty: order.qty,
       });
 
       amount += profit;
-      currentPriceBySymbol.set(order.symbol, order.price);
+      currentPriceBySymbol.set(order.symbol, entryPrice);
 
       const positionState: PositionState = {
         position: nextPosition,
@@ -365,6 +410,7 @@ export const createPortfolioReplayConnector = (
         positionState,
         data: {
           ...order,
+          price: entryPrice,
           profit,
           fee,
           type: order.direction === 'LONG' ? 'OPEN_LONG' : 'OPEN_SHORT',
@@ -408,23 +454,29 @@ export const createPortfolioReplayConnector = (
 
       const { position } = positionState;
       const isLong = position.direction === 'LONG';
+      const executionPrice = applyExecutionSlippage({
+        price: order.price,
+        direction: position.direction,
+        stage: 'exit',
+      });
       const grossProfit = isLong
-        ? (order.price - position.price) * position.qty
-        : (position.price - order.price) * position.qty;
+        ? (executionPrice - position.price) * position.qty
+        : (position.price - executionPrice) * position.qty;
       const { fee, profit } = getNetProfit({
         grossProfit,
-        price: order.price,
+        price: executionPrice,
         qty: position.qty,
       });
 
       amount += profit;
       positionState.currentProfit += profit;
-      currentPriceBySymbol.set(order.symbol, order.price);
+      currentPriceBySymbol.set(order.symbol, executionPrice);
 
       logOrder({
         positionState,
         data: {
           ...order,
+          price: executionPrice,
           qty: position.qty,
           profit,
           fee,

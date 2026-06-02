@@ -75,14 +75,14 @@ describe('testConnector', () => {
     const result = await connector.getResult();
 
     expect(result.stat).toEqual({
-      amount: 114.35,
-      profit: 14.35,
+      amount: 114.14,
+      profit: 14.14,
       orders: 1,
     });
     expect(result.inlineOrderLog).toHaveLength(3);
     expect(result.inlinePositionLog).toHaveLength(1);
     expect(result.inlineOrderLog?.map(({ fee }) => fee)).toEqual([
-      0.3, 0.165, 0.18,
+      0.20040000000000002, 0.10978, 0.11976,
     ]);
     expect(result.inlineOrderLog?.[0].signal).toEqual(
       expect.objectContaining({ signalId: 'sig-1' }),
@@ -150,17 +150,17 @@ describe('testConnector', () => {
     const result = await connector.getResult();
 
     expect(result.stat).toEqual({
-      amount: 104.39,
-      profit: 4.39,
+      amount: 104.18,
+      profit: 4.18,
       orders: 1,
     });
     expect(result.inlineOrderLog?.[1]).toEqual(
       expect.objectContaining({
         type: 'CLOSE_LONG',
-        price: 105,
+        price: 104.79,
         qty: 1,
-        fee: 0.315,
-        profit: 4.68,
+        fee: 0.20958000000000002,
+        profit: 4.38,
       }),
     );
   });
@@ -198,14 +198,14 @@ describe('testConnector', () => {
     });
 
     expect(await connector.drainMlResultsBatch()).toEqual([
-      { signalId: 'sig-stop', profit: -5.58 },
+      { signalId: 'sig-stop', profit: -5.78 },
     ]);
     expect(await connector.drainMlResultsBatch()).toEqual([]);
 
     const result = await connector.getResult();
     expect(result.stat).toEqual({
-      amount: 94.42,
-      profit: -5.58,
+      amount: 94.22,
+      profit: -5.78,
       orders: 1,
     });
     expect(result.inlineOrderLog).toHaveLength(2);
@@ -244,17 +244,17 @@ describe('testConnector', () => {
     const result = await connector.getResult();
 
     expect(result.stat).toEqual({
-      amount: 109.43,
-      profit: 9.43,
+      amount: 109.24,
+      profit: 9.24,
       orders: 1,
     });
     expect(result.inlineOrderLog?.[1]).toEqual(
       expect.objectContaining({
         type: 'TAKE_PROFIT_SHORT',
-        price: 90,
+        price: 90.18,
         qty: 1,
-        fee: 0.27,
-        profit: 9.73,
+        fee: 0.18036000000000002,
+        profit: 9.44,
       }),
     );
   });
@@ -298,8 +298,8 @@ describe('testConnector', () => {
     const result = await connector.getResult();
 
     expect(result.stat).toEqual({
-      amount: 94.42,
-      profit: -5.58,
+      amount: 94.22,
+      profit: -5.78,
       orders: 1,
     });
     expect(result.inlineOrderLog?.map(({ type }) => type)).toEqual([
@@ -360,8 +360,8 @@ describe('testConnector', () => {
       {
         symbol: 'ETHUSDT',
         qty: 1,
-        price: 100,
-        currentPrice: 100,
+        price: 100.2,
+        currentPrice: 100.2,
         unrealizedPnl: 0,
         direction: 'LONG',
       },
@@ -396,8 +396,8 @@ describe('testConnector', () => {
     expect(result.inlinePositionLog).toBeUndefined();
     expect(result.stat).toEqual(
       expect.objectContaining({
-        amount: 104.39,
-        netProfit: 4.39,
+        amount: 104.18,
+        netProfit: 4.18,
         orders: 1,
         wins: 1,
         losses: 0,
@@ -433,7 +433,7 @@ describe('testConnector', () => {
     });
 
     expect(await connector.drainMlResultsBatch()).toEqual([
-      { signalId: 'sig-fast-ai', profit: 4.39 },
+      { signalId: 'sig-fast-ai', profit: 4.18 },
     ]);
     expect(await connector.drainMlResultsBatch()).toEqual([]);
   });

@@ -76,11 +76,11 @@ describe('portfolio replay connector', () => {
       expect.arrayContaining([
         expect.objectContaining({
           symbol: 'BTCUSDT',
-          unrealizedPnl: 5,
+          unrealizedPnl: 4.8,
         }),
         expect.objectContaining({
           symbol: 'ETHUSDT',
-          unrealizedPnl: 8,
+          unrealizedPnl: 7.8,
         }),
       ]),
     );
@@ -128,16 +128,18 @@ describe('portfolio replay connector', () => {
     expect(artifacts.orderLog[0]).toEqual(
       expect.objectContaining({
         type: 'OPEN_LONG',
-        fee: 0.3,
-        profit: -0.3,
+        price: 100.2,
+        fee: 0.20040000000000002,
+        profit: -0.2,
       }),
     );
     expect(artifacts.orderLog[1]).toEqual(
       expect.objectContaining({
         type: 'TAKE_PROFIT_LONG',
-        fee: 0.33,
-        profit: 9.67,
-        amount: 109.37,
+        price: 109.78,
+        fee: 0.21956,
+        profit: 9.36,
+        amount: 109.16,
       }),
     );
   });

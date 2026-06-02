@@ -171,6 +171,7 @@ Runtime AI config conventions:
   - `gate` — runtime uses the local deterministic strategy AI gate for entry quality, while still calling the configured AI provider for Telegram commentary and later gate-vs-LLM comparison.
 - In `gate` mode, persist the LLM analysis with gate comparison metadata (`gateAnalysis`, `gateDecision`, `llmDecision`, `gateContradictsLlm`) so later research can compare live gate and LLM behavior.
 - Keep `MIN_AI_QUALITY` as the shared quality threshold for both `gate` and `llm` decisions.
+- Runtime/replay/signals config normalization goes through `packages/cli/src/lib/runtimeModeConfig.ts`; use that helper instead of duplicating `ENV`, `INTERVAL`, `MAKE_ORDERS`, or mode-specific overrides in scripts.
 
 ### Indicator Rules
 
@@ -180,6 +181,7 @@ Runtime AI config conventions:
 - `additionalIndicators.baseContext` is the canonical current shared indicator snapshot for runtime AI/gate/Telegram/prompt logic.
 - `signal.indicators` is the historical indicator/series transport for backtest, replay, and ML transforms. Do not treat it as the primary current-value source for AI/runtime decisions when `baseContext` is available.
 - Avoid current-value fallback chains from `additionalIndicators.baseContext` back to legacy flat fields; migrate call sites to the canonical context instead.
+- Keep base-context volatility logic in `packages/core/src/utils/indicatorBaseContextVolatility.ts`; do not inline new volatility helpers back into `indicatorBaseContext.ts`.
 - Base shared context should stay grouped by purpose:
   - `raw`: current MA / ATR / BB / OBV / price stats / levels / BTC correlation / venue spread
   - `regime`: trend, volatility, and momentum state
@@ -189,13 +191,33 @@ Runtime AI config conventions:
   - `derivatives`: Coinalyze-derived positioning summary
   - `mtf`: compact MTF candle snapshots
 
+### Market Context / Timescale
+
+- Timescale bulk upserts must stay below PostgreSQL bind-parameter limits. Use the existing chunking pattern in `packages/infra/src/timescale.ts` for market trade flow, order book depth, and market breadth rows instead of building one huge INSERT.
+
 ### Signals / Backtest Parity Rules
 
 - `yarn signals` evaluates only the last closed candle; do not include the still-forming newest candle in strategy decisions.
+- `yarn signals` runs on a separate runtime server in the current production workflow. The local Redis in this checkout is not the source of truth for live runtime signals, runtime signal evaluations, or runtime trade records unless the user explicitly says they synced/copied runtime data locally.
+- Do not conclude that a strategy did not run in live runtime just because local Redis has no `users:root:runtime:signals:*` or `users:root:runtime:signal-evaluations:*` keys. Ask for or inspect the remote runtime server data/artifacts when live-runtime evidence is required.
+- `yarn signals` runs over the full active ticker universe by default; use explicit ticker filters only when the task asks for a narrowed run.
 - Keep `yarn backtest`, `yarn replay`, and `yarn signals` using the same strategy runtime path where practical. Avoid separate indicator or AI/ML payload logic for only one execution mode.
 - Backtest indicator warmup may use cached coverage, but replay must resume from the actual restored checkpoint timestamp, not from the end of a coverage-only prefix. Coverage rows without a matching checkpoint are not a complete runtime state.
 - BTC reference series used for relative strength or venue spread may be passed as the full aligned available series, but consumers must resolve values at or before the evaluated candle timestamp to avoid lookahead.
 - When checking indicator correctness, compare `additionalIndicators.baseContext`, `signal.indicators` history arrays, and ML/AI payload builders separately; they have different purposes and should not be collapsed into one transport.
+- Runtime signal code is split across `packages/cli/src/lib/signals/runtimeStrategies.ts`, `packages/cli/src/lib/signals/evaluations.ts`, `packages/cli/src/lib/signals/skipStats.ts`, and `packages/cli/src/lib/signals/telegram.ts`; inspect these helpers before changing `packages/cli/src/scripts/signals.ts`.
+- Detailed runtime signal evaluations are stored for signal/error paths, while skip-heavy evidence may be available only through runtime skip stats unless detailed data was explicitly captured. Do not treat missing detailed skip records as proof that evaluation did not happen.
+
+### Replay / Runtime Diagnostics
+
+- `yarn replay` stores replay results under `users:<user>:backtests:results:replay:<timestamp>` and includes `runtimeComparison` details when runtime compare is enabled.
+- When local runtime trades are unavailable, replay comparison falls back to direct exchange entry comparison (`getEntryExecutions` / `getClosedPnl`). In that mode, `RT PNL=0.00$` can mean closed PnL was unavailable from the exchange response, not that realized PnL was actually zero.
+- Replay/runtime matching compares expected backtest entries against runtime or exchange entries with an entry timestamp offset of one replay interval. Inspect `packages/cli/src/lib/replay/runtimeComparison.ts` and `packages/cli/src/lib/runtimeParityDetails.ts` for matching, nearest-candidate, slippage, and mismatch-drilldown behavior.
+- Use mismatch drilldown classifications carefully:
+  - `gated_or_policy_blocked` means a signal/evaluation existed but AI/ML/policy/order status blocked entry.
+  - `completed_signal_without_match` means an order path completed but no matching replay/backtest entry was found within tolerance.
+  - `no_runtime_evaluation` means no local runtime signal/evaluation was available to the comparison; in this environment, that may simply reflect that live `yarn signals` runs on another server.
+- Replay matched details already calculate entry/exit price deltas and slippage cost. Prefer inspecting those fields before adding a broad backtest slippage assumption.
 
 ### Plugin Rules
 
@@ -214,6 +236,11 @@ Project-level registration goes through `tradejs.config.ts` using:
 Default preset:
 
 - `basePreset` from `@tradejs/base`
+
+### Shared Strategy Helpers
+
+- TrendLine and ReverseTrendLine share guardrail logic through `packages/strategies/src/shared/trendlineGuardrails.ts`; change shared trendline guardrail behavior there unless the divergence is intentionally strategy-specific.
+- Shared risk helpers live in `packages/strategies/src/shared/risk.ts`; prefer them over duplicating strategy-local risk math.
 
 ## External User Reality Check
 
@@ -331,6 +358,7 @@ Keep these conventions stable unless explicitly changing the ML pipeline.
 - When reporting approved quality metrics, use `qN+` to mean the effective `MIN_AI_QUALITY=N` live stream, which includes every approval with quality `>= N`.
 - Do not present plain `q1` / `q2` / `q3` / `q4` / `q5` as the default approved bucket labels unless the user explicitly asks for the isolated subset; default reporting should use `qN+` notation.
 - To compare `AI_MODE=gate` and `AI_MODE=llm`, use live/runtime signal analysis records or explicit replay artifacts that contain both gate and LLM decisions.
+- TrendFollow and TrendShift AI gates have recent strategy-specific guardrail tuning; inspect their `guardrails.ts`, `adapters/ai.ts`, and tests before changing thresholds or interpreting qN+ metrics.
 - TrendLine core/runtime config uses `TRENDLINE`; `TRENDLINE_CONFIG` is used in ML payload/training contexts. When applying backtest or result configs to a live/replay strategy config, make sure detector options land in `TRENDLINE`, or the core may run with stale/default trendline detector settings.
 - Strategy backtest/config work has a dedicated local skill at `.codex/skills/strategy-backtest-research/SKILL.md`. Use it for strategy implementation, figures, cache-only backtest sweeps, and year-scale `--ai` export prep.
 - Local deterministic AI gate research has a strategy-neutral skill at `.codex/skills/ai-train-local-research/SKILL.md`. Use it for `yarn ai-train --localOnly`, qN+ metrics, drawdown/winrate reporting, direction/time/symbol stability checks, and gate-vs-LLM analysis.
