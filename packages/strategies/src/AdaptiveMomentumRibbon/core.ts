@@ -2,7 +2,7 @@ import { asPositiveInt, asPositiveNumber } from '@tradejs/core/math';
 import { logger } from '@tradejs/infra/logger';
 import type { CreateStrategyCore } from '@tradejs/types';
 import type { AdaptiveMomentumRibbonConfig } from './config';
-import { evaluateAdaptiveMomentumRibbon } from './engine';
+import { createAdaptiveMomentumRibbonEngine } from './engine';
 import { buildAdaptiveMomentumRibbonFigures } from './figures';
 import {
   buildStructureRiskPlan,
@@ -87,33 +87,35 @@ const resolveLinePlots = (value: unknown): string[] => {
 
 export const createAdaptiveMomentumRibbonCore: CreateStrategyCore<
   AdaptiveMomentumRibbonConfig
-> = async ({ config, symbol, strategyApi, indicatorsState }) => {
+> = async ({
+  config,
+  symbol,
+  data: initialData,
+  strategyApi,
+  indicatorsState,
+}) => {
   const { LONG, SHORT, AMR_EXIT_ON_INVALIDATION, MAX_LOSS_VALUE, FEE_PERCENT } =
     config;
   const linePlots = resolveLinePlots(config.AMR_LINE_PLOTS);
   const lookbackBars = asPositiveInt(config.AMR_LOOKBACK_BARS, 0);
+  const initialCandles = Array.isArray(initialData) ? initialData : [];
+  const warmupCandles =
+    lookbackBars > 0
+      ? initialCandles.slice(-Math.max(lookbackBars - 1, 0))
+      : initialCandles;
+  const engine = createAdaptiveMomentumRibbonEngine({
+    config,
+    linePlots,
+    initialCandles: warmupCandles,
+  });
+  let processedCandles = warmupCandles.length;
 
-  return async () => {
-    const { fullData, currentPrice, timestamp } =
-      await strategyApi.getMarketData();
-    if (fullData.length < 2) {
-      return strategyApi.skip('WAIT_DATA');
-    }
-
-    const position = await strategyApi.getCurrentPosition();
-    const positionExists = Boolean(
-      position && typeof position.qty === 'number' && position.qty > 0,
-    );
-
-    const candles = lookbackBars > 0 ? fullData.slice(-lookbackBars) : fullData;
-
+  return async (candle) => {
+    const { currentPrice, timestamp } = await strategyApi.getMarketData();
     let evaluation;
     try {
-      evaluation = evaluateAdaptiveMomentumRibbon({
-        candles,
-        config,
-        linePlots,
-      });
+      evaluation = engine.next(candle);
+      processedCandles += 1;
     } catch (error) {
       if (typeof globalThis.setImmediate === 'function') {
         logger.warn(
@@ -125,6 +127,15 @@ export const createAdaptiveMomentumRibbonCore: CreateStrategyCore<
 
       return strategyApi.skip('AMR_EVALUATION_FAILED');
     }
+
+    if (processedCandles < 2) {
+      return strategyApi.skip('WAIT_DATA');
+    }
+
+    const position = await strategyApi.getCurrentPosition();
+    const positionExists = Boolean(
+      position && typeof position.qty === 'number' && position.qty > 0,
+    );
 
     const { snapshot: amr, plotSeries } = evaluation;
 

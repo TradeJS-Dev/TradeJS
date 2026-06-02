@@ -38,6 +38,11 @@ export type AdaptiveMomentumRibbonEvaluation = {
   >;
 };
 
+export type AdaptiveMomentumRibbonEngine = {
+  next: (candle: Candle) => AdaptiveMomentumRibbonEvaluation;
+  getState: () => AdaptiveMomentumRibbonEvaluation;
+};
+
 type PendingAdaptiveMomentumRibbonSignal = {
   direction: 'LONG' | 'SHORT';
   invalidationLevel: number | null;
@@ -366,6 +371,27 @@ export const evaluateAdaptiveMomentumRibbon = ({
   config: AdaptiveMomentumRibbonConfig;
   linePlots: string[];
 }): AdaptiveMomentumRibbonEvaluation => {
+  const engine = createAdaptiveMomentumRibbonEngine({
+    config,
+    linePlots,
+  });
+
+  for (const candle of candles) {
+    engine.next(candle);
+  }
+
+  return engine.getState();
+};
+
+export const createAdaptiveMomentumRibbonEngine = ({
+  config,
+  linePlots,
+  initialCandles = [],
+}: {
+  config: AdaptiveMomentumRibbonConfig;
+  linePlots: string[];
+  initialCandles?: Candle[];
+}): AdaptiveMomentumRibbonEngine => {
   const momentumPeriod = asPositiveInt(config.AMR_MOMENTUM_PERIOD, 20);
   const smoothingLength = asPositiveInt(config.AMR_BUTTERWORTH_SMOOTHING, 3);
   const waitClose = Boolean(config.AMR_WAIT_CLOSE);
@@ -421,9 +447,12 @@ export const evaluateAdaptiveMomentumRibbon = ({
     ) as Record<string, number | null>,
   };
 
-  for (let index = 0; index < candles.length; index += 1) {
-    const candle = candles[index];
+  const candles: Candle[] = [];
+
+  const apply = (candle: Candle): AdaptiveMomentumRibbonEvaluation => {
+    const index = candles.length;
     const previousCandle = index > 0 ? candles[index - 1] : null;
+    candles.push(candle);
 
     const kcMidline = updateMovingAverage(
       maState,
@@ -649,10 +678,22 @@ export const evaluateAdaptiveMomentumRibbon = ({
       invalidationLevel: toFinite(displayedInvalidationLevel),
       lineValues: currentLineValues,
     };
+
+    return {
+      snapshot: lastSnapshot,
+      plotSeries,
+    };
+  };
+
+  for (const candle of initialCandles) {
+    apply(candle);
   }
 
   return {
-    snapshot: lastSnapshot,
-    plotSeries,
+    next: apply,
+    getState: () => ({
+      snapshot: lastSnapshot,
+      plotSeries,
+    }),
   };
 };

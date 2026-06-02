@@ -1,5 +1,5 @@
 import {
-  BACKTEST_SLIPPAGE_BPS,
+  BACKTEST_SLIPPAGE_PERCENT,
   FEE_PERCENT,
   INITIAL_BACKTEST_AMOUNT,
 } from '@tradejs/core/constants';
@@ -101,7 +101,7 @@ export const createPortfolioReplayConnector = (
   const positionLog: PositionLogData = [];
   const orderLogByStrategy = new Map<string, OrderLogData>();
   const positionLogByStrategy = new Map<string, PositionLogData>();
-  const backtestSlippageRate = Math.max(0, BACKTEST_SLIPPAGE_BPS) / 10_000;
+  const backtestSlippageRate = Math.max(0, BACKTEST_SLIPPAGE_PERCENT);
 
   const appendStrategyOrderLog = (strategyName: string, entry: OrderLog) => {
     const bucket = orderLogByStrategy.get(strategyName) ?? [];

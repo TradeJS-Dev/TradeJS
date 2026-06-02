@@ -1,8 +1,8 @@
-import { BACKTEST_SLIPPAGE_BPS } from '@tradejs/core/constants';
+import { BACKTEST_SLIPPAGE_PERCENT } from '@tradejs/core/constants';
 import { createPortfolioReplayConnector } from '../lib/replay/portfolioReplayConnector';
 
 describe('portfolio replay connector', () => {
-  const backtestSlippageRate = BACKTEST_SLIPPAGE_BPS / 10_000;
+  const backtestSlippageRate = BACKTEST_SLIPPAGE_PERCENT;
 
   const baseConnector = {
     kline: jest.fn(),
@@ -24,7 +24,7 @@ describe('portfolio replay connector', () => {
     expect(connector.__tradejsTestConnector).toBe(true);
   });
 
-  it('applies BACKTEST_SLIPPAGE_BPS adversely to long and short entry/exit prices', async () => {
+  it('applies BACKTEST_SLIPPAGE_PERCENT adversely to long and short entry/exit prices', async () => {
     const connector = createPortfolioReplayConnector(baseConnector);
 
     await connector.placeOrder({

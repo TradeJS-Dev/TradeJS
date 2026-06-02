@@ -3,9 +3,13 @@
 import { logger } from '@tradejs/infra/logger';
 import { createAdaptiveMomentumRibbonCore } from '../core';
 import { config as DEFAULT_CONFIG } from '../config';
-import { evaluateAdaptiveMomentumRibbon } from '../engine';
+import {
+  createAdaptiveMomentumRibbonEngine,
+  evaluateAdaptiveMomentumRibbon,
+} from '../engine';
 
 jest.mock('../engine', () => ({
+  createAdaptiveMomentumRibbonEngine: jest.fn(),
   evaluateAdaptiveMomentumRibbon: jest.fn(),
 }));
 
@@ -156,6 +160,10 @@ const mockedEvaluateAdaptiveMomentumRibbon =
   evaluateAdaptiveMomentumRibbon as jest.MockedFunction<
     typeof evaluateAdaptiveMomentumRibbon
   >;
+const mockedCreateAdaptiveMomentumRibbonEngine =
+  createAdaptiveMomentumRibbonEngine as jest.MockedFunction<
+    typeof createAdaptiveMomentumRibbonEngine
+  >;
 
 const makeEvaluation = (
   snapshotOverrides: Record<string, unknown> = {},
@@ -192,6 +200,28 @@ const makeEvaluation = (
 describe('createAdaptiveMomentumRibbonCore', () => {
   beforeEach(() => {
     mockedEvaluateAdaptiveMomentumRibbon.mockReset();
+    mockedCreateAdaptiveMomentumRibbonEngine.mockReset();
+    mockedCreateAdaptiveMomentumRibbonEngine.mockImplementation(
+      ({ config, linePlots, initialCandles }) => {
+        const candles = [...(initialCandles ?? [])];
+        return {
+          next: (candle) => {
+            candles.push(candle);
+            return mockedEvaluateAdaptiveMomentumRibbon({
+              candles: [...candles],
+              config,
+              linePlots,
+            });
+          },
+          getState: () =>
+            mockedEvaluateAdaptiveMomentumRibbon({
+              candles: [...candles],
+              config,
+              linePlots,
+            }),
+        };
+      },
+    );
   });
 
   const makeRuntime = async ({
@@ -496,7 +526,11 @@ describe('createAdaptiveMomentumRibbonCore', () => {
       kind: 'skip',
       code: 'WAIT_DATA',
     });
-    expect(mockedEvaluateAdaptiveMomentumRibbon).not.toHaveBeenCalled();
+    expect(mockedEvaluateAdaptiveMomentumRibbon).toHaveBeenCalledWith(
+      expect.objectContaining({
+        candles: shortCandles,
+      }),
+    );
   });
 
   it('uses full candles when lookback<=0 and normalizes invalid line plots config', async () => {
@@ -513,9 +547,9 @@ describe('createAdaptiveMomentumRibbonCore', () => {
 
     await core(candles[candles.length - 1], candles[candles.length - 1]);
 
-    expect(mockedEvaluateAdaptiveMomentumRibbon).toHaveBeenCalledWith(
+    expect(mockedCreateAdaptiveMomentumRibbonEngine).toHaveBeenCalledWith(
       expect.objectContaining({
-        candles,
+        initialCandles: candles.slice(0, -1),
         linePlots: [],
       }),
     );

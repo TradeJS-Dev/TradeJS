@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import {
-  BACKTEST_SLIPPAGE_BPS,
+  BACKTEST_SLIPPAGE_PERCENT,
   FEE_PERCENT,
   INITIAL_BACKTEST_AMOUNT,
 } from '@tradejs/core/constants';
@@ -55,7 +55,7 @@ export const createTestConnector: TestConnectorCreator = (
   let stopLossPrice: Sl = null;
   let currentTradeResult: OpenTradeResult | null = null;
   const closedSignalResults: TestClosedSignalResult[] = [];
-  const backtestSlippageRate = Math.max(0, BACKTEST_SLIPPAGE_BPS) / 10_000;
+  const backtestSlippageRate = Math.max(0, BACKTEST_SLIPPAGE_PERCENT);
 
   const logOrder = (data: Partial<OrderLog>) => {
     const nextEntry = {

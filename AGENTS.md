@@ -162,6 +162,13 @@ Geometry-based strategies should keep visual artifacts in the strategy package:
 - include enough lines/points to inspect why a trade happened in backtest artifacts
 - avoid relying on Pine drawings as the source of truth after a strategy is ported to TypeScript
 
+Stateful strategy best practices:
+
+- If a strategy keeps rolling detector state, pivots, zones, trend state, pending signals, or delayed confirmation state, put that logic behind a replayable engine API such as `createXEngine({ initialCandles })` with `next(candle)` and `getState()`.
+- Engine construction must rebuild state by replaying `initialCandles` through the same transition path used for live candles. Do not only seed derived arrays from history while leaving pending/confirmation state empty.
+- `core.ts` should call the engine for the current candle and keep StrategyAPI side effects, position checks, order planning, and indicators payload wiring outside the detector engine.
+- Add unit coverage proving `initialCandles + next(lastCandle)` matches a continuous run, especially for strategies with pending confirmation on the next bar.
+
 Runtime AI config conventions:
 
 - `AI_ENABLED` remains the primary runtime AI on/off switch, matching the existing `ML_ENABLED` convention.

@@ -68,6 +68,23 @@ type PendingDivergenceCandidate = {
   barsSinceDetection: number;
 };
 
+type VolumeDivergenceEntryCandidate = {
+  candidate: PendingDivergenceCandidate;
+  currentPrice: number;
+  entryTiming: PendingEntryTiming;
+  setupFeatures: VolumeDivergenceSetupFeatures;
+};
+
+type VolumeDivergenceStateEvaluation =
+  | {
+      kind: 'skip';
+      code: string;
+    }
+  | {
+      kind: 'entryCandidate';
+      entry: VolumeDivergenceEntryCandidate;
+    };
+
 const isFiniteNumber = (value: unknown): value is number =>
   typeof value === 'number' && Number.isFinite(value);
 
@@ -568,9 +585,7 @@ export const createVolumeDivergenceCore: CreateStrategyCore<
       PIVOT_LOOKBACK_LEFT + PIVOT_LOOKBACK_RIGHT + 1,
     ),
   );
-  const candleWindow = (
-    Array.isArray(initialData) ? initialData.slice(-maxHistorySize) : []
-  ) as Candle[];
+  const candleWindow: Candle[] = [];
   const normalizedVolumes: number[] = [];
   const rollingMaxQueue: RollingMaxQueueState = {
     indices: [],
@@ -629,27 +644,15 @@ export const createVolumeDivergenceCore: CreateStrategyCore<
     syncDerivedState();
   };
 
-  syncDerivedState();
-
-  return async (candle) => {
-    appendWindowCandle(candle as Candle);
-
-    indicatorsState.onBar();
-    const timestamp = Number(candle.timestamp);
-
-    const currentPosition = await strategyApi.getCurrentPosition();
-    if (isOpenPosition(currentPosition)) {
-      return strategyApi.skip('POSITION_EXISTS');
-    }
-
+  const evaluateCurrentCandle = async (
+    candle: Candle,
+    resolveCurrentPrice: () => number | Promise<number>,
+  ): Promise<VolumeDivergenceStateEvaluation> => {
     if (candleWindow.length < PIVOT_LOOKBACK_LEFT + PIVOT_LOOKBACK_RIGHT + 2) {
-      return strategyApi.skip('WAIT_DATA');
+      return { kind: 'skip', code: 'WAIT_DATA' };
     }
 
-    if (lastTradeController.isInCooldown(timestamp)) {
-      return strategyApi.skip('DEV_TRADE_COOLDOWN');
-    }
-
+    const timestamp = Number(candle.timestamp);
     const divergence = findLatestDivergence({
       candles: candleWindow,
       normalizedVolumes,
@@ -667,7 +670,7 @@ export const createVolumeDivergenceCore: CreateStrategyCore<
         bearish: BEARISH,
       });
       if (!modeConfig.enable) {
-        return strategyApi.skip('STRATEGY_DISABLED');
+        return { kind: 'skip', code: 'STRATEGY_DISABLED' };
       }
 
       const nextPendingCandidate = buildPendingDivergenceCandidate({
@@ -680,7 +683,7 @@ export const createVolumeDivergenceCore: CreateStrategyCore<
       });
       const detectionSetupFeatures = buildVolumeDivergenceSetupFeatures({
         candles: candleWindow,
-        currentCandle: candle as Candle,
+        currentCandle: candle,
         direction: modeConfig.direction,
         currentPrice: Number(candle.close),
         currentPivotLow: nextPendingCandidate.currentPivotLow,
@@ -695,40 +698,40 @@ export const createVolumeDivergenceCore: CreateStrategyCore<
         detectionSetupFeatures.divergenceAmplitudeAtrRatio <
           entryThresholds.minDivergenceAmplitudeAtrRatio
       ) {
-        return strategyApi.skip('WEAK_DIVERGENCE_AMPLITUDE_ATR');
+        return { kind: 'skip', code: 'WEAK_DIVERGENCE_AMPLITUDE_ATR' };
       }
 
       pendingCandidate = nextPendingCandidate;
 
-      return strategyApi.skip('WAIT_REVERSAL_CONFIRMATION');
+      return { kind: 'skip', code: 'WAIT_REVERSAL_CONFIRMATION' };
     }
 
     if (!pendingCandidate) {
-      return strategyApi.skip('NO_DIVERGENCE');
+      return { kind: 'skip', code: 'NO_DIVERGENCE' };
     }
 
     updatePendingCandidateProgress(pendingCandidate, timestamp);
 
     if (pendingCandidate.barsSinceDetection > maxPendingConfirmationBars) {
       pendingCandidate = null;
-      return strategyApi.skip('PENDING_DIVERGENCE_EXPIRED');
+      return { kind: 'skip', code: 'PENDING_DIVERGENCE_EXPIRED' };
     }
 
-    const { currentPrice } = await strategyApi.getMarketData();
+    const currentPrice = Number(await resolveCurrentPrice());
     const entryTiming = resolvePendingEntryTiming({
       candidate: pendingCandidate,
       currentPrice,
     });
 
     if (!entryTiming) {
-      return strategyApi.skip('WAIT_REVERSAL_CONFIRMATION');
+      return { kind: 'skip', code: 'WAIT_REVERSAL_CONFIRMATION' };
     }
 
     if (
       entryTiming === 'structure_advance' &&
       !entryThresholds.allowStructureAdvanceEntry
     ) {
-      return strategyApi.skip('WAIT_CONFIRMATION_READY');
+      return { kind: 'skip', code: 'WAIT_CONFIRMATION_READY' };
     }
 
     const modeConfig = getModeConfigByKind({
@@ -738,7 +741,7 @@ export const createVolumeDivergenceCore: CreateStrategyCore<
     });
     const setupFeatures = buildVolumeDivergenceSetupFeatures({
       candles: candleWindow,
-      currentCandle: candle as Candle,
+      currentCandle: candle,
       direction: modeConfig.direction,
       currentPrice,
       currentPivotLow: pendingCandidate.currentPivotLow,
@@ -752,7 +755,7 @@ export const createVolumeDivergenceCore: CreateStrategyCore<
       setupFeatures.reclaimPct != null &&
       setupFeatures.reclaimPct < entryThresholds.minReclaimPct
     ) {
-      return strategyApi.skip('WAIT_CONFIRMATION_RECLAIM');
+      return { kind: 'skip', code: 'WAIT_CONFIRMATION_RECLAIM' };
     }
 
     if (
@@ -760,9 +763,64 @@ export const createVolumeDivergenceCore: CreateStrategyCore<
       setupFeatures.confirmationCandleQuality <
         entryThresholds.minConfirmationCandleQuality
     ) {
-      return strategyApi.skip('WAIT_CONFIRMATION_CANDLE_QUALITY');
+      return { kind: 'skip', code: 'WAIT_CONFIRMATION_CANDLE_QUALITY' };
     }
 
+    return {
+      kind: 'entryCandidate',
+      entry: {
+        candidate: pendingCandidate,
+        currentPrice,
+        entryTiming,
+        setupFeatures,
+      },
+    };
+  };
+
+  for (const candle of Array.isArray(initialData)
+    ? (initialData.slice(-maxHistorySize) as Candle[])
+    : []) {
+    appendWindowCandle(candle);
+    const evaluation = await evaluateCurrentCandle(candle, () =>
+      Number(candle.close),
+    );
+    if (evaluation.kind === 'entryCandidate') {
+      pendingCandidate = null;
+    }
+  }
+
+  return async (candle) => {
+    const currentCandle = candle as Candle;
+    appendWindowCandle(currentCandle);
+
+    indicatorsState.onBar();
+    const timestamp = Number(candle.timestamp);
+
+    const currentPosition = await strategyApi.getCurrentPosition();
+    if (isOpenPosition(currentPosition)) {
+      return strategyApi.skip('POSITION_EXISTS');
+    }
+
+    if (lastTradeController.isInCooldown(timestamp)) {
+      return strategyApi.skip('DEV_TRADE_COOLDOWN');
+    }
+
+    const evaluation = await evaluateCurrentCandle(currentCandle, async () => {
+      const marketData = await strategyApi.getMarketData();
+      return Number(marketData.currentPrice);
+    });
+
+    if (evaluation.kind === 'skip') {
+      return strategyApi.skip(evaluation.code);
+    }
+
+    const { candidate, currentPrice, entryTiming, setupFeatures } =
+      evaluation.entry;
+    const modeConfig = getModeConfigByKind({
+      kind: candidate.kind,
+      bullish: BULLISH,
+      bearish: BEARISH,
+    });
     const atrBuffer =
       (setupFeatures.atrAbsolute ?? 0) *
       Math.max(0, Number(config.VOLUME_DIVERGENCE_STOP_ATR_BUFFER_MULT ?? 0.2));
@@ -773,8 +831,8 @@ export const createVolumeDivergenceCore: CreateStrategyCore<
     const stopBuffer = Math.max(atrBuffer, percentBuffer);
     const stopLossPrice =
       modeConfig.direction === 'LONG'
-        ? pendingCandidate.currentPivotLow - stopBuffer
-        : pendingCandidate.currentPivotHigh + stopBuffer;
+        ? candidate.currentPivotLow - stopBuffer
+        : candidate.currentPivotHigh + stopBuffer;
 
     if (
       !Number.isFinite(stopLossPrice) ||
@@ -806,7 +864,7 @@ export const createVolumeDivergenceCore: CreateStrategyCore<
 
     const indicators = indicatorsState.snapshot();
     const entryPayload = buildEntryPayloadFromPendingCandidate({
-      candidate: pendingCandidate,
+      candidate,
       candleWindow,
       entryTiming,
       setupFeatures,

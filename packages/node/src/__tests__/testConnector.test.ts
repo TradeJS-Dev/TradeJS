@@ -7,7 +7,7 @@ jest.mock('@tradejs/infra/redis', () => ({
 }));
 
 import { setData } from '@tradejs/infra/redis';
-import { BACKTEST_SLIPPAGE_BPS } from '@tradejs/core/constants';
+import { BACKTEST_SLIPPAGE_PERCENT } from '@tradejs/core/constants';
 import { createTestConnector } from '../testConnector';
 
 const baseConnector = {
@@ -18,13 +18,13 @@ const baseConnector = {
 };
 
 describe('testConnector', () => {
-  const backtestSlippageRate = BACKTEST_SLIPPAGE_BPS / 10_000;
+  const backtestSlippageRate = BACKTEST_SLIPPAGE_PERCENT;
 
   beforeEach(() => {
     jest.clearAllMocks();
   });
 
-  it('applies BACKTEST_SLIPPAGE_BPS adversely to long and short entry/exit prices', async () => {
+  it('applies BACKTEST_SLIPPAGE_PERCENT adversely to long and short entry/exit prices', async () => {
     const longConnector = createTestConnector(baseConnector as any, {
       userName: 'alice',
     });

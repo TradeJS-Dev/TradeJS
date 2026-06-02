@@ -272,6 +272,57 @@ describe('createVolumeDivergenceCore', () => {
     );
   });
 
+  it('rebuilds pending bullish divergence from initial history and enters on first confirmation candle', async () => {
+    const candles = makeBullishDivergenceCandles();
+    const confirmationCandle = makeFollowUpCandle({
+      previousCandle: candles[candles.length - 1],
+      price: 94,
+      volume: 90,
+    });
+
+    const strategyApi = makeStrategyApi();
+    strategyApi.getMarketData.mockResolvedValue({
+      fullData: [...candles, confirmationCandle],
+      lastCandle: confirmationCandle,
+      timestamp: confirmationCandle.timestamp,
+      currentPrice: confirmationCandle.close,
+    });
+
+    const core = await createVolumeDivergenceCore({
+      userName: 'test',
+      symbol: 'TESTUSDT',
+      config: makeConfig({
+        ...DIVERGENCE_TEST_CONFIG,
+      }),
+      isConfigFromBacktest: false,
+      connector: { getPosition: jest.fn() } as any,
+      data: candles as any,
+      btcData: candles as any,
+      loadPineScriptFile: jest.fn(() => ''),
+      strategyApi,
+      indicatorsState: makeIndicatorsState(),
+    });
+
+    const result = await core(
+      confirmationCandle as any,
+      confirmationCandle as any,
+    );
+
+    expect(result.kind).toBe('entry');
+    expect(strategyApi.entry).toHaveBeenCalledWith(
+      expect.objectContaining({
+        direction: 'LONG',
+        additionalIndicators: expect.objectContaining({
+          divergenceKind: 'bullish',
+          volumeDivergenceSignalTiming: expect.objectContaining({
+            entryTiming: 'confirmation_ready',
+            barsSinceDetection: 1,
+          }),
+        }),
+      }),
+    );
+  });
+
   it('keeps bullish structure-advance candidates pending until confirmation is ready', async () => {
     const candles = makeBullishDivergenceCandles();
     candles[4].low = 96.5;
