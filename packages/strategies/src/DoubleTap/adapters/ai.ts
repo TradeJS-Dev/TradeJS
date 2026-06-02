@@ -1,5 +1,9 @@
 import { mapAiRuntimeFromConfig } from '@tradejs/core/strategies';
-import { AiPayload, StrategyAiAdapter } from '@tradejs/types';
+import {
+  AiPayload,
+  BaseStrategyContextSnapshot,
+  StrategyAiAdapter,
+} from '@tradejs/types';
 import { DoubleTapConfig } from '../config';
 import { DoubleTapSignalContext } from '../engine';
 
@@ -19,11 +23,28 @@ type DoubleTapAiContext = Partial<DoubleTapSignalContext> & {
   derivativesRiskFlags: string[];
   bodyStrength: number | null;
   venueSpreadZScore: number | null;
+  doubleTapGateFeatures: DoubleTapGateFeatures;
   structuralHardBlockReasons: string[];
   softBlockReasons: string[];
   deterministicQuality: number;
   approvalAllowedNow: boolean;
   maxAllowedQuality: number;
+};
+
+type DoubleTapGateFeatures = {
+  patternGeometry: 'invalid' | 'compact' | 'extended' | 'unknown';
+  necklineBreakout:
+    | 'missing'
+    | 'early_noise'
+    | 'compact'
+    | 'confirmed'
+    | 'extended';
+  trendContext: 'aligned' | 'against' | 'neutral' | 'unknown';
+  participationState: 'thin' | 'normal' | 'strong' | 'unknown';
+  derivativesState: 'aligned' | 'crowded' | 'conflict' | 'neutral' | 'unknown';
+  executionSpreadState: 'supportive' | 'neutral' | 'adverse' | 'unknown';
+  approvalPocket: 'high_precision' | 'q4' | 'q4_blocked' | 'watch';
+  highQualityCadencePocket: boolean;
 };
 
 const asRecord = (value: unknown): Record<string, unknown> | null =>
@@ -121,6 +142,104 @@ const isBenchmarkAligned = ({
     : direction === 'SHORT'
       ? trendAlignment === 'aligned_bear' || benchmarkBias === 'bear'
       : false;
+
+const buildDoubleTapGateFeatures = ({
+  signalDirection,
+  height,
+  breakoutDistancePct,
+  trendAligned,
+  benchmarkAligned,
+  volumeRel20,
+  derivativesDirectionAligned,
+  derivativesRiskFlags,
+  venueSpreadZScore,
+  directionalCrowding,
+  approvalPocket,
+  highPrecisionPocket,
+  q4ApprovalBlocked,
+}: {
+  signalDirection: Direction | null;
+  height: number | null;
+  breakoutDistancePct: number | null;
+  trendAligned: boolean;
+  benchmarkAligned: boolean;
+  volumeRel20: number | null;
+  derivativesDirectionAligned: boolean | null;
+  derivativesRiskFlags: string[];
+  venueSpreadZScore: number | null;
+  directionalCrowding: boolean;
+  approvalPocket: boolean;
+  highPrecisionPocket: boolean;
+  q4ApprovalBlocked: boolean;
+}): DoubleTapGateFeatures => {
+  const patternGeometry =
+    height == null
+      ? 'unknown'
+      : height <= 0
+        ? 'invalid'
+        : breakoutDistancePct != null && breakoutDistancePct <= 1.4
+          ? 'compact'
+          : 'extended';
+  const necklineBreakout =
+    breakoutDistancePct == null
+      ? 'missing'
+      : breakoutDistancePct <= 0.25
+        ? 'early_noise'
+        : breakoutDistancePct <= 0.8
+          ? 'compact'
+          : breakoutDistancePct <= 1.4
+            ? 'confirmed'
+            : 'extended';
+  const trendContext =
+    signalDirection == null
+      ? 'unknown'
+      : trendAligned || benchmarkAligned
+        ? 'aligned'
+        : 'neutral';
+  const participationState =
+    volumeRel20 == null
+      ? 'unknown'
+      : volumeRel20 < 0.8
+        ? 'thin'
+        : volumeRel20 >= 2
+          ? 'strong'
+          : 'normal';
+  const derivativesState =
+    derivativesDirectionAligned === true
+      ? 'aligned'
+      : derivativesDirectionAligned === false
+        ? 'conflict'
+        : directionalCrowding
+          ? 'crowded'
+          : derivativesRiskFlags.length > 0
+            ? 'neutral'
+            : 'unknown';
+  const executionSpreadState =
+    venueSpreadZScore == null
+      ? 'unknown'
+      : venueSpreadZScore >= 1
+        ? 'supportive'
+        : venueSpreadZScore <= -1
+          ? 'adverse'
+          : 'neutral';
+
+  return {
+    patternGeometry,
+    necklineBreakout,
+    trendContext,
+    participationState,
+    derivativesState,
+    executionSpreadState,
+    approvalPocket: highPrecisionPocket
+      ? 'high_precision'
+      : approvalPocket && q4ApprovalBlocked
+        ? 'q4_blocked'
+        : approvalPocket
+          ? 'q4'
+          : 'watch',
+    highQualityCadencePocket: highPrecisionPocket,
+  };
+};
 
 const buildDoubleTapAiContext = (payload: AiPayload): DoubleTapAiContext => {
   const context = getDoubleTapContext(payload);
@@ -282,6 +401,21 @@ const buildDoubleTapAiContext = (payload: AiPayload): DoubleTapAiContext => {
       : []),
   ];
   const q4ApprovalBlocked = softBlockReasons.length > 0;
+  const doubleTapGateFeatures = buildDoubleTapGateFeatures({
+    signalDirection,
+    height,
+    breakoutDistancePct,
+    trendAligned,
+    benchmarkAligned,
+    volumeRel20,
+    derivativesDirectionAligned,
+    derivativesRiskFlags,
+    venueSpreadZScore,
+    directionalCrowding,
+    approvalPocket,
+    highPrecisionPocket,
+    q4ApprovalBlocked,
+  });
 
   const deterministicQuality =
     structuralHardBlockReasons.length > 0
@@ -307,6 +441,7 @@ const buildDoubleTapAiContext = (payload: AiPayload): DoubleTapAiContext => {
     derivativesRiskFlags,
     bodyStrength,
     venueSpreadZScore,
+    doubleTapGateFeatures,
     structuralHardBlockReasons,
     softBlockReasons,
     deterministicQuality,
@@ -316,23 +451,50 @@ const buildDoubleTapAiContext = (payload: AiPayload): DoubleTapAiContext => {
   };
 };
 
+const withDoubleTapGateFeatures = ({
+  baseContext,
+  context,
+}: {
+  baseContext: BaseStrategyContextSnapshot | null;
+  context: DoubleTapAiContext;
+}) =>
+  baseContext == null
+    ? baseContext
+    : ({
+        ...(baseContext as unknown as Record<string, unknown>),
+        doubleTapGateFeatures: context.doubleTapGateFeatures,
+      } as BaseStrategyContextSnapshot & {
+        doubleTapGateFeatures: DoubleTapGateFeatures;
+      });
+
 export const doubleTapAiAdapter: StrategyAiAdapter = {
   buildPayload: ({ signal, basePayload }) => {
+    const baseAdditional =
+      (basePayload.additionalIndicators as
+        | Record<string, unknown>
+        | undefined) ?? {};
     const payload = {
       ...basePayload,
       additionalIndicators: {
-        ...(basePayload.additionalIndicators as Record<string, unknown>),
+        ...baseAdditional,
         doubleTapContext: (
           signal.additionalIndicators as Record<string, unknown> | undefined
         )?.doubleTapContext,
       },
     };
+    const context = buildDoubleTapAiContext(payload);
+    const baseContext = (baseAdditional.baseContext ??
+      null) as BaseStrategyContextSnapshot | null;
 
     return {
       ...payload,
       additionalIndicators: {
         ...(payload.additionalIndicators as Record<string, unknown>),
-        doubleTapContext: buildDoubleTapAiContext(payload),
+        baseContext: withDoubleTapGateFeatures({
+          baseContext,
+          context,
+        }),
+        doubleTapContext: context,
       },
     };
   },
@@ -379,6 +541,14 @@ Additional DoubleTap context:
 - derivativesRiskFlags=${JSON.stringify(context.derivativesRiskFlags)}
 - bodyStrength=${String(context.bodyStrength ?? 'n/a')}
 - venueSpreadZScore=${String(context.venueSpreadZScore ?? 'n/a')}
+- doubleTapGatePatternGeometry=${context.doubleTapGateFeatures.patternGeometry}
+- doubleTapGateNecklineBreakout=${context.doubleTapGateFeatures.necklineBreakout}
+- doubleTapGateTrendContext=${context.doubleTapGateFeatures.trendContext}
+- doubleTapGateParticipationState=${context.doubleTapGateFeatures.participationState}
+- doubleTapGateDerivativesState=${context.doubleTapGateFeatures.derivativesState}
+- doubleTapGateExecutionSpreadState=${context.doubleTapGateFeatures.executionSpreadState}
+- doubleTapGateApprovalPocket=${context.doubleTapGateFeatures.approvalPocket}
+- doubleTapGateHighQualityCadencePocket=${String(context.doubleTapGateFeatures.highQualityCadencePocket)}
 - deterministicQuality=${String(context.deterministicQuality)}
 - approvalAllowedNow=${String(context.approvalAllowedNow)}
 - structuralHardBlockReasons=${JSON.stringify(context.structuralHardBlockReasons)}

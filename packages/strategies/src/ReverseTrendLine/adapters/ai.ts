@@ -1,5 +1,9 @@
 import { mapAiRuntimeFromConfig } from '@tradejs/core/strategies';
-import { AiPayload, StrategyAiAdapter } from '@tradejs/types';
+import {
+  AiPayload,
+  BaseStrategyContextSnapshot,
+  StrategyAiAdapter,
+} from '@tradejs/types';
 import { ReverseTrendLineConfig } from '../config';
 import {
   buildReverseTrendlineStructuralContext,
@@ -38,6 +42,7 @@ type ReverseEntryTiming = ReverseTimingContext['entryTiming'];
 
 type ReverseTrendlineAiContext = ReverseStructuralContext &
   ReverseTimingContext & {
+    reverseTrendLineGateFeatures: ReverseTrendLineGateFeatures;
     deterministicQuality: number;
     deterministicRejectionScore: number | null;
     approvalAllowedNow: boolean;
@@ -49,6 +54,29 @@ type ReverseTrendlineQualityContext = ReverseStructuralContext &
   ReverseTimingContext & {
     hardBlockReasons: string[];
   };
+
+type ReverseTrendLineGateFeatures = {
+  bounceAcceptance:
+    | 'failed_break'
+    | 'rejection'
+    | 'follow_through'
+    | 'touch_wait'
+    | 'stale'
+    | 'unknown';
+  rejectionStrength: 'weak' | 'confirmed' | 'elite' | 'unknown';
+  biasAlignment:
+    | 'aligned'
+    | 'coin_conflict'
+    | 'btc_conflict'
+    | 'mixed'
+    | 'unknown';
+  baseContextState: 'clean' | 'blocked' | 'missing';
+  participationState: 'thin' | 'normal' | 'strong' | 'unknown';
+  volatilityState: 'normal' | 'elevated' | 'extreme' | 'unknown';
+  rangePositionState: 'low' | 'middle' | 'high' | 'unknown';
+  highQualityBouncePocket: boolean;
+  deterministicRejectionScore: number | null;
+};
 
 const getReverseTrendlineBiasConflictState = (
   context: Pick<
@@ -206,6 +234,114 @@ const getBaseContextApprovalBlockReasons = (
   }
 
   return reasons;
+};
+
+const buildReverseTrendLineGateFeatures = ({
+  context,
+  signal,
+  approvalBlockReasons,
+  deterministicRejectionScore,
+}: {
+  context: ReverseTrendlineQualityContext & { deterministicQuality: number };
+  signal: Parameters<typeof buildReverseTrendlineAiContext>[0];
+  approvalBlockReasons: string[];
+  deterministicRejectionScore: number | null;
+}): ReverseTrendLineGateFeatures => {
+  const baseContext = isRecord(signal.additionalIndicators?.baseContext)
+    ? signal.additionalIndicators.baseContext
+    : null;
+  const volumeRel20 = getNestedNumber(baseContext, [
+    'participation',
+    'volume',
+    'volumeRel20',
+  ]);
+  const rangePosition20 = getNestedNumber(baseContext, [
+    'structure',
+    'localRange',
+    'rangePosition20',
+  ]);
+  const atrPctZScore = getNestedNumber(baseContext, [
+    'regime',
+    'volatility',
+    'atrPctZScore',
+  ]);
+  const biasConflictState = getReverseTrendlineBiasConflictState(context);
+  const bounceAcceptance =
+    context.failedBounceBreak === true
+      ? 'failed_break'
+      : context.entryTiming === 'ready_follow_through'
+        ? 'follow_through'
+        : context.entryTiming === 'ready_rejection'
+          ? 'rejection'
+          : context.entryTiming === 'wait_touch' ||
+              context.entryTiming === 'wait_reaction_confirmation'
+            ? 'touch_wait'
+            : context.entryTiming === 'stale_reaction'
+              ? 'stale'
+              : 'unknown';
+  const rejectionStrength =
+    deterministicRejectionScore == null
+      ? 'unknown'
+      : deterministicRejectionScore >= 7
+        ? 'elite'
+        : deterministicRejectionScore >= 4
+          ? 'confirmed'
+          : 'weak';
+  const biasAlignment =
+    biasConflictState === 'none'
+      ? 'aligned'
+      : biasConflictState === 'coin_only'
+        ? 'coin_conflict'
+        : biasConflictState === 'btc_only'
+          ? 'btc_conflict'
+          : biasConflictState === 'both'
+            ? 'mixed'
+            : 'unknown';
+  const participationState =
+    volumeRel20 == null
+      ? 'unknown'
+      : volumeRel20 < 0.8
+        ? 'thin'
+        : volumeRel20 >= 1.5
+          ? 'strong'
+          : 'normal';
+  const volatilityState =
+    atrPctZScore == null
+      ? 'unknown'
+      : atrPctZScore >= 2
+        ? 'extreme'
+        : atrPctZScore >= 1
+          ? 'elevated'
+          : 'normal';
+  const rangePositionState =
+    rangePosition20 == null
+      ? 'unknown'
+      : rangePosition20 < 0.2
+        ? 'low'
+        : rangePosition20 > 0.8
+          ? 'high'
+          : 'middle';
+
+  return {
+    bounceAcceptance,
+    rejectionStrength,
+    biasAlignment,
+    baseContextState:
+      baseContext == null
+        ? 'missing'
+        : approvalBlockReasons.length > 0
+          ? 'blocked'
+          : 'clean',
+    participationState,
+    volatilityState,
+    rangePositionState,
+    highQualityBouncePocket:
+      context.deterministicQuality >= 4 &&
+      approvalBlockReasons.length === 0 &&
+      (bounceAcceptance === 'rejection' ||
+        bounceAcceptance === 'follow_through'),
+    deterministicRejectionScore,
+  };
 };
 
 const getDeterministicReverseTrendlineQuality = (
@@ -419,10 +555,22 @@ const buildReverseTrendlineAiContext = (signal: {
     },
     signal,
   );
+  const reverseTrendLineGateFeatures = buildReverseTrendLineGateFeatures({
+    context: {
+      ...structural,
+      ...timing,
+      hardBlockReasons,
+      deterministicQuality,
+    },
+    signal,
+    approvalBlockReasons,
+    deterministicRejectionScore,
+  });
 
   return {
     ...structural,
     ...timing,
+    reverseTrendLineGateFeatures,
     deterministicQuality,
     deterministicRejectionScore,
     approvalAllowedNow:
@@ -431,6 +579,22 @@ const buildReverseTrendlineAiContext = (signal: {
     approvalBlockReasons,
   };
 };
+
+const withReverseTrendLineGateFeatures = ({
+  baseContext,
+  context,
+}: {
+  baseContext: BaseStrategyContextSnapshot | null;
+  context: ReverseTrendlineAiContext;
+}) =>
+  baseContext == null
+    ? baseContext
+    : ({
+        ...(baseContext as unknown as Record<string, unknown>),
+        reverseTrendLineGateFeatures: context.reverseTrendLineGateFeatures,
+      } as BaseStrategyContextSnapshot & {
+        reverseTrendLineGateFeatures: ReverseTrendLineGateFeatures;
+      });
 
 const getReverseTrendlineContextFromPayload = (
   payload: AiPayload,
@@ -474,17 +638,37 @@ const getHardBlockReasonText = (reason: string) => {
 };
 
 export const reverseTrendLineAiAdapter: StrategyAiAdapter = {
-  buildPayload: ({ signal, basePayload }) => ({
-    ...basePayload,
-    figures: {
-      ...basePayload.figures,
-      trendline: getTrendLineFromPayload(signal),
-    },
-    additionalIndicators: {
-      ...(basePayload.additionalIndicators as Record<string, unknown>),
-      reverseTrendlineContext: buildReverseTrendlineAiContext(signal),
-    } satisfies AiPayload['additionalIndicators'],
-  }),
+  buildPayload: ({ signal, basePayload }) => {
+    const baseAdditional =
+      (basePayload.additionalIndicators as
+        | Record<string, unknown>
+        | undefined) ?? {};
+    const context = buildReverseTrendlineAiContext({
+      ...signal,
+      additionalIndicators: {
+        ...((signal.additionalIndicators as Record<string, unknown>) ?? {}),
+        ...baseAdditional,
+      },
+    });
+    const baseContext = (baseAdditional.baseContext ??
+      null) as BaseStrategyContextSnapshot | null;
+
+    return {
+      ...basePayload,
+      figures: {
+        ...basePayload.figures,
+        trendline: getTrendLineFromPayload(signal),
+      },
+      additionalIndicators: {
+        ...baseAdditional,
+        baseContext: withReverseTrendLineGateFeatures({
+          baseContext,
+          context,
+        }),
+        reverseTrendlineContext: context,
+      } satisfies AiPayload['additionalIndicators'],
+    };
+  },
   postProcessAnalysis: ({ signal, payload, analysis }) => {
     const context = getReverseTrendlineContextFromPayload(payload, signal);
     const signalDirection =
@@ -564,6 +748,14 @@ Additional ReverseTrendLine context:
 - coinBiasAligned=${context.coinBiasAligned}
 - btcBiasAligned=${context.btcBiasAligned}
 - deterministicRejectionScore=${context.deterministicRejectionScore ?? 'n/a'}
+- reverseTrendLineGateBounceAcceptance=${context.reverseTrendLineGateFeatures.bounceAcceptance}
+- reverseTrendLineGateRejectionStrength=${context.reverseTrendLineGateFeatures.rejectionStrength}
+- reverseTrendLineGateBiasAlignment=${context.reverseTrendLineGateFeatures.biasAlignment}
+- reverseTrendLineGateBaseContextState=${context.reverseTrendLineGateFeatures.baseContextState}
+- reverseTrendLineGateParticipationState=${context.reverseTrendLineGateFeatures.participationState}
+- reverseTrendLineGateVolatilityState=${context.reverseTrendLineGateFeatures.volatilityState}
+- reverseTrendLineGateRangePositionState=${context.reverseTrendLineGateFeatures.rangePositionState}
+- reverseTrendLineGateHighQualityBouncePocket=${String(context.reverseTrendLineGateFeatures.highQualityBouncePocket)}
 - approvalAllowedNow=${context.approvalAllowedNow}
 - hardBlockReasons=${context.hardBlockReasons.join(', ') || 'none'}
 - approvalBlockReasons=${context.approvalBlockReasons.join(', ') || 'none'}

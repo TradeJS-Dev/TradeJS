@@ -67,10 +67,20 @@ describe('doubleTapAiAdapter', () => {
         patternKind: 'double_bottom',
         signalDirection: 'LONG',
         baseContextAvailable: true,
+        doubleTapGateFeatures: expect.objectContaining({
+          patternGeometry: 'unknown',
+          necklineBreakout: 'missing',
+        }),
         deterministicQuality: 1,
         approvalAllowedNow: false,
       }),
     );
+    expect(
+      (result as any).additionalIndicators.baseContext.doubleTapGateFeatures,
+    ).toMatchObject({
+      patternGeometry: 'unknown',
+      necklineBreakout: 'missing',
+    });
   });
 
   it('approves compact neckline breakouts when baseContext supports the gate', () => {

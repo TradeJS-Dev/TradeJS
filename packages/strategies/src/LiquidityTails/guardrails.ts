@@ -18,11 +18,33 @@ export type LiquidityTailsGuardrailContext =
     derivativesPressure: string | null;
     derivativesDirectionAligned: boolean | null;
     derivativesRiskFlags: string[];
+    liquidityTailsGateFeatures: LiquidityTailsGateFeatures;
     hardBlockReasons: string[];
     softBlockReasons: string[];
     deterministicQuality: number;
     approvalAllowedNow: boolean;
   };
+
+export type LiquidityTailsGateFeatures = {
+  zoneQuality: 'invalid' | 'weak' | 'formed' | 'mature' | 'unknown';
+  retestAcceptance:
+    | 'reaction_body_conflict'
+    | 'shallow'
+    | 'confirmed'
+    | 'strong'
+    | 'unknown';
+  reactionMomentum: 'weak' | 'confirmed' | 'strong' | 'unknown';
+  participationState: 'thin' | 'normal' | 'strong' | 'unknown';
+  derivativesReversal:
+    | 'flush_support'
+    | 'aligned'
+    | 'crowded'
+    | 'conflict'
+    | 'neutral'
+    | 'unknown';
+  trendContext: 'reversal' | 'with_trend' | 'neutral' | 'unknown';
+  highQualityRetestPocket: boolean;
+};
 
 const asFiniteNumber = (value: unknown): number | null => {
   const parsed = Number(value);
@@ -36,6 +58,130 @@ const asStringArray = (value: unknown): string[] =>
           typeof entry === 'string' && entry.trim().length > 0,
       )
     : [];
+
+const buildLiquidityTailsGateFeatures = ({
+  signalContext,
+  trendBias,
+  volumeRel20,
+  bodyStrength,
+  adxValue,
+  adxStrength,
+  roc1h,
+  roc4h,
+  derivativesDirectionAligned,
+  derivativesSummaryAvailable,
+  flushSupport,
+  directionalCrowding,
+  actionableCloseAwayReaction,
+}: {
+  signalContext: Partial<LiquidityTailsSignalContext>;
+  trendBias: string | null;
+  volumeRel20: number | null;
+  bodyStrength: number | null;
+  adxValue: number | null;
+  adxStrength: string | null;
+  roc1h: number | null;
+  roc4h: number | null;
+  derivativesDirectionAligned: boolean | null;
+  derivativesSummaryAvailable: boolean;
+  flushSupport: boolean;
+  directionalCrowding: boolean;
+  actionableCloseAwayReaction: boolean;
+}): LiquidityTailsGateFeatures => {
+  const zoneHeight = asFiniteNumber(signalContext.zoneHeight);
+  const zoneTouches = asFiniteNumber(signalContext.zoneTouches);
+  const wickBodyRatio = asFiniteNumber(signalContext.wickBodyRatio);
+  const wickDominanceRatio = asFiniteNumber(signalContext.wickDominanceRatio);
+  const reactionCloseDistancePct = asFiniteNumber(
+    signalContext.reactionCloseDistancePct,
+  );
+  const zoneQuality =
+    zoneHeight == null || zoneHeight <= 0
+      ? 'invalid'
+      : (wickBodyRatio != null && wickBodyRatio >= 2) ||
+          (wickDominanceRatio != null && wickDominanceRatio >= 1.5)
+        ? (zoneTouches ?? 0) >= 2
+          ? 'mature'
+          : 'formed'
+        : 'weak';
+  const retestAcceptance =
+    signalContext.reactionBodyAligned === false
+      ? 'reaction_body_conflict'
+      : reactionCloseDistancePct == null
+        ? 'unknown'
+        : reactionCloseDistancePct >= 2
+          ? 'strong'
+          : reactionCloseDistancePct >= 1
+            ? 'confirmed'
+            : 'shallow';
+  const momentumConfirmed =
+    (adxValue != null && adxValue >= 26.7) ||
+    adxStrength === 'strong' ||
+    (roc4h != null && roc4h >= 0.7) ||
+    (roc1h != null && (roc1h >= 1.25 || roc1h <= -1.2));
+  const reactionMomentum =
+    bodyStrength == null && !momentumConfirmed
+      ? 'unknown'
+      : bodyStrength != null && bodyStrength < 0.25
+        ? 'weak'
+        : adxStrength === 'strong' || actionableCloseAwayReaction
+          ? 'strong'
+          : momentumConfirmed
+            ? 'confirmed'
+            : 'weak';
+  const participationState =
+    volumeRel20 == null
+      ? 'unknown'
+      : volumeRel20 < 0.75
+        ? 'thin'
+        : volumeRel20 >= 1.5
+          ? 'strong'
+          : 'normal';
+  const derivativesReversal = flushSupport
+    ? 'flush_support'
+    : derivativesDirectionAligned === true
+      ? 'aligned'
+      : derivativesDirectionAligned === false
+        ? 'conflict'
+        : directionalCrowding
+          ? 'crowded'
+          : derivativesSummaryAvailable
+            ? 'neutral'
+            : 'unknown';
+  const direction = signalContext.signalDirection;
+  const trendContext =
+    direction === 'LONG'
+      ? trendBias === 'bear'
+        ? 'reversal'
+        : trendBias === 'bull'
+          ? 'with_trend'
+          : trendBias === 'neutral'
+            ? 'neutral'
+            : 'unknown'
+      : direction === 'SHORT'
+        ? trendBias === 'bull'
+          ? 'reversal'
+          : trendBias === 'bear'
+            ? 'with_trend'
+            : trendBias === 'neutral'
+              ? 'neutral'
+              : 'unknown'
+        : 'unknown';
+
+  return {
+    zoneQuality,
+    retestAcceptance,
+    reactionMomentum,
+    participationState,
+    derivativesReversal,
+    trendContext,
+    highQualityRetestPocket:
+      actionableCloseAwayReaction &&
+      zoneQuality !== 'invalid' &&
+      retestAcceptance === 'strong' &&
+      participationState !== 'thin',
+  };
+};
 
 export const buildLiquidityTailsGuardrailContext = ({
   signalContext,
@@ -134,6 +280,21 @@ export const buildLiquidityTailsGuardrailContext = ({
     strongCloseAwayReaction &&
     nonBullTrendContext &&
     (strongAdxExpansion || momentumExpansion);
+  const liquidityTailsGateFeatures = buildLiquidityTailsGateFeatures({
+    signalContext,
+    trendBias,
+    volumeRel20,
+    bodyStrength,
+    adxValue,
+    adxStrength,
+    roc1h,
+    roc4h,
+    derivativesDirectionAligned,
+    derivativesSummaryAvailable: derivativesSummary != null,
+    flushSupport,
+    directionalCrowding,
+    actionableCloseAwayReaction,
+  });
   let deterministicQuality = 3;
 
   if (hardBlockReasons.length > 0) {
@@ -163,6 +324,7 @@ export const buildLiquidityTailsGuardrailContext = ({
     derivativesPressure,
     derivativesDirectionAligned,
     derivativesRiskFlags,
+    liquidityTailsGateFeatures,
     hardBlockReasons,
     softBlockReasons,
     deterministicQuality,

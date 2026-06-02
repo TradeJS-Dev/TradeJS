@@ -26,23 +26,50 @@ const getLiquidityTailsContext = (payload: AiPayload) => {
   });
 };
 
+const withLiquidityTailsGateFeatures = ({
+  baseContext,
+  context,
+}: {
+  baseContext: BaseStrategyContextSnapshot | null;
+  context: ReturnType<typeof buildLiquidityTailsGuardrailContext>;
+}) =>
+  baseContext == null
+    ? baseContext
+    : ({
+        ...(baseContext as unknown as Record<string, unknown>),
+        liquidityTailsGateFeatures: context.liquidityTailsGateFeatures,
+      } as BaseStrategyContextSnapshot & {
+        liquidityTailsGateFeatures: typeof context.liquidityTailsGateFeatures;
+      });
+
 export const liquidityTailsAiAdapter: StrategyAiAdapter = {
   buildPayload: ({ signal, basePayload }) => {
+    const baseAdditional =
+      (basePayload.additionalIndicators as
+        | Record<string, unknown>
+        | undefined) ?? {};
     const payload = {
       ...basePayload,
       additionalIndicators: {
-        ...(basePayload.additionalIndicators as Record<string, unknown>),
+        ...baseAdditional,
         liquidityTailsContext: (
           signal.additionalIndicators as Record<string, unknown> | undefined
         )?.liquidityTailsContext,
       },
     };
+    const context = getLiquidityTailsContext(payload);
+    const baseContext = (baseAdditional.baseContext ??
+      null) as BaseStrategyContextSnapshot | null;
 
     return {
       ...payload,
       additionalIndicators: {
         ...(payload.additionalIndicators as Record<string, unknown>),
-        liquidityTailsContext: getLiquidityTailsContext(payload),
+        baseContext: withLiquidityTailsGateFeatures({
+          baseContext,
+          context,
+        }),
+        liquidityTailsContext: context,
       },
     };
   },
@@ -100,6 +127,13 @@ Additional Liquidity Tails context:
 - derivativesPressure=${context.derivativesPressure ?? 'n/a'}
 - derivativesDirectionAligned=${String(context.derivativesDirectionAligned ?? 'n/a')}
 - derivativesRiskFlags=${JSON.stringify(context.derivativesRiskFlags)}
+- liquidityTailsGateZoneQuality=${context.liquidityTailsGateFeatures.zoneQuality}
+- liquidityTailsGateRetestAcceptance=${context.liquidityTailsGateFeatures.retestAcceptance}
+- liquidityTailsGateReactionMomentum=${context.liquidityTailsGateFeatures.reactionMomentum}
+- liquidityTailsGateParticipationState=${context.liquidityTailsGateFeatures.participationState}
+- liquidityTailsGateDerivativesReversal=${context.liquidityTailsGateFeatures.derivativesReversal}
+- liquidityTailsGateTrendContext=${context.liquidityTailsGateFeatures.trendContext}
+- liquidityTailsGateHighQualityRetestPocket=${String(context.liquidityTailsGateFeatures.highQualityRetestPocket)}
 - deterministicQuality=${context.deterministicQuality}
 - approvalAllowedNow=${String(context.approvalAllowedNow)}
 - hardBlockReasons=${JSON.stringify(context.hardBlockReasons)}

@@ -1,5 +1,9 @@
 import { mapAiRuntimeFromConfig } from '@tradejs/core/strategies';
-import { AiPayload, StrategyAiAdapter } from '@tradejs/types';
+import {
+  AiPayload,
+  BaseStrategyContextSnapshot,
+  StrategyAiAdapter,
+} from '@tradejs/types';
 import type { TrendLineConfig } from '../config';
 import {
   getSignalCoinMaFast,
@@ -87,6 +91,151 @@ const toFiniteNumberOrNull = (value: unknown): number | null => {
   return null;
 };
 
+type TrendLineGateFeatures = {
+  setupBreakVsAtrRatio: number | null;
+  setupPriceVsLinePctAbs: number | null;
+  lineMaturity: 'fresh' | 'developing' | 'mature' | 'unknown';
+  breakoutAcceptance:
+    | 'pressure_exception'
+    | 'clear_break'
+    | 'weak_break'
+    | 'compressed_break'
+    | 'near_line_noise'
+    | 'no_clear_break'
+    | 'unknown';
+  timingState:
+    | 'ready_breakout'
+    | 'ready_follow_through'
+    | 'ready_retest'
+    | 'wait_retest'
+    | 'wait_retest_confirmation'
+    | 'stale_breakout'
+    | 'unknown'
+    | null;
+  biasAlignment:
+    | 'aligned'
+    | 'coin_conflict'
+    | 'btc_conflict'
+    | 'mixed'
+    | 'unknown';
+  derivativesConfirmation:
+    | 'aligned'
+    | 'oi_not_confirming'
+    | 'conflict'
+    | 'neutral'
+    | 'unknown';
+  participationState: 'thin' | 'normal' | 'strong' | 'unknown';
+  relativeContinuation: 'aligned' | 'against' | 'neutral' | 'unknown';
+  qualityPocket: 'approved' | 'pressure_exception' | 'watch' | 'blocked';
+};
+
+const buildTrendLineGateFeatures = ({
+  structural,
+  entryTiming,
+  coinBiasAligned,
+  volumeRel20,
+  benchmarkTrendAlignment,
+  derivativesDirectionAligned,
+  derivativesRiskFlags,
+  oiNotConfirming,
+  aggressivePreBreakPressure,
+  strongNearBreakPressure,
+  approvalAllowedNow,
+  hardBlockReasons,
+}: {
+  structural: ReturnType<typeof buildTrendlineStructuralContext>;
+  entryTiming: TrendLineGateFeatures['timingState'];
+  coinBiasAligned: boolean | null;
+  volumeRel20: number | null;
+  benchmarkTrendAlignment: string | null;
+  derivativesDirectionAligned: boolean | null;
+  derivativesRiskFlags: string[];
+  oiNotConfirming: boolean;
+  aggressivePreBreakPressure: boolean;
+  strongNearBreakPressure: boolean;
+  approvalAllowedNow: boolean;
+  hardBlockReasons: string[];
+}): TrendLineGateFeatures => {
+  const touches = structural.touches ?? 0;
+  const lineMaturity =
+    structural.touches == null
+      ? 'unknown'
+      : touches >= 5
+        ? 'mature'
+        : touches >= 3
+          ? 'developing'
+          : 'fresh';
+  const breakoutAcceptance =
+    aggressivePreBreakPressure || strongNearBreakPressure
+      ? 'pressure_exception'
+      : structural.compressedCleanBreak
+        ? 'compressed_break'
+        : structural.weakCleanBreak || structural.weakLongFarBreak
+          ? 'weak_break'
+          : structural.clearBreak === true && structural.nearLineNoise === false
+            ? 'clear_break'
+            : structural.nearLineNoise === true
+              ? 'near_line_noise'
+              : structural.clearBreak === false
+                ? 'no_clear_break'
+                : 'unknown';
+  const biasAlignment =
+    coinBiasAligned === true && structural.btcBiasAligned === true
+      ? 'aligned'
+      : coinBiasAligned === false && structural.btcBiasAligned === false
+        ? 'mixed'
+        : coinBiasAligned === false
+          ? 'coin_conflict'
+          : structural.btcBiasAligned === false
+            ? 'btc_conflict'
+            : 'unknown';
+  const participationState =
+    volumeRel20 == null
+      ? 'unknown'
+      : volumeRel20 < 0.8
+        ? 'thin'
+        : volumeRel20 >= 1.5
+          ? 'strong'
+          : 'normal';
+  const relativeContinuation =
+    benchmarkTrendAlignment === 'against_benchmark'
+      ? 'against'
+      : benchmarkTrendAlignment === 'aligned_bull' ||
+          benchmarkTrendAlignment === 'aligned_bear'
+        ? 'aligned'
+        : benchmarkTrendAlignment == null
+          ? 'unknown'
+          : 'neutral';
+
+  return {
+    setupBreakVsAtrRatio: structural.breakVsAtrRatio,
+    setupPriceVsLinePctAbs: structural.priceVsLinePctAbs,
+    lineMaturity,
+    breakoutAcceptance,
+    timingState: entryTiming,
+    biasAlignment,
+    derivativesConfirmation: oiNotConfirming
+      ? 'oi_not_confirming'
+      : derivativesDirectionAligned === true
+        ? 'aligned'
+        : derivativesDirectionAligned === false
+          ? 'conflict'
+          : derivativesRiskFlags.length > 0
+            ? 'neutral'
+            : 'unknown',
+    participationState,
+    relativeContinuation,
+    qualityPocket:
+      aggressivePreBreakPressure || strongNearBreakPressure
+        ? 'pressure_exception'
+        : approvalAllowedNow
+          ? 'approved'
+          : hardBlockReasons.length > 0
+            ? 'blocked'
+            : 'watch',
+  };
+};
+
 const buildTrendlineContext = (signal: {
   direction?: unknown;
   prices?: { currentPrice?: unknown };
@@ -134,6 +283,10 @@ const buildTrendlineContext = (signal: {
         (flag): flag is string => typeof flag === 'string' && flag.length > 0,
       )
     : [];
+  const derivativesDirectionAligned =
+    typeof derivativesSummary?.directionAligned === 'boolean'
+      ? derivativesSummary.directionAligned
+      : null;
   const oiNotConfirming = derivativesRiskFlags.includes('oi_not_confirming');
   const structural = buildTrendlineStructuralContext(signal);
   const trendLine = getTrendLineFromPayload(signal);
@@ -284,6 +437,20 @@ const buildTrendlineContext = (signal: {
       benchmarkTrendAlignment !== 'against_benchmark');
   const approvalAllowedNow =
     deterministicQuality >= 4 && longBaseContextApprovalPocket;
+  const trendLineGateFeatures = buildTrendLineGateFeatures({
+    structural,
+    entryTiming,
+    coinBiasAligned,
+    volumeRel20,
+    benchmarkTrendAlignment,
+    derivativesDirectionAligned,
+    derivativesRiskFlags,
+    oiNotConfirming,
+    aggressivePreBreakPressure,
+    strongNearBreakPressure,
+    approvalAllowedNow,
+    hardBlockReasons,
+  });
 
   return {
     ...structural,
@@ -301,15 +468,33 @@ const buildTrendlineContext = (signal: {
     volumeRel20,
     benchmarkTrendAlignment,
     venueSpreadZScore,
+    derivativesDirectionAligned,
     derivativesRiskFlags,
     oiNotConfirming,
     longUsLowVolumeCrowdedShortSqueeze,
+    trendLineGateFeatures,
     deterministicQuality,
     maxAllowedQuality,
     approvalAllowedNow,
     hardBlockReasons,
   };
 };
+
+const withTrendLineGateFeatures = ({
+  baseContext,
+  context,
+}: {
+  baseContext: BaseStrategyContextSnapshot | null;
+  context: ReturnType<typeof buildTrendlineContext>;
+}) =>
+  baseContext == null
+    ? baseContext
+    : ({
+        ...(baseContext as unknown as Record<string, unknown>),
+        trendLineGateFeatures: context.trendLineGateFeatures,
+      } as BaseStrategyContextSnapshot & {
+        trendLineGateFeatures: TrendLineGateFeatures;
+      });
 
 const formatPromptNumber = (
   value: number | null,
@@ -571,6 +756,11 @@ export const trendLineAiAdapter: StrategyAiAdapter = {
       },
       additionalIndicators: {
         ...mergedAdditionalIndicators,
+        baseContext: withTrendLineGateFeatures({
+          baseContext: (mergedAdditionalIndicators.baseContext ??
+            null) as BaseStrategyContextSnapshot | null,
+          context: trendlineContext,
+        }),
         trendlineContext,
       } satisfies AiPayload['additionalIndicators'],
     };
@@ -722,6 +912,14 @@ Additional TrendLine context:
 - trendline.maxAllowedQuality=${String(trendlineContext.maxAllowedQuality)}
 - trendline.approvalAllowedNow=${String(trendlineContext.approvalAllowedNow)}
 - trendline.hardBlockReasons=${JSON.stringify(trendlineContext.hardBlockReasons)}
+- trendLineGateLineMaturity=${trendlineContext.trendLineGateFeatures.lineMaturity}
+- trendLineGateBreakoutAcceptance=${trendlineContext.trendLineGateFeatures.breakoutAcceptance}
+- trendLineGateTimingState=${trendlineContext.trendLineGateFeatures.timingState ?? 'n/a'}
+- trendLineGateBiasAlignment=${trendlineContext.trendLineGateFeatures.biasAlignment}
+- trendLineGateDerivativesConfirmation=${trendlineContext.trendLineGateFeatures.derivativesConfirmation}
+- trendLineGateParticipationState=${trendlineContext.trendLineGateFeatures.participationState}
+- trendLineGateRelativeContinuation=${trendlineContext.trendLineGateFeatures.relativeContinuation}
+- trendLineGateQualityPocket=${trendlineContext.trendLineGateFeatures.qualityPocket}
 - coin.maFastLast=${formatPromptNumber(trendlineContext.coinMaFast, 6)}
 - coin.maSlowLast=${formatPromptNumber(trendlineContext.coinMaSlow, 6)}
 - coin.maBias=${trendlineContext.coinMaBias ?? 'n/a'}

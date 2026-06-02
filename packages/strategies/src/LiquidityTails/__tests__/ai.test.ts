@@ -29,6 +29,64 @@ const makePayload = (
   }) as any;
 
 describe('liquidityTailsAiAdapter', () => {
+  it('copies LiquidityTails gate features into strategy and base contexts', () => {
+    const result = liquidityTailsAiAdapter.buildPayload?.({
+      signal: {
+        additionalIndicators: {
+          liquidityTailsContext: {
+            signalDirection: 'LONG',
+            zoneKind: 'buy_pressure',
+            zoneHeight: 5,
+            zoneTouches: 2,
+            wickBodyRatio: 2.5,
+            wickDominanceRatio: 2,
+            reactionCloseDistancePct: 2.1,
+            reactionBodyAligned: true,
+          },
+        },
+      } as any,
+      basePayload: {
+        additionalIndicators: {
+          baseContext: {
+            regime: {
+              trend: {
+                bias: 'bear',
+                adx: { adx: 35, strength: 'strong' },
+              },
+              momentum: { roc1h: 1.4, roc4h: 0.8 },
+            },
+            participation: {
+              volume: { volumeRel20: 1.2 },
+            },
+            derivatives: {
+              summary: {
+                pressure: 'short_flush',
+                directionAligned: true,
+                riskFlags: ['short_liquidation_spike'],
+              },
+            },
+          },
+        },
+      } as any,
+    } as any);
+
+    expect(
+      (result as any).additionalIndicators.liquidityTailsContext
+        .liquidityTailsGateFeatures,
+    ).toMatchObject({
+      zoneQuality: 'mature',
+      retestAcceptance: 'strong',
+      highQualityRetestPocket: true,
+    });
+    expect(
+      (result as any).additionalIndicators.baseContext
+        .liquidityTailsGateFeatures,
+    ).toMatchObject({
+      zoneQuality: 'mature',
+      retestAcceptance: 'strong',
+    });
+  });
+
   it('approves strong close-away liquidity-zone retests', () => {
     const result = liquidityTailsAiAdapter.postProcessAnalysis?.({
       signal: {} as any,
