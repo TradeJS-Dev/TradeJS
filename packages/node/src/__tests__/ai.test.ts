@@ -2834,6 +2834,27 @@ describe('ai helpers', () => {
 
     it('promotes aligned recent TrendLine long follow-through setups into q4 during local replay', async () => {
       const signal = makeAlignedRecentLongTrendlineSignal();
+      signal.additionalIndicators.baseContext = {
+        ...signal.additionalIndicators.baseContext,
+        participation: {
+          volume: {
+            volumeRel20: 1.6,
+          },
+        },
+        relative: {
+          ...signal.additionalIndicators.baseContext.relative,
+          benchmark: {
+            ...signal.additionalIndicators.baseContext.relative.benchmark,
+            trendAlignment: 'aligned_bull',
+          },
+        },
+        derivatives: {
+          summary: {
+            directionAligned: true,
+            riskFlags: ['crowded_short'],
+          },
+        },
+      };
       const payload = buildAiPayload(signal);
 
       expect(getDeterministicAiGateContext(payload)).toEqual(
@@ -2841,6 +2862,7 @@ describe('ai helpers', () => {
           approvalAllowedNow: true,
           deterministicQuality: 4,
           hardBlockReasons: [],
+          longStrongDerivativesAlignedApproval: true,
         }),
       );
 
@@ -2859,7 +2881,7 @@ describe('ai helpers', () => {
       expect(invokeMock).not.toHaveBeenCalled();
     });
 
-    it('allows US low-volume crowded-short TrendLine long squeeze setups during local replay', async () => {
+    it('keeps US low-volume crowded-short TrendLine long squeeze setups in watch mode without stronger confirmation', async () => {
       const signal = makeAlignedRecentLongTrendlineSignal();
       signal.additionalIndicators.baseContext = {
         ...signal.additionalIndicators.baseContext,
@@ -2896,10 +2918,75 @@ describe('ai helpers', () => {
 
       expect(getDeterministicAiGateContext(payload)).toEqual(
         expect.objectContaining({
-          approvalAllowedNow: true,
+          approvalAllowedNow: false,
           deterministicQuality: 4,
           hardBlockReasons: [],
           longUsLowVolumeCrowdedShortSqueeze: true,
+          longStrongDerivativesAlignedApproval: false,
+        }),
+      );
+
+      const result = await runAiPromptLocal(signal, { payload });
+
+      expect(result).toEqual(
+        expect.objectContaining({
+          direction: null,
+          quality: 4,
+          needRetest: true,
+          takeProfitPrice: null,
+          stopLossPrice: null,
+        }),
+      );
+      expect(chatOpenAICtorMock).not.toHaveBeenCalled();
+      expect(invokeMock).not.toHaveBeenCalled();
+    });
+
+    it('allows moderate TrendLine long retests in liquid sessions with neutral derivatives context', async () => {
+      const signal = makeAlignedRecentLongTrendlineSignal();
+      signal.additionalIndicators.trendlineTiming = {
+        ...signal.additionalIndicators.trendlineTiming,
+        entryTiming: 'ready_retest',
+      };
+      signal.additionalIndicators.baseContext = {
+        ...signal.additionalIndicators.baseContext,
+        regime: {
+          ...signal.additionalIndicators.baseContext.regime,
+          session: {
+            ...signal.additionalIndicators.baseContext.regime.session,
+            sessionPhase: 'us',
+          },
+        },
+        participation: {
+          volume: {
+            volumeRel20: 1.1,
+          },
+        },
+        relative: {
+          ...signal.additionalIndicators.baseContext.relative,
+          benchmark: {
+            ...signal.additionalIndicators.baseContext.relative.benchmark,
+            trendAlignment: 'neutral',
+          },
+          execution: {
+            ...signal.additionalIndicators.baseContext.relative.execution,
+            venueSpreadZScore: 1.6,
+          },
+        },
+        derivatives: {
+          summary: {
+            directionAligned: null,
+            riskFlags: ['crowded_short'],
+          },
+        },
+      };
+      const payload = buildAiPayload(signal);
+
+      expect(getDeterministicAiGateContext(payload)).toEqual(
+        expect.objectContaining({
+          approvalAllowedNow: true,
+          deterministicQuality: 4,
+          hardBlockReasons: [],
+          longModerateRetestLiquidSessionApproval: true,
         }),
       );
 
@@ -2912,6 +2999,49 @@ describe('ai helpers', () => {
           needRetest: false,
           takeProfitPrice: 104.5,
           stopLossPrice: 98.9,
+        }),
+      );
+      expect(chatOpenAICtorMock).not.toHaveBeenCalled();
+      expect(invokeMock).not.toHaveBeenCalled();
+    });
+
+    it('keeps thin neutral-benchmark TrendLine short ready-breakouts in watch mode during local replay', async () => {
+      const signal = makeModerateReadyBreakoutShortTrendlineSignal();
+      signal.additionalIndicators.baseContext = {
+        ...signal.additionalIndicators.baseContext,
+        participation: {
+          volume: {
+            volumeRel20: 0.6,
+          },
+        },
+        relative: {
+          ...signal.additionalIndicators.baseContext.relative,
+          benchmark: {
+            ...signal.additionalIndicators.baseContext.relative.benchmark,
+            trendAlignment: 'neutral',
+          },
+        },
+      };
+      const payload = buildAiPayload(signal);
+
+      expect(getDeterministicAiGateContext(payload)).toEqual(
+        expect.objectContaining({
+          approvalAllowedNow: false,
+          deterministicQuality: 4,
+          hardBlockReasons: [],
+          shortThinNeutralBenchmarkRisk: true,
+        }),
+      );
+
+      const result = await runAiPromptLocal(signal, { payload });
+
+      expect(result).toEqual(
+        expect.objectContaining({
+          direction: null,
+          quality: 4,
+          needRetest: true,
+          takeProfitPrice: null,
+          stopLossPrice: null,
         }),
       );
       expect(chatOpenAICtorMock).not.toHaveBeenCalled();

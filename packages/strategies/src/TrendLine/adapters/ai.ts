@@ -421,8 +421,7 @@ const buildTrendlineContext = (signal: {
     volumeRel20 < 0.8 &&
     derivativesRiskFlags.includes('crowded_short') &&
     benchmarkTrendAlignment !== 'against_benchmark';
-  const longBaseContextApprovalPocket =
-    structural.signalDirection !== 'LONG' ||
+  const longHistoricalApprovalPocket =
     (venueSpreadZScore != null && venueSpreadZScore <= -1) ||
     longUsLowVolumeCrowdedShortSqueeze ||
     (sessionPrimary !== 'europe' &&
@@ -435,8 +434,38 @@ const buildTrendlineContext = (signal: {
       volumeRel20 != null &&
       volumeRel20 >= 0.8 &&
       benchmarkTrendAlignment !== 'against_benchmark');
+  const longHighQualitySessionApproval =
+    deterministicQuality >= 5 && sessionPrimary !== 'asia';
+  const longStrongDerivativesAlignedApproval =
+    volumeRel20 != null &&
+    volumeRel20 >= 1.5 &&
+    derivativesDirectionAligned === true;
+  const longModerateRetestLiquidSessionApproval =
+    structural.signalDirection === 'LONG' &&
+    deterministicQuality === 4 &&
+    entryTiming === 'ready_retest' &&
+    (sessionPrimary === 'us' || sessionPrimary === 'europe') &&
+    volumeRel20 != null &&
+    volumeRel20 >= 0.8 &&
+    volumeRel20 < 1.5 &&
+    benchmarkTrendAlignment !== 'against_benchmark' &&
+    derivativesDirectionAligned == null &&
+    derivativesRiskFlags.length > 0 &&
+    !oiNotConfirming;
+  const longBaseContextApprovalPocket =
+    structural.signalDirection !== 'LONG' ||
+    longModerateRetestLiquidSessionApproval ||
+    (longHistoricalApprovalPocket &&
+      (longHighQualitySessionApproval || longStrongDerivativesAlignedApproval));
+  const shortThinNeutralBenchmarkRisk =
+    structural.signalDirection === 'SHORT' &&
+    volumeRel20 != null &&
+    volumeRel20 < 0.8 &&
+    benchmarkTrendAlignment === 'neutral';
   const approvalAllowedNow =
-    deterministicQuality >= 4 && longBaseContextApprovalPocket;
+    deterministicQuality >= 4 &&
+    longBaseContextApprovalPocket &&
+    !shortThinNeutralBenchmarkRisk;
   const trendLineGateFeatures = buildTrendLineGateFeatures({
     structural,
     entryTiming,
@@ -472,6 +501,10 @@ const buildTrendlineContext = (signal: {
     derivativesRiskFlags,
     oiNotConfirming,
     longUsLowVolumeCrowdedShortSqueeze,
+    longHighQualitySessionApproval,
+    longStrongDerivativesAlignedApproval,
+    longModerateRetestLiquidSessionApproval,
+    shortThinNeutralBenchmarkRisk,
     trendLineGateFeatures,
     deterministicQuality,
     maxAllowedQuality,
@@ -903,6 +936,10 @@ Additional TrendLine context:
 - trendline.aggressivePreBreakPressure=${String(trendlineContext.aggressivePreBreakPressure)}
 - trendline.strongNearBreakPressure=${String(trendlineContext.strongNearBreakPressure)}
 - trendline.longUsLowVolumeCrowdedShortSqueeze=${String(trendlineContext.longUsLowVolumeCrowdedShortSqueeze)}
+- trendline.longHighQualitySessionApproval=${String(trendlineContext.longHighQualitySessionApproval)}
+- trendline.longStrongDerivativesAlignedApproval=${String(trendlineContext.longStrongDerivativesAlignedApproval)}
+- trendline.longModerateRetestLiquidSessionApproval=${String(trendlineContext.longModerateRetestLiquidSessionApproval)}
+- trendline.shortThinNeutralBenchmarkRisk=${String(trendlineContext.shortThinNeutralBenchmarkRisk)}
 - trendline.weakCleanBreak=${String(trendlineContext.weakCleanBreak)}
 - trendline.compressedCleanBreak=${String(trendlineContext.compressedCleanBreak)}
 - trendline.weakBtcLedBreak=${String(trendlineContext.weakBtcLedBreak)}
