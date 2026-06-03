@@ -150,8 +150,74 @@ const getNestedString = (value: unknown, path: string[]) => {
   return typeof current === 'string' ? current : null;
 };
 
+const isShortBtcOnlyRecoveryLane = (
+  context: ReverseTrendlineQualityContext & {
+    deterministicRejectionScore: number | null;
+  },
+  baseContext: Record<string, unknown>,
+) => {
+  const riskFlags = getNestedRecord(baseContext, [
+    'derivatives',
+    'summary',
+  ])?.riskFlags;
+  const hasMissingDerivatives =
+    Array.isArray(riskFlags) && riskFlags.includes('missing_derivatives');
+  const derivativesPressure = getNestedString(baseContext, [
+    'derivatives',
+    'summary',
+    'pressure',
+  ]);
+  const volumeRel20 = getNestedNumber(baseContext, [
+    'participation',
+    'volume',
+    'volumeRel20',
+  ]);
+  const rangePosition20 = getNestedNumber(baseContext, [
+    'structure',
+    'localRange',
+    'rangePosition20',
+  ]);
+  const biasConflictState = getReverseTrendlineBiasConflictState(context);
+
+  return (
+    context.signalDirection === 'SHORT' &&
+    context.entryTiming === 'ready_rejection' &&
+    biasConflictState === 'btc_only' &&
+    context.deterministicRejectionScore != null &&
+    context.deterministicRejectionScore >= 6 &&
+    !hasMissingDerivatives &&
+    (derivativesPressure === 'long_flush' ||
+      derivativesPressure === 'short_flush' ||
+      derivativesPressure === 'crowded_long') &&
+    volumeRel20 != null &&
+    volumeRel20 >= 1.5 &&
+    rangePosition20 != null &&
+    rangePosition20 >= 0.2 &&
+    rangePosition20 <= 0.7
+  );
+};
+
+const getBaseContextQualityPromotion = (
+  context: ReverseTrendlineQualityContext & {
+    deterministicRejectionScore: number | null;
+  },
+  signal: Parameters<typeof buildReverseTrendlineAiContext>[0],
+) => {
+  const baseContext = isRecord(signal.additionalIndicators?.baseContext)
+    ? signal.additionalIndicators.baseContext
+    : null;
+  if (!baseContext) {
+    return null;
+  }
+
+  return isShortBtcOnlyRecoveryLane(context, baseContext) ? 4 : null;
+};
+
 const getBaseContextApprovalBlockReasons = (
-  context: ReverseTrendlineQualityContext & { deterministicQuality: number },
+  context: ReverseTrendlineQualityContext & {
+    deterministicQuality: number;
+    deterministicRejectionScore: number | null;
+  },
   signal: Parameters<typeof buildReverseTrendlineAiContext>[0],
 ) => {
   const baseContext = isRecord(signal.additionalIndicators?.baseContext)
@@ -187,11 +253,26 @@ const getBaseContextApprovalBlockReasons = (
     'benchmark',
     'trendAlignment',
   ]);
+  const derivativesPressure = getNestedString(baseContext, [
+    'derivatives',
+    'summary',
+    'pressure',
+  ]);
   const biasConflictState = getReverseTrendlineBiasConflictState(context);
+  const shortBtcOnlyRecoveryLane = isShortBtcOnlyRecoveryLane(
+    context,
+    baseContext,
+  );
   const reasons: string[] = [];
 
   if (hasMissingDerivatives) {
     reasons.push('missing_derivatives');
+  }
+  if (
+    context.signalDirection === 'SHORT' &&
+    derivativesPressure === 'crowded_short'
+  ) {
+    reasons.push('short_crowded_derivatives');
   }
   if (volumeRel20 != null && volumeRel20 < 0.8) {
     reasons.push('weak_volume_participation');
@@ -199,7 +280,8 @@ const getBaseContextApprovalBlockReasons = (
   if (
     context.signalDirection === 'SHORT' &&
     atrPctZScore != null &&
-    atrPctZScore >= 2
+    atrPctZScore >= 2 &&
+    !shortBtcOnlyRecoveryLane
   ) {
     reasons.push('short_extreme_volatility');
   }
@@ -546,12 +628,26 @@ const buildReverseTrendlineAiContext = (signal: {
     ...timing,
     hardBlockReasons,
   });
+  const baseContextQualityPromotion = getBaseContextQualityPromotion(
+    {
+      ...structural,
+      ...timing,
+      hardBlockReasons,
+      deterministicRejectionScore,
+    },
+    signal,
+  );
+  const promotedDeterministicQuality =
+    baseContextQualityPromotion == null
+      ? deterministicQuality
+      : Math.max(deterministicQuality, baseContextQualityPromotion);
   const approvalBlockReasons = getBaseContextApprovalBlockReasons(
     {
       ...structural,
       ...timing,
       hardBlockReasons,
-      deterministicQuality,
+      deterministicQuality: promotedDeterministicQuality,
+      deterministicRejectionScore,
     },
     signal,
   );
@@ -560,7 +656,7 @@ const buildReverseTrendlineAiContext = (signal: {
       ...structural,
       ...timing,
       hardBlockReasons,
-      deterministicQuality,
+      deterministicQuality: promotedDeterministicQuality,
     },
     signal,
     approvalBlockReasons,
@@ -571,10 +667,10 @@ const buildReverseTrendlineAiContext = (signal: {
     ...structural,
     ...timing,
     reverseTrendLineGateFeatures,
-    deterministicQuality,
+    deterministicQuality: promotedDeterministicQuality,
     deterministicRejectionScore,
     approvalAllowedNow:
-      deterministicQuality >= 4 && approvalBlockReasons.length === 0,
+      promotedDeterministicQuality >= 4 && approvalBlockReasons.length === 0,
     hardBlockReasons,
     approvalBlockReasons,
   };
@@ -626,6 +722,8 @@ const getHardBlockReasonText = (reason: string) => {
       return 'SHORT bounce appears in an extreme volatility regime';
     case 'short_low_range_position':
       return 'SHORT bounce starts too low in the local range';
+    case 'short_crowded_derivatives':
+      return 'SHORT bounce is too crowded on derivatives positioning';
     case 'long_against_benchmark':
       return 'LONG bounce is weak while the coin underperforms the benchmark';
     case 'long_weak_mid_distance':
