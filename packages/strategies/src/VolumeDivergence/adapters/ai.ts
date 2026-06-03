@@ -39,7 +39,7 @@ VolumeDivergence addon:
 
 const VOLUME_DIVERGENCE_PAYLOAD_PROMPT = `
 - \`payload.additionalIndicators.volumeDivergenceContext\` contains a compact divergence-strength summary:
-  divergenceKind / confirmationPrice / confirmationReady / structureAdvanced / reboundFromPivotPct / confirmationDistancePct / priceDisplacementPct / divergenceAmplitudeAtrRatio / reclaimPct / confirmationCandleQuality / volumeDivergenceStrength / deltaAligned / coinBiasAligned / btcBiasAligned / derivativesDirectionAligned / derivativesRiskFlags / derivativesLiqSpikeRatio / volumeRel20 / deterministicQuality / approvalAllowedNow / structuralHardBlockReasons / maxAllowedQuality.
+  divergenceKind / confirmationPrice / confirmationReady / structureAdvanced / reboundFromPivotPct / confirmationDistancePct / priceDisplacementPct / divergenceAmplitudeAtrRatio / reclaimPct / confirmationCandleQuality / volumeDivergenceStrength / deltaAligned / coinBiasAligned / btcBiasAligned / derivativesDirectionAligned / derivativesRiskFlags / derivativesLiqSpikeRatio / venueSpreadZScore / volumeRel20 / rangePosition20 / deterministicQuality / approvalAllowedNow / structuralHardBlockReasons / maxAllowedQuality.
 - Use this context as the explicit strategy-specific summary instead of trying to derive the same conclusion again only from generic candles.
 - If \`payload.additionalIndicators.baseContext.derivatives\` exists, it is a Coinalyze-derived summary of derivatives state at signal time; \`stale\` or \`missing_derivatives\` means that Coinalyze context must not be used.
 `;
@@ -102,6 +102,7 @@ type VolumeDivergenceAiContext = {
   derivativesLiqSpikeRatio: number | null;
   venueSpreadZScore: number | null;
   volumeRel20: number | null;
+  rangePosition20: number | null;
   sessionPhase: string | null;
   hardBlockReasons: HardBlockReason[];
   structuralHardBlockReasons: string[];
@@ -893,6 +894,12 @@ const getVolumeDivergenceContext = (
     'volume',
     'volumeRel20',
   ]);
+  const rangePosition20 = getNestedNumber(additional, [
+    'baseContext',
+    'structure',
+    'localRange',
+    'rangePosition20',
+  ]);
   const session = getNestedRecord(additional, [
     'baseContext',
     'regime',
@@ -1080,12 +1087,14 @@ const getVolumeDivergenceContext = (
           : 3;
   const longApprovalPocket =
     signalDirection !== 'LONG' ||
-    (isAtLeast(confirmationDistancePct, 2) && isAtLeast(volumeRel20, 1));
+    (isAtLeast(confirmationDistancePct, 2) &&
+      isAtLeast(volumeRel20, 1) &&
+      isAtLeast(venueSpreadZScore, 1.5365));
   const shortApprovalPocket =
     signalDirection !== 'SHORT' ||
-    (sessionPhase !== 'us' &&
-      !isAtLeast(venueSpreadZScore, 1) &&
-      !isInRange(divergenceAmplitudeAtrRatio, 1, 1.5));
+    (isAtMost(venueSpreadZScore, 0) &&
+      rangePosition20 != null &&
+      rangePosition20 < 0.2);
   const approvalAllowedNow =
     hardBlockReasons.length === 0 &&
     deterministicQuality >= 4 &&
@@ -1124,6 +1133,7 @@ const getVolumeDivergenceContext = (
     derivativesLiqSpikeRatio,
     venueSpreadZScore,
     volumeRel20,
+    rangePosition20,
     sessionPhase,
     hardBlockReasons,
     structuralHardBlockReasons: [...hardBlockReasons],
@@ -1282,7 +1292,9 @@ Additional VolumeDivergence context:
 - derivativesRiskFlags=${context.derivativesRiskFlags.join(', ') || 'none'}
 - derivativesFundingZScore=${context.derivativesFundingZScore?.toFixed?.(3) ?? 'n/a'}
 - derivativesLiqSpikeRatio=${context.derivativesLiqSpikeRatio?.toFixed?.(3) ?? 'n/a'}
+- venueSpreadZScore=${context.venueSpreadZScore?.toFixed?.(3) ?? 'n/a'}
 - volumeRel20=${context.volumeRel20?.toFixed?.(3) ?? 'n/a'}
+- rangePosition20=${context.rangePosition20?.toFixed?.(3) ?? 'n/a'}
 - barsSincePivot=${context.barsSincePivot ?? 'n/a'}
 - barsBetweenPivotConfirmations=${context.barsBetweenPivotConfirmations ?? 'n/a'}
 - entryTiming=${context.entryTiming ?? 'n/a'}

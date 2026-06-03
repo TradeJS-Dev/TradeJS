@@ -571,7 +571,7 @@ describe('volumeDivergenceAiAdapter', () => {
     );
   });
 
-  it('allows deep long confirmations when relative volume supports the reversal', () => {
+  it('allows long confirmations when venue spread strongly supports the reversal', () => {
     const signal = makeSignal({
       additionalIndicators: {
         volumeDivergenceSetup: {
@@ -586,6 +586,11 @@ describe('volumeDivergenceAiAdapter', () => {
           barsSinceDetection: 3,
         },
         baseContext: {
+          relative: {
+            execution: {
+              venueSpreadZScore: 1.7,
+            },
+          },
           participation: {
             volume: {
               volumeRel20: 1.2,
@@ -629,6 +634,7 @@ describe('volumeDivergenceAiAdapter', () => {
     ).toEqual(
       expect.objectContaining({
         confirmationDistancePct: 2.2,
+        venueSpreadZScore: 1.7,
         volumeRel20: 1.2,
         deterministicQuality: 4,
         approvalAllowedNow: true,
@@ -1210,6 +1216,18 @@ describe('volumeDivergenceAiAdapter', () => {
             },
           },
         },
+        baseContext: {
+          relative: {
+            execution: {
+              venueSpreadZScore: -0.4,
+            },
+          },
+          structure: {
+            localRange: {
+              rangePosition20: 0.1,
+            },
+          },
+        },
         divergence: {
           kind: 'bearish',
           pivotLookbackLeft: 2,
@@ -1263,6 +1281,8 @@ describe('volumeDivergenceAiAdapter', () => {
         structureAdvanced: true,
         deltaAligned: false,
         derivativesLiqSpikeRatio: 1.4,
+        venueSpreadZScore: -0.4,
+        rangePosition20: 0.1,
         reclaimPct: 165,
         deterministicQuality: 4,
         approvalAllowedNow: true,
