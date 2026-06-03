@@ -211,6 +211,82 @@ describe('liquidityTailsAiAdapter', () => {
     });
   });
 
+  it('requires stronger close-away reaction for short retests', () => {
+    const result = liquidityTailsAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makePayload(
+        {
+          signalDirection: 'SHORT',
+          zoneKind: 'sell_pressure',
+          zoneHeight: 5,
+          zoneTouches: 2,
+          wickBodyRatio: 2.5,
+          wickDominanceRatio: 2,
+          retestPenetrationPct: 30,
+          reactionCloseDistancePct: 2.5,
+          reactionBodyAligned: true,
+        },
+        {
+          regime: {
+            trend: {
+              bias: 'neutral',
+              adx: { adx: 35, strength: 'strong' },
+            },
+            momentum: { roc1h: -1.4, roc4h: 0.8 },
+          },
+        },
+      ),
+      analysis: {
+        direction: 'SHORT',
+        quality: 5,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: null,
+      quality: 3,
+      approved: false,
+    });
+  });
+
+  it('approves high-conviction short retests after stronger close-away reaction', () => {
+    const result = liquidityTailsAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makePayload(
+        {
+          signalDirection: 'SHORT',
+          zoneKind: 'sell_pressure',
+          zoneHeight: 5,
+          zoneTouches: 2,
+          wickBodyRatio: 2.5,
+          wickDominanceRatio: 2,
+          retestPenetrationPct: 30,
+          reactionCloseDistancePct: 3.1,
+          reactionBodyAligned: true,
+        },
+        {
+          regime: {
+            trend: {
+              bias: 'neutral',
+              adx: { adx: 35, strength: 'strong' },
+            },
+            momentum: { roc1h: -1.4, roc4h: 0.8 },
+          },
+        },
+      ),
+      analysis: {
+        direction: 'SHORT',
+        quality: 1,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: 'SHORT',
+      quality: 5,
+      approved: true,
+    });
+  });
+
   it('rejects retests without a directional reaction body', () => {
     const result = liquidityTailsAiAdapter.postProcessAnalysis?.({
       signal: {} as any,
