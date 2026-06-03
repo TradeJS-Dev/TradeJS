@@ -50,6 +50,14 @@ const withBaseContext = (signal: any) => ({
           maFast: getLastFiniteNumber(signal.indicators?.btcMaFast),
           maSlow: getLastFiniteNumber(signal.indicators?.btcMaSlow),
         },
+        targetVsBtc: {
+          alphaVsBtc1h: 3.4,
+          alphaVsBtc4h: 4.2,
+          alphaVsBtc24h: 8,
+          ratioTrend: 'up',
+          ...((signal.additionalIndicators?.baseContext?.relative
+            ?.targetVsBtc as Record<string, unknown>) ?? {}),
+        },
       },
       regime: {
         ...((signal.additionalIndicators?.baseContext?.regime as Record<
@@ -360,6 +368,16 @@ describe('adaptiveMomentumRibbonAiAdapter', () => {
         stopLossPrice: 99.8,
       },
       additionalIndicators: {
+        baseContext: {
+          relative: {
+            targetVsBtc: {
+              alphaVsBtc1h: 0.4,
+              alphaVsBtc4h: 0.8,
+              alphaVsBtc24h: 1.2,
+              ratioTrend: 'flat',
+            },
+          },
+        },
         amr: {
           signalOsc: 0.88,
           kcMidline: 100.2,
@@ -395,6 +413,7 @@ describe('adaptiveMomentumRibbonAiAdapter', () => {
       expect.objectContaining({
         channelState: 'inside_channel',
         channelBiasAligned: true,
+        targetVsBtcAlpha4h: 0.8,
         deterministicQuality: 3,
         approvalAllowedNow: false,
         structuralHardBlockReasons: [],
@@ -422,6 +441,93 @@ describe('adaptiveMomentumRibbonAiAdapter', () => {
     );
   });
 
+  it('approves strong inside-channel longs when target outperforms BTC on 4h', () => {
+    const signal = makeSignal({
+      prices: {
+        currentPrice: 100.5,
+        takeProfitPrice: 103.2,
+        stopLossPrice: 99.8,
+      },
+      additionalIndicators: {
+        amr: {
+          signalOsc: 0.88,
+          kcMidline: 100.2,
+          kcUpper: 101.1,
+          kcLower: 99.5,
+          invalidationLevel: 99.9,
+        },
+        baseContext: {
+          relative: {
+            targetVsBtc: {
+              alphaVsBtc1h: 3.4,
+              alphaVsBtc4h: 4.2,
+              alphaVsBtc24h: 8,
+              ratioTrend: 'up',
+            },
+          },
+        },
+      },
+    });
+    const payload = buildPayloadForSignal(signal);
+
+    expect(payload.additionalIndicators.adaptiveMomentumRibbonContext).toEqual(
+      expect.objectContaining({
+        channelState: 'inside_channel',
+        targetVsBtcAlpha1h: 3.4,
+        targetVsBtcAlpha4h: 4.2,
+        deterministicQuality: 5,
+        approvalAllowedNow: true,
+      }),
+    );
+  });
+
+  it('promotes low-effort inside-channel continuation longs into q4', () => {
+    const signal = makeSignal({
+      prices: {
+        currentPrice: 100.5,
+        takeProfitPrice: 103.2,
+        stopLossPrice: 99.8,
+      },
+      additionalIndicators: {
+        amr: {
+          signalOsc: 0.88,
+          kcMidline: 100.2,
+          kcUpper: 101.1,
+          kcLower: 99.5,
+          invalidationLevel: 99.9,
+        },
+        baseContext: {
+          relative: {
+            targetVsBtc: {
+              alphaVsBtc1h: 0.4,
+              alphaVsBtc4h: 0.8,
+              alphaVsBtc24h: 1.2,
+              ratioTrend: 'flat',
+            },
+          },
+          participation: {
+            volume: {
+              volumeRel20: 0.6,
+              effortVsResult: 60,
+            },
+          },
+        },
+      },
+    });
+    const payload = buildPayloadForSignal(signal);
+
+    expect(payload.additionalIndicators.adaptiveMomentumRibbonContext).toEqual(
+      expect.objectContaining({
+        channelState: 'inside_channel',
+        targetVsBtcAlpha4h: 0.8,
+        volumeRel20: 0.6,
+        effortVsResult: 60,
+        deterministicQuality: 4,
+        approvalAllowedNow: true,
+      }),
+    );
+  });
+
   it('keeps moderate above-upper longs in q4 without promoting them to q5', () => {
     const signal = makeSignal({
       prices: {
@@ -430,6 +536,16 @@ describe('adaptiveMomentumRibbonAiAdapter', () => {
         stopLossPrice: 99.92,
       },
       additionalIndicators: {
+        baseContext: {
+          relative: {
+            targetVsBtc: {
+              alphaVsBtc1h: 0.4,
+              alphaVsBtc4h: 0.8,
+              alphaVsBtc24h: 1.2,
+              ratioTrend: 'flat',
+            },
+          },
+        },
         amr: {
           signalOsc: 0.72,
           kcMidline: 100.2,
@@ -482,6 +598,16 @@ describe('adaptiveMomentumRibbonAiAdapter', () => {
         stopLossPrice: 99.92,
       },
       additionalIndicators: {
+        baseContext: {
+          relative: {
+            targetVsBtc: {
+              alphaVsBtc1h: 0.4,
+              alphaVsBtc4h: 0.8,
+              alphaVsBtc24h: 1.2,
+              ratioTrend: 'flat',
+            },
+          },
+        },
         amr: {
           signalOsc: 0.72,
           kcMidline: 100.2,
@@ -515,6 +641,16 @@ describe('adaptiveMomentumRibbonAiAdapter', () => {
         stopLossPrice: 99.92,
       },
       additionalIndicators: {
+        baseContext: {
+          relative: {
+            targetVsBtc: {
+              alphaVsBtc1h: 0.4,
+              alphaVsBtc4h: 0.8,
+              alphaVsBtc24h: 1.2,
+              ratioTrend: 'flat',
+            },
+          },
+        },
         amr: {
           signalOsc: 0.72,
           kcMidline: 100.2,
@@ -548,6 +684,16 @@ describe('adaptiveMomentumRibbonAiAdapter', () => {
         stopLossPrice: 99.92,
       },
       additionalIndicators: {
+        baseContext: {
+          relative: {
+            targetVsBtc: {
+              alphaVsBtc1h: 0.4,
+              alphaVsBtc4h: 0.8,
+              alphaVsBtc24h: 1.2,
+              ratioTrend: 'flat',
+            },
+          },
+        },
         amr: {
           signalOsc: 0.72,
           kcMidline: 100.2,
@@ -584,6 +730,14 @@ describe('adaptiveMomentumRibbonAiAdapter', () => {
       },
       additionalIndicators: {
         baseContext: {
+          relative: {
+            targetVsBtc: {
+              alphaVsBtc1h: 0.4,
+              alphaVsBtc4h: 0.8,
+              alphaVsBtc24h: 1.2,
+              ratioTrend: 'flat',
+            },
+          },
           derivatives: {
             summary: {
               directionAligned: null,
@@ -626,6 +780,14 @@ describe('adaptiveMomentumRibbonAiAdapter', () => {
       },
       additionalIndicators: {
         baseContext: {
+          relative: {
+            targetVsBtc: {
+              alphaVsBtc1h: 0.4,
+              alphaVsBtc4h: 0.8,
+              alphaVsBtc24h: 1.2,
+              ratioTrend: 'flat',
+            },
+          },
           derivatives: {
             summary: {
               directionAligned: null,
@@ -667,6 +829,16 @@ describe('adaptiveMomentumRibbonAiAdapter', () => {
   it('demotes crowded-derivatives longs back to watch mode even from q5 geometry', () => {
     const signal = makeSignal({
       additionalIndicators: {
+        baseContext: {
+          relative: {
+            targetVsBtc: {
+              alphaVsBtc1h: 0.4,
+              alphaVsBtc4h: 0.8,
+              alphaVsBtc24h: 1.2,
+              ratioTrend: 'flat',
+            },
+          },
+        },
         derivativesContext: {
           summary: {
             directionAligned: false,
@@ -788,6 +960,16 @@ describe('adaptiveMomentumRibbonAiAdapter', () => {
         stopLossPrice: 99.92,
       },
       additionalIndicators: {
+        baseContext: {
+          relative: {
+            targetVsBtc: {
+              alphaVsBtc1h: 0.4,
+              alphaVsBtc4h: 0.8,
+              alphaVsBtc24h: 1.2,
+              ratioTrend: 'flat',
+            },
+          },
+        },
         amr: {
           signalOsc: 0.72,
           kcMidline: 100.2,
@@ -842,6 +1024,12 @@ describe('adaptiveMomentumRibbonAiAdapter', () => {
             benchmark: {
               relativeStrength1h: -1.6,
               trendAlignment: 'against_benchmark',
+            },
+            targetVsBtc: {
+              alphaVsBtc1h: 0.4,
+              alphaVsBtc4h: 0.8,
+              alphaVsBtc24h: 1.2,
+              ratioTrend: 'flat',
             },
           },
           participation: {
@@ -921,6 +1109,12 @@ describe('adaptiveMomentumRibbonAiAdapter', () => {
               relativeStrength1h: -1.1,
               trendAlignment: 'against_benchmark',
             },
+            targetVsBtc: {
+              alphaVsBtc1h: 0.4,
+              alphaVsBtc4h: 0.8,
+              alphaVsBtc24h: 1.2,
+              ratioTrend: 'flat',
+            },
           },
           participation: {
             volume: {
@@ -984,6 +1178,14 @@ describe('adaptiveMomentumRibbonAiAdapter', () => {
       },
       additionalIndicators: {
         baseContext: {
+          relative: {
+            targetVsBtc: {
+              alphaVsBtc1h: -3.4,
+              alphaVsBtc4h: -4.2,
+              alphaVsBtc24h: -8,
+              ratioTrend: 'down',
+            },
+          },
           structure: {
             localRange: {
               breakoutState: 'below_low_level',
@@ -1105,6 +1307,14 @@ describe('adaptiveMomentumRibbonAiAdapter', () => {
     const signal = makeSignal({
       additionalIndicators: {
         baseContext: {
+          relative: {
+            targetVsBtc: {
+              alphaVsBtc1h: 0.4,
+              alphaVsBtc4h: 0.8,
+              alphaVsBtc24h: 1.2,
+              ratioTrend: 'flat',
+            },
+          },
           participation: {
             volume: {
               volumeRel20: 1.84,
@@ -1174,6 +1384,40 @@ describe('adaptiveMomentumRibbonAiAdapter', () => {
         effortVsResult: 220,
         derivativesDirectionAligned: null,
         deterministicQuality: 4,
+        approvalAllowedNow: true,
+      }),
+    );
+  });
+
+  it('promotes participation impulse longs into q4+ even without relative alpha support', () => {
+    const signal = makeSignal({
+      additionalIndicators: {
+        baseContext: {
+          relative: {
+            targetVsBtc: {
+              alphaVsBtc1h: 0.2,
+              alphaVsBtc4h: 0.4,
+              alphaVsBtc24h: 1,
+              ratioTrend: 'flat',
+            },
+          },
+          participation: {
+            volume: {
+              volumeRel20: 2.4,
+              effortVsResult: 180,
+            },
+          },
+        },
+      },
+    });
+    const payload = buildPayloadForSignal(signal);
+
+    expect(payload.additionalIndicators.adaptiveMomentumRibbonContext).toEqual(
+      expect.objectContaining({
+        targetVsBtcAlpha4h: 0.4,
+        volumeRel20: 2.4,
+        effortVsResult: 180,
+        deterministicQuality: 5,
         approvalAllowedNow: true,
       }),
     );

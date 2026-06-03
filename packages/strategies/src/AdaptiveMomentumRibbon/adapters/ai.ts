@@ -29,7 +29,7 @@ AdaptiveMomentumRibbon addon:
 
 const ADAPTIVE_MOMENTUM_RIBBON_PAYLOAD_PROMPT = `
 - \`payload.additionalIndicators.adaptiveMomentumRibbonContext\` contains a compact signal summary:
-  signalOsc / oscillatorStrength / channelState / channelExtensionPct / invalidationDistancePct / structuralRewardRiskRatio / coinBiasAligned / btcBiasAligned / derivativesDirectionAligned / derivativesRiskFlags / derivativesFundingZScore / deterministicQuality / approvalAllowedNow / structuralHardBlockReasons.
+  signalOsc / oscillatorStrength / channelState / channelExtensionPct / invalidationDistancePct / structuralRewardRiskRatio / coinBiasAligned / btcBiasAligned / targetVsBtcAlpha4h / derivativesDirectionAligned / derivativesRiskFlags / derivativesFundingZScore / deterministicQuality / approvalAllowedNow / structuralHardBlockReasons.
 - Use this context as the primary strategy-specific interpretation instead of re-deriving it only from generic series.
 `;
 
@@ -109,6 +109,10 @@ type AdaptiveMomentumRibbonAiContext = {
   sessionAllowsApproval: boolean | null;
   benchmarkRelativeStrength1h: number | null;
   benchmarkTrendAlignment: string | null;
+  targetVsBtcAlpha1h: number | null;
+  targetVsBtcAlpha4h: number | null;
+  targetVsBtcAlpha24h: number | null;
+  targetVsBtcRatioTrend: string | null;
   breakoutState: string | null;
   breakoutRetestQuality: number | null;
   volumeRel20: number | null;
@@ -205,6 +209,22 @@ const getDirectionalAlignment = ({
   }
 
   return signalDirection === 'LONG' ? value > 0 : value < 0;
+};
+
+const isDirectionallyAtLeast = ({
+  signalDirection,
+  value,
+  threshold,
+}: {
+  signalDirection: Direction | null;
+  value: number | null;
+  threshold: number;
+}) => {
+  if (signalDirection == null || value == null) {
+    return false;
+  }
+
+  return signalDirection === 'LONG' ? value >= threshold : value <= -threshold;
 };
 
 const getAdditionalIndicators = (
@@ -508,43 +528,86 @@ const getDeterministicAdaptiveMomentumRibbonQuality = (
     !weakRetestQuality &&
     !elevatedVenueSpread &&
     !derivativesPressureConflict;
+  const targetVsBtcAlpha4hStrong = isDirectionallyAtLeast({
+    signalDirection: context.signalDirection,
+    value: context.targetVsBtcAlpha4h,
+    threshold: 3,
+  });
+  const targetVsBtcAlpha1hStrong = isDirectionallyAtLeast({
+    signalDirection: context.signalDirection,
+    value: context.targetVsBtcAlpha1h,
+    threshold: 3,
+  });
+  const relativeStrengthContinuationCandidate =
+    context.baseContextAvailable &&
+    channelSupportive &&
+    targetVsBtcAlpha4hStrong;
+  const participationImpulseCandidate =
+    context.baseContextAvailable &&
+    channelSupportive &&
+    isAtLeast(context.volumeRel20, 2.2) &&
+    isInRange(context.effortVsResult, 100, 300);
+  const lowEffortContinuationCandidate =
+    context.baseContextAvailable &&
+    context.channelState === 'inside_channel' &&
+    isInRange(context.effortVsResult, 0, 100);
+  const newContextApprovalCandidate =
+    relativeStrengthContinuationCandidate ||
+    participationImpulseCandidate ||
+    lowEffortContinuationCandidate;
+  const highConvictionRelativeCandidate =
+    relativeStrengthContinuationCandidate &&
+    targetVsBtcAlpha1hStrong &&
+    context.channelState === 'inside_channel';
 
-  if (derivativesPressureConflict) {
+  if (derivativesPressureConflict && !newContextApprovalCandidate) {
     return 3;
   }
 
-  if (!sessionAllowsApproval && !q4DerivativesSupported) {
+  if (
+    !sessionAllowsApproval &&
+    !q4DerivativesSupported &&
+    !newContextApprovalCandidate
+  ) {
     return 3;
   }
 
   let quality =
-    channelSupportive &&
-    channelExpansion &&
-    channelExtensionStrong &&
-    oscillatorElite &&
-    invalidationTight &&
-    structuralRrStrong &&
-    noBiasConflict
+    highConvictionRelativeCandidate ||
+    (channelSupportive &&
+      channelExpansion &&
+      channelExtensionStrong &&
+      oscillatorElite &&
+      invalidationTight &&
+      structuralRrStrong &&
+      noBiasConflict &&
+      newContextApprovalCandidate)
       ? 5
-      : channelSupportive &&
-          channelExpansion &&
-          !slowestDetector &&
-          oscillatorModerate &&
-          invalidationCompact &&
-          structuralRrModerate &&
-          biasConflictCount < 2 &&
-          (biasConflictCount === 0 || oscillatorStrong)
-        ? q4DerivativesSupported
-          ? 4
-          : localExpansionPromotionCandidate ||
-              confirmedBreakoutSweetSpotCandidate
+      : newContextApprovalCandidate
+        ? 4
+        : channelSupportive &&
+            channelExpansion &&
+            !slowestDetector &&
+            oscillatorModerate &&
+            invalidationCompact &&
+            structuralRrModerate &&
+            biasConflictCount < 2 &&
+            (biasConflictCount === 0 || oscillatorStrong)
+          ? q4DerivativesSupported
             ? 4
-            : 3
-        : 3;
+            : localExpansionPromotionCandidate ||
+                confirmedBreakoutSweetSpotCandidate
+              ? 4
+              : 3
+          : 3;
 
   if (
     quality >= 4 &&
-    (!context.baseContextAvailable || rangeBoundStructure || weakParticipation)
+    (!context.baseContextAvailable ||
+      rangeBoundStructure ||
+      (weakParticipation &&
+        !participationImpulseCandidate &&
+        !lowEffortContinuationCandidate))
   ) {
     quality = 3;
   }
@@ -553,10 +616,11 @@ const getDeterministicAdaptiveMomentumRibbonQuality = (
     quality >= 4 &&
     (benchmarkConflict ||
       rangeBoundStructure ||
-      weakParticipation ||
+      (weakParticipation && !participationImpulseCandidate) ||
       weakRetestQuality ||
       elevatedVenueSpread ||
-      derivativesPressureConflict)
+      derivativesPressureConflict) &&
+    !newContextApprovalCandidate
   ) {
     quality -= 1;
   }
@@ -564,7 +628,8 @@ const getDeterministicAdaptiveMomentumRibbonQuality = (
   if (
     quality >= 4 &&
     (!sessionAllowsApproval || elevatedVenueSpread) &&
-    (benchmarkConflict || weakParticipation)
+    (benchmarkConflict || weakParticipation) &&
+    !newContextApprovalCandidate
   ) {
     quality = 3;
   }
@@ -577,7 +642,8 @@ const getDeterministicAdaptiveMomentumRibbonQuality = (
     !weakParticipation &&
     !weakRetestQuality &&
     !elevatedVenueSpread &&
-    !derivativesPressureConflict
+    !derivativesPressureConflict &&
+    newContextApprovalCandidate
   ) {
     return 5;
   }
@@ -590,7 +656,8 @@ const getDeterministicAdaptiveMomentumRibbonQuality = (
     oscillatorElite &&
     invalidationTight &&
     structuralRrStrong &&
-    noBiasConflict
+    noBiasConflict &&
+    newContextApprovalCandidate
   ) {
     return quality;
   }
@@ -733,6 +800,7 @@ const buildAdaptiveMomentumRibbonContext = (
   const volumeContext = getRecord(participation?.volume);
   const relative = getRecord(baseContext?.relative);
   const benchmark = getRecord(relative?.benchmark);
+  const targetVsBtc = getRecord(relative?.targetVsBtc);
   const marketContext = getRecord(additional?.marketContext);
   const marketExecution = getRecord(marketContext?.execution);
   const spreadContext = getRecord(marketExecution?.binanceCoinbaseSpread);
@@ -752,6 +820,11 @@ const buildAdaptiveMomentumRibbonContext = (
     typeof benchmark?.trendAlignment === 'string'
       ? benchmark.trendAlignment
       : null;
+  const targetVsBtcAlpha1h = toFiniteNumberOrNull(targetVsBtc?.alphaVsBtc1h);
+  const targetVsBtcAlpha4h = toFiniteNumberOrNull(targetVsBtc?.alphaVsBtc4h);
+  const targetVsBtcAlpha24h = toFiniteNumberOrNull(targetVsBtc?.alphaVsBtc24h);
+  const targetVsBtcRatioTrend =
+    typeof targetVsBtc?.ratioTrend === 'string' ? targetVsBtc.ratioTrend : null;
   const breakoutState =
     typeof localRange?.breakoutState === 'string'
       ? localRange.breakoutState
@@ -901,6 +974,10 @@ const buildAdaptiveMomentumRibbonContext = (
     sessionAllowsApproval,
     benchmarkRelativeStrength1h,
     benchmarkTrendAlignment,
+    targetVsBtcAlpha1h,
+    targetVsBtcAlpha4h,
+    targetVsBtcAlpha24h,
+    targetVsBtcRatioTrend,
     breakoutState,
     breakoutRetestQuality,
     volumeRel20,
@@ -947,6 +1024,10 @@ const buildAdaptiveMomentumRibbonContext = (
     sessionAllowsApproval,
     benchmarkRelativeStrength1h,
     benchmarkTrendAlignment,
+    targetVsBtcAlpha1h,
+    targetVsBtcAlpha4h,
+    targetVsBtcAlpha24h,
+    targetVsBtcRatioTrend,
     breakoutState,
     breakoutRetestQuality,
     volumeRel20,
@@ -1106,6 +1187,10 @@ Additional AdaptiveMomentumRibbon context:
 - sessionAllowsApproval=${context.sessionAllowsApproval}
 - benchmarkRelativeStrength1h=${context.benchmarkRelativeStrength1h?.toFixed?.(3) ?? 'n/a'}
 - benchmarkTrendAlignment=${context.benchmarkTrendAlignment ?? 'n/a'}
+- targetVsBtcAlpha1h=${context.targetVsBtcAlpha1h?.toFixed?.(3) ?? 'n/a'}
+- targetVsBtcAlpha4h=${context.targetVsBtcAlpha4h?.toFixed?.(3) ?? 'n/a'}
+- targetVsBtcAlpha24h=${context.targetVsBtcAlpha24h?.toFixed?.(3) ?? 'n/a'}
+- targetVsBtcRatioTrend=${context.targetVsBtcRatioTrend ?? 'n/a'}
 - breakoutState=${context.breakoutState ?? 'n/a'}
 - breakoutRetestQuality=${context.breakoutRetestQuality?.toFixed?.(3) ?? 'n/a'}
 - volumeRel20=${context.volumeRel20?.toFixed?.(3) ?? 'n/a'}

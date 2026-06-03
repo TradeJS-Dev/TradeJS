@@ -115,6 +115,7 @@ const withBaseContext = (signal: any) => {
   const existingCrossAsset = existingRaw.crossAsset ?? {};
   const existingRelative = existingBaseContext.relative ?? {};
   const existingExecution = existingRelative.execution ?? {};
+  const existingTargetVsBtc = existingRelative.targetVsBtc ?? {};
   const existingDerivatives = existingBaseContext.derivatives;
   const setupAtrPct =
     additionalIndicators.volumeDivergenceSetup?.atrPct ??
@@ -184,6 +185,13 @@ const withBaseContext = (signal: any) => {
             ...(existingExecution as Record<string, unknown>),
             venueSpread,
             venueSpreadZScore: existingExecution.venueSpreadZScore ?? 1.4,
+          },
+          targetVsBtc: {
+            ...(existingTargetVsBtc as Record<string, unknown>),
+            alphaVsBtc1h: existingTargetVsBtc.alphaVsBtc1h ?? 3.4,
+            alphaVsBtc4h: existingTargetVsBtc.alphaVsBtc4h ?? 4.2,
+            alphaVsBtc24h: existingTargetVsBtc.alphaVsBtc24h ?? 8,
+            ratioTrend: existingTargetVsBtc.ratioTrend ?? 'up',
           },
         },
         derivatives: existingDerivatives,
@@ -3133,6 +3141,16 @@ describe('ai helpers', () => {
           stopLossPrice: 99.8,
         },
         additionalIndicators: {
+          baseContext: {
+            relative: {
+              targetVsBtc: {
+                alphaVsBtc1h: 0.4,
+                alphaVsBtc4h: 0.8,
+                alphaVsBtc24h: 1.2,
+                ratioTrend: 'flat',
+              },
+            },
+          },
           amr: {
             signalOsc: 0.88,
             kcMidline: 100.2,
@@ -3226,6 +3244,16 @@ describe('ai helpers', () => {
           btcMaSlow: [50.1, 50.0, 49.8],
         },
         additionalIndicators: {
+          baseContext: {
+            relative: {
+              targetVsBtc: {
+                alphaVsBtc1h: -3.4,
+                alphaVsBtc4h: -4.2,
+                alphaVsBtc24h: -8,
+                ratioTrend: 'down',
+              },
+            },
+          },
           amr: {
             entryLong: 0,
             entryShort: 1,
