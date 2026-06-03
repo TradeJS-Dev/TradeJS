@@ -4,6 +4,7 @@ const mockEnrichSignalWithAi = jest.fn();
 const mockExecuteEntryOrder = jest.fn();
 const mockUpdatePositionProtection = jest.fn();
 const mockLoadTradejsConfig = jest.fn();
+const mockGetActiveRuntimeTrade = jest.fn();
 const mockMarkRuntimeTradeClosed = jest.fn();
 const mockGetDerivativesWindow = jest.fn();
 
@@ -102,6 +103,8 @@ jest.mock('../strategyHelpers/globalMarketContext', () => ({
 }));
 
 jest.mock('../runtimeJournal', () => ({
+  getActiveRuntimeTrade: (...args: unknown[]) =>
+    mockGetActiveRuntimeTrade(...args),
   markRuntimeTradeClosed: (...args: unknown[]) =>
     mockMarkRuntimeTradeClosed(...args),
 }));
@@ -293,6 +296,16 @@ describe('strategyRuntime', () => {
       }
     });
     mockEnrichSignalWithAi.mockResolvedValue(5);
+    mockGetActiveRuntimeTrade.mockResolvedValue({
+      orderId: 'ord-1',
+      strategy: 'TrendLine',
+      symbol: 'ETHUSDT',
+      direction: 'LONG',
+      qty: 1,
+      entryPrice: 100,
+      entryTimestamp: 1_700_000_000_000,
+      status: 'active',
+    });
     mockMarkRuntimeTradeClosed.mockResolvedValue(null);
     mockGetDerivativesWindow.mockResolvedValue({});
   });
@@ -1403,14 +1416,96 @@ describe('strategyRuntime', () => {
     );
 
     expect(connector.closePosition).toHaveBeenCalledTimes(1);
+    expect(mockGetActiveRuntimeTrade).toHaveBeenCalledWith({
+      userName: 'root',
+      symbol: 'ETHUSDT',
+    });
     expect(mockMarkRuntimeTradeClosed).toHaveBeenCalledWith(
       expect.objectContaining({
+        strategy: 'TrendLine',
         symbol: 'ETHUSDT',
         exitPrice: 100,
         exitTimestamp: 1_700_000_123_000,
         exitType: 'exit',
       }),
     );
+    expect(result).toBe('CLOSE_BY_SIGNAL');
+  });
+
+  it('blocks closePosition when runtime journal active trade belongs to another strategy', async () => {
+    mockGetActiveRuntimeTrade.mockResolvedValueOnce({
+      orderId: 'ord-2',
+      strategy: 'TrendShift',
+      symbol: 'ETHUSDT',
+      direction: 'LONG',
+      qty: 1,
+      entryPrice: 100,
+      entryTimestamp: 1_700_000_000_000,
+      status: 'active',
+    });
+    const { strategy, connector } = await makeRuntime(() => ({
+      kind: 'exit',
+      code: 'CLOSE_BY_SIGNAL',
+      closePlan: {
+        price: 100,
+        timestamp: 1_700_000_123_000,
+        direction: 'LONG',
+      },
+    }));
+
+    const result = await strategy(
+      { timestamp: 1 } as any,
+      { timestamp: 1 } as any,
+    );
+
+    expect(connector.closePosition).not.toHaveBeenCalled();
+    expect(mockMarkRuntimeTradeClosed).not.toHaveBeenCalled();
+    expect(result).toBe('CLOSE_BLOCKED_BY_FOREIGN_STRATEGY_POSITION');
+  });
+
+  it('blocks closePosition when runtime journal has no active trade for the symbol', async () => {
+    mockGetActiveRuntimeTrade.mockResolvedValueOnce(null);
+    const { strategy, connector } = await makeRuntime(() => ({
+      kind: 'exit',
+      code: 'CLOSE_BY_SIGNAL',
+      closePlan: {
+        price: 100,
+        timestamp: 1_700_000_123_000,
+        direction: 'LONG',
+      },
+    }));
+
+    const result = await strategy(
+      { timestamp: 1 } as any,
+      { timestamp: 1 } as any,
+    );
+
+    expect(connector.closePosition).not.toHaveBeenCalled();
+    expect(mockMarkRuntimeTradeClosed).not.toHaveBeenCalled();
+    expect(result).toBe('CLOSE_BLOCKED_BY_UNTRACKED_POSITION');
+  });
+
+  it('does not require runtime journal ownership when runtime trade recording is disabled', async () => {
+    const { strategy, connector } = await makeRuntime(
+      () => ({
+        kind: 'exit',
+        code: 'CLOSE_BY_SIGNAL',
+        closePlan: {
+          price: 100,
+          timestamp: 1_700_000_123_000,
+          direction: 'LONG',
+        },
+      }),
+      { RECORD_RUNTIME_TRADES: false },
+    );
+
+    const result = await strategy(
+      { timestamp: 1 } as any,
+      { timestamp: 1 } as any,
+    );
+
+    expect(mockGetActiveRuntimeTrade).not.toHaveBeenCalled();
+    expect(connector.closePosition).toHaveBeenCalledTimes(1);
     expect(result).toBe('CLOSE_BY_SIGNAL');
   });
 

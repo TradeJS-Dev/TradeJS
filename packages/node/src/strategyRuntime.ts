@@ -23,7 +23,10 @@ import {
 import { enrichSignalWithBinanceMarketContext } from './strategyHelpers/binanceMarketContext';
 import { enrichSignalWithDerivativesContext } from './strategyHelpers/derivativesContext';
 import { enrichSignalWithGlobalMarketContext } from './strategyHelpers/globalMarketContext';
-import { markRuntimeTradeClosed } from './runtimeJournal';
+import {
+  getActiveRuntimeTrade,
+  markRuntimeTradeClosed,
+} from './runtimeJournal';
 import { createPineScriptLoader } from './pine';
 import { getStrategyManifest } from './strategy/manifests';
 import { getTradejsProjectCwd, loadTradejsConfig } from './tradejsConfig';
@@ -486,6 +489,28 @@ const handleExitDecision = async ({
   }) => Promise<void>;
 }) => {
   try {
+    if (userName) {
+      const activeTrade = await getActiveRuntimeTrade({ userName, symbol });
+      if (!activeTrade) {
+        logger.warn(
+          '[%s] blocked closePosition for untracked runtime position: %s',
+          strategyName ?? 'unknown',
+          symbol,
+        );
+        return 'CLOSE_BLOCKED_BY_UNTRACKED_POSITION';
+      }
+
+      if (!strategyName || activeTrade.strategy !== strategyName) {
+        logger.warn(
+          '[%s] blocked closePosition for foreign runtime position: %s ownedBy=%s',
+          strategyName ?? 'unknown',
+          symbol,
+          activeTrade.strategy,
+        );
+        return 'CLOSE_BLOCKED_BY_FOREIGN_STRATEGY_POSITION';
+      }
+    }
+
     await connector.closePosition({
       symbol,
       price: decision.closePlan.price,

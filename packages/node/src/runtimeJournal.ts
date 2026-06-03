@@ -100,6 +100,36 @@ export const recordRuntimeTradeOpen = async (params: {
   return record;
 };
 
+export const getActiveRuntimeTrade = async (params: {
+  userName?: string;
+  symbol: string;
+}): Promise<RuntimeTradeRecord | null> => {
+  const { userName, symbol } = params;
+  if (!userName) {
+    return null;
+  }
+
+  const activeRef = (await getData(
+    redisKeys.runtimeActiveTrade(userName, symbol),
+    null,
+  )) as { orderId?: string } | null;
+  const orderId = String(activeRef?.orderId || '').trim();
+  if (!orderId) {
+    return null;
+  }
+
+  const existing = (await getData(
+    redisKeys.runtimeTrade(userName, orderId),
+    null,
+  )) as RuntimeTradeRecord | null;
+  if (!existing) {
+    await delKey(redisKeys.runtimeActiveTrade(userName, symbol));
+    return null;
+  }
+
+  return existing;
+};
+
 export const markRuntimeTradeClosed = async (params: {
   userName?: string;
   symbol: string;
@@ -122,23 +152,11 @@ export const markRuntimeTradeClosed = async (params: {
     return null;
   }
 
-  const activeRef = (await getData(
-    redisKeys.runtimeActiveTrade(userName, symbol),
-    null,
-  )) as { orderId?: string } | null;
-  const orderId = String(activeRef?.orderId || '').trim();
-  if (!orderId) {
-    return null;
-  }
-
-  const existing = (await getData(
-    redisKeys.runtimeTrade(userName, orderId),
-    null,
-  )) as RuntimeTradeRecord | null;
+  const existing = await getActiveRuntimeTrade({ userName, symbol });
   if (!existing) {
-    await delKey(redisKeys.runtimeActiveTrade(userName, symbol));
     return null;
   }
+  const orderId = existing.orderId;
 
   if (strategy && existing.strategy !== strategy) {
     return null;

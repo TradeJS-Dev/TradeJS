@@ -24,11 +24,56 @@ jest.mock('@tradejs/infra/logger', () => ({
   },
 }));
 
-import { markRuntimeTradeClosed } from '../runtimeJournal';
+import {
+  getActiveRuntimeTrade,
+  markRuntimeTradeClosed,
+} from '../runtimeJournal';
 
 describe('runtimeJournal', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+  });
+
+  it('loads active runtime trade by symbol', async () => {
+    const existingTrade = {
+      orderId: 'ord-1',
+      strategy: 'TrendLine',
+      symbol: 'BTCUSDT',
+      direction: 'LONG',
+      qty: 2,
+      entryPrice: 100,
+      entryTimestamp: Date.parse('2026-05-31T12:00:00.000Z'),
+      status: 'active',
+    };
+    mockGetData.mockImplementation(async (key: string, fallback: unknown) => {
+      if (key === 'users:root:runtime:active:BTCUSDT') {
+        return { orderId: 'ord-1' };
+      }
+      if (key === 'users:root:runtime:trade:ord-1') {
+        return existingTrade;
+      }
+      return fallback;
+    });
+
+    await expect(
+      getActiveRuntimeTrade({ userName: 'root', symbol: 'BTCUSDT' }),
+    ).resolves.toEqual(existingTrade);
+  });
+
+  it('clears stale active runtime trade ref when trade record is missing', async () => {
+    mockGetData.mockImplementation(async (key: string, fallback: unknown) => {
+      if (key === 'users:root:runtime:active:BTCUSDT') {
+        return { orderId: 'ord-1' };
+      }
+      return fallback;
+    });
+
+    await expect(
+      getActiveRuntimeTrade({ userName: 'root', symbol: 'BTCUSDT' }),
+    ).resolves.toBeNull();
+    expect(mockDelKey).toHaveBeenCalledWith(
+      'users:root:runtime:active:BTCUSDT',
+    );
   });
 
   it('stores exit type and calculated pnl when a runtime trade is closed', async () => {
