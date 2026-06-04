@@ -9,6 +9,7 @@ export type AdaptiveTrendChannelGuardrailContext =
     adaptiveChannelRegime: string | null;
     breakoutState: string | null;
     volumeRel20: number | null;
+    h4VolatilityState: string | null;
     benchmarkTrendAlignment: string | null;
     derivativesPressure: string | null;
     derivativesDirectionAligned: boolean | null;
@@ -49,6 +50,12 @@ const isDirectionAligned = ({
       ? value === bearishValue
       : false;
 
+const MIN_APPROVAL_BREAKOUT_DISTANCE_PCT = 2.7;
+const MIN_HIGH_CONFIDENCE_BREAKOUT_DISTANCE_PCT = 3;
+const MIN_APPROVAL_CHANNEL_WIDTH_PCT = 1.6;
+const MIN_HIGH_CONFIDENCE_CHANNEL_WIDTH_PCT = 2;
+const MIN_APPROVAL_VOLUME_REL20 = 4;
+
 export const buildAdaptiveTrendChannelGuardrailContext = ({
   signalContext,
   baseContext,
@@ -70,6 +77,8 @@ export const buildAdaptiveTrendChannelGuardrailContext = ({
   const volumeRel20 = asFiniteNumber(
     baseContext?.participation?.volume?.volumeRel20,
   );
+  const h4VolatilityState =
+    baseContext?.mtf?.summary?.h4VolatilityState ?? null;
   const benchmarkTrendAlignment =
     baseContext?.relative?.benchmark?.trendAlignment ?? null;
   const derivativesPressure =
@@ -98,29 +107,11 @@ export const buildAdaptiveTrendChannelGuardrailContext = ({
   }
 
   const direction = signalContext.signalDirection;
-  const trendAligned = isDirectionAligned({
-    direction,
-    bullishValue: 'bull',
-    bearishValue: 'bear',
-    value: trendBias,
-  });
-  const benchmarkAligned = isDirectionAligned({
-    direction,
-    bullishValue: 'aligned_bull',
-    bearishValue: 'aligned_bear',
-    value: benchmarkTrendAlignment,
-  });
   const breakoutAligned = isDirectionAligned({
     direction,
     bullishValue: 'above_high_level',
     bearishValue: 'below_low_level',
     value: breakoutState,
-  });
-  const strategyAdaptiveChannelAligned = isDirectionAligned({
-    direction,
-    bullishValue: 'bull',
-    bearishValue: 'bear',
-    value: adaptiveChannelRegime,
   });
   const flushSupport =
     direction === 'LONG'
@@ -149,23 +140,40 @@ export const buildAdaptiveTrendChannelGuardrailContext = ({
 
   const breakoutDistancePct = Math.abs(signalContext.breakoutDistancePct ?? 0);
   const channelWidthPct = signalContext.channelWidthPct ?? 0;
+  const approvalSetup =
+    breakoutAligned &&
+    h4VolatilityState === 'expanded' &&
+    breakoutDistancePct >= MIN_APPROVAL_BREAKOUT_DISTANCE_PCT &&
+    channelWidthPct >= MIN_APPROVAL_CHANNEL_WIDTH_PCT &&
+    (volumeRel20 ?? 0) >= MIN_APPROVAL_VOLUME_REL20;
+  const highConfidenceSetup =
+    approvalSetup &&
+    breakoutDistancePct >= MIN_HIGH_CONFIDENCE_BREAKOUT_DISTANCE_PCT &&
+    channelWidthPct >= MIN_HIGH_CONFIDENCE_CHANNEL_WIDTH_PCT;
   let deterministicQuality = 3;
 
   if (hardBlockReasons.length > 0) {
     deterministicQuality = 1;
-  } else if (
-    breakoutDistancePct >= 0.05 &&
-    breakoutDistancePct <= Math.max(channelWidthPct * 1.5, 0.4) &&
-    (trendAligned ||
-      strategyAdaptiveChannelAligned ||
-      benchmarkAligned ||
-      breakoutAligned ||
-      flushSupport)
-  ) {
-    deterministicQuality =
-      breakoutAligned || flushSupport || strategyAdaptiveChannelAligned ? 5 : 4;
-  } else if (breakoutDistancePct > 0) {
+  } else if (highConfidenceSetup) {
+    deterministicQuality = 5;
+  } else if (approvalSetup) {
     deterministicQuality = 4;
+  } else {
+    if (!breakoutAligned) {
+      softBlockReasons.push('breakout_not_aligned');
+    }
+    if (h4VolatilityState !== 'expanded') {
+      softBlockReasons.push('h4_volatility_not_expanded');
+    }
+    if (breakoutDistancePct < MIN_APPROVAL_BREAKOUT_DISTANCE_PCT) {
+      softBlockReasons.push('weak_breakout_distance');
+    }
+    if (channelWidthPct < MIN_APPROVAL_CHANNEL_WIDTH_PCT) {
+      softBlockReasons.push('narrow_channel_width');
+    }
+    if ((volumeRel20 ?? 0) < MIN_APPROVAL_VOLUME_REL20) {
+      softBlockReasons.push('weak_participation');
+    }
   }
 
   if (deterministicQuality >= 5 && softBlockReasons.length > 0) {
@@ -180,6 +188,7 @@ export const buildAdaptiveTrendChannelGuardrailContext = ({
     adaptiveChannelRegime,
     breakoutState,
     volumeRel20,
+    h4VolatilityState,
     benchmarkTrendAlignment,
     derivativesPressure,
     derivativesDirectionAligned,

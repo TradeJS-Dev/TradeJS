@@ -41,19 +41,22 @@ describe('adaptiveTrendChannelAiAdapter', () => {
           floor: 97,
           halfChannel: 3,
           atr: 3,
-          breakoutDistancePct: 0.6,
+          breakoutDistancePct: 3.2,
           channelWidthPct: 6,
-          currentPrice: 100.6,
+          currentPrice: 103.2,
         },
         {
           regime: {
             trend: { bias: 'bull' },
           },
           participation: {
-            volume: { volumeRel20: 1.2 },
+            volume: { volumeRel20: 5 },
           },
           structure: {
             localRange: { breakoutState: 'above_high_level' },
+          },
+          mtf: {
+            summary: { h4VolatilityState: 'expanded' },
           },
           derivatives: {
             summary: {
@@ -75,6 +78,50 @@ describe('adaptiveTrendChannelAiAdapter', () => {
       quality: 5,
       approved: true,
     });
+  });
+
+  it('rejects flips without expanded h4 volatility', () => {
+    const result = adaptiveTrendChannelAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makePayload(
+        {
+          signalDirection: 'SHORT',
+          regime: -1,
+          centerline: 100,
+          roof: 103,
+          floor: 97,
+          halfChannel: 3,
+          atr: 3,
+          breakoutDistancePct: 3.2,
+          channelWidthPct: 6,
+          currentPrice: 96.8,
+        },
+        {
+          participation: {
+            volume: { volumeRel20: 5 },
+          },
+          structure: {
+            localRange: { breakoutState: 'below_low_level' },
+          },
+          mtf: {
+            summary: { h4VolatilityState: 'compressed' },
+          },
+        },
+      ),
+      analysis: {
+        direction: 'SHORT',
+        quality: 5,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: null,
+      quality: 3,
+      approved: false,
+    });
+    expect(
+      (result as { rejectReason?: string } | undefined)?.rejectReason,
+    ).toContain('h4_volatility_not_expanded');
   });
 
   it('rejects flips without channel width', () => {
@@ -105,7 +152,7 @@ describe('adaptiveTrendChannelAiAdapter', () => {
     });
   });
 
-  it('uses tuned strategy context instead of conflicting shared adaptive channel context', () => {
+  it('rejects weak breakouts even when shared adaptive channel context conflicts', () => {
     const result = adaptiveTrendChannelAiAdapter.postProcessAnalysis?.({
       signal: {} as any,
       payload: makePayload(
@@ -126,6 +173,61 @@ describe('adaptiveTrendChannelAiAdapter', () => {
             trend: {
               adaptiveChannel: { regime: 'bear' },
             },
+          },
+          participation: {
+            volume: { volumeRel20: 5 },
+          },
+          structure: {
+            localRange: { breakoutState: 'above_high_level' },
+          },
+          mtf: {
+            summary: { h4VolatilityState: 'expanded' },
+          },
+        },
+      ),
+      analysis: {
+        direction: 'LONG',
+        quality: 1,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: null,
+      quality: 3,
+      approved: false,
+    });
+  });
+
+  it('uses tuned strategy context for approved high-conviction flips', () => {
+    const result = adaptiveTrendChannelAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makePayload(
+        {
+          signalDirection: 'LONG',
+          regime: 1,
+          centerline: 100,
+          roof: 103,
+          floor: 97,
+          halfChannel: 3,
+          atr: 3,
+          breakoutDistancePct: 3.2,
+          channelWidthPct: 6,
+          currentPrice: 103.2,
+        },
+        {
+          regime: {
+            trend: {
+              adaptiveChannel: { regime: 'bear' },
+            },
+          },
+          participation: {
+            volume: { volumeRel20: 5 },
+          },
+          structure: {
+            localRange: { breakoutState: 'above_high_level' },
+          },
+          mtf: {
+            summary: { h4VolatilityState: 'expanded' },
           },
         },
       ),

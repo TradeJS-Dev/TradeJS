@@ -85,6 +85,7 @@ Additional AdaptiveTrendChannel context:
 - trendBias=${context.trendBias ?? 'n/a'}
 - breakoutState=${context.breakoutState ?? 'n/a'}
 - volumeRel20=${String(context.volumeRel20 ?? 'n/a')}
+- h4VolatilityState=${context.h4VolatilityState ?? 'n/a'}
 - benchmarkTrendAlignment=${context.benchmarkTrendAlignment ?? 'n/a'}
 - derivativesPressure=${context.derivativesPressure ?? 'n/a'}
 - derivativesDirectionAligned=${String(context.derivativesDirectionAligned ?? 'n/a')}
