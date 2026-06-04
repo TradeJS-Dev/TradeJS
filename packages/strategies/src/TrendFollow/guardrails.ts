@@ -330,6 +330,16 @@ const buildTrendFollowGateFeatures = ({
     setupTpDistanceAtr < 3 &&
     targetVsBtcBeta20 != null &&
     targetVsBtcBeta20 >= 1.25;
+  const longRelativeBetaContinuationPocket =
+    direction === 'LONG' &&
+    setupStopDistanceAtr != null &&
+    setupStopDistanceAtr >= 1.5 &&
+    setupStopDistanceAtr < 2 &&
+    setupTpDistanceAtr != null &&
+    setupTpDistanceAtr >= 2 &&
+    setupTpDistanceAtr < 3 &&
+    targetVsBtcBeta20 != null &&
+    targetVsBtcBeta20 >= 1.25;
 
   return {
     setupStopDistanceAtr,
@@ -347,7 +357,9 @@ const buildTrendFollowGateFeatures = ({
     marketBreadthDispersion: asFiniteNumber(marketBreadth?.dispersion),
     targetVsBtcBeta20,
     highQualityCadencePocket:
-      strongBreakoutCadencePocket || shortRelativeBetaContinuationPocket,
+      strongBreakoutCadencePocket ||
+      shortRelativeBetaContinuationPocket ||
+      longRelativeBetaContinuationPocket,
   };
 };
 

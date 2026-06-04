@@ -351,6 +351,61 @@ describe('trendFollowAiAdapter', () => {
     });
   });
 
+  it('approves long relative beta continuation pockets', () => {
+    const payload = makePayload(
+      {
+        signalDirection: 'LONG',
+        entryLevel: 100,
+        trailStop: 96,
+        atr: 1.2,
+        pivotKind: 'high',
+        breakoutDistancePct: 0.8,
+        distanceToStopPct: 2,
+        currentPrice: 101,
+      },
+      {
+        raw: {
+          volatility: { atr: 1.2 },
+        },
+        regime: {
+          momentum: { rsi: 58 },
+        },
+        participation: {
+          volume: { volumeRel20: 1.6 },
+          volumeStructure: { totalUpVolumeShare: 0.55 },
+          delta: { deltaDivergenceVsPrice: 'none' },
+        },
+        structure: {
+          localRange: { breakoutState: 'above_high_level' },
+        },
+        relative: {
+          targetVsBtc: { betaToBtc20: 1.35 },
+        },
+      },
+    );
+
+    payload.signal.prices = {
+      currentPrice: 100,
+      takeProfitPrice: 102.6,
+      stopLossPrice: 98,
+    };
+
+    const result = trendFollowAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload,
+      analysis: {
+        direction: 'LONG',
+        quality: 1,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: 'LONG',
+      quality: 5,
+      approved: true,
+    });
+  });
+
   it('downgrades adverse delta and weak volume structure', () => {
     const result = trendFollowAiAdapter.postProcessAnalysis?.({
       signal: {} as any,
