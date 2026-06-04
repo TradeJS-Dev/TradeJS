@@ -498,4 +498,56 @@ describe('aiDatasetFile', () => {
       'e',
     ]);
   });
+
+  it('merges sorted runs in bounded fan-in passes', async () => {
+    const chunkPaths: string[] = [];
+    const timestamps = [7, 1, 6, 2, 5, 3, 4];
+
+    for (const timestamp of timestamps) {
+      const chunkPath = path.join(
+        tempDir,
+        `ai-dataset-trendfollow-${timestamp}.jsonl`,
+      );
+      chunkPaths.push(chunkPath);
+      await fs.writeFile(
+        chunkPath,
+        JSON.stringify({
+          signalId: `signal-${timestamp}`,
+          strategyName: 'TrendFollow',
+          symbol: 'ETHUSDT',
+          direction: 'LONG',
+          timestamp,
+          profit: timestamp,
+          payload: makePayload({
+            signalId: `signal-${timestamp}`,
+            symbol: 'ETHUSDT',
+            direction: 'LONG',
+            timestamp,
+            strategyName: 'TrendFollow',
+          }),
+        }) + '\n',
+        'utf8',
+      );
+    }
+
+    const merged = path.join(tempDir, 'ai-dataset-trendfollow-merged.jsonl');
+    await mergeAiJsonlFiles({
+      filePaths: chunkPaths,
+      outPath: merged,
+      maxRowsInMemory: 1,
+      maxBytesInMemory: 128,
+      maxOpenRuns: 2,
+    });
+
+    const mergedRows = await readAiDatasetRows({ filePath: merged });
+    expect(mergedRows.rows.map((row) => row.signalId)).toEqual([
+      'signal-1',
+      'signal-2',
+      'signal-3',
+      'signal-4',
+      'signal-5',
+      'signal-6',
+      'signal-7',
+    ]);
+  });
 });

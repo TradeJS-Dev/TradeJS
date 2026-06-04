@@ -12,6 +12,7 @@ const DEFAULT_DIR = 'data/ai/export';
 const AI_DATASET_WRITE_BATCH_SIZE = 100;
 const AI_MERGE_SORT_RUN_MAX_ROWS = 2_000;
 const AI_MERGE_SORT_RUN_MAX_BYTES = 16 * 1024 * 1024;
+const AI_MERGE_SORT_MAX_OPEN_RUNS = 16;
 const AI_CHUNK_FILE_RE = /^ai-dataset-(.+)-chunk-[^.]+\.jsonl$/;
 
 type WriterState = {
@@ -292,7 +293,7 @@ const readNextNonEmptyLine = async (
   }
 };
 
-const mergeSortedRuns = async (params: {
+const mergeSortedRunBatch = async (params: {
   runPaths: string[];
   outPath: string;
 }) => {
@@ -365,17 +366,81 @@ const mergeSortedRuns = async (params: {
   }
 };
 
+const mergeSortedRuns = async (params: {
+  runPaths: string[];
+  outPath: string;
+  tempDir: string;
+  maxOpenRuns?: number;
+}) => {
+  const {
+    runPaths,
+    outPath,
+    tempDir,
+    maxOpenRuns = AI_MERGE_SORT_MAX_OPEN_RUNS,
+  } = params;
+  const resolvedMaxOpenRuns = Math.max(2, Math.trunc(maxOpenRuns));
+  let currentRunPaths = [...runPaths];
+  let passIndex = 0;
+
+  while (currentRunPaths.length > resolvedMaxOpenRuns) {
+    const nextRunPaths: string[] = [];
+
+    for (
+      let groupStart = 0, groupIndex = 0;
+      groupStart < currentRunPaths.length;
+      groupStart += resolvedMaxOpenRuns, groupIndex += 1
+    ) {
+      const groupRunPaths = currentRunPaths.slice(
+        groupStart,
+        groupStart + resolvedMaxOpenRuns,
+      );
+
+      if (groupRunPaths.length === 1) {
+        nextRunPaths.push(groupRunPaths[0]);
+        continue;
+      }
+
+      const passPath = path.join(
+        tempDir,
+        `merge-pass-${String(passIndex).padStart(3, '0')}-${String(
+          groupIndex,
+        ).padStart(6, '0')}.jsonl`,
+      );
+
+      await mergeSortedRunBatch({
+        runPaths: groupRunPaths,
+        outPath: passPath,
+      });
+      nextRunPaths.push(passPath);
+
+      await Promise.all(
+        groupRunPaths.map((runPath) => fs.rm(runPath, { force: true })),
+      );
+    }
+
+    currentRunPaths = nextRunPaths;
+    passIndex += 1;
+  }
+
+  await mergeSortedRunBatch({
+    runPaths: currentRunPaths,
+    outPath,
+  });
+};
+
 export const mergeAiJsonlFiles = async (params: {
   filePaths: string[];
   outPath: string;
   maxRowsInMemory?: number;
   maxBytesInMemory?: number;
+  maxOpenRuns?: number;
 }) => {
   const {
     filePaths,
     outPath,
     maxRowsInMemory = AI_MERGE_SORT_RUN_MAX_ROWS,
     maxBytesInMemory = AI_MERGE_SORT_RUN_MAX_BYTES,
+    maxOpenRuns = AI_MERGE_SORT_MAX_OPEN_RUNS,
   } = params;
 
   const tempDir = path.join(
@@ -452,6 +517,8 @@ export const mergeAiJsonlFiles = async (params: {
     await mergeSortedRuns({
       runPaths,
       outPath,
+      tempDir,
+      maxOpenRuns,
     });
   } finally {
     await fs.rm(tempDir, { recursive: true, force: true });
