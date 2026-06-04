@@ -1,6 +1,8 @@
 import {
   summarizeAiTrainEvaluations,
   summarizeAiTrainEvaluationsByDirection,
+  summarizeAiTrainEvaluationsByMonth,
+  summarizeAiTrainEvaluationsByQualityThreshold,
 } from '../lib/aiTrainMetrics';
 
 describe('aiTrainMetrics', () => {
@@ -220,5 +222,87 @@ describe('aiTrainMetrics', () => {
         }),
       }),
     ]);
+  });
+
+  it('splits approved risk summaries by month', () => {
+    const summaries = summarizeAiTrainEvaluationsByMonth([
+      {
+        profit: 10,
+        profitableTrade: true,
+        aiApproved: true,
+        quality: 5,
+        timestamp: Date.parse('2026-01-05T00:00:00Z'),
+      },
+      {
+        profit: -4,
+        profitableTrade: false,
+        aiApproved: true,
+        quality: 4,
+        timestamp: Date.parse('2026-01-06T00:00:00Z'),
+      },
+      {
+        profit: 6,
+        profitableTrade: true,
+        aiApproved: true,
+        quality: 5,
+        timestamp: Date.parse('2026-02-01T00:00:00Z'),
+      },
+    ]);
+
+    expect(summaries).toEqual([
+      expect.objectContaining({
+        month: '2026-01',
+        summary: expect.objectContaining({
+          approved: 2,
+          approvedRisk: expect.objectContaining({
+            totalProfit: 6,
+            profitFactor: 2.5,
+          }),
+        }),
+      }),
+      expect.objectContaining({
+        month: '2026-02',
+        summary: expect.objectContaining({
+          approved: 1,
+          approvedRisk: expect.objectContaining({
+            totalProfit: 6,
+            profitFactor: null,
+          }),
+        }),
+      }),
+    ]);
+  });
+
+  it('recomputes qN+ streams from direction matches', () => {
+    const summaries = summarizeAiTrainEvaluationsByQualityThreshold([
+      {
+        profit: 10,
+        profitableTrade: true,
+        aiApproved: true,
+        modelDirectionMatches: true,
+        quality: 5,
+      },
+      {
+        profit: -4,
+        profitableTrade: false,
+        aiApproved: false,
+        modelDirectionMatches: true,
+        quality: 3,
+      },
+      {
+        profit: 6,
+        profitableTrade: true,
+        aiApproved: false,
+        modelDirectionMatches: false,
+        quality: 5,
+      },
+    ]);
+
+    expect(summaries.map((entry) => entry.label)).toEqual([
+      'q3+',
+      'q4+',
+      'q5+',
+    ]);
+    expect(summaries.map((entry) => entry.summary.approved)).toEqual([2, 1, 1]);
   });
 });

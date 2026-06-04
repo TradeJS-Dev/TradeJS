@@ -3,6 +3,7 @@ export type AiTrainEvaluation = {
   profitableTrade: boolean;
   aiApproved: boolean;
   quality: number | null;
+  modelDirectionMatches?: boolean | null;
   direction?: string | null;
   timestamp?: number | null;
 };
@@ -63,6 +64,17 @@ export type AiTrainSummary = {
 
 export type AiTrainDirectionSummary = {
   direction: string;
+  summary: AiTrainSummary;
+};
+
+export type AiTrainMonthlySummary = {
+  month: string;
+  summary: AiTrainSummary;
+};
+
+export type AiTrainQualityThresholdSummary = {
+  threshold: number;
+  label: string;
   summary: AiTrainSummary;
 };
 
@@ -360,6 +372,28 @@ const getDirectionSortKey = (direction: string) => {
   return 2;
 };
 
+const getMonthKey = (timestamp: number | null | undefined) => {
+  if (typeof timestamp !== 'number' || !Number.isFinite(timestamp)) {
+    return 'UNKNOWN';
+  }
+  return new Date(timestamp).toISOString().slice(0, 7);
+};
+
+const isDirectionMatchAtThreshold = (
+  evaluation: AiTrainEvaluation,
+  threshold: number,
+) => {
+  const directionMatches =
+    typeof evaluation.modelDirectionMatches === 'boolean'
+      ? evaluation.modelDirectionMatches
+      : evaluation.aiApproved;
+  return (
+    directionMatches === true &&
+    evaluation.quality != null &&
+    evaluation.quality >= threshold
+  );
+};
+
 export const summarizeAiTrainEvaluationsByDirection = (
   evaluations: AiTrainEvaluation[],
 ): AiTrainDirectionSummary[] => {
@@ -387,3 +421,38 @@ export const summarizeAiTrainEvaluationsByDirection = (
       summary: summarizeAiTrainEvaluations(directionEvaluations),
     }));
 };
+
+export const summarizeAiTrainEvaluationsByMonth = (
+  evaluations: AiTrainEvaluation[],
+): AiTrainMonthlySummary[] => {
+  const grouped = new Map<string, AiTrainEvaluation[]>();
+
+  for (const evaluation of evaluations) {
+    const month = getMonthKey(evaluation.timestamp);
+    const bucket = grouped.get(month) ?? [];
+    bucket.push(evaluation);
+    grouped.set(month, bucket);
+  }
+
+  return [...grouped.entries()]
+    .sort(([leftMonth], [rightMonth]) => leftMonth.localeCompare(rightMonth))
+    .map(([month, monthEvaluations]) => ({
+      month,
+      summary: summarizeAiTrainEvaluations(monthEvaluations),
+    }));
+};
+
+export const summarizeAiTrainEvaluationsByQualityThreshold = (
+  evaluations: AiTrainEvaluation[],
+  thresholds = [3, 4, 5],
+): AiTrainQualityThresholdSummary[] =>
+  thresholds.map((threshold) => ({
+    threshold,
+    label: `q${threshold}+`,
+    summary: summarizeAiTrainEvaluations(
+      evaluations.map((evaluation) => ({
+        ...evaluation,
+        aiApproved: isDirectionMatchAtThreshold(evaluation, threshold),
+      })),
+    ),
+  }));

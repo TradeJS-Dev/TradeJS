@@ -28,7 +28,14 @@ import {
 import {
   summarizeAiTrainEvaluations,
   summarizeAiTrainEvaluationsByDirection,
+  summarizeAiTrainEvaluationsByMonth,
+  summarizeAiTrainEvaluationsByQualityThreshold,
 } from '../lib/aiTrainMetrics';
+import {
+  parseQualityThresholds,
+  parseTimestampFilter,
+  parseTrailingPeriodMs,
+} from '../lib/aiTrainOptions';
 import {
   applyAiTrainSymbolQuarantine,
   summarizeAiTrainDuplicateSignals,
@@ -77,6 +84,31 @@ args.option(
   false,
 );
 args.option('json', 'Print structured JSON summary', false);
+args.option(
+  'since',
+  'Only evaluate rows at or after this timestamp (ISO date or epoch ms)',
+  '',
+);
+args.option(
+  'until',
+  'Only evaluate rows at or before this timestamp (ISO date or epoch ms)',
+  '',
+);
+args.option(
+  'period',
+  'Evaluate a trailing selected-row period such as last365d, last90d, or last30d',
+  '',
+);
+args.option(
+  'qualityThresholds',
+  'Comma-separated qN+ thresholds to summarize',
+  '3,4,5',
+);
+args.option(
+  'dumpEvaluations',
+  'Write evaluated rows as JSONL for offline pocket research',
+  '',
+);
 args.option(
   'symbolQuarantine',
   'Apply ordered per-strategy/per-symbol quarantine overlay to approved rows',
@@ -377,8 +409,13 @@ type AiTrainResult = {
     filePath: string;
     selected: number;
     sourceRows: number;
+    scanned: number;
+    dateSkipped: number;
     recent: number;
     skip: number;
+    since: number | null;
+    until: number | null;
+    period: string | null;
     minQuality: number;
     mode: 'local-deterministic' | 'llm';
     model: string;
@@ -386,6 +423,10 @@ type AiTrainResult = {
   };
   outcome: ReturnType<typeof summarizeAiTrainEvaluations>;
   byDirection: ReturnType<typeof summarizeAiTrainEvaluationsByDirection>;
+  monthly: ReturnType<typeof summarizeAiTrainEvaluationsByMonth>;
+  qualityThresholds: ReturnType<
+    typeof summarizeAiTrainEvaluationsByQualityThreshold
+  >;
   deterministicFlow: DeterministicGateSummary;
   qualityBreakdown: ReturnType<
     typeof summarizeAiTrainEvaluations
@@ -550,6 +591,38 @@ const resolveDatasetFiles = async () => {
   });
 };
 
+const getDatasetRowTimestamp = (row: AiDatasetRow) => {
+  const timestamp = Number(row.timestamp);
+  return Number.isFinite(timestamp) ? timestamp : null;
+};
+
+const findMaxSelectedTimestamp = async ({
+  filePaths,
+  recent,
+  skip,
+}: {
+  filePaths: string[];
+  recent: number;
+  skip: number;
+}) => {
+  let maxTimestamp: number | null = null;
+
+  await streamAiDatasetRows({
+    filePaths,
+    limitFromEnd: recent,
+    skipFromEnd: skip,
+    onRow: async (row) => {
+      const timestamp = getDatasetRowTimestamp(row);
+      if (timestamp != null) {
+        maxTimestamp =
+          maxTimestamp == null ? timestamp : Math.max(maxTimestamp, timestamp);
+      }
+    },
+  });
+
+  return maxTimestamp;
+};
+
 export const main = async () => {
   const recent = normalizeInt(flags.recent, 50);
   const skip = normalizeInt(flags.skip, 0);
@@ -557,6 +630,12 @@ export const main = async () => {
   const localOnly = Boolean(flags.localOnly);
   const saveChart = Boolean(flags.chart);
   const jsonOutput = Boolean(flags.json);
+  const sinceInput = parseTimestampFilter(flags.since);
+  const untilInput = parseTimestampFilter(flags.until);
+  const trailingPeriodMs = parseTrailingPeriodMs(flags.period);
+  const periodLabel = String(flags.period || '').trim() || null;
+  const qualityThresholds = parseQualityThresholds(flags.qualityThresholds);
+  const dumpEvaluationsPath = String(flags.dumpEvaluations || '').trim();
   const symbolQuarantineEnabled = Boolean(flags.symbolQuarantine);
   const symbolQuarantineMinLosses = normalizePositiveInt(
     flags.symbolQuarantineMinLosses,
@@ -582,6 +661,15 @@ export const main = async () => {
     limitFromEnd: recent,
     skipFromEnd: skip,
   });
+  const maxSelectedTimestamp =
+    trailingPeriodMs == null
+      ? null
+      : await findMaxSelectedTimestamp({ filePaths, recent, skip });
+  const sinceTimestamp =
+    trailingPeriodMs != null && maxSelectedTimestamp != null
+      ? maxSelectedTimestamp - trailingPeriodMs
+      : sinceInput;
+  const untilTimestamp = untilInput;
 
   if (!selectedRows) {
     console.log(
@@ -602,18 +690,26 @@ export const main = async () => {
       });
 
   let failed = 0;
+  let scanned = 0;
+  let dateSkipped = 0;
   const errorMessages: string[] = [];
   const evaluations: Array<{
+    signalId: string;
     profit: number;
     profitableTrade: boolean;
     aiApproved: boolean;
     rawAiApproved: boolean;
     quality: number | null;
     direction: string | null;
+    modelDirection: string | null;
+    modelDirectionMatches: boolean;
     timestamp: number | null;
     modelCandidate: boolean;
     strategy: string;
     symbol: string;
+    testName: string;
+    configId: string;
+    rejectReason: string | null;
     sequence: number;
   }> = [];
   const evaluatedRows: AiTrainEvaluatedRow[] = [];
@@ -655,19 +751,31 @@ export const main = async () => {
         typeof analysis.direction === 'string' && analysis.direction.trim()
           ? analysis.direction
           : null;
+      const rejectReason =
+        typeof (analysis as Record<string, unknown>).rejectReason ===
+          'string' && (analysis as Record<string, unknown>).rejectReason
+          ? String((analysis as Record<string, unknown>).rejectReason)
+          : null;
+      const modelDirectionMatches = modelDirection === row.direction;
       const isCorrect = aiApproved === profitableTrade;
 
       evaluations.push({
+        signalId: row.signalId,
         profit,
         profitableTrade,
         aiApproved,
         rawAiApproved: aiApproved,
         quality,
         direction: row.direction,
+        modelDirection,
+        modelDirectionMatches,
         timestamp,
         modelCandidate: deterministic.modelCandidate,
         strategy: row.strategyName,
         symbol: row.symbol,
+        testName: row.testName?.trim() || '',
+        configId: row.configId?.trim() || '',
+        rejectReason,
         sequence,
       });
 
@@ -715,12 +823,28 @@ export const main = async () => {
     limitFromEnd: recent,
     skipFromEnd: skip,
     onRow: async (row) => {
+      scanned += 1;
       if (
         strategyName === 'unknown' &&
         typeof row.strategyName === 'string' &&
         row.strategyName.trim()
       ) {
         strategyName = row.strategyName.trim();
+      }
+
+      const timestamp = getDatasetRowTimestamp(row);
+      if (
+        (sinceTimestamp != null &&
+          (timestamp == null || timestamp < sinceTimestamp)) ||
+        (untilTimestamp != null &&
+          (timestamp == null || timestamp > untilTimestamp))
+      ) {
+        dateSkipped += 1;
+        bar?.tick(1, {
+          symbol: chalk.gray(row.symbol),
+          status: chalk.gray('date-skip'),
+        });
+        return;
       }
 
       duplicateSignalRows.push(row);
@@ -765,6 +889,12 @@ export const main = async () => {
   const summary = summarizeAiTrainEvaluations(finalEvaluations);
   const directionSummaries =
     summarizeAiTrainEvaluationsByDirection(finalEvaluations);
+  const monthlySummaries = summarizeAiTrainEvaluationsByMonth(finalEvaluations);
+  const qualityThresholdSummaries =
+    summarizeAiTrainEvaluationsByQualityThreshold(
+      finalEvaluations,
+      qualityThresholds,
+    );
   const deterministicSummary = summarizeDeterministicGateEvaluations(
     deterministicEvaluations,
     finalEvaluations.map((evaluation) => ({
@@ -777,10 +907,15 @@ export const main = async () => {
     run: {
       strategy: strategyName,
       filePath: filePaths.join(','),
-      selected: selectedRows,
+      selected: finalEvaluations.length,
       sourceRows: totalRows,
+      scanned,
+      dateSkipped,
       recent,
       skip,
+      since: sinceTimestamp,
+      until: untilTimestamp,
+      period: periodLabel,
       minQuality,
       mode: localOnly ? 'local-deterministic' : 'llm',
       model: localOnly ? 'local-deterministic' : model,
@@ -788,6 +923,8 @@ export const main = async () => {
     },
     outcome: summary,
     byDirection: directionSummaries,
+    monthly: monthlySummaries,
+    qualityThresholds: qualityThresholdSummaries,
     deterministicFlow: deterministicSummary,
     qualityBreakdown: summary.qualityBuckets,
     symbolQuarantine: quarantine.summary,
@@ -797,6 +934,39 @@ export const main = async () => {
       providerErrors: errorMessages,
     },
   };
+
+  if (dumpEvaluationsPath) {
+    await fs.mkdir(path.dirname(path.resolve(dumpEvaluationsPath)), {
+      recursive: true,
+    });
+    await fs.writeFile(
+      dumpEvaluationsPath,
+      finalEvaluations
+        .map((evaluation) =>
+          JSON.stringify({
+            signalId: evaluation.signalId,
+            strategy: evaluation.strategy,
+            symbol: evaluation.symbol,
+            direction: evaluation.direction,
+            modelDirection: evaluation.modelDirection,
+            modelDirectionMatches: evaluation.modelDirectionMatches,
+            timestamp: evaluation.timestamp,
+            testName: evaluation.testName,
+            configId: evaluation.configId,
+            profit: evaluation.profit,
+            profitableTrade: evaluation.profitableTrade,
+            aiApproved: evaluation.aiApproved,
+            rawAiApproved: evaluation.rawAiApproved,
+            quality: evaluation.quality,
+            modelCandidate: evaluation.modelCandidate,
+            rejectReason: evaluation.rejectReason,
+            sequence: evaluation.sequence,
+          }),
+        )
+        .join('\n') + (finalEvaluations.length ? '\n' : ''),
+      'utf8',
+    );
+  }
 
   if (saveChart) {
     await persistAiChartSnapshot({
@@ -828,10 +998,28 @@ export const main = async () => {
       [chalk.gray('FIELD'), chalk.gray('VALUE')],
       [
         ['strategy', chalk.yellow(strategyName)],
-        ['selected', chalk.blue(String(selectedRows))],
+        ['selected', chalk.blue(String(finalEvaluations.length))],
         ['source_rows', chalk.blue(String(totalRows))],
+        ['scanned', chalk.blue(String(scanned))],
+        ['date_skipped', chalk.blue(String(dateSkipped))],
         ['recent', chalk.blue(recent === 0 ? 'all' : String(recent))],
         ['skip', chalk.blue(String(skip))],
+        [
+          'since',
+          sinceTimestamp == null
+            ? chalk.gray('n/a')
+            : chalk.gray(new Date(sinceTimestamp).toISOString()),
+        ],
+        [
+          'until',
+          untilTimestamp == null
+            ? chalk.gray('n/a')
+            : chalk.gray(new Date(untilTimestamp).toISOString()),
+        ],
+        [
+          'period',
+          periodLabel == null ? chalk.gray('n/a') : chalk.gray(periodLabel),
+        ],
         ['min_quality', chalk.magenta(String(minQuality))],
         [
           'mode',
@@ -842,6 +1030,12 @@ export const main = async () => {
         [
           'symbol_quarantine',
           symbolQuarantineEnabled ? chalk.green('enabled') : chalk.gray('off'),
+        ],
+        [
+          'dump_evaluations',
+          dumpEvaluationsPath
+            ? chalk.gray(dumpEvaluationsPath)
+            : chalk.gray('off'),
         ],
       ],
     ),
@@ -967,6 +1161,11 @@ export const main = async () => {
           chalk.gray('EVAL'),
           chalk.gray('ACCURACY'),
           chalk.gray('APPROVED'),
+          chalk.gray('CADENCE/D'),
+          chalk.gray('WR'),
+          chalk.gray('PF'),
+          chalk.gray('PNL'),
+          chalk.gray('MAX_DD'),
           chalk.green('TP'),
           chalk.red('FP'),
           chalk.green('TN'),
@@ -982,6 +1181,11 @@ export const main = async () => {
             chalk.blue(String(directionEvaluated)),
             colorizePercent(directionSummary.correct, directionEvaluated),
             chalk.cyan(String(directionSummary.approved)),
+            colorizeMetricNumber(directionSummary.avgApprovedTradesPerDay),
+            colorizeRatio(directionSummary.approvedRisk.winRate),
+            colorizeMetricNumber(directionSummary.approvedRisk.profitFactor),
+            colorizeProfit(directionSummary.approvedRisk.totalProfit),
+            colorizeProfit(-directionSummary.approvedRisk.maxDrawdown),
             chalk.green(String(directionSummary.truePositive)),
             chalk.red(String(directionSummary.falsePositive)),
             chalk.green(String(directionSummary.trueNegative)),
@@ -990,6 +1194,71 @@ export const main = async () => {
             colorizeRatio(directionSummary.recallWinners),
           ];
         }),
+      ),
+    );
+  }
+
+  if (qualityThresholdSummaries.length) {
+    printSection(
+      'QUALITY THRESHOLDS',
+      createTable(
+        [
+          chalk.gray('BUCKET'),
+          chalk.gray('APPROVED'),
+          chalk.gray('CADENCE/D'),
+          chalk.gray('WR'),
+          chalk.gray('PF'),
+          chalk.gray('PNL'),
+          chalk.gray('MAX_DD'),
+        ],
+        qualityThresholdSummaries.map(
+          ({ label, summary: thresholdSummary }) => [
+            chalk.yellow(label),
+            chalk.cyan(String(thresholdSummary.approved)),
+            colorizeMetricNumber(thresholdSummary.avgApprovedTradesPerDay),
+            colorizeRatio(thresholdSummary.approvedRisk.winRate),
+            colorizeMetricNumber(thresholdSummary.approvedRisk.profitFactor),
+            colorizeProfit(thresholdSummary.approvedRisk.totalProfit),
+            colorizeProfit(-thresholdSummary.approvedRisk.maxDrawdown),
+          ],
+        ),
+      ),
+    );
+  }
+
+  if (monthlySummaries.length) {
+    const losingMonths = monthlySummaries.filter(
+      ({ summary: monthSummary }) => monthSummary.approvedRisk.totalProfit < 0,
+    ).length;
+    printSection(
+      'MONTHLY STABILITY',
+      createTable(
+        [
+          chalk.gray('MONTH'),
+          chalk.gray('APPROVED'),
+          chalk.gray('WR'),
+          chalk.gray('PF'),
+          chalk.gray('PNL'),
+          chalk.gray('MAX_DD'),
+        ],
+        [
+          [
+            chalk.yellow('losing_months'),
+            chalk.cyan(`${losingMonths}/${monthlySummaries.length}`),
+            chalk.gray(''),
+            chalk.gray(''),
+            chalk.gray(''),
+            chalk.gray(''),
+          ],
+          ...monthlySummaries.map(({ month, summary: monthSummary }) => [
+            chalk.yellow(month),
+            chalk.cyan(String(monthSummary.approved)),
+            colorizeRatio(monthSummary.approvedRisk.winRate),
+            colorizeMetricNumber(monthSummary.approvedRisk.profitFactor),
+            colorizeProfit(monthSummary.approvedRisk.totalProfit),
+            colorizeProfit(-monthSummary.approvedRisk.maxDrawdown),
+          ]),
+        ],
       ),
     );
   }
