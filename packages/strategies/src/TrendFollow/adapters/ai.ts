@@ -105,6 +105,7 @@ Additional TrendFollow context:
 - trendFollowGateRelativeContinuation=${context.trendFollowGateFeatures.relativeContinuation}
 - trendFollowGateMarketBreadthContinuation=${context.trendFollowGateFeatures.marketBreadthContinuation}
 - trendFollowGateMarketBreadthDispersion=${String(context.trendFollowGateFeatures.marketBreadthDispersion ?? 'n/a')}
+- trendFollowGateTargetVsBtcBeta20=${String(context.trendFollowGateFeatures.targetVsBtcBeta20 ?? 'n/a')}
 - trendFollowGateHighQualityCadencePocket=${String(context.trendFollowGateFeatures.highQualityCadencePocket)}
 - benchmarkTrendAlignment=${context.benchmarkTrendAlignment ?? 'n/a'}
 - derivativesPressure=${context.derivativesPressure ?? 'n/a'}

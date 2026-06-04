@@ -52,6 +52,7 @@ export type TrendFollowGateFeatures = {
   relativeContinuation: 'aligned' | 'against' | 'neutral' | 'unknown';
   marketBreadthContinuation: 'aligned' | 'against' | 'stale' | 'unknown';
   marketBreadthDispersion: number | null;
+  targetVsBtcBeta20: number | null;
   highQualityCadencePocket: boolean;
 };
 
@@ -308,6 +309,27 @@ const buildTrendFollowGateFeatures = ({
         : marketBreadthAligned === false
           ? 'against'
           : 'unknown';
+  const targetVsBtcBeta20 = asFiniteNumber(
+    baseContext?.relative?.targetVsBtc?.betaToBtc20,
+  );
+  const legacyCadencePocket =
+    highConvictionApprovalPocket &&
+    setupStopDistanceAtr != null &&
+    setupStopDistanceAtr >= 1.15 &&
+    setupTpDistanceAtr != null &&
+    setupTpDistanceAtr >= 1.5;
+  const strongBreakoutCadencePocket =
+    legacyCadencePocket && breakoutBodyAtr != null && breakoutBodyAtr >= 1.5;
+  const shortRelativeBetaContinuationPocket =
+    direction === 'SHORT' &&
+    setupStopDistanceAtr != null &&
+    setupStopDistanceAtr >= 1.5 &&
+    setupStopDistanceAtr < 2 &&
+    setupTpDistanceAtr != null &&
+    setupTpDistanceAtr >= 2 &&
+    setupTpDistanceAtr < 3 &&
+    targetVsBtcBeta20 != null &&
+    targetVsBtcBeta20 >= 1.25;
 
   return {
     setupStopDistanceAtr,
@@ -323,12 +345,9 @@ const buildTrendFollowGateFeatures = ({
     relativeContinuation,
     marketBreadthContinuation,
     marketBreadthDispersion: asFiniteNumber(marketBreadth?.dispersion),
+    targetVsBtcBeta20,
     highQualityCadencePocket:
-      highConvictionApprovalPocket &&
-      setupStopDistanceAtr != null &&
-      setupStopDistanceAtr >= 1.15 &&
-      setupTpDistanceAtr != null &&
-      setupTpDistanceAtr >= 1.5,
+      strongBreakoutCadencePocket || shortRelativeBetaContinuationPocket,
   };
 };
 
@@ -505,7 +524,7 @@ export const buildTrendFollowGuardrailContext = ({
   if (volumeStructureDirectionAligned === false) {
     softBlockReasons.push('weak_volume_structure');
   }
-  if (!highConvictionApprovalPocket) {
+  if (!trendFollowGateFeatures.highQualityCadencePocket) {
     softBlockReasons.push('outside_high_conviction_cadence_pocket');
   }
 
@@ -532,7 +551,6 @@ export const buildTrendFollowGuardrailContext = ({
   if (deterministicQuality >= 5 && softBlockReasons.length > 0) {
     deterministicQuality = 4;
   }
-
   return {
     ...signalContext,
     baseContextAvailable: Boolean(baseContext),

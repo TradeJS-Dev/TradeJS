@@ -65,6 +65,7 @@ describe('trendFollowAiAdapter', () => {
             delta: { deltaDivergenceVsPrice: 'none' },
           },
           structure: {
+            acceptance: { breakoutBodyAtr: 1.6 },
             localRange: { breakoutState: 'below_low_level' },
           },
           derivatives: {
@@ -175,6 +176,7 @@ describe('trendFollowAiAdapter', () => {
             delta: { deltaDivergenceVsPrice: 'none' },
           },
           structure: {
+            acceptance: { breakoutBodyAtr: 1.6 },
             localRange: { breakoutState: 'below_low_level' },
           },
         },
@@ -218,6 +220,7 @@ describe('trendFollowAiAdapter', () => {
             delta: { deltaDivergenceVsPrice: 'none' },
           },
           structure: {
+            acceptance: { breakoutBodyAtr: 1.6 },
             localRange: { breakoutState: 'below_low_level' },
           },
         },
@@ -293,6 +296,61 @@ describe('trendFollowAiAdapter', () => {
     );
   });
 
+  it('approves short relative beta continuation pockets', () => {
+    const payload = makePayload(
+      {
+        signalDirection: 'SHORT',
+        entryLevel: 100,
+        trailStop: 104,
+        atr: 1.2,
+        pivotKind: 'low',
+        breakoutDistancePct: 0.8,
+        distanceToStopPct: 2,
+        currentPrice: 99,
+      },
+      {
+        raw: {
+          volatility: { atr: 1.2 },
+        },
+        regime: {
+          momentum: { rsi: 32 },
+        },
+        participation: {
+          volume: { volumeRel20: 1.6 },
+          volumeStructure: { totalDownVolumeShare: 0.55 },
+          delta: { deltaDivergenceVsPrice: 'none' },
+        },
+        structure: {
+          localRange: { breakoutState: 'below_low_level' },
+        },
+        relative: {
+          targetVsBtc: { betaToBtc20: 1.35 },
+        },
+      },
+    );
+
+    payload.signal.prices = {
+      currentPrice: 100,
+      takeProfitPrice: 97.4,
+      stopLossPrice: 102,
+    };
+
+    const result = trendFollowAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload,
+      analysis: {
+        direction: 'SHORT',
+        quality: 1,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: 'SHORT',
+      quality: 5,
+      approved: true,
+    });
+  });
+
   it('downgrades adverse delta and weak volume structure', () => {
     const result = trendFollowAiAdapter.postProcessAnalysis?.({
       signal: {} as any,
@@ -314,6 +372,7 @@ describe('trendFollowAiAdapter', () => {
             delta: { deltaDivergenceVsPrice: 'bullish' },
           },
           structure: {
+            acceptance: { breakoutBodyAtr: 1.6 },
             localRange: { breakoutState: 'below_low_level' },
           },
         },
@@ -361,6 +420,7 @@ describe('trendFollowAiAdapter', () => {
             delta: { deltaDivergenceVsPrice: 'none' },
           },
           structure: {
+            acceptance: { breakoutBodyAtr: 1.6 },
             localRange: { breakoutState: 'below_low_level' },
           },
           derivatives: {
