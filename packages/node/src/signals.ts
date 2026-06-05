@@ -75,6 +75,11 @@ const normalizeQuality = (value?: number) =>
     ? Math.max(1, Math.min(5, Math.round(value)))
     : null;
 
+const formatOrderValue = (value: number) => {
+  const rounded = Number(value.toFixed(2));
+  return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(2);
+};
+
 const buildRuntimeDebugKeyLines = (signal: Signal, userName: string) => {
   if (signal.orderStatus !== 'completed' || !signal.orderId) {
     return [];
@@ -435,6 +440,8 @@ export const formatMessage = (
     orderStatus,
     orderSkipReason,
     orderFailureReason,
+    orderQty,
+    orderValue,
     isConfigFromBacktest,
     ml,
     prices: { currentPrice, takeProfitPrice, stopLossPrice, riskRatio },
@@ -458,8 +465,17 @@ export const formatMessage = (
           2,
         ) + '%';
 
+      const resolvedOrderValue =
+        typeof orderValue === 'number' && Number.isFinite(orderValue)
+          ? orderValue
+          : typeof orderQty === 'number' && Number.isFinite(orderQty)
+            ? orderQty * currentPrice
+            : null;
       const prices = [
         `Price: <b>${formatNumber(currentPrice)}</b>`,
+        resolvedOrderValue != null
+          ? `Value: <b>${formatOrderValue(resolvedOrderValue)}$</b>`
+          : null,
         `TP: <b>${formatNumber(takeProfitPrice)}</b> (${tpPercent})`,
         `SL: <b>${formatNumber(stopLossPrice)}</b> (${slPercent})`,
         `R:R = <b>${riskRatio.toFixed(2)}</b>`,

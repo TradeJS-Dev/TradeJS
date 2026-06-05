@@ -1020,21 +1020,35 @@ export const ByBitConnectorCreator: ConnectorCreator = async (config) => {
 
       const meta = await getSymbolMeta(marketDataClient, symbol);
 
-      const { qtyNum: orderQty, qtyStr: orderQtyStr } = normalizeQty(qty, meta);
+      const normalizedQty = normalizeQty(qty, meta);
+      const minNormalizedQty = normalizeQty(meta.minOrderQty, meta);
+      const isQtyBelowMin = normalizedQty.qtyNum < meta.minOrderQty;
+      const orderQty = isQtyBelowMin
+        ? Math.max(minNormalizedQty.qtyNum, meta.minOrderQty)
+        : normalizedQty.qtyNum;
+      const orderQtyStr = isQtyBelowMin
+        ? orderQty.toFixed(meta.qtyPrecision)
+        : normalizedQty.qtyStr;
 
-      if (orderQty < meta.minOrderQty) {
-        if (signal) {
-          signal.orderFailureReason = 'ORDER_QTY_BELOW_MIN';
-        }
+      if (isQtyBelowMin) {
         logger.log(
           'warn',
-          'placeOrder: qty too small: %s',
+          'placeOrder: qty below min, using minOrderQty: %s',
           toJson(
-            { symbol, qty, orderQty, minOrderQty: meta.minOrderQty },
+            {
+              symbol,
+              qty,
+              requestedOrderQty: normalizedQty.qtyNum,
+              orderQty,
+              minOrderQty: meta.minOrderQty,
+            },
             true,
           ),
         );
-        return false;
+      }
+      if (signal) {
+        signal.orderQty = orderQty;
+        signal.orderValue = orderQty * price;
       }
 
       const entryNormalized = isLimit

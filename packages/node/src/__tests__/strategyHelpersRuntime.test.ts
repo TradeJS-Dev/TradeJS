@@ -346,6 +346,8 @@ describe('strategyHelpers/runtime enrichSignalWithMlAi', () => {
     );
     expect(mockCreateRuntimeOrderId).toHaveBeenCalledWith('TrendLine');
     expect(placedSignal.orderId).toBe('tjs-order-1');
+    expect(placedSignal.orderQty).toBe(1);
+    expect(placedSignal.orderValue).toBe(101);
     expect(placedSignal.orderStatus).toBe('completed');
     expect(placedSignal.prices.currentPrice).toBe(101);
     expect(mockRecordRuntimeTradeOpen).toHaveBeenCalledWith({
@@ -360,6 +362,82 @@ describe('strategyHelpers/runtime enrichSignalWithMlAi', () => {
       entryTimestamp: 1_700_000_000_000,
     });
     expect(price).toBe(101);
+  });
+
+  it('keeps requested order value on signal when entry order fails', async () => {
+    const connector = {
+      placeOrder: jest.fn(async () => false),
+      setTakeProfits: jest.fn(async () => true),
+      setStopLoss: jest.fn(async () => true),
+      closePosition: jest.fn(async () => true),
+      getPosition: jest.fn(async () => null),
+    } as any;
+    const failedSignal = { ...signal };
+
+    await executeEntryOrder({
+      connector,
+      userName: 'root',
+      symbol: 'ETHUSDT',
+      direction: 'LONG',
+      qty: 1.23,
+      currentPrice: 100,
+      timestamp: 1_700_000_000_000,
+      takeProfits: [{ price: 110, rate: 1 }],
+      stopLossPrice: 95,
+      signal: failedSignal,
+    });
+
+    expect(failedSignal.orderStatus).toBe('failed');
+    expect(failedSignal.orderQty).toBe(1.23);
+    expect(failedSignal.orderValue).toBe(123);
+    expect(mockRecordRuntimeTradeOpen).not.toHaveBeenCalled();
+  });
+
+  it('uses connector-adjusted order qty for protection, signal value and journal', async () => {
+    const connector = {
+      placeOrder: jest.fn(async (order: any) => {
+        order.signal.orderQty = 2;
+        order.signal.orderValue = 200;
+        return true;
+      }),
+      setTakeProfits: jest.fn(async () => true),
+      setStopLoss: jest.fn(async () => true),
+      closePosition: jest.fn(async () => true),
+      getPosition: jest.fn(async () => ({
+        symbol: 'ETHUSDT',
+        qty: 2,
+        price: 101,
+        direction: 'LONG',
+      })),
+    } as any;
+    const placedSignal = { ...signal };
+
+    await executeEntryOrder({
+      connector,
+      userName: 'root',
+      symbol: 'ETHUSDT',
+      direction: 'LONG',
+      qty: 1,
+      currentPrice: 100,
+      timestamp: 1_700_000_000_000,
+      takeProfits: [{ price: 110, rate: 1 }],
+      stopLossPrice: 95,
+      signal: placedSignal,
+    });
+
+    expect(connector.setTakeProfits).toHaveBeenCalledWith(
+      expect.objectContaining({
+        qty: 2,
+      }),
+    );
+    expect(placedSignal.orderQty).toBe(2);
+    expect(placedSignal.orderValue).toBe(202);
+    expect(mockRecordRuntimeTradeOpen).toHaveBeenCalledWith(
+      expect.objectContaining({
+        qty: 2,
+        entryPrice: 101,
+      }),
+    );
   });
 
   it('snapshots AI analysis into runtime trade record', async () => {

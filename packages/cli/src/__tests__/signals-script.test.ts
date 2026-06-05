@@ -172,6 +172,7 @@ const loadScript = async (scenario: Scenario) => {
   const update = jest.fn(async () => null);
   const makeScreenshots = jest.fn(async () => null);
   const sendToTG = jest.fn(async () => null);
+  const sendTextToTG = jest.fn(async () => null);
   const sendRuntimeCloseNotificationsToTG = jest.fn(async () => null);
   const loadTradejsConfig = jest.fn(async () => ({
     hooks: scenario.projectHooks ?? {},
@@ -285,6 +286,7 @@ const loadScript = async (scenario: Scenario) => {
     update,
     makeScreenshots,
     sendRuntimeCloseNotificationsToTG,
+    sendTextToTG,
     sendToTG,
   }));
 
@@ -350,6 +352,7 @@ const loadScript = async (scenario: Scenario) => {
       redisKeys,
       runWithConcurrency,
       sendRuntimeCloseNotificationsToTG,
+      sendTextToTG,
       sendToTG,
       setData,
       setHashJsonField,
@@ -930,6 +933,69 @@ describe('signals script', () => {
     expect(mocks.sendToTG.mock.invocationCallOrder[0]).toBeLessThan(
       mocks.sendRuntimeCloseNotificationsToTG.mock.invocationCallOrder[0],
     );
+  });
+
+  it('logs strategy evaluation duration', async () => {
+    const { signals, mocks } = await loadScript({
+      flags: {
+        timeframe: 15,
+        makeOrders: false,
+        notify: false,
+        skipScreenshots: true,
+        updateOnly: false,
+        cacheOnly: true,
+        showTickersList: false,
+        showSkipStats: false,
+        user: 'root',
+        connector: 'bybit',
+      },
+    });
+
+    await signals();
+
+    expect(mocks.logger.info).toHaveBeenCalledWith(
+      expect.stringMatching(/^strategy evaluation: done in /),
+    );
+  });
+
+  it('sends a separate Telegram warning when signals run exceeds five minutes', async () => {
+    const nowSpy = jest.spyOn(Date, 'now');
+    nowSpy.mockReturnValue(1_000);
+    try {
+      const { signals, mocks } = await loadScript({
+        flags: {
+          timeframe: 15,
+          makeOrders: true,
+          notify: true,
+          skipScreenshots: true,
+          updateOnly: false,
+          cacheOnly: true,
+          showTickersList: false,
+          showSkipStats: false,
+          user: 'root',
+          connector: 'bybit',
+        },
+      });
+
+      nowSpy.mockReturnValueOnce(1_000);
+      nowSpy.mockReturnValue(302_000);
+      await signals();
+
+      expect(mocks.sendTextToTG).toHaveBeenCalledWith(
+        expect.stringContaining('Slow yarn signals run'),
+        { userName: 'root' },
+      );
+      expect(mocks.sendTextToTG).toHaveBeenCalledWith(
+        expect.stringContaining('Duration: <b>301.0s</b>'),
+        { userName: 'root' },
+      );
+      expect(mocks.sendTextToTG).toHaveBeenCalledWith(
+        expect.stringContaining('Threshold: <b>300.0s</b>'),
+        { userName: 'root' },
+      );
+    } finally {
+      nowSpy.mockRestore();
+    }
   });
 
   it('skips screenshot generation when Telegram delivery is disabled', async () => {

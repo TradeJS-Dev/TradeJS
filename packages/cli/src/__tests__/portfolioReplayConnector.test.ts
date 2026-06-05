@@ -1,8 +1,50 @@
-import { BACKTEST_SLIPPAGE_PERCENT } from '@tradejs/core/constants';
+import { round } from '@tradejs/core/math';
+import {
+  BACKTEST_SLIPPAGE_PERCENT,
+  FEE_PERCENT,
+  INITIAL_BACKTEST_AMOUNT,
+} from '@tradejs/core/constants';
 import { createPortfolioReplayConnector } from '../lib/replay/portfolioReplayConnector';
 
 describe('portfolio replay connector', () => {
   const backtestSlippageRate = BACKTEST_SLIPPAGE_PERCENT;
+  const executionPrice = (
+    price: number,
+    direction: 'LONG' | 'SHORT',
+    stage: 'entry' | 'exit',
+  ) => {
+    const sign =
+      direction === 'LONG'
+        ? stage === 'entry'
+          ? 1
+          : -1
+        : stage === 'entry'
+          ? -1
+          : 1;
+    return price * (1 + sign * backtestSlippageRate);
+  };
+  const fee = (price: number, qty = 1) => price * qty * FEE_PERCENT;
+  const openProfit = (price: number, direction: 'LONG' | 'SHORT', qty = 1) =>
+    -fee(executionPrice(price, direction, 'entry'), qty);
+  const exitProfit = ({
+    entryPrice,
+    exitPrice,
+    direction,
+    qty = 1,
+  }: {
+    entryPrice: number;
+    exitPrice: number;
+    direction: 'LONG' | 'SHORT';
+    qty?: number;
+  }) => {
+    const actualEntryPrice = executionPrice(entryPrice, direction, 'entry');
+    const actualExitPrice = executionPrice(exitPrice, direction, 'exit');
+    const grossProfit =
+      direction === 'LONG'
+        ? (actualExitPrice - actualEntryPrice) * qty
+        : (actualEntryPrice - actualExitPrice) * qty;
+    return grossProfit - fee(actualExitPrice, qty);
+  };
 
   const baseConnector = {
     kline: jest.fn(),
@@ -84,7 +126,9 @@ describe('portfolio replay connector', () => {
     expect(artifacts.orderLog[2]).toEqual(
       expect.objectContaining({
         type: 'CLOSE_LONG',
-        profit: 9.36,
+        profit: round(
+          exitProfit({ entryPrice: 100, exitPrice: 110, direction: 'LONG' }),
+        ),
       }),
     );
     expect(artifacts.orderLog[2].price).toBeCloseTo(
@@ -93,7 +137,9 @@ describe('portfolio replay connector', () => {
     expect(artifacts.orderLog[3]).toEqual(
       expect.objectContaining({
         type: 'CLOSE_SHORT',
-        profit: 9.44,
+        profit: round(
+          exitProfit({ entryPrice: 100, exitPrice: 90, direction: 'SHORT' }),
+        ),
       }),
     );
     expect(artifacts.orderLog[3].price).toBeCloseTo(
@@ -156,11 +202,11 @@ describe('portfolio replay connector', () => {
       expect.arrayContaining([
         expect.objectContaining({
           symbol: 'BTCUSDT',
-          unrealizedPnl: 4.8,
+          unrealizedPnl: round(105 - executionPrice(100, 'LONG', 'entry')),
         }),
         expect.objectContaining({
           symbol: 'ETHUSDT',
-          unrealizedPnl: 7.8,
+          unrealizedPnl: round((executionPrice(50, 'SHORT', 'entry') - 46) * 2),
         }),
       ]),
     );
@@ -208,18 +254,25 @@ describe('portfolio replay connector', () => {
     expect(artifacts.orderLog[0]).toEqual(
       expect.objectContaining({
         type: 'OPEN_LONG',
-        price: 100.2,
-        fee: 0.20040000000000002,
-        profit: -0.2,
+        price: executionPrice(100, 'LONG', 'entry'),
+        fee: fee(executionPrice(100, 'LONG', 'entry')),
+        profit: round(openProfit(100, 'LONG')),
       }),
     );
+    const expectedTpProfit = exitProfit({
+      entryPrice: 100,
+      exitPrice: 110,
+      direction: 'LONG',
+    });
     expect(artifacts.orderLog[1]).toEqual(
       expect.objectContaining({
         type: 'TAKE_PROFIT_LONG',
-        price: 109.78,
-        fee: 0.21956,
-        profit: 9.36,
-        amount: 109.16,
+        price: executionPrice(110, 'LONG', 'exit'),
+        fee: fee(executionPrice(110, 'LONG', 'exit')),
+        profit: round(expectedTpProfit),
+        amount: round(
+          INITIAL_BACKTEST_AMOUNT + openProfit(100, 'LONG') + expectedTpProfit,
+        ),
       }),
     );
   });

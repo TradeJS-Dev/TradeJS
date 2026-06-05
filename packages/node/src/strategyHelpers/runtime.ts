@@ -294,6 +294,8 @@ export const executeEntryOrder = async ({
   await beforePlaceOrder?.();
   const orderId = signal.orderId || createRuntimeOrderId(signal.strategy);
   signal.orderId = orderId;
+  signal.orderQty = qty;
+  signal.orderValue = qty * currentPrice;
   signal.orderFailureReason = undefined;
 
   const orderPlaced = await connector.placeOrder({
@@ -306,6 +308,12 @@ export const executeEntryOrder = async ({
     orderId,
     signal,
   });
+  const placedQty =
+    typeof signal.orderQty === 'number' &&
+    Number.isFinite(signal.orderQty) &&
+    signal.orderQty > 0
+      ? signal.orderQty
+      : qty;
 
   if (orderPlaced) {
     try {
@@ -313,7 +321,7 @@ export const executeEntryOrder = async ({
         connector,
         symbol,
         direction,
-        qty,
+        qty: placedQty,
         takeProfits,
         stopLossPrice,
       });
@@ -339,8 +347,14 @@ export const executeEntryOrder = async ({
     currentPosition?.price && Number.isFinite(currentPosition.price)
       ? currentPosition.price
       : currentPrice;
+  const entryQty =
+    currentPosition?.qty && Number.isFinite(currentPosition.qty)
+      ? currentPosition.qty
+      : placedQty;
 
   signal.prices.currentPrice = entryPrice;
+  signal.orderQty = entryQty;
+  signal.orderValue = entryQty * entryPrice;
 
   if (orderPlaced && recordRuntimeTrade) {
     await recordRuntimeTradeOpen({
@@ -350,7 +364,7 @@ export const executeEntryOrder = async ({
       strategy: signal.strategy,
       symbol,
       direction,
-      qty,
+      qty: entryQty,
       entryPrice,
       entryTimestamp: timestamp,
       ...(signal.aiAnalysis ? { aiAnalysis: signal.aiAnalysis } : {}),

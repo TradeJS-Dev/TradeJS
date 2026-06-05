@@ -531,6 +531,8 @@ export interface Signal {
   orderStatus?: SignalOrderStatus;
   orderSkipReason?: string;
   orderFailureReason?: string;
+  orderQty?: number;
+  orderValue?: number;
   isConfigFromBacktest?: boolean;
   aiAnalysis?: Partial<SignalAnalysis>;
   ml?: {

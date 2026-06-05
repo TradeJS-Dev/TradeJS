@@ -13,6 +13,7 @@ import {
   loadTradejsConfig,
   makeScreenshots,
   sendRuntimeCloseNotificationsToTG,
+  sendTextToTG,
   sendToTG,
 } from '@tradejs/node/cli';
 import { runWithConcurrency } from '@tradejs/core/async';
@@ -99,6 +100,7 @@ args.option(
 );
 
 const PRELOAD_START = getTimestamp(SIGNALS_CLI_PRELOAD_DAYS);
+const SLOW_SIGNALS_WARNING_MS = 5 * 60_000;
 const projectRoot =
   String(process.env.PROJECT_CWD || process.cwd()).trim() || process.cwd();
 
@@ -106,8 +108,8 @@ const flags = args.parse(process.argv);
 const interval = flags.timeframe.toString() as Interval;
 const intervalMs = Number(interval) * 60_000;
 
-const formatElapsed = (startedAt: number) =>
-  `${((Date.now() - startedAt) / 1000).toFixed(1)}s`;
+const formatDuration = (durationMs: number) =>
+  `${(durationMs / 1000).toFixed(1)}s`;
 
 const resolvePositiveInteger = (value: unknown, fallback: number) => {
   const parsed = Number(value);
@@ -122,6 +124,19 @@ const timeOperation = <T>(label: string, operation: () => Promise<T>) =>
   runTimedOperation(label, operation, (message) =>
     logger.info(chalk.gray(message)),
   );
+
+const formatSlowSignalsWarning = (params: {
+  durationMs: number;
+  status: 'completed' | 'failed';
+  found: number;
+}) =>
+  [
+    '<b>Slow yarn signals run</b>',
+    `Duration: <b>${formatDuration(params.durationMs)}</b>`,
+    `Threshold: <b>${formatDuration(SLOW_SIGNALS_WARNING_MS)}</b>`,
+    `Status: <b>${params.status}</b>`,
+    `Found signals: <b>${params.found}</b>`,
+  ].join('\n');
 
 const resolveSignalsConnectorName = async (value: unknown): Promise<string> => {
   const connectorName = await resolveConnectorName(value, projectRoot);
@@ -476,25 +491,27 @@ export const signals = async () => {
     const signalsParallel = resolvePositiveInteger(flags.parallel, 4);
     logger.info(chalk.yellow(`signal workers: ${signalsParallel}`));
 
-    await runWithConcurrency(tickers, signalsParallel, async (symbol) => {
-      const strategySignals = await findSignals(
-        symbol,
-        connectorName,
-        marketConnector,
-        btcBinanceData,
-        btcCoinbaseData,
-        runtimeStrategies,
-        strategyStats,
-        runtimeCloseNotifications,
-      );
+    await timeOperation('strategy evaluation', async () => {
+      await runWithConcurrency(tickers, signalsParallel, async (symbol) => {
+        const strategySignals = await findSignals(
+          symbol,
+          connectorName,
+          marketConnector,
+          btcBinanceData,
+          btcCoinbaseData,
+          runtimeStrategies,
+          strategyStats,
+          runtimeCloseNotifications,
+        );
 
-      if (strategySignals.length > 0) {
-        signals.push(...strategySignals);
-      }
+        if (strategySignals.length > 0) {
+          signals.push(...strategySignals);
+        }
 
-      bar.tick(1, {
-        found: chalk.cyan(signals.length),
-        symbol: chalk.gray(symbol),
+        bar.tick(1, {
+          found: chalk.cyan(signals.length),
+          symbol: chalk.gray(symbol),
+        });
       });
     });
 
@@ -531,13 +548,15 @@ export const signals = async () => {
     );
     throw error;
   } finally {
+    const durationMs = Date.now() - startedAt;
+
     if (projectHooks && afterSignalsHookContext) {
       try {
         await invokeAfterSignalsHooks(projectHooks, {
           ...afterSignalsHookContext,
           signals: [...signals],
           status,
-          durationMs: Date.now() - startedAt,
+          durationMs,
         });
       } catch (error) {
         logger.error(
@@ -547,11 +566,32 @@ export const signals = async () => {
       }
     }
 
+    if (flags.notify && durationMs > SLOW_SIGNALS_WARNING_MS) {
+      try {
+        await sendTextToTG(
+          formatSlowSignalsWarning({
+            durationMs,
+            status,
+            found: signals.length,
+          }),
+          { userName: flags.user },
+        );
+      } catch (error) {
+        logger.error(
+          'slow signals warning failed: %s',
+          (error as Error)?.message || String(error),
+        );
+      }
+    }
+
     logger.info(
       chalk.yellow(
-        `signals ${status} in ${formatElapsed(startedAt)} (found=${signals.length})`,
+        `signals ${status} in ${formatDuration(durationMs)} (found=${signals.length})`,
       ),
     );
+    logger.info('');
+    logger.info('');
+    logger.info('');
   }
 };
 export const main = signals;

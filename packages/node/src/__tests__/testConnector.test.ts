@@ -7,7 +7,12 @@ jest.mock('@tradejs/infra/redis', () => ({
 }));
 
 import { setData } from '@tradejs/infra/redis';
-import { BACKTEST_SLIPPAGE_PERCENT } from '@tradejs/core/constants';
+import { round } from '@tradejs/core/math';
+import {
+  BACKTEST_SLIPPAGE_PERCENT,
+  FEE_PERCENT,
+  INITIAL_BACKTEST_AMOUNT,
+} from '@tradejs/core/constants';
 import { createTestConnector } from '../testConnector';
 
 const baseConnector = {
@@ -19,6 +24,47 @@ const baseConnector = {
 
 describe('testConnector', () => {
   const backtestSlippageRate = BACKTEST_SLIPPAGE_PERCENT;
+  const executionPrice = (
+    price: number,
+    direction: 'LONG' | 'SHORT',
+    stage: 'entry' | 'exit',
+  ) => {
+    const sign =
+      direction === 'LONG'
+        ? stage === 'entry'
+          ? 1
+          : -1
+        : stage === 'entry'
+          ? -1
+          : 1;
+    return price * (1 + sign * backtestSlippageRate);
+  };
+  const fee = (price: number, qty = 1) => price * qty * FEE_PERCENT;
+  const openProfit = (price: number, direction: 'LONG' | 'SHORT', qty = 1) =>
+    -fee(executionPrice(price, direction, 'entry'), qty);
+  const exitProfit = ({
+    entryPrice,
+    exitPrice,
+    direction,
+    qty = 1,
+  }: {
+    entryPrice: number;
+    exitPrice: number;
+    direction: 'LONG' | 'SHORT';
+    qty?: number;
+  }) => {
+    const actualEntryPrice = executionPrice(entryPrice, direction, 'entry');
+    const actualExitPrice = executionPrice(exitPrice, direction, 'exit');
+    const grossProfit =
+      direction === 'LONG'
+        ? (actualExitPrice - actualEntryPrice) * qty
+        : (actualEntryPrice - actualExitPrice) * qty;
+    return grossProfit - fee(actualExitPrice, qty);
+  };
+  const amountAfter = (...profits: number[]) =>
+    round(
+      INITIAL_BACKTEST_AMOUNT + profits.reduce((sum, value) => sum + value, 0),
+    );
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -56,7 +102,9 @@ describe('testConnector', () => {
     expect(longOrders[1]).toEqual(
       expect.objectContaining({
         type: 'CLOSE_LONG',
-        profit: 9.36,
+        profit: round(
+          exitProfit({ entryPrice: 100, exitPrice: 110, direction: 'LONG' }),
+        ),
       }),
     );
     expect(longOrders[1].price).toBeCloseTo(110 * (1 - backtestSlippageRate));
@@ -92,7 +140,9 @@ describe('testConnector', () => {
     expect(shortOrders[1]).toEqual(
       expect.objectContaining({
         type: 'CLOSE_SHORT',
-        profit: 9.44,
+        profit: round(
+          exitProfit({ entryPrice: 100, exitPrice: 90, direction: 'SHORT' }),
+        ),
       }),
     );
     expect(shortOrders[1].price).toBeCloseTo(90 * (1 + backtestSlippageRate));
@@ -151,15 +201,33 @@ describe('testConnector', () => {
 
     const result = await connector.getResult();
 
+    const expectedOpenProfit = openProfit(100, 'LONG');
+    const expectedTp1Profit = exitProfit({
+      entryPrice: 100,
+      exitPrice: 110,
+      direction: 'LONG',
+      qty: 0.5,
+    });
+    const expectedTp2Profit = exitProfit({
+      entryPrice: 100,
+      exitPrice: 120,
+      direction: 'LONG',
+      qty: 0.5,
+    });
+    const expectedTotalProfit =
+      expectedOpenProfit + expectedTp1Profit + expectedTp2Profit;
+
     expect(result.stat).toEqual({
-      amount: 114.14,
-      profit: 14.14,
+      amount: round(INITIAL_BACKTEST_AMOUNT + expectedTotalProfit),
+      profit: round(expectedTotalProfit),
       orders: 1,
     });
     expect(result.inlineOrderLog).toHaveLength(3);
     expect(result.inlinePositionLog).toHaveLength(1);
     expect(result.inlineOrderLog?.map(({ fee }) => fee)).toEqual([
-      0.20040000000000002, 0.10978, 0.11976,
+      fee(executionPrice(100, 'LONG', 'entry')),
+      fee(executionPrice(110, 'LONG', 'exit'), 0.5),
+      fee(executionPrice(120, 'LONG', 'exit'), 0.5),
     ]);
     expect(result.inlineOrderLog?.[0].signal).toEqual(
       expect.objectContaining({ signalId: 'sig-1' }),
@@ -226,18 +294,26 @@ describe('testConnector', () => {
 
     const result = await connector.getResult();
 
+    const expectedOpenProfit = openProfit(100, 'LONG');
+    const expectedCloseProfit = exitProfit({
+      entryPrice: 100,
+      exitPrice: 105,
+      direction: 'LONG',
+    });
+    const expectedTotalProfit = expectedOpenProfit + expectedCloseProfit;
+
     expect(result.stat).toEqual({
-      amount: 104.18,
-      profit: 4.18,
+      amount: round(INITIAL_BACKTEST_AMOUNT + expectedTotalProfit),
+      profit: round(expectedTotalProfit),
       orders: 1,
     });
     expect(result.inlineOrderLog?.[1]).toEqual(
       expect.objectContaining({
         type: 'CLOSE_LONG',
-        price: 104.79,
+        price: executionPrice(105, 'LONG', 'exit'),
         qty: 1,
-        fee: 0.20958000000000002,
-        profit: 4.38,
+        fee: fee(executionPrice(105, 'LONG', 'exit')),
+        profit: round(expectedCloseProfit),
       }),
     );
   });
@@ -274,26 +350,41 @@ describe('testConnector', () => {
       turnover: 1,
     });
 
+    const expectedEntryPrice = executionPrice(100, 'LONG', 'entry');
+    const expectedExitPrice = executionPrice(95, 'LONG', 'exit');
+    const expectedOpenProfit = openProfit(100, 'LONG');
+    const expectedExitProfit = exitProfit({
+      entryPrice: 100,
+      exitPrice: 95,
+      direction: 'LONG',
+    });
+    const expectedGrossProfit = expectedExitPrice - expectedEntryPrice;
+    const expectedOpenFee = fee(expectedEntryPrice);
+    const expectedCloseFee = fee(expectedExitPrice);
+    const expectedNetProfit = expectedOpenProfit + expectedExitProfit;
+
     expect(await connector.drainMlResultsBatch()).toEqual([
       {
         signalId: 'sig-stop',
-        profit: -5.78,
+        profit: round(expectedNetProfit),
         tradeResult: expect.objectContaining({
           signalId: 'sig-stop',
           direction: 'LONG',
           exitReason: 'stop_loss',
           requestedEntryPrice: 100,
-          entryPrice: 100.2,
+          entryPrice: expectedEntryPrice,
           requestedExitPrice: 95,
-          exitPrice: 94.81,
-          grossProfit: -5.39,
-          netProfit: -5.78,
-          openFee: 0.2,
-          closeFee: 0.19,
-          totalFee: 0.39,
-          entrySlippageCost: 0.2,
-          exitSlippageCost: 0.19,
-          totalSlippageCost: 0.39,
+          exitPrice: expectedExitPrice,
+          grossProfit: round(expectedGrossProfit),
+          netProfit: round(expectedNetProfit),
+          openFee: round(expectedOpenFee),
+          closeFee: round(expectedCloseFee),
+          totalFee: round(expectedOpenFee + expectedCloseFee),
+          entrySlippageCost: round(expectedEntryPrice - 100),
+          exitSlippageCost: round(95 - expectedExitPrice),
+          totalSlippageCost: round(
+            expectedEntryPrice - 100 + (95 - expectedExitPrice),
+          ),
         }),
       },
     ]);
@@ -301,8 +392,8 @@ describe('testConnector', () => {
 
     const result = await connector.getResult();
     expect(result.stat).toEqual({
-      amount: 94.22,
-      profit: -5.78,
+      amount: amountAfter(expectedOpenProfit, expectedExitProfit),
+      profit: round(expectedNetProfit),
       orders: 1,
     });
     expect(result.inlineOrderLog).toHaveLength(2);
@@ -340,18 +431,26 @@ describe('testConnector', () => {
 
     const result = await connector.getResult();
 
+    const expectedOpenProfit = openProfit(100, 'SHORT');
+    const expectedTpProfit = exitProfit({
+      entryPrice: 100,
+      exitPrice: 90,
+      direction: 'SHORT',
+    });
+    const expectedTotalProfit = expectedOpenProfit + expectedTpProfit;
+
     expect(result.stat).toEqual({
-      amount: 109.24,
-      profit: 9.24,
+      amount: round(INITIAL_BACKTEST_AMOUNT + expectedTotalProfit),
+      profit: round(expectedTotalProfit),
       orders: 1,
     });
     expect(result.inlineOrderLog?.[1]).toEqual(
       expect.objectContaining({
         type: 'TAKE_PROFIT_SHORT',
-        price: 90.18,
+        price: executionPrice(90, 'SHORT', 'exit'),
         qty: 1,
-        fee: 0.18036000000000002,
-        profit: 9.44,
+        fee: fee(executionPrice(90, 'SHORT', 'exit')),
+        profit: round(expectedTpProfit),
       }),
     );
   });
@@ -394,9 +493,17 @@ describe('testConnector', () => {
 
     const result = await connector.getResult();
 
+    const expectedOpenProfit = openProfit(100, 'LONG');
+    const expectedStopProfit = exitProfit({
+      entryPrice: 100,
+      exitPrice: 95,
+      direction: 'LONG',
+    });
+    const expectedTotalProfit = expectedOpenProfit + expectedStopProfit;
+
     expect(result.stat).toEqual({
-      amount: 94.22,
-      profit: -5.78,
+      amount: round(INITIAL_BACKTEST_AMOUNT + expectedTotalProfit),
+      profit: round(expectedTotalProfit),
       orders: 1,
     });
     expect(result.inlineOrderLog?.map(({ type }) => type)).toEqual([
@@ -457,8 +564,8 @@ describe('testConnector', () => {
       {
         symbol: 'ETHUSDT',
         qty: 1,
-        price: 100.2,
-        currentPrice: 100.2,
+        price: executionPrice(100, 'LONG', 'entry'),
+        currentPrice: executionPrice(100, 'LONG', 'entry'),
         unrealizedPnl: 0,
         direction: 'LONG',
       },
@@ -493,8 +600,18 @@ describe('testConnector', () => {
     expect(result.inlinePositionLog).toBeUndefined();
     expect(result.stat).toEqual(
       expect.objectContaining({
-        amount: 104.18,
-        netProfit: 4.18,
+        amount: amountAfter(
+          openProfit(100, 'LONG'),
+          exitProfit({ entryPrice: 100, exitPrice: 105, direction: 'LONG' }),
+        ),
+        netProfit: round(
+          openProfit(100, 'LONG') +
+            exitProfit({
+              entryPrice: 100,
+              exitPrice: 105,
+              direction: 'LONG',
+            }),
+        ),
         orders: 1,
         wins: 1,
         losses: 0,
@@ -529,16 +646,27 @@ describe('testConnector', () => {
       direction: 'LONG',
     });
 
+    const expectedOpenProfit = openProfit(100, 'LONG');
+    const expectedCloseProfit = exitProfit({
+      entryPrice: 100,
+      exitPrice: 105,
+      direction: 'LONG',
+    });
+    const expectedEntryPrice = executionPrice(100, 'LONG', 'entry');
+    const expectedExitPrice = executionPrice(105, 'LONG', 'exit');
+
     expect(await connector.drainMlResultsBatch()).toEqual([
       {
         signalId: 'sig-fast-ai',
-        profit: 4.18,
+        profit: round(expectedOpenProfit + expectedCloseProfit),
         tradeResult: expect.objectContaining({
           signalId: 'sig-fast-ai',
           exitReason: 'exit',
-          netProfit: 4.18,
-          totalFee: 0.41,
-          totalSlippageCost: 0.41,
+          netProfit: round(expectedOpenProfit + expectedCloseProfit),
+          totalFee: round(fee(expectedEntryPrice) + fee(expectedExitPrice)),
+          totalSlippageCost: round(
+            expectedEntryPrice - 100 + (105 - expectedExitPrice),
+          ),
         }),
       },
     ]);

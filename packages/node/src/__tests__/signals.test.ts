@@ -499,6 +499,7 @@ describe('signals', () => {
         interval: '15',
         direction: 'SHORT',
         orderStatus: 'failed',
+        orderQty: 1.23,
         orderFailureReason:
           'cannot set leverage [1000] gt maxLeverage [500] by risk limit',
         timestamp: 1_700_000_000_000,
@@ -521,6 +522,7 @@ describe('signals', () => {
     expect(message).toContain(
       'Reason: <code>cannot set leverage [1000] gt maxLeverage [500] by risk limit</code>',
     );
+    expect(message).toContain('Price: <b>0.047180</b>\nValue: <b>0.06$</b>');
   });
 
   it('omits shared market stats from Telegram signal card', () => {

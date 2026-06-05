@@ -428,10 +428,10 @@ describe('ByBitConnectorCreator', () => {
     expect(client.getTransactionLog).not.toHaveBeenCalled();
   });
 
-  it('returns false in placeOrder when normalized qty is below min', async () => {
+  it('uses minOrderQty in placeOrder when normalized qty is below min', async () => {
     const client = {
-      setLeverage: jest.fn(),
-      submitOrder: jest.fn(),
+      setLeverage: jest.fn().mockResolvedValue({}),
+      submitOrder: jest.fn().mockResolvedValue({ retCode: 0 }),
     };
     mockedGetClient.mockResolvedValue(client as any);
     mockedGetSymbolMeta.mockResolvedValue({
@@ -441,20 +441,39 @@ describe('ByBitConnectorCreator', () => {
       pricePrecision: 1,
       qtyPrecision: 3,
     });
-    mockedNormalizeQty.mockReturnValue({ qtyNum: 0.005, qtyStr: '0.005' });
+    mockedNormalizeQty.mockImplementation((qty) => ({
+      qtyNum: qty,
+      qtyStr: qty.toFixed(3),
+    }));
 
     const connector = await ByBitConnectorCreator({ userName: 'alice' });
+    const signal = {} as any;
     const ok = await connector.placeOrder({
       symbol: 'BTCUSDT',
       price: 100,
       qty: 0.005,
       direction: 'LONG',
       timestamp: Date.now(),
+      signal,
     } as any);
 
-    expect(ok).toBe(false);
-    expect(client.setLeverage).not.toHaveBeenCalled();
-    expect(client.submitOrder).not.toHaveBeenCalled();
+    expect(ok).toBe(true);
+    expect(client.setLeverage).toHaveBeenCalledTimes(1);
+    expect(client.submitOrder).toHaveBeenCalledWith(
+      expect.objectContaining({
+        symbol: 'BTCUSDT',
+        side: 'Buy',
+        qty: '0.010',
+      }),
+    );
+    expect(signal.orderQty).toBe(0.01);
+    expect(signal.orderValue).toBe(1);
+    expect(signal.orderFailureReason).toBeUndefined();
+    expect(mockedLoggerLog).toHaveBeenCalledWith(
+      'warn',
+      'placeOrder: qty below min, using minOrderQty: %s',
+      expect.stringContaining('"minOrderQty": 0.01'),
+    );
   });
 
   it('submits market order without TP/SL in the entry request', async () => {

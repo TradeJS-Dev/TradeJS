@@ -1,5 +1,11 @@
 import { TestConnectorCreator } from '..';
 import { setData } from '@tradejs/infra/redis';
+import { round } from '@tradejs/core/math';
+import {
+  BACKTEST_SLIPPAGE_PERCENT,
+  FEE_PERCENT,
+  INITIAL_BACKTEST_AMOUNT,
+} from '@tradejs/core/constants';
 
 jest.mock('@tradejs/infra/redis', () => ({
   setData: jest.fn(),
@@ -20,6 +26,47 @@ jest.mock('node:crypto', () => {
 });
 
 const mockedSetData = setData as jest.MockedFunction<typeof setData>;
+const executionPrice = (
+  price: number,
+  direction: 'LONG' | 'SHORT',
+  stage: 'entry' | 'exit',
+) => {
+  const sign =
+    direction === 'LONG'
+      ? stage === 'entry'
+        ? 1
+        : -1
+      : stage === 'entry'
+        ? -1
+        : 1;
+  return price * (1 + sign * BACKTEST_SLIPPAGE_PERCENT);
+};
+const fee = (price: number, qty = 1) => price * qty * FEE_PERCENT;
+const openProfit = (price: number, direction: 'LONG' | 'SHORT', qty = 1) =>
+  -fee(executionPrice(price, direction, 'entry'), qty);
+const exitProfit = ({
+  entryPrice,
+  exitPrice,
+  direction,
+  qty = 1,
+}: {
+  entryPrice: number;
+  exitPrice: number;
+  direction: 'LONG' | 'SHORT';
+  qty?: number;
+}) => {
+  const actualEntryPrice = executionPrice(entryPrice, direction, 'entry');
+  const actualExitPrice = executionPrice(exitPrice, direction, 'exit');
+  const grossProfit =
+    direction === 'LONG'
+      ? (actualExitPrice - actualEntryPrice) * qty
+      : (actualEntryPrice - actualExitPrice) * qty;
+  return grossProfit - fee(actualExitPrice, qty);
+};
+const amountAfter = (...profits: number[]) =>
+  round(
+    INITIAL_BACKTEST_AMOUNT + profits.reduce((sum, value) => sum + value, 0),
+  );
 
 const createBaseConnector = () =>
   ({
@@ -98,26 +145,42 @@ describe('TestConnectorCreator', () => {
       timestamp: 2_000,
     });
 
+    const expectedEntryPrice = executionPrice(100, 'LONG', 'entry');
+    const expectedExitPrice = executionPrice(110, 'LONG', 'exit');
+    const expectedOpenProfit = openProfit(100, 'LONG', 2);
+    const expectedExitProfit = exitProfit({
+      entryPrice: 100,
+      exitPrice: 110,
+      direction: 'LONG',
+      qty: 2,
+    });
+    const expectedGrossProfit = (expectedExitPrice - expectedEntryPrice) * 2;
+    const expectedOpenFee = fee(expectedEntryPrice, 2);
+    const expectedCloseFee = fee(expectedExitPrice, 2);
+    const expectedNetProfit = expectedOpenProfit + expectedExitProfit;
+
     await expect(connector.drainMlResultsBatch()).resolves.toEqual([
       {
         signalId: 'sig-1',
-        profit: 18.32,
+        profit: round(expectedNetProfit),
         tradeResult: expect.objectContaining({
           signalId: 'sig-1',
           direction: 'LONG',
           exitReason: 'take_profit',
           requestedEntryPrice: 100,
-          entryPrice: 100.2,
+          entryPrice: round(expectedEntryPrice),
           requestedExitPrice: 110,
-          exitPrice: 109.78,
-          grossProfit: 19.16,
-          netProfit: 18.32,
-          openFee: 0.4,
-          closeFee: 0.44,
-          totalFee: 0.84,
-          entrySlippageCost: 0.4,
-          exitSlippageCost: 0.44,
-          totalSlippageCost: 0.84,
+          exitPrice: round(expectedExitPrice),
+          grossProfit: round(expectedGrossProfit),
+          netProfit: round(expectedNetProfit),
+          openFee: round(expectedOpenFee),
+          closeFee: round(expectedCloseFee),
+          totalFee: round(expectedOpenFee + expectedCloseFee),
+          entrySlippageCost: round((expectedEntryPrice - 100) * 2),
+          exitSlippageCost: round((110 - expectedExitPrice) * 2),
+          totalSlippageCost: round(
+            (expectedEntryPrice - 100) * 2 + (110 - expectedExitPrice) * 2,
+          ),
         }),
       },
     ]);
@@ -129,8 +192,10 @@ describe('TestConnectorCreator', () => {
 
     expect(result.orderLogId).toBe('order-log-id');
     expect(result.stat.orders).toBe(1);
-    expect(result.stat.amount).toBe(118.32);
-    expect(result.stat.profit).toBe(18.32);
+    expect(result.stat.amount).toBe(
+      amountAfter(expectedOpenProfit, expectedExitProfit),
+    );
+    expect(result.stat.profit).toBe(round(expectedNetProfit));
 
     expect(mockedSetData).not.toHaveBeenCalled();
     expect(result.inlineOrderLog?.[0]?.signal?.indicators).toBeUndefined();
@@ -168,10 +233,19 @@ describe('TestConnectorCreator', () => {
     });
 
     const result = await connector.getResult();
+    const expectedOpenProfit = openProfit(100, 'SHORT');
+    const expectedStopProfit = exitProfit({
+      entryPrice: 100,
+      exitPrice: 105,
+      direction: 'SHORT',
+    });
+    const expectedNetProfit = expectedOpenProfit + expectedStopProfit;
 
     expect(result.stat.orders).toBe(1);
-    expect(result.stat.amount).toBe(94.18);
-    expect(result.stat.profit).toBe(-5.82);
+    expect(result.stat.amount).toBe(
+      amountAfter(expectedOpenProfit, expectedStopProfit),
+    );
+    expect(result.stat.profit).toBe(round(expectedNetProfit));
   });
 
   it('updates stop loss for an open position', async () => {
@@ -208,9 +282,18 @@ describe('TestConnectorCreator', () => {
     });
 
     const result = await connector.getResult();
+    const expectedOpenProfit = openProfit(100, 'LONG');
+    const expectedStopProfit = exitProfit({
+      entryPrice: 100,
+      exitPrice: 101,
+      direction: 'LONG',
+    });
+    const expectedNetProfit = expectedOpenProfit + expectedStopProfit;
 
-    expect(result.stat.amount).toBe(100.2);
-    expect(result.stat.profit).toBe(0.2);
+    expect(result.stat.amount).toBe(
+      amountAfter(expectedOpenProfit, expectedStopProfit),
+    );
+    expect(result.stat.profit).toBe(round(expectedNetProfit));
   });
 
   it('falls back to root user cache when userName is missing', async () => {
