@@ -269,7 +269,11 @@ export const buildLiquidityTailsGuardrailContext = ({
   }
 
   const reactionCloseDistancePct = signalContext.reactionCloseDistancePct ?? 0;
-  const requiredCloseAwayPct = direction === 'SHORT' ? 3 : 2;
+  const baseRequiredCloseAwayPct = direction === 'SHORT' ? 3 : 2;
+  const requiredCloseAwayPct =
+    primarySession === 'us'
+      ? Math.max(baseRequiredCloseAwayPct, 2.5)
+      : baseRequiredCloseAwayPct;
   const strongCloseAwayReaction =
     reactionCloseDistancePct >= requiredCloseAwayPct;
   const nonBullTrendContext = trendBias === 'bear' || trendBias === 'neutral';

@@ -211,6 +211,84 @@ describe('liquidityTailsAiAdapter', () => {
     });
   });
 
+  it('requires stronger close-away reaction for US long retests', () => {
+    const result = liquidityTailsAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makePayload(
+        {
+          signalDirection: 'LONG',
+          zoneKind: 'buy_pressure',
+          zoneHeight: 5,
+          zoneTouches: 2,
+          wickBodyRatio: 2.5,
+          wickDominanceRatio: 2,
+          retestPenetrationPct: 30,
+          reactionCloseDistancePct: 2.1,
+          reactionBodyAligned: true,
+        },
+        {
+          regime: {
+            session: { sessionPhase: 'us' },
+            trend: {
+              bias: 'bear',
+              adx: { adx: 35, strength: 'strong' },
+            },
+            momentum: { roc1h: 1.4, roc4h: 0.8 },
+          },
+        },
+      ),
+      analysis: {
+        direction: 'LONG',
+        quality: 5,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: null,
+      quality: 3,
+      approved: false,
+    });
+  });
+
+  it('approves US long retests after stronger close-away reaction', () => {
+    const result = liquidityTailsAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makePayload(
+        {
+          signalDirection: 'LONG',
+          zoneKind: 'buy_pressure',
+          zoneHeight: 5,
+          zoneTouches: 2,
+          wickBodyRatio: 2.5,
+          wickDominanceRatio: 2,
+          retestPenetrationPct: 30,
+          reactionCloseDistancePct: 2.6,
+          reactionBodyAligned: true,
+        },
+        {
+          regime: {
+            session: { sessionPhase: 'us' },
+            trend: {
+              bias: 'bear',
+              adx: { adx: 35, strength: 'strong' },
+            },
+            momentum: { roc1h: 1.4, roc4h: 0.8 },
+          },
+        },
+      ),
+      analysis: {
+        direction: 'LONG',
+        quality: 1,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: 'LONG',
+      quality: 5,
+      approved: true,
+    });
+  });
+
   it('requires stronger close-away reaction for short retests', () => {
     const result = liquidityTailsAiAdapter.postProcessAnalysis?.({
       signal: {} as any,
