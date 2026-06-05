@@ -41,9 +41,9 @@ describe('adaptiveTrendChannelAiAdapter', () => {
           floor: 97,
           halfChannel: 3,
           atr: 3,
-          breakoutDistancePct: 3.2,
+          breakoutDistancePct: 3.8,
           channelWidthPct: 6,
-          currentPrice: 103.2,
+          currentPrice: 103.8,
         },
         {
           regime: {
@@ -92,9 +92,9 @@ describe('adaptiveTrendChannelAiAdapter', () => {
           floor: 97,
           halfChannel: 3,
           atr: 3,
-          breakoutDistancePct: 3.2,
+          breakoutDistancePct: 3.8,
           channelWidthPct: 6,
-          currentPrice: 96.8,
+          currentPrice: 96.2,
         },
         {
           participation: {
@@ -210,9 +210,9 @@ describe('adaptiveTrendChannelAiAdapter', () => {
           floor: 97,
           halfChannel: 3,
           atr: 3,
-          breakoutDistancePct: 3.2,
+          breakoutDistancePct: 3.8,
           channelWidthPct: 6,
-          currentPrice: 103.2,
+          currentPrice: 103.8,
         },
         {
           regime: {
