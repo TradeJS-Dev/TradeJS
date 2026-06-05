@@ -35,6 +35,7 @@ type Scenario = {
     strategyName: string;
     config?: Record<string, unknown>;
     result?: unknown;
+    runtimeCloseEvents?: unknown[];
   }>;
 };
 
@@ -136,7 +137,7 @@ const loadScript = async (scenario: Scenario) => {
   const strategyCreatorMap = new Map<string, jest.Mock>();
   const strategyFnMap = new Map<string, jest.Mock>();
 
-  for (const { strategyName, result } of strategyEntries) {
+  for (const { strategyName, result, runtimeCloseEvents } of strategyEntries) {
     const strategySignal = {
       signalId: `${strategyName}-sig`,
       strategy: strategyName,
@@ -149,8 +150,17 @@ const loadScript = async (scenario: Scenario) => {
       indicators: {},
       additionalIndicators: {},
     };
-    const strategyFn = jest.fn(async () => result ?? strategySignal);
-    const strategyCreator = jest.fn(async () => strategyFn);
+    let strategyCreatorParams: any;
+    const strategyFn = jest.fn(async () => {
+      for (const event of runtimeCloseEvents ?? []) {
+        strategyCreatorParams?.onRuntimeClose?.(event);
+      }
+      return result ?? strategySignal;
+    });
+    const strategyCreator = jest.fn(async (params: any) => {
+      strategyCreatorParams = params;
+      return strategyFn;
+    });
     strategyFnMap.set(strategyName, strategyFn);
     strategyCreatorMap.set(strategyName, strategyCreator);
   }
@@ -162,6 +172,7 @@ const loadScript = async (scenario: Scenario) => {
   const update = jest.fn(async () => null);
   const makeScreenshots = jest.fn(async () => null);
   const sendToTG = jest.fn(async () => null);
+  const sendRuntimeCloseNotificationsToTG = jest.fn(async () => null);
   const loadTradejsConfig = jest.fn(async () => ({
     hooks: scenario.projectHooks ?? {},
   }));
@@ -273,6 +284,7 @@ const loadScript = async (scenario: Scenario) => {
     loadTradejsConfig,
     update,
     makeScreenshots,
+    sendRuntimeCloseNotificationsToTG,
     sendToTG,
   }));
 
@@ -337,6 +349,7 @@ const loadScript = async (scenario: Scenario) => {
       progressTick,
       redisKeys,
       runWithConcurrency,
+      sendRuntimeCloseNotificationsToTG,
       sendToTG,
       setData,
       setHashJsonField,
@@ -863,6 +876,62 @@ describe('signals script', () => {
     );
   });
 
+  it('sends runtime close notifications during the Telegram delivery stage', async () => {
+    const closeEvent = {
+      userName: 'root',
+      strategy: 'TrendLine',
+      openedByStrategy: 'TrendLine',
+      symbol: 'ETHUSDT',
+      direction: 'LONG',
+      code: 'CLOSE_BY_SIGNAL',
+      orderId: 'ord-1',
+      qty: 1,
+      entryPrice: 100,
+      entryTimestamp: CLOSED_1_TS,
+      exitPrice: 101,
+      exitTimestamp: CLOSED_2_TS,
+      closedPnl: 1,
+      exitType: 'exit',
+    };
+    const { signals, mocks } = await loadScript({
+      flags: {
+        timeframe: 15,
+        makeOrders: true,
+        notify: true,
+        skipScreenshots: true,
+        updateOnly: false,
+        cacheOnly: true,
+        showTickersList: false,
+        showSkipStats: false,
+        user: 'root',
+        connector: 'bybit',
+      },
+      strategyConfigs: [
+        {
+          strategyName: 'TrendLine',
+          result: 'CLOSE_BY_SIGNAL',
+          runtimeCloseEvents: [closeEvent],
+        },
+      ],
+    });
+
+    await signals();
+
+    expect(mocks.strategyCreatorMap.get('TrendLine')).toHaveBeenCalledWith(
+      expect.objectContaining({
+        onRuntimeClose: expect.any(Function),
+      }),
+    );
+    expect(mocks.sendToTG).toHaveBeenCalledWith([], '15', 'root');
+    expect(mocks.sendRuntimeCloseNotificationsToTG).toHaveBeenCalledWith(
+      [closeEvent],
+      'root',
+    );
+    expect(mocks.sendToTG.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.sendRuntimeCloseNotificationsToTG.mock.invocationCallOrder[0],
+    );
+  });
+
   it('skips screenshot generation when Telegram delivery is disabled', async () => {
     const { signals, mocks } = await loadScript({
       flags: {
@@ -883,6 +952,7 @@ describe('signals script', () => {
 
     expect(mocks.makeScreenshots).not.toHaveBeenCalled();
     expect(mocks.sendToTG).not.toHaveBeenCalled();
+    expect(mocks.sendRuntimeCloseNotificationsToTG).not.toHaveBeenCalled();
   });
 
   it('backfills derivatives context for signals and logs timings', async () => {

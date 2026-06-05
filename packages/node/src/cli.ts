@@ -37,11 +37,37 @@ import {
   ThresholdLevel,
   TestThresholdsKey,
   Signal,
+  RuntimeStrategyCloseNotification,
 } from '@tradejs/types';
 import { getTradejsProjectCwd } from './tradejsConfig';
 export { loadTradejsConfig } from './tradejsConfig';
 
 const getProjectRoot = (): string => getTradejsProjectCwd();
+
+const escapeHtml = (value?: string | number | null) =>
+  value == null
+    ? ''
+    : String(value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+
+const formatOptionalNumber = (value?: number | null) => {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return 'n/a';
+  }
+
+  const normalized = Number(value.toFixed(8));
+  return Number.isInteger(normalized) ? String(normalized) : String(normalized);
+};
+
+const formatOptionalTimestamp = (value?: number | null) => {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return 'n/a';
+  }
+
+  return new Date(value).toISOString();
+};
 
 const isEnoentError = (error: unknown) =>
   (error as NodeJS.ErrnoException | undefined)?.code === 'ENOENT';
@@ -324,6 +350,80 @@ export const sendToAI = async (signals: Signal[], userName = 'root') => {
       logger.error('Failed ask: %s', signal.symbol);
     } finally {
       bar.tick(1, { symbol: chalk.gray(signal.symbol) });
+    }
+  });
+
+  logger.info('');
+};
+
+export const formatRuntimeCloseNotification = (
+  event: RuntimeStrategyCloseNotification,
+  userName = event.userName ?? 'root',
+) => {
+  const ownership =
+    event.openedByStrategy === event.strategy
+      ? 'matched'
+      : `mismatch: opened by ${event.openedByStrategy}`;
+  const debugLines = [
+    `trade: <code>${escapeHtml(redisKeys.runtimeTrade(userName, event.orderId))}</code>`,
+    `orderId: <code>${escapeHtml(event.orderId)}</code>`,
+  ];
+  if (event.signalId) {
+    debugLines.push(`signalId: <code>${escapeHtml(event.signalId)}</code>`);
+  }
+
+  return [
+    '<b>Strategy self-close</b>',
+    `Symbol: <b>${escapeHtml(event.symbol)}</b>`,
+    `Strategy: <b>${escapeHtml(event.strategy)}</b>`,
+    `Direction: <b>${escapeHtml(event.direction)}</b>`,
+    `Reason: <code>${escapeHtml(event.code)}</code>`,
+    '',
+    `Opened by journal: <b>${escapeHtml(event.openedByStrategy)}</b>`,
+    `Ownership: <b>${escapeHtml(ownership)}</b>`,
+    '',
+    `Entry: <b>${escapeHtml(formatOptionalNumber(event.entryPrice))}</b> at <code>${escapeHtml(formatOptionalTimestamp(event.entryTimestamp))}</code>`,
+    `Exit: <b>${escapeHtml(formatOptionalNumber(event.exitPrice))}</b> at <code>${escapeHtml(formatOptionalTimestamp(event.exitTimestamp))}</code>`,
+    `Qty: <b>${escapeHtml(formatOptionalNumber(event.qty))}</b>`,
+    `Closed PnL: <b>${escapeHtml(formatOptionalNumber(event.closedPnl))}</b>`,
+    '',
+    '<b>Runtime journal</b>',
+    ...debugLines,
+  ].join('\n');
+};
+
+export const sendRuntimeCloseNotificationsToTG = async (
+  events: RuntimeStrategyCloseNotification[],
+  userName = 'root',
+) => {
+  logger.info(chalk.yellow('close messages:', events.length));
+
+  if (!events.length) {
+    logger.info('');
+    return;
+  }
+
+  const bar = new ProgressBar(
+    ':current/:total [:bar][:percent] :eta(s) :symbol',
+    {
+      total: events.length,
+      width: 30,
+    },
+  );
+
+  await runWithConcurrency(events, 1, async (event) => {
+    try {
+      await sendTextToTG(formatRuntimeCloseNotification(event, userName), {
+        userName,
+      });
+    } catch (err) {
+      logger.error(
+        'Failed close notification: %s %s',
+        event.symbol,
+        (err as Error)?.message || String(err),
+      );
+    } finally {
+      bar.tick(1, { symbol: chalk.gray(event.symbol) });
     }
   });
 

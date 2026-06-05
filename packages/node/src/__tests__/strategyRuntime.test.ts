@@ -227,7 +227,11 @@ const makeDecisionProtect = (overrides: Record<string, any> = {}) => ({
 const makeRuntime = async (
   decisionFactory: () => any,
   configOverrides: Record<string, any> = {},
-  options: { strategyName?: string; testConnector?: boolean } = {},
+  options: {
+    strategyName?: string;
+    testConnector?: boolean;
+    onRuntimeClose?: jest.Mock;
+  } = {},
 ) => {
   const strategyName = options.strategyName ?? 'TrendLine';
   mockResolveStrategyConfig.mockResolvedValue({
@@ -261,6 +265,7 @@ const makeRuntime = async (
     data: [],
     btcData: [],
     connector,
+    onRuntimeClose: options.onRuntimeClose,
   } as any);
 
   return { strategy, connector };
@@ -1400,15 +1405,35 @@ describe('strategyRuntime', () => {
   });
 
   it('returns exit code after successful closePosition execution', async () => {
-    const { strategy, connector } = await makeRuntime(() => ({
-      kind: 'exit',
-      code: 'CLOSE_BY_SIGNAL',
-      closePlan: {
-        price: 100,
-        timestamp: 1_700_000_123_000,
-        direction: 'LONG',
-      },
-    }));
+    const onRuntimeClose = jest.fn();
+    mockMarkRuntimeTradeClosed.mockResolvedValueOnce({
+      orderId: 'ord-1',
+      signalId: 'sig-1',
+      strategy: 'TrendLine',
+      symbol: 'ETHUSDT',
+      direction: 'LONG',
+      qty: 1,
+      entryPrice: 100,
+      entryTimestamp: 1_700_000_000_000,
+      status: 'closed',
+      exitPrice: 101,
+      exitTimestamp: 1_700_000_123_000,
+      closedPnl: 1,
+      exitType: 'exit',
+    });
+    const { strategy, connector } = await makeRuntime(
+      () => ({
+        kind: 'exit',
+        code: 'CLOSE_BY_SIGNAL',
+        closePlan: {
+          price: 100,
+          timestamp: 1_700_000_123_000,
+          direction: 'LONG',
+        },
+      }),
+      {},
+      { onRuntimeClose },
+    );
 
     const result = await strategy(
       { timestamp: 1 } as any,
@@ -1429,6 +1454,25 @@ describe('strategyRuntime', () => {
         exitType: 'exit',
       }),
     );
+    expect(onRuntimeClose).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userName: 'root',
+        strategy: 'TrendLine',
+        openedByStrategy: 'TrendLine',
+        symbol: 'ETHUSDT',
+        direction: 'LONG',
+        code: 'CLOSE_BY_SIGNAL',
+        orderId: 'ord-1',
+        signalId: 'sig-1',
+        qty: 1,
+        entryPrice: 100,
+        entryTimestamp: 1_700_000_000_000,
+        exitPrice: 101,
+        exitTimestamp: 1_700_000_123_000,
+        closedPnl: 1,
+        exitType: 'exit',
+      }),
+    );
     expect(result).toBe('CLOSE_BY_SIGNAL');
   });
 
@@ -1443,15 +1487,20 @@ describe('strategyRuntime', () => {
       entryTimestamp: 1_700_000_000_000,
       status: 'active',
     });
-    const { strategy, connector } = await makeRuntime(() => ({
-      kind: 'exit',
-      code: 'CLOSE_BY_SIGNAL',
-      closePlan: {
-        price: 100,
-        timestamp: 1_700_000_123_000,
-        direction: 'LONG',
-      },
-    }));
+    const onRuntimeClose = jest.fn();
+    const { strategy, connector } = await makeRuntime(
+      () => ({
+        kind: 'exit',
+        code: 'CLOSE_BY_SIGNAL',
+        closePlan: {
+          price: 100,
+          timestamp: 1_700_000_123_000,
+          direction: 'LONG',
+        },
+      }),
+      {},
+      { onRuntimeClose },
+    );
 
     const result = await strategy(
       { timestamp: 1 } as any,
@@ -1460,20 +1509,26 @@ describe('strategyRuntime', () => {
 
     expect(connector.closePosition).not.toHaveBeenCalled();
     expect(mockMarkRuntimeTradeClosed).not.toHaveBeenCalled();
+    expect(onRuntimeClose).not.toHaveBeenCalled();
     expect(result).toBe('CLOSE_BLOCKED_BY_FOREIGN_STRATEGY_POSITION');
   });
 
   it('blocks closePosition when runtime journal has no active trade for the symbol', async () => {
     mockGetActiveRuntimeTrade.mockResolvedValueOnce(null);
-    const { strategy, connector } = await makeRuntime(() => ({
-      kind: 'exit',
-      code: 'CLOSE_BY_SIGNAL',
-      closePlan: {
-        price: 100,
-        timestamp: 1_700_000_123_000,
-        direction: 'LONG',
-      },
-    }));
+    const onRuntimeClose = jest.fn();
+    const { strategy, connector } = await makeRuntime(
+      () => ({
+        kind: 'exit',
+        code: 'CLOSE_BY_SIGNAL',
+        closePlan: {
+          price: 100,
+          timestamp: 1_700_000_123_000,
+          direction: 'LONG',
+        },
+      }),
+      {},
+      { onRuntimeClose },
+    );
 
     const result = await strategy(
       { timestamp: 1 } as any,
@@ -1482,6 +1537,7 @@ describe('strategyRuntime', () => {
 
     expect(connector.closePosition).not.toHaveBeenCalled();
     expect(mockMarkRuntimeTradeClosed).not.toHaveBeenCalled();
+    expect(onRuntimeClose).not.toHaveBeenCalled();
     expect(result).toBe('CLOSE_BLOCKED_BY_UNTRACKED_POSITION');
   });
 

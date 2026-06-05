@@ -12,6 +12,7 @@ import {
   getTickers,
   loadTradejsConfig,
   makeScreenshots,
+  sendRuntimeCloseNotificationsToTG,
   sendToTG,
 } from '@tradejs/node/cli';
 import { runWithConcurrency } from '@tradejs/core/async';
@@ -27,7 +28,13 @@ import {
 import { getTimestamp } from '@tradejs/core/time';
 import { logger } from '@tradejs/infra/logger';
 import { redisKeys, setData, setHashJsonField } from '@tradejs/infra/redis';
-import { Connector, ConnectorCreator, Interval, Signal } from '@tradejs/types';
+import {
+  Connector,
+  ConnectorCreator,
+  Interval,
+  RuntimeStrategyCloseNotification,
+  Signal,
+} from '@tradejs/types';
 import {
   getRuntimeStorageDayKey,
   toRuntimeSignalBucketRef,
@@ -138,6 +145,7 @@ const findSignals = async (
   btcCoinbaseData: Awaited<ReturnType<Connector['kline']>>,
   runtimeStrategies: StrategyRuntimeConfig[],
   strategyStats: StrategySkipStatsMap,
+  runtimeCloseNotifications: RuntimeStrategyCloseNotification[],
 ): Promise<Signal[]> => {
   const currentTimestamp = getTimestamp();
   const strategySignals: Signal[] = [];
@@ -207,6 +215,9 @@ const findSignals = async (
         interval,
         makeOrders: flags.makeOrders,
       }),
+      onRuntimeClose: (event) => {
+        runtimeCloseNotifications.push(event);
+      },
     });
 
     const signal = await strategy(lastCandle, btcLastCandle);
@@ -307,6 +318,8 @@ const findSignals = async (
 export const signals = async () => {
   const startedAt = Date.now();
   const signals = new Array<Signal>();
+  const runtimeCloseNotifications =
+    new Array<RuntimeStrategyCloseNotification>();
   let status: 'completed' | 'failed' = 'completed';
   let projectHooks: TradejsConfigHooks | undefined;
   let afterSignalsHookContext: Omit<
@@ -472,6 +485,7 @@ export const signals = async () => {
         btcCoinbaseData,
         runtimeStrategies,
         strategyStats,
+        runtimeCloseNotifications,
       );
 
       if (strategySignals.length > 0) {
@@ -492,6 +506,10 @@ export const signals = async () => {
       }
 
       await sendToTG(telegramSignals, '15', flags.user);
+      await sendRuntimeCloseNotificationsToTG(
+        runtimeCloseNotifications,
+        flags.user,
+      );
     }
 
     logger.info(

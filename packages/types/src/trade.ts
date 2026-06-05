@@ -633,3 +633,21 @@ export interface RuntimeTradeRecord {
   aiAnalysis?: Partial<SignalAnalysis> | null;
   lastSyncedAt?: number;
 }
+
+export interface RuntimeStrategyCloseNotification {
+  userName?: string;
+  strategy: string;
+  openedByStrategy: string;
+  symbol: string;
+  direction: Direction;
+  code: string;
+  orderId: string;
+  signalId?: string;
+  qty: number;
+  entryPrice: number;
+  entryTimestamp: number;
+  exitPrice?: number | null;
+  exitTimestamp?: number | null;
+  closedPnl?: number | null;
+  exitType?: RuntimeTradeExitType | null;
+}

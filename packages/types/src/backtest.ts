@@ -9,6 +9,7 @@ import {
   KlineChartData,
   Order,
   OrderType,
+  RuntimeStrategyCloseNotification,
   RuntimeSignalEvaluationRecord,
 } from './trade';
 import { Signal } from './trade';
@@ -55,6 +56,7 @@ export interface StrategyCreatorParams {
   btcBinanceData?: KlineChartData;
   btcCoinbaseData?: KlineChartData;
   sharedIndicatorsReplayKey?: string;
+  onRuntimeClose?: (event: RuntimeStrategyCloseNotification) => void;
 }
 
 export interface StrategyCreator {

@@ -47,6 +47,7 @@ import {
   StrategyConfig,
   StrategyCreator,
   StrategyDecision,
+  RuntimeStrategyCloseNotification,
 } from '@tradejs/types';
 
 interface CreateStrategyRuntimeParams<TConfig extends StrategyConfig> {
@@ -473,6 +474,7 @@ const handleExitDecision = async ({
   symbol,
   decision,
   market,
+  onRuntimeClose,
   onRuntimeError,
 }: {
   connector: CreateStrategyCoreParams<StrategyConfig>['connector'];
@@ -481,6 +483,7 @@ const handleExitDecision = async ({
   symbol: string;
   decision: ExitDecision;
   market: HookCandleMarket;
+  onRuntimeClose?: (event: RuntimeStrategyCloseNotification) => void;
   onRuntimeError?: (params: {
     stage: StrategyHookStage;
     error: unknown;
@@ -489,6 +492,8 @@ const handleExitDecision = async ({
   }) => Promise<void>;
 }) => {
   try {
+    let activeTradeForClose: Awaited<ReturnType<typeof getActiveRuntimeTrade>> =
+      null;
     if (userName) {
       const activeTrade = await getActiveRuntimeTrade({ userName, symbol });
       if (!activeTrade) {
@@ -509,6 +514,8 @@ const handleExitDecision = async ({
         );
         return 'CLOSE_BLOCKED_BY_FOREIGN_STRATEGY_POSITION';
       }
+
+      activeTradeForClose = activeTrade;
     }
 
     await connector.closePosition({
@@ -517,7 +524,7 @@ const handleExitDecision = async ({
       timestamp: decision.closePlan.timestamp,
       direction: decision.closePlan.direction,
     });
-    await markRuntimeTradeClosed({
+    const closedTrade = await markRuntimeTradeClosed({
       userName,
       strategy: strategyName,
       symbol,
@@ -525,6 +532,35 @@ const handleExitDecision = async ({
       exitTimestamp: decision.closePlan.timestamp,
       exitType: 'exit',
     });
+    const trade = closedTrade ?? activeTradeForClose;
+    if (trade && strategyName) {
+      try {
+        onRuntimeClose?.({
+          userName,
+          strategy: strategyName,
+          openedByStrategy: trade.strategy,
+          symbol,
+          direction: trade.direction,
+          code: decision.code,
+          orderId: trade.orderId,
+          signalId: trade.signalId,
+          qty: trade.qty,
+          entryPrice: trade.entryPrice,
+          entryTimestamp: trade.entryTimestamp,
+          exitPrice: closedTrade?.exitPrice ?? decision.closePlan.price,
+          exitTimestamp:
+            closedTrade?.exitTimestamp ?? decision.closePlan.timestamp,
+          closedPnl: closedTrade?.closedPnl ?? trade.closedPnl ?? null,
+          exitType: closedTrade?.exitType ?? 'exit',
+        });
+      } catch (notificationError) {
+        logger.error(
+          'runtime close notification error: %s %s',
+          symbol,
+          notificationError,
+        );
+      }
+    }
   } catch (err) {
     await onRuntimeError?.({
       stage: 'closePosition',
@@ -813,6 +849,7 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
     btcCoinbaseData,
     connector,
     sharedIndicatorsReplayKey,
+    onRuntimeClose,
   }) => {
     const { config, isConfigFromBacktest } = await resolveStrategyConfig({
       strategyName,
@@ -1337,6 +1374,7 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
           symbol,
           decision,
           market,
+          onRuntimeClose,
           onRuntimeError: async ({
             stage,
             error,

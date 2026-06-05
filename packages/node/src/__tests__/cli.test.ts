@@ -241,6 +241,116 @@ describe('cli telegram notifications', () => {
     expect(progressTick).toHaveBeenCalledTimes(1);
   });
 
+  it('formats and sends runtime close notifications as text messages', async () => {
+    const progressTick = jest.fn();
+    const logger = {
+      info: jest.fn(),
+      error: jest.fn(),
+      warn: jest.fn(),
+    };
+    const sendTextToTG = jest.fn(async () => undefined);
+
+    jest.doMock('progress', () => ({
+      __esModule: true,
+      default: jest.fn().mockImplementation(() => ({
+        tick: progressTick,
+      })),
+    }));
+
+    jest.doMock('chalk', () => ({
+      __esModule: true,
+      default: {
+        yellow: (...values: unknown[]) => values.join(' '),
+        gray: (value: string) => value,
+      },
+    }));
+
+    jest.doMock('@tradejs/core/backtest', () => ({
+      getFormatted: jest.fn(),
+    }));
+
+    jest.doMock('@tradejs/core/tickers', () => ({
+      getTopTickers: jest.fn(),
+    }));
+
+    jest.doMock('@tradejs/core/time', () => ({
+      getTimestamp: jest.fn(() => 0),
+    }));
+
+    jest.doMock('@tradejs/infra/files', () => ({
+      getFiles: jest.fn(async () => []),
+    }));
+
+    jest.doMock('@tradejs/infra/logger', () => ({
+      logger,
+    }));
+
+    jest.doMock('@tradejs/infra/redis', () => ({
+      RedisWriteBlockedError: class RedisWriteBlockedError extends Error {},
+      delKeyWithOptions: jest.fn(),
+      getData: jest.fn(),
+      getKeys: jest.fn(async () => []),
+      redisKeys: {
+        runtimeTrade: (userName: string, orderId: string) =>
+          `users:${userName}:runtime:trade-records:${orderId}`,
+      },
+    }));
+
+    jest.doMock('../ai', () => ({
+      askAI: jest.fn(),
+    }));
+
+    jest.doMock('../screenshot', () => ({
+      screenDashboard: jest.fn(),
+    }));
+
+    jest.doMock('../signals', () => ({
+      sendSignal: jest.fn(),
+      sendSignalAnalysis: jest.fn(),
+      sendTextToTG,
+    }));
+
+    jest.doMock('../tradejsConfig', () => ({
+      getTradejsProjectCwd: jest.fn(() => '/tmp/tradejs'),
+    }));
+
+    const {
+      formatRuntimeCloseNotification,
+      sendRuntimeCloseNotificationsToTG,
+    } = require('../cli');
+    const event = {
+      userName: 'root',
+      strategy: 'TrendLine',
+      openedByStrategy: 'TrendLine',
+      symbol: 'ETHUSDT',
+      direction: 'LONG',
+      code: 'CLOSE_BY_SIGNAL',
+      orderId: 'ord-1',
+      signalId: 'sig-1',
+      qty: 1,
+      entryPrice: 100,
+      entryTimestamp: 1_700_000_000_000,
+      exitPrice: 101,
+      exitTimestamp: 1_700_000_123_000,
+      closedPnl: 1,
+      exitType: 'exit',
+    };
+
+    const message = formatRuntimeCloseNotification(event, 'root');
+    expect(message).toContain('Symbol: <b>ETHUSDT</b>');
+    expect(message).toContain('Strategy: <b>TrendLine</b>');
+    expect(message).toContain('Opened by journal: <b>TrendLine</b>');
+    expect(message).toContain('Ownership: <b>matched</b>');
+    expect(message).toContain(
+      'trade: <code>users:root:runtime:trade-records:ord-1</code>',
+    );
+
+    await sendRuntimeCloseNotificationsToTG([event], 'root');
+
+    expect(sendTextToTG).toHaveBeenCalledWith(message, { userName: 'root' });
+    expect(progressTick).toHaveBeenCalledTimes(1);
+  });
+
   it('requests LLM only for deliverable gate-mode signals before TG send', async () => {
     const logger = {
       info: jest.fn(),
