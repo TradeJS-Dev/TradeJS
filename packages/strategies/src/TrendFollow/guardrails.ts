@@ -148,7 +148,6 @@ const buildTrendFollowGateFeatures = ({
   signalContext,
   baseContext,
   prices,
-  highConvictionApprovalPocket,
   volumeStructureDirectionAligned,
   flushSupport,
   directionalCrowding,
@@ -156,7 +155,6 @@ const buildTrendFollowGateFeatures = ({
   signalContext: Partial<TrendFollowSignalContext>;
   baseContext?: BaseStrategyContextSnapshot | null;
   prices?: TrendFollowSignalPrices | null;
-  highConvictionApprovalPocket: boolean;
   volumeStructureDirectionAligned: boolean | null;
   flushSupport: boolean;
   directionalCrowding: boolean;
@@ -312,32 +310,9 @@ const buildTrendFollowGateFeatures = ({
   const targetVsBtcBeta20 = asFiniteNumber(
     baseContext?.relative?.targetVsBtc?.betaToBtc20,
   );
-  const legacyCadencePocket =
-    highConvictionApprovalPocket &&
+  const relativeBetaStopDistancePocket =
     setupStopDistanceAtr != null &&
-    setupStopDistanceAtr >= 1.15 &&
-    setupTpDistanceAtr != null &&
-    setupTpDistanceAtr >= 1.5;
-  const strongBreakoutCadencePocket =
-    legacyCadencePocket && breakoutBodyAtr != null && breakoutBodyAtr >= 1.5;
-  const shortRelativeBetaContinuationPocket =
-    direction === 'SHORT' &&
-    setupStopDistanceAtr != null &&
-    setupStopDistanceAtr >= 1.5 &&
-    setupStopDistanceAtr < 2 &&
-    setupTpDistanceAtr != null &&
-    setupTpDistanceAtr >= 2 &&
-    setupTpDistanceAtr < 3 &&
-    targetVsBtcBeta20 != null &&
-    targetVsBtcBeta20 >= 1.25;
-  const longRelativeBetaContinuationPocket =
-    direction === 'LONG' &&
-    setupStopDistanceAtr != null &&
-    setupStopDistanceAtr >= 1.5 &&
-    setupStopDistanceAtr < 2 &&
-    setupTpDistanceAtr != null &&
-    setupTpDistanceAtr >= 2 &&
-    setupTpDistanceAtr < 3 &&
+    setupStopDistanceAtr < 2.5 &&
     targetVsBtcBeta20 != null &&
     targetVsBtcBeta20 >= 1.25;
 
@@ -356,10 +331,7 @@ const buildTrendFollowGateFeatures = ({
     marketBreadthContinuation,
     marketBreadthDispersion: asFiniteNumber(marketBreadth?.dispersion),
     targetVsBtcBeta20,
-    highQualityCadencePocket:
-      strongBreakoutCadencePocket ||
-      shortRelativeBetaContinuationPocket ||
-      longRelativeBetaContinuationPocket,
+    highQualityCadencePocket: relativeBetaStopDistancePocket,
   };
 };
 
@@ -493,7 +465,6 @@ export const buildTrendFollowGuardrailContext = ({
     signalContext,
     baseContext,
     prices,
-    highConvictionApprovalPocket,
     volumeStructureDirectionAligned,
     flushSupport,
     directionalCrowding,

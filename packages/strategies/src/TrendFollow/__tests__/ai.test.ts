@@ -75,6 +75,9 @@ describe('trendFollowAiAdapter', () => {
               riskFlags: ['long_liquidation_spike'],
             },
           },
+          relative: {
+            targetVsBtc: { betaToBtc20: 1.35 },
+          },
         },
       ),
       analysis: {
@@ -406,6 +409,64 @@ describe('trendFollowAiAdapter', () => {
     });
   });
 
+  it('rejects relative beta continuation pockets with wide stop distance', () => {
+    const payload = makePayload(
+      {
+        signalDirection: 'SHORT',
+        entryLevel: 100,
+        trailStop: 104,
+        atr: 1.2,
+        pivotKind: 'low',
+        breakoutDistancePct: 0.8,
+        distanceToStopPct: 2,
+        currentPrice: 99,
+      },
+      {
+        raw: {
+          volatility: { atr: 1.2 },
+        },
+        regime: {
+          momentum: { rsi: 32 },
+        },
+        participation: {
+          volume: { volumeRel20: 1.6 },
+          volumeStructure: { totalDownVolumeShare: 0.55 },
+          delta: { deltaDivergenceVsPrice: 'none' },
+        },
+        structure: {
+          localRange: { breakoutState: 'below_low_level' },
+        },
+        relative: {
+          targetVsBtc: { betaToBtc20: 1.35 },
+        },
+      },
+    );
+
+    payload.signal.prices = {
+      currentPrice: 100,
+      takeProfitPrice: 97.4,
+      stopLossPrice: 103.2,
+    };
+
+    const result = trendFollowAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload,
+      analysis: {
+        direction: 'SHORT',
+        quality: 5,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: null,
+      quality: 4,
+      approved: false,
+    });
+    expect((result as any)?.rejectReason).toContain(
+      'outside_high_conviction_cadence_pocket',
+    );
+  });
+
   it('downgrades adverse delta and weak volume structure', () => {
     const result = trendFollowAiAdapter.postProcessAnalysis?.({
       signal: {} as any,
@@ -484,6 +545,9 @@ describe('trendFollowAiAdapter', () => {
               directionAligned: true,
               riskFlags: ['long_liquidation_spike'],
             },
+          },
+          relative: {
+            targetVsBtc: { betaToBtc20: 1.35 },
           },
         },
       ),

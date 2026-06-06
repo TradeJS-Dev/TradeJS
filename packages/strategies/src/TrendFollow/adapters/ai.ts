@@ -123,7 +123,7 @@ Interpretation rules for TrendFollow:
 - The ATR trailing stop is the structural invalidation line and also updates while a position is open.
 - Prefer breakouts aligned with shared market context and backed by participation.
 - Late, thin, crowded, inside-range, adverse-delta, weak-momentum, or weak-volume-structure breakouts should be downgraded even if the pivot cross is valid.
-- Live approval is reserved for the high-conviction cadence pocket; other structurally valid breakouts remain watch mode.
+- Live approval is reserved for the relative-beta compact-stop cadence pocket; other structurally valid breakouts remain watch mode.
 - Treat deterministicQuality and approvalAllowedNow as the local normalized gate result.
 `.trim();
   },
