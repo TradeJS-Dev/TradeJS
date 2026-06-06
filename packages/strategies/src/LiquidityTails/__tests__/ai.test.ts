@@ -289,6 +289,98 @@ describe('liquidityTailsAiAdapter', () => {
     });
   });
 
+  it('blocks aligned derivatives reversals without flush support', () => {
+    const result = liquidityTailsAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makePayload(
+        {
+          signalDirection: 'LONG',
+          zoneKind: 'buy_pressure',
+          zoneHeight: 5,
+          zoneTouches: 2,
+          wickBodyRatio: 2.5,
+          wickDominanceRatio: 2,
+          retestPenetrationPct: 30,
+          reactionCloseDistancePct: 2.6,
+          reactionBodyAligned: true,
+        },
+        {
+          regime: {
+            trend: {
+              bias: 'bear',
+              adx: { adx: 35, strength: 'strong' },
+            },
+            momentum: { roc1h: 1.4, roc4h: 0.8 },
+          },
+          derivatives: {
+            summary: {
+              pressure: 'neutral',
+              directionAligned: true,
+              riskFlags: [],
+            },
+          },
+        },
+      ),
+      analysis: {
+        direction: 'LONG',
+        quality: 5,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: null,
+      quality: 1,
+      approved: false,
+      rejectReason: 'derivatives_reversal_aligned',
+    });
+  });
+
+  it('blocks conflicting derivatives reversals without flush support', () => {
+    const result = liquidityTailsAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makePayload(
+        {
+          signalDirection: 'SHORT',
+          zoneKind: 'sell_pressure',
+          zoneHeight: 5,
+          zoneTouches: 2,
+          wickBodyRatio: 2.5,
+          wickDominanceRatio: 2,
+          retestPenetrationPct: 30,
+          reactionCloseDistancePct: 3.1,
+          reactionBodyAligned: true,
+        },
+        {
+          regime: {
+            trend: {
+              bias: 'neutral',
+              adx: { adx: 35, strength: 'strong' },
+            },
+            momentum: { roc1h: -1.4, roc4h: 0.8 },
+          },
+          derivatives: {
+            summary: {
+              pressure: 'neutral',
+              directionAligned: false,
+              riskFlags: [],
+            },
+          },
+        },
+      ),
+      analysis: {
+        direction: 'SHORT',
+        quality: 5,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: null,
+      quality: 1,
+      approved: false,
+    });
+    expect(result?.rejectReason).toContain('derivatives_reversal_conflict');
+  });
+
   it('requires stronger close-away reaction for short retests', () => {
     const result = liquidityTailsAiAdapter.postProcessAnalysis?.({
       signal: {} as any,

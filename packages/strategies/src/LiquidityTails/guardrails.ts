@@ -255,6 +255,12 @@ export const buildLiquidityTailsGuardrailContext = ({
         ? derivativesRiskFlags.includes('crowded_short')
         : false;
 
+  if (derivativesDirectionAligned === true && !flushSupport) {
+    hardBlockReasons.push('derivatives_reversal_aligned');
+  }
+  if (derivativesDirectionAligned === false && !flushSupport) {
+    hardBlockReasons.push('derivatives_reversal_conflict');
+  }
   if (volumeRel20 != null && volumeRel20 < 0.75) {
     softBlockReasons.push('thin_participation');
   }
