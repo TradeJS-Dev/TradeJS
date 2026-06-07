@@ -378,7 +378,9 @@ describe('liquidityTailsAiAdapter', () => {
       quality: 1,
       approved: false,
     });
-    expect(result?.rejectReason).toContain('derivatives_reversal_conflict');
+    expect(
+      (result as { rejectReason?: string } | undefined)?.rejectReason,
+    ).toContain('derivatives_reversal_conflict');
   });
 
   it('requires stronger close-away reaction for short retests', () => {
