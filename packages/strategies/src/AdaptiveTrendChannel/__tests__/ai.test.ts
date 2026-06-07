@@ -41,16 +41,16 @@ describe('adaptiveTrendChannelAiAdapter', () => {
           floor: 97,
           halfChannel: 3,
           atr: 3,
-          breakoutDistancePct: 3.8,
+          breakoutDistancePct: 4.2,
           channelWidthPct: 6,
-          currentPrice: 103.8,
+          currentPrice: 104.2,
         },
         {
           regime: {
             trend: { bias: 'bull' },
           },
           participation: {
-            volume: { volumeRel20: 5 },
+            volume: { volumeRel20: 7 },
           },
           structure: {
             localRange: { breakoutState: 'above_high_level' },
@@ -92,13 +92,13 @@ describe('adaptiveTrendChannelAiAdapter', () => {
           floor: 97,
           halfChannel: 3,
           atr: 3,
-          breakoutDistancePct: 3.8,
+          breakoutDistancePct: 4.2,
           channelWidthPct: 6,
-          currentPrice: 96.2,
+          currentPrice: 95.8,
         },
         {
           participation: {
-            volume: { volumeRel20: 5 },
+            volume: { volumeRel20: 7 },
           },
           structure: {
             localRange: { breakoutState: 'below_low_level' },
@@ -175,7 +175,7 @@ describe('adaptiveTrendChannelAiAdapter', () => {
             },
           },
           participation: {
-            volume: { volumeRel20: 5 },
+            volume: { volumeRel20: 7 },
           },
           structure: {
             localRange: { breakoutState: 'above_high_level' },
@@ -210,9 +210,9 @@ describe('adaptiveTrendChannelAiAdapter', () => {
           floor: 97,
           halfChannel: 3,
           atr: 3,
-          breakoutDistancePct: 3.8,
+          breakoutDistancePct: 4.2,
           channelWidthPct: 6,
-          currentPrice: 103.8,
+          currentPrice: 104.2,
         },
         {
           regime: {
@@ -221,7 +221,7 @@ describe('adaptiveTrendChannelAiAdapter', () => {
             },
           },
           participation: {
-            volume: { volumeRel20: 5 },
+            volume: { volumeRel20: 7 },
           },
           structure: {
             localRange: { breakoutState: 'above_high_level' },

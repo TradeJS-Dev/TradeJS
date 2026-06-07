@@ -50,11 +50,11 @@ const isDirectionAligned = ({
       ? value === bearishValue
       : false;
 
-const MIN_APPROVAL_BREAKOUT_DISTANCE_PCT = 3.6;
-const MIN_HIGH_CONFIDENCE_BREAKOUT_DISTANCE_PCT = 3.6;
+const MIN_APPROVAL_BREAKOUT_DISTANCE_PCT = 4;
+const MIN_HIGH_CONFIDENCE_BREAKOUT_DISTANCE_PCT = 4;
 const MIN_APPROVAL_CHANNEL_WIDTH_PCT = 1.6;
 const MIN_HIGH_CONFIDENCE_CHANNEL_WIDTH_PCT = 2;
-const MIN_APPROVAL_VOLUME_REL20 = 4;
+const MIN_APPROVAL_VOLUME_REL20 = 6;
 
 export const buildAdaptiveTrendChannelGuardrailContext = ({
   signalContext,
