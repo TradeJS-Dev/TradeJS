@@ -89,4 +89,51 @@ describe('executionSlippage utils', () => {
       }),
     ).toBe(19);
   });
+
+  it('ignores stale and unavailable target venue spreads', () => {
+    expect(
+      extractExecutionSpreadBps({
+        additionalIndicators: {
+          marketContext: {
+            execution: {
+              targetVenue: {
+                available: false,
+                spreadBps: 200,
+              },
+            },
+          },
+          baseContext: {
+            relative: {
+              execution: {
+                targetVenue: {
+                  stale: true,
+                  spreadBps: 150,
+                },
+              },
+            },
+          },
+        },
+      }),
+    ).toBeNull();
+
+    expect(
+      extractExecutionSpreadBps({
+        additionalIndicators: {
+          executionSlippage: {
+            spreadBps: 12,
+          },
+          baseContext: {
+            relative: {
+              execution: {
+                targetVenue: {
+                  stale: true,
+                  spreadBps: 150,
+                },
+              },
+            },
+          },
+        },
+      }),
+    ).toBe(12);
+  });
 });
