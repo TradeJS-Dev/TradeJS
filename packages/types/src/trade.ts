@@ -114,6 +114,80 @@ export interface DerivativesContext extends DerivativesSymbolContext {
   referenceContexts?: Record<string, DerivativesSymbolContext>;
 }
 
+export type OnchainPressure =
+  | 'accumulation'
+  | 'distribution'
+  | 'neutral'
+  | 'unknown';
+
+export type OnchainContextRiskFlag =
+  | 'missing_onchain'
+  | 'stale_onchain'
+  | 'whale_accumulation'
+  | 'whale_distribution'
+  | 'smart_money_accumulation'
+  | 'smart_money_distribution'
+  | 'cex_deposit_spike'
+  | 'cex_withdrawal_spike'
+  | 'low_confidence';
+
+export interface OnchainIntervalContext {
+  interval: MarketFeatureInterval;
+  asOfTs: number | null;
+  stale: boolean;
+  points: number;
+  whaleNetFlowUsd: number | null;
+  smartTraderNetFlowUsd: number | null;
+  cexDepositUsd: number | null;
+  cexWithdrawUsd: number | null;
+  cexNetFlowUsd: number | null;
+  dexBuyUsd: number | null;
+  dexSellUsd: number | null;
+  dexNetBuyUsd: number | null;
+  entityCount: number | null;
+  confidenceWeightedBias: number | null;
+  netFlowUsd1h: number | null;
+  netFlowUsd4h: number | null;
+  cexDepositSpikeRatio: number | null;
+  cexWithdrawalSpikeRatio: number | null;
+}
+
+export interface OnchainSymbolContext {
+  source: 'arkham';
+  symbol: string;
+  timestamp: number;
+  intervals: Partial<Record<MarketFeatureInterval, OnchainIntervalContext>>;
+  summary: {
+    pressure: OnchainPressure;
+    directionAligned: boolean | null;
+    riskFlags: OnchainContextRiskFlag[];
+    confidenceWeightedBias: number | null;
+    netFlowUsd: number | null;
+  };
+}
+
+export interface OnchainContext extends OnchainSymbolContext {
+  targetSymbol?: string;
+  primaryReferenceSymbol?: string;
+  referenceSymbols?: string[];
+  referenceContexts?: Record<string, OnchainSymbolContext>;
+}
+
+export type OnchainFlowRow = {
+  symbol: string;
+  interval: MarketFeatureInterval;
+  ts: Date;
+  whaleNetFlowUsd?: number | null;
+  smartTraderNetFlowUsd?: number | null;
+  cexDepositUsd?: number | null;
+  cexWithdrawUsd?: number | null;
+  dexBuyUsd?: number | null;
+  dexSellUsd?: number | null;
+  entityCount?: number | null;
+  confidenceWeightedBias?: number | null;
+  source?: 'arkham' | string | null;
+};
+
 export type SpreadRow = {
   symbol: string;
   interval: DerivativesInterval;

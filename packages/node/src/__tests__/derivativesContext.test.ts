@@ -151,6 +151,16 @@ describe('strategyHelpers/derivativesContext', () => {
       enrichedSignal.additionalIndicators.baseContext.derivatives.summary
         .priceOiDivergenceType,
     ).toBe('price_up_oi_up');
+    expect(
+      enrichedSignal.additionalIndicators.baseContext.gateFeatures,
+    ).toMatchObject({
+      scores: {
+        derivatives: expect.any(Number),
+      },
+      confirmations: {
+        items: expect.arrayContaining(['derivatives_aligned']),
+      },
+    });
   });
 
   it('uses BTC as the primary derivatives context for non-reference symbols', async () => {

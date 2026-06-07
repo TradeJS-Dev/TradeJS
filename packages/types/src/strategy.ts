@@ -10,6 +10,7 @@ import {
   Tp,
   Candle,
   DerivativesContext,
+  OnchainContext,
   MarketDepthLevelSummary,
   MarketFeatureInterval,
 } from './trade';
@@ -713,6 +714,7 @@ export type BaseGateFeatureScoreKey =
   | 'mtf'
   | 'execution'
   | 'derivatives'
+  | 'onchain'
   | 'totalContext';
 
 export type BaseGateFeatureConfirmation =
@@ -730,7 +732,8 @@ export type BaseGateFeatureConfirmation =
   | 'liquidity_sweep_aligned'
   | 'order_book_aligned'
   | 'reference_order_book_aligned'
-  | 'derivatives_aligned';
+  | 'derivatives_aligned'
+  | 'onchain_aligned';
 
 export type BaseGateFeatureConflict =
   | 'mtf_against'
@@ -751,7 +754,10 @@ export type BaseGateFeatureConflict =
   | 'order_book_against'
   | 'reference_order_book_against'
   | 'derivatives_against'
-  | 'derivatives_crowded';
+  | 'derivatives_crowded'
+  | 'onchain_against'
+  | 'onchain_distribution'
+  | 'onchain_low_confidence';
 
 export type BaseGateFeatureRiskLevel = 'low' | 'medium' | 'high' | 'unknown';
 
@@ -765,7 +771,8 @@ export type BaseGateFeaturePrimaryIssue =
   | 'bad_execution'
   | 'market_context_against'
   | 'extreme_volatility'
-  | 'crowded_derivatives';
+  | 'crowded_derivatives'
+  | 'onchain_conflict';
 
 export interface BaseContextGateFeatures {
   direction: Direction | null;
@@ -892,6 +899,18 @@ export interface BaseContextGateFeatures {
     referenceOrderBookImbalance: number | null;
     referenceOrderBookImbalanceAligned: boolean | null;
   };
+  onchain?: {
+    pressure: 'accumulation' | 'distribution' | 'neutral' | 'unknown';
+    directionAligned: boolean | null;
+    riskFlags: string[];
+    confidenceWeightedBias: number | null;
+    netFlowUsd: number | null;
+    whaleNetFlowUsd: number | null;
+    smartTraderNetFlowUsd: number | null;
+    cexNetFlowUsd: number | null;
+    dexNetBuyUsd: number | null;
+    stale: boolean | null;
+  };
 }
 
 export interface BaseStrategyContextSnapshot {
@@ -903,6 +922,7 @@ export interface BaseStrategyContextSnapshot {
   participation: BaseParticipationContext;
   relative: BaseRelativeContext;
   derivatives?: DerivativesContext | null;
+  onchain?: OnchainContext | null;
   mtf: BaseMultiTimeframeContext;
   gateFeatures?: BaseContextGateFeatures;
 }

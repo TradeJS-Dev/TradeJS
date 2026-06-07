@@ -1,6 +1,12 @@
 import { binanceCoinbaseSpreadProvider } from './binanceCoinbaseSpread';
 import { coinalyzeProvider } from './coinalyze';
 import { MarketDataProvider, MarketDataProviderName } from './types';
+export {
+  fetchArkhamOnchainWindow,
+  parseArkhamSymbolTokenIds,
+  resolveArkhamTokenId,
+  type ArkhamOnchainWindowParams,
+} from './arkham';
 
 export const marketDataProviders: Record<
   MarketDataProviderName,

@@ -25,6 +25,7 @@ import {
 import { enrichSignalWithDerivativesContext } from './derivativesContext';
 import { enrichSignalWithBinanceMarketContext } from './binanceMarketContext';
 import { enrichSignalWithGlobalMarketContext } from './globalMarketContext';
+import { enrichSignalWithOnchainContext } from './onchainContext';
 
 interface EnrichSignalWithMlAiParams {
   signal: Signal;
@@ -217,6 +218,7 @@ export const enrichSignalWithMlAi = async ({
   await enrichSignalWithBinanceMarketContext({ signal, env });
   await enrichSignalWithGlobalMarketContext({ signal, env });
   await enrichSignalWithDerivativesContext({ signal, env });
+  await enrichSignalWithOnchainContext({ signal, env });
   await enrichSignalWithMl({ signal, env, ml });
   return enrichSignalWithAi({ signal, userName, symbol, direction, env, ai });
 };

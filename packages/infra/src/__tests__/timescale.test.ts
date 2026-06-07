@@ -570,4 +570,124 @@ describe('timescale candle helpers', () => {
       ['BTCUSDT', '15m', atMs],
     );
   });
+
+  it('upserts normalized onchain flow rows', async () => {
+    const query = jest.fn().mockResolvedValue({ rows: [] });
+
+    jest.doMock('pg', () => ({
+      Pool: jest.fn().mockImplementation(() => ({
+        connect: jest.fn(),
+        query,
+      })),
+    }));
+
+    const { upsertOnchainFlowRows } = await import('@tradejs/infra/timescale');
+
+    await upsertOnchainFlowRows([
+      {
+        symbol: 'ethusdt',
+        interval: '15m',
+        ts: new Date(1_000),
+        whaleNetFlowUsd: 1000,
+        smartTraderNetFlowUsd: 500,
+        cexDepositUsd: 100,
+        cexWithdrawUsd: 900,
+        dexBuyUsd: 300,
+        dexSellUsd: 50,
+        entityCount: 4,
+        confidenceWeightedBias: 0.6,
+        source: 'arkham',
+      },
+    ]);
+
+    const insertCall = query.mock.calls.find((call) =>
+      String(call[0]).includes('INSERT INTO onchain_flow_context'),
+    );
+    expect(insertCall).toBeTruthy();
+    expect(insertCall?.[0]).toContain(
+      'ON CONFLICT (symbol, interval, ts) DO UPDATE SET',
+    );
+    expect(insertCall?.[1]).toEqual([
+      'ETHUSDT',
+      '15m',
+      new Date(1_000),
+      1000,
+      500,
+      100,
+      900,
+      300,
+      50,
+      4,
+      0.6,
+      'arkham',
+    ]);
+  });
+
+  it('reads onchain context windows and maps SQL columns', async () => {
+    const query = jest.fn().mockImplementation((sql: string) => {
+      if (sql.includes('FROM onchain_flow_context')) {
+        return {
+          rows: [
+            {
+              symbol: 'ETHUSDT',
+              interval: '15m',
+              ts: new Date(2_000),
+              whale_net_flow_usd: 1000,
+              smart_trader_net_flow_usd: 500,
+              cex_deposit_usd: 100,
+              cex_withdraw_usd: 900,
+              dex_buy_usd: 300,
+              dex_sell_usd: 50,
+              entity_count: 4,
+              confidence_weighted_bias: 0.6,
+              source: 'arkham',
+            },
+          ],
+        };
+      }
+      return { rows: [] };
+    });
+
+    jest.doMock('pg', () => ({
+      Pool: jest.fn().mockImplementation(() => ({
+        connect: jest.fn(),
+        query,
+      })),
+    }));
+
+    const { getOnchainContextWindow } = await import(
+      '@tradejs/infra/timescale'
+    );
+
+    await expect(
+      getOnchainContextWindow({
+        symbol: 'ethusdt',
+        intervals: ['15m', '1h'],
+        endMs: 10_000,
+        lookbackMs: 5_000,
+      }),
+    ).resolves.toEqual({
+      '15m': [
+        {
+          symbol: 'ETHUSDT',
+          interval: '15m',
+          ts: new Date(2_000),
+          whaleNetFlowUsd: 1000,
+          smartTraderNetFlowUsd: 500,
+          cexDepositUsd: 100,
+          cexWithdrawUsd: 900,
+          dexBuyUsd: 300,
+          dexSellUsd: 50,
+          entityCount: 4,
+          confidenceWeightedBias: 0.6,
+          source: 'arkham',
+        },
+      ],
+    });
+
+    const selectCall = query.mock.calls.find((call) =>
+      String(call[0]).includes('FROM onchain_flow_context'),
+    );
+    expect(selectCall?.[1]).toEqual(['ETHUSDT', ['15m', '1h'], 5_000, 10_000]);
+  });
 });

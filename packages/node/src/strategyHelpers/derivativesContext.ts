@@ -2,6 +2,7 @@ import {
   buildDerivativesContext,
   normalizeDerivativesIntervals,
 } from '@tradejs/core/indicators';
+import { refreshSignalBaseContextGateFeatures } from '@tradejs/core/strategies';
 import { DERIVATIVES_CONTEXT_REFERENCE_SYMBOLS } from '@tradejs/core/constants';
 import { getDerivativesWindow } from '@tradejs/infra/timescale';
 import { logger } from '@tradejs/infra/logger';
@@ -180,6 +181,7 @@ export const enrichSignalWithDerivativesContext = async (params: {
             }
           : signal.additionalIndicators?.baseContext,
     };
+    refreshSignalBaseContextGateFeatures(signal);
     return true;
   } catch (error) {
     derivativesContextUnavailable = true;

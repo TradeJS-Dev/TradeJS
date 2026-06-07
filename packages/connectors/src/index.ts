@@ -76,7 +76,11 @@ export const getConnectorCreatorByProvider = (
 
 export { spotKlineProviders } from './marketData/spotKlineProviders';
 export {
+  fetchArkhamOnchainWindow,
   marketDataProviders,
+  parseArkhamSymbolTokenIds,
+  resolveArkhamTokenId,
+  type ArkhamOnchainWindowParams,
   type MarketDataProvider,
   type MarketDataProviderName,
 } from './marketData/providers';

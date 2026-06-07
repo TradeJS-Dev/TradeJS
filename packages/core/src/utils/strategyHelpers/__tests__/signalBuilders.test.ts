@@ -671,4 +671,87 @@ describe('buildStrategySignal', () => {
       },
     });
   });
+
+  it('projects onchain context into gate features', () => {
+    const signal = buildStrategySignal({
+      signalId: 's-onchain',
+      strategy: 'TrendShift',
+      symbol: 'ETHUSDT',
+      interval: '15' as any,
+      direction: 'LONG',
+      timestamp: 2,
+      prices: {
+        currentPrice: 100,
+        takeProfitPrice: 110,
+        stopLossPrice: 95,
+        riskRatio: 2,
+      },
+      indicators: {
+        baseContext: {
+          ...baseContext,
+          onchain: {
+            source: 'arkham',
+            symbol: 'ETHUSDT',
+            timestamp: 2,
+            intervals: {
+              '15m': {
+                interval: '15m',
+                asOfTs: 2,
+                stale: false,
+                points: 3,
+                whaleNetFlowUsd: -5000,
+                smartTraderNetFlowUsd: -2000,
+                cexDepositUsd: 10000,
+                cexWithdrawUsd: 500,
+                cexNetFlowUsd: -9500,
+                dexBuyUsd: 100,
+                dexSellUsd: 200,
+                dexNetBuyUsd: -100,
+                entityCount: 4,
+                confidenceWeightedBias: -0.6,
+                netFlowUsd1h: -12000,
+                netFlowUsd4h: -15000,
+                cexDepositSpikeRatio: 3,
+                cexWithdrawalSpikeRatio: 0.5,
+              },
+            },
+            summary: {
+              pressure: 'distribution',
+              directionAligned: false,
+              riskFlags: [
+                'whale_distribution',
+                'smart_money_distribution',
+                'cex_deposit_spike',
+              ],
+              confidenceWeightedBias: -0.6,
+              netFlowUsd: -12000,
+            },
+          },
+        },
+      },
+    });
+
+    expect(
+      signal.additionalIndicators?.baseContext?.gateFeatures,
+    ).toMatchObject({
+      scores: {
+        onchain: expect.any(Number),
+      },
+      conflicts: {
+        items: expect.arrayContaining([
+          'onchain_against',
+          'onchain_distribution',
+        ]),
+      },
+      decisionHints: {
+        primaryIssue: 'onchain_conflict',
+        approveBias: 'reject',
+      },
+      onchain: {
+        pressure: 'distribution',
+        directionAligned: false,
+        cexNetFlowUsd: -9500,
+      },
+    });
+  });
 });

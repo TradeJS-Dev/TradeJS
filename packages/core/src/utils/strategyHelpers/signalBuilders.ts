@@ -541,6 +541,34 @@ export const buildBaseContextGateFeatures = ({
   const derivativesCrowdedAny =
     derivativesRiskFlags.includes('crowded_long') ||
     derivativesRiskFlags.includes('crowded_short');
+  const onchainSummary = baseContext.onchain?.summary;
+  const onchainIntervals = baseContext.onchain?.intervals;
+  const onchainPrimary = onchainIntervals?.['15m'] ?? onchainIntervals?.['1h'];
+  const onchainDirectionAligned =
+    typeof onchainSummary?.directionAligned === 'boolean'
+      ? onchainSummary.directionAligned
+      : null;
+  const onchainRiskFlags = Array.isArray(onchainSummary?.riskFlags)
+    ? onchainSummary.riskFlags
+    : [];
+  const onchainPressure = onchainSummary?.pressure ?? 'unknown';
+  const onchainStale =
+    typeof onchainPrimary?.stale === 'boolean' ? onchainPrimary.stale : null;
+  const onchainLowConfidence = onchainRiskFlags.includes('low_confidence');
+  const onchainDistributionForLong =
+    direction === 'LONG' &&
+    (onchainRiskFlags.includes('whale_distribution') ||
+      onchainRiskFlags.includes('smart_money_distribution') ||
+      onchainRiskFlags.includes('cex_deposit_spike'));
+  const onchainAccumulationForShort =
+    direction === 'SHORT' &&
+    (onchainRiskFlags.includes('whale_accumulation') ||
+      onchainRiskFlags.includes('smart_money_accumulation') ||
+      onchainRiskFlags.includes('cex_withdrawal_spike'));
+  const onchainFlowConflict =
+    onchainDirectionAligned === false ||
+    onchainDistributionForLong ||
+    onchainAccumulationForShort;
   const atr = asFiniteNumberOrNull(baseContext.raw?.volatility?.atr);
   const currentPrice = asFiniteNumberOrNull(prices?.currentPrice);
   const takeProfitPrice = asFiniteNumberOrNull(prices?.takeProfitPrice);
@@ -629,6 +657,7 @@ export const buildBaseContextGateFeatures = ({
     derivativesDirectionAligned === true,
     'derivatives_aligned',
   );
+  pushWhen(confirmations, onchainDirectionAligned === true, 'onchain_aligned');
   const conflicts: BaseGateFeatureConflict[] = [];
   pushWhen(conflicts, mtfAlignmentForDirection === 'against', 'mtf_against');
   pushWhen(conflicts, mtfAlignmentForDirection === 'mixed', 'mtf_mixed');
@@ -673,6 +702,9 @@ export const buildBaseContextGateFeatures = ({
     'derivatives_against',
   );
   pushWhen(conflicts, derivativesCrowdedForDirection, 'derivatives_crowded');
+  pushWhen(conflicts, onchainDirectionAligned === false, 'onchain_against');
+  pushWhen(conflicts, onchainFlowConflict, 'onchain_distribution');
+  pushWhen(conflicts, onchainLowConfidence, 'onchain_low_confidence');
   const scores: NonNullable<BaseContextGateFeatures['scores']> = {
     structure: scoreEvidence([
       breakoutWithDirection,
@@ -711,6 +743,12 @@ export const buildBaseContextGateFeatures = ({
       referenceOrderBookImbalanceAligned,
     ]),
     derivatives: scoreEvidence([derivativesDirectionAligned]),
+    onchain: scoreEvidence([
+      onchainStale == null ? null : !onchainStale,
+      onchainDirectionAligned,
+      onchainFlowConflict ? false : null,
+      onchainLowConfidence ? false : null,
+    ]),
     totalContext: null,
   };
   scores.totalContext = averageScores([
@@ -720,6 +758,7 @@ export const buildBaseContextGateFeatures = ({
     scores.mtf,
     scores.execution,
     scores.derivatives,
+    scores.onchain,
   ]);
   const volatilityRisk = extremeVolatilityRisk
     ? 'high'
@@ -767,29 +806,32 @@ export const buildBaseContextGateFeatures = ({
           : 'low';
   const primaryIssue = derivativesCrowdedForDirection
     ? 'crowded_derivatives'
-    : higherTimeframeConflict === true
-      ? 'mtf_conflict'
-      : venueSpreadSeverity === 'wide' || targetVenueStale === true
-        ? 'bad_execution'
-        : extremeVolatilityRisk
-          ? 'extreme_volatility'
-          : benchmarkConflict ||
-              marketBreadthAligned === false ||
-              btcDominanceAligned === false ||
-              targetVsBtcAligned === false ||
-              btcAltRegimeAligned === false
-            ? 'market_context_against'
-            : (scores.participation ?? 100) < 45
-              ? 'weak_participation'
-              : (scores.structure ?? 100) < 45
-                ? 'weak_structure'
-                : 'none';
+    : onchainFlowConflict
+      ? 'onchain_conflict'
+      : higherTimeframeConflict === true
+        ? 'mtf_conflict'
+        : venueSpreadSeverity === 'wide' || targetVenueStale === true
+          ? 'bad_execution'
+          : extremeVolatilityRisk
+            ? 'extreme_volatility'
+            : benchmarkConflict ||
+                marketBreadthAligned === false ||
+                btcDominanceAligned === false ||
+                targetVsBtcAligned === false ||
+                btcAltRegimeAligned === false
+              ? 'market_context_against'
+              : (scores.participation ?? 100) < 45
+                ? 'weak_participation'
+                : (scores.structure ?? 100) < 45
+                  ? 'weak_structure'
+                  : 'none';
   const needsExtraConfirmation =
     conflicts.length > 0 ||
     (scores.totalContext != null && scores.totalContext < 60);
   const approveBias =
     conflicts.length >= 3 ||
     primaryIssue === 'crowded_derivatives' ||
+    primaryIssue === 'onchain_conflict' ||
     primaryIssue === 'bad_execution' ||
     primaryIssue === 'mtf_conflict'
       ? 'reject'
@@ -909,6 +951,21 @@ export const buildBaseContextGateFeatures = ({
       referenceOrderBookImbalance,
       referenceOrderBookImbalanceAligned,
     },
+    onchain: baseContext.onchain
+      ? {
+          pressure: onchainPressure,
+          directionAligned: onchainDirectionAligned,
+          riskFlags: onchainRiskFlags,
+          confidenceWeightedBias:
+            onchainSummary?.confidenceWeightedBias ?? null,
+          netFlowUsd: onchainSummary?.netFlowUsd ?? null,
+          whaleNetFlowUsd: onchainPrimary?.whaleNetFlowUsd ?? null,
+          smartTraderNetFlowUsd: onchainPrimary?.smartTraderNetFlowUsd ?? null,
+          cexNetFlowUsd: onchainPrimary?.cexNetFlowUsd ?? null,
+          dexNetBuyUsd: onchainPrimary?.dexNetBuyUsd ?? null,
+          stale: onchainStale,
+        }
+      : undefined,
   };
 };
 

@@ -212,6 +212,7 @@ Input payload structure:
   • \`baseContext.participation\`: volume/turnover participation, effort-vs-result context, and Binance aggTrades trade-flow when available.
   • \`baseContext.relative\`: BTC relative-strength, benchmark MA bias context, Binance alt-basket breadth, and CoinGecko BTC dominance when available.
   • \`baseContext.derivatives\`: Coinalyze-aligned derivatives summary when available.
+  • \`baseContext.onchain\`: Arkham-aligned on-chain flow summary when available.
   • \`baseContext.mtf\`: compact multi-timeframe summary plus only the latest few candles for each timeframe.
   • \`baseContext.gateFeatures\`: direction-aware, normalized fields derived from baseContext; prefer \`setup\`, \`scores\`, \`confirmations\`, \`conflicts\`, \`risk\`, and \`decisionHints\` for quick gate checks before inspecting raw nested context.
   Always inspect \`payload.additionalIndicators.marketContext\` when present:
@@ -227,6 +228,7 @@ Input payload structure:
   • \`marketContext.relative.marketReferences\`: BTC/ETH reference trade-flow and depth summary used for broad market pressure when the target symbol itself is not BTC/ETH.
   If those fields exist, use them as a more explicit hint instead of trying to re-derive the same idea from raw lines or points.
   If \`baseContext.derivatives\` exists, it is a derived Coinalyze summary for the time of the signal. Coinalyze context is built only from \`BTCUSDT\` and \`ETHUSDT\` reference symbols, not for every target coin. \`targetSymbol\` is just the source signal coin. Use BTC/ETH open interest, funding, liquidations, and pressure/riskFlags as positioning context, not as an independent trade idea.
+  If \`baseContext.onchain\` exists, it is a derived Arkham on-chain flow summary for the time of the signal. Use whale/smart-trader net flow, CEX deposit/withdrawal pressure, DEX net buy flow, confidenceWeightedBias, and riskFlags as confirmation or conflict only. Do not treat raw transfers as guaranteed buys/sells and do not use Arkham context as an independent trade idea.
   Key patterns:
   • current shared state: prefer \`payload.additionalIndicators.baseContext\`
   • recent historical series: \`payload.indicators\`
@@ -248,6 +250,9 @@ Explicit conflict rules:
 - If \`baseContext.derivatives.summary.riskFlags\` contains \`crowded_long\` for a LONG or \`crowded_short\` for a SHORT, treat that as crowded positioning and do not overstate quality without strong structural confirmation.
 - If \`baseContext.derivatives.summary.directionAligned=false\`, explicitly mention the derivatives conflict in \`confirmations\` or \`qualityReason\`.
 - If \`baseContext.derivatives\` is absent, stale, or \`missing_derivatives\`, do not infer Coinalyze conclusions and do not penalize the signal just because that data is missing.
+- If \`baseContext.onchain.summary.directionAligned=false\`, mention the on-chain flow conflict in \`confirmations\` or \`qualityReason\`; for example, distribution/CEX deposit pressure against a LONG or accumulation/withdrawal pressure against a SHORT.
+- If \`baseContext.onchain.summary.riskFlags\` contains \`low_confidence\`, \`stale_onchain\`, or \`missing_onchain\`, treat Arkham context as unavailable/weak evidence rather than a hard rejection.
+- If \`baseContext.onchain\` is absent, stale, or \`missing_onchain\`, do not infer Arkham conclusions and do not penalize the signal just because that data is missing.
 - Use \`baseContext.regime.session\` directly as the canonical session/liquidity regime: asia is often thinner, europe/us are more active, and overlaps can amplify both momentum and noise. Do not reject a signal solely because of session, but mention clear session support or conflict in \`confirmations\` or \`qualityReason\`.
 - If \`marketContext.execution.binanceCoinbaseSpread.available=true\` and \`severity=elevated/wide\`, treat it as cross-exchange divergence or BTC liquidity risk. Do not use the spread as a standalone long/short signal, but reduce confidence or require more confirmation when the rest of the structure is weak or BTC context conflicts.
 - If \`marketContext.execution.binanceCoinbaseSpread\` is missing or \`available=false\`, do not infer anything from Binance/Coinbase spread and do not penalize the signal just because it is absent.

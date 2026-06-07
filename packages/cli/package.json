@@ -89,6 +89,7 @@
     "ml-train:trendline:rf": "yarn run run:dist ml-train:trendline:rf",
     "ml-train:trendline:xgboost": "yarn run run:dist ml-train:trendline:xgboost",
     "ml-train:unified:catboost": "yarn run run:dist ml-train:unified:catboost",
+    "onchain:ingest": "yarn run run:dist onchain:ingest",
     "runtime-parity": "yarn run run:dist runtime-parity",
     "test-script": "yarn run run:dist test-script",
     "test-ml": "yarn run run:dist test-ml",

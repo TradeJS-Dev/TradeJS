@@ -33,6 +33,7 @@ const scriptLoaders: Record<string, ScriptLoader> = {
   'ml-export': () => import('./scripts/mlExport'),
   'ml-inspect': () => import('./scripts/mlInspect'),
   'ml-train:latest': () => import('./scripts/mlTrainLatestSelect'),
+  'onchain:ingest': () => import('./scripts/onchainIngest'),
   'research:auto': () => import('./scripts/researchAuto'),
   results: () => import('./scripts/results'),
   'server-health': () => import('./scripts/serverHealth'),

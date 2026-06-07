@@ -23,6 +23,7 @@ import {
 import { enrichSignalWithBinanceMarketContext } from './strategyHelpers/binanceMarketContext';
 import { enrichSignalWithDerivativesContext } from './strategyHelpers/derivativesContext';
 import { enrichSignalWithGlobalMarketContext } from './strategyHelpers/globalMarketContext';
+import { enrichSignalWithOnchainContext } from './strategyHelpers/onchainContext';
 import {
   getActiveRuntimeTrade,
   markRuntimeTradeClosed,
@@ -1479,6 +1480,10 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
             env,
           });
           await enrichSignalWithDerivativesContext({
+            signal,
+            env,
+          });
+          await enrichSignalWithOnchainContext({
             signal,
             env,
           });

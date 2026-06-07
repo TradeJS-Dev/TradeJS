@@ -8,6 +8,7 @@ import {
   MarketGlobalContextRow,
   MarketOrderBookDepthRow,
   MarketTradeFlowRow,
+  OnchainFlowRow,
   SpreadRow,
 } from '@tradejs/types';
 
@@ -60,10 +61,12 @@ let candlesSchemaReady = false;
 let derivativesSchemaReady = false;
 let spreadSchemaReady = false;
 let binanceMarketSchemaReady = false;
+let onchainSchemaReady = false;
 let candlesSchemaReadyPromise: Promise<void> | null = null;
 let derivativesSchemaReadyPromise: Promise<void> | null = null;
 let spreadSchemaReadyPromise: Promise<void> | null = null;
 let binanceMarketSchemaReadyPromise: Promise<void> | null = null;
+let onchainSchemaReadyPromise: Promise<void> | null = null;
 
 export const closeTimescalePool = async (): Promise<void> => {
   const pool = global.__pgPool__;
@@ -76,10 +79,12 @@ export const closeTimescalePool = async (): Promise<void> => {
   derivativesSchemaReady = false;
   spreadSchemaReady = false;
   binanceMarketSchemaReady = false;
+  onchainSchemaReady = false;
   candlesSchemaReadyPromise = null;
   derivativesSchemaReadyPromise = null;
   spreadSchemaReadyPromise = null;
   binanceMarketSchemaReadyPromise = null;
+  onchainSchemaReadyPromise = null;
   await pool.end();
 };
 
@@ -87,6 +92,7 @@ const CANDLES_SCHEMA_LOCK_KEY = 610000;
 const DERIVATIVES_SCHEMA_LOCK_KEY = 610001;
 const SPREAD_SCHEMA_LOCK_KEY = 610002;
 const BINANCE_MARKET_SCHEMA_LOCK_KEY = 610003;
+const ONCHAIN_SCHEMA_LOCK_KEY = 610004;
 const PG_SAFE_MAX_BIND_PARAMS = 30_000;
 
 const normalizeCandleProvider = (provider: string) =>
@@ -361,6 +367,58 @@ const ensureSpreadSchema = async () => {
   });
 
   await spreadSchemaReadyPromise;
+};
+
+const ensureOnchainSchema = async () => {
+  if (onchainSchemaReady) return;
+  if (onchainSchemaReadyPromise) {
+    await onchainSchemaReadyPromise;
+    return;
+  }
+
+  const pool = getPool();
+  onchainSchemaReadyPromise = withSchemaLock(
+    ONCHAIN_SCHEMA_LOCK_KEY,
+    async () => {
+      if (onchainSchemaReady) return;
+      await pool.query('CREATE EXTENSION IF NOT EXISTS timescaledb');
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS onchain_flow_context (
+          symbol text NOT NULL,
+          interval text NOT NULL,
+          ts timestamptz NOT NULL,
+          whale_net_flow_usd double precision,
+          smart_trader_net_flow_usd double precision,
+          cex_deposit_usd double precision,
+          cex_withdraw_usd double precision,
+          dex_buy_usd double precision,
+          dex_sell_usd double precision,
+          entity_count double precision,
+          confidence_weighted_bias double precision,
+          source text,
+          ingested_at timestamptz NOT NULL DEFAULT now(),
+          PRIMARY KEY (symbol, interval, ts)
+        )
+      `);
+      await pool.query(`
+        SELECT create_hypertable(
+          'onchain_flow_context',
+          'ts',
+          if_not_exists => TRUE,
+          chunk_time_interval => interval '14 days'
+        )
+      `);
+      await pool.query(`
+        CREATE INDEX IF NOT EXISTS onchain_flow_context_symbol_tf_ts_idx
+        ON onchain_flow_context (symbol, interval, ts DESC)
+      `);
+      onchainSchemaReady = true;
+    },
+  ).finally(() => {
+    onchainSchemaReadyPromise = null;
+  });
+
+  await onchainSchemaReadyPromise;
 };
 
 const ensureBinanceMarketSchema = async () => {
@@ -870,6 +928,158 @@ export async function getDerivativesWindow(params: {
       liqLong: row.liq_long,
       liqShort: row.liq_short,
       liqTotal: row.liq_total,
+      source: row.source,
+    });
+  }
+
+  return rowsByInterval;
+}
+
+export async function upsertOnchainFlowRows(rows: OnchainFlowRow[]) {
+  if (!rows.length) return;
+  await ensureOnchainSchema();
+
+  const pool = getPool();
+  const cols = [
+    'symbol',
+    'interval',
+    'ts',
+    'whale_net_flow_usd',
+    'smart_trader_net_flow_usd',
+    'cex_deposit_usd',
+    'cex_withdraw_usd',
+    'dex_buy_usd',
+    'dex_sell_usd',
+    'entity_count',
+    'confidence_weighted_bias',
+    'source',
+  ] as const;
+
+  const maxRows = Math.floor(65_535 / cols.length);
+  if (rows.length > maxRows) {
+    for (let i = 0; i < rows.length; i += maxRows) {
+      await upsertOnchainFlowRows(rows.slice(i, i + maxRows));
+    }
+    return;
+  }
+
+  const valuesSql = rows
+    .map(
+      (_, i) =>
+        `(${cols.map((__, j) => `$${i * cols.length + j + 1}`).join(',')})`,
+    )
+    .join(',');
+
+  const flat = rows.flatMap((row) => [
+    normalizeCandleSymbol(row.symbol),
+    row.interval,
+    row.ts,
+    row.whaleNetFlowUsd ?? null,
+    row.smartTraderNetFlowUsd ?? null,
+    row.cexDepositUsd ?? null,
+    row.cexWithdrawUsd ?? null,
+    row.dexBuyUsd ?? null,
+    row.dexSellUsd ?? null,
+    row.entityCount ?? null,
+    row.confidenceWeightedBias ?? null,
+    row.source ?? 'arkham',
+  ]);
+
+  const sql = `
+    INSERT INTO onchain_flow_context (${cols.join(',')})
+    VALUES ${valuesSql}
+    ON CONFLICT (symbol, interval, ts) DO UPDATE SET
+      whale_net_flow_usd = COALESCE(EXCLUDED.whale_net_flow_usd, onchain_flow_context.whale_net_flow_usd),
+      smart_trader_net_flow_usd = COALESCE(EXCLUDED.smart_trader_net_flow_usd, onchain_flow_context.smart_trader_net_flow_usd),
+      cex_deposit_usd = COALESCE(EXCLUDED.cex_deposit_usd, onchain_flow_context.cex_deposit_usd),
+      cex_withdraw_usd = COALESCE(EXCLUDED.cex_withdraw_usd, onchain_flow_context.cex_withdraw_usd),
+      dex_buy_usd = COALESCE(EXCLUDED.dex_buy_usd, onchain_flow_context.dex_buy_usd),
+      dex_sell_usd = COALESCE(EXCLUDED.dex_sell_usd, onchain_flow_context.dex_sell_usd),
+      entity_count = COALESCE(EXCLUDED.entity_count, onchain_flow_context.entity_count),
+      confidence_weighted_bias = COALESCE(EXCLUDED.confidence_weighted_bias, onchain_flow_context.confidence_weighted_bias),
+      source = COALESCE(EXCLUDED.source, onchain_flow_context.source),
+      ingested_at = now()
+  `;
+
+  await pool.query(sql, flat);
+}
+
+export async function getOnchainContextWindow(params: {
+  symbol: string;
+  intervals: MarketFeatureInterval[];
+  endMs: number;
+  lookbackMs: number;
+}): Promise<Partial<Record<MarketFeatureInterval, OnchainFlowRow[]>>> {
+  const { symbol, intervals, endMs, lookbackMs } = params;
+  const normalizedSymbol = normalizeCandleSymbol(symbol);
+  const normalizedIntervals = [...new Set(intervals)].filter(Boolean);
+
+  if (!normalizedSymbol || !normalizedIntervals.length) {
+    return {};
+  }
+
+  await ensureOnchainSchema();
+  const startMs = endMs - Math.max(0, lookbackMs);
+  const pool = getPool();
+  const sql = `
+    SELECT
+      symbol,
+      interval,
+      ts,
+      whale_net_flow_usd,
+      smart_trader_net_flow_usd,
+      cex_deposit_usd,
+      cex_withdraw_usd,
+      dex_buy_usd,
+      dex_sell_usd,
+      entity_count,
+      confidence_weighted_bias,
+      source
+    FROM onchain_flow_context
+    WHERE symbol = $1
+      AND interval = ANY($2)
+      AND ts >= to_timestamp($3/1000.0)
+      AND ts <= to_timestamp($4/1000.0)
+    ORDER BY interval ASC, ts ASC
+  `;
+  const res = await pool.query(sql, [
+    normalizedSymbol,
+    normalizedIntervals,
+    startMs,
+    endMs,
+  ]);
+  const rowsByInterval: Partial<
+    Record<MarketFeatureInterval, OnchainFlowRow[]>
+  > = {};
+
+  for (const row of res.rows as Array<{
+    symbol: string;
+    interval: MarketFeatureInterval;
+    ts: Date;
+    whale_net_flow_usd: number | null;
+    smart_trader_net_flow_usd: number | null;
+    cex_deposit_usd: number | null;
+    cex_withdraw_usd: number | null;
+    dex_buy_usd: number | null;
+    dex_sell_usd: number | null;
+    entity_count: number | null;
+    confidence_weighted_bias: number | null;
+    source: string | null;
+  }>) {
+    const interval = row.interval;
+    rowsByInterval[interval] ??= [];
+    rowsByInterval[interval]?.push({
+      symbol: row.symbol,
+      interval,
+      ts: row.ts,
+      whaleNetFlowUsd: row.whale_net_flow_usd,
+      smartTraderNetFlowUsd: row.smart_trader_net_flow_usd,
+      cexDepositUsd: row.cex_deposit_usd,
+      cexWithdrawUsd: row.cex_withdraw_usd,
+      dexBuyUsd: row.dex_buy_usd,
+      dexSellUsd: row.dex_sell_usd,
+      entityCount: row.entity_count,
+      confidenceWeightedBias: row.confidence_weighted_bias,
       source: row.source,
     });
   }
