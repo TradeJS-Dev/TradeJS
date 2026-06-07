@@ -2,10 +2,11 @@ import { TestConnectorCreator } from '..';
 import { setData } from '@tradejs/infra/redis';
 import { round } from '@tradejs/core/math';
 import {
-  BACKTEST_SLIPPAGE_PERCENT,
+  BACKTEST_BASE_SLIPPAGE_BPS,
   FEE_PERCENT,
   INITIAL_BACKTEST_AMOUNT,
 } from '@tradejs/core/constants';
+import { calculateEffectiveSlippageBps } from '@tradejs/core/trade';
 
 jest.mock('@tradejs/infra/redis', () => ({
   setData: jest.fn(),
@@ -39,7 +40,15 @@ const executionPrice = (
       : stage === 'entry'
         ? -1
         : 1;
-  return price * (1 + sign * BACKTEST_SLIPPAGE_PERCENT);
+  return (
+    price *
+    (1 +
+      sign *
+        (calculateEffectiveSlippageBps({
+          baseSlippageBps: BACKTEST_BASE_SLIPPAGE_BPS,
+        }) /
+          10_000))
+  );
 };
 const fee = (price: number, qty = 1) => price * qty * FEE_PERCENT;
 const openProfit = (price: number, direction: 'LONG' | 'SHORT', qty = 1) =>

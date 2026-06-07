@@ -1,10 +1,11 @@
 import { randomUUID } from 'node:crypto';
-import {
-  BACKTEST_SLIPPAGE_PERCENT,
-  FEE_PERCENT,
-  INITIAL_BACKTEST_AMOUNT,
-} from '@tradejs/core/constants';
+import { FEE_PERCENT, INITIAL_BACKTEST_AMOUNT } from '@tradejs/core/constants';
 import { calculateStatsFull } from '@tradejs/core/backtest';
+import {
+  applyExecutionSlippage as applyModeledExecutionSlippage,
+  extractExecutionMarketImpactBps,
+  extractExecutionSpreadBps,
+} from '@tradejs/core/trade';
 import {
   Candle,
   Sl,
@@ -55,7 +56,6 @@ export const createTestConnector: TestConnectorCreator = (
   let stopLossPrice: Sl = null;
   let currentTradeResult: OpenTradeResult | null = null;
   const closedSignalResults: TestClosedSignalResult[] = [];
-  const backtestSlippageRate = Math.max(0, BACKTEST_SLIPPAGE_PERCENT);
 
   const logOrder = (data: Partial<OrderLog>) => {
     const nextEntry = {
@@ -289,24 +289,20 @@ export const createTestConnector: TestConnectorCreator = (
     price,
     direction,
     stage,
+    signal,
   }: {
     price: number;
     direction: 'LONG' | 'SHORT';
     stage: 'entry' | 'exit';
+    signal?: Order['signal'];
   }) => {
-    if (!backtestSlippageRate) {
-      return price;
-    }
-
-    const sign =
-      direction === 'LONG'
-        ? stage === 'entry'
-          ? 1
-          : -1
-        : stage === 'entry'
-          ? -1
-          : 1;
-    return price * (1 + sign * backtestSlippageRate);
+    return applyModeledExecutionSlippage({
+      price,
+      direction,
+      stage,
+      spreadBps: extractExecutionSpreadBps(signal),
+      marketImpactBps: extractExecutionMarketImpactBps(signal),
+    });
   };
 
   return {
@@ -393,6 +389,7 @@ export const createTestConnector: TestConnectorCreator = (
             price: targetPrice,
             direction: currentPosition.direction,
             stage: 'exit',
+            signal: currentPosition.signal,
           });
           const grossProfit = isLong
             ? (executionPrice - entryPrice) * qty
@@ -455,6 +452,7 @@ export const createTestConnector: TestConnectorCreator = (
           price: stopLossPrice,
           direction: currentPosition.direction,
           stage: 'exit',
+          signal: currentPosition.signal,
         });
         const grossProfit = isLong
           ? (executionPrice - currentPosition.price) * qty
@@ -507,6 +505,7 @@ export const createTestConnector: TestConnectorCreator = (
             price: stopLossPrice,
             direction: currentPosition.direction,
             stage: 'exit',
+            signal: currentPosition.signal,
           });
           const grossProfit = isLong
             ? (executionPrice - currentPosition.price) * qty
@@ -563,6 +562,7 @@ export const createTestConnector: TestConnectorCreator = (
             price: targetPrice,
             direction: currentPosition.direction,
             stage: 'exit',
+            signal: currentPosition.signal,
           });
           const grossProfit = isLong
             ? (executionPrice - entryPrice) * qty
@@ -620,6 +620,7 @@ export const createTestConnector: TestConnectorCreator = (
         price: order.price,
         direction: order.direction,
         stage: 'entry',
+        signal: order.signal,
       });
       currentPosition = { ...order, price: entryPrice, amount };
       currentSignalId =
@@ -717,6 +718,7 @@ export const createTestConnector: TestConnectorCreator = (
         price: order.price,
         direction: currentPosition.direction,
         stage: 'exit',
+        signal: currentPosition.signal,
       });
       const grossProfit = isLong
         ? (executionPrice - currentPosition.price) * currentPosition.qty

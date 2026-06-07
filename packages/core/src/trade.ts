@@ -3,6 +3,18 @@ const ORDER_LINK_SEPARATOR = '--';
 const STRATEGY_SLUG_LENGTH = 10;
 const STRATEGY_HASH_LENGTH = 5;
 
+export {
+  applyExecutionSlippage,
+  calculateEffectiveSlippageBps,
+  extractExecutionMarketImpactBps,
+  extractExecutionSpreadBps,
+  slippageBpsToRate,
+  type ApplyExecutionSlippageParams,
+  type ExecutionSlippageDirection,
+  type ExecutionSlippageModelParams,
+  type ExecutionSlippageStage,
+} from './utils/executionSlippage';
+
 const toBase36Hash = (value: string) => {
   let hash = 0;
 

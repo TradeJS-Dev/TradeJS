@@ -1,7 +1,9 @@
 import type { TestThresholds } from '@tradejs/types';
 
 export const FEE_PERCENT = 0.002;
-export const BACKTEST_SLIPPAGE_PERCENT = 0.004;
+export const BACKTEST_BASE_SLIPPAGE_BPS = 40;
+export const BACKTEST_SPREAD_SLIPPAGE_MULTIPLIER = 1;
+export const BACKTEST_MARKET_IMPACT_BPS = 0;
 export const INITIAL_BACKTEST_AMOUNT = 100;
 
 export const CORRELATION_WINDOW = 50;

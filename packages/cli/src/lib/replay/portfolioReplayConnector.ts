@@ -1,9 +1,10 @@
-import {
-  BACKTEST_SLIPPAGE_PERCENT,
-  FEE_PERCENT,
-  INITIAL_BACKTEST_AMOUNT,
-} from '@tradejs/core/constants';
+import { FEE_PERCENT, INITIAL_BACKTEST_AMOUNT } from '@tradejs/core/constants';
 import { round } from '@tradejs/core/math';
+import {
+  applyExecutionSlippage as applyModeledExecutionSlippage,
+  extractExecutionMarketImpactBps,
+  extractExecutionSpreadBps,
+} from '@tradejs/core/trade';
 import {
   Candle,
   Connector,
@@ -101,7 +102,6 @@ export const createPortfolioReplayConnector = (
   const positionLog: PositionLogData = [];
   const orderLogByStrategy = new Map<string, OrderLogData>();
   const positionLogByStrategy = new Map<string, PositionLogData>();
-  const backtestSlippageRate = Math.max(0, BACKTEST_SLIPPAGE_PERCENT);
 
   const appendStrategyOrderLog = (strategyName: string, entry: OrderLog) => {
     const bucket = orderLogByStrategy.get(strategyName) ?? [];
@@ -184,24 +184,20 @@ export const createPortfolioReplayConnector = (
     price,
     direction,
     stage,
+    signal,
   }: {
     price: number;
     direction: 'LONG' | 'SHORT';
     stage: 'entry' | 'exit';
+    signal?: Signal;
   }) => {
-    if (!backtestSlippageRate) {
-      return price;
-    }
-
-    const sign =
-      direction === 'LONG'
-        ? stage === 'entry'
-          ? 1
-          : -1
-        : stage === 'entry'
-          ? -1
-          : 1;
-    return price * (1 + sign * backtestSlippageRate);
+    return applyModeledExecutionSlippage({
+      price,
+      direction,
+      stage,
+      spreadBps: extractExecutionSpreadBps(signal),
+      marketImpactBps: extractExecutionMarketImpactBps(signal),
+    });
   };
 
   const checkTp = async ({
@@ -235,6 +231,7 @@ export const createPortfolioReplayConnector = (
         price: tp.price,
         direction: position.direction,
         stage: 'exit',
+        signal: position.signal,
       });
       const grossProfit = isLong
         ? (executionPrice - entryPrice) * qty
@@ -300,6 +297,7 @@ export const createPortfolioReplayConnector = (
       price: stopLossPrice,
       direction: position.direction,
       stage: 'exit',
+      signal: position.signal,
     });
     const grossProfit = isLong
       ? (executionPrice - position.price) * qty
@@ -380,6 +378,7 @@ export const createPortfolioReplayConnector = (
         price: order.price,
         direction: order.direction,
         stage: 'entry',
+        signal: order.signal,
       });
       const nextPosition: ReplayPosition = {
         ...order,
@@ -458,6 +457,7 @@ export const createPortfolioReplayConnector = (
         price: order.price,
         direction: position.direction,
         stage: 'exit',
+        signal: position.signal,
       });
       const grossProfit = isLong
         ? (executionPrice - position.price) * position.qty

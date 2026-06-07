@@ -9,10 +9,11 @@ jest.mock('@tradejs/infra/redis', () => ({
 import { setData } from '@tradejs/infra/redis';
 import { round } from '@tradejs/core/math';
 import {
-  BACKTEST_SLIPPAGE_PERCENT,
+  BACKTEST_BASE_SLIPPAGE_BPS,
   FEE_PERCENT,
   INITIAL_BACKTEST_AMOUNT,
 } from '@tradejs/core/constants';
+import { calculateEffectiveSlippageBps } from '@tradejs/core/trade';
 import { createTestConnector } from '../testConnector';
 
 const baseConnector = {
@@ -23,7 +24,10 @@ const baseConnector = {
 };
 
 describe('testConnector', () => {
-  const backtestSlippageRate = BACKTEST_SLIPPAGE_PERCENT;
+  const backtestSlippageRate =
+    calculateEffectiveSlippageBps({
+      baseSlippageBps: BACKTEST_BASE_SLIPPAGE_BPS,
+    }) / 10_000;
   const executionPrice = (
     price: number,
     direction: 'LONG' | 'SHORT',
@@ -70,7 +74,7 @@ describe('testConnector', () => {
     jest.clearAllMocks();
   });
 
-  it('applies BACKTEST_SLIPPAGE_PERCENT adversely to long and short entry/exit prices', async () => {
+  it('applies effective backtest slippage adversely to long and short entry/exit prices', async () => {
     const longConnector = createTestConnector(baseConnector as any, {
       userName: 'alice',
     });
@@ -146,6 +150,46 @@ describe('testConnector', () => {
       }),
     );
     expect(shortOrders[1].price).toBeCloseTo(90 * (1 + backtestSlippageRate));
+  });
+
+  it('adds signal execution spread and market impact to slippage', async () => {
+    const connector = createTestConnector(baseConnector as any, {
+      userName: 'alice',
+    });
+    const dynamicSlippageRate =
+      calculateEffectiveSlippageBps({
+        baseSlippageBps: BACKTEST_BASE_SLIPPAGE_BPS,
+        spreadBps: 15,
+        marketImpactBps: 5,
+      }) / 10_000;
+
+    await connector.placeOrder({
+      symbol: 'ETHUSDT',
+      qty: 1,
+      price: 100,
+      isLimit: false,
+      timestamp: 1,
+      direction: 'LONG',
+      signal: {
+        additionalIndicators: {
+          executionSlippage: {
+            spreadBps: 15,
+            marketImpactBps: 5,
+          },
+        },
+      },
+    } as any);
+    await connector.closePosition({
+      symbol: 'ETHUSDT',
+      price: 110,
+      isLimit: false,
+      timestamp: 2,
+      direction: 'LONG',
+    });
+
+    const orders = (await connector.getResult()).inlineOrderLog ?? [];
+    expect(orders[0].price).toBeCloseTo(100 * (1 + dynamicSlippageRate));
+    expect(orders[1].price).toBeCloseTo(110 * (1 - dynamicSlippageRate));
   });
 
   it('returns inline logs and final stat after take profits', async () => {

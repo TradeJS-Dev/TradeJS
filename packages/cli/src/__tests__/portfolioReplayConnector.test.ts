@@ -1,13 +1,17 @@
 import { round } from '@tradejs/core/math';
 import {
-  BACKTEST_SLIPPAGE_PERCENT,
+  BACKTEST_BASE_SLIPPAGE_BPS,
   FEE_PERCENT,
   INITIAL_BACKTEST_AMOUNT,
 } from '@tradejs/core/constants';
+import { calculateEffectiveSlippageBps } from '@tradejs/core/trade';
 import { createPortfolioReplayConnector } from '../lib/replay/portfolioReplayConnector';
 
 describe('portfolio replay connector', () => {
-  const backtestSlippageRate = BACKTEST_SLIPPAGE_PERCENT;
+  const backtestSlippageRate =
+    calculateEffectiveSlippageBps({
+      baseSlippageBps: BACKTEST_BASE_SLIPPAGE_BPS,
+    }) / 10_000;
   const executionPrice = (
     price: number,
     direction: 'LONG' | 'SHORT',
@@ -66,7 +70,7 @@ describe('portfolio replay connector', () => {
     expect(connector.__tradejsTestConnector).toBe(true);
   });
 
-  it('applies BACKTEST_SLIPPAGE_PERCENT adversely to long and short entry/exit prices', async () => {
+  it('applies effective backtest slippage adversely to long and short entry/exit prices', async () => {
     const connector = createPortfolioReplayConnector(baseConnector);
 
     await connector.placeOrder({
@@ -144,6 +148,48 @@ describe('portfolio replay connector', () => {
     );
     expect(artifacts.orderLog[3].price).toBeCloseTo(
       90 * (1 + backtestSlippageRate),
+    );
+  });
+
+  it('adds signal execution spread and market impact to replay slippage', async () => {
+    const connector = createPortfolioReplayConnector(baseConnector);
+    const dynamicSlippageRate =
+      calculateEffectiveSlippageBps({
+        baseSlippageBps: BACKTEST_BASE_SLIPPAGE_BPS,
+        spreadBps: 15,
+        marketImpactBps: 5,
+      }) / 10_000;
+
+    await connector.placeOrder({
+      symbol: 'BTCUSDT',
+      qty: 1,
+      price: 100,
+      timestamp: 1,
+      direction: 'LONG',
+      signal: {
+        strategy: 'TrendLine',
+        additionalIndicators: {
+          executionSlippage: {
+            spreadBps: 15,
+            marketImpactBps: 5,
+          },
+        },
+      } as any,
+    });
+    await connector.closePosition({
+      symbol: 'BTCUSDT',
+      qty: 1,
+      price: 110,
+      timestamp: 2,
+      direction: 'LONG',
+    } as any);
+
+    const artifacts = connector.getReplayArtifacts();
+    expect(artifacts.orderLog[0].price).toBeCloseTo(
+      100 * (1 + dynamicSlippageRate),
+    );
+    expect(artifacts.orderLog[1].price).toBeCloseTo(
+      110 * (1 - dynamicSlippageRate),
     );
   });
 

@@ -4,7 +4,9 @@ describe('constants/index', () => {
       const constants = require('../index');
 
       expect(constants.FEE_PERCENT).toBe(0.002);
-      expect(constants.BACKTEST_SLIPPAGE_PERCENT).toBe(0.004);
+      expect(constants.BACKTEST_BASE_SLIPPAGE_BPS).toBe(40);
+      expect(constants.BACKTEST_SPREAD_SLIPPAGE_MULTIPLIER).toBe(1);
+      expect(constants.BACKTEST_MARKET_IMPACT_BPS).toBe(0);
       expect(constants.INITIAL_BACKTEST_AMOUNT).toBe(100);
       expect(constants.TTL_1D).toBe(86_400);
       expect(constants.TTL_3D).toBe(259_200);
