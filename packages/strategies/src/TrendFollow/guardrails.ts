@@ -312,7 +312,7 @@ const buildTrendFollowGateFeatures = ({
   );
   const relativeBetaStopDistancePocket =
     setupStopDistanceAtr != null &&
-    setupStopDistanceAtr < 2.5 &&
+    setupStopDistanceAtr < 2 &&
     targetVsBtcBeta20 != null &&
     targetVsBtcBeta20 >= 1.25;
 
