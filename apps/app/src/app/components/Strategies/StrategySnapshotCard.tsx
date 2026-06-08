@@ -18,12 +18,12 @@ import { useMemo, useState } from 'react';
 import type {
   StrategyChartDetail,
   StrategyChartMetric,
+  StrategyChartOrder,
   StrategyChartSnapshot,
 } from '@tradejs/types';
 import {
   formatCompactNumber,
-  formatDateTime,
-  formatDuration,
+  formatFee,
   formatInteger,
   formatPercent,
   formatSignedNumber,
@@ -37,7 +37,7 @@ import { toaster } from '#ui';
 import { StrategySnapshotChart } from './StrategySnapshotChart';
 
 const MS_IN_HOUR = 60 * 60 * 1000;
-const SNAPSHOT_ORDER_ROW_HEIGHT = 254;
+const SNAPSHOT_ORDER_ROW_HEIGHT = 318;
 const DIRECTION_DETAIL_PREFIX = 'direction:';
 const SYMBOL_DETAIL_PREFIX = 'symbol:';
 const AI_STAT_DIRECTIONS = ['LONG', 'SHORT'] as const;
@@ -70,6 +70,13 @@ interface MonthlyStat {
 interface YearlyMonthlyStats {
   year: number;
   months: MonthlyStat[];
+}
+
+interface QuarterlyMonthlyStats {
+  label: string;
+  monthIndexes: readonly number[];
+  months: (MonthlyStat | null)[];
+  hasData: boolean;
 }
 
 interface SymbolPnlRank {
@@ -157,69 +164,161 @@ const calculateMaxLossStreak = (
   return maxStreak;
 };
 
+const formatPrice = (value: number | null | undefined) =>
+  formatCompactNumber(value, {
+    maximumFractionDigits: 8,
+    minimumFractionDigits: 0,
+  });
+
+const formatUsdt = (value: number | null | undefined) =>
+  `${formatCompactNumber(value, {
+    maximumFractionDigits: 2,
+    minimumFractionDigits: 2,
+  })} USDT`;
+
+const formatBps = (value: number | null | undefined) => {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return 'n/a';
+  }
+
+  return `${formatCompactNumber(value, {
+    maximumFractionDigits: 2,
+    minimumFractionDigits: 2,
+  })} bps`;
+};
+
+const formatAiExitReason = (reason: string | null | undefined) =>
+  reason ? reason.replace(/_/g, ' ').toUpperCase() : 'CLOSED';
+
+const getAiExitReasonColor = (reason: string | null | undefined) => {
+  switch (reason) {
+    case 'take_profit':
+      return 'teal';
+    case 'stop_loss':
+      return 'red';
+    default:
+      return 'gray';
+  }
+};
+
+const buildSlippageDetail = ({
+  requestedPrice,
+  slippageBps,
+}: {
+  requestedPrice?: number | null;
+  slippageBps?: number | null;
+}) => (
+  <>
+    plan {formatPrice(requestedPrice)}
+    <br />
+    slip {formatBps(slippageBps)}
+  </>
+);
+
+const buildAiFeesDetail = (order: StrategyChartOrder) => (
+  <>
+    open {formatFee(order.openFee)}
+    <br />
+    close {formatFee(order.closeFee)}
+    <br />
+    funding {formatFee(order.fundingFee)}
+  </>
+);
+
 const buildSnapshotOrders = (
   snapshot: StrategyChartSnapshot,
 ): OrdersDrawerOrder[] =>
-  snapshot.orderLog.slice(1).map(([timestamp, amount], index) => {
-    const orderIndex = index + 1;
-    const previous = snapshot.orderLog[index];
-    const previousAmount = previous?.[1] ?? null;
-    const previousTimestamp = previous?.[0] ?? null;
-    const pnl = getSnapshotStepPnl(snapshot.orderLog, orderIndex);
-    const durationHours =
-      typeof previousTimestamp === 'number' &&
-      Number.isFinite(previousTimestamp)
-        ? (timestamp - previousTimestamp) / MS_IN_HOUR
-        : null;
-    const title =
-      snapshot.symbols.length === 1
-        ? snapshot.symbols[0]
+  snapshot.orders
+    .map((order, index) => ({ order, index }))
+    .sort((left, right) => {
+      const leftEntry =
+        typeof left.order.entryTimestamp === 'number' &&
+        Number.isFinite(left.order.entryTimestamp)
+          ? left.order.entryTimestamp
+          : Number.NEGATIVE_INFINITY;
+      const rightEntry =
+        typeof right.order.entryTimestamp === 'number' &&
+        Number.isFinite(right.order.entryTimestamp)
+          ? right.order.entryTimestamp
+          : Number.NEGATIVE_INFINITY;
+
+      return rightEntry - leftEntry || left.index - right.index;
+    })
+    .map(({ order, index }) => {
+      const orderIndex = order.sequence ?? index + 1;
+      const durationHours =
+        typeof order.entryTimestamp === 'number' &&
+        Number.isFinite(order.entryTimestamp) &&
+        typeof order.exitTimestamp === 'number' &&
+        Number.isFinite(order.exitTimestamp)
+          ? (order.exitTimestamp - order.entryTimestamp) / MS_IN_HOUR
+          : null;
+      const title = order.symbol
+        ? `${order.symbol} · AI step #${orderIndex}`
         : `AI step #${orderIndex}`;
 
-    return {
-      id: `${snapshot.cardId}:${timestamp}:${orderIndex}`,
-      title,
-      subtitle: `closed ${formatDateTime(timestamp)}`,
-      statusLabel: 'CLOSED',
-      statusColor: 'gray',
-      pnl,
-      metrics: [
-        {
-          title: 'Equity',
-          value: formatCompactNumber(amount, {
-            maximumFractionDigits: 2,
-            minimumFractionDigits: 2,
-          }),
-          detail: `prev ${formatCompactNumber(previousAmount, {
-            maximumFractionDigits: 2,
-            minimumFractionDigits: 2,
-          })}`,
+      return {
+        id: `${snapshot.cardId}:${order.id}`,
+        title,
+        period: {
+          start: order.entryTimestamp,
+          end: order.exitTimestamp,
+          durationHours,
         },
-        {
-          title: 'Change',
-          value: formatSignedNumber(pnl),
-          color: getPnlColor(pnl),
-        },
-        {
-          title: 'Duration',
-          value: formatDuration(durationHours),
-          detail: formatDateTime(previousTimestamp),
-        },
-        {
-          title: 'Date',
-          value: formatDateTime(timestamp),
-        },
-        {
-          title: 'Dataset',
-          value: snapshot.datasetId || 'n/a',
-        },
-        {
-          title: 'Step',
-          value: `${orderIndex}/${Math.max(0, snapshot.orderLog.length - 1)}`,
-        },
-      ],
-    };
-  });
+        direction:
+          order.direction === 'LONG' || order.direction === 'SHORT'
+            ? order.direction
+            : null,
+        statusLabel: formatAiExitReason(order.exitReason),
+        statusColor: getAiExitReasonColor(order.exitReason),
+        pnl: order.pnl,
+        metrics: [
+          {
+            title: 'Entry',
+            value: formatPrice(order.entryPrice),
+            detail: buildSlippageDetail({
+              requestedPrice: order.requestedEntryPrice,
+              slippageBps: order.entrySlippageBps,
+            }),
+          },
+          {
+            title: 'Exit',
+            value: formatPrice(order.exitPrice),
+            detail: buildSlippageDetail({
+              requestedPrice: order.requestedExitPrice,
+              slippageBps: order.exitSlippageBps,
+            }),
+          },
+          {
+            title: 'Notional',
+            value: formatUsdt(order.notional),
+          },
+          {
+            title: 'Fees',
+            value: formatFee(order.totalFee),
+            detail: buildAiFeesDetail(order),
+          },
+          {
+            title: 'Qty',
+            value: formatCompactNumber(order.qty, {
+              maximumFractionDigits: 8,
+              minimumFractionDigits: 0,
+            }),
+          },
+          {
+            title: 'Equity',
+            value: formatCompactNumber(order.equityAfter, {
+              maximumFractionDigits: 2,
+              minimumFractionDigits: 2,
+            }),
+            detail: `prev ${formatCompactNumber(order.equityBefore, {
+              maximumFractionDigits: 2,
+              minimumFractionDigits: 2,
+            })}`,
+          },
+        ],
+      };
+    });
 
 const buildSnapshotSummaryItems = (
   snapshot: StrategyChartSnapshot,
@@ -278,6 +377,31 @@ const directionMetricOrder = [
   'pnl',
   'avgProfit',
 ] as const;
+
+const aiDrawerMetricOrder = [
+  'monthlyPnl',
+  'avgProfit',
+  'maxDrawdown',
+  'maxLossStreak',
+  'approved',
+  'approvedPerDay',
+  'accuracy',
+  'precision',
+] as const;
+
+const aiDrawerMetricOrderIndex = new Map<string, number>(
+  aiDrawerMetricOrder.map((metricId, index) => [metricId, index]),
+);
+
+const sortAiDrawerMetrics = (metrics: StrategyChartMetric[]) =>
+  metrics
+    .filter((metric) => metric.id !== 'recall')
+    .sort((left, right) => {
+      const leftIndex = aiDrawerMetricOrderIndex.get(left.id) ?? 100;
+      const rightIndex = aiDrawerMetricOrderIndex.get(right.id) ?? 100;
+
+      return leftIndex - rightIndex || left.label.localeCompare(right.label);
+    });
 
 const isDirectionDetail = (detail: StrategyChartDetail) =>
   detail.id.startsWith(DIRECTION_DETAIL_PREFIX);
@@ -362,6 +486,34 @@ const getMonthLabel = (monthIndex: number) =>
   new Date(Date.UTC(2026, monthIndex - 1, 1)).toLocaleString('en-US', {
     month: 'short',
   });
+
+const monthQuarters = [
+  { label: 'Q1', months: [1, 2, 3] },
+  { label: 'Q2', months: [4, 5, 6] },
+  { label: 'Q3', months: [7, 8, 9] },
+  { label: 'Q4', months: [10, 11, 12] },
+] as const;
+
+const buildQuarterlyMonthlyStats = (
+  months: MonthlyStat[],
+): QuarterlyMonthlyStats[] => {
+  const byMonth = new Map(months.map((month) => [month.monthIndex, month]));
+
+  return monthQuarters
+    .map((quarter) => {
+      const quarterMonths = quarter.months.map(
+        (monthIndex) => byMonth.get(monthIndex) ?? null,
+      );
+
+      return {
+        label: quarter.label,
+        monthIndexes: quarter.months,
+        months: quarterMonths,
+        hasData: quarterMonths.some((month) => month != null),
+      };
+    })
+    .filter((quarter) => quarter.hasData);
+};
 
 const buildMonthlyStats = (
   orderLog: StrategyChartSnapshot['orderLog'],
@@ -566,7 +718,7 @@ export const StrategySnapshotCard = ({
   const drawerMetrics = useMemo(
     () =>
       mode === 'ai'
-        ? [
+        ? sortAiDrawerMetrics([
             ...metrics,
             {
               id: 'maxLossStreak',
@@ -575,7 +727,7 @@ export const StrategySnapshotCard = ({
               tone:
                 maxLossStreak > 0 ? ('warning' as const) : ('success' as const),
             },
-          ]
+          ])
         : metrics,
     [maxLossStreak, metrics, mode],
   );
@@ -643,12 +795,6 @@ export const StrategySnapshotCard = ({
           {snapshot.title}
         </Text>
 
-        {displaySubtitle ? (
-          <Text fontSize="sm" color="gray.400">
-            {displaySubtitle}
-          </Text>
-        ) : null}
-
         <Flex gap="1">
           <Text fontSize="sm" fontWeight="bold" color="gray.400" mt={1}>
             {sourceLabel}
@@ -658,40 +804,63 @@ export const StrategySnapshotCard = ({
           </Text>
         </Flex>
 
-        <Menu.Root positioning={{ placement: 'bottom-end' }}>
-          <Menu.Trigger asChild>
-            <Button size="sm" variant="outline" ml="auto">
-              Actions
-            </Button>
-          </Menu.Trigger>
-          <Portal>
-            <Menu.Positioner>
-              <Menu.Content minW="160px">
-                {mode === 'ai' && snapshotOrders.length ? (
-                  <Menu.Item value="orders" onClick={() => setOrdersOpen(true)}>
-                    Orders
+        <Flex ml="auto" align="center" gap={3}>
+          {displaySubtitle ? (
+            <Box
+              px={2}
+              py={1}
+              borderWidth="1px"
+              borderColor="gray.700"
+              borderRadius="sm"
+              bg="gray.800"
+              color="gray.200"
+              fontFamily="mono"
+              fontSize="sm"
+              fontWeight="semibold"
+              lineHeight="1"
+            >
+              {displaySubtitle}
+            </Box>
+          ) : null}
+
+          <Menu.Root positioning={{ placement: 'bottom-end' }}>
+            <Menu.Trigger asChild>
+              <Button size="sm" variant="outline">
+                Actions
+              </Button>
+            </Menu.Trigger>
+            <Portal>
+              <Menu.Positioner>
+                <Menu.Content minW="160px">
+                  {mode === 'ai' && snapshotOrders.length ? (
+                    <Menu.Item
+                      value="orders"
+                      onClick={() => setOrdersOpen(true)}
+                    >
+                      Orders
+                    </Menu.Item>
+                  ) : null}
+                  {hasStatDrawer ? (
+                    <Menu.Item
+                      value="stat"
+                      onClick={() => setDetailsOpen(true)}
+                    >
+                      Stat
+                    </Menu.Item>
+                  ) : null}
+                  {hasStatDrawer ? <Menu.Separator /> : null}
+                  <Menu.Item
+                    value="delete"
+                    color="fg.error"
+                    onClick={() => setDeleteOpen(true)}
+                  >
+                    Delete
                   </Menu.Item>
-                ) : null}
-                {mode === 'ai' && snapshotOrders.length ? (
-                  <Menu.Separator />
-                ) : null}
-                {hasStatDrawer ? (
-                  <Menu.Item value="stat" onClick={() => setDetailsOpen(true)}>
-                    Stat
-                  </Menu.Item>
-                ) : null}
-                {hasStatDrawer ? <Menu.Separator /> : null}
-                <Menu.Item
-                  value="delete"
-                  color="fg.error"
-                  onClick={() => setDeleteOpen(true)}
-                >
-                  Delete
-                </Menu.Item>
-              </Menu.Content>
-            </Menu.Positioner>
-          </Portal>
-        </Menu.Root>
+                </Menu.Content>
+              </Menu.Positioner>
+            </Portal>
+          </Menu.Root>
+        </Flex>
 
         <OrdersDrawerPanel
           title={`${snapshot.title} orders`}
@@ -811,94 +980,148 @@ export const StrategySnapshotCard = ({
                               <Box flex="1" h="1px" bg="gray.800" />
                             </Flex>
 
-                            <SimpleGrid columns={4} gap={3}>
-                              {yearGroup.months.map((month) => {
-                                const winRate =
-                                  month.orders > 0
-                                    ? (month.wins / month.orders) * 100
-                                    : null;
-
-                                return (
-                                  <Box
-                                    key={month.id}
-                                    p={3}
-                                    minH="116px"
-                                    borderWidth="1px"
-                                    borderColor="gray.800"
-                                    borderLeftWidth="3px"
-                                    borderLeftColor={getPnlColor(month.pnl)}
-                                    borderRadius="md"
-                                    bg="blackAlpha.300"
+                            <Flex direction="column" gap={3}>
+                              {buildQuarterlyMonthlyStats(yearGroup.months).map(
+                                (quarter) => (
+                                  <Flex
+                                    key={`${yearGroup.year}-${quarter.label}`}
+                                    align="stretch"
+                                    gap={3}
                                   >
                                     <Flex
-                                      justify="space-between"
-                                      align="baseline"
-                                      gap={2}
+                                      w="34px"
+                                      flexShrink={0}
+                                      align="center"
+                                      justify="center"
                                     >
-                                      <Text
-                                        fontSize="sm"
-                                        color="gray.200"
-                                        fontWeight="bold"
-                                      >
-                                        {month.monthLabel}
-                                      </Text>
                                       <Text
                                         fontSize="xs"
                                         color="gray.500"
                                         fontFamily="mono"
+                                        fontWeight="bold"
                                       >
-                                        {String(month.monthIndex).padStart(
-                                          2,
-                                          '0',
-                                        )}
+                                        {quarter.label}
                                       </Text>
                                     </Flex>
-                                    <Text
-                                      mt={3}
-                                      fontSize="xl"
-                                      color={getPnlColor(month.pnl)}
-                                      fontWeight="bold"
-                                      fontFamily="mono"
-                                      lineHeight="1.2"
-                                    >
-                                      {formatSignedNumber(month.pnl)}
-                                    </Text>
-                                    <Flex
-                                      mt={3}
-                                      justify="space-between"
-                                      gap={3}
-                                    >
-                                      <Box>
-                                        <Text fontSize="xs" color="gray.500">
-                                          Orders
-                                        </Text>
-                                        <Text
-                                          fontSize="sm"
-                                          color="gray.300"
-                                          fontFamily="mono"
-                                          fontWeight="semibold"
-                                        >
-                                          {formatInteger(month.orders)}
-                                        </Text>
-                                      </Box>
-                                      <Box textAlign="right">
-                                        <Text fontSize="xs" color="gray.500">
-                                          Win rate
-                                        </Text>
-                                        <Text
-                                          fontSize="sm"
-                                          color="gray.300"
-                                          fontFamily="mono"
-                                          fontWeight="semibold"
-                                        >
-                                          {formatPercent(winRate)}
-                                        </Text>
-                                      </Box>
-                                    </Flex>
-                                  </Box>
-                                );
-                              })}
-                            </SimpleGrid>
+
+                                    <SimpleGrid columns={3} gap={3} flex="1">
+                                      {quarter.months.map(
+                                        (month, monthOffset) => {
+                                          const monthIndex =
+                                            quarter.monthIndexes[monthOffset] ??
+                                            0;
+
+                                          if (!month) {
+                                            return (
+                                              <Box
+                                                key={`${quarter.label}-${monthIndex}-empty`}
+                                                minH="116px"
+                                                visibility="hidden"
+                                              />
+                                            );
+                                          }
+
+                                          const winRate =
+                                            month.orders > 0
+                                              ? (month.wins / month.orders) *
+                                                100
+                                              : null;
+
+                                          return (
+                                            <Box
+                                              key={month.id}
+                                              p={3}
+                                              minH="116px"
+                                              borderWidth="1px"
+                                              borderColor="gray.800"
+                                              borderLeftWidth="3px"
+                                              borderLeftColor={getPnlColor(
+                                                month.pnl,
+                                              )}
+                                              borderRadius="md"
+                                              bg="blackAlpha.300"
+                                            >
+                                              <Flex
+                                                justify="space-between"
+                                                align="baseline"
+                                                gap={2}
+                                              >
+                                                <Text
+                                                  fontSize="sm"
+                                                  color="gray.200"
+                                                  fontWeight="bold"
+                                                >
+                                                  {month.monthLabel}
+                                                </Text>
+                                                <Text
+                                                  fontSize="xs"
+                                                  color="gray.500"
+                                                  fontFamily="mono"
+                                                >
+                                                  {String(
+                                                    month.monthIndex,
+                                                  ).padStart(2, '0')}
+                                                </Text>
+                                              </Flex>
+                                              <Text
+                                                mt={3}
+                                                fontSize="xl"
+                                                color={getPnlColor(month.pnl)}
+                                                fontWeight="bold"
+                                                fontFamily="mono"
+                                                lineHeight="1.2"
+                                              >
+                                                {formatSignedNumber(month.pnl)}
+                                              </Text>
+                                              <Flex
+                                                mt={3}
+                                                justify="space-between"
+                                                gap={3}
+                                              >
+                                                <Box>
+                                                  <Text
+                                                    fontSize="xs"
+                                                    color="gray.500"
+                                                  >
+                                                    Orders
+                                                  </Text>
+                                                  <Text
+                                                    fontSize="sm"
+                                                    color="gray.300"
+                                                    fontFamily="mono"
+                                                    fontWeight="semibold"
+                                                  >
+                                                    {formatInteger(
+                                                      month.orders,
+                                                    )}
+                                                  </Text>
+                                                </Box>
+                                                <Box textAlign="right">
+                                                  <Text
+                                                    fontSize="xs"
+                                                    color="gray.500"
+                                                  >
+                                                    Win rate
+                                                  </Text>
+                                                  <Text
+                                                    fontSize="sm"
+                                                    color="gray.300"
+                                                    fontFamily="mono"
+                                                    fontWeight="semibold"
+                                                  >
+                                                    {formatPercent(winRate)}
+                                                  </Text>
+                                                </Box>
+                                              </Flex>
+                                            </Box>
+                                          );
+                                        },
+                                      )}
+                                    </SimpleGrid>
+                                  </Flex>
+                                ),
+                              )}
+                            </Flex>
                           </Box>
                         ))}
                       </Flex>

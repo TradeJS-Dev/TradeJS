@@ -97,6 +97,13 @@ const attachLegacyDatasetIds = async (strategies: StrategyChartSnapshot[]) => {
   );
 };
 
+const normalizeStrategyChartCard = (
+  card: StrategyChartSnapshot,
+): StrategyChartSnapshot => ({
+  ...card,
+  orders: Array.isArray(card.orders) ? card.orders : [],
+});
+
 export async function GET() {
   const userName = await getCurrentUserName();
   if (!userName) {
@@ -112,6 +119,7 @@ export async function GET() {
     )
   )
     .filter((card): card is StrategyChartSnapshot => Boolean(card))
+    .map(normalizeStrategyChartCard)
     .sort(
       (left, right) =>
         resolveTotalPnl(right) - resolveTotalPnl(left) ||

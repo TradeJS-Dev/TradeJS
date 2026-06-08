@@ -21,6 +21,33 @@ export interface StrategyChartDetail {
   tone?: StrategyChartMetricTone;
 }
 
+export interface StrategyChartOrder {
+  id: string;
+  symbol?: string;
+  direction?: string | null;
+  timestamp?: number | null;
+  entryTimestamp?: number | null;
+  exitTimestamp?: number | null;
+  exitReason?: string | null;
+  pnl?: number | null;
+  equityBefore?: number | null;
+  equityAfter?: number | null;
+  qty?: number | null;
+  notional?: number | null;
+  requestedEntryPrice?: number | null;
+  entryPrice?: number | null;
+  requestedExitPrice?: number | null;
+  exitPrice?: number | null;
+  openFee?: number | null;
+  closeFee?: number | null;
+  fundingFee?: number | null;
+  totalFee?: number | null;
+  entrySlippageBps?: number | null;
+  exitSlippageBps?: number | null;
+  totalSlippageCost?: number | null;
+  sequence?: number | null;
+}
+
 export interface StrategyChartSnapshot {
   cardId: string;
   generatedAt: number;
@@ -30,6 +57,7 @@ export interface StrategyChartSnapshot {
   datasetId?: string;
   symbols: string[];
   orderLog: SimpleOrderLogData;
+  orders: StrategyChartOrder[];
   stat?: Partial<TestStat> | null;
   metrics: StrategyChartMetric[];
   details?: StrategyChartDetail[];

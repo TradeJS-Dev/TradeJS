@@ -8,6 +8,13 @@ import { getCurrentUserName } from '#app/lib/currentUser';
 
 export const dynamic = 'force-dynamic';
 
+const normalizeStrategyChartCard = (
+  card: StrategyChartSnapshot,
+): StrategyChartSnapshot => ({
+  ...card,
+  orders: Array.isArray(card.orders) ? card.orders : [],
+});
+
 export async function GET() {
   const userName = (await getCurrentUserName()) || 'root';
   const keys = await getKeys(redisKeys.strategyChartCards(userName, 'replay'));
@@ -19,6 +26,7 @@ export async function GET() {
     )
   )
     .filter((card): card is StrategyChartSnapshot => Boolean(card))
+    .map(normalizeStrategyChartCard)
     .sort(
       (left, right) =>
         right.generatedAt - left.generatedAt ||

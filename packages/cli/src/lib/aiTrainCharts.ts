@@ -1,8 +1,10 @@
 import type {
   StrategyChartDetail,
   StrategyChartMetric,
+  StrategyChartOrder,
   StrategyChartSnapshot,
   StrategyChartsSnapshotResponse,
+  TestTradeResult,
 } from '@tradejs/types';
 import {
   summarizeAiTrainEvaluations,
@@ -19,6 +21,7 @@ export type AiTrainEvaluatedRowForChart = AiTrainEvaluation & {
   modelDirection: string | null;
   rawAiApproved?: boolean;
   sequence?: number;
+  tradeResult?: TestTradeResult;
 };
 
 const formatRatio = (value: number | null) =>
@@ -349,6 +352,67 @@ const buildStrategyWideEquityCurve = (
   return orderLog;
 };
 
+const sortAiChartEvaluations = (evaluations: AiTrainEvaluatedRowForChart[]) =>
+  [...evaluations].sort(
+    (left, right) =>
+      (left.timestamp ?? 0) - (right.timestamp ?? 0) ||
+      left.symbol.localeCompare(right.symbol) ||
+      left.signalId.localeCompare(right.signalId),
+  );
+
+const toFiniteNumber = (value: unknown) =>
+  typeof value === 'number' && Number.isFinite(value) ? value : null;
+
+const buildStrategyWideOrders = (
+  evaluations: AiTrainEvaluatedRowForChart[],
+): StrategyChartOrder[] => {
+  let amount = 100;
+
+  return sortAiChartEvaluations(evaluations).flatMap((evaluation, index) => {
+    const tradeResult = evaluation.tradeResult;
+    const equityBefore = amount;
+    amount = Number((amount + evaluation.profit).toFixed(4));
+    if (!tradeResult) {
+      return [];
+    }
+
+    const entryPrice = toFiniteNumber(tradeResult?.entryPrice);
+    const qty = toFiniteNumber(tradeResult?.qty);
+    const notional =
+      entryPrice != null && qty != null
+        ? Number((entryPrice * qty).toFixed(8))
+        : null;
+
+    return {
+      id: `${evaluation.signalId}:${evaluation.timestamp ?? index}`,
+      symbol: evaluation.symbol,
+      direction: tradeResult?.direction ?? evaluation.direction ?? null,
+      timestamp: evaluation.timestamp ?? tradeResult?.exitTimestamp ?? null,
+      entryTimestamp:
+        tradeResult?.entryTimestamp ?? evaluation.timestamp ?? null,
+      exitTimestamp: tradeResult?.exitTimestamp ?? evaluation.timestamp ?? null,
+      exitReason: tradeResult?.exitReason ?? null,
+      pnl: evaluation.profit,
+      equityBefore,
+      equityAfter: amount,
+      qty,
+      notional,
+      requestedEntryPrice: toFiniteNumber(tradeResult?.requestedEntryPrice),
+      entryPrice,
+      requestedExitPrice: toFiniteNumber(tradeResult?.requestedExitPrice),
+      exitPrice: toFiniteNumber(tradeResult?.exitPrice),
+      openFee: toFiniteNumber(tradeResult?.openFee),
+      closeFee: toFiniteNumber(tradeResult?.closeFee),
+      fundingFee: toFiniteNumber(tradeResult?.fundingFee),
+      totalFee: toFiniteNumber(tradeResult?.totalFee),
+      entrySlippageBps: toFiniteNumber(tradeResult?.entrySlippageBps),
+      exitSlippageBps: toFiniteNumber(tradeResult?.exitSlippageBps),
+      totalSlippageCost: toFiniteNumber(tradeResult?.totalSlippageCost),
+      sequence: evaluation.sequence ?? index + 1,
+    };
+  });
+};
+
 const calculateMaxDrawdownPercent = (orderLog: Array<[number, number]>) => {
   if (!orderLog.length) {
     return null;
@@ -461,6 +525,7 @@ export const buildAiChartSnapshot = (params: {
         (evaluation) => evaluation.aiApproved,
       );
       const orderLog = buildStrategyWideEquityCurve(approvedRows);
+      const orders = buildStrategyWideOrders(approvedRows);
 
       cards.push({
         cardId: `${strategyName}-${group.key}-q${threshold}-${generatedAt}`,
@@ -477,6 +542,7 @@ export const buildAiChartSnapshot = (params: {
           ),
         ].sort(),
         orderLog,
+        orders,
         stat: null,
         metrics: buildAiChartMetrics({
           summary,

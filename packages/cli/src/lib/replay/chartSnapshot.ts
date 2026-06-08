@@ -36,6 +36,7 @@ export const buildReplayChartSnapshot = (params: {
         ...new Set(orderLog.map((entry) => entry.symbol).filter(Boolean)),
       ],
       orderLog: toSimpleOrderLog(orderLog),
+      orders: [],
       stat,
       metrics: [
         {

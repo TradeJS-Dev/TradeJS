@@ -16,7 +16,6 @@ import type { TestThresholdsKey, ThresholdLevel } from '@tradejs/types';
 import {
   formatCompactNumber,
   formatDateTime,
-  formatDuration,
   formatFee,
   formatInteger,
   formatPercent,
@@ -178,20 +177,30 @@ const getRuntimeOrdersSummaryItems = (
 };
 
 const mapRuntimeOrder = (order: RuntimeOrderView): OrdersDrawerOrder => {
-  const orderDate = order.exitTimestamp ?? order.entryTimestamp;
   const displayEntryPrice = order.actualEntryPrice ?? order.entryPrice;
   const displayExitPrice =
     order.status === 'active'
       ? order.currentPrice
       : order.actualExitPrice ?? order.exitPrice;
+  const notional =
+    typeof order.qty === 'number' &&
+    Number.isFinite(order.qty) &&
+    typeof displayEntryPrice === 'number' &&
+    Number.isFinite(displayEntryPrice)
+      ? order.qty * displayEntryPrice
+      : null;
 
   return {
     id: order.orderId,
     title: order.symbol,
-    subtitle: `opened ${formatDateTime(order.entryTimestamp)}`,
+    period: {
+      start: order.entryTimestamp,
+      end: order.status === 'active' ? null : order.exitTimestamp,
+      durationHours: order.durationHours,
+    },
     direction: order.direction,
-    statusLabel: order.status === 'active' ? 'ACTIVE' : undefined,
-    statusColor: order.status === 'active' ? 'orange' : undefined,
+    statusLabel: formatExitType(order).toUpperCase(),
+    statusColor: order.status === 'active' ? 'orange' : 'gray',
     pnl: order.pnl,
     accentColor: getOrderAccentColor(order),
     metrics: [
@@ -214,19 +223,19 @@ const mapRuntimeOrder = (order: RuntimeOrderView): OrdersDrawerOrder => {
           ),
       },
       {
-        title: 'Duration',
-        value: formatDuration(order.durationHours),
-        detail: formatDateTime(orderDate),
-      },
-      {
         title: 'Fees',
         value: formatFee(order.totalFee),
         detail: <FeesDetail order={order} />,
       },
       {
-        title: 'Reason',
-        value: formatExitType(order),
-        color: order.status === 'active' ? 'orange.300' : 'gray.300',
+        title: 'Notional',
+        value:
+          notional == null
+            ? 'n/a'
+            : `${formatCompactNumber(notional, {
+                maximumFractionDigits: 2,
+                minimumFractionDigits: 2,
+              })} USDT`,
       },
       {
         title: 'Qty',
@@ -246,10 +255,6 @@ export const RuntimeStrategyCard = ({
 }) => {
   const [ordersOpen, setOrdersOpen] = useState(false);
   const lastTrade = strategy.recentTrades[0];
-  const symbolsLabel =
-    strategy.symbols.length > 3
-      ? `${strategy.symbols.slice(0, 3).join(', ')} +${strategy.symbols.length - 3}`
-      : strategy.symbols.join(', ') || 'n/a';
 
   return (
     <Box
@@ -273,15 +278,6 @@ export const RuntimeStrategyCard = ({
           </Text>
           <Text fontSize="lg" fontWeight="bold" color="gray.200">
             {provider}
-          </Text>
-        </Flex>
-
-        <Flex gap="1">
-          <Text fontSize="sm" fontWeight="bold" color="gray.400" mt={1}>
-            symbols:
-          </Text>
-          <Text fontSize="lg" fontWeight="bold" color="gray.200">
-            {symbolsLabel}
           </Text>
         </Flex>
 

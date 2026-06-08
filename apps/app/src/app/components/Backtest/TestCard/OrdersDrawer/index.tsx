@@ -5,7 +5,6 @@ import { Button } from '@chakra-ui/react';
 import type { OrderLogData } from '@tradejs/types';
 import {
   formatCompactNumber,
-  formatDateTime,
   formatFee,
   formatInteger,
   formatPercent,
@@ -108,7 +107,9 @@ const mapBacktestOrder = (order: OrderLogData[number]): OrdersDrawerOrder => {
   return {
     id: `${order.index}:${order.timestamp}:${order.type}`,
     title: order.symbol,
-    subtitle: `${formatOrderType(order.type)} · ${formatDateTime(order.timestamp)}`,
+    period: {
+      start: order.timestamp,
+    },
     direction: order.direction,
     statusLabel: status.label,
     statusColor: status.color,
@@ -126,7 +127,7 @@ const mapBacktestOrder = (order: OrderLogData[number]): OrdersDrawerOrder => {
         value: formatCompactNumber(order.qty),
       },
       {
-        title: 'Amount',
+        title: 'Notional',
         value: formatCompactNumber(order.amount, {
           maximumFractionDigits: 2,
           minimumFractionDigits: 2,
@@ -144,7 +145,6 @@ const mapBacktestOrder = (order: OrderLogData[number]): OrdersDrawerOrder => {
       {
         title: 'Index',
         value: formatInteger(order.index),
-        detail: formatDateTime(order.timestamp),
       },
     ],
   };

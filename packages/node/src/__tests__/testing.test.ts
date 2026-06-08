@@ -243,6 +243,28 @@ describe('testing backtest flow', () => {
     expect(mockTestConnector.checkExits).toHaveBeenCalledTimes(2);
   });
 
+  it('checks exits before strategy signals so new entries cannot close on the same candle', async () => {
+    const data = [candle(1_000_050), candle(1_000_150), candle(1_000_250)];
+    mockByBitConnector.kline.mockResolvedValue(data);
+    mockBinanceConnector.kline.mockResolvedValue(data);
+    mockCoinbaseConnector.kline.mockResolvedValue(data);
+    mockStrategy.mockResolvedValue('HOLD');
+
+    await testing(createTest());
+
+    expect(mockTestConnector.checkExits).toHaveBeenCalledTimes(2);
+    expect(mockStrategy).toHaveBeenCalledTimes(2);
+    expect(mockTestConnector.checkSl).not.toHaveBeenCalled();
+    expect(mockTestConnector.checkTp).not.toHaveBeenCalled();
+
+    const exitCallOrder = mockTestConnector.checkExits.mock.invocationCallOrder;
+    const signalCallOrder = mockStrategy.mock.invocationCallOrder;
+
+    expect(exitCallOrder[0]).toBeLessThan(signalCallOrder[0]);
+    expect(signalCallOrder[0]).toBeLessThan(exitCallOrder[1]);
+    expect(exitCallOrder[1]).toBeLessThan(signalCallOrder[1]);
+  });
+
   it('does not reuse mutable preload arrays between configs for the same symbol', async () => {
     const data = [candle(1_000_050), candle(1_000_150), candle(1_000_250)];
     const receivedPreloadLengths: number[] = [];

@@ -806,6 +806,7 @@ export const main = async () => {
           strategy: row.strategyName,
           rawAiApproved: aiApproved,
           sequence,
+          tradeResult: row.tradeResult,
         });
       }
 
@@ -1415,18 +1416,16 @@ export const main = async () => {
         [
           chalk.gray('QUALITY'),
           chalk.gray('COUNT'),
-          chalk.gray('APPROVED'),
-          chalk.gray('APPROVAL_RATE'),
           chalk.gray('WINRATE'),
           chalk.gray('AVG_PROFIT'),
+          chalk.gray('TOTAL_PROFIT'),
         ],
         summary.qualityBuckets.map((bucket) => [
           colorizeQuality(bucket.quality),
           chalk.blue(String(bucket.count)),
-          chalk.cyan(String(bucket.approved)),
-          colorizeRatio(bucket.approved / bucket.count),
           colorizeRatio(bucket.profitable / bucket.count),
           colorizeProfit(bucket.totalProfit / bucket.count),
+          colorizeProfit(bucket.totalProfit),
         ]),
       ),
     );

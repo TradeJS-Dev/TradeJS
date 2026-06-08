@@ -31,6 +31,11 @@ export interface OrdersDrawerOrder {
   id: string;
   title: string;
   subtitle?: ReactNode;
+  period?: {
+    start: number | null | undefined;
+    end?: number | null;
+    durationHours?: number | null;
+  };
   direction?: 'LONG' | 'SHORT' | null;
   statusLabel?: string;
   statusColor?: string;
@@ -110,6 +115,24 @@ export const formatDuration = (hours: number | null | undefined) => {
   const days = Math.floor(hours / 24);
   const remainderHours = Math.round(hours % 24);
   return `${days}d ${remainderHours}h`;
+};
+
+export const formatOrderPeriod = ({
+  start,
+  end,
+  durationHours,
+}: NonNullable<OrdersDrawerOrder['period']>) => {
+  const startLabel = formatDateTime(start);
+  if (typeof end !== 'number' || !Number.isFinite(end)) {
+    return startLabel;
+  }
+
+  const durationLabel =
+    typeof durationHours === 'number' && Number.isFinite(durationHours)
+      ? ` (${formatDuration(durationHours)})`
+      : '';
+
+  return `${startLabel} - ${formatDateTime(end)}${durationLabel}`;
 };
 
 export const formatFee = (value: number | null | undefined) => {
@@ -231,6 +254,9 @@ const OrderMetric = ({
 
 const OrderCard = ({ order }: { order: OrdersDrawerOrder }) => {
   const accentColor = order.accentColor ?? getPnlColor(order.pnl);
+  const subtitle = order.period
+    ? formatOrderPeriod(order.period)
+    : order.subtitle;
 
   return (
     <Box
@@ -283,9 +309,9 @@ const OrderCard = ({ order }: { order: OrdersDrawerOrder }) => {
               </Badge>
             ) : null}
           </Flex>
-          {order.subtitle ? (
+          {subtitle ? (
             <Box mt={1} color="gray.500" fontSize="xs" lineHeight="1.2">
-              {order.subtitle}
+              {subtitle}
             </Box>
           ) : null}
         </Box>
@@ -298,7 +324,12 @@ const OrderCard = ({ order }: { order: OrdersDrawerOrder }) => {
           minW="max-content"
           whiteSpace="nowrap"
         >
-          <Text fontSize="xs" color="gray.500" textTransform="uppercase">
+          <Text
+            fontSize="xs"
+            color="gray.500"
+            textTransform="uppercase"
+            lineHeight="1"
+          >
             P&amp;L
           </Text>
           <Text
@@ -306,7 +337,7 @@ const OrderCard = ({ order }: { order: OrdersDrawerOrder }) => {
             fontWeight="bold"
             fontSize="xl"
             fontFamily="mono"
-            lineHeight="1.2"
+            lineHeight="1"
             whiteSpace="nowrap"
           >
             {formatSignedNumber(order.pnl)}
