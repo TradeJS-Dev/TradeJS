@@ -807,6 +807,7 @@ export const StrategySnapshotCard = ({
         <Flex ml="auto" align="center" gap={3}>
           {displaySubtitle ? (
             <Box
+              order={0}
               px={2}
               py={1}
               borderWidth="1px"
@@ -823,43 +824,45 @@ export const StrategySnapshotCard = ({
             </Box>
           ) : null}
 
-          <Menu.Root positioning={{ placement: 'bottom-end' }}>
-            <Menu.Trigger asChild>
-              <Button size="sm" variant="outline">
-                Actions
-              </Button>
-            </Menu.Trigger>
-            <Portal>
-              <Menu.Positioner>
-                <Menu.Content minW="160px">
-                  {mode === 'ai' && snapshotOrders.length ? (
+          <Box order={1}>
+            <Menu.Root positioning={{ placement: 'bottom-end' }}>
+              <Menu.Trigger asChild>
+                <Button size="sm" variant="outline">
+                  Actions
+                </Button>
+              </Menu.Trigger>
+              <Portal>
+                <Menu.Positioner>
+                  <Menu.Content minW="160px">
+                    {mode === 'ai' && snapshotOrders.length ? (
+                      <Menu.Item
+                        value="orders"
+                        onClick={() => setOrdersOpen(true)}
+                      >
+                        Orders
+                      </Menu.Item>
+                    ) : null}
+                    {hasStatDrawer ? (
+                      <Menu.Item
+                        value="stat"
+                        onClick={() => setDetailsOpen(true)}
+                      >
+                        Stat
+                      </Menu.Item>
+                    ) : null}
+                    {hasStatDrawer ? <Menu.Separator /> : null}
                     <Menu.Item
-                      value="orders"
-                      onClick={() => setOrdersOpen(true)}
+                      value="delete"
+                      color="fg.error"
+                      onClick={() => setDeleteOpen(true)}
                     >
-                      Orders
+                      Delete
                     </Menu.Item>
-                  ) : null}
-                  {hasStatDrawer ? (
-                    <Menu.Item
-                      value="stat"
-                      onClick={() => setDetailsOpen(true)}
-                    >
-                      Stat
-                    </Menu.Item>
-                  ) : null}
-                  {hasStatDrawer ? <Menu.Separator /> : null}
-                  <Menu.Item
-                    value="delete"
-                    color="fg.error"
-                    onClick={() => setDeleteOpen(true)}
-                  >
-                    Delete
-                  </Menu.Item>
-                </Menu.Content>
-              </Menu.Positioner>
-            </Portal>
-          </Menu.Root>
+                  </Menu.Content>
+                </Menu.Positioner>
+              </Portal>
+            </Menu.Root>
+          </Box>
         </Flex>
 
         <OrdersDrawerPanel
