@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { spawn } from 'child_process';
+import { spawn, spawnSync } from 'child_process';
 import { createRequire } from 'module';
 import net from 'net';
 import path from 'path';
@@ -73,6 +73,53 @@ async function findAvailablePort(startPort, attempts = 20) {
   return null;
 }
 
+function getListeningProcess(port) {
+  if (process.platform === 'win32') {
+    return null;
+  }
+
+  const lsof = spawnSync('lsof', [
+    '-nP',
+    `-iTCP:${port}`,
+    '-sTCP:LISTEN',
+    '-Fp',
+  ]);
+  const output = String(lsof.stdout || '');
+  const pid = output
+    .split('\n')
+    .find((line) => line.startsWith('p'))
+    ?.slice(1);
+
+  if (!pid) {
+    return null;
+  }
+
+  const ps = spawnSync('ps', ['-p', pid, '-o', 'command=']);
+  const cwdInfo = spawnSync('lsof', ['-a', '-p', pid, '-d', 'cwd', '-Fn']);
+  const cwd = String(cwdInfo.stdout || '')
+    .split('\n')
+    .find((line) => line.startsWith('n'))
+    ?.slice(1);
+
+  return {
+    pid,
+    command: String(ps.stdout || '').trim(),
+    cwd: cwd || null,
+  };
+}
+
+function isAppDevProcess(processInfo) {
+  if (!processInfo?.command) {
+    return false;
+  }
+
+  if (processInfo.cwd === appDir) {
+    return true;
+  }
+
+  return processInfo.command.includes('next-server');
+}
+
 function syncLocalUrlEnv(name, fromPort, toPort) {
   const rawValue = String(process.env[name] || '').trim();
   if (!rawValue) {
@@ -121,6 +168,14 @@ async function main() {
     args.push('-p', String(resolvedPort));
 
     if (resolvedPort !== requestedPort) {
+      const existingProcess = getListeningProcess(requestedPort);
+      if (isAppDevProcess(existingProcess)) {
+        console.error(
+          `[tradejs-app] another app dev server is already listening on port ${requestedPort} (PID ${existingProcess.pid}). Stop it before starting a new app server, or pass an explicit --port/PORT for a separate project.`,
+        );
+        process.exit(1);
+      }
+
       syncLocalUrlEnv('APP_URL', requestedPort, resolvedPort);
       syncLocalUrlEnv('NEXTAUTH_URL', requestedPort, resolvedPort);
       console.warn(

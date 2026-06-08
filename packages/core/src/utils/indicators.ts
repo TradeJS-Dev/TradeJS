@@ -299,12 +299,18 @@ export type IndicatorsControllerRuntimeState = {
   latestIndicatorValues: Record<string, number>;
   rawCoinCandles: Candle[];
   rawBtcCandles: Candle[];
+  rawEthCandles?: Candle[];
   coinResampledCandles: {
     h1: Candle[];
     h4: Candle[];
     d1: Candle[];
   };
   btcResampledCandles: {
+    h1: Candle[];
+    h4: Candle[];
+    d1: Candle[];
+  };
+  ethResampledCandles?: {
     h1: Candle[];
     h4: Candle[];
     d1: Candle[];
@@ -321,8 +327,10 @@ export type IndicatorsControllerCheckpointState = Pick<
   | 'indicatorState'
   | 'rawCoinCandles'
   | 'rawBtcCandles'
+  | 'rawEthCandles'
   | 'coinResampledCandles'
   | 'btcResampledCandles'
+  | 'ethResampledCandles'
   | 'closeStreaks'
   | 'breakoutState'
   | 'btcCloses'
@@ -368,6 +376,7 @@ type TrendlineIndicators = {
 type CreateIndicatorsOptions = {
   includeMlPayload?: boolean;
   runtimeOnly?: boolean;
+  ethData?: Candle[];
   btcBinanceData?: Candle[];
   btcCoinbaseData?: Candle[];
   pluginRegistryScope?: string;
@@ -571,6 +580,20 @@ export const createIndicators = (
   const btcCloses: number[] = [];
   const candlesHistory: Candle[] = [];
   const btcCandlesHistory: Candle[] = [];
+  const ethCandlesHistory: Candle[] = [];
+  const ethData = (options.ethData ?? []).map(toMlCandle);
+  let ethCandlesByTimestamp: Map<number, Candle> | null = null;
+  const resolveEthCandle = (candle: Candle, index: number) => {
+    const alignedEthCandle = ethData[index];
+    if (alignedEthCandle?.timestamp === candle.timestamp) {
+      return alignedEthCandle;
+    }
+
+    ethCandlesByTimestamp ??= new Map(
+      ethData.map((item) => [item.timestamp, item]),
+    );
+    return ethCandlesByTimestamp.get(candle.timestamp);
+  };
   const btcBinanceCandles = (options.btcBinanceData ?? []).map(toMlCandle);
   const btcCoinbaseCandles = (options.btcCoinbaseData ?? []).map(toMlCandle);
   const restoredState = options.initialRuntimeState;
@@ -619,6 +642,9 @@ export const createIndicators = (
   const btc1hCache = createIncrementalResampleCache(60);
   const btc4hCache = createIncrementalResampleCache(240);
   const btc1dCache = createIncrementalResampleCache(1440);
+  const eth1hCache = createIncrementalResampleCache(60);
+  const eth4hCache = createIncrementalResampleCache(240);
+  const eth1dCache = createIncrementalResampleCache(1440);
 
   const obv = createSerializableObv(restoredState?.indicatorState.obv);
   const smaObv = createSerializableSma(
@@ -812,6 +838,10 @@ export const createIndicators = (
     const normalized = toMlCandle(candle);
     btcCandlesHistory.push(normalized);
   });
+  restoredState?.rawEthCandles?.forEach((candle) => {
+    const normalized = toMlCandle(candle);
+    ethCandlesHistory.push(normalized);
+  });
   restoredState?.btcCloses.forEach((value) => {
     btcCloses.push(value);
   });
@@ -821,6 +851,9 @@ export const createIndicators = (
   btc1hCache.restore(restoredState?.btcResampledCandles.h1 ?? []);
   btc4hCache.restore(restoredState?.btcResampledCandles.h4 ?? []);
   btc1dCache.restore(restoredState?.btcResampledCandles.d1 ?? []);
+  eth1hCache.restore(restoredState?.ethResampledCandles?.h1 ?? []);
+  eth4hCache.restore(restoredState?.ethResampledCandles?.h4 ?? []);
+  eth1dCache.restore(restoredState?.ethResampledCandles?.d1 ?? []);
 
   const buildBaseContextMaLayers = (): BaseContextMaLayerInput[] =>
     BASE_CONTEXT_MA_LAYER_PERIODS.map(([fastPeriod, slowPeriod]) => ({
@@ -1102,6 +1135,7 @@ export const createIndicators = (
   const next = (
     candle: Candle,
     btcCandle?: Candle,
+    ethCandle?: Candle,
   ): IndicatorSnapshot | null => {
     const profileEnabled = INDICATOR_NEXT_PROFILE;
     const profileStartedAt = profileEnabled ? indicatorNextProfileNow() : 0;
@@ -1167,6 +1201,12 @@ export const createIndicators = (
       }
     }
     recordProfile('btcMs');
+    if (ethCandle) {
+      ethCandlesHistory.push(ethCandle);
+      eth1hCache.push(ethCandle);
+      eth4hCache.push(ethCandle);
+      eth1dCache.push(ethCandle);
+    }
 
     closes.push(candle.close);
     highs.push(candle.high);
@@ -1625,6 +1665,7 @@ export const createIndicators = (
             baseResult,
             candlesHistory,
             btcCandlesHistory,
+            ethCandlesHistory,
             closeSeries: closes,
             volumeSeries: volumes,
             btcCloseSeries: btcCloses,
@@ -1637,6 +1678,11 @@ export const createIndicators = (
               h1: btc1hCache.snapshot(),
               h4: btc4hCache.snapshot(),
               d1: btc1dCache.snapshot(),
+            },
+            ethResampledCandles: {
+              h1: eth1hCache.snapshot(),
+              h4: eth4hCache.snapshot(),
+              d1: eth1dCache.snapshot(),
             },
             indicatorHistory,
             indicatorPeriods,
@@ -1668,12 +1714,16 @@ export const createIndicators = (
     } as Record<string, unknown>;
     const capturedCoinLength = candlesHistory.length;
     const capturedBtcLength = btcCandlesHistory.length;
+    const capturedEthLength = ethCandlesHistory.length;
     const capturedCoin1hLength = coin1hCache.size();
     const capturedCoin4hLength = coin4hCache.size();
     const capturedCoin1dLength = coin1dCache.size();
     const capturedBtc1hLength = btc1hCache.size();
     const capturedBtc4hLength = btc4hCache.size();
     const capturedBtc1dLength = btc1dCache.size();
+    const capturedEth1hLength = eth1hCache.size();
+    const capturedEth4hLength = eth4hCache.size();
+    const capturedEth1dLength = eth1dCache.size();
     const capturedCloseStreaks = { ...closeStreaks };
     const capturedBreakoutState = { ...breakoutState };
     const capturedRsiValue = latestRsiValue;
@@ -1694,6 +1744,8 @@ export const createIndicators = (
       candlesHistory.slice(0, capturedCoinLength);
     const getCapturedBtcCandles = () =>
       btcCandlesHistory.slice(0, capturedBtcLength);
+    const getCapturedEthCandles = () =>
+      ethCandlesHistory.slice(0, capturedEthLength);
     const getCapturedCoinResampled = () => ({
       h1: coin1hCache.snapshot(capturedCoin1hLength),
       h4: coin4hCache.snapshot(capturedCoin4hLength),
@@ -1703,6 +1755,11 @@ export const createIndicators = (
       h1: btc1hCache.snapshot(capturedBtc1hLength),
       h4: btc4hCache.snapshot(capturedBtc4hLength),
       d1: btc1dCache.snapshot(capturedBtc1dLength),
+    });
+    const getCapturedEthResampled = () => ({
+      h1: eth1hCache.snapshot(capturedEth1hLength),
+      h4: eth4hCache.snapshot(capturedEth4hLength),
+      d1: eth1dCache.snapshot(capturedEth1dLength),
     });
     const buildCompactSnapshot = ({
       limit = 5,
@@ -1803,11 +1860,13 @@ export const createIndicators = (
             baseResult,
             candlesHistory: getCapturedCoinCandles(),
             btcCandlesHistory: getCapturedBtcCandles(),
+            ethCandlesHistory: getCapturedEthCandles(),
             closeSeries: closes.slice(0, capturedCoinLength),
             volumeSeries: volumes.slice(0, capturedCoinLength),
             btcCloseSeries: btcCloses.slice(0, capturedBtcLength),
             coinResampledCandles: getCapturedCoinResampled(),
             btcResampledCandles: getCapturedBtcResampled(),
+            ethResampledCandles: getCapturedEthResampled(),
             indicatorHistory,
             indicatorPeriods,
             closeStreaks: capturedCloseStreaks,
@@ -1870,7 +1929,7 @@ export const createIndicators = (
   };
 
   data.forEach((candle, index) => {
-    next(candle, btcData[index]);
+    next(candle, btcData[index], resolveEthCandle(candle, index));
   });
 
   const runtimeState = (): IndicatorsControllerRuntimeState => ({
@@ -1923,6 +1982,9 @@ export const createIndicators = (
     rawBtcCandles: btcCandlesHistory
       .slice(-controllerStateCandleWindow)
       .map(cloneMlCandle),
+    rawEthCandles: ethCandlesHistory
+      .slice(-controllerStateCandleWindow)
+      .map(cloneMlCandle),
     coinResampledCandles: {
       h1: coin1hCache
         .snapshot()
@@ -1947,6 +2009,20 @@ export const createIndicators = (
         .slice(-ML_BASE_CANDLES_WINDOW)
         .map(cloneMlCandle),
       d1: btc1dCache
+        .snapshot()
+        .slice(-ML_BASE_CANDLES_WINDOW)
+        .map(cloneMlCandle),
+    },
+    ethResampledCandles: {
+      h1: eth1hCache
+        .snapshot()
+        .slice(-ML_BASE_CANDLES_WINDOW)
+        .map(cloneMlCandle),
+      h4: eth4hCache
+        .snapshot()
+        .slice(-ML_BASE_CANDLES_WINDOW)
+        .map(cloneMlCandle),
+      d1: eth1dCache
         .snapshot()
         .slice(-ML_BASE_CANDLES_WINDOW)
         .map(cloneMlCandle),
@@ -1995,6 +2071,9 @@ export const createIndicators = (
     rawBtcCandles: btcCandlesHistory
       .slice(-controllerStateCandleWindow)
       .map(cloneMlCandle),
+    rawEthCandles: ethCandlesHistory
+      .slice(-controllerStateCandleWindow)
+      .map(cloneMlCandle),
     coinResampledCandles: {
       h1: coin1hCache
         .snapshot()
@@ -2019,6 +2098,20 @@ export const createIndicators = (
         .slice(-ML_BASE_CANDLES_WINDOW)
         .map(cloneMlCandle),
       d1: btc1dCache
+        .snapshot()
+        .slice(-ML_BASE_CANDLES_WINDOW)
+        .map(cloneMlCandle),
+    },
+    ethResampledCandles: {
+      h1: eth1hCache
+        .snapshot()
+        .slice(-ML_BASE_CANDLES_WINDOW)
+        .map(cloneMlCandle),
+      h4: eth4hCache
+        .snapshot()
+        .slice(-ML_BASE_CANDLES_WINDOW)
+        .map(cloneMlCandle),
+      d1: eth1dCache
         .snapshot()
         .slice(-ML_BASE_CANDLES_WINDOW)
         .map(cloneMlCandle),

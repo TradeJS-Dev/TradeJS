@@ -846,6 +846,7 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
     symbol,
     data,
     btcData,
+    ethData = [],
     btcBinanceData,
     btcCoinbaseData,
     connector,
@@ -1178,6 +1179,7 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
       env,
       data,
       btcData,
+      ethData,
       btcBinanceData,
       btcCoinbaseData,
       periods: indicatorPeriods,
@@ -1205,6 +1207,7 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
       connector,
       data,
       btcData,
+      ethData,
       loadPineScriptFile,
       strategyApi,
       indicatorsState,
@@ -1223,6 +1226,7 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
     const appendCurrentMarketData = (
       candle: Parameters<Awaited<ReturnType<typeof createCore>>>[0],
       btcCandle: Parameters<Awaited<ReturnType<typeof createCore>>>[1],
+      ethCandle?: KlineChartItem,
     ) => {
       if (data[data.length - 1]?.timestamp !== candle.timestamp) {
         data.push(candle);
@@ -1230,15 +1234,45 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
       if (btcData[btcData.length - 1]?.timestamp !== btcCandle.timestamp) {
         btcData.push(btcCandle);
       }
+      if (
+        ethCandle &&
+        ethData[ethData.length - 1]?.timestamp !== ethCandle.timestamp
+      ) {
+        ethData.push(ethCandle);
+      }
+    };
+    const resolveEthCandle = (
+      candle: Parameters<Awaited<ReturnType<typeof createCore>>>[0],
+      ethCandle?: KlineChartItem,
+    ) => {
+      if (ethCandle?.timestamp === candle.timestamp) {
+        return ethCandle;
+      }
+
+      const alignedEthCandle = ethData[data.length - 1];
+      if (alignedEthCandle?.timestamp === candle.timestamp) {
+        return alignedEthCandle;
+      }
+
+      const latestEthCandle = ethData[ethData.length - 1];
+      if (latestEthCandle?.timestamp === candle.timestamp) {
+        return latestEthCandle;
+      }
+
+      return undefined;
     };
 
     const runWithDecisionOverride = async (
       candle: Parameters<Awaited<ReturnType<typeof createCore>>>[0],
       btcCandle: Parameters<Awaited<ReturnType<typeof createCore>>>[1],
-      coreDecisionOverride?: StrategyDecision,
+      options: {
+        ethCandle?: KlineChartItem;
+        coreDecisionOverride?: StrategyDecision;
+      } = {},
     ) => {
-      appendCurrentMarketData(candle, btcCandle);
-      indicatorsState.setCurrentBar(candle, btcCandle);
+      appendCurrentMarketData(candle, btcCandle, options.ethCandle);
+      const ethCandle = resolveEthCandle(candle, options.ethCandle);
+      indicatorsState.setCurrentBar(candle, btcCandle, ethCandle);
       const market: HookCandleMarket = {
         candle,
         btcCandle,
@@ -1268,7 +1302,8 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
         if (isStrategyDecision(manifestOnBarDecision)) {
           decision = manifestOnBarDecision;
         } else {
-          decision = coreDecisionOverride ?? (await core(candle, btcCandle));
+          decision =
+            options.coreDecisionOverride ?? (await core(candle, btcCandle));
           shouldInvokeAfterCoreDecisionHook = true;
         }
       }
@@ -1604,7 +1639,8 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
     const strategy = (async (
       candle: KlineChartItem,
       btcCandle: KlineChartItem,
-    ) => runWithDecisionOverride(candle, btcCandle)) as any;
+      ethCandle?: KlineChartItem,
+    ) => runWithDecisionOverride(candle, btcCandle, { ethCandle })) as any;
 
     const resolvedDetectorKey = detectorKey?.(config);
     if (resolvedDetectorKey && detectorNoSignalSkipReason) {
@@ -1630,7 +1666,11 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
           code: string,
         ) => {
           appendCurrentMarketData(candle, btcCandle);
-          indicatorsState.setCurrentBar(candle, btcCandle);
+          indicatorsState.setCurrentBar(
+            candle,
+            btcCandle,
+            resolveEthCandle(candle),
+          );
           return Promise.resolve(code);
         };
       }
@@ -1638,7 +1678,10 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
         candle: KlineChartItem,
         btcCandle: KlineChartItem,
         code: string,
-      ) => runWithDecisionOverride(candle, btcCandle, strategyApi.skip(code));
+      ) =>
+        runWithDecisionOverride(candle, btcCandle, {
+          coreDecisionOverride: strategyApi.skip(code),
+        });
     }
 
     return strategy;

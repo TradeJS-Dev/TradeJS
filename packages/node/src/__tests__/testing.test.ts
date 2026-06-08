@@ -239,7 +239,7 @@ describe('testing backtest flow', () => {
 
     await testing(createTest({ ml: true }));
 
-    expect(mockByBitConnector.kline).toHaveBeenCalledTimes(2);
+    expect(mockByBitConnector.kline).toHaveBeenCalledTimes(3);
     expect(mockTestConnector.checkExits).toHaveBeenCalledTimes(2);
   });
 
@@ -837,14 +837,14 @@ describe('testing backtest flow', () => {
     process.env.PROJECT_CWD = '/tmp/project-a';
     await testing(createTest());
 
-    expect(mockByBitConnector.kline).toHaveBeenCalledTimes(2);
+    expect(mockByBitConnector.kline).toHaveBeenCalledTimes(3);
     expect(mockBinanceConnector.kline).toHaveBeenCalledTimes(1);
     expect(mockCoinbaseConnector.kline).toHaveBeenCalledTimes(1);
 
     process.env.PROJECT_CWD = '/tmp/project-b';
     await testing(createTest());
 
-    expect(mockByBitConnector.kline).toHaveBeenCalledTimes(4);
+    expect(mockByBitConnector.kline).toHaveBeenCalledTimes(6);
     expect(mockBinanceConnector.kline).toHaveBeenCalledTimes(2);
     expect(mockCoinbaseConnector.kline).toHaveBeenCalledTimes(2);
 
@@ -853,14 +853,14 @@ describe('testing backtest flow', () => {
     process.env.PROJECT_CWD = '/tmp/project-b';
     await testing(createTest());
 
-    expect(mockByBitConnector.kline).toHaveBeenCalledTimes(4);
+    expect(mockByBitConnector.kline).toHaveBeenCalledTimes(6);
     expect(mockBinanceConnector.kline).toHaveBeenCalledTimes(2);
     expect(mockCoinbaseConnector.kline).toHaveBeenCalledTimes(2);
 
     process.env.PROJECT_CWD = '/tmp/project-a';
     await testing(createTest());
 
-    expect(mockByBitConnector.kline).toHaveBeenCalledTimes(6);
+    expect(mockByBitConnector.kline).toHaveBeenCalledTimes(9);
     expect(mockBinanceConnector.kline).toHaveBeenCalledTimes(3);
     expect(mockCoinbaseConnector.kline).toHaveBeenCalledTimes(3);
   });
@@ -878,7 +878,7 @@ describe('testing backtest flow', () => {
     expect(mockByBitConnectorCreator).toHaveBeenCalledTimes(1);
     expect(mockBinanceConnectorCreator).toHaveBeenCalledTimes(1);
     expect(mockCoinbaseConnectorCreator).toHaveBeenCalledTimes(1);
-    expect(mockAlignSortedCandlesByTimestamp).toHaveBeenCalledTimes(3);
+    expect(mockAlignSortedCandlesByTimestamp).toHaveBeenCalledTimes(4);
   });
 
   it('releases symbol-scoped candle caches without dropping shared connectors', async () => {
@@ -899,10 +899,10 @@ describe('testing backtest flow', () => {
     expect(mockByBitConnectorCreator).toHaveBeenCalledTimes(1);
     expect(mockBinanceConnectorCreator).toHaveBeenCalledTimes(1);
     expect(mockCoinbaseConnectorCreator).toHaveBeenCalledTimes(1);
-    expect(mockByBitConnector.kline).toHaveBeenCalledTimes(3);
+    expect(mockByBitConnector.kline).toHaveBeenCalledTimes(4);
     expect(mockBinanceConnector.kline).toHaveBeenCalledTimes(1);
     expect(mockCoinbaseConnector.kline).toHaveBeenCalledTimes(1);
-    expect(mockAlignSortedCandlesByTimestamp).toHaveBeenCalledTimes(6);
+    expect(mockAlignSortedCandlesByTimestamp).toHaveBeenCalledTimes(8);
   });
 
   it('times out a slow test item with symbol in the error message', async () => {

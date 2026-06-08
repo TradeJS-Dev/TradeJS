@@ -1,9 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { TTL_1M } from '@tradejs/core/constants';
+import { getRuntimeStorageDayKeys } from '@tradejs/core/time';
 import { logger } from '@tradejs/infra/logger';
+import { strategyEntries } from '@tradejs/strategies';
 import {
   delKey,
   getData,
+  getHashJsonValues,
   getKeys,
   redisKeys,
   setData,
@@ -69,24 +72,71 @@ const loadConnectedStrategyNames = async (userName: string) => {
 
 const loadConfiguredStrategyNames = async () => {
   try {
-    return await getAvailableStrategyNames(projectRoot);
+    const names = await getAvailableStrategyNames(projectRoot);
+    const builtInNames = strategyEntries
+      .map((entry) => entry.manifest?.name)
+      .filter((value): value is string => Boolean(value));
+
+    return [...new Set([...names, ...builtInNames])].sort((left, right) =>
+      left.localeCompare(right),
+    );
   } catch (error) {
     logger.warn(
       'strategies runtime: failed to load configured strategies: %s',
       (error as Error)?.message || String(error),
     );
-    return [];
+    return strategyEntries
+      .map((entry) => entry.manifest?.name)
+      .filter((value): value is string => Boolean(value))
+      .sort((left, right) => left.localeCompare(right));
   }
 };
 
 const loadRuntimeTrades = async (
   userName: string,
+  {
+    startTime,
+    endTime,
+  }: {
+    startTime: number;
+    endTime: number;
+  },
 ): Promise<RuntimeTradeRecord[]> => {
+  const filterByWindow = (trade: RuntimeTradeRecord) =>
+    trade.entryTimestamp >= startTime ||
+    (typeof trade.exitTimestamp === 'number' &&
+      trade.exitTimestamp >= startTime);
+  const dayKeys = getRuntimeStorageDayKeys(startTime, endTime);
+  const bucketTrades = (
+    await Promise.all(
+      dayKeys.map((dayKey) =>
+        getHashJsonValues<RuntimeTradeRecord>(
+          redisKeys.runtimeTradeBucket(userName, dayKey),
+        ),
+      ),
+    )
+  ).flat();
+  const dedupedBucketTrades = new Map<string, RuntimeTradeRecord>();
+
+  for (const trade of bucketTrades) {
+    if (!isRuntimeTradeRecord(trade)) {
+      continue;
+    }
+    dedupedBucketTrades.set(trade.orderId, trade);
+  }
+
+  if (dedupedBucketTrades.size > 0 || dayKeys.length === 0) {
+    return [...dedupedBucketTrades.values()]
+      .filter(filterByWindow)
+      .sort((left, right) => left.entryTimestamp - right.entryTimestamp);
+  }
+
   const keys = await getKeys(redisKeys.runtimeTrades(userName));
   const trades = await Promise.all(keys.map((key) => getData(key, null)));
 
   return trades
     .filter(isRuntimeTradeRecord)
+    .filter(filterByWindow)
     .sort((left, right) => left.entryTimestamp - right.entryTimestamp);
 };
 
@@ -108,11 +158,13 @@ const loadExchangeRange = async <T>({
   startTime,
   endTime,
   load,
+  errors,
 }: {
   label: string;
   startTime: number;
   endTime: number;
   load: () => Promise<T[]>;
+  errors?: string[];
 }) => {
   try {
     return await Promise.race([
@@ -130,11 +182,9 @@ const loadExchangeRange = async <T>({
       }),
     ]);
   } catch (error) {
-    logger.warn(
-      'strategies runtime: %s failed: %s',
-      label,
-      (error as Error)?.message || String(error),
-    );
+    const message = (error as Error)?.message || String(error);
+    errors?.push(`${label}: ${message}`);
+    logger.warn('strategies runtime: %s failed: %s', label, message);
     return [];
   }
 };
@@ -158,10 +208,12 @@ const loadClosedPnlRows = async ({
   connector,
   startTime,
   endTime,
+  errors,
 }: {
   connector: Connector;
   startTime: number;
   endTime: number;
+  errors?: string[];
 }) => {
   if (typeof connector.getClosedPnl !== 'function') {
     return [];
@@ -174,6 +226,7 @@ const loadClosedPnlRows = async ({
           loadExchangeRange({
             label: 'getClosedPnl',
             ...range,
+            errors,
             load: () =>
               connector.getClosedPnl?.({
                 ...range,
@@ -186,10 +239,9 @@ const loadClosedPnlRows = async ({
 
     return rows.sort((left, right) => left.closedAt - right.closedAt);
   } catch (error) {
-    logger.warn(
-      'strategies runtime: getClosedPnl failed: %s',
-      (error as Error)?.message || String(error),
-    );
+    const message = (error as Error)?.message || String(error);
+    errors?.push(`getClosedPnl: ${message}`);
+    logger.warn('strategies runtime: getClosedPnl failed: %s', message);
     return [];
   }
 };
@@ -198,10 +250,12 @@ const loadExchangeEntryRows = async ({
   connector,
   startTime,
   endTime,
+  errors,
 }: {
   connector: Connector;
   startTime: number;
   endTime: number;
+  errors?: string[];
 }) => {
   if (typeof connector.getEntryExecutions !== 'function') {
     return [];
@@ -214,6 +268,7 @@ const loadExchangeEntryRows = async ({
           loadExchangeRange({
             label: 'getEntryExecutions',
             ...range,
+            errors,
             load: () =>
               connector.getEntryExecutions?.({
                 ...range,
@@ -228,16 +283,16 @@ const loadExchangeEntryRows = async ({
       (left, right) => left.entryTimestamp - right.entryTimestamp,
     );
   } catch (error) {
-    logger.warn(
-      'strategies runtime: getEntryExecutions failed: %s',
-      (error as Error)?.message || String(error),
-    );
+    const message = (error as Error)?.message || String(error);
+    errors?.push(`getEntryExecutions: ${message}`);
+    logger.warn('strategies runtime: getEntryExecutions failed: %s', message);
     return [];
   }
 };
 
 const loadOpenPositions = async (
   connector: Connector,
+  errors?: string[],
 ): Promise<PositionPnlSnapshot[]> => {
   if (typeof connector.getOpenPositionPnl !== 'function') {
     return [];
@@ -246,10 +301,9 @@ const loadOpenPositions = async (
   try {
     return await connector.getOpenPositionPnl();
   } catch (error) {
-    logger.warn(
-      'strategies runtime: getOpenPositionPnl failed: %s',
-      (error as Error)?.message || String(error),
-    );
+    const message = (error as Error)?.message || String(error);
+    errors?.push(`getOpenPositionPnl: ${message}`);
+    logger.warn('strategies runtime: getOpenPositionPnl failed: %s', message);
     return [];
   }
 };
@@ -295,6 +349,14 @@ const syncRuntimeTrades = async ({
           typeof row.orderLinkId === 'string' && row.orderLinkId.length > 0,
       )
       .map((row) => [row.orderLinkId, row]),
+  );
+  const exactByOrderId = new Map(
+    closedPnlRowsWithOrderLinkId
+      .filter(
+        (row): row is typeof row & { orderId: string } =>
+          typeof row.orderId === 'string' && row.orderId.length > 0,
+      )
+      .map((row) => [row.orderId, row]),
   );
   const symbolBuckets = new Map<string, ClosedPnlRecordWithOrderLinkId[]>();
 
@@ -342,6 +404,7 @@ const syncRuntimeTrades = async ({
 
     const matchedClosedPnl = takeClosedPnlMatch({
       exactByOrderLinkId,
+      exactByOrderId,
       symbolBuckets,
       trade,
     });
@@ -359,9 +422,18 @@ const syncRuntimeTrades = async ({
         trade.closedPnl ??
         trade.currentPnl ??
         null,
+      actualEntryPrice:
+        matchedClosedPnl?.entryPrice ?? trade.actualEntryPrice ?? null,
       exitPrice: matchedClosedPnl?.exitPrice ?? trade.exitPrice ?? null,
+      actualExitPrice:
+        matchedClosedPnl?.exitPrice ?? trade.actualExitPrice ?? null,
       exitTimestamp:
         matchedClosedPnl?.closedAt ?? trade.exitTimestamp ?? endTime,
+      exitType: trade.exitType ?? null,
+      openFee: matchedClosedPnl?.openFee ?? trade.openFee ?? null,
+      closeFee: matchedClosedPnl?.closeFee ?? trade.closeFee ?? null,
+      fundingFee: matchedClosedPnl?.fundingFee ?? trade.fundingFee ?? null,
+      totalFee: matchedClosedPnl?.totalFee ?? trade.totalFee ?? null,
       lastSyncedAt: endTime,
     };
 
@@ -391,6 +463,7 @@ export const GET = async (request: NextRequest) => {
     const hours = coerceHours(request.nextUrl.searchParams.get('hours'));
     const endTime = Date.now();
     const startTime = endTime - hours * 60 * 60 * 1000;
+    const exchangeErrors: string[] = [];
     const connectorCreator = await resolveConnectorCreatorByProvider(
       provider,
       projectRoot,
@@ -416,19 +489,21 @@ export const GET = async (request: NextRequest) => {
     ] = await Promise.all([
       loadConnectedStrategyNames(userName),
       loadConfiguredStrategyNames(),
-      loadRuntimeTrades(userName),
+      loadRuntimeTrades(userName, { startTime, endTime }),
       loadActiveRuntimeOrderIds(userName),
       loadClosedPnlRows({
         connector,
         startTime,
         endTime,
+        errors: exchangeErrors,
       }),
       loadExchangeEntryRows({
         connector,
         startTime,
         endTime,
+        errors: exchangeErrors,
       }),
-      loadOpenPositions(connector),
+      loadOpenPositions(connector, exchangeErrors),
     ]);
     const relevantTrades = selectTradesForWindow(
       runtimeTrades,
@@ -474,14 +549,13 @@ export const GET = async (request: NextRequest) => {
           .filter((trade) => trade.strategy === strategyName)
           .sort((left, right) => right.entryTimestamp - left.entryTimestamp);
         const orders = strategyTrades
-          .filter((trade) => trade.status === 'closed')
           .sort((left, right) => {
             const leftDate = left.exitTimestamp ?? left.entryTimestamp;
             const rightDate = right.exitTimestamp ?? right.entryTimestamp;
 
             return rightDate - leftDate;
           })
-          .map(toRuntimeTradeView);
+          .map((trade) => toRuntimeTradeView(trade, endTime));
         const analytics = buildRuntimeStrategyAnalytics({
           trades: strategyTrades,
           startTime,
@@ -495,7 +569,9 @@ export const GET = async (request: NextRequest) => {
           stat: analytics.stat,
           summary: analytics.summary,
           orderLog: analytics.orderLog,
-          recentTrades: strategyTrades.slice(0, 8).map(toRuntimeTradeView),
+          recentTrades: strategyTrades
+            .slice(0, 8)
+            .map((trade) => toRuntimeTradeView(trade, endTime)),
           orders,
         };
       }),
@@ -518,6 +594,11 @@ export const GET = async (request: NextRequest) => {
       provider,
       hours,
       generatedAt: endTime,
+      dataSources: {
+        localTrades: syncedTrades.length,
+        exchangeFallbackTrades: fallbackTrades.length,
+        exchangeErrors: [...new Set(exchangeErrors)].sort(),
+      },
       strategies,
     };
 

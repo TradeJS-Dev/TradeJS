@@ -30,11 +30,15 @@ args.option(['o', 'connector'], 'Backtest connector', 'bybit');
 args.option(['f', 'timeframe'], 'Backtest timeframe', '15');
 args.option(['d', 'days'], 'Backtest days window', 45);
 args.option(['n', 'recent'], 'AI train recent rows window', 1000);
-args.option('skip', 'AI train skip rows from end', 0);
-args.option('minQuality', 'Minimum AI quality required to approve entry', 4);
-args.option('outDir', 'AI export output directory', 'data/ai/export');
-args.option('skipAgent', 'Skip direct research agent invocation', false);
-args.option('json', 'Print structured JSON summary', false);
+args.option(['k', 'skip'], 'AI train skip rows from end', 0);
+args.option(
+  ['M', 'minQuality'],
+  'Minimum AI quality required to approve entry',
+  4,
+);
+args.option(['O', 'outDir'], 'AI export output directory', 'data/ai/export');
+args.option(['A', 'skipAgent'], 'Skip direct research agent invocation', false);
+args.option(['j', 'json'], 'Print structured JSON summary', false);
 
 const flags = args.parse(process.argv);
 

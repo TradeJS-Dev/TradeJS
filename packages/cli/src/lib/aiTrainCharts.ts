@@ -105,6 +105,12 @@ const buildAiChartMetrics = (params: {
     {
       id: 'pnl',
       label: 'P&L',
+      value: formatSigned(summary.approvedRisk.totalProfit),
+      tone: resolveMetricTone(summary.approvedRisk.totalProfit),
+    },
+    {
+      id: 'monthlyPnl',
+      label: 'Monthly P&L',
       value: formatSigned(summary.avgProfitApprovedPerMonth),
       tone: resolveMetricTone(summary.avgProfitApprovedPerMonth),
     },

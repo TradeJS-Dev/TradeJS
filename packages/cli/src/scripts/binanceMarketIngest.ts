@@ -36,19 +36,34 @@ args.option(
 );
 args.option(['i', 'interval'], 'Aggregation interval: 1m,5m,15m,1h', '1m');
 args.option(['d', 'days'], 'Lookback window in days', '1');
-args.option('hours', 'Lookback window in hours; overrides --days');
-args.option('aggTrades', 'Fetch and bucket Binance aggTrades');
-args.option('depth', 'Fetch current full order book depth snapshots');
-args.option('breadth', 'Build alt-basket market breadth from Binance klines');
-args.option('all', 'Enable aggTrades, depth, and breadth');
+args.option(['h', 'hours'], 'Lookback window in hours; overrides --days');
+args.option(['a', 'aggTrades'], 'Fetch and bucket Binance aggTrades');
+args.option(['D', 'depth'], 'Fetch current full order book depth snapshots');
 args.option(
-  'write',
+  ['b', 'breadth'],
+  'Build alt-basket market breadth from Binance klines',
+);
+args.option(['A', 'all'], 'Enable aggTrades, depth, and breadth');
+args.option(
+  ['w', 'write'],
   'Write rows to Timescale; without this flag only estimate',
 );
-args.option('breadthLimit', 'Top USDT symbols used for breadth universe', 30);
-args.option('depthLimit', 'Binance order book depth limit', 100);
-args.option('batchMinutes', 'aggTrades request window size in minutes', 15);
-args.option('requestDelayMs', 'Delay between Binance aggTrades requests', 75);
+args.option(
+  ['B', 'breadthLimit'],
+  'Top USDT symbols used for breadth universe',
+  30,
+);
+args.option(['L', 'depthLimit'], 'Binance order book depth limit', 100);
+args.option(
+  ['M', 'batchMinutes'],
+  'aggTrades request window size in minutes',
+  15,
+);
+args.option(
+  ['r', 'requestDelayMs'],
+  'Delay between Binance aggTrades requests',
+  75,
+);
 
 const flags = args.parse(process.argv);
 

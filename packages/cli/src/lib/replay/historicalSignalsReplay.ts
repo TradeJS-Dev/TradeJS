@@ -30,7 +30,7 @@ import {
 } from '@tradejs/types';
 import { PreparedRunEnvironment } from '../runEnvironment';
 import { replayProjectRoot, replayUserName } from './cliConfig';
-import { buildReplayStrategyConfig } from './support';
+import { buildReplayStrategyConfig, compactReplaySignal } from './support';
 import {
   PortfolioReplayConnector,
   createPortfolioReplayConnector,
@@ -53,8 +53,10 @@ type ReplayRuntimeStrategy = {
 type SymbolPreparedData = {
   prevData: KlineChartData;
   btcPrevData: KlineChartData;
+  ethPrevData: KlineChartData;
   replayData: KlineChartData;
   btcReplayData: KlineChartData;
+  ethReplayData: KlineChartData;
   btcBinancePrevData: KlineChartData;
   btcCoinbasePrevData: KlineChartData;
 };
@@ -63,6 +65,7 @@ type SymbolReplayRuntime = {
   symbol: string;
   replayData: KlineChartData;
   btcReplayData: KlineChartData;
+  ethReplayData: KlineChartData;
   currentIndex: number;
   strategies: Array<{
     strategyName: string;
@@ -70,6 +73,7 @@ type SymbolReplayRuntime = {
     run: (
       candle: KlineChartItem,
       btcCandle: KlineChartItem,
+      ethCandle?: KlineChartItem,
     ) => Promise<Signal | string | undefined>;
   }>;
 };
@@ -135,6 +139,7 @@ const loadReferenceConnector = async (connectorName: string) => {
 const buildPreparedData = ({
   data,
   btcData,
+  ethData,
   btcBinanceData,
   btcCoinbaseData,
   start,
@@ -142,6 +147,7 @@ const buildPreparedData = ({
 }: {
   data: KlineChartData;
   btcData: KlineChartData;
+  ethData: KlineChartData;
   btcBinanceData: KlineChartData;
   btcCoinbaseData: KlineChartData;
   start: number;
@@ -151,6 +157,8 @@ const buildPreparedData = ({
     splitCandlesForReplayWindow(data, start, preloadStart);
   const { prevData: btcPrevDataRaw, replayData: btcReplayDataRaw } =
     splitCandlesForReplayWindow(btcData, start, preloadStart);
+  const { prevData: ethPrevDataRaw, replayData: ethReplayDataRaw } =
+    splitCandlesForReplayWindow(ethData, start, preloadStart);
   const { prevData: btcBinancePrevDataRaw } = splitCandlesForReplayWindow(
     btcBinanceData,
     start,
@@ -166,6 +174,14 @@ const buildPreparedData = ({
     alignSymbolWithBtcReference(prevDataRaw, btcPrevDataRaw);
   const { alignedCoinCandles: replayData, alignedBtcCandles: btcReplayData } =
     alignSymbolWithBtcReference(replayDataRaw, btcReplayDataRaw);
+  const { alignedBtcCandles: ethPrevData } = alignSymbolWithBtcReference(
+    prevData,
+    ethPrevDataRaw,
+  );
+  const { alignedBtcCandles: ethReplayData } = alignSymbolWithBtcReference(
+    replayData,
+    ethReplayDataRaw,
+  );
   const { alignedBtcCandles: btcBinancePrevData } = alignSymbolWithBtcReference(
     prevDataRaw,
     btcBinancePrevDataRaw,
@@ -176,8 +192,10 @@ const buildPreparedData = ({
   return {
     prevData,
     btcPrevData,
+    ethPrevData,
     replayData,
     btcReplayData,
+    ethReplayData,
     btcBinancePrevData,
     btcCoinbasePrevData,
   };
@@ -282,6 +300,13 @@ export const runHistoricalSignalsReplay = async ({
     cacheOnly: true,
     interval: interval as any,
   });
+  const ethMarketData = await preparedRun.marketConnector.kline({
+    symbol: 'ETHUSDT',
+    start: preparedRun.preloadStart,
+    end: preparedRun.window.end,
+    cacheOnly: true,
+    interval: interval as any,
+  });
 
   const cycleSymbolsByTimestamp = new Map<number, SymbolReplayRuntime[]>();
   const sharedReplayKeyPrefixes: string[] = [];
@@ -307,6 +332,7 @@ export const runHistoricalSignalsReplay = async ({
     const preparedData = buildPreparedData({
       data,
       btcData: btcMarketData,
+      ethData: ethMarketData,
       btcBinanceData,
       btcCoinbaseData,
       start: preparedRun.window.start,
@@ -346,6 +372,7 @@ export const runHistoricalSignalsReplay = async ({
             symbol,
             data: preparedData.prevData,
             btcData: preparedData.btcPrevData,
+            ethData: preparedData.ethPrevData,
             btcBinanceData: preparedData.btcBinancePrevData,
             btcCoinbaseData: preparedData.btcCoinbasePrevData,
             connector: replayConnector,
@@ -359,6 +386,7 @@ export const runHistoricalSignalsReplay = async ({
       symbol,
       replayData: preparedData.replayData,
       btcReplayData: preparedData.btcReplayData,
+      ethReplayData: preparedData.ethReplayData,
       currentIndex: 0,
       strategies: strategiesForSymbol,
     };
@@ -444,6 +472,8 @@ export const runHistoricalSignalsReplay = async ({
         const candle = symbolRuntime.replayData[symbolRuntime.currentIndex];
         const btcCandle =
           symbolRuntime.btcReplayData[symbolRuntime.currentIndex];
+        const ethCandle =
+          symbolRuntime.ethReplayData[symbolRuntime.currentIndex];
         if (
           !candle ||
           !btcCandle ||
@@ -454,10 +484,14 @@ export const runHistoricalSignalsReplay = async ({
         }
 
         for (const strategyRuntime of symbolRuntime.strategies) {
-          const result = await strategyRuntime.run(candle, btcCandle);
+          const result = await strategyRuntime.run(
+            candle,
+            btcCandle,
+            ethCandle?.timestamp === timestamp ? ethCandle : undefined,
+          );
           if (result && typeof result !== 'string') {
             cycleSignals.push(result);
-            signals.push(result);
+            signals.push(compactReplaySignal(result) ?? result);
           }
         }
 

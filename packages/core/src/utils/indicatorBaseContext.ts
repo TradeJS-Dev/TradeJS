@@ -53,6 +53,7 @@ const SESSION_WINDOWS: Array<{
 
 const FUNDING_WINDOW_STEP_MINUTES = 8 * 60;
 const FUNDING_WINDOW_NEARBY_MINUTES = 60;
+const SESSION_WINDOW_EDGE_MINUTES = 60;
 
 const isInsideSession = (
   minuteUtc: number,
@@ -68,6 +69,7 @@ export const buildSessionContext = (timestamp: number) => {
   const utcHour = date.getUTCHours();
   const utcMinute = date.getUTCMinutes();
   const minuteUtc = utcHour * 60 + utcMinute;
+  const dayOfWeekUtc = (date.getUTCDay() || 7) as 1 | 2 | 3 | 4 | 5 | 6 | 7;
   const activeSessions = SESSION_WINDOWS.filter((session) =>
     isInsideSession(minuteUtc, session.startMinuteUtc, session.endMinuteUtc),
   ).map((session) => session.name);
@@ -85,17 +87,33 @@ export const buildSessionContext = (timestamp: number) => {
   );
   const minutesFromSessionOpen =
     primaryWindow != null ? minuteUtc - primaryWindow.startMinuteUtc : null;
+  const minutesToSessionClose =
+    primaryWindow != null ? primaryWindow.endMinuteUtc - minuteUtc : null;
+  const sessionWindowPhase =
+    primaryWindow == null || minutesFromSessionOpen == null
+      ? 'off_hours'
+      : minutesFromSessionOpen < SESSION_WINDOW_EDGE_MINUTES
+        ? 'opening'
+        : minutesToSessionClose != null &&
+            minutesToSessionClose <= SESSION_WINDOW_EDGE_MINUTES
+          ? 'closing'
+          : 'active';
   const minutesToFundingWindow =
     (FUNDING_WINDOW_STEP_MINUTES - (minuteUtc % FUNDING_WINDOW_STEP_MINUTES)) %
     FUNDING_WINDOW_STEP_MINUTES;
 
   return {
     sessionPhase,
+    sessionWindowPhase,
     isOverlap: activeSessions.length > 1,
     minutesFromSessionOpen,
+    minutesToSessionClose,
     minutesToFundingWindow,
     fundingWindowNearby:
       minutesToFundingWindow <= FUNDING_WINDOW_NEARBY_MINUTES,
+    dayOfWeekUtc,
+    isWeekdayUtc: dayOfWeekUtc <= 5,
+    isWeekendUtc: dayOfWeekUtc >= 6,
   };
 };
 
@@ -176,6 +194,9 @@ const STRUCTURE_ZONES_ACCEPT_BARS = 2;
 
 type TargetVsBtcContext = NonNullable<
   BaseStrategyContextSnapshot['relative']['targetVsBtc']
+>;
+type TargetVsEthContext = NonNullable<
+  BaseStrategyContextSnapshot['relative']['targetVsEth']
 >;
 
 const calculateReturnPctFromCandles = (candles: Candle[]) => {
@@ -274,6 +295,27 @@ const classifyRatioTrend = (
   return 'flat';
 };
 
+const hasDistinctReferenceCandles = (
+  coinCandles: Candle[],
+  referenceCandles: Candle[],
+) => {
+  const coinLast = coinCandles[coinCandles.length - 1];
+  const referenceLast = referenceCandles[referenceCandles.length - 1];
+  const coinPrev = coinCandles[coinCandles.length - 2];
+  const referencePrev = referenceCandles[referenceCandles.length - 2];
+
+  if (!coinLast || !referenceLast || !coinPrev || !referencePrev) {
+    return false;
+  }
+
+  return (
+    coinLast.timestamp !== referenceLast.timestamp ||
+    coinLast.close !== referenceLast.close ||
+    coinPrev.timestamp !== referencePrev.timestamp ||
+    coinPrev.close !== referencePrev.close
+  );
+};
+
 export const buildTargetVsBtcContext = ({
   coin1h,
   btc1h,
@@ -331,6 +373,54 @@ export const buildTargetVsBtcContext = ({
     betaToBtc20: calculateBetaToReference(coinReturns20, btcReturns20),
     correlationToBtc20,
     ratioTrend: classifyRatioTrend(ratioReturn24h, ratioReturn4h),
+  };
+};
+
+export const buildTargetVsEthContext = ({
+  coin1h,
+  eth1h,
+  coin4h,
+  eth4h,
+  coin1d,
+  eth1d,
+  coinCandles,
+  ethCandles,
+}: {
+  coin1h: Candle[];
+  eth1h: Candle[];
+  coin4h: Candle[];
+  eth4h: Candle[];
+  coin1d: Candle[];
+  eth1d: Candle[];
+  coinCandles: Candle[];
+  ethCandles: Candle[];
+}): TargetVsEthContext | null => {
+  if (!hasDistinctReferenceCandles(coinCandles, ethCandles)) {
+    return null;
+  }
+
+  const context = buildTargetVsBtcContext({
+    coin1h,
+    btc1h: eth1h,
+    coin4h,
+    btc4h: eth4h,
+    coin1d,
+    btc1d: eth1d,
+    coinCandles,
+    btcCandles: ethCandles,
+  });
+
+  return {
+    source: context.source,
+    ratioReturn1h: context.ratioReturn1h,
+    ratioReturn4h: context.ratioReturn4h,
+    ratioReturn24h: context.ratioReturn24h,
+    alphaVsEth1h: context.alphaVsBtc1h,
+    alphaVsEth4h: context.alphaVsBtc4h,
+    alphaVsEth24h: context.alphaVsBtc24h,
+    betaToEth20: context.betaToBtc20,
+    correlationToEth20: context.correlationToBtc20,
+    ratioTrend: context.ratioTrend,
   };
 };
 
@@ -2264,6 +2354,7 @@ export type BuildBaseContextParams = {
   baseResult: BaseResultSnapshot;
   candlesHistory: Candle[];
   btcCandlesHistory: Candle[];
+  ethCandlesHistory?: Candle[];
   closeSeries: number[];
   volumeSeries: number[];
   btcCloseSeries: number[];
@@ -2273,6 +2364,11 @@ export type BuildBaseContextParams = {
     d1: Candle[];
   };
   btcResampledCandles: {
+    h1: Candle[];
+    h4: Candle[];
+    d1: Candle[];
+  };
+  ethResampledCandles?: {
     h1: Candle[];
     h4: Candle[];
     d1: Candle[];
@@ -2329,11 +2425,13 @@ export const buildBaseContextSnapshot = ({
   baseResult,
   candlesHistory,
   btcCandlesHistory,
+  ethCandlesHistory = [],
   closeSeries,
   volumeSeries,
   btcCloseSeries,
   coinResampledCandles,
   btcResampledCandles,
+  ethResampledCandles,
   indicatorHistory,
   indicatorPeriods,
   closeStreaks,
@@ -2588,6 +2686,9 @@ export const buildBaseContextSnapshot = ({
   const btc1h = btcResampledCandles.h1;
   const btc4h = btcResampledCandles.h4;
   const btc1d = btcResampledCandles.d1;
+  const eth1h = ethResampledCandles?.h1 ?? [];
+  const eth4h = ethResampledCandles?.h4 ?? [];
+  const eth1d = ethResampledCandles?.d1 ?? [];
   const coin4h = coinResampledCandles.h4;
   const coin1d = coinResampledCandles.d1;
   const targetVsBtc = buildTargetVsBtcContext({
@@ -2600,6 +2701,19 @@ export const buildBaseContextSnapshot = ({
     coinCandles: candlesHistory,
     btcCandles: btcCandlesHistory,
   });
+  const targetVsEth =
+    ethCandlesHistory.length >= 2
+      ? buildTargetVsEthContext({
+          coin1h,
+          eth1h,
+          coin4h,
+          eth4h,
+          coin1d,
+          eth1d,
+          coinCandles: candlesHistory,
+          ethCandles: ethCandlesHistory,
+        })
+      : null;
   const relativeStrength1h = getRelativeChange(
     baseResult.price1hPcnt,
     btc1h.length >= 2
@@ -3087,6 +3201,7 @@ export const buildBaseContextSnapshot = ({
         ),
       },
       targetVsBtc,
+      ...(targetVsEth != null ? { targetVsEth } : {}),
     },
   } as Omit<BaseStrategyContextSnapshot, 'mtf'> & {
     mtf?: BaseStrategyContextSnapshot['mtf'];

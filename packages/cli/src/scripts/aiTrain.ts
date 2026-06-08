@@ -35,6 +35,7 @@ import {
   parseQualityThresholds,
   parseTimestampFilter,
   parseTrailingPeriodMs,
+  resolveAiTrainRecentLimit,
 } from '../lib/aiTrainOptions';
 import {
   applyAiTrainSymbolQuarantine,
@@ -57,7 +58,7 @@ args.option(
   50,
 );
 args.option(
-  'skip',
+  ['k', 'skip'],
   'How many recent trades to skip from the end before selecting replay rows',
   0,
 );
@@ -67,65 +68,69 @@ args.option(
   AI_CONCURRENCY_LIMIT,
 );
 args.option(
-  'model',
+  ['m', 'model'],
   'OpenRouter model id override for this replay run',
   DEFAULT_AI_MODEL,
 );
-args.option('minQuality', 'Minimum AI quality required to approve entry', 4);
 args.option(
-  'localOnly',
+  ['M', 'minQuality'],
+  'Minimum AI quality required to approve entry',
+  4,
+);
+args.option(
+  ['l', 'localOnly'],
   'Replay deterministic adapter gate without AI provider calls',
   false,
 );
 args.option(['U', 'user'], 'Use user config', 'root');
 args.option(
-  'chart',
+  ['c', 'chart'],
   'Save compact AI approval chart data for the strategies UI',
   false,
 );
-args.option('json', 'Print structured JSON summary', false);
+args.option(['j', 'json'], 'Print structured JSON summary', false);
 args.option(
-  'since',
+  ['S', 'since'],
   'Only evaluate rows at or after this timestamp (ISO date or epoch ms)',
   '',
 );
 args.option(
-  'until',
+  ['u', 'until'],
   'Only evaluate rows at or before this timestamp (ISO date or epoch ms)',
   '',
 );
 args.option(
-  'period',
+  ['P', 'period'],
   'Evaluate a trailing selected-row period such as last365d, last90d, or last30d',
   '',
 );
 args.option(
-  'qualityThresholds',
+  ['q', 'qualityThresholds'],
   'Comma-separated qN+ thresholds to summarize',
   '3,4,5',
 );
 args.option(
-  'dumpEvaluations',
+  ['d', 'dumpEvaluations'],
   'Write evaluated rows as JSONL for offline pocket research',
   '',
 );
 args.option(
-  'symbolQuarantine',
+  ['Q', 'symbolQuarantine'],
   'Apply ordered per-strategy/per-symbol quarantine overlay to approved rows',
   false,
 );
 args.option(
-  'symbolQuarantineMinLosses',
+  ['L', 'symbolQuarantineMinLosses'],
   'Approved losses required before symbol quarantine can trigger',
   5,
 );
 args.option(
-  'symbolQuarantineMinProfitFactor',
+  ['F', 'symbolQuarantineMinProfitFactor'],
   'Minimum symbol profit factor required to avoid quarantine',
   1,
 );
 args.option(
-  'symbolQuarantineDays',
+  ['D', 'symbolQuarantineDays'],
   'How many days to keep a symbol quarantined after trigger',
   14,
 );
@@ -624,7 +629,6 @@ const findMaxSelectedTimestamp = async ({
 };
 
 export const main = async () => {
-  const recent = normalizeInt(flags.recent, 50);
   const skip = normalizeInt(flags.skip, 0);
   const minQuality = normalizeInt(flags.minQuality, 4);
   const localOnly = Boolean(flags.localOnly);
@@ -634,6 +638,13 @@ export const main = async () => {
   const untilInput = parseTimestampFilter(flags.until);
   const trailingPeriodMs = parseTrailingPeriodMs(flags.period);
   const periodLabel = String(flags.period || '').trim() || null;
+  const hasDateFilter =
+    trailingPeriodMs != null || sinceInput != null || untilInput != null;
+  const recent = resolveAiTrainRecentLimit({
+    argv: process.argv,
+    recentValue: flags.recent,
+    hasDateFilter,
+  });
   const qualityThresholds = parseQualityThresholds(flags.qualityThresholds);
   const dumpEvaluationsPath = String(flags.dumpEvaluations || '').trim();
   const symbolQuarantineEnabled = Boolean(flags.symbolQuarantine);

@@ -184,6 +184,45 @@ describe('runtimeStrategies helpers', () => {
     expect(shortView.stopLossPercent).toBe(2);
   });
 
+  it('maps runtime trade execution diagnostics for order cards', () => {
+    const view = toRuntimeTradeView(
+      {
+        orderId: 'diag-1',
+        strategy: 'TrendLine',
+        symbol: 'CYSUSDT',
+        direction: 'LONG',
+        qty: 11,
+        entryPrice: 0.46,
+        actualEntryPrice: 0.4634,
+        entryTimestamp: 1_000,
+        status: 'closed',
+        currentPnl: -0.2407,
+        closedPnl: -0.2407,
+        exitPrice: 0.4431,
+        actualExitPrice: 0.4431,
+        exitTimestamp: 3_601_000,
+        exitType: 'sl',
+        openFee: 0.00560714,
+        closeFee: 0.00536151,
+        fundingFee: 0.00652146,
+        aiAnalysis: {
+          stopLossPrice: 0.44,
+          takeProfitPrice: 0.5,
+        },
+      } as RuntimeTradeRecord,
+      5_000_000,
+    );
+
+    expect(view.qty).toBe(11);
+    expect(view.durationHours).toBe(1);
+    expect(view.actualEntryPrice).toBe(0.4634);
+    expect(view.actualExitPrice).toBe(0.4431);
+    expect(view.entrySlippagePercent).toBeCloseTo(0.7391, 4);
+    expect(view.exitSlippagePercent).toBeCloseTo(0.7045, 4);
+    expect(view.exitType).toBe('sl');
+    expect(view.totalFee).toBe(0.01749011);
+  });
+
   it('matches closed pnl by orderLinkId before symbol/time fallback', () => {
     const exactByOrderLinkId = new Map<string, ClosedPnlRecord>([
       [
@@ -223,6 +262,49 @@ describe('runtimeStrategies helpers', () => {
     expect(match?.closedPnl).toBe(12);
     expect(exactByOrderLinkId.size).toBe(0);
     expect(symbolBuckets.get('BTCUSDT')).toEqual([]);
+  });
+
+  it('matches closed pnl by exchange orderId when runtime order id is not orderLinkId', () => {
+    const row = {
+      symbol: 'CYSUSDT',
+      qty: 11,
+      entryPrice: 0.4634,
+      exitPrice: 0.4431,
+      closedPnl: -0.2407,
+      closedAt: 1_780_825_606_000,
+      orderId: 'bybit-order-1',
+      orderLinkId: 'tjs-amr-order-1',
+    } satisfies ClosedPnlRecord;
+    const exactByOrderLinkId = new Map<string, ClosedPnlRecord>([
+      ['tjs-amr-order-1', row],
+    ]);
+    const exactByOrderId = new Map<string, ClosedPnlRecord>([
+      ['bybit-order-1', row],
+    ]);
+    const symbolBuckets = new Map<string, ClosedPnlRecord[]>([
+      ['CYSUSDT', [row]],
+    ]);
+
+    const match = takeClosedPnlMatch({
+      exactByOrderLinkId,
+      exactByOrderId,
+      symbolBuckets,
+      trade: {
+        orderId: 'bybit-order-1',
+        strategy: 'AdaptiveMomentumRibbon',
+        symbol: 'CYSUSDT',
+        direction: 'LONG',
+        qty: 11,
+        entryPrice: 0.4634,
+        entryTimestamp: 1_780_812_000_000,
+        status: 'active',
+      } as RuntimeTradeRecord,
+    });
+
+    expect(match?.closedPnl).toBe(-0.2407);
+    expect(exactByOrderLinkId.size).toBe(0);
+    expect(exactByOrderId.size).toBe(0);
+    expect(symbolBuckets.get('CYSUSDT')).toEqual([]);
   });
 
   it('resolves strategy name from encoded orderLinkId', () => {

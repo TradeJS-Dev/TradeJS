@@ -71,10 +71,15 @@ const baseContext: BaseStrategyContextSnapshot = {
     },
     session: {
       sessionPhase: 'us',
+      sessionWindowPhase: 'active',
       isOverlap: true,
       minutesFromSessionOpen: 90,
+      minutesToSessionClose: 450,
       minutesToFundingWindow: 90,
       fundingWindowNearby: false,
+      dayOfWeekUtc: 1,
+      isWeekdayUtc: true,
+      isWeekendUtc: false,
     },
     memory: {
       recentFalseBreakoutDensity: 0.1,
@@ -278,7 +283,7 @@ describe('buildStrategySignal', () => {
     });
   });
 
-  it('derives BTC-relative gate features from target and alt-basket context', () => {
+  it('derives BTC/ETH-relative gate features from target and alt-basket context', () => {
     const signal = buildStrategySignal({
       signalId: 's-relative-btc',
       strategy: 'TrendLine',
@@ -307,6 +312,18 @@ describe('buildStrategySignal', () => {
               alphaVsBtc24h: 2.5,
               betaToBtc20: 1.1,
               correlationToBtc20: 0.8,
+              ratioTrend: 'up',
+            },
+            targetVsEth: {
+              source: 'aligned_ohlcv',
+              ratioReturn1h: 0.4,
+              ratioReturn4h: 1.1,
+              ratioReturn24h: 2.2,
+              alphaVsEth1h: 0.4,
+              alphaVsEth4h: 1.1,
+              alphaVsEth24h: 2.2,
+              betaToEth20: 1.05,
+              correlationToEth20: 0.75,
               ratioTrend: 'up',
             },
             btcAltRegime: {
@@ -343,6 +360,7 @@ describe('buildStrategySignal', () => {
       confirmations: {
         items: expect.arrayContaining([
           'target_vs_btc_aligned',
+          'target_vs_eth_aligned',
           'btc_alt_regime_aligned',
         ]),
       },
@@ -353,6 +371,12 @@ describe('buildStrategySignal', () => {
         targetVsBtcCorrelation20: 0.8,
         targetVsBtcRatioTrend: 'up',
         targetVsBtcAligned: true,
+        targetVsEthRatioReturn24h: 2.2,
+        targetVsEthAlpha24h: 2.2,
+        targetVsEthBeta20: 1.05,
+        targetVsEthCorrelation20: 0.75,
+        targetVsEthRatioTrend: 'up',
+        targetVsEthAligned: true,
         btcAltRegime: 'risk_on',
         btcAltRegimeAligned: true,
         btcAltRegimeStale: false,
@@ -445,6 +469,18 @@ describe('buildStrategySignal', () => {
               volumeWeightedReturn: 0.04,
               dispersion: 0.02,
             },
+            targetVsEth: {
+              source: 'aligned_ohlcv',
+              ratioReturn1h: 0.5,
+              ratioReturn4h: 1.5,
+              ratioReturn24h: 3,
+              alphaVsEth1h: 0.5,
+              alphaVsEth4h: 1.5,
+              alphaVsEth24h: 3,
+              betaToEth20: 1.2,
+              correlationToEth20: 0.9,
+              ratioTrend: 'up',
+            },
             execution: {
               ...baseContext.relative.execution,
               venueSpreadZScore: 2.5,
@@ -502,6 +538,7 @@ describe('buildStrategySignal', () => {
           'benchmark_against',
           'relative_strength_against',
           'market_breadth_against',
+          'target_vs_eth_against',
           'delta_against',
           'trade_flow_against',
           'extreme_volatility',

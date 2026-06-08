@@ -694,12 +694,14 @@ export interface RuntimeTradeRecord {
   direction: Direction;
   qty: number;
   entryPrice: number;
+  actualEntryPrice?: number | null;
   entryTimestamp: number;
   status: RuntimeTradeStatus;
   currentPrice?: number | null;
   currentPnl?: number | null;
   closedPnl?: number | null;
   exitPrice?: number | null;
+  actualExitPrice?: number | null;
   exitTimestamp?: number | null;
   exitType?: RuntimeTradeExitType | null;
   openFee?: number | null;

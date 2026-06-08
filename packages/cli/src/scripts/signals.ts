@@ -94,7 +94,7 @@ args.option(
 args.option(['c', 'chunk'], 'Split by chunks, ex. 1/3');
 args.option(['U', 'user'], 'Use user confg', 'root');
 args.option(
-  'connector',
+  ['o', 'connector'],
   'Connector provider or name for signals (e.g. bybit, binance, coinbase, custom)',
   'bybit',
 );
@@ -165,7 +165,7 @@ const findSignals = async (
   const currentTimestamp = getTimestamp();
   const strategySignals: Signal[] = [];
 
-  const [cachedData, btcCachedData] = await Promise.all([
+  const [cachedData, btcCachedData, ethCachedData] = await Promise.all([
     connector.kline({
       symbol,
       start: PRELOAD_START,
@@ -175,6 +175,13 @@ const findSignals = async (
     }),
     connector.kline({
       symbol: 'BTCUSDT',
+      start: PRELOAD_START,
+      end: currentTimestamp,
+      cacheOnly: true,
+      interval,
+    }),
+    connector.kline({
+      symbol: 'ETHUSDT',
       start: PRELOAD_START,
       end: currentTimestamp,
       cacheOnly: true,
@@ -195,18 +202,36 @@ const findSignals = async (
     currentTimestamp,
     intervalMs,
   );
+  const closedEthData = getClosedCandlesForInterval(
+    ethCachedData,
+    currentTimestamp,
+    intervalMs,
+  );
   const { alignedCoinCandles, alignedBtcCandles } = alignSymbolWithBtcReference(
     closedData,
     closedBtcData,
   );
+  const ethByTimestamp = new Map(
+    closedEthData.map((candle) => [candle.timestamp, candle]),
+  );
+  const alignedEthCandles = alignedCoinCandles
+    .map((candle) => ethByTimestamp.get(candle.timestamp))
+    .filter((candle): candle is (typeof closedEthData)[number] =>
+      Boolean(candle),
+    );
   const lastCandle = alignedCoinCandles.at(-1);
   const btcLastCandle = alignedBtcCandles.at(-1);
+  const ethLastCandle =
+    lastCandle == null ? undefined : ethByTimestamp.get(lastCandle.timestamp);
 
   if (!lastCandle || !btcLastCandle) {
     return strategySignals;
   }
   const previousData = alignedCoinCandles.slice(0, -1);
   const previousBtcData = alignedBtcCandles.slice(0, -1);
+  const previousEthData = alignedEthCandles.filter(
+    (candle) => candle.timestamp < lastCandle.timestamp,
+  );
 
   for (const runtimeStrategy of runtimeStrategies) {
     const { strategyName, strategyCreator, strategyConfig } = runtimeStrategy;
@@ -222,6 +247,9 @@ const findSignals = async (
       symbol,
       data: [...previousData],
       btcData: [...previousBtcData],
+      ethData: ethLastCandle
+        ? [...previousEthData, ethLastCandle]
+        : [...previousEthData],
       btcBinanceData,
       btcCoinbaseData,
       config: buildRuntimeModeStrategyConfig({

@@ -19,6 +19,7 @@ import {
   Sl,
   Tp,
 } from '@tradejs/types';
+import { compactReplaySignal } from './support';
 const UNKNOWN_STRATEGY = '[unknown]';
 
 type ReplayPosition = Order & {
@@ -46,16 +47,6 @@ export type PortfolioReplayConnector = Connector & {
   __tradejsTestConnector: true;
   advanceMarket: (params: { symbol: string; candle: Candle }) => Promise<void>;
   getReplayArtifacts: () => ReplayArtifacts;
-};
-
-const getSignalWithoutIndicators = (signal?: Signal) => {
-  if (!signal) {
-    return signal;
-  }
-
-  const { indicators: _indicators, ...signalWithoutIndicators } =
-    signal as unknown as Record<string, unknown>;
-  return signalWithoutIndicators as unknown as Signal;
 };
 
 const getStrategyName = ({
@@ -131,7 +122,7 @@ export const createPortfolioReplayConnector = (
       amount: round(amount),
       profit: round(data.profit || 0),
       index: orderLog.length,
-      signal: getSignalWithoutIndicators(positionState.position.signal),
+      signal: compactReplaySignal(positionState.position.signal),
     } as OrderLog;
 
     orderLog.push(nextEntry);
@@ -383,7 +374,7 @@ export const createPortfolioReplayConnector = (
       const nextPosition: ReplayPosition = {
         ...order,
         price: entryPrice,
-        signal: getSignalWithoutIndicators(order.signal),
+        signal: compactReplaySignal(order.signal),
         amount,
         strategyName,
       };

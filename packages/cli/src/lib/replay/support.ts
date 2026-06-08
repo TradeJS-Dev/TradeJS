@@ -1,5 +1,5 @@
 import chalk from 'chalk';
-import { Interval, StrategyConfig } from '@tradejs/types';
+import { Interval, Signal, StrategyConfig } from '@tradejs/types';
 import { buildRuntimeModeStrategyConfig } from '../runtimeModeConfig';
 
 export const REPLAY_RESULTS_BY_STRATEGY_HEADERS = [
@@ -227,3 +227,68 @@ export const buildReplayStrategyConfig = ({
     makeOrders: true,
     recordRuntimeTrades: false,
   });
+
+const toRecord = (value: unknown): Record<string, unknown> | null =>
+  value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+
+const compactReplayAdditionalIndicators = (
+  additionalIndicators: Signal['additionalIndicators'],
+): Signal['additionalIndicators'] => {
+  const additional = toRecord(additionalIndicators);
+  if (!additional) {
+    return undefined;
+  }
+
+  const compact: Record<string, unknown> = {};
+  if (additional.executionSlippage != null) {
+    compact.executionSlippage = additional.executionSlippage;
+  }
+  if (additional.marketContext != null) {
+    compact.marketContext = additional.marketContext;
+  }
+
+  const baseContext = toRecord(additional.baseContext);
+  const relative = toRecord(baseContext?.relative);
+  const execution = toRecord(relative?.execution);
+  if (execution) {
+    compact.baseContext = {
+      relative: {
+        execution,
+      },
+    };
+  }
+
+  return Object.keys(compact).length
+    ? (compact as Signal['additionalIndicators'])
+    : undefined;
+};
+
+export const compactReplaySignal = (signal?: Signal): Signal | undefined => {
+  if (!signal) {
+    return undefined;
+  }
+
+  return {
+    signalId: signal.signalId,
+    strategy: signal.strategy,
+    symbol: signal.symbol,
+    interval: signal.interval,
+    direction: signal.direction,
+    timestamp: signal.timestamp,
+    prices: signal.prices,
+    indicators: {},
+    figures: {},
+    additionalIndicators: compactReplayAdditionalIndicators(
+      signal.additionalIndicators,
+    ),
+    isConfigFromBacktest: signal.isConfigFromBacktest,
+    ...(signal.orderStatus ? { orderStatus: signal.orderStatus } : {}),
+    ...(signal.orderSkipReason
+      ? { orderSkipReason: signal.orderSkipReason }
+      : {}),
+    ...(signal.aiAnalysis ? { aiAnalysis: signal.aiAnalysis } : {}),
+    ...(signal.ml ? { ml: signal.ml } : {}),
+  };
+};

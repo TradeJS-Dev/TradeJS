@@ -6,7 +6,9 @@ import {
 } from '../indicators';
 import {
   buildBaseContextMtfSnapshot,
+  buildSessionContext,
   buildTargetVsBtcContext,
+  buildTargetVsEthContext,
 } from '../indicatorBaseContext';
 import { CORRELATION_WINDOW, ML_BASE_CANDLES_WINDOW } from '../../constants';
 import { calculateCoinBtcCorrelation } from '../correlation';
@@ -77,6 +79,136 @@ describe('buildTargetVsBtcContext', () => {
     );
     expect(context.betaToBtc20).toBeGreaterThan(1);
     expect(context.correlationToBtc20).toBeGreaterThan(0.99);
+  });
+});
+
+describe('buildTargetVsEthContext', () => {
+  it('computes target ratio returns, alpha, beta, and correlation against ETH', () => {
+    const coin1h = [makeCandle(1, 100), makeCandle(2, 112)];
+    const eth1h = [makeCandle(1, 100), makeCandle(2, 104)];
+    const coin4h = [makeCandle(1, 100), makeCandle(2, 120)];
+    const eth4h = [makeCandle(1, 100), makeCandle(2, 105)];
+    const coin1d = [makeCandle(1, 100), makeCandle(2, 130)];
+    const eth1d = [makeCandle(1, 100), makeCandle(2, 110)];
+    const coinCandles = Array.from({ length: 24 }, (_, index) =>
+      makeCandle(index * INTERVAL_15M_MS, 100 + index * 2),
+    );
+    const ethCandles = Array.from({ length: 24 }, (_, index) =>
+      makeCandle(index * INTERVAL_15M_MS, 100 + index),
+    );
+
+    const context = buildTargetVsEthContext({
+      coin1h,
+      eth1h,
+      coin4h,
+      eth4h,
+      coin1d,
+      eth1d,
+      coinCandles,
+      ethCandles,
+    });
+
+    expect(context).toMatchObject({
+      source: 'aligned_ohlcv',
+      ratioTrend: 'up',
+      alphaVsEth1h: 8,
+      alphaVsEth4h: 15,
+      alphaVsEth24h: 20,
+    });
+    expect(context?.ratioReturn24h).toBeCloseTo(
+      percentChange(130 / 110, 100 / 100) ?? 0,
+      8,
+    );
+    expect(context?.betaToEth20).toBeGreaterThan(1);
+    expect(context?.correlationToEth20).toBeGreaterThan(0.99);
+  });
+
+  it('skips self-reference ETH context', () => {
+    const candles = [makeCandle(1, 100), makeCandle(2, 110)];
+
+    expect(
+      buildTargetVsEthContext({
+        coin1h: candles,
+        eth1h: candles,
+        coin4h: candles,
+        eth4h: candles,
+        coin1d: candles,
+        eth1d: candles,
+        coinCandles: candles,
+        ethCandles: candles,
+      }),
+    ).toBeNull();
+  });
+});
+
+describe('buildSessionContext', () => {
+  it('classifies session edge phase and UTC weekday', () => {
+    const opening = buildSessionContext(Date.UTC(2026, 5, 8, 13, 30));
+    const closing = buildSessionContext(Date.UTC(2026, 5, 8, 21, 30));
+    const offHours = buildSessionContext(Date.UTC(2026, 5, 7, 23, 30));
+
+    expect(opening).toMatchObject({
+      sessionPhase: 'us',
+      sessionWindowPhase: 'opening',
+      minutesFromSessionOpen: 30,
+      minutesToSessionClose: 510,
+      dayOfWeekUtc: 1,
+      isWeekdayUtc: true,
+      isWeekendUtc: false,
+    });
+    expect(closing.sessionWindowPhase).toBe('closing');
+    expect(offHours).toMatchObject({
+      sessionPhase: 'off_hours',
+      sessionWindowPhase: 'off_hours',
+      dayOfWeekUtc: 7,
+      isWeekdayUtc: false,
+      isWeekendUtc: true,
+    });
+  });
+});
+
+describe('baseContext ETH reference propagation', () => {
+  it('builds targetVsEth from ETH candles passed to createIndicators', () => {
+    const periods = {
+      maFast: 3,
+      maMedium: 3,
+      maSlow: 3,
+      obvSma: 3,
+      atr: 3,
+      atrPctShort: 3,
+      atrPctLong: 3,
+      bb: 3,
+      bbStd: 2,
+      macdFast: 3,
+      macdSlow: 4,
+      macdSignal: 2,
+    };
+    const coinData = Array.from({ length: 40 }, (_, index) =>
+      makeCandle(index * INTERVAL_15M_MS, 100 + index * 2),
+    );
+    const btcData = Array.from({ length: 40 }, (_, index) =>
+      makeCandle(index * INTERVAL_15M_MS, 20_000 + index),
+    );
+    const ethData = Array.from({ length: 40 }, (_, index) =>
+      makeCandle(index * INTERVAL_15M_MS, 1_000 + index),
+    ).reverse();
+
+    const indicators = createIndicators(coinData, btcData, {
+      periods,
+      ethData,
+      includeMlPayload: false,
+    });
+    const baseContext = indicators.latestSnapshot()?.baseContext;
+
+    expect(baseContext?.relative.targetVsEth).toMatchObject({
+      source: 'aligned_ohlcv',
+      ratioTrend: 'up',
+    });
+    expect(baseContext?.relative.targetVsEth?.alphaVsEth1h).toBeGreaterThan(0);
+    expect(baseContext?.relative.targetVsEth?.betaToEth20).toBeGreaterThan(1);
+    expect(
+      baseContext?.relative.targetVsEth?.correlationToEth20,
+    ).toBeGreaterThan(0.99);
   });
 });
 

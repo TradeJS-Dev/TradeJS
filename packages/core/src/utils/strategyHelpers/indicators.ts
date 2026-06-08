@@ -1,5 +1,6 @@
 import {
   createIndicators,
+  getRequiredControllerSeedWindow,
   IndicatorsControllerCheckpointState,
   IndicatorPeriods,
   IndicatorsControllerRuntimeState,
@@ -113,6 +114,7 @@ export interface StrategyIndicatorsStateParams {
   env: string;
   data: KlineChartData;
   btcData: KlineChartData;
+  ethData?: KlineChartData;
   btcBinanceData?: KlineChartData;
   btcCoinbaseData?: KlineChartData;
   periods?: Partial<IndicatorPeriods>;
@@ -129,6 +131,7 @@ export const createStrategyIndicatorsState = ({
   env,
   data,
   btcData,
+  ethData = [],
   btcBinanceData,
   btcCoinbaseData,
   periods,
@@ -137,22 +140,75 @@ export const createStrategyIndicatorsState = ({
   replayStartIndex = 0,
   sharedReplayKey,
 }: StrategyIndicatorsStateParams): StrategyIndicatorsState => {
-  const createController = (initialDataEnd?: number) =>
-    createIndicators(
-      initialDataEnd == null
-        ? data.slice(replayStartIndex)
-        : data.slice(replayStartIndex, initialDataEnd),
-      initialDataEnd == null
-        ? btcData.slice(replayStartIndex)
-        : btcData.slice(replayStartIndex, initialDataEnd),
-      {
+  let ethDataByTimestamp: Map<number, KlineChartData[number]> | null = null;
+  const controllerSeedWindow = getRequiredControllerSeedWindow(periods);
+  const createController = (initialDataEnd?: number) => {
+    const endIndex = initialDataEnd == null ? data.length : initialDataEnd;
+    const startIndex = Math.max(
+      replayStartIndex,
+      endIndex - controllerSeedWindow,
+    );
+    const resolveEthDataWindow = (
+      fromIndex: number,
+      toIndex: number,
+      coinWindow: KlineChartData,
+    ) =>
+      coinWindow.every(
+        (candle, offset) =>
+          ethData[fromIndex + offset]?.timestamp === candle.timestamp,
+      )
+        ? ethData.slice(fromIndex, toIndex)
+        : (() => {
+            const timestamps = new Set(
+              coinWindow.map((candle) => candle.timestamp),
+            );
+            return ethData.filter((candle) => timestamps.has(candle.timestamp));
+          })();
+    const createControllerWithState = (
+      coinWindow: KlineChartData,
+      btcWindow: KlineChartData,
+      ethWindow: KlineChartData,
+      state:
+        | IndicatorsControllerRuntimeState
+        | IndicatorsControllerCheckpointState
+        | null
+        | undefined,
+    ) =>
+      createIndicators(coinWindow, btcWindow, {
         periods,
+        ethData: ethWindow,
         btcBinanceData,
         btcCoinbaseData,
         pluginRegistryScope,
-        initialRuntimeState: initialRuntimeState ?? undefined,
-      },
+        initialRuntimeState: state ?? undefined,
+      });
+
+    if (startIndex <= replayStartIndex) {
+      const dataWindow = data.slice(startIndex, endIndex);
+      return createControllerWithState(
+        dataWindow,
+        btcData.slice(startIndex, endIndex),
+        resolveEthDataWindow(startIndex, endIndex, dataWindow),
+        initialRuntimeState,
+      );
+    }
+
+    const warmupData = data.slice(replayStartIndex, startIndex);
+    const warmupController = createControllerWithState(
+      warmupData,
+      btcData.slice(replayStartIndex, startIndex),
+      resolveEthDataWindow(replayStartIndex, startIndex, warmupData),
+      initialRuntimeState,
     );
+    const dataWindow = data.slice(startIndex, endIndex);
+
+    return createControllerWithState(
+      dataWindow,
+      btcData.slice(startIndex, endIndex),
+      resolveEthDataWindow(startIndex, endIndex, dataWindow),
+      warmupController.checkpointRuntimeState(),
+    );
+  };
   const sharedReplayState =
     canUseSharedReplayController(env, sharedReplayKey) && sharedReplayKey
       ? (() => {
@@ -175,11 +231,31 @@ export const createStrategyIndicatorsState = ({
     | {
         candle: KlineChartData[number];
         btcCandle: KlineChartData[number];
+        ethCandle?: KlineChartData[number];
       }
     | undefined;
+  const resolveEthCandle = (index: number, candle: KlineChartData[number]) => {
+    if (
+      currentBarPair?.candle.timestamp === candle.timestamp &&
+      currentBarPair.ethCandle
+    ) {
+      return currentBarPair.ethCandle;
+    }
+
+    const alignedEthCandle = ethData[index];
+    if (alignedEthCandle?.timestamp === candle.timestamp) {
+      return alignedEthCandle;
+    }
+
+    ethDataByTimestamp ??= new Map(
+      ethData.map((item) => [item.timestamp, item]),
+    );
+    return ethDataByTimestamp.get(candle.timestamp);
+  };
   const applyBar = (
     candle: KlineChartData[number],
     btcCandle: KlineChartData[number],
+    ethCandle?: KlineChartData[number],
   ) => {
     if (sharedReplayState) {
       if (sharedReplayState.lastTimestamp === candle.timestamp) {
@@ -203,10 +279,10 @@ export const createStrategyIndicatorsState = ({
       }
 
       sharedReplayState.lastTimestamp = candle.timestamp;
-      sharedReplayState.lastResult = sharedReplayState.controller.next(
-        candle,
-        btcCandle,
-      );
+      sharedReplayState.lastResult =
+        ethCandle == null
+          ? sharedReplayState.controller.next(candle, btcCandle)
+          : sharedReplayState.controller.next(candle, btcCandle, ethCandle);
       return sharedReplayState.lastResult;
     }
 
@@ -214,7 +290,10 @@ export const createStrategyIndicatorsState = ({
       controller = createController(appliedDataEnd);
     }
 
-    const result = controller.next(candle, btcCandle);
+    const result =
+      ethCandle == null
+        ? controller.next(candle, btcCandle)
+        : controller.next(candle, btcCandle, ethCandle);
     return result;
   };
 
@@ -244,12 +323,14 @@ export const createStrategyIndicatorsState = ({
       ) {
         const candle = data[index];
         const btcCandle = btcData[index];
+        const ethCandle =
+          candle == null ? undefined : resolveEthCandle(index, candle);
         if (!candle || !btcCandle) continue;
         sharedReplayState.lastTimestamp = candle.timestamp;
-        sharedReplayState.lastResult = sharedReplayState.controller.next(
-          candle,
-          btcCandle,
-        );
+        sharedReplayState.lastResult =
+          ethCandle == null
+            ? sharedReplayState.controller.next(candle, btcCandle)
+            : sharedReplayState.controller.next(candle, btcCandle, ethCandle);
       }
       sharedReplayState.appliedDataEnd = safeTargetDataEnd;
       return;
@@ -270,8 +351,14 @@ export const createStrategyIndicatorsState = ({
     for (let index = appliedDataEnd; index < safeTargetDataEnd; index += 1) {
       const candle = data[index];
       const btcCandle = btcData[index];
+      const ethCandle =
+        candle == null ? undefined : resolveEthCandle(index, candle);
       if (!candle || !btcCandle) continue;
-      controller.next(candle, btcCandle);
+      if (ethCandle == null) {
+        controller.next(candle, btcCandle);
+      } else {
+        controller.next(candle, btcCandle, ethCandle);
+      }
     }
     appliedDataEnd = safeTargetDataEnd;
   };
@@ -317,13 +404,19 @@ export const createStrategyIndicatorsState = ({
         ? sharedReplayState.controller != null
         : controller != null,
 
-    setCurrentBar: (candle, btcCandle) => {
-      currentBarPair = { candle, btcCandle };
+    setCurrentBar: (candle, btcCandle, ethCandle) => {
+      currentBarPair = { candle, btcCandle, ethCandle };
     },
 
-    onBar: (candle, btcCandle) => {
+    onBar: (candle, btcCandle, ethCandle) => {
       const resolvedCandle = candle ?? currentBarPair?.candle;
       const resolvedBtcCandle = btcCandle ?? currentBarPair?.btcCandle;
+      const resolvedEthCandle =
+        ethCandle ??
+        currentBarPair?.ethCandle ??
+        (resolvedCandle == null
+          ? undefined
+          : resolveEthCandle(data.length - 1, resolvedCandle));
       if (!resolvedCandle || !resolvedBtcCandle) return;
       if (
         data[data.length - 1]?.timestamp === resolvedCandle.timestamp &&
@@ -333,14 +426,16 @@ export const createStrategyIndicatorsState = ({
           return;
         }
         syncDataRange(data.length - 1);
-        applyBar(resolvedCandle, resolvedBtcCandle);
+        applyBar(resolvedCandle, resolvedBtcCandle, resolvedEthCandle);
         markAppliedDataEnd(data.length);
         return;
       }
-      applyBar(resolvedCandle, resolvedBtcCandle);
+      applyBar(resolvedCandle, resolvedBtcCandle, resolvedEthCandle);
     },
 
-    next: (candle, btcCandle) => {
+    next: (candle, btcCandle, ethCandle) => {
+      const resolvedEthCandle =
+        ethCandle ?? resolveEthCandle(data.length - 1, candle);
       const explicitCurrent =
         data[data.length - 1]?.timestamp === candle.timestamp &&
         btcData[btcData.length - 1]?.timestamp === btcCandle.timestamp;
@@ -351,7 +446,7 @@ export const createStrategyIndicatorsState = ({
         ? data.length - 1
         : data.length;
       syncDataRange(explicitCandleDataEnd);
-      const result = applyBar(candle, btcCandle);
+      const result = applyBar(candle, btcCandle, resolvedEthCandle);
       if (explicitCandleDataEnd === data.length - 1) {
         markAppliedDataEnd(data.length);
       }

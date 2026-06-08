@@ -256,7 +256,11 @@ export const syncRuntimeTrades = async ({
         trade.closedPnl ??
         trade.currentPnl ??
         null,
+      actualEntryPrice:
+        matchedClosedPnl?.entryPrice ?? trade.actualEntryPrice ?? null,
       exitPrice: matchedClosedPnl?.exitPrice ?? trade.exitPrice ?? null,
+      actualExitPrice:
+        matchedClosedPnl?.exitPrice ?? trade.actualExitPrice ?? null,
       exitTimestamp:
         matchedClosedPnl?.closedAt ?? trade.exitTimestamp ?? endTime,
       exitType: trade.exitType ?? null,

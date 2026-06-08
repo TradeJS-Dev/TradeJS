@@ -53,6 +53,17 @@ describe('aiTrainCharts', () => {
       [1_700_000_000_000, 110],
       [1_700_000_100_000, 115],
     ]);
+    expect(
+      snapshot.strategies[0]?.metrics.find((item) => item.id === 'pnl'),
+    ).toEqual(
+      expect.objectContaining({
+        label: 'P&L',
+        value: '+15.00',
+      }),
+    );
+    expect(
+      snapshot.strategies[0]?.metrics.find((item) => item.id === 'monthlyPnl'),
+    ).toEqual(expect.objectContaining({ label: 'Monthly P&L' }));
   });
 
   it('creates separate cards for different configIds', () => {

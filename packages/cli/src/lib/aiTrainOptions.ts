@@ -58,3 +58,44 @@ export const parseQualityThresholds = (value: unknown) => {
     .filter((part) => part > 0);
   return [...new Set(raw)].sort((left, right) => left - right);
 };
+
+export const hasCliOption = ({
+  argv,
+  longName,
+  shortName,
+}: {
+  argv: string[];
+  longName: string;
+  shortName: string;
+}) =>
+  argv.some(
+    (arg) =>
+      arg === `--${longName}` ||
+      arg.startsWith(`--${longName}=`) ||
+      arg === `-${shortName}` ||
+      arg.startsWith(`-${shortName}=`),
+  );
+
+export const resolveAiTrainRecentLimit = ({
+  argv,
+  recentValue,
+  hasDateFilter,
+  defaultRecent = 50,
+}: {
+  argv: string[];
+  recentValue: unknown;
+  hasDateFilter: boolean;
+  defaultRecent?: number;
+}) => {
+  const hasExplicitRecent = hasCliOption({
+    argv,
+    longName: 'recent',
+    shortName: 'n',
+  });
+  const selectedRecent = hasDateFilter && !hasExplicitRecent ? 0 : recentValue;
+  const parsed = Number(selectedRecent);
+
+  return Number.isFinite(parsed)
+    ? Math.max(0, Math.trunc(parsed))
+    : defaultRecent;
+};

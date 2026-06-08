@@ -298,10 +298,15 @@ export interface BaseRegimeContext {
   };
   session: {
     sessionPhase: 'asia' | 'europe' | 'us' | 'off_hours';
+    sessionWindowPhase: 'opening' | 'active' | 'closing' | 'off_hours';
     isOverlap: boolean;
     minutesFromSessionOpen: number | null;
+    minutesToSessionClose: number | null;
     minutesToFundingWindow: number | null;
     fundingWindowNearby: boolean;
+    dayOfWeekUtc: 1 | 2 | 3 | 4 | 5 | 6 | 7;
+    isWeekdayUtc: boolean;
+    isWeekendUtc: boolean;
   };
   memory: {
     recentFalseBreakoutDensity: number | null;
@@ -598,6 +603,18 @@ export interface BaseRelativeContext {
     correlationToBtc20: number | null;
     ratioTrend: 'up' | 'down' | 'flat' | 'unknown';
   };
+  targetVsEth?: {
+    source: 'aligned_ohlcv';
+    ratioReturn1h: number | null;
+    ratioReturn4h: number | null;
+    ratioReturn24h: number | null;
+    alphaVsEth1h: number | null;
+    alphaVsEth4h: number | null;
+    alphaVsEth24h: number | null;
+    betaToEth20: number | null;
+    correlationToEth20: number | null;
+    ratioTrend: 'up' | 'down' | 'flat' | 'unknown';
+  };
   marketBreadth?: {
     source: 'binance_klines';
     universe: string;
@@ -726,6 +743,7 @@ export type BaseGateFeatureConfirmation =
   | 'market_breadth_aligned'
   | 'btc_dominance_aligned'
   | 'target_vs_btc_aligned'
+  | 'target_vs_eth_aligned'
   | 'btc_alt_regime_aligned'
   | 'benchmark_aligned'
   | 'breakout_confirmed'
@@ -743,6 +761,7 @@ export type BaseGateFeatureConflict =
   | 'market_breadth_against'
   | 'btc_dominance_alt_pressure'
   | 'target_vs_btc_against'
+  | 'target_vs_eth_against'
   | 'btc_alt_regime_against'
   | 'delta_against'
   | 'trade_flow_against'
@@ -876,6 +895,12 @@ export interface BaseContextGateFeatures {
     targetVsBtcCorrelation20: number | null;
     targetVsBtcRatioTrend: 'up' | 'down' | 'flat' | 'unknown';
     targetVsBtcAligned: boolean | null;
+    targetVsEthRatioReturn24h: number | null;
+    targetVsEthAlpha24h: number | null;
+    targetVsEthBeta20: number | null;
+    targetVsEthCorrelation20: number | null;
+    targetVsEthRatioTrend: 'up' | 'down' | 'flat' | 'unknown';
+    targetVsEthAligned: boolean | null;
     btcAltRegime:
       | 'btc_lead'
       | 'alt_lead'
@@ -1039,6 +1064,7 @@ export interface StrategyAPI {
   nextIndicators: (
     candle: KlineChartData[number],
     btcCandle: KlineChartData[number],
+    ethCandle?: KlineChartData[number],
   ) => unknown;
   getCurrentPosition: () => ReturnType<Connector['getPosition']>;
   isCurrentPositionExists: () => Promise<boolean>;
@@ -1058,14 +1084,17 @@ export interface StrategyIndicatorsState<
   setCurrentBar: (
     candle: KlineChartData[number],
     btcCandle: KlineChartData[number],
+    ethCandle?: KlineChartData[number],
   ) => void;
   onBar: (
     candle?: KlineChartData[number],
     btcCandle?: KlineChartData[number],
+    ethCandle?: KlineChartData[number],
   ) => void;
   next: (
     candle: KlineChartData[number],
     btcCandle: KlineChartData[number],
+    ethCandle?: KlineChartData[number],
   ) => TNext;
   ensureInitializedWithCurrentBar: () => {
     snapshot: (options?: { compact?: boolean; limit?: number }) => TSnapshot;
@@ -1144,6 +1173,7 @@ export interface CreateStrategyCoreParams<
   connector: Connector;
   data: KlineChartData;
   btcData: KlineChartData;
+  ethData?: KlineChartData;
   loadPineScriptFile: (fileNameOrPath: string, fallback?: string) => string;
   strategyApi: StrategyAPI;
   indicatorsState: TIndicatorsState;

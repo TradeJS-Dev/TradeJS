@@ -1,7 +1,9 @@
 import {
+  hasCliOption,
   parseQualityThresholds,
   parseTimestampFilter,
   parseTrailingPeriodMs,
+  resolveAiTrainRecentLimit,
 } from '../lib/aiTrainOptions';
 
 describe('aiTrainOptions', () => {
@@ -40,5 +42,53 @@ describe('aiTrainOptions', () => {
   it('deduplicates and sorts quality thresholds', () => {
     expect(parseQualityThresholds('5,3,4,4,0,-1,x,2.9')).toEqual([2, 3, 4, 5]);
     expect(parseQualityThresholds(undefined)).toEqual([3, 4, 5]);
+  });
+
+  it('detects explicit CLI options without matching other flags', () => {
+    expect(
+      hasCliOption({
+        argv: ['node', 'aiTrain', '--period', 'last365d', '-n', '0'],
+        longName: 'recent',
+        shortName: 'n',
+      }),
+    ).toBe(true);
+    expect(
+      hasCliOption({
+        argv: ['node', 'aiTrain', '--minQuality=4', '--period=last365d'],
+        longName: 'recent',
+        shortName: 'n',
+      }),
+    ).toBe(false);
+    expect(
+      hasCliOption({
+        argv: ['node', 'aiTrain', '--recent=500'],
+        longName: 'recent',
+        shortName: 'n',
+      }),
+    ).toBe(true);
+  });
+
+  it('uses all rows for date filters unless recent is explicit', () => {
+    expect(
+      resolveAiTrainRecentLimit({
+        argv: ['node', 'aiTrain', '--period', 'last365d'],
+        recentValue: 50,
+        hasDateFilter: true,
+      }),
+    ).toBe(0);
+    expect(
+      resolveAiTrainRecentLimit({
+        argv: ['node', 'aiTrain', '--period', 'last365d', '-n', '500'],
+        recentValue: 500,
+        hasDateFilter: true,
+      }),
+    ).toBe(500);
+    expect(
+      resolveAiTrainRecentLimit({
+        argv: ['node', 'aiTrain'],
+        recentValue: 50,
+        hasDateFilter: false,
+      }),
+    ).toBe(50);
   });
 });

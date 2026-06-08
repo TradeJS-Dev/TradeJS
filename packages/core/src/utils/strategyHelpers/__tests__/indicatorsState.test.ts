@@ -5,6 +5,7 @@ import {
 import { createIndicators } from '../../../indicators';
 
 jest.mock('../../../indicators', () => ({
+  ...jest.requireActual('../../../indicators'),
   createIndicators: jest.fn(),
 }));
 
@@ -208,6 +209,56 @@ describe('strategy indicators state latestNumber', () => {
     );
     expect(next).toHaveBeenCalledTimes(1);
     expect(next).toHaveBeenCalledWith(current, currentBtc);
+  });
+
+  it('passes the current ETH reference candle by timestamp when available', () => {
+    const next = jest.fn(() => ({ maFast: 10 }));
+    const result = jest.fn(() => ({ correlation: [0.1, 0.2] }));
+    const latestNumber = jest.fn(() => 0.2);
+    const latestSnapshot = jest.fn(() => ({ maFast: 20 }));
+
+    (createIndicators as jest.Mock).mockReturnValue({
+      next,
+      result,
+      latestNumber,
+      latestSnapshot,
+    });
+
+    const previous = {
+      timestamp: 1,
+      open: 1,
+      high: 1,
+      low: 1,
+      close: 1,
+      volume: 1,
+      turnover: 1,
+    };
+    const current = { ...previous, timestamp: 2, close: 2 };
+    const previousBtc = { ...previous, close: 101 };
+    const currentBtc = { ...current, close: 102 };
+    const previousEth = { ...previous, close: 1_001 };
+    const currentEth = { ...current, close: 1_002 };
+    const ethData = [currentEth as any, previousEth as any];
+    const state = createStrategyIndicatorsState({
+      env: 'BACKTEST',
+      data: [previous as any, current as any],
+      btcData: [previousBtc as any, currentBtc as any],
+      ethData,
+    });
+
+    expect(state.next(current as any, currentBtc as any)).toEqual({
+      maFast: 10,
+    });
+
+    expect(createIndicators).toHaveBeenCalledWith(
+      [previous],
+      [previousBtc],
+      expect.objectContaining({
+        ethData: [previousEth],
+      }),
+    );
+    expect(next).toHaveBeenCalledTimes(1);
+    expect(next).toHaveBeenCalledWith(current, currentBtc, currentEth);
   });
 
   it('returns the current snapshot without replaying when snapshot already synced current candle', () => {

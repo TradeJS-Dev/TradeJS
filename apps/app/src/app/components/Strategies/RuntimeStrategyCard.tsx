@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { type ReactNode, useState } from 'react';
 import {
   Badge,
   Box,
@@ -71,6 +71,49 @@ const formatSignedNumber = (value: number | null | undefined) => {
   })}`;
 };
 
+const formatCompactNumber = (
+  value: number | null | undefined,
+  options: Intl.NumberFormatOptions = {},
+) => {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return 'n/a';
+  }
+
+  return value.toLocaleString('ru-RU', {
+    maximumFractionDigits: 8,
+    ...options,
+  });
+};
+
+const formatDuration = (hours: number | null | undefined) => {
+  if (typeof hours !== 'number' || !Number.isFinite(hours)) {
+    return 'n/a';
+  }
+
+  if (hours < 24) {
+    return `${formatCompactNumber(hours, {
+      maximumFractionDigits: 1,
+      minimumFractionDigits: 1,
+    })}h`;
+  }
+
+  const days = Math.floor(hours / 24);
+  const remainderHours = Math.round(hours % 24);
+  return `${days}d ${remainderHours}h`;
+};
+
+const formatFee = (value: number | null | undefined) => {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return 'n/a';
+  }
+
+  const prefix = value > 0 ? '+' : '';
+  return `${prefix}${formatCompactNumber(value, {
+    maximumFractionDigits: 8,
+    minimumFractionDigits: 0,
+  })} USDT`;
+};
+
 const formatPercent = (
   value: number | null | undefined,
   { signed = false }: { signed?: boolean } = {},
@@ -94,9 +137,75 @@ const getPnlColor = (value: number | null | undefined) => {
   return value > 0 ? 'teal.300' : 'red.300';
 };
 
+const getOrderAccentColor = (order: RuntimeStrategyView['orders'][number]) => {
+  if (order.status === 'active') {
+    return 'orange.300';
+  }
+
+  if (typeof order.pnl !== 'number' || !Number.isFinite(order.pnl)) {
+    return 'gray.600';
+  }
+
+  return order.pnl >= 0 ? 'teal.300' : 'red.300';
+};
+
 const getDirectionPalette = (
   direction: RuntimeStrategyView['orders'][number]['direction'],
 ) => (direction === 'LONG' ? 'teal' : 'red');
+
+const formatExitType = (order: RuntimeStrategyView['orders'][number]) => {
+  if (order.status === 'active') {
+    return 'active';
+  }
+
+  return order.exitType ? order.exitType.toUpperCase() : 'closed';
+};
+
+const OrderMetric = ({
+  title,
+  value,
+  detail,
+  color = 'gray.300',
+}: {
+  title: string;
+  value: ReactNode;
+  detail?: ReactNode;
+  color?: string;
+}) => (
+  <Box minW="0">
+    <Text
+      fontSize="2xs"
+      color="gray.500"
+      textTransform="uppercase"
+      fontWeight="bold"
+    >
+      {title}
+    </Text>
+    <Text
+      mt={1}
+      color={color}
+      fontSize="sm"
+      fontWeight="semibold"
+      fontFamily="mono"
+      whiteSpace="nowrap"
+      overflow="hidden"
+      textOverflow="ellipsis"
+    >
+      {value}
+    </Text>
+    {detail ? (
+      <Text
+        mt={1}
+        color="gray.500"
+        fontSize="xs"
+        lineHeight="1.3"
+        wordBreak="break-word"
+      >
+        {detail}
+      </Text>
+    ) : null}
+  </Box>
+);
 
 export const RuntimeStrategyCard = ({
   strategy,
@@ -230,7 +339,7 @@ export const RuntimeStrategyCard = ({
                     borderRadius="md"
                   >
                     <Text fontSize="sm" color="gray.400">
-                      No closed orders for the selected period.
+                      No orders for the selected period.
                     </Text>
                   </Box>
                 ) : (
@@ -238,43 +347,84 @@ export const RuntimeStrategyCard = ({
                     {strategy.orders.map((order) => {
                       const orderDate =
                         order.exitTimestamp ?? order.entryTimestamp;
+                      const accentColor = getOrderAccentColor(order);
+                      const displayEntryPrice =
+                        order.actualEntryPrice ?? order.entryPrice;
+                      const displayExitPrice =
+                        order.status === 'active'
+                          ? order.currentPrice
+                          : order.actualExitPrice ?? order.exitPrice;
 
                       return (
                         <Box
                           key={order.orderId}
-                          p={4}
+                          p={0}
                           borderWidth="1px"
                           borderColor="gray.800"
+                          borderLeftWidth="4px"
+                          borderLeftColor={accentColor}
                           borderRadius="md"
-                          bg="blackAlpha.300"
+                          bg="gray.950"
+                          overflow="hidden"
                         >
                           <Flex
-                            alignItems="flex-start"
+                            px={4}
+                            py={3}
+                            alignItems="center"
                             justifyContent="space-between"
                             gap={4}
+                            borderBottomWidth="1px"
+                            borderBottomColor="gray.800"
                           >
-                            <Flex alignItems="center" gap={3} minW="0" flex="1">
+                            <Box minW="0" flex="1">
+                              <Flex alignItems="center" gap={2} wrap="wrap">
+                                <Text
+                                  fontSize="md"
+                                  fontWeight="bold"
+                                  color="gray.100"
+                                  lineHeight="1.2"
+                                >
+                                  {order.symbol}
+                                </Text>
+                                <Badge
+                                  colorPalette={getDirectionPalette(
+                                    order.direction,
+                                  )}
+                                  variant="subtle"
+                                  fontFamily="mono"
+                                  letterSpacing="0"
+                                >
+                                  {order.direction}
+                                </Badge>
+                                {order.status === 'active' ? (
+                                  <Badge
+                                    colorPalette="orange"
+                                    variant="subtle"
+                                    fontFamily="mono"
+                                    letterSpacing="0"
+                                  >
+                                    ACTIVE
+                                  </Badge>
+                                ) : null}
+                              </Flex>
                               <Text
-                                fontSize="md"
-                                fontWeight="bold"
-                                color="gray.100"
+                                mt={1}
+                                color="gray.500"
+                                fontSize="xs"
                                 lineHeight="1.2"
                               >
-                                {order.symbol}
+                                opened {formatDateTime(order.entryTimestamp)}
                               </Text>
-                              <Badge
-                                colorPalette={getDirectionPalette(
-                                  order.direction,
-                                )}
-                                variant="subtle"
-                                fontFamily="mono"
-                                letterSpacing="0"
-                              >
-                                {order.direction}
-                              </Badge>
-                            </Flex>
+                            </Box>
 
-                            <Box textAlign="right" flex="0 0 140px">
+                            <Flex
+                              justifyContent="flex-end"
+                              alignItems="baseline"
+                              gap={2}
+                              flex="0 0 auto"
+                              minW="max-content"
+                              whiteSpace="nowrap"
+                            >
                               <Text
                                 fontSize="xs"
                                 color="gray.500"
@@ -285,93 +435,68 @@ export const RuntimeStrategyCard = ({
                               <Text
                                 color={getPnlColor(order.pnl)}
                                 fontWeight="bold"
-                                fontSize="lg"
+                                fontSize="xl"
                                 fontFamily="mono"
                                 lineHeight="1.2"
+                                whiteSpace="nowrap"
                               >
                                 {formatSignedNumber(order.pnl)}
                               </Text>
-                            </Box>
+                            </Flex>
                           </Flex>
 
-                          <Flex
-                            mt={4}
-                            gap={3}
-                            alignItems="stretch"
-                            justifyContent="space-between"
+                          <SimpleGrid
+                            px={4}
+                            py={4}
+                            columns={{ base: 2, md: 3 }}
+                            columnGap={6}
+                            rowGap={4}
                           >
-                            <Box
-                              flex="1"
-                              p={3}
-                              borderWidth="1px"
-                              borderColor="gray.800"
-                              borderRadius="md"
-                              bg="gray.900"
-                            >
-                              <Text
-                                fontSize="xs"
-                                color="gray.500"
-                                textTransform="uppercase"
-                              >
-                                Profit
-                              </Text>
-                              <Text
-                                mt={1}
-                                color="teal.300"
-                                fontWeight="semibold"
-                                fontFamily="mono"
-                              >
-                                {formatPercent(order.takeProfitPercent, {
-                                  signed: true,
-                                })}
-                              </Text>
-                            </Box>
-
-                            <Box
-                              flex="1"
-                              p={3}
-                              borderWidth="1px"
-                              borderColor="gray.800"
-                              borderRadius="md"
-                              bg="gray.900"
-                            >
-                              <Text
-                                fontSize="xs"
-                                color="gray.500"
-                                textTransform="uppercase"
-                              >
-                                Stop
-                              </Text>
-                              <Text
-                                mt={1}
-                                color="red.300"
-                                fontWeight="semibold"
-                                fontFamily="mono"
-                              >
-                                {formatPercent(order.stopLossPercent)}
-                              </Text>
-                            </Box>
-
-                            <Box
-                              flex="1.4"
-                              p={3}
-                              borderWidth="1px"
-                              borderColor="gray.800"
-                              borderRadius="md"
-                              bg="gray.900"
-                            >
-                              <Text
-                                fontSize="xs"
-                                color="gray.500"
-                                textTransform="uppercase"
-                              >
-                                Date
-                              </Text>
-                              <Text mt={1} color="gray.300" fontSize="sm">
-                                {formatDateTime(orderDate)}
-                              </Text>
-                            </Box>
-                          </Flex>
+                            <OrderMetric
+                              title="Entry"
+                              value={formatCompactNumber(displayEntryPrice)}
+                              detail={
+                                order.actualEntryPrice == null
+                                  ? 'actual n/a'
+                                  : `plan ${formatCompactNumber(order.entryPrice)} / slip ${formatPercent(order.entrySlippagePercent, { signed: true })}`
+                              }
+                            />
+                            <OrderMetric
+                              title={
+                                order.status === 'active' ? 'Current' : 'Exit'
+                              }
+                              value={formatCompactNumber(displayExitPrice)}
+                              detail={
+                                order.status === 'active'
+                                  ? `TP ${formatPercent(order.takeProfitPercent, { signed: true })} / SL ${formatPercent(order.stopLossPercent)}`
+                                  : `slip ${formatPercent(order.exitSlippagePercent, { signed: true })}`
+                              }
+                            />
+                            <OrderMetric
+                              title="Duration"
+                              value={formatDuration(order.durationHours)}
+                              detail={formatDateTime(orderDate)}
+                            />
+                            <OrderMetric
+                              title="Fees"
+                              value={formatFee(order.totalFee)}
+                              detail={`open ${formatFee(order.openFee)} / close ${formatFee(order.closeFee)} / funding ${formatFee(order.fundingFee)}`}
+                            />
+                            <OrderMetric
+                              title="Reason"
+                              value={formatExitType(order)}
+                              color={
+                                order.status === 'active'
+                                  ? 'orange.300'
+                                  : 'gray.300'
+                              }
+                            />
+                            <OrderMetric
+                              title="Qty"
+                              value={formatCompactNumber(order.qty)}
+                              detail={`id ${order.orderId.slice(0, 12)}`}
+                            />
+                          </SimpleGrid>
                         </Box>
                       );
                     })}

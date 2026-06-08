@@ -11,12 +11,13 @@ import {
   OrderType,
   RuntimeStrategyCloseNotification,
   RuntimeSignalEvaluationRecord,
+  Signal,
 } from './trade';
-import { Signal } from './trade';
 
 export type Strategy = (
   candle: KlineChartItem,
   btcCandle: KlineChartItem,
+  ethCandle?: KlineChartItem,
 ) => Promise<string | Signal>;
 
 export type BacktestDetectorOptimizedStrategy = Strategy & {
@@ -53,6 +54,7 @@ export interface StrategyCreatorParams {
   connector: Connector;
   data: KlineChartData;
   btcData: KlineChartData;
+  ethData?: KlineChartData;
   btcBinanceData?: KlineChartData;
   btcCoinbaseData?: KlineChartData;
   sharedIndicatorsReplayKey?: string;

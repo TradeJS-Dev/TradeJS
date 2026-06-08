@@ -549,39 +549,43 @@ export const resolveServerHealthThresholds = (
 
 args.option(['u', 'user'], 'Use user config', 'root');
 args.option(['P', 'printOnly'], 'Print report instead of Telegram', false);
-args.option('diskPath', 'Filesystem path to inspect for disk pressure', '/');
 args.option(
-  'cooldownSec',
+  ['d', 'diskPath'],
+  'Filesystem path to inspect for disk pressure',
+  '/',
+);
+args.option(
+  ['c', 'cooldownSec'],
   'Minimum seconds between repeated unhealthy reminders',
   900,
 );
 args.option(
-  'loadPerCpuWarn',
+  ['l', 'loadPerCpuWarn'],
   'Alert when 1m load per CPU reaches this value',
   String(DEFAULT_THRESHOLDS.loadPerCpuWarn),
 );
 args.option(
-  'loadPerCpuRecover',
+  ['L', 'loadPerCpuRecover'],
   'Recovery threshold for 1m load per CPU',
   String(DEFAULT_THRESHOLDS.loadPerCpuRecover),
 );
 args.option(
-  'memoryWarnPct',
+  ['m', 'memoryWarnPct'],
   'Alert when memory used percent reaches this value',
   String(DEFAULT_THRESHOLDS.memoryWarnPct),
 );
 args.option(
-  'memoryRecoverPct',
+  ['M', 'memoryRecoverPct'],
   'Recovery threshold for memory used percent',
   String(DEFAULT_THRESHOLDS.memoryRecoverPct),
 );
 args.option(
-  'diskWarnPct',
+  ['D', 'diskWarnPct'],
   'Alert when disk used percent reaches this value',
   String(DEFAULT_THRESHOLDS.diskWarnPct),
 );
 args.option(
-  'diskRecoverPct',
+  ['R', 'diskRecoverPct'],
   'Recovery threshold for disk used percent',
   String(DEFAULT_THRESHOLDS.diskRecoverPct),
 );

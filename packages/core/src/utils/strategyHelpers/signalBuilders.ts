@@ -322,6 +322,7 @@ export const buildBaseContextGateFeatures = ({
   const marketBreadth = baseContext.relative?.marketBreadth;
   const btcDominance = baseContext.relative?.btcDominance;
   const targetVsBtc = baseContext.relative?.targetVsBtc;
+  const targetVsEth = baseContext.relative?.targetVsEth;
   const btcAltRegime = baseContext.relative?.btcAltRegime;
   const marketReferences = baseContext.relative?.marketReferences;
   const execution = baseContext.relative?.execution;
@@ -467,6 +468,23 @@ export const buildBaseContextGateFeatures = ({
       : direction === 'LONG'
         ? targetVsBtcDirectionValue >= 0
         : targetVsBtcDirectionValue <= 0;
+  const targetVsEthRatioReturn24h = asFiniteNumberOrNull(
+    targetVsEth?.ratioReturn24h,
+  );
+  const targetVsEthAlpha24h = asFiniteNumberOrNull(targetVsEth?.alphaVsEth24h);
+  const targetVsEthBeta20 = asFiniteNumberOrNull(targetVsEth?.betaToEth20);
+  const targetVsEthCorrelation20 = asFiniteNumberOrNull(
+    targetVsEth?.correlationToEth20,
+  );
+  const targetVsEthRatioTrend = targetVsEth?.ratioTrend ?? 'unknown';
+  const targetVsEthDirectionValue =
+    targetVsEthRatioReturn24h ?? targetVsEthAlpha24h;
+  const targetVsEthAligned =
+    direction == null || targetVsEthDirectionValue == null
+      ? null
+      : direction === 'LONG'
+        ? targetVsEthDirectionValue >= 0
+        : targetVsEthDirectionValue <= 0;
   const btcAltRegimeValue = btcAltRegime?.regime ?? 'unknown';
   const btcAltRegimeStale =
     typeof btcAltRegime?.stale === 'boolean' ? btcAltRegime.stale : null;
@@ -630,6 +648,7 @@ export const buildBaseContextGateFeatures = ({
     'btc_dominance_aligned',
   );
   pushWhen(confirmations, targetVsBtcAligned === true, 'target_vs_btc_aligned');
+  pushWhen(confirmations, targetVsEthAligned === true, 'target_vs_eth_aligned');
   pushWhen(
     confirmations,
     btcAltRegimeAligned === true,
@@ -674,6 +693,7 @@ export const buildBaseContextGateFeatures = ({
     'btc_dominance_alt_pressure',
   );
   pushWhen(conflicts, targetVsBtcAligned === false, 'target_vs_btc_against');
+  pushWhen(conflicts, targetVsEthAligned === false, 'target_vs_eth_against');
   pushWhen(conflicts, btcAltRegimeAligned === false, 'btc_alt_regime_against');
   pushWhen(conflicts, deltaAligned === false, 'delta_against');
   pushWhen(conflicts, tradeFlowAligned === false, 'trade_flow_against');
@@ -726,6 +746,7 @@ export const buildBaseContextGateFeatures = ({
       marketBreadthAligned,
       btcDominanceAligned,
       targetVsBtcAligned,
+      targetVsEthAligned,
       btcAltRegimeAligned,
       relativeStrengthBucket === 'unknown'
         ? null
@@ -818,6 +839,7 @@ export const buildBaseContextGateFeatures = ({
                 marketBreadthAligned === false ||
                 btcDominanceAligned === false ||
                 targetVsBtcAligned === false ||
+                targetVsEthAligned === false ||
                 btcAltRegimeAligned === false
               ? 'market_context_against'
               : (scores.participation ?? 100) < 45
@@ -935,6 +957,12 @@ export const buildBaseContextGateFeatures = ({
       targetVsBtcCorrelation20,
       targetVsBtcRatioTrend,
       targetVsBtcAligned,
+      targetVsEthRatioReturn24h,
+      targetVsEthAlpha24h,
+      targetVsEthBeta20,
+      targetVsEthCorrelation20,
+      targetVsEthRatioTrend,
+      targetVsEthAligned,
       btcAltRegime: btcAltRegimeValue,
       btcAltRegimeAligned,
       btcAltRegimeStale,
@@ -1225,6 +1253,7 @@ interface CreateStrategyAPIParams {
     next: (
       candle: KlineChartData[number],
       btcCandle: KlineChartData[number],
+      ethCandle?: KlineChartData[number],
     ) => unknown;
   };
   preloadStart?: number;
@@ -1468,8 +1497,10 @@ export const createStrategyAPI = ({
         protectPlan,
       }) as Extract<StrategyDecision, { kind: 'protect' }>,
     getMarketData,
-    nextIndicators: (candle, btcCandle) =>
-      indicatorsState?.next(candle, btcCandle),
+    nextIndicators: (candle, btcCandle, ethCandle) =>
+      ethCandle == null
+        ? indicatorsState?.next(candle, btcCandle)
+        : indicatorsState?.next(candle, btcCandle, ethCandle),
     getCurrentPosition,
     isCurrentPositionExists: isPositionExists,
     getDirectionalTpSlPrices: (params) => getDirectionalTpSlPrices(params),

@@ -41,6 +41,7 @@ import { getTradejsProjectCwd } from './tradejsConfig';
 type TestingKlineCacheState = {
   coinKlineCache: Map<string, KlineChartData>;
   btcKlineCache: Map<string, KlineChartData>;
+  ethKlineCache: Map<string, KlineChartData>;
   btcBinanceKlineCache: Map<string, KlineChartData>;
   btcCoinbaseKlineCache: Map<string, KlineChartData>;
   preparedDataCache: Map<string, PreparedTestingData>;
@@ -50,10 +51,13 @@ type TestingKlineCacheState = {
 type PreparedTestingData = {
   data: KlineChartData;
   btcData: KlineChartData;
+  ethData: KlineChartData;
   prevData: KlineChartData;
   btcPrevData: KlineChartData;
+  ethPrevData: KlineChartData;
   testData: KlineChartData;
   btcTestData: KlineChartData;
+  ethTestData: KlineChartData;
   btcBinanceData: KlineChartData;
   btcCoinbaseData: KlineChartData;
 };
@@ -161,6 +165,7 @@ const buildReplaySignalEvaluationRecord = ({
 const createTestingKlineCacheState = (): TestingKlineCacheState => ({
   coinKlineCache: new Map<string, KlineChartData>(),
   btcKlineCache: new Map<string, KlineChartData>(),
+  ethKlineCache: new Map<string, KlineChartData>(),
   btcBinanceKlineCache: new Map<string, KlineChartData>(),
   btcCoinbaseKlineCache: new Map<string, KlineChartData>(),
   preparedDataCache: new Map<string, PreparedTestingData>(),
@@ -461,6 +466,15 @@ const prepareTestingData = async (params: {
     interval,
     cacheOnly,
   });
+  const ethCacheKey = getKlineCacheKey({
+    userName,
+    connectorName,
+    symbol: 'ETHUSDT',
+    preloadStart,
+    end,
+    interval,
+    cacheOnly,
+  });
   const btcBinanceConnectorName = binanceConnector
     ? BUILTIN_CONNECTOR_NAMES.Binance
     : connectorName;
@@ -488,6 +502,7 @@ const prepareTestingData = async (params: {
 
   const cachedCoinData = state.coinKlineCache.get(coinCacheKey);
   const cachedBtcData = state.btcKlineCache.get(btcCacheKey);
+  const cachedEthData = state.ethKlineCache.get(ethCacheKey);
   const cachedBtcBinanceData =
     state.btcBinanceKlineCache.get(btcBinanceCacheKey);
   const cachedBtcCoinbaseData =
@@ -519,6 +534,16 @@ const prepareTestingData = async (params: {
         silent: true,
         cacheOnly,
       });
+  const ethDataPromise: Promise<KlineChartData> = cachedEthData
+    ? Promise.resolve(cachedEthData)
+    : connector.kline({
+        symbol: 'ETHUSDT',
+        start: preloadStart,
+        end,
+        interval,
+        silent: true,
+        cacheOnly,
+      });
   const btcBinanceDataPromise: Promise<KlineChartData> = cachedBtcBinanceData
     ? Promise.resolve(cachedBtcBinanceData)
     : btcBinanceCacheKey === btcCacheKey
@@ -544,28 +569,37 @@ const prepareTestingData = async (params: {
           cacheOnly,
         });
 
-  const [dataRaw, btcDataRaw, btcBinanceDataRaw, btcCoinbaseDataRaw] =
-    await Promise.all([
-      cachedCoinData
-        ? Promise.resolve(cachedCoinData)
-        : connector.kline({
-            symbol,
-            start: preloadStart,
-            end,
-            interval,
-            silent: true,
-            cacheOnly,
-          }),
-      btcDataPromise,
-      btcBinanceDataPromise,
-      btcCoinbaseDataPromise,
-    ]);
+  const [
+    dataRaw,
+    btcDataRaw,
+    ethDataRaw,
+    btcBinanceDataRaw,
+    btcCoinbaseDataRaw,
+  ] = await Promise.all([
+    cachedCoinData
+      ? Promise.resolve(cachedCoinData)
+      : connector.kline({
+          symbol,
+          start: preloadStart,
+          end,
+          interval,
+          silent: true,
+          cacheOnly,
+        }),
+    btcDataPromise,
+    ethDataPromise,
+    btcBinanceDataPromise,
+    btcCoinbaseDataPromise,
+  ]);
 
   if (!cachedCoinData) {
     state.coinKlineCache.set(coinCacheKey, dataRaw);
   }
   if (!cachedBtcData) {
     state.btcKlineCache.set(btcCacheKey, btcDataRaw);
+  }
+  if (!cachedEthData) {
+    state.ethKlineCache.set(ethCacheKey, ethDataRaw);
   }
   if (!cachedBtcBinanceData) {
     state.btcBinanceKlineCache.set(btcBinanceCacheKey, btcBinanceDataRaw);
@@ -588,6 +622,10 @@ const prepareTestingData = async (params: {
     data,
     btcCoinbaseDataRaw,
   );
+  const { alignedBtcCandles: ethData } = alignSortedCandlesByTimestamp(
+    data,
+    ethDataRaw,
+  );
 
   const { prevData, testData } = splitCandlesForTesting(
     data,
@@ -596,13 +634,18 @@ const prepareTestingData = async (params: {
   );
   const { prevData: btcPrevData, testData: btcTestData } =
     splitCandlesForTesting(btcData, start, preloadStart);
+  const { prevData: ethPrevData, testData: ethTestData } =
+    splitCandlesForTesting(ethData, start, preloadStart);
   const preparedData = {
     data,
     btcData,
+    ethData,
     prevData,
     btcPrevData,
+    ethPrevData,
     testData,
     btcTestData,
+    ethTestData,
     btcBinanceData,
     btcCoinbaseData,
   };
@@ -816,6 +859,8 @@ export const testing: TestingBox = async ({
   const {
     prevData,
     btcPrevData,
+    ethPrevData,
+    ethTestData,
     testData,
     btcTestData,
     btcBinanceData,
@@ -823,6 +868,7 @@ export const testing: TestingBox = async ({
   } = preparedData;
   const runtimePrevData = prevData.slice();
   const runtimeBtcPrevData = btcPrevData.slice();
+  const runtimeEthData = [...ethPrevData, ...ethTestData];
   totalCandles = testData.length;
 
   const testConnector = createTestConnector(connector, {
@@ -844,6 +890,7 @@ export const testing: TestingBox = async ({
       symbol,
       data: runtimePrevData,
       btcData: runtimeBtcPrevData,
+      ethData: runtimeEthData,
       btcBinanceData,
       btcCoinbaseData,
       connector: testConnector,
@@ -1191,6 +1238,8 @@ export const testingGroupInSharedCandleLoop = async (
   const {
     prevData,
     btcPrevData,
+    ethPrevData,
+    ethTestData,
     testData,
     btcTestData,
     btcBinanceData,
@@ -1240,6 +1289,7 @@ export const testingGroupInSharedCandleLoop = async (
           symbol: test.symbol,
           data: prevData.slice(),
           btcData: btcPrevData.slice(),
+          ethData: [...ethPrevData, ...ethTestData],
           btcBinanceData,
           btcCoinbaseData,
           connector: testConnector,

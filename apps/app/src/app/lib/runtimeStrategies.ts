@@ -43,13 +43,25 @@ export interface RuntimeStrategyTradeView {
   symbol: string;
   direction: RuntimeTradeRecord['direction'];
   status: RuntimeTradeRecord['status'];
+  qty: number;
   entryTimestamp: number;
   entryPrice: number;
+  actualEntryPrice: number | null;
   exitTimestamp: number | null;
   exitPrice: number | null;
+  actualExitPrice: number | null;
+  currentPrice: number | null;
   pnl: number | null;
+  durationHours: number | null;
+  entrySlippagePercent: number | null;
+  exitSlippagePercent: number | null;
+  exitType: RuntimeTradeRecord['exitType'] | null;
   takeProfitPercent: number | null;
   stopLossPercent: number | null;
+  openFee: number | null;
+  closeFee: number | null;
+  fundingFee: number | null;
+  totalFee: number | null;
   lastSyncedAt: number | null;
 }
 
@@ -68,6 +80,11 @@ export interface RuntimeStrategiesResponse {
   provider: string;
   hours: number;
   generatedAt: number;
+  dataSources?: {
+    localTrades: number;
+    exchangeFallbackTrades: number;
+    exchangeErrors: string[];
+  };
   strategies: RuntimeStrategyView[];
 }
 
@@ -82,6 +99,9 @@ const roundValue = (value: number, digits = 2) => {
 
 const toNonEmptyString = (value: unknown) =>
   typeof value === 'string' && value.trim() ? value.trim() : null;
+
+const toFiniteNumberOrNull = (value: unknown) =>
+  typeof value === 'number' && Number.isFinite(value) ? value : null;
 
 const getTradePnl = (trade: RuntimeTradeRecord) =>
   trade.status === 'closed'
@@ -115,6 +135,66 @@ const getTradeLevelPercent = ({
   const percent = kind === 'stopLoss' ? Math.abs(rawPercent) : rawPercent;
 
   return Number.isFinite(percent) ? roundValue(percent) : null;
+};
+
+const getPriceSlippagePercent = ({
+  expectedPrice,
+  actualPrice,
+}: {
+  expectedPrice: unknown;
+  actualPrice: unknown;
+}) => {
+  if (
+    typeof expectedPrice !== 'number' ||
+    !Number.isFinite(expectedPrice) ||
+    expectedPrice <= 0 ||
+    typeof actualPrice !== 'number' ||
+    !Number.isFinite(actualPrice)
+  ) {
+    return null;
+  }
+
+  return roundValue(((actualPrice - expectedPrice) / expectedPrice) * 100, 4);
+};
+
+const getExpectedExitPrice = (trade: RuntimeTradeRecord) => {
+  if (trade.exitType === 'tp') {
+    return toFiniteNumberOrNull(trade.aiAnalysis?.takeProfitPrice);
+  }
+
+  if (trade.exitType === 'sl') {
+    return toFiniteNumberOrNull(trade.aiAnalysis?.stopLossPrice);
+  }
+
+  return null;
+};
+
+const getTradeDurationHours = (trade: RuntimeTradeRecord, endTime: number) => {
+  const resolvedTimestamp = getTradeResolvedTimestamp(trade, endTime);
+  if (
+    !Number.isFinite(trade.entryTimestamp) ||
+    !Number.isFinite(resolvedTimestamp) ||
+    resolvedTimestamp < trade.entryTimestamp
+  ) {
+    return null;
+  }
+
+  return roundValue((resolvedTimestamp - trade.entryTimestamp) / 3_600_000, 2);
+};
+
+const getTradeTotalFee = (trade: RuntimeTradeRecord) => {
+  const explicitTotal = toFiniteNumberOrNull(trade.totalFee);
+  if (explicitTotal != null) {
+    return explicitTotal;
+  }
+
+  const fees = [trade.openFee, trade.closeFee, trade.fundingFee]
+    .map(toFiniteNumberOrNull)
+    .filter((fee): fee is number => fee != null);
+
+  return fees.length
+    ? Number(fees.reduce((sum, fee) => sum + fee, 0).toFixed(12))
+    : null;
 };
 
 const getTradeResolvedTimestamp = (
@@ -593,17 +673,32 @@ export const buildRuntimeStrategyAnalytics = ({
 
 export const toRuntimeTradeView = (
   trade: RuntimeTradeRecord,
+  endTime = Date.now(),
 ): RuntimeStrategyTradeView => ({
   orderId: trade.orderId,
   symbol: trade.symbol,
   direction: trade.direction,
   status: trade.status,
+  qty: trade.qty,
   entryTimestamp: trade.entryTimestamp,
   entryPrice: trade.entryPrice,
+  actualEntryPrice: toFiniteNumberOrNull(trade.actualEntryPrice),
   exitTimestamp:
     typeof trade.exitTimestamp === 'number' ? trade.exitTimestamp : null,
   exitPrice: typeof trade.exitPrice === 'number' ? trade.exitPrice : null,
+  actualExitPrice: toFiniteNumberOrNull(trade.actualExitPrice),
+  currentPrice: toFiniteNumberOrNull(trade.currentPrice),
   pnl: getTradePnl(trade),
+  durationHours: getTradeDurationHours(trade, endTime),
+  entrySlippagePercent: getPriceSlippagePercent({
+    expectedPrice: trade.entryPrice,
+    actualPrice: trade.actualEntryPrice,
+  }),
+  exitSlippagePercent: getPriceSlippagePercent({
+    expectedPrice: getExpectedExitPrice(trade),
+    actualPrice: trade.actualExitPrice ?? trade.exitPrice,
+  }),
+  exitType: trade.exitType ?? null,
   takeProfitPercent: getTradeLevelPercent({
     direction: trade.direction,
     entryPrice: trade.entryPrice,
@@ -616,6 +711,10 @@ export const toRuntimeTradeView = (
     levelPrice: trade.aiAnalysis?.stopLossPrice,
     kind: 'stopLoss',
   }),
+  openFee: toFiniteNumberOrNull(trade.openFee),
+  closeFee: toFiniteNumberOrNull(trade.closeFee),
+  fundingFee: toFiniteNumberOrNull(trade.fundingFee),
+  totalFee: getTradeTotalFee(trade),
   lastSyncedAt:
     typeof trade.lastSyncedAt === 'number' ? trade.lastSyncedAt : null,
 });
@@ -713,6 +812,7 @@ export const takeClosedPnlMatch = ({
     exactByOrderId,
     symbolBuckets,
     orderLinkId: trade.orderId,
+    orderId: trade.orderId,
   });
 
   if (exactMatch) {
@@ -988,6 +1088,8 @@ export const buildExchangeFallbackRuntimeTrades = ({
         direction: entry.direction,
         qty: entry.qty,
         entryPrice,
+        actualEntryPrice:
+          matchedClosedPnl?.entryPrice ?? entry.entryPrice ?? null,
         entryTimestamp: entry.entryTimestamp,
         status: isActive ? 'active' : 'closed',
         currentPrice: isActive
@@ -998,7 +1100,12 @@ export const buildExchangeFallbackRuntimeTrades = ({
           : matchedClosedPnl?.closedPnl ?? null,
         closedPnl: isActive ? null : matchedClosedPnl?.closedPnl ?? null,
         exitPrice: isActive ? null : matchedClosedPnl?.exitPrice ?? null,
+        actualExitPrice: isActive ? null : matchedClosedPnl?.exitPrice ?? null,
         exitTimestamp: isActive ? null : matchedClosedPnl?.closedAt ?? null,
+        openFee: matchedClosedPnl?.openFee ?? entry.openFee ?? null,
+        closeFee: matchedClosedPnl?.closeFee ?? entry.closeFee ?? null,
+        fundingFee: matchedClosedPnl?.fundingFee ?? entry.fundingFee ?? null,
+        totalFee: matchedClosedPnl?.totalFee ?? entry.totalFee ?? null,
         lastSyncedAt: endTime,
       };
     })
@@ -1051,6 +1158,7 @@ export const buildExchangeFallbackRuntimeTrades = ({
         direction,
         qty: row.qty,
         entryPrice: row.entryPrice,
+        actualEntryPrice: row.entryPrice,
         entryTimestamp:
           typeof row.entryTimestamp === 'number' &&
           Number.isFinite(row.entryTimestamp)
@@ -1061,7 +1169,12 @@ export const buildExchangeFallbackRuntimeTrades = ({
         currentPnl: row.closedPnl,
         closedPnl: row.closedPnl,
         exitPrice: row.exitPrice,
+        actualExitPrice: row.exitPrice,
         exitTimestamp: row.closedAt,
+        openFee: row.openFee ?? null,
+        closeFee: row.closeFee ?? null,
+        fundingFee: row.fundingFee ?? null,
+        totalFee: row.totalFee ?? null,
         lastSyncedAt: endTime,
       };
     })
