@@ -17,7 +17,6 @@ import {
 import { sendTelegramReport } from '../lib/telegramReports';
 import {
   loadRuntimeSignalEvaluationStatsBuckets,
-  loadRuntimeSignalEvaluations,
   loadRuntimeSignals,
 } from '../lib/runtimeSignalsLoader';
 import {
@@ -567,19 +566,13 @@ export const signalsSummary = async () => {
   const connector = await (connectorFactory as ConnectorCreator)({
     userName: flags.user,
   });
-  const [
-    configuredStrategyNames,
-    signals,
-    evaluations,
-    evaluationStatsBuckets,
-    trades,
-  ] = await Promise.all([
-    loadRuntimeStrategyNames(flags.user),
-    loadRuntimeSignals(flags.user, { startTime, endTime }),
-    loadRuntimeSignalEvaluations(flags.user, { startTime, endTime }),
-    loadRuntimeSignalEvaluationStatsBuckets(flags.user),
-    loadRuntimeTrades(flags.user),
-  ]);
+  const [configuredStrategyNames, signals, evaluationStatsBuckets, trades] =
+    await Promise.all([
+      loadRuntimeStrategyNames(flags.user),
+      loadRuntimeSignals(flags.user, { startTime, endTime }),
+      loadRuntimeSignalEvaluationStatsBuckets(flags.user),
+      loadRuntimeTrades(flags.user, { startTime, endTime }),
+    ]);
   const syncedTrades = await syncRuntimeTrades({
     userName: flags.user,
     connector,
@@ -605,10 +598,6 @@ export const signalsSummary = async () => {
   });
   const windowSignals = signals.filter(
     (signal) => signal.timestamp >= startTime && signal.timestamp < endTime,
-  );
-  const windowEvaluations = evaluations.filter(
-    (evaluation) =>
-      evaluation.timestamp >= startTime && evaluation.timestamp < endTime,
   );
   const windowDayKeys = new Set(getRuntimeStorageDayKeys(startTime, endTime));
   const windowEvaluationStats = new Map<string, RuntimeSignalStatsBucket>();
@@ -661,7 +650,7 @@ export const signalsSummary = async () => {
         startTime,
         endTime,
         signals: windowSignals,
-        evaluations: windowEvaluations,
+        evaluations: [],
         trades: windowTrades,
       })
     : null;
@@ -671,7 +660,7 @@ export const signalsSummary = async () => {
         filename: debugAttachment.filename,
         tradesCount: windowTrades.length,
         signalsCount: windowSignals.length,
-        evaluationsCount: windowEvaluations.length,
+        evaluationsCount: debugAttachment.summary?.evaluations ?? 0,
       })
     : tradesMessage;
 

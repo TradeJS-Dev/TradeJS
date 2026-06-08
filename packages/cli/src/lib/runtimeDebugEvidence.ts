@@ -1,4 +1,4 @@
-import { getData, redisKeys } from '@tradejs/infra/redis';
+import { getData, getHashJsonField, redisKeys } from '@tradejs/infra/redis';
 import type {
   RuntimeSignalEvaluationRecord,
   RuntimeTradeRecord,
@@ -39,6 +39,11 @@ export type RuntimeDebugReportAttachment = {
   filename: string;
   content: string;
   caption: string;
+  summary: {
+    trades: number;
+    signals: number;
+    evaluations: number;
+  };
 };
 
 const formatRuntimeDebugDateTime = (timestamp: number) =>
@@ -174,7 +179,7 @@ export const buildRuntimeDebugReportPayload = async ({
         symbol: trade.symbol,
         timestamp: signal?.timestamp ?? trade.entryTimestamp,
       });
-      const evaluation =
+      const knownEvaluation =
         evaluationById.get(evaluationId) ??
         evaluationBySignalShape.get(evaluationId);
       const tradeDayKey = getRuntimeStorageDayKey(trade.entryTimestamp);
@@ -183,8 +188,8 @@ export const buildRuntimeDebugReportPayload = async ({
           ? getRuntimeStorageDayKey(signal.timestamp)
           : tradeDayKey;
       const evaluationDayKey =
-        evaluation != null
-          ? getRuntimeStorageDayKey(evaluation.timestamp)
+        knownEvaluation != null
+          ? getRuntimeStorageDayKey(knownEvaluation.timestamp)
           : signalDayKey;
       const tradeKey = redisKeys.runtimeTrade(userName, trade.orderId);
       const tradeBucketKey = redisKeys.runtimeTradeBucket(
@@ -202,21 +207,38 @@ export const buildRuntimeDebugReportPayload = async ({
       const evaluationBucketKey = redisKeys.runtimeSignalEvaluationBucket(
         userName,
         evaluationDayKey,
-        evaluation?.strategy ?? trade.strategy,
+        knownEvaluation?.strategy ?? trade.strategy,
       );
-      const evaluationField = evaluation?.evaluationId ?? evaluationId;
+      const evaluationField = knownEvaluation?.evaluationId ?? evaluationId;
       const evaluationKey = redisKeys.runtimeSignalEvaluation(
         userName,
         evaluationField,
       );
 
-      const [tradeValue, activeTradeValue, signalValue, evaluationValue] =
-        await Promise.all([
-          getData(tradeKey, null),
-          getData(activeTradeKey, null),
-          signalKey ? getData(signalKey, null) : Promise.resolve(null),
-          getData(evaluationKey, null),
-        ]);
+      const [
+        tradeValue,
+        activeTradeValue,
+        signalValue,
+        directEvaluationValue,
+        bucketEvaluationValue,
+      ] = await Promise.all([
+        getData(tradeKey, null),
+        getData(activeTradeKey, null),
+        signalKey ? getData(signalKey, null) : Promise.resolve(null),
+        getData(evaluationKey, null),
+        knownEvaluation
+          ? Promise.resolve(knownEvaluation)
+          : getHashJsonField<RuntimeSignalEvaluationRecord>(
+              evaluationBucketKey,
+              evaluationField,
+              null,
+            ),
+      ]);
+      const evaluationValue =
+        directEvaluationValue ??
+        bucketEvaluationValue ??
+        knownEvaluation ??
+        null;
 
       return {
         redisDebug: {
@@ -239,11 +261,28 @@ export const buildRuntimeDebugReportPayload = async ({
           tradeBucket: trade,
           activeTrade: activeTradeValue,
           signal: signalValue ?? signal ?? null,
-          evaluation: evaluationValue ?? evaluation ?? null,
+          evaluation: evaluationValue ?? knownEvaluation ?? null,
         },
       };
     }),
   );
+  const linkedEvaluations = new Map<string, RuntimeSignalEvaluationRecord>();
+  for (const trade of debugTrades) {
+    const evaluation = trade.redisValues.evaluation;
+    if (
+      evaluation &&
+      typeof evaluation === 'object' &&
+      'evaluationId' in evaluation &&
+      typeof evaluation.evaluationId === 'string'
+    ) {
+      linkedEvaluations.set(
+        evaluation.evaluationId,
+        evaluation as RuntimeSignalEvaluationRecord,
+      );
+    }
+  }
+  const reportEvaluations =
+    evaluations.length > 0 ? evaluations : [...linkedEvaluations.values()];
 
   return {
     reportType: 'runtime-daily-debug',
@@ -270,7 +309,7 @@ export const buildRuntimeDebugReportPayload = async ({
     counts: {
       trades: trades.length,
       signals: signals.length,
-      evaluations: evaluations.length,
+      evaluations: reportEvaluations.length,
       evaluationStatsBuckets: evaluationStatsBuckets?.length ?? 0,
       strategyConfigs: strategyConfigs?.length ?? 0,
     },
@@ -279,7 +318,7 @@ export const buildRuntimeDebugReportPayload = async ({
       redisKey: redisKeys.storeSignal(signal.symbol, signal.signalId),
       signal,
     })),
-    evaluations: evaluations.map((evaluation) => ({
+    evaluations: reportEvaluations.map((evaluation) => ({
       redisDebug: {
         key: redisKeys.runtimeSignalEvaluationBucket(
           userName,
@@ -309,5 +348,10 @@ export const buildRuntimeDebugReportAttachment = async (
     filename: `tradejs-runtime-debug-${params.userName}-${dayKey}.json`,
     content: JSON.stringify(payload, null, 2),
     caption: `Runtime debug ${dayKey} ${RUNTIME_DEBUG_TIMEZONE_LABEL}`,
+    summary: {
+      trades: payload.counts.trades,
+      signals: payload.counts.signals,
+      evaluations: payload.counts.evaluations,
+    },
   };
 };

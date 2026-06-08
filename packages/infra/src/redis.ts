@@ -400,6 +400,33 @@ export const setHashJsonField = async <T>(
   }
 };
 
+export const getHashJsonField = async <T>(
+  key: string,
+  field: string,
+  fallback: T | null = null,
+): Promise<T | null> => {
+  if (redisUnavailable) return fallback;
+
+  const redis = await getReadyRedis();
+  if (!redis) return fallback;
+
+  try {
+    const value = await redis.call('HGET', key, field);
+    if (typeof value !== 'string' || !value) {
+      return fallback;
+    }
+
+    return JSON.parse(value) as T;
+  } catch (e) {
+    if (e instanceof Error && isRedisConnectivityError(e)) {
+      markRedisUnavailable(e);
+      return fallback;
+    }
+    logger.log('error', 'failed HGET %s[%s]: %s', key, field, String(e));
+    return fallback;
+  }
+};
+
 export const getHashJsonValues = async <T>(key: string): Promise<T[]> => {
   if (redisUnavailable) return [];
 

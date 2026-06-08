@@ -48,6 +48,8 @@ describe('runtimeRedis', () => {
         strategies: (userName: string) => `users:${userName}:strategies`,
         runtimeTrades: (userName: string) =>
           `users:${userName}:runtime:trade-records:`,
+        runtimeTradeBuckets: (userName: string) =>
+          `users:${userName}:runtime:trade-records:days:`,
         runtimeTradeBucket: (userName: string, dayKey: string) =>
           `users:${userName}:runtime:trade-records:days:${dayKey}`,
         strategyResults: (userName: string, strategy: string) =>
@@ -124,6 +126,8 @@ describe('runtimeRedis', () => {
         strategies: (userName: string) => `users:${userName}:strategies`,
         runtimeTrades: (userName: string) =>
           `users:${userName}:runtime:trade-records:`,
+        runtimeTradeBuckets: (userName: string) =>
+          `users:${userName}:runtime:trade-records:days:`,
         runtimeTradeBucket: (userName: string, dayKey: string) =>
           `users:${userName}:runtime:trade-records:days:${dayKey}`,
         strategyResults: (userName: string, strategy: string) =>

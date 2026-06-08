@@ -164,7 +164,11 @@ export const loadRuntimeTrades = async (
     }
   }
 
-  const keys = await getKeys(redisKeys.runtimeTrades(userName));
+  const tradePrefix = redisKeys.runtimeTrades(userName);
+  const bucketPrefix = redisKeys.runtimeTradeBuckets(userName);
+  const keys = (await getKeys(tradePrefix)).filter(
+    (key) => !key.startsWith(bucketPrefix),
+  );
   const trades = await Promise.all(keys.map((key) => getData(key, null)));
 
   return trades

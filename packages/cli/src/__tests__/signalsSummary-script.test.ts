@@ -195,6 +195,43 @@ describe('signals summary script', () => {
     const getData = jest.fn(async (key: string, fallback: unknown) =>
       records.has(key) ? records.get(key) : fallback,
     );
+    const getHashJsonValues = jest.fn(async (key: string) => {
+      if (key.startsWith(redisKeys.runtimeTradeBuckets('root'))) {
+        return [...records.values()].filter(
+          (record): record is { orderId: string } =>
+            Boolean(
+              record &&
+                typeof record === 'object' &&
+                'orderId' in record &&
+                typeof record.orderId === 'string',
+            ),
+        );
+      }
+
+      return [];
+    });
+    const getHashJsonField = jest.fn(
+      async (_key: string, field: string, fallback: unknown) => {
+        if (field === 'TrendLine:BTCUSDT:1700086340000') {
+          return {
+            evaluationId: field,
+            userName: 'root',
+            strategy: 'TrendLine',
+            symbol: 'BTCUSDT',
+            interval: '15',
+            timestamp: now - 60_000,
+            evaluatedAt: now - 30_000,
+            status: 'signal',
+            reason: 'completed',
+            signalId: 'sig-1',
+            direction: 'LONG',
+            orderStatus: 'completed',
+          };
+        }
+
+        return fallback;
+      },
+    );
     const connector = {
       getOpenPositionPnl: jest.fn(async () => [
         {
@@ -243,6 +280,8 @@ describe('signals summary script', () => {
     jest.doMock('@tradejs/infra/redis', () => ({
       delKey,
       getData,
+      getHashJsonField,
+      getHashJsonValues,
       getKeys,
       redisKeys,
       setData,
@@ -464,6 +503,10 @@ describe('signals summary script', () => {
     const getData = jest.fn(async (key: string, fallback: unknown) => {
       return fallback;
     });
+    const getHashJsonValues = jest.fn(async () => []);
+    const getHashJsonField = jest.fn(
+      async (_key: string, _field: string, fallback: unknown) => fallback,
+    );
     const connector = {
       getOpenPositionPnl: jest.fn(async () => []),
       getClosedPnl: jest.fn(async () => []),
@@ -493,6 +536,8 @@ describe('signals summary script', () => {
     jest.doMock('@tradejs/infra/redis', () => ({
       delKey,
       getData,
+      getHashJsonField,
+      getHashJsonValues,
       getKeys,
       redisKeys,
       setData,
