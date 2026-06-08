@@ -80,6 +80,94 @@ describe('adaptiveTrendChannelAiAdapter', () => {
     });
   });
 
+  it('approves clean short flips above side-specific thresholds', () => {
+    const result = adaptiveTrendChannelAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makePayload(
+        {
+          signalDirection: 'SHORT',
+          regime: -1,
+          centerline: 100,
+          roof: 103,
+          floor: 97,
+          halfChannel: 3,
+          atr: 3,
+          breakoutDistancePct: 4.2,
+          channelWidthPct: 6,
+          currentPrice: 95.8,
+        },
+        {
+          participation: {
+            volume: { volumeRel20: 7 },
+          },
+          structure: {
+            localRange: { breakoutState: 'below_low_level' },
+          },
+          mtf: {
+            summary: { h4VolatilityState: 'expanded' },
+          },
+        },
+      ),
+      analysis: {
+        direction: 'SHORT',
+        quality: 1,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: 'SHORT',
+      quality: 5,
+      approved: true,
+    });
+  });
+
+  it('rejects short flips below side-specific thresholds', () => {
+    const result = adaptiveTrendChannelAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makePayload(
+        {
+          signalDirection: 'SHORT',
+          regime: -1,
+          centerline: 100,
+          roof: 103,
+          floor: 97,
+          halfChannel: 3,
+          atr: 3,
+          breakoutDistancePct: 4.1,
+          channelWidthPct: 6,
+          currentPrice: 95.9,
+        },
+        {
+          participation: {
+            volume: { volumeRel20: 6.8 },
+          },
+          structure: {
+            localRange: { breakoutState: 'below_low_level' },
+          },
+          mtf: {
+            summary: { h4VolatilityState: 'expanded' },
+          },
+        },
+      ),
+      analysis: {
+        direction: 'SHORT',
+        quality: 5,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: null,
+      quality: 3,
+      approved: false,
+    });
+    expect(
+      (result as { rejectReason?: string } | undefined)?.rejectReason,
+    ).toContain('weak_breakout_distance');
+    expect(
+      (result as { rejectReason?: string } | undefined)?.rejectReason,
+    ).toContain('weak_participation');
+  });
+
   it('rejects flips without expanded h4 volatility', () => {
     const result = adaptiveTrendChannelAiAdapter.postProcessAnalysis?.({
       signal: {} as any,

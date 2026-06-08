@@ -51,10 +51,12 @@ const isDirectionAligned = ({
       : false;
 
 const MIN_APPROVAL_BREAKOUT_DISTANCE_PCT = 4;
+const MIN_SHORT_APPROVAL_BREAKOUT_DISTANCE_PCT = 4.2;
 const MIN_HIGH_CONFIDENCE_BREAKOUT_DISTANCE_PCT = 4;
 const MIN_APPROVAL_CHANNEL_WIDTH_PCT = 1.6;
 const MIN_HIGH_CONFIDENCE_CHANNEL_WIDTH_PCT = 2;
 const MIN_APPROVAL_VOLUME_REL20 = 6;
+const MIN_SHORT_APPROVAL_VOLUME_REL20 = 7;
 
 export const buildAdaptiveTrendChannelGuardrailContext = ({
   signalContext,
@@ -140,12 +142,20 @@ export const buildAdaptiveTrendChannelGuardrailContext = ({
 
   const breakoutDistancePct = Math.abs(signalContext.breakoutDistancePct ?? 0);
   const channelWidthPct = signalContext.channelWidthPct ?? 0;
+  const minApprovalBreakoutDistancePct =
+    direction === 'SHORT'
+      ? MIN_SHORT_APPROVAL_BREAKOUT_DISTANCE_PCT
+      : MIN_APPROVAL_BREAKOUT_DISTANCE_PCT;
+  const minApprovalVolumeRel20 =
+    direction === 'SHORT'
+      ? MIN_SHORT_APPROVAL_VOLUME_REL20
+      : MIN_APPROVAL_VOLUME_REL20;
   const approvalSetup =
     breakoutAligned &&
     h4VolatilityState === 'expanded' &&
-    breakoutDistancePct >= MIN_APPROVAL_BREAKOUT_DISTANCE_PCT &&
+    breakoutDistancePct >= minApprovalBreakoutDistancePct &&
     channelWidthPct >= MIN_APPROVAL_CHANNEL_WIDTH_PCT &&
-    (volumeRel20 ?? 0) >= MIN_APPROVAL_VOLUME_REL20;
+    (volumeRel20 ?? 0) >= minApprovalVolumeRel20;
   const highConfidenceSetup =
     approvalSetup &&
     breakoutDistancePct >= MIN_HIGH_CONFIDENCE_BREAKOUT_DISTANCE_PCT &&
@@ -165,13 +175,13 @@ export const buildAdaptiveTrendChannelGuardrailContext = ({
     if (h4VolatilityState !== 'expanded') {
       softBlockReasons.push('h4_volatility_not_expanded');
     }
-    if (breakoutDistancePct < MIN_APPROVAL_BREAKOUT_DISTANCE_PCT) {
+    if (breakoutDistancePct < minApprovalBreakoutDistancePct) {
       softBlockReasons.push('weak_breakout_distance');
     }
     if (channelWidthPct < MIN_APPROVAL_CHANNEL_WIDTH_PCT) {
       softBlockReasons.push('narrow_channel_width');
     }
-    if ((volumeRel20 ?? 0) < MIN_APPROVAL_VOLUME_REL20) {
+    if ((volumeRel20 ?? 0) < minApprovalVolumeRel20) {
       softBlockReasons.push('weak_participation');
     }
   }
