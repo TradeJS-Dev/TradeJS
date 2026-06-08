@@ -71,6 +71,8 @@
     "candles:migrate-provider": "yarn run run:dist candles:migrate-provider",
     "signals": "yarn run run:dist signals",
     "results": "yarn run run:dist results",
+    "replay-runtime-evidence": "yarn run run:dist replay-runtime-evidence",
+    "runtime-evidence": "yarn run run:dist runtime-evidence",
     "continuity": "yarn run run:dist continuity",
     "derivatives:ingest": "yarn run run:dist derivatives:ingest",
     "derivatives:ingest:coinalyze:all": "yarn run run:dist derivatives:ingest:coinalyze:all",

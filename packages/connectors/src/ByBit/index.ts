@@ -111,6 +111,10 @@ type FundingFeeRow = {
 
 const FUNDING_TRANSACTION_LOG_PAGE_LIMIT = 100;
 const FUNDING_TRANSACTION_LOG_MAX_PAGES = 20;
+const CLOSED_PNL_PAGE_LIMIT = 100;
+const CLOSED_PNL_MAX_PAGES = 20;
+const EXECUTION_PAGE_LIMIT = 100;
+const EXECUTION_MAX_PAGES = 20;
 
 const loadFundingFeeRows = async ({
   client,
@@ -786,11 +790,13 @@ export const ByBitConnectorCreator: ConnectorCreator = async (config) => {
           Record<string, unknown>
         >
       )
-        .map((item) => {
+        .map<PositionPnlSnapshot | null>((item) => {
           const qty = Number(item.size ?? Number.NaN);
           const entryPrice = Number(item.avgPrice ?? Number.NaN);
           const currentPrice = Number(item.markPrice ?? Number.NaN);
           const unrealizedPnl = Number(item.unrealisedPnl ?? Number.NaN);
+          const takeProfitPrice = toFiniteNumberOrNull(item.takeProfit);
+          const stopLossPrice = toFiniteNumberOrNull(item.stopLoss);
           const side = String(item.side ?? '');
 
           if (
@@ -811,6 +817,12 @@ export const ByBitConnectorCreator: ConnectorCreator = async (config) => {
             currentPrice,
             unrealizedPnl,
             direction: (side === 'Buy' ? 'LONG' : 'SHORT') as Direction,
+            ...(takeProfitPrice != null && takeProfitPrice > 0
+              ? { takeProfitPrice }
+              : {}),
+            ...(stopLossPrice != null && stopLossPrice > 0
+              ? { stopLossPrice }
+              : {}),
           } satisfies PositionPnlSnapshot;
         })
         .filter(
@@ -830,25 +842,42 @@ export const ByBitConnectorCreator: ConnectorCreator = async (config) => {
         return [];
       }
 
-      const response = await client.getClosedPnL({
-        category: MARKET_CATEGORY,
-        startTime,
-        endTime,
-        symbol,
-        limit: Math.min(Math.max(1, Math.trunc(limit)), 100),
-      });
+      const closedPnlRows: Array<Record<string, unknown>> = [];
+      let cursor: string | undefined;
+      const pageLimit = Math.min(
+        Math.max(1, Math.trunc(limit)),
+        CLOSED_PNL_PAGE_LIMIT,
+      );
 
-      if (response.retCode !== 0) {
-        logger.log(
-          'error',
-          'closedPnl retCode: %s, %s',
-          response.retCode,
-          response.retMsg,
-        );
-        return [];
+      for (let page = 0; page < CLOSED_PNL_MAX_PAGES; page += 1) {
+        const response = await client.getClosedPnL({
+          category: MARKET_CATEGORY,
+          startTime,
+          endTime,
+          symbol,
+          limit: pageLimit,
+          ...(cursor ? { cursor } : {}),
+        });
+
+        if (response.retCode !== 0) {
+          logger.log(
+            'error',
+            'closedPnl retCode: %s, %s',
+            response.retCode,
+            response.retMsg,
+          );
+          return [];
+        }
+
+        closedPnlRows.push(...((response.result?.list ?? []) as any[]));
+
+        const nextCursor = String(response.result?.nextPageCursor ?? '').trim();
+        if (!nextCursor || nextCursor === cursor) {
+          break;
+        }
+        cursor = nextCursor;
       }
 
-      const closedPnlRows = response.result?.list ?? [];
       if (!closedPnlRows.length) {
         return [];
       }
@@ -935,26 +964,55 @@ export const ByBitConnectorCreator: ConnectorCreator = async (config) => {
         return [];
       }
 
-      const response = await client.getExecutionList({
-        category: MARKET_CATEGORY,
-        settleCoin: 'USDT',
-        startTime,
-        endTime,
-        symbol,
-        limit: Math.min(Math.max(1, Math.trunc(limit)), 100),
-      });
+      const executionRows: Array<Record<string, unknown>> = [];
+      let cursor: string | undefined;
+      const pageLimit = Math.min(
+        Math.max(1, Math.trunc(limit)),
+        EXECUTION_PAGE_LIMIT,
+      );
 
-      if (response.retCode !== 0) {
-        logger.log(
-          'error',
-          'entryExecutions retCode: %s, %s',
-          response.retCode,
-          response.retMsg,
-        );
+      for (let page = 0; page < EXECUTION_MAX_PAGES; page += 1) {
+        const response = await client.getExecutionList({
+          category: MARKET_CATEGORY,
+          settleCoin: 'USDT',
+          startTime,
+          endTime,
+          symbol,
+          limit: pageLimit,
+          ...(cursor ? { cursor } : {}),
+        });
+
+        if (response.retCode !== 0) {
+          logger.log(
+            'error',
+            'entryExecutions retCode: %s, %s',
+            response.retCode,
+            response.retMsg,
+          );
+          return [];
+        }
+
+        executionRows.push(...((response.result?.list ?? []) as any[]));
+
+        const nextCursor = String(response.result?.nextPageCursor ?? '').trim();
+        if (!nextCursor || nextCursor === cursor) {
+          break;
+        }
+        cursor = nextCursor;
+      }
+
+      if (!executionRows.length) {
         return [];
       }
 
-      return (response.result?.list ?? [])
+      const fundingRows = await loadFundingFeeRows({
+        client,
+        startTime,
+        endTime,
+        symbol,
+      });
+
+      return executionRows
         .map((item) => {
           const qty = Number(item.execQty ?? item.orderQty ?? Number.NaN);
           const entryPrice = Number(item.execPrice ?? Number.NaN);
@@ -969,6 +1027,13 @@ export const ByBitConnectorCreator: ConnectorCreator = async (config) => {
               ? item.orderLinkId
               : null;
           const openFee = toFiniteNumberOrNull(item.execFeeV2 ?? item.execFee);
+          const fundingFee = sumFundingFeeForTrade({
+            rows: fundingRows,
+            symbol: String(item.symbol ?? ''),
+            entryTimestamp: entryTimestamp,
+            closedAt: endTime,
+          });
+          const totalFee = sumOptionalFees([openFee, fundingFee]);
 
           if (
             !String(item.symbol ?? '').trim() ||
@@ -989,7 +1054,9 @@ export const ByBitConnectorCreator: ConnectorCreator = async (config) => {
             direction: side === 'Buy' ? 'LONG' : 'SHORT',
             ...(orderId ? { orderId } : {}),
             ...(orderLinkId ? { orderLinkId } : {}),
-            ...(openFee != null ? { openFee, totalFee: openFee } : {}),
+            ...(openFee != null ? { openFee } : {}),
+            ...(fundingFee != null ? { fundingFee } : {}),
+            ...(totalFee != null ? { totalFee } : {}),
           } as ExchangeEntryRecord;
         })
         .filter((item): item is NonNullable<typeof item> => item != null)

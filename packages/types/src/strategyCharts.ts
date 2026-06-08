@@ -2,6 +2,7 @@ import type { SimpleOrderLogData, TestStat } from './backtest';
 
 export type StrategyChartMetricTone =
   | 'default'
+  | 'neutral'
   | 'success'
   | 'warning'
   | 'error';

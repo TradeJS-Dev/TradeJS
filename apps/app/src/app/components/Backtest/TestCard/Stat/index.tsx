@@ -11,6 +11,8 @@ const getColorByLevel = (level: ThresholdLevel) => {
       return 'teal.500';
     case 'warning':
       return 'fg.warning';
+    case 'neutral':
+      return 'gray.300';
     case 'error':
     default:
       return 'fg.error';

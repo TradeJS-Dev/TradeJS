@@ -1,6 +1,8 @@
 'use client';
 
-import { type ReactNode, useState } from 'react';
+import { type ReactNode, useCallback, useState } from 'react';
+import AutoSizer from 'react-virtualized-auto-sizer';
+import { FixedSizeList, type ListChildComponentProps } from 'react-window';
 import {
   Badge,
   Box,
@@ -15,16 +17,23 @@ import {
   Text,
 } from '@chakra-ui/react';
 import { getFormatted } from '@tradejs/core/backtest';
-import type { TestThresholdsKey } from '@tradejs/types';
+import type { TestThresholdsKey, ThresholdLevel } from '@tradejs/types';
 import type { RuntimeStrategyView } from '#app/lib/runtimeStrategies';
 import { RuntimeStrategyChart } from './RuntimeStrategyChart';
 
-const getColorByLevel = (level: 'success' | 'warning' | 'error') => {
+type RuntimeOrderView = RuntimeStrategyView['orders'][number];
+
+const ORDER_ROW_HEIGHT = 306;
+const ORDER_LIST_OVERSCAN = 4;
+
+const getColorByLevel = (level: ThresholdLevel) => {
   switch (level) {
     case 'success':
       return 'teal.500';
     case 'warning':
       return 'fg.warning';
+    case 'neutral':
+      return 'gray.300';
     case 'error':
     default:
       return 'fg.error';
@@ -129,6 +138,16 @@ const formatPercent = (
   })}%`;
 };
 
+const formatInteger = (value: number | null | undefined) => {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return 'n/a';
+  }
+
+  return value.toLocaleString('ru-RU', {
+    maximumFractionDigits: 0,
+  });
+};
+
 const getPnlColor = (value: number | null | undefined) => {
   if (typeof value !== 'number' || !Number.isFinite(value) || value === 0) {
     return 'gray.300';
@@ -137,7 +156,7 @@ const getPnlColor = (value: number | null | undefined) => {
   return value > 0 ? 'teal.300' : 'red.300';
 };
 
-const getOrderAccentColor = (order: RuntimeStrategyView['orders'][number]) => {
+const getOrderAccentColor = (order: RuntimeOrderView) => {
   if (order.status === 'active') {
     return 'orange.300';
   }
@@ -149,16 +168,315 @@ const getOrderAccentColor = (order: RuntimeStrategyView['orders'][number]) => {
   return order.pnl >= 0 ? 'teal.300' : 'red.300';
 };
 
-const getDirectionPalette = (
-  direction: RuntimeStrategyView['orders'][number]['direction'],
-) => (direction === 'LONG' ? 'teal' : 'red');
+const getDirectionPalette = (direction: RuntimeOrderView['direction']) =>
+  direction === 'LONG' ? 'teal' : 'red';
 
-const formatExitType = (order: RuntimeStrategyView['orders'][number]) => {
+const formatExitType = (order: RuntimeOrderView) => {
   if (order.status === 'active') {
     return 'active';
   }
 
   return order.exitType ? order.exitType.toUpperCase() : 'closed';
+};
+
+const formatOrderReference = (orderId: string) => {
+  const normalized = orderId.trim();
+  const separatorIndex = normalized.indexOf('--');
+  const suffix =
+    separatorIndex >= 0 ? normalized.slice(separatorIndex + 2) : normalized;
+
+  return suffix.length > 12 ? suffix.slice(-12) : suffix || 'n/a';
+};
+
+const RiskLevelsDetail = ({ order }: { order: RuntimeOrderView }) => (
+  <Box>
+    <Text>
+      TP {formatCompactNumber(order.takeProfitPrice)} (
+      {formatPercent(order.takeProfitPercent, { signed: true })})
+    </Text>
+    <Text>
+      SL {formatCompactNumber(order.stopLossPrice)} (
+      {formatPercent(order.stopLossPercent)})
+    </Text>
+  </Box>
+);
+
+const FeesDetail = ({ order }: { order: RuntimeOrderView }) => (
+  <Box>
+    <Text>open {formatFee(order.openFee)}</Text>
+    <Text>close {formatFee(order.closeFee)}</Text>
+    <Text>funding {formatFee(order.fundingFee)}</Text>
+  </Box>
+);
+
+const getOrdersSummary = (orders: RuntimeOrderView[]) => {
+  const closedOrders = orders.filter((order) => order.status === 'closed');
+  const winningOrders = closedOrders.filter(
+    (order) =>
+      typeof order.pnl === 'number' &&
+      Number.isFinite(order.pnl) &&
+      order.pnl > 0,
+  );
+
+  const sumPnl = (direction: RuntimeOrderView['direction']) =>
+    closedOrders.reduce((total, order) => {
+      if (
+        order.direction !== direction ||
+        typeof order.pnl !== 'number' ||
+        !Number.isFinite(order.pnl)
+      ) {
+        return total;
+      }
+
+      return total + order.pnl;
+    }, 0);
+
+  return {
+    closedOrders: closedOrders.length,
+    winRate:
+      closedOrders.length > 0
+        ? (winningOrders.length / closedOrders.length) * 100
+        : 0,
+    longPnl: sumPnl('LONG'),
+    shortPnl: sumPnl('SHORT'),
+  };
+};
+
+const OrdersSummaryItem = ({
+  title,
+  value,
+  color = 'gray.100',
+}: {
+  title: string;
+  value: ReactNode;
+  color?: string;
+}) => (
+  <Box minW="0">
+    <Text color="gray.500" fontSize="sm" lineHeight="1.25">
+      {title}
+    </Text>
+    <Text
+      mt={1}
+      color={color}
+      fontSize="2xl"
+      fontWeight="bold"
+      fontFamily="mono"
+      lineHeight="1"
+      whiteSpace="nowrap"
+    >
+      {value}
+    </Text>
+  </Box>
+);
+
+const RuntimeOrdersSummary = ({ orders }: { orders: RuntimeOrderView[] }) => {
+  const summary = getOrdersSummary(orders);
+
+  return (
+    <SimpleGrid
+      columns={2}
+      columnGap={8}
+      rowGap={4}
+      px={1}
+      pb={4}
+      flex="0 0 auto"
+    >
+      <OrdersSummaryItem
+        title="Total Closed Orders"
+        value={formatInteger(summary.closedOrders)}
+      />
+      <OrdersSummaryItem
+        title="Win Rate"
+        value={formatPercent(summary.winRate, { signed: false })}
+      />
+      <OrdersSummaryItem
+        title="P&L of Closed Long Orders (USDT)"
+        value={formatSignedNumber(summary.longPnl)}
+        color={getPnlColor(summary.longPnl)}
+      />
+      <OrdersSummaryItem
+        title="P&L of Closed Short Orders (USDT)"
+        value={formatSignedNumber(summary.shortPnl)}
+        color={getPnlColor(summary.shortPnl)}
+      />
+    </SimpleGrid>
+  );
+};
+
+const RuntimeOrderCard = ({ order }: { order: RuntimeOrderView }) => {
+  const orderDate = order.exitTimestamp ?? order.entryTimestamp;
+  const accentColor = getOrderAccentColor(order);
+  const displayEntryPrice = order.actualEntryPrice ?? order.entryPrice;
+  const displayExitPrice =
+    order.status === 'active'
+      ? order.currentPrice
+      : order.actualExitPrice ?? order.exitPrice;
+
+  return (
+    <Box
+      p={0}
+      borderWidth="1px"
+      borderColor="gray.800"
+      borderLeftWidth="4px"
+      borderLeftColor={accentColor}
+      borderRadius="md"
+      bg="gray.950"
+      overflow="hidden"
+    >
+      <Flex
+        px={4}
+        py={3}
+        alignItems="center"
+        justifyContent="space-between"
+        gap={4}
+        borderBottomWidth="1px"
+        borderBottomColor="gray.800"
+      >
+        <Box minW="0" flex="1">
+          <Flex alignItems="center" gap={2} wrap="wrap">
+            <Text
+              fontSize="md"
+              fontWeight="bold"
+              color="gray.100"
+              lineHeight="1.2"
+            >
+              {order.symbol}
+            </Text>
+            <Badge
+              colorPalette={getDirectionPalette(order.direction)}
+              variant="subtle"
+              fontFamily="mono"
+              letterSpacing="0"
+            >
+              {order.direction}
+            </Badge>
+            {order.status === 'active' ? (
+              <Badge
+                colorPalette="orange"
+                variant="subtle"
+                fontFamily="mono"
+                letterSpacing="0"
+              >
+                ACTIVE
+              </Badge>
+            ) : null}
+          </Flex>
+          <Text mt={1} color="gray.500" fontSize="xs" lineHeight="1.2">
+            opened {formatDateTime(order.entryTimestamp)}
+          </Text>
+        </Box>
+
+        <Flex
+          justifyContent="flex-end"
+          alignItems="baseline"
+          gap={2}
+          flex="0 0 auto"
+          minW="max-content"
+          whiteSpace="nowrap"
+        >
+          <Text fontSize="xs" color="gray.500" textTransform="uppercase">
+            P&amp;L
+          </Text>
+          <Text
+            color={getPnlColor(order.pnl)}
+            fontWeight="bold"
+            fontSize="xl"
+            fontFamily="mono"
+            lineHeight="1.2"
+            whiteSpace="nowrap"
+          >
+            {formatSignedNumber(order.pnl)}
+          </Text>
+        </Flex>
+      </Flex>
+
+      <SimpleGrid px={4} py={4} columns={3} columnGap={6} rowGap={4}>
+        <OrderMetric
+          title="Entry"
+          value={formatCompactNumber(displayEntryPrice)}
+          detail={
+            order.actualEntryPrice == null
+              ? 'actual n/a'
+              : `plan ${formatCompactNumber(order.entryPrice)} / slip ${formatPercent(order.entrySlippagePercent, { signed: true })}`
+          }
+        />
+        <OrderMetric
+          title={order.status === 'active' ? 'Current' : 'Exit'}
+          value={formatCompactNumber(displayExitPrice)}
+          detail={
+            order.status === 'active' ? (
+              <RiskLevelsDetail order={order} />
+            ) : (
+              `slip ${formatPercent(order.exitSlippagePercent, { signed: true })}`
+            )
+          }
+        />
+        <OrderMetric
+          title="Duration"
+          value={formatDuration(order.durationHours)}
+          detail={formatDateTime(orderDate)}
+        />
+        <OrderMetric
+          title="Fees"
+          value={formatFee(order.totalFee)}
+          detail={<FeesDetail order={order} />}
+        />
+        <OrderMetric
+          title="Reason"
+          value={formatExitType(order)}
+          color={order.status === 'active' ? 'orange.300' : 'gray.300'}
+        />
+        <OrderMetric
+          title="Qty"
+          value={formatCompactNumber(order.qty)}
+          detail={`ref ${formatOrderReference(order.orderId)}`}
+        />
+      </SimpleGrid>
+    </Box>
+  );
+};
+
+const RuntimeOrdersList = ({ orders }: { orders: RuntimeOrderView[] }) => {
+  const itemKey = useCallback(
+    (index: number) => orders[index]?.orderId ?? String(index),
+    [orders],
+  );
+
+  const Row = useCallback(
+    ({ index, style }: ListChildComponentProps) => {
+      const order = orders[index];
+
+      if (!order) {
+        return null;
+      }
+
+      return (
+        <Box style={style} pb={3}>
+          <RuntimeOrderCard order={order} />
+        </Box>
+      );
+    },
+    [orders],
+  );
+
+  return (
+    <Box flex="1" h="full" minH="0" w="full">
+      <AutoSizer>
+        {({ height, width }) => (
+          <FixedSizeList
+            height={height}
+            width={width}
+            itemCount={orders.length}
+            itemSize={ORDER_ROW_HEIGHT}
+            overscanCount={ORDER_LIST_OVERSCAN}
+            itemKey={itemKey}
+          >
+            {Row}
+          </FixedSizeList>
+        )}
+      </AutoSizer>
+    </Box>
+  );
 };
 
 const OrderMetric = ({
@@ -194,7 +512,7 @@ const OrderMetric = ({
       {value}
     </Text>
     {detail ? (
-      <Text
+      <Box
         mt={1}
         color="gray.500"
         fontSize="xs"
@@ -202,7 +520,7 @@ const OrderMetric = ({
         wordBreak="break-word"
       >
         {detail}
-      </Text>
+      </Box>
     ) : null}
   </Box>
 );
@@ -330,7 +648,14 @@ export const RuntimeStrategyCard = ({
                 </Drawer.CloseTrigger>
               </Drawer.Header>
 
-              <Drawer.Body overflowY="auto">
+              <Drawer.Body
+                display="flex"
+                flexDirection="column"
+                flex="1"
+                minH="0"
+                overflow="hidden"
+                w="full"
+              >
                 {strategy.orders.length === 0 ? (
                   <Box
                     p={4}
@@ -343,164 +668,10 @@ export const RuntimeStrategyCard = ({
                     </Text>
                   </Box>
                 ) : (
-                  <Box display="flex" flexDirection="column" gap={3}>
-                    {strategy.orders.map((order) => {
-                      const orderDate =
-                        order.exitTimestamp ?? order.entryTimestamp;
-                      const accentColor = getOrderAccentColor(order);
-                      const displayEntryPrice =
-                        order.actualEntryPrice ?? order.entryPrice;
-                      const displayExitPrice =
-                        order.status === 'active'
-                          ? order.currentPrice
-                          : order.actualExitPrice ?? order.exitPrice;
-
-                      return (
-                        <Box
-                          key={order.orderId}
-                          p={0}
-                          borderWidth="1px"
-                          borderColor="gray.800"
-                          borderLeftWidth="4px"
-                          borderLeftColor={accentColor}
-                          borderRadius="md"
-                          bg="gray.950"
-                          overflow="hidden"
-                        >
-                          <Flex
-                            px={4}
-                            py={3}
-                            alignItems="center"
-                            justifyContent="space-between"
-                            gap={4}
-                            borderBottomWidth="1px"
-                            borderBottomColor="gray.800"
-                          >
-                            <Box minW="0" flex="1">
-                              <Flex alignItems="center" gap={2} wrap="wrap">
-                                <Text
-                                  fontSize="md"
-                                  fontWeight="bold"
-                                  color="gray.100"
-                                  lineHeight="1.2"
-                                >
-                                  {order.symbol}
-                                </Text>
-                                <Badge
-                                  colorPalette={getDirectionPalette(
-                                    order.direction,
-                                  )}
-                                  variant="subtle"
-                                  fontFamily="mono"
-                                  letterSpacing="0"
-                                >
-                                  {order.direction}
-                                </Badge>
-                                {order.status === 'active' ? (
-                                  <Badge
-                                    colorPalette="orange"
-                                    variant="subtle"
-                                    fontFamily="mono"
-                                    letterSpacing="0"
-                                  >
-                                    ACTIVE
-                                  </Badge>
-                                ) : null}
-                              </Flex>
-                              <Text
-                                mt={1}
-                                color="gray.500"
-                                fontSize="xs"
-                                lineHeight="1.2"
-                              >
-                                opened {formatDateTime(order.entryTimestamp)}
-                              </Text>
-                            </Box>
-
-                            <Flex
-                              justifyContent="flex-end"
-                              alignItems="baseline"
-                              gap={2}
-                              flex="0 0 auto"
-                              minW="max-content"
-                              whiteSpace="nowrap"
-                            >
-                              <Text
-                                fontSize="xs"
-                                color="gray.500"
-                                textTransform="uppercase"
-                              >
-                                P&amp;L
-                              </Text>
-                              <Text
-                                color={getPnlColor(order.pnl)}
-                                fontWeight="bold"
-                                fontSize="xl"
-                                fontFamily="mono"
-                                lineHeight="1.2"
-                                whiteSpace="nowrap"
-                              >
-                                {formatSignedNumber(order.pnl)}
-                              </Text>
-                            </Flex>
-                          </Flex>
-
-                          <SimpleGrid
-                            px={4}
-                            py={4}
-                            columns={{ base: 2, md: 3 }}
-                            columnGap={6}
-                            rowGap={4}
-                          >
-                            <OrderMetric
-                              title="Entry"
-                              value={formatCompactNumber(displayEntryPrice)}
-                              detail={
-                                order.actualEntryPrice == null
-                                  ? 'actual n/a'
-                                  : `plan ${formatCompactNumber(order.entryPrice)} / slip ${formatPercent(order.entrySlippagePercent, { signed: true })}`
-                              }
-                            />
-                            <OrderMetric
-                              title={
-                                order.status === 'active' ? 'Current' : 'Exit'
-                              }
-                              value={formatCompactNumber(displayExitPrice)}
-                              detail={
-                                order.status === 'active'
-                                  ? `TP ${formatPercent(order.takeProfitPercent, { signed: true })} / SL ${formatPercent(order.stopLossPercent)}`
-                                  : `slip ${formatPercent(order.exitSlippagePercent, { signed: true })}`
-                              }
-                            />
-                            <OrderMetric
-                              title="Duration"
-                              value={formatDuration(order.durationHours)}
-                              detail={formatDateTime(orderDate)}
-                            />
-                            <OrderMetric
-                              title="Fees"
-                              value={formatFee(order.totalFee)}
-                              detail={`open ${formatFee(order.openFee)} / close ${formatFee(order.closeFee)} / funding ${formatFee(order.fundingFee)}`}
-                            />
-                            <OrderMetric
-                              title="Reason"
-                              value={formatExitType(order)}
-                              color={
-                                order.status === 'active'
-                                  ? 'orange.300'
-                                  : 'gray.300'
-                              }
-                            />
-                            <OrderMetric
-                              title="Qty"
-                              value={formatCompactNumber(order.qty)}
-                              detail={`id ${order.orderId.slice(0, 12)}`}
-                            />
-                          </SimpleGrid>
-                        </Box>
-                      );
-                    })}
-                  </Box>
+                  <>
+                    <RuntimeOrdersSummary orders={strategy.orders} />
+                    <RuntimeOrdersList orders={strategy.orders} />
+                  </>
                 )}
               </Drawer.Body>
             </Drawer.Content>

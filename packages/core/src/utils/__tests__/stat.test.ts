@@ -55,6 +55,12 @@ describe('stat utils', () => {
     expect(classifyMetric('maxDrawdown', 20)).toBe('warning');
   });
 
+  it('classifies P&L by sign', () => {
+    expect(classifyMetric('netProfit', 1)).toBe('success');
+    expect(classifyMetric('netProfit', 0)).toBe('neutral');
+    expect(classifyMetric('netProfit', -1)).toBe('error');
+  });
+
   it('getBacktestScore returns rounded netProfit * winRate', () => {
     expect(getBacktestScore({ netProfit: 173.88, winRate: 87.5 })).toBe(15215);
   });

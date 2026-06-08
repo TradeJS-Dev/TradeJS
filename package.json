@@ -103,6 +103,8 @@
     "sandbox:refresh": "cd examples/sandbox && yarn up -R @tradejs/cli @tradejs/core @tradejs/types @tradejs/base @tradejs/connectors @tradejs/indicators @tradejs/infra @tradejs/node @tradejs/strategies && yarn install",
     "signals": "yarn cli:node8g signals",
     "replay": "yarn clean-tests --cache && yarn cli:replay replay",
+    "replay:evidence": "yarn cli:node8g replay-runtime-evidence",
+    "runtime:evidence": "yarn cli:node8g runtime-evidence",
     "signals:cron": "yarn cli:node8g signals",
     "signals:summary": "yarn cli:node8g signals-summary",
     "signals:sandbox": "yarn signals",

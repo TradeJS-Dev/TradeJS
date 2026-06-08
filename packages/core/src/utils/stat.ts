@@ -347,7 +347,11 @@ export const classifyMetric = (
   name: TestThresholdsKey,
   value: number,
 ): ThresholdLevel => {
-  const { thresholds, direction } = TestThresholdsConfig[name];
+  const { thresholds, direction, neutralValue } = TestThresholdsConfig[name];
+
+  if (neutralValue !== undefined && value === neutralValue) {
+    return 'neutral';
+  }
 
   if (direction === 'higher') {
     if (value >= thresholds[1]) return 'success';

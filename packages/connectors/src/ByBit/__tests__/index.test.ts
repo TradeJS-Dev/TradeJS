@@ -279,6 +279,8 @@ describe('ByBitConnectorCreator', () => {
               avgPrice: '100',
               markPrice: '120',
               unrealisedPnl: '30',
+              takeProfit: '130',
+              stopLoss: '95',
               side: 'Buy',
             },
             {
@@ -312,6 +314,106 @@ describe('ByBitConnectorCreator', () => {
         currentPrice: 120,
         unrealizedPnl: 30,
         direction: 'LONG',
+        takeProfitPrice: 130,
+        stopLossPrice: 95,
+      },
+    ]);
+  });
+
+  it('paginates entry executions and attaches funding fees', async () => {
+    const client = {
+      getExecutionList: jest
+        .fn()
+        .mockResolvedValueOnce({
+          retCode: 0,
+          result: {
+            nextPageCursor: 'page-2',
+            list: [
+              {
+                symbol: 'BTCUSDT',
+                execQty: '1',
+                execPrice: '100',
+                execTime: '1700000000000',
+                side: 'Buy',
+                orderId: 'bybit-order-1',
+                orderLinkId: 'tjs-order-1',
+                execFee: '0.01',
+              },
+            ],
+          },
+        })
+        .mockResolvedValueOnce({
+          retCode: 0,
+          result: {
+            list: [
+              {
+                symbol: 'ETHUSDT',
+                execQty: '2',
+                execPrice: '50',
+                execTime: '1700000000100',
+                side: 'Sell',
+                orderId: 'bybit-order-2',
+                orderLinkId: 'tjs-order-2',
+                execFee: '0.02',
+              },
+            ],
+          },
+        }),
+      getTransactionLog: jest.fn().mockResolvedValue({
+        retCode: 0,
+        result: {
+          list: [
+            {
+              symbol: 'BTCUSDT',
+              transactionTime: '1700000000500',
+              funding: '-0.03',
+            },
+            {
+              symbol: 'ETHUSDT',
+              transactionTime: '1700000000600',
+              funding: '0.01',
+            },
+          ],
+        },
+      }),
+    };
+    mockedGetClient.mockResolvedValue(client as any);
+
+    const connector = await ByBitConnectorCreator({ userName: 'alice' });
+    const rows = await connector.getEntryExecutions?.({
+      startTime: 1_700_000_000_000,
+      endTime: 1_700_000_100_000,
+    });
+
+    expect(client.getExecutionList).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        cursor: 'page-2',
+      }),
+    );
+    expect(rows).toEqual([
+      {
+        symbol: 'BTCUSDT',
+        qty: 1,
+        entryPrice: 100,
+        entryTimestamp: 1_700_000_000_000,
+        direction: 'LONG',
+        orderId: 'bybit-order-1',
+        orderLinkId: 'tjs-order-1',
+        openFee: 0.01,
+        fundingFee: -0.03,
+        totalFee: -0.02,
+      },
+      {
+        symbol: 'ETHUSDT',
+        qty: 2,
+        entryPrice: 50,
+        entryTimestamp: 1_700_000_000_100,
+        direction: 'SHORT',
+        orderId: 'bybit-order-2',
+        orderLinkId: 'tjs-order-2',
+        openFee: 0.02,
+        fundingFee: 0.01,
+        totalFee: 0.03,
       },
     ]);
   });
@@ -426,6 +528,73 @@ describe('ByBitConnectorCreator', () => {
 
     expect(rows).toEqual([]);
     expect(client.getTransactionLog).not.toHaveBeenCalled();
+  });
+
+  it('paginates closed pnl rows', async () => {
+    const client = {
+      getClosedPnL: jest
+        .fn()
+        .mockResolvedValueOnce({
+          retCode: 0,
+          result: {
+            nextPageCursor: 'page-2',
+            list: [
+              {
+                symbol: 'BTCUSDT',
+                qty: '1',
+                avgEntryPrice: '100',
+                avgExitPrice: '110',
+                closedPnl: '10',
+                createdTime: '1700000000000',
+                updatedTime: '1700000001000',
+                orderId: 'bybit-order-1',
+                orderLinkId: 'tjs-order-1',
+              },
+            ],
+          },
+        })
+        .mockResolvedValueOnce({
+          retCode: 0,
+          result: {
+            list: [
+              {
+                symbol: 'ETHUSDT',
+                qty: '2',
+                avgEntryPrice: '50',
+                avgExitPrice: '45',
+                closedPnl: '10',
+                createdTime: '1700000002000',
+                updatedTime: '1700000003000',
+                orderId: 'bybit-order-2',
+                orderLinkId: 'tjs-order-2',
+              },
+            ],
+          },
+        }),
+    };
+    mockedGetClient.mockResolvedValue(client as any);
+
+    const connector = await ByBitConnectorCreator({ userName: 'alice' });
+    const rows = await connector.getClosedPnl?.({
+      startTime: 1_700_000_000_000,
+      endTime: 1_700_000_100_000,
+    });
+
+    expect(client.getClosedPnL).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        cursor: 'page-2',
+      }),
+    );
+    expect(rows).toEqual([
+      expect.objectContaining({
+        symbol: 'BTCUSDT',
+        orderLinkId: 'tjs-order-1',
+      }),
+      expect.objectContaining({
+        symbol: 'ETHUSDT',
+        orderLinkId: 'tjs-order-2',
+      }),
+    ]);
   });
 
   it('uses minOrderQty in placeOrder when normalized qty is below min', async () => {

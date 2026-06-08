@@ -58,7 +58,7 @@ const resolveMetricTone = (
   if (value < 0) {
     return 'error';
   }
-  return 'warning';
+  return 'neutral';
 };
 
 const buildAiChartMetrics = (params: {

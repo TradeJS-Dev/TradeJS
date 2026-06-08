@@ -308,6 +308,28 @@ const loadOpenPositions = async (
   }
 };
 
+const buildRiskLevelsAnalysis = (position: PositionPnlSnapshot) => {
+  const takeProfitPrice =
+    typeof position.takeProfitPrice === 'number' &&
+    Number.isFinite(position.takeProfitPrice)
+      ? position.takeProfitPrice
+      : null;
+  const stopLossPrice =
+    typeof position.stopLossPrice === 'number' &&
+    Number.isFinite(position.stopLossPrice)
+      ? position.stopLossPrice
+      : null;
+
+  if (takeProfitPrice == null && stopLossPrice == null) {
+    return null;
+  }
+
+  return {
+    ...(takeProfitPrice != null ? { takeProfitPrice } : {}),
+    ...(stopLossPrice != null ? { stopLossPrice } : {}),
+  };
+};
+
 const syncRuntimeTrades = async ({
   userName,
   trades,
@@ -383,11 +405,15 @@ const syncRuntimeTrades = async ({
       openPosition &&
       openPosition.direction === trade.direction
     ) {
+      const riskLevelsAnalysis = buildRiskLevelsAnalysis(openPosition);
       const nextTrade: RuntimeTradeRecord = {
         ...trade,
         status: 'active',
         currentPrice: openPosition.currentPrice,
         currentPnl: openPosition.unrealizedPnl,
+        aiAnalysis: riskLevelsAnalysis
+          ? { ...(trade.aiAnalysis ?? {}), ...riskLevelsAnalysis }
+          : trade.aiAnalysis,
         lastSyncedAt: endTime,
       };
 

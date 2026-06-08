@@ -52,12 +52,13 @@ export interface MonthlyEquityStats {
   maxMonthlyDrop: number; // минимум r_t (доля)
 }
 
-export type ThresholdLevel = 'error' | 'warning' | 'success';
+export type ThresholdLevel = 'error' | 'warning' | 'success' | 'neutral';
 
 export interface MetricThreshold {
   thresholds: [number, number];
   direction: 'higher' | 'lower';
   isPercent?: boolean;
   isAmount?: boolean;
+  neutralValue?: number;
   precision: number;
 }

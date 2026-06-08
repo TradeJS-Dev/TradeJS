@@ -23,6 +23,9 @@ describe('signals summary script', () => {
     const sendTextToTG = jest.fn(
       async (_message: string, _options?: unknown) => null,
     );
+    const sendDocumentToTG = jest.fn(
+      async (_document: unknown, _options?: unknown) => null,
+    );
     const setData = jest.fn(async () => null);
     const setHashJsonField = jest.fn(async () => null);
     const delKey = jest.fn(async () => true);
@@ -88,6 +91,22 @@ describe('signals summary script', () => {
         },
       },
     ]);
+    const loadRuntimeSignalEvaluations = jest.fn(async () => [
+      {
+        evaluationId: 'TrendLine:BTCUSDT:1700086340000',
+        userName: 'root',
+        strategy: 'TrendLine',
+        symbol: 'BTCUSDT',
+        interval: '15',
+        timestamp: now - 60_000,
+        evaluatedAt: now - 30_000,
+        status: 'signal',
+        reason: 'completed',
+        signalId: 'sig-1',
+        direction: 'LONG',
+        orderStatus: 'completed',
+      },
+    ]);
     const logger = {
       info: jest.fn(),
       warn: jest.fn(),
@@ -101,8 +120,28 @@ describe('signals summary script', () => {
         `users:${userName}:runtime:trade-records:${orderId}`,
       runtimeTradeBucket: (userName: string, dayKey: string) =>
         `users:${userName}:runtime:trade-records:days:${dayKey}`,
+      runtimeTradeBuckets: (userName: string) =>
+        `users:${userName}:runtime:trade-records:days:`,
       runtimeActiveTrade: (userName: string, symbol: string) =>
         `users:${userName}:runtime:active-trades:${symbol}`,
+      runtimeActiveTrades: (userName: string) =>
+        `users:${userName}:runtime:active-trades:`,
+      storeSignal: (symbol: string, signalId: string) =>
+        `store:signals:${symbol}:${signalId}`,
+      runtimeSignalBuckets: (userName: string) =>
+        `users:${userName}:runtime:signals:days:`,
+      runtimeSignalEvaluation: (userName: string, evaluationId: string) =>
+        `users:${userName}:runtime:signal-evaluations:${evaluationId}`,
+      runtimeSignalEvaluationBucket: (
+        userName: string,
+        dayKey: string,
+        strategyName: string,
+      ) =>
+        `users:${userName}:runtime:signal-evaluations:days:${dayKey}:${strategyName}`,
+      runtimeSignalEvaluationBuckets: (userName: string) =>
+        `users:${userName}:runtime:signal-evaluations:days:`,
+      runtimeSignalEvaluationStatsBuckets: (userName: string) =>
+        `users:${userName}:runtime:signal-evaluation-stats:days:`,
     };
     const runtimeTradeKeys = [
       redisKeys.runtimeTrades('root') + 'ord-1',
@@ -211,11 +250,13 @@ describe('signals summary script', () => {
     }));
 
     jest.doMock('../lib/runtimeSignalsLoader', () => ({
+      loadRuntimeSignalEvaluations,
       loadRuntimeSignalEvaluationStatsBuckets,
       loadRuntimeSignals,
     }));
 
     jest.doMock('@tradejs/node/cli', () => ({
+      sendDocumentToTG,
       sendTextToTG,
     }));
 
@@ -233,6 +274,34 @@ describe('signals summary script', () => {
     await module.signalsSummary();
 
     expect(sendTextToTG).toHaveBeenCalledTimes(2);
+    expect(sendDocumentToTG).toHaveBeenCalledTimes(1);
+    expect(sendDocumentToTG.mock.calls[0]?.[1]).toEqual({ userName: 'root' });
+    const attachment = sendDocumentToTG.mock.calls[0]?.[0] as
+      | { filename?: string; content?: string }
+      | undefined;
+    expect(attachment?.filename).toBe(
+      'tradejs-runtime-debug-root-2023-11-16.json',
+    );
+    expect(typeof attachment?.content).toBe('string');
+    const debugPayload = JSON.parse(String(attachment?.content));
+    expect(debugPayload).toMatchObject({
+      reportType: 'runtime-daily-debug',
+      userName: 'root',
+      counts: {
+        trades: 2,
+        signals: 2,
+        evaluations: 1,
+      },
+    });
+    const btcDebugTrade = debugPayload.trades.find(
+      (entry: { trade?: { orderId?: string } }) =>
+        entry.trade?.orderId === 'ord-1',
+    );
+    expect(btcDebugTrade?.redisDebug).toMatchObject({
+      trade: 'users:root:runtime:trade-records:ord-1',
+      activeTrade: 'users:root:runtime:active-trades:BTCUSDT',
+      signal: 'store:signals:BTCUSDT:sig-1',
+    });
     const signalsMessage = sendTextToTG.mock.calls[0]?.[0];
     const tradesMessage = sendTextToTG.mock.calls[1]?.[0];
     expect(typeof signalsMessage).toBe('string');
@@ -261,6 +330,16 @@ describe('signals summary script', () => {
     expect(signalsMessage).toContain('MIN_AI_QUALITY: <b>1</b>');
     expect(tradesMessage).toContain('TradeJS daily summary');
     expect(tradesMessage).toContain('💼 <b>Trades</b>');
+    expect(tradesMessage).toContain('📎 <b>Replay debug file</b>');
+    expect(tradesMessage).toContain(
+      'File: <code>tradejs-runtime-debug-root-2023-11-16.json</code>',
+    );
+    expect(tradesMessage).toContain(
+      'Inside: trades=<b>2</b>, signals=<b>2</b>, evaluations=<b>1</b>',
+    );
+    expect(tradesMessage).toContain(
+      'Redis refs: <code>trade</code>, <code>tradeBucket</code>, <code>activeTrade</code>, <code>signal</code>, <code>evaluation</code>',
+    );
     expect(tradesMessage).toContain(
       '<b>TrendLine</b>\ntotal=<b>1</b>, 🔴 (PnL <b>-12.00</b>)\n- BTCUSDT: PnL <b>-12.00</b> 🔴',
     );
@@ -289,6 +368,9 @@ describe('signals summary script', () => {
 
     const sendTextToTG = jest.fn(
       async (_message: string, _options?: unknown) => null,
+    );
+    const sendDocumentToTG = jest.fn(
+      async (_document: unknown, _options?: unknown) => null,
     );
     const setData = jest.fn(async () => null);
     const setHashJsonField = jest.fn(async () => null);
@@ -327,6 +409,7 @@ describe('signals summary script', () => {
         },
       },
     ]);
+    const loadRuntimeSignalEvaluations = jest.fn(async () => []);
     const logger = {
       info: jest.fn(),
       warn: jest.fn(),
@@ -340,8 +423,28 @@ describe('signals summary script', () => {
         `users:${userName}:runtime:trade-records:${orderId}`,
       runtimeTradeBucket: (userName: string, dayKey: string) =>
         `users:${userName}:runtime:trade-records:days:${dayKey}`,
+      runtimeTradeBuckets: (userName: string) =>
+        `users:${userName}:runtime:trade-records:days:`,
       runtimeActiveTrade: (userName: string, symbol: string) =>
         `users:${userName}:runtime:active-trades:${symbol}`,
+      runtimeActiveTrades: (userName: string) =>
+        `users:${userName}:runtime:active-trades:`,
+      storeSignal: (symbol: string, signalId: string) =>
+        `store:signals:${symbol}:${signalId}`,
+      runtimeSignalBuckets: (userName: string) =>
+        `users:${userName}:runtime:signals:days:`,
+      runtimeSignalEvaluation: (userName: string, evaluationId: string) =>
+        `users:${userName}:runtime:signal-evaluations:${evaluationId}`,
+      runtimeSignalEvaluationBucket: (
+        userName: string,
+        dayKey: string,
+        strategyName: string,
+      ) =>
+        `users:${userName}:runtime:signal-evaluations:days:${dayKey}:${strategyName}`,
+      runtimeSignalEvaluationBuckets: (userName: string) =>
+        `users:${userName}:runtime:signal-evaluations:days:`,
+      runtimeSignalEvaluationStatsBuckets: (userName: string) =>
+        `users:${userName}:runtime:signal-evaluation-stats:days:`,
     };
     const strategyConfigKeys = [
       `${redisKeys.strategies('root')}:AdaptiveMomentumRibbon:config`,
@@ -397,11 +500,13 @@ describe('signals summary script', () => {
     }));
 
     jest.doMock('../lib/runtimeSignalsLoader', () => ({
+      loadRuntimeSignalEvaluations,
       loadRuntimeSignalEvaluationStatsBuckets,
       loadRuntimeSignals,
     }));
 
     jest.doMock('@tradejs/node/cli', () => ({
+      sendDocumentToTG,
       sendTextToTG,
     }));
 
@@ -419,6 +524,7 @@ describe('signals summary script', () => {
     await module.signalsSummary();
 
     expect(sendTextToTG).toHaveBeenCalledTimes(2);
+    expect(sendDocumentToTG).toHaveBeenCalledTimes(1);
     const signalsMessage = sendTextToTG.mock.calls[0]?.[0];
     const tradesMessage = sendTextToTG.mock.calls[1]?.[0];
     expect(typeof signalsMessage).toBe('string');
@@ -453,6 +559,10 @@ describe('signals summary script', () => {
     expect(signalsMessage).toContain('NO_DIVERGENCE: <b>1</b>');
     expect(tradesMessage).toContain('TradeJS weekly summary');
     expect(tradesMessage).toContain('💼 <b>Trades</b>');
+    expect(tradesMessage).toContain('📎 <b>Replay debug file</b>');
+    expect(tradesMessage).toContain(
+      'Inside: trades=<b>0</b>, signals=<b>1</b>, evaluations=<b>0</b>',
+    );
     expect(tradesMessage).toContain(
       '<b>AdaptiveMomentumRibbon</b>\ntotal=<b>0</b>',
     );

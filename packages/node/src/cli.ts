@@ -239,6 +239,8 @@ const getCLILevelColor = (level: ThresholdLevel) => {
       return chalk.green;
     case 'warning':
       return chalk.yellow;
+    case 'neutral':
+      return chalk.gray;
     case 'error':
       return chalk.red;
   }

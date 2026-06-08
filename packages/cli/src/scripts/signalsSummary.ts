@@ -17,12 +17,14 @@ import {
 import { sendTelegramReport } from '../lib/telegramReports';
 import {
   loadRuntimeSignalEvaluationStatsBuckets,
+  loadRuntimeSignalEvaluations,
   loadRuntimeSignals,
 } from '../lib/runtimeSignalsLoader';
 import {
   getRuntimeStorageDayKeys,
   RuntimeSignalStatsBucket,
 } from '../lib/runtimeSignalsStorage';
+import { buildRuntimeDebugReportAttachment } from '../lib/runtimeDebugEvidence';
 import {
   Connector,
   ConnectorCreator,
@@ -39,6 +41,11 @@ args.option(
 );
 args.option(['H', 'hours'], 'Summary window in hours', 24);
 args.option(['P', 'printOnly'], 'Print summary instead of Telegram', false);
+args.option(
+  'debugAttachment',
+  'Attach runtime Redis debug JSON for replay diagnostics',
+  true,
+);
 
 const flags = args.parse(process.argv);
 const projectRoot =
@@ -97,6 +104,31 @@ const normalizeStatus = (
 
   return 'unknown';
 };
+
+const shouldAttachDebugReport = (value: unknown) =>
+  value !== false && String(value).toLowerCase() !== 'false';
+
+const appendRuntimeDebugAttachmentSummary = ({
+  message,
+  filename,
+  tradesCount,
+  signalsCount,
+  evaluationsCount,
+}: {
+  message: string;
+  filename: string;
+  tradesCount: number;
+  signalsCount: number;
+  evaluationsCount: number;
+}) =>
+  [
+    message,
+    '',
+    '📎 <b>Replay debug file</b>',
+    `File: <code>${escapeHtml(filename)}</code>`,
+    `Inside: trades=<b>${tradesCount}</b>, signals=<b>${signalsCount}</b>, evaluations=<b>${evaluationsCount}</b>`,
+    'Redis refs: <code>trade</code>, <code>tradeBucket</code>, <code>activeTrade</code>, <code>signal</code>, <code>evaluation</code>',
+  ].join('\n');
 
 const resolveSummaryConnectorName = async (value: unknown): Promise<string> => {
   const connectorName = await resolveConnectorName(value, projectRoot);
@@ -535,13 +567,19 @@ export const signalsSummary = async () => {
   const connector = await (connectorFactory as ConnectorCreator)({
     userName: flags.user,
   });
-  const [configuredStrategyNames, signals, evaluationStatsBuckets, trades] =
-    await Promise.all([
-      loadRuntimeStrategyNames(flags.user),
-      loadRuntimeSignals(flags.user),
-      loadRuntimeSignalEvaluationStatsBuckets(flags.user),
-      loadRuntimeTrades(flags.user),
-    ]);
+  const [
+    configuredStrategyNames,
+    signals,
+    evaluations,
+    evaluationStatsBuckets,
+    trades,
+  ] = await Promise.all([
+    loadRuntimeStrategyNames(flags.user),
+    loadRuntimeSignals(flags.user, { startTime, endTime }),
+    loadRuntimeSignalEvaluations(flags.user, { startTime, endTime }),
+    loadRuntimeSignalEvaluationStatsBuckets(flags.user),
+    loadRuntimeTrades(flags.user),
+  ]);
   const syncedTrades = await syncRuntimeTrades({
     userName: flags.user,
     connector,
@@ -567,6 +605,10 @@ export const signalsSummary = async () => {
   });
   const windowSignals = signals.filter(
     (signal) => signal.timestamp >= startTime && signal.timestamp < endTime,
+  );
+  const windowEvaluations = evaluations.filter(
+    (evaluation) =>
+      evaluation.timestamp >= startTime && evaluation.timestamp < endTime,
   );
   const windowDayKeys = new Set(getRuntimeStorageDayKeys(startTime, endTime));
   const windowEvaluationStats = new Map<string, RuntimeSignalStatsBucket>();
@@ -613,15 +655,42 @@ export const signalsSummary = async () => {
     connectorName,
     flags.user,
   );
+  const debugAttachment = shouldAttachDebugReport(flags.debugAttachment)
+    ? await buildRuntimeDebugReportAttachment({
+        userName: flags.user,
+        startTime,
+        endTime,
+        signals: windowSignals,
+        evaluations: windowEvaluations,
+        trades: windowTrades,
+      })
+    : null;
+  const tradesMessageWithDebugSummary = debugAttachment
+    ? appendRuntimeDebugAttachmentSummary({
+        message: tradesMessage,
+        filename: debugAttachment.filename,
+        tradesCount: windowTrades.length,
+        signalsCount: windowSignals.length,
+        evaluationsCount: windowEvaluations.length,
+      })
+    : tradesMessage;
 
   if (flags.printOnly) {
     console.log(signalsMessage);
     console.log('');
-    console.log(tradesMessage);
+    console.log(tradesMessageWithDebugSummary);
+    if (debugAttachment) {
+      console.log('');
+      console.log(`Debug attachment: ${debugAttachment.filename}`);
+      console.log(debugAttachment.content);
+    }
     return;
   }
 
   await sendTelegramReport(signalsMessage, { userName: flags.user });
-  await sendTelegramReport(tradesMessage, { userName: flags.user });
+  await sendTelegramReport(tradesMessageWithDebugSummary, {
+    userName: flags.user,
+    attachments: debugAttachment ? [debugAttachment] : undefined,
+  });
 };
 export const main = signalsSummary;

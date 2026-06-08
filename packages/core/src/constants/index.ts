@@ -119,9 +119,10 @@ export const TestThresholdsConfig: TestThresholds = {
     precision: 2,
   },
   netProfit: {
-    thresholds: [5, 20],
+    thresholds: [0, 0],
     direction: 'higher',
     isAmount: true,
+    neutralValue: 0,
     precision: 2,
   },
   totalReturn: {

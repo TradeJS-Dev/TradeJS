@@ -326,6 +326,9 @@ export type Position = {
 export interface PositionPnlSnapshot extends Position {
   currentPrice: number;
   unrealizedPnl: number;
+  takeProfitPrice?: number | null;
+  stopLossPrice?: number | null;
+  fundingFee?: number | null;
 }
 
 export type OrderType =
@@ -382,6 +385,8 @@ export interface ExchangeEntryRecord {
   direction: Direction;
   orderId?: string;
   orderLinkId?: string;
+  takeProfitPrice?: number | null;
+  stopLossPrice?: number | null;
   exitPrice?: number | null;
   exitTimestamp?: number | null;
   closedPnl?: number | null;

@@ -180,8 +180,12 @@ describe('runtimeStrategies helpers', () => {
 
     expect(longView.takeProfitPercent).toBe(5);
     expect(longView.stopLossPercent).toBe(2);
+    expect(longView.takeProfitPrice).toBe(105);
+    expect(longView.stopLossPrice).toBe(98);
     expect(shortView.takeProfitPercent).toBe(4);
     expect(shortView.stopLossPercent).toBe(2);
+    expect(shortView.takeProfitPrice).toBe(96);
+    expect(shortView.stopLossPrice).toBe(102);
   });
 
   it('maps runtime trade execution diagnostics for order cards', () => {
@@ -221,6 +225,60 @@ describe('runtimeStrategies helpers', () => {
     expect(view.exitSlippagePercent).toBeCloseTo(0.7045, 4);
     expect(view.exitType).toBe('sl');
     expect(view.totalFee).toBe(0.01749011);
+  });
+
+  it('builds active exchange fallback trades with exchange TP, SL, and funding', () => {
+    const orderLinkId = `${createRuntimeOrderLinkPrefix('AdaptiveMomentumRibbon')}abc123def456`;
+    const trades = buildExchangeFallbackRuntimeTrades({
+      entryRows: [
+        {
+          symbol: 'ZAMAUSDT',
+          qty: 223,
+          entryPrice: 0.03037,
+          entryTimestamp: 1_000,
+          direction: 'LONG',
+          orderId: 'bybit-entry-1',
+          orderLinkId,
+          openFee: 0.00677251,
+          fundingFee: -0.001,
+          totalFee: 0.00577251,
+        },
+      ],
+      closedPnlRows: [],
+      openPositions: [
+        {
+          symbol: 'ZAMAUSDT',
+          qty: 223,
+          price: 0.03037,
+          currentPrice: 0.03221,
+          unrealizedPnl: 0.41,
+          direction: 'LONG',
+          takeProfitPrice: 0.034,
+          stopLossPrice: 0.029,
+        },
+      ],
+      strategyNames: ['AdaptiveMomentumRibbon'],
+      existingTrades: [],
+      endTime: 10_000,
+    });
+
+    expect(trades).toEqual([
+      expect.objectContaining({
+        orderId: orderLinkId,
+        strategy: 'AdaptiveMomentumRibbon',
+        status: 'active',
+        currentPrice: 0.03221,
+        currentPnl: 0.41,
+        openFee: 0.00677251,
+        fundingFee: -0.001,
+        totalFee: 0.00577251,
+        aiAnalysis: {
+          takeProfitPrice: 0.034,
+          stopLossPrice: 0.029,
+        },
+      }),
+    ]);
+    expect(toRuntimeTradeView(trades[0]!, 10_000).takeProfitPrice).toBe(0.034);
   });
 
   it('matches closed pnl by orderLinkId before symbol/time fallback', () => {

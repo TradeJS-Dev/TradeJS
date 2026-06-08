@@ -56,6 +56,8 @@ export interface RuntimeStrategyTradeView {
   entrySlippagePercent: number | null;
   exitSlippagePercent: number | null;
   exitType: RuntimeTradeRecord['exitType'] | null;
+  takeProfitPrice: number | null;
+  stopLossPrice: number | null;
   takeProfitPercent: number | null;
   stopLossPercent: number | null;
   openFee: number | null;
@@ -195,6 +197,30 @@ const getTradeTotalFee = (trade: RuntimeTradeRecord) => {
   return fees.length
     ? Number(fees.reduce((sum, fee) => sum + fee, 0).toFixed(12))
     : null;
+};
+
+const buildRiskLevelsAnalysis = ({
+  takeProfitPrice,
+  stopLossPrice,
+}: {
+  takeProfitPrice?: number | null;
+  stopLossPrice?: number | null;
+}): RuntimeTradeRecord['aiAnalysis'] | null => {
+  const resolvedTakeProfitPrice = toFiniteNumberOrNull(takeProfitPrice);
+  const resolvedStopLossPrice = toFiniteNumberOrNull(stopLossPrice);
+
+  if (resolvedTakeProfitPrice == null && resolvedStopLossPrice == null) {
+    return null;
+  }
+
+  return {
+    ...(resolvedTakeProfitPrice != null
+      ? { takeProfitPrice: resolvedTakeProfitPrice }
+      : {}),
+    ...(resolvedStopLossPrice != null
+      ? { stopLossPrice: resolvedStopLossPrice }
+      : {}),
+  };
 };
 
 const getTradeResolvedTimestamp = (
@@ -699,6 +725,8 @@ export const toRuntimeTradeView = (
     actualPrice: trade.actualExitPrice ?? trade.exitPrice,
   }),
   exitType: trade.exitType ?? null,
+  takeProfitPrice: toFiniteNumberOrNull(trade.aiAnalysis?.takeProfitPrice),
+  stopLossPrice: toFiniteNumberOrNull(trade.aiAnalysis?.stopLossPrice),
   takeProfitPercent: getTradeLevelPercent({
     direction: trade.direction,
     entryPrice: trade.entryPrice,
@@ -1102,6 +1130,12 @@ export const buildExchangeFallbackRuntimeTrades = ({
         exitPrice: isActive ? null : matchedClosedPnl?.exitPrice ?? null,
         actualExitPrice: isActive ? null : matchedClosedPnl?.exitPrice ?? null,
         exitTimestamp: isActive ? null : matchedClosedPnl?.closedAt ?? null,
+        aiAnalysis: isActive
+          ? buildRiskLevelsAnalysis({
+              takeProfitPrice: openPosition?.takeProfitPrice,
+              stopLossPrice: openPosition?.stopLossPrice,
+            })
+          : null,
         openFee: matchedClosedPnl?.openFee ?? entry.openFee ?? null,
         closeFee: matchedClosedPnl?.closeFee ?? entry.closeFee ?? null,
         fundingFee: matchedClosedPnl?.fundingFee ?? entry.fundingFee ?? null,

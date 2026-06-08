@@ -29,6 +29,8 @@ const getMetricColor = (tone: StrategyChartMetric['tone']) => {
       return 'teal.500';
     case 'warning':
       return 'fg.warning';
+    case 'neutral':
+      return 'gray.300';
     case 'error':
       return 'fg.error';
     default:

@@ -57,7 +57,7 @@ export const buildReplayChartSnapshot = (params: {
               ? 'success'
               : (stat?.netProfit ?? 0) < 0
                 ? 'error'
-                : 'warning',
+                : 'neutral',
         },
         {
           id: 'drawdown',
