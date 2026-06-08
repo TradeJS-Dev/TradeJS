@@ -824,6 +824,15 @@ describe('backtest script helpers', () => {
           prices: {},
           figures: {},
           indicators: {},
+          additionalIndicators: {
+            baseContext: {
+              derivatives: {
+                summary: {
+                  pressure: 'crowded_long',
+                },
+              },
+            },
+          },
         },
       ] as any,
       limit: 10,
@@ -866,6 +875,13 @@ describe('backtest script helpers', () => {
       backtestOnly: {
         gated_or_policy_blocked: 1,
       },
+      artifacts: {
+        limit: 10,
+        runtimeOnlyIncluded: 0,
+        runtimeOnlyOmitted: 1,
+        backtestOnlyIncluded: 1,
+        backtestOnlyOmitted: 0,
+      },
     });
     expect(details.mismatchDrilldown?.backtestOnly[0]).toEqual(
       expect.objectContaining({
@@ -877,6 +893,18 @@ describe('backtest script helpers', () => {
           ai: expect.objectContaining({
             quality: 2,
             qualityReason: 'weak gate',
+          }),
+        }),
+        runtimeSignalArtifact: expect.objectContaining({
+          signalId: 'rt-sig-1',
+          additionalIndicators: expect.objectContaining({
+            baseContext: expect.objectContaining({
+              derivatives: expect.objectContaining({
+                summary: expect.objectContaining({
+                  pressure: 'crowded_long',
+                }),
+              }),
+            }),
           }),
         }),
       }),
@@ -916,6 +944,20 @@ describe('backtest script helpers', () => {
           prices: {},
           figures: {},
           indicators: {},
+          additionalIndicators: {
+            baseContext: {
+              participation: {
+                volume: {
+                  volumeRel20: 0.7,
+                },
+              },
+              derivatives: {
+                summary: {
+                  pressure: 'crowded_long',
+                },
+              },
+            },
+          },
         },
       ] as any,
       limit: 10,
@@ -924,6 +966,13 @@ describe('backtest script helpers', () => {
     expect(details.mismatchDrilldown?.summary.runtimeOnly).toEqual({
       gated_or_policy_blocked: 1,
     });
+    expect(details.mismatchDrilldown?.summary.artifacts).toEqual(
+      expect.objectContaining({
+        limit: 10,
+        runtimeOnlyIncluded: 1,
+        runtimeOnlyOmitted: 0,
+      }),
+    );
     expect(details.mismatchDrilldown?.runtimeOnly[0]).toEqual(
       expect.objectContaining({
         classification: 'gated_or_policy_blocked',
@@ -933,8 +982,102 @@ describe('backtest script helpers', () => {
           timestampDiffMs: 0,
           orderStatus: 'skipped',
         }),
+        replaySignalArtifact: expect.objectContaining({
+          signalId: 'replay-sig-1',
+          additionalIndicators: expect.objectContaining({
+            baseContext: expect.objectContaining({
+              participation: expect.objectContaining({
+                volume: expect.objectContaining({
+                  volumeRel20: 0.7,
+                }),
+              }),
+              derivatives: expect.objectContaining({
+                summary: expect.objectContaining({
+                  pressure: 'crowded_long',
+                }),
+              }),
+            }),
+          }),
+        }),
       }),
     );
+  });
+
+  it('keeps mismatch diagnostics when full replay artifacts are disabled', () => {
+    const originalLimit = process.env.REPLAY_PARITY_ARTIFACT_LIMIT;
+    process.env.REPLAY_PARITY_ARTIFACT_LIMIT = '0';
+
+    try {
+      const details = buildReplayExchangeComparisonDetails({
+        matched: [],
+        exchangeOnly: [
+          {
+            symbol: 'ARIAUSDT',
+            direction: 'SHORT',
+            qty: 1,
+            entryPrice: 0.04228,
+            entryTimestamp: 903_000,
+            orderId: 'ex-1',
+            orderLinkId: 'tjs-doubletap--abc',
+          },
+        ] as any,
+        backtestOnly: [],
+        exchangeEntries: [],
+        backtestEntries: [],
+        strategyNameByOrderLinkKey: new Map([['doubletap', 'DoubleTap']]),
+        toleranceMs: 1_000,
+        backtestTimestampOffsetMs: 15 * 60_000,
+        replaySignals: [
+          {
+            signalId: 'replay-sig-1',
+            strategy: 'DoubleTap',
+            symbol: 'ARIAUSDT',
+            direction: 'SHORT',
+            interval: '15',
+            timestamp: 3_000,
+            orderStatus: 'skipped',
+            orderSkipReason: 'ENTRY_POLICY_BLOCKED',
+            prices: {},
+            figures: {},
+            indicators: {},
+            additionalIndicators: {
+              baseContext: {
+                derivatives: {
+                  summary: {
+                    pressure: 'crowded_long',
+                  },
+                },
+              },
+            },
+          },
+        ] as any,
+        limit: 10,
+      });
+
+      expect(details.mismatchDrilldown?.summary.artifacts).toEqual({
+        limit: 0,
+        runtimeOnlyIncluded: 0,
+        runtimeOnlyOmitted: 1,
+        backtestOnlyIncluded: 0,
+        backtestOnlyOmitted: 0,
+      });
+      expect(details.mismatchDrilldown?.runtimeOnly[0]).toEqual(
+        expect.objectContaining({
+          replaySignal: expect.objectContaining({
+            signalId: 'replay-sig-1',
+          }),
+        }),
+      );
+      expect(
+        details.mismatchDrilldown?.runtimeOnly[0].replaySignalArtifact,
+      ).toBeUndefined();
+    } finally {
+      if (originalLimit == null) {
+        delete process.env.REPLAY_PARITY_ARTIFACT_LIMIT;
+      } else {
+        process.env.REPLAY_PARITY_ARTIFACT_LIMIT = originalLimit;
+      }
+    }
   });
 
   it('builds matched replay parity cost, exit, and pnl diagnostics', () => {

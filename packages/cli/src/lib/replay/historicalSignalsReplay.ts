@@ -30,7 +30,7 @@ import {
 } from '@tradejs/types';
 import { PreparedRunEnvironment } from '../runEnvironment';
 import { replayProjectRoot, replayUserName } from './cliConfig';
-import { buildReplayStrategyConfig, compactReplaySignal } from './support';
+import { buildReplayStrategyConfig } from './support';
 import {
   PortfolioReplayConnector,
   createPortfolioReplayConnector,
@@ -491,7 +491,7 @@ export const runHistoricalSignalsReplay = async ({
           );
           if (result && typeof result !== 'string') {
             cycleSignals.push(result);
-            signals.push(compactReplaySignal(result) ?? result);
+            signals.push(result);
           }
         }
 

@@ -26,6 +26,7 @@ export type ExchangeMatchedBacktestEntry = {
 };
 
 const DEFAULT_REPLAY_PARITY_DETAILS_LIMIT = 500;
+const DEFAULT_REPLAY_PARITY_ARTIFACT_LIMIT = 100;
 
 export const buildStrategyNameByOrderLinkKey = (strategyNames: string[]) =>
   new Map(
@@ -58,6 +59,16 @@ const resolveReplayParityDetailsLimit = () => {
   return Number.isFinite(parsed) && parsed > 0
     ? parsed
     : DEFAULT_REPLAY_PARITY_DETAILS_LIMIT;
+};
+
+const resolveReplayParityArtifactLimit = () => {
+  const parsed = Number.parseInt(
+    String(process.env.REPLAY_PARITY_ARTIFACT_LIMIT ?? ''),
+    10,
+  );
+  return Number.isFinite(parsed) && parsed >= 0
+    ? parsed
+    : DEFAULT_REPLAY_PARITY_ARTIFACT_LIMIT;
 };
 
 const capReplayDetails = <TItem>(items: TItem[], limit: number) =>
@@ -657,7 +668,12 @@ export const buildReplayMismatchDrilldown = ({
     nearestCandidates.map((candidate) => [candidate.entry, candidate]),
   );
 
-  const runtimeOnlyDiagnostics = runtimeOnly.map((entry) => {
+  const artifactLimit = Math.min(limit, resolveReplayParityArtifactLimit());
+  let runtimeOnlyArtifactsIncluded = 0;
+  let backtestOnlyArtifactsIncluded = 0;
+
+  const runtimeOnlyDiagnostics = runtimeOnly.map((entry, index) => {
+    const includeArtifacts = index < artifactLimit;
     const nearestCandidate = nearestByEntry.get(entry);
     const nearestReplaySignal = findNearestSignal({
       entry,
@@ -696,6 +712,9 @@ export const buildReplayMismatchDrilldown = ({
               signal: nearestReplaySignal.signal,
               timestampDiffMs: nearestReplaySignal.timestampDiffMs,
             }),
+            ...(includeArtifacts
+              ? { replaySignalArtifact: nearestReplaySignal.signal }
+              : {}),
           }
         : {}),
       ...(nearestReplayEvaluation
@@ -704,12 +723,16 @@ export const buildReplayMismatchDrilldown = ({
               evaluation: nearestReplayEvaluation.evaluation,
               timestampDiffMs: nearestReplayEvaluation.timestampDiffMs,
             }),
+            ...(includeArtifacts
+              ? { replayEvaluationArtifact: nearestReplayEvaluation.evaluation }
+              : {}),
           }
         : {}),
     };
   });
 
-  const backtestOnlyDiagnostics = backtestOnly.map((entry) => {
+  const backtestOnlyDiagnostics = backtestOnly.map((entry, index) => {
+    const includeArtifacts = index < artifactLimit;
     const nearestCandidate = nearestByEntry.get(entry);
     const nearestRuntimeSignal = findNearestSignal({
       entry,
@@ -748,6 +771,9 @@ export const buildReplayMismatchDrilldown = ({
               signal: nearestRuntimeSignal.signal,
               timestampDiffMs: nearestRuntimeSignal.timestampDiffMs,
             }),
+            ...(includeArtifacts
+              ? { runtimeSignalArtifact: nearestRuntimeSignal.signal }
+              : {}),
           }
         : {}),
       ...(nearestRuntimeEvaluation
@@ -756,10 +782,33 @@ export const buildReplayMismatchDrilldown = ({
               evaluation: nearestRuntimeEvaluation.evaluation,
               timestampDiffMs: nearestRuntimeEvaluation.timestampDiffMs,
             }),
+            ...(includeArtifacts
+              ? {
+                  runtimeEvaluationArtifact:
+                    nearestRuntimeEvaluation.evaluation,
+                }
+              : {}),
           }
         : {}),
     };
   });
+
+  for (const diagnostic of runtimeOnlyDiagnostics) {
+    if (
+      diagnostic.replaySignalArtifact ||
+      diagnostic.replayEvaluationArtifact
+    ) {
+      runtimeOnlyArtifactsIncluded += 1;
+    }
+  }
+  for (const diagnostic of backtestOnlyDiagnostics) {
+    if (
+      diagnostic.runtimeSignalArtifact ||
+      diagnostic.runtimeEvaluationArtifact
+    ) {
+      backtestOnlyArtifactsIncluded += 1;
+    }
+  }
 
   return {
     runtimeOnly: capReplayDetails(runtimeOnlyDiagnostics, limit),
@@ -767,6 +816,19 @@ export const buildReplayMismatchDrilldown = ({
     summary: {
       runtimeOnly: summarizeMismatchDiagnostics(runtimeOnlyDiagnostics),
       backtestOnly: summarizeMismatchDiagnostics(backtestOnlyDiagnostics),
+      artifacts: {
+        limit: artifactLimit,
+        runtimeOnlyIncluded: runtimeOnlyArtifactsIncluded,
+        runtimeOnlyOmitted: Math.max(
+          0,
+          runtimeOnlyDiagnostics.length - runtimeOnlyArtifactsIncluded,
+        ),
+        backtestOnlyIncluded: backtestOnlyArtifactsIncluded,
+        backtestOnlyOmitted: Math.max(
+          0,
+          backtestOnlyDiagnostics.length - backtestOnlyArtifactsIncluded,
+        ),
+      },
     },
   };
 };

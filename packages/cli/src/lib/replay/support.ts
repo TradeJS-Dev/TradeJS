@@ -1,5 +1,10 @@
 import chalk from 'chalk';
-import { Interval, Signal, StrategyConfig } from '@tradejs/types';
+import {
+  Interval,
+  RuntimeSignalEvaluationRecord,
+  Signal,
+  StrategyConfig,
+} from '@tradejs/types';
 import { buildRuntimeModeStrategyConfig } from '../runtimeModeConfig';
 
 export const REPLAY_RESULTS_BY_STRATEGY_HEADERS = [
@@ -161,9 +166,13 @@ export type ReplayMismatchDiagnostic = {
   reason: string;
   nearestCandidate?: ReplayParityNearestCandidate;
   runtimeSignal?: ReplayMismatchSignalDiagnostic;
+  runtimeSignalArtifact?: Signal;
   runtimeEvaluation?: ReplayMismatchEvaluationDiagnostic;
+  runtimeEvaluationArtifact?: RuntimeSignalEvaluationRecord;
   replaySignal?: ReplayMismatchSignalDiagnostic;
+  replaySignalArtifact?: Signal;
   replayEvaluation?: ReplayMismatchEvaluationDiagnostic;
+  replayEvaluationArtifact?: RuntimeSignalEvaluationRecord;
 };
 
 export type ReplayMismatchDrilldown = {
@@ -172,6 +181,13 @@ export type ReplayMismatchDrilldown = {
   summary: {
     runtimeOnly: Record<string, number>;
     backtestOnly: Record<string, number>;
+    artifacts?: {
+      limit: number;
+      runtimeOnlyIncluded: number;
+      runtimeOnlyOmitted: number;
+      backtestOnlyIncluded: number;
+      backtestOnlyOmitted: number;
+    };
   };
 };
 
