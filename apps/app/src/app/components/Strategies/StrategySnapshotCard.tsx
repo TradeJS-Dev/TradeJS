@@ -14,14 +14,70 @@ import {
   Stat,
   Text,
 } from '@chakra-ui/react';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import type {
+  StrategyChartDetail,
   StrategyChartMetric,
   StrategyChartSnapshot,
 } from '@tradejs/types';
+import {
+  formatCompactNumber,
+  formatDateTime,
+  formatDuration,
+  formatInteger,
+  formatPercent,
+  formatSignedNumber,
+  getPnlColor,
+  OrdersDrawerPanel,
+  type OrdersDrawerOrder,
+  type OrdersDrawerSummaryItem,
+} from '#components/Shared/OrdersDrawer';
 import { deleteStrategyCard } from '#actions/strategies';
 import { toaster } from '#ui';
 import { StrategySnapshotChart } from './StrategySnapshotChart';
+
+const MS_IN_HOUR = 60 * 60 * 1000;
+const SNAPSHOT_ORDER_ROW_HEIGHT = 254;
+const DIRECTION_DETAIL_PREFIX = 'direction:';
+const SYMBOL_DETAIL_PREFIX = 'symbol:';
+const AI_STAT_DIRECTIONS = ['LONG', 'SHORT'] as const;
+
+type AiStatDirection = (typeof AI_STAT_DIRECTIONS)[number];
+
+interface DirectionMetric {
+  id: string;
+  label: string;
+  value: string;
+  tone?: StrategyChartMetric['tone'];
+}
+
+interface DirectionStatGroup {
+  direction: AiStatDirection;
+  metrics: DirectionMetric[];
+  hasData: boolean;
+}
+
+interface MonthlyStat {
+  id: string;
+  year: number;
+  monthIndex: number;
+  monthLabel: string;
+  orders: number;
+  wins: number;
+  pnl: number;
+}
+
+interface YearlyMonthlyStats {
+  year: number;
+  months: MonthlyStat[];
+}
+
+interface SymbolPnlRank {
+  symbol: string;
+  pnl: number;
+  orders: number | null;
+  winRate: number | null;
+}
 
 const getMetricColor = (tone: StrategyChartMetric['tone']) => {
   switch (tone) {
@@ -63,6 +119,370 @@ const calculateMaxDrawdownPercent = (orderLog: Array<[number, number]>) => {
   return `${maxDrawdownPercent.toFixed(1)}%`;
 };
 
+const getSnapshotStepPnl = (
+  orderLog: StrategyChartSnapshot['orderLog'],
+  index: number,
+) => {
+  const current = orderLog[index];
+  const previous = orderLog[index - 1];
+
+  if (!current || !previous) {
+    return null;
+  }
+
+  return current[1] - previous[1];
+};
+
+const calculateMaxLossStreak = (
+  orderLog: StrategyChartSnapshot['orderLog'],
+) => {
+  let currentStreak = 0;
+  let maxStreak = 0;
+
+  for (let index = 1; index < orderLog.length; index += 1) {
+    const pnl = getSnapshotStepPnl(orderLog, index);
+    if (typeof pnl !== 'number' || !Number.isFinite(pnl)) {
+      continue;
+    }
+
+    if (pnl < 0) {
+      currentStreak += 1;
+      maxStreak = Math.max(maxStreak, currentStreak);
+      continue;
+    }
+
+    currentStreak = 0;
+  }
+
+  return maxStreak;
+};
+
+const buildSnapshotOrders = (
+  snapshot: StrategyChartSnapshot,
+): OrdersDrawerOrder[] =>
+  snapshot.orderLog.slice(1).map(([timestamp, amount], index) => {
+    const orderIndex = index + 1;
+    const previous = snapshot.orderLog[index];
+    const previousAmount = previous?.[1] ?? null;
+    const previousTimestamp = previous?.[0] ?? null;
+    const pnl = getSnapshotStepPnl(snapshot.orderLog, orderIndex);
+    const durationHours =
+      typeof previousTimestamp === 'number' &&
+      Number.isFinite(previousTimestamp)
+        ? (timestamp - previousTimestamp) / MS_IN_HOUR
+        : null;
+    const title =
+      snapshot.symbols.length === 1
+        ? snapshot.symbols[0]
+        : `AI step #${orderIndex}`;
+
+    return {
+      id: `${snapshot.cardId}:${timestamp}:${orderIndex}`,
+      title,
+      subtitle: `closed ${formatDateTime(timestamp)}`,
+      statusLabel: 'CLOSED',
+      statusColor: 'gray',
+      pnl,
+      metrics: [
+        {
+          title: 'Equity',
+          value: formatCompactNumber(amount, {
+            maximumFractionDigits: 2,
+            minimumFractionDigits: 2,
+          }),
+          detail: `prev ${formatCompactNumber(previousAmount, {
+            maximumFractionDigits: 2,
+            minimumFractionDigits: 2,
+          })}`,
+        },
+        {
+          title: 'Change',
+          value: formatSignedNumber(pnl),
+          color: getPnlColor(pnl),
+        },
+        {
+          title: 'Duration',
+          value: formatDuration(durationHours),
+          detail: formatDateTime(previousTimestamp),
+        },
+        {
+          title: 'Date',
+          value: formatDateTime(timestamp),
+        },
+        {
+          title: 'Dataset',
+          value: snapshot.datasetId || 'n/a',
+        },
+        {
+          title: 'Step',
+          value: `${orderIndex}/${Math.max(0, snapshot.orderLog.length - 1)}`,
+        },
+      ],
+    };
+  });
+
+const buildSnapshotSummaryItems = (
+  snapshot: StrategyChartSnapshot,
+): OrdersDrawerSummaryItem[] => {
+  const orders = snapshot.orderLog.slice(1);
+  const winningOrders = orders.filter((_, index) => {
+    const pnl = getSnapshotStepPnl(snapshot.orderLog, index + 1);
+    return typeof pnl === 'number' && Number.isFinite(pnl) && pnl > 0;
+  });
+  const firstAmount = snapshot.orderLog[0]?.[1] ?? null;
+  const lastAmount = snapshot.orderLog.at(-1)?.[1] ?? null;
+  const totalPnl =
+    typeof firstAmount === 'number' &&
+    Number.isFinite(firstAmount) &&
+    typeof lastAmount === 'number' &&
+    Number.isFinite(lastAmount)
+      ? lastAmount - firstAmount
+      : null;
+  const winRate =
+    orders.length > 0 ? (winningOrders.length / orders.length) * 100 : 0;
+
+  return [
+    {
+      title: 'Total Orders',
+      value: formatInteger(orders.length),
+    },
+    {
+      title: 'Win Rate',
+      value: formatPercent(winRate),
+    },
+    {
+      title: 'P&L',
+      value: formatSignedNumber(totalPnl),
+      color: getPnlColor(totalPnl),
+    },
+    {
+      title: 'Max Drawdown',
+      value: calculateMaxDrawdownPercent(snapshot.orderLog) ?? 'n/a',
+      color: 'fg.warning',
+    },
+  ];
+};
+
+const directionMetricLabels: Record<string, string> = {
+  approved: 'Approved',
+  precision: 'Precision',
+  monthlyPnl: 'Monthly P&L',
+  pnl: 'P&L',
+  avgProfit: 'Avg Profit',
+};
+
+const directionMetricOrder = [
+  'approved',
+  'precision',
+  'monthlyPnl',
+  'pnl',
+  'avgProfit',
+] as const;
+
+const isDirectionDetail = (detail: StrategyChartDetail) =>
+  detail.id.startsWith(DIRECTION_DETAIL_PREFIX);
+
+const isSymbolDetail = (detail: StrategyChartDetail) =>
+  detail.id.startsWith(SYMBOL_DETAIL_PREFIX);
+
+const isStructuredDetail = (detail: StrategyChartDetail) =>
+  isDirectionDetail(detail) || isSymbolDetail(detail);
+
+const parseFormattedNumber = (value: string) => {
+  const normalized = value
+    .replace(/\s/g, '')
+    .replace(',', '.')
+    .replace(/[^\d.+-]/g, '');
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
+const getPnlBarColor = (value: number) => {
+  if (value > 0) {
+    return 'teal.500';
+  }
+  if (value < 0) {
+    return 'red.500';
+  }
+  return 'gray.500';
+};
+
+const buildDirectionStatGroups = (
+  details: StrategyChartDetail[] | undefined,
+): DirectionStatGroup[] => {
+  const grouped = new Map<AiStatDirection, Map<string, DirectionMetric>>();
+
+  for (const direction of AI_STAT_DIRECTIONS) {
+    grouped.set(direction, new Map());
+  }
+
+  for (const detail of details ?? []) {
+    const [, direction, metricId] = detail.id.split(':');
+    if (metricId == null) {
+      continue;
+    }
+
+    if (direction !== 'LONG' && direction !== 'SHORT') {
+      continue;
+    }
+
+    const metric: DirectionMetric = {
+      id: metricId,
+      label: directionMetricLabels[metricId] ?? detail.label,
+      value: detail.value,
+    };
+    if (detail.tone) {
+      metric.tone = detail.tone;
+    }
+
+    grouped.get(direction)?.set(metricId, metric);
+  }
+
+  return AI_STAT_DIRECTIONS.map((direction) => {
+    const values = grouped.get(direction) ?? new Map<string, DirectionMetric>();
+    const metrics = directionMetricOrder.map(
+      (metricId): DirectionMetric =>
+        values.get(metricId) ?? {
+          id: metricId,
+          label: directionMetricLabels[metricId],
+          value: 'n/a',
+          tone: 'default',
+        },
+    );
+
+    return {
+      direction,
+      metrics,
+      hasData: values.size > 0,
+    };
+  });
+};
+
+const getMonthLabel = (monthIndex: number) =>
+  new Date(Date.UTC(2026, monthIndex - 1, 1)).toLocaleString('en-US', {
+    month: 'short',
+  });
+
+const buildMonthlyStats = (
+  orderLog: StrategyChartSnapshot['orderLog'],
+): YearlyMonthlyStats[] => {
+  const grouped = new Map<string, MonthlyStat>();
+
+  for (let index = 1; index < orderLog.length; index += 1) {
+    const current = orderLog[index];
+    const previous = orderLog[index - 1];
+    if (!current || !previous) {
+      continue;
+    }
+
+    const [timestamp, amount] = current;
+    const previousAmount = previous[1];
+    if (
+      typeof timestamp !== 'number' ||
+      !Number.isFinite(timestamp) ||
+      typeof amount !== 'number' ||
+      !Number.isFinite(amount) ||
+      typeof previousAmount !== 'number' ||
+      !Number.isFinite(previousAmount)
+    ) {
+      continue;
+    }
+
+    const date = new Date(timestamp);
+    const year = date.getUTCFullYear();
+    const monthIndex = date.getUTCMonth() + 1;
+    const id = `${year}-${String(monthIndex).padStart(2, '0')}`;
+    const pnl = amount - previousAmount;
+    const existing = grouped.get(id) ?? {
+      id,
+      year,
+      monthIndex,
+      monthLabel: getMonthLabel(monthIndex),
+      orders: 0,
+      wins: 0,
+      pnl: 0,
+    };
+
+    existing.orders += 1;
+    existing.wins += pnl > 0 ? 1 : 0;
+    existing.pnl += pnl;
+    grouped.set(id, existing);
+  }
+
+  const monthlyStats = [...grouped.values()].sort(
+    (left, right) =>
+      left.year - right.year || left.monthIndex - right.monthIndex,
+  );
+  const yearlyStats = new Map<number, MonthlyStat[]>();
+
+  for (const month of monthlyStats) {
+    const months = yearlyStats.get(month.year) ?? [];
+    months.push(month);
+    yearlyStats.set(month.year, months);
+  }
+
+  return [...yearlyStats.entries()]
+    .sort(([leftYear], [rightYear]) => leftYear - rightYear)
+    .map(([year, months]) => ({
+      year,
+      months,
+    }));
+};
+
+const buildSymbolPnlRanking = (
+  details: StrategyChartDetail[] | undefined,
+): SymbolPnlRank[] => {
+  const grouped = new Map<string, Partial<SymbolPnlRank>>();
+
+  for (const detail of details ?? []) {
+    if (!isSymbolDetail(detail)) {
+      continue;
+    }
+
+    const [, symbol, metricId] = detail.id.split(':');
+    if (!symbol || !metricId) {
+      continue;
+    }
+
+    const current = grouped.get(symbol) ?? { symbol };
+    if (metricId === 'pnl') {
+      const pnl = parseFormattedNumber(detail.value);
+      if (pnl != null) {
+        current.pnl = pnl;
+      }
+    }
+    if (metricId === 'orders') {
+      current.orders = parseFormattedNumber(detail.value);
+    }
+    if (metricId === 'winRate') {
+      current.winRate = parseFormattedNumber(detail.value);
+    }
+
+    grouped.set(symbol, current);
+  }
+
+  return [...grouped.values()]
+    .filter(
+      (rank): rank is SymbolPnlRank =>
+        typeof rank.symbol === 'string' &&
+        typeof rank.pnl === 'number' &&
+        Number.isFinite(rank.pnl),
+    )
+    .map((rank) => ({
+      symbol: rank.symbol,
+      pnl: rank.pnl,
+      orders: rank.orders ?? null,
+      winRate: rank.winRate ?? null,
+    }))
+    .sort(
+      (left, right) =>
+        Math.abs(right.pnl) - Math.abs(left.pnl) ||
+        right.pnl - left.pnl ||
+        left.symbol.localeCompare(right.symbol),
+    )
+    .slice(0, 10);
+};
+
 export const StrategySnapshotCard = ({
   snapshot,
   emptyText,
@@ -79,8 +499,38 @@ export const StrategySnapshotCard = ({
   onToggleSelection?: (cardId: string, checked: boolean) => void;
 }) => {
   const [detailsOpen, setDetailsOpen] = useState(false);
+  const [ordersOpen, setOrdersOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const snapshotOrders = useMemo(
+    () => buildSnapshotOrders(snapshot),
+    [snapshot],
+  );
+  const snapshotSummaryItems = useMemo(
+    () => buildSnapshotSummaryItems(snapshot),
+    [snapshot],
+  );
+  const visibleDetails = useMemo(
+    () =>
+      (snapshot.details ?? []).filter((detail) => !isStructuredDetail(detail)),
+    [snapshot.details],
+  );
+  const directionStatGroups = useMemo(
+    () => buildDirectionStatGroups(snapshot.details),
+    [snapshot.details],
+  );
+  const symbolPnlRanking = useMemo(
+    () => buildSymbolPnlRanking(snapshot.details),
+    [snapshot.details],
+  );
+  const symbolRankingMaxAbsPnl = useMemo(
+    () => Math.max(...symbolPnlRanking.map((rank) => Math.abs(rank.pnl)), 1),
+    [symbolPnlRanking],
+  );
+  const monthlyStats = useMemo(
+    () => buildMonthlyStats(snapshot.orderLog),
+    [snapshot.orderLog],
+  );
   const symbolsLabel =
     snapshot.symbols.length > 3
       ? `${snapshot.symbols.slice(0, 3).join(', ')} +${snapshot.symbols.length - 3}`
@@ -95,17 +545,41 @@ export const StrategySnapshotCard = ({
       : snapshot.subtitle;
   const metrics =
     mode === 'ai'
-      ? snapshot.metrics.map((metric) =>
-          metric.id === 'quality' || metric.label === 'Quality'
-            ? {
-                id: 'maxDrawdown',
-                label: 'Max drawdown',
-                value: calculateMaxDrawdownPercent(snapshot.orderLog) ?? 'n/a',
-                tone: 'warning' as const,
-              }
-            : metric,
-        )
+      ? snapshot.metrics
+          .filter((metric) => metric.id !== 'pnl')
+          .map((metric) =>
+            metric.id === 'quality' || metric.label === 'Quality'
+              ? {
+                  id: 'maxDrawdown',
+                  label: 'Max drawdown',
+                  value:
+                    calculateMaxDrawdownPercent(snapshot.orderLog) ?? 'n/a',
+                  tone: 'warning' as const,
+                }
+              : metric,
+          )
       : snapshot.metrics;
+  const maxLossStreak = useMemo(
+    () => calculateMaxLossStreak(snapshot.orderLog),
+    [snapshot.orderLog],
+  );
+  const drawerMetrics = useMemo(
+    () =>
+      mode === 'ai'
+        ? [
+            ...metrics,
+            {
+              id: 'maxLossStreak',
+              label: 'Max loss streak',
+              value: formatInteger(maxLossStreak),
+              tone:
+                maxLossStreak > 0 ? ('warning' as const) : ('success' as const),
+            },
+          ]
+        : metrics,
+    [maxLossStreak, metrics, mode],
+  );
+  const hasStatDrawer = mode === 'ai' || Boolean(snapshot.details?.length);
 
   const handleDelete = async () => {
     if (isDeleting) {
@@ -193,12 +667,20 @@ export const StrategySnapshotCard = ({
           <Portal>
             <Menu.Positioner>
               <Menu.Content minW="160px">
-                {snapshot.details?.length ? (
+                {mode === 'ai' && snapshotOrders.length ? (
+                  <Menu.Item value="orders" onClick={() => setOrdersOpen(true)}>
+                    Orders
+                  </Menu.Item>
+                ) : null}
+                {mode === 'ai' && snapshotOrders.length ? (
+                  <Menu.Separator />
+                ) : null}
+                {hasStatDrawer ? (
                   <Menu.Item value="stat" onClick={() => setDetailsOpen(true)}>
                     Stat
                   </Menu.Item>
                 ) : null}
-                {snapshot.details?.length ? <Menu.Separator /> : null}
+                {hasStatDrawer ? <Menu.Separator /> : null}
                 <Menu.Item
                   value="delete"
                   color="fg.error"
@@ -211,15 +693,32 @@ export const StrategySnapshotCard = ({
           </Portal>
         </Menu.Root>
 
+        <OrdersDrawerPanel
+          title={`${snapshot.title} orders`}
+          open={ordersOpen}
+          orders={snapshotOrders}
+          summaryItems={snapshotSummaryItems}
+          rowHeight={SNAPSHOT_ORDER_ROW_HEIGHT}
+          emptyText="No AI order points for this card."
+          onOpenChange={setOrdersOpen}
+        />
+
         <Drawer.Root
-          size="md"
+          size="xl"
           open={detailsOpen}
           onOpenChange={(e) => setDetailsOpen(e.open)}
         >
           <Portal>
             <Drawer.Backdrop />
             <Drawer.Positioner>
-              <Drawer.Content display="flex" flexDirection="column">
+              <Drawer.Content
+                display="flex"
+                flexDirection="column"
+                w="50vw"
+                minW="640px"
+                maxW="50vw"
+                bg="gray.950"
+              >
                 <Drawer.Header>
                   <Drawer.Title>{snapshot.title}</Drawer.Title>
                   <Drawer.CloseTrigger asChild>
@@ -227,51 +726,428 @@ export const StrategySnapshotCard = ({
                   </Drawer.CloseTrigger>
                 </Drawer.Header>
 
-                <Drawer.Body overflowY="auto">
+                <Drawer.Body
+                  display="flex"
+                  flexDirection="column"
+                  gap={4}
+                  overflowY="auto"
+                  flex="1"
+                  minH="0"
+                  w="full"
+                >
                   <Box
                     p={4}
                     borderWidth="1px"
                     borderColor="gray.800"
-                    borderRadius="xl"
-                    bg="gray.950"
+                    borderRadius="md"
+                    bg="gray.900"
                   >
-                    <Text fontSize="sm" color="gray.500" mb={4}>
+                    <Text fontSize="sm" color="gray.500" mb={3}>
                       {snapshot.subtitle || 'AI train details'}
                     </Text>
 
-                    <SimpleGrid columns={1} gap={3}>
-                      {snapshot.details?.map((detail) => (
-                        <Flex
-                          key={detail.id}
-                          justify="space-between"
-                          align="flex-start"
-                          gap={4}
+                    <SimpleGrid columns={{ base: 2, md: 4 }} gap={3}>
+                      {drawerMetrics.map((metric) => (
+                        <Box
+                          key={metric.id}
                           p={3}
-                          borderRadius="lg"
-                          bg="blackAlpha.400"
+                          borderWidth="1px"
+                          borderColor="gray.800"
+                          borderRadius="md"
+                          bg="blackAlpha.300"
                         >
                           <Text
-                            fontSize="sm"
+                            fontSize="xs"
                             color="gray.400"
-                            fontFamily="mono"
-                            flex="0 0 220px"
+                            fontWeight="semibold"
+                            textTransform="uppercase"
                           >
-                            {detail.label}
+                            {metric.label}
                           </Text>
                           <Text
-                            fontSize="sm"
-                            color={getMetricColor(detail.tone)}
-                            fontWeight="semibold"
-                            textAlign="right"
+                            mt={1}
+                            fontSize="xl"
+                            color={getMetricColor(metric.tone)}
+                            fontWeight="bold"
                             fontFamily="mono"
-                            whiteSpace="pre-wrap"
+                            lineHeight="1.2"
                           >
-                            {detail.value}
+                            {metric.value}
                           </Text>
-                        </Flex>
+                        </Box>
                       ))}
                     </SimpleGrid>
                   </Box>
+
+                  {monthlyStats.length ? (
+                    <Box
+                      p={4}
+                      borderWidth="1px"
+                      borderColor="gray.800"
+                      borderRadius="md"
+                      bg="gray.900"
+                    >
+                      <Text
+                        fontSize="sm"
+                        color="gray.300"
+                        fontWeight="semibold"
+                        mb={3}
+                      >
+                        Monthly Performance
+                      </Text>
+
+                      <Flex direction="column" gap={4}>
+                        {monthlyStats.map((yearGroup) => (
+                          <Box key={yearGroup.year}>
+                            <Flex align="center" gap={3} mb={3}>
+                              <Text
+                                fontSize="lg"
+                                color="gray.100"
+                                fontWeight="bold"
+                                fontFamily="mono"
+                              >
+                                {yearGroup.year}
+                              </Text>
+                              <Box flex="1" h="1px" bg="gray.800" />
+                            </Flex>
+
+                            <SimpleGrid columns={4} gap={3}>
+                              {yearGroup.months.map((month) => {
+                                const winRate =
+                                  month.orders > 0
+                                    ? (month.wins / month.orders) * 100
+                                    : null;
+
+                                return (
+                                  <Box
+                                    key={month.id}
+                                    p={3}
+                                    minH="116px"
+                                    borderWidth="1px"
+                                    borderColor="gray.800"
+                                    borderLeftWidth="3px"
+                                    borderLeftColor={getPnlColor(month.pnl)}
+                                    borderRadius="md"
+                                    bg="blackAlpha.300"
+                                  >
+                                    <Flex
+                                      justify="space-between"
+                                      align="baseline"
+                                      gap={2}
+                                    >
+                                      <Text
+                                        fontSize="sm"
+                                        color="gray.200"
+                                        fontWeight="bold"
+                                      >
+                                        {month.monthLabel}
+                                      </Text>
+                                      <Text
+                                        fontSize="xs"
+                                        color="gray.500"
+                                        fontFamily="mono"
+                                      >
+                                        {String(month.monthIndex).padStart(
+                                          2,
+                                          '0',
+                                        )}
+                                      </Text>
+                                    </Flex>
+                                    <Text
+                                      mt={3}
+                                      fontSize="xl"
+                                      color={getPnlColor(month.pnl)}
+                                      fontWeight="bold"
+                                      fontFamily="mono"
+                                      lineHeight="1.2"
+                                    >
+                                      {formatSignedNumber(month.pnl)}
+                                    </Text>
+                                    <Flex
+                                      mt={3}
+                                      justify="space-between"
+                                      gap={3}
+                                    >
+                                      <Box>
+                                        <Text fontSize="xs" color="gray.500">
+                                          Orders
+                                        </Text>
+                                        <Text
+                                          fontSize="sm"
+                                          color="gray.300"
+                                          fontFamily="mono"
+                                          fontWeight="semibold"
+                                        >
+                                          {formatInteger(month.orders)}
+                                        </Text>
+                                      </Box>
+                                      <Box textAlign="right">
+                                        <Text fontSize="xs" color="gray.500">
+                                          Win rate
+                                        </Text>
+                                        <Text
+                                          fontSize="sm"
+                                          color="gray.300"
+                                          fontFamily="mono"
+                                          fontWeight="semibold"
+                                        >
+                                          {formatPercent(winRate)}
+                                        </Text>
+                                      </Box>
+                                    </Flex>
+                                  </Box>
+                                );
+                              })}
+                            </SimpleGrid>
+                          </Box>
+                        ))}
+                      </Flex>
+                    </Box>
+                  ) : null}
+
+                  {mode === 'ai' ? (
+                    <Box
+                      p={4}
+                      borderWidth="1px"
+                      borderColor="gray.800"
+                      borderRadius="md"
+                      bg="gray.900"
+                    >
+                      <Flex justify="space-between" align="center" mb={4}>
+                        <Text
+                          fontSize="sm"
+                          color="gray.300"
+                          fontWeight="semibold"
+                        >
+                          P&L Ranking
+                        </Text>
+                        <Text fontSize="xs" color="gray.500">
+                          Top 10 contracts
+                        </Text>
+                      </Flex>
+
+                      {symbolPnlRanking.length ? (
+                        <>
+                          <Flex align="center" gap={4} mb={2}>
+                            <Text
+                              flex="0 0 180px"
+                              fontSize="xs"
+                              color="gray.500"
+                              fontWeight="semibold"
+                            >
+                              Contracts
+                            </Text>
+                            <Box flex="1" />
+                            <Text
+                              flex="0 0 96px"
+                              fontSize="xs"
+                              color="gray.500"
+                              fontWeight="semibold"
+                              textAlign="right"
+                            >
+                              P&L (USDT)
+                            </Text>
+                          </Flex>
+
+                          <Flex direction="column" gap={3}>
+                            {symbolPnlRanking.map((rank) => {
+                              const barWidth = Math.max(
+                                6,
+                                (Math.abs(rank.pnl) / symbolRankingMaxAbsPnl) *
+                                  100,
+                              );
+
+                              return (
+                                <Flex
+                                  key={rank.symbol}
+                                  align="center"
+                                  gap={4}
+                                  minH="34px"
+                                >
+                                  <Box flex="0 0 180px" minW={0}>
+                                    <Text
+                                      fontSize="sm"
+                                      color="gray.100"
+                                      fontWeight="semibold"
+                                      lineHeight="1.2"
+                                      overflow="hidden"
+                                      textOverflow="ellipsis"
+                                      whiteSpace="nowrap"
+                                    >
+                                      {rank.symbol}
+                                    </Text>
+                                    <Text
+                                      mt={1}
+                                      fontSize="xs"
+                                      color="gray.500"
+                                      fontFamily="mono"
+                                    >
+                                      {formatInteger(rank.orders)} orders ·{' '}
+                                      {formatPercent(rank.winRate)}
+                                    </Text>
+                                  </Box>
+
+                                  <Box flex="1" h="12px" bg="gray.800">
+                                    <Box
+                                      h="full"
+                                      w={`${barWidth}%`}
+                                      bg={getPnlBarColor(rank.pnl)}
+                                    />
+                                  </Box>
+
+                                  <Text
+                                    flex="0 0 96px"
+                                    color={getPnlColor(rank.pnl)}
+                                    fontSize="lg"
+                                    fontFamily="mono"
+                                    fontWeight="bold"
+                                    textAlign="right"
+                                  >
+                                    {formatSignedNumber(rank.pnl)}
+                                  </Text>
+                                </Flex>
+                              );
+                            })}
+                          </Flex>
+                        </>
+                      ) : (
+                        <Box
+                          p={3}
+                          borderWidth="1px"
+                          borderColor="gray.800"
+                          borderRadius="md"
+                          bg="blackAlpha.300"
+                        >
+                          <Text fontSize="sm" color="gray.500">
+                            No symbol P&L data
+                          </Text>
+                        </Box>
+                      )}
+                    </Box>
+                  ) : null}
+
+                  <Box
+                    p={4}
+                    borderWidth="1px"
+                    borderColor="gray.800"
+                    borderRadius="md"
+                    bg="gray.900"
+                  >
+                    <Text
+                      fontSize="sm"
+                      color="gray.300"
+                      fontWeight="semibold"
+                      mb={3}
+                    >
+                      LONG / SHORT
+                    </Text>
+                    <SimpleGrid columns={{ base: 1, md: 2 }} gap={3}>
+                      {directionStatGroups.map((group) => (
+                        <Box
+                          key={group.direction}
+                          p={3}
+                          borderWidth="1px"
+                          borderColor="gray.800"
+                          borderRadius="md"
+                          bg="blackAlpha.300"
+                        >
+                          <Flex justify="space-between" align="center" mb={3}>
+                            <Text
+                              fontSize="sm"
+                              color={
+                                group.direction === 'LONG'
+                                  ? 'teal.400'
+                                  : 'pink.300'
+                              }
+                              fontWeight="bold"
+                            >
+                              {group.direction}
+                            </Text>
+                            {!group.hasData ? (
+                              <Text fontSize="xs" color="gray.500">
+                                no data
+                              </Text>
+                            ) : null}
+                          </Flex>
+
+                          <SimpleGrid columns={1} gap={2}>
+                            {group.metrics.map((metric) => (
+                              <Flex
+                                key={metric.id}
+                                justify="space-between"
+                                align="baseline"
+                                gap={3}
+                              >
+                                <Text fontSize="xs" color="gray.500">
+                                  {metric.label}
+                                </Text>
+                                <Text
+                                  fontSize="sm"
+                                  color={getMetricColor(metric.tone)}
+                                  fontFamily="mono"
+                                  fontWeight="semibold"
+                                  textAlign="right"
+                                >
+                                  {metric.value}
+                                </Text>
+                              </Flex>
+                            ))}
+                          </SimpleGrid>
+                        </Box>
+                      ))}
+                    </SimpleGrid>
+                  </Box>
+
+                  {visibleDetails.length ? (
+                    <Box
+                      p={4}
+                      borderWidth="1px"
+                      borderColor="gray.800"
+                      borderRadius="md"
+                      bg="gray.900"
+                    >
+                      <Text
+                        fontSize="sm"
+                        color="gray.300"
+                        fontWeight="semibold"
+                        mb={3}
+                      >
+                        Details
+                      </Text>
+                      <SimpleGrid columns={1} gap={3}>
+                        {visibleDetails.map((detail) => (
+                          <Flex
+                            key={detail.id}
+                            justify="space-between"
+                            align="flex-start"
+                            gap={4}
+                            p={3}
+                            borderRadius="md"
+                            bg="blackAlpha.300"
+                          >
+                            <Text
+                              fontSize="sm"
+                              color="gray.400"
+                              fontFamily="mono"
+                              flex="0 0 220px"
+                            >
+                              {detail.label}
+                            </Text>
+                            <Text
+                              fontSize="sm"
+                              color={getMetricColor(detail.tone)}
+                              fontWeight="semibold"
+                              textAlign="right"
+                              fontFamily="mono"
+                              whiteSpace="pre-wrap"
+                            >
+                              {detail.value}
+                            </Text>
+                          </Flex>
+                        ))}
+                      </SimpleGrid>
+                    </Box>
+                  ) : null}
                 </Drawer.Body>
               </Drawer.Content>
             </Drawer.Positioner>

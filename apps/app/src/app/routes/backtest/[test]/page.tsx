@@ -20,6 +20,7 @@ const BacktestReport = () => {
             <TestCard.Title>
               <TestCard.FavoriteIndicator />
               <TestCard.ConfigDrawer />
+              <TestCard.OrdersDrawer />
             </TestCard.Title>
             <TestCard.Chart height="500px" />
             <TestCard.StatTable />

@@ -36,6 +36,16 @@ describe('aiTrainCharts', () => {
           timestamp: 1_700_000_100_000,
           profit: 5,
         },
+        {
+          ...baseRow,
+          profitableTrade: false,
+          signalId: 's3',
+          symbol: 'ETHUSDT',
+          testName: 'ETHUSDT_suiteA_test03',
+          configId: 'cfg123',
+          timestamp: 1_700_000_200_000,
+          profit: -2,
+        },
       ],
     });
 
@@ -52,18 +62,69 @@ describe('aiTrainCharts', () => {
       [1_700_000_000_000, 100],
       [1_700_000_000_000, 110],
       [1_700_000_100_000, 115],
+      [1_700_000_200_000, 113],
     ]);
     expect(
       snapshot.strategies[0]?.metrics.find((item) => item.id === 'pnl'),
     ).toEqual(
       expect.objectContaining({
         label: 'P&L',
-        value: '+15.00',
+        value: '+13.00',
       }),
     );
     expect(
       snapshot.strategies[0]?.metrics.find((item) => item.id === 'monthlyPnl'),
     ).toEqual(expect.objectContaining({ label: 'Monthly P&L' }));
+    expect(
+      snapshot.strategies[0]?.details?.find(
+        (item) => item.id === 'direction:LONG:approved',
+      ),
+    ).toEqual(
+      expect.objectContaining({
+        label: 'LONG approved',
+        value: '3',
+      }),
+    );
+    expect(
+      snapshot.strategies[0]?.details?.find(
+        (item) => item.id === 'direction:LONG:pnl',
+      ),
+    ).toEqual(
+      expect.objectContaining({
+        label: 'LONG pnl',
+        value: '+13.00',
+      }),
+    );
+    expect(
+      snapshot.strategies[0]?.details?.find(
+        (item) => item.id === 'maxLossStreak',
+      ),
+    ).toEqual(
+      expect.objectContaining({
+        label: 'max_loss_streak',
+        value: '1',
+      }),
+    );
+    expect(
+      snapshot.strategies[0]?.details?.find(
+        (item) => item.id === 'symbol:BTCUSDT:pnl',
+      ),
+    ).toEqual(
+      expect.objectContaining({
+        label: 'BTCUSDT pnl',
+        value: '+10.00',
+      }),
+    );
+    expect(
+      snapshot.strategies[0]?.details?.find(
+        (item) => item.id === 'symbol:ETHUSDT:pnl',
+      ),
+    ).toEqual(
+      expect.objectContaining({
+        label: 'ETHUSDT pnl',
+        value: '+3.00',
+      }),
+    );
   });
 
   it('creates separate cards for different configIds', () => {

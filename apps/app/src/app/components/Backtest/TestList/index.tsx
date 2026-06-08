@@ -64,6 +64,7 @@ export const TestList = ({
               <TestCard.CompareButton />
               <TestCard.FavoriteIndicator />
               <TestCard.ConfigDrawer />
+              <TestCard.OrdersDrawer />
               <TestCard.OpenDashboardButton />
               <TestCard.OpenReportButton />
               <TestCard.DeleteButton />

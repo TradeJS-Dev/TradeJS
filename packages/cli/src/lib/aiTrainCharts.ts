@@ -6,6 +6,7 @@ import type {
 } from '@tradejs/types';
 import {
   summarizeAiTrainEvaluations,
+  summarizeAiTrainEvaluationsByDirection,
   type AiTrainEvaluation,
 } from './aiTrainMetrics';
 
@@ -154,6 +155,88 @@ const buildAiChartDetails = (params: {
     }
   }
 
+  const directionDetails: StrategyChartDetail[] =
+    summarizeAiTrainEvaluationsByDirection(rows)
+      .filter(({ direction }) => direction === 'LONG' || direction === 'SHORT')
+      .flatMap(({ direction, summary: directionSummary }) => [
+        {
+          id: `direction:${direction}:approved`,
+          label: `${direction} approved`,
+          value: String(directionSummary.approved),
+        },
+        {
+          id: `direction:${direction}:precision`,
+          label: `${direction} precision`,
+          value: formatRatio(directionSummary.precisionApproved),
+        },
+        {
+          id: `direction:${direction}:monthlyPnl`,
+          label: `${direction} monthly_pnl`,
+          value: formatSigned(directionSummary.avgProfitApprovedPerMonth),
+          tone: resolveMetricTone(directionSummary.avgProfitApprovedPerMonth),
+        },
+        {
+          id: `direction:${direction}:pnl`,
+          label: `${direction} pnl`,
+          value: formatSigned(directionSummary.approvedRisk.totalProfit),
+          tone: resolveMetricTone(directionSummary.approvedRisk.totalProfit),
+        },
+        {
+          id: `direction:${direction}:avgProfit`,
+          label: `${direction} avg_profit`,
+          value: formatSigned(directionSummary.avgProfitApproved),
+          tone: resolveMetricTone(directionSummary.avgProfitApproved),
+        },
+      ]);
+  const symbolDetails: StrategyChartDetail[] = [
+    ...rows
+      .reduce((grouped, row) => {
+        if (!row.symbol) {
+          return grouped;
+        }
+
+        const symbolRows = grouped.get(row.symbol) ?? [];
+        symbolRows.push(row);
+        grouped.set(row.symbol, symbolRows);
+        return grouped;
+      }, new Map<string, AiTrainEvaluatedRowForChart[]>())
+      .entries(),
+  ]
+    .map(([symbol, symbolRows]) => {
+      const symbolSummary = summarizeAiTrainEvaluations(symbolRows);
+      return {
+        symbol,
+        summary: symbolSummary,
+        pnl: symbolSummary.approvedRisk.totalProfit,
+      };
+    })
+    .filter(({ summary }) => summary.approved > 0)
+    .sort(
+      (left, right) =>
+        Math.abs(right.pnl) - Math.abs(left.pnl) ||
+        right.pnl - left.pnl ||
+        left.symbol.localeCompare(right.symbol),
+    )
+    .slice(0, 10)
+    .flatMap(({ symbol, summary, pnl }) => [
+      {
+        id: `symbol:${symbol}:pnl`,
+        label: `${symbol} pnl`,
+        value: formatSigned(pnl),
+        tone: resolveMetricTone(pnl),
+      },
+      {
+        id: `symbol:${symbol}:orders`,
+        label: `${symbol} approved`,
+        value: String(summary.approved),
+      },
+      {
+        id: `symbol:${symbol}:winRate`,
+        label: `${symbol} win_rate`,
+        value: formatRatio(summary.approvedRisk.winRate),
+      },
+    ]);
+
   const details: StrategyChartDetail[] = [
     {
       id: 'window',
@@ -220,6 +303,15 @@ const buildAiChartDetails = (params: {
       value: formatSigned(summary.expectancyDelta),
       tone: resolveMetricTone(summary.expectancyDelta),
     },
+    {
+      id: 'maxLossStreak',
+      label: 'max_loss_streak',
+      value: String(summary.approvedRisk.maxConsecutiveLosses),
+      tone:
+        summary.approvedRisk.maxConsecutiveLosses > 0 ? 'warning' : 'success',
+    },
+    ...directionDetails,
+    ...symbolDetails,
   ];
 
   return details;
