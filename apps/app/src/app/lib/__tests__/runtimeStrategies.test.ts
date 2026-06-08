@@ -365,6 +365,61 @@ describe('runtimeStrategies helpers', () => {
     expect(symbolBuckets.get('CYSUSDT')).toEqual([]);
   });
 
+  it('matches the nearest closed pnl row by symbol and direction', () => {
+    const olderShortRow = {
+      symbol: 'CYSUSDT',
+      direction: 'SHORT',
+      qty: 11,
+      entryPrice: 0.47,
+      exitPrice: 0.45,
+      closedPnl: 0.2,
+      closedAt: 1_780_820_000_000,
+      orderId: 'short-row',
+    } satisfies ClosedPnlRecord;
+    const laterLongRow = {
+      symbol: 'CYSUSDT',
+      direction: 'LONG',
+      qty: 11,
+      entryPrice: 0.4634,
+      exitPrice: 0.44,
+      closedPnl: -0.31,
+      closedAt: 1_780_830_000_000,
+      orderId: 'later-long-row',
+    } satisfies ClosedPnlRecord;
+    const nearestLongRow = {
+      symbol: 'CYSUSDT',
+      direction: 'LONG',
+      qty: 11,
+      entryPrice: 0.4634,
+      exitPrice: 0.4431,
+      closedPnl: -0.2407,
+      closedAt: 1_780_825_606_000,
+      orderId: 'nearest-long-row',
+    } satisfies ClosedPnlRecord;
+    const symbolBuckets = new Map<string, ClosedPnlRecord[]>([
+      ['CYSUSDT', [laterLongRow, olderShortRow, nearestLongRow]],
+    ]);
+
+    const match = takeClosedPnlMatch({
+      exactByOrderLinkId: new Map(),
+      symbolBuckets,
+      trade: {
+        orderId: 'runtime-order-without-exact-match',
+        strategy: 'AdaptiveMomentumRibbon',
+        symbol: 'CYSUSDT',
+        direction: 'LONG',
+        qty: 11,
+        entryPrice: 0.4634,
+        entryTimestamp: 1_780_812_000_000,
+        status: 'closed',
+        closedPnl: 0,
+      } as RuntimeTradeRecord,
+    });
+
+    expect(match).toBe(nearestLongRow);
+    expect(symbolBuckets.get('CYSUSDT')).toEqual([laterLongRow, olderShortRow]);
+  });
+
   it('resolves strategy name from encoded orderLinkId', () => {
     const orderLinkId = `${createRuntimeOrderLinkPrefix('TrendShift')}abc123def456`;
 

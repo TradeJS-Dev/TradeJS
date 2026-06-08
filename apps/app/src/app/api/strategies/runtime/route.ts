@@ -391,7 +391,20 @@ const syncRuntimeTrades = async ({
   const syncedTrades: RuntimeTradeRecord[] = [];
 
   for (const trade of trades) {
-    if (trade.status !== 'active') {
+    const closedTradeHasExchangeDetails =
+      trade.status === 'closed' &&
+      typeof trade.exitPrice === 'number' &&
+      Number.isFinite(trade.exitPrice) &&
+      typeof trade.actualExitPrice === 'number' &&
+      Number.isFinite(trade.actualExitPrice) &&
+      typeof trade.closedPnl === 'number' &&
+      Number.isFinite(trade.closedPnl) &&
+      typeof trade.openFee === 'number' &&
+      Number.isFinite(trade.openFee) &&
+      typeof trade.closeFee === 'number' &&
+      Number.isFinite(trade.closeFee);
+
+    if (trade.status !== 'active' && closedTradeHasExchangeDetails) {
       syncedTrades.push(trade);
       continue;
     }
@@ -434,6 +447,12 @@ const syncRuntimeTrades = async ({
       symbolBuckets,
       trade,
     });
+
+    if (trade.status === 'closed' && !matchedClosedPnl) {
+      syncedTrades.push(trade);
+      continue;
+    }
+
     const nextTrade: RuntimeTradeRecord = {
       ...trade,
       status: 'closed',

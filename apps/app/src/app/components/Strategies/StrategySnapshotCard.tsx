@@ -691,6 +691,7 @@ export const StrategySnapshotCard = ({
     mode === 'ai' && snapshot.datasetId ? 'dataset:' : 'symbols:';
   const sourceValue =
     mode === 'ai' && snapshot.datasetId ? snapshot.datasetId : symbolsLabel;
+  const tagsLabel = snapshot.tags?.join(' · ') ?? '';
   const displaySubtitle =
     mode === 'ai'
       ? snapshot.subtitle?.replace(/^q\d+\+\s*(?:·\s*)?/i, '').trim()
@@ -803,6 +804,24 @@ export const StrategySnapshotCard = ({
             {sourceValue}
           </Text>
         </Flex>
+
+        {tagsLabel ? (
+          <Box
+            px={2}
+            py={1}
+            borderWidth="1px"
+            borderColor="teal.900"
+            borderRadius="sm"
+            bg="teal.950"
+            color="teal.300"
+            fontFamily="mono"
+            fontSize="sm"
+            fontWeight="semibold"
+            lineHeight="1"
+          >
+            {tagsLabel}
+          </Box>
+        ) : null}
 
         <Flex ml="auto" align="center" gap={3}>
           {displaySubtitle ? (
@@ -1421,12 +1440,6 @@ export const StrategySnapshotCard = ({
             </Dialog.Positioner>
           </Portal>
         </Dialog.Root>
-
-        {snapshot.tags?.length ? (
-          <Text fontSize="sm" color="gray.500">
-            {snapshot.tags.join(' · ')}
-          </Text>
-        ) : null}
       </Flex>
 
       <StrategySnapshotChart

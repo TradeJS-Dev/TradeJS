@@ -853,9 +853,22 @@ export const takeClosedPnlMatch = ({
   }
 
   const minimumClosedAt = trade.entryTimestamp - 5 * 60_000;
-  const matchIndex = rows.findIndex(
-    (row) => Number.isFinite(row.closedAt) && row.closedAt >= minimumClosedAt,
-  );
+  const matchIndex = rows.reduce((bestIndex, row, index) => {
+    if (
+      !Number.isFinite(row.closedAt) ||
+      row.closedAt < minimumClosedAt ||
+      (row.direction && row.direction !== trade.direction)
+    ) {
+      return bestIndex;
+    }
+
+    if (bestIndex < 0) {
+      return index;
+    }
+
+    const best = rows[bestIndex];
+    return row.closedAt < best.closedAt ? index : bestIndex;
+  }, -1);
 
   if (matchIndex < 0) {
     return null;
@@ -902,9 +915,22 @@ const takeClosedPnlMatchForExchangeEntry = ({
   }
 
   const minimumClosedAt = entry.entryTimestamp - 5 * 60_000;
-  const matchIndex = rows.findIndex(
-    (row) => Number.isFinite(row.closedAt) && row.closedAt >= minimumClosedAt,
-  );
+  const matchIndex = rows.reduce((bestIndex, row, index) => {
+    if (
+      !Number.isFinite(row.closedAt) ||
+      row.closedAt < minimumClosedAt ||
+      (row.direction && row.direction !== entry.direction)
+    ) {
+      return bestIndex;
+    }
+
+    if (bestIndex < 0) {
+      return index;
+    }
+
+    const best = rows[bestIndex];
+    return row.closedAt < best.closedAt ? index : bestIndex;
+  }, -1);
 
   if (matchIndex < 0) {
     return null;
