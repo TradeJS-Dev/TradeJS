@@ -621,6 +621,14 @@ export const signalsSummary = async () => {
       trade.signalId != null &&
       signalIds.has(trade.signalId),
   );
+  const windowTradeSignalIds = new Set(
+    windowTrades
+      .map((trade) => trade.signalId)
+      .filter((signalId): signalId is string => typeof signalId === 'string'),
+  );
+  const debugSignals = windowSignals.filter((signal) =>
+    windowTradeSignalIds.has(signal.signalId),
+  );
   const { signalsMessage, tradesMessage } = buildSummaryMessages({
     hours,
     startTime,
@@ -649,7 +657,7 @@ export const signalsSummary = async () => {
         userName: flags.user,
         startTime,
         endTime,
-        signals: windowSignals,
+        signals: debugSignals,
         evaluations: [],
         trades: windowTrades,
       })
@@ -659,7 +667,7 @@ export const signalsSummary = async () => {
         message: tradesMessage,
         filename: debugAttachment.filename,
         tradesCount: windowTrades.length,
-        signalsCount: windowSignals.length,
+        signalsCount: debugAttachment.summary?.signals ?? debugSignals.length,
         evaluationsCount: debugAttachment.summary?.evaluations ?? 0,
       })
     : tradesMessage;

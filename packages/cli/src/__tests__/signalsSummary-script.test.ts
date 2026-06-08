@@ -66,6 +66,26 @@ describe('signals summary script', () => {
         indicators: {},
         additionalIndicators: {},
       },
+      {
+        signalId: 'sig-unlinked',
+        strategy: 'VolumeDivergence',
+        symbol: 'SOLUSDT',
+        interval: '15',
+        direction: 'LONG',
+        timestamp: now - 180_000,
+        orderStatus: 'skipped',
+        prices: {
+          currentPrice: 20,
+          takeProfitPrice: 22,
+          stopLossPrice: 19,
+          riskRatio: 2,
+        },
+        figures: {},
+        indicators: {},
+        additionalIndicators: {
+          largePayload: 'this signal is not linked to a runtime trade',
+        },
+      },
     ]);
     const loadRuntimeSignalEvaluationStatsBuckets = jest.fn(async () => [
       {
@@ -332,6 +352,11 @@ describe('signals summary script', () => {
         evaluations: 1,
       },
     });
+    expect(
+      debugPayload.signals.map(
+        (entry: { signal: { signalId: string } }) => entry.signal.signalId,
+      ),
+    ).toEqual(['sig-1', 'sig-2']);
     const btcDebugTrade = debugPayload.trades.find(
       (entry: { trade?: { orderId?: string } }) =>
         entry.trade?.orderId === 'ord-1',
@@ -606,7 +631,7 @@ describe('signals summary script', () => {
     expect(tradesMessage).toContain('💼 <b>Trades</b>');
     expect(tradesMessage).toContain('📎 <b>Replay debug file</b>');
     expect(tradesMessage).toContain(
-      'Inside: trades=<b>0</b>, signals=<b>1</b>, evaluations=<b>0</b>',
+      'Inside: trades=<b>0</b>, signals=<b>0</b>, evaluations=<b>0</b>',
     );
     expect(tradesMessage).toContain(
       '<b>AdaptiveMomentumRibbon</b>\ntotal=<b>0</b>',
