@@ -528,7 +528,7 @@ describe('adaptiveMomentumRibbonAiAdapter', () => {
     );
   });
 
-  it('keeps moderate above-upper longs in q4 without promoting them to q5', () => {
+  it('keeps moderate above-upper longs in watch mode without q5 confirmation', () => {
     const signal = makeSignal({
       prices: {
         currentPrice: 100.78,
@@ -583,8 +583,8 @@ describe('adaptiveMomentumRibbonAiAdapter', () => {
         channelBiasAligned: true,
         primarySession: 'off_hours',
         sessionAllowsApproval: true,
-        deterministicQuality: 4,
-        approvalAllowedNow: true,
+        deterministicQuality: 3,
+        approvalAllowedNow: false,
         structuralHardBlockReasons: [],
       }),
     );
@@ -721,7 +721,7 @@ describe('adaptiveMomentumRibbonAiAdapter', () => {
     );
   });
 
-  it('promotes strong local expansion longs even without derivatives context', () => {
+  it('keeps strong local expansion longs in watch mode without q5 confirmation', () => {
     const signal = makeSignal({
       prices: {
         currentPrice: 100.8,
@@ -765,8 +765,8 @@ describe('adaptiveMomentumRibbonAiAdapter', () => {
       expect.objectContaining({
         channelState: 'above_upper',
         invalidationDistancePct: expect.any(Number),
-        deterministicQuality: 4,
-        approvalAllowedNow: true,
+        deterministicQuality: 3,
+        approvalAllowedNow: false,
       }),
     );
   });
@@ -1339,7 +1339,7 @@ describe('adaptiveMomentumRibbonAiAdapter', () => {
     );
   });
 
-  it('promotes confirmed breakout sweet-spot longs into q4', () => {
+  it('keeps confirmed breakout sweet-spot above-upper longs in watch mode without q5 confirmation', () => {
     const signal = makeSignal({
       prices: {
         currentPrice: 100.78,
@@ -1383,8 +1383,8 @@ describe('adaptiveMomentumRibbonAiAdapter', () => {
         volumeRel20: 1.22,
         effortVsResult: 220,
         derivativesDirectionAligned: null,
-        deterministicQuality: 4,
-        approvalAllowedNow: true,
+        deterministicQuality: 3,
+        approvalAllowedNow: false,
       }),
     );
   });

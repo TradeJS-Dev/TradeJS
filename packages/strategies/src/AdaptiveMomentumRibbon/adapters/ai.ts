@@ -634,6 +634,10 @@ const getDeterministicAdaptiveMomentumRibbonQuality = (
     quality = 3;
   }
 
+  if (quality === 4 && channelExpansion) {
+    quality = 3;
+  }
+
   if (
     quality === 5 &&
     q4DerivativesSupported &&

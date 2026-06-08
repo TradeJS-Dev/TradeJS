@@ -3316,7 +3316,7 @@ describe('ai helpers', () => {
       expect(invokeMock).not.toHaveBeenCalled();
     });
 
-    it('keeps moderate above-upper AdaptiveMomentumRibbon longs in q4 during local replay', async () => {
+    it('keeps moderate above-upper AdaptiveMomentumRibbon longs in watch mode during local replay', async () => {
       const signal = makeAdaptiveMomentumRibbonSignal({
         prices: {
           currentPrice: 100.78,
@@ -3337,8 +3337,8 @@ describe('ai helpers', () => {
 
       expect(getDeterministicAiGateContext(payload)).toEqual(
         expect.objectContaining({
-          approvalAllowedNow: true,
-          deterministicQuality: 4,
+          approvalAllowedNow: false,
+          deterministicQuality: 3,
           structuralHardBlockReasons: [],
         }),
       );
@@ -3347,12 +3347,12 @@ describe('ai helpers', () => {
 
       expect(result).toEqual(
         expect.objectContaining({
-          direction: 'LONG',
-          quality: 4,
-          needRetest: false,
-          retestPrice: null,
-          takeProfitPrice: 103.4,
-          stopLossPrice: 99.92,
+          direction: null,
+          quality: 3,
+          needRetest: true,
+          retestPrice: 100.7,
+          takeProfitPrice: null,
+          stopLossPrice: null,
         }),
       );
       expect(chatOpenAICtorMock).not.toHaveBeenCalled();
