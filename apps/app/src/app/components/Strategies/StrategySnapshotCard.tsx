@@ -14,7 +14,7 @@ import {
   Stat,
   Text,
 } from '@chakra-ui/react';
-import { useMemo, useState } from 'react';
+import { type ReactNode, useMemo, useState } from 'react';
 import type {
   StrategyChartDetail,
   StrategyChartMetric,
@@ -84,6 +84,48 @@ interface SymbolPnlRank {
   pnl: number;
   orders: number | null;
   winRate: number | null;
+  avgPnl: number | null;
+}
+
+interface SnapshotTradePoint {
+  index: number;
+  timestamp: number;
+  pnl: number;
+  equity: number;
+  hour: number;
+  session: TradingSession;
+}
+
+interface DrawdownPoint {
+  timestamp: number;
+  drawdownPercent: number;
+}
+
+interface RollingPerformancePoint {
+  index: number;
+  winRate: number;
+  pnl: number;
+}
+
+interface DistributionBin {
+  id: string;
+  min: number;
+  max: number;
+  count: number;
+}
+
+type TradingSession = 'Asia' | 'Europe' | 'US';
+
+interface SessionPnlStat {
+  session: TradingSession;
+  pnl: number;
+  orders: number;
+}
+
+interface HourlyPnlStat {
+  hour: number;
+  pnl: number;
+  orders: number;
 }
 
 const getMetricColor = (tone: StrategyChartMetric['tone']) => {
@@ -164,6 +206,185 @@ const calculateMaxLossStreak = (
   return maxStreak;
 };
 
+const resolveTradingSession = (hour: number): TradingSession => {
+  if (hour < 8) {
+    return 'Asia';
+  }
+
+  if (hour < 16) {
+    return 'Europe';
+  }
+
+  return 'US';
+};
+
+const buildSnapshotTradePoints = (
+  orderLog: StrategyChartSnapshot['orderLog'],
+): SnapshotTradePoint[] => {
+  const points: SnapshotTradePoint[] = [];
+
+  for (let index = 1; index < orderLog.length; index += 1) {
+    const current = orderLog[index];
+    const previous = orderLog[index - 1];
+    if (!current || !previous) {
+      continue;
+    }
+
+    const [timestamp, equity] = current;
+    const pnl = equity - previous[1];
+    if (
+      !Number.isFinite(timestamp) ||
+      !Number.isFinite(equity) ||
+      !Number.isFinite(pnl)
+    ) {
+      continue;
+    }
+
+    const hour = new Date(timestamp).getUTCHours();
+    points.push({
+      index,
+      timestamp,
+      pnl,
+      equity,
+      hour,
+      session: resolveTradingSession(hour),
+    });
+  }
+
+  return points;
+};
+
+const buildDrawdownPoints = (
+  orderLog: StrategyChartSnapshot['orderLog'],
+): DrawdownPoint[] => {
+  let peak = orderLog[0]?.[1] ?? 0;
+
+  return orderLog
+    .map(([timestamp, equity]) => {
+      if (!Number.isFinite(equity)) {
+        return null;
+      }
+
+      peak = Math.max(peak, equity);
+      const drawdownPercent = peak > 0 ? ((peak - equity) / peak) * 100 : 0;
+
+      return {
+        timestamp,
+        drawdownPercent,
+      };
+    })
+    .filter((point): point is DrawdownPoint => point != null);
+};
+
+const buildRollingPerformance = (
+  trades: SnapshotTradePoint[],
+  windowSize = 50,
+): RollingPerformancePoint[] =>
+  trades.map((trade, index) => {
+    const windowTrades = trades.slice(
+      Math.max(0, index - windowSize + 1),
+      index + 1,
+    );
+    const wins = windowTrades.filter((item) => item.pnl > 0).length;
+    const pnl = windowTrades.reduce((sum, item) => sum + item.pnl, 0);
+
+    return {
+      index: trade.index,
+      winRate: windowTrades.length > 0 ? (wins / windowTrades.length) * 100 : 0,
+      pnl,
+    };
+  });
+
+const buildPnlDistribution = (
+  trades: SnapshotTradePoint[],
+  binCount = 12,
+): DistributionBin[] => {
+  if (!trades.length) {
+    return [];
+  }
+
+  const pnlValues = trades.map((trade) => trade.pnl);
+  const min = Math.min(...pnlValues);
+  const max = Math.max(...pnlValues);
+
+  if (!Number.isFinite(min) || !Number.isFinite(max)) {
+    return [];
+  }
+
+  if (min === max) {
+    return [
+      {
+        id: `${min}:${max}`,
+        min,
+        max,
+        count: trades.length,
+      },
+    ];
+  }
+
+  const step = (max - min) / binCount;
+  const bins = Array.from({ length: binCount }, (_, index) => ({
+    id: String(index),
+    min: min + step * index,
+    max: index === binCount - 1 ? max : min + step * (index + 1),
+    count: 0,
+  }));
+
+  for (const pnl of pnlValues) {
+    const rawIndex = Math.floor((pnl - min) / step);
+    const index = Math.max(0, Math.min(binCount - 1, rawIndex));
+    const bin = bins[index];
+    if (bin) {
+      bin.count += 1;
+    }
+  }
+
+  return bins;
+};
+
+const buildSessionPnlStats = (
+  trades: SnapshotTradePoint[],
+): SessionPnlStat[] => {
+  const stats = new Map<TradingSession, SessionPnlStat>(
+    (['Asia', 'Europe', 'US'] as const).map((session) => [
+      session,
+      { session, pnl: 0, orders: 0 },
+    ]),
+  );
+
+  for (const trade of trades) {
+    const stat = stats.get(trade.session);
+    if (!stat) {
+      continue;
+    }
+
+    stat.pnl += trade.pnl;
+    stat.orders += 1;
+  }
+
+  return [...stats.values()];
+};
+
+const buildHourlyPnlStats = (trades: SnapshotTradePoint[]): HourlyPnlStat[] => {
+  const stats = Array.from({ length: 24 }, (_, hour) => ({
+    hour,
+    pnl: 0,
+    orders: 0,
+  }));
+
+  for (const trade of trades) {
+    const stat = stats[trade.hour];
+    if (!stat) {
+      continue;
+    }
+
+    stat.pnl += trade.pnl;
+    stat.orders += 1;
+  }
+
+  return stats;
+};
+
 const formatPrice = (value: number | null | undefined) =>
   formatCompactNumber(value, {
     maximumFractionDigits: 8,
@@ -189,6 +410,403 @@ const formatBps = (value: number | null | undefined) => {
 
 const formatAiExitReason = (reason: string | null | undefined) =>
   reason ? reason.replace(/_/g, ' ').toUpperCase() : 'CLOSED';
+
+const CHART_WIDTH = 640;
+const CHART_HEIGHT = 120;
+const CHART_PADDING = 10;
+const POSITIVE_CHART_COLOR = '#5eead4';
+const NEGATIVE_CHART_COLOR = '#f87171';
+const NEUTRAL_CHART_COLOR = '#6b7280';
+
+const getChartPnlColor = (value: number) =>
+  value > 0
+    ? POSITIVE_CHART_COLOR
+    : value < 0
+      ? NEGATIVE_CHART_COLOR
+      : NEUTRAL_CHART_COLOR;
+
+const buildPolylinePoints = (values: number[]) => {
+  if (!values.length) {
+    return '';
+  }
+
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const range = max - min || 1;
+  const drawableWidth = CHART_WIDTH - CHART_PADDING * 2;
+  const drawableHeight = CHART_HEIGHT - CHART_PADDING * 2;
+
+  return values
+    .map((value, index) => {
+      const x =
+        CHART_PADDING +
+        (values.length === 1
+          ? 0
+          : (index / (values.length - 1)) * drawableWidth);
+      const y = CHART_PADDING + ((max - value) / range) * drawableHeight;
+
+      return `${x.toFixed(2)},${y.toFixed(2)}`;
+    })
+    .join(' ');
+};
+
+const ChartPanel = ({
+  title,
+  subtitle,
+  children,
+}: {
+  title: string;
+  subtitle?: string;
+  children: ReactNode;
+}) => (
+  <Box
+    p={4}
+    borderWidth="1px"
+    borderColor="gray.800"
+    borderRadius="md"
+    bg="gray.900"
+    minH="210px"
+  >
+    <Flex justify="space-between" align="baseline" gap={3} mb={3}>
+      <Text fontSize="sm" color="gray.300" fontWeight="semibold">
+        {title}
+      </Text>
+      {subtitle ? (
+        <Text fontSize="xs" color="gray.500" textAlign="right">
+          {subtitle}
+        </Text>
+      ) : null}
+    </Flex>
+    {children}
+  </Box>
+);
+
+const EmptyChart = () => (
+  <Flex h="140px" align="center" justify="center">
+    <Text fontSize="sm" color="gray.500">
+      No trade data
+    </Text>
+  </Flex>
+);
+
+const DrawdownTimelineChart = ({ points }: { points: DrawdownPoint[] }) => {
+  if (points.length < 2) {
+    return <EmptyChart />;
+  }
+
+  const values = points.map((point) => -point.drawdownPercent);
+  const maxDrawdown = Math.max(...points.map((point) => point.drawdownPercent));
+  const linePoints = buildPolylinePoints(values);
+
+  return (
+    <Box>
+      <svg
+        width="100%"
+        viewBox={`0 0 ${CHART_WIDTH} ${CHART_HEIGHT}`}
+        role="img"
+        aria-label="Drawdown timeline"
+      >
+        <line
+          x1={CHART_PADDING}
+          x2={CHART_WIDTH - CHART_PADDING}
+          y1={CHART_PADDING}
+          y2={CHART_PADDING}
+          stroke="#374151"
+          strokeDasharray="4 4"
+        />
+        <polyline
+          points={linePoints}
+          fill="none"
+          stroke={NEGATIVE_CHART_COLOR}
+          strokeWidth="2"
+        />
+      </svg>
+      <Flex justify="space-between" align="center" mt={2}>
+        <Text fontSize="xs" color="gray.500">
+          max drawdown
+        </Text>
+        <Text
+          fontSize="sm"
+          color="orange.300"
+          fontFamily="mono"
+          fontWeight="bold"
+        >
+          {formatPercent(maxDrawdown)}
+        </Text>
+      </Flex>
+    </Box>
+  );
+};
+
+const WinLossStreakTimelineChart = ({
+  trades,
+}: {
+  trades: SnapshotTradePoint[];
+}) => {
+  if (!trades.length) {
+    return <EmptyChart />;
+  }
+
+  const maxAbsPnl = Math.max(...trades.map((trade) => Math.abs(trade.pnl)), 1);
+  const centerY = CHART_HEIGHT / 2;
+  const barWidth = CHART_WIDTH / trades.length;
+
+  return (
+    <Box>
+      <svg
+        width="100%"
+        viewBox={`0 0 ${CHART_WIDTH} ${CHART_HEIGHT}`}
+        role="img"
+        aria-label="Win loss streak timeline"
+      >
+        <line
+          x1="0"
+          x2={CHART_WIDTH}
+          y1={centerY}
+          y2={centerY}
+          stroke="#374151"
+        />
+        {trades.map((trade, index) => {
+          const height = Math.max(2, (Math.abs(trade.pnl) / maxAbsPnl) * 48);
+          const isWin = trade.pnl > 0;
+          const y = isWin ? centerY - height : centerY;
+
+          return (
+            <rect
+              key={`${trade.timestamp}-${index}`}
+              x={index * barWidth}
+              y={y}
+              width={Math.max(1, barWidth - 0.4)}
+              height={height}
+              fill={getChartPnlColor(trade.pnl)}
+              opacity="0.9"
+            />
+          );
+        })}
+      </svg>
+      <Flex justify="space-between" align="center" mt={2}>
+        <Text fontSize="xs" color="gray.500">
+          wins above line, losses below
+        </Text>
+        <Text
+          fontSize="sm"
+          color="gray.300"
+          fontFamily="mono"
+          fontWeight="bold"
+        >
+          {formatInteger(trades.length)} trades
+        </Text>
+      </Flex>
+    </Box>
+  );
+};
+
+const PnlDistributionChart = ({ bins }: { bins: DistributionBin[] }) => {
+  if (!bins.length) {
+    return <EmptyChart />;
+  }
+
+  const maxCount = Math.max(...bins.map((bin) => bin.count), 1);
+  const barWidth = CHART_WIDTH / bins.length;
+
+  return (
+    <Box>
+      <svg
+        width="100%"
+        viewBox={`0 0 ${CHART_WIDTH} ${CHART_HEIGHT}`}
+        role="img"
+        aria-label="P and L distribution"
+      >
+        {bins.map((bin, index) => {
+          const height = Math.max(2, (bin.count / maxCount) * 92);
+          const x = index * barWidth + 2;
+          const y = CHART_HEIGHT - height - CHART_PADDING;
+          const midpoint = (bin.min + bin.max) / 2;
+
+          return (
+            <rect
+              key={bin.id}
+              x={x}
+              y={y}
+              width={Math.max(2, barWidth - 4)}
+              height={height}
+              fill={getChartPnlColor(midpoint)}
+            />
+          );
+        })}
+      </svg>
+      <Flex justify="space-between" align="center" mt={2}>
+        <Text fontSize="xs" color="gray.500">
+          trade P&L buckets
+        </Text>
+        <Text
+          fontSize="sm"
+          color="gray.300"
+          fontFamily="mono"
+          fontWeight="bold"
+        >
+          {formatInteger(bins.reduce((sum, bin) => sum + bin.count, 0))}
+        </Text>
+      </Flex>
+    </Box>
+  );
+};
+
+const RollingPerformanceChart = ({
+  points,
+}: {
+  points: RollingPerformancePoint[];
+}) => {
+  if (points.length < 2) {
+    return <EmptyChart />;
+  }
+
+  const winRateLine = buildPolylinePoints(points.map((point) => point.winRate));
+  const pnlLine = buildPolylinePoints(points.map((point) => point.pnl));
+  const latest = points[points.length - 1];
+
+  return (
+    <Box>
+      <svg
+        width="100%"
+        viewBox={`0 0 ${CHART_WIDTH} ${CHART_HEIGHT}`}
+        role="img"
+        aria-label="Rolling win rate and rolling P and L"
+      >
+        <line
+          x1={CHART_PADDING}
+          x2={CHART_WIDTH - CHART_PADDING}
+          y1={CHART_HEIGHT / 2}
+          y2={CHART_HEIGHT / 2}
+          stroke="#374151"
+          strokeDasharray="4 4"
+        />
+        <polyline
+          points={pnlLine}
+          fill="none"
+          stroke={POSITIVE_CHART_COLOR}
+          strokeWidth="2"
+        />
+        <polyline
+          points={winRateLine}
+          fill="none"
+          stroke="#fbbf24"
+          strokeWidth="2"
+          opacity="0.9"
+        />
+      </svg>
+      <Flex justify="space-between" align="center" mt={2}>
+        <Text fontSize="xs" color="gray.500">
+          teal P&L, yellow win rate
+        </Text>
+        <Text
+          fontSize="sm"
+          color="gray.300"
+          fontFamily="mono"
+          fontWeight="bold"
+        >
+          {formatPercent(latest?.winRate)} /{' '}
+          {formatSignedNumber(latest?.pnl ?? null)}
+        </Text>
+      </Flex>
+    </Box>
+  );
+};
+
+const TimeOfDaySessionChart = ({
+  sessions,
+  hours,
+}: {
+  sessions: SessionPnlStat[];
+  hours: HourlyPnlStat[];
+}) => {
+  if (!sessions.some((session) => session.orders > 0)) {
+    return <EmptyChart />;
+  }
+
+  const maxSessionAbsPnl = Math.max(
+    ...sessions.map((session) => Math.abs(session.pnl)),
+    1,
+  );
+  const maxHourAbsPnl = Math.max(...hours.map((hour) => Math.abs(hour.pnl)), 1);
+
+  return (
+    <Flex direction="column" gap={4}>
+      <SimpleGrid columns={3} gap={3}>
+        {sessions.map((session) => {
+          const width = Math.max(
+            4,
+            (Math.abs(session.pnl) / maxSessionAbsPnl) * 100,
+          );
+
+          return (
+            <Box key={session.session}>
+              <Flex justify="space-between" align="center" mb={1}>
+                <Text fontSize="xs" color="gray.400" fontWeight="semibold">
+                  {session.session}
+                </Text>
+                <Text
+                  fontSize="xs"
+                  color={getPnlColor(session.pnl)}
+                  fontFamily="mono"
+                  fontWeight="bold"
+                >
+                  {formatSignedNumber(session.pnl)}
+                </Text>
+              </Flex>
+              <Box h="8px" bg="gray.800">
+                <Box
+                  h="full"
+                  w={`${width}%`}
+                  bg={getChartPnlColor(session.pnl)}
+                />
+              </Box>
+              <Text mt={1} fontSize="xs" color="gray.500" fontFamily="mono">
+                {formatInteger(session.orders)} orders
+              </Text>
+            </Box>
+          );
+        })}
+      </SimpleGrid>
+
+      <svg
+        width="100%"
+        viewBox={`0 0 ${CHART_WIDTH} ${CHART_HEIGHT}`}
+        role="img"
+        aria-label="P and L by UTC hour"
+      >
+        <line
+          x1="0"
+          x2={CHART_WIDTH}
+          y1={CHART_HEIGHT / 2}
+          y2={CHART_HEIGHT / 2}
+          stroke="#374151"
+        />
+        {hours.map((hour) => {
+          const barWidth = CHART_WIDTH / 24;
+          const height = Math.max(1, (Math.abs(hour.pnl) / maxHourAbsPnl) * 46);
+          const isPositive = hour.pnl >= 0;
+          const y = isPositive ? CHART_HEIGHT / 2 - height : CHART_HEIGHT / 2;
+
+          return (
+            <rect
+              key={hour.hour}
+              x={hour.hour * barWidth + 2}
+              y={y}
+              width={Math.max(2, barWidth - 4)}
+              height={height}
+              fill={getChartPnlColor(hour.pnl)}
+              opacity={hour.orders > 0 ? 0.95 : 0.2}
+            />
+          );
+        })}
+      </svg>
+      <Text fontSize="xs" color="gray.500">
+        UTC hours, sessions: Asia 00-07, Europe 08-15, US 16-23
+      </Text>
+    </Flex>
+  );
+};
 
 const getAiExitReasonColor = (reason: string | null | undefined) => {
   switch (reason) {
@@ -625,14 +1243,17 @@ const buildSymbolPnlRanking = (
       pnl: rank.pnl,
       orders: rank.orders ?? null,
       winRate: rank.winRate ?? null,
+      avgPnl:
+        typeof rank.orders === 'number' && rank.orders > 0
+          ? rank.pnl / rank.orders
+          : null,
     }))
     .sort(
       (left, right) =>
         Math.abs(right.pnl) - Math.abs(left.pnl) ||
         right.pnl - left.pnl ||
         left.symbol.localeCompare(right.symbol),
-    )
-    .slice(0, 10);
+    );
 };
 
 export const StrategySnapshotCard = ({
@@ -675,6 +1296,26 @@ export const StrategySnapshotCard = ({
     () => buildSymbolPnlRanking(snapshot.details),
     [snapshot.details],
   );
+  const topSymbolPnlRanking = useMemo(
+    () =>
+      [...symbolPnlRanking]
+        .sort(
+          (left, right) =>
+            right.pnl - left.pnl || left.symbol.localeCompare(right.symbol),
+        )
+        .slice(0, 10),
+    [symbolPnlRanking],
+  );
+  const worstSymbolPnlRanking = useMemo(
+    () =>
+      [...symbolPnlRanking]
+        .sort(
+          (left, right) =>
+            left.pnl - right.pnl || left.symbol.localeCompare(right.symbol),
+        )
+        .slice(0, 10),
+    [symbolPnlRanking],
+  );
   const symbolRankingMaxAbsPnl = useMemo(
     () => Math.max(...symbolPnlRanking.map((rank) => Math.abs(rank.pnl)), 1),
     [symbolPnlRanking],
@@ -682,6 +1323,30 @@ export const StrategySnapshotCard = ({
   const monthlyStats = useMemo(
     () => buildMonthlyStats(snapshot.orderLog),
     [snapshot.orderLog],
+  );
+  const snapshotTradePoints = useMemo(
+    () => buildSnapshotTradePoints(snapshot.orderLog),
+    [snapshot.orderLog],
+  );
+  const drawdownPoints = useMemo(
+    () => buildDrawdownPoints(snapshot.orderLog),
+    [snapshot.orderLog],
+  );
+  const rollingPerformancePoints = useMemo(
+    () => buildRollingPerformance(snapshotTradePoints, 50),
+    [snapshotTradePoints],
+  );
+  const pnlDistributionBins = useMemo(
+    () => buildPnlDistribution(snapshotTradePoints),
+    [snapshotTradePoints],
+  );
+  const sessionPnlStats = useMemo(
+    () => buildSessionPnlStats(snapshotTradePoints),
+    [snapshotTradePoints],
+  );
+  const hourlyPnlStats = useMemo(
+    () => buildHourlyPnlStats(snapshotTradePoints),
+    [snapshotTradePoints],
   );
   const symbolsLabel =
     snapshot.symbols.length > 3
@@ -765,6 +1430,128 @@ export const StrategySnapshotCard = ({
       setIsDeleting(false);
     }
   };
+
+  const renderSymbolPnlRanking = ({
+    title,
+    subtitle,
+    ranking,
+  }: {
+    title: string;
+    subtitle: string;
+    ranking: SymbolPnlRank[];
+  }) => (
+    <Box
+      p={4}
+      borderWidth="1px"
+      borderColor="gray.800"
+      borderRadius="md"
+      bg="gray.900"
+    >
+      <Flex justify="space-between" align="center" mb={4}>
+        <Text fontSize="sm" color="gray.300" fontWeight="semibold">
+          {title}
+        </Text>
+        <Text fontSize="xs" color="gray.500">
+          {subtitle}
+        </Text>
+      </Flex>
+
+      {ranking.length ? (
+        <>
+          <Flex align="center" gap={4} mb={2}>
+            <Text
+              flex="0 0 220px"
+              fontSize="xs"
+              color="gray.500"
+              fontWeight="semibold"
+            >
+              Contracts
+            </Text>
+            <Box flex="1" />
+            <Text
+              flex="0 0 96px"
+              fontSize="xs"
+              color="gray.500"
+              fontWeight="semibold"
+              textAlign="right"
+            >
+              P&L (USDT)
+            </Text>
+          </Flex>
+
+          <Flex direction="column" gap={3}>
+            {ranking.map((rank) => {
+              const barWidth = Math.max(
+                6,
+                (Math.abs(rank.pnl) / symbolRankingMaxAbsPnl) * 100,
+              );
+
+              return (
+                <Flex key={rank.symbol} align="center" gap={4} minH="34px">
+                  <Box flex="0 0 220px" minW={0}>
+                    <Text
+                      fontSize="sm"
+                      color="gray.100"
+                      fontWeight="semibold"
+                      lineHeight="1.2"
+                      overflow="hidden"
+                      textOverflow="ellipsis"
+                      whiteSpace="nowrap"
+                    >
+                      {rank.symbol}
+                    </Text>
+                    <Text
+                      mt={1}
+                      fontSize="xs"
+                      color="gray.500"
+                      fontFamily="mono"
+                    >
+                      {formatInteger(rank.orders)} orders · win{' '}
+                      {formatPercent(rank.winRate)} · avg{' '}
+                      {rank.avgPnl == null
+                        ? 'n/a'
+                        : formatSignedNumber(rank.avgPnl)}
+                    </Text>
+                  </Box>
+
+                  <Box flex="1" h="12px" bg="gray.800">
+                    <Box
+                      h="full"
+                      w={`${barWidth}%`}
+                      bg={getPnlBarColor(rank.pnl)}
+                    />
+                  </Box>
+
+                  <Text
+                    flex="0 0 96px"
+                    color={getPnlColor(rank.pnl)}
+                    fontSize="lg"
+                    fontFamily="mono"
+                    fontWeight="bold"
+                    textAlign="right"
+                  >
+                    {formatSignedNumber(rank.pnl)}
+                  </Text>
+                </Flex>
+              );
+            })}
+          </Flex>
+        </>
+      ) : (
+        <Box
+          p={3}
+          borderWidth="1px"
+          borderColor="gray.800"
+          borderRadius="md"
+          bg="blackAlpha.300"
+        >
+          <Text fontSize="sm" color="gray.500">
+            No symbol P&L data
+          </Text>
+        </Box>
+      )}
+    </Box>
+  );
 
   return (
     <Box
@@ -1151,124 +1938,64 @@ export const StrategySnapshotCard = ({
                   ) : null}
 
                   {mode === 'ai' ? (
-                    <Box
-                      p={4}
-                      borderWidth="1px"
-                      borderColor="gray.800"
-                      borderRadius="md"
-                      bg="gray.900"
-                    >
-                      <Flex justify="space-between" align="center" mb={4}>
-                        <Text
-                          fontSize="sm"
-                          color="gray.300"
-                          fontWeight="semibold"
-                        >
-                          P&L Ranking
-                        </Text>
-                        <Text fontSize="xs" color="gray.500">
-                          Top 10 contracts
-                        </Text>
-                      </Flex>
+                    <Flex direction="column" gap={4}>
+                      <ChartPanel
+                        title="Drawdown Timeline"
+                        subtitle="equity peak to current equity"
+                      >
+                        <DrawdownTimelineChart points={drawdownPoints} />
+                      </ChartPanel>
 
-                      {symbolPnlRanking.length ? (
-                        <>
-                          <Flex align="center" gap={4} mb={2}>
-                            <Text
-                              flex="0 0 180px"
-                              fontSize="xs"
-                              color="gray.500"
-                              fontWeight="semibold"
-                            >
-                              Contracts
-                            </Text>
-                            <Box flex="1" />
-                            <Text
-                              flex="0 0 96px"
-                              fontSize="xs"
-                              color="gray.500"
-                              fontWeight="semibold"
-                              textAlign="right"
-                            >
-                              P&L (USDT)
-                            </Text>
-                          </Flex>
+                      <ChartPanel
+                        title="Rolling Performance"
+                        subtitle="last 50 trades"
+                      >
+                        <RollingPerformanceChart
+                          points={rollingPerformancePoints}
+                        />
+                      </ChartPanel>
 
-                          <Flex direction="column" gap={3}>
-                            {symbolPnlRanking.map((rank) => {
-                              const barWidth = Math.max(
-                                6,
-                                (Math.abs(rank.pnl) / symbolRankingMaxAbsPnl) *
-                                  100,
-                              );
+                      <ChartPanel
+                        title="Win / Loss Streak Timeline"
+                        subtitle="trade sequence"
+                      >
+                        <WinLossStreakTimelineChart
+                          trades={snapshotTradePoints}
+                        />
+                      </ChartPanel>
 
-                              return (
-                                <Flex
-                                  key={rank.symbol}
-                                  align="center"
-                                  gap={4}
-                                  minH="34px"
-                                >
-                                  <Box flex="0 0 180px" minW={0}>
-                                    <Text
-                                      fontSize="sm"
-                                      color="gray.100"
-                                      fontWeight="semibold"
-                                      lineHeight="1.2"
-                                      overflow="hidden"
-                                      textOverflow="ellipsis"
-                                      whiteSpace="nowrap"
-                                    >
-                                      {rank.symbol}
-                                    </Text>
-                                    <Text
-                                      mt={1}
-                                      fontSize="xs"
-                                      color="gray.500"
-                                      fontFamily="mono"
-                                    >
-                                      {formatInteger(rank.orders)} orders ·{' '}
-                                      {formatPercent(rank.winRate)}
-                                    </Text>
-                                  </Box>
+                      <ChartPanel
+                        title="P&L Distribution"
+                        subtitle="trade result buckets"
+                      >
+                        <PnlDistributionChart bins={pnlDistributionBins} />
+                      </ChartPanel>
 
-                                  <Box flex="1" h="12px" bg="gray.800">
-                                    <Box
-                                      h="full"
-                                      w={`${barWidth}%`}
-                                      bg={getPnlBarColor(rank.pnl)}
-                                    />
-                                  </Box>
+                      <ChartPanel
+                        title="P&L by Time of Day / Session"
+                        subtitle="UTC"
+                      >
+                        <TimeOfDaySessionChart
+                          sessions={sessionPnlStats}
+                          hours={hourlyPnlStats}
+                        />
+                      </ChartPanel>
+                    </Flex>
+                  ) : null}
 
-                                  <Text
-                                    flex="0 0 96px"
-                                    color={getPnlColor(rank.pnl)}
-                                    fontSize="lg"
-                                    fontFamily="mono"
-                                    fontWeight="bold"
-                                    textAlign="right"
-                                  >
-                                    {formatSignedNumber(rank.pnl)}
-                                  </Text>
-                                </Flex>
-                              );
-                            })}
-                          </Flex>
-                        </>
-                      ) : (
-                        <Box
-                          p={3}
-                          borderWidth="1px"
-                          borderColor="gray.800"
-                          borderRadius="md"
-                          bg="blackAlpha.300"
-                        >
-                          <Text fontSize="sm" color="gray.500">
-                            No symbol P&L data
-                          </Text>
-                        </Box>
-                      )}
-                    </Box>
+                  {mode === 'ai' ? (
+                    <Flex direction="column" gap={4}>
+                      {renderSymbolPnlRanking({
+                        title: 'P&L Ranking',
+                        subtitle: 'Top 10 contracts',
+                        ranking: topSymbolPnlRanking,
+                      })}
+                      {renderSymbolPnlRanking({
+                        title: 'Worst Contracts',
+                        subtitle: 'Worst 10 contracts',
+                        ranking: worstSymbolPnlRanking,
+                      })}
+                    </Flex>
                   ) : null}
 
                   <Box
