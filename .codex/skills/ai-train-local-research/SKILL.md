@@ -133,6 +133,7 @@ For the default `q4+` approved stream, report:
 - `max_drawdown_pct_of_gross_profit`
 - `max_drawdown_pct_of_total_profit`
 - `max_consecutive_losses` / `max loss streak`
+- losing approved months count, and list the losing months when the count is non-zero
 - `avg_profit_approved_per_day`
 - `avg_profit_approved_per_month`
 - `avg_approved_trades_per_day`
@@ -181,6 +182,7 @@ Minimum checks:
 - report winrate as a percentage
 - report max drawdown both as an absolute value and as percentages of gross profit and total profit
 - always report max consecutive losses / max loss streak for the approved stream
+- always report losing approved months count for the approved stream; when non-zero, include the month ids and monthly approved PnL
 - split by direction
 - split by quarter or month when the export spans enough time
 - check symbol concentration; avoid rules where most profit comes from only a few symbols
@@ -210,6 +212,7 @@ Keep the structure similar:
    - `max_drawdown_pct_of_gross_profit`
    - `max_drawdown_pct_of_total_profit`
    - `max_consecutive_losses` / `max loss streak`
+   - losing approved months count, with month ids and monthly approved PnL when non-zero
    - `avg_profit_approved_per_day`
    - `avg_profit_approved_per_month`
    - `avg_approved_trades_per_day`

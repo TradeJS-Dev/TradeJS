@@ -289,6 +289,177 @@ describe('liquidityTailsAiAdapter', () => {
     });
   });
 
+  it('rejects q4 retests when the reaction body is below the approval floor', () => {
+    const result = liquidityTailsAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makePayload(
+        {
+          signalDirection: 'LONG',
+          zoneKind: 'buy_pressure',
+          zoneHeight: 5,
+          zoneTouches: 2,
+          wickBodyRatio: 2.5,
+          wickDominanceRatio: 2,
+          retestPenetrationPct: 30,
+          reactionCloseDistancePct: 2.6,
+          reactionBodyAligned: true,
+        },
+        {
+          regime: {
+            session: { sessionPhase: 'us' },
+            trend: {
+              bias: 'bear',
+              adx: { adx: 35, strength: 'strong' },
+            },
+            momentum: { bodyStrength: 0.39, roc1h: 1.4, roc4h: 0.8 },
+          },
+        },
+      ),
+      analysis: {
+        direction: 'LONG',
+        quality: 5,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: null,
+      quality: 3,
+      approved: false,
+    });
+    expect(
+      (result as { rejectReason?: string } | undefined)?.rejectReason,
+    ).toContain('insufficient_reaction_body_strength');
+  });
+
+  it('approves q4 retests at the reaction body approval floor', () => {
+    const result = liquidityTailsAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makePayload(
+        {
+          signalDirection: 'LONG',
+          zoneKind: 'buy_pressure',
+          zoneHeight: 5,
+          zoneTouches: 2,
+          wickBodyRatio: 2.5,
+          wickDominanceRatio: 2,
+          retestPenetrationPct: 30,
+          reactionCloseDistancePct: 2.6,
+          reactionBodyAligned: true,
+        },
+        {
+          regime: {
+            session: { sessionPhase: 'us' },
+            trend: {
+              bias: 'bear',
+              adx: { adx: 35, strength: 'strong' },
+            },
+            momentum: { bodyStrength: 0.4, roc1h: 1.4, roc4h: 0.8 },
+          },
+        },
+      ),
+      analysis: {
+        direction: 'LONG',
+        quality: 1,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: 'LONG',
+      quality: 5,
+      approved: true,
+    });
+  });
+
+  it('upgrades conservative q3 retests when MTF and benchmark context are clean', () => {
+    const result = liquidityTailsAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makePayload(
+        {
+          signalDirection: 'LONG',
+          zoneKind: 'buy_pressure',
+          zoneHeight: 5,
+          zoneTouches: 2,
+          wickBodyRatio: 2.5,
+          wickDominanceRatio: 2,
+          retestPenetrationPct: 30,
+          reactionCloseDistancePct: 1.6,
+          reactionBodyAligned: true,
+        },
+        {
+          regime: {
+            trend: {
+              bias: 'bear',
+              adx: { adx: 35, strength: 'strong' },
+            },
+            momentum: { bodyStrength: 0.65, roc1h: 1.4, roc4h: 0.8 },
+          },
+          participation: {
+            volume: { volumeRel20: 1.1 },
+          },
+          gateFeatures: {
+            mtf: { higherTimeframeConflict: false },
+            relative: { benchmarkConflict: false },
+          },
+        },
+      ),
+      analysis: {
+        direction: 'LONG',
+        quality: 1,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: 'LONG',
+      quality: 4,
+      approved: true,
+    });
+  });
+
+  it('does not upgrade q3 retests with higher-timeframe conflict', () => {
+    const result = liquidityTailsAiAdapter.postProcessAnalysis?.({
+      signal: {} as any,
+      payload: makePayload(
+        {
+          signalDirection: 'LONG',
+          zoneKind: 'buy_pressure',
+          zoneHeight: 5,
+          zoneTouches: 2,
+          wickBodyRatio: 2.5,
+          wickDominanceRatio: 2,
+          retestPenetrationPct: 30,
+          reactionCloseDistancePct: 1.6,
+          reactionBodyAligned: true,
+        },
+        {
+          regime: {
+            trend: {
+              bias: 'bear',
+              adx: { adx: 35, strength: 'strong' },
+            },
+            momentum: { bodyStrength: 0.65, roc1h: 1.4, roc4h: 0.8 },
+          },
+          participation: {
+            volume: { volumeRel20: 1.1 },
+          },
+          gateFeatures: {
+            mtf: { higherTimeframeConflict: true },
+            relative: { benchmarkConflict: false },
+          },
+        },
+      ),
+      analysis: {
+        direction: 'LONG',
+        quality: 5,
+      },
+    });
+
+    expect(result).toMatchObject({
+      direction: null,
+      quality: 3,
+      approved: false,
+    });
+  });
+
   it('blocks aligned derivatives reversals without flush support', () => {
     const result = liquidityTailsAiAdapter.postProcessAnalysis?.({
       signal: {} as any,

@@ -124,9 +124,12 @@ Additional Liquidity Tails context:
 - roc1h=${String(context.roc1h ?? 'n/a')}
 - roc4h=${String(context.roc4h ?? 'n/a')}
 - benchmarkTrendAlignment=${context.benchmarkTrendAlignment ?? 'n/a'}
+- higherTimeframeConflict=${String(context.higherTimeframeConflict)}
+- benchmarkConflict=${String(context.benchmarkConflict)}
 - derivativesPressure=${context.derivativesPressure ?? 'n/a'}
 - derivativesDirectionAligned=${String(context.derivativesDirectionAligned ?? 'n/a')}
 - derivativesRiskFlags=${JSON.stringify(context.derivativesRiskFlags)}
+- cadenceUpgradePocket=${String(context.cadenceUpgradePocket)}
 - liquidityTailsGateZoneQuality=${context.liquidityTailsGateFeatures.zoneQuality}
 - liquidityTailsGateRetestAcceptance=${context.liquidityTailsGateFeatures.retestAcceptance}
 - liquidityTailsGateReactionMomentum=${context.liquidityTailsGateFeatures.reactionMomentum}

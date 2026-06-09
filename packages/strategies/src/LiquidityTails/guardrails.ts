@@ -15,9 +15,12 @@ export type LiquidityTailsGuardrailContext =
     roc1h: number | null;
     roc4h: number | null;
     benchmarkTrendAlignment: string | null;
+    higherTimeframeConflict: boolean;
+    benchmarkConflict: boolean;
     derivativesPressure: string | null;
     derivativesDirectionAligned: boolean | null;
     derivativesRiskFlags: string[];
+    cadenceUpgradePocket: boolean;
     liquidityTailsGateFeatures: LiquidityTailsGateFeatures;
     hardBlockReasons: string[];
     softBlockReasons: string[];
@@ -58,6 +61,11 @@ const asStringArray = (value: unknown): string[] =>
           typeof entry === 'string' && entry.trim().length > 0,
       )
     : [];
+
+const MIN_APPROVAL_BODY_STRENGTH = 0.4;
+const MIN_Q3_UPGRADE_REACTION_CLOSE_DISTANCE_PCT = 1.5;
+const MIN_Q3_UPGRADE_BODY_STRENGTH = 0.65;
+const MIN_Q3_UPGRADE_VOLUME_REL20 = 1;
 
 const buildLiquidityTailsGateFeatures = ({
   signalContext,
@@ -211,6 +219,10 @@ export const buildLiquidityTailsGuardrailContext = ({
   const roc4h = asFiniteNumber(baseContext?.regime?.momentum?.roc4h);
   const benchmarkTrendAlignment =
     baseContext?.relative?.benchmark?.trendAlignment ?? null;
+  const higherTimeframeConflict =
+    baseContext?.gateFeatures?.mtf?.higherTimeframeConflict === true;
+  const benchmarkConflict =
+    baseContext?.gateFeatures?.relative?.benchmarkConflict === true;
   const derivativesPressure =
     typeof derivativesSummary?.pressure === 'string'
       ? derivativesSummary.pressure
@@ -267,6 +279,9 @@ export const buildLiquidityTailsGuardrailContext = ({
   if (bodyStrength != null && bodyStrength < 0.25) {
     softBlockReasons.push('weak_reaction_body');
   }
+  if (bodyStrength != null && bodyStrength < MIN_APPROVAL_BODY_STRENGTH) {
+    softBlockReasons.push('insufficient_reaction_body_strength');
+  }
   if (directionalCrowding && !flushSupport) {
     softBlockReasons.push('directional_crowding');
   }
@@ -292,6 +307,16 @@ export const buildLiquidityTailsGuardrailContext = ({
     strongCloseAwayReaction &&
     nonBullTrendContext &&
     (strongAdxExpansion || momentumExpansion);
+  const cadenceUpgradePocket =
+    reactionCloseDistancePct >= MIN_Q3_UPGRADE_REACTION_CLOSE_DISTANCE_PCT &&
+    bodyStrength != null &&
+    bodyStrength >= MIN_Q3_UPGRADE_BODY_STRENGTH &&
+    volumeRel20 != null &&
+    volumeRel20 >= MIN_Q3_UPGRADE_VOLUME_REL20 &&
+    !higherTimeframeConflict &&
+    !benchmarkConflict &&
+    nonBullTrendContext &&
+    (strongAdxExpansion || momentumExpansion);
   const liquidityTailsGateFeatures = buildLiquidityTailsGateFeatures({
     signalContext,
     trendBias,
@@ -313,10 +338,19 @@ export const buildLiquidityTailsGuardrailContext = ({
     deterministicQuality = 1;
   } else if (actionableCloseAwayReaction) {
     deterministicQuality = adxStrength === 'strong' ? 5 : 4;
+  } else if (cadenceUpgradePocket) {
+    deterministicQuality = 4;
   }
 
   if (deterministicQuality >= 5 && softBlockReasons.length > 0) {
     deterministicQuality = 4;
+  }
+  if (
+    deterministicQuality >= 4 &&
+    bodyStrength != null &&
+    bodyStrength < MIN_APPROVAL_BODY_STRENGTH
+  ) {
+    deterministicQuality = 3;
   }
 
   return {
@@ -333,9 +367,12 @@ export const buildLiquidityTailsGuardrailContext = ({
     roc1h,
     roc4h,
     benchmarkTrendAlignment,
+    higherTimeframeConflict,
+    benchmarkConflict,
     derivativesPressure,
     derivativesDirectionAligned,
     derivativesRiskFlags,
+    cadenceUpgradePocket,
     liquidityTailsGateFeatures,
     hardBlockReasons,
     softBlockReasons,
