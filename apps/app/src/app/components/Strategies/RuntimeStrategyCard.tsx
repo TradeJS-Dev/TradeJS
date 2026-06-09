@@ -14,7 +14,11 @@ import {
   Stat,
   Text,
 } from '@chakra-ui/react';
-import { getFormatted } from '@tradejs/core/backtest';
+import {
+  calculateAdvancedTradeMetrics,
+  getFormatted,
+  type AdvancedTradeInput,
+} from '@tradejs/core/backtest';
 import type { TestThresholdsKey, ThresholdLevel } from '@tradejs/types';
 import {
   formatCompactNumber,
@@ -29,6 +33,7 @@ import {
   type OrdersDrawerSummaryItem,
 } from '#components/Shared/OrdersDrawer';
 import type { RuntimeStrategyView } from '#app/lib/runtimeStrategies';
+import { AdvancedMetricsPanel } from './AdvancedMetricsPanel';
 import { RuntimeStrategyChart } from './RuntimeStrategyChart';
 
 type RuntimeOrderView = RuntimeStrategyView['orders'][number];
@@ -543,6 +548,77 @@ const FeesDetail = ({ order }: { order: RuntimeOrderView }) => (
     <Text>funding {formatFee(order.fundingFee)}</Text>
   </Box>
 );
+
+const getRuntimeOrderNotional = (order: RuntimeOrderView) => {
+  const entryPrice = order.actualEntryPrice ?? order.entryPrice;
+
+  if (
+    typeof order.qty !== 'number' ||
+    !Number.isFinite(order.qty) ||
+    typeof entryPrice !== 'number' ||
+    !Number.isFinite(entryPrice)
+  ) {
+    return null;
+  }
+
+  return order.qty * entryPrice;
+};
+
+const getRuntimeOrderSlippageCost = (order: RuntimeOrderView) => {
+  const notional = getRuntimeOrderNotional(order);
+
+  if (notional == null) {
+    return null;
+  }
+
+  const entrySlippagePercent =
+    typeof order.entrySlippagePercent === 'number' &&
+    Number.isFinite(order.entrySlippagePercent)
+      ? Math.abs(order.entrySlippagePercent)
+      : 0;
+  const exitSlippagePercent =
+    typeof order.exitSlippagePercent === 'number' &&
+    Number.isFinite(order.exitSlippagePercent)
+      ? Math.abs(order.exitSlippagePercent)
+      : 0;
+  const totalSlippagePercent = entrySlippagePercent + exitSlippagePercent;
+
+  return totalSlippagePercent > 0
+    ? (notional * totalSlippagePercent) / 100
+    : null;
+};
+
+const buildRuntimeAdvancedTrades = (
+  orders: RuntimeOrderView[],
+): AdvancedTradeInput[] =>
+  orders.flatMap((order): AdvancedTradeInput[] => {
+    const timestamp = order.exitTimestamp ?? order.entryTimestamp;
+
+    if (
+      typeof timestamp !== 'number' ||
+      !Number.isFinite(timestamp) ||
+      typeof order.pnl !== 'number' ||
+      !Number.isFinite(order.pnl)
+    ) {
+      return [];
+    }
+
+    const slippageCost = getRuntimeOrderSlippageCost(order);
+
+    return [
+      {
+        id: order.orderId,
+        timestamp,
+        pnl: order.pnl,
+        symbol: order.symbol,
+        direction: order.direction,
+        slippageCost,
+        grossPnl: slippageCost == null ? order.pnl : order.pnl + slippageCost,
+        approved: true,
+        blocked: false,
+      },
+    ];
+  });
 
 const getOrdersSummary = (orders: RuntimeOrderView[]) => {
   const closedOrders = orders.filter((order) => order.status === 'closed');
@@ -1388,6 +1464,17 @@ export const RuntimeStrategyCard = ({
     () => buildRuntimeDirectionStats(strategy.orders),
     [strategy.orders],
   );
+  const advancedMetrics = useMemo(() => {
+    const firstPoint = strategy.orderLog[0];
+    const lastPoint = strategy.orderLog[strategy.orderLog.length - 1];
+
+    return calculateAdvancedTradeMetrics({
+      trades: buildRuntimeAdvancedTrades(strategy.orders),
+      orderLog: strategy.orderLog,
+      startTimestamp: firstPoint?.[0] ?? null,
+      endTimestamp: lastPoint?.[0] ?? null,
+    });
+  }, [strategy.orderLog, strategy.orders]);
 
   return (
     <Box
@@ -1554,6 +1641,8 @@ export const RuntimeStrategyCard = ({
                     ))}
                   </SimpleGrid>
                 </Box>
+
+                <AdvancedMetricsPanel metrics={advancedMetrics} />
 
                 {monthlyStats.length ? (
                   <Box

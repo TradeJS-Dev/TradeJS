@@ -15,6 +15,10 @@ import {
   Text,
 } from '@chakra-ui/react';
 import { type ReactNode, useMemo, useState } from 'react';
+import {
+  calculateAdvancedTradeMetrics,
+  type AdvancedTradeInput,
+} from '@tradejs/core/backtest';
 import type {
   StrategyChartDetail,
   StrategyChartMetric,
@@ -34,6 +38,7 @@ import {
 } from '#components/Shared/OrdersDrawer';
 import { deleteStrategyCard } from '#actions/strategies';
 import { toaster } from '#ui';
+import { AdvancedMetricsPanel } from './AdvancedMetricsPanel';
 import { StrategySnapshotChart } from './StrategySnapshotChart';
 
 const MS_IN_HOUR = 60 * 60 * 1000;
@@ -938,6 +943,43 @@ const buildSnapshotOrders = (
       };
     });
 
+const buildSnapshotAdvancedTrades = (
+  snapshot: StrategyChartSnapshot,
+): AdvancedTradeInput[] =>
+  snapshot.orders.flatMap((order): AdvancedTradeInput[] => {
+    const timestamp =
+      order.exitTimestamp ?? order.timestamp ?? order.entryTimestamp;
+
+    if (
+      typeof timestamp !== 'number' ||
+      !Number.isFinite(timestamp) ||
+      typeof order.pnl !== 'number' ||
+      !Number.isFinite(order.pnl)
+    ) {
+      return [];
+    }
+
+    const slippageCost =
+      typeof order.totalSlippageCost === 'number' &&
+      Number.isFinite(order.totalSlippageCost)
+        ? Math.abs(order.totalSlippageCost)
+        : null;
+
+    return [
+      {
+        id: order.id,
+        timestamp,
+        pnl: order.pnl,
+        symbol: order.symbol ?? null,
+        direction: order.direction ?? null,
+        slippageCost,
+        grossPnl: slippageCost == null ? order.pnl : order.pnl + slippageCost,
+        approved: true,
+        blocked: false,
+      },
+    ];
+  });
+
 const buildSnapshotSummaryItems = (
   snapshot: StrategyChartSnapshot,
 ): OrdersDrawerSummaryItem[] => {
@@ -1397,6 +1439,17 @@ export const StrategySnapshotCard = ({
         : metrics,
     [maxLossStreak, metrics, mode],
   );
+  const advancedMetrics = useMemo(() => {
+    const firstPoint = snapshot.orderLog[0];
+    const lastPoint = snapshot.orderLog[snapshot.orderLog.length - 1];
+
+    return calculateAdvancedTradeMetrics({
+      trades: buildSnapshotAdvancedTrades(snapshot),
+      orderLog: snapshot.orderLog,
+      startTimestamp: firstPoint?.[0] ?? null,
+      endTimestamp: lastPoint?.[0] ?? null,
+    });
+  }, [snapshot]);
   const hasStatDrawer = mode === 'ai' || Boolean(snapshot.details?.length);
 
   const handleDelete = async () => {
@@ -1756,6 +1809,8 @@ export const StrategySnapshotCard = ({
                       ))}
                     </SimpleGrid>
                   </Box>
+
+                  <AdvancedMetricsPanel metrics={advancedMetrics} />
 
                   {monthlyStats.length ? (
                     <Box
