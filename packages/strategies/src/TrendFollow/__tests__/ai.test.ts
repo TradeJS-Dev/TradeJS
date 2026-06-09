@@ -409,7 +409,7 @@ describe('trendFollowAiAdapter', () => {
     });
   });
 
-  it('rejects relative beta continuation pockets with stop distance at or above two ATR', () => {
+  it('rejects relative beta continuation pockets with stop distance at or above 1.9 ATR', () => {
     const payload = makePayload(
       {
         signalDirection: 'SHORT',
