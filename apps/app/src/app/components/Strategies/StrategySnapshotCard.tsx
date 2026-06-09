@@ -92,6 +92,22 @@ interface SymbolPnlRank {
   avgPnl: number | null;
 }
 
+interface AiDiagnosticMetric {
+  id: string;
+  label: string;
+  value: string;
+  detail?: string;
+  tone?: StrategyChartMetric['tone'];
+}
+
+interface AiDiagnosticGroup {
+  id: string;
+  title: string;
+  description: string;
+  columns: number;
+  metrics: AiDiagnosticMetric[];
+}
+
 interface SnapshotTradePoint {
   index: number;
   timestamp: number;
@@ -1072,6 +1088,11 @@ const isSymbolDetail = (detail: StrategyChartDetail) =>
 const isStructuredDetail = (detail: StrategyChartDetail) =>
   isDirectionDetail(detail) || isSymbolDetail(detail);
 
+const getDetailById = (
+  details: StrategyChartDetail[] | undefined,
+  id: string,
+) => details?.find((detail) => detail.id === id) ?? null;
+
 const parseFormattedNumber = (value: string) => {
   const normalized = value
     .replace(/\s/g, '')
@@ -1079,6 +1100,19 @@ const parseFormattedNumber = (value: string) => {
     .replace(/[^\d.+-]/g, '');
   const parsed = Number(normalized);
   return Number.isFinite(parsed) ? parsed : null;
+};
+
+const parseConfusionDetail = (detail: StrategyChartDetail | null) => {
+  if (!detail) {
+    return null;
+  }
+
+  const values = detail.value
+    .split('/')
+    .map((part) => parseFormattedNumber(part))
+    .filter((value): value is number => value !== null);
+
+  return values.length === 4 ? values : null;
 };
 
 const getPnlBarColor = (value: number) => {
@@ -1140,6 +1174,211 @@ const buildDirectionStatGroups = (
       hasData: values.size > 0,
     };
   });
+};
+
+const buildAiDiagnosticGroups = (
+  details: StrategyChartDetail[] | undefined,
+): AiDiagnosticGroup[] => {
+  const plainDetails = details?.filter((detail) => !isStructuredDetail(detail));
+  const groups: AiDiagnosticGroup[] = [];
+  const windowDetail = getDetailById(plainDetails, 'window');
+  const confusion = parseConfusionDetail(
+    getDetailById(plainDetails, 'confusion'),
+  );
+  const avgProfitAll = getDetailById(plainDetails, 'avgProfitAll');
+  const expectancyDelta = getDetailById(plainDetails, 'expectancyDelta');
+
+  if (windowDetail) {
+    groups.push({
+      id: 'window',
+      title: 'Evaluation window',
+      description: 'source rows used for this AI snapshot',
+      columns: 1,
+      metrics: [
+        {
+          id: windowDetail.id,
+          label: 'Window',
+          value: windowDetail.value,
+          detail: 'UTC range',
+          tone: windowDetail.tone,
+        },
+      ],
+    });
+  }
+
+  if (confusion) {
+    const [truePositive, falsePositive, trueNegative, falseNegative] =
+      confusion;
+
+    groups.push({
+      id: 'confusion',
+      title: 'Decision matrix',
+      description: 'approved vs blocked outcomes',
+      columns: 4,
+      metrics: [
+        {
+          id: 'truePositive',
+          label: 'TP',
+          value: formatInteger(truePositive),
+          detail: 'winner approved',
+          tone: 'success',
+        },
+        {
+          id: 'falsePositive',
+          label: 'FP',
+          value: formatInteger(falsePositive),
+          detail: 'loser approved',
+          tone: falsePositive > 0 ? 'warning' : 'neutral',
+        },
+        {
+          id: 'trueNegative',
+          label: 'TN',
+          value: formatInteger(trueNegative),
+          detail: 'loser blocked',
+          tone: 'success',
+        },
+        {
+          id: 'falseNegative',
+          label: 'FN',
+          value: formatInteger(falseNegative),
+          detail: 'winner blocked',
+          tone: falseNegative > 0 ? 'warning' : 'neutral',
+        },
+      ],
+    });
+  }
+
+  const liftMetrics: AiDiagnosticMetric[] = [];
+
+  if (avgProfitAll) {
+    liftMetrics.push({
+      id: avgProfitAll.id,
+      label: 'Avg all candidates',
+      value: avgProfitAll.value,
+      detail: 'before AI approval',
+      tone: avgProfitAll.tone,
+    });
+  }
+
+  if (expectancyDelta) {
+    liftMetrics.push({
+      id: expectancyDelta.id,
+      label: 'Expectancy lift',
+      value: expectancyDelta.value,
+      detail: 'approved avg minus all avg',
+      tone: expectancyDelta.tone,
+    });
+  }
+
+  if (liftMetrics.length) {
+    groups.push({
+      id: 'lift',
+      title: 'Gate lift',
+      description: 'what approval changes',
+      columns: 2,
+      metrics: liftMetrics,
+    });
+  }
+
+  return groups;
+};
+
+const AiDiagnosticCard = ({ metric }: { metric: AiDiagnosticMetric }) => (
+  <Box
+    p={3}
+    borderWidth="1px"
+    borderColor="gray.800"
+    borderRadius="md"
+    bg="blackAlpha.200"
+    minW="0"
+  >
+    <Text
+      fontSize="2xs"
+      color="gray.500"
+      fontWeight="bold"
+      textTransform="uppercase"
+      lineHeight="1.2"
+    >
+      {metric.label}
+    </Text>
+    <Text
+      mt={2}
+      fontSize="lg"
+      color={getMetricColor(metric.tone)}
+      fontWeight="bold"
+      fontFamily="mono"
+      lineHeight="1.15"
+      whiteSpace="nowrap"
+      overflow="hidden"
+      textOverflow="ellipsis"
+    >
+      {metric.value}
+    </Text>
+    {metric.detail ? (
+      <Text
+        mt={2}
+        fontSize="xs"
+        color="gray.500"
+        lineHeight="1.25"
+        whiteSpace="nowrap"
+        overflow="hidden"
+        textOverflow="ellipsis"
+      >
+        {metric.detail}
+      </Text>
+    ) : null}
+  </Box>
+);
+
+const AiDiagnosticGroupBlock = ({ group }: { group: AiDiagnosticGroup }) => (
+  <Box>
+    <Flex justify="space-between" align="baseline" gap={3} mb={3}>
+      <Text color="gray.300" fontSize="sm" fontWeight="semibold">
+        {group.title}
+      </Text>
+      <Text color="gray.600" fontSize="xs" textAlign="right">
+        {group.description}
+      </Text>
+    </Flex>
+    <SimpleGrid
+      columns={{ base: 1, md: Math.min(group.columns, 3), xl: group.columns }}
+      gap={3}
+    >
+      {group.metrics.map((metric) => (
+        <AiDiagnosticCard key={metric.id} metric={metric} />
+      ))}
+    </SimpleGrid>
+  </Box>
+);
+
+const AiDiagnosticsPanel = ({ groups }: { groups: AiDiagnosticGroup[] }) => {
+  if (!groups.length) {
+    return null;
+  }
+
+  return (
+    <Box
+      p={4}
+      borderWidth="1px"
+      borderColor="gray.800"
+      borderRadius="md"
+      bg="gray.900"
+    >
+      <Flex justify="space-between" align="baseline" gap={4}>
+        <Text fontSize="md" fontWeight="semibold" color="gray.100">
+          AI diagnostics
+        </Text>
+        <Text color="gray.600" fontSize="xs" textAlign="right">
+          classifier-only details
+        </Text>
+      </Flex>
+      <Flex direction="column" gap={5} mt={4}>
+        {groups.map((group) => (
+          <AiDiagnosticGroupBlock key={group.id} group={group} />
+        ))}
+      </Flex>
+    </Box>
+  );
 };
 
 const getMonthLabel = (monthIndex: number) =>
@@ -1325,9 +1564,8 @@ export const StrategySnapshotCard = ({
     () => buildSnapshotSummaryItems(snapshot),
     [snapshot],
   );
-  const visibleDetails = useMemo(
-    () =>
-      (snapshot.details ?? []).filter((detail) => !isStructuredDetail(detail)),
+  const aiDiagnosticGroups = useMemo(
+    () => buildAiDiagnosticGroups(snapshot.details),
     [snapshot.details],
   );
   const directionStatGroups = useMemo(
@@ -2125,56 +2363,7 @@ export const StrategySnapshotCard = ({
                     </SimpleGrid>
                   </Box>
 
-                  {visibleDetails.length ? (
-                    <Box
-                      p={4}
-                      borderWidth="1px"
-                      borderColor="gray.800"
-                      borderRadius="md"
-                      bg="gray.900"
-                    >
-                      <Text
-                        fontSize="sm"
-                        color="gray.300"
-                        fontWeight="semibold"
-                        mb={3}
-                      >
-                        Details
-                      </Text>
-                      <SimpleGrid columns={1} gap={3}>
-                        {visibleDetails.map((detail) => (
-                          <Flex
-                            key={detail.id}
-                            justify="space-between"
-                            align="flex-start"
-                            gap={4}
-                            p={3}
-                            borderRadius="md"
-                            bg="blackAlpha.300"
-                          >
-                            <Text
-                              fontSize="sm"
-                              color="gray.400"
-                              fontFamily="mono"
-                              flex="0 0 220px"
-                            >
-                              {detail.label}
-                            </Text>
-                            <Text
-                              fontSize="sm"
-                              color={getMetricColor(detail.tone)}
-                              fontWeight="semibold"
-                              textAlign="right"
-                              fontFamily="mono"
-                              whiteSpace="pre-wrap"
-                            >
-                              {detail.value}
-                            </Text>
-                          </Flex>
-                        ))}
-                      </SimpleGrid>
-                    </Box>
-                  ) : null}
+                  <AiDiagnosticsPanel groups={aiDiagnosticGroups} />
                 </Drawer.Body>
               </Drawer.Content>
             </Drawer.Positioner>
