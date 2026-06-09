@@ -604,6 +604,40 @@ const getRuntimeOrdersSummaryItems = (
   ];
 };
 
+const RuntimeOrdersSummaryBlock = ({
+  items,
+}: {
+  items: OrdersDrawerSummaryItem[];
+}) => (
+  <Box
+    p={4}
+    borderWidth="1px"
+    borderColor="gray.800"
+    borderRadius="md"
+    bg="gray.900"
+  >
+    <SimpleGrid columns={{ base: 1, md: 2 }} gap={4}>
+      {items.map((item) => (
+        <Box key={item.title}>
+          <Text fontSize="sm" color="gray.500">
+            {item.title}
+          </Text>
+          <Text
+            mt={1}
+            fontSize="2xl"
+            color={item.color ?? 'gray.100'}
+            fontWeight="bold"
+            fontFamily="mono"
+            lineHeight="1.1"
+          >
+            {item.value}
+          </Text>
+        </Box>
+      ))}
+    </SimpleGrid>
+  </Box>
+);
+
 const buildRuntimeDrawerMetrics = (
   strategy: RuntimeStrategyView,
 ): RuntimeDrawerMetric[] => {
@@ -1439,7 +1473,6 @@ export const RuntimeStrategyCard = ({
         title={`${strategy.strategyName} orders`}
         open={ordersOpen}
         orders={runtimeOrders}
-        summaryItems={runtimeOrderSummaryItems}
         rowHeight={RUNTIME_ORDER_ROW_HEIGHT}
         onOpenChange={setOrdersOpen}
       />
@@ -1476,6 +1509,8 @@ export const RuntimeStrategyCard = ({
                 minH="0"
                 w="full"
               >
+                <RuntimeOrdersSummaryBlock items={runtimeOrderSummaryItems} />
+
                 <Box
                   p={4}
                   borderWidth="1px"
