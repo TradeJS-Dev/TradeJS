@@ -1335,6 +1335,7 @@ const mapRuntimeOrder = (order: RuntimeOrderView): OrdersDrawerOrder => {
       durationHours: order.durationHours,
     },
     direction: order.direction,
+    status: order.status,
     statusLabel: formatExitType(order).toUpperCase(),
     statusColor: order.status === 'active' ? 'orange' : 'gray',
     pnl: order.pnl,

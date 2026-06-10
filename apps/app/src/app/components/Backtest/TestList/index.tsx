@@ -61,13 +61,7 @@ export const TestList = ({
                 </Checkbox.Root>
               }
             >
-              <TestCard.CompareButton />
-              <TestCard.FavoriteIndicator />
-              <TestCard.ConfigDrawer />
-              <TestCard.OrdersDrawer />
-              <TestCard.OpenDashboardButton />
-              <TestCard.OpenReportButton />
-              <TestCard.DeleteButton />
+              <TestCard.ActionsMenu />
             </TestCard.Title>
             <TestCard.Chart />
             <TestCard.StatLine />

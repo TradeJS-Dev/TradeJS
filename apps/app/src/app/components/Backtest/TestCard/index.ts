@@ -8,10 +8,11 @@ import { TestCardSkeleton } from './Skeleton';
 import { TestCardConfigDrawer } from './ConfigDrawer';
 import { TestCardCompareButton } from './CompareButton';
 import { TestCardFavoriteIndicator } from './FavoriteIndicator';
-import { TestCardOpenReportButton } from './OpenReportButton';
 import { TestCardOpenDashboardButton } from './OpenDashboardButton';
 import { TestCardDeleteButton } from './DeleteButton';
 import { TestCardOrdersDrawer } from './OrdersDrawer';
+import { TestCardStatDrawer } from './StatDrawer';
+import { TestCardActionsMenu } from './ActionsMenu';
 
 export const TestCard = {
   Root: TestCardRoot,
@@ -24,7 +25,8 @@ export const TestCard = {
   CompareButton: TestCardCompareButton,
   FavoriteIndicator: TestCardFavoriteIndicator,
   OpenDashboardButton: TestCardOpenDashboardButton,
-  OpenReportButton: TestCardOpenReportButton,
   OrdersDrawer: TestCardOrdersDrawer,
+  StatDrawer: TestCardStatDrawer,
   DeleteButton: TestCardDeleteButton,
+  ActionsMenu: TestCardActionsMenu,
 };

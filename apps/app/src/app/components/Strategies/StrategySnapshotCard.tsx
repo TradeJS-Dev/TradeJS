@@ -34,7 +34,6 @@ import {
   getPnlColor,
   OrdersDrawerPanel,
   type OrdersDrawerOrder,
-  type OrdersDrawerSummaryItem,
 } from '#components/Shared/OrdersDrawer';
 import { deleteStrategyCard } from '#actions/strategies';
 import { toaster } from '#ui';
@@ -864,7 +863,388 @@ const buildAiFeesDetail = (order: StrategyChartOrder) => (
   </>
 );
 
-const buildSnapshotOrders = (
+const normalizeSnapshotDirection = (
+  direction: StrategyChartOrder['direction'],
+): OrdersDrawerOrder['direction'] =>
+  direction === 'LONG' || direction === 'SHORT' ? direction : null;
+
+const getSnapshotOrderTimestamp = (order: StrategyChartOrder) => {
+  const timestamp =
+    order.timestamp ?? order.entryTimestamp ?? order.exitTimestamp;
+  return typeof timestamp === 'number' && Number.isFinite(timestamp)
+    ? timestamp
+    : null;
+};
+
+const getReplayOrderStatus = (type: string | null | undefined) => {
+  if (type?.startsWith('OPEN')) {
+    return { label: 'ACTIVE', color: 'orange', status: 'active' as const };
+  }
+
+  if (type?.startsWith('TAKE_PROFIT')) {
+    return { label: 'TAKE PROFIT', color: 'teal', status: 'closed' as const };
+  }
+
+  if (type?.startsWith('STOP_LOSS')) {
+    return { label: 'STOP LOSS', color: 'red', status: 'closed' as const };
+  }
+
+  if (type?.startsWith('CLOSE')) {
+    return { label: 'CLOSE', color: 'gray', status: 'closed' as const };
+  }
+
+  return { label: 'REPLAY', color: 'gray', status: 'closed' as const };
+};
+
+const isReplayOpenOrder = (order: StrategyChartOrder) =>
+  order.exitReason?.startsWith('OPEN') === true;
+
+const getReplayPairKey = (order: StrategyChartOrder) => {
+  const direction = normalizeSnapshotDirection(order.direction);
+  if (!order.symbol || !direction) {
+    return null;
+  }
+
+  return `${order.symbol}:${direction}`;
+};
+
+const getFiniteNumber = (value: number | null | undefined) =>
+  typeof value === 'number' && Number.isFinite(value) ? value : null;
+
+const sumFiniteNumbers = (
+  ...values: Array<number | null | undefined>
+): number | null => {
+  let total = 0;
+  let hasValue = false;
+
+  for (const value of values) {
+    const finiteValue = getFiniteNumber(value);
+    if (finiteValue == null) {
+      continue;
+    }
+
+    total += finiteValue;
+    hasValue = true;
+  }
+
+  return hasValue ? total : null;
+};
+
+const multiplyFiniteNumber = (
+  value: number | null | undefined,
+  multiplier: number,
+) => {
+  const finiteValue = getFiniteNumber(value);
+  return finiteValue == null ? null : finiteValue * multiplier;
+};
+
+const buildReplayFeesDetail = ({
+  openFee,
+  closeFee,
+  fundingFee,
+}: {
+  openFee?: number | null;
+  closeFee?: number | null;
+  fundingFee?: number | null;
+}) => (
+  <>
+    open {formatFee(openFee)}
+    <br />
+    close {formatFee(closeFee)}
+    <br />
+    funding {formatFee(fundingFee)}
+  </>
+);
+
+type ReplayOpenPosition = {
+  order: StrategyChartOrder;
+  remainingQty: number | null;
+};
+
+const getReplayExitShare = (
+  entry: ReplayOpenPosition,
+  exitOrder: StrategyChartOrder,
+) => {
+  const entryQty = getFiniteNumber(entry.order.qty);
+  const exitQty = getFiniteNumber(exitOrder.qty);
+
+  if (entryQty == null || entryQty <= 0 || exitQty == null || exitQty <= 0) {
+    return 1;
+  }
+
+  const remainingQty = entry.remainingQty ?? entryQty;
+  return Math.min(exitQty, remainingQty) / entryQty;
+};
+
+const consumeReplayEntryQty = (
+  entry: ReplayOpenPosition,
+  exitOrder: StrategyChartOrder,
+) => {
+  const exitQty = getFiniteNumber(exitOrder.qty);
+  if (entry.remainingQty == null || exitQty == null) {
+    return;
+  }
+
+  entry.remainingQty = Math.max(0, entry.remainingQty - exitQty);
+};
+
+const isReplayEntryConsumed = (entry: ReplayOpenPosition) =>
+  entry.remainingQty != null && entry.remainingQty <= 0.00000001;
+
+const buildReplayTradeCard = ({
+  snapshot,
+  entryOrder,
+  exitOrder,
+  tradeIndex,
+  entryShare = 1,
+}: {
+  snapshot: StrategyChartSnapshot;
+  entryOrder: StrategyChartOrder;
+  exitOrder?: StrategyChartOrder;
+  tradeIndex: number;
+  entryShare?: number;
+}): OrdersDrawerOrder => {
+  const orderStatus = getReplayOrderStatus(
+    exitOrder?.exitReason ?? entryOrder.exitReason,
+  );
+  const entryTimestamp = getSnapshotOrderTimestamp(entryOrder);
+  const exitTimestamp = exitOrder ? getSnapshotOrderTimestamp(exitOrder) : null;
+  const durationHours =
+    entryTimestamp != null && exitTimestamp != null
+      ? (exitTimestamp - entryTimestamp) / MS_IN_HOUR
+      : null;
+  const openFee = multiplyFiniteNumber(entryOrder.openFee, entryShare);
+  const openPnl = multiplyFiniteNumber(entryOrder.pnl, entryShare);
+  const closeFee = exitOrder?.closeFee ?? exitOrder?.totalFee ?? null;
+  const fundingFee = sumFiniteNumbers(
+    multiplyFiniteNumber(entryOrder.fundingFee, entryShare),
+    exitOrder?.fundingFee,
+  );
+  const totalFee = sumFiniteNumbers(openFee, closeFee, fundingFee);
+  const pnl = sumFiniteNumbers(openPnl, exitOrder?.pnl);
+  const qty = exitOrder?.qty ?? entryOrder.qty;
+  const notional =
+    entryOrder.notional != null
+      ? multiplyFiniteNumber(entryOrder.notional, entryShare)
+      : exitOrder?.notional;
+
+  return {
+    id: `${snapshot.cardId}:replay-trade:${tradeIndex}:${entryOrder.id}:${exitOrder?.id ?? 'active'}`,
+    title: entryOrder.symbol
+      ? `${entryOrder.symbol} · Replay #${tradeIndex}`
+      : `Replay #${tradeIndex}`,
+    period: {
+      start: entryTimestamp,
+      end: exitTimestamp,
+      durationHours,
+    },
+    direction: normalizeSnapshotDirection(entryOrder.direction),
+    status: orderStatus.status,
+    statusLabel: orderStatus.label,
+    statusColor: orderStatus.color,
+    pnl,
+    metrics: [
+      {
+        title: 'Entry',
+        value: formatPrice(entryOrder.entryPrice),
+        detail: buildSlippageDetail({
+          requestedPrice: entryOrder.requestedEntryPrice,
+          slippageBps: entryOrder.entrySlippageBps,
+        }),
+      },
+      {
+        title: 'Exit',
+        value: formatPrice(exitOrder?.exitPrice),
+        detail: buildSlippageDetail({
+          requestedPrice: exitOrder?.requestedExitPrice,
+          slippageBps: exitOrder?.exitSlippageBps,
+        }),
+      },
+      {
+        title: 'Notional',
+        value: formatUsdt(notional),
+      },
+      {
+        title: 'Fees',
+        value: formatFee(totalFee),
+        detail: buildReplayFeesDetail({ openFee, closeFee, fundingFee }),
+      },
+      {
+        title: 'Qty',
+        value: formatCompactNumber(qty, {
+          maximumFractionDigits: 8,
+          minimumFractionDigits: 0,
+        }),
+      },
+      {
+        title: 'Equity',
+        value: formatCompactNumber(
+          exitOrder?.equityAfter ?? entryOrder.equityAfter,
+          {
+            maximumFractionDigits: 2,
+            minimumFractionDigits: 2,
+          },
+        ),
+        detail: `prev ${formatCompactNumber(entryOrder.equityBefore, {
+          maximumFractionDigits: 2,
+          minimumFractionDigits: 2,
+        })}`,
+      },
+    ],
+  };
+};
+
+const buildReplaySnapshotOrders = (
+  snapshot: StrategyChartSnapshot,
+): OrdersDrawerOrder[] => {
+  const persistedOrders = snapshot.orders
+    .map((order, index) => ({ order, index }))
+    .sort((left, right) => {
+      const leftTimestamp =
+        getSnapshotOrderTimestamp(left.order) ?? Number.NEGATIVE_INFINITY;
+      const rightTimestamp =
+        getSnapshotOrderTimestamp(right.order) ?? Number.NEGATIVE_INFINITY;
+
+      return leftTimestamp - rightTimestamp || left.index - right.index;
+    });
+
+  if (persistedOrders.length) {
+    const openPositions = new Map<string, ReplayOpenPosition[]>();
+    const tradeCards: OrdersDrawerOrder[] = [];
+
+    for (const { order } of persistedOrders) {
+      const pairKey = getReplayPairKey(order);
+      if (!pairKey) {
+        continue;
+      }
+
+      if (isReplayOpenOrder(order)) {
+        const bucket = openPositions.get(pairKey) ?? [];
+        bucket.push({
+          order,
+          remainingQty: getFiniteNumber(order.qty),
+        });
+        openPositions.set(pairKey, bucket);
+        continue;
+      }
+
+      const bucket = openPositions.get(pairKey);
+      const entry = bucket?.[0];
+      if (!entry) {
+        continue;
+      }
+
+      const entryShare = getReplayExitShare(entry, order);
+      tradeCards.push(
+        buildReplayTradeCard({
+          snapshot,
+          entryOrder: entry.order,
+          exitOrder: order,
+          tradeIndex: tradeCards.length + 1,
+          entryShare,
+        }),
+      );
+      consumeReplayEntryQty(entry, order);
+
+      if (entry.remainingQty == null || isReplayEntryConsumed(entry)) {
+        bucket.shift();
+      }
+    }
+
+    for (const bucket of openPositions.values()) {
+      for (const entry of bucket) {
+        if (isReplayEntryConsumed(entry)) {
+          continue;
+        }
+
+        tradeCards.push(
+          buildReplayTradeCard({
+            snapshot,
+            entryOrder: entry.order,
+            tradeIndex: tradeCards.length + 1,
+          }),
+        );
+      }
+    }
+
+    return tradeCards.reverse();
+  }
+
+  return snapshot.orderLog
+    .slice(1)
+    .map<OrdersDrawerOrder | null>((current, index) => {
+      const previous = snapshot.orderLog[index];
+      if (!previous) {
+        return null;
+      }
+
+      const [timestamp, equityAfter] = current;
+      const [, equityBefore] = previous;
+      const pnl = equityAfter - equityBefore;
+      if (
+        !Number.isFinite(timestamp) ||
+        !Number.isFinite(equityBefore) ||
+        !Number.isFinite(equityAfter) ||
+        !Number.isFinite(pnl)
+      ) {
+        return null;
+      }
+
+      const orderIndex = index + 1;
+
+      return {
+        id: `${snapshot.cardId}:replay:${orderIndex}:${timestamp}`,
+        title: `Replay #${orderIndex}`,
+        period: {
+          start: timestamp,
+        },
+        status: 'closed',
+        statusLabel: 'REPLAY',
+        statusColor: 'gray',
+        pnl,
+        metrics: [
+          {
+            title: 'Entry',
+            value: 'n/a',
+            detail: buildSlippageDetail({}),
+          },
+          {
+            title: 'Exit',
+            value: 'n/a',
+            detail: buildSlippageDetail({}),
+          },
+          {
+            title: 'Notional',
+            value: formatUsdt(null),
+          },
+          {
+            title: 'Fees',
+            value: formatFee(null),
+            detail: buildReplayFeesDetail({}),
+          },
+          {
+            title: 'Qty',
+            value: formatCompactNumber(null),
+          },
+          {
+            title: 'Equity',
+            value: formatCompactNumber(equityAfter, {
+              maximumFractionDigits: 2,
+              minimumFractionDigits: 2,
+            }),
+            detail: `prev ${formatCompactNumber(equityBefore, {
+              maximumFractionDigits: 2,
+              minimumFractionDigits: 2,
+            })}`,
+          },
+        ],
+      };
+    })
+    .filter((order): order is OrdersDrawerOrder => order != null)
+    .reverse();
+};
+
+const buildAiSnapshotOrders = (
   snapshot: StrategyChartSnapshot,
 ): OrdersDrawerOrder[] =>
   snapshot.orders
@@ -904,10 +1284,12 @@ const buildSnapshotOrders = (
           end: order.exitTimestamp,
           durationHours,
         },
-        direction:
-          order.direction === 'LONG' || order.direction === 'SHORT'
-            ? order.direction
-            : null,
+        direction: normalizeSnapshotDirection(order.direction),
+        status:
+          typeof order.exitTimestamp === 'number' &&
+          Number.isFinite(order.exitTimestamp)
+            ? 'closed'
+            : 'active',
         statusLabel: formatAiExitReason(order.exitReason),
         statusColor: getAiExitReasonColor(order.exitReason),
         pnl: order.pnl,
@@ -959,6 +1341,14 @@ const buildSnapshotOrders = (
       };
     });
 
+const buildSnapshotOrders = (
+  snapshot: StrategyChartSnapshot,
+  mode: 'replay' | 'ai',
+): OrdersDrawerOrder[] =>
+  mode === 'replay'
+    ? buildReplaySnapshotOrders(snapshot)
+    : buildAiSnapshotOrders(snapshot);
+
 const buildSnapshotAdvancedTrades = (
   snapshot: StrategyChartSnapshot,
 ): AdvancedTradeInput[] =>
@@ -995,48 +1385,6 @@ const buildSnapshotAdvancedTrades = (
       },
     ];
   });
-
-const buildSnapshotSummaryItems = (
-  snapshot: StrategyChartSnapshot,
-): OrdersDrawerSummaryItem[] => {
-  const orders = snapshot.orderLog.slice(1);
-  const winningOrders = orders.filter((_, index) => {
-    const pnl = getSnapshotStepPnl(snapshot.orderLog, index + 1);
-    return typeof pnl === 'number' && Number.isFinite(pnl) && pnl > 0;
-  });
-  const firstAmount = snapshot.orderLog[0]?.[1] ?? null;
-  const lastAmount = snapshot.orderLog.at(-1)?.[1] ?? null;
-  const totalPnl =
-    typeof firstAmount === 'number' &&
-    Number.isFinite(firstAmount) &&
-    typeof lastAmount === 'number' &&
-    Number.isFinite(lastAmount)
-      ? lastAmount - firstAmount
-      : null;
-  const winRate =
-    orders.length > 0 ? (winningOrders.length / orders.length) * 100 : 0;
-
-  return [
-    {
-      title: 'Total Orders',
-      value: formatInteger(orders.length),
-    },
-    {
-      title: 'Win Rate',
-      value: formatPercent(winRate),
-    },
-    {
-      title: 'P&L',
-      value: formatSignedNumber(totalPnl),
-      color: getPnlColor(totalPnl),
-    },
-    {
-      title: 'Max Drawdown',
-      value: calculateMaxDrawdownPercent(snapshot.orderLog) ?? 'n/a',
-      color: 'fg.warning',
-    },
-  ];
-};
 
 const directionMetricLabels: Record<string, string> = {
   approved: 'Approved',
@@ -1557,12 +1905,8 @@ export const StrategySnapshotCard = ({
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const snapshotOrders = useMemo(
-    () => buildSnapshotOrders(snapshot),
-    [snapshot],
-  );
-  const snapshotSummaryItems = useMemo(
-    () => buildSnapshotSummaryItems(snapshot),
-    [snapshot],
+    () => buildSnapshotOrders(snapshot, mode),
+    [mode, snapshot],
   );
   const aiDiagnosticGroups = useMemo(
     () => buildAiDiagnosticGroups(snapshot.details),
@@ -1688,6 +2032,7 @@ export const StrategySnapshotCard = ({
       endTimestamp: lastPoint?.[0] ?? null,
     });
   }, [snapshot]);
+  const hasOrdersDrawer = snapshotOrders.length > 0;
   const hasStatDrawer = mode === 'ai' || Boolean(snapshot.details?.length);
 
   const handleDelete = async () => {
@@ -1931,7 +2276,7 @@ export const StrategySnapshotCard = ({
               <Portal>
                 <Menu.Positioner>
                   <Menu.Content minW="160px">
-                    {mode === 'ai' && snapshotOrders.length ? (
+                    {hasOrdersDrawer ? (
                       <Menu.Item
                         value="orders"
                         onClick={() => setOrdersOpen(true)}
@@ -1966,9 +2311,12 @@ export const StrategySnapshotCard = ({
           title={`${snapshot.title} orders`}
           open={ordersOpen}
           orders={snapshotOrders}
-          summaryItems={snapshotSummaryItems}
           rowHeight={SNAPSHOT_ORDER_ROW_HEIGHT}
-          emptyText="No AI order points for this card."
+          emptyText={
+            mode === 'replay'
+              ? 'No replay order points for this card.'
+              : 'No AI order points for this card.'
+          }
           onOpenChange={setOrdersOpen}
         />
 

@@ -15,8 +15,15 @@ import { useBacktestMutations } from '#store';
 import { toaster } from '#ui';
 import { useTestContext } from '../context';
 
-export const TestCardDeleteButton = () => {
-  const [open, setOpen] = useState(false);
+interface TestCardDeleteDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}
+
+export const TestCardDeleteDialog = ({
+  open,
+  onOpenChange,
+}: TestCardDeleteDialogProps) => {
   const [isDeleting, setIsDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { removeBacktestTest } = useBacktestMutations();
@@ -46,7 +53,7 @@ export const TestCardDeleteButton = () => {
       }
 
       await removeBacktestTest(testResult.test.name);
-      setOpen(false);
+      onOpenChange(false);
       toaster.success({
         title: 'Backtest deleted',
         description: testResult.test.name,
@@ -66,22 +73,12 @@ export const TestCardDeleteButton = () => {
     <Dialog.Root
       open={open}
       onOpenChange={(e) => {
-        setOpen(e.open);
+        onOpenChange(e.open);
         if (!e.open) {
           setError(null);
         }
       }}
     >
-      <Dialog.Trigger asChild>
-        <IconButton
-          size="xs"
-          colorPalette="red"
-          variant="outline"
-          aria-label="Delete backtest"
-        >
-          <FiTrash2 />
-        </IconButton>
-      </Dialog.Trigger>
       <Portal>
         <Dialog.Backdrop />
         <Dialog.Positioner>
@@ -124,5 +121,24 @@ export const TestCardDeleteButton = () => {
         </Dialog.Positioner>
       </Portal>
     </Dialog.Root>
+  );
+};
+
+export const TestCardDeleteButton = () => {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <>
+      <IconButton
+        size="xs"
+        colorPalette="red"
+        variant="outline"
+        aria-label="Delete backtest"
+        onClick={() => setOpen(true)}
+      >
+        <FiTrash2 />
+      </IconButton>
+      <TestCardDeleteDialog open={open} onOpenChange={setOpen} />
+    </>
   );
 };

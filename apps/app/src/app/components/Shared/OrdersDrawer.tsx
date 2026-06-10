@@ -1,11 +1,12 @@
 'use client';
 
-import { type ReactNode, useCallback } from 'react';
+import { type ReactNode, useCallback, useMemo, useState } from 'react';
 import AutoSizer from 'react-virtualized-auto-sizer';
 import { FixedSizeList, type ListChildComponentProps } from 'react-window';
 import {
   Badge,
   Box,
+  Button,
   CloseButton,
   Drawer,
   Flex,
@@ -37,6 +38,7 @@ export interface OrdersDrawerOrder {
     durationHours?: number | null;
   };
   direction?: 'LONG' | 'SHORT' | null;
+  status?: 'active' | 'closed';
   statusLabel?: string;
   statusColor?: string;
   pnl?: number | null;
@@ -48,14 +50,31 @@ interface OrdersDrawerPanelProps {
   title: string;
   open: boolean;
   orders: OrdersDrawerOrder[];
-  summaryItems?: OrdersDrawerSummaryItem[];
   emptyText?: string;
   rowHeight?: number;
+  statusFilterOptions?: readonly {
+    label: string;
+    value: OrderStatusFilter;
+  }[];
   onOpenChange: (open: boolean) => void;
 }
 
 const DEFAULT_ROW_HEIGHT = 278;
 const ORDER_LIST_OVERSCAN = 4;
+type OrderStatusFilter = 'all' | 'closed' | 'active';
+type OrderDirectionFilter = 'all' | 'LONG' | 'SHORT';
+
+const orderStatusFilterOptions = [
+  { label: 'All', value: 'all' },
+  { label: 'Closed', value: 'closed' },
+  { label: 'Active', value: 'active' },
+] as const;
+
+const orderDirectionFilterOptions = [
+  { label: 'All', value: 'all' },
+  { label: 'Long', value: 'LONG' },
+  { label: 'Short', value: 'SHORT' },
+] as const;
 
 export const formatDateTime = (value: number | null | undefined) => {
   if (typeof value !== 'number' || !Number.isFinite(value)) {
@@ -173,42 +192,120 @@ export const getPnlColor = (value: number | null | undefined) => {
 const getDirectionPalette = (direction: OrdersDrawerOrder['direction']) =>
   direction === 'LONG' ? 'teal' : 'red';
 
-const OrdersSummaryItem = ({
-  title,
+const filterOrders = ({
+  orders,
+  statusFilter,
+  directionFilter,
+}: {
+  orders: OrdersDrawerOrder[];
+  statusFilter: OrderStatusFilter;
+  directionFilter: OrderDirectionFilter;
+}) =>
+  orders.filter((order) => {
+    if (statusFilter !== 'all' && order.status !== statusFilter) {
+      return false;
+    }
+
+    if (directionFilter !== 'all' && order.direction !== directionFilter) {
+      return false;
+    }
+
+    return true;
+  });
+
+interface OrdersFilterGroupProps<TValue extends string> {
+  label: string;
+  options: readonly { label: string; value: TValue }[];
+  value: TValue;
+  onChange: (value: TValue) => void;
+}
+
+const OrdersFilterGroup = <TValue extends string>({
+  label,
+  options,
   value,
-  color = 'gray.100',
-}: OrdersDrawerSummaryItem) => (
-  <Box minW="0">
-    <Text color="gray.500" fontSize="sm" lineHeight="1.25">
-      {title}
-    </Text>
+  onChange,
+}: OrdersFilterGroupProps<TValue>) => (
+  <Flex alignItems="center" gap={2} minW="0">
     <Text
-      mt={1}
-      color={color}
-      fontSize="2xl"
+      color="gray.500"
+      fontSize="2xs"
       fontWeight="bold"
-      fontFamily="mono"
-      lineHeight="1"
+      textTransform="uppercase"
       whiteSpace="nowrap"
     >
-      {value}
+      {label}
     </Text>
-  </Box>
+    <Flex
+      borderWidth="1px"
+      borderColor="gray.800"
+      borderRadius="md"
+      overflow="hidden"
+      flex="0 0 auto"
+    >
+      {options.map((option) => {
+        const selected = option.value === value;
+
+        return (
+          <Button
+            key={option.value}
+            size="xs"
+            variant={selected ? 'solid' : 'ghost'}
+            colorPalette={selected ? 'teal' : 'gray'}
+            borderRadius="0"
+            minW="54px"
+            h="8"
+            px={3}
+            fontFamily="mono"
+            letterSpacing="0"
+            onClick={() => onChange(option.value)}
+          >
+            {option.label}
+          </Button>
+        );
+      })}
+    </Flex>
+  </Flex>
 );
 
-const OrdersSummary = ({ items }: { items: OrdersDrawerSummaryItem[] }) => (
-  <SimpleGrid
-    columns={2}
-    columnGap={8}
-    rowGap={4}
+const OrdersFilters = ({
+  statusFilter,
+  directionFilter,
+  statusFilterOptions,
+  onStatusFilterChange,
+  onDirectionFilterChange,
+}: {
+  statusFilter: OrderStatusFilter;
+  directionFilter: OrderDirectionFilter;
+  statusFilterOptions: readonly {
+    label: string;
+    value: OrderStatusFilter;
+  }[];
+  onStatusFilterChange: (value: OrderStatusFilter) => void;
+  onDirectionFilterChange: (value: OrderDirectionFilter) => void;
+}) => (
+  <Flex
     px={1}
     pb={4}
+    gap={3}
+    alignItems="center"
+    justifyContent="space-between"
+    wrap="wrap"
     flex="0 0 auto"
   >
-    {items.map((item) => (
-      <OrdersSummaryItem key={item.title} {...item} />
-    ))}
-  </SimpleGrid>
+    <OrdersFilterGroup
+      label="Status"
+      options={statusFilterOptions}
+      value={statusFilter}
+      onChange={onStatusFilterChange}
+    />
+    <OrdersFilterGroup
+      label="Type"
+      options={orderDirectionFilterOptions}
+      value={directionFilter}
+      onChange={onDirectionFilterChange}
+    />
+  </Flex>
 );
 
 const OrderMetric = ({
@@ -407,64 +504,87 @@ export const OrdersDrawerPanel = ({
   title,
   open,
   orders,
-  summaryItems,
   emptyText = 'No orders for the selected period.',
   rowHeight = DEFAULT_ROW_HEIGHT,
+  statusFilterOptions = orderStatusFilterOptions,
   onOpenChange,
-}: OrdersDrawerPanelProps) => (
-  <Drawer.Root
-    size="xl"
-    open={open}
-    onOpenChange={(event) => onOpenChange(event.open)}
-  >
-    <Portal>
-      <Drawer.Backdrop />
-      <Drawer.Positioner>
-        <Drawer.Content
-          display="flex"
-          flexDirection="column"
-          w="50vw"
-          minW="640px"
-          maxW="50vw"
-          bg="gray.950"
-        >
-          <Drawer.Header>
-            <Drawer.Title>{title}</Drawer.Title>
-            <Drawer.CloseTrigger asChild>
-              <CloseButton size="sm" />
-            </Drawer.CloseTrigger>
-          </Drawer.Header>
+}: OrdersDrawerPanelProps) => {
+  const [statusFilter, setStatusFilter] = useState<OrderStatusFilter>('all');
+  const [directionFilter, setDirectionFilter] =
+    useState<OrderDirectionFilter>('all');
+  const filteredOrders = useMemo(
+    () => filterOrders({ orders, statusFilter, directionFilter }),
+    [directionFilter, orders, statusFilter],
+  );
 
-          <Drawer.Body
+  return (
+    <Drawer.Root
+      size="xl"
+      open={open}
+      onOpenChange={(event) => onOpenChange(event.open)}
+    >
+      <Portal>
+        <Drawer.Backdrop />
+        <Drawer.Positioner>
+          <Drawer.Content
             display="flex"
             flexDirection="column"
-            flex="1"
-            minH="0"
-            overflow="hidden"
-            w="full"
+            w="50vw"
+            minW="640px"
+            maxW="50vw"
+            bg="gray.950"
           >
-            {orders.length === 0 ? (
-              <Box
-                p={4}
-                borderWidth="1px"
-                borderColor="gray.800"
-                borderRadius="md"
-              >
-                <Text fontSize="sm" color="gray.400">
-                  {emptyText}
-                </Text>
-              </Box>
-            ) : (
-              <>
-                {summaryItems?.length ? (
-                  <OrdersSummary items={summaryItems} />
-                ) : null}
-                <OrdersList orders={orders} rowHeight={rowHeight} />
-              </>
-            )}
-          </Drawer.Body>
-        </Drawer.Content>
-      </Drawer.Positioner>
-    </Portal>
-  </Drawer.Root>
-);
+            <Drawer.Header>
+              <Drawer.Title>{title}</Drawer.Title>
+              <Drawer.CloseTrigger asChild>
+                <CloseButton size="sm" />
+              </Drawer.CloseTrigger>
+            </Drawer.Header>
+
+            <Drawer.Body
+              display="flex"
+              flexDirection="column"
+              flex="1"
+              minH="0"
+              overflow="hidden"
+              w="full"
+            >
+              <OrdersFilters
+                statusFilter={statusFilter}
+                directionFilter={directionFilter}
+                statusFilterOptions={statusFilterOptions}
+                onStatusFilterChange={setStatusFilter}
+                onDirectionFilterChange={setDirectionFilter}
+              />
+              {orders.length === 0 ? (
+                <Box
+                  p={4}
+                  borderWidth="1px"
+                  borderColor="gray.800"
+                  borderRadius="md"
+                >
+                  <Text fontSize="sm" color="gray.400">
+                    {emptyText}
+                  </Text>
+                </Box>
+              ) : filteredOrders.length === 0 ? (
+                <Box
+                  p={4}
+                  borderWidth="1px"
+                  borderColor="gray.800"
+                  borderRadius="md"
+                >
+                  <Text fontSize="sm" color="gray.400">
+                    No orders match the selected filters.
+                  </Text>
+                </Box>
+              ) : (
+                <OrdersList orders={filteredOrders} rowHeight={rowHeight} />
+              )}
+            </Drawer.Body>
+          </Drawer.Content>
+        </Drawer.Positioner>
+      </Portal>
+    </Drawer.Root>
+  );
+};

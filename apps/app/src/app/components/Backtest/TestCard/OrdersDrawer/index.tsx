@@ -7,32 +7,20 @@ import {
   formatCompactNumber,
   formatFee,
   formatInteger,
-  formatPercent,
-  formatSignedNumber,
   getPnlColor,
   OrdersDrawerPanel,
   type OrdersDrawerOrder,
-  type OrdersDrawerSummaryItem,
 } from '#components/Shared/OrdersDrawer';
 import { useBacktest } from '#store';
 import { useTestContext } from '../context';
 
 const BACKTEST_ORDER_ROW_HEIGHT = 254;
 
-const EXIT_ORDER_TYPES = new Set([
-  'CLOSE_LONG',
-  'CLOSE_SHORT',
-  'TAKE_PROFIT_LONG',
-  'TAKE_PROFIT_SHORT',
-  'STOP_LOSS_LONG',
-  'STOP_LOSS_SHORT',
-]);
-
-const isExitOrder = (order: OrderLogData[number]) =>
-  EXIT_ORDER_TYPES.has(order.type);
-
-const formatOrderType = (type: OrderLogData[number]['type']) =>
-  type.replaceAll('_', ' ');
+const backtestStatusFilterOptions = [
+  { label: 'All', value: 'all' },
+  { label: 'Open', value: 'active' },
+  { label: 'Closed', value: 'closed' },
+] as const;
 
 const getOrderStatus = (type: OrderLogData[number]['type']) => {
   if (type.startsWith('OPEN')) {
@@ -50,57 +38,6 @@ const getOrderStatus = (type: OrderLogData[number]['type']) => {
   return { label: 'CLOSE', color: 'gray' };
 };
 
-const buildBacktestSummaryItems = (
-  orders: OrderLogData,
-): OrdersDrawerSummaryItem[] => {
-  const closedOrders = orders.filter(isExitOrder);
-  const winningOrders = closedOrders.filter(
-    (order) =>
-      typeof order.profit === 'number' &&
-      Number.isFinite(order.profit) &&
-      order.profit > 0,
-  );
-  const sumPnl = (direction: OrderLogData[number]['direction']) =>
-    orders.reduce((total, order) => {
-      if (
-        order.direction !== direction ||
-        typeof order.profit !== 'number' ||
-        !Number.isFinite(order.profit)
-      ) {
-        return total;
-      }
-
-      return total + order.profit;
-    }, 0);
-  const winRate =
-    closedOrders.length > 0
-      ? (winningOrders.length / closedOrders.length) * 100
-      : 0;
-  const longPnl = sumPnl('LONG');
-  const shortPnl = sumPnl('SHORT');
-
-  return [
-    {
-      title: 'Total Closed Orders',
-      value: formatInteger(closedOrders.length),
-    },
-    {
-      title: 'Win Rate',
-      value: formatPercent(winRate),
-    },
-    {
-      title: 'P&L of Closed Long Orders (USDT)',
-      value: formatSignedNumber(longPnl),
-      color: getPnlColor(longPnl),
-    },
-    {
-      title: 'P&L of Closed Short Orders (USDT)',
-      value: formatSignedNumber(shortPnl),
-      color: getPnlColor(shortPnl),
-    },
-  ];
-};
-
 const mapBacktestOrder = (order: OrderLogData[number]): OrdersDrawerOrder => {
   const status = getOrderStatus(order.type);
 
@@ -111,6 +48,7 @@ const mapBacktestOrder = (order: OrderLogData[number]): OrdersDrawerOrder => {
       start: order.timestamp,
     },
     direction: order.direction,
+    status: order.type.startsWith('OPEN') ? 'active' : 'closed',
     statusLabel: status.label,
     statusColor: status.color,
     pnl: order.profit,
@@ -128,7 +66,7 @@ const mapBacktestOrder = (order: OrderLogData[number]): OrdersDrawerOrder => {
       },
       {
         title: 'Notional',
-        value: formatCompactNumber(order.amount, {
+        value: formatCompactNumber(order.price * order.qty, {
           maximumFractionDigits: 2,
           minimumFractionDigits: 2,
         }),
@@ -138,9 +76,11 @@ const mapBacktestOrder = (order: OrderLogData[number]): OrdersDrawerOrder => {
         value: formatFee(order.fee ?? null),
       },
       {
-        title: 'Type',
-        value: formatOrderType(order.type),
-        color: order.type.startsWith('OPEN') ? 'orange.300' : 'gray.300',
+        title: 'Equity',
+        value: formatCompactNumber(order.amount, {
+          maximumFractionDigits: 2,
+          minimumFractionDigits: 2,
+        }),
       },
       {
         title: 'Index',
@@ -150,34 +90,43 @@ const mapBacktestOrder = (order: OrderLogData[number]): OrdersDrawerOrder => {
   };
 };
 
-export const TestCardOrdersDrawer = () => {
-  const [open, setOpen] = useState(false);
+interface TestCardOrdersDrawerPanelProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}
+
+export const TestCardOrdersDrawerPanel = ({
+  open,
+  onOpenChange,
+}: TestCardOrdersDrawerPanelProps) => {
   const {
     testResult: { test },
   } = useTestContext();
   const { backtest, loading } = useBacktest(open ? test.name : undefined);
   const orders = useMemo(() => backtest.map(mapBacktestOrder), [backtest]);
-  const summaryItems = useMemo(
-    () => buildBacktestSummaryItems(backtest),
-    [backtest],
+
+  return (
+    <OrdersDrawerPanel
+      title={`${test.symbol} orders`}
+      open={open}
+      orders={orders}
+      rowHeight={BACKTEST_ORDER_ROW_HEIGHT}
+      statusFilterOptions={backtestStatusFilterOptions}
+      emptyText={loading ? 'Loading orders...' : 'No orders for this backtest.'}
+      onOpenChange={onOpenChange}
+    />
   );
+};
+
+export const TestCardOrdersDrawer = () => {
+  const [open, setOpen] = useState(false);
 
   return (
     <>
       <Button size="sm" variant="outline" onClick={() => setOpen(true)}>
         Orders
       </Button>
-      <OrdersDrawerPanel
-        title={`${test.symbol} orders`}
-        open={open}
-        orders={orders}
-        summaryItems={summaryItems}
-        rowHeight={BACKTEST_ORDER_ROW_HEIGHT}
-        emptyText={
-          loading ? 'Loading orders...' : 'No orders for this backtest.'
-        }
-        onOpenChange={setOpen}
-      />
+      <TestCardOrdersDrawerPanel open={open} onOpenChange={setOpen} />
     </>
   );
 };

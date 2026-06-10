@@ -17,8 +17,15 @@ const JsonCodeBlock = dynamic(() => import('./JsonCodeBlock'), { ssr: false });
 
 type TabType = 'test' | 'bot';
 
-export const TestCardConfigDrawer = () => {
-  const [open, setOpen] = useState(false);
+interface TestCardConfigDrawerPanelProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}
+
+export const TestCardConfigDrawerPanel = ({
+  open,
+  onOpenChange,
+}: TestCardConfigDrawerPanelProps) => {
   const [tab, setTab] = useState<TabType>('test');
   const { testResult } = useTestContext();
 
@@ -43,18 +50,9 @@ export const TestCardConfigDrawer = () => {
     >
       <Drawer.Root
         open={open}
-        onOpenChange={(e) => setOpen(e.open)}
+        onOpenChange={(e) => onOpenChange(e.open)}
         size={'lg'}
       >
-        <Drawer.Trigger asChild>
-          <IconButton
-            colorPalette="teal"
-            size="xs"
-            variant={open ? 'surface' : 'outline'}
-          >
-            <FiSettings />
-          </IconButton>
-        </Drawer.Trigger>
         <Portal>
           <Drawer.Backdrop />
           <Drawer.Positioner>
@@ -90,5 +88,23 @@ export const TestCardConfigDrawer = () => {
         </Portal>
       </Drawer.Root>
     </Tabs.Root>
+  );
+};
+
+export const TestCardConfigDrawer = () => {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <>
+      <IconButton
+        colorPalette="teal"
+        size="xs"
+        variant={open ? 'surface' : 'outline'}
+        onClick={() => setOpen(true)}
+      >
+        <FiSettings />
+      </IconButton>
+      <TestCardConfigDrawerPanel open={open} onOpenChange={setOpen} />
+    </>
   );
 };

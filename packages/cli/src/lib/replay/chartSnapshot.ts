@@ -1,4 +1,5 @@
 import type {
+  StrategyChartOrder,
   StrategyChartSnapshot,
   StrategyChartsSnapshotResponse,
 } from '@tradejs/types';
@@ -19,6 +20,42 @@ const toSimpleOrderLog = (
 ) =>
   orderLog.map((entry) => [entry.timestamp, entry.amount] as [number, number]);
 
+const toReplayChartOrders = (
+  orderLog: HistoricalSignalsReplayResult['strategies'][number]['orderLog'],
+): StrategyChartOrder[] =>
+  orderLog.map((entry, index) => {
+    const isOpenOrder = entry.type.startsWith('OPEN');
+    const equityBefore =
+      orderLog[index - 1]?.amount ??
+      (Number.isFinite(entry.amount) && Number.isFinite(entry.profit)
+        ? entry.amount - entry.profit
+        : null);
+
+    return {
+      id: `${entry.index}:${entry.timestamp}:${entry.type}`,
+      symbol: entry.symbol,
+      direction: entry.direction,
+      timestamp: entry.timestamp,
+      entryTimestamp: entry.timestamp,
+      exitTimestamp: isOpenOrder ? null : entry.timestamp,
+      exitReason: entry.type,
+      pnl: entry.profit,
+      equityBefore,
+      equityAfter: entry.amount,
+      qty: entry.qty,
+      notional: entry.qty * entry.price,
+      requestedEntryPrice: isOpenOrder ? entry.price : null,
+      entryPrice: isOpenOrder ? entry.price : null,
+      requestedExitPrice: isOpenOrder ? null : entry.price,
+      exitPrice: isOpenOrder ? null : entry.price,
+      openFee: isOpenOrder ? entry.fee ?? null : null,
+      closeFee: isOpenOrder ? null : entry.fee ?? null,
+      fundingFee: null,
+      totalFee: entry.fee ?? null,
+      sequence: entry.index + 1,
+    };
+  });
+
 export const buildReplayChartSnapshot = (params: {
   replayResult: HistoricalSignalsReplayResult;
   generatedAt: number;
@@ -36,7 +73,7 @@ export const buildReplayChartSnapshot = (params: {
         ...new Set(orderLog.map((entry) => entry.symbol).filter(Boolean)),
       ],
       orderLog: toSimpleOrderLog(orderLog),
-      orders: [],
+      orders: toReplayChartOrders(orderLog),
       stat,
       metrics: [
         {
