@@ -1,17 +1,7 @@
 'use client';
 
 import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
-import {
-  Box,
-  Button,
-  Checkbox,
-  ClientOnly,
-  CloseButton,
-  Dialog,
-  Flex,
-  Portal,
-  Text,
-} from '@chakra-ui/react';
+import { Box, ClientOnly, Flex, Text } from '@chakra-ui/react';
 import { usePathname } from 'next/navigation';
 import { FiFolder } from 'react-icons/fi';
 import type { StrategyChartsSnapshotResponse } from '@tradejs/types';
@@ -23,7 +13,11 @@ import {
 } from '#actions/strategies';
 import { RuntimeStrategyCard } from '#components/Strategies/RuntimeStrategyCard';
 import { RuntimeStrategyCardSkeleton } from '#components/Strategies/RuntimeStrategyCardSkeleton';
-import { StrategySnapshotCard } from '#components/Strategies/StrategySnapshotCard';
+import { StrategySnapshotList } from '#components/Strategies/StrategySnapshotList';
+import {
+  BulkDeleteToolbar,
+  useBulkSelection,
+} from '#components/Shared/BulkSelection';
 import type { RuntimeStrategiesResponse } from '#app/lib/runtimeStrategies';
 import { EmptyState, Segment, Select, toaster } from '#ui';
 
@@ -45,6 +39,13 @@ const HOURS_OPTIONS = [
 const normalizeMode = (value: string | null | undefined): StrategyMode =>
   value === 'replay' || value === 'ai' ? value : 'runtime';
 
+interface PendingSnapshotDelete {
+  mode: 'replay' | 'ai';
+  label: string;
+  labelLower: string;
+  cardIds: string[];
+}
+
 const modeFromPathname = (pathname: string | null) => {
   const segment = pathname?.split('/').filter(Boolean).at(-1);
   return normalizeMode(segment);
@@ -56,11 +57,10 @@ const RuntimeStrategiesContent = () => {
   const [mode, setMode] = useState<StrategyMode>(routeMode);
   const [hours, setHours] = useState('168');
   const [selectedStrategy, setSelectedStrategy] = useState(ALL_STRATEGIES);
-  const [selectedSnapshotCardIds, setSelectedSnapshotCardIds] = useState<
-    string[]
-  >([]);
   const [isDeleteSelectedOpen, setIsDeleteSelectedOpen] = useState(false);
   const [isDeletingSelected, setIsDeletingSelected] = useState(false);
+  const [pendingSnapshotDelete, setPendingSnapshotDelete] =
+    useState<PendingSnapshotDelete | null>(null);
   const [loading, setLoading] = useState(false);
   const [fulfilled, setFulfilled] = useState(false);
   const [error, setError] = useState('');
@@ -68,6 +68,9 @@ const RuntimeStrategiesContent = () => {
     useState<RuntimeStrategiesResponse | null>(null);
   const [snapshotData, setSnapshotData] =
     useState<StrategyChartsSnapshotResponse | null>(null);
+  const isSnapshotMode = mode !== 'runtime';
+  const snapshotModeLabel = mode === 'replay' ? 'Replay' : 'AI';
+  const snapshotModeLabelLower = snapshotModeLabel.toLowerCase();
 
   useEffect(() => {
     setMode(routeMode);
@@ -77,7 +80,6 @@ const RuntimeStrategiesContent = () => {
     const handlePopState = () => {
       setMode(modeFromPathname(window.location.pathname));
       setSelectedStrategy(ALL_STRATEGIES);
-      setSelectedSnapshotCardIds([]);
     };
 
     window.addEventListener('popstate', handlePopState);
@@ -89,7 +91,6 @@ const RuntimeStrategiesContent = () => {
 
     setMode(nextMode);
     setSelectedStrategy(ALL_STRATEGIES);
-    setSelectedSnapshotCardIds([]);
 
     window.history.pushState(null, '', `/routes/strategies/${nextMode}`);
   }, []);
@@ -175,97 +176,81 @@ const RuntimeStrategiesContent = () => {
     );
   }, [snapshotData?.strategies, selectedStrategy]);
 
-  const handleSnapshotDeleted = useCallback((cardId: string) => {
-    setSnapshotData((prev) => {
-      if (!prev) {
-        return prev;
-      }
-
-      return {
-        ...prev,
-        strategies: prev.strategies.filter(
-          (strategy) => strategy.cardId !== cardId,
-        ),
-      };
-    });
-    setSelectedSnapshotCardIds((prev) => prev.filter((id) => id !== cardId));
-  }, []);
-
   const filteredSnapshotCardIds = useMemo(
     () => filteredSnapshotStrategies.map((strategy) => strategy.cardId),
     [filteredSnapshotStrategies],
   );
-
-  const selectedFilteredCount = useMemo(() => {
-    const filteredSet = new Set(filteredSnapshotCardIds);
-    return selectedSnapshotCardIds.filter((cardId) => filteredSet.has(cardId))
-      .length;
-  }, [filteredSnapshotCardIds, selectedSnapshotCardIds]);
-
-  const allFilteredSelected =
-    mode === 'ai' &&
-    filteredSnapshotStrategies.length > 0 &&
-    selectedFilteredCount === filteredSnapshotStrategies.length;
-  const hasSelectedInFilter = mode === 'ai' && selectedFilteredCount > 0;
+  const allSnapshotCardIds = useMemo(
+    () => snapshotData?.strategies.map((strategy) => strategy.cardId) ?? [],
+    [snapshotData?.strategies],
+  );
+  const {
+    selectedIdSet: selectedSnapshotCardIdSet,
+    selectedScopedIds: selectedFilteredSnapshotCardIds,
+    selectedScopedCount: selectedFilteredCount,
+    hasScopedSelection: hasSelectedInFilter,
+    checkboxState: selectionCheckboxState,
+    toggleSelection: handleToggleSnapshotSelection,
+    setScopeSelected: handleSelectAllFilteredSnapshots,
+    removeSelection: removeDeletedSnapshotSelection,
+    clearSelection: clearSnapshotSelection,
+  } = useBulkSelection({
+    scopeIds: filteredSnapshotCardIds,
+    validIds: allSnapshotCardIds,
+    enabled: isSnapshotMode,
+  });
 
   useEffect(() => {
-    if (mode !== 'ai') {
-      setSelectedSnapshotCardIds([]);
+    clearSnapshotSelection();
+    setPendingSnapshotDelete(null);
+    setIsDeleteSelectedOpen(false);
+  }, [clearSnapshotSelection, mode]);
+
+  const handleSnapshotDeleted = useCallback(
+    (cardId: string) => {
+      setSnapshotData((prev) => {
+        if (!prev) {
+          return prev;
+        }
+
+        return {
+          ...prev,
+          strategies: prev.strategies.filter(
+            (strategy) => strategy.cardId !== cardId,
+          ),
+        };
+      });
+      removeDeletedSnapshotSelection([cardId]);
+    },
+    [removeDeletedSnapshotSelection],
+  );
+
+  const handleOpenDeleteSelectedSnapshots = () => {
+    if (mode === 'runtime' || selectedFilteredSnapshotCardIds.length === 0) {
+      setIsDeleteSelectedOpen(false);
+      setPendingSnapshotDelete(null);
       return;
     }
 
-    const actual = new Set(snapshotData?.strategies.map((item) => item.cardId));
-    setSelectedSnapshotCardIds((prev) => {
-      const next = prev.filter((cardId) => actual.has(cardId));
-
-      if (
-        next.length === prev.length &&
-        next.every((cardId, index) => cardId === prev[index])
-      ) {
-        return prev;
-      }
-
-      return next;
+    setPendingSnapshotDelete({
+      mode,
+      label: snapshotModeLabel,
+      labelLower: snapshotModeLabelLower,
+      cardIds: selectedFilteredSnapshotCardIds,
     });
-  }, [mode, snapshotData?.strategies]);
-
-  const handleToggleSnapshotSelection = (cardId: string, checked: boolean) => {
-    setSelectedSnapshotCardIds((prev) => {
-      if (checked) {
-        if (prev.includes(cardId)) {
-          return prev;
-        }
-        return [...prev, cardId];
-      }
-
-      return prev.filter((id) => id !== cardId);
-    });
-  };
-
-  const handleSelectAllFilteredSnapshots = (checked: boolean) => {
-    setSelectedSnapshotCardIds((prev) => {
-      const filteredSet = new Set(filteredSnapshotCardIds);
-
-      if (!checked) {
-        return prev.filter((cardId) => !filteredSet.has(cardId));
-      }
-
-      const next = new Set(prev);
-      for (const cardId of filteredSnapshotCardIds) {
-        next.add(cardId);
-      }
-      return Array.from(next);
-    });
+    setIsDeleteSelectedOpen(true);
   };
 
   const handleDeleteSelectedSnapshots = async () => {
-    const selectedSet = new Set(selectedSnapshotCardIds);
-    const targets = filteredSnapshotStrategies.filter((strategy) =>
-      selectedSet.has(strategy.cardId),
-    );
+    const pendingDelete = pendingSnapshotDelete;
 
-    if (mode !== 'ai' || targets.length === 0 || isDeletingSelected) {
+    if (
+      !pendingDelete ||
+      pendingDelete.cardIds.length === 0 ||
+      isDeletingSelected
+    ) {
       setIsDeleteSelectedOpen(false);
+      setPendingSnapshotDelete(null);
       return;
     }
 
@@ -273,13 +258,13 @@ const RuntimeStrategiesContent = () => {
 
     try {
       const results = await Promise.allSettled(
-        targets.map(async (strategy) => {
-          const deleted = await deleteStrategyCard('ai', strategy.cardId);
+        pendingDelete.cardIds.map(async (cardId) => {
+          const deleted = await deleteStrategyCard(pendingDelete.mode, cardId);
           if (!deleted) {
-            throw new Error(`Delete failed for ${strategy.cardId}`);
+            throw new Error(`Delete failed for ${cardId}`);
           }
 
-          return strategy.cardId;
+          return cardId;
         }),
       );
 
@@ -301,30 +286,37 @@ const RuntimeStrategiesContent = () => {
               }
             : prev,
         );
-        setSelectedSnapshotCardIds((prev) =>
-          prev.filter((cardId) => !deletedSet.has(cardId)),
-        );
+        removeDeletedSnapshotSelection(deletedIds);
       }
 
       if (failedCount === 0) {
         toaster.success({
-          title: 'AI cards deleted',
+          title: `${pendingDelete.label} cards deleted`,
           description: `Deleted: ${successCount}`,
         });
       } else {
         toaster.error({
           title: 'Bulk delete finished with errors',
-          description: `Deleted: ${successCount} of ${targets.length}`,
+          description: `Deleted: ${successCount} of ${pendingDelete.cardIds.length}`,
         });
       }
     } catch {
       toaster.error({
         title: 'Delete failed',
-        description: 'Failed to delete selected AI cards.',
+        description: `Failed to delete selected ${pendingDelete.labelLower} cards.`,
       });
     } finally {
       setIsDeletingSelected(false);
       setIsDeleteSelectedOpen(false);
+      setPendingSnapshotDelete(null);
+    }
+  };
+
+  const handleBulkDeleteDialogOpenChange = (open: boolean) => {
+    setIsDeleteSelectedOpen(open);
+
+    if (!open && !isDeletingSelected) {
+      setPendingSnapshotDelete(null);
     }
   };
 
@@ -356,6 +348,13 @@ const RuntimeStrategiesContent = () => {
     runtimeExchangeErrors.length > 0
       ? `Exchange fallback unavailable: ${runtimeExchangeErrors.slice(0, 2).join('; ')}`
       : '';
+  const deleteSelectedSnapshotCount =
+    pendingSnapshotDelete?.cardIds.length ?? selectedFilteredCount;
+  const deleteSnapshotLabel = pendingSnapshotDelete?.label ?? snapshotModeLabel;
+  const snapshotEmptyText =
+    mode === 'replay'
+      ? 'No replay trades for the selected run.'
+      : 'No approved trades for this quality bucket.';
 
   return (
     <ClientOnly>
@@ -428,92 +427,20 @@ const RuntimeStrategiesContent = () => {
             </Flex>
           </Flex>
 
-          {mode === 'ai' ? (
-            <Flex
-              mb={4}
-              pl={2}
-              gap={4}
-              alignItems="center"
-              w="full"
-              minH="32px"
-            >
-              <Checkbox.Root
-                size="sm"
-                colorPalette="teal"
-                checked={
-                  allFilteredSelected
-                    ? true
-                    : hasSelectedInFilter
-                      ? 'indeterminate'
-                      : false
-                }
-                onCheckedChange={(details) =>
-                  handleSelectAllFilteredSnapshots(details.checked === true)
-                }
-              >
-                <Checkbox.HiddenInput />
-                <Checkbox.Control bg="gray.800" borderColor="gray.500" />
-              </Checkbox.Root>
-              <Text color="gray.200" fontWeight="semibold">
-                Selected: {selectedFilteredCount}
-              </Text>
-
-              <Dialog.Root
-                open={isDeleteSelectedOpen}
-                onOpenChange={(e) => setIsDeleteSelectedOpen(e.open)}
-              >
-                <Dialog.Trigger asChild>
-                  <Button
-                    size="sm"
-                    colorPalette="red"
-                    variant="outline"
-                    disabled={!hasSelectedInFilter || isDeletingSelected}
-                  >
-                    Delete
-                  </Button>
-                </Dialog.Trigger>
-                <Portal>
-                  <Dialog.Backdrop />
-                  <Dialog.Positioner>
-                    <Dialog.Content>
-                      <Dialog.Header>
-                        <Dialog.Title>Delete selected AI cards</Dialog.Title>
-                        <Dialog.CloseTrigger asChild>
-                          <CloseButton position="absolute" right="3" top="3" />
-                        </Dialog.CloseTrigger>
-                      </Dialog.Header>
-                      <Dialog.Body>
-                        <Text fontSize="sm" color="gray.200">
-                          Delete selected AI cards ({selectedFilteredCount})?
-                        </Text>
-                        <Text fontSize="sm" color="gray.400" mt={2}>
-                          This action cannot be undone.
-                        </Text>
-                      </Dialog.Body>
-                      <Dialog.Footer>
-                        <Dialog.ActionTrigger asChild>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            disabled={isDeletingSelected}
-                          >
-                            Cancel
-                          </Button>
-                        </Dialog.ActionTrigger>
-                        <Button
-                          colorPalette="red"
-                          size="sm"
-                          onClick={handleDeleteSelectedSnapshots}
-                          loading={isDeletingSelected}
-                        >
-                          Delete
-                        </Button>
-                      </Dialog.Footer>
-                    </Dialog.Content>
-                  </Dialog.Positioner>
-                </Portal>
-              </Dialog.Root>
-            </Flex>
+          {isSnapshotMode ? (
+            <BulkDeleteToolbar
+              selectedCount={selectedFilteredCount}
+              checkboxState={selectionCheckboxState}
+              hasSelection={hasSelectedInFilter}
+              isDeleting={isDeletingSelected}
+              dialogOpen={isDeleteSelectedOpen}
+              deleteTitle={`Delete selected ${deleteSnapshotLabel} cards`}
+              deleteDescription={`Delete selected ${deleteSnapshotLabel} cards (${deleteSelectedSnapshotCount})?`}
+              onDialogOpenChange={handleBulkDeleteDialogOpenChange}
+              onToggleAll={handleSelectAllFilteredSnapshots}
+              onRequestDelete={handleOpenDeleteSelectedSnapshots}
+              onConfirmDelete={handleDeleteSelectedSnapshots}
+            />
           ) : null}
 
           {error ? (
@@ -556,25 +483,16 @@ const RuntimeStrategiesContent = () => {
                 />
               ))}
 
-            {!loading &&
-              mode !== 'runtime' &&
-              filteredSnapshotStrategies.map((strategy) => (
-                <StrategySnapshotCard
-                  key={strategy.cardId}
-                  snapshot={strategy}
-                  mode={mode}
-                  onDeleted={handleSnapshotDeleted}
-                  selected={selectedSnapshotCardIds.includes(strategy.cardId)}
-                  onToggleSelection={
-                    mode === 'ai' ? handleToggleSnapshotSelection : undefined
-                  }
-                  emptyText={
-                    mode === 'replay'
-                      ? 'No replay trades for the selected run.'
-                      : 'No approved trades for this quality bucket.'
-                  }
-                />
-              ))}
+            {!loading && mode !== 'runtime' ? (
+              <StrategySnapshotList
+                strategies={filteredSnapshotStrategies}
+                mode={mode}
+                selectedCardIds={selectedSnapshotCardIdSet}
+                onDeleted={handleSnapshotDeleted}
+                onToggleSelection={handleToggleSnapshotSelection}
+                emptyText={snapshotEmptyText}
+              />
+            ) : null}
           </Box>
         </Box>
       </Box>

@@ -26,7 +26,9 @@ import {
   formatFee,
   formatInteger,
   formatPercent,
+  formatPriceUsdt,
   formatSignedNumber,
+  formatUsdt,
   getPnlColor,
   OrdersDrawerPanel,
   type OrdersDrawerOrder,
@@ -531,11 +533,11 @@ const formatOrderReference = (orderId: string) => {
 const RiskLevelsDetail = ({ order }: { order: RuntimeOrderView }) => (
   <Box>
     <Text>
-      TP {formatCompactNumber(order.takeProfitPrice)} (
+      TP {formatPriceUsdt(order.takeProfitPrice)} (
       {formatPercent(order.takeProfitPercent, { signed: true })})
     </Text>
     <Text>
-      SL {formatCompactNumber(order.stopLossPrice)} (
+      SL {formatPriceUsdt(order.stopLossPrice)} (
       {formatPercent(order.stopLossPercent)})
     </Text>
   </Box>
@@ -1329,6 +1331,7 @@ const mapRuntimeOrder = (order: RuntimeOrderView): OrdersDrawerOrder => {
   return {
     id: order.orderId,
     title: order.symbol,
+    reference: formatOrderReference(order.orderId),
     period: {
       start: order.entryTimestamp,
       end: order.status === 'active' ? null : order.exitTimestamp,
@@ -1343,15 +1346,15 @@ const mapRuntimeOrder = (order: RuntimeOrderView): OrdersDrawerOrder => {
     metrics: [
       {
         title: 'Entry',
-        value: formatCompactNumber(displayEntryPrice),
+        value: formatPriceUsdt(displayEntryPrice),
         detail:
           order.actualEntryPrice == null
             ? 'actual n/a'
-            : `plan ${formatCompactNumber(order.entryPrice)} / slip ${formatPercent(order.entrySlippagePercent, { signed: true })}`,
+            : `plan ${formatPriceUsdt(order.entryPrice)} / slip ${formatPercent(order.entrySlippagePercent, { signed: true })}`,
       },
       {
         title: order.status === 'active' ? 'Current' : 'Exit',
-        value: formatCompactNumber(displayExitPrice),
+        value: formatPriceUsdt(displayExitPrice),
         detail:
           order.status === 'active' ? (
             <RiskLevelsDetail order={order} />
@@ -1360,24 +1363,17 @@ const mapRuntimeOrder = (order: RuntimeOrderView): OrdersDrawerOrder => {
           ),
       },
       {
+        title: 'Notional',
+        value: formatUsdt(notional),
+      },
+      {
         title: 'Fees',
         value: formatFee(order.totalFee),
         detail: <FeesDetail order={order} />,
       },
       {
-        title: 'Notional',
-        value:
-          notional == null
-            ? 'n/a'
-            : `${formatCompactNumber(notional, {
-                maximumFractionDigits: 2,
-                minimumFractionDigits: 2,
-              })} USDT`,
-      },
-      {
         title: 'Qty',
         value: formatCompactNumber(order.qty),
-        detail: `ref ${formatOrderReference(order.orderId)}`,
       },
     ],
   };

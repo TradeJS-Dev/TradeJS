@@ -12,7 +12,11 @@ import {
   DEFAULT_CONNECTOR_NAME,
 } from '@tradejs/node/connectors';
 import { loadTradejsConfig } from '@tradejs/node/cli';
-import { getStrategyCreator } from '@tradejs/node/strategies';
+import {
+  enrichSignalWithBinanceMarketContext,
+  enrichSignalWithGlobalMarketContext,
+  getStrategyCreator,
+} from '@tradejs/node/strategies';
 import type { TradejsConfigHooks } from '@tradejs/core/config';
 import {
   Candle,
@@ -490,6 +494,14 @@ export const runHistoricalSignalsReplay = async ({
             ethCandle?.timestamp === timestamp ? ethCandle : undefined,
           );
           if (result && typeof result !== 'string') {
+            await enrichSignalWithBinanceMarketContext({
+              signal: result,
+              env: 'PARITY',
+            });
+            await enrichSignalWithGlobalMarketContext({
+              signal: result,
+              env: 'PARITY',
+            });
             cycleSignals.push(result);
             signals.push(result);
           }

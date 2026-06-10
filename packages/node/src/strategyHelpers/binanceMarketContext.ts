@@ -44,7 +44,8 @@ const parseEnabledFlag = (value: unknown, env: string) => {
   const normalized = String(value ?? '')
     .trim()
     .toLowerCase();
-  if (!normalized) return env === 'BACKTEST' || env === 'CRON';
+  if (!normalized)
+    return env === 'BACKTEST' || env === 'CRON' || env === 'PARITY';
   if (['1', 'true', 'yes', 'on'].includes(normalized)) return true;
   if (['0', 'false', 'no', 'off'].includes(normalized)) return false;
   if (normalized === 'backtest') return env === 'BACKTEST';

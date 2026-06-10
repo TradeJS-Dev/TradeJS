@@ -7,6 +7,8 @@ import {
   formatCompactNumber,
   formatFee,
   formatInteger,
+  formatPriceUsdt,
+  formatUsdt,
   getPnlColor,
   OrdersDrawerPanel,
   type OrdersDrawerOrder,
@@ -58,7 +60,7 @@ const mapBacktestOrder = (order: OrderLogData[number]): OrdersDrawerOrder => {
     metrics: [
       {
         title: 'Price',
-        value: formatCompactNumber(order.price),
+        value: formatPriceUsdt(order.price),
       },
       {
         title: 'Qty',
@@ -66,10 +68,7 @@ const mapBacktestOrder = (order: OrderLogData[number]): OrdersDrawerOrder => {
       },
       {
         title: 'Notional',
-        value: formatCompactNumber(order.price * order.qty, {
-          maximumFractionDigits: 2,
-          minimumFractionDigits: 2,
-        }),
+        value: formatUsdt(order.price * order.qty),
       },
       {
         title: 'Fee',
@@ -77,10 +76,7 @@ const mapBacktestOrder = (order: OrderLogData[number]): OrdersDrawerOrder => {
       },
       {
         title: 'Equity',
-        value: formatCompactNumber(order.amount, {
-          maximumFractionDigits: 2,
-          minimumFractionDigits: 2,
-        }),
+        value: formatUsdt(order.amount),
       },
       {
         title: 'Index',

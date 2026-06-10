@@ -39,6 +39,8 @@ type OpenTradeResult = Omit<
   exitSlippageBps: number | null;
 };
 
+const PRICE_PRECISION = 8;
+
 export const createTestConnector: TestConnectorCreator = (
   connector,
   context,
@@ -82,6 +84,9 @@ export const createTestConnector: TestConnectorCreator = (
 
   const roundNullable = (value: number | null) =>
     value == null ? null : round(value);
+  const roundPrice = (value: number) => round(value, PRICE_PRECISION);
+  const roundNullablePrice = (value: number | null) =>
+    value == null ? null : roundPrice(value);
 
   const getSlippageCost = ({
     requestedPrice,
@@ -140,10 +145,10 @@ export const createTestConnector: TestConnectorCreator = (
       ...tradeResult,
       exitTimestamp: tradeResult.exitTimestamp ?? timestamp,
       exitReason: tradeResult.exitReason,
-      requestedEntryPrice: round(tradeResult.requestedEntryPrice),
-      entryPrice: round(tradeResult.entryPrice),
-      requestedExitPrice: roundNullable(tradeResult.requestedExitPrice),
-      exitPrice: roundNullable(tradeResult.exitPrice),
+      requestedEntryPrice: roundPrice(tradeResult.requestedEntryPrice),
+      entryPrice: roundPrice(tradeResult.entryPrice),
+      requestedExitPrice: roundNullablePrice(tradeResult.requestedExitPrice),
+      exitPrice: roundNullablePrice(tradeResult.exitPrice),
       grossProfit: round(tradeResult.grossProfit),
       netProfit: round(tradeResult.netProfit),
       openFee: round(tradeResult.openFee),

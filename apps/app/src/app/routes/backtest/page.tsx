@@ -1,34 +1,35 @@
 'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
-import {
-  Box,
-  Button,
-  Checkbox,
-  ClientOnly,
-  CloseButton,
-  Dialog,
-  Flex,
-  Portal,
-  Text,
-} from '@chakra-ui/react';
+import { Box, ClientOnly, Flex } from '@chakra-ui/react';
 import { deleteBacktest } from '#actions/backtest';
 import { useBacktestMutations, useTestList } from '#store';
 import { Select, toaster } from '#ui';
 import { CompareList } from '#components/Backtest/CompareList';
 import { TestList } from '#components/Backtest/TestList';
+import {
+  BulkDeleteToolbar,
+  useBulkSelection,
+} from '#components/Shared/BulkSelection';
 import { parseTestName } from '@tradejs/core/backtest';
 
 const ALL_STRATEGIES = '__all__';
 const ALL_SUITES = '__all__';
 const ALL_CONFIGS = '__all__';
 
+interface PendingBacktestDelete {
+  value: string;
+  strategyName?: string;
+}
+
 const Backtest = () => {
   const { tests, loadding, fulFilled } = useTestList();
   const { removeBacktestTest } = useBacktestMutations();
-  const [selectedTestNames, setSelectedTestNames] = useState<string[]>([]);
   const [isDeleteSelectedOpen, setIsDeleteSelectedOpen] = useState(false);
   const [isDeletingSelected, setIsDeletingSelected] = useState(false);
+  const [pendingDeleteTests, setPendingDeleteTests] = useState<
+    PendingBacktestDelete[]
+  >([]);
   const strategyItems = useMemo(() => {
     const names = new Set<string>();
     for (const test of tests) {
@@ -158,69 +159,50 @@ const Backtest = () => {
     () => filteredTests.map((test) => test.value),
     [filteredTests],
   );
-
-  const selectedFilteredCount = useMemo(() => {
-    const filteredSet = new Set(filteredTestNames);
-    return selectedTestNames.filter((testName) => filteredSet.has(testName))
-      .length;
-  }, [filteredTestNames, selectedTestNames]);
-
-  const allFilteredSelected =
-    filteredTests.length > 0 && selectedFilteredCount === filteredTests.length;
-  const hasSelectedInFilter = selectedFilteredCount > 0;
+  const allTestNames = useMemo(() => tests.map((test) => test.value), [tests]);
+  const {
+    selectedIds: selectedTestNames,
+    selectedScopedCount: selectedFilteredCount,
+    hasScopedSelection: hasSelectedInFilter,
+    checkboxState: selectionCheckboxState,
+    toggleSelection: handleToggleSelection,
+    setScopeSelected: handleSelectAllFiltered,
+    removeSelection: removeDeletedSelection,
+  } = useBulkSelection({
+    scopeIds: filteredTestNames,
+    validIds: allTestNames,
+  });
 
   const noData = fulFilled && !loadding && filteredTests.length === 0;
 
-  useEffect(() => {
-    const actual = new Set(tests.map((test) => test.value));
-    setSelectedTestNames((prev) => {
-      const next = prev.filter((testName) => actual.has(testName));
-
-      if (
-        next.length === prev.length &&
-        next.every((name, i) => name === prev[i])
-      ) {
-        return prev;
-      }
-
-      return next;
-    });
-  }, [tests]);
-
-  const handleToggleSelection = (testName: string, checked: boolean) => {
-    setSelectedTestNames((prev) => {
-      if (checked) {
-        if (prev.includes(testName)) {
-          return prev;
-        }
-        return [...prev, testName];
-      }
-
-      return prev.filter((name) => name !== testName);
-    });
-  };
-
-  const handleSelectAllFiltered = (checked: boolean) => {
-    setSelectedTestNames((prev) => {
-      if (!checked) {
-        const filteredSet = new Set(filteredTestNames);
-        return prev.filter((name) => !filteredSet.has(name));
-      }
-
-      const next = new Set(prev);
-      for (const name of filteredTestNames) {
-        next.add(name);
-      }
-      return Array.from(next);
-    });
-  };
-
-  const handleDeleteSelected = async () => {
+  const handleOpenDeleteSelected = () => {
     const selectedSet = new Set(selectedTestNames);
     const targets = filteredTests.filter((test) => selectedSet.has(test.value));
 
+    if (targets.length === 0) {
+      setIsDeleteSelectedOpen(false);
+      setPendingDeleteTests([]);
+      return;
+    }
+
+    setPendingDeleteTests(
+      targets.map((test) => ({
+        value: test.value,
+        strategyName:
+          typeof test.data?.strategyName === 'string'
+            ? test.data.strategyName
+            : undefined,
+      })),
+    );
+    setIsDeleteSelectedOpen(true);
+  };
+
+  const handleDeleteSelected = async () => {
+    const targets = pendingDeleteTests;
+
     if (targets.length === 0 || isDeletingSelected) {
       setIsDeleteSelectedOpen(false);
+      setPendingDeleteTests([]);
       return;
     }
 
@@ -229,7 +211,7 @@ const Backtest = () => {
     try {
       const results = await Promise.allSettled(
         targets.map(async (test) => {
-          const strategyName = test.data?.strategyName as string | undefined;
+          const strategyName = test.strategyName;
           if (!strategyName) {
             throw new Error(`Missing strategy for ${test.value}`);
           }
@@ -250,14 +232,10 @@ const Backtest = () => {
       const failedCount = results.length - successCount;
 
       if (successCount > 0) {
-        const deletedSet = new Set(
-          results
-            .filter((item) => item.status === 'fulfilled')
-            .map((item) => item.value),
-        );
-        setSelectedTestNames((prev) =>
-          prev.filter((testName) => !deletedSet.has(testName)),
-        );
+        const deletedIds = results
+          .filter((item) => item.status === 'fulfilled')
+          .map((item) => item.value);
+        removeDeletedSelection(deletedIds);
       }
 
       if (failedCount === 0) {
@@ -279,8 +257,21 @@ const Backtest = () => {
     } finally {
       setIsDeletingSelected(false);
       setIsDeleteSelectedOpen(false);
+      setPendingDeleteTests([]);
     }
   };
+
+  const handleBulkDeleteDialogOpenChange = (open: boolean) => {
+    setIsDeleteSelectedOpen(open);
+
+    if (!open && !isDeletingSelected) {
+      setPendingDeleteTests([]);
+    }
+  };
+
+  const deleteSelectedTestCount = isDeleteSelectedOpen
+    ? pendingDeleteTests.length
+    : selectedFilteredCount;
 
   return (
     <ClientOnly>
@@ -335,84 +326,19 @@ const Backtest = () => {
             </Flex>
             <CompareList />
           </Flex>
-          <Flex mb={4} pl={2} gap={4} alignItems="center" w="full" minH="32px">
-            <Checkbox.Root
-              size="sm"
-              colorPalette="teal"
-              checked={
-                allFilteredSelected
-                  ? true
-                  : hasSelectedInFilter
-                    ? 'indeterminate'
-                    : false
-              }
-              onCheckedChange={(details) =>
-                handleSelectAllFiltered(details.checked === true)
-              }
-            >
-              <Checkbox.HiddenInput />
-              <Checkbox.Control />
-            </Checkbox.Root>
-            <Text color="gray.200" fontWeight="semibold">
-              Selected: {selectedFilteredCount}
-            </Text>
-
-            <Dialog.Root
-              open={isDeleteSelectedOpen}
-              onOpenChange={(e) => setIsDeleteSelectedOpen(e.open)}
-            >
-              <Dialog.Trigger asChild>
-                <Button
-                  size="sm"
-                  colorPalette="red"
-                  variant="outline"
-                  disabled={!hasSelectedInFilter || isDeletingSelected}
-                >
-                  Delete
-                </Button>
-              </Dialog.Trigger>
-              <Portal>
-                <Dialog.Backdrop />
-                <Dialog.Positioner>
-                  <Dialog.Content>
-                    <Dialog.Header>
-                      <Dialog.Title>Delete selected tests</Dialog.Title>
-                      <Dialog.CloseTrigger asChild>
-                        <CloseButton position="absolute" right="3" top="3" />
-                      </Dialog.CloseTrigger>
-                    </Dialog.Header>
-                    <Dialog.Body>
-                      <Text fontSize="sm" color="gray.200">
-                        Delete selected tests ({selectedFilteredCount})?
-                      </Text>
-                      <Text fontSize="sm" color="gray.400" mt={2}>
-                        This action cannot be undone.
-                      </Text>
-                    </Dialog.Body>
-                    <Dialog.Footer>
-                      <Dialog.ActionTrigger asChild>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          disabled={isDeletingSelected}
-                        >
-                          Cancel
-                        </Button>
-                      </Dialog.ActionTrigger>
-                      <Button
-                        colorPalette="red"
-                        size="sm"
-                        onClick={handleDeleteSelected}
-                        loading={isDeletingSelected}
-                      >
-                        Delete
-                      </Button>
-                    </Dialog.Footer>
-                  </Dialog.Content>
-                </Dialog.Positioner>
-              </Portal>
-            </Dialog.Root>
-          </Flex>
+          <BulkDeleteToolbar
+            selectedCount={selectedFilteredCount}
+            checkboxState={selectionCheckboxState}
+            hasSelection={hasSelectedInFilter}
+            isDeleting={isDeletingSelected}
+            dialogOpen={isDeleteSelectedOpen}
+            deleteTitle="Delete selected tests"
+            deleteDescription={`Delete selected tests (${deleteSelectedTestCount})?`}
+            onDialogOpenChange={handleBulkDeleteDialogOpenChange}
+            onToggleAll={handleSelectAllFiltered}
+            onRequestDelete={handleOpenDeleteSelected}
+            onConfirmDelete={handleDeleteSelected}
+          />
           <Box flex="1" h="full" w="full">
             <TestList
               tests={filteredTests}

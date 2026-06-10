@@ -30,7 +30,9 @@ import {
   formatFee,
   formatInteger,
   formatPercent,
+  formatPriceUsdt,
   formatSignedNumber,
+  formatUsdt,
   getPnlColor,
   OrdersDrawerPanel,
   type OrdersDrawerOrder,
@@ -406,16 +408,7 @@ const buildHourlyPnlStats = (trades: SnapshotTradePoint[]): HourlyPnlStat[] => {
 };
 
 const formatPrice = (value: number | null | undefined) =>
-  formatCompactNumber(value, {
-    maximumFractionDigits: 8,
-    minimumFractionDigits: 0,
-  });
-
-const formatUsdt = (value: number | null | undefined) =>
-  `${formatCompactNumber(value, {
-    maximumFractionDigits: 2,
-    minimumFractionDigits: 2,
-  })} USDT`;
+  formatPriceUsdt(value);
 
 const formatBps = (value: number | null | undefined) => {
   if (typeof value !== 'number' || !Number.isFinite(value)) {
@@ -1078,17 +1071,8 @@ const buildReplayTradeCard = ({
       },
       {
         title: 'Equity',
-        value: formatCompactNumber(
-          exitOrder?.equityAfter ?? entryOrder.equityAfter,
-          {
-            maximumFractionDigits: 2,
-            minimumFractionDigits: 2,
-          },
-        ),
-        detail: `prev ${formatCompactNumber(entryOrder.equityBefore, {
-          maximumFractionDigits: 2,
-          minimumFractionDigits: 2,
-        })}`,
+        value: formatUsdt(exitOrder?.equityAfter ?? entryOrder.equityAfter),
+        detail: `prev ${formatUsdt(entryOrder.equityBefore)}`,
       },
     ],
   };
@@ -1228,14 +1212,8 @@ const buildReplaySnapshotOrders = (
           },
           {
             title: 'Equity',
-            value: formatCompactNumber(equityAfter, {
-              maximumFractionDigits: 2,
-              minimumFractionDigits: 2,
-            }),
-            detail: `prev ${formatCompactNumber(equityBefore, {
-              maximumFractionDigits: 2,
-              minimumFractionDigits: 2,
-            })}`,
+            value: formatUsdt(equityAfter),
+            detail: `prev ${formatUsdt(equityBefore)}`,
           },
         ],
       };
@@ -1328,14 +1306,8 @@ const buildAiSnapshotOrders = (
           },
           {
             title: 'Equity',
-            value: formatCompactNumber(order.equityAfter, {
-              maximumFractionDigits: 2,
-              minimumFractionDigits: 2,
-            }),
-            detail: `prev ${formatCompactNumber(order.equityBefore, {
-              maximumFractionDigits: 2,
-              minimumFractionDigits: 2,
-            })}`,
+            value: formatUsdt(order.equityAfter),
+            detail: `prev ${formatUsdt(order.equityBefore)}`,
           },
         ],
       };

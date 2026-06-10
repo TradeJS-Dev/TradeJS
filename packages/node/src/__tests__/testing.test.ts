@@ -792,6 +792,100 @@ describe('testing backtest flow', () => {
     );
   });
 
+  it('writes AI dataset rows from the enriched signal used by backtest payloads', async () => {
+    const data = [candle(1_000_050), candle(1_000_150), candle(1_000_250)];
+    const signal = {
+      signalId: 's1',
+      strategy: 'TrendLine',
+      symbol: 'ETHUSDT',
+      interval: '15',
+      direction: 'LONG',
+      timestamp: 1_000_150,
+      prices: {
+        currentPrice: 100,
+        takeProfitPrice: 104,
+        stopLossPrice: 98,
+      },
+      figures: {
+        trendLine: {
+          points: [{ timestamp: 1_000_100, price: 99 }],
+        },
+      },
+      indicators: {
+        maFast: [98, 99, 100],
+      },
+      additionalIndicators: {
+        baseContext: {
+          raw: {
+            trend: {
+              maFast: 100,
+            },
+          },
+        },
+      },
+    };
+    mockByBitConnector.kline.mockResolvedValue(data);
+    mockBinanceConnector.kline.mockResolvedValue(data);
+    mockCoinbaseConnector.kline.mockResolvedValue(data);
+    mockStrategy.mockResolvedValueOnce(signal).mockResolvedValueOnce('HOLD');
+    mockTestConnector.drainMlResultsBatch.mockResolvedValueOnce([
+      { signalId: 's1', profit: 3.5, tradeResult: { exitType: 'TAKE_PROFIT' } },
+    ]);
+    mockBuildAiPayload.mockImplementationOnce((aiSignal: any) => ({
+      signal: aiSignal,
+      figures: aiSignal.figures,
+      indicators: aiSignal.indicators,
+      additionalIndicators: aiSignal.additionalIndicators,
+    }));
+
+    await testing(createTest({ ai: true, chunkId: 'worker-ai' }));
+
+    expect(mockBuildAiPayload).toHaveBeenCalledWith(
+      expect.objectContaining({
+        signalId: 's1',
+        additionalIndicators: {
+          baseContext: {
+            raw: {
+              trend: {
+                maFast: 100,
+              },
+            },
+            derivatives: {
+              source: 'coinalyze',
+              summary: { pressure: 'neutral', riskFlags: [] },
+            },
+          },
+        },
+      }),
+    );
+    expect(mockAppendAiDatasetRow).toHaveBeenCalledWith({
+      strategyName: 'TrendLine',
+      chunkId: 'worker-ai',
+      row: expect.objectContaining({
+        signalId: 's1',
+        profit: 3.5,
+        tradeResult: { exitType: 'TAKE_PROFIT' },
+        payload: expect.objectContaining({
+          figures: signal.figures,
+          indicators: signal.indicators,
+          additionalIndicators: {
+            baseContext: {
+              raw: {
+                trend: {
+                  maFast: 100,
+                },
+              },
+              derivatives: {
+                source: 'coinalyze',
+                summary: { pressure: 'neutral', riskFlags: [] },
+              },
+            },
+          },
+        }),
+      }),
+    });
+  });
+
   it('matches ml results to pending payload by signalId for batched exits', async () => {
     const data = [
       candle(1_000_050),

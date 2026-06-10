@@ -23,6 +23,35 @@ describe('runtimeModeConfig', () => {
     });
   });
 
+  it('preserves detector and gate settings while overriding runtime mode fields', () => {
+    expect(
+      buildRuntimeModeStrategyConfig({
+        strategyConfig: {
+          ENV: 'CRON',
+          INTERVAL: '60',
+          MAKE_ORDERS: false,
+          AI_ENABLED: true,
+          AI_MODE: 'gate',
+          MIN_AI_QUALITY: 4,
+          TRENDLINE: { minTouches: 3, maxDistancePct: 0.8 },
+        },
+        env: 'PARITY',
+        interval: '15',
+        makeOrders: true,
+        recordRuntimeTrades: false,
+      }),
+    ).toEqual({
+      ENV: 'PARITY',
+      INTERVAL: '15',
+      MAKE_ORDERS: true,
+      RECORD_RUNTIME_TRADES: false,
+      AI_ENABLED: true,
+      AI_MODE: 'gate',
+      MIN_AI_QUALITY: 4,
+      TRENDLINE: { minTouches: 3, maxDistancePct: 0.8 },
+    });
+  });
+
   it('keeps CRON MAKE_ORDERS explicit even when undefined', () => {
     expect(
       buildRuntimeModeStrategyConfig({

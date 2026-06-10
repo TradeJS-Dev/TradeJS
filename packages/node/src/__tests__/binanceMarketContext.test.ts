@@ -133,6 +133,7 @@ describe('strategyHelpers/binanceMarketContext', () => {
   it('is enabled by default for backtest and signals environments', () => {
     expect(isBinanceMarketContextEnabled('BACKTEST')).toBe(true);
     expect(isBinanceMarketContextEnabled('CRON')).toBe(true);
+    expect(isBinanceMarketContextEnabled('PARITY')).toBe(true);
     expect(isBinanceMarketContextEnabled('LIVE')).toBe(false);
   });
 
@@ -211,6 +212,38 @@ describe('strategyHelpers/binanceMarketContext', () => {
           orderBookImbalanceAligned: true,
         }),
       }),
+    });
+  });
+
+  it('attaches Binance market context in parity env without an explicit enabled override', async () => {
+    const signal = makeSignal();
+
+    await expect(
+      enrichSignalWithBinanceMarketContext({
+        signal,
+        env: 'PARITY',
+      }),
+    ).resolves.toBe(true);
+
+    expect(mockGetLatestMarketTradeFlow).toHaveBeenCalledWith({
+      symbol: 'BTCUSDT',
+      interval: '15m',
+      atMs: timestamp,
+      maxAgeMs: 30 * 60_000,
+    });
+    expect(
+      signal.additionalIndicators.baseContext.participation.tradeFlow,
+    ).toMatchObject({
+      source: 'binance_agg_trades',
+      stale: false,
+      buyPressurePct: 0.6666667,
+    });
+    expect(
+      signal.additionalIndicators.baseContext.relative.marketBreadth,
+    ).toMatchObject({
+      source: 'binance_klines',
+      universe: 'binance_top30_usdt',
+      stale: false,
     });
   });
 

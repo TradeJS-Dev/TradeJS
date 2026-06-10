@@ -17,6 +17,13 @@ const CLOSED_2_TS = CURRENT_OPEN_TS - INTERVAL_MS;
 type StrategyTranscript = {
   initDataTimestamps: number[];
   initBtcDataTimestamps: number[];
+  initEthDataTimestamps: number[];
+  initConfig?: Record<string, unknown>;
+  connectorFlags?: {
+    replay: boolean;
+    test: boolean;
+  };
+  sharedIndicatorsReplayKey?: string;
   calls: Array<{
     candle: Candle;
     btcCandle: Candle;
@@ -315,6 +322,15 @@ const createTranscriptStrategy = (transcript: StrategyTranscript) => {
     transcript.initBtcDataTimestamps = (params.btcData ?? []).map(
       (candle: Candle) => candle.timestamp,
     );
+    transcript.initEthDataTimestamps = (params.ethData ?? []).map(
+      (candle: Candle) => candle.timestamp,
+    );
+    transcript.initConfig = params.config;
+    transcript.connectorFlags = {
+      replay: Boolean(params.connector?.__tradejsReplayConnector),
+      test: Boolean(params.connector?.__tradejsTestConnector),
+    };
+    transcript.sharedIndicatorsReplayKey = params.sharedIndicatorsReplayKey;
     return strategy;
   });
 };
@@ -322,6 +338,7 @@ const createTranscriptStrategy = (transcript: StrategyTranscript) => {
 const createEmptyTranscript = (): StrategyTranscript => ({
   initDataTimestamps: [],
   initBtcDataTimestamps: [],
+  initEthDataTimestamps: [],
   calls: [],
 });
 
@@ -613,6 +630,141 @@ const runSignalsPath = async () => {
   };
 };
 
+const runReplayPath = async () => {
+  jest.resetModules();
+
+  const transcript = createEmptyTranscript();
+  const strategyCreator = createTranscriptStrategy(transcript);
+  const connector = {
+    name: 'bybit',
+    kline: jest.fn(async ({ symbol, end }: { symbol: string; end?: number }) =>
+      (symbol === 'BTCUSDT' ? btcCandles : coinCandles).filter(
+        (candle) => end == null || candle.timestamp <= end,
+      ),
+    ),
+    getState: jest.fn(async () => ({})),
+    setState: jest.fn(async () => undefined),
+    getPosition: jest.fn(async () => null),
+    getPositions: jest.fn(async () => []),
+    placeOrder: jest.fn(async () => true),
+    setTakeProfits: jest.fn(async () => true),
+    setStopLoss: jest.fn(async () => true),
+    closePosition: jest.fn(async () => true),
+    getTickers: jest.fn(async () => ['ETHUSDT']),
+  };
+
+  jest.doMock('args', () => ({
+    __esModule: true,
+    default: {
+      example: jest.fn(),
+      option: jest.fn(),
+      parse: jest.fn(() => ({
+        timeframe: 15,
+        user: 'root',
+        connector: 'bybit',
+      })),
+    },
+  }));
+  jest.doMock('progress', () => ({
+    __esModule: true,
+    default: jest.fn().mockImplementation(() => ({ tick: jest.fn() })),
+  }));
+  jest.doMock('chalk', () => ({
+    __esModule: true,
+    default: {
+      blue: (value: string) => value,
+      yellow: (value: string | number) => String(value),
+      cyan: (value: string | number) => String(value),
+      green: (value: string | number) => String(value),
+      magenta: (value: string | number) => String(value),
+      gray: (value: string | number) => String(value),
+    },
+  }));
+  jest.doMock('@tradejs/node/connectors', () => ({
+    DEFAULT_CONNECTOR_NAME: 'bybit',
+    getConnectorCreatorByName: jest.fn(async () => async () => connector),
+  }));
+  jest.doMock('@tradejs/node/cli', () => ({
+    loadTradejsConfig: jest.fn(async () => ({ hooks: {} })),
+  }));
+  jest.doMock('@tradejs/node/strategies', () => ({
+    enrichSignalWithBinanceMarketContext: jest.fn(
+      attachBinanceParityBaseContext,
+    ),
+    enrichSignalWithGlobalMarketContext: jest.fn(async () => false),
+    getStrategyCreator: jest.fn(async () => strategyCreator),
+  }));
+  jest.doMock('@tradejs/core/backtest', () => ({
+    calculateStatsFull: jest.fn(() => ({
+      orders: 0,
+      wins: 0,
+      losses: 0,
+      netProfit: 0,
+      amount: 0,
+    })),
+  }));
+  jest.doMock('@tradejs/core/indicators', () => ({
+    alignSortedCandlesByTimestamp: (coin: Candle[], btc: Candle[]) => ({
+      alignedCoinCandles: coin,
+      alignedBtcCandles: btc,
+    }),
+  }));
+  jest.doMock('@tradejs/core/strategies', () => ({
+    releaseStrategyIndicatorsReplayCache: jest.fn(),
+    releaseStrategyReplayCache: jest.fn(),
+  }));
+  jest.doMock('@tradejs/core/time', () => ({
+    formatUnix: (timestamp: number) => String(timestamp),
+  }));
+  jest.doMock('@tradejs/infra/logger', () => ({
+    logger: {
+      info: jest.fn(),
+      warn: jest.fn(),
+      error: jest.fn(),
+    },
+  }));
+  jest.doMock('../lib/cliArgs', () => ({
+    normalizeCliArgv: (argv: string[]) => argv,
+  }));
+
+  const { runHistoricalSignalsReplay } = await import(
+    '../lib/replay/historicalSignalsReplay'
+  );
+  const result = await runHistoricalSignalsReplay({
+    preparedRun: {
+      connectorName: 'bybit',
+      marketConnector: connector as any,
+      tickers: ['ETHUSDT'],
+      window: {
+        start: CLOSED_1_TS,
+        end: CLOSED_2_TS,
+        source: 'test',
+      },
+      preloadStart: PRELOAD_TS,
+    },
+    interval: '15',
+    runtimeStrategies: [
+      {
+        strategyName: 'ParityStrategy',
+        strategyConfig: {
+          AI_ENABLED: true,
+          AI_MODE: 'gate',
+          MIN_AI_QUALITY: 4,
+          ENV: 'CRON',
+          INTERVAL: '60',
+          MAKE_ORDERS: false,
+        },
+      },
+    ],
+  });
+
+  return {
+    transcript,
+    result,
+    signals: result.signals,
+  };
+};
+
 describe('backtest/signals runtime parity', () => {
   afterEach(() => {
     jest.restoreAllMocks();
@@ -683,5 +835,52 @@ describe('backtest/signals runtime parity', () => {
     expect(
       backtestRun.enrichedSignals[0]?.additionalIndicators?.baseContext,
     ).toEqual(signalsRun.storedSignals[0]?.additionalIndicators?.baseContext);
+  });
+
+  it('evaluates historical replay with the same effective history and enriched signal payload', async () => {
+    const backtestRun = await runBacktestPath();
+    const replayRun = await runReplayPath();
+
+    expect(normalizeEffectiveLastEvaluation(backtestRun.transcript)).toEqual(
+      normalizeEffectiveLastEvaluation(replayRun.transcript),
+    );
+
+    expectSameRowsBothWays(
+      'backtest',
+      normalizeSignalRows(backtestRun.transcript),
+      'replay',
+      normalizeSignalRows(replayRun.transcript),
+    );
+
+    expect(replayRun.transcript.initConfig).toEqual({
+      AI_ENABLED: true,
+      AI_MODE: 'gate',
+      MIN_AI_QUALITY: 4,
+      ENV: 'PARITY',
+      INTERVAL: '15',
+      MAKE_ORDERS: true,
+      RECORD_RUNTIME_TRADES: false,
+    });
+    expect(replayRun.transcript.connectorFlags).toEqual({
+      replay: true,
+      test: true,
+    });
+    expect(replayRun.transcript.sharedIndicatorsReplayKey).toBe(
+      `replay:root:bybit:ETHUSDT:15:${CLOSED_1_TS}:${CLOSED_2_TS}`,
+    );
+    expect(replayRun.signals.map(toSignalSnapshot)).toEqual([
+      {
+        signalId: `parity-signal-${CLOSED_2_TS}`,
+        strategy: 'ParityStrategy',
+        symbol: 'ETHUSDT',
+        interval: '15',
+        direction: 'LONG',
+        signalTimestamp: CLOSED_2_TS,
+        currentPrice: 12,
+      },
+    ]);
+    expect(replayRun.signals[0]?.additionalIndicators?.baseContext).toEqual(
+      backtestRun.enrichedSignals[0]?.additionalIndicators?.baseContext,
+    );
   });
 });

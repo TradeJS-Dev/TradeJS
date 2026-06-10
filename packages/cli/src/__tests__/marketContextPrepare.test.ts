@@ -152,37 +152,55 @@ describe('prepareMarketContextForRun', () => {
     expect(mockBackfillDerivativesContextForBacktest).not.toHaveBeenCalled();
   });
 
-  it('routes replay and parity binance context through replay policy', async () => {
-    mockShouldBackfillBinanceMarketContextForReplay.mockReturnValue(true);
-    mockShouldBackfillCoingeckoGlobalContextForReplay.mockReturnValue(true);
+  it.each(['replay', 'parity'] as const)(
+    'routes %s binance and global context through replay policy',
+    async (mode) => {
+      mockShouldBackfillBinanceMarketContextForReplay.mockReturnValue(true);
+      mockShouldBackfillCoingeckoGlobalContextForReplay.mockReturnValue(true);
 
-    await prepareMarketContextForRun({
-      mode: 'parity',
-      userName: 'root',
-      projectRoot: '/repo',
-      symbols: ['SOLUSDT'],
-      interval: '15',
-      startMs: 1_000,
-      endMs: 2_000,
-      cacheOnly: false,
-      aiEnabled: false,
-      mlEnabled: false,
-      log: jest.fn(),
-    });
-
-    expect(
-      mockShouldBackfillBinanceMarketContextForReplay,
-    ).toHaveBeenCalledWith({
-      cacheOnly: false,
-    });
-    expect(mockBackfillBinanceMarketContextForReplay).toHaveBeenCalledWith(
-      expect.objectContaining({
+      await prepareMarketContextForRun({
+        mode,
+        userName: 'root',
+        projectRoot: '/repo',
         symbols: ['SOLUSDT'],
-      }),
-    );
-    expect(mockBackfillCoingeckoGlobalContextForReplay).toHaveBeenCalledWith({
-      startMs: 1_000,
-      endMs: 2_000,
-    });
-  });
+        interval: '15',
+        startMs: 1_000,
+        endMs: 2_000,
+        cacheOnly: false,
+        aiEnabled: false,
+        mlEnabled: false,
+        log: jest.fn(),
+      });
+
+      expect(
+        mockShouldBackfillBinanceMarketContextForReplay,
+      ).toHaveBeenCalledWith({
+        cacheOnly: false,
+      });
+      expect(mockBackfillBinanceMarketContextForReplay).toHaveBeenCalledWith(
+        expect.objectContaining({
+          symbols: ['SOLUSDT'],
+        }),
+      );
+      expect(
+        mockShouldBackfillCoingeckoGlobalContextForReplay,
+      ).toHaveBeenCalledWith({
+        cacheOnly: false,
+      });
+      expect(mockBackfillCoingeckoGlobalContextForReplay).toHaveBeenCalledWith({
+        startMs: 1_000,
+        endMs: 2_000,
+      });
+      expect(
+        mockBackfillBinanceMarketContextForBacktest,
+      ).not.toHaveBeenCalled();
+      expect(mockBackfillBinanceMarketContextForSignals).not.toHaveBeenCalled();
+      expect(
+        mockBackfillCoingeckoGlobalContextForBacktest,
+      ).not.toHaveBeenCalled();
+      expect(
+        mockBackfillCoingeckoGlobalContextForSignals,
+      ).not.toHaveBeenCalled();
+    },
+  );
 });

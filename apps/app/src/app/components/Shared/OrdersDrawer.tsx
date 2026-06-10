@@ -31,6 +31,7 @@ export interface OrdersDrawerMetric {
 export interface OrdersDrawerOrder {
   id: string;
   title: string;
+  reference?: ReactNode;
   subtitle?: ReactNode;
   period?: {
     start: number | null | undefined;
@@ -109,6 +110,31 @@ export const formatCompactNumber = (
   });
 };
 
+export const formatUsdt = (
+  value: number | null | undefined,
+  {
+    signed = false,
+    maximumFractionDigits = 2,
+    minimumFractionDigits = 2,
+  }: Intl.NumberFormatOptions & { signed?: boolean } = {},
+) => {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return 'n/a';
+  }
+
+  const prefix = signed && value > 0 ? '+' : '';
+  return `${prefix}${value.toLocaleString('ru-RU', {
+    maximumFractionDigits,
+    minimumFractionDigits,
+  })} USDT`;
+};
+
+export const formatPriceUsdt = (value: number | null | undefined) =>
+  formatUsdt(value, {
+    maximumFractionDigits: 8,
+    minimumFractionDigits: 0,
+  });
+
 export const formatInteger = (value: number | null | undefined) => {
   if (typeof value !== 'number' || !Number.isFinite(value)) {
     return 'n/a';
@@ -155,15 +181,11 @@ export const formatOrderPeriod = ({
 };
 
 export const formatFee = (value: number | null | undefined) => {
-  if (typeof value !== 'number' || !Number.isFinite(value)) {
-    return 'n/a';
-  }
-
-  const prefix = value > 0 ? '+' : '';
-  return `${prefix}${formatCompactNumber(value, {
+  return formatUsdt(value, {
+    signed: true,
     maximumFractionDigits: 8,
     minimumFractionDigits: 0,
-  })} USDT`;
+  });
 };
 
 export const formatPercent = (
@@ -405,6 +427,11 @@ const OrderCard = ({ order }: { order: OrdersDrawerOrder }) => {
                 {order.statusLabel}
               </Badge>
             ) : null}
+            {order.reference ? (
+              <Text color="gray.500" fontSize="xs" fontFamily="mono">
+                ref {order.reference}
+              </Text>
+            ) : null}
           </Flex>
           {subtitle ? (
             <Box mt={1} color="gray.500" fontSize="xs" lineHeight="1.2">
@@ -437,7 +464,7 @@ const OrderCard = ({ order }: { order: OrdersDrawerOrder }) => {
             lineHeight="1"
             whiteSpace="nowrap"
           >
-            {formatSignedNumber(order.pnl)}
+            {formatUsdt(order.pnl, { signed: true })}
           </Text>
         </Flex>
       </Flex>

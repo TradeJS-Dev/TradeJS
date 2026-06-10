@@ -43,6 +43,7 @@ import {
   type AiTrainDuplicateSignalRow,
   type AiTrainSymbolQuarantineSummary,
 } from '../lib/aiTrainQuarantine';
+import { extractSignalFromAiDatasetRow } from '../lib/aiTrainDataset';
 
 args.example(
   'yarn ai-train -n 50 --minQuality 4',
@@ -361,21 +362,8 @@ const resolveMergedDatasetFiles = async ({
   );
 };
 
-const extractSignalFromDatasetRow = (row: AiDatasetRow) => {
-  const { payload } = row;
-
-  return {
-    ...payload.signal,
-    strategy: payload.signal.strategy,
-    figures: payload.figures ?? {},
-    indicators: payload.indicators ?? {},
-    additionalIndicators: payload.additionalIndicators ?? {},
-    prices: payload.signal.prices,
-  } as Signal;
-};
-
 const resolvePromptRunContext = (row: AiDatasetRow) => {
-  const signal = extractSignalFromDatasetRow(row);
+  const signal = extractSignalFromAiDatasetRow(row);
 
   return {
     signal,

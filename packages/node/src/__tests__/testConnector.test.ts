@@ -444,6 +444,44 @@ describe('testConnector', () => {
     expect(result.inlinePositionLog).toHaveLength(1);
   });
 
+  it('preserves sub-unit price precision in closed signal trade results', async () => {
+    const connector = createTestConnector(baseConnector as any, {
+      mlEnabled: true,
+    });
+
+    await connector.placeOrder({
+      symbol: 'TOKENUSDT',
+      qty: 1000,
+      price: 0.04228,
+      isLimit: false,
+      timestamp: 1,
+      direction: 'LONG',
+      signal: {
+        signalId: 'sig-precision',
+      } as any,
+    });
+    await connector.closePosition({
+      symbol: 'TOKENUSDT',
+      price: 0.04321,
+      isLimit: false,
+      timestamp: 2,
+      direction: 'LONG',
+    });
+
+    const expectedEntryPrice = executionPrice(0.04228, 'LONG', 'entry');
+    const expectedExitPrice = executionPrice(0.04321, 'LONG', 'exit');
+    const [closedResult] = await connector.drainMlResultsBatch();
+
+    expect(closedResult?.tradeResult).toEqual(
+      expect.objectContaining({
+        requestedEntryPrice: 0.04228,
+        entryPrice: round(expectedEntryPrice, 8),
+        requestedExitPrice: 0.04321,
+        exitPrice: round(expectedExitPrice, 8),
+      }),
+    );
+  });
+
   it('computes short take profit with exit fee', async () => {
     const connector = createTestConnector(baseConnector as any, {
       userName: 'alice',

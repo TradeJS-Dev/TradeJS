@@ -102,9 +102,10 @@ describe('strategyHelpers/globalMarketContext', () => {
     });
   });
 
-  it('is disabled by default for backtest and enabled by default for cron', () => {
+  it('is disabled by default for backtest and enabled by default for runtime-like envs', () => {
     expect(isGlobalMarketContextEnabled('BACKTEST')).toBe(false);
     expect(isGlobalMarketContextEnabled('CRON')).toBe(true);
+    expect(isGlobalMarketContextEnabled('PARITY')).toBe(true);
     expect(isGlobalMarketContextEnabled('LIVE')).toBe(false);
   });
 
@@ -172,6 +173,31 @@ describe('strategyHelpers/globalMarketContext', () => {
         btcDominanceAligned: true,
         btcDominanceStale: false,
       },
+    });
+  });
+
+  it('attaches CoinGecko context in parity env without an explicit enabled override', async () => {
+    const signal = makeSignal();
+
+    await expect(
+      enrichSignalWithGlobalMarketContext({
+        signal,
+        env: 'PARITY',
+      }),
+    ).resolves.toBe(true);
+
+    expect(mockGetLatestMarketGlobalContext).toHaveBeenCalledWith({
+      source: 'coingecko_global',
+      atMs: timestamp,
+      maxAgeMs: 36 * 60 * 60_000,
+    });
+    expect(
+      signal.additionalIndicators.baseContext.relative.btcDominance,
+    ).toMatchObject({
+      source: 'coingecko_global',
+      stale: false,
+      btcDominancePct: 54.5,
+      altLiquidityRegime: 'alt_friendly',
     });
   });
 
