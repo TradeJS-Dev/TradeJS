@@ -958,7 +958,7 @@ describe('signals script', () => {
     );
   });
 
-  it('sends a separate Telegram warning when signals run exceeds five minutes', async () => {
+  it('sends a separate Telegram warning when signals run exceeds ten minutes', async () => {
     const nowSpy = jest.spyOn(Date, 'now');
     nowSpy.mockReturnValue(1_000);
     try {
@@ -978,7 +978,7 @@ describe('signals script', () => {
       });
 
       nowSpy.mockReturnValueOnce(1_000);
-      nowSpy.mockReturnValue(302_000);
+      nowSpy.mockReturnValue(602_000);
       await signals();
 
       expect(mocks.sendTextToTG).toHaveBeenCalledWith(
@@ -986,11 +986,11 @@ describe('signals script', () => {
         { userName: 'root' },
       );
       expect(mocks.sendTextToTG).toHaveBeenCalledWith(
-        expect.stringContaining('Duration: <b>301.0s</b>'),
+        expect.stringContaining('Duration: <b>601.0s</b>'),
         { userName: 'root' },
       );
       expect(mocks.sendTextToTG).toHaveBeenCalledWith(
-        expect.stringContaining('Threshold: <b>300.0s</b>'),
+        expect.stringContaining('Threshold: <b>600.0s</b>'),
         { userName: 'root' },
       );
     } finally {

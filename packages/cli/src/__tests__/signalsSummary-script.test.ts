@@ -332,17 +332,28 @@ describe('signals summary script', () => {
 
     await module.signalsSummary();
 
-    expect(sendTextToTG).toHaveBeenCalledTimes(2);
-    expect(sendDocumentToTG).toHaveBeenCalledTimes(1);
+    expect(sendTextToTG).toHaveBeenCalledTimes(1);
+    expect(sendDocumentToTG).toHaveBeenCalledTimes(2);
     expect(sendDocumentToTG.mock.calls[0]?.[1]).toEqual({ userName: 'root' });
-    const attachment = sendDocumentToTG.mock.calls[0]?.[0] as
-      | { filename?: string; content?: string }
+    expect(sendDocumentToTG.mock.calls[1]?.[1]).toEqual({ userName: 'root' });
+    const attachments = sendDocumentToTG.mock.calls.map((call) => call[0]) as
+      | Array<{ filename?: string; content?: string }>
       | undefined;
-    expect(attachment?.filename).toBe(
+    const signalsAttachment = attachments?.find((attachment) =>
+      attachment.filename?.startsWith('tradejs-signals-summary-'),
+    );
+    const debugAttachment = attachments?.find((attachment) =>
+      attachment.filename?.startsWith('tradejs-runtime-debug-'),
+    );
+    expect(signalsAttachment?.filename).toBe(
+      'tradejs-signals-summary-root-2023-11-16.txt',
+    );
+    expect(debugAttachment?.filename).toBe(
       'tradejs-runtime-debug-root-2023-11-16.json',
     );
-    expect(typeof attachment?.content).toBe('string');
-    const debugPayload = JSON.parse(String(attachment?.content));
+    expect(typeof signalsAttachment?.content).toBe('string');
+    expect(typeof debugAttachment?.content).toBe('string');
+    const debugPayload = JSON.parse(String(debugAttachment?.content));
     expect(debugPayload).toMatchObject({
       reportType: 'runtime-daily-debug',
       userName: 'root',
@@ -366,34 +377,37 @@ describe('signals summary script', () => {
       activeTrade: 'users:root:runtime:active-trades:BTCUSDT',
       signal: 'store:signals:BTCUSDT:sig-1',
     });
-    const signalsMessage = sendTextToTG.mock.calls[0]?.[0];
-    const tradesMessage = sendTextToTG.mock.calls[1]?.[0];
-    expect(typeof signalsMessage).toBe('string');
+    const tradesMessage = sendTextToTG.mock.calls[0]?.[0];
+    const signalsReport = signalsAttachment?.content;
+    expect(typeof signalsReport).toBe('string');
     expect(typeof tradesMessage).toBe('string');
     if (
-      typeof signalsMessage !== 'string' ||
+      typeof signalsReport !== 'string' ||
       typeof tradesMessage !== 'string'
     ) {
-      throw new Error('Expected summary messages to be strings');
+      throw new Error(
+        'Expected summary report and trades message to be strings',
+      );
     }
-    expect(signalsMessage).toContain('TradeJS daily summary');
-    expect(signalsMessage).toContain('📡 <b>Signals</b>');
-    expect(signalsMessage).toContain('💰 <b>24h PnL:</b> <b>-16.00</b>');
-    expect(signalsMessage).toContain('🏆 <b>WinRate:</b> <b>0.00% (0/1)</b>');
-    expect(signalsMessage).toContain(
-      '↗️ <b>LONG:</b> <b>1</b>, ↘️ <b>SHORT:</b> <b>1</b>',
+    expect(signalsReport).toContain('TradeJS daily summary');
+    expect(signalsReport).toContain('📡 Signals');
+    expect(signalsReport).toContain('💰 24h PnL: -16.00');
+    expect(signalsReport).toContain('🏆 WinRate: 0.00% (0/1)');
+    expect(signalsReport).toContain('↗️ LONG: 1, ↘️ SHORT: 1');
+    expect(signalsReport).toContain('TrendLine\ncompleted=1');
+    expect(signalsReport).toContain('ReverseTrendLine\nskipped=1');
+    expect(signalsReport).toContain(
+      'ReverseTrendLine\nskipped=1\nevaluated=1, signals=1',
     );
-    expect(signalsMessage).toContain('<b>TrendLine</b>\ncompleted=<b>1</b>');
-    expect(signalsMessage).toContain(
-      '<b>ReverseTrendLine</b>\nskipped=<b>1</b>',
-    );
-    expect(signalsMessage).toContain(
-      '<b>ReverseTrendLine</b>\nskipped=<b>1</b>\nevaluated=<b>1</b>, signals=<b>1</b>',
-    );
-    expect(signalsMessage).toContain('<b>skip from AI</b>:');
-    expect(signalsMessage).toContain('MIN_AI_QUALITY: <b>1</b>');
+    expect(signalsReport).toContain('skip from AI:');
+    expect(signalsReport).toContain('MIN_AI_QUALITY: 1');
     expect(tradesMessage).toContain('TradeJS daily summary');
     expect(tradesMessage).toContain('💼 <b>Trades</b>');
+    expect(tradesMessage).not.toContain('📡 <b>Signals</b>');
+    expect(tradesMessage).toContain('📎 <b>Signal report file</b>');
+    expect(tradesMessage).toContain(
+      'File: <code>tradejs-signals-summary-root-2023-11-16.txt</code>',
+    );
     expect(tradesMessage).toContain('📎 <b>Replay debug file</b>');
     expect(tradesMessage).toContain(
       'File: <code>tradejs-runtime-debug-root-2023-11-16.json</code>',
@@ -405,10 +419,10 @@ describe('signals summary script', () => {
       'Redis refs: <code>trade</code>, <code>tradeBucket</code>, <code>activeTrade</code>, <code>signal</code>, <code>evaluation</code>',
     );
     expect(tradesMessage).toContain(
-      '<b>TrendLine</b>\ntotal=<b>1</b>, 🔴 (PnL <b>-12.00</b>)\n- BTCUSDT: PnL <b>-12.00</b> 🔴',
+      '<b>TrendLine</b> (<b>1</b>)\nActive PnL: <b>-12.00$</b> (<b>1</b>)\n- BTCUSDT: PnL <b>-12.00$</b> 🔴',
     );
     expect(tradesMessage).toContain(
-      '<b>ReverseTrendLine</b>\ntotal=<b>1</b>, ❌ (PnL <b>-4.00</b>)\n- ETHUSDT: PnL <b>-4.00</b> ❌',
+      '<b>ReverseTrendLine</b> (<b>1</b>)\nClosed PnL: <b>-4.00$</b> (<b>1</b>)\n- ETHUSDT: PnL <b>-4.00$</b> ❌',
     );
     expect(setData).toHaveBeenCalledWith(
       redisKeys.runtimeTrade('root', 'ord-2'),
@@ -593,51 +607,56 @@ describe('signals summary script', () => {
 
     await module.signalsSummary();
 
-    expect(sendTextToTG).toHaveBeenCalledTimes(2);
-    expect(sendDocumentToTG).toHaveBeenCalledTimes(1);
-    const signalsMessage = sendTextToTG.mock.calls[0]?.[0];
-    const tradesMessage = sendTextToTG.mock.calls[1]?.[0];
-    expect(typeof signalsMessage).toBe('string');
+    expect(sendTextToTG).toHaveBeenCalledTimes(1);
+    expect(sendDocumentToTG).toHaveBeenCalledTimes(2);
+    const attachments = sendDocumentToTG.mock.calls.map((call) => call[0]) as
+      | Array<{ filename?: string; content?: string }>
+      | undefined;
+    const signalsAttachment = attachments?.find((attachment) =>
+      attachment.filename?.startsWith('tradejs-signals-summary-'),
+    );
+    const tradesMessage = sendTextToTG.mock.calls[0]?.[0];
+    const signalsReport = signalsAttachment?.content;
+    expect(typeof signalsReport).toBe('string');
     expect(typeof tradesMessage).toBe('string');
     if (
-      typeof signalsMessage !== 'string' ||
+      typeof signalsReport !== 'string' ||
       typeof tradesMessage !== 'string'
     ) {
-      throw new Error('Expected summary messages to be strings');
+      throw new Error(
+        'Expected summary report and trades message to be strings',
+      );
     }
 
-    expect(signalsMessage).toContain('TradeJS weekly summary');
-    expect(signalsMessage).toContain('📡 <b>Signals</b>');
-    expect(signalsMessage).toContain('Range: <b>168h</b>');
-    expect(signalsMessage).toContain('💰 <b>168h PnL:</b> <b>n/a</b>');
-    expect(signalsMessage).toContain('🏆 <b>WinRate:</b> <b>n/a</b>');
-    expect(signalsMessage).toContain(
-      '↗️ <b>LONG:</b> <b>0</b>, ↘️ <b>SHORT:</b> <b>0</b>',
+    expect(signalsReport).toContain('TradeJS weekly summary');
+    expect(signalsReport).toContain('📡 Signals');
+    expect(signalsReport).toContain('Range: 168h');
+    expect(signalsReport).toContain('💰 168h PnL: n/a');
+    expect(signalsReport).toContain('🏆 WinRate: n/a');
+    expect(signalsReport).toContain('↗️ LONG: 0, ↘️ SHORT: 0');
+    expect(signalsReport).toContain('AdaptiveMomentumRibbon\nskipped=1');
+    expect(signalsReport).toContain('ReverseTrendLine\nnone');
+    expect(signalsReport).toContain('TrendLine\nnone');
+    expect(signalsReport).toContain('VolumeDivergence\nsignals=0');
+    expect(signalsReport).toContain(
+      'VolumeDivergence\nsignals=0\nevaluated=1, signals=0',
     );
-    expect(signalsMessage).toContain(
-      '<b>AdaptiveMomentumRibbon</b>\nskipped=<b>1</b>',
-    );
-    expect(signalsMessage).toContain('<b>ReverseTrendLine</b>\nnone');
-    expect(signalsMessage).toContain('<b>TrendLine</b>\nnone');
-    expect(signalsMessage).toContain(
-      '<b>VolumeDivergence</b>\nsignals=<b>0</b>',
-    );
-    expect(signalsMessage).toContain(
-      '<b>VolumeDivergence</b>\nsignals=<b>0</b>\nevaluated=<b>1</b>, signals=<b>0</b>',
-    );
-    expect(signalsMessage).toContain('<b>skip from core</b>:');
-    expect(signalsMessage).toContain('NO_DIVERGENCE: <b>1</b>');
+    expect(signalsReport).toContain('skip from core:');
+    expect(signalsReport).toContain('NO_DIVERGENCE: 1');
     expect(tradesMessage).toContain('TradeJS weekly summary');
     expect(tradesMessage).toContain('💼 <b>Trades</b>');
+    expect(tradesMessage).not.toContain('📡 <b>Signals</b>');
+    expect(tradesMessage).toContain('📎 <b>Signal report file</b>');
+    expect(tradesMessage).toContain(
+      'File: <code>tradejs-signals-summary-root-2023-11-16.txt</code>',
+    );
     expect(tradesMessage).toContain('📎 <b>Replay debug file</b>');
     expect(tradesMessage).toContain(
       'Inside: trades=<b>0</b>, signals=<b>0</b>, evaluations=<b>0</b>',
     );
-    expect(tradesMessage).toContain(
-      '<b>AdaptiveMomentumRibbon</b>\ntotal=<b>0</b>',
-    );
-    expect(tradesMessage).toContain('<b>ReverseTrendLine</b>\ntotal=<b>0</b>');
-    expect(tradesMessage).toContain('<b>TrendLine</b>\ntotal=<b>0</b>');
-    expect(tradesMessage).toContain('<b>VolumeDivergence</b>\ntotal=<b>0</b>');
+    expect(tradesMessage).toContain('<b>AdaptiveMomentumRibbon</b> (<b>0</b>)');
+    expect(tradesMessage).toContain('<b>ReverseTrendLine</b> (<b>0</b>)');
+    expect(tradesMessage).toContain('<b>TrendLine</b> (<b>0</b>)');
+    expect(tradesMessage).toContain('<b>VolumeDivergence</b> (<b>0</b>)');
   });
 });

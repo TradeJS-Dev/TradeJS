@@ -1,9 +1,7 @@
 import { Signal, Interval, SignalAnalysis } from '@tradejs/types';
 import { delay } from '@tradejs/core/async';
 import { formatNumber } from '@tradejs/core/math';
-import { getRuntimeStorageDayKey } from '@tradejs/core/time';
 import { logger } from '@tradejs/infra/logger';
-import { redisKeys } from '@tradejs/infra/redis';
 import { getUserSettings } from '@tradejs/infra/userSettings';
 import { getScreenshotBuffer, getScreenshotFilename } from './screenshot';
 
@@ -78,23 +76,6 @@ const normalizeQuality = (value?: number) =>
 const formatOrderValue = (value: number) => {
   const rounded = Number(value.toFixed(2));
   return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(2);
-};
-
-const buildRuntimeDebugKeyLines = (signal: Signal, userName: string) => {
-  if (signal.orderStatus !== 'completed' || !signal.orderId) {
-    return [];
-  }
-
-  const dayKey = getRuntimeStorageDayKey(signal.timestamp);
-  const evaluationId = `${signal.strategy}:${signal.symbol}:${signal.timestamp}`;
-  return [
-    '<b>Redis debug</b>',
-    `trade: <code>${escapeHtml(redisKeys.runtimeTrade(userName, signal.orderId))}</code>`,
-    `tradeBucket: <code>${escapeHtml(redisKeys.runtimeTradeBucket(userName, dayKey))}</code> field <code>${escapeHtml(signal.orderId)}</code>`,
-    `activeTrade: <code>${escapeHtml(redisKeys.runtimeActiveTrade(userName, signal.symbol))}</code>`,
-    `signal: <code>${escapeHtml(redisKeys.storeSignal(signal.symbol, signal.signalId))}</code>`,
-    `evaluation: <code>${escapeHtml(redisKeys.runtimeSignalEvaluationBucket(userName, dayKey, signal.strategy))}</code> field <code>${escapeHtml(evaluationId)}</code>`,
-  ];
 };
 
 const getDisplayDecision = (
@@ -528,8 +509,6 @@ export const formatMessage = (
         lines.push('🟡 Using base config');
       }
 
-      const runtimeDebugKeyLines = buildRuntimeDebugKeyLines(signal, userName);
-
       if (ml) {
         lines.push(
           `${ml.passed ? '🟢 ML: PASS' : '🔴 ML: FAIL'} (${ml.probability.toFixed(3)} / ${ml.threshold.toFixed(2)})`,
@@ -566,11 +545,6 @@ export const formatMessage = (
 
       if (prices) {
         lines.push(prices);
-      }
-
-      if (runtimeDebugKeyLines.length) {
-        lines.push('');
-        lines.push(...runtimeDebugKeyLines);
       }
     };
 

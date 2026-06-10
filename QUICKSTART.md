@@ -107,7 +107,8 @@ Runtime signal delivery:
 Summary reports:
 
 - `yarn signals:summary` builds a Telegram digest for the last 24 hours
-- production cron sends the daily report every day at `22:00` in `Europe/Moscow` timezone
+- production cron sends the daily report every day at `21:00` in `Europe/Moscow` timezone
+- production cron runs runtime parity every day at `21:10` in `Europe/Moscow` timezone
 - production cron sends the weekly report on Sundays at `22:10` in `Europe/Moscow` timezone using `--hours 168`
 - production cron runs nightly research every day at `00:00` in `Europe/Moscow` timezone:
 

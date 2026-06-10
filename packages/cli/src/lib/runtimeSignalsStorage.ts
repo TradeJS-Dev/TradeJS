@@ -25,7 +25,7 @@ export type RuntimeSignalStatsBucket = {
   reasonGroups: Map<string, Map<string, number>>;
 };
 
-// Runtime summary cron runs at 22:00 Europe/Moscow. Shift the logical
+// Runtime summary cron runs at 21:00 Europe/Moscow. Shift the logical
 // bucket boundary so one stored "day" maps to exactly one summary window.
 
 export const toRuntimeSignalBucketRef = (

@@ -14,7 +14,10 @@ import {
   formatRuntimeTradeSyncError,
   syncRuntimeTrades,
 } from '../lib/runtimeTradeSync';
-import { sendTelegramReport } from '../lib/telegramReports';
+import {
+  sendTelegramReport,
+  type TelegramReportAttachment,
+} from '../lib/telegramReports';
 import {
   loadRuntimeSignalEvaluationStatsBuckets,
   loadRuntimeSignals,
@@ -69,8 +72,8 @@ const formatMskDateTime = (timestamp: number) =>
 const formatSigned = (value: number) =>
   `${value >= 0 ? '+' : ''}${value.toFixed(2)}`;
 
-const formatPnlText = (value: number, knownCount: number) =>
-  knownCount > 0 ? formatSigned(value) : 'n/a';
+const formatPnlMoneyText = (value: number, knownCount: number) =>
+  knownCount > 0 ? `${formatSigned(value)}$` : 'n/a';
 
 const formatWinRateText = (wins: number, closedKnown: number) =>
   closedKnown > 0
@@ -84,6 +87,10 @@ const resolveSummaryTitle = (hours: number) => {
 
   if (hours === 168) {
     return 'TradeJS weekly summary';
+  }
+
+  if (hours === 720) {
+    return 'TradeJS monthly summary';
   }
 
   return `TradeJS ${hours}h summary`;
@@ -107,27 +114,82 @@ const normalizeStatus = (
 const shouldAttachDebugReport = (value: unknown) =>
   value !== false && String(value).toLowerCase() !== 'false';
 
-const appendRuntimeDebugAttachmentSummary = ({
+const getSummaryDateParts = (timestamp: number) =>
+  Object.fromEntries(
+    new Intl.DateTimeFormat('en-US', {
+      timeZone: SUMMARY_TIMEZONE,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    })
+      .formatToParts(new Date(timestamp))
+      .map((part) => [part.type, part.value]),
+  ) as Record<string, string>;
+
+const formatSummaryIsoDayKey = (timestamp: number) => {
+  const parts = getSummaryDateParts(timestamp);
+
+  return `${parts.year}-${parts.month}-${parts.day}`;
+};
+
+const unescapeHtml = (value: string) =>
+  value.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
+
+const stripTelegramHtml = (value: string) =>
+  unescapeHtml(value.replace(/<\/?(?:b|code)>/g, ''));
+
+const buildSignalsSummaryAttachment = ({
+  userName,
+  endTime,
+  content,
+}: {
+  userName: string;
+  endTime: number;
+  content: string;
+}): TelegramReportAttachment => {
+  const dayKey = formatSummaryIsoDayKey(endTime);
+
+  return {
+    filename: `tradejs-signals-summary-${userName}-${dayKey}.txt`,
+    content: stripTelegramHtml(content),
+    caption: `Signals summary ${dayKey} ${SUMMARY_TIMEZONE_LABEL}`,
+  };
+};
+
+const appendReportAttachmentSummary = ({
   message,
+  signalsFilename,
   filename,
   tradesCount,
   signalsCount,
   evaluationsCount,
 }: {
   message: string;
-  filename: string;
-  tradesCount: number;
-  signalsCount: number;
-  evaluationsCount: number;
-}) =>
-  [
+  signalsFilename: string;
+  filename?: string;
+  tradesCount?: number;
+  signalsCount?: number;
+  evaluationsCount?: number;
+}) => {
+  const lines = [
     message,
     '',
-    '📎 <b>Replay debug file</b>',
-    `File: <code>${escapeHtml(filename)}</code>`,
-    `Inside: trades=<b>${tradesCount}</b>, signals=<b>${signalsCount}</b>, evaluations=<b>${evaluationsCount}</b>`,
-    'Redis refs: <code>trade</code>, <code>tradeBucket</code>, <code>activeTrade</code>, <code>signal</code>, <code>evaluation</code>',
-  ].join('\n');
+    '📎 <b>Signal report file</b>',
+    `File: <code>${escapeHtml(signalsFilename)}</code>`,
+  ];
+
+  if (filename) {
+    lines.push(
+      '',
+      '📎 <b>Replay debug file</b>',
+      `File: <code>${escapeHtml(filename)}</code>`,
+      `Inside: trades=<b>${tradesCount ?? 0}</b>, signals=<b>${signalsCount ?? 0}</b>, evaluations=<b>${evaluationsCount ?? 0}</b>`,
+      'Redis refs: <code>trade</code>, <code>tradeBucket</code>, <code>activeTrade</code>, <code>signal</code>, <code>evaluation</code>',
+    );
+  }
+
+  return lines.join('\n');
+};
 
 const resolveSummaryConnectorName = async (value: unknown): Promise<string> => {
   const connectorName = await resolveConnectorName(value, projectRoot);
@@ -219,7 +281,7 @@ const resolveTradeStatusEmoji = (
   return '❔';
 };
 
-const buildTradeSummaryLine = (stats: {
+const buildTradeSummaryLines = (stats: {
   total: number;
   active: number;
   closed: number;
@@ -230,48 +292,21 @@ const buildTradeSummaryLine = (stats: {
   totalPnl: number;
   totalPnlKnown: number;
 }) => {
-  if (stats.total === 0) {
-    return `total=<b>0</b>`;
-  }
-
-  const parts = [`total=<b>${stats.total}</b>`];
-  const activePnlText = formatPnlText(stats.activePnl, stats.activePnlKnown);
-  const closedPnlText = formatPnlText(stats.closedPnl, stats.closedPnlKnown);
-  const totalPnlText = formatPnlText(stats.totalPnl, stats.totalPnlKnown);
-  const hasMixedStatuses = stats.active > 0 && stats.closed > 0;
-  const activeEmoji = resolveTradeStatusEmoji(
-    'active',
-    stats.activePnlKnown > 0 ? stats.activePnl : null,
-  );
-  const closedEmoji = resolveTradeStatusEmoji(
-    'closed',
-    stats.closedPnlKnown > 0 ? stats.closedPnl : null,
-  );
-
-  if (hasMixedStatuses) {
-    parts.push(
-      `${activeEmoji}=<b>${stats.active}</b> (PnL <b>${escapeHtml(activePnlText)}</b>)`,
-    );
-    parts.push(
-      `${closedEmoji}=<b>${stats.closed}</b> (PnL <b>${escapeHtml(closedPnlText)}</b>)`,
-    );
-
-    if (stats.totalPnlKnown > 0) {
-      parts.push(`totalPnL=<b>${escapeHtml(totalPnlText)}</b>`);
-    }
-
-    return parts.join(', ');
-  }
+  const lines: string[] = [];
 
   if (stats.active > 0) {
-    parts.push(`${activeEmoji} (PnL <b>${escapeHtml(activePnlText)}</b>)`);
+    lines.push(
+      `Active PnL: <b>${escapeHtml(formatPnlMoneyText(stats.activePnl, stats.activePnlKnown))}</b> (<b>${stats.active}</b>)`,
+    );
   }
 
   if (stats.closed > 0) {
-    parts.push(`${closedEmoji} (PnL <b>${escapeHtml(closedPnlText)}</b>)`);
+    lines.push(
+      `Closed PnL: <b>${escapeHtml(formatPnlMoneyText(stats.closedPnl, stats.closedPnlKnown))}</b> (<b>${stats.closed}</b>)`,
+    );
   }
 
-  return parts.join(', ');
+  return lines;
 };
 
 const buildSummaryMessages = ({
@@ -363,7 +398,7 @@ const buildSummaryMessages = ({
         : trade.closedPnl ?? trade.currentPnl;
     const pnlText =
       typeof pnl === 'number' && Number.isFinite(pnl)
-        ? formatSigned(pnl)
+        ? `${formatSigned(pnl)}$`
         : 'n/a';
 
     stats.total += 1;
@@ -519,14 +554,15 @@ const buildSummaryMessages = ({
     const stats = tradeStats.get(strategyName);
     if (!stats) {
       tradeLines.push('');
-      tradeLines.push(`<b>${escapeHtml(strategyName)}</b>`);
-      tradeLines.push(`total=<b>0</b>`);
+      tradeLines.push(`<b>${escapeHtml(strategyName)}</b> (<b>0</b>)`);
       continue;
     }
 
     tradeLines.push('');
-    tradeLines.push(`<b>${escapeHtml(strategyName)}</b>`);
-    tradeLines.push(buildTradeSummaryLine(stats));
+    tradeLines.push(
+      `<b>${escapeHtml(strategyName)}</b> (<b>${stats.total}</b>)`,
+    );
+    tradeLines.push(...buildTradeSummaryLines(stats));
     const sortedTrades = [...stats.trades].sort(
       (left, right) =>
         left.entryTimestamp - right.entryTimestamp ||
@@ -662,20 +698,33 @@ export const signalsSummary = async () => {
         trades: windowTrades,
       })
     : null;
-  const tradesMessageWithDebugSummary = debugAttachment
-    ? appendRuntimeDebugAttachmentSummary({
-        message: tradesMessage,
-        filename: debugAttachment.filename,
-        tradesCount: windowTrades.length,
-        signalsCount: debugAttachment.summary?.signals ?? debugSignals.length,
-        evaluationsCount: debugAttachment.summary?.evaluations ?? 0,
-      })
-    : tradesMessage;
+  const signalsAttachment = buildSignalsSummaryAttachment({
+    userName: flags.user,
+    endTime,
+    content: signalsMessage,
+  });
+  const tradesMessageWithAttachmentSummary = appendReportAttachmentSummary({
+    message: tradesMessage,
+    signalsFilename: signalsAttachment.filename,
+    filename: debugAttachment?.filename,
+    tradesCount: debugAttachment ? windowTrades.length : undefined,
+    signalsCount: debugAttachment
+      ? debugAttachment.summary?.signals ?? debugSignals.length
+      : undefined,
+    evaluationsCount: debugAttachment
+      ? debugAttachment.summary?.evaluations ?? 0
+      : undefined,
+  });
+  const attachments: TelegramReportAttachment[] = [
+    signalsAttachment,
+    ...(debugAttachment ? [debugAttachment] : []),
+  ];
 
   if (flags.printOnly) {
-    console.log(signalsMessage);
+    console.log(tradesMessageWithAttachmentSummary);
     console.log('');
-    console.log(tradesMessageWithDebugSummary);
+    console.log(`Signals attachment: ${signalsAttachment.filename}`);
+    console.log(signalsAttachment.content);
     if (debugAttachment) {
       console.log('');
       console.log(`Debug attachment: ${debugAttachment.filename}`);
@@ -684,10 +733,9 @@ export const signalsSummary = async () => {
     return;
   }
 
-  await sendTelegramReport(signalsMessage, { userName: flags.user });
-  await sendTelegramReport(tradesMessageWithDebugSummary, {
+  await sendTelegramReport(tradesMessageWithAttachmentSummary, {
     userName: flags.user,
-    attachments: debugAttachment ? [debugAttachment] : undefined,
+    attachments,
   });
 };
 export const main = signalsSummary;

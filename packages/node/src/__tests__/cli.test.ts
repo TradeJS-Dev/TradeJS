@@ -341,9 +341,10 @@ describe('cli telegram notifications', () => {
     expect(message).toContain('Strategy: <b>TrendLine</b>');
     expect(message).toContain('Opened by journal: <b>TrendLine</b>');
     expect(message).toContain('Ownership: <b>matched</b>');
-    expect(message).toContain(
-      'trade: <code>users:root:runtime:trade-records:ord-1</code>',
-    );
+    expect(message).not.toContain('<b>Runtime journal</b>');
+    expect(message).not.toContain('trade: <code>');
+    expect(message).not.toContain('orderId: <code>');
+    expect(message).not.toContain('signalId: <code>');
 
     await sendRuntimeCloseNotificationsToTG([event], 'root');
 

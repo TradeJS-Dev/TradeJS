@@ -14,16 +14,16 @@ describe('runtimeSignalsStorage', () => {
     expect(getRuntimeStorageDayKey(Date.UTC(2026, 4, 2, 13, 45))).toBe(
       '2026-05-02',
     );
-    expect(getRuntimeStorageDayKey(Date.UTC(2026, 4, 2, 18, 59))).toBe(
+    expect(getRuntimeStorageDayKey(Date.UTC(2026, 4, 2, 17, 59))).toBe(
       '2026-05-02',
     );
-    expect(getRuntimeStorageDayKey(Date.UTC(2026, 4, 2, 19, 0))).toBe(
+    expect(getRuntimeStorageDayKey(Date.UTC(2026, 4, 2, 18, 0))).toBe(
       '2026-05-03',
     );
     expect(
       getRuntimeStorageDayKeys(
-        Date.UTC(2026, 4, 1, 19, 0),
-        Date.UTC(2026, 4, 2, 19, 0),
+        Date.UTC(2026, 4, 1, 18, 0),
+        Date.UTC(2026, 4, 2, 18, 0),
       ),
     ).toEqual(['2026-05-02']);
 

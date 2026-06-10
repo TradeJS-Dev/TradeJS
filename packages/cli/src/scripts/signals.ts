@@ -100,7 +100,7 @@ args.option(
 );
 
 const PRELOAD_START = getTimestamp(SIGNALS_CLI_PRELOAD_DAYS);
-const SLOW_SIGNALS_WARNING_MS = 5 * 60_000;
+const SLOW_SIGNALS_WARNING_MS = 10 * 60_000;
 const projectRoot =
   String(process.env.PROJECT_CWD || process.cwd()).trim() || process.cwd();
 

@@ -624,7 +624,7 @@ describe('signals', () => {
     expect(message).not.toContain('AI Quality: 3/5');
   });
 
-  it('includes runtime Redis debug keys for completed entry orders', () => {
+  it('omits runtime Redis debug keys from completed entry order messages', () => {
     jest.doMock('../screenshot', () => ({
       getScreenshotBuffer: jest.fn(async () => {
         throw new Error('no screenshot');
@@ -660,26 +660,14 @@ describe('signals', () => {
       { userName: 'root' },
     );
 
-    expect(message).toContain('<b>Redis debug</b>');
-    expect(message).toContain(
-      'trade: <code>users:root:runtime:trade-records:ord-1</code>',
-    );
-    expect(message).toContain(
-      'tradeBucket: <code>users:root:runtime:trade-records:days:2026-05-02</code> field <code>ord-1</code>',
-    );
-    expect(message).toContain(
-      'activeTrade: <code>users:root:runtime:active-trades:TLMUSDT</code>',
-    );
-    expect(message).toContain(
-      'signal: <code>store:signals:TLMUSDT:sig-1</code>',
-    );
-    expect(message).toContain(
-      'evaluation: <code>users:root:runtime:signal-evaluations:days:2026-05-02:AdaptiveMomentumRibbon</code> field <code>AdaptiveMomentumRibbon:TLMUSDT:1777723200000</code>',
-    );
-    expect(message.indexOf('<b>Redis debug</b>')).toBeGreaterThan(
-      message.indexOf('R:R = <b>3.50</b>'),
-    );
-    expect(message.trim().endsWith('</code>')).toBe(true);
+    expect(message).toContain('🟢 Order completed');
+    expect(message).toContain('R:R = <b>3.50</b>');
+    expect(message).not.toContain('<b>Redis debug</b>');
+    expect(message).not.toContain('trade: <code>');
+    expect(message).not.toContain('tradeBucket: <code>');
+    expect(message).not.toContain('activeTrade: <code>');
+    expect(message).not.toContain('signal: <code>');
+    expect(message).not.toContain('evaluation: <code>');
   });
 
   it('formats approved AI analysis as a short human-readable explanation', () => {

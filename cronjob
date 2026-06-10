@@ -2,8 +2,8 @@
 0,15,30,45 * * * * cd /app && PROJECT_CWD=/app DOTENV_CONFIG_PATH=/app/.env NODE_OPTIONS=--max-old-space-size=8192 bash ./bin/run-cli-runtime.sh signals --timeframe 15 --chunk 1/1 --notify --makeOrders --showSkipStats >> /var/log/cron.signals.15.log 2>&1
 CRON_TZ=Europe/Moscow
 * * * * * cd /app && PROJECT_CWD=/app DOTENV_CONFIG_PATH=/app/.env NODE_OPTIONS=--max-old-space-size=512 bash ./bin/run-cli-runtime.sh server-health --user root --cooldownSec 900 >> /var/log/cron.server-health.log 2>&1
-0 21 * * * cd /app && PROJECT_CWD=/app DOTENV_CONFIG_PATH=/app/.env NODE_OPTIONS=--max-old-space-size=8192 bash ./bin/run-cli-runtime.sh runtime-parity --user root --connector bybit --days 1 --runtimeGates --notify >> /var/log/cron.runtime.parity.log 2>&1
-30 21 * * * cd /app && PROJECT_CWD=/app DOTENV_CONFIG_PATH=/app/.env NODE_OPTIONS=--max-old-space-size=8192 bash ./bin/run-cli-runtime.sh signals-summary --user root --connector bybit >> /var/log/cron.signals.summary.log 2>&1
+0 21 * * * cd /app && PROJECT_CWD=/app DOTENV_CONFIG_PATH=/app/.env NODE_OPTIONS=--max-old-space-size=8192 bash ./bin/run-cli-runtime.sh signals-summary --user root --connector bybit >> /var/log/cron.signals.summary.log 2>&1
+10 21 * * * cd /app && PROJECT_CWD=/app DOTENV_CONFIG_PATH=/app/.env NODE_OPTIONS=--max-old-space-size=8192 bash ./bin/run-cli-runtime.sh runtime-parity --user root --connector bybit --days 1 --runtimeGates --notify >> /var/log/cron.runtime.parity.log 2>&1
 10 22 * * 0 cd /app && PROJECT_CWD=/app DOTENV_CONFIG_PATH=/app/.env NODE_OPTIONS=--max-old-space-size=8192 bash ./bin/run-cli-runtime.sh signals-summary --user root --connector bybit --hours 168 >> /var/log/cron.signals.summary.weekly.log 2>&1
 30 22 * * * cd /app && PROJECT_CWD=/app DOTENV_CONFIG_PATH=/app/.env NODE_OPTIONS=--max-old-space-size=8192 bash ./bin/run-cli-runtime.sh derivatives:ingest:coinalyze:all >> /var/log/cron.derivatives.coinalyze.all.log 2>&1
 0 23 * * * cd /app && PROJECT_CWD=/app DOTENV_CONFIG_PATH=/app/.env NODE_OPTIONS=--max-old-space-size=8192 bash ./bin/run-cli-runtime.sh continuity >> /var/log/cron.continuity.log 2>&1

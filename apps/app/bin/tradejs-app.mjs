@@ -2,6 +2,7 @@
 
 import { spawn, spawnSync } from 'child_process';
 import { createRequire } from 'module';
+import fs from 'fs';
 import net from 'net';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -11,7 +12,7 @@ const require = createRequire(import.meta.url);
 const { loadEnvConfig } = nextEnv;
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const appDir = path.resolve(__dirname, '..');
+const packageDir = path.resolve(__dirname, '..');
 const LOCAL_DEV_HOSTNAMES = new Set([
   'localhost',
   '127.0.0.1',
@@ -30,6 +31,93 @@ process.env.PROJECT_CWD = projectCwd;
 
 const dev = command === 'dev';
 loadEnvConfig(projectCwd, dev, console);
+
+function isInsideNodeModules(dir) {
+  return dir.split(path.sep).includes('node_modules');
+}
+
+function copyPackageEntry(entryName, targetDir) {
+  const sourcePath = path.join(packageDir, entryName);
+  if (!fs.existsSync(sourcePath)) {
+    return;
+  }
+
+  const targetPath = path.join(targetDir, entryName);
+  fs.rmSync(targetPath, { recursive: true, force: true });
+  fs.cpSync(sourcePath, targetPath, {
+    recursive: true,
+    force: true,
+    errorOnExist: false,
+  });
+}
+
+function ensureLinkedNodeModules(targetDir) {
+  const sourceNodeModules = path.join(packageDir, 'node_modules');
+  const targetNodeModules = path.join(targetDir, 'node_modules');
+
+  if (!fs.existsSync(sourceNodeModules)) {
+    if (
+      fs.existsSync(targetNodeModules) &&
+      fs.lstatSync(targetNodeModules).isSymbolicLink()
+    ) {
+      fs.rmSync(targetNodeModules, { recursive: true, force: true });
+    }
+    return;
+  }
+
+  if (fs.existsSync(targetNodeModules)) {
+    const current = fs.lstatSync(targetNodeModules);
+    if (current.isSymbolicLink()) {
+      const currentTarget = fs.realpathSync(targetNodeModules);
+      if (currentTarget === fs.realpathSync(sourceNodeModules)) {
+        return;
+      }
+    }
+
+    fs.rmSync(targetNodeModules, { recursive: true, force: true });
+  }
+
+  fs.symlinkSync(
+    sourceNodeModules,
+    targetNodeModules,
+    process.platform === 'win32' ? 'junction' : 'dir',
+  );
+}
+
+function ensureGeneratedGitignore() {
+  const tradejsDir = path.join(projectCwd, '.tradejs');
+  const gitignorePath = path.join(tradejsDir, '.gitignore');
+  if (!fs.existsSync(gitignorePath)) {
+    fs.mkdirSync(tradejsDir, { recursive: true });
+    fs.writeFileSync(gitignorePath, 'app\n', 'utf8');
+  }
+}
+
+function resolveAppDir() {
+  if (!isInsideNodeModules(packageDir)) {
+    return packageDir;
+  }
+
+  const targetDir = path.join(projectCwd, '.tradejs', 'app');
+  fs.mkdirSync(targetDir, { recursive: true });
+  ensureGeneratedGitignore();
+
+  for (const entryName of [
+    'README.md',
+    'bin',
+    'next-env.d.ts',
+    'next.config.mjs',
+    'package.json',
+    'public',
+    'src',
+    'tsconfig.json',
+  ]) {
+    copyPackageEntry(entryName, targetDir);
+  }
+
+  ensureLinkedNodeModules(targetDir);
+  return targetDir;
+}
 
 function parsePort(value) {
   const parsed = Number.parseInt(String(value || '').trim(), 10);
@@ -108,12 +196,12 @@ function getListeningProcess(port) {
   };
 }
 
-function isAppDevProcess(processInfo) {
+function isAppDevProcess(processInfo, appDir) {
   if (!processInfo?.command) {
     return false;
   }
 
-  if (processInfo.cwd === appDir) {
+  if (processInfo.cwd === appDir || processInfo.cwd === packageDir) {
     return true;
   }
 
@@ -142,6 +230,7 @@ function syncLocalUrlEnv(name, fromPort, toPort) {
 }
 
 async function main() {
+  const appDir = resolveAppDir();
   const nextBin = require.resolve('next/dist/bin/next');
   const args = [nextBin, command, ...rawArgs];
   const explicitPort = parsePort(readArgValue(rawArgs, ['-p', '--port']));
@@ -169,7 +258,7 @@ async function main() {
 
     if (resolvedPort !== requestedPort) {
       const existingProcess = getListeningProcess(requestedPort);
-      if (isAppDevProcess(existingProcess)) {
+      if (isAppDevProcess(existingProcess, appDir)) {
         console.error(
           `[tradejs-app] another app dev server is already listening on port ${requestedPort} (PID ${existingProcess.pid}). Stop it before starting a new app server, or pass an explicit --port/PORT for a separate project.`,
         );

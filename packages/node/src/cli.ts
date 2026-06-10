@@ -360,19 +360,12 @@ export const sendToAI = async (signals: Signal[], userName = 'root') => {
 
 export const formatRuntimeCloseNotification = (
   event: RuntimeStrategyCloseNotification,
-  userName = event.userName ?? 'root',
+  _userName = event.userName ?? 'root',
 ) => {
   const ownership =
     event.openedByStrategy === event.strategy
       ? 'matched'
       : `mismatch: opened by ${event.openedByStrategy}`;
-  const debugLines = [
-    `trade: <code>${escapeHtml(redisKeys.runtimeTrade(userName, event.orderId))}</code>`,
-    `orderId: <code>${escapeHtml(event.orderId)}</code>`,
-  ];
-  if (event.signalId) {
-    debugLines.push(`signalId: <code>${escapeHtml(event.signalId)}</code>`);
-  }
 
   return [
     '<b>Strategy self-close</b>',
@@ -388,9 +381,6 @@ export const formatRuntimeCloseNotification = (
     `Exit: <b>${escapeHtml(formatOptionalNumber(event.exitPrice))}</b> at <code>${escapeHtml(formatOptionalTimestamp(event.exitTimestamp))}</code>`,
     `Qty: <b>${escapeHtml(formatOptionalNumber(event.qty))}</b>`,
     `Closed PnL: <b>${escapeHtml(formatOptionalNumber(event.closedPnl))}</b>`,
-    '',
-    '<b>Runtime journal</b>',
-    ...debugLines,
   ].join('\n');
 };
 

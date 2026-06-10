@@ -10,7 +10,7 @@ import {
 
 const TIMELINE_STEP = 86_400_000;
 const DAY_MS = 86_400_000;
-const RUNTIME_STORAGE_DAY_OFFSET_MS = 5 * 60 * 60 * 1000;
+const RUNTIME_STORAGE_DAY_OFFSET_MS = 6 * 60 * 60 * 1000;
 
 export const toMs = (ts: number) => (ts < 1e12 ? ts * 1000 : ts);
 
