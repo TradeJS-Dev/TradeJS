@@ -1,7 +1,7 @@
 import { notFound } from 'next/navigation';
 import StrategiesPageClient from '../StrategiesPageClient';
 
-const MODES = new Set(['runtime', 'replay', 'ai']);
+const MODES = new Set(['runtime', 'replay', 'ai', 'backtest']);
 
 const StrategyModePage = async ({
   params,

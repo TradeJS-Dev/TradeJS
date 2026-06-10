@@ -1,353 +1,747 @@
 'use client';
 
-import React, { useEffect, useMemo, useState } from 'react';
-import { Box, ClientOnly, Flex } from '@chakra-ui/react';
-import { deleteBacktest } from '#actions/backtest';
-import { useBacktestMutations, useTestList } from '#store';
-import { Select, toaster } from '#ui';
-import { CompareList } from '#components/Backtest/CompareList';
-import { TestList } from '#components/Backtest/TestList';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  BulkDeleteToolbar,
-  useBulkSelection,
-} from '#components/Shared/BulkSelection';
-import { parseTestName } from '@tradejs/core/backtest';
+  Badge,
+  Box,
+  Button,
+  Checkbox,
+  ClientOnly,
+  Field,
+  Flex,
+  Grid,
+  Input,
+  Stack,
+  Text,
+} from '@chakra-ui/react';
+import {
+  FiFolder,
+  FiPause,
+  FiPlay,
+  FiRefreshCw,
+  FiSquare,
+  FiTrash2,
+  FiX,
+} from 'react-icons/fi';
+import { useRouter } from 'next/navigation';
+import {
+  controlBacktestRun,
+  deleteBacktestRun,
+  getBacktestRunConfigs,
+  getBacktestRuns,
+  startBacktestRun,
+} from '#actions/backtest';
+import { EmptyState, Segment, Select, toaster } from '#ui';
+import type {
+  BacktestConfigSummary,
+  BacktestJobRecord,
+  BacktestJobStatus,
+} from '#app/lib/backtestJobs';
 
-const ALL_STRATEGIES = '__all__';
-const ALL_SUITES = '__all__';
-const ALL_CONFIGS = '__all__';
+const PERIOD_ITEMS = [
+  { label: 'Days', value: 'days' },
+  { label: 'Date range', value: 'range' },
+];
+const INTERVAL_ITEMS = [
+  { label: '5m', value: '5' },
+  { label: '15m', value: '15' },
+  { label: '30m', value: '30' },
+  { label: '1h', value: '60' },
+  { label: '4h', value: '240' },
+];
+const CONNECTOR_ITEMS = [
+  { label: 'Bybit', value: 'bybit' },
+  { label: 'Binance', value: 'binance' },
+  { label: 'Coinbase', value: 'coinbase' },
+];
 
-interface PendingBacktestDelete {
-  value: string;
-  strategyName?: string;
-}
+const inputControlProps = {
+  bg: 'gray.950',
+  borderColor: 'gray.600',
+  color: 'gray.100',
+  _placeholder: { color: 'gray.500' },
+  _focusVisible: {
+    borderColor: 'teal.400',
+    boxShadow: '0 0 0 1px var(--chakra-colors-teal-400)',
+  },
+};
 
-const Backtest = () => {
-  const { tests, loadding, fulFilled } = useTestList();
-  const { removeBacktestTest } = useBacktestMutations();
-  const [isDeleteSelectedOpen, setIsDeleteSelectedOpen] = useState(false);
-  const [isDeletingSelected, setIsDeletingSelected] = useState(false);
-  const [pendingDeleteTests, setPendingDeleteTests] = useState<
-    PendingBacktestDelete[]
-  >([]);
-  const strategyItems = useMemo(() => {
-    const names = new Set<string>();
-    for (const test of tests) {
-      const strategyName = test.data?.strategyName;
-      if (typeof strategyName === 'string' && strategyName) {
-        names.add(strategyName);
-      }
+type PeriodMode = 'days' | 'range';
+type JobAction = 'pause' | 'stop' | 'resume' | 'cancel' | 'heartbeat';
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+const toInputDate = (date: Date) => date.toISOString().slice(0, 10);
+
+const dateToStartMs = (value: string) =>
+  Number.isFinite(Date.parse(`${value}T00:00:00.000Z`))
+    ? Date.parse(`${value}T00:00:00.000Z`)
+    : null;
+
+const dateToEndMs = (value: string) =>
+  Number.isFinite(Date.parse(`${value}T23:59:59.999Z`))
+    ? Date.parse(`${value}T23:59:59.999Z`)
+    : null;
+
+const formatNumber = (value: number | null | undefined, fractionDigits = 1) =>
+  typeof value === 'number' && Number.isFinite(value)
+    ? value.toFixed(fractionDigits)
+    : '-';
+
+const formatDateTime = (value: string | undefined) => {
+  if (!value) {
+    return '-';
+  }
+
+  const timestamp = Date.parse(value);
+  if (!Number.isFinite(timestamp)) {
+    return '-';
+  }
+
+  return new Intl.DateTimeFormat('en', {
+    month: 'short',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(timestamp);
+};
+
+const statusTone = (status: BacktestJobStatus) => {
+  if (status === 'running') {
+    return 'teal';
+  }
+  if (status === 'pausing' || status === 'paused') {
+    return 'yellow';
+  }
+  if (status === 'completed') {
+    return 'green';
+  }
+  if (status === 'cancelled') {
+    return 'gray';
+  }
+  return 'red';
+};
+
+const statusLabel = (status: BacktestJobStatus) =>
+  status.charAt(0).toUpperCase() + status.slice(1);
+
+const getJobTitle = (job: BacktestJobRecord) =>
+  `${job.request.strategyName} / ${job.request.configId}`;
+
+const mergeJob = (
+  jobs: BacktestJobRecord[],
+  updated: BacktestJobRecord,
+): BacktestJobRecord[] => {
+  const existingIndex = jobs.findIndex((job) => job.id === updated.id);
+  if (existingIndex === -1) {
+    return [updated, ...jobs];
+  }
+
+  const nextJobs = [...jobs];
+  nextJobs[existingIndex] = updated;
+  return nextJobs;
+};
+
+const buildStrategyItems = (configs: BacktestConfigSummary[]) =>
+  [...new Set(configs.map((config) => config.strategyName))]
+    .sort((left, right) => left.localeCompare(right))
+    .map((strategyName) => ({
+      label: strategyName,
+      value: strategyName,
+    }));
+
+const buildConfigItems = (
+  configs: BacktestConfigSummary[],
+  selectedStrategy: string,
+) =>
+  configs
+    .filter((config) => config.strategyName === selectedStrategy)
+    .map((config) => ({
+      label: config.id,
+      value: config.id,
+      description: `${config.combinationCount} combos / ${config.paramCount} params`,
+    }));
+
+const SelectControl = ({ children }: { children: React.ReactNode }) => (
+  <Box
+    css={{
+      '& [data-part="trigger"]': {
+        background: 'var(--chakra-colors-gray-950)',
+        borderColor: 'var(--chakra-colors-gray-600)',
+        color: 'var(--chakra-colors-gray-100)',
+      },
+      '& [data-part="trigger"]:is(:hover, [data-hover])': {
+        borderColor: 'var(--chakra-colors-gray-500)',
+      },
+      '& [data-part="trigger"]:is(:focus-visible, [data-focus-visible])': {
+        borderColor: 'var(--chakra-colors-teal-400)',
+        boxShadow: '0 0 0 1px var(--chakra-colors-teal-400)',
+      },
+    }}
+  >
+    {children}
+  </Box>
+);
+
+const BacktestRunPage = () => {
+  const router = useRouter();
+  const [configs, setConfigs] = useState<BacktestConfigSummary[]>([]);
+  const [jobs, setJobs] = useState<BacktestJobRecord[]>([]);
+  const [loadingConfigs, setLoadingConfigs] = useState(false);
+  const [loadingJobs, setLoadingJobs] = useState(false);
+  const [starting, setStarting] = useState(false);
+  const [busyAction, setBusyAction] = useState('');
+  const [selectedStrategy, setSelectedStrategy] = useState('');
+  const [selectedConfigId, setSelectedConfigId] = useState('');
+  const [periodMode, setPeriodMode] = useState<PeriodMode>('days');
+  const [days, setDays] = useState('30');
+  const [startDate, setStartDate] = useState(() =>
+    toInputDate(new Date(Date.now() - 30 * DAY_MS)),
+  );
+  const [endDate, setEndDate] = useState(() => toInputDate(new Date()));
+  const [ai, setAi] = useState(false);
+  const [fast, setFast] = useState(false);
+  const [interval, setIntervalValue] = useState('15');
+  const [connector, setConnector] = useState('bybit');
+  const [tickers, setTickers] = useState('');
+  const [tickersLimit, setTickersLimit] = useState('');
+  const [testsLimit, setTestsLimit] = useState('');
+  const [parallel, setParallel] = useState('');
+
+  const strategyItems = useMemo(() => buildStrategyItems(configs), [configs]);
+  const configItems = useMemo(
+    () => buildConfigItems(configs, selectedStrategy),
+    [configs, selectedStrategy],
+  );
+
+  const loadConfigs = useCallback(async () => {
+    setLoadingConfigs(true);
+    try {
+      const nextConfigs = await getBacktestRunConfigs();
+      setConfigs(nextConfigs);
+    } catch (error) {
+      toaster.error({
+        title: 'Failed to load backtest configs',
+        description: (error as Error)?.message || 'Request failed.',
+      });
+    } finally {
+      setLoadingConfigs(false);
     }
+  }, []);
 
-    return [
-      { label: 'All strategies', value: ALL_STRATEGIES },
-      ...Array.from(names)
-        .sort()
-        .map((strategyName) => ({
-          label: strategyName,
-          value: strategyName,
-        })),
-    ];
-  }, [tests]);
-  const [selectedStrategy, setSelectedStrategy] = useState(ALL_STRATEGIES);
-  const suiteItems = useMemo(() => {
-    const names = new Set<string>();
-    for (const test of tests) {
-      if (
-        selectedStrategy !== ALL_STRATEGIES &&
-        test.data?.strategyName !== selectedStrategy
-      ) {
-        continue;
-      }
-
-      const { testSuiteId } = parseTestName(test.value);
-      if (testSuiteId) {
-        names.add(testSuiteId);
-      }
+  const loadJobs = useCallback(async () => {
+    setLoadingJobs(true);
+    try {
+      const nextJobs = await getBacktestRuns();
+      setJobs(nextJobs);
+    } catch (error) {
+      toaster.error({
+        title: 'Failed to load backtest jobs',
+        description: (error as Error)?.message || 'Request failed.',
+      });
+    } finally {
+      setLoadingJobs(false);
     }
-
-    return [
-      { label: 'All suites', value: ALL_SUITES },
-      ...Array.from(names)
-        .sort()
-        .map((testSuiteId) => ({
-          label: testSuiteId,
-          value: testSuiteId,
-        })),
-    ];
-  }, [tests, selectedStrategy]);
-  const [selectedSuite, setSelectedSuite] = useState(ALL_SUITES);
-  const configItems = useMemo(() => {
-    const names = new Set<string>();
-    for (const test of tests) {
-      if (
-        selectedStrategy !== ALL_STRATEGIES &&
-        test.data?.strategyName !== selectedStrategy
-      ) {
-        continue;
-      }
-
-      if (selectedSuite !== ALL_SUITES) {
-        const { testSuiteId } = parseTestName(test.value);
-        if (testSuiteId !== selectedSuite) {
-          continue;
-        }
-      }
-
-      const configId =
-        typeof test.data?.configId === 'string' ? test.data.configId : '';
-      if (configId) {
-        names.add(configId);
-      }
-    }
-
-    return [
-      { label: 'All configs', value: ALL_CONFIGS },
-      ...Array.from(names)
-        .sort()
-        .map((configId) => ({
-          label: configId,
-          value: configId,
-        })),
-    ];
-  }, [tests, selectedStrategy, selectedSuite]);
-  const [selectedConfigId, setSelectedConfigId] = useState(ALL_CONFIGS);
+  }, []);
 
   useEffect(() => {
+    void loadConfigs();
+    void loadJobs();
+  }, [loadConfigs, loadJobs]);
+
+  useEffect(() => {
+    if (!strategyItems.length) {
+      setSelectedStrategy('');
+      return;
+    }
+
     if (!strategyItems.some((item) => item.value === selectedStrategy)) {
-      setSelectedStrategy(strategyItems[0]?.value || ALL_STRATEGIES);
+      setSelectedStrategy(strategyItems[0]?.value || '');
     }
-  }, [strategyItems, selectedStrategy]);
+  }, [selectedStrategy, strategyItems]);
 
   useEffect(() => {
-    if (!suiteItems.some((item) => item.value === selectedSuite)) {
-      setSelectedSuite(suiteItems[0]?.value || ALL_SUITES);
+    if (!configItems.length) {
+      setSelectedConfigId('');
+      return;
     }
-  }, [suiteItems, selectedSuite]);
 
-  useEffect(() => {
     if (!configItems.some((item) => item.value === selectedConfigId)) {
-      setSelectedConfigId(configItems[0]?.value || ALL_CONFIGS);
+      setSelectedConfigId(configItems[0]?.value || '');
     }
   }, [configItems, selectedConfigId]);
 
-  const filteredTests = useMemo(() => {
-    return tests.filter((test) => {
-      if (
-        selectedStrategy !== ALL_STRATEGIES &&
-        test.data?.strategyName !== selectedStrategy
-      ) {
-        return false;
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      void loadJobs();
+    }, 3_000);
+
+    return () => window.clearInterval(timer);
+  }, [loadJobs]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      const runningJobs = jobs.filter((job) => job.status === 'running');
+      if (!runningJobs.length) {
+        return;
       }
 
-      if (selectedSuite !== ALL_SUITES) {
-        const { testSuiteId } = parseTestName(test.value);
-        if (testSuiteId !== selectedSuite) {
-          return false;
-        }
-      }
+      void Promise.all(
+        runningJobs.map((job) => controlBacktestRun(job.id, 'heartbeat')),
+      )
+        .then((updatedJobs) => {
+          setJobs((currentJobs) => updatedJobs.reduce(mergeJob, currentJobs));
+        })
+        .catch(() => {
+          // Polling will surface the next durable state.
+        });
+    }, 5_000);
 
-      if (selectedConfigId !== ALL_CONFIGS) {
-        return test.data?.configId === selectedConfigId;
-      }
+    return () => window.clearInterval(timer);
+  }, [jobs]);
 
-      return true;
-    });
-  }, [tests, selectedStrategy, selectedSuite, selectedConfigId]);
-
-  const filteredTestNames = useMemo(
-    () => filteredTests.map((test) => test.value),
-    [filteredTests],
+  const selectedConfig = useMemo(
+    () => configs.find((config) => config.id === selectedConfigId),
+    [configs, selectedConfigId],
   );
-  const allTestNames = useMemo(() => tests.map((test) => test.value), [tests]);
-  const {
-    selectedIds: selectedTestNames,
-    selectedScopedCount: selectedFilteredCount,
-    hasScopedSelection: hasSelectedInFilter,
-    checkboxState: selectionCheckboxState,
-    toggleSelection: handleToggleSelection,
-    setScopeSelected: handleSelectAllFiltered,
-    removeSelection: removeDeletedSelection,
-  } = useBulkSelection({
-    scopeIds: filteredTestNames,
-    validIds: allTestNames,
-  });
 
-  const noData = fulFilled && !loadding && filteredTests.length === 0;
+  const handleStart = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
 
-  const handleOpenDeleteSelected = () => {
-    const selectedSet = new Set(selectedTestNames);
-    const targets = filteredTests.filter((test) => selectedSet.has(test.value));
-
-    if (targets.length === 0) {
-      setIsDeleteSelectedOpen(false);
-      setPendingDeleteTests([]);
-      return;
-    }
-
-    setPendingDeleteTests(
-      targets.map((test) => ({
-        value: test.value,
-        strategyName:
-          typeof test.data?.strategyName === 'string'
-            ? test.data.strategyName
-            : undefined,
-      })),
-    );
-    setIsDeleteSelectedOpen(true);
-  };
-
-  const handleDeleteSelected = async () => {
-    const targets = pendingDeleteTests;
-
-    if (targets.length === 0 || isDeletingSelected) {
-      setIsDeleteSelectedOpen(false);
-      setPendingDeleteTests([]);
-      return;
-    }
-
-    setIsDeletingSelected(true);
-
-    try {
-      const results = await Promise.allSettled(
-        targets.map(async (test) => {
-          const strategyName = test.strategyName;
-          if (!strategyName) {
-            throw new Error(`Missing strategy for ${test.value}`);
-          }
-
-          const deleted = await deleteBacktest(test.value, strategyName);
-          if (!deleted) {
-            throw new Error(`Delete failed for ${test.value}`);
-          }
-
-          await removeBacktestTest(test.value);
-          return test.value;
-        }),
-      );
-
-      const successCount = results.filter(
-        (item) => item.status === 'fulfilled',
-      ).length;
-      const failedCount = results.length - successCount;
-
-      if (successCount > 0) {
-        const deletedIds = results
-          .filter((item) => item.status === 'fulfilled')
-          .map((item) => item.value);
-        removeDeletedSelection(deletedIds);
-      }
-
-      if (failedCount === 0) {
-        toaster.success({
-          title: 'Tests deleted',
-          description: `Deleted: ${successCount}`,
-        });
-      } else {
-        toaster.error({
-          title: 'Bulk delete finished with errors',
-          description: `Deleted: ${successCount} of ${targets.length}`,
-        });
-      }
-    } catch {
+    if (!selectedStrategy || !selectedConfigId) {
       toaster.error({
-        title: 'Delete failed',
-        description: 'Failed to delete selected tests.',
+        title: 'Select strategy and config',
+        description: 'Backtest config is required before launch.',
+      });
+      return;
+    }
+
+    const payload: Record<string, unknown> = {
+      strategyName: selectedStrategy,
+      configId: selectedConfigId,
+      periodMode,
+      ai,
+      fast,
+      interval,
+      connector,
+    };
+
+    if (periodMode === 'range') {
+      const startTime = dateToStartMs(startDate);
+      const endTime = dateToEndMs(endDate);
+      if (!startTime || !endTime || startTime >= endTime) {
+        toaster.error({
+          title: 'Invalid date range',
+          description: 'Start date must be earlier than end date.',
+        });
+        return;
+      }
+      payload.startTime = startTime;
+      payload.endTime = endTime;
+    } else {
+      const parsedDays = Number(days);
+      if (!Number.isFinite(parsedDays) || parsedDays <= 0) {
+        toaster.error({
+          title: 'Invalid days value',
+          description: 'Days must be greater than zero.',
+        });
+        return;
+      }
+      payload.days = parsedDays;
+    }
+
+    if (tickers.trim()) {
+      payload.tickers = tickers.trim();
+    }
+
+    for (const [field, value] of [
+      ['tickersLimit', tickersLimit],
+      ['testsLimit', testsLimit],
+      ['parallel', parallel],
+    ] as const) {
+      const parsed = Number(value);
+      if (value.trim() && Number.isFinite(parsed) && parsed > 0) {
+        payload[field] = Math.trunc(parsed);
+      }
+    }
+
+    setStarting(true);
+    try {
+      const job = await startBacktestRun(payload);
+      setJobs((currentJobs) => mergeJob(currentJobs, job));
+      toaster.success({
+        title: 'Backtest started',
+        description: getJobTitle(job),
+      });
+    } catch (error) {
+      toaster.error({
+        title: 'Backtest start failed',
+        description: (error as Error)?.message || 'Request failed.',
       });
     } finally {
-      setIsDeletingSelected(false);
-      setIsDeleteSelectedOpen(false);
-      setPendingDeleteTests([]);
+      setStarting(false);
     }
   };
 
-  const handleBulkDeleteDialogOpenChange = (open: boolean) => {
-    setIsDeleteSelectedOpen(open);
-
-    if (!open && !isDeletingSelected) {
-      setPendingDeleteTests([]);
+  const handleAction = async (jobId: string, action: JobAction) => {
+    setBusyAction(`${jobId}:${action}`);
+    try {
+      const job = await controlBacktestRun(jobId, action);
+      setJobs((currentJobs) => mergeJob(currentJobs, job));
+    } catch (error) {
+      toaster.error({
+        title: 'Backtest action failed',
+        description: (error as Error)?.message || 'Request failed.',
+      });
+    } finally {
+      setBusyAction('');
     }
   };
 
-  const deleteSelectedTestCount = isDeleteSelectedOpen
-    ? pendingDeleteTests.length
-    : selectedFilteredCount;
+  const handleDeleteJob = async (jobId: string) => {
+    setBusyAction(`${jobId}:delete`);
+    try {
+      const deleted = await deleteBacktestRun(jobId);
+      if (deleted) {
+        setJobs((currentJobs) => currentJobs.filter((job) => job.id !== jobId));
+      }
+    } catch (error) {
+      toaster.error({
+        title: 'Backtest job delete failed',
+        description: (error as Error)?.message || 'Request failed.',
+      });
+    } finally {
+      setBusyAction('');
+    }
+  };
+
+  const hasConfigs = configs.length > 0;
+  const noJobs = !loadingJobs && jobs.length === 0;
 
   return (
     <ClientOnly>
-      <Box minH="100vh" bg="gray.900">
+      <Box minH="100vh" bg="gray.900" color="gray.100">
         <Box
           as="main"
           minH="100vh"
           minW="1200px"
           pl={2}
+          pr={4}
+          py={3}
           bg="gray.900"
-          display="flex"
-          flexDirection="column"
-          alignItems="flex-start"
         >
-          <Flex
-            mb={2}
-            mt={2}
-            pl={2}
-            gap={8}
-            flexDirection="row"
-            alignItems="center"
-          >
-            <Flex gap={3} alignItems="center">
-              <Select
-                placeholder="Strategy"
-                value={[selectedStrategy]}
-                defaultValue={[selectedStrategy]}
-                onChange={(value) =>
-                  setSelectedStrategy(value[0] || ALL_STRATEGIES)
-                }
-                items={strategyItems}
-                width="220px"
-              />
-              <Select
-                placeholder="TestSuite"
-                value={[selectedSuite]}
-                defaultValue={[selectedSuite]}
-                onChange={(value) => setSelectedSuite(value[0] || ALL_SUITES)}
-                items={suiteItems}
-                width="180px"
-              />
-              <Select
-                placeholder="ConfigId"
-                value={[selectedConfigId]}
-                defaultValue={[selectedConfigId]}
-                onChange={(value) =>
-                  setSelectedConfigId(value[0] || ALL_CONFIGS)
-                }
-                items={configItems}
-                width="180px"
-              />
+          <Flex alignItems="center" justifyContent="space-between" mb={3}>
+            <Box pl={2}>
+              <Text fontSize="lg" fontWeight="700" lineHeight="1.2">
+                Backtest runs
+              </Text>
+            </Box>
+            <Flex gap={2}>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                colorPalette="teal"
+                onClick={() => router.push('/routes/strategies/backtest')}
+              >
+                <FiFolder />
+                Results
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  void loadConfigs();
+                  void loadJobs();
+                }}
+                loading={loadingConfigs || loadingJobs}
+              >
+                <FiRefreshCw />
+                Refresh
+              </Button>
             </Flex>
-            <CompareList />
           </Flex>
-          <BulkDeleteToolbar
-            selectedCount={selectedFilteredCount}
-            checkboxState={selectionCheckboxState}
-            hasSelection={hasSelectedInFilter}
-            isDeleting={isDeletingSelected}
-            dialogOpen={isDeleteSelectedOpen}
-            deleteTitle="Delete selected tests"
-            deleteDescription={`Delete selected tests (${deleteSelectedTestCount})?`}
-            onDialogOpenChange={handleBulkDeleteDialogOpenChange}
-            onToggleAll={handleSelectAllFiltered}
-            onRequestDelete={handleOpenDeleteSelected}
-            onConfirmDelete={handleDeleteSelected}
-          />
-          <Box flex="1" h="full" w="full">
-            <TestList
-              tests={filteredTests}
-              loadding={loadding}
-              fulFilled={fulFilled}
-              noData={noData}
-              selectedTestNames={selectedTestNames}
-              onToggleSelection={handleToggleSelection}
-            />
+
+          <Box
+            borderWidth="1px"
+            borderColor="gray.700"
+            borderTopColor="teal.500"
+            bg="gray.800"
+            p={4}
+            borderRadius="md"
+          >
+            <form onSubmit={handleStart}>
+              <Stack gap={4}>
+                <Flex
+                  alignItems="center"
+                  justifyContent="space-between"
+                  gap={4}
+                >
+                  <Flex alignItems="center" gap={3} minW={0}>
+                    <Text fontWeight="700" flexShrink={0}>
+                      Launch
+                    </Text>
+                    {selectedConfig ? (
+                      <Flex gap={2} wrap="wrap">
+                        <Badge colorPalette="teal">
+                          {selectedConfig.combinationCount} combos
+                        </Badge>
+                        <Badge colorPalette="gray">
+                          {selectedConfig.paramCount} params
+                        </Badge>
+                      </Flex>
+                    ) : null}
+                  </Flex>
+                  <Button
+                    type="submit"
+                    colorPalette="teal"
+                    disabled={!selectedConfigId || starting}
+                    loading={starting}
+                    minW="120px"
+                  >
+                    <FiPlay />
+                    Start
+                  </Button>
+                </Flex>
+
+                <Grid
+                  templateColumns="200px minmax(240px, 1.35fr) 170px 280px 160px"
+                  gap={3}
+                  alignItems="end"
+                >
+                  <Field.Root>
+                    <Field.Label>Strategy</Field.Label>
+                    <SelectControl>
+                      <Select
+                        placeholder="Strategy"
+                        value={selectedStrategy ? [selectedStrategy] : []}
+                        defaultValue={
+                          selectedStrategy ? [selectedStrategy] : []
+                        }
+                        onChange={(value) =>
+                          setSelectedStrategy(value[0] || '')
+                        }
+                        items={strategyItems}
+                        emptyState="No backtest configs"
+                        width="200px"
+                        disabled={!hasConfigs}
+                      />
+                    </SelectControl>
+                  </Field.Root>
+
+                  <Field.Root>
+                    <Field.Label>Config</Field.Label>
+                    <SelectControl>
+                      <Select
+                        placeholder="Config"
+                        value={selectedConfigId ? [selectedConfigId] : []}
+                        defaultValue={
+                          selectedConfigId ? [selectedConfigId] : []
+                        }
+                        onChange={(value) =>
+                          setSelectedConfigId(value[0] || '')
+                        }
+                        items={configItems}
+                        emptyState="No configs for strategy"
+                        width="280px"
+                        disabled={!selectedStrategy}
+                      />
+                    </SelectControl>
+                  </Field.Root>
+
+                  <Field.Root>
+                    <Field.Label>Period</Field.Label>
+                    <Segment
+                      defaultValue="days"
+                      value={periodMode}
+                      items={PERIOD_ITEMS}
+                      onChange={(value) =>
+                        setPeriodMode(value === 'range' ? 'range' : 'days')
+                      }
+                    />
+                  </Field.Root>
+
+                  {periodMode === 'days' ? (
+                    <Field.Root>
+                      <Field.Label>Days</Field.Label>
+                      <Input
+                        value={days}
+                        type="number"
+                        min={1}
+                        step={1}
+                        {...inputControlProps}
+                        onChange={(event) => setDays(event.target.value)}
+                      />
+                    </Field.Root>
+                  ) : (
+                    <Grid templateColumns="1fr 1fr" gap={3}>
+                      <Field.Root>
+                        <Field.Label>Start</Field.Label>
+                        <Input
+                          value={startDate}
+                          type="date"
+                          {...inputControlProps}
+                          onChange={(event) => setStartDate(event.target.value)}
+                        />
+                      </Field.Root>
+                      <Field.Root>
+                        <Field.Label>End</Field.Label>
+                        <Input
+                          value={endDate}
+                          type="date"
+                          {...inputControlProps}
+                          onChange={(event) => setEndDate(event.target.value)}
+                        />
+                      </Field.Root>
+                    </Grid>
+                  )}
+
+                  <Field.Root>
+                    <Field.Label>Flags</Field.Label>
+                    <Flex gap={4} alignItems="center" minH="36px">
+                      <Checkbox.Root
+                        colorPalette="teal"
+                        checked={ai}
+                        onCheckedChange={(details) =>
+                          setAi(details.checked === true)
+                        }
+                      >
+                        <Checkbox.HiddenInput />
+                        <Checkbox.Control
+                          bg="gray.950"
+                          borderColor="gray.500"
+                        />
+                        <Checkbox.Label>AI</Checkbox.Label>
+                      </Checkbox.Root>
+                      <Checkbox.Root
+                        colorPalette="teal"
+                        checked={fast}
+                        onCheckedChange={(details) =>
+                          setFast(details.checked === true)
+                        }
+                      >
+                        <Checkbox.HiddenInput />
+                        <Checkbox.Control
+                          bg="gray.950"
+                          borderColor="gray.500"
+                        />
+                        <Checkbox.Label>Fast</Checkbox.Label>
+                      </Checkbox.Root>
+                    </Flex>
+                  </Field.Root>
+                </Grid>
+
+                <Grid
+                  templateColumns="140px 160px minmax(240px, 1fr) 140px 140px 120px"
+                  gap={3}
+                  alignItems="end"
+                >
+                  <Field.Root>
+                    <Field.Label>Interval</Field.Label>
+                    <SelectControl>
+                      <Select
+                        placeholder="Interval"
+                        value={[interval]}
+                        defaultValue={[interval]}
+                        onChange={(value) => setIntervalValue(value[0] || '15')}
+                        items={INTERVAL_ITEMS}
+                        width="120px"
+                      />
+                    </SelectControl>
+                  </Field.Root>
+
+                  <Field.Root>
+                    <Field.Label>Connector</Field.Label>
+                    <SelectControl>
+                      <Select
+                        placeholder="Connector"
+                        value={[connector]}
+                        defaultValue={[connector]}
+                        onChange={(value) => setConnector(value[0] || 'bybit')}
+                        items={CONNECTOR_ITEMS}
+                        width="140px"
+                      />
+                    </SelectControl>
+                  </Field.Root>
+
+                  <Field.Root>
+                    <Field.Label>Tickers</Field.Label>
+                    <Input
+                      value={tickers}
+                      placeholder="BTCUSDT,ETHUSDT"
+                      {...inputControlProps}
+                      onChange={(event) => setTickers(event.target.value)}
+                    />
+                  </Field.Root>
+
+                  <Field.Root>
+                    <Field.Label>Tickers limit</Field.Label>
+                    <Input
+                      value={tickersLimit}
+                      type="number"
+                      min={1}
+                      {...inputControlProps}
+                      onChange={(event) => setTickersLimit(event.target.value)}
+                    />
+                  </Field.Root>
+
+                  <Field.Root>
+                    <Field.Label>Tests limit</Field.Label>
+                    <Input
+                      value={testsLimit}
+                      type="number"
+                      min={1}
+                      {...inputControlProps}
+                      onChange={(event) => setTestsLimit(event.target.value)}
+                    />
+                  </Field.Root>
+
+                  <Field.Root>
+                    <Field.Label>Parallel</Field.Label>
+                    <Input
+                      value={parallel}
+                      type="number"
+                      min={1}
+                      {...inputControlProps}
+                      onChange={(event) => setParallel(event.target.value)}
+                    />
+                  </Field.Root>
+                </Grid>
+              </Stack>
+            </form>
+          </Box>
+
+          <Box mt={5}>
+            <Flex alignItems="center" justifyContent="space-between" mb={3}>
+              <Flex alignItems="center" gap={3}>
+                <Text fontWeight="700">Active runs</Text>
+                <Badge colorPalette="gray">{jobs.length} jobs</Badge>
+              </Flex>
+            </Flex>
+
+            {noJobs ? (
+              <EmptyState
+                icon={FiFolder}
+                title="No backtest jobs"
+                description="No queued, running, paused, or finished jobs yet."
+              />
+            ) : null}
+
+            <Stack gap={3}>
+              {jobs.map((job) => (
+                <BacktestJobItem
+                  key={job.id}
+                  job={job}
+                  busyAction={busyAction}
+                  onAction={handleAction}
+                  onDelete={handleDeleteJob}
+                  onOpenResults={() =>
+                    router.push('/routes/strategies/backtest')
+                  }
+                />
+              ))}
+            </Stack>
           </Box>
         </Box>
       </Box>
@@ -355,4 +749,219 @@ const Backtest = () => {
   );
 };
 
-export default Backtest;
+interface BacktestJobItemProps {
+  job: BacktestJobRecord;
+  busyAction: string;
+  onAction: (jobId: string, action: JobAction) => void;
+  onDelete: (jobId: string) => void;
+  onOpenResults: () => void;
+}
+
+const BacktestJobItem = ({
+  job,
+  busyAction,
+  onAction,
+  onDelete,
+  onOpenResults,
+}: BacktestJobItemProps) => {
+  const progress = job.progress;
+  const totalLabel = progress.total == null ? '?' : progress.total;
+  const logs = job.logs.slice(-10);
+  const canPause = job.status === 'running';
+  const canResume = job.status === 'paused';
+  const canCancel = !['completed', 'cancelled'].includes(job.status);
+  const canDelete = ['completed', 'cancelled', 'failed', 'paused'].includes(
+    job.status,
+  );
+
+  return (
+    <Box
+      borderWidth="1px"
+      borderColor="gray.700"
+      bg="gray.800"
+      p={4}
+      borderRadius="md"
+    >
+      <Flex alignItems="flex-start" justifyContent="space-between" gap={4}>
+        <Box minW={0}>
+          <Flex gap={2} alignItems="center" wrap="wrap">
+            <Text fontWeight="700" wordBreak="break-word">
+              {getJobTitle(job)}
+            </Text>
+            <Badge colorPalette={statusTone(job.status)}>
+              {statusLabel(job.status)}
+            </Badge>
+            {job.request.ai ? <Badge colorPalette="purple">AI</Badge> : null}
+            {job.request.fast ? <Badge colorPalette="blue">Fast</Badge> : null}
+          </Flex>
+          <Text fontSize="xs" color="gray.400" mt={1}>
+            Started {formatDateTime(job.startedAt)} · Updated{' '}
+            {formatDateTime(job.updatedAt)} · Run #{job.runCount}
+          </Text>
+          {job.pauseReason ? (
+            <Text fontSize="xs" color="yellow.300" mt={1}>
+              Pause reason: {job.pauseReason}
+            </Text>
+          ) : null}
+          {job.error ? (
+            <Text fontSize="xs" color="red.300" mt={1}>
+              {job.error}
+            </Text>
+          ) : null}
+        </Box>
+
+        <Flex gap={2} flexShrink={0} wrap="wrap" justifyContent="flex-end">
+          {canPause ? (
+            <>
+              <Button
+                type="button"
+                size="xs"
+                variant="outline"
+                loading={busyAction === `${job.id}:pause`}
+                onClick={() => onAction(job.id, 'pause')}
+              >
+                <FiPause />
+                Pause
+              </Button>
+              <Button
+                type="button"
+                size="xs"
+                variant="outline"
+                loading={busyAction === `${job.id}:stop`}
+                onClick={() => onAction(job.id, 'stop')}
+              >
+                <FiSquare />
+                Stop
+              </Button>
+            </>
+          ) : null}
+
+          {canResume ? (
+            <Button
+              type="button"
+              size="xs"
+              colorPalette="teal"
+              loading={busyAction === `${job.id}:resume`}
+              onClick={() => onAction(job.id, 'resume')}
+            >
+              <FiPlay />
+              Resume
+            </Button>
+          ) : null}
+
+          {job.status === 'completed' ? (
+            <Button
+              type="button"
+              size="xs"
+              variant="outline"
+              colorPalette="teal"
+              onClick={onOpenResults}
+            >
+              <FiFolder />
+              Results
+            </Button>
+          ) : null}
+
+          {canCancel ? (
+            <Button
+              type="button"
+              size="xs"
+              variant="outline"
+              colorPalette="red"
+              loading={busyAction === `${job.id}:cancel`}
+              onClick={() => onAction(job.id, 'cancel')}
+            >
+              <FiX />
+              Cancel
+            </Button>
+          ) : null}
+
+          {canDelete ? (
+            <Button
+              type="button"
+              size="xs"
+              variant="ghost"
+              colorPalette="red"
+              loading={busyAction === `${job.id}:delete`}
+              onClick={() => onDelete(job.id)}
+            >
+              <FiTrash2 />
+            </Button>
+          ) : null}
+        </Flex>
+      </Flex>
+
+      <Box mt={4}>
+        <Flex alignItems="center" justifyContent="space-between" mb={2}>
+          <Text fontSize="sm" color="gray.300">
+            {progress.completed}/{totalLabel} tests
+          </Text>
+          <Text fontSize="sm" color="gray.300">
+            {formatNumber(progress.percent, 1)}%
+          </Text>
+        </Flex>
+        <Box h="8px" bg="gray.800" borderRadius="full" overflow="hidden">
+          <Box
+            h="full"
+            bg={job.status === 'failed' ? 'red.500' : 'teal.400'}
+            width={`${Math.max(0, Math.min(100, progress.percent))}%`}
+            transition="width 0.2s ease"
+          />
+        </Box>
+      </Box>
+
+      <Grid templateColumns="repeat(5, minmax(0, 1fr))" gap={3} mt={4}>
+        <Metric
+          label="Avg P&L"
+          value={`${formatNumber(progress.averageProfit, 2)}$`}
+        />
+        <Metric
+          label="Winrate"
+          value={`${formatNumber(progress.winRate, 1)}%`}
+        />
+        <Metric label="Success" value={String(progress.successTests ?? '-')} />
+        <Metric label="Errors" value={String(progress.errorTests ?? '-')} />
+        <Metric label="PID" value={String(job.pid ?? '-')} />
+      </Grid>
+
+      {logs.length ? (
+        <Box mt={4} bg="gray.950" borderRadius="md" p={3} overflow="hidden">
+          <Stack gap={1}>
+            {logs.map((line, index) => (
+              <Text
+                key={`${job.id}:log:${index}`}
+                fontFamily="mono"
+                fontSize="xs"
+                color="gray.300"
+                whiteSpace="pre-wrap"
+                wordBreak="break-word"
+              >
+                {line}
+              </Text>
+            ))}
+          </Stack>
+        </Box>
+      ) : null}
+    </Box>
+  );
+};
+
+const Metric = ({ label, value }: { label: string; value: string }) => (
+  <Box minW={0}>
+    <Text fontSize="xs" color="gray.500">
+      {label}
+    </Text>
+    <Text
+      fontSize="sm"
+      color="gray.100"
+      fontWeight="700"
+      overflow="hidden"
+      textOverflow="ellipsis"
+      whiteSpace="nowrap"
+    >
+      {value}
+    </Text>
+  </Box>
+);
+
+export default BacktestRunPage;

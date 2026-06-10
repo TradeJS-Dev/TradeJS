@@ -14,6 +14,7 @@ import {
 import { RuntimeStrategyCard } from '#components/Strategies/RuntimeStrategyCard';
 import { RuntimeStrategyCardSkeleton } from '#components/Strategies/RuntimeStrategyCardSkeleton';
 import { StrategySnapshotList } from '#components/Strategies/StrategySnapshotList';
+import { BacktestResultsPageClient } from '#components/Backtest/ResultsPageClient';
 import {
   BulkDeleteToolbar,
   useBulkSelection,
@@ -22,12 +23,13 @@ import type { RuntimeStrategiesResponse } from '#app/lib/runtimeStrategies';
 import { EmptyState, Segment, Select, toaster } from '#ui';
 
 const ALL_STRATEGIES = '__all__';
-type StrategyMode = 'runtime' | 'replay' | 'ai';
+type StrategyMode = 'runtime' | 'replay' | 'ai' | 'backtest';
 
 const MODE_ITEMS = [
   { label: 'Runtime', value: 'runtime' },
   { label: 'Replay', value: 'replay' },
   { label: 'AI', value: 'ai' },
+  { label: 'Backtest', value: 'backtest' },
 ];
 const HOURS_OPTIONS = [
   { label: 'Last 24h', value: '24' },
@@ -37,7 +39,9 @@ const HOURS_OPTIONS = [
 ];
 
 const normalizeMode = (value: string | null | undefined): StrategyMode =>
-  value === 'replay' || value === 'ai' ? value : 'runtime';
+  value === 'replay' || value === 'ai' || value === 'backtest'
+    ? value
+    : 'runtime';
 
 interface PendingSnapshotDelete {
   mode: 'replay' | 'ai';
@@ -68,7 +72,7 @@ const RuntimeStrategiesContent = () => {
     useState<RuntimeStrategiesResponse | null>(null);
   const [snapshotData, setSnapshotData] =
     useState<StrategyChartsSnapshotResponse | null>(null);
-  const isSnapshotMode = mode !== 'runtime';
+  const isSnapshotMode = mode === 'replay' || mode === 'ai';
   const snapshotModeLabel = mode === 'replay' ? 'Replay' : 'AI';
   const snapshotModeLabelLower = snapshotModeLabel.toLowerCase();
 
@@ -108,10 +112,13 @@ const RuntimeStrategiesContent = () => {
         const response = await getReplayStrategies();
         setSnapshotData(response);
         setRuntimeData(null);
-      } else {
+      } else if (mode === 'ai') {
         const response = await getAiStrategies();
         setSnapshotData(response);
         setRuntimeData(null);
+      } else {
+        setRuntimeData(null);
+        setSnapshotData(null);
       }
       setFulfilled(true);
     } catch (err) {
@@ -226,7 +233,7 @@ const RuntimeStrategiesContent = () => {
   );
 
   const handleOpenDeleteSelectedSnapshots = () => {
-    if (mode === 'runtime' || selectedFilteredSnapshotCardIds.length === 0) {
+    if (!isSnapshotMode || selectedFilteredSnapshotCardIds.length === 0) {
       setIsDeleteSelectedOpen(false);
       setPendingSnapshotDelete(null);
       return;
@@ -355,6 +362,18 @@ const RuntimeStrategiesContent = () => {
     mode === 'replay'
       ? 'No replay trades for the selected run.'
       : 'No approved trades for this quality bucket.';
+  const modeSegment = (
+    <Segment
+      defaultValue="runtime"
+      value={mode}
+      onChange={updateMode}
+      items={MODE_ITEMS}
+    />
+  );
+
+  if (mode === 'backtest') {
+    return <BacktestResultsPageClient toolbarPrefix={modeSegment} />;
+  }
 
   return (
     <ClientOnly>
@@ -378,12 +397,7 @@ const RuntimeStrategiesContent = () => {
             alignItems="center"
           >
             <Flex gap={3} alignItems="center">
-              <Segment
-                defaultValue="runtime"
-                value={mode}
-                onChange={updateMode}
-                items={MODE_ITEMS}
-              />
+              {modeSegment}
               <Select
                 placeholder="Strategy"
                 value={[selectedStrategy]}

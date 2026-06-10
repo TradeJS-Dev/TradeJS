@@ -34,6 +34,7 @@ import {
 import { buildReplayChartSnapshot } from '../lib/replay/chartSnapshot';
 import { saveAndPrintReplayResultsByStrategy } from '../lib/replay/resultsReporting';
 import { saveAndPrintReplayRuntimeComparison } from '../lib/replay/runtimeComparison';
+import { writeReplayOutputReport } from '../lib/replay/outputReport';
 
 export {
   buildReplayExchangeComparisonDetails,
@@ -69,9 +70,13 @@ export const prepareReplayBinanceMarketContext = async (preparedRun: {
 const finishReplay = async ({
   replayResult,
   tickers,
+  connectorName,
+  window,
 }: {
   replayResult: HistoricalSignalsReplayResult;
   tickers: string[];
+  connectorName: string;
+  window: { start: number; end: number };
 }) => {
   const replayStrategySnapshot = await saveAndPrintReplayResultsByStrategy({
     replayResult,
@@ -100,9 +105,30 @@ const finishReplay = async ({
         )}`,
       })
     : null;
+  const replayKey = redisKeys.backtestResults(
+    replayUserName,
+    REPLAY_RESULTS_CONFIG,
+    timestamp,
+  );
+  const outputReport = await writeReplayOutputReport({
+    projectRoot: replayProjectRoot,
+    timestamp,
+    replayKey,
+    userName: replayUserName,
+    connectorName,
+    interval: replayInterval,
+    tickers,
+    window,
+    durationSeconds,
+    replayResult,
+    strategySnapshot: replayStrategySnapshot,
+    runtimeComparison: replayRuntimeComparison,
+  });
+  console.log(chalk.green(`Replay report: ${outputReport.markdownPath}`));
+  console.log(chalk.green(`Replay report JSON: ${outputReport.jsonPath}`));
 
   await setData(
-    redisKeys.backtestResults(replayUserName, REPLAY_RESULTS_CONFIG, timestamp),
+    replayKey,
     {
       config: REPLAY_RESULTS_CONFIG,
       mode: 'replay',
@@ -123,6 +149,7 @@ const finishReplay = async ({
       abortedCycles: replayResult.abortedCycles,
       signalsCount: replayResult.signals.length,
       strategyCharts: replayChartSnapshot,
+      outputReport,
     },
     {
       expire: 0,
@@ -211,5 +238,7 @@ export const replayBacktest = async () => {
   await finishReplay({
     replayResult,
     tickers: preparedRun.tickers,
+    connectorName: preparedRun.connectorName,
+    window: preparedRun.window,
   });
 };
