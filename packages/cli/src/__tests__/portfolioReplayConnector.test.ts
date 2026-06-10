@@ -322,4 +322,54 @@ describe('portfolio replay connector', () => {
       }),
     );
   });
+
+  it('blocks closePosition from a different strategy owner', async () => {
+    const connector = createPortfolioReplayConnector(baseConnector);
+
+    await connector.placeOrder({
+      symbol: 'BTCUSDT',
+      qty: 1,
+      price: 100,
+      timestamp: 1,
+      direction: 'LONG',
+      signal: {
+        strategy: 'AdaptiveTrendChannel',
+      } as any,
+    });
+
+    await expect(
+      connector.closePosition({
+        symbol: 'BTCUSDT',
+        price: 95,
+        timestamp: 2,
+        direction: 'LONG',
+        signal: {
+          strategy: 'TrendFollow',
+        } as any,
+      } as any),
+    ).resolves.toBe(false);
+
+    expect(await connector.getPosition('BTCUSDT')).toEqual(
+      expect.objectContaining({
+        symbol: 'BTCUSDT',
+        direction: 'LONG',
+      }),
+    );
+    expect(connector.getReplayArtifacts().orderLog).toHaveLength(1);
+
+    await expect(
+      connector.closePosition({
+        symbol: 'BTCUSDT',
+        price: 105,
+        timestamp: 3,
+        direction: 'LONG',
+        signal: {
+          strategy: 'AdaptiveTrendChannel',
+        } as any,
+      } as any),
+    ).resolves.toBe(true);
+
+    expect(await connector.getPosition('BTCUSDT')).toBeNull();
+    expect(connector.getReplayArtifacts().orderLog).toHaveLength(2);
+  });
 });

@@ -333,6 +333,7 @@ export const executeEntryOrder = async ({
         price: currentPrice,
         timestamp,
         direction,
+        signal,
       });
       throw error;
     }

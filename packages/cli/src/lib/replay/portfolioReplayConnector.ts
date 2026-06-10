@@ -442,6 +442,16 @@ export const createPortfolioReplayConnector = (
         return false;
       }
 
+      const closeStrategyName = order.signal
+        ? getStrategyName({ signal: order.signal })
+        : null;
+      if (
+        closeStrategyName &&
+        closeStrategyName !== positionState.position.strategyName
+      ) {
+        return false;
+      }
+
       const { position } = positionState;
       const isLong = position.direction === 'LONG';
       const executionPrice = applyExecutionSlippage({

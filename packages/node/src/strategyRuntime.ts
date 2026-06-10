@@ -49,6 +49,7 @@ import {
   StrategyCreator,
   StrategyDecision,
   RuntimeStrategyCloseNotification,
+  Signal,
 } from '@tradejs/types';
 
 interface CreateStrategyRuntimeParams<TConfig extends StrategyConfig> {
@@ -64,6 +65,42 @@ interface CreateStrategyRuntimeParams<TConfig extends StrategyConfig> {
 type EntryDecision = Extract<StrategyDecision, { kind: 'entry' }>;
 type ExitDecision = Extract<StrategyDecision, { kind: 'exit' }>;
 type ProtectDecision = Extract<StrategyDecision, { kind: 'protect' }>;
+
+const buildExitOrderSignal = ({
+  strategyName,
+  symbol,
+  decision,
+}: {
+  strategyName?: string;
+  symbol: string;
+  decision: ExitDecision;
+}): Signal | undefined => {
+  if (!strategyName) {
+    return undefined;
+  }
+
+  return {
+    signalId: `${strategyName}:${symbol}:exit:${decision.closePlan.timestamp}`,
+    strategy: strategyName,
+    symbol,
+    interval: '15',
+    direction: decision.closePlan.direction,
+    timestamp: decision.closePlan.timestamp,
+    figures: {},
+    indicators: {},
+    prices: {
+      currentPrice: decision.closePlan.price,
+      takeProfitPrice: decision.closePlan.price,
+      stopLossPrice: decision.closePlan.price,
+      riskRatio: 0,
+    },
+    additionalIndicators: {
+      exit: {
+        code: decision.code,
+      },
+    },
+  };
+};
 
 const resolveEntryRuntimePolicy = ({
   decision,
@@ -524,6 +561,11 @@ const handleExitDecision = async ({
       price: decision.closePlan.price,
       timestamp: decision.closePlan.timestamp,
       direction: decision.closePlan.direction,
+      signal: buildExitOrderSignal({
+        strategyName,
+        symbol,
+        decision,
+      }),
     });
     const closedTrade = await markRuntimeTradeClosed({
       userName,
