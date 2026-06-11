@@ -77,11 +77,17 @@ export interface AdvancedTradeInput {
   pnl: number;
   symbol?: string | null;
   direction?: AdvancedTradeDirection | null;
+  exitReason?: string | null;
   grossPnl?: number | null;
   slippageCost?: number | null;
   approved?: boolean | null;
   blocked?: boolean | null;
   session?: string | null;
+}
+
+export interface AdvancedExitBreakdownBucket {
+  count: number;
+  share: number | null;
 }
 
 export interface AdvancedQuarterlyPnl {
@@ -158,6 +164,12 @@ export interface AdvancedTradeMetrics {
     shortTrades: number;
     longPnl: number;
     shortPnl: number;
+    exitBreakdown: {
+      takeProfit: AdvancedExitBreakdownBucket;
+      stopLoss: AdvancedExitBreakdownBucket;
+      exit: AdvancedExitBreakdownBucket;
+      unknown: AdvancedExitBreakdownBucket;
+    };
   };
 }
 
@@ -339,6 +351,56 @@ const calculateLossStreak = (trades: AdvancedTradeInput[]) => {
   }
 
   return max;
+};
+
+const normalizeExitReason = (reason: string | null | undefined) => {
+  const normalized = String(reason ?? '')
+    .trim()
+    .toLowerCase();
+
+  if (normalized === 'tp' || normalized === 'take_profit') {
+    return 'takeProfit' as const;
+  }
+
+  if (normalized === 'sl' || normalized === 'stop_loss') {
+    return 'stopLoss' as const;
+  }
+
+  if (
+    normalized === 'exit' ||
+    normalized === 'close' ||
+    normalized === 'closed'
+  ) {
+    return 'exit' as const;
+  }
+
+  return 'unknown' as const;
+};
+
+const calculateExitBreakdown = (trades: AdvancedTradeInput[]) => {
+  const counts = {
+    takeProfit: 0,
+    stopLoss: 0,
+    exit: 0,
+    unknown: 0,
+  };
+
+  for (const trade of trades) {
+    counts[normalizeExitReason(trade.exitReason)] += 1;
+  }
+
+  const total = trades.length;
+  const bucket = (count: number): AdvancedExitBreakdownBucket => ({
+    count,
+    share: total ? (count / total) * 100 : null,
+  });
+
+  return {
+    takeProfit: bucket(counts.takeProfit),
+    stopLoss: bucket(counts.stopLoss),
+    exit: bucket(counts.exit),
+    unknown: bucket(counts.unknown),
+  };
 };
 
 const calculateDailyPnlSeries = (
@@ -726,6 +788,7 @@ export const calculateAdvancedTradeMetrics = ({
       shortTrades: directionStats.shortTrades,
       longPnl: directionStats.longPnl,
       shortPnl: directionStats.shortPnl,
+      exitBreakdown: calculateExitBreakdown(normalizedTrades),
     },
   };
 };

@@ -590,6 +590,86 @@ describe('adaptiveMomentumRibbonAiAdapter', () => {
     );
   });
 
+  it('demotes aligned-bull low-volume q4 continuations to watch mode', () => {
+    const signal = makeSignal({
+      prices: {
+        currentPrice: 100.6,
+      },
+      additionalIndicators: {
+        baseContext: {
+          relative: {
+            benchmark: {
+              trendAlignment: 'aligned_bull',
+            },
+            targetVsBtc: {
+              alphaVsBtc1h: 1.4,
+              alphaVsBtc4h: 4.2,
+              alphaVsBtc24h: 5,
+              ratioTrend: 'up',
+            },
+          },
+          participation: {
+            volume: {
+              volumeRel20: 1.4,
+              effortVsResult: 160,
+            },
+          },
+        },
+      },
+    });
+    const payload = buildPayloadForSignal(signal);
+
+    expect(payload.additionalIndicators.adaptiveMomentumRibbonContext).toEqual(
+      expect.objectContaining({
+        channelState: 'inside_channel',
+        benchmarkTrendAlignment: 'aligned_bull',
+        volumeRel20: 1.4,
+        deterministicQuality: 3,
+        approvalAllowedNow: false,
+      }),
+    );
+  });
+
+  it('keeps aligned-bull low-volume high-conviction continuations in q5', () => {
+    const signal = makeSignal({
+      prices: {
+        currentPrice: 100.6,
+      },
+      additionalIndicators: {
+        baseContext: {
+          relative: {
+            benchmark: {
+              trendAlignment: 'aligned_bull',
+            },
+            targetVsBtc: {
+              alphaVsBtc1h: 3.4,
+              alphaVsBtc4h: 4.2,
+              alphaVsBtc24h: 5,
+              ratioTrend: 'up',
+            },
+          },
+          participation: {
+            volume: {
+              volumeRel20: 1.4,
+              effortVsResult: 160,
+            },
+          },
+        },
+      },
+    });
+    const payload = buildPayloadForSignal(signal);
+
+    expect(payload.additionalIndicators.adaptiveMomentumRibbonContext).toEqual(
+      expect.objectContaining({
+        channelState: 'inside_channel',
+        benchmarkTrendAlignment: 'aligned_bull',
+        volumeRel20: 1.4,
+        deterministicQuality: 5,
+        approvalAllowedNow: true,
+      }),
+    );
+  });
+
   it('demotes q4 longs when derivatives direction is not aligned', () => {
     const signal = makeSignal({
       prices: {

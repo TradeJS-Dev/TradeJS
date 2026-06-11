@@ -43,7 +43,17 @@ export interface StrategyChartOrder {
   fundingFee?: number | null;
   totalFee?: number | null;
   entrySlippageBps?: number | null;
+  entryBaseSlippageBps?: number | null;
+  entrySpreadBps?: number | null;
+  entrySpreadSlippageBps?: number | null;
+  entryMarketImpactBps?: number | null;
+  entryDelayRiskBps?: number | null;
   exitSlippageBps?: number | null;
+  exitBaseSlippageBps?: number | null;
+  exitSpreadBps?: number | null;
+  exitSpreadSlippageBps?: number | null;
+  exitMarketImpactBps?: number | null;
+  exitDelayRiskBps?: number | null;
   totalSlippageCost?: number | null;
   sequence?: number | null;
 }

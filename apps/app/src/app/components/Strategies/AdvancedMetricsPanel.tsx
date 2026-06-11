@@ -110,6 +110,17 @@ const plainAmountMetric = (
   ...options,
 });
 
+const exitBreakdownMetric = (
+  id: string,
+  label: string,
+  bucket: AdvancedTradeMetrics['operational']['exitBreakdown']['takeProfit'],
+): MetricItem => ({
+  id,
+  label,
+  value: formatInteger(bucket.count),
+  detail: formatPercent(bucket.share),
+});
+
 const MetricCard = ({ item }: { item: MetricItem }) => {
   const isPrimary = item.variant === 'primary';
 
@@ -623,6 +634,37 @@ const buildMetricSections = (
                 ? 'warning'
                 : 'neutral',
           },
+        ],
+      },
+      {
+        id: 'close-reasons',
+        title: 'Close reasons',
+        description: 'closed trade outcomes by exit path',
+        metrics: [
+          exitBreakdownMetric(
+            'takeProfitExits',
+            'TP closes',
+            metrics.operational.exitBreakdown.takeProfit,
+          ),
+          exitBreakdownMetric(
+            'stopLossExits',
+            'SL closes',
+            metrics.operational.exitBreakdown.stopLoss,
+          ),
+          exitBreakdownMetric(
+            'signalExits',
+            'EXIT closes',
+            metrics.operational.exitBreakdown.exit,
+          ),
+          ...(metrics.operational.exitBreakdown.unknown.count > 0
+            ? [
+                exitBreakdownMetric(
+                  'unknownExits',
+                  'Unknown closes',
+                  metrics.operational.exitBreakdown.unknown,
+                ),
+              ]
+            : []),
         ],
       },
       {

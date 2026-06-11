@@ -3,6 +3,7 @@ import { FEE_PERCENT, INITIAL_BACKTEST_AMOUNT } from '@tradejs/core/constants';
 import { calculateStatsFull } from '@tradejs/core/backtest';
 import {
   applyExecutionSlippage as applyModeledExecutionSlippage,
+  calculateExecutionSlippageBreakdown,
   extractExecutionDelayRiskBps,
   extractExecutionMarketImpactBps,
   extractExecutionSpreadBps,
@@ -41,6 +42,9 @@ type OpenTradeResult = Omit<
 };
 
 const PRICE_PRECISION = 8;
+type ExecutionSlippageBreakdown = ReturnType<
+  typeof calculateExecutionSlippageBreakdown
+>;
 
 export const createTestConnector: TestConnectorCreator = (
   connector,
@@ -158,9 +162,19 @@ export const createTestConnector: TestConnectorCreator = (
       totalFee: round(tradeResult.totalFee),
       entrySlippagePrice: round(tradeResult.entrySlippagePrice),
       entrySlippageBps: round(tradeResult.entrySlippageBps),
+      entryBaseSlippageBps: round(tradeResult.entryBaseSlippageBps),
+      entrySpreadBps: round(tradeResult.entrySpreadBps),
+      entrySpreadSlippageBps: round(tradeResult.entrySpreadSlippageBps),
+      entryMarketImpactBps: round(tradeResult.entryMarketImpactBps),
+      entryDelayRiskBps: roundNullable(tradeResult.entryDelayRiskBps),
       entrySlippageCost: round(tradeResult.entrySlippageCost),
       exitSlippagePrice: roundNullable(tradeResult.exitSlippagePrice),
       exitSlippageBps: roundNullable(tradeResult.exitSlippageBps),
+      exitBaseSlippageBps: roundNullable(tradeResult.exitBaseSlippageBps),
+      exitSpreadBps: roundNullable(tradeResult.exitSpreadBps),
+      exitSpreadSlippageBps: roundNullable(tradeResult.exitSpreadSlippageBps),
+      exitMarketImpactBps: roundNullable(tradeResult.exitMarketImpactBps),
+      exitDelayRiskBps: roundNullable(tradeResult.exitDelayRiskBps),
       exitSlippageCost: round(tradeResult.exitSlippageCost),
       totalSlippageCost: round(tradeResult.totalSlippageCost),
       qty: round(tradeResult.qty),
@@ -176,6 +190,7 @@ export const createTestConnector: TestConnectorCreator = (
     qty,
     grossProfit,
     fee,
+    slippageBreakdown,
   }: {
     timestamp: number;
     reason: TestTradeExitReason;
@@ -184,6 +199,7 @@ export const createTestConnector: TestConnectorCreator = (
     qty: number;
     grossProfit: number;
     fee: number;
+    slippageBreakdown: ExecutionSlippageBreakdown;
   }) => {
     if (!currentTradeResult || !currentPosition) {
       return;
@@ -202,6 +218,31 @@ export const createTestConnector: TestConnectorCreator = (
       executionPrice,
       qty,
     );
+    const exitBaseSlippageBps = getWeightedAverage(
+      currentTradeResult.exitBaseSlippageBps,
+      previousClosedQty,
+      slippageBreakdown.baseSlippageBps,
+      qty,
+    );
+    const exitSpreadBps = getWeightedAverage(
+      currentTradeResult.exitSpreadBps,
+      previousClosedQty,
+      slippageBreakdown.spreadBps,
+      qty,
+    );
+    const exitSpreadSlippageBps = getWeightedAverage(
+      currentTradeResult.exitSpreadSlippageBps,
+      previousClosedQty,
+      slippageBreakdown.spreadSlippageBps,
+      qty,
+    );
+    const exitMarketImpactBps = getWeightedAverage(
+      currentTradeResult.exitMarketImpactBps,
+      previousClosedQty,
+      slippageBreakdown.marketImpactBps,
+      qty,
+    );
+    const exitDelayRiskBps = null;
     const exitSlippageCost =
       currentTradeResult.exitSlippageCost +
       getSlippageCost({
@@ -229,6 +270,11 @@ export const createTestConnector: TestConnectorCreator = (
         (currentTradeResult.fundingFee ?? 0),
       exitSlippagePrice: exitPrice - requestedExitPrice,
       exitSlippageBps: getSlippageBps(requestedExitPrice, exitPrice),
+      exitBaseSlippageBps,
+      exitSpreadBps,
+      exitSpreadSlippageBps,
+      exitMarketImpactBps,
+      exitDelayRiskBps,
       exitSlippageCost,
       totalSlippageCost:
         currentTradeResult.entrySlippageCost + exitSlippageCost,
@@ -302,16 +348,48 @@ export const createTestConnector: TestConnectorCreator = (
     stage: 'entry' | 'exit';
     signal?: Order['signal'];
   }) => {
+    const modelParams = {
+      spreadBps: extractExecutionSpreadBps(signal),
+      marketImpactBps: extractExecutionMarketImpactBps(signal),
+      delayRiskBps:
+        stage === 'entry' ? extractExecutionDelayRiskBps(signal) : null,
+    };
+
     return applyModeledExecutionSlippage({
       price,
       direction,
       stage,
+      ...modelParams,
+    });
+  };
+
+  const getExecutionSlippageBreakdown = ({
+    stage,
+    signal,
+  }: {
+    stage: 'entry' | 'exit';
+    signal?: Order['signal'];
+  }) =>
+    calculateExecutionSlippageBreakdown({
       spreadBps: extractExecutionSpreadBps(signal),
       marketImpactBps: extractExecutionMarketImpactBps(signal),
       delayRiskBps:
         stage === 'entry' ? extractExecutionDelayRiskBps(signal) : null,
     });
-  };
+
+  const getExecutionSlippageLogData = (
+    slippageBreakdown: ExecutionSlippageBreakdown,
+    stage: 'entry' | 'exit',
+  ): Partial<OrderLog> => ({
+    executionSlippageStage: stage,
+    executionSlippageBps: round(slippageBreakdown.effectiveSlippageBps),
+    executionBaseSlippageBps: round(slippageBreakdown.baseSlippageBps),
+    executionSpreadBps: round(slippageBreakdown.spreadBps),
+    executionSpreadSlippageBps: round(slippageBreakdown.spreadSlippageBps),
+    executionMarketImpactBps: round(slippageBreakdown.marketImpactBps),
+    executionDelayRiskBps:
+      stage === 'entry' ? round(slippageBreakdown.delayRiskBps) : null,
+  });
 
   return {
     __tradejsTestConnector: true,
@@ -393,6 +471,10 @@ export const createTestConnector: TestConnectorCreator = (
 
         if (reached) {
           const qty = originalQty * tp.rate;
+          const slippageBreakdown = getExecutionSlippageBreakdown({
+            stage: 'exit',
+            signal: currentPosition.signal,
+          });
           const executionPrice = applyExecutionSlippage({
             price: targetPrice,
             direction: currentPosition.direction,
@@ -415,6 +497,7 @@ export const createTestConnector: TestConnectorCreator = (
             qty,
             grossProfit,
             fee,
+            slippageBreakdown,
           });
 
           amount += profit;
@@ -431,6 +514,7 @@ export const createTestConnector: TestConnectorCreator = (
             profit,
             fee,
             type: isLong ? 'TAKE_PROFIT_LONG' : 'TAKE_PROFIT_SHORT',
+            ...getExecutionSlippageLogData(slippageBreakdown, 'exit'),
           });
 
           tp.done = true;
@@ -456,6 +540,10 @@ export const createTestConnector: TestConnectorCreator = (
 
       if (hitStop) {
         const qty = currentPosition.qty;
+        const slippageBreakdown = getExecutionSlippageBreakdown({
+          stage: 'exit',
+          signal: currentPosition.signal,
+        });
         const executionPrice = applyExecutionSlippage({
           price: stopLossPrice,
           direction: currentPosition.direction,
@@ -478,6 +566,7 @@ export const createTestConnector: TestConnectorCreator = (
           qty,
           grossProfit,
           fee,
+          slippageBreakdown,
         });
 
         amount += profit;
@@ -490,6 +579,7 @@ export const createTestConnector: TestConnectorCreator = (
           price: executionPrice,
           fee,
           type: isLong ? 'STOP_LOSS_LONG' : 'STOP_LOSS_SHORT',
+          ...getExecutionSlippageLogData(slippageBreakdown, 'exit'),
         });
 
         clearPosition(candle.timestamp);
@@ -509,6 +599,10 @@ export const createTestConnector: TestConnectorCreator = (
 
         if (hitStop) {
           const qty = currentPosition.qty;
+          const slippageBreakdown = getExecutionSlippageBreakdown({
+            stage: 'exit',
+            signal: currentPosition.signal,
+          });
           const executionPrice = applyExecutionSlippage({
             price: stopLossPrice,
             direction: currentPosition.direction,
@@ -531,6 +625,7 @@ export const createTestConnector: TestConnectorCreator = (
             qty,
             grossProfit,
             fee,
+            slippageBreakdown,
           });
 
           amount += profit;
@@ -543,6 +638,7 @@ export const createTestConnector: TestConnectorCreator = (
             price: executionPrice,
             fee,
             type: isLong ? 'STOP_LOSS_LONG' : 'STOP_LOSS_SHORT',
+            ...getExecutionSlippageLogData(slippageBreakdown, 'exit'),
           });
 
           clearPosition(candle.timestamp);
@@ -566,6 +662,10 @@ export const createTestConnector: TestConnectorCreator = (
 
         if (reached) {
           const qty = originalQty * tp.rate;
+          const slippageBreakdown = getExecutionSlippageBreakdown({
+            stage: 'exit',
+            signal: currentPosition.signal,
+          });
           const executionPrice = applyExecutionSlippage({
             price: targetPrice,
             direction: currentPosition.direction,
@@ -588,6 +688,7 @@ export const createTestConnector: TestConnectorCreator = (
             qty,
             grossProfit,
             fee,
+            slippageBreakdown,
           });
 
           amount += profit;
@@ -604,6 +705,7 @@ export const createTestConnector: TestConnectorCreator = (
             profit,
             fee,
             type: isLong ? 'TAKE_PROFIT_LONG' : 'TAKE_PROFIT_SHORT',
+            ...getExecutionSlippageLogData(slippageBreakdown, 'exit'),
           });
 
           tp.done = true;
@@ -624,6 +726,10 @@ export const createTestConnector: TestConnectorCreator = (
 
       const isLong = order.direction === 'LONG';
 
+      const entrySlippageBreakdown = getExecutionSlippageBreakdown({
+        stage: 'entry',
+        signal: order.signal,
+      });
       const entryPrice = applyExecutionSlippage({
         price: order.price,
         direction: order.direction,
@@ -673,9 +779,19 @@ export const createTestConnector: TestConnectorCreator = (
             totalFee: fee,
             entrySlippagePrice: entryPrice - order.price,
             entrySlippageBps: getSlippageBps(order.price, entryPrice),
+            entryBaseSlippageBps: entrySlippageBreakdown.baseSlippageBps,
+            entrySpreadBps: entrySlippageBreakdown.spreadBps,
+            entrySpreadSlippageBps: entrySlippageBreakdown.spreadSlippageBps,
+            entryMarketImpactBps: entrySlippageBreakdown.marketImpactBps,
+            entryDelayRiskBps: entrySlippageBreakdown.delayRiskBps,
             entrySlippageCost,
             exitSlippagePrice: null,
             exitSlippageBps: null,
+            exitBaseSlippageBps: null,
+            exitSpreadBps: null,
+            exitSpreadSlippageBps: null,
+            exitMarketImpactBps: null,
+            exitDelayRiskBps: null,
             exitSlippageCost: 0,
             totalSlippageCost: entrySlippageCost,
           }
@@ -687,6 +803,7 @@ export const createTestConnector: TestConnectorCreator = (
         profit,
         fee,
         type: isLong ? 'OPEN_LONG' : 'OPEN_SHORT',
+        ...getExecutionSlippageLogData(entrySlippageBreakdown, 'entry'),
       });
 
       return true;
@@ -722,6 +839,10 @@ export const createTestConnector: TestConnectorCreator = (
       }
 
       const isLong = currentPosition.direction === 'LONG';
+      const slippageBreakdown = getExecutionSlippageBreakdown({
+        stage: 'exit',
+        signal: currentPosition.signal,
+      });
       const executionPrice = applyExecutionSlippage({
         price: order.price,
         direction: currentPosition.direction,
@@ -744,6 +865,7 @@ export const createTestConnector: TestConnectorCreator = (
         qty: currentPosition.qty,
         grossProfit,
         fee,
+        slippageBreakdown,
       });
 
       amount += profit;
@@ -756,6 +878,7 @@ export const createTestConnector: TestConnectorCreator = (
         profit,
         fee,
         type: isLong ? 'CLOSE_LONG' : 'CLOSE_SHORT',
+        ...getExecutionSlippageLogData(slippageBreakdown, 'exit'),
       });
 
       clearPosition(order.timestamp);

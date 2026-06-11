@@ -455,6 +455,10 @@ const getDeterministicAdaptiveMomentumRibbonQuality = (
       signalDirection: context.signalDirection,
       value: context.benchmarkRelativeStrength1h,
     }) === false;
+  const alignedBullLowVolume =
+    context.benchmarkTrendAlignment === 'aligned_bull' &&
+    context.volumeRel20 != null &&
+    context.volumeRel20 < 2;
   const weakParticipation =
     (context.volumeRel20 != null &&
       (context.volumeRel20 < 0.8 || context.volumeRel20 > 1.5)) ||
@@ -635,6 +639,10 @@ const getDeterministicAdaptiveMomentumRibbonQuality = (
   }
 
   if (quality === 4 && channelExpansion) {
+    quality = 3;
+  }
+
+  if (quality === 4 && alignedBullLowVolume) {
     quality = 3;
   }
 

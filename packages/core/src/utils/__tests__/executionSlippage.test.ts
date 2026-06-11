@@ -2,6 +2,7 @@ import {
   applyExecutionSlippage,
   calculateDelayRiskBps,
   calculateEffectiveSlippageBps,
+  calculateExecutionSlippageBreakdown,
   extractExecutionDelayRiskBps,
   extractExecutionMarketImpactBps,
   extractExecutionSpreadBps,
@@ -18,6 +19,24 @@ describe('executionSlippage utils', () => {
         delayRiskBps: 4,
       }),
     ).toBe(54);
+
+    expect(
+      calculateExecutionSlippageBreakdown({
+        baseSlippageBps: 25,
+        spreadBps: 12,
+        spreadMultiplier: 1.5,
+        marketImpactBps: 7,
+        delayRiskBps: 4,
+      }),
+    ).toEqual({
+      baseSlippageBps: 25,
+      spreadBps: 12,
+      spreadMultiplier: 1.5,
+      spreadSlippageBps: 18,
+      marketImpactBps: 7,
+      delayRiskBps: 4,
+      effectiveSlippageBps: 54,
+    });
   });
 
   it('calculates delay risk from median recent close movement', () => {

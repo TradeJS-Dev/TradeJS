@@ -135,6 +135,13 @@ export type OrderLog = Order & {
   amount: number;
   fee?: number;
   index: number;
+  executionSlippageStage?: 'entry' | 'exit';
+  executionSlippageBps?: number | null;
+  executionBaseSlippageBps?: number | null;
+  executionSpreadBps?: number | null;
+  executionSpreadSlippageBps?: number | null;
+  executionMarketImpactBps?: number | null;
+  executionDelayRiskBps?: number | null;
 };
 
 export type OrderLogData = OrderLog[];
@@ -187,9 +194,19 @@ export interface TestTradeResult {
   totalFee: number;
   entrySlippagePrice: number;
   entrySlippageBps: number;
+  entryBaseSlippageBps: number;
+  entrySpreadBps: number;
+  entrySpreadSlippageBps: number;
+  entryMarketImpactBps: number;
+  entryDelayRiskBps: number | null;
   entrySlippageCost: number;
   exitSlippagePrice: number | null;
   exitSlippageBps: number | null;
+  exitBaseSlippageBps: number | null;
+  exitSpreadBps: number | null;
+  exitSpreadSlippageBps: number | null;
+  exitMarketImpactBps: number | null;
+  exitDelayRiskBps: number | null;
   exitSlippageCost: number;
   totalSlippageCost: number;
 }

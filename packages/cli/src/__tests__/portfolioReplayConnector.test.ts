@@ -235,6 +235,20 @@ describe('portfolio replay connector', () => {
     expect(artifacts.orderLog[1].price).toBeCloseTo(
       110 * (1 - backtestSlippageRate),
     );
+    expect(artifacts.orderLog[0]).toEqual(
+      expect.objectContaining({
+        executionSlippageStage: 'entry',
+        executionBaseSlippageBps: BACKTEST_BASE_SLIPPAGE_BPS,
+        executionDelayRiskBps: expect.any(Number),
+      }),
+    );
+    expect(artifacts.orderLog[1]).toEqual(
+      expect.objectContaining({
+        executionSlippageStage: 'exit',
+        executionBaseSlippageBps: BACKTEST_BASE_SLIPPAGE_BPS,
+        executionDelayRiskBps: null,
+      }),
+    );
   });
 
   it('tracks multiple open positions and open pnl across symbols', async () => {

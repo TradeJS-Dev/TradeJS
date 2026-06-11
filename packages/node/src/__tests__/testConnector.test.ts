@@ -198,8 +198,10 @@ describe('testConnector', () => {
   it('adds signal delay risk to entry slippage only', async () => {
     const connector = createTestConnector(baseConnector as any, {
       userName: 'alice',
+      aiEnabled: true,
     });
     const signal = {
+      signalId: 'sig-delay',
       interval: '15',
       indicators: {
         candles15m: [{ close: 100 }, { close: 101 }, { close: 102 }],
@@ -232,6 +234,21 @@ describe('testConnector', () => {
     const orders = (await connector.getResult()).inlineOrderLog ?? [];
     expect(orders[0].price).toBeCloseTo(100 * (1 + entrySlippageRate));
     expect(orders[1].price).toBeCloseTo(110 * (1 - backtestSlippageRate));
+    expect(await connector.drainMlResultsBatch()).toEqual([
+      expect.objectContaining({
+        signalId: 'sig-delay',
+        tradeResult: expect.objectContaining({
+          entryBaseSlippageBps: round(BACKTEST_BASE_SLIPPAGE_BPS),
+          entrySpreadBps: 0,
+          entrySpreadSlippageBps: 0,
+          entryDelayRiskBps: round(extractExecutionDelayRiskBps(signal) ?? 0),
+          exitBaseSlippageBps: round(BACKTEST_BASE_SLIPPAGE_BPS),
+          exitSpreadBps: 0,
+          exitSpreadSlippageBps: 0,
+          exitDelayRiskBps: null,
+        }),
+      }),
+    ]);
   });
 
   it('returns inline logs and final stat after take profits', async () => {

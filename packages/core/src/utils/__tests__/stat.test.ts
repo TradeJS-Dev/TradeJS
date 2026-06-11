@@ -94,6 +94,7 @@ describe('stat utils', () => {
         pnl: 10,
         symbol: 'AAAUSDT',
         direction: 'LONG',
+        exitReason: 'take_profit',
         slippageCost: 1,
         grossPnl: 11,
         approved: true,
@@ -104,6 +105,7 @@ describe('stat utils', () => {
         pnl: -5,
         symbol: 'BBBUSDT',
         direction: 'LONG',
+        exitReason: 'stop_loss',
         slippageCost: 0,
         grossPnl: -5,
         approved: true,
@@ -114,6 +116,7 @@ describe('stat utils', () => {
         pnl: 20,
         symbol: 'AAAUSDT',
         direction: 'SHORT',
+        exitReason: 'tp',
         slippageCost: 2,
         grossPnl: 22,
         approved: true,
@@ -124,6 +127,7 @@ describe('stat utils', () => {
         pnl: -10,
         symbol: 'CCCUSDT',
         direction: 'SHORT',
+        exitReason: 'exit',
         slippageCost: 0,
         grossPnl: -10,
         approved: true,
@@ -134,6 +138,7 @@ describe('stat utils', () => {
         pnl: 5,
         symbol: 'AAAUSDT',
         direction: 'LONG',
+        exitReason: null,
         slippageCost: 1,
         grossPnl: 6,
         approved: false,
@@ -239,6 +244,12 @@ describe('stat utils', () => {
       expect(metrics.operational.shortTrades).toBe(2);
       expect(metrics.operational.longPnl).toBe(10);
       expect(metrics.operational.shortPnl).toBe(10);
+      expect(metrics.operational.exitBreakdown).toEqual({
+        takeProfit: { count: 2, share: 40 },
+        stopLoss: { count: 1, share: 20 },
+        exit: { count: 1, share: 20 },
+        unknown: { count: 1, share: 20 },
+      });
     });
   });
 });

@@ -21,6 +21,16 @@ export type ExecutionSlippageModelParams = {
   delayRiskBps?: number | null;
 };
 
+export type ExecutionSlippageBreakdown = {
+  baseSlippageBps: number;
+  spreadBps: number;
+  spreadMultiplier: number;
+  spreadSlippageBps: number;
+  marketImpactBps: number;
+  delayRiskBps: number;
+  effectiveSlippageBps: number;
+};
+
 export type ExecutionDelayRiskParams = {
   closes?: unknown[] | null;
   candles?: unknown[] | null;
@@ -178,6 +188,31 @@ export const calculateEffectiveSlippageBps = ({
   return base + spread * multiplier + marketImpact + delayRisk;
 };
 
+export const calculateExecutionSlippageBreakdown = ({
+  baseSlippageBps = BACKTEST_BASE_SLIPPAGE_BPS,
+  spreadBps,
+  spreadMultiplier = BACKTEST_SPREAD_SLIPPAGE_MULTIPLIER,
+  marketImpactBps = BACKTEST_MARKET_IMPACT_BPS,
+  delayRiskBps,
+}: ExecutionSlippageModelParams = {}): ExecutionSlippageBreakdown => {
+  const base = toNonNegativeFiniteNumber(baseSlippageBps);
+  const spread = toNonNegativeFiniteNumber(spreadBps);
+  const multiplier = toNonNegativeFiniteNumber(spreadMultiplier);
+  const spreadSlippage = spread * multiplier;
+  const marketImpact = toNonNegativeFiniteNumber(marketImpactBps);
+  const delayRisk = toNonNegativeFiniteNumber(delayRiskBps);
+
+  return {
+    baseSlippageBps: base,
+    spreadBps: spread,
+    spreadMultiplier: multiplier,
+    spreadSlippageBps: spreadSlippage,
+    marketImpactBps: marketImpact,
+    delayRiskBps: delayRisk,
+    effectiveSlippageBps: base + spreadSlippage + marketImpact + delayRisk,
+  };
+};
+
 export const calculateDelayRiskBps = ({
   closes,
   candles,
@@ -242,7 +277,7 @@ export const applyExecutionSlippage = ({
   ...modelParams
 }: ApplyExecutionSlippageParams) => {
   const slippageRate = slippageBpsToRate(
-    calculateEffectiveSlippageBps(modelParams),
+    calculateExecutionSlippageBreakdown(modelParams).effectiveSlippageBps,
   );
 
   if (!slippageRate) {

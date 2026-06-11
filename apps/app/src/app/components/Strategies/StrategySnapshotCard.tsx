@@ -1350,6 +1350,7 @@ const buildSnapshotAdvancedTrades = (
         pnl: order.pnl,
         symbol: order.symbol ?? null,
         direction: order.direction ?? null,
+        exitReason: order.exitReason ?? null,
         slippageCost,
         grossPnl: slippageCost == null ? order.pnl : order.pnl + slippageCost,
         approved: true,

@@ -2,6 +2,7 @@ import { FEE_PERCENT, INITIAL_BACKTEST_AMOUNT } from '@tradejs/core/constants';
 import { round } from '@tradejs/core/math';
 import {
   applyExecutionSlippage as applyModeledExecutionSlippage,
+  calculateExecutionSlippageBreakdown,
   extractExecutionDelayRiskBps,
   extractExecutionMarketImpactBps,
   extractExecutionSpreadBps,
@@ -27,6 +28,9 @@ type ReplayPosition = Order & {
   amount: number;
   strategyName: string;
 };
+type ExecutionSlippageBreakdown = ReturnType<
+  typeof calculateExecutionSlippageBreakdown
+>;
 
 type PositionState = {
   position: ReplayPosition;
@@ -183,16 +187,48 @@ export const createPortfolioReplayConnector = (
     stage: 'entry' | 'exit';
     signal?: Signal;
   }) => {
+    const modelParams = {
+      spreadBps: extractExecutionSpreadBps(signal),
+      marketImpactBps: extractExecutionMarketImpactBps(signal),
+      delayRiskBps:
+        stage === 'entry' ? extractExecutionDelayRiskBps(signal) : null,
+    };
+
     return applyModeledExecutionSlippage({
       price,
       direction,
       stage,
+      ...modelParams,
+    });
+  };
+
+  const getExecutionSlippageBreakdown = ({
+    stage,
+    signal,
+  }: {
+    stage: 'entry' | 'exit';
+    signal?: Signal;
+  }) =>
+    calculateExecutionSlippageBreakdown({
       spreadBps: extractExecutionSpreadBps(signal),
       marketImpactBps: extractExecutionMarketImpactBps(signal),
       delayRiskBps:
         stage === 'entry' ? extractExecutionDelayRiskBps(signal) : null,
     });
-  };
+
+  const getExecutionSlippageLogData = (
+    slippageBreakdown: ExecutionSlippageBreakdown,
+    stage: 'entry' | 'exit',
+  ): Partial<OrderLog> => ({
+    executionSlippageStage: stage,
+    executionSlippageBps: round(slippageBreakdown.effectiveSlippageBps),
+    executionBaseSlippageBps: round(slippageBreakdown.baseSlippageBps),
+    executionSpreadBps: round(slippageBreakdown.spreadBps),
+    executionSpreadSlippageBps: round(slippageBreakdown.spreadSlippageBps),
+    executionMarketImpactBps: round(slippageBreakdown.marketImpactBps),
+    executionDelayRiskBps:
+      stage === 'entry' ? round(slippageBreakdown.delayRiskBps) : null,
+  });
 
   const checkTp = async ({
     symbol,
@@ -221,6 +257,10 @@ export const createPortfolioReplayConnector = (
       }
 
       const qty = positionState.originalQty * tp.rate;
+      const slippageBreakdown = getExecutionSlippageBreakdown({
+        stage: 'exit',
+        signal: position.signal,
+      });
       const executionPrice = applyExecutionSlippage({
         price: tp.price,
         direction: position.direction,
@@ -249,6 +289,7 @@ export const createPortfolioReplayConnector = (
           profit,
           fee,
           type: isLong ? 'TAKE_PROFIT_LONG' : 'TAKE_PROFIT_SHORT',
+          ...getExecutionSlippageLogData(slippageBreakdown, 'exit'),
         },
       });
 
@@ -287,6 +328,10 @@ export const createPortfolioReplayConnector = (
     }
 
     const qty = position.qty;
+    const slippageBreakdown = getExecutionSlippageBreakdown({
+      stage: 'exit',
+      signal: position.signal,
+    });
     const executionPrice = applyExecutionSlippage({
       price: stopLossPrice,
       direction: position.direction,
@@ -314,6 +359,7 @@ export const createPortfolioReplayConnector = (
         price: executionPrice,
         fee,
         type: isLong ? 'STOP_LOSS_LONG' : 'STOP_LOSS_SHORT',
+        ...getExecutionSlippageLogData(slippageBreakdown, 'exit'),
       },
     });
 
@@ -368,6 +414,10 @@ export const createPortfolioReplayConnector = (
       const strategyName = getStrategyName({
         signal: order.signal,
       });
+      const slippageBreakdown = getExecutionSlippageBreakdown({
+        stage: 'entry',
+        signal: order.signal,
+      });
       const entryPrice = applyExecutionSlippage({
         price: order.price,
         direction: order.direction,
@@ -407,6 +457,7 @@ export const createPortfolioReplayConnector = (
           profit,
           fee,
           type: order.direction === 'LONG' ? 'OPEN_LONG' : 'OPEN_SHORT',
+          ...getExecutionSlippageLogData(slippageBreakdown, 'entry'),
         },
       });
 
@@ -457,6 +508,10 @@ export const createPortfolioReplayConnector = (
 
       const { position } = positionState;
       const isLong = position.direction === 'LONG';
+      const slippageBreakdown = getExecutionSlippageBreakdown({
+        stage: 'exit',
+        signal: position.signal,
+      });
       const executionPrice = applyExecutionSlippage({
         price: order.price,
         direction: position.direction,
@@ -485,6 +540,7 @@ export const createPortfolioReplayConnector = (
           profit,
           fee,
           type: isLong ? 'CLOSE_LONG' : 'CLOSE_SHORT',
+          ...getExecutionSlippageLogData(slippageBreakdown, 'exit'),
         },
       });
 

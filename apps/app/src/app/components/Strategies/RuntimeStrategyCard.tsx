@@ -620,6 +620,7 @@ const buildRuntimeAdvancedTrades = (
         pnl: order.pnl,
         symbol: order.symbol,
         direction: order.direction,
+        exitReason: order.exitType ?? null,
         slippageCost,
         grossPnl: slippageCost == null ? order.pnl : order.pnl + slippageCost,
         approved: true,
