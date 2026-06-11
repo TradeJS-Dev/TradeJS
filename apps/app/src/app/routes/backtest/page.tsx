@@ -31,7 +31,8 @@ import {
   getBacktestRuns,
   startBacktestRun,
 } from '#actions/backtest';
-import { EmptyState, Segment, Select, toaster } from '#ui';
+import { useTickers } from '#store';
+import { EmptyState, Segment, Select, SelectWithSearch, toaster } from '#ui';
 import type {
   BacktestConfigSummary,
   BacktestJobRecord,
@@ -55,14 +56,21 @@ const CONNECTOR_ITEMS = [
   { label: 'Coinbase', value: 'coinbase' },
 ];
 
+const controlSurface = 'rgba(255, 255, 255, 0.035)';
+const controlSurfaceHover = 'rgba(255, 255, 255, 0.05)';
+
 const inputControlProps = {
-  bg: 'gray.950',
-  borderColor: 'gray.600',
+  bg: controlSurface,
+  borderColor: 'gray.700',
   color: 'gray.100',
   _placeholder: { color: 'gray.500' },
+  _hover: {
+    bg: controlSurfaceHover,
+    borderColor: 'gray.600',
+  },
   _focusVisible: {
-    borderColor: 'teal.400',
-    boxShadow: '0 0 0 1px var(--chakra-colors-teal-400)',
+    borderColor: 'gray.500',
+    boxShadow: '0 0 0 1px var(--chakra-colors-gray-500)',
   },
 };
 
@@ -164,23 +172,71 @@ const buildConfigItems = (
 
 const SelectControl = ({ children }: { children: React.ReactNode }) => (
   <Box
+    w="full"
+    minW={0}
     css={{
-      '& [data-part="trigger"]': {
-        background: 'var(--chakra-colors-gray-950)',
-        borderColor: 'var(--chakra-colors-gray-600)',
+      '& [data-part="control"]': {
+        width: '100%',
+      },
+      '& [data-part="trigger"], & [data-part="input"]': {
+        background: controlSurface,
+        borderColor: 'var(--chakra-colors-gray-700)',
         color: 'var(--chakra-colors-gray-100)',
+        minWidth: '0',
+        width: '100%',
       },
-      '& [data-part="trigger"]:is(:hover, [data-hover])': {
-        borderColor: 'var(--chakra-colors-gray-500)',
+      '& [data-part="trigger"]': {
+        flex: '1',
+        minHeight: '40px',
       },
-      '& [data-part="trigger"]:is(:focus-visible, [data-focus-visible])': {
-        borderColor: 'var(--chakra-colors-teal-400)',
-        boxShadow: '0 0 0 1px var(--chakra-colors-teal-400)',
+      '& [data-part="input"]': {
+        flex: '1',
+        minHeight: '40px',
+      },
+      '& [data-part="indicator-group"]': {
+        flexShrink: '0',
+      },
+      '& [data-part="trigger"]:is(:hover, [data-hover]), & [data-part="input"]:is(:hover, [data-hover])':
+        {
+          background: controlSurfaceHover,
+          borderColor: 'var(--chakra-colors-gray-600)',
+        },
+      '& [data-part="trigger"]:is(:focus-visible, [data-focus-visible]), & [data-part="input"]:is(:focus-visible, [data-focus-visible])':
+        {
+          borderColor: 'var(--chakra-colors-gray-500)',
+          boxShadow: '0 0 0 1px var(--chakra-colors-gray-500)',
+        },
+      '& [data-part="control"]:is(:hover, [data-hover]) [data-part="input"]': {
+        background: controlSurfaceHover,
+        borderColor: 'var(--chakra-colors-gray-600)',
       },
     }}
   >
     {children}
   </Box>
+);
+
+interface FormSectionProps {
+  title: string;
+  columns: string;
+  children: React.ReactNode;
+}
+
+const FormSection = ({ title, columns, children }: FormSectionProps) => (
+  <Stack gap={3} minW={0}>
+    <Text
+      color="gray.400"
+      fontSize="xs"
+      fontWeight="700"
+      letterSpacing="0"
+      textTransform="uppercase"
+    >
+      {title}
+    </Text>
+    <Grid templateColumns={columns} gap={3} alignItems="end">
+      {children}
+    </Grid>
+  </Stack>
 );
 
 const BacktestRunPage = () => {
@@ -203,10 +259,14 @@ const BacktestRunPage = () => {
   const [fast, setFast] = useState(false);
   const [interval, setIntervalValue] = useState('15');
   const [connector, setConnector] = useState('bybit');
-  const [tickers, setTickers] = useState('');
+  const [selectedTickers, setSelectedTickers] = useState<string[]>([]);
   const [tickersLimit, setTickersLimit] = useState('');
   const [testsLimit, setTestsLimit] = useState('');
   const [parallel, setParallel] = useState('');
+  const { tickers: tickerItems, ensureLoaded: ensureTickersLoaded } =
+    useTickers(connector, {
+      enabled: false,
+    });
 
   const strategyItems = useMemo(() => buildStrategyItems(configs), [configs]);
   const configItems = useMemo(
@@ -350,8 +410,8 @@ const BacktestRunPage = () => {
       payload.days = parsedDays;
     }
 
-    if (tickers.trim()) {
-      payload.tickers = tickers.trim();
+    if (selectedTickers.length) {
+      payload.tickers = selectedTickers.join(',');
     }
 
     for (const [field, value] of [
@@ -463,256 +523,348 @@ const BacktestRunPage = () => {
             </Flex>
           </Flex>
 
-          <Box
-            borderWidth="1px"
-            borderColor="gray.700"
-            borderTopColor="teal.500"
-            bg="gray.800"
-            p={4}
-            borderRadius="md"
-          >
-            <form onSubmit={handleStart}>
-              <Stack gap={4}>
-                <Flex
-                  alignItems="center"
-                  justifyContent="space-between"
-                  gap={4}
-                >
-                  <Flex alignItems="center" gap={3} minW={0}>
-                    <Text fontWeight="700" flexShrink={0}>
-                      Launch
-                    </Text>
-                    {selectedConfig ? (
-                      <Flex gap={2} wrap="wrap">
-                        <Badge colorPalette="teal">
-                          {selectedConfig.combinationCount} combos
-                        </Badge>
-                        <Badge colorPalette="gray">
-                          {selectedConfig.paramCount} params
-                        </Badge>
-                      </Flex>
-                    ) : null}
-                  </Flex>
-                  <Button
-                    type="submit"
-                    colorPalette="teal"
-                    disabled={!selectedConfigId || starting}
-                    loading={starting}
-                    minW="120px"
+          <Box maxW="1200px" w="full">
+            <Box
+              borderWidth="1px"
+              borderColor="gray.700"
+              bg="gray.800"
+              p={4}
+              borderRadius="md"
+            >
+              <form onSubmit={handleStart}>
+                <Stack gap={5}>
+                  <Flex
+                    alignItems="center"
+                    justifyContent="space-between"
+                    gap={4}
                   >
-                    <FiPlay />
-                    Start
-                  </Button>
-                </Flex>
+                    <Flex alignItems="center" gap={3} minW={0}>
+                      <Text fontWeight="700" flexShrink={0}>
+                        New run
+                      </Text>
+                      {selectedConfig ? (
+                        <Flex gap={2} wrap="wrap">
+                          <Badge colorPalette="teal">
+                            {selectedConfig.combinationCount} combos
+                          </Badge>
+                          <Badge colorPalette="gray">
+                            {selectedConfig.paramCount} params
+                          </Badge>
+                        </Flex>
+                      ) : null}
+                    </Flex>
+                  </Flex>
 
-                <Grid
-                  templateColumns="200px minmax(240px, 1.35fr) 170px 280px 160px"
-                  gap={3}
-                  alignItems="end"
-                >
-                  <Field.Root>
-                    <Field.Label>Strategy</Field.Label>
-                    <SelectControl>
-                      <Select
-                        placeholder="Strategy"
-                        value={selectedStrategy ? [selectedStrategy] : []}
-                        defaultValue={
-                          selectedStrategy ? [selectedStrategy] : []
-                        }
-                        onChange={(value) =>
-                          setSelectedStrategy(value[0] || '')
-                        }
-                        items={strategyItems}
-                        emptyState="No backtest configs"
-                        width="200px"
-                        disabled={!hasConfigs}
-                      />
-                    </SelectControl>
-                  </Field.Root>
-
-                  <Field.Root>
-                    <Field.Label>Config</Field.Label>
-                    <SelectControl>
-                      <Select
-                        placeholder="Config"
-                        value={selectedConfigId ? [selectedConfigId] : []}
-                        defaultValue={
-                          selectedConfigId ? [selectedConfigId] : []
-                        }
-                        onChange={(value) =>
-                          setSelectedConfigId(value[0] || '')
-                        }
-                        items={configItems}
-                        emptyState="No configs for strategy"
-                        width="280px"
-                        disabled={!selectedStrategy}
-                      />
-                    </SelectControl>
-                  </Field.Root>
-
-                  <Field.Root>
-                    <Field.Label>Period</Field.Label>
-                    <Segment
-                      defaultValue="days"
-                      value={periodMode}
-                      items={PERIOD_ITEMS}
-                      onChange={(value) =>
-                        setPeriodMode(value === 'range' ? 'range' : 'days')
-                      }
-                    />
-                  </Field.Root>
-
-                  {periodMode === 'days' ? (
+                  <FormSection
+                    title="Strategy"
+                    columns="repeat(2, minmax(0, 1fr))"
+                  >
                     <Field.Root>
-                      <Field.Label>Days</Field.Label>
+                      <Field.Label>Strategy</Field.Label>
+                      <SelectControl>
+                        <Select
+                          placeholder="Strategy"
+                          value={selectedStrategy ? [selectedStrategy] : []}
+                          defaultValue={
+                            selectedStrategy ? [selectedStrategy] : []
+                          }
+                          onChange={(value) =>
+                            setSelectedStrategy(value[0] || '')
+                          }
+                          items={strategyItems}
+                          emptyState="No backtest configs"
+                          width="100%"
+                          disabled={!hasConfigs}
+                        />
+                      </SelectControl>
+                    </Field.Root>
+
+                    <Field.Root>
+                      <Field.Label>Config</Field.Label>
+                      <SelectControl>
+                        <Select
+                          placeholder="Config"
+                          value={selectedConfigId ? [selectedConfigId] : []}
+                          defaultValue={
+                            selectedConfigId ? [selectedConfigId] : []
+                          }
+                          onChange={(value) =>
+                            setSelectedConfigId(value[0] || '')
+                          }
+                          items={configItems}
+                          emptyState="No configs for strategy"
+                          width="100%"
+                          disabled={!selectedStrategy}
+                        />
+                      </SelectControl>
+                    </Field.Root>
+                  </FormSection>
+
+                  <Grid
+                    templateColumns="minmax(0, 1fr) 260px"
+                    gap={5}
+                    alignItems="start"
+                  >
+                    <FormSection
+                      title="Date window"
+                      columns={
+                        periodMode === 'days'
+                          ? '280px minmax(0, 1fr)'
+                          : '280px repeat(2, minmax(0, 1fr))'
+                      }
+                    >
+                      <Field.Root>
+                        <Field.Label>Mode</Field.Label>
+                        <Segment
+                          defaultValue="days"
+                          value={periodMode}
+                          items={PERIOD_ITEMS}
+                          onChange={(value) =>
+                            setPeriodMode(value === 'range' ? 'range' : 'days')
+                          }
+                        />
+                      </Field.Root>
+
+                      {periodMode === 'days' ? (
+                        <Field.Root>
+                          <Field.Label>Days</Field.Label>
+                          <Input
+                            value={days}
+                            type="number"
+                            min={1}
+                            step={1}
+                            {...inputControlProps}
+                            onChange={(event) => setDays(event.target.value)}
+                          />
+                        </Field.Root>
+                      ) : (
+                        <>
+                          <Field.Root>
+                            <Field.Label>Start</Field.Label>
+                            <Input
+                              value={startDate}
+                              type="date"
+                              {...inputControlProps}
+                              onChange={(event) =>
+                                setStartDate(event.target.value)
+                              }
+                            />
+                          </Field.Root>
+                          <Field.Root>
+                            <Field.Label>End</Field.Label>
+                            <Input
+                              value={endDate}
+                              type="date"
+                              {...inputControlProps}
+                              onChange={(event) =>
+                                setEndDate(event.target.value)
+                              }
+                            />
+                          </Field.Root>
+                        </>
+                      )}
+                    </FormSection>
+
+                    <FormSection title="Options" columns="1fr">
+                      <Flex gap={4} alignItems="center" minH="40px">
+                        <Checkbox.Root
+                          colorPalette="teal"
+                          checked={ai}
+                          onCheckedChange={(details) =>
+                            setAi(details.checked === true)
+                          }
+                        >
+                          <Checkbox.HiddenInput />
+                          <Checkbox.Control
+                            bg={controlSurface}
+                            borderColor="gray.600"
+                          />
+                          <Checkbox.Label>AI</Checkbox.Label>
+                        </Checkbox.Root>
+                        <Checkbox.Root
+                          colorPalette="teal"
+                          checked={fast}
+                          onCheckedChange={(details) =>
+                            setFast(details.checked === true)
+                          }
+                        >
+                          <Checkbox.HiddenInput />
+                          <Checkbox.Control
+                            bg={controlSurface}
+                            borderColor="gray.600"
+                          />
+                          <Checkbox.Label>Fast</Checkbox.Label>
+                        </Checkbox.Root>
+                      </Flex>
+                    </FormSection>
+                  </Grid>
+
+                  <FormSection
+                    title="Runtime"
+                    columns="220px 260px minmax(0, 1fr)"
+                  >
+                    <Field.Root>
+                      <Field.Label>Interval</Field.Label>
+                      <SelectControl>
+                        <Select
+                          placeholder="Interval"
+                          value={[interval]}
+                          defaultValue={[interval]}
+                          onChange={(value) =>
+                            setIntervalValue(value[0] || '15')
+                          }
+                          items={INTERVAL_ITEMS}
+                          width="100%"
+                        />
+                      </SelectControl>
+                    </Field.Root>
+
+                    <Field.Root>
+                      <Field.Label>Connector</Field.Label>
+                      <SelectControl>
+                        <Select
+                          placeholder="Connector"
+                          value={[connector]}
+                          defaultValue={[connector]}
+                          onChange={(value) => {
+                            setConnector(value[0] || 'bybit');
+                            setSelectedTickers([]);
+                          }}
+                          items={CONNECTOR_ITEMS}
+                          width="100%"
+                        />
+                      </SelectControl>
+                    </Field.Root>
+
+                    <Field.Root>
+                      <Field.Label>Tickers</Field.Label>
+                      <Stack gap={2} w="full" minW={0}>
+                        <SelectControl>
+                          <SelectWithSearch
+                            key={connector}
+                            multiple
+                            placeholder="All tickers"
+                            emptyState="No tickers"
+                            defaultValue={[]}
+                            value={selectedTickers}
+                            items={tickerItems}
+                            width="100%"
+                            onChange={setSelectedTickers}
+                            onOpenChange={(open) => {
+                              if (open) {
+                                void ensureTickersLoaded();
+                              }
+                            }}
+                          />
+                        </SelectControl>
+                        {selectedTickers.length ? (
+                          <Flex gap={2} wrap="wrap">
+                            {selectedTickers.map((ticker) => (
+                              <Badge
+                                key={ticker}
+                                colorPalette="teal"
+                                display="inline-flex"
+                                alignItems="center"
+                                gap={1}
+                                py="1"
+                              >
+                                {ticker}
+                                <Box
+                                  as="span"
+                                  role="button"
+                                  tabIndex={0}
+                                  aria-label={`Remove ${ticker}`}
+                                  color="gray.300"
+                                  cursor="pointer"
+                                  _hover={{ color: 'white' }}
+                                  onKeyDown={(event) => {
+                                    if (
+                                      event.key === 'Enter' ||
+                                      event.key === ' '
+                                    ) {
+                                      event.preventDefault();
+                                      setSelectedTickers((currentTickers) =>
+                                        currentTickers.filter(
+                                          (currentTicker) =>
+                                            currentTicker !== ticker,
+                                        ),
+                                      );
+                                    }
+                                  }}
+                                  onClick={() =>
+                                    setSelectedTickers((currentTickers) =>
+                                      currentTickers.filter(
+                                        (currentTicker) =>
+                                          currentTicker !== ticker,
+                                      ),
+                                    )
+                                  }
+                                >
+                                  <FiX size={12} />
+                                </Box>
+                              </Badge>
+                            ))}
+                          </Flex>
+                        ) : null}
+                      </Stack>
+                    </Field.Root>
+                  </FormSection>
+
+                  <FormSection title="Limits" columns="repeat(3, 1fr)">
+                    <Field.Root>
+                      <Field.Label>Tickers limit</Field.Label>
                       <Input
-                        value={days}
+                        value={tickersLimit}
                         type="number"
                         min={1}
-                        step={1}
                         {...inputControlProps}
-                        onChange={(event) => setDays(event.target.value)}
+                        onChange={(event) =>
+                          setTickersLimit(event.target.value)
+                        }
                       />
                     </Field.Root>
-                  ) : (
-                    <Grid templateColumns="1fr 1fr" gap={3}>
-                      <Field.Root>
-                        <Field.Label>Start</Field.Label>
-                        <Input
-                          value={startDate}
-                          type="date"
-                          {...inputControlProps}
-                          onChange={(event) => setStartDate(event.target.value)}
-                        />
-                      </Field.Root>
-                      <Field.Root>
-                        <Field.Label>End</Field.Label>
-                        <Input
-                          value={endDate}
-                          type="date"
-                          {...inputControlProps}
-                          onChange={(event) => setEndDate(event.target.value)}
-                        />
-                      </Field.Root>
-                    </Grid>
-                  )}
 
-                  <Field.Root>
-                    <Field.Label>Flags</Field.Label>
-                    <Flex gap={4} alignItems="center" minH="36px">
-                      <Checkbox.Root
-                        colorPalette="teal"
-                        checked={ai}
-                        onCheckedChange={(details) =>
-                          setAi(details.checked === true)
-                        }
-                      >
-                        <Checkbox.HiddenInput />
-                        <Checkbox.Control
-                          bg="gray.950"
-                          borderColor="gray.500"
-                        />
-                        <Checkbox.Label>AI</Checkbox.Label>
-                      </Checkbox.Root>
-                      <Checkbox.Root
-                        colorPalette="teal"
-                        checked={fast}
-                        onCheckedChange={(details) =>
-                          setFast(details.checked === true)
-                        }
-                      >
-                        <Checkbox.HiddenInput />
-                        <Checkbox.Control
-                          bg="gray.950"
-                          borderColor="gray.500"
-                        />
-                        <Checkbox.Label>Fast</Checkbox.Label>
-                      </Checkbox.Root>
-                    </Flex>
-                  </Field.Root>
-                </Grid>
-
-                <Grid
-                  templateColumns="140px 160px minmax(240px, 1fr) 140px 140px 120px"
-                  gap={3}
-                  alignItems="end"
-                >
-                  <Field.Root>
-                    <Field.Label>Interval</Field.Label>
-                    <SelectControl>
-                      <Select
-                        placeholder="Interval"
-                        value={[interval]}
-                        defaultValue={[interval]}
-                        onChange={(value) => setIntervalValue(value[0] || '15')}
-                        items={INTERVAL_ITEMS}
-                        width="120px"
+                    <Field.Root>
+                      <Field.Label>Tests limit</Field.Label>
+                      <Input
+                        value={testsLimit}
+                        type="number"
+                        min={1}
+                        {...inputControlProps}
+                        onChange={(event) => setTestsLimit(event.target.value)}
                       />
-                    </SelectControl>
-                  </Field.Root>
+                    </Field.Root>
 
-                  <Field.Root>
-                    <Field.Label>Connector</Field.Label>
-                    <SelectControl>
-                      <Select
-                        placeholder="Connector"
-                        value={[connector]}
-                        defaultValue={[connector]}
-                        onChange={(value) => setConnector(value[0] || 'bybit')}
-                        items={CONNECTOR_ITEMS}
-                        width="140px"
+                    <Field.Root>
+                      <Field.Label>Parallel</Field.Label>
+                      <Input
+                        value={parallel}
+                        type="number"
+                        min={1}
+                        {...inputControlProps}
+                        onChange={(event) => setParallel(event.target.value)}
                       />
-                    </SelectControl>
-                  </Field.Root>
+                    </Field.Root>
+                  </FormSection>
 
-                  <Field.Root>
-                    <Field.Label>Tickers</Field.Label>
-                    <Input
-                      value={tickers}
-                      placeholder="BTCUSDT,ETHUSDT"
-                      {...inputControlProps}
-                      onChange={(event) => setTickers(event.target.value)}
-                    />
-                  </Field.Root>
-
-                  <Field.Root>
-                    <Field.Label>Tickers limit</Field.Label>
-                    <Input
-                      value={tickersLimit}
-                      type="number"
-                      min={1}
-                      {...inputControlProps}
-                      onChange={(event) => setTickersLimit(event.target.value)}
-                    />
-                  </Field.Root>
-
-                  <Field.Root>
-                    <Field.Label>Tests limit</Field.Label>
-                    <Input
-                      value={testsLimit}
-                      type="number"
-                      min={1}
-                      {...inputControlProps}
-                      onChange={(event) => setTestsLimit(event.target.value)}
-                    />
-                  </Field.Root>
-
-                  <Field.Root>
-                    <Field.Label>Parallel</Field.Label>
-                    <Input
-                      value={parallel}
-                      type="number"
-                      min={1}
-                      {...inputControlProps}
-                      onChange={(event) => setParallel(event.target.value)}
-                    />
-                  </Field.Root>
-                </Grid>
-              </Stack>
-            </form>
+                  <Flex justifyContent="flex-end" pt={1}>
+                    <Button
+                      type="submit"
+                      colorPalette="teal"
+                      disabled={!selectedConfigId || starting}
+                      loading={starting}
+                      minW="160px"
+                    >
+                      <FiPlay />
+                      Start
+                    </Button>
+                  </Flex>
+                </Stack>
+              </form>
+            </Box>
           </Box>
 
-          <Box mt={5}>
+          <Box maxW="1200px" w="full" mt={5}>
             <Flex alignItems="center" justifyContent="space-between" mb={3}>
               <Flex alignItems="center" gap={3}>
                 <Text fontWeight="700">Active runs</Text>

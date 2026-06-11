@@ -3,10 +3,14 @@ describe('constants/index', () => {
     jest.isolateModules(() => {
       const constants = require('../index');
 
-      expect(constants.FEE_PERCENT).toBe(0.002);
-      expect(constants.BACKTEST_BASE_SLIPPAGE_BPS).toBe(40);
+      expect(constants.FEE_PERCENT).toBe(0.001);
+      expect(constants.BACKTEST_BASE_SLIPPAGE_BPS).toBe(20);
       expect(constants.BACKTEST_SPREAD_SLIPPAGE_MULTIPLIER).toBe(1);
       expect(constants.BACKTEST_MARKET_IMPACT_BPS).toBe(0);
+      expect(constants.BACKTEST_DELAY_RISK_LOOKBACK_CANDLES).toBe(5);
+      expect(constants.BACKTEST_DELAY_RISK_MULTIPLIER).toBe(0.5);
+      expect(constants.BACKTEST_DELAY_RISK_MAX_BPS).toBe(30);
+      expect(constants.BACKTEST_EXPECTED_DELAY_MS).toBe(5_000);
       expect(constants.INITIAL_BACKTEST_AMOUNT).toBe(100);
       expect(constants.TTL_1D).toBe(86_400);
       expect(constants.TTL_3D).toBe(259_200);

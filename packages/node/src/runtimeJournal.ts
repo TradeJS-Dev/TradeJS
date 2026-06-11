@@ -10,7 +10,12 @@ import {
   setData,
   setHashJsonField,
 } from '@tradejs/infra/redis';
-import { Direction, RuntimeTradeRecord, SignalAnalysis } from '@tradejs/types';
+import {
+  Direction,
+  Interval,
+  RuntimeTradeRecord,
+  SignalAnalysis,
+} from '@tradejs/types';
 
 const now = () => Date.now();
 
@@ -49,10 +54,23 @@ export const recordRuntimeTradeOpen = async (params: {
   signalId?: string;
   strategy: string;
   symbol: string;
+  interval?: Interval;
   direction: Direction;
   qty: number;
   entryPrice: number;
   entryTimestamp: number;
+  signalTimestamp?: number | null;
+  signalClosePrice?: number | null;
+  arrivalMid?: number | null;
+  bid?: number | null;
+  ask?: number | null;
+  spreadBps?: number | null;
+  orderSubmitTime?: number | null;
+  fillAvgPrice?: number | null;
+  fillTime?: number | null;
+  fee?: number | null;
+  openFee?: number | null;
+  totalFee?: number | null;
   aiAnalysis?: Partial<SignalAnalysis> | null;
 }) => {
   const { userName } = params;

@@ -17,6 +17,7 @@ const customJestConfig = {
     '^@tradejs/core/math$': '<rootDir>/packages/core/src/math',
     '^@tradejs/core/strategies$': '<rootDir>/packages/core/src/strategies',
     '^@tradejs/core/tickers$': '<rootDir>/packages/core/src/tickers',
+    '^@tradejs/core/trade$': '<rootDir>/packages/core/src/trade',
     '^@tradejs/core/time$': '<rootDir>/packages/core/src/time',
     '^@tradejs/node/ai$': '<rootDir>/packages/node/src/ai',
     '^@tradejs/node/backtest$': '<rootDir>/packages/node/src/backtest',

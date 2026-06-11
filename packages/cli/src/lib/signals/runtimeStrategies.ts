@@ -1,18 +1,16 @@
 import { logger } from '@tradejs/infra/logger';
 import type { StrategyConfig, StrategyCreator } from '@tradejs/types';
 import { getStrategyCreator } from '@tradejs/node/strategies';
-import { loadRuntimeStrategyConfigs } from '../runtimeRedis';
+import {
+  isRuntimeStrategyEnabled,
+  loadRuntimeStrategyConfigs,
+} from '../runtimeRedis';
 
 export interface StrategyRuntimeConfig {
   strategyName: string;
   strategyCreator: StrategyCreator;
   strategyConfig: StrategyConfig;
 }
-
-const isStrategyRuntimeEnabled = (strategyConfig: StrategyConfig) => {
-  const enabled = (strategyConfig as Record<string, unknown>).ENABLE;
-  return enabled !== false;
-};
 
 export const loadRuntimeStrategies = async ({
   userName,
@@ -28,7 +26,7 @@ export const loadRuntimeStrategies = async ({
         strategyName,
         strategyConfig,
       }): Promise<StrategyRuntimeConfig | null> => {
-        if (!isStrategyRuntimeEnabled(strategyConfig)) {
+        if (!isRuntimeStrategyEnabled(strategyConfig)) {
           logger.info(
             'Skip inactive strategy config by ENABLE=false: %s',
             strategyName,

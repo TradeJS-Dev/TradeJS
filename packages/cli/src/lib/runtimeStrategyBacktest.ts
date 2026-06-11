@@ -1,6 +1,9 @@
 import chalk from 'chalk';
 import { StrategyConfig, StrategyConfigGrid } from '@tradejs/types';
-import { loadRuntimeStrategyConfigs } from './runtimeRedis';
+import {
+  isRuntimeStrategyEnabled,
+  loadRuntimeStrategyConfigs,
+} from './runtimeRedis';
 
 export type RuntimeStrategyBacktestConfig = {
   strategyName: string;
@@ -34,9 +37,21 @@ export const loadRuntimeStrategyBacktestConfigs = async (
     },
   });
 
-  return configs.map(({ strategyName, strategyConfig }) => ({
-    strategyName,
-    strategyConfig,
-    backtestConfig: toStrategyConfigGrid(strategyConfig),
-  }));
+  return configs
+    .filter(({ strategyName, strategyConfig }) => {
+      const enabled = isRuntimeStrategyEnabled(strategyConfig);
+      if (!enabled) {
+        console.log(
+          chalk.yellow(
+            `Skip inactive runtime strategy config by ENABLE=false: ${strategyName}`,
+          ),
+        );
+      }
+      return enabled;
+    })
+    .map(({ strategyName, strategyConfig }) => ({
+      strategyName,
+      strategyConfig,
+      backtestConfig: toStrategyConfigGrid(strategyConfig),
+    }));
 };

@@ -17,6 +17,11 @@ export type RuntimeStrategyConfigRecord = {
   strategyConfig: StrategyConfig;
 };
 
+export const isRuntimeStrategyEnabled = (strategyConfig: StrategyConfig) => {
+  const enabled = (strategyConfig as Record<string, unknown>).ENABLE;
+  return enabled !== false;
+};
+
 export const isRuntimeTradeRecord = (
   value: unknown,
 ): value is RuntimeTradeRecord => {

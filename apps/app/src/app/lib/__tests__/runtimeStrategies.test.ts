@@ -143,6 +143,8 @@ describe('runtimeStrategies helpers', () => {
       activePnl: -3,
       closedPnl: 12,
       totalPnl: 9,
+      symbolConcentrationTop1: 80,
+      symbolConcentrationTop5: 100,
     });
   });
 

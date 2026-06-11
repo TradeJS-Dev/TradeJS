@@ -36,6 +36,8 @@ export interface RuntimeStrategyTradeSummary {
   activePnl: number;
   closedPnl: number;
   totalPnl: number;
+  symbolConcentrationTop1: number | null;
+  symbolConcentrationTop5: number | null;
 }
 
 export interface RuntimeStrategyTradeView {
@@ -429,6 +431,35 @@ const calculateStreaks = (pnls: number[]) => {
   };
 };
 
+const calculateSymbolConcentration = (
+  trades: RuntimeTradeWithResolvedPnl[],
+  limit: number,
+) => {
+  const totals = new Map<string, number>();
+
+  for (const trade of trades) {
+    totals.set(
+      trade.symbol,
+      (totals.get(trade.symbol) ?? 0) + Math.abs(trade.resolvedPnl),
+    );
+  }
+
+  const totalAbsPnl = [...totals.values()].reduce(
+    (sum, value) => sum + value,
+    0,
+  );
+  if (totalAbsPnl <= 0) {
+    return null;
+  }
+
+  const topAbsPnl = [...totals.values()]
+    .sort((left, right) => right - left)
+    .slice(0, limit)
+    .reduce((sum, value) => sum + value, 0);
+
+  return roundValue((topAbsPnl / totalAbsPnl) * 100);
+};
+
 const createEmptyRuntimeStat = (
   startTime: number,
   endTime: number,
@@ -622,6 +653,14 @@ export const buildRuntimeStrategyAnalytics = ({
   const exposure = calculateExposurePercent(trades, startTime, endTime);
   const { maxConsecutiveWins, maxConsecutiveLosses } =
     calculateStreaks(tradePnls);
+  const symbolConcentrationTop1 = calculateSymbolConcentration(
+    resolvedTrades,
+    1,
+  );
+  const symbolConcentrationTop5 = calculateSymbolConcentration(
+    resolvedTrades,
+    5,
+  );
 
   const stat: TestStat =
     trades.length === 0
@@ -693,6 +732,8 @@ export const buildRuntimeStrategyAnalytics = ({
       activePnl,
       closedPnl,
       totalPnl: roundValue(activePnl + closedPnl),
+      symbolConcentrationTop1,
+      symbolConcentrationTop5,
     },
   };
 };

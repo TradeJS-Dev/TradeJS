@@ -596,6 +596,7 @@ const runSignalsPath = async () => {
     shouldBackfillDerivativesContextForSignals: jest.fn(() => false),
   }));
   jest.doMock('../lib/runtimeRedis', () => ({
+    isRuntimeStrategyEnabled: jest.fn(() => true),
     loadRuntimeStrategyConfigs: jest.fn(async () => [
       {
         key: 'users:root:strategies:ParityStrategy:config',

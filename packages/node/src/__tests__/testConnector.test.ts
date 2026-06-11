@@ -13,7 +13,10 @@ import {
   FEE_PERCENT,
   INITIAL_BACKTEST_AMOUNT,
 } from '@tradejs/core/constants';
-import { calculateEffectiveSlippageBps } from '@tradejs/core/trade';
+import {
+  calculateEffectiveSlippageBps,
+  extractExecutionDelayRiskBps,
+} from '@tradejs/core/trade';
 import { createTestConnector } from '../testConnector';
 
 const baseConnector = {
@@ -99,7 +102,7 @@ describe('testConnector', () => {
     expect(longOrders[0]).toEqual(
       expect.objectContaining({
         type: 'OPEN_LONG',
-        profit: -0.2,
+        profit: -0.1,
       }),
     );
     expect(longOrders[0].price).toBeCloseTo(100 * (1 + backtestSlippageRate));
@@ -137,7 +140,7 @@ describe('testConnector', () => {
     expect(shortOrders[0]).toEqual(
       expect.objectContaining({
         type: 'OPEN_SHORT',
-        profit: -0.2,
+        profit: -0.1,
       }),
     );
     expect(shortOrders[0].price).toBeCloseTo(100 * (1 - backtestSlippageRate));
@@ -190,6 +193,45 @@ describe('testConnector', () => {
     const orders = (await connector.getResult()).inlineOrderLog ?? [];
     expect(orders[0].price).toBeCloseTo(100 * (1 + dynamicSlippageRate));
     expect(orders[1].price).toBeCloseTo(110 * (1 - dynamicSlippageRate));
+  });
+
+  it('adds signal delay risk to entry slippage only', async () => {
+    const connector = createTestConnector(baseConnector as any, {
+      userName: 'alice',
+    });
+    const signal = {
+      interval: '15',
+      indicators: {
+        candles15m: [{ close: 100 }, { close: 101 }, { close: 102 }],
+      },
+      additionalIndicators: {},
+    };
+    const entrySlippageRate =
+      calculateEffectiveSlippageBps({
+        baseSlippageBps: BACKTEST_BASE_SLIPPAGE_BPS,
+        delayRiskBps: extractExecutionDelayRiskBps(signal),
+      }) / 10_000;
+
+    await connector.placeOrder({
+      symbol: 'ETHUSDT',
+      qty: 1,
+      price: 100,
+      isLimit: false,
+      timestamp: 1,
+      direction: 'LONG',
+      signal,
+    } as any);
+    await connector.closePosition({
+      symbol: 'ETHUSDT',
+      price: 110,
+      isLimit: false,
+      timestamp: 2,
+      direction: 'LONG',
+    });
+
+    const orders = (await connector.getResult()).inlineOrderLog ?? [];
+    expect(orders[0].price).toBeCloseTo(100 * (1 + entrySlippageRate));
+    expect(orders[1].price).toBeCloseTo(110 * (1 - backtestSlippageRate));
   });
 
   it('returns inline logs and final stat after take profits', async () => {

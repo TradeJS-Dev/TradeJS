@@ -4,7 +4,10 @@ import {
   FEE_PERCENT,
   INITIAL_BACKTEST_AMOUNT,
 } from '@tradejs/core/constants';
-import { calculateEffectiveSlippageBps } from '@tradejs/core/trade';
+import {
+  calculateEffectiveSlippageBps,
+  extractExecutionDelayRiskBps,
+} from '@tradejs/core/trade';
 import { createPortfolioReplayConnector } from '../lib/replay/portfolioReplayConnector';
 
 describe('portfolio replay connector', () => {
@@ -112,7 +115,7 @@ describe('portfolio replay connector', () => {
     expect(artifacts.orderLog[0]).toEqual(
       expect.objectContaining({
         type: 'OPEN_LONG',
-        profit: -0.2,
+        profit: -0.1,
       }),
     );
     expect(artifacts.orderLog[0].price).toBeCloseTo(
@@ -121,7 +124,7 @@ describe('portfolio replay connector', () => {
     expect(artifacts.orderLog[1]).toEqual(
       expect.objectContaining({
         type: 'OPEN_SHORT',
-        profit: -0.2,
+        profit: -0.1,
       }),
     );
     expect(artifacts.orderLog[1].price).toBeCloseTo(
@@ -190,6 +193,47 @@ describe('portfolio replay connector', () => {
     );
     expect(artifacts.orderLog[1].price).toBeCloseTo(
       110 * (1 - dynamicSlippageRate),
+    );
+  });
+
+  it('adds signal delay risk to replay entry slippage only', async () => {
+    const connector = createPortfolioReplayConnector(baseConnector);
+    const signal = {
+      strategy: 'TrendLine',
+      interval: '15',
+      indicators: {
+        candles15m: [{ close: 100 }, { close: 101 }, { close: 102 }],
+      },
+      additionalIndicators: {},
+    };
+    const entrySlippageRate =
+      calculateEffectiveSlippageBps({
+        baseSlippageBps: BACKTEST_BASE_SLIPPAGE_BPS,
+        delayRiskBps: extractExecutionDelayRiskBps(signal),
+      }) / 10_000;
+
+    await connector.placeOrder({
+      symbol: 'BTCUSDT',
+      qty: 1,
+      price: 100,
+      timestamp: 1,
+      direction: 'LONG',
+      signal,
+    } as any);
+    await connector.closePosition({
+      symbol: 'BTCUSDT',
+      qty: 1,
+      price: 110,
+      timestamp: 2,
+      direction: 'LONG',
+    } as any);
+
+    const artifacts = connector.getReplayArtifacts();
+    expect(artifacts.orderLog[0].price).toBeCloseTo(
+      100 * (1 + entrySlippageRate),
+    );
+    expect(artifacts.orderLog[1].price).toBeCloseTo(
+      110 * (1 - backtestSlippageRate),
     );
   });
 

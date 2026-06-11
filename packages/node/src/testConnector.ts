@@ -3,6 +3,7 @@ import { FEE_PERCENT, INITIAL_BACKTEST_AMOUNT } from '@tradejs/core/constants';
 import { calculateStatsFull } from '@tradejs/core/backtest';
 import {
   applyExecutionSlippage as applyModeledExecutionSlippage,
+  extractExecutionDelayRiskBps,
   extractExecutionMarketImpactBps,
   extractExecutionSpreadBps,
 } from '@tradejs/core/trade';
@@ -307,6 +308,8 @@ export const createTestConnector: TestConnectorCreator = (
       stage,
       spreadBps: extractExecutionSpreadBps(signal),
       marketImpactBps: extractExecutionMarketImpactBps(signal),
+      delayRiskBps:
+        stage === 'entry' ? extractExecutionDelayRiskBps(signal) : null,
     });
   };
 

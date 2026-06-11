@@ -19,6 +19,7 @@ jest.mock('@tradejs/infra/ml', () => ({
 jest.mock('@tradejs/infra/logger', () => ({
   logger: {
     error: jest.fn(),
+    warn: jest.fn(),
   },
 }));
 
@@ -316,6 +317,13 @@ describe('strategyHelpers/runtime enrichSignalWithMlAi', () => {
       setTakeProfits: jest.fn(async () => true),
       setStopLoss: jest.fn(async () => true),
       closePosition: jest.fn(async () => true),
+      getTopOfBookTicker: jest.fn(async () => ({
+        symbol: 'ETHUSDT',
+        bidPrice: 99,
+        bidQty: 10,
+        askPrice: 101,
+        askQty: 12,
+      })),
       getPosition: jest.fn(async () => ({
         symbol: 'ETHUSDT',
         qty: 1,
@@ -356,9 +364,22 @@ describe('strategyHelpers/runtime enrichSignalWithMlAi', () => {
       signalId: 's1',
       strategy: 'TrendLine',
       symbol: 'ETHUSDT',
+      interval: '15',
       direction: 'LONG',
       qty: 1,
       entryPrice: 101,
+      signalTimestamp: 1,
+      signalClosePrice: 100,
+      arrivalMid: 100,
+      bid: 99,
+      ask: 101,
+      spreadBps: 200,
+      orderSubmitTime: expect.any(Number),
+      fillAvgPrice: 101,
+      fillTime: expect.any(Number),
+      fee: 0.101,
+      openFee: 0.101,
+      totalFee: 0.101,
       entryTimestamp: 1_700_000_000_000,
     });
     expect(price).toBe(101);

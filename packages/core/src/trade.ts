@@ -5,11 +5,14 @@ const STRATEGY_HASH_LENGTH = 5;
 
 export {
   applyExecutionSlippage,
+  calculateDelayRiskBps,
   calculateEffectiveSlippageBps,
+  extractExecutionDelayRiskBps,
   extractExecutionMarketImpactBps,
   extractExecutionSpreadBps,
   slippageBpsToRate,
   type ApplyExecutionSlippageParams,
+  type ExecutionDelayRiskParams,
   type ExecutionSlippageDirection,
   type ExecutionSlippageModelParams,
   type ExecutionSlippageStage,

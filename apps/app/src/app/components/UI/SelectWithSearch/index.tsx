@@ -15,12 +15,14 @@ import { Items } from '@tradejs/types';
 
 interface SelectWithSearchProps {
   defaultValue: string[];
+  value?: string[];
   defaultInputValue?: string;
   items: Items;
   placeholder?: string;
   emptyState?: string;
   width?: string | number;
   multiple?: boolean;
+  disabled?: boolean;
   size?: 'xs' | 'sm' | 'md' | 'lg';
   onChange?: (value: string[]) => void;
   onOpenChange?: (open: boolean) => void;
@@ -28,9 +30,11 @@ interface SelectWithSearchProps {
 
 export const SelectWithSearch = ({
   defaultValue,
+  value,
   defaultInputValue,
   items,
   multiple = false,
+  disabled = false,
   placeholder = 'Select',
   emptyState = 'No items found',
   width = '320px',
@@ -55,7 +59,7 @@ export const SelectWithSearch = ({
   return (
     <Combobox.Root
       collection={collection}
-      defaultValue={defaultValue}
+      {...(value ? { value } : { defaultValue })}
       inputValue={inputValue}
       onValueChange={(details) => onChange?.(details.value)}
       onInputValueChange={(e) => {
@@ -72,6 +76,7 @@ export const SelectWithSearch = ({
       width={width}
       multiple={multiple}
       size={size}
+      disabled={disabled}
       openOnClick
     >
       <Combobox.Control>

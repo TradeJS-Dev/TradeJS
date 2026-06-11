@@ -1,5 +1,6 @@
 import { logger } from '@tradejs/infra/logger';
 import { redisKeys, setData } from '@tradejs/infra/redis';
+import { FEE_PERCENT } from '@tradejs/core/constants';
 import {
   buildMlFeatures,
   buildMlTrainingRow,
@@ -238,6 +239,56 @@ interface ExecuteEntryOrderParams {
   recordRuntimeTrade?: boolean;
 }
 
+const toFiniteNumberOrNull = (value: unknown) =>
+  typeof value === 'number' && Number.isFinite(value) ? value : null;
+
+const getArrivalSnapshot = async ({
+  connector,
+  symbol,
+}: {
+  connector: Connector;
+  symbol: string;
+}) => {
+  if (typeof connector.getTopOfBookTicker !== 'function') {
+    return {
+      bid: null,
+      ask: null,
+      arrivalMid: null,
+      spreadBps: null,
+    };
+  }
+
+  try {
+    const ticker = await connector.getTopOfBookTicker(symbol);
+    const bid = toFiniteNumberOrNull(ticker?.bidPrice);
+    const ask = toFiniteNumberOrNull(ticker?.askPrice);
+    const arrivalMid = bid != null && ask != null ? (bid + ask) / 2 : null;
+    const spreadBps =
+      bid != null && ask != null && arrivalMid != null && arrivalMid > 0
+        ? ((ask - bid) / arrivalMid) * 10_000
+        : null;
+
+    return {
+      bid,
+      ask,
+      arrivalMid,
+      spreadBps,
+    };
+  } catch (error) {
+    logger.warn(
+      'runtime order arrival snapshot failed: %s %s',
+      symbol,
+      (error as Error)?.message || String(error),
+    );
+    return {
+      bid: null,
+      ask: null,
+      arrivalMid: null,
+      spreadBps: null,
+    };
+  }
+};
+
 const applyProtectiveOrders = async ({
   connector,
   symbol,
@@ -295,11 +346,15 @@ export const executeEntryOrder = async ({
 }: ExecuteEntryOrderParams): Promise<number> => {
   await beforePlaceOrder?.();
   const orderId = signal.orderId || createRuntimeOrderId(signal.strategy);
+  const signalTimestamp = signal.timestamp;
+  const signalClosePrice = currentPrice;
   signal.orderId = orderId;
   signal.orderQty = qty;
   signal.orderValue = qty * currentPrice;
   signal.orderFailureReason = undefined;
 
+  const arrivalSnapshot = await getArrivalSnapshot({ connector, symbol });
+  const orderSubmitTime = Date.now();
   const orderPlaced = await connector.placeOrder({
     symbol,
     qty,
@@ -310,6 +365,7 @@ export const executeEntryOrder = async ({
     orderId,
     signal,
   });
+  const fillTime = Date.now();
   const placedQty =
     typeof signal.orderQty === 'number' &&
     Number.isFinite(signal.orderQty) &&
@@ -354,6 +410,7 @@ export const executeEntryOrder = async ({
     currentPosition?.qty && Number.isFinite(currentPosition.qty)
       ? currentPosition.qty
       : placedQty;
+  const estimatedOpenFee = entryPrice * entryQty * FEE_PERCENT;
 
   signal.prices.currentPrice = entryPrice;
   signal.orderQty = entryQty;
@@ -366,9 +423,22 @@ export const executeEntryOrder = async ({
       signalId: signal.signalId,
       strategy: signal.strategy,
       symbol,
+      interval: signal.interval,
       direction,
       qty: entryQty,
       entryPrice,
+      signalTimestamp,
+      signalClosePrice,
+      arrivalMid: arrivalSnapshot.arrivalMid,
+      bid: arrivalSnapshot.bid,
+      ask: arrivalSnapshot.ask,
+      spreadBps: arrivalSnapshot.spreadBps,
+      orderSubmitTime,
+      fillAvgPrice: entryPrice,
+      fillTime,
+      fee: estimatedOpenFee,
+      openFee: estimatedOpenFee,
+      totalFee: estimatedOpenFee,
       entryTimestamp: timestamp,
       ...(signal.aiAnalysis ? { aiAnalysis: signal.aiAnalysis } : {}),
     });

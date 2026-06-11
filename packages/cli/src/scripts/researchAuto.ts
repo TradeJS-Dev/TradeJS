@@ -10,6 +10,7 @@ import { getData, getKeys, redisKeys, setData } from '@tradejs/infra/redis';
 import { StrategyConfig, StrategyConfigGrid } from '@tradejs/types';
 import { getBuiltInStrategyDefaultConfig } from '@tradejs/strategies';
 import {
+  isRuntimeStrategyEnabled,
   loadRuntimeStrategyConfigs,
   loadRuntimeStrategyNames as loadRuntimeStrategyNamesFromRedis,
   resolveStrategyNameByConfigKey,
@@ -365,15 +366,10 @@ export const getBacktestResultsPrefix = (userName: string, config: string) =>
 
 export { resolveStrategyNameByConfigKey } from '../lib/runtimeRedis';
 
-const isStrategyRuntimeEnabled = (strategyConfig: StrategyConfig) => {
-  const enabled = (strategyConfig as Record<string, unknown>).ENABLE;
-  return enabled !== false;
-};
-
 export const listRuntimeStrategyNames = async (userName: string) => {
   const strategyConfigs = await loadRuntimeStrategyConfigs(userName);
   return strategyConfigs
-    .filter(({ strategyConfig }) => isStrategyRuntimeEnabled(strategyConfig))
+    .filter(({ strategyConfig }) => isRuntimeStrategyEnabled(strategyConfig))
     .map(({ strategyName }) => strategyName)
     .sort((left, right) => left.localeCompare(right));
 };

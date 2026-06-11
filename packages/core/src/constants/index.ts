@@ -1,9 +1,13 @@
 import type { TestThresholds } from '@tradejs/types';
 
-export const FEE_PERCENT = 0.002;
-export const BACKTEST_BASE_SLIPPAGE_BPS = 40;
+export const FEE_PERCENT = 0.001;
+export const BACKTEST_BASE_SLIPPAGE_BPS = 20;
 export const BACKTEST_SPREAD_SLIPPAGE_MULTIPLIER = 1;
 export const BACKTEST_MARKET_IMPACT_BPS = 0;
+export const BACKTEST_DELAY_RISK_LOOKBACK_CANDLES = 5;
+export const BACKTEST_DELAY_RISK_MULTIPLIER = 0.5;
+export const BACKTEST_DELAY_RISK_MAX_BPS = 30;
+export const BACKTEST_EXPECTED_DELAY_MS = 5_000;
 export const INITIAL_BACKTEST_AMOUNT = 100;
 
 export const CORRELATION_WINDOW = 50;

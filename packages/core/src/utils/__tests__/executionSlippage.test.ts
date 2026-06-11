@@ -1,6 +1,8 @@
 import {
   applyExecutionSlippage,
+  calculateDelayRiskBps,
   calculateEffectiveSlippageBps,
+  extractExecutionDelayRiskBps,
   extractExecutionMarketImpactBps,
   extractExecutionSpreadBps,
 } from '../executionSlippage';
@@ -13,8 +15,43 @@ describe('executionSlippage utils', () => {
         spreadBps: 12,
         spreadMultiplier: 1.5,
         marketImpactBps: 7,
+        delayRiskBps: 4,
+      }),
+    ).toBe(54);
+  });
+
+  it('calculates delay risk from median recent close movement', () => {
+    expect(
+      calculateDelayRiskBps({
+        closes: [100, 101, 100, 102, 101],
+        intervalMs: 1_000,
+        expectedDelayMs: 1_000,
+        multiplier: 1,
+        maxBps: 100,
+      }),
+    ).toBeCloseTo(99.505, 3);
+  });
+
+  it('caps delay risk and extracts it from signal candles', () => {
+    expect(
+      calculateDelayRiskBps({
+        closes: [100, 110, 90],
+        intervalMs: 1_000,
+        expectedDelayMs: 1_000,
+        multiplier: 1,
+        maxBps: 50,
       }),
     ).toBe(50);
+
+    expect(
+      extractExecutionDelayRiskBps({
+        interval: '15',
+        indicators: {
+          candles15m: [{ close: 100 }, { close: 101 }, { close: 102 }],
+        },
+        additionalIndicators: {},
+      }),
+    ).toBeCloseTo(3.7083, 4);
   });
 
   it('applies adverse slippage for entry and exit prices', () => {

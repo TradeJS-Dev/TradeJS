@@ -118,6 +118,12 @@ interface RuntimeSymbolPnlRank {
   avgPnl: number | null;
 }
 
+interface RuntimeSymbolConcentrationRow extends RuntimeSymbolPnlRank {
+  absPnl: number;
+  absPnlShare: number;
+  orderShare: number;
+}
+
 interface RuntimeDirectionStats {
   direction: RuntimeOrderView['direction'];
   orders: number;
@@ -778,6 +784,21 @@ const buildRuntimeDrawerMetrics = (
       value: formatInteger(strategy.summary.activeTrades),
       level: strategy.summary.activeTrades > 0 ? 'warning' : 'neutral',
     },
+    {
+      id: 'symbolTop1',
+      label: 'Symbol top 1',
+      value: formatPercent(strategy.summary.symbolConcentrationTop1),
+      level:
+        (strategy.summary.symbolConcentrationTop1 ?? 0) >= 60
+          ? 'warning'
+          : 'neutral',
+    },
+    {
+      id: 'symbolTop5',
+      label: 'Symbol top 5',
+      value: formatPercent(strategy.summary.symbolConcentrationTop5),
+      level: 'neutral',
+    },
     getStatMetric('winRate', 'Win Rate'),
   ];
 };
@@ -820,6 +841,34 @@ const buildRuntimeSymbolPnlRanking = (
       (left, right) =>
         Math.abs(right.pnl) - Math.abs(left.pnl) ||
         right.pnl - left.pnl ||
+        left.symbol.localeCompare(right.symbol),
+    );
+};
+
+const buildRuntimeSymbolConcentration = (
+  orders: RuntimeOrderView[],
+): RuntimeSymbolConcentrationRow[] => {
+  const ranking = buildRuntimeSymbolPnlRanking(orders).map((rank) => ({
+    ...rank,
+    absPnl: Math.abs(rank.pnl),
+  }));
+  const totalAbsPnl = ranking.reduce((sum, rank) => sum + rank.absPnl, 0);
+  const totalOrders = ranking.reduce((sum, rank) => sum + rank.orders, 0);
+
+  if (totalAbsPnl <= 0 || totalOrders <= 0) {
+    return [];
+  }
+
+  return ranking
+    .map((rank) => ({
+      ...rank,
+      absPnlShare: (rank.absPnl / totalAbsPnl) * 100,
+      orderShare: (rank.orders / totalOrders) * 100,
+    }))
+    .sort(
+      (left, right) =>
+        right.absPnlShare - left.absPnlShare ||
+        right.orderShare - left.orderShare ||
         left.symbol.localeCompare(right.symbol),
     );
 };
@@ -1433,6 +1482,10 @@ export const RuntimeStrategyCard = ({
     () => buildRuntimeSymbolPnlRanking(strategy.orders),
     [strategy.orders],
   );
+  const symbolConcentration = useMemo(
+    () => buildRuntimeSymbolConcentration(strategy.orders).slice(0, 8),
+    [strategy.orders],
+  );
   const topSymbolPnlRanking = useMemo(
     () =>
       [...symbolPnlRanking]
@@ -1874,6 +1927,81 @@ export const RuntimeStrategyCard = ({
                     maxAbsPnl: symbolRankingMaxAbsPnl,
                   })}
                 </Flex>
+
+                {symbolConcentration.length ? (
+                  <Box
+                    p={4}
+                    borderWidth="1px"
+                    borderColor="gray.800"
+                    borderRadius="md"
+                    bg="gray.900"
+                  >
+                    <Flex justify="space-between" align="baseline" mb={3}>
+                      <Text
+                        fontSize="sm"
+                        color="gray.300"
+                        fontWeight="semibold"
+                      >
+                        Symbol Concentration
+                      </Text>
+                      <Text fontSize="xs" color="gray.600" textAlign="right">
+                        absolute P&L and order share
+                      </Text>
+                    </Flex>
+
+                    <Flex direction="column" gap={2}>
+                      {symbolConcentration.map((row) => (
+                        <Box
+                          key={row.symbol}
+                          p={3}
+                          borderWidth="1px"
+                          borderColor="gray.800"
+                          borderRadius="md"
+                          bg="blackAlpha.300"
+                        >
+                          <Flex justify="space-between" align="center" gap={3}>
+                            <Box minW="0">
+                              <Text
+                                color="gray.100"
+                                fontSize="sm"
+                                fontWeight="bold"
+                              >
+                                {row.symbol}
+                              </Text>
+                              <Text
+                                mt={1}
+                                color="gray.500"
+                                fontSize="xs"
+                                fontFamily="mono"
+                              >
+                                {formatInteger(row.orders)} trades / order share{' '}
+                                {formatPercent(row.orderShare)}
+                              </Text>
+                            </Box>
+                            <Box textAlign="right" flexShrink={0}>
+                              <Text
+                                color={getPnlColor(row.pnl)}
+                                fontSize="sm"
+                                fontWeight="bold"
+                                fontFamily="mono"
+                              >
+                                {formatSignedNumber(row.pnl)}
+                              </Text>
+                              <Text
+                                mt={1}
+                                color="gray.400"
+                                fontSize="xs"
+                                fontFamily="mono"
+                              >
+                                abs {formatPercent(row.absPnlShare)}
+                              </Text>
+                            </Box>
+                          </Flex>
+                        </Box>
+                      ))}
+                    </Flex>
+                  </Box>
+                ) : null}
 
                 <Box
                   p={4}

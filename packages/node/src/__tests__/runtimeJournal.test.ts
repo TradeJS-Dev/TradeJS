@@ -27,6 +27,7 @@ jest.mock('@tradejs/infra/logger', () => ({
 import {
   getActiveRuntimeTrade,
   markRuntimeTradeClosed,
+  recordRuntimeTradeOpen,
 } from '../runtimeJournal';
 
 describe('runtimeJournal', () => {
@@ -73,6 +74,62 @@ describe('runtimeJournal', () => {
     ).resolves.toBeNull();
     expect(mockDelKey).toHaveBeenCalledWith(
       'users:root:runtime:active:BTCUSDT',
+    );
+  });
+
+  it('stores live execution telemetry when a runtime trade is opened', async () => {
+    const opened = await recordRuntimeTradeOpen({
+      userName: 'root',
+      orderId: 'ord-1',
+      signalId: 'sig-1',
+      strategy: 'TrendLine',
+      symbol: 'BTCUSDT',
+      interval: '15' as any,
+      direction: 'LONG',
+      qty: 2,
+      entryPrice: 100.5,
+      entryTimestamp: Date.parse('2026-05-31T12:00:00.000Z'),
+      signalTimestamp: Date.parse('2026-05-31T11:45:00.000Z'),
+      signalClosePrice: 100,
+      arrivalMid: 100.2,
+      bid: 100.1,
+      ask: 100.3,
+      spreadBps: 19.96,
+      orderSubmitTime: Date.parse('2026-05-31T12:00:01.000Z'),
+      fillAvgPrice: 100.5,
+      fillTime: Date.parse('2026-05-31T12:00:02.000Z'),
+      fee: 0.201,
+      openFee: 0.201,
+      totalFee: 0.201,
+    });
+
+    expect(opened).toEqual(
+      expect.objectContaining({
+        signalTimestamp: Date.parse('2026-05-31T11:45:00.000Z'),
+        signalClosePrice: 100,
+        arrivalMid: 100.2,
+        bid: 100.1,
+        ask: 100.3,
+        spreadBps: 19.96,
+        orderSubmitTime: Date.parse('2026-05-31T12:00:01.000Z'),
+        fillAvgPrice: 100.5,
+        fillTime: Date.parse('2026-05-31T12:00:02.000Z'),
+        qty: 2,
+        symbol: 'BTCUSDT',
+        interval: '15',
+        fee: 0.201,
+        openFee: 0.201,
+        totalFee: 0.201,
+      }),
+    );
+    expect(mockSetData).toHaveBeenCalledWith(
+      'users:root:runtime:trade:ord-1',
+      expect.objectContaining({
+        arrivalMid: 100.2,
+        fillAvgPrice: 100.5,
+        fee: 0.201,
+      }),
+      { expire: 0 },
     );
   });
 
