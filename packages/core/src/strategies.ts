@@ -7,6 +7,7 @@ export {
   calculateRiskRatio,
   getDirectionalTpSlPrices,
   getStrategyMarketSnapshot,
+  resolveBacktestExecutionPrice,
 } from './utils/strategyHelpers/market';
 export {
   buildEntrySignalDecision,

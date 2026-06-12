@@ -1,7 +1,38 @@
 import {
+  buildBreadthBackfillChunks,
   shouldBackfillBinanceMarketContextForReplay,
   shouldBackfillBinanceMarketContextForSignals,
 } from '../lib/binanceMarketContextBackfill';
+
+describe('buildBreadthBackfillChunks', () => {
+  it('splits long breadth backfills into bounded windows with warmup', () => {
+    const day = 86_400_000;
+    const chunks = buildBreadthBackfillChunks({
+      startMs: 1_000,
+      endMs: 1_000 + day * 5 - 1,
+      intervalMs: 900_000,
+      chunkDays: 2,
+    });
+
+    expect(chunks).toEqual([
+      {
+        startMs: 1_000,
+        endMs: 1_000 + day * 2 - 1,
+        fetchStartMs: 1_000,
+      },
+      {
+        startMs: 1_000 + day * 2,
+        endMs: 1_000 + day * 4 - 1,
+        fetchStartMs: 1_000,
+      },
+      {
+        startMs: 1_000 + day * 4,
+        endMs: 1_000 + day * 5 - 1,
+        fetchStartMs: 1_000 + day * 2,
+      },
+    ]);
+  });
+});
 
 describe('shouldBackfillBinanceMarketContextForReplay', () => {
   const originalEnabled = process.env.BINANCE_MARKET_CONTEXT_BACKFILL_ENABLED;

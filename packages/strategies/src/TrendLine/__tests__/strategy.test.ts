@@ -922,6 +922,7 @@ describe('TrendlineStrategyCreator', () => {
         ENV: 'BACKTEST',
         INTERVAL: '15',
         MAKE_ORDERS: true,
+        BACKTEST_ENTRY_DELAY_BARS: 0,
         MAX_LOSS_VALUE: 10,
         MAX_CORRELATION: 1,
         TRENDLINE: {},

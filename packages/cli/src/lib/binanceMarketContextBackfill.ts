@@ -151,6 +151,40 @@ const hasCoverage = ({
   );
 };
 
+export const buildBreadthBackfillChunks = ({
+  startMs,
+  endMs,
+  intervalMs,
+  chunkDays,
+}: {
+  startMs: number;
+  endMs: number;
+  intervalMs: number;
+  chunkDays: number;
+}) => {
+  const chunkMs = Math.max(intervalMs, chunkDays * DAY_MS);
+  const warmupBars = Math.max(50, Math.ceil((DAY_MS * 2) / intervalMs));
+  const warmupMs = warmupBars * intervalMs;
+  const chunks: Array<{
+    startMs: number;
+    endMs: number;
+    fetchStartMs: number;
+  }> = [];
+  let cursor = startMs;
+
+  while (cursor <= endMs) {
+    const chunkEndMs = Math.min(endMs, cursor + chunkMs - 1);
+    chunks.push({
+      startMs: cursor,
+      endMs: chunkEndMs,
+      fetchStartMs: Math.max(startMs, cursor - warmupMs),
+    });
+    cursor = chunkEndMs + 1;
+  }
+
+  return chunks;
+};
+
 const fetchAggTradesForWindow = async ({
   connector,
   symbol,
@@ -312,6 +346,10 @@ const backfillBinanceMarketContext = async (
     process.env.BINANCE_MARKET_CONTEXT_BREADTH_LIMIT,
     30,
   );
+  const breadthChunkDays = asFloat(
+    process.env.BINANCE_MARKET_CONTEXT_BREADTH_CHUNK_DAYS,
+    30,
+  );
   const depthLimit = asInt(
     process.env.BINANCE_MARKET_CONTEXT_DEPTH_LIMIT,
     100,
@@ -426,42 +464,59 @@ const backfillBinanceMarketContext = async (
       !hasBtcAltMetrics
     ) {
       const connectorInterval = marketIntervalToConnectorInterval(interval);
-      const candlesBySymbol: Record<string, KlineChartData> = {};
+      const chunks = buildBreadthBackfillChunks({
+        startMs: breadthStartMs,
+        endMs,
+        intervalMs,
+        chunkDays: breadthChunkDays,
+      });
       const bar = new ProgressBar(
-        'breadth :current/:total [:bar][:percent] :etas(s) candles=:candles :symbol',
+        'breadth :current/:total [:bar][:percent] :etas(s) candles=:candles chunk=:chunk :symbol',
         {
-          total: Math.max(1, breadthSymbols.length),
+          total: Math.max(1, chunks.length * breadthSymbols.length),
           width: 24,
         },
       );
       let candlesRead = 0;
-      for (const symbol of breadthSymbols) {
-        const candles = await connector.kline({
-          symbol,
+      for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex += 1) {
+        const chunk = chunks[chunkIndex];
+        const candlesBySymbol: Record<string, KlineChartData> = {};
+
+        for (const symbol of breadthSymbols) {
+          const candles = await connector.kline({
+            symbol,
+            interval: connectorInterval as Interval,
+            start: chunk.fetchStartMs,
+            end: chunk.endMs,
+            silent: true,
+          });
+          candlesBySymbol[symbol] = candles;
+          candlesRead += candles.length;
+          bar.tick(1, {
+            candles: candlesRead,
+            chunk: `${chunkIndex + 1}/${chunks.length}`,
+            symbol,
+          });
+        }
+        const btcCandles = await connector.kline({
+          symbol: 'BTCUSDT',
           interval: connectorInterval as Interval,
-          start: breadthStartMs,
-          end: endMs,
+          start: chunk.fetchStartMs,
+          end: chunk.endMs,
           silent: true,
         });
-        candlesBySymbol[symbol] = candles;
-        candlesRead += candles.length;
-        bar.tick(1, { candles: candlesRead, symbol });
+        const rows = buildMarketBreadthRows({
+          universe,
+          interval,
+          candlesBySymbol,
+          btcCandles,
+        }).filter((row) => {
+          const ts = row.ts.getTime();
+          return ts >= chunk.startMs && ts <= chunk.endMs;
+        });
+        await upsertMarketBreadthRows(rows);
+        breadthRows += rows.length;
       }
-      const btcCandles = await connector.kline({
-        symbol: 'BTCUSDT',
-        interval: connectorInterval as Interval,
-        start: breadthStartMs,
-        end: endMs,
-        silent: true,
-      });
-      const rows = buildMarketBreadthRows({
-        universe,
-        interval,
-        candlesBySymbol,
-        btcCandles,
-      });
-      await upsertMarketBreadthRows(rows);
-      breadthRows += rows.length;
     } else {
       console.log(chalk.gray(`breadth cached: universe=${universe}`));
     }

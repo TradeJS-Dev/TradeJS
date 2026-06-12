@@ -36,10 +36,11 @@ export type BacktestDetectorOptimizedStrategy = Strategy & {
   ) => Promise<string | Signal>;
 };
 
-export type BacktestPriceMode = 'mid' | 'close' | 'open' | 'rand';
+export type BacktestPriceMode = 'mid' | 'close' | 'open';
 
 export interface StrategyConfig {
   BACKTEST_PRICE_MODE?: BacktestPriceMode;
+  BACKTEST_ENTRY_DELAY_BARS?: number;
   ML_ENABLED?: boolean;
   [key: string]: any;
 }

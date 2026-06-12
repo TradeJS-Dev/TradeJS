@@ -129,6 +129,7 @@ import {
   resolveDefaultWorkerHeapMb,
   mergePersistedTestSummaries,
   resolveRenderableStat,
+  resolveBacktestEntryDelayBars,
   resolveBacktestPriceMode,
   resolveRequestedTestsLimit,
   resolveEffectiveParallel,
@@ -216,9 +217,19 @@ describe('backtest script helpers', () => {
     expect(resolveBacktestPriceMode('open')).toBe('open');
     expect(resolveBacktestPriceMode('close')).toBe('close');
     expect(resolveBacktestPriceMode('mid')).toBe('mid');
-    expect(resolveBacktestPriceMode('rand')).toBe('rand');
+    expect(resolveBacktestPriceMode('rand')).toBe('open');
     expect(resolveBacktestPriceMode('bad')).toBe('open');
     expect(resolveBacktestPriceMode(undefined)).toBe('open');
+  });
+
+  it('normalizes backtest entry delay bars CLI values', () => {
+    expect(resolveBacktestEntryDelayBars('1')).toBe(1);
+    expect(resolveBacktestEntryDelayBars(3)).toBe(3);
+    expect(resolveBacktestEntryDelayBars('0')).toBe(0);
+    expect(resolveBacktestEntryDelayBars('-2')).toBe(0);
+    expect(resolveBacktestEntryDelayBars('bad')).toBe(1);
+    expect(resolveBacktestEntryDelayBars(undefined)).toBe(1);
+    expect(resolveBacktestEntryDelayBars(undefined, 2)).toBe(2);
   });
 
   it('removes the default tests limit in signals replay mode unless the user set it explicitly', () => {
@@ -367,6 +378,7 @@ describe('backtest script helpers', () => {
         MAKE_ORDERS: true,
         CLOSE_OPPOSITE_POSITIONS: false,
         BACKTEST_PRICE_MODE: 'open',
+        BACKTEST_ENTRY_DELAY_BARS: 1,
         TRENDLINE: { leftBars: 5 },
       }),
     ).toEqual({
@@ -414,6 +426,7 @@ describe('backtest script helpers', () => {
           MAKE_ORDERS: true,
           CLOSE_OPPOSITE_POSITIONS: false,
           BACKTEST_PRICE_MODE: 'open',
+          BACKTEST_ENTRY_DELAY_BARS: 1,
         },
       }),
     ]);

@@ -32,21 +32,6 @@ describe('strategyHelpers/market getStrategyMarketSnapshot', () => {
     expect(snapshot.currentPrice).toBe(candle.open);
   });
 
-  it('uses random price between low and high when backtestPriceMode=rand', async () => {
-    const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0.25);
-
-    const snapshot = await getStrategyMarketSnapshot({
-      ...baseParams,
-      backtestPriceMode: 'rand',
-    });
-
-    expect(snapshot.currentPrice).toBe(97.5);
-    expect(snapshot.currentPrice).toBeGreaterThanOrEqual(candle.low);
-    expect(snapshot.currentPrice).toBeLessThanOrEqual(candle.high);
-
-    randomSpy.mockRestore();
-  });
-
   it('uses cached data in CRON mode without refetching connector kline', async () => {
     const connector = {
       kline: jest.fn(async () => [candle]),

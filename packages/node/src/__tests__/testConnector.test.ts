@@ -344,6 +344,82 @@ describe('testConnector', () => {
     expect(setData).not.toHaveBeenCalled();
   });
 
+  it.each([
+    {
+      direction: 'LONG' as const,
+      takeProfitPrice: 110,
+      stopLossPrice: 95,
+      candle: {
+        timestamp: 2,
+        open: 100,
+        high: 112,
+        low: 94,
+        close: 108,
+        volume: 1,
+        turnover: 1,
+      },
+      expectedStopType: 'STOP_LOSS_LONG',
+      unexpectedTpType: 'TAKE_PROFIT_LONG',
+    },
+    {
+      direction: 'SHORT' as const,
+      takeProfitPrice: 90,
+      stopLossPrice: 105,
+      candle: {
+        timestamp: 2,
+        open: 100,
+        high: 106,
+        low: 88,
+        close: 92,
+        volume: 1,
+        turnover: 1,
+      },
+      expectedStopType: 'STOP_LOSS_SHORT',
+      unexpectedTpType: 'TAKE_PROFIT_SHORT',
+    },
+  ])(
+    'uses pessimistic SL-before-TP ordering when one $direction candle hits both',
+    async ({
+      direction,
+      takeProfitPrice,
+      stopLossPrice,
+      candle,
+      expectedStopType,
+      unexpectedTpType,
+    }) => {
+      const connector = createTestConnector(baseConnector as any, {
+        userName: 'alice',
+      });
+
+      await connector.placeOrder({
+        symbol: 'ETHUSDT',
+        qty: 1,
+        price: 100,
+        isLimit: false,
+        timestamp: 1,
+        direction,
+      });
+      await connector.setTakeProfits({
+        symbol: 'ETHUSDT',
+        direction,
+        takeProfits: [{ price: takeProfitPrice, rate: 1 }],
+      } as any);
+      await connector.setStopLoss({
+        symbol: 'ETHUSDT',
+        direction,
+        stopLossPrice,
+      } as any);
+
+      await connector.checkExits(candle);
+
+      const orderTypes = (
+        (await connector.getResult()).inlineOrderLog ?? []
+      ).map(({ type }) => type);
+      expect(orderTypes).toContain(expectedStopType);
+      expect(orderTypes).not.toContain(unexpectedTpType);
+    },
+  );
+
   it('reuses the same inline log arrays across repeated getResult calls', async () => {
     const connector = createTestConnector(baseConnector as any, {
       userName: 'alice',

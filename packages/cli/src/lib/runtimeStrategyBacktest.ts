@@ -17,6 +17,7 @@ export const BACKTEST_CLI_RUNTIME_CONFIG_KEYS = new Set([
   'MAKE_ORDERS',
   'CLOSE_OPPOSITE_POSITIONS',
   'BACKTEST_PRICE_MODE',
+  'BACKTEST_ENTRY_DELAY_BARS',
 ]);
 
 export const toStrategyConfigGrid = (

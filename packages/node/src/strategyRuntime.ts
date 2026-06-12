@@ -8,9 +8,11 @@ import type {
 import { SIGNALS_PRELOAD_DAYS } from '@tradejs/core/constants';
 import {
   buildDefaultIndicatorPeriods,
+  calculateRiskRatio,
   createStrategyAPI,
   createStrategyIndicatorsState,
   getSharedStrategyReplayState,
+  resolveBacktestExecutionPrice,
 } from '@tradejs/core/strategies';
 import { getTimestamp } from '@tradejs/core/time';
 import { logger } from '@tradejs/infra/logger';
@@ -256,6 +258,89 @@ type ResolvedEntryRuntime = ReturnType<typeof resolveEntryRuntimePolicy>;
 type HookCandleMarket = Required<
   Pick<StrategyHookMarketContext, 'candle' | 'btcCandle'>
 >;
+type PendingBacktestEntry = {
+  delayBars: number;
+  delayBarsRemaining: number;
+  decision: EntryDecision;
+  runtime: ResolvedEntryRuntime;
+  manifest?: StrategyManifest;
+  hookCtx: StrategyHookCtx;
+  policy: StrategyHookPolicyContext;
+  ml?: StrategyHookMlContext;
+  ai?: StrategyHookAiContext;
+};
+
+const resolveBacktestEntryDelayBars = (value: unknown) => {
+  if (value == null || value === '') {
+    return 1;
+  }
+  const parsed = parseInt(String(value), 10);
+  return Number.isFinite(parsed) ? Math.max(0, parsed) : 1;
+};
+
+const applyBacktestDelayedEntryExecution = ({
+  decision,
+  candle,
+  backtestPriceMode,
+  delayBars,
+}: {
+  decision: EntryDecision;
+  candle: KlineChartItem;
+  backtestPriceMode: StrategyConfig['BACKTEST_PRICE_MODE'];
+  delayBars: number;
+}) => {
+  const signalTimestamp =
+    decision.signal?.timestamp ?? decision.entryContext.timestamp;
+  const signalPrice =
+    decision.signal?.prices.currentPrice ??
+    decision.entryContext.prices.currentPrice;
+  const executionPrice = resolveBacktestExecutionPrice(
+    candle,
+    backtestPriceMode ?? 'open',
+  );
+  const executionTimestamp = candle.timestamp;
+  const takeProfitPrice = decision.entryContext.prices.takeProfitPrice;
+  const stopLossPrice = decision.orderPlan.stopLossPrice;
+  const riskRatio = calculateRiskRatio({
+    direction: decision.entryContext.direction,
+    currentPrice: executionPrice,
+    takeProfitPrice,
+    stopLossPrice,
+  });
+
+  decision.entryContext = {
+    ...decision.entryContext,
+    timestamp: executionTimestamp,
+    prices: {
+      ...decision.entryContext.prices,
+      currentPrice: executionPrice,
+      stopLossPrice,
+      riskRatio,
+    },
+  };
+
+  if (!decision.signal) {
+    return;
+  }
+
+  decision.signal.prices = {
+    ...decision.signal.prices,
+    currentPrice: executionPrice,
+    stopLossPrice,
+    riskRatio,
+  };
+  decision.signal.additionalIndicators = {
+    ...(decision.signal.additionalIndicators ?? {}),
+    backtestExecution: {
+      entryDelayBars: delayBars,
+      priceMode: backtestPriceMode ?? 'open',
+      signalTimestamp,
+      signalPrice,
+      executionTimestamp,
+      executionPrice,
+    },
+  };
+};
 
 const normalizeConfigHookList = <THook extends (...args: any[]) => unknown>(
   value: THook | THook[] | undefined,
@@ -905,6 +990,11 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
     const projectConfig = await loadTradejsConfig(projectRoot);
     const projectHooks = projectConfig.hooks;
     const env = String(config.ENV ?? 'BACKTEST');
+    const backtestPriceMode = config.BACKTEST_PRICE_MODE ?? 'open';
+    const backtestEntryDelayBars =
+      env === 'BACKTEST'
+        ? resolveBacktestEntryDelayBars(config.BACKTEST_ENTRY_DELAY_BARS)
+        : 0;
     const recordRuntimeJournal = shouldRecordRuntimeJournal({ env, config });
     const strategyManifest = resolveManifest(strategyName);
     const indicatorPeriods = buildDefaultIndicatorPeriods(config as any);
@@ -1237,7 +1327,7 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
       cachedData: data,
       indicatorsState,
       preloadStart: getTimestamp(SIGNALS_PRELOAD_DAYS),
-      backtestPriceMode: config.BACKTEST_PRICE_MODE,
+      backtestPriceMode,
       isConfigFromBacktest,
     });
 
@@ -1303,6 +1393,59 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
 
       return undefined;
     };
+    let pendingBacktestEntry: PendingBacktestEntry | null = null;
+    const flushPendingBacktestEntry = async (
+      candle: Parameters<Awaited<ReturnType<typeof createCore>>>[0],
+      btcCandle: Parameters<Awaited<ReturnType<typeof createCore>>>[1],
+      ethCandle?: KlineChartItem,
+    ) => {
+      if (!pendingBacktestEntry) {
+        return undefined;
+      }
+
+      appendCurrentMarketData(candle, btcCandle, ethCandle);
+      const resolvedEthCandle = resolveEthCandle(candle, ethCandle);
+      indicatorsState.setCurrentBar(candle, btcCandle, resolvedEthCandle);
+      pendingBacktestEntry.delayBarsRemaining -= 1;
+
+      if (pendingBacktestEntry.delayBarsRemaining > 0) {
+        return `BACKTEST_ENTRY_DELAY_PENDING:${pendingBacktestEntry.delayBarsRemaining}`;
+      }
+
+      const pending = pendingBacktestEntry;
+      pendingBacktestEntry = null;
+      applyBacktestDelayedEntryExecution({
+        decision: pending.decision,
+        candle,
+        backtestPriceMode,
+        delayBars: pending.delayBars,
+      });
+      const market: HookCandleMarket = {
+        candle,
+        btcCandle,
+      };
+      const entry = buildHookEntry({
+        decision: pending.decision,
+        runtime: pending.runtime,
+      });
+
+      return executeEntryDecision({
+        connector,
+        symbol,
+        decision: pending.decision,
+        runtime: pending.runtime,
+        manifest: pending.manifest,
+        hookCtx: pending.hookCtx,
+        market,
+        entry,
+        policy: pending.policy,
+        ml: pending.ml,
+        ai: pending.ai,
+        recordRuntimeJournal,
+        invokeStageHooks,
+        notifyRuntimeError,
+      });
+    };
 
     const runWithDecisionOverride = async (
       candle: Parameters<Awaited<ReturnType<typeof createCore>>>[0],
@@ -1315,6 +1458,14 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
       appendCurrentMarketData(candle, btcCandle, options.ethCandle);
       const ethCandle = resolveEthCandle(candle, options.ethCandle);
       indicatorsState.setCurrentBar(candle, btcCandle, ethCandle);
+      const delayedEntrySignal = await flushPendingBacktestEntry(
+        candle,
+        btcCandle,
+        ethCandle,
+      );
+      if (delayedEntrySignal) {
+        return delayedEntrySignal;
+      }
       const market: HookCandleMarket = {
         candle,
         btcCandle,
@@ -1660,6 +1811,21 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
         return signal ?? skipReason;
       }
 
+      if (backtestEntryDelayBars > 0) {
+        pendingBacktestEntry = {
+          delayBars: backtestEntryDelayBars,
+          delayBarsRemaining: backtestEntryDelayBars,
+          decision,
+          runtime,
+          manifest: decisionManifest,
+          hookCtx: decisionHookCtx,
+          policy,
+          ml,
+          ai,
+        };
+        return `BACKTEST_ENTRY_DELAY_QUEUED:${backtestEntryDelayBars}`;
+      }
+
       return executeEntryDecision({
         connector,
         symbol,
@@ -1683,6 +1849,7 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
       btcCandle: KlineChartItem,
       ethCandle?: KlineChartItem,
     ) => runWithDecisionOverride(candle, btcCandle, { ethCandle })) as any;
+    strategy.__tradejsFlushBacktestDelayedEntry = flushPendingBacktestEntry;
 
     const resolvedDetectorKey = detectorKey?.(config);
     if (resolvedDetectorKey && detectorNoSignalSkipReason) {

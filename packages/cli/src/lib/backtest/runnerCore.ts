@@ -36,6 +36,7 @@ import {
 } from '../runtimeStrategyBacktest';
 import {
   effectiveParallel,
+  backtestEntryDelayBars,
   backtestPriceMode,
   flags,
   hasExplicitTestsLimit,
@@ -385,6 +386,7 @@ export const buildPreparedTestSuite = async ({
         MAKE_ORDERS: true,
         CLOSE_OPPOSITE_POSITIONS: false,
         BACKTEST_PRICE_MODE: backtestPriceMode,
+        BACKTEST_ENTRY_DELAY_BARS: backtestEntryDelayBars,
       },
       options: {
         start: window.start,

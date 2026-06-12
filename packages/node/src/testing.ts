@@ -79,6 +79,17 @@ type TestingGroupResult = {
   result: TestingBoxResult;
 };
 
+type BacktestDelayedEntryStrategy = BacktestDetectorOptimizedStrategy & {
+  __tradejsFlushBacktestDelayedEntry?: (
+    candle: Candle,
+    btcCandle: Candle,
+    ethCandle?: Candle,
+  ) => Promise<string | Signal | undefined>;
+};
+
+const isBacktestEntryDelayControlCode = (value: unknown) =>
+  typeof value === 'string' && value.startsWith('BACKTEST_ENTRY_DELAY_');
+
 const CLOSED_RESULT_FLUSH_INTERVAL = 500;
 
 type PendingAiDatasetRow = Omit<AiDatasetRow, 'payload' | 'profit'> & {
@@ -944,26 +955,14 @@ export const testing: TestingBox = async ({
       }
     }
   };
-
-  for (let candleIndex = 0; candleIndex < testData.length; candleIndex++) {
-    if (candleIndex % 25 === 0) {
-      throwIfTimedOut('candle loop');
+  const processSignal = async (
+    signal: string | Signal | undefined,
+    candle: Candle,
+  ) => {
+    if (isBacktestEntryDelayControlCode(signal)) {
+      return;
     }
-    currentCandleIndex = candleIndex + 1;
-    emitProgress('candle loop', {
-      force: candleIndex === 0 || currentCandleIndex === totalCandles,
-    });
 
-    const candle = testData[candleIndex];
-    const btcCandle = btcTestData[candleIndex];
-
-    // Process exits on the current candle first. Any position opened below
-    // can only be closed starting from the next candle to avoid same-bar lookahead.
-    await runStage('exit checks', () => testConnector.checkExits(candle));
-
-    const signal = await runStage('strategy signal', () =>
-      strategy(candle, btcCandle),
-    );
     if (replaySignalEvaluations) {
       replaySignalEvaluations.push(
         buildReplaySignalEvaluationRecord({
@@ -1035,6 +1034,38 @@ export const testing: TestingBox = async ({
         connectorName,
       });
     }
+  };
+
+  for (let candleIndex = 0; candleIndex < testData.length; candleIndex++) {
+    if (candleIndex % 25 === 0) {
+      throwIfTimedOut('candle loop');
+    }
+    currentCandleIndex = candleIndex + 1;
+    emitProgress('candle loop', {
+      force: candleIndex === 0 || currentCandleIndex === totalCandles,
+    });
+
+    const candle = testData[candleIndex];
+    const btcCandle = btcTestData[candleIndex];
+    // Delayed entries are previous-bar signals filled on this bar, so they
+    // must be live before this bar's TP/SL checks.
+    const delayedSignal = await runStage('delayed entry', async () =>
+      (
+        strategy as BacktestDelayedEntryStrategy
+      ).__tradejsFlushBacktestDelayedEntry?.(candle, btcCandle),
+    );
+    if (delayedSignal && typeof delayedSignal !== 'string') {
+      await processSignal(delayedSignal, candle);
+    }
+
+    // Process exits on the current candle first. Any position opened below
+    // can only be closed starting from the next candle to avoid same-bar lookahead.
+    await runStage('exit checks', () => testConnector.checkExits(candle));
+
+    const signal = await runStage('strategy signal', () =>
+      strategy(candle, btcCandle),
+    );
+    await processSignal(signal, candle);
 
     if ((candleIndex + 1) % CLOSED_RESULT_FLUSH_INTERVAL === 0) {
       await withTimeout('flush closed results', flushClosedResultsBatch());
@@ -1349,6 +1380,92 @@ export const testingGroupInSharedCandleLoop = async (
         }
       }
     };
+    const processRunnerSignal = async (
+      runner: Runner,
+      signal: string | Signal | undefined,
+      candle: Candle,
+    ) => {
+      if (isBacktestEntryDelayControlCode(signal)) {
+        return;
+      }
+
+      const { test } = runner;
+      if (runner.replaySignalEvaluations) {
+        runner.replaySignalEvaluations.push(
+          buildReplaySignalEvaluationRecord({
+            signal,
+            testId: test.testId,
+            userName: test.userName,
+            strategyName: test.strategyName,
+            symbol: test.symbol,
+            interval: test.interval ?? interval,
+            candle,
+          }),
+        );
+      }
+
+      const shouldCapturePayload =
+        signal &&
+        typeof signal !== 'string' &&
+        signal.signalId &&
+        (test.ml || test.ai);
+      if (shouldCapturePayload) {
+        await withTimeout(
+          'binance market context',
+          enrichSignalWithBinanceMarketContext({
+            signal: signal as Signal,
+            env: 'BACKTEST',
+          }),
+        );
+        await withTimeout(
+          'global market context',
+          enrichSignalWithGlobalMarketContext({
+            signal: signal as Signal,
+            env: 'BACKTEST',
+            enabled: Boolean(test.ml || test.ai),
+          }),
+        );
+        await withTimeout(
+          'derivatives context',
+          enrichSignalWithDerivativesContext({
+            signal: signal as Signal,
+            env: 'BACKTEST',
+          }),
+        );
+      }
+      if (test.ml && signal && typeof signal !== 'string' && signal.signalId) {
+        const payload = buildMlPayload({
+          signal,
+          context: {
+            userName: test.userName,
+            testId: test.testId,
+            testSuiteId: test.testSuiteId,
+            testName: test.name,
+            configId: test.configId,
+            symbol: test.symbol,
+            strategyName: test.strategyName,
+            strategyConfig: test.strategyConfig,
+            connectorName: test.connectorName,
+          },
+        });
+        runner.pendingMlPayloadBySignalId.set(signal.signalId, payload);
+      }
+      if (test.ai && signal && typeof signal !== 'string' && signal.signalId) {
+        runner.pendingAiRowBySignalId.set(signal.signalId, {
+          signalId: signal.signalId,
+          strategyName: signal.strategy || test.strategyName,
+          symbol: signal.symbol || test.symbol,
+          direction: signal.direction,
+          timestamp: signal.timestamp,
+          signal: cloneAiPayloadSignal(signal as Signal),
+          testId: test.testId,
+          testSuiteId: test.testSuiteId,
+          testName: test.name,
+          configId: test.configId,
+          connectorName: test.connectorName,
+        });
+      }
+    };
 
     for (let candleIndex = 0; candleIndex < testData.length; candleIndex++) {
       if (candleIndex % 25 === 0) {
@@ -1365,6 +1482,16 @@ export const testingGroupInSharedCandleLoop = async (
 
       for (const runner of runners) {
         const { test, testConnector, strategy } = runner;
+        // Delayed entries are previous-bar signals filled on this bar, so they
+        // must be live before this bar's TP/SL checks.
+        const delayedSignal = await runStage('delayed entry', async () =>
+          (
+            strategy as BacktestDelayedEntryStrategy
+          ).__tradejsFlushBacktestDelayedEntry?.(candle, btcCandle),
+        );
+        if (delayedSignal && typeof delayedSignal !== 'string') {
+          await processRunnerSignal(runner, delayedSignal, candle);
+        }
         await runStage('exit checks', () => testConnector.checkExits(candle));
 
         const detectorFanoutKey = strategy.detectorFanoutKey;
@@ -1398,91 +1525,7 @@ export const testingGroupInSharedCandleLoop = async (
         ) {
           detectorNoSignalByKey.set(detectorFanoutKey, signal);
         }
-        if (runner.replaySignalEvaluations) {
-          runner.replaySignalEvaluations.push(
-            buildReplaySignalEvaluationRecord({
-              signal,
-              testId: test.testId,
-              userName: test.userName,
-              strategyName: test.strategyName,
-              symbol: test.symbol,
-              interval: test.interval ?? interval,
-              candle,
-            }),
-          );
-        }
-
-        const shouldCapturePayload =
-          signal &&
-          typeof signal !== 'string' &&
-          signal.signalId &&
-          (test.ml || test.ai);
-        if (shouldCapturePayload) {
-          await withTimeout(
-            'binance market context',
-            enrichSignalWithBinanceMarketContext({
-              signal: signal as Signal,
-              env: 'BACKTEST',
-            }),
-          );
-          await withTimeout(
-            'global market context',
-            enrichSignalWithGlobalMarketContext({
-              signal: signal as Signal,
-              env: 'BACKTEST',
-              enabled: Boolean(test.ml || test.ai),
-            }),
-          );
-          await withTimeout(
-            'derivatives context',
-            enrichSignalWithDerivativesContext({
-              signal: signal as Signal,
-              env: 'BACKTEST',
-            }),
-          );
-        }
-        if (
-          test.ml &&
-          signal &&
-          typeof signal !== 'string' &&
-          signal.signalId
-        ) {
-          const payload = buildMlPayload({
-            signal,
-            context: {
-              userName: test.userName,
-              testId: test.testId,
-              testSuiteId: test.testSuiteId,
-              testName: test.name,
-              configId: test.configId,
-              symbol: test.symbol,
-              strategyName: test.strategyName,
-              strategyConfig: test.strategyConfig,
-              connectorName: test.connectorName,
-            },
-          });
-          runner.pendingMlPayloadBySignalId.set(signal.signalId, payload);
-        }
-        if (
-          test.ai &&
-          signal &&
-          typeof signal !== 'string' &&
-          signal.signalId
-        ) {
-          runner.pendingAiRowBySignalId.set(signal.signalId, {
-            signalId: signal.signalId,
-            strategyName: signal.strategy || test.strategyName,
-            symbol: signal.symbol || test.symbol,
-            direction: signal.direction,
-            timestamp: signal.timestamp,
-            signal: cloneAiPayloadSignal(signal as Signal),
-            testId: test.testId,
-            testSuiteId: test.testSuiteId,
-            testName: test.name,
-            configId: test.configId,
-            connectorName: test.connectorName,
-          });
-        }
+        await processRunnerSignal(runner, signal, candle);
       }
 
       if ((candleIndex + 1) % CLOSED_RESULT_FLUSH_INTERVAL === 0) {

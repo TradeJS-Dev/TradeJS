@@ -102,6 +102,19 @@ const getTopOfBookTargetVenue = async ({
   };
 };
 
+export const resolveBacktestExecutionPrice = (
+  candle: KlineChartItem,
+  backtestPriceMode: BacktestPriceMode = 'open',
+) => {
+  if (backtestPriceMode === 'mid') {
+    return (candle.open + candle.close) / 2;
+  }
+  if (backtestPriceMode === 'open') {
+    return candle.open;
+  }
+  return candle.close;
+};
+
 export const getStrategyMarketSnapshot = async ({
   env,
   connector,
@@ -126,15 +139,7 @@ export const getStrategyMarketSnapshot = async ({
   let currentPrice = lastCandle.close;
 
   if (env === 'BACKTEST') {
-    if (backtestPriceMode === 'mid') {
-      currentPrice = (lastCandle.open + lastCandle.close) / 2;
-    } else if (backtestPriceMode === 'open') {
-      currentPrice = lastCandle.open;
-    } else if (backtestPriceMode === 'rand') {
-      const min = Math.min(lastCandle.low, lastCandle.high);
-      const max = Math.max(lastCandle.low, lastCandle.high);
-      currentPrice = min + Math.random() * (max - min);
-    }
+    currentPrice = resolveBacktestExecutionPrice(lastCandle, backtestPriceMode);
   }
 
   return {

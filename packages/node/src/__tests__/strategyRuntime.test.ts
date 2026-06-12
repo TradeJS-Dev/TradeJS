@@ -47,6 +47,19 @@ jest.mock('@tradejs/core/strategies', () => ({
     }),
   })),
   buildDefaultIndicatorPeriods: jest.fn(() => ({})),
+  calculateRiskRatio: jest.fn(
+    ({ direction, currentPrice, takeProfitPrice, stopLossPrice }: any) => {
+      const reward =
+        direction === 'LONG'
+          ? takeProfitPrice - currentPrice
+          : currentPrice - takeProfitPrice;
+      const risk =
+        direction === 'LONG'
+          ? currentPrice - stopLossPrice
+          : stopLossPrice - currentPrice;
+      return risk > 0 ? reward / risk : 0;
+    },
+  ),
   createStrategyIndicatorsState: jest.fn(() => ({
     isInitialized: jest.fn(() => true),
     setCurrentBar: jest.fn(),
@@ -58,6 +71,11 @@ jest.mock('@tradejs/core/strategies', () => ({
     snapshot: jest.fn(() => ({})),
     latestNumber: jest.fn(),
   })),
+  resolveBacktestExecutionPrice: jest.fn((candle: any, mode = 'open') => {
+    if (mode === 'mid') return (candle.open + candle.close) / 2;
+    if (mode === 'close') return candle.close;
+    return candle.open;
+  }),
   mapMlRuntimeFromConfig: jest.fn((config: any, extras?: any) => ({
     enabled: Boolean(config?.ML_ENABLED),
     mlThreshold: config?.ML_THRESHOLD,
@@ -441,6 +459,7 @@ describe('strategyRuntime', () => {
 
     const backtestRuntime = await makeRuntime(() => makeDecisionEntry(), {
       ENV: 'BACKTEST',
+      BACKTEST_ENTRY_DELAY_BARS: 0,
     });
     await backtestRuntime.strategy(
       { timestamp: 1 } as any,
@@ -593,7 +612,7 @@ describe('strategyRuntime', () => {
             ml: { enabled: false },
           },
         }),
-      { ENV: undefined },
+      { ENV: undefined, BACKTEST_ENTRY_DELAY_BARS: 0 },
     );
 
     await strategy({ timestamp: 1 } as any, { timestamp: 1 } as any);
@@ -655,12 +674,95 @@ describe('strategyRuntime', () => {
     );
   });
 
+  it('delays BACKTEST entries and executes them on the next bar price', async () => {
+    const decision = makeDecisionEntry({
+      runtime: {
+        ml: { enabled: false },
+        ai: { enabled: false },
+      },
+    });
+    const { strategy } = await makeRuntime(() => decision, {
+      ENV: 'BACKTEST',
+      BACKTEST_PRICE_MODE: 'open',
+      BACKTEST_ENTRY_DELAY_BARS: 1,
+    });
+
+    const queued = await strategy(
+      { timestamp: 10, open: 100, high: 115, low: 95, close: 110 } as any,
+      { timestamp: 10, open: 200, high: 215, low: 195, close: 210 } as any,
+    );
+
+    expect(queued).toBe('BACKTEST_ENTRY_DELAY_QUEUED:1');
+    expect(mockExecuteEntryOrder).not.toHaveBeenCalled();
+
+    const executed = await (strategy as any).__tradejsFlushBacktestDelayedEntry(
+      { timestamp: 20, open: 300, high: 330, low: 290, close: 320 },
+      { timestamp: 20, open: 400, high: 430, low: 390, close: 420 },
+    );
+
+    expect(mockExecuteEntryOrder).toHaveBeenCalledWith(
+      expect.objectContaining({
+        currentPrice: 300,
+        timestamp: 20,
+        direction: 'SHORT',
+      }),
+    );
+    expect((executed as any).prices.currentPrice).toBe(300);
+    expect((executed as any).additionalIndicators.backtestExecution).toEqual({
+      entryDelayBars: 1,
+      priceMode: 'open',
+      signalTimestamp: 1_700_000_000_000,
+      signalPrice: 100,
+      executionTimestamp: 20,
+      executionPrice: 300,
+    });
+  });
+
+  it('uses one-bar BACKTEST entry delay by default', async () => {
+    const decision = makeDecisionEntry({
+      runtime: {
+        ml: { enabled: false },
+        ai: { enabled: false },
+      },
+    });
+    const { strategy } = await makeRuntime(() => decision, {
+      ENV: 'BACKTEST',
+      BACKTEST_PRICE_MODE: 'open',
+    });
+
+    const result = await strategy(
+      { timestamp: 10, open: 100, high: 115, low: 95, close: 110 } as any,
+      { timestamp: 10, open: 200, high: 215, low: 195, close: 210 } as any,
+    );
+
+    expect(result).toBe('BACKTEST_ENTRY_DELAY_QUEUED:1');
+    expect(mockExecuteEntryOrder).not.toHaveBeenCalled();
+  });
+
+  it('allows explicit zero BACKTEST entry delay for legacy same-bar execution', async () => {
+    const decision = makeDecisionEntry({
+      runtime: {
+        ml: { enabled: false },
+        ai: { enabled: false },
+      },
+    });
+    const { strategy } = await makeRuntime(() => decision, {
+      ENV: 'BACKTEST',
+      BACKTEST_ENTRY_DELAY_BARS: 0,
+    });
+
+    await strategy({ timestamp: 10 } as any, { timestamp: 10 } as any);
+
+    expect(mockExecuteEntryOrder).toHaveBeenCalledTimes(1);
+  });
+
   it('disables runtime trade journaling for backtest-style replay envs', async () => {
     for (const env of ['BACKTEST', 'PARITY']) {
       const { strategy } = await makeRuntime(
         () => makeDecisionEntry(),
         {
           ENV: env,
+          BACKTEST_ENTRY_DELAY_BARS: 0,
         },
         {
           testConnector: env === 'PARITY',

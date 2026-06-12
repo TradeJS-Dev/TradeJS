@@ -40,6 +40,7 @@ const DEFAULT_PARALLEL = resolveDefaultParallel(
   os.cpus().length,
   DEFAULT_WORKER_HEAP_MB,
 );
+const DEFAULT_BACKTEST_ENTRY_DELAY_BARS = 1;
 
 export const resolveWorkerHeapMb = (
   value: unknown = process.env.BACKTEST_WORKER_HEAP_MB,
@@ -84,8 +85,12 @@ args.option(['p', 'parallel'], 'Parallel tasks', DEFAULT_PARALLEL);
 args.option(['f', 'timeframe'], 'Timeframe', 15);
 args.option(
   'backtestPriceMode',
-  'Backtest entry price mode: open, close, mid, or rand',
+  'Backtest entry price mode: open, close, or mid',
   'open',
+);
+args.option(
+  'backtestEntryDelayBars',
+  'Delay BACKTEST entry execution by N closed bars after the signal',
 );
 args.option(['d', 'days'], 'Run backtest only for the last N days');
 args.option('startTime', 'Explicit backtest start timestamp (ms or seconds)');
@@ -151,15 +156,25 @@ export const resolveBacktestPriceMode = (value: unknown): BacktestPriceMode => {
   const normalized = String(value ?? 'open')
     .trim()
     .toLowerCase();
-  return normalized === 'close' ||
-    normalized === 'mid' ||
-    normalized === 'rand' ||
-    normalized === 'open'
+  return normalized === 'close' || normalized === 'mid' || normalized === 'open'
     ? normalized
     : 'open';
 };
 export const backtestPriceMode = resolveBacktestPriceMode(
   flags.backtestPriceMode,
+);
+export const resolveBacktestEntryDelayBars = (
+  value: unknown,
+  fallback = DEFAULT_BACKTEST_ENTRY_DELAY_BARS,
+) => {
+  if (value == null || value === '') {
+    return fallback;
+  }
+  const parsed = parseInt(String(value), 10);
+  return Number.isFinite(parsed) ? Math.max(0, parsed) : fallback;
+};
+export const backtestEntryDelayBars = resolveBacktestEntryDelayBars(
+  flags.backtestEntryDelayBars ?? process.env.BACKTEST_ENTRY_DELAY_BARS,
 );
 export const progressStep = Math.max(
   1,
