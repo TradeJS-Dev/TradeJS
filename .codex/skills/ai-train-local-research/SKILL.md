@@ -100,12 +100,16 @@ Shard-aware examples:
 ```bash
 yarn ai-train --strategy TrendShift --localOnly --json -n 0
 yarn ai-train --strategy TrendShift --file data/ai/export/ai-dataset-trendshift-merged-1779459438806-part1.jsonl --localOnly --json -n 0
+yarn ai-train --strategy TrendShift --file data/ai/export/ai-dataset-trendshift-merged-1779459438806-part1.jsonl --localOnly --json -n 0 --dumpEvaluations /tmp/trendshift-evals.jsonl
 ```
 
 Interpretation:
 
 - both commands above should evaluate the full shard group for that merge id, not only `part1`
 - if you need a truly partial replay, create an explicit temp slice first instead of assuming one shard equals one isolated window
+- `yarn ai-train --localOnly --json` is the baseline source of truth for current deterministic gate metrics
+- when doing offline pocket research, prefer `--dumpEvaluations` for the evaluated rows and join/compare extra fields from the original dataset only as explanatory features
+- before trusting a custom script, verify its baseline `approved`, q4+, q5+, PnL, PF, max drawdown, and max loss streak match `yarn ai-train --localOnly --json` for the same export/window
 
 5. Read these sections first:
 
@@ -162,6 +166,57 @@ NODE
 rc=$?
 rm -f "$tmp"
 exit $rc
+```
+
+Important custom-script correctness rules:
+
+- Do not treat saved strategy context in the dataset as current gate truth after adapter changes. Fields such as `payload.additionalIndicators.adaptiveMomentumRibbonContext`, `trendLineContext`, `reverseTrendlineContext`, etc. may be stale snapshots from export time.
+- If a custom script needs current deterministic gate fields, reconstruct the `Signal` from the dataset row, call the current `buildAiPayload(signal)`, then read the freshly built context from that payload.
+- When importing from `packages/node/dist/ai.mjs` or `packages/node/dist/ai.js`, always call `ensureAiStrategyPluginsLoaded()` before `buildAiPayload`, `getDeterministicAiGateContext`, or `runAiPromptLocal`. Without plugin registration the default/base adapter may be used and the script may silently read stale context from the dataset.
+- If strategy adapter code was changed after the last build, run the relevant build before importing from `dist`, for example `yarn workspace @tradejs/strategies build` and the package that provides the imported helper. Otherwise use the checked-in CLI flow (`yarn ai-train`) as the authoritative replay path.
+- Keep outcome fields separate from decision fields. `profit`, `tradeResult`, delayed execution fields, exit reason, and final result are labels/diagnostics only; they must not be used to decide approval for the same signal.
+- Any custom rule search must print the baseline from the same script and compare it against `yarn ai-train --localOnly --json`. If they differ materially, stop and fix the script before interpreting hypotheses.
+- Be careful with shell/JQ precedence when inspecting JSON. Prefer a tiny Node snippet that parses one row and prints explicit keys over complex one-line `jq` expressions.
+
+ESM custom-script skeleton:
+
+```bash
+node --input-type=module <<'NODE'
+import fs from 'node:fs';
+import readline from 'node:readline';
+import {
+  buildAiPayload,
+  ensureAiStrategyPluginsLoaded,
+  getDeterministicAiGateContext,
+} from './packages/node/dist/ai.mjs';
+
+await ensureAiStrategyPluginsLoaded();
+
+const signalFromRow = (row) => ({
+  ...row.payload.signal,
+  strategy: row.payload.signal.strategy,
+  figures: row.payload.figures ?? {},
+  indicators: row.payload.indicators ?? {},
+  additionalIndicators: row.payload.additionalIndicators ?? {},
+  prices: row.payload.signal.prices,
+});
+
+for (const filePath of process.argv.slice(2)) {
+  const reader = readline.createInterface({
+    input: fs.createReadStream(filePath),
+    crlfDelay: Infinity,
+  });
+  for await (const line of reader) {
+    if (!line.trim()) continue;
+    const row = JSON.parse(line);
+    const signal = signalFromRow(row);
+    const payload = buildAiPayload(signal);
+    const gateContext = getDeterministicAiGateContext(payload);
+    // Use gateContext for current gate decision features.
+    // Use row.profit/tradeResult only as labels for evaluation.
+  }
+}
+NODE
 ```
 
 8. For strategy AI investigations, always look for these questions:
