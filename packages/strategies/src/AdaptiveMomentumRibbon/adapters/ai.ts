@@ -22,8 +22,9 @@ AdaptiveMomentumRibbon addon:
 - \`invalidationLevel\` is the structural invalidation level on the signal bar. If \`invalidated=true\` or \`invalidationLevel\` sits on the wrong side of the current price, do not treat the setup as confirmed.
 - \`channelState\` and \`channelBiasAligned\` describe where price sits relative to the Keltner Channel. For LONG it is a negative sign if price is still below \`kcMidline\`; for SHORT it is a negative sign if price is above \`kcMidline\`.
 - \`invalidationDistancePct\` and \`structuralRewardRiskRatio\` describe how compact the structure is. Do not overstate quality when invalidation is too wide or reward/risk versus invalidation is weak.
-- \`derivativesDirectionAligned\`, \`derivativesRiskFlags\`, and \`derivativesFundingZScore\` are required confirmation for q4 live approvals. If derivatives are not aligned, if \`riskFlags\` contains \`oi_not_confirming\`, or if funding is too crowded, keep the setup in watch mode.
-- \`quality=5\` requires very clean momentum: correct channel side, strong \`signalOsc\`, sane invalidation distance, and no coin/BTC bias conflicts.
+- The deterministic gate is strictly signal-time causal: do not use delayed execution, exit reason, or final trade outcome as decision inputs.
+- \`quality=5\` is reserved for the strongest momentum/low-effort pocket: oscillatorStrength >= 1.5, volumeRel20 <= 1.2, and effortVsResult <= 100.
+- \`quality=4\` additionally allows two narrower continuation pockets: oscillatorStrength >= 1.2 with coin bias conflict, structuralRewardRiskRatio >= 2.2 and volumeRel20 <= 1.2, or Europe-session oscillatorStrength >= 1.5 with effortVsResult <= 120.
 - If \`approvalAllowedNow=false\` or \`deterministicQuality<4\`, this is usually watch mode rather than a ready live approval.
 `;
 
@@ -418,263 +419,33 @@ const getDeterministicAdaptiveMomentumRibbonQuality = (
     return 2;
   }
 
-  const biasConflictCount =
-    Number(context.coinBiasAligned === false) +
-    Number(context.btcBiasAligned === false);
-  const noBiasConflict = biasConflictCount === 0;
-  const oscillatorModerate = isAtLeast(context.oscillatorStrength, 0.3);
-  const oscillatorStrong = isAtLeast(context.oscillatorStrength, 0.55);
-  const oscillatorElite = isAtLeast(context.oscillatorStrength, 0.9);
-  const invalidationCompact = isInRange(
-    context.invalidationDistancePct,
-    0.15,
-    1.8,
-  );
-  const invalidationTight = isInRange(
-    context.invalidationDistancePct,
-    0.2,
-    1.25,
-  );
-  const structuralRrModerate = isAtLeast(
-    context.structuralRewardRiskRatio,
-    1.2,
-  );
-  const structuralRrStrong = isAtLeast(context.structuralRewardRiskRatio, 1.8);
-  const channelSupportive = context.channelBiasAligned === true;
-  const channelExpansion =
-    context.signalDirection === 'LONG'
-      ? context.channelState === 'above_upper'
-      : context.channelState === 'below_lower';
-  const channelExtensionStrong = isAtLeast(context.channelExtensionPct, 0.08);
-  const sessionAllowsApproval = context.sessionAllowsApproval !== false;
-  const slowestDetector =
-    context.momentumPeriod === 48 && context.butterworthSmoothing === 6;
-  const benchmarkConflict =
-    context.benchmarkTrendAlignment === 'against_benchmark' ||
-    getDirectionalAlignment({
-      signalDirection: context.signalDirection,
-      value: context.benchmarkRelativeStrength1h,
-    }) === false;
-  const alignedBullLowVolume =
-    context.benchmarkTrendAlignment === 'aligned_bull' &&
-    context.volumeRel20 != null &&
-    context.volumeRel20 < 2;
-  const weakParticipation =
-    (context.volumeRel20 != null &&
-      (context.volumeRel20 < 0.8 || context.volumeRel20 > 1.5)) ||
-    (context.effortVsResult != null &&
-      (context.effortVsResult < -0.1 || context.effortVsResult > 500));
-  const weakRetestQuality =
-    context.breakoutRetestQuality != null &&
-    context.breakoutRetestQuality < 0.25;
-  const elevatedVenueSpread =
-    context.spreadSeverity === 'wide' ||
-    (context.spreadSeverity === 'elevated' &&
-      (benchmarkConflict || weakParticipation));
-  const derivativesPressureConflict =
-    (context.signalDirection === 'LONG' &&
-      context.derivativesPressure === 'crowded_long') ||
-    (context.signalDirection === 'SHORT' &&
-      context.derivativesPressure === 'crowded_short');
-  const q4DerivativesSupported =
-    context.derivativesDirectionAligned === true &&
-    !context.derivativesRiskFlags.includes('oi_not_confirming') &&
-    context.derivativesFundingZScore != null &&
-    context.derivativesFundingZScore <= 0.5;
-  const directionalBreakoutConfirmed =
-    context.signalDirection === 'LONG'
-      ? context.breakoutState === 'above_high_level'
-      : context.signalDirection === 'SHORT'
-        ? context.breakoutState === 'below_low_level'
-        : false;
-  const participationSweetSpot =
-    isInRange(context.volumeRel20, 1.05, 1.5) &&
-    isInRange(context.effortVsResult, 100, 500);
-  const rangeBoundStructure =
-    context.baseContextAvailable &&
-    context.breakoutState != null &&
-    !directionalBreakoutConfirmed;
-  const localExpansionPromotionCandidate =
-    context.baseContextAvailable &&
-    channelSupportive &&
-    channelExpansion &&
-    oscillatorElite &&
-    invalidationCompact &&
-    structuralRrStrong &&
-    directionalBreakoutConfirmed &&
-    biasConflictCount < 2 &&
-    !(context.momentumPeriod === 48 && context.butterworthSmoothing === 4) &&
-    !(
-      context.momentumPeriod === 48 &&
-      context.butterworthSmoothing === 6 &&
-      !invalidationTight &&
-      !isAtLeast(context.structuralRewardRiskRatio, 3)
-    ) &&
-    !context.derivativesRiskFlags.includes('oi_not_confirming') &&
-    context.derivativesPressure !== 'crowded_long' &&
-    context.derivativesPressure !== 'crowded_short';
-  const confirmedBreakoutSweetSpotCandidate =
-    context.baseContextAvailable &&
-    directionalBreakoutConfirmed &&
-    participationSweetSpot &&
-    channelSupportive &&
-    channelExpansion &&
-    oscillatorStrong &&
-    invalidationCompact &&
-    structuralRrStrong &&
-    noBiasConflict &&
-    !(context.momentumPeriod === 48 && context.butterworthSmoothing === 4) &&
-    context.derivativesDirectionAligned !== false &&
-    !context.derivativesRiskFlags.includes('oi_not_confirming') &&
-    (context.derivativesFundingZScore == null ||
-      context.derivativesFundingZScore <= 0.5) &&
-    !benchmarkConflict &&
-    !weakRetestQuality &&
-    !elevatedVenueSpread &&
-    !derivativesPressureConflict;
-  const targetVsBtcAlpha4hStrong = isDirectionallyAtLeast({
-    signalDirection: context.signalDirection,
-    value: context.targetVsBtcAlpha4h,
-    threshold: 3,
-  });
-  const targetVsBtcAlpha1hStrong = isDirectionallyAtLeast({
-    signalDirection: context.signalDirection,
-    value: context.targetVsBtcAlpha1h,
-    threshold: 3,
-  });
-  const relativeStrengthContinuationCandidate =
-    context.baseContextAvailable &&
-    channelSupportive &&
-    targetVsBtcAlpha4hStrong;
-  const participationImpulseCandidate =
-    context.baseContextAvailable &&
-    channelSupportive &&
-    isAtLeast(context.volumeRel20, 2.2) &&
-    isInRange(context.effortVsResult, 100, 300);
-  const lowEffortContinuationCandidate =
-    context.baseContextAvailable &&
-    context.channelState === 'inside_channel' &&
+  if (!context.baseContextAvailable) {
+    return 3;
+  }
+
+  const causalMomentumLowEffortPocket =
+    isAtLeast(context.oscillatorStrength, 1.5) &&
+    isInRange(context.volumeRel20, 0, 1.2) &&
     isInRange(context.effortVsResult, 0, 100);
-  const newContextApprovalCandidate =
-    relativeStrengthContinuationCandidate ||
-    participationImpulseCandidate ||
-    lowEffortContinuationCandidate;
-  const highConvictionRelativeCandidate =
-    relativeStrengthContinuationCandidate &&
-    targetVsBtcAlpha1hStrong &&
-    context.channelState === 'inside_channel';
+  const causalRewardRiskLowVolumePocket =
+    isAtLeast(context.oscillatorStrength, 1.2) &&
+    context.coinBiasAligned === false &&
+    isAtLeast(context.structuralRewardRiskRatio, 2.2) &&
+    isInRange(context.volumeRel20, 0, 1.2);
+  const causalEuropeLowEffortPocket =
+    context.primarySession === 'europe' &&
+    isAtLeast(context.oscillatorStrength, 1.5) &&
+    isInRange(context.effortVsResult, 0, 120);
 
-  if (derivativesPressureConflict && !newContextApprovalCandidate) {
-    return 3;
-  }
-
-  if (
-    !sessionAllowsApproval &&
-    !q4DerivativesSupported &&
-    !newContextApprovalCandidate
-  ) {
-    return 3;
-  }
-
-  let quality =
-    highConvictionRelativeCandidate ||
-    (channelSupportive &&
-      channelExpansion &&
-      channelExtensionStrong &&
-      oscillatorElite &&
-      invalidationTight &&
-      structuralRrStrong &&
-      noBiasConflict &&
-      newContextApprovalCandidate)
-      ? 5
-      : newContextApprovalCandidate
-        ? 4
-        : channelSupportive &&
-            channelExpansion &&
-            !slowestDetector &&
-            oscillatorModerate &&
-            invalidationCompact &&
-            structuralRrModerate &&
-            biasConflictCount < 2 &&
-            (biasConflictCount === 0 || oscillatorStrong)
-          ? q4DerivativesSupported
-            ? 4
-            : localExpansionPromotionCandidate ||
-                confirmedBreakoutSweetSpotCandidate
-              ? 4
-              : 3
-          : 3;
-
-  if (
-    quality >= 4 &&
-    (!context.baseContextAvailable ||
-      rangeBoundStructure ||
-      (weakParticipation &&
-        !participationImpulseCandidate &&
-        !lowEffortContinuationCandidate))
-  ) {
-    quality = 3;
-  }
-
-  if (
-    quality >= 4 &&
-    (benchmarkConflict ||
-      rangeBoundStructure ||
-      (weakParticipation && !participationImpulseCandidate) ||
-      weakRetestQuality ||
-      elevatedVenueSpread ||
-      derivativesPressureConflict) &&
-    !newContextApprovalCandidate
-  ) {
-    quality -= 1;
-  }
-
-  if (
-    quality >= 4 &&
-    (!sessionAllowsApproval || elevatedVenueSpread) &&
-    (benchmarkConflict || weakParticipation) &&
-    !newContextApprovalCandidate
-  ) {
-    quality = 3;
-  }
-
-  if (quality === 4 && channelExpansion) {
-    quality = 3;
-  }
-
-  if (quality === 4 && alignedBullLowVolume) {
-    quality = 3;
-  }
-
-  if (
-    quality === 5 &&
-    q4DerivativesSupported &&
-    sessionAllowsApproval &&
-    !benchmarkConflict &&
-    !weakParticipation &&
-    !weakRetestQuality &&
-    !elevatedVenueSpread &&
-    !derivativesPressureConflict &&
-    newContextApprovalCandidate
-  ) {
+  if (causalMomentumLowEffortPocket) {
     return 5;
   }
 
-  if (
-    quality === 5 &&
-    channelSupportive &&
-    channelExpansion &&
-    channelExtensionStrong &&
-    oscillatorElite &&
-    invalidationTight &&
-    structuralRrStrong &&
-    noBiasConflict &&
-    newContextApprovalCandidate
-  ) {
-    return quality;
+  if (causalRewardRiskLowVolumePocket || causalEuropeLowEffortPocket) {
+    return 4;
   }
 
-  return Math.max(3, quality);
+  return 3;
 };
 
 const getHardBlockReasonText = (reason: AmrHardBlockReason) => {

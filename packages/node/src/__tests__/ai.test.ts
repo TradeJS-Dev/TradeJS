@@ -493,7 +493,7 @@ const makeAdaptiveMomentumRibbonSignal = (
         invalidated: 0,
         activeBuy: 1,
         activeSell: 0,
-        signalOsc: 1.05,
+        signalOsc: 1.6,
         kcMidline: 100.2,
         kcUpper: 100.7,
         kcLower: 99.7,
@@ -516,6 +516,12 @@ const makeAdaptiveMomentumRibbonSignal = (
         atrMultiplier: 2,
       },
       baseContext: {
+        participation: {
+          volume: {
+            volumeRel20: 1,
+            effortVsResult: 80,
+          },
+        },
         derivatives: {
           summary: {
             directionAligned: true,
@@ -3390,7 +3396,7 @@ describe('ai helpers', () => {
             invalidated: 0,
             activeBuy: 0,
             activeSell: 1,
-            signalOsc: -0.95,
+            signalOsc: -1.6,
             kcMidline: 99.5,
             kcUpper: 100.1,
             kcLower: 99.0,

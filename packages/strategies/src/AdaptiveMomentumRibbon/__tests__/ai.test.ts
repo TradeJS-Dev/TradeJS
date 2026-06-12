@@ -204,7 +204,21 @@ const buildPayloadForSignal = (signal: any) =>
 
 describe('adaptiveMomentumRibbonAiAdapter', () => {
   it('builds strong aligned long context with deterministic approval', () => {
-    const signal = makeSignal();
+    const signal = makeSignal({
+      additionalIndicators: {
+        amr: {
+          signalOsc: 1.6,
+        },
+        baseContext: {
+          participation: {
+            volume: {
+              volumeRel20: 1,
+              effortVsResult: 80,
+            },
+          },
+        },
+      },
+    });
     const payload = adaptiveMomentumRibbonAiAdapter.buildPayload?.({
       signal,
       basePayload: {
@@ -441,7 +455,7 @@ describe('adaptiveMomentumRibbonAiAdapter', () => {
     );
   });
 
-  it('approves strong inside-channel longs when target outperforms BTC on 4h', () => {
+  it('approves strong low-effort inside-channel longs', () => {
     const signal = makeSignal({
       prices: {
         currentPrice: 100.5,
@@ -450,7 +464,7 @@ describe('adaptiveMomentumRibbonAiAdapter', () => {
       },
       additionalIndicators: {
         amr: {
-          signalOsc: 0.88,
+          signalOsc: 1.6,
           kcMidline: 100.2,
           kcUpper: 101.1,
           kcLower: 99.5,
@@ -465,6 +479,12 @@ describe('adaptiveMomentumRibbonAiAdapter', () => {
               ratioTrend: 'up',
             },
           },
+          participation: {
+            volume: {
+              volumeRel20: 1,
+              effortVsResult: 80,
+            },
+          },
         },
       },
     });
@@ -475,13 +495,15 @@ describe('adaptiveMomentumRibbonAiAdapter', () => {
         channelState: 'inside_channel',
         targetVsBtcAlpha1h: 3.4,
         targetVsBtcAlpha4h: 4.2,
+        volumeRel20: 1,
+        effortVsResult: 80,
         deterministicQuality: 5,
         approvalAllowedNow: true,
       }),
     );
   });
 
-  it('promotes low-effort inside-channel continuation longs into q4', () => {
+  it('keeps low-effort continuations below approval when oscillator is not strong', () => {
     const signal = makeSignal({
       prices: {
         currentPrice: 100.5,
@@ -522,8 +544,8 @@ describe('adaptiveMomentumRibbonAiAdapter', () => {
         targetVsBtcAlpha4h: 0.8,
         volumeRel20: 0.6,
         effortVsResult: 60,
-        deterministicQuality: 4,
-        approvalAllowedNow: true,
+        deterministicQuality: 3,
+        approvalAllowedNow: false,
       }),
     );
   });
@@ -636,6 +658,9 @@ describe('adaptiveMomentumRibbonAiAdapter', () => {
         currentPrice: 100.6,
       },
       additionalIndicators: {
+        amr: {
+          signalOsc: 1.6,
+        },
         baseContext: {
           relative: {
             benchmark: {
@@ -650,8 +675,8 @@ describe('adaptiveMomentumRibbonAiAdapter', () => {
           },
           participation: {
             volume: {
-              volumeRel20: 1.4,
-              effortVsResult: 160,
+              volumeRel20: 1.1,
+              effortVsResult: 80,
             },
           },
         },
@@ -663,7 +688,7 @@ describe('adaptiveMomentumRibbonAiAdapter', () => {
       expect.objectContaining({
         channelState: 'inside_channel',
         benchmarkTrendAlignment: 'aligned_bull',
-        volumeRel20: 1.4,
+        volumeRel20: 1.1,
         deterministicQuality: 5,
         approvalAllowedNow: true,
       }),
@@ -954,6 +979,9 @@ describe('adaptiveMomentumRibbonAiAdapter', () => {
     const signal = makeSignal({
       timestamp: Date.UTC(2026, 0, 1, 14, 30),
       additionalIndicators: {
+        amr: {
+          signalOsc: 1.6,
+        },
         baseContext: {
           regime: {
             session: {
@@ -962,6 +990,12 @@ describe('adaptiveMomentumRibbonAiAdapter', () => {
               minutesFromSessionOpen: 90,
               minutesToFundingWindow: 90,
               fundingWindowNearby: false,
+            },
+          },
+          participation: {
+            volume: {
+              volumeRel20: 1,
+              effortVsResult: 80,
             },
           },
         },
@@ -1005,6 +1039,9 @@ describe('adaptiveMomentumRibbonAiAdapter', () => {
     const signal = makeSignal({
       timestamp: Date.UTC(2026, 0, 1, 3, 30),
       additionalIndicators: {
+        amr: {
+          signalOsc: 1.6,
+        },
         baseContext: {
           regime: {
             session: {
@@ -1013,6 +1050,12 @@ describe('adaptiveMomentumRibbonAiAdapter', () => {
               minutesFromSessionOpen: 90,
               minutesToFundingWindow: 180,
               fundingWindowNearby: false,
+            },
+          },
+          participation: {
+            volume: {
+              volumeRel20: 1,
+              effortVsResult: 80,
             },
           },
         },
@@ -1271,6 +1314,12 @@ describe('adaptiveMomentumRibbonAiAdapter', () => {
               breakoutState: 'below_low_level',
             },
           },
+          participation: {
+            volume: {
+              volumeRel20: 1,
+              effortVsResult: 80,
+            },
+          },
         },
         amr: {
           entryLong: 0,
@@ -1278,7 +1327,7 @@ describe('adaptiveMomentumRibbonAiAdapter', () => {
           invalidated: 0,
           activeBuy: 0,
           activeSell: 1,
-          signalOsc: -0.95,
+          signalOsc: -1.6,
           kcMidline: 99.5,
           kcUpper: 100.1,
           kcLower: 99.0,
@@ -1469,7 +1518,7 @@ describe('adaptiveMomentumRibbonAiAdapter', () => {
     );
   });
 
-  it('promotes participation impulse longs into q4+ even without relative alpha support', () => {
+  it('keeps high-volume participation impulses in watch mode', () => {
     const signal = makeSignal({
       additionalIndicators: {
         baseContext: {
@@ -1497,8 +1546,8 @@ describe('adaptiveMomentumRibbonAiAdapter', () => {
         targetVsBtcAlpha4h: 0.4,
         volumeRel20: 2.4,
         effortVsResult: 180,
-        deterministicQuality: 5,
-        approvalAllowedNow: true,
+        deterministicQuality: 3,
+        approvalAllowedNow: false,
       }),
     );
   });
