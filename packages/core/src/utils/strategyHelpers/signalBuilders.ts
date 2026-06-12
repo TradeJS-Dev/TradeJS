@@ -1313,7 +1313,6 @@ export const createStrategyAPI = ({
   cachedData,
   indicatorsState,
   preloadStart,
-  backtestPriceMode,
   isConfigFromBacktest,
 }: CreateStrategyAPIParams): StrategyAPI => {
   const isBacktestEnv = env === 'BACKTEST';
@@ -1367,8 +1366,6 @@ export const createStrategyAPI = ({
     params: StrategyAPIMarketDataParams = {},
   ): Promise<StrategyMarketSnapshot> => {
     const resolvedPreloadStart = params.preloadStart ?? preloadStart;
-    const resolvedBacktestPriceMode =
-      params.backtestPriceMode ?? backtestPriceMode;
 
     if (typeof resolvedPreloadStart !== 'number') {
       throw new Error('strategyApi.getMarketData requires preloadStart');
@@ -1382,15 +1379,12 @@ export const createStrategyAPI = ({
         interval,
         cachedData,
         preloadStart: resolvedPreloadStart,
-        backtestPriceMode: resolvedBacktestPriceMode,
       });
     }
 
     ensureBarCache();
 
-    const cacheKey = `${resolvedPreloadStart}:${String(
-      resolvedBacktestPriceMode ?? '',
-    )}`;
+    const cacheKey = String(resolvedPreloadStart);
     let snapshot = barCache.marketDataByKey.get(cacheKey);
     if (!snapshot) {
       snapshot = getStrategyMarketSnapshot({
@@ -1400,7 +1394,6 @@ export const createStrategyAPI = ({
         interval,
         cachedData,
         preloadStart: resolvedPreloadStart,
-        backtestPriceMode: resolvedBacktestPriceMode,
       });
       barCache.marketDataByKey.set(cacheKey, snapshot);
     }

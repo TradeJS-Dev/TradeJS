@@ -10,6 +10,7 @@ import {
   compareTradeParityEntries,
   dedupeRuntimeParityEntries,
   extractRuntimeParityEntries,
+  getBacktestParityComparisonTimestamp,
   type TradeParityEntry,
 } from '../runtimeParity';
 import {
@@ -270,9 +271,10 @@ export const compareExchangeEntriesToBacktest = ({
         }
 
         const diff = Math.abs(
-          candidate.entry.timestamp +
-            backtestTimestampOffsetMs -
-            exchangeEntry.entryTimestamp,
+          getBacktestParityComparisonTimestamp(
+            candidate.entry,
+            backtestTimestampOffsetMs,
+          ) - exchangeEntry.entryTimestamp,
         );
         if (diff > toleranceMs || diff >= bestDiff) {
           continue;

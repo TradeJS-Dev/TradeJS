@@ -76,6 +76,8 @@ export const executionCalibration = async () => {
           residualVsCurrentModelBps:
             report.summary.all.residualVsCurrentModelBps,
           replayEntryResidualBps: report.summary.all.replayEntryResidualBps,
+          telemetryQuality: report.summary.all.telemetryQuality,
+          fillSource: report.summary.all.fillSource,
         },
       },
       null,

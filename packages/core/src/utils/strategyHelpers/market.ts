@@ -18,7 +18,6 @@ export interface StrategyMarketSnapshotParams {
   interval: Interval;
   cachedData: KlineChartData;
   preloadStart: number;
-  backtestPriceMode?: BacktestPriceMode;
 }
 
 const getTopOfBookTargetVenue = async ({
@@ -122,7 +121,6 @@ export const getStrategyMarketSnapshot = async ({
   interval,
   cachedData,
   preloadStart,
-  backtestPriceMode = 'mid',
 }: StrategyMarketSnapshotParams): Promise<StrategyMarketSnapshot> => {
   const fullData =
     env === 'BACKTEST' || env === 'CRON' || env === 'PARITY'
@@ -136,11 +134,7 @@ export const getStrategyMarketSnapshot = async ({
         });
 
   const lastCandle = fullData[fullData.length - 1];
-  let currentPrice = lastCandle.close;
-
-  if (env === 'BACKTEST') {
-    currentPrice = resolveBacktestExecutionPrice(lastCandle, backtestPriceMode);
-  }
+  const currentPrice = lastCandle.close;
 
   return {
     fullData,

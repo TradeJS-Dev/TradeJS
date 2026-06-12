@@ -85,7 +85,7 @@ args.option(['p', 'parallel'], 'Parallel tasks', DEFAULT_PARALLEL);
 args.option(['f', 'timeframe'], 'Timeframe', 15);
 args.option(
   'backtestPriceMode',
-  'Backtest entry price mode: open, close, or mid',
+  'Backtest delayed entry execution price mode: open, close, or mid',
   'open',
 );
 args.option(

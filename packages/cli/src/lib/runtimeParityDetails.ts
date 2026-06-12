@@ -7,7 +7,10 @@ import type {
   RuntimeSignalEvaluationRecord,
   Signal,
 } from '@tradejs/types';
-import type { TradeParityEntry } from './runtimeParity';
+import {
+  getBacktestParityComparisonTimestamp,
+  type TradeParityEntry,
+} from './runtimeParity';
 import type {
   ReplayMismatchAiDiagnostic,
   ReplayMismatchDrilldown,
@@ -90,7 +93,10 @@ const toBacktestParityDetail = (
   entry: TradeParityEntry,
   timestampOffsetMs = 0,
 ): ReplayParityEntryDetail => {
-  const comparisonTimestamp = entry.timestamp + timestampOffsetMs;
+  const comparisonTimestamp = getBacktestParityComparisonTimestamp(
+    entry,
+    timestampOffsetMs,
+  );
   return {
     source: 'backtest',
     strategy: entry.strategy,
@@ -98,6 +104,7 @@ const toBacktestParityDetail = (
     direction: entry.direction,
     qty: entry.qty ?? null,
     timestamp: entry.timestamp,
+    signalTimestamp: entry.signalTimestamp ?? null,
     comparisonTimestamp: timestampOffsetMs === 0 ? null : comparisonTimestamp,
     price: entry.price,
     exitType: entry.exitType ?? null,

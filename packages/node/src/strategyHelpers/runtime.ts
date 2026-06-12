@@ -14,6 +14,8 @@ import {
   SignalAnalysis,
   StrategyRuntimeAiOptions,
   StrategyRuntimeMlOptions,
+  RuntimeTradeFillSource,
+  RuntimeTradeTelemetryQuality,
   Tp,
 } from '@tradejs/types';
 import { askAI, runAiPromptLocal } from '../ai';
@@ -251,6 +253,8 @@ const getArrivalSnapshot = async ({
 }) => {
   if (typeof connector.getTopOfBookTicker !== 'function') {
     return {
+      arrivalSnapshotTime: Date.now(),
+      arrivalSource: 'unavailable',
       bid: null,
       ask: null,
       arrivalMid: null,
@@ -260,6 +264,7 @@ const getArrivalSnapshot = async ({
 
   try {
     const ticker = await connector.getTopOfBookTicker(symbol);
+    const arrivalSnapshotTime = toFiniteNumberOrNull(ticker?.timestamp);
     const bid = toFiniteNumberOrNull(ticker?.bidPrice);
     const ask = toFiniteNumberOrNull(ticker?.askPrice);
     const arrivalMid = bid != null && ask != null ? (bid + ask) / 2 : null;
@@ -269,6 +274,8 @@ const getArrivalSnapshot = async ({
         : null;
 
     return {
+      arrivalSnapshotTime: arrivalSnapshotTime ?? Date.now(),
+      arrivalSource: 'top_of_book',
       bid,
       ask,
       arrivalMid,
@@ -281,12 +288,51 @@ const getArrivalSnapshot = async ({
       (error as Error)?.message || String(error),
     );
     return {
+      arrivalSnapshotTime: Date.now(),
+      arrivalSource: 'top_of_book_error',
       bid: null,
       ask: null,
       arrivalMid: null,
       spreadBps: null,
     };
   }
+};
+
+const resolveRuntimeTelemetryQuality = ({
+  signalClosePrice,
+  arrivalMid,
+  orderSubmitTime,
+  orderAckTime,
+  fillAvgPrice,
+  fillTime,
+}: {
+  signalClosePrice: number | null;
+  arrivalMid: number | null;
+  orderSubmitTime: number | null;
+  orderAckTime: number | null;
+  fillAvgPrice: number | null;
+  fillTime: number | null;
+}): RuntimeTradeTelemetryQuality => {
+  if (
+    signalClosePrice != null &&
+    arrivalMid != null &&
+    orderSubmitTime != null &&
+    orderAckTime != null &&
+    fillAvgPrice != null &&
+    fillTime != null
+  ) {
+    return 'full';
+  }
+
+  if (fillAvgPrice != null && (arrivalMid != null || orderSubmitTime != null)) {
+    return 'partial';
+  }
+
+  if (fillAvgPrice != null) {
+    return 'price_only';
+  }
+
+  return 'none';
 };
 
 const applyProtectiveOrders = async ({
@@ -365,13 +411,34 @@ export const executeEntryOrder = async ({
     orderId,
     signal,
   });
-  const fillTime = Date.now();
+  const orderAckTime = Date.now();
   const placedQty =
     typeof signal.orderQty === 'number' &&
     Number.isFinite(signal.orderQty) &&
     signal.orderQty > 0
       ? signal.orderQty
       : qty;
+  const currentPosition = await connector.getPosition(symbol);
+  const fillTime = Date.now();
+  const entryPrice =
+    currentPosition?.price && Number.isFinite(currentPosition.price)
+      ? currentPosition.price
+      : currentPrice;
+  const fillSource: RuntimeTradeFillSource =
+    currentPosition?.price && Number.isFinite(currentPosition.price)
+      ? 'exchange_position'
+      : orderPlaced
+        ? 'requested_price'
+        : 'unknown';
+  const entryQty =
+    currentPosition?.qty && Number.isFinite(currentPosition.qty)
+      ? currentPosition.qty
+      : placedQty;
+  const estimatedOpenFee = entryPrice * entryQty * FEE_PERCENT;
+
+  signal.prices.currentPrice = entryPrice;
+  signal.orderQty = entryQty;
+  signal.orderValue = entryQty * entryPrice;
 
   if (orderPlaced) {
     try {
@@ -379,14 +446,14 @@ export const executeEntryOrder = async ({
         connector,
         symbol,
         direction,
-        qty: placedQty,
+        qty: entryQty,
         takeProfits,
         stopLossPrice,
       });
     } catch (error) {
       await connector.closePosition({
         symbol,
-        price: currentPrice,
+        price: entryPrice,
         timestamp,
         direction,
         signal,
@@ -401,21 +468,6 @@ export const executeEntryOrder = async ({
     signal.orderFailureReason = undefined;
   }
 
-  const currentPosition = await connector.getPosition(symbol);
-  const entryPrice =
-    currentPosition?.price && Number.isFinite(currentPosition.price)
-      ? currentPosition.price
-      : currentPrice;
-  const entryQty =
-    currentPosition?.qty && Number.isFinite(currentPosition.qty)
-      ? currentPosition.qty
-      : placedQty;
-  const estimatedOpenFee = entryPrice * entryQty * FEE_PERCENT;
-
-  signal.prices.currentPrice = entryPrice;
-  signal.orderQty = entryQty;
-  signal.orderValue = entryQty * entryPrice;
-
   if (orderPlaced && recordRuntimeTrade) {
     await recordRuntimeTradeOpen({
       userName,
@@ -429,13 +481,25 @@ export const executeEntryOrder = async ({
       entryPrice,
       signalTimestamp,
       signalClosePrice,
+      arrivalSnapshotTime: arrivalSnapshot.arrivalSnapshotTime,
+      arrivalSource: arrivalSnapshot.arrivalSource,
       arrivalMid: arrivalSnapshot.arrivalMid,
       bid: arrivalSnapshot.bid,
       ask: arrivalSnapshot.ask,
       spreadBps: arrivalSnapshot.spreadBps,
       orderSubmitTime,
+      orderAckTime,
       fillAvgPrice: entryPrice,
+      fillSource,
       fillTime,
+      telemetryQuality: resolveRuntimeTelemetryQuality({
+        signalClosePrice,
+        arrivalMid: arrivalSnapshot.arrivalMid,
+        orderSubmitTime,
+        orderAckTime,
+        fillAvgPrice: entryPrice,
+        fillTime,
+      }),
       fee: estimatedOpenFee,
       openFee: estimatedOpenFee,
       totalFee: estimatedOpenFee,

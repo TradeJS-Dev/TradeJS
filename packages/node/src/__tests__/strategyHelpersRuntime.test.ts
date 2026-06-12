@@ -370,13 +370,18 @@ describe('strategyHelpers/runtime enrichSignalWithMlAi', () => {
       entryPrice: 101,
       signalTimestamp: 1,
       signalClosePrice: 100,
+      arrivalSnapshotTime: expect.any(Number),
+      arrivalSource: 'top_of_book',
       arrivalMid: 100,
       bid: 99,
       ask: 101,
       spreadBps: 200,
       orderSubmitTime: expect.any(Number),
+      orderAckTime: expect.any(Number),
       fillAvgPrice: 101,
+      fillSource: 'exchange_position',
       fillTime: expect.any(Number),
+      telemetryQuality: 'full',
       fee: 0.101,
       openFee: 0.101,
       totalFee: 0.101,
@@ -457,6 +462,39 @@ describe('strategyHelpers/runtime enrichSignalWithMlAi', () => {
       expect.objectContaining({
         qty: 2,
         entryPrice: 101,
+      }),
+    );
+  });
+
+  it('records partial fill telemetry when top-of-book is unavailable', async () => {
+    const connector = {
+      placeOrder: jest.fn(async () => true),
+      setTakeProfits: jest.fn(async () => true),
+      setStopLoss: jest.fn(async () => true),
+      closePosition: jest.fn(async () => true),
+      getPosition: jest.fn(async () => null),
+    } as any;
+
+    await executeEntryOrder({
+      connector,
+      userName: 'root',
+      symbol: 'ETHUSDT',
+      direction: 'LONG',
+      qty: 1,
+      currentPrice: 100,
+      timestamp: 1_700_000_000_000,
+      takeProfits: [{ price: 110, rate: 1 }],
+      stopLossPrice: 95,
+      signal: { ...signal },
+    });
+
+    expect(mockRecordRuntimeTradeOpen).toHaveBeenCalledWith(
+      expect.objectContaining({
+        arrivalSource: 'unavailable',
+        arrivalMid: null,
+        fillAvgPrice: 100,
+        fillSource: 'requested_price',
+        telemetryQuality: 'partial',
       }),
     );
   });

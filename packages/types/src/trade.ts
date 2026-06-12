@@ -690,6 +690,15 @@ export type SignalOrderStatus = 'completed' | 'failed' | 'skipped' | 'canceled';
 
 export type RuntimeTradeStatus = 'active' | 'closed';
 export type RuntimeTradeExitType = 'exit' | 'tp' | 'sl' | 'unknown';
+export type RuntimeTradeFillSource =
+  | 'exchange_position'
+  | 'requested_price'
+  | 'unknown';
+export type RuntimeTradeTelemetryQuality =
+  | 'full'
+  | 'partial'
+  | 'price_only'
+  | 'none';
 
 export interface RuntimeTradeRecord {
   orderId: string;
@@ -704,13 +713,18 @@ export interface RuntimeTradeRecord {
   entryTimestamp: number;
   signalTimestamp?: number | null;
   signalClosePrice?: number | null;
+  arrivalSnapshotTime?: number | null;
+  arrivalSource?: string | null;
   arrivalMid?: number | null;
   bid?: number | null;
   ask?: number | null;
   spreadBps?: number | null;
   orderSubmitTime?: number | null;
+  orderAckTime?: number | null;
   fillAvgPrice?: number | null;
+  fillSource?: RuntimeTradeFillSource | null;
   fillTime?: number | null;
+  telemetryQuality?: RuntimeTradeTelemetryQuality | null;
   fee?: number | null;
   status: RuntimeTradeStatus;
   currentPrice?: number | null;

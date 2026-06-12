@@ -14,6 +14,8 @@ import {
   Direction,
   Interval,
   RuntimeTradeRecord,
+  RuntimeTradeFillSource,
+  RuntimeTradeTelemetryQuality,
   SignalAnalysis,
 } from '@tradejs/types';
 
@@ -61,13 +63,18 @@ export const recordRuntimeTradeOpen = async (params: {
   entryTimestamp: number;
   signalTimestamp?: number | null;
   signalClosePrice?: number | null;
+  arrivalSnapshotTime?: number | null;
+  arrivalSource?: string | null;
   arrivalMid?: number | null;
   bid?: number | null;
   ask?: number | null;
   spreadBps?: number | null;
   orderSubmitTime?: number | null;
+  orderAckTime?: number | null;
   fillAvgPrice?: number | null;
+  fillSource?: RuntimeTradeFillSource | null;
   fillTime?: number | null;
+  telemetryQuality?: RuntimeTradeTelemetryQuality | null;
   fee?: number | null;
   openFee?: number | null;
   totalFee?: number | null;

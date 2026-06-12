@@ -278,14 +278,73 @@ const resolveBacktestEntryDelayBars = (value: unknown) => {
   return Number.isFinite(parsed) ? Math.max(0, parsed) : 1;
 };
 
+const buildBacktestExecutionOnlyCandle = (
+  candle: KlineChartItem,
+  executionPrice: number,
+): KlineChartItem => ({
+  ...candle,
+  open: executionPrice,
+  high: executionPrice,
+  low: executionPrice,
+  close: executionPrice,
+  volume: 0,
+  turnover: 0,
+});
+
+const resolveInvalidDelayedEntryReason = ({
+  decision,
+  executionPrice,
+  takeProfitPrice,
+  stopLossPrice,
+  riskRatio,
+}: {
+  decision: EntryDecision;
+  executionPrice: number;
+  takeProfitPrice: number;
+  stopLossPrice: number;
+  riskRatio: number;
+}) => {
+  if (
+    !Number.isFinite(executionPrice) ||
+    !Number.isFinite(takeProfitPrice) ||
+    !Number.isFinite(stopLossPrice)
+  ) {
+    return 'BACKTEST_DELAYED_ENTRY_INVALID_PRICE';
+  }
+
+  if (decision.entryContext.direction === 'LONG') {
+    if (executionPrice <= stopLossPrice) {
+      return 'BACKTEST_DELAYED_ENTRY_BEYOND_STOP';
+    }
+    if (executionPrice >= takeProfitPrice) {
+      return 'BACKTEST_DELAYED_ENTRY_BEYOND_TAKE_PROFIT';
+    }
+    return !Number.isFinite(riskRatio) || riskRatio <= 0
+      ? 'BACKTEST_DELAYED_ENTRY_INVALID_PRICE'
+      : null;
+  }
+
+  if (executionPrice >= stopLossPrice) {
+    return 'BACKTEST_DELAYED_ENTRY_BEYOND_STOP';
+  }
+  if (executionPrice <= takeProfitPrice) {
+    return 'BACKTEST_DELAYED_ENTRY_BEYOND_TAKE_PROFIT';
+  }
+  return !Number.isFinite(riskRatio) || riskRatio <= 0
+    ? 'BACKTEST_DELAYED_ENTRY_INVALID_PRICE'
+    : null;
+};
+
 const applyBacktestDelayedEntryExecution = ({
   decision,
   candle,
+  btcCandle,
   backtestPriceMode,
   delayBars,
 }: {
   decision: EntryDecision;
   candle: KlineChartItem;
+  btcCandle: KlineChartItem;
   backtestPriceMode: StrategyConfig['BACKTEST_PRICE_MODE'];
   delayBars: number;
 }) => {
@@ -307,6 +366,13 @@ const applyBacktestDelayedEntryExecution = ({
     takeProfitPrice,
     stopLossPrice,
   });
+  const skipReason = resolveInvalidDelayedEntryReason({
+    decision,
+    executionPrice,
+    takeProfitPrice,
+    stopLossPrice,
+    riskRatio,
+  });
 
   decision.entryContext = {
     ...decision.entryContext,
@@ -319,8 +385,17 @@ const applyBacktestDelayedEntryExecution = ({
     },
   };
 
+  const executionResult = {
+    skipReason,
+    executionCandle: buildBacktestExecutionOnlyCandle(candle, executionPrice),
+    btcExecutionCandle: buildBacktestExecutionOnlyCandle(
+      btcCandle,
+      resolveBacktestExecutionPrice(btcCandle, backtestPriceMode ?? 'open'),
+    ),
+  };
+
   if (!decision.signal) {
-    return;
+    return executionResult;
   }
 
   decision.signal.prices = {
@@ -338,8 +413,16 @@ const applyBacktestDelayedEntryExecution = ({
       signalPrice,
       executionTimestamp,
       executionPrice,
+      ...(skipReason ? { skipReason } : {}),
     },
   };
+
+  if (skipReason) {
+    decision.signal.orderStatus = 'skipped';
+    decision.signal.orderSkipReason = skipReason;
+  }
+
+  return executionResult;
 };
 
 const normalizeConfigHookList = <THook extends (...args: any[]) => unknown>(
@@ -1414,15 +1497,21 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
 
       const pending = pendingBacktestEntry;
       pendingBacktestEntry = null;
-      applyBacktestDelayedEntryExecution({
+      const execution = applyBacktestDelayedEntryExecution({
         decision: pending.decision,
         candle,
+        btcCandle,
         backtestPriceMode,
         delayBars: pending.delayBars,
       });
+
+      if (execution.skipReason) {
+        return pending.decision.signal ?? execution.skipReason;
+      }
+
       const market: HookCandleMarket = {
-        candle,
-        btcCandle,
+        candle: execution.executionCandle,
+        btcCandle: execution.btcExecutionCandle,
       };
       const entry = buildHookEntry({
         decision: pending.decision,

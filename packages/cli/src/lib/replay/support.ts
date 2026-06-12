@@ -70,6 +70,7 @@ export type ReplayParityEntryDetail = {
   direction: string;
   qty?: number | null;
   timestamp: number;
+  signalTimestamp?: number | null;
   comparisonTimestamp?: number | null;
   price: number | null;
   exitType?: string | null;

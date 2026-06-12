@@ -205,6 +205,9 @@ Runtime AI config conventions:
 ### Signals / Backtest Parity Rules
 
 - `yarn signals` evaluates only the last closed candle; do not include the still-forming newest candle in strategy decisions.
+- AI/ML/gate approval decisions must be strictly signal-time causal. `yarn signals`, `yarn backtest`, `yarn replay`, and `ai-train --localOnly` must decide from data available at the signal candle decision time, not from later execution or outcome fields.
+- Delayed-entry execution telemetry such as `backtestExecution.executionPrice`, `entryDelayMoveBps`, delayed entry timestamps, realized exit reason, or final trade result may be exported and analyzed after the fact, but must not be used as inputs to AI-gate approval, deterministic quality, or prompt-time decision context for the same signal.
+- `BACKTEST_ENTRY_DELAY_BARS` may change fill timing, execution price, and PnL. It must not change the signal-time gate decision unless an equivalent live/runtime pre-entry re-evaluation path exists and is used by both `yarn signals` and `yarn backtest`.
 - `yarn signals` runs on a separate runtime server in the current production workflow. The local Redis in this checkout is not the source of truth for live runtime signals, runtime signal evaluations, or runtime trade records unless the user explicitly says they synced/copied runtime data locally.
 - Do not conclude that a strategy did not run in live runtime just because local Redis has no `users:root:runtime:signals:*` or `users:root:runtime:signal-evaluations:*` keys. Ask for or inspect the remote runtime server data/artifacts when live-runtime evidence is required.
 - `yarn signals` runs over the full active ticker universe by default; use explicit ticker filters only when the task asks for a narrowed run.

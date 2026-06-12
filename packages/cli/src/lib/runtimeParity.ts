@@ -16,6 +16,7 @@ export interface TradeParityEntry {
   direction: Direction;
   qty?: number | null;
   timestamp: number;
+  signalTimestamp?: number | null;
   price: number | null;
   orderId?: string;
   signalId?: string;
@@ -71,6 +72,11 @@ const toRuntimeDuplicateKey = (
     'strategy' | 'symbol' | 'direction' | 'timestamp'
   >,
 ) => `${toGroupKey(entry)}::${entry.timestamp}`;
+
+export const getBacktestParityComparisonTimestamp = (
+  entry: TradeParityEntry,
+  timestampOffsetMs = 0,
+) => (entry.signalTimestamp ?? entry.timestamp) + timestampOffsetMs;
 
 const sortTradeParityEntries = (
   left: TradeParityEntry,
@@ -138,10 +144,11 @@ export const extractBacktestEntryParityEntries = (
     }
 
     const signal = item.signal!;
-    const timestamp =
+    const signalTimestamp =
       typeof signal.timestamp === 'number' && Number.isFinite(signal.timestamp)
         ? signal.timestamp
-        : item.timestamp;
+        : null;
+    const timestamp = item.timestamp;
 
     const exitItems = [];
     for (const candidate of orderLog.slice(index + 1)) {
@@ -179,6 +186,7 @@ export const extractBacktestEntryParityEntries = (
       direction: signal.direction,
       qty: toFiniteNumberOrNull(item.qty),
       timestamp,
+      signalTimestamp,
       price: toFiniteNumberOrNull(item.price),
       signalId:
         typeof signal.signalId === 'string' ? signal.signalId : undefined,
@@ -358,9 +366,10 @@ export const compareTradeParityEntries = ({
         }
 
         const diff = Math.abs(
-          candidate.entry.timestamp +
-            backtestTimestampOffsetMs -
-            runtimeEntry.timestamp,
+          getBacktestParityComparisonTimestamp(
+            candidate.entry,
+            backtestTimestampOffsetMs,
+          ) - runtimeEntry.timestamp,
         );
         if (diff > toleranceMs || diff >= bestDiff) {
           continue;

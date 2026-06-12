@@ -1,4 +1,7 @@
-import { getStrategyMarketSnapshot } from '../strategyHelpers/market';
+import {
+  getStrategyMarketSnapshot,
+  resolveBacktestExecutionPrice,
+} from '../strategyHelpers/market';
 
 describe('strategyHelpers/market getStrategyMarketSnapshot', () => {
   const candle = {
@@ -23,13 +26,16 @@ describe('strategyHelpers/market getStrategyMarketSnapshot', () => {
     preloadStart: 0,
   };
 
-  it('uses candle open price when backtestPriceMode=open', async () => {
-    const snapshot = await getStrategyMarketSnapshot({
-      ...baseParams,
-      backtestPriceMode: 'open',
-    });
+  it('uses closed candle close as signal current price in BACKTEST mode', async () => {
+    const snapshot = await getStrategyMarketSnapshot(baseParams);
 
-    expect(snapshot.currentPrice).toBe(candle.open);
+    expect(snapshot.currentPrice).toBe(candle.close);
+  });
+
+  it('keeps BACKTEST_PRICE_MODE semantics in execution price helper only', () => {
+    expect(resolveBacktestExecutionPrice(candle, 'open')).toBe(candle.open);
+    expect(resolveBacktestExecutionPrice(candle, 'close')).toBe(candle.close);
+    expect(resolveBacktestExecutionPrice(candle, 'mid')).toBe(105);
   });
 
   it('uses cached data in CRON mode without refetching connector kline', async () => {

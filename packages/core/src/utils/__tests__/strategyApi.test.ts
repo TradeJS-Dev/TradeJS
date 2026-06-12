@@ -80,6 +80,38 @@ describe('createStrategyAPI', () => {
     expect(connector.kline).not.toHaveBeenCalled();
   });
 
+  it('getMarketData ignores BACKTEST_PRICE_MODE and returns the closed candle close for signals', async () => {
+    const data: any[] = [makeCandle(1_700_000_000_000, 100)];
+    const connector = {
+      kline: jest.fn(),
+      getPosition: jest.fn(),
+    } as any;
+
+    const strategyApi = createStrategyAPI({
+      strategy: 'TrendLine' as any,
+      symbol: 'TESTUSDT',
+      interval: '15' as any,
+      env: 'BACKTEST',
+      connector,
+      cachedData: data,
+      preloadStart: 1,
+      backtestPriceMode: 'open',
+      isConfigFromBacktest: false,
+    });
+
+    const openMode = await strategyApi.getMarketData({
+      backtestPriceMode: 'open',
+    });
+    const closeMode = await strategyApi.getMarketData({
+      backtestPriceMode: 'close',
+    });
+
+    expect(openMode.currentPrice).toBe(100);
+    expect(openMode.lastCandle.open).toBe(99);
+    expect(closeMode).toBe(openMode);
+    expect(connector.kline).not.toHaveBeenCalled();
+  });
+
   it('getCurrentPosition reuses one connector read within the same BACKTEST bar and invalidates on the next bar', async () => {
     const data: any[] = [makeCandle(1_700_000_000_000, 100)];
     let currentPosition: any = {

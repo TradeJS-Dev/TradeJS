@@ -36,18 +36,26 @@ export type ExecutionCalibrationSample = {
   signalTimestamp: number | null;
   signalCloseTimestamp: number | null;
   signalClosePrice: number | null;
+  arrivalSnapshotTime: number | null;
+  arrivalSource: string | null;
   arrivalMid: number | null;
   bid: number | null;
   ask: number | null;
   spreadBps: number | null;
   orderSubmitTime: number | null;
+  orderAckTime: number | null;
   fillAvgPrice: number | null;
+  fillSource: string | null;
   fillTime: number | null;
+  telemetryQuality: 'full' | 'partial' | 'price_only' | 'none';
   fee: number | null;
   feeBps: number | null;
+  arrivalSnapshotAgeMs: number | null;
   signalToSubmitMs: number | null;
   signalCloseToSubmitMs: number | null;
+  submitToAckMs: number | null;
   submitToFillMs: number | null;
+  orderAckToFillMs: number | null;
   signalToFillMs: number | null;
   signalToArrivalAdverseBps: number | null;
   arrivalToFillAdverseBps: number | null;
@@ -60,10 +68,15 @@ export type ExecutionCalibrationSample = {
   replayEntryResidualBps: number | null;
 };
 
+export type ExecutionCalibrationCountBreakdown = Record<string, number>;
+
 export type ExecutionCalibrationGroupSummary = {
   trades: number;
   fullTelemetryTrades: number;
   replayMatchedTrades: number;
+  telemetryQuality: ExecutionCalibrationCountBreakdown;
+  fillSource: ExecutionCalibrationCountBreakdown;
+  arrivalSource: ExecutionCalibrationCountBreakdown;
   signalToArrivalAdverseBps: ExecutionCalibrationMetricSummary;
   arrivalToFillAdverseBps: ExecutionCalibrationMetricSummary;
   signalToFillAdverseBps: ExecutionCalibrationMetricSummary;
@@ -71,9 +84,12 @@ export type ExecutionCalibrationGroupSummary = {
   replayEntryResidualBps: ExecutionCalibrationMetricSummary;
   spreadBps: ExecutionCalibrationMetricSummary;
   feeBps: ExecutionCalibrationMetricSummary;
+  arrivalSnapshotAgeMs: ExecutionCalibrationMetricSummary;
   signalToSubmitMs: ExecutionCalibrationMetricSummary;
   signalCloseToSubmitMs: ExecutionCalibrationMetricSummary;
+  submitToAckMs: ExecutionCalibrationMetricSummary;
   submitToFillMs: ExecutionCalibrationMetricSummary;
+  orderAckToFillMs: ExecutionCalibrationMetricSummary;
   currentDelayRiskBps: ExecutionCalibrationMetricSummary;
   rawConfiguredDelayRiskBps: ExecutionCalibrationMetricSummary;
   rawObservedDelayRiskBps: ExecutionCalibrationMetricSummary;
@@ -111,6 +127,10 @@ export type ExecutionCalibrationReport = {
     byStrategy: Record<string, ExecutionCalibrationGroupSummary>;
     bySymbol: Record<string, ExecutionCalibrationGroupSummary>;
     byInterval: Record<string, ExecutionCalibrationGroupSummary>;
+    byTelemetryQuality: Record<string, ExecutionCalibrationGroupSummary>;
+    byFillSource: Record<string, ExecutionCalibrationGroupSummary>;
+    byLatencyBucket: Record<string, ExecutionCalibrationGroupSummary>;
+    bySpreadBucket: Record<string, ExecutionCalibrationGroupSummary>;
   };
   recommendation: ExecutionCalibrationRecommendation;
   samples: ExecutionCalibrationSample[];
@@ -494,6 +514,91 @@ const feeBps = ({
 const latencyDelta = (end: number | null, start: number | null) =>
   end != null && start != null ? roundMetric(end - start, 3) : null;
 
+const resolveTelemetryQuality = ({
+  signalClosePrice,
+  arrivalMid,
+  orderSubmitTime,
+  orderAckTime,
+  fillAvgPrice,
+  fillTime,
+}: Pick<
+  ExecutionCalibrationSample,
+  | 'signalClosePrice'
+  | 'arrivalMid'
+  | 'orderSubmitTime'
+  | 'orderAckTime'
+  | 'fillAvgPrice'
+  | 'fillTime'
+>): ExecutionCalibrationSample['telemetryQuality'] => {
+  if (
+    signalClosePrice != null &&
+    arrivalMid != null &&
+    orderSubmitTime != null &&
+    orderAckTime != null &&
+    fillAvgPrice != null &&
+    fillTime != null
+  ) {
+    return 'full';
+  }
+
+  if (fillAvgPrice != null && (arrivalMid != null || orderSubmitTime != null)) {
+    return 'partial';
+  }
+
+  if (fillAvgPrice != null) {
+    return 'price_only';
+  }
+
+  return 'none';
+};
+
+const finiteTelemetryQuality = (
+  value: unknown,
+): ExecutionCalibrationSample['telemetryQuality'] | null => {
+  const raw = finiteString(value);
+  return raw === 'full' ||
+    raw === 'partial' ||
+    raw === 'price_only' ||
+    raw === 'none'
+    ? raw
+    : null;
+};
+
+const countBy = (
+  samples: ExecutionCalibrationSample[],
+  keyGetter: (sample: ExecutionCalibrationSample) => string | null,
+): ExecutionCalibrationCountBreakdown => {
+  const counts = new Map<string, number>();
+
+  for (const sample of samples) {
+    const key = keyGetter(sample) ?? 'unknown';
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+
+  return Object.fromEntries(
+    [...counts.entries()].sort(([left], [right]) => left.localeCompare(right)),
+  );
+};
+
+const toLatencyBucket = (sample: ExecutionCalibrationSample) => {
+  const latencyMs = sample.signalCloseToSubmitMs ?? sample.signalToSubmitMs;
+  if (latencyMs == null || !Number.isFinite(latencyMs)) return 'unknown';
+  if (latencyMs <= 1_000) return '0-1s';
+  if (latencyMs <= 5_000) return '1-5s';
+  if (latencyMs <= 30_000) return '5-30s';
+  if (latencyMs <= 120_000) return '30-120s';
+  return '120s+';
+};
+
+const toSpreadBucket = (sample: ExecutionCalibrationSample) => {
+  const spreadBps = sample.spreadBps;
+  if (spreadBps == null || !Number.isFinite(spreadBps)) return 'unknown';
+  if (spreadBps <= 5) return '0-5bps';
+  if (spreadBps <= 20) return '5-20bps';
+  if (spreadBps <= 50) return '20-50bps';
+  return '50bps+';
+};
+
 const buildSample = ({
   row,
   match,
@@ -518,20 +623,40 @@ const buildSample = ({
       ? signalTimestamp + intervalMs
       : signalTimestamp;
   const signalClosePrice = finiteNumber(trade.signalClosePrice);
+  const arrivalSnapshotTime = finiteNumber(trade.arrivalSnapshotTime);
+  const arrivalSource = finiteString(trade.arrivalSource);
   const arrivalMid = finiteNumber(trade.arrivalMid);
   const bid = finiteNumber(trade.bid);
   const ask = finiteNumber(trade.ask);
   const spreadBps = finiteNumber(trade.spreadBps);
   const orderSubmitTime = finiteNumber(trade.orderSubmitTime);
+  const orderAckTime = finiteNumber(trade.orderAckTime);
   const fillAvgPrice = finiteNumber(trade.fillAvgPrice);
+  const fillSource = finiteString(trade.fillSource);
   const fillTime = finiteNumber(trade.fillTime);
+  const telemetryQuality =
+    finiteTelemetryQuality(trade.telemetryQuality) ??
+    resolveTelemetryQuality({
+      signalClosePrice,
+      arrivalMid,
+      orderSubmitTime,
+      orderAckTime,
+      fillAvgPrice,
+      fillTime,
+    });
   const fee = finiteNumber(trade.fee ?? trade.openFee);
+  const arrivalSnapshotAgeMs = latencyDelta(
+    orderSubmitTime,
+    arrivalSnapshotTime,
+  );
   const signalToSubmitMs = latencyDelta(orderSubmitTime, signalTimestamp);
   const signalCloseToSubmitMs = latencyDelta(
     orderSubmitTime,
     signalCloseTimestamp,
   );
+  const submitToAckMs = latencyDelta(orderAckTime, orderSubmitTime);
   const submitToFillMs = latencyDelta(fillTime, orderSubmitTime);
+  const orderAckToFillMs = latencyDelta(fillTime, orderAckTime);
   const signalToFillMs = latencyDelta(fillTime, signalTimestamp);
   const observedDelayMs =
     signalCloseToSubmitMs != null && signalCloseToSubmitMs >= 0
@@ -603,18 +728,26 @@ const buildSample = ({
     signalTimestamp,
     signalCloseTimestamp,
     signalClosePrice,
+    arrivalSnapshotTime,
+    arrivalSource,
     arrivalMid,
     bid,
     ask,
     spreadBps,
     orderSubmitTime,
+    orderAckTime,
     fillAvgPrice,
+    fillSource,
     fillTime,
+    telemetryQuality,
     fee,
     feeBps: feeBps({ fee, fillAvgPrice, qty }),
+    arrivalSnapshotAgeMs,
     signalToSubmitMs,
     signalCloseToSubmitMs,
+    submitToAckMs,
     submitToFillMs,
+    orderAckToFillMs,
     signalToFillMs,
     signalToArrivalAdverseBps,
     arrivalToFillAdverseBps,
@@ -645,18 +778,26 @@ const buildReplayOnlySample = (
   signalTimestamp: null,
   signalCloseTimestamp: null,
   signalClosePrice: null,
+  arrivalSnapshotTime: null,
+  arrivalSource: null,
   arrivalMid: null,
   bid: null,
   ask: null,
   spreadBps: null,
   orderSubmitTime: null,
+  orderAckTime: null,
   fillAvgPrice: match.runtimePrice,
+  fillSource: 'replay_runtime_price',
   fillTime: null,
+  telemetryQuality: match.runtimePrice != null ? 'price_only' : 'none',
   fee: null,
   feeBps: null,
+  arrivalSnapshotAgeMs: null,
   signalToSubmitMs: null,
   signalCloseToSubmitMs: null,
+  submitToAckMs: null,
   submitToFillMs: null,
+  orderAckToFillMs: null,
   signalToFillMs: null,
   signalToArrivalAdverseBps: null,
   arrivalToFillAdverseBps: null,
@@ -685,6 +826,7 @@ const hasFullTelemetry = (sample: ExecutionCalibrationSample) =>
   sample.signalClosePrice != null &&
   sample.arrivalMid != null &&
   sample.orderSubmitTime != null &&
+  sample.orderAckTime != null &&
   sample.fillAvgPrice != null &&
   sample.fillTime != null;
 
@@ -694,6 +836,9 @@ const buildGroupSummary = (
   trades: samples.length,
   fullTelemetryTrades: samples.filter(hasFullTelemetry).length,
   replayMatchedTrades: metricValues(samples, 'replayEntryResidualBps').length,
+  telemetryQuality: countBy(samples, (sample) => sample.telemetryQuality),
+  fillSource: countBy(samples, (sample) => sample.fillSource),
+  arrivalSource: countBy(samples, (sample) => sample.arrivalSource),
   signalToArrivalAdverseBps: summarizeNumbers(
     metricValues(samples, 'signalToArrivalAdverseBps'),
   ),
@@ -711,11 +856,16 @@ const buildGroupSummary = (
   ),
   spreadBps: summarizeNumbers(metricValues(samples, 'spreadBps')),
   feeBps: summarizeNumbers(metricValues(samples, 'feeBps')),
+  arrivalSnapshotAgeMs: summarizeNumbers(
+    metricValues(samples, 'arrivalSnapshotAgeMs'),
+  ),
   signalToSubmitMs: summarizeNumbers(metricValues(samples, 'signalToSubmitMs')),
   signalCloseToSubmitMs: summarizeNumbers(
     metricValues(samples, 'signalCloseToSubmitMs'),
   ),
+  submitToAckMs: summarizeNumbers(metricValues(samples, 'submitToAckMs')),
   submitToFillMs: summarizeNumbers(metricValues(samples, 'submitToFillMs')),
+  orderAckToFillMs: summarizeNumbers(metricValues(samples, 'orderAckToFillMs')),
   currentDelayRiskBps: summarizeNumbers(
     metricValues(samples, 'currentDelayRiskBps'),
   ),
@@ -933,6 +1083,16 @@ export const buildExecutionCalibrationReport = ({
       ),
       bySymbol: groupSamples(samples, (sample) => sample.symbol),
       byInterval: groupSamples(samples, (sample) => sample.interval),
+      byTelemetryQuality: groupSamples(
+        [...samples, ...replayOnlySamples],
+        (sample) => sample.telemetryQuality,
+      ),
+      byFillSource: groupSamples(
+        [...samples, ...replayOnlySamples],
+        (sample) => sample.fillSource,
+      ),
+      byLatencyBucket: groupSamples(samples, toLatencyBucket),
+      bySpreadBucket: groupSamples(samples, toSpreadBucket),
     },
     recommendation: buildRecommendation(samples),
     samples,

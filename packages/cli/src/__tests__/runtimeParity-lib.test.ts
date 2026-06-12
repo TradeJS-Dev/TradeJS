@@ -165,7 +165,8 @@ describe('runtime parity helpers', () => {
         strategy: 'TrendLine',
         symbol: 'BTCUSDT',
         direction: 'LONG',
-        timestamp: 1_000,
+        timestamp: 1_100,
+        signalTimestamp: 1_000,
         price: 101,
         exitType: 'open',
         expectedPnl: -1,
@@ -179,7 +180,8 @@ describe('runtime parity helpers', () => {
         strategy: 'TrendLine',
         symbol: 'BTCUSDT',
         direction: 'LONG',
-        timestamp: 4_500,
+        timestamp: 4_100,
+        signalTimestamp: 4_500,
         price: 109,
         exitType: 'tp',
         exitTimestamp: 7_000,
@@ -301,6 +303,39 @@ describe('runtime parity helpers', () => {
         timestampDiffMs: 500,
       }),
     );
+  });
+
+  it('uses backtest signalTimestamp when applying replay comparison offset', () => {
+    const comparison = compareTradeParityEntries({
+      runtimeEntries: [
+        {
+          id: 'runtime-1',
+          source: 'runtime',
+          strategy: 'TrendLine',
+          symbol: 'BTCUSDT',
+          direction: 'LONG',
+          timestamp: 1_900,
+          price: 100,
+        },
+      ],
+      backtestEntries: [
+        {
+          id: 'backtest-1',
+          source: 'backtest',
+          strategy: 'TrendLine',
+          symbol: 'BTCUSDT',
+          direction: 'LONG',
+          timestamp: 1_100,
+          signalTimestamp: 1_000,
+          price: 101,
+        },
+      ],
+      toleranceMs: 0,
+      backtestTimestampOffsetMs: 900,
+    });
+
+    expect(comparison.matched).toHaveLength(1);
+    expect(comparison.matched[0].timestampDiffMs).toBe(0);
   });
 
   it('dedupes repeated runtime entries by strategy, symbol, direction, and timestamp', () => {

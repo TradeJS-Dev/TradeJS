@@ -676,6 +676,30 @@ describe('strategyRuntime', () => {
 
   it('delays BACKTEST entries and executes them on the next bar price', async () => {
     const decision = makeDecisionEntry({
+      entryContext: {
+        ...makeDecisionEntry().entryContext,
+        prices: {
+          currentPrice: 222,
+          takeProfitPrice: 200,
+          stopLossPrice: 330,
+          riskRatio: 1.2,
+        },
+      },
+      orderPlan: {
+        qty: 3,
+        stopLossPrice: 330,
+        takeProfits: [{ rate: 1, price: 200 }],
+      },
+      signal: {
+        ...makeSignal(),
+        direction: 'SHORT',
+        prices: {
+          currentPrice: 100,
+          takeProfitPrice: 200,
+          stopLossPrice: 330,
+          riskRatio: 1.2,
+        },
+      },
       runtime: {
         ml: { enabled: false },
         ai: { enabled: false },
@@ -716,6 +740,126 @@ describe('strategyRuntime', () => {
       executionTimestamp: 20,
       executionPrice: 300,
     });
+  });
+
+  it('passes execution-only market candles to delayed BACKTEST beforePlaceOrder hooks', async () => {
+    const beforePlaceOrder = jest.fn(async () => {});
+    setStrategyManifestHooks('TrendLine', { beforePlaceOrder });
+    mockExecuteEntryOrder.mockImplementation(
+      async ({ beforePlaceOrder: bp }: any) => {
+        await bp?.();
+        return 300;
+      },
+    );
+
+    const { strategy } = await makeRuntime(
+      () =>
+        makeDecisionEntry({
+          entryContext: {
+            ...makeDecisionEntry().entryContext,
+            prices: {
+              currentPrice: 222,
+              takeProfitPrice: 200,
+              stopLossPrice: 330,
+              riskRatio: 1.2,
+            },
+          },
+          orderPlan: {
+            qty: 3,
+            stopLossPrice: 330,
+            takeProfits: [{ rate: 1, price: 200 }],
+          },
+          signal: {
+            ...makeSignal(),
+            direction: 'SHORT',
+          },
+          runtime: { ml: { enabled: false }, ai: { enabled: false } },
+        }),
+      {
+        ENV: 'BACKTEST',
+        BACKTEST_PRICE_MODE: 'open',
+        BACKTEST_ENTRY_DELAY_BARS: 1,
+      },
+    );
+
+    await strategy(
+      { timestamp: 10, open: 100, high: 115, low: 95, close: 110 } as any,
+      { timestamp: 10, open: 200, high: 215, low: 195, close: 210 } as any,
+    );
+    await (strategy as any).__tradejsFlushBacktestDelayedEntry(
+      {
+        timestamp: 20,
+        open: 300,
+        high: 330,
+        low: 290,
+        close: 320,
+        volume: 9,
+        turnover: 2_700,
+      },
+      {
+        timestamp: 20,
+        open: 400,
+        high: 430,
+        low: 390,
+        close: 420,
+        volume: 8,
+        turnover: 3_200,
+      },
+    );
+
+    expect(beforePlaceOrder).toHaveBeenCalledTimes(1);
+    const hookArg = (beforePlaceOrder.mock.calls as any[][])[0][0];
+    expect(hookArg.market.candle).toMatchObject({
+      timestamp: 20,
+      open: 300,
+      high: 300,
+      low: 300,
+      close: 300,
+      volume: 0,
+      turnover: 0,
+    });
+    expect(hookArg.market.btcCandle).toMatchObject({
+      timestamp: 20,
+      open: 400,
+      high: 400,
+      low: 400,
+      close: 400,
+      volume: 0,
+      turnover: 0,
+    });
+  });
+
+  it('skips delayed BACKTEST entries when the execution price is beyond the stop', async () => {
+    const decision = makeDecisionEntry({
+      runtime: {
+        ml: { enabled: false },
+        ai: { enabled: false },
+      },
+    });
+    const { strategy } = await makeRuntime(() => decision, {
+      ENV: 'BACKTEST',
+      BACKTEST_PRICE_MODE: 'open',
+      BACKTEST_ENTRY_DELAY_BARS: 1,
+    });
+
+    await strategy(
+      { timestamp: 10, open: 100, high: 115, low: 95, close: 110 } as any,
+      { timestamp: 10, open: 200, high: 215, low: 195, close: 210 } as any,
+    );
+
+    const skipped = await (strategy as any).__tradejsFlushBacktestDelayedEntry(
+      { timestamp: 20, open: 300, high: 330, low: 290, close: 320 },
+      { timestamp: 20, open: 400, high: 430, low: 390, close: 420 },
+    );
+
+    expect(mockExecuteEntryOrder).not.toHaveBeenCalled();
+    expect((skipped as any).orderStatus).toBe('skipped');
+    expect((skipped as any).orderSkipReason).toBe(
+      'BACKTEST_DELAYED_ENTRY_BEYOND_STOP',
+    );
+    expect(
+      (skipped as any).additionalIndicators.backtestExecution.skipReason,
+    ).toBe('BACKTEST_DELAYED_ENTRY_BEYOND_STOP');
   });
 
   it('uses one-bar BACKTEST entry delay by default', async () => {

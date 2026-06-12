@@ -760,6 +760,40 @@ describe('backtest script helpers', () => {
     expect(result.backtestOnly).toEqual([]);
   });
 
+  it('uses backtest signalTimestamp for replay exchange timestamp offsets when present', () => {
+    const intervalMs = 15 * 60 * 1000;
+    const result = compareExchangeEntriesToBacktest({
+      toleranceMs: 0,
+      backtestTimestampOffsetMs: intervalMs,
+      exchangeEntries: [
+        {
+          symbol: 'ARIAUSDT',
+          direction: 'SHORT',
+          qty: 29,
+          entryPrice: 0.04228,
+          entryTimestamp: intervalMs,
+          orderId: 'ex-1',
+          orderLinkId: 'tjs-doubletap--abc',
+        },
+      ] as any,
+      backtestEntries: [
+        {
+          id: 'bt-1',
+          source: 'backtest',
+          strategy: 'DoubleTap',
+          symbol: 'ARIAUSDT',
+          direction: 'SHORT',
+          timestamp: intervalMs,
+          signalTimestamp: 0,
+          price: 0.04215,
+        },
+      ] as any,
+    });
+
+    expect(result.matched).toHaveLength(1);
+    expect(result.matched[0].timestampDiffMs).toBe(0);
+  });
+
   it('uses two bars as replay runtime comparison tolerance', () => {
     expect(REPLAY_RUNTIME_COMPARE_TOLERANCE_BARS).toBe(2);
     expect(REPLAY_RUNTIME_COMPARE_TOLERANCE_MS).toBe(30 * 60 * 1000);
