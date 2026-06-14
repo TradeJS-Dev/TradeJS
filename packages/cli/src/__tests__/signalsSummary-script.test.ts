@@ -166,6 +166,7 @@ describe('signals summary script', () => {
     const runtimeTradeKeys = [
       redisKeys.runtimeTrades('root') + 'ord-1',
       redisKeys.runtimeTrades('root') + 'ord-2',
+      redisKeys.runtimeTrades('root') + 'ord-3',
     ];
     const strategyConfigKeys = [
       `${redisKeys.strategies('root')}:TrendLine:config`,
@@ -198,6 +199,23 @@ describe('signals summary script', () => {
           entryPrice: 50,
           entryTimestamp: now - 120_000,
           status: 'active',
+        },
+      ],
+      [
+        runtimeTradeKeys[2],
+        {
+          orderId: 'ord-3',
+          signalId: 'sig-old',
+          strategy: 'AdaptiveTrendChannel',
+          symbol: 'SOLUSDT',
+          direction: 'LONG',
+          qty: 3,
+          entryPrice: 20,
+          entryTimestamp: now - 25 * 60 * 60_000,
+          status: 'closed',
+          closedPnl: 7,
+          currentPnl: 7,
+          exitTimestamp: now - 15_000,
         },
       ],
       [redisKeys.runtimeActiveTrade('root', 'BTCUSDT'), { orderId: 'ord-1' }],
@@ -358,7 +376,7 @@ describe('signals summary script', () => {
       reportType: 'runtime-daily-debug',
       userName: 'root',
       counts: {
-        trades: 2,
+        trades: 3,
         signals: 2,
         evaluations: 1,
       },
@@ -391,9 +409,12 @@ describe('signals summary script', () => {
     }
     expect(signalsReport).toContain('TradeJS daily summary');
     expect(signalsReport).toContain('📡 Signals');
-    expect(signalsReport).toContain('💰 24h PnL: -16.00');
-    expect(signalsReport).toContain('🏆 WinRate: 0.00% (0/1)');
+    expect(signalsReport).toContain('💰 24h Realized PnL: +3.00');
+    expect(signalsReport).toContain('🏆 WinRate: 50.00% (1/2)');
     expect(signalsReport).toContain('↗️ LONG: 1, ↘️ SHORT: 1');
+    expect(signalsReport).toContain(
+      '📍 Open positions: 1, Unrealized PnL: -12.00$',
+    );
     expect(signalsReport).toContain('TrendLine\ncompleted=1');
     expect(signalsReport).toContain('ReverseTrendLine\nskipped=1');
     expect(signalsReport).toContain(
@@ -402,7 +423,7 @@ describe('signals summary script', () => {
     expect(signalsReport).toContain('skip from AI:');
     expect(signalsReport).toContain('MIN_AI_QUALITY: 1');
     expect(tradesMessage).toContain('TradeJS daily summary');
-    expect(tradesMessage).toContain('💼 <b>Trades</b>');
+    expect(tradesMessage).toContain('💼 <b>Closed Trades</b>');
     expect(tradesMessage).not.toContain('📡 <b>Signals</b>');
     expect(tradesMessage).toContain('📎 <b>Signal report file</b>');
     expect(tradesMessage).toContain(
@@ -413,16 +434,20 @@ describe('signals summary script', () => {
       'File: <code>tradejs-runtime-debug-root-2023-11-16.json</code>',
     );
     expect(tradesMessage).toContain(
-      'Inside: trades=<b>2</b>, signals=<b>2</b>, evaluations=<b>1</b>',
+      'Inside: trades=<b>3</b>, signals=<b>2</b>, evaluations=<b>1</b>',
     );
     expect(tradesMessage).toContain(
       'Redis refs: <code>trade</code>, <code>tradeBucket</code>, <code>activeTrade</code>, <code>signal</code>, <code>evaluation</code>',
     );
     expect(tradesMessage).toContain(
-      '<b>TrendLine</b> (<b>1</b>)\nActive PnL: <b>-12.00$</b> (<b>1</b>)\n- BTCUSDT: PnL <b>-12.00$</b> 🔴',
+      '<b>AdaptiveTrendChannel</b> (<b>1</b>)\nClosed PnL: <b>+7.00$</b> (<b>1</b>)\n- SOLUSDT: PnL <b>+7.00$</b> ✅',
     );
     expect(tradesMessage).toContain(
       '<b>ReverseTrendLine</b> (<b>1</b>)\nClosed PnL: <b>-4.00$</b> (<b>1</b>)\n- ETHUSDT: PnL <b>-4.00$</b> ❌',
+    );
+    expect(tradesMessage).toContain('📍 <b>Open Positions</b>');
+    expect(tradesMessage).toContain(
+      '<b>TrendLine</b> (<b>1</b>)\nUnrealized PnL: <b>-12.00$</b> (<b>1</b>)\n- BTCUSDT: PnL <b>-12.00$</b> 🔴',
     );
     expect(setData).toHaveBeenCalledWith(
       redisKeys.runtimeTrade('root', 'ord-2'),
@@ -631,9 +656,12 @@ describe('signals summary script', () => {
     expect(signalsReport).toContain('TradeJS weekly summary');
     expect(signalsReport).toContain('📡 Signals');
     expect(signalsReport).toContain('Range: 168h');
-    expect(signalsReport).toContain('💰 168h PnL: n/a');
+    expect(signalsReport).toContain('💰 168h Realized PnL: n/a');
     expect(signalsReport).toContain('🏆 WinRate: n/a');
     expect(signalsReport).toContain('↗️ LONG: 0, ↘️ SHORT: 0');
+    expect(signalsReport).toContain(
+      '📍 Open positions: 0, Unrealized PnL: n/a',
+    );
     expect(signalsReport).toContain('AdaptiveMomentumRibbon\nskipped=1');
     expect(signalsReport).toContain('ReverseTrendLine\nnone');
     expect(signalsReport).toContain('TrendLine\nnone');
@@ -644,7 +672,7 @@ describe('signals summary script', () => {
     expect(signalsReport).toContain('skip from core:');
     expect(signalsReport).toContain('NO_DIVERGENCE: 1');
     expect(tradesMessage).toContain('TradeJS weekly summary');
-    expect(tradesMessage).toContain('💼 <b>Trades</b>');
+    expect(tradesMessage).toContain('💼 <b>Closed Trades</b>');
     expect(tradesMessage).not.toContain('📡 <b>Signals</b>');
     expect(tradesMessage).toContain('📎 <b>Signal report file</b>');
     expect(tradesMessage).toContain(
@@ -654,9 +682,12 @@ describe('signals summary script', () => {
     expect(tradesMessage).toContain(
       'Inside: trades=<b>0</b>, signals=<b>0</b>, evaluations=<b>0</b>',
     );
-    expect(tradesMessage).toContain('<b>AdaptiveMomentumRibbon</b> (<b>0</b>)');
-    expect(tradesMessage).toContain('<b>ReverseTrendLine</b> (<b>0</b>)');
-    expect(tradesMessage).toContain('<b>TrendLine</b> (<b>0</b>)');
-    expect(tradesMessage).toContain('<b>VolumeDivergence</b> (<b>0</b>)');
+    expect(tradesMessage).toContain('💼 <b>Closed Trades</b>\nnone');
+    expect(tradesMessage).not.toContain(
+      '<b>AdaptiveMomentumRibbon</b> (<b>0</b>)',
+    );
+    expect(tradesMessage).not.toContain('<b>ReverseTrendLine</b> (<b>0</b>)');
+    expect(tradesMessage).not.toContain('<b>TrendLine</b> (<b>0</b>)');
+    expect(tradesMessage).not.toContain('<b>VolumeDivergence</b> (<b>0</b>)');
   });
 });
