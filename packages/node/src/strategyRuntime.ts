@@ -5,7 +5,12 @@ import type {
   TradejsConfigOnBarHook,
   TradejsConfigHooks,
 } from '@tradejs/core/config';
-import { SIGNALS_PRELOAD_DAYS } from '@tradejs/core/constants';
+import {
+  BACKTEST_EXECUTION_DELAY_MS,
+  BACKTEST_EXECUTION_INTERVAL,
+  SIGNALS_PRELOAD_DAYS,
+} from '@tradejs/core/constants';
+import { intervalToMs } from '@tradejs/core/data';
 import {
   buildDefaultIndicatorPeriods,
   calculateRiskRatio,
@@ -37,6 +42,7 @@ import { resolveStrategyConfig } from './strategyHelpers/config';
 import {
   CreateStrategyCore,
   CreateStrategyCoreParams,
+  KlineChartData,
   KlineChartItem,
   StrategyHookAiContext,
   StrategyHookCtx,
@@ -270,6 +276,17 @@ type PendingBacktestEntry = {
   ai?: StrategyHookAiContext;
 };
 
+type BacktestExecutionCandleResolution = {
+  candle?: KlineChartItem;
+  btcCandle?: KlineChartItem;
+  source: 'lower_timeframe';
+  requestedExecutionTimestamp?: number;
+  executionInterval?: string;
+  executionDelayMs?: number;
+  primaryExecutionTimestamp?: number;
+  skipReason?: string;
+};
+
 const resolveBacktestEntryDelayBars = (value: unknown) => {
   if (value == null || value === '') {
     return 1;
@@ -277,6 +294,45 @@ const resolveBacktestEntryDelayBars = (value: unknown) => {
   const parsed = parseInt(String(value), 10);
   return Number.isFinite(parsed) ? Math.max(0, parsed) : 1;
 };
+
+const resolveBacktestExecutionIntervalForPrimary = (interval: unknown) => {
+  const normalized = String(interval ?? '15');
+  if (normalized === '15') {
+    return BACKTEST_EXECUTION_INTERVAL;
+  }
+  if (normalized === '60') {
+    return '15';
+  }
+  return null;
+};
+
+const resolveBacktestExecutionDelayMs = (
+  value: unknown,
+  fallbackDelayMs: number,
+) => {
+  if (value == null || value === '') {
+    return fallbackDelayMs;
+  }
+  const parsed = Number(value);
+  return Number.isFinite(parsed)
+    ? Math.max(0, Math.trunc(parsed))
+    : fallbackDelayMs;
+};
+
+const safeIntervalToMs = (interval: unknown) => {
+  try {
+    return intervalToMs(interval as any);
+  } catch {
+    return null;
+  }
+};
+
+const buildCandleByTimestamp = (candles?: KlineChartData) =>
+  new Map(
+    (candles ?? [])
+      .filter((candle) => typeof candle?.timestamp === 'number')
+      .map((candle) => [candle.timestamp, candle]),
+  );
 
 const buildBacktestExecutionOnlyCandle = (
   candle: KlineChartItem,
@@ -337,22 +393,66 @@ const resolveInvalidDelayedEntryReason = ({
 
 const applyBacktestDelayedEntryExecution = ({
   decision,
-  candle,
-  btcCandle,
+  execution,
   backtestPriceMode,
   delayBars,
 }: {
   decision: EntryDecision;
-  candle: KlineChartItem;
-  btcCandle: KlineChartItem;
+  execution: BacktestExecutionCandleResolution;
   backtestPriceMode: StrategyConfig['BACKTEST_PRICE_MODE'];
   delayBars: number;
 }) => {
+  const { candle, btcCandle } = execution;
   const signalTimestamp =
     decision.signal?.timestamp ?? decision.entryContext.timestamp;
   const signalPrice =
     decision.signal?.prices.currentPrice ??
     decision.entryContext.prices.currentPrice;
+  const skipReason =
+    execution.skipReason ??
+    (!candle || !btcCandle
+      ? 'BACKTEST_LOWER_EXECUTION_CANDLE_MISSING'
+      : undefined);
+
+  if (skipReason || !candle || !btcCandle) {
+    if (decision.signal) {
+      decision.signal.additionalIndicators = {
+        ...(decision.signal.additionalIndicators ?? {}),
+        backtestExecution: {
+          entryDelayBars: delayBars,
+          priceMode: backtestPriceMode ?? 'open',
+          signalTimestamp,
+          signalPrice,
+          executionSource: execution.source,
+          ...(execution.executionInterval
+            ? { executionInterval: execution.executionInterval }
+            : {}),
+          ...(execution.executionDelayMs != null
+            ? { executionDelayMs: execution.executionDelayMs }
+            : {}),
+          ...(execution.primaryExecutionTimestamp != null
+            ? { primaryExecutionTimestamp: execution.primaryExecutionTimestamp }
+            : {}),
+          ...(execution.requestedExecutionTimestamp != null
+            ? {
+                requestedExecutionTimestamp:
+                  execution.requestedExecutionTimestamp,
+              }
+            : {}),
+          skipReason,
+        },
+      };
+      decision.signal.orderStatus = 'skipped';
+      decision.signal.orderSkipReason = skipReason;
+    }
+
+    return {
+      skipReason,
+      executionCandle: null,
+      btcExecutionCandle: null,
+    };
+  }
+
   const executionPrice = resolveBacktestExecutionPrice(
     candle,
     backtestPriceMode ?? 'open',
@@ -366,7 +466,7 @@ const applyBacktestDelayedEntryExecution = ({
     takeProfitPrice,
     stopLossPrice,
   });
-  const skipReason = resolveInvalidDelayedEntryReason({
+  const invalidSkipReason = resolveInvalidDelayedEntryReason({
     decision,
     executionPrice,
     takeProfitPrice,
@@ -386,7 +486,7 @@ const applyBacktestDelayedEntryExecution = ({
   };
 
   const executionResult = {
-    skipReason,
+    skipReason: invalidSkipReason,
     executionCandle: buildBacktestExecutionOnlyCandle(candle, executionPrice),
     btcExecutionCandle: buildBacktestExecutionOnlyCandle(
       btcCandle,
@@ -413,13 +513,26 @@ const applyBacktestDelayedEntryExecution = ({
       signalPrice,
       executionTimestamp,
       executionPrice,
-      ...(skipReason ? { skipReason } : {}),
+      executionSource: execution.source,
+      ...(execution.executionInterval
+        ? { executionInterval: execution.executionInterval }
+        : {}),
+      ...(execution.executionDelayMs != null
+        ? { executionDelayMs: execution.executionDelayMs }
+        : {}),
+      ...(execution.primaryExecutionTimestamp != null
+        ? { primaryExecutionTimestamp: execution.primaryExecutionTimestamp }
+        : {}),
+      ...(execution.requestedExecutionTimestamp != null
+        ? { requestedExecutionTimestamp: execution.requestedExecutionTimestamp }
+        : {}),
+      ...(invalidSkipReason ? { skipReason: invalidSkipReason } : {}),
     },
   };
 
-  if (skipReason) {
+  if (invalidSkipReason) {
     decision.signal.orderStatus = 'skipped';
-    decision.signal.orderSkipReason = skipReason;
+    decision.signal.orderSkipReason = invalidSkipReason;
   }
 
   return executionResult;
@@ -1059,6 +1172,7 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
     ethData = [],
     btcBinanceData,
     btcCoinbaseData,
+    backtestExecutionMarketData,
     connector,
     sharedIndicatorsReplayKey,
     onRuntimeClose,
@@ -1078,6 +1192,38 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
       env === 'BACKTEST'
         ? resolveBacktestEntryDelayBars(config.BACKTEST_ENTRY_DELAY_BARS)
         : 0;
+    const resolvedBacktestExecutionInterval =
+      config.BACKTEST_EXECUTION_INTERVAL ??
+      backtestExecutionMarketData?.interval ??
+      resolveBacktestExecutionIntervalForPrimary(config.INTERVAL ?? '15');
+    const backtestExecutionInterval =
+      resolvedBacktestExecutionInterval == null
+        ? null
+        : String(resolvedBacktestExecutionInterval);
+    const backtestExecutionIntervalLabel =
+      backtestExecutionInterval == null
+        ? undefined
+        : String(backtestExecutionInterval);
+    const primaryIntervalMs = safeIntervalToMs(config.INTERVAL ?? '15');
+    const backtestExecutionIntervalMs = safeIntervalToMs(
+      backtestExecutionInterval,
+    );
+    const backtestExecutionDelayMs = resolveBacktestExecutionDelayMs(
+      config.BACKTEST_EXECUTION_DELAY_MS,
+      backtestExecutionIntervalMs ?? BACKTEST_EXECUTION_DELAY_MS,
+    );
+    const backtestExecutionCandleByTimestamp =
+      backtestExecutionMarketData?.dataByTimestamp ??
+      buildCandleByTimestamp(backtestExecutionMarketData?.data);
+    const backtestExecutionBtcCandleByTimestamp =
+      backtestExecutionMarketData?.btcDataByTimestamp ??
+      buildCandleByTimestamp(backtestExecutionMarketData?.btcData);
+    const canUseLowerBacktestExecution =
+      env === 'BACKTEST' &&
+      backtestEntryDelayBars > 0 &&
+      backtestExecutionIntervalMs != null &&
+      primaryIntervalMs != null &&
+      backtestExecutionIntervalMs < primaryIntervalMs;
     const recordRuntimeJournal = shouldRecordRuntimeJournal({ env, config });
     const strategyManifest = resolveManifest(strategyName);
     const indicatorPeriods = buildDefaultIndicatorPeriods(config as any);
@@ -1476,6 +1622,65 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
 
       return undefined;
     };
+    const resolveBacktestExecutionCandle = (
+      candle: KlineChartItem,
+      btcCandle: KlineChartItem,
+    ): BacktestExecutionCandleResolution => {
+      const requestedExecutionTimestamp =
+        candle.timestamp + backtestExecutionDelayMs;
+      const primaryExecutionTimestamp = candle.timestamp;
+
+      if (!canUseLowerBacktestExecution || primaryIntervalMs == null) {
+        return {
+          source: 'lower_timeframe',
+          requestedExecutionTimestamp,
+          executionInterval: backtestExecutionIntervalLabel,
+          executionDelayMs: backtestExecutionDelayMs,
+          primaryExecutionTimestamp,
+          skipReason: 'BACKTEST_LOWER_EXECUTION_UNAVAILABLE',
+        };
+      }
+
+      if (requestedExecutionTimestamp >= candle.timestamp + primaryIntervalMs) {
+        return {
+          source: 'lower_timeframe',
+          requestedExecutionTimestamp,
+          executionInterval: backtestExecutionIntervalLabel,
+          executionDelayMs: backtestExecutionDelayMs,
+          primaryExecutionTimestamp,
+          skipReason: 'BACKTEST_LOWER_EXECUTION_DELAY_OUT_OF_BAR',
+        };
+      }
+
+      const lowerCandle = backtestExecutionCandleByTimestamp.get(
+        requestedExecutionTimestamp,
+      );
+      const lowerBtcCandle = backtestExecutionBtcCandleByTimestamp.get(
+        requestedExecutionTimestamp,
+      );
+      if (lowerCandle && lowerBtcCandle) {
+        return {
+          candle: lowerCandle,
+          btcCandle: lowerBtcCandle,
+          source: 'lower_timeframe',
+          requestedExecutionTimestamp,
+          executionInterval: backtestExecutionIntervalLabel,
+          executionDelayMs: backtestExecutionDelayMs,
+          primaryExecutionTimestamp,
+        };
+      }
+
+      return {
+        source: 'lower_timeframe',
+        requestedExecutionTimestamp,
+        executionInterval: backtestExecutionIntervalLabel,
+        executionDelayMs: backtestExecutionDelayMs,
+        primaryExecutionTimestamp,
+        skipReason: !lowerCandle
+          ? 'BACKTEST_LOWER_EXECUTION_CANDLE_MISSING'
+          : 'BACKTEST_LOWER_EXECUTION_BTC_CANDLE_MISSING',
+      };
+    };
     let pendingBacktestEntry: PendingBacktestEntry | null = null;
     const flushPendingBacktestEntry = async (
       candle: Parameters<Awaited<ReturnType<typeof createCore>>>[0],
@@ -1497,16 +1702,24 @@ export const createStrategyRuntime = <TConfig extends StrategyConfig>({
 
       const pending = pendingBacktestEntry;
       pendingBacktestEntry = null;
-      const execution = applyBacktestDelayedEntryExecution({
-        decision: pending.decision,
+      const executionCandleResolution = resolveBacktestExecutionCandle(
         candle,
         btcCandle,
+      );
+      const execution = applyBacktestDelayedEntryExecution({
+        decision: pending.decision,
+        execution: executionCandleResolution,
         backtestPriceMode,
         delayBars: pending.delayBars,
       });
 
       if (execution.skipReason) {
         return pending.decision.signal ?? execution.skipReason;
+      }
+      if (!execution.executionCandle || !execution.btcExecutionCandle) {
+        return (
+          pending.decision.signal ?? 'BACKTEST_LOWER_EXECUTION_CANDLE_MISSING'
+        );
       }
 
       const market: HookCandleMarket = {

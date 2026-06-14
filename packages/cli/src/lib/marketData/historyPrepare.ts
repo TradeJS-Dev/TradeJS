@@ -10,6 +10,10 @@ export type BtcReferenceConnectors = {
   coinbase: Connector;
 };
 
+const withPrimaryMarketReferenceSymbols = (symbols: string[]) => [
+  ...new Set([...symbols, 'ETHUSDT']),
+];
+
 export const loadBtcReferenceConnectors = async ({
   connectorName,
   marketConnector,
@@ -99,7 +103,13 @@ export const updateMarketHistoryWithBtcReferences = async ({
       : { connectorLabel: connectorName };
 
   await timeOperation(`update ${connectorName}`, () =>
-    update(marketConnector, interval, symbols, preloadDays, updateOptions),
+    update(
+      marketConnector,
+      interval,
+      withPrimaryMarketReferenceSymbols(symbols),
+      preloadDays,
+      updateOptions,
+    ),
   );
 
   const updateReference = async ({

@@ -188,7 +188,7 @@ export const hasExplicitTestsLimit = hasCliFlag(normalizedArgv, [
 ]);
 export const isUpdateOnlyRun = Boolean(flags.updateOnly);
 export const isFastMode = Boolean(flags.fast);
-export const testItemTimeoutMs = 240_000;
+export const testItemTimeoutMs = 600_000;
 export const workerHeapMb = resolveWorkerHeapMb();
 export const effectiveParallel = resolveEffectiveParallel(flags.parallel);
 export const resultArtifactsIoConcurrency = Math.max(

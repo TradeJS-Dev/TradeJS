@@ -183,6 +183,7 @@ const createTest = (overrides: Partial<Test> = {}): Test =>
 describe('testing backtest flow', () => {
   beforeEach(() => {
     process.env.PROJECT_CWD = '/tmp/project-default';
+    delete process.env.BACKTEST_STRATEGY_CANDLE_TIMEOUT_MS;
     resetTestingKlineCache();
     jest.clearAllMocks();
     mockByBitConnector.kline.mockReset();
@@ -239,7 +240,7 @@ describe('testing backtest flow', () => {
 
     await testing(createTest({ ml: true }));
 
-    expect(mockByBitConnector.kline).toHaveBeenCalledTimes(3);
+    expect(mockByBitConnector.kline).toHaveBeenCalledTimes(5);
     expect(mockTestConnector.checkExits).toHaveBeenCalledTimes(2);
   });
 
@@ -418,6 +419,71 @@ describe('testing backtest flow', () => {
     );
   });
 
+  it('preloads 5m execution candles cache-only without adding them to signal data', async () => {
+    const start = Date.parse('2026-04-01T00:00:00.000Z');
+    const end = Date.parse('2026-04-02T00:00:00.000Z');
+    const expectedPreloadStart = start - 30 * 24 * 60 * 60 * 1000;
+    const primaryData = [
+      candle(expectedPreloadStart),
+      candle(start),
+      candle(start + 15 * 60_000),
+    ];
+    const executionData = [
+      { ...candle(start + 5 * 60_000), open: 105 },
+      { ...candle(start + 20 * 60_000), open: 106 },
+    ];
+    mockByBitConnector.kline.mockImplementation(({ interval }: any) =>
+      Promise.resolve(interval === '5' ? executionData : primaryData),
+    );
+    mockBinanceConnector.kline.mockResolvedValue(primaryData);
+    mockCoinbaseConnector.kline.mockResolvedValue(primaryData);
+    mockStrategy.mockResolvedValue('HOLD');
+
+    await testing(createTest({ options: { start, end } }));
+
+    expect(mockByBitConnector.kline).toHaveBeenCalledWith(
+      expect.objectContaining({
+        symbol: 'ETHUSDT',
+        interval: '5',
+        start: expectedPreloadStart,
+        end,
+        cacheOnly: true,
+      }),
+    );
+    expect(mockByBitConnector.kline).toHaveBeenCalledWith(
+      expect.objectContaining({
+        symbol: 'BTCUSDT',
+        interval: '5',
+        start: expectedPreloadStart,
+        end,
+        cacheOnly: true,
+      }),
+    );
+    expect(mockStrategyCreator).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: [primaryData[0]],
+        backtestExecutionMarketData: expect.objectContaining({
+          interval: '5',
+          data: executionData,
+          btcData: executionData,
+          dataByTimestamp: expect.any(Map),
+          btcDataByTimestamp: expect.any(Map),
+        }),
+      }),
+    );
+    const strategyParams = mockStrategyCreator.mock.calls[0]?.[0] as any;
+    expect(
+      strategyParams.backtestExecutionMarketData.dataByTimestamp.get(
+        executionData[0].timestamp,
+      ),
+    ).toBe(executionData[0]);
+    expect(
+      strategyParams.backtestExecutionMarketData.btcDataByTimestamp.get(
+        executionData[1].timestamp,
+      ),
+    ).toBe(executionData[1]);
+  });
+
   it('uses the test interval for market data requests and strategy runtime config', async () => {
     const data = [candle(1_000_050), candle(1_000_150), candle(1_000_250)];
     mockByBitConnector.kline.mockResolvedValue(data);
@@ -451,11 +517,33 @@ describe('testing backtest flow', () => {
         interval: '60',
       }),
     );
+    expect(mockByBitConnector.kline).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        interval: '5',
+      }),
+    );
+    expect(mockByBitConnector.kline).toHaveBeenCalledWith(
+      expect.objectContaining({
+        symbol: 'ETHUSDT',
+        interval: '15',
+        cacheOnly: true,
+      }),
+    );
+    expect(mockByBitConnector.kline).toHaveBeenCalledWith(
+      expect.objectContaining({
+        symbol: 'BTCUSDT',
+        interval: '15',
+        cacheOnly: true,
+      }),
+    );
     expect(mockStrategyCreator).toHaveBeenCalledWith(
       expect.objectContaining({
         config: expect.objectContaining({
           a: 1,
           INTERVAL: '60',
+        }),
+        backtestExecutionMarketData: expect.objectContaining({
+          interval: '15',
         }),
       }),
     );
@@ -953,14 +1041,14 @@ describe('testing backtest flow', () => {
     process.env.PROJECT_CWD = '/tmp/project-a';
     await testing(createTest());
 
-    expect(mockByBitConnector.kline).toHaveBeenCalledTimes(3);
+    expect(mockByBitConnector.kline).toHaveBeenCalledTimes(5);
     expect(mockBinanceConnector.kline).toHaveBeenCalledTimes(1);
     expect(mockCoinbaseConnector.kline).toHaveBeenCalledTimes(1);
 
     process.env.PROJECT_CWD = '/tmp/project-b';
     await testing(createTest());
 
-    expect(mockByBitConnector.kline).toHaveBeenCalledTimes(6);
+    expect(mockByBitConnector.kline).toHaveBeenCalledTimes(10);
     expect(mockBinanceConnector.kline).toHaveBeenCalledTimes(2);
     expect(mockCoinbaseConnector.kline).toHaveBeenCalledTimes(2);
 
@@ -969,14 +1057,14 @@ describe('testing backtest flow', () => {
     process.env.PROJECT_CWD = '/tmp/project-b';
     await testing(createTest());
 
-    expect(mockByBitConnector.kline).toHaveBeenCalledTimes(6);
+    expect(mockByBitConnector.kline).toHaveBeenCalledTimes(10);
     expect(mockBinanceConnector.kline).toHaveBeenCalledTimes(2);
     expect(mockCoinbaseConnector.kline).toHaveBeenCalledTimes(2);
 
     process.env.PROJECT_CWD = '/tmp/project-a';
     await testing(createTest());
 
-    expect(mockByBitConnector.kline).toHaveBeenCalledTimes(9);
+    expect(mockByBitConnector.kline).toHaveBeenCalledTimes(15);
     expect(mockBinanceConnector.kline).toHaveBeenCalledTimes(3);
     expect(mockCoinbaseConnector.kline).toHaveBeenCalledTimes(3);
   });
@@ -994,7 +1082,7 @@ describe('testing backtest flow', () => {
     expect(mockByBitConnectorCreator).toHaveBeenCalledTimes(1);
     expect(mockBinanceConnectorCreator).toHaveBeenCalledTimes(1);
     expect(mockCoinbaseConnectorCreator).toHaveBeenCalledTimes(1);
-    expect(mockAlignSortedCandlesByTimestamp).toHaveBeenCalledTimes(4);
+    expect(mockAlignSortedCandlesByTimestamp).toHaveBeenCalledTimes(5);
   });
 
   it('releases symbol-scoped candle caches without dropping shared connectors', async () => {
@@ -1015,10 +1103,10 @@ describe('testing backtest flow', () => {
     expect(mockByBitConnectorCreator).toHaveBeenCalledTimes(1);
     expect(mockBinanceConnectorCreator).toHaveBeenCalledTimes(1);
     expect(mockCoinbaseConnectorCreator).toHaveBeenCalledTimes(1);
-    expect(mockByBitConnector.kline).toHaveBeenCalledTimes(4);
+    expect(mockByBitConnector.kline).toHaveBeenCalledTimes(7);
     expect(mockBinanceConnector.kline).toHaveBeenCalledTimes(1);
     expect(mockCoinbaseConnector.kline).toHaveBeenCalledTimes(1);
-    expect(mockAlignSortedCandlesByTimestamp).toHaveBeenCalledTimes(8);
+    expect(mockAlignSortedCandlesByTimestamp).toHaveBeenCalledTimes(10);
   });
 
   it('times out a slow test item with symbol in the error message', async () => {
@@ -1042,6 +1130,32 @@ describe('testing backtest flow', () => {
     await jest.advanceTimersByTimeAsync(20);
     await rejection;
 
+    jest.useRealTimers();
+  });
+
+  it('times out a single strategy candle even when the test item has no timeout', async () => {
+    jest.useFakeTimers();
+    process.env.BACKTEST_STRATEGY_CANDLE_TIMEOUT_MS = '10';
+
+    const data = [candle(1_000_050), candle(1_000_150), candle(1_000_250)];
+    mockByBitConnector.kline.mockResolvedValue(data);
+    mockBinanceConnector.kline.mockResolvedValue(data);
+    mockCoinbaseConnector.kline.mockResolvedValue(data);
+    mockStrategy.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          setTimeout(() => resolve('HOLD'), 100);
+        }),
+    );
+
+    const promise = testing(createTest());
+    const rejection = expect(promise).rejects.toThrow(
+      'Test ETH_suite_1 (ETHUSDT) timed out after 10ms during strategy signal',
+    );
+    await jest.advanceTimersByTimeAsync(20);
+    await rejection;
+
+    delete process.env.BACKTEST_STRATEGY_CANDLE_TIMEOUT_MS;
     jest.useRealTimers();
   });
 

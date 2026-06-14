@@ -76,7 +76,17 @@ const toRuntimeDuplicateKey = (
 export const getBacktestParityComparisonTimestamp = (
   entry: TradeParityEntry,
   timestampOffsetMs = 0,
-) => (entry.signalTimestamp ?? entry.timestamp) + timestampOffsetMs;
+) => {
+  if (
+    timestampOffsetMs > 0 &&
+    entry.signalTimestamp != null &&
+    entry.timestamp >= entry.signalTimestamp + timestampOffsetMs
+  ) {
+    return entry.timestamp;
+  }
+
+  return (entry.signalTimestamp ?? entry.timestamp) + timestampOffsetMs;
+};
 
 const sortTradeParityEntries = (
   left: TradeParityEntry,

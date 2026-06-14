@@ -4,7 +4,6 @@ import { calculateStatsFull } from '@tradejs/core/backtest';
 import {
   applyExecutionSlippage as applyModeledExecutionSlippage,
   calculateExecutionSlippageBreakdown,
-  extractExecutionDelayRiskBps,
   extractExecutionMarketImpactBps,
   extractExecutionSpreadBps,
 } from '@tradejs/core/trade';
@@ -337,6 +336,11 @@ export const createTestConnector: TestConnectorCreator = (
     };
   };
 
+  const getExitTimestamp = (candle: Candle) =>
+    currentPosition
+      ? Math.max(candle.timestamp, currentPosition.timestamp)
+      : candle.timestamp;
+
   const applyExecutionSlippage = ({
     price,
     direction,
@@ -351,8 +355,7 @@ export const createTestConnector: TestConnectorCreator = (
     const modelParams = {
       spreadBps: extractExecutionSpreadBps(signal),
       marketImpactBps: extractExecutionMarketImpactBps(signal),
-      delayRiskBps:
-        stage === 'entry' ? extractExecutionDelayRiskBps(signal) : null,
+      delayRiskBps: null,
     };
 
     return applyModeledExecutionSlippage({
@@ -373,8 +376,7 @@ export const createTestConnector: TestConnectorCreator = (
     calculateExecutionSlippageBreakdown({
       spreadBps: extractExecutionSpreadBps(signal),
       marketImpactBps: extractExecutionMarketImpactBps(signal),
-      delayRiskBps:
-        stage === 'entry' ? extractExecutionDelayRiskBps(signal) : null,
+      delayRiskBps: null,
     });
 
   const getExecutionSlippageLogData = (
@@ -470,6 +472,7 @@ export const createTestConnector: TestConnectorCreator = (
         const reached = isLong ? high >= targetPrice : low <= targetPrice;
 
         if (reached) {
+          const exitTimestamp = getExitTimestamp(candle);
           const qty = originalQty * tp.rate;
           const slippageBreakdown = getExecutionSlippageBreakdown({
             stage: 'exit',
@@ -490,7 +493,7 @@ export const createTestConnector: TestConnectorCreator = (
             qty,
           });
           recordExitResult({
-            timestamp: candle.timestamp,
+            timestamp: exitTimestamp,
             reason: 'take_profit',
             requestedPrice: targetPrice,
             executionPrice,
@@ -508,7 +511,7 @@ export const createTestConnector: TestConnectorCreator = (
           );
 
           logOrder({
-            timestamp: candle.timestamp,
+            timestamp: exitTimestamp,
             qty,
             price: executionPrice,
             profit,
@@ -524,7 +527,7 @@ export const createTestConnector: TestConnectorCreator = (
       takeProfits = takeProfits.filter(({ done }) => !done);
 
       if (currentPosition && currentPosition.qty <= 0) {
-        clearPosition(candle.timestamp);
+        clearPosition(getExitTimestamp(candle));
       }
     },
 
@@ -539,6 +542,7 @@ export const createTestConnector: TestConnectorCreator = (
         : candle.high >= stopLossPrice;
 
       if (hitStop) {
+        const exitTimestamp = getExitTimestamp(candle);
         const qty = currentPosition.qty;
         const slippageBreakdown = getExecutionSlippageBreakdown({
           stage: 'exit',
@@ -559,7 +563,7 @@ export const createTestConnector: TestConnectorCreator = (
           qty,
         });
         recordExitResult({
-          timestamp: candle.timestamp,
+          timestamp: exitTimestamp,
           reason: 'stop_loss',
           requestedPrice: stopLossPrice,
           executionPrice,
@@ -573,7 +577,7 @@ export const createTestConnector: TestConnectorCreator = (
         currentPositionProfit += profit;
 
         logOrder({
-          timestamp: candle.timestamp,
+          timestamp: exitTimestamp,
           qty,
           profit,
           price: executionPrice,
@@ -582,7 +586,7 @@ export const createTestConnector: TestConnectorCreator = (
           ...getExecutionSlippageLogData(slippageBreakdown, 'exit'),
         });
 
-        clearPosition(candle.timestamp);
+        clearPosition(exitTimestamp);
       }
     },
 
@@ -598,6 +602,7 @@ export const createTestConnector: TestConnectorCreator = (
           : candle.high >= stopLossPrice;
 
         if (hitStop) {
+          const exitTimestamp = getExitTimestamp(candle);
           const qty = currentPosition.qty;
           const slippageBreakdown = getExecutionSlippageBreakdown({
             stage: 'exit',
@@ -618,7 +623,7 @@ export const createTestConnector: TestConnectorCreator = (
             qty,
           });
           recordExitResult({
-            timestamp: candle.timestamp,
+            timestamp: exitTimestamp,
             reason: 'stop_loss',
             requestedPrice: stopLossPrice,
             executionPrice,
@@ -632,7 +637,7 @@ export const createTestConnector: TestConnectorCreator = (
           currentPositionProfit += profit;
 
           logOrder({
-            timestamp: candle.timestamp,
+            timestamp: exitTimestamp,
             qty,
             profit,
             price: executionPrice,
@@ -641,7 +646,7 @@ export const createTestConnector: TestConnectorCreator = (
             ...getExecutionSlippageLogData(slippageBreakdown, 'exit'),
           });
 
-          clearPosition(candle.timestamp);
+          clearPosition(exitTimestamp);
         }
       }
 
@@ -661,6 +666,7 @@ export const createTestConnector: TestConnectorCreator = (
         const reached = isLong ? high >= targetPrice : low <= targetPrice;
 
         if (reached) {
+          const exitTimestamp = getExitTimestamp(candle);
           const qty = originalQty * tp.rate;
           const slippageBreakdown = getExecutionSlippageBreakdown({
             stage: 'exit',
@@ -681,7 +687,7 @@ export const createTestConnector: TestConnectorCreator = (
             qty,
           });
           recordExitResult({
-            timestamp: candle.timestamp,
+            timestamp: exitTimestamp,
             reason: 'take_profit',
             requestedPrice: targetPrice,
             executionPrice,
@@ -699,7 +705,7 @@ export const createTestConnector: TestConnectorCreator = (
           );
 
           logOrder({
-            timestamp: candle.timestamp,
+            timestamp: exitTimestamp,
             qty,
             price: executionPrice,
             profit,
@@ -715,7 +721,7 @@ export const createTestConnector: TestConnectorCreator = (
       takeProfits = takeProfits.filter(({ done }) => !done);
 
       if (currentPosition && currentPosition.qty <= 0) {
-        clearPosition(candle.timestamp);
+        clearPosition(getExitTimestamp(candle));
       }
     },
 

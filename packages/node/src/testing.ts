@@ -6,6 +6,7 @@ import {
   ConnectorCreator,
   Interval,
   KlineChartData,
+  KlineChartItem,
   RuntimeSignalEvaluationRecord,
   Signal,
   Test,
@@ -13,6 +14,7 @@ import {
   TestingBoxResult,
 } from '@tradejs/types';
 import { alignSortedCandlesByTimestamp } from '@tradejs/core/indicators';
+import { BACKTEST_EXECUTION_INTERVAL } from '@tradejs/core/constants';
 import {
   releaseStrategyIndicatorsReplayCache,
   releaseStrategyReplayCache,
@@ -60,6 +62,11 @@ type PreparedTestingData = {
   ethTestData: KlineChartData;
   btcBinanceData: KlineChartData;
   btcCoinbaseData: KlineChartData;
+  backtestExecutionInterval: Interval;
+  backtestExecutionData: KlineChartData;
+  backtestExecutionBtcData: KlineChartData;
+  backtestExecutionDataByTimestamp: Map<number, KlineChartItem>;
+  backtestExecutionBtcDataByTimestamp: Map<number, KlineChartItem>;
 };
 
 type TestingProgressMessage = {
@@ -91,6 +98,38 @@ const isBacktestEntryDelayControlCode = (value: unknown) =>
   typeof value === 'string' && value.startsWith('BACKTEST_ENTRY_DELAY_');
 
 const CLOSED_RESULT_FLUSH_INTERVAL = 500;
+const DEFAULT_STRATEGY_CANDLE_TIMEOUT_MS = 60_000;
+
+const resolvePositiveInt = (value: unknown, fallback: number) => {
+  const parsed = parseInt(String(value ?? ''), 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+};
+
+const getStrategyCandleTimeoutMs = () =>
+  resolvePositiveInt(
+    process.env.BACKTEST_STRATEGY_CANDLE_TIMEOUT_MS,
+    DEFAULT_STRATEGY_CANDLE_TIMEOUT_MS,
+  );
+
+const getEffectiveTimeoutMs = (
+  baseTimeoutMs: number | undefined,
+  stageTimeoutMs: number | null,
+) => {
+  const base =
+    baseTimeoutMs && baseTimeoutMs > 0 ? Math.trunc(baseTimeoutMs) : null;
+  const stage =
+    stageTimeoutMs && stageTimeoutMs > 0 ? Math.trunc(stageTimeoutMs) : null;
+  if (base == null) return stage;
+  if (stage == null) return base;
+  return Math.min(base, stage);
+};
+
+const buildCandleByTimestamp = (candles?: KlineChartData) =>
+  new Map(
+    (candles ?? [])
+      .filter((candle) => typeof candle?.timestamp === 'number')
+      .map((candle) => [candle.timestamp, candle]),
+  ) as Map<number, KlineChartItem>;
 
 type PendingAiDatasetRow = Omit<AiDatasetRow, 'payload' | 'profit'> & {
   signal: Signal;
@@ -246,6 +285,7 @@ const getPreparedDataCacheKey = (params: {
   interval: Interval;
   btcBinanceConnectorName: string;
   btcCoinbaseConnectorName: string;
+  backtestExecutionInterval: Interval;
 }) => {
   const {
     userName,
@@ -257,6 +297,7 @@ const getPreparedDataCacheKey = (params: {
     interval,
     btcBinanceConnectorName,
     btcCoinbaseConnectorName,
+    backtestExecutionInterval,
   } = params;
 
   return [
@@ -267,6 +308,7 @@ const getPreparedDataCacheKey = (params: {
     start,
     end,
     interval,
+    backtestExecutionInterval,
     btcBinanceConnectorName,
     btcCoinbaseConnectorName,
   ].join(':');
@@ -278,6 +320,18 @@ const getConnectorCacheKey = (params: {
 }) => [params.userName, params.connectorName].join(':');
 
 const BACKTEST_INTERVAL: Interval = '15';
+const resolveBacktestExecutionInterval = (
+  interval: Interval,
+): Interval | null => {
+  const normalized = String(interval);
+  if (normalized === '15') {
+    return BACKTEST_EXECUTION_INTERVAL as Interval;
+  }
+  if (normalized === '60') {
+    return '15' as Interval;
+  }
+  return null;
+};
 
 const resolveIntervalMs = (interval: Interval) => {
   const intervalMinutes = Number(interval);
@@ -348,6 +402,16 @@ const filterClosedAlignedCandles = (
     data: closedData,
     btcData: closedBtcData,
   };
+};
+
+const shouldLoadBacktestExecutionCandles = (interval: Interval) => {
+  const executionInterval = resolveBacktestExecutionInterval(interval);
+  if (!executionInterval) {
+    return false;
+  }
+  const primaryMs = resolveIntervalMs(interval);
+  const executionMs = resolveIntervalMs(executionInterval);
+  return executionMs > 0 && executionMs < primaryMs;
 };
 
 const getCachedConnector = async (params: {
@@ -518,6 +582,35 @@ const prepareTestingData = async (params: {
     state.btcBinanceKlineCache.get(btcBinanceCacheKey);
   const cachedBtcCoinbaseData =
     state.btcCoinbaseKlineCache.get(btcCoinbaseCacheKey);
+  const backtestExecutionInterval = resolveBacktestExecutionInterval(interval);
+  const backtestExecutionCacheInterval = backtestExecutionInterval ?? interval;
+  const shouldLoadExecutionCandles =
+    backtestExecutionInterval != null &&
+    shouldLoadBacktestExecutionCandles(interval);
+  const executionCoinCacheKey = getKlineCacheKey({
+    userName,
+    connectorName,
+    symbol,
+    preloadStart,
+    end,
+    interval: backtestExecutionCacheInterval,
+    cacheOnly,
+  });
+  const executionBtcCacheKey = getKlineCacheKey({
+    userName,
+    connectorName,
+    symbol: 'BTCUSDT',
+    preloadStart,
+    end,
+    interval: backtestExecutionCacheInterval,
+    cacheOnly,
+  });
+  const cachedExecutionCoinData = shouldLoadExecutionCandles
+    ? state.coinKlineCache.get(executionCoinCacheKey)
+    : undefined;
+  const cachedExecutionBtcData = shouldLoadExecutionCandles
+    ? state.btcKlineCache.get(executionBtcCacheKey)
+    : undefined;
   const preparedDataCacheKey = getPreparedDataCacheKey({
     userName,
     connectorName,
@@ -526,6 +619,7 @@ const prepareTestingData = async (params: {
     start,
     end,
     interval,
+    backtestExecutionInterval: backtestExecutionCacheInterval,
     btcBinanceConnectorName,
     btcCoinbaseConnectorName,
   });
@@ -579,6 +673,32 @@ const prepareTestingData = async (params: {
           silent: true,
           cacheOnly,
         });
+  const executionDataPromise: Promise<KlineChartData> =
+    !shouldLoadExecutionCandles
+      ? Promise.resolve([])
+      : cachedExecutionCoinData
+        ? Promise.resolve(cachedExecutionCoinData)
+        : connector.kline({
+            symbol,
+            start: preloadStart,
+            end,
+            interval: backtestExecutionInterval!,
+            silent: true,
+            cacheOnly,
+          });
+  const executionBtcDataPromise: Promise<KlineChartData> =
+    !shouldLoadExecutionCandles
+      ? Promise.resolve([])
+      : cachedExecutionBtcData
+        ? Promise.resolve(cachedExecutionBtcData)
+        : connector.kline({
+            symbol: 'BTCUSDT',
+            start: preloadStart,
+            end,
+            interval: backtestExecutionInterval!,
+            silent: true,
+            cacheOnly,
+          });
 
   const [
     dataRaw,
@@ -586,6 +706,8 @@ const prepareTestingData = async (params: {
     ethDataRaw,
     btcBinanceDataRaw,
     btcCoinbaseDataRaw,
+    executionDataRaw,
+    executionBtcDataRaw,
   ] = await Promise.all([
     cachedCoinData
       ? Promise.resolve(cachedCoinData)
@@ -601,6 +723,8 @@ const prepareTestingData = async (params: {
     ethDataPromise,
     btcBinanceDataPromise,
     btcCoinbaseDataPromise,
+    executionDataPromise,
+    executionBtcDataPromise,
   ]);
 
   if (!cachedCoinData) {
@@ -617,6 +741,12 @@ const prepareTestingData = async (params: {
   }
   if (!cachedBtcCoinbaseData) {
     state.btcCoinbaseKlineCache.set(btcCoinbaseCacheKey, btcCoinbaseDataRaw);
+  }
+  if (shouldLoadExecutionCandles && !cachedExecutionCoinData) {
+    state.coinKlineCache.set(executionCoinCacheKey, executionDataRaw);
+  }
+  if (shouldLoadExecutionCandles && !cachedExecutionBtcData) {
+    state.btcKlineCache.set(executionBtcCacheKey, executionBtcDataRaw);
   }
 
   const aligned = alignSortedCandlesByTimestamp(dataRaw, btcDataRaw);
@@ -636,6 +766,21 @@ const prepareTestingData = async (params: {
   const { alignedBtcCandles: ethData } = alignSortedCandlesByTimestamp(
     data,
     ethDataRaw,
+  );
+  const alignedExecution = shouldLoadExecutionCandles
+    ? alignSortedCandlesByTimestamp(executionDataRaw, executionBtcDataRaw)
+    : { alignedCoinCandles: [], alignedBtcCandles: [] };
+  const { data: backtestExecutionData, btcData: backtestExecutionBtcData } =
+    filterClosedAlignedCandles(
+      alignedExecution.alignedCoinCandles,
+      alignedExecution.alignedBtcCandles,
+      backtestExecutionCacheInterval,
+    );
+  const backtestExecutionDataByTimestamp = buildCandleByTimestamp(
+    backtestExecutionData,
+  );
+  const backtestExecutionBtcDataByTimestamp = buildCandleByTimestamp(
+    backtestExecutionBtcData,
   );
 
   const { prevData, testData } = splitCandlesForTesting(
@@ -659,6 +804,11 @@ const prepareTestingData = async (params: {
     ethTestData,
     btcBinanceData,
     btcCoinbaseData,
+    backtestExecutionInterval: backtestExecutionCacheInterval,
+    backtestExecutionData,
+    backtestExecutionBtcData,
+    backtestExecutionDataByTimestamp,
+    backtestExecutionBtcDataByTimestamp,
   };
   state.preparedDataCache.set(preparedDataCacheKey, preparedData);
 
@@ -723,8 +873,9 @@ export const testing: TestingBox = async ({
   let lastProgressSignature = '';
   let currentCandleIndex = 0;
   let totalCandles = 0;
-  const formatTimeoutMessage = (stage: string) =>
-    `Test ${name} (${symbol}) timed out after ${timeoutMs}ms during ${stage}`;
+  const strategyCandleTimeoutMs = getStrategyCandleTimeoutMs();
+  const formatTimeoutMessage = (stage: string, stageTimeoutMs: number) =>
+    `Test ${name} (${symbol}) timed out after ${stageTimeoutMs}ms during ${stage}`;
   const emitProgress = (
     stage: string,
     options: {
@@ -788,8 +939,12 @@ export const testing: TestingBox = async ({
   const withTimeout = async <T>(
     stage: string,
     promise: Promise<T>,
+    stageTimeoutOverrideMs: number | null = null,
   ): Promise<T> => {
-    const stageTimeoutMs = getStageTimeoutMs();
+    const stageTimeoutMs = getEffectiveTimeoutMs(
+      getStageTimeoutMs() ?? undefined,
+      stageTimeoutOverrideMs,
+    );
     if (stageTimeoutMs == null) {
       return promise;
     }
@@ -803,7 +958,7 @@ export const testing: TestingBox = async ({
       }, 5000);
       const timer = setTimeout(() => {
         clearInterval(heartbeat);
-        reject(new Error(formatTimeoutMessage(stage)));
+        reject(new Error(formatTimeoutMessage(stage, stageTimeoutMs)));
       }, stageTimeoutMs);
 
       promise.then(
@@ -826,6 +981,10 @@ export const testing: TestingBox = async ({
     }
     return withTimeout(stage, fn());
   };
+  const runStrategyCandleStage = <T>(
+    stage: string,
+    fn: () => Promise<T>,
+  ): Promise<T> => withTimeout(stage, fn(), strategyCandleTimeoutMs);
 
   const { projectRoot, state } = getTestingKlineCacheState();
 
@@ -876,6 +1035,11 @@ export const testing: TestingBox = async ({
     btcTestData,
     btcBinanceData,
     btcCoinbaseData,
+    backtestExecutionInterval,
+    backtestExecutionData,
+    backtestExecutionBtcData,
+    backtestExecutionDataByTimestamp,
+    backtestExecutionBtcDataByTimestamp,
   } = preparedData;
   const runtimePrevData = prevData.slice();
   const runtimeBtcPrevData = btcPrevData.slice();
@@ -904,6 +1068,13 @@ export const testing: TestingBox = async ({
       ethData: runtimeEthData,
       btcBinanceData,
       btcCoinbaseData,
+      backtestExecutionMarketData: {
+        interval: backtestExecutionInterval,
+        data: backtestExecutionData,
+        btcData: backtestExecutionBtcData,
+        dataByTimestamp: backtestExecutionDataByTimestamp,
+        btcDataByTimestamp: backtestExecutionBtcDataByTimestamp,
+      },
       connector: testConnector,
     }),
   );
@@ -1049,10 +1220,12 @@ export const testing: TestingBox = async ({
     const btcCandle = btcTestData[candleIndex];
     // Delayed entries are previous-bar signals filled on this bar, so they
     // must be live before this bar's TP/SL checks.
-    const delayedSignal = await runStage('delayed entry', async () =>
-      (
-        strategy as BacktestDelayedEntryStrategy
-      ).__tradejsFlushBacktestDelayedEntry?.(candle, btcCandle),
+    const delayedSignal = await runStrategyCandleStage(
+      'delayed entry',
+      async () =>
+        (
+          strategy as BacktestDelayedEntryStrategy
+        ).__tradejsFlushBacktestDelayedEntry?.(candle, btcCandle),
     );
     if (delayedSignal && typeof delayedSignal !== 'string') {
       await processSignal(delayedSignal, candle);
@@ -1062,7 +1235,7 @@ export const testing: TestingBox = async ({
     // can only be closed starting from the next candle to avoid same-bar lookahead.
     await runStage('exit checks', () => testConnector.checkExits(candle));
 
-    const signal = await runStage('strategy signal', () =>
+    const signal = await runStrategyCandleStage('strategy signal', () =>
       strategy(candle, btcCandle),
     );
     await processSignal(signal, candle);
@@ -1124,8 +1297,9 @@ export const testingGroupInSharedCandleLoop = async (
   let lastProgressSignature = '';
   let currentCandleIndex = 0;
   let totalCandles = 0;
-  const formatTimeoutMessage = (stage: string) =>
-    `Test group ${strategyName}/${symbol} timed out after ${timeoutMs}ms during ${stage}`;
+  const strategyCandleTimeoutMs = getStrategyCandleTimeoutMs();
+  const formatTimeoutMessage = (stage: string, stageTimeoutMs: number) =>
+    `Test group ${strategyName}/${symbol} timed out after ${stageTimeoutMs}ms during ${stage}`;
   const emitProgress = (
     stage: string,
     options: {
@@ -1189,8 +1363,12 @@ export const testingGroupInSharedCandleLoop = async (
   const withTimeout = async <T>(
     stage: string,
     promise: Promise<T>,
+    stageTimeoutOverrideMs: number | null = null,
   ): Promise<T> => {
-    const stageTimeoutMs = getStageTimeoutMs();
+    const stageTimeoutMs = getEffectiveTimeoutMs(
+      getStageTimeoutMs() ?? undefined,
+      stageTimeoutOverrideMs,
+    );
     if (stageTimeoutMs == null) {
       return promise;
     }
@@ -1204,7 +1382,7 @@ export const testingGroupInSharedCandleLoop = async (
       }, 5000);
       const timer = setTimeout(() => {
         clearInterval(heartbeat);
-        reject(new Error(formatTimeoutMessage(stage)));
+        reject(new Error(formatTimeoutMessage(stage, stageTimeoutMs)));
       }, stageTimeoutMs);
 
       promise.then(
@@ -1227,6 +1405,10 @@ export const testingGroupInSharedCandleLoop = async (
     }
     return withTimeout(stage, fn());
   };
+  const runStrategyCandleStage = <T>(
+    stage: string,
+    fn: () => Promise<T>,
+  ): Promise<T> => withTimeout(stage, fn(), strategyCandleTimeoutMs);
 
   const { projectRoot, state } = getTestingKlineCacheState();
   const connector = await withTimeout(
@@ -1275,6 +1457,11 @@ export const testingGroupInSharedCandleLoop = async (
     btcTestData,
     btcBinanceData,
     btcCoinbaseData,
+    backtestExecutionInterval,
+    backtestExecutionData,
+    backtestExecutionBtcData,
+    backtestExecutionDataByTimestamp,
+    backtestExecutionBtcDataByTimestamp,
   } = preparedData;
   totalCandles = testData.length;
 
@@ -1323,6 +1510,13 @@ export const testingGroupInSharedCandleLoop = async (
           ethData: [...ethPrevData, ...ethTestData],
           btcBinanceData,
           btcCoinbaseData,
+          backtestExecutionMarketData: {
+            interval: backtestExecutionInterval,
+            data: backtestExecutionData,
+            btcData: backtestExecutionBtcData,
+            dataByTimestamp: backtestExecutionDataByTimestamp,
+            btcDataByTimestamp: backtestExecutionBtcDataByTimestamp,
+          },
           connector: testConnector,
           sharedIndicatorsReplayKey,
         }),
@@ -1484,10 +1678,12 @@ export const testingGroupInSharedCandleLoop = async (
         const { test, testConnector, strategy } = runner;
         // Delayed entries are previous-bar signals filled on this bar, so they
         // must be live before this bar's TP/SL checks.
-        const delayedSignal = await runStage('delayed entry', async () =>
-          (
-            strategy as BacktestDelayedEntryStrategy
-          ).__tradejsFlushBacktestDelayedEntry?.(candle, btcCandle),
+        const delayedSignal = await runStrategyCandleStage(
+          'delayed entry',
+          async () =>
+            (
+              strategy as BacktestDelayedEntryStrategy
+            ).__tradejsFlushBacktestDelayedEntry?.(candle, btcCandle),
         );
         if (delayedSignal && typeof delayedSignal !== 'string') {
           await processRunnerSignal(runner, delayedSignal, candle);
@@ -1498,7 +1694,7 @@ export const testingGroupInSharedCandleLoop = async (
         const detectorSkipCode = detectorFanoutKey
           ? detectorNoSignalByKey.get(detectorFanoutKey)
           : undefined;
-        const signal = await runStage(
+        const signal = await runStrategyCandleStage(
           detectorSkipCode ? 'strategy detector skip' : 'strategy signal',
           () =>
             detectorSkipCode &&

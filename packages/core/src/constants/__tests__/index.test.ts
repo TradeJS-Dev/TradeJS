@@ -4,13 +4,15 @@ describe('constants/index', () => {
       const constants = require('../index');
 
       expect(constants.FEE_PERCENT).toBe(0.001);
-      expect(constants.BACKTEST_BASE_SLIPPAGE_BPS).toBe(20);
+      expect(constants.BACKTEST_BASE_SLIPPAGE_BPS).toBe(10);
       expect(constants.BACKTEST_SPREAD_SLIPPAGE_MULTIPLIER).toBe(1);
       expect(constants.BACKTEST_MARKET_IMPACT_BPS).toBe(0);
       expect(constants.BACKTEST_DELAY_RISK_LOOKBACK_CANDLES).toBe(5);
-      expect(constants.BACKTEST_DELAY_RISK_MULTIPLIER).toBe(0.5);
-      expect(constants.BACKTEST_DELAY_RISK_MAX_BPS).toBe(30);
-      expect(constants.BACKTEST_EXPECTED_DELAY_MS).toBe(5_000);
+      expect(constants.BACKTEST_DELAY_RISK_MULTIPLIER).toBe(0);
+      expect(constants.BACKTEST_DELAY_RISK_MAX_BPS).toBe(0);
+      expect(constants.BACKTEST_EXPECTED_DELAY_MS).toBe(0);
+      expect(constants.BACKTEST_EXECUTION_INTERVAL).toBe('5');
+      expect(constants.BACKTEST_EXECUTION_DELAY_MS).toBe(5 * 60_000);
       expect(constants.INITIAL_BACKTEST_AMOUNT).toBe(100);
       expect(constants.TTL_1D).toBe(86_400);
       expect(constants.TTL_3D).toBe(259_200);

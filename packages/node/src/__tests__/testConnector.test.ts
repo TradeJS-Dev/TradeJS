@@ -13,10 +13,7 @@ import {
   FEE_PERCENT,
   INITIAL_BACKTEST_AMOUNT,
 } from '@tradejs/core/constants';
-import {
-  calculateEffectiveSlippageBps,
-  extractExecutionDelayRiskBps,
-} from '@tradejs/core/trade';
+import { calculateEffectiveSlippageBps } from '@tradejs/core/trade';
 import { createTestConnector } from '../testConnector';
 
 const baseConnector = {
@@ -195,7 +192,7 @@ describe('testConnector', () => {
     expect(orders[1].price).toBeCloseTo(110 * (1 - dynamicSlippageRate));
   });
 
-  it('adds signal delay risk to entry slippage only', async () => {
+  it('ignores signal delay risk in entry slippage', async () => {
     const connector = createTestConnector(baseConnector as any, {
       userName: 'alice',
       aiEnabled: true,
@@ -208,12 +205,6 @@ describe('testConnector', () => {
       },
       additionalIndicators: {},
     };
-    const entrySlippageRate =
-      calculateEffectiveSlippageBps({
-        baseSlippageBps: BACKTEST_BASE_SLIPPAGE_BPS,
-        delayRiskBps: extractExecutionDelayRiskBps(signal),
-      }) / 10_000;
-
     await connector.placeOrder({
       symbol: 'ETHUSDT',
       qty: 1,
@@ -232,7 +223,7 @@ describe('testConnector', () => {
     });
 
     const orders = (await connector.getResult()).inlineOrderLog ?? [];
-    expect(orders[0].price).toBeCloseTo(100 * (1 + entrySlippageRate));
+    expect(orders[0].price).toBeCloseTo(100 * (1 + backtestSlippageRate));
     expect(orders[1].price).toBeCloseTo(110 * (1 - backtestSlippageRate));
     expect(await connector.drainMlResultsBatch()).toEqual([
       expect.objectContaining({
@@ -241,7 +232,7 @@ describe('testConnector', () => {
           entryBaseSlippageBps: round(BACKTEST_BASE_SLIPPAGE_BPS),
           entrySpreadBps: 0,
           entrySpreadSlippageBps: 0,
-          entryDelayRiskBps: round(extractExecutionDelayRiskBps(signal) ?? 0),
+          entryDelayRiskBps: 0,
           exitBaseSlippageBps: round(BACKTEST_BASE_SLIPPAGE_BPS),
           exitSpreadBps: 0,
           exitSpreadSlippageBps: 0,
@@ -727,6 +718,45 @@ describe('testConnector', () => {
       'OPEN_LONG',
       'STOP_LOSS_LONG',
     ]);
+  });
+
+  it('does not close a delayed intrabar entry before its entry timestamp', async () => {
+    const connector = createTestConnector(baseConnector as any, {
+      userName: 'alice',
+    });
+
+    await connector.placeOrder({
+      symbol: 'ETHUSDT',
+      qty: 1,
+      price: 100,
+      isLimit: false,
+      timestamp: 1_300,
+      direction: 'LONG',
+    });
+    await connector.setStopLoss({
+      symbol: 'ETHUSDT',
+      direction: 'LONG',
+      stopLossPrice: 95,
+    } as any);
+
+    await connector.checkExits({
+      timestamp: 1_000,
+      open: 100,
+      high: 101,
+      low: 94,
+      close: 96,
+      volume: 1,
+      turnover: 1,
+    });
+
+    const result = await connector.getResult();
+    expect(result.inlineOrderLog?.[1]).toEqual(
+      expect.objectContaining({
+        type: 'STOP_LOSS_LONG',
+        timestamp: 1_300,
+      }),
+    );
+    expect(result.inlinePositionLog?.[0].close.timestamp).toBe(1_300);
   });
 
   it('delegates unrealized pnl snapshots to the underlying connector when available', async () => {

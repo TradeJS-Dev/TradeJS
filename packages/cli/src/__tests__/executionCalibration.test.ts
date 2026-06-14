@@ -139,7 +139,7 @@ describe('execution calibration helpers', () => {
         fillSource: 'exchange_position',
       }),
     );
-    expect(report.samples[0].currentDelayRiskBps).toBeCloseTo(3.7083, 4);
+    expect(report.samples[0].currentDelayRiskBps).toBe(0);
     expect(report.samples[0].replayEntryResidualBps).toBeCloseTo(-19.724, 3);
     expect(report.samples[1]).toEqual(
       expect.objectContaining({
@@ -177,7 +177,11 @@ describe('execution calibration helpers', () => {
     expect(report.summary.bySpreadBucket['20-50bps'].trades).toBe(1);
     expect(report.recommendation.confidence).toBe('low');
     expect(report.recommendation.baseSlippageBps).toBeCloseTo(0, 1);
-    expect(report.recommendation.delayRiskMultiplier).toBeGreaterThan(10);
+    expect(report.recommendation.delayRiskMultiplier).toBeNull();
+    expect(report.recommendation.delayRiskMaxBps).toBeNull();
+    expect(report.recommendation.notes).toContain(
+      'Delay risk bps is disabled; signal-to-arrival latency is modeled by delayed lower-timeframe backtest fills.',
+    );
   });
 
   it('falls back to replay residuals when runtime telemetry is unavailable', () => {

@@ -249,6 +249,7 @@ const makeRuntime = async (
     strategyName?: string;
     testConnector?: boolean;
     onRuntimeClose?: jest.Mock;
+    backtestExecutionMarketData?: any;
   } = {},
 ) => {
   const strategyName = options.strategyName ?? 'TrendLine';
@@ -282,6 +283,7 @@ const makeRuntime = async (
     config: {},
     data: [],
     btcData: [],
+    backtestExecutionMarketData: options.backtestExecutionMarketData,
     connector,
     onRuntimeClose: options.onRuntimeClose,
   } as any);
@@ -674,10 +676,11 @@ describe('strategyRuntime', () => {
     );
   });
 
-  it('delays BACKTEST entries and executes them on the next bar price', async () => {
+  it('skips delayed BACKTEST entries for unsupported intervals without lower timeframe fallback', async () => {
     const decision = makeDecisionEntry({
       entryContext: {
         ...makeDecisionEntry().entryContext,
+        direction: 'SHORT',
         prices: {
           currentPrice: 222,
           takeProfitPrice: 200,
@@ -709,6 +712,7 @@ describe('strategyRuntime', () => {
       ENV: 'BACKTEST',
       BACKTEST_PRICE_MODE: 'open',
       BACKTEST_ENTRY_DELAY_BARS: 1,
+      INTERVAL: '5',
     });
 
     const queued = await strategy(
@@ -719,6 +723,157 @@ describe('strategyRuntime', () => {
     expect(queued).toBe('BACKTEST_ENTRY_DELAY_QUEUED:1');
     expect(mockExecuteEntryOrder).not.toHaveBeenCalled();
 
+    const skipped = await (strategy as any).__tradejsFlushBacktestDelayedEntry(
+      { timestamp: 20, open: 300, high: 330, low: 290, close: 320 },
+      { timestamp: 20, open: 400, high: 430, low: 390, close: 420 },
+    );
+
+    expect(mockExecuteEntryOrder).not.toHaveBeenCalled();
+    expect((skipped as any).orderStatus).toBe('skipped');
+    expect((skipped as any).orderSkipReason).toBe(
+      'BACKTEST_LOWER_EXECUTION_UNAVAILABLE',
+    );
+    expect((skipped as any).additionalIndicators.backtestExecution).toEqual({
+      entryDelayBars: 1,
+      priceMode: 'open',
+      signalTimestamp: 1_700_000_000_000,
+      signalPrice: 100,
+      executionSource: 'lower_timeframe',
+      executionDelayMs: 300_000,
+      primaryExecutionTimestamp: 20,
+      requestedExecutionTimestamp: 300_020,
+      skipReason: 'BACKTEST_LOWER_EXECUTION_UNAVAILABLE',
+    });
+  });
+
+  it('skips delayed BACKTEST entries when the requested lower execution candle is absent', async () => {
+    const decision = makeDecisionEntry({
+      runtime: {
+        ml: { enabled: false },
+        ai: { enabled: false },
+      },
+    });
+    const { strategy } = await makeRuntime(
+      () => decision,
+      {
+        ENV: 'BACKTEST',
+        BACKTEST_PRICE_MODE: 'open',
+        BACKTEST_ENTRY_DELAY_BARS: 1,
+        INTERVAL: '15',
+      },
+      {
+        backtestExecutionMarketData: {
+          interval: '5',
+          data: [
+            {
+              timestamp: 20,
+              open: 210,
+              high: 212,
+              low: 208,
+              close: 211,
+            },
+          ],
+          btcData: [
+            {
+              timestamp: 20 + 5 * 60_000,
+              open: 410,
+              high: 412,
+              low: 408,
+              close: 411,
+            },
+          ],
+        },
+      },
+    );
+
+    await strategy(
+      { timestamp: 10, open: 100, high: 115, low: 95, close: 110 } as any,
+      { timestamp: 10, open: 200, high: 215, low: 195, close: 210 } as any,
+    );
+
+    const skipped = await (strategy as any).__tradejsFlushBacktestDelayedEntry(
+      { timestamp: 20, open: 300, high: 330, low: 290, close: 320 },
+      { timestamp: 20, open: 400, high: 430, low: 390, close: 420 },
+    );
+
+    expect(mockExecuteEntryOrder).not.toHaveBeenCalled();
+    expect((skipped as any).orderSkipReason).toBe(
+      'BACKTEST_LOWER_EXECUTION_CANDLE_MISSING',
+    );
+    expect(
+      (skipped as any).additionalIndicators.backtestExecution.executionSource,
+    ).toBe('lower_timeframe');
+  });
+
+  it('fills delayed BACKTEST entries from the lower timeframe execution candle', async () => {
+    const decision = makeDecisionEntry({
+      entryContext: {
+        ...makeDecisionEntry().entryContext,
+        direction: 'LONG',
+        prices: {
+          currentPrice: 222,
+          takeProfitPrice: 360,
+          stopLossPrice: 200,
+          riskRatio: 1.2,
+        },
+      },
+      orderPlan: {
+        qty: 3,
+        stopLossPrice: 200,
+        takeProfits: [{ rate: 1, price: 360 }],
+      },
+      signal: {
+        ...makeSignal(),
+        prices: {
+          currentPrice: 100,
+          takeProfitPrice: 360,
+          stopLossPrice: 200,
+          riskRatio: 2,
+        },
+      },
+      runtime: {
+        ml: { enabled: false },
+        ai: { enabled: false },
+      },
+    });
+    const { strategy } = await makeRuntime(
+      () => decision,
+      {
+        ENV: 'BACKTEST',
+        BACKTEST_PRICE_MODE: 'open',
+        BACKTEST_ENTRY_DELAY_BARS: 1,
+        INTERVAL: '15',
+      },
+      {
+        backtestExecutionMarketData: {
+          interval: '5',
+          data: [
+            {
+              timestamp: 20 + 5 * 60_000,
+              open: 310,
+              high: 312,
+              low: 308,
+              close: 311,
+            },
+          ],
+          btcData: [
+            {
+              timestamp: 20 + 5 * 60_000,
+              open: 410,
+              high: 412,
+              low: 408,
+              close: 411,
+            },
+          ],
+        },
+      },
+    );
+
+    await strategy(
+      { timestamp: 10, open: 100, high: 115, low: 95, close: 110 } as any,
+      { timestamp: 10, open: 200, high: 215, low: 195, close: 210 } as any,
+    );
+
     const executed = await (strategy as any).__tradejsFlushBacktestDelayedEntry(
       { timestamp: 20, open: 300, high: 330, low: 290, close: 320 },
       { timestamp: 20, open: 400, high: 430, low: 390, close: 420 },
@@ -726,20 +881,119 @@ describe('strategyRuntime', () => {
 
     expect(mockExecuteEntryOrder).toHaveBeenCalledWith(
       expect.objectContaining({
-        currentPrice: 300,
-        timestamp: 20,
-        direction: 'SHORT',
+        currentPrice: 310,
+        timestamp: 300_020,
       }),
     );
-    expect((executed as any).prices.currentPrice).toBe(300);
-    expect((executed as any).additionalIndicators.backtestExecution).toEqual({
-      entryDelayBars: 1,
-      priceMode: 'open',
-      signalTimestamp: 1_700_000_000_000,
-      signalPrice: 100,
-      executionTimestamp: 20,
-      executionPrice: 300,
+    expect((executed as any).prices.currentPrice).toBe(310);
+    expect((executed as any).additionalIndicators.backtestExecution).toEqual(
+      expect.objectContaining({
+        entryDelayBars: 1,
+        priceMode: 'open',
+        executionTimestamp: 300_020,
+        executionPrice: 310,
+        executionSource: 'lower_timeframe',
+        executionInterval: '5',
+        executionDelayMs: 300_000,
+        primaryExecutionTimestamp: 20,
+        requestedExecutionTimestamp: 300_020,
+      }),
+    );
+  });
+
+  it('fills delayed 60m BACKTEST entries from the 15m execution candle', async () => {
+    const decision = makeDecisionEntry({
+      entryContext: {
+        ...makeDecisionEntry().entryContext,
+        direction: 'LONG',
+        interval: '60',
+        prices: {
+          currentPrice: 222,
+          takeProfitPrice: 360,
+          stopLossPrice: 200,
+          riskRatio: 1.2,
+        },
+      },
+      orderPlan: {
+        qty: 3,
+        stopLossPrice: 200,
+        takeProfits: [{ rate: 1, price: 360 }],
+      },
+      signal: {
+        ...makeSignal(),
+        interval: '60',
+        prices: {
+          currentPrice: 100,
+          takeProfitPrice: 360,
+          stopLossPrice: 200,
+          riskRatio: 2,
+        },
+      },
+      runtime: {
+        ml: { enabled: false },
+        ai: { enabled: false },
+      },
     });
+    const { strategy } = await makeRuntime(
+      () => decision,
+      {
+        ENV: 'BACKTEST',
+        BACKTEST_PRICE_MODE: 'open',
+        BACKTEST_ENTRY_DELAY_BARS: 1,
+        INTERVAL: '60',
+      },
+      {
+        backtestExecutionMarketData: {
+          interval: '15',
+          data: [
+            {
+              timestamp: 20 + 15 * 60_000,
+              open: 315,
+              high: 318,
+              low: 312,
+              close: 316,
+            },
+          ],
+          btcData: [
+            {
+              timestamp: 20 + 15 * 60_000,
+              open: 415,
+              high: 418,
+              low: 412,
+              close: 416,
+            },
+          ],
+        },
+      },
+    );
+
+    await strategy(
+      { timestamp: 10, open: 100, high: 115, low: 95, close: 110 } as any,
+      { timestamp: 10, open: 200, high: 215, low: 195, close: 210 } as any,
+    );
+
+    const executed = await (strategy as any).__tradejsFlushBacktestDelayedEntry(
+      { timestamp: 20, open: 300, high: 330, low: 290, close: 320 },
+      { timestamp: 20, open: 400, high: 430, low: 390, close: 420 },
+    );
+
+    expect(mockExecuteEntryOrder).toHaveBeenCalledWith(
+      expect.objectContaining({
+        currentPrice: 315,
+        timestamp: 900_020,
+      }),
+    );
+    expect((executed as any).additionalIndicators.backtestExecution).toEqual(
+      expect.objectContaining({
+        executionTimestamp: 900_020,
+        executionPrice: 315,
+        executionSource: 'lower_timeframe',
+        executionInterval: '15',
+        executionDelayMs: 900_000,
+        primaryExecutionTimestamp: 20,
+        requestedExecutionTimestamp: 900_020,
+      }),
+    );
   });
 
   it('passes execution-only market candles to delayed BACKTEST beforePlaceOrder hooks', async () => {
@@ -780,6 +1034,33 @@ describe('strategyRuntime', () => {
         BACKTEST_PRICE_MODE: 'open',
         BACKTEST_ENTRY_DELAY_BARS: 1,
       },
+      {
+        backtestExecutionMarketData: {
+          interval: '5',
+          data: [
+            {
+              timestamp: 20 + 5 * 60_000,
+              open: 300,
+              high: 302,
+              low: 298,
+              close: 301,
+              volume: 1,
+              turnover: 300,
+            },
+          ],
+          btcData: [
+            {
+              timestamp: 20 + 5 * 60_000,
+              open: 400,
+              high: 402,
+              low: 398,
+              close: 401,
+              volume: 1,
+              turnover: 400,
+            },
+          ],
+        },
+      },
     );
 
     await strategy(
@@ -810,7 +1091,7 @@ describe('strategyRuntime', () => {
     expect(beforePlaceOrder).toHaveBeenCalledTimes(1);
     const hookArg = (beforePlaceOrder.mock.calls as any[][])[0][0];
     expect(hookArg.market.candle).toMatchObject({
-      timestamp: 20,
+      timestamp: 300_020,
       open: 300,
       high: 300,
       low: 300,
@@ -819,7 +1100,7 @@ describe('strategyRuntime', () => {
       turnover: 0,
     });
     expect(hookArg.market.btcCandle).toMatchObject({
-      timestamp: 20,
+      timestamp: 300_020,
       open: 400,
       high: 400,
       low: 400,
@@ -836,11 +1117,37 @@ describe('strategyRuntime', () => {
         ai: { enabled: false },
       },
     });
-    const { strategy } = await makeRuntime(() => decision, {
-      ENV: 'BACKTEST',
-      BACKTEST_PRICE_MODE: 'open',
-      BACKTEST_ENTRY_DELAY_BARS: 1,
-    });
+    const { strategy } = await makeRuntime(
+      () => decision,
+      {
+        ENV: 'BACKTEST',
+        BACKTEST_PRICE_MODE: 'open',
+        BACKTEST_ENTRY_DELAY_BARS: 1,
+      },
+      {
+        backtestExecutionMarketData: {
+          interval: '5',
+          data: [
+            {
+              timestamp: 20 + 5 * 60_000,
+              open: 300,
+              high: 330,
+              low: 290,
+              close: 320,
+            },
+          ],
+          btcData: [
+            {
+              timestamp: 20 + 5 * 60_000,
+              open: 400,
+              high: 430,
+              low: 390,
+              close: 420,
+            },
+          ],
+        },
+      },
+    );
 
     await strategy(
       { timestamp: 10, open: 100, high: 115, low: 95, close: 110 } as any,

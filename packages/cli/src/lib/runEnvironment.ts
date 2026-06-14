@@ -4,8 +4,9 @@ import {
   getConnectorCreatorByName,
   resolveConnectorName,
 } from '@tradejs/node/connectors';
-import { getTickers } from '@tradejs/node/cli';
+import { getTickers, update } from '@tradejs/node/cli';
 import {
+  BACKTEST_EXECUTION_INTERVAL,
   BACKTEST_DEFAULT_DAYS,
   BACKTEST_PRELOAD_DAYS,
 } from '@tradejs/core/constants';
@@ -43,6 +44,19 @@ const timeOperation = async <T>(
   runTimedOperation(label, operation, (message) =>
     console.log(chalk.gray(message)),
   );
+
+export const resolveBacktestExecutionPreloadInterval = (
+  interval: Interval,
+): Interval | null => {
+  const normalized = String(interval);
+  if (normalized === '15') {
+    return BACKTEST_EXECUTION_INTERVAL as Interval;
+  }
+  if (normalized === '60') {
+    return '15' as Interval;
+  }
+  return null;
+};
 
 const resolveRunConnectorName = async ({
   value,
@@ -174,6 +188,27 @@ export const prepareRunEnvironment = async ({
       preloadEnd: window.end,
       log: (message) => console.log(chalk.gray(message)),
     });
+
+    const backtestExecutionInterval =
+      resolveBacktestExecutionPreloadInterval(interval);
+    if (
+      backtestExecutionInterval &&
+      String(backtestExecutionInterval) !== String(interval)
+    ) {
+      await timeOperation(`update ${connectorName} execution`, () =>
+        update(
+          marketConnector,
+          backtestExecutionInterval,
+          loadedTickers,
+          undefined,
+          {
+            connectorLabel: connectorName,
+            preloadStart,
+            preloadEnd: window.end,
+          },
+        ),
+      );
+    }
   }
 
   return {

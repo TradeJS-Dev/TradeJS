@@ -50,6 +50,56 @@ describe('resolveTimeWindow', () => {
       source: 'explicit',
     });
   });
+
+  it('uses days as lookback length when only explicit endTime is provided', () => {
+    const end = 1_700_000_000_000;
+
+    expect(
+      resolveTimeWindow({
+        days: 30,
+        endTime: end,
+        defaultStartMs: 1_600_000_000_000,
+        defaultEndMs: 1_800_000_000_000,
+      }),
+    ).toEqual({
+      start: end - 30 * 24 * 60 * 60 * 1000,
+      end,
+      source: 'explicit',
+    });
+  });
+
+  it('uses days as forward length when only explicit startTime is provided', () => {
+    const start = 1_700_000_000_000;
+
+    expect(
+      resolveTimeWindow({
+        days: 2,
+        startTime: start,
+        defaultStartMs: 1_600_000_000_000,
+        defaultEndMs: 1_800_000_000_000,
+      }),
+    ).toEqual({
+      start,
+      end: start + 2 * 24 * 60 * 60 * 1000,
+      source: 'explicit',
+    });
+  });
+
+  it('keeps explicit startTime and endTime authoritative over days', () => {
+    expect(
+      resolveTimeWindow({
+        days: 30,
+        startTime: 1_700_000_000_000,
+        endTime: 1_700_086_400_000,
+        defaultStartMs: 1_600_000_000_000,
+        defaultEndMs: 1_800_000_000_000,
+      }),
+    ).toEqual({
+      start: 1_700_000_000_000,
+      end: 1_700_086_400_000,
+      source: 'explicit',
+    });
+  });
 });
 
 describe('runtime parity helpers', () => {
@@ -326,6 +376,39 @@ describe('runtime parity helpers', () => {
           symbol: 'BTCUSDT',
           direction: 'LONG',
           timestamp: 1_100,
+          signalTimestamp: 1_000,
+          price: 101,
+        },
+      ],
+      toleranceMs: 0,
+      backtestTimestampOffsetMs: 900,
+    });
+
+    expect(comparison.matched).toHaveLength(1);
+    expect(comparison.matched[0].timestampDiffMs).toBe(0);
+  });
+
+  it('uses actual delayed backtest entry timestamp when it is after the replay offset', () => {
+    const comparison = compareTradeParityEntries({
+      runtimeEntries: [
+        {
+          id: 'runtime-1',
+          source: 'runtime',
+          strategy: 'TrendLine',
+          symbol: 'BTCUSDT',
+          direction: 'LONG',
+          timestamp: 2_200,
+          price: 100,
+        },
+      ],
+      backtestEntries: [
+        {
+          id: 'backtest-1',
+          source: 'backtest',
+          strategy: 'TrendLine',
+          symbol: 'BTCUSDT',
+          direction: 'LONG',
+          timestamp: 2_200,
           signalTimestamp: 1_000,
           price: 101,
         },

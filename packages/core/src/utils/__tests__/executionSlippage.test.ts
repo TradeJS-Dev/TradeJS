@@ -51,7 +51,7 @@ describe('executionSlippage utils', () => {
     ).toBeCloseTo(99.505, 3);
   });
 
-  it('caps delay risk and extracts it from signal candles', () => {
+  it('caps delay risk and disables default extracted delay risk', () => {
     expect(
       calculateDelayRiskBps({
         closes: [100, 110, 90],
@@ -70,7 +70,7 @@ describe('executionSlippage utils', () => {
         },
         additionalIndicators: {},
       }),
-    ).toBeCloseTo(3.7083, 4);
+    ).toBe(0);
   });
 
   it('applies adverse slippage for entry and exit prices', () => {

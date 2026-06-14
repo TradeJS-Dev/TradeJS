@@ -90,4 +90,49 @@ describe('market history prepare helpers', () => {
       },
     );
   });
+
+  it('adds ETH to primary market history preload without adding ETH to dedicated BTC references', async () => {
+    const marketConnector = { name: 'ByBit' };
+    const binanceConnector = { name: 'Binance' };
+    const coinbaseConnector = { name: 'Coinbase' };
+
+    await updateMarketHistoryWithBtcReferences({
+      marketConnector: marketConnector as any,
+      connectorName: 'ByBit',
+      btcReferences: {
+        binance: binanceConnector as any,
+        coinbase: coinbaseConnector as any,
+      },
+      interval: '15',
+      symbols: ['SOLUSDT'],
+      preloadStart: 1_000,
+      preloadEnd: 2_000,
+      log: jest.fn(),
+    });
+
+    expect(mockUpdate).toHaveBeenNthCalledWith(
+      1,
+      marketConnector,
+      '15',
+      ['SOLUSDT', 'ETHUSDT'],
+      undefined,
+      expect.any(Object),
+    );
+    expect(mockUpdate).toHaveBeenNthCalledWith(
+      2,
+      binanceConnector,
+      '15',
+      ['BTCUSDT'],
+      undefined,
+      expect.any(Object),
+    );
+    expect(mockUpdate).toHaveBeenNthCalledWith(
+      3,
+      coinbaseConnector,
+      '15',
+      ['BTCUSDT'],
+      undefined,
+      expect.any(Object),
+    );
+  });
 });

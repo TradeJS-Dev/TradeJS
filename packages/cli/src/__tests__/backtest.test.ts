@@ -419,6 +419,7 @@ describe('backtest script helpers', () => {
       expect.objectContaining({
         interval: '15',
         options: { start: 100, end: 200 },
+        timeoutMs: 600_000,
         strategyConfig: {
           MA_FAST: 10,
           ENV: 'BACKTEST',

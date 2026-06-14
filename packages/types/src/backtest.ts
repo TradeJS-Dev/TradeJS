@@ -41,6 +41,8 @@ export type BacktestPriceMode = 'mid' | 'close' | 'open';
 export interface StrategyConfig {
   BACKTEST_PRICE_MODE?: BacktestPriceMode;
   BACKTEST_ENTRY_DELAY_BARS?: number;
+  BACKTEST_EXECUTION_INTERVAL?: Interval;
+  BACKTEST_EXECUTION_DELAY_MS?: number;
   ML_ENABLED?: boolean;
   [key: string]: any;
 }
@@ -58,6 +60,13 @@ export interface StrategyCreatorParams {
   ethData?: KlineChartData;
   btcBinanceData?: KlineChartData;
   btcCoinbaseData?: KlineChartData;
+  backtestExecutionMarketData?: {
+    interval: Interval;
+    data: KlineChartData;
+    btcData?: KlineChartData;
+    dataByTimestamp?: Map<number, KlineChartItem>;
+    btcDataByTimestamp?: Map<number, KlineChartItem>;
+  };
   sharedIndicatorsReplayKey?: string;
   onRuntimeClose?: (event: RuntimeStrategyCloseNotification) => void;
 }

@@ -3,7 +3,6 @@ import { round } from '@tradejs/core/math';
 import {
   applyExecutionSlippage as applyModeledExecutionSlippage,
   calculateExecutionSlippageBreakdown,
-  extractExecutionDelayRiskBps,
   extractExecutionMarketImpactBps,
   extractExecutionSpreadBps,
 } from '@tradejs/core/trade';
@@ -190,8 +189,7 @@ export const createPortfolioReplayConnector = (
     const modelParams = {
       spreadBps: extractExecutionSpreadBps(signal),
       marketImpactBps: extractExecutionMarketImpactBps(signal),
-      delayRiskBps:
-        stage === 'entry' ? extractExecutionDelayRiskBps(signal) : null,
+      delayRiskBps: null,
     };
 
     return applyModeledExecutionSlippage({
@@ -212,8 +210,7 @@ export const createPortfolioReplayConnector = (
     calculateExecutionSlippageBreakdown({
       spreadBps: extractExecutionSpreadBps(signal),
       marketImpactBps: extractExecutionMarketImpactBps(signal),
-      delayRiskBps:
-        stage === 'entry' ? extractExecutionDelayRiskBps(signal) : null,
+      delayRiskBps: null,
     });
 
   const getExecutionSlippageLogData = (

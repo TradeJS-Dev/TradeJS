@@ -168,6 +168,7 @@ Stateful strategy best practices:
 - Engine construction must rebuild state by replaying `initialCandles` through the same transition path used for live candles. Do not only seed derived arrays from history while leaving pending/confirmation state empty.
 - `core.ts` should call the engine for the current candle and keep StrategyAPI side effects, position checks, order planning, and indicators payload wiring outside the detector engine.
 - Add unit coverage proving `initialCandles + next(lastCandle)` matches a continuous run, especially for strategies with pending confirmation on the next bar.
+- Do not change strategy engine or shared execution behavior unless the user explicitly asks for that implementation change. When a runtime/execution behavior change looks useful, propose it first and continue with data/config work unless approved.
 
 Runtime AI config conventions:
 

@@ -4,10 +4,7 @@ import {
   FEE_PERCENT,
   INITIAL_BACKTEST_AMOUNT,
 } from '@tradejs/core/constants';
-import {
-  calculateEffectiveSlippageBps,
-  extractExecutionDelayRiskBps,
-} from '@tradejs/core/trade';
+import { calculateEffectiveSlippageBps } from '@tradejs/core/trade';
 import { createPortfolioReplayConnector } from '../lib/replay/portfolioReplayConnector';
 
 describe('portfolio replay connector', () => {
@@ -196,7 +193,7 @@ describe('portfolio replay connector', () => {
     );
   });
 
-  it('adds signal delay risk to replay entry slippage only', async () => {
+  it('ignores signal delay risk in replay entry slippage', async () => {
     const connector = createPortfolioReplayConnector(baseConnector);
     const signal = {
       strategy: 'TrendLine',
@@ -206,12 +203,6 @@ describe('portfolio replay connector', () => {
       },
       additionalIndicators: {},
     };
-    const entrySlippageRate =
-      calculateEffectiveSlippageBps({
-        baseSlippageBps: BACKTEST_BASE_SLIPPAGE_BPS,
-        delayRiskBps: extractExecutionDelayRiskBps(signal),
-      }) / 10_000;
-
     await connector.placeOrder({
       symbol: 'BTCUSDT',
       qty: 1,
@@ -230,7 +221,7 @@ describe('portfolio replay connector', () => {
 
     const artifacts = connector.getReplayArtifacts();
     expect(artifacts.orderLog[0].price).toBeCloseTo(
-      100 * (1 + entrySlippageRate),
+      100 * (1 + backtestSlippageRate),
     );
     expect(artifacts.orderLog[1].price).toBeCloseTo(
       110 * (1 - backtestSlippageRate),
@@ -239,7 +230,7 @@ describe('portfolio replay connector', () => {
       expect.objectContaining({
         executionSlippageStage: 'entry',
         executionBaseSlippageBps: BACKTEST_BASE_SLIPPAGE_BPS,
-        executionDelayRiskBps: expect.any(Number),
+        executionDelayRiskBps: 0,
       }),
     );
     expect(artifacts.orderLog[1]).toEqual(

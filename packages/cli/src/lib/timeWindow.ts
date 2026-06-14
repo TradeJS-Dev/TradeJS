@@ -51,10 +51,19 @@ export const resolveTimeWindow = ({
 }: ResolveTimeWindowParams): ResolvedTimeWindow => {
   const explicitStart = toEpochMs(startTime);
   const explicitEnd = toEpochMs(endTime);
+  const resolvedDays = toPositiveNumber(days);
 
   if (explicitStart != null || explicitEnd != null) {
-    const resolvedEnd = explicitEnd ?? defaultEndMs ?? nowMs;
-    const resolvedStart = explicitStart ?? defaultStartMs;
+    const resolvedStart =
+      explicitStart ??
+      (resolvedDays != null && explicitEnd != null
+        ? explicitEnd - resolvedDays * ONE_DAY_MS
+        : defaultStartMs);
+    const resolvedEnd =
+      explicitEnd ??
+      (resolvedDays != null && explicitStart != null
+        ? explicitStart + resolvedDays * ONE_DAY_MS
+        : defaultEndMs ?? nowMs);
 
     if (resolvedStart >= resolvedEnd) {
       throw new Error(
@@ -69,7 +78,6 @@ export const resolveTimeWindow = ({
     };
   }
 
-  const resolvedDays = toPositiveNumber(days);
   if (resolvedDays != null) {
     const resolvedEnd = defaultEndMs ?? nowMs;
     const resolvedStart = resolvedEnd - resolvedDays * ONE_DAY_MS;

@@ -187,25 +187,25 @@ export const update = async (
     );
   }
 
+  const queue = [...new Set(tickers.slice())];
+
+  if (!queue.includes('BTCUSDT')) {
+    queue.unshift('BTCUSDT');
+  }
+
   const bar = new ProgressBar(
     ':current/:total [:bar][:percent] :eta(s) :symbol',
     {
-      total: tickers.length,
+      total: queue.length,
       width: 30,
     },
   );
 
   logger.info(
     chalk.yellow(
-      `update: ${tickers.length} (connector=${connectorLabel || 'unknown'}, klineConcurrency=${KLINE_CONCURRENCY_LIMIT}, ${preloadLabel})`,
+      `update: ${queue.length} (connector=${connectorLabel || 'unknown'}, interval=${interval}, klineConcurrency=${KLINE_CONCURRENCY_LIMIT}, ${preloadLabel})`,
     ),
   );
-
-  const queue = tickers.slice();
-
-  if (!queue.includes('BTCUSDT')) {
-    queue.unshift('BTCUSDT');
-  }
 
   await runWithConcurrency(queue, KLINE_CONCURRENCY_LIMIT, async (symbol) => {
     try {

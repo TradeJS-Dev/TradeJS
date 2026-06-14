@@ -960,23 +960,6 @@ const buildRecommendation = (
     .filter(
       (value): value is number => value != null && Number.isFinite(value),
     );
-  const delayRatios = fullTelemetrySamples
-    .map((sample) => {
-      if (
-        sample.signalToArrivalAdverseBps == null ||
-        sample.rawConfiguredDelayRiskBps == null ||
-        sample.rawConfiguredDelayRiskBps <= 0
-      ) {
-        return null;
-      }
-      return (
-        Math.max(0, sample.signalToArrivalAdverseBps) /
-        sample.rawConfiguredDelayRiskBps
-      );
-    })
-    .filter(
-      (value): value is number => value != null && Number.isFinite(value),
-    );
   const closeDelayMs = positiveMetricValues(
     fullTelemetrySamples,
     'signalCloseToSubmitMs',
@@ -991,11 +974,9 @@ const buildRecommendation = (
       'Spread multiplier could not be calibrated because spreadBps or arrival-to-fill telemetry is missing.',
     );
   }
-  if (!delayRatios.length) {
-    notes.push(
-      'Delay risk multiplier could not be calibrated because signal candles or signal-to-arrival telemetry is missing.',
-    );
-  }
+  notes.push(
+    'Delay risk bps is disabled; signal-to-arrival latency is modeled by delayed lower-timeframe backtest fills.',
+  );
 
   return {
     confidence:
@@ -1006,14 +987,8 @@ const buildRecommendation = (
           : 'low',
     baseSlippageBps: roundMetric(quantile(baseResiduals, 0.75), 2),
     spreadMultiplier,
-    delayRiskMultiplier: roundMetric(quantile(delayRatios, 0.75), 4),
-    delayRiskMaxBps: roundMetric(
-      quantile(
-        positiveMetricValues(fullTelemetrySamples, 'signalToArrivalAdverseBps'),
-        0.95,
-      ),
-      2,
-    ),
+    delayRiskMultiplier: null,
+    delayRiskMaxBps: null,
     expectedDelayMs: roundMetric(
       quantile(closeDelayMs.length ? closeDelayMs : fallbackDelayMs, 0.5),
       0,
