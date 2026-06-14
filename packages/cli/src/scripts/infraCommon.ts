@@ -34,6 +34,14 @@ const DEV_COMPOSE_TEMPLATE = `services:
       POSTGRES_DB: \${PG_DB:-app}
     ports:
       - "5432:5432"
+    command:
+      - postgres
+      - -c
+      - max_wal_size=16GB
+      - -c
+      - min_wal_size=2GB
+      - -c
+      - checkpoint_completion_target=0.9
     volumes:
       - tradejs_pgdata:/var/lib/postgresql/data
     healthcheck:

@@ -1,10 +1,15 @@
 import { createTimescaleCachedKline } from '../timescaleKlineCache';
+import { delay } from '@tradejs/core/async';
 import {
   getCandlesRange,
   getDataEdges,
   toRows,
   upsertCandles,
 } from '@tradejs/infra/timescale';
+
+jest.mock('@tradejs/core/async', () => ({
+  delay: jest.fn(async () => undefined),
+}));
 
 jest.mock('@tradejs/infra/timescale', () => ({
   getCandlesRange: jest.fn(),
@@ -34,10 +39,13 @@ const mockedToRows = toRows as jest.MockedFunction<typeof toRows>;
 const mockedUpsertCandles = upsertCandles as jest.MockedFunction<
   typeof upsertCandles
 >;
+const mockedDelay = delay as jest.MockedFunction<typeof delay>;
 
 describe('createTimescaleCachedKline', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    delete process.env.TIMESCALE_KLINE_RETRIES;
+    delete process.env.TIMESCALE_KLINE_RETRY_DELAY_MS;
   });
 
   afterEach(() => {
@@ -189,7 +197,53 @@ describe('createTimescaleCachedKline', () => {
     );
   });
 
-  it('falls back to exchange request when Timescale read fails', async () => {
+  it('retries a transient Timescale failure before using exchange fallback', async () => {
+    mockedGetDataEdges
+      .mockRejectedValueOnce(
+        new Error('timeout exceeded when trying to connect'),
+      )
+      .mockResolvedValueOnce({ min: 60_000, max: 120_000 });
+    mockedGetCandlesRange.mockResolvedValue([
+      {
+        ts: new Date(60_000),
+        open: 1,
+        high: 2,
+        low: 0.5,
+        close: 1.5,
+        volume: 10,
+        turnover: 20,
+      } as any,
+    ]);
+
+    const request = jest.fn();
+
+    const kline = createTimescaleCachedKline({
+      provider: 'binance',
+      request,
+      intervalToMinutes: () => 1,
+    });
+
+    await expect(
+      kline({
+        symbol: 'BTCUSDT',
+        interval: '1',
+        start: 60_000,
+        end: 120_000,
+        silent: true,
+      }),
+    ).resolves.toEqual([
+      expect.objectContaining({
+        timestamp: 60_000,
+        close: 1.5,
+      }),
+    ]);
+
+    expect(mockedGetDataEdges).toHaveBeenCalledTimes(2);
+    expect(mockedDelay).toHaveBeenCalledWith(1_000);
+    expect(request).not.toHaveBeenCalled();
+  });
+
+  it('falls back to exchange request when Timescale retries are exhausted', async () => {
     mockedGetDataEdges.mockRejectedValue(new Error('db down'));
 
     const request = jest.fn().mockResolvedValue([
@@ -204,6 +258,8 @@ describe('createTimescaleCachedKline', () => {
         dt: new Date(1_000).toISOString(),
       },
     ]);
+
+    process.env.TIMESCALE_KLINE_RETRY_DELAY_MS = '0';
 
     const kline = createTimescaleCachedKline({
       provider: 'binance',
@@ -225,6 +281,7 @@ describe('createTimescaleCachedKline', () => {
       }),
     ]);
 
+    expect(mockedGetDataEdges).toHaveBeenCalledTimes(3);
     expect(request).toHaveBeenCalledTimes(1);
     expect(mockedGetCandlesRange).not.toHaveBeenCalled();
     expect(mockedUpsertCandles).not.toHaveBeenCalled();

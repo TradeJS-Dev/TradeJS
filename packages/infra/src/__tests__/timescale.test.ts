@@ -3,6 +3,8 @@ describe('timescale candle helpers', () => {
     jest.resetModules();
     jest.clearAllMocks();
     jest.restoreAllMocks();
+    delete process.env.PG_POOL_MAX;
+    delete process.env.PG_CONNECTION_TIMEOUT_MS;
     delete (global as typeof globalThis & { __pgPool__?: unknown }).__pgPool__;
   });
 
@@ -167,6 +169,31 @@ describe('timescale candle helpers', () => {
     expect(
       (global as typeof globalThis & { __pgPool__?: unknown }).__pgPool__,
     ).toBeUndefined();
+  });
+
+  it('uses configurable pool size and a longer connection timeout', async () => {
+    process.env.PG_POOL_MAX = '17';
+    process.env.PG_CONNECTION_TIMEOUT_MS = '45000';
+
+    const query = jest.fn().mockResolvedValue({ rows: [] });
+    const Pool = jest.fn().mockImplementation(() => ({
+      connect: jest.fn(),
+      query,
+      end: jest.fn(),
+    }));
+
+    jest.doMock('pg', () => ({ Pool }));
+
+    const { getCandlesRange } = await import('@tradejs/infra/timescale');
+
+    await getCandlesRange('ByBit', 'btcusdt', 15, 1_000, 2_000);
+
+    expect(Pool).toHaveBeenCalledWith(
+      expect.objectContaining({
+        max: 17,
+        connectionTimeoutMillis: 45_000,
+      }),
+    );
   });
 
   it('scopes candle reads and deletes by provider', async () => {

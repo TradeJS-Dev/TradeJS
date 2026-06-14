@@ -1589,6 +1589,7 @@ describe('ByBitConnectorCreator', () => {
   });
 
   it('retries getKline on retCode 10006 using rate-limit reset timestamp', async () => {
+    process.env.TIMESCALE_KLINE_RETRIES = '0';
     const now = Date.now();
     mockedGetDataEdges.mockRejectedValue(new Error('db down'));
     const client = {

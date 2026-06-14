@@ -1,6 +1,7 @@
 import { PRELOAD_FALLBACK_DAYS } from '@tradejs/core/constants';
 import { mergeData } from '@tradejs/core/data';
 import { getItemTimestamp, getTimestamp } from '@tradejs/core/time';
+import { delay } from '@tradejs/core/async';
 import { logger } from '@tradejs/infra/logger';
 import {
   getCandlesRange,
@@ -22,6 +23,28 @@ type TimescaleKlineCacheOptions = {
 
 const DEFAULT_LIMIT = 1000;
 const DEFAULT_CACHE_FALLBACK_WINDOW = 1000;
+const DEFAULT_TIMESCALE_RETRIES = 2;
+const DEFAULT_TIMESCALE_RETRY_DELAY_MS = 1_000;
+
+const resolveNonNegativeInt = (value: string | undefined, fallback: number) => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    return fallback;
+  }
+  return Math.floor(parsed);
+};
+
+const getTimescaleRetryCount = () =>
+  resolveNonNegativeInt(
+    process.env.TIMESCALE_KLINE_RETRIES,
+    DEFAULT_TIMESCALE_RETRIES,
+  );
+
+const getTimescaleRetryDelayMs = () =>
+  resolveNonNegativeInt(
+    process.env.TIMESCALE_KLINE_RETRY_DELAY_MS,
+    DEFAULT_TIMESCALE_RETRY_DELAY_MS,
+  );
 
 const intervalMsOf = (interval: number) => interval * 60_000;
 
@@ -55,6 +78,26 @@ export const createTimescaleCachedKline = ({
   cacheFallbackWindow = DEFAULT_CACHE_FALLBACK_WINDOW,
 }: TimescaleKlineCacheOptions): Kline => {
   let isTimescaleFallbackMode = false;
+
+  const runTimescaleOperation = async <T>(operation: () => Promise<T>) => {
+    const retries = getTimescaleRetryCount();
+    const retryDelayMs = getTimescaleRetryDelayMs();
+
+    for (let attempt = 0; ; attempt += 1) {
+      try {
+        return await operation();
+      } catch (error) {
+        if (attempt >= retries) {
+          throw error;
+        }
+
+        const waitMs = retryDelayMs * 2 ** attempt;
+        if (waitMs > 0) {
+          await delay(waitMs);
+        }
+      }
+    }
+  };
 
   const loadData = async (
     direction: 'older' | 'newer',
@@ -154,7 +197,9 @@ export const createTimescaleCachedKline = ({
     });
 
     if (part.length) {
-      await upsertCandles(toRows(provider, symbol, intMinutes, part));
+      await runTimescaleOperation(() =>
+        upsertCandles(toRows(provider, symbol, intMinutes, part)),
+      );
     }
   };
 
@@ -184,7 +229,9 @@ export const createTimescaleCachedKline = ({
     const intervalMs = intervalMsOf(intMinutes);
 
     try {
-      const edges = await getDataEdges(provider, symbol, intMinutes);
+      const edges = await runTimescaleOperation(() =>
+        getDataEdges(provider, symbol, intMinutes),
+      );
       let dataStart = edges.min;
       let dataEnd = edges.max;
 
@@ -201,12 +248,8 @@ export const createTimescaleCachedKline = ({
           0,
         );
         const e = defaultEnd ?? base;
-        const dbData = await getCandlesRange(
-          provider,
-          symbol,
-          intMinutes,
-          s,
-          e,
+        const dbData = await runTimescaleOperation(() =>
+          getCandlesRange(provider, symbol, intMinutes, s, e),
         );
         return rowsToKline(dbData);
       }
@@ -236,7 +279,9 @@ export const createTimescaleCachedKline = ({
         );
 
         if (olderData.length) {
-          await upsertCandles(toRows(provider, symbol, intMinutes, olderData));
+          await runTimescaleOperation(() =>
+            upsertCandles(toRows(provider, symbol, intMinutes, olderData)),
+          );
           dataStart = normStart;
         }
       }
@@ -262,7 +307,9 @@ export const createTimescaleCachedKline = ({
         );
 
         if (newerData.length) {
-          await upsertCandles(toRows(provider, symbol, intMinutes, newerData));
+          await runTimescaleOperation(() =>
+            upsertCandles(toRows(provider, symbol, intMinutes, newerData)),
+          );
           dataEnd = normEnd;
         }
       }
@@ -288,12 +335,8 @@ export const createTimescaleCachedKline = ({
       const { normStart: finalStart, normEnd: finalEnd } =
         normalizeRangeToClosed(intervalMs, rangeStart, rangeEnd);
 
-      const dbData = await getCandlesRange(
-        provider,
-        symbol,
-        intMinutes,
-        finalStart,
-        finalEnd,
+      const dbData = await runTimescaleOperation(() =>
+        getCandlesRange(provider, symbol, intMinutes, finalStart, finalEnd),
       );
 
       if (isTimescaleFallbackMode) {

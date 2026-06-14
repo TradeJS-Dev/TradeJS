@@ -25,6 +25,10 @@ const getPool = () => {
     const user = process.env.PG_USER || 'app';
     const password = String(process.env.PG_PASSWORD ?? 'app');
     const database = process.env.PG_DATABASE || process.env.PG_DB || 'app';
+    const max = Number(process.env.PG_POOL_MAX ?? 10);
+    const connectionTimeoutMillis = Number(
+      process.env.PG_CONNECTION_TIMEOUT_MS ?? 30_000,
+    );
 
     global.__pgPool__ = new Pool({
       host,
@@ -32,9 +36,12 @@ const getPool = () => {
       user,
       password,
       database,
-      max: 10,
+      max: Number.isFinite(max) && max > 0 ? Math.floor(max) : 10,
       idleTimeoutMillis: 30_000,
-      connectionTimeoutMillis: 5_000,
+      connectionTimeoutMillis:
+        Number.isFinite(connectionTimeoutMillis) && connectionTimeoutMillis > 0
+          ? Math.floor(connectionTimeoutMillis)
+          : 30_000,
     });
   }
   return global.__pgPool__;
