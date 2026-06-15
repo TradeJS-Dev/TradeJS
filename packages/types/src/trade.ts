@@ -221,6 +221,31 @@ export type MarketCmcExchangeLiquidityContextRow = {
   liquidityRegime?: CmcExchangeLiquidityRegime | null;
 };
 
+export type CmcFearGreedClassification =
+  | 'Extreme Fear'
+  | 'Fear'
+  | 'Neutral'
+  | 'Greed'
+  | 'Extreme Greed'
+  | 'Unknown';
+
+export type CmcFearGreedRegime =
+  | 'capitulation'
+  | 'risk_off'
+  | 'neutral'
+  | 'risk_on'
+  | 'euphoric'
+  | 'unknown';
+
+export type MarketCmcFearGreedContextRow = {
+  source: 'coinmarketcap_fear_greed';
+  interval: '1d';
+  ts: Date;
+  value: number;
+  classification: CmcFearGreedClassification;
+  sentimentRegime: CmcFearGreedRegime;
+};
+
 export type MarketBreadthRow = {
   universe: string;
   interval: MarketFeatureInterval;

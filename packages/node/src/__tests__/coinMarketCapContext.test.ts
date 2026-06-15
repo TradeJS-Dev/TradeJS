@@ -2,6 +2,7 @@ const mockGetLatestMarketGlobalContext = jest.fn();
 const mockGetLatestMarketReferenceAssetContexts = jest.fn();
 const mockGetLatestMarketCmcBreadthContext = jest.fn();
 const mockGetLatestMarketCmcExchangeLiquidityContext = jest.fn();
+const mockGetLatestMarketCmcFearGreedContext = jest.fn();
 const mockLoggerWarn = jest.fn();
 
 jest.mock('@tradejs/infra/timescale', () => ({
@@ -9,6 +10,8 @@ jest.mock('@tradejs/infra/timescale', () => ({
     mockGetLatestMarketCmcBreadthContext(...args),
   getLatestMarketCmcExchangeLiquidityContext: (...args: unknown[]) =>
     mockGetLatestMarketCmcExchangeLiquidityContext(...args),
+  getLatestMarketCmcFearGreedContext: (...args: unknown[]) =>
+    mockGetLatestMarketCmcFearGreedContext(...args),
   getLatestMarketGlobalContext: (...args: unknown[]) =>
     mockGetLatestMarketGlobalContext(...args),
   getLatestMarketReferenceAssetContexts: (...args: unknown[]) =>
@@ -157,6 +160,18 @@ describe('strategyHelpers/coinMarketCapContext', () => {
       topExchangeVolumeShare: '0.45',
       liquidityRegime: 'balanced',
     });
+    mockGetLatestMarketCmcFearGreedContext.mockResolvedValue({
+      source: 'coinmarketcap_fear_greed',
+      interval: '1d',
+      ts: new Date(timestamp),
+      ageMs: 0,
+      stale: false,
+      value: 62,
+      valueChange24h: 8,
+      valueChange7d: 15,
+      classification: 'Greed',
+      sentimentRegime: 'risk_on',
+    });
     mockGetLatestMarketReferenceAssetContexts
       .mockResolvedValueOnce(makeReferenceMap(timestamp))
       .mockResolvedValueOnce(makeReferenceMap(timestamp))
@@ -259,6 +274,15 @@ describe('strategyHelpers/coinMarketCapContext', () => {
         totalVolumeChange24hPct: 0.18,
         liquidityRegime: 'expanding',
       },
+      cmcFearGreed: {
+        source: 'coinmarketcap_fear_greed',
+        stale: false,
+        value: 62,
+        valueChange24h: 8,
+        valueChange7d: 15,
+        classification: 'Greed',
+        sentimentRegime: 'risk_on',
+      },
     });
     expect(signal.additionalIndicators.baseContext.gateFeatures).toMatchObject({
       relative: {
@@ -266,12 +290,14 @@ describe('strategyHelpers/coinMarketCapContext', () => {
         cmcEthBtcAligned: null,
         cmcMarketBreadthAligned: true,
         cmcExchangeLiquidityAligned: true,
+        cmcFearGreedAligned: true,
       },
       confirmations: {
         items: expect.arrayContaining([
           'cmc_alt_liquidity_aligned',
           'cmc_market_breadth_aligned',
           'cmc_exchange_liquidity_aligned',
+          'cmc_fear_greed_aligned',
         ]),
       },
     });

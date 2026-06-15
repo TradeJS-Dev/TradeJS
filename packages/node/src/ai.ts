@@ -225,6 +225,7 @@ Input payload structure:
   • \`marketContext.relative.cmcReferenceAssets\`: historical CoinMarketCap BTC/ETH market-cap and volume context, ETH/BTC market-cap ratio, ETH-vs-BTC volume ratio, \`interval\`, and \`referenceLiquidityRegime\`.
   • \`marketContext.relative.cmcMarketBreadth\`: historical CoinMarketCap top-N listings breadth: positive 24h/7d share, median/average returns, dispersion, concentration, stablecoin share, and \`breadthRegime\`.
   • \`marketContext.relative.cmcExchangeLiquidity\`: historical CoinMarketCap major-exchange liquidity aggregate: total volume, 24h volume change, Binance share, concentration, and \`liquidityRegime\`.
+  • \`marketContext.relative.cmcFearGreed\`: historical daily CoinMarketCap Fear & Greed sentiment index: value, classification, 24h/7d value changes, and \`sentimentRegime\`.
   • \`marketContext.relative.referenceTradeFlow\`: BTC/ETH reference trade-flow summary used for broad market pressure when the target symbol itself is not BTC/ETH.
   If those fields exist, use them as a more explicit hint instead of trying to re-derive the same idea from raw lines or points.
   If \`baseContext.derivatives\` exists, it is a derived Coinalyze summary for the time of the signal. Coinalyze context is built only from \`BTCUSDT\` and \`ETHUSDT\` reference symbols, not for every target coin. \`targetSymbol\` is just the source signal coin. Use BTC/ETH open interest, funding, liquidations, and pressure/riskFlags as positioning context, not as an independent trade idea.
@@ -261,6 +262,7 @@ Explicit conflict rules:
 - If \`marketContext.relative.cmcReferenceAssets.available=true\` and \`stale=false\`, use \`eth_led\` as broad support for ETH/high-beta alt strength and \`btc_led\`/\`thin\` as broad caution. Do not describe BTC/ETH reference history as target-symbol flow.
 - If \`marketContext.relative.cmcMarketBreadth.available=true\` and \`stale=false\`, use \`risk_on\`/\`alt_broadening\` as broad support for alt LONGs and \`risk_off\`/\`btc_concentrated\` as broad pressure. Do not treat CMC listings breadth as target-symbol confirmation.
 - If \`marketContext.relative.cmcExchangeLiquidity.available=true\` and \`stale=false\`, treat \`contracting\`, \`thin\`, or \`concentrated\` as broad liquidity risk; \`expanding\` or \`balanced\` supports cleaner execution context but is not a standalone entry reason.
+- If \`marketContext.relative.cmcFearGreed.available=true\` and \`stale=false\`, use \`risk_on\` as broad support for LONGs and \`risk_off\`/\`capitulation\` as broad pressure. Treat \`euphoric\` as overheating/chase caution, not as standalone SHORT proof.
 - If \`marketContext.relative.referenceTradeFlow.available=true\`, treat BTC/ETH trade-flow as broad market context only. For alt symbols, do not describe it as the target coin's own flow.
 - If the current signal is not confirmed (\`direction=null\`), name the main reason briefly in \`comment\`.
   If you use the structured fields, include the main reason in \`qualityReason\` or \`triggerInvalidation\`.

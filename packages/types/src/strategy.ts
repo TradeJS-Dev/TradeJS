@@ -10,6 +10,8 @@ import {
   Tp,
   Candle,
   CmcExchangeLiquidityRegime,
+  CmcFearGreedClassification,
+  CmcFearGreedRegime,
   CmcMarketBreadthRegime,
   DerivativesContext,
   MarketFeatureInterval,
@@ -734,6 +736,18 @@ export interface BaseRelativeContext {
     topExchangeVolumeShare: number | null;
     liquidityRegime: CmcExchangeLiquidityRegime;
   };
+  cmcFearGreed?: {
+    source: 'coinmarketcap_fear_greed';
+    interval: '1d';
+    asOfTs: number | null;
+    ageMs: number | null;
+    stale: boolean;
+    value: number | null;
+    valueChange24h: number | null;
+    valueChange7d: number | null;
+    classification: CmcFearGreedClassification;
+    sentimentRegime: CmcFearGreedRegime;
+  };
   referenceTradeFlow?: {
     source: 'binance_reference_market';
     primaryReferenceSymbol: string;
@@ -799,6 +813,7 @@ export type BaseGateFeatureConfirmation =
   | 'cmc_eth_btc_aligned'
   | 'cmc_market_breadth_aligned'
   | 'cmc_exchange_liquidity_aligned'
+  | 'cmc_fear_greed_aligned'
   | 'target_vs_btc_aligned'
   | 'target_vs_eth_aligned'
   | 'btc_alt_regime_aligned'
@@ -817,6 +832,7 @@ export type BaseGateFeatureConflict =
   | 'cmc_eth_btc_against'
   | 'cmc_market_breadth_against'
   | 'cmc_exchange_liquidity_against'
+  | 'cmc_fear_greed_against'
   | 'target_vs_btc_against'
   | 'target_vs_eth_against'
   | 'btc_alt_regime_against'
@@ -954,6 +970,11 @@ export interface BaseContextGateFeatures {
     cmcExchangeLiquidityAligned: boolean | null;
     cmcExchangeLiquidityStale: boolean | null;
     cmcExchangeLiquidityVolumeChange24hPct: number | null;
+    cmcFearGreedValue: number | null;
+    cmcFearGreedValueChange24h: number | null;
+    cmcFearGreedRegime: CmcFearGreedRegime;
+    cmcFearGreedAligned: boolean | null;
+    cmcFearGreedStale: boolean | null;
     targetVsBtcRatioReturn24h: number | null;
     targetVsBtcAlpha24h: number | null;
     targetVsBtcBeta20: number | null;

@@ -499,6 +499,46 @@ describe('timescale candle helpers', () => {
       ) {
         return { rows: [{ totalVolumeUsd: '80' }] };
       }
+      if (sql.includes('FROM market_context_backfill_coverage')) {
+        return {
+          rows: [
+            {
+              source: 'coinmarketcap_fear_greed',
+              scope: 'all',
+              interval: '1d',
+              from_ms: '1000',
+              to_ms: '2000',
+              rows_count: '1',
+            },
+          ],
+        };
+      }
+      if (
+        sql.includes('FROM market_cmc_fear_greed_context') &&
+        sql.includes("interval '7 days'")
+      ) {
+        return { rows: [{ value: 30 }] };
+      }
+      if (
+        sql.includes('FROM market_cmc_fear_greed_context') &&
+        sql.includes("interval '24 hours'")
+      ) {
+        return { rows: [{ value: 35 }] };
+      }
+      if (sql.includes('FROM market_cmc_fear_greed_context')) {
+        return {
+          rows: [
+            {
+              source: 'coinmarketcap_fear_greed',
+              interval: '1d',
+              ts: new Date(9_500),
+              value: 42,
+              classification: 'Fear',
+              sentimentRegime: 'risk_off',
+            },
+          ],
+        };
+      }
       if (sql.includes('FROM market_cmc_exchange_liquidity_context')) {
         return {
           rows: [
@@ -529,8 +569,12 @@ describe('timescale candle helpers', () => {
     const {
       getLatestMarketCmcBreadthContext,
       getLatestMarketCmcExchangeLiquidityContext,
+      getLatestMarketCmcFearGreedContext,
+      getMarketContextBackfillCoverage,
       upsertMarketCmcBreadthContextRows,
       upsertMarketCmcExchangeLiquidityContextRows,
+      upsertMarketCmcFearGreedContextRows,
+      upsertMarketContextBackfillCoverage,
     } = await import('@tradejs/infra/timescale');
 
     await upsertMarketCmcBreadthContextRows([
@@ -556,6 +600,26 @@ describe('timescale candle helpers', () => {
         binanceVolumeShare: 0.45,
         topExchangeVolumeShare: 0.45,
         liquidityRegime: 'balanced',
+      },
+    ]);
+    await upsertMarketCmcFearGreedContextRows([
+      {
+        source: 'coinmarketcap_fear_greed',
+        interval: '1d',
+        ts: new Date(9_500),
+        value: 42,
+        classification: 'Fear',
+        sentimentRegime: 'risk_off',
+      },
+    ]);
+    await upsertMarketContextBackfillCoverage([
+      {
+        source: 'coinmarketcap_fear_greed',
+        scope: 'all',
+        interval: '1d',
+        fromMs: 1_000,
+        toMs: 2_000,
+        rowsCount: 1,
       },
     ]);
 
@@ -587,6 +651,41 @@ describe('timescale candle helpers', () => {
       stale: false,
       totalVolumeChange24hPct: 0.25,
     });
+    await expect(
+      getLatestMarketCmcFearGreedContext({
+        source: 'coinmarketcap_fear_greed',
+        interval: '1d',
+        atMs,
+        maxAgeMs: 1_000,
+      }),
+    ).resolves.toMatchObject({
+      source: 'coinmarketcap_fear_greed',
+      ageMs: 500,
+      stale: false,
+      value: 42,
+      classification: 'Fear',
+      sentimentRegime: 'risk_off',
+      valueChange24h: 7,
+      valueChange7d: 12,
+    });
+    await expect(
+      getMarketContextBackfillCoverage({
+        source: 'coinmarketcap_fear_greed',
+        scopes: ['all'],
+        interval: '1d',
+        fromMs: 1_000,
+        toMs: 2_000,
+      }),
+    ).resolves.toEqual([
+      {
+        source: 'coinmarketcap_fear_greed',
+        scope: 'all',
+        interval: '1d',
+        fromMs: 1_000,
+        toMs: 2_000,
+        rowsCount: 1,
+      },
+    ]);
 
     expect(query).toHaveBeenCalledWith(
       expect.stringContaining('INSERT INTO market_cmc_breadth_context'),
@@ -605,6 +704,28 @@ describe('timescale candle helpers', () => {
         'coinmarketcap_exchange_liquidity',
         '1d',
         new Date(9_000),
+      ]),
+    );
+    expect(query).toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO market_cmc_fear_greed_context'),
+      expect.arrayContaining([
+        'coinmarketcap_fear_greed',
+        '1d',
+        new Date(9_500),
+        42,
+        'Fear',
+        'risk_off',
+      ]),
+    );
+    expect(query).toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO market_context_backfill_coverage'),
+      expect.arrayContaining([
+        'coinmarketcap_fear_greed',
+        'all',
+        '1d',
+        new Date(1_000),
+        new Date(2_000),
+        1,
       ]),
     );
   });

@@ -1650,6 +1650,17 @@ describe('ai helpers', () => {
               topExchangeVolumeShare: 0.45,
               liquidityRegime: 'expanding',
             },
+            cmcFearGreed: {
+              source: 'coinmarketcap_fear_greed',
+              interval: '1d',
+              asOfTs: Date.UTC(2026, 0, 1),
+              stale: false,
+              value: 62,
+              valueChange24h: 8,
+              valueChange7d: 15,
+              classification: 'Greed',
+              sentimentRegime: 'risk_on',
+            },
             execution: {
               ...signal.additionalIndicators.baseContext.relative.execution,
               venueSpread: 0.0012,
@@ -1737,6 +1748,15 @@ describe('ai helpers', () => {
               totalVolumeChange24hPct: 0.18,
               liquidityRegime: 'expanding',
             },
+            cmcFearGreed: {
+              source: 'coinmarketcap_fear_greed',
+              available: true,
+              value: 62,
+              valueChange24h: 8,
+              valueChange7d: 15,
+              classification: 'Greed',
+              sentimentRegime: 'risk_on',
+            },
           },
         },
       );
@@ -1794,6 +1814,7 @@ describe('ai helpers', () => {
       expect(prompt).toContain('marketContext.relative.cmcReferenceAssets');
       expect(prompt).toContain('marketContext.relative.cmcMarketBreadth');
       expect(prompt).toContain('marketContext.relative.cmcExchangeLiquidity');
+      expect(prompt).toContain('marketContext.relative.cmcFearGreed');
       expect(prompt).toContain('Short few-shot examples');
       expect(prompt).toContain('Do not add any other fields');
       expect(prompt).not.toContain('помощник крипто-трейдера');

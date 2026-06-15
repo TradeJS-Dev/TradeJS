@@ -1,4 +1,8 @@
-import type { Signal } from '@tradejs/types';
+import type {
+  CmcFearGreedClassification,
+  CmcFearGreedRegime,
+  Signal,
+} from '@tradejs/types';
 
 type SpreadBias = 'coinbase_premium' | 'binance_premium' | 'flat';
 type SpreadSeverity = 'normal' | 'elevated' | 'wide';
@@ -196,6 +200,18 @@ export type AiMarketContext = {
         | 'thin'
         | 'unknown'
         | null;
+    };
+    cmcFearGreed: {
+      source: string | null;
+      available: boolean;
+      interval: string | null;
+      asOfTs: number | null;
+      stale: boolean | null;
+      value: number | null;
+      valueChange24h: number | null;
+      valueChange7d: number | null;
+      classification: CmcFearGreedClassification | null;
+      sentimentRegime: CmcFearGreedRegime | null;
     };
     referenceTradeFlow: {
       source: string | null;
@@ -752,6 +768,47 @@ const buildCmcExchangeLiquidityContextFromSignal = (signal: Signal) => {
   };
 };
 
+const buildCmcFearGreedContextFromSignal = (signal: Signal) => {
+  const baseContext = toRecord(signal.additionalIndicators?.baseContext);
+  const relative = toRecord(baseContext?.relative);
+  const cmcFearGreed = toRecord(relative?.cmcFearGreed);
+
+  if (!cmcFearGreed) {
+    return {
+      source: null,
+      available: false,
+      interval: null,
+      asOfTs: null,
+      stale: null,
+      value: null,
+      valueChange24h: null,
+      valueChange7d: null,
+      classification: null,
+      sentimentRegime: null,
+    };
+  }
+
+  return {
+    source: String(cmcFearGreed.source ?? ''),
+    available: true,
+    interval:
+      typeof cmcFearGreed.interval === 'string' ? cmcFearGreed.interval : null,
+    asOfTs: toFiniteNumber(cmcFearGreed.asOfTs),
+    stale: typeof cmcFearGreed.stale === 'boolean' ? cmcFearGreed.stale : null,
+    value: toFiniteNumber(cmcFearGreed.value),
+    valueChange24h: toFiniteNumber(cmcFearGreed.valueChange24h),
+    valueChange7d: toFiniteNumber(cmcFearGreed.valueChange7d),
+    classification:
+      typeof cmcFearGreed.classification === 'string'
+        ? (cmcFearGreed.classification as CmcFearGreedClassification)
+        : null,
+    sentimentRegime:
+      typeof cmcFearGreed.sentimentRegime === 'string'
+        ? (cmcFearGreed.sentimentRegime as CmcFearGreedRegime)
+        : null,
+  };
+};
+
 const buildReferenceTradeFlowContextFromSignal = (signal: Signal) => {
   const baseContext = toRecord(signal.additionalIndicators?.baseContext);
   const relative = toRecord(baseContext?.relative);
@@ -810,6 +867,7 @@ export const buildAiMarketContext = (signal: Signal): AiMarketContext => ({
     cmcReferenceAssets: buildCmcReferenceAssetsContextFromSignal(signal),
     cmcMarketBreadth: buildCmcMarketBreadthContextFromSignal(signal),
     cmcExchangeLiquidity: buildCmcExchangeLiquidityContextFromSignal(signal),
+    cmcFearGreed: buildCmcFearGreedContextFromSignal(signal),
     referenceTradeFlow: buildReferenceTradeFlowContextFromSignal(signal),
   },
 });

@@ -416,6 +416,18 @@ describe('buildStrategySignal', () => {
               topExchangeVolumeShare: 0.45,
               liquidityRegime: 'expanding',
             },
+            cmcFearGreed: {
+              source: 'coinmarketcap_fear_greed',
+              interval: '1d',
+              asOfTs: 1,
+              ageMs: 0,
+              stale: false,
+              value: 62,
+              valueChange24h: 8,
+              valueChange7d: 15,
+              classification: 'Greed',
+              sentimentRegime: 'risk_on',
+            },
           },
         },
       },
@@ -428,6 +440,7 @@ describe('buildStrategySignal', () => {
         items: expect.arrayContaining([
           'cmc_market_breadth_aligned',
           'cmc_exchange_liquidity_aligned',
+          'cmc_fear_greed_aligned',
         ]),
       },
       relative: {
@@ -439,6 +452,11 @@ describe('buildStrategySignal', () => {
         cmcExchangeLiquidityAligned: true,
         cmcExchangeLiquidityStale: false,
         cmcExchangeLiquidityVolumeChange24hPct: 0.18,
+        cmcFearGreedValue: 62,
+        cmcFearGreedValueChange24h: 8,
+        cmcFearGreedRegime: 'risk_on',
+        cmcFearGreedAligned: true,
+        cmcFearGreedStale: false,
       },
       risk: {
         liquidityRisk: 'low',

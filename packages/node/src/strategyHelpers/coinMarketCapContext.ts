@@ -3,6 +3,7 @@ import { logger } from '@tradejs/infra/logger';
 import {
   getLatestMarketCmcBreadthContext,
   getLatestMarketCmcExchangeLiquidityContext,
+  getLatestMarketCmcFearGreedContext,
   getLatestMarketGlobalContext,
   getLatestMarketReferenceAssetContexts,
 } from '@tradejs/infra/timescale';
@@ -14,6 +15,7 @@ const SOURCE_GLOBAL_HOURLY = 'coinmarketcap_global_hourly' as const;
 const SOURCE_REFERENCE = 'coinmarketcap_reference_asset' as const;
 const SOURCE_BREADTH = 'coinmarketcap_market_breadth' as const;
 const SOURCE_EXCHANGE_LIQUIDITY = 'coinmarketcap_exchange_liquidity' as const;
+const SOURCE_FEAR_GREED = 'coinmarketcap_fear_greed' as const;
 const DEFAULT_BREADTH_UNIVERSE = 'cmc_top100';
 const DAY_MS = 86_400_000;
 
@@ -33,6 +35,10 @@ const breadthContextCache = new Map<
 const exchangeLiquidityContextCache = new Map<
   string,
   ReturnType<typeof getLatestMarketCmcExchangeLiquidityContext>
+>();
+const fearGreedContextCache = new Map<
+  string,
+  ReturnType<typeof getLatestMarketCmcFearGreedContext>
 >();
 
 const parseEnabledFlag = (value: unknown, env: string) => {
@@ -261,6 +267,27 @@ const getCachedExchangeLiquidityContext = ({
   return promise;
 };
 
+const getCachedFearGreedContext = ({
+  timestamp,
+  maxAgeMs,
+}: {
+  timestamp: number;
+  maxAgeMs: number;
+}) => {
+  const key = `${SOURCE_FEAR_GREED}:1d:${timestamp}:${maxAgeMs}`;
+  const cached = fearGreedContextCache.get(key);
+  if (cached) return cached;
+
+  const promise = getLatestMarketCmcFearGreedContext({
+    source: SOURCE_FEAR_GREED,
+    interval: '1d',
+    atMs: timestamp,
+    maxAgeMs,
+  });
+  fearGreedContextCache.set(key, promise);
+  return promise;
+};
+
 export const isCoinMarketCapContextEnabled = (env: string) =>
   env === 'BACKTEST' &&
   parseEnabledFlag(process.env.COINMARKETCAP_CONTEXT_ENABLED, env);
@@ -271,6 +298,7 @@ export const resetCoinMarketCapContextRuntimeState = () => {
   referenceContextCache.clear();
   breadthContextCache.clear();
   exchangeLiquidityContextCache.clear();
+  fearGreedContextCache.clear();
 };
 
 export const enrichSignalWithCoinMarketCapContext = async (params: {
@@ -299,6 +327,7 @@ export const enrichSignalWithCoinMarketCapContext = async (params: {
       previousDailyReferences,
       breadthRow,
       exchangeLiquidityRow,
+      fearGreedRow,
     ] = await Promise.all([
       getCachedGlobalContext({
         source: SOURCE_GLOBAL_HOURLY,
@@ -335,6 +364,10 @@ export const enrichSignalWithCoinMarketCapContext = async (params: {
         timestamp: signal.timestamp,
         maxAgeMs,
       }),
+      getCachedFearGreedContext({
+        timestamp: signal.timestamp,
+        maxAgeMs,
+      }),
     ]);
     const globalRow = globalHourlyRow ?? globalDailyRow;
     const globalInterval = globalHourlyRow ? '1h' : '1d';
@@ -350,7 +383,8 @@ export const enrichSignalWithCoinMarketCapContext = async (params: {
       !globalRow &&
       !references.size &&
       !breadthRow &&
-      !exchangeLiquidityRow
+      !exchangeLiquidityRow &&
+      !fearGreedRow
     ) {
       return false;
     }
@@ -596,6 +630,26 @@ export const enrichSignalWithCoinMarketCapContext = async (params: {
                     exchangeLiquidityRow.topExchangeVolumeShare,
                   ),
                   liquidityRegime: exchangeLiquidityRegime,
+                },
+              }
+            : {}),
+          ...(fearGreedRow
+            ? {
+                cmcFearGreed: {
+                  source: SOURCE_FEAR_GREED,
+                  interval: '1d' as const,
+                  asOfTs: fearGreedRow.ts.getTime(),
+                  ageMs: fearGreedRow.ageMs,
+                  stale: fearGreedRow.stale,
+                  value: toFiniteNumberOrNull(fearGreedRow.value),
+                  valueChange24h: toFiniteNumberOrNull(
+                    fearGreedRow.valueChange24h,
+                  ),
+                  valueChange7d: toFiniteNumberOrNull(
+                    fearGreedRow.valueChange7d,
+                  ),
+                  classification: fearGreedRow.classification ?? 'Unknown',
+                  sentimentRegime: fearGreedRow.sentimentRegime ?? 'unknown',
                 },
               }
             : {}),

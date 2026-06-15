@@ -3,10 +3,14 @@ import { delay } from '@tradejs/core/async';
 import {
   getMarketCmcBreadthContextCoverage,
   getMarketCmcExchangeLiquidityContextCoverage,
+  getMarketCmcFearGreedContextCoverage,
+  getMarketContextBackfillCoverage,
   getMarketGlobalContextCoverage,
   getMarketReferenceAssetContextCoverage,
   upsertMarketCmcBreadthContextRows,
   upsertMarketCmcExchangeLiquidityContextRows,
+  upsertMarketCmcFearGreedContextRows,
+  upsertMarketContextBackfillCoverage,
   upsertMarketGlobalContextRows,
   upsertMarketReferenceAssetContextRows,
   waitForDbReady,
@@ -14,9 +18,12 @@ import {
 import { getUserSettings } from '@tradejs/infra/userSettings';
 import type {
   CmcExchangeLiquidityRegime,
+  CmcFearGreedClassification,
+  CmcFearGreedRegime,
   CmcMarketBreadthRegime,
   MarketCmcBreadthContextRow,
   MarketCmcExchangeLiquidityContextRow,
+  MarketCmcFearGreedContextRow,
   MarketGlobalContextRow,
   MarketReferenceAssetContextRow,
 } from '@tradejs/types';
@@ -34,6 +41,7 @@ type BackfillResult = {
   referenceRows: number;
   breadthRows: number;
   exchangeLiquidityRows: number;
+  fearGreedRows: number;
   cached: boolean;
 };
 
@@ -44,6 +52,8 @@ const SOURCE_GLOBAL_HOURLY = 'coinmarketcap_global_hourly' as const;
 const SOURCE_REFERENCE = 'coinmarketcap_reference_asset' as const;
 const SOURCE_BREADTH = 'coinmarketcap_market_breadth' as const;
 const SOURCE_EXCHANGE_LIQUIDITY = 'coinmarketcap_exchange_liquidity' as const;
+const SOURCE_FEAR_GREED = 'coinmarketcap_fear_greed' as const;
+const COVERAGE_SCOPE_ALL = 'all';
 const REFERENCE_ASSETS = [
   { symbol: 'BTCUSDT', cmcId: 1 },
   { symbol: 'ETHUSDT', cmcId: 1027 },
@@ -110,6 +120,12 @@ const isExchangeLiquidityBackfillEnabled = () =>
     process.env.COINMARKETCAP_CONTEXT_EXCHANGE_LIQUIDITY_ENABLED,
     true,
   );
+
+const isFearGreedBackfillEnabled = () =>
+  parseEnabledFlag(process.env.COINMARKETCAP_CONTEXT_FEAR_GREED_ENABLED, true);
+
+const getFearGreedPageSize = () =>
+  asInt(process.env.COINMARKETCAP_CONTEXT_FEAR_GREED_PAGE_SIZE, 500);
 
 const getExchangeSlugs = () => {
   const raw = process.env.COINMARKETCAP_CONTEXT_EXCHANGE_SLUGS;
@@ -229,6 +245,38 @@ const toExchangeLiquidityRegime = ({
   return 'balanced';
 };
 
+const normalizeFearGreedClassification = (
+  value: unknown,
+): CmcFearGreedClassification => {
+  const normalized = String(value ?? '')
+    .trim()
+    .toLowerCase();
+  if (normalized === 'extreme fear') return 'Extreme Fear';
+  if (normalized === 'fear') return 'Fear';
+  if (normalized === 'neutral') return 'Neutral';
+  if (normalized === 'greed') return 'Greed';
+  if (normalized === 'extreme greed') return 'Extreme Greed';
+  return 'Unknown';
+};
+
+const toFearGreedRegime = ({
+  value,
+  classification,
+}: {
+  value: number | null;
+  classification: CmcFearGreedClassification;
+}): CmcFearGreedRegime => {
+  if (value == null) return 'unknown';
+  if (classification === 'Extreme Fear' || value <= 24) return 'capitulation';
+  if (classification === 'Fear' || value <= 44) return 'risk_off';
+  if (classification === 'Extreme Greed' || value >= 75) return 'euphoric';
+  if (classification === 'Greed' || value >= 55) return 'risk_on';
+  if (classification === 'Neutral' || (value >= 45 && value <= 54)) {
+    return 'neutral';
+  }
+  return 'unknown';
+};
+
 const dayStartUtc = (ms: number) => {
   const date = new Date(ms);
   return Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
@@ -295,6 +343,58 @@ const buildHourlyChunks = (fromMs: number, toMs: number) => {
   }
   return chunks;
 };
+
+const coverageKey = (params: {
+  source: string;
+  scope: string;
+  interval: string;
+  fromMs: number;
+  toMs: number;
+}) =>
+  [
+    params.source.trim().toLowerCase(),
+    params.scope.trim().toLowerCase(),
+    params.interval.trim().toLowerCase(),
+    Math.trunc(params.fromMs),
+    Math.trunc(params.toMs),
+  ].join(':');
+
+const coverageRowsToKeySet = (
+  rows: Awaited<ReturnType<typeof getMarketContextBackfillCoverage>>,
+) =>
+  new Set(
+    rows.map((row) =>
+      coverageKey({
+        source: row.source,
+        scope: row.scope,
+        interval: row.interval,
+        fromMs: row.fromMs,
+        toMs: row.toMs,
+      }),
+    ),
+  );
+
+const hasBackfillCoverage = (
+  coverageKeys: Set<string>,
+  params: {
+    source: string;
+    scope: string;
+    interval: string;
+    fromMs: number;
+    toMs: number;
+  },
+) => coverageKeys.has(coverageKey(params));
+
+const markBackfillCoverage = (
+  rows: Array<{
+    source: string;
+    scope: string;
+    interval: string;
+    fromMs: number;
+    toMs: number;
+    rowsCount: number;
+  }>,
+) => upsertMarketContextBackfillCoverage(rows);
 
 const enumerateDailyTimestamps = (fromMs: number, toMs: number) => {
   const items: number[] = [];
@@ -724,6 +824,36 @@ export const coinMarketCapExchangeQuotesPayloadToLiquidityRows = (
     });
 };
 
+export const coinMarketCapFearGreedPayloadToRows = (
+  payload: unknown,
+): MarketCmcFearGreedContextRow[] => {
+  const data = getRecord(payload).data;
+  const items = Array.isArray(data) ? data : [];
+
+  return items
+    .map((item): MarketCmcFearGreedContextRow | null => {
+      const record = getRecord(item);
+      const timestampValue = toFiniteNumberOrNull(record.timestamp);
+      const value = toIntOrNull(record.value);
+      if (timestampValue == null || value == null) return null;
+      const ts = new Date(timestampValue * 1000);
+      if (Number.isNaN(ts.getTime())) return null;
+      const classification = normalizeFearGreedClassification(
+        record.value_classification,
+      );
+
+      return {
+        source: SOURCE_FEAR_GREED,
+        interval: '1d',
+        ts,
+        value,
+        classification,
+        sentimentRegime: toFearGreedRegime({ value, classification }),
+      };
+    })
+    .filter((row): row is MarketCmcFearGreedContextRow => row != null);
+};
+
 export const shouldBackfillCoinMarketCapContextForBacktest = ({
   aiEnabled,
   cacheOnly,
@@ -744,6 +874,7 @@ const skippedResult = (cached = false): BackfillResult => ({
   referenceRows: 0,
   breadthRows: 0,
   exchangeLiquidityRows: 0,
+  fearGreedRows: 0,
   cached,
 });
 
@@ -760,8 +891,11 @@ export const backfillCoinMarketCapContextForBacktest = async (
   const hourlyEnabled = isHourlyBackfillEnabled();
   const breadthEnabled = isBreadthBackfillEnabled();
   const exchangeLiquidityEnabled = isExchangeLiquidityBackfillEnabled();
+  const fearGreedEnabled = isFearGreedBackfillEnabled();
   const breadthTopLimit = getBreadthTopLimit();
   const breadthUniverse = `cmc_top${breadthTopLimit}`;
+  const hourlyChunks = buildHourlyChunks(fromMs, toMs);
+  const dailyTimestamps = enumerateDailyTimestamps(fromMs, toMs);
 
   await waitForDbReady();
   const [
@@ -771,6 +905,14 @@ export const backfillCoinMarketCapContextForBacktest = async (
     referenceHourlyCoverage,
     breadthCoverage,
     exchangeLiquidityCoverage,
+    fearGreedCoverage,
+    globalDailyBackfillCoverage,
+    referenceDailyBackfillCoverage,
+    globalHourlyBackfillCoverage,
+    referenceHourlyBackfillCoverage,
+    breadthBackfillCoverage,
+    exchangeLiquidityBackfillCoverage,
+    fearGreedBackfillCoverage,
   ] = await Promise.all([
     getMarketGlobalContextCoverage({
       source: SOURCE_GLOBAL_DAILY,
@@ -817,7 +959,91 @@ export const backfillCoinMarketCapContextForBacktest = async (
           endMs: toMs,
         })
       : Promise.resolve(null),
+    fearGreedEnabled
+      ? getMarketCmcFearGreedContextCoverage({
+          source: SOURCE_FEAR_GREED,
+          interval: '1d',
+          startMs: fromMs,
+          endMs: toMs,
+        })
+      : Promise.resolve(null),
+    getMarketContextBackfillCoverage({
+      source: SOURCE_GLOBAL_DAILY,
+      scopes: [COVERAGE_SCOPE_ALL],
+      interval: '1d',
+      fromMs,
+      toMs,
+    }),
+    getMarketContextBackfillCoverage({
+      source: SOURCE_REFERENCE,
+      scopes: REFERENCE_ASSETS.map((item) => item.symbol),
+      interval: '1d',
+      fromMs,
+      toMs,
+    }),
+    hourlyEnabled
+      ? getMarketContextBackfillCoverage({
+          source: SOURCE_GLOBAL_HOURLY,
+          scopes: [COVERAGE_SCOPE_ALL],
+          interval: '1h',
+          fromMs,
+          toMs,
+        })
+      : Promise.resolve([]),
+    hourlyEnabled
+      ? getMarketContextBackfillCoverage({
+          source: SOURCE_REFERENCE,
+          scopes: REFERENCE_ASSETS.map((item) => item.symbol),
+          interval: '1h',
+          fromMs,
+          toMs,
+        })
+      : Promise.resolve([]),
+    breadthEnabled
+      ? getMarketContextBackfillCoverage({
+          source: SOURCE_BREADTH,
+          scopes: [breadthUniverse],
+          interval: '1d',
+          fromMs,
+          toMs,
+        })
+      : Promise.resolve([]),
+    exchangeLiquidityEnabled
+      ? getMarketContextBackfillCoverage({
+          source: SOURCE_EXCHANGE_LIQUIDITY,
+          scopes: [COVERAGE_SCOPE_ALL],
+          interval: '1d',
+          fromMs,
+          toMs,
+        })
+      : Promise.resolve([]),
+    fearGreedEnabled
+      ? getMarketContextBackfillCoverage({
+          source: SOURCE_FEAR_GREED,
+          scopes: [COVERAGE_SCOPE_ALL],
+          interval: '1d',
+          fromMs,
+          toMs,
+        })
+      : Promise.resolve([]),
   ]);
+  const globalDailyBackfillKeys = coverageRowsToKeySet(
+    globalDailyBackfillCoverage,
+  );
+  const referenceDailyBackfillKeys = coverageRowsToKeySet(
+    referenceDailyBackfillCoverage,
+  );
+  const globalHourlyBackfillKeys = coverageRowsToKeySet(
+    globalHourlyBackfillCoverage,
+  );
+  const referenceHourlyBackfillKeys = coverageRowsToKeySet(
+    referenceHourlyBackfillCoverage,
+  );
+  const breadthBackfillKeys = coverageRowsToKeySet(breadthBackfillCoverage);
+  const exchangeLiquidityBackfillKeys = coverageRowsToKeySet(
+    exchangeLiquidityBackfillCoverage,
+  );
+  const fearGreedBackfillKeys = coverageRowsToKeySet(fearGreedBackfillCoverage);
 
   const globalDailyCached = hasDailyCoverage(globalDailyCoverage, fromMs, toMs);
   const referencesDailyCached = REFERENCE_ASSETS.every((asset) =>
@@ -839,14 +1065,95 @@ export const backfillCoinMarketCapContextForBacktest = async (
   const exchangeLiquidityCached =
     !exchangeLiquidityEnabled ||
     hasDailyCoverage(exchangeLiquidityCoverage, fromMs, toMs);
+  const fearGreedCached =
+    !fearGreedEnabled || hasDailyCoverage(fearGreedCoverage, fromMs, toMs);
+  const globalDailyReady =
+    globalDailyCached ||
+    hasBackfillCoverage(globalDailyBackfillKeys, {
+      source: SOURCE_GLOBAL_DAILY,
+      scope: COVERAGE_SCOPE_ALL,
+      interval: '1d',
+      fromMs,
+      toMs,
+    });
+  const referencesDailyReady =
+    referencesDailyCached ||
+    REFERENCE_ASSETS.every((asset) =>
+      hasBackfillCoverage(referenceDailyBackfillKeys, {
+        source: SOURCE_REFERENCE,
+        scope: asset.symbol,
+        interval: '1d',
+        fromMs,
+        toMs,
+      }),
+    );
+  const globalHourlyReady =
+    !hourlyEnabled ||
+    globalHourlyCached ||
+    hourlyChunks.every((chunk) =>
+      hasBackfillCoverage(globalHourlyBackfillKeys, {
+        source: SOURCE_GLOBAL_HOURLY,
+        scope: COVERAGE_SCOPE_ALL,
+        interval: '1h',
+        fromMs: chunk.fromMs,
+        toMs: chunk.toMs,
+      }),
+    );
+  const referencesHourlyReady =
+    !hourlyEnabled ||
+    referencesHourlyCached ||
+    hourlyChunks.every((chunk) =>
+      REFERENCE_ASSETS.every((asset) =>
+        hasBackfillCoverage(referenceHourlyBackfillKeys, {
+          source: SOURCE_REFERENCE,
+          scope: asset.symbol,
+          interval: '1h',
+          fromMs: chunk.fromMs,
+          toMs: chunk.toMs,
+        }),
+      ),
+    );
+  const breadthReady =
+    breadthCached ||
+    !breadthEnabled ||
+    dailyTimestamps.every((ts) =>
+      hasBackfillCoverage(breadthBackfillKeys, {
+        source: SOURCE_BREADTH,
+        scope: breadthUniverse,
+        interval: '1d',
+        fromMs: ts,
+        toMs: ts + DAY_MS,
+      }),
+    );
+  const exchangeLiquidityReady =
+    exchangeLiquidityCached ||
+    !exchangeLiquidityEnabled ||
+    hasBackfillCoverage(exchangeLiquidityBackfillKeys, {
+      source: SOURCE_EXCHANGE_LIQUIDITY,
+      scope: COVERAGE_SCOPE_ALL,
+      interval: '1d',
+      fromMs,
+      toMs,
+    });
+  const fearGreedReady =
+    fearGreedCached ||
+    !fearGreedEnabled ||
+    hasBackfillCoverage(fearGreedBackfillKeys, {
+      source: SOURCE_FEAR_GREED,
+      scope: COVERAGE_SCOPE_ALL,
+      interval: '1d',
+      fromMs,
+      toMs,
+    });
 
   if (
-    globalDailyCached &&
-    referencesDailyCached &&
-    globalHourlyCached &&
-    referencesHourlyCached &&
-    breadthCached &&
-    exchangeLiquidityCached
+    globalDailyReady &&
+    referencesDailyReady &&
+    globalHourlyReady &&
+    referencesHourlyReady &&
+    breadthReady &&
+    exchangeLiquidityReady &&
+    fearGreedReady
   ) {
     console.log(
       chalk.gray(
@@ -868,13 +1175,14 @@ export const backfillCoinMarketCapContextForBacktest = async (
   let referenceRows = 0;
   let breadthRows = 0;
   let exchangeLiquidityRows = 0;
+  let fearGreedRows = 0;
   console.log(
     chalk.cyan(
       `coinmarketcap context backfill: window=${new Date(fromMs).toISOString()}..${new Date(toMs).toISOString()}`,
     ),
   );
 
-  if (!globalDailyCached) {
+  if (!globalDailyReady) {
     const payload = await coinMarketCapFetch({
       path: '/v1/global-metrics/quotes/historical',
       apiKey,
@@ -887,10 +1195,20 @@ export const backfillCoinMarketCapContextForBacktest = async (
     });
     const rows = coinMarketCapGlobalPayloadToRows(payload, SOURCE_GLOBAL_DAILY);
     await upsertMarketGlobalContextRows(rows);
+    await markBackfillCoverage([
+      {
+        source: SOURCE_GLOBAL_DAILY,
+        scope: COVERAGE_SCOPE_ALL,
+        interval: '1d',
+        fromMs,
+        toMs,
+        rowsCount: rows.length,
+      },
+    ]);
     globalRows += rows.length;
   }
 
-  if (!referencesDailyCached) {
+  if (!referencesDailyReady) {
     const payload = await coinMarketCapFetch({
       path: '/v2/cryptocurrency/ohlcv/historical',
       apiKey,
@@ -905,11 +1223,32 @@ export const backfillCoinMarketCapContextForBacktest = async (
     });
     const rows = coinMarketCapOhlcvPayloadToRows(payload, '1d');
     await upsertMarketReferenceAssetContextRows(rows);
+    await markBackfillCoverage(
+      REFERENCE_ASSETS.map((asset) => ({
+        source: SOURCE_REFERENCE,
+        scope: asset.symbol,
+        interval: '1d',
+        fromMs,
+        toMs,
+        rowsCount: rows.filter((row) => row.symbol === asset.symbol).length,
+      })),
+    );
     referenceRows += rows.length;
   }
 
   if (hourlyEnabled && !globalHourlyCached) {
-    for (const chunk of buildHourlyChunks(fromMs, toMs)) {
+    for (const chunk of hourlyChunks) {
+      if (
+        hasBackfillCoverage(globalHourlyBackfillKeys, {
+          source: SOURCE_GLOBAL_HOURLY,
+          scope: COVERAGE_SCOPE_ALL,
+          interval: '1h',
+          fromMs: chunk.fromMs,
+          toMs: chunk.toMs,
+        })
+      ) {
+        continue;
+      }
       const payload = await coinMarketCapFetch({
         path: '/v1/global-metrics/quotes/historical',
         apiKey,
@@ -925,12 +1264,43 @@ export const backfillCoinMarketCapContextForBacktest = async (
         SOURCE_GLOBAL_HOURLY,
       );
       await upsertMarketGlobalContextRows(rows);
+      await markBackfillCoverage([
+        {
+          source: SOURCE_GLOBAL_HOURLY,
+          scope: COVERAGE_SCOPE_ALL,
+          interval: '1h',
+          fromMs: chunk.fromMs,
+          toMs: chunk.toMs,
+          rowsCount: rows.length,
+        },
+      ]);
+      globalHourlyBackfillKeys.add(
+        coverageKey({
+          source: SOURCE_GLOBAL_HOURLY,
+          scope: COVERAGE_SCOPE_ALL,
+          interval: '1h',
+          fromMs: chunk.fromMs,
+          toMs: chunk.toMs,
+        }),
+      );
       globalRows += rows.length;
     }
   }
 
   if (hourlyEnabled && !referencesHourlyCached) {
-    for (const chunk of buildHourlyChunks(fromMs, toMs)) {
+    for (const chunk of hourlyChunks) {
+      const chunkCached = REFERENCE_ASSETS.every((asset) =>
+        hasBackfillCoverage(referenceHourlyBackfillKeys, {
+          source: SOURCE_REFERENCE,
+          scope: asset.symbol,
+          interval: '1h',
+          fromMs: chunk.fromMs,
+          toMs: chunk.toMs,
+        }),
+      );
+      if (chunkCached) {
+        continue;
+      }
       const payload = await coinMarketCapFetch({
         path: '/v3/cryptocurrency/quotes/historical',
         apiKey,
@@ -944,13 +1314,45 @@ export const backfillCoinMarketCapContextForBacktest = async (
       });
       const rows = coinMarketCapHistoricalQuotesPayloadToRows(payload, '1h');
       await upsertMarketReferenceAssetContextRows(rows);
+      await markBackfillCoverage(
+        REFERENCE_ASSETS.map((asset) => ({
+          source: SOURCE_REFERENCE,
+          scope: asset.symbol,
+          interval: '1h',
+          fromMs: chunk.fromMs,
+          toMs: chunk.toMs,
+          rowsCount: rows.filter((row) => row.symbol === asset.symbol).length,
+        })),
+      );
+      for (const asset of REFERENCE_ASSETS) {
+        referenceHourlyBackfillKeys.add(
+          coverageKey({
+            source: SOURCE_REFERENCE,
+            scope: asset.symbol,
+            interval: '1h',
+            fromMs: chunk.fromMs,
+            toMs: chunk.toMs,
+          }),
+        );
+      }
       referenceRows += rows.length;
     }
   }
 
   if (breadthEnabled && !breadthCached) {
     const rows: MarketCmcBreadthContextRow[] = [];
-    for (const ts of enumerateDailyTimestamps(fromMs, toMs)) {
+    for (const ts of dailyTimestamps) {
+      if (
+        hasBackfillCoverage(breadthBackfillKeys, {
+          source: SOURCE_BREADTH,
+          scope: breadthUniverse,
+          interval: '1d',
+          fromMs: ts,
+          toMs: ts + DAY_MS,
+        })
+      ) {
+        continue;
+      }
       const payload = await coinMarketCapFetch({
         path: '/v1/cryptocurrency/listings/historical',
         apiKey,
@@ -970,6 +1372,25 @@ export const backfillCoinMarketCapContextForBacktest = async (
         universe: breadthUniverse,
       });
       if (row) rows.push(row);
+      await markBackfillCoverage([
+        {
+          source: SOURCE_BREADTH,
+          scope: breadthUniverse,
+          interval: '1d',
+          fromMs: ts,
+          toMs: ts + DAY_MS,
+          rowsCount: row ? 1 : 0,
+        },
+      ]);
+      breadthBackfillKeys.add(
+        coverageKey({
+          source: SOURCE_BREADTH,
+          scope: breadthUniverse,
+          interval: '1d',
+          fromMs: ts,
+          toMs: ts + DAY_MS,
+        }),
+      );
       if (rows.length >= 250) {
         breadthRows += rows.length;
         await upsertMarketCmcBreadthContextRows(rows.splice(0, rows.length));
@@ -979,7 +1400,7 @@ export const backfillCoinMarketCapContextForBacktest = async (
     await upsertMarketCmcBreadthContextRows(rows);
   }
 
-  if (exchangeLiquidityEnabled && !exchangeLiquidityCached) {
+  if (exchangeLiquidityEnabled && !exchangeLiquidityReady) {
     const payload = await coinMarketCapFetch({
       path: '/v1/exchange/quotes/historical',
       apiKey,
@@ -996,12 +1417,58 @@ export const backfillCoinMarketCapContextForBacktest = async (
       '1d',
     );
     await upsertMarketCmcExchangeLiquidityContextRows(rows);
+    await markBackfillCoverage([
+      {
+        source: SOURCE_EXCHANGE_LIQUIDITY,
+        scope: COVERAGE_SCOPE_ALL,
+        interval: '1d',
+        fromMs,
+        toMs,
+        rowsCount: rows.length,
+      },
+    ]);
     exchangeLiquidityRows = rows.length;
+  }
+
+  if (fearGreedEnabled && !fearGreedReady) {
+    const rows: MarketCmcFearGreedContextRow[] = [];
+    const pageSize = getFearGreedPageSize();
+    for (let start = 1; ; start += pageSize) {
+      const payload = await coinMarketCapFetch({
+        path: '/v3/fear-and-greed/historical',
+        apiKey,
+        searchParams: {
+          start: String(start),
+          limit: String(pageSize),
+        },
+      });
+      const pageRows = coinMarketCapFearGreedPayloadToRows(payload);
+      if (!pageRows.length) break;
+      const matchingRows = pageRows.filter((row) => {
+        const ts = row.ts.getTime();
+        return ts >= fromMs && ts <= toMs;
+      });
+      rows.push(...matchingRows);
+      const oldestPageTs = Math.min(...pageRows.map((row) => row.ts.getTime()));
+      if (oldestPageTs < fromMs || pageRows.length < pageSize) break;
+    }
+    await upsertMarketCmcFearGreedContextRows(rows);
+    await markBackfillCoverage([
+      {
+        source: SOURCE_FEAR_GREED,
+        scope: COVERAGE_SCOPE_ALL,
+        interval: '1d',
+        fromMs,
+        toMs,
+        rowsCount: rows.length,
+      },
+    ]);
+    fearGreedRows = rows.length;
   }
 
   console.log(
     chalk.green(
-      `coinmarketcap context backfill done: globalRows=${globalRows}, referenceRows=${referenceRows}, breadthRows=${breadthRows}, exchangeLiquidityRows=${exchangeLiquidityRows}`,
+      `coinmarketcap context backfill done: globalRows=${globalRows}, referenceRows=${referenceRows}, breadthRows=${breadthRows}, exchangeLiquidityRows=${exchangeLiquidityRows}, fearGreedRows=${fearGreedRows}`,
     ),
   );
 
@@ -1011,6 +1478,7 @@ export const backfillCoinMarketCapContextForBacktest = async (
     referenceRows,
     breadthRows,
     exchangeLiquidityRows,
+    fearGreedRows,
     cached: false,
   };
 };

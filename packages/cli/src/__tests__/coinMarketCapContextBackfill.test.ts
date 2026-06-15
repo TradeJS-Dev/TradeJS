@@ -1,5 +1,6 @@
 import {
   coinMarketCapExchangeQuotesPayloadToLiquidityRows,
+  coinMarketCapFearGreedPayloadToRows,
   coinMarketCapGlobalPayloadToRows,
   coinMarketCapHistoricalQuotesPayloadToRows,
   coinMarketCapListingsPayloadToBreadthRow,
@@ -290,6 +291,29 @@ describe('coinMarketCapContextBackfill', () => {
         binanceVolumeShare: 0.6,
         topExchangeVolumeShare: 0.6,
         liquidityRegime: 'binance_led',
+      }),
+    ]);
+  });
+
+  it('maps historical Fear and Greed rows', () => {
+    const rows = coinMarketCapFearGreedPayloadToRows({
+      data: [
+        {
+          timestamp: '1726617600',
+          value: 38,
+          value_classification: 'Fear',
+        },
+      ],
+    });
+
+    expect(rows).toEqual([
+      expect.objectContaining({
+        source: 'coinmarketcap_fear_greed',
+        interval: '1d',
+        ts: new Date('2024-09-18T00:00:00.000Z'),
+        value: 38,
+        classification: 'Fear',
+        sentimentRegime: 'risk_off',
       }),
     ]);
   });

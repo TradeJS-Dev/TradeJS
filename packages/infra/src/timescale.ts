@@ -5,6 +5,7 @@ import {
   DerivativesRow,
   MarketCmcBreadthContextRow,
   MarketCmcExchangeLiquidityContextRow,
+  MarketCmcFearGreedContextRow,
   MarketBreadthRow,
   MarketFeatureInterval,
   MarketGlobalContextRow,
@@ -625,6 +626,48 @@ const ensureBinanceMarketSchema = async () => {
       await pool.query(`
         CREATE INDEX IF NOT EXISTS market_cmc_exchange_liquidity_context_lookup_idx
         ON market_cmc_exchange_liquidity_context (source, interval, ts DESC)
+      `);
+
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS market_cmc_fear_greed_context (
+          source text NOT NULL,
+          interval text NOT NULL,
+          ts timestamptz NOT NULL,
+          value integer NOT NULL,
+          classification text NOT NULL,
+          sentiment_regime text NOT NULL,
+          ingested_at timestamptz NOT NULL DEFAULT now(),
+          PRIMARY KEY (source, interval, ts)
+        )
+      `);
+      await pool.query(`
+        SELECT create_hypertable(
+          'market_cmc_fear_greed_context',
+          'ts',
+          if_not_exists => TRUE,
+          chunk_time_interval => interval '30 days'
+        )
+      `);
+      await pool.query(`
+        CREATE INDEX IF NOT EXISTS market_cmc_fear_greed_context_lookup_idx
+        ON market_cmc_fear_greed_context (source, interval, ts DESC)
+      `);
+
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS market_context_backfill_coverage (
+          source text NOT NULL,
+          scope text NOT NULL,
+          interval text NOT NULL,
+          from_ts timestamptz NOT NULL,
+          to_ts timestamptz NOT NULL,
+          rows_count integer NOT NULL DEFAULT 0,
+          checked_at timestamptz NOT NULL DEFAULT now(),
+          PRIMARY KEY (source, scope, interval, from_ts, to_ts)
+        )
+      `);
+      await pool.query(`
+        CREATE INDEX IF NOT EXISTS market_context_backfill_coverage_lookup_idx
+        ON market_context_backfill_coverage (source, scope, interval, from_ts, to_ts)
       `);
 
       binanceMarketSchemaReady = true;
@@ -1696,6 +1739,207 @@ export async function upsertMarketCmcExchangeLiquidityContextRows(
   );
 }
 
+export async function upsertMarketCmcFearGreedContextRows(
+  rows: MarketCmcFearGreedContextRow[],
+) {
+  if (!rows.length) return;
+  await ensureBinanceMarketSchema();
+
+  const pool = getPool();
+  const cols = [
+    'source',
+    'interval',
+    'ts',
+    'value',
+    'classification',
+    'sentiment_regime',
+  ] as const;
+
+  const maxRows = getSafeBulkInsertRows(cols.length);
+  if (rows.length > maxRows) {
+    for (let i = 0; i < rows.length; i += maxRows) {
+      await upsertMarketCmcFearGreedContextRows(rows.slice(i, i + maxRows));
+    }
+    return;
+  }
+
+  const valuesSql = rows
+    .map(
+      (_, i) =>
+        `(${cols.map((__, j) => `$${i * cols.length + j + 1}`).join(',')})`,
+    )
+    .join(',');
+  const flat = rows.flatMap((row) => [
+    row.source,
+    row.interval,
+    row.ts,
+    Math.trunc(row.value),
+    row.classification,
+    row.sentimentRegime,
+  ]);
+
+  await pool.query(
+    `
+      INSERT INTO market_cmc_fear_greed_context (${cols.join(',')})
+      VALUES ${valuesSql}
+      ON CONFLICT (source, interval, ts) DO UPDATE SET
+        value = EXCLUDED.value,
+        classification = EXCLUDED.classification,
+        sentiment_regime = EXCLUDED.sentiment_regime,
+        ingested_at = now()
+    `,
+    flat,
+  );
+}
+
+export async function getMarketContextBackfillCoverage(params: {
+  source: string;
+  scopes: string[];
+  interval: string;
+  fromMs: number;
+  toMs: number;
+}): Promise<
+  Array<{
+    source: string;
+    scope: string;
+    interval: string;
+    fromMs: number;
+    toMs: number;
+    rowsCount: number;
+  }>
+> {
+  const source = String(params.source || '')
+    .trim()
+    .toLowerCase();
+  const scopes = [
+    ...new Set(
+      params.scopes
+        .map((scope) =>
+          String(scope || '')
+            .trim()
+            .toLowerCase(),
+        )
+        .filter(Boolean),
+    ),
+  ];
+  const interval = String(params.interval || '')
+    .trim()
+    .toLowerCase();
+  if (!source || !scopes.length || !interval) return [];
+
+  await ensureBinanceMarketSchema();
+  const pool = getPool();
+  const res = await pool.query(
+    `
+      SELECT
+        source,
+        scope,
+        interval,
+        extract(epoch from from_ts)*1000 AS from_ms,
+        extract(epoch from to_ts)*1000 AS to_ms,
+        rows_count
+      FROM market_context_backfill_coverage
+      WHERE source = $1
+        AND scope = ANY($2)
+        AND interval = $3
+        AND from_ts >= to_timestamp($4/1000.0)
+        AND to_ts <= to_timestamp($5/1000.0)
+    `,
+    [source, scopes, interval, params.fromMs, params.toMs],
+  );
+
+  return (
+    res.rows as Array<{
+      source: string;
+      scope: string;
+      interval: string;
+      from_ms: number | string;
+      to_ms: number | string;
+      rows_count: number | string;
+    }>
+  ).map((row) => ({
+    source: String(row.source).toLowerCase(),
+    scope: String(row.scope).toLowerCase(),
+    interval: String(row.interval).toLowerCase(),
+    fromMs: Number(row.from_ms),
+    toMs: Number(row.to_ms),
+    rowsCount: Number(row.rows_count ?? 0),
+  }));
+}
+
+export async function upsertMarketContextBackfillCoverage(
+  rows: Array<{
+    source: string;
+    scope: string;
+    interval: string;
+    fromMs: number;
+    toMs: number;
+    rowsCount: number;
+  }>,
+) {
+  const normalizedRows = rows
+    .map((row) => ({
+      source: String(row.source || '')
+        .trim()
+        .toLowerCase(),
+      scope: String(row.scope || '')
+        .trim()
+        .toLowerCase(),
+      interval: String(row.interval || '')
+        .trim()
+        .toLowerCase(),
+      fromMs: Math.trunc(row.fromMs),
+      toMs: Math.trunc(row.toMs),
+      rowsCount: Math.max(0, Math.trunc(row.rowsCount)),
+    }))
+    .filter(
+      (row) =>
+        row.source &&
+        row.scope &&
+        row.interval &&
+        Number.isFinite(row.fromMs) &&
+        Number.isFinite(row.toMs) &&
+        row.toMs >= row.fromMs,
+    );
+  if (!normalizedRows.length) return;
+
+  await ensureBinanceMarketSchema();
+  const pool = getPool();
+  const cols = [
+    'source',
+    'scope',
+    'interval',
+    'from_ts',
+    'to_ts',
+    'rows_count',
+  ] as const;
+  const valuesSql = normalizedRows
+    .map(
+      (_, i) =>
+        `(${cols.map((__, j) => `$${i * cols.length + j + 1}`).join(',')})`,
+    )
+    .join(',');
+  const flat = normalizedRows.flatMap((row) => [
+    row.source,
+    row.scope,
+    row.interval,
+    new Date(row.fromMs),
+    new Date(row.toMs),
+    row.rowsCount,
+  ]);
+
+  await pool.query(
+    `
+      INSERT INTO market_context_backfill_coverage (${cols.join(',')})
+      VALUES ${valuesSql}
+      ON CONFLICT (source, scope, interval, from_ts, to_ts) DO UPDATE SET
+        rows_count = EXCLUDED.rows_count,
+        checked_at = now()
+    `,
+    flat,
+  );
+}
+
 export type MarketFeatureAsOf<T> = T & {
   ageMs: number | null;
   stale: boolean;
@@ -2209,6 +2453,89 @@ export async function getLatestMarketCmcExchangeLiquidityContext(params: {
   };
 }
 
+export async function getLatestMarketCmcFearGreedContext(params: {
+  source?: MarketCmcFearGreedContextRow['source'];
+  interval?: MarketCmcFearGreedContextRow['interval'];
+  atMs: number;
+  maxAgeMs?: number;
+}): Promise<
+  | (MarketFeatureAsOf<MarketCmcFearGreedContextRow> & {
+      valueChange24h: number | null;
+      valueChange7d: number | null;
+    })
+  | null
+> {
+  await ensureBinanceMarketSchema();
+  const pool = getPool();
+  const source = params.source ?? 'coinmarketcap_fear_greed';
+  const interval = params.interval ?? '1d';
+  const res = await pool.query(
+    `
+      SELECT
+        source,
+        interval,
+        ts,
+        value::int AS value,
+        classification,
+        sentiment_regime AS "sentimentRegime"
+      FROM market_cmc_fear_greed_context
+      WHERE source = $1
+        AND interval = $2
+        AND ts <= to_timestamp($3/1000.0)
+      ORDER BY ts DESC
+      LIMIT 1
+    `,
+    [source, interval, params.atMs],
+  );
+  const row = res.rows[0] as MarketCmcFearGreedContextRow | undefined;
+  if (!row) return null;
+
+  const previousRes = await pool.query(
+    `
+      SELECT
+        value::int AS value,
+        '24h' AS bucket
+      FROM market_cmc_fear_greed_context
+      WHERE source = $1
+        AND interval = $2
+        AND ts <= $3::timestamptz - interval '24 hours'
+      ORDER BY ts DESC
+      LIMIT 1
+    `,
+    [source, interval, row.ts],
+  );
+  const previous7dRes = await pool.query(
+    `
+      SELECT value::int AS value
+      FROM market_cmc_fear_greed_context
+      WHERE source = $1
+        AND interval = $2
+        AND ts <= $3::timestamptz - interval '7 days'
+      ORDER BY ts DESC
+      LIMIT 1
+    `,
+    [source, interval, row.ts],
+  );
+  const previousValue =
+    previousRes.rows[0]?.value == null
+      ? null
+      : Number(previousRes.rows[0].value);
+  const previous7dValue =
+    previous7dRes.rows[0]?.value == null
+      ? null
+      : Number(previous7dRes.rows[0].value);
+  const ageMs = toMarketFeatureAge(row.ts, params.atMs);
+
+  return {
+    ...row,
+    ageMs,
+    stale:
+      ageMs == null || (params.maxAgeMs != null && ageMs > params.maxAgeMs),
+    valueChange24h: previousValue == null ? null : row.value - previousValue,
+    valueChange7d: previous7dValue == null ? null : row.value - previous7dValue,
+  };
+}
+
 export async function getMarketCmcBreadthContextCoverage(params: {
   source: MarketCmcBreadthContextRow['source'];
   universe: string;
@@ -2238,6 +2565,37 @@ export async function getMarketCmcBreadthContextCoverage(params: {
       params.startMs,
       params.endMs,
     ],
+  );
+  const rows = Number(res.rows[0]?.rows ?? 0);
+  const firstMs = Number(res.rows[0]?.first_ms);
+  const lastMs = Number(res.rows[0]?.last_ms);
+  if (!rows || !Number.isFinite(firstMs) || !Number.isFinite(lastMs)) {
+    return null;
+  }
+  return { firstMs, lastMs, rows };
+}
+
+export async function getMarketCmcFearGreedContextCoverage(params: {
+  source: MarketCmcFearGreedContextRow['source'];
+  interval: MarketCmcFearGreedContextRow['interval'];
+  startMs: number;
+  endMs: number;
+}): Promise<{ firstMs: number; lastMs: number; rows: number } | null> {
+  await ensureBinanceMarketSchema();
+  const pool = getPool();
+  const res = await pool.query(
+    `
+      SELECT
+        extract(epoch from MIN(ts))*1000 AS first_ms,
+        extract(epoch from MAX(ts))*1000 AS last_ms,
+        COUNT(*)::int AS rows
+      FROM market_cmc_fear_greed_context
+      WHERE source = $1
+        AND interval = $2
+        AND ts >= to_timestamp($3/1000.0)
+        AND ts <= to_timestamp($4/1000.0)
+    `,
+    [params.source, params.interval, params.startMs, params.endMs],
   );
   const rows = Number(res.rows[0]?.rows ?? 0);
   const firstMs = Number(res.rows[0]?.first_ms);
