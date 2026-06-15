@@ -25,12 +25,13 @@ AdaptiveMomentumRibbon addon:
 - The deterministic gate is strictly signal-time causal: do not use delayed execution, exit reason, or final trade outcome as decision inputs.
 - \`quality=5\` is reserved for the strongest momentum/low-effort pocket: oscillatorStrength >= 1.5, volumeRel20 <= 1.2, and effortVsResult <= 100.
 - \`quality=4\` additionally allows two narrower continuation pockets: oscillatorStrength >= 1.2 with coin bias conflict, structuralRewardRiskRatio >= 2.2 and volumeRel20 <= 1.2, or Europe-session oscillatorStrength >= 1.5 with effortVsResult <= 120.
+- If signal candle range is available, \`signalRangeAtrRatio\` must be >= 1.05 for live approval; weaker signal candles stay in watch mode.
 - If \`approvalAllowedNow=false\` or \`deterministicQuality<4\`, this is usually watch mode rather than a ready live approval.
 `;
 
 const ADAPTIVE_MOMENTUM_RIBBON_PAYLOAD_PROMPT = `
 - \`payload.additionalIndicators.adaptiveMomentumRibbonContext\` contains a compact signal summary:
-  signalOsc / oscillatorStrength / channelState / channelExtensionPct / invalidationDistancePct / structuralRewardRiskRatio / coinBiasAligned / btcBiasAligned / targetVsBtcAlpha4h / derivativesDirectionAligned / derivativesRiskFlags / derivativesFundingZScore / deterministicQuality / approvalAllowedNow / structuralHardBlockReasons.
+  signalOsc / oscillatorStrength / signalRangeAtrRatio / channelState / channelExtensionPct / invalidationDistancePct / structuralRewardRiskRatio / coinBiasAligned / btcBiasAligned / targetVsBtcAlpha4h / derivativesDirectionAligned / derivativesRiskFlags / derivativesFundingZScore / deterministicQuality / approvalAllowedNow / structuralHardBlockReasons.
 - Use this context as the primary strategy-specific interpretation instead of re-deriving it only from generic series.
 `;
 
@@ -57,6 +58,7 @@ type AmrStructuralReason =
   | 'missing_base_context'
   | 'range_bound_structure'
   | 'benchmark_conflict'
+  | 'weak_signal_range'
   | 'weak_participation'
   | 'weak_retest_quality'
   | 'elevated_venue_spread'
@@ -86,6 +88,7 @@ type AdaptiveMomentumRibbonAiContext = {
   invalidated: boolean;
   signalOsc: number | null;
   oscillatorStrength: number | null;
+  signalRangeAtrRatio: number | null;
   kcMidline: number | null;
   kcUpper: number | null;
   kcLower: number | null;
@@ -402,6 +405,22 @@ const getRetestPrice = (context: AdaptiveMomentumRibbonAiContext) => {
   return null;
 };
 
+const getSignalRangeAtrRatio = (
+  candle: Record<string, unknown> | null,
+  raw: Record<string, unknown> | null,
+) => {
+  const high = toFiniteNumberOrNull(candle?.high);
+  const low = toFiniteNumberOrNull(candle?.low);
+  const volatility = getRecord(raw?.volatility);
+  const atr = toFiniteNumberOrNull(volatility?.atr);
+
+  if (high == null || low == null || atr == null || atr <= 0 || high < low) {
+    return null;
+  }
+
+  return (high - low) / atr;
+};
+
 const getDeterministicAdaptiveMomentumRibbonQuality = (
   context: Omit<
     AdaptiveMomentumRibbonAiContext,
@@ -420,6 +439,13 @@ const getDeterministicAdaptiveMomentumRibbonQuality = (
   }
 
   if (!context.baseContextAvailable) {
+    return 3;
+  }
+
+  if (
+    context.signalRangeAtrRatio != null &&
+    context.signalRangeAtrRatio < 1.05
+  ) {
     return 3;
   }
 
@@ -575,6 +601,8 @@ const buildAdaptiveMomentumRibbonContext = (
     toFiniteNumberOrNull(derivatives1h?.fundingZScore);
   const baseContext = getRecord(additional?.baseContext);
   const baseContextAvailable = baseContext != null;
+  const candle = getRecord(baseContext?.candle);
+  const raw = getRecord(baseContext?.raw);
   const regime = getRecord(baseContext?.regime);
   const regimeSession = getRecord(regime?.session);
   const structure = getRecord(baseContext?.structure);
@@ -630,6 +658,7 @@ const buildAdaptiveMomentumRibbonContext = (
     spreadContext?.severity === 'wide'
       ? spreadContext.severity
       : null;
+  const signalRangeAtrRatio = getSignalRangeAtrRatio(candle, raw);
 
   const hardBlockReasons: AmrHardBlockReason[] = [];
 
@@ -699,6 +728,10 @@ const buildAdaptiveMomentumRibbonContext = (
     structuralHardBlockReasons.push('weak_participation');
   }
 
+  if (signalRangeAtrRatio != null && signalRangeAtrRatio < 1.05) {
+    structuralHardBlockReasons.push('weak_signal_range');
+  }
+
   if (breakoutRetestQuality != null && breakoutRetestQuality < 0.25) {
     structuralHardBlockReasons.push('weak_retest_quality');
   }
@@ -733,6 +766,7 @@ const buildAdaptiveMomentumRibbonContext = (
     invalidated,
     signalOsc,
     oscillatorStrength,
+    signalRangeAtrRatio,
     kcMidline,
     kcUpper,
     kcLower,
@@ -783,6 +817,7 @@ const buildAdaptiveMomentumRibbonContext = (
     invalidated,
     signalOsc,
     oscillatorStrength,
+    signalRangeAtrRatio,
     kcMidline,
     kcUpper,
     kcLower,
@@ -953,6 +988,7 @@ Additional AdaptiveMomentumRibbon context:
 - butterworthSmoothing=${context.butterworthSmoothing ?? 'n/a'}
 - signalOsc=${context.signalOsc?.toFixed?.(3) ?? 'n/a'}
 - oscillatorStrength=${context.oscillatorStrength?.toFixed?.(3) ?? 'n/a'}
+- signalRangeAtrRatio=${context.signalRangeAtrRatio?.toFixed?.(3) ?? 'n/a'}
 - channelState=${context.channelState}
 - channelBiasAligned=${context.channelBiasAligned}
 - channelExtensionPct=${context.channelExtensionPct?.toFixed?.(3) ?? 'n/a'}%

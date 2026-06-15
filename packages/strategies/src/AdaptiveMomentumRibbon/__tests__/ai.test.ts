@@ -140,6 +140,20 @@ const makeSignal = (overrides: Record<string, any> = {}) =>
       },
       baseContext: {
         ...overrides.additionalIndicators?.baseContext,
+        candle: {
+          open: 100,
+          high: 101.2,
+          low: 100,
+          close: 100.8,
+          ...overrides.additionalIndicators?.baseContext?.candle,
+        },
+        raw: {
+          ...overrides.additionalIndicators?.baseContext?.raw,
+          volatility: {
+            atr: 1,
+            ...overrides.additionalIndicators?.baseContext?.raw?.volatility,
+          },
+        },
         structure: {
           localRange: {
             breakoutState: 'above_high_level',
@@ -252,9 +266,50 @@ describe('adaptiveMomentumRibbonAiAdapter', () => {
         btcBiasAligned: true,
         primarySession: 'off_hours',
         sessionAllowsApproval: true,
+        signalRangeAtrRatio: expect.closeTo(1.2),
         deterministicQuality: 5,
         approvalAllowedNow: true,
         structuralHardBlockReasons: [],
+      }),
+    );
+  });
+
+  it('keeps strong low-effort setups in watch mode when signal range is below 1.05 ATR', () => {
+    const signal = makeSignal({
+      additionalIndicators: {
+        amr: {
+          signalOsc: 1.6,
+        },
+        baseContext: {
+          candle: {
+            open: 100.4,
+            high: 100.9,
+            low: 100.1,
+            close: 100.8,
+          },
+          raw: {
+            volatility: {
+              atr: 1,
+            },
+          },
+          participation: {
+            volume: {
+              volumeRel20: 1,
+              effortVsResult: 80,
+            },
+          },
+        },
+      },
+    });
+
+    const payload = buildPayloadForSignal(signal);
+
+    expect(payload.additionalIndicators.adaptiveMomentumRibbonContext).toEqual(
+      expect.objectContaining({
+        signalRangeAtrRatio: expect.closeTo(0.8),
+        deterministicQuality: 3,
+        approvalAllowedNow: false,
+        structuralHardBlockReasons: ['weak_signal_range'],
       }),
     );
   });
