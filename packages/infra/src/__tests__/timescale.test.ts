@@ -273,6 +273,38 @@ describe('timescale candle helpers', () => {
     );
   });
 
+  it('loads candle edges for a symbol batch using normalized provider and symbols', async () => {
+    const query = jest.fn().mockResolvedValue({
+      rows: [
+        { symbol: 'BTCUSDT', min_ms: '1000', max_ms: '2000' },
+        { symbol: 'ETHUSDT', min_ms: null, max_ms: null },
+      ],
+    });
+
+    jest.doMock('pg', () => ({
+      Pool: jest.fn().mockImplementation(() => ({
+        connect: jest.fn(),
+        query,
+      })),
+    }));
+
+    const { getDataEdgesForSymbols } = await import('@tradejs/infra/timescale');
+
+    const result = await getDataEdgesForSymbols(
+      ' ByBit ',
+      ['btcusdt', 'ETHUSDT', 'BTCUSDT'],
+      5,
+    );
+
+    expect(result.get('BTCUSDT')).toEqual({ min: 1_000, max: 2_000 });
+    expect(result.get('ETHUSDT')).toEqual({});
+    expect(query).toHaveBeenCalledWith(expect.stringContaining('unnest'), [
+      'bybit',
+      ['BTCUSDT', 'ETHUSDT'],
+      5,
+    ]);
+  });
+
   it('stores and reads derivatives backfill coverage markers', async () => {
     const query = jest.fn(async (sql: string) => {
       if (sql.includes('FROM derivatives_backfill_coverage')) {
@@ -352,11 +384,9 @@ describe('timescale candle helpers', () => {
       })),
     }));
 
-    const {
-      upsertMarketBreadthRows,
-      upsertMarketOrderBookDepthRows,
-      upsertMarketTradeFlowRows,
-    } = await import('@tradejs/infra/timescale');
+    const { upsertMarketBreadthRows, upsertMarketTradeFlowRows } = await import(
+      '@tradejs/infra/timescale'
+    );
 
     await upsertMarketTradeFlowRows([
       {
@@ -372,31 +402,6 @@ describe('timescale candle helpers', () => {
         netQuoteDelta: 200,
         buyPressurePct: 0.75,
         source: 'binance_agg_trades',
-      },
-    ]);
-    await upsertMarketOrderBookDepthRows([
-      {
-        venue: 'binance',
-        symbol: 'BTCUSDT',
-        ts: new Date(2_000),
-        lastUpdateId: 7,
-        bid: 99,
-        ask: 101,
-        mid: 100,
-        spreadBps: 200,
-        levels: [
-          {
-            levels: 5,
-            bidBaseVolume: 1,
-            askBaseVolume: 2,
-            bidQuoteVolume: 99,
-            askQuoteVolume: 202,
-            imbalance: -0.34,
-          },
-        ],
-        rawBidLevels: 5,
-        rawAskLevels: 5,
-        source: 'binance_depth',
       },
     ]);
     await upsertMarketBreadthRows([
@@ -421,20 +426,6 @@ describe('timescale candle helpers', () => {
     expect(query).toHaveBeenCalledWith(
       expect.stringContaining('INSERT INTO market_trade_flow'),
       expect.arrayContaining(['BTCUSDT', '1m', new Date(1_000), 2]),
-    );
-    expect(query).toHaveBeenCalledWith(
-      expect.stringContaining('INSERT INTO market_order_book_depth'),
-      expect.arrayContaining([
-        'binance',
-        'BTCUSDT',
-        new Date(2_000),
-        7,
-        99,
-        101,
-        100,
-        200,
-        expect.any(String),
-      ]),
     );
     expect(query).toHaveBeenCalledWith(
       expect.stringContaining('INSERT INTO market_breadth'),
@@ -502,23 +493,6 @@ describe('timescale candle helpers', () => {
           ],
         };
       }
-      if (sql.includes('FROM market_order_book_depth')) {
-        return {
-          rows: [
-            {
-              venue: 'binance',
-              symbol: 'BTCUSDT',
-              ts: new Date(8_000),
-              bid: '99',
-              ask: '101',
-              mid: '100',
-              spreadBps: '200',
-              levels: [{ levels: 5, imbalance: 0.25 }],
-              source: 'binance_depth',
-            },
-          ],
-        };
-      }
       if (sql.includes('FROM market_breadth')) {
         return {
           rows: [
@@ -546,11 +520,9 @@ describe('timescale candle helpers', () => {
       })),
     }));
 
-    const {
-      getLatestMarketBreadth,
-      getLatestMarketOrderBookDepth,
-      getLatestMarketTradeFlow,
-    } = await import('@tradejs/infra/timescale');
+    const { getLatestMarketBreadth, getLatestMarketTradeFlow } = await import(
+      '@tradejs/infra/timescale'
+    );
 
     await expect(
       getLatestMarketTradeFlow({
@@ -564,19 +536,6 @@ describe('timescale candle helpers', () => {
       ageMs: 1_000,
       stale: false,
       buyPressurePct: '0.6667',
-    });
-    await expect(
-      getLatestMarketOrderBookDepth({
-        venue: 'binance',
-        symbol: 'BTCUSDT',
-        atMs,
-        maxAgeMs: 1_000,
-      }),
-    ).resolves.toMatchObject({
-      symbol: 'BTCUSDT',
-      ageMs: 2_000,
-      stale: true,
-      levels: [{ levels: 5, imbalance: 0.25 }],
     });
     await expect(
       getLatestMarketBreadth({
@@ -598,79 +557,46 @@ describe('timescale candle helpers', () => {
     );
   });
 
-  it('upserts normalized onchain flow rows', async () => {
-    const query = jest.fn().mockResolvedValue({ rows: [] });
-
-    jest.doMock('pg', () => ({
-      Pool: jest.fn().mockImplementation(() => ({
-        connect: jest.fn(),
-        query,
-      })),
-    }));
-
-    const { upsertOnchainFlowRows } = await import('@tradejs/infra/timescale');
-
-    await upsertOnchainFlowRows([
-      {
-        symbol: 'ethusdt',
-        interval: '15m',
-        ts: new Date(1_000),
-        whaleNetFlowUsd: 1000,
-        smartTraderNetFlowUsd: 500,
-        cexDepositUsd: 100,
-        cexWithdrawUsd: 900,
-        dexBuyUsd: 300,
-        dexSellUsd: 50,
-        entityCount: 4,
-        confidenceWeightedBias: 0.6,
-        source: 'arkham',
-      },
-    ]);
-
-    const insertCall = query.mock.calls.find((call) =>
-      String(call[0]).includes('INSERT INTO onchain_flow_context'),
-    );
-    expect(insertCall).toBeTruthy();
-    expect(insertCall?.[0]).toContain(
-      'ON CONFLICT (symbol, interval, ts) DO UPDATE SET',
-    );
-    expect(insertCall?.[1]).toEqual([
-      'ETHUSDT',
-      '15m',
-      new Date(1_000),
-      1000,
-      500,
-      100,
-      900,
-      300,
-      50,
-      4,
-      0.6,
-      'arkham',
-    ]);
-  });
-
-  it('reads onchain context windows and maps SQL columns', async () => {
-    const query = jest.fn().mockImplementation((sql: string) => {
-      if (sql.includes('FROM onchain_flow_context')) {
+  it('dry-runs and applies deprecated market context cleanup', async () => {
+    const query = jest.fn(async (sql: string, params?: unknown[]) => {
+      if (sql === 'SELECT to_regclass($1) AS name') {
+        const table = String(params?.[0]);
         return {
           rows: [
             {
-              symbol: 'ETHUSDT',
-              interval: '15m',
-              ts: new Date(2_000),
-              whale_net_flow_usd: 1000,
-              smart_trader_net_flow_usd: 500,
-              cex_deposit_usd: 100,
-              cex_withdraw_usd: 900,
-              dex_buy_usd: 300,
-              dex_sell_usd: 50,
-              entity_count: 4,
-              confidence_weighted_bias: 0.6,
-              source: 'arkham',
+              name: [
+                'market_order_book_depth',
+                'onchain_flow_context',
+                'market_global_context',
+              ].includes(table)
+                ? table
+                : null,
             },
           ],
         };
+      }
+      if (
+        sql.includes(
+          'SELECT COUNT(*)::int AS rows FROM market_order_book_depth',
+        )
+      ) {
+        return { rows: [{ rows: 2 }] };
+      }
+      if (
+        sql.includes('SELECT COUNT(*)::int AS rows FROM onchain_flow_context')
+      ) {
+        return { rows: [{ rows: 3 }] };
+      }
+      if (
+        sql.includes('FROM market_global_context') &&
+        sql.includes("source = 'coingecko_global'")
+      ) {
+        return { rows: [{ rows: 4 }] };
+      }
+      if (
+        sql.includes('SELECT COUNT(*)::int AS rows FROM market_global_context')
+      ) {
+        return { rows: [{ rows: 10 }] };
       }
       return { rows: [] };
     });
@@ -682,39 +608,65 @@ describe('timescale candle helpers', () => {
       })),
     }));
 
-    const { getOnchainContextWindow } = await import(
+    const { cleanupDeprecatedMarketContext } = await import(
       '@tradejs/infra/timescale'
     );
 
-    await expect(
-      getOnchainContextWindow({
-        symbol: 'ethusdt',
-        intervals: ['15m', '1h'],
-        endMs: 10_000,
-        lookbackMs: 5_000,
-      }),
-    ).resolves.toEqual({
-      '15m': [
-        {
-          symbol: 'ETHUSDT',
-          interval: '15m',
-          ts: new Date(2_000),
-          whaleNetFlowUsd: 1000,
-          smartTraderNetFlowUsd: 500,
-          cexDepositUsd: 100,
-          cexWithdrawUsd: 900,
-          dexBuyUsd: 300,
-          dexSellUsd: 50,
-          entityCount: 4,
-          confidenceWeightedBias: 0.6,
-          source: 'arkham',
-        },
-      ],
-    });
-
-    const selectCall = query.mock.calls.find((call) =>
-      String(call[0]).includes('FROM onchain_flow_context'),
+    await expect(cleanupDeprecatedMarketContext()).resolves.toEqual([
+      {
+        kind: 'table',
+        name: 'market_order_book_depth',
+        rows: 2,
+        action: 'drop_table',
+        applied: false,
+      },
+      {
+        kind: 'table',
+        name: 'onchain_flow_context',
+        rows: 3,
+        action: 'drop_table',
+        applied: false,
+      },
+      {
+        kind: 'rows',
+        name: 'market_global_context/source=coingecko_global',
+        rows: 4,
+        action: 'delete_rows',
+        applied: false,
+      },
+    ]);
+    expect(query).not.toHaveBeenCalledWith(
+      expect.stringContaining('DROP TABLE IF EXISTS'),
     );
-    expect(selectCall?.[1]).toEqual(['ETHUSDT', ['15m', '1h'], 5_000, 10_000]);
+
+    jest.clearAllMocks();
+    await expect(
+      cleanupDeprecatedMarketContext({ apply: true }),
+    ).resolves.toEqual([
+      expect.objectContaining({
+        kind: 'table',
+        name: 'market_order_book_depth',
+        applied: true,
+      }),
+      expect.objectContaining({
+        kind: 'table',
+        name: 'onchain_flow_context',
+        applied: true,
+      }),
+      expect.objectContaining({
+        kind: 'rows',
+        name: 'market_global_context/source=coingecko_global',
+        applied: true,
+      }),
+    ]);
+    expect(query).toHaveBeenCalledWith(
+      'DROP TABLE IF EXISTS market_order_book_depth',
+    );
+    expect(query).toHaveBeenCalledWith(
+      'DROP TABLE IF EXISTS onchain_flow_context',
+    );
+    expect(query).toHaveBeenCalledWith(
+      expect.stringContaining('DELETE FROM market_global_context'),
+    );
   });
 });

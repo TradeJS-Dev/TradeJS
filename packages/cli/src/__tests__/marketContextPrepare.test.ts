@@ -8,12 +8,8 @@ const mockBackfillBinanceMarketContextForSignals = jest.fn();
 const mockShouldBackfillBinanceMarketContextForBacktest = jest.fn();
 const mockShouldBackfillBinanceMarketContextForReplay = jest.fn();
 const mockShouldBackfillBinanceMarketContextForSignals = jest.fn();
-const mockBackfillCoingeckoGlobalContextForBacktest = jest.fn();
-const mockBackfillCoingeckoGlobalContextForReplay = jest.fn();
-const mockBackfillCoingeckoGlobalContextForSignals = jest.fn();
-const mockShouldBackfillCoingeckoGlobalContextForBacktest = jest.fn();
-const mockShouldBackfillCoingeckoGlobalContextForReplay = jest.fn();
-const mockShouldBackfillCoingeckoGlobalContextForSignals = jest.fn();
+const mockBackfillCoinMarketCapContextForBacktest = jest.fn();
+const mockShouldBackfillCoinMarketCapContextForBacktest = jest.fn();
 
 jest.mock('../lib/derivativesContextBackfill', () => ({
   backfillDerivativesContextForBacktest: (...args: unknown[]) =>
@@ -41,19 +37,11 @@ jest.mock('../lib/binanceMarketContextBackfill', () => ({
     mockShouldBackfillBinanceMarketContextForSignals(...args),
 }));
 
-jest.mock('../lib/coingeckoGlobalMarketContextBackfill', () => ({
-  backfillCoingeckoGlobalContextForBacktest: (...args: unknown[]) =>
-    mockBackfillCoingeckoGlobalContextForBacktest(...args),
-  backfillCoingeckoGlobalContextForReplay: (...args: unknown[]) =>
-    mockBackfillCoingeckoGlobalContextForReplay(...args),
-  backfillCoingeckoGlobalContextForSignals: (...args: unknown[]) =>
-    mockBackfillCoingeckoGlobalContextForSignals(...args),
-  shouldBackfillCoingeckoGlobalContextForBacktest: (...args: unknown[]) =>
-    mockShouldBackfillCoingeckoGlobalContextForBacktest(...args),
-  shouldBackfillCoingeckoGlobalContextForReplay: (...args: unknown[]) =>
-    mockShouldBackfillCoingeckoGlobalContextForReplay(...args),
-  shouldBackfillCoingeckoGlobalContextForSignals: (...args: unknown[]) =>
-    mockShouldBackfillCoingeckoGlobalContextForSignals(...args),
+jest.mock('../lib/coinMarketCapContextBackfill', () => ({
+  backfillCoinMarketCapContextForBacktest: (...args: unknown[]) =>
+    mockBackfillCoinMarketCapContextForBacktest(...args),
+  shouldBackfillCoinMarketCapContextForBacktest: (...args: unknown[]) =>
+    mockShouldBackfillCoinMarketCapContextForBacktest(...args),
 }));
 
 import { prepareMarketContextForRun } from '../lib/marketContextPrepare';
@@ -71,18 +59,14 @@ describe('prepareMarketContextForRun', () => {
     mockShouldBackfillBinanceMarketContextForBacktest.mockReturnValue(false);
     mockShouldBackfillBinanceMarketContextForReplay.mockReturnValue(false);
     mockShouldBackfillBinanceMarketContextForSignals.mockReturnValue(false);
-    mockBackfillCoingeckoGlobalContextForBacktest.mockResolvedValue({});
-    mockBackfillCoingeckoGlobalContextForReplay.mockResolvedValue({});
-    mockBackfillCoingeckoGlobalContextForSignals.mockResolvedValue({});
-    mockShouldBackfillCoingeckoGlobalContextForBacktest.mockReturnValue(false);
-    mockShouldBackfillCoingeckoGlobalContextForReplay.mockReturnValue(false);
-    mockShouldBackfillCoingeckoGlobalContextForSignals.mockReturnValue(false);
+    mockBackfillCoinMarketCapContextForBacktest.mockResolvedValue({});
+    mockShouldBackfillCoinMarketCapContextForBacktest.mockReturnValue(false);
   });
 
   it('routes backtest context through AI/ML-aware backfill policies', async () => {
     mockShouldBackfillDerivativesContextForBacktest.mockReturnValue(true);
     mockShouldBackfillBinanceMarketContextForBacktest.mockReturnValue(true);
-    mockShouldBackfillCoingeckoGlobalContextForBacktest.mockReturnValue(true);
+    mockShouldBackfillCoinMarketCapContextForBacktest.mockReturnValue(true);
 
     await prepareMarketContextForRun({
       mode: 'backtest',
@@ -122,16 +106,17 @@ describe('prepareMarketContextForRun', () => {
       endMs: 2_000,
       preloadStartMs: 500,
     });
-    expect(mockBackfillCoingeckoGlobalContextForBacktest).toHaveBeenCalledWith({
+    expect(mockBackfillCoinMarketCapContextForBacktest).toHaveBeenCalledWith({
+      userName: 'root',
       startMs: 1_000,
       endMs: 2_000,
+      preloadStartMs: 500,
     });
   });
 
   it('routes signals context through live-mode policies', async () => {
     mockShouldBackfillDerivativesContextForSignals.mockReturnValue(true);
     mockShouldBackfillBinanceMarketContextForSignals.mockReturnValue(true);
-    mockShouldBackfillCoingeckoGlobalContextForSignals.mockReturnValue(true);
 
     await prepareMarketContextForRun({
       mode: 'signals',
@@ -148,15 +133,14 @@ describe('prepareMarketContextForRun', () => {
 
     expect(mockBackfillDerivativesContextForSignals).toHaveBeenCalled();
     expect(mockBackfillBinanceMarketContextForSignals).toHaveBeenCalled();
-    expect(mockBackfillCoingeckoGlobalContextForSignals).toHaveBeenCalled();
+    expect(mockBackfillCoinMarketCapContextForBacktest).not.toHaveBeenCalled();
     expect(mockBackfillDerivativesContextForBacktest).not.toHaveBeenCalled();
   });
 
   it.each(['replay', 'parity'] as const)(
-    'routes %s binance and global context through replay policy',
+    'routes %s binance context through replay policy',
     async (mode) => {
       mockShouldBackfillBinanceMarketContextForReplay.mockReturnValue(true);
-      mockShouldBackfillCoingeckoGlobalContextForReplay.mockReturnValue(true);
 
       await prepareMarketContextForRun({
         mode,
@@ -183,23 +167,11 @@ describe('prepareMarketContextForRun', () => {
         }),
       );
       expect(
-        mockShouldBackfillCoingeckoGlobalContextForReplay,
-      ).toHaveBeenCalledWith({
-        cacheOnly: false,
-      });
-      expect(mockBackfillCoingeckoGlobalContextForReplay).toHaveBeenCalledWith({
-        startMs: 1_000,
-        endMs: 2_000,
-      });
-      expect(
         mockBackfillBinanceMarketContextForBacktest,
       ).not.toHaveBeenCalled();
       expect(mockBackfillBinanceMarketContextForSignals).not.toHaveBeenCalled();
       expect(
-        mockBackfillCoingeckoGlobalContextForBacktest,
-      ).not.toHaveBeenCalled();
-      expect(
-        mockBackfillCoingeckoGlobalContextForSignals,
+        mockBackfillCoinMarketCapContextForBacktest,
       ).not.toHaveBeenCalled();
     },
   );

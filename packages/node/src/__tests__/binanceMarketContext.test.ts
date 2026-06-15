@@ -1,13 +1,10 @@
 const mockGetLatestMarketTradeFlow = jest.fn();
-const mockGetLatestMarketOrderBookDepth = jest.fn();
 const mockGetLatestMarketBreadth = jest.fn();
 const mockLoggerWarn = jest.fn();
 
 jest.mock('@tradejs/infra/timescale', () => ({
   getLatestMarketTradeFlow: (...args: unknown[]) =>
     mockGetLatestMarketTradeFlow(...args),
-  getLatestMarketOrderBookDepth: (...args: unknown[]) =>
-    mockGetLatestMarketOrderBookDepth(...args),
   getLatestMarketBreadth: (...args: unknown[]) =>
     mockGetLatestMarketBreadth(...args),
 }));
@@ -85,31 +82,6 @@ describe('strategyHelpers/binanceMarketContext', () => {
       buyPressurePct: '0.6666667',
       source: 'binance_agg_trades',
     });
-    mockGetLatestMarketOrderBookDepth.mockResolvedValue({
-      venue: 'binance',
-      symbol: 'BTCUSDT',
-      ts: new Date(timestamp),
-      ageMs: 0,
-      stale: false,
-      lastUpdateId: 7,
-      bid: '99',
-      ask: '101',
-      mid: '100',
-      spreadBps: '200',
-      levels: [
-        {
-          levels: 5,
-          bidBaseVolume: 3,
-          askBaseVolume: 1,
-          bidQuoteVolume: 300,
-          askQuoteVolume: 100,
-          imbalance: 0.5,
-        },
-      ],
-      rawBidLevels: 100,
-      rawAskLevels: 100,
-      source: 'binance_depth',
-    });
     mockGetLatestMarketBreadth.mockResolvedValue({
       universe: 'binance_top30_usdt',
       interval: '15m',
@@ -166,7 +138,7 @@ describe('strategyHelpers/binanceMarketContext', () => {
         },
       },
       relative: {
-        marketReferences: {
+        referenceTradeFlow: {
           source: 'binance_reference_market',
           primaryReferenceSymbol: 'BTCUSDT',
           referenceSymbols: ['BTCUSDT', 'ETHUSDT'],
@@ -187,19 +159,6 @@ describe('strategyHelpers/binanceMarketContext', () => {
           stale: false,
           equalWeightedReturn: 0.01,
         },
-        execution: {
-          targetVenue: {
-            source: 'binance_depth_snapshot',
-            symbol: 'BTCUSDT',
-            spreadBps: 200,
-            depthLevels: [
-              expect.objectContaining({
-                levels: 5,
-                imbalance: 0.5,
-              }),
-            ],
-          },
-        },
       },
       gateFeatures: expect.objectContaining({
         participation: expect.objectContaining({
@@ -207,9 +166,6 @@ describe('strategyHelpers/binanceMarketContext', () => {
         }),
         relative: expect.objectContaining({
           marketBreadthAligned: true,
-        }),
-        execution: expect.objectContaining({
-          orderBookImbalanceAligned: true,
         }),
       }),
     });
@@ -261,18 +217,12 @@ describe('strategyHelpers/binanceMarketContext', () => {
       signal.additionalIndicators.baseContext.participation.tradeFlow,
     ).toBe(undefined);
     expect(
-      signal.additionalIndicators.baseContext.relative.execution.targetVenue,
-    ).toBeUndefined();
-    expect(
-      signal.additionalIndicators.baseContext.relative.marketReferences,
+      signal.additionalIndicators.baseContext.relative.referenceTradeFlow,
     ).toMatchObject({
       primaryReferenceSymbol: 'BTCUSDT',
       referenceSymbols: ['BTCUSDT', 'ETHUSDT'],
       tradeFlowBySymbol: {
         BTCUSDT: expect.objectContaining({ buyPressurePct: 0.6666667 }),
-      },
-      depthBySymbol: {
-        BTCUSDT: expect.objectContaining({ spreadBps: 200 }),
       },
     });
     expect(
@@ -284,7 +234,6 @@ describe('strategyHelpers/binanceMarketContext', () => {
   it('does not attach rows newer than the signal timestamp', async () => {
     const signal = makeSignal();
     mockGetLatestMarketTradeFlow.mockResolvedValue(null);
-    mockGetLatestMarketOrderBookDepth.mockResolvedValue(null);
     mockGetLatestMarketBreadth.mockResolvedValue(null);
 
     await expect(

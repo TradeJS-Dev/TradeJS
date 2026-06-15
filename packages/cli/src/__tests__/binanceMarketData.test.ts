@@ -4,7 +4,6 @@ import {
   classifyBtcAltRegime,
   estimateBinanceMarketDataVolume,
   selectBreadthUniverseFromTickers,
-  summarizeOrderBookDepth,
 } from '../lib/binanceMarketData';
 
 const makeKline = (
@@ -63,55 +62,6 @@ describe('binanceMarketData helpers', () => {
         netQuoteDelta: 90,
         buyPressurePct: 2 / 3,
       }),
-    ]);
-  });
-
-  it('summarizes order book depth at configured levels', () => {
-    const row = summarizeOrderBookDepth({
-      depth: {
-        symbol: 'ETHUSDT',
-        lastUpdateId: 12,
-        timestamp: 1_000,
-        bids: [
-          [99, 2],
-          [98, 1],
-        ],
-        asks: [
-          [101, 1],
-          [102, 1],
-        ],
-      },
-      levels: [1, 2],
-    });
-
-    expect(row).toMatchObject({
-      venue: 'binance',
-      symbol: 'ETHUSDT',
-      ts: new Date(1_000),
-      bid: 99,
-      ask: 101,
-      mid: 100,
-      spreadBps: 200,
-      rawBidLevels: 2,
-      rawAskLevels: 2,
-    });
-    expect(row.levels).toEqual([
-      {
-        levels: 1,
-        bidBaseVolume: 2,
-        askBaseVolume: 1,
-        bidQuoteVolume: 198,
-        askQuoteVolume: 101,
-        imbalance: (198 - 101) / (198 + 101),
-      },
-      {
-        levels: 2,
-        bidBaseVolume: 3,
-        askBaseVolume: 2,
-        bidQuoteVolume: 296,
-        askQuoteVolume: 203,
-        imbalance: (296 - 203) / (296 + 203),
-      },
     ]);
   });
 
@@ -264,18 +214,16 @@ describe('binanceMarketData helpers', () => {
         days: 1,
         interval: '15m',
         includeAggTrades: true,
-        includeDepth: true,
         includeBreadth: true,
         breadthLimit: 30,
       }),
     ).toMatchObject({
       bucketRowsPerSymbol: 96,
       aggTradeBucketRows: 192,
-      depthSnapshotRows: 2,
       breadthSymbols: 30,
       breadthCandleRows: 2880,
       breadthRows: 96,
-      estimatedStoredRows: 290,
+      estimatedStoredRows: 288,
     });
   });
 });

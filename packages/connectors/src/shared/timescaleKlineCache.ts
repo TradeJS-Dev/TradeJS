@@ -12,6 +12,10 @@ import {
 import { Interval, Kline, KlineChartData, KlineRequest } from '@tradejs/types';
 
 type ExchangeKlineRequest = (request: KlineRequest) => Promise<KlineChartData>;
+type LoadDataResult = {
+  data: KlineChartData;
+  loaded: boolean;
+};
 
 type TimescaleKlineCacheOptions = {
   provider: string;
@@ -105,11 +109,17 @@ export const createTimescaleCachedKline = ({
     limitBoundary: number | undefined,
     requestParams: KlineRequest,
     intervalMs: number,
-  ): Promise<KlineChartData> => {
-    if (pointer === undefined) return [];
+    options: {
+      accumulate?: boolean;
+      onPartData?: (partData: KlineChartData) => Promise<void>;
+    } = {},
+  ): Promise<LoadDataResult> => {
+    if (pointer === undefined) return { data: [], loaded: false };
 
     let accumulated: KlineChartData = [];
     let fulfilled = false;
+    let loaded = false;
+    const shouldAccumulate = options.accumulate ?? true;
 
     while (!fulfilled) {
       const currentPointer: number = pointer;
@@ -134,11 +144,18 @@ export const createTimescaleCachedKline = ({
         fulfilled = true;
         break;
       }
+      loaded = true;
 
-      accumulated =
-        direction === 'older'
-          ? mergeData(partData, accumulated)
-          : mergeData(accumulated, partData);
+      if (options.onPartData) {
+        await options.onPartData(partData);
+      }
+
+      if (shouldAccumulate) {
+        accumulated =
+          direction === 'older'
+            ? mergeData(partData, accumulated)
+            : mergeData(accumulated, partData);
+      }
 
       const boundaryReached =
         limitBoundary !== undefined &&
@@ -163,7 +180,7 @@ export const createTimescaleCachedKline = ({
       pointer = nextPointer;
     }
 
-    return accumulated;
+    return { data: accumulated, loaded };
   };
 
   const refreshTail = async ({
@@ -258,13 +275,16 @@ export const createTimescaleCachedKline = ({
         defaultStart !== undefined &&
         (dataStart === undefined || normStart < dataStart);
 
-      const needNewerData =
-        defaultEnd !== undefined &&
-        (dataEnd === undefined || normEnd > dataEnd);
+      const persistPartData = warmOnly
+        ? (partData: KlineChartData) =>
+            runTimescaleOperation(() =>
+              upsertCandles(toRows(provider, symbol, intMinutes, partData)),
+            )
+        : undefined;
 
       if (needOlderData) {
         const pointerForOlder = dataStart ?? normEnd ?? Date.now();
-        const olderData = await loadData(
+        const olderResult = await loadData(
           'older',
           pointerForOlder,
           normStart,
@@ -276,15 +296,33 @@ export const createTimescaleCachedKline = ({
             end: pointerForOlder,
           },
           intervalMs,
+          {
+            accumulate: !warmOnly,
+            onPartData: persistPartData,
+          },
         );
 
-        if (olderData.length) {
+        if (warmOnly && olderResult.loaded) {
+          dataStart = normStart;
+          if (dataEnd === undefined) {
+            dataEnd = normEnd;
+          }
+        } else if (olderResult.data.length) {
           await runTimescaleOperation(() =>
-            upsertCandles(toRows(provider, symbol, intMinutes, olderData)),
+            upsertCandles(
+              toRows(provider, symbol, intMinutes, olderResult.data),
+            ),
           );
           dataStart = normStart;
+          if (dataEnd === undefined) {
+            dataEnd = normEnd;
+          }
         }
       }
+
+      const needNewerData =
+        defaultEnd !== undefined &&
+        (dataEnd === undefined || normEnd > dataEnd);
 
       if (needNewerData) {
         const fallbackStart = getTimestamp(PRELOAD_FALLBACK_DAYS);
@@ -292,7 +330,7 @@ export const createTimescaleCachedKline = ({
           dataEnd ??
           (defaultStart !== undefined ? normStart : fallbackStart) ??
           0;
-        const newerData = await loadData(
+        const newerResult = await loadData(
           'newer',
           pointerForNewer,
           normEnd,
@@ -304,11 +342,19 @@ export const createTimescaleCachedKline = ({
             end: normEnd,
           },
           intervalMs,
+          {
+            accumulate: !warmOnly,
+            onPartData: persistPartData,
+          },
         );
 
-        if (newerData.length) {
+        if (warmOnly && newerResult.loaded) {
+          dataEnd = normEnd;
+        } else if (newerResult.data.length) {
           await runTimescaleOperation(() =>
-            upsertCandles(toRows(provider, symbol, intMinutes, newerData)),
+            upsertCandles(
+              toRows(provider, symbol, intMinutes, newerResult.data),
+            ),
           );
           dataEnd = normEnd;
         }

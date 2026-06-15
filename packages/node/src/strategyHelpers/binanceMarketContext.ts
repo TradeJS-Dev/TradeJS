@@ -1,15 +1,12 @@
 import {
   getLatestMarketBreadth,
-  getLatestMarketOrderBookDepth,
   getLatestMarketTradeFlow,
 } from '@tradejs/infra/timescale';
 import { logger } from '@tradejs/infra/logger';
 import { refreshSignalBaseContextGateFeatures } from '@tradejs/core/strategies';
 import type {
   BaseStrategyContextSnapshot,
-  BaseTargetVenueContext,
   MarketFeatureInterval,
-  MarketOrderBookDepthRow,
   MarketTradeFlowRow,
   Signal,
 } from '@tradejs/types';
@@ -31,7 +28,6 @@ type MarketFeatureAsOfRow<T> = T & {
 type ReferenceMarketRows = Array<{
   symbol: string;
   tradeFlow: BaseStrategyContextSnapshot['participation']['tradeFlow'] | null;
-  depth: BaseTargetVenueContext | null;
 }>;
 
 const referenceRowsCache = new Map<string, Promise<ReferenceMarketRows>>();
@@ -138,36 +134,6 @@ const toTradeFlowContext = (
       }
     : null;
 
-const toDepthContext = (
-  depth: MarketFeatureAsOfRow<MarketOrderBookDepthRow> | null,
-): BaseTargetVenueContext | null =>
-  depth
-    ? {
-        source: 'binance_depth_snapshot' as const,
-        venue: depth.venue,
-        symbol: depth.symbol,
-        bid: toFiniteNumberOrNull(depth.bid),
-        ask: toFiniteNumberOrNull(depth.ask),
-        mid: toFiniteNumberOrNull(depth.mid),
-        spreadBps: toFiniteNumberOrNull(depth.spreadBps),
-        topBidQty:
-          depth.levels?.[0]?.bidBaseVolume != null
-            ? toFiniteNumberOrNull(depth.levels[0].bidBaseVolume)
-            : null,
-        topAskQty:
-          depth.levels?.[0]?.askBaseVolume != null
-            ? toFiniteNumberOrNull(depth.levels[0].askBaseVolume)
-            : null,
-        snapshotTimestamp: depth.ts.getTime(),
-        stale: depth.stale,
-        ageMs: depth.ageMs,
-        lastUpdateId: toFiniteNumberOrNull(depth.lastUpdateId),
-        depthLevels: depth.levels,
-        rawBidLevels: toFiniteNumberOrNull(depth.rawBidLevels),
-        rawAskLevels: toFiniteNumberOrNull(depth.rawAskLevels),
-      }
-    : null;
-
 const getCachedReferenceRows = ({
   referenceSymbols,
   interval,
@@ -185,24 +151,15 @@ const getCachedReferenceRows = ({
 
   const promise = Promise.all(
     referenceSymbols.map(async (symbol) => {
-      const [tradeFlow, depth] = await Promise.all([
-        getLatestMarketTradeFlow({
-          symbol,
-          interval,
-          atMs: timestamp,
-          maxAgeMs,
-        }),
-        getLatestMarketOrderBookDepth({
-          venue: 'binance',
-          symbol,
-          atMs: timestamp,
-          maxAgeMs,
-        }),
-      ]);
+      const tradeFlow = await getLatestMarketTradeFlow({
+        symbol,
+        interval,
+        atMs: timestamp,
+        maxAgeMs,
+      });
       return {
         symbol,
         tradeFlow: toTradeFlowContext(tradeFlow, interval),
-        depth: toDepthContext(depth),
       };
     }),
   );
@@ -278,26 +235,14 @@ export const enrichSignalWithBinanceMarketContext = async (params: {
         .filter((row) => row.tradeFlow)
         .map((row) => [row.symbol, row.tradeFlow!]),
     );
-    const depthBySymbol = Object.fromEntries(
-      referenceRows
-        .filter((row) => row.depth)
-        .map((row) => [row.symbol, row.depth!]),
-    );
     const targetReferenceSymbol = signal.symbol.trim().toUpperCase();
     const targetTradeFlow = tradeFlowBySymbol[targetReferenceSymbol];
-    const targetDepth = depthBySymbol[targetReferenceSymbol];
 
-    if (
-      !Object.keys(tradeFlowBySymbol).length &&
-      !Object.keys(depthBySymbol).length &&
-      !breadth
-    ) {
+    if (!Object.keys(tradeFlowBySymbol).length && !breadth) {
       return false;
     }
 
     const baseContext = signal.additionalIndicators.baseContext;
-    const targetVenue =
-      targetDepth ?? baseContext.relative.execution.targetVenue;
 
     signal.additionalIndicators = {
       ...signal.additionalIndicators,
@@ -315,17 +260,14 @@ export const enrichSignalWithBinanceMarketContext = async (params: {
           ...baseContext.relative,
           execution: {
             ...baseContext.relative.execution,
-            targetVenue,
           },
-          ...(Object.keys(tradeFlowBySymbol).length ||
-          Object.keys(depthBySymbol).length
+          ...(Object.keys(tradeFlowBySymbol).length
             ? {
-                marketReferences: {
+                referenceTradeFlow: {
                   source: 'binance_reference_market' as const,
                   primaryReferenceSymbol,
                   referenceSymbols,
                   tradeFlowBySymbol,
-                  depthBySymbol,
                 },
               }
             : {}),

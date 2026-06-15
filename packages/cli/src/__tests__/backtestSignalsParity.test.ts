@@ -271,7 +271,7 @@ const attachBinanceParityBaseContext = async ({
           volumeWeightedReturn: 0.02,
           dispersion: 0.03,
         },
-        marketReferences: {
+        referenceTradeFlow: {
           source: 'binance_reference_market',
           primaryReferenceSymbol: 'BTCUSDT',
           referenceSymbols: ['BTCUSDT', 'ETHUSDT'],
@@ -292,7 +292,6 @@ const attachBinanceParityBaseContext = async ({
               netQuoteDelta: 200,
             },
           },
-          depthBySymbol: {},
         },
       },
     },
@@ -409,8 +408,8 @@ const runBacktestPath = async () => {
       return true;
     }),
   }));
-  jest.doMock('../../../node/src/strategyHelpers/globalMarketContext', () => ({
-    enrichSignalWithGlobalMarketContext: jest.fn(async () => false),
+  jest.doMock('../../../node/src/strategyHelpers/coinMarketCapContext', () => ({
+    enrichSignalWithCoinMarketCapContext: jest.fn(async () => false),
   }));
   jest.doMock('../../../node/src/ai', () => ({
     buildAiPayload,
@@ -530,7 +529,7 @@ const runSignalsPath = async () => {
     enrichSignalWithBinanceMarketContext: jest.fn(
       attachBinanceParityBaseContext,
     ),
-    enrichSignalWithGlobalMarketContext: jest.fn(async () => false),
+    enrichSignalWithCoinMarketCapContext: jest.fn(async () => false),
     getStrategyCreator: jest.fn(async () => strategyCreator),
   }));
   jest.doMock('@tradejs/core/async', () => ({
@@ -692,7 +691,7 @@ const runReplayPath = async () => {
     enrichSignalWithBinanceMarketContext: jest.fn(
       attachBinanceParityBaseContext,
     ),
-    enrichSignalWithGlobalMarketContext: jest.fn(async () => false),
+    enrichSignalWithCoinMarketCapContext: jest.fn(async () => false),
     getStrategyCreator: jest.fn(async () => strategyCreator),
   }));
   jest.doMock('@tradejs/core/backtest', () => ({

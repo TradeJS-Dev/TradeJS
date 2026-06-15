@@ -22,6 +22,7 @@ import {
   redisKeys,
 } from '@tradejs/infra/redis';
 import { logger } from '@tradejs/infra/logger';
+import { getDataEdgesForSymbols } from '@tradejs/infra/timescale';
 import { askAI } from './ai';
 import { screenDashboard } from './screenshot';
 import {
@@ -169,6 +170,7 @@ export const update = async (
     connectorLabel?: string;
     preloadStart?: number;
     preloadEnd?: number;
+    skipCovered?: boolean;
   } = {},
 ) => {
   const preloadStart = Math.trunc(
@@ -178,7 +180,7 @@ export const update = async (
   const connectorLabel = String(options.connectorLabel || '').trim();
   const preloadLabel =
     options.preloadStart != null || options.preloadEnd != null
-      ? `preloadStart=${preloadStart}, preloadEnd=${preloadEnd}`
+      ? `preloadStart=${formatOptionalTimestamp(preloadStart)}, preloadEnd=${formatOptionalTimestamp(preloadEnd)}`
       : `preloadDays=${preloadDays}`;
 
   if (preloadStart >= preloadEnd) {
@@ -187,10 +189,54 @@ export const update = async (
     );
   }
 
-  const queue = [...new Set(tickers.slice())];
+  let queue = [...new Set(tickers.slice())];
 
   if (!queue.includes('BTCUSDT')) {
     queue.unshift('BTCUSDT');
+  }
+
+  const intervalMinutes = Number(interval);
+  if (
+    options.skipCovered &&
+    connectorLabel &&
+    Number.isFinite(intervalMinutes) &&
+    intervalMinutes > 0
+  ) {
+    const edges = await getDataEdgesForSymbols(
+      connectorLabel,
+      queue,
+      Math.floor(intervalMinutes),
+    );
+    const initialCount = queue.length;
+    queue = queue.filter((symbol) => {
+      const edge = edges.get(String(symbol).toUpperCase());
+      return (
+        !edge ||
+        edge.min === undefined ||
+        edge.max === undefined ||
+        edge.min > preloadStart ||
+        edge.max < preloadEnd
+      );
+    });
+
+    const skippedCount = initialCount - queue.length;
+    if (skippedCount > 0) {
+      logger.info(
+        chalk.gray(
+          `update ${connectorLabel}: skip ${skippedCount}/${initialCount} cached symbols for interval=${interval}`,
+        ),
+      );
+    }
+  }
+
+  if (queue.length === 0) {
+    logger.info(
+      chalk.yellow(
+        `update: 0 (connector=${connectorLabel || 'unknown'}, interval=${interval}, klineConcurrency=${KLINE_CONCURRENCY_LIMIT}, ${preloadLabel})`,
+      ),
+    );
+    logger.info('');
+    return;
   }
 
   const bar = new ProgressBar(

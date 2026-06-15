@@ -38,6 +38,7 @@ describe('user settings route', () => {
       BYBIT_API_KEY: 'bybit-key-1234',
       BYBIT_API_SECRET: '',
       COINALYZE_API_KEY: '',
+      COINMARKETCAP_API_KEY: '',
       AI_API_KEY: 'openai-key-9876',
       AI_API_ENDPOINT: 'https://openrouter.ai/api/v1',
       AI_MODEL: 'openai/gpt-5-mini',
@@ -67,6 +68,9 @@ describe('user settings route', () => {
           apiSecret: '',
         },
         coinalyze: {
+          apiKey: '',
+        },
+        coinmarketcap: {
           apiKey: '',
         },
         ai: {
@@ -109,6 +113,7 @@ describe('user settings route', () => {
       BYBIT_API_KEY: '',
       BYBIT_API_SECRET: '',
       COINALYZE_API_KEY: '',
+      COINMARKETCAP_API_KEY: '',
       AI_API_KEY: 'openai-key-9876',
       AI_API_ENDPOINT: 'https://api.openai.com/v1',
       AI_MODEL: 'gpt-5-mini',
@@ -129,6 +134,23 @@ describe('user settings route', () => {
     expect(mockUpdateUserRecord).toHaveBeenCalledWith('alice', {
       AI_API_ENDPOINT: 'https://api.anthropic.com/v1',
       AI_MODEL: 'claude-sonnet-4-20250514',
+    });
+  });
+
+  it('stores CoinMarketCap API key updates', async () => {
+    mockGetUserRecord.mockResolvedValue(null);
+
+    await PATCH({
+      json: async () => ({
+        section: 'coinmarketcap',
+        data: {
+          apiKey: 'cmc-key',
+        },
+      }),
+    } as Request);
+
+    expect(mockUpdateUserRecord).toHaveBeenCalledWith('alice', {
+      COINMARKETCAP_API_KEY: 'cmc-key',
     });
   });
 

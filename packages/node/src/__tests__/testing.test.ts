@@ -121,8 +121,8 @@ jest.mock('../strategyHelpers/binanceMarketContext', () => ({
   enrichSignalWithBinanceMarketContext: jest.fn(async () => false),
 }));
 
-jest.mock('../strategyHelpers/globalMarketContext', () => ({
-  enrichSignalWithGlobalMarketContext: jest.fn(async () => false),
+jest.mock('../strategyHelpers/coinMarketCapContext', () => ({
+  enrichSignalWithCoinMarketCapContext: jest.fn(async () => false),
 }));
 
 jest.mock('@tradejs/infra/ai', () => ({

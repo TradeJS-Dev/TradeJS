@@ -129,42 +129,22 @@ describe('executionSlippage utils', () => {
         },
       }),
     ).toBe(3);
-    expect(
-      extractExecutionSpreadBps({
-        additionalIndicators: {
-          baseContext: {
-            relative: {
-              execution: {
-                targetVenue: {
-                  spreadBps: 19,
-                },
-              },
-            },
-          },
-        },
-      }),
-    ).toBe(19);
+    expect(extractExecutionSpreadBps({ additionalIndicators: {} })).toBeNull();
   });
 
-  it('ignores stale and unavailable target venue spreads', () => {
+  it('uses only explicit execution slippage spread', () => {
     expect(
       extractExecutionSpreadBps({
         additionalIndicators: {
           marketContext: {
             execution: {
-              targetVenue: {
-                available: false,
-                spreadBps: 200,
-              },
+              spreadBps: 200,
             },
           },
           baseContext: {
             relative: {
               execution: {
-                targetVenue: {
-                  stale: true,
-                  spreadBps: 150,
-                },
+                spreadBps: 150,
               },
             },
           },
@@ -181,10 +161,7 @@ describe('executionSlippage utils', () => {
           baseContext: {
             relative: {
               execution: {
-                targetVenue: {
-                  stale: true,
-                  spreadBps: 150,
-                },
+                spreadBps: 150,
               },
             },
           },

@@ -215,7 +215,7 @@ const loadScript = async (scenario: Scenario) => {
       baseContext: {
         ...(params.signal.additionalIndicators?.baseContext ?? {}),
         relative: {
-          marketReferences: {
+          referenceTradeFlow: {
             source: 'binance_reference_market',
             primaryReferenceSymbol: 'BTCUSDT',
           },
@@ -224,15 +224,15 @@ const loadScript = async (scenario: Scenario) => {
     };
     return true;
   });
-  const enrichSignalWithGlobalMarketContext = jest.fn(async (params: any) => {
+  const enrichSignalWithCoinMarketCapContext = jest.fn(async (params: any) => {
     params.signal.additionalIndicators = {
       ...(params.signal.additionalIndicators ?? {}),
       baseContext: {
         ...(params.signal.additionalIndicators?.baseContext ?? {}),
         relative: {
           ...(params.signal.additionalIndicators?.baseContext?.relative ?? {}),
-          btcDominance: {
-            source: 'coingecko_global',
+          cmcGlobal: {
+            source: 'coinmarketcap_global',
             stale: false,
             btcDominancePct: 55,
             altLiquidityRegime: 'neutral',
@@ -296,7 +296,7 @@ const loadScript = async (scenario: Scenario) => {
 
   jest.doMock('@tradejs/node/strategies', () => ({
     enrichSignalWithBinanceMarketContext,
-    enrichSignalWithGlobalMarketContext,
+    enrichSignalWithCoinMarketCapContext,
     getStrategyCreator,
   }));
 

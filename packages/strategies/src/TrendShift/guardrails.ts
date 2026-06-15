@@ -321,10 +321,10 @@ const buildTrendShiftGateFeatures = ({
     : toPressureBias(asFiniteNumber(tradeFlow?.buyPressurePct));
   const tradeFlowAligned = toBiasAligned({ direction, bias: tradeFlowBias });
   const primaryReferenceSymbol =
-    baseContext.relative?.marketReferences?.primaryReferenceSymbol;
+    baseContext.relative?.referenceTradeFlow?.primaryReferenceSymbol;
   const primaryReferenceTradeFlow =
     primaryReferenceSymbol != null
-      ? baseContext.relative?.marketReferences?.tradeFlowBySymbol?.[
+      ? baseContext.relative?.referenceTradeFlow?.tradeFlowBySymbol?.[
           primaryReferenceSymbol
         ]
       : undefined;

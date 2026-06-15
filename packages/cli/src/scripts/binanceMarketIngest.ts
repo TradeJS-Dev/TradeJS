@@ -4,7 +4,6 @@ import chalk from 'chalk';
 import { connectors, ConnectorNames } from '@tradejs/connectors';
 import {
   upsertMarketBreadthRows,
-  upsertMarketOrderBookDepthRows,
   upsertMarketTradeFlowRows,
   waitForDbReady,
 } from '@tradejs/infra/timescale';
@@ -21,12 +20,11 @@ import {
   normalizeBinanceSymbols,
   normalizeMarketFeatureInterval,
   selectBreadthUniverseFromTickers,
-  summarizeOrderBookDepth,
 } from '../lib/binanceMarketData';
 
 args.example(
   'yarn cli:node8g binance:market-ingest --all --symbols BTCUSDT,ETHUSDT --days 0.05 --interval 1m --write',
-  'Ingest Binance public market breadth, aggTrades buckets, and depth snapshots',
+  'Ingest Binance public market breadth and historical aggTrades buckets',
 );
 
 args.option(
@@ -38,12 +36,11 @@ args.option(['i', 'interval'], 'Aggregation interval: 1m,5m,15m,1h', '1m');
 args.option(['d', 'days'], 'Lookback window in days', '1');
 args.option(['h', 'hours'], 'Lookback window in hours; overrides --days');
 args.option(['a', 'aggTrades'], 'Fetch and bucket Binance aggTrades');
-args.option(['D', 'depth'], 'Fetch current full order book depth snapshots');
 args.option(
   ['b', 'breadth'],
   'Build alt-basket market breadth from Binance klines',
 );
-args.option(['A', 'all'], 'Enable aggTrades, depth, and breadth');
+args.option(['A', 'all'], 'Enable aggTrades and breadth');
 args.option(
   ['w', 'write'],
   'Write rows to Timescale; without this flag only estimate',
@@ -53,7 +50,6 @@ args.option(
   'Top USDT symbols used for breadth universe',
   30,
 );
-args.option(['L', 'depthLimit'], 'Binance order book depth limit', 100);
 args.option(
   ['M', 'batchMinutes'],
   'aggTrades request window size in minutes',
@@ -149,7 +145,6 @@ const printEstimate = (
   console.log(`target symbols: ${estimate.symbols}`);
   console.log(`bucket rows/symbol: ${estimate.bucketRowsPerSymbol}`);
   console.log(`aggTrades bucket rows: ${estimate.aggTradeBucketRows}`);
-  console.log(`depth snapshot rows: ${estimate.depthSnapshotRows}`);
   console.log(`breadth symbols: ${estimate.breadthSymbols}`);
   console.log(`breadth candle reads: ${estimate.breadthCandleRows}`);
   console.log(`breadth rows: ${estimate.breadthRows}`);
@@ -162,17 +157,14 @@ export const main = async () => {
   const hours = flags.hours == null ? null : asFloat(flags.hours, 0);
   const days = hours != null && hours > 0 ? hours / 24 : asFloat(flags.days, 1);
   const breadthLimit = asInt(flags.breadthLimit, 30);
-  const depthLimit = asInt(flags.depthLimit, 100) as 100;
   const batchMinutes = asInt(flags.batchMinutes, 15);
   const requestDelayMs = asInt(flags.requestDelayMs, 75);
   const includeAll = Boolean(flags.all);
   const includeAggTrades = includeAll || Boolean(flags.aggTrades);
-  const includeDepth = includeAll || Boolean(flags.depth);
   const includeBreadth = includeAll || Boolean(flags.breadth);
-  const anyMode = includeAggTrades || includeDepth || includeBreadth;
+  const anyMode = includeAggTrades || includeBreadth;
   const modes = {
     includeAggTrades: anyMode ? includeAggTrades : true,
-    includeDepth: anyMode ? includeDepth : true,
     includeBreadth: anyMode ? includeBreadth : true,
   };
 
@@ -183,7 +175,6 @@ export const main = async () => {
     days,
     interval,
     includeAggTrades: modes.includeAggTrades,
-    includeDepth: modes.includeDepth,
     includeBreadth: modes.includeBreadth,
     breadthLimit,
   });
@@ -205,7 +196,6 @@ export const main = async () => {
 
   let aggTradesRaw = 0;
   let tradeFlowRows = 0;
-  let depthRows = 0;
   let breadthRows = 0;
   let breadthCandleRows = 0;
 
@@ -226,26 +216,6 @@ export const main = async () => {
       tradeFlowRows += rows.length;
       process.stdout.write(
         `${trades.length} trades -> ${rows.length} buckets\n`,
-      );
-    }
-  }
-
-  if (modes.includeDepth && connector.getOrderBookDepth) {
-    for (const symbol of symbols) {
-      const depth = await connector.getOrderBookDepth({
-        symbol,
-        limit: depthLimit as any,
-      });
-      if (!depth) continue;
-      const row = summarizeOrderBookDepth({ depth });
-      await upsertMarketOrderBookDepthRows([row]);
-      depthRows += 1;
-      console.log(
-        chalk.cyan(
-          `depth ${symbol}: levels=${row.rawBidLevels}/${row.rawAskLevels} spreadBps=${String(
-            row.spreadBps ?? 'n/a',
-          )}`,
-        ),
       );
     }
   }
@@ -286,10 +256,9 @@ export const main = async () => {
   console.log(chalk.green('Binance market ingest done'));
   console.log(`aggTrades raw rows: ${aggTradesRaw}`);
   console.log(`trade-flow bucket rows: ${tradeFlowRows}`);
-  console.log(`depth snapshot rows: ${depthRows}`);
   console.log(`breadth candle rows read: ${breadthCandleRows}`);
   console.log(`breadth rows: ${breadthRows}`);
   console.log(
-    `stored rows: ${tradeFlowRows + depthRows + breadthRows} (raw aggTrades are not stored)`,
+    `stored rows: ${tradeFlowRows + breadthRows} (raw aggTrades are not stored)`,
   );
 };

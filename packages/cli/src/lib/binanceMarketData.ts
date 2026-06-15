@@ -2,11 +2,8 @@ import type {
   AggTrade,
   KlineChartData,
   MarketBreadthRow,
-  MarketDepthLevelSummary,
   MarketFeatureInterval,
-  MarketOrderBookDepthRow,
   MarketTradeFlowRow,
-  OrderBookDepth,
   Ticker,
 } from '@tradejs/types';
 
@@ -26,8 +23,6 @@ const STABLE_QUOTE_SYMBOLS = new Set([
   'USDPUSDT',
   'DAIUSDT',
 ]);
-
-const finiteOrNull = (value: number) => (Number.isFinite(value) ? value : null);
 
 const safeDivide = (num: number, den: number) =>
   Number.isFinite(num) && Number.isFinite(den) && den !== 0 ? num / den : null;
@@ -150,7 +145,6 @@ export const estimateBinanceMarketDataVolume = ({
   days,
   interval,
   includeAggTrades,
-  includeDepth,
   includeBreadth,
   breadthLimit,
 }: {
@@ -158,7 +152,6 @@ export const estimateBinanceMarketDataVolume = ({
   days: number;
   interval: MarketFeatureInterval;
   includeAggTrades: boolean;
-  includeDepth: boolean;
   includeBreadth: boolean;
   breadthLimit: number;
 }) => {
@@ -167,7 +160,6 @@ export const estimateBinanceMarketDataVolume = ({
   const aggTradeBucketRows = includeAggTrades
     ? symbols.length * bucketRowsPerSymbol
     : 0;
-  const depthSnapshotRows = includeDepth ? symbols.length : 0;
   const breadthSymbols = includeBreadth ? Math.max(0, breadthLimit) : 0;
   const breadthCandleRows = breadthSymbols * bucketRowsPerSymbol;
   const breadthRows = includeBreadth ? bucketRowsPerSymbol : 0;
@@ -178,11 +170,10 @@ export const estimateBinanceMarketDataVolume = ({
     symbols: symbols.length,
     bucketRowsPerSymbol,
     aggTradeBucketRows,
-    depthSnapshotRows,
     breadthSymbols,
     breadthCandleRows,
     breadthRows,
-    estimatedStoredRows: aggTradeBucketRows + depthSnapshotRows + breadthRows,
+    estimatedStoredRows: aggTradeBucketRows + breadthRows,
   };
 };
 
@@ -239,75 +230,6 @@ export const aggregateAggTradesToRows = ({
   }
 
   return [...buckets.values()].sort((a, b) => a.ts.getTime() - b.ts.getTime());
-};
-
-const summarizeLevels = (
-  bids: Array<[number, number]>,
-  asks: Array<[number, number]>,
-  levels: number,
-): MarketDepthLevelSummary => {
-  const bidSlice = bids.slice(0, levels);
-  const askSlice = asks.slice(0, levels);
-  const bidBaseVolume = bidSlice.reduce((sum, [, qty]) => sum + qty, 0);
-  const askBaseVolume = askSlice.reduce((sum, [, qty]) => sum + qty, 0);
-  const bidQuoteVolume = bidSlice.reduce(
-    (sum, [price, qty]) => sum + price * qty,
-    0,
-  );
-  const askQuoteVolume = askSlice.reduce(
-    (sum, [price, qty]) => sum + price * qty,
-    0,
-  );
-  const imbalance = safeDivide(
-    bidQuoteVolume - askQuoteVolume,
-    bidQuoteVolume + askQuoteVolume,
-  );
-
-  return {
-    levels,
-    bidBaseVolume: finiteOrNull(bidBaseVolume),
-    askBaseVolume: finiteOrNull(askBaseVolume),
-    bidQuoteVolume: finiteOrNull(bidQuoteVolume),
-    askQuoteVolume: finiteOrNull(askQuoteVolume),
-    imbalance,
-  };
-};
-
-export const summarizeOrderBookDepth = ({
-  venue = 'binance',
-  depth,
-  levels = [5, 10, 20, 50, 100],
-  source = 'binance_depth',
-}: {
-  venue?: string;
-  depth: OrderBookDepth;
-  levels?: number[];
-  source?: string;
-}): MarketOrderBookDepthRow => {
-  const bid = depth.bids[0]?.[0] ?? null;
-  const ask = depth.asks[0]?.[0] ?? null;
-  const mid = bid != null && ask != null ? (bid + ask) / 2 : null;
-  const spreadBps =
-    bid != null && ask != null && mid != null && mid > 0
-      ? ((ask - bid) / mid) * 10_000
-      : null;
-
-  return {
-    venue,
-    symbol: depth.symbol,
-    ts: new Date(depth.timestamp),
-    lastUpdateId: depth.lastUpdateId,
-    bid,
-    ask,
-    mid,
-    spreadBps,
-    levels: levels.map((level) =>
-      summarizeLevels(depth.bids, depth.asks, level),
-    ),
-    rawBidLevels: depth.bids.length,
-    rawAskLevels: depth.asks.length,
-    source,
-  };
 };
 
 export const buildMarketBreadthRows = ({

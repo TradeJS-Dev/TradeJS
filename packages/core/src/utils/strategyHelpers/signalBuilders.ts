@@ -320,21 +320,17 @@ export const buildBaseContextGateFeatures = ({
   const volumeStructure = baseContext.participation?.volumeStructure;
   const relative = baseContext.relative?.benchmark;
   const marketBreadth = baseContext.relative?.marketBreadth;
-  const btcDominance = baseContext.relative?.btcDominance;
+  const cmcGlobal = baseContext.relative?.cmcGlobal;
+  const cmcReferenceAssets = baseContext.relative?.cmcReferenceAssets;
   const targetVsBtc = baseContext.relative?.targetVsBtc;
   const targetVsEth = baseContext.relative?.targetVsEth;
   const btcAltRegime = baseContext.relative?.btcAltRegime;
-  const marketReferences = baseContext.relative?.marketReferences;
+  const referenceTradeFlow = baseContext.relative?.referenceTradeFlow;
   const execution = baseContext.relative?.execution;
-  const targetVenue = execution?.targetVenue;
-  const primaryReferenceSymbol = marketReferences?.primaryReferenceSymbol;
+  const primaryReferenceSymbol = referenceTradeFlow?.primaryReferenceSymbol;
   const primaryReferenceTradeFlow =
     primaryReferenceSymbol != null
-      ? marketReferences?.tradeFlowBySymbol?.[primaryReferenceSymbol]
-      : undefined;
-  const primaryReferenceDepth =
-    primaryReferenceSymbol != null
-      ? marketReferences?.depthBySymbol?.[primaryReferenceSymbol]
+      ? referenceTradeFlow?.tradeFlowBySymbol?.[primaryReferenceSymbol]
       : undefined;
   const atrPctRankBucket = toRankBucket(
     asFiniteNumberOrNull(volatilityPercentiles?.atrPctRank100),
@@ -434,23 +430,35 @@ export const buildBaseContextGateFeatures = ({
       : direction === 'LONG'
         ? marketBreadthReturn >= 0
         : marketBreadthReturn <= 0;
-  const btcDominancePct = asFiniteNumberOrNull(btcDominance?.btcDominancePct);
-  const btcDominanceChange24hPct = asFiniteNumberOrNull(
-    btcDominance?.btcDominanceChange24hPct,
-  );
-  const btcDominanceAltLiquidityRegime =
-    btcDominance?.altLiquidityRegime ?? 'unknown';
-  const btcDominanceStale =
-    typeof btcDominance?.stale === 'boolean' ? btcDominance.stale : null;
-  const btcDominanceAligned =
+  const cmcAltLiquidityRegime = cmcGlobal?.altLiquidityRegime ?? 'unknown';
+  const cmcAltLiquidityStale =
+    typeof cmcGlobal?.stale === 'boolean' ? cmcGlobal.stale : null;
+  const cmcAltLiquidityAligned =
     direction == null ||
-    btcDominanceStale === true ||
-    btcDominanceAltLiquidityRegime === 'unknown' ||
-    btcDominanceAltLiquidityRegime === 'neutral'
+    cmcAltLiquidityStale === true ||
+    cmcAltLiquidityRegime === 'unknown' ||
+    cmcAltLiquidityRegime === 'neutral'
       ? null
       : direction === 'LONG'
-        ? btcDominanceAltLiquidityRegime === 'alt_friendly'
-        : btcDominanceAltLiquidityRegime === 'btc_favored';
+        ? cmcAltLiquidityRegime === 'alt_friendly'
+        : cmcAltLiquidityRegime === 'btc_favored' ||
+          cmcAltLiquidityRegime === 'risk_off';
+  const cmcEthBtcReferenceRegime =
+    cmcReferenceAssets?.referenceLiquidityRegime ?? 'unknown';
+  const cmcEthBtcStale =
+    typeof cmcReferenceAssets?.stale === 'boolean'
+      ? cmcReferenceAssets.stale
+      : null;
+  const cmcEthBtcAligned =
+    direction == null ||
+    cmcEthBtcStale === true ||
+    cmcEthBtcReferenceRegime === 'unknown' ||
+    cmcEthBtcReferenceRegime === 'balanced'
+      ? null
+      : direction === 'LONG'
+        ? cmcEthBtcReferenceRegime === 'eth_led'
+        : cmcEthBtcReferenceRegime === 'btc_led' ||
+          cmcEthBtcReferenceRegime === 'thin';
   const targetVsBtcRatioReturn24h = asFiniteNumberOrNull(
     targetVsBtc?.ratioReturn24h,
   );
@@ -504,31 +512,8 @@ export const buildBaseContextGateFeatures = ({
   const btcTurnoverShare24h = asFiniteNumberOrNull(
     btcAltRegime?.btcTurnoverShare24h,
   );
-  const orderBookImbalance = asFiniteNumberOrNull(
-    targetVenue?.depthLevels?.[0]?.imbalance,
-  );
-  const referenceOrderBookImbalance = asFiniteNumberOrNull(
-    primaryReferenceDepth?.depthLevels?.[0]?.imbalance,
-  );
-  const orderBookImbalanceAligned =
-    direction == null || orderBookImbalance == null || targetVenue?.stale
-      ? null
-      : direction === 'LONG'
-        ? orderBookImbalance >= 0
-        : orderBookImbalance <= 0;
-  const referenceOrderBookImbalanceAligned =
-    direction == null ||
-    referenceOrderBookImbalance == null ||
-    primaryReferenceDepth?.stale
-      ? null
-      : direction === 'LONG'
-        ? referenceOrderBookImbalance >= 0
-        : referenceOrderBookImbalance <= 0;
   const venueSpreadZScore = asFiniteNumberOrNull(execution?.venueSpreadZScore);
   const venueSpreadSeverity = toVenueSpreadSeverity(venueSpreadZScore);
-  const targetVenueSpreadBps = asFiniteNumberOrNull(targetVenue?.spreadBps);
-  const targetVenueStale =
-    typeof targetVenue?.stale === 'boolean' ? targetVenue.stale : null;
   const higherTimeframeConflict =
     mtfAlignmentForDirection === 'unknown'
       ? null
@@ -559,34 +544,6 @@ export const buildBaseContextGateFeatures = ({
   const derivativesCrowdedAny =
     derivativesRiskFlags.includes('crowded_long') ||
     derivativesRiskFlags.includes('crowded_short');
-  const onchainSummary = baseContext.onchain?.summary;
-  const onchainIntervals = baseContext.onchain?.intervals;
-  const onchainPrimary = onchainIntervals?.['15m'] ?? onchainIntervals?.['1h'];
-  const onchainDirectionAligned =
-    typeof onchainSummary?.directionAligned === 'boolean'
-      ? onchainSummary.directionAligned
-      : null;
-  const onchainRiskFlags = Array.isArray(onchainSummary?.riskFlags)
-    ? onchainSummary.riskFlags
-    : [];
-  const onchainPressure = onchainSummary?.pressure ?? 'unknown';
-  const onchainStale =
-    typeof onchainPrimary?.stale === 'boolean' ? onchainPrimary.stale : null;
-  const onchainLowConfidence = onchainRiskFlags.includes('low_confidence');
-  const onchainDistributionForLong =
-    direction === 'LONG' &&
-    (onchainRiskFlags.includes('whale_distribution') ||
-      onchainRiskFlags.includes('smart_money_distribution') ||
-      onchainRiskFlags.includes('cex_deposit_spike'));
-  const onchainAccumulationForShort =
-    direction === 'SHORT' &&
-    (onchainRiskFlags.includes('whale_accumulation') ||
-      onchainRiskFlags.includes('smart_money_accumulation') ||
-      onchainRiskFlags.includes('cex_withdrawal_spike'));
-  const onchainFlowConflict =
-    onchainDirectionAligned === false ||
-    onchainDistributionForLong ||
-    onchainAccumulationForShort;
   const atr = asFiniteNumberOrNull(baseContext.raw?.volatility?.atr);
   const currentPrice = asFiniteNumberOrNull(prices?.currentPrice);
   const takeProfitPrice = asFiniteNumberOrNull(prices?.takeProfitPrice);
@@ -644,9 +601,10 @@ export const buildBaseContextGateFeatures = ({
   );
   pushWhen(
     confirmations,
-    btcDominanceAligned === true,
-    'btc_dominance_aligned',
+    cmcAltLiquidityAligned === true,
+    'cmc_alt_liquidity_aligned',
   );
+  pushWhen(confirmations, cmcEthBtcAligned === true, 'cmc_eth_btc_aligned');
   pushWhen(confirmations, targetVsBtcAligned === true, 'target_vs_btc_aligned');
   pushWhen(confirmations, targetVsEthAligned === true, 'target_vs_eth_aligned');
   pushWhen(
@@ -663,20 +621,9 @@ export const buildBaseContextGateFeatures = ({
   );
   pushWhen(
     confirmations,
-    orderBookImbalanceAligned === true,
-    'order_book_aligned',
-  );
-  pushWhen(
-    confirmations,
-    referenceOrderBookImbalanceAligned === true,
-    'reference_order_book_aligned',
-  );
-  pushWhen(
-    confirmations,
     derivativesDirectionAligned === true,
     'derivatives_aligned',
   );
-  pushWhen(confirmations, onchainDirectionAligned === true, 'onchain_aligned');
   const conflicts: BaseGateFeatureConflict[] = [];
   pushWhen(conflicts, mtfAlignmentForDirection === 'against', 'mtf_against');
   pushWhen(conflicts, mtfAlignmentForDirection === 'mixed', 'mtf_mixed');
@@ -689,9 +636,10 @@ export const buildBaseContextGateFeatures = ({
   pushWhen(conflicts, marketBreadthAligned === false, 'market_breadth_against');
   pushWhen(
     conflicts,
-    btcDominanceAligned === false,
-    'btc_dominance_alt_pressure',
+    cmcAltLiquidityAligned === false,
+    'cmc_alt_liquidity_against',
   );
+  pushWhen(conflicts, cmcEthBtcAligned === false, 'cmc_eth_btc_against');
   pushWhen(conflicts, targetVsBtcAligned === false, 'target_vs_btc_against');
   pushWhen(conflicts, targetVsEthAligned === false, 'target_vs_eth_against');
   pushWhen(conflicts, btcAltRegimeAligned === false, 'btc_alt_regime_against');
@@ -705,26 +653,12 @@ export const buildBaseContextGateFeatures = ({
   pushWhen(conflicts, failedBreakoutForDirection === true, 'failed_breakout');
   pushWhen(conflicts, extremeVolatilityRisk, 'extreme_volatility');
   pushWhen(conflicts, venueSpreadSeverity === 'wide', 'wide_spread');
-  pushWhen(conflicts, targetVenueStale === true, 'target_venue_stale');
-  pushWhen(
-    conflicts,
-    orderBookImbalanceAligned === false,
-    'order_book_against',
-  );
-  pushWhen(
-    conflicts,
-    referenceOrderBookImbalanceAligned === false,
-    'reference_order_book_against',
-  );
   pushWhen(
     conflicts,
     derivativesDirectionAligned === false,
     'derivatives_against',
   );
   pushWhen(conflicts, derivativesCrowdedForDirection, 'derivatives_crowded');
-  pushWhen(conflicts, onchainDirectionAligned === false, 'onchain_against');
-  pushWhen(conflicts, onchainFlowConflict, 'onchain_distribution');
-  pushWhen(conflicts, onchainLowConfidence, 'onchain_low_confidence');
   const scores: NonNullable<BaseContextGateFeatures['scores']> = {
     structure: scoreEvidence([
       breakoutWithDirection,
@@ -744,7 +678,8 @@ export const buildBaseContextGateFeatures = ({
     relative: scoreEvidence([
       benchmarkAligned,
       marketBreadthAligned,
-      btcDominanceAligned,
+      cmcAltLiquidityAligned,
+      cmcEthBtcAligned,
       targetVsBtcAligned,
       targetVsEthAligned,
       btcAltRegimeAligned,
@@ -759,17 +694,8 @@ export const buildBaseContextGateFeatures = ({
     ]),
     execution: scoreEvidence([
       venueSpreadSeverity === 'unknown' ? null : venueSpreadSeverity !== 'wide',
-      targetVenueStale == null ? null : !targetVenueStale,
-      orderBookImbalanceAligned,
-      referenceOrderBookImbalanceAligned,
     ]),
     derivatives: scoreEvidence([derivativesDirectionAligned]),
-    onchain: scoreEvidence([
-      onchainStale == null ? null : !onchainStale,
-      onchainDirectionAligned,
-      onchainFlowConflict ? false : null,
-      onchainLowConfidence ? false : null,
-    ]),
     totalContext: null,
   };
   scores.totalContext = averageScores([
@@ -779,7 +705,6 @@ export const buildBaseContextGateFeatures = ({
     scores.mtf,
     scores.execution,
     scores.derivatives,
-    scores.onchain,
   ]);
   const volatilityRisk = extremeVolatilityRisk
     ? 'high'
@@ -789,7 +714,7 @@ export const buildBaseContextGateFeatures = ({
         ? 'unknown'
         : 'low';
   const liquidityRisk =
-    targetVenueStale === true || venueSpreadSeverity === 'wide'
+    venueSpreadSeverity === 'wide'
       ? 'high'
       : venueSpreadSeverity === 'elevated'
         ? 'medium'
@@ -827,33 +752,31 @@ export const buildBaseContextGateFeatures = ({
           : 'low';
   const primaryIssue = derivativesCrowdedForDirection
     ? 'crowded_derivatives'
-    : onchainFlowConflict
-      ? 'onchain_conflict'
-      : higherTimeframeConflict === true
-        ? 'mtf_conflict'
-        : venueSpreadSeverity === 'wide' || targetVenueStale === true
-          ? 'bad_execution'
-          : extremeVolatilityRisk
-            ? 'extreme_volatility'
-            : benchmarkConflict ||
-                marketBreadthAligned === false ||
-                btcDominanceAligned === false ||
-                targetVsBtcAligned === false ||
-                targetVsEthAligned === false ||
-                btcAltRegimeAligned === false
-              ? 'market_context_against'
-              : (scores.participation ?? 100) < 45
-                ? 'weak_participation'
-                : (scores.structure ?? 100) < 45
-                  ? 'weak_structure'
-                  : 'none';
+    : higherTimeframeConflict === true
+      ? 'mtf_conflict'
+      : venueSpreadSeverity === 'wide'
+        ? 'bad_execution'
+        : extremeVolatilityRisk
+          ? 'extreme_volatility'
+          : benchmarkConflict ||
+              marketBreadthAligned === false ||
+              cmcAltLiquidityAligned === false ||
+              cmcEthBtcAligned === false ||
+              targetVsBtcAligned === false ||
+              targetVsEthAligned === false ||
+              btcAltRegimeAligned === false
+            ? 'market_context_against'
+            : (scores.participation ?? 100) < 45
+              ? 'weak_participation'
+              : (scores.structure ?? 100) < 45
+                ? 'weak_structure'
+                : 'none';
   const needsExtraConfirmation =
     conflicts.length > 0 ||
     (scores.totalContext != null && scores.totalContext < 60);
   const approveBias =
     conflicts.length >= 3 ||
     primaryIssue === 'crowded_derivatives' ||
-    primaryIssue === 'onchain_conflict' ||
     primaryIssue === 'bad_execution' ||
     primaryIssue === 'mtf_conflict'
       ? 'reject'
@@ -946,11 +869,12 @@ export const buildBaseContextGateFeatures = ({
       marketBreadthAligned,
       marketBreadthStale:
         typeof marketBreadth?.stale === 'boolean' ? marketBreadth.stale : null,
-      btcDominancePct,
-      btcDominanceChange24hPct,
-      btcDominanceAltLiquidityRegime,
-      btcDominanceAligned,
-      btcDominanceStale,
+      cmcAltLiquidityRegime,
+      cmcAltLiquidityAligned,
+      cmcAltLiquidityStale,
+      cmcEthBtcReferenceRegime,
+      cmcEthBtcAligned,
+      cmcEthBtcStale,
       targetVsBtcRatioReturn24h,
       targetVsBtcAlpha24h,
       targetVsBtcBeta20,
@@ -972,28 +896,7 @@ export const buildBaseContextGateFeatures = ({
     execution: {
       venueSpreadZScore,
       venueSpreadSeverity,
-      targetVenueSpreadBps,
-      targetVenueStale,
-      orderBookImbalance,
-      orderBookImbalanceAligned,
-      referenceOrderBookImbalance,
-      referenceOrderBookImbalanceAligned,
     },
-    onchain: baseContext.onchain
-      ? {
-          pressure: onchainPressure,
-          directionAligned: onchainDirectionAligned,
-          riskFlags: onchainRiskFlags,
-          confidenceWeightedBias:
-            onchainSummary?.confidenceWeightedBias ?? null,
-          netFlowUsd: onchainSummary?.netFlowUsd ?? null,
-          whaleNetFlowUsd: onchainPrimary?.whaleNetFlowUsd ?? null,
-          smartTraderNetFlowUsd: onchainPrimary?.smartTraderNetFlowUsd ?? null,
-          cexNetFlowUsd: onchainPrimary?.cexNetFlowUsd ?? null,
-          dexNetBuyUsd: onchainPrimary?.dexNetBuyUsd ?? null,
-          stale: onchainStale,
-        }
-      : undefined,
   };
 };
 
@@ -1069,42 +972,6 @@ export const refreshSignalBaseContextGateFeatures = (signal: Signal) => {
   };
 
   return signal;
-};
-
-const withTargetVenueContext = (
-  additionalIndicators: BuildEntrySignalDecisionParams['additionalIndicators'],
-  targetVenue: StrategyMarketSnapshot['targetVenue'],
-): BuildEntrySignalDecisionParams['additionalIndicators'] => {
-  if (
-    targetVenue == null ||
-    !additionalIndicators ||
-    typeof additionalIndicators !== 'object' ||
-    Array.isArray(additionalIndicators)
-  ) {
-    return additionalIndicators;
-  }
-
-  const additionalRecord = additionalIndicators as Record<string, unknown>;
-  const baseContext = additionalRecord.baseContext as
-    | BaseStrategyContextSnapshot
-    | undefined;
-  if (!baseContext?.relative?.execution) {
-    return additionalIndicators;
-  }
-
-  return {
-    ...additionalRecord,
-    baseContext: {
-      ...baseContext,
-      relative: {
-        ...baseContext.relative,
-        execution: {
-          ...baseContext.relative.execution,
-          targetVenue,
-        },
-      },
-    },
-  } as BuildEntrySignalDecisionParams['additionalIndicators'];
 };
 
 export const mapAiRuntimeFromConfig = <TConfig extends AiRuntimeConfigLike>(
@@ -1416,10 +1283,6 @@ export const createStrategyAPI = ({
       const marketData = await getMarketData();
       const currentPrice = marketData.currentPrice;
       const timestamp = marketData.timestamp;
-      const resolvedAdditionalIndicators = withTargetVenueContext(
-        additionalIndicators,
-        marketData.targetVenue,
-      );
       const stopLossPrice = orderPlan.stopLossPrice;
       const takeProfitPrice = resolveTakeProfitPrice({
         direction,
@@ -1459,7 +1322,7 @@ export const createStrategyAPI = ({
         },
         figures,
         indicators,
-        additionalIndicators: resolvedAdditionalIndicators,
+        additionalIndicators,
         signalId,
         orderPlan,
         runtime,

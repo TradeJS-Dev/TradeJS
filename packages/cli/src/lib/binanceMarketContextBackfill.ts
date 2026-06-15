@@ -6,7 +6,6 @@ import {
   getMarketBreadthCoverage,
   getMarketTradeFlowCoverage,
   upsertMarketBreadthRows,
-  upsertMarketOrderBookDepthRows,
   upsertMarketTradeFlowRows,
   waitForDbReady,
 } from '@tradejs/infra/timescale';
@@ -23,7 +22,6 @@ import {
   buildMarketBreadthRows,
   MARKET_FEATURE_INTERVAL_MS,
   selectBreadthUniverseFromTickers,
-  summarizeOrderBookDepth,
 } from './binanceMarketData';
 
 type BackfillParams = {
@@ -111,22 +109,17 @@ const resolveWindow = ({
   endMs: number;
   preloadStartMs?: number;
 }) => {
-  const tradeFlowMaxDays = asFloat(
-    process.env.BINANCE_MARKET_CONTEXT_TRADE_FLOW_BACKFILL_DAYS,
-    0.1,
-  );
   const breadthLookbackDays = asFloat(
     process.env.BINANCE_MARKET_CONTEXT_BREADTH_BACKFILL_LOOKBACK_DAYS,
     3,
   );
-  const tradeFlowStartMs = Math.max(startMs, endMs - tradeFlowMaxDays * DAY_MS);
   const breadthWarmupStartMs = startMs - breadthLookbackDays * DAY_MS;
   return {
     breadthStartMs:
       preloadStartMs == null
         ? breadthWarmupStartMs
         : Math.max(preloadStartMs, breadthWarmupStartMs),
-    tradeFlowStartMs,
+    tradeFlowStartMs: preloadStartMs ?? startMs,
     endMs,
   };
 };
@@ -322,10 +315,6 @@ const backfillBinanceMarketContext = async (
     process.env.BINANCE_MARKET_CONTEXT_BACKFILL_TRADE_FLOW,
     true,
   );
-  const includeDepth = parseEnabledFlag(
-    process.env.BINANCE_MARKET_CONTEXT_BACKFILL_DEPTH,
-    true,
-  );
   const includeBreadth = parseEnabledFlag(
     process.env.BINANCE_MARKET_CONTEXT_BACKFILL_BREADTH,
     true,
@@ -340,7 +329,7 @@ const backfillBinanceMarketContext = async (
   );
   const symbolLimit = asInt(
     process.env.BINANCE_MARKET_CONTEXT_TRADE_FLOW_SYMBOL_LIMIT,
-    40,
+    2,
   );
   const breadthLimit = asInt(
     process.env.BINANCE_MARKET_CONTEXT_BREADTH_LIMIT,
@@ -350,15 +339,10 @@ const backfillBinanceMarketContext = async (
     process.env.BINANCE_MARKET_CONTEXT_BREADTH_CHUNK_DAYS,
     30,
   );
-  const depthLimit = asInt(
-    process.env.BINANCE_MARKET_CONTEXT_DEPTH_LIMIT,
-    100,
-  ) as 100;
   const referenceSymbols = getReferenceSymbols().slice(0, symbolLimit);
   const skippedSymbols = Math.max(0, symbols.length - referenceSymbols.length);
 
   let tradeFlowRows = 0;
-  let depthRows = 0;
   let breadthRows = 0;
 
   console.log(
@@ -411,30 +395,6 @@ const backfillBinanceMarketContext = async (
         skip: referenceSymbols.length - missingSymbols.length + skippedSymbols,
         symbol,
       });
-    }
-  }
-
-  if (includeDepth && connector.getOrderBookDepth) {
-    const bar = new ProgressBar(
-      'depth :current/:total [:bar][:percent] :etas(s) rows=:rows :symbol',
-      {
-        total: Math.max(1, referenceSymbols.length),
-        width: 24,
-      },
-    );
-    for (const symbol of referenceSymbols) {
-      const depth = await connector.getOrderBookDepth({
-        symbol,
-        limit: depthLimit,
-      });
-      if (depth) {
-        await upsertMarketOrderBookDepthRows([
-          summarizeOrderBookDepth({ depth }),
-        ]);
-        depthRows += 1;
-      }
-      bar.tick(1, { rows: depthRows, symbol });
-      await sleep(requestDelayMs);
     }
   }
 
@@ -524,14 +484,14 @@ const backfillBinanceMarketContext = async (
 
   console.log(
     chalk.green(
-      `binance market context backfill done: tradeFlowRows=${tradeFlowRows}, depthRows=${depthRows}, breadthRows=${breadthRows}, skippedSymbols=${skippedSymbols}`,
+      `binance market context backfill done: tradeFlowRows=${tradeFlowRows}, depthRows=0, breadthRows=${breadthRows}, skippedSymbols=${skippedSymbols}`,
     ),
   );
 
   return {
     skipped: false,
     tradeFlowRows,
-    depthRows,
+    depthRows: 0,
     breadthRows,
     skippedSymbols,
   };

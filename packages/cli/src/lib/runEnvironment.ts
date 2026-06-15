@@ -205,6 +205,7 @@ export const prepareRunEnvironment = async ({
             connectorLabel: connectorName,
             preloadStart,
             preloadEnd: window.end,
+            skipCovered: true,
           },
         ),
       );

@@ -741,6 +741,141 @@ describe('cli telegram notifications', () => {
   });
 });
 
+describe('cli update kline coverage filtering', () => {
+  beforeEach(() => {
+    jest.resetModules();
+    jest.clearAllMocks();
+  });
+
+  it('skips symbols whose Timescale cache already covers the requested window', async () => {
+    const getDataEdgesForSymbols = jest.fn(async () => {
+      const edges = new Map<string, { min?: number; max?: number }>();
+      edges.set('BTCUSDT', { min: 500, max: 2_000 });
+      edges.set('ETHUSDT', { min: 500, max: 2_000 });
+      edges.set('SOLUSDT', { min: 500, max: 1_499 });
+      return edges;
+    });
+    const logger = {
+      info: jest.fn(),
+      error: jest.fn(),
+      warn: jest.fn(),
+    };
+
+    jest.doMock('progress', () => ({
+      __esModule: true,
+      default: jest.fn().mockImplementation(() => ({
+        tick: jest.fn(),
+      })),
+    }));
+
+    jest.doMock('chalk', () => ({
+      __esModule: true,
+      default: {
+        yellow: (...values: unknown[]) => values.join(' '),
+        gray: (value: string) => value,
+      },
+    }));
+
+    jest.doMock('@tradejs/core/async', () => ({
+      runWithConcurrency: async <T>(
+        items: T[],
+        _concurrency: number,
+        worker: (item: T, index: number) => Promise<void>,
+      ) => {
+        for (let index = 0; index < items.length; index += 1) {
+          await worker(items[index], index);
+        }
+      },
+    }));
+
+    jest.doMock('@tradejs/core/backtest', () => ({
+      getFormatted: jest.fn(),
+    }));
+
+    jest.doMock('@tradejs/core/constants', () => ({
+      PRELOAD_DAYS: 30,
+    }));
+
+    jest.doMock('@tradejs/core/tickers', () => ({
+      getTopTickers: jest.fn(),
+    }));
+
+    jest.doMock('@tradejs/core/time', () => ({
+      getTimestamp: jest.fn(() => 2_000),
+    }));
+
+    jest.doMock('@tradejs/infra/files', () => ({
+      getFiles: jest.fn(async () => []),
+    }));
+
+    jest.doMock('@tradejs/infra/logger', () => ({
+      logger,
+    }));
+
+    jest.doMock('@tradejs/infra/redis', () => ({
+      RedisWriteBlockedError: class RedisWriteBlockedError extends Error {},
+      delKeyWithOptions: jest.fn(),
+      getData: jest.fn(),
+      getKeys: jest.fn(async () => []),
+      redisKeys: {},
+    }));
+
+    jest.doMock('@tradejs/infra/timescale', () => ({
+      getDataEdgesForSymbols,
+    }));
+
+    jest.doMock('../ai', () => ({
+      askAI: jest.fn(),
+    }));
+
+    jest.doMock('../screenshot', () => ({
+      screenDashboard: jest.fn(),
+    }));
+
+    jest.doMock('../signals', () => ({
+      sendSignal: jest.fn(),
+      sendSignalAnalysis: jest.fn(),
+      sendTextToTG: jest.fn(),
+    }));
+
+    jest.doMock('../tradejsConfig', () => ({
+      getTradejsProjectCwd: jest.fn(() => '/tmp/tradejs'),
+    }));
+
+    const { update } = require('../cli');
+    const connector = {
+      kline: jest.fn(async () => []),
+    };
+
+    await update(connector, '5', ['ETHUSDT', 'SOLUSDT'], undefined, {
+      connectorLabel: 'ByBit',
+      preloadStart: 1_000,
+      preloadEnd: 2_000,
+      skipCovered: true,
+    });
+
+    expect(getDataEdgesForSymbols).toHaveBeenCalledWith(
+      'ByBit',
+      ['BTCUSDT', 'ETHUSDT', 'SOLUSDT'],
+      5,
+    );
+    expect(connector.kline).toHaveBeenCalledTimes(1);
+    expect(connector.kline).toHaveBeenCalledWith({
+      symbol: 'SOLUSDT',
+      start: 1_000,
+      end: 2_000,
+      interval: '5',
+      silent: true,
+      warmOnly: true,
+    });
+    expect(logger.info).toHaveBeenCalledWith(
+      expect.stringContaining(
+        'preloadStart=1970-01-01T00:00:01.000Z, preloadEnd=1970-01-01T00:00:02.000Z',
+      ),
+    );
+  });
+});
+
 describe('cli cleanFiles', () => {
   beforeEach(() => {
     jest.resetModules();

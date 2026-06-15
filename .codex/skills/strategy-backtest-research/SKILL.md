@@ -30,6 +30,7 @@ When the strategy is `DoubleTap`, `engine.ts` ports the Bjorgum Double Tap patte
 ## Backtest Workflow
 
 1. Prepare or update Redis backtest config under `users:root:backtests:configs:<Strategy>:<name>`.
+   - When a research config includes `MAX_LOSS_VALUE`, set it to `10`.
 2. Start with small cache-only runs: `yarn backtest -c <Strategy>:<name> -d 30 --cacheOnly --fast`.
 3. Tune strategy-specific grid fields first.
 

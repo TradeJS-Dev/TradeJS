@@ -158,20 +158,6 @@ const getSignalCandleSeries = (signal?: {
   return prevCandle && candle ? [prevCandle, candle] : null;
 };
 
-const extractFreshTargetVenueSpreadBps = (
-  targetVenue: Record<string, unknown> | null,
-) => {
-  if (!targetVenue) {
-    return null;
-  }
-
-  if (targetVenue.stale === true || targetVenue.available === false) {
-    return null;
-  }
-
-  return toFiniteNumberOrNull(targetVenue.spreadBps);
-};
-
 export const calculateEffectiveSlippageBps = ({
   baseSlippageBps = BACKTEST_BASE_SLIPPAGE_BPS,
   spreadBps,
@@ -301,25 +287,7 @@ export const extractExecutionSpreadBps = (signal?: {
 }) => {
   const additionalIndicators = toRecord(signal?.additionalIndicators);
   const explicitSlippage = toRecord(additionalIndicators?.executionSlippage);
-  const explicitSpread = toFiniteNumberOrNull(explicitSlippage?.spreadBps);
-  if (explicitSpread != null) {
-    return explicitSpread;
-  }
-
-  const marketContext = toRecord(additionalIndicators?.marketContext);
-  const marketExecution = toRecord(marketContext?.execution);
-  const marketTargetVenue = toRecord(marketExecution?.targetVenue);
-  const marketTargetSpread =
-    extractFreshTargetVenueSpreadBps(marketTargetVenue);
-  if (marketTargetSpread != null) {
-    return marketTargetSpread;
-  }
-
-  const baseContext = toRecord(additionalIndicators?.baseContext);
-  const relative = toRecord(baseContext?.relative);
-  const execution = toRecord(relative?.execution);
-  const targetVenue = toRecord(execution?.targetVenue);
-  return extractFreshTargetVenueSpreadBps(targetVenue);
+  return toFiniteNumberOrNull(explicitSlippage?.spreadBps);
 };
 
 export const extractExecutionMarketImpactBps = (signal?: {

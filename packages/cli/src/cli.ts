@@ -30,11 +30,12 @@ const scriptLoaders: Record<string, ScriptLoader> = {
   'infra-down': () => import('./scripts/infraDown'),
   'infra-init': () => import('./scripts/infraInit'),
   'infra-up': () => import('./scripts/infraUp'),
+  'maintenance:cleanup-market-context': () =>
+    import('./scripts/cleanupMarketContext'),
   migration: () => import('./scripts/migration'),
   'ml-export': () => import('./scripts/mlExport'),
   'ml-inspect': () => import('./scripts/mlInspect'),
   'ml-train:latest': () => import('./scripts/mlTrainLatestSelect'),
-  'onchain:ingest': () => import('./scripts/onchainIngest'),
   'research:auto': () => import('./scripts/researchAuto'),
   results: () => import('./scripts/results'),
   'replay-runtime-evidence': () => import('./scripts/replayRuntimeEvidence'),

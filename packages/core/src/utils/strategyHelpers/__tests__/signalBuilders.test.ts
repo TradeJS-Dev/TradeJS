@@ -191,32 +191,6 @@ describe('buildStrategySignal', () => {
               volumeWeightedReturn: 0.02,
               dispersion: 0.03,
             },
-            execution: {
-              ...baseContext.relative.execution,
-              targetVenue: {
-                source: 'binance_depth_snapshot',
-                venue: 'binance',
-                symbol: 'BTCUSDT',
-                bid: 99,
-                ask: 101,
-                mid: 100,
-                spreadBps: 200,
-                topBidQty: 1,
-                topAskQty: 2,
-                snapshotTimestamp: 1,
-                stale: false,
-                depthLevels: [
-                  {
-                    levels: 5,
-                    bidBaseVolume: 3,
-                    askBaseVolume: 1,
-                    bidQuoteVolume: 300,
-                    askQuoteVolume: 100,
-                    imbalance: 0.5,
-                  },
-                ],
-              },
-            },
           },
         },
       },
@@ -233,12 +207,11 @@ describe('buildStrategySignal', () => {
         entryLocation: 'mid_range',
       },
       confirmations: {
-        count: 4,
+        count: 3,
         items: [
           'trade_flow_aligned',
           'market_breadth_aligned',
           'benchmark_aligned',
-          'order_book_aligned',
         ],
       },
       conflicts: {
@@ -250,9 +223,9 @@ describe('buildStrategySignal', () => {
         participation: 47,
         relative: 86,
         mtf: null,
-        execution: 86,
+        execution: 62,
         derivatives: null,
-        totalContext: 67,
+        totalContext: 61,
       },
       risk: {
         regimeRisk: 'medium',
@@ -275,10 +248,6 @@ describe('buildStrategySignal', () => {
         marketBreadthReturn: 0.01,
         marketBreadthAligned: true,
         marketBreadthStale: false,
-      },
-      execution: {
-        orderBookImbalance: 0.5,
-        orderBookImbalanceAligned: true,
       },
     });
   });
@@ -484,29 +453,6 @@ describe('buildStrategySignal', () => {
             execution: {
               ...baseContext.relative.execution,
               venueSpreadZScore: 2.5,
-              targetVenue: {
-                source: 'binance_depth_snapshot',
-                venue: 'binance',
-                symbol: 'SOLUSDT',
-                bid: 99,
-                ask: 101,
-                mid: 100,
-                spreadBps: 200,
-                topBidQty: 1,
-                topAskQty: 2,
-                snapshotTimestamp: 1,
-                stale: true,
-                depthLevels: [
-                  {
-                    levels: 5,
-                    bidBaseVolume: 3,
-                    askBaseVolume: 1,
-                    bidQuoteVolume: 300,
-                    askQuoteVolume: 100,
-                    imbalance: 0.5,
-                  },
-                ],
-              },
             },
           },
           derivatives: {
@@ -543,7 +489,6 @@ describe('buildStrategySignal', () => {
           'trade_flow_against',
           'extreme_volatility',
           'wide_spread',
-          'target_venue_stale',
           'derivatives_against',
           'derivatives_crowded',
         ]),
@@ -705,89 +650,6 @@ describe('buildStrategySignal', () => {
           alignmentForDirection: 'aligned',
           higherTimeframeConflict: false,
         }),
-      },
-    });
-  });
-
-  it('projects onchain context into gate features', () => {
-    const signal = buildStrategySignal({
-      signalId: 's-onchain',
-      strategy: 'TrendShift',
-      symbol: 'ETHUSDT',
-      interval: '15' as any,
-      direction: 'LONG',
-      timestamp: 2,
-      prices: {
-        currentPrice: 100,
-        takeProfitPrice: 110,
-        stopLossPrice: 95,
-        riskRatio: 2,
-      },
-      indicators: {
-        baseContext: {
-          ...baseContext,
-          onchain: {
-            source: 'arkham',
-            symbol: 'ETHUSDT',
-            timestamp: 2,
-            intervals: {
-              '15m': {
-                interval: '15m',
-                asOfTs: 2,
-                stale: false,
-                points: 3,
-                whaleNetFlowUsd: -5000,
-                smartTraderNetFlowUsd: -2000,
-                cexDepositUsd: 10000,
-                cexWithdrawUsd: 500,
-                cexNetFlowUsd: -9500,
-                dexBuyUsd: 100,
-                dexSellUsd: 200,
-                dexNetBuyUsd: -100,
-                entityCount: 4,
-                confidenceWeightedBias: -0.6,
-                netFlowUsd1h: -12000,
-                netFlowUsd4h: -15000,
-                cexDepositSpikeRatio: 3,
-                cexWithdrawalSpikeRatio: 0.5,
-              },
-            },
-            summary: {
-              pressure: 'distribution',
-              directionAligned: false,
-              riskFlags: [
-                'whale_distribution',
-                'smart_money_distribution',
-                'cex_deposit_spike',
-              ],
-              confidenceWeightedBias: -0.6,
-              netFlowUsd: -12000,
-            },
-          },
-        },
-      },
-    });
-
-    expect(
-      signal.additionalIndicators?.baseContext?.gateFeatures,
-    ).toMatchObject({
-      scores: {
-        onchain: expect.any(Number),
-      },
-      conflicts: {
-        items: expect.arrayContaining([
-          'onchain_against',
-          'onchain_distribution',
-        ]),
-      },
-      decisionHints: {
-        primaryIssue: 'onchain_conflict',
-        approveBias: 'reject',
-      },
-      onchain: {
-        pressure: 'distribution',
-        directionAligned: false,
-        cexNetFlowUsd: -9500,
       },
     });
   });

@@ -14,7 +14,6 @@ import {
 import { loadTradejsConfig } from '@tradejs/node/cli';
 import {
   enrichSignalWithBinanceMarketContext,
-  enrichSignalWithGlobalMarketContext,
   getStrategyCreator,
 } from '@tradejs/node/strategies';
 import type { TradejsConfigHooks } from '@tradejs/core/config';
@@ -495,10 +494,6 @@ export const runHistoricalSignalsReplay = async ({
           );
           if (result && typeof result !== 'string') {
             await enrichSignalWithBinanceMarketContext({
-              signal: result,
-              env: 'PARITY',
-            });
-            await enrichSignalWithGlobalMarketContext({
               signal: result,
               env: 'PARITY',
             });

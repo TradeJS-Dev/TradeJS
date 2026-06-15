@@ -15,13 +15,9 @@ import {
   shouldBackfillDerivativesContextForSignals,
 } from './derivativesContextBackfill';
 import {
-  backfillCoingeckoGlobalContextForBacktest,
-  backfillCoingeckoGlobalContextForReplay,
-  backfillCoingeckoGlobalContextForSignals,
-  shouldBackfillCoingeckoGlobalContextForBacktest,
-  shouldBackfillCoingeckoGlobalContextForReplay,
-  shouldBackfillCoingeckoGlobalContextForSignals,
-} from './coingeckoGlobalMarketContextBackfill';
+  backfillCoinMarketCapContextForBacktest,
+  shouldBackfillCoinMarketCapContextForBacktest,
+} from './coinMarketCapContextBackfill';
 import { timeOperation as runTimedOperation } from './runFormatting';
 
 export type MarketContextRunMode = 'backtest' | 'signals' | 'replay' | 'parity';
@@ -85,30 +81,18 @@ export const shouldPrepareBinanceMarketContextForRun = (
   });
 };
 
-export const shouldPrepareCoingeckoGlobalContextForRun = (
+export const shouldPrepareCoinMarketCapContextForRun = (
   params: Pick<
     PrepareMarketContextForRunParams,
     'mode' | 'cacheOnly' | 'aiEnabled' | 'mlEnabled'
   >,
-) => {
-  if (params.mode === 'backtest') {
-    return shouldBackfillCoingeckoGlobalContextForBacktest({
-      aiEnabled: Boolean(params.aiEnabled),
-      cacheOnly: params.cacheOnly,
-      mlEnabled: Boolean(params.mlEnabled),
-    });
-  }
-
-  if (params.mode === 'signals') {
-    return shouldBackfillCoingeckoGlobalContextForSignals({
-      cacheOnly: params.cacheOnly,
-    });
-  }
-
-  return shouldBackfillCoingeckoGlobalContextForReplay({
+) =>
+  params.mode === 'backtest' &&
+  shouldBackfillCoinMarketCapContextForBacktest({
+    aiEnabled: Boolean(params.aiEnabled),
     cacheOnly: params.cacheOnly,
+    mlEnabled: Boolean(params.mlEnabled),
   });
-};
 
 export const prepareMarketContextForRun = async (
   params: PrepareMarketContextForRunParams,
@@ -156,19 +140,14 @@ export const prepareMarketContextForRun = async (
     });
   }
 
-  if (shouldPrepareCoingeckoGlobalContextForRun(params)) {
-    await timeOperation('coingecko global market context backfill', () => {
-      const backfill =
-        params.mode === 'backtest'
-          ? backfillCoingeckoGlobalContextForBacktest
-          : params.mode === 'signals'
-            ? backfillCoingeckoGlobalContextForSignals
-            : backfillCoingeckoGlobalContextForReplay;
-
-      return backfill({
+  if (shouldPrepareCoinMarketCapContextForRun(params)) {
+    await timeOperation('coinmarketcap historical context backfill', () =>
+      backfillCoinMarketCapContextForBacktest({
+        userName: params.userName,
         startMs: params.startMs,
         endMs: params.endMs,
-      });
-    });
+        preloadStartMs: params.preloadStartMs,
+      }),
+    );
   }
 };

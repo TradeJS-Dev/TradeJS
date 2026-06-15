@@ -114,80 +114,6 @@ export interface DerivativesContext extends DerivativesSymbolContext {
   referenceContexts?: Record<string, DerivativesSymbolContext>;
 }
 
-export type OnchainPressure =
-  | 'accumulation'
-  | 'distribution'
-  | 'neutral'
-  | 'unknown';
-
-export type OnchainContextRiskFlag =
-  | 'missing_onchain'
-  | 'stale_onchain'
-  | 'whale_accumulation'
-  | 'whale_distribution'
-  | 'smart_money_accumulation'
-  | 'smart_money_distribution'
-  | 'cex_deposit_spike'
-  | 'cex_withdrawal_spike'
-  | 'low_confidence';
-
-export interface OnchainIntervalContext {
-  interval: MarketFeatureInterval;
-  asOfTs: number | null;
-  stale: boolean;
-  points: number;
-  whaleNetFlowUsd: number | null;
-  smartTraderNetFlowUsd: number | null;
-  cexDepositUsd: number | null;
-  cexWithdrawUsd: number | null;
-  cexNetFlowUsd: number | null;
-  dexBuyUsd: number | null;
-  dexSellUsd: number | null;
-  dexNetBuyUsd: number | null;
-  entityCount: number | null;
-  confidenceWeightedBias: number | null;
-  netFlowUsd1h: number | null;
-  netFlowUsd4h: number | null;
-  cexDepositSpikeRatio: number | null;
-  cexWithdrawalSpikeRatio: number | null;
-}
-
-export interface OnchainSymbolContext {
-  source: 'arkham';
-  symbol: string;
-  timestamp: number;
-  intervals: Partial<Record<MarketFeatureInterval, OnchainIntervalContext>>;
-  summary: {
-    pressure: OnchainPressure;
-    directionAligned: boolean | null;
-    riskFlags: OnchainContextRiskFlag[];
-    confidenceWeightedBias: number | null;
-    netFlowUsd: number | null;
-  };
-}
-
-export interface OnchainContext extends OnchainSymbolContext {
-  targetSymbol?: string;
-  primaryReferenceSymbol?: string;
-  referenceSymbols?: string[];
-  referenceContexts?: Record<string, OnchainSymbolContext>;
-}
-
-export type OnchainFlowRow = {
-  symbol: string;
-  interval: MarketFeatureInterval;
-  ts: Date;
-  whaleNetFlowUsd?: number | null;
-  smartTraderNetFlowUsd?: number | null;
-  cexDepositUsd?: number | null;
-  cexWithdrawUsd?: number | null;
-  dexBuyUsd?: number | null;
-  dexSellUsd?: number | null;
-  entityCount?: number | null;
-  confidenceWeightedBias?: number | null;
-  source?: 'arkham' | string | null;
-};
-
 export type SpreadRow = {
   symbol: string;
   interval: DerivativesInterval;
@@ -200,19 +126,40 @@ export type SpreadRow = {
 
 export type MarketFeatureInterval = '1m' | '5m' | '15m' | '1h';
 
+export type MarketGlobalContextSource = 'coinmarketcap_global';
+
 export type MarketGlobalContextRow = {
-  source: 'coingecko_global';
+  source: MarketGlobalContextSource;
   ts: Date;
   updatedAt?: Date | null;
   activeCryptocurrencies?: number | null;
+  activeExchanges?: number | null;
+  activeMarketPairs?: number | null;
   markets?: number | null;
   totalMarketCapUsd?: number | null;
   totalVolumeUsd?: number | null;
+  totalVolumeReportedUsd?: number | null;
   btcDominancePct?: number | null;
   ethDominancePct?: number | null;
   altMarketCapUsd?: number | null;
+  altVolumeUsd?: number | null;
+  altVolumeReportedUsd?: number | null;
   btcToAltMarketCapRatio?: number | null;
   marketCapChangePct24hUsd?: number | null;
+};
+
+export type MarketReferenceAssetContextRow = {
+  source: 'coinmarketcap_reference_asset';
+  symbol: 'BTCUSDT' | 'ETHUSDT' | string;
+  cmcId: number;
+  interval: '1d';
+  ts: Date;
+  openUsd?: number | null;
+  highUsd?: number | null;
+  lowUsd?: number | null;
+  closeUsd?: number | null;
+  volumeUsd?: number | null;
+  marketCapUsd?: number | null;
 };
 
 export type MarketBreadthRow = {
@@ -267,30 +214,6 @@ export type MarketTradeFlowRow = {
   netBaseDelta?: number | null;
   netQuoteDelta?: number | null;
   buyPressurePct?: number | null;
-  source?: string | null;
-};
-
-export type MarketDepthLevelSummary = {
-  levels: number;
-  bidBaseVolume: number | null;
-  askBaseVolume: number | null;
-  bidQuoteVolume: number | null;
-  askQuoteVolume: number | null;
-  imbalance: number | null;
-};
-
-export type MarketOrderBookDepthRow = {
-  venue: string;
-  symbol: string;
-  ts: Date;
-  lastUpdateId?: number | null;
-  bid?: number | null;
-  ask?: number | null;
-  mid?: number | null;
-  spreadBps?: number | null;
-  levels: MarketDepthLevelSummary[];
-  rawBidLevels?: number | null;
-  rawAskLevels?: number | null;
   source?: string | null;
 };
 

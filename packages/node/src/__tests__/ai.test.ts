@@ -1572,16 +1572,39 @@ describe('ai helpers', () => {
           ...signal.additionalIndicators.baseContext,
           relative: {
             ...signal.additionalIndicators.baseContext.relative,
-            btcDominance: {
-              source: 'coingecko_global',
+            cmcGlobal: {
+              source: 'coinmarketcap_global',
               stale: false,
-              btcDominancePct: 54.5,
-              btcDominanceChange24hPct: -0.4,
-              altLiquidityRegime: 'alt_friendly',
               totalMarketCapUsd: 2_600_000_000_000,
+              totalVolumeUsd: 120_000_000_000,
+              totalVolumeReportedUsd: 110_000_000_000,
               altMarketCapUsd: 1_200_000_000_000,
-              btcToAltMarketCapRatio: 1.18,
-              marketCapChangePct24hUsd: 1.2,
+              altVolumeUsd: 55_000_000_000,
+              altVolumeReportedUsd: 50_000_000_000,
+              btcDominancePct: 54.5,
+              ethDominancePct: 17.2,
+              btcDominanceChange24hPct: -0.4,
+              ethDominanceChange24hPct: 0.2,
+              altMarketCapChange24hPct: 0.018,
+              altVolumeChange24hPct: 0.12,
+              activeCryptocurrencies: 14_000,
+              activeExchanges: 780,
+              activeMarketPairs: 120_000,
+              altLiquidityRegime: 'alt_friendly',
+            },
+            cmcReferenceAssets: {
+              source: 'coinmarketcap_reference_asset',
+              stale: false,
+              btcMarketCapUsd: 1_400_000_000_000,
+              ethMarketCapUsd: 450_000_000_000,
+              btcVolumeUsd: 45_000_000_000,
+              ethVolumeUsd: 24_000_000_000,
+              btcVolumeToMarketCap: 0.032,
+              ethVolumeToMarketCap: 0.053,
+              ethBtcMarketCapRatio: 0.321,
+              ethBtcMarketCapRatioChange24hPct: 0.014,
+              ethVsBtcVolumeRatio: 0.533,
+              referenceLiquidityRegime: 'eth_led',
             },
             execution: {
               ...signal.additionalIndicators.baseContext.relative.execution,
@@ -1636,17 +1659,22 @@ describe('ai helpers', () => {
             },
           },
           relative: {
-            btcDominance: {
-              source: 'coingecko_global',
+            cmcGlobal: {
+              source: 'coinmarketcap_global',
               available: true,
               stale: false,
-              btcDominancePct: 54.5,
-              btcDominanceChange24hPct: -0.4,
               altLiquidityRegime: 'alt_friendly',
-              totalMarketCapUsd: 2_600_000_000_000,
-              altMarketCapUsd: 1_200_000_000_000,
-              btcToAltMarketCapRatio: 1.18,
-              marketCapChangePct24hUsd: 1.2,
+              ethDominancePct: 17.2,
+              altVolumeChange24hPct: 0.12,
+              activeMarketPairs: 120_000,
+            },
+            cmcReferenceAssets: {
+              source: 'coinmarketcap_reference_asset',
+              available: true,
+              stale: false,
+              ethBtcMarketCapRatioChange24hPct: 0.014,
+              ethVsBtcVolumeRatio: 0.533,
+              referenceLiquidityRegime: 'eth_led',
             },
           },
         },
@@ -1701,7 +1729,8 @@ describe('ai helpers', () => {
       expect(prompt).toContain('payload.additionalIndicators');
       expect(prompt).toContain('payload.additionalIndicators.baseContext');
       expect(prompt).toContain('marketContext.execution.binanceCoinbaseSpread');
-      expect(prompt).toContain('marketContext.relative.btcDominance');
+      expect(prompt).toContain('marketContext.relative.cmcGlobal');
+      expect(prompt).toContain('marketContext.relative.cmcReferenceAssets');
       expect(prompt).toContain('Short few-shot examples');
       expect(prompt).toContain('Do not add any other fields');
       expect(prompt).not.toContain('помощник крипто-трейдера');

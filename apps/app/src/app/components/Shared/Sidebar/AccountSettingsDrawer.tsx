@@ -44,6 +44,9 @@ type SettingsResponse = {
     coinalyze: {
       apiKey: string;
     };
+    coinmarketcap: {
+      apiKey: string;
+    };
     ai: {
       apiKey: string;
       apiEndpoint: string;
@@ -66,6 +69,7 @@ type SettingsViewState = {
   bybitApiKey: string;
   bybitApiSecret: string;
   coinalyzeApiKey: string;
+  coinmarketcapApiKey: string;
   aiApiKey: string;
   aiApiEndpoint: string;
   aiModel: string;
@@ -81,11 +85,18 @@ type PasswordState = {
   confirmPassword: string;
 };
 
-type SectionName = 'bybit' | 'password' | 'coinalyze' | 'ai' | 'telegram';
+type SectionName =
+  | 'bybit'
+  | 'password'
+  | 'coinalyze'
+  | 'coinmarketcap'
+  | 'ai'
+  | 'telegram';
 type EditableField =
   | 'bybitApiKey'
   | 'bybitApiSecret'
   | 'coinalyzeApiKey'
+  | 'coinmarketcapApiKey'
   | 'aiApiKey'
   | 'aiApiEndpoint'
   | 'aiModel'
@@ -98,6 +109,7 @@ const EMPTY_SETTINGS: SettingsViewState = {
   bybitApiKey: '',
   bybitApiSecret: '',
   coinalyzeApiKey: '',
+  coinmarketcapApiKey: '',
   aiApiKey: '',
   aiApiEndpoint: '',
   aiModel: '',
@@ -110,6 +122,7 @@ const EMPTY_DRAFTS: SettingsDraftState = {
   bybitApiKey: '',
   bybitApiSecret: '',
   coinalyzeApiKey: '',
+  coinmarketcapApiKey: '',
   aiApiKey: '',
   aiApiEndpoint: '',
   aiModel: '',
@@ -127,6 +140,7 @@ const EMPTY_EDITING: Record<EditableField, boolean> = {
   bybitApiKey: false,
   bybitApiSecret: false,
   coinalyzeApiKey: false,
+  coinmarketcapApiKey: false,
   aiApiKey: false,
   aiApiEndpoint: false,
   aiModel: false,
@@ -141,6 +155,7 @@ const SECTION_FIELDS: Record<
 > = {
   bybit: ['bybitApiKey', 'bybitApiSecret'],
   coinalyze: ['coinalyzeApiKey'],
+  coinmarketcap: ['coinmarketcapApiKey'],
   ai: ['aiApiKey', 'aiApiEndpoint', 'aiModel', 'aiResponseLanguage'],
   telegram: ['tgBotToken', 'tgChatId'],
 };
@@ -149,6 +164,7 @@ const MASKED_FIELDS = new Set<EditableField>([
   'bybitApiKey',
   'bybitApiSecret',
   'coinalyzeApiKey',
+  'coinmarketcapApiKey',
   'aiApiKey',
   'tgBotToken',
 ]);
@@ -158,6 +174,7 @@ const toViewState = (payload: SettingsResponse): SettingsViewState => ({
   bybitApiKey: payload.settings.bybit.apiKey || '',
   bybitApiSecret: payload.settings.bybit.apiSecret || '',
   coinalyzeApiKey: payload.settings.coinalyze.apiKey || '',
+  coinmarketcapApiKey: payload.settings.coinmarketcap.apiKey || '',
   aiApiKey: payload.settings.ai.apiKey || '',
   aiApiEndpoint:
     normalizeAiEndpoint(payload.settings.ai.apiEndpoint) ||
@@ -320,6 +337,10 @@ export const AccountSettingsDrawer = () => {
         return Boolean(drafts.coinalyzeApiKey.trim());
       }
 
+      if (section === 'coinmarketcap') {
+        return Boolean(drafts.coinmarketcapApiKey.trim());
+      }
+
       if (section === 'telegram') {
         return (
           Boolean(drafts.tgBotToken.trim()) ||
@@ -440,24 +461,31 @@ export const AccountSettingsDrawer = () => {
                     responseLanguage: drafts.aiResponseLanguage,
                   },
                 }
-              : section === 'telegram'
+              : section === 'coinmarketcap'
                 ? {
                     section,
                     data: {
-                      botToken: getSecretUpdateValue('tgBotToken'),
-                      chatId:
-                        drafts.tgChatId !== settings.tgChatId
-                          ? drafts.tgChatId.trim()
-                          : undefined,
+                      apiKey: getSecretUpdateValue('coinmarketcapApiKey'),
                     },
                   }
-                : {
-                    section,
-                    data: {
-                      password: passwords.password,
-                      confirmPassword: passwords.confirmPassword,
-                    },
-                  };
+                : section === 'telegram'
+                  ? {
+                      section,
+                      data: {
+                        botToken: getSecretUpdateValue('tgBotToken'),
+                        chatId:
+                          drafts.tgChatId !== settings.tgChatId
+                            ? drafts.tgChatId.trim()
+                            : undefined,
+                      },
+                    }
+                  : {
+                      section,
+                      data: {
+                        password: passwords.password,
+                        confirmPassword: passwords.confirmPassword,
+                      },
+                    };
 
       const response = await fetch('/api/user/settings', {
         method: 'PATCH',
@@ -666,6 +694,39 @@ export const AccountSettingsDrawer = () => {
                           loading={savingSection === 'bybit'}
                           disabled={!isSectionDirty('bybit')}
                           onClick={() => saveSection('bybit')}
+                        >
+                          Save
+                        </Button>
+                      </Flex>
+                    </Stack>
+                  </Box>
+
+                  <Box
+                    borderWidth="1px"
+                    borderColor="gray.700"
+                    borderRadius="lg"
+                    p={4}
+                    bg="gray.900"
+                  >
+                    <Stack gap={4}>
+                      <Box>
+                        <Text fontWeight="600">CoinMarketCap</Text>
+                        <Text fontSize="sm" color="gray.400">
+                          API key stored in the user profile for historical
+                          global market context ingestion.
+                        </Text>
+                      </Box>
+                      {renderEditableField({
+                        label: 'COINMARKETCAP_API_KEY',
+                        field: 'coinmarketcapApiKey',
+                        placeholder: 'Enter a new CoinMarketCap API key',
+                      })}
+                      <Flex justify="flex-end">
+                        <Button
+                          colorPalette="teal"
+                          loading={savingSection === 'coinmarketcap'}
+                          disabled={!isSectionDirty('coinmarketcap')}
+                          onClick={() => saveSection('coinmarketcap')}
                         >
                           Save
                         </Button>

@@ -70,7 +70,7 @@ describe('strategyHelpers/market getStrategyMarketSnapshot', () => {
     expect(connector.kline).not.toHaveBeenCalled();
   });
 
-  it('adds live top-of-book target venue from connector tickers', async () => {
+  it('does not attach live top-of-book snapshots from connector tickers', async () => {
     const connector = {
       kline: jest.fn(async () => [candle]),
       getTickers: jest.fn(async () => [
@@ -84,26 +84,16 @@ describe('strategyHelpers/market getStrategyMarketSnapshot', () => {
       ]),
     } as any;
 
-    const snapshot = await getStrategyMarketSnapshot({
+    await getStrategyMarketSnapshot({
       ...baseParams,
       env: 'SIGNALS',
       connector,
     });
 
-    expect(snapshot.targetVenue).toMatchObject({
-      source: 'ticker_top_of_book',
-      symbol: 'BTCUSDT',
-      bid: 99,
-      ask: 101,
-      mid: 100,
-      spreadBps: 200,
-      topBidQty: 3,
-      topAskQty: 2,
-      stale: false,
-    });
+    expect(connector.getTickers).not.toHaveBeenCalled();
   });
 
-  it('prefers connector top-of-book endpoint over full ticker list', async () => {
+  it('does not call connector top-of-book endpoint for snapshot target venue', async () => {
     const nowSpy = jest.spyOn(Date, 'now').mockReturnValue(1_700_000_000_000);
     const connector = {
       kline: jest.fn(async () => [candle]),
@@ -118,25 +108,13 @@ describe('strategyHelpers/market getStrategyMarketSnapshot', () => {
       getTickers: jest.fn(async () => []),
     } as any;
 
-    const snapshot = await getStrategyMarketSnapshot({
+    await getStrategyMarketSnapshot({
       ...baseParams,
       env: 'SIGNALS',
       connector,
     });
 
-    expect(snapshot.targetVenue).toMatchObject({
-      source: 'ticker_top_of_book',
-      symbol: 'BTCUSDT',
-      bid: 99,
-      ask: 101,
-      mid: 100,
-      spreadBps: 200,
-      topBidQty: 3,
-      topAskQty: 2,
-      snapshotTimestamp: 1_699_999_999_000,
-      stale: false,
-    });
-    expect(connector.getTopOfBookTicker).toHaveBeenCalledWith('BTCUSDT');
+    expect(connector.getTopOfBookTicker).not.toHaveBeenCalled();
     expect(connector.getTickers).not.toHaveBeenCalled();
     nowSpy.mockRestore();
   });

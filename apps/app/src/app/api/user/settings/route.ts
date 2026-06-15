@@ -29,6 +29,12 @@ type UpdateBody =
       };
     }
   | {
+      section: 'coinmarketcap';
+      data?: {
+        apiKey?: string;
+      };
+    }
+  | {
       section: 'ai';
       data?: {
         apiKey?: string;
@@ -82,6 +88,9 @@ const toResponse = (settings: UserSettings) => ({
     },
     coinalyze: {
       apiKey: maskSecret(settings.COINALYZE_API_KEY),
+    },
+    coinmarketcap: {
+      apiKey: maskSecret(settings.COINMARKETCAP_API_KEY),
     },
     ai: {
       apiKey: maskSecret(settings.AI_API_KEY),
@@ -177,6 +186,14 @@ export const PATCH = async (request: Request) => {
 
     if (apiKey) {
       await updateUserRecord(userName, { COINALYZE_API_KEY: apiKey });
+    }
+  }
+
+  if (body.section === 'coinmarketcap') {
+    const apiKey = cleanOptionalText(body.data?.apiKey);
+
+    if (apiKey) {
+      await updateUserRecord(userName, { COINMARKETCAP_API_KEY: apiKey });
     }
   }
 

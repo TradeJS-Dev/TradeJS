@@ -12,7 +12,7 @@ export interface UserRecord extends Record<string, unknown> {
   BYBIT_API_KEY?: string;
   BYBIT_API_SECRET?: string;
   COINALYZE_API_KEY?: string;
-  ARKHAM_API_KEY?: string;
+  COINMARKETCAP_API_KEY?: string;
   AI_API_KEY?: string;
   AI_API_ENDPOINT?: string;
   AI_MODEL?: string;
@@ -27,7 +27,7 @@ export interface UserSettings {
   BYBIT_API_KEY: string;
   BYBIT_API_SECRET: string;
   COINALYZE_API_KEY: string;
-  ARKHAM_API_KEY: string;
+  COINMARKETCAP_API_KEY: string;
   AI_API_KEY: string;
   AI_API_ENDPOINT: string;
   AI_MODEL: string;
@@ -66,7 +66,7 @@ export const getUserSettings = async (
     BYBIT_API_KEY: readUserString(record, 'BYBIT_API_KEY'),
     BYBIT_API_SECRET: readUserString(record, 'BYBIT_API_SECRET'),
     COINALYZE_API_KEY: readUserString(record, 'COINALYZE_API_KEY'),
-    ARKHAM_API_KEY: readUserString(record, 'ARKHAM_API_KEY'),
+    COINMARKETCAP_API_KEY: readUserString(record, 'COINMARKETCAP_API_KEY'),
     AI_API_KEY: readUserString(record, 'AI_API_KEY'),
     AI_API_ENDPOINT: aiApiEndpoint,
     AI_MODEL: normalizeAiModel(

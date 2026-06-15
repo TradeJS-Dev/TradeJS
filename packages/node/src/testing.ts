@@ -29,8 +29,8 @@ import {
 import { logger } from '@tradejs/infra/logger';
 import { buildAiPayload } from './ai';
 import { enrichSignalWithBinanceMarketContext } from './strategyHelpers/binanceMarketContext';
+import { enrichSignalWithCoinMarketCapContext } from './strategyHelpers/coinMarketCapContext';
 import { enrichSignalWithDerivativesContext } from './strategyHelpers/derivativesContext';
-import { enrichSignalWithGlobalMarketContext } from './strategyHelpers/globalMarketContext';
 import { getStrategyCreator } from './strategy/manifests';
 import { buildMlPayload } from './mlPayload';
 import {
@@ -1158,8 +1158,8 @@ export const testing: TestingBox = async ({
         }),
       );
       await withTimeout(
-        'global market context',
-        enrichSignalWithGlobalMarketContext({
+        'coinmarketcap context',
+        enrichSignalWithCoinMarketCapContext({
           signal: signal as Signal,
           env: 'BACKTEST',
           enabled: Boolean(ml || ai),
@@ -1612,8 +1612,8 @@ export const testingGroupInSharedCandleLoop = async (
           }),
         );
         await withTimeout(
-          'global market context',
-          enrichSignalWithGlobalMarketContext({
+          'coinmarketcap context',
+          enrichSignalWithCoinMarketCapContext({
             signal: signal as Signal,
             env: 'BACKTEST',
             enabled: Boolean(test.ml || test.ai),

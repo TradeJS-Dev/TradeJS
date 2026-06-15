@@ -210,25 +210,22 @@ Input payload structure:
   • \`baseContext.regime\`: derived trend / volatility / momentum / session regime fields.
   • \`baseContext.structure\`: local range position, breakout freshness/quality, level-touch counts, rejection wick context.
   • \`baseContext.participation\`: volume/turnover participation, effort-vs-result context, and Binance aggTrades trade-flow when available.
-  • \`baseContext.relative\`: BTC relative-strength, benchmark MA bias context, Binance alt-basket breadth, and CoinGecko BTC dominance when available.
+  • \`baseContext.relative\`: BTC/ETH relative-strength, benchmark MA bias context, Binance alt-basket breadth, and CoinMarketCap historical global context when available.
   • \`baseContext.derivatives\`: Coinalyze-aligned derivatives summary when available.
-  • \`baseContext.onchain\`: Arkham-aligned on-chain flow summary when available.
   • \`baseContext.mtf\`: compact multi-timeframe summary plus only the latest few candles for each timeframe.
   • \`baseContext.gateFeatures\`: direction-aware, normalized fields derived from baseContext; prefer \`setup\`, \`scores\`, \`confirmations\`, \`conflicts\`, \`risk\`, and \`decisionHints\` for quick gate checks before inspecting raw nested context.
   Always inspect \`payload.additionalIndicators.marketContext\` when present:
   • \`marketContext.execution.binanceCoinbaseSpread\`: AI-friendly BTC spread view projected from \`payload.additionalIndicators.baseContext.relative.execution.venueSpread\`; \`value=(Coinbase-Binance)/Binance\`, \`bps=value*10000\`.
-  • \`marketContext.execution.targetVenue\`: live top-of-book bid/ask, spread and top bid/ask size when the connector provides Binance-style ticker data.
-  • \`marketContext.execution.orderBookDepth\`: Binance depth snapshot summaries by level when available; use stale=false only as current execution/liquidity evidence.
   • \`marketContext.participation.trueDelta\`: Binance taker buy/sell volume delta from kline payload when \`source=kline_taker_volume\`; otherwise absent/unavailable.
   • \`marketContext.participation.tradeFlow\`: Binance aggTrades buy/sell pressure buckets when available.
   • \`marketContext.relative.marketBreadth\`: equal/volume-weighted alt-basket return, advance/decline ratio, and MA breadth for the configured Binance breadth universe.
   • \`marketContext.relative.targetVsBtc\`: target/BTC ratio returns, alpha, beta, and short-window correlation; use it to decide whether the target is leading or lagging BTC in the signal direction.
   • \`marketContext.relative.btcAltRegime\`: Binance-derived BTC-vs-alt basket regime, BTC/alt 24h returns, BTC turnover share, and alt dispersion; use it as a broad alt-market risk pocket.
-  • \`marketContext.relative.btcDominance\`: CoinGecko global BTC market-cap dominance over the rest of crypto, 24h dominance change when enough snapshots exist, and an AI-ready \`altLiquidityRegime\` pocket: \`alt_friendly\`, \`btc_favored\`, \`neutral\`, or \`unknown\`.
-  • \`marketContext.relative.marketReferences\`: BTC/ETH reference trade-flow and depth summary used for broad market pressure when the target symbol itself is not BTC/ETH.
+  • \`marketContext.relative.cmcGlobal\`: historical CoinMarketCap global market metrics: total/alt market cap, total/alt volume, BTC/ETH dominance and 24h changes, active markets, and \`altLiquidityRegime\`.
+  • \`marketContext.relative.cmcReferenceAssets\`: historical CoinMarketCap daily BTC/ETH market-cap and volume context, ETH/BTC market-cap ratio, ETH-vs-BTC volume ratio, and \`referenceLiquidityRegime\`.
+  • \`marketContext.relative.referenceTradeFlow\`: BTC/ETH reference trade-flow summary used for broad market pressure when the target symbol itself is not BTC/ETH.
   If those fields exist, use them as a more explicit hint instead of trying to re-derive the same idea from raw lines or points.
   If \`baseContext.derivatives\` exists, it is a derived Coinalyze summary for the time of the signal. Coinalyze context is built only from \`BTCUSDT\` and \`ETHUSDT\` reference symbols, not for every target coin. \`targetSymbol\` is just the source signal coin. Use BTC/ETH open interest, funding, liquidations, and pressure/riskFlags as positioning context, not as an independent trade idea.
-  If \`baseContext.onchain\` exists, it is a derived Arkham on-chain flow summary for the time of the signal. Use whale/smart-trader net flow, CEX deposit/withdrawal pressure, DEX net buy flow, confidenceWeightedBias, and riskFlags as confirmation or conflict only. Do not treat raw transfers as guaranteed buys/sells and do not use Arkham context as an independent trade idea.
   Key patterns:
   • current shared state: prefer \`payload.additionalIndicators.baseContext\`
   • recent historical series: \`payload.indicators\`
@@ -250,9 +247,6 @@ Explicit conflict rules:
 - If \`baseContext.derivatives.summary.riskFlags\` contains \`crowded_long\` for a LONG or \`crowded_short\` for a SHORT, treat that as crowded positioning and do not overstate quality without strong structural confirmation.
 - If \`baseContext.derivatives.summary.directionAligned=false\`, explicitly mention the derivatives conflict in \`confirmations\` or \`qualityReason\`.
 - If \`baseContext.derivatives\` is absent, stale, or \`missing_derivatives\`, do not infer Coinalyze conclusions and do not penalize the signal just because that data is missing.
-- If \`baseContext.onchain.summary.directionAligned=false\`, mention the on-chain flow conflict in \`confirmations\` or \`qualityReason\`; for example, distribution/CEX deposit pressure against a LONG or accumulation/withdrawal pressure against a SHORT.
-- If \`baseContext.onchain.summary.riskFlags\` contains \`low_confidence\`, \`stale_onchain\`, or \`missing_onchain\`, treat Arkham context as unavailable/weak evidence rather than a hard rejection.
-- If \`baseContext.onchain\` is absent, stale, or \`missing_onchain\`, do not infer Arkham conclusions and do not penalize the signal just because that data is missing.
 - Use \`baseContext.regime.session\` directly as the canonical session/liquidity regime: asia is often thinner, europe/us are more active, and overlaps can amplify both momentum and noise. Do not reject a signal solely because of session, but mention clear session support or conflict in \`confirmations\` or \`qualityReason\`.
 - If \`marketContext.execution.binanceCoinbaseSpread.available=true\` and \`severity=elevated/wide\`, treat it as cross-exchange divergence or BTC liquidity risk. Do not use the spread as a standalone long/short signal, but reduce confidence or require more confirmation when the rest of the structure is weak or BTC context conflicts.
 - If \`marketContext.execution.binanceCoinbaseSpread\` is missing or \`available=false\`, do not infer anything from Binance/Coinbase spread and do not penalize the signal just because it is absent.
@@ -261,10 +255,9 @@ Explicit conflict rules:
 - If \`marketContext.relative.marketBreadth.available=true\` and \`stale=false\`, use it as broad alt-market support/conflict. Breadth is contextual; do not let it override the target symbol structure.
 - If \`marketContext.relative.targetVsBtc.available=true\`, treat positive target/BTC ratio trend as support for alt LONGs and negative ratio trend as support for alt SHORTs; ignore it when the target structure is stronger and clearly explains the setup.
 - If \`marketContext.relative.btcAltRegime.available=true\` and \`stale=false\`, treat \`alt_lead\`/\`risk_on\` as broad support for alt LONGs and \`btc_lead\`/\`risk_off\` as pressure against alt LONGs or support for cautious alt SHORTs. Do not use it as a standalone entry reason.
-- If \`marketContext.relative.btcDominance.available=true\` and \`stale=false\`, use \`altLiquidityRegime\` as a broad-market pocket: \`btc_favored\` is pressure against alt LONGs and support for cautious alt SHORTs; \`alt_friendly\` supports alt LONGs. Do not apply it as a standalone signal, and ignore it when stale or unknown.
-- If \`marketContext.relative.marketReferences.available=true\`, treat BTC/ETH trade-flow/depth as broad market context only. For alt symbols, do not describe it as the target coin's own flow or order book.
-- If \`marketContext.execution.targetVenue.available=true\` and spread is wide for the symbol/timeframe, treat it as execution/liquidity friction rather than as a standalone directional signal.
-- If \`marketContext.execution.orderBookDepth.available=true\` and \`stale=false\`, use imbalance/spread as execution and short-horizon pressure context only. Ignore stale depth for historical decisions.
+- If \`marketContext.relative.cmcGlobal.available=true\` and \`stale=false\`, use falling alt market cap/volume or rising BTC dominance as broad risk pressure for alt LONGs. Treat missing CMC history as absent context, not a bearish signal.
+- If \`marketContext.relative.cmcReferenceAssets.available=true\` and \`stale=false\`, use \`eth_led\` as broad support for ETH/high-beta alt strength and \`btc_led\`/\`thin\` as broad caution. Do not describe BTC/ETH reference history as target-symbol flow.
+- If \`marketContext.relative.referenceTradeFlow.available=true\`, treat BTC/ETH trade-flow as broad market context only. For alt symbols, do not describe it as the target coin's own flow.
 - If the current signal is not confirmed (\`direction=null\`), name the main reason briefly in \`comment\`.
   If you use the structured fields, include the main reason in \`qualityReason\` or \`triggerInvalidation\`.
 

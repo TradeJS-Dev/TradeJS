@@ -197,6 +197,87 @@ describe('createTimescaleCachedKline', () => {
     );
   });
 
+  it('streams warmOnly exchange pages into Timescale without one large accumulated upsert', async () => {
+    jest.spyOn(Date, 'now').mockReturnValue(600_000);
+    mockedGetDataEdges.mockResolvedValue({ min: undefined, max: undefined });
+    mockedUpsertCandles.mockResolvedValue(undefined as any);
+
+    const firstPage = [
+      {
+        timestamp: 60_000,
+        open: 1,
+        high: 2,
+        low: 0.5,
+        close: 1.1,
+        volume: 10,
+        turnover: 20,
+        dt: new Date(60_000).toISOString(),
+      },
+      {
+        timestamp: 120_000,
+        open: 1,
+        high: 2,
+        low: 0.5,
+        close: 1.2,
+        volume: 10,
+        turnover: 20,
+        dt: new Date(120_000).toISOString(),
+      },
+    ];
+    const secondPage = [
+      {
+        timestamp: 180_000,
+        open: 1,
+        high: 2,
+        low: 0.5,
+        close: 1.3,
+        volume: 10,
+        turnover: 20,
+        dt: new Date(180_000).toISOString(),
+      },
+    ];
+    const request = jest
+      .fn()
+      .mockResolvedValueOnce(firstPage)
+      .mockResolvedValueOnce(secondPage);
+
+    const kline = createTimescaleCachedKline({
+      provider: 'bybit',
+      request,
+      intervalToMinutes: () => 1,
+      limit: 2,
+    });
+
+    await expect(
+      kline({
+        symbol: 'BTCUSDT',
+        interval: '1',
+        start: 60_000,
+        end: 240_000,
+        warmOnly: true,
+        silent: true,
+      }),
+    ).resolves.toEqual([]);
+
+    expect(request).toHaveBeenCalledTimes(2);
+    expect(mockedToRows).toHaveBeenNthCalledWith(
+      1,
+      'bybit',
+      'BTCUSDT',
+      1,
+      firstPage,
+    );
+    expect(mockedToRows).toHaveBeenNthCalledWith(
+      2,
+      'bybit',
+      'BTCUSDT',
+      1,
+      secondPage,
+    );
+    expect(mockedUpsertCandles).toHaveBeenCalledTimes(2);
+    expect(mockedGetCandlesRange).not.toHaveBeenCalled();
+  });
+
   it('retries a transient Timescale failure before using exchange fallback', async () => {
     mockedGetDataEdges
       .mockRejectedValueOnce(

@@ -87,6 +87,7 @@ describe('prepareRunEnvironment', () => {
       expect.objectContaining({
         connectorLabel: 'ByBit',
         preloadEnd: 1_700_086_400_000,
+        skipCovered: true,
       }),
     );
   });

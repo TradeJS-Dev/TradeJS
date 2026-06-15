@@ -10,8 +10,6 @@ import {
   Tp,
   Candle,
   DerivativesContext,
-  OnchainContext,
-  MarketDepthLevelSummary,
   MarketFeatureInterval,
 } from './trade';
 import { BacktestPriceMode, StrategyConfig, StrategyCreator } from './backtest';
@@ -130,7 +128,6 @@ export interface StrategyMarketSnapshot {
   lastCandle: KlineChartItem;
   timestamp: number;
   currentPrice: number;
-  targetVenue?: BaseRelativeContext['execution']['targetVenue'];
 }
 
 export interface MlCandleIndicatorsSnapshot {
@@ -509,25 +506,6 @@ export interface BaseMarketTradeFlowContext {
   netQuoteDelta: number | null;
 }
 
-export interface BaseTargetVenueContext {
-  source: 'ticker_top_of_book' | 'binance_depth_snapshot';
-  venue: string | null;
-  symbol: string;
-  bid: number | null;
-  ask: number | null;
-  mid: number | null;
-  spreadBps: number | null;
-  topBidQty: number | null;
-  topAskQty: number | null;
-  snapshotTimestamp: number | null;
-  stale: boolean;
-  ageMs?: number | null;
-  lastUpdateId?: number | null;
-  depthLevels?: MarketDepthLevelSummary[];
-  rawBidLevels?: number | null;
-  rawAskLevels?: number | null;
-}
-
 export interface BaseParticipationContext {
   volume: {
     volumeRel20: number | null;
@@ -589,7 +567,6 @@ export interface BaseRelativeContext {
   execution: {
     venueSpread: number | null;
     venueSpreadZScore: number | null;
-    targetVenue?: BaseTargetVenueContext | null;
   };
   targetVsBtc?: {
     source: 'aligned_ohlcv';
@@ -663,27 +640,59 @@ export interface BaseRelativeContext {
       | 'neutral'
       | 'unknown';
   };
-  btcDominance?: {
-    source: 'coingecko_global';
+  cmcGlobal?: {
+    source: 'coinmarketcap_global';
     asOfTs: number | null;
-    updatedAtTs: number | null;
     ageMs: number | null;
     stale: boolean;
+    totalMarketCapUsd: number | null;
+    totalVolumeUsd: number | null;
+    totalVolumeReportedUsd: number | null;
+    altMarketCapUsd: number | null;
+    altVolumeUsd: number | null;
+    altVolumeReportedUsd: number | null;
     btcDominancePct: number | null;
     ethDominancePct: number | null;
-    altMarketCapUsd: number | null;
-    totalMarketCapUsd: number | null;
-    btcToAltMarketCapRatio: number | null;
     btcDominanceChange24hPct: number | null;
-    altLiquidityRegime: 'alt_friendly' | 'btc_favored' | 'neutral' | 'unknown';
-    marketCapChangePct24hUsd: number | null;
+    ethDominanceChange24hPct: number | null;
+    altMarketCapChange24hPct: number | null;
+    altVolumeChange24hPct: number | null;
+    activeCryptocurrencies: number | null;
+    activeExchanges: number | null;
+    activeMarketPairs: number | null;
+    altLiquidityRegime:
+      | 'alt_friendly'
+      | 'btc_favored'
+      | 'risk_off'
+      | 'neutral'
+      | 'unknown';
   };
-  marketReferences?: {
+  cmcReferenceAssets?: {
+    source: 'coinmarketcap_reference_asset';
+    asOfTs: number | null;
+    ageMs: number | null;
+    stale: boolean;
+    btcMarketCapUsd: number | null;
+    ethMarketCapUsd: number | null;
+    btcVolumeUsd: number | null;
+    ethVolumeUsd: number | null;
+    btcVolumeToMarketCap: number | null;
+    ethVolumeToMarketCap: number | null;
+    ethBtcMarketCapRatio: number | null;
+    ethBtcMarketCapRatioChange24hPct: number | null;
+    ethVsBtcVolumeRatio: number | null;
+    referenceLiquidityRegime:
+      | 'btc_led'
+      | 'eth_led'
+      | 'balanced'
+      | 'thin'
+      | 'unknown';
+  };
+  referenceTradeFlow?: {
     source: 'binance_reference_market';
     primaryReferenceSymbol: string;
     referenceSymbols: string[];
     tradeFlowBySymbol: Record<string, BaseMarketTradeFlowContext>;
-    depthBySymbol: Record<string, BaseTargetVenueContext>;
   };
 }
 
@@ -731,7 +740,6 @@ export type BaseGateFeatureScoreKey =
   | 'mtf'
   | 'execution'
   | 'derivatives'
-  | 'onchain'
   | 'totalContext';
 
 export type BaseGateFeatureConfirmation =
@@ -741,17 +749,15 @@ export type BaseGateFeatureConfirmation =
   | 'trade_flow_aligned'
   | 'reference_trade_flow_aligned'
   | 'market_breadth_aligned'
-  | 'btc_dominance_aligned'
+  | 'cmc_alt_liquidity_aligned'
+  | 'cmc_eth_btc_aligned'
   | 'target_vs_btc_aligned'
   | 'target_vs_eth_aligned'
   | 'btc_alt_regime_aligned'
   | 'benchmark_aligned'
   | 'breakout_confirmed'
   | 'liquidity_sweep_aligned'
-  | 'order_book_aligned'
-  | 'reference_order_book_aligned'
-  | 'derivatives_aligned'
-  | 'onchain_aligned';
+  | 'derivatives_aligned';
 
 export type BaseGateFeatureConflict =
   | 'mtf_against'
@@ -759,7 +765,8 @@ export type BaseGateFeatureConflict =
   | 'benchmark_against'
   | 'relative_strength_against'
   | 'market_breadth_against'
-  | 'btc_dominance_alt_pressure'
+  | 'cmc_alt_liquidity_against'
+  | 'cmc_eth_btc_against'
   | 'target_vs_btc_against'
   | 'target_vs_eth_against'
   | 'btc_alt_regime_against'
@@ -769,14 +776,8 @@ export type BaseGateFeatureConflict =
   | 'failed_breakout'
   | 'extreme_volatility'
   | 'wide_spread'
-  | 'target_venue_stale'
-  | 'order_book_against'
-  | 'reference_order_book_against'
   | 'derivatives_against'
-  | 'derivatives_crowded'
-  | 'onchain_against'
-  | 'onchain_distribution'
-  | 'onchain_low_confidence';
+  | 'derivatives_crowded';
 
 export type BaseGateFeatureRiskLevel = 'low' | 'medium' | 'high' | 'unknown';
 
@@ -790,8 +791,7 @@ export type BaseGateFeaturePrimaryIssue =
   | 'bad_execution'
   | 'market_context_against'
   | 'extreme_volatility'
-  | 'crowded_derivatives'
-  | 'onchain_conflict';
+  | 'crowded_derivatives';
 
 export interface BaseContextGateFeatures {
   direction: Direction | null;
@@ -880,15 +880,22 @@ export interface BaseContextGateFeatures {
     marketBreadthReturn: number | null;
     marketBreadthAligned: boolean | null;
     marketBreadthStale: boolean | null;
-    btcDominancePct: number | null;
-    btcDominanceChange24hPct: number | null;
-    btcDominanceAltLiquidityRegime:
+    cmcAltLiquidityRegime:
       | 'alt_friendly'
       | 'btc_favored'
+      | 'risk_off'
       | 'neutral'
       | 'unknown';
-    btcDominanceAligned: boolean | null;
-    btcDominanceStale: boolean | null;
+    cmcAltLiquidityAligned: boolean | null;
+    cmcAltLiquidityStale: boolean | null;
+    cmcEthBtcReferenceRegime:
+      | 'btc_led'
+      | 'eth_led'
+      | 'balanced'
+      | 'thin'
+      | 'unknown';
+    cmcEthBtcAligned: boolean | null;
+    cmcEthBtcStale: boolean | null;
     targetVsBtcRatioReturn24h: number | null;
     targetVsBtcAlpha24h: number | null;
     targetVsBtcBeta20: number | null;
@@ -917,24 +924,6 @@ export interface BaseContextGateFeatures {
   execution: {
     venueSpreadZScore: number | null;
     venueSpreadSeverity: 'normal' | 'elevated' | 'wide' | 'unknown';
-    targetVenueSpreadBps: number | null;
-    targetVenueStale: boolean | null;
-    orderBookImbalance: number | null;
-    orderBookImbalanceAligned: boolean | null;
-    referenceOrderBookImbalance: number | null;
-    referenceOrderBookImbalanceAligned: boolean | null;
-  };
-  onchain?: {
-    pressure: 'accumulation' | 'distribution' | 'neutral' | 'unknown';
-    directionAligned: boolean | null;
-    riskFlags: string[];
-    confidenceWeightedBias: number | null;
-    netFlowUsd: number | null;
-    whaleNetFlowUsd: number | null;
-    smartTraderNetFlowUsd: number | null;
-    cexNetFlowUsd: number | null;
-    dexNetBuyUsd: number | null;
-    stale: boolean | null;
   };
 }
 
@@ -947,7 +936,6 @@ export interface BaseStrategyContextSnapshot {
   participation: BaseParticipationContext;
   relative: BaseRelativeContext;
   derivatives?: DerivativesContext | null;
-  onchain?: OnchainContext | null;
   mtf: BaseMultiTimeframeContext;
   gateFeatures?: BaseContextGateFeatures;
 }
