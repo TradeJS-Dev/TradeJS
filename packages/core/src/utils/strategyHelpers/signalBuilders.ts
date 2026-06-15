@@ -322,6 +322,8 @@ export const buildBaseContextGateFeatures = ({
   const marketBreadth = baseContext.relative?.marketBreadth;
   const cmcGlobal = baseContext.relative?.cmcGlobal;
   const cmcReferenceAssets = baseContext.relative?.cmcReferenceAssets;
+  const cmcMarketBreadth = baseContext.relative?.cmcMarketBreadth;
+  const cmcExchangeLiquidity = baseContext.relative?.cmcExchangeLiquidity;
   const targetVsBtc = baseContext.relative?.targetVsBtc;
   const targetVsEth = baseContext.relative?.targetVsEth;
   const btcAltRegime = baseContext.relative?.btcAltRegime;
@@ -459,6 +461,42 @@ export const buildBaseContextGateFeatures = ({
         ? cmcEthBtcReferenceRegime === 'eth_led'
         : cmcEthBtcReferenceRegime === 'btc_led' ||
           cmcEthBtcReferenceRegime === 'thin';
+  const cmcMarketBreadthRegime = cmcMarketBreadth?.breadthRegime ?? 'unknown';
+  const cmcMarketBreadthStale =
+    typeof cmcMarketBreadth?.stale === 'boolean'
+      ? cmcMarketBreadth.stale
+      : null;
+  const cmcMarketBreadthPositive24hPct = asFiniteNumberOrNull(
+    cmcMarketBreadth?.positive24hPct,
+  );
+  const cmcMarketBreadthAligned =
+    direction == null ||
+    cmcMarketBreadthStale === true ||
+    cmcMarketBreadthRegime === 'unknown' ||
+    cmcMarketBreadthRegime === 'neutral' ||
+    cmcMarketBreadthRegime === 'mixed'
+      ? null
+      : direction === 'LONG'
+        ? cmcMarketBreadthRegime === 'risk_on' ||
+          cmcMarketBreadthRegime === 'alt_broadening'
+        : cmcMarketBreadthRegime === 'risk_off' ||
+          cmcMarketBreadthRegime === 'btc_concentrated';
+  const cmcExchangeLiquidityRegime =
+    cmcExchangeLiquidity?.liquidityRegime ?? 'unknown';
+  const cmcExchangeLiquidityStale =
+    typeof cmcExchangeLiquidity?.stale === 'boolean'
+      ? cmcExchangeLiquidity.stale
+      : null;
+  const cmcExchangeLiquidityVolumeChange24hPct = asFiniteNumberOrNull(
+    cmcExchangeLiquidity?.totalVolumeChange24hPct,
+  );
+  const cmcExchangeLiquidityAligned =
+    cmcExchangeLiquidityStale === true ||
+    cmcExchangeLiquidityRegime === 'unknown'
+      ? null
+      : cmcExchangeLiquidityRegime === 'expanding' ||
+        cmcExchangeLiquidityRegime === 'balanced' ||
+        cmcExchangeLiquidityRegime === 'binance_led';
   const targetVsBtcRatioReturn24h = asFiniteNumberOrNull(
     targetVsBtc?.ratioReturn24h,
   );
@@ -605,6 +643,16 @@ export const buildBaseContextGateFeatures = ({
     'cmc_alt_liquidity_aligned',
   );
   pushWhen(confirmations, cmcEthBtcAligned === true, 'cmc_eth_btc_aligned');
+  pushWhen(
+    confirmations,
+    cmcMarketBreadthAligned === true,
+    'cmc_market_breadth_aligned',
+  );
+  pushWhen(
+    confirmations,
+    cmcExchangeLiquidityAligned === true,
+    'cmc_exchange_liquidity_aligned',
+  );
   pushWhen(confirmations, targetVsBtcAligned === true, 'target_vs_btc_aligned');
   pushWhen(confirmations, targetVsEthAligned === true, 'target_vs_eth_aligned');
   pushWhen(
@@ -640,6 +688,16 @@ export const buildBaseContextGateFeatures = ({
     'cmc_alt_liquidity_against',
   );
   pushWhen(conflicts, cmcEthBtcAligned === false, 'cmc_eth_btc_against');
+  pushWhen(
+    conflicts,
+    cmcMarketBreadthAligned === false,
+    'cmc_market_breadth_against',
+  );
+  pushWhen(
+    conflicts,
+    cmcExchangeLiquidityAligned === false,
+    'cmc_exchange_liquidity_against',
+  );
   pushWhen(conflicts, targetVsBtcAligned === false, 'target_vs_btc_against');
   pushWhen(conflicts, targetVsEthAligned === false, 'target_vs_eth_against');
   pushWhen(conflicts, btcAltRegimeAligned === false, 'btc_alt_regime_against');
@@ -680,6 +738,7 @@ export const buildBaseContextGateFeatures = ({
       marketBreadthAligned,
       cmcAltLiquidityAligned,
       cmcEthBtcAligned,
+      cmcMarketBreadthAligned,
       targetVsBtcAligned,
       targetVsEthAligned,
       btcAltRegimeAligned,
@@ -694,6 +753,7 @@ export const buildBaseContextGateFeatures = ({
     ]),
     execution: scoreEvidence([
       venueSpreadSeverity === 'unknown' ? null : venueSpreadSeverity !== 'wide',
+      cmcExchangeLiquidityAligned,
     ]),
     derivatives: scoreEvidence([derivativesDirectionAligned]),
     totalContext: null,
@@ -714,11 +774,12 @@ export const buildBaseContextGateFeatures = ({
         ? 'unknown'
         : 'low';
   const liquidityRisk =
-    venueSpreadSeverity === 'wide'
+    venueSpreadSeverity === 'wide' || cmcExchangeLiquidityAligned === false
       ? 'high'
       : venueSpreadSeverity === 'elevated'
         ? 'medium'
-        : venueSpreadSeverity === 'unknown'
+        : venueSpreadSeverity === 'unknown' &&
+            cmcExchangeLiquidityAligned == null
           ? 'unknown'
           : 'low';
   const regimeRisk =
@@ -754,7 +815,7 @@ export const buildBaseContextGateFeatures = ({
     ? 'crowded_derivatives'
     : higherTimeframeConflict === true
       ? 'mtf_conflict'
-      : venueSpreadSeverity === 'wide'
+      : venueSpreadSeverity === 'wide' || cmcExchangeLiquidityAligned === false
         ? 'bad_execution'
         : extremeVolatilityRisk
           ? 'extreme_volatility'
@@ -762,6 +823,7 @@ export const buildBaseContextGateFeatures = ({
               marketBreadthAligned === false ||
               cmcAltLiquidityAligned === false ||
               cmcEthBtcAligned === false ||
+              cmcMarketBreadthAligned === false ||
               targetVsBtcAligned === false ||
               targetVsEthAligned === false ||
               btcAltRegimeAligned === false
@@ -875,6 +937,14 @@ export const buildBaseContextGateFeatures = ({
       cmcEthBtcReferenceRegime,
       cmcEthBtcAligned,
       cmcEthBtcStale,
+      cmcMarketBreadthRegime,
+      cmcMarketBreadthAligned,
+      cmcMarketBreadthStale,
+      cmcMarketBreadthPositive24hPct,
+      cmcExchangeLiquidityRegime,
+      cmcExchangeLiquidityAligned,
+      cmcExchangeLiquidityStale,
+      cmcExchangeLiquidityVolumeChange24hPct,
       targetVsBtcRatioReturn24h,
       targetVsBtcAlpha24h,
       targetVsBtcBeta20,

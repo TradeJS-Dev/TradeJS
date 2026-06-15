@@ -3,6 +3,8 @@ import {
   KlineChartData,
   DerivativesInterval,
   DerivativesRow,
+  MarketCmcBreadthContextRow,
+  MarketCmcExchangeLiquidityContextRow,
   MarketBreadthRow,
   MarketFeatureInterval,
   MarketGlobalContextRow,
@@ -552,6 +554,77 @@ const ensureBinanceMarketSchema = async () => {
       await pool.query(`
         CREATE INDEX IF NOT EXISTS market_reference_asset_context_lookup_idx
         ON market_reference_asset_context (source, symbol, interval, ts DESC)
+      `);
+
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS market_cmc_breadth_context (
+          source text NOT NULL,
+          universe text NOT NULL,
+          interval text NOT NULL,
+          ts timestamptz NOT NULL,
+          top_assets_count integer NOT NULL,
+          assets_count integer NOT NULL,
+          positive_24h_pct double precision,
+          positive_7d_pct double precision,
+          avg_return_24h_pct double precision,
+          median_return_24h_pct double precision,
+          avg_return_7d_pct double precision,
+          median_return_7d_pct double precision,
+          return_dispersion_24h_pct double precision,
+          return_dispersion_7d_pct double precision,
+          top_10_market_cap_share double precision,
+          top_25_market_cap_share double precision,
+          btc_market_cap_share double precision,
+          eth_market_cap_share double precision,
+          btc_eth_market_cap_share double precision,
+          stablecoin_market_cap_share double precision,
+          stablecoin_volume_share double precision,
+          total_market_cap_usd double precision,
+          total_volume_usd double precision,
+          breadth_regime text,
+          ingested_at timestamptz NOT NULL DEFAULT now(),
+          PRIMARY KEY (source, universe, interval, ts)
+        )
+      `);
+      await pool.query(`
+        SELECT create_hypertable(
+          'market_cmc_breadth_context',
+          'ts',
+          if_not_exists => TRUE,
+          chunk_time_interval => interval '30 days'
+        )
+      `);
+      await pool.query(`
+        CREATE INDEX IF NOT EXISTS market_cmc_breadth_context_lookup_idx
+        ON market_cmc_breadth_context (source, universe, interval, ts DESC)
+      `);
+
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS market_cmc_exchange_liquidity_context (
+          source text NOT NULL,
+          interval text NOT NULL,
+          ts timestamptz NOT NULL,
+          exchanges_count integer NOT NULL,
+          total_volume_usd double precision,
+          binance_volume_usd double precision,
+          binance_volume_share double precision,
+          top_exchange_volume_share double precision,
+          liquidity_regime text,
+          ingested_at timestamptz NOT NULL DEFAULT now(),
+          PRIMARY KEY (source, interval, ts)
+        )
+      `);
+      await pool.query(`
+        SELECT create_hypertable(
+          'market_cmc_exchange_liquidity_context',
+          'ts',
+          if_not_exists => TRUE,
+          chunk_time_interval => interval '30 days'
+        )
+      `);
+      await pool.query(`
+        CREATE INDEX IF NOT EXISTS market_cmc_exchange_liquidity_context_lookup_idx
+        ON market_cmc_exchange_liquidity_context (source, interval, ts DESC)
       `);
 
       binanceMarketSchemaReady = true;
@@ -1453,6 +1526,176 @@ export async function upsertMarketReferenceAssetContextRows(
   );
 }
 
+export async function upsertMarketCmcBreadthContextRows(
+  rows: MarketCmcBreadthContextRow[],
+) {
+  if (!rows.length) return;
+  await ensureBinanceMarketSchema();
+
+  const pool = getPool();
+  const cols = [
+    'source',
+    'universe',
+    'interval',
+    'ts',
+    'top_assets_count',
+    'assets_count',
+    'positive_24h_pct',
+    'positive_7d_pct',
+    'avg_return_24h_pct',
+    'median_return_24h_pct',
+    'avg_return_7d_pct',
+    'median_return_7d_pct',
+    'return_dispersion_24h_pct',
+    'return_dispersion_7d_pct',
+    'top_10_market_cap_share',
+    'top_25_market_cap_share',
+    'btc_market_cap_share',
+    'eth_market_cap_share',
+    'btc_eth_market_cap_share',
+    'stablecoin_market_cap_share',
+    'stablecoin_volume_share',
+    'total_market_cap_usd',
+    'total_volume_usd',
+    'breadth_regime',
+  ] as const;
+
+  const maxRows = getSafeBulkInsertRows(cols.length);
+  if (rows.length > maxRows) {
+    for (let i = 0; i < rows.length; i += maxRows) {
+      await upsertMarketCmcBreadthContextRows(rows.slice(i, i + maxRows));
+    }
+    return;
+  }
+
+  const valuesSql = rows
+    .map(
+      (_, i) =>
+        `(${cols.map((__, j) => `$${i * cols.length + j + 1}`).join(',')})`,
+    )
+    .join(',');
+  const flat = rows.flatMap((row) => [
+    row.source,
+    row.universe,
+    row.interval,
+    row.ts,
+    Math.trunc(row.topAssetsCount),
+    Math.trunc(row.assetsCount),
+    row.positive24hPct ?? null,
+    row.positive7dPct ?? null,
+    row.avgReturn24hPct ?? null,
+    row.medianReturn24hPct ?? null,
+    row.avgReturn7dPct ?? null,
+    row.medianReturn7dPct ?? null,
+    row.returnDispersion24hPct ?? null,
+    row.returnDispersion7dPct ?? null,
+    row.top10MarketCapShare ?? null,
+    row.top25MarketCapShare ?? null,
+    row.btcMarketCapShare ?? null,
+    row.ethMarketCapShare ?? null,
+    row.btcEthMarketCapShare ?? null,
+    row.stablecoinMarketCapShare ?? null,
+    row.stablecoinVolumeShare ?? null,
+    row.totalMarketCapUsd ?? null,
+    row.totalVolumeUsd ?? null,
+    row.breadthRegime ?? null,
+  ]);
+
+  await pool.query(
+    `
+      INSERT INTO market_cmc_breadth_context (${cols.join(',')})
+      VALUES ${valuesSql}
+      ON CONFLICT (source, universe, interval, ts) DO UPDATE SET
+        top_assets_count = EXCLUDED.top_assets_count,
+        assets_count = EXCLUDED.assets_count,
+        positive_24h_pct = COALESCE(EXCLUDED.positive_24h_pct, market_cmc_breadth_context.positive_24h_pct),
+        positive_7d_pct = COALESCE(EXCLUDED.positive_7d_pct, market_cmc_breadth_context.positive_7d_pct),
+        avg_return_24h_pct = COALESCE(EXCLUDED.avg_return_24h_pct, market_cmc_breadth_context.avg_return_24h_pct),
+        median_return_24h_pct = COALESCE(EXCLUDED.median_return_24h_pct, market_cmc_breadth_context.median_return_24h_pct),
+        avg_return_7d_pct = COALESCE(EXCLUDED.avg_return_7d_pct, market_cmc_breadth_context.avg_return_7d_pct),
+        median_return_7d_pct = COALESCE(EXCLUDED.median_return_7d_pct, market_cmc_breadth_context.median_return_7d_pct),
+        return_dispersion_24h_pct = COALESCE(EXCLUDED.return_dispersion_24h_pct, market_cmc_breadth_context.return_dispersion_24h_pct),
+        return_dispersion_7d_pct = COALESCE(EXCLUDED.return_dispersion_7d_pct, market_cmc_breadth_context.return_dispersion_7d_pct),
+        top_10_market_cap_share = COALESCE(EXCLUDED.top_10_market_cap_share, market_cmc_breadth_context.top_10_market_cap_share),
+        top_25_market_cap_share = COALESCE(EXCLUDED.top_25_market_cap_share, market_cmc_breadth_context.top_25_market_cap_share),
+        btc_market_cap_share = COALESCE(EXCLUDED.btc_market_cap_share, market_cmc_breadth_context.btc_market_cap_share),
+        eth_market_cap_share = COALESCE(EXCLUDED.eth_market_cap_share, market_cmc_breadth_context.eth_market_cap_share),
+        btc_eth_market_cap_share = COALESCE(EXCLUDED.btc_eth_market_cap_share, market_cmc_breadth_context.btc_eth_market_cap_share),
+        stablecoin_market_cap_share = COALESCE(EXCLUDED.stablecoin_market_cap_share, market_cmc_breadth_context.stablecoin_market_cap_share),
+        stablecoin_volume_share = COALESCE(EXCLUDED.stablecoin_volume_share, market_cmc_breadth_context.stablecoin_volume_share),
+        total_market_cap_usd = COALESCE(EXCLUDED.total_market_cap_usd, market_cmc_breadth_context.total_market_cap_usd),
+        total_volume_usd = COALESCE(EXCLUDED.total_volume_usd, market_cmc_breadth_context.total_volume_usd),
+        breadth_regime = COALESCE(EXCLUDED.breadth_regime, market_cmc_breadth_context.breadth_regime),
+        ingested_at = now()
+    `,
+    flat,
+  );
+}
+
+export async function upsertMarketCmcExchangeLiquidityContextRows(
+  rows: MarketCmcExchangeLiquidityContextRow[],
+) {
+  if (!rows.length) return;
+  await ensureBinanceMarketSchema();
+
+  const pool = getPool();
+  const cols = [
+    'source',
+    'interval',
+    'ts',
+    'exchanges_count',
+    'total_volume_usd',
+    'binance_volume_usd',
+    'binance_volume_share',
+    'top_exchange_volume_share',
+    'liquidity_regime',
+  ] as const;
+
+  const maxRows = getSafeBulkInsertRows(cols.length);
+  if (rows.length > maxRows) {
+    for (let i = 0; i < rows.length; i += maxRows) {
+      await upsertMarketCmcExchangeLiquidityContextRows(
+        rows.slice(i, i + maxRows),
+      );
+    }
+    return;
+  }
+
+  const valuesSql = rows
+    .map(
+      (_, i) =>
+        `(${cols.map((__, j) => `$${i * cols.length + j + 1}`).join(',')})`,
+    )
+    .join(',');
+  const flat = rows.flatMap((row) => [
+    row.source,
+    row.interval,
+    row.ts,
+    Math.trunc(row.exchangesCount),
+    row.totalVolumeUsd ?? null,
+    row.binanceVolumeUsd ?? null,
+    row.binanceVolumeShare ?? null,
+    row.topExchangeVolumeShare ?? null,
+    row.liquidityRegime ?? null,
+  ]);
+
+  await pool.query(
+    `
+      INSERT INTO market_cmc_exchange_liquidity_context (${cols.join(',')})
+      VALUES ${valuesSql}
+      ON CONFLICT (source, interval, ts) DO UPDATE SET
+        exchanges_count = EXCLUDED.exchanges_count,
+        total_volume_usd = COALESCE(EXCLUDED.total_volume_usd, market_cmc_exchange_liquidity_context.total_volume_usd),
+        binance_volume_usd = COALESCE(EXCLUDED.binance_volume_usd, market_cmc_exchange_liquidity_context.binance_volume_usd),
+        binance_volume_share = COALESCE(EXCLUDED.binance_volume_share, market_cmc_exchange_liquidity_context.binance_volume_share),
+        top_exchange_volume_share = COALESCE(EXCLUDED.top_exchange_volume_share, market_cmc_exchange_liquidity_context.top_exchange_volume_share),
+        liquidity_regime = COALESCE(EXCLUDED.liquidity_regime, market_cmc_exchange_liquidity_context.liquidity_regime),
+        ingested_at = now()
+    `,
+    flat,
+  );
+}
+
 export type MarketFeatureAsOf<T> = T & {
   ageMs: number | null;
   stale: boolean;
@@ -1834,6 +2077,206 @@ export async function getLatestMarketReferenceAssetContexts(params: {
   }
 
   return rows;
+}
+
+export async function getLatestMarketCmcBreadthContext(params: {
+  source?: MarketCmcBreadthContextRow['source'];
+  universe: string;
+  interval?: MarketCmcBreadthContextRow['interval'];
+  atMs: number;
+  maxAgeMs?: number;
+}): Promise<MarketFeatureAsOf<MarketCmcBreadthContextRow> | null> {
+  await ensureBinanceMarketSchema();
+  const pool = getPool();
+  const source = params.source ?? 'coinmarketcap_market_breadth';
+  const interval = params.interval ?? '1d';
+  const res = await pool.query(
+    `
+      SELECT
+        source,
+        universe,
+        interval,
+        ts,
+        top_assets_count::int AS "topAssetsCount",
+        assets_count::int AS "assetsCount",
+        positive_24h_pct AS "positive24hPct",
+        positive_7d_pct AS "positive7dPct",
+        avg_return_24h_pct AS "avgReturn24hPct",
+        median_return_24h_pct AS "medianReturn24hPct",
+        avg_return_7d_pct AS "avgReturn7dPct",
+        median_return_7d_pct AS "medianReturn7dPct",
+        return_dispersion_24h_pct AS "returnDispersion24hPct",
+        return_dispersion_7d_pct AS "returnDispersion7dPct",
+        top_10_market_cap_share AS "top10MarketCapShare",
+        top_25_market_cap_share AS "top25MarketCapShare",
+        btc_market_cap_share AS "btcMarketCapShare",
+        eth_market_cap_share AS "ethMarketCapShare",
+        btc_eth_market_cap_share AS "btcEthMarketCapShare",
+        stablecoin_market_cap_share AS "stablecoinMarketCapShare",
+        stablecoin_volume_share AS "stablecoinVolumeShare",
+        total_market_cap_usd AS "totalMarketCapUsd",
+        total_volume_usd AS "totalVolumeUsd",
+        breadth_regime AS "breadthRegime"
+      FROM market_cmc_breadth_context
+      WHERE source = $1
+        AND universe = $2
+        AND interval = $3
+        AND ts <= to_timestamp($4/1000.0)
+      ORDER BY ts DESC
+      LIMIT 1
+    `,
+    [source, params.universe, interval, params.atMs],
+  );
+  const row = res.rows[0] as MarketCmcBreadthContextRow | undefined;
+  if (!row) return null;
+  const ageMs = toMarketFeatureAge(row.ts, params.atMs);
+  return {
+    ...row,
+    ageMs,
+    stale:
+      ageMs == null || (params.maxAgeMs != null && ageMs > params.maxAgeMs),
+  };
+}
+
+export async function getLatestMarketCmcExchangeLiquidityContext(params: {
+  source?: MarketCmcExchangeLiquidityContextRow['source'];
+  interval?: MarketCmcExchangeLiquidityContextRow['interval'];
+  atMs: number;
+  maxAgeMs?: number;
+}): Promise<
+  | (MarketFeatureAsOf<MarketCmcExchangeLiquidityContextRow> & {
+      totalVolumeChange24hPct: number | null;
+    })
+  | null
+> {
+  await ensureBinanceMarketSchema();
+  const pool = getPool();
+  const source = params.source ?? 'coinmarketcap_exchange_liquidity';
+  const interval = params.interval ?? '1d';
+  const res = await pool.query(
+    `
+      SELECT
+        source,
+        interval,
+        ts,
+        exchanges_count::int AS "exchangesCount",
+        total_volume_usd AS "totalVolumeUsd",
+        binance_volume_usd AS "binanceVolumeUsd",
+        binance_volume_share AS "binanceVolumeShare",
+        top_exchange_volume_share AS "topExchangeVolumeShare",
+        liquidity_regime AS "liquidityRegime"
+      FROM market_cmc_exchange_liquidity_context
+      WHERE source = $1
+        AND interval = $2
+        AND ts <= to_timestamp($3/1000.0)
+      ORDER BY ts DESC
+      LIMIT 1
+    `,
+    [source, interval, params.atMs],
+  );
+  const row = res.rows[0] as MarketCmcExchangeLiquidityContextRow | undefined;
+  if (!row) return null;
+
+  const previousRes = await pool.query(
+    `
+      SELECT total_volume_usd AS "totalVolumeUsd"
+      FROM market_cmc_exchange_liquidity_context
+      WHERE source = $1
+        AND interval = $2
+        AND ts <= $3::timestamptz - interval '24 hours'
+      ORDER BY ts DESC
+      LIMIT 1
+    `,
+    [source, interval, row.ts],
+  );
+  const currentTotal =
+    row.totalVolumeUsd == null ? null : Number(row.totalVolumeUsd);
+  const previousTotal =
+    previousRes.rows[0]?.totalVolumeUsd == null
+      ? null
+      : Number(previousRes.rows[0].totalVolumeUsd);
+  const ageMs = toMarketFeatureAge(row.ts, params.atMs);
+
+  return {
+    ...row,
+    ageMs,
+    stale:
+      ageMs == null || (params.maxAgeMs != null && ageMs > params.maxAgeMs),
+    totalVolumeChange24hPct:
+      currentTotal != null && previousTotal != null && previousTotal > 0
+        ? (currentTotal - previousTotal) / previousTotal
+        : null,
+  };
+}
+
+export async function getMarketCmcBreadthContextCoverage(params: {
+  source: MarketCmcBreadthContextRow['source'];
+  universe: string;
+  interval: MarketCmcBreadthContextRow['interval'];
+  startMs: number;
+  endMs: number;
+}): Promise<{ firstMs: number; lastMs: number; rows: number } | null> {
+  await ensureBinanceMarketSchema();
+  const pool = getPool();
+  const res = await pool.query(
+    `
+      SELECT
+        extract(epoch from MIN(ts))*1000 AS first_ms,
+        extract(epoch from MAX(ts))*1000 AS last_ms,
+        COUNT(*)::int AS rows
+      FROM market_cmc_breadth_context
+      WHERE source = $1
+        AND universe = $2
+        AND interval = $3
+        AND ts >= to_timestamp($4/1000.0)
+        AND ts <= to_timestamp($5/1000.0)
+    `,
+    [
+      params.source,
+      params.universe,
+      params.interval,
+      params.startMs,
+      params.endMs,
+    ],
+  );
+  const rows = Number(res.rows[0]?.rows ?? 0);
+  const firstMs = Number(res.rows[0]?.first_ms);
+  const lastMs = Number(res.rows[0]?.last_ms);
+  if (!rows || !Number.isFinite(firstMs) || !Number.isFinite(lastMs)) {
+    return null;
+  }
+  return { firstMs, lastMs, rows };
+}
+
+export async function getMarketCmcExchangeLiquidityContextCoverage(params: {
+  source: MarketCmcExchangeLiquidityContextRow['source'];
+  interval: MarketCmcExchangeLiquidityContextRow['interval'];
+  startMs: number;
+  endMs: number;
+}): Promise<{ firstMs: number; lastMs: number; rows: number } | null> {
+  await ensureBinanceMarketSchema();
+  const pool = getPool();
+  const res = await pool.query(
+    `
+      SELECT
+        extract(epoch from MIN(ts))*1000 AS first_ms,
+        extract(epoch from MAX(ts))*1000 AS last_ms,
+        COUNT(*)::int AS rows
+      FROM market_cmc_exchange_liquidity_context
+      WHERE source = $1
+        AND interval = $2
+        AND ts >= to_timestamp($3/1000.0)
+        AND ts <= to_timestamp($4/1000.0)
+    `,
+    [params.source, params.interval, params.startMs, params.endMs],
+  );
+  const rows = Number(res.rows[0]?.rows ?? 0);
+  const firstMs = Number(res.rows[0]?.first_ms);
+  const lastMs = Number(res.rows[0]?.last_ms);
+  if (!rows || !Number.isFinite(firstMs) || !Number.isFinite(lastMs)) {
+    return null;
+  }
+  return { firstMs, lastMs, rows };
 }
 
 export async function getMarketTradeFlowCoverage(params: {

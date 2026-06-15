@@ -9,6 +9,8 @@ import {
   Signal,
   Tp,
   Candle,
+  CmcExchangeLiquidityRegime,
+  CmcMarketBreadthRegime,
   DerivativesContext,
   MarketFeatureInterval,
 } from './trade';
@@ -641,7 +643,8 @@ export interface BaseRelativeContext {
       | 'unknown';
   };
   cmcGlobal?: {
-    source: 'coinmarketcap_global';
+    source: 'coinmarketcap_global' | 'coinmarketcap_global_hourly';
+    interval: '1d' | '1h';
     asOfTs: number | null;
     ageMs: number | null;
     stale: boolean;
@@ -669,6 +672,7 @@ export interface BaseRelativeContext {
   };
   cmcReferenceAssets?: {
     source: 'coinmarketcap_reference_asset';
+    interval: '1d' | '1h';
     asOfTs: number | null;
     ageMs: number | null;
     stale: boolean;
@@ -687,6 +691,48 @@ export interface BaseRelativeContext {
       | 'balanced'
       | 'thin'
       | 'unknown';
+  };
+  cmcMarketBreadth?: {
+    source: 'coinmarketcap_market_breadth';
+    universe: string;
+    interval: '1d';
+    asOfTs: number | null;
+    ageMs: number | null;
+    stale: boolean;
+    topAssetsCount: number | null;
+    assetsCount: number | null;
+    positive24hPct: number | null;
+    positive7dPct: number | null;
+    avgReturn24hPct: number | null;
+    medianReturn24hPct: number | null;
+    avgReturn7dPct: number | null;
+    medianReturn7dPct: number | null;
+    returnDispersion24hPct: number | null;
+    returnDispersion7dPct: number | null;
+    top10MarketCapShare: number | null;
+    top25MarketCapShare: number | null;
+    btcMarketCapShare: number | null;
+    ethMarketCapShare: number | null;
+    btcEthMarketCapShare: number | null;
+    stablecoinMarketCapShare: number | null;
+    stablecoinVolumeShare: number | null;
+    totalMarketCapUsd: number | null;
+    totalVolumeUsd: number | null;
+    breadthRegime: CmcMarketBreadthRegime;
+  };
+  cmcExchangeLiquidity?: {
+    source: 'coinmarketcap_exchange_liquidity';
+    interval: '1d' | '1h';
+    asOfTs: number | null;
+    ageMs: number | null;
+    stale: boolean;
+    exchangesCount: number | null;
+    totalVolumeUsd: number | null;
+    totalVolumeChange24hPct: number | null;
+    binanceVolumeUsd: number | null;
+    binanceVolumeShare: number | null;
+    topExchangeVolumeShare: number | null;
+    liquidityRegime: CmcExchangeLiquidityRegime;
   };
   referenceTradeFlow?: {
     source: 'binance_reference_market';
@@ -751,6 +797,8 @@ export type BaseGateFeatureConfirmation =
   | 'market_breadth_aligned'
   | 'cmc_alt_liquidity_aligned'
   | 'cmc_eth_btc_aligned'
+  | 'cmc_market_breadth_aligned'
+  | 'cmc_exchange_liquidity_aligned'
   | 'target_vs_btc_aligned'
   | 'target_vs_eth_aligned'
   | 'btc_alt_regime_aligned'
@@ -767,6 +815,8 @@ export type BaseGateFeatureConflict =
   | 'market_breadth_against'
   | 'cmc_alt_liquidity_against'
   | 'cmc_eth_btc_against'
+  | 'cmc_market_breadth_against'
+  | 'cmc_exchange_liquidity_against'
   | 'target_vs_btc_against'
   | 'target_vs_eth_against'
   | 'btc_alt_regime_against'
@@ -896,6 +946,14 @@ export interface BaseContextGateFeatures {
       | 'unknown';
     cmcEthBtcAligned: boolean | null;
     cmcEthBtcStale: boolean | null;
+    cmcMarketBreadthRegime: CmcMarketBreadthRegime;
+    cmcMarketBreadthAligned: boolean | null;
+    cmcMarketBreadthStale: boolean | null;
+    cmcMarketBreadthPositive24hPct: number | null;
+    cmcExchangeLiquidityRegime: CmcExchangeLiquidityRegime;
+    cmcExchangeLiquidityAligned: boolean | null;
+    cmcExchangeLiquidityStale: boolean | null;
+    cmcExchangeLiquidityVolumeChange24hPct: number | null;
     targetVsBtcRatioReturn24h: number | null;
     targetVsBtcAlpha24h: number | null;
     targetVsBtcBeta20: number | null;

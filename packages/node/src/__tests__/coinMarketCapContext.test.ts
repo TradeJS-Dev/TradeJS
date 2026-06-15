@@ -1,8 +1,14 @@
 const mockGetLatestMarketGlobalContext = jest.fn();
 const mockGetLatestMarketReferenceAssetContexts = jest.fn();
+const mockGetLatestMarketCmcBreadthContext = jest.fn();
+const mockGetLatestMarketCmcExchangeLiquidityContext = jest.fn();
 const mockLoggerWarn = jest.fn();
 
 jest.mock('@tradejs/infra/timescale', () => ({
+  getLatestMarketCmcBreadthContext: (...args: unknown[]) =>
+    mockGetLatestMarketCmcBreadthContext(...args),
+  getLatestMarketCmcExchangeLiquidityContext: (...args: unknown[]) =>
+    mockGetLatestMarketCmcExchangeLiquidityContext(...args),
   getLatestMarketGlobalContext: (...args: unknown[]) =>
     mockGetLatestMarketGlobalContext(...args),
   getLatestMarketReferenceAssetContexts: (...args: unknown[]) =>
@@ -89,7 +95,7 @@ describe('strategyHelpers/coinMarketCapContext', () => {
     delete process.env.COINMARKETCAP_CONTEXT_ENABLED;
     resetCoinMarketCapContextRuntimeState();
     mockGetLatestMarketGlobalContext.mockResolvedValue({
-      source: 'coinmarketcap_global',
+      source: 'coinmarketcap_global_hourly',
       ts: new Date(timestamp),
       updatedAt: new Date(timestamp),
       ageMs: 0,
@@ -112,8 +118,49 @@ describe('strategyHelpers/coinMarketCapContext', () => {
       altMarketCapChange24hPct: '0.018',
       altVolumeChange24hPct: '0.12',
     });
+    mockGetLatestMarketCmcBreadthContext.mockResolvedValue({
+      source: 'coinmarketcap_market_breadth',
+      universe: 'cmc_top100',
+      interval: '1d',
+      ts: new Date(timestamp),
+      ageMs: 0,
+      stale: false,
+      topAssetsCount: 100,
+      assetsCount: 100,
+      positive24hPct: '0.68',
+      positive7dPct: '0.61',
+      avgReturn24hPct: '0.018',
+      medianReturn24hPct: '0.012',
+      returnDispersion24hPct: '0.04',
+      top10MarketCapShare: '0.72',
+      top25MarketCapShare: '0.84',
+      btcMarketCapShare: '0.48',
+      ethMarketCapShare: '0.16',
+      btcEthMarketCapShare: '0.64',
+      stablecoinMarketCapShare: '0.09',
+      stablecoinVolumeShare: '0.18',
+      totalMarketCapUsd: '2600000000000',
+      totalVolumeUsd: '120000000000',
+      breadthRegime: 'risk_on',
+    });
+    mockGetLatestMarketCmcExchangeLiquidityContext.mockResolvedValue({
+      source: 'coinmarketcap_exchange_liquidity',
+      interval: '1d',
+      ts: new Date(timestamp),
+      ageMs: 0,
+      stale: false,
+      exchangesCount: 5,
+      totalVolumeUsd: '80000000000',
+      totalVolumeChange24hPct: '0.18',
+      binanceVolumeUsd: '36000000000',
+      binanceVolumeShare: '0.45',
+      topExchangeVolumeShare: '0.45',
+      liquidityRegime: 'balanced',
+    });
     mockGetLatestMarketReferenceAssetContexts
       .mockResolvedValueOnce(makeReferenceMap(timestamp))
+      .mockResolvedValueOnce(makeReferenceMap(timestamp))
+      .mockResolvedValueOnce(makeReferenceMap(timestamp - DAY_MS))
       .mockResolvedValueOnce(makeReferenceMap(timestamp - DAY_MS));
   });
 
@@ -134,6 +181,11 @@ describe('strategyHelpers/coinMarketCapContext', () => {
     ).resolves.toBe(true);
 
     expect(mockGetLatestMarketGlobalContext).toHaveBeenCalledWith({
+      source: 'coinmarketcap_global_hourly',
+      atMs: timestamp,
+      maxAgeMs: 48 * 60 * 60_000,
+    });
+    expect(mockGetLatestMarketGlobalContext).toHaveBeenCalledWith({
       source: 'coinmarketcap_global',
       atMs: timestamp,
       maxAgeMs: 48 * 60 * 60_000,
@@ -143,7 +195,7 @@ describe('strategyHelpers/coinMarketCapContext', () => {
       {
         source: 'coinmarketcap_reference_asset',
         symbols: ['BTCUSDT', 'ETHUSDT'],
-        interval: '1d',
+        interval: '1h',
         atMs: timestamp,
         maxAgeMs: 48 * 60 * 60_000,
       },
@@ -154,13 +206,34 @@ describe('strategyHelpers/coinMarketCapContext', () => {
         source: 'coinmarketcap_reference_asset',
         symbols: ['BTCUSDT', 'ETHUSDT'],
         interval: '1d',
+        atMs: timestamp,
+        maxAgeMs: 48 * 60 * 60_000,
+      },
+    );
+    expect(mockGetLatestMarketReferenceAssetContexts).toHaveBeenNthCalledWith(
+      3,
+      {
+        source: 'coinmarketcap_reference_asset',
+        symbols: ['BTCUSDT', 'ETHUSDT'],
+        interval: '1h',
+        atMs: timestamp - DAY_MS,
+        maxAgeMs: 48 * 60 * 60_000 + DAY_MS,
+      },
+    );
+    expect(mockGetLatestMarketReferenceAssetContexts).toHaveBeenNthCalledWith(
+      4,
+      {
+        source: 'coinmarketcap_reference_asset',
+        symbols: ['BTCUSDT', 'ETHUSDT'],
+        interval: '1d',
         atMs: timestamp - DAY_MS,
         maxAgeMs: 48 * 60 * 60_000 + DAY_MS,
       },
     );
     expect(signal.additionalIndicators.baseContext.relative).toMatchObject({
       cmcGlobal: {
-        source: 'coinmarketcap_global',
+        source: 'coinmarketcap_global_hourly',
+        interval: '1h',
         stale: false,
         altVolumeChange24hPct: 0.12,
         activeMarketPairs: 120_000,
@@ -168,19 +241,38 @@ describe('strategyHelpers/coinMarketCapContext', () => {
       },
       cmcReferenceAssets: {
         source: 'coinmarketcap_reference_asset',
+        interval: '1h',
         stale: false,
         ethBtcMarketCapRatio: expect.any(Number),
         ethVsBtcVolumeRatio: expect.any(Number),
         referenceLiquidityRegime: 'balanced',
+      },
+      cmcMarketBreadth: {
+        source: 'coinmarketcap_market_breadth',
+        stale: false,
+        positive24hPct: 0.68,
+        breadthRegime: 'risk_on',
+      },
+      cmcExchangeLiquidity: {
+        source: 'coinmarketcap_exchange_liquidity',
+        stale: false,
+        totalVolumeChange24hPct: 0.18,
+        liquidityRegime: 'expanding',
       },
     });
     expect(signal.additionalIndicators.baseContext.gateFeatures).toMatchObject({
       relative: {
         cmcAltLiquidityAligned: true,
         cmcEthBtcAligned: null,
+        cmcMarketBreadthAligned: true,
+        cmcExchangeLiquidityAligned: true,
       },
       confirmations: {
-        items: expect.arrayContaining(['cmc_alt_liquidity_aligned']),
+        items: expect.arrayContaining([
+          'cmc_alt_liquidity_aligned',
+          'cmc_market_breadth_aligned',
+          'cmc_exchange_liquidity_aligned',
+        ]),
       },
     });
   });

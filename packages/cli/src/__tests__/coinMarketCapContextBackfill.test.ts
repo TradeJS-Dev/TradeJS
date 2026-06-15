@@ -1,5 +1,8 @@
 import {
+  coinMarketCapExchangeQuotesPayloadToLiquidityRows,
   coinMarketCapGlobalPayloadToRows,
+  coinMarketCapHistoricalQuotesPayloadToRows,
+  coinMarketCapListingsPayloadToBreadthRow,
   coinMarketCapOhlcvPayloadToRows,
   shouldBackfillCoinMarketCapContextForBacktest,
 } from '../lib/coinMarketCapContextBackfill';
@@ -115,6 +118,178 @@ describe('coinMarketCapContextBackfill', () => {
         closeUsd: 10.5,
         volumeUsd: 100,
         marketCapUsd: 500,
+      }),
+    ]);
+  });
+
+  it('maps hourly BTC and ETH quote rows', () => {
+    const rows = coinMarketCapHistoricalQuotesPayloadToRows({
+      data: {
+        1: {
+          id: 1,
+          symbol: 'BTC',
+          quotes: [
+            {
+              timestamp: '2026-01-01T01:00:00.000Z',
+              quote: {
+                USD: {
+                  price: 101,
+                  volume_24h: 1000,
+                  market_cap: 2000,
+                },
+              },
+            },
+          ],
+        },
+        1027: {
+          id: 1027,
+          symbol: 'ETH',
+          quotes: [
+            {
+              timestamp: '2026-01-01T01:00:00.000Z',
+              quote: {
+                USD: {
+                  price: 11,
+                  volume_24h: 100,
+                  market_cap: 500,
+                },
+              },
+            },
+          ],
+        },
+      },
+    });
+
+    expect(rows).toEqual([
+      expect.objectContaining({
+        source: 'coinmarketcap_reference_asset',
+        symbol: 'BTCUSDT',
+        interval: '1h',
+        closeUsd: 101,
+        volumeUsd: 1000,
+        marketCapUsd: 2000,
+      }),
+      expect.objectContaining({
+        source: 'coinmarketcap_reference_asset',
+        symbol: 'ETHUSDT',
+        interval: '1h',
+        closeUsd: 11,
+        volumeUsd: 100,
+        marketCapUsd: 500,
+      }),
+    ]);
+  });
+
+  it('aggregates historical listings into CMC market breadth', () => {
+    const row = coinMarketCapListingsPayloadToBreadthRow(
+      {
+        data: [
+          {
+            id: 1,
+            symbol: 'BTC',
+            quote: {
+              USD: {
+                market_cap: 500,
+                volume_24h: 50,
+                percent_change_24h: 2,
+                percent_change_7d: 5,
+              },
+            },
+          },
+          {
+            id: 1027,
+            symbol: 'ETH',
+            quote: {
+              USD: {
+                market_cap: 250,
+                volume_24h: 40,
+                percent_change_24h: 3,
+                percent_change_7d: 6,
+              },
+            },
+          },
+          {
+            id: 825,
+            symbol: 'USDT',
+            quote: {
+              USD: {
+                market_cap: 100,
+                volume_24h: 80,
+                percent_change_24h: 0.01,
+                percent_change_7d: 0.02,
+              },
+            },
+          },
+          {
+            id: 99,
+            symbol: 'ALT',
+            quote: {
+              USD: {
+                market_cap: 50,
+                volume_24h: 20,
+                percent_change_24h: -1,
+                percent_change_7d: 4,
+              },
+            },
+          },
+        ],
+      },
+      { ts: new Date('2026-01-01T00:00:00.000Z'), topLimit: 4 },
+    );
+
+    expect(row).toMatchObject({
+      source: 'coinmarketcap_market_breadth',
+      universe: 'cmc_top4',
+      interval: '1d',
+      topAssetsCount: 4,
+      assetsCount: 4,
+      positive24hPct: 0.75,
+      positive7dPct: 1,
+      totalMarketCapUsd: 900,
+      totalVolumeUsd: 190,
+      stablecoinMarketCapShare: 100 / 900,
+      stablecoinVolumeShare: 80 / 190,
+    });
+    expect(row?.btcMarketCapShare).toBeCloseTo(500 / 900);
+    expect(row?.ethMarketCapShare).toBeCloseTo(250 / 900);
+  });
+
+  it('aggregates historical exchange quotes into CMC exchange liquidity', () => {
+    const rows = coinMarketCapExchangeQuotesPayloadToLiquidityRows({
+      data: {
+        binance: {
+          name: 'Binance',
+          slug: 'binance',
+          quotes: [
+            {
+              timestamp: '2026-01-01T00:00:00.000Z',
+              quote: { USD: { volume_24h: 60 } },
+            },
+          ],
+        },
+        kraken: {
+          name: 'Kraken',
+          slug: 'kraken',
+          quotes: [
+            {
+              timestamp: '2026-01-01T00:00:00.000Z',
+              quote: { USD: { volume_24h: 40 } },
+            },
+          ],
+        },
+      },
+    });
+
+    expect(rows).toEqual([
+      expect.objectContaining({
+        source: 'coinmarketcap_exchange_liquidity',
+        interval: '1d',
+        exchangesCount: 2,
+        totalVolumeUsd: 100,
+        binanceVolumeUsd: 60,
+        binanceVolumeShare: 0.6,
+        topExchangeVolumeShare: 0.6,
+        liquidityRegime: 'binance_led',
       }),
     ]);
   });

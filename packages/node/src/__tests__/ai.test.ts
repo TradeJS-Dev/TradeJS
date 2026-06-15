@@ -1574,6 +1574,8 @@ describe('ai helpers', () => {
             ...signal.additionalIndicators.baseContext.relative,
             cmcGlobal: {
               source: 'coinmarketcap_global',
+              interval: '1d',
+              asOfTs: Date.UTC(2026, 0, 1),
               stale: false,
               totalMarketCapUsd: 2_600_000_000_000,
               totalVolumeUsd: 120_000_000_000,
@@ -1594,6 +1596,8 @@ describe('ai helpers', () => {
             },
             cmcReferenceAssets: {
               source: 'coinmarketcap_reference_asset',
+              interval: '1d',
+              asOfTs: Date.UTC(2026, 0, 1),
               stale: false,
               btcMarketCapUsd: 1_400_000_000_000,
               ethMarketCapUsd: 450_000_000_000,
@@ -1605,6 +1609,46 @@ describe('ai helpers', () => {
               ethBtcMarketCapRatioChange24hPct: 0.014,
               ethVsBtcVolumeRatio: 0.533,
               referenceLiquidityRegime: 'eth_led',
+            },
+            cmcMarketBreadth: {
+              source: 'coinmarketcap_market_breadth',
+              universe: 'cmc_top100',
+              interval: '1d',
+              asOfTs: Date.UTC(2026, 0, 1),
+              stale: false,
+              topAssetsCount: 100,
+              assetsCount: 100,
+              positive24hPct: 0.68,
+              positive7dPct: 0.61,
+              avgReturn24hPct: 0.018,
+              medianReturn24hPct: 0.012,
+              avgReturn7dPct: 0.04,
+              medianReturn7dPct: 0.031,
+              returnDispersion24hPct: 0.04,
+              returnDispersion7dPct: 0.07,
+              top10MarketCapShare: 0.72,
+              top25MarketCapShare: 0.84,
+              btcMarketCapShare: 0.48,
+              ethMarketCapShare: 0.16,
+              btcEthMarketCapShare: 0.64,
+              stablecoinMarketCapShare: 0.09,
+              stablecoinVolumeShare: 0.18,
+              totalMarketCapUsd: 2_600_000_000_000,
+              totalVolumeUsd: 120_000_000_000,
+              breadthRegime: 'risk_on',
+            },
+            cmcExchangeLiquidity: {
+              source: 'coinmarketcap_exchange_liquidity',
+              interval: '1d',
+              asOfTs: Date.UTC(2026, 0, 1),
+              stale: false,
+              exchangesCount: 5,
+              totalVolumeUsd: 80_000_000_000,
+              totalVolumeChange24hPct: 0.18,
+              binanceVolumeUsd: 36_000_000_000,
+              binanceVolumeShare: 0.45,
+              topExchangeVolumeShare: 0.45,
+              liquidityRegime: 'expanding',
             },
             execution: {
               ...signal.additionalIndicators.baseContext.relative.execution,
@@ -1662,6 +1706,8 @@ describe('ai helpers', () => {
             cmcGlobal: {
               source: 'coinmarketcap_global',
               available: true,
+              interval: '1d',
+              asOfTs: Date.UTC(2026, 0, 1),
               stale: false,
               altLiquidityRegime: 'alt_friendly',
               ethDominancePct: 17.2,
@@ -1671,10 +1717,25 @@ describe('ai helpers', () => {
             cmcReferenceAssets: {
               source: 'coinmarketcap_reference_asset',
               available: true,
+              interval: '1d',
+              asOfTs: Date.UTC(2026, 0, 1),
               stale: false,
               ethBtcMarketCapRatioChange24hPct: 0.014,
               ethVsBtcVolumeRatio: 0.533,
               referenceLiquidityRegime: 'eth_led',
+            },
+            cmcMarketBreadth: {
+              source: 'coinmarketcap_market_breadth',
+              available: true,
+              universe: 'cmc_top100',
+              positive24hPct: 0.68,
+              breadthRegime: 'risk_on',
+            },
+            cmcExchangeLiquidity: {
+              source: 'coinmarketcap_exchange_liquidity',
+              available: true,
+              totalVolumeChange24hPct: 0.18,
+              liquidityRegime: 'expanding',
             },
           },
         },
@@ -1731,6 +1792,8 @@ describe('ai helpers', () => {
       expect(prompt).toContain('marketContext.execution.binanceCoinbaseSpread');
       expect(prompt).toContain('marketContext.relative.cmcGlobal');
       expect(prompt).toContain('marketContext.relative.cmcReferenceAssets');
+      expect(prompt).toContain('marketContext.relative.cmcMarketBreadth');
+      expect(prompt).toContain('marketContext.relative.cmcExchangeLiquidity');
       expect(prompt).toContain('Short few-shot examples');
       expect(prompt).toContain('Do not add any other fields');
       expect(prompt).not.toContain('помощник крипто-трейдера');

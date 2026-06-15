@@ -355,6 +355,97 @@ describe('buildStrategySignal', () => {
     });
   });
 
+  it('derives CMC breadth and exchange liquidity gate features', () => {
+    const signal = buildStrategySignal({
+      signalId: 's-cmc-context',
+      strategy: 'TrendLine',
+      symbol: 'ETHUSDT',
+      interval: '15' as any,
+      direction: 'LONG',
+      timestamp: 1,
+      prices: {
+        currentPrice: 100,
+        takeProfitPrice: 110,
+        stopLossPrice: 95,
+        riskRatio: 2,
+      },
+      indicators: {
+        baseContext: {
+          ...baseContext,
+          relative: {
+            ...baseContext.relative,
+            cmcMarketBreadth: {
+              source: 'coinmarketcap_market_breadth',
+              universe: 'cmc_top100',
+              interval: '1d',
+              asOfTs: 1,
+              ageMs: 0,
+              stale: false,
+              topAssetsCount: 100,
+              assetsCount: 100,
+              positive24hPct: 0.68,
+              positive7dPct: 0.61,
+              avgReturn24hPct: 0.018,
+              medianReturn24hPct: 0.012,
+              avgReturn7dPct: 0.04,
+              medianReturn7dPct: 0.031,
+              returnDispersion24hPct: 0.04,
+              returnDispersion7dPct: 0.07,
+              top10MarketCapShare: 0.72,
+              top25MarketCapShare: 0.84,
+              btcMarketCapShare: 0.48,
+              ethMarketCapShare: 0.16,
+              btcEthMarketCapShare: 0.64,
+              stablecoinMarketCapShare: 0.09,
+              stablecoinVolumeShare: 0.18,
+              totalMarketCapUsd: 2_600_000_000_000,
+              totalVolumeUsd: 120_000_000_000,
+              breadthRegime: 'risk_on',
+            },
+            cmcExchangeLiquidity: {
+              source: 'coinmarketcap_exchange_liquidity',
+              interval: '1d',
+              asOfTs: 1,
+              ageMs: 0,
+              stale: false,
+              exchangesCount: 5,
+              totalVolumeUsd: 80_000_000_000,
+              totalVolumeChange24hPct: 0.18,
+              binanceVolumeUsd: 36_000_000_000,
+              binanceVolumeShare: 0.45,
+              topExchangeVolumeShare: 0.45,
+              liquidityRegime: 'expanding',
+            },
+          },
+        },
+      },
+    });
+
+    expect(
+      signal.additionalIndicators?.baseContext?.gateFeatures,
+    ).toMatchObject({
+      confirmations: {
+        items: expect.arrayContaining([
+          'cmc_market_breadth_aligned',
+          'cmc_exchange_liquidity_aligned',
+        ]),
+      },
+      relative: {
+        cmcMarketBreadthRegime: 'risk_on',
+        cmcMarketBreadthAligned: true,
+        cmcMarketBreadthStale: false,
+        cmcMarketBreadthPositive24hPct: 0.68,
+        cmcExchangeLiquidityRegime: 'expanding',
+        cmcExchangeLiquidityAligned: true,
+        cmcExchangeLiquidityStale: false,
+        cmcExchangeLiquidityVolumeChange24hPct: 0.18,
+      },
+      risk: {
+        liquidityRisk: 'low',
+      },
+    });
+  });
+
   it('turns conflicting normalized context into reject-oriented gate hints', () => {
     const signal = buildStrategySignal({
       signalId: 's-conflict',

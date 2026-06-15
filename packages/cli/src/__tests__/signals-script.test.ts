@@ -233,6 +233,8 @@ const loadScript = async (scenario: Scenario) => {
           ...(params.signal.additionalIndicators?.baseContext?.relative ?? {}),
           cmcGlobal: {
             source: 'coinmarketcap_global',
+            interval: '1d',
+            asOfTs: params.signal.timestamp,
             stale: false,
             btcDominancePct: 55,
             altLiquidityRegime: 'neutral',

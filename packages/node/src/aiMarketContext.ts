@@ -95,6 +95,8 @@ export type AiMarketContext = {
     cmcGlobal: {
       source: string | null;
       available: boolean;
+      interval: string | null;
+      asOfTs: number | null;
       stale: boolean | null;
       totalMarketCapUsd: number | null;
       totalVolumeUsd: number | null;
@@ -122,6 +124,8 @@ export type AiMarketContext = {
     cmcReferenceAssets: {
       source: string | null;
       available: boolean;
+      interval: string | null;
+      asOfTs: number | null;
       stale: boolean | null;
       btcMarketCapUsd: number | null;
       ethMarketCapUsd: number | null;
@@ -135,6 +139,59 @@ export type AiMarketContext = {
       referenceLiquidityRegime:
         | 'btc_led'
         | 'eth_led'
+        | 'balanced'
+        | 'thin'
+        | 'unknown'
+        | null;
+    };
+    cmcMarketBreadth: {
+      source: string | null;
+      available: boolean;
+      universe: string | null;
+      interval: string | null;
+      asOfTs: number | null;
+      stale: boolean | null;
+      topAssetsCount: number | null;
+      assetsCount: number | null;
+      positive24hPct: number | null;
+      positive7dPct: number | null;
+      avgReturn24hPct: number | null;
+      medianReturn24hPct: number | null;
+      returnDispersion24hPct: number | null;
+      top10MarketCapShare: number | null;
+      top25MarketCapShare: number | null;
+      btcMarketCapShare: number | null;
+      ethMarketCapShare: number | null;
+      btcEthMarketCapShare: number | null;
+      stablecoinMarketCapShare: number | null;
+      stablecoinVolumeShare: number | null;
+      breadthRegime:
+        | 'risk_on'
+        | 'risk_off'
+        | 'alt_broadening'
+        | 'btc_concentrated'
+        | 'mixed'
+        | 'neutral'
+        | 'unknown'
+        | null;
+    };
+    cmcExchangeLiquidity: {
+      source: string | null;
+      available: boolean;
+      interval: string | null;
+      asOfTs: number | null;
+      stale: boolean | null;
+      exchangesCount: number | null;
+      totalVolumeUsd: number | null;
+      totalVolumeChange24hPct: number | null;
+      binanceVolumeUsd: number | null;
+      binanceVolumeShare: number | null;
+      topExchangeVolumeShare: number | null;
+      liquidityRegime:
+        | 'expanding'
+        | 'contracting'
+        | 'binance_led'
+        | 'concentrated'
         | 'balanced'
         | 'thin'
         | 'unknown'
@@ -428,6 +485,8 @@ const buildCmcGlobalContextFromSignal = (signal: Signal) => {
     return {
       source: null,
       available: false,
+      interval: null,
+      asOfTs: null,
       stale: null,
       totalMarketCapUsd: null,
       totalVolumeUsd: null,
@@ -451,6 +510,9 @@ const buildCmcGlobalContextFromSignal = (signal: Signal) => {
   return {
     source: String(cmcGlobal.source ?? ''),
     available: true,
+    interval:
+      typeof cmcGlobal.interval === 'string' ? cmcGlobal.interval : null,
+    asOfTs: toFiniteNumber(cmcGlobal.asOfTs),
     stale: typeof cmcGlobal.stale === 'boolean' ? cmcGlobal.stale : null,
     totalMarketCapUsd: toFiniteNumber(cmcGlobal.totalMarketCapUsd),
     totalVolumeUsd: toFiniteNumber(cmcGlobal.totalVolumeUsd),
@@ -494,6 +556,8 @@ const buildCmcReferenceAssetsContextFromSignal = (signal: Signal) => {
     return {
       source: null,
       available: false,
+      interval: null,
+      asOfTs: null,
       stale: null,
       btcMarketCapUsd: null,
       ethMarketCapUsd: null,
@@ -511,6 +575,11 @@ const buildCmcReferenceAssetsContextFromSignal = (signal: Signal) => {
   return {
     source: String(cmcReferenceAssets.source ?? ''),
     available: true,
+    interval:
+      typeof cmcReferenceAssets.interval === 'string'
+        ? cmcReferenceAssets.interval
+        : null,
+    asOfTs: toFiniteNumber(cmcReferenceAssets.asOfTs),
     stale:
       typeof cmcReferenceAssets.stale === 'boolean'
         ? cmcReferenceAssets.stale
@@ -537,6 +606,145 @@ const buildCmcReferenceAssetsContextFromSignal = (signal: Signal) => {
         ? (cmcReferenceAssets.referenceLiquidityRegime as
             | 'btc_led'
             | 'eth_led'
+            | 'balanced'
+            | 'thin'
+            | 'unknown')
+        : null,
+  };
+};
+
+const buildCmcMarketBreadthContextFromSignal = (signal: Signal) => {
+  const baseContext = toRecord(signal.additionalIndicators?.baseContext);
+  const relative = toRecord(baseContext?.relative);
+  const cmcMarketBreadth = toRecord(relative?.cmcMarketBreadth);
+
+  if (!cmcMarketBreadth) {
+    return {
+      source: null,
+      available: false,
+      universe: null,
+      interval: null,
+      asOfTs: null,
+      stale: null,
+      topAssetsCount: null,
+      assetsCount: null,
+      positive24hPct: null,
+      positive7dPct: null,
+      avgReturn24hPct: null,
+      medianReturn24hPct: null,
+      returnDispersion24hPct: null,
+      top10MarketCapShare: null,
+      top25MarketCapShare: null,
+      btcMarketCapShare: null,
+      ethMarketCapShare: null,
+      btcEthMarketCapShare: null,
+      stablecoinMarketCapShare: null,
+      stablecoinVolumeShare: null,
+      breadthRegime: null,
+    };
+  }
+
+  return {
+    source: String(cmcMarketBreadth.source ?? ''),
+    available: true,
+    universe:
+      typeof cmcMarketBreadth.universe === 'string'
+        ? cmcMarketBreadth.universe
+        : null,
+    interval:
+      typeof cmcMarketBreadth.interval === 'string'
+        ? cmcMarketBreadth.interval
+        : null,
+    asOfTs: toFiniteNumber(cmcMarketBreadth.asOfTs),
+    stale:
+      typeof cmcMarketBreadth.stale === 'boolean'
+        ? cmcMarketBreadth.stale
+        : null,
+    topAssetsCount: toFiniteNumber(cmcMarketBreadth.topAssetsCount),
+    assetsCount: toFiniteNumber(cmcMarketBreadth.assetsCount),
+    positive24hPct: toFiniteNumber(cmcMarketBreadth.positive24hPct),
+    positive7dPct: toFiniteNumber(cmcMarketBreadth.positive7dPct),
+    avgReturn24hPct: toFiniteNumber(cmcMarketBreadth.avgReturn24hPct),
+    medianReturn24hPct: toFiniteNumber(cmcMarketBreadth.medianReturn24hPct),
+    returnDispersion24hPct: toFiniteNumber(
+      cmcMarketBreadth.returnDispersion24hPct,
+    ),
+    top10MarketCapShare: toFiniteNumber(cmcMarketBreadth.top10MarketCapShare),
+    top25MarketCapShare: toFiniteNumber(cmcMarketBreadth.top25MarketCapShare),
+    btcMarketCapShare: toFiniteNumber(cmcMarketBreadth.btcMarketCapShare),
+    ethMarketCapShare: toFiniteNumber(cmcMarketBreadth.ethMarketCapShare),
+    btcEthMarketCapShare: toFiniteNumber(cmcMarketBreadth.btcEthMarketCapShare),
+    stablecoinMarketCapShare: toFiniteNumber(
+      cmcMarketBreadth.stablecoinMarketCapShare,
+    ),
+    stablecoinVolumeShare: toFiniteNumber(
+      cmcMarketBreadth.stablecoinVolumeShare,
+    ),
+    breadthRegime:
+      typeof cmcMarketBreadth.breadthRegime === 'string'
+        ? (cmcMarketBreadth.breadthRegime as
+            | 'risk_on'
+            | 'risk_off'
+            | 'alt_broadening'
+            | 'btc_concentrated'
+            | 'mixed'
+            | 'neutral'
+            | 'unknown')
+        : null,
+  };
+};
+
+const buildCmcExchangeLiquidityContextFromSignal = (signal: Signal) => {
+  const baseContext = toRecord(signal.additionalIndicators?.baseContext);
+  const relative = toRecord(baseContext?.relative);
+  const cmcExchangeLiquidity = toRecord(relative?.cmcExchangeLiquidity);
+
+  if (!cmcExchangeLiquidity) {
+    return {
+      source: null,
+      available: false,
+      interval: null,
+      asOfTs: null,
+      stale: null,
+      exchangesCount: null,
+      totalVolumeUsd: null,
+      totalVolumeChange24hPct: null,
+      binanceVolumeUsd: null,
+      binanceVolumeShare: null,
+      topExchangeVolumeShare: null,
+      liquidityRegime: null,
+    };
+  }
+
+  return {
+    source: String(cmcExchangeLiquidity.source ?? ''),
+    available: true,
+    interval:
+      typeof cmcExchangeLiquidity.interval === 'string'
+        ? cmcExchangeLiquidity.interval
+        : null,
+    asOfTs: toFiniteNumber(cmcExchangeLiquidity.asOfTs),
+    stale:
+      typeof cmcExchangeLiquidity.stale === 'boolean'
+        ? cmcExchangeLiquidity.stale
+        : null,
+    exchangesCount: toFiniteNumber(cmcExchangeLiquidity.exchangesCount),
+    totalVolumeUsd: toFiniteNumber(cmcExchangeLiquidity.totalVolumeUsd),
+    totalVolumeChange24hPct: toFiniteNumber(
+      cmcExchangeLiquidity.totalVolumeChange24hPct,
+    ),
+    binanceVolumeUsd: toFiniteNumber(cmcExchangeLiquidity.binanceVolumeUsd),
+    binanceVolumeShare: toFiniteNumber(cmcExchangeLiquidity.binanceVolumeShare),
+    topExchangeVolumeShare: toFiniteNumber(
+      cmcExchangeLiquidity.topExchangeVolumeShare,
+    ),
+    liquidityRegime:
+      typeof cmcExchangeLiquidity.liquidityRegime === 'string'
+        ? (cmcExchangeLiquidity.liquidityRegime as
+            | 'expanding'
+            | 'contracting'
+            | 'binance_led'
+            | 'concentrated'
             | 'balanced'
             | 'thin'
             | 'unknown')
@@ -600,6 +808,8 @@ export const buildAiMarketContext = (signal: Signal): AiMarketContext => ({
     btcAltRegime: buildBtcAltRegimeContextFromSignal(signal),
     cmcGlobal: buildCmcGlobalContextFromSignal(signal),
     cmcReferenceAssets: buildCmcReferenceAssetsContextFromSignal(signal),
+    cmcMarketBreadth: buildCmcMarketBreadthContextFromSignal(signal),
+    cmcExchangeLiquidity: buildCmcExchangeLiquidityContextFromSignal(signal),
     referenceTradeFlow: buildReferenceTradeFlowContextFromSignal(signal),
   },
 });

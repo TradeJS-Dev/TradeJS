@@ -126,7 +126,9 @@ export type SpreadRow = {
 
 export type MarketFeatureInterval = '1m' | '5m' | '15m' | '1h';
 
-export type MarketGlobalContextSource = 'coinmarketcap_global';
+export type MarketGlobalContextSource =
+  | 'coinmarketcap_global'
+  | 'coinmarketcap_global_hourly';
 
 export type MarketGlobalContextRow = {
   source: MarketGlobalContextSource;
@@ -152,7 +154,7 @@ export type MarketReferenceAssetContextRow = {
   source: 'coinmarketcap_reference_asset';
   symbol: 'BTCUSDT' | 'ETHUSDT' | string;
   cmcId: number;
-  interval: '1d';
+  interval: '1d' | '1h';
   ts: Date;
   openUsd?: number | null;
   highUsd?: number | null;
@@ -160,6 +162,63 @@ export type MarketReferenceAssetContextRow = {
   closeUsd?: number | null;
   volumeUsd?: number | null;
   marketCapUsd?: number | null;
+};
+
+export type CmcMarketBreadthRegime =
+  | 'risk_on'
+  | 'risk_off'
+  | 'alt_broadening'
+  | 'btc_concentrated'
+  | 'mixed'
+  | 'neutral'
+  | 'unknown';
+
+export type MarketCmcBreadthContextRow = {
+  source: 'coinmarketcap_market_breadth';
+  universe: string;
+  interval: '1d';
+  ts: Date;
+  topAssetsCount: number;
+  assetsCount: number;
+  positive24hPct?: number | null;
+  positive7dPct?: number | null;
+  avgReturn24hPct?: number | null;
+  medianReturn24hPct?: number | null;
+  avgReturn7dPct?: number | null;
+  medianReturn7dPct?: number | null;
+  returnDispersion24hPct?: number | null;
+  returnDispersion7dPct?: number | null;
+  top10MarketCapShare?: number | null;
+  top25MarketCapShare?: number | null;
+  btcMarketCapShare?: number | null;
+  ethMarketCapShare?: number | null;
+  btcEthMarketCapShare?: number | null;
+  stablecoinMarketCapShare?: number | null;
+  stablecoinVolumeShare?: number | null;
+  totalMarketCapUsd?: number | null;
+  totalVolumeUsd?: number | null;
+  breadthRegime?: CmcMarketBreadthRegime | null;
+};
+
+export type CmcExchangeLiquidityRegime =
+  | 'expanding'
+  | 'contracting'
+  | 'binance_led'
+  | 'concentrated'
+  | 'balanced'
+  | 'thin'
+  | 'unknown';
+
+export type MarketCmcExchangeLiquidityContextRow = {
+  source: 'coinmarketcap_exchange_liquidity';
+  interval: '1d' | '1h';
+  ts: Date;
+  exchangesCount: number;
+  totalVolumeUsd?: number | null;
+  binanceVolumeUsd?: number | null;
+  binanceVolumeShare?: number | null;
+  topExchangeVolumeShare?: number | null;
+  liquidityRegime?: CmcExchangeLiquidityRegime | null;
 };
 
 export type MarketBreadthRow = {

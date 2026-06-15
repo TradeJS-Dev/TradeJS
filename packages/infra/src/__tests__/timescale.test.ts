@@ -474,6 +474,141 @@ describe('timescale candle helpers', () => {
     }
   });
 
+  it('stores and reads CoinMarketCap aggregate context rows', async () => {
+    const atMs = 10_000;
+    const query = jest.fn(async (sql: string) => {
+      if (sql.includes('FROM market_cmc_breadth_context')) {
+        return {
+          rows: [
+            {
+              source: 'coinmarketcap_market_breadth',
+              universe: 'cmc_top100',
+              interval: '1d',
+              ts: new Date(8_000),
+              topAssetsCount: 100,
+              assetsCount: 98,
+              positive24hPct: '0.62',
+              breadthRegime: 'risk_on',
+            },
+          ],
+        };
+      }
+      if (
+        sql.includes('FROM market_cmc_exchange_liquidity_context') &&
+        sql.includes("interval '24 hours'")
+      ) {
+        return { rows: [{ totalVolumeUsd: '80' }] };
+      }
+      if (sql.includes('FROM market_cmc_exchange_liquidity_context')) {
+        return {
+          rows: [
+            {
+              source: 'coinmarketcap_exchange_liquidity',
+              interval: '1d',
+              ts: new Date(9_000),
+              exchangesCount: 5,
+              totalVolumeUsd: '100',
+              binanceVolumeUsd: '45',
+              binanceVolumeShare: '0.45',
+              topExchangeVolumeShare: '0.45',
+              liquidityRegime: 'balanced',
+            },
+          ],
+        };
+      }
+      return { rows: [] };
+    });
+
+    jest.doMock('pg', () => ({
+      Pool: jest.fn().mockImplementation(() => ({
+        connect: jest.fn(),
+        query,
+      })),
+    }));
+
+    const {
+      getLatestMarketCmcBreadthContext,
+      getLatestMarketCmcExchangeLiquidityContext,
+      upsertMarketCmcBreadthContextRows,
+      upsertMarketCmcExchangeLiquidityContextRows,
+    } = await import('@tradejs/infra/timescale');
+
+    await upsertMarketCmcBreadthContextRows([
+      {
+        source: 'coinmarketcap_market_breadth',
+        universe: 'cmc_top100',
+        interval: '1d',
+        ts: new Date(8_000),
+        topAssetsCount: 100,
+        assetsCount: 98,
+        positive24hPct: 0.62,
+        breadthRegime: 'risk_on',
+      },
+    ]);
+    await upsertMarketCmcExchangeLiquidityContextRows([
+      {
+        source: 'coinmarketcap_exchange_liquidity',
+        interval: '1d',
+        ts: new Date(9_000),
+        exchangesCount: 5,
+        totalVolumeUsd: 100,
+        binanceVolumeUsd: 45,
+        binanceVolumeShare: 0.45,
+        topExchangeVolumeShare: 0.45,
+        liquidityRegime: 'balanced',
+      },
+    ]);
+
+    await expect(
+      getLatestMarketCmcBreadthContext({
+        source: 'coinmarketcap_market_breadth',
+        universe: 'cmc_top100',
+        interval: '1d',
+        atMs,
+        maxAgeMs: 3_000,
+      }),
+    ).resolves.toMatchObject({
+      source: 'coinmarketcap_market_breadth',
+      universe: 'cmc_top100',
+      ageMs: 2_000,
+      stale: false,
+      breadthRegime: 'risk_on',
+    });
+    await expect(
+      getLatestMarketCmcExchangeLiquidityContext({
+        source: 'coinmarketcap_exchange_liquidity',
+        interval: '1d',
+        atMs,
+        maxAgeMs: 2_000,
+      }),
+    ).resolves.toMatchObject({
+      source: 'coinmarketcap_exchange_liquidity',
+      ageMs: 1_000,
+      stale: false,
+      totalVolumeChange24hPct: 0.25,
+    });
+
+    expect(query).toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO market_cmc_breadth_context'),
+      expect.arrayContaining([
+        'coinmarketcap_market_breadth',
+        'cmc_top100',
+        '1d',
+        new Date(8_000),
+      ]),
+    );
+    expect(query).toHaveBeenCalledWith(
+      expect.stringContaining(
+        'INSERT INTO market_cmc_exchange_liquidity_context',
+      ),
+      expect.arrayContaining([
+        'coinmarketcap_exchange_liquidity',
+        '1d',
+        new Date(9_000),
+      ]),
+    );
+  });
+
   it('reads latest Binance market feature rows as-of a timestamp', async () => {
     const atMs = 10_000;
     const query = jest.fn(async (sql: string) => {
