@@ -314,6 +314,111 @@ describe('adaptiveMomentumRibbonAiAdapter', () => {
     );
   });
 
+  it('demotes q4 continuation setups when relative, spread, or CMC context is weak', () => {
+    const signal = makeSignal({
+      timestamp: Date.UTC(2026, 0, 1, 10, 30),
+      additionalIndicators: {
+        amr: {
+          signalOsc: 1.6,
+        },
+        baseContext: {
+          relative: {
+            targetVsBtc: {
+              alphaVsBtc4h: 0.8,
+            },
+            cmcFearGreed: {
+              valueChange7d: -20,
+            },
+          },
+          participation: {
+            volume: {
+              volumeRel20: 1.3,
+              effortVsResult: 110,
+            },
+          },
+        },
+        marketContext: {
+          execution: {
+            binanceCoinbaseSpread: {
+              bps: -12,
+              bias: 'binance_premium',
+              severity: 'elevated',
+            },
+          },
+        },
+      },
+    });
+
+    const payload = buildPayloadForSignal(signal);
+
+    expect(payload.additionalIndicators.adaptiveMomentumRibbonContext).toEqual(
+      expect.objectContaining({
+        targetVsBtcAlpha4h: 0.8,
+        spreadBps: -12,
+        cmcFearGreedValueChange7d: -20,
+        q4ContinuationAllowed: false,
+        q4ContinuationBlockReasons: [
+          'weak_target_vs_btc_alpha_4h',
+          'binance_btc_premium_risk',
+          'cmc_fear_greed_deteriorating',
+        ],
+        deterministicQuality: 3,
+        approvalAllowedNow: false,
+      }),
+    );
+  });
+
+  it('does not cap q5 low-effort setups with the q4 continuation guard', () => {
+    const signal = makeSignal({
+      timestamp: Date.UTC(2026, 0, 1, 10, 30),
+      additionalIndicators: {
+        amr: {
+          signalOsc: 1.6,
+        },
+        baseContext: {
+          relative: {
+            targetVsBtc: {
+              alphaVsBtc4h: 0.8,
+            },
+            cmcFearGreed: {
+              valueChange7d: -20,
+            },
+          },
+          participation: {
+            volume: {
+              volumeRel20: 1,
+              effortVsResult: 80,
+            },
+          },
+        },
+        marketContext: {
+          execution: {
+            binanceCoinbaseSpread: {
+              bps: -12,
+              bias: 'binance_premium',
+              severity: 'elevated',
+            },
+          },
+        },
+      },
+    });
+
+    const payload = buildPayloadForSignal(signal);
+
+    expect(payload.additionalIndicators.adaptiveMomentumRibbonContext).toEqual(
+      expect.objectContaining({
+        q4ContinuationAllowed: false,
+        q4ContinuationBlockReasons: [
+          'weak_target_vs_btc_alpha_4h',
+          'binance_btc_premium_risk',
+          'cmc_fear_greed_deteriorating',
+        ],
+        deterministicQuality: 5,
+        approvalAllowedNow: true,
+      }),
+    );
+  });
+
   it('demotes invalidated long setups into watch mode', () => {
     const signal = makeSignal({
       additionalIndicators: {

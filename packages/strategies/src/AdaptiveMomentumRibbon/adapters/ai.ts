@@ -26,12 +26,13 @@ AdaptiveMomentumRibbon addon:
 - \`quality=5\` is reserved for the strongest momentum/low-effort pocket: oscillatorStrength >= 1.5, volumeRel20 <= 1.2, and effortVsResult <= 100.
 - \`quality=4\` additionally allows two narrower continuation pockets: oscillatorStrength >= 1.2 with coin bias conflict, structuralRewardRiskRatio >= 2.2 and volumeRel20 <= 1.2, or Europe-session oscillatorStrength >= 1.5 with effortVsResult <= 120.
 - If signal candle range is available, \`signalRangeAtrRatio\` must be >= 1.05 for live approval; weaker signal candles stay in watch mode.
+- \`quality=4\` continuation approvals require targetVsBtcAlpha4h >= 1, spreadBps >= -10, and cmcFearGreedValueChange7d >= -15 when those fields are available. \`quality=5\` is not capped by this q4-only continuation guard.
 - If \`approvalAllowedNow=false\` or \`deterministicQuality<4\`, this is usually watch mode rather than a ready live approval.
 `;
 
 const ADAPTIVE_MOMENTUM_RIBBON_PAYLOAD_PROMPT = `
 - \`payload.additionalIndicators.adaptiveMomentumRibbonContext\` contains a compact signal summary:
-  signalOsc / oscillatorStrength / signalRangeAtrRatio / channelState / channelExtensionPct / invalidationDistancePct / structuralRewardRiskRatio / coinBiasAligned / btcBiasAligned / targetVsBtcAlpha4h / derivativesDirectionAligned / derivativesRiskFlags / derivativesFundingZScore / deterministicQuality / approvalAllowedNow / structuralHardBlockReasons.
+  signalOsc / oscillatorStrength / signalRangeAtrRatio / channelState / channelExtensionPct / invalidationDistancePct / structuralRewardRiskRatio / coinBiasAligned / btcBiasAligned / targetVsBtcAlpha4h / spreadBps / cmcFearGreedValueChange7d / q4ContinuationAllowed / q4ContinuationBlockReasons / derivativesDirectionAligned / derivativesRiskFlags / derivativesFundingZScore / deterministicQuality / approvalAllowedNow / structuralHardBlockReasons.
 - Use this context as the primary strategy-specific interpretation instead of re-deriving it only from generic series.
 `;
 
@@ -45,6 +46,10 @@ type AmrHardBlockReason =
   | 'invalidation_wrong_side';
 type SpreadSeverity = 'normal' | 'elevated' | 'wide' | null;
 type SpreadBias = 'coinbase_premium' | 'binance_premium' | 'flat' | null;
+type AmrQ4ContinuationBlockReason =
+  | 'weak_target_vs_btc_alpha_4h'
+  | 'binance_btc_premium_risk'
+  | 'cmc_fear_greed_deteriorating';
 type AmrChannelState =
   | 'above_upper'
   | 'above_midline'
@@ -124,6 +129,9 @@ type AdaptiveMomentumRibbonAiContext = {
   spreadBps: number | null;
   spreadBias: SpreadBias;
   spreadSeverity: SpreadSeverity;
+  cmcFearGreedValueChange7d: number | null;
+  q4ContinuationAllowed: boolean;
+  q4ContinuationBlockReasons: AmrQ4ContinuationBlockReason[];
   hardBlockReasons: AmrHardBlockReason[];
   structuralHardBlockReasons: AmrStructuralReason[];
   deterministicQuality: number;
@@ -421,6 +429,32 @@ const getSignalRangeAtrRatio = (
   return (high - low) / atr;
 };
 
+const getQ4ContinuationBlockReasons = (
+  context: Pick<
+    AdaptiveMomentumRibbonAiContext,
+    'targetVsBtcAlpha4h' | 'spreadBps' | 'cmcFearGreedValueChange7d'
+  >,
+): AmrQ4ContinuationBlockReason[] => {
+  const reasons: AmrQ4ContinuationBlockReason[] = [];
+
+  if (context.targetVsBtcAlpha4h != null && context.targetVsBtcAlpha4h < 1) {
+    reasons.push('weak_target_vs_btc_alpha_4h');
+  }
+
+  if (context.spreadBps != null && context.spreadBps < -10) {
+    reasons.push('binance_btc_premium_risk');
+  }
+
+  if (
+    context.cmcFearGreedValueChange7d != null &&
+    context.cmcFearGreedValueChange7d < -15
+  ) {
+    reasons.push('cmc_fear_greed_deteriorating');
+  }
+
+  return reasons;
+};
+
 const getDeterministicAdaptiveMomentumRibbonQuality = (
   context: Omit<
     AdaptiveMomentumRibbonAiContext,
@@ -465,6 +499,10 @@ const getDeterministicAdaptiveMomentumRibbonQuality = (
 
   if (causalMomentumLowEffortPocket) {
     return 5;
+  }
+
+  if (!context.q4ContinuationAllowed) {
+    return 3;
   }
 
   if (causalRewardRiskLowVolumePocket || causalEuropeLowEffortPocket) {
@@ -612,6 +650,7 @@ const buildAdaptiveMomentumRibbonContext = (
   const relative = getRecord(baseContext?.relative);
   const benchmark = getRecord(relative?.benchmark);
   const targetVsBtc = getRecord(relative?.targetVsBtc);
+  const cmcFearGreed = getRecord(relative?.cmcFearGreed);
   const marketContext = getRecord(additional?.marketContext);
   const marketExecution = getRecord(marketContext?.execution);
   const spreadContext = getRecord(marketExecution?.binanceCoinbaseSpread);
@@ -659,6 +698,15 @@ const buildAdaptiveMomentumRibbonContext = (
       ? spreadContext.severity
       : null;
   const signalRangeAtrRatio = getSignalRangeAtrRatio(candle, raw);
+  const cmcFearGreedValueChange7d = toFiniteNumberOrNull(
+    cmcFearGreed?.valueChange7d,
+  );
+  const q4ContinuationBlockReasons = getQ4ContinuationBlockReasons({
+    targetVsBtcAlpha4h,
+    spreadBps,
+    cmcFearGreedValueChange7d,
+  });
+  const q4ContinuationAllowed = q4ContinuationBlockReasons.length === 0;
 
   const hardBlockReasons: AmrHardBlockReason[] = [];
 
@@ -802,6 +850,9 @@ const buildAdaptiveMomentumRibbonContext = (
     spreadBps,
     spreadBias,
     spreadSeverity,
+    cmcFearGreedValueChange7d,
+    q4ContinuationAllowed,
+    q4ContinuationBlockReasons,
     hardBlockReasons,
     structuralHardBlockReasons,
   });
@@ -853,6 +904,9 @@ const buildAdaptiveMomentumRibbonContext = (
     spreadBps,
     spreadBias,
     spreadSeverity,
+    cmcFearGreedValueChange7d,
+    q4ContinuationAllowed,
+    q4ContinuationBlockReasons,
     hardBlockReasons,
     structuralHardBlockReasons,
     deterministicQuality,
@@ -1017,6 +1071,9 @@ Additional AdaptiveMomentumRibbon context:
 - spreadBps=${context.spreadBps?.toFixed?.(2) ?? 'n/a'}
 - spreadBias=${context.spreadBias ?? 'n/a'}
 - spreadSeverity=${context.spreadSeverity ?? 'n/a'}
+- cmcFearGreedValueChange7d=${context.cmcFearGreedValueChange7d?.toFixed?.(3) ?? 'n/a'}
+- q4ContinuationAllowed=${context.q4ContinuationAllowed}
+- q4ContinuationBlockReasons=${context.q4ContinuationBlockReasons.join(', ') || 'none'}
 - deterministicQuality=${context.deterministicQuality}
 - approvalAllowedNow=${context.approvalAllowedNow}
 - hardBlockReasons=${context.hardBlockReasons.join(', ') || 'none'}
