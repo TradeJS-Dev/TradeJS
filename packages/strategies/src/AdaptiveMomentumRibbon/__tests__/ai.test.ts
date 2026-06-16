@@ -356,14 +356,72 @@ describe('adaptiveMomentumRibbonAiAdapter', () => {
         targetVsBtcAlpha4h: 0.8,
         spreadBps: -12,
         cmcFearGreedValueChange7d: -20,
+        cmcBtcDominanceChange24hPct: null,
         q4ContinuationAllowed: false,
         q4ContinuationBlockReasons: [
           'weak_target_vs_btc_alpha_4h',
           'binance_btc_premium_risk',
           'cmc_fear_greed_deteriorating',
         ],
+        q4ContinuationRecoveryAllowed: false,
         deterministicQuality: 3,
         approvalAllowedNow: false,
+      }),
+    );
+  });
+
+  it('recovers blocked q4 continuations when effort is low and BTC dominance is not rising', () => {
+    const signal = makeSignal({
+      timestamp: Date.UTC(2026, 0, 1, 10, 30),
+      additionalIndicators: {
+        amr: {
+          signalOsc: 1.6,
+        },
+        baseContext: {
+          relative: {
+            targetVsBtc: {
+              alphaVsBtc4h: 0.8,
+            },
+            cmcGlobal: {
+              btcDominanceChange24hPct: -0.2,
+            },
+            cmcFearGreed: {
+              valueChange7d: -20,
+            },
+          },
+          participation: {
+            volume: {
+              volumeRel20: 1.3,
+              effortVsResult: 50,
+            },
+          },
+        },
+        marketContext: {
+          execution: {
+            binanceCoinbaseSpread: {
+              bps: -12,
+              bias: 'binance_premium',
+              severity: 'elevated',
+            },
+          },
+        },
+      },
+    });
+
+    const payload = buildPayloadForSignal(signal);
+
+    expect(payload.additionalIndicators.adaptiveMomentumRibbonContext).toEqual(
+      expect.objectContaining({
+        cmcBtcDominanceChange24hPct: -0.2,
+        q4ContinuationAllowed: false,
+        q4ContinuationBlockReasons: [
+          'weak_target_vs_btc_alpha_4h',
+          'binance_btc_premium_risk',
+          'cmc_fear_greed_deteriorating',
+        ],
+        q4ContinuationRecoveryAllowed: true,
+        deterministicQuality: 4,
+        approvalAllowedNow: true,
       }),
     );
   });

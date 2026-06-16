@@ -27,12 +27,13 @@ AdaptiveMomentumRibbon addon:
 - \`quality=4\` additionally allows two narrower continuation pockets: oscillatorStrength >= 1.2 with coin bias conflict, structuralRewardRiskRatio >= 2.2 and volumeRel20 <= 1.2, or Europe-session oscillatorStrength >= 1.5 with effortVsResult <= 120.
 - If signal candle range is available, \`signalRangeAtrRatio\` must be >= 1.05 for live approval; weaker signal candles stay in watch mode.
 - \`quality=4\` continuation approvals require targetVsBtcAlpha4h >= 1, spreadBps >= -10, and cmcFearGreedValueChange7d >= -15 when those fields are available. \`quality=5\` is not capped by this q4-only continuation guard.
+- A blocked q4 continuation may recover to \`quality=4\` when effortVsResult <= 60 and cmcBtcDominanceChange24hPct <= 0.
 - If \`approvalAllowedNow=false\` or \`deterministicQuality<4\`, this is usually watch mode rather than a ready live approval.
 `;
 
 const ADAPTIVE_MOMENTUM_RIBBON_PAYLOAD_PROMPT = `
 - \`payload.additionalIndicators.adaptiveMomentumRibbonContext\` contains a compact signal summary:
-  signalOsc / oscillatorStrength / signalRangeAtrRatio / channelState / channelExtensionPct / invalidationDistancePct / structuralRewardRiskRatio / coinBiasAligned / btcBiasAligned / targetVsBtcAlpha4h / spreadBps / cmcFearGreedValueChange7d / q4ContinuationAllowed / q4ContinuationBlockReasons / derivativesDirectionAligned / derivativesRiskFlags / derivativesFundingZScore / deterministicQuality / approvalAllowedNow / structuralHardBlockReasons.
+  signalOsc / oscillatorStrength / signalRangeAtrRatio / channelState / channelExtensionPct / invalidationDistancePct / structuralRewardRiskRatio / coinBiasAligned / btcBiasAligned / targetVsBtcAlpha4h / spreadBps / cmcFearGreedValueChange7d / cmcBtcDominanceChange24hPct / q4ContinuationAllowed / q4ContinuationBlockReasons / q4ContinuationRecoveryAllowed / derivativesDirectionAligned / derivativesRiskFlags / derivativesFundingZScore / deterministicQuality / approvalAllowedNow / structuralHardBlockReasons.
 - Use this context as the primary strategy-specific interpretation instead of re-deriving it only from generic series.
 `;
 
@@ -130,8 +131,10 @@ type AdaptiveMomentumRibbonAiContext = {
   spreadBias: SpreadBias;
   spreadSeverity: SpreadSeverity;
   cmcFearGreedValueChange7d: number | null;
+  cmcBtcDominanceChange24hPct: number | null;
   q4ContinuationAllowed: boolean;
   q4ContinuationBlockReasons: AmrQ4ContinuationBlockReason[];
+  q4ContinuationRecoveryAllowed: boolean;
   hardBlockReasons: AmrHardBlockReason[];
   structuralHardBlockReasons: AmrStructuralReason[];
   deterministicQuality: number;
@@ -455,6 +458,17 @@ const getQ4ContinuationBlockReasons = (
   return reasons;
 };
 
+const getQ4ContinuationRecoveryAllowed = (
+  context: Pick<
+    AdaptiveMomentumRibbonAiContext,
+    'q4ContinuationAllowed' | 'effortVsResult' | 'cmcBtcDominanceChange24hPct'
+  >,
+) =>
+  !context.q4ContinuationAllowed &&
+  isInRange(context.effortVsResult, 0, 60) &&
+  context.cmcBtcDominanceChange24hPct != null &&
+  context.cmcBtcDominanceChange24hPct <= 0;
+
 const getDeterministicAdaptiveMomentumRibbonQuality = (
   context: Omit<
     AdaptiveMomentumRibbonAiContext,
@@ -499,6 +513,10 @@ const getDeterministicAdaptiveMomentumRibbonQuality = (
 
   if (causalMomentumLowEffortPocket) {
     return 5;
+  }
+
+  if (context.q4ContinuationRecoveryAllowed) {
+    return 4;
   }
 
   if (!context.q4ContinuationAllowed) {
@@ -650,6 +668,7 @@ const buildAdaptiveMomentumRibbonContext = (
   const relative = getRecord(baseContext?.relative);
   const benchmark = getRecord(relative?.benchmark);
   const targetVsBtc = getRecord(relative?.targetVsBtc);
+  const cmcGlobal = getRecord(relative?.cmcGlobal);
   const cmcFearGreed = getRecord(relative?.cmcFearGreed);
   const marketContext = getRecord(additional?.marketContext);
   const marketExecution = getRecord(marketContext?.execution);
@@ -701,12 +720,20 @@ const buildAdaptiveMomentumRibbonContext = (
   const cmcFearGreedValueChange7d = toFiniteNumberOrNull(
     cmcFearGreed?.valueChange7d,
   );
+  const cmcBtcDominanceChange24hPct = toFiniteNumberOrNull(
+    cmcGlobal?.btcDominanceChange24hPct,
+  );
   const q4ContinuationBlockReasons = getQ4ContinuationBlockReasons({
     targetVsBtcAlpha4h,
     spreadBps,
     cmcFearGreedValueChange7d,
   });
   const q4ContinuationAllowed = q4ContinuationBlockReasons.length === 0;
+  const q4ContinuationRecoveryAllowed = getQ4ContinuationRecoveryAllowed({
+    q4ContinuationAllowed,
+    effortVsResult,
+    cmcBtcDominanceChange24hPct,
+  });
 
   const hardBlockReasons: AmrHardBlockReason[] = [];
 
@@ -851,8 +878,10 @@ const buildAdaptiveMomentumRibbonContext = (
     spreadBias,
     spreadSeverity,
     cmcFearGreedValueChange7d,
+    cmcBtcDominanceChange24hPct,
     q4ContinuationAllowed,
     q4ContinuationBlockReasons,
+    q4ContinuationRecoveryAllowed,
     hardBlockReasons,
     structuralHardBlockReasons,
   });
@@ -905,8 +934,10 @@ const buildAdaptiveMomentumRibbonContext = (
     spreadBias,
     spreadSeverity,
     cmcFearGreedValueChange7d,
+    cmcBtcDominanceChange24hPct,
     q4ContinuationAllowed,
     q4ContinuationBlockReasons,
+    q4ContinuationRecoveryAllowed,
     hardBlockReasons,
     structuralHardBlockReasons,
     deterministicQuality,
@@ -1072,8 +1103,10 @@ Additional AdaptiveMomentumRibbon context:
 - spreadBias=${context.spreadBias ?? 'n/a'}
 - spreadSeverity=${context.spreadSeverity ?? 'n/a'}
 - cmcFearGreedValueChange7d=${context.cmcFearGreedValueChange7d?.toFixed?.(3) ?? 'n/a'}
+- cmcBtcDominanceChange24hPct=${context.cmcBtcDominanceChange24hPct?.toFixed?.(3) ?? 'n/a'}
 - q4ContinuationAllowed=${context.q4ContinuationAllowed}
 - q4ContinuationBlockReasons=${context.q4ContinuationBlockReasons.join(', ') || 'none'}
+- q4ContinuationRecoveryAllowed=${context.q4ContinuationRecoveryAllowed}
 - deterministicQuality=${context.deterministicQuality}
 - approvalAllowedNow=${context.approvalAllowedNow}
 - hardBlockReasons=${context.hardBlockReasons.join(', ') || 'none'}
